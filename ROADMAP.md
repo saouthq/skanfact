@@ -156,7 +156,7 @@ Les statistiques de la 2.4.0 se remplissent enfin de ce qui manquait.
 - **Rentabilité des contrats de maintenance** : ce qu'ils rapportent sur l'année contre ce qu'ils coûtent
 - **Charges fixes contre charges variables**, et le chiffre d'affaires minimum pour couvrir tes charges
 
-### 3.5.0 — Immobilisations et amortissements · M
+### 3.5.0 — Immobilisations et amortissements · M — **livrée**
 
 Une ligne d'achat marquée « immobilisation » atterrit ici automatiquement.
 

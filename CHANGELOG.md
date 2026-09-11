@@ -7,6 +7,38 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 3.5.0 — 11/09/2026
+
+Ce que tu achètes et que tu gardes ne se déduit pas d'un coup. Il se déduit un peu chaque année.
+
+Nouvelle page **Immobilisations** (barre latérale, groupe Gestion), en trois onglets
+
+**Tableau des amortissements** — celui que ton comptable te demande à chaque clôture
+- Un bien par ligne : valeur, durée, cumul au 1er janvier, dotation de l'année, cumul au 31 décembre, valeur nette comptable
+- Amortissement **linéaire au prorata des jours** la première année (base 360) : un bien mis en service le 1er juillet n'est amorti que de moitié cette année-là
+- La dernière annuité absorbe les arrondis : la valeur nette comptable tombe exactement à zéro
+- Export CSV de l'exercice, prêt à envoyer au comptable
+- Fiche par bien : le plan année par année, l'exercice en cours surligné, le lien vers l'achat d'origine
+
+**À immobiliser** — le pont avec les achats
+- Toute ligne d'achat marquée « immobilisation » atterrit ici, avec un compteur dans la barre latérale et une ligne dans « À faire »
+- SkanFact **ne crée jamais la fiche tout seul** : la durée d'amortissement est une décision, pas une donnée
+- Tant qu'une ligne reste en attente, elle n'est déduite **nulle part** — ni en charge, ni en amortissement. C'est dit clairement
+
+**Sorties et cessions**
+- Un bien vendu, mis au rebut ou volé sort de l'actif : on l'amortit jusqu'au jour de la sortie
+- Plus-value ou moins-value calculée contre la valeur nette comptable de ce jour-là, annoncée avant d'enregistrer
+- Une sortie s'annule : l'amortissement reprend comme s'il ne s'était rien passé
+
+**Ce que ça corrige ailleurs**
+- **Comptabilité → Résultat simplifié** compte enfin la **dotation aux amortissements**. Sans elle, l'année d'un gros investissement paraissait excellente
+- **Marges → Seuil de rentabilité** range la dotation dans les charges fixes : elle tombe que tu vendes ou non
+- **Trésorerie** : rien ne change, et c'est normal — un amortissement ne sort aucun argent
+
+Neuf familles proposées avec leur durée usuelle (informatique 3 ans, transport 5, mobilier 10…), toutes modifiables bien par bien. *À VÉRIFIER avec ton comptable : les durées et la règle de prorata dépendent de la nature du bien et du régime.*
+
+Nouvel article d'aide « Ce que tu gardes : les immobilisations » et une bulle « i » sur chaque notion. Données : `assets` (v4, aucune conversion à faire) ; les immobilisations entrent dans la fusion d'un dossier partagé.
+
 ## 3.4.0 — 11/09/2026
 
 Tu savais combien tu vends. Tu sais maintenant combien tu gagnes.

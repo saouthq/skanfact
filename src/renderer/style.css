@@ -354,6 +354,8 @@ table.mini input, table.mini select { padding: 6px 8px; font-size: 13px; }
 .list .bar i.f-warn { background: var(--warning); }
 .list .bar i.f-neutral { background: #9aa7b4; }
 tr.row-warn td { background: var(--warning-soft); }
+/* L'exercice en cours dans un plan d'amortissement : repéré sans être alarmant. */
+tr.row-now td { background: rgba(15, 157, 143, .08); }
 .chart .bar-prev { fill: #9aa7b4; opacity: .55; }
 /* ---------- courbe de trésorerie : c'est le passage sous zéro qui doit sauter aux yeux ---------- */
 .chart.forecast { height: 210px; }

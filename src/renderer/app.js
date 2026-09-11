@@ -533,7 +533,7 @@
     contrat: 'le contrat', autres: 'Autres documents', clients: 'Clients', client: 'la fiche client', catalogue: 'Catalogue',
     tresorerie: 'Trésorerie', stats: 'Statistiques', compta: 'Comptabilité', parametres: 'Paramètres', aide: 'Aide', doc: 'le document',
     achats: 'Achats et dépenses', achat: 'l\'achat', fournisseurs: 'Fournisseurs', fournisseur: 'la fiche fournisseur',
-    marges: 'Marges', affaire: 'l\'affaire'
+    marges: 'Marges', affaire: 'l\'affaire', immos: 'Immobilisations', immo: 'l\'immobilisation'
   };
   const pageLabel = hash => PAGE_LABELS[(hash || '').replace(/^#\/?/, '').split('/')[0]] || 'Accueil';
   function pushHistory(previous) {
@@ -586,6 +586,7 @@
     else if (name === 'achat') active = 'achats';
     else if (name === 'fournisseur') active = 'fournisseurs';
     else if (name === 'affaire') active = 'marges';
+    else if (name === 'immo') active = 'immos';
     $$('nav a').forEach(a => a.classList.toggle('active', a.dataset.route === active));
     guard = null; previewRedraw = null;
     pushHistory(currentHash);        // d'où l'on vient, pour le bouton retour de la page qui s'ouvre
@@ -2419,6 +2420,8 @@
       tr.hidden = !hole; tr.textContent = '!';
       tr.className = 'nav-count' + (hole ? '' : '');
     }
+    const im = $('#nav-immos');
+    if (im) { const n = C.assetsToCreate(data).length; im.hidden = !n; im.textContent = n; }
   }
 
   // ---------- palette de recherche (Cmd/Ctrl+K) ----------
@@ -2432,7 +2435,7 @@
     const actions = [
       ['Nouveau devis', () => navigate('#/doc/new/devis')], ['Nouvelle facture', () => navigate('#/doc/new/facture')], ['Nouvel avoir', () => navigate('#/doc/new/avoir')],
       ['Accueil', () => navigate('#/dashboard')], ['Devis', () => navigate('#/devis')], ['Factures', () => navigate('#/factures')], ['Relances', () => navigate('#/relances')],
-      ['Contrats récurrents', () => navigate('#/contrats')], ['Achats et dépenses', () => navigate('#/achats')], ['Nouvelle facture d\'achat', () => navigate('#/achat/new')], ['Nouvelle dépense', () => navigate('#/achat/new/-/depense')], ['Fournisseurs', () => navigate('#/fournisseurs')], ['Trésorerie', () => navigate('#/tresorerie')], ['Marges et rentabilité', () => navigate('#/marges')], ['Seuil de rentabilité', () => navigate('#/marges')], ['Nouvelle affaire', () => projectForm(null, p => navigate('#/affaire/' + p.id))], ['Nouveau fournisseur', () => supplierForm(null, () => render())], ['Proformas', () => navigate('#/autres/proforma')], ['Bons de commande', () => navigate('#/autres/commande')], ['Bons de livraison', () => navigate('#/autres/livraison')], ['Contrats à signer', () => navigate('#/autres/contrat')], ['Clients', () => navigate('#/clients')], ['Catalogue', () => navigate('#/catalogue')], ['Statistiques', () => navigate('#/stats')], ['Comptabilité', () => navigate('#/compta')], ['Paramètres', () => navigate('#/parametres')],
+      ['Contrats récurrents', () => navigate('#/contrats')], ['Achats et dépenses', () => navigate('#/achats')], ['Nouvelle facture d\'achat', () => navigate('#/achat/new')], ['Nouvelle dépense', () => navigate('#/achat/new/-/depense')], ['Fournisseurs', () => navigate('#/fournisseurs')], ['Trésorerie', () => navigate('#/tresorerie')], ['Marges et rentabilité', () => navigate('#/marges')], ['Immobilisations', () => navigate('#/immos')], ['Nouvelle immobilisation', () => assetForm(null, a => navigate('#/immo/' + a.id))], ['Lignes à immobiliser', () => { immoState.tab = 'attente'; navigate('#/immos'); }], ['Seuil de rentabilité', () => navigate('#/marges')], ['Nouvelle affaire', () => projectForm(null, p => navigate('#/affaire/' + p.id))], ['Nouveau fournisseur', () => supplierForm(null, () => render())], ['Proformas', () => navigate('#/autres/proforma')], ['Bons de commande', () => navigate('#/autres/commande')], ['Bons de livraison', () => navigate('#/autres/livraison')], ['Contrats à signer', () => navigate('#/autres/contrat')], ['Clients', () => navigate('#/clients')], ['Catalogue', () => navigate('#/catalogue')], ['Statistiques', () => navigate('#/stats')], ['Comptabilité', () => navigate('#/compta')], ['Paramètres', () => navigate('#/parametres')],
       ['Aide et guide', () => navigate('#/aide')], ['Nouveau client', () => clientForm(null, () => render())]
     ].map(([label, run]) => ({ kind: 'Action', main: label, text: label.toLowerCase(), run }));
     const helps = G.ARTICLES.map(x => ({ kind: 'Aide', main: x.title, sub: x.sub, text: `aide ${x.title} ${x.sub}`.toLowerCase(), run: () => navigate('#/aide/' + x.id) }));
@@ -3439,6 +3442,303 @@
     $$('#p-buys tr[data-bid]').forEach(tr => tr.onclick = () => navigate('#/achat/' + tr.dataset.bid));
   };
 
+  // ---------- Immobilisations et amortissements (3.5.0) ----------
+  const assetById = id => data.assets.find(a => a.id === id);
+  // `supplierItems` vit dans l'éditeur d'achat : ici on refait la liste, sans la sortir de son contexte.
+  const supItems = () => data.suppliers.slice().sort((a, b) => a.name.localeCompare(b.name, 'fr'))
+    .map(x => ({ v: x.id, label: x.name, sub: x.contact || '', text: `${x.name} ${x.contact || ''}` }));
+
+  function assetForm(asset, done, preset) {
+    const a = asset || Object.assign({ id: C.uid(), label: '', category: 'informatique', date: C.today(), amount: 0,
+      residual: 0, years: C.assetClassYears('informatique'), supplierId: '', purchaseId: '', lineIndex: null, notes: '' }, preset || {});
+    modal(`<h2>${asset ? 'Modifier l\'immobilisation' : 'Nouvelle immobilisation'}</h2>
+      <p class="small muted">Un bien qui reste dans l'entreprise ne se déduit pas d'un coup : il se déduit un peu chaque année, pendant sa durée d'usage. <em>À VÉRIFIER avec ton comptable : la durée dépend de la nature du bien.</em></p>
+      <form id="imf" class="grid-2">
+        <label class="field span-2">Désignation<input type="text" name="label" value="${h(a.label)}" placeholder="Ordinateur portable du bureau"></label>
+        <label class="field">${lbl('Famille', 'immo.class')}<select name="category">${C.DEFAULT_ASSET_CLASSES.map(([v, l]) => `<option value="${v}" ${a.category === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+        ${dateFieldHtml(lbl('Mise en service', 'immo.date'), 'date', a.date, {})}
+        ${field(lbl('Valeur d\'acquisition HT', 'immo.amount'), 'amount', a.amount || 0, 'number', 'step="0.001" min="0" class="num"')}
+        ${field(lbl('Durée (années)', 'immo.years'), 'years', a.years || 0, 'number', 'step="1" min="1" max="50" class="num"')}
+        ${field(lbl('Valeur résiduelle', 'immo.residual'), 'residual', a.residual || 0, 'number', 'step="0.001" min="0" class="num"')}
+        <div class="field">Fournisseur
+          ${combo({ name: 'supplierId', value: a.supplierId || '', items: supItems(), placeholder: '— Aucun —', search: 'Rechercher un fournisseur…' })}
+        </div>
+        <div class="field span-2" id="amort-hint"></div>
+        <label class="field span-2">Notes<input type="text" name="notes" value="${h(a.notes || '')}"></label>
+      </form>
+      <div class="modal-actions">
+        ${asset ? '<button class="btn btn-danger" id="del-imm" style="margin-right:auto">Supprimer</button>' : ''}
+        <button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
+      (root, close) => {
+        bindCombo($('[data-combo=supplierId]', root), { items: supItems(), placeholder: '— Aucun —' });
+        // La famille propose sa durée usuelle, mais ne l'impose pas : si l'utilisateur a déjà touché
+        // le champ, on ne l'écrase pas derrière son dos.
+        let yearsTouched = !!asset;
+        $('input[name=years]', root).oninput = () => { yearsTouched = true; };
+        const hint = () => {
+          const v = formValues($('#imf', root));
+          const draft = { ...a, ...v, amount: Number(v.amount) || 0, residual: Number(v.residual) || 0, years: Number(v.years) || 0 };
+          const rows = C.assetSchedule(draft);
+          const el = $('#amort-hint', root);
+          if (!rows.length) { el.innerHTML = '<span class="small muted">Renseigne une valeur, une durée et une date de mise en service pour voir le plan d\'amortissement.</span>'; return; }
+          const cur = company().currency;
+          el.innerHTML = `<span class="small muted">Plan sur ${rows.length} exercice(s) — ${rows.slice(0, 4).map(r => `<b>${r.year}</b> : ${C.money(r.annuity, cur)}`).join(' · ')}${rows.length > 4 ? ' · …' : ''}</span>`;
+        };
+        $('select[name=category]', root).onchange = e => {
+          if (!yearsTouched) $('input[name=years]', root).value = C.assetClassYears(e.target.value);
+          hint();
+        };
+        $('#imf', root).oninput = hint; hint();
+        $('#ok', root).onclick = () => {
+          const v = formValues($('#imf', root));
+          if (!v.label.trim()) return toast('Donne un nom à ce bien.', true);
+          if (!(Number(v.amount) > 0)) return toast('La valeur d\'acquisition doit être supérieure à zéro.', true);
+          if (!(Number(v.years) > 0)) return toast('La durée d\'amortissement doit être d\'au moins un an.', true);
+          if (Number(v.residual) >= Number(v.amount)) return toast('La valeur résiduelle doit rester inférieure à la valeur d\'acquisition.', true);
+          if (!v.date) return toast('Date de mise en service invalide.', true);
+          Object.assign(a, v, { amount: Number(v.amount), residual: Number(v.residual) || 0, years: Number(v.years) });
+          if (!asset) data.assets.push(a);
+          save(true); close(); if (done) done(a);
+        };
+        if ($('#del-imm', root)) $('#del-imm', root).onclick = async () => {
+          if (!await confirmDialog(`Supprimer « ${a.label} » ?${a.purchaseId ? ' La ligne d\'achat correspondante repassera dans « À immobiliser ».' : ''} L\'achat lui-même n\'est pas touché.`)) return;
+          forget('assets', a.id, a.label);
+          data.assets = data.assets.filter(x => x.id !== a.id);
+          save(true); close(); navigate('#/immos');
+        };
+      });
+  }
+
+  // Céder un bien moins de cinq ans après son acquisition peut obliger à reverser une part de la TVA
+  // récupérée à l'achat. SkanFact ne calcule rien : il rappelle la question au bon moment.
+  const vatWarning = (asset, dateIso) => {
+    if (!asset.date || !dateIso || dateIso < asset.date) return '';
+    if (C.days360(asset.date, dateIso) >= 5 * 360) return '';
+    const held = Math.max(1, Math.round(C.days360(asset.date, dateIso) / 30));
+    return `Ce bien n'aura été détenu que ${held} mois. Une cession avant cinq ans peut imposer de reverser une partie de la TVA récupérée à l'achat — <em>À VÉRIFIER avec ton comptable avant de conclure la vente.</em>`;
+  };
+
+  function disposalForm(asset, done) {
+    const d = { ...(asset.disposal || { date: C.today(), amount: 0, reason: '' }) };
+    const cur = company().currency;
+    modal(`<h2>Sortie de « ${h(asset.label)} »</h2>
+      <p class="small muted">Vendu, mis au rebut ou volé : le bien quitte l'actif. On amortit jusqu'au jour de la sortie, puis on compare le prix obtenu à ce qu'il valait encore dans les comptes.</p>
+      <form id="dsf" class="grid-2">
+        ${dateFieldHtml('Date de sortie', 'date', d.date, {})}
+        ${field(lbl('Prix de cession HT', 'immo.disposalPrice'), 'amount', d.amount || 0, 'number', 'step="0.001" min="0" class="num"')}
+        <label class="field span-2">Motif<input type="text" name="reason" value="${h(d.reason || '')}" placeholder="Revendu, mis au rebut, volé…"></label>
+        <div class="field span-2" id="dsf-hint"></div>
+      </form>
+      <div class="modal-actions">
+        ${asset.disposal ? '<button class="btn btn-danger" id="undo-dis" style="margin-right:auto">Annuler la sortie</button>' : ''}
+        <button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer la sortie</button></div>`,
+      (root, close) => {
+        const hint = () => {
+          const v = formValues($('#dsf', root));
+          const r = C.disposalResult({ ...asset, disposal: { date: v.date, amount: Number(v.amount) || 0 } });
+          const el = $('#dsf-hint', root);
+          if (!r) { el.innerHTML = ''; return; }
+          el.innerHTML = `<span class="small">Valeur nette comptable au ${C.fmtDate(r.date)} : <b>${C.money(r.nbv, cur)}</b> — `
+            + (r.result >= 0
+              ? `<span class="ok-text">plus-value de ${C.money(r.result, cur)}</span>`
+              : `<span class="warn-text">moins-value de ${C.money(-r.result, cur)}</span>`)
+            + `. <em>À VÉRIFIER avec ton comptable : le traitement fiscal de cette plus-value.</em></span>`
+            + (vatWarning(asset, v.date) ? `<div class="small warn-text mt">${vatWarning(asset, v.date)}</div>` : '');
+        };
+        $('#dsf', root).oninput = hint; hint();
+        $('#ok', root).onclick = async () => {
+          const v = formValues($('#dsf', root));
+          if (!v.date) return toast('Date de sortie invalide.', true);
+          if (v.date < asset.date) return toast('La sortie ne peut pas précéder la mise en service.', true);
+          if (v.date > C.today() && !await confirmDialog(`La date (${C.fmtDate(v.date)}) est dans le futur. Enregistrer quand même ?`, 'Enregistrer')) return;
+          asset.disposal = { date: v.date, amount: Number(v.amount) || 0, reason: v.reason || '' };
+          save(true); close(); if (done) done(asset);
+        };
+        if ($('#undo-dis', root)) $('#undo-dis', root).onclick = async () => {
+          if (!await confirmDialog('Remettre ce bien à l\'actif ? L\'amortissement reprendra comme s\'il n\'était jamais sorti.')) return;
+          delete asset.disposal; save(true); close(); if (done) done(asset);
+        };
+      });
+  }
+
+  const immoState = { tab: 'tableau', year: C.today().slice(0, 4) };
+  const IMMO_TABS = [['tableau', 'Tableau des amortissements'], ['attente', 'À immobiliser'], ['sorties', 'Sorties et cessions']];
+
+  routes.immos = () => {
+    const cur = company().currency;
+    const s = immoState;
+    const years = Array.from(new Set(data.assets.map(a => (a.date || '').slice(0, 4)).filter(Boolean)
+      .concat([C.today().slice(0, 4)]))).sort().reverse();
+    if (!years.includes(s.year)) s.year = years[0];
+    const waiting = C.assetsToCreate(data);
+
+    $('#view').innerHTML = `
+      <div class="page-head"><h1>Immobilisations</h1>
+        <div class="actions">
+          <select id="im-year" ${s.tab === 'attente' ? 'hidden' : ''}>${years.map(y => `<option ${y === s.year ? 'selected' : ''}>${y}</option>`).join('')}</select>
+          <button class="btn" id="im-csv">Exporter (CSV)</button>
+          <button class="btn btn-primary" id="new-imm">+ Nouveau bien</button>
+        </div></div>
+      <div class="tabs" id="im-tabs" role="tablist">${IMMO_TABS.map(([id, label]) =>
+        `<button role="tab" data-tab="${id}" class="${id === s.tab ? 'active' : ''}">${label}${id === 'attente' && waiting.length ? ` <span class="nav-count">${waiting.length}</span>` : ''}</button>`).join('')}</div>
+      <div id="im-body"></div>`;
+
+    function drawTable() {
+      const y = Number(s.year);
+      const t = C.assetTotals(data, y);
+      $('#im-body').innerHTML = `
+        <div class="stats">
+          <div class="stat"><div class="lbl">Valeur d'acquisition ${info('immo.gross')}</div><div class="val">${C.money(t.gross, cur)}</div><div class="sub">${t.count} bien(s) à l'actif</div></div>
+          <div class="stat"><div class="lbl">Dotation ${s.year} ${info('immo.annuity')}</div><div class="val">${C.money(t.annuity, cur)}</div><div class="sub">la charge de l'exercice</div></div>
+          <div class="stat"><div class="lbl">Amortissement cumulé</div><div class="val">${C.money(t.cumulated, cur)}</div><div class="sub">depuis l'origine</div></div>
+          <div class="stat"><div class="lbl">Valeur nette comptable ${info('immo.nbv')}</div><div class="val">${C.money(t.nbv, cur)}</div><div class="sub">ce qu'il reste à amortir</div></div>
+        </div>
+        <div class="panel"><h2>Tableau des amortissements — ${s.year} ${info('immo.table')}</h2>
+          ${t.rows.length ? `<div class="scroll-x"><table class="list compact"><thead><tr>
+            <th>Bien</th><th>Famille</th><th class="r">Mise en service</th><th class="r">Durée</th>
+            <th class="r">Valeur HT</th><th class="r">Cumul au 01/01</th><th class="r">Dotation ${s.year}</th><th class="r">Cumul au 31/12</th><th class="r">VNC</th></tr></thead><tbody>
+            ${t.rows.map(a => `<tr class="clickable" data-aid="${h(a.id)}">
+              <td><strong>${h(a.label)}</strong>${a.out ? `<div class="small warn-text">sorti le ${C.fmtDate(a.disposalResult.date)}</div>` : ''}</td>
+              <td>${h(C.assetClassLabel(a.category))}</td>
+              <td class="r nw">${C.fmtDate(a.date)}</td>
+              <td class="r nw">${a.years} an${a.years > 1 ? 's' : ''}</td>
+              <td class="r nw">${C.money(a.amount, cur)}</td>
+              <td class="r nw">${C.money(a.opening, cur)}</td>
+              <td class="r nw"><strong>${C.money(a.annuity, cur)}</strong></td>
+              <td class="r nw">${C.money(a.cumulated, cur)}</td>
+              <td class="r nw">${a.out ? '<span class="muted">—</span>' : C.money(a.nbv, cur)}</td></tr>`).join('')}
+            <tr class="total-row"><td colspan="4"><strong>Total</strong></td>
+              <td class="r"><strong>${C.money(t.gross, cur)}</strong></td>
+              <td class="r"><strong>${C.money(t.opening, cur)}</strong></td>
+              <td class="r"><strong>${C.money(t.annuity, cur)}</strong></td>
+              <td class="r"><strong>${C.money(t.cumulated, cur)}</strong></td>
+              <td class="r"><strong>${C.money(t.nbv, cur)}</strong></td></tr>
+          </tbody></table></div>
+          <p class="small muted mt">Amortissement linéaire, au prorata du nombre de jours d'utilisation la première année (base 360). La dotation de l'exercice est une <b>charge</b> : elle est déjà comptée dans le résultat simplifié et dans le seuil de rentabilité. <em>À VÉRIFIER avec ton comptable : les durées retenues et la règle de prorata.</em></p>`
+            : '<div class="empty">Aucune immobilisation pour cet exercice. Un bien qui reste dans l\'entreprise — ordinateur, véhicule, mobilier — se saisit ici, ou se crée depuis l\'onglet « À immobiliser » à partir d\'une ligne d\'achat.</div>'}
+        </div>`;
+      $$('#im-body tr[data-aid]').forEach(tr => tr.onclick = () => navigate('#/immo/' + tr.dataset.aid));
+    }
+
+    function drawWaiting() {
+      $('#im-body').innerHTML = `
+        <div class="panel"><h2>Lignes d'achat à immobiliser ${info('immo.waiting')}</h2>
+          <p class="small muted mb">Ces lignes ont été saisies avec la destination « immobilisation ». SkanFact ne crée pas leur fiche tout seul : la durée d'amortissement est une décision, pas une donnée.</p>
+          ${waiting.length ? `<div class="scroll-x"><table class="list compact"><thead><tr><th>Date</th><th>Fournisseur</th><th>Désignation</th><th class="r">Valeur HT</th><th></th></tr></thead><tbody>
+            ${waiting.map((w, i) => `<tr><td class="nw">${C.fmtDate(w.date)}</td>
+              <td>${h(supplierName(w.supplierId))}${w.number ? `<div class="small muted">${h(w.number)}</div>` : ''}</td>
+              <td>${h(w.label)}</td><td class="r nw">${C.money(w.amount, cur)}</td>
+              <td class="r"><button class="btn btn-sm btn-primary" data-mk="${i}">Créer la fiche</button>
+                <button class="btn btn-sm btn-ghost" data-open="${h(w.purchaseId)}">Voir l'achat</button></td></tr>`).join('')}
+          </tbody></table></div>`
+            : '<div class="empty">Rien en attente. Toutes les lignes d\'achat marquées « immobilisation » ont leur fiche.</div>'}
+        </div>`;
+      $$('#im-body [data-mk]').forEach(b => b.onclick = () => {
+        const w = waiting[Number(b.dataset.mk)];
+        assetForm(null, () => render(), { label: w.label, amount: w.amount, date: w.date, supplierId: w.supplierId, purchaseId: w.purchaseId, lineIndex: w.lineIndex });
+      });
+      $$('#im-body [data-open]').forEach(b => b.onclick = () => navigate('#/achat/' + b.dataset.open));
+    }
+
+    function drawDisposals() {
+      const y = Number(s.year);
+      const rows = data.assets.map(a => ({ a, d: C.disposalResult(a) }))
+        .filter(x => x.d && Number(x.d.date.slice(0, 4)) === y)
+        .sort((x, z) => z.d.date.localeCompare(x.d.date));
+      const gain = C.round3(rows.reduce((t, x) => t + Math.max(0, x.d.result), 0));
+      const loss = C.round3(rows.reduce((t, x) => t + Math.min(0, x.d.result), 0));
+      $('#im-body').innerHTML = `
+        <div class="panel"><h2>Sorties de ${s.year} ${info('immo.disposal')}</h2>
+          ${rows.length ? `<div class="scroll-x"><table class="list compact"><thead><tr><th>Date</th><th>Bien</th><th>Motif</th><th class="r">Valeur HT</th><th class="r">VNC à la sortie</th><th class="r">Prix obtenu</th><th class="r">Résultat</th></tr></thead><tbody>
+            ${rows.map(({ a, d }) => `<tr class="clickable" data-aid="${h(a.id)}">
+              <td class="nw">${C.fmtDate(d.date)}</td><td><strong>${h(a.label)}</strong></td><td>${h(d.reason) || '<span class="muted">—</span>'}</td>
+              <td class="r nw">${C.money(a.amount, cur)}</td><td class="r nw">${C.money(d.nbv, cur)}</td><td class="r nw">${C.money(d.price, cur)}</td>
+              <td class="r nw ${d.result < 0 ? 'warn-text' : 'ok-text'}"><strong>${C.money(d.result, cur)}</strong></td></tr>`).join('')}
+          </tbody></table></div>
+          <p class="small mt">Plus-values : <b class="ok-text">${C.money(gain, cur)}</b> · Moins-values : <b class="warn-text">${C.money(loss, cur)}</b>.
+          <em>À VÉRIFIER avec ton comptable : une plus-value de cession est en principe imposable, une moins-value déductible.</em></p>`
+            : '<div class="empty">Aucune sortie sur cet exercice. Un bien vendu, mis au rebut ou volé se sort depuis sa fiche.</div>'}
+        </div>`;
+      $$('#im-body tr[data-aid]').forEach(tr => tr.onclick = () => navigate('#/immo/' + tr.dataset.aid));
+    }
+
+    const draw = () => {
+      $('#im-year').hidden = s.tab === 'attente';
+      if (s.tab === 'attente') return drawWaiting();
+      if (s.tab === 'sorties') return drawDisposals();
+      drawTable();
+    };
+    $$('#im-tabs button').forEach(b => b.onclick = () => {
+      s.tab = b.dataset.tab;
+      $$('#im-tabs button').forEach(x => x.classList.toggle('active', x === b));
+      draw();
+    });
+    $('#im-year').onchange = e => { s.year = e.target.value; draw(); };
+    $('#new-imm').onclick = () => assetForm(null, () => render());
+    $('#im-csv').onclick = async () => {
+      const t = C.assetTotals(data, Number(s.year));
+      if (!t.rows.length) return toast('Rien à exporter sur cet exercice.', true);
+      const cols = [
+        { key: 'label', label: 'Bien' },
+        { label: 'Famille', get: a => C.assetClassLabel(a.category) },
+        { key: 'date', label: 'Mise en service', type: 'date' },
+        { key: 'years', label: 'Durée (ans)' },
+        { key: 'amount', label: 'Valeur HT', type: 'money' },
+        { key: 'opening', label: 'Cumul au 01/01', type: 'money' },
+        { key: 'annuity', label: 'Dotation', type: 'money' },
+        { key: 'cumulated', label: 'Cumul au 31/12', type: 'money' },
+        { label: 'VNC', type: 'money', get: a => a.out ? 0 : a.nbv },
+        { label: 'Sortie', get: a => a.out ? C.fmtDate(a.disposalResult.date) : '' }
+      ];
+      const f = await bridge.saveText(`immobilisations-${s.year}.csv`, C.toCsv(t.rows, cols));
+      if (f) toast('Exporté : ' + f.split(/[\\/]/).pop());
+    };
+    draw();
+  };
+
+  routes.immo = (parts) => {
+    const a = assetById(parts[0]);
+    if (!a) return navigate('#/immos');
+    const cur = company().currency;
+    const rows = C.assetSchedule(a);
+    const dis = C.disposalResult(a);
+    const thisYear = Number(C.today().slice(0, 4));
+    const buy = a.purchaseId ? purchaseById(a.purchaseId) : null;
+    $('#view').innerHTML = `
+      <div class="page-head"><div><h1>${h(a.label)}</h1>
+        <div class="small muted">${[C.assetClassLabel(a.category), 'mis en service le ' + C.fmtDate(a.date), a.supplierId ? supplierName(a.supplierId) : ''].filter(Boolean).join(' · ')}</div></div>
+        <div class="actions">${backButton('#/immos')}<button class="btn" id="edit-imm">Modifier</button>
+          <button class="btn ${dis ? '' : 'btn-primary'}" id="dispose">${dis ? 'Modifier la sortie' : 'Sortir du patrimoine'}</button></div></div>
+      ${dis ? `<div class="panel" style="border-left:3px solid ${dis.result < 0 ? 'var(--danger)' : 'var(--success)'}">
+        <h2>Sorti le ${C.fmtDate(dis.date)}${dis.reason ? ' — ' + h(dis.reason) : ''}</h2>
+        <p class="small">Vendu ${C.money(dis.price, cur)} alors qu'il valait encore ${C.money(dis.nbv, cur)} dans les comptes :
+        ${dis.result >= 0 ? `<b class="ok-text">plus-value de ${C.money(dis.result, cur)}</b>` : `<b class="warn-text">moins-value de ${C.money(-dis.result, cur)}</b>`}.
+        <em>À VÉRIFIER avec ton comptable.</em></p>
+        ${vatWarning(a, dis.date) ? `<p class="small warn-text">${vatWarning(a, dis.date)}</p>` : ''}</div>` : ''}
+      <div class="stats">
+        <div class="stat"><div class="lbl">Valeur d'acquisition</div><div class="val">${C.money(a.amount, cur)}</div><div class="sub">${Number(a.residual) ? 'valeur résiduelle ' + C.money(a.residual, cur) : 'aucune valeur résiduelle'}</div></div>
+        <div class="stat"><div class="lbl">Durée</div><div class="val">${a.years} an${a.years > 1 ? 's' : ''}</div><div class="sub">jusqu'au ${rows.length ? C.fmtDate(rows[rows.length - 1].to) : '—'}</div></div>
+        <div class="stat"><div class="lbl">Amorti à ce jour</div><div class="val">${C.money(C.assetCumulated(a, dis ? dis.date : C.today()), cur)}</div><div class="sub">${a.amount ? pct(Math.round(C.assetCumulated(a, dis ? dis.date : C.today()) / a.amount * 1000) / 10) + ' % de la valeur' : ''}</div></div>
+        <div class="stat"><div class="lbl">Valeur nette comptable ${info('immo.nbv')}</div><div class="val">${dis ? C.money(0, cur) : C.money(C.assetNBV(a, C.today()), cur)}</div><div class="sub">${dis ? 'bien sorti de l\'actif' : 'aujourd\'hui'}</div></div>
+      </div>
+      <div class="panel"><h2>Plan d'amortissement ${info('immo.plan')}</h2>
+        ${rows.length ? `<table class="list compact"><thead><tr><th>Exercice</th><th>Période</th><th class="r">Jours</th><th class="r">Dotation</th><th class="r">Cumul</th><th class="r">VNC au 31/12</th></tr></thead><tbody>
+          ${rows.map(r => `<tr class="${r.year === thisYear ? 'row-now' : ''}">
+            <td><strong>${r.year}</strong>${r.year === thisYear ? ' <span class="small muted">(exercice en cours)</span>' : ''}</td>
+            <td class="nw">${C.fmtDate(r.from)} → ${C.fmtDate(r.to)}</td>
+            <td class="r nw">${r.days}</td><td class="r nw"><strong>${C.money(r.annuity, cur)}</strong></td>
+            <td class="r nw">${C.money(r.cumulated, cur)}</td><td class="r nw">${C.money(r.nbv, cur)}</td></tr>`).join('')}
+        </tbody></table>` : '<div class="empty">Plan indisponible : vérifie la valeur, la durée et la date de mise en service.</div>'}
+        ${dis ? `<p class="small muted mt">Ce tableau est le plan <b>d'origine</b>, celui qui aurait couru si le bien était resté. Il est sorti le ${C.fmtDate(dis.date)} : l'exercice ${dis.date.slice(0, 4)} n'a été amorti que jusqu'à ce jour-là (${C.money(C.round3(C.assetCumulated(a, dis.date) - C.assetCumulated(a, `${Number(dis.date.slice(0, 4)) - 1}-12-31`)), cur)}), et les suivants n'ont plus aucune dotation. C'est ce que montre le tableau des amortissements de l'exercice.</p>` : ''}
+      </div>
+      ${buy ? `<div class="panel"><h2>Achat d'origine</h2>
+        <p class="small">Ce bien vient de la pièce <a href="#/achat/${h(buy.id)}">${h(buy.number || 'sans numéro')}</a> du ${C.fmtDate(buy.date)}${buy.supplierId ? ', ' + h(supplierName(buy.supplierId)) : ''}. Modifier l'achat ne change pas cette fiche : la valeur immobilisée est recopiée à la création.</p></div>` : ''}
+      ${a.notes ? `<div class="panel"><h2>Notes</h2><p class="small">${C.nl2br(a.notes)}</p></div>` : ''}`;
+    bindBack('#/immos');
+    $('#edit-imm').onclick = () => assetForm(a, () => render());
+    $('#dispose').onclick = () => disposalForm(a, () => render());
+  };
+
   // ---------- Trésorerie ----------
   const tresoState = { tab: 'position', account: '', days: 90, moves: { sort: null, page: 1 } };
   const TRESO_TABS = [['position', 'Où j\'en suis'], ['prevision', 'Ce qui arrive'], ['mouvements', 'Mouvements'], ['rapprochement', 'Rapprochement']];
@@ -4210,10 +4510,11 @@
           <div class="stats compact-stats">
             <div class="stat"><div class="lbl">Produits (ventes HT)</div><div class="val">${C.money(res.produits, cur)}</div><div class="sub">${res.salesCount} pièce(s)</div></div>
             <div class="stat"><div class="lbl">Charges HT</div><div class="val">${C.money(res.charges, cur)}</div><div class="sub">${res.buysCount} pièce(s) d'achat</div></div>
+            <div class="stat"><div class="lbl">Dotation aux amortissements ${info('immo.annuity')}</div><div class="val">${C.money(res.depreciation, cur)}</div><div class="sub">${res.depreciation ? 'une charge qui ne sort pas d\'argent' : 'aucun bien amorti sur la période'}</div></div>
             <div class="stat"><div class="lbl">Résultat avant impôt</div><div class="val ${res.resultat >= 0 ? 'ok' : 'due'}">${C.money(res.resultat, cur)}</div><div class="sub">${res.marge == null ? '' : res.marge + ' % du chiffre d\'affaires'}</div></div>
             <div class="stat"><div class="lbl">Non comptés en charges</div><div class="val">${C.money(C.round3(res.stock + res.immo), cur)}</div><div class="sub">${C.money(res.stock, cur)} en stock · ${C.money(res.immo, cur)} en immobilisations</div></div>
           </div>
-          <p class="small muted mt"><em>Ce n'est pas ton résultat comptable :</em> il manque les amortissements, la variation de stock, les salaires et les provisions. C'est un ordre de grandeur pour savoir où tu en es, pas un bilan. <em>À VÉRIFIER avec ton comptable.</em></p>
+          <p class="small muted mt"><em>Ce n'est pas ton résultat comptable :</em> il manque la variation de stock, les salaires et les provisions. Les amortissements, eux, y sont depuis la 3.5.0 — <a href="#/immos">page Immobilisations</a>. C'est un ordre de grandeur pour savoir où tu en es, pas un bilan. <em>À VÉRIFIER avec ton comptable.</em></p>
         </div>`;
       $('#set-carry').onclick = () => promptDialog('Crédit de TVA reporté',
         `Crédit de TVA restant à la fin de ${Number(year) - 1}, tel qu'il figure sur ta dernière déclaration. Il viendra en déduction du premier mois de ${year}.`,

@@ -137,6 +137,19 @@
     'ed.margin': { t: 'Marge estimée', d: 'Ce qu\'il resterait de ce document une fois retiré le <b>coût de revient</b> de chaque ligne (celui du catalogue, ou celui recopié sur la ligne). C\'est une estimation : elle ne tient pas compte du loyer, des salaires ni des frais généraux. Pour une marge exacte, rattache ce document à une <b>affaire</b> et rattaches-y aussi les achats correspondants.' },
     'buy.project': { t: 'Affaire', d: 'Rattache cet achat au chantier pour lequel tu l\'as fait. C\'est ce rattachement qui rend la marge exacte : sans lui, l\'affaire semblera plus rentable qu\'elle ne l\'est.' },
     'cat.cost': { t: 'Coût de revient HT', d: 'Ce que cette prestation ou cet article te coûte : prix d\'achat de la marchandise, sous-traitance, matériel. Facultatif, mais c\'est lui qui permet de calculer la marge sur les ventes qui ne sont pas rattachées à une affaire. Pour une prestation où tu ne vends que ton temps, laisse 0 : la marge affichée sera alors le prix de vente.' },
+    'immo.class': { t: 'Famille du bien', d: 'Elle sert à proposer une durée d\'amortissement usuelle et à regrouper tes biens dans le tableau. Change la durée si ton comptable en retient une autre : c\'est lui qui décide, la famille n\'impose rien. <em>À VÉRIFIER avec ton comptable.</em>' },
+    'immo.date': { t: 'Mise en service', d: 'Le jour où le bien a commencé à servir — pas forcément celui de la facture. C\'est cette date qui déclenche l\'amortissement, et la première année n\'est amortie qu\'au prorata du temps d\'utilisation.' },
+    'immo.amount': { t: 'Valeur d\'acquisition HT', d: 'Le prix payé hors taxes, frais d\'installation et de transport compris s\'ils étaient nécessaires pour que le bien fonctionne. La TVA n\'en fait pas partie : elle se récupère à part, dans ta déclaration. <em>À VÉRIFIER avec ton comptable : ce qui entre dans la valeur d\'acquisition.</em>' },
+    'immo.years': { t: 'Durée d\'amortissement', d: 'Le nombre d\'années sur lesquelles tu étales la déduction. Trois ans pour un ordinateur, cinq pour un véhicule, dix pour du mobilier — ce sont des usages, pas des règles absolues, et l\'administration peut avoir son avis. <em>À VÉRIFIER avec ton comptable.</em>' },
+    'immo.residual': { t: 'Valeur résiduelle', d: 'Ce que le bien vaudra encore à la fin de la durée, si tu comptes le revendre. On n\'amortit que la différence. Laisse zéro dans le doute : c\'est le cas le plus courant, et le plus simple.' },
+    'immo.gross': { t: 'Valeur d\'acquisition totale', d: 'La somme des prix d\'achat de tous les biens encore à l\'actif à la fin de l\'exercice. Elle ne bouge pas avec le temps : c\'est l\'amortissement cumulé qui grandit en face.' },
+    'immo.annuity': { t: 'Dotation de l\'exercice', d: 'La part de tes immobilisations que tu déduis cette année. C\'est une <b>charge</b> — elle est déjà retirée du résultat simplifié et comptée dans tes charges fixes au seuil de rentabilité — mais c\'est une charge qui ne sort pas d\'argent de ta banque : tu as payé le bien une fois, tu le déduis en plusieurs fois.' },
+    'immo.nbv': { t: 'Valeur nette comptable', d: 'Ce que le bien vaut encore dans tes comptes : valeur d\'achat moins tout ce qui a déjà été amorti. Ce n\'est pas sa valeur de revente — un ordinateur amorti à zéro peut encore se vendre, et une voiture peut valoir moins que sa VNC. C\'est elle qu\'on compare au prix obtenu le jour où tu le sors.' },
+    'immo.table': { t: 'Tableau des amortissements', d: 'Le document que ton comptable te demandera à chaque clôture : un bien par ligne, avec sa valeur, ce qui était déjà amorti au 1er janvier, la dotation de l\'année et ce qu\'il en reste au 31 décembre. Le bouton « Exporter (CSV) » le lui envoie tel quel.' },
+    'immo.waiting': { t: 'À immobiliser', d: 'Les lignes d\'achat que tu as marquées « immobilisation » et qui n\'ont pas encore de fiche. SkanFact ne les crée pas tout seul : la durée d\'amortissement est une décision. Tant qu\'une ligne reste ici, elle n\'est déduite <b>nulle part</b> — ni en charge, ni en amortissement.' },
+    'immo.disposal': { t: 'Sortie du patrimoine', d: 'Un bien vendu, mis au rebut ou volé quitte l\'actif. On l\'amortit jusqu\'au jour de la sortie, puis on compare le prix obtenu à sa valeur nette comptable : au-dessus c\'est une plus-value, en dessous une moins-value. <em>À VÉRIFIER avec ton comptable : une plus-value de cession est en principe imposable.</em>' },
+    'immo.disposalPrice': { t: 'Prix de cession HT', d: 'Ce que tu as réellement obtenu, hors taxes. Zéro pour un bien mis au rebut ou volé : la totalité de la valeur nette comptable part alors en moins-value.' },
+    'immo.plan': { t: 'Plan d\'amortissement', d: 'Le détail année par année, de la mise en service à la fin de la durée. La première et la dernière année sont partielles, au prorata des jours : c\'est pour ça qu\'un bien amorti sur trois ans apparaît sur quatre exercices. La dernière annuité absorbe les arrondis pour que la valeur nette comptable tombe exactement à zéro.' },
     'data.dossiers': { t: 'Dossiers', d: 'Un dossier = une entreprise. Chacun a ses clients, ses documents, ses achats, sa numérotation et ses sauvegardes, et ils ne se mélangent jamais. Utile quand une même personne gère deux sociétés : tu passes de l\'une à l\'autre en un clic, l\'application se recharge sur le bon dossier. Retirer un dossier de la liste ne supprime pas ses fichiers.' },
     'data.shared': { t: 'Dossier partagé', d: 'Un dossier placé dans iCloud Drive, OneDrive, un disque réseau ou une clé USB, que deux ordinateurs ouvrent tour à tour. SkanFact <b>ne laisse jamais l\'un écraser le travail de l\'autre</b> : si vous avez modifié tous les deux, il fusionne pièce par pièce et te dit ce qui a changé. Le seul cas qu\'il ne peut pas trancher est deux factures émises en même temps sous le même numéro : il t\'alerte, à vous de corriger. Lis l\'article « Travailler à deux » avant de vous lancer.' },
     'data.device': { t: 'Nom de ce poste', d: 'Il sert uniquement à te dire qui a enregistré en dernier sur un dossier partagé (« les modifications du PC du bureau ont été reprises »). Il ne quitte jamais tes données et n\'identifie personne.' },
@@ -484,6 +497,40 @@
 <h3>Ce que cette page ne dit pas</h3>
 <p>Elle ne calcule pas ton bénéfice fiscal. Elle ignore les amortissements, les variations de stock, les provisions et l'impôt. Les achats classés « stock » ou « immobilisation » sont d'ailleurs exclus des charges de la période : ils ne sont pas consommés. Le vrai résultat, c'est ton comptable qui l'établit en fin d'année.</p>
 <p>Elle ne compte pas non plus <b>ton</b> salaire si tu ne t'en verses pas. Une activité qui dégage 20 000 DT de marge sur l'année en te faisant travailler tous les week-ends n'est pas rentable : elle est juste mal payée.</p>`
+    },
+    {
+      id: 'immobilisations', title: 'Ce que tu gardes : les immobilisations', sub: 'Amortissement, valeur nette comptable, cession',
+      body: `
+<p>Une rame de papier se consomme : c'est une charge, tu la déduis en entier l'année où tu l'achètes. Un ordinateur reste : tu le déduis un peu chaque année, pendant sa durée d'usage. C'est tout l'objet de cette page, et ce n'est pas une subtilité de comptable — c'est ce qui fait qu'une année où tu investis beaucoup ne ruine pas ton résultat, et qu'une année où tu n'investis rien ne le gonfle pas artificiellement.</p>
+<h3>Ce qui est une immobilisation</h3>
+<p>Un bien durable qui reste dans l'entreprise et lui sert plusieurs années : ordinateur, serveur, véhicule, mobilier, outillage, agencement du local, logiciel acheté. En dessous d'un certain montant, l'usage est de passer directement en charge — <em>à VÉRIFIER avec ton comptable, ce seuil dépend de la réglementation en vigueur.</em></p>
+<h3>Le chemin normal</h3>
+<ol>
+  <li>Tu saisis la facture du fournisseur dans <b>Achats</b> et tu mets la ligne concernée en destination <b>« immobilisation »</b>.</li>
+  <li>Elle apparaît dans l'onglet <b>« À immobiliser »</b> de cette page, avec un compteur dans la barre latérale.</li>
+  <li>Tu cliques « Créer la fiche », tu choisis la famille et la durée, et le plan d'amortissement se calcule.</li>
+</ol>
+<p>SkanFact ne crée jamais la fiche tout seul, et c'est volontaire : la durée d'amortissement est une <b>décision</b>, pas une donnée qu'on lit sur une facture. Mais attention — <b>tant qu'une ligne reste en attente, elle n'est déduite nulle part</b> : ni en charge (elle est en immobilisation), ni en amortissement (il n'y a pas de plan). C'est la raison du compteur.</p>
+<h3>Comment le calcul est fait</h3>
+<p>Amortissement <b>linéaire</b> : la valeur est divisée par le nombre d'années, à parts égales. Avec une nuance qui surprend souvent : la première année est réduite au <b>prorata des jours</b> d'utilisation. Un ordinateur de 2 400 DT amorti sur trois ans mais mis en service le 1er juillet ne donne pas 800 DT la première année, mais 400 — et il reste 400 DT à amortir sur un quatrième exercice. C'est pour ça qu'un bien « sur trois ans » apparaît sur quatre lignes.</p>
+<p>La dernière annuité absorbe les arrondis, pour que la valeur nette comptable tombe exactement à zéro et pas à trois millimes près.</p>
+<h3>La valeur nette comptable</h3>
+<p>C'est ce que le bien vaut encore <b>dans tes comptes</b> : prix d'achat moins tout ce qui a déjà été amorti. Deux malentendus fréquents :</p>
+<ul>
+  <li>Ce n'est pas sa valeur de revente. Un ordinateur amorti à zéro se vend encore ; une voiture peut valoir moins que sa VNC.</li>
+  <li>Ce n'est pas de l'argent. La dotation est une charge qui ne sort rien de ta banque — tu as payé une fois, tu déduis plusieurs fois. C'est pour ça que ton résultat et ta trésorerie ne racontent jamais tout à fait la même histoire.</li>
+</ul>
+<h3>Quand le bien s'en va</h3>
+<p>Vendu, mis au rebut, volé : depuis la fiche du bien, bouton « Sortir du patrimoine ». SkanFact amortit jusqu'au jour de la sortie, puis compare le prix obtenu à la valeur nette comptable de ce jour-là. Au-dessus, c'est une <b>plus-value</b> ; en dessous, une <b>moins-value</b>. Pour un bien mis au rebut, mets zéro : toute la VNC restante part en moins-value.</p>
+<p><em>À VÉRIFIER avec ton comptable : une plus-value de cession est en principe imposable, une moins-value déductible, et il existe des régimes particuliers.</em></p>
+<h3>Ce que ça change ailleurs dans l'app</h3>
+<ul>
+  <li><b>Comptabilité → Résultat simplifié</b> : la dotation de l'année est retirée du résultat. Sans elle, l'année d'un gros investissement paraissait excellente.</li>
+  <li><b>Marges → Seuil de rentabilité</b> : la dotation compte parmi tes charges fixes. Elle tombe que tu vendes ou non.</li>
+  <li><b>Trésorerie</b> : rien. C'est normal — un amortissement ne sort aucun argent.</li>
+</ul>
+<h3>Ce que cette page ne fait pas</h3>
+<p>Pas d'amortissement dégressif, pas de composants, pas de réévaluation, pas de crédit-bail. Ce sont des cas qui se traitent avec un comptable, pas dans un tableau. Et le tableau produit ici est un <b>outil de suivi</b> : c'est ton comptable qui établit les comptes annuels.</p>`
     },
     {
       id: 'statistiques', title: 'Lire tes statistiques', sub: 'Ce que les chiffres disent, et ce qu\'ils ne disent pas',

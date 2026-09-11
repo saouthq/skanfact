@@ -240,6 +240,7 @@ function buildMenu() {
         { label: 'Fournisseurs', click: act('go:fournisseurs') },
         { label: 'Trésorerie', accelerator: 'CmdOrCtrl+8', click: act('go:tresorerie') },
         { label: 'Marges et rentabilité', accelerator: 'CmdOrCtrl+9', click: act('go:marges') },
+        { label: 'Immobilisations', click: act('go:immos') },
         { label: 'Statistiques', click: act('go:stats') },
         { label: 'Comptabilité', accelerator: 'CmdOrCtrl+6', click: act('go:compta') },
         { type: 'separator' },

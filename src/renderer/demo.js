@@ -306,9 +306,33 @@
         notes: 'TVA non déductible sur les véhicules de tourisme — À VÉRIFIER avec le comptable.' }),
       buy({ kind: 'depense', supplierId: sp[0].id, number: '', date: daysAgo(4), category: 'Fournitures de bureau',
         subject: 'Papeterie et consommables', lines: [bline('Fournitures diverses', 1, 96, 19)],
-        payments: [{ date: daysAgo(4), amount: 'all', method: 'carte' }] })
+        payments: [{ date: daysAgo(4), amount: 'all', method: 'carte' }] }),
+      // immobilisation SANS fiche : elle attend dans « À immobiliser » et remonte dans « À faire »
+      buy({ supplierId: sp[0].id, number: 'FA-2026-1402', date: daysAgo(18), dueDate: C.addDays(daysAgo(18), 30), category: 'Petit équipement',
+        subject: 'Imprimante multifonction du bureau', fees: 1,
+        lines: [bline('Imprimante multifonction couleur', 1, 1450, 19, 'immobilisation')],
+        notes: 'À immobiliser : durée d\'amortissement à confirmer avec le comptable.' })
     ];
     d.expenseCategories = [];
+
+    // ---------- immobilisations (3.5.0) ----------
+    // Le portable acheté plus haut, immobilisé comme il se doit ; une camionnette plus ancienne, encore
+    // en cours d'amortissement ; et un serveur revendu cette année, pour montrer une plus-value.
+    const immoLaptop = d.purchases[1];                       // FA-2026-0940, ligne « Ordinateur portable »
+    d.assets = [
+      { id: C.uid(), label: 'Ordinateur portable 16 Go', category: 'informatique', date: immoLaptop.date,
+        amount: 2600, residual: 0, years: 3, supplierId: sp[0].id, purchaseId: immoLaptop.id, lineIndex: 0,
+        notes: 'À VÉRIFIER avec le comptable : durée retenue de trois ans.' },
+      { id: C.uid(), label: 'Camionnette utilitaire', category: 'transport', date: mo(30, 15),
+        amount: 38000, residual: 4000, years: 5, supplierId: '', purchaseId: '', lineIndex: null,
+        notes: 'Achetée avant la mise en service de SkanFact : saisie à la main.' },
+      { id: C.uid(), label: 'Serveur de sauvegarde', category: 'informatique', date: mo(40, 1),
+        amount: 9000, residual: 0, years: 4, supplierId: sp[0].id, purchaseId: '', lineIndex: null,
+        disposal: { date: mo(3, 20), amount: 2400, reason: 'Revendu à un confrère' },
+        notes: 'Remplacé par l\'hébergement externalisé.' },
+      { id: C.uid(), label: 'Mobilier du bureau', category: 'mobilier', date: mo(22, 3),
+        amount: 6400, residual: 0, years: 10, supplierId: '', purchaseId: '', lineIndex: null, notes: '' }
+    ];
 
     // ---------- trésorerie (3.3.0) ----------
     // Un compte bancaire et une caisse, avec un solde de départ il y a un an et quelques

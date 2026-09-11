@@ -1842,4 +1842,145 @@ t('seuil de rentabilité : charges fixes, variables et le CA minimum', () => {
   assert.strictEqual(rien.reached, false);
 });
 
+// ---------- immobilisations et amortissements (3.5.0) ----------
+
+t('amortissement linéaire : prorata temporis la première année, la dernière solde le reste', () => {
+  const a = { id: 'a1', label: 'Ordinateur portable', amount: 2400, residual: 0, years: 3, date: '2026-07-01', category: 'informatique' };
+  const rows = core.assetSchedule(a);
+  assert.strictEqual(rows.length, 4);                       // 2026 partielle, 2027, 2028, 2029 partielle
+  // du 1er juillet au 31 décembre, base 360 : 180 jours → la moitié d'une annuité
+  assert.strictEqual(rows[0].days, 180);
+  assert.strictEqual(rows[0].annuity, 400);
+  assert.strictEqual(rows[1].annuity, 800);
+  assert.strictEqual(rows[2].annuity, 800);
+  assert.strictEqual(rows[3].annuity, 400);
+  // le total amorti vaut exactement la valeur d'acquisition, sans traîner un millime
+  assert.strictEqual(rows[rows.length - 1].cumulated, 2400);
+  assert.strictEqual(rows[rows.length - 1].nbv, 0);
+  // la VNC calculée à une date quelconque colle au tableau
+  assert.strictEqual(core.assetNBV(a, '2026-12-31'), rows[0].nbv);
+  assert.strictEqual(core.assetNBV(a, '2027-12-31'), rows[1].nbv);
+  // valeur résiduelle : on n'amortit que la différence
+  const b = { ...a, residual: 400 };
+  const rb = core.assetSchedule(b);
+  assert.strictEqual(core.round3(rb.reduce((s, r) => s + r.annuity, 0)), 2000);
+  assert.strictEqual(rb[rb.length - 1].nbv, 400);
+  // un bien sans durée ou sans date ne produit aucun tableau, au lieu de diviser par zéro
+  assert.deepStrictEqual(core.assetSchedule({ ...a, years: 0 }), []);
+  assert.deepStrictEqual(core.assetSchedule({ ...a, date: '' }), []);
+});
+
+t('cession : plus-value contre la VNC du jour, et plus rien après', () => {
+  const a = { id: 'a1', label: 'Camionnette', amount: 30000, residual: 0, years: 5, date: '2024-01-01', category: 'transport',
+    disposal: { date: '2026-06-30', amount: 16000, reason: 'Revendue' } };
+  // 2,5 ans amortis sur 5 : la moitié
+  assert.strictEqual(core.assetCumulated(a, '2026-06-30'), 15000);
+  const d = core.disposalResult(a);
+  assert.strictEqual(d.nbv, 15000);
+  assert.strictEqual(d.result, 1000);                        // plus-value
+  // l'année de la cession, on amortit jusqu'au jour de la sortie seulement
+  const y = core.assetYear(a, 2026);
+  assert.strictEqual(y.annuity, 3000);                       // six mois
+  assert.strictEqual(y.out, true);
+  // l'année suivante, plus aucune dotation et le cumul reste figé
+  const y2 = core.assetYear(a, 2027);
+  assert.strictEqual(y2.annuity, 0);
+  assert.strictEqual(y2.cumulated, 15000);
+  // moins-value
+  const m = core.disposalResult({ ...a, disposal: { date: '2026-06-30', amount: 9000, reason: '' } });
+  assert.strictEqual(m.result, -6000);
+});
+
+t('état des immobilisations : un bien cédé sort de l\'exercice suivant', () => {
+  const data = core.migrateData({
+    assets: [
+      { id: 'a1', label: 'Portable', amount: 2400, residual: 0, years: 3, date: '2026-01-01', category: 'informatique' },
+      { id: 'a2', label: 'Camionnette', amount: 30000, residual: 0, years: 5, date: '2024-01-01', category: 'transport',
+        disposal: { date: '2026-06-30', amount: 16000, reason: '' } },
+      { id: 'a3', label: 'Acheté plus tard', amount: 1000, residual: 0, years: 5, date: '2027-03-01', category: 'bureau' }
+    ]
+  });
+  const t = core.assetTotals(data, 2026);
+  assert.strictEqual(t.count, 2);                            // a3 n'existe pas encore en 2026
+  assert.strictEqual(t.annuity, core.round3(800 + 3000));
+  assert.strictEqual(t.disposals.length, 1);
+  const t27 = core.assetTotals(data, 2027);
+  assert.strictEqual(t27.count, 2);                          // a1 et a3 : la camionnette est sortie
+  assert.ok(!t27.rows.some(r => r.id === 'a2'));
+});
+
+t('achats : une ligne « immobilisation » attend sa fiche, une seule fois', () => {
+  const data = core.migrateData({
+    purchases: [{
+      id: 'p1', kind: 'facture', supplierId: 's1', number: 'FA-1', date: '2026-03-10', category: 'Petit équipement',
+      lines: [
+        { label: 'Serveur', qty: 1, unitPrice: 7000, vatRate: 19, destination: 'immobilisation', deductible: true },
+        { label: 'Câbles', qty: 10, unitPrice: 12, vatRate: 19, destination: 'charge', deductible: true }
+      ], payments: []
+    }]
+  });
+  let todo = core.assetsToCreate(data);
+  assert.strictEqual(todo.length, 1);
+  assert.strictEqual(todo[0].label, 'Serveur');
+  assert.strictEqual(todo[0].amount, 7000);
+  // une fois la fiche créée, la ligne ne revient plus
+  data.assets.push({ id: 'a1', label: 'Serveur', amount: 7000, residual: 0, years: 5, date: '2026-03-10', category: 'informatique', purchaseId: 'p1', lineIndex: 0 });
+  assert.deepStrictEqual(core.assetsToCreate(data), []);
+});
+
+t('la dotation est une charge : elle pèse sur le résultat et sur le seuil', () => {
+  const base = {
+    company: CO,
+    documents: [{ id: 'd1', type: 'facture', number: 'FAC-2026-001', date: '2026-02-01', status: 'envoyée', clientId: 'c1',
+      lines: [{ label: 'Presta', qty: 1, unitPrice: 20000, vatRate: 19 }], payments: [], applyStamp: true }],
+    purchases: [{ id: 'p1', kind: 'facture', supplierId: 's1', number: 'FA-1', date: '2026-01-05', category: 'Petit équipement',
+      lines: [{ label: 'Serveur', qty: 1, unitPrice: 12000, vatRate: 19, destination: 'immobilisation', deductible: true }], payments: [], fees: 0 }]
+  };
+  const p = { from: '2026-01-01', to: '2026-12-31' };
+  const sans = core.simpleResult(core.migrateData(base), CO, p);
+  assert.strictEqual(sans.immo, 12000);
+  assert.strictEqual(sans.charges, 0);                       // l'achat n'est pas une charge…
+  assert.strictEqual(sans.depreciation, 0);                  // …et sans fiche, rien n'est amorti
+  assert.strictEqual(sans.resultat, 20000);
+  // avec la fiche : 12 000 sur 4 ans à partir du 5 janvier
+  const avec = core.migrateData({ ...base,
+    assets: [{ id: 'a1', label: 'Serveur', amount: 12000, residual: 0, years: 4, date: '2026-01-05', category: 'informatique', purchaseId: 'p1', lineIndex: 0 }] });
+  const r = core.simpleResult(avec, CO, p);
+  const dot = core.assetTotals(avec, 2026).annuity;
+  assert.ok(dot > 2900 && dot < 3000, 'dotation ' + dot);
+  assert.strictEqual(r.depreciation, dot);
+  assert.strictEqual(r.resultat, core.round3(20000 - dot));
+  // le seuil de rentabilité compte la dotation dans les charges fixes
+  const b = core.breakEven(avec, CO, p);
+  assert.strictEqual(b.depreciation, dot);
+  assert.strictEqual(b.fixed, dot);
+  assert.strictEqual(core.breakEven(core.migrateData(base), CO, p).fixed, 0);
+});
+
+t('dotation : sur un mois on amortit un mois, pas une année', () => {
+  const data = core.migrateData({
+    assets: [
+      { id: 'a1', label: 'Serveur', amount: 12000, residual: 0, years: 4, date: '2026-01-01', category: 'informatique' },
+      { id: 'a2', label: 'Vendu en cours d\'année', amount: 6000, residual: 0, years: 5, date: '2025-01-01', category: 'bureau',
+        disposal: { date: '2026-04-30', amount: 1000, reason: '' } }
+    ]
+  });
+  const year = core.depreciationFor(data, { from: '2026-01-01', to: '2026-12-31' });
+  assert.strictEqual(year, core.assetTotals(data, 2026).annuity);
+  // un mois ne peut pas peser autant qu'une année — c'est le bug que la capture a montré
+  const mars = core.depreciationFor(data, { from: '2026-03-01', to: '2026-03-31' });
+  assert.ok(mars > 0 && mars < year / 5, 'mars ' + mars + ' contre ' + year);
+  // les douze mois redonnent exactement l'année
+  let somme = 0;
+  const fins = ['31', '28', '31', '30', '31', '30', '31', '31', '30', '31', '30', '31'];
+  for (let m = 1; m <= 12; m++) {
+    const mm = String(m).padStart(2, '0');
+    somme = core.round3(somme + core.depreciationFor(data, { from: `2026-${mm}-01`, to: `2026-${mm}-${fins[m - 1]}` }));
+  }
+  assert.strictEqual(somme, year);
+  // après la cession, le bien sorti n'ajoute plus rien
+  assert.strictEqual(core.depreciationFor(data, { from: '2026-06-01', to: '2026-06-30' }),
+    core.round3(12000 / 4 / 12));
+});
+
 console.log(`\n${n} tests OK`);

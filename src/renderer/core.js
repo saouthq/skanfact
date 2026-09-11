@@ -125,6 +125,7 @@
     purchases: [],   // factures d'achat et dépenses (v4)
     expenseCategories: [],   // catégories ajoutées par l'utilisateur, en plus de DEFAULT_EXPENSE_CATEGORIES
     fiscalDeadlines: [],     // échéances fiscales activées/modifiées par l'utilisateur (v4)
+    assets: [],              // immobilisations amortissables (3.5.0)
     vatCarryIn: {},          // crédit de TVA venu de l'année précédente, par année : { '2026': 1234 }
     projects: [],            // affaires : relient ventes et achats pour une marge exacte (v4)
     fixedCategories: [],     // catégories de charges considérées comme fixes (vide = valeurs par défaut)
@@ -428,6 +429,7 @@
     if (!data.vatCarryIn || typeof data.vatCarryIn !== 'object') data.vatCarryIn = {};  // crédit de TVA reporté par année
     // Partage à deux (3.2.0) : suppressions mémorisées et versions écartées lors d'une fusion.
     if (!Array.isArray(data.projects)) data.projects = [];
+    if (!Array.isArray(data.assets)) data.assets = [];
     if (!Array.isArray(data.fixedCategories)) data.fixedCategories = [];
     if (!Array.isArray(data.accounts)) data.accounts = [];
     if (!Array.isArray(data.movements)) data.movements = [];
@@ -920,11 +922,14 @@
     (data.movements || []).filter(m => inPeriod(m.date, period && period.from, period && period.to)).forEach(m => {
       if (['salaire', 'emprunt', 'banque'].includes(m.kind)) fixed = round3(fixed + Math.abs(Number(m.amount) || 0));
     });
+    // La dotation aux amortissements est une charge fixe : elle tombe que tu vendes ou non (3.5.0).
+    const depreciation = depreciationFor(data, period);
+    fixed = round3(fixed + depreciation);
     const marginOnVariable = round3(revenue - variable);
     const rate = revenue > 0 ? marginOnVariable / revenue : 0;
     const point = rate > 0 ? round3(fixed / rate) : null;
     return {
-      revenue, fixed, variable, marginOnVariable,
+      revenue, fixed, variable, depreciation, marginOnVariable,
       rate: revenue > 0 ? Math.round(rate * 1000) / 10 : null,
       breakEven: point,
       // Là où tu en es par rapport au seuil : négatif = il manque du chiffre d'affaires.
@@ -932,6 +937,187 @@
       result: round3(marginOnVariable - fixed),
       reached: point != null && revenue >= point
     };
+  }
+
+  // ---------- immobilisations et amortissements (3.5.0) ----------
+  // Une immobilisation n'est pas une charge : elle reste dans l'entreprise et se déduit un peu chaque
+  // année. Le module transforme une ligne d'achat marquée « immobilisation » en un bien amortissable,
+  // et calcule la dotation de chaque exercice ainsi que la valeur nette comptable.
+  //
+  // Amortissement LINÉAIRE, prorata temporis au jour, base 360 (12 mois de 30 jours) : c'est la règle
+  // tunisienne usuelle. La première annuité est réduite au nombre de jours d'utilisation de l'année de
+  // mise en service, et la dernière reprend ce qui reste. À VÉRIFIER avec le comptable : les durées et
+  // la règle de prorata dépendent de la nature du bien et du régime.
+
+  // Familles proposées, avec la durée d'usage couramment admise. Aucune n'est imposée : l'utilisateur
+  // change la durée bien par bien, et la bulle d'aide dit que c'est au comptable de trancher.
+  const DEFAULT_ASSET_CLASSES = [
+    ['informatique', 'Matériel informatique', 3],
+    ['logiciel', 'Logiciels et licences', 3],
+    ['bureau', 'Matériel de bureau', 5],
+    ['mobilier', 'Mobilier', 10],
+    ['outillage', 'Outillage et matériel technique', 5],
+    ['transport', 'Matériel de transport', 5],
+    ['agencement', 'Agencements et installations', 10],
+    ['construction', 'Constructions', 20],
+    ['autre', 'Autre immobilisation', 5]
+  ];
+  const assetClassLabel = k => (DEFAULT_ASSET_CLASSES.find(c => c[0] === k) || [, 'Autre immobilisation'])[1];
+  const assetClassYears = k => (DEFAULT_ASSET_CLASSES.find(c => c[0] === k) || [, , 5])[2];
+
+  // Nombre de jours entre deux dates en base 360 (mois de 30 jours), comme le veut le prorata temporis.
+  function days360(fromIso, toIso) {
+    if (!fromIso || !toIso || toIso < fromIso) return 0;
+    const [y1, m1, d1] = fromIso.split('-').map(Number);
+    const [y2, m2, d2] = toIso.split('-').map(Number);
+    return (y2 - y1) * 360 + (m2 - m1) * 30 + (Math.min(d2, 30) - Math.min(d1, 30));
+  }
+
+  // Le tableau d'amortissement d'un bien : une ligne par exercice, de la mise en service à la fin.
+  // `base` = valeur amortissable (acquisition − valeur résiduelle). La dernière annuité absorbe les
+  // arrondis, sinon la VNC finirait à 0,001 DT au lieu de zéro.
+  function assetSchedule(asset) {
+    const value = Number(asset.amount) || 0;
+    const residual = Number(asset.residual) || 0;
+    const years = Number(asset.years) || 0;
+    const start = asset.date || '';
+    const base = round3(Math.max(0, value - residual));
+    if (!start || years <= 0 || base <= 0) return [];
+    const end = addDays(addMonths(start, years * 12, Number(start.slice(8, 10))), -1);   // dernier jour amorti
+    const perYear = base / years;
+    const rows = [];
+    let cumulated = 0;
+    const firstYear = Number(start.slice(0, 4));
+    const lastYear = Number(end.slice(0, 4));
+    for (let y = firstYear; y <= lastYear; y++) {
+      const from = y === firstYear ? start : `${y}-01-01`;
+      const to = y === lastYear ? end : `${y}-12-31`;
+      // +1 jour : le jour de mise en service compte, et le 31/12 aussi.
+      const d = Math.max(0, days360(from, to) + 1);
+      let annuity = round3(perYear * d / 360);
+      if (y === lastYear) annuity = round3(base - cumulated);         // la dernière solde le reste
+      if (round3(cumulated + annuity) > base) annuity = round3(base - cumulated);
+      cumulated = round3(cumulated + annuity);
+      rows.push({ year: y, from, to, days: d, annuity, cumulated, nbv: round3(value - cumulated) });
+    }
+    return rows;
+  }
+
+  // Dotation de l'exercice `year` — zéro hors période d'amortissement, et zéro après une cession
+  // (l'année de la cession, on amortit jusqu'au jour de la sortie : c'est ce que fait `assetYear`).
+  function assetYear(asset, year) {
+    const rows = assetSchedule(asset);
+    const row = rows.find(r => r.year === year);
+    const disposal = asset.disposal && asset.disposal.date ? asset.disposal.date : '';
+    // Sorti d'un exercice antérieur : plus rien ne bouge, le cumul reste figé au jour de la cession.
+    if (disposal && Number(disposal.slice(0, 4)) < year) return { annuity: 0, cumulated: assetCumulated(asset, disposal), nbv: 0, out: true };
+    if (!row) return { annuity: 0, cumulated: assetCumulated(asset, `${year}-12-31`), nbv: round3((Number(asset.amount) || 0) - assetCumulated(asset, `${year}-12-31`)), out: !!disposal };
+    if (disposal && Number(disposal.slice(0, 4)) === year) {
+      const partial = assetCumulated(asset, disposal);
+      const before = assetCumulated(asset, `${year - 1}-12-31`);
+      return { annuity: round3(partial - before), cumulated: partial, nbv: round3((Number(asset.amount) || 0) - partial), out: true };
+    }
+    return { annuity: row.annuity, cumulated: row.cumulated, nbv: row.nbv, out: false };
+  }
+
+  // Amortissement cumulé à une date quelconque (utile pour la VNC au jour d'une cession).
+  function assetCumulated(asset, dateIso) {
+    const value = Number(asset.amount) || 0;
+    const residual = Number(asset.residual) || 0;
+    const years = Number(asset.years) || 0;
+    const start = asset.date || '';
+    const base = round3(Math.max(0, value - residual));
+    if (!start || years <= 0 || base <= 0 || dateIso < start) return 0;
+    // `d` est un nombre de jours base 360 ; la durée totale vaut `years * 360` jours.
+    const d = Math.min(years * 360, days360(start, dateIso) + 1);
+    return round3(Math.min(base, base * d / (years * 360)));
+  }
+
+  // Valeur nette comptable : ce que le bien « vaut » encore dans les comptes.
+  function assetNBV(asset, dateIso) {
+    return round3((Number(asset.amount) || 0) - assetCumulated(asset, dateIso));
+  }
+
+  // Résultat d'une cession : prix de vente moins la VNC au jour de la sortie.
+  // Positif = plus-value (imposable), négatif = moins-value. À VÉRIFIER avec le comptable.
+  function disposalResult(asset) {
+    const dis = asset.disposal;
+    if (!dis || !dis.date) return null;
+    const nbv = assetNBV(asset, dis.date);
+    const price = Number(dis.amount) || 0;
+    return { date: dis.date, price, nbv, result: round3(price - nbv), reason: dis.reason || '' };
+  }
+
+  // L'état des immobilisations pour un exercice : une ligne par bien, avec la dotation de l'année.
+  function assetsList(data, year) {
+    const y = Number(year) || Number(today().slice(0, 4));
+    return (data.assets || []).map(a => {
+      const v = assetYear(a, y);
+      const dis = disposalResult(a);
+      return {
+        ...a, ...v,
+        opening: round3(assetCumulated(a, `${y - 1}-12-31`)),
+        disposalResult: dis,
+        active: a.date <= `${y}-12-31` && !(dis && Number(dis.date.slice(0, 4)) < y)
+      };
+    }).filter(a => a.active).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  }
+
+  function assetTotals(data, year) {
+    const rows = assetsList(data, year);
+    const sum = (f) => round3(rows.reduce((s, r) => s + (Number(f(r)) || 0), 0));
+    return {
+      count: rows.length,
+      gross: sum(r => r.amount),
+      opening: sum(r => r.opening),
+      annuity: sum(r => r.annuity),
+      cumulated: sum(r => r.cumulated),
+      nbv: sum(r => r.out ? 0 : r.nbv),
+      disposals: rows.filter(r => r.disposalResult && Number(r.disposalResult.date.slice(0, 4)) === Number(year)),
+      rows
+    };
+  }
+
+  // Les lignes d'achat marquées « immobilisation » qui n'ont pas encore de fiche : c'est le pont entre
+  // le module Achats et celui-ci. On ne crée jamais la fiche tout seul — la durée d'amortissement est
+  // une décision, pas une donnée.
+  function assetsToCreate(data) {
+    const done = new Set((data.assets || []).filter(a => a.purchaseId).map(a => `${a.purchaseId}#${a.lineIndex}`));
+    const out = [];
+    (data.purchases || []).forEach(p => {
+      (p.lines || []).forEach((l, i) => {
+        if (l.destination !== 'immobilisation') return;
+        if (done.has(`${p.id}#${i}`)) return;
+        const amount = round3((Number(l.qty) || 0) * (Number(l.unitPrice) || 0));
+        if (amount <= 0) return;
+        out.push({ purchaseId: p.id, lineIndex: i, label: l.label || '', amount, date: p.date, supplierId: p.supplierId, number: p.number || '' });
+      });
+    });
+    return out.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  }
+
+  // Amortissement cumulé, figé au jour de la sortie : après une cession, plus rien ne se déduit.
+  function cappedCumulated(asset, dateIso) {
+    const out = asset.disposal && asset.disposal.date ? asset.disposal.date : '';
+    return assetCumulated(asset, out && dateIso > out ? out : dateIso);
+  }
+
+  // Dotation de la PÉRIODE : c'est elle qui manquait au résultat simplifié et au seuil de rentabilité.
+  // Une immobilisation n'est pas une charge de l'année de l'achat, mais son amortissement EST une charge
+  // de chaque exercice.
+  //
+  // Attention au piège : la page Comptabilité peut demander un seul mois. Retourner la dotation de
+  // l'année entière ferait un résultat mensuel catastrophique et faux (c'est arrivé). On calcule donc
+  // la dotation exactement sur la période demandée, par différence de cumuls.
+  function depreciationFor(data, period) {
+    if (!period || !period.from || !period.to) return 0;
+    const y = Number(period.from.slice(0, 4));
+    // Année civile complète : on reprend le chiffre du tableau des amortissements, au millime près,
+    // pour que la page Comptabilité et la page Immobilisations ne se contredisent jamais.
+    if (period.from === `${y}-01-01` && period.to === `${y}-12-31`) return assetTotals(data, y).annuity;
+    const before = addDays(period.from, -1);
+    return round3((data.assets || []).reduce((s, a) =>
+      s + Math.max(0, round3(cappedCumulated(a, period.to) - cappedCumulated(a, before))), 0));
   }
 
   // ---------- trésorerie (3.3.0) ----------
@@ -1104,11 +1290,11 @@
   // l'autre version pour qu'elle reste consultable. Rien n'est détruit sans trace.
 
   // Les listes du fichier qui se fusionnent pièce par pièce, grâce à leur identifiant.
-  const MERGE_LISTS = ['clients', 'catalog', 'documents', 'recurring', 'templates', 'snippets', 'suppliers', 'purchases', 'accounts', 'movements', 'projects'];
+  const MERGE_LISTS = ['clients', 'catalog', 'documents', 'recurring', 'templates', 'snippets', 'suppliers', 'purchases', 'accounts', 'movements', 'projects', 'assets'];
   const LIST_LABELS = {
     clients: 'client', catalog: 'prestation', documents: 'document', recurring: 'contrat récurrent',
     templates: 'modèle', snippets: 'texte', suppliers: 'fournisseur', purchases: 'achat',
-    accounts: 'compte', movements: 'mouvement', projects: 'affaire'
+    accounts: 'compte', movements: 'mouvement', projects: 'affaire', assets: 'immobilisation'
   };
 
   function sameJson(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
@@ -1315,9 +1501,13 @@
       stock = round3(stock + t.byDestination.stock);
       immo = round3(immo + t.byDestination.immobilisation);
     });
+    // L'achat d'une immobilisation n'est pas une charge, mais son AMORTISSEMENT en est une : sans lui,
+    // le résultat de l'année d'un gros investissement serait artificiellement bon (3.5.0).
+    const depreciation = depreciationFor(data, period);
+    const resultat = round3(produits - charges - depreciation);
     return {
-      produits, charges, stock, immo, resultat: round3(produits - charges),
-      marge: produits > 0 ? Math.round((produits - charges) / produits * 100) : null,
+      produits, charges, stock, immo, depreciation, resultat,
+      marge: produits > 0 ? Math.round(resultat / produits * 100) : null,
       salesCount: sales.length, buysCount: buys.length
     };
   }
@@ -1668,6 +1858,15 @@
       label: `${owedSoon.length} règlement${owedSoon.length > 1 ? 's' : ''} fournisseur cette semaine`,
       detail: `${fmt(round3(owedSoon.reduce((s, x) => s + x.remaining, 0)))} à prévoir sur ton compte.`,
       count: owedSoon.length, route: '#/achats', docs: []
+    });
+    // Lignes d'achat marquées « immobilisation » sans fiche : sans elles, aucune dotation n'est calculée
+    // et le résultat de l'année est faussement bon (3.5.0).
+    const toImmo = assetsToCreate(data);
+    if (toImmo.length) out.push({
+      id: 'immobilisations', level: 'info',
+      label: `${toImmo.length} achat${toImmo.length > 1 ? 's' : ''} à immobiliser`,
+      detail: `${fmt(round3(toImmo.reduce((sum, x) => sum + x.amount, 0)))} achetés en immobilisation sans plan d'amortissement. Tant que la fiche manque, rien n'est déduit.`,
+      count: toImmo.length, route: '#/immos', docs: []
     });
     // Attestations de retenue que TU dois remettre à tes fournisseurs prestataires
     const wOut = withholdingsToIssue(data, company);
@@ -2410,6 +2609,9 @@
     ACCOUNT_KINDS, MOVE_KINDS, cashMovements, accountBalance, cashPosition, cashForecast, reconciliation,
     lineCost, documentMargin, marginBy, PROJECT_STATUSES, projectMargin, projectList, recurringProfitability,
     DEFAULT_FIXED_CATEGORIES, isFixedCategory, breakEven,
+    DEFAULT_ASSET_CLASSES, assetClassLabel, assetClassYears, days360, assetSchedule, assetYear,
+    assetCumulated, assetNBV, disposalResult, assetsList, assetTotals, assetsToCreate, depreciationFor,
+    cappedCumulated,
     mergeData, trackDeletion, MERGE_LISTS, LIST_LABELS,
     purchaseTotals, purchaseBalance, purchaseStatus, payablesList, purchaseJournal, purchaseSummary, supplierSummary, withholdingsToIssue, supplierPayments,
     periodBounds, issuedIn, salesTotals, revenueByMonth, topItems, clientMovement, AGING_BUCKETS, agedReceivables, payerRanking, quoteFunnel, objectiveProgress,
