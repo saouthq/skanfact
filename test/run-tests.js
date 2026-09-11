@@ -1266,4 +1266,122 @@ t('démo : achats cohérents quelle que soit la date, tous les statuts présents
   });
 });
 
+// ---------- TVA réelle et calendrier fiscal (3.1.0) ----------
+
+t('TVA : collectée moins déductible, crédit reportable', () => {
+  const inv2 = (o) => ({ id: 'i' + Math.random(), type: 'facture', number: 'FAC-2026-001', status: 'envoyée',
+    date: '2026-03-10', dueDate: '2026-04-09', clientId: 'c1', payments: [], createdAt: 1, ...o });
+  const data = {
+    clients: [{ id: 'c1', name: 'Alpha' }], suppliers: [{ id: 's1', name: 'Beta' }], counters: {},
+    documents: [inv2({ lines: [{ label: 'Audit', qty: 1, unitPrice: 10000, vatRate: 19 }] })],
+    purchases: [{ id: 'a1', kind: 'facture', supplierId: 's1', number: 'F-1', date: '2026-03-05', payments: [], createdAt: 1,
+      lines: [{ label: 'Serveur', qty: 1, unitPrice: 4000, vatRate: 19 }] }]
+  };
+  const p = { from: '2026-03-01', to: '2026-03-31' };
+  const r = core.vatReturn(data, CO, p, 0);
+  assert.strictEqual(r.collected, 1900);
+  assert.strictEqual(r.deductible, 760);
+  assert.strictEqual(r.toPay, 1140);
+  assert.strictEqual(r.carryOut, 0);
+  assert.strictEqual(r.byRate[19].collected, 1900);
+  assert.strictEqual(r.byRate[19].deductible, 760);
+  assert.strictEqual(r.stamps, 1);                       // le timbre est déclaré à part
+  // un crédit reporté vient en déduction
+  assert.strictEqual(core.vatReturn(data, CO, p, 400).toPay, 740);
+  // gros achat : on bascule en crédit de TVA, rien à payer
+  data.purchases[0].lines[0].unitPrice = 20000;
+  const cred = core.vatReturn(data, CO, p, 0);
+  assert.strictEqual(cred.toPay, 0);
+  assert.strictEqual(cred.carryOut, core.round3(20000 * 0.19 - 1900));
+  // une TVA non déductible ne vient pas en déduction
+  data.purchases[0].lines[0].deductible = false;
+  assert.strictEqual(core.vatReturn(data, CO, p, 0).deductible, 0);
+  assert.strictEqual(core.vatReturn(data, CO, p, 0).toPay, 1900);
+  // période vide : tout à zéro, pas de NaN
+  const vide = core.vatReturn(data, CO, { from: '2020-01-01', to: '2020-12-31' }, 0);
+  assert.strictEqual(vide.collected, 0); assert.strictEqual(vide.toPay, 0); assert.strictEqual(vide.carryOut, 0);
+});
+
+t('TVA : le crédit d\'un mois se reporte sur le suivant', () => {
+  const mk = (date, ht) => ({ id: 'i' + date, type: 'facture', number: 'FAC-' + date, status: 'envoyée', date,
+    dueDate: date, clientId: 'c1', payments: [], createdAt: 1, lines: [{ label: 'x', qty: 1, unitPrice: ht, vatRate: 19 }] });
+  const buy2 = (date, ht) => ({ id: 'a' + date, kind: 'facture', supplierId: 's1', number: 'F-' + date, date, payments: [], createdAt: 1,
+    lines: [{ label: 'y', qty: 1, unitPrice: ht, vatRate: 19 }] });
+  const data = {
+    clients: [{ id: 'c1', name: 'Alpha' }], suppliers: [{ id: 's1', name: 'Beta' }], counters: {},
+    documents: [mk('2026-01-10', 1000), mk('2026-02-10', 1000), mk('2026-03-10', 5000)],
+    purchases: [buy2('2026-01-05', 6000), buy2('2026-02-05', 500)]
+  };
+  const chain = core.vatChain(data, CO, 2026, 3);
+  assert.strictEqual(chain.length, 3);
+  // janvier : gros achat → crédit
+  assert.strictEqual(chain[0].toPay, 0);
+  assert.strictEqual(chain[0].carryOut, core.round3(6000 * 0.19 - 1000 * 0.19));
+  // février : le crédit de janvier est repris, et il reste du crédit
+  assert.strictEqual(chain[1].carryIn, chain[0].carryOut);
+  assert.strictEqual(chain[1].toPay, 0);
+  // mars : le crédit restant est absorbé, il reste à payer
+  assert.strictEqual(chain[2].carryIn, chain[1].carryOut);
+  assert.strictEqual(chain[2].toPay, core.round3(5000 * 0.19 - chain[1].carryOut));
+  assert.strictEqual(chain[2].label, 'mars');
+  // crédit venu de l'année précédente, saisi à la main
+  const avec = core.vatChain({ ...data, vatCarryIn: { 2026: 500 } }, CO, 2026, 1);
+  assert.strictEqual(avec[0].carryIn, 500);
+  assert.strictEqual(avec[0].carryOut, core.round3(chain[0].carryOut + 500));
+});
+
+t('calendrier fiscal : prochaine échéance de chaque règle', () => {
+  const mensuel = { every: 'month', day: 28 };
+  assert.strictEqual(core.nextDeadline(mensuel, '2026-09-11'), '2026-09-28');
+  assert.strictEqual(core.nextDeadline(mensuel, '2026-09-28'), '2026-09-28');   // le jour même compte encore
+  assert.strictEqual(core.nextDeadline(mensuel, '2026-09-29'), '2026-10-28');
+  // un jour qui n'existe pas dans le mois est ramené à la fin du mois
+  assert.strictEqual(core.nextDeadline({ every: 'month', day: 31 }, '2026-02-01'), '2026-02-28');
+  assert.strictEqual(core.nextDeadline({ every: 'month', day: 31 }, '2024-02-01'), '2024-02-29');
+  // trimestriel
+  const trim = { every: 'months', months: [6, 9, 12], day: 28 };
+  assert.strictEqual(core.nextDeadline(trim, '2026-07-01'), '2026-09-28');
+  assert.strictEqual(core.nextDeadline(trim, '2026-12-29'), '2027-06-28');      // bascule d'année
+  // annuel
+  assert.strictEqual(core.nextDeadline({ every: 'year', month: 4, day: 30 }, '2026-09-11'), '2027-04-30');
+  // les échéances proches, triées
+  const up = core.upcomingFiscal({}, '2026-09-11', 40);
+  assert.ok(up.length);
+  assert.ok(up.every(x => x.days <= 40 && x.days >= 0));
+  assert.deepStrictEqual(up.map(x => x.date), up.map(x => x.date).slice().sort());
+  assert.ok(up.some(x => x.id === 'tva'));
+  // une règle désactivée ne remonte pas ; une règle ajoutée oui
+  const off = core.upcomingFiscal({ fiscalDeadlines: [{ id: 'tva', active: false }] }, '2026-09-11', 40);
+  assert.ok(!off.some(x => x.id === 'tva'));
+  const on = core.upcomingFiscal({ fiscalDeadlines: [{ id: 'tcl', active: true }] }, '2026-09-11', 40);
+  assert.ok(on.some(x => x.id === 'tcl'));
+  // personnaliser le jour d'une règle existante ne casse pas le reste
+  const moved = core.fiscalDeadlines({ fiscalDeadlines: [{ id: 'tva', day: 15 }] }).find(x => x.id === 'tva');
+  assert.strictEqual(moved.day, 15);
+  assert.ok(moved.label.includes('TVA'));
+});
+
+t('résultat simple : stock et immobilisations ne sont pas des charges', () => {
+  const data = {
+    clients: [{ id: 'c1', name: 'Alpha' }], suppliers: [{ id: 's1', name: 'Beta' }], counters: {},
+    documents: [{ id: 'i1', type: 'facture', number: 'FAC-1', status: 'envoyée', date: '2026-03-10', dueDate: '2026-04-09',
+      clientId: 'c1', payments: [], createdAt: 1, lines: [{ label: 'x', qty: 1, unitPrice: 10000, vatRate: 19 }] }],
+    purchases: [{ id: 'a1', kind: 'facture', supplierId: 's1', number: 'F-1', date: '2026-03-05', payments: [], createdAt: 1, fees: 1,
+      lines: [
+        { label: 'Loyer', qty: 1, unitPrice: 1000, vatRate: 19, destination: 'charge' },
+        { label: 'Marchandise', qty: 1, unitPrice: 3000, vatRate: 19, destination: 'stock' },
+        { label: 'Ordinateur', qty: 1, unitPrice: 2000, vatRate: 19, destination: 'immobilisation' }
+      ] }]
+  };
+  const r = core.simpleResult(data, CO, { from: '2026-03-01', to: '2026-03-31' });
+  assert.strictEqual(r.produits, 10000);
+  assert.strictEqual(r.charges, 1001);      // loyer + timbre, pas la marchandise ni l'ordinateur
+  assert.strictEqual(r.stock, 3000);
+  assert.strictEqual(r.immo, 2000);
+  assert.strictEqual(r.resultat, 8999);
+  assert.strictEqual(r.marge, 90);
+  // aucune vente : pas de division par zéro
+  assert.strictEqual(core.simpleResult({ documents: [], purchases: [] }, CO, { from: '2026-01-01', to: '2026-12-31' }).marge, null);
+});
+
 console.log(`\n${n} tests OK`);

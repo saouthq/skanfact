@@ -7,6 +7,35 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 3.1.0 — 11/09/2026
+
+La soustraction qui manquait : ce que tu collectes moins ce que tu déduis.
+
+La page **Comptabilité** passe en quatre onglets
+
+**Ventes** — le journal des ventes, la TVA par taux et les attestations de retenue, comme avant.
+
+**Achats** — le journal symétrique
+- Toutes tes factures fournisseurs et dépenses de la période, avec la part de TVA récupérable
+- **« Où part ton argent »** : tes charges regroupées par catégorie, de la plus grosse à la plus petite. C'est souvent une surprise
+- Export CSV du journal des achats
+
+**TVA à payer** — le calcul complet
+- **TVA collectée sur tes ventes − TVA déductible sur tes achats = ce que tu reverses.** C'est le gain le plus concret de tout le plan
+- **Crédit de TVA** : quand tu achètes plus que tu ne vends, la différence n'est pas perdue — elle se reporte automatiquement sur le mois suivant
+- **Mois par mois** sur l'année, avec le crédit repris et celui reporté. Le total n'est pas la somme des lignes : un crédit ne se compte qu'une fois
+- Le crédit venu de l'année précédente se saisit à la main (SkanFact ne peut pas le deviner sans les données d'avant)
+- **Résultat simplifié** : produits moins charges. Les achats partis en stock ou en immobilisation n'y sont pas comptés, parce qu'ils ne sont pas consommés
+- *Ces chiffres sont l'arithmétique exacte de tes données, pas une déclaration officielle : à faire valider par ton comptable avant tout dépôt*
+
+**Calendrier fiscal** — un pense-bête
+- Six échéances proposées (TVA mensuelle, acomptes provisionnels, TCL, déclaration employeur, déclaration de résultat, CNSS trimestrielle). Tu actives celles qui te concernent et tu ajustes le jour limite
+- Les échéances à moins de quinze jours remontent dans **« À faire »** sur l'accueil
+- *À VÉRIFIER avec ton comptable : les dates, la périodicité et les déclarations applicables dépendent de ta forme juridique, de ton régime et de la présence de salariés*
+
+Envoi au comptable
+- L'email prépare maintenant **plusieurs journaux en pièces jointes** : ventes, achats, encaissements et règlements fournisseurs, un fichier CSV par journal, à cocher
+
 ## 3.0.0 — 11/09/2026
 
 L'argent qui sort. Jusqu'ici SkanFact ne connaissait que tes ventes ; il connaît maintenant tes achats.

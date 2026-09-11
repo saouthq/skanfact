@@ -124,6 +124,8 @@
     suppliers: [],   // fournisseurs (v4)
     purchases: [],   // factures d'achat et dépenses (v4)
     expenseCategories: [],   // catégories ajoutées par l'utilisateur, en plus de DEFAULT_EXPENSE_CATEGORIES
+    fiscalDeadlines: [],     // échéances fiscales activées/modifiées par l'utilisateur (v4)
+    vatCarryIn: {},          // crédit de TVA venu de l'année précédente, par année : { '2026': 1234 }
     counters: {}
   };
 
@@ -416,6 +418,8 @@
     if (!Array.isArray(data.suppliers)) data.suppliers = [];
     if (!Array.isArray(data.purchases)) data.purchases = [];
     if (!Array.isArray(data.expenseCategories)) data.expenseCategories = [];
+    if (!Array.isArray(data.fiscalDeadlines)) data.fiscalDeadlines = [];   // échéances fiscales personnalisées
+    if (!data.vatCarryIn || typeof data.vatCarryIn !== 'object') data.vatCarryIn = {};  // crédit de TVA reporté par année
     data.purchases.forEach(p => {
       if (!Array.isArray(p.payments)) p.payments = [];
       if (!Array.isArray(p.lines)) p.lines = [];
@@ -659,6 +663,21 @@
     }).filter(Boolean).sort((a, b) => (b.late - a.late) || (a.dueDate || '9999').localeCompare(b.dueDate || '9999'));
   }
 
+  // Journal des décaissements : un règlement fournisseur par ligne. Le symétrique de paymentsJournal.
+  function supplierPayments(data, company, period) {
+    const name = id => ((data.suppliers || []).find(s => s.id === id) || {}).name || '—';
+    const out = [];
+    (data.purchases || []).forEach(p => (p.payments || []).forEach(x => {
+      if (!inPeriod(x.date, period && period.from, period && period.to)) return;
+      const m = PAYMENT_METHODS.find(k => k[0] === x.method);
+      out.push({
+        id: x.id, purchaseId: p.id, date: x.date, number: p.number || '', supplier: name(p.supplierId),
+        amount: round3(Number(x.amount) || 0), method: m ? m[1] : (x.method || ''), reference: x.reference || '', note: x.note || ''
+      });
+    }));
+    return out.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  }
+
   // Journal des achats d'une période : une ligne par pièce, prête pour le CSV du comptable.
   function purchaseJournal(data, company, period) {
     const name = id => ((data.suppliers || []).find(s => s.id === id) || {}).name || '—';
@@ -713,6 +732,138 @@
       .filter(x => x.t.withholding > 0.0005 && !x.p.withholdingCertificate)
       .map(x => ({ id: x.p.id, supplier: name(x.p.supplierId), number: x.p.number || '', date: x.p.date, amount: x.t.withholding, rate: x.t.withholdingRate }))
       .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  }
+
+  // ---------- TVA réelle et calendrier fiscal (3.1.0) ----------
+  // Tout ce bloc relève du « À VÉRIFIER avec ton comptable » : ce sont des calculs arithmétiques
+  // exacts sur tes données, pas une déclaration officielle. Les dates, la périodicité et le régime
+  // applicable dépendent de ta situation.
+
+  // Déclaration de TVA d'une période : collectée (ventes) moins déductible (achats), par taux.
+  // `carryIn` est le crédit de TVA reporté du mois précédent, s'il y en a un.
+  function vatReturn(data, company, period, carryIn) {
+    const sales = salesJournal(data, company, period);
+    const buys = purchaseJournal(data, company, period);
+    const byRate = {};
+    VAT_RATES.forEach(r => { byRate[r] = { collected: 0, deductible: 0 }; });
+    sales.forEach(row => VAT_RATES.forEach(r => { byRate[r].collected = round3(byRate[r].collected + (row.vatByRate[r] ? row.vatByRate[r].vat : 0)); }));
+    (data.purchases || []).filter(p => inPeriod(p.date, period && period.from, period && period.to)).forEach(p => {
+      const t = purchaseTotals(p, company);
+      Object.keys(t.vatByRate).forEach(rate => {
+        if (!byRate[rate]) byRate[rate] = { collected: 0, deductible: 0 };
+        byRate[rate].deductible = round3(byRate[rate].deductible + t.vatByRate[rate].deductible);
+      });
+    });
+    const collected = round3(sales.reduce((s, r) => s + r.tva, 0));
+    const deductible = round3(buys.reduce((s, r) => s + r.deductible, 0));
+    const carry = round3(Math.max(0, Number(carryIn) || 0));
+    const balance = round3(collected - deductible - carry);
+    // Timbres encaissés : ils ne sont pas de la TVA mais se déclarent aussi. À VÉRIFIER.
+    const stamps = round3(sales.reduce((s, r) => s + r.timbre, 0));
+    // Retenues subies (déductibles de ton impôt) et opérées (à reverser)
+    const withheldBySale = round3(sales.reduce((s, r) => s + r.rs, 0));
+    const withheldOnBuys = round3(buys.reduce((s, r) => s + r.rs, 0));
+    return {
+      period, byRate, collected, deductible, carryIn: carry,
+      toPay: balance > 0 ? balance : 0,
+      carryOut: balance < 0 ? round3(-balance) : 0,     // crédit de TVA reportable sur la période suivante
+      stamps, withheldBySale, withheldOnBuys,
+      salesCount: sales.length, buysCount: buys.length,
+      salesHT: round3(sales.reduce((s, r) => s + r.ht, 0)),
+      buysHT: round3(buys.reduce((s, r) => s + r.ht, 0))
+    };
+  }
+
+  // Enchaînement des déclarations sur plusieurs mois : le crédit d'un mois se reporte sur le suivant.
+  // C'est la seule façon d'obtenir un chiffre juste — une déclaration isolée ignore le report.
+  function vatChain(data, company, year, upToMonth) {
+    const out = [];
+    let carry = Number((data.vatCarryIn || {})[year]) || 0;   // crédit venu de l'année précédente, saisi à la main
+    const last = Math.min(12, Math.max(1, Number(upToMonth) || 12));
+    for (let m = 1; m <= last; m++) {
+      const from = `${year}-${pad2(m)}-01`;
+      const to = `${year}-${pad2(m)}-${pad2(new Date(Date.UTC(Number(year), m, 0)).getUTCDate())}`;
+      const r = vatReturn(data, company, { from, to }, carry);
+      r.month = `${year}-${pad2(m)}`;
+      r.label = MONTHS_FR[m - 1];
+      out.push(r);
+      carry = r.carryOut;
+    }
+    return out;
+  }
+
+  // Échéances fiscales récurrentes. Les dates et la périodicité dépendent du régime et de la forme
+  // juridique : tout est paramétrable, rien n'est imposé. À VÉRIFIER avec le comptable.
+  const DEFAULT_FISCAL_DEADLINES = [
+    { id: 'tva', label: 'Déclaration mensuelle d\'employeur et de TVA', every: 'month', day: 28,
+      note: 'Déclaration et paiement de la TVA du mois précédent, avec les retenues à la source opérées. Le jour limite dépend de ta forme juridique (personne physique ou morale).', active: true },
+    { id: 'acompte', label: 'Acompte provisionnel', every: 'months', months: [6, 9, 12], day: 28,
+      note: 'Trois acomptes sur l\'impôt de l\'année, calculés sur l\'impôt de l\'année précédente.', active: true },
+    { id: 'tcl', label: 'Taxe sur les établissements (TCL)', every: 'month', day: 28,
+      note: 'Généralement déclarée en même temps que la TVA, sur le chiffre d\'affaires local.', active: false },
+    { id: 'employeur', label: 'Déclaration annuelle d\'employeur', every: 'year', month: 4, day: 30,
+      note: 'Récapitulatif annuel des salaires versés et des retenues opérées.', active: true },
+    { id: 'bilan', label: 'Déclaration annuelle de résultat', every: 'year', month: 6, day: 25,
+      note: 'Dépôt du bilan et de la déclaration d\'impôt sur les sociétés ou sur le revenu.', active: true },
+    { id: 'cnss', label: 'Déclaration CNSS trimestrielle', every: 'months', months: [1, 4, 7, 10], day: 15,
+      note: 'Cotisations sociales du trimestre écoulé. Ne concerne que les entreprises avec des salariés.', active: false }
+  ];
+
+  function fiscalDeadlines(data) {
+    const custom = (data && Array.isArray(data.fiscalDeadlines)) ? data.fiscalDeadlines : [];
+    const byId = {};
+    DEFAULT_FISCAL_DEADLINES.forEach(d => { byId[d.id] = { ...d }; });
+    custom.forEach(d => { if (d && d.id) byId[d.id] = { ...(byId[d.id] || {}), ...d }; });
+    return Object.values(byId);
+  }
+
+  // Prochaine occurrence d'une échéance, à partir d'aujourd'hui.
+  function nextDeadline(rule, todayIso) {
+    const t = todayIso || today();
+    const y0 = Number(t.slice(0, 4)), m0 = Number(t.slice(5, 7));
+    const lastDay = (y, m) => new Date(Date.UTC(y, m, 0)).getUTCDate();
+    const make = (y, m) => `${y}-${pad2(m)}-${pad2(Math.min(Number(rule.day) || 28, lastDay(y, m)))}`;
+    const candidates = [];
+    for (let k = 0; k <= 13; k++) {
+      const m = ((m0 - 1 + k) % 12) + 1;
+      const y = y0 + Math.floor((m0 - 1 + k) / 12);
+      if (rule.every === 'month') candidates.push(make(y, m));
+      else if (rule.every === 'months' && (rule.months || []).includes(m)) candidates.push(make(y, m));
+      else if (rule.every === 'year' && m === (Number(rule.month) || 1)) candidates.push(make(y, m));
+    }
+    return candidates.filter(d => d >= t).sort()[0] || '';
+  }
+
+  // Les échéances fiscales qui arrivent, pour le panneau « À faire » et la page Comptabilité.
+  function upcomingFiscal(data, todayIso, withinDays) {
+    const t = todayIso || today();
+    const within = Number(withinDays) || 30;
+    return fiscalDeadlines(data).filter(r => r.active !== false).map(r => {
+      const date = nextDeadline(r, t);
+      return date ? { id: r.id, label: r.label, note: r.note || '', date, days: daysBetween(t, date) } : null;
+    }).filter(x => x && x.days <= within).sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  // Résultat simple de la période : ce que tu as facturé moins ce que tu as dépensé, hors taxes.
+  // Ce n'est PAS le résultat comptable : il manque les amortissements, les stocks, les salaires et
+  // les provisions. À VÉRIFIER avec le comptable — c'est un ordre de grandeur, pas un bilan.
+  function simpleResult(data, company, period) {
+    const sales = salesJournal(data, company, period);
+    const buys = purchaseJournal(data, company, period);
+    const produits = round3(sales.reduce((s, r) => s + r.ht, 0));
+    // Une ligne partie au stock ou en immobilisation n'est pas une charge de la période.
+    let charges = 0, stock = 0, immo = 0;
+    (data.purchases || []).filter(p => inPeriod(p.date, period && period.from, period && period.to)).forEach(p => {
+      const t = purchaseTotals(p, company);
+      charges = round3(charges + t.byDestination.charge + t.fees);
+      stock = round3(stock + t.byDestination.stock);
+      immo = round3(immo + t.byDestination.immobilisation);
+    });
+    return {
+      produits, charges, stock, immo, resultat: round3(produits - charges),
+      marge: produits > 0 ? Math.round((produits - charges) / produits * 100) : null,
+      salesCount: sales.length, buysCount: buys.length
+    };
   }
 
   // ---------- conversions entre documents (2.6.0) ----------
@@ -1077,6 +1228,16 @@
       id: 'echeances', level: 'info', label: `${soon.length} facture${soon.length > 1 ? 's' : ''} à échéance cette semaine`,
       detail: 'Un message avant l\'échéance évite souvent la relance après.',
       count: soon.length, route: '#/relances', docs: soon
+    });
+
+    // Échéances fiscales des deux prochaines semaines. C'est un pense-bête réglé par l'utilisateur :
+    // les dates et la périodicité relèvent du « À VÉRIFIER avec ton comptable ».
+    const fisc = upcomingFiscal(data, t, 14);
+    if (fisc.length) out.push({
+      id: 'fiscal', level: fisc[0].days <= 5 ? 'warn' : 'info',
+      label: `${fisc.length} échéance${fisc.length > 1 ? 's' : ''} fiscale${fisc.length > 1 ? 's' : ''} sous 15 jours`,
+      detail: fisc.map(x => `${x.label} le ${fmtDate(x.date)}`).join(' · '),
+      count: fisc.length, route: '#/compta', docs: []
     });
 
     const oldDrafts = (data.documents || []).filter(d => d.status === 'brouillon' && d.date && daysBetween(d.date, t) > 7);
@@ -1778,7 +1939,8 @@
     CURRENCIES, decimalsFor, toBase, monthKeys, monthlySeries, topClients, quoteStats, avgPaymentDelay, clientSummary, I18N,
     EXTRA_TYPES, SALES_TYPES, CONVERSIONS, CONVERSION_LABELS, convertDoc, derivedDocs, DEFAULT_CLAUSES, CLAUSE_LABELS,
     PURCHASE_KINDS, LINE_DESTINATIONS, DEFAULT_EXPENSE_CATEGORIES, PURCHASE_STATUSES, expenseCategories,
-    purchaseTotals, purchaseBalance, purchaseStatus, payablesList, purchaseJournal, purchaseSummary, supplierSummary, withholdingsToIssue,
+    vatReturn, vatChain, DEFAULT_FISCAL_DEADLINES, fiscalDeadlines, nextDeadline, upcomingFiscal, simpleResult,
+    purchaseTotals, purchaseBalance, purchaseStatus, payablesList, purchaseJournal, purchaseSummary, supplierSummary, withholdingsToIssue, supplierPayments,
     periodBounds, issuedIn, salesTotals, revenueByMonth, topItems, clientMovement, AGING_BUCKETS, agedReceivables, payerRanking, quoteFunnel, objectiveProgress,
     amountToWords, intToWords, intToWordsEn, documentHtml, fitToPage, pageCount
   };

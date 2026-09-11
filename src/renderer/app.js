@@ -91,13 +91,14 @@
   }
 
   function save(immediate) {
+    try { window.__data = data; } catch (_) {}   // visible depuis les tests de bout en bout
     clearTimeout(saveTimer);
     const doSave = () => bridge.saveData(data).catch(e => toast('Erreur de sauvegarde : ' + e.message, true));
     if (immediate) return doSave();
     saveTimer = setTimeout(doSave, 300);
   }
 
-  const migrate = d => C.migrateData(d);
+  const migrate = d => { const m = C.migrateData(d); try { window.__data = m; } catch (_) {} return m; };
   const clientById = id => data.clients.find(c => c.id === id) || null;
   const docById = id => data.documents.find(d => d.id === id) || null;
   const company = () => data.company;
@@ -2385,12 +2386,32 @@
     { key: 'rs', label: 'Retenue source', type: 'money' }, { key: 'net', label: 'Net à payer', type: 'money' },
     { key: 'statusLabel', label: 'Statut' }, { key: 'paid', label: 'Payé', type: 'money' }, { key: 'remaining', label: 'Reste', type: 'money' }
   ];
+  // Colonnes des CSV d'achats et de trésorerie, partagées entre l'export manuel et l'envoi au comptable.
+  const buyJournalColumns = () => [
+    { key: 'date', label: 'Date', type: 'date' }, { key: 'number', label: 'N° fournisseur' }, { key: 'supplier', label: 'Fournisseur' },
+    { key: 'kind', label: 'Nature' }, { key: 'category', label: 'Catégorie' }, { key: 'subject', label: 'Objet' },
+    { key: 'ht', label: 'HT', type: 'money' }, { key: 'tva', label: 'TVA', type: 'money' }, { key: 'deductible', label: 'TVA déductible', type: 'money' },
+    { key: 'fees', label: 'Timbre et frais', type: 'money' }, { key: 'ttc', label: 'TTC', type: 'money' },
+    { key: 'rs', label: 'Retenue opérée', type: 'money' }, { key: 'net', label: 'Net à payer', type: 'money' }, { key: 'status', label: 'Statut' }
+  ];
+  const payColumns = () => [
+    { key: 'date', label: 'Date', type: 'date' }, { key: 'number', label: 'Facture' }, { key: 'client', label: 'Client' },
+    { key: 'amount', label: 'Montant', type: 'money' }, { key: 'method', label: 'Mode' }, { key: 'reference', label: 'Référence' }, { key: 'note', label: 'Note' }
+  ];
+  const decColumns = () => [
+    { key: 'date', label: 'Date', type: 'date' }, { key: 'number', label: 'Pièce fournisseur' }, { key: 'supplier', label: 'Fournisseur' },
+    { key: 'amount', label: 'Montant', type: 'money' }, { key: 'method', label: 'Mode' }, { key: 'reference', label: 'Référence' }, { key: 'note', label: 'Note' }
+  ];
+
   const MONTHS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
   const comptaState = {
+    tab: 'ventes',
     year: C.today().slice(0, 4), month: C.today().slice(5, 7),
     journal: { sort: null, page: 1 },      // journal des ventes
-    pays: { sort: null, page: 1 }          // encaissements
+    pays: { sort: null, page: 1 },         // encaissements
+    buys: { sort: null, page: 1 }          // journal des achats
   };
+  const COMPTA_TABS = [['ventes', 'Ventes'], ['achats', 'Achats'], ['tva', 'TVA à payer'], ['calendrier', 'Calendrier fiscal']];
 
   // ---------- Fournisseurs ----------
   const supplierById = id => data.suppliers.find(s => s.id === id);
@@ -3306,12 +3327,18 @@
 
     $('#view').innerHTML = `
       <div class="page-head"><h1>Comptabilité</h1>
-        <div class="actions">
+        <div class="actions" id="c-period" ${comptaState.tab === 'calendrier' ? 'hidden' : ''}>
           <select id="c-year">${years.map(y => `<option ${y === comptaState.year ? 'selected' : ''}>${y}</option>`).join('')}</select>
           <select id="c-month"><option value="">Toute l'année</option>${MONTHS.map((m, i) => { const v = String(i + 1).padStart(2, '0'); return `<option value="${v}" ${v === comptaState.month ? 'selected' : ''}>${m}</option>`; }).join('')}</select>
         </div></div>
+      <div class="tabs" id="c-tabs" role="tablist">${COMPTA_TABS.map(([id, label]) =>
+        `<button role="tab" data-tab="${id}" class="${id === comptaState.tab ? 'active' : ''}">${label}</button>`).join('')}</div>
       <div id="c-body"></div>`;
     const draw = () => {
+      $('#c-period').hidden = comptaState.tab === 'calendrier';
+      if (comptaState.tab === 'achats') return drawBuyJournal(period(), periodLabel());
+      if (comptaState.tab === 'tva') return drawVat();
+      if (comptaState.tab === 'calendrier') return drawFiscal();
       const p = period();
       const rows = C.salesJournal(data, company(), p);
       const sum = C.vatSummary(rows);
@@ -3387,7 +3414,7 @@
         bindPager(pPanel, comptaState.pays, () => draw(), '#p-wrap');
       }
       $$('[data-cert]').forEach(b => b.onclick = () => { const d = docById(b.dataset.cert); d.withholdingCertificate = true; save(true); draw(); toast('Attestation notée pour ' + d.number); });
-      const tag = comptaState.month ? `${comptaState.year}-${comptaState.month}` : comptaState.year;
+      const tag = tagOf();
       // Envoi au comptable : journal de la période en pièce jointe, message prérempli
       $('#exp-comptable').onclick = () => {
         if (!rows.length) return toast('Rien à envoyer sur cette période.', true);
@@ -3420,8 +3447,7 @@
         const p2 = await bridge.saveText(`journal-ventes-${tag}.csv`, C.toCsv(rows, journalColumns())); if (p2) toast('Exporté : ' + p2.split(/[\\/]/).pop());
       };
       $('#exp-pays').onclick = async () => {
-        const cols = [{ key: 'date', label: 'Date', type: 'date' }, { key: 'number', label: 'Facture' }, { key: 'client', label: 'Client' }, { key: 'amount', label: 'Montant', type: 'money' }, { key: 'method', label: 'Mode' }, { key: 'reference', label: 'Référence' }, { key: 'note', label: 'Note' }];
-        const p2 = await bridge.saveText(`encaissements-${tag}.csv`, C.toCsv(pays, cols)); if (p2) toast('Exporté : ' + p2.split(/[\\/]/).pop());
+        const p2 = await bridge.saveText(`encaissements-${tag}.csv`, C.toCsv(pays, payColumns())); if (p2) toast('Exporté : ' + p2.split(/[\\/]/).pop());
       };
       $('#exp-pdfs').onclick = async () => {
         if (!rows.length) return toast('Rien à exporter sur cette période.', true);
@@ -3431,9 +3457,147 @@
         catch (e) { toast('Erreur : ' + e.message, true); }
       };
     };
-    const resetPages = () => { comptaState.journal.page = 1; comptaState.pays.page = 1; };
+    // ---------- onglet Achats : le journal symétrique de celui des ventes ----------
+    function drawBuyJournal(p, label) {
+      const rows = C.purchaseJournal(data, company(), p);
+      const sum = C.purchaseSummary(rows);
+      const cols = [
+        { key: 'date', label: 'Date', asc: true, cls: 'nw', val: r => r.date || '', get: r => C.fmtDate(r.date) },
+        { key: 'number', label: 'N° fournisseur', asc: true, cls: 'nw', val: r => (r.number || '').toLowerCase(), get: r => r.number ? `<strong>${h(r.number)}</strong>` : '<span class="muted">sans numéro</span>' },
+        { key: 'supplier', label: 'Fournisseur', asc: true, val: r => r.supplier.toLowerCase(), get: r => `${h(r.supplier)}${r.subject ? `<div class="small muted">${h(r.subject)}</div>` : ''}` },
+        { key: 'category', label: 'Catégorie', asc: true, val: r => (r.category || '').toLowerCase(), get: r => `${h(r.category || '—')}${r.kind === 'Dépense' ? '<div class="small muted">dépense</div>' : ''}` },
+        { key: 'ht', label: 'HT', r: true, val: r => r.ht, get: r => C.money(r.ht) },
+        { key: 'tva', label: 'TVA', r: true, val: r => r.tva, get: r => C.money(r.tva) },
+        { key: 'deductible', label: 'dont déductible', r: true, val: r => r.deductible, get: r => r.deductible === r.tva ? C.money(r.deductible) : `<strong>${C.money(r.deductible)}</strong>` },
+        { key: 'net', label: 'Net payé', r: true, val: r => r.net, get: r => C.money(r.net) },
+        { key: 'status', label: 'Statut', val: r => r.status, get: r => buyBadge(r.status) }
+      ];
+      const pg = paginate(applySort(rows, cols, comptaState.buys.sort), comptaState.buys);
+      $('#c-body').innerHTML = `
+        <div class="stats">
+          <div class="stat"><div class="lbl">Achats HT — ${h(label)} ${info('compta.buyJournal')}</div><div class="val">${C.money(sum.ht, cur)}</div><div class="sub">${sum.count} pièce(s)</div></div>
+          <div class="stat"><div class="lbl">TVA déductible ${info('compta.deductible')}</div><div class="val">${C.money(sum.deductible, cur)}</div><div class="sub">${sum.deductible === sum.tva ? 'toute la TVA payée' : `sur ${C.money(sum.tva, cur)} payés`}</div></div>
+          <div class="stat"><div class="lbl">Retenues opérées ${info('buy.withholding')}</div><div class="val">${C.money(sum.rs, cur)}</div><div class="sub">à reverser au fisc</div></div>
+          <div class="stat"><div class="lbl">Total réglé ou dû ${info('compta.buyNet')}</div><div class="val">${C.money(sum.net, cur)}</div><div class="sub">net à payer, toutes pièces</div></div>
+        </div>
+        ${sum.byCategory.length ? `<div class="panel"><h2>Où part ton argent — ${h(label)} ${info('compta.byCategory')}</h2>
+          <ul class="rank">${sum.byCategory.slice(0, 10).map(x => `<li><span class="name">${h(x.label)}</span><span class="bar"><i style="width:${Math.max(4, Math.round(x.ht / Math.max(1, sum.byCategory[0].ht) * 100))}%"></i></span><span class="amt">${C.money(x.ht, cur)}</span></li>`).join('')}</ul>
+        </div>` : ''}
+        <div class="panel"><h2>Journal des achats — ${h(label)} ${info('compta.buyJournal')}</h2>
+          <div class="inline mb"><button class="btn" id="exp-buys">Exporter en CSV (Excel)</button></div>
+          ${rows.length ? `<div class="scroll-x" id="b-wrap"><table class="list compact sortable"><thead>${sortHead(cols, comptaState.buys.sort)}</thead><tbody>
+            ${pg.rows.map(r => `<tr class="clickable" data-bid="${r.id}">${cols.map(c => `<td class="${c.r ? 'r nw' : ''}${c.cls ? ' ' + c.cls : ''}">${c.get(r)}</td>`).join('')}</tr>`).join('')}
+          </tbody><tfoot><tr><td colspan="4"><strong>Total</strong></td><td class="r"><strong>${C.money(sum.ht)}</strong></td><td class="r"><strong>${C.money(sum.tva)}</strong></td>
+            <td class="r"><strong>${C.money(sum.deductible)}</strong></td><td class="r"><strong>${C.money(sum.net)}</strong></td><td></td></tr></tfoot></table></div>${pagerBar(pg.pg, { noun: 'pièce' })}`
+            : '<div class="empty">Aucun achat sur cette période.</div>'}
+        </div>`;
+      $$('#c-body tr[data-bid]').forEach(tr => tr.onclick = () => navigate('#/achat/' + tr.dataset.bid));
+      const panel = $('#b-wrap') && $('#b-wrap').closest('.panel');
+      if (panel) {
+        bindSort(panel, key => { comptaState.buys.sort = toggleSort(comptaState.buys.sort, key, cols); comptaState.buys.page = 1; draw(); });
+        bindPager(panel, comptaState.buys, () => draw(), '#b-wrap');
+      }
+      $('#exp-buys').onclick = async () => {
+        if (!rows.length) return toast('Rien à exporter sur cette période.', true);
+        const f = await bridge.saveText(`journal-achats-${tagOf()}.csv`, C.toCsv(rows, buyJournalColumns()));
+        if (f) toast('Exporté : ' + f.split(/[\\/]/).pop());
+      };
+    }
+
+    // ---------- onglet TVA : la soustraction qui manquait ----------
+    function drawVat() {
+      const year = comptaState.year;
+      // La TVA se déclare par mois : le bloc du haut porte toujours sur UN mois. Sans mois choisi,
+      // on prend le mois en cours si l'année affichée est l'année en cours, sinon décembre — et on le dit.
+      const auto = !comptaState.month;
+      const upTo = comptaState.month ? Number(comptaState.month)
+        : (year === C.today().slice(0, 4) ? Number(C.today().slice(5, 7)) : 12);
+      const chain = C.vatChain(data, company(), year, 12);
+      const cur1 = chain[upTo - 1] || null;
+      const res = C.simpleResult(data, company(), period());
+      const carryIn = Number((data.vatCarryIn || {})[year]) || 0;
+      $('#c-body').innerHTML = `
+        <div class="panel"><h2>Déclaration de TVA — ${h(MONTHS[upTo - 1])} ${year} ${info('compta.vatReturn')}</h2>
+          ${auto ? `<p class="small muted mb">La TVA se déclare mois par mois : voici ${h(MONTHS[upTo - 1])}. Choisis un autre mois en haut à droite, ou lis le tableau ci-dessous pour toute l'année.</p>` : ''}
+          ${cur1 ? `<div class="vat-box">
+            <div class="vat-line"><span>TVA collectée sur tes ventes</span><span class="num">${C.money(cur1.collected, cur)}</span></div>
+            <div class="vat-line minus"><span>− TVA déductible sur tes achats</span><span class="num">${C.money(cur1.deductible, cur)}</span></div>
+            ${cur1.carryIn ? `<div class="vat-line minus"><span>− Crédit de TVA reporté ${info('compta.carry')}</span><span class="num">${C.money(cur1.carryIn, cur)}</span></div>` : ''}
+            <div class="vat-line total ${cur1.toPay ? 'due' : 'ok'}">
+              <span>${cur1.toPay ? 'TVA à reverser' : 'Crédit de TVA reportable sur la période suivante'}</span>
+              <span class="num">${C.money(cur1.toPay || cur1.carryOut, cur)}</span></div>
+          </div>
+          <p class="small muted mt">Timbres fiscaux encaissés sur la période : ${C.money(cur1.stamps, cur)} · retenues subies : ${C.money(cur1.withheldBySale, cur)} · retenues que tu as opérées : ${C.money(cur1.withheldOnBuys, cur)}. Ces trois lignes se déclarent séparément de la TVA. <em>À VÉRIFIER avec ton comptable.</em></p>` : '<div class="empty">Rien à déclarer.</div>'}
+          <div class="inline mt"><button class="btn btn-sm" id="set-carry">Crédit de TVA venu de ${Number(year) - 1} : ${C.money(carryIn, cur)}</button>${info('compta.carryIn')}</div>
+        </div>
+        <div class="panel"><h2>Mois par mois — ${year} ${info('compta.vatMonths')}</h2>
+          <table class="list compact"><thead><tr><th>Mois</th><th class="r">Collectée</th><th class="r">Déductible</th><th class="r">Crédit repris</th><th class="r">À payer</th><th class="r">Crédit reporté</th></tr></thead><tbody>
+            ${chain.map(m => `<tr class="${m.toPay ? '' : 'row-ok'}"><td>${h(m.label)}</td><td class="r nw">${C.money(m.collected)}</td><td class="r nw">${C.money(m.deductible)}</td>
+              <td class="r nw">${m.carryIn ? C.money(m.carryIn) : '<span class="muted">—</span>'}</td>
+              <td class="r nw">${m.toPay ? `<strong>${C.money(m.toPay)}</strong>` : '<span class="muted">—</span>'}</td>
+              <td class="r nw">${m.carryOut ? C.money(m.carryOut) : '<span class="muted">—</span>'}</td></tr>`).join('')}
+            <tr class="total-row"><td><strong>Total à reverser</strong></td><td class="r">${C.money(chain.reduce((s, m) => s + m.collected, 0))}</td>
+              <td class="r">${C.money(chain.reduce((s, m) => s + m.deductible, 0))}</td><td></td>
+              <td class="r"><strong>${C.money(chain.reduce((s, m) => s + m.toPay, 0))}</strong></td><td></td></tr>
+          </tbody></table>
+          <p class="small muted mt">Le crédit d'un mois vient en déduction du suivant : c'est pour ça que le total ne se lit pas ligne par ligne. <em>Ces chiffres sont l'arithmétique exacte de tes données, pas une déclaration officielle : à faire valider par ton comptable avant tout dépôt.</em></p>
+        </div>
+        <div class="panel"><h2>Résultat simplifié — ${h(periodLabel())} ${info('compta.result')}</h2>
+          <div class="stats compact-stats">
+            <div class="stat"><div class="lbl">Produits (ventes HT)</div><div class="val">${C.money(res.produits, cur)}</div><div class="sub">${res.salesCount} pièce(s)</div></div>
+            <div class="stat"><div class="lbl">Charges HT</div><div class="val">${C.money(res.charges, cur)}</div><div class="sub">${res.buysCount} pièce(s) d'achat</div></div>
+            <div class="stat"><div class="lbl">Résultat avant impôt</div><div class="val ${res.resultat >= 0 ? 'ok' : 'due'}">${C.money(res.resultat, cur)}</div><div class="sub">${res.marge == null ? '' : res.marge + ' % du chiffre d\'affaires'}</div></div>
+            <div class="stat"><div class="lbl">Non comptés en charges</div><div class="val">${C.money(C.round3(res.stock + res.immo), cur)}</div><div class="sub">${C.money(res.stock, cur)} en stock · ${C.money(res.immo, cur)} en immobilisations</div></div>
+          </div>
+          <p class="small muted mt"><em>Ce n'est pas ton résultat comptable :</em> il manque les amortissements, la variation de stock, les salaires et les provisions. C'est un ordre de grandeur pour savoir où tu en es, pas un bilan. <em>À VÉRIFIER avec ton comptable.</em></p>
+        </div>`;
+      $('#set-carry').onclick = () => promptDialog('Crédit de TVA reporté',
+        `Crédit de TVA restant à la fin de ${Number(year) - 1}, tel qu'il figure sur ta dernière déclaration. Il viendra en déduction du premier mois de ${year}.`,
+        String(carryIn || ''), v => {
+          data.vatCarryIn = { ...(data.vatCarryIn || {}), [year]: Math.max(0, Number(String(v).replace(',', '.')) || 0) };
+          save(true); draw(); toast('Crédit de TVA enregistré');
+        }, 'number');
+    }
+
+    // ---------- onglet Calendrier fiscal ----------
+    function drawFiscal() {
+      const rules = C.fiscalDeadlines(data);
+      const up = C.upcomingFiscal(data, C.today(), 120);
+      $('#c-body').innerHTML = `
+        <div class="panel"><h2>Ce qui arrive ${info('compta.fiscal')}</h2>
+          ${up.length ? `<table class="list compact"><thead><tr><th>Échéance</th><th>Date</th><th class="r">Dans</th></tr></thead><tbody>
+            ${up.map(x => `<tr class="${x.days <= 7 ? 'row-warn' : ''}"><td><strong>${h(x.label)}</strong>${x.note ? `<div class="small muted">${h(x.note)}</div>` : ''}</td>
+              <td class="nw">${C.fmtDate(x.date)}</td><td class="r nw">${x.days === 0 ? "aujourd'hui" : x.days + ' j'}</td></tr>`).join('')}
+          </tbody></table>` : '<div class="empty">Aucune échéance activée. Active celles qui te concernent ci-dessous.</div>'}
+          <p class="small muted mt"><em>À VÉRIFIER avec ton comptable :</em> les dates limites, la périodicité et les déclarations qui te concernent dépendent de ta forme juridique, de ton régime fiscal et de la présence de salariés. Ce calendrier est un pense-bête que tu règles toi-même, pas une source officielle.</p>
+        </div>
+        <div class="panel"><h2>Les échéances et leur réglage</h2>
+          <table class="list compact"><thead><tr><th>Déclaration</th><th>Périodicité</th><th style="width:110px">Jour limite</th><th style="width:90px">Active</th></tr></thead><tbody>
+            ${rules.map(r => `<tr><td><strong>${h(r.label)}</strong>${r.note ? `<div class="small muted">${h(r.note)}</div>` : ''}</td>
+              <td class="small">${r.every === 'month' ? 'chaque mois' : r.every === 'year' ? `une fois par an (${MONTHS[(Number(r.month) || 1) - 1]})` : `${(r.months || []).map(m => MONTHS[m - 1]).join(', ')}`}</td>
+              <td><input type="number" class="num" data-day="${h(r.id)}" value="${Number(r.day) || 28}" min="1" max="31"></td>
+              <td><label class="check"><input type="checkbox" data-active="${h(r.id)}" ${r.active !== false ? 'checked' : ''}></label></td></tr>`).join('')}
+          </tbody></table>
+        </div>`;
+      const setRule = (id, patch) => {
+        const list = Array.isArray(data.fiscalDeadlines) ? data.fiscalDeadlines.slice() : [];
+        const i = list.findIndex(x => x.id === id);
+        if (i >= 0) list[i] = { ...list[i], ...patch }; else list.push({ id, ...patch });
+        data.fiscalDeadlines = list; save(true);
+      };
+      $$('[data-active]').forEach(c => c.onchange = () => { setRule(c.dataset.active, { active: c.checked }); draw(); });
+      $$('[data-day]').forEach(i => i.onchange = () => { setRule(i.dataset.day, { day: Math.min(31, Math.max(1, Number(i.value) || 28)) }); draw(); });
+    }
+
+    const tagOf = () => comptaState.month ? `${comptaState.year}-${comptaState.month}` : comptaState.year;
+    const resetPages = () => { comptaState.journal.page = 1; comptaState.pays.page = 1; comptaState.buys.page = 1; };
     $('#c-year').onchange = e => { comptaState.year = e.target.value; resetPages(); draw(); };
     $('#c-month').onchange = e => { comptaState.month = e.target.value; resetPages(); draw(); };
+    $$('#c-tabs button').forEach(b => b.onclick = () => {
+      comptaState.tab = b.dataset.tab;
+      $$('#c-tabs button').forEach(x => x.classList.toggle('active', x === b));
+      resetPages(); draw();
+    });
     draw();
   };
 

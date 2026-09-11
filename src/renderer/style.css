@@ -603,6 +603,18 @@ body.dark .danger-zone { border-color: #4a2a2a; }
 /* Saisie d'un achat : pas d'aperçu (le document existe déjà, c'est celui du fournisseur), donc pleine
    largeur — mais bornée, une ligne de formulaire de 1400 px ne se lit pas. */
 .buy-editor > div { max-width: 1080px; }
+/* ---------- déclaration de TVA : trois lignes et un résultat, lisibles d'un coup d'œil ---------- */
+.vat-box { max-width: 620px; }
+.vat-line { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+.vat-line .num { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+.vat-line.minus { color: var(--muted); }
+.vat-line.total { border-bottom: none; border-top: 2px solid var(--text); margin-top: 4px; padding-top: 14px; font-size: 16px; font-weight: 700; }
+.vat-line.total.due .num { color: var(--danger); font-size: 20px; }
+.vat-line.total.ok .num { color: var(--success); font-size: 20px; }
+tr.row-ok td { background: rgba(28, 143, 90, .05); }
+.compact-stats .stat .val { font-size: 19px; }
+.stat .val.ok { color: var(--success); }
+.stat .val.due { color: var(--danger); }
 .editor.no-preview .preview { position: static; flex-direction: row; justify-content: flex-end; height: auto; }
 /* les flèches du champ numérique mangent la colonne Qté sur un écran étroit */
 table.lines-edit input[type=number]::-webkit-inner-spin-button,

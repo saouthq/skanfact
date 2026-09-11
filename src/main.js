@@ -502,15 +502,18 @@ ipcMain.handle('file:saveSilent', (_e, { name, content }) => {
 // Composition d'un email dans le client de messagerie de l'utilisateur.
 //  - macOS + Apple Mail : nouveau message avec destinataire, objet, texte ET le PDF joint (AppleScript) ;
 //  - sinon : lien mailto (sans pièce jointe possible) + le PDF est montré dans le Finder / l'Explorateur.
-ipcMain.handle('mail:compose', async (_e, { to, subject, body, attachment, mode }) => {
+ipcMain.handle('mail:compose', async (_e, { to, subject, body, attachment, attachments, mode }) => {
+  // `attachments` (tableau) depuis la 3.1.0 : l'envoi au comptable joint plusieurs journaux.
+  // `attachment` (fichier unique) reste accepté pour tous les envois de documents.
+  const files = (Array.isArray(attachments) ? attachments : []).concat(attachment ? [attachment] : []).filter(Boolean);
   if (IS_MAC && mode !== 'mailto') {
     const esc = v => String(v || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
     const script = [
       'tell application "Mail"',
       `  set m to make new outgoing message with properties {subject:"${esc(subject)}", content:"${esc(body)}", visible:true}`,
       to ? `  tell m to make new to recipient at end of to recipients with properties {address:"${esc(to)}"}` : '',
-      attachment ? '  delay 0.5' : '',
-      attachment ? `  tell m to make new attachment with properties {file name:POSIX file "${esc(attachment)}"} at after the last paragraph` : '',
+      files.length ? '  delay 0.5' : '',
+      ...files.map(f => `  tell m to make new attachment with properties {file name:POSIX file "${esc(f)}"} at after the last paragraph`),
       '  activate',
       'end tell'
     ].filter(Boolean).join('\n');
@@ -526,7 +529,7 @@ ipcMain.handle('mail:compose', async (_e, { to, subject, body, attachment, mode 
   }
   const url = `mailto:${encodeURIComponent(to || '')}?subject=${encodeURIComponent(subject || '')}&body=${encodeURIComponent(body || '')}`;
   await shell.openExternal(url);
-  if (attachment) shell.showItemInFolder(attachment);
+  if (files.length) shell.showItemInFolder(files[0]);
   return { state: 'mailto' };
 });
 

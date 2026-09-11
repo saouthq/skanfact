@@ -109,13 +109,17 @@ mais un panneau repliable en haut de la page Achats, à côté de la liste qu'il
 charges sont une liste unique de seize entrées extensible, et non une liste par secteur d'activité : le
 secteur choisi à l'installation préremplit déjà le catalogue de vente, pas les charges.
 
-### 3.1.0 — TVA réelle, déclarations et calendrier fiscal · M
+### 3.1.0 — TVA réelle, déclarations et calendrier fiscal · M — ✅ **livré le 11/09/2026**
 
 - **Déclaration de TVA mensuelle** : collectée moins déductible, par taux, avec le montant à reverser ou le **crédit reportable** sur le mois suivant. C'est le gain le plus concret de tout le plan
 - **Journal des achats** et son export CSV, à côté du journal des ventes déjà existant
 - **Envoi au comptable** enrichi : ventes, achats, encaissements, décaissements en une fois
 - **Calendrier fiscal** dans « À faire » : déclaration de TVA mensuelle, acompte provisionnel, TCL, déclaration employeur annuelle, chacun avec son échéance — *À VÉRIFIER avec le comptable : dates, périodicité et régime applicable*
 - **Résultat simple** de la période : produits moins charges, avant impôt
+
+*Écarts avec le plan :* la page Comptabilité passe en quatre onglets (Ventes / Achats / TVA à payer / Calendrier)
+plutôt que d'empiler les panneaux. Le bloc de déclaration porte toujours sur **un mois** — c'est la maille réelle
+de la TVA — et le tableau « mois par mois » donne l'année, avec l'enchaînement des crédits reportés.
 
 ### 3.2.0 — Trésorerie · M
 
