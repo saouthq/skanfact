@@ -19,6 +19,8 @@ const MAC_SIGNED = false;
 
 let mainWindow = null;
 let storage = null;
+let rendererDirty = false;   // l'interface a-t-elle un document modifié non enregistré ?
+let forceClose = false;      // fermeture déjà confirmée par l'utilisateur
 
 // ---------- une seule instance ----------
 // Deux fenêtres qui écrivent le même fichier = données corrompues.
@@ -131,8 +133,28 @@ function createWindow() {
   };
   mainWindow.on('resize', saveState);
   mainWindow.on('move', saveState);
-  mainWindow.on('close', () => { clearTimeout(saveTimer); saveTimer = null; try { const b = mainWindow.getNormalBounds(); fs.writeFileSync(WINDOW_STATE(), JSON.stringify({ ...b, maximized: mainWindow.isMaximized() })); } catch {} });
-  mainWindow.on('closed', () => { mainWindow = null; });
+  // Fermer la fenêtre pendant la saisie d'un devis le perdait sans un mot. On demande d'abord.
+  // Le dialogue est natif : à ce stade la fenêtre s'en va, une modale dans la page serait trop fragile.
+  mainWindow.on('close', (e) => {
+    if (rendererDirty && !forceClose) {
+      e.preventDefault();
+      const { response } = dialog.showMessageBoxSync
+        ? { response: dialog.showMessageBoxSync(mainWindow, {
+            type: 'warning', buttons: ['Annuler', 'Fermer sans enregistrer'], defaultId: 0, cancelId: 0,
+            title: 'Modifications non enregistrées',
+            message: 'Tu as un document modifié qui n\'est pas enregistré.',
+            detail: 'Si tu fermes maintenant, ces modifications sont perdues.'
+          }) }
+        : { response: 1 };
+      if (response !== 1) return;
+      forceClose = true;
+      mainWindow.close();
+      return;
+    }
+    clearTimeout(saveTimer); saveTimer = null;
+    try { const b = mainWindow.getNormalBounds(); fs.writeFileSync(WINDOW_STATE(), JSON.stringify({ ...b, maximized: mainWindow.isMaximized() })); } catch {}
+  });
+  mainWindow.on('closed', () => { mainWindow = null; rendererDirty = false; forceClose = false; });
   // liens externes → navigateur, jamais dans l'app
   mainWindow.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:/.test(url)) shell.openExternal(url); return { action: 'deny' }; });
 }
@@ -202,6 +224,10 @@ function buildMenu() {
     {
       label: 'Affichage',
       submenu: [
+        // Revenir à l'écran précédent : la seule façon de sortir d'une sous-page était de cliquer
+        // dans la barre latérale, ce qui fait perdre l'endroit d'où l'on venait.
+        { label: 'Précédent', accelerator: 'CmdOrCtrl+[', click: act('back') },
+        { type: 'separator' },
         { label: 'Accueil', accelerator: 'CmdOrCtrl+1', click: act('go:dashboard') },
         { label: 'Devis', accelerator: 'CmdOrCtrl+2', click: act('go:devis') },
         { label: 'Factures', accelerator: 'CmdOrCtrl+3', click: act('go:factures') },
@@ -348,6 +374,7 @@ ipcMain.handle('backups:open', () => openBackups());
 ipcMain.handle('backups:create', (_e, label) => storage.backupNow(typeof label === 'string' && label ? label : 'manuelle'));
 // Titre de la fenêtre : ce qui est ouvert se lit dans le Dock et le menu Fenêtre
 ipcMain.on('window:title', (_e, title) => { if (mainWindow && typeof title === 'string') mainWindow.setTitle(title.slice(0, 120)); });
+ipcMain.on('window:dirty', (_e, dirty) => { rendererDirty = !!dirty; });
 ipcMain.handle('backups:list', () => storage.listBackups());
 
 // ---------- logo ----------

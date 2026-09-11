@@ -655,6 +655,16 @@
     const dateOf = ms => new Date(ms).toISOString().slice(0, 10);
     if (doc.createdAt) ev.push({ date: dateOf(doc.createdAt), kind: 'cree', label: 'Brouillon créé' });
     if (doc.fromQuoteNumber) ev.push({ date: doc.date, kind: 'devis', label: `Établi à partir du devis ${doc.fromQuoteNumber}`, id: doc.fromQuoteId });
+    // Une facture née d'un contrat récurrent le disait nulle part : on retrouve le contrat d'origine,
+    // et la ligne est cliquable comme celle d'un devis.
+    if (doc.recurringId) {
+      const rec = (data.recurring || []).find(r => r.id === doc.recurringId);
+      ev.push({
+        date: doc.date, kind: 'contrat', contractId: doc.recurringId,
+        label: 'Générée par un contrat récurrent',
+        detail: rec ? fillTemplate(rec.subject, { mois: monthLabel(doc.date), annee: (doc.date || '').slice(0, 4) }) : 'contrat supprimé depuis'
+      });
+    }
     if (doc.number && doc.status !== 'brouillon') ev.push({ date: doc.date, kind: 'emis', label: `${TITLES[doc.type]} ${doc.number} ${doc.type === 'facture' ? 'émise' : 'émis'}` });
     // Côté devis : les factures qui en sont tirées (conversion, acompte, solde), même encore en brouillon
     if (doc.type === 'devis' && doc.id) (data.documents || []).filter(d => d.type === 'facture' && d.fromQuoteId === doc.id).forEach(inv => {

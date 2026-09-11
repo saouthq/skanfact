@@ -176,6 +176,9 @@ table.lines-edit .total { text-align: right; padding-top: 12px; font-weight: 600
 
 /* ---------- modal ---------- */
 .modal-bg { position: fixed; inset: 0; background: rgba(27,36,48,.38); backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: center; z-index: 50; }
+/* Fenêtres empilées : un seul voile, celui du dessus. Sinon deux voiles se cumulent et la fenêtre
+   du dessous devient illisible alors qu'on a justement besoin de la voir. */
+.modal-bg:not(:last-child) { background: none; backdrop-filter: none; }
 .modal { background: var(--panel); border-radius: 18px; padding: 26px 28px; width: 580px; max-width: 94vw; max-height: 90vh; overflow-y: auto; box-shadow: 0 24px 70px rgba(20,40,60,.25); }
 .modal h2 { margin: 0 0 18px; font-size: 18px; font-weight: 700; letter-spacing: -.2px; }
 .modal .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
@@ -317,6 +320,13 @@ table.mini input, table.mini select { padding: 6px 8px; font-size: 13px; }
 .rank .bar { flex: 1; height: 8px; background: var(--ink-soft); border-radius: 999px; overflow: hidden; }
 .rank .bar i { display: block; height: 100%; background: var(--primary); border-radius: 999px; }
 .rank .amt { font-variant-numeric: tabular-nums; color: var(--muted); min-width: 110px; text-align: right; }
+.rank a.name { color: inherit; text-decoration: none; font-weight: 500; }
+.rank a.name:hover { color: var(--primary); text-decoration: underline; }
+
+/* Bouton retour : présent mais discret, il ne doit pas concurrencer l'action principale de la page. */
+.btn-back { background: none; border-color: var(--border); color: var(--muted); font-weight: 500; }
+.btn-back:hover { background: var(--ink-soft); color: var(--text); }
+body.dark .btn-back { border-color: #2b3540; }
 .stamp-preview { max-height: 70px; max-width: 220px; display: block; margin-bottom: 8px; border: 1px solid var(--border); padding: 6px; border-radius: 10px; background: #fff; }
 
 /* ---------- thème sombre ---------- */
@@ -534,6 +544,9 @@ body.dark .danger-zone { border-color: #4a2a2a; }
 .pv-pages { margin-left: auto; font-size: 11px; color: var(--muted); background: var(--ink-soft); border-radius: 999px; padding: 2px 9px; font-weight: 600; }
 .pv-pages.warn { background: var(--warning-soft); color: var(--warning); }
 .preview iframe { flex: 1 1 auto; height: auto; min-height: 0; }
+/* Fiche de contrat : l'aperçu se cale sur la hauteur du contenu, la liste des factures
+   passe dessous sur toute la largeur — à sept colonnes elle ne tient pas dans une demi-page. */
+.editor-short .preview { height: auto; min-height: 420px; max-height: calc(100vh - 140px); }
 .editor.no-preview { grid-template-columns: 1fr; }
 .editor.no-preview .preview { position: static; flex-direction: row; justify-content: flex-end; height: auto; }
 /* les flèches du champ numérique mangent la colonne Qté sur un écran étroit */

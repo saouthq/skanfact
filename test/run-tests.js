@@ -786,4 +786,21 @@ t('unités : liste standard et unités déjà employées', () => {
   assert.deepStrictEqual(core.usedUnits({}), []);
 });
 
+t('historique : une facture née d\'un contrat le dit et renvoie au contrat', () => {
+  const rec = { id: 'r1', clientId: 'c1', subject: 'Maintenance — {mois}', every: 'month', day: 1, nextDate: '2026-10-01', lines: [], active: true };
+  const inv = { id: 'i9', type: 'facture', number: 'FAC-2026-050', status: 'envoyée', date: '2026-09-01',
+    clientId: 'c1', lines: [{ label: 'x', qty: 1, unitPrice: 100, vatRate: 19 }], payments: [], createdAt: 1, recurringId: 'r1' };
+  const data = { documents: [inv], clients: [], recurring: [rec] };
+  const ev = core.documentHistory(inv, data, CO);
+  const c = ev.find(e => e.kind === 'contrat');
+  assert.ok(c, 'événement contrat absent : ' + ev.map(e => e.kind).join(','));
+  assert.strictEqual(c.contractId, 'r1');           // la ligne est cliquable vers le contrat
+  assert.ok(c.detail.includes('septembre 2026'));   // {mois} résolu sur le mois facturé, pas sur le gabarit
+  // contrat supprimé depuis : on le dit au lieu de planter
+  const ev2 = core.documentHistory(inv, { documents: [inv], clients: [], recurring: [] }, CO);
+  assert.ok(ev2.find(e => e.kind === 'contrat').detail.includes('supprimé'));
+  // une facture ordinaire ne déclenche rien
+  assert.ok(!core.documentHistory({ ...inv, recurringId: undefined }, data, CO).some(e => e.kind === 'contrat'));
+});
+
 console.log(`\n${n} tests OK`);

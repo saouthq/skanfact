@@ -7,6 +7,35 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 2.4.0 — 11/09/2026
+
+Revenir en arrière, et voir enfin ce que fait un contrat.
+
+Retour en arrière
+- **Bouton retour sur chaque sous-page** : l'éditeur de devis et de factures, la fiche client, l'aide. Il dit où il mène (« ← Factures », « ← la fiche client ») au lieu d'une flèche muette
+- **Précédent** dans le menu Affichage, raccourci **Cmd+[**
+- Le retour depuis l'aide ramène à ce que tu faisais, sans repasser par les articles déjà lus
+
+Contrats
+- **Fiche de contrat** : clique sur une ligne de la liste. Tu y trouves ce qu'il facture, à qui, depuis quand, le montant par facture, le total facturé depuis le début et ce qui reste à encaisser
+- **Aperçu de la prochaine facture**, exactement comme l'aperçu d'un devis dans l'éditeur : tu vois ce que ton client recevra, mois résolu compris, avant que la facture existe
+- **Liste des factures déjà générées** par le contrat, triable et cliquable
+- Depuis une facture issue d'un contrat, **un lien vers ce contrat**, dans l'en-tête et dans l'historique. Le rattachement existait dans les données depuis la 1.5.0 et n'était affiché nulle part
+- Les lignes d'un contrat ont maintenant une **unité** et une **description**, comme celles d'un document
+- « + Nouveau client » dans le formulaire de contrat : plus besoin de sortir pour créer le client
+
+Corrigé
+- **Une confirmation ouverte depuis un formulaire détruisait ce formulaire et la saisie en cours.** Un trop-perçu confirmé depuis « Enregistrer un paiement » faisait tout perdre. Les fenêtres s'empilent désormais
+- **Fermer la fenêtre avec un document non enregistré le perdait sans un mot.** L'app demande maintenant confirmation
+- La pastille « Version prête » ouvrait les Paramètres sur l'onglet Société au lieu des Mises à jour
+- Les noms du « Top clients » de l'accueil ne menaient pas à la fiche client
+- « Devis expirés » et « devis sans réponse » ouvraient la liste complète au lieu de la liste filtrée
+- Les attestations de retenue à réclamer n'ouvraient pas la facture concernée
+- « + Avoir » était proposé même sans aucune facture émise, alors que le formulaire ne pouvait pas être rempli
+- Le menu « Plus ▾ » s'ouvrait vide sur un avoir émis
+- La recherche des contrats ramenait le curseur à la fin à chaque frappe
+- Cinq explications « i » déjà écrites n'étaient affichées nulle part (acompte, solde, conversion, contrat, filtre par année)
+
 ## 2.3.0 — 11/09/2026
 
 Trois champs qu'on utilise vingt fois par jour, refaits.
