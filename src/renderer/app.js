@@ -2594,8 +2594,8 @@
   const supplierById = id => data.suppliers.find(s => s.id === id);
   const supplierName = id => (supplierById(id) || {}).name || '—';
 
-  function supplierForm(supplier, done) {
-    const s = supplier || { id: C.uid(), name: '', contact: '', matricule: '', address: '', phone: '', email: '', rib: '', bank: '', notes: '', paymentTermsDays: '', withholdingRate: '' };
+  function supplierForm(supplier, done, preset) {
+    const s = supplier || Object.assign({ id: C.uid(), name: '', contact: '', matricule: '', address: '', phone: '', email: '', rib: '', bank: '', notes: '', paymentTermsDays: '', withholdingRate: '' }, preset || {});
     modal(`<h2>${supplier ? 'Modifier le fournisseur' : 'Nouveau fournisseur'}</h2>
       <form id="sf" class="grid-2">
         <label class="field span-2">Nom / Raison sociale<input type="text" name="name" value="${h(s.name)}" required></label>
@@ -2956,6 +2956,7 @@
         <div class="actions">
           ${backButton('#/achats')}
           ${!isNew && C.purchaseBalance(stored, company()).remaining > 0.0005 ? '<button class="btn" id="pay">Enregistrer un règlement</button>' : ''}
+          <button class="btn" id="photo">Depuis une photo… ${info('ocr.photo')}</button>
           <button class="btn btn-primary" id="save">Enregistrer</button>
           ${isNew ? '' : `<div class="more"><button class="btn" id="more-btn">Plus ▾</button><div class="more-list" id="more-list" hidden>
             <button id="dup">Dupliquer</button>
@@ -3113,6 +3114,53 @@
       })
     });
     $('#b-notes').oninput = e => { p.notes = e.target.value; touch(); };
+    // Crochet de démonstration : ouvrir la fenêtre de vérification sur une lecture simulée, sans aucun
+    // appel réseau. Sert aux captures d'écran et à l'audit ; inoffensif, il ne fait qu'afficher.
+    document.addEventListener('skanfact:ocr-demo', () => {
+      if (!window.__ocrDemo) return;
+      ocrReviewForm(window.__ocrDemo, { name: 'facture-fournisseur.jpg', size: 420000, path: '' }, () => {});
+    }, { once: true });
+
+    // --- lecture d'une photo de facture (4.2.0)
+    // Le chemin sans clé est le chemin par défaut : on joint la photo et on saisit à la main. La lecture
+    // n'est proposée que si l'utilisateur a lui-même activé la fonction dans les Paramètres.
+    $('#photo').onclick = async () => {
+      let file;
+      try { file = await bridge.ocrPick(); } catch (e) { return toast(e.message || 'Fichier illisible', true); }
+      if (!file) return;
+      let st = { hasKey: false };
+      try { st = await bridge.ocrStatus(); } catch (_) {}
+      const attach = async () => {
+        if (isNew) { if (!persist()) return false; }
+        try { const a = await bridge.attachPath(p.id, file.path); p.attachments = (p.attachments || []).concat([a]); save(true); return true; }
+        catch (e) { toast(e.message || 'Impossible de joindre la photo', true); return false; }
+      };
+      if (!st.hasKey) {
+        const go = await confirmDialog(
+          `La lecture automatique n'est pas activée : rien ne peut être envoyé nulle part.\n\n« ${file.name} » peut quand même être jointe à cet achat comme justificatif, et tu saisis la facture à la main — c'est le fonctionnement normal, hors ligne.\n\nPour activer la lecture (clé payante, image envoyée sur internet), va dans Paramètres → Mises à jour → Lecture de factures.`,
+          'Joindre la photo', false);
+        if (!go) return;
+        if (await attach()) { toast('Photo jointe'); render(true); }
+        return;
+      }
+      if (!await confirmDialog(`Envoyer « ${file.name} » (${(file.size / 1024).toFixed(0)} Ko) au service de lecture ?\n\nL'image part sur internet. Rien d'autre n'est envoyé. Le résultat te sera proposé : tu le valides ou tu le corriges avant qu'il n'entre dans tes données.`, 'Lire la facture', false)) return;
+      toast('Lecture en cours…');
+      let read;
+      try { read = await bridge.ocrRead(file.path); }
+      catch (e) {
+        const retry = await confirmDialog(`La lecture a échoué.\n\n${e.message || 'Erreur inconnue.'}\n\nTu peux joindre la photo et saisir la facture à la main.`, 'Joindre la photo', false);
+        if (retry && await attach()) { toast('Photo jointe'); render(true); }
+        return;
+      }
+      ocrReviewForm(read, file, async (values) => {
+        Object.assign(p, values.head);
+        p.lines = values.lines;
+        touch();
+        if (await attach()) toast('Facture pré-remplie et photo jointe — vérifie avant d\'enregistrer');
+        render(true);
+      });
+    };
+
 
     // --- règlements
     function drawPayments() {
@@ -3842,6 +3890,90 @@
       save(true); render();
     });
   };
+
+  // ---------- validation de ce qui a été lu sur la photo (4.2.0) ----------
+  // C'est ici que se joue la règle la plus importante du module : l'application ne remplit jamais toute
+  // seule. Elle montre ce qu'elle a cru lire, signale ce qui ne colle pas, et attend un clic.
+  function ocrReviewForm(read, file, done) {
+    const cur = company().currency;
+    // Toute la normalisation (nombres, dates, reconnaissance du fournisseur, avertissements) vit dans
+    // core.js : elle est testable sans Electron, ce qui compte quand on manipule ce qu'une machine a cru lire.
+    const prep = C.ocrToPurchase(read, data);
+    const head = { ...prep.head, category: '' };
+    let lines = prep.lines;
+
+    const computed = () => C.round3(lines.reduce((a, l) => a + l.qty * l.unitPrice, 0));
+    const gapHT = () => prep.readHT == null ? null : C.round3(computed() - prep.readHT);
+
+    modal(`<h2>Ce que SkanFact a lu</h2>
+      <p class="small muted">Lu sur « ${h(file.name)} ». <b>Rien n'est encore entré dans tes données.</b> Vérifie, corrige si besoin, puis valide — l'écran d'achat s'ouvrira pré-rempli et tu pourras encore tout changer.</p>
+      <div id="ocr-warn"></div>
+      <form id="orf" class="grid-2">
+        <div class="field span-2">${lbl('Fournisseur', 'ocr.supplier')}
+          ${combo({ name: 'supplierId', value: head.supplierId, items: data.suppliers.slice().sort((a, b) => a.name.localeCompare(b.name, 'fr')).map(x => ({ v: x.id, label: x.name, sub: x.matricule || '', text: `${x.name} ${x.matricule || ''}` })), placeholder: '— À choisir —', search: 'Rechercher un fournisseur…', add: head.supplierName && !head.supplierId ? `+ Créer « ${h(head.supplierName)} »` : '+ Nouveau fournisseur' })}
+        </div>
+        ${field('Numéro de la facture', 'number', head.number, 'text', '')}
+        ${dateFieldHtml('Date', 'date', head.date, {})}
+        ${dateFieldHtml('Échéance', 'dueDate', head.dueDate, { clearable: true })}
+        ${field('Timbre et frais', 'fees', head.fees, 'number', 'step="0.001" min="0" class="num"')}
+        <label class="field span-2">Objet<input type="text" name="subject" value="${h(head.subject)}"></label>
+        <div class="field span-2">Catégorie de charge
+          ${combo({ name: 'category', value: '', items: C.expenseCategories(data).map(c => ({ v: c, label: c })), placeholder: '— À choisir —', search: 'Rechercher une catégorie…' })}
+        </div>
+      </form>
+      <div class="panel"><h2>Lignes lues</h2>
+        <table class="lines-edit buy-lines"><thead><tr><th>Désignation</th><th style="width:70px">Qté</th><th style="width:100px">P.U. HT</th><th style="width:80px">TVA</th><th class="r">Total HT</th><th></th></tr></thead>
+          <tbody id="orf-lines"></tbody></table>
+        <div class="inline mt"><button type="button" class="btn btn-sm" id="orf-add">+ Ligne</button>
+          <span class="small muted" id="orf-sum"></span></div>
+      </div>
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Utiliser ces informations</button></div>`,
+      (root, close) => {
+        const supCombo = bindCombo($('[data-combo=supplierId]', root), {
+          items: data.suppliers.map(x => ({ v: x.id, label: x.name, text: x.name })), placeholder: '— À choisir —',
+          onAdd: () => supplierForm(null, sup => {
+            supCombo.setItems(data.suppliers.map(x => ({ v: x.id, label: x.name, text: x.name })));
+            supCombo.setValue(sup.id);
+          }, head.supplierName && !head.supplierId ? { name: head.supplierName, matricule: head.matricule || '' } : null)
+        });
+        bindCombo($('[data-combo=category]', root), { items: C.expenseCategories(data).map(c => ({ v: c, label: c })), placeholder: '— À choisir —' });
+        bindDateFields(root);
+
+        const drawLines = () => {
+          $('#orf-lines', root).innerHTML = lines.map((l, i) => `<tr data-i="${i}">
+            <td><input type="text" data-k="label" value="${h(l.label)}"></td>
+            <td><input type="number" class="num" data-k="qty" value="${l.qty}" step="0.01"></td>
+            <td><input type="number" class="num" data-k="unitPrice" value="${l.unitPrice}" step="0.001"></td>
+            <td><select data-k="vatRate">${C.VAT_RATES.map(r => `<option value="${r}" ${Number(l.vatRate) === r ? 'selected' : ''}>${r}%</option>`).join('')}</select></td>
+            <td class="total">${C.money(C.round3(l.qty * l.unitPrice), cur)}</td>
+            <td class="line-tools"><button type="button" class="btn btn-ghost btn-sm" data-rm="${i}" title="Supprimer">✕</button></td></tr>`).join('');
+          $$('[data-k]', $('#orf-lines', root)).forEach(el => el.oninput = el.onchange = () => {
+            const i = Number(el.closest('tr').dataset.i);
+            lines[i][el.dataset.k] = el.type === 'number' || el.dataset.k === 'vatRate' ? Number(el.value) : el.value;
+            drawLines();
+          });
+          $$('[data-rm]', $('#orf-lines', root)).forEach(b => b.onclick = () => { lines.splice(Number(b.dataset.rm), 1); if (!lines.length) lines.push({ label: '', qty: 1, unit: '', unitPrice: 0, vatRate: 19, destination: 'charge', deductible: true }); drawLines(); });
+          const g = gapHT();
+          $('#orf-sum', root).innerHTML = `Total des lignes : <b>${C.money(computed(), cur)}</b> HT`
+            + (prep.readHT != null ? ` · total lu sur la pièce : ${C.money(prep.readHT, cur)}` : '');
+          $('#ocr-warn', root).innerHTML = [
+            !$('input[name=supplierId]', root).value ? 'Aucun fournisseur reconnu : choisis-le, ou crée-le depuis la liste.' : '',
+            g != null && Math.abs(g) > 0.005 ? `Les lignes lues totalisent ${C.money(computed(), cur)} alors que la pièce annonce ${C.money(prep.readHT, cur)} : un écart de ${C.money(g, cur)}. Corrige avant de valider.` : '',
+            !read.number ? 'Aucun numéro de facture lu : saisis-le, il est obligatoire pour la déduction de TVA.' : ''
+          ].filter(Boolean).map(m => `<p class="small warn-text">${m}</p>`).join('');
+        };
+        drawLines();
+        $('#orf-add', root).onclick = () => { lines.push({ label: '', qty: 1, unit: '', unitPrice: 0, vatRate: 19, destination: 'charge', deductible: true }); drawLines(); };
+        $('#orf', root).oninput = $('#orf', root).onchange = drawLines;
+        $('#ok', root).onclick = () => {
+          const v = formValues($('#orf', root));
+          if (!v.supplierId) return toast('Choisis le fournisseur : sans lui, l\'achat n\'est rattaché à personne.', true);
+          close();
+          done({ head: { supplierId: v.supplierId, number: v.number || '', date: v.date || C.today(), dueDate: v.dueDate || '',
+            subject: v.subject || '', category: v.category || '', fees: Number(v.fees) || 0 }, lines });
+        };
+      });
+  }
 
   // ---------- Numéros de série et garanties (4.1.0) ----------
   const serialById = id => data.serials.find(x => x.id === id);
@@ -5263,6 +5395,7 @@
 
       <section data-pane="maj" hidden>
         <div class="panel"><h2>Mises à jour</h2><div id="update-panel"></div></div>
+        <div class="panel"><h2>Lecture de factures d'achat ${info('ocr.key')}</h2><div id="ocr-panel"></div></div>
       </section>
 
       <section data-pane="donnees" hidden>
@@ -5348,6 +5481,7 @@
     $('#save').onclick = () => { applySettings(); toast('Paramètres enregistrés'); };
     $('#cancel-set').onclick = () => { setDirty = false; render(); };
     drawUpdatePanel();
+    drawOcrPanel();
     $('#backup-now').onclick = async () => { const p = await bridge.createBackup(); toast(p ? 'Sauvegarde créée : ' + p.split(/[\\/]/).pop() : 'Rien à sauvegarder pour l\'instant'); drawExternal(); };
     const drawExternal = async () => {
       const i = await bridge.externalBackupInfo(); const el = $('#ext-status'); if (!el) return;
@@ -5481,6 +5615,60 @@
     drawUpdatePill();
     if (ev.state === 'downloaded' && location.hash !== '#/parametres') toast('Version ' + ev.version + ' prête à installer — voir Paramètres');
   });
+
+  // ---------- lecture de factures : la clé et le consentement (4.2.0) ----------
+  // Sans clé, aucune requête ne part de l'ordinateur. Le panneau le dit avant de proposer quoi que ce soit.
+  async function drawOcrPanel() {
+    const el = $('#ocr-panel'); if (!el) return;
+    let st = { hasKey: false, model: '' };
+    try { st = await bridge.ocrStatus(); } catch (_) {}
+    el.innerHTML = `
+      <p class="small mb">Photographier une facture fournisseur au lieu de la saisir. SkanFact envoie l'image à un service d'intelligence artificielle qui en lit les informations, puis <b>te propose un formulaire pré-rempli à valider</b>. Il ne remplit jamais tes données tout seul : une erreur de lecture sur une quantité fausserait tout ton stock.</p>
+      <div class="vat-box" style="max-width:760px">
+        <div class="vat-line"><span>État</span><span class="num">${st.hasKey ? '<span class="ok-text">Activé</span>' : 'Désactivé'}</span></div>
+        <div class="vat-line"><span>Ce qui sort de ton ordinateur</span><span class="num">${st.hasKey ? 'l\'image, au moment où tu cliques' : '<span class="ok-text">rien</span>'}</span></div>
+        <div class="vat-line"><span>Dernière lecture</span><span class="num">${st.lastUsed ? h(new Date(st.lastUsed).toLocaleString('fr-FR')) : '<span class="muted">jamais</span>'}</span></div>
+      </div>
+      <p class="small muted mt">${st.hasKey
+        ? 'La clé est stockée sur cet ordinateur seulement (<code>lecture-config.json</code>), jamais dans tes données ni dans tes sauvegardes. Chaque lecture coûte quelques centimes, facturés par le fournisseur de la clé.'
+        : 'Tant qu\'aucune clé n\'est saisie, <b>aucune donnée ne quitte cet ordinateur</b> : une photo de facture peut quand même être jointe à un achat comme justificatif, ce qui marche hors ligne.'}</p>
+      <div class="inline mt">
+        <button class="btn ${st.hasKey ? '' : 'btn-primary'}" id="ocr-key">${st.hasKey ? 'Changer la clé' : 'Activer la lecture de factures…'}</button>
+        ${st.hasKey ? '<button class="btn btn-danger" id="ocr-off">Désactiver et effacer la clé</button>' : ''}
+      </div>`;
+    $('#ocr-key').onclick = () => ocrKeyForm(() => drawOcrPanel());
+    if ($('#ocr-off')) $('#ocr-off').onclick = async () => {
+      if (!await confirmDialog('Effacer la clé de cet ordinateur ? Plus rien ne sera envoyé nulle part. Tu pourras toujours joindre les photos comme justificatifs.')) return;
+      await bridge.ocrSetKey(null);
+      toast('Clé effacée'); drawOcrPanel();
+    };
+  }
+
+  function ocrKeyForm(done) {
+    modal(`<h2>Activer la lecture de factures</h2>
+      <p class="small">Avant d'activer, lis ceci — c'est important et ça ne prend pas trente secondes :</p>
+      <ul class="small" style="margin:0 0 14px 18px">
+        <li>L'<b>image de la facture</b> est envoyée sur internet, à un service d'intelligence artificielle, au moment où tu cliques « Lire ». Rien d'autre ne part : ni tes clients, ni tes chiffres, ni ta comptabilité.</li>
+        <li>Il faut une <b>clé payante</b>, que tu crées toi-même sur <code>console.anthropic.com</code>. Chaque facture lue coûte quelques centimes.</li>
+        <li>La clé reste <b>sur cet ordinateur</b>, dans un fichier à part. Elle n'est jamais mise dans tes données ni dans tes sauvegardes.</li>
+        <li>Tu peux tout désactiver et effacer la clé à tout moment, d'un clic.</li>
+      </ul>
+      <form id="okf" class="grid-2">
+        <label class="field span-2">Clé d'API<input type="password" name="key" placeholder="sk-ant-…" autocomplete="off"></label>
+        <label class="field span-2">${lbl('Modèle', 'ocr.model')}<input type="text" name="model" value="claude-sonnet-5" spellcheck="false"></label>
+      </form>
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Activer</button></div>`,
+      (root, close) => {
+        $('#ok', root).onclick = async () => {
+          const v = formValues($('#okf', root));
+          if (!(v.key || '').trim()) return toast('Colle ta clé d\'API.', true);
+          try {
+            await bridge.ocrSetKey(v.key.trim(), (v.model || '').trim() || undefined);
+            close(); toast('Lecture de factures activée'); if (done) done();
+          } catch (e) { toast(e.message || 'Échec', true); }
+        };
+      });
+  }
 
   function drawUpdatePill() {
     const pill = $('#update-pill'); if (!pill) return;

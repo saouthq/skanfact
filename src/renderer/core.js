@@ -1172,6 +1172,73 @@
     return out;
   }
 
+  // ---------- lecture d'une photo de facture (4.2.0) ----------
+  // La partie testable du module : transformer ce qu'un service de lecture a cru voir en un achat
+  // propre, et DIRE ce qui ne colle pas. Rien n'est enregistré ici — c'est l'utilisateur qui valide.
+  // L'appel réseau lui-même vit dans main.js, et n'a lieu que si une clé a été saisie.
+
+  function ocrNumber(v) {
+    if (v == null || v === '') return 0;
+    // « 1 234,56 DT », « 1.234,56 », « 1,234.56 » : on retire tout sauf les chiffres et le séparateur.
+    let t = String(v).replace(/[^\d.,-]/g, '');
+    const lastComma = t.lastIndexOf(','), lastDot = t.lastIndexOf('.');
+    if (lastComma >= 0 && lastDot >= 0) {
+      // Le dernier des deux est le séparateur décimal, l'autre sépare les milliers.
+      if (lastComma > lastDot) t = t.replace(/\./g, '').replace(',', '.');
+      else t = t.replace(/,/g, '');
+    } else if (lastComma >= 0) {
+      t = t.replace(/,/g, '.');
+    }
+    const n = Number(t);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  // Ce qui a été lu, ramené à la forme d'un achat, avec la liste de ce qui mérite un coup d'œil.
+  function ocrToPurchase(read, data, todayIso) {
+    const r = read || {};
+    const t = todayIso || today();
+    const norm = x => (x || '').trim().toLowerCase();
+    // Le fournisseur se reconnaît d'abord au matricule (unique), ensuite au nom (approximatif).
+    const supplier = (data.suppliers || []).find(s2 => r.matricule && norm(s2.matricule) === norm(r.matricule))
+      || (data.suppliers || []).find(s2 => r.supplier && norm(s2.name) === norm(r.supplier))
+      || null;
+    let lines = (Array.isArray(r.lines) ? r.lines : []).map(l => ({
+      label: String(l.label || '').trim(),
+      qty: ocrNumber(l.qty) || 1,
+      unit: '',
+      unitPrice: ocrNumber(l.unitPrice),
+      vatRate: VAT_RATES.includes(ocrNumber(l.vatRate)) ? ocrNumber(l.vatRate) : 19,
+      destination: 'charge', deductible: true
+    })).filter(l => l.label || l.unitPrice);
+    if (!lines.length) {
+      lines = [{ label: r.subject || 'À compléter', qty: 1, unit: '', unitPrice: ocrNumber(r.totalHT),
+        vatRate: 19, destination: 'charge', deductible: true }];
+    }
+    const computedHT = round3(lines.reduce((s2, l) => s2 + l.qty * l.unitPrice, 0));
+    const readHT = r.totalHT == null ? null : ocrNumber(r.totalHT);
+    const date = parseDateInput(r.date || '') || t;
+    const warnings = [];
+    if (!supplier) warnings.push(r.supplier ? `Fournisseur « ${r.supplier} » inconnu : à choisir ou à créer.` : 'Aucun fournisseur lu : à choisir.');
+    if (!r.number) warnings.push('Aucun numéro de facture lu : il est obligatoire pour déduire la TVA.');
+    if (readHT != null && Math.abs(round3(computedHT - readHT)) > 0.005) {
+      warnings.push(`Les lignes totalisent ${computedHT} alors que la pièce annonce ${readHT}.`);
+    }
+    if (date > t) warnings.push('La date lue est dans le futur : vérifie-la.');
+    return {
+      head: {
+        supplierId: supplier ? supplier.id : '',
+        supplierName: supplier ? supplier.name : (r.supplier || ''),
+        matricule: r.matricule || '',
+        number: r.number || '',
+        date,
+        dueDate: parseDateInput(r.dueDate || '') || '',
+        subject: r.subject || '',
+        fees: ocrNumber(r.fees)
+      },
+      lines, computedHT, readHT, warnings
+    };
+  }
+
   // ---------- numéros de série, garanties et parc client (4.1.0) ----------
   // Un numéro de série est une unité physique qu'on peut suivre nommément : entrée par un achat,
   // sortie chez un client, sous garantie jusqu'à une date. C'est ce qui permet de répondre à
@@ -2968,6 +3035,7 @@
     cappedCumulated,
     MOVE_SOURCES, moveSourceLabel, trackedItems, itemOfLine, stockMovements, runningStock, stockOf,
     stockList, stockTotals, stockJournal, inventoryDiff, stockAlerts, stockImpact, costOfGoodsSold,
+    ocrNumber, ocrToPurchase,
     SERIAL_STATUSES, serialStatusLabel, WARRANTY_CHOICES, serializedItems, warrantyEnd, serialView,
     serialList, availableSerials, clientFleet, warrantiesEnding, serialGap, serialGaps,
     mergeData, trackDeletion, MERGE_LISTS, LIST_LABELS,

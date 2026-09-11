@@ -292,6 +292,10 @@ function buildMenu() {
 // ---------- stockage ----------
 
 // Réglages propres à cet ordinateur (dossiers, copie externe, identité du poste), hors du fichier de données.
+// Modèle utilisé pour la lecture des factures (4.2.0). Modifiable par l'utilisateur si un autre
+// convient mieux, mais celui-ci lit bien les photos de factures.
+const OCR_DEFAULT_MODEL = 'claude-sonnet-5';
+
 const APP_CFG = () => path.join(app.getPath('userData'), 'app-config.json');
 function readAppCfg() { try { return JSON.parse(fs.readFileSync(APP_CFG(), 'utf8')); } catch { return {}; } }
 function writeAppCfg(cfg) { fs.mkdirSync(path.dirname(APP_CFG()), { recursive: true }); fs.writeFileSync(APP_CFG(), JSON.stringify(cfg, null, 2)); }
@@ -538,9 +542,156 @@ ipcMain.handle('attach:add', async (_e, docId) => {
   }
   return out;
 });
+// Joindre un fichier dont on connaît déjà le chemin (la photo qu'on vient de lire, par exemple) :
+// même copie dans userData/pieces-jointes/, sans redemander à l'utilisateur de le retrouver.
+ipcMain.handle('attach:addPath', (_e, { docId, path: file } = {}) => {
+  if (!file || !fs.existsSync(file)) throw new Error('Fichier introuvable.');
+  const size = fs.statSync(file).size;
+  if (size > 25 * 1024 * 1024) throw new Error(`« ${path.basename(file)} » dépasse 25 Mo.`);
+  return storage.addAttachment(docId, file);
+});
 ipcMain.handle('attach:open', (_e, { docId, file }) => shell.openPath(storage.attachmentPath(docId, file)));
 ipcMain.handle('attach:reveal', (_e, { docId, file }) => shell.showItemInFolder(storage.attachmentPath(docId, file)));
 ipcMain.handle('attach:remove', (_e, { docId, file }) => storage.removeAttachment(docId, file));
+
+// ---------- lecture d'une photo de facture d'achat (4.2.0) ----------
+// Trois règles, dans cet ordre :
+//  1. RIEN NE PART SANS CLÉ. Sans clé saisie par l'utilisateur, aucune requête réseau n'est émise :
+//     la photo est simplement attachée comme justificatif, ce qui marche hors ligne et pour toujours.
+//  2. La clé vit dans userData/lecture-config.json (mode 0600), jamais dans le code, jamais dans le
+//     fichier de données, jamais dans une sauvegarde envoyée à quelqu'un.
+//  3. L'APPLICATION NE REMPLIT JAMAIS TOUTE SEULE. Elle renvoie une proposition que l'utilisateur
+//     valide ou corrige. Une erreur de lecture sur une quantité pourrit tout l'inventaire derrière.
+const OCR_CFG = () => path.join(app.getPath('userData'), 'lecture-config.json');
+function readOcrCfg() { try { return JSON.parse(fs.readFileSync(OCR_CFG(), 'utf8')); } catch { return {}; } }
+function writeOcrCfg(cfg) { fs.mkdirSync(path.dirname(OCR_CFG()), { recursive: true }); fs.writeFileSync(OCR_CFG(), JSON.stringify(cfg), { mode: 0o600 }); }
+
+const OCR_TYPES = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.gif': 'image/gif', '.pdf': 'application/pdf' };
+
+// Ce qu'on demande au modèle. Volontairement strict : du JSON, rien d'autre, et « null » plutôt qu'une
+// invention quand l'information n'est pas lisible sur l'image.
+const OCR_PROMPT = `Tu lis une facture d'achat tunisienne (ou un reçu) et tu en extrais les informations.
+
+Réponds UNIQUEMENT par un objet JSON, sans texte avant ni après, sans balises de code, à ce format exact :
+{
+  "supplier": string|null,        // raison sociale du fournisseur, telle qu'écrite
+  "matricule": string|null,       // matricule fiscal du fournisseur
+  "number": string|null,          // numéro de la facture
+  "date": string|null,            // date de la facture, format AAAA-MM-JJ
+  "dueDate": string|null,         // échéance de paiement si elle figure, format AAAA-MM-JJ
+  "subject": string|null,         // objet en quelques mots
+  "currency": string|null,        // "TND", "EUR", "USD"…
+  "fees": number|null,            // timbre fiscal et frais divers, en unité monétaire
+  "totalHT": number|null,         // total hors taxes annoncé sur la pièce
+  "totalTTC": number|null,        // total toutes taxes comprises annoncé sur la pièce
+  "lines": [                      // une entrée par ligne de la facture
+    { "label": string, "qty": number, "unitPrice": number, "vatRate": number }
+  ]
+}
+
+Règles :
+- N'INVENTE RIEN. Si une information n'est pas lisible, mets null (ou omets la ligne).
+- Les montants sont des nombres, avec le point comme séparateur décimal, sans symbole ni espace.
+- "unitPrice" est le prix unitaire HORS TAXES. Si seul un prix TTC figure, divise-le par (1 + taux/100).
+- "vatRate" est un nombre : 0, 7, 13 ou 19 en Tunisie. Si aucun taux n'est lisible, mets 19.
+- Les dates tunisiennes s'écrivent souvent JJ/MM/AAAA : convertis-les en AAAA-MM-JJ.
+- Ne mets pas le timbre fiscal dans les lignes : il va dans "fees".`;
+
+function ocrRequest(key, model, payload) {
+  return new Promise((resolve, reject) => {
+    const body = Buffer.from(JSON.stringify(payload));
+    const req = require('https').request({
+      hostname: 'api.anthropic.com', path: '/v1/messages', method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'content-length': body.length,
+        'x-api-key': key,
+        'anthropic-version': '2023-06-01'
+      },
+      timeout: 120000
+    }, (res) => {
+      let out = '';
+      res.setEncoding('utf8');
+      res.on('data', c => { out += c; });
+      res.on('end', () => {
+        if (res.statusCode === 401 || res.statusCode === 403) return reject(new Error('Clé refusée : vérifie-la dans Paramètres → Lecture de factures.'));
+        if (res.statusCode === 429) return reject(new Error('Trop de demandes d\'un coup. Réessaie dans une minute.'));
+        if (res.statusCode >= 400) {
+          let msg = '';
+          try { msg = (JSON.parse(out).error || {}).message || ''; } catch {}
+          return reject(new Error(`Le service a répondu ${res.statusCode}${msg ? ' : ' + msg : ''}.`));
+        }
+        try { resolve(JSON.parse(out)); } catch { reject(new Error('Réponse illisible du service.')); }
+      });
+    });
+    req.on('timeout', () => { req.destroy(new Error('Le service met trop de temps à répondre. Réessaie, ou saisis la facture à la main.')); });
+    req.on('error', (e) => reject(new Error(/ENOTFOUND|EAI_AGAIN|ECONNREFUSED/.test(e.code || '') ? 'Pas de connexion internet. Tu peux joindre la photo et saisir la facture à la main.' : e.message)));
+    req.end(body);
+  });
+}
+
+// Le modèle peut encadrer son JSON de texte malgré la consigne : on récupère le premier objet complet.
+function parseOcrJson(text) {
+  const s = String(text || '');
+  const start = s.indexOf('{');
+  const end = s.lastIndexOf('}');
+  if (start < 0 || end <= start) throw new Error('Le service n\'a pas renvoyé de facture lisible.');
+  return JSON.parse(s.slice(start, end + 1));
+}
+
+ipcMain.handle('ocr:status', () => {
+  const cfg = readOcrCfg();
+  return { hasKey: !!cfg.key, model: cfg.model || OCR_DEFAULT_MODEL, lastUsed: cfg.lastUsed || '' };
+});
+ipcMain.handle('ocr:setKey', (_e, { key, model } = {}) => {
+  const cfg = readOcrCfg();
+  if (key === null) { try { fs.unlinkSync(OCR_CFG()); } catch {} return { hasKey: false, model: OCR_DEFAULT_MODEL }; }
+  if (typeof key === 'string' && key.trim()) cfg.key = key.trim();
+  if (model) cfg.model = model;
+  writeOcrCfg(cfg);
+  return { hasKey: !!cfg.key, model: cfg.model || OCR_DEFAULT_MODEL };
+});
+
+// Choisir la photo. Aucune requête réseau ici : on renvoie juste le chemin et la taille.
+ipcMain.handle('ocr:pick', async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+    title: 'Choisir la photo ou le PDF de la facture',
+    filters: [{ name: 'Facture', extensions: ['jpg', 'jpeg', 'png', 'webp', 'pdf'] }],
+    properties: ['openFile']
+  });
+  if (canceled || !filePaths.length) return null;
+  const f = filePaths[0];
+  const type = OCR_TYPES[path.extname(f).toLowerCase()];
+  if (!type) throw new Error('Format non reconnu. Utilise une photo (JPG, PNG, WEBP) ou un PDF.');
+  const size = fs.statSync(f).size;
+  if (size > 10 * 1024 * 1024) throw new Error(`« ${path.basename(f)} » fait ${(size / 1024 / 1024).toFixed(1)} Mo. Au-delà de 10 Mo, le service refuse l'image : prends une photo un peu moins lourde.`);
+  return { path: f, name: path.basename(f), size, type };
+});
+
+// La lecture elle-même. Appelée seulement quand l'utilisateur a saisi une clé ET cliqué « Lire ».
+ipcMain.handle('ocr:read', async (_e, { path: file } = {}) => {
+  const cfg = readOcrCfg();
+  if (!cfg.key) throw new Error('Aucune clé n\'est enregistrée : rien n\'a été envoyé. Paramètres → Lecture de factures.');
+  if (!file || !fs.existsSync(file)) throw new Error('Fichier introuvable.');
+  const type = OCR_TYPES[path.extname(file).toLowerCase()];
+  if (!type) throw new Error('Format non reconnu.');
+  const b64 = fs.readFileSync(file).toString('base64');
+  const source = { type: 'base64', media_type: type, data: b64 };
+  const content = [
+    type === 'application/pdf' ? { type: 'document', source } : { type: 'image', source },
+    { type: 'text', text: OCR_PROMPT }
+  ];
+  const res = await ocrRequest(cfg.key, cfg.model || OCR_DEFAULT_MODEL, {
+    model: cfg.model || OCR_DEFAULT_MODEL,
+    max_tokens: 2000,
+    messages: [{ role: 'user', content }]
+  });
+  const text = (res.content || []).filter(c => c.type === 'text').map(c => c.text).join('');
+  const parsed = parseOcrJson(text);
+  cfg.lastUsed = new Date().toISOString();
+  writeOcrCfg(cfg);
+  return parsed;
+});
 
 // ---------- PDF ----------
 

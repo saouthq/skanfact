@@ -137,6 +137,10 @@
     'ed.margin': { t: 'Marge estimée', d: 'Ce qu\'il resterait de ce document une fois retiré le <b>coût de revient</b> de chaque ligne (celui du catalogue, ou celui recopié sur la ligne). C\'est une estimation : elle ne tient pas compte du loyer, des salaires ni des frais généraux. Pour une marge exacte, rattache ce document à une <b>affaire</b> et rattaches-y aussi les achats correspondants.' },
     'buy.project': { t: 'Affaire', d: 'Rattache cet achat au chantier pour lequel tu l\'as fait. C\'est ce rattachement qui rend la marge exacte : sans lui, l\'affaire semblera plus rentable qu\'elle ne l\'est.' },
     'cat.cost': { t: 'Coût de revient HT', d: 'Ce que cette prestation ou cet article te coûte : prix d\'achat de la marchandise, sous-traitance, matériel. Facultatif, mais c\'est lui qui permet de calculer la marge sur les ventes qui ne sont pas rattachées à une affaire. Pour une prestation où tu ne vends que ton temps, laisse 0 : la marge affichée sera alors le prix de vente.' },
+    'ocr.photo': { t: 'Depuis une photo', d: 'Photographier la facture du fournisseur au lieu de la saisir. <b>Sans clé d\'API activée, rien n\'est envoyé nulle part</b> : la photo est simplement jointe à l\'achat comme justificatif, et tu saisis à la main — c\'est le fonctionnement normal et hors ligne. Avec une clé, l\'image part sur internet, revient lue, et SkanFact te propose un formulaire à valider.' },
+    'ocr.key': { t: 'Lecture de factures', d: 'La seule fonction de SkanFact qui envoie quelque chose sur internet, et elle est <b>désactivée par défaut</b>. Une fois activée, seule l\'<b>image</b> de la facture est envoyée, au moment où tu cliques : ni tes clients, ni tes chiffres, ni ta comptabilité. La clé reste sur cet ordinateur, dans un fichier à part, jamais dans tes données ni tes sauvegardes. Chaque lecture coûte quelques centimes, facturés par le fournisseur de la clé.' },
+    'ocr.model': { t: 'Modèle de lecture', d: 'Le modèle d\'intelligence artificielle qui lit l\'image. Celui proposé par défaut lit bien les photos de factures ; ne le change que si ton fournisseur de clé t\'indique autre chose.' },
+    'ocr.supplier': { t: 'Fournisseur reconnu', d: 'SkanFact compare ce qu\'il a lu à tes fournisseurs existants — par matricule fiscal d\'abord, par nom ensuite. S\'il ne trouve personne, il te le dit et te propose de créer la fiche : <b>il ne crée jamais un fournisseur tout seul</b>, sinon ta liste se remplirait de doublons.' },
     'ser.serialized': { t: 'Suivi par numéro de série', d: 'Pour du matériel identifiable et garanti : un serveur, un ordinateur, un pare-feu. Chaque unité est alors suivie <b>nommément</b> — tu sais laquelle est chez quel client, depuis quand, et jusqu\'à quand elle est garantie. Inutile pour des consommables interchangeables : on ne suit pas des câbles un par un.' },
     'ser.warranty': { t: 'Durée de garantie', d: 'La durée annoncée par le constructeur ou celle que tu accordes toi-même. Elle court à partir de la <b>livraison</b>, pas de ton achat : c\'est la date qui compte pour le client. Choisis « Aucune » si le matériel n\'est pas garanti.' },
     'ser.inDate': { t: 'Date d\'entrée', d: 'Le jour où l\'unité est arrivée chez toi. Sert à savoir ce qui dort depuis longtemps en réserve, et à retrouver la facture d\'achat correspondante.' },
@@ -562,6 +566,35 @@
 </ul>
 <h3>Ce que cette page ne fait pas</h3>
 <p>Pas de numéros de série, pas de lots ni de dates de péremption, pas de dépôts multiples, pas de réservation sur commande. Pas de FIFO ni de LIFO non plus : un seul coût moyen. Ce sont des besoins d'entreprises plus grandes ; si l'un d'eux devient nécessaire, il se rajoutera.</p>`
+    },
+    {
+      id: 'lecture', title: 'Photographier une facture au lieu de la saisir', sub: 'Ce que ça envoie, ce que ça coûte, ce que ça ne fait pas',
+      body: `
+<p>Saisir une facture fournisseur prend deux minutes. En saisir trente en fin de mois prend une soirée. SkanFact peut lire la photo à ta place et te proposer la saisie toute faite — mais cette fonction est la <b>seule</b> de l'application qui envoie quelque chose sur internet, alors elle mérite trois minutes de lecture avant de l'activer.</p>
+<h3>Par défaut, elle est éteinte</h3>
+<p>Tant qu'aucune clé n'est enregistrée, <b>aucune donnée ne quitte ton ordinateur</b>. Le bouton « Depuis une photo… » de l'écran d'achat fonctionne quand même : il joint la photo à l'achat comme justificatif, et tu saisis à la main. C'est le fonctionnement normal, hors ligne, et il n'expire jamais.</p>
+<h3>Ce qui part, si tu l'actives</h3>
+<ul>
+  <li><b>L'image de la facture</b>, et rien d'autre. Pas tes clients, pas tes chiffres, pas ta comptabilité, pas ton fichier de données.</li>
+  <li><b>Au moment où tu cliques</b>, pas avant, pas en arrière-plan. SkanFact te demande confirmation à chaque facture, en te disant le nom du fichier et sa taille.</li>
+</ul>
+<p>Note quand même que la facture d'un fournisseur porte son nom, son matricule et des montants : si un achat est confidentiel, saisis-le à la main.</p>
+<h3>Ce que ça coûte</h3>
+<p>Il faut une <b>clé d'API</b>, que tu crées toi-même sur <code>console.anthropic.com</code> et que tu recharges comme un compte prépayé. Chaque facture lue coûte quelques centimes. La clé est stockée sur cet ordinateur, dans un fichier séparé de tes données — elle n'entre jamais dans une sauvegarde ni dans un dossier partagé.</p>
+<p><b>Paramètres → Mises à jour → Lecture de factures</b> pour l'activer, la changer, ou l'effacer d'un clic.</p>
+<h3>L'application ne remplit jamais toute seule</h3>
+<p>C'est la règle qui ne bougera pas. Ce qui a été lu s'affiche dans une fenêtre de vérification :</p>
+<ul>
+  <li>Le <b>fournisseur</b> est reconnu par son matricule fiscal, à défaut par son nom. S'il est inconnu, SkanFact te le dit et te propose de créer la fiche — il ne la crée jamais tout seul, sinon ta liste se remplirait de doublons.</li>
+  <li>Le <b>total des lignes</b> est comparé au total imprimé sur la pièce. S'il y a un écart, il est affiché en rouge : c'est presque toujours une ligne mal lue.</li>
+  <li>Un <b>numéro de facture manquant</b> est signalé : sans lui, la TVA n'est pas déductible.</li>
+  <li>Les lignes arrivent toutes en destination <b>« charge »</b>. Si c'est de la marchandise ou du matériel, c'est à toi de le dire : une erreur de lecture sur une quantité fausserait tout ton stock.</li>
+</ul>
+<p>Tu valides, l'écran d'achat s'ouvre pré-rempli, et tu peux encore tout changer avant d'enregistrer. La photo est jointe comme justificatif dans tous les cas.</p>
+<h3>Quand ça ne marche pas</h3>
+<p>Pas d'internet, clé épuisée, photo floue : SkanFact te le dit en clair et te propose de joindre la photo et de saisir à la main. Rien n'est jamais perdu, et l'achat n'est jamais enregistré à moitié.</p>
+<h3>Conseils de photo</h3>
+<p>À plat, bien éclairé, la facture entière dans le cadre, sans ombre portée. Un PDF est encore mieux qu'une photo quand le fournisseur en envoie un. Au-delà de 10 Mo, le service refuse l'image : règle ton téléphone sur une qualité moyenne, c'est largement suffisant pour du texte.</p>`
     },
     {
       id: 'series', title: 'Savoir qui a quoi : numéros de série et garanties', sub: 'Parc client, fin de garantie, occasion de vente',

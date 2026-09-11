@@ -191,7 +191,7 @@ Pour un revendeur de matériel informatique, c'est de la vente récurrente presq
 - **Fins de garantie qui approchent** dans « À faire » : l'occasion de proposer un contrat de maintenance
 - La fiche client montre son parc
 
-### 4.2.0 — Photo d'une facture d'achat, saisie pré-remplie · M — *décision à prendre*
+### 4.2.0 — Photo d'une facture d'achat, saisie pré-remplie · M — **livrée, éteinte par défaut**
 
 L'idée de ton père : photographier la facture au lieu de la saisir.
 

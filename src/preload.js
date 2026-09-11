@@ -33,6 +33,13 @@ contextBridge.exposeInMainWorld('skanfact', {
   saveTextSilent: (name, content) => ipcRenderer.invoke('file:saveSilent', { name, content }),
   composeMail: (opts) => ipcRenderer.invoke('mail:compose', opts),
   addAttachments: (docId) => ipcRenderer.invoke('attach:add', docId),
+  // Lecture d'une photo de facture (4.2.0). `ocrRead` est le SEUL appel qui sort de l'ordinateur,
+  // et il échoue proprement tant qu'aucune clé n'a été saisie.
+  attachPath: (docId, path) => ipcRenderer.invoke('attach:addPath', { docId, path }),
+  ocrStatus: () => ipcRenderer.invoke('ocr:status'),
+  ocrSetKey: (key, model) => ipcRenderer.invoke('ocr:setKey', { key, model }),
+  ocrPick: () => ipcRenderer.invoke('ocr:pick'),
+  ocrRead: (path) => ipcRenderer.invoke('ocr:read', { path }),
   openAttachment: (docId, file) => ipcRenderer.invoke('attach:open', { docId, file }),
   revealAttachment: (docId, file) => ipcRenderer.invoke('attach:reveal', { docId, file }),
   removeAttachment: (docId, file) => ipcRenderer.invoke('attach:remove', { docId, file }),

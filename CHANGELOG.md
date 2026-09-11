@@ -7,6 +7,35 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 4.2.0 — 11/09/2026
+
+Photographier une facture fournisseur au lieu de la saisir. **Éteint par défaut**, et pour de bonnes raisons.
+
+**Sans clé, rien ne quitte ton ordinateur**
+- Le bouton « Depuis une photo… » de l'écran d'achat marche quand même : il joint la photo comme justificatif, et tu saisis à la main
+- C'est le fonctionnement normal, hors ligne, et il n'expire jamais
+
+**Avec une clé, que tu actives toi-même** (Paramètres → Mises à jour → Lecture de factures)
+- Seule l'**image** de la facture est envoyée, au moment où tu cliques. Ni tes clients, ni tes chiffres, ni ta comptabilité
+- Confirmation demandée à chaque facture, avec le nom du fichier et sa taille
+- La clé est stockée sur cet ordinateur, dans un fichier à part : jamais dans tes données, jamais dans une sauvegarde, jamais dans un dossier partagé
+- Désactivation et effacement de la clé d'un clic
+- Quelques centimes par facture, facturés par le fournisseur de la clé
+
+**L'application ne remplit jamais toute seule.** Ce qui a été lu passe par une fenêtre de vérification qui signale :
+- le **fournisseur inconnu** (reconnu par matricule fiscal, à défaut par nom — jamais créé automatiquement, sinon la liste se remplit de doublons) ;
+- l'**écart** entre le total des lignes et le total imprimé sur la pièce ;
+- le **numéro de facture manquant**, sans lequel la TVA n'est pas déductible ;
+- une **date dans le futur**.
+
+Les lignes arrivent toutes en destination « charge » : c'est à toi de dire ce qui est de la marchandise ou du matériel. Une erreur de lecture sur une quantité fausserait tout le stock.
+
+Nombres reconnus dans tous les formats (1 234,56 · 1.234,56 · 1,234.56), dates tunisiennes JJ/MM/AAAA converties, taux de TVA farfelu ramené à 19 %. Photo ou PDF, jusqu'à 10 Mo.
+
+Quand ça échoue — pas d'internet, clé épuisée, photo floue — SkanFact le dit en clair et propose de joindre la photo et de saisir à la main. L'achat n'est jamais enregistré à moitié.
+
+Nouvel article d'aide « Photographier une facture au lieu de la saisir ».
+
 ## 4.1.0 — 11/09/2026
 
 Le stock dit combien il t'en reste. Les numéros de série disent **où ils sont**.

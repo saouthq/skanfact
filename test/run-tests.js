@@ -2198,4 +2198,64 @@ t('numéros de série : l\'écart avec le stock en quantité est signalé', () =
   assert.strictEqual(core.serialGap(d, 'inconnu', '2026-06-01'), null);
 });
 
+// ---------- lecture d'une photo de facture (4.2.0) ----------
+
+t('lecture : les nombres arrivent dans tous les formats, on les ramène au même', () => {
+  assert.strictEqual(core.ocrNumber('1 234,56 DT'), 1234.56);
+  assert.strictEqual(core.ocrNumber('1.234,56'), 1234.56);      // format européen
+  assert.strictEqual(core.ocrNumber('1,234.56'), 1234.56);      // format anglo-saxon
+  assert.strictEqual(core.ocrNumber('19 %'), 19);
+  assert.strictEqual(core.ocrNumber(''), 0);
+  assert.strictEqual(core.ocrNumber(null), 0);
+  assert.strictEqual(core.ocrNumber('n/a'), 0);                 // illisible : zéro, pas NaN
+});
+
+t('lecture : ce qui a été lu devient un achat, et ce qui cloche est dit', () => {
+  const data = core.migrateData({
+    suppliers: [{ id: 'f1', name: 'Tunisie Matériel', matricule: '7890123G/A/000', payments: [] }]
+  });
+  const lu = {
+    supplier: 'TUNISIE MATÉRIEL', matricule: '7890123G/A/000', number: 'FA-2026-1187',
+    date: '18/07/2026', dueDate: '17/08/2026', subject: 'Postes de travail', fees: '1,000',
+    totalHT: '2 300,000',
+    lines: [{ label: 'Poste de travail', qty: '10', unitPrice: '230,000', vatRate: '19' }]
+  };
+  const r = core.ocrToPurchase(lu, data, '2026-09-11');
+  // le fournisseur est reconnu par son matricule, malgré la casse du nom
+  assert.strictEqual(r.head.supplierId, 'f1');
+  assert.strictEqual(r.head.date, '2026-07-18');                // JJ/MM/AAAA converti
+  assert.strictEqual(r.head.dueDate, '2026-08-17');
+  assert.strictEqual(r.head.fees, 1);
+  assert.strictEqual(r.lines.length, 1);
+  assert.strictEqual(r.lines[0].unitPrice, 230);
+  assert.strictEqual(r.lines[0].destination, 'charge');         // jamais « stock » sans décision humaine
+  assert.strictEqual(r.computedHT, 2300);
+  assert.deepStrictEqual(r.warnings, []);                       // tout concorde
+});
+
+t('lecture : un écart, un fournisseur inconnu ou un numéro manquant sont signalés', () => {
+  const data = core.migrateData({});
+  const r = core.ocrToPurchase({
+    supplier: 'Inconnu SARL', number: '', date: '2026-07-18', totalHT: 1000,
+    lines: [{ label: 'Quelque chose', qty: 1, unitPrice: 900, vatRate: 19 }]
+  }, data, '2026-09-11');
+  assert.strictEqual(r.head.supplierId, '');
+  assert.strictEqual(r.head.supplierName, 'Inconnu SARL');
+  assert.strictEqual(r.warnings.length, 3);                     // fournisseur, numéro, écart
+  assert.ok(r.warnings.some(w => /Inconnu SARL/.test(w)));
+  assert.ok(r.warnings.some(w => /numéro/.test(w)));
+  assert.ok(r.warnings.some(w => /900/.test(w) && /1000/.test(w)));
+  // une date future est suspecte
+  assert.ok(core.ocrToPurchase({ date: '2027-01-01', number: 'X', supplier: '' }, data, '2026-09-11')
+    .warnings.some(w => /futur/.test(w)));
+  // aucune ligne lue : on en pose une à compléter plutôt que zéro
+  const vide = core.ocrToPurchase({ number: 'X', totalHT: 500, subject: 'Réparation' }, data, '2026-09-11');
+  assert.strictEqual(vide.lines.length, 1);
+  assert.strictEqual(vide.lines[0].label, 'Réparation');
+  assert.strictEqual(vide.lines[0].unitPrice, 500);
+  // un taux de TVA farfelu retombe sur 19 %
+  const taux = core.ocrToPurchase({ number: 'X', lines: [{ label: 'A', qty: 1, unitPrice: 10, vatRate: 42 }] }, data, '2026-09-11');
+  assert.strictEqual(taux.lines[0].vatRate, 19);
+});
+
 console.log(`\n${n} tests OK`);
