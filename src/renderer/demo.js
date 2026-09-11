@@ -229,6 +229,65 @@
       s.doc.payments.push({ id: C.uid(), date, amount: C.round3(amount), method: p.method, reference: p.reference || (p.method === 'virement' ? vir(date) : ''), note: '' });
     }));
 
+    // ---------- fournisseurs et achats (3.0.0) ----------
+    // Assez pour montrer les trois destinations de ligne, une retenue opérée, un impayé en retard,
+    // une dépense sans facture et un justificatif manquant.
+    const sup = (name, matricule, o) => ({ id: C.uid(), name, matricule, contact: '', address: '', phone: '', email: '', rib: '', bank: '', notes: '', paymentTermsDays: 30, withholdingRate: '', ...(o || {}) });
+    d.suppliers = [
+      sup('Tunisie Matériel Informatique', '7890123G/A/000', { contact: 'M. Anis Khelifi', phone: '+216 71 800 900', email: 'commercial@tunisiemateriel.tn', paymentTermsDays: 30, bank: 'Amen Bank', rib: '07 012 0000987654321 45' }),
+      sup('Cabinet Comptable Ben Youssef', '8901234H/P/000', { contact: 'M. Nabil Ben Youssef', email: 'contact@bycompta.tn', paymentTermsDays: 15, withholdingRate: 3,
+        notes: 'Prestataire : retenue à la source de 3 % à opérer, et attestation à lui remettre. À VÉRIFIER avec lui chaque année.' }),
+      sup('STEG', '', { paymentTermsDays: 0, notes: 'Facture bimestrielle. Prélèvement automatique.' }),
+      sup('Agence Immobilière Le Lac', '9012345I/A/000', { contact: 'Mme Rim Abassi', paymentTermsDays: 5, notes: 'Loyer du bureau, payable le 5 de chaque mois.' })
+    ];
+    const sp = d.suppliers;
+    const bline = (label, qty, unitPrice, vatRate, destination, deductible) =>
+      ({ label, qty, unit: 'u', unitPrice, vatRate: vatRate == null ? 19 : vatRate, destination: destination || 'charge', deductible: deductible !== false });
+    const buy = (o) => {
+      const p = {
+        id: C.uid(), kind: 'facture', supplierId: '', number: '', date: T, dueDate: '', subject: '', category: '',
+        notes: '', fees: 0, withholdingRate: 0, lines: [], payments: [], attachments: [], createdAt: ts(o.date || T), ...o
+      };
+      p.payments = (o.payments || []).map(x => ({ id: C.uid(), date: x.date, amount: x.amount === 'all' ? C.purchaseTotals(p, co).netToPay : x.amount, method: x.method || 'virement', reference: x.reference || (x.method === 'virement' || !x.method ? vir(x.date) : ''), note: '' }));
+      return p;
+    };
+    d.purchases = [
+      // matériel revendu à l'École : la marge sera calculable en 3.3.0
+      buy({ supplierId: sp[0].id, number: 'FA-2026-1187', date: mo(2, 18), dueDate: C.addDays(mo(2, 18), 30), category: 'Achats de marchandises',
+        subject: 'Postes de travail pour l\'École Les Lauriers', fees: 1,
+        lines: [bline('Poste de travail complet', 12, 850, 19, 'stock'), bline('Pare-feu UTM', 1, 1200, 19, 'stock')],
+        payments: [{ date: C.addDays(mo(2, 18), 28), amount: 'all' }] }),
+      // immobilisation : reprise par le module 3.4.0
+      buy({ supplierId: sp[0].id, number: 'FA-2026-0940', date: mo(7, 9), dueDate: C.addDays(mo(7, 9), 30), category: 'Petit équipement',
+        subject: 'Ordinateur portable de l\'entreprise', fees: 1,
+        lines: [bline('Ordinateur portable 16 Go', 1, 2600, 19, 'immobilisation')],
+        payments: [{ date: C.addDays(mo(7, 9), 12), amount: 'all', method: 'cheque', reference: 'CHQ 4451' }],
+        notes: 'Reste dans l\'entreprise : à amortir. À VÉRIFIER avec le comptable : durée d\'amortissement.' }),
+      // prestataire avec retenue à la source opérée, attestation pas encore remise
+      buy({ supplierId: sp[1].id, number: 'H-2026-034', date: daysAgo(6), dueDate: C.addDays(T, 9), category: 'Honoraires (comptable, avocat)',
+        subject: 'Honoraires comptables du trimestre', withholdingRate: 3, fees: 1,
+        lines: [bline('Tenue de comptabilité et déclarations', 1, 900, 19)] }),
+      // loyer en retard : alimente « À payer » et le panneau À faire
+      buy({ supplierId: sp[3].id, number: 'LOC-2026-08', date: mo(2, 5), dueDate: mo(2, 10), category: 'Loyer et charges locatives',
+        subject: 'Loyer du bureau', lines: [bline('Loyer mensuel du bureau', 1, 1100, 19)] }),
+      buy({ supplierId: sp[3].id, number: 'LOC-2026-09', date: mo(1, 5), dueDate: mo(1, 10), category: 'Loyer et charges locatives',
+        subject: 'Loyer du bureau', lines: [bline('Loyer mensuel du bureau', 1, 1100, 19)],
+        payments: [{ date: mo(1, 12), amount: 500 }] }),
+      // électricité : TVA à 19 %, payée
+      buy({ supplierId: sp[2].id, number: 'STEG-884512', date: mo(1, 20), dueDate: C.addDays(mo(1, 20), 10), category: 'Électricité, eau, gaz',
+        subject: 'Électricité juillet-août', lines: [bline('Consommation bimestrielle', 1, 340, 19)],
+        payments: [{ date: C.addDays(mo(1, 20), 8), amount: 'all', method: 'especes' }] }),
+      // dépense sans facture détaillée, TVA non déductible (carburant véhicule de tourisme — À VÉRIFIER)
+      buy({ kind: 'depense', supplierId: sp[0].id, number: '', date: daysAgo(12), category: 'Carburant et déplacements',
+        subject: 'Carburant du mois', lines: [bline('Carburant', 1, 180, 19, 'charge', false)],
+        payments: [{ date: daysAgo(12), amount: 'all', method: 'especes' }],
+        notes: 'TVA non déductible sur les véhicules de tourisme — À VÉRIFIER avec le comptable.' }),
+      buy({ kind: 'depense', supplierId: sp[0].id, number: '', date: daysAgo(4), category: 'Fournitures de bureau',
+        subject: 'Papeterie et consommables', lines: [bline('Fournitures diverses', 1, 96, 19)],
+        payments: [{ date: daysAgo(4), amount: 'all', method: 'carte' }] })
+    ];
+    d.expenseCategories = [];
+
     // ---------- modèles et textes prédéfinis ----------
     d.templates = [
       { id: C.uid(), name: 'Audit standard', type: 'devis', subject: 'Audit de sécurité et plan d\'action', lines: [line(k[0], 1), line(k[5], 2), line(k[7], 1)], discountRate: 0, notes: 'Rapport remis sous 10 jours ouvrés après l\'intervention.' },

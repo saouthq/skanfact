@@ -106,6 +106,27 @@
     'autres.commande': { t: 'Bon de commande', d: 'La pièce qui enregistre ce que le client a commandé, avant que tu livres ou que tu factures. Elle protège les deux parties : elle fixe par écrit ce qui a été demandé, en quelle quantité et à quel prix. Fais-la signer quand le montant est important.' },
     'autres.livraison': { t: 'Bon de livraison', d: 'La pièce qui accompagne la marchandise et se fait signer à la réception. C\'est ta preuve d\'avoir livré : sans elle, un client de mauvaise foi peut contester. Par défaut les prix y sont masqués. À partir de la version 4.0, c\'est ce bon qui sortira les articles du stock.' },
     'autres.contrat': { t: 'Contrat de prestation', d: 'Le vrai document que ton client signe : objet, durée, reconduction, préavis, conditions de paiement, confidentialité, litiges. À ne pas confondre avec les <b>contrats récurrents</b> de la barre latérale, qui ne font que fabriquer des brouillons de facture chaque mois. Les deux vont ensemble : on signe le contrat, puis on crée le contrat récurrent qui le facture.' },
+    'cl.notes': { t: 'Notes internes', d: 'Ce qu\'il faut se rappeler et qui ne s\'imprime nulle part : l\'interlocuteur à appeler, les délais réels, les conditions négociées, la façon de travailler. Enregistré tout seul au fil de la frappe.' },
+    'sup.terms': { t: 'Délai de paiement accordé', d: 'Le nombre de jours que ce fournisseur t\'accorde pour le régler. Il se reporte automatiquement sur l\'échéance de chaque achat que tu enregistres chez lui. Laisse vide si tu paies comptant.' },
+    'sup.withholding': { t: 'Retenue à la source à opérer', d: 'Quand tu paies certains prestataires (comptable, avocat, consultant), la loi te demande de <b>retenir</b> un pourcentage et de le reverser toi-même au fisc. Tu paies moins au fournisseur, et tu lui remets une attestation. Qui doit retenir et à quel taux : <em>À VÉRIFIER avec ton comptable.</em> Laisse « Aucune » dans le doute.' },
+    'sup.total': { t: 'Acheté HT', d: 'Le total hors taxes de tout ce que tu as acheté chez ce fournisseur depuis le début, toutes années confondues.' },
+    'sup.due': { t: 'Reste à payer', d: 'Ce que tu dois encore à ce fournisseur, tous achats confondus. La part en retard est signalée : c\'est elle qui abîme une relation commerciale.' },
+    'buy.payables': { t: 'À payer', d: 'Le pendant des relances, côté sortant : ce que tu dois, à qui, pour quand. Les pièces en retard sont en tête et signalées en orange. Clique sur le titre pour replier le panneau ; ton choix est conservé.' },
+    'buy.head': { t: 'La pièce du fournisseur', d: 'Contrairement à tes propres factures, tu ne maîtrises ni le numéro ni la date : ce sont ceux écrits sur la facture que le fournisseur t\'a remise. Recopie-les tels quels, c\'est ce qui permettra à ton comptable de retrouver la pièce.' },
+    'buy.supplier': { t: 'Fournisseur', d: 'Chez qui tu as acheté. Son délai de paiement et son taux de retenue se reportent automatiquement sur cet achat. « + Nouveau fournisseur » crée la fiche sans quitter la saisie.' },
+    'buy.number': { t: 'Numéro de la facture', d: 'Le numéro écrit sur la facture du fournisseur, pas un numéro à toi. C\'est la référence que ton comptable utilisera. Pour une dépense sans facture (ticket de caisse, reçu), mets ce que tu as, ou laisse vide.' },
+    'buy.kind': { t: 'Facture d\'achat ou dépense', d: '<b>Facture d\'achat</b> : une vraie facture d\'un fournisseur, avec un numéro et de la TVA récupérable. <b>Dépense</b> : tout ce qui n\'a pas de facture détaillée — carburant, restaurant, frais bancaires, abonnement. La saisie est la même, le classement change.' },
+    'buy.date': { t: 'Date de la pièce', d: 'La date écrite sur la facture du fournisseur, pas la date du jour où tu la saisis. C\'est elle qui détermine le mois de déclaration de la TVA déductible.' },
+    'buy.due': { t: 'Échéance de paiement', d: 'Quand tu dois payer. Elle se calcule à partir du délai accordé par le fournisseur, et se modifie librement. C\'est ce qui alimente le panneau « À payer » et les alertes de l\'accueil.' },
+    'buy.category': { t: 'Catégorie de charge', d: 'À quoi sert cette dépense : loyer, carburant, sous-traitance, honoraires… Elle sert à savoir où part ton argent. Une liste de départ est fournie ; « + Nouvelle catégorie » en ajoute une qui restera proposée ensuite. Le rattachement comptable exact relève du plan comptable : <em>À VÉRIFIER avec ton comptable.</em>' },
+    'buy.subject': { t: 'Objet', d: 'À quoi se rapporte cet achat, dans tes mots. « Disques durs pour la Clinique » vaut mieux que « matériel » : dans six mois, c\'est ce qui te permettra de retrouver la pièce et, plus tard, de calculer ta marge sur une affaire.' },
+    'buy.lines': { t: 'Lignes de l\'achat', d: 'Recopie au minimum le total hors taxes et son taux de TVA : c\'est ce qui permet de récupérer la TVA. Détaille ligne par ligne quand la facture mélange plusieurs taux, plusieurs destinations, ou des articles que tu revendras.' },
+    'buy.destination': { t: 'Destination de la ligne', d: 'Ce que devient ce que tu achètes. <b>Charge</b> : consommé tout de suite (fournitures, loyer, carburant). <b>Stock</b> : marchandise achetée pour être revendue — elle sortira à la vente. <b>Immobilisation</b> : matériel qui reste dans l\'entreprise plus d\'un an (ordinateur, climatiseur, véhicule) et qui s\'amortit. Ce choix est posé dès maintenant pour que les modules stock et immobilisations n\'aient pas à te faire tout ressaisir.' },
+    'buy.deductible': { t: 'TVA déductible', d: 'Coché par défaut : la TVA que tu as payée est récupérable sur ta déclaration. Décoche pour les cas où la loi l\'interdit — voiture de tourisme, cadeaux, frais de réception. Quels cas exactement : <em>À VÉRIFIER avec ton comptable.</em>' },
+    'buy.fees': { t: 'Timbre et frais', d: 'Le timbre fiscal que ton fournisseur a facturé, et les frais annexes non soumis à TVA (port, assurance). Ils s\'ajoutent au total à payer mais ne donnent droit à aucune récupération de TVA.' },
+    'buy.withholding': { t: 'Retenue à la source opérée', d: 'Le pourcentage que tu retiens en payant ce prestataire, et que tu reverses toi-même au fisc. Tu lui paies le net, et tu lui dois une attestation. Proposé automatiquement d\'après sa fiche fournisseur. <em>À VÉRIFIER avec ton comptable.</em>' },
+    'buy.payments': { t: 'Règlements', d: 'Ce que tu as déjà versé sur cet achat. Le statut (« à payer », « partiel », « payée », « retard ») en découle : il ne se saisit jamais à la main, exactement comme pour tes factures de vente.' },
+    'buy.certificate': { t: 'Attestation remise', d: 'Coche quand tu as remis au fournisseur l\'attestation de la retenue que tu lui as prélevée. Sans elle, il ne peut pas la déduire de son propre impôt : c\'est une obligation de ta part, et la source de bien des fâcheries.' },
     'stat.ca': { t: 'Chiffre d\'affaires HT', d: 'Le total hors taxes de tes factures émises sur la période, avoirs déduits. Les brouillons et les factures annulées n\'y sont jamais comptés. La flèche compare avec la même période de l\'an dernier : c\'est la seule comparaison qui a du sens, parce qu\'elle neutralise la saisonnalité.' },
     'stat.count': { t: 'Factures émises', d: 'Le nombre de factures numérotées sur la période. Beaucoup de factures pour peu de chiffre d\'affaires, c\'est du temps administratif : pense à regrouper ou à passer en contrat récurrent.' },
     'stat.avg': { t: 'Panier moyen', d: 'Ton chiffre d\'affaires divisé par le nombre de factures. Le faire monter demande moins d\'efforts que de trouver de nouveaux clients : propose une prestation complémentaire, ou un forfait annuel plutôt qu\'une intervention.' },
@@ -359,6 +380,41 @@
 <p>Deux signaux à surveiller. D'abord la <b>concentration</b> : si ton premier client pèse plus de la moitié de ton chiffre d'affaires, son départ — ou simplement son retard de paiement — te met en difficulté. Ensuite les <b>clients endormis</b> : des gens qui t'ont déjà fait confiance et dont plus rien ne sort. Les rappeler coûte moins cher que de trouver un inconnu.</p>
 <h3>Ce que ces chiffres ne disent pas</h3>
 <p>Ils portent sur ce que tu as <b>facturé</b>, pas sur ce que tu as <b>gagné</b> : tes achats et tes charges n'y sont pas encore. Un mois record en facturation peut être un mauvais mois en trésorerie si personne ne paie. Garde toujours un œil sur le « reste à encaisser ».</p>`
+    },
+    {
+      id: 'achats', title: 'Tes achats et ta TVA déductible', sub: 'L\'autre moitié de ta comptabilité',
+      body: `
+<p>Jusqu'à la version 3.0, SkanFact ne connaissait que ton argent qui rentre. Il connaît maintenant celui qui sort. C'est la brique qui manquait sous tout le reste : sans les achats, impossible de récupérer ta TVA, de connaître ta marge réelle, ni de savoir ce que tu auras sur ton compte le mois prochain.</p>
+<h3>Fournisseur, facture d'achat, dépense</h3>
+<p>Un <b>fournisseur</b> est une fiche, comme un client : raison sociale, matricule, contact, RIB, et le <b>délai de paiement</b> qu'il t'accorde. Ce délai se reporte tout seul sur chaque achat que tu saisis chez lui.</p>
+<p>Une <b>facture d'achat</b> est une vraie facture, avec un numéro et de la TVA. Attention : <b>le numéro et la date sont les siens, pas les tiens</b>. Recopie-les exactement tels qu'ils sont écrits sur le papier — c'est la référence que ton comptable utilisera pour retrouver la pièce.</p>
+<p>Une <b>dépense</b> est tout ce qui n'a pas de facture détaillée : carburant, restaurant, frais bancaires, abonnement. La saisie est la même, en plus court.</p>
+<h3>La destination de chaque ligne</h3>
+<p>C'est le champ qui a l'air le moins utile aujourd'hui et qui comptera le plus demain. Trois choix :</p>
+<ul>
+  <li><b>Charge</b> : consommé tout de suite. Fournitures, loyer, carburant, sous-traitance. C'est le cas le plus fréquent.</li>
+  <li><b>Stock</b> : de la marchandise achetée pour être revendue. Elle sortira du stock quand tu la vendras.</li>
+  <li><b>Immobilisation</b> : du matériel qui reste dans l'entreprise plus d'un an — ordinateur, climatiseur, véhicule, mobilier. Il ne se déduit pas d'un coup : il s'amortit sur plusieurs années.</li>
+</ul>
+<p>Les modules stock et immobilisations liront ce champ. Le renseigner dès maintenant t'évitera de ressaisir un an d'historique quand ils arriveront.</p>
+<h3>La TVA déductible</h3>
+<p>La TVA que tu as payée à tes fournisseurs se <b>déduit</b> de celle que tu as facturée à tes clients. Tu ne reverses à l'État que la différence. C'est pour ça qu'il faut tout saisir : chaque facture d'achat oubliée, c'est de la TVA payée deux fois.</p>
+<p>Trois conditions, et elles sont strictes : il faut une <b>facture en bonne et due forme</b> (pas un ticket), au nom de <b>ton entreprise</b> avec son matricule, et une dépense <b>professionnelle</b>. La case « déductible » est cochée par défaut ; décoche-la pour les cas où la loi l'interdit — voiture de tourisme, cadeaux, frais de réception. <em>Quels cas exactement, et à quelles conditions : À VÉRIFIER avec ton comptable.</em></p>
+<h3>La retenue à la source, dans l'autre sens</h3>
+<p>Tu connais déjà la retenue que <b>tes clients</b> te prélèvent. Il existe la symétrique : quand tu paies certains prestataires — comptable, avocat, consultant — c'est <b>toi</b> qui dois retenir un pourcentage et le reverser au fisc à leur place.</p>
+<p>Concrètement : tu paies moins que le montant de sa facture, et tu lui remets une <b>attestation</b> qui prouve que tu as versé la différence au Trésor. Sans cette attestation, il ne peut pas la déduire de son propre impôt — et il te la réclamera. Le panneau « À faire » de l'accueil te rappelle celles que tu dois.</p>
+<p><em>Qui doit retenir, sur quelles prestations et à quel taux : À VÉRIFIER avec ton comptable avant d'appliquer quoi que ce soit.</em> Dans le doute, laisse « Aucune ».</p>
+<h3>Le justificatif</h3>
+<p>Chaque achat accepte une pièce jointe. Photographie ou scanne la facture du fournisseur et joins-la. Sans justificatif, en cas de contrôle, ni la charge ni la TVA ne sont admises : la dépense existe dans tes comptes mais pas aux yeux du fisc.</p>
+<h3>Le panneau « À payer »</h3>
+<p>En haut de la page Achats : ce que tu dois, à qui, pour quand. C'est l'exact pendant de la page Relances, mais côté sortant. Les retards sont en tête et en orange.</p>
+<p>Regarde-le en même temps que ton « reste à encaisser » : si tu dois 4 000 DT la semaine prochaine et qu'on te doit 6 000 DT sans date, tu as un problème de trésorerie même si ton entreprise est rentable. C'est la première cause de faillite des petites entreprises en bonne santé.</p>
+<h3>Ta routine, complétée</h3>
+<ul>
+  <li><b>À réception de chaque facture fournisseur</b> : saisis-la tout de suite et joins la photo. Cinq minutes maintenant valent une soirée entière en fin de trimestre.</li>
+  <li><b>Chaque semaine</b> : pointe ton relevé bancaire dans les deux sens — encaissements clients et règlements fournisseurs.</li>
+  <li><b>Chaque mois</b> : vérifie que rien ne traîne dans « À payer », et remets les attestations de retenue que tu dois.</li>
+</ul>`
     },
     {
       id: 'donnees', title: 'Tes données : sauvegarder et protéger', sub: 'Le sujet le plus ennuyeux et le plus important',

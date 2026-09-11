@@ -236,6 +236,8 @@ function buildMenu() {
         { label: 'Relances', click: act('go:relances') },
         { label: 'Contrats récurrents', click: act('go:contrats') },
         { label: 'Autres documents', click: act('go:autres') },
+        { label: 'Achats et dépenses', accelerator: 'CmdOrCtrl+7', click: act('go:achats') },
+        { label: 'Fournisseurs', click: act('go:fournisseurs') },
         { label: 'Statistiques', click: act('go:stats') },
         { label: 'Comptabilité', accelerator: 'CmdOrCtrl+6', click: act('go:compta') },
         { type: 'separator' },

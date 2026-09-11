@@ -113,7 +113,7 @@
   ];
 
   const DEFAULT_DATA = {
-    version: 3,
+    version: 4,
     company: DEFAULT_COMPANY,
     clients: [],
     catalog: [],
@@ -121,6 +121,9 @@
     recurring: [],   // contrats récurrents
     templates: [],   // modèles de documents
     snippets: [],    // textes prédéfinis
+    suppliers: [],   // fournisseurs (v4)
+    purchases: [],   // factures d'achat et dépenses (v4)
+    expenseCategories: [],   // catégories ajoutées par l'utilisateur, en plus de DEFAULT_EXPENSE_CATEGORIES
     counters: {}
   };
 
@@ -408,7 +411,19 @@
     if (!Array.isArray(data.recurring)) data.recurring = [];
     if (!Array.isArray(data.templates)) data.templates = [];
     if (!Array.isArray(data.snippets)) data.snippets = [];
-    data.version = 3;
+    // Version 4 : achats. Rien à convertir dans l'existant — les trois listes sont simplement créées
+    // vides si elles manquent, et un fichier v4 relu par une version antérieure les ignorerait sans casse.
+    if (!Array.isArray(data.suppliers)) data.suppliers = [];
+    if (!Array.isArray(data.purchases)) data.purchases = [];
+    if (!Array.isArray(data.expenseCategories)) data.expenseCategories = [];
+    data.purchases.forEach(p => {
+      if (!Array.isArray(p.payments)) p.payments = [];
+      if (!Array.isArray(p.lines)) p.lines = [];
+      if (p.kind !== 'depense') p.kind = 'facture';
+      p.withholdingRate = Number(p.withholdingRate) || 0;
+      p.fees = Number(p.fees) || 0;
+    });
+    data.version = 4;
     return data;
   }
 
@@ -543,6 +558,161 @@
       if (last && d.date) delays.push(daysBetween(d.date, last));
     });
     return delays.length ? Math.round(delays.reduce((s, x) => s + x, 0) / delays.length) : null;
+  }
+
+  // ---------- achats, fournisseurs et dépenses (3.0.0, données v4) ----------
+  // Symétrique des ventes, mais on ne maîtrise ni la numérotation (c'est celle du fournisseur)
+  // ni la date (c'est celle de sa facture) : rien n'est verrouillé, tout reste modifiable.
+  const PURCHASE_KINDS = [['facture', 'Facture d\'achat'], ['depense', 'Dépense']];
+  // Destination d'une ligne d'achat. C'est ce choix qui alimentera le stock (4.0.0) et les
+  // immobilisations (3.4.0) : il est posé dès maintenant pour ne pas avoir à ressaisir l'historique.
+  const LINE_DESTINATIONS = [
+    ['charge', 'Charge', 'Consommé tout de suite : fournitures, loyer, carburant, sous-traitance'],
+    ['stock', 'Stock', 'Marchandise achetée pour être revendue — sortira du stock à la vente'],
+    ['immobilisation', 'Immobilisation', 'Matériel qui reste dans l\'entreprise plus d\'un an : ordinateur, climatiseur, véhicule']
+  ];
+  // Catégories de charges de départ. Modifiables et extensibles par l'utilisateur (data.expenseCategories).
+  // Le rattachement comptable exact relève du plan comptable tunisien — À VÉRIFIER avec le comptable.
+  const DEFAULT_EXPENSE_CATEGORIES = [
+    'Achats de marchandises', 'Sous-traitance', 'Fournitures de bureau', 'Petit équipement',
+    'Loyer et charges locatives', 'Électricité, eau, gaz', 'Téléphone et internet',
+    'Carburant et déplacements', 'Entretien et réparations', 'Assurances',
+    'Honoraires (comptable, avocat)', 'Publicité et communication', 'Frais bancaires',
+    'Impôts et taxes', 'Formation', 'Divers'
+  ];
+  const PURCHASE_STATUSES = ['à payer', 'partiel', 'retard', 'payée'];
+
+  function expenseCategories(data) {
+    const extra = (data && Array.isArray(data.expenseCategories) ? data.expenseCategories : [])
+      .map(x => String(x || '').trim()).filter(Boolean);
+    return Array.from(new Set(DEFAULT_EXPENSE_CATEGORIES.concat(extra)));
+  }
+
+  // Totaux d'un achat. Même moteur que les ventes, deux différences : pas de remise globale (elle est
+  // déjà dans le prix du fournisseur) et la TVA peut être non déductible ligne par ligne.
+  function purchaseTotals(purchase, company) {
+    const lines = (purchase.lines || []).map(l => {
+      const qty = Number(l.qty) || 0;
+      const unit = Number(l.unitPrice) || 0;
+      const rate = Number(l.vatRate) || 0;
+      const ht = round3(qty * unit);
+      const vat = round3(ht * rate / 100);
+      return {
+        ...l, qty, unitPrice: unit, vatRate: rate, ht, vat, ttc: round3(ht + vat),
+        destination: LINE_DESTINATIONS.some(d => d[0] === l.destination) ? l.destination : 'charge',
+        // TVA non déductible : voiture de tourisme, cadeaux, réception… À VÉRIFIER avec le comptable.
+        deductible: l.deductible !== false
+      };
+    });
+    const totalHT = round3(lines.reduce((s, l) => s + l.ht, 0));
+    const vatByRate = {};
+    lines.forEach(l => {
+      const k = l.vatRate;
+      vatByRate[k] = vatByRate[k] || { base: 0, vat: 0, deductible: 0 };
+      vatByRate[k].base = round3(vatByRate[k].base + l.ht);
+      vatByRate[k].vat = round3(vatByRate[k].vat + l.vat);
+      if (l.deductible) vatByRate[k].deductible = round3(vatByRate[k].deductible + l.vat);
+    });
+    const totalVAT = round3(lines.reduce((s, l) => s + l.vat, 0));
+    const deductibleVAT = round3(lines.filter(l => l.deductible).reduce((s, l) => s + l.vat, 0));
+    const fees = round3(Number(purchase.fees) || 0);          // timbre du fournisseur, frais de port…
+    const totalTTC = round3(totalHT + totalVAT + fees);
+    // Retenue à la source que TU opères en payant un prestataire : tu la retiens et tu la reverses.
+    // Qui doit retenir et à quel taux : À VÉRIFIER avec le comptable.
+    const withholdingRate = Number(purchase.withholdingRate) || 0;
+    const withholding = round3((totalHT + totalVAT) * withholdingRate / 100);
+    const netToPay = round3(totalTTC - withholding);
+    const byDestination = {};
+    LINE_DESTINATIONS.forEach(([k]) => { byDestination[k] = 0; });
+    lines.forEach(l => { byDestination[l.destination] = round3(byDestination[l.destination] + l.ht); });
+    return { lines, totalHT, vatByRate, totalVAT, deductibleVAT, fees, totalTTC, withholdingRate, withholding, netToPay, byDestination };
+  }
+
+  // Situation d'un achat : payé, reste dû. Le symétrique exact d'invoiceBalance.
+  function purchaseBalance(purchase, company) {
+    const totals = purchaseTotals(purchase, company);
+    const paid = round3((purchase.payments || []).reduce((s, p) => s + (Number(p.amount) || 0), 0));
+    return { totals, paid, remaining: round3(totals.netToPay - paid) };
+  }
+
+  // Statut déduit des paiements, jamais saisi — comme pour une facture de vente.
+  function purchaseStatus(purchase, company, todayIso) {
+    const b = purchaseBalance(purchase, company);
+    if (b.remaining <= 0.0005) return 'payée';
+    if (b.paid > 0) return 'partiel';
+    if (purchase.dueDate && purchase.dueDate < (todayIso || today())) return 'retard';
+    return 'à payer';
+  }
+
+  // Ce qu'on doit, par fournisseur et par échéance. Le pendant des relances, côté sortant.
+  function payablesList(data, company, todayIso) {
+    const t = todayIso || today();
+    return (data.purchases || []).map(p => {
+      const b = purchaseBalance(p, company);
+      if (b.remaining <= 0.0005) return null;
+      const late = p.dueDate && p.dueDate < t ? daysBetween(p.dueDate, t) : 0;
+      return {
+        id: p.id, supplierId: p.supplierId, number: p.number || '', date: p.date, dueDate: p.dueDate || '',
+        subject: p.subject || '', remaining: b.remaining, total: b.totals.netToPay, late,
+        status: purchaseStatus(p, company, t)
+      };
+    }).filter(Boolean).sort((a, b) => (b.late - a.late) || (a.dueDate || '9999').localeCompare(b.dueDate || '9999'));
+  }
+
+  // Journal des achats d'une période : une ligne par pièce, prête pour le CSV du comptable.
+  function purchaseJournal(data, company, period) {
+    const name = id => ((data.suppliers || []).find(s => s.id === id) || {}).name || '—';
+    return (data.purchases || [])
+      .filter(p => inPeriod(p.date, period && period.from, period && period.to))
+      .sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.createdAt || 0) - (b.createdAt || 0))
+      .map(p => {
+        const t = purchaseTotals(p, company);
+        return {
+          id: p.id, date: p.date, number: p.number || '', supplier: name(p.supplierId),
+          kind: p.kind === 'depense' ? 'Dépense' : 'Facture d\'achat', category: p.category || '',
+          ht: t.totalHT, tva: t.totalVAT, deductible: t.deductibleVAT, fees: t.fees,
+          ttc: t.totalTTC, rs: t.withholding, net: t.netToPay,
+          status: purchaseStatus(p, company, '9999-12-31'), subject: p.subject || ''
+        };
+      });
+  }
+
+  // Récapitulatif d'achats : totaux, TVA déductible, ventilation par catégorie et par destination.
+  function purchaseSummary(rows) {
+    const sum = k => round3(rows.reduce((s, r) => s + (r[k] || 0), 0));
+    const byCategory = {};
+    rows.forEach(r => { const k = r.category || 'Sans catégorie'; byCategory[k] = round3((byCategory[k] || 0) + r.ht); });
+    return {
+      count: rows.length, ht: sum('ht'), tva: sum('tva'), deductible: sum('deductible'),
+      fees: sum('fees'), ttc: sum('ttc'), rs: sum('rs'), net: sum('net'),
+      byCategory: Object.keys(byCategory).sort((a, b) => byCategory[b] - byCategory[a]).map(k => ({ label: k, ht: byCategory[k] }))
+    };
+  }
+
+  // Chiffres d'un fournisseur, pour sa fiche.
+  function supplierSummary(data, company, supplierId, todayIso) {
+    const mine = (data.purchases || []).filter(p => p.supplierId === supplierId);
+    let ht = 0, remaining = 0, late = 0;
+    mine.forEach(p => {
+      const b = purchaseBalance(p, company);
+      ht = round3(ht + b.totals.totalHT);
+      if (b.remaining > 0.0005) {
+        remaining = round3(remaining + b.remaining);
+        if (purchaseStatus(p, company, todayIso) === 'retard') late = round3(late + b.remaining);
+      }
+    });
+    const dates = mine.map(p => p.date).filter(Boolean).sort();
+    return { count: mine.length, ht, remaining, late, first: dates[0] || '', last: dates[dates.length - 1] || '' };
+  }
+
+  // Retenues à la source que tu as opérées et dont le fournisseur attend l'attestation.
+  function withholdingsToIssue(data, company) {
+    const name = id => ((data.suppliers || []).find(s => s.id === id) || {}).name || '—';
+    return (data.purchases || [])
+      .map(p => ({ p, t: purchaseTotals(p, company) }))
+      .filter(x => x.t.withholding > 0.0005 && !x.p.withholdingCertificate)
+      .map(x => ({ id: x.p.id, supplier: name(x.p.supplierId), number: x.p.number || '', date: x.p.date, amount: x.t.withholding, rate: x.t.withholdingRate }))
+      .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
   }
 
   // ---------- conversions entre documents (2.6.0) ----------
@@ -874,6 +1044,31 @@
       id: 'attestations', level: 'warn', label: `${rsPending.length} attestation${rsPending.length > 1 ? 's' : ''} de retenue à réclamer`,
       detail: `${fmt(rsAmount)} retenus par tes clients. Sans attestation, tu ne peux pas les déduire de ton impôt.`,
       count: rsPending.length, amount: rsAmount, route: '#/compta', docs: rsPending
+    });
+
+    // Côté sortant : ce qu'on doit soi-même. Un fournisseur impayé coûte la relation, pas seulement l'argent.
+    const owed = payablesList(data, company, t);
+    const owedLate = owed.filter(x => x.late > 0);
+    if (owedLate.length) out.push({
+      id: 'fournisseurs-retard', level: 'danger',
+      label: `${owedLate.length} facture${owedLate.length > 1 ? 's' : ''} fournisseur en retard`,
+      detail: `${fmt(round3(owedLate.reduce((s, x) => s + x.remaining, 0)))} à régler · la plus ancienne : ${owedLate[0].late} jours`,
+      count: owedLate.length, amount: round3(owedLate.reduce((s, x) => s + x.remaining, 0)), route: '#/achats', docs: []
+    });
+    const owedSoon = owed.filter(x => !x.late && x.dueDate && daysBetween(t, x.dueDate) <= 7);
+    if (owedSoon.length) out.push({
+      id: 'fournisseurs-echeances', level: 'info',
+      label: `${owedSoon.length} règlement${owedSoon.length > 1 ? 's' : ''} fournisseur cette semaine`,
+      detail: `${fmt(round3(owedSoon.reduce((s, x) => s + x.remaining, 0)))} à prévoir sur ton compte.`,
+      count: owedSoon.length, route: '#/achats', docs: []
+    });
+    // Attestations de retenue que TU dois remettre à tes fournisseurs prestataires
+    const wOut = withholdingsToIssue(data, company);
+    if (wOut.length) out.push({
+      id: 'attestations-fournisseurs', level: 'warn',
+      label: `${wOut.length} attestation${wOut.length > 1 ? 's' : ''} de retenue à remettre`,
+      detail: `${fmt(round3(wOut.reduce((s, x) => s + x.amount, 0)))} retenus à tes fournisseurs. Sans attestation de ta part, ils ne peuvent pas la déduire.`,
+      count: wOut.length, route: '#/achats', docs: []
     });
 
     const soon = (data.documents || []).filter(d => d.type === 'facture' && ['envoyée', 'partielle'].includes(effectiveStatus(d, data, company, t))
@@ -1582,6 +1777,8 @@
     reminderLevel, REMINDER_LABELS, daysBetween, overdueInvoices, todoList, companyGaps, documentHistory, DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_TEMPLATES_EN, emailFor,
     CURRENCIES, decimalsFor, toBase, monthKeys, monthlySeries, topClients, quoteStats, avgPaymentDelay, clientSummary, I18N,
     EXTRA_TYPES, SALES_TYPES, CONVERSIONS, CONVERSION_LABELS, convertDoc, derivedDocs, DEFAULT_CLAUSES, CLAUSE_LABELS,
+    PURCHASE_KINDS, LINE_DESTINATIONS, DEFAULT_EXPENSE_CATEGORIES, PURCHASE_STATUSES, expenseCategories,
+    purchaseTotals, purchaseBalance, purchaseStatus, payablesList, purchaseJournal, purchaseSummary, supplierSummary, withholdingsToIssue,
     periodBounds, issuedIn, salesTotals, revenueByMonth, topItems, clientMovement, AGING_BUCKETS, agedReceivables, payerRanking, quoteFunnel, objectiveProgress,
     amountToWords, intToWords, intToWordsEn, documentHtml, fitToPage, pageCount
   };

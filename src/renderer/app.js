@@ -423,6 +423,9 @@
   }
 
   function badge(status) { return `<span class="badge ${h(status)}">${h(C.statusLabel(status))}</span>`; }
+  // Statut d'un achat : « à payer » contient une espace, qui ferait deux classes CSS au lieu d'une.
+  const BUY_BADGE = { 'à payer': 'b-due', partiel: 'b-part', retard: 'b-late', 'payée': 'b-paid' };
+  function buyBadge(status) { return `<span class="badge ${BUY_BADGE[status] || ''}">${h(status)}</span>`; }
   function statusBadge(doc) { return badge(effStatus(doc)); }
   function methodLabel(m) { const x = C.PAYMENT_METHODS.find(p => p[0] === m); return x ? x[1] : (m || ''); }
   // Numéro que recevrait le document à l'émission, sans consommer le compteur
@@ -478,7 +481,8 @@
   const PAGE_LABELS = {
     dashboard: 'Accueil', devis: 'Devis', factures: 'Factures', relances: 'Relances', contrats: 'Contrats',
     contrat: 'le contrat', autres: 'Autres documents', clients: 'Clients', client: 'la fiche client', catalogue: 'Catalogue',
-    stats: 'Statistiques', compta: 'Comptabilité', parametres: 'Paramètres', aide: 'Aide', doc: 'le document'
+    stats: 'Statistiques', compta: 'Comptabilité', parametres: 'Paramètres', aide: 'Aide', doc: 'le document',
+    achats: 'Achats et dépenses', achat: 'l\'achat', fournisseurs: 'Fournisseurs', fournisseur: 'la fiche fournisseur'
   };
   const pageLabel = hash => PAGE_LABELS[(hash || '').replace(/^#\/?/, '').split('/')[0]] || 'Accueil';
   function pushHistory(previous) {
@@ -528,6 +532,8 @@
       active = type === 'devis' ? 'devis' : C.EXTRA_TYPES.includes(type) ? 'autres' : 'factures';
     } else if (name === 'client') active = 'clients';
     else if (name === 'contrat') active = 'contrats';
+    else if (name === 'achat') active = 'achats';
+    else if (name === 'fournisseur') active = 'fournisseurs';
     $$('nav a').forEach(a => a.classList.toggle('active', a.dataset.route === active));
     guard = null; previewRedraw = null;
     pushHistory(currentHash);        // d'où l'on vient, pour le bouton retour de la page qui s'ouvre
@@ -1161,8 +1167,10 @@
 
     // --- en-tête
     const head = $('#f-head');
+    // Voir la note de l'éditeur d'achat : la fermeture de la liste déroulante émet un `change` anonyme
+    // qui a déjà recopié le nouveau client dans `doc`. On mémorise donc le dernier client appliqué.
+    let appliedClient = doc.clientId;
     head.oninput = head.onchange = (e) => {
-      const before = doc.clientId;
       Object.assign(doc, formValues(head));
       touch();
       const setRateLabel = () => { const rf = $('#rate-field', head); rf.hidden = cur === company().currency; $('.rate-lbl', rf).textContent = `Taux : 1 ${cur} = ? ${company().currency}`; };
@@ -1171,7 +1179,8 @@
         setRateLabel();
         drawLines();
       }
-      if (e && e.target && e.target.name === 'clientId' && doc.clientId !== before && doc.status === 'brouillon') {
+      if (e && e.target && e.target.name === 'clientId' && doc.clientId !== appliedClient && doc.status === 'brouillon') {
+        appliedClient = doc.clientId;
         // nouveau client : on reprend son taux de retenue à la source, sa langue et sa devise
         if (!isQ) { doc.withholdingRate = clientWithholding(doc.clientId); const sel = $('select[name=withholdingRate]', head); if (sel) sel.innerHTML = withholdingOptions(doc.withholdingRate); }
         applyClientDefaults(doc, doc.clientId);
@@ -2302,6 +2311,8 @@
     if (rel) { const n = C.overdueInvoices(data, company()).filter(x => !x.snoozed).length; rel.hidden = !n; rel.textContent = n; }
     const ct = $('#nav-contrats');
     if (ct) { const n = C.dueRecurrences(data).length; ct.hidden = !n; ct.textContent = n; }
+    const ach = $('#nav-achats');
+    if (ach) { const n = C.payablesList(data, company(), C.today()).filter(x => x.late > 0).length; ach.hidden = !n; ach.textContent = n; }
   }
 
   // ---------- palette de recherche (Cmd/Ctrl+K) ----------
@@ -2315,7 +2326,7 @@
     const actions = [
       ['Nouveau devis', () => navigate('#/doc/new/devis')], ['Nouvelle facture', () => navigate('#/doc/new/facture')], ['Nouvel avoir', () => navigate('#/doc/new/avoir')],
       ['Accueil', () => navigate('#/dashboard')], ['Devis', () => navigate('#/devis')], ['Factures', () => navigate('#/factures')], ['Relances', () => navigate('#/relances')],
-      ['Contrats récurrents', () => navigate('#/contrats')], ['Proformas', () => navigate('#/autres/proforma')], ['Bons de commande', () => navigate('#/autres/commande')], ['Bons de livraison', () => navigate('#/autres/livraison')], ['Contrats à signer', () => navigate('#/autres/contrat')], ['Clients', () => navigate('#/clients')], ['Catalogue', () => navigate('#/catalogue')], ['Statistiques', () => navigate('#/stats')], ['Comptabilité', () => navigate('#/compta')], ['Paramètres', () => navigate('#/parametres')],
+      ['Contrats récurrents', () => navigate('#/contrats')], ['Achats et dépenses', () => navigate('#/achats')], ['Nouvelle facture d\'achat', () => navigate('#/achat/new')], ['Nouvelle dépense', () => navigate('#/achat/new/-/depense')], ['Fournisseurs', () => navigate('#/fournisseurs')], ['Nouveau fournisseur', () => supplierForm(null, () => render())], ['Proformas', () => navigate('#/autres/proforma')], ['Bons de commande', () => navigate('#/autres/commande')], ['Bons de livraison', () => navigate('#/autres/livraison')], ['Contrats à signer', () => navigate('#/autres/contrat')], ['Clients', () => navigate('#/clients')], ['Catalogue', () => navigate('#/catalogue')], ['Statistiques', () => navigate('#/stats')], ['Comptabilité', () => navigate('#/compta')], ['Paramètres', () => navigate('#/parametres')],
       ['Aide et guide', () => navigate('#/aide')], ['Nouveau client', () => clientForm(null, () => render())]
     ].map(([label, run]) => ({ kind: 'Action', main: label, text: label.toLowerCase(), run }));
     const helps = G.ARTICLES.map(x => ({ kind: 'Aide', main: x.title, sub: x.sub, text: `aide ${x.title} ${x.sub}`.toLowerCase(), run: () => navigate('#/aide/' + x.id) }));
@@ -2379,6 +2390,603 @@
     year: C.today().slice(0, 4), month: C.today().slice(5, 7),
     journal: { sort: null, page: 1 },      // journal des ventes
     pays: { sort: null, page: 1 }          // encaissements
+  };
+
+  // ---------- Fournisseurs ----------
+  const supplierById = id => data.suppliers.find(s => s.id === id);
+  const supplierName = id => (supplierById(id) || {}).name || '—';
+
+  function supplierForm(supplier, done) {
+    const s = supplier || { id: C.uid(), name: '', contact: '', matricule: '', address: '', phone: '', email: '', rib: '', bank: '', notes: '', paymentTermsDays: '', withholdingRate: '' };
+    modal(`<h2>${supplier ? 'Modifier le fournisseur' : 'Nouveau fournisseur'}</h2>
+      <form id="sf" class="grid-2">
+        <label class="field span-2">Nom / Raison sociale<input type="text" name="name" value="${h(s.name)}" required></label>
+        ${field(lbl('Personne à contacter', 'cl.contact'), 'contact', s.contact || '', 'text', 'placeholder="M. Sami Gharbi, commercial"')}
+        ${field(lbl('Matricule fiscal', 'co.matricule'), 'matricule', s.matricule || '')}
+        ${field('Téléphone', 'phone', s.phone || '')}
+        ${field('Email', 'email', s.email || '', 'email')}
+        ${field(lbl('Délai de paiement accordé (jours)', 'sup.terms'), 'paymentTermsDays', s.paymentTermsDays || '', 'number', 'min="0" class="num" placeholder="30"')}
+        <label class="field">${lbl('Retenue à la source à opérer', 'sup.withholding')}<select name="withholdingRate"><option value="" ${s.withholdingRate === '' || s.withholdingRate == null ? 'selected' : ''}>Aucune</option>${C.WITHHOLDING_RATES.filter(r => r).map(r => `<option value="${r}" ${String(s.withholdingRate) === String(r) ? 'selected' : ''}>${pct(r)} %</option>`).join('')}</select></label>
+        ${field(lbl('Banque', 'pay.bank'), 'bank', s.bank || '')}
+        ${field('RIB du fournisseur', 'rib', s.rib || '')}
+        <label class="field span-2">Adresse<textarea name="address">${h(s.address || '')}</textarea></label>
+        <label class="field span-2">Notes internes<textarea name="notes">${h(s.notes || '')}</textarea></label>
+      </form>
+      <div class="modal-actions">
+        ${supplier ? '<button class="btn btn-danger" id="del-sup" style="margin-right:auto">Supprimer ce fournisseur</button>' : ''}
+        <button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
+      (root, close) => {
+        $('#ok', root).onclick = () => {
+          const v = formValues($('#sf', root));
+          if (!v.name.trim()) return toast('Le nom est obligatoire.', true);
+          Object.assign(s, v, {
+            withholdingRate: v.withholdingRate === '' ? '' : Number(v.withholdingRate),
+            paymentTermsDays: v.paymentTermsDays === '' ? '' : Number(v.paymentTermsDays)
+          });
+          if (!supplier) data.suppliers.push(s);
+          save(true); close(); if (done) done(s);
+        };
+        if ($('#del-sup', root)) $('#del-sup', root).onclick = async () => {
+          const n = data.purchases.filter(p => p.supplierId === s.id).length;
+          if (n) return toast(`Impossible : ${n} achat(s) sont liés à ce fournisseur. Un fournisseur qui a une histoire ne se supprime pas.`, true);
+          if (!await confirmDialog(`Supprimer ${s.name} ?`)) return;
+          data.suppliers = data.suppliers.filter(x => x.id !== s.id); save(true); close(); navigate('#/fournisseurs');
+        };
+      });
+  }
+
+  const supplierState = { q: '', f: '', sort: { key: 'name', dir: 'asc' }, page: 1 };
+  const supplierBuyState = { sort: null, page: 1 };
+
+  routes.fournisseurs = () => {
+    const cur = company().currency;
+    const s = supplierState;
+    const cols = [
+      { key: 'name', label: 'Nom', asc: true, val: r => r.s.name.toLowerCase(), get: r => `<strong>${h(r.s.name)}</strong>${r.s.contact ? `<div class="small muted">${h(r.s.contact)}</div>` : ''}` },
+      { key: 'mf', label: 'Matricule', get: r => `${h(r.s.matricule || '')}${Number(r.s.withholdingRate) ? `<div class="small muted">RS ${pct(r.s.withholdingRate)} %</div>` : ''}` },
+      { key: 'contact', label: 'Contact', get: r => `<span class="small">${h(r.s.phone || '')}${r.s.phone && r.s.email ? '<br>' : ''}${h(r.s.email || '')}</span>` },
+      { key: 'count', label: 'Achats', r: true, val: r => r.sum.count, get: r => r.sum.count || '<span class="muted">—</span>' },
+      { key: 'ht', label: 'Acheté HT', r: true, val: r => r.sum.ht, get: r => r.sum.ht ? C.money(r.sum.ht, cur) : '<span class="muted">—</span>' },
+      { key: 'due', label: 'Reste à payer', r: true, val: r => r.sum.remaining, get: r => r.sum.remaining > 0.0005 ? `<strong class="${r.sum.late > 0.0005 ? 'warn-text' : ''}">${C.money(r.sum.remaining, cur)}</strong>` : '<span class="muted">—</span>' },
+      { key: 'last', label: 'Dernier achat', val: r => r.sum.last || '', get: r => r.sum.last ? C.fmtDate(r.sum.last) : '<span class="muted">—</span>' }
+    ];
+    const FILTERS = [['', 'Tous les fournisseurs'], ['due', 'Avec un impayé'], ['late', 'En retard de paiement'], ['none', 'Sans aucun achat']];
+    const draw = (sortKey) => {
+      if (sortKey) { s.sort = toggleSort(s.sort, sortKey, cols); s.page = 1; }
+      const all = data.suppliers.map(x => ({ s: x, sum: C.supplierSummary(data, company(), x.id, C.today()) }));
+      const rows = applySort(all
+        .filter(r => !s.q || [r.s.name, r.s.contact, r.s.matricule, r.s.email, r.s.phone].join(' ').toLowerCase().includes(s.q))
+        .filter(r => !s.f || (s.f === 'due' ? r.sum.remaining > 0.0005 : s.f === 'late' ? r.sum.late > 0.0005 : r.sum.count === 0)), cols, s.sort);
+      const filtered = !!(s.q || s.f);
+      const { rows: page, pg } = paginate(rows, s);
+      const totalHT = rows.reduce((a, r) => a + r.sum.ht, 0);
+      const totalDue = rows.reduce((a, r) => a + r.sum.remaining, 0);
+      $('#list-wrap').innerHTML = rows.length ? `<table class="list sortable"><thead>
+          ${sortHead(cols, s.sort, '<th class="row-actions-h"></th>')}</thead><tbody>
+        ${page.map(r => `<tr class="clickable" data-sid="${r.s.id}">
+          ${cols.map(c => `<td class="${c.r ? 'r nw' : ''}">${c.get(r)}</td>`).join('')}
+          <td class="row-actions"><span>
+            <button class="btn btn-sm" data-buy="${r.s.id}" title="Enregistrer un achat chez ce fournisseur">+ Achat</button>
+            <button class="btn btn-sm" data-edit="${r.s.id}">Modifier</button>
+          </span></td></tr>`).join('')}
+        </tbody><tfoot><tr><td colspan="4">${rows.length} fournisseur${rows.length > 1 ? 's' : ''}</td>
+          <td class="r">${C.money(totalHT, cur)}</td><td class="r">${totalDue > 0.0005 ? C.money(totalDue, cur) : '<span class="muted">—</span>'}</td><td></td><td></td></tr></tfoot>
+        </table>${pagerBar(pg, { noun: 'fournisseur', grandTotal: all.length })}`
+        : `<div class="empty">${filtered ? 'Aucun fournisseur ne correspond à cette recherche.' : 'Aucun fournisseur. Ajoute ceux chez qui tu achètes : leurs coordonnées et leur délai de paiement se reporteront sur chaque achat.'}</div>`;
+      const note = $('#f-note');
+      note.hidden = !filtered;
+      note.innerHTML = !filtered ? '' : `<span class="small muted">${rows.length} sur ${all.length}</span>${filterReset(true)}`;
+      if ($('#reset-f')) $('#reset-f').onclick = () => { s.q = ''; s.f = ''; s.page = 1; routes.fournisseurs(); };
+      $$('tr.clickable[data-sid]').forEach(tr => tr.onclick = e => { if (e.target.closest('button')) return; navigate('#/fournisseur/' + tr.dataset.sid); });
+      $$('[data-edit]').forEach(b => b.onclick = () => supplierForm(supplierById(b.dataset.edit), () => draw()));
+      $$('[data-buy]').forEach(b => b.onclick = () => navigate('#/achat/new/' + b.dataset.buy));
+      bindSort($('#list-wrap'), draw);
+      bindPager($('#list-wrap'), s, () => draw(), '#list-wrap');
+    };
+    $('#view').innerHTML = `<div class="page-head"><h1>Fournisseurs</h1><div class="actions"><button class="btn btn-primary" id="new">+ Nouveau fournisseur</button></div></div>
+      <div class="filters">
+        <input type="text" id="q" placeholder="Rechercher : nom, contact, matricule…" value="${h(s.q)}">
+        <select id="f">${FILTERS.map(([v, l]) => `<option value="${v}" ${s.f === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        ${info('list.sort')}
+        <span class="f-note" id="f-note" hidden></span>
+      </div><div id="list-wrap"></div>`;
+    $('#new').onclick = () => supplierForm(null, () => draw());
+    $('#q').oninput = e => { s.q = e.target.value.toLowerCase(); s.page = 1; draw(); };
+    $('#f').onchange = e => { s.f = e.target.value; s.page = 1; draw(); };
+    draw();
+  };
+
+  routes.fournisseur = (parts) => {
+    const s = supplierById(parts[0]);
+    if (!s) return navigate('#/fournisseurs');
+    const cur = company().currency;
+    const sum = C.supplierSummary(data, company(), s.id, C.today());
+    const mine = data.purchases.filter(p => p.supplierId === s.id);
+    const draw = () => {
+      const { cols } = purchaseColumns({ hideSupplier: true });
+      const list = applySort(mine.slice(), cols, supplierBuyState.sort);
+      const { rows, pg } = paginate(list, supplierBuyState);
+      $('#sup-docs').innerHTML = mine.length ? `<table class="list compact sortable"><thead>${sortHead(cols, supplierBuyState.sort)}</thead><tbody>
+          ${rows.map(p => `<tr class="clickable" data-id="${p.id}">${cols.map(c => `<td class="${c.r ? 'r nw' : ''}">${c.get(p)}</td>`).join('')}</tr>`).join('')}
+        </tbody></table>${pagerBar(pg, { noun: 'achat' })}`
+        : '<div class="empty">Aucun achat chez ce fournisseur pour l\'instant.</div>';
+      $$('#sup-docs tr.clickable').forEach(tr => tr.onclick = () => navigate('#/achat/' + tr.dataset.id));
+      bindSort($('#sup-docs'), () => draw());
+      bindPager($('#sup-docs'), supplierBuyState, () => draw(), '#sup-docs');
+    };
+    $('#view').innerHTML = `
+      <div class="page-head"><div><h1>${h(s.name)}</h1>${s.contact ? `<div class="small muted">${h(s.contact)}</div>` : ''}</div>
+        <div class="actions">${backButton('#/fournisseurs')}<button class="btn" id="edit">Modifier</button><button class="btn btn-primary" id="buy">+ Enregistrer un achat</button></div></div>
+      <div class="stats">
+        <div class="stat"><div class="lbl">Acheté HT ${info('sup.total')}</div><div class="val">${C.money(sum.ht, cur)}</div><div class="sub">${sum.count} pièce(s)</div></div>
+        <div class="stat"><div class="lbl">Reste à payer ${info('sup.due')}</div><div class="val ${sum.remaining > 0.0005 ? 'due' : ''}">${C.money(sum.remaining, cur)}</div><div class="sub">${sum.late > 0.0005 ? `dont ${C.money(sum.late, cur)} en retard` : 'rien en retard'}</div></div>
+        <div class="stat"><div class="lbl">Délai accordé</div><div class="val">${s.paymentTermsDays === '' || s.paymentTermsDays == null ? '—' : s.paymentTermsDays + ' j'}</div><div class="sub">reporté sur chaque achat</div></div>
+        <div class="stat"><div class="lbl">Relation</div><div class="val">${sum.first ? C.fmtDate(sum.first).slice(3) : '—'}</div><div class="sub">${sum.last ? 'dernier achat le ' + C.fmtDate(sum.last) : 'aucun achat'}</div></div>
+      </div>
+      <div class="dash-grid">
+        <div class="panel"><h2>Achats chez ce fournisseur</h2><div id="sup-docs"></div></div>
+        <div class="panel"><h2>Coordonnées</h2>
+          <div class="kv">
+            <div><span>Matricule fiscal</span><span>${h(s.matricule || '—')}</span></div>
+            <div><span>Téléphone</span><span>${h(s.phone || '—')}</span></div>
+            <div><span>Email</span><span>${h(s.email || '—')}</span></div>
+            <div><span>Banque</span><span>${h(s.bank || '—')}</span></div>
+            <div><span>RIB</span><span>${h(s.rib || '—')}</span></div>
+            <div><span>Retenue à la source</span><span>${Number(s.withholdingRate) ? pct(s.withholdingRate) + ' %' : 'aucune'}</span></div>
+          </div>
+          ${s.address ? `<p class="small muted mt">${C.nl2br(s.address)}</p>` : ''}
+          <h3 class="sub-h">Notes internes ${info('cl.notes')}</h3>
+          <textarea id="sup-notes" placeholder="Ce qu'il faut savoir sur ce fournisseur : délais réels, interlocuteur, conditions négociées…">${h(s.notes || '')}</textarea>
+          <p class="small muted">Enregistré automatiquement. Ces notes ne s'impriment nulle part.</p>
+        </div>
+      </div>`;
+    bindBack('#/fournisseurs');
+    $('#edit').onclick = () => supplierForm(s, () => render());
+    $('#buy').onclick = () => navigate('#/achat/new/' + s.id);
+    let noteTimer = null;
+    $('#sup-notes').oninput = e => { s.notes = e.target.value; clearTimeout(noteTimer); noteTimer = setTimeout(() => save(true), 600); };
+    draw();
+  };
+
+  // ---------- Achats et dépenses ----------
+  const purchaseById = id => data.purchases.find(p => p.id === id);
+  const buyStatus = p => C.purchaseStatus(p, company(), C.today());
+
+  function purchaseColumns(opts) {
+    opts = opts || {};
+    const cur = company().currency;
+    const netOf = p => C.purchaseTotals(p, company()).netToPay;
+    const restOf = p => C.purchaseBalance(p, company()).remaining;
+    const cols = [
+      { key: 'date', label: 'Date', cls: 'nw', val: p => p.date || '', get: p => C.fmtDate(p.date) },
+      { key: 'number', label: 'N° fournisseur', cls: 'nw', asc: true, val: p => (p.number || '').toLowerCase(), get: p => p.number ? `<strong>${h(p.number)}</strong>` : '<span class="muted">sans numéro</span>' }
+    ];
+    if (!opts.hideSupplier) cols.push({ key: 'supplier', label: 'Fournisseur', asc: true, val: p => supplierName(p.supplierId).toLowerCase(), get: p => `${h(supplierName(p.supplierId))}${p.subject ? `<div class="small muted">${h(p.subject)}</div>` : ''}` });
+    else cols.push({ key: 'subject', label: 'Objet', asc: true, val: p => (p.subject || '').toLowerCase(), get: p => h(p.subject || '') || '<span class="muted">—</span>' });
+    cols.push(
+      { key: 'category', label: 'Catégorie', asc: true, val: p => (p.category || '').toLowerCase(), get: p => `${h(p.category || '')}${p.kind === 'depense' ? '<div class="small muted">dépense</div>' : ''}` || '<span class="muted">—</span>' },
+      { key: 'due', label: 'Échéance', cls: 'nw', val: p => p.dueDate || '', get: p => p.dueDate ? C.fmtDate(p.dueDate) : '<span class="muted">—</span>' },
+      { key: 'status', label: 'Statut', val: p => buyStatus(p), get: p => buyBadge(buyStatus(p)) },
+      { key: 'net', label: 'Net à payer', r: true, val: netOf, get: p => C.money(netOf(p), cur) },
+      { key: 'rest', label: 'Reste', r: true, val: restOf, get: p => { const x = restOf(p); return x > 0.0005 ? C.money(x, cur) : '<span class="muted">—</span>'; } }
+    );
+    return { cols, netOf, restOf };
+  }
+
+  const buyState = { q: '', st: '', kind: '', cat: '', year: '', sort: { key: 'date', dir: 'desc' }, page: 1 };
+
+  routes.achats = () => {
+    const cur = company().currency;
+    const s = buyState;
+    const { cols, netOf, restOf } = purchaseColumns({});
+    const all = data.purchases;
+    const years = Array.from(new Set(all.map(p => (p.date || '').slice(0, 4)).filter(Boolean))).sort().reverse();
+    const cats = Array.from(new Set(all.map(p => p.category).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'fr'));
+    const draw = (sortKey) => {
+      if (sortKey) { s.sort = toggleSort(s.sort, sortKey, cols); s.page = 1; }
+      const rows = applySort(all
+        .filter(p => !s.kind || p.kind === s.kind)
+        .filter(p => !s.year || (p.date || '').startsWith(s.year))
+        .filter(p => !s.cat || p.category === s.cat)
+        .filter(p => !s.st || buyStatus(p) === s.st)
+        .filter(p => !s.q || [p.number, supplierName(p.supplierId), p.subject, p.category].join(' ').toLowerCase().includes(s.q)), cols, s.sort);
+      const filtered = !!(s.q || s.st || s.kind || s.cat || s.year);
+      const { rows: page, pg } = paginate(rows, s);
+      // Les totaux portent sur toute la sélection, jamais sur la page affichée.
+      const totHT = rows.reduce((a, p) => a + C.purchaseTotals(p, company()).totalHT, 0);
+      const totNet = rows.reduce((a, p) => a + netOf(p), 0);
+      const totRest = rows.reduce((a, p) => a + Math.max(0, restOf(p)), 0);
+      $('#list-wrap').innerHTML = rows.length ? `<table class="list sortable"><thead>${sortHead(cols, s.sort, '<th class="row-actions-h"></th>')}</thead><tbody>
+          ${page.map(p => `<tr class="clickable" data-id="${p.id}">${cols.map(c => `<td class="${c.r ? 'r nw' : ''}${c.cls ? ' ' + c.cls : ''}">${c.get(p)}</td>`).join('')}
+            <td class="row-actions"><span>${restOf(p) > 0.0005 ? `<button class="btn btn-sm" data-pay="${p.id}" title="Enregistrer un règlement">Régler</button>` : ''}
+            <button class="btn btn-sm btn-ghost" data-dup="${p.id}" title="Dupliquer">⧉</button></span></td></tr>`).join('')}
+        </tbody><tfoot><tr><td colspan="${cols.length - 2}">${rows.length} pièce${rows.length > 1 ? 's' : ''} · ${C.money(totHT, cur)} HT</td>
+          <td class="r">${C.money(totNet, cur)}</td><td class="r">${totRest > 0.0005 ? C.money(totRest, cur) : '<span class="muted">—</span>'}</td><td></td></tr></tfoot></table>${pagerBar(pg, { noun: 'pièce', grandTotal: all.length })}`
+        : `<div class="empty">${filtered ? 'Aucune pièce ne correspond à ces filtres.' : 'Aucun achat enregistré. Saisis tes factures fournisseurs et tes dépenses ici : c\'est ce qui permettra de récupérer la TVA et de connaître ta marge réelle.'}</div>`;
+      const note = $('#f-note');
+      note.hidden = !filtered;
+      note.innerHTML = !filtered ? '' : `<span class="small muted">${rows.length} sur ${all.length}</span>${filterReset(true)}`;
+      if ($('#reset-f')) $('#reset-f').onclick = () => { s.q = ''; s.st = ''; s.kind = ''; s.cat = ''; s.year = ''; s.page = 1; routes.achats(); };
+      $$('#list-wrap tr.clickable').forEach(tr => tr.onclick = e => { if (e.target.closest('button')) return; navigate('#/achat/' + tr.dataset.id); });
+      $$('[data-pay]').forEach(b => b.onclick = () => supplierPaymentForm(purchaseById(b.dataset.pay), () => draw()));
+      $$('[data-dup]').forEach(b => b.onclick = () => duplicatePurchase(purchaseById(b.dataset.dup)));
+      bindSort($('#list-wrap'), draw);
+      bindPager($('#list-wrap'), s, () => draw(), '#list-wrap');
+    };
+    $('#view').innerHTML = `
+      <div class="page-head"><h1>Achats et dépenses</h1>
+        <div class="actions"><button class="btn" id="new-dep">+ Dépense</button><button class="btn btn-primary" id="new">+ Facture d'achat</button></div></div>
+      ${payablesPanel()}
+      <div class="filters">
+        <input type="text" id="q" placeholder="Rechercher : n°, fournisseur, objet, catégorie…" value="${h(s.q)}">
+        <select id="kind"><option value="">Tout</option>${C.PURCHASE_KINDS.map(([v, l]) => `<option value="${v}" ${s.kind === v ? 'selected' : ''}>${l}s</option>`).join('')}</select>
+        <select id="st"><option value="">Tous les statuts</option>${C.PURCHASE_STATUSES.map(x => `<option value="${x}" ${s.st === x ? 'selected' : ''}>${h(x)}</option>`).join('')}</select>
+        ${cats.length > 1 ? `<select id="cat"><option value="">Toutes les catégories</option>${cats.map(c => `<option value="${h(c)}" ${s.cat === c ? 'selected' : ''}>${h(c)}</option>`).join('')}</select>` : ''}
+        ${years.length > 1 ? `<select id="yr"><option value="">Toutes les années</option>${years.map(y => `<option value="${y}" ${s.year === y ? 'selected' : ''}>${y}</option>`).join('')}</select>` : ''}
+        ${info('list.filters')}
+        <span class="f-note" id="f-note" hidden></span>
+      </div>
+      <div id="list-wrap"></div>`;
+    $('#new').onclick = () => navigate('#/achat/new');
+    $('#new-dep').onclick = () => navigate('#/achat/new/-/depense');
+    $('#q').oninput = e => { s.q = e.target.value.toLowerCase(); s.page = 1; draw(); };
+    $('#st').onchange = e => { s.st = e.target.value; s.page = 1; draw(); };
+    $('#kind').onchange = e => { s.kind = e.target.value; s.page = 1; draw(); };
+    if ($('#cat')) $('#cat').onchange = e => { s.cat = e.target.value; s.page = 1; draw(); };
+    if ($('#yr')) $('#yr').onchange = e => { s.year = e.target.value; s.page = 1; draw(); };
+    bindPayables();
+    draw();
+  };
+
+  // Bandeau « à payer » : le pendant des relances, côté sortant.
+  function payablesPanel() {
+    const cur = company().currency;
+    const due = C.payablesList(data, company(), C.today());
+    if (!due.length) return '';
+    const late = due.filter(x => x.late > 0);
+    const soon = due.filter(x => !x.late && x.dueDate && C.daysBetween(C.today(), x.dueDate) <= 7);
+    const total = due.reduce((s, x) => s + x.remaining, 0);
+    const open = prefs.get('payablesOpen', true);
+    return `<div class="panel todo" id="payables">
+      <h2 class="collapse-h" id="pay-h" role="button" tabindex="0" aria-expanded="${open}">
+        <span class="chev">${open ? '▾' : '▸'}</span>À payer ${info('buy.payables')}<span class="count">${due.length}</span></h2>
+      <div id="pay-body" ${open ? '' : 'hidden'}>
+        <p class="small muted">${C.money(total, cur)} dû au total${late.length ? ` · <span class="warn-text">${late.length} pièce(s) en retard</span>` : ''}${soon.length ? ` · ${soon.length} à régler sous 7 jours` : ''}.</p>
+        <table class="list compact"><thead><tr><th>Fournisseur</th><th>Pièce</th><th>Échéance</th><th class="r">Reste dû</th><th></th></tr></thead><tbody>
+          ${due.slice(0, 8).map(x => `<tr class="clickable ${x.late > 0 ? 'row-warn' : ''}" data-id="${h(x.id)}">
+            <td>${h(supplierName(x.supplierId))}</td>
+            <td>${x.number ? `<strong>${h(x.number)}</strong>` : '<span class="muted">sans numéro</span>'}${x.subject ? `<div class="small muted">${h(x.subject)}</div>` : ''}</td>
+            <td class="nw">${x.dueDate ? C.fmtDate(x.dueDate) : '—'}${x.late ? `<div class="small warn-text">${x.late} j de retard</div>` : ''}</td>
+            <td class="r nw"><strong>${C.money(x.remaining, cur)}</strong></td>
+            <td class="actions"><button class="btn btn-sm" data-payx="${h(x.id)}">Régler</button></td></tr>`).join('')}
+        </tbody></table>
+        ${due.length > 8 ? `<p class="small muted mt">… et ${due.length - 8} autre(s). Filtre sur « à payer » ou « retard » pour tout voir.</p>` : ''}
+      </div></div>`;
+  }
+  function bindPayables() {
+    const h2 = $('#pay-h'); if (!h2) return;
+    const toggle = () => {
+      const body = $('#pay-body'); const open = body.hidden;
+      body.hidden = !open; $('.chev', h2).textContent = open ? '▾' : '▸';
+      h2.setAttribute('aria-expanded', String(open)); prefs.set('payablesOpen', open);
+    };
+    h2.onclick = toggle;
+    h2.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } };
+    $$('#payables tr.clickable').forEach(tr => tr.onclick = e => { if (e.target.closest('button')) return; navigate('#/achat/' + tr.dataset.id); });
+    $$('[data-payx]').forEach(b => b.onclick = () => supplierPaymentForm(purchaseById(b.dataset.payx), () => render()));
+  }
+
+  function newPurchase(kind, supplierId) {
+    const date = C.today();
+    const sup = supplierId ? supplierById(supplierId) : null;
+    const days = sup && sup.paymentTermsDays !== '' && sup.paymentTermsDays != null ? Number(sup.paymentTermsDays) : 30;
+    return {
+      id: C.uid(), kind: kind === 'depense' ? 'depense' : 'facture', supplierId: supplierId || '', number: '',
+      date, dueDate: kind === 'depense' ? '' : C.addDays(date, days),
+      subject: '', category: '', notes: '', fees: 0,
+      withholdingRate: sup && Number(sup.withholdingRate) ? Number(sup.withholdingRate) : 0,
+      lines: [{ label: '', qty: 1, unit: '', unitPrice: 0, vatRate: 19, destination: 'charge', deductible: true }],
+      payments: [], attachments: [], createdAt: Date.now()
+    };
+  }
+
+  function duplicatePurchase(p) {
+    if (!p) return;
+    const copy = { ...deepCopy(p), id: C.uid(), number: '', date: C.today(), createdAt: Date.now(), payments: [], attachments: [], withholdingCertificate: false };
+    if (copy.dueDate) copy.dueDate = C.addDays(copy.date, 30);
+    data.purchases.push(copy); save(true);
+    toast('Copie créée — vérifie le numéro et la date de la facture du fournisseur');
+    navigate('#/achat/' + copy.id);
+  }
+
+  // Règlement d'un achat : le symétrique exact d'un encaissement client.
+  function supplierPaymentForm(p, done) {
+    if (!p) return;
+    const cur = company().currency;
+    const b = C.purchaseBalance(p, company());
+    modal(`<h2>Régler ${h(p.number || 'cet achat')}</h2>
+      <p class="small muted">${h(supplierName(p.supplierId))} · net à payer ${C.money(b.totals.netToPay, cur)} · déjà réglé ${C.money(b.paid, cur)} · reste ${C.money(Math.max(0, b.remaining), cur)}</p>
+      <form id="spf" class="grid-2">
+        ${dateFieldHtml('Date du règlement', 'date', C.today(), {})}
+        ${field('Montant', 'amount', C.round3(Math.max(0, b.remaining)), 'number', 'step="0.001" min="0" class="num"')}
+        <label class="field">Mode<select name="method">${C.PAYMENT_METHODS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></label>
+        ${field('Référence', 'reference', '', 'text', 'placeholder="N° de chèque, référence du virement…"')}
+        <label class="field span-2">Note<input type="text" name="note" value=""></label>
+      </form>
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
+      (root, close) => { $('#ok', root).onclick = async () => {
+        const v = formValues($('#spf', root));
+        if (!(Number(v.amount) > 0)) return toast('Montant invalide.', true);
+        if (!v.date) return toast('Date invalide.', true);
+        if (v.date > C.today() && !await confirmDialog(`La date (${C.fmtDate(v.date)}) est dans le futur. Enregistrer quand même ?`, 'Enregistrer')) return;
+        if (Number(v.amount) > b.remaining + 0.0005 && !await confirmDialog(`Le montant (${C.money(v.amount, cur)}) dépasse le reste dû (${C.money(Math.max(0, b.remaining), cur)}). Enregistrer quand même ?`, 'Enregistrer quand même')) return;
+        const stored = purchaseById(p.id) || p;
+        stored.payments = (stored.payments || []).concat([{ id: C.uid(), date: v.date, amount: C.round3(v.amount), method: v.method, reference: v.reference || '', note: v.note || '' }]);
+        save(true); close(); toast('Règlement enregistré'); if (done) done();
+      }; });
+  }
+
+  // Éditeur d'achat. Pas d'aperçu ni de PDF : le document existe déjà, c'est celui du fournisseur.
+  // On le saisit pour récupérer la TVA, suivre ce qu'on doit et, plus tard, alimenter le stock.
+  routes.achat = (parts) => {
+    let p, isNew = false;
+    if (parts[0] === 'new') {
+      const sup = parts[1] && parts[1] !== '-' ? parts[1] : '';
+      p = newPurchase(parts[2] || (parts[1] === 'depense' ? 'depense' : 'facture'), supplierById(sup) ? sup : '');
+      isNew = true;
+    } else {
+      const stored = purchaseById(parts[0]);
+      if (!stored) return navigate('#/achats');
+      p = deepCopy(stored);
+    }
+    const isDep = p.kind === 'depense';
+    const cur = company().currency;
+    const stored = isNew ? null : purchaseById(p.id);
+    const cats = C.expenseCategories(data);
+
+    const supplierItems = () => data.suppliers.slice().sort((a, b) => a.name.localeCompare(b.name, 'fr')).map(x => ({
+      v: x.id, label: x.name, sub: [x.contact, x.matricule ? 'MF ' + x.matricule : ''].filter(Boolean).join(' · '),
+      text: `${x.name} ${x.contact || ''} ${x.matricule || ''} ${x.email || ''}`
+    }));
+
+    $('#view').innerHTML = `
+      <div class="page-head">
+        <div><h1>${isNew ? (isDep ? 'Nouvelle dépense' : 'Nouvelle facture d\'achat') : `${isDep ? 'Dépense' : 'Facture d\'achat'} ${h(p.number || 'sans numéro')}`}
+          <span class="dirty-dot" id="dirty-dot" hidden title="Modifications non enregistrées">non enregistré</span></h1>
+          ${isNew ? '' : `<div class="small muted">${h(supplierName(p.supplierId))} · ${C.fmtDate(p.date)}</div>`}</div>
+        <div class="actions">
+          ${backButton('#/achats')}
+          ${!isNew && C.purchaseBalance(stored, company()).remaining > 0.0005 ? '<button class="btn" id="pay">Enregistrer un règlement</button>' : ''}
+          <button class="btn btn-primary" id="save">Enregistrer</button>
+          ${isNew ? '' : `<div class="more"><button class="btn" id="more-btn">Plus ▾</button><div class="more-list" id="more-list" hidden>
+            <button id="dup">Dupliquer</button>
+            <button id="del" class="danger">Supprimer</button>
+          </div></div>`}
+        </div></div>
+      <div class="buy-editor">
+        <div>
+          <div class="panel"><h2>La pièce du fournisseur ${info('buy.head')}</h2>
+            <form id="b-head" class="grid-3">
+              <div class="field">${lbl('Fournisseur', 'buy.supplier')}
+                ${combo({ name: 'supplierId', value: p.supplierId, items: supplierItems(), placeholder: '— Choisir un fournisseur —', search: 'Rechercher : nom, contact, MF…', add: '+ Nouveau fournisseur' })}
+              </div>
+              ${field(lbl(isDep ? 'Référence du justificatif' : 'Numéro de la facture', 'buy.number'), 'number', p.number || '', 'text', isDep ? 'placeholder="Ticket, reçu…"' : 'placeholder="Celui écrit sur la facture du fournisseur"')}
+              <label class="field">${lbl('Nature', 'buy.kind')}<select name="kind">${C.PURCHASE_KINDS.map(([v, l]) => `<option value="${v}" ${p.kind === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+              ${dateFieldHtml(lbl('Date de la pièce', 'buy.date'), 'date', p.date, {})}
+              ${dateFieldHtml(lbl('Échéance de paiement', 'buy.due'), 'dueDate', p.dueDate || '', { quick: true })}
+              <div class="field">${lbl('Catégorie de charge', 'buy.category')}
+                ${combo({ name: 'category', value: p.category || '', items: cats.map(c => ({ v: c, label: c })), placeholder: '— Choisir une catégorie —', search: 'Rechercher une catégorie…', add: '+ Nouvelle catégorie' })}
+              </div>
+              <label class="field span-2">${lbl('Objet', 'buy.subject')}<input type="text" name="subject" value="${h(p.subject || '')}" placeholder="Ex : disques durs pour la Clinique"></label>
+              <label class="field">${lbl('Retenue à la source opérée', 'buy.withholding')}<select name="withholdingRate"><option value="0" ${!Number(p.withholdingRate) ? 'selected' : ''}>Aucune</option>${C.WITHHOLDING_RATES.filter(r => r).map(r => `<option value="${r}" ${Number(p.withholdingRate) === r ? 'selected' : ''}>${pct(r)} %</option>`).join('')}</select></label>
+              ${field(lbl('Timbre et frais', 'buy.fees'), 'fees', p.fees || 0, 'number', 'step="0.001" min="0" class="num"')}
+            </form>
+          </div>
+          <div class="panel"><h2>Lignes ${info('buy.lines')}</h2>
+            <div class="catalog-pick"><button class="btn btn-sm" id="add-line">+ Ligne</button>
+              <span class="small muted">Saisis au moins le total hors taxes et son taux de TVA : c'est ce qui permet de récupérer la TVA.</span></div>
+            <table class="lines-edit buy-lines"><thead><tr><th>Désignation</th><th style="width:62px">Qté</th><th style="width:92px">P.U. HT</th><th style="width:76px">TVA</th>
+              <th style="width:150px">Destination ${info('buy.destination')}</th><th style="width:74px">Déduct. ${info('buy.deductible')}</th><th class="r">Total HT</th><th></th></tr></thead>
+              <tbody id="b-lines"></tbody></table>
+            <div class="totals-box" id="b-totals"></div>
+          </div>
+          ${isNew ? '' : `<div class="panel"><h2>Règlements ${info('buy.payments')}</h2><div id="b-pay"></div></div>`}
+          ${isNew ? '' : `<div class="panel"><h2>Pièces jointes ${info('ed.attachments')}</h2><div id="attachments"></div></div>`}
+          <div class="panel"><h2>Notes internes</h2>
+            <textarea id="b-notes" placeholder="Ce qu'il faut se rappeler sur cet achat">${h(p.notes || '')}</textarea>
+          </div>
+        </div>
+      </div>`;
+
+    // --- garde-fou
+    let dirty = false;
+    const touch = () => { if (dirty) return; dirty = true; const el = $('#dirty-dot'); if (el) el.hidden = false; reportDirty(); };
+    const untouch = () => { dirty = false; const el = $('#dirty-dot'); if (el) el.hidden = true; reportDirty(); };
+    setGuard({ dirty: () => dirty, what: isDep ? 'cette dépense' : 'cette facture d\'achat', save: () => { const ok = persist(); if (ok) untouch(); return ok; } });
+
+    // --- lignes
+    const body = $('#b-lines');
+    function drawLines() {
+      const n = p.lines.length;
+      body.innerHTML = p.lines.map((l, i) => `<tr data-i="${i}">
+        <td><input type="text" data-k="label" value="${h(l.label || '')}" placeholder="Désignation"></td>
+        <td><input type="number" class="num" data-k="qty" value="${l.qty}" step="0.01"></td>
+        <td><input type="number" class="num" data-k="unitPrice" value="${l.unitPrice}" step="0.001"></td>
+        <td><select data-k="vatRate">${C.VAT_RATES.map(r => `<option value="${r}" ${Number(l.vatRate) === r ? 'selected' : ''}>${r}%</option>`).join('')}</select></td>
+        <td><select data-k="destination">${C.LINE_DESTINATIONS.map(([v, lab, d]) => `<option value="${v}" ${(l.destination || 'charge') === v ? 'selected' : ''} title="${h(d)}">${lab}</option>`).join('')}</select></td>
+        <td class="c"><input type="checkbox" data-k="deductible" ${l.deductible !== false ? 'checked' : ''}></td>
+        <td class="total" data-total="${i}"></td>
+        <td class="line-tools">
+          <button class="btn btn-ghost btn-sm" data-dup="${i}" title="Dupliquer la ligne">⧉</button>
+          <button class="btn btn-ghost btn-sm" data-rm="${i}" title="Supprimer la ligne" ${n === 1 ? 'disabled' : ''}>✕</button></td></tr>`).join('');
+      $$('[data-k]', body).forEach(el => {
+        const ev = el.type === 'checkbox' || el.tagName === 'SELECT' ? 'onchange' : 'oninput';
+        el[ev] = () => {
+          const i = Number(el.closest('tr').dataset.i);
+          p.lines[i][el.dataset.k] = el.type === 'checkbox' ? el.checked : el.type === 'number' ? Number(el.value) : el.value;
+          touch(); refresh();
+        };
+      });
+      $$('[data-dup]', body).forEach(b => b.onclick = () => { const i = Number(b.dataset.dup); p.lines.splice(i + 1, 0, deepCopy(p.lines[i])); touch(); drawLines(); });
+      $$('[data-rm]', body).forEach(b => b.onclick = () => { p.lines.splice(Number(b.dataset.rm), 1); touch(); drawLines(); });
+      refresh();
+    }
+    $('#add-line').onclick = () => { p.lines.push({ label: '', qty: 1, unit: '', unitPrice: 0, vatRate: 19, destination: 'charge', deductible: true }); touch(); drawLines(); $$('input[data-k=label]', body).pop().focus(); };
+
+    function refresh() {
+      const t = C.purchaseTotals(p, company());
+      t.lines.forEach((l, i) => { const c = $(`[data-total="${i}"]`); if (c) c.textContent = C.money(l.ht, null, C.decimalsFor(cur)); });
+      const dest = C.LINE_DESTINATIONS.filter(([k]) => t.byDestination[k] > 0.0005);
+      $('#b-totals').innerHTML = `<table>
+        <tr><td>Total HT</td><td>${C.money(t.totalHT, cur)}</td></tr>
+        <tr><td>TVA</td><td>${C.money(t.totalVAT, cur)}</td></tr>
+        ${t.deductibleVAT !== t.totalVAT ? `<tr><td>dont TVA déductible</td><td>${C.money(t.deductibleVAT, cur)}</td></tr>` : ''}
+        ${t.fees ? `<tr><td>Timbre et frais</td><td>${C.money(t.fees, cur)}</td></tr>` : ''}
+        ${t.withholding ? `<tr><td>Total TTC</td><td>${C.money(t.totalTTC, cur)}</td></tr><tr><td>Retenue opérée ${pct(t.withholdingRate)}%</td><td>- ${C.money(t.withholding, cur)}</td></tr>` : ''}
+        <tr class="grand"><td>Net à payer</td><td>${C.money(t.netToPay, cur)}</td></tr>
+        ${dest.length ? `<tr><td colspan="2" class="small muted" style="padding-top:8px">${dest.map(([k, lab]) => `${lab} ${C.money(t.byDestination[k], cur)}`).join(' · ')}</td></tr>` : ''}
+      </table>`;
+    }
+
+    // --- en-tête
+    const head = $('#b-head');
+    // Le dernier fournisseur dont on a appliqué les réglages. On ne peut PAS comparer avec `p.supplierId` :
+    // en fermant la liste déroulante, son champ de recherche perd le focus et émet son propre `change`
+    // (sans nom), qui recopie déjà le nouvel identifiant dans `p`. L'événement utile arrivait donc toujours
+    // « inchangé », et ni le délai de paiement ni la retenue du fournisseur n'étaient repris.
+    let appliedSupplier = p.supplierId;
+    head.oninput = head.onchange = (e) => {
+      Object.assign(p, formValues(head));
+      p.fees = Number(p.fees) || 0;
+      p.withholdingRate = Number(p.withholdingRate) || 0;
+      touch();
+      if (e && e.target && e.target.name === 'supplierId' && p.supplierId !== appliedSupplier) {
+        appliedSupplier = p.supplierId;
+        // nouveau fournisseur : on reprend son délai de paiement et son taux de retenue
+        const sup = supplierById(p.supplierId);
+        if (sup) {
+          if (sup.paymentTermsDays !== '' && sup.paymentTermsDays != null && p.date) {
+            p.dueDate = C.addDays(p.date, Number(sup.paymentTermsDays) || 0);
+            // un champ date est un couple <input hidden> + champ texte visible : les deux doivent suivre
+            const hid = $('input[name=dueDate]', head);
+            if (hid) {
+              hid.value = p.dueDate;
+              const txt = hid.closest('.datefield') && $('.d-txt', hid.closest('.datefield'));
+              if (txt) txt.value = C.fmtDateInput(p.dueDate);
+            }
+          }
+          if (Number(sup.withholdingRate)) { p.withholdingRate = Number(sup.withholdingRate); $('select[name=withholdingRate]', head).value = String(p.withholdingRate); }
+        }
+      }
+      refresh();
+    };
+    const supCombo = bindCombo($('[data-combo=supplierId]', head), {
+      items: supplierItems(), placeholder: '— Choisir un fournisseur —',
+      onAdd: () => supplierForm(null, sup => { supCombo.setItems(supplierItems()); supCombo.setValue(sup.id); })
+    });
+    bindCombo($('[data-combo=category]', head), {
+      items: cats.map(c => ({ v: c, label: c })), placeholder: '— Choisir une catégorie —',
+      onAdd: () => promptDialog('Nouvelle catégorie de charge', 'Nom de la catégorie', '', name => {
+        const v = (name || '').trim(); if (!v) return;
+        if (!C.expenseCategories(data).includes(v)) { data.expenseCategories.push(v); save(true); }
+        const el = $('[data-combo=category]', head);
+        bindCombo(el, { items: C.expenseCategories(data).map(c => ({ v: c, label: c })), placeholder: '— Choisir une catégorie —' }).setValue(v);
+        p.category = v; touch();
+      })
+    });
+    $('#b-notes').oninput = e => { p.notes = e.target.value; touch(); };
+
+    // --- règlements
+    function drawPayments() {
+      const el = $('#b-pay'); if (!el) return;
+      const s2 = purchaseById(p.id); if (!s2) return;
+      const b = C.purchaseBalance(s2, company());
+      const rows = (s2.payments || []).slice().sort((a, x) => (a.date || '').localeCompare(x.date || ''));
+      const t = b.totals;
+      el.innerHTML = `
+        <div class="pay-grid">
+          <div><div class="k-label">Net à payer</div><div class="v">${C.money(t.netToPay, cur)}</div>${t.withholding ? `<div class="small muted">TTC ${C.money(t.totalTTC, cur)} − retenue ${C.money(t.withholding, cur)}</div>` : ''}</div>
+          <div><div class="k-label">Réglé</div><div class="v">${C.money(b.paid, cur)}</div></div>
+          <div><div class="k-label">Reste dû</div><div class="v ${b.remaining > 0.0005 ? 'due' : 'ok'}">${C.money(Math.max(0, b.remaining), cur)}</div></div>
+          <div><div class="k-label">Statut</div><div class="v">${buyBadge(buyStatus(s2))}</div></div>
+        </div>
+        ${rows.length ? `<table class="list compact"><thead><tr><th>Date</th><th>Mode</th><th>Référence</th><th class="r">Montant</th><th></th></tr></thead><tbody>
+          ${rows.map(x => `<tr><td>${C.fmtDate(x.date)}</td><td>${h(methodLabel(x.method))}</td><td>${h(x.reference || '')}${x.note ? `<div class="small muted">${h(x.note)}</div>` : ''}</td><td class="r">${C.money(x.amount, cur)}</td><td class="actions"><button class="btn btn-ghost btn-sm" data-rmpay="${x.id}" title="Supprimer">✕</button></td></tr>`).join('')}
+        </tbody></table>` : '<p class="small muted">Aucun règlement enregistré.</p>'}
+        <div class="inline mt">
+          ${b.remaining > 0.0005 ? '<button class="btn btn-primary" id="pay2">+ Enregistrer un règlement</button>' : ''}
+          ${t.withholding ? `<label class="check"><input type="checkbox" id="rs-cert2" ${s2.withholdingCertificate ? 'checked' : ''}> Attestation de retenue remise au fournisseur (${C.money(t.withholding, cur)}) ${info('buy.certificate')}</label>` : ''}
+        </div>`;
+      $$('[data-rmpay]', el).forEach(btn => btn.onclick = async () => {
+        if (!await confirmDialog('Supprimer ce règlement ?')) return;
+        s2.payments = s2.payments.filter(x => x.id !== btn.dataset.rmpay); save(true); render();
+      });
+      if ($('#pay2')) $('#pay2').onclick = () => supplierPaymentForm(s2, () => render());
+      if ($('#rs-cert2')) $('#rs-cert2').onchange = e => { s2.withholdingCertificate = e.target.checked; save(true); };
+    }
+
+    // --- pièces jointes (même mécanisme que sur un document de vente)
+    function drawBuyAttachments() {
+      const el = $('#attachments'); if (!el) return;
+      const s2 = purchaseById(p.id); if (!s2) return;
+      const list = s2.attachments || [];
+      el.innerHTML = `
+        ${list.length ? `<table class="list compact"><thead><tr><th>Fichier</th><th>Ajouté le</th><th class="r">Taille</th><th></th></tr></thead><tbody>
+          ${list.map(a => `<tr><td><a href="#" data-open="${h(a.file)}">${h(a.name)}</a></td><td class="nw">${C.fmtDate(a.date)}</td><td class="r nw">${fileSize(a.size)}</td>
+            <td class="actions"><button class="btn btn-ghost btn-sm" data-reveal="${h(a.file)}">Dossier</button><button class="btn btn-ghost btn-sm" data-rmatt="${h(a.file)}">✕</button></td></tr>`).join('')}
+        </tbody></table>` : '<p class="small muted">Aucun justificatif. Photographie ou scanne la facture du fournisseur : sans justificatif, ni la charge ni la TVA ne sont récupérables.</p>'}
+        <div class="inline mt"><button class="btn btn-sm" id="add-att">+ Joindre le justificatif…</button></div>`;
+      $('#add-att').onclick = async () => {
+        try {
+          const added = await bridge.addAttachments(p.id);
+          if (!added.length) return;
+          s2.attachments = (s2.attachments || []).concat(added);
+          save(true); drawBuyAttachments(); toast('Justificatif joint');
+        } catch (e) { toast(e.message.replace(/^.*Error: /, ''), true); }
+      };
+      $$('[data-open]', el).forEach(a => a.onclick = e => { e.preventDefault(); bridge.openAttachment(p.id, a.dataset.open); });
+      $$('[data-reveal]', el).forEach(b => b.onclick = () => bridge.revealAttachment(p.id, b.dataset.reveal));
+      $$('[data-rmatt]', el).forEach(b => b.onclick = async () => {
+        if (!await confirmDialog('Retirer ce justificatif ? Le fichier copié sera supprimé, ton original ne bouge pas.')) return;
+        await bridge.removeAttachment(p.id, b.dataset.rmatt);
+        s2.attachments = (s2.attachments || []).filter(x => x.file !== b.dataset.rmatt);
+        save(true); drawBuyAttachments();
+      });
+    }
+
+    function validate() {
+      if (!p.supplierId) { toast('Choisis un fournisseur.', true); return false; }
+      if (!p.date) { toast('La date de la pièce est obligatoire.', true); return false; }
+      if (!p.lines.some(l => (l.label || '').trim() || Number(l.unitPrice))) { toast('Saisis au moins une ligne avec un montant.', true); return false; }
+      if (p.dueDate && p.dueDate < p.date) { toast('L\'échéance ne peut pas précéder la date de la pièce.', true); return false; }
+      return true;
+    }
+    function persist() {
+      if (!validate()) return false;
+      const idx = data.purchases.findIndex(x => x.id === p.id);
+      const clean = deepCopy(p);
+      if (idx >= 0) data.purchases[idx] = clean; else data.purchases.push(clean);
+      save(true); untouch();
+      return true;
+    }
+    bindBack('#/achats');
+    $('#save').onclick = () => {
+      if (!persist()) return;
+      toast('Enregistré');
+      if (isNew) navigate('#/achat/' + p.id); else render(true);
+    };
+    if ($('#pay')) $('#pay').onclick = () => supplierPaymentForm(purchaseById(p.id), () => render());
+    if ($('#more-btn')) $('#more-btn').onclick = e => { e.stopPropagation(); const l = $('#more-list'); const open = l.hidden; closeMenus(); l.hidden = !open; };
+    $$('#more-list button').forEach(b => b.addEventListener('click', () => { $('#more-list').hidden = true; }));
+    if ($('#dup')) $('#dup').onclick = () => { untouch(); duplicatePurchase(purchaseById(p.id)); };
+    if ($('#del')) $('#del').onclick = async () => {
+      if (!await confirmDialog(`Supprimer ${p.number || 'cette pièce'} ? Les règlements enregistrés seront perdus.`)) return;
+      data.purchases = data.purchases.filter(x => x.id !== p.id); save(true); untouch(); navigate('#/achats');
+    };
+
+    drawLines();
+    drawPayments();
+    drawBuyAttachments();
   };
 
   // ---------- Autres documents : proforma, bon de commande, bon de livraison, contrat ----------

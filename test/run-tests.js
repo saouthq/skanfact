@@ -161,10 +161,12 @@ t('journal des ventes, récap TVA, CSV', () => {
   assert.strictEqual(pays.length, 1); assert.strictEqual(pays[0].method, 'Chèque');
 });
 
-t('migration 1.x → 2 : « payée » devient un paiement', () => {
+t('migration 1.x → 4 : « payée » devient un paiement, les listes manquantes sont créées', () => {
   const d = core.migrateData({ version: 1, company: { name: 'X' }, documents: [inv({ status: 'payée', payments: undefined })], clients: [], catalog: [] });
-  assert.strictEqual(d.version, 3);
+  assert.strictEqual(d.version, 4);
   assert.deepStrictEqual([d.recurring, d.templates, d.snippets], [[], [], []]);
+  // version 4 : les trois listes d'achats arrivent vides, sans rien casser de l'existant
+  assert.deepStrictEqual([d.suppliers, d.purchases, d.expenseCategories], [[], [], []]);
   assert.strictEqual(d.company.name, 'X');
   assert.strictEqual(d.company.paymentTermsDays, 30); // valeurs par défaut fusionnées
   const doc = d.documents[0];
@@ -397,7 +399,7 @@ const { buildDemoData } = require('../src/renderer/demo.js');
 t('démo : cohérente quelle que soit la date du jour, société conservée', () => {
   ['2026-09-11', '2026-09-01', '2026-01-31', '2026-03-01', '2026-12-31', '2027-02-28', '2028-02-29'].forEach(T => {
     const d = buildDemoData({ name: 'Ma société', logo: 'data:logo', theme: 'dark', phone: '' }, T);
-    assert.ok(isValidData(d) && d.version === 3);
+    assert.ok(isValidData(d) && d.version === 4);
     assert.strictEqual(d.company.name, 'Ma société', 'la démo ne remplace jamais le nom déjà saisi');
     assert.strictEqual(d.company.logo, 'data:logo'); assert.strictEqual(d.company.theme, 'dark');
     assert.strictEqual(d.company.phone, '+216 55 123 456'); // champ vide complété, le reste conservé
@@ -1103,6 +1105,164 @@ t('emails : un gabarit par nouveau type', () => {
     assert.ok(m.subject.includes('PRO-2026-001'), kind);
     assert.ok(m.body.includes('PRO-2026-001'), kind);
     assert.ok(!/\{[a-z]+\}/.test(m.subject + m.body), 'variable non remplacée dans ' + kind);
+  });
+});
+
+// ---------- achats et fournisseurs (3.0.0) ----------
+
+const SUP = [{ id: 's1', name: 'Tunisie Matériel SARL' }, { id: 's2', name: 'Cabinet Compta Plus' }];
+const buy = (o) => ({
+  id: 'a1', kind: 'facture', supplierId: 's1', number: 'F-2026-4412', date: '2026-03-10', dueDate: '2026-04-09',
+  subject: 'Serveur et disques', category: 'Achats de marchandises', payments: [], createdAt: 1,
+  lines: [{ label: 'Serveur', qty: 1, unitPrice: 3000, vatRate: 19, destination: 'stock' }], ...o
+});
+
+t('achats : totaux, TVA déductible et destination des lignes', () => {
+  const t1 = core.purchaseTotals(buy({
+    lines: [
+      { label: 'Serveur', qty: 2, unitPrice: 1000, vatRate: 19, destination: 'stock' },
+      { label: 'Ordinateur portable', qty: 1, unitPrice: 2500, vatRate: 19, destination: 'immobilisation' },
+      { label: 'Carburant', qty: 1, unitPrice: 100, vatRate: 19, destination: 'charge', deductible: false }
+    ], fees: 1
+  }), CO);
+  assert.strictEqual(t1.totalHT, 4600);
+  assert.strictEqual(t1.totalVAT, core.round3(4600 * 0.19));
+  // la TVA de la ligne non déductible est comptée dans le total mais pas dans le déductible
+  assert.strictEqual(t1.deductibleVAT, core.round3(4500 * 0.19));
+  assert.strictEqual(t1.fees, 1);
+  assert.strictEqual(t1.totalTTC, core.round3(4600 + 4600 * 0.19 + 1));
+  assert.deepStrictEqual(t1.byDestination, { charge: 100, stock: 2000, immobilisation: 2500 });
+  // une ligne sans destination est une charge : c'est le cas le plus courant et le moins risqué
+  assert.strictEqual(core.purchaseTotals(buy({ lines: [{ label: 'X', qty: 1, unitPrice: 10, vatRate: 19 }] }), CO).lines[0].destination, 'charge');
+  // ventilation par taux, avec la part déductible de chacun
+  const byRate = core.purchaseTotals(buy({ lines: [
+    { label: 'A', qty: 1, unitPrice: 100, vatRate: 19 },
+    { label: 'B', qty: 1, unitPrice: 100, vatRate: 19, deductible: false },
+    { label: 'C', qty: 1, unitPrice: 100, vatRate: 7 }
+  ] }), CO).vatByRate;
+  assert.strictEqual(byRate[19].base, 200);
+  assert.strictEqual(byRate[19].vat, 38);
+  assert.strictEqual(byRate[19].deductible, 19);
+  assert.strictEqual(byRate[7].deductible, 7);
+  // achat vide : aucun NaN
+  const vide = core.purchaseTotals({ lines: [] }, CO);
+  assert.strictEqual(vide.totalHT, 0); assert.strictEqual(vide.netToPay, 0);
+});
+
+t('achats : retenue à la source opérée sur un prestataire', () => {
+  // on retient 3 % sur le TTC hors frais, et on ne paie que le net — l'écart est reversé au fisc
+  const t1 = core.purchaseTotals(buy({ supplierId: 's2', withholdingRate: 3, fees: 1,
+    lines: [{ label: 'Honoraires comptables', qty: 1, unitPrice: 1000, vatRate: 19, destination: 'charge' }] }), CO);
+  assert.strictEqual(t1.withholding, core.round3(1190 * 0.03));
+  assert.strictEqual(t1.netToPay, core.round3(1191 - 1190 * 0.03));
+  // sans taux, rien n'est retenu
+  assert.strictEqual(core.purchaseTotals(buy({}), CO).withholding, 0);
+});
+
+t('achats : statut déduit des paiements, jamais saisi', () => {
+  const p = buy({ lines: [{ label: 'X', qty: 1, unitPrice: 1000, vatRate: 19 }] });
+  const net = core.purchaseTotals(p, CO).netToPay;      // 1190
+  assert.strictEqual(core.purchaseStatus(p, CO, '2026-03-15'), 'à payer');
+  assert.strictEqual(core.purchaseStatus(p, CO, '2026-05-15'), 'retard');  // échéance 09/04 dépassée
+  p.payments = [{ id: 'p1', date: '2026-03-20', amount: 500, method: 'virement' }];
+  assert.strictEqual(core.purchaseStatus(p, CO, '2026-05-15'), 'partiel');
+  assert.strictEqual(core.purchaseBalance(p, CO).remaining, core.round3(net - 500));
+  p.payments.push({ id: 'p2', date: '2026-04-01', amount: net - 500, method: 'cheque' });
+  assert.strictEqual(core.purchaseStatus(p, CO, '2026-05-15'), 'payée');
+  assert.strictEqual(core.purchaseBalance(p, CO).remaining, 0);
+  // sans échéance, on ne peut pas être en retard
+  assert.strictEqual(core.purchaseStatus(buy({ dueDate: '' }), CO, '2030-01-01'), 'à payer');
+});
+
+t('achats : ce qu\'on doit, les plus en retard d\'abord', () => {
+  const data = { suppliers: SUP, purchases: [
+    buy({ id: 'a1', number: 'F-1', dueDate: '2026-08-01' }),
+    buy({ id: 'a2', number: 'F-2', dueDate: '2026-06-01' }),
+    buy({ id: 'a3', number: 'F-3', dueDate: '2026-12-01' }),
+    buy({ id: 'a4', number: 'F-4', dueDate: '2026-05-01', payments: [{ id: 'p', date: '2026-05-01', amount: 99999 }] })
+  ] };
+  const due = core.payablesList(data, CO, '2026-09-11');
+  assert.deepStrictEqual(due.map(x => x.number), ['F-2', 'F-1', 'F-3']);   // F-4 est soldée
+  assert.strictEqual(due[0].late, 102);
+  assert.strictEqual(due[2].late, 0);                                       // pas encore échue
+  assert.ok(due.every(x => x.remaining > 0));
+  assert.deepStrictEqual(core.payablesList({ purchases: [] }, CO, '2026-09-11'), []);
+});
+
+t('achats : journal, récapitulatif et fiche fournisseur', () => {
+  const data = { suppliers: SUP, purchases: [
+    buy({ id: 'a1', date: '2026-03-10', category: 'Achats de marchandises', lines: [{ label: 'Serveur', qty: 1, unitPrice: 1000, vatRate: 19 }] }),
+    buy({ id: 'a2', date: '2026-04-02', supplierId: 's2', kind: 'depense', category: 'Honoraires (comptable, avocat)', number: '',
+      lines: [{ label: 'Honoraires mars', qty: 1, unitPrice: 400, vatRate: 19, deductible: false }] }),
+    buy({ id: 'a3', date: '2025-12-01', category: 'Fournitures de bureau', lines: [{ label: 'Papier', qty: 1, unitPrice: 60, vatRate: 19 }] })
+  ] };
+  const rows = core.purchaseJournal(data, CO, { from: '2026-01-01', to: '2026-12-31' });
+  assert.strictEqual(rows.length, 2);                       // 2025 est hors période
+  assert.deepStrictEqual(rows.map(r => r.id), ['a1', 'a2']); // ordre chronologique
+  assert.strictEqual(rows[0].supplier, 'Tunisie Matériel SARL');
+  assert.strictEqual(rows[1].kind, 'Dépense');
+  const sum = core.purchaseSummary(rows);
+  assert.strictEqual(sum.ht, 1400);
+  assert.strictEqual(sum.tva, core.round3(1400 * 0.19));
+  assert.strictEqual(sum.deductible, 190);                  // les honoraires sont marqués non déductibles
+  assert.strictEqual(sum.byCategory[0].label, 'Achats de marchandises');
+  assert.strictEqual(sum.byCategory[0].ht, 1000);
+  // fiche fournisseur
+  const f = core.supplierSummary(data, CO, 's1', '2026-09-11');
+  assert.strictEqual(f.count, 2);
+  assert.strictEqual(f.ht, 1060);
+  assert.strictEqual(f.first, '2025-12-01');
+  assert.strictEqual(f.last, '2026-03-10');
+  assert.ok(f.remaining > 0 && f.late > 0);                 // les deux échéances sont passées
+  // fournisseur sans achat
+  assert.strictEqual(core.supplierSummary(data, CO, 'inconnu', '2026-09-11').count, 0);
+});
+
+t('achats : attestations de retenue à remettre au fournisseur', () => {
+  const data = { suppliers: SUP, purchases: [
+    buy({ id: 'a1', supplierId: 's2', withholdingRate: 3, lines: [{ label: 'Honoraires', qty: 1, unitPrice: 1000, vatRate: 19 }] }),
+    buy({ id: 'a2', supplierId: 's2', withholdingRate: 3, withholdingCertificate: true, lines: [{ label: 'Honoraires', qty: 1, unitPrice: 500, vatRate: 19 }] }),
+    buy({ id: 'a3', lines: [{ label: 'Papier', qty: 1, unitPrice: 60, vatRate: 19 }] })
+  ] };
+  const w = core.withholdingsToIssue(data, CO);
+  assert.deepStrictEqual(w.map(x => x.id), ['a1']);         // a2 est déjà remise, a3 n'a pas de retenue
+  assert.strictEqual(w[0].supplier, 'Cabinet Compta Plus');
+  assert.strictEqual(w[0].amount, core.round3(1190 * 0.03));
+});
+
+t('achats : catégories de charges, celles d\'origine plus les ajoutées', () => {
+  assert.ok(core.DEFAULT_EXPENSE_CATEGORIES.includes('Loyer et charges locatives'));
+  const list = core.expenseCategories({ expenseCategories: ['Douane', 'Loyer et charges locatives', '  '] });
+  assert.ok(list.includes('Douane'));
+  assert.strictEqual(list.filter(x => x === 'Loyer et charges locatives').length, 1);   // pas de doublon
+  assert.ok(!list.some(x => !x.trim()));
+  assert.deepStrictEqual(core.expenseCategories({}), core.DEFAULT_EXPENSE_CATEGORIES);
+});
+
+t('démo : achats cohérents quelle que soit la date, tous les statuts présents', () => {
+  ['2026-01-15', '2026-03-31', '2026-09-11', '2026-12-28', '2027-02-28'].forEach(day => {
+    const d = buildDemoData({}, day);
+    assert.strictEqual(d.version, 4);
+    assert.ok(d.suppliers.length >= 4, day);
+    assert.ok(d.purchases.length >= 8, day);
+    // aucun règlement daté dans le futur : un jeu de démo ne doit jamais montrer l'impossible
+    d.purchases.forEach(p => (p.payments || []).forEach(x => assert.ok(x.date <= day, `règlement futur ${x.date} > ${day}`)));
+    // chaque achat pointe sur un fournisseur qui existe
+    d.purchases.forEach(p => assert.ok(d.suppliers.some(s => s.id === p.supplierId), 'fournisseur orphelin'));
+    // les quatre statuts sont représentés, quelle que soit la date du jour
+    const statuts = new Set(d.purchases.map(p => core.purchaseStatus(p, d.company, day)));
+    core.PURCHASE_STATUSES.forEach(st => assert.ok(statuts.has(st), `statut ${st} absent le ${day}`));
+    // les trois destinations de ligne sont montrées : c'est ce qui prépare stock et immobilisations
+    const dest = new Set();
+    d.purchases.forEach(p => core.purchaseTotals(p, d.company).lines.forEach(l => dest.add(l.destination)));
+    assert.deepStrictEqual([...dest].sort(), ['charge', 'immobilisation', 'stock']);
+    // une TVA non déductible et une retenue opérée, pour que les deux cas se voient
+    assert.ok(d.purchases.some(p => core.purchaseTotals(p, d.company).deductibleVAT < core.purchaseTotals(p, d.company).totalVAT));
+    assert.strictEqual(core.withholdingsToIssue(d, d.company).length, 1);
+    // le panneau « À faire » parle des fournisseurs
+    const ids = core.todoList(d, d.company, day).map(x => x.id);
+    assert.ok(ids.includes('fournisseurs-retard'), 'retard fournisseur absent du À faire le ' + day);
+    assert.ok(ids.includes('attestations-fournisseurs'), 'attestation fournisseur absente le ' + day);
   });
 });
 

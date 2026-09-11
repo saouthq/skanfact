@@ -89,7 +89,7 @@ Conséquence : la numérotation s'élargit (`PRO-`, `BC-`, `BL-`, `CTR-`) et le 
 
 C'est la brique qui manque sous tout le reste. À faire dans cet ordre, chaque version s'appuyant sur la précédente.
 
-### 3.0.0 — Fournisseurs, achats et dépenses · L — *données v4*
+### 3.0.0 — Fournisseurs, achats et dépenses · L — *données v4* — ✅ **livré le 11/09/2026**
 
 - **Fiche fournisseur**, comme une fiche client : raison sociale, matricule fiscal, contact, conditions de paiement, RIB
 - **Facture d'achat** : fournisseur, son numéro de facture, date, échéance, lignes avec TVA, et surtout **la destination de chaque ligne** : charge, stock, ou immobilisation. C'est ce choix qui alimentera les modules suivants
@@ -102,6 +102,12 @@ C'est la brique qui manque sous tout le reste. À faire dans cet ordre, chaque v
 
 Ce que ça change ailleurs : la barre latérale se regroupe en **Ventes / Achats / Gestion**, et le fichier de
 données passe en version 4 avec une migration automatique de tout l'existant.
+
+*Écarts avec le plan :* la barre latérale garde quatre groupes (**Ventes / Achats / Fichiers / Gestion**) —
+Clients et Catalogue n'appartiennent ni aux ventes ni aux achats. Le « À payer » n'est pas une page à part
+mais un panneau repliable en haut de la page Achats, à côté de la liste qu'il commente. Les catégories de
+charges sont une liste unique de seize entrées extensible, et non une liste par secteur d'activité : le
+secteur choisi à l'installation préremplit déjà le catalogue de vente, pas les charges.
 
 ### 3.1.0 — TVA réelle, déclarations et calendrier fiscal · M
 

@@ -420,6 +420,14 @@ td.row-actions > span { display: inline-flex; gap: 4px; opacity: 0; transition: 
 tr:hover td.row-actions > span, tr:focus-within td.row-actions > span { opacity: 1; }
 th.row-actions-h { width: 1%; }
 .badge.expiré { background: var(--warning-soft); color: var(--warning); }
+/* statuts d'achat : libellés avec espace, donc classes dédiées */
+.badge.b-due { background: var(--info-soft); color: var(--info); }
+.badge.b-part, .badge.b-late { background: var(--warning-soft); color: var(--warning); }
+.badge.b-late { background: var(--danger-soft); color: var(--danger); }
+.badge.b-paid { background: var(--success-soft); color: var(--success); }
+/* case à cocher centrée dans une ligne d'achat */
+.lines-edit td.c { text-align: center; }
+.buy-lines select { font-size: 13px; padding: 6px 8px; }
 body.dark table.list tfoot td { background: #171d25; }
 body.dark th.sortable-h:hover { background: #1f2731; }
 
@@ -592,6 +600,9 @@ body.dark .danger-zone { border-color: #4a2a2a; }
    passe dessous sur toute la largeur — à sept colonnes elle ne tient pas dans une demi-page. */
 .editor-short .preview { height: auto; min-height: 420px; max-height: calc(100vh - 140px); }
 .editor.no-preview { grid-template-columns: 1fr; }
+/* Saisie d'un achat : pas d'aperçu (le document existe déjà, c'est celui du fournisseur), donc pleine
+   largeur — mais bornée, une ligne de formulaire de 1400 px ne se lit pas. */
+.buy-editor > div { max-width: 1080px; }
 .editor.no-preview .preview { position: static; flex-direction: row; justify-content: flex-end; height: auto; }
 /* les flèches du champ numérique mangent la colonne Qté sur un écran étroit */
 table.lines-edit input[type=number]::-webkit-inner-spin-button,

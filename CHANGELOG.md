@@ -7,6 +7,44 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 3.0.0 — 11/09/2026
+
+L'argent qui sort. Jusqu'ici SkanFact ne connaissait que tes ventes ; il connaît maintenant tes achats.
+
+**Cette version change la structure du fichier de données (version 4).** La migration est automatique
+au premier démarrage : rien à faire, rien ne se perd. Une sauvegarde du jour est prise avant, comme
+d'habitude. Si tu partages tes données avec une ancienne version de l'app, mets-la à jour aussi.
+
+Fournisseurs (barre latérale, nouveau groupe **Achats**)
+- **Fiche fournisseur** comme une fiche client : raison sociale, matricule, contact, RIB, délai de paiement accordé
+- Le délai et le taux de retenue se **reportent automatiquement** sur chaque achat que tu saisis chez lui
+- Fiche détaillée : acheté HT, reste à payer, part en retard, tous les achats, notes internes
+
+Achats et dépenses
+- **Facture d'achat** : le numéro et la date sont ceux du fournisseur, pas les tiens — recopie-les tels quels
+- **Dépense** pour tout ce qui n'a pas de facture détaillée : carburant, restaurant, frais bancaires, abonnement
+- **Destination de chaque ligne** : charge, stock ou immobilisation. Ce choix ne sert encore à rien aujourd'hui, mais c'est lui qui alimentera le stock et les immobilisations — il est demandé dès maintenant pour t'éviter de tout ressaisir plus tard
+- **TVA déductible ligne par ligne** : décochable pour les cas où la loi l'interdit (véhicule de tourisme, cadeaux, réception). *À VÉRIFIER avec ton comptable*
+- **Retenue à la source que tu opères** sur un prestataire, et l'attestation que tu lui dois. *À VÉRIFIER avec ton comptable : qui doit retenir, à quel taux*
+- **Catégories de charges** : seize proposées, et tu peux en ajouter
+- **Règlements fournisseurs** : partiels, par mode, avec référence. Le statut (« à payer », « partiel », « payée », « retard ») en découle et ne se saisit jamais à la main
+- **Justificatif joint** à chaque achat : sans lui, ni la charge ni la TVA ne sont récupérables
+
+Panneau **« À payer »** en haut de la page Achats
+- Ce que tu dois, à qui, pour quand. Les retards en tête, en orange. Repliable, comme « À faire »
+
+Accueil
+- Le panneau « À faire » gagne trois lignes : factures fournisseurs en retard, règlements de la semaine, attestations de retenue à remettre
+- Le compteur de la barre latérale signale les achats en retard
+
+Corrigé au passage
+- **Changer le client d'un devis ou d'une facture en brouillon** ne reprenait ni son taux de retenue à la source, ni sa langue, ni sa devise : la liste déroulante émettait deux événements et le second annulait le premier. Le même piège aurait touché les fournisseurs
+
+Détails
+- Barre latérale regroupée : **Ventes / Achats / Fichiers / Gestion**
+- Le jeu de démonstration contient quatre fournisseurs et huit achats couvrant tous les cas
+- Aide : nouvel article « **Tes achats et ta TVA déductible** », une bulle « i » sur chaque champ
+
 ## 2.6.0 — 11/09/2026
 
 Les quatre pièces qui manquaient autour de la facture, et les pièces jointes.
