@@ -1,11 +1,14 @@
 # Construit SkanFact pour Mac et Windows et publie une release GitHub
 # à chaque tag de version (créé par `npm run release`).
+# Peut aussi être lancé à la main (onglet Actions → Release → Run workflow) :
+# electron-builder crée alors la release et le tag à partir de la version de package.json.
 name: Release
 
 on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
 
 permissions:
   contents: write
