@@ -26,24 +26,38 @@ if (!app.requestSingleInstanceLock()) {
   main();
 }
 
+// Rien ne doit échouer en silence : une erreur du process principal est affichée à l'écran
+// et notée dans userData/main.log (à joindre en cas de problème).
+function logError(where, err) {
+  const msg = `${new Date().toISOString()} [${where}] ${err && err.stack || err}\n`;
+  try { fs.appendFileSync(path.join(app.getPath('userData'), 'main.log'), msg); } catch {}
+  try { dialog.showErrorBox('SkanFact — erreur', `${where}\n\n${err && err.message || err}\n\nDétail dans : ${path.join(app.getPath('userData'), 'main.log')}`); } catch {}
+}
+
 function main() {
+  process.on('uncaughtException', (e) => logError('erreur inattendue', e));
+  process.on('unhandledRejection', (e) => logError('promesse rejetée', e));
   if (process.platform === 'win32') app.setAppUserModelId(pkg.build.appId);
-  app.setAboutPanelOptions({
-    applicationName: 'SkanFact',
-    applicationVersion: app.getVersion(),
-    version: '',
-    copyright: '© SKANCYBER SECURITY SUARL',
-    credits: 'Devis et factures'
-  });
 
   app.whenReady().then(() => {
     storage = createStorage(app.getPath('userData'));
-    Menu.setApplicationMenu(buildMenu());
-    createWindow();
+    try {
+      app.setAboutPanelOptions({
+        applicationName: 'SkanFact',
+        applicationVersion: app.getVersion(),
+        version: '',
+        copyright: '© SKANCYBER SECURITY SUARL',
+        credits: 'Devis et factures'
+      });
+    } catch (e) { logError('panneau À propos', e); }
+    try { Menu.setApplicationMenu(buildMenu()); }
+    catch (e) { logError('menu', e); } // on garde le menu par défaut plutôt que de ne rien afficher
+    try { createWindow(); }
+    catch (e) { logError('ouverture de la fenêtre', e); }
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
     // Vérification silencieuse des mises à jour 5 s après l'ouverture.
     if (app.isPackaged) setTimeout(() => checkForUpdates(true), 5000);
-  });
+  }).catch(e => logError('démarrage', e));
 
   app.on('window-all-closed', () => { if (!IS_MAC) app.quit(); });
 }
@@ -87,8 +101,16 @@ function createWindow() {
     }
   });
   if (st.maximized) mainWindow.maximize();
-  mainWindow.once('ready-to-show', () => mainWindow.show());
-  mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  // La fenêtre s'affiche dès que la page est prête, et de toute façon après 1,5 s :
+  // une fenêtre vide vaut mieux qu'une app invisible dont on ne peut rien lire.
+  const win = mainWindow;
+  const showOnce = () => { if (!win.isDestroyed() && !win.isVisible()) { win.show(); win.focus(); } };
+  win.once('ready-to-show', showOnce);
+  setTimeout(showOnce, 1500);
+  win.webContents.on('did-fail-load', (_e, code, desc, url) => { showOnce(); if (code !== -3) logError('chargement de l\'interface', new Error(`${desc} (${code}) ${url}`)); });
+  win.webContents.on('render-process-gone', (_e, d) => logError('interface arrêtée', new Error(d.reason)));
+  win.webContents.on('preload-error', (_e, p, err) => logError('preload', err));
+  win.loadFile(path.join(__dirname, 'renderer', 'index.html')).catch(e => logError('chargement de l\'interface', e));
 
   let saveTimer = null;
   const saveState = () => {
