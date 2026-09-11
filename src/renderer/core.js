@@ -126,6 +126,8 @@
     expenseCategories: [],   // catégories ajoutées par l'utilisateur, en plus de DEFAULT_EXPENSE_CATEGORIES
     fiscalDeadlines: [],     // échéances fiscales activées/modifiées par l'utilisateur (v4)
     vatCarryIn: {},          // crédit de TVA venu de l'année précédente, par année : { '2026': 1234 }
+    deleted: [],             // pièces supprimées, pour qu'elles ne reviennent pas d'un autre poste (v4)
+    conflictArchive: [],     // versions écartées lors d'une fusion : rien n'est détruit sans trace
     counters: {}
   };
 
@@ -420,6 +422,9 @@
     if (!Array.isArray(data.expenseCategories)) data.expenseCategories = [];
     if (!Array.isArray(data.fiscalDeadlines)) data.fiscalDeadlines = [];   // échéances fiscales personnalisées
     if (!data.vatCarryIn || typeof data.vatCarryIn !== 'object') data.vatCarryIn = {};  // crédit de TVA reporté par année
+    // Partage à deux (3.2.0) : suppressions mémorisées et versions écartées lors d'une fusion.
+    if (!Array.isArray(data.deleted)) data.deleted = [];
+    if (!Array.isArray(data.conflictArchive)) data.conflictArchive = [];
     data.purchases.forEach(p => {
       if (!Array.isArray(p.payments)) p.payments = [];
       if (!Array.isArray(p.lines)) p.lines = [];
@@ -732,6 +737,101 @@
       .filter(x => x.t.withholding > 0.0005 && !x.p.withholdingCertificate)
       .map(x => ({ id: x.p.id, supplier: name(x.p.supplierId), number: x.p.number || '', date: x.p.date, amount: x.t.withholding, rate: x.t.withholdingRate }))
       .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  }
+
+  // ---------- travailler à deux sur les mêmes données (3.2.0) ----------
+  // Deux postes partagent un dossier (iCloud, OneDrive, clé USB, disque réseau). Chacun écrit le
+  // fichier à son tour. Le danger n'est pas la panne : c'est le silence. Sans garde-fou, le dernier
+  // qui enregistre écrase le travail de l'autre sans que personne ne le sache jamais.
+  //
+  // Le principe retenu : on ne fusionne JAMAIS deux versions d'une même pièce en une troisième.
+  // On garde celle du fichier écrit le plus récemment, on signale le désaccord, et on archive
+  // l'autre version pour qu'elle reste consultable. Rien n'est détruit sans trace.
+
+  // Les listes du fichier qui se fusionnent pièce par pièce, grâce à leur identifiant.
+  const MERGE_LISTS = ['clients', 'catalog', 'documents', 'recurring', 'templates', 'snippets', 'suppliers', 'purchases'];
+  const LIST_LABELS = {
+    clients: 'client', catalog: 'prestation', documents: 'document', recurring: 'contrat récurrent',
+    templates: 'modèle', snippets: 'texte', suppliers: 'fournisseur', purchases: 'achat'
+  };
+
+  function sameJson(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
+
+  // Étiquette lisible d'une pièce, pour dire à l'utilisateur ce qui a bougé.
+  function recordLabel(kind, rec) {
+    if (!rec) return '';
+    if (kind === 'documents') return `${TITLES[rec.type] || 'Document'} ${rec.number || '(brouillon)'}`;
+    if (kind === 'purchases') return `Achat ${rec.number || 'sans numéro'}`;
+    return rec.name || rec.label || rec.subject || rec.id || '';
+  }
+
+  // Fusion de deux versions du même dossier. `mine` = ce qu'on a en mémoire, `theirs` = ce qui est
+  // sur le disque partagé. Aucune des deux n'est modifiée.
+  function mergeData(mine, theirs) {
+    const a = migrateData(mine), b = migrateData(theirs);
+    // Quel fichier a été écrit en dernier : c'est lui qui tranche en cas de désaccord sur une pièce.
+    const aTime = Number(a.syncWrittenAt) || 0, bTime = Number(b.syncWrittenAt) || 0;
+    const theirsWins = bTime > aTime;
+    const out = JSON.parse(JSON.stringify(theirsWins ? b : a));
+    const winner = theirsWins ? b : a, loser = theirsWins ? a : b;
+    const conflicts = [], added = [], archive = (out.conflictArchive || []).slice();
+
+    // Suppressions : sans trace, une pièce supprimée ici réapparaîtrait à la fusion, venue de l'autre poste.
+    const tombstones = {};
+    [].concat(a.deleted || [], b.deleted || []).forEach(t => { if (t && t.id) tombstones[t.id] = t; });
+    out.deleted = Object.values(tombstones).sort((x, y) => (x.at || '').localeCompare(y.at || ''));
+
+    MERGE_LISTS.forEach(kind => {
+      const byId = {};
+      (winner[kind] || []).forEach(r => { if (r && r.id) byId[r.id] = { rec: r, from: 'winner' }; });
+      (loser[kind] || []).forEach(r => {
+        if (!r || !r.id) return;
+        const cur = byId[r.id];
+        if (!cur) { byId[r.id] = { rec: r, from: 'loser' }; added.push({ kind, label: recordLabel(kind, r) }); return; }
+        if (sameJson(cur.rec, r)) return;
+        // Les deux postes ont touché la même pièce : on garde celle du fichier le plus récent,
+        // on le dit, et on met l'autre de côté au lieu de la jeter.
+        conflicts.push({ kind, id: r.id, label: recordLabel(kind, r), kept: theirsWins ? 'autre poste' : 'ce poste' });
+        archive.push({ at: new Date().toISOString(), kind, id: r.id, label: recordLabel(kind, r), record: r });
+      });
+      out[kind] = Object.values(byId).map(x => x.rec).filter(r => !tombstones[r.id]);
+    });
+
+    // Compteurs de numérotation : on prend toujours le plus haut. Un numéro déjà attribué quelque part
+    // ne doit jamais être réutilisé, même si l'autre poste ne l'a pas encore vu.
+    out.counters = { ...(loser.counters || {}) };
+    Object.keys(winner.counters || {}).forEach(k => {
+      out.counters[k] = Math.max(Number(out.counters[k]) || 0, Number(winner.counters[k]) || 0);
+    });
+
+    // Fiche société : elle ne se fusionne pas champ par champ. Celle du fichier le plus récent gagne.
+    if (!sameJson(a.company, b.company)) conflicts.push({ kind: 'company', id: 'company', label: 'Fiche société', kept: theirsWins ? 'autre poste' : 'ce poste' });
+
+    // Deux personnes hors ligne peuvent avoir émis la même facture sous le même numéro. C'est le seul
+    // désaccord que SkanFact ne peut pas trancher : il se signale fort, il se corrige à la main.
+    const seen = {}, duplicates = [];
+    (out.documents || []).forEach(d => {
+      if (!d.number || d.status === 'brouillon') return;
+      const k = `${d.type}|${d.number}`;
+      if (seen[k] && seen[k] !== d.id) duplicates.push({ type: d.type, number: d.number, label: `${TITLES[d.type] || 'Document'} ${d.number}` });
+      else seen[k] = d.id;
+    });
+
+    out.conflictArchive = archive.slice(-200);   // on ne garde pas l'historique des conflits à l'infini
+    return {
+      data: out, conflicts, duplicates, added,
+      keptFrom: theirsWins ? 'autre poste' : 'ce poste',
+      counts: { conflicts: conflicts.length, duplicates: duplicates.length, added: added.length }
+    };
+  }
+
+  // Enregistre la suppression d'une pièce, pour qu'elle ne revienne pas à la fusion suivante.
+  function trackDeletion(data, kind, id, label) {
+    if (!data || !id) return data;
+    if (!Array.isArray(data.deleted)) data.deleted = [];
+    if (!data.deleted.some(t => t.id === id)) data.deleted.push({ id, kind, label: label || '', at: new Date().toISOString() });
+    if (data.deleted.length > 2000) data.deleted = data.deleted.slice(-2000);
+    return data;
   }
 
   // ---------- TVA réelle et calendrier fiscal (3.1.0) ----------
@@ -1940,6 +2040,7 @@
     EXTRA_TYPES, SALES_TYPES, CONVERSIONS, CONVERSION_LABELS, convertDoc, derivedDocs, DEFAULT_CLAUSES, CLAUSE_LABELS,
     PURCHASE_KINDS, LINE_DESTINATIONS, DEFAULT_EXPENSE_CATEGORIES, PURCHASE_STATUSES, expenseCategories,
     vatReturn, vatChain, DEFAULT_FISCAL_DEADLINES, fiscalDeadlines, nextDeadline, upcomingFiscal, simpleResult,
+    mergeData, trackDeletion, MERGE_LISTS, LIST_LABELS,
     purchaseTotals, purchaseBalance, purchaseStatus, payablesList, purchaseJournal, purchaseSummary, supplierSummary, withholdingsToIssue, supplierPayments,
     periodBounds, issuedIn, salesTotals, revenueByMonth, topItems, clientMovement, AGING_BUCKETS, agedReceivables, payerRanking, quoteFunnel, objectiveProgress,
     amountToWords, intToWords, intToWordsEn, documentHtml, fitToPage, pageCount

@@ -7,6 +7,30 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 3.2.0 — 11/09/2026
+
+Travailler à deux, et gérer deux entreprises sur le même ordinateur.
+
+**Dossiers** (Paramètres → Sécurité et données)
+- Un **dossier = une entreprise** : ses clients, ses documents, ses achats, sa numérotation, ses sauvegardes. Ils ne se mélangent jamais
+- On passe de l'un à l'autre en un clic, l'application se recharge sur le bon dossier
+- Tes données actuelles sont reprises automatiquement dans un premier dossier. **L'ancien fichier reste en place, intact** : si quelque chose te déplaît, rien n'est perdu
+- Retirer un dossier de la liste ne supprime jamais ses fichiers
+
+**Dossier partagé** — deux personnes, une entreprise
+- Un dossier posé dans iCloud Drive, OneDrive, un disque réseau, que deux ordinateurs ouvrent tour à tour
+- **SkanFact ne laisse plus jamais un poste écraser le travail de l'autre.** Avant d'écrire, il relit le fichier ; si l'autre a enregistré entre-temps, il refuse et fusionne
+- **Pièces différentes** (le cas normal) : les deux travaux sont réunis, personne ne perd rien
+- **Même pièce des deux côtés** : la version du fichier enregistré en dernier est gardée, on te dit laquelle, et **l'autre est conservée** au lieu d'être jetée
+- **Pièce supprimée** : elle ne ressuscite pas, la suppression est mémorisée exprès
+- **Compteurs de numérotation** : toujours le plus haut des deux, jamais de numéro réutilisé
+- **Numéros en double** : si vous avez émis chacun de votre côté hors ligne, aucun logiciel ne peut deviner lequel garder. SkanFact t'alerte en nommant les pièces. La règle à tenir entre vous : **une seule personne émet les factures** — les brouillons n'ont pas de numéro et ne peuvent pas entrer en conflit
+- **Nom du poste** (Paramètres → Ce poste) : les messages disent « les modifications du PC du bureau ont été reprises » plutôt qu'un identifiant technique
+
+Aide
+- Nouvel article « **Travailler à deux sur la même entreprise** » : les deux cas, ce qui se répare tout seul, ce qui ne se répare pas, et la bonne façon de s'organiser
+- Ce que SkanFact ne fait pas y est dit franchement : pas de serveur, pas de temps réel. Les deux postes se passent un fichier, ils ne se voient pas travailler
+
 ## 3.1.0 — 11/09/2026
 
 La soustraction qui manquait : ce que tu collectes moins ce que tu déduis.

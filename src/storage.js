@@ -82,7 +82,11 @@ function createStorage(dir, opts) {
   // le nom du fichier. Elles ne sont donc PAS dans les sauvegardes quotidiennes, qui sont un seul
   // fichier JSON — mais la copie externe, elle, les emporte.
   const attachDir = path.join(dir, 'pieces-jointes');
-  const state = { corruptFile: null, key: null, salt: null, encrypted: false, external: { dir: opts.externalDir || null, lastCopy: null, lastError: null } };
+  // `revision` : celle du fichier tel qu'on l'a lu. Avant d'écrire, on vérifie que le fichier sur le
+  // disque porte toujours ce numéro. S'il a changé, c'est qu'un autre poste a enregistré entre-temps :
+  // on refuse d'écraser et on rend sa version à l'appelant, qui fusionne.
+  const state = { corruptFile: null, key: null, salt: null, encrypted: false, revision: 0, deviceId: opts.deviceId || '', deviceName: opts.deviceName || '',
+    external: { dir: opts.externalDir || null, lastCopy: null, lastError: null } };
 
   function today() { return stamp(now()).slice(0, 10); }
 
@@ -113,7 +117,21 @@ function createStorage(dir, opts) {
       catch (e) { return { locked: true }; }
     }
     state.encrypted = false;
+    state.revision = Number(r.data.syncRevision) || 0;
     return r.data;
+  }
+
+  // Révision du fichier sur le disque, sans le déchiffrer entièrement quand c'est possible.
+  // Un fichier chiffré ne révèle rien : on doit le déchiffrer pour le comparer.
+  function diskRevision() {
+    const r = readRaw();
+    if (r.missing) return { missing: true, revision: 0 };
+    if (r.envelope) {
+      if (!state.key) return { locked: true, revision: state.revision };
+      try { const d = decryptWithKey(r.envelope, state.key); return { revision: Number(d.syncRevision) || 0, data: d }; }
+      catch (e) { return { locked: true, revision: state.revision }; }
+    }
+    return { revision: Number(r.data.syncRevision) || 0, data: r.data };
   }
 
   // Déverrouillage avec le mot de passe : conserve la clé pour la session.
@@ -164,17 +182,31 @@ function createStorage(dir, opts) {
     mirrorExternal();
   }
 
-  function write(data) {
+  // Écriture. Renvoie { ok: true } ou, si un autre poste a écrit entre-temps, { conflict: true, disk }
+  // — dans ce cas RIEN n'est écrit : c'est à l'appelant de fusionner puis de réécrire avec force.
+  function write(data, opts2) {
+    opts2 = opts2 || {};
     if (!isValidData(data)) throw new Error('Données invalides : enregistrement refusé.');
     if (state.encrypted && !state.key) throw new Error('Données verrouillées : mot de passe requis.');
+    if (!opts2.force) {
+      const d = diskRevision();
+      // On ne compare que si le fichier existe et qu'on sait le lire : un fichier absent ou verrouillé
+      // ne prouve rien, et bloquer l'enregistrement là-dessus ferait plus de mal que de bien.
+      if (!d.missing && !d.locked && d.revision !== state.revision) {
+        return { conflict: true, disk: d.data, diskRevision: d.revision, myRevision: state.revision };
+      }
+    }
     fs.mkdirSync(dir, { recursive: true });
     snapshotDaily();
-    const payload = state.key ? encryptWithKey(data, state.salt, state.key) : data;
+    const rev = Math.max(Number(state.revision) || 0, Number(data.syncRevision) || 0) + 1;
+    const stamped = { ...data, syncRevision: rev, syncDevice: state.deviceId, syncDeviceName: state.deviceName, syncWrittenAt: now().getTime() };
+    const payload = state.key ? encryptWithKey(stamped, state.salt, state.key) : stamped;
     const tmp = file + '.tmp';
     fs.writeFileSync(tmp, JSON.stringify(payload, null, state.key ? 0 : 2), 'utf8');
     fs.renameSync(tmp, file);
+    state.revision = rev;
     mirrorExternal();
-    return true;
+    return { ok: true, revision: rev };
   }
 
   // Copie le fichier actuel vers backups/skanfact-AAAA-MM-JJ.json si ce n'est pas déjà fait aujourd'hui.
@@ -294,7 +326,7 @@ function createStorage(dir, opts) {
     }
   }
 
-  return { file, backupDir, attachDir, state, read, unlock, lock, setPassword, write, backupNow, listBackups, readExternal, snapshotDaily, setExternalDir, mirrorExternal, addAttachment, removeAttachment, attachmentPath };
+  return { file, backupDir, attachDir, state, read, unlock, lock, setPassword, write, diskRevision, backupNow, listBackups, readExternal, snapshotDaily, setExternalDir, mirrorExternal, addAttachment, removeAttachment, attachmentPath };
 }
 
 module.exports = { createStorage, isValidData, stamp, isEncrypted, encryptData, decryptData };

@@ -74,6 +74,9 @@ L'audit (captures 1440×900 et 1280×800 avec la démo) a été entièrement tra
 
 - **2.3.0** (finitions demandées par Skander) : unité de ligne choisie dans une liste (`core.LINE_UNITS` + `core.usedUnits` + « Autre… » via `promptDialog`) ; composant `combo()`/`bindCombo()` — liste déroulante avec recherche, clavier, valeur dans un `<input type="hidden">` portant le nom de l'ancien `<select>` (client, facture d'un avoir, catalogue, modèles, textes, client d'un contrat) ; composant `dateInput()`/`bindDateFields()` — saisie tolérante (`core.parseDateInput`) et calendrier (`core.monthMatrix`), raccourcis +7/+15/+30 j sur les échéances.
 
+- **3.2.0** (travailler à deux — question de Skander : son père gère Darium *et* sa société, et ils partagent la seconde) : **dossiers** dans `main.js` (`userData/dossiers/<id>/`, reprise automatique de l'ancien emplacement **par copie**, l'original reste intact), identité de poste (`deviceId`/`deviceName` dans `app-config.json`). Dans storage.js : `syncRevision`/`syncDevice`/`syncWrittenAt` estampillés à chaque écriture, `write()` relit le disque et renvoie `{conflict, disk}` **sans rien écrire** si la révision a bougé. Dans core.js : `mergeData` (fusion par identifiant, le fichier écrit en dernier tranche les désaccords, version écartée archivée dans `conflictArchive`, compteurs au maximum, doublons de numéro signalés) et `trackDeletion` (`data.deleted`, sans quoi une pièce supprimée reviendrait de l'autre poste). Côté renderer, `save()` gère le conflit, fusionne, réécrit en force et explique ce qui s'est passé.
+  Règles apprises : le danger du partage n'est pas la panne, c'est le **silence** — avant la 3.2.0, deux postes sur le même dossier iCloud s'écrasaient sans que personne ne le sache. On ne fusionne jamais deux versions d'une même pièce en une troisième : on en garde une, on le dit, on archive l'autre. Le seul cas insoluble est deux factures émises hors ligne sous le même numéro : la parade est organisationnelle (« une seule personne émet »), pas technique, et c'est écrit dans l'aide. Les tests de fusion sont purs et tournent sans Electron ; celui de conflit d'écriture utilise deux `createStorage` sur le même dossier.
+
 - **3.1.0** (la soustraction qui manquait) : `vatReturn` (collectée − déductible − crédit repris), `vatChain` (l'enchaînement mensuel des crédits — une déclaration isolée ignore le report et donne un chiffre faux), `DEFAULT_FISCAL_DEADLINES`/`fiscalDeadlines`/`nextDeadline`/`upcomingFiscal`, `simpleResult` (stock et immobilisations exclus des charges), `supplierPayments`. `data.vatCarryIn` (crédit venu de l'année précédente, saisi à la main) et `data.fiscalDeadlines` (règles activées/modifiées). `routes.compta` passe en quatre onglets ; `mail:compose` accepte désormais `attachments` (tableau) pour joindre plusieurs journaux.
   Règles apprises : le bloc de déclaration porte sur **un mois**, jamais sur « toute l'année » — additionner les mois donnerait un chiffre faux à cause des reports ; sans mois choisi on prend le mois en cours et **on l'écrit**. Les échéances fiscales sont un pense-bête réglé par l'utilisateur, avec un « À VÉRIFIER » visible sur la page : les dates réelles dépendent de la forme juridique et du régime.
 
@@ -96,7 +99,7 @@ Règles apprises sur les listes : les totaux du pied de tableau et les exports C
 
 Méthode d'audit qui a fonctionné : `scratchpad/shots.js` (captures 1440×900 + 1280×800, démo puis états vides juste après l'assistant, chaque modale ouverte), lecture de chaque capture, puis relecture des chemins de code correspondants (validations, confirmations, cas limites).
 
-Non retenu volontairement : multi-utilisateurs, synchronisation cloud, e-facture (voir plus haut), barre latérale réductible en icônes (les groupes ont suffi).
+Non retenu volontairement : synchronisation cloud en temps réel (la 3.2.0 fait du partage de fichier à tour de rôle, pas du multi-utilisateur simultané), e-facture (voir plus haut), barre latérale réductible en icônes (les groupes ont suffi).
 
 ## Modules demandés par Skander (11/09/2026), pas encore commencés
 
@@ -120,7 +123,6 @@ Constats confirmés mais laissés de côté en 2.4.0, par ordre d'intérêt :
 
 ## Pistes pour la suite (non demandées)
 
-- Deux entreprises sur le même ordinateur (aujourd'hui : une session utilisateur par entreprise).
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.
 - Signature Apple et Windows (certificats payants) : supprimerait les avertissements au premier lancement et permettrait d'utiliser Squirrel sur Mac.
 - Export TEIF si l'e-facture devient obligatoire.

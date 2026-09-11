@@ -50,7 +50,7 @@ function main() {
   if (process.platform === 'win32') app.setAppUserModelId(APP_ID);
 
   app.whenReady().then(() => {
-    storage = createStorage(app.getPath('userData'), { log: (w, e) => logToFile(w, e), externalDir: readAppCfg().externalBackupDir || null });
+    openStorage();
     try {
       app.setAboutPanelOptions({
         applicationName: 'SkanFact',
@@ -287,10 +287,128 @@ function buildMenu() {
 
 // ---------- stockage ----------
 
-// Réglages propres à cet ordinateur (dossier de copie externe…), hors du fichier de données.
+// Réglages propres à cet ordinateur (dossiers, copie externe, identité du poste), hors du fichier de données.
 const APP_CFG = () => path.join(app.getPath('userData'), 'app-config.json');
 function readAppCfg() { try { return JSON.parse(fs.readFileSync(APP_CFG(), 'utf8')); } catch { return {}; } }
-function writeAppCfg(cfg) { fs.mkdirSync(path.dirname(APP_CFG()), { recursive: true }); fs.writeFileSync(APP_CFG(), JSON.stringify(cfg)); }
+function writeAppCfg(cfg) { fs.mkdirSync(path.dirname(APP_CFG()), { recursive: true }); fs.writeFileSync(APP_CFG(), JSON.stringify(cfg, null, 2)); }
+
+// ---------- dossiers : plusieurs entreprises sur le même ordinateur ----------
+// Chaque dossier a son fichier de données, ses sauvegardes et ses pièces jointes, dans
+// userData/dossiers/<id>/. Un dossier peut aussi vivre dans un dossier partagé (iCloud, réseau) :
+// c'est ce qui permet à deux personnes de travailler sur la même entreprise.
+function dossiersDir() { return path.join(app.getPath('userData'), 'dossiers'); }
+
+// Identité de ce poste : elle sert à dire QUI a enregistré en dernier, jamais à identifier une personne.
+function deviceIdentity() {
+  const cfg = readAppCfg();
+  if (!cfg.deviceId) {
+    cfg.deviceId = require('crypto').randomUUID();
+    try { cfg.deviceName = cfg.deviceName || require('os').hostname().replace(/\.local$/, ''); } catch { cfg.deviceName = 'Cet ordinateur'; }
+    writeAppCfg(cfg);
+  }
+  return { id: cfg.deviceId, name: cfg.deviceName || 'Cet ordinateur' };
+}
+
+// Reprise de l'existant : avant la 3.2.0, tout vivait directement dans userData. On recopie ce qui
+// s'y trouve dans un premier dossier, sans jamais toucher à l'original — s'il faut revenir en
+// arrière, le fichier d'origine est intact.
+function ensureDossiers() {
+  const cfg = readAppCfg();
+  if (Array.isArray(cfg.dossiers) && cfg.dossiers.length) return cfg;
+  const id = 'principal';
+  const dest = path.join(dossiersDir(), id);
+  fs.mkdirSync(dest, { recursive: true });
+  const legacy = path.join(app.getPath('userData'), 'skanfact-data.json');
+  try {
+    if (fs.existsSync(legacy) && !fs.existsSync(path.join(dest, 'skanfact-data.json'))) {
+      fs.copyFileSync(legacy, path.join(dest, 'skanfact-data.json'));
+      const lb = path.join(app.getPath('userData'), 'backups');
+      if (fs.existsSync(lb)) fs.cpSync(lb, path.join(dest, 'backups'), { recursive: true, force: false, errorOnExist: false });
+      const la = path.join(app.getPath('userData'), 'pieces-jointes');
+      if (fs.existsSync(la)) fs.cpSync(la, path.join(dest, 'pieces-jointes'), { recursive: true, force: false, errorOnExist: false });
+    }
+  } catch (e) { logError('reprise des dossiers', e); }
+  cfg.dossiers = [{ id, name: 'Mon entreprise', dir: dest, shared: false }];
+  cfg.currentDossier = id;
+  writeAppCfg(cfg);
+  return cfg;
+}
+
+function currentDossier() {
+  const cfg = ensureDossiers();
+  return cfg.dossiers.find(d => d.id === cfg.currentDossier) || cfg.dossiers[0];
+}
+
+function openStorage() {
+  const cfg = ensureDossiers();
+  const d = currentDossier();
+  const me = deviceIdentity();
+  storage = createStorage(d.dir, {
+    log: (w, e) => logToFile(w, e),
+    externalDir: (d.shared ? null : cfg.externalBackupDir) || null,
+    deviceId: me.id, deviceName: me.name
+  });
+  return d;
+}
+
+ipcMain.handle('dossiers:list', () => {
+  const cfg = ensureDossiers();
+  return { dossiers: cfg.dossiers, current: cfg.currentDossier, device: deviceIdentity() };
+});
+ipcMain.handle('dossiers:switch', (_e, id) => {
+  const cfg = ensureDossiers();
+  if (!cfg.dossiers.some(d => d.id === id)) return { ok: false, error: 'Dossier inconnu.' };
+  cfg.currentDossier = id; writeAppCfg(cfg);
+  openStorage();
+  if (mainWindow) mainWindow.reload();
+  return { ok: true };
+});
+ipcMain.handle('dossiers:add', async (_e, { name, shared }) => {
+  const cfg = ensureDossiers();
+  const clean = String(name || '').trim();
+  if (!clean) return { ok: false, error: 'Donne un nom à ce dossier.' };
+  let dir;
+  if (shared) {
+    const r = await dialog.showOpenDialog(mainWindow, {
+      title: 'Choisir le dossier partagé (iCloud Drive, OneDrive, disque réseau…)',
+      properties: ['openDirectory', 'createDirectory']
+    });
+    if (r.canceled || !r.filePaths.length) return { ok: false, cancelled: true };
+    dir = path.join(r.filePaths[0], 'SkanFact-' + clean.replace(/[^A-Za-z0-9À-ÿ _-]/g, '').trim().replace(/\s+/g, '-'));
+  } else {
+    dir = path.join(dossiersDir(), 'd' + Date.now().toString(36));
+  }
+  try { fs.mkdirSync(dir, { recursive: true }); } catch (e) { return { ok: false, error: e.message }; }
+  const entry = { id: 'd' + Date.now().toString(36), name: clean, dir, shared: !!shared };
+  cfg.dossiers.push(entry); cfg.currentDossier = entry.id; writeAppCfg(cfg);
+  openStorage();
+  if (mainWindow) mainWindow.reload();
+  return { ok: true, dossier: entry };
+});
+ipcMain.handle('dossiers:rename', (_e, { id, name }) => {
+  const cfg = ensureDossiers();
+  const d = cfg.dossiers.find(x => x.id === id); if (!d) return { ok: false };
+  d.name = String(name || '').trim() || d.name; writeAppCfg(cfg); return { ok: true };
+});
+// Retirer un dossier de la liste ne supprime JAMAIS ses fichiers : ils restent là où ils sont.
+ipcMain.handle('dossiers:forget', (_e, id) => {
+  const cfg = ensureDossiers();
+  if (cfg.dossiers.length <= 1) return { ok: false, error: 'Impossible de retirer le dernier dossier.' };
+  const gone = cfg.dossiers.find(d => d.id === id);
+  cfg.dossiers = cfg.dossiers.filter(d => d.id !== id);
+  if (cfg.currentDossier === id) cfg.currentDossier = cfg.dossiers[0].id;
+  writeAppCfg(cfg);
+  openStorage();
+  if (mainWindow) mainWindow.reload();
+  return { ok: true, dir: gone && gone.dir };
+});
+ipcMain.handle('device:rename', (_e, name) => {
+  const cfg = readAppCfg();
+  cfg.deviceName = String(name || '').trim() || cfg.deviceName;
+  writeAppCfg(cfg);
+  if (storage) storage.state.deviceName = cfg.deviceName;
+  return { ok: true, name: cfg.deviceName };
+});
 
 ipcMain.handle('data:load', () => {
   const r = storage.read();
@@ -299,7 +417,7 @@ ipcMain.handle('data:load', () => {
   const locked = !!(r && r.locked);
   return { data: locked ? null : r, locked, encrypted: storage.state.encrypted, corruptFile };
 });
-ipcMain.handle('data:save', (_e, data) => storage.write(data));
+ipcMain.handle('data:save', (_e, { data, force } = {}) => storage.write(data, { force: !!force }));
 ipcMain.handle('data:path', () => storage.file);
 
 // ---------- mot de passe (chiffrement du fichier) ----------

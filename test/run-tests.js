@@ -1384,4 +1384,151 @@ t('résultat simple : stock et immobilisations ne sont pas des charges', () => {
   assert.strictEqual(core.simpleResult({ documents: [], purchases: [] }, CO, { from: '2026-01-01', to: '2026-12-31' }).marge, null);
 });
 
+// ---------- travailler à deux (3.2.0) ----------
+
+const mkDoc = (id, o) => ({ id, type: 'facture', number: 'FAC-2026-' + id, status: 'envoyée', date: '2026-03-10',
+  dueDate: '2026-04-09', clientId: 'c1', payments: [], createdAt: 1, lines: [{ label: 'x', qty: 1, unitPrice: 100, vatRate: 19 }], ...o });
+const base = (o) => core.migrateData({ company: { name: 'Ma boîte', matricule: 'MF1' }, clients: [{ id: 'c1', name: 'Alpha' }],
+  catalog: [], documents: [], counters: {}, ...o });
+
+t('fusion : chacun ajoute de son côté, rien ne se perd', () => {
+  const mine = base({ documents: [mkDoc('001')], syncWrittenAt: 100 });
+  const theirs = base({ documents: [mkDoc('002')], syncWrittenAt: 200 });
+  const r = core.mergeData(mine, theirs);
+  assert.deepStrictEqual(r.data.documents.map(d => d.id).sort(), ['001', '002']);
+  assert.strictEqual(r.counts.conflicts, 0);
+  assert.strictEqual(r.counts.duplicates, 0);
+  assert.strictEqual(r.counts.added, 1);                 // la pièce venue du perdant
+  // la fusion ne modifie aucune des deux entrées
+  assert.strictEqual(mine.documents.length, 1);
+  assert.strictEqual(theirs.documents.length, 1);
+  // et elle est symétrique sur le contenu
+  const inverse = core.mergeData(theirs, mine);
+  assert.deepStrictEqual(inverse.data.documents.map(d => d.id).sort(), ['001', '002']);
+});
+
+t('fusion : la même pièce modifiée des deux côtés est signalée, pas écrasée en silence', () => {
+  const mine = base({ documents: [mkDoc('001', { subject: 'Version de ce poste' })], syncWrittenAt: 100 });
+  const theirs = base({ documents: [mkDoc('001', { subject: 'Version de l\'autre poste' })], syncWrittenAt: 200 });
+  const r = core.mergeData(mine, theirs);
+  assert.strictEqual(r.data.documents.length, 1);
+  assert.strictEqual(r.data.documents[0].subject, 'Version de l\'autre poste');   // le fichier le plus récent tranche
+  assert.strictEqual(r.counts.conflicts, 1);
+  assert.strictEqual(r.conflicts[0].label, 'Facture FAC-2026-001');
+  assert.strictEqual(r.keptFrom, 'autre poste');
+  // la version écartée est archivée, jamais détruite
+  assert.strictEqual(r.data.conflictArchive.length, 1);
+  assert.strictEqual(r.data.conflictArchive[0].record.subject, 'Version de ce poste');
+  // si c'est notre fichier le plus récent, c'est le nôtre qui gagne
+  const r2 = core.mergeData(base({ documents: [mkDoc('001', { subject: 'A' })], syncWrittenAt: 300 }),
+                            base({ documents: [mkDoc('001', { subject: 'B' })], syncWrittenAt: 200 }));
+  assert.strictEqual(r2.data.documents[0].subject, 'A');
+  assert.strictEqual(r2.keptFrom, 'ce poste');
+  // une pièce identique des deux côtés n'est pas un conflit
+  assert.strictEqual(core.mergeData(base({ documents: [mkDoc('001')], syncWrittenAt: 100 }),
+                                    base({ documents: [mkDoc('001')], syncWrittenAt: 200 })).counts.conflicts, 0);
+});
+
+t('fusion : une pièce supprimée ne ressuscite pas', () => {
+  const theirs = base({ documents: [mkDoc('001'), mkDoc('002')], syncWrittenAt: 100 });
+  // ici on supprime 002 et on le note
+  let mine = base({ documents: [mkDoc('001')], syncWrittenAt: 200 });
+  core.trackDeletion(mine, 'documents', '002', 'Facture FAC-2026-002');
+  const r = core.mergeData(mine, theirs);
+  assert.deepStrictEqual(r.data.documents.map(d => d.id), ['001']);
+  assert.strictEqual(r.data.deleted.length, 1);
+  // la trace se propage : une fusion suivante la respecte aussi
+  assert.deepStrictEqual(core.mergeData(theirs, r.data).data.documents.map(d => d.id), ['001']);
+  // sans trace de suppression, la pièce reviendrait — c'est bien pour ça que la trace existe
+  const sans = core.mergeData(base({ documents: [mkDoc('001')], syncWrittenAt: 200 }), theirs);
+  assert.strictEqual(sans.data.documents.length, 2);
+  // trackDeletion ne crée pas de doublon
+  core.trackDeletion(mine, 'documents', '002', 'x');
+  assert.strictEqual(mine.deleted.length, 1);
+});
+
+t('fusion : les compteurs ne redescendent jamais, les doublons de numéro sont signalés', () => {
+  const mine = base({ counters: { 'facture-2026': 12 }, syncWrittenAt: 100 });
+  const theirs = base({ counters: { 'facture-2026': 9, 'devis-2026': 4 }, syncWrittenAt: 200 });
+  const r = core.mergeData(mine, theirs);
+  assert.strictEqual(r.data.counters['facture-2026'], 12);   // on garde le plus haut, jamais le dernier écrit
+  assert.strictEqual(r.data.counters['devis-2026'], 4);
+  // deux postes hors ligne ont émis le même numéro : SkanFact ne peut pas trancher, il alerte
+  const d1 = core.mergeData(
+    base({ documents: [mkDoc('a', { number: 'FAC-2026-012' })], syncWrittenAt: 100 }),
+    base({ documents: [mkDoc('b', { number: 'FAC-2026-012' })], syncWrittenAt: 200 }));
+  assert.strictEqual(d1.counts.duplicates, 1);
+  assert.strictEqual(d1.duplicates[0].number, 'FAC-2026-012');
+  // deux brouillons sans numéro ne sont pas des doublons
+  assert.strictEqual(core.mergeData(
+    base({ documents: [mkDoc('a', { number: '', status: 'brouillon' })], syncWrittenAt: 100 }),
+    base({ documents: [mkDoc('b', { number: '', status: 'brouillon' })], syncWrittenAt: 200 })).counts.duplicates, 0);
+});
+
+t('fusion : société, achats et fournisseurs suivent la même règle', () => {
+  const mine = base({ company: { name: 'Ma boîte', matricule: 'MF1', phone: '111' },
+    suppliers: [{ id: 's1', name: 'Alpha' }], purchases: [{ id: 'p1', kind: 'facture', supplierId: 's1', number: 'F-1', date: '2026-01-01', lines: [], payments: [] }],
+    syncWrittenAt: 100 });
+  const theirs = base({ company: { name: 'Ma boîte', matricule: 'MF1', phone: '222' },
+    suppliers: [{ id: 's2', name: 'Beta' }], purchases: [{ id: 'p2', kind: 'depense', supplierId: 's2', number: '', date: '2026-02-01', lines: [], payments: [] }],
+    syncWrittenAt: 200 });
+  const r = core.mergeData(mine, theirs);
+  assert.deepStrictEqual(r.data.suppliers.map(s => s.id).sort(), ['s1', 's2']);
+  assert.deepStrictEqual(r.data.purchases.map(p => p.id).sort(), ['p1', 'p2']);
+  assert.strictEqual(r.data.company.phone, '222');         // fiche société : le fichier le plus récent
+  assert.ok(r.conflicts.some(c => c.kind === 'company'));
+  // une société identique des deux côtés ne déclenche rien
+  assert.strictEqual(core.mergeData(mine, base({ ...mine, syncWrittenAt: 300 })).conflicts.filter(c => c.kind === 'company').length, 0);
+  // le résultat reste un fichier valide au sens du stockage
+  assert.ok(isValidData(r.data));
+  assert.strictEqual(r.data.version, 4);
+});
+
+t('stockage : un autre poste a enregistré entre-temps — on refuse d\'écraser', () => {
+  const dir = tmpDir();
+  // deux postes qui partagent le même dossier
+  const moi = createStorage(dir, { deviceId: 'poste-A', deviceName: 'Mac de Skander' });
+  const lui = createStorage(dir, { deviceId: 'poste-B', deviceName: 'PC du bureau' });
+  const r1 = moi.write({ ...core.DEFAULT_DATA, clients: [{ id: 'a', name: 'Alpha' }] });
+  assert.strictEqual(r1.ok, true);
+  assert.strictEqual(r1.revision, 1);
+  // les deux lisent la même version
+  const mien = moi.read(), sien = lui.read();
+  assert.strictEqual(mien.syncRevision, 1);
+  assert.strictEqual(sien.syncRevision, 1);
+  assert.strictEqual(mien.syncDeviceName, 'Mac de Skander');
+  // l'autre poste enregistre en premier
+  assert.strictEqual(lui.write({ ...sien, clients: [{ id: 'b', name: 'Beta' }] }).ok, true);
+  // notre enregistrement est refusé, et il nous rend leur version pour qu'on fusionne
+  const r2 = moi.write({ ...mien, clients: [{ id: 'a', name: 'Alpha modifié' }] });
+  assert.strictEqual(r2.conflict, true);
+  assert.strictEqual(r2.diskRevision, 2);
+  assert.strictEqual(r2.myRevision, 1);
+  assert.strictEqual(r2.disk.clients[0].name, 'Beta');
+  // le fichier sur le disque n'a PAS été touché : c'est tout l'intérêt
+  assert.strictEqual(JSON.parse(fs.readFileSync(moi.file, 'utf8')).clients[0].name, 'Beta');
+  // après fusion, on réécrit de force et la révision repart du plus haut numéro vu
+  const fus = core.mergeData({ ...mien, clients: [{ id: 'a', name: 'Alpha modifié' }], syncWrittenAt: 10 }, r2.disk);
+  const r3 = moi.write(fus.data, { force: true });
+  assert.strictEqual(r3.ok, true);
+  assert.ok(r3.revision > 2);
+  assert.deepStrictEqual(moi.read().clients.map(c => c.name).sort(), ['Alpha modifié', 'Beta']);
+  // et l'enregistrement suivant du même poste passe sans conflit
+  assert.strictEqual(moi.write(moi.read()).ok, true);
+});
+
+t('stockage : le garde-fou ne bloque jamais un poste seul', () => {
+  const s = createStorage(tmpDir(), { deviceId: 'seul' });
+  // fichier absent : rien à comparer, on écrit
+  assert.strictEqual(s.write(core.DEFAULT_DATA).ok, true);
+  // écritures successives du même poste : la révision monte, aucun conflit
+  for (let i = 0; i < 5; i++) assert.strictEqual(s.write({ ...core.DEFAULT_DATA, counters: { i } }).ok, true);
+  assert.strictEqual(s.read().syncRevision, 6);
+  // fichier chiffré et verrouillé : on ne peut pas comparer, on ne bloque pas pour autant
+  const s2 = createStorage(tmpDir(), { deviceId: 'x' });
+  s2.write(core.DEFAULT_DATA);
+  s2.setPassword({ data: s2.read(), password: 'secret123' });
+  assert.strictEqual(s2.write({ ...s2.read(), clients: [] }).ok, true);
+});
+
 console.log(`\n${n} tests OK`);

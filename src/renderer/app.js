@@ -90,13 +90,62 @@
       }; });
   }
 
+  // Enregistrement. Si un autre poste a écrit dans le dossier partagé entre-temps, le stockage
+  // REFUSE d'écraser et nous rend sa version : on fusionne pièce par pièce, on réécrit, et on dit
+  // clairement ce qui s'est passé. Voir core.mergeData — rien n'est jamais perdu en silence.
+  let merging = false;
   function save(immediate) {
     try { window.__data = data; } catch (_) {}   // visible depuis les tests de bout en bout
     clearTimeout(saveTimer);
-    const doSave = () => bridge.saveData(data).catch(e => toast('Erreur de sauvegarde : ' + e.message, true));
+    const doSave = () => bridge.saveData(data)
+      .then(r => { if (r && r.conflict) return resolveConflict(r); })
+      .catch(e => toast('Erreur de sauvegarde : ' + e.message, true));
     if (immediate) return doSave();
     saveTimer = setTimeout(doSave, 300);
   }
+
+  async function resolveConflict(r) {
+    if (merging) return;                       // une fusion à la fois, sinon on tourne en rond
+    merging = true;
+    try {
+      const m = C.mergeData(data, r.disk);
+      data = m.data;
+      const w = await bridge.saveData(data, true);
+      if (w && w.conflict) { toast('Enregistrement impossible : le dossier partagé bouge en permanence. Attends que l\'autre poste ait fini.', true); return; }
+      try { window.__data = data; window.__lastMerge = m; } catch (_) {}
+      render();
+      reportMerge(m, r.disk);
+    } finally { merging = false; }
+  }
+
+  // Ce qu'on dit à l'utilisateur après une fusion. Silencieux quand il n'y a rien à signaler,
+  // insistant quand deux numéros de facture se retrouvent en double — ça, il doit le corriger.
+  function reportMerge(m, disk) {
+    const who = (disk && disk.syncDeviceName) || 'l\'autre poste';
+    if (m.counts.duplicates || m.counts.conflicts) {
+      modal(`<h2>${m.counts.duplicates ? 'Attention : numéros en double' : 'Modifications des deux côtés'}</h2>
+        <p class="small">Les modifications de <strong>${h(who)}</strong> ont été reprises et ton travail a été conservé.
+        ${m.counts.added ? `${m.counts.added} pièce(s) venaient de l'autre poste.` : ''}</p>
+        ${m.counts.duplicates ? `<div class="panel" style="margin:12px 0;border-color:var(--danger)">
+          <h2 style="color:var(--danger)">${m.counts.duplicates} numéro(s) attribué(s) deux fois</h2>
+          <p class="small">Vous avez émis ces pièces chacun de votre côté, sans voir le travail de l'autre. Deux documents ne peuvent pas porter le même numéro : il faut en annuler un par un avoir et le réémettre.</p>
+          <ul class="small">${m.duplicates.map(d => `<li><strong>${h(d.label)}</strong></li>`).join('')}</ul>
+          <p class="small muted">Pour que ça n'arrive plus : n'émettez pas de factures en même temps, ou mettez-vous d'accord sur qui émet.</p>
+        </div>` : ''}
+        ${m.counts.conflicts ? `<div class="panel" style="margin:12px 0">
+          <h2>${m.counts.conflicts} pièce(s) modifiée(s) des deux côtés</h2>
+          <p class="small">La version du fichier enregistré en dernier (<strong>${h(m.keptFrom)}</strong>) a été gardée. L'autre version n'est pas détruite : elle est conservée dans tes données et ton comptable peut la retrouver si besoin.</p>
+          <ul class="small">${m.conflicts.slice(0, 12).map(c => `<li>${h(c.label)} <span class="muted">(${h(C.LIST_LABELS[c.kind] || c.kind)})</span></li>`).join('')}</ul>
+        </div>` : ''}
+        <div class="modal-actions"><button class="btn btn-primary" data-close>J'ai compris</button></div>`);
+    } else if (m.counts.added) {
+      toast(`${m.counts.added} nouveauté(s) reprise(s) de ${who}`);
+    }
+  }
+
+  // Mémoire des suppressions : sans elle, une pièce supprimée ici reviendrait à la fusion suivante,
+  // renvoyée par le poste qui ne l'a pas encore vue disparaître.
+  function forget(kind, id, label) { C.trackDeletion(data, kind, id, label); }
 
   const migrate = d => { const m = C.migrateData(d); try { window.__data = m; } catch (_) {} return m; };
   const clientById = id => data.clients.find(c => c.id === id) || null;
@@ -1341,6 +1390,7 @@
     };
     if ($('#del')) $('#del').onclick = async () => {
       if (!await confirmDialog(`Supprimer ${docLabel(doc)} ?${doc.number ? ' Le numéro ne sera pas réutilisé.' : ''}`)) return;
+      forget('documents', doc.id, docLabel(doc));
       data.documents = data.documents.filter(d => d.id !== doc.id); save(true); navigate(backTo);
     };
     if ($('#unlock')) $('#unlock').onclick = async () => {
@@ -1546,6 +1596,7 @@
           const n = data.documents.filter(d => d.clientId === c.id).length;
           if (n) return toast(`Impossible : ${n} document(s) sont liés à ce client. Un client qui a une histoire ne se supprime pas.`, true);
           if (!await confirmDialog(`Supprimer ${c.name} ?`)) return;
+          forget('clients', c.id, c.name);
           data.clients = data.clients.filter(x => x.id !== c.id); save(true); close(); navigate('#/clients');
         };
       });
@@ -1749,7 +1800,7 @@
       actions: c => `<button class="btn btn-sm" data-edit="${c.id}">Modifier</button> <button class="btn btn-sm btn-danger" data-del="${c.id}">Supprimer</button>`,
       bind: (wrap, redraw) => {
         $$('[data-edit]', wrap).forEach(b => b.onclick = () => catalogForm(data.catalog.find(c => c.id === b.dataset.edit), redraw));
-        $$('[data-del]', wrap).forEach(b => b.onclick = async () => { if (await confirmDialog('Supprimer cette prestation ?')) { data.catalog = data.catalog.filter(c => c.id !== b.dataset.del); save(true); redraw(); } });
+        $$('[data-del]', wrap).forEach(b => b.onclick = async () => { if (await confirmDialog('Supprimer cette prestation ?')) { forget('catalog', b.dataset.del); data.catalog = data.catalog.filter(c => c.id !== b.dataset.del); save(true); redraw(); } });
       }
     });
 
@@ -1765,7 +1816,7 @@
       bind: (wrap, redraw) => {
         $$('[data-use]', wrap).forEach(b => b.onclick = () => { const t = data.templates.find(x => x.id === b.dataset.use); navigate(`#/doc/new/${t.type}/tpl/${t.id}`); });
         $$('[data-ren]', wrap).forEach(b => b.onclick = () => { const t = data.templates.find(x => x.id === b.dataset.ren); promptDialog('Renommer le modèle', 'Nom', t.name, v => { t.name = v; save(true); redraw(); }); });
-        $$('[data-tdel]', wrap).forEach(b => b.onclick = async () => { if (await confirmDialog('Supprimer ce modèle ?')) { data.templates = data.templates.filter(x => x.id !== b.dataset.tdel); save(true); redraw(); } });
+        $$('[data-tdel]', wrap).forEach(b => b.onclick = async () => { if (await confirmDialog('Supprimer ce modèle ?')) { forget('templates', b.dataset.tdel); data.templates = data.templates.filter(x => x.id !== b.dataset.tdel); save(true); redraw(); } });
       }
     });
 
@@ -1779,7 +1830,7 @@
       actions: x => `<button class="btn btn-sm" data-sedit="${x.id}">Modifier</button> <button class="btn btn-sm btn-danger" data-sdel="${x.id}">Supprimer</button>`,
       bind: (wrap, redraw) => {
         $$('[data-sedit]', wrap).forEach(b => b.onclick = () => snippetForm(data.snippets.find(x => x.id === b.dataset.sedit), redraw));
-        $$('[data-sdel]', wrap).forEach(b => b.onclick = async () => { if (await confirmDialog('Supprimer ce texte ?')) { data.snippets = data.snippets.filter(x => x.id !== b.dataset.sdel); save(true); redraw(); } });
+        $$('[data-sdel]', wrap).forEach(b => b.onclick = async () => { if (await confirmDialog('Supprimer ce texte ?')) { forget('snippets', b.dataset.sdel); data.snippets = data.snippets.filter(x => x.id !== b.dataset.sdel); save(true); redraw(); } });
       }
     });
     const TABS = [['presta', 'Prestations', 'cat.catalog'], ['modeles', 'Modèles de documents', 'ed.template'], ['textes', 'Textes prédéfinis', 'cat.snippets']];
@@ -2092,6 +2143,7 @@
     if ($('#c-gen2')) $('#c-gen2').onclick = generate;
     $('#c-del').onclick = async () => {
       if (!await confirmDialog('Supprimer ce contrat ? Les factures déjà générées sont conservées.', 'Supprimer', true)) return;
+      forget('recurring', r.id, r.subject || '');
       data.recurring = data.recurring.filter(x => x.id !== r.id);
       save(true); navigate('#/contrats');
     };
@@ -2155,7 +2207,7 @@
         }
         save(true); draw();
       });
-      $$('[data-del]').forEach(b => b.onclick = async () => { if (await confirmDialog('Supprimer ce contrat ? Les factures déjà générées sont conservées.')) { data.recurring = data.recurring.filter(x => x.id !== b.dataset.del); save(true); draw(); } });
+      $$('[data-del]').forEach(b => b.onclick = async () => { if (await confirmDialog('Supprimer ce contrat ? Les factures déjà générées sont conservées.')) { forget('recurring', b.dataset.del); data.recurring = data.recurring.filter(x => x.id !== b.dataset.del); save(true); draw(); } });
     };
     $('#view').innerHTML = `<div class="page-head"><h1>Contrats récurrents ${info('contrat.form')}</h1><div class="actions"><button class="btn btn-primary" id="new">+ Nouveau contrat</button></div></div><div id="c-wrap"></div>`;
     $('#new').onclick = () => recurrenceForm({ id: C.uid(), clientId: '', subject: '', lines: [], every: 'month', day: 1, nextDate: C.addMonths(C.today(), 1, 1), active: true, withholdingRate: 0, discountRate: 0, notes: '' }, draw);
@@ -2451,6 +2503,7 @@
           const n = data.purchases.filter(p => p.supplierId === s.id).length;
           if (n) return toast(`Impossible : ${n} achat(s) sont liés à ce fournisseur. Un fournisseur qui a une histoire ne se supprime pas.`, true);
           if (!await confirmDialog(`Supprimer ${s.name} ?`)) return;
+          forget('suppliers', s.id, s.name);
           data.suppliers = data.suppliers.filter(x => x.id !== s.id); save(true); close(); navigate('#/fournisseurs');
         };
       });
@@ -3002,6 +3055,7 @@
     if ($('#dup')) $('#dup').onclick = () => { untouch(); duplicatePurchase(purchaseById(p.id)); };
     if ($('#del')) $('#del').onclick = async () => {
       if (!await confirmDialog(`Supprimer ${p.number || 'cette pièce'} ? Les règlements enregistrés seront perdus.`)) return;
+      forget('purchases', p.id, p.number || '');
       data.purchases = data.purchases.filter(x => x.id !== p.id); save(true); untouch(); navigate('#/achats');
     };
 
@@ -3701,6 +3755,16 @@
       </section>
 
       <section data-pane="donnees" hidden>
+      <div class="panel"><h2>Dossiers — plusieurs entreprises sur cet ordinateur ${info('data.dossiers')}</h2>
+        <p class="small muted mb">Chaque dossier est une entreprise : ses clients, ses documents, ses achats, ses sauvegardes. Ils ne se mélangent jamais. Tu passes de l'un à l'autre en un clic, l'application se recharge.</p>
+        <div id="dossiers-list"></div>
+        <div class="inline mt"><button type="button" class="btn" id="dos-add">+ Nouveau dossier sur cet ordinateur</button>
+          <button type="button" class="btn" id="dos-shared">+ Dossier partagé à deux…</button>${info('data.shared')}</div>
+      </div>
+      <div class="panel"><h2>Ce poste ${info('data.device')}</h2>
+        <p class="small muted mb">Le nom de cet ordinateur. Il sert uniquement à dire qui a enregistré en dernier quand vous travaillez à deux sur un dossier partagé.</p>
+        <div class="inline"><input type="text" id="dev-name" value="" style="max-width:280px"><button type="button" class="btn" id="dev-save">Renommer</button></div>
+      </div>
       <div class="panel"><h2>Copie externe ${info('data.external')}</h2>
         <p class="small muted">iCloud Drive, clé USB, disque réseau. À chaque enregistrement, le fichier de données et les sauvegardes y sont copiés. Si le Mac meurt, tout est ailleurs. <b>C'est le réglage le plus important de cette page.</b></p>
         <div id="ext-status" class="small mt"></div>
@@ -3780,6 +3844,57 @@
       $('#ext-remove').hidden = !i.dir;
     };
     drawExternal();
+
+    // --- dossiers (plusieurs entreprises, et le dossier partagé à deux)
+    async function drawDossiers() {
+      const el = $('#dossiers-list'); if (!el) return;
+      const r = await bridge.listDossiers();
+      $('#dev-name').value = r.device.name || '';
+      el.innerHTML = `<table class="list compact"><thead><tr><th>Dossier</th><th>Emplacement</th><th></th></tr></thead><tbody>
+        ${r.dossiers.map(d => `<tr class="${d.id === r.current ? 'row-ok' : ''}">
+          <td><strong>${h(d.name)}</strong>${d.id === r.current ? ' <span class="badge b-paid">ouvert</span>' : ''}${d.shared ? ' <span class="badge b-due">partagé</span>' : ''}</td>
+          <td class="small muted">${h(d.dir)}</td>
+          <td class="actions">${d.id === r.current ? '' : `<button type="button" class="btn btn-sm" data-open="${h(d.id)}">Ouvrir</button>`}
+            <button type="button" class="btn btn-ghost btn-sm" data-ren="${h(d.id)}">Renommer</button>
+            ${r.dossiers.length > 1 && d.id !== r.current ? `<button type="button" class="btn btn-ghost btn-sm" data-forget="${h(d.id)}">Retirer</button>` : ''}</td></tr>`).join('')}
+      </tbody></table>`;
+      $$('[data-open]', el).forEach(b => b.onclick = async () => {
+        if (setDirty && !await confirmDialog('Des paramètres ne sont pas enregistrés. Changer de dossier maintenant ?', 'Changer quand même')) return;
+        await bridge.switchDossier(b.dataset.open);
+      });
+      $$('[data-ren]', el).forEach(b => b.onclick = () => {
+        const d = r.dossiers.find(x => x.id === b.dataset.ren);
+        promptDialog('Renommer le dossier', 'Nom du dossier', d.name, async v => { await bridge.renameDossier({ id: d.id, name: v }); drawDossiers(); });
+      });
+      $$('[data-forget]', el).forEach(b => b.onclick = async () => {
+        const d = r.dossiers.find(x => x.id === b.dataset.forget);
+        if (!await confirmDialog(`Retirer « ${d.name} » de la liste ? Ses fichiers ne sont PAS supprimés : ils restent dans ${d.dir}. Tu pourras le rouvrir plus tard.`, 'Retirer de la liste')) return;
+        await bridge.forgetDossier(d.id);
+      });
+    }
+    drawDossiers();
+    $('#dos-add').onclick = () => promptDialog('Nouveau dossier', 'Nom de l\'entreprise', '', async v => {
+      const r = await bridge.addDossier({ name: v, shared: false });
+      if (!r.ok && r.error) toast(r.error, true);
+    });
+    $('#dos-shared').onclick = async () => {
+      if (!await confirmDialog(
+        'Un dossier partagé vit dans iCloud Drive, OneDrive, un disque réseau ou une clé USB, et deux ordinateurs l\'ouvrent tour à tour.\n\n' +
+        'SkanFact ne laisse jamais l\'un écraser le travail de l\'autre : si vous avez modifié tous les deux, il fusionne et te dit ce qui a changé.\n\n' +
+        'Une seule chose ne se répare pas toute seule : si vous émettez des factures en même temps chacun de votre côté, vous pouvez sortir deux fois le même numéro. ' +
+        'Mettez-vous d\'accord sur qui émet, ou attendez que l\'autre ait fini.\n\n' +
+        'La suite de la fiche d\'aide « Travailler à deux » explique tout ça.',
+        'J\'ai compris, choisir le dossier', false)) return;
+      promptDialog('Dossier partagé', 'Nom de l\'entreprise partagée', '', async v => {
+        const r = await bridge.addDossier({ name: v, shared: true });
+        if (!r.ok && r.error) toast(r.error, true);
+      });
+    };
+    $('#dev-save').onclick = async () => {
+      const r = await bridge.renameDevice($('#dev-name').value);
+      if (r && r.ok) toast('Ce poste s\'appelle maintenant « ' + r.name + ' »');
+    };
+
     $('#ext-choose').onclick = async () => { const i = await bridge.chooseExternalBackup(); if (i) { toast(i.lastError ? 'Dossier choisi, mais copie impossible : ' + i.lastError : 'Copie externe activée'); drawExternal(); } };
     $('#ext-remove').onclick = async () => { await bridge.setExternalBackup(null); toast('Copie externe désactivée'); drawExternal(); };
     if ($('#sec-set')) $('#sec-set').onclick = () => passwordDialog('set');

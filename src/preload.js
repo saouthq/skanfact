@@ -3,7 +3,13 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('skanfact', {
   loadData: () => ipcRenderer.invoke('data:load'),
-  saveData: (data) => ipcRenderer.invoke('data:save', data),
+  saveData: (data, force) => ipcRenderer.invoke('data:save', { data, force: !!force }),
+  listDossiers: () => ipcRenderer.invoke('dossiers:list'),
+  switchDossier: (id) => ipcRenderer.invoke('dossiers:switch', id),
+  addDossier: (o) => ipcRenderer.invoke('dossiers:add', o),
+  renameDossier: (o) => ipcRenderer.invoke('dossiers:rename', o),
+  forgetDossier: (id) => ipcRenderer.invoke('dossiers:forget', id),
+  renameDevice: (name) => ipcRenderer.invoke('device:rename', name),
   dataPath: () => ipcRenderer.invoke('data:path'),
   exportData: (data) => ipcRenderer.invoke('data:export', data),
   importData: (opts) => ipcRenderer.invoke('data:import', opts),

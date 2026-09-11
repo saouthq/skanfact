@@ -106,6 +106,9 @@
     'autres.commande': { t: 'Bon de commande', d: 'La pièce qui enregistre ce que le client a commandé, avant que tu livres ou que tu factures. Elle protège les deux parties : elle fixe par écrit ce qui a été demandé, en quelle quantité et à quel prix. Fais-la signer quand le montant est important.' },
     'autres.livraison': { t: 'Bon de livraison', d: 'La pièce qui accompagne la marchandise et se fait signer à la réception. C\'est ta preuve d\'avoir livré : sans elle, un client de mauvaise foi peut contester. Par défaut les prix y sont masqués. À partir de la version 4.0, c\'est ce bon qui sortira les articles du stock.' },
     'autres.contrat': { t: 'Contrat de prestation', d: 'Le vrai document que ton client signe : objet, durée, reconduction, préavis, conditions de paiement, confidentialité, litiges. À ne pas confondre avec les <b>contrats récurrents</b> de la barre latérale, qui ne font que fabriquer des brouillons de facture chaque mois. Les deux vont ensemble : on signe le contrat, puis on crée le contrat récurrent qui le facture.' },
+    'data.dossiers': { t: 'Dossiers', d: 'Un dossier = une entreprise. Chacun a ses clients, ses documents, ses achats, sa numérotation et ses sauvegardes, et ils ne se mélangent jamais. Utile quand une même personne gère deux sociétés : tu passes de l\'une à l\'autre en un clic, l\'application se recharge sur le bon dossier. Retirer un dossier de la liste ne supprime pas ses fichiers.' },
+    'data.shared': { t: 'Dossier partagé', d: 'Un dossier placé dans iCloud Drive, OneDrive, un disque réseau ou une clé USB, que deux ordinateurs ouvrent tour à tour. SkanFact <b>ne laisse jamais l\'un écraser le travail de l\'autre</b> : si vous avez modifié tous les deux, il fusionne pièce par pièce et te dit ce qui a changé. Le seul cas qu\'il ne peut pas trancher est deux factures émises en même temps sous le même numéro : il t\'alerte, à vous de corriger. Lis l\'article « Travailler à deux » avant de vous lancer.' },
+    'data.device': { t: 'Nom de ce poste', d: 'Il sert uniquement à te dire qui a enregistré en dernier sur un dossier partagé (« les modifications du PC du bureau ont été reprises »). Il ne quitte jamais tes données et n\'identifie personne.' },
     'compta.buyJournal': { t: 'Journal des achats', d: 'La liste chronologique de tout ce que tu as acheté sur la période — factures fournisseurs et dépenses. C\'est le symétrique exact du journal des ventes, et la seconde moitié de ce que ton comptable attend chaque mois.' },
     'compta.deductible': { t: 'TVA déductible', d: 'La part de la TVA payée à tes fournisseurs que tu as le droit de récupérer. Elle vient en déduction de la TVA que tu as facturée à tes clients : tu ne reverses que la différence. Si un chiffre est en gras, c\'est qu\'une partie de la TVA payée n\'est pas récupérable (case décochée sur la ligne d\'achat).' },
     'compta.buyNet': { t: 'Total réglé ou dû', d: 'Le net à payer de toutes les pièces de la période, que tu les aies déjà réglées ou non. Pour savoir ce qui reste à sortir de ton compte, regarde le panneau « À payer » de la page Achats.' },
@@ -472,6 +475,42 @@
 <p>Si un seul client fait plus de la moitié de ton chiffre d'affaires, sa perte te met en danger. Le tableau « Top clients » sur l'accueil te le montre. Cherche à diversifier avant d'y être contraint.</p>
 <h3>Garde un comptable</h3>
 <p>SkanFact prépare, organise et exporte. Il ne remplace pas un professionnel qui connaît ta situation et la réglementation en vigueur. Les mentions « À VÉRIFIER » de cette aide sont là pour ça.</p>`
+    },
+    {
+      id: 'deux', title: 'Travailler à deux sur la même entreprise', sub: 'Dossier partagé : ce qui marche, et ce qui ne se répare pas',
+      body: `
+<p>Deux cas différents, souvent confondus. Regarde lequel est le tien.</p>
+<h3>Cas 1 — une personne, deux entreprises</h3>
+<p>Quelqu'un gère deux sociétés sur le même ordinateur. Chacune a ses clients, sa numérotation, sa TVA : elles ne doivent <b>jamais</b> se mélanger.</p>
+<p>C'est le rôle des <b>dossiers</b> (Paramètres → Sécurité et données). Tu crées un dossier par entreprise et tu passes de l'un à l'autre en un clic. Rien de commun entre eux, pas même les paramètres.</p>
+<h3>Cas 2 — deux personnes, une entreprise</h3>
+<p>Deux ordinateurs travaillent sur la même société. Là, il faut un <b>dossier partagé</b> : un dossier posé dans iCloud Drive, OneDrive, un disque réseau ou une clé USB, que les deux postes ouvrent.</p>
+<h3>Ce qui se passe quand vous modifiez en même temps</h3>
+<p>C'est la vraie question, et voici la réponse exacte.</p>
+<p>SkanFact numérote chaque enregistrement. Avant d'écrire, il relit le fichier partagé. Si le numéro a changé, c'est que l'autre poste a enregistré entre-temps : <b>il refuse d'écraser</b>. Il prend sa version, la compare à la tienne, et fusionne :</p>
+<ul>
+  <li><b>Vous avez travaillé sur des pièces différentes</b> — le cas normal. Les deux travaux sont réunis, personne ne perd rien, tu vois passer un message discret.</li>
+  <li><b>Vous avez modifié la même pièce</b> — rare. SkanFact garde la version du fichier enregistré en dernier, te dit laquelle, et <b>conserve l'autre</b> au lieu de la jeter. Rien n'est détruit sans trace.</li>
+  <li><b>Une pièce supprimée d'un côté</b> — elle ne ressuscite pas. La suppression est mémorisée exprès pour ça.</li>
+  <li><b>La numérotation</b> — les compteurs ne redescendent jamais : SkanFact garde toujours le plus haut des deux.</li>
+</ul>
+<h3>Le seul cas qui ne se répare pas tout seul</h3>
+<p>Si vous êtes <b>tous les deux hors ligne</b> et que vous <b>émettez chacun une facture</b>, vous sortirez tous les deux le numéro suivant. Aucun logiciel au monde ne peut deviner lequel garder : deux factures portent le même numéro, et ce n'est pas légal.</p>
+<p>SkanFact vous alerte en gros à la fusion, en nommant les pièces concernées. La correction est celle de toute facture émise par erreur : un <b>avoir</b> sur l'une, puis on la réémet avec un nouveau numéro.</p>
+<p>Pour que ça n'arrive jamais, une seule règle à tenir entre vous : <b>une seule personne émet les factures</b>. L'autre prépare des devis et des brouillons autant qu'il veut — un brouillon n'a pas de numéro, il ne peut donc pas entrer en conflit.</p>
+<h3>La bonne façon de travailler à deux</h3>
+<ul>
+  <li><b>Ouvrez à tour de rôle</b> quand c'est possible. Fermez SkanFact quand vous avez fini : le fichier part se synchroniser tout de suite.</li>
+  <li><b>Attendez la synchronisation</b> avant d'ouvrir de l'autre côté. iCloud et OneDrive mettent parfois une minute ; l'icône du dossier le montre.</li>
+  <li><b>Une seule personne émet</b> les factures et les avoirs.</li>
+  <li><b>Donnez un nom clair à chaque poste</b> (Paramètres → Ce poste) : les messages diront « les modifications du PC du bureau ont été reprises » plutôt qu'un nom technique.</li>
+  <li><b>Ne mettez pas le dossier partagé sur une clé USB</b> que vous débranchez à chaud. Un service de synchronisation fait le travail bien mieux.</li>
+</ul>
+<h3>Ce que SkanFact ne fait pas</h3>
+<p>Ce n'est pas un logiciel en ligne. Il n'y a pas de serveur, pas de compte, pas de synchronisation en temps réel : les deux postes ne se voient pas, ils se passent un fichier. C'est volontaire — tes données restent chez toi, et l'application marche sans internet.</p>
+<p>La conséquence : vous ne verrez pas le travail de l'autre <b>pendant</b> qu'il le fait, seulement une fois qu'il a enregistré et que la synchronisation est passée. Si vous avez besoin de travailler vraiment en même temps, à plusieurs, toute la journée, il faudra un vrai logiciel en ligne — et ce n'est pas ce que SkanFact cherche à être.</p>
+<h3>Et les sauvegardes ?</h3>
+<p>Chaque dossier garde les siennes, trente jours, dans son propre emplacement. Sur un dossier partagé, les sauvegardes du jour sont celles du poste qui a enregistré. Garde en plus une <b>copie externe</b> sur un autre support : un dossier synchronisé qui se corrompt, ça existe.</p>`
     },
     {
       id: 'partager', title: 'Installer SkanFact pour quelqu\'un d\'autre', sub: 'Chaque entreprise, son ordinateur, ses données',

@@ -65,7 +65,7 @@ Ce que tu y verras :
 - **Objectif annuel** de chiffre d'affaires, saisi dans les paramètres, avec une jauge et le rythme nécessaire pour l'atteindre
 - Export de chaque tableau en CSV, et de la page entière en PDF
 
-Ce que ça ne peut pas encore montrer : **la marge**. Elle a besoin des achats (voir 3.3.0).
+Ce que ça ne peut pas encore montrer : **la marge**. Elle a besoin des achats (voir 3.4.0).
 
 *Écarts avec le plan :* la période se choisit dans une liste (année, trimestre, mois) plutôt qu'entre deux dates libres — plus simple, et c'est ce qui permet la comparaison automatique à la même période de l'an dernier. L'export est un CSV unique reprenant toute la page, pas un fichier par tableau ni un PDF : un tableur accepte le CSV, et un PDF de statistiques ne s'imprime jamais.
 
@@ -121,7 +121,18 @@ secteur choisi à l'installation préremplit déjà le catalogue de vente, pas l
 plutôt que d'empiler les panneaux. Le bloc de déclaration porte toujours sur **un mois** — c'est la maille réelle
 de la TVA — et le tableau « mois par mois » donne l'année, avec l'enchaînement des crédits reportés.
 
-### 3.2.0 — Trésorerie · M
+### 3.2.0 — Travailler à deux · M — ✅ **livré le 11/09/2026**
+
+*Version insérée à la demande de Skander (11/09/2026, le soir) : son père gère deux sociétés — Darium et la
+sienne — et ils partagent les données de la seconde. La suite du bloc 3 est décalée d'un cran.*
+
+- **Dossiers** : une entreprise par dossier, sur le même ordinateur, sans mélange possible
+- **Dossier partagé** dans iCloud / OneDrive / réseau, ouvert tour à tour par deux postes
+- **Garde-fou d'écriture** : plus jamais d'écrasement silencieux. Le fichier est relu avant chaque enregistrement
+- **Fusion pièce par pièce**, suppressions mémorisées, compteurs jamais redescendus, versions écartées archivées
+- **Alerte sur les numéros en double**, le seul cas qu'aucun logiciel ne peut trancher tout seul
+
+### 3.3.0 — Trésorerie · M
 
 Aujourd'hui tu vois ce qu'on te doit. Tu ne vois pas ce que tu as.
 
@@ -131,7 +142,7 @@ Aujourd'hui tu vois ce qu'on te doit. Tu ne vois pas ce que tu as.
 - **Prévision à 30, 60 et 90 jours** : ce qui doit rentrer moins ce qui doit sortir, avec l'alerte quand ça passe en négatif
 - Import d'un relevé bancaire en CSV, si ta banque en fournit un
 
-### 3.3.0 — Marges et rentabilité · M
+### 3.4.0 — Marges et rentabilité · M
 
 Les statistiques de la 2.4.0 se remplissent enfin de ce qui manquait.
 
@@ -140,7 +151,7 @@ Les statistiques de la 2.4.0 se remplissent enfin de ce qui manquait.
 - **Rentabilité des contrats de maintenance** : ce qu'ils rapportent sur l'année contre ce qu'ils coûtent
 - **Charges fixes contre charges variables**, et le chiffre d'affaires minimum pour couvrir tes charges
 
-### 3.4.0 — Immobilisations et amortissements · M
+### 3.5.0 — Immobilisations et amortissements · M
 
 Une ligne d'achat marquée « immobilisation » atterrit ici automatiquement.
 
