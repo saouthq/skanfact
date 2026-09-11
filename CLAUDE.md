@@ -60,11 +60,20 @@ Celui de Skander : régime réel, assujetti TVA (son matricule est saisi dans l'
 
 Feuille de route acceptée par Skander (11/09/2026) : 1.5.0 récurrentes + relances + email + Cmd+K + modèles ; 1.6.0 tableau de bord graphique + cachet/signature + documents EN/devise + mode sombre ; 1.7.0 sauvegarde externe + chiffrement. Non demandés : acceptation du devis en ligne, signature Apple/Windows (certificats payants), export TEIF si l'e-facture devient obligatoire.
 
-## Audit UX du 11/09/2026 (captures 1440×900 et 1280×800 avec la démo) — propositions en attente de validation
+## Audit UX du 11/09/2026 — livré en 1.8.0 → 2.0.0
 
-Skander a demandé des onglets dans Paramètres et une expérience « optimale ». Constats et plan proposé :
+L'audit (captures 1440×900 et 1280×800 avec la démo) a été entièrement traité :
 
-- **1.8.0 confort quotidien** : Paramètres en onglets (Société / Documents / Emails / Apparence / Sécurité & données / Mises à jour) avec barre « Enregistrer » flottante visible seulement s'il y a des modifications ; garde-fou « modifications non enregistrées » dans l'éditeur et les paramètres (navigation, Cmd+K, menu) ; Échap ferme les fenêtres et Entrée valide les formulaires (aujourd'hui ni l'un ni l'autre) ; barre d'actions de l'éditeur simplifiée (Enregistrer/Émettre, PDF, Email, menu « Facturer ▾ » pour convertir / acompte / solde, « Plus ▾ » pour le reste) ; aperçu adaptatif (colonne flexible, bouton « Masquer l'aperçu » mémorisé) car à 1280 px les champs Qté/P.U. sont illisibles ; indicateur « 1 page / 2 pages » sur l'aperçu ; lignes : monter/descendre, dupliquer, description affichée à la demande ; conserver le défilement après enregistrement ; titre de fenêtre = document ouvert ; « Tout effacer » dans une zone sensible avec confirmation par saisie.
-- **1.9.0 listes et clients** : tri par colonne, filtre par année (année en cours par défaut), pied de liste (nombre, total HT, reste à payer), actions au survol (PDF, email, paiement, dupliquer) ; Devis : colonne « Valable jusqu'au » à la place de « Type » et état dérivé « expiré » (liste, accueil) ; fiche client (solde, documents, nouveau devis pour ce client, notes) et champ « Contact » (personne) ; Catalogue en onglets Prestations / Modèles / Textes.
-- **1.10.0 pilotage** : panneau « À faire » sur l'accueil (contrats à générer, retards, devis expirés ou sans réponse depuis 15 j, brouillons de plus de 7 j, attestations RS à réclamer, échéances de la semaine) ; historique par document (créé, émis, envoyé, relancé, payé, avoir) à partir des données déjà stockées ; relance téléphonique notée à la main et report « ne pas relancer avant le… » ; relance d'un devis par email ; envoi du journal mensuel au comptable (CSV joint) ; aide « Raccourcis clavier » ; barre latérale groupée (Ventes / Fichiers / Gestion) et réductible en icônes.
-- Non retenu volontairement : multi-utilisateurs, synchronisation cloud, e-facture (voir plus haut).
+- **1.8.0** : bulles « i » partout + rubrique Aide ; Paramètres en onglets + barre Enregistrer flottante ; garde-fou modifications non enregistrées ; Échap/Entrée ; barre d'actions de l'éditeur simplifiée ; aperçu masquable + indicateur de pages ; lignes déplaçables/duplicables ; titre de fenêtre ; zone sensible.
+- **1.9.0** : listes triables, filtre par année, totaux en pied, actions au survol ; devis « expiré » ; fiche client + champ Contact ; catalogue en onglets.
+- **1.10.0** : panneau « À faire » ; historique par document ; relance téléphonique et report ; relance de devis ; envoi au comptable ; barre latérale groupée.
+- **2.0.0** : assistant de première utilisation, secteurs d'activité, fin des valeurs société en dur.
+
+Non retenu volontairement : multi-utilisateurs, synchronisation cloud, e-facture (voir plus haut), barre latérale réductible en icônes (les groupes ont suffi).
+
+## Pistes pour la suite (non demandées)
+
+- Deux entreprises sur le même ordinateur (aujourd'hui : une session utilisateur par entreprise).
+- Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.
+- Signature Apple et Windows (certificats payants) : supprimerait les avertissements au premier lancement et permettrait d'utiliser Squirrel sur Mac.
+- Export TEIF si l'e-facture devient obligatoire.
