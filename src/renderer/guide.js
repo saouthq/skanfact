@@ -122,6 +122,21 @@
     'tre.reco': { t: 'Rapprochement bancaire', d: 'Comparer ce que dit ta banque avec ce que dit SkanFact. Tu coches les mouvements que tu retrouves sur ton relevé ; ce qui reste décoché est soit en cours de traitement, soit oublié, soit une erreur de saisie. À faire une fois par mois, c\'est ce qui garantit que tes chiffres sont vrais.' },
     'tre.gap': { t: 'Écart avec le relevé', d: 'Le solde pointé (départ + mouvements cochés) doit tomber exactement sur le solde de ton relevé. S\'il y a un écart, c\'est qu\'une opération manque d\'un côté ou de l\'autre : un prélèvement non saisi, un chèque compté deux fois, un montant mal recopié.' },
     'tre.pending': { t: 'Pas encore pointés', d: 'Les mouvements que SkanFact connaît et que tu n\'as pas encore retrouvés sur ton relevé. Un chèque mis à l\'encaissement met quelques jours : c\'est normal qu\'il reste ici. Un mouvement qui traîne depuis des semaines, en revanche, mérite un coup d\'œil.' },
+    'mg.projects': { t: 'Affaires', d: 'Une affaire, c\'est un chantier, un projet, un client suivi dans le temps : tu y rattaches les devis, les factures <b>et</b> les achats qui le concernent. C\'est le seul endroit de l\'application où la marge est <b>exacte</b>, parce qu\'elle compare ce que tu as réellement facturé à ce que tu as réellement payé. Ailleurs, le coût est estimé à partir du catalogue.' },
+    'mg.analysis': { t: 'Où est la marge', d: 'La même année de ventes, vue par client ou par prestation. On y découvre souvent que le plus gros client n\'est pas le plus rentable, et qu\'une prestation qu\'on croyait secondaire rapporte plus que le reste. Le coût vient du <b>coût de revient</b> saisi au catalogue : sans lui, la marge affichée est celle du prix de vente, donc fausse.' },
+    'mg.total': { t: 'Marge totale', d: 'Ce qui reste du chiffre d\'affaires une fois retiré le coût de ce que tu as vendu. Ce n\'est <b>pas</b> ton bénéfice : il faut encore payer le loyer, les abonnements, les salaires et l\'impôt. Le bénéfice se lit sur l\'onglet « Seuil de rentabilité » et, en fin d\'année, dans le bilan de ton comptable.' },
+    'mg.contracts': { t: 'Rentabilité des contrats', d: 'Ce que chaque contrat récurrent a rapporté depuis sa première facture, et ce qu\'il rapporte en moyenne par mois. Un petit contrat qui tourne depuis deux ans vaut souvent mieux qu\'une grosse affaire ponctuelle : il est prévisible et ne demande pas de vendre à nouveau.' },
+    'mg.breakeven': { t: 'Seuil de rentabilité', d: 'Le chiffre d\'affaires minimum qu\'il te faut pour couvrir tes charges fixes — le point à partir duquel tu commences à gagner de l\'argent. En dessous, tu travailles à perte même si chaque vente est rentable prise isolément. <em>À VÉRIFIER avec ton comptable : le classement fixe/variable de tes charges.</em>' },
+    'mg.variable': { t: 'Charges variables', d: 'Celles qui suivent les ventes : marchandises, sous-traitance, matériel acheté pour un chantier précis. Si tu ne vends rien, elles n\'existent pas. Les achats classés « stock » ou « immobilisation » n\'en font pas partie : ce ne sont pas des charges de la période.' },
+    'mg.fixed': { t: 'Charges fixes', d: 'Celles qui tombent que tu vendes ou non : loyer, assurance, abonnements, salaires, remboursement d\'emprunt. Ce sont elles qu\'il faut couvrir avant de gagner quoi que ce soit. Tu choisis toi-même, juste en dessous, quelles catégories sont fixes.' },
+    'mg.classify': { t: 'Classer tes charges', d: 'Coche les catégories de dépense qui tombent quoi qu\'il arrive. Le classement change le seuil de rentabilité, pas tes chiffres comptables : rien n\'est modifié dans tes achats. Il dépend de ton activité — <em>à faire valider par ton comptable.</em>' },
+    'mg.projectRevenue': { t: 'Vendu sur l\'affaire', d: 'Le total hors taxes des factures émises pour cette affaire, avoirs déduits. Les devis en attente sont comptés à part : tant qu\'ils ne sont pas acceptés et facturés, ce n\'est pas de l\'argent.' },
+    'mg.projectMargin': { t: 'Marge de l\'affaire', d: 'Vendu moins acheté, sur les pièces réellement rattachées à cette affaire. C\'est le chiffre le plus fiable de l\'application, à une condition : que tu aies bien rattaché tous les achats. Un achat oublié fait croire que l\'affaire rapporte plus qu\'en vrai.' },
+    'mg.projectCash': { t: 'En caisse sur l\'affaire', d: 'Ce que l\'affaire a vraiment rapporté à ce jour : encaissé moins payé. Une affaire peut être très rentable et n\'avoir encore rien rapporté, parce que le client n\'a pas payé alors que les fournisseurs, eux, sont réglés. C\'est exactement comme ça qu\'on se retrouve à court d\'argent en gagnant de l\'argent.' },
+    'ed.project': { t: 'Affaire', d: 'Rattache ce document à un chantier ou à un projet, pour comparer plus tard ce qu\'il a rapporté à ce qu\'il a coûté. Facultatif : une vente simple n\'a pas besoin d\'affaire. Utile dès qu\'il y a des achats en face.' },
+    'ed.margin': { t: 'Marge estimée', d: 'Ce qu\'il resterait de ce document une fois retiré le <b>coût de revient</b> de chaque ligne (celui du catalogue, ou celui recopié sur la ligne). C\'est une estimation : elle ne tient pas compte du loyer, des salaires ni des frais généraux. Pour une marge exacte, rattache ce document à une <b>affaire</b> et rattaches-y aussi les achats correspondants.' },
+    'buy.project': { t: 'Affaire', d: 'Rattache cet achat au chantier pour lequel tu l\'as fait. C\'est ce rattachement qui rend la marge exacte : sans lui, l\'affaire semblera plus rentable qu\'elle ne l\'est.' },
+    'cat.cost': { t: 'Coût de revient HT', d: 'Ce que cette prestation ou cet article te coûte : prix d\'achat de la marchandise, sous-traitance, matériel. Facultatif, mais c\'est lui qui permet de calculer la marge sur les ventes qui ne sont pas rattachées à une affaire. Pour une prestation où tu ne vends que ton temps, laisse 0 : la marge affichée sera alors le prix de vente.' },
     'data.dossiers': { t: 'Dossiers', d: 'Un dossier = une entreprise. Chacun a ses clients, ses documents, ses achats, sa numérotation et ses sauvegardes, et ils ne se mélangent jamais. Utile quand une même personne gère deux sociétés : tu passes de l\'une à l\'autre en un clic, l\'application se recharge sur le bon dossier. Retirer un dossier de la liste ne supprime pas ses fichiers.' },
     'data.shared': { t: 'Dossier partagé', d: 'Un dossier placé dans iCloud Drive, OneDrive, un disque réseau ou une clé USB, que deux ordinateurs ouvrent tour à tour. SkanFact <b>ne laisse jamais l\'un écraser le travail de l\'autre</b> : si vous avez modifié tous les deux, il fusionne pièce par pièce et te dit ce qui a changé. Le seul cas qu\'il ne peut pas trancher est deux factures émises en même temps sous le même numéro : il t\'alerte, à vous de corriger. Lis l\'article « Travailler à deux » avant de vous lancer.' },
     'data.device': { t: 'Nom de ce poste', d: 'Il sert uniquement à te dire qui a enregistré en dernier sur un dossier partagé (« les modifications du PC du bureau ont été reprises »). Il ne quitte jamais tes données et n\'identifie personne.' },
@@ -427,6 +442,48 @@
 <h3>Ce que cette page ne fait pas</h3>
 <p>Elle ne se connecte pas à ta banque. Aucune synchronisation automatique, aucun identifiant bancaire demandé nulle part — et c'est volontaire : SkanFact n'a rien à faire avec tes accès bancaires.</p>
 <p>Elle ne devine pas non plus l'avenir. Un client qui ne paiera jamais apparaît comme une rentrée prévue. C'est à toi de savoir lesquels de tes impayés sont vraiment perdus.</p>`
+    },
+    {
+      id: 'marges', title: 'Gagnes-tu vraiment de l\'argent ?', sub: 'Marge, affaires et seuil de rentabilité',
+      body: `
+<p>Le chiffre d'affaires ne dit rien. Deux entreprises qui facturent 200 000 DT par an peuvent, l'une vivre très bien, l'autre déposer le bilan. Ce qui compte, c'est ce qu'il <b>reste</b> une fois payé ce que tu as fallu acheter pour vendre. La page <b>Marges</b> est là pour ça.</p>
+<h3>D'où vient le coût ?</h3>
+<p>SkanFact connaît tes ventes : elles sont dans tes factures. Il ne peut pas deviner ce qu'elles t'ont coûté. Tu as donc deux façons de le lui dire, et elles ne se valent pas.</p>
+<ul>
+  <li><b>Le coût de revient du catalogue</b> (Catalogue → Modifier une prestation → « Coût de revient HT »). C'est une <b>estimation</b> : elle sert à tout ce que tu vends de façon répétitive. Une licence antivirus achetée 52 DT et revendue 95 DT, c'est simple et c'est toujours vrai.</li>
+  <li><b>L'affaire</b>. Tu crées une affaire (« Salle informatique — École Les Lauriers »), tu y rattaches les devis, les factures <b>et</b> les factures d'achat qui la concernent. Là, il n'y a plus d'estimation : SkanFact compare de l'argent réellement facturé à de l'argent réellement dépensé. <b>C'est le seul chiffre exact de l'application.</b></li>
+</ul>
+<p>Le petit signe <b>≈</b> à côté d'un taux veut dire : « toutes les lignes n'ont pas de coût connu, cette marge est optimiste ». Tant qu'il est là, prends le chiffre comme un ordre de grandeur.</p>
+<h3>Créer une affaire</h3>
+<p>Depuis la page <b>Marges</b>, bouton « + Nouvelle affaire ». Ou directement depuis un devis, une facture ou un achat : le champ <b>Affaire</b> propose « + Nouvelle affaire ».</p>
+<p>Ça vaut le coup dès qu'un chantier mélange de la fourniture et de la prestation, ou dès qu'il s'étale sur plusieurs factures. Pour une vente simple, ne t'embête pas.</p>
+<p>Le piège est toujours le même : <b>un achat oublié fait croire que l'affaire rapporte plus qu'en vrai</b>. Prends l'habitude de choisir l'affaire au moment où tu saisis la facture du fournisseur, pas trois mois après.</p>
+<h3>« En caisse » : rentable n'est pas payé</h3>
+<p>Sur chaque affaire, tu vois deux chiffres différents, et c'est voulu :</p>
+<ul>
+  <li>La <b>marge</b> : ce que l'affaire rapportera, une fois tout le monde payé.</li>
+  <li>L'<b>en caisse</b> : ce qu'elle a rapporté <em>à ce jour</em> — encaissé moins payé.</li>
+</ul>
+<p>Une affaire peut afficher 35 % de marge et un « en caisse » négatif : tu as réglé tes fournisseurs, ton client ne t'a pas encore payé. C'est exactement comme ça qu'on manque d'argent tout en gagnant de l'argent. La page <b>Trésorerie</b> raconte la suite de cette histoire.</p>
+<h3>Où est la marge</h3>
+<p>Cet onglet reprend une année entière de ventes et la découpe par client ou par prestation. Deux découvertes reviennent presque toujours :</p>
+<ul>
+  <li>Le plus gros client n'est pas le plus rentable. Il est souvent celui qui a négocié le plus.</li>
+  <li>Une prestation qu'on traite comme secondaire rapporte, en proportion, davantage que le cœur de métier.</li>
+</ul>
+<p>Ce n'est pas une raison pour abandonner quoi que ce soit du jour au lendemain — mais c'est une raison pour savoir où mettre ton temps, et qui augmenter en premier l'année prochaine.</p>
+<h3>Le seuil de rentabilité</h3>
+<p>C'est le chiffre d'affaires minimum qu'il te faut pour couvrir tes charges fixes. En dessous, tu travailles à perte, même si chaque vente prise isolément est rentable.</p>
+<p>Le calcul sépare tes dépenses en deux :</p>
+<ul>
+  <li>Les <b>variables</b> suivent les ventes : marchandises, sous-traitance, matériel acheté pour un chantier précis. Si tu ne vends rien, elles n'existent pas.</li>
+  <li>Les <b>fixes</b> tombent quoi qu'il arrive : loyer, assurance, abonnements, salaires, remboursement d'emprunt.</li>
+</ul>
+<p>C'est toi qui décides, en bas de la page, quelles catégories de dépense sont fixes — parce que ça dépend de ton activité. <em>À VÉRIFIER avec ton comptable :</em> ce classement n'a aucun effet sur ta comptabilité ni sur tes déclarations, il ne sert qu'à ce calcul.</p>
+<p>SkanFact te donne ensuite le montant à l'année, au mois et au jour ouvré. Le chiffre par jour est celui qui parle : savoir qu'il te faut 340 DT par jour rien que pour rentrer dans tes frais change la façon dont tu regardes une journée passée à autre chose.</p>
+<h3>Ce que cette page ne dit pas</h3>
+<p>Elle ne calcule pas ton bénéfice fiscal. Elle ignore les amortissements, les variations de stock, les provisions et l'impôt. Les achats classés « stock » ou « immobilisation » sont d'ailleurs exclus des charges de la période : ils ne sont pas consommés. Le vrai résultat, c'est ton comptable qui l'établit en fin d'année.</p>
+<p>Elle ne compte pas non plus <b>ton</b> salaire si tu ne t'en verses pas. Une activité qui dégage 20 000 DT de marge sur l'année en te faisant travailler tous les week-ends n'est pas rentable : elle est juste mal payée.</p>`
     },
     {
       id: 'statistiques', title: 'Lire tes statistiques', sub: 'Ce que les chiffres disent, et ce qu\'ils ne disent pas',

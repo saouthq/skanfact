@@ -126,6 +126,8 @@
     expenseCategories: [],   // catégories ajoutées par l'utilisateur, en plus de DEFAULT_EXPENSE_CATEGORIES
     fiscalDeadlines: [],     // échéances fiscales activées/modifiées par l'utilisateur (v4)
     vatCarryIn: {},          // crédit de TVA venu de l'année précédente, par année : { '2026': 1234 }
+    projects: [],            // affaires : relient ventes et achats pour une marge exacte (v4)
+    fixedCategories: [],     // catégories de charges considérées comme fixes (vide = valeurs par défaut)
     accounts: [],            // comptes de trésorerie : banque, caisse… (v4)
     movements: [],           // mouvements libres : salaires, impôts, apports — ce qui n'a ni facture ni achat
     deleted: [],             // pièces supprimées, pour qu'elles ne reviennent pas d'un autre poste (v4)
@@ -425,6 +427,8 @@
     if (!Array.isArray(data.fiscalDeadlines)) data.fiscalDeadlines = [];   // échéances fiscales personnalisées
     if (!data.vatCarryIn || typeof data.vatCarryIn !== 'object') data.vatCarryIn = {};  // crédit de TVA reporté par année
     // Partage à deux (3.2.0) : suppressions mémorisées et versions écartées lors d'une fusion.
+    if (!Array.isArray(data.projects)) data.projects = [];
+    if (!Array.isArray(data.fixedCategories)) data.fixedCategories = [];
     if (!Array.isArray(data.accounts)) data.accounts = [];
     if (!Array.isArray(data.movements)) data.movements = [];
     if (!Array.isArray(data.deleted)) data.deleted = [];
@@ -743,6 +747,193 @@
       .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
   }
 
+  // ---------- marges et rentabilité (3.4.0) ----------
+  // Le chiffre d'affaires ne dit rien de la santé d'une entreprise : vendre 100 000 DT en achetant
+  // pour 95 000 DT, c'est travailler pour rien. Ce bloc répond à « qu'est-ce qui me reste ? ».
+  //
+  // Le coût d'une vente vient de deux sources, dans cet ordre :
+  //   1. le coût saisi sur la ligne du document (le plus précis) ;
+  //   2. à défaut, le coût de revient de la prestation dans le catalogue.
+  // Et pour une affaire, on ajoute les achats réellement rattachés — c'est là que le chiffre devient vrai.
+
+  // Coût de revient d'une ligne de vente. `unitCost` sur la ligne l'emporte sur celui du catalogue :
+  // le prix d'achat du jour est toujours plus juste que le prix de référence.
+  function lineCost(line, data) {
+    if (line.unitCost !== '' && line.unitCost != null && Number.isFinite(Number(line.unitCost))) {
+      return round3((Number(line.unitCost) || 0) * (Number(line.qty) || 0));
+    }
+    const label = (line.label || '').trim().toLowerCase();
+    const item = (data.catalog || []).find(c => (c.label || '').trim().toLowerCase() === label);
+    if (item && Number(item.unitCost) > 0) return round3(Number(item.unitCost) * (Number(line.qty) || 0));
+    return 0;
+  }
+
+  // Marge d'un document de vente. Les lignes de déduction d'acompte ne sont pas des ventes : elles
+  // ne portent ni chiffre d'affaires ni coût.
+  function documentMargin(doc, data, company) {
+    const t = computeTotals(doc, company);
+    const sign = doc.type === 'avoir' ? -1 : 1;
+    let revenue = 0, cost = 0, known = 0, total = 0;
+    const factor = t.totalHT > 0 ? t.netHT / t.totalHT : 1;   // la remise globale ampute le prix, pas le coût
+    t.lines.forEach(l => {
+      if (l.noDiscount) return;
+      total++;
+      const c = lineCost(l, data);
+      if (c > 0) known++;
+      revenue = round3(revenue + sign * round3(l.ht * factor));
+      cost = round3(cost + sign * c);
+    });
+    const margin = round3(revenue - cost);
+    return {
+      revenue, cost, margin,
+      rate: revenue !== 0 ? Math.round(margin / revenue * 1000) / 10 : null,
+      // Combien de lignes ont un coût connu : sans ça, une marge de 100 % voudrait juste dire « on ne sait pas »
+      lines: total, costed: known, complete: total > 0 && known === total
+    };
+  }
+
+  // Marge agrégée sur une période, par client ou par prestation.
+  function marginBy(data, company, fromIso, toIso, dimension, limit) {
+    const acc = {};
+    const clientName = id => ((data.clients || []).find(c => c.id === id) || {}).name || '—';
+    issuedIn(data, fromIso, toIso).forEach(d => {
+      const sign = d.type === 'avoir' ? -1 : 1;
+      const t = computeTotals(d, company);
+      const factor = t.totalHT > 0 ? t.netHT / t.totalHT : 1;
+      t.lines.forEach(l => {
+        if (l.noDiscount) return;
+        const key = dimension === 'client' ? d.clientId : (l.label || '').trim().toLowerCase();
+        if (!key) return;
+        const a = acc[key] || (acc[key] = {
+          key, label: dimension === 'client' ? clientName(d.clientId) : (l.label || '').trim(),
+          revenue: 0, cost: 0, lines: 0, costed: 0
+        });
+        const c = lineCost(l, data);
+        a.revenue = round3(a.revenue + sign * toBase(d, round3(l.ht * factor), company));
+        a.cost = round3(a.cost + sign * toBase(d, c, company));
+        a.lines++; if (c > 0) a.costed++;
+      });
+    });
+    return Object.values(acc).map(a => ({
+      ...a, margin: round3(a.revenue - a.cost),
+      rate: a.revenue !== 0 ? Math.round((a.revenue - a.cost) / a.revenue * 1000) / 10 : null,
+      complete: a.lines > 0 && a.costed === a.lines
+    })).sort((x, y) => y.margin - x.margin).slice(0, limit || 20);
+  }
+
+  // ---------- affaires ----------
+  // Une affaire relie des ventes et des achats. C'est le seul endroit où la marge est exacte :
+  // on ne devine plus le coût, on l'a payé.
+  const PROJECT_STATUSES = ['en cours', 'terminée', 'annulée'];
+
+  function projectMargin(data, company, projectId) {
+    const sales = (data.documents || []).filter(d => d.projectId === projectId
+      && (d.type === 'facture' || d.type === 'avoir') && d.status !== 'brouillon' && d.status !== 'annulée');
+    const buys = (data.purchases || []).filter(p => p.projectId === projectId);
+    let revenue = 0, invoiced = 0, collected = 0;
+    sales.forEach(d => {
+      const sign = d.type === 'avoir' ? -1 : 1;
+      const t = computeTotals(d, company);
+      revenue = round3(revenue + sign * toBase(d, t.netHT, company));
+      invoiced = round3(invoiced + sign * toBase(d, t.netToPay, company));
+      if (d.type === 'facture') {
+        const b = invoiceBalance(d, data, company);
+        collected = round3(collected + toBase(d, round3(t.netToPay - b.remaining), company));
+      }
+    });
+    let cost = 0, paid = 0;
+    buys.forEach(p => {
+      const t = purchaseTotals(p, company);
+      cost = round3(cost + t.totalHT + t.fees);
+      paid = round3(paid + purchaseBalance(p, company).paid);
+    });
+    // Devis en cours : ce qui est proposé mais pas encore vendu, pour voir l'affaire en entier.
+    const quotes = (data.documents || []).filter(d => d.projectId === projectId && d.type === 'devis' && d.status !== 'brouillon');
+    const pending = round3(quotes.filter(q => q.status !== 'refusé').reduce((s, q) => s + toBase(q, computeTotals(q, company).netHT, company), 0));
+    const margin = round3(revenue - cost);
+    return {
+      revenue, cost, margin, invoiced, collected, paid, pending,
+      rate: revenue !== 0 ? Math.round(margin / revenue * 1000) / 10 : null,
+      cash: round3(collected - paid),          // ce que l'affaire a réellement rapporté en caisse
+      salesCount: sales.length, buysCount: buys.length, quotesCount: quotes.length,
+      sales, buys, quotes
+    };
+  }
+
+  function projectList(data, company) {
+    return (data.projects || []).map(p => ({ ...p, ...projectMargin(data, company, p.id) }))
+      .sort((a, b) => (b.startDate || '').localeCompare(a.startDate || ''));
+  }
+
+  // Rentabilité d'un contrat récurrent : ce qu'il a rapporté depuis le début, contre ce qu'il a coûté.
+  function recurringProfitability(data, company, recurringId) {
+    const rec = (data.recurring || []).find(r => r.id === recurringId);
+    const invoices = (data.documents || []).filter(d => d.recurringId === recurringId
+      && d.status !== 'brouillon' && d.status !== 'annulée');
+    let revenue = 0, cost = 0;
+    invoices.forEach(d => {
+      const m = documentMargin(d, data, company);
+      revenue = round3(revenue + toBase(d, m.revenue, company));
+      cost = round3(cost + toBase(d, m.cost, company));
+    });
+    // Les achats rattachés au même client ET à la même affaire, s'il y en a une.
+    const linked = (data.purchases || []).filter(p => rec && p.projectId && p.projectId === rec.projectId);
+    linked.forEach(p => { const t = purchaseTotals(p, company); cost = round3(cost + t.totalHT + t.fees); });
+    const margin = round3(revenue - cost);
+    const dates = invoices.map(d => d.date).filter(Boolean).sort();
+    const months = dates.length ? Math.max(1, Math.round(daysBetween(dates[0], dates[dates.length - 1]) / 30) + 1) : 0;
+    return {
+      revenue, cost, margin, rate: revenue !== 0 ? Math.round(margin / revenue * 1000) / 10 : null,
+      count: invoices.length, months, perMonth: months ? round3(margin / months) : 0, first: dates[0] || '', last: dates[dates.length - 1] || ''
+    };
+  }
+
+  // ---------- charges fixes et seuil de rentabilité ----------
+  // Une charge fixe tombe que tu vendes ou non : loyer, assurance, abonnement, salaires.
+  // Une charge variable suit les ventes : marchandises, sous-traitance, carburant.
+  // Le classement est modifiable — À VÉRIFIER avec ton comptable, il dépend de ton activité.
+  const DEFAULT_FIXED_CATEGORIES = [
+    'Loyer et charges locatives', 'Assurances', 'Téléphone et internet', 'Honoraires (comptable, avocat)',
+    'Frais bancaires', 'Électricité, eau, gaz', 'Formation'
+  ];
+  function isFixedCategory(data, category) {
+    const custom = (data && data.fixedCategories);
+    const list = Array.isArray(custom) && custom.length ? custom : DEFAULT_FIXED_CATEGORIES;
+    return list.includes(category);
+  }
+
+  // Seuil de rentabilité : le chiffre d'affaires minimum pour couvrir les charges fixes.
+  // Formule : charges fixes ÷ taux de marge sur coûts variables. Si le taux est nul ou négatif,
+  // aucun volume ne suffit — et c'est une information, pas une erreur.
+  function breakEven(data, company, period) {
+    const sales = salesJournal(data, company, period);
+    const revenue = round3(sales.reduce((s, r) => s + r.ht, 0));
+    let fixed = 0, variable = 0;
+    (data.purchases || []).filter(p => inPeriod(p.date, period && period.from, period && period.to)).forEach(p => {
+      const t = purchaseTotals(p, company);
+      // Le stock et les immobilisations ne sont pas des charges de la période.
+      const charge = round3(t.byDestination.charge + t.fees);
+      if (isFixedCategory(data, p.category)) fixed = round3(fixed + charge);
+      else variable = round3(variable + charge);
+    });
+    // Les mouvements libres récurrents (salaires, échéances d'emprunt) sont des charges fixes.
+    (data.movements || []).filter(m => inPeriod(m.date, period && period.from, period && period.to)).forEach(m => {
+      if (['salaire', 'emprunt', 'banque'].includes(m.kind)) fixed = round3(fixed + Math.abs(Number(m.amount) || 0));
+    });
+    const marginOnVariable = round3(revenue - variable);
+    const rate = revenue > 0 ? marginOnVariable / revenue : 0;
+    const point = rate > 0 ? round3(fixed / rate) : null;
+    return {
+      revenue, fixed, variable, marginOnVariable,
+      rate: revenue > 0 ? Math.round(rate * 1000) / 10 : null,
+      breakEven: point,
+      // Là où tu en es par rapport au seuil : négatif = il manque du chiffre d'affaires.
+      gap: point == null ? null : round3(revenue - point),
+      result: round3(marginOnVariable - fixed),
+      reached: point != null && revenue >= point
+    };
+  }
+
   // ---------- trésorerie (3.3.0) ----------
   // « Tu vois ce qu'on te doit, tu ne vois pas ce que tu as. » Ce bloc répond à la seule question qui
   // tue les entreprises rentables : est-ce que j'aurai de quoi payer le mois prochain ?
@@ -913,11 +1104,11 @@
   // l'autre version pour qu'elle reste consultable. Rien n'est détruit sans trace.
 
   // Les listes du fichier qui se fusionnent pièce par pièce, grâce à leur identifiant.
-  const MERGE_LISTS = ['clients', 'catalog', 'documents', 'recurring', 'templates', 'snippets', 'suppliers', 'purchases', 'accounts', 'movements'];
+  const MERGE_LISTS = ['clients', 'catalog', 'documents', 'recurring', 'templates', 'snippets', 'suppliers', 'purchases', 'accounts', 'movements', 'projects'];
   const LIST_LABELS = {
     clients: 'client', catalog: 'prestation', documents: 'document', recurring: 'contrat récurrent',
     templates: 'modèle', snippets: 'texte', suppliers: 'fournisseur', purchases: 'achat',
-    accounts: 'compte', movements: 'mouvement'
+    accounts: 'compte', movements: 'mouvement', projects: 'affaire'
   };
 
   function sameJson(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
@@ -2217,6 +2408,8 @@
     PURCHASE_KINDS, LINE_DESTINATIONS, DEFAULT_EXPENSE_CATEGORIES, PURCHASE_STATUSES, expenseCategories,
     vatReturn, vatChain, DEFAULT_FISCAL_DEADLINES, fiscalDeadlines, nextDeadline, upcomingFiscal, simpleResult,
     ACCOUNT_KINDS, MOVE_KINDS, cashMovements, accountBalance, cashPosition, cashForecast, reconciliation,
+    lineCost, documentMargin, marginBy, PROJECT_STATUSES, projectMargin, projectList, recurringProfitability,
+    DEFAULT_FIXED_CATEGORIES, isFixedCategory, breakEven,
     mergeData, trackDeletion, MERGE_LISTS, LIST_LABELS,
     purchaseTotals, purchaseBalance, purchaseStatus, payablesList, purchaseJournal, purchaseSummary, supplierSummary, withholdingsToIssue, supplierPayments,
     periodBounds, issuedIn, salesTotals, revenueByMonth, topItems, clientMovement, AGING_BUCKETS, agedReceivables, payerRanking, quoteFunnel, objectiveProgress,

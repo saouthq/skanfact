@@ -53,22 +53,24 @@
     const cl = d.clients;
 
     // ---------- catalogue ----------
-    const cat = (label, description, unitPrice, vatRate, unit) => ({ id: C.uid(), label, description, unitPrice, vatRate, unit });
+    // `unitCost` : ce que la prestation coûte réellement. Zéro quand on ne vend que du temps —
+    // la marge affichée est alors le prix de vente, et c'est écrit dans la bulle d'aide.
+    const cat = (label, description, unitPrice, vatRate, unit, unitCost) => ({ id: C.uid(), label, description, unitPrice, vatRate, unit, unitCost: unitCost || 0 });
     d.catalog = [
       cat('Audit de sécurité réseau', 'Cartographie du réseau, scan de vulnérabilités, revue de configuration, rapport et plan d\'action', 1200, 19, 'forfait'),
       cat('Test d\'intrusion applicatif', 'Test en boîte grise sur une application web, rapport détaillé avec preuves et recommandations', 2500, 19, 'forfait'),
       cat('Installation et configuration pare-feu', 'Mise en place d\'un pare-feu (matériel fourni séparément), règles, VPN, journalisation', 850, 19, 'u'),
-      cat('Sauvegarde externalisée', 'Sauvegarde chiffrée automatique avec vérification mensuelle de restauration', 90, 19, 'mois'),
+      cat('Sauvegarde externalisée', 'Sauvegarde chiffrée automatique avec vérification mensuelle de restauration', 90, 19, 'mois', 28),
       cat('Maintenance et supervision', 'Surveillance des équipements, mises à jour de sécurité, intervention sous 24 h', 250, 19, 'mois'),
       cat('Formation sensibilisation cybersécurité', 'Session pour les équipes : hameçonnage, mots de passe, bonnes pratiques', 150, 7, 'h'),
       cat('Installation poste de travail', 'Préparation, sécurisation et mise en réseau d\'un poste', 120, 19, 'u'),
-      cat('Déplacement hors Grand Tunis', 'Frais de déplacement', 60, 19, 'u'),
-      cat('Antivirus / EDR (licence 1 an)', 'Déploiement et licence annuelle par poste', 95, 19, 'poste'),
-      cat('Hébergement et supervision serveur', 'Serveur virtuel supervisé, mises à jour et sauvegardes incluses', 180, 19, 'mois'),
+      cat('Déplacement hors Grand Tunis', 'Frais de déplacement', 60, 19, 'u', 25),
+      cat('Antivirus / EDR (licence 1 an)', 'Déploiement et licence annuelle par poste', 95, 19, 'poste', 52),
+      cat('Hébergement et supervision serveur', 'Serveur virtuel supervisé, mises à jour et sauvegardes incluses', 180, 19, 'mois', 65),
       cat('Mise en conformité protection des données', 'Registre des traitements, procédures, déclaration à l\'INPDP', 1800, 19, 'forfait')
     ];
     const k = d.catalog;
-    const line = (item, qty, price, unit) => ({ label: item.label, description: item.description, qty, unit: unit || item.unit, unitPrice: price != null ? price : item.unitPrice, vatRate: item.vatRate });
+    const line = (item, qty, price, unit) => ({ label: item.label, description: item.description, qty, unit: unit || item.unit, unitPrice: price != null ? price : item.unitPrice, unitCost: item.unitCost || '', vatRate: item.vatRate });
 
     // ---------- contrats ----------
     const recClinique = { id: C.uid(), clientId: cl[0].id, subject: 'Maintenance et supervision — {mois}', reference: '', lines: [line(k[4], 1), line(k[3], 1)], discountRate: 0, withholdingRate: 1.5,
@@ -78,6 +80,15 @@
     const recRestaurant = { id: C.uid(), clientId: cl[4].id, subject: 'Supervision et sauvegarde — {mois}', reference: '', lines: [line(k[4], 1), line(k[3], 1)], discountRate: 0, withholdingRate: 0,
       notes: 'Contrat suspendu : facture en retard de paiement.', every: 'month', day: 5, nextDate: C.addMonths(daysAgo(55), 1, 5), lastIssued: daysAgo(55), active: false, createdAt: ts(mo(4, 5)), lang: 'fr', currency: co.currency, exchangeRate: '' };
     d.recurring = [recClinique, recEcole, recRestaurant];
+
+    // ---------- affaires (3.4.0) ----------
+    // Deux cas volontairement différents : une affaire avec ses achats en face (marge exacte),
+    // et une affaire sans achat (marge estimée à partir du coût de revient du catalogue).
+    const prjLauriers = { id: C.uid(), name: 'Salle informatique — École Les Lauriers', clientId: cl[7].id, status: 'terminée',
+      startDate: mo(2, 12), endDate: mo(2, 28), notes: 'Fourniture et installation de douze postes et d\'un pare-feu. Matériel acheté chez Tunisie Matériel Informatique.' };
+    const prjLemon = { id: C.uid(), name: 'Réseau Wi-Fi — Lemon Beach', clientId: cl[3].id, status: 'en cours',
+      startDate: mo(6, 9), endDate: '', notes: 'Bornes Wi-Fi fournies par l\'hôtel : aucun achat de notre côté, la marge est donc celle de la prestation. La facture du pare-feu reste impayée depuis près de trois mois.' };
+    d.projects = [prjLauriers, prjLemon];
 
     // ---------- documents ----------
     // Chaque spécification : type, client (index), date, statut, objet, lignes (ou fonction des documents déjà créés),
@@ -138,13 +149,13 @@
     add('q-cab-formation', { type: 'devis', client: 2, date: daysAgo(2), status: 'brouillon', subject: 'Formation des nouveaux collaborateurs', lines: [line(k[5], 6)] });
 
     // Hôtel : projet Wi-Fi en acompte + solde (payés), une facture très en retard, un devis en attente
-    add('q-lemon-wifi', { type: 'devis', client: 3, date: mo(6, 9), status: 'accepté', subject: 'Refonte du réseau Wi-Fi de l\'hôtel', lines: [line(k[0], 1), line(k[2], 1), line(k[9], 12), line(k[7], 2)], discountRate: 10,
+    add('q-lemon-wifi', { project: prjLemon, type: 'devis', client: 3, date: mo(6, 9), status: 'accepté', subject: 'Refonte du réseau Wi-Fi de l\'hôtel', lines: [line(k[0], 1), line(k[2], 1), line(k[9], 12), line(k[7], 2)], discountRate: 10,
       notes: 'Intervention hors saison. Bornes Wi-Fi fournies par l\'hôtel.', emails: [E(mo(6, 9), 'devis')] });
-    add('f-lemon-acompte', { type: 'facture', client: 3, date: mo(6, 16), status: 'envoyée', subject: 'Acompte 30 % — Refonte du réseau Wi-Fi de l\'hôtel', fromQuote: 'q-lemon-wifi', deposit: { quote: 'q-lemon-wifi', percent: 30 },
+    add('f-lemon-acompte', { project: prjLemon, type: 'facture', client: 3, date: mo(6, 16), status: 'envoyée', subject: 'Acompte 30 % — Refonte du réseau Wi-Fi de l\'hôtel', fromQuote: 'q-lemon-wifi', deposit: { quote: 'q-lemon-wifi', percent: 30 },
       lines: b => C.depositLines(b['q-lemon-wifi'], 30, co), payments: [pay(12, 'all')], emails: [E(mo(6, 16), 'facture')] });
-    add('f-lemon-solde', { type: 'facture', client: 3, date: mo(4, 25), status: 'envoyée', subject: 'Solde — Refonte du réseau Wi-Fi de l\'hôtel', fromQuote: 'q-lemon-wifi', settles: { quote: 'q-lemon-wifi', deposits: ['f-lemon-acompte'] },
+    add('f-lemon-solde', { project: prjLemon, type: 'facture', client: 3, date: mo(4, 25), status: 'envoyée', subject: 'Solde — Refonte du réseau Wi-Fi de l\'hôtel', fromQuote: 'q-lemon-wifi', settles: { quote: 'q-lemon-wifi', deposits: ['f-lemon-acompte'] },
       lines: b => C.settlementLines(b['q-lemon-wifi'], [b['f-lemon-acompte']]), discountRate: 10, payments: [pay(41, 'all', 'traite', 'Traite à 30 jours')], emails: [E(mo(4, 25), 'facture')] });
-    add('f-lemon-parefeu', { type: 'facture', client: 3, date: daysAgo(82), status: 'envoyée', subject: 'Installation pare-feu et sensibilisation', lines: [line(k[2], 1), line(k[5], 3), line(k[7], 1)],
+    add('f-lemon-parefeu', { project: prjLemon, type: 'facture', client: 3, date: daysAgo(82), status: 'envoyée', subject: 'Installation pare-feu et sensibilisation', lines: [line(k[2], 1), line(k[5], 3), line(k[7], 1)],
       notes: 'Merci de régler avant l\'échéance.', emails: [E(daysAgo(82), 'facture'), E(daysAgo(47), 'relance1'), E(daysAgo(30), 'relance2')] });
     add('q-lemon-audit', { type: 'devis', client: 3, date: daysAgo(5), status: 'envoyé', subject: 'Audit annuel et test d\'intrusion', lines: [line(k[0], 1), line(k[1], 1)], discountRate: 15, notes: 'Remise fidélité 15 %.', emails: [E(daysAgo(5), 'devis')] });
 
@@ -168,18 +179,27 @@
     // ---------- les quatre pièces sans valeur comptable (2.6.0) ----------
     // Une de chaque, rattachée à une affaire existante, pour montrer le chemin
     // devis → proforma / bon de commande → bon de livraison → facture.
-    add('pro-lauriers', { type: 'proforma', client: 7, date: mo(2, 12), status: 'envoyée', subject: 'Équipement de la salle informatique',
+    add('pro-lauriers', { project: prjLauriers, type: 'proforma', client: 7, date: mo(2, 12), status: 'envoyée', subject: 'Équipement de la salle informatique',
       reference: 'Dossier subvention 2026',
       lines: [line(k[2], 12), line(k[6], 1)],
       notes: 'Document établi à la demande de l\'établissement pour son dossier de financement. Une facture définitive sera émise à la commande.' });
-    add('bc-lauriers', { type: 'commande', client: 7, date: mo(2, 20), status: 'livrée', subject: 'Équipement de la salle informatique',
+    add('bc-lauriers', { project: prjLauriers, type: 'commande', client: 7, date: mo(2, 20), status: 'livrée', subject: 'Équipement de la salle informatique',
       reference: 'BC client n° 2026-114', fromDoc: 'pro-lauriers',
       lines: b => JSON.parse(JSON.stringify(b['pro-lauriers'].lines)),
       notes: 'Bon de commande signé par l\'intendant le jour même.' });
-    add('bl-lauriers', { type: 'livraison', client: 7, date: mo(2, 26), status: 'signé', subject: 'Équipement de la salle informatique',
+    add('bl-lauriers', { project: prjLauriers, type: 'livraison', client: 7, date: mo(2, 26), status: 'signé', subject: 'Équipement de la salle informatique',
       fromDoc: 'bc-lauriers',
       lines: b => JSON.parse(JSON.stringify(b['bc-lauriers'].lines)),
       notes: 'Livré et installé sur place. Bon signé par M. Hached à la réception.' });
+    // La facture qui clôt la chaîne : c'est elle qui donne sa marge à l'affaire, en face de l'achat FA-2026-1187.
+    add('f-lauriers-salle', { project: prjLauriers, type: 'facture', client: 7, date: mo(2, 28), status: 'envoyée', subject: 'Équipement de la salle informatique',
+      reference: 'BC client n° 2026-114',
+      lines: [
+        { label: 'Poste de travail complet (fourniture)', description: 'Unité centrale, écran 24", clavier et souris, système installé et sécurisé', qty: 12, unit: 'u', unitPrice: 1150, unitCost: 850, vatRate: 19 },
+        { label: 'Pare-feu UTM (fourniture)', description: 'Boîtier UTM avec licence de sécurité 1 an', qty: 1, unit: 'u', unitPrice: 1650, unitCost: 1200, vatRate: 19 },
+        line(k[2], 1), line(k[6], 12)
+      ],
+      notes: 'Matériel livré et installé le 26. Bon de livraison signé par M. Hached.', payments: [pay(26, 'all')], certificate: true, emails: [E(mo(2, 28), 'facture')] });
     add('ctr-clinique', { type: 'contrat', client: 0, date: mo(12, 5), status: 'signé', subject: 'Maintenance et supervision du système d\'information',
       lines: [line(k[4], 1), line(k[3], 1)],
       clauses: { duree: 'Le présent contrat est conclu pour une durée de douze (12) mois à compter du premier jour du mois suivant sa signature.',
@@ -204,6 +224,7 @@
       if (s.deposit) { const q = byKey[s.deposit.quote]; doc.deposit = { percent: s.deposit.percent, quoteId: q.id, quoteNumber: q.number }; }
       if (s.settles) { const q = byKey[s.settles.quote]; doc.settles = { quoteId: q.id, quoteNumber: q.number, depositIds: s.settles.deposits.map(x => byKey[x].id) }; }
       if (s.recurringId) doc.recurringId = s.recurringId;
+      if (s.project) doc.projectId = s.project.id;
       if (s.fromDoc) { const src = byKey[s.fromDoc]; doc.fromDocId = src.id; doc.fromDocType = src.type; doc.fromDocNumber = src.number; }
       if (s.type === 'contrat') doc.clauses = { ...C.DEFAULT_CLAUSES, ...(s.clauses || {}) };
       if (s.type === 'livraison') doc.hidePrices = s.hidePrices !== false;
@@ -252,10 +273,11 @@
       return p;
     };
     d.purchases = [
-      // matériel revendu à l'École : la marge sera calculable en 3.3.0
-      buy({ supplierId: sp[0].id, number: 'FA-2026-1187', date: mo(2, 18), dueDate: C.addDays(mo(2, 18), 30), category: 'Achats de marchandises',
+      // matériel revendu à l'École : rattaché à l'affaire, c'est ce qui rend sa marge exacte
+      buy({ projectId: prjLauriers.id, supplierId: sp[0].id, number: 'FA-2026-1187', date: mo(2, 18), dueDate: C.addDays(mo(2, 18), 30), category: 'Achats de marchandises',
         subject: 'Postes de travail pour l\'École Les Lauriers', fees: 1,
-        lines: [bline('Poste de travail complet', 12, 850, 19, 'stock'), bline('Pare-feu UTM', 1, 1200, 19, 'stock')],
+        // Les postes sont revendus tout de suite : ce sont des charges de la période. Le pare-feu reste en stock.
+        lines: [bline('Poste de travail complet', 12, 850, 19, 'charge'), bline('Pare-feu UTM', 1, 1200, 19, 'stock')],
         payments: [{ date: C.addDays(mo(2, 18), 28), amount: 'all' }] }),
       // immobilisation : reprise par le module 3.4.0
       buy({ supplierId: sp[0].id, number: 'FA-2026-0940', date: mo(7, 9), dueDate: C.addDays(mo(7, 9), 30), category: 'Petit équipement',

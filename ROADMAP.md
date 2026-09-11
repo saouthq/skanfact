@@ -147,7 +147,7 @@ un assistant de correspondance de colonnes pour que ce soit utilisable. Le rappr
 couvre le besoin sans dépendre du format de la banque. Ajouté par rapport au plan : l'alerte de trou de trésorerie
 remonte en tête du panneau « À faire », et le compteur de la barre latérale ne s'allume que dans ce cas.
 
-### 3.4.0 — Marges et rentabilité · M
+### 3.4.0 — Marges et rentabilité · M — **livrée**
 
 Les statistiques de la 2.4.0 se remplissent enfin de ce qui manquait.
 

@@ -7,6 +7,38 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 3.4.0 — 11/09/2026
+
+Tu savais combien tu vends. Tu sais maintenant combien tu gagnes.
+
+Nouvelle page **Marges** (barre latérale, groupe Gestion — Cmd+9), en quatre onglets
+
+**Affaires** — le seul chiffre exact de l'application
+- Une **affaire** = un chantier, un projet, un client suivi : tu y rattaches les devis, les factures **et** les factures d'achat
+- Vendu, acheté, marge, taux, et « en caisse » (encaissé moins payé) pour chaque affaire
+- Fiche d'affaire complète : les ventes et les achats rattachés, cliquables
+- Une affaire qui perd de l'argent est signalée en rouge, avec la raison
+- Le champ **Affaire** est proposé dans l'éditeur de document et dans l'éditeur d'achat, avec « + Nouvelle affaire » sur place
+
+**Où est la marge** — une année de ventes, par client ou par prestation
+- Le plus gros client n'est pas toujours le plus rentable : ça se voit en dix secondes
+- Le repère **≈** signale les lignes dont le coût n'est pas connu : leur marge est optimiste, et c'est dit
+
+**Contrats** — ce que chaque contrat récurrent rapporte, au total et par mois
+- Un petit contrat qui tourne depuis deux ans vaut souvent mieux qu'une grosse affaire ponctuelle
+
+**Seuil de rentabilité** — le chiffre d'affaires minimum pour couvrir tes charges fixes
+- Charges fixes / variables séparées, avec le classement des catégories **que tu choisis toi-même**
+- Le montant à l'année, au mois et **au jour ouvré** — c'est celui-là qui parle
+- Stock et immobilisations exclus des charges de la période : ils ne sont pas consommés
+- *À VÉRIFIER avec ton comptable : le classement fixe/variable dépend de ton activité*
+
+**Ailleurs dans l'app**
+- **Coût de revient HT** au catalogue, avec un aperçu de marge en direct pendant la saisie et un avertissement si tu vends à perte
+- **Marge estimée** sous les totaux de l'éditeur, dès qu'au moins une ligne a un coût connu
+- Nouvel article d'aide « Gagnes-tu vraiment de l'argent ? » et une bulle « i » sur chaque notion
+- Données : `projects` et `fixedCategories` (v4, aucune conversion à faire) ; les affaires entrent dans la fusion d'un dossier partagé
+
 ## 3.3.0 — 11/09/2026
 
 Tu voyais ce qu'on te doit. Tu vois maintenant ce que tu as.

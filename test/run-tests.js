@@ -1683,4 +1683,163 @@ t('démo : trésorerie cohérente quelle que soit la date', () => {
   });
 });
 
+// ---------- marges et rentabilité (3.4.0) ----------
+
+const mCat = [{ id: 'k1', label: 'Serveur', unitPrice: 1500, unitCost: 1000, vatRate: 19 },
+              { id: 'k2', label: 'Installation', unitPrice: 300, unitCost: 0, vatRate: 19 }];
+const mInv = (id, o) => ({ id, type: 'facture', number: 'FAC-' + id, status: 'envoyée', date: '2026-03-10',
+  dueDate: '2026-04-09', clientId: 'c1', payments: [], createdAt: 1, ...o });
+
+t('marge : le coût vient de la ligne, sinon du catalogue', () => {
+  const data = core.migrateData({ clients: [{ id: 'c1', name: 'Alpha' }], catalog: mCat });
+  // coût pris dans le catalogue par correspondance du libellé
+  const d1 = mInv('1', { lines: [{ label: 'Serveur', qty: 2, unitPrice: 1500, vatRate: 19 }] });
+  const m1 = core.documentMargin(d1, data, CO);
+  assert.strictEqual(m1.revenue, 3000);
+  assert.strictEqual(m1.cost, 2000);
+  assert.strictEqual(m1.margin, 1000);
+  assert.strictEqual(m1.rate, 33.3);
+  assert.strictEqual(m1.complete, true);
+  // un coût saisi sur la ligne l'emporte sur le catalogue
+  const d2 = mInv('2', { lines: [{ label: 'Serveur', qty: 2, unitPrice: 1500, unitCost: 1200, vatRate: 19 }] });
+  assert.strictEqual(core.documentMargin(d2, data, CO).cost, 2400);
+  // un coût à zéro saisi explicitement est respecté, il ne retombe pas sur le catalogue
+  assert.strictEqual(core.documentMargin(mInv('3', { lines: [{ label: 'Serveur', qty: 1, unitPrice: 1500, unitCost: 0, vatRate: 19 }] }), data, CO).cost, 0);
+  // aucun coût connu : la marge vaut le chiffre d'affaires, mais « complete » dit que c'est une illusion
+  const inconnu = core.documentMargin(mInv('4', { lines: [{ label: 'Prestation inconnue', qty: 1, unitPrice: 500, vatRate: 19 }] }), data, CO);
+  assert.strictEqual(inconnu.margin, 500);
+  assert.strictEqual(inconnu.complete, false);
+  assert.strictEqual(inconnu.costed, 0);
+  // la remise globale ampute le prix de vente, jamais le coût d'achat
+  const remise = core.documentMargin(mInv('5', { discountRate: 10, lines: [{ label: 'Serveur', qty: 1, unitPrice: 1500, vatRate: 19 }] }), data, CO);
+  assert.strictEqual(remise.revenue, 1350);
+  assert.strictEqual(remise.cost, 1000);
+  assert.strictEqual(remise.margin, 350);
+  // un avoir retranche des deux côtés
+  const avoir = core.documentMargin({ id: 'a', type: 'avoir', status: 'émis', number: 'AVO-1', date: '2026-03-20',
+    clientId: 'c1', lines: [{ label: 'Serveur', qty: 1, unitPrice: 1500, vatRate: 19 }] }, data, CO);
+  assert.strictEqual(avoir.revenue, -1500);
+  assert.strictEqual(avoir.cost, -1000);
+  // une ligne de déduction d'acompte n'est ni un produit ni un coût
+  const acompte = core.documentMargin(mInv('6', { lines: [
+    { label: 'Serveur', qty: 1, unitPrice: 1500, vatRate: 19 },
+    { label: 'Acompte déjà facturé', qty: 1, unitPrice: -500, vatRate: 19, noDiscount: true }] }), data, CO);
+  assert.strictEqual(acompte.revenue, 1500);
+  assert.strictEqual(acompte.lines, 1);
+});
+
+t('marge : par client et par prestation', () => {
+  const data = core.migrateData({
+    clients: [{ id: 'c1', name: 'Alpha' }, { id: 'c2', name: 'Beta' }], catalog: mCat,
+    documents: [
+      mInv('1', { clientId: 'c1', lines: [{ label: 'Serveur', qty: 2, unitPrice: 1500, vatRate: 19 }] }),
+      mInv('2', { clientId: 'c2', lines: [{ label: 'Installation', qty: 3, unitPrice: 300, vatRate: 19 }] }),
+      mInv('3', { clientId: 'c1', date: '2025-06-01', lines: [{ label: 'Serveur', qty: 1, unitPrice: 1500, vatRate: 19 }] })
+    ]
+  });
+  const p = ['2026-01-01', '2026-12-31'];
+  const parClient = core.marginBy(data, CO, p[0], p[1], 'client');
+  assert.strictEqual(parClient.length, 2);
+  assert.strictEqual(parClient[0].label, 'Alpha');         // trié par marge décroissante
+  assert.strictEqual(parClient[0].margin, 1000);
+  assert.strictEqual(parClient[1].label, 'Beta');
+  assert.strictEqual(parClient[1].margin, 900);            // installation sans coût connu
+  assert.strictEqual(parClient[1].complete, false);
+  const parItem = core.marginBy(data, CO, p[0], p[1], 'item');
+  assert.deepStrictEqual(parItem.map(x => x.label).sort(), ['Installation', 'Serveur']);
+  assert.strictEqual(parItem.find(x => x.label === 'Serveur').cost, 2000);
+  // 2025 est hors période
+  assert.strictEqual(core.marginBy(data, CO, '2025-01-01', '2025-12-31', 'client')[0].revenue, 1500);
+});
+
+t('affaire : la marge exacte, parce qu\'on a vraiment payé les achats', () => {
+  const data = core.migrateData({
+    clients: [{ id: 'c1', name: 'Alpha' }], suppliers: [{ id: 's1', name: 'Grossiste' }], catalog: mCat,
+    projects: [{ id: 'pr1', name: 'Salle serveur Alpha', clientId: 'c1', status: 'en cours', startDate: '2026-03-01' }],
+    documents: [
+      { id: 'q1', type: 'devis', number: 'DEV-1', status: 'envoyé', date: '2026-03-01', dueDate: '2026-04-01',
+        clientId: 'c1', projectId: 'pr1', lines: [{ label: 'Extension', qty: 1, unitPrice: 2000, vatRate: 19 }], createdAt: 1 },
+      mInv('1', { projectId: 'pr1', lines: [{ label: 'Serveur', qty: 4, unitPrice: 1500, vatRate: 19 }],
+        payments: [{ id: 'p', date: '2026-03-20', amount: 3000 }] })
+    ],
+    purchases: [{ id: 'a1', kind: 'facture', supplierId: 's1', number: 'F-1', date: '2026-03-05', projectId: 'pr1',
+      fees: 1, payments: [{ id: 'x', date: '2026-03-06', amount: 2000 }], createdAt: 1,
+      lines: [{ label: 'Serveurs', qty: 4, unitPrice: 950, vatRate: 19, destination: 'stock' }] }]
+  });
+  const m = core.projectMargin(data, CO, 'pr1');
+  assert.strictEqual(m.revenue, 6000);
+  assert.strictEqual(m.cost, 3801);                        // 4 × 950 + 1 DT de timbre fournisseur
+  assert.strictEqual(m.margin, 2199);
+  assert.strictEqual(m.rate, 36.7);
+  assert.strictEqual(m.salesCount, 1);
+  assert.strictEqual(m.buysCount, 1);
+  assert.strictEqual(m.quotesCount, 1);
+  assert.strictEqual(m.pending, 2000);                     // le devis en cours, pas encore vendu
+  // trésorerie de l'affaire : encaissé moins payé
+  assert.strictEqual(m.collected, 3000);
+  assert.strictEqual(m.paid, 2000);
+  assert.strictEqual(m.cash, 1000);
+  // une affaire sans rien ne plante pas
+  const vide = core.projectMargin(data, CO, 'inconnue');
+  assert.strictEqual(vide.revenue, 0); assert.strictEqual(vide.rate, null);
+  assert.strictEqual(core.projectList(data, CO).length, 1);
+});
+
+t('contrat récurrent : ce qu\'il rapporte par mois', () => {
+  const data = core.migrateData({
+    clients: [{ id: 'c1', name: 'Alpha' }], catalog: [{ id: 'k', label: 'Maintenance', unitPrice: 250, unitCost: 60, vatRate: 19 }],
+    recurring: [{ id: 'r1', clientId: 'c1', subject: 'Maintenance', every: 'month', day: 1, nextDate: '2026-10-01', active: true, lines: [] }],
+    documents: ['2026-01-01', '2026-02-01', '2026-03-01'].map((date, i) => mInv('m' + i, {
+      date, recurringId: 'r1', lines: [{ label: 'Maintenance', qty: 1, unitPrice: 250, vatRate: 19 }] }))
+  });
+  const r = core.recurringProfitability(data, CO, 'r1');
+  assert.strictEqual(r.count, 3);
+  assert.strictEqual(r.revenue, 750);
+  assert.strictEqual(r.cost, 180);
+  assert.strictEqual(r.margin, 570);
+  assert.strictEqual(r.rate, 76);
+  assert.strictEqual(r.months, 3);
+  assert.strictEqual(r.perMonth, 190);
+  assert.strictEqual(r.first, '2026-01-01');
+  // contrat sans facture : aucun chiffre inventé
+  assert.strictEqual(core.recurringProfitability(data, CO, 'inconnu').count, 0);
+});
+
+t('seuil de rentabilité : charges fixes, variables et le CA minimum', () => {
+  const buy = (cat, ht, dest) => ({ id: 'a' + cat + ht, kind: 'facture', supplierId: 's1', number: 'F', date: '2026-03-01',
+    payments: [], createdAt: 1, lines: [{ label: 'x', qty: 1, unitPrice: ht, vatRate: 19, destination: dest || 'charge' }] });
+  const data = core.migrateData({
+    clients: [{ id: 'c1', name: 'Alpha' }], suppliers: [{ id: 's1', name: 'B' }],
+    documents: [mInv('1', { lines: [{ label: 'Vente', qty: 1, unitPrice: 10000, vatRate: 19 }] })],
+    purchases: [
+      { ...buy('Loyer et charges locatives', 1200), category: 'Loyer et charges locatives' },
+      { ...buy('Assurances', 300), category: 'Assurances' },
+      { ...buy('Achats de marchandises', 4000), category: 'Achats de marchandises' },
+      { ...buy('Stock', 5000, 'stock'), category: 'Achats de marchandises' }   // stock : pas une charge
+    ],
+    movements: [{ id: 'm', date: '2026-03-28', kind: 'salaire', amount: 1850, accountId: 'x' }]
+  });
+  const p = { from: '2026-01-01', to: '2026-12-31' };
+  const b = core.breakEven(data, CO, p);
+  assert.strictEqual(b.revenue, 10000);
+  assert.strictEqual(b.fixed, 3350);                       // loyer + assurance + salaire
+  assert.strictEqual(b.variable, 4000);                    // marchandises consommées, pas le stock
+  assert.strictEqual(b.marginOnVariable, 6000);
+  assert.strictEqual(b.rate, 60);
+  assert.strictEqual(b.breakEven, core.round3(3350 / 0.6));
+  assert.strictEqual(b.result, 2650);
+  assert.strictEqual(b.reached, true);
+  assert.ok(b.gap > 0);
+  // classement des catégories modifiable
+  assert.strictEqual(core.isFixedCategory({}, 'Loyer et charges locatives'), true);
+  assert.strictEqual(core.isFixedCategory({}, 'Achats de marchandises'), false);
+  assert.strictEqual(core.isFixedCategory({ fixedCategories: ['Achats de marchandises'] }, 'Achats de marchandises'), true);
+  assert.strictEqual(core.isFixedCategory({ fixedCategories: ['Achats de marchandises'] }, 'Loyer et charges locatives'), false);
+  // aucune vente : pas de seuil calculable, et on le dit au lieu de diviser par zéro
+  const rien = core.breakEven(core.migrateData({ purchases: data.purchases }), CO, p);
+  assert.strictEqual(rien.breakEven, null);
+  assert.strictEqual(rien.gap, null);
+  assert.strictEqual(rien.reached, false);
+});
+
 console.log(`\n${n} tests OK`);

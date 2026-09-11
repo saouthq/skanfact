@@ -239,6 +239,7 @@ function buildMenu() {
         { label: 'Achats et dépenses', accelerator: 'CmdOrCtrl+7', click: act('go:achats') },
         { label: 'Fournisseurs', click: act('go:fournisseurs') },
         { label: 'Trésorerie', accelerator: 'CmdOrCtrl+8', click: act('go:tresorerie') },
+        { label: 'Marges et rentabilité', accelerator: 'CmdOrCtrl+9', click: act('go:marges') },
         { label: 'Statistiques', click: act('go:stats') },
         { label: 'Comptabilité', accelerator: 'CmdOrCtrl+6', click: act('go:compta') },
         { type: 'separator' },
