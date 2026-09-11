@@ -211,7 +211,7 @@ trois secondes** ou corrige. Une erreur de lecture sur une quantité pourrit tou
 Le module le plus lourd, et le seul où une erreur coûte juridiquement cher. C'est pour cette raison qu'il vient
 en dernier : il faut que le reste soit stable et éprouvé avant.
 
-### 5.0.0 — Employés et bulletins de paie · XL — *données v6*
+### 5.0.0 — Employés et bulletins de paie · XL — *données v6* — **livrée**
 
 - **Fiche employé** : identité, CIN, matricule CNSS, date d'embauche, type de contrat (CDI, CDD, SIVP, stage), poste, salaire brut, mode de paiement
 - **Bulletin de paie mensuel** : brut, retenues, net à payer, cumuls de l'année, PDF au même standard que tes factures

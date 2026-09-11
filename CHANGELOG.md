@@ -7,6 +7,31 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 5.0.0 — 11/09/2026
+
+Embaucher, c'est le moment où la gestion cesse d'être un confort. Nouvelle page **Paie** (barre latérale, groupe Gestion), en trois onglets.
+
+**Aucun taux n'est écrit en dur.** C'est le point le plus important. CNSS, impôt sur le revenu, contribution de solidarité, frais professionnels, déductions familiales, tranches du barème : tout se lit dans l'onglet **Barèmes**, et rien ne se calcule ailleurs. Les valeurs livrées sont celles couramment appliquées en Tunisie au moment de cette version — *elles changent à chaque loi de finances.* Quand un taux bouge, tu le corriges, et **les bulletins déjà établis gardent leur propre calcul** : un barème modifié ne réécrit jamais un bulletin déjà remis.
+
+**Salariés** — fiche par personne : identité, CIN, matricule CNSS, contrat (CDI, CDD, SIVP, Karama, stage), date d'embauche et de sortie, brut mensuel, situation familiale. Le net estimé et le coût employeur s'affichent pendant la saisie. On ne supprime jamais un salarié qui a été payé : on renseigne sa date de sortie.
+
+**Bulletins**
+- Un bouton établit **tous les bulletins manquants du mois** d'un coup, au brut de chaque fiche
+- Primes imposables ou non, retenues, jours d'absence au prorata
+- **PDF au même standard que tes factures**, tenant sur une page : identité, période, détail des cotisations part salarié et part employeur, net à payer, cumuls de l'année, coût employeur
+- Une mention imprimée invite le comptable à valider les premiers bulletins
+- Un salarié actif sans bulletin remonte dans « À faire »
+
+**Barèmes** — les cotisations, l'impôt et le barème progressif, avec un tableau qui montre en direct ce que ça donne sur quatre salaires courants. Le barème est **progressif par tranches** : gagner un dinar de plus ne fait jamais perdre d'argent.
+
+**Ce qu'un salarié coûte vraiment** — ni son net, ni son brut, mais le **coût employeur** : brut plus charges patronales. C'est lui qui entre désormais dans **Comptabilité → Résultat simplifié** et dans les **charges fixes** du seuil de rentabilité. Les salaires tombent le mois où tu ne vends rien.
+
+**Le piège du double compte** — un bulletin marqué payé sort l'argent tout seul dans la trésorerie. Ne saisis pas en plus un mouvement libre « Salaires » : il compterait deux fois. Si les deux existent, SkanFact le signale dans « À faire ».
+
+**Données v6** : `employees`, `payslips`, `payrollSettings`, plus le matricule CNSS employeur dans la fiche société. Aucune conversion.
+
+Nouvel article d'aide « Payer quelqu'un » et une bulle « i » sur chaque notion. *À VÉRIFIER avec ton comptable : tous les taux, toutes les durées, et le traitement des contrats SIVP et Karama, qui peuvent être exonérés de certaines charges.*
+
 ## 4.2.0 — 11/09/2026
 
 Photographier une facture fournisseur au lieu de la saisir. **Éteint par défaut**, et pour de bonnes raisons.

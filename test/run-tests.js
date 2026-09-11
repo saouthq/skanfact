@@ -163,7 +163,7 @@ t('journal des ventes, récap TVA, CSV', () => {
 
 t('migration 1.x → 4 : « payée » devient un paiement, les listes manquantes sont créées', () => {
   const d = core.migrateData({ version: 1, company: { name: 'X' }, documents: [inv({ status: 'payée', payments: undefined })], clients: [], catalog: [] });
-  assert.strictEqual(d.version, 5);
+  assert.strictEqual(d.version, 6);
   assert.deepStrictEqual([d.recurring, d.templates, d.snippets], [[], [], []]);
   // version 4 : les trois listes d'achats arrivent vides, sans rien casser de l'existant
   assert.deepStrictEqual([d.suppliers, d.purchases, d.expenseCategories], [[], [], []]);
@@ -399,7 +399,7 @@ const { buildDemoData } = require('../src/renderer/demo.js');
 t('démo : cohérente quelle que soit la date du jour, société conservée', () => {
   ['2026-09-11', '2026-09-01', '2026-01-31', '2026-03-01', '2026-12-31', '2027-02-28', '2028-02-29'].forEach(T => {
     const d = buildDemoData({ name: 'Ma société', logo: 'data:logo', theme: 'dark', phone: '' }, T);
-    assert.ok(isValidData(d) && d.version === 5);
+    assert.ok(isValidData(d) && d.version === 6);
     assert.strictEqual(d.company.name, 'Ma société', 'la démo ne remplace jamais le nom déjà saisi');
     assert.strictEqual(d.company.logo, 'data:logo'); assert.strictEqual(d.company.theme, 'dark');
     assert.strictEqual(d.company.phone, '+216 55 123 456'); // champ vide complété, le reste conservé
@@ -1242,7 +1242,7 @@ t('achats : catégories de charges, celles d\'origine plus les ajoutées', () =>
 t('démo : achats cohérents quelle que soit la date, tous les statuts présents', () => {
   ['2026-01-15', '2026-03-31', '2026-09-11', '2026-12-28', '2027-02-28'].forEach(day => {
     const d = buildDemoData({}, day);
-    assert.strictEqual(d.version, 5);
+    assert.strictEqual(d.version, 6);
     assert.ok(d.suppliers.length >= 4, day);
     assert.ok(d.purchases.length >= 8, day);
     // aucun règlement daté dans le futur : un jeu de démo ne doit jamais montrer l'impossible
@@ -1481,7 +1481,7 @@ t('fusion : société, achats et fournisseurs suivent la même règle', () => {
   assert.strictEqual(core.mergeData(mine, base({ ...mine, syncWrittenAt: 300 })).conflicts.filter(c => c.kind === 'company').length, 0);
   // le résultat reste un fichier valide au sens du stockage
   assert.ok(isValidData(r.data));
-  assert.strictEqual(r.data.version, 5);
+  assert.strictEqual(r.data.version, 6);
 });
 
 t('stockage : un autre poste a enregistré entre-temps — on refuse d\'écraser', () => {
@@ -1661,7 +1661,13 @@ t('démo : trésorerie cohérente quelle que soit la date', () => {
     const d = buildDemoData({}, day);
     assert.strictEqual(d.accounts.length, 2, day);
     assert.ok(d.accounts.some(a => a.isDefault), 'aucun compte par défaut');
-    assert.ok(d.movements.length >= 20, day);
+    // Depuis la 5.0.0 les salaires viennent des bulletins, pas de mouvements saisis : on compte donc
+    // ce qui alimente vraiment la trésorerie, pas seulement la liste des mouvements libres.
+    assert.ok(d.movements.length >= 12, day);
+    assert.ok(core.cashMovements(d, d.company).length >= 30, day);
+    // les salaires réglés sortent bien l'argent, sans mouvement libre en double
+    assert.ok(core.cashMovements(d, d.company).some(m => m.source === 'paie'), `aucune sortie de salaire le ${day}`);
+    assert.ok(!d.movements.some(m => m.kind === 'salaire'), 'un mouvement « Salaires » ferait double emploi avec les bulletins');
     // aucun mouvement daté dans le futur : on ne montre jamais de l'argent qui n'est pas encore sorti
     d.movements.forEach(m => assert.ok(m.date <= day, `mouvement futur ${m.date} > ${day}`));
     // chaque mouvement pointe sur un compte qui existe
@@ -2256,6 +2262,113 @@ t('lecture : un écart, un fournisseur inconnu ou un numéro manquant sont signa
   // un taux de TVA farfelu retombe sur 19 %
   const taux = core.ocrToPurchase({ number: 'X', lines: [{ label: 'A', qty: 1, unitPrice: 10, vatRate: 42 }] }, data, '2026-09-11');
   assert.strictEqual(taux.lines[0].vatRate, 19);
+});
+
+// ---------- paie (5.0.0) ----------
+
+t('IRPP : le barème est progressif, tranche par tranche', () => {
+  const b = core.payrollSettings({}).brackets;
+  assert.strictEqual(core.irppAnnual(0, b), 0);
+  assert.strictEqual(core.irppAnnual(5000, b), 0);              // la première tranche est à 0 %
+  assert.strictEqual(core.irppAnnual(7000, b), 300);            // 2 000 × 15 %
+  assert.strictEqual(core.irppAnnual(10000, b), 750);
+  // l'erreur classique serait de taxer la tranche entière quand le revenu s'arrête au milieu
+  assert.strictEqual(core.irppAnnual(15000, b), core.round3(750 + 5000 * 0.25));
+  assert.strictEqual(core.irppAnnual(30000, b), 6250);
+  assert.strictEqual(core.irppAnnual(100000, b), 32750);        // dernière tranche ouverte
+  // barème entièrement remplaçable : rien n'est écrit en dur dans le calcul
+  const plat = [{ upTo: null, rate: 10 }];
+  assert.strictEqual(core.irppAnnual(1000, plat), 100);
+});
+
+t('bulletin : brut, CNSS, IRPP, net et coût employeur', () => {
+  const s = core.payrollSettings({});
+  const e = { id: 'e1', name: 'Salarié', grossSalary: 2000, children: 2, headOfFamily: true };
+  const p = core.computePayslip(e, {}, s);
+  assert.strictEqual(p.gross, 2000);
+  assert.strictEqual(p.cnssEmployee, core.round3(2000 * 9.18 / 100));
+  // frais professionnels plafonnés : 10 % de 21 796,80 = 2 179,68 → ramenés à 2 000
+  assert.strictEqual(p.pro, 2000);
+  assert.strictEqual(p.family, 500);                            // chef de famille 300 + 2 enfants × 100
+  assert.strictEqual(p.annualTaxable, core.round3(2000 * 12 - p.cnssEmployee * 12 - 2000 - 500));
+  assert.strictEqual(p.irpp, core.round3(core.irppAnnual(p.annualTaxable, s.brackets) / 12));
+  assert.strictEqual(p.net, core.round3(p.gross - p.cnssEmployee - p.irpp - p.css));
+  assert.strictEqual(p.employerCost, core.round3(p.gross + p.cnssEmployer + p.accident));
+  assert.ok(p.employerCost > p.gross, 'le coût employeur dépasse toujours le brut');
+  // le net est bien inférieur au brut, et le brut au coût
+  assert.ok(p.net < p.gross && p.gross < p.employerCost);
+});
+
+t('bulletin : primes imposables ou non, retenues, absence au prorata', () => {
+  const s = core.payrollSettings({});
+  const e = { id: 'e1', name: 'Salarié', grossSalary: 1300, children: 0, headOfFamily: false };
+  const simple = core.computePayslip(e, {}, s);
+  // une prime imposable entre dans l'assiette CNSS, une prime non imposable n'y entre pas
+  const primes = core.computePayslip(e, { bonuses: [{ label: 'Rendement', amount: 200, taxable: true }, { label: 'Panier', amount: 100, taxable: false }] }, s);
+  assert.strictEqual(primes.gross, 1600);
+  assert.strictEqual(primes.cnssBase, 1500);
+  assert.ok(primes.cnssEmployee > simple.cnssEmployee);
+  // une retenue baisse le net sans toucher aux cotisations
+  const avance = core.computePayslip(e, { deductions: [{ label: 'Avance', amount: 150 }] }, s);
+  assert.strictEqual(avance.cnssEmployee, simple.cnssEmployee);
+  assert.strictEqual(avance.net, core.round3(simple.net - 150));
+  // absence non rémunérée : le brut est réduit au prorata des jours
+  const absent = core.computePayslip(e, { absentDays: 2, workedDays: 26 }, s);
+  assert.strictEqual(absent.absenceCut, core.round3(1300 * 2 / 26));
+  assert.strictEqual(absent.gross, core.round3(1300 - absent.absenceCut));
+  assert.ok(absent.net < simple.net);
+});
+
+t('paie : les bulletins manquants du mois sont ceux des salariés actifs', () => {
+  const d = core.migrateData({
+    employees: [
+      { id: 'e1', name: 'Présent', grossSalary: 1200, hireDate: '2024-01-01' },
+      { id: 'e2', name: 'Parti', grossSalary: 1500, hireDate: '2023-01-01', endDate: '2026-05-31' },
+      { id: 'e3', name: 'Pas encore arrivé', grossSalary: 1000, hireDate: '2026-12-01' }
+    ],
+    payslips: []
+  });
+  // en septembre 2026 : seul « Présent » doit avoir un bulletin
+  let manquants = core.missingPayslips(d, 2026, 9).map(e => e.name);
+  assert.deepStrictEqual(manquants, ['Présent']);
+  d.payslips.push({ id: 'b1', employeeId: 'e1', year: 2026, month: 9, gross: 1200, computed: core.computePayslip(d.employees[0], {}, core.payrollSettings(d)) });
+  assert.deepStrictEqual(core.missingPayslips(d, 2026, 9), []);
+  // en mai 2026, le salarié parti en fin de mois est encore là
+  assert.deepStrictEqual(core.missingPayslips(d, 2026, 5).map(e => e.name).sort(), ['Parti', 'Présent']);
+  // la date d'un bulletin est le dernier jour de son mois
+  assert.strictEqual(core.payslipDate({ year: 2026, month: 2 }), '2026-02-28');
+  assert.strictEqual(core.payslipDate({ year: 2024, month: 2 }), '2024-02-29');
+  assert.strictEqual(core.payslipDate({ year: 2026, month: 9 }), '2026-09-30');
+});
+
+t('paie : le coût employeur pèse sur le résultat et sur les charges fixes', () => {
+  const s = core.payrollSettings({});
+  const emp = { id: 'e1', name: 'Salarié', grossSalary: 1500, children: 0, headOfFamily: false };
+  const c = core.computePayslip(emp, {}, s);
+  const d = core.migrateData({
+    company: CO,
+    employees: [emp],
+    payslips: [1, 2, 3].map(m => ({ id: 'b' + m, employeeId: 'e1', year: 2026, month: m, computed: c })),
+    documents: [{ id: 'd1', type: 'facture', number: 'FAC-2026-001', date: '2026-02-01', status: 'envoyée', clientId: 'c1',
+      lines: [{ label: 'Presta', qty: 1, unitPrice: 30000, vatRate: 19 }], payments: [], applyStamp: true }]
+  });
+  const annee = { from: '2026-01-01', to: '2026-12-31' };
+  assert.strictEqual(core.payrollCost(d, annee), core.round3(c.employerCost * 3));
+  // un seul mois ne compte qu'un bulletin
+  assert.strictEqual(core.payrollCost(d, { from: '2026-02-01', to: '2026-02-28' }), c.employerCost);
+  const r = core.simpleResult(d, CO, annee);
+  assert.strictEqual(r.payroll, core.round3(c.employerCost * 3));
+  assert.strictEqual(r.resultat, core.round3(r.produits - r.charges - r.cogs - r.depreciation - r.payroll));
+  // les salaires sont la charge fixe par excellence
+  const b = core.breakEven(d, CO, annee);
+  assert.strictEqual(b.payroll, core.round3(c.employerCost * 3));
+  assert.strictEqual(b.fixed, core.round3(c.employerCost * 3));
+  // récapitulatif de l'année
+  const sum = core.payrollSummary(d, 2026);
+  assert.strictEqual(sum.count, 3);
+  assert.strictEqual(sum.employees, 1);
+  assert.strictEqual(sum.cost, core.round3(c.employerCost * 3));
+  assert.strictEqual(sum.unpaid, 3);
 });
 
 console.log(`\n${n} tests OK`);

@@ -323,6 +323,39 @@
     ];
     d.expenseCategories = [];
 
+    // ---------- paie (5.0.0) ----------
+    // Deux salariés : un technicien à temps plein depuis deux ans, et une assistante embauchée en
+    // cours d'année. Les bulletins remontent jusqu'au mois dernier, le dernier n'étant pas encore payé.
+    const empTech = { id: C.uid(), name: 'Ahmed Ben Salah', cin: '09123456', cnss: '112233-44',
+      position: 'Technicien systèmes et réseaux', contract: 'cdi', hireDate: mo(5, 1), endDate: '',
+      grossSalary: 1850, headOfFamily: true, children: 2, method: 'virement', iban: '', notes: '' };
+    const empAssist = { id: C.uid(), name: 'Ines Gharbi', cin: '11223344', cnss: '556677-88',
+      position: 'Assistante administrative', contract: 'cdd', hireDate: mo(3, 1), endDate: '',
+      grossSalary: 900, headOfFamily: false, children: 0, method: 'virement', iban: '', notes: 'CDD d\'un an, renouvelable.' };
+    d.employees = [empTech, empAssist];
+    const payCfg = C.payrollSettings(d);
+    d.payslips = [];
+    // Du mois d'embauche jusqu'au mois dernier inclus.
+    for (let back = 12; back >= 1; back--) {
+      const ref = mo(back, 1);
+      const y = Number(ref.slice(0, 4)), m = Number(ref.slice(5, 7));
+      [empTech, empAssist].forEach(e => {
+        if (e.hireDate > C.addDays(ref, 27)) return;                  // pas encore embauché ce mois-là
+        // Une prime de rendement en fin d'année, une absence isolée : de quoi montrer les deux cas.
+        const bonuses = (back === 2 && e === empTech) ? [{ label: 'Prime de rendement', amount: 400, taxable: true }] : [];
+        const absentDays = (back === 2 && e === empAssist) ? 2 : 0;
+        const input = { gross: e.grossSalary, workedDays: 26, absentDays, bonuses, deductions: [] };
+        d.payslips.push({
+          id: C.uid(), employeeId: e.id, year: y, month: m, ...input,
+          computed: C.computePayslip(e, input, payCfg),
+          // Le dernier bulletin n'est pas encore réglé : c'est ce qui alimente « À faire ».
+          paidDate: back === 1 ? '' : C.addDays(ref, 31),
+          // Pas de compte précisé : les salaires tombent sur le compte par défaut, comme dans la vraie vie.
+          accountId: '', method: 'virement', reference: '', issuedAt: C.addDays(ref, 27)
+        });
+      });
+    }
+
     // ---------- numéros de série (4.1.0) ----------
     // Les deux articles matériel sont suivis unité par unité. Trois cas montrés : des unités encore en
     // stock, des unités livrées sous garantie, et une garantie qui se termine bientôt.
@@ -382,9 +415,10 @@
       accountId: (acc || accBank).id, method: kind === 'salaire' ? 'virement' : 'autre', reference: ''
     });
     d.movements = [];
-    // Salaire et loyer tous les mois sur douze mois : c'est ce qui fait respirer la trésorerie.
+    // Depuis la 5.0.0, les salaires sortent tout seuls des bulletins réglés : en saisir aussi ici les
+    // compterait deux fois, et SkanFact le signalerait dans « À faire ». On ne garde que ce qui n'a
+    // ni facture, ni achat, ni bulletin.
     for (let i = 12; i >= 1; i--) {
-      d.movements.push(mv('salaire', i, 28, 1850, 'Salaire et charges — ' + C.monthLabel(mo(i, 28))));
       d.movements.push(mv('banque', i, 5, 18, 'Frais de tenue de compte'));
     }
     d.movements.push(mv('impot', 4, 25, 2400, 'Acompte provisionnel'));

@@ -22,6 +22,7 @@
     name: '',
     matricule: '',
     rc: '',
+    cnss: '',                // matricule CNSS employeur (v6)
     capital: '',
     address: '',
     phone: '',
@@ -113,7 +114,7 @@
   ];
 
   const DEFAULT_DATA = {
-    version: 5,
+    version: 6,
     company: DEFAULT_COMPANY,
     clients: [],
     catalog: [],
@@ -128,6 +129,9 @@
     assets: [],              // immobilisations amortissables (3.5.0)
     stockAdjustments: [],    // mouvements de stock saisis à la main : départ, casse, inventaire (v5)
     serials: [],             // unités suivies par numéro de série (v5)
+    employees: [],           // salariés (v6)
+    payslips: [],            // bulletins de paie (v6)
+    payrollSettings: {},     // barèmes CNSS/IRPP modifiés par l'utilisateur (v6)
     vatCarryIn: {},          // crédit de TVA venu de l'année précédente, par année : { '2026': 1234 }
     projects: [],            // affaires : relient ventes et achats pour une marge exacte (v4)
     fixedCategories: [],     // catégories de charges considérées comme fixes (vide = valeurs par défaut)
@@ -436,6 +440,11 @@
     // « Suivi en stock » n'est pas cochée, et la liste d'ajustements naît vide.
     if (!Array.isArray(data.stockAdjustments)) data.stockAdjustments = [];
     if (!Array.isArray(data.serials)) data.serials = [];
+    // Version 6 : la paie. Rien à convertir — les trois listes naissent vides et les barèmes livrés
+    // ne sont qu'un point de départ, que l'utilisateur ajuste avec son comptable.
+    if (!Array.isArray(data.employees)) data.employees = [];
+    if (!Array.isArray(data.payslips)) data.payslips = [];
+    if (!data.payrollSettings || typeof data.payrollSettings !== 'object') data.payrollSettings = {};
     data.catalog.forEach(c => {
       c.tracked = c.tracked === true;
       c.minStock = Number(c.minStock) || 0;
@@ -456,7 +465,7 @@
       p.withholdingRate = Number(p.withholdingRate) || 0;
       p.fees = Number(p.fees) || 0;
     });
-    data.version = 5;
+    data.version = 6;
     return data;
   }
 
@@ -942,11 +951,14 @@
     // La dotation aux amortissements est une charge fixe : elle tombe que tu vendes ou non (3.5.0).
     const depreciation = depreciationFor(data, period);
     fixed = round3(fixed + depreciation);
+    // Les salaires aussi, et ce sont les plus lourds : un salarié est payé le mois où tu ne vends rien.
+    const payroll = payrollCost(data, period);
+    fixed = round3(fixed + payroll);
     const marginOnVariable = round3(revenue - variable);
     const rate = revenue > 0 ? marginOnVariable / revenue : 0;
     const point = rate > 0 ? round3(fixed / rate) : null;
     return {
-      revenue, fixed, variable, cogs, depreciation, marginOnVariable,
+      revenue, fixed, variable, cogs, depreciation, payroll, marginOnVariable,
       rate: revenue > 0 ? Math.round(rate * 1000) / 10 : null,
       breakEven: point,
       // Là où tu en es par rapport au seuil : négatif = il manque du chiffre d'affaires.
@@ -1170,6 +1182,333 @@
       if (after < 0) out.push({ itemId: c.id, label: c.label, unit: c.unit || '', have: s.qty, need: qty, after });
     });
     return out;
+  }
+
+  // ---------- paie (5.0.0) ----------
+  // Le module où une erreur coûte juridiquement cher. Trois principes, dans cet ordre :
+  //
+  //  1. AUCUN TAUX N'EST ÉCRIT EN DUR dans un calcul. Tout vient de `payrollSettings(data)`, que
+  //     l'utilisateur modifie : les barèmes changent à chaque loi de finances, et une application qui
+  //     les fige devient fausse en silence l'année suivante.
+  //  2. Les valeurs livrées sont INDICATIVES. Elles portent un « À VÉRIFIER avec ton comptable » visible
+  //     partout où elles servent, et les premiers bulletins portent une mention imprimée.
+  //  3. Le bulletin garde une COPIE de ce qui a servi à le calculer. Changer un barème ne doit jamais
+  //     réécrire l'histoire d'un bulletin déjà remis à un salarié.
+
+  const CONTRACT_TYPES = [
+    ['cdi', 'CDI — contrat à durée indéterminée'],
+    ['cdd', 'CDD — contrat à durée déterminée'],
+    ['sivp', 'SIVP — stage d\'initiation à la vie professionnelle'],
+    ['karama', 'Contrat Karama'],
+    ['stage', 'Stage'],
+    ['autre', 'Autre']
+  ];
+  const contractLabel = k => (CONTRACT_TYPES.find(x => x[0] === k) || [, k])[1];
+
+  // Valeurs de départ, toutes modifiables. Régime tunisien, secteur non agricole.
+  // À VÉRIFIER avec le comptable : chacune de ces lignes peut changer d'une loi de finances à l'autre.
+  const DEFAULT_PAYROLL = {
+    cnssEmployee: 9.18,        // part salarié
+    cnssEmployer: 16.57,       // part employeur
+    accidentRate: 0.4,         // accident du travail : dépend de l'activité
+    solidarity: 1,             // contribution sociale de solidarité, en points sur la base imposable
+    proRate: 10,               // frais professionnels : % du salaire imposable…
+    proCap: 2000,              // …plafonnés à ce montant par an
+    headOfFamily: 300,         // déduction annuelle chef de famille
+    perChild: 100,             // déduction annuelle par enfant à charge
+    maxChildren: 4,
+    // Barème IRPP annuel progressif : `upTo` en dinars (null = au-delà), `rate` en %.
+    brackets: [
+      { upTo: 5000, rate: 0 },
+      { upTo: 10000, rate: 15 },
+      { upTo: 20000, rate: 25 },
+      { upTo: 30000, rate: 30 },
+      { upTo: 40000, rate: 33 },
+      { upTo: 50000, rate: 36 },
+      { upTo: 70000, rate: 38 },
+      { upTo: null, rate: 40 }
+    ]
+  };
+
+  function payrollSettings(data) {
+    const s = (data && data.payrollSettings) || {};
+    return {
+      ...DEFAULT_PAYROLL, ...s,
+      brackets: Array.isArray(s.brackets) && s.brackets.length ? s.brackets : DEFAULT_PAYROLL.brackets
+    };
+  }
+
+  // Impôt annuel sur un revenu imposable, barème progressif par tranches.
+  function irppAnnual(base, brackets) {
+    const total = Math.max(0, Number(base) || 0);
+    let from = 0, tax = 0;
+    for (const b of brackets) {
+      const to = b.upTo == null ? Infinity : Number(b.upTo);
+      // La tranche ne porte que sur la part du revenu comprise entre `from` et `to` — surtout pas sur
+      // toute la tranche quand le revenu s'arrête au milieu (c'est l'erreur classique du barème).
+      const slice = Math.max(0, Math.min(total, to) - from);
+      if (slice > 0) tax += slice * (Number(b.rate) || 0) / 100;
+      from = to;
+      if (from >= total) break;
+    }
+    return round3(tax);
+  }
+
+  // Le calcul d'un bulletin. `input` porte ce qui varie d'un mois à l'autre :
+  // { gross, bonuses:[{label, amount, taxable}], deductions:[{label, amount}], absentDays, workedDays }
+  // Retourne TOUT le détail, pour que le bulletin imprimé et l'écran disent exactement la même chose.
+  function computePayslip(employee, input, settings) {
+    const s = settings || DEFAULT_PAYROLL;
+    const i = input || {};
+    const emp = employee || {};
+    const baseGross = round3(Number(i.gross != null ? i.gross : emp.grossSalary) || 0);
+    const workedDays = Number(i.workedDays) || 26;      // jours ouvrables du mois, modifiable
+    const absent = Math.max(0, Number(i.absentDays) || 0);
+    // Absence non rémunérée : le brut est réduit au prorata des jours.
+    const absenceCut = absent > 0 && workedDays > 0 ? round3(baseGross * absent / workedDays) : 0;
+
+    const bonuses = (i.bonuses || []).map(b => ({ label: b.label || 'Prime', amount: round3(Number(b.amount) || 0), taxable: b.taxable !== false }));
+    const taxableBonus = round3(bonuses.filter(b => b.taxable).reduce((a, b) => a + b.amount, 0));
+    const freeBonus = round3(bonuses.filter(b => !b.taxable).reduce((a, b) => a + b.amount, 0));
+
+    const gross = round3(baseGross - absenceCut + taxableBonus + freeBonus);
+    const cnssBase = round3(baseGross - absenceCut + taxableBonus);   // les primes non imposables sont hors assiette
+    const cnssEmployee = round3(cnssBase * (Number(s.cnssEmployee) || 0) / 100);
+
+    // Base imposable mensuelle → annualisée pour appliquer le barème, puis ramenée au mois.
+    const afterCnss = round3(cnssBase - cnssEmployee);
+    const annualAfterCnss = round3(afterCnss * 12);
+    const pro = round3(Math.min(annualAfterCnss * (Number(s.proRate) || 0) / 100, Number(s.proCap) || 0));
+    const children = Math.min(Number(emp.children) || 0, Number(s.maxChildren) || 0);
+    const family = round3((emp.headOfFamily ? (Number(s.headOfFamily) || 0) : 0) + children * (Number(s.perChild) || 0));
+    const annualTaxable = round3(Math.max(0, annualAfterCnss - pro - family));
+    const irppYear = irppAnnual(annualTaxable, s.brackets);
+    const irpp = round3(irppYear / 12);
+    const css = round3(annualTaxable * (Number(s.solidarity) || 0) / 100 / 12);
+
+    const deductions = (i.deductions || []).map(d => ({ label: d.label || 'Retenue', amount: round3(Number(d.amount) || 0) }));
+    const otherDeductions = round3(deductions.reduce((a, d) => a + d.amount, 0));
+
+    const net = round3(gross - cnssEmployee - irpp - css - otherDeductions);
+    const cnssEmployer = round3(cnssBase * (Number(s.cnssEmployer) || 0) / 100);
+    const accident = round3(cnssBase * (Number(s.accidentRate) || 0) / 100);
+    const employerCost = round3(gross + cnssEmployer + accident);
+
+    return {
+      baseGross, absenceCut, absentDays: absent, workedDays,
+      bonuses, taxableBonus, freeBonus, gross,
+      cnssBase, cnssEmployee, afterCnss, pro, family, children,
+      annualTaxable, irppYear, irpp, css,
+      deductions, otherDeductions, net,
+      cnssEmployer, accident, employerCost,
+      rates: {
+        cnssEmployee: Number(s.cnssEmployee) || 0, cnssEmployer: Number(s.cnssEmployer) || 0,
+        accidentRate: Number(s.accidentRate) || 0, solidarity: Number(s.solidarity) || 0
+      }
+    };
+  }
+
+  const activeEmployees = (data, dateIso) => {
+    const t = dateIso || today();
+    return (data.employees || []).filter(e => (!e.hireDate || e.hireDate <= t) && (!e.endDate || e.endDate >= t));
+  };
+
+  // Un bulletin porte sa propre copie du calcul : rejouer le barème d'aujourd'hui sur un bulletin de
+  // l'an dernier donnerait un autre chiffre que celui remis au salarié.
+  function payslipView(slip, data) {
+    const emp = (data.employees || []).find(e => e.id === slip.employeeId) || {};
+    const c = slip.computed || computePayslip(emp, slip, payrollSettings(data));
+    return { ...slip, employeeName: emp.name || '', employee: emp, c };
+  }
+
+  function payslipsOf(data, year, month) {
+    return (data.payslips || [])
+      .filter(p => (!year || Number(p.year) === Number(year)) && (!month || Number(p.month) === Number(month)))
+      .map(p => payslipView(p, data))
+      .sort((a, b) => (b.year - a.year) || (b.month - a.month) || (a.employeeName || '').localeCompare(b.employeeName || '', 'fr'));
+  }
+
+  // La date d'un bulletin, pour les périodes : le dernier jour du mois concerné.
+  function payslipDate(slip) {
+    const y = Number(slip.year), m = Number(slip.month);
+    if (!y || !m) return '';
+    return addDays(`${y}-${String(m).padStart(2, '0')}-01`, new Date(y, m, 0).getDate() - 1);
+  }
+
+  // Ce que la paie coûte vraiment sur une période : le coût employeur, pas le net versé.
+  function payrollCost(data, period) {
+    return round3((data.payslips || []).filter(p => inPeriod(payslipDate(p), period && period.from, period && period.to))
+      .reduce((s, p) => s + ((p.computed || {}).employerCost || 0), 0));
+  }
+
+  function payrollSummary(data, year) {
+    const rows = payslipsOf(data, year);
+    const sum = f => round3(rows.reduce((s, r) => s + (Number(f(r)) || 0), 0));
+    return {
+      count: rows.length,
+      employees: new Set(rows.map(r => r.employeeId)).size,
+      gross: sum(r => r.c.gross), net: sum(r => r.c.net),
+      cnssEmployee: sum(r => r.c.cnssEmployee), cnssEmployer: sum(r => r.c.cnssEmployer),
+      irpp: sum(r => r.c.irpp), css: sum(r => r.c.css), accident: sum(r => r.c.accident),
+      cost: sum(r => r.c.employerCost),
+      unpaid: rows.filter(r => !r.paidDate).length,
+      rows
+    };
+  }
+
+  // Les bulletins du mois qui manquent : un salarié actif sans bulletin, c'est un oubli, pas un choix.
+  function missingPayslips(data, year, month) {
+    const done = new Set((data.payslips || []).filter(p => Number(p.year) === Number(year) && Number(p.month) === Number(month)).map(p => p.employeeId));
+    const last = addDays(`${year}-${String(month).padStart(2, '0')}-01`, new Date(year, month, 0).getDate() - 1);
+    return activeEmployees(data, last).filter(e => !done.has(e.id));
+  }
+
+  // Le bulletin imprimé. Même langage visuel que les factures (accent de la société, cases claires),
+  // mais un contenu réglementé : identité complète, période, détail des cotisations, cumuls de l'année.
+  // La mention d'avertissement s'imprime tant que l'utilisateur ne l'a pas retirée (voir `payrollSettings`).
+  function payslipHtml(slip, data, company, opts) {
+    opts = opts || {};
+    const emp = (data.employees || []).find(e => e.id === slip.employeeId) || {};
+    const s = payrollSettings(data);
+    const c = slip.computed || computePayslip(emp, slip, s);
+    const cur = company.currency || 'DT';
+    const dec = decimalsFor(cur);
+    const fmt = n => money(n, null, dec, 'fr');
+    const ink = company.primaryColor || '#1b2430';
+    const accent = company.accentColor || '#0f9d8f';
+    const hex = accent.replace('#', '');
+    const [r, g, b] = [0, 2, 4].map(i => parseInt(hex.slice(i, i + 2), 16));
+    const tint = a => `rgba(${r}, ${g}, ${b}, ${a})`;
+    const pct = n => String(n).replace('.', ',');
+    const period = payslipDate(slip);
+    const label = monthLabel(period);
+
+    // Cumuls de l'année jusqu'à ce bulletin inclus : c'est ce qu'attend l'administration.
+    const ytd = (data.payslips || [])
+      .filter(p => p.employeeId === slip.employeeId && Number(p.year) === Number(slip.year) && Number(p.month) <= Number(slip.month))
+      .reduce((a, p) => {
+        const k = p.computed || {};
+        return { gross: round3(a.gross + (k.gross || 0)), cnss: round3(a.cnss + (k.cnssEmployee || 0)),
+          irpp: round3(a.irpp + (k.irpp || 0) + (k.css || 0)), net: round3(a.net + (k.net || 0)) };
+      }, { gross: 0, cnss: 0, irpp: 0, net: 0 });
+
+    const row = (lib, base, taux, salarie, patron, cls) => `<tr class="${cls || ''}">
+      <td>${escapeHtml(lib)}</td>
+      <td class="n">${base == null ? '' : fmt(base)}</td>
+      <td class="n">${taux == null ? '' : pct(taux) + ' %'}</td>
+      <td class="n">${salarie == null ? '' : fmt(salarie)}</td>
+      <td class="n">${patron == null ? '' : fmt(patron)}</td></tr>`;
+
+    return `<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8">
+<title>Bulletin de paie ${escapeHtml(emp.name || '')} ${escapeHtml(label)}</title>
+<style>
+  @page { size: A4; margin: 0; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; color: ${ink}; font-size: 9.5pt; line-height: 1.42; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .page { width: 210mm; min-height: 297mm; padding: 16mm 15mm; background: #fff; }
+  .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; padding-bottom: 12px; border-bottom: 2px solid ${tint(0.35)}; }
+  .co-name { font-size: 14pt; font-weight: 700; }
+  .co-sub, .small { font-size: 8pt; color: #6a7480; line-height: 1.5; }
+  .title { text-align: right; }
+  .title h1 { margin: 0; font-size: 17pt; letter-spacing: .4px; color: ${accent}; }
+  .title .per { font-size: 10pt; font-weight: 600; margin-top: 2px; }
+  .who { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
+  .box { border: 1px solid ${tint(0.3)}; border-radius: 8px; padding: 10px 12px; background: ${tint(0.05)}; }
+  .box h2 { margin: 0 0 6px; font-size: 8pt; text-transform: uppercase; letter-spacing: .6px; color: ${accent}; }
+  .kv { display: flex; justify-content: space-between; gap: 10px; font-size: 8.5pt; padding: 1.5px 0; }
+  .kv span:first-child { color: #6a7480; }
+  table.pay { width: 100%; border-collapse: collapse; margin-top: 14px; }
+  table.pay th { text-align: left; font-size: 7.5pt; text-transform: uppercase; letter-spacing: .5px; color: ${accent}; border-bottom: 1px solid ${tint(0.4)}; padding: 5px 6px; }
+  table.pay td { padding: 4px 6px; border-bottom: 1px solid #eef1f4; }
+  table.pay td.n, table.pay th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  tr.sec td { background: ${tint(0.07)}; font-weight: 600; }
+  tr.tot td { border-top: 1.5px solid ${ink}; border-bottom: none; font-weight: 700; padding-top: 7px; }
+  .net { margin-top: 14px; display: flex; justify-content: space-between; align-items: center; border: 1.5px solid ${accent}; border-radius: 10px; padding: 12px 16px; background: ${tint(0.08)}; }
+  .net .lbl { font-size: 10pt; font-weight: 600; }
+  .net .val { font-size: 18pt; font-weight: 800; color: ${accent}; font-variant-numeric: tabular-nums; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
+  .warn { margin-top: 14px; border-left: 3px solid #c98a12; background: #fdf6e7; padding: 9px 12px; border-radius: 0 6px 6px 0; font-size: 8pt; color: #6a5320; }
+  .sign { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-top: 22px; }
+  .sign .s { border: 1px dashed ${tint(0.5)}; border-radius: 8px; min-height: 60px; padding: 6px 10px; font-size: 8pt; color: #6a7480; }
+  .foot { margin-top: 16px; padding-top: 8px; border-top: 1px solid #eef1f4; font-size: 7.5pt; color: #8b949e; text-align: center; }
+</style></head>
+<body><div class="page">
+  <div class="head">
+    <div>
+      <div class="co-name">${escapeHtml(company.name || '')}</div>
+      <div class="co-sub">${escapeHtml(company.address || '').replace(/\n/g, '<br>')}
+        ${company.matricule ? `<br>MF : ${escapeHtml(company.matricule)}` : ''}
+        ${company.cnss ? `<br>CNSS : ${escapeHtml(company.cnss)}` : ''}</div>
+    </div>
+    <div class="title"><h1>Bulletin de paie</h1><div class="per">${escapeHtml(label)}</div>
+      <div class="small">Établi le ${fmtDate(slip.issuedAt || period)}</div></div>
+  </div>
+
+  <div class="who">
+    <div class="box"><h2>Salarié</h2>
+      <div class="kv"><span>Nom</span><span><b>${escapeHtml(emp.name || '')}</b></span></div>
+      ${emp.position ? `<div class="kv"><span>Poste</span><span>${escapeHtml(emp.position)}</span></div>` : ''}
+      ${emp.cin ? `<div class="kv"><span>CIN</span><span>${escapeHtml(emp.cin)}</span></div>` : ''}
+      ${emp.cnss ? `<div class="kv"><span>N° CNSS</span><span>${escapeHtml(emp.cnss)}</span></div>` : ''}
+      ${emp.hireDate ? `<div class="kv"><span>Embauché le</span><span>${fmtDate(emp.hireDate)}</span></div>` : ''}
+      <div class="kv"><span>Contrat</span><span>${escapeHtml(contractLabel(emp.contract || 'cdi'))}</span></div>
+      <div class="kv"><span>Situation</span><span>${emp.headOfFamily ? 'Chef de famille' : 'Célibataire'}${Number(emp.children) ? ` · ${emp.children} enfant(s) à charge` : ''}</span></div>
+    </div>
+    <div class="box"><h2>Période</h2>
+      <div class="kv"><span>Mois</span><span><b>${escapeHtml(label)}</b></span></div>
+      <div class="kv"><span>Jours ouvrables</span><span>${pct(c.workedDays)}</span></div>
+      ${c.absentDays ? `<div class="kv"><span>Jours d'absence</span><span>${pct(c.absentDays)}</span></div>` : ''}
+      <div class="kv"><span>Salaire de base</span><span>${fmt(c.baseGross)}</span></div>
+      <div class="kv"><span>Payé le</span><span>${slip.paidDate ? fmtDate(slip.paidDate) : '—'}</span></div>
+      ${slip.method ? `<div class="kv"><span>Mode</span><span>${escapeHtml((PAYMENT_METHODS.find(m => m[0] === slip.method) || [, slip.method])[1])}</span></div>` : ''}
+    </div>
+  </div>
+
+  <table class="pay">
+    <thead><tr><th>Désignation</th><th class="n">Base</th><th class="n">Taux</th><th class="n">Part salarié</th><th class="n">Part employeur</th></tr></thead>
+    <tbody>
+      ${row('Salaire de base', null, null, c.baseGross, null)}
+      ${c.absenceCut ? row(`Absence (${pct(c.absentDays)} jour(s))`, null, null, -c.absenceCut, null) : ''}
+      ${c.bonuses.map(b => row(b.label + (b.taxable ? '' : ' (non imposable)'), null, null, b.amount, null)).join('')}
+      <tr class="sec"><td>Salaire brut</td><td class="n"></td><td class="n"></td><td class="n">${fmt(c.gross)}</td><td class="n"></td></tr>
+      ${row('CNSS', c.cnssBase, c.rates.cnssEmployee, -c.cnssEmployee, c.cnssEmployer)}
+      ${c.accident ? row('Accident du travail', c.cnssBase, c.rates.accidentRate, null, c.accident) : ''}
+      ${row('Impôt sur le revenu (IRPP)', round3(c.annualTaxable / 12), null, -c.irpp, null)}
+      ${c.css ? row('Contribution sociale de solidarité', round3(c.annualTaxable / 12), c.rates.solidarity, -c.css, null) : ''}
+      ${c.deductions.map(d => row(d.label, null, null, -d.amount, null)).join('')}
+      <tr class="tot"><td>Total des retenues</td><td class="n"></td><td class="n"></td>
+        <td class="n">${fmt(round3(c.cnssEmployee + c.irpp + c.css + c.otherDeductions))}</td>
+        <td class="n">${fmt(round3(c.cnssEmployer + c.accident))}</td></tr>
+    </tbody>
+  </table>
+
+  <div class="net"><div class="lbl">Net à payer</div><div class="val">${fmt(c.net)} ${escapeHtml(cur)}</div></div>
+
+  <div class="cols">
+    <div class="box"><h2>Cumuls ${escapeHtml(String(slip.year))}</h2>
+      <div class="kv"><span>Brut</span><span>${fmt(ytd.gross)}</span></div>
+      <div class="kv"><span>CNSS salarié</span><span>${fmt(ytd.cnss)}</span></div>
+      <div class="kv"><span>Impôt et solidarité</span><span>${fmt(ytd.irpp)}</span></div>
+      <div class="kv"><span>Net perçu</span><span><b>${fmt(ytd.net)}</b></span></div>
+    </div>
+    <div class="box"><h2>Coût pour l'employeur</h2>
+      <div class="kv"><span>Salaire brut</span><span>${fmt(c.gross)}</span></div>
+      <div class="kv"><span>Charges patronales</span><span>${fmt(round3(c.cnssEmployer + c.accident))}</span></div>
+      <div class="kv"><span>Coût total du mois</span><span><b>${fmt(c.employerCost)}</b></span></div>
+    </div>
+  </div>
+
+  ${opts.notice === false ? '' : `<div class="warn"><b>À faire valider par votre comptable.</b> Ce bulletin est calculé à partir de barèmes saisis dans l'application (CNSS ${pct(c.rates.cnssEmployee)} % / ${pct(c.rates.cnssEmployer)} %, IRPP au barème progressif). Ces taux changent à chaque loi de finances : faites contrôler les premiers bulletins avant de les remettre.</div>`}
+
+  <div class="sign">
+    <div class="s">L'employeur</div>
+    <div class="s">Le salarié — reçu pour solde du mois</div>
+  </div>
+
+  <div class="foot">${escapeHtml(company.name || '')}${company.matricule ? ' — MF ' + escapeHtml(company.matricule) : ''} · Bulletin de ${escapeHtml(label)} · ${escapeHtml(emp.name || '')}</div>
+</div></body></html>`;
   }
 
   // ---------- lecture d'une photo de facture (4.2.0) ----------
@@ -1554,6 +1893,21 @@
         reference: p.reference || '', purchaseId: pu.id, reconciled: !!p.reconciled, source: 'achat'
       });
     }));
+    // Un bulletin réglé est une sortie d'argent : elle remonte toute seule, comme un paiement client.
+    // C'est pour ça qu'il ne faut PAS saisir en plus un mouvement libre « Salaires » pour le même mois —
+    // `todoList` le signale si les deux existent.
+    (data.payslips || []).forEach(sl => {
+      if (!sl.paidDate || !inPeriod(sl.paidDate, period && period.from, period && period.to) || !keep(sl.accountId)) return;
+      const emp = (data.employees || []).find(e => e.id === sl.employeeId) || {};
+      const net = ((sl.computed || {}).net) || 0;
+      if (!net) return;
+      out.push({
+        id: 'pay-' + sl.id, kind: 'sortie', date: sl.paidDate, accountId: sl.accountId || fallback,
+        label: `Salaire ${monthLabel(payslipDate(sl))}`, party: emp.name || 'Salarié',
+        amount: -round3(net), method: sl.method || 'virement', reference: sl.reference || '',
+        payslipId: sl.id, reconciled: !!sl.reconciled, source: 'paie'
+      });
+    });
     (data.movements || []).forEach(m => {
       if (!inPeriod(m.date, period && period.from, period && period.to) || !keep(m.accountId)) return;
       const label = (MOVE_KINDS.find(k => k[0] === m.kind) || [null, 'Mouvement'])[1];
@@ -1679,11 +2033,11 @@
   // l'autre version pour qu'elle reste consultable. Rien n'est détruit sans trace.
 
   // Les listes du fichier qui se fusionnent pièce par pièce, grâce à leur identifiant.
-  const MERGE_LISTS = ['clients', 'catalog', 'documents', 'recurring', 'templates', 'snippets', 'suppliers', 'purchases', 'accounts', 'movements', 'projects', 'assets', 'stockAdjustments', 'serials'];
+  const MERGE_LISTS = ['clients', 'catalog', 'documents', 'recurring', 'templates', 'snippets', 'suppliers', 'purchases', 'accounts', 'movements', 'projects', 'assets', 'stockAdjustments', 'serials', 'employees', 'payslips'];
   const LIST_LABELS = {
     clients: 'client', catalog: 'prestation', documents: 'document', recurring: 'contrat récurrent',
     templates: 'modèle', snippets: 'texte', suppliers: 'fournisseur', purchases: 'achat',
-    accounts: 'compte', movements: 'mouvement', projects: 'affaire', assets: 'immobilisation', stockAdjustments: 'mouvement de stock', serials: 'numéro de série'
+    accounts: 'compte', movements: 'mouvement', projects: 'affaire', assets: 'immobilisation', stockAdjustments: 'mouvement de stock', serials: 'numéro de série', employees: 'salarié', payslips: 'bulletin de paie'
   };
 
   function sameJson(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
@@ -1894,9 +2248,12 @@
     // L'achat d'une immobilisation n'est pas une charge, mais son AMORTISSEMENT en est une : sans lui,
     // le résultat de l'année d'un gros investissement serait artificiellement bon (3.5.0).
     const depreciation = depreciationFor(data, period);
-    const resultat = round3(produits - charges - cogs - depreciation);
+    // La paie n'est pas un achat : elle a sa propre page, mais c'est bien une charge de la période,
+    // et la plus lourde de toutes dès qu'il y a un salarié (5.0.0). On compte le COÛT EMPLOYEUR.
+    const payroll = payrollCost(data, period);
+    const resultat = round3(produits - charges - cogs - depreciation - payroll);
     return {
-      produits, charges, stock, immo, cogs, depreciation, resultat,
+      produits, charges, stock, immo, cogs, depreciation, payroll, resultat,
       marge: produits > 0 ? Math.round(resultat / produits * 100) : null,
       salesCount: sales.length, buysCount: buys.length
     };
@@ -2264,6 +2621,27 @@
       detail: `${lowStock.map(x => `${x.label} (${x.qty} ${x.unit || ''})`.trim()).slice(0, 3).join(' · ')}${lowStock.length > 3 ? '…' : ''} — sous le seuil d'alerte.`,
       count: lowStock.length, route: '#/stock', docs: []
     });
+    // Paie : les bulletins du mois écoulé qui manquent, et le doublon avec un mouvement « Salaires ».
+    if ((data.employees || []).length) {
+      const prev = addMonths(`${t.slice(0, 7)}-01`, -1, 1);
+      const py = Number(prev.slice(0, 4)), pm = Number(prev.slice(5, 7));
+      const miss = missingPayslips(data, py, pm);
+      if (miss.length) out.push({
+        id: 'bulletins', level: 'warn',
+        label: `${miss.length} bulletin${miss.length > 1 ? 's' : ''} de paie à établir pour ${monthLabel(prev)}`,
+        detail: `${miss.map(e => e.name).slice(0, 4).join(', ')}${miss.length > 4 ? '…' : ''}. Un salarié actif sans bulletin, c'est un oubli.`,
+        count: miss.length, route: '#/paie', docs: []
+      });
+      // Le bulletin réglé produit déjà sa sortie d'argent : un mouvement « Salaires » du même mois ferait double.
+      const paidMonths = new Set((data.payslips || []).filter(p => p.paidDate).map(p => (p.paidDate || '').slice(0, 7)));
+      const dbl = (data.movements || []).filter(m => m.kind === 'salaire' && paidMonths.has((m.date || '').slice(0, 7)));
+      if (dbl.length) out.push({
+        id: 'salaires-double', level: 'warn',
+        label: `${dbl.length} mouvement${dbl.length > 1 ? 's' : ''} « Salaires » compté${dbl.length > 1 ? 's' : ''} deux fois`,
+        detail: 'Un bulletin réglé sort déjà l\'argent tout seul. Supprime ces mouvements libres, sinon ta trésorerie est fausse du montant des salaires.',
+        count: dbl.length, route: '#/tresorerie', docs: []
+      });
+    }
     // Garanties qui se terminent : une occasion de proposer un contrat, pas une mauvaise nouvelle.
     const war = warrantiesEnding(data, 60, t);
     if (war.length) out.push({
@@ -3036,6 +3414,9 @@
     MOVE_SOURCES, moveSourceLabel, trackedItems, itemOfLine, stockMovements, runningStock, stockOf,
     stockList, stockTotals, stockJournal, inventoryDiff, stockAlerts, stockImpact, costOfGoodsSold,
     ocrNumber, ocrToPurchase,
+    CONTRACT_TYPES, contractLabel, DEFAULT_PAYROLL, payrollSettings, irppAnnual, computePayslip,
+    activeEmployees, payslipView, payslipsOf, payslipDate, payrollCost, payrollSummary, missingPayslips,
+    payslipHtml,
     SERIAL_STATUSES, serialStatusLabel, WARRANTY_CHOICES, serializedItems, warrantyEnd, serialView,
     serialList, availableSerials, clientFleet, warrantiesEnding, serialGap, serialGaps,
     mergeData, trackDeletion, MERGE_LISTS, LIST_LABELS,
