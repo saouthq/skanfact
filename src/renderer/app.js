@@ -3645,8 +3645,8 @@
     const emp = employee || employeeById(slip.employeeId);
     const s = C.payrollSettings(data);
     const cur = company().currency;
-    const p = slip || { id: C.uid(), employeeId: emp.id, year, month, gross: emp.grossSalary,
-      bonuses: [], deductions: [], absentDays: 0, workedDays: 26, paidDate: '', accountId: '',
+    const auto = slip ? null : C.payslipInputFor(data, emp, year, month);
+    const p = slip || { id: C.uid(), employeeId: emp.id, year, month, ...auto, paidDate: '', accountId: '',
       method: emp.method || 'virement', reference: '', issuedAt: C.today() };
     let bonuses = deepCopy(p.bonuses || []);
     let deductions = deepCopy(p.deductions || []);
@@ -3741,8 +3741,185 @@
   // On ouvre sur le MOIS ÉCOULÉ, pas sur le mois en cours : c'est celui dont les bulletins sont à
   // établir, et c'est lui que le panneau « À faire » réclame.
   const lastMonth = C.addMonths(C.today().slice(0, 7) + '-01', -1, 1);
+  // ---------- congés, absences, avances et documents (5.1.0) ----------
+  function leaveForm(leave, employeeId, done) {
+    const emps = data.employees.slice().sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+    if (!emps.length) return toast('Crée d\'abord la fiche d\'un salarié.', true);
+    const l = leave || { id: C.uid(), employeeId: employeeId || emps[0].id, kind: 'conges',
+      from: C.today(), to: C.today(), paid: null, note: '' };
+    modal(`<h2>${leave ? 'Modifier l\'absence' : 'Congé ou absence'}</h2>
+      <form id="lf" class="grid-2">
+        <div class="field span-2">Salarié
+          ${combo({ name: 'employeeId', value: l.employeeId, items: emps.map(e => ({ v: e.id, label: e.name, sub: e.position || '', text: e.name })), placeholder: '— Choisir —', search: 'Rechercher un salarié…' })}
+        </div>
+        <label class="field">${lbl('Nature', 'hr.leaveKind')}<select name="kind">${C.LEAVE_KINDS.map(([v, lab, paid]) => `<option value="${v}" ${l.kind === v ? 'selected' : ''}>${lab}${paid ? '' : ' (non payée)'}</option>`).join('')}</select></label>
+        <label class="field">${lbl('Effet sur le salaire', 'hr.paid')}<select name="paid">
+          <option value="">selon la nature</option><option value="1" ${l.paid === true ? 'selected' : ''}>payée</option><option value="0" ${l.paid === false ? 'selected' : ''}>non payée</option></select></label>
+        ${dateFieldHtml('Du', 'from', l.from, {})}
+        ${dateFieldHtml('Au', 'to', l.to, {})}
+        <label class="field span-2">Motif<input type="text" name="note" value="${h(l.note || '')}" placeholder="Certificat médical, congé annuel…"></label>
+        <div class="field span-2" id="lf-hint"></div>
+      </form>
+      <div class="modal-actions">
+        ${leave ? '<button class="btn btn-danger" id="del-lv" style="margin-right:auto">Supprimer</button>' : ''}
+        <button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
+      (root, close) => {
+        bindCombo($('[data-combo=employeeId]', root), { items: emps.map(e => ({ v: e.id, label: e.name, text: e.name })), placeholder: '— Choisir —' });
+        const hint = () => {
+          const v = formValues($('#lf', root));
+          const days = C.workingDays(v.from, v.to, C.payrollSettings(data).offDays);
+          const paid = v.paid === '' ? C.leaveIsPaid(v.kind) : v.paid === '1';
+          const bal = v.employeeId ? C.leaveBalance(data, v.employeeId, Number((v.from || C.today()).slice(0, 4))) : null;
+          $('#lf-hint', root).innerHTML = `<span class="small ${days ? 'muted' : 'warn-text'}">`
+            + (days ? `<b>${pct(days)} jour(s) ouvrable(s)</b>, dimanches exclus. ` : 'Aucun jour ouvrable dans cette période — vérifie les dates. ')
+            + (paid ? 'Payée : le salaire du mois n\'est pas réduit.' : 'Non payée : le brut sera réduit au prorata sur le bulletin du mois.')
+            + (bal && v.kind === 'conges' ? ` Solde de congés avant cette demande : <b>${pct(bal.remaining)} jour(s)</b>.` : '')
+            + '</span>';
+        };
+        $('#lf', root).oninput = $('#lf', root).onchange = hint; hint();
+        $('#ok', root).onclick = () => {
+          const v = formValues($('#lf', root));
+          if (!v.employeeId) return toast('Choisis le salarié.', true);
+          if (!v.from || !v.to) return toast('Dates invalides.', true);
+          if (v.to < v.from) return toast('La fin ne peut pas précéder le début.', true);
+          Object.assign(l, v, { paid: v.paid === '' ? null : v.paid === '1' });
+          if (!leave) data.leaves.push(l);
+          save(true); close(); if (done) done();
+        };
+        if ($('#del-lv', root)) $('#del-lv', root).onclick = async () => {
+          if (!await confirmDialog('Supprimer cette absence ? Les bulletins déjà établis ne changeront pas.')) return;
+          forget('leaves', l.id, C.leaveKindLabel(l.kind));
+          data.leaves = data.leaves.filter(x => x.id !== l.id);
+          save(true); close(); if (done) done();
+        };
+      });
+  }
+
+  function advanceForm(advance, employeeId, done) {
+    const emps = data.employees.slice().sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+    if (!emps.length) return toast('Crée d\'abord la fiche d\'un salarié.', true);
+    const a = advance || { id: C.uid(), employeeId: employeeId || emps[0].id, date: C.today(), amount: 0, monthly: 0, note: '' };
+    const cur = company().currency;
+    modal(`<h2>${advance ? 'Modifier l\'avance' : 'Avance sur salaire'}</h2>
+      <p class="small muted">Une somme prêtée au salarié, remboursée par retenues sur ses prochains bulletins. La retenue se pose toute seule, mois après mois, jusqu'à extinction.</p>
+      <form id="af2" class="grid-2">
+        <div class="field span-2">Salarié
+          ${combo({ name: 'employeeId', value: a.employeeId, items: emps.map(e => ({ v: e.id, label: e.name, sub: e.position || '', text: e.name })), placeholder: '— Choisir —', search: 'Rechercher un salarié…' })}
+        </div>
+        ${dateFieldHtml('Date de l\'avance', 'date', a.date, {})}
+        ${field('Montant avancé', 'amount', a.amount || 0, 'number', 'step="0.001" min="0" class="num"')}
+        ${field(lbl('Retenue mensuelle', 'hr.monthly'), 'monthly', a.monthly || 0, 'number', 'step="0.001" min="0" class="num"')}
+        <label class="field span-2">Note<input type="text" name="note" value="${h(a.note || '')}"></label>
+        <div class="field span-2" id="af2-hint"></div>
+      </form>
+      <div class="modal-actions">
+        ${advance ? '<button class="btn btn-danger" id="del-av" style="margin-right:auto">Supprimer</button>' : ''}
+        <button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
+      (root, close) => {
+        bindCombo($('[data-combo=employeeId]', root), { items: emps.map(e => ({ v: e.id, label: e.name, text: e.name })), placeholder: '— Choisir —' });
+        const hint = () => {
+          const v = formValues($('#af2', root));
+          const amt = Number(v.amount) || 0, m = Number(v.monthly) || 0;
+          const emp = employeeById(v.employeeId);
+          const net = emp ? C.computePayslip(emp, {}, C.payrollSettings(data)).net : 0;
+          $('#af2-hint', root).innerHTML = !amt || !m
+            ? '<span class="small muted">Saisis le montant et la retenue mensuelle pour voir la durée du remboursement.</span>'
+            : `<span class="small ${m > net * 0.3 ? 'warn-text' : 'muted'}">Remboursée en <b>${Math.ceil(amt / m)} mois</b> à ${C.money(m, cur)} par bulletin.`
+              + (net ? ` Le net habituel de ce salarié est de ${C.money(net, cur)} : la retenue en représente ${pct(Math.round(m / net * 1000) / 10)} %.` : '')
+              + (m > net * 0.3 ? ' C\'est beaucoup — une retenue trop lourde met le salarié en difficulté et se retourne contre toi. <em>À VÉRIFIER : la loi encadre la part du salaire qui peut être saisie.</em>' : '') + '</span>';
+        };
+        $('#af2', root).oninput = $('#af2', root).onchange = hint; hint();
+        $('#ok', root).onclick = () => {
+          const v = formValues($('#af2', root));
+          if (!v.employeeId) return toast('Choisis le salarié.', true);
+          if (!(Number(v.amount) > 0)) return toast('Le montant doit être supérieur à zéro.', true);
+          if (!(Number(v.monthly) > 0)) return toast('Indique la retenue mensuelle.', true);
+          Object.assign(a, v, { amount: Number(v.amount), monthly: Number(v.monthly) });
+          if (!advance) data.advances.push(a);
+          save(true); close(); if (done) done();
+        };
+        if ($('#del-av', root)) $('#del-av', root).onclick = async () => {
+          const r = C.advancesOf(data, a.employeeId).find(x => x.id === a.id);
+          if (!await confirmDialog(`Supprimer cette avance ?${r && r.repaid ? ` ${C.money(r.repaid, cur)} ont déjà été retenus sur des bulletins : ces retenues resteront sur les bulletins concernés.` : ''}`)) return;
+          forget('advances', a.id, C.money(a.amount, cur));
+          data.advances = data.advances.filter(x => x.id !== a.id);
+          save(true); close(); if (done) done();
+        };
+      });
+  }
+
+  // Générer un document du personnel : on montre ce qu'il contiendra avant de produire le PDF.
+  function hrDocForm(employee, done) {
+    const e = employee;
+    const cur = company().currency;
+    const st = C.payrollSettings(data);
+    const bal = C.leaveBalance(data, e.id, Number((e.endDate || C.today()).slice(0, 4)));
+    const last = C.payslipsOf(data).filter(p => p.employeeId === e.id)[0];
+    const daily = last ? C.round3(last.c.gross / (Number(st.workedDays) || 26)) : C.round3(e.grossSalary / 26);
+    let lines = [
+      { label: 'Salaire du mois en cours', amount: 0 },
+      { label: `Indemnité de congés non pris (${pct(Math.max(0, bal.remaining))} jour(s))`, amount: C.round3(daily * Math.max(0, bal.remaining)) },
+      { label: 'Indemnité de préavis', amount: 0 },
+      { label: 'Indemnité de fin de contrat', amount: 0 }
+    ];
+    modal(`<h2>Document pour ${h(e.name)}</h2>
+      <form id="hf" class="grid-2">
+        <label class="field span-2">${lbl('Document', 'hr.doc')}<select name="kind">${C.HR_DOCS.map(([v, lab]) => `<option value="${v}">${lab}</option>`).join('')}</select></label>
+        ${dateFieldHtml('Daté du', 'date', C.today(), {})}
+        <label class="check" style="align-self:end"><input type="checkbox" name="withSalary"> Mentionner le salaire ${info('hr.withSalary')}</label>
+      </form>
+      <p class="small muted" id="hf-desc"></p>
+      <div class="panel" id="hf-solde" hidden><h2>Solde de tout compte</h2>
+        <p class="small muted mb">Ce que tu dois encore au salarié à son départ. Les montants sont à toi : SkanFact propose seulement l'indemnité de congés non pris, calculée sur son dernier salaire. <em>À VÉRIFIER : les indemnités dépendent du motif de la rupture et de la convention collective.</em></p>
+        <div id="hf-lines"></div>
+      </div>
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Exporter en PDF</button></div>`,
+      (root, close) => {
+        const drawLines = () => {
+          $('#hf-lines', root).innerHTML = `<table class="lines-edit"><tbody>
+            ${lines.map((l, i) => `<tr data-i="${i}">
+              <td><input type="text" data-f="label" value="${h(l.label)}"></td>
+              <td style="width:130px"><input type="number" class="num" data-f="amount" value="${l.amount}" step="0.001"></td>
+              <td class="line-tools"><button type="button" class="btn btn-ghost btn-sm" data-x="${i}">✕</button></td></tr>`).join('')}
+          </tbody></table>
+          <div class="inline mt"><button type="button" class="btn btn-sm" id="hf-add">+ Ligne</button>
+            <span class="small muted">Net à percevoir : <b>${C.money(C.round3(lines.reduce((a, l) => a + (Number(l.amount) || 0), 0)), cur)}</b></span></div>`;
+          $$('[data-f]', $('#hf-lines', root)).forEach(el => el.oninput = () => {
+            const i = Number(el.closest('tr').dataset.i);
+            lines[i][el.dataset.f] = el.type === 'number' ? Number(el.value) : el.value;
+            drawLines();
+          });
+          $$('[data-x]', $('#hf-lines', root)).forEach(b => b.onclick = () => { lines.splice(Number(b.dataset.x), 1); drawLines(); });
+          $('#hf-add', root).onclick = () => { lines.push({ label: '', amount: 0 }); drawLines(); };
+        };
+        const sync = () => {
+          const v = formValues($('#hf', root));
+          const desc = (C.HR_DOCS.find(x => x[0] === v.kind) || [])[2] || '';
+          $('#hf-desc', root).textContent = desc;
+          $('#hf-solde', root).hidden = v.kind !== 'solde';
+          if (v.kind !== 'attestation') $('input[name=withSalary]', root).closest('.check').style.display = 'none';
+          else $('input[name=withSalary]', root).closest('.check').style.display = '';
+          if (v.kind !== 'attestation' && !e.endDate) {
+            $('#hf-desc', root).innerHTML = h(desc) + ' <span class="warn-text">Ce salarié n\'a pas de date de sortie : renseigne-la sur sa fiche, sinon le document portera la date du jour.</span>';
+          }
+        };
+        drawLines(); sync();
+        $('#hf', root).onchange = sync;
+        $('#ok', root).onclick = async () => {
+          const v = formValues($('#hf', root));
+          const html = C.hrDocumentHtml(v.kind, e, data, company(), { date: v.date, withSalary: !!v.withSalary, lines });
+          const safe = s2 => String(s2).replace(/[^\w\-àâäéèêëïîôöùûüç ]/gi, '').trim().replace(/\s+/g, '_');
+          try {
+            const f = await bridge.exportPdf(html, `${safe(C.hrDocLabel(v.kind))}_${safe(e.name)}.pdf`);
+            if (f) { toast('PDF enregistré : ' + f.split(/[\\/]/).pop()); close(); if (done) done(); }
+          } catch (err) { toast(err.message || 'Export impossible', true); }
+        };
+      });
+  }
+
   const paieState = { tab: 'bulletins', year: lastMonth.slice(0, 4), month: String(Number(lastMonth.slice(5, 7))) };
-  const PAIE_TABS = [['bulletins', 'Bulletins'], ['salaries', 'Salariés'], ['baremes', 'Barèmes']];
+  const PAIE_TABS = [['bulletins', 'Bulletins'], ['salaries', 'Salariés'], ['conges', 'Congés et absences'],
+    ['avances', 'Avances'], ['registre', 'Registre'], ['baremes', 'Barèmes']];
 
   routes.paie = () => {
     const cur = company().currency;
@@ -3807,10 +3984,11 @@
       $$('#p-body [data-pdf]').forEach(b => b.onclick = () => exportPayslip(payslipById(b.dataset.pdf)));
       $$('#p-body [data-ed]').forEach(b => b.onclick = () => { const x = payslipById(b.dataset.ed); payslipForm(x, employeeById(x.employeeId), x.year, x.month, () => draw()); });
       if ($('#p-gen')) $('#p-gen').onclick = async () => {
-        if (!await confirmDialog(`Établir ${missing.length} bulletin(s) pour ${MONTHS_LONG[m - 1]} ${s.year}, au brut inscrit sur chaque fiche ?\n\nTu pourras ensuite ajouter les primes, les retenues et les absences, bulletin par bulletin. Rien n'est payé : c'est toi qui marques chaque bulletin comme réglé.`, 'Établir', false)) return;
+        if (!await confirmDialog(`Établir ${missing.length} bulletin(s) pour ${MONTHS_LONG[m - 1]} ${s.year} ?\n\nLe brut vient de chaque fiche, les absences non payées et les échéances d'avance sont reprises automatiquement. Tu pourras encore ajouter les primes, bulletin par bulletin. Rien n'est payé : c'est toi qui marques chaque bulletin comme réglé.`, 'Établir', false)) return;
         const st = C.payrollSettings(data);
         missing.forEach(e => {
-          const input = { gross: e.grossSalary, workedDays: 26, absentDays: 0, bonuses: [], deductions: [] };
+          // Les absences non payées du mois et les échéances d'avance arrivent toutes seules (5.1.0).
+          const input = C.payslipInputFor(data, e, y, m);
           data.payslips.push({ id: C.uid(), employeeId: e.id, year: y, month: m, ...input,
             computed: C.computePayslip(e, input, st), paidDate: '', accountId: '', method: e.method || 'virement',
             reference: '', issuedAt: C.today() });
@@ -3852,6 +4030,110 @@
       $$('#p-body [data-ee]').forEach(b => b.onclick = () => employeeForm(employeeById(b.dataset.ee), () => draw()));
     }
 
+    function drawLeaves() {
+      const y = Number(s.year);
+      const all = C.leavesOf(data, '', y);
+      const emps = C.activeEmployees(data);
+      $('#p-body').innerHTML = `
+        <div class="panel"><h2>Compteurs de congés ${info('hr.balance')}</h2>
+          <p class="small muted mb">Le droit annuel (<b>${pct(C.payrollSettings(data).leaveDaysPerYear)} jours ouvrables</b>) se règle dans l'onglet Barèmes. Il s'acquiert au prorata des mois travaillés. <em>À VÉRIFIER avec ton comptable : la convention collective de ton secteur peut prévoir davantage.</em></p>
+          ${emps.length ? `<div class="scroll-x"><table class="list compact"><thead><tr>
+            <th>Salarié</th><th class="r">Acquis ${y}</th><th class="r">Reporté</th><th class="r">Pris</th><th class="r">Solde</th><th class="r">Maladie</th><th class="r">Sans solde</th></tr></thead><tbody>
+            ${emps.map(e => { const b = C.leaveBalance(data, e.id, y);
+              return `<tr class="clickable ${b.remaining < 0 ? 'row-warn' : ''}" data-eid="${h(e.id)}">
+                <td><strong>${h(e.name)}</strong></td>
+                <td class="r nw">${pct(b.acquired)}</td><td class="r nw">${b.carry ? pct(b.carry) : '<span class="muted">—</span>'}</td>
+                <td class="r nw">${pct(b.taken)}</td>
+                <td class="r nw ${b.remaining < 0 ? 'warn-text' : ''}"><strong>${pct(b.remaining)}</strong></td>
+                <td class="r nw">${b.byKind.maladie ? pct(b.byKind.maladie) : '<span class="muted">—</span>'}</td>
+                <td class="r nw">${b.byKind['sans-solde'] ? pct(b.byKind['sans-solde']) : '<span class="muted">—</span>'}</td></tr>`;
+            }).join('')}
+          </tbody></table></div>
+          <p class="small muted mt">Un solde négatif veut dire que le salarié a pris plus de jours qu'il n'en a acquis : ce n'est pas interdit, mais il faut le savoir.</p>`
+            : '<div class="empty">Aucun salarié en poste.</div>'}
+        </div>
+        <div class="panel"><h2>Congés et absences de ${h(s.year)}</h2>
+          <div class="filters"><button class="btn btn-sm btn-primary" id="new-lv">+ Congé ou absence</button>
+            <span class="small muted">${all.length} enregistrement(s)</span></div>
+          ${all.length ? `<div class="scroll-x"><table class="list compact"><thead><tr>
+            <th>Salarié</th><th>Nature</th><th>Du</th><th>Au</th><th class="r">Jours</th><th>Effet</th><th>Motif</th><th></th></tr></thead><tbody>
+            ${all.map(l => { const e = employeeById(l.employeeId) || {};
+              return `<tr><td><strong>${h(e.name || '')}</strong></td><td>${h(l.kindLabel)}</td>
+                <td class="nw">${C.fmtDate(l.from)}</td><td class="nw">${C.fmtDate(l.to)}</td>
+                <td class="r nw">${pct(l.days)}</td>
+                <td>${l.paid ? '<span class="ok-text">payée</span>' : '<span class="warn-text">retirée du salaire</span>'}</td>
+                <td>${h(l.note || '')}</td>
+                <td class="r"><button class="btn btn-sm btn-ghost" data-lv="${h(l.id)}">Modifier</button></td></tr>`;
+            }).join('')}
+          </tbody></table></div>`
+            : '<div class="empty">Aucun congé ni absence enregistré cette année. Une absence non payée se retire toute seule du bulletin du mois concerné.</div>'}
+        </div>`;
+      $('#new-lv').onclick = () => leaveForm(null, null, () => draw());
+      $$('#p-body [data-lv]').forEach(b => b.onclick = () => leaveForm(data.leaves.find(x => x.id === b.dataset.lv), null, () => draw()));
+      $$('#p-body tr[data-eid]').forEach(tr => tr.onclick = e2 => { if (e2.target.closest('button')) return; navigate('#/salarie/' + tr.dataset.eid); });
+    }
+
+    function drawAdvances() {
+      const all = C.advancesOf(data);
+      const open = all.filter(a => !a.done);
+      $('#p-body').innerHTML = `
+        <div class="panel"><h2>Avances sur salaire ${info('hr.advance')}</h2>
+          <div class="filters"><button class="btn btn-sm btn-primary" id="new-av">+ Avance</button>
+            <span class="small muted">${open.length} en cours sur ${all.length}${open.length ? ` · ${C.money(C.round3(open.reduce((a, x) => a + x.remaining, 0)), cur)} restant à récupérer` : ''}</span></div>
+          ${all.length ? `<div class="scroll-x"><table class="list compact"><thead><tr>
+            <th>Salarié</th><th>Date</th><th class="r">Avancé</th><th class="r">Par mois</th><th class="r">Remboursé</th><th class="r">Reste</th><th>Note</th><th></th></tr></thead><tbody>
+            ${all.map(a => { const e = employeeById(a.employeeId) || {};
+              return `<tr class="${a.done ? '' : 'row-warn'}">
+                <td><strong>${h(e.name || '')}</strong></td><td class="nw">${C.fmtDate(a.date)}</td>
+                <td class="r nw">${C.money(a.amount, cur)}</td><td class="r nw">${C.money(a.monthly, cur)}</td>
+                <td class="r nw">${C.money(a.repaid, cur)}</td>
+                <td class="r nw">${a.done ? '<span class="ok-text">soldée</span>' : `<strong>${C.money(a.remaining, cur)}</strong>`}</td>
+                <td>${h(a.note || '')}</td>
+                <td class="r"><button class="btn btn-sm btn-ghost" data-av="${h(a.id)}">Modifier</button></td></tr>`;
+            }).join('')}
+          </tbody></table></div>
+          <p class="small muted mt">La retenue se pose toute seule sur chaque bulletin établi, jusqu'à extinction — la dernière échéance ne prend que ce qui reste. Ce qui est remboursé se lit sur les bulletins, pas sur un compteur à part : supprimer une avance ne défait donc pas les retenues déjà passées.</p>`
+            : '<div class="empty">Aucune avance. Une avance sur salaire se rembourse par retenues mensuelles sur les bulletins suivants.</div>'}
+        </div>`;
+      $('#new-av').onclick = () => advanceForm(null, null, () => draw());
+      $$('#p-body [data-av]').forEach(b => b.onclick = () => advanceForm(data.advances.find(x => x.id === b.dataset.av), null, () => draw()));
+    }
+
+    function drawRegister() {
+      const reg = C.staffRegister(data);
+      $('#p-body').innerHTML = `
+        <div class="panel"><h2>Registre du personnel ${info('hr.register')}</h2>
+          <p class="small muted mb">La liste que l'inspection du travail peut demander : qui a travaillé chez toi, à quel poste, sous quel contrat, et entre quelles dates. <em>À VÉRIFIER : la forme exacte du registre et son mode de tenue relèvent du code du travail.</em></p>
+          ${reg.length ? `<div class="scroll-x"><table class="list compact"><thead><tr>
+            <th>N°</th><th>Nom</th><th>CIN</th><th>CNSS</th><th>Emploi</th><th>Contrat</th><th>Entrée</th><th>Sortie</th><th class="r">Brut</th></tr></thead><tbody>
+            ${reg.map(r => `<tr class="${r.active ? '' : 'muted'}">
+              <td>${r.n}</td><td><strong>${h(r.name)}</strong></td><td class="nw">${h(r.cin) || '—'}</td><td class="nw">${h(r.cnss) || '—'}</td>
+              <td>${h(r.position)}</td><td>${h(r.contract)}</td>
+              <td class="nw">${r.hireDate ? C.fmtDate(r.hireDate) : '—'}</td>
+              <td class="nw">${r.endDate ? C.fmtDate(r.endDate) : '<span class="ok-text">en poste</span>'}</td>
+              <td class="r nw">${C.money(r.grossSalary, cur)}</td></tr>`).join('')}
+          </tbody></table></div>
+          <div class="inline mt"><button class="btn" id="reg-csv">Exporter le registre (CSV)</button></div>`
+            : '<div class="empty">Aucun salarié.</div>'}
+        </div>
+        <div class="panel"><h2>Documents à remettre ${info('hr.doc')}</h2>
+          <p class="small muted mb">Attestation de travail, certificat de travail, solde de tout compte : générés au même format que tes autres documents, et prêts à signer.</p>
+          ${data.employees.length ? `<div class="chips-list">${data.employees.slice().sort((a, b) => a.name.localeCompare(b.name, 'fr')).map(e => `
+            <div class="inline mb"><strong style="min-width:200px;display:inline-block">${h(e.name)}</strong>
+              <button class="btn btn-sm" data-hr="${h(e.id)}">Établir un document…</button></div>`).join('')}</div>`
+            : '<div class="empty">Aucun salarié.</div>'}
+        </div>`;
+      $$('#p-body [data-hr]').forEach(b => b.onclick = () => hrDocForm(employeeById(b.dataset.hr), () => draw()));
+      if ($('#reg-csv')) $('#reg-csv').onclick = async () => {
+        const cols = [{ key: 'n', label: 'N°' }, { key: 'name', label: 'Nom' }, { key: 'cin', label: 'CIN' },
+          { key: 'cnss', label: 'N° CNSS' }, { key: 'position', label: 'Emploi' }, { key: 'contract', label: 'Contrat' },
+          { key: 'hireDate', label: 'Entrée', type: 'date' }, { label: 'Sortie', get: r => r.endDate ? C.fmtDate(r.endDate) : '' },
+          { key: 'grossSalary', label: 'Brut mensuel', type: 'money' }];
+        const f = await bridge.saveText(`registre-personnel-${C.today()}.csv`, C.toCsv(reg, cols));
+        if (f) toast('Exporté : ' + f.split(/[\\/]/).pop());
+      };
+    }
+
     function drawRates() {
       const st = C.payrollSettings(data);
       const num = (k, lab, key, suffix) => `<label class="field">${lbl(lab, key)}<input type="number" name="${k}" value="${st[k]}" step="0.01" min="0" class="num">${suffix ? `<span class="small muted">${suffix}</span>` : ''}</label>`;
@@ -3877,6 +4159,13 @@
               ${num('perChild', 'Déduction par enfant (par an)', 'pay.children')}
               ${num('maxChildren', 'Nombre maximum d\'enfants comptés', 'pay.children')}
             </div>
+          </div>
+          <div class="panel"><h2>Congés et jours ouvrables</h2>
+            <div class="grid-3">
+              ${num('leaveDaysPerYear', 'Congés payés par an (jours ouvrables)', 'hr.perYear')}
+              ${num('workedDays', 'Jours ouvrables d\'un mois complet', 'pay.workedDays')}
+            </div>
+            <p class="small muted mt">Ces deux chiffres servent au calcul des congés acquis et à la réduction d'une absence non payée. <em>À VÉRIFIER avec ton comptable : la convention collective de ton secteur peut prévoir davantage de congés.</em></p>
           </div>
           <div class="panel"><h2>Barème progressif annuel ${info('pay.brackets')}</h2>
             <table class="list compact"><thead><tr><th>De</th><th>Jusqu'à</th><th class="r" style="width:140px">Taux</th><th></th></tr></thead>
@@ -3918,7 +4207,7 @@
       const readRates = () => {
         const v = formValues($('#rf'));
         const out = {};
-        ['cnssEmployee', 'cnssEmployer', 'accidentRate', 'solidarity', 'proRate', 'proCap', 'headOfFamily', 'perChild', 'maxChildren']
+        ['cnssEmployee', 'cnssEmployer', 'accidentRate', 'solidarity', 'proRate', 'proCap', 'headOfFamily', 'perChild', 'maxChildren', 'leaveDaysPerYear', 'workedDays']
           .forEach(k => { out[k] = Number(v[k]) || 0; });
         return out;
       };
@@ -3944,8 +4233,11 @@
 
     const draw = () => {
       if (!data.employees.length) { $('#p-body').innerHTML = ''; return; }
-      $('#p-year').hidden = s.tab === 'baremes';
+      $('#p-year').hidden = ['baremes', 'registre', 'avances'].includes(s.tab);
       if (s.tab === 'salaries') return drawEmployees();
+      if (s.tab === 'conges') return drawLeaves();
+      if (s.tab === 'avances') return drawAdvances();
+      if (s.tab === 'registre') return drawRegister();
       if (s.tab === 'baremes') return drawRates();
       drawSlips();
     };
@@ -3989,6 +4281,42 @@
           ${e.notes ? `<div><span>Notes</span><span>${h(e.notes)}</span></div>` : ''}
         </div>
       </div>
+      ${(() => {
+        const b = C.leaveBalance(data, e.id, Number(year));
+        const av = C.advancesOf(data, e.id);
+        const open = av.filter(x => !x.done);
+        return `<div class="split">
+          <div class="panel"><h2>Congés ${year} ${info('hr.balance')}</h2>
+            <div class="kv">
+              <div><span>Acquis</span><span>${pct(b.acquired)} jour(s) sur ${pct(b.perYear)} par an</span></div>
+              ${b.carry ? `<div><span>Reporté de ${Number(year) - 1}</span><span>${pct(b.carry)} jour(s)</span></div>` : ''}
+              <div><span>Pris</span><span>${pct(b.taken)} jour(s)</span></div>
+              <div><span><b>Solde</b></span><span class="${b.remaining < 0 ? 'warn-text' : ''}"><b>${pct(b.remaining)} jour(s)</b></span></div>
+              ${b.byKind.maladie ? `<div><span>Arrêt maladie</span><span>${pct(b.byKind.maladie)} jour(s)</span></div>` : ''}
+              ${b.byKind['sans-solde'] ? `<div><span>Sans solde</span><span>${pct(b.byKind['sans-solde'])} jour(s)</span></div>` : ''}
+            </div>
+            <div class="inline mt"><button class="btn btn-sm" id="add-lv">+ Congé ou absence</button></div>
+          </div>
+          <div class="panel"><h2>Avances ${info('hr.advance')}</h2>
+            ${av.length ? `<table class="list compact"><thead><tr><th>Date</th><th class="r">Avancé</th><th class="r">Reste</th></tr></thead><tbody>
+              ${av.map(x => `<tr><td class="nw">${C.fmtDate(x.date)}</td><td class="r nw">${C.money(x.amount, cur)}</td>
+                <td class="r nw">${x.done ? '<span class="ok-text">soldée</span>' : `<strong>${C.money(x.remaining, cur)}</strong>`}</td></tr>`).join('')}
+            </tbody></table>${open.length ? `<p class="small muted mt">${C.money(C.round3(open.reduce((a2, x) => a2 + x.remaining, 0)), cur)} encore à retenir sur les prochains bulletins.</p>` : ''}`
+              : '<p class="small muted">Aucune avance.</p>'}
+            <div class="inline mt"><button class="btn btn-sm" id="add-av">+ Avance</button>
+              <button class="btn btn-sm" id="hr-doc">Établir un document…</button></div>
+          </div>
+        </div>`;
+      })()}
+      <div class="panel"><h2>Congés et absences</h2>
+        ${C.leavesOf(data, e.id, Number(year)).length ? `<table class="list compact"><thead><tr><th>Nature</th><th>Du</th><th>Au</th><th class="r">Jours</th><th>Effet</th><th>Motif</th><th></th></tr></thead><tbody>
+          ${C.leavesOf(data, e.id, Number(year)).map(l => `<tr><td>${h(l.kindLabel)}</td>
+            <td class="nw">${C.fmtDate(l.from)}</td><td class="nw">${C.fmtDate(l.to)}</td><td class="r nw">${pct(l.days)}</td>
+            <td>${l.paid ? '<span class="ok-text">payée</span>' : '<span class="warn-text">retirée du salaire</span>'}</td>
+            <td>${h(l.note || '')}</td>
+            <td class="r"><button class="btn btn-sm btn-ghost" data-lv="${h(l.id)}">Modifier</button></td></tr>`).join('')}
+        </tbody></table>` : `<div class="empty">Aucun congé ni absence en ${h(year)}.</div>`}
+      </div>
       <div class="panel"><h2>Bulletins</h2>
         ${slips.length ? `<div class="scroll-x"><table class="list compact"><thead><tr>
           <th>Mois</th><th class="r">Brut</th><th class="r">Retenues</th><th class="r">Net</th><th class="r">Coût</th><th>Payé le</th><th></th></tr></thead><tbody>
@@ -4007,11 +4335,15 @@
     bindBack('#/paie');
     $('#edit-emp').onclick = () => employeeForm(e, () => render());
     $('#new-slip').onclick = () => {
-      const t = C.today();
+      const t = C.addMonths(C.today().slice(0, 7) + '-01', -1, 1);
       payslipForm(null, e, Number(t.slice(0, 4)), Number(t.slice(5, 7)), () => render());
     };
     $$('[data-pdf]').forEach(b => b.onclick = () => exportPayslip(payslipById(b.dataset.pdf)));
     $$('[data-ed]').forEach(b => b.onclick = () => { const x = payslipById(b.dataset.ed); payslipForm(x, e, x.year, x.month, () => render()); });
+    $('#add-lv').onclick = () => leaveForm(null, e.id, () => render());
+    $('#add-av').onclick = () => advanceForm(null, e.id, () => render());
+    $('#hr-doc').onclick = () => hrDocForm(e, () => render());
+    $$('[data-lv]').forEach(b => b.onclick = () => leaveForm(data.leaves.find(x => x.id === b.dataset.lv), null, () => render()));
   };
 
   // ---------- Stock (4.0.0) ----------

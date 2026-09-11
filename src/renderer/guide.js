@@ -137,6 +137,15 @@
     'ed.margin': { t: 'Marge estimée', d: 'Ce qu\'il resterait de ce document une fois retiré le <b>coût de revient</b> de chaque ligne (celui du catalogue, ou celui recopié sur la ligne). C\'est une estimation : elle ne tient pas compte du loyer, des salaires ni des frais généraux. Pour une marge exacte, rattache ce document à une <b>affaire</b> et rattaches-y aussi les achats correspondants.' },
     'buy.project': { t: 'Affaire', d: 'Rattache cet achat au chantier pour lequel tu l\'as fait. C\'est ce rattachement qui rend la marge exacte : sans lui, l\'affaire semblera plus rentable qu\'elle ne l\'est.' },
     'cat.cost': { t: 'Coût de revient HT', d: 'Ce que cette prestation ou cet article te coûte : prix d\'achat de la marchandise, sous-traitance, matériel. Facultatif, mais c\'est lui qui permet de calculer la marge sur les ventes qui ne sont pas rattachées à une affaire. Pour une prestation où tu ne vends que ton temps, laisse 0 : la marge affichée sera alors le prix de vente.' },
+    'hr.leaveKind': { t: 'Nature de l\'absence', d: '<b>Congé payé</b> entame le compteur annuel sans réduire le salaire. <b>Arrêt maladie</b>, <b>maternité</b> et <b>autorisation</b> ne réduisent pas le salaire non plus et n\'entament pas le compteur. <b>Sans solde</b> et <b>injustifiée</b> réduisent le brut au prorata des jours. <em>À VÉRIFIER avec ton comptable : le traitement d\'un arrêt maladie dépend de sa durée et de la prise en charge CNSS.</em>' },
+    'hr.paid': { t: 'Effet sur le salaire', d: 'Chaque nature d\'absence a son comportement habituel, mais tu peux le forcer au cas par cas : une autorisation exceptionnelle retenue sur salaire, un arrêt maladie maintenu en totalité. Laisse « selon la nature » dans le doute.' },
+    'hr.balance': { t: 'Compteur de congés', d: 'Les jours <b>acquis</b> se calculent au prorata des mois travaillés dans l\'année : un salarié arrivé en juillet n\'a pas droit à une année entière. On en retire les congés payés <b>pris</b> — les arrêts maladie et les absences sans solde n\'entament pas ce compteur. Un solde négatif n\'est pas interdit, mais il faut le savoir.' },
+    'hr.perYear': { t: 'Congés payés par an', d: 'Le droit annuel en jours ouvrables. Le code du travail tunisien fixe un minimum, et la convention collective de ton secteur prévoit souvent davantage. <em>À VÉRIFIER avec ton comptable : c\'est la convention qui s\'applique, pas le minimum légal, dès qu\'elle est plus favorable.</em>' },
+    'hr.advance': { t: 'Avance sur salaire', d: 'Une somme prêtée au salarié, remboursée par retenues sur ses prochains bulletins. La retenue se pose toute seule mois après mois jusqu\'à extinction, et la dernière échéance ne prend que ce qui reste. Ce qui est remboursé se lit sur les bulletins eux-mêmes, pas sur un compteur à part : supprimer une avance ne défait donc pas les retenues déjà passées.' },
+    'hr.monthly': { t: 'Retenue mensuelle', d: 'Ce qui sera retiré de chaque bulletin jusqu\'au remboursement. Reste raisonnable : une retenue trop lourde met le salarié en difficulté et finit par se retourner contre toi. <em>À VÉRIFIER : la loi encadre la part du salaire qui peut être retenue ou saisie.</em>' },
+    'hr.register': { t: 'Registre du personnel', d: 'La liste que l\'inspection du travail peut demander : qui a travaillé chez toi, à quel poste, sous quel contrat, entre quelles dates. Les salariés partis y figurent aussi — c\'est le but. <em>À VÉRIFIER : la forme exacte du registre et son mode de tenue relèvent du code du travail.</em>' },
+    'hr.doc': { t: 'Documents du personnel', d: 'L\'<b>attestation de travail</b> prouve qu\'une personne travaille chez toi aujourd\'hui : banque, bailleur, administration la demandent. Le <b>certificat de travail</b> se remet à la fin du contrat et n\'indique que les dates et l\'emploi — rien d\'autre, c\'est la règle. Le <b>solde de tout compte</b> récapitule ce qui reste dû au départ. <em>À VÉRIFIER : les indemnités de fin de contrat dépendent du motif de la rupture et de la convention collective.</em>' },
+    'hr.withSalary': { t: 'Mentionner le salaire', d: 'Une attestation destinée à une banque ou à un bailleur doit souvent porter le salaire ; une attestation simple n\'a pas à le faire. Par défaut, SkanFact ne l\'écrit pas : c\'est une information personnelle du salarié.' },
     'pay.employees': { t: 'Salariés', d: 'La fiche de chaque personne que tu emploies : identité, matricule CNSS, type de contrat, salaire brut mensuel, situation familiale. C\'est à partir d\'elle que les bulletins se calculent — et c\'est elle qu\'il faut tenir à jour quand un salaire change ou qu\'un enfant naît.' },
     'pay.cnss': { t: 'Matricule CNSS du salarié', d: 'Le numéro d\'affiliation du salarié à la Caisse nationale de sécurité sociale. Il figure sur son bulletin et sur les déclarations trimestrielles. Si le salarié n\'en a pas encore, c\'est à toi de l\'affilier — <em>à VÉRIFIER avec ton comptable, l\'affiliation a un délai légal.</em>' },
     'pay.cnssEmployerId': { t: 'Matricule CNSS employeur', d: 'Ton numéro d\'affiliation en tant qu\'employeur. Il s\'imprime sur les bulletins de paie. Tu ne l\'as que si tu as déjà déclaré au moins un salarié.' },
@@ -623,6 +632,38 @@
 <h3>Ce que cette page ne fait pas</h3>
 <p>Pas de congés payés ni de soldes d'absence, pas d'attestations de travail, pas de déclaration CNSS automatique, pas de registre du personnel. Pas non plus de gestion des régimes particuliers : un contrat SIVP ou Karama peut être exonéré de certaines charges, et SkanFact ne le devine pas — tu ajustes alors les taux du bulletin concerné.</p>
 <p>Et surtout : <b>elle ne remplace pas un comptable.</b> Les bulletins portent une mention imprimée qui le rappelle. Fais-les valider avant de les remettre, et refais le contrôle chaque fois qu'une loi de finances passe.</p>`
+    },
+    {
+      id: 'conges', title: 'Congés, absences et papiers du personnel', sub: 'Compteurs, avances, attestations',
+      body: `
+<p>La paie de la 5.0.0 savait calculer un bulletin. Restait la question de tous les jours : d'où viennent les jours d'absence, et d'où vient la retenue d'une avance ? La réponse est la même que partout ailleurs dans SkanFact : tu le saisis une fois, au moment où ça arrive, et le bulletin du mois le reprend tout seul.</p>
+<h3>Les congés</h3>
+<p>Le droit annuel se règle dans <b>Paie → Barèmes</b> (18 jours ouvrables par défaut) et s'acquiert <b>au prorata des mois travaillés</b> : quelqu'un arrivé en juillet n'a pas droit à une année entière.</p>
+<p>Tu enregistres chaque absence avec sa nature :</p>
+<ul>
+  <li><b>Congé payé</b> — entame le compteur, ne réduit pas le salaire.</li>
+  <li><b>Arrêt maladie</b>, <b>maternité</b>, <b>autorisation</b> — ne réduisent ni le salaire ni le compteur.</li>
+  <li><b>Sans solde</b> et <b>injustifiée</b> — réduisent le brut au prorata des jours ouvrables.</li>
+</ul>
+<p>Tu peux forcer le comportement au cas par cas : une autorisation exceptionnelle retenue, un arrêt maintenu en totalité. <em>À VÉRIFIER avec ton comptable : le traitement d'un arrêt maladie dépend de sa durée et de la prise en charge CNSS.</em></p>
+<p>Une absence à cheval sur deux mois se répartit toute seule entre les deux bulletins — trois jours en avril, deux en mai. C'est exactement le genre de détail qu'on rate en comptant à la main.</p>
+<h3>Le solde négatif</h3>
+<p>Si quelqu'un prend plus de jours qu'il n'en a acquis, le solde passe en rouge. Ce n'est pas interdit — beaucoup d'entreprises avancent des congés — mais il faut le savoir, surtout au moment d'un départ : les jours pris en trop se retiennent du solde de tout compte.</p>
+<h3>Les avances sur salaire</h3>
+<p>Tu saisis la somme prêtée et la retenue mensuelle. SkanFact te dit en combien de mois ce sera remboursé, et quelle part du net la retenue représente — il t'avertit si elle dépasse le tiers, parce qu'une retenue trop lourde met le salarié en difficulté et finit par se retourner contre toi. <em>À VÉRIFIER : la loi encadre la part du salaire qui peut être retenue.</em></p>
+<p>La retenue se pose ensuite sur chaque bulletin établi, jusqu'à extinction, et la dernière échéance ne prend que ce qui reste.</p>
+<p>Un point important : <b>ce qui est remboursé se lit sur les bulletins eux-mêmes</b>, pas sur un compteur à part. Supprimer une avance ne défait donc pas les retenues déjà passées — c'est voulu, un bulletin remis ne se réécrit pas.</p>
+<h3>Les trois documents qu'on te demandera</h3>
+<ul>
+  <li><b>Attestation de travail</b> — prouve qu'une personne travaille chez toi <em>aujourd'hui</em>. Une banque ou un bailleur la demande. Le salaire n'y figure que si tu coches la case : c'est une information personnelle.</li>
+  <li><b>Certificat de travail</b> — se remet à la fin du contrat. Il n'indique que les dates et l'emploi occupé, rien d'autre : ni le motif du départ, ni une appréciation. C'est la règle, et elle protège tout le monde.</li>
+  <li><b>Solde de tout compte</b> — récapitule ce qui reste dû au départ. SkanFact propose l'indemnité de congés non pris, calculée sur le dernier salaire ; le reste est à toi. <em>À VÉRIFIER : les indemnités de fin de contrat dépendent du motif de la rupture et de la convention collective — fais relire le document avant signature.</em></li>
+</ul>
+<p>Les trois sortent en PDF, au même format que tes factures, prêts à signer.</p>
+<h3>Le registre du personnel</h3>
+<p>La liste que l'inspection du travail peut demander : qui a travaillé chez toi, à quel poste, sous quel contrat, entre quelles dates. Les salariés partis y figurent aussi — c'est le but. Exportable en CSV. <em>À VÉRIFIER : la forme exacte du registre relève du code du travail.</em></p>
+<h3>Ce que ça ne fait pas</h3>
+<p>Pas de demande de congé à valider, pas de planning d'équipe, pas de pointage. Pas de calcul d'indemnité de licenciement non plus : ce calcul dépend de l'ancienneté, du motif et de la convention, et se fait avec un comptable ou un juriste, pas dans un tableau.</p>`
     },
     {
       id: 'lecture', title: 'Photographier une facture au lieu de la saisir', sub: 'Ce que ça envoie, ce que ça coûte, ce que ça ne fait pas',

@@ -7,6 +7,33 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 5.1.0 — 11/09/2026
+
+La paie savait calculer un bulletin. Elle sait maintenant d'où viennent les absences et les retenues.
+
+**Congés et absences** (nouvel onglet de la page Paie)
+- Compteur par salarié : **acquis au prorata des mois travaillés**, reporté, pris, solde
+- Six natures : congé payé, arrêt maladie, maternité, autorisation, sans solde, injustifiée — chacune avec son effet habituel sur le salaire, forçable au cas par cas
+- Une absence **à cheval sur deux mois se répartit toute seule** entre les deux bulletins
+- Un solde négatif est signalé sans être interdit : avancer des congés arrive, mais il faut le savoir
+- Le droit annuel (18 jours ouvrables par défaut) se règle dans les Barèmes — *à VÉRIFIER : la convention collective de ton secteur peut prévoir davantage*
+
+**Avances sur salaire** (nouvel onglet)
+- Somme prêtée, retenue mensuelle, durée de remboursement annoncée avant d'enregistrer
+- Avertissement si la retenue dépasse le tiers du net — *à VÉRIFIER : la loi encadre la part saisissable*
+- La retenue se pose toute seule sur chaque bulletin jusqu'à extinction, la dernière échéance ne prenant que ce qui reste
+- Ce qui est remboursé se lit **sur les bulletins eux-mêmes**, pas sur un compteur à part : supprimer une avance ne défait pas les retenues déjà passées
+
+**Les bulletins se remplissent tout seuls** — établir les bulletins du mois reprend désormais les absences non payées et les échéances d'avance, sans ressaisie.
+
+**Documents du personnel** — attestation de travail (avec ou sans le salaire, qui n'y figure que si tu le demandes), certificat de travail, solde de tout compte avec l'indemnité de congés non pris pré-calculée. PDF au même format que tes factures, prêts à signer.
+
+**Registre du personnel** — la liste que l'inspection du travail peut demander, salariés partis compris, exportable en CSV.
+
+Sur la fiche d'un salarié : ses compteurs de congés, ses avances, ses absences de l'année et un bouton pour établir un document.
+
+Données : `leaves` et `advances`. Aucune conversion. Nouvel article d'aide « Congés, absences et papiers du personnel ».
+
 ## 5.0.0 — 11/09/2026
 
 Embaucher, c'est le moment où la gestion cesse d'être un confort. Nouvelle page **Paie** (barre latérale, groupe Gestion), en trois onglets.

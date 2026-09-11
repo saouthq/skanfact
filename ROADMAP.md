@@ -220,7 +220,7 @@ en dernier : il faut que le reste soit stable et éprouvé avant.
 - **Coût employeur réel** par salarié, qui remonte dans les charges et dans les marges
 - Mention claire sur les premiers bulletins invitant le comptable à les valider
 
-### 5.1.0 — Congés, absences et documents du personnel · M
+### 5.1.0 — Congés, absences et documents du personnel · M — **livrée**
 
 - **Congés payés** : acquis, pris, solde
 - **Absences** : maladie, sans solde, avec leur effet sur le bulletin

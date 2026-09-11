@@ -356,6 +356,30 @@
       });
     }
 
+    // ---------- congés, absences et avances (5.1.0) ----------
+    // Un congé annuel pris, un arrêt maladie, une absence sans solde à cheval sur deux mois, et une
+    // avance en cours de remboursement : de quoi montrer les quatre comportements.
+    d.leaves = [
+      { id: C.uid(), employeeId: empTech.id, kind: 'conges', from: mo(4, 6), to: mo(4, 10),
+        paid: null, note: 'Congé annuel' },
+      { id: C.uid(), employeeId: empTech.id, kind: 'maladie', from: daysAgo(48), to: daysAgo(46),
+        paid: null, note: 'Certificat médical de trois jours' },
+      { id: C.uid(), employeeId: empAssist.id, kind: 'sans-solde', from: C.addDays(mo(2, 1), -2), to: mo(2, 2),
+        paid: null, note: 'Absence sans solde' }
+    ];
+    d.advances = [
+      { id: C.uid(), employeeId: empAssist.id, date: mo(3, 12), amount: 600, monthly: 200,
+        note: 'Avance remboursée en trois mois' }
+    ];
+    // Les bulletins déjà établis reprennent ces éléments : on les recalcule une fois les listes posées.
+    d.payslips.forEach(sl => {
+      const e = d.employees.find(x => x.id === sl.employeeId);
+      const input = C.payslipInputFor(d, e, sl.year, sl.month);
+      // On garde les primes saisies plus haut, on reprend absences et avances.
+      const merged = { ...input, bonuses: sl.bonuses || [] };
+      Object.assign(sl, merged, { computed: C.computePayslip(e, merged, payCfg) });
+    });
+
     // ---------- numéros de série (4.1.0) ----------
     // Les deux articles matériel sont suivis unité par unité. Trois cas montrés : des unités encore en
     // stock, des unités livrées sous garantie, et une garantie qui se termine bientôt.

@@ -2371,4 +2371,106 @@ t('paie : le coût employeur pèse sur le résultat et sur les charges fixes', (
   assert.strictEqual(sum.unpaid, 3);
 });
 
+// ---------- congés, absences et avances (5.1.0) ----------
+
+t('jours ouvrables : le dimanche ne compte pas', () => {
+  assert.strictEqual(core.workingDays('2026-01-01', '2026-01-07'), 6);   // une semaine moins un dimanche
+  assert.strictEqual(core.workingDays('2026-01-01', '2026-01-31'), 27);
+  assert.strictEqual(core.workingDays('2026-01-04', '2026-01-04'), 0);   // un dimanche seul
+  assert.strictEqual(core.workingDays('2026-01-05', '2026-01-05'), 1);
+  assert.strictEqual(core.workingDays('2026-01-10', '2026-01-01'), 0);   // à l'envers : zéro, pas un nombre négatif
+  // semaine de cinq jours : on change les jours chômés, rien d'autre
+  assert.strictEqual(core.workingDays('2026-01-01', '2026-01-07', [0, 6]), 5);
+});
+
+t('congés : acquis au prorata, pris déduits, à cheval sur deux mois réparti', () => {
+  const emp = { id: 'e1', name: 'Salarié', grossSalary: 1500, hireDate: '2025-01-01' };
+  const d = core.migrateData({
+    employees: [emp],
+    leaves: [
+      { id: 'l1', employeeId: 'e1', kind: 'conges', from: '2026-03-02', to: '2026-03-07' },
+      { id: 'l2', employeeId: 'e1', kind: 'sans-solde', from: '2026-04-28', to: '2026-05-02' }
+    ]
+  });
+  const b = core.leaveBalance(d, 'e1', 2026, '2026-09-11');
+  assert.strictEqual(b.perYear, 18);
+  assert.strictEqual(b.months, 8);                        // janvier à début septembre
+  assert.strictEqual(b.acquired, 12);                     // 18 × 8/12
+  assert.strictEqual(b.taken, 6);                         // seuls les congés payés comptent
+  assert.strictEqual(b.remaining, 6);
+  assert.strictEqual(b.byKind['sans-solde'], 5);          // l'absence sans solde n'entame pas le compteur
+  // l'absence du 28 avril au 2 mai se répartit : 3 jours en avril, 2 en mai
+  assert.strictEqual(core.leaveDaysInMonth(d.leaves[1], 2026, 4), 3);
+  assert.strictEqual(core.leaveDaysInMonth(d.leaves[1], 2026, 5), 2);
+  assert.strictEqual(core.leaveDaysInMonth(d.leaves[1], 2026, 6), 0);
+  // un salarié embauché en cours d'année n'acquiert pas une année entière
+  const tard = core.migrateData({ employees: [{ id: 'e2', name: 'Récent', grossSalary: 1000, hireDate: '2026-07-01' }] });
+  assert.ok(core.leaveBalance(tard, 'e2', 2026, '2026-09-11').acquired < 6);
+});
+
+t('bulletin : les absences et les avances y arrivent toutes seules', () => {
+  const emp = { id: 'e1', name: 'Salarié', grossSalary: 1500, hireDate: '2025-01-01' };
+  const d = core.migrateData({
+    employees: [emp],
+    leaves: [
+      { id: 'l1', employeeId: 'e1', kind: 'conges', from: '2026-04-06', to: '2026-04-11' },     // payé : aucun effet
+      { id: 'l2', employeeId: 'e1', kind: 'sans-solde', from: '2026-04-28', to: '2026-04-30' }  // non payé : 3 jours
+    ],
+    advances: [{ id: 'a1', employeeId: 'e1', date: '2026-02-10', amount: 900, monthly: 300 }]
+  });
+  const i = core.payslipInputFor(d, emp, 2026, 4);
+  assert.strictEqual(i.absentDays, 3);                    // le congé payé ne retire rien
+  assert.strictEqual(i.deductions.length, 1);
+  assert.strictEqual(i.deductions[0].amount, 300);
+  assert.strictEqual(i.deductions[0].advanceId, 'a1');
+  // un mois sans absence ne retire rien, mais l'avance continue
+  const mars = core.payslipInputFor(d, emp, 2026, 3);
+  assert.strictEqual(mars.absentDays, 0);
+  assert.strictEqual(mars.deductions.length, 1);
+  // avant l'avance, aucune retenue
+  assert.strictEqual(core.payslipInputFor(d, emp, 2026, 1).deductions.length, 0);
+});
+
+t('avance : ce qui est remboursé vient des bulletins, pas d\'un compteur à part', () => {
+  const emp = { id: 'e1', name: 'Salarié', grossSalary: 1500, hireDate: '2025-01-01' };
+  const d = core.migrateData({
+    employees: [emp],
+    advances: [{ id: 'a1', employeeId: 'e1', date: '2026-02-10', amount: 900, monthly: 300 }],
+    payslips: [
+      { id: 'b1', employeeId: 'e1', year: 2026, month: 3, deductions: [{ label: 'Avance', amount: 300, advanceId: 'a1' }] },
+      { id: 'b2', employeeId: 'e1', year: 2026, month: 4, deductions: [{ label: 'Avance', amount: 300, advanceId: 'a1' }] }
+    ]
+  });
+  const a = core.advancesOf(d, 'e1')[0];
+  assert.strictEqual(a.repaid, 600);
+  assert.strictEqual(a.remaining, 300);
+  assert.strictEqual(a.done, false);
+  assert.strictEqual(core.advanceBalance(d, 'e1'), 300);
+  // la dernière échéance ne prend que ce qui reste, jamais la mensualité entière
+  assert.strictEqual(core.payslipInputFor(d, emp, 2026, 5).deductions[0].amount, 300);
+  d.payslips.push({ id: 'b3', employeeId: 'e1', year: 2026, month: 5, deductions: [{ label: 'Avance', amount: 300, advanceId: 'a1' }] });
+  assert.strictEqual(core.advancesOf(d, 'e1')[0].done, true);
+  assert.deepStrictEqual(core.payslipInputFor(d, emp, 2026, 6).deductions, []);
+});
+
+t('documents du personnel : attestation, certificat, registre', () => {
+  const emp = { id: 'e1', name: 'Ahmed Ben Ali', cin: '09123456', cnss: '1122-33', position: 'Technicien',
+    contract: 'cdi', hireDate: '2024-03-01', endDate: '', grossSalary: 1800 };
+  const d = core.migrateData({ employees: [emp] });
+  const co = { ...core.DEFAULT_COMPANY, name: 'Test SUARL', matricule: '1A/M/000', address: 'Rue X\n2000 Tunis' };
+  const att = core.hrDocumentHtml('attestation', emp, d, co, { date: '2026-09-11' });
+  assert.ok(att.includes('Ahmed Ben Ali') && att.includes('Technicien'));
+  assert.ok(att.includes('ATTESTATION DE TRAVAIL') || att.includes('Attestation de travail'));
+  assert.ok(!att.includes('1 800'), 'le salaire ne sort que si on le demande');
+  assert.ok(core.hrDocumentHtml('attestation', emp, d, co, { date: '2026-09-11', withSalary: true }).includes('1 800'));
+  const cert = core.hrDocumentHtml('certificat', { ...emp, endDate: '2026-08-31' }, d, co, { date: '2026-09-11' });
+  assert.ok(cert.includes('31/08/2026') && cert.includes('libre de tout engagement'));
+  // le registre liste tout le monde, actifs et partis, dans l'ordre d'embauche
+  const reg = core.staffRegister(d, '2026-09-11');
+  assert.strictEqual(reg.length, 1);
+  assert.strictEqual(reg[0].active, true);
+  assert.strictEqual(reg[0].n, 1);
+  assert.strictEqual(core.staffRegister(core.migrateData({ employees: [{ ...emp, endDate: '2026-01-31' }] }), '2026-09-11')[0].active, false);
+});
+
 console.log(`\n${n} tests OK`);

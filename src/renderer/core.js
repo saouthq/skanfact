@@ -132,6 +132,8 @@
     employees: [],           // salariés (v6)
     payslips: [],            // bulletins de paie (v6)
     payrollSettings: {},     // barèmes CNSS/IRPP modifiés par l'utilisateur (v6)
+    leaves: [],              // congés et absences (v6)
+    advances: [],            // avances sur salaire (v6)
     vatCarryIn: {},          // crédit de TVA venu de l'année précédente, par année : { '2026': 1234 }
     projects: [],            // affaires : relient ventes et achats pour une marge exacte (v4)
     fixedCategories: [],     // catégories de charges considérées comme fixes (vide = valeurs par défaut)
@@ -445,6 +447,8 @@
     if (!Array.isArray(data.employees)) data.employees = [];
     if (!Array.isArray(data.payslips)) data.payslips = [];
     if (!data.payrollSettings || typeof data.payrollSettings !== 'object') data.payrollSettings = {};
+    if (!Array.isArray(data.leaves)) data.leaves = [];
+    if (!Array.isArray(data.advances)) data.advances = [];
     data.catalog.forEach(c => {
       c.tracked = c.tracked === true;
       c.minStock = Number(c.minStock) || 0;
@@ -1217,6 +1221,9 @@
     headOfFamily: 300,         // déduction annuelle chef de famille
     perChild: 100,             // déduction annuelle par enfant à charge
     maxChildren: 4,
+    workedDays: 26,            // jours ouvrables d'un mois complet
+    offDays: [0],              // jours chômés de la semaine (0 = dimanche) — semaine de six jours
+    leaveDaysPerYear: 18,      // droit annuel à congé payé, en jours ouvrables
     // Barème IRPP annuel progressif : `upTo` en dinars (null = au-delà), `rate` en %.
     brackets: [
       { upTo: 5000, rate: 0 },
@@ -1509,6 +1516,222 @@
 
   <div class="foot">${escapeHtml(company.name || '')}${company.matricule ? ' — MF ' + escapeHtml(company.matricule) : ''} · Bulletin de ${escapeHtml(label)} · ${escapeHtml(emp.name || '')}</div>
 </div></body></html>`;
+  }
+
+  // ---------- congés, absences et avances (5.1.0) ----------
+  // Ce que la 5.0.0 laissait à la main : d'où viennent les jours d'absence d'un bulletin, et d'où vient
+  // la retenue d'une avance. Les deux se saisissent une fois, au moment où ils arrivent, et le bulletin
+  // du mois les reprend tout seul — c'est la même règle que partout ailleurs dans SkanFact.
+
+  const LEAVE_KINDS = [
+    ['conges', 'Congé payé', true],
+    ['maladie', 'Arrêt maladie', true],
+    ['maternite', 'Congé de maternité', true],
+    ['autorisation', 'Autorisation d\'absence', true],
+    ['sans-solde', 'Absence sans solde', false],
+    ['abandon', 'Absence injustifiée', false]
+  ];
+  const leaveKindLabel = k => (LEAVE_KINDS.find(x => x[0] === k) || [, k])[1];
+  const leaveIsPaid = k => { const f = LEAVE_KINDS.find(x => x[0] === k); return f ? f[2] : true; };
+
+  // Jours ouvrables entre deux dates incluses. `offDays` = jours de la semaine chômés (0 = dimanche).
+  // Par défaut le dimanche seul : c'est la semaine de six jours encore courante en Tunisie, et c'est
+  // cohérent avec les 26 jours ouvrables du bulletin. À VÉRIFIER avec le comptable.
+  function workingDays(fromIso, toIso, offDays) {
+    if (!fromIso || !toIso || toIso < fromIso) return 0;
+    const off = Array.isArray(offDays) ? offDays : [0];
+    let n = 0;
+    for (let d = fromIso; d <= toIso; d = addDays(d, 1)) {
+      if (!off.includes(new Date(d + 'T00:00:00').getDay())) n++;
+    }
+    return n;
+  }
+
+  // Les jours d'un congé qui tombent dans un mois donné : un congé à cheval sur deux mois se répartit
+  // entre les deux bulletins, sinon le salarié serait retenu deux fois ou pas du tout.
+  function leaveDaysInMonth(leave, year, month, offDays) {
+    const first = `${year}-${String(month).padStart(2, '0')}-01`;
+    const last = addDays(first, new Date(year, month, 0).getDate() - 1);
+    const from = leave.from > first ? leave.from : first;
+    const to = leave.to < last ? leave.to : last;
+    if (to < from) return 0;
+    return workingDays(from, to, offDays);
+  }
+
+  function leavesOf(data, employeeId, year) {
+    return (data.leaves || [])
+      .filter(l => (!employeeId || l.employeeId === employeeId)
+        && (!year || (l.from || '').slice(0, 4) === String(year) || (l.to || '').slice(0, 4) === String(year)))
+      .map(l => ({ ...l, days: workingDays(l.from, l.to, (data.payrollSettings || {}).offDays),
+        paid: l.paid != null ? l.paid : leaveIsPaid(l.kind), kindLabel: leaveKindLabel(l.kind) }))
+      .sort((a, b) => (b.from || '').localeCompare(a.from || ''));
+  }
+
+  // Le compteur de congés : acquis au prorata des mois travaillés, moins ce qui a été pris.
+  // Le droit annuel se règle dans les barèmes — il dépend de la convention collective.
+  function leaveBalance(data, employeeId, year, todayIso) {
+    const s = payrollSettings(data);
+    const emp = (data.employees || []).find(e => e.id === employeeId) || {};
+    const t = todayIso || today();
+    const y = Number(year) || Number(t.slice(0, 4));
+    const start = `${y}-01-01`, end = `${y}-12-31`;
+    // Mois effectivement travaillés dans l'année, bornés par l'embauche, la sortie et aujourd'hui.
+    const from = emp.hireDate && emp.hireDate > start ? emp.hireDate : start;
+    const stop = [emp.endDate || end, end, t > end ? end : t].filter(Boolean).sort()[0];
+    const months = stop < from ? 0 : Math.max(0, Math.min(12, Math.round((daysBetween(from, stop) + 1) / 30.4)));
+    const perYear = Number(s.leaveDaysPerYear) || 0;
+    const acquired = round3(perYear * months / 12);
+    const carry = Number((emp.leaveCarry || {})[y]) || 0;
+    const list = leavesOf(data, employeeId, y);
+    const taken = round3(list.filter(l => l.kind === 'conges').reduce((a, l) => a + l.days, 0));
+    const byKind = {};
+    LEAVE_KINDS.forEach(([k]) => { byKind[k] = round3(list.filter(l => l.kind === k).reduce((a, l) => a + l.days, 0)); });
+    return { year: y, months, acquired, carry, taken, byKind,
+      remaining: round3(acquired + carry - taken), perYear, list };
+  }
+
+  // Les avances : une somme prêtée, remboursée par retenues mensuelles sur le bulletin.
+  function advancesOf(data, employeeId) {
+    return (data.advances || [])
+      .filter(a => !employeeId || a.employeeId === employeeId)
+      .map(a => {
+        const monthly = round3(Number(a.monthly) || 0);
+        const amount = round3(Number(a.amount) || 0);
+        const repaid = round3((data.payslips || [])
+          .filter(p => p.employeeId === a.employeeId)
+          .reduce((s2, p) => s2 + ((p.deductions || []).filter(d => d.advanceId === a.id).reduce((x, d) => x + (Number(d.amount) || 0), 0)), 0));
+        return { ...a, amount, monthly, repaid, remaining: round3(Math.max(0, amount - repaid)), done: repaid >= amount - 0.0005 };
+      })
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  }
+
+  function advanceBalance(data, employeeId) {
+    return round3(advancesOf(data, employeeId).reduce((s, a) => s + a.remaining, 0));
+  }
+
+  // Ce qu'un bulletin doit reprendre tout seul : les absences non payées du mois, et l'échéance des
+  // avances en cours. C'est ce qui évite de ressaisir la même information deux fois.
+  function payslipInputFor(data, employee, year, month) {
+    const s = payrollSettings(data);
+    const off = s.offDays;
+    const absentDays = round3((data.leaves || [])
+      .filter(l => l.employeeId === employee.id && !(l.paid != null ? l.paid : leaveIsPaid(l.kind)))
+      .reduce((a, l) => a + leaveDaysInMonth(l, year, month, off), 0));
+    const deductions = advancesOf(data, employee.id).filter(a => !a.done && a.date <= `${year}-${String(month).padStart(2, '0')}-31`)
+      .map(a => ({ label: `Remboursement d'avance du ${fmtDate(a.date)}`, amount: round3(Math.min(a.monthly || a.remaining, a.remaining)), advanceId: a.id }))
+      .filter(d => d.amount > 0);
+    return { gross: employee.grossSalary, workedDays: Number(s.workedDays) || 26, absentDays, bonuses: [], deductions };
+  }
+
+  // ---------- documents du personnel (5.1.0) ----------
+  const HR_DOCS = [
+    ['attestation', 'Attestation de travail', 'Atteste qu\'une personne travaille chez toi aujourd\'hui. Demandée par une banque, un bailleur, une administration.'],
+    ['certificat', 'Certificat de travail', 'Remis à la fin du contrat. Obligatoire : il indique les dates et l\'emploi occupé, rien d\'autre.'],
+    ['solde', 'Solde de tout compte', 'Récapitule ce qui reste dû au départ : salaire du mois, congés non pris, indemnités.']
+  ];
+  const hrDocLabel = k => (HR_DOCS.find(x => x[0] === k) || [, k])[1];
+
+  function hrDocumentHtml(kind, employee, data, company, opts) {
+    opts = opts || {};
+    const e = employee || {};
+    const t = opts.date || today();
+    const cur = company.currency || 'DT';
+    const fmt = n => money(n, null, decimalsFor(cur), 'fr');
+    const ink = company.primaryColor || '#1b2430';
+    const accent = company.accentColor || '#0f9d8f';
+    const hex = accent.replace('#', '');
+    const [r, g, b] = [0, 2, 4].map(i => parseInt(hex.slice(i, i + 2), 16));
+    const tint = a => `rgba(${r}, ${g}, ${b}, ${a})`;
+    const city = (company.address || '').split('\n').pop().replace(/^\d+\s*/, '').trim();
+    const bal = leaveBalance(data, e.id, Number((e.endDate || t).slice(0, 4)), t);
+    const last = (data.payslips || []).filter(p => p.employeeId === e.id)
+      .sort((a, x) => (x.year - a.year) || (x.month - a.month))[0];
+    const dailyRate = last ? round3(((last.computed || {}).gross || 0) / (Number(payrollSettings(data).workedDays) || 26)) : 0;
+    const leavePay = round3(dailyRate * Math.max(0, bal.remaining));
+
+    const body = {
+      attestation: `
+        <p>Je soussigné${company.managerName ? `, <b>${escapeHtml(company.managerName)}</b>,` : ''} agissant en qualité de représentant légal de la société <b>${escapeHtml(company.name || '')}</b>${company.matricule ? `, matricule fiscal ${escapeHtml(company.matricule)}` : ''}, atteste par la présente que :</p>
+        <p class="who"><b>${escapeHtml(e.name || '')}</b>${e.cin ? `, titulaire de la carte d'identité nationale n° ${escapeHtml(e.cin)}` : ''}${e.cnss ? `, immatriculé${e.gender === 'f' ? 'e' : ''} à la CNSS sous le n° ${escapeHtml(e.cnss)}` : ''},</p>
+        <p>fait partie du personnel de notre société depuis le <b>${fmtDate(e.hireDate)}</b>, en qualité de <b>${escapeHtml(e.position || '—')}</b>, dans le cadre d'un <b>${escapeHtml(contractLabel(e.contract || 'cdi').split(' —')[0])}</b>.</p>
+        ${opts.withSalary ? `<p>Son salaire brut mensuel s'élève à <b>${fmt(e.grossSalary)} ${escapeHtml(cur)}</b>.</p>` : ''}
+        <p>Cette attestation lui est délivrée pour servir et valoir ce que de droit.</p>`,
+      certificat: `
+        <p>Je soussigné${company.managerName ? `, <b>${escapeHtml(company.managerName)}</b>,` : ''} agissant en qualité de représentant légal de la société <b>${escapeHtml(company.name || '')}</b>${company.matricule ? `, matricule fiscal ${escapeHtml(company.matricule)}` : ''}, certifie que :</p>
+        <p class="who"><b>${escapeHtml(e.name || '')}</b>${e.cin ? `, titulaire de la carte d'identité nationale n° ${escapeHtml(e.cin)}` : ''},</p>
+        <p>a été employé${e.gender === 'f' ? 'e' : ''} au sein de notre société du <b>${fmtDate(e.hireDate)}</b> au <b>${fmtDate(e.endDate || t)}</b>, en qualité de <b>${escapeHtml(e.position || '—')}</b>.</p>
+        <p>L'intéressé${e.gender === 'f' ? 'e' : ''} est libre de tout engagement envers notre société à compter de cette date.</p>
+        <p>Le présent certificat lui est délivré pour servir et valoir ce que de droit.</p>`,
+      solde: `
+        <p>Entre la société <b>${escapeHtml(company.name || '')}</b>${company.matricule ? `, matricule fiscal ${escapeHtml(company.matricule)}` : ''}, d'une part,</p>
+        <p>et <b>${escapeHtml(e.name || '')}</b>${e.cin ? `, CIN n° ${escapeHtml(e.cin)}` : ''}, employé${e.gender === 'f' ? 'e' : ''} du ${fmtDate(e.hireDate)} au <b>${fmtDate(e.endDate || t)}</b> en qualité de ${escapeHtml(e.position || '—')}, d'autre part.</p>
+        <p>Il a été arrêté le solde de tout compte suivant :</p>
+        <table class="sum">
+          ${(opts.lines || []).map(l => `<tr><td>${escapeHtml(l.label)}</td><td class="n">${fmt(l.amount)}</td></tr>`).join('')}
+          <tr class="tot"><td>Net à percevoir</td><td class="n">${fmt(round3((opts.lines || []).reduce((a, l) => a + (Number(l.amount) || 0), 0)))} ${escapeHtml(cur)}</td></tr>
+        </table>
+        <p class="small">Solde de congés non pris au départ : <b>${pctFr(bal.remaining)} jour(s)</b>${leavePay > 0 ? `, soit ${fmt(leavePay)} ${escapeHtml(cur)} sur la base du dernier salaire` : ''}.</p>
+        <p>Le présent solde est établi en double exemplaire. <em>À VÉRIFIER : les indemnités de fin de contrat dépendent du motif de la rupture et de la convention collective applicable — faites relire ce document avant signature.</em></p>`
+    }[kind] || '';
+
+    return `<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8">
+<title>${escapeHtml(hrDocLabel(kind))} — ${escapeHtml(e.name || '')}</title>
+<style>
+  @page { size: A4; margin: 0; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; color: ${ink}; font-size: 10.5pt; line-height: 1.65; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .page { width: 210mm; min-height: 297mm; padding: 20mm 20mm; background: #fff; display: flex; flex-direction: column; }
+  .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; padding-bottom: 14px; border-bottom: 2px solid ${tint(0.35)}; }
+  .co-name { font-size: 14pt; font-weight: 700; }
+  .co-sub { font-size: 8pt; color: #6a7480; line-height: 1.5; }
+  h1 { text-align: center; font-size: 15pt; letter-spacing: 1.2px; text-transform: uppercase; color: ${accent}; margin: 26px 0 22px; }
+  .who { margin: 16px 0; padding: 10px 14px; background: ${tint(0.07)}; border-left: 3px solid ${accent}; border-radius: 0 6px 6px 0; }
+  p { margin: 10px 0; text-align: justify; }
+  .small { font-size: 8.5pt; color: #6a7480; }
+  table.sum { width: 100%; border-collapse: collapse; margin: 14px 0; }
+  table.sum td { padding: 6px 8px; border-bottom: 1px solid #eef1f4; }
+  table.sum td.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  table.sum tr.tot td { border-top: 1.5px solid ${ink}; border-bottom: none; font-weight: 700; font-size: 11.5pt; }
+  .sign { margin-top: auto; padding-top: 26px; display: grid; grid-template-columns: 1fr 1fr; gap: 30px; }
+  .sign .s { border: 1px dashed ${tint(0.5)}; border-radius: 8px; min-height: 70px; padding: 7px 11px; font-size: 8.5pt; color: #6a7480; }
+  .place { text-align: right; margin: 20px 0 0; font-size: 9.5pt; }
+  .foot { margin-top: 14px; padding-top: 8px; border-top: 1px solid #eef1f4; font-size: 7.5pt; color: #8b949e; text-align: center; }
+</style></head>
+<body><div class="page">
+  <div class="head">
+    <div><div class="co-name">${escapeHtml(company.name || '')}</div>
+      <div class="co-sub">${escapeHtml(company.address || '').replace(/\n/g, '<br>')}
+        ${company.matricule ? `<br>MF : ${escapeHtml(company.matricule)}` : ''}
+        ${company.cnss ? `<br>CNSS : ${escapeHtml(company.cnss)}` : ''}</div></div>
+    <div class="co-sub" style="text-align:right">${company.phone ? escapeHtml(company.phone) + '<br>' : ''}${company.email ? escapeHtml(company.email) : ''}</div>
+  </div>
+  <h1>${escapeHtml(hrDocLabel(kind))}</h1>
+  ${body}
+  <p class="place">${city ? escapeHtml(city) + ', le ' : 'Le '}${fmtDate(t)}</p>
+  <div class="sign">
+    ${kind === 'solde' ? '<div class="s">Le salarié — lu et approuvé, bon pour solde de tout compte</div>' : '<div></div>'}
+    <div class="s">Pour la société${company.managerName ? '<br>' + escapeHtml(company.managerName) : ''}</div>
+  </div>
+  <div class="foot">${escapeHtml(company.name || '')}${company.matricule ? ' — MF ' + escapeHtml(company.matricule) : ''}</div>
+</div></body></html>`;
+  }
+
+  const pctFr = n => String(n).replace('.', ',');
+
+  // Le registre du personnel : la liste que l'inspection du travail peut demander.
+  function staffRegister(data, todayIso) {
+    const t = todayIso || today();
+    return (data.employees || []).slice()
+      .sort((a, b) => (a.hireDate || '').localeCompare(b.hireDate || ''))
+      .map((e, i) => ({
+        n: i + 1, id: e.id, name: e.name || '', cin: e.cin || '', cnss: e.cnss || '',
+        position: e.position || '', contract: contractLabel(e.contract || 'cdi').split(' —')[0],
+        hireDate: e.hireDate || '', endDate: e.endDate || '',
+        active: (!e.hireDate || e.hireDate <= t) && (!e.endDate || e.endDate >= t),
+        grossSalary: Number(e.grossSalary) || 0
+      }));
   }
 
   // ---------- lecture d'une photo de facture (4.2.0) ----------
@@ -2033,11 +2256,11 @@
   // l'autre version pour qu'elle reste consultable. Rien n'est détruit sans trace.
 
   // Les listes du fichier qui se fusionnent pièce par pièce, grâce à leur identifiant.
-  const MERGE_LISTS = ['clients', 'catalog', 'documents', 'recurring', 'templates', 'snippets', 'suppliers', 'purchases', 'accounts', 'movements', 'projects', 'assets', 'stockAdjustments', 'serials', 'employees', 'payslips'];
+  const MERGE_LISTS = ['clients', 'catalog', 'documents', 'recurring', 'templates', 'snippets', 'suppliers', 'purchases', 'accounts', 'movements', 'projects', 'assets', 'stockAdjustments', 'serials', 'employees', 'payslips', 'leaves', 'advances'];
   const LIST_LABELS = {
     clients: 'client', catalog: 'prestation', documents: 'document', recurring: 'contrat récurrent',
     templates: 'modèle', snippets: 'texte', suppliers: 'fournisseur', purchases: 'achat',
-    accounts: 'compte', movements: 'mouvement', projects: 'affaire', assets: 'immobilisation', stockAdjustments: 'mouvement de stock', serials: 'numéro de série', employees: 'salarié', payslips: 'bulletin de paie'
+    accounts: 'compte', movements: 'mouvement', projects: 'affaire', assets: 'immobilisation', stockAdjustments: 'mouvement de stock', serials: 'numéro de série', employees: 'salarié', payslips: 'bulletin de paie', leaves: 'congé', advances: 'avance sur salaire'
   };
 
   function sameJson(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
@@ -3417,6 +3640,8 @@
     CONTRACT_TYPES, contractLabel, DEFAULT_PAYROLL, payrollSettings, irppAnnual, computePayslip,
     activeEmployees, payslipView, payslipsOf, payslipDate, payrollCost, payrollSummary, missingPayslips,
     payslipHtml,
+    LEAVE_KINDS, leaveKindLabel, leaveIsPaid, workingDays, leaveDaysInMonth, leavesOf, leaveBalance,
+    advancesOf, advanceBalance, payslipInputFor, HR_DOCS, hrDocLabel, hrDocumentHtml, staffRegister,
     SERIAL_STATUSES, serialStatusLabel, WARRANTY_CHOICES, serializedItems, warrantyEnd, serialView,
     serialList, availableSerials, clientFleet, warrantiesEnding, serialGap, serialGaps,
     mergeData, trackDeletion, MERGE_LISTS, LIST_LABELS,
