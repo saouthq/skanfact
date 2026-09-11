@@ -338,4 +338,57 @@ t('stockage : import externe validé', () => {
   assert.throws(() => s.readExternal(p), /export SkanFact/);
 });
 
+t('chiffrement : aller-retour, mauvais mot de passe, fichier verrouillé, sauvegardes converties', () => {
+  const { isEncrypted, encryptData, decryptData } = require('../src/storage.js');
+  const env = encryptData({ a: 1 }, 'secret');
+  assert.ok(isEncrypted(env) && !JSON.stringify(env).includes('"a":1'));
+  assert.deepStrictEqual(decryptData(env, 'secret'), { a: 1 });
+  assert.throws(() => decryptData(env, 'wrong'));
+  let day = new Date('2026-09-11T09:00:00');
+  const s = createStorage(tmpDir(), { now: () => day });
+  s.write({ ...core.DEFAULT_DATA, clients: [{ id: 'a', name: 'X' }] });
+  s.write({ ...core.DEFAULT_DATA, clients: [{ id: 'a', name: 'X2' }] }); // crée la sauvegarde du jour (en clair)
+  assert.strictEqual(s.listBackups().length, 1);
+  s.setPassword(s.read(), 'pw');
+  assert.ok(isEncrypted(JSON.parse(fs.readFileSync(s.file, 'utf8'))), 'fichier chiffré');
+  assert.ok(isEncrypted(JSON.parse(fs.readFileSync(s.listBackups()[0].path, 'utf8'))), 'sauvegarde chiffrée aussi');
+  assert.strictEqual(s.read().clients[0].name, 'X2'); // clé en mémoire
+  s.lock();
+  assert.deepStrictEqual(s.read(), { locked: true });
+  assert.throws(() => s.write(core.DEFAULT_DATA), /verrouill/);
+  assert.strictEqual(s.unlock('bad').ok, false);
+  const u = s.unlock('pw'); assert.ok(u.ok && u.data.clients[0].name === 'X2');
+  s.write({ ...u.data, clients: [] }); s.lock();
+  assert.strictEqual(s.unlock('pw').data.clients.length, 0);
+  // changement puis retrait : sauvegardes reconverties, fichier en clair
+  s.setPassword(s.read(), 'pw2'); s.lock(); assert.ok(s.unlock('pw2').ok);
+  s.setPassword(s.read(), '');
+  assert.ok(!isEncrypted(JSON.parse(fs.readFileSync(s.file, 'utf8'))) && s.state.encrypted === false);
+  assert.ok(!isEncrypted(JSON.parse(fs.readFileSync(s.listBackups()[0].path, 'utf8'))), 'sauvegarde redevenue lisible');
+  assert.strictEqual(s.read().clients.length, 0);
+  // import d'un fichier chiffré : mot de passe requis
+  const p = path.join(tmpDir(), 'x.json');
+  fs.writeFileSync(p, JSON.stringify(encryptData({ documents: [] }, 'zzz')));
+  assert.throws(() => s.readExternal(p), /chiffré/);
+  assert.deepStrictEqual(s.readExternal(p, 'zzz'), { documents: [] });
+  assert.throws(() => s.readExternal(p, 'nope'));
+});
+
+t('copie externe : miroir du fichier et des sauvegardes, support absent signalé', () => {
+  const ext = tmpDir();
+  const s = createStorage(tmpDir());
+  s.write(core.DEFAULT_DATA);
+  s.setExternalDir(ext);
+  assert.ok(fs.existsSync(path.join(ext, 'SkanFact', 'skanfact-data.json')));
+  assert.ok(s.state.external.lastCopy && !s.state.external.lastError);
+  s.backupNow('manuelle');
+  assert.strictEqual(fs.readdirSync(path.join(ext, 'SkanFact', 'backups')).length, 1);
+  s.write({ ...core.DEFAULT_DATA, counters: { x: 1 } });
+  assert.strictEqual(JSON.parse(fs.readFileSync(path.join(ext, 'SkanFact', 'skanfact-data.json'), 'utf8')).counters.x, 1);
+  s.setExternalDir(path.join(ext, 'debranche'));
+  s.write(core.DEFAULT_DATA); // ne bloque pas
+  assert.ok(/introuvable/.test(s.state.external.lastError));
+  s.setExternalDir(null); s.write(core.DEFAULT_DATA); assert.strictEqual(s.state.external.lastError, null);
+});
+
 console.log(`\n${n} tests OK`);

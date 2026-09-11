@@ -90,7 +90,9 @@ Le chemin exact est affiché dans Paramètres → Données. Un dossier `backups/
 
 Si le fichier de données devient illisible (disque plein, coupure pendant l'écriture…), il n'est jamais écrasé : il est renommé `skanfact-data.illisible-<date>.json` et l'app propose de restaurer une sauvegarde.
 
-Pense quand même à copier ce dossier ailleurs de temps en temps (iCloud, clé USB) : c'est toute ta compta.
+**Copie externe automatique** : Paramètres → Données → « Choisir un dossier… » (iCloud Drive, clé USB, disque réseau). À chaque enregistrement, le fichier et les sauvegardes y sont recopiés (`<dossier>/SkanFact/`).
+
+**Mot de passe** : Paramètres → Sécurité. Le fichier de données et ses sauvegardes sont alors chiffrés (AES-256-GCM, scrypt) et le mot de passe est demandé à chaque ouverture ; Cmd/Ctrl+L verrouille. Il n'existe aucune récupération : sans le mot de passe, les données sont illisibles.
 
 ## Tests
 

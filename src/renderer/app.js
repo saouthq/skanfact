@@ -12,7 +12,8 @@
     saveData: async (d) => { localStorage.setItem('skanfact', JSON.stringify(d)); return true; },
     dataPath: async () => 'localStorage (mode navigateur)',
     exportData: async () => null,
-    importData: async () => null,
+    importData: async () => null, unlock: async () => ({ ok: false }), lock: async () => true, securityInfo: async () => ({ encrypted: false }), setPassword: async () => ({ ok: true, encrypted: false }),
+    externalBackupInfo: async () => ({ dir: null }), setExternalBackup: async () => ({ dir: null }), chooseExternalBackup: async () => null,
     openBackups: async () => {}, createBackup: async () => null, listBackups: async () => [],
     pickLogo: async () => null,
     exportPdf: async (html) => { const w = window.open('', '_blank'); w.document.write(html); w.document.close(); w.print(); return null; },
@@ -29,6 +30,53 @@
   let data = null;
   let saveTimer = null;
   const unlockedIds = new Set(); // factures émises déverrouillées « quand même » pour la session
+  const security = { encrypted: false };
+
+  // Écran de verrouillage : demande le mot de passe tant que le fichier n'est pas déchiffré.
+  function showLockScreen() {
+    return new Promise(resolve => {
+      const el = document.createElement('div'); el.id = 'lock-screen';
+      el.innerHTML = `<div class="lock-card"><div class="brand-mark">SF</div><h2>SkanFact est verrouillé</h2><p class="muted small">Les données sont chiffrées sur ce disque. Entre ton mot de passe pour continuer.</p>
+        <form id="lock-form"><input type="password" id="lock-pw" placeholder="Mot de passe" autocomplete="current-password"><div class="lock-err" id="lock-err" hidden>Mot de passe incorrect.</div><button class="btn btn-primary" type="submit" id="lock-ok">Déverrouiller</button></form></div>`;
+      document.body.appendChild(el);
+      const input = $('#lock-pw', el); input.focus();
+      $('#lock-form', el).onsubmit = async e => {
+        e.preventDefault();
+        const b = $('#lock-ok', el); b.disabled = true;
+        const r = await bridge.unlock(input.value);
+        if (r && r.ok) { el.remove(); resolve(r.data); }
+        else { b.disabled = false; $('#lock-err', el).hidden = false; input.value = ''; input.focus(); }
+      };
+    });
+  }
+
+  async function lockNow() {
+    if (!security.encrypted) return toast('Active d\'abord un mot de passe (Paramètres → Sécurité).', true);
+    await save(true);
+    bridge.lock();
+  }
+
+  function passwordDialog(mode) { // 'set' | 'change' | 'remove'
+    const title = mode === 'set' ? 'Activer le mot de passe' : mode === 'change' ? 'Changer le mot de passe' : 'Retirer le mot de passe';
+    modal(`<h2>${title}</h2>
+      ${mode === 'set' ? '<p class="small muted">Le fichier de données et ses sauvegardes seront chiffrés (AES-256). Sans ce mot de passe, personne ne peut les lire — toi non plus : garde-le en lieu sûr, il n\'y a pas de récupération possible.</p>' : ''}
+      <form id="pwf" class="grid-2">
+        ${mode !== 'set' ? field('Mot de passe actuel', 'current', '', 'password', 'autocomplete="current-password"') : ''}
+        ${mode !== 'remove' ? field('Nouveau mot de passe', 'password', '', 'password', 'autocomplete="new-password"') + field('Confirmation', 'confirm', '', 'password', 'autocomplete="new-password"') : ''}
+      </form>
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn ${mode === 'remove' ? 'btn-danger' : 'btn-primary'}" id="ok">${mode === 'remove' ? 'Retirer' : 'Enregistrer'}</button></div>`,
+      (root, close) => { $('#ok', root).onclick = async () => {
+        const v = formValues($('#pwf', root));
+        if (mode !== 'remove') {
+          if (!v.password || v.password.length < 6) return toast('Mot de passe : 6 caractères minimum.', true);
+          if (v.password !== v.confirm) return toast('Les deux mots de passe ne correspondent pas.', true);
+        }
+        const b = $('#ok', root); b.disabled = true; b.textContent = 'Chiffrement…';
+        const r = await bridge.setPassword({ data, password: mode === 'remove' ? '' : v.password, current: v.current || '' });
+        if (!r || !r.ok) { b.disabled = false; b.textContent = mode === 'remove' ? 'Retirer' : 'Enregistrer'; return toast((r && r.error) || 'Échec', true); }
+        security.encrypted = r.encrypted; close(); toast(r.encrypted ? 'Données chiffrées — mot de passe demandé à chaque ouverture' : 'Mot de passe retiré : données en clair'); render();
+      }; });
+  }
 
   function save(immediate) {
     clearTimeout(saveTimer);
@@ -773,10 +821,10 @@
       (root, close) => { $('#ok', root).onclick = () => { const v = formValues($('#sf', root)); if (!v.name.trim() || !v.text.trim()) return toast('Nom et texte obligatoires.', true); Object.assign(x, v); if (!sn) data.snippets.push(x); save(true); close(); if (done) done(); }; });
   }
 
-  function promptDialog(title, label, value, done) {
-    modal(`<h2>${h(title)}</h2><form id="pr" class="grid-2"><label class="field span-2">${h(label)}<input type="text" name="v" value="${h(value || '')}"></label></form>
+  function promptDialog(title, label, value, done, type) {
+    modal(`<h2>${h(title)}</h2><form id="pr" class="grid-2"><label class="field span-2">${h(label)}<input type="${type || 'text'}" name="v" value="${h(value || '')}"></label></form>
       <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">OK</button></div>`,
-      (root, close) => { $('#ok', root).onclick = () => { const v = $('input[name=v]', root).value.trim(); if (!v) return toast('Valeur obligatoire.', true); close(); done(v); }; });
+      (root, close) => { const go = () => { const v = $('input[name=v]', root).value.trim(); if (!v) return toast('Valeur obligatoire.', true); close(); done(v); }; $('#ok', root).onclick = go; $('#pr', root).onsubmit = e => { e.preventDefault(); go(); }; });
   }
 
   // ---------- modèles de documents ----------
@@ -1180,6 +1228,11 @@
         </div>
       </form>
       <div class="panel"><h2>Mises à jour</h2><div id="update-panel"></div></div>
+      <div class="panel"><h2>Sécurité</h2>
+        <p id="sec-status">${security.encrypted ? '🔒 Mot de passe activé : le fichier de données et ses sauvegardes sont chiffrés (AES-256). Verrouiller : menu Fichier ou Cmd/Ctrl+L.' : 'Le fichier de données est en clair sur ce disque. Tu peux le protéger par un mot de passe demandé à chaque ouverture.'}</p>
+        <div class="inline mt">${security.encrypted ? '<button class="btn" id="sec-change">Changer le mot de passe…</button><button class="btn" id="sec-lock">Verrouiller maintenant</button><button class="btn btn-danger" id="sec-remove">Retirer le mot de passe…</button>' : '<button class="btn btn-primary" id="sec-set">Activer un mot de passe…</button>'}</div>
+        <p class="small muted mt">Le mot de passe protège les fichiers sur le disque (ordinateur perdu ou volé). Il n'existe aucune récupération : sans lui, les données sont définitivement illisibles.</p>
+      </div>
       <div class="panel"><h2>Données et sauvegardes</h2>
         <p class="small muted">Fichier de données : <code>${h(path)}</code></p>
         <p class="small">${data.documents.length} document(s), ${data.clients.length} client(s), ${data.catalog.length} prestation(s).</p>
@@ -1190,6 +1243,10 @@
           <button class="btn" id="export-data">Exporter les données…</button>
           <button class="btn" id="import-data">Importer…</button>
         </div>
+        <div class="section-head"><h2 class="small">Copie externe (iCloud Drive, clé USB, disque réseau)</h2></div>
+        <p class="small muted">À chaque enregistrement, le fichier de données et les sauvegardes sont aussi copiés dans ce dossier. Si le Mac meurt, tout est ailleurs.</p>
+        <div id="ext-status" class="small"></div>
+        <div class="inline mt"><button class="btn" id="ext-choose">Choisir un dossier…</button><button class="btn btn-ghost" id="ext-remove" hidden>Retirer</button></div>
         <div class="inline mt">
           <button class="btn" id="load-demo">Charger le jeu de données de démonstration</button>
           <button class="btn btn-danger" id="wipe-data">Tout effacer</button>
@@ -1205,7 +1262,19 @@
       save(true); applyTheme(); toast('Paramètres enregistrés'); $('#brand-company').textContent = data.company.name;
     };
     drawUpdatePanel();
-    $('#backup-now').onclick = async () => { const p = await bridge.createBackup(); toast(p ? 'Sauvegarde créée : ' + p.split(/[\\/]/).pop() : 'Rien à sauvegarder pour l\'instant'); };
+    $('#backup-now').onclick = async () => { const p = await bridge.createBackup(); toast(p ? 'Sauvegarde créée : ' + p.split(/[\\/]/).pop() : 'Rien à sauvegarder pour l\'instant'); drawExternal(); };
+    const drawExternal = async () => {
+      const i = await bridge.externalBackupInfo(); const el = $('#ext-status'); if (!el) return;
+      el.innerHTML = i.dir ? `Dossier : <code>${h(i.dir)}</code><br>${i.lastError ? `<span style="color:var(--danger)">Dernière copie impossible : ${h(i.lastError)}</span>` : (i.lastCopy ? `Dernière copie : ${h(new Date(i.lastCopy).toLocaleString('fr-FR'))}` : 'Copie à la prochaine sauvegarde.')}` : '<span class="muted">Aucun dossier de copie externe.</span>';
+      $('#ext-remove').hidden = !i.dir;
+    };
+    drawExternal();
+    $('#ext-choose').onclick = async () => { const i = await bridge.chooseExternalBackup(); if (i) { toast(i.lastError ? 'Dossier choisi, mais copie impossible : ' + i.lastError : 'Copie externe activée'); drawExternal(); } };
+    $('#ext-remove').onclick = async () => { await bridge.setExternalBackup(null); toast('Copie externe désactivée'); drawExternal(); };
+    if ($('#sec-set')) $('#sec-set').onclick = () => passwordDialog('set');
+    if ($('#sec-change')) $('#sec-change').onclick = () => passwordDialog('change');
+    if ($('#sec-remove')) $('#sec-remove').onclick = () => passwordDialog('remove');
+    if ($('#sec-lock')) $('#sec-lock').onclick = lockNow;
     $('#open-backups').onclick = () => bridge.openBackups();
     $('#export-data').onclick = exportAll;
     $('#import-data').onclick = importAll;
@@ -1328,6 +1397,7 @@
     else if (name === 'import-data') importAll();
     else if (name === 'changelog') showChangelog();
     else if (name === 'search') openPalette();
+    else if (name === 'lock') lockNow();
     else if (name.startsWith('go:')) navigate('#/' + name.slice(3));
   });
 
@@ -1409,11 +1479,21 @@
   }
 
   // ---------- import / export ----------
-  async function exportAll() { const p = await bridge.exportData(data); if (p) toast('Exporté : ' + p.split(/[\\/]/).pop()); }
+  async function exportAll() {
+    if (security.encrypted && !await confirmDialog('L\'export JSON est en clair (non chiffré). Continuer ?', 'Exporter', false)) return;
+    const p = await bridge.exportData(data); if (p) toast('Exporté : ' + p.split(/[\\/]/).pop());
+  }
   async function importAll() {
     if (!await confirmDialog('Importer un fichier remplacera toutes les données actuelles (une sauvegarde de l\'état actuel est faite avant). Continuer ?')) return;
-    try { const d = await bridge.importData(); if (d) { data = migrate(d); applyTheme(); $('#brand-company').textContent = data.company.name; toast('Données importées'); render(); } }
-    catch (e) { toast('Import impossible : ' + e.message.replace(/^.*Error: /, ''), true); }
+    try {
+      let r = await bridge.importData();
+      if (r && r.needPassword) {
+        r = await new Promise(resolve => promptDialog('Fichier chiffré', 'Mot de passe de ce fichier', '', async pw => resolve(await bridge.importData({ retry: true, password: pw })), 'password'));
+      }
+      if (r && r.needPassword) return toast('Mot de passe incorrect.', true);
+      const d = r && r.data;
+      if (d) { data = migrate(d); applyTheme(); $('#brand-company').textContent = data.company.name; toast('Données importées'); render(); }
+    } catch (e) { toast('Import impossible : ' + e.message.replace(/^.*Error: /, ''), true); }
   }
   $('#btn-export-data').onclick = exportAll;
   $('#btn-import-data').onclick = importAll;
@@ -1421,7 +1501,9 @@
   // ---------- démarrage ----------
   (async () => {
     const loaded = await bridge.loadData();
-    const raw = loaded && loaded.data;
+    let raw = loaded && loaded.data;
+    security.encrypted = !!(loaded && loaded.encrypted);
+    if (loaded && loaded.locked) raw = await showLockScreen();
     data = migrate(raw);
     if (raw && (raw.version || 1) < 3) save(true); // données migrées vers le nouveau format : on enregistre tout de suite
     applyTheme();

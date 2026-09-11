@@ -48,7 +48,7 @@ function main() {
   if (process.platform === 'win32') app.setAppUserModelId(APP_ID);
 
   app.whenReady().then(() => {
-    storage = createStorage(app.getPath('userData'));
+    storage = createStorage(app.getPath('userData'), { log: (w, e) => logToFile(w, e), externalDir: readAppCfg().externalBackupDir || null });
     try {
       app.setAboutPanelOptions({
         applicationName: 'SkanFact',
@@ -177,6 +177,8 @@ function buildMenu() {
         { label: 'Exporter les données…', click: act('export-data') },
         { label: 'Importer des données…', click: act('import-data') },
         { label: 'Ouvrir le dossier des sauvegardes', click: () => openBackups() },
+        { type: 'separator' },
+        { label: 'Verrouiller (mot de passe)', accelerator: 'CmdOrCtrl+L', click: act('lock') },
         ...(IS_MAC ? [] : [
           { type: 'separator' },
           { label: 'Paramètres', accelerator: 'Ctrl+,', click: act('settings') },
@@ -250,14 +252,55 @@ function buildMenu() {
 
 // ---------- stockage ----------
 
+// Réglages propres à cet ordinateur (dossier de copie externe…), hors du fichier de données.
+const APP_CFG = () => path.join(app.getPath('userData'), 'app-config.json');
+function readAppCfg() { try { return JSON.parse(fs.readFileSync(APP_CFG(), 'utf8')); } catch { return {}; } }
+function writeAppCfg(cfg) { fs.mkdirSync(path.dirname(APP_CFG()), { recursive: true }); fs.writeFileSync(APP_CFG(), JSON.stringify(cfg)); }
+
 ipcMain.handle('data:load', () => {
-  const data = storage.read();
+  const r = storage.read();
   const corruptFile = storage.state.corruptFile;
   storage.state.corruptFile = null;
-  return { data, corruptFile };
+  const locked = !!(r && r.locked);
+  return { data: locked ? null : r, locked, encrypted: storage.state.encrypted, corruptFile };
 });
 ipcMain.handle('data:save', (_e, data) => storage.write(data));
 ipcMain.handle('data:path', () => storage.file);
+
+// ---------- mot de passe (chiffrement du fichier) ----------
+ipcMain.handle('data:unlock', (_e, password) => storage.unlock(password));
+ipcMain.handle('data:lock', () => { storage.lock(); if (mainWindow) mainWindow.reload(); return true; });
+ipcMain.handle('data:security', () => ({ encrypted: storage.state.encrypted }));
+ipcMain.handle('data:setPassword', (_e, { data, password, current }) => {
+  if (storage.state.encrypted && storage.state.key) {
+    const r = storage.unlock(current || '');
+    if (!r.ok) return { ok: false, error: 'Mot de passe actuel incorrect.' };
+  }
+  storage.setPassword(data, password || '');
+  return { ok: true, encrypted: storage.state.encrypted };
+});
+
+// ---------- copie externe des sauvegardes ----------
+const externalInfo = () => ({ ...storage.state.external });
+ipcMain.handle('backups:externalInfo', () => externalInfo());
+ipcMain.handle('backups:setExternal', (_e, dir) => {
+  const cfg = readAppCfg();
+  if (dir) cfg.externalBackupDir = dir; else delete cfg.externalBackupDir;
+  writeAppCfg(cfg);
+  storage.setExternalDir(dir || null);
+  return externalInfo();
+});
+ipcMain.handle('backups:chooseExternal', async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+    title: 'Dossier de copie externe (iCloud Drive, clé USB, disque…)',
+    properties: ['openDirectory', 'createDirectory'],
+    buttonLabel: 'Utiliser ce dossier'
+  });
+  if (canceled || !filePaths.length) return null;
+  const cfg = readAppCfg(); cfg.externalBackupDir = filePaths[0]; writeAppCfg(cfg);
+  storage.setExternalDir(filePaths[0]);
+  return externalInfo();
+});
 
 ipcMain.handle('data:export', async (_e, data) => {
   const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
@@ -270,17 +313,26 @@ ipcMain.handle('data:export', async (_e, data) => {
   return filePath;
 });
 
-ipcMain.handle('data:import', async () => {
-  const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
-    title: 'Importer des données',
-    filters: [{ name: 'JSON', extensions: ['json'] }],
-    properties: ['openFile']
-  });
-  if (canceled || !filePaths.length) return null;
-  const parsed = storage.readExternal(filePaths[0]); // lève une erreur claire si ce n'est pas un export SkanFact
+let lastImportPath = null;
+ipcMain.handle('data:import', async (_e, opts) => {
+  opts = opts || {};
+  let file = opts.retry ? lastImportPath : null;
+  if (!file) {
+    const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+      title: 'Importer des données',
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+      properties: ['openFile']
+    });
+    if (canceled || !filePaths.length) return null;
+    file = filePaths[0];
+  }
+  lastImportPath = file;
+  let parsed;
+  try { parsed = storage.readExternal(file, opts.password); } // lève une erreur claire si ce n'est pas un export SkanFact
+  catch (e) { if (e.code === 'ENCRYPTED') return { needPassword: true }; throw e; }
   storage.backupNow('avant-import');                   // on garde l'état précédent
   storage.write(parsed);
-  return parsed;
+  return { data: parsed };
 });
 
 function openBackups() {

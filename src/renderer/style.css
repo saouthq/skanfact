@@ -305,3 +305,12 @@ body.dark #toast.error { background: var(--danger); color: #fff; }
 body.dark .app-version { color: #5c6875; }
 body.dark code { background: var(--ink-soft); }
 body.dark .kpi, body.dark .pay-grid > div, body.dark .notes-md { background: var(--bg); }
+
+/* ---------- écran de verrouillage ---------- */
+#lock-screen { position: fixed; inset: 0; background: var(--bg); z-index: 200; display: flex; align-items: center; justify-content: center; }
+.lock-card { width: 400px; max-width: 92vw; background: var(--panel); border: 1px solid var(--border); border-radius: 20px; padding: 32px 30px; box-shadow: 0 24px 70px rgba(20,40,60,.18); text-align: center; }
+.lock-card .brand-mark { margin: 0 auto 14px; width: 44px; height: 44px; font-size: 18px; border-radius: 13px; }
+.lock-card h2 { margin: 0 0 6px; font-size: 18px; }
+.lock-card input { text-align: center; font-size: 16px; margin: 16px 0 12px; }
+.lock-card .btn { width: 100%; justify-content: center; }
+.lock-err { color: var(--danger); font-size: 13px; margin-bottom: 10px; }
