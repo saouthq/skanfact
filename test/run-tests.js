@@ -2129,4 +2129,73 @@ t('stock : acheter de la marchandise ne coûte rien, la vendre coûte ce qu\'ell
   assert.strictEqual(core.costOfGoodsSold(d, { from: '2026-02-01', to: '2026-02-28' }), 0);
 });
 
+// ---------- numéros de série et garanties (4.1.0) ----------
+
+function serialData(extra) {
+  return core.migrateData({
+    company: CO,
+    clients: [{ id: 'c1', name: 'Clinique Test', matricule: '1A/M/000' }],
+    catalog: [{ id: 'k1', label: 'Serveur rack', unitPrice: 6000, unitCost: 4200, vatRate: 19, unit: 'u',
+      tracked: true, serialized: true, minStock: 0, warrantyMonths: 24 }],
+    serials: [
+      { id: 's1', itemId: 'k1', serial: 'SN-001', status: 'vendu', inDate: '2024-01-10', clientId: 'c1',
+        outDate: '2024-03-01', outDocId: 'd1', warrantyMonths: 24, notes: '' },
+      { id: 's2', itemId: 'k1', serial: 'SN-002', status: 'stock', inDate: '2026-01-05', warrantyMonths: 24, notes: '' },
+      { id: 's3', itemId: 'k1', serial: 'SN-003', status: 'vendu', inDate: '2024-06-01', clientId: 'c1',
+        outDate: '2024-11-15', outDocId: 'd2', warrantyMonths: 24, notes: '' }
+    ],
+    ...extra
+  });
+}
+
+t('garantie : elle court de la livraison, pas de l\'achat', () => {
+  const d = serialData();
+  const v = core.serialView(d.serials[0], d, '2026-01-01');
+  // vendu le 01/03/2024, garantie 24 mois → jusqu'au 28/02/2026 inclus (2026 n'est pas bissextile)
+  assert.strictEqual(v.warrantyEndDate, '2026-02-28');
+  assert.strictEqual(v.underWarranty, true);
+  assert.strictEqual(core.serialView(d.serials[0], d, '2026-03-01').underWarranty, false);
+  assert.strictEqual(core.serialView(d.serials[0], d, '2026-03-01').expired, true);
+  // une unité encore en stock n'a pas de garantie en cours : elle n'est chez personne
+  assert.strictEqual(core.serialView(d.serials[1], d, '2026-01-01').warrantyEndDate, '');
+  // sans durée, pas de date de fin — on n'invente pas une garantie
+  assert.strictEqual(core.warrantyEnd({ outDate: '2026-01-01', warrantyMonths: 0 }), '');
+});
+
+t('parc client et fins de garantie qui approchent', () => {
+  const d = serialData();
+  const parc = core.clientFleet(d, 'c1', '2026-01-15');
+  assert.strictEqual(parc.length, 2);
+  assert.strictEqual(parc[0].serial, 'SN-003');              // le plus récemment livré d'abord
+  // SN-003 vendu le 15/11/2024 + 24 mois → 14/11/2026 : hors de la fenêtre de 60 jours
+  // SN-001 se termine le 29/02/2026 : dans la fenêtre au 15/01/2026
+  const soon = core.warrantiesEnding(d, 60, '2026-01-15');
+  assert.strictEqual(soon.length, 1);
+  assert.strictEqual(soon[0].serial, 'SN-001');
+  // une garantie déjà expirée ne remonte plus : elle n'est plus une occasion, c'est un fait acquis
+  assert.strictEqual(core.warrantiesEnding(d, 60, '2026-06-01').length, 0);
+  // les disponibles : seules les unités en stock
+  assert.deepStrictEqual(core.availableSerials(d, 'k1').map(x => x.serial), ['SN-002']);
+});
+
+t('numéros de série : l\'écart avec le stock en quantité est signalé', () => {
+  // stock de départ 3, un seul numéro disponible : deux numéros manquent
+  const d = serialData({
+    catalog: [{ id: 'k1', label: 'Serveur rack', unitPrice: 6000, unitCost: 4200, vatRate: 19, unit: 'u',
+      tracked: true, serialized: true, minStock: 0, initialQty: 3, initialCost: 4200, initialDate: '2026-01-01', warrantyMonths: 24 }]
+  });
+  const g = core.serialGap(d, 'k1', '2026-06-01');
+  assert.ok(g);
+  assert.strictEqual(g.qty, 3);
+  assert.strictEqual(g.serials, 1);
+  assert.strictEqual(g.gap, 2);
+  assert.strictEqual(core.serialGaps(d, '2026-06-01').length, 1);
+  // quand les deux comptes concordent, plus aucun écart
+  d.serials.push({ id: 's4', itemId: 'k1', serial: 'SN-004', status: 'stock', inDate: '2026-01-01', warrantyMonths: 24 });
+  d.serials.push({ id: 's5', itemId: 'k1', serial: 'SN-005', status: 'stock', inDate: '2026-01-01', warrantyMonths: 24 });
+  assert.strictEqual(core.serialGap(d, 'k1', '2026-06-01'), null);
+  // un article non suivi par série ne produit aucun écart
+  assert.strictEqual(core.serialGap(d, 'inconnu', '2026-06-01'), null);
+});
+
 console.log(`\n${n} tests OK`);

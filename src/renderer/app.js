@@ -534,7 +534,7 @@
     tresorerie: 'Trésorerie', stats: 'Statistiques', compta: 'Comptabilité', parametres: 'Paramètres', aide: 'Aide', doc: 'le document',
     achats: 'Achats et dépenses', achat: 'l\'achat', fournisseurs: 'Fournisseurs', fournisseur: 'la fiche fournisseur',
     marges: 'Marges', affaire: 'l\'affaire', immos: 'Immobilisations', immo: 'l\'immobilisation',
-    stock: 'Stock', article: 'l\'article'
+    stock: 'Stock', article: 'l\'article', garanties: 'Garanties'
   };
   const pageLabel = hash => PAGE_LABELS[(hash || '').replace(/^#\/?/, '').split('/')[0]] || 'Accueil';
   function pushHistory(previous) {
@@ -589,6 +589,7 @@
     else if (name === 'affaire') active = 'marges';
     else if (name === 'immo') active = 'immos';
     else if (name === 'article') active = 'stock';
+    else if (name === 'garanties') active = 'stock';
     $$('nav a').forEach(a => a.classList.toggle('active', a.dataset.route === active));
     guard = null; previewRedraw = null;
     pushHistory(currentHash);        // d'où l'on vient, pour le bouton retour de la page qui s'ouvre
@@ -1001,6 +1002,10 @@
     const stored = isNew ? null : docById(doc.id);
     const bal = isInv && !isNew && doc.status !== 'brouillon' ? balance(stored) : null;
     const canUnlock = locked && isInv && bal && !bal.paid && !bal.credits.length;
+    // Attribuer des numéros de série n'a de sens que sur une pièce qui livre vraiment : facture ou bon
+    // de livraison, et seulement si une de ses lignes porte un article suivi par numéro.
+    const hasSerials = (isInv || doc.type === 'livraison')
+      && (doc.lines || []).some(l => { const it = C.itemOfLine(l, data); return it && it.serialized; });
     const issuedDeposits = isQ && !isNew ? data.documents.filter(d => d.type === 'facture' && d.deposit && d.deposit.quoteId === doc.id && d.status !== 'brouillon') : [];
 
     const clientItems = () => data.clients.slice().sort((a, b) => a.name.localeCompare(b.name, 'fr')).map(c => ({
@@ -1045,6 +1050,7 @@
           ${!locked && (isInv || isAv) ? `<button class="btn btn-primary" id="issue">${isInv ? 'Émettre la facture' : 'Émettre l\'avoir'}</button> ${info('ed.issue')}` : ''}
           ${!isNew && (!isAv || !locked) ? `<div class="more"><button class="btn" id="more-btn" aria-label="Autres actions">Plus ▾</button><div class="more-list" id="more-list" hidden>
             ${!isAv ? `<button id="dup">Dupliquer</button><button id="as-template">Enregistrer comme modèle…</button>` : ''}
+            ${hasSerials ? `<button id="serials">Numéros de série livrés…</button>` : ''}
             ${isInv ? `<button id="make-recurring">Rendre récurrent (contrat)… ${info('ed.recurring')}</button>` : ''}
             ${locked && isInv && doc.status !== 'annulée' ? `<button id="credit">Créer un avoir…</button>` : ''}
             ${canUnlock ? `<button id="unlock">Modifier malgré l'émission…</button>` : ''}
@@ -1409,6 +1415,7 @@
       if (!await confirmDialog(`Émettre ${isInv ? 'la facture' : 'l\'avoir'} ${n} ? Le numéro devient définitif et le document ne sera plus modifiable. Pour corriger après coup, il faudra faire un avoir.${warn.length ? '\n\n⚠ ' + warn.join('\n⚠ ') : ''}`, warn.length ? 'Émettre quand même' : 'Émettre', false)) return;
       if (issue()) { if (isNew) navigate('#/doc/' + doc.id); else render(); }
     };
+    if ($('#serials')) $('#serials').onclick = () => serialAssignForm(docById(doc.id) || doc, () => render(true));
     if ($('#bill-btn')) $('#bill-btn').onclick = e => { e.stopPropagation(); const l = $('#bill-list'); const open = l.hidden; closeMenus(); l.hidden = !open; };
     $$('#bill-list button').forEach(b => b.addEventListener('click', () => { $('#bill-list').hidden = true; }));
     $('#pdf').onclick = async () => {
@@ -1744,6 +1751,22 @@
             <p class="small muted mt">Ces notes ne sortent jamais sur un document.</p>
           </div>
       </div>
+      ${(() => {
+        const parc = C.clientFleet(data, c.id);
+        if (!parc.length) return '';
+        const soon = parc.filter(x => x.warrantyEndingSoon).length;
+        return `<div class="panel"><h2>Matériel installé chez ce client ${info('ser.fleet')}</h2>
+          ${soon ? `<p class="small warn-text mb">${soon} garantie(s) se terminent dans moins de deux mois : le moment de proposer un contrat de maintenance.</p>` : ''}
+          <div class="scroll-x"><table class="list compact"><thead><tr><th>Article</th><th>Numéro</th><th>Livré le</th><th>Garantie</th><th>Pièce</th></tr></thead><tbody>
+            ${parc.map(x => `<tr class="${x.warrantyEndingSoon ? 'row-warn' : ''}">
+              <td><strong>${h(x.itemLabel)}</strong></td><td class="nw">${h(x.serial)}</td>
+              <td class="nw">${C.fmtDate(x.outDate)}</td>
+              <td class="nw">${!x.warrantyEndDate ? '<span class="muted">aucune</span>'
+                : x.expired ? `<span class="muted">expirée le ${C.fmtDate(x.warrantyEndDate)}</span>`
+                : `<span class="${x.warrantyEndingSoon ? 'warn-text' : 'ok-text'}">jusqu'au ${C.fmtDate(x.warrantyEndDate)}</span>`}</td>
+              <td class="nw">${x.outDocId && docById(x.outDocId) ? `<a href="#/doc/${h(x.outDocId)}">${h(docById(x.outDocId).number || 'voir')}</a>` : '<span class="muted">—</span>'}</td></tr>`).join('')}
+          </tbody></table></div></div>`;
+      })()}
       <div class="panel"><h2>Documents</h2><div id="cl-docs"></div></div>`;
     const dcols = docColumns({ hideClient: true }).cols;
     const drawDocs = (sortKey) => {
@@ -1767,7 +1790,8 @@
   // ---------- Catalogue ----------
   function catalogForm(item, done) {
     const it = item || { id: C.uid(), label: '', description: '', unit: '', unitPrice: 0, unitCost: 0, vatRate: 19,
-      tracked: false, minStock: 0, location: '', initialQty: 0, initialCost: 0, initialDate: C.today() };
+      tracked: false, minStock: 0, location: '', initialQty: 0, initialCost: 0, initialDate: C.today(),
+      serialized: false, warrantyMonths: 0 };
     const already = item ? C.stockOf(data, it.id) : null;   // stock déjà constitué : on ne rejoue pas le départ
     modal(`<h2>${item ? 'Modifier la prestation' : 'Nouvelle prestation'}</h2>
       <form id="kf" class="grid-2">
@@ -1789,6 +1813,10 @@
           ${already && already.moves.length > 1
             ? `<p class="small muted mt">Stock actuel : <b>${already.qty} ${h(already.unit)}</b> au coût moyen de ${C.money(already.cmp, company().currency)}. Le stock de départ n'est plus modifiable ici — des mouvements s'y appuient. Passe par un ajustement sur la page Stock.</p>`
             : '<p class="small muted mt">Ce que tu as en rayon aujourd\'hui, avant que SkanFact ne commence à compter. Les achats et les ventes s\'y ajoutent tout seuls ensuite.</p>'}
+          <label class="check mt"><input type="checkbox" name="serialized" ${it.serialized ? 'checked' : ''}> Suivre chaque unité par son numéro de série ${info('ser.serialized')}</label>
+          <div id="serial-block" ${it.serialized ? '' : 'hidden'}>
+            <label class="field mt">${lbl('Garantie proposée', 'ser.warranty')}<select name="warrantyMonths">${C.WARRANTY_CHOICES.map(m => `<option value="${m}" ${Number(it.warrantyMonths) === m ? 'selected' : ''}>${m ? m + ' mois' : 'Aucune'}</option>`).join('')}</select></label>
+          </div>
         </div>
       </form>
       <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
@@ -1808,12 +1836,14 @@
         // Le bloc stock n'apparaît que si l'article est suivi : inutile d'imposer quatre champs de plus
         // à qui ne vend que des prestations.
         $('input[name=tracked]', root).onchange = e => { $('#stock-block', root).hidden = !e.target.checked; };
+        $('input[name=serialized]', root).onchange = e => { $('#serial-block', root).hidden = !e.target.checked; };
         $('#ok', root).onclick = () => {
           const v = formValues($('#kf', root));
           if (!v.label.trim()) return toast('La désignation est obligatoire.', true);
           if (v.tracked && already && already.moves.length > 1) { v.initialQty = it.initialQty; v.initialCost = it.initialCost; }
           Object.assign(it, v, { vatRate: Number(v.vatRate), unitCost: Number(v.unitCost) || 0, unit,
             tracked: !!v.tracked, minStock: Number(v.minStock) || 0,
+            serialized: !!v.tracked && !!v.serialized, warrantyMonths: Number(v.warrantyMonths) || 0,
             initialQty: Number(v.initialQty) || 0, initialCost: Number(v.initialCost) || 0,
             initialDate: it.initialDate || C.today() });
           if (!item) data.catalog.push(it);
@@ -2460,7 +2490,7 @@
     const im = $('#nav-immos');
     if (im) { const n = C.assetsToCreate(data).length; im.hidden = !n; im.textContent = n; }
     const stk = $('#nav-stock');
-    if (stk) { const n = C.stockAlerts(data).length; stk.hidden = !n; stk.textContent = n; }
+    if (stk) { const n = C.stockAlerts(data).length + C.serialGaps(data).length; stk.hidden = !n; stk.textContent = n; }
   }
 
   // ---------- palette de recherche (Cmd/Ctrl+K) ----------
@@ -2474,7 +2504,7 @@
     const actions = [
       ['Nouveau devis', () => navigate('#/doc/new/devis')], ['Nouvelle facture', () => navigate('#/doc/new/facture')], ['Nouvel avoir', () => navigate('#/doc/new/avoir')],
       ['Accueil', () => navigate('#/dashboard')], ['Devis', () => navigate('#/devis')], ['Factures', () => navigate('#/factures')], ['Relances', () => navigate('#/relances')],
-      ['Contrats récurrents', () => navigate('#/contrats')], ['Achats et dépenses', () => navigate('#/achats')], ['Nouvelle facture d\'achat', () => navigate('#/achat/new')], ['Nouvelle dépense', () => navigate('#/achat/new/-/depense')], ['Fournisseurs', () => navigate('#/fournisseurs')], ['Trésorerie', () => navigate('#/tresorerie')], ['Marges et rentabilité', () => navigate('#/marges')], ['Stock', () => navigate('#/stock')], ['Inventaire', () => { stockState.tab = 'inventaire'; navigate('#/stock'); }], ['Mouvement de stock', () => adjustForm(null, () => render())], ['Immobilisations', () => navigate('#/immos')], ['Nouvelle immobilisation', () => assetForm(null, a => navigate('#/immo/' + a.id))], ['Lignes à immobiliser', () => { immoState.tab = 'attente'; navigate('#/immos'); }], ['Seuil de rentabilité', () => navigate('#/marges')], ['Nouvelle affaire', () => projectForm(null, p => navigate('#/affaire/' + p.id))], ['Nouveau fournisseur', () => supplierForm(null, () => render())], ['Proformas', () => navigate('#/autres/proforma')], ['Bons de commande', () => navigate('#/autres/commande')], ['Bons de livraison', () => navigate('#/autres/livraison')], ['Contrats à signer', () => navigate('#/autres/contrat')], ['Clients', () => navigate('#/clients')], ['Catalogue', () => navigate('#/catalogue')], ['Statistiques', () => navigate('#/stats')], ['Comptabilité', () => navigate('#/compta')], ['Paramètres', () => navigate('#/parametres')],
+      ['Contrats récurrents', () => navigate('#/contrats')], ['Achats et dépenses', () => navigate('#/achats')], ['Nouvelle facture d\'achat', () => navigate('#/achat/new')], ['Nouvelle dépense', () => navigate('#/achat/new/-/depense')], ['Fournisseurs', () => navigate('#/fournisseurs')], ['Trésorerie', () => navigate('#/tresorerie')], ['Marges et rentabilité', () => navigate('#/marges')], ['Stock', () => navigate('#/stock')], ['Garanties', () => navigate('#/garanties')], ['Numéros de série', () => { stockState.tab = 'series'; navigate('#/stock'); }], ['Entrée de numéros de série', () => serialIntakeForm(null, () => render())], ['Inventaire', () => { stockState.tab = 'inventaire'; navigate('#/stock'); }], ['Mouvement de stock', () => adjustForm(null, () => render())], ['Immobilisations', () => navigate('#/immos')], ['Nouvelle immobilisation', () => assetForm(null, a => navigate('#/immo/' + a.id))], ['Lignes à immobiliser', () => { immoState.tab = 'attente'; navigate('#/immos'); }], ['Seuil de rentabilité', () => navigate('#/marges')], ['Nouvelle affaire', () => projectForm(null, p => navigate('#/affaire/' + p.id))], ['Nouveau fournisseur', () => supplierForm(null, () => render())], ['Proformas', () => navigate('#/autres/proforma')], ['Bons de commande', () => navigate('#/autres/commande')], ['Bons de livraison', () => navigate('#/autres/livraison')], ['Contrats à signer', () => navigate('#/autres/contrat')], ['Clients', () => navigate('#/clients')], ['Catalogue', () => navigate('#/catalogue')], ['Statistiques', () => navigate('#/stats')], ['Comptabilité', () => navigate('#/compta')], ['Paramètres', () => navigate('#/parametres')],
       ['Aide et guide', () => navigate('#/aide')], ['Nouveau client', () => clientForm(null, () => render())]
     ].map(([label, run]) => ({ kind: 'Action', main: label, text: label.toLowerCase(), run }));
     const helps = G.ARTICLES.map(x => ({ kind: 'Aide', main: x.title, sub: x.sub, text: `aide ${x.title} ${x.sub}`.toLowerCase(), run: () => navigate('#/aide/' + x.id) }));
@@ -3494,8 +3524,9 @@
   };
 
   // ---------- Stock (4.0.0) ----------
-  const stockState = { tab: 'etat', q: '', only: '', counts: {}, countDate: C.today(), moves: { page: 1 } };
-  const STOCK_TABS = [['etat', 'État du stock'], ['mouvements', 'Mouvements'], ['inventaire', 'Inventaire'], ['alertes', 'Alertes']];
+  const stockState = { tab: 'etat', q: '', only: '', counts: {}, countDate: C.today(), moves: { page: 1 },
+    ser: { q: '', status: '', page: 1 } };
+  const STOCK_TABS = [['etat', 'État du stock'], ['mouvements', 'Mouvements'], ['series', 'Numéros de série'], ['inventaire', 'Inventaire'], ['alertes', 'Alertes']];
 
   function adjustForm(itemId, done) {
     const items = C.trackedItems(data);
@@ -3551,6 +3582,7 @@
       <div class="page-head"><h1>Stock</h1>
         <div class="actions">
           <button class="btn" id="st-csv">Exporter (CSV)</button>
+          <button class="btn" id="st-war">Garanties</button>
           <button class="btn btn-primary" id="st-adj">+ Mouvement</button>
         </div></div>
       ${items.length ? '' : `<div class="panel"><h2>Aucun article suivi</h2>
@@ -3694,8 +3726,50 @@
       $$('#st-body [data-see]').forEach(b => b.onclick = () => navigate('#/article/' + b.dataset.see));
     }
 
+    function drawSerials() {
+      const serialized = C.serializedItems(data);
+      const q = s.ser.q.trim().toLowerCase();
+      const all = C.serialList(data, { status: s.ser.status })
+        .filter(x => !q || (x.serial || '').toLowerCase().includes(q) || (x.itemLabel || '').toLowerCase().includes(q) || (x.clientName || '').toLowerCase().includes(q));
+      const paged = paginate(all, s.ser);
+      const gaps = C.serialGaps(data);
+      $('#st-body').innerHTML = `
+        ${gaps.length ? `<div class="panel" style="border-left:3px solid var(--warning)"><h2>Les deux comptes ne disent pas la même chose ${info('ser.gap')}</h2>
+          <p class="small">${gaps.map(g => `<b>${h(g.label)}</b> : ${pct(g.qty)} en stock, ${g.serials} numéro(s) disponible(s)`).join(' · ')}. Un numéro n'a pas été saisi à l'entrée, ou pas attribué à la sortie.</p></div>` : ''}
+        <div class="panel"><h2>Numéros de série ${info('ser.list')}</h2>
+          ${serialized.length ? `<div class="filters">
+            <input type="search" id="se-q" placeholder="Rechercher : numéro, article, client…" value="${h(s.ser.q)}">
+            <select id="se-st"><option value="">Tous les états</option>${C.SERIAL_STATUSES.map(([v, l]) => `<option value="${v}" ${s.ser.status === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+            <button class="btn btn-sm btn-primary" id="se-add">+ Entrée de numéros</button>
+            <span class="small muted">${all.length} numéro(s)</span>
+          </div>
+          ${all.length ? `<div class="scroll-x"><table class="list compact"><thead><tr>
+            <th>Numéro</th><th>Article</th><th>État</th><th>Entré le</th><th>Client</th><th>Livré le</th><th>Garantie</th><th></th></tr></thead><tbody>
+            ${paged.rows.map(x => `<tr>
+              <td><strong>${h(x.serial)}</strong></td><td>${h(x.itemLabel)}</td>
+              <td>${h(C.serialStatusLabel(x.status))}</td>
+              <td class="nw">${C.fmtDate(x.inDate)}</td>
+              <td>${x.clientId ? `<a href="#/client/${h(x.clientId)}">${h(x.clientName)}</a>` : '<span class="muted">—</span>'}</td>
+              <td class="nw">${x.outDate ? C.fmtDate(x.outDate) : '<span class="muted">—</span>'}</td>
+              <td class="nw">${!x.warrantyEndDate ? '<span class="muted">—</span>'
+                : x.expired ? `<span class="muted">expirée le ${C.fmtDate(x.warrantyEndDate)}</span>`
+                : `<span class="${x.warrantyEndingSoon ? 'warn-text' : 'ok-text'}">jusqu'au ${C.fmtDate(x.warrantyEndDate)}</span>`}</td>
+              <td class="r"><button class="btn btn-sm btn-ghost" data-ser="${h(x.id)}">Modifier</button></td></tr>`).join('')}
+          </tbody></table></div>
+          ${paged.pg ? pagerBar(paged.pg, { noun: 'numéro' }) : ''}`
+            : '<div class="empty">Aucun numéro ne correspond.</div>'}`
+            : `<div class="empty">Aucun article n'est suivi par numéro de série. Ouvre le <a href="#/catalogue">Catalogue</a>, modifie un article suivi en stock et coche « Suivre chaque unité par son numéro de série ». C'est utile pour du matériel garanti : tu sauras qui a quoi, depuis quand, et jusqu'à quand c'est couvert.</div>`}
+        </div>`;
+      if ($('#se-q')) $('#se-q').oninput = e => { s.ser.q = e.target.value; s.ser.page = 1; drawSerials(); const el = $('#se-q'); el.focus(); el.setSelectionRange(el.value.length, el.value.length); };
+      if ($('#se-st')) $('#se-st').onchange = e => { s.ser.status = e.target.value; s.ser.page = 1; drawSerials(); };
+      if ($('#se-add')) $('#se-add').onclick = () => serialIntakeForm(null, () => draw());
+      $$('#st-body [data-ser]').forEach(b => b.onclick = () => { const x = data.serials.find(y => y.id === b.dataset.ser); if (x) serialForm(x, () => draw()); });
+      bindPager($('#st-body'), s.ser, () => drawSerials(), '#st-body');
+    }
+
     const draw = () => {
       if (!items.length) { $('#st-body').innerHTML = ''; return; }
+      if (s.tab === 'series') return drawSerials();
       if (s.tab === 'mouvements') return drawMoves();
       if (s.tab === 'inventaire') return drawInventory();
       if (s.tab === 'alertes') return drawAlerts();
@@ -3707,6 +3781,7 @@
       draw();
     });
     $('#st-adj').onclick = () => adjustForm(null, () => draw());
+    $('#st-war').onclick = () => navigate('#/garanties');
     $('#st-csv').onclick = async () => {
       const t = C.stockTotals(data);
       if (!t.rows.length) return toast('Rien à exporter.', true);
@@ -3766,6 +3841,204 @@
       data.stockAdjustments = data.stockAdjustments.filter(x => x.id !== b.dataset.rm);
       save(true); render();
     });
+  };
+
+  // ---------- Numéros de série et garanties (4.1.0) ----------
+  const serialById = id => data.serials.find(x => x.id === id);
+
+  // Entrée : on colle une liste de numéros, un par ligne. Coller vaut mieux que saisir vingt fois.
+  function serialIntakeForm(itemId, done) {
+    const items = C.serializedItems(data);
+    if (!items.length) return toast('Aucun article n\'est suivi par numéro de série. Coche l\'option sur une prestation du catalogue.', true);
+    const first = itemId && items.some(c => c.id === itemId) ? itemId : items[0].id;
+    modal(`<h2>Entrée de numéros de série</h2>
+      <p class="small muted">Un numéro par ligne. Tu peux les coller depuis un bon de livraison fournisseur ou un fichier : SkanFact ignore les lignes vides et refuse les doublons.</p>
+      <form id="sif" class="grid-2">
+        <div class="field">Article
+          ${combo({ name: 'itemId', value: first, items: items.map(c => ({ v: c.id, label: c.label, sub: c.unit || '', text: c.label })), placeholder: '— Choisir un article —', search: 'Rechercher un article…' })}
+        </div>
+        ${dateFieldHtml(lbl('Date d\'entrée', 'ser.inDate'), 'inDate', C.today(), {})}
+        <div class="field span-2">Facture d'achat (optionnel)
+          ${combo({ name: 'inPurchaseId', value: '', items: data.purchases.slice().sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 200).map(p => ({ v: p.id, label: p.number || 'sans numéro', sub: `${C.fmtDate(p.date)} · ${supplierName(p.supplierId)}`, text: `${p.number || ''} ${supplierName(p.supplierId)}` })), placeholder: '— Aucune —', search: 'Rechercher une facture d\'achat…' })}
+        </div>
+        <label class="field span-2">Numéros de série<textarea name="list" rows="8" placeholder="SN-2026-0001&#10;SN-2026-0002&#10;SN-2026-0003"></textarea></label>
+        <div class="field span-2" id="sif-hint"></div>
+      </form>
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
+      (root, close) => {
+        bindCombo($('[data-combo=itemId]', root), { items: items.map(c => ({ v: c.id, label: c.label, text: c.label })), placeholder: '— Choisir un article —' });
+        bindCombo($('[data-combo=inPurchaseId]', root), { items: data.purchases.map(p => ({ v: p.id, label: p.number || 'sans numéro', text: p.number || '' })), placeholder: '— Aucune —' });
+        const parse = () => (formValues($('#sif', root)).list || '').split(/\r?\n/).map(x => x.trim()).filter(Boolean);
+        const hint = () => {
+          const v = formValues($('#sif', root));
+          const nums = parse();
+          const known = new Set(data.serials.filter(x => x.itemId === v.itemId).map(x => (x.serial || '').toLowerCase()));
+          const dbl = nums.filter(x => known.has(x.toLowerCase()));
+          const item = data.catalog.find(c => c.id === v.itemId) || {};
+          $('#sif-hint', root).innerHTML = `<span class="small ${dbl.length ? 'warn-text' : 'muted'}">`
+            + (nums.length ? `${nums.length} numéro(s) à enregistrer${item.warrantyMonths ? `, garantie de ${item.warrantyMonths} mois` : ', sans garantie'}.` : 'Colle ou saisis au moins un numéro.')
+            + (dbl.length ? ` ${dbl.length} déjà connu(s) et ignoré(s) : ${dbl.slice(0, 5).join(', ')}.` : '') + '</span>';
+        };
+        $('#sif', root).oninput = $('#sif', root).onchange = hint; hint();
+        $('#ok', root).onclick = () => {
+          const v = formValues($('#sif', root));
+          const nums = parse();
+          if (!v.itemId) return toast('Choisis un article.', true);
+          if (!nums.length) return toast('Saisis au moins un numéro de série.', true);
+          const item = data.catalog.find(c => c.id === v.itemId) || {};
+          const known = new Set(data.serials.filter(x => x.itemId === v.itemId).map(x => (x.serial || '').toLowerCase()));
+          let added = 0;
+          nums.forEach(num => {
+            if (known.has(num.toLowerCase())) return;
+            known.add(num.toLowerCase());
+            data.serials.push({ id: C.uid(), itemId: v.itemId, serial: num, status: 'stock',
+              inDate: v.inDate || C.today(), inPurchaseId: v.inPurchaseId || '', clientId: '', outDate: '', outDocId: '',
+              warrantyMonths: Number(item.warrantyMonths) || 0, notes: '' });
+            added++;
+          });
+          save(true); close();
+          toast(added ? `${added} numéro(s) enregistré(s)` : 'Tous ces numéros étaient déjà connus', !added);
+          if (done) done();
+        };
+      });
+  }
+
+  // Sortie : attribuer des unités à un client, avec la garantie qui démarre ce jour-là.
+  function serialAssignForm(doc, done) {
+    const lines = (doc.lines || []).map(l => ({ l, item: C.itemOfLine(l, data) }))
+      .filter(x => x.item && x.item.serialized);
+    if (!lines.length) return toast('Aucune ligne de ce document ne porte un article suivi par numéro de série.', true);
+    const cur = company().currency;
+    const chosen = {};                       // itemId → Set d'identifiants
+    const draw = (root) => {
+      const body = $('#sa-body', root);
+      body.innerHTML = lines.map(({ l, item }) => {
+        const need = Number(l.qty) || 0;
+        const avail = C.availableSerials(data, item.id);
+        const already = data.serials.filter(x => x.outDocId === doc.id && x.itemId === item.id);
+        const picked = chosen[item.id] || new Set(already.map(x => x.id));
+        chosen[item.id] = picked;
+        return `<div class="panel"><h2>${h(item.label)}</h2>
+          <p class="small muted mb">${pct(need)} unité(s) sur ce document.</p>
+          ${avail.length || already.length ? `<div class="scroll-x"><table class="list compact"><thead><tr><th></th><th>Numéro</th><th>Entré le</th><th>État</th></tr></thead><tbody>
+            ${already.concat(avail).map(x => `<tr>
+              <td><input type="checkbox" data-pick="${h(x.id)}" data-item="${h(item.id)}" ${picked.has(x.id) ? 'checked' : ''}></td>
+              <td><strong>${h(x.serial)}</strong></td><td class="nw">${C.fmtDate(x.inDate)}</td>
+              <td>${x.outDocId === doc.id ? '<span class="ok-text">déjà attribué à ce document</span>' : C.serialStatusLabel(x.status)}</td></tr>`).join('')}
+          </tbody></table></div>
+          <p class="small ${picked.size === need ? 'muted' : 'warn-text'}">${picked.size} sélectionné(s) sur ${pct(need)} attendu(s).${item.warrantyMonths ? ` Garantie de ${item.warrantyMonths} mois à compter du ${C.fmtDate(doc.date)}.` : ' Aucune garantie définie sur cet article.'}</p>`
+            : '<div class="empty">Aucune unité disponible en stock pour cet article. Saisis d\'abord les numéros entrés, depuis la page Stock.</div>'}
+        </div>`;
+      }).join('');
+      $$('[data-pick]', body).forEach(cb => cb.onchange = () => {
+        const set = chosen[cb.dataset.item];
+        if (cb.checked) set.add(cb.dataset.pick); else set.delete(cb.dataset.pick);
+        draw(root);
+      });
+    };
+    modal(`<h2>Numéros de série de ${h(doc.number || 'ce document')}</h2>
+      <p class="small muted">Coche les unités effectivement livrées. Leur garantie démarre à la date du document (${C.fmtDate(doc.date)}), et elles apparaîtront dans le parc de ${h(clientName(doc.clientId) || 'ce client')}.</p>
+      <div id="sa-body"></div>
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Attribuer</button></div>`,
+      (root, close) => {
+        draw(root);
+        $('#ok', root).onclick = () => {
+          const keep = new Set();
+          Object.keys(chosen).forEach(k => chosen[k].forEach(id => keep.add(id)));
+          // Ce qui était attribué à ce document et ne l'est plus revient en stock.
+          data.serials.forEach(x => {
+            if (x.outDocId === doc.id && !keep.has(x.id)) {
+              x.status = 'stock'; x.outDate = ''; x.outDocId = ''; x.clientId = '';
+            }
+          });
+          keep.forEach(id => {
+            const x = serialById(id); if (!x) return;
+            x.status = 'vendu'; x.outDate = doc.date; x.outDocId = doc.id; x.clientId = doc.clientId || '';
+            const item = data.catalog.find(c => c.id === x.itemId);
+            if (item && !x.warrantyMonths) x.warrantyMonths = Number(item.warrantyMonths) || 0;
+          });
+          save(true); close(); toast(`${keep.size} numéro(s) attribué(s)`);
+          if (done) done();
+        };
+      });
+  }
+
+  function serialForm(serial, done) {
+    const x = serial;
+    modal(`<h2>${h(x.serial)}</h2>
+      <form id="sef" class="grid-2">
+        <label class="field span-2">Numéro de série<input type="text" name="serial" value="${h(x.serial)}"></label>
+        <label class="field">${lbl('État', 'ser.status')}<select name="status">${C.SERIAL_STATUSES.map(([v, l]) => `<option value="${v}" ${x.status === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+        <label class="field">${lbl('Garantie', 'ser.warranty')}<select name="warrantyMonths">${C.WARRANTY_CHOICES.map(m => `<option value="${m}" ${Number(x.warrantyMonths) === m ? 'selected' : ''}>${m ? m + ' mois' : 'Aucune'}</option>`).join('')}</select></label>
+        ${dateFieldHtml('Entré le', 'inDate', x.inDate || '', { clearable: true })}
+        ${dateFieldHtml(lbl('Sorti le', 'ser.outDate'), 'outDate', x.outDate || '', { clearable: true })}
+        <div class="field span-2">Client
+          ${combo({ name: 'clientId', value: x.clientId || '', items: clientItems(), placeholder: '— Aucun —', search: 'Rechercher un client…' })}
+        </div>
+        <label class="field span-2">Notes<input type="text" name="notes" value="${h(x.notes || '')}"></label>
+        <div class="field span-2" id="sef-hint"></div>
+      </form>
+      <div class="modal-actions">
+        <button class="btn btn-danger" id="del-ser" style="margin-right:auto">Supprimer</button>
+        <button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
+      (root, close) => {
+        bindCombo($('[data-combo=clientId]', root), { items: clientItems(), placeholder: '— Aucun —' });
+        const hint = () => {
+          const v = formValues($('#sef', root));
+          const end = C.warrantyEnd({ outDate: v.outDate, warrantyMonths: Number(v.warrantyMonths) || 0 });
+          $('#sef-hint', root).innerHTML = `<span class="small muted">${end
+            ? `Garantie jusqu'au <b>${C.fmtDate(end)}</b>${end < C.today() ? ' — déjà expirée' : ''}.`
+            : 'Pas de garantie en cours : il faut une date de sortie et une durée.'}</span>`;
+        };
+        $('#sef', root).oninput = $('#sef', root).onchange = hint; hint();
+        $('#ok', root).onclick = () => {
+          const v = formValues($('#sef', root));
+          if (!(v.serial || '').trim()) return toast('Le numéro ne peut pas être vide.', true);
+          Object.assign(x, v, { warrantyMonths: Number(v.warrantyMonths) || 0 });
+          if (x.status === 'stock') { x.outDate = ''; x.outDocId = ''; x.clientId = ''; }
+          save(true); close(); if (done) done();
+        };
+        $('#del-ser', root).onclick = async () => {
+          if (!await confirmDialog(`Supprimer le numéro ${x.serial} ? Son historique sera perdu.`)) return;
+          forget('serials', x.id, x.serial);
+          data.serials = data.serials.filter(y => y.id !== x.id);
+          save(true); close(); if (done) done();
+        };
+      });
+  }
+
+  const garState = { days: 90, page: 1 };
+  routes.garanties = () => {
+    const rows = C.warrantiesEnding(data, garState.days);
+    const expired = C.serialList(data, { status: 'vendu' }).filter(x => x.expired);
+    $('#view').innerHTML = `
+      <div class="page-head"><h1>Garanties</h1>
+        <div class="actions">${backButton('#/stock')}
+          <select id="g-days">${[30, 60, 90, 180, 365].map(d => `<option value="${d}" ${garState.days === d ? 'selected' : ''}>${d} jours</option>`).join('')}</select>
+        </div></div>
+      <div class="panel"><h2>Garanties qui se terminent ${info('ser.ending')}</h2>
+        <p class="small muted mb">Une fin de garantie n'est pas une mauvaise nouvelle : c'est le moment naturel de proposer un contrat de maintenance. Le client y pense rarement tout seul.</p>
+        ${rows.length ? `<div class="scroll-x"><table class="list compact"><thead><tr><th>Fin</th><th>Dans</th><th>Article</th><th>Numéro</th><th>Client</th><th>Livré le</th><th></th></tr></thead><tbody>
+          ${rows.map(x => `<tr class="${x.warrantyDays <= 30 ? 'row-warn' : ''}">
+            <td class="nw"><strong>${C.fmtDate(x.warrantyEndDate)}</strong></td>
+            <td class="nw">${x.warrantyDays} jour${x.warrantyDays > 1 ? 's' : ''}</td>
+            <td>${h(x.itemLabel)}</td><td class="nw">${h(x.serial)}</td>
+            <td>${x.clientId ? `<a href="#/client/${h(x.clientId)}">${h(x.clientName)}</a>` : '<span class="muted">—</span>'}</td>
+            <td class="nw">${C.fmtDate(x.outDate)}</td>
+            <td class="r">${x.clientId ? `<button class="btn btn-sm" data-quote="${h(x.clientId)}">Proposer un contrat</button>` : ''}</td></tr>`).join('')}
+        </tbody></table></div>`
+          : `<div class="empty">Aucune garantie ne se termine dans les ${garState.days} prochains jours.</div>`}
+      </div>
+      ${expired.length ? `<div class="panel"><h2>Déjà hors garantie <span class="small muted">(${expired.length})</span></h2>
+        <div class="scroll-x"><table class="list compact"><thead><tr><th>Article</th><th>Numéro</th><th>Client</th><th>Livré le</th><th>Garantie expirée le</th></tr></thead><tbody>
+          ${expired.slice(0, 30).map(x => `<tr><td>${h(x.itemLabel)}</td><td class="nw">${h(x.serial)}</td>
+            <td>${x.clientId ? `<a href="#/client/${h(x.clientId)}">${h(x.clientName)}</a>` : '<span class="muted">—</span>'}</td>
+            <td class="nw">${C.fmtDate(x.outDate)}</td><td class="nw">${C.fmtDate(x.warrantyEndDate)}</td></tr>`).join('')}
+        </tbody></table></div>
+        ${expired.length > 30 ? `<p class="small muted mt">30 affichés sur ${expired.length}.</p>` : ''}</div>` : ''}`;
+    bindBack('#/stock');
+    $('#g-days').onchange = e => { garState.days = Number(e.target.value); render(); };
+    $$('[data-quote]').forEach(b => b.onclick = () => navigate('#/doc/new/devis/client/' + b.dataset.quote));
   };
 
   // ---------- Immobilisations et amortissements (3.5.0) ----------

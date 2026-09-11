@@ -181,7 +181,7 @@ Une ligne d'achat marquée « immobilisation » atterrit ici automatiquement.
 - **Alertes de réapprovisionnement** dans « À faire »
 - La ligne d'un document peut pointer un article : la sortie de stock devient automatique
 
-### 4.1.0 — Numéros de série, garanties et parc client · M
+### 4.1.0 — Numéros de série, garanties et parc client · M — **livrée**
 
 Pour un revendeur de matériel informatique, c'est de la vente récurrente presque gratuite.
 

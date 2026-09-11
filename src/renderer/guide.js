@@ -137,6 +137,15 @@
     'ed.margin': { t: 'Marge estimée', d: 'Ce qu\'il resterait de ce document une fois retiré le <b>coût de revient</b> de chaque ligne (celui du catalogue, ou celui recopié sur la ligne). C\'est une estimation : elle ne tient pas compte du loyer, des salaires ni des frais généraux. Pour une marge exacte, rattache ce document à une <b>affaire</b> et rattaches-y aussi les achats correspondants.' },
     'buy.project': { t: 'Affaire', d: 'Rattache cet achat au chantier pour lequel tu l\'as fait. C\'est ce rattachement qui rend la marge exacte : sans lui, l\'affaire semblera plus rentable qu\'elle ne l\'est.' },
     'cat.cost': { t: 'Coût de revient HT', d: 'Ce que cette prestation ou cet article te coûte : prix d\'achat de la marchandise, sous-traitance, matériel. Facultatif, mais c\'est lui qui permet de calculer la marge sur les ventes qui ne sont pas rattachées à une affaire. Pour une prestation où tu ne vends que ton temps, laisse 0 : la marge affichée sera alors le prix de vente.' },
+    'ser.serialized': { t: 'Suivi par numéro de série', d: 'Pour du matériel identifiable et garanti : un serveur, un ordinateur, un pare-feu. Chaque unité est alors suivie <b>nommément</b> — tu sais laquelle est chez quel client, depuis quand, et jusqu\'à quand elle est garantie. Inutile pour des consommables interchangeables : on ne suit pas des câbles un par un.' },
+    'ser.warranty': { t: 'Durée de garantie', d: 'La durée annoncée par le constructeur ou celle que tu accordes toi-même. Elle court à partir de la <b>livraison</b>, pas de ton achat : c\'est la date qui compte pour le client. Choisis « Aucune » si le matériel n\'est pas garanti.' },
+    'ser.inDate': { t: 'Date d\'entrée', d: 'Le jour où l\'unité est arrivée chez toi. Sert à savoir ce qui dort depuis longtemps en réserve, et à retrouver la facture d\'achat correspondante.' },
+    'ser.outDate': { t: 'Date de sortie', d: 'Le jour où l\'unité est partie chez le client. C\'est elle qui fait démarrer la garantie. Vider cette date remet l\'unité en stock.' },
+    'ser.status': { t: 'État de l\'unité', d: '<b>En stock</b> : chez toi, disponible. <b>Chez le client</b> : livrée, garantie en cours. <b>Retourné</b> : revenu chez toi, à examiner. <b>Hors service</b> : ni vendable ni réparable, mais on garde la trace.' },
+    'ser.list': { t: 'Numéros de série', d: 'Toutes les unités que tu as suivies, en stock comme chez les clients. Tu saisis les numéros à l\'entrée (bouton « + Entrée de numéros », un numéro par ligne, collage accepté), et tu les attribues à la sortie depuis la facture ou le bon de livraison — menu « Plus ▾ » → « Numéros de série livrés ».' },
+    'ser.gap': { t: 'Écart entre les numéros et le stock', d: 'Le stock compté en quantité et le stock compté en numéros doivent dire la même chose. Quand ils divergent, c\'est qu\'un numéro n\'a pas été saisi à l\'entrée, ou pas attribué à la sortie. Ce n\'est pas grave en soi — mais tant que l\'écart dure, tu ne peux pas répondre à « où est passée cette machine ? ».' },
+    'ser.fleet': { t: 'Parc installé', d: 'Ce que ce client a chez lui, livré par toi, avec l\'état de sa garantie. C\'est la question qu\'on te posera au téléphone quand quelque chose tombera en panne — et c\'est aussi la liste de ce que tu pourras lui proposer de remplacer ou de couvrir par un contrat.' },
+    'ser.ending': { t: 'Garanties qui se terminent', d: 'Une fin de garantie n\'est pas une mauvaise nouvelle : c\'est le moment naturel de proposer un contrat de maintenance, et le client n\'y pense presque jamais tout seul. Appeler deux mois avant vaut mieux qu\'expliquer après la panne que ce n\'est plus couvert.' },
     'stk.tracked': { t: 'Suivi en stock', d: 'À cocher pour de la <b>marchandise</b> : quelque chose qu\'on achète, qu\'on range, et qu\'on ressort à la vente. Pas pour une prestation — du conseil ou des heures de travail n\'ont pas de stock. Une fois coché, SkanFact compte tout seul à partir de tes achats et de tes ventes : tu n\'as plus rien à saisir.' },
     'stk.cogs': { t: 'Coût des marchandises vendues', d: 'Ce que t\'ont coûté les marchandises effectivement <b>sorties</b> du stock sur la période, valorisées au coût moyen pondéré. C\'est la vraie charge : acheter de la marchandise ne coûte rien tant qu\'elle est sur l\'étagère — c\'est de l\'argent transformé en stock, pas dépensé. La vendre, en revanche, coûte ce qu\'elle a coûté. C\'est ce que les comptables appellent la variation de stock.' },
     'stk.orphan': { t: 'Ligne « stock » sans article suivi', d: 'Pour qu\'un achat entre en stock, sa ligne doit porter le <b>même libellé</b> qu\'un article du catalogue coché « Suivi en stock ». Sinon la marchandise est bien achetée et sa TVA bien déductible, mais elle n\'apparaît nulle part dans le stock — et au moment de la vendre, le stock passera en négatif. Crée l\'article au catalogue, ou recopie son libellé exactement.' },
@@ -553,6 +562,32 @@
 </ul>
 <h3>Ce que cette page ne fait pas</h3>
 <p>Pas de numéros de série, pas de lots ni de dates de péremption, pas de dépôts multiples, pas de réservation sur commande. Pas de FIFO ni de LIFO non plus : un seul coût moyen. Ce sont des besoins d'entreprises plus grandes ; si l'un d'eux devient nécessaire, il se rajoutera.</p>`
+    },
+    {
+      id: 'series', title: 'Savoir qui a quoi : numéros de série et garanties', sub: 'Parc client, fin de garantie, occasion de vente',
+      body: `
+<p>Le stock te dit <em>combien</em> il t'en reste. Les numéros de série te disent <em>lesquels</em>, et surtout <b>où ils sont</b>. Pour du matériel garanti, c'est la différence entre « je vais regarder dans mes factures » et « votre serveur est chez vous depuis mars 2024, il est garanti jusqu'en mars 2027 ».</p>
+<h3>Quels articles suivre</h3>
+<p>Du matériel identifiable et garanti : serveur, ordinateur, pare-feu, imprimante. Pas des consommables : on ne suit pas des câbles un par un.</p>
+<p><b>Catalogue → Modifier</b> un article déjà suivi en stock → coche <b>« Suivre chaque unité par son numéro de série »</b>, et indique la durée de garantie que tu accordes.</p>
+<h3>Le cycle d'une unité</h3>
+<ol>
+  <li><b>Entrée.</b> Page Stock → onglet <b>Numéros de série</b> → « + Entrée de numéros ». Un numéro par ligne : tu peux les coller depuis le bon de livraison de ton fournisseur. Les doublons sont refusés.</li>
+  <li><b>Sortie.</b> Depuis la facture ou le bon de livraison, menu <b>« Plus ▾ » → « Numéros de série livrés »</b>. Tu coches les unités effectivement parties. Leur garantie démarre à la date du document.</li>
+  <li><b>Après.</b> Elles apparaissent dans le <b>parc</b> du client, sur sa fiche, et dans la page <b>Garanties</b>.</li>
+</ol>
+<p>Si tu décoches une unité, elle revient en stock : rien n'est irréversible.</p>
+<h3>La garantie court de la livraison</h3>
+<p>Pas de ton achat. C'est la date qui compte pour le client, et c'est celle-là que SkanFact retient. Une unité encore en stock n'a donc pas de garantie en cours : elle n'est chez personne.</p>
+<h3>Les deux comptes doivent concorder</h3>
+<p>Le stock en quantité et le stock en numéros racontent la même histoire. Quand ils divergent — trois en stock, un seul numéro disponible — c'est qu'un numéro n'a pas été saisi à l'entrée, ou pas attribué à la sortie. SkanFact le signale en tête de l'onglet.</p>
+<p>Ce n'est pas grave pour tes chiffres : la comptabilité s'appuie sur les quantités, pas sur les numéros. Mais tant que l'écart dure, tu ne peux pas répondre à « où est passée cette machine ? ».</p>
+<h3>La page Garanties : la partie qui rapporte</h3>
+<p>Elle liste ce qui arrive à échéance dans les 30, 60, 90, 180 ou 365 prochains jours, et ce qui est déjà hors garantie.</p>
+<p>Une fin de garantie n'est pas une mauvaise nouvelle, c'est une <b>occasion</b> : c'est le moment naturel de proposer un contrat de maintenance, et le client n'y pense presque jamais tout seul. Le bouton « Proposer un contrat » ouvre directement un devis à son nom.</p>
+<p>Appeler deux mois avant vaut beaucoup mieux qu'expliquer, après la panne, que ce n'est plus couvert. Les fins de garantie qui approchent remontent aussi dans « À faire » sur l'accueil.</p>
+<h3>Ce que cette page ne fait pas</h3>
+<p>Pas de gestion de retours SAV, pas d'historique d'interventions par machine, pas de contrat rattaché à une unité précise. Si le besoin vient, il se rajoutera — pour l'instant, savoir <b>qui a quoi et jusqu'à quand</b> couvre l'essentiel.</p>`
     },
     {
       id: 'immobilisations', title: 'Ce que tu gardes : les immobilisations', sub: 'Amortissement, valeur nette comptable, cession',

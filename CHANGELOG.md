@@ -7,6 +7,33 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 4.1.0 — 11/09/2026
+
+Le stock dit combien il t'en reste. Les numéros de série disent **où ils sont**.
+
+**Suivi unité par unité** — Catalogue → Modifier un article suivi en stock → « Suivre chaque unité par son numéro de série », avec la durée de garantie accordée. Pour du matériel identifiable : serveur, ordinateur, pare-feu. Pas pour des consommables.
+
+**Le cycle d'une unité**
+- **Entrée** : Stock → onglet *Numéros de série* → « + Entrée de numéros ». Un numéro par ligne, collage accepté, doublons refusés, rattachement facultatif à la facture d'achat
+- **Sortie** : depuis la facture ou le bon de livraison, menu « Plus ▾ » → « Numéros de série livrés ». Tu coches ce qui part vraiment
+- Décocher une unité la remet en stock : rien n'est irréversible
+
+**La garantie court de la livraison, pas de ton achat.** C'est la date qui compte pour le client. Une unité encore en stock n'a donc pas de garantie en cours.
+
+**Parc client** — la fiche d'un client montre le matériel qu'il a chez lui, depuis quand, et l'état de sa garantie. C'est la réponse à la question qu'on te posera au téléphone.
+
+**Nouvelle page Garanties** (bouton depuis Stock)
+- Ce qui arrive à échéance dans 30, 60, 90, 180 ou 365 jours, et ce qui est déjà hors garantie
+- Un bouton « Proposer un contrat » qui ouvre un devis au nom du client
+- Une fin de garantie n'est pas une mauvaise nouvelle : c'est le moment naturel de proposer un contrat de maintenance, et le client n'y pense jamais tout seul
+- Les échéances remontent aussi dans « À faire » sur l'accueil
+
+**Contrôle de cohérence** — le stock compté en quantité et le stock compté en numéros doivent dire la même chose. Quand ils divergent (trois en stock, un seul numéro disponible), SkanFact le signale : un numéro manque à l'entrée ou à la sortie.
+
+Données : `serials`, plus `serialized` et `warrantyMonths` par article. Aucune conversion. Les numéros entrent dans la fusion d'un dossier partagé.
+
+Nouvel article d'aide « Savoir qui a quoi : numéros de série et garanties » et une bulle « i » sur chaque notion.
+
 ## 4.0.0 — 11/09/2026
 
 Tu sais ce que tu vends. Tu sais maintenant ce qu'il te reste sur l'étagère — et ce que ça vaut.

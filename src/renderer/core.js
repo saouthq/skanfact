@@ -127,6 +127,7 @@
     fiscalDeadlines: [],     // échéances fiscales activées/modifiées par l'utilisateur (v4)
     assets: [],              // immobilisations amortissables (3.5.0)
     stockAdjustments: [],    // mouvements de stock saisis à la main : départ, casse, inventaire (v5)
+    serials: [],             // unités suivies par numéro de série (v5)
     vatCarryIn: {},          // crédit de TVA venu de l'année précédente, par année : { '2026': 1234 }
     projects: [],            // affaires : relient ventes et achats pour une marge exacte (v4)
     fixedCategories: [],     // catégories de charges considérées comme fixes (vide = valeurs par défaut)
@@ -434,11 +435,14 @@
     // Version 5 : stock. Rien à convertir — les articles existants ne sont pas suivis tant que la case
     // « Suivi en stock » n'est pas cochée, et la liste d'ajustements naît vide.
     if (!Array.isArray(data.stockAdjustments)) data.stockAdjustments = [];
+    if (!Array.isArray(data.serials)) data.serials = [];
     data.catalog.forEach(c => {
       c.tracked = c.tracked === true;
       c.minStock = Number(c.minStock) || 0;
       c.initialQty = Number(c.initialQty) || 0;
       c.initialCost = Number(c.initialCost) || 0;
+      c.serialized = c.serialized === true;
+      c.warrantyMonths = Number(c.warrantyMonths) || 0;
     });
     if (!Array.isArray(data.fixedCategories)) data.fixedCategories = [];
     if (!Array.isArray(data.accounts)) data.accounts = [];
@@ -1168,6 +1172,95 @@
     return out;
   }
 
+  // ---------- numéros de série, garanties et parc client (4.1.0) ----------
+  // Un numéro de série est une unité physique qu'on peut suivre nommément : entrée par un achat,
+  // sortie chez un client, sous garantie jusqu'à une date. C'est ce qui permet de répondre à
+  // « depuis quand ce serveur est chez eux, et est-il encore garanti ? » sans fouiller un classeur.
+  //
+  // Le suivi par série ne remplace pas le stock en quantité : il le double pour les articles qui s'y
+  // prêtent (du matériel), et `serialGap` signale quand les deux ne disent plus la même chose.
+
+  const SERIAL_STATUSES = [
+    ['stock', 'En stock'], ['vendu', 'Chez le client'], ['retour', 'Retourné'], ['hs', 'Hors service']
+  ];
+  const serialStatusLabel = k => (SERIAL_STATUSES.find(x => x[0] === k) || [, k])[1];
+  // Durées de garantie couramment proposées. Le constructeur décide, pas l'application.
+  const WARRANTY_CHOICES = [0, 6, 12, 24, 36, 60];
+
+  function serializedItems(data) {
+    return (data.catalog || []).filter(c => c.serialized);
+  }
+
+  // Fin de garantie : calculée à la SORTIE, pas à l'achat — la garantie du client court du jour où il
+  // reçoit le matériel. Sans date de sortie, il n'y a pas encore de garantie à compter.
+  function warrantyEnd(serial) {
+    const months = Number(serial.warrantyMonths) || 0;
+    if (!serial.outDate || !months) return '';
+    return addDays(addMonths(serial.outDate, months, Number(serial.outDate.slice(8, 10))), -1);
+  }
+
+  function serialView(serial, data, todayIso) {
+    const t = todayIso || today();
+    const item = (data.catalog || []).find(c => c.id === serial.itemId) || {};
+    const client = (data.clients || []).find(c => c.id === serial.clientId) || null;
+    const end = warrantyEnd(serial);
+    const days = end ? daysBetween(t, end) : null;
+    return {
+      ...serial, itemLabel: item.label || '', clientName: client ? client.name : '',
+      warrantyEndDate: end,
+      warrantyDays: days,
+      underWarranty: !!end && end >= t,
+      warrantyEndingSoon: !!end && end >= t && days <= 60,
+      expired: !!end && end < t
+    };
+  }
+
+  function serialList(data, filter, todayIso) {
+    const f = filter || {};
+    return (data.serials || []).map(x => serialView(x, data, todayIso))
+      .filter(x => (!f.itemId || x.itemId === f.itemId)
+        && (!f.clientId || x.clientId === f.clientId)
+        && (!f.status || x.status === f.status))
+      .sort((a, b) => (b.inDate || '').localeCompare(a.inDate || '') || (a.serial || '').localeCompare(b.serial || '', undefined, { numeric: true }));
+  }
+
+  // Les unités disponibles pour une vente : en stock, jamais sorties.
+  function availableSerials(data, itemId) {
+    return (data.serials || []).filter(x => x.itemId === itemId && x.status === 'stock')
+      .sort((a, b) => (a.inDate || '').localeCompare(b.inDate || '') || (a.serial || '').localeCompare(b.serial || '', undefined, { numeric: true }));
+  }
+
+  // Le parc d'un client : ce qu'il a chez lui, depuis quand, garanti jusqu'à quand.
+  function clientFleet(data, clientId, todayIso) {
+    return serialList(data, { clientId, status: 'vendu' }, todayIso)
+      .sort((a, b) => (b.outDate || '').localeCompare(a.outDate || ''));
+  }
+
+  // Les garanties qui se terminent bientôt : une fin de garantie est une occasion de proposer un
+  // contrat de maintenance, pas une mauvaise nouvelle.
+  function warrantiesEnding(data, days, todayIso) {
+    const t = todayIso || today();
+    const limit = addDays(t, days == null ? 60 : days);
+    return serialList(data, { status: 'vendu' }, t)
+      .filter(x => x.warrantyEndDate && x.warrantyEndDate >= t && x.warrantyEndDate <= limit)
+      .sort((a, b) => a.warrantyEndDate.localeCompare(b.warrantyEndDate));
+  }
+
+  // Le stock compté en quantité et le stock compté en numéros doivent dire la même chose. Quand ils
+  // divergent, c'est qu'un numéro n'a pas été saisi à l'entrée ou pas attribué à la sortie.
+  function serialGap(data, itemId, todayIso) {
+    const item = (data.catalog || []).find(c => c.id === itemId);
+    if (!item || !item.serialized || !item.tracked) return null;
+    const qty = stockOf(data, itemId, todayIso).qty;
+    const serials = (data.serials || []).filter(x => x.itemId === itemId && x.status === 'stock').length;
+    const gap = round3(qty - serials);
+    return gap === 0 ? null : { itemId, label: item.label, qty, serials, gap };
+  }
+
+  function serialGaps(data, todayIso) {
+    return serializedItems(data).map(c => serialGap(data, c.id, todayIso)).filter(Boolean);
+  }
+
   // ---------- immobilisations et amortissements (3.5.0) ----------
   // Une immobilisation n'est pas une charge : elle reste dans l'entreprise et se déduit un peu chaque
   // année. Le module transforme une ligne d'achat marquée « immobilisation » en un bien amortissable,
@@ -1519,11 +1612,11 @@
   // l'autre version pour qu'elle reste consultable. Rien n'est détruit sans trace.
 
   // Les listes du fichier qui se fusionnent pièce par pièce, grâce à leur identifiant.
-  const MERGE_LISTS = ['clients', 'catalog', 'documents', 'recurring', 'templates', 'snippets', 'suppliers', 'purchases', 'accounts', 'movements', 'projects', 'assets', 'stockAdjustments'];
+  const MERGE_LISTS = ['clients', 'catalog', 'documents', 'recurring', 'templates', 'snippets', 'suppliers', 'purchases', 'accounts', 'movements', 'projects', 'assets', 'stockAdjustments', 'serials'];
   const LIST_LABELS = {
     clients: 'client', catalog: 'prestation', documents: 'document', recurring: 'contrat récurrent',
     templates: 'modèle', snippets: 'texte', suppliers: 'fournisseur', purchases: 'achat',
-    accounts: 'compte', movements: 'mouvement', projects: 'affaire', assets: 'immobilisation', stockAdjustments: 'mouvement de stock'
+    accounts: 'compte', movements: 'mouvement', projects: 'affaire', assets: 'immobilisation', stockAdjustments: 'mouvement de stock', serials: 'numéro de série'
   };
 
   function sameJson(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
@@ -2103,6 +2196,22 @@
       label: `${lowStock.length} article${lowStock.length > 1 ? 's' : ''} à recommander`,
       detail: `${lowStock.map(x => `${x.label} (${x.qty} ${x.unit || ''})`.trim()).slice(0, 3).join(' · ')}${lowStock.length > 3 ? '…' : ''} — sous le seuil d'alerte.`,
       count: lowStock.length, route: '#/stock', docs: []
+    });
+    // Garanties qui se terminent : une occasion de proposer un contrat, pas une mauvaise nouvelle.
+    const war = warrantiesEnding(data, 60, t);
+    if (war.length) out.push({
+      id: 'garanties', level: 'info',
+      label: `${war.length} garantie${war.length > 1 ? 's' : ''} se termine${war.length > 1 ? 'nt' : ''} dans moins de deux mois`,
+      detail: `${war.slice(0, 3).map(x => `${x.itemLabel} chez ${x.clientName || 'un client'} (${fmtDate(x.warrantyEndDate)})`).join(' · ')}${war.length > 3 ? '…' : ''} — le moment de proposer un contrat de maintenance.`,
+      count: war.length, route: '#/garanties', docs: []
+    });
+    // Numéros de série et quantités qui ne disent plus la même chose
+    const gaps = serialGaps(data, t);
+    if (gaps.length) out.push({
+      id: 'series-ecart', level: 'warn',
+      label: `${gaps.length} article${gaps.length > 1 ? 's' : ''} dont les numéros de série ne collent pas au stock`,
+      detail: gaps.map(g => `${g.label} : ${g.qty} en stock, ${g.serials} numéro(s) disponible(s)`).join(' · ') + '. Un numéro n\'a pas été saisi à l\'entrée, ou pas attribué à la sortie.',
+      count: gaps.length, route: '#/stock', docs: []
     });
     // Lignes d'achat marquées « immobilisation » sans fiche : sans elles, aucune dotation n'est calculée
     // et le résultat de l'année est faussement bon (3.5.0).
@@ -2859,6 +2968,8 @@
     cappedCumulated,
     MOVE_SOURCES, moveSourceLabel, trackedItems, itemOfLine, stockMovements, runningStock, stockOf,
     stockList, stockTotals, stockJournal, inventoryDiff, stockAlerts, stockImpact, costOfGoodsSold,
+    SERIAL_STATUSES, serialStatusLabel, WARRANTY_CHOICES, serializedItems, warrantyEnd, serialView,
+    serialList, availableSerials, clientFleet, warrantiesEnding, serialGap, serialGaps,
     mergeData, trackDeletion, MERGE_LISTS, LIST_LABELS,
     purchaseTotals, purchaseBalance, purchaseStatus, payablesList, purchaseJournal, purchaseSummary, supplierSummary, withholdingsToIssue, supplierPayments,
     periodBounds, issuedIn, salesTotals, revenueByMonth, topItems, clientMovement, AGING_BUCKETS, agedReceivables, payerRanking, quoteFunnel, objectiveProgress,

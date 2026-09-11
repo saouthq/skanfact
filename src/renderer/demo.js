@@ -57,10 +57,11 @@
     // la marge affichée est alors le prix de vente, et c'est écrit dans la bulle d'aide.
     // `stock` : [quantité de départ, coût unitaire, seuil d'alerte, emplacement]. Seule la marchandise
     // est suivie — une prestation n'a pas de stock.
-    const cat = (label, description, unitPrice, vatRate, unit, unitCost, stock) => ({
+    const cat = (label, description, unitPrice, vatRate, unit, unitCost, stock, warranty) => ({
       id: C.uid(), label, description, unitPrice, vatRate, unit, unitCost: unitCost || 0,
       tracked: !!stock, initialQty: stock ? stock[0] : 0, initialCost: stock ? stock[1] : 0,
-      minStock: stock ? stock[2] : 0, location: stock ? stock[3] : '', initialDate: stock ? mo(13, 1) : ''
+      minStock: stock ? stock[2] : 0, location: stock ? stock[3] : '', initialDate: stock ? mo(13, 1) : '',
+      serialized: !!warranty, warrantyMonths: warranty || 0
     });
     d.catalog = [
       cat('Audit de sécurité réseau', 'Cartographie du réseau, scan de vulnérabilités, revue de configuration, rapport et plan d\'action', 1200, 19, 'forfait'),
@@ -76,8 +77,8 @@
       cat('Mise en conformité protection des données', 'Registre des traitements, procédures, déclaration à l\'INPDP', 1800, 19, 'forfait'),
       // Ajoutés en fin de liste : les indices k[0]…k[10] sont utilisés partout ci-dessous, les décaler
       // changerait toutes les pièces du jeu de démonstration.
-      cat('Pare-feu UTM', 'Boîtier UTM avec licence de sécurité 1 an', 1650, 19, 'u', 1200, [2, 1200, 1, 'Réserve — étagère A']),
-      cat('Poste de travail complet', 'Unité centrale, écran 24\", clavier et souris, système installé', 1150, 19, 'u', 850, [3, 850, 4, 'Réserve — étagère B'])
+      cat('Pare-feu UTM', 'Boîtier UTM avec licence de sécurité 1 an', 1650, 19, 'u', 1200, [2, 1200, 1, 'Réserve — étagère A'], 36),
+      cat('Poste de travail complet', 'Unité centrale, écran 24\", clavier et souris, système installé', 1150, 19, 'u', 850, [3, 850, 4, 'Réserve — étagère B'], 24)
     ];
     const k = d.catalog;
     const line = (item, qty, price, unit) => ({ label: item.label, description: item.description, qty, unit: unit || item.unit, unitPrice: price != null ? price : item.unitPrice, unitCost: item.unitCost || '', vatRate: item.vatRate });
@@ -321,6 +322,33 @@
         notes: 'À immobiliser : durée d\'amortissement à confirmer avec le comptable.' })
     ];
     d.expenseCategories = [];
+
+    // ---------- numéros de série (4.1.0) ----------
+    // Les deux articles matériel sont suivis unité par unité. Trois cas montrés : des unités encore en
+    // stock, des unités livrées sous garantie, et une garantie qui se termine bientôt.
+    const kPare = d.catalog[11], kPoste = d.catalog[12];
+    const ser = (item, num, o) => ({ id: C.uid(), itemId: item.id, serial: num, status: 'stock',
+      inDate: mo(13, 1), inPurchaseId: '', clientId: '', outDate: '', outDocId: '',
+      warrantyMonths: item.warrantyMonths, notes: '', ...(o || {}) });
+    const factEcole = byKey['f-lauriers-salle'];
+    d.serials = [
+      // stock de départ
+      ser(kPare, 'UTM-2025-0041'),
+      ser(kPare, 'UTM-2025-0042'),
+      ser(kPoste, 'PC-2025-0117'),
+      ser(kPoste, 'PC-2025-0118'),
+      ser(kPoste, 'PC-2025-0119'),
+      // entrés par la facture d'achat FA-2026-1187, puis livrés à l'École
+      ser(kPare, 'UTM-2026-0210', { inDate: mo(2, 18), inPurchaseId: d.purchases[0].id, status: 'vendu', outDate: factEcole.date, outDocId: factEcole.id, clientId: cl[7].id })
+    ];
+    for (let i = 1; i <= 12; i++) {
+      d.serials.push(ser(kPoste, 'PC-2026-' + String(300 + i), { inDate: mo(2, 18), inPurchaseId: d.purchases[0].id,
+        status: 'vendu', outDate: factEcole.date, outDocId: factEcole.id, clientId: cl[7].id }));
+    }
+    // Une unité livrée il y a presque deux ans : sa garantie de 24 mois se termine dans quelques semaines.
+    d.serials.push(ser(kPoste, 'PC-2024-0088', { inDate: mo(26, 3), status: 'vendu',
+      outDate: C.addMonths(daysAgo(-40), -24, Number(daysAgo(-40).slice(8, 10))), outDocId: '', clientId: cl[0].id,
+      notes: 'Livré avant la mise en service de SkanFact.' }));
 
     // ---------- immobilisations (3.5.0) ----------
     // Le portable acheté plus haut, immobilisé comme il se doit ; une camionnette plus ancienne, encore
