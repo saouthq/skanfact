@@ -971,4 +971,139 @@ t('statistiques : objectif annuel', () => {
   assert.strictEqual(fini.expectedPct, 100);
 });
 
+t('nouveaux documents : numérotation, timbre, retenue, conversions', () => {
+  const data = { documents: [], counters: {}, clients: [{ id: 'c1', name: 'Alpha' }] };
+  // chaque type a son préfixe et son compteur propre
+  assert.strictEqual(core.nextNumber(data, 'proforma', '2026-03-01'), 'PRO-2026-001');
+  assert.strictEqual(core.nextNumber(data, 'commande', '2026-03-01'), 'BC-2026-001');
+  assert.strictEqual(core.nextNumber(data, 'livraison', '2026-03-01'), 'BL-2026-001');
+  assert.strictEqual(core.nextNumber(data, 'contrat', '2026-03-01'), 'CTR-2026-001');
+  assert.strictEqual(core.nextNumber(data, 'proforma', '2026-04-01'), 'PRO-2026-002');
+  assert.strictEqual(core.nextNumber(data, 'facture', '2026-03-01'), 'FAC-2026-001');   // les compteurs ne se mélangent pas
+
+  const lines = [{ label: 'Serveur', qty: 2, unitPrice: 1000, vatRate: 19 }];
+  // proforma : pas de timbre par défaut, mais la retenue reste possible
+  const pro = core.computeTotals({ type: 'proforma', lines, withholdingRate: 3 }, CO);
+  assert.strictEqual(pro.stamp, 0);
+  assert.strictEqual(pro.withholding, core.round3(2380 * 0.03));
+  assert.strictEqual(core.computeTotals({ type: 'proforma', lines, applyStamp: true }, CO).stamp, 1);
+  // bons et contrat : ni timbre ni retenue, même si le champ traîne dans les données
+  ['commande', 'livraison', 'contrat'].forEach(ty => {
+    const t2 = core.computeTotals({ type: ty, lines, applyStamp: true, withholdingRate: 10 }, CO);
+    assert.strictEqual(t2.stamp, 0, ty);
+    assert.strictEqual(t2.withholding, 0, ty);
+    assert.strictEqual(t2.netToPay, 2380, ty);
+  });
+  // aucune de ces pièces n'entre dans le journal des ventes ni dans le chiffre d'affaires
+  const docs = ['proforma', 'commande', 'livraison', 'contrat'].map((ty, i) => ({
+    id: 'x' + i, type: ty, number: 'X-1', status: 'envoyée', date: '2026-03-10', clientId: 'c1', lines, createdAt: 1
+  }));
+  const d2 = { documents: docs, clients: [{ id: 'c1', name: 'Alpha' }], counters: {} };
+  assert.strictEqual(core.salesJournal(d2, CO, { from: '2026-01-01', to: '2026-12-31' }).length, 0);
+  assert.strictEqual(core.salesTotals(d2, CO, '2026-01-01', '2026-12-31').ht, 0);
+});
+
+t('conversion d\'une pièce en une autre : ce qui suit et ce qui ne suit pas', () => {
+  const quote = {
+    id: 'q1', type: 'devis', number: 'DEV-2026-001', status: 'accepté', date: '2026-03-01', dueDate: '2026-03-31',
+    clientId: 'c1', subject: 'Serveur et installation', reference: 'REF-9', discountRate: 10, notes: 'Livraison sous 15 jours',
+    lines: [{ label: 'Serveur', qty: 1, unitPrice: 3000, vatRate: 19 }], lang: 'fr', currency: 'DT',
+    emails: [{ date: '2026-03-01', to: 'x@y.tn' }], attachments: [{ name: 'signe.pdf', file: 'a' }], createdAt: 1
+  };
+  const bl = core.convertDoc(quote, 'livraison', CO, '2026-03-20');
+  assert.strictEqual(bl.type, 'livraison');
+  assert.strictEqual(bl.status, 'brouillon');
+  assert.strictEqual(bl.number, '');
+  assert.strictEqual(bl.date, '2026-03-20');
+  assert.strictEqual(bl.dueDate, '');                      // un bon de livraison n'a pas d'échéance
+  assert.strictEqual(bl.hidePrices, true);                 // il accompagne la marchandise
+  assert.strictEqual(bl.subject, quote.subject);
+  assert.strictEqual(bl.discountRate, 10);
+  assert.deepStrictEqual(bl.lines, quote.lines);
+  assert.notStrictEqual(bl.id, quote.id);
+  assert.strictEqual(bl.fromDocId, 'q1');
+  assert.strictEqual(bl.fromDocNumber, 'DEV-2026-001');
+  // ce qui appartenait à la pièce d'origine ne suit jamais
+  assert.strictEqual(bl.emails, undefined);
+  assert.strictEqual(bl.attachments, undefined);
+  // modifier la copie ne touche pas l'original
+  bl.lines[0].label = 'Autre';
+  assert.strictEqual(quote.lines[0].label, 'Serveur');
+  // devis → facture : la filiation « devis » reconnue par l'acompte et le tableau de bord est conservée
+  const fac = core.convertDoc(quote, 'facture', CO, '2026-03-20');
+  assert.strictEqual(fac.fromQuoteId, 'q1');
+  assert.strictEqual(fac.applyStamp, true);
+  assert.strictEqual(fac.dueDate, core.addDays('2026-03-20', CO.paymentTermsDays));
+  // et elle se propage : le BL d'un devis facturé garde le devis d'origine
+  assert.strictEqual(core.convertDoc(fac, 'livraison', CO, '2026-03-21').fromQuoteId, 'q1');
+  // contrat : les clauses par défaut arrivent remplies
+  const ctr = core.convertDoc(quote, 'contrat', CO, '2026-03-20');
+  assert.ok(ctr.clauses.objet && ctr.clauses.preavis);
+  assert.strictEqual(core.CLAUSE_LABELS.length, Object.keys(core.DEFAULT_CLAUSES).length);
+});
+
+t('historique : filiation entre pièces, dans les deux sens', () => {
+  const quote = { id: 'q1', type: 'devis', number: 'DEV-2026-001', status: 'envoyé', date: '2026-03-01', lines: [], createdAt: 1 };
+  const pro = { id: 'p1', type: 'proforma', number: 'PRO-2026-001', status: 'envoyée', date: '2026-03-05', lines: [],
+    fromDocId: 'q1', fromDocType: 'devis', fromDocNumber: 'DEV-2026-001', createdAt: 2,
+    attachments: [{ name: 'accord-client.pdf', file: 'x1', date: '2026-03-06' }] };
+  const data = { documents: [quote, pro], clients: [], recurring: [] };
+  // la proforma dit d'où elle vient, et sa pièce jointe apparaît
+  const ev = core.documentHistory(pro, data, CO);
+  const src = ev.find(e => e.kind === 'source');
+  assert.ok(src && src.id === 'q1' && src.label.includes('DEV-2026-001'));
+  assert.ok(ev.find(e => e.kind === 'piece' && e.label.includes('accord-client.pdf')));
+  // le devis voit ce qui en découle
+  const evq = core.documentHistory(quote, data, CO);
+  const der = evq.find(e => e.kind === 'derive');
+  assert.ok(der && der.id === 'p1' && der.label.includes('PRO-2026-001'));
+  assert.deepStrictEqual(core.derivedDocs(quote, data).map(d => d.id), ['p1']);
+  // un document sans identifiant ne « descend » de rien : sinon toute la base remonterait
+  assert.deepStrictEqual(core.derivedDocs({ type: 'devis' }, data), []);
+});
+
+t('template : les quatre nouvelles pièces s\'impriment correctement', () => {
+  const cl = { id: 'c1', name: 'Client SARL', address: 'Tunis', matricule: '1234567A/M/000' };
+  const base = { clientId: 'c1', subject: 'Serveur', date: '2026-03-01', status: 'envoyée',
+    lines: [{ label: 'Serveur rack', qty: 2, unit: 'u', unitPrice: 1500, vatRate: 19 }] };
+  const pro = core.documentHtml({ ...base, id: 'p', type: 'proforma', number: 'PRO-2026-001', dueDate: '2026-03-31' }, cl, CO);
+  assert.ok(pro.includes('Facture proforma'));
+  assert.ok(pro.includes('sans valeur comptable'));
+  assert.ok(!pro.includes('Timbre fiscal'));
+  const bc = core.documentHtml({ ...base, id: 'b', type: 'commande', number: 'BC-2026-001', status: 'reçue' }, cl, CO);
+  assert.ok(bc.includes('Bon de commande') && bc.includes('Bon pour commande'));
+  // bon de livraison : ni prix unitaire, ni TVA, ni bloc de totaux
+  const bl = core.documentHtml({ ...base, id: 'l', type: 'livraison', number: 'BL-2026-001', status: 'émis', hidePrices: true }, cl, CO);
+  assert.ok(bl.includes('Bon de livraison') && bl.includes('Reçu conforme'));
+  assert.ok(!bl.includes('Prix unit'));
+  assert.ok(!bl.includes('1 500'), 'un prix s\'est glissé dans le bon de livraison');
+  assert.ok(bl.includes('Serveur rack') && bl.includes('>2<') || bl.includes('2<'));
+  // prix affichés à la demande
+  assert.ok(core.documentHtml({ ...base, id: 'l', type: 'livraison', number: 'BL-1', hidePrices: false }, cl, CO).includes('Prix unit'));
+  // contrat : les clauses numérotées et les deux cases de signature
+  const ctr = core.documentHtml({ ...base, id: 'k', type: 'contrat', number: 'CTR-2026-001', status: 'envoyé', clauses: core.DEFAULT_CLAUSES }, cl, CO);
+  assert.ok(ctr.includes('Contrat de prestation'));
+  assert.ok(ctr.includes('1. Objet du contrat') && ctr.includes('4. Résiliation et préavis'));
+  assert.ok(ctr.includes('Le client') && ctr.includes('Le prestataire'));
+  // une clause vidée disparaît du document
+  const sans = core.documentHtml({ ...base, id: 'k', type: 'contrat', number: 'CTR-1', clauses: { ...core.DEFAULT_CLAUSES, confidentialite: '' } }, cl, CO);
+  assert.ok(!sans.includes('Confidentialité'));
+  // l'échappement tient sur les clauses comme ailleurs
+  const xss = core.documentHtml({ ...base, id: 'k', type: 'contrat', number: 'CTR-1', clauses: { objet: '<img src=x onerror=alert(1)>' } }, cl, CO);
+  assert.ok(!xss.includes('<img src=x'));
+});
+
+t('emails : un gabarit par nouveau type', () => {
+  const cl = { id: 'c1', name: 'Client SARL', email: 'contact@client.tn' };
+  const doc = { id: 'p', type: 'proforma', number: 'PRO-2026-001', clientId: 'c1', subject: 'Serveur', date: '2026-03-01',
+    dueDate: '2026-03-31', lines: [{ label: 'Serveur', qty: 1, unitPrice: 1000, vatRate: 19 }] };
+  ['proforma', 'commande', 'livraison', 'contrat'].forEach(kind => {
+    const m = core.emailFor(kind, { ...doc, type: kind }, cl, CO);
+    assert.strictEqual(m.to, 'contact@client.tn');
+    assert.ok(m.subject.includes('PRO-2026-001'), kind);
+    assert.ok(m.body.includes('PRO-2026-001'), kind);
+    assert.ok(!/\{[a-z]+\}/.test(m.subject + m.body), 'variable non remplacée dans ' + kind);
+  });
+});
+
 console.log(`\n${n} tests OK`);

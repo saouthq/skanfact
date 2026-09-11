@@ -560,6 +560,10 @@ button.i:hover, button.i:focus-visible { background: var(--primary-soft-2); colo
 }
 .tabs button:hover { color: var(--text); }
 .tabs button.active { color: var(--primary); border-bottom-color: var(--primary); }
+/* compteur discret dans un onglet : il annonce ce qu'on va trouver sans crier comme une pastille d'alerte */
+.tab-n { display: inline-block; min-width: 18px; padding: 1px 5px; margin-left: 4px; border-radius: 999px;
+  background: var(--ink-soft); color: var(--muted); font-size: 11px; font-weight: 700; vertical-align: 1px; }
+.tabs button.active .tab-n { background: var(--primary-soft); color: var(--primary); }
 
 /* ---------- barre « Enregistrer » flottante ---------- */
 .save-bar {

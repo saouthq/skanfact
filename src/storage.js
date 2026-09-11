@@ -77,6 +77,11 @@ function createStorage(dir, opts) {
   const log = opts.log || (() => {});
   const file = path.join(dir, 'skanfact-data.json');
   const backupDir = path.join(dir, 'backups');
+  // Pièces jointes : un sous-dossier par document, à côté du fichier de données. Elles ne sont pas
+  // mises dans le JSON (une photo de facture pèse plus que toute la base) : le document ne garde que
+  // le nom du fichier. Elles ne sont donc PAS dans les sauvegardes quotidiennes, qui sont un seul
+  // fichier JSON — mais la copie externe, elle, les emporte.
+  const attachDir = path.join(dir, 'pieces-jointes');
   const state = { corruptFile: null, key: null, salt: null, encrypted: false, external: { dir: opts.externalDir || null, lastCopy: null, lastError: null } };
 
   function today() { return stamp(now()).slice(0, 10); }
@@ -227,6 +232,38 @@ function createStorage(dir, opts) {
     return d;
   }
 
+  // ---------- pièces jointes ----------
+
+  // Nom de fichier sûr : on garde le nom d'origine lisible, préfixé d'un identifiant pour éviter
+  // qu'un second « facture.pdf » écrase le premier.
+  function safeName(name) {
+    const base = String(name || 'fichier').replace(/[/\\:*?"<>|\u0000-\u001f]/g, '_').replace(/^\.+/, '').slice(-120) || 'fichier';
+    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}-${base}`;
+  }
+  function attachmentPath(docId, fileName) {
+    const d = String(docId || '').replace(/[^A-Za-z0-9_-]/g, '');
+    const f = String(fileName || '').replace(/[/\\]/g, '');
+    if (!d || !f) throw new Error('Pièce jointe introuvable.');
+    return path.join(attachDir, d, f);
+  }
+  // Copie un fichier choisi par l'utilisateur dans le dossier du document. Renvoie la fiche à stocker.
+  function addAttachment(docId, sourcePath) {
+    const d = String(docId || '').replace(/[^A-Za-z0-9_-]/g, '');
+    if (!d) throw new Error('Document inconnu.');
+    const name = path.basename(sourcePath);
+    const stored = safeName(name);
+    const dest = path.join(attachDir, d, stored);
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.copyFileSync(sourcePath, dest);
+    const size = fs.statSync(dest).size;
+    mirrorExternal();
+    return { name, file: stored, size, date: today() };
+  }
+  function removeAttachment(docId, fileName) {
+    try { fs.unlinkSync(attachmentPath(docId, fileName)); } catch (e) { log('pièce jointe', e); }
+    return true;
+  }
+
   // ---------- copie externe ----------
 
   function setExternalDir(p) { state.external.dir = p || null; state.external.lastError = null; state.external.lastCopy = null; if (p) mirrorExternal(); }
@@ -247,6 +284,8 @@ function createStorage(dir, opts) {
       let names = [];
       try { names = fs.readdirSync(backupDir).filter(f => f.endsWith('.json')); } catch {}
       names.forEach(n => { const dst = path.join(target, 'backups', n); if (!fs.existsSync(dst)) fs.copyFileSync(path.join(backupDir, n), dst); });
+      // Les pièces jointes ne tiennent pas dans le JSON : la copie externe est le seul filet qui les emporte.
+      if (fs.existsSync(attachDir)) fs.cpSync(attachDir, path.join(target, 'pieces-jointes'), { recursive: true, force: false, errorOnExist: false });
       state.external.lastCopy = now().toISOString(); state.external.lastError = null;
       return true;
     } catch (e) {
@@ -255,7 +294,7 @@ function createStorage(dir, opts) {
     }
   }
 
-  return { file, backupDir, state, read, unlock, lock, setPassword, write, backupNow, listBackups, readExternal, snapshotDaily, setExternalDir, mirrorExternal };
+  return { file, backupDir, attachDir, state, read, unlock, lock, setPassword, write, backupNow, listBackups, readExternal, snapshotDaily, setExternalDir, mirrorExternal, addAttachment, removeAttachment, attachmentPath };
 }
 
 module.exports = { createStorage, isValidData, stamp, isEncrypted, encryptData, decryptData };

@@ -7,6 +7,33 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 2.6.0 — 11/09/2026
+
+Les quatre pièces qui manquaient autour de la facture, et les pièces jointes.
+
+Nouvelle page **Autres documents** (barre latérale, groupe Ventes), en quatre onglets
+- **Facture proforma** (`PRO-`) : annonce un prix ferme sans être une facture. C'est ce que réclament les administrations et les banques pour un dossier de financement. Mention « document sans valeur comptable », pas de timbre par défaut (*À VÉRIFIER avec ton comptable*)
+- **Bon de commande** (`BC-`) : ce que le client a commandé, par écrit, avant la livraison et la facture
+- **Bon de livraison** (`BL-`) : la pièce qui accompagne la marchandise et se fait signer à la réception. **Les prix y sont masqués par défaut** — le livreur n'a pas à connaître tes tarifs. Une case les rétablit
+- **Contrat de prestation** (`CTR-`) : le vrai document que ton client signe, avec sept clauses préremplies (objet, durée, reconduction, préavis, paiement, confidentialité, litiges), toutes modifiables, et deux cases de signature. À ne pas confondre avec les contrats récurrents, qui fabriquent des factures : les deux vont ensemble
+
+Transformer une pièce en une autre
+- Nouveau menu **Transformer ▾** en haut de chaque document. Le chemin complet d'une vente : devis → bon de commande → bon de livraison → facture, et proforma → facture
+- La pièce créée est toujours un **brouillon** : rien n'est émis sans que tu le relises
+- Chaque pièce garde le lien vers celle dont elle vient. L'historique le montre **dans les deux sens** et chaque ligne est cliquable
+
+Pièces jointes
+- Sur n'importe quel document : le devis signé scanné, le bon de commande du client, un contrat rendu signé, une photo
+- Les fichiers sont **copiés** à côté de tes données : si tu déplaces ou supprimes l'original, la pièce reste attachée
+- Elles ne sont pas dans les sauvegardes quotidiennes (un seul fichier texte) mais bien dans la **copie externe** — une raison de plus de la configurer
+
+Détails
+- Numérotation propre à chaque type, qui repart à 001 en janvier. Ces pièces restent modifiables après coup : elles n'engagent rien fiscalement, contrairement à une facture émise
+- Aucune n'entre dans le chiffre d'affaires, la TVA, le journal des ventes ni les statistiques
+- Un gabarit d'email par type, modifiable dans Paramètres → Emails
+- Le jeu de démonstration contient un exemple de chaque, dont une chaîne proforma → commande → livraison
+- Aide : nouvel article « **Proforma, bons et contrat** », et une bulle « i » sur chaque nouveauté
+
 ## 2.5.0 — 11/09/2026
 
 Une page Statistiques, pour décider au lieu de deviner.

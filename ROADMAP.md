@@ -69,7 +69,7 @@ Ce que ça ne peut pas encore montrer : **la marge**. Elle a besoin des achats (
 
 *Écarts avec le plan :* la période se choisit dans une liste (année, trimestre, mois) plutôt qu'entre deux dates libres — plus simple, et c'est ce qui permet la comparaison automatique à la même période de l'an dernier. L'export est un CSV unique reprenant toute la page, pas un fichier par tableau ni un PDF : un tableur accepte le CSV, et un PDF de statistiques ne s'imprime jamais.
 
-### 2.6.0 — Les documents qui manquent · M
+### 2.6.0 — Les documents qui manquent · M — ✅ **livré le 11/09/2026**
 
 Cinq manques repérés, tous côté ventes, tous nécessaires avant le stock.
 
@@ -80,6 +80,8 @@ Cinq manques repérés, tous côté ventes, tous nécessaires avant le stock.
 - **Pièces jointes** sur n'importe quoi : le devis signé scanné, le bon de commande du client, un contrat rendu signé, une photo. Stockées à côté du fichier de données, reprises dans les sauvegardes
 
 Conséquence : la numérotation s'élargit (`PRO-`, `BC-`, `BL-`, `CTR-`) et le menu « Facturer ▾ » gagne des chemins.
+
+*Écarts avec le plan :* les quatre pièces sont réunies sur une page **Autres documents** à quatre onglets plutôt que quatre entrées de barre latérale — elles servent moins souvent qu'un devis. Les chemins de transformation ont leur propre menu **Transformer ▾** à côté de « Facturer ▾ », qui reste réservé aux trois façons de facturer un devis (conversion, acompte, solde). Les pièces jointes ne sont pas dans le fichier de données (une photo pèse plus que toute la base) : elles sont copiées dans `pieces-jointes/` à côté, et emportées par la copie externe, pas par les sauvegardes quotidiennes — c'est dit dans l'app et dans l'aide.
 
 ---
 

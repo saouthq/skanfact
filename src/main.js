@@ -235,6 +235,7 @@ function buildMenu() {
         { label: 'Catalogue', accelerator: 'CmdOrCtrl+5', click: act('go:catalogue') },
         { label: 'Relances', click: act('go:relances') },
         { label: 'Contrats récurrents', click: act('go:contrats') },
+        { label: 'Autres documents', click: act('go:autres') },
         { label: 'Statistiques', click: act('go:stats') },
         { label: 'Comptabilité', accelerator: 'CmdOrCtrl+6', click: act('go:compta') },
         { type: 'separator' },
@@ -395,6 +396,27 @@ ipcMain.handle('logo:pick', async (_e, title) => {
   const b64 = fs.readFileSync(file).toString('base64');
   return `data:${mime};base64,${b64}`;
 });
+
+// ---------- pièces jointes ----------
+// Les fichiers sont COPIÉS dans userData/pieces-jointes/<document>/ : si l'utilisateur déplace ou
+// supprime l'original, la pièce reste attachée au document.
+ipcMain.handle('attach:add', async (_e, docId) => {
+  const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+    title: 'Choisir un ou plusieurs fichiers à joindre',
+    properties: ['openFile', 'multiSelections']
+  });
+  if (canceled || !filePaths.length) return [];
+  const out = [];
+  for (const f of filePaths) {
+    const size = fs.statSync(f).size;
+    if (size > 25 * 1024 * 1024) throw new Error(`« ${path.basename(f)} » dépasse 25 Mo. Réduis le fichier avant de le joindre.`);
+    out.push(storage.addAttachment(docId, f));
+  }
+  return out;
+});
+ipcMain.handle('attach:open', (_e, { docId, file }) => shell.openPath(storage.attachmentPath(docId, file)));
+ipcMain.handle('attach:reveal', (_e, { docId, file }) => shell.showItemInFolder(storage.attachmentPath(docId, file)));
+ipcMain.handle('attach:remove', (_e, { docId, file }) => storage.removeAttachment(docId, file));
 
 // ---------- PDF ----------
 

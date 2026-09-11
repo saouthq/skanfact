@@ -9,8 +9,12 @@
   // Taux de retenue à la source usuels en Tunisie (À VÉRIFIER avec le comptable selon la nature de la prestation).
   const WITHHOLDING_RATES = [0, 1.5, 3, 5, 10, 15];
   const PAYMENT_METHODS = [['virement', 'Virement'], ['cheque', 'Chèque'], ['especes', 'Espèces'], ['traite', 'Traite'], ['carte', 'Carte'], ['autre', 'Autre']];
-  const PREFIX = { devis: 'DEV', facture: 'FAC', avoir: 'AVO' };
-  const TITLES = { devis: 'Devis', facture: 'Facture', avoir: 'Avoir' };
+  const PREFIX = { devis: 'DEV', facture: 'FAC', avoir: 'AVO', proforma: 'PRO', commande: 'BC', livraison: 'BL', contrat: 'CTR' };
+  const TITLES = { devis: 'Devis', facture: 'Facture', avoir: 'Avoir', proforma: 'Facture proforma', commande: 'Bon de commande', livraison: 'Bon de livraison', contrat: 'Contrat de prestation' };
+  // Les quatre types ajoutés en 2.6.0. Aucun n'a de valeur comptable : ils n'entrent ni dans le journal
+  // des ventes, ni dans la TVA, ni dans le chiffre d'affaires. Seules la facture et l'avoir comptent.
+  const EXTRA_TYPES = ['proforma', 'commande', 'livraison', 'contrat'];
+  const SALES_TYPES = ['facture', 'avoir'];
 
   // Réglages d'une entreprise. Volontairement vides : SkanFact ne présuppose aucune société,
   // l'assistant de première utilisation les remplit. Voir onboarding dans app.js.
@@ -125,12 +129,17 @@
   const STATUSES = {
     devis: ['brouillon', 'envoyé', 'accepté', 'refusé'],
     facture: ['brouillon', 'envoyée', 'annulée'],
-    avoir: ['brouillon', 'émis']
+    avoir: ['brouillon', 'émis'],
+    proforma: ['brouillon', 'envoyée', 'annulée'],
+    commande: ['brouillon', 'reçue', 'livrée', 'annulée'],
+    livraison: ['brouillon', 'émis', 'signé', 'annulé'],
+    contrat: ['brouillon', 'envoyé', 'signé', 'terminé', 'annulé']
   };
   const DISPLAY_STATUSES = {
     devis: ['brouillon', 'envoyé', 'expiré', 'accepté', 'refusé'],
     facture: ['brouillon', 'envoyée', 'partielle', 'retard', 'payée', 'annulée'],
-    avoir: STATUSES.avoir
+    avoir: STATUSES.avoir,
+    proforma: STATUSES.proforma, commande: STATUSES.commande, livraison: STATUSES.livraison, contrat: STATUSES.contrat
   };
   const STATUS_LABELS = { partielle: 'partiellement payée', retard: 'en retard', expiré: 'expiré' };
 
@@ -234,11 +243,16 @@
       vatByRate[l.vatRate].vat = round3(vatByRate[l.vatRate].vat + base * l.vatRate / 100);
     });
     const totalVAT = round3(Object.values(vatByRate).reduce((s, v) => s + v.vat, 0));
-    const stampApplies = (doc.type === 'facture' && doc.applyStamp !== false) || (doc.type === 'avoir' && doc.applyStamp === true);
+    // Timbre : d'office sur la facture, jamais sur un devis ou un bon. Sur l'avoir et la proforma il se
+    // demande explicitement — une proforma n'est pas une facture, elle ne déclenche pas le droit de timbre.
+    // À VÉRIFIER avec le comptable.
+    const stampApplies = (doc.type === 'facture' && doc.applyStamp !== false)
+      || ((doc.type === 'avoir' || doc.type === 'proforma') && doc.applyStamp === true);
     const stamp = stampApplies ? round3(company.stampFee || 0) : 0;
     const totalTTC = round3(netHT + totalVAT + stamp);
     // Retenue à la source (factures / avoirs) : calculée sur le TTC hors timbre. À VÉRIFIER avec le comptable.
-    const withholdingRate = doc.type === 'devis' ? 0 : (Number(doc.withholdingRate) || 0);
+    // La retenue à la source ne se pratique que sur ce qui est réellement payé : facture, avoir, proforma.
+    const withholdingRate = ['facture', 'avoir', 'proforma'].includes(doc.type) ? (Number(doc.withholdingRate) || 0) : 0;
     const withholding = round3((netHT + totalVAT) * withholdingRate / 100);
     const netToPay = round3(totalTTC - withholding);
     return { lines, totalHT, discountRate, discount, netHT, vatByRate, totalVAT, stamp, totalTTC, withholdingRate, withholding, netToPay };
@@ -530,6 +544,72 @@
     });
     return delays.length ? Math.round(delays.reduce((s, x) => s + x, 0) / delays.length) : null;
   }
+
+  // ---------- conversions entre documents (2.6.0) ----------
+  // Ce qu'une pièce peut devenir. Le résultat est toujours un brouillon : rien n'est émis sans relecture.
+  // Le chemin complet d'une vente de marchandise : devis → bon de commande → bon de livraison → facture.
+  const CONVERSIONS = {
+    devis: ['proforma', 'commande', 'livraison', 'contrat'],
+    proforma: ['facture', 'livraison'],
+    commande: ['livraison', 'proforma', 'facture'],
+    livraison: ['facture'],
+    facture: ['livraison'],
+    contrat: [],
+    avoir: []
+  };
+  const CONVERSION_LABELS = {
+    proforma: 'Établir une proforma', commande: 'Enregistrer le bon de commande', livraison: 'Établir le bon de livraison',
+    contrat: 'Rédiger le contrat à signer', facture: 'Facturer'
+  };
+  // Champs qui n'ont de sens que sur la pièce d'origine et ne doivent jamais suivre la conversion.
+  const NOT_COPIED = ['payments', 'emails', 'reminders', 'remindAfter', 'withholdingCertificate', 'deposit',
+    'settles', 'recurringId', 'creditOf', 'creditOfNumber', 'creditReason', 'attachments', 'clauses'];
+
+  function convertDoc(doc, targetType, company, todayIso) {
+    const date = todayIso || today();
+    const copy = JSON.parse(JSON.stringify(doc));
+    NOT_COPIED.forEach(k => { delete copy[k]; });
+    delete copy.fromQuoteId; delete copy.fromQuoteNumber;
+    const days = targetType === 'devis' ? company.quoteValidityDays : company.paymentTermsDays;
+    const out = {
+      ...copy, id: uid(), type: targetType, number: '', status: 'brouillon', date,
+      dueDate: ['facture', 'proforma', 'devis'].includes(targetType) ? addDays(date, Number(days) || 30) : '',
+      createdAt: Date.now(), payments: [],
+      applyStamp: targetType === 'facture',
+      withholdingRate: ['facture', 'avoir', 'proforma'].includes(targetType) ? (Number(doc.withholdingRate) || 0) : 0,
+      // d'où vient cette pièce : affiché sur le document, dans l'historique, et cliquable dans l'app
+      fromDocId: doc.id, fromDocType: doc.type, fromDocNumber: doc.number || ''
+    };
+    // Le devis reste l'origine reconnue par la facturation (acompte, solde, tableau de bord) : on la garde.
+    if (doc.type === 'devis' && targetType === 'facture') { out.fromQuoteId = doc.id; out.fromQuoteNumber = doc.number || ''; }
+    else if (doc.fromQuoteId) { out.fromQuoteId = doc.fromQuoteId; out.fromQuoteNumber = doc.fromQuoteNumber || ''; }
+    if (targetType === 'contrat') out.clauses = { ...DEFAULT_CLAUSES, ...(doc.clauses || {}) };
+    if (targetType === 'livraison') out.hidePrices = true;   // un bon de livraison accompagne la marchandise : les prix n'ont rien à y faire
+    return out;
+  }
+
+  // Les pièces issues d'une autre, dans l'ordre où elles ont été établies.
+  function derivedDocs(doc, data) {
+    if (!doc || !doc.id) return [];   // sans identifiant, `undefined === undefined` renverrait toute la base
+    return (data.documents || []).filter(d => d.fromDocId === doc.id)
+      .sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.createdAt || 0) - (b.createdAt || 0));
+  }
+
+  // Clauses d'un contrat de prestation. Textes de départ, tous modifiables sur le document.
+  // Ce sont des formulations courantes, pas un conseil juridique — À FAIRE RELIRE par un juriste ou le comptable.
+  const DEFAULT_CLAUSES = {
+    objet: 'Le prestataire s\'engage à réaliser pour le client les prestations décrites ci-dessus, dans les conditions définies au présent contrat.',
+    duree: 'Le présent contrat est conclu pour une durée de douze (12) mois à compter de sa date de signature.',
+    reconduction: 'À son terme, le contrat est reconduit tacitement pour des périodes successives de douze (12) mois, sauf dénonciation par l\'une des parties.',
+    preavis: 'La dénonciation se fait par lettre recommandée avec accusé de réception, moyennant un préavis de trente (30) jours avant l\'échéance.',
+    paiement: 'Les prestations sont facturées mensuellement et payables à trente (30) jours date de facture. Tout retard de paiement pourra entraîner la suspension des prestations.',
+    confidentialite: 'Chaque partie s\'engage à garder confidentielle toute information de l\'autre partie dont elle aurait connaissance à l\'occasion du présent contrat.',
+    litiges: 'En cas de litige, les parties s\'efforceront de trouver une solution amiable. À défaut, le différend sera porté devant les tribunaux compétents de Tunis.'
+  };
+  const CLAUSE_LABELS = [
+    ['objet', 'Objet du contrat'], ['duree', 'Durée'], ['reconduction', 'Reconduction'], ['preavis', 'Résiliation et préavis'],
+    ['paiement', 'Conditions de paiement'], ['confidentialite', 'Confidentialité'], ['litiges', 'Litiges']
+  ];
 
   // ---------- statistiques ----------
   // Bornes d'une période nommée. `kind` : 'annee' | 'trimestre' | 'mois'. `n` = numéro du trimestre (1-4)
@@ -840,7 +920,20 @@
         detail: rec ? fillTemplate(rec.subject, { mois: monthLabel(doc.date), annee: (doc.date || '').slice(0, 4) }) : 'contrat supprimé depuis'
       });
     }
+    // Pièce née d'une autre (proforma d'un devis, bon de livraison d'une commande…) : on le dit et on y renvoie.
+    // (la ligne « Établi à partir du devis » ci-dessus couvre déjà le cas devis → facture : on ne la double pas)
+    if (doc.fromDocId && !(doc.fromQuoteId === doc.fromDocId && doc.fromQuoteNumber)) ev.push({
+      date: doc.date, kind: 'source', id: doc.fromDocId,
+      label: `Établi à partir du ${(TITLES[doc.fromDocType] || 'document').toLowerCase()} ${doc.fromDocNumber || '(brouillon)'}`
+    });
     if (doc.number && doc.status !== 'brouillon') ev.push({ date: doc.date, kind: 'emis', label: `${TITLES[doc.type]} ${doc.number} ${doc.type === 'facture' ? 'émise' : 'émis'}` });
+    // Ce qui en découle : la proforma tirée du devis, le bon de livraison tiré de la commande, etc.
+    derivedDocs(doc, data).forEach(d => ev.push({
+      date: d.date, kind: 'derive', id: d.id,
+      label: `${TITLES[d.type]} ${d.number || '(brouillon)'} établi${d.type === 'facture' || d.type === 'proforma' ? 'e' : ''} à partir de cette pièce`,
+      detail: d.status === 'brouillon' ? 'pas encore émis' : ''
+    }));
+    (doc.attachments || []).forEach(a => ev.push({ date: a.date || '', kind: 'piece', label: 'Pièce jointe : ' + a.name, file: a.file }));
     // Côté devis : les factures qui en sont tirées (conversion, acompte, solde), même encore en brouillon
     if (doc.type === 'devis' && doc.id) (data.documents || []).filter(d => d.type === 'facture' && d.fromQuoteId === doc.id).forEach(inv => {
       const what = inv.deposit ? `Facture d'acompte ${inv.deposit.percent} %` : inv.settles ? 'Facture de solde' : 'Facture';
@@ -875,7 +968,11 @@
     relance2: { subject: 'Relance — facture {numero} en retard de {jours} jours', body: 'Bonjour,\n\nNotre facture {numero} d\'un montant de {montant}, échue le {echeance}, n\'a pas été réglée à ce jour ({jours} jours de retard).\nMerci de procéder au règlement dans les meilleurs délais ou de nous indiquer la date prévue.\n\nCordialement,\n{societe}' },
     relance3: { subject: 'Dernière relance — facture {numero}', body: 'Bonjour,\n\nMalgré nos précédents rappels, la facture {numero} ({montant}, échue le {echeance}) reste impayée après {jours} jours.\nSans règlement sous 8 jours, nous serons contraints d\'engager une procédure de recouvrement.\n\nCordialement,\n{societe}' },
     relanceDevis: { subject: 'Notre devis {numero} — {objet}', body: 'Bonjour,\n\nNous vous avons adressé le devis {numero} ({montant} TTC) concernant : {objet}.\nAvez-vous pu l\'examiner ? Nous restons disponibles pour en discuter ou l\'ajuster si besoin.\n\nCordialement,\n{societe}' },
-    comptable: { subject: 'Comptabilité {objet} — {societe}', body: 'Bonjour,\n\nVeuillez trouver ci-joint le journal des ventes de {objet} : {numero} document(s), {montant} de chiffre d\'affaires hors taxes.\n\nJe reste à votre disposition pour tout complément.\n\nCordialement,\n{societe}' }
+    comptable: { subject: 'Comptabilité {objet} — {societe}', body: 'Bonjour,\n\nVeuillez trouver ci-joint le journal des ventes de {objet} : {numero} document(s), {montant} de chiffre d\'affaires hors taxes.\n\nJe reste à votre disposition pour tout complément.\n\nCordialement,\n{societe}' },
+    proforma: { subject: 'Facture proforma {numero} — {societe}', body: 'Bonjour,\n\nVeuillez trouver ci-joint notre facture proforma {numero} d\'un montant de {montant}, concernant : {objet}.\nCe document est établi pour vos démarches : il n\'a pas de valeur comptable et sera suivi d\'une facture définitive.\n\nCordialement,\n{societe}' },
+    commande: { subject: 'Bon de commande {numero} — {societe}', body: 'Bonjour,\n\nVeuillez trouver ci-joint le bon de commande {numero} ({montant} TTC) reprenant votre demande concernant : {objet}.\nMerci de nous le retourner daté et signé pour que nous lancions l\'exécution.\n\nCordialement,\n{societe}' },
+    livraison: { subject: 'Bon de livraison {numero} — {societe}', body: 'Bonjour,\n\nVeuillez trouver ci-joint le bon de livraison {numero} concernant : {objet}.\nMerci de nous le retourner signé après réception.\n\nCordialement,\n{societe}' },
+    contrat: { subject: 'Contrat de prestation {numero} — {societe}', body: 'Bonjour,\n\nVeuillez trouver ci-joint notre contrat de prestation {numero} concernant : {objet}.\nAprès lecture, merci de nous le retourner daté, signé et revêtu de votre cachet.\n\nNous restons à votre disposition pour en discuter les termes.\n\nCordialement,\n{societe}' }
   };
 
   const DEFAULT_EMAIL_TEMPLATES_EN = {
@@ -994,8 +1091,16 @@
       billedTo: 'Facturé à', preparedFor: 'Préparé pour', client: 'Client', subject: 'Objet', designation: 'Désignation', qty: 'Qté', unitPrice: 'Prix unit. HT', vat: 'TVA', lineTotal: 'Total HT',
       payment: 'Règlement', bank: 'Banque', rib: 'RIB', motif: 'Motif', creditText: n => `Cet avoir vient en déduction de la facture ${n}`, conditions: 'Conditions', validText: d => `Devis valable jusqu'au ${d}.`,
       subtotal: 'Total HT', discount: 'Remise', netHT: 'Net HT', on: 'sur', stamp: 'Timbre fiscal', totalTTC: 'Total TTC', withholding: 'Retenue à la source', netToPay: 'Net à payer', creditAmount: 'Montant de l\'avoir',
-      wordsInvoice: 'Arrêtée la présente facture à la somme de', wordsCredit: 'Arrêté le présent avoir à la somme de', wordsQuote: 'Arrêté le présent devis à la somme de',
-      approve: 'Bon pour accord', approveSub: 'Date, signature et cachet du client', stampSign: 'Cachet et signature', provider: 'Le prestataire', draft: 'Brouillon', paid: 'Payée', cancelled: 'Annulée', mf: 'MF', mfCin: 'MF / CIN', rate: 'Taux'
+      wordsInvoice: 'Arrêtée la présente facture à la somme de', wordsCredit: 'Arrêté le présent avoir à la somme de', wordsQuote: 'Arrêté le présent devis à la somme de', wordsDoc: 'Arrêté le présent document à la somme de',
+      approve: 'Bon pour accord', approveSub: 'Date, signature et cachet du client', stampSign: 'Cachet et signature', provider: 'Le prestataire', draft: 'Brouillon', paid: 'Payée', cancelled: 'Annulée', mf: 'MF', mfCin: 'MF / CIN', rate: 'Taux',
+      proforma: 'Facture proforma', commande: 'Bon de commande', livraison: 'Bon de livraison', contrat: 'Contrat de prestation',
+      established: 'Établi le', orderedOn: 'Commandé le', deliveredOn: 'Livré le', signedOn: 'Signé le', from: 'Suite à',
+      proformaNote: 'Document sans valeur comptable. Il ne remplace pas une facture et ne donne lieu à aucune déclaration de TVA.',
+      orderNote: 'Bon de commande établi d\'après votre demande. Merci de nous le retourner daté et signé pour lancer l\'exécution.',
+      deliveryNote: 'Marchandises et prestations livrées au client. À signer à la réception.',
+      received: 'Reçu conforme', receivedSub: 'Date, nom et signature du réceptionnaire',
+      orderApprove: 'Bon pour commande', contractClient: 'Le client', contractProvider: 'Le prestataire',
+      contractSub: 'Lu et approuvé, date et signature', contractIntro: 'Entre les soussignés', totalNoTax: 'Total HT'
     },
     en: {
       devis: 'Quote', facture: 'Invoice', avoir: 'Credit note', issuedF: 'Issued on', issued: 'Issued on', dueBy: 'Due by', validUntil: 'Valid until',
@@ -1003,8 +1108,16 @@
       billedTo: 'Billed to', preparedFor: 'Prepared for', client: 'Client', subject: 'Subject', designation: 'Description', qty: 'Qty', unitPrice: 'Unit price', vat: 'VAT', lineTotal: 'Total excl. VAT',
       payment: 'Payment', bank: 'Bank', rib: 'Account (RIB)', motif: 'Reference', creditText: n => `This credit note is deducted from invoice ${n}`, conditions: 'Terms', validText: d => `This quote is valid until ${d}.`,
       subtotal: 'Subtotal excl. VAT', discount: 'Discount', netHT: 'Net excl. VAT', on: 'on', stamp: 'Stamp duty', totalTTC: 'Total incl. VAT', withholding: 'Withholding tax', netToPay: 'Amount due', creditAmount: 'Credit amount',
-      wordsInvoice: 'Total amount in words:', wordsCredit: 'Total amount in words:', wordsQuote: 'Total amount in words:',
-      approve: 'Approved — signature', approveSub: 'Date, signature and stamp of the client', stampSign: 'Stamp and signature', provider: 'Provider', draft: 'Draft', paid: 'Paid', cancelled: 'Cancelled', mf: 'Tax ID', mfCin: 'Tax ID', rate: 'Rate'
+      wordsInvoice: 'Total amount in words:', wordsCredit: 'Total amount in words:', wordsQuote: 'Total amount in words:', wordsDoc: 'Total amount in words:',
+      approve: 'Approved — signature', approveSub: 'Date, signature and stamp of the client', stampSign: 'Stamp and signature', provider: 'Provider', draft: 'Draft', paid: 'Paid', cancelled: 'Cancelled', mf: 'Tax ID', mfCin: 'Tax ID', rate: 'Rate',
+      proforma: 'Proforma invoice', commande: 'Purchase order', livraison: 'Delivery note', contrat: 'Service agreement',
+      established: 'Issued on', orderedOn: 'Ordered on', deliveredOn: 'Delivered on', signedOn: 'Signed on', from: 'Following',
+      proformaNote: 'This document has no accounting value. It does not replace an invoice and is not subject to VAT reporting.',
+      orderNote: 'Purchase order drawn up from your request. Please return it dated and signed so we can proceed.',
+      deliveryNote: 'Goods and services delivered to the client. To be signed on receipt.',
+      received: 'Received in good order', receivedSub: 'Date, name and signature of the recipient',
+      orderApprove: 'Approved — order', contractClient: 'The client', contractProvider: 'The provider',
+      contractSub: 'Read and approved, date and signature', contractIntro: 'Between the undersigned', totalNoTax: 'Total excl. VAT'
     }
   };
 
@@ -1019,12 +1132,19 @@
     const isInvoice = doc.type === 'facture';
     const isCredit = doc.type === 'avoir';
     const isQuote = doc.type === 'devis';
+    const isProforma = doc.type === 'proforma';
+    const isOrder = doc.type === 'commande';
+    const isDelivery = doc.type === 'livraison';
+    const isContract = doc.type === 'contrat';
+    // Le bon de livraison accompagne la marchandise : par défaut il ne porte aucun prix.
+    const noPrices = isDelivery && doc.hidePrices !== false;
+    const clauses = isContract ? { ...DEFAULT_CLAUSES, ...(doc.clauses || {}) } : null;
     const title = L[doc.type] || 'Document';
     const cl = client || {};
     const ink = company.primaryColor || '#1b2430';
     const accent = company.accentColor || '#0f9d8f';
     const numberText = doc.number || L.draft;
-    const stampKey = opts.stamp || ({ 'Payée': 'paid', 'Annulée': 'cancelled', 'Brouillon': 'draft' })[opts.stampText] || (opts.stampText ? 'custom' : (!isQuote && doc.status === 'brouillon' ? 'draft' : null));
+    const stampKey = opts.stamp || ({ 'Payée': 'paid', 'Annulée': 'cancelled', 'Brouillon': 'draft' })[opts.stampText] || (opts.stampText ? 'custom' : (!isQuote && !isContract && doc.status === 'brouillon' ? 'draft' : null));
     const stampText = stampKey === 'custom' ? opts.stampText : (stampKey ? L[stampKey] : '');
     const multiVat = Object.keys(t.vatByRate).length > 1;
     const pct = n => String(n).replace('.', lang === 'en' ? '.' : ',');
@@ -1042,9 +1162,9 @@
           ${l.description ? `<div class="desc">${nl2br(l.description)}</div>` : ''}
         </td>
         <td class="r num">${escapeHtml(String(l.qty).replace('.', lang === 'en' ? '.' : ','))}${l.unit ? `<span class="unit"> ${escapeHtml(l.unit)}</span>` : ''}</td>
-        <td class="r num">${fmt(l.unitPrice)}</td>
+        ${noPrices ? '' : `<td class="r num">${fmt(l.unitPrice)}</td>
         <td class="r num dim">${l.vatRate}%</td>
-        <td class="r num strong">${fmt(l.ht)}</td>
+        <td class="r num strong">${fmt(l.ht)}</td>`}
       </tr>`).join('');
 
     const metaItems = isInvoice ? [
@@ -1055,6 +1175,23 @@
     ] : isCredit ? [
       [L.issued, fmtDate(doc.date)],
       doc.creditOfNumber ? [L.cancels, L.facture + ' ' + doc.creditOfNumber] : null,
+      doc.reference ? [L.reference, doc.reference] : null
+    ] : isProforma ? [
+      [L.established, fmtDate(doc.date)],
+      doc.dueDate ? [L.dueBy, fmtDate(doc.dueDate)] : null,
+      doc.fromDocNumber ? [L.from, doc.fromDocNumber] : null,
+      doc.reference ? [L.reference, doc.reference] : null
+    ] : isOrder ? [
+      [L.orderedOn, fmtDate(doc.date)],
+      doc.fromDocNumber ? [L.from, doc.fromDocNumber] : null,
+      doc.reference ? [L.reference, doc.reference] : null
+    ] : isDelivery ? [
+      [L.deliveredOn, fmtDate(doc.date)],
+      doc.fromDocNumber ? [L.from, doc.fromDocNumber] : null,
+      doc.reference ? [L.reference, doc.reference] : null
+    ] : isContract ? [
+      [L.established, fmtDate(doc.date)],
+      doc.fromDocNumber ? [L.from, doc.fromDocNumber] : null,
       doc.reference ? [L.reference, doc.reference] : null
     ] : [
       [L.issued, fmtDate(doc.date)],
@@ -1073,9 +1210,11 @@
     // Pied de page légal : le texte libre s'il est rempli, sinon composé du nom et du matricule
     const footerBase = company.footer || [company.name, company.matricule ? (lang === 'en' ? 'Tax ID ' : 'Matricule fiscal ') + company.matricule : ''].filter(Boolean).join(' — ');
     const legal = [footerBase, company.rc ? 'RC ' + company.rc : '', company.capital ? (lang === 'en' ? 'Share capital ' : 'Capital ') + company.capital : ''].filter(Boolean).join(' — ');
-    const grandLabel = isInvoice ? L.netToPay : isCredit ? L.creditAmount : L.totalTTC;
-    const grandValue = isQuote ? t.totalTTC : t.netToPay;
-    const wordsIntro = isInvoice ? L.wordsInvoice : isCredit ? L.wordsCredit : L.wordsQuote;
+    const grandLabel = isInvoice || isProforma ? L.netToPay : isCredit ? L.creditAmount : L.totalTTC;
+    const grandValue = isQuote || isOrder || isContract ? t.totalTTC : t.netToPay;
+    const wordsIntro = isInvoice ? L.wordsInvoice : isCredit ? L.wordsCredit : isQuote ? L.wordsQuote : L.wordsDoc;
+    // Un contrat porte un échéancier de prix, pas un montant à régler : la somme en toutes lettres n'y a pas sa place.
+    const showWords = !isContract;
     const paymentTerms = lang === 'en' ? company.paymentTermsEn : company.paymentTerms;
     const quoteTerms = lang === 'en' ? company.quoteTermsEn : company.quoteTerms;
 
@@ -1134,7 +1273,7 @@
   table.lines .desc { font-size: 8.8pt; color: #6b7684; margin-top: .6mm; line-height: 1.4; }
   table.lines .unit { color: #9aa3ae; font-size: 8.5pt; }
 
-  .after { display: grid; grid-template-columns: 1fr 74mm; gap: 12mm; margin-top: 3mm; align-items: start; }
+  .after { display: grid; grid-template-columns: ${noPrices ? '1fr' : '1fr 74mm'}; gap: 12mm; margin-top: 3mm; align-items: start; }
   .card { background: ${tint(.07)}; border-radius: 3.5mm; padding: 4mm 5mm; }
   table.totals { width: 100%; border-collapse: collapse; font-size: 9.4pt; }
   table.totals td { padding: .7mm 0; color: #4b5563; }
@@ -1155,7 +1294,11 @@
   .info + .info, .notes { margin-top: 5mm; }
   .notes { font-size: 9pt; color: #4b5563; white-space: pre-line; line-height: 1.45; }
 
-  .sign { display: flex; justify-content: ${isQuote ? 'space-between' : 'flex-end'}; gap: 12mm; margin-top: 5mm; }
+  .sign { display: flex; justify-content: ${isQuote || isOrder || isDelivery || isContract ? 'space-between' : 'flex-end'}; gap: 12mm; margin-top: 5mm; }
+  /* clauses d'un contrat : de la lecture, pas un tableau — deux colonnes tiennent l'A4 sans rétrécir le texte */
+  .clauses { column-count: 2; column-gap: 10mm; margin-top: 5mm; font-size: 8.5pt; color: #4b5563; line-height: 1.45; }
+  .clauses .cl { break-inside: avoid; page-break-inside: avoid; margin-bottom: 3.5mm; }
+  .clauses .cl-t { font-weight: 700; color: ${ink}; margin-bottom: .6mm; }
   .sign .s { width: 64mm; height: 15mm; border: .3mm dashed ${tint(.5)}; border-radius: 3.5mm; padding: 3mm 4mm; position: relative; }
   .sign .s small { display: block; color: #9aa3ae; font-size: 8pt; margin-top: .6mm; }
   .sign .s img { position: absolute; right: 3mm; top: 1.5mm; max-height: 12mm; max-width: 34mm; }
@@ -1182,10 +1325,23 @@
   .page.compact .card { padding: 3mm 5mm; }
   .page.compact .info + .info, .page.compact .notes { margin-top: 3mm; }
   .page.compact .words { margin-top: 1.8mm; }
+  .page.compact .clauses { margin-top: 3.5mm; font-size: 8pt; }
+  .page.compact .clauses .cl { margin-bottom: 2.6mm; }
+  /* Un contrat porte un tableau de prix ET sept clauses ET deux cases de signature : quand il ne tient pas,
+     on resserre les clauses d'un cran de plus plutôt que de déborder de quelques millimètres sur une page
+     presque vide. Au-delà, il fait légitimement deux pages — un contrat de deux pages n'a rien d'anormal. */
+  .page.compact.t-contrat .clauses { font-size: 7.6pt; column-gap: 8mm; line-height: 1.38; }
+  .page.compact.t-contrat .clauses .cl { margin-bottom: 2.2mm; }
+  .page.compact.t-contrat .card { padding: 3mm 4mm; }
+  .page.compact.t-contrat .notes { margin-top: 2mm; }
   .page.compact .sign { margin-top: 3.5mm; }
   .page.compact .sign .s { height: 13mm; }
+  /* Seul le contrat a une légende longue (« Lu et approuvé, date et signature ») : sa case grandit pour
+     ne pas déborder sur le pied de page. Les autres gardent une hauteur fixe, qui ne coûte rien en place. */
+  .page.t-contrat .sign .s { height: auto; min-height: 15mm; }
+  .page.compact.t-contrat .sign .s { height: auto; min-height: 13mm; }
 </style></head>
-<body><div class="page">
+<body><div class="page t-${escapeHtml(doc.type || 'devis')}">
   ${stampText ? `<div class="stamp${stampKey === 'draft' ? ' draft' : ''}">${escapeHtml(stampText)}</div>` : ''}
   <div class="hero">
     <div class="head">
@@ -1206,7 +1362,7 @@
   <div class="inner">
     <div class="parties">
       <div class="party">
-        <span class="k">${isInvoice ? L.billedTo : isCredit ? L.client : L.preparedFor}</span>
+        <span class="k">${isInvoice || isProforma ? L.billedTo : isCredit || isDelivery || isContract ? L.client : L.preparedFor}</span>
         <div class="pname">${escapeHtml(cl.name || '')}</div>
         ${cl.address ? `<div class="addr">${nl2br(cl.address)}</div>` : ''}
         ${clientContact ? `<div class="more">${clientContact}</div>` : ''}
@@ -1217,8 +1373,9 @@
     <table class="lines">
       <thead><tr>
         <th>${L.designation}</th>
-        <th class="r" style="width:16mm">${L.qty}</th><th class="r" style="width:26mm">${L.unitPrice}</th>
-        <th class="r" style="width:12mm">${L.vat}</th><th class="r" style="width:28mm">${L.lineTotal}</th>
+        <th class="r" style="width:16mm">${L.qty}</th>
+        ${noPrices ? '' : `<th class="r" style="width:26mm">${L.unitPrice}</th>
+        <th class="r" style="width:12mm">${L.vat}</th><th class="r" style="width:28mm">${L.lineTotal}</th>`}
       </tr></thead>
       <tbody>${linesHtml}</tbody>
     </table>
@@ -1240,9 +1397,17 @@
         <div class="info"><span class="k">${L.conditions}</span>
           ${L.validText(fmtDate(doc.dueDate))} ${escapeHtml(quoteTerms || '')}
         </div>` : ''}
+        ${isProforma ? `
+        <div class="info"><span class="k">${L.proforma}</span><div class="terms">${L.proformaNote}</div></div>
+        ${company.rib || company.bank ? `<div class="info"><span class="k">${L.payment}</span>
+          ${company.bank ? `<div class="row"><span>${L.bank}</span><span>${escapeHtml(company.bank)}</span></div>` : ''}
+          ${company.rib ? `<div class="row"><span>${L.rib}</span><span class="mono">${escapeHtml(company.rib)}</span></div>` : ''}
+        </div>` : ''}` : ''}
+        ${isOrder ? `<div class="info"><span class="k">${L.commande}</span><div class="terms">${L.orderNote}</div></div>` : ''}
+        ${isDelivery ? `<div class="info"><span class="k">${L.livraison}</span><div class="terms">${L.deliveryNote}</div></div>` : ''}
         ${doc.notes ? `<div class="notes">${nl2br(doc.notes)}</div>` : ''}
       </div>
-      <div class="card">
+      ${noPrices ? '' : `<div class="card">
         <table class="totals">
           <tr><td>${L.subtotal}</td><td class="r num">${fmt(t.totalHT)}</td></tr>
           ${t.discount ? `<tr><td>${L.discount} ${pct(t.discountRate)}%</td><td class="r num">− ${fmt(t.discount)}</td></tr><tr><td>${L.netHT}</td><td class="r num">${fmt(t.netHT)}</td></tr>` : ''}
@@ -1251,13 +1416,21 @@
           ${t.withholding ? `<tr class="sub"><td>${L.totalTTC}</td><td class="r num">${fmt(t.totalTTC)}</td></tr><tr><td>${L.withholding} ${pct(t.withholdingRate)}%</td><td class="r num">− ${fmt(t.withholding)}</td></tr>` : ''}
         </table>
         <div class="grand"><span class="gl">${grandLabel}</span><span class="gv num">${fmt(grandValue)}<small>${escapeHtml(cur)}</small></span></div>
-        <div class="words">${wordsIntro} <strong>${escapeHtml(amountToWords(grandValue, cur, lang).toLowerCase())}</strong>.</div>
-      </div>
+        ${showWords ? `<div class="words">${wordsIntro} <strong>${escapeHtml(amountToWords(grandValue, cur, lang).toLowerCase())}</strong>.</div>` : ''}
+      </div>`}
     </div>
+
+    ${isContract ? `<div class="clauses">
+      ${CLAUSE_LABELS.filter(([k]) => (clauses[k] || '').trim()).map(([k, label], i) =>
+        `<div class="cl"><div class="cl-t">${i + 1}. ${escapeHtml(label)}</div><div class="cl-b">${nl2br(clauses[k])}</div></div>`).join('')}
+    </div>` : ''}
 
     <div class="sign">
       ${isQuote ? `<div class="s"><span class="k">${L.approve}</span><small>${L.approveSub}</small></div>` : ''}
-      <div class="s"><span class="k">${isQuote ? L.provider : L.stampSign}</span><small>${escapeHtml(company.name)}</small>${company.stampImage ? `<img src="${company.stampImage}" alt="">` : ''}</div>
+      ${isOrder ? `<div class="s"><span class="k">${L.orderApprove}</span><small>${L.approveSub}</small></div>` : ''}
+      ${isDelivery ? `<div class="s"><span class="k">${L.received}</span><small>${L.receivedSub}</small></div>` : ''}
+      ${isContract ? `<div class="s"><span class="k">${L.contractClient}</span><small>${escapeHtml(cl.name || '')} — ${L.contractSub}</small></div>` : ''}
+      <div class="s"><span class="k">${isQuote || isContract ? L.provider : L.stampSign}</span><small>${escapeHtml(company.name)}</small>${company.stampImage ? `<img src="${company.stampImage}" alt="">` : ''}</div>
     </div>
   </div>
 
@@ -1408,6 +1581,7 @@
     PERIODS, MONTHS_FR, MONTHS_SHORT, monthLabel, addMonths, nextRecurrenceDate, dueRecurrences, catchUpRecurrence, fillTemplate, buildRecurringInvoice,
     reminderLevel, REMINDER_LABELS, daysBetween, overdueInvoices, todoList, companyGaps, documentHistory, DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_TEMPLATES_EN, emailFor,
     CURRENCIES, decimalsFor, toBase, monthKeys, monthlySeries, topClients, quoteStats, avgPaymentDelay, clientSummary, I18N,
+    EXTRA_TYPES, SALES_TYPES, CONVERSIONS, CONVERSION_LABELS, convertDoc, derivedDocs, DEFAULT_CLAUSES, CLAUSE_LABELS,
     periodBounds, issuedIn, salesTotals, revenueByMonth, topItems, clientMovement, AGING_BUCKETS, agedReceivables, payerRanking, quoteFunnel, objectiveProgress,
     amountToWords, intToWords, intToWordsEn, documentHtml, fitToPage, pageCount
   };

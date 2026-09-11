@@ -97,6 +97,15 @@
     'rel.levels': { t: 'Niveaux de relance', d: 'SkanFact choisit le ton selon le retard : <b>rappel</b> courtois jusqu\'à 15 jours (« sauf erreur de notre part »), <b>relance</b> ferme jusqu\'à 45 jours, <b>dernière relance</b> au-delà, qui annonce le recouvrement. Les trois textes sont modifiables.' },
     'rel.soon': { t: 'Échéances proches', d: 'Les factures qui arrivent à échéance dans les sept jours. Un message amical avant l\'échéance évite souvent la relance après.' },
     'contrat.form': { t: 'Contrat récurrent', d: 'Décris une fois la facture qui revient (client, lignes, période, jour du mois) et SkanFact te la proposera à chaque échéance. Elle arrive en <b>brouillon</b> : tu la relis, tu ajustes si besoin, tu émets. Rien n\'est envoyé sans toi.' },
+    'ed.statusExtra': { t: 'Statut', d: 'Ces pièces n\'ont pas de valeur comptable : tu choisis librement leur statut et tu peux les modifier après coup, contrairement à une facture émise. Le numéro, lui, est attribué au premier enregistrement et ne change plus.' },
+    'ed.stampProforma': { t: 'Timbre sur une proforma', d: 'Par défaut, pas de timbre : une proforma n\'est pas une facture et ne déclenche pas le droit de timbre. Coche si tu veux que le montant annoncé soit exactement celui de la future facture, timbre compris. <em>À VÉRIFIER avec ton comptable.</em>' },
+    'ed.hidePrices': { t: 'Masquer les prix', d: 'Un bon de livraison accompagne la marchandise : il sert à vérifier ce qui est livré, pas à annoncer un prix. Le livreur, le magasinier ou le transporteur n\'ont pas à connaître tes tarifs. Décoche seulement si ton client demande un bon valorisé.' },
+    'ed.clauses': { t: 'Clauses du contrat', d: 'Les articles qui s\'impriment sur le contrat, numérotés dans l\'ordre. Vide un champ pour retirer la clause correspondante. Les textes proposés sont des formulations courantes en prestation de services : <em>fais-les relire par un juriste ou ton comptable</em> avant ta première signature — ce n\'est pas un conseil juridique.' },
+    'ed.attachments': { t: 'Pièces jointes', d: 'Tout ce qui justifie ce document : le devis signé scanné, le bon de commande du client, un contrat rendu signé, une photo du chantier. Les fichiers sont <b>copiés</b> à côté de tes données — si tu déplaces ou supprimes l\'original, la pièce reste attachée. Elles ne sont pas dans les sauvegardes quotidiennes (qui ne contiennent qu\'un fichier texte) mais bien dans la copie externe : une raison de plus de la configurer.' },
+    'autres.proforma': { t: 'Facture proforma', d: 'Un document qui annonce un prix ferme <b>sans être une facture</b> : pas de numéro de facture, pas de TVA déclarée, aucune écriture comptable. Les administrations, les banques et les dossiers de financement la réclament souvent avant d\'engager la dépense. Quand la commande est confirmée, tu la transformes en vraie facture en un clic.' },
+    'autres.commande': { t: 'Bon de commande', d: 'La pièce qui enregistre ce que le client a commandé, avant que tu livres ou que tu factures. Elle protège les deux parties : elle fixe par écrit ce qui a été demandé, en quelle quantité et à quel prix. Fais-la signer quand le montant est important.' },
+    'autres.livraison': { t: 'Bon de livraison', d: 'La pièce qui accompagne la marchandise et se fait signer à la réception. C\'est ta preuve d\'avoir livré : sans elle, un client de mauvaise foi peut contester. Par défaut les prix y sont masqués. À partir de la version 4.0, c\'est ce bon qui sortira les articles du stock.' },
+    'autres.contrat': { t: 'Contrat de prestation', d: 'Le vrai document que ton client signe : objet, durée, reconduction, préavis, conditions de paiement, confidentialité, litiges. À ne pas confondre avec les <b>contrats récurrents</b> de la barre latérale, qui ne font que fabriquer des brouillons de facture chaque mois. Les deux vont ensemble : on signe le contrat, puis on crée le contrat récurrent qui le facture.' },
     'stat.ca': { t: 'Chiffre d\'affaires HT', d: 'Le total hors taxes de tes factures émises sur la période, avoirs déduits. Les brouillons et les factures annulées n\'y sont jamais comptés. La flèche compare avec la même période de l\'an dernier : c\'est la seule comparaison qui a du sens, parce qu\'elle neutralise la saisonnalité.' },
     'stat.count': { t: 'Factures émises', d: 'Le nombre de factures numérotées sur la période. Beaucoup de factures pour peu de chiffre d\'affaires, c\'est du temps administratif : pense à regrouper ou à passer en contrat récurrent.' },
     'stat.avg': { t: 'Panier moyen', d: 'Ton chiffre d\'affaires divisé par le nombre de factures. Le faire monter demande moins d\'efforts que de trouver de nouveaux clients : propose une prestation complémentaire, ou un forfait annuel plutôt qu\'une intervention.' },
@@ -301,6 +310,35 @@
   <li><b>Chaque trimestre</b> : réclame les attestations de retenue à la source manquantes.</li>
   <li><b>Chaque année</b> : vérifie que la numérotation repart à 001 en janvier (c'est automatique) et archive une copie complète de tes données.</li>
 </ul>`
+    },
+    {
+      id: 'pieces', title: 'Proforma, bons et contrat', sub: 'Les pièces qui entourent la facture',
+      body: `
+<p>À côté du devis et de la facture, SkanFact sait établir quatre autres pièces. Elles sont réunies dans <b>Autres documents</b>. Aucune n'a de valeur comptable : elles n'entrent ni dans ton chiffre d'affaires, ni dans ta TVA, ni dans le journal des ventes. Elles servent à documenter ce qui se passe autour de la vente.</p>
+<h3>La facture proforma (PRO-)</h3>
+<p>Elle annonce un prix ferme <b>sans être une facture</b>. Les administrations, les banques et les dossiers de financement la réclament souvent avant d'engager la dépense. Elle porte la mention « document sans valeur comptable » et, par défaut, pas de timbre fiscal — on ne paie pas de droit de timbre sur un document qui n'est pas une facture. <em>À VÉRIFIER avec ton comptable.</em></p>
+<p>Quand la commande est confirmée, le menu <b>Transformer</b> en fait une vraie facture, avec son numéro FAC.</p>
+<h3>Le bon de commande (BC-)</h3>
+<p>Il enregistre ce que le client a commandé, avant que tu livres ou que tu factures. Il protège les deux parties : il fixe par écrit ce qui a été demandé, en quelle quantité et à quel prix. Fais-le signer dès que le montant compte.</p>
+<h3>Le bon de livraison (BL-)</h3>
+<p>Il accompagne la marchandise et se fait signer à la réception. C'est ta preuve d'avoir livré : sans lui, un client de mauvaise foi peut contester. Par défaut <b>les prix y sont masqués</b> — le livreur, le magasinier ou le transporteur n'ont pas à connaître tes tarifs. Une case à cocher les rétablit si ton client demande un bon valorisé.</p>
+<h3>Le contrat de prestation (CTR-)</h3>
+<p>Le vrai document que ton client signe : objet, durée, reconduction, préavis, conditions de paiement, confidentialité, litiges. Les sept clauses sont préremplies avec des formulations courantes et se modifient toutes. <b>Fais-les relire par un juriste ou ton comptable avant ta première signature</b> : ce sont des exemples, pas un conseil juridique.</p>
+<p>Ne le confonds pas avec les <b>contrats récurrents</b> de la barre latérale, qui ne font que fabriquer un brouillon de facture chaque mois. Les deux vont ensemble : on signe le contrat, puis on crée le contrat récurrent qui le facture.</p>
+<h3>Le chemin complet</h3>
+<p>Le menu <b>Transformer</b>, en haut de chaque document, reprend tout ce qu'on peut en tirer. La chaîne habituelle pour une vente de marchandise :</p>
+<ul>
+  <li><b>Devis</b> — tu proposes un prix</li>
+  <li><b>Bon de commande</b> — le client commande</li>
+  <li><b>Bon de livraison</b> — tu livres, il signe</li>
+  <li><b>Facture</b> — tu factures ce qui a été livré</li>
+</ul>
+<p>Chaque pièce garde le lien vers celle dont elle vient : l'historique du document le montre dans les deux sens, et chaque ligne est cliquable. Rien n'est jamais créé sans ton accord : une transformation produit toujours un <b>brouillon</b> que tu relis.</p>
+<h3>Les numéros</h3>
+<p>Chaque type a sa propre suite, qui repart à 001 en janvier : <b>PRO-2026-001</b>, <b>BC-2026-001</b>, <b>BL-2026-001</b>, <b>CTR-2026-001</b>. Le numéro est attribué au premier enregistrement. Contrairement à une facture, ces pièces restent modifiables ensuite : elles n'engagent rien fiscalement.</p>
+<h3>Les pièces jointes</h3>
+<p>Sur n'importe quel document — devis, facture, bon, contrat — un panneau <b>Pièces jointes</b> permet d'attacher des fichiers : le devis signé scanné, le bon de commande du client, un contrat rendu signé, la photo d'un chantier.</p>
+<p>Les fichiers sont <b>copiés</b> à côté de tes données : si tu déplaces ou supprimes l'original, la pièce reste attachée au document. Attention à un point : elles ne sont <b>pas</b> dans les sauvegardes quotidiennes, qui ne contiennent qu'un fichier texte. Elles sont en revanche dans la <b>copie externe</b> (Paramètres → Sécurité et données). Si tu joins des documents importants, configure cette copie.</p>`
     },
     {
       id: 'statistiques', title: 'Lire tes statistiques', sub: 'Ce que les chiffres disent, et ce qu\'ils ne disent pas',

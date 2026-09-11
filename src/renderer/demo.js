@@ -165,6 +165,27 @@
     add('q-nova-review', { type: 'devis', client: 6, date: daysAgo(5), status: 'envoyé', subject: 'Annual security review', lang: 'en', currency: 'EUR', exchangeRate: 3.35,
       lines: [en('External vulnerability assessment', 'Quarterly scans of the public perimeter with executive summary', 1, 'package', 450), en('Phishing simulation campaign', 'One campaign, results and awareness report', 1, 'campaign', 350)], notes: novaNotes, emails: [E(daysAgo(5), 'devis')] });
 
+    // ---------- les quatre pièces sans valeur comptable (2.6.0) ----------
+    // Une de chaque, rattachée à une affaire existante, pour montrer le chemin
+    // devis → proforma / bon de commande → bon de livraison → facture.
+    add('pro-lauriers', { type: 'proforma', client: 7, date: mo(2, 12), status: 'envoyée', subject: 'Équipement de la salle informatique',
+      reference: 'Dossier subvention 2026',
+      lines: [line(k[2], 12), line(k[6], 1)],
+      notes: 'Document établi à la demande de l\'établissement pour son dossier de financement. Une facture définitive sera émise à la commande.' });
+    add('bc-lauriers', { type: 'commande', client: 7, date: mo(2, 20), status: 'livrée', subject: 'Équipement de la salle informatique',
+      reference: 'BC client n° 2026-114', fromDoc: 'pro-lauriers',
+      lines: b => JSON.parse(JSON.stringify(b['pro-lauriers'].lines)),
+      notes: 'Bon de commande signé par l\'intendant le jour même.' });
+    add('bl-lauriers', { type: 'livraison', client: 7, date: mo(2, 26), status: 'signé', subject: 'Équipement de la salle informatique',
+      fromDoc: 'bc-lauriers',
+      lines: b => JSON.parse(JSON.stringify(b['bc-lauriers'].lines)),
+      notes: 'Livré et installé sur place. Bon signé par M. Hached à la réception.' });
+    add('ctr-clinique', { type: 'contrat', client: 0, date: mo(12, 5), status: 'signé', subject: 'Maintenance et supervision du système d\'information',
+      lines: [line(k[4], 1), line(k[3], 1)],
+      clauses: { duree: 'Le présent contrat est conclu pour une durée de douze (12) mois à compter du premier jour du mois suivant sa signature.',
+        paiement: 'Les prestations sont facturées mensuellement, le 1er de chaque mois, et payables à trente (30) jours date de facture.' },
+      notes: 'Contrat signé par les deux parties. Il est facturé par le contrat récurrent « Maintenance mensuelle ».' });
+
     // Création dans l'ordre chronologique : numéros continus par type et par année, dépendances (acompte → solde, facture → avoir) résolues
     specs.sort((a, b) => a.date.localeCompare(b.date) || (a.seq || 0) - (b.seq || 0));
     const byKey = {};
@@ -183,8 +204,12 @@
       if (s.deposit) { const q = byKey[s.deposit.quote]; doc.deposit = { percent: s.deposit.percent, quoteId: q.id, quoteNumber: q.number }; }
       if (s.settles) { const q = byKey[s.settles.quote]; doc.settles = { quoteId: q.id, quoteNumber: q.number, depositIds: s.settles.deposits.map(x => byKey[x].id) }; }
       if (s.recurringId) doc.recurringId = s.recurringId;
+      if (s.fromDoc) { const src = byKey[s.fromDoc]; doc.fromDocId = src.id; doc.fromDocType = src.type; doc.fromDocNumber = src.number; }
+      if (s.type === 'contrat') doc.clauses = { ...C.DEFAULT_CLAUSES, ...(s.clauses || {}) };
+      if (s.type === 'livraison') doc.hidePrices = s.hidePrices !== false;
+      if (['commande', 'livraison', 'contrat'].includes(s.type)) { doc.withholdingRate = 0; doc.applyStamp = false; doc.dueDate = ''; }
       if (s.certificate) doc.withholdingCertificate = true;
-      if (!draft || s.type === 'devis') doc.number = C.nextNumber(d, s.type, s.date);
+      if (!draft || s.type === 'devis' || C.EXTRA_TYPES.includes(s.type)) doc.number = C.nextNumber(d, s.type, s.date);
       if (s.emails && s.emails.length) {
         doc.emails = s.emails.map(e => ({ date: e.date, to: client.email, kind: e.kind, subject: C.emailFor(e.kind, doc, client, co, { jours: doc.dueDate ? Math.max(0, C.daysBetween(doc.dueDate, e.date)) : 0 }).subject }));
         const rem = doc.emails.filter(e => /^relance\d$/.test(e.kind)).map(e => ({ date: e.date, level: Number(e.kind.slice(-1)), channel: 'email' }));

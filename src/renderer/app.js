@@ -477,7 +477,7 @@
   let goingBack = false;
   const PAGE_LABELS = {
     dashboard: 'Accueil', devis: 'Devis', factures: 'Factures', relances: 'Relances', contrats: 'Contrats',
-    contrat: 'le contrat', clients: 'Clients', client: 'la fiche client', catalogue: 'Catalogue',
+    contrat: 'le contrat', autres: 'Autres documents', clients: 'Clients', client: 'la fiche client', catalogue: 'Catalogue',
     stats: 'Statistiques', compta: 'Comptabilité', parametres: 'Paramètres', aide: 'Aide', doc: 'le document'
   };
   const pageLabel = hash => PAGE_LABELS[(hash || '').replace(/^#\/?/, '').split('/')[0]] || 'Accueil';
@@ -525,7 +525,7 @@
     let active = name;
     if (name === 'doc') {
       const type = parts[1] === 'new' ? parts[2] : (docById(parts[1]) || {}).type;
-      active = type === 'devis' ? 'devis' : 'factures';
+      active = type === 'devis' ? 'devis' : C.EXTRA_TYPES.includes(type) ? 'autres' : 'factures';
     } else if (name === 'client') active = 'clients';
     else if (name === 'contrat') active = 'contrats';
     $$('nav a').forEach(a => a.classList.toggle('active', a.dataset.route === active));
@@ -740,19 +740,23 @@
   // Colonnes d'une liste de documents. `get` sert à l'affichage, `val` au tri (nombre ou texte comparable).
   function docColumns(opts) {
     const cur = doc => docCur(doc);
-    const amountOf = d => { const t = C.computeTotals(d, company()); return d.type === 'devis' ? t.totalTTC : (d.type === 'avoir' ? -t.netToPay : t.netToPay); };
+    const amountOf = d => { const t = C.computeTotals(d, company()); return d.type === 'avoir' ? -t.netToPay : (['facture', 'proforma'].includes(d.type) ? t.netToPay : t.totalTTC); };
     const restOf = d => d.type === 'facture' && d.status !== 'brouillon' ? balance(d).remaining : null;
     const cols = [
       { key: 'number', label: 'Numéro', cls: 'nw', val: d => (d.number ? '1' : '0') + (d.number || ''), get: d => `<strong>${d.number ? h(d.number) : '<span class="muted">Brouillon</span>'}</strong>` },
-      opts.quotes
-        ? { key: 'due', label: 'Valable jusqu\'au', val: d => d.dueDate || '', get: d => C.fmtDate(d.dueDate) }
-        : { key: 'type', label: 'Type', asc: true, val: d => d.type, get: d => C.TITLES[d.type] },
+      opts.extra
+        ? (opts.extra === 'proforma'
+          ? { key: 'due', label: 'Échéance', val: d => d.dueDate || '', get: d => C.fmtDate(d.dueDate) }
+          : { key: 'reference', label: 'Référence', asc: true, val: d => (d.reference || '').toLowerCase(), get: d => h(d.reference || '') || '<span class="muted">—</span>' })
+        : opts.quotes
+          ? { key: 'due', label: 'Valable jusqu\'au', val: d => d.dueDate || '', get: d => C.fmtDate(d.dueDate) }
+          : { key: 'type', label: 'Type', asc: true, val: d => d.type, get: d => C.TITLES[d.type] },
       opts.hideClient
         ? { key: 'subject', label: 'Objet', asc: true, val: d => (d.subject || '').toLowerCase(), get: d => h(d.subject || '') || '<span class="muted">—</span>' }
         : { key: 'client', label: 'Client', asc: true, val: d => clientName(d.clientId).toLowerCase(), get: d => `${h(clientName(d.clientId))}${d.subject ? `<div class="small muted">${h(d.subject)}</div>` : ''}` },
       { key: 'date', label: 'Date', val: d => d.date || '', get: d => C.fmtDate(d.date) },
       { key: 'status', label: 'Statut', val: d => effStatus(d), get: d => statusBadge(d) },
-      { key: 'amount', label: opts.quotes ? 'Total TTC' : 'Net à payer', r: true, val: amountOf, get: d => C.money(amountOf(d), cur(d)) }
+      { key: 'amount', label: opts.extra === 'proforma' || !opts.quotes ? 'Net à payer' : 'Total TTC', r: true, val: amountOf, get: d => C.money(amountOf(d), cur(d)) }
     ];
     if (!opts.quotes) cols.push({ key: 'rest', label: 'Reste', r: true, val: d => restOf(d) || 0, get: d => { const x = restOf(d); return x != null && x > 0.0005 ? C.money(x, cur(d)) : '<span class="muted">—</span>'; } });
     return { cols, amountOf, restOf };
@@ -804,11 +808,12 @@
   // Duplication d'un document : nouveau brouillon aux dates du jour, sans paiement ni rattachement
   function duplicateDoc(doc) {
     const isQ = doc.type === 'devis';
-    const copy = { ...deepCopy(doc), id: C.uid(), number: '', status: 'brouillon', date: C.today(), createdAt: Date.now(), payments: [], emails: [], reminders: [], withholdingCertificate: false, fromQuoteId: undefined, fromQuoteNumber: undefined, deposit: undefined, settles: undefined, recurringId: undefined };
-    copy.dueDate = C.addDays(copy.date, isQ ? company().quoteValidityDays : company().paymentTermsDays);
-    if (isQ) copy.number = C.nextNumber(data, 'devis', copy.date);
+    const numbered = isQ || C.EXTRA_TYPES.includes(doc.type);   // ces pièces portent un numéro dès l'enregistrement
+    const copy = { ...deepCopy(doc), id: C.uid(), number: '', status: 'brouillon', date: C.today(), createdAt: Date.now(), payments: [], emails: [], reminders: [], attachments: [], withholdingCertificate: false, fromQuoteId: undefined, fromQuoteNumber: undefined, fromDocId: undefined, fromDocType: undefined, fromDocNumber: undefined, deposit: undefined, settles: undefined, recurringId: undefined };
+    if (copy.dueDate) copy.dueDate = C.addDays(copy.date, isQ ? company().quoteValidityDays : company().paymentTermsDays);
+    if (numbered) copy.number = C.nextNumber(data, doc.type, copy.date);
     data.documents.push(copy); save(true);
-    toast(isQ ? 'Copie créée : ' + copy.number : 'Brouillon créé à partir de ' + (doc.number || 'ce brouillon'));
+    toast(numbered ? 'Copie créée : ' + copy.number : 'Brouillon créé à partir de ' + (doc.number || 'ce brouillon'));
     navigate('#/doc/' + copy.id);
   }
 
@@ -881,13 +886,18 @@
   function newDocument(type) {
     const date = C.today();
     const days = type === 'devis' ? company().quoteValidityDays : company().paymentTermsDays;
-    return {
-      id: C.uid(), type, number: '', date, dueDate: C.addDays(date, days), clientId: '', subject: '', reference: '',
+    // Une échéance n'a de sens que sur ce qui se paie ou se périme : un bon de livraison n'en a pas.
+    const dated = ['devis', 'facture', 'proforma'].includes(type);
+    const d = {
+      id: C.uid(), type, number: '', date, dueDate: dated ? C.addDays(date, days) : '', clientId: '', subject: '', reference: '',
       lines: [{ label: '', description: '', qty: 1, unit: '', unitPrice: 0, vatRate: 19 }],
       discountRate: 0, applyStamp: type === 'facture', status: 'brouillon', notes: '', payments: [],
-      withholdingRate: type === 'devis' ? 0 : (Number(company().defaultWithholdingRate) || 0), createdAt: Date.now(),
+      withholdingRate: ['facture', 'avoir', 'proforma'].includes(type) ? (Number(company().defaultWithholdingRate) || 0) : 0, createdAt: Date.now(),
       lang: company().defaultLang || 'fr', currency: company().currency, exchangeRate: ''
     };
+    if (type === 'contrat') d.clauses = { ...C.DEFAULT_CLAUSES };
+    if (type === 'livraison') d.hidePrices = true;
+    return d;
   }
   function applyClientDefaults(doc, clientId) {
     const c = clientById(clientId); if (!c) return;
@@ -904,7 +914,7 @@
   routes.doc = (parts) => {
     let doc, isNew = false;
     if (parts[0] === 'new') {
-      const type = ['devis', 'facture', 'avoir'].includes(parts[1]) ? parts[1] : 'devis';
+      const type = ['devis', 'facture', 'avoir'].concat(C.EXTRA_TYPES).includes(parts[1]) ? parts[1] : 'devis';
       doc = newDocument(type); isNew = true;
       if (type === 'avoir' && parts[2] && parts[2] !== 'tpl' && parts[2] !== 'client') { const inv = docById(parts[2]); if (inv) Object.assign(doc, creditDraftFrom(inv)); }
       if (parts[2] === 'tpl' && parts[3]) applyTemplate(doc, parts[3]);
@@ -918,6 +928,12 @@
       doc = docById(parts[0]); if (!doc) return navigate('#/dashboard'); doc = deepCopy(doc);
     }
     const isQ = doc.type === 'devis', isInv = doc.type === 'facture', isAv = doc.type === 'avoir';
+    // Les quatre pièces ajoutées en 2.6.0 se comportent comme un devis : modifiables, numérotées à
+    // l'enregistrement, statut choisi à la main. Aucune n'a de valeur comptable.
+    const isExtra = C.EXTRA_TYPES.includes(doc.type);
+    const isProforma = doc.type === 'proforma', isDelivery = doc.type === 'livraison', isContract = doc.type === 'contrat';
+    const hasDue = isQ || isInv || isProforma;
+    const backTo = isQ ? '#/devis' : isExtra ? '#/autres/' + doc.type : '#/factures';
     let cur = docCur(doc);
     const locked = C.isLocked(doc) && !unlockedIds.has(doc.id);
     const ro = locked ? 'disabled' : '';
@@ -936,9 +952,10 @@
       text: `${d.number} ${clientName(d.clientId)} ${d.subject || ''}`
     }));
 
-    const title = isNew ? (isQ ? 'Nouveau devis' : isInv ? 'Nouvelle facture' : 'Nouvel avoir') : docLabel(doc);
-    const statusCell = isQ
-      ? `<label class="field">${lbl('Statut', 'ed.statusQuote')}<select name="status">${C.STATUSES.devis.map(s => `<option ${s === doc.status ? 'selected' : ''}>${s}</option>`).join('')}</select></label>`
+    const NEW_TITLES = { proforma: 'Nouvelle proforma', commande: 'Nouveau bon de commande', livraison: 'Nouveau bon de livraison', contrat: 'Nouveau contrat' };
+    const title = isNew ? (isQ ? 'Nouveau devis' : isInv ? 'Nouvelle facture' : isAv ? 'Nouvel avoir' : NEW_TITLES[doc.type]) : docLabel(doc);
+    const statusCell = isQ || isExtra
+      ? `<label class="field">${lbl('Statut', isQ ? 'ed.statusQuote' : 'ed.statusExtra')}<select name="status">${C.STATUSES[doc.type].map(s => `<option ${s === doc.status ? 'selected' : ''}>${s}</option>`).join('')}</select></label>`
       : `<div class="field">${lbl('Statut', isInv ? 'ed.statusInvoice' : '')}<div class="status-cell">${isNew || doc.status === 'brouillon' ? `${badge('brouillon')}<span class="small muted">numéro attribué à l'émission</span> ${info('ed.draftNumber')}` : (isInv ? statusBadge(stored) : badge(doc.status))}</div></div>`;
 
     // « Facturer ▾ » regroupe ce qu'on fait d'un devis accepté : les trois chemins de facturation
@@ -948,17 +965,23 @@
         ${issuedDeposits.length ? `<button id="settle">Facture de solde (${issuedDeposits.length} acompte${issuedDeposits.length > 1 ? 's' : ''} déduit${issuedDeposits.length > 1 ? 's' : ''}) ${info('ed.settle')}</button>` : ''}
       </div></div>` : '';
 
+    // « Transformer ▾ » : les pièces qu'on peut tirer de celle-ci. Chacune arrive en brouillon.
+    const convertibles = isNew ? [] : (C.CONVERSIONS[doc.type] || []).filter(t => t !== 'facture' || !isQ);
+    const transformMenu = convertibles.length ? `<div class="more"><button class="btn" id="conv-btn">Transformer ▾</button><div class="more-list" id="conv-list" hidden>
+        ${convertibles.map(t => `<button data-conv="${t}">${h(C.CONVERSION_LABELS[t] || C.TITLES[t])}</button>`).join('')}
+      </div></div>` : '';
+
     $('#view').innerHTML = `
       <div class="page-head">
         <div><h1>${h(title)} <span class="dirty-dot" id="dirty-dot" hidden title="Modifications non enregistrées">non enregistré</span></h1>${locked ? `<div class="small muted lock-note">Document émis : il n'est plus modifiable${isInv ? ' — pour corriger, crée un avoir' : ''}. ${info('ed.locked')}</div>` : ''}${doc.recurringId ? `<div class="small muted">Générée par un contrat récurrent — <a href="#/contrat/${h(doc.recurringId)}">voir le contrat</a></div>` : ''}</div>
         <div class="actions">
-          ${backButton(isQ ? '#/devis' : '#/factures')}
-          ${!isNew && (locked || isQ) ? `<button class="btn" id="email">Email</button>` : ''}
+          ${backButton(backTo)}
+          ${!isNew && (locked || isQ || isExtra) ? `<button class="btn" id="email">Email</button>` : ''}
           <button class="btn" id="pdf">PDF</button>
           ${locked && isInv && doc.status !== 'annulée' ? `<button class="btn btn-primary" id="pay">Enregistrer un paiement</button>` : ''}
-          ${facturerMenu}
-          ${!locked ? `<button class="btn ${isQ ? 'btn-primary' : ''}" id="save">Enregistrer${isQ ? '' : ' le brouillon'}</button>` : ''}
-          ${!locked && !isQ ? `<button class="btn btn-primary" id="issue">${isInv ? 'Émettre la facture' : 'Émettre l\'avoir'}</button> ${info('ed.issue')}` : ''}
+          ${facturerMenu}${transformMenu}
+          ${!locked ? `<button class="btn ${isQ || isExtra ? 'btn-primary' : ''}" id="save">Enregistrer${isQ || isExtra ? '' : ' le brouillon'}</button>` : ''}
+          ${!locked && (isInv || isAv) ? `<button class="btn btn-primary" id="issue">${isInv ? 'Émettre la facture' : 'Émettre l\'avoir'}</button> ${info('ed.issue')}` : ''}
           ${!isNew && (!isAv || !locked) ? `<div class="more"><button class="btn" id="more-btn" aria-label="Autres actions">Plus ▾</button><div class="more-list" id="more-list" hidden>
             ${!isAv ? `<button id="dup">Dupliquer</button><button id="as-template">Enregistrer comme modèle…</button>` : ''}
             ${isInv ? `<button id="make-recurring">Rendre récurrent (contrat)… ${info('ed.recurring')}</button>` : ''}
@@ -976,7 +999,7 @@
               </div>
               ${isAv ? `<div class="field span-2">Facture concernée${combo({ name: 'creditOf', value: doc.creditOf, items: invoiceItems(), placeholder: '— Facture concernée —', search: 'Rechercher : n°, client, objet…', ro: locked })}</div>` : ''}
               ${dateFieldHtml(lbl('Date', 'ed.date'), 'date', doc.date, { ro: locked })}
-              ${isAv ? '' : dateFieldHtml(isQ ? lbl('Valable jusqu\'au', 'ed.validUntil') : lbl('Échéance', 'ed.due'), 'dueDate', doc.dueDate, { ro: locked, quick: true })}
+              ${hasDue ? dateFieldHtml(isQ ? lbl('Valable jusqu\'au', 'ed.validUntil') : lbl('Échéance', 'ed.due'), 'dueDate', doc.dueDate, { ro: locked, quick: true }) : ''}
               <label class="field span-2">${lbl('Objet', 'ed.subject')}<input type="text" name="subject" value="${h(doc.subject)}" placeholder="Ex : Audit de sécurité du réseau" ${ro}></label>
               ${field(lbl('Référence (optionnel)', 'ed.reference'), 'reference', doc.reference || '', 'text', ro)}
               ${isAv ? field('Motif de l\'avoir', 'creditReason', doc.creditReason || '', 'text', ro + ' placeholder="Erreur de facturation, remise commerciale…"') : ''}
@@ -985,8 +1008,9 @@
               <label class="field" id="rate-field" ${cur === company().currency ? 'hidden' : ''}><span class="fl"><span class="rate-lbl">Taux : 1 ${h(cur)} = ? ${h(company().currency)}</span> ${info('ed.rate')}</span><input type="number" name="exchangeRate" value="${h(doc.exchangeRate || '')}" step="0.0001" min="0" class="num" placeholder="ex. 3.4" ${ro}></label>
               ${statusCell}
               ${field(lbl('Remise globale (%)', 'ed.discount'), 'discountRate', doc.discountRate || 0, 'number', 'min="0" max="100" step="0.5" class="num" ' + ro)}
-              ${!isQ ? `<label class="field">${lbl('Retenue à la source', 'ed.withholding')}<select name="withholdingRate" ${ro}>${withholdingOptions(doc.withholdingRate)}</select></label>` : ''}
-              ${!isQ ? `<label class="check" style="align-self:end"><input type="checkbox" name="applyStamp" ${doc.applyStamp === true || (isInv && doc.applyStamp !== false) ? 'checked' : ''} ${ro}> Timbre fiscal (${C.money(company().stampFee, cur)}) ${info('ed.applyStamp')}</label>` : ''}
+              ${isInv || isAv || isProforma ? `<label class="field">${lbl('Retenue à la source', 'ed.withholding')}<select name="withholdingRate" ${ro}>${withholdingOptions(doc.withholdingRate)}</select></label>` : ''}
+              ${isInv || isAv || isProforma ? `<label class="check" style="align-self:end"><input type="checkbox" name="applyStamp" ${doc.applyStamp === true || (isInv && doc.applyStamp !== false) ? 'checked' : ''} ${ro}> Timbre fiscal (${C.money(company().stampFee, cur)}) ${info(isProforma ? 'ed.stampProforma' : 'ed.applyStamp')}</label>` : ''}
+              ${isDelivery ? `<label class="check" style="align-self:end"><input type="checkbox" name="hidePrices" ${doc.hidePrices !== false ? 'checked' : ''}> Masquer les prix sur le bon ${info('ed.hidePrices')}</label>` : ''}
             </form>
           </div>
           <div class="panel"><h2>Lignes ${info('ed.lines')}</h2>
@@ -1000,6 +1024,12 @@
             <div class="totals-box" id="totals"></div>
           </div>
           ${bal ? `<div class="panel" id="pay-panel"><h2>Paiements et situation ${info('ed.payments')}</h2><div id="pay-body"></div></div>` : ''}
+          ${isContract ? `<div class="panel"><h2>Clauses du contrat ${info('ed.clauses')}</h2>
+            <p class="small muted mb">Ces textes s'impriment sur le contrat, numérotés dans l'ordre. Vide un champ pour retirer la clause. Ce sont des formulations courantes, pas un conseil juridique : <em>à faire relire par un juriste ou ton comptable</em> avant la première signature.</p>
+            <form id="f-clauses">${C.CLAUSE_LABELS.map(([k, label]) =>
+              `<label class="field mb">${h(label)}<textarea name="${k}" rows="2" ${ro}>${h((doc.clauses || {})[k] || '')}</textarea></label>`).join('')}
+            <button type="button" class="btn btn-sm" id="reset-clauses">Revenir aux textes proposés</button></form></div>` : ''}
+          ${isNew ? '' : `<div class="panel"><h2>Pièces jointes ${info('ed.attachments')}</h2><div id="attachments"></div></div>`}
           ${isNew ? '' : `<div class="panel"><h2>Historique ${info('ed.history')}</h2><div id="doc-history"></div></div>`}
           <div class="panel"><h2>Notes (affichées sur le document) ${info('ed.notes')}</h2>
             ${!locked && data.snippets.length ? `<div class="catalog-pick"><div id="snip-pick">${combo({ items: [], placeholder: 'Insérer un texte prédéfini…', search: 'Rechercher un texte…' })}</div></div>` : ''}
@@ -1032,7 +1062,7 @@
     function untouch() { dirty = false; const el = $('#dirty-dot'); if (el) el.hidden = true; reportDirty(); }
     if (!locked) setGuard({
       dirty: () => dirty,
-      what: isQ ? 'ce devis' : isInv ? 'cette facture' : 'cet avoir',
+      what: isQ ? 'ce devis' : isInv ? 'cette facture' : isAv ? 'cet avoir' : 'ce ' + (C.TITLES[doc.type] || 'document').toLowerCase(),
       save: () => { const ok = persist(); if (ok) untouch(); return ok; }
     });
 
@@ -1197,7 +1227,7 @@
         <tr><td>TVA</td><td>${C.money(t.totalVAT, cur)}</td></tr>
         ${t.stamp ? `<tr><td>Timbre fiscal</td><td>${C.money(t.stamp, cur)}</td></tr>` : ''}
         ${t.withholding ? `<tr><td>Total TTC</td><td>${C.money(t.totalTTC, cur)}</td></tr><tr><td>Retenue à la source ${pct(t.withholdingRate)}%</td><td>- ${C.money(t.withholding, cur)}</td></tr>` : ''}
-        <tr class="grand"><td>${isQ ? 'Total TTC' : isAv ? 'Montant de l\'avoir' : 'Net à payer'}</td><td>${C.money(isQ ? t.totalTTC : t.netToPay, cur)}</td></tr></table>`;
+        <tr class="grand"><td>${isInv || isProforma ? 'Net à payer' : isAv ? 'Montant de l\'avoir' : 'Total TTC'}</td><td>${C.money(isInv || isAv || isProforma ? t.netToPay : t.totalTTC, cur)}</td></tr></table>`;
       schedulePreview();
     }
 
@@ -1240,7 +1270,7 @@
       if (!doc.clientId) { toast('Choisis un client.', true); return false; }
       if (isAv && !doc.creditOf) { toast('Indique la facture concernée par l\'avoir.', true); return false; }
       if (!doc.lines.some(l => l.label && l.label.trim())) { toast('Ajoute au moins une ligne avec une désignation.', true); return false; }
-      if (!isAv && doc.dueDate && doc.date && doc.dueDate < doc.date) { toast(`${isQ ? 'La validité' : 'L\'échéance'} ne peut pas précéder la date du document.`, true); return false; }
+      if (hasDue && doc.dueDate && doc.date && doc.dueDate < doc.date) { toast(`${isQ ? 'La validité' : 'L\'échéance'} ne peut pas précéder la date du document.`, true); return false; }
       return true;
     }
     // Ce qui rendrait le document non conforme sans empêcher l'émission : on prévient, l'utilisateur décide
@@ -1255,7 +1285,7 @@
     }
     function persist() {
       if (!validate()) return false;
-      if (isQ && !doc.number) doc.number = C.nextNumber(data, 'devis', doc.date);
+      if ((isQ || isExtra) && !doc.number) doc.number = C.nextNumber(data, doc.type, doc.date);
       if (isAv && doc.creditOf) { const inv = docById(doc.creditOf); if (inv) doc.creditOfNumber = inv.number; }
       const idx = data.documents.findIndex(d => d.id === doc.id);
       const clean = deepCopy(doc);
@@ -1273,8 +1303,8 @@
       toast(`${C.TITLES[doc.type]} ${doc.number} émis${isInv ? 'e' : ''}`);
       return true;
     }
-    bindBack(isQ ? '#/devis' : '#/factures');
-    if ($('#save')) $('#save').onclick = () => { if (persist()) { toast(isQ ? 'Enregistré : ' + doc.number : 'Brouillon enregistré'); unlockedIds.delete(doc.id); if (isNew) navigate('#/doc/' + doc.id); else render(true); } };
+    bindBack(backTo);
+    if ($('#save')) $('#save').onclick = () => { if (persist()) { toast(isQ || isExtra ? 'Enregistré : ' + doc.number : 'Brouillon enregistré'); unlockedIds.delete(doc.id); if (isNew) navigate('#/doc/' + doc.id); else render(true); } };
     if ($('#issue')) $('#issue').onclick = async () => {
       if (!validate()) return;
       const n = doc.number || peekNumber(doc.type, doc.date);
@@ -1287,7 +1317,7 @@
     $('#pdf').onclick = async () => {
       if (locked) return exportPdf(docById(doc.id) || doc);
       if (!validate()) return;
-      if (!isQ && doc.status === 'brouillon') {
+      if (!isQ && !isExtra && doc.status === 'brouillon') {
         const n = doc.number || peekNumber(doc.type, doc.date);
         const c = await choiceDialog('Exporter en PDF', `Ce document est un brouillon. Tu peux l'émettre maintenant (numéro ${n}, définitif) ou exporter un brouillon marqué « Brouillon », sans numéro.`, `Émettre ${n} et exporter`, 'Exporter le brouillon');
         if (!c) return;
@@ -1301,7 +1331,7 @@
     };
     if ($('#del')) $('#del').onclick = async () => {
       if (!await confirmDialog(`Supprimer ${docLabel(doc)} ?${doc.number ? ' Le numéro ne sera pas réutilisé.' : ''}`)) return;
-      data.documents = data.documents.filter(d => d.id !== doc.id); save(true); navigate(isQ ? '#/devis' : '#/factures');
+      data.documents = data.documents.filter(d => d.id !== doc.id); save(true); navigate(backTo);
     };
     if ($('#unlock')) $('#unlock').onclick = async () => {
       if (!await confirmDialog(`Modifier ${doc.number} après émission ? Ce n'est pas conforme : une facture émise se corrige par un avoir. À réserver à une erreur repérée avant l'envoi au client.`, 'Modifier quand même')) return;
@@ -1338,6 +1368,62 @@
     if ($('#make-recurring')) $('#make-recurring').onclick = () => recurrenceForm(recurrenceFromInvoice(doc), () => { toast('Contrat créé'); navigate('#/contrats'); });
     if ($('#more-btn')) $('#more-btn').onclick = e => { e.stopPropagation(); const l = $('#more-list'); const open = l.hidden; closeMenus(); l.hidden = !open; };
     $$('#more-list button').forEach(b => b.addEventListener('click', () => { $('#more-list').hidden = true; }));
+    if ($('#conv-btn')) $('#conv-btn').onclick = e => { e.stopPropagation(); const l = $('#conv-list'); const open = l.hidden; closeMenus(); l.hidden = !open; };
+    $$('#conv-list button').forEach(b => b.addEventListener('click', async () => {
+      $('#conv-list').hidden = true;
+      // On part de ce qui est enregistré : convertir une saisie non sauvegardée donnerait une pièce fantôme.
+      if (dirty && !persist()) return;
+      const src = docById(doc.id) || doc;
+      const t = b.dataset.conv;
+      const out = C.convertDoc(src, t, company(), C.today());
+      data.documents.push(out); save(true);
+      toast(`${C.TITLES[t]} créé en brouillon à partir de ${src.number || 'ce brouillon'}`);
+      navigate('#/doc/' + out.id);
+    }));
+
+    // --- clauses du contrat
+    const clausesForm = $('#f-clauses');
+    if (clausesForm) {
+      clausesForm.oninput = () => { doc.clauses = formValues(clausesForm); touch(); schedulePreview(); };
+      $('#reset-clauses').onclick = async () => {
+        if (!await confirmDialog('Remplacer toutes les clauses par les textes proposés ?', 'Remplacer', false)) return;
+        doc.clauses = { ...C.DEFAULT_CLAUSES };
+        C.CLAUSE_LABELS.forEach(([k]) => { const ta = $(`textarea[name=${k}]`, clausesForm); if (ta) ta.value = doc.clauses[k]; });
+        touch(); schedulePreview();
+      };
+    }
+
+    // --- pièces jointes : copiées à côté du fichier de données, jamais dans le JSON
+    function drawAttachments() {
+      const el = $('#attachments'); if (!el) return;
+      const s2 = docById(doc.id); if (!s2) return;
+      const list = s2.attachments || [];
+      el.innerHTML = `
+        ${list.length ? `<table class="list compact"><thead><tr><th>Fichier</th><th>Ajouté le</th><th class="r">Taille</th><th></th></tr></thead><tbody>
+          ${list.map(a => `<tr><td><a href="#" data-open="${h(a.file)}">${h(a.name)}</a></td><td class="nw">${C.fmtDate(a.date)}</td><td class="r nw">${fileSize(a.size)}</td>
+            <td class="actions"><button class="btn btn-ghost btn-sm" data-reveal="${h(a.file)}" title="Montrer dans le dossier">Dossier</button><button class="btn btn-ghost btn-sm" data-rmatt="${h(a.file)}" title="Retirer">✕</button></td></tr>`).join('')}
+        </tbody></table>` : '<p class="small muted">Aucune pièce jointe. Le devis signé scanné, le bon de commande du client, une photo du chantier : tout ce qui justifie ce document a sa place ici.</p>'}
+        <div class="inline mt"><button class="btn btn-sm" id="add-att">+ Joindre un fichier…</button>
+        <span class="small muted">Les fichiers sont copiés à côté de tes données. Ils ne sont pas dans les sauvegardes quotidiennes (qui ne contiennent qu'un fichier texte) mais le sont dans la copie externe.</span></div>`;
+      $('#add-att').onclick = async () => {
+        try {
+          const added = await bridge.addAttachments(doc.id);
+          if (!added.length) return;
+          s2.attachments = (s2.attachments || []).concat(added);
+          save(true); drawAttachments(); drawHistory();
+          toast(added.length > 1 ? `${added.length} pièces jointes ajoutées` : 'Pièce jointe ajoutée');
+        } catch (e) { toast(e.message.replace(/^.*Error: /, ''), true); }
+      };
+      $$('[data-open]', el).forEach(a => a.onclick = e => { e.preventDefault(); bridge.openAttachment(doc.id, a.dataset.open); });
+      $$('[data-reveal]', el).forEach(b => b.onclick = () => bridge.revealAttachment(doc.id, b.dataset.reveal));
+      $$('[data-rmatt]', el).forEach(b => b.onclick = async () => {
+        const a = (s2.attachments || []).find(x => x.file === b.dataset.rmatt);
+        if (!await confirmDialog(`Retirer « ${a ? a.name : 'cette pièce'} » ? Le fichier copié sera supprimé, ton fichier d'origine ne bouge pas.`)) return;
+        await bridge.removeAttachment(doc.id, b.dataset.rmatt);
+        s2.attachments = (s2.attachments || []).filter(x => x.file !== b.dataset.rmatt);
+        save(true); drawAttachments(); drawHistory();
+      });
+    }
 
     // --- historique (reconstitué à partir de ce qui est enregistré : envois, relances, paiements, avoirs)
     function drawHistory() {
@@ -1353,7 +1439,16 @@
     drawLines();
     drawPayments();
     drawHistory();
+    drawAttachments();
   };
+
+  // Taille de fichier lisible : « 1,4 Mo » vaut mieux que 1468006.
+  function fileSize(n) {
+    const b = Number(n) || 0;
+    if (b < 1024) return b + ' o';
+    if (b < 1024 * 1024) return (b / 1024).toFixed(0) + ' Ko';
+    return (b / 1024 / 1024).toFixed(1).replace('.', ',') + ' Mo';
+  }
 
   function invoiceFromQuote(quote, lines, discountRate) {
     const inv = newDocument('facture');
@@ -2220,7 +2315,7 @@
     const actions = [
       ['Nouveau devis', () => navigate('#/doc/new/devis')], ['Nouvelle facture', () => navigate('#/doc/new/facture')], ['Nouvel avoir', () => navigate('#/doc/new/avoir')],
       ['Accueil', () => navigate('#/dashboard')], ['Devis', () => navigate('#/devis')], ['Factures', () => navigate('#/factures')], ['Relances', () => navigate('#/relances')],
-      ['Contrats récurrents', () => navigate('#/contrats')], ['Clients', () => navigate('#/clients')], ['Catalogue', () => navigate('#/catalogue')], ['Statistiques', () => navigate('#/stats')], ['Comptabilité', () => navigate('#/compta')], ['Paramètres', () => navigate('#/parametres')],
+      ['Contrats récurrents', () => navigate('#/contrats')], ['Proformas', () => navigate('#/autres/proforma')], ['Bons de commande', () => navigate('#/autres/commande')], ['Bons de livraison', () => navigate('#/autres/livraison')], ['Contrats à signer', () => navigate('#/autres/contrat')], ['Clients', () => navigate('#/clients')], ['Catalogue', () => navigate('#/catalogue')], ['Statistiques', () => navigate('#/stats')], ['Comptabilité', () => navigate('#/compta')], ['Paramètres', () => navigate('#/parametres')],
       ['Aide et guide', () => navigate('#/aide')], ['Nouveau client', () => clientForm(null, () => render())]
     ].map(([label, run]) => ({ kind: 'Action', main: label, text: label.toLowerCase(), run }));
     const helps = G.ARTICLES.map(x => ({ kind: 'Aide', main: x.title, sub: x.sub, text: `aide ${x.title} ${x.sub}`.toLowerCase(), run: () => navigate('#/aide/' + x.id) }));
@@ -2284,6 +2379,76 @@
     year: C.today().slice(0, 4), month: C.today().slice(5, 7),
     journal: { sort: null, page: 1 },      // journal des ventes
     pays: { sort: null, page: 1 }          // encaissements
+  };
+
+  // ---------- Autres documents : proforma, bon de commande, bon de livraison, contrat ----------
+  // Quatre pièces sans valeur comptable, réunies sur une page à onglets plutôt que quatre entrées
+  // de barre latérale : elles servent moins souvent qu'un devis ou une facture.
+  const AUTRES_TABS = [
+    ['proforma', 'Proformas', 'Une proforma annonce un prix ferme sans être une facture. Les administrations et les banques la demandent pour un dossier.'],
+    ['commande', 'Bons de commande', 'Le bon de commande enregistre ce que le client a commandé, avant que tu livres ou que tu factures.'],
+    ['livraison', 'Bons de livraison', 'Le bon de livraison accompagne la marchandise et se fait signer à la réception. Il prouve que tu as livré.'],
+    ['contrat', 'Contrats à signer', 'Le contrat de prestation est la pièce que ton client signe : objet, durée, reconduction, préavis. À ne pas confondre avec les contrats récurrents, qui fabriquent des factures.']
+  ];
+  const autresState = {};
+  AUTRES_TABS.forEach(([t]) => { autresState[t] = { q: '', st: '', year: '', sort: null, page: 1 }; });
+  let autresTab = 'proforma';
+
+  routes.autres = (parts) => {
+    if (parts[0] && autresState[parts[0]]) autresTab = parts[0];
+    const type = autresTab;
+    const s = autresState[type];
+    const tab = AUTRES_TABS.find(x => x[0] === type);
+    const { cols } = docColumns({ quotes: true, extra: type });
+    const mine = data.documents.filter(d => d.type === type);
+    const years = Array.from(new Set(mine.map(d => (d.date || '').slice(0, 4)).filter(Boolean))).sort().reverse();
+
+    $('#view').innerHTML = `
+      <div class="page-head"><h1>Autres documents</h1>
+        <div class="actions"><button class="btn btn-primary" id="new">+ ${h(NEW_LABELS[type])}</button></div></div>
+      <div class="tabs" id="a-tabs" role="tablist">${AUTRES_TABS.map(([t, label]) =>
+        `<button role="tab" data-tab="${t}" class="${t === type ? 'active' : ''}">${h(label)}${data.documents.some(d => d.type === t) ? ` <span class="tab-n">${data.documents.filter(d => d.type === t).length}</span>` : ''}</button>`).join('')}</div>
+      <p class="small muted mb">${h(tab[2])} ${info('autres.' + type)}</p>
+      <div class="filters">
+        <input type="text" id="q" placeholder="Rechercher : n°, client, objet…" value="${h(s.q)}">
+        <select id="st"><option value="">Tous les statuts</option>${C.STATUSES[type].map(x => `<option value="${x}" ${s.st === x ? 'selected' : ''}>${h(C.statusLabel(x))}</option>`).join('')}</select>
+        ${years.length > 1 ? `<select id="yr"><option value="">Toutes les années</option>${years.map(y => `<option value="${y}" ${s.year === y ? 'selected' : ''}>${y}</option>`).join('')}</select>` : ''}
+        ${info('list.filters')}
+        <span class="f-note" id="f-note" hidden></span>
+      </div>
+      <div id="list-wrap"></div>`;
+
+    const draw = (sortKey) => {
+      if (sortKey) { s.sort = toggleSort(s.sort, sortKey, cols); s.page = 1; }
+      const list = mine
+        .filter(d => !s.year || (d.date || '').startsWith(s.year))
+        .filter(d => !s.st || d.status === s.st)
+        .filter(d => !s.q || [d.number, clientName(d.clientId), d.subject, d.reference].join(' ').toLowerCase().includes(s.q))
+        .sort(byNumberDesc);
+      const filtered = !!(s.q || s.st || s.year);
+      $('#list-wrap').innerHTML = docTable(list, {
+        quotes: true, extra: type, sort: s.sort, onSort: true, page: s, grandTotal: mine.length,
+        empty: filtered ? 'Aucun document ne correspond à ces filtres.' : EMPTY_LABELS[type]
+      });
+      const note = $('#f-note');
+      note.hidden = !filtered;
+      note.innerHTML = !filtered ? '' : `<span class="small muted">${list.length} sur ${mine.length}</span>${filterReset(true)}`;
+      if ($('#reset-f')) $('#reset-f').onclick = () => { s.q = ''; s.st = ''; s.year = ''; s.page = 1; routes.autres([type]); };
+      bindDocTable(draw, s, '#list-wrap');
+    };
+    $$('#a-tabs button').forEach(b => b.onclick = () => { autresTab = b.dataset.tab; navigate('#/autres/' + b.dataset.tab); });
+    $('#new').onclick = () => navigate('#/doc/new/' + type);
+    $('#q').oninput = e => { s.q = e.target.value.toLowerCase(); s.page = 1; draw(); };
+    $('#st').onchange = e => { s.st = e.target.value; s.page = 1; draw(); };
+    if ($('#yr')) $('#yr').onchange = e => { s.year = e.target.value; s.page = 1; draw(); };
+    draw();
+  };
+  const NEW_LABELS = { proforma: 'Nouvelle proforma', commande: 'Nouveau bon de commande', livraison: 'Nouveau bon de livraison', contrat: 'Nouveau contrat' };
+  const EMPTY_LABELS = {
+    proforma: 'Aucune proforma. Tu peux en tirer une d\'un devis existant, depuis le menu « Transformer » de ce devis.',
+    commande: 'Aucun bon de commande. Enregistre ici ce que le client commande avant la livraison ou la facture.',
+    livraison: 'Aucun bon de livraison. Il se tire d\'un devis, d\'une commande ou d\'une facture, en un clic.',
+    contrat: 'Aucun contrat. Rédige ici la pièce que ton client signe : objet, durée, reconduction, préavis.'
   };
 
   // ---------- Statistiques ----------
