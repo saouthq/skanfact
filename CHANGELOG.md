@@ -7,6 +7,15 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 5.2.2 — 11/09/2026
+
+Correctifs de robustesse trouvés en cherchant un blocage signalé par Skander (app qui ne répond plus aux clics après avoir chargé les données). La cause de son blocage n'est pas encore confirmée ; ces quatre défauts-là sont réels et corrigés.
+
+- **Une question fermée par Échap ou par un clic à côté ne répondait jamais.** La promesse restait en suspens indéfiniment et bloquait tout ce qui l'attendait, sans la moindre erreur visible. Elle vaut « Annuler » désormais.
+- **Le routeur pouvait empiler plusieurs questions** « Modifications non enregistrées » l'une sur l'autre. Une seule à la fois.
+- **Le drapeau interne du routeur pouvait rester armé à vide** et avaler la navigation suivante, quand l'adresse à restaurer était déjà l'adresse courante. Même piège que sur le bouton « Précédent », qui s'en gardait déjà.
+- **Importer un fichier n'enregistrait pas** : quitter l'application juste après un import reperdait le fichier importé. Charger la démo, importer ou tout effacer désarment maintenant le garde-fou, qui réclamait sinon d'enregistrer des modifications volontairement remplacées.
+
 ## 5.2.1 — 11/09/2026
 
 Les huit défauts relevés par l'audit du 11/09/2026 et laissés de côté depuis, corrigés d'un coup.

@@ -215,7 +215,10 @@
   // et la saisie en cours : un trop-perçu confirmé depuis « Enregistrer un paiement » faisait tout perdre.
   // Chaque fenêtre est une couche à elle, et `onMount` reçoit sa couche (pas tout le conteneur), si bien
   // que les sélecteurs des formulaires continuent de viser leurs propres champs.
-  function modal(html, onMount) {
+  // `onDismiss` est appelé chaque fois que la fenêtre se ferme — y compris par Échap ou par un clic
+  // à côté. Sans lui, une question posée sous forme de promesse ne recevait jamais de réponse : elle
+  // restait en suspens pour toujours et bloquait ce qui l'attendait (voir le routeur plus bas).
+  function modal(html, onMount, onDismiss) {
     const root = $('#modal-root');
     const layer = document.createElement('div');
     layer.className = 'modal-bg';
@@ -223,7 +226,7 @@
     layer.innerHTML = `<div class="modal">${html}</div>`;
     root.appendChild(layer);
     const under = modalClose;
-    const close = () => { layer.remove(); if (modalClose === close) modalClose = under; };
+    const close = () => { layer.remove(); if (modalClose === close) modalClose = under; if (onDismiss) onDismiss(); };
     modalClose = close;
     layer.addEventListener('click', e => { if (e.target === layer) close(); });
     $$('[data-close]', layer).forEach(b => b.addEventListener('click', close));
@@ -239,20 +242,29 @@
     return close;
   }
 
+  // Une question finit TOUJOURS par répondre : fermée par Échap ou par un clic à côté, elle vaut
+  // « Annuler ». Une promesse laissée en suspens bloquait tout ce qui l'attendait, sans aucune erreur
+  // visible — c'est ce qui figeait l'application entière après le garde-fou de navigation.
   function confirmDialog(msg, okLabel, danger) {
     return new Promise(resolve => {
+      let settled = false;
+      const finish = (close, v) => { settled = true; close(); resolve(v); };
       modal(`<h2>Confirmation</h2><p>${C.nl2br(msg)}</p>
         <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn ${danger === false ? 'btn-primary' : 'btn-danger'}" id="ok">${h(okLabel || 'Confirmer')}</button></div>`,
-        (root, close) => { $('#ok', root).onclick = () => { close(); resolve(true); }; $('[data-close]', root).onclick = () => { close(); resolve(false); }; });
+        (root, close) => { $('#ok', root).onclick = () => finish(close, true); $('[data-close]', root).onclick = () => finish(close, false); },
+        () => { if (!settled) resolve(false); });
     });
   }
 
-  // Boîte à trois choix : résout avec 'a', 'b' ou null (annulé)
+  // Boîte à trois choix : résout avec 'a', 'b' ou null (annulé, Échap compris)
   function choiceDialog(title, msg, labelA, labelB) {
     return new Promise(resolve => {
+      let settled = false;
+      const finish = (close, v) => { settled = true; close(); resolve(v); };
       modal(`<h2>${h(title)}</h2><p>${h(msg)}</p>
         <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn" id="b">${h(labelB)}</button><button class="btn btn-primary" id="a">${h(labelA)}</button></div>`,
-        (root, close) => { $('#a', root).onclick = () => { close(); resolve('a'); }; $('#b', root).onclick = () => { close(); resolve('b'); }; $('[data-close]', root).onclick = () => { close(); resolve(null); }; });
+        (root, close) => { $('#a', root).onclick = () => finish(close, 'a'); $('#b', root).onclick = () => finish(close, 'b'); $('[data-close]', root).onclick = () => finish(close, null); },
+        () => { if (!settled) resolve(null); });
     });
   }
 
@@ -604,13 +616,29 @@
     setWindowTitle(name, parts.slice(1));
   }
 
+  // Poser l'adresse sans réveiller notre propre routeur. Si l'adresse ne change pas, aucun événement
+  // ne viendra désarmer le drapeau : on ne l'arme donc pas. Armé à vide, il avalait la navigation
+  // suivante — c'est le même piège que dans goBack.
+  function setHashSilently(hash) {
+    if (location.hash === hash) return;
+    ignoreHashChange = true;
+    location.hash = hash;
+  }
+
+  let askingLeave = false;
   window.addEventListener('hashchange', async () => {
     if (ignoreHashChange) { ignoreHashChange = false; return; }
     if (guard && guard.dirty()) {
+      // Une seule question à la fois : chaque clic pendant la question en empilait une autre, et
+      // l'application finissait par ne plus répondre du tout.
+      if (askingLeave) { setHashSilently(currentHash); return; }
       const target = location.hash;
-      ignoreHashChange = true; location.hash = currentHash;   // on reste sur place le temps de demander
-      if (!(await leaveOk())) return;
-      ignoreHashChange = true; location.hash = target;
+      setHashSilently(currentHash);            // on reste sur place le temps de demander
+      let ok = false;
+      askingLeave = true;
+      try { ok = await leaveOk(); } finally { askingLeave = false; }
+      if (!ok) return;
+      setHashSilently(target);
       render();
       return;
     }
@@ -6654,6 +6682,10 @@
       const hasData = data.documents.length || data.clients.length;
       if (hasData && !await confirmDialog('Remplacer toutes les données actuelles par la démonstration ? Une sauvegarde de l\'état actuel est prise avant ; tes paramètres société (nom, logo, cachet, thème…) sont conservés.', 'Charger la démo', false)) return;
       if (hasData) await bridge.createBackup('avant-demo');
+      // Toutes les données sont remplacées : le garde-fou de la page en cours n'a plus d'objet, et
+      // laisser sa question surgir ensuite revenait à demander s'il faut enregistrer ce qu'on vient
+      // d'effacer sciemment.
+      clearGuard();
       data = window.SkanDemo.buildDemoData(data.company); save(true); applyTheme(); $('#brand-company').textContent = data.company.name; toast('Jeu de démonstration chargé'); navigate('#/dashboard');
     };
     // Effacement définitif : on demande d'écrire le mot, pas juste de cliquer
@@ -6668,6 +6700,7 @@
           inp.oninput = () => { ok.disabled = inp.value.trim().toUpperCase() !== 'EFFACER'; };
           ok.onclick = async () => {
             close();
+            clearGuard();                       // les données partent : plus rien à protéger
             await bridge.createBackup('avant-effacement');
             data.clients = []; data.catalog = []; data.documents = []; data.recurring = []; data.templates = []; data.snippets = []; data.counters = {};
             save(true); toast('Données effacées'); render();
@@ -6978,7 +7011,10 @@
       }
       if (r && r.needPassword) return toast('Mot de passe incorrect.', true);
       const d = r && r.data;
-      if (d) { data = migrate(d); applyTheme(); $('#brand-company').textContent = data.company.name; toast('Données importées'); render(); }
+      // `save` autant que `clearGuard` comptent : sans l'enregistrement, quitter juste après un import
+      // reperdait le fichier importé ; sans le désarmement, le garde-fou réclamait ensuite des
+      // modifications qui n'existent plus.
+      if (d) { clearGuard(); data = migrate(d); save(true); applyTheme(); $('#brand-company').textContent = data.company.name; toast('Données importées'); render(); }
     } catch (e) { toast('Import impossible : ' + e.message.replace(/^.*Error: /, ''), true); }
   }
   $('#btn-export-data').onclick = exportAll;
