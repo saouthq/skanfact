@@ -565,6 +565,7 @@
       ${notesHtml(upd.notes)}<button class="btn btn-primary" id="upd-install">Installer et redémarrer</button>`;
     else if (upd.state === 'unconfigured') body = `<p class="muted">Les mises à jour automatiques ne sont pas configurées (package.json → build.publish).</p>${btnCheck}`;
     else if (upd.state === 'error') body = `<p class="small" style="color:var(--danger)">${h(upd.message)}</p><div class="inline">${btnCheck}<button class="btn btn-ghost" id="upd-releases">Voir les versions sur GitHub</button></div>`;
+    else if (upd.state === 'token' || !a.hasToken) body = `<p class="muted">Les mises à jour automatiques ne sont pas encore activées sur cet ordinateur : colle ton token GitHub ci-dessous et clique sur Enregistrer.</p>${btnCheck}`;
     else body = btnCheck;
     const tokenBlock = `<div class="token-box">
       <div class="k-label">Accès au dépôt privé</div>
@@ -575,7 +576,8 @@
     $('#upd-changelog').onclick = showChangelog;
     $('#upd-token-save').onclick = async () => {
       const t = $('#upd-token').value.trim(); if (!t) return toast('Colle un token d\'abord', true);
-      const r = await bridge.updateSetToken(t); upd.app.hasToken = r.hasToken; toast('Token enregistré');
+      if (!/^(github_pat_|ghp_|gho_|ghs_)[A-Za-z0-9_]+$/.test(t)) return toast('Ce n\'est pas un token GitHub : il commence par github_pat_ ou ghp_', true);
+      const r = await bridge.updateSetToken(t); upd.app.hasToken = r.hasToken; upd.state = 'idle'; toast('Token enregistré');
       runCheck();
     };
     if ($('#upd-token-clear')) $('#upd-token-clear').onclick = async () => { const r = await bridge.updateSetToken(''); upd.app.hasToken = r.hasToken; upd.state = 'idle'; drawUpdatePanel(); };
@@ -595,6 +597,7 @@
     if (r.state === 'error') { upd.state = 'error'; upd.message = r.message; drawUpdatePanel(); }
     else if (r.state === 'dev') { upd.state = 'idle'; drawUpdatePanel(); toast('Disponible uniquement dans l\'application installée'); }
     else if (r.state === 'unconfigured') { upd.state = 'unconfigured'; drawUpdatePanel(); }
+    else if (r.state === 'token') { upd.state = 'token'; drawUpdatePanel(); const i = $('#upd-token'); if (i) i.focus(); }
     // sinon : les événements (none / available / downloading / downloaded) mettent le panneau à jour
   }
 

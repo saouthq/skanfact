@@ -8,7 +8,7 @@ const { createStorage } = require('./storage');
 // Identifiants de l'app. Ne PAS les lire dans package.json au démarrage : electron-builder
 // retire la section « build » du package.json empaqueté (l'app installée n'a plus build.publish).
 const APP_ID = 'tn.skancyber.skanfact';
-const GITHUB = { owner: 'saouthq', repo: 'skanfact' };
+const GITHUB = { owner: 'saouthq', repo: 'skanfact', private: true }; // dépôt privé : token de lecture obligatoire
 const RELEASES_URL = `https://github.com/${GITHUB.owner}/${GITHUB.repo}/releases`;
 
 const IS_MAC = process.platform === 'darwin';
@@ -408,6 +408,8 @@ async function checkForUpdates(isSilent) {
   silent = !!isSilent;
   if (!app.isPackaged) return { state: 'dev' };
   if (!updatesConfigured()) return { state: 'unconfigured' };
+  // Sans token, un dépôt privé répond toujours 404 : inutile d'interroger GitHub, on explique quoi faire.
+  if (GITHUB.private && !readUpdateCfg().token) return { state: 'token' };
   const u = getUpdater();
   if (!u) return { state: 'error', message: 'Module de mise à jour indisponible.' };
   if (downloaded) { sendUpdate('downloaded', { version: updateInfo && updateInfo.version, notes: notesToText(updateInfo && updateInfo.releaseNotes) }); return { state: 'ok' }; }
