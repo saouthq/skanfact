@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld('skanfact', {
   listBackups: () => ipcRenderer.invoke('backups:list'),
   pickLogo: () => ipcRenderer.invoke('logo:pick'),
   exportPdf: (html, suggestedName) => ipcRenderer.invoke('pdf:export', { html, suggestedName }),
+  exportPdfMany: (files, folderName) => ipcRenderer.invoke('pdf:exportMany', { files, folderName }),
+  saveText: (suggestedName, content) => ipcRenderer.invoke('file:saveText', { suggestedName, content }),
   openPath: (p) => ipcRenderer.invoke('shell:open', p),
   showInFolder: (p) => ipcRenderer.invoke('shell:showInFolder', p),
   changelog: () => ipcRenderer.invoke('app:changelog'),

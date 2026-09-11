@@ -16,6 +16,7 @@
     openBackups: async () => {}, createBackup: async () => null, listBackups: async () => [],
     pickLogo: async () => null,
     exportPdf: async (html) => { const w = window.open('', '_blank'); w.document.write(html); w.document.close(); w.print(); return null; },
+    exportPdfMany: async () => null, saveText: async () => null,
     openPath: async () => {}, showInFolder: async () => {},
     changelog: async () => '', onMenuAction: () => {},
     updateVersion: async () => ({ version: 'dev', packaged: false, platform: 'browser', macSigned: false }),
@@ -27,6 +28,7 @@
   // ---------- état ----------
   let data = null;
   let saveTimer = null;
+  const unlockedIds = new Set(); // factures émises déverrouillées « quand même » pour la session
 
   function save(immediate) {
     clearTimeout(saveTimer);
@@ -35,18 +37,16 @@
     saveTimer = setTimeout(doSave, 300);
   }
 
-  function migrate(d) {
-    const base = JSON.parse(JSON.stringify(C.DEFAULT_DATA));
-    if (!d) return base;
-    return {
-      ...base, ...d,
-      company: { ...base.company, ...(d.company || {}) },
-      clients: d.clients || [], catalog: d.catalog || [], documents: d.documents || [], counters: d.counters || {}
-    };
-  }
-
+  const migrate = d => C.migrateData(d);
   const clientById = id => data.clients.find(c => c.id === id) || null;
   const docById = id => data.documents.find(d => d.id === id) || null;
+  const company = () => data.company;
+  const clientName = id => (clientById(id) || {}).name || '—';
+  const effStatus = doc => C.effectiveStatus(doc, data, data.company);
+  const balance = doc => C.invoiceBalance(doc, data, data.company);
+  const docLabel = doc => `${C.TITLES[doc.type]} ${doc.number || '(brouillon)'}`;
+  const deepCopy = o => JSON.parse(JSON.stringify(o));
+  const pct = n => String(n).replace('.', ',');
 
   // ---------- UI helpers ----------
   function toast(msg, isError) {
@@ -66,11 +66,20 @@
     return close;
   }
 
-  function confirmDialog(msg) {
+  function confirmDialog(msg, okLabel, danger) {
     return new Promise(resolve => {
       modal(`<h2>Confirmation</h2><p>${h(msg)}</p>
-        <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-danger" id="ok">Confirmer</button></div>`,
+        <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn ${danger === false ? 'btn-primary' : 'btn-danger'}" id="ok">${h(okLabel || 'Confirmer')}</button></div>`,
         (root, close) => { $('#ok', root).onclick = () => { close(); resolve(true); }; $('[data-close]', root).onclick = () => { close(); resolve(false); }; });
+    });
+  }
+
+  // Boîte à trois choix : résout avec 'a', 'b' ou null (annulé)
+  function choiceDialog(title, msg, labelA, labelB) {
+    return new Promise(resolve => {
+      modal(`<h2>${h(title)}</h2><p>${h(msg)}</p>
+        <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn" id="b">${h(labelB)}</button><button class="btn btn-primary" id="a">${h(labelA)}</button></div>`,
+        (root, close) => { $('#a', root).onclick = () => { close(); resolve('a'); }; $('#b', root).onclick = () => { close(); resolve('b'); }; $('[data-close]', root).onclick = () => { close(); resolve(null); }; });
     });
   }
 
@@ -90,11 +99,15 @@
     return o;
   }
 
-  function statusBadge(doc) {
-    let s = doc.status || 'brouillon';
-    let cls = s;
-    if (doc.type === 'facture' && s === 'envoyée' && doc.dueDate && doc.dueDate < C.today()) { s = 'en retard'; cls = 'retard'; }
-    return `<span class="badge ${cls}">${h(s)}</span>`;
+  function badge(status) { return `<span class="badge ${h(status)}">${h(C.statusLabel(status))}</span>`; }
+  function statusBadge(doc) { return badge(effStatus(doc)); }
+  function methodLabel(m) { const x = C.PAYMENT_METHODS.find(p => p[0] === m); return x ? x[1] : (m || ''); }
+  // Numéro que recevrait le document à l'émission, sans consommer le compteur
+  function peekNumber(type, date) { return C.nextNumber({ documents: data.documents, counters: { ...data.counters } }, type, date); }
+  function withholdingOptions(value) {
+    const rates = C.WITHHOLDING_RATES.slice(); const v = Number(value) || 0;
+    if (!rates.includes(v)) rates.push(v);
+    return rates.sort((a, b) => a - b).map(r => `<option value="${r}" ${r === v ? 'selected' : ''}>${r === 0 ? 'Aucune' : pct(r) + ' %'}</option>`).join('');
   }
 
   // ---------- routeur ----------
@@ -106,7 +119,7 @@
     let active = name;
     if (name === 'doc') {
       const type = parts[1] === 'new' ? parts[2] : (docById(parts[1]) || {}).type;
-      active = type === 'facture' ? 'factures' : 'devis';
+      active = type === 'devis' ? 'devis' : 'factures';
     }
     $$('nav a').forEach(a => a.classList.toggle('active', a.dataset.route === active));
     (routes[name] || routes.dashboard)(parts.slice(1));
@@ -116,16 +129,20 @@
 
   // ---------- Accueil ----------
   routes.dashboard = () => {
-    const cur = data.company.currency;
+    const cur = company().currency;
     const month = C.today().slice(0, 7);
     const year = C.today().slice(0, 4);
-    const invoices = data.documents.filter(d => d.type === 'facture' && d.status !== 'annulée' && d.status !== 'brouillon');
-    const sum = list => list.reduce((s, d) => s + C.computeTotals(d, data.company).totalTTC, 0);
-    const caMonth = sum(invoices.filter(d => d.date && d.date.startsWith(month)));
-    const caYear = sum(invoices.filter(d => d.date && d.date.startsWith(year)));
-    const unpaid = invoices.filter(d => d.status === 'envoyée');
-    const late = unpaid.filter(d => d.dueDate && d.dueDate < C.today());
+    const issued = data.documents.filter(d => (d.type === 'facture' || d.type === 'avoir') && d.status !== 'brouillon' && d.status !== 'annulée');
+    const sign = d => d.type === 'avoir' ? -1 : 1;
+    const sumHT = list => list.reduce((s, d) => s + sign(d) * C.computeTotals(d, company()).netHT, 0);
+    const sumTTC = list => list.reduce((s, d) => s + sign(d) * C.computeTotals(d, company()).totalTTC, 0);
+    const ofMonth = issued.filter(d => d.date && d.date.startsWith(month));
+    const ofYear = issued.filter(d => d.date && d.date.startsWith(year));
+    const open = data.documents.filter(d => d.type === 'facture' && ['envoyée', 'partielle', 'retard'].includes(effStatus(d)));
+    const openAmount = open.reduce((s, d) => s + balance(d).remaining, 0);
+    const late = open.filter(d => effStatus(d) === 'retard');
     const pendingQuotes = data.documents.filter(d => d.type === 'devis' && d.status === 'envoyé');
+    const sumQ = list => list.reduce((s, d) => s + C.computeTotals(d, company()).totalTTC, 0);
     const recent = data.documents.slice().sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.createdAt || 0) - (a.createdAt || 0)).slice(0, 8);
 
     $('#view').innerHTML = `
@@ -135,10 +152,10 @@
           <button class="btn btn-primary" id="new-facture">+ Nouvelle facture</button>
         </div></div>
       <div class="stats">
-        <div class="stat"><div class="lbl">CA du mois (TTC)</div><div class="val">${C.money(caMonth, cur)}</div><div class="sub">factures émises</div></div>
-        <div class="stat"><div class="lbl">CA de l'année (TTC)</div><div class="val">${C.money(caYear, cur)}</div><div class="sub">${year}</div></div>
-        <div class="stat"><div class="lbl">Impayées</div><div class="val">${C.money(sum(unpaid), cur)}</div><div class="sub">${unpaid.length} facture(s), ${late.length} en retard</div></div>
-        <div class="stat"><div class="lbl">Devis en attente</div><div class="val">${C.money(sum(pendingQuotes), cur)}</div><div class="sub">${pendingQuotes.length} devis envoyé(s)</div></div>
+        <div class="stat"><div class="lbl">CA du mois (HT)</div><div class="val">${C.money(sumHT(ofMonth), cur)}</div><div class="sub">${C.money(sumTTC(ofMonth), cur)} TTC, avoirs déduits</div></div>
+        <div class="stat"><div class="lbl">CA de l'année (HT)</div><div class="val">${C.money(sumHT(ofYear), cur)}</div><div class="sub">${year} · ${C.money(sumTTC(ofYear), cur)} TTC</div></div>
+        <div class="stat"><div class="lbl">Reste à encaisser</div><div class="val">${C.money(openAmount, cur)}</div><div class="sub">${open.length} facture(s), ${late.length} en retard</div></div>
+        <div class="stat"><div class="lbl">Devis en attente</div><div class="val">${C.money(sumQ(pendingQuotes), cur)}</div><div class="sub">${pendingQuotes.length} devis envoyé(s)</div></div>
       </div>
       <div class="panel"><h2>Documents récents</h2>${docTable(recent)}</div>`;
     $('#new-devis').onclick = () => navigate('#/doc/new/devis');
@@ -147,44 +164,57 @@
   };
 
   // ---------- listes devis / factures ----------
-  function docTable(list) {
+  function docTable(list, opts) {
+    opts = opts || {};
     if (!list.length) return `<div class="empty">Aucun document.</div>`;
-    const cur = data.company.currency;
-    return `<table class="list"><thead><tr><th>Numéro</th><th>Type</th><th>Client</th><th>Date</th><th>Statut</th><th class="r">Total TTC</th><th></th></tr></thead><tbody>
-      ${list.map(d => `<tr class="clickable" data-id="${d.id}">
-        <td><strong>${h(d.number)}</strong></td><td>${d.type === 'devis' ? 'Devis' : 'Facture'}</td>
-        <td>${h((clientById(d.clientId) || {}).name || '—')}</td><td>${C.fmtDate(d.date)}</td>
-        <td>${statusBadge(d)}</td><td class="r">${C.money(C.computeTotals(d, data.company).totalTTC, cur)}</td>
-        <td class="actions"><button class="btn btn-sm" data-pdf="${d.id}">PDF</button></td></tr>`).join('')}
+    const cur = company().currency;
+    return `<table class="list"><thead><tr><th>Numéro</th><th>Type</th><th>Client</th><th>Date</th><th>Statut</th><th class="r">${opts.invoices ? 'Net à payer' : 'Total TTC'}</th>${opts.invoices ? '<th class="r">Reste</th>' : ''}<th></th></tr></thead><tbody>
+      ${list.map(d => {
+        const t = C.computeTotals(d, company());
+        const amount = d.type === 'devis' ? t.totalTTC : (d.type === 'avoir' ? -t.netToPay : t.netToPay);
+        const rest = d.type === 'facture' && d.status !== 'brouillon' ? balance(d).remaining : null;
+        return `<tr class="clickable" data-id="${d.id}">
+        <td><strong>${d.number ? h(d.number) : '<span class="muted">Brouillon</span>'}</strong></td><td>${C.TITLES[d.type]}</td>
+        <td>${h(clientName(d.clientId))}</td><td>${C.fmtDate(d.date)}</td>
+        <td>${statusBadge(d)}</td><td class="r">${C.money(amount, cur)}</td>
+        ${opts.invoices ? `<td class="r">${rest != null && rest > 0.0005 ? C.money(rest, cur) : '<span class="muted">—</span>'}</td>` : ''}
+        <td class="actions"><button class="btn btn-sm" data-pdf="${d.id}">PDF</button></td></tr>`; }).join('')}
     </tbody></table>`;
   }
   function bindDocTable() {
     $$('tr.clickable[data-id]').forEach(tr => tr.onclick = e => { if (e.target.closest('button')) return; navigate('#/doc/' + tr.dataset.id); });
     $$('button[data-pdf]').forEach(b => b.onclick = () => exportPdf(docById(b.dataset.pdf)));
   }
+  // brouillons (sans numéro) en tête, puis numéros décroissants
+  const byNumberDesc = (a, b) => ((a.number ? 1 : 0) - (b.number ? 1 : 0)) || (b.number || '').localeCompare(a.number || '', undefined, { numeric: true }) || (b.createdAt || 0) - (a.createdAt || 0);
 
   function listView(type) {
     const isQ = type === 'devis';
-    let q = '', st = '';
+    let q = '', st = '', kind = '';
     const draw = () => {
-      const list = data.documents.filter(d => d.type === type)
-        .filter(d => !st || d.status === st)
-        .filter(d => !q || [d.number, (clientById(d.clientId) || {}).name, d.subject].join(' ').toLowerCase().includes(q))
-        .sort((a, b) => (b.number || '').localeCompare(a.number || '', undefined, { numeric: true }));
-      $('#list-wrap').innerHTML = docTable(list);
+      const list = data.documents.filter(d => isQ ? d.type === 'devis' : (d.type === 'facture' || d.type === 'avoir'))
+        .filter(d => !kind || d.type === kind)
+        .filter(d => !st || effStatus(d) === st)
+        .filter(d => !q || [d.number, clientName(d.clientId), d.subject].join(' ').toLowerCase().includes(q))
+        .sort(byNumberDesc);
+      $('#list-wrap').innerHTML = docTable(list, { invoices: !isQ });
       bindDocTable();
     };
+    const statuses = isQ ? C.DISPLAY_STATUSES.devis : [...C.DISPLAY_STATUSES.facture, 'émis'];
     $('#view').innerHTML = `
       <div class="page-head"><h1>${isQ ? 'Devis' : 'Factures'}</h1>
-        <div class="actions"><button class="btn btn-primary" id="new">+ ${isQ ? 'Nouveau devis' : 'Nouvelle facture'}</button></div></div>
+        <div class="actions">${isQ ? '' : '<button class="btn" id="new-avoir">+ Avoir</button>'}<button class="btn btn-primary" id="new">+ ${isQ ? 'Nouveau devis' : 'Nouvelle facture'}</button></div></div>
       <div class="filters">
         <input type="text" id="q" placeholder="Rechercher (numéro, client, objet)…">
-        <select id="st"><option value="">Tous les statuts</option>${C.STATUSES[type].map(s => `<option>${s}</option>`).join('')}</select>
+        ${isQ ? '' : `<select id="kind"><option value="">Factures et avoirs</option><option value="facture">Factures</option><option value="avoir">Avoirs</option></select>`}
+        <select id="st"><option value="">Tous les statuts</option>${statuses.map(s => `<option value="${s}">${h(C.statusLabel(s))}</option>`).join('')}</select>
       </div>
       <div id="list-wrap"></div>`;
     $('#new').onclick = () => navigate('#/doc/new/' + type);
+    if ($('#new-avoir')) $('#new-avoir').onclick = () => navigate('#/doc/new/avoir');
     $('#q').oninput = e => { q = e.target.value.toLowerCase(); draw(); };
     $('#st').onchange = e => { st = e.target.value; draw(); };
+    if ($('#kind')) $('#kind').onchange = e => { kind = e.target.value; draw(); };
     draw();
   }
   routes.devis = () => listView('devis');
@@ -193,61 +223,96 @@
   // ---------- éditeur de document ----------
   function newDocument(type) {
     const date = C.today();
-    const days = type === 'devis' ? data.company.quoteValidityDays : data.company.paymentTermsDays;
+    const days = type === 'devis' ? company().quoteValidityDays : company().paymentTermsDays;
     return {
       id: C.uid(), type, number: '', date, dueDate: C.addDays(date, days), clientId: '', subject: '', reference: '',
       lines: [{ label: '', description: '', qty: 1, unit: '', unitPrice: 0, vatRate: 19 }],
-      discountRate: 0, applyStamp: true, status: 'brouillon', notes: '', createdAt: Date.now()
+      discountRate: 0, applyStamp: type === 'facture', status: 'brouillon', notes: '', payments: [],
+      withholdingRate: type === 'devis' ? 0 : (Number(company().defaultWithholdingRate) || 0), createdAt: Date.now()
     };
+  }
+
+  function clientWithholding(clientId) {
+    const c = clientById(clientId);
+    if (c && c.withholdingRate != null && c.withholdingRate !== '') return Number(c.withholdingRate) || 0;
+    return Number(company().defaultWithholdingRate) || 0;
   }
 
   routes.doc = (parts) => {
     let doc, isNew = false;
-    if (parts[0] === 'new') { doc = newDocument(parts[1] === 'facture' ? 'facture' : 'devis'); isNew = true; }
-    else { doc = docById(parts[0]); if (!doc) return navigate('#/dashboard'); doc = JSON.parse(JSON.stringify(doc)); }
-    const isQ = doc.type === 'devis';
-    const cur = data.company.currency;
+    if (parts[0] === 'new') {
+      const type = ['devis', 'facture', 'avoir'].includes(parts[1]) ? parts[1] : 'devis';
+      doc = newDocument(type); isNew = true;
+      if (type === 'avoir' && parts[2]) { const inv = docById(parts[2]); if (inv) Object.assign(doc, creditDraftFrom(inv)); }
+    } else {
+      doc = docById(parts[0]); if (!doc) return navigate('#/dashboard'); doc = deepCopy(doc);
+    }
+    const isQ = doc.type === 'devis', isInv = doc.type === 'facture', isAv = doc.type === 'avoir';
+    const cur = company().currency;
+    const locked = C.isLocked(doc) && !unlockedIds.has(doc.id);
+    const ro = locked ? 'disabled' : '';
+    const stored = isNew ? null : docById(doc.id);
+    const bal = isInv && !isNew && doc.status !== 'brouillon' ? balance(stored) : null;
+    const canUnlock = locked && isInv && bal && !bal.paid && !bal.credits.length;
+    const issuedDeposits = isQ && !isNew ? data.documents.filter(d => d.type === 'facture' && d.deposit && d.deposit.quoteId === doc.id && d.status !== 'brouillon') : [];
 
     const clientOptions = () => `<option value="">— Choisir un client —</option>` +
       data.clients.slice().sort((a, b) => a.name.localeCompare(b.name)).map(c => `<option value="${c.id}" ${c.id === doc.clientId ? 'selected' : ''}>${h(c.name)}</option>`).join('');
+    const invoiceOptions = () => `<option value="">— Facture concernée —</option>` +
+      data.documents.filter(d => d.type === 'facture' && d.status !== 'brouillon' && d.number).sort(byNumberDesc)
+        .map(d => `<option value="${d.id}" ${d.id === doc.creditOf ? 'selected' : ''}>${h(d.number)} — ${h(clientName(d.clientId))} — ${C.money(C.computeTotals(d, company()).netToPay, cur)}</option>`).join('');
+
+    const title = isNew ? (isQ ? 'Nouveau devis' : isInv ? 'Nouvelle facture' : 'Nouvel avoir') : docLabel(doc);
+    const statusCell = isQ
+      ? `<label class="field">Statut<select name="status">${C.STATUSES.devis.map(s => `<option ${s === doc.status ? 'selected' : ''}>${s}</option>`).join('')}</select></label>`
+      : `<div class="field">Statut<div class="status-cell">${isNew || doc.status === 'brouillon' ? `${badge('brouillon')}<span class="small muted">numéro attribué à l'émission</span>` : (isInv ? statusBadge(stored) : badge(doc.status))}</div></div>`;
 
     $('#view').innerHTML = `
       <div class="page-head">
-        <h1>${isNew ? (isQ ? 'Nouveau devis' : 'Nouvelle facture') : (isQ ? 'Devis ' : 'Facture ') + h(doc.number)}</h1>
+        <div><h1>${h(title)}</h1>${locked ? `<div class="small muted lock-note">Document émis : il n'est plus modifiable${isInv ? ' — pour corriger, crée un avoir' : ''}.</div>` : ''}</div>
         <div class="actions">
-          ${!isNew ? `<button class="btn" id="dup">Dupliquer</button>` : ''}
+          ${!isNew && !isAv ? `<button class="btn" id="dup">Dupliquer</button>` : ''}
+          ${!isNew && isQ ? `<button class="btn" id="deposit">Facture d'acompte…</button>` : ''}
+          ${!isNew && isQ && issuedDeposits.length ? `<button class="btn" id="settle">Facture de solde</button>` : ''}
           ${!isNew && isQ ? `<button class="btn" id="convert">Convertir en facture</button>` : ''}
-          ${!isNew ? `<button class="btn btn-danger" id="del">Supprimer</button>` : ''}
+          ${locked && isInv && doc.status !== 'annulée' ? `<button class="btn" id="pay">Enregistrer un paiement</button><button class="btn" id="credit">Créer un avoir</button>` : ''}
+          ${canUnlock ? `<button class="btn btn-ghost" id="unlock">Modifier…</button>` : ''}
+          ${!isNew && !locked ? `<button class="btn btn-danger" id="del">Supprimer</button>` : ''}
           <button class="btn" id="pdf">Exporter en PDF</button>
-          <button class="btn btn-primary" id="save">Enregistrer</button>
+          ${!locked ? `<button class="btn ${isQ ? 'btn-primary' : ''}" id="save">Enregistrer${isQ ? '' : ' le brouillon'}</button>` : ''}
+          ${!locked && !isQ ? `<button class="btn btn-primary" id="issue">${isInv ? 'Émettre la facture' : 'Émettre l\'avoir'}</button>` : ''}
         </div></div>
       <div class="editor">
         <div>
           <div class="panel"><h2>Informations</h2>
             <form id="f-head" class="grid-3">
               <label class="field">Client
-                <div class="inline"><select name="clientId">${clientOptions()}</select><button type="button" class="btn btn-sm" id="quick-client">+</button></div>
+                <div class="inline"><select name="clientId" ${ro}>${clientOptions()}</select>${locked ? '' : '<button type="button" class="btn btn-sm" id="quick-client">+</button>'}</div>
               </label>
-              ${field('Date', 'date', doc.date, 'date')}
-              ${field(isQ ? 'Valable jusqu\'au' : 'Échéance', 'dueDate', doc.dueDate, 'date')}
-              <label class="field span-2">Objet<input type="text" name="subject" value="${h(doc.subject)}" placeholder="Ex : Audit de sécurité du réseau"></label>
-              ${field('Référence (optionnel)', 'reference', doc.reference || '')}
-              <label class="field">Statut<select name="status">${C.STATUSES[doc.type].map(s => `<option ${s === doc.status ? 'selected' : ''}>${s}</option>`).join('')}</select></label>
-              ${field('Remise globale (%)', 'discountRate', doc.discountRate || 0, 'number', 'min="0" max="100" step="0.5" class="num"')}
-              ${!isQ ? `<label class="check" style="align-self:end"><input type="checkbox" name="applyStamp" ${doc.applyStamp !== false ? 'checked' : ''}> Timbre fiscal (${C.money(data.company.stampFee, cur)})</label>` : ''}
+              ${isAv ? `<label class="field span-2">Facture concernée<select name="creditOf" ${ro}>${invoiceOptions()}</select></label>` : ''}
+              ${field('Date', 'date', doc.date, 'date', ro)}
+              ${isAv ? '' : field(isQ ? 'Valable jusqu\'au' : 'Échéance', 'dueDate', doc.dueDate, 'date', ro)}
+              <label class="field span-2">Objet<input type="text" name="subject" value="${h(doc.subject)}" placeholder="Ex : Audit de sécurité du réseau" ${ro}></label>
+              ${field('Référence (optionnel)', 'reference', doc.reference || '', 'text', ro)}
+              ${isAv ? field('Motif de l\'avoir', 'creditReason', doc.creditReason || '', 'text', ro + ' placeholder="Erreur de facturation, remise commerciale…"') : ''}
+              ${statusCell}
+              ${field('Remise globale (%)', 'discountRate', doc.discountRate || 0, 'number', 'min="0" max="100" step="0.5" class="num" ' + ro)}
+              ${!isQ ? `<label class="field">Retenue à la source<select name="withholdingRate" ${ro}>${withholdingOptions(doc.withholdingRate)}</select></label>` : ''}
+              ${!isQ ? `<label class="check" style="align-self:end"><input type="checkbox" name="applyStamp" ${doc.applyStamp === true || (isInv && doc.applyStamp !== false) ? 'checked' : ''} ${ro}> Timbre fiscal (${C.money(company().stampFee, cur)})</label>` : ''}
             </form>
           </div>
           <div class="panel"><h2>Lignes</h2>
-            <div class="catalog-pick">
+            ${locked ? '' : `<div class="catalog-pick">
               <select id="cat-pick"><option value="">Ajouter depuis le catalogue…</option>${data.catalog.map(c => `<option value="${c.id}">${h(c.label)} — ${C.money(c.unitPrice, cur)}</option>`).join('')}</select>
               <button class="btn btn-sm" id="add-line">+ Ligne vide</button>
-            </div>
+            </div>`}
             <table class="lines-edit"><thead><tr><th style="width:38%">Désignation / description</th><th style="width:9%">Qté</th><th style="width:9%">Unité</th><th style="width:15%">P.U. HT</th><th style="width:13%">TVA</th><th class="r">Total HT</th><th></th></tr></thead>
               <tbody id="lines"></tbody></table>
             <div class="totals-box" id="totals"></div>
           </div>
+          ${bal ? `<div class="panel" id="pay-panel"><h2>Paiements et situation</h2><div id="pay-body"></div></div>` : ''}
           <div class="panel"><h2>Notes (affichées sur le document)</h2>
-            <textarea id="notes" placeholder="Conditions de paiement, mentions particulières…">${h(doc.notes || '')}</textarea>
+            <textarea id="notes" placeholder="Conditions particulières, mentions…" ${ro}>${h(doc.notes || '')}</textarea>
           </div>
         </div>
         <div class="preview"><iframe id="preview" title="Aperçu"></iframe></div>
@@ -257,14 +322,14 @@
     const linesBody = $('#lines');
     function drawLines() {
       linesBody.innerHTML = doc.lines.map((l, i) => `<tr data-i="${i}">
-        <td><input type="text" data-k="label" value="${h(l.label)}" placeholder="Désignation">
-            <textarea data-k="description" placeholder="Description (optionnel)">${h(l.description || '')}</textarea></td>
-        <td><input type="number" class="num" data-k="qty" value="${l.qty}" step="0.01" min="0"></td>
-        <td><input type="text" data-k="unit" value="${h(l.unit || '')}" placeholder="u, h, j"></td>
-        <td><input type="number" class="num" data-k="unitPrice" value="${l.unitPrice}" step="0.001" min="0"></td>
-        <td><select data-k="vatRate">${C.VAT_RATES.map(r => `<option value="${r}" ${Number(l.vatRate) === r ? 'selected' : ''}>${r}%</option>`).join('')}</select></td>
+        <td><input type="text" data-k="label" value="${h(l.label)}" placeholder="Désignation" ${ro}>
+            <textarea data-k="description" placeholder="Description (optionnel)" ${ro}>${h(l.description || '')}</textarea></td>
+        <td><input type="number" class="num" data-k="qty" value="${l.qty}" step="0.01" ${ro}></td>
+        <td><input type="text" data-k="unit" value="${h(l.unit || '')}" placeholder="u, h, j" ${ro}></td>
+        <td><input type="number" class="num" data-k="unitPrice" value="${l.unitPrice}" step="0.001" ${ro}></td>
+        <td><select data-k="vatRate" ${ro}>${C.VAT_RATES.map(r => `<option value="${r}" ${Number(l.vatRate) === r ? 'selected' : ''}>${r}%</option>`).join('')}</select></td>
         <td class="total" data-total="${i}"></td>
-        <td><button class="btn btn-ghost btn-sm" data-rm="${i}" title="Supprimer">✕</button></td></tr>`).join('');
+        <td>${locked ? '' : `<button class="btn btn-ghost btn-sm" data-rm="${i}" title="Supprimer">✕</button>`}</td></tr>`).join('');
       $$('[data-k]', linesBody).forEach(el => el.oninput = () => {
         const i = Number(el.closest('tr').dataset.i);
         doc.lines[i][el.dataset.k] = el.type === 'number' ? Number(el.value) : el.value;
@@ -273,8 +338,8 @@
       $$('[data-rm]', linesBody).forEach(b => b.onclick = () => { doc.lines.splice(Number(b.dataset.rm), 1); if (!doc.lines.length) doc.lines.push({ label: '', qty: 1, unitPrice: 0, vatRate: 19 }); drawLines(); refreshTotals(); });
       refreshTotals();
     }
-    $('#add-line').onclick = () => { doc.lines.push({ label: '', description: '', qty: 1, unit: '', unitPrice: 0, vatRate: 19 }); drawLines(); $$('input[data-k=label]', linesBody).pop().focus(); };
-    $('#cat-pick').onchange = e => {
+    if ($('#add-line')) $('#add-line').onclick = () => { doc.lines.push({ label: '', description: '', qty: 1, unit: '', unitPrice: 0, vatRate: 19 }); drawLines(); $$('input[data-k=label]', linesBody).pop().focus(); };
+    if ($('#cat-pick')) $('#cat-pick').onchange = e => {
       const it = data.catalog.find(c => c.id === e.target.value); if (!it) return;
       if (doc.lines.length === 1 && !doc.lines[0].label && !doc.lines[0].unitPrice) doc.lines = [];
       doc.lines.push({ label: it.label, description: it.description || '', qty: 1, unit: it.unit || '', unitPrice: it.unitPrice, vatRate: it.vatRate });
@@ -283,89 +348,230 @@
 
     // --- en-tête
     const head = $('#f-head');
-    head.oninput = head.onchange = () => { Object.assign(doc, formValues(head)); refreshTotals(); };
+    head.oninput = head.onchange = (e) => {
+      const before = doc.clientId;
+      Object.assign(doc, formValues(head));
+      if (e && e.target && e.target.name === 'clientId' && doc.clientId !== before && !isQ && doc.status === 'brouillon') {
+        // nouveau client : on reprend son taux de retenue à la source
+        doc.withholdingRate = clientWithholding(doc.clientId);
+        const sel = $('select[name=withholdingRate]', head); if (sel) sel.innerHTML = withholdingOptions(doc.withholdingRate);
+      }
+      if (e && e.target && e.target.name === 'creditOf') {
+        const inv = docById(doc.creditOf); if (inv) { doc.creditOfNumber = inv.number; if (!doc.clientId) { doc.clientId = inv.clientId; $('select[name=clientId]', head).value = inv.clientId; } }
+      }
+      refreshTotals();
+    };
     $('#notes').oninput = e => { doc.notes = e.target.value; schedulePreview(); };
-    $('#quick-client').onclick = () => clientForm(null, c => { $('select[name=clientId]', head).innerHTML = clientOptions(); $('select[name=clientId]', head).value = c.id; doc.clientId = c.id; schedulePreview(); });
+    if ($('#quick-client')) $('#quick-client').onclick = () => clientForm(null, c => { $('select[name=clientId]', head).innerHTML = clientOptions(); $('select[name=clientId]', head).value = c.id; doc.clientId = c.id; doc.withholdingRate = isQ ? 0 : clientWithholding(c.id); const sel = $('select[name=withholdingRate]', head); if (sel) sel.innerHTML = withholdingOptions(doc.withholdingRate); refreshTotals(); });
 
     // --- totaux + aperçu
     let previewTimer = null;
     function schedulePreview() { clearTimeout(previewTimer); previewTimer = setTimeout(drawPreview, 250); }
     function drawPreview() {
       const pv = $('#preview'); if (!pv) return; // l'utilisateur a quitté l'éditeur avant la fin du délai
-      const html = C.documentHtml({ ...doc, number: doc.number || (isQ ? 'DEV-…' : 'FAC-…') }, clientById(doc.clientId), data.company, { preview: true, zoom: Math.max(0.3, Math.floor((pv.clientWidth - 2) / 794 * 100) / 100) });
+      const st = isInv && stored && stored.status !== 'brouillon' ? effStatus(stored) : null;
+      const stampText = st === 'payée' ? 'Payée' : st === 'annulée' ? 'Annulée' : undefined;
+      const html = C.documentHtml(doc, clientById(doc.clientId), company(), { preview: true, stampText, zoom: Math.max(0.3, Math.floor((pv.clientWidth - 2) / 794 * 100) / 100) });
       pv.srcdoc = html;
     }
     function refreshTotals() {
-      const t = C.computeTotals(doc, data.company);
+      const t = C.computeTotals(doc, company());
       t.lines.forEach((l, i) => { const c = $(`[data-total="${i}"]`); if (c) c.textContent = C.money(l.ht); });
       $('#totals').innerHTML = `<table>
         <tr><td>Total HT</td><td>${C.money(t.totalHT, cur)}</td></tr>
-        ${t.discount ? `<tr><td>Remise ${t.discountRate}%</td><td>- ${C.money(t.discount, cur)}</td></tr><tr><td>Net HT</td><td>${C.money(t.netHT, cur)}</td></tr>` : ''}
+        ${t.discount ? `<tr><td>Remise ${pct(t.discountRate)}%</td><td>- ${C.money(t.discount, cur)}</td></tr><tr><td>Net HT</td><td>${C.money(t.netHT, cur)}</td></tr>` : ''}
         <tr><td>TVA</td><td>${C.money(t.totalVAT, cur)}</td></tr>
         ${t.stamp ? `<tr><td>Timbre fiscal</td><td>${C.money(t.stamp, cur)}</td></tr>` : ''}
-        <tr class="grand"><td>Total TTC</td><td>${C.money(t.totalTTC, cur)}</td></tr></table>`;
+        ${t.withholding ? `<tr><td>Total TTC</td><td>${C.money(t.totalTTC, cur)}</td></tr><tr><td>Retenue à la source ${pct(t.withholdingRate)}%</td><td>- ${C.money(t.withholding, cur)}</td></tr>` : ''}
+        <tr class="grand"><td>${isQ ? 'Total TTC' : isAv ? 'Montant de l\'avoir' : 'Net à payer'}</td><td>${C.money(isQ ? t.totalTTC : t.netToPay, cur)}</td></tr></table>`;
       schedulePreview();
+    }
+
+    // --- paiements (facture émise)
+    function drawPayments() {
+      const el = $('#pay-body'); if (!el) return;
+      const s = docById(doc.id); const b = balance(s); const t = b.totals;
+      const rows = (s.payments || []).slice().sort((a, x) => (a.date || '').localeCompare(x.date || ''));
+      el.innerHTML = `
+        <div class="pay-grid">
+          <div><div class="k-label">Net à payer</div><div class="v">${C.money(t.netToPay, cur)}</div>${t.withholding ? `<div class="small muted">TTC ${C.money(t.totalTTC, cur)} − RS ${C.money(t.withholding, cur)}</div>` : ''}</div>
+          <div><div class="k-label">Avoirs</div><div class="v">${C.money(b.credited, cur)}</div>${b.credits.length ? `<div class="small">${b.credits.map(a => `<a href="#/doc/${a.id}">${h(a.number)}</a>`).join(', ')}</div>` : ''}</div>
+          <div><div class="k-label">Payé</div><div class="v">${C.money(b.paid, cur)}</div></div>
+          <div><div class="k-label">Reste à payer</div><div class="v ${b.remaining > 0.0005 ? 'due' : 'ok'}">${C.money(Math.max(0, b.remaining), cur)}</div>${b.remaining < -0.0005 ? `<div class="small muted">trop-perçu ${C.money(-b.remaining, cur)}</div>` : ''}</div>
+        </div>
+        ${rows.length ? `<table class="list compact"><thead><tr><th>Date</th><th>Mode</th><th>Référence</th><th class="r">Montant</th><th></th></tr></thead><tbody>
+          ${rows.map(p => `<tr><td>${C.fmtDate(p.date)}</td><td>${h(methodLabel(p.method))}</td><td>${h(p.reference || '')}${p.note ? `<div class="small muted">${h(p.note)}</div>` : ''}</td><td class="r">${C.money(p.amount, cur)}</td><td class="actions"><button class="btn btn-ghost btn-sm" data-rmpay="${p.id}" title="Supprimer">✕</button></td></tr>`).join('')}
+        </tbody></table>` : `<p class="small muted">Aucun paiement enregistré.</p>`}
+        <div class="inline mt">
+          ${s.status !== 'annulée' && b.remaining > 0.0005 ? `<button class="btn btn-primary" id="pay2">+ Enregistrer un paiement</button>` : ''}
+          ${t.withholding ? `<label class="check"><input type="checkbox" id="rs-cert" ${s.withholdingCertificate ? 'checked' : ''}> Attestation de retenue à la source reçue (${C.money(t.withholding, cur)})</label>` : ''}
+          ${s.status === 'annulée' ? `<span class="muted small">Facture annulée.</span><button class="btn btn-ghost btn-sm" id="uncancel">Rétablir</button>` : (!b.paid && !b.credits.length ? `<button class="btn btn-ghost btn-sm" id="cancel-inv">Marquer annulée…</button>` : '')}
+        </div>`;
+      $$('[data-rmpay]', el).forEach(btn => btn.onclick = async () => {
+        if (!await confirmDialog('Supprimer ce paiement ?')) return;
+        s.payments = s.payments.filter(p => p.id !== btn.dataset.rmpay); save(true); render();
+      });
+      if ($('#pay2')) $('#pay2').onclick = () => paymentForm(s, () => render());
+      if ($('#rs-cert')) $('#rs-cert').onchange = e => { s.withholdingCertificate = e.target.checked; save(true); };
+      if ($('#cancel-inv')) $('#cancel-inv').onclick = async () => {
+        if (!await confirmDialog(`Marquer ${s.number} comme annulée ? La facture reste dans la numérotation. La façon conforme de corriger une facture émise est d'établir un avoir.`, 'Marquer annulée')) return;
+        s.status = 'annulée'; save(true); render();
+      };
+      if ($('#uncancel')) $('#uncancel').onclick = () => { s.status = 'envoyée'; save(true); render(); };
     }
 
     // --- actions
     function validate() {
       if (!doc.clientId) { toast('Choisis un client.', true); return false; }
+      if (isAv && !doc.creditOf) { toast('Indique la facture concernée par l\'avoir.', true); return false; }
       if (!doc.lines.some(l => l.label && l.label.trim())) { toast('Ajoute au moins une ligne avec une désignation.', true); return false; }
       return true;
     }
     function persist() {
       if (!validate()) return false;
-      if (!doc.number) doc.number = C.nextNumber(data, doc.type, doc.date);
+      if (isQ && !doc.number) doc.number = C.nextNumber(data, 'devis', doc.date);
+      if (isAv && doc.creditOf) { const inv = docById(doc.creditOf); if (inv) doc.creditOfNumber = inv.number; }
       const idx = data.documents.findIndex(d => d.id === doc.id);
-      const clean = JSON.parse(JSON.stringify(doc));
+      const clean = deepCopy(doc);
       if (idx >= 0) data.documents[idx] = clean; else data.documents.push(clean);
       save(true);
       return true;
     }
-    $('#save').onclick = () => { if (persist()) { toast('Enregistré : ' + doc.number); if (isNew) navigate('#/doc/' + doc.id); else render(); } };
-    $('#pdf').onclick = () => { if (persist()) exportPdf(doc); };
+    function issue() {
+      if (!validate()) return false;
+      if (!doc.number) doc.number = C.nextNumber(data, doc.type, doc.date);
+      doc.status = isInv ? 'envoyée' : 'émis';
+      unlockedIds.delete(doc.id);
+      persist();
+      toast(`${C.TITLES[doc.type]} ${doc.number} émis${isInv ? 'e' : ''}`);
+      return true;
+    }
+    if ($('#save')) $('#save').onclick = () => { if (persist()) { toast(isQ ? 'Enregistré : ' + doc.number : 'Brouillon enregistré'); unlockedIds.delete(doc.id); if (isNew) navigate('#/doc/' + doc.id); else render(); } };
+    if ($('#issue')) $('#issue').onclick = async () => {
+      if (!validate()) return;
+      const n = doc.number || peekNumber(doc.type, doc.date);
+      if (!await confirmDialog(`Émettre ${isInv ? 'la facture' : 'l\'avoir'} ${n} ? Le numéro devient définitif et le document ne sera plus modifiable.`, 'Émettre', false)) return;
+      if (issue()) { if (isNew) navigate('#/doc/' + doc.id); else render(); }
+    };
+    $('#pdf').onclick = async () => {
+      if (locked) return exportPdf(docById(doc.id) || doc);
+      if (!validate()) return;
+      if (!isQ && doc.status === 'brouillon') {
+        const n = doc.number || peekNumber(doc.type, doc.date);
+        const c = await choiceDialog('Exporter en PDF', `Ce document est un brouillon. Tu peux l'émettre maintenant (numéro ${n}, définitif) ou exporter un brouillon marqué « Brouillon », sans numéro.`, `Émettre ${n} et exporter`, 'Exporter le brouillon');
+        if (!c) return;
+        if (c === 'a') { if (!issue()) return; }
+        else persist();
+        exportPdf(docById(doc.id));
+        if (isNew) navigate('#/doc/' + doc.id); else render();
+        return;
+      }
+      if (persist()) { exportPdf(docById(doc.id)); if (isNew) navigate('#/doc/' + doc.id); }
+    };
     if ($('#del')) $('#del').onclick = async () => {
-      if (!await confirmDialog(`Supprimer ${doc.number} ? Le numéro ne sera pas réutilisé.`)) return;
+      if (!await confirmDialog(`Supprimer ${docLabel(doc)} ?${doc.number ? ' Le numéro ne sera pas réutilisé.' : ''}`)) return;
       data.documents = data.documents.filter(d => d.id !== doc.id); save(true); navigate(isQ ? '#/devis' : '#/factures');
     };
+    if ($('#unlock')) $('#unlock').onclick = async () => {
+      if (!await confirmDialog(`Modifier ${doc.number} après émission ? Ce n'est pas conforme : une facture émise se corrige par un avoir. À réserver à une erreur repérée avant l'envoi au client.`, 'Modifier quand même')) return;
+      unlockedIds.add(doc.id); render();
+    };
     if ($('#dup')) $('#dup').onclick = () => {
-      const copy = { ...JSON.parse(JSON.stringify(doc)), id: C.uid(), number: '', status: 'brouillon', date: C.today(), createdAt: Date.now(), fromQuoteId: undefined, fromQuoteNumber: undefined };
-      copy.dueDate = C.addDays(copy.date, isQ ? data.company.quoteValidityDays : data.company.paymentTermsDays);
-      copy.number = C.nextNumber(data, copy.type, copy.date);
-      data.documents.push(copy); save(true); toast('Copie créée : ' + copy.number); navigate('#/doc/' + copy.id);
+      const copy = { ...deepCopy(doc), id: C.uid(), number: '', status: 'brouillon', date: C.today(), createdAt: Date.now(), payments: [], withholdingCertificate: false, fromQuoteId: undefined, fromQuoteNumber: undefined, deposit: undefined, settles: undefined };
+      copy.dueDate = C.addDays(copy.date, isQ ? company().quoteValidityDays : company().paymentTermsDays);
+      if (isQ) copy.number = C.nextNumber(data, 'devis', copy.date);
+      data.documents.push(copy); save(true); toast(isQ ? 'Copie créée : ' + copy.number : 'Brouillon créé à partir de ' + doc.number); navigate('#/doc/' + copy.id);
     };
     if ($('#convert')) $('#convert').onclick = () => {
-      const inv = { ...JSON.parse(JSON.stringify(doc)), id: C.uid(), type: 'facture', number: '', status: 'brouillon', date: C.today(), applyStamp: true, createdAt: Date.now(), fromQuoteId: doc.id, fromQuoteNumber: doc.number };
-      inv.dueDate = C.addDays(inv.date, data.company.paymentTermsDays);
-      inv.number = C.nextNumber(data, 'facture', inv.date);
-      const orig = docById(doc.id); if (orig && orig.status !== 'accepté') orig.status = 'accepté';
-      data.documents.push(inv); save(true); toast('Facture créée : ' + inv.number); navigate('#/doc/' + inv.id);
+      const inv = invoiceFromQuote(doc, deepCopy(doc.lines), doc.discountRate);
+      inv.fromQuoteId = doc.id; inv.fromQuoteNumber = doc.number;
+      acceptQuote(doc.id); data.documents.push(inv); save(true); toast('Brouillon de facture créé — clique sur « Émettre » quand elle est prête'); navigate('#/doc/' + inv.id);
     };
+    if ($('#deposit')) $('#deposit').onclick = () => {
+      modal(`<h2>Facture d'acompte</h2><p class="small muted">Une facture d'un pourcentage du devis ${h(doc.number)} (${C.money(C.computeTotals(doc, company()).totalTTC, cur)} TTC). La facture de solde déduira automatiquement cet acompte.</p>
+        <form id="df" class="grid-2">${field('Pourcentage du devis', 'percent', 30, 'number', 'min="1" max="99" step="0.5" class="num"')}</form>
+        <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Créer le brouillon</button></div>`,
+        (root, close) => { $('#ok', root).onclick = () => {
+          const p = Number($('input[name=percent]', root).value); if (!(p > 0 && p < 100)) return toast('Pourcentage entre 1 et 99.', true);
+          const inv = invoiceFromQuote(doc, C.depositLines(doc, p, company()), 0);
+          inv.deposit = { percent: p, quoteId: doc.id, quoteNumber: doc.number }; inv.fromQuoteId = doc.id; inv.fromQuoteNumber = doc.number;
+          inv.subject = `Acompte ${pct(p)} % — ${doc.subject || doc.number}`;
+          acceptQuote(doc.id); data.documents.push(inv); save(true); close(); toast('Brouillon de facture d\'acompte créé'); navigate('#/doc/' + inv.id);
+        }; });
+    };
+    if ($('#settle')) $('#settle').onclick = () => {
+      const inv = invoiceFromQuote(doc, C.settlementLines(doc, issuedDeposits), doc.discountRate);
+      inv.settles = { quoteId: doc.id, quoteNumber: doc.number, depositIds: issuedDeposits.map(d => d.id) }; inv.fromQuoteId = doc.id; inv.fromQuoteNumber = doc.number;
+      inv.subject = `Solde — ${doc.subject || doc.number}`;
+      data.documents.push(inv); save(true); toast(`Brouillon de facture de solde créé (${issuedDeposits.length} acompte(s) déduit(s))`); navigate('#/doc/' + inv.id);
+    };
+    if ($('#pay')) $('#pay').onclick = () => paymentForm(docById(doc.id), () => render());
+    if ($('#credit')) $('#credit').onclick = () => navigate('#/doc/new/avoir/' + doc.id);
 
     drawLines();
+    drawPayments();
   };
 
+  function invoiceFromQuote(quote, lines, discountRate) {
+    const inv = newDocument('facture');
+    Object.assign(inv, { clientId: quote.clientId, subject: quote.subject, reference: quote.reference || '', lines, discountRate: discountRate || 0, notes: quote.notes || '', withholdingRate: clientWithholding(quote.clientId) });
+    return inv;
+  }
+  function acceptQuote(id) { const orig = docById(id); if (orig && orig.status !== 'accepté') orig.status = 'accepté'; }
+  function creditDraftFrom(inv) {
+    return {
+      creditOf: inv.id, creditOfNumber: inv.number, clientId: inv.clientId, subject: `Avoir sur facture ${inv.number}${inv.subject ? ' — ' + inv.subject : ''}`,
+      lines: deepCopy(inv.lines || []), discountRate: inv.discountRate || 0, withholdingRate: inv.withholdingRate || 0, applyStamp: false, creditReason: ''
+    };
+  }
+
+  function paymentForm(inv, done) {
+    const b = balance(inv); const cur = company().currency;
+    modal(`<h2>Enregistrer un paiement</h2><p class="small muted">${h(inv.number)} — reste à payer ${C.money(Math.max(0, b.remaining), cur)}</p>
+      <form id="pf2" class="grid-2">
+        ${field('Date', 'date', C.today(), 'date')}
+        ${field('Montant', 'amount', Math.max(0, b.remaining), 'number', 'step="0.001" min="0" class="num"')}
+        <label class="field">Mode<select name="method">${C.PAYMENT_METHODS.map(m => `<option value="${m[0]}">${m[1]}</option>`).join('')}</select></label>
+        ${field('Référence (n° chèque, virement…)', 'reference', '')}
+        <label class="field span-2">Note<input type="text" name="note" value=""></label>
+      </form>
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
+      (root, close) => { $('#ok', root).onclick = () => {
+        const v = formValues($('#pf2', root));
+        if (!(Number(v.amount) > 0)) return toast('Montant invalide.', true);
+        if (!v.date) return toast('Date obligatoire.', true);
+        inv.payments = inv.payments || [];
+        inv.payments.push({ id: C.uid(), date: v.date, amount: C.round3(v.amount), method: v.method, reference: v.reference || '', note: v.note || '' });
+        save(true); close();
+        const st = effStatus(inv); toast(st === 'payée' ? `${inv.number} payée intégralement` : 'Paiement enregistré');
+        if (done) done();
+      }; });
+  }
+
   async function exportPdf(doc) {
-    const html = C.documentHtml(doc, clientById(doc.clientId), data.company);
+    const st = doc.type === 'facture' && doc.status !== 'brouillon' ? effStatus(doc) : null;
+    const stampText = st === 'payée' ? 'Payée' : st === 'annulée' ? 'Annulée' : undefined;
+    const html = C.documentHtml(doc, clientById(doc.clientId), company(), { stampText });
     const client = (clientById(doc.clientId) || {}).name || '';
     const safe = s => String(s).replace(/[^\w\-àâäéèêëïîôöùûüç ]/gi, '').trim().replace(/\s+/g, '_');
-    const name = `${doc.number}${client ? '_' + safe(client) : ''}.pdf`;
+    const name = `${doc.number || 'Brouillon-' + doc.type}${client ? '_' + safe(client) : ''}.pdf`;
     try {
       const p = await bridge.exportPdf(html, name);
       if (p) {
         toast('PDF enregistré : ' + p.split(/[\\/]/).pop());
-        if (data.company.openAfterExport !== false) bridge.openPath(p);
+        if (company().openAfterExport !== false) bridge.openPath(p);
       }
     } catch (e) { toast('Erreur PDF : ' + e.message, true); }
   }
 
   // ---------- Clients ----------
   function clientForm(client, done) {
-    const c = client || { id: C.uid(), name: '', matricule: '', address: '', phone: '', email: '', notes: '' };
+    const c = client || { id: C.uid(), name: '', matricule: '', address: '', phone: '', email: '', notes: '', withholdingRate: '' };
     modal(`<h2>${client ? 'Modifier le client' : 'Nouveau client'}</h2>
       <form id="cf" class="grid-2">
         <label class="field span-2">Nom / Raison sociale<input type="text" name="name" value="${h(c.name)}" required></label>
         ${field('Matricule fiscal / CIN', 'matricule', c.matricule)}
+        <label class="field">Retenue à la source appliquée par ce client<select name="withholdingRate"><option value="" ${c.withholdingRate === '' || c.withholdingRate == null ? 'selected' : ''}>Par défaut (${pct(company().defaultWithholdingRate || 0)} %)</option>${C.WITHHOLDING_RATES.map(r => `<option value="${r}" ${String(c.withholdingRate) === String(r) ? 'selected' : ''}>${r === 0 ? 'Aucune' : pct(r) + ' %'}</option>`).join('')}</select></label>
         ${field('Téléphone', 'phone', c.phone)}
         ${field('Email', 'email', c.email, 'email')}
         <label class="field span-2">Adresse<textarea name="address">${h(c.address)}</textarea></label>
@@ -376,7 +582,7 @@
         $('#ok', root).onclick = () => {
           const v = formValues($('#cf', root));
           if (!v.name.trim()) return toast('Le nom est obligatoire.', true);
-          Object.assign(c, v);
+          Object.assign(c, v, { withholdingRate: v.withholdingRate === '' ? '' : Number(v.withholdingRate) });
           if (!client) data.clients.push(c);
           save(true); close(); if (done) done(c);
         };
@@ -385,13 +591,17 @@
 
   routes.clients = () => {
     let q = '';
+    const cur = company().currency;
     const draw = () => {
       const list = data.clients.filter(c => !q || [c.name, c.matricule, c.email, c.phone].join(' ').toLowerCase().includes(q)).sort((a, b) => a.name.localeCompare(b.name));
-      $('#list-wrap').innerHTML = list.length ? `<table class="list"><thead><tr><th>Nom</th><th>MF / CIN</th><th>Contact</th><th class="r">Documents</th><th></th></tr></thead><tbody>
-        ${list.map(c => `<tr><td><strong>${h(c.name)}</strong><div class="small muted">${h((c.address || '').split('\n')[0])}</div></td><td>${h(c.matricule)}</td>
+      $('#list-wrap').innerHTML = list.length ? `<table class="list"><thead><tr><th>Nom</th><th>MF / CIN</th><th>Contact</th><th class="r">Documents</th><th class="r">Reste à payer</th><th></th></tr></thead><tbody>
+        ${list.map(c => {
+          const docs = data.documents.filter(d => d.clientId === c.id);
+          const due = docs.filter(d => d.type === 'facture' && d.status !== 'brouillon' && d.status !== 'annulée').reduce((s, d) => s + Math.max(0, balance(d).remaining), 0);
+          return `<tr><td><strong>${h(c.name)}</strong><div class="small muted">${h((c.address || '').split('\n')[0])}</div></td><td>${h(c.matricule)}${c.withholdingRate !== '' && c.withholdingRate != null && Number(c.withholdingRate) ? `<div class="small muted">RS ${pct(c.withholdingRate)} %</div>` : ''}</td>
           <td>${h(c.phone)}${c.phone && c.email ? ' · ' : ''}${h(c.email)}</td>
-          <td class="r">${data.documents.filter(d => d.clientId === c.id).length}</td>
-          <td class="actions"><button class="btn btn-sm" data-edit="${c.id}">Modifier</button> <button class="btn btn-sm btn-danger" data-del="${c.id}">Supprimer</button></td></tr>`).join('')}
+          <td class="r">${docs.length}</td><td class="r">${due > 0.0005 ? C.money(due, cur) : '<span class="muted">—</span>'}</td>
+          <td class="actions"><button class="btn btn-sm" data-edit="${c.id}">Modifier</button> <button class="btn btn-sm btn-danger" data-del="${c.id}">Supprimer</button></td></tr>`; }).join('')}
         </tbody></table>` : `<div class="empty">Aucun client. Ajoute ton premier client.</div>`;
       $$('[data-edit]').forEach(b => b.onclick = () => clientForm(clientById(b.dataset.edit), draw));
       $$('[data-del]').forEach(b => b.onclick = async () => {
@@ -431,7 +641,7 @@
   }
 
   routes.catalogue = () => {
-    const cur = data.company.currency;
+    const cur = company().currency;
     const draw = () => {
       const list = data.catalog.slice().sort((a, b) => a.label.localeCompare(b.label));
       $('#list-wrap').innerHTML = list.length ? `<table class="list"><thead><tr><th>Désignation</th><th class="r">P.U. HT</th><th class="r">TVA</th><th>Unité</th><th></th></tr></thead><tbody>
@@ -446,15 +656,111 @@
     draw();
   };
 
+  // ---------- Comptabilité ----------
+  const MONTHS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+  const comptaState = { year: C.today().slice(0, 4), month: C.today().slice(5, 7) };
+
+  routes.compta = () => {
+    const cur = company().currency;
+    const years = Array.from(new Set(data.documents.map(d => (d.date || '').slice(0, 4)).filter(Boolean).concat([C.today().slice(0, 4)]))).sort().reverse();
+    if (!years.includes(comptaState.year)) comptaState.year = years[0];
+    const period = () => comptaState.month
+      ? { from: `${comptaState.year}-${comptaState.month}-01`, to: `${comptaState.year}-${comptaState.month}-31` }
+      : { from: `${comptaState.year}-01-01`, to: `${comptaState.year}-12-31` };
+    const periodLabel = () => comptaState.month ? `${MONTHS[Number(comptaState.month) - 1]} ${comptaState.year}` : `année ${comptaState.year}`;
+
+    $('#view').innerHTML = `
+      <div class="page-head"><h1>Comptabilité</h1>
+        <div class="actions">
+          <select id="c-year">${years.map(y => `<option ${y === comptaState.year ? 'selected' : ''}>${y}</option>`).join('')}</select>
+          <select id="c-month"><option value="">Toute l'année</option>${MONTHS.map((m, i) => { const v = String(i + 1).padStart(2, '0'); return `<option value="${v}" ${v === comptaState.month ? 'selected' : ''}>${m}</option>`; }).join('')}</select>
+        </div></div>
+      <div id="c-body"></div>`;
+    const draw = () => {
+      const p = period();
+      const rows = C.salesJournal(data, company(), p);
+      const sum = C.vatSummary(rows);
+      const pays = C.paymentsJournal(data, company(), p);
+      const paidTotal = pays.reduce((s, r) => s + r.amount, 0);
+      const open = data.documents.filter(d => d.type === 'facture' && ['envoyée', 'partielle', 'retard'].includes(effStatus(d)));
+      const openAmount = open.reduce((s, d) => s + balance(d).remaining, 0);
+      const rsPending = data.documents.filter(d => d.type === 'facture' && d.status !== 'brouillon' && d.status !== 'annulée' && C.computeTotals(d, company()).withholding > 0 && !d.withholdingCertificate);
+      const rsPendingAmount = rsPending.reduce((s, d) => s + C.computeTotals(d, company()).withholding, 0);
+      $('#c-body').innerHTML = `
+        <div class="stats">
+          <div class="stat"><div class="lbl">CA HT — ${h(periodLabel())}</div><div class="val">${C.money(sum.ht, cur)}</div><div class="sub">${sum.count} document(s), avoirs déduits</div></div>
+          <div class="stat"><div class="lbl">TVA collectée</div><div class="val">${C.money(sum.tva, cur)}</div><div class="sub">+ timbres ${C.money(sum.timbre, cur)}</div></div>
+          <div class="stat"><div class="lbl">Encaissé sur la période</div><div class="val">${C.money(paidTotal, cur)}</div><div class="sub">${pays.length} paiement(s)</div></div>
+          <div class="stat"><div class="lbl">Reste à encaisser (total)</div><div class="val">${C.money(openAmount, cur)}</div><div class="sub">${open.length} facture(s) ouverte(s)</div></div>
+        </div>
+        <div class="panel"><h2>TVA par taux — ${h(periodLabel())}</h2>
+          <table class="list compact"><thead><tr><th>Taux</th><th class="r">Base HT</th><th class="r">TVA</th></tr></thead><tbody>
+            ${C.VAT_RATES.map(r => `<tr><td>TVA ${r} %</td><td class="r">${C.money(sum.byRate[r].base, cur)}</td><td class="r">${C.money(sum.byRate[r].vat, cur)}</td></tr>`).join('')}
+            <tr class="total-row"><td><strong>Total</strong></td><td class="r"><strong>${C.money(sum.ht, cur)}</strong></td><td class="r"><strong>${C.money(sum.tva, cur)}</strong></td></tr>
+          </tbody></table>
+          <p class="small muted mt">Timbres fiscaux : ${C.money(sum.timbre, cur)} · TTC facturé : ${C.money(sum.ttc, cur)} · Retenues à la source subies : ${C.money(sum.rs, cur)}. <em>À VÉRIFIER avec le comptable</em> avant déclaration.</p>
+        </div>
+        <div class="panel"><h2>Journal des ventes — ${h(periodLabel())}</h2>
+          <div class="inline mb"><button class="btn" id="exp-journal">Exporter en CSV (Excel)</button><button class="btn" id="exp-pdfs">Exporter tous les PDF de la période</button></div>
+          ${rows.length ? `<div class="scroll-x"><table class="list compact"><thead><tr><th>Date</th><th>Numéro</th><th>Client</th><th class="r">HT</th><th class="r">TVA</th><th class="r">TTC</th><th class="r">RS</th><th class="r">Net</th><th>Statut</th></tr></thead><tbody>
+            ${rows.map(r => `<tr class="clickable" data-id="${r.id}"><td>${C.fmtDate(r.date)}</td><td><strong>${h(r.number)}</strong>${r.type === 'avoir' ? `<div class="small muted">avoir · ${h(r.creditOfNumber)}</div>` : ''}</td><td>${h(r.client)}<div class="small muted">${h(r.subject)}</div></td><td class="r">${C.money(r.ht)}</td><td class="r">${C.money(r.tva)}</td><td class="r">${C.money(r.ttc)}</td><td class="r">${r.rs ? C.money(r.rs) : '—'}</td><td class="r">${C.money(r.net)}</td><td>${badge(r.status)}</td></tr>`).join('')}
+          </tbody></table></div>` : '<div class="empty">Aucune facture émise sur cette période.</div>'}
+        </div>
+        <div class="panel"><h2>Encaissements — ${h(periodLabel())}</h2>
+          <div class="inline mb"><button class="btn" id="exp-pays">Exporter en CSV (Excel)</button></div>
+          ${pays.length ? `<table class="list compact"><thead><tr><th>Date</th><th>Facture</th><th>Client</th><th>Mode</th><th>Référence</th><th class="r">Montant</th></tr></thead><tbody>
+            ${pays.map(r => `<tr class="clickable" data-id="${r.docId}"><td>${C.fmtDate(r.date)}</td><td><strong>${h(r.number)}</strong></td><td>${h(r.client)}</td><td>${h(r.method)}</td><td>${h(r.reference)}</td><td class="r">${C.money(r.amount, cur)}</td></tr>`).join('')}
+          </tbody></table>` : '<div class="empty">Aucun encaissement sur cette période.</div>'}
+        </div>
+        <div class="panel"><h2>Retenues à la source — attestations à recevoir</h2>
+          ${rsPending.length ? `<p class="small muted">${C.money(rsPendingAmount, cur)} retenus par tes clients sans attestation reçue. Coche quand l'attestation arrive (elle justifie la retenue auprès du fisc).</p>
+          <table class="list compact"><thead><tr><th>Facture</th><th>Client</th><th>Date</th><th class="r">Retenue</th><th></th></tr></thead><tbody>
+            ${rsPending.map(d => { const t = C.computeTotals(d, company()); return `<tr><td><strong>${h(d.number)}</strong></td><td>${h(clientName(d.clientId))}</td><td>${C.fmtDate(d.date)}</td><td class="r">${C.money(t.withholding, cur)} <span class="muted small">(${pct(t.withholdingRate)} %)</span></td><td class="actions"><button class="btn btn-sm" data-cert="${d.id}">Attestation reçue</button></td></tr>`; }).join('')}
+          </tbody></table>` : '<p class="small muted">Aucune attestation en attente.</p>'}
+        </div>`;
+      $$('tr.clickable[data-id]').forEach(tr => tr.onclick = () => navigate('#/doc/' + tr.dataset.id));
+      $$('[data-cert]').forEach(b => b.onclick = () => { const d = docById(b.dataset.cert); d.withholdingCertificate = true; save(true); draw(); toast('Attestation notée pour ' + d.number); });
+      const tag = comptaState.month ? `${comptaState.year}-${comptaState.month}` : comptaState.year;
+      $('#exp-journal').onclick = async () => {
+        const cols = [
+          { key: 'date', label: 'Date', type: 'date' }, { key: 'number', label: 'Numéro' }, { key: 'typeLabel', label: 'Type' }, { key: 'client', label: 'Client' }, { key: 'subject', label: 'Objet' },
+          { key: 'ht', label: 'Total HT', type: 'money' },
+          ...C.VAT_RATES.map(r => ({ label: `Base ${r}%`, type: 'money', get: x => x.vatByRate[r].base })),
+          ...C.VAT_RATES.map(r => ({ label: `TVA ${r}%`, type: 'money', get: x => x.vatByRate[r].vat })),
+          { key: 'tva', label: 'Total TVA', type: 'money' }, { key: 'timbre', label: 'Timbre', type: 'money' }, { key: 'ttc', label: 'TTC', type: 'money' },
+          { key: 'rs', label: 'Retenue source', type: 'money' }, { key: 'net', label: 'Net à payer', type: 'money' },
+          { key: 'statusLabel', label: 'Statut' }, { key: 'paid', label: 'Payé', type: 'money' }, { key: 'remaining', label: 'Reste', type: 'money' }
+        ];
+        const p2 = await bridge.saveText(`journal-ventes-${tag}.csv`, C.toCsv(rows, cols)); if (p2) toast('Exporté : ' + p2.split(/[\\/]/).pop());
+      };
+      $('#exp-pays').onclick = async () => {
+        const cols = [{ key: 'date', label: 'Date', type: 'date' }, { key: 'number', label: 'Facture' }, { key: 'client', label: 'Client' }, { key: 'amount', label: 'Montant', type: 'money' }, { key: 'method', label: 'Mode' }, { key: 'reference', label: 'Référence' }, { key: 'note', label: 'Note' }];
+        const p2 = await bridge.saveText(`encaissements-${tag}.csv`, C.toCsv(pays, cols)); if (p2) toast('Exporté : ' + p2.split(/[\\/]/).pop());
+      };
+      $('#exp-pdfs').onclick = async () => {
+        if (!rows.length) return toast('Rien à exporter sur cette période.', true);
+        const files = rows.map(r => { const d = docById(r.id); const st = d.type === 'facture' ? effStatus(d) : null; return { name: `${d.number}_${(r.client || '').replace(/[^\w\-àâäéèêëïîôöùûüç ]/gi, '').trim().replace(/\s+/g, '_')}.pdf`, html: C.documentHtml(d, clientById(d.clientId), company(), { stampText: st === 'payée' ? 'Payée' : st === 'annulée' ? 'Annulée' : undefined }) }; });
+        toast(`Génération de ${files.length} PDF…`);
+        try { const dir = await bridge.exportPdfMany(files, `SkanFact-${tag}`); if (dir) { toast(`${files.length} PDF exportés`); bridge.openPath(dir); } }
+        catch (e) { toast('Erreur : ' + e.message, true); }
+      };
+    };
+    $('#c-year').onchange = e => { comptaState.year = e.target.value; draw(); };
+    $('#c-month').onchange = e => { comptaState.month = e.target.value; draw(); };
+    draw();
+  };
+
   // ---------- Paramètres ----------
   routes.parametres = async () => {
-    const c = data.company;
+    const c = company();
     const path = await bridge.dataPath();
     $('#view').innerHTML = `<div class="page-head"><h1>Paramètres</h1><div class="actions"><button class="btn btn-primary" id="save">Enregistrer</button></div></div>
       <form id="pf">
         <div class="panel"><h2>Société</h2><div class="grid-2">
           ${field('Raison sociale', 'name', c.name)}
-          ${field('Matricule fiscal', 'matricule', c.matricule)}
+          ${field('Matricule fiscal', 'matricule', c.matricule, 'text', 'placeholder="1998268D/A/M/000"')}
+          ${field('Registre de commerce (RC)', 'rc', c.rc || '', 'text', 'placeholder="B123456789"')}
+          ${field('Capital social', 'capital', c.capital || '', 'text', 'placeholder="1 000 DT"')}
           <label class="field span-2">Adresse<textarea name="address">${h(c.address)}</textarea></label>
           ${field('Téléphone', 'phone', c.phone)}
           ${field('Email', 'email', c.email, 'email')}
@@ -470,15 +776,19 @@
         <div class="panel"><h2>Paiement</h2><div class="grid-2">
           ${field('Banque', 'bank', c.bank)}
           ${field('RIB', 'rib', c.rib)}
+          <label class="field span-2">Conditions de paiement (sur les factures)<textarea name="paymentTerms">${h(c.paymentTerms || '')}</textarea></label>
         </div></div>
         <div class="panel"><h2>Documents</h2><div class="grid-3">
           ${field('Timbre fiscal par facture', 'stampFee', c.stampFee, 'number', 'step="0.001" min="0" class="num"')}
           ${field('Validité des devis (jours)', 'quoteValidityDays', c.quoteValidityDays, 'number', 'min="0" class="num"')}
           ${field('Délai de paiement (jours)', 'paymentTermsDays', c.paymentTermsDays, 'number', 'min="0" class="num"')}
+          <label class="field">Retenue à la source par défaut<select name="defaultWithholdingRate">${withholdingOptions(c.defaultWithholdingRate)}</select></label>
           ${field('Devise', 'currency', c.currency)}
-          <label class="field span-2">Pied de page des documents<textarea name="footer">${h(c.footer)}</textarea></label>
-          <label class="check"><input type="checkbox" name="openAfterExport" ${c.openAfterExport !== false ? 'checked' : ''}> Ouvrir le PDF après export</label>
-        </div></div>
+          <label class="check" style="align-self:end"><input type="checkbox" name="openAfterExport" ${c.openAfterExport !== false ? 'checked' : ''}> Ouvrir le PDF après export</label>
+          <label class="field span-2">Conditions des devis<textarea name="quoteTerms">${h(c.quoteTerms || '')}</textarea></label>
+          <label class="field">Pied de page des documents<textarea name="footer">${h(c.footer)}</textarea></label>
+        </div>
+        <p class="small muted mt">Retenue à la source : calculée sur le TTC hors timbre, modifiable sur chaque facture et par client. Les taux et l'assiette sont <em>À VÉRIFIER avec ton comptable</em>.</p></div>
       </form>
       <div class="panel"><h2>Mises à jour</h2><div id="update-panel"></div></div>
       <div class="panel"><h2>Données et sauvegardes</h2>
@@ -497,7 +807,7 @@
         </div>
         <p class="small muted mt">La démo remplace tes données actuelles par des clients, prestations, devis et factures fictifs pour découvrir l'app. Exporte d'abord si tu veux garder quelque chose.</p>
       </div>`;
-    $('#save').onclick = () => { Object.assign(data.company, formValues($('#pf'))); save(true); toast('Paramètres enregistrés'); $('#brand-company').textContent = data.company.name; };
+    $('#save').onclick = () => { Object.assign(data.company, formValues($('#pf'))); data.company.defaultWithholdingRate = Number(data.company.defaultWithholdingRate) || 0; save(true); toast('Paramètres enregistrés'); $('#brand-company').textContent = data.company.name; };
     drawUpdatePanel();
     $('#backup-now').onclick = async () => { const p = await bridge.createBackup(); toast(p ? 'Sauvegarde créée : ' + p.split(/[\\/]/).pop() : 'Rien à sauvegarder pour l\'instant'); };
     $('#open-backups').onclick = () => bridge.openBackups();
@@ -612,6 +922,7 @@
     const click = sel => { const b = $(sel); if (b) b.click(); else toast('Ouvre d\'abord un devis ou une facture.', true); };
     if (name === 'new-devis') navigate('#/doc/new/devis');
     else if (name === 'new-facture') navigate('#/doc/new/facture');
+    else if (name === 'new-avoir') navigate('#/doc/new/avoir');
     else if (name === 'save') click('#save');
     else if (name === 'pdf') click('#pdf');
     else if (name === 'settings') navigate('#/parametres');
@@ -621,19 +932,18 @@
     else if (name.startsWith('go:')) navigate('#/' + name.slice(3));
   });
 
-
   // ---------- jeu de données de démonstration ----------
   function buildDemoData() {
     const d = migrate(null);
-    Object.assign(d.company, { phone: '+216 55 123 456', email: 'contact@skancyber.tn', website: 'www.skancyber.tn', bank: 'BIAT — Agence El Manar', rib: '08 006 0000123456789 12' });
-    const mk = (name, matricule, address, phone, email) => ({ id: C.uid(), name, matricule, address, phone, email, notes: '' });
+    Object.assign(d.company, { phone: '+216 55 123 456', email: 'contact@skancyber.tn', website: 'www.skancyber.tn', bank: 'BIAT — Agence El Manar', rib: '08 006 0000123456789 12', rc: 'B01234562024', capital: '1 000 DT' });
+    const mk = (name, matricule, address, phone, email, withholdingRate) => ({ id: C.uid(), name, matricule, address, phone, email, notes: '', withholdingRate: withholdingRate == null ? '' : withholdingRate });
     d.clients = [
-      mk('Clinique Les Jasmins', '1234567A/M/000', 'Avenue Habib Bourguiba\n2080 Ariana', '+216 71 700 100', 'direction@clinique-jasmins.tn'),
+      mk('Clinique Les Jasmins', '1234567A/M/000', 'Avenue Habib Bourguiba\n2080 Ariana', '+216 71 700 100', 'direction@clinique-jasmins.tn', 1.5),
       mk('Pharmacie Centrale El Menzah', '2345678B/A/000', '12 rue Ibn Khaldoun\n1004 El Menzah', '+216 71 234 567', 'pharmacie.menzah@gmail.com'),
-      mk('Cabinet Ben Salah Avocats', '3456789C/P/000', 'Immeuble Le Palmier, Lac 2\n1053 Tunis', '+216 71 960 200', 'contact@bensalah-avocats.tn'),
+      mk('Cabinet Ben Salah Avocats', '3456789C/P/000', 'Immeuble Le Palmier, Lac 2\n1053 Tunis', '+216 71 960 200', 'contact@bensalah-avocats.tn', 1.5),
       mk('Lemon Beach Hammamet', '4567890D/A/000', 'Zone touristique\n8050 Hammamet', '+216 72 280 300', 'hello@lemonbeach.tn'),
       mk('Restaurant Dar El Jeld', '5678901E/A/000', '5 rue Dar El Jeld, Médina\n1006 Tunis', '+216 71 560 916', 'reservation@dareljeld.tn'),
-      mk('Mohamed Trabelsi', 'CIN 09876543', 'Résidence Les Oliviers, Bloc B\n2092 El Manar', '+216 98 765 432', 'm.trabelsi@outlook.com')
+      mk('Mohamed Trabelsi', 'CIN 09876543', 'Résidence Les Oliviers, Bloc B\n2092 El Manar', '+216 98 765 432', 'm.trabelsi@outlook.com', 0)
     ];
     const cat = (label, description, unitPrice, vatRate, unit) => ({ id: C.uid(), label, description, unitPrice, vatRate, unit });
     d.catalog = [
@@ -671,8 +981,10 @@
     specs.slice().sort((a, b) => b[2] - a[2]).forEach(sp => {
       const [type, ci, ago, status, subject, lines, discountRate, notes, fromIdx] = sp;
       const date = daysAgo(ago);
-      const doc = { id: C.uid(), type, number: C.nextNumber(d, type, date), date, dueDate: C.addDays(date, type === 'devis' ? d.company.quoteValidityDays : d.company.paymentTermsDays),
-        clientId: cl[ci].id, subject, reference: '', lines, discountRate, applyStamp: true, status, notes, createdAt: Date.now() - ago * 86400000 };
+      const isDraftInvoice = type === 'facture' && status === 'brouillon';
+      const doc = { id: C.uid(), type, number: isDraftInvoice ? '' : C.nextNumber(d, type, date), date, dueDate: C.addDays(date, type === 'devis' ? d.company.quoteValidityDays : d.company.paymentTermsDays),
+        clientId: cl[ci].id, subject, reference: '', lines, discountRate, applyStamp: type === 'facture', status, notes, payments: [],
+        withholdingRate: type === 'facture' ? (Number(cl[ci].withholdingRate) || 0) : 0, createdAt: Date.now() - ago * 86400000 };
       if (fromIdx != null) { const q = created.find(x => x.spec === specs[fromIdx]); if (q) { doc.fromQuoteId = q.doc.id; doc.fromQuoteNumber = q.doc.number; } }
       created.push({ spec: sp, doc });
       d.documents.push(doc);
@@ -680,7 +992,17 @@
     // une facture en retard : échéance dépassée
     const late = d.documents.find(x => x.type === 'facture' && x.status === 'envoyée' && x.subject.startsWith('Installation pare-feu'));
     if (late) late.dueDate = daysAgo(18);
-    return d;
+    // un paiement partiel sur la facture de supervision
+    const partial = d.documents.find(x => x.type === 'facture' && x.subject.startsWith('Extension de supervision'));
+    if (partial) partial.payments.push({ id: C.uid(), date: daysAgo(1), amount: 1000, method: 'virement', reference: 'VIR 2026-0912', note: 'Acompte reçu' });
+    // un avoir partiel (remise commerciale) sur la facture de maintenance mois 2
+    const m2 = d.documents.find(x => x.type === 'facture' && x.subject.endsWith('mois 2'));
+    if (m2) {
+      const av = { id: C.uid(), type: 'avoir', number: C.nextNumber(d, 'avoir', daysAgo(2)), date: daysAgo(2), clientId: m2.clientId, creditOf: m2.id, creditOfNumber: m2.number, creditReason: 'Geste commercial : intervention tardive',
+        subject: `Avoir sur facture ${m2.number}`, lines: [line(k[3], 1)], discountRate: 0, applyStamp: false, status: 'émis', notes: '', payments: [], withholdingRate: 0, createdAt: Date.now() };
+      d.documents.push(av);
+    }
+    return migrate(d); // convertit les « payée » en paiements
   }
 
   // ---------- import / export ----------
@@ -696,7 +1018,9 @@
   // ---------- démarrage ----------
   (async () => {
     const loaded = await bridge.loadData();
-    data = migrate(loaded && loaded.data);
+    const raw = loaded && loaded.data;
+    data = migrate(raw);
+    if (raw && (raw.version || 1) < 2) save(true); // données migrées vers le nouveau format : on enregistre tout de suite
     $('#brand-company').textContent = data.company.name;
     bridge.updateVersion().then(v => {
       upd.app = v; const el = $('#app-version'); if (el) el.textContent = 'v' + v.version;

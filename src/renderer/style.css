@@ -116,7 +116,25 @@ td.actions { white-space: nowrap; text-align: right; }
 .badge.envoyé, .badge.envoyée { background: var(--info-soft); color: var(--info); }
 .badge.accepté, .badge.payée { background: var(--success-soft); color: var(--success); }
 .badge.refusé, .badge.annulée { background: var(--danger-soft); color: var(--danger); }
-.badge.retard { background: var(--warning-soft); color: var(--warning); }
+.badge.retard, .badge.partielle { background: var(--warning-soft); color: var(--warning); }
+.badge.émis { background: var(--info-soft); color: var(--info); }
+.status-cell { display: flex; align-items: center; gap: 8px; min-height: 40px; }
+.lock-note { margin-top: 4px; }
+.page-head > div > h1 { margin: 0; }
+
+/* ---------- paiements ---------- */
+.pay-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 14px; }
+.pay-grid > div { background: var(--bg); border-radius: 12px; padding: 12px 14px; }
+.pay-grid .k-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
+.pay-grid .v { font-size: 18px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.pay-grid .v.due { color: var(--warning); }
+.pay-grid .v.ok { color: var(--success); }
+table.list.compact th { padding: 9px 12px; }
+table.list.compact td { padding: 9px 12px; font-size: 13px; }
+table.list tr.total-row td { background: var(--bg); }
+.scroll-x { overflow-x: auto; }
+.mb { margin-bottom: 12px; }
+input:disabled, select:disabled, textarea:disabled { background: #f3f5f7; color: #5b6673; cursor: not-allowed; }
 
 /* ---------- dashboard ---------- */
 .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 20px; }

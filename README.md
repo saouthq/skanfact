@@ -9,12 +9,13 @@ Pas d'e-facture (TTN / TEIF) : l'outil produit des PDF classiques.
 - Paramètres société (nom, matricule fiscal, adresse, RIB, logo, slogan, couleurs du document)
 - Clients (nom, MF/CIN, adresse, contact)
 - Catalogue de prestations (désignation, description, prix HT, TVA, unité) pour remplir un devis en un clic
-- Devis et factures : lignes, remise globale, TVA par taux (0/7/13/19 %), timbre fiscal de 1 DT sur les factures, montant en lettres
-- Numérotation automatique continue par année (DEV-2026-001, FAC-2026-001) — un numéro n'est jamais réutilisé, même après suppression
-- Conversion devis → facture en un clic (le devis passe en « accepté »)
-- Statuts (brouillon, envoyé, accepté/refusé, payée, annulée) et détection des factures en retard
-- Aperçu en direct pendant la saisie, export PDF A4
-- Tableau de bord : CA du mois, CA de l'année, impayés, devis en attente
+- Devis, factures et avoirs : lignes, remise globale, TVA par taux (0/7/13/19 %), timbre fiscal de 1 DT sur les factures, retenue à la source (par client ou par facture), montant en lettres
+- Numérotation continue par année (DEV-2026-001, FAC-2026-001, AVO-2026-001). Une facture reçoit son numéro **à l'émission** : un brouillon n'en a pas, donc aucun trou si on le supprime. Une facture émise est verrouillée ; on la corrige par un avoir
+- Conversion devis → facture, facture d'acompte (x % du devis) puis facture de solde qui déduit les acomptes
+- Paiements (virement, chèque, espèces, traite, carte), paiements partiels, statut déduit automatiquement (envoyée, partiellement payée, payée, en retard, annulée), reste à payer par facture et par client
+- Aperçu en direct pendant la saisie, export PDF A4 (tampon Payée / Annulée / Brouillon selon le cas)
+- Tableau de bord : CA HT du mois et de l'année (avoirs déduits), reste à encaisser, devis en attente
+- Comptabilité : par mois ou par année, TVA collectée par taux, journal des ventes et encaissements exportables en CSV (Excel), export groupé des PDF de la période, suivi des attestations de retenue à la source
 - Export / import de toutes les données en JSON, sauvegarde automatique quotidienne (30 jours)
 
 ## Installation
@@ -120,6 +121,6 @@ test/run-tests.js
 
 - Un devis classique tient sur une page A4 ; au-delà, le document passe sur plusieurs pages (lignes jamais coupées, en-tête du tableau répété) mais le pied de page n'apparaît qu'à la fin.
 - Pas d'envoi par email intégré : exporte le PDF et joins-le.
-- Pas d'avoir (facture d'annulation) ni de retenue à la source : à voir avec le comptable si besoin.
+- Retenue à la source : calculée sur le TTC hors timbre ; taux et assiette **à vérifier avec le comptable** selon la nature de la prestation.
 - Apps non signées (pas de certificat Apple ni Windows) : avertissements au premier lancement, voir « Installation ».
 - L'icône de l'app est `build/icon.png` (1024×1024) ; electron-builder la convertit en `.icns` / `.ico` au build. Pour en changer, remplace ce fichier.

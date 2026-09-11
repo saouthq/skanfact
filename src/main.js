@@ -166,6 +166,7 @@ function buildMenu() {
       submenu: [
         { label: 'Nouveau devis', accelerator: 'CmdOrCtrl+N', click: act('new-devis') },
         { label: 'Nouvelle facture', accelerator: 'CmdOrCtrl+Shift+N', click: act('new-facture') },
+        { label: 'Nouvel avoir', click: act('new-avoir') },
         { type: 'separator' },
         { label: 'Enregistrer', accelerator: 'CmdOrCtrl+S', click: act('save') },
         { label: 'Exporter en PDF…', accelerator: 'CmdOrCtrl+P', click: act('pdf') },
@@ -201,6 +202,7 @@ function buildMenu() {
         { label: 'Factures', accelerator: 'CmdOrCtrl+3', click: act('go:factures') },
         { label: 'Clients', accelerator: 'CmdOrCtrl+4', click: act('go:clients') },
         { label: 'Catalogue', accelerator: 'CmdOrCtrl+5', click: act('go:catalogue') },
+        { label: 'Comptabilité', accelerator: 'CmdOrCtrl+6', click: act('go:compta') },
         { type: 'separator' },
         { role: 'resetZoom', label: 'Taille réelle' },
         { role: 'zoomIn', label: 'Agrandir' },
@@ -302,6 +304,25 @@ ipcMain.handle('logo:pick', async () => {
 
 // ---------- PDF ----------
 
+// Rend un document HTML en PDF A4. Le HTML passe par un fichier temporaire : une URL data:
+// est limitée en taille (logo en base64).
+async function renderPdf(html, win) {
+  const tmp = path.join(app.getPath('temp'), `skanfact-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.html`);
+  fs.writeFileSync(tmp, html, 'utf8');
+  try {
+    await win.loadFile(tmp);
+    return await win.webContents.printToPDF({
+      pageSize: 'A4',
+      printBackground: true,
+      margins: { top: 0, bottom: 0, left: 0, right: 0 },
+      preferCSSPageSize: true
+    });
+  } finally {
+    try { fs.unlinkSync(tmp); } catch {}
+  }
+}
+const pdfWindow = () => new BrowserWindow({ show: false, webPreferences: { sandbox: true, contextIsolation: true } });
+
 ipcMain.handle('pdf:export', async (_e, { html, suggestedName }) => {
   const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
     title: 'Enregistrer le PDF',
@@ -309,24 +330,43 @@ ipcMain.handle('pdf:export', async (_e, { html, suggestedName }) => {
     filters: [{ name: 'PDF', extensions: ['pdf'] }]
   });
   if (canceled || !filePath) return null;
+  const win = pdfWindow();
+  try { fs.writeFileSync(filePath, await renderPdf(html, win)); }
+  finally { win.destroy(); }
+  return filePath;
+});
 
-  // Le document passe par un fichier temporaire : une URL data: est limitée en taille (logo en base64).
-  const tmp = path.join(app.getPath('temp'), `skanfact-${process.pid}-${Date.now()}.html`);
-  fs.writeFileSync(tmp, html, 'utf8');
-  const win = new BrowserWindow({ show: false, webPreferences: { sandbox: true, contextIsolation: true } });
+// Export groupé (journal des ventes) : tous les PDF dans un dossier choisi par l'utilisateur.
+ipcMain.handle('pdf:exportMany', async (_e, { files, folderName }) => {
+  const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+    title: 'Choisir le dossier où créer les PDF',
+    defaultPath: app.getPath('documents'),
+    properties: ['openDirectory', 'createDirectory'],
+    buttonLabel: 'Exporter ici'
+  });
+  if (canceled || !filePaths.length) return null;
+  const dir = path.join(filePaths[0], folderName || 'SkanFact');
+  fs.mkdirSync(dir, { recursive: true });
+  const win = pdfWindow();
   try {
-    await win.loadFile(tmp);
-    const pdf = await win.webContents.printToPDF({
-      pageSize: 'A4',
-      printBackground: true,
-      margins: { top: 0, bottom: 0, left: 0, right: 0 },
-      preferCSSPageSize: true
-    });
-    fs.writeFileSync(filePath, pdf);
-  } finally {
-    win.destroy();
-    try { fs.unlinkSync(tmp); } catch {}
-  }
+    for (const f of files) {
+      const safe = String(f.name).replace(/[\\/:*?"<>|]/g, '_');
+      fs.writeFileSync(path.join(dir, safe), await renderPdf(f.html, win));
+    }
+  } finally { win.destroy(); }
+  return dir;
+});
+
+// Enregistrement d'un fichier texte (CSV pour le comptable).
+ipcMain.handle('file:saveText', async (_e, { suggestedName, content }) => {
+  const ext = path.extname(suggestedName || '').slice(1) || 'txt';
+  const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+    title: 'Enregistrer',
+    defaultPath: path.join(app.getPath('documents'), suggestedName || 'export.txt'),
+    filters: [{ name: ext.toUpperCase(), extensions: [ext] }]
+  });
+  if (canceled || !filePath) return null;
+  fs.writeFileSync(filePath, content, 'utf8');
   return filePath;
 });
 
