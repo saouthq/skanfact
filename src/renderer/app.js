@@ -1822,7 +1822,7 @@
       Object.keys(v).forEach(k => { const m = k.match(/^(et|eten)_(\w+)_(subject|body)$/); if (m) { const bag = m[1] === 'et' ? et : eten; bag[m[2]] = bag[m[2]] || {}; bag[m[2]][m[3]] = v[k]; delete v[k]; } });
       Object.assign(data.company, v, { emailTemplates: et, emailTemplatesEn: eten });
       data.company.defaultWithholdingRate = Number(data.company.defaultWithholdingRate) || 0;
-      save(true); applyTheme(); $('#brand-company').textContent = data.company.name;
+      save(true); applyTheme(); $('#brand-company').textContent = data.company.name || 'Ton entreprise';
       setDirty = false; $('#save-bar').hidden = true;
       return true;
     };
@@ -2009,6 +2009,105 @@
     else if (name.startsWith('go:')) navigate('#/' + name.slice(3));
   });
 
+  // ---------- assistant de première utilisation ----------
+  const OB = window.SkanOnboarding;
+  function runSetup() {
+    return new Promise(resolve => {
+      const steps = OB.STEPS;
+      const a = { currency: 'DT', stampFee: 1, quoteValidityDays: 30, paymentTermsDays: 30, defaultWithholdingRate: 0, activity: '', fillCatalog: true };
+      let i = 0;
+      const root = document.createElement('div'); root.id = 'setup';
+      document.body.appendChild(root);
+
+      const bodyFor = s => {
+        if (s.id === 'bienvenue') return s.intro;
+        if (s.id === 'entreprise') return `<form id="sf-form" class="grid-2">
+          <label class="field span-2">Raison sociale <span class="req">obligatoire</span><input type="text" name="name" value="${h(a.name || '')}" placeholder="Nom exact de l'entreprise, forme juridique comprise" autofocus></label>
+          ${field(lbl('Matricule fiscal', 'co.matricule'), 'matricule', a.matricule || '', 'text', 'placeholder="1234567X/A/M/000"')}
+          ${field(lbl('Registre de commerce (RC)', 'co.rc'), 'rc', a.rc || '', 'text', 'placeholder="facultatif"')}
+          <label class="field span-2">Adresse<textarea name="address" placeholder="Rue et numéro&#10;Code postal et ville">${h(a.address || '')}</textarea></label>
+          ${field('Téléphone', 'phone', a.phone || '')}
+          ${field('Email', 'email', a.email || '', 'email')}
+          ${field(lbl('Capital social', 'co.capital'), 'capital', a.capital || '', 'text', 'placeholder="facultatif, ex. 1 000 DT"')}
+        </form>
+        <p class="small muted">Le matricule fiscal est obligatoire sur une facture en Tunisie. Si tu ne l'as pas encore, laisse vide et complète-le avant ta première facture.</p>`;
+        if (s.id === 'activite') return `<div class="act-grid">
+          ${C.ACTIVITIES.map(x => `<button type="button" class="act ${a.activity === x.id ? 'sel' : ''}" data-act="${x.id}">
+            <span class="act-l">${h(x.label)}</span>
+            <span class="act-s">${x.catalog.length ? x.catalog.length + ' prestations proposées · TVA ' + x.vat + ' %' : 'catalogue vide'}</span></button>`).join('')}
+        </div>
+        <label class="check mt"><input type="checkbox" id="sf-cat" ${a.fillCatalog ? 'checked' : ''}> Préremplir mon catalogue avec ces prestations (prix à ajuster ensuite)</label>
+        <p class="small muted mt">Le catalogue sert à insérer une prestation dans un devis en un clic, sans retaper le libellé ni le prix. Les taux de TVA proposés sont les plus courants — <em>à faire confirmer par ton comptable</em>.</p>`;
+        if (s.id === 'facturation') return `<form id="sf-form" class="grid-3">
+          ${field(lbl('Devise', 'doc.currency'), 'currency', a.currency, 'text')}
+          ${field(lbl('Timbre fiscal par facture', 'doc.stampFee'), 'stampFee', a.stampFee, 'number', 'step="0.001" min="0" class="num"')}
+          ${field(lbl('Retenue à la source par défaut', 'doc.withholdingDefault'), 'defaultWithholdingRate', a.defaultWithholdingRate, 'number', 'step="0.5" min="0" class="num"')}
+          ${field(lbl('Validité des devis (jours)', 'doc.quoteValidity'), 'quoteValidityDays', a.quoteValidityDays, 'number', 'min="0" class="num"')}
+          ${field(lbl('Délai de paiement (jours)', 'doc.paymentDays'), 'paymentTermsDays', a.paymentTermsDays, 'number', 'min="0" class="num"')}
+        </form>
+        <p class="small muted">Les valeurs proposées sont les usages tunisiens : timbre fiscal de 1 dinar, trente jours de validité et trente jours de paiement, pas de retenue à la source par défaut. <em>À VÉRIFIER avec ton comptable selon ton activité et ton régime.</em></p>`;
+        if (s.id === 'paiement') return `<form id="sf-form" class="grid-2">
+          ${field(lbl('Banque', 'pay.bank'), 'bank', a.bank || '', 'text', 'placeholder="Nom de la banque et agence"')}
+          ${field('RIB', 'rib', a.rib || '', 'text', 'placeholder="20 chiffres"')}
+        </form>
+        <p class="small muted">Ton RIB apparaîtra sur chaque facture, dans le bloc « Règlement ». <b>Relis-le caractère par caractère</b> : une erreur ici, c'est un paiement qui n'arrive jamais. Tu peux laisser vide et le remplir plus tard.</p>`;
+        if (s.id === 'sauvegarde') return `<p>Tes données vivent dans un seul fichier, sur cet ordinateur. S'il tombe en panne, est volé ou perdu, ta comptabilité disparaît avec lui.</p>
+          <p>Choisis un dossier dans <b>iCloud Drive</b>, sur une <b>clé USB</b> ou un disque réseau : à chaque enregistrement, SkanFact y recopiera tout, sans que tu aies à y penser.</p>
+          <div class="inline mt"><button type="button" class="btn btn-primary" id="sf-ext">Choisir un dossier…</button><span id="sf-ext-st" class="small muted">Aucun dossier choisi.</span></div>
+          <p class="small muted mt">Tu peux le faire plus tard dans Paramètres → Sécurité et données, mais l'expérience montre que « plus tard » n'arrive jamais.</p>`;
+        return '';
+      };
+
+      const draw = () => {
+        const s = steps[i];
+        root.innerHTML = `<div class="setup-card">
+          <div class="setup-head">
+            <div class="brand-mark">SF</div>
+            <div><div class="setup-t">${h(s.title)}</div><div class="setup-s">${h(s.sub)}</div></div>
+            <div class="setup-step">${i + 1} / ${steps.length}</div>
+          </div>
+          <div class="setup-bar"><i style="width:${Math.round((i + 1) / steps.length * 100)}%"></i></div>
+          <div class="setup-body">${bodyFor(s)}</div>
+          <div class="setup-foot">
+            <button class="btn btn-ghost" id="sf-skip">Passer et tout régler plus tard</button>
+            ${i > 0 ? '<button class="btn" id="sf-prev">Retour</button>' : ''}
+            <button class="btn btn-primary" id="sf-next">${i === steps.length - 1 ? 'Terminer' : 'Continuer'}</button>
+          </div>
+        </div>`;
+        const form = $('#sf-form', root);
+        if (form) { const f = $('input, textarea', form); if (f) f.focus(); }
+        $$('[data-act]', root).forEach(b => b.onclick = () => { a.activity = b.dataset.act; a.fillCatalog = $('#sf-cat', root).checked; draw(); });
+        if ($('#sf-cat', root)) $('#sf-cat', root).onchange = e => { a.fillCatalog = e.target.checked; };
+        if ($('#sf-ext', root)) $('#sf-ext', root).onclick = async () => {
+          const x = await bridge.chooseExternalBackup();
+          const st = $('#sf-ext-st', root); if (!st) return;
+          st.textContent = x && x.dir ? 'Copie activée vers : ' + x.dir : 'Aucun dossier choisi.';
+          st.className = x && x.dir ? 'small' : 'small muted';
+        };
+        if ($('#sf-prev', root)) $('#sf-prev', root).onclick = () => { collect(); i--; draw(); };
+        $('#sf-next', root).onclick = () => {
+          collect();
+          if (steps[i].id === 'entreprise' && !String(a.name || '').trim()) return toast('La raison sociale est nécessaire : c\'est le nom qui apparaît sur tes documents.', true);
+          if (i === steps.length - 1) return finish();
+          i++; draw();
+        };
+        root.onkeydown = e => { if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') { e.preventDefault(); $('#sf-next', root).click(); } };
+        $('#sf-skip', root).onclick = async () => {
+          if (!await confirmDialog('Passer l\'assistant ? Tu pourras tout régler dans Paramètres, mais une facture sans raison sociale ni matricule fiscal n\'est pas conforme.', 'Passer', false)) return;
+          data.company.setupDone = true; save(true); root.remove(); resolve(false);
+        };
+      };
+      const collect = () => { const f = $('#sf-form', root); if (f) Object.assign(a, formValues(f)); };
+      const finish = () => {
+        OB.applySetup(data, a);
+        save(true);
+        root.remove();
+        resolve(true);
+      };
+      draw();
+    });
+  }
+
   // ---------- import / export ----------
   async function exportAll() {
     if (security.encrypted && !await confirmDialog('L\'export JSON est en clair (non chiffré). Continuer ?', 'Exporter', false)) return;
@@ -2038,7 +2137,13 @@
     data = migrate(raw);
     if (raw && (raw.version || 1) < 3) save(true); // données migrées vers le nouveau format : on enregistre tout de suite
     applyTheme();
-    $('#brand-company').textContent = data.company.name;
+    // Toute première ouverture : l'assistant remplit l'entreprise avant d'entrer dans l'application
+    if (OB.needsSetup(data)) {
+      const done = await runSetup();
+      applyTheme();
+      if (done) toast('Bienvenue ! Commence par un devis, ou charge la démo depuis Paramètres.');
+    }
+    $('#brand-company').textContent = data.company.name || 'Ton entreprise';
     bridge.updateVersion().then(v => {
       upd.app = v; const el = $('#app-version'); if (el) el.textContent = 'v' + v.version;
       if (v.lastUpdate) {

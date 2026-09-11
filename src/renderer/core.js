@@ -12,20 +12,22 @@
   const PREFIX = { devis: 'DEV', facture: 'FAC', avoir: 'AVO' };
   const TITLES = { devis: 'Devis', facture: 'Facture', avoir: 'Avoir' };
 
+  // Réglages d'une entreprise. Volontairement vides : SkanFact ne présuppose aucune société,
+  // l'assistant de première utilisation les remplit. Voir onboarding dans app.js.
   const DEFAULT_COMPANY = {
-    name: 'SKANCYBER SECURITY SUARL',
-    matricule: '1998268D',
+    name: '',
+    matricule: '',
     rc: '',
     capital: '',
-    address: '08 Rue de l\'Université, Manar 1, El Menzah\n2092 Tunis',
+    address: '',
     phone: '',
     email: '',
     website: '',
     rib: '',
     bank: '',
     logo: '',
-    footer: 'SKANCYBER SECURITY SUARL — Matricule fiscal 1998268D',
-    stampFee: 1.0,        // timbre fiscal (DT) par facture
+    footer: '',           // vide : la ligne légale est composée à partir du nom et du matricule
+    stampFee: 1.0,        // timbre fiscal (DT) par facture — À VÉRIFIER avec le comptable
     quoteValidityDays: 30,
     paymentTermsDays: 30,
     defaultWithholdingRate: 0,
@@ -37,10 +39,72 @@
     defaultLang: 'fr',
     stampImage: '',       // cachet / signature (data URL) sur les documents
     theme: 'light',       // light | dark | auto
-    tagline: 'Cybersécurité · Infrastructure · Services informatiques',
+    tagline: '',
+    accountantEmail: '',
+    activity: '',         // secteur choisi à la première utilisation (voir ACTIVITIES)
     primaryColor: '#1b2430',
-    accentColor: '#0f9d8f'
+    accentColor: '#0f9d8f',
+    setupDone: false      // l'assistant de première utilisation a été mené jusqu'au bout
   };
+
+  // Secteurs proposés au premier démarrage : ils préremplissent le catalogue, le taux de TVA
+  // habituel et le slogan. Rien n'est imposé, tout se modifie ensuite.
+  // vat : taux de TVA proposé pour les prestations du secteur — À VÉRIFIER avec le comptable.
+  const ACTIVITIES = [
+    {
+      id: 'informatique', label: 'Informatique et cybersécurité', tagline: 'Cybersécurité · Infrastructure · Services informatiques', vat: 19,
+      catalog: [
+        ['Audit de sécurité réseau', 'Cartographie, scan de vulnérabilités, rapport et plan d\'action', 1200, 'forfait'],
+        ['Maintenance et supervision', 'Surveillance des équipements, mises à jour, intervention sous 24 h', 250, 'mois'],
+        ['Installation poste de travail', 'Préparation, sécurisation et mise en réseau d\'un poste', 120, 'u'],
+        ['Sauvegarde externalisée', 'Sauvegarde chiffrée automatique avec vérification mensuelle', 90, 'mois'],
+        ['Déplacement', 'Frais de déplacement', 60, 'u']
+      ]
+    },
+    {
+      id: 'batiment', label: 'Bâtiment et travaux', tagline: 'Construction · Rénovation · Second œuvre', vat: 19,
+      catalog: [
+        ['Main-d\'œuvre', 'Heure de travail sur chantier', 25, 'h'],
+        ['Déplacement et installation de chantier', '', 150, 'forfait'],
+        ['Fourniture de matériaux', 'Refacturation des matériaux, sur justificatifs', 0, 'lot'],
+        ['Évacuation des gravats', '', 200, 'forfait']
+      ]
+    },
+    {
+      id: 'conseil', label: 'Conseil, formation et services', tagline: 'Conseil · Accompagnement · Formation', vat: 19,
+      catalog: [
+        ['Journée de conseil', 'Intervention sur site ou à distance', 600, 'jour'],
+        ['Formation', 'Session pour un groupe, support fourni', 150, 'h'],
+        ['Rédaction de livrable', 'Rapport, procédure, cahier des charges', 400, 'forfait'],
+        ['Suivi mensuel', 'Point régulier et disponibilité par email', 300, 'mois']
+      ]
+    },
+    {
+      id: 'commerce', label: 'Commerce et vente de produits', tagline: '', vat: 19,
+      catalog: [
+        ['Produit', 'Désignation du produit vendu', 0, 'u'],
+        ['Livraison', 'Frais de livraison', 15, 'u'],
+        ['Installation / mise en service', '', 80, 'u']
+      ]
+    },
+    {
+      id: 'sante', label: 'Santé et paramédical', tagline: '', vat: 0,
+      catalog: [
+        ['Consultation', '', 50, 'séance'],
+        ['Séance de suivi', '', 40, 'séance'],
+        ['Déplacement à domicile', '', 20, 'u']
+      ]
+    },
+    {
+      id: 'artisanat', label: 'Artisanat et création', tagline: 'Fait main · Sur mesure', vat: 19,
+      catalog: [
+        ['Pièce sur mesure', 'Création personnalisée', 0, 'u'],
+        ['Main-d\'œuvre', 'Heure de travail en atelier', 20, 'h'],
+        ['Matières premières', '', 0, 'lot']
+      ]
+    },
+    { id: 'autre', label: 'Autre activité', tagline: '', vat: 19, catalog: [] }
+  ];
 
   const DEFAULT_DATA = {
     version: 3,
@@ -780,7 +844,9 @@
 
     const contact = [company.phone, company.email, company.website].filter(Boolean).map(escapeHtml).join('<br>');
     const clientContact = [cl.contact ? escapeHtml(cl.contact) : '', cl.matricule ? L.mfCin + ' ' + escapeHtml(cl.matricule) : '', cl.phone ? escapeHtml(cl.phone) : '', cl.email ? escapeHtml(cl.email) : ''].filter(Boolean).join('<br>');
-    const legal = [company.footer || '', company.rc ? 'RC ' + company.rc : '', company.capital ? (lang === 'en' ? 'Share capital ' : 'Capital ') + company.capital : ''].filter(Boolean).join(' — ');
+    // Pied de page légal : le texte libre s'il est rempli, sinon composé du nom et du matricule
+    const footerBase = company.footer || [company.name, company.matricule ? (lang === 'en' ? 'Tax ID ' : 'Matricule fiscal ') + company.matricule : ''].filter(Boolean).join(' — ');
+    const legal = [footerBase, company.rc ? 'RC ' + company.rc : '', company.capital ? (lang === 'en' ? 'Share capital ' : 'Capital ') + company.capital : ''].filter(Boolean).join(' — ');
     const grandLabel = isInvoice ? L.netToPay : isCredit ? L.creditAmount : L.totalTTC;
     const grandValue = isQuote ? t.totalTTC : t.netToPay;
     const wordsIntro = isInvoice ? L.wordsInvoice : isCredit ? L.wordsCredit : L.wordsQuote;
@@ -1004,7 +1070,7 @@
   }
 
   return {
-    VAT_RATES, WITHHOLDING_RATES, PAYMENT_METHODS, PREFIX, TITLES, DEFAULT_DATA, DEFAULT_COMPANY, STATUSES, DISPLAY_STATUSES, STATUS_LABELS,
+    VAT_RATES, WITHHOLDING_RATES, PAYMENT_METHODS, PREFIX, TITLES, DEFAULT_DATA, DEFAULT_COMPANY, ACTIVITIES, STATUSES, DISPLAY_STATUSES, STATUS_LABELS,
     uid, round3, money, fmtDate, addDays, today, escapeHtml, nl2br, statusLabel,
     nextNumber, isLocked, isIssued, computeTotals, creditsFor, invoiceBalance, effectiveStatus,
     depositLines, settlementLines, salesJournal, vatSummary, paymentsJournal, toCsv, migrateData,

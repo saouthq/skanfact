@@ -398,7 +398,8 @@ t('démo : cohérente quelle que soit la date du jour, société conservée', ()
   ['2026-09-11', '2026-09-01', '2026-01-31', '2026-03-01', '2026-12-31', '2027-02-28', '2028-02-29'].forEach(T => {
     const d = buildDemoData({ name: 'Ma société', logo: 'data:logo', theme: 'dark', phone: '' }, T);
     assert.ok(isValidData(d) && d.version === 3);
-    assert.strictEqual(d.company.name, 'Ma société'); assert.strictEqual(d.company.logo, 'data:logo'); assert.strictEqual(d.company.theme, 'dark');
+    assert.strictEqual(d.company.name, 'Ma société', 'la démo ne remplace jamais le nom déjà saisi');
+    assert.strictEqual(d.company.logo, 'data:logo'); assert.strictEqual(d.company.theme, 'dark');
     assert.strictEqual(d.company.phone, '+216 55 123 456'); // champ vide complété, le reste conservé
     JSON.parse(JSON.stringify(d));
     assert.ok(d.clients.length >= 8 && d.catalog.length >= 10 && d.recurring.length === 3 && d.templates.length === 3 && d.snippets.length === 3);
@@ -438,7 +439,7 @@ t('démo : cohérente quelle que soit la date du jour, société conservée', ()
 t('démo : acompte + solde, avoir total, client étranger en euros', () => {
   const T = '2026-09-11';
   const d = buildDemoData(null, T);
-  assert.strictEqual(d.company.name, core.DEFAULT_COMPANY.name);
+  assert.ok(/DÉMO/.test(d.company.name), 'la démo doit se donner un nom quand aucune société n\'est renseignée');
   const dep = d.documents.find(x => x.deposit), sold = d.documents.find(x => x.settles), quote = d.documents.find(x => x.id === dep.deposit.quoteId);
   assert.strictEqual(dep.deposit.quoteNumber, quote.number); assert.strictEqual(sold.settles.depositIds[0], dep.id);
   assert.ok(sold.lines.some(l => l.noDiscount && l.unitPrice < 0));
@@ -561,6 +562,55 @@ t('modèles d\'email : relance de devis et envoi au comptable', () => {
   const en = core.emailFor('relanceDevis', { ...q, lang: 'en' }, { name: 'ACME' }, CO);
   assert.ok(en.subject.startsWith('Our quote'));
   assert.ok(core.DEFAULT_EMAIL_TEMPLATES.comptable.body.includes('{montant}'));
+});
+
+// ---------- première utilisation (src/renderer/onboarding.js) ----------
+const onboarding = require('../src/renderer/onboarding.js');
+
+t('première utilisation : assistant proposé, réponses appliquées, secteurs cohérents', () => {
+  const neuf = core.migrateData(null);
+  assert.strictEqual(onboarding.needsSetup(neuf), true);
+  assert.strictEqual(core.DEFAULT_COMPANY.name, '', 'aucune société ne doit être écrite en dur');
+  assert.strictEqual(core.DEFAULT_COMPANY.matricule, '');
+  assert.strictEqual(core.DEFAULT_COMPANY.address, '');
+  // un fichier qui contient déjà quelque chose ne déclenche pas l'assistant
+  assert.strictEqual(onboarding.needsSetup({ company: { name: '' }, documents: [{ id: 'x' }], clients: [] }), false);
+  assert.strictEqual(onboarding.needsSetup({ company: { name: 'X' }, documents: [], clients: [] }), false);
+  assert.strictEqual(onboarding.needsSetup({ company: { name: '', setupDone: true }, documents: [], clients: [] }), false);
+
+  const d = onboarding.applySetup(core.migrateData(null), {
+    name: '  Menuiserie Trabelsi  ', matricule: '9876543Z/A/P/000', rc: 'B999', address: 'Rue X\n1000 Tunis',
+    phone: '+216 20 000 000', email: 'a@b.tn', activity: 'batiment', fillCatalog: true,
+    currency: 'DT', stampFee: 1, quoteValidityDays: 15, paymentTermsDays: 45, defaultWithholdingRate: 1.5
+  });
+  assert.strictEqual(d.company.name, 'Menuiserie Trabelsi');       // espaces retirés
+  assert.strictEqual(d.company.paymentTermsDays, 45);
+  assert.strictEqual(d.company.defaultWithholdingRate, 1.5);
+  assert.strictEqual(d.company.activity, 'batiment');
+  assert.ok(d.company.tagline.length > 0, 'slogan du secteur proposé');
+  assert.strictEqual(d.catalog.length, 4);
+  assert.ok(d.catalog.every(x => x.id && x.vatRate === 19 && x.unit));
+  assert.strictEqual(onboarding.needsSetup(d), false);
+  // sans préremplissage, le catalogue reste vide
+  assert.strictEqual(onboarding.applySetup(core.migrateData(null), { name: 'X', activity: 'batiment', fillCatalog: false }).catalog.length, 0);
+  // chaque secteur est utilisable
+  core.ACTIVITIES.forEach(a => {
+    assert.ok(a.id && a.label && core.VAT_RATES.includes(a.vat), a.id);
+    a.catalog.forEach(([label, , price, unit]) => { assert.ok(label && unit, a.id); assert.ok(price >= 0); });
+  });
+  assert.ok(core.ACTIVITIES.some(a => a.id === 'autre' && !a.catalog.length));
+  assert.ok(onboarding.STEPS.length >= 5 && onboarding.STEPS.every(s => s.id && s.title && s.sub));
+});
+
+t('pied de page légal composé quand il n\'est pas saisi', () => {
+  const co = { ...core.DEFAULT_COMPANY, name: 'Menuiserie Trabelsi', matricule: '9876543Z', rc: 'B999', capital: '5 000 DT' };
+  const html = core.documentHtml(inv(), { name: 'C' }, co);
+  assert.ok(html.includes('Menuiserie Trabelsi — Matricule fiscal 9876543Z — RC B999 — Capital 5 000 DT'));
+  // un pied de page saisi à la main reste prioritaire
+  const html2 = core.documentHtml(inv(), { name: 'C' }, { ...co, footer: 'Mon texte à moi' });
+  assert.ok(html2.includes('Mon texte à moi') && !html2.includes('Matricule fiscal 9876543Z —'));
+  // en anglais
+  assert.ok(core.documentHtml({ ...inv(), lang: 'en' }, { name: 'C' }, co).includes('Tax ID 9876543Z'));
 });
 
 t('graphique : abréviations des mois distinctes', () => {

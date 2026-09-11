@@ -14,8 +14,14 @@
   else root.SkanDemo = factory(root.SkanCore);
 })(typeof self !== 'undefined' ? self : this, function (C) {
 
-  // Champs société remplis seulement s'ils sont vides (la démo ne touche pas au nom, logo, cachet, thème…)
-  const DEMO_COMPANY = { phone: '+216 55 123 456', email: 'contact@skancyber.tn', website: 'www.skancyber.tn', bank: 'BIAT — Agence El Manar', rib: '08 006 0000123456789 12', rc: 'B01234562024', capital: '1 000 DT' };
+  // Champs société remplis seulement s'ils sont vides : la démo complète ce qui manque sans jamais
+  // écraser ce que l'utilisateur a déjà saisi (nom, logo, cachet, thème…).
+  const DEMO_COMPANY = {
+    name: 'DÉMO — Société de services SUARL', matricule: '1234567X/A/M/000', rc: 'B01234562024', capital: '1 000 DT',
+    address: '08 Rue de l\'Université, Manar 1\n2092 Tunis', tagline: 'Cybersécurité · Infrastructure · Services informatiques',
+    phone: '+216 55 123 456', email: 'contact@exemple.tn', website: 'www.exemple.tn',
+    bank: 'BIAT — Agence El Manar', rib: '08 006 0000123456789 12'
+  };
 
   function buildDemoData(currentCompany, todayIso) {
     const T = todayIso || C.today();

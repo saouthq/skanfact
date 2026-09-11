@@ -1,8 +1,8 @@
 {
   "name": "skanfact",
   "productName": "SkanFact",
-  "version": "1.10.0",
-  "description": "Devis et factures pour SKANCYBER SECURITY",
+  "version": "2.0.0",
+  "description": "Devis et factures pour les petites entreprises",
   "main": "src/main.js",
   "author": "Skander Ben Amor",
   "license": "UNLICENSED",

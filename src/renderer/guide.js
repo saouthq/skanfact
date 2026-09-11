@@ -113,6 +113,7 @@
       id: 'demarrer', title: 'Démarrer : les cinq premières minutes', sub: 'Ce qu\'il faut régler avant ton premier devis',
       body: `
 <p>SkanFact fonctionne entièrement sur ton ordinateur. Rien n'est envoyé sur Internet, personne d'autre ne voit tes données. En contrepartie, <b>c'est toi qui es responsable de tes sauvegardes</b> : on y revient plus bas.</p>
+<p>Au tout premier démarrage, un assistant t'a demandé ta raison sociale, ton activité et tes règles de facturation. Si tu l'as passé, ou si tu veux corriger une réponse, tout se retrouve dans <b>Paramètres</b>.</p>
 <h3>1. Renseigne ton entreprise</h3>
 <p>Va dans <b>Paramètres → Société</b> et remplis au minimum : raison sociale, matricule fiscal, adresse, téléphone et email. Ces informations s'impriment sur chaque document. Une facture sans matricule fiscal n'est pas conforme.</p>
 <h3>2. Ajoute ton RIB</h3>
@@ -314,6 +315,32 @@
 <p>Si un seul client fait plus de la moitié de ton chiffre d'affaires, sa perte te met en danger. Le tableau « Top clients » sur l'accueil te le montre. Cherche à diversifier avant d'y être contraint.</p>
 <h3>Garde un comptable</h3>
 <p>SkanFact prépare, organise et exporte. Il ne remplace pas un professionnel qui connaît ta situation et la réglementation en vigueur. Les mentions « À VÉRIFIER » de cette aide sont là pour ça.</p>`
+    },
+    {
+      id: 'partager', title: 'Installer SkanFact pour quelqu\'un d\'autre', sub: 'Chaque entreprise, son ordinateur, ses données',
+      body: `
+<p>SkanFact n'est pas réservé à une entreprise en particulier. Au premier démarrage, il demande la raison sociale, le matricule fiscal, l'activité et les règles de facturation, puis il se comporte comme le logiciel de <b>cette</b> entreprise-là.</p>
+<h3>Comment ça marche</h3>
+<ul>
+  <li><b>Un ordinateur, une entreprise.</b> Les données vivent dans un fichier local ; deux personnes sur deux machines ne se voient pas et ne se gênent pas.</li>
+  <li><b>Aucune donnée partagée.</b> Rien ne transite par Internet. Ce que fait l'un reste chez l'un.</li>
+  <li><b>Numérotation indépendante.</b> Chaque installation a ses propres séries DEV, FAC et AVO, qui repartent à 001 chaque janvier.</li>
+</ul>
+<h3>Pour installer chez un proche</h3>
+<ol>
+  <li>Télécharge le fichier d'installation depuis la page des versions (menu <b>Aide → Toutes les versions</b>) : le <code>.dmg</code> pour un Mac, le <code>.exe</code> pour Windows.</li>
+  <li>Sur Mac, ouvre le <code>.dmg</code> et glisse SkanFact dans Applications. À la première ouverture, macOS demande confirmation parce que l'application n'est pas signée par Apple : clic droit sur l'icône puis <b>Ouvrir</b>.</li>
+  <li>Au premier lancement, l'assistant se déroule : raison sociale, matricule, activité, règles de facturation, RIB, dossier de sauvegarde.</li>
+  <li>Pour que les mises à jour automatiques fonctionnent, il faut coller un <b>token d'accès</b> dans Paramètres → Mises à jour (le dépôt est privé). Sans token, l'application marche parfaitement, mais il faudra réinstaller à la main pour changer de version.</li>
+</ol>
+<h3>Ce qu'il faut leur dire</h3>
+<p>Trois choses suffisent pour bien démarrer :</p>
+<ul>
+  <li>Mettre en place la <b>copie externe</b> tout de suite (iCloud Drive ou clé USB).</li>
+  <li>Une facture, une fois émise, ne se modifie plus : on corrige par un <b>avoir</b>.</li>
+  <li>Les petits <b>i</b> à côté des champs expliquent tout, et cette rubrique Aide répond au reste.</li>
+</ul>
+<p class="small muted">Chaque activité a ses taux de TVA et ses obligations. Ce que dit cette aide vaut pour le cas général : c'est le comptable de chacun qui tranche pour son entreprise.</p>`
     },
     {
       id: 'vocabulaire', title: 'Le vocabulaire', sub: 'Les mots qu\'on emploie sans les expliquer',

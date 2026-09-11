@@ -54,8 +54,8 @@ function main() {
         applicationName: 'SkanFact',
         applicationVersion: app.getVersion(),
         version: '',
-        copyright: '© SKANCYBER SECURITY SUARL',
-        credits: 'Devis et factures'
+        copyright: '',
+        credits: 'Devis et factures pour les petites entreprises'
       });
     } catch (e) { logError('panneau À propos', e); }
     try { Menu.setApplicationMenu(buildMenu()); }
@@ -247,7 +247,7 @@ function buildMenu() {
         ...(IS_MAC ? [] : [
           { type: 'separator' },
           { label: 'Vérifier les mises à jour…', click: () => { act('settings')(); checkForUpdates(false); } },
-          { label: 'À propos de SkanFact', click: () => dialog.showMessageBox(mainWindow, { type: 'info', title: 'À propos de SkanFact', message: `SkanFact ${app.getVersion()}`, detail: 'Devis et factures\n© SKANCYBER SECURITY SUARL' }) }
+          { label: 'À propos de SkanFact', click: () => dialog.showMessageBox(mainWindow, { type: 'info', title: 'À propos de SkanFact', message: `SkanFact ${app.getVersion()}`, detail: 'Devis et factures pour les petites entreprises' }) }
         ])
       ]
     }

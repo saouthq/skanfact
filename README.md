@@ -1,28 +1,35 @@
 # SkanFact
 
-Petit logiciel de devis et factures pour SKANCYBER SECURITY SUARL. Application desktop (Electron), fonctionne sur Mac et Windows, données stockées en local, génération de PDF.
+Logiciel de devis et factures pour une petite entreprise, pensé pour le contexte tunisien (TVA 0/7/13/19 %, timbre fiscal, retenue à la source). Application desktop (Electron), Mac et Windows, données stockées en local, génération de PDF.
+
+**Aucune entreprise n'est écrite en dur** : au premier démarrage, un assistant demande la raison sociale, le matricule fiscal, l'activité et les règles de facturation, puis propose un catalogue de départ et la mise en place de la sauvegarde externe. La même application sert donc à plusieurs personnes, chacune sur son ordinateur, avec ses propres données et sa propre numérotation.
 
 Pas d'e-facture (TTN / TEIF) : l'outil produit des PDF classiques.
 
 ## Fonctionnalités
 
-- Paramètres société (nom, matricule fiscal, adresse, RIB, logo, slogan, couleurs du document)
-- Clients (nom, MF/CIN, adresse, contact)
+- Assistant de première utilisation (société, secteur d'activité avec catalogue proposé, taxes et délais, RIB, dossier de sauvegarde)
+- Aide intégrée : une bulle « i » à côté de chaque champ et quinze articles qui expliquent la facturation, la TVA, la retenue à la source, les relances et la routine comptable
+- Paramètres société en onglets (nom, matricule fiscal, adresse, RIB, logo, cachet, slogan, couleurs du document)
+- Clients : fiche par client (facturé, reste à payer, délai de paiement, taux d'acceptation des devis, historique), personne à contacter, notes internes
 - Catalogue de prestations (désignation, description, prix HT, TVA, unité) pour remplir un devis en un clic
 - Devis, factures et avoirs : lignes, remise globale, TVA par taux (0/7/13/19 %), timbre fiscal de 1 DT sur les factures, retenue à la source (par client ou par facture), montant en lettres
 - Numérotation continue par année (DEV-2026-001, FAC-2026-001, AVO-2026-001). Une facture reçoit son numéro **à l'émission** : un brouillon n'en a pas, donc aucun trou si on le supprime. Une facture émise est verrouillée ; on la corrige par un avoir
 - Conversion devis → facture, facture d'acompte (x % du devis) puis facture de solde qui déduit les acomptes
 - Paiements (virement, chèque, espèces, traite, carte), paiements partiels, statut déduit automatiquement (envoyée, partiellement payée, payée, en retard, annulée), reste à payer par facture et par client
 - Aperçu en direct pendant la saisie, export PDF A4 (tampon Payée / Annulée / Brouillon selon le cas)
-- Tableau de bord : CA HT du mois et de l'année (avoirs déduits), reste à encaisser, devis en attente
+- Accueil : panneau « À faire » (retards, contrats à générer, devis expirés ou sans réponse, attestations à réclamer, échéances de la semaine, brouillons oubliés), CA HT du mois et de l'année (avoirs déduits), reste à encaisser, devis en attente
+- Listes triables avec filtre par année, totaux en pied de tableau et actions au survol ; historique par document
 - Comptabilité : par mois ou par année, TVA collectée par taux, journal des ventes et encaissements exportables en CSV (Excel), export groupé des PDF de la période, suivi des attestations de retenue à la source
-- Contrats récurrents (mensuel, trimestriel, annuel) qui génèrent les brouillons de factures à l'échéance ; relances des impayés par email avec niveaux automatiques ; envoi des documents par email (Mail sur Mac avec le PDF joint) ; recherche globale Cmd/Ctrl+K ; modèles de documents et textes prédéfinis
+- Contrats récurrents (mensuel, trimestriel, annuel) qui génèrent les brouillons de factures à l'échéance ; relances des impayés par email ou notées par téléphone, avec niveaux automatiques et report possible ; relance des devis sans réponse ; envoi du journal mensuel au comptable ; envoi des documents par email (Mail sur Mac avec le PDF joint) ; recherche globale Cmd/Ctrl+K ; modèles de documents et textes prédéfinis
 - Tableau de bord graphique (12 mois, top clients, conversion des devis, délai de paiement) ; documents en français ou en anglais, devise par document avec taux ; cachet/signature sur les documents ; thème sombre
 - Export / import de toutes les données en JSON, sauvegarde automatique quotidienne (30 jours)
 
 ## Installation
 
-Les installateurs sont dans l'onglet **Releases** du dépôt : https://github.com/saouthq/skanfact/releases/latest (dépôt privé : il faut être connecté à GitHub avec le compte `saouthq`).
+Les installateurs sont dans l'onglet **Releases** du dépôt : https://github.com/saouthq/skanfact/releases/latest (dépôt privé : il faut être connecté à GitHub avec un compte qui y a accès).
+
+Pour installer chez quelqu'un d'autre (un proche qui gère sa propre entreprise), voir l'article « Installer SkanFact pour quelqu'un d'autre » dans la rubrique Aide de l'application.
 
 **Mac** : télécharge `SkanFact-x.y.z-mac-universal.dmg`, ouvre-le, glisse SkanFact dans Applications. L'app n'est pas signée par Apple : au premier lancement, **clic droit sur l'app → Ouvrir → Ouvrir**. Si macOS dit que l'app est « endommagée », ouvre le Terminal et colle :
 
@@ -114,17 +121,20 @@ src/main.js            process principal : fenêtre, menu, export PDF, mises à 
 src/storage.js         fichier de données + sauvegardes (testé sans Electron)
 src/mac-update.sh      remplacement de l'app sur Mac (app non signée)
 src/preload.js         pont sécurisé main ↔ interface
-src/renderer/core.js   logique métier + template du document (partagé avec les tests)
-src/renderer/app.js    interface
+src/renderer/core.js       logique métier + template du document (partagé avec les tests)
+src/renderer/demo.js       jeu de démonstration (13 mois d'activité, dates relatives à aujourd'hui)
+src/renderer/guide.js      textes de l'aide : bulles « i » et articles
+src/renderer/onboarding.js assistant de première utilisation
+src/renderer/app.js        interface
 src/renderer/style.css
 src/renderer/index.html
 test/run-tests.js
 ```
 
-## Limites connues (v1)
+## Limites connues
 
-- Un devis classique tient sur une page A4 ; au-delà, le document passe sur plusieurs pages (lignes jamais coupées, en-tête du tableau répété) mais le pied de page n'apparaît qu'à la fin.
-- Pas d'envoi par email intégré : exporte le PDF et joins-le.
+- Un document qui déborde d'un peu se resserre automatiquement pour tenir sur une page A4 ; au-delà, il passe sur plusieurs pages (lignes jamais coupées, en-tête du tableau répété) mais le pied de page n'apparaît qu'à la fin. L'aperçu indique le nombre de pages.
+- Une installation = une entreprise. Pour gérer deux sociétés sur le même ordinateur, il faut deux sessions utilisateur (les données sont rangées par utilisateur).
 - Retenue à la source : calculée sur le TTC hors timbre ; taux et assiette **à vérifier avec le comptable** selon la nature de la prestation.
 - Apps non signées (pas de certificat Apple ni Windows) : avertissements au premier lancement, voir « Installation ».
 - L'icône de l'app est `build/icon.png` (1024×1024) ; electron-builder la convertit en `.icns` / `.ico` au build. Pour en changer, remplace ce fichier.
