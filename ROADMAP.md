@@ -171,7 +171,7 @@ Une ligne d'achat marquée « immobilisation » atterrit ici automatiquement.
 
 ## Bloc 2 — le stock (versions 4.x)
 
-### 4.0.0 — Articles, mouvements et inventaire · L — *données v5*
+### 4.0.0 — Articles, mouvements et inventaire · L — *données v5* — **livrée**
 
 - **Article** : référence, désignation, famille, prix d'achat, prix de vente, **seuil d'alerte**, emplacement
 - **Entrées** par facture d'achat, **sorties** par bon de livraison ou par facture, plus les ajustements manuels justifiés

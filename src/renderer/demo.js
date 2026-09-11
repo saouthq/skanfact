@@ -55,7 +55,13 @@
     // ---------- catalogue ----------
     // `unitCost` : ce que la prestation coûte réellement. Zéro quand on ne vend que du temps —
     // la marge affichée est alors le prix de vente, et c'est écrit dans la bulle d'aide.
-    const cat = (label, description, unitPrice, vatRate, unit, unitCost) => ({ id: C.uid(), label, description, unitPrice, vatRate, unit, unitCost: unitCost || 0 });
+    // `stock` : [quantité de départ, coût unitaire, seuil d'alerte, emplacement]. Seule la marchandise
+    // est suivie — une prestation n'a pas de stock.
+    const cat = (label, description, unitPrice, vatRate, unit, unitCost, stock) => ({
+      id: C.uid(), label, description, unitPrice, vatRate, unit, unitCost: unitCost || 0,
+      tracked: !!stock, initialQty: stock ? stock[0] : 0, initialCost: stock ? stock[1] : 0,
+      minStock: stock ? stock[2] : 0, location: stock ? stock[3] : '', initialDate: stock ? mo(13, 1) : ''
+    });
     d.catalog = [
       cat('Audit de sécurité réseau', 'Cartographie du réseau, scan de vulnérabilités, revue de configuration, rapport et plan d\'action', 1200, 19, 'forfait'),
       cat('Test d\'intrusion applicatif', 'Test en boîte grise sur une application web, rapport détaillé avec preuves et recommandations', 2500, 19, 'forfait'),
@@ -65,9 +71,13 @@
       cat('Formation sensibilisation cybersécurité', 'Session pour les équipes : hameçonnage, mots de passe, bonnes pratiques', 150, 7, 'h'),
       cat('Installation poste de travail', 'Préparation, sécurisation et mise en réseau d\'un poste', 120, 19, 'u'),
       cat('Déplacement hors Grand Tunis', 'Frais de déplacement', 60, 19, 'u', 25),
-      cat('Antivirus / EDR (licence 1 an)', 'Déploiement et licence annuelle par poste', 95, 19, 'poste', 52),
+      cat('Antivirus / EDR (licence 1 an)', 'Déploiement et licence annuelle par poste', 95, 19, 'poste', 52, [40, 52, 10, 'Armoire licences']),
       cat('Hébergement et supervision serveur', 'Serveur virtuel supervisé, mises à jour et sauvegardes incluses', 180, 19, 'mois', 65),
-      cat('Mise en conformité protection des données', 'Registre des traitements, procédures, déclaration à l\'INPDP', 1800, 19, 'forfait')
+      cat('Mise en conformité protection des données', 'Registre des traitements, procédures, déclaration à l\'INPDP', 1800, 19, 'forfait'),
+      // Ajoutés en fin de liste : les indices k[0]…k[10] sont utilisés partout ci-dessous, les décaler
+      // changerait toutes les pièces du jeu de démonstration.
+      cat('Pare-feu UTM', 'Boîtier UTM avec licence de sécurité 1 an', 1650, 19, 'u', 1200, [2, 1200, 1, 'Réserve — étagère A']),
+      cat('Poste de travail complet', 'Unité centrale, écran 24\", clavier et souris, système installé', 1150, 19, 'u', 850, [3, 850, 4, 'Réserve — étagère B'])
     ];
     const k = d.catalog;
     const line = (item, qty, price, unit) => ({ label: item.label, description: item.description, qty, unit: unit || item.unit, unitPrice: price != null ? price : item.unitPrice, unitCost: item.unitCost || '', vatRate: item.vatRate });
@@ -194,11 +204,7 @@
     // La facture qui clôt la chaîne : c'est elle qui donne sa marge à l'affaire, en face de l'achat FA-2026-1187.
     add('f-lauriers-salle', { project: prjLauriers, type: 'facture', client: 7, date: mo(2, 28), status: 'envoyée', subject: 'Équipement de la salle informatique',
       reference: 'BC client n° 2026-114',
-      lines: [
-        { label: 'Poste de travail complet (fourniture)', description: 'Unité centrale, écran 24", clavier et souris, système installé et sécurisé', qty: 12, unit: 'u', unitPrice: 1150, unitCost: 850, vatRate: 19 },
-        { label: 'Pare-feu UTM (fourniture)', description: 'Boîtier UTM avec licence de sécurité 1 an', qty: 1, unit: 'u', unitPrice: 1650, unitCost: 1200, vatRate: 19 },
-        line(k[2], 1), line(k[6], 12)
-      ],
+      lines: [line(k[12], 12), line(k[11], 1), line(k[2], 1), line(k[6], 12)],
       notes: 'Matériel livré et installé le 26. Bon de livraison signé par M. Hached.', payments: [pay(26, 'all')], certificate: true, emails: [E(mo(2, 28), 'facture')] });
     add('ctr-clinique', { type: 'contrat', client: 0, date: mo(12, 5), status: 'signé', subject: 'Maintenance et supervision du système d\'information',
       lines: [line(k[4], 1), line(k[3], 1)],
@@ -276,8 +282,9 @@
       // matériel revendu à l'École : rattaché à l'affaire, c'est ce qui rend sa marge exacte
       buy({ projectId: prjLauriers.id, supplierId: sp[0].id, number: 'FA-2026-1187', date: mo(2, 18), dueDate: C.addDays(mo(2, 18), 30), category: 'Achats de marchandises',
         subject: 'Postes de travail pour l\'École Les Lauriers', fees: 1,
-        // Les postes sont revendus tout de suite : ce sont des charges de la période. Le pare-feu reste en stock.
-        lines: [bline('Poste de travail complet', 12, 850, 19, 'charge'), bline('Pare-feu UTM', 1, 1200, 19, 'stock')],
+        // Marchandise destinée à la revente : elle entre en stock et n'est une charge qu'au moment
+        // où elle est vendue (coût des marchandises vendues, 4.0.0).
+        lines: [bline('Poste de travail complet', 12, 850, 19, 'stock'), bline('Pare-feu UTM', 1, 1200, 19, 'stock')],
         payments: [{ date: C.addDays(mo(2, 18), 28), amount: 'all' }] }),
       // immobilisation : reprise par le module 3.4.0
       buy({ supplierId: sp[0].id, number: 'FA-2026-0940', date: mo(7, 9), dueDate: C.addDays(mo(7, 9), 30), category: 'Petit équipement',

@@ -7,6 +7,37 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 4.0.0 — 11/09/2026
+
+Tu sais ce que tu vends. Tu sais maintenant ce qu'il te reste sur l'étagère — et ce que ça vaut.
+
+Nouvelle page **Stock** (barre latérale, groupe Gestion), en quatre onglets
+
+**Tu ne saisis rien.** Comme pour la trésorerie, les mouvements sont **déduits** de ce que tu enregistres déjà :
+- une ligne de facture d'achat en destination « stock » fait une **entrée** ;
+- une facture ou un bon de livraison fait une **sortie** ; un avoir remet la marchandise en stock ;
+- devis, proformas, bons de commande et brouillons ne bougent rien — rien n'a quitté l'entrepôt ;
+- une facture tirée d'un bon de livraison ne sort pas une seconde fois.
+
+**État du stock** — quantité, emplacement, coût moyen pondéré, valeur, prix de vente, avec recherche et export CSV
+**Mouvements** — tout ce qui est entré et sorti, avec le stock restant après chaque ligne, cliquable jusqu'à la pièce d'origine
+**Inventaire** — tu tapes ce que tu as compté, SkanFact affiche l'écart et sa valeur. Rien n'est modifié tant que tu ne valides pas, et chaque correction devient un mouvement daté
+**Alertes** — d'abord les stocks **négatifs** (tu as vendu ce que tu n'avais pas : un achat manque), puis les ruptures et les articles sous leur seuil
+
+**Mettre un article sous suivi** : Catalogue → Modifier → « Suivi en stock », puis le stock de départ, le seuil d'alerte et l'emplacement. Les prestations ne sont pas concernées — du conseil n'a pas de stock. L'éditeur d'achat prévient quand une ligne « stock » ne correspond à aucun article suivi.
+
+**Un avertissement à l'émission** : émettre une facture ou un bon de livraison qui ferait passer le stock sous zéro affiche lequel, combien il en reste et combien la pièce en sort. La pièce reste émissible — mais tu sais.
+
+**Ce que ça corrige dans tes chiffres** (le plus important, et le moins visible)
+- Acheter de la marchandise **n'est plus une charge** : c'est de l'argent transformé en stock, pas dépensé
+- La charge apparaît à la **vente**, au coût moyen de ce qui est sorti : le **coût des marchandises vendues**
+- Il est affiché dans **Comptabilité → Résultat simplifié** et rangé dans les **charges variables** du seuil de rentabilité
+- Le résultat simplifié ne dit donc plus « il manque la variation de stock » : elle y est
+
+**Données v5** : `stockAdjustments`, et quatre champs par article du catalogue (`tracked`, `minStock`, `initialQty`, `initialCost`). Aucune conversion : un article existant n'est pas suivi tant que la case n'est pas cochée. Les mouvements saisis entrent dans la fusion d'un dossier partagé.
+
+Nouvel article d'aide « Tenir son stock sans y passer ses soirées » et une bulle « i » sur chaque notion. *À VÉRIFIER avec ton comptable : la méthode de valorisation retenue pour tes comptes annuels.*
+
 ## 3.5.0 — 11/09/2026
 
 Ce que tu achètes et que tu gardes ne se déduit pas d'un coup. Il se déduit un peu chaque année.

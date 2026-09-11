@@ -137,6 +137,21 @@
     'ed.margin': { t: 'Marge estimée', d: 'Ce qu\'il resterait de ce document une fois retiré le <b>coût de revient</b> de chaque ligne (celui du catalogue, ou celui recopié sur la ligne). C\'est une estimation : elle ne tient pas compte du loyer, des salaires ni des frais généraux. Pour une marge exacte, rattache ce document à une <b>affaire</b> et rattaches-y aussi les achats correspondants.' },
     'buy.project': { t: 'Affaire', d: 'Rattache cet achat au chantier pour lequel tu l\'as fait. C\'est ce rattachement qui rend la marge exacte : sans lui, l\'affaire semblera plus rentable qu\'elle ne l\'est.' },
     'cat.cost': { t: 'Coût de revient HT', d: 'Ce que cette prestation ou cet article te coûte : prix d\'achat de la marchandise, sous-traitance, matériel. Facultatif, mais c\'est lui qui permet de calculer la marge sur les ventes qui ne sont pas rattachées à une affaire. Pour une prestation où tu ne vends que ton temps, laisse 0 : la marge affichée sera alors le prix de vente.' },
+    'stk.tracked': { t: 'Suivi en stock', d: 'À cocher pour de la <b>marchandise</b> : quelque chose qu\'on achète, qu\'on range, et qu\'on ressort à la vente. Pas pour une prestation — du conseil ou des heures de travail n\'ont pas de stock. Une fois coché, SkanFact compte tout seul à partir de tes achats et de tes ventes : tu n\'as plus rien à saisir.' },
+    'stk.cogs': { t: 'Coût des marchandises vendues', d: 'Ce que t\'ont coûté les marchandises effectivement <b>sorties</b> du stock sur la période, valorisées au coût moyen pondéré. C\'est la vraie charge : acheter de la marchandise ne coûte rien tant qu\'elle est sur l\'étagère — c\'est de l\'argent transformé en stock, pas dépensé. La vendre, en revanche, coûte ce qu\'elle a coûté. C\'est ce que les comptables appellent la variation de stock.' },
+    'stk.orphan': { t: 'Ligne « stock » sans article suivi', d: 'Pour qu\'un achat entre en stock, sa ligne doit porter le <b>même libellé</b> qu\'un article du catalogue coché « Suivi en stock ». Sinon la marchandise est bien achetée et sa TVA bien déductible, mais elle n\'apparaît nulle part dans le stock — et au moment de la vendre, le stock passera en négatif. Crée l\'article au catalogue, ou recopie son libellé exactement.' },
+    'stk.initial': { t: 'Stock de départ', d: 'Ce que tu as en rayon aujourd\'hui, avant que SkanFact ne commence à compter. Compte-le une fois, saisis-le, et les achats et ventes s\'y ajouteront automatiquement. Si tu te trompes, tout le reste sera décalé de la même quantité.' },
+    'stk.initialCost': { t: 'Coût unitaire du départ', d: 'Ce que t\'a coûté, en moyenne, une unité de ce stock de départ. Il sert de base au coût moyen pondéré. Dans le doute, reprends le prix de ta dernière facture d\'achat.' },
+    'stk.min': { t: 'Seuil d\'alerte', d: 'La quantité en dessous de laquelle il faut recommander. Mets-y de quoi tenir le temps que ton fournisseur livre : si une commande met deux semaines et que tu en vends deux par semaine, le seuil est de quatre. En dessous, l\'article remonte dans les alertes.' },
+    'stk.value': { t: 'Valeur du stock', d: 'Ce que ta marchandise t\'a coûté, au coût moyen pondéré — pas ce qu\'elle rapportera vendue. C\'est le chiffre qu\'attend ton comptable à la clôture, et c\'est de l\'argent immobilisé : du stock, c\'est de la trésorerie qui dort sur une étagère.' },
+    'stk.cmp': { t: 'Coût moyen pondéré', d: 'À chaque entrée, le coût unitaire moyen est recalculé sur l\'ensemble du stock. Si tu as 5 disques à 200 DT et que tu en achètes 10 à 230, le coût moyen devient 220 DT. Les sorties partent à ce coût-là, et ne le changent pas. <em>À VÉRIFIER avec ton comptable : la méthode de valorisation retenue pour tes comptes annuels.</em>' },
+    'stk.negative': { t: 'Stock négatif', d: 'Tu as vendu plus que tu n\'as acheté : c\'est physiquement impossible, donc il manque une entrée. Un achat non saisi, une quantité mal recopiée, ou un stock de départ oublié. <b>Corrige la pièce en cause plutôt que d\'ajuster</b> — un ajustement cacherait l\'erreur sans la réparer, et fausserait ta TVA déductible.' },
+    'stk.state': { t: 'État du stock', d: 'Ce que SkanFact déduit de tes pièces : aucune saisie de ta part. Une ligne d\'achat en destination « stock » fait une entrée, une facture ou un bon de livraison fait une sortie. Les brouillons, devis, proformas et bons de commande ne bougent rien : rien n\'a encore quitté l\'entrepôt.' },
+    'stk.moves': { t: 'Mouvements', d: 'Le détail de tout ce qui est entré et sorti, avec le stock restant après chaque ligne. Clique une ligne pour ouvrir la pièce d\'origine. Une facture tirée d\'un bon de livraison ne sort rien une seconde fois : c\'est le bon de livraison qui fait foi.' },
+    'stk.moveKind': { t: 'Nature du mouvement', d: '<b>Casse ou perte</b> pour de la marchandise abîmée, volée ou offerte. <b>Inventaire</b> pour aligner le stock sur un comptage. <b>Ajustement</b> pour le reste. Les entrées d\'achat et les sorties de vente ne se saisissent jamais ici : elles remontent toutes seules.' },
+    'stk.adjustQty': { t: 'Quantité du mouvement', d: 'Négative pour sortir de la marchandise (−2 pour deux disques cassés), positive pour en faire rentrer. SkanFact t\'annonce le stock obtenu avant d\'enregistrer.' },
+    'stk.inventory': { t: 'Inventaire physique', d: 'Compter ce qu\'il y a vraiment en rayon et le comparer à ce que dit l\'application. À faire au moins une fois par an, à la clôture — c\'est une obligation comptable. Un écart n\'est pas une faute : c\'est de la casse non déclarée, une sortie oubliée ou une erreur de saisie. L\'important est de le voir et de le tracer.' },
+    'stk.alerts': { t: 'Alertes de stock', d: 'D\'abord l\'impossible — les stocks négatifs, qui signalent une pièce manquante — puis ce qui est en rupture ou sous le seuil. Un stock négatif se corrige en retrouvant l\'achat oublié, pas en ajustant.' },
     'immo.class': { t: 'Famille du bien', d: 'Elle sert à proposer une durée d\'amortissement usuelle et à regrouper tes biens dans le tableau. Change la durée si ton comptable en retient une autre : c\'est lui qui décide, la famille n\'impose rien. <em>À VÉRIFIER avec ton comptable.</em>' },
     'immo.date': { t: 'Mise en service', d: 'Le jour où le bien a commencé à servir — pas forcément celui de la facture. C\'est cette date qui déclenche l\'amortissement, et la première année n\'est amortie qu\'au prorata du temps d\'utilisation.' },
     'immo.amount': { t: 'Valeur d\'acquisition HT', d: 'Le prix payé hors taxes, frais d\'installation et de transport compris s\'ils étaient nécessaires pour que le bien fonctionne. La TVA n\'en fait pas partie : elle se récupère à part, dans ta déclaration. <em>À VÉRIFIER avec ton comptable : ce qui entre dans la valeur d\'acquisition.</em>' },
@@ -497,6 +512,47 @@
 <h3>Ce que cette page ne dit pas</h3>
 <p>Elle ne calcule pas ton bénéfice fiscal. Elle ignore les amortissements, les variations de stock, les provisions et l'impôt. Les achats classés « stock » ou « immobilisation » sont d'ailleurs exclus des charges de la période : ils ne sont pas consommés. Le vrai résultat, c'est ton comptable qui l'établit en fin d'année.</p>
 <p>Elle ne compte pas non plus <b>ton</b> salaire si tu ne t'en verses pas. Une activité qui dégage 20 000 DT de marge sur l'année en te faisant travailler tous les week-ends n'est pas rentable : elle est juste mal payée.</p>`
+    },
+    {
+      id: 'stock', title: 'Tenir son stock sans y passer ses soirées', sub: 'Suivi automatique, coût moyen, inventaire',
+      body: `
+<p>Si tu ne vends que des prestations — du temps, du conseil — cette page ne te servira à rien : passe ton chemin. Si tu achètes de la marchandise pour la revendre, elle t'évitera deux ennuis classiques : promettre ce que tu n'as pas, et ne pas savoir combien d'argent dort sur tes étagères.</p>
+<h3>Le principe : tu ne saisis rien</h3>
+<p>SkanFact ne te demande pas de tenir un cahier de stock. Il <b>déduit</b> les mouvements de ce que tu saisis déjà :</p>
+<ul>
+  <li>Une ligne de <b>facture d'achat</b> en destination « stock » fait une <b>entrée</b>.</li>
+  <li>Une <b>facture</b> ou un <b>bon de livraison</b> fait une <b>sortie</b>.</li>
+  <li>Un <b>avoir</b> remet la marchandise en stock.</li>
+</ul>
+<p>Ce qui ne bouge rien : les devis, les proformas, les bons de commande et les brouillons. Rien n'a encore quitté l'entrepôt. Et une facture tirée d'un bon de livraison ne sort pas une seconde fois : c'est le bon de livraison qui fait foi.</p>
+<p>Tu ne saisis à la main que trois choses : ce que tu as en rayon au départ, la casse, et les corrections d'inventaire.</p>
+<h3>Mettre un article sous suivi</h3>
+<p><b>Catalogue → Modifier</b> une prestation → coche <b>« Suivi en stock »</b>. Trois champs apparaissent :</p>
+<ul>
+  <li>Le <b>stock de départ</b> et son coût unitaire : ce que tu as aujourd'hui, avant que SkanFact ne commence à compter. Compte-le une fois, sérieusement — tout le reste en dépend.</li>
+  <li>Le <b>seuil d'alerte</b> : la quantité en dessous de laquelle il faut recommander. Mets-y de quoi tenir le temps que ton fournisseur livre.</li>
+  <li>L'<b>emplacement</b>, pour le retrouver.</li>
+</ul>
+<p>Un piège à connaître : pour qu'un achat entre en stock, sa ligne doit porter le <b>même libellé</b> que l'article du catalogue. L'éditeur d'achat te prévient quand une ligne « stock » ne correspond à rien de suivi. Le plus simple est d'insérer l'article depuis le catalogue plutôt que de retaper son nom.</p>
+<h3>Le coût moyen pondéré</h3>
+<p>Tu achètes rarement deux fois au même prix. Pour savoir ce que vaut ton stock, SkanFact recalcule un <b>coût moyen</b> à chaque entrée : 5 disques à 200 DT plus 10 à 230 DT font 15 disques à 220 DT. Les sorties partent à ce coût-là et ne le changent pas.</p>
+<p>C'est la méthode la plus simple à tenir et la plus courante. <em>À VÉRIFIER avec ton comptable : la méthode de valorisation retenue pour tes comptes annuels.</em></p>
+<h3>Le stock négatif</h3>
+<p>C'est l'alerte qui compte. Un stock négatif veut dire que tu as vendu plus que tu n'as acheté — physiquement impossible. Il manque donc une entrée : une facture d'achat non saisie, une quantité mal recopiée, un stock de départ oublié.</p>
+<p><b>Corrige la pièce en cause, n'ajuste pas.</b> Un ajustement ferait disparaître l'alerte sans réparer quoi que ce soit — et si c'est une facture d'achat qui manque, tu perds aussi sa TVA déductible, ce qui coûte de l'argent pour de bon.</p>
+<h3>L'inventaire</h3>
+<p>Au moins une fois par an, à la clôture, on compte ce qu'il y a vraiment en rayon. C'est une obligation comptable, et c'est aussi le seul moment où l'on découvre ce qui s'est perdu.</p>
+<p>Onglet <b>Inventaire</b> : tu tapes ce que tu as compté en face de chaque article, SkanFact affiche l'écart et ce qu'il représente en argent. Rien n'est modifié tant que tu ne cliques pas sur « Enregistrer les écarts » — et quand tu le fais, chaque correction devient un mouvement daté et traçable, pas une modification silencieuse.</p>
+<p>Un écart n'est pas une faute : c'est de la casse non déclarée, une sortie oubliée, une erreur de saisie. L'important est de le voir et de le noter.</p>
+<h3>Ce que ça change dans tes chiffres</h3>
+<p>C'est le point le plus important de cette version, et le moins visible. Avant, acheter 10 000 DT de marchandise apparaissait comme une charge : ton résultat du mois plongeait, puis remontait quand tu la vendais. C'était faux dans les deux sens.</p>
+<p>Maintenant, l'achat entre en <b>stock</b> — de l'argent transformé, pas dépensé — et la charge apparaît au moment de la <b>vente</b>, au coût moyen de ce qui est sorti. C'est ce qu'on appelle le <b>coût des marchandises vendues</b>, et tu le vois :</p>
+<ul>
+  <li>dans <b>Comptabilité → Résultat simplifié</b>, en face du chiffre d'affaires ;</li>
+  <li>dans <b>Marges → Seuil de rentabilité</b>, rangé dans les charges variables — pas de vente, pas de coût.</li>
+</ul>
+<h3>Ce que cette page ne fait pas</h3>
+<p>Pas de numéros de série, pas de lots ni de dates de péremption, pas de dépôts multiples, pas de réservation sur commande. Pas de FIFO ni de LIFO non plus : un seul coût moyen. Ce sont des besoins d'entreprises plus grandes ; si l'un d'eux devient nécessaire, il se rajoutera.</p>`
     },
     {
       id: 'immobilisations', title: 'Ce que tu gardes : les immobilisations', sub: 'Amortissement, valeur nette comptable, cession',

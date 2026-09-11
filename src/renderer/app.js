@@ -533,7 +533,8 @@
     contrat: 'le contrat', autres: 'Autres documents', clients: 'Clients', client: 'la fiche client', catalogue: 'Catalogue',
     tresorerie: 'Trésorerie', stats: 'Statistiques', compta: 'Comptabilité', parametres: 'Paramètres', aide: 'Aide', doc: 'le document',
     achats: 'Achats et dépenses', achat: 'l\'achat', fournisseurs: 'Fournisseurs', fournisseur: 'la fiche fournisseur',
-    marges: 'Marges', affaire: 'l\'affaire', immos: 'Immobilisations', immo: 'l\'immobilisation'
+    marges: 'Marges', affaire: 'l\'affaire', immos: 'Immobilisations', immo: 'l\'immobilisation',
+    stock: 'Stock', article: 'l\'article'
   };
   const pageLabel = hash => PAGE_LABELS[(hash || '').replace(/^#\/?/, '').split('/')[0]] || 'Accueil';
   function pushHistory(previous) {
@@ -587,6 +588,7 @@
     else if (name === 'fournisseur') active = 'fournisseurs';
     else if (name === 'affaire') active = 'marges';
     else if (name === 'immo') active = 'immos';
+    else if (name === 'article') active = 'stock';
     $$('nav a').forEach(a => a.classList.toggle('active', a.dataset.route === active));
     guard = null; previewRedraw = null;
     pushHistory(currentHash);        // d'où l'on vient, pour le bouton retour de la page qui s'ouvre
@@ -1195,7 +1197,9 @@
       onPick: id => {
         const it = data.catalog.find(c => c.id === id); if (!it) return;
         if (doc.lines.length === 1 && !doc.lines[0].label && !doc.lines[0].unitPrice) { doc.lines = []; openDesc.clear(); }
-        doc.lines.push({ label: it.label, description: it.description || '', qty: 1, unit: it.unit || '', unitPrice: it.unitPrice, unitCost: it.unitCost || '', vatRate: it.vatRate });
+        // `itemId` rattache la ligne à l'article : c'est lui qui fait le lien avec le stock, même si le
+        // libellé est retouché ensuite. Les lignes plus anciennes restent rattrapées par leur libellé.
+        doc.lines.push({ label: it.label, description: it.description || '', qty: 1, unit: it.unit || '', unitPrice: it.unitPrice, unitCost: it.unitCost || '', vatRate: it.vatRate, itemId: it.id });
         if (it.description) openDesc.add(doc.lines.length - 1);
         touch(); drawLines();
       }
@@ -1368,6 +1372,12 @@
       if (isInv && !(co.rib || '').trim()) w.push('Aucun RIB n\'est renseigné : le client ne saura pas où virer le paiement.');
       const last = data.documents.filter(d => d.type === doc.type && d.id !== doc.id && d.number && d.status !== 'brouillon' && (d.date || '').slice(0, 4) === (doc.date || '').slice(0, 4)).sort(byNumberDesc)[0];
       if (last && last.date > doc.date) w.push(`La date (${C.fmtDate(doc.date)}) est antérieure à la dernière ${isInv ? 'facture' : 'pièce'} émise, ${last.number} du ${C.fmtDate(last.date)} : la numérotation ne serait plus chronologique.`);
+      // Vendre ce qu'on n'a pas : la pièce reste émissible (une commande peut partir avant la livraison
+      // du fournisseur), mais on le dit — un stock négatif est presque toujours une saisie manquante.
+      if (isInv || doc.type === 'livraison') {
+        C.stockImpact(doc, data).forEach(x => w.push(
+          `Stock insuffisant sur « ${x.label} » : il en reste ${pct(x.have)}${x.unit ? ' ' + x.unit : ''} et cette pièce en sort ${pct(x.need)}. Le stock passerait à ${pct(x.after)}. Vérifie qu'une facture d'achat n'a pas été oubliée.`));
+      }
       return w;
     }
     function persist() {
@@ -1756,7 +1766,9 @@
 
   // ---------- Catalogue ----------
   function catalogForm(item, done) {
-    const it = item || { id: C.uid(), label: '', description: '', unit: '', unitPrice: 0, unitCost: 0, vatRate: 19 };
+    const it = item || { id: C.uid(), label: '', description: '', unit: '', unitPrice: 0, unitCost: 0, vatRate: 19,
+      tracked: false, minStock: 0, location: '', initialQty: 0, initialCost: 0, initialDate: C.today() };
+    const already = item ? C.stockOf(data, it.id) : null;   // stock déjà constitué : on ne rejoue pas le départ
     modal(`<h2>${item ? 'Modifier la prestation' : 'Nouvelle prestation'}</h2>
       <form id="kf" class="grid-2">
         <label class="field span-2">${lbl('Désignation', 'cat.catalog')}<input type="text" name="label" value="${h(it.label)}"></label>
@@ -1766,6 +1778,18 @@
         <label class="field">TVA<select name="vatRate">${C.VAT_RATES.map(r => `<option value="${r}" ${Number(it.vatRate) === r ? 'selected' : ''}>${r}%</option>`).join('')}</select></label>
         <div class="field span-2" id="marge-hint"></div>
         <div class="field">${lbl('Unité', 'ed.unit')}<select name="unit" id="cat-unit">${unitOptions(it.unit || '', C.usedUnits(data))}</select></div>
+        <label class="check span-2"><input type="checkbox" name="tracked" ${it.tracked ? 'checked' : ''}> Suivi en stock ${info('stk.tracked')}</label>
+        <div class="field span-2" id="stock-block" ${it.tracked ? '' : 'hidden'}>
+          <div class="grid-2">
+            ${field(lbl('Seuil d\'alerte', 'stk.min'), 'minStock', it.minStock || 0, 'number', 'step="0.01" min="0" class="num"')}
+            ${field('Emplacement', 'location', it.location || '', 'text', 'placeholder="Étagère A, réserve…"')}
+            ${field(lbl('Stock de départ', 'stk.initial'), 'initialQty', it.initialQty || 0, 'number', 'step="0.01" class="num"' + (already && already.moves.length > 1 ? ' disabled' : ''))}
+            ${field(lbl('Coût unitaire du départ', 'stk.initialCost'), 'initialCost', it.initialCost || 0, 'number', 'step="0.001" min="0" class="num"' + (already && already.moves.length > 1 ? ' disabled' : ''))}
+          </div>
+          ${already && already.moves.length > 1
+            ? `<p class="small muted mt">Stock actuel : <b>${already.qty} ${h(already.unit)}</b> au coût moyen de ${C.money(already.cmp, company().currency)}. Le stock de départ n'est plus modifiable ici — des mouvements s'y appuient. Passe par un ajustement sur la page Stock.</p>`
+            : '<p class="small muted mt">Ce que tu as en rayon aujourd\'hui, avant que SkanFact ne commence à compter. Les achats et les ventes s\'y ajoutent tout seuls ensuite.</p>'}
+        </div>
       </form>
       <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
       (root, close) => {
@@ -1781,10 +1805,17 @@
           el.innerHTML = `<span class="small ${m <= 0 ? 'warn-text' : 'ok-text'}">Marge : <strong>${C.money(m, company().currency)}</strong> par unité, soit ${pct(r)} %${m <= 0 ? ' — tu vends à perte.' : ''}</span>`;
         };
         $('#kf', root).oninput = hint; hint();
+        // Le bloc stock n'apparaît que si l'article est suivi : inutile d'imposer quatre champs de plus
+        // à qui ne vend que des prestations.
+        $('input[name=tracked]', root).onchange = e => { $('#stock-block', root).hidden = !e.target.checked; };
         $('#ok', root).onclick = () => {
           const v = formValues($('#kf', root));
           if (!v.label.trim()) return toast('La désignation est obligatoire.', true);
-          Object.assign(it, v, { vatRate: Number(v.vatRate), unitCost: Number(v.unitCost) || 0, unit });
+          if (v.tracked && already && already.moves.length > 1) { v.initialQty = it.initialQty; v.initialCost = it.initialCost; }
+          Object.assign(it, v, { vatRate: Number(v.vatRate), unitCost: Number(v.unitCost) || 0, unit,
+            tracked: !!v.tracked, minStock: Number(v.minStock) || 0,
+            initialQty: Number(v.initialQty) || 0, initialCost: Number(v.initialCost) || 0,
+            initialDate: it.initialDate || C.today() });
           if (!item) data.catalog.push(it);
           save(true); close(); if (done) done(it);
         };
@@ -1839,7 +1870,13 @@
         return `<span class="${m <= 0 ? 'warn-text' : ''}">${C.money(m, cur)} <span class="muted">(${pct(r)} %)</span></span>`;
       } },
       { key: 'vat', label: 'TVA', r: true, val: c => Number(c.vatRate) || 0, get: c => c.vatRate + ' %' },
-      { key: 'unit', label: 'Unité', asc: true, val: c => (c.unit || '').toLowerCase(), get: c => h(c.unit || '') }
+      { key: 'unit', label: 'Unité', asc: true, val: c => (c.unit || '').toLowerCase(), get: c => h(c.unit || '') },
+      { key: 'stock', label: 'Stock', r: true, val: c => c.tracked ? C.stockOf(data, c.id).qty : -Infinity, get: c => {
+        if (!c.tracked) return '<span class="muted">—</span>';
+        const st = C.stockOf(data, c.id);
+        const cls = st.negative ? 'warn-text' : st.low ? 'warn-text' : '';
+        return `<span class="${cls}"><strong>${pct(st.qty)}</strong>${c.unit ? ' ' + h(c.unit) : ''}</span>${st.negative ? '<div class="small warn-text">négatif</div>' : st.low ? '<div class="small warn-text">sous le seuil</div>' : ''}`;
+      } }
     ];
     const draw = drawList('#list-wrap', catalogState.presta, prestaCols, () => data.catalog.slice(), {
       noun: 'prestation', placeholder: 'Rechercher une prestation…', text: c => `${c.label} ${c.description || ''} ${c.unit || ''}`,
@@ -2422,6 +2459,8 @@
     }
     const im = $('#nav-immos');
     if (im) { const n = C.assetsToCreate(data).length; im.hidden = !n; im.textContent = n; }
+    const stk = $('#nav-stock');
+    if (stk) { const n = C.stockAlerts(data).length; stk.hidden = !n; stk.textContent = n; }
   }
 
   // ---------- palette de recherche (Cmd/Ctrl+K) ----------
@@ -2435,7 +2474,7 @@
     const actions = [
       ['Nouveau devis', () => navigate('#/doc/new/devis')], ['Nouvelle facture', () => navigate('#/doc/new/facture')], ['Nouvel avoir', () => navigate('#/doc/new/avoir')],
       ['Accueil', () => navigate('#/dashboard')], ['Devis', () => navigate('#/devis')], ['Factures', () => navigate('#/factures')], ['Relances', () => navigate('#/relances')],
-      ['Contrats récurrents', () => navigate('#/contrats')], ['Achats et dépenses', () => navigate('#/achats')], ['Nouvelle facture d\'achat', () => navigate('#/achat/new')], ['Nouvelle dépense', () => navigate('#/achat/new/-/depense')], ['Fournisseurs', () => navigate('#/fournisseurs')], ['Trésorerie', () => navigate('#/tresorerie')], ['Marges et rentabilité', () => navigate('#/marges')], ['Immobilisations', () => navigate('#/immos')], ['Nouvelle immobilisation', () => assetForm(null, a => navigate('#/immo/' + a.id))], ['Lignes à immobiliser', () => { immoState.tab = 'attente'; navigate('#/immos'); }], ['Seuil de rentabilité', () => navigate('#/marges')], ['Nouvelle affaire', () => projectForm(null, p => navigate('#/affaire/' + p.id))], ['Nouveau fournisseur', () => supplierForm(null, () => render())], ['Proformas', () => navigate('#/autres/proforma')], ['Bons de commande', () => navigate('#/autres/commande')], ['Bons de livraison', () => navigate('#/autres/livraison')], ['Contrats à signer', () => navigate('#/autres/contrat')], ['Clients', () => navigate('#/clients')], ['Catalogue', () => navigate('#/catalogue')], ['Statistiques', () => navigate('#/stats')], ['Comptabilité', () => navigate('#/compta')], ['Paramètres', () => navigate('#/parametres')],
+      ['Contrats récurrents', () => navigate('#/contrats')], ['Achats et dépenses', () => navigate('#/achats')], ['Nouvelle facture d\'achat', () => navigate('#/achat/new')], ['Nouvelle dépense', () => navigate('#/achat/new/-/depense')], ['Fournisseurs', () => navigate('#/fournisseurs')], ['Trésorerie', () => navigate('#/tresorerie')], ['Marges et rentabilité', () => navigate('#/marges')], ['Stock', () => navigate('#/stock')], ['Inventaire', () => { stockState.tab = 'inventaire'; navigate('#/stock'); }], ['Mouvement de stock', () => adjustForm(null, () => render())], ['Immobilisations', () => navigate('#/immos')], ['Nouvelle immobilisation', () => assetForm(null, a => navigate('#/immo/' + a.id))], ['Lignes à immobiliser', () => { immoState.tab = 'attente'; navigate('#/immos'); }], ['Seuil de rentabilité', () => navigate('#/marges')], ['Nouvelle affaire', () => projectForm(null, p => navigate('#/affaire/' + p.id))], ['Nouveau fournisseur', () => supplierForm(null, () => render())], ['Proformas', () => navigate('#/autres/proforma')], ['Bons de commande', () => navigate('#/autres/commande')], ['Bons de livraison', () => navigate('#/autres/livraison')], ['Contrats à signer', () => navigate('#/autres/contrat')], ['Clients', () => navigate('#/clients')], ['Catalogue', () => navigate('#/catalogue')], ['Statistiques', () => navigate('#/stats')], ['Comptabilité', () => navigate('#/compta')], ['Paramètres', () => navigate('#/parametres')],
       ['Aide et guide', () => navigate('#/aide')], ['Nouveau client', () => clientForm(null, () => render())]
     ].map(([label, run]) => ({ kind: 'Action', main: label, text: label.toLowerCase(), run }));
     const helps = G.ARTICLES.map(x => ({ kind: 'Aide', main: x.title, sub: x.sub, text: `aide ${x.title} ${x.sub}`.toLowerCase(), run: () => navigate('#/aide/' + x.id) }));
@@ -2922,6 +2961,7 @@
               <th style="width:150px">Destination ${info('buy.destination')}</th><th style="width:74px">Déduct. ${info('buy.deductible')}</th><th class="r">Total HT</th><th></th></tr></thead>
               <tbody id="b-lines"></tbody></table>
             <div class="totals-box" id="b-totals"></div>
+            <div id="b-stock-hint" hidden></div>
           </div>
           ${isNew ? '' : `<div class="panel"><h2>Règlements ${info('buy.payments')}</h2><div id="b-pay"></div></div>`}
           ${isNew ? '' : `<div class="panel"><h2>Pièces jointes ${info('ed.attachments')}</h2><div id="attachments"></div></div>`}
@@ -2979,6 +3019,15 @@
         <tr class="grand"><td>Net à payer</td><td>${C.money(t.netToPay, cur)}</td></tr>
         ${dest.length ? `<tr><td colspan="2" class="small muted" style="padding-top:8px">${dest.map(([k, lab]) => `${lab} ${C.money(t.byDestination[k], cur)}`).join(' · ')}</td></tr>` : ''}
       </table>`;
+      // Une ligne « stock » dont le libellé ne retrouve aucun article suivi n'entrera dans aucun stock :
+      // sans ce rappel, l'entrée disparaît en silence et le stock finit par passer en négatif.
+      const orphelines = t.lines.filter(l => l.destination === 'stock' && (Number(l.qty) || 0) > 0)
+        .filter(l => { const it = C.itemOfLine(l, data); return !it || !it.tracked; });
+      const box = $('#b-stock-hint');
+      if (box) {
+        box.hidden = !orphelines.length;
+        box.innerHTML = orphelines.length ? `<span class="small warn-text">${orphelines.length} ligne(s) en destination « stock » ne correspondent à aucun article suivi du catalogue : ${orphelines.map(l => h(l.label || 'sans désignation')).join(', ')}. Elles n'entreront dans aucun stock. ${info('stk.orphan')}</span>` : '';
+      }
     }
 
     // --- en-tête
@@ -3355,8 +3404,10 @@
           <div class="vat-box" style="max-width:680px">
             <div class="vat-line"><span>Chiffre d'affaires HT</span><span class="num">${C.money(b.revenue, cur)}</span></div>
             <div class="vat-line minus"><span>− Charges variables ${info('mg.variable')}</span><span class="num">${C.money(b.variable, cur)}</span></div>
+            ${b.cogs ? `<div class="vat-line sub-line"><span class="muted">dont coût des marchandises vendues ${info('stk.cogs')}</span><span class="num muted">${C.money(b.cogs, cur)}</span></div>` : ''}
             <div class="vat-line"><span>= Marge sur coûts variables <span class="muted">(${pct(b.rate)} %)</span></span><span class="num">${C.money(b.marginOnVariable, cur)}</span></div>
             <div class="vat-line minus"><span>− Charges fixes ${info('mg.fixed')}</span><span class="num">${C.money(b.fixed, cur)}</span></div>
+            ${b.depreciation ? `<div class="vat-line sub-line"><span class="muted">dont dotation aux amortissements ${info('immo.annuity')}</span><span class="num muted">${C.money(b.depreciation, cur)}</span></div>` : ''}
             <div class="vat-line total ${b.result < 0 ? 'due' : 'ok'}"><span>${b.result < 0 ? 'Perte' : 'Résultat'}</span><span class="num">${C.money(b.result, cur)}</span></div>
           </div>
           <h3 class="sub-h">Le chiffre d'affaires minimum</h3>
@@ -3440,6 +3491,281 @@
       </tbody></table></div>`
       : '<div class="empty">Aucun achat rattaché. Ouvre un achat et choisis cette affaire : c\'est ce qui rend la marge exacte.</div>';
     $$('#p-buys tr[data-bid]').forEach(tr => tr.onclick = () => navigate('#/achat/' + tr.dataset.bid));
+  };
+
+  // ---------- Stock (4.0.0) ----------
+  const stockState = { tab: 'etat', q: '', only: '', counts: {}, countDate: C.today(), moves: { page: 1 } };
+  const STOCK_TABS = [['etat', 'État du stock'], ['mouvements', 'Mouvements'], ['inventaire', 'Inventaire'], ['alertes', 'Alertes']];
+
+  function adjustForm(itemId, done) {
+    const items = C.trackedItems(data);
+    if (!items.length) return toast('Aucun article n\'est suivi en stock. Coche « Suivi en stock » sur une prestation du catalogue.', true);
+    const a = { id: C.uid(), date: C.today(), itemId: itemId || items[0].id, qty: 0, unitCost: '', source: 'casse', reference: '', note: '' };
+    const cur = company().currency;
+    modal(`<h2>Mouvement de stock</h2>
+      <p class="small muted">Ce qui n'a ni facture ni achat : casse, perte, vol, cadeau, correction d'inventaire. Les entrées d'achat et les sorties de vente remontent toutes seules — ne les saisis pas ici.</p>
+      <form id="adf" class="grid-2">
+        ${dateFieldHtml('Date', 'date', a.date, {})}
+        <div class="field">Article
+          ${combo({ name: 'itemId', value: a.itemId, items: items.map(c => ({ v: c.id, label: c.label, sub: c.unit || '', text: c.label })), placeholder: '— Choisir un article —', search: 'Rechercher un article…' })}
+        </div>
+        <label class="field">${lbl('Nature', 'stk.moveKind')}<select name="source">${C.MOVE_SOURCES.filter(([k]) => ['casse', 'inventaire', 'ajustement'].includes(k)).map(([v, l]) => `<option value="${v}" ${a.source === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+        ${field(lbl('Quantité', 'stk.adjustQty'), 'qty', 0, 'number', 'step="0.01" class="num" placeholder="-2 pour une sortie"')}
+        ${field('Coût unitaire (optionnel)', 'unitCost', '', 'number', 'step="0.001" min="0" class="num" placeholder="laisse vide : coût moyen"')}
+        ${field('Référence', 'reference', '', 'text', '')}
+        <label class="field span-2">Note<input type="text" name="note" placeholder="Deux disques tombés à la livraison"></label>
+        <div class="field span-2" id="adj-hint"></div>
+      </form>
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
+      (root, close) => {
+        bindCombo($('[data-combo=itemId]', root), { items: items.map(c => ({ v: c.id, label: c.label, text: c.label })), placeholder: '— Choisir un article —' });
+        const hint = () => {
+          const v = formValues($('#adf', root));
+          const s = C.stockOf(data, v.itemId);
+          const q = Number(v.qty) || 0;
+          const after = C.round3(s.qty + q);
+          $('#adj-hint', root).innerHTML = `<span class="small ${after < 0 ? 'warn-text' : 'muted'}">`
+            + `Stock actuel : <b>${pct(s.qty)} ${h(s.unit)}</b> au coût moyen de ${C.money(s.cmp, cur)}. `
+            + (q ? `Après ce mouvement : <b>${pct(after)} ${h(s.unit)}</b>.` : 'Une quantité négative sort de la marchandise, une positive en fait rentrer.')
+            + (after < 0 ? ' Un stock négatif veut dire qu\'une entrée manque quelque part.' : '') + '</span>';
+        };
+        $('#adf', root).oninput = $('#adf', root).onchange = hint; hint();
+        $('#ok', root).onclick = () => {
+          const v = formValues($('#adf', root));
+          if (!v.itemId) return toast('Choisis un article.', true);
+          if (!Number(v.qty)) return toast('La quantité ne peut pas être zéro.', true);
+          if (!v.date) return toast('Date invalide.', true);
+          data.stockAdjustments.push({ ...a, ...v, qty: Number(v.qty), unitCost: v.unitCost === '' ? '' : Number(v.unitCost) });
+          save(true); close(); if (done) done();
+        };
+      });
+  }
+
+  routes.stock = () => {
+    const cur = company().currency;
+    const s = stockState;
+    const items = C.trackedItems(data);
+    const alerts = C.stockAlerts(data);
+
+    $('#view').innerHTML = `
+      <div class="page-head"><h1>Stock</h1>
+        <div class="actions">
+          <button class="btn" id="st-csv">Exporter (CSV)</button>
+          <button class="btn btn-primary" id="st-adj">+ Mouvement</button>
+        </div></div>
+      ${items.length ? '' : `<div class="panel"><h2>Aucun article suivi</h2>
+        <p class="small">Le stock ne se saisit pas : il se déduit de tes achats et de tes ventes. Pour qu'un article soit compté, ouvre le <a href="#/catalogue">Catalogue</a>, modifie la prestation et coche <b>« Suivi en stock »</b>. Indique ce que tu as en rayon aujourd'hui, et SkanFact suit le reste tout seul.</p>
+        <p class="small muted">Les prestations (du temps, du conseil) n'ont pas de stock : ne coche la case que pour de la marchandise.</p></div>`}
+      <div class="tabs" id="st-tabs" role="tablist" ${items.length ? '' : 'hidden'}>${STOCK_TABS.map(([id, label]) =>
+        `<button role="tab" data-tab="${id}" class="${id === s.tab ? 'active' : ''}">${label}${id === 'alertes' && alerts.length ? ` <span class="nav-count">${alerts.length}</span>` : ''}</button>`).join('')}</div>
+      <div id="st-body"></div>`;
+
+    const qtyCell = (st) => `<span class="${st.negative ? 'warn-text' : st.low ? 'warn-text' : ''}"><strong>${pct(st.qty)}</strong>${st.unit ? ' ' + h(st.unit) : ''}</span>`;
+
+    function drawState() {
+      const t = C.stockTotals(data);
+      const q = s.q.trim().toLowerCase();
+      const rows = t.rows.filter(r => (!q || (r.label || '').toLowerCase().includes(q) || (r.location || '').toLowerCase().includes(q))
+        && (!s.only || (s.only === 'alerte' ? (r.low || r.negative) : r.qty > 0)));
+      $('#st-body').innerHTML = `
+        <div class="stats">
+          <div class="stat"><div class="lbl">Valeur du stock ${info('stk.value')}</div><div class="val">${C.money(t.value, cur)}</div><div class="sub">${t.count} article(s) suivi(s)</div></div>
+          <div class="stat"><div class="lbl">Sous le seuil ${info('stk.min')}</div><div class="val ${t.low ? 'due' : ''}">${t.low}</div><div class="sub">à recommander</div></div>
+          <div class="stat"><div class="lbl">Stocks négatifs ${info('stk.negative')}</div><div class="val ${t.negative ? 'due' : ''}">${t.negative}</div><div class="sub">${t.negative ? 'une entrée manque quelque part' : 'rien d\'impossible'}</div></div>
+          <div class="stat"><div class="lbl">Prix de vente du stock</div><div class="val">${C.money(C.round3(t.rows.reduce((a, r) => a + Math.max(0, r.qty) * r.unitPrice, 0)), cur)}</div><div class="sub">ce qu'il rapporterait vendu</div></div>
+        </div>
+        <div class="panel"><h2>État du stock ${info('stk.state')}</h2>
+          <div class="filters">
+            <input type="search" id="st-q" placeholder="Rechercher un article…" value="${h(s.q)}">
+            <select id="st-only"><option value="">Tous les articles</option><option value="positif" ${s.only === 'positif' ? 'selected' : ''}>En stock seulement</option><option value="alerte" ${s.only === 'alerte' ? 'selected' : ''}>À surveiller</option></select>
+            <span class="small muted">${rows.length} sur ${t.count}</span>
+          </div>
+          ${rows.length ? `<div class="scroll-x"><table class="list compact"><thead><tr>
+            <th>Article</th><th>Emplacement</th><th class="r">En stock</th><th class="r">Seuil</th><th class="r">Coût moyen</th><th class="r">Valeur</th><th class="r">Prix de vente</th></tr></thead><tbody>
+            ${rows.map(r => `<tr class="clickable ${r.negative ? 'row-warn' : ''}" data-iid="${h(r.itemId)}">
+              <td><strong>${h(r.label)}</strong>${r.negative ? '<div class="small warn-text">stock négatif : une entrée manque</div>' : r.low ? '<div class="small warn-text">sous le seuil d\'alerte</div>' : ''}</td>
+              <td>${h(r.location) || '<span class="muted">—</span>'}</td>
+              <td class="r nw">${qtyCell(r)}</td>
+              <td class="r nw">${r.minStock ? pct(r.minStock) : '<span class="muted">—</span>'}</td>
+              <td class="r nw">${C.money(r.cmp, cur)}</td>
+              <td class="r nw"><strong>${C.money(Math.max(0, r.value), cur)}</strong></td>
+              <td class="r nw">${C.money(r.unitPrice, cur)}</td></tr>`).join('')}
+            <tr class="total-row"><td colspan="5"><strong>Total</strong></td>
+              <td class="r"><strong>${C.money(C.round3(rows.reduce((a, r) => a + Math.max(0, r.value), 0)), cur)}</strong></td><td></td></tr>
+          </tbody></table></div>
+          <p class="small muted mt">Valorisation au <b>coût moyen pondéré</b> : à chaque entrée, le coût unitaire moyen est recalculé sur tout le stock. <em>À VÉRIFIER avec ton comptable : la méthode retenue pour tes comptes annuels.</em></p>`
+            : '<div class="empty">Aucun article ne correspond.</div>'}
+        </div>`;
+      $('#st-q').oninput = e => { s.q = e.target.value; drawState(); const el = $('#st-q'); el.focus(); el.setSelectionRange(el.value.length, el.value.length); };
+      $('#st-only').onchange = e => { s.only = e.target.value; drawState(); };
+      $$('#st-body tr[data-iid]').forEach(tr => tr.onclick = () => navigate('#/article/' + tr.dataset.iid));
+    }
+
+    function drawMoves() {
+      const year = C.today().slice(0, 4);
+      const all = C.stockJournal(data, { from: `${year}-01-01`, to: `${year}-12-31` });
+      const paged = paginate(all, s.moves);
+      $('#st-body').innerHTML = `
+        <div class="panel"><h2>Mouvements de ${year} ${info('stk.moves')}</h2>
+          ${all.length ? `<div class="scroll-x"><table class="list compact"><thead><tr>
+            <th>Date</th><th>Article</th><th>Origine</th><th>Référence</th><th class="r">Quantité</th><th class="r">Coût unitaire</th><th class="r">Stock après</th></tr></thead><tbody>
+            ${paged.rows.map(m => `<tr class="${m.docId ? 'clickable' : ''}" ${m.docId ? `data-go="${h(m.source === 'achat' ? '#/achat/' : '#/doc/')}${h(m.docId)}"` : ''}>
+              <td class="nw">${C.fmtDate(m.date)}</td><td>${h(m.label)}</td>
+              <td>${h(C.moveSourceLabel(m.source))}${m.note ? `<div class="small muted">${h(m.note)}</div>` : ''}</td>
+              <td class="nw">${h(m.ref) || '<span class="muted">—</span>'}</td>
+              <td class="r nw ${m.qty < 0 ? 'warn-text' : 'ok-text'}"><strong>${m.qty > 0 ? '+' : ''}${pct(m.qty)}</strong></td>
+              <td class="r nw">${C.money(m.unitApplied, cur)}</td>
+              <td class="r nw ${m.qtyAfter < 0 ? 'warn-text' : ''}">${pct(m.qtyAfter)}</td></tr>`).join('')}
+          </tbody></table></div>
+          ${paged.pg ? pagerBar(paged.pg, { noun: 'mouvement' }) : ''}
+          <p class="small muted mt">Tout vient des pièces déjà saisies : une ligne d'achat en destination « stock » fait une entrée, une facture ou un bon de livraison fait une sortie. Seuls les mouvements « casse », « inventaire » et « ajustement » se saisissent à la main.</p>`
+            : '<div class="empty">Aucun mouvement cette année.</div>'}
+        </div>`;
+      $$('#st-body tr[data-go]').forEach(tr => tr.onclick = () => navigate(tr.dataset.go));
+      bindPager($('#st-body'), s.moves, () => drawMoves(), '#st-body');
+    }
+
+    function drawInventory() {
+      const rows = C.inventoryDiff(data, s.counts, s.countDate);
+      const counted = rows.filter(r => r.counted != null);
+      const gaps = counted.filter(r => r.gap !== 0);
+      const value = C.round3(gaps.reduce((a, r) => a + r.value, 0));
+      $('#st-body').innerHTML = `
+        <div class="panel"><h2>Inventaire physique ${info('stk.inventory')}</h2>
+          <p class="small muted mb">Une fois par an au minimum, on compte ce qu'il y a vraiment en rayon et on le compare à ce que dit l'application. Un écart n'est pas une faute : c'est de la casse non déclarée, une sortie oubliée ou une erreur de saisie. L'important est de le voir.</p>
+          <div class="filters">
+            <label class="small">Date du comptage ${dateFieldHtml('', 'countDate', s.countDate, {})}</label>
+            <span class="small muted">${counted.length} article(s) comptés sur ${rows.length}</span>
+          </div>
+          <div class="scroll-x"><table class="list compact"><thead><tr>
+            <th>Article</th><th class="r">Stock théorique</th><th class="r">Compté</th><th class="r">Écart</th><th class="r">Valeur de l'écart</th></tr></thead><tbody>
+            ${rows.map(r => `<tr class="${r.gap != null && r.gap !== 0 ? 'row-warn' : ''}">
+              <td><strong>${h(r.label)}</strong>${r.unit ? ` <span class="muted">(${h(r.unit)})</span>` : ''}</td>
+              <td class="r nw">${pct(r.book)}</td>
+              <td class="r"><input type="number" step="0.01" class="num inv-in" data-iid="${h(r.itemId)}" value="${r.counted == null ? '' : r.counted}" placeholder="—" style="width:90px"></td>
+              <td class="r nw ${r.gap ? (r.gap < 0 ? 'warn-text' : 'ok-text') : ''}">${r.gap == null ? '<span class="muted">—</span>' : `<strong>${r.gap > 0 ? '+' : ''}${pct(r.gap)}</strong>`}</td>
+              <td class="r nw">${r.gap == null || r.gap === 0 ? '<span class="muted">—</span>' : C.money(r.value, cur)}</td></tr>`).join('')}
+          </tbody></table></div>
+          <div class="inline mt">
+            <button class="btn btn-primary" id="inv-apply" ${gaps.length ? '' : 'disabled'}>Enregistrer ${gaps.length} écart(s)</button>
+            <button class="btn" id="inv-clear" ${counted.length ? '' : 'disabled'}>Effacer le comptage</button>
+            <span class="small ${value < 0 ? 'warn-text' : 'muted'}">${gaps.length ? `Impact sur la valeur du stock : ${C.money(value, cur)}` : 'Aucun écart pour l\'instant.'}</span>
+          </div>
+          <p class="small muted mt">Rien n'est modifié tant que tu ne cliques pas : le comptage reste à l'écran, et c'est toi qui décides de le passer en mouvements d'inventaire.</p>
+        </div>`;
+      bindDateFields($('#st-body'));
+      const hid = $('#st-body input[name=countDate]');
+      if (hid) hid.onchange = () => { s.countDate = hid.value || C.today(); drawInventory(); };
+      $$('#st-body .inv-in').forEach(el => el.oninput = () => {
+        s.counts[el.dataset.iid] = el.value;
+        const keep = el.dataset.iid, pos = el.selectionStart;
+        drawInventory();
+        const again = $(`#st-body .inv-in[data-iid="${keep}"]`);
+        if (again) { again.focus(); try { again.setSelectionRange(pos, pos); } catch (_) {} }
+      });
+      $('#inv-clear').onclick = () => { s.counts = {}; drawInventory(); };
+      $('#inv-apply').onclick = async () => {
+        if (!await confirmDialog(`Enregistrer ${gaps.length} mouvement(s) d'inventaire au ${C.fmtDate(s.countDate)} ? Le stock théorique sera aligné sur ce que tu as compté. Cette opération est tracée dans les mouvements et se corrige comme n'importe quel ajustement.`, 'Enregistrer')) return;
+        gaps.forEach(r => data.stockAdjustments.push({ id: C.uid(), date: s.countDate, itemId: r.itemId, qty: r.gap,
+          unitCost: '', source: 'inventaire', reference: '', note: `Inventaire du ${C.fmtDate(s.countDate)}` }));
+        s.counts = {}; save(true); toast(`${gaps.length} écart(s) enregistré(s)`); draw();
+      };
+    }
+
+    function drawAlerts() {
+      $('#st-body').innerHTML = `
+        <div class="panel"><h2>Ce qui demande ton attention ${info('stk.alerts')}</h2>
+          ${alerts.length ? `<div class="scroll-x"><table class="list compact"><thead><tr>
+            <th>Article</th><th>Problème</th><th class="r">En stock</th><th class="r">Seuil</th><th class="r">À commander</th><th></th></tr></thead><tbody>
+            ${alerts.map(r => `<tr class="${r.kind === 'negatif' ? 'row-warn' : ''}">
+              <td><strong>${h(r.label)}</strong>${r.location ? `<div class="small muted">${h(r.location)}</div>` : ''}</td>
+              <td>${r.kind === 'negatif' ? '<span class="warn-text">Stock négatif — tu as vendu plus que tu n\'as acheté. Un achat manque, ou une quantité a été saisie de travers.</span>'
+                : r.kind === 'rupture' ? '<span class="warn-text">Rupture : il n\'en reste plus.</span>'
+                : 'Sous le seuil d\'alerte.'}</td>
+              <td class="r nw">${qtyCell(r)}</td>
+              <td class="r nw">${r.minStock ? pct(r.minStock) : '<span class="muted">—</span>'}</td>
+              <td class="r nw">${r.kind === 'negatif' ? '<span class="muted">—</span>' : `<strong>${pct(C.round3(Math.max(r.minStock, 1) - r.qty))}</strong>`}</td>
+              <td class="r"><button class="btn btn-sm" data-fix="${h(r.itemId)}">Ajuster</button>
+                <button class="btn btn-sm btn-ghost" data-see="${h(r.itemId)}">Voir</button></td></tr>`).join('')}
+          </tbody></table></div>`
+            : '<div class="empty">Rien à signaler : aucun stock négatif, aucun article sous son seuil.</div>'}
+        </div>`;
+      $$('#st-body [data-fix]').forEach(b => b.onclick = () => adjustForm(b.dataset.fix, () => draw()));
+      $$('#st-body [data-see]').forEach(b => b.onclick = () => navigate('#/article/' + b.dataset.see));
+    }
+
+    const draw = () => {
+      if (!items.length) { $('#st-body').innerHTML = ''; return; }
+      if (s.tab === 'mouvements') return drawMoves();
+      if (s.tab === 'inventaire') return drawInventory();
+      if (s.tab === 'alertes') return drawAlerts();
+      drawState();
+    };
+    $$('#st-tabs button').forEach(b => b.onclick = () => {
+      s.tab = b.dataset.tab;
+      $$('#st-tabs button').forEach(x => x.classList.toggle('active', x === b));
+      draw();
+    });
+    $('#st-adj').onclick = () => adjustForm(null, () => draw());
+    $('#st-csv').onclick = async () => {
+      const t = C.stockTotals(data);
+      if (!t.rows.length) return toast('Rien à exporter.', true);
+      const cols = [
+        { key: 'label', label: 'Article' }, { key: 'location', label: 'Emplacement' },
+        { key: 'qty', label: 'En stock' }, { key: 'unit', label: 'Unité' },
+        { key: 'minStock', label: 'Seuil' }, { key: 'cmp', label: 'Coût moyen', type: 'money' },
+        { label: 'Valeur', type: 'money', get: r => Math.max(0, r.value) },
+        { key: 'unitPrice', label: 'Prix de vente', type: 'money' }
+      ];
+      const f = await bridge.saveText(`stock-${C.today()}.csv`, C.toCsv(t.rows, cols));
+      if (f) toast('Exporté : ' + f.split(/[\\/]/).pop());
+    };
+    draw();
+  };
+
+  routes.article = (parts) => {
+    const item = data.catalog.find(c => c.id === parts[0]);
+    if (!item) return navigate('#/stock');
+    const cur = company().currency;
+    const st = C.stockOf(data, item.id);
+    const moves = st.moves.slice().reverse();
+    $('#view').innerHTML = `
+      <div class="page-head"><div><h1>${h(item.label)}</h1>
+        <div class="small muted">${[item.location, item.unit ? 'unité : ' + item.unit : '', item.tracked ? 'suivi en stock' : 'non suivi'].filter(Boolean).join(' · ')}</div></div>
+        <div class="actions">${backButton('#/stock')}<button class="btn" id="edit-item">Modifier l'article</button>
+          <button class="btn btn-primary" id="adj-item">+ Mouvement</button></div></div>
+      ${st.negative ? `<div class="panel" style="border-left:3px solid var(--danger)"><h2 style="color:var(--danger)">Stock négatif</h2>
+        <p class="small">D'après les pièces saisies, il en reste <b>${pct(st.qty)}</b> — ce qui est impossible. Il manque une entrée : un achat non saisi, une quantité mal recopiée, ou un stock de départ oublié. Corrige la pièce en cause plutôt que d'ajuster, sinon l'erreur restera dans les chiffres.</p></div>` : ''}
+      <div class="stats">
+        <div class="stat"><div class="lbl">En stock</div><div class="val ${st.negative || st.low ? 'due' : ''}">${pct(st.qty)}${st.unit ? ' ' + h(st.unit) : ''}</div><div class="sub">${st.minStock ? 'seuil d\'alerte : ' + pct(st.minStock) : 'aucun seuil défini'}</div></div>
+        <div class="stat"><div class="lbl">Coût moyen pondéré ${info('stk.cmp')}</div><div class="val">${C.money(st.cmp, cur)}</div><div class="sub">recalculé à chaque entrée</div></div>
+        <div class="stat"><div class="lbl">Valeur du stock</div><div class="val">${C.money(Math.max(0, st.value), cur)}</div><div class="sub">au coût moyen</div></div>
+        <div class="stat"><div class="lbl">Marge unitaire</div><div class="val ${st.unitPrice - st.cmp < 0 ? 'due' : 'ok'}">${C.money(C.round3(st.unitPrice - st.cmp), cur)}</div><div class="sub">vendu ${C.money(st.unitPrice, cur)}</div></div>
+      </div>
+      <div class="panel"><h2>Historique des mouvements</h2>
+        ${moves.length ? `<div class="scroll-x"><table class="list compact"><thead><tr>
+          <th>Date</th><th>Origine</th><th>Référence</th><th class="r">Quantité</th><th class="r">Coût unitaire</th><th class="r">Stock après</th><th class="r">Coût moyen après</th><th></th></tr></thead><tbody>
+          ${moves.map(m => `<tr>
+            <td class="nw">${C.fmtDate(m.date)}</td>
+            <td>${h(C.moveSourceLabel(m.source))}${m.note ? `<div class="small muted">${h(m.note)}</div>` : ''}</td>
+            <td class="nw">${m.docId ? `<a href="${m.source === 'achat' ? '#/achat/' : '#/doc/'}${h(m.docId)}">${h(m.ref) || 'voir'}</a>` : (h(m.ref) || '<span class="muted">—</span>')}</td>
+            <td class="r nw ${m.qty < 0 ? 'warn-text' : 'ok-text'}"><strong>${m.qty > 0 ? '+' : ''}${pct(m.qty)}</strong></td>
+            <td class="r nw">${C.money(m.unitApplied, cur)}</td>
+            <td class="r nw ${m.qtyAfter < 0 ? 'warn-text' : ''}">${pct(m.qtyAfter)}</td>
+            <td class="r nw">${C.money(m.cmpAfter, cur)}</td>
+            <td class="r">${m.manual ? `<button class="btn btn-sm btn-ghost" data-rm="${h(m.id)}" title="Supprimer ce mouvement">✕</button>` : ''}</td></tr>`).join('')}
+        </tbody></table></div>`
+          : '<div class="empty">Aucun mouvement. Le stock bougera dès qu\'un achat en destination « stock » ou une vente portera cet article.</div>'}
+      </div>`;
+    bindBack('#/stock');
+    $('#edit-item').onclick = () => catalogForm(item, () => render());
+    $('#adj-item').onclick = () => adjustForm(item.id, () => render());
+    $$('[data-rm]').forEach(b => b.onclick = async () => {
+      if (!await confirmDialog('Supprimer ce mouvement saisi à la main ?')) return;
+      forget('stockAdjustments', b.dataset.rm, item.label);
+      data.stockAdjustments = data.stockAdjustments.filter(x => x.id !== b.dataset.rm);
+      save(true); render();
+    });
   };
 
   // ---------- Immobilisations et amortissements (3.5.0) ----------
@@ -4510,11 +4836,12 @@
           <div class="stats compact-stats">
             <div class="stat"><div class="lbl">Produits (ventes HT)</div><div class="val">${C.money(res.produits, cur)}</div><div class="sub">${res.salesCount} pièce(s)</div></div>
             <div class="stat"><div class="lbl">Charges HT</div><div class="val">${C.money(res.charges, cur)}</div><div class="sub">${res.buysCount} pièce(s) d'achat</div></div>
+            <div class="stat"><div class="lbl">Coût des marchandises vendues ${info('stk.cogs')}</div><div class="val">${C.money(res.cogs, cur)}</div><div class="sub">${res.cogs ? 'sorties de stock, au coût moyen' : 'aucune sortie de stock'}</div></div>
             <div class="stat"><div class="lbl">Dotation aux amortissements ${info('immo.annuity')}</div><div class="val">${C.money(res.depreciation, cur)}</div><div class="sub">${res.depreciation ? 'une charge qui ne sort pas d\'argent' : 'aucun bien amorti sur la période'}</div></div>
             <div class="stat"><div class="lbl">Résultat avant impôt</div><div class="val ${res.resultat >= 0 ? 'ok' : 'due'}">${C.money(res.resultat, cur)}</div><div class="sub">${res.marge == null ? '' : res.marge + ' % du chiffre d\'affaires'}</div></div>
             <div class="stat"><div class="lbl">Non comptés en charges</div><div class="val">${C.money(C.round3(res.stock + res.immo), cur)}</div><div class="sub">${C.money(res.stock, cur)} en stock · ${C.money(res.immo, cur)} en immobilisations</div></div>
           </div>
-          <p class="small muted mt"><em>Ce n'est pas ton résultat comptable :</em> il manque la variation de stock, les salaires et les provisions. Les amortissements, eux, y sont depuis la 3.5.0 — <a href="#/immos">page Immobilisations</a>. C'est un ordre de grandeur pour savoir où tu en es, pas un bilan. <em>À VÉRIFIER avec ton comptable.</em></p>
+          <p class="small muted mt"><em>Ce n'est pas ton résultat comptable :</em> il manque les salaires et les provisions. Les amortissements y sont depuis la 3.5.0 (<a href="#/immos">Immobilisations</a>) et la variation de stock depuis la 4.0.0 (<a href="#/stock">Stock</a>). C'est un ordre de grandeur pour savoir où tu en es, pas un bilan. <em>À VÉRIFIER avec ton comptable.</em></p>
         </div>`;
       $('#set-carry').onclick = () => promptDialog('Crédit de TVA reporté',
         `Crédit de TVA restant à la fin de ${Number(year) - 1}, tel qu'il figure sur ta dernière déclaration. Il viendra en déduction du premier mois de ${year}.`,

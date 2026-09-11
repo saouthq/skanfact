@@ -113,7 +113,7 @@
   ];
 
   const DEFAULT_DATA = {
-    version: 4,
+    version: 5,
     company: DEFAULT_COMPANY,
     clients: [],
     catalog: [],
@@ -126,6 +126,7 @@
     expenseCategories: [],   // catégories ajoutées par l'utilisateur, en plus de DEFAULT_EXPENSE_CATEGORIES
     fiscalDeadlines: [],     // échéances fiscales activées/modifiées par l'utilisateur (v4)
     assets: [],              // immobilisations amortissables (3.5.0)
+    stockAdjustments: [],    // mouvements de stock saisis à la main : départ, casse, inventaire (v5)
     vatCarryIn: {},          // crédit de TVA venu de l'année précédente, par année : { '2026': 1234 }
     projects: [],            // affaires : relient ventes et achats pour une marge exacte (v4)
     fixedCategories: [],     // catégories de charges considérées comme fixes (vide = valeurs par défaut)
@@ -430,6 +431,15 @@
     // Partage à deux (3.2.0) : suppressions mémorisées et versions écartées lors d'une fusion.
     if (!Array.isArray(data.projects)) data.projects = [];
     if (!Array.isArray(data.assets)) data.assets = [];
+    // Version 5 : stock. Rien à convertir — les articles existants ne sont pas suivis tant que la case
+    // « Suivi en stock » n'est pas cochée, et la liste d'ajustements naît vide.
+    if (!Array.isArray(data.stockAdjustments)) data.stockAdjustments = [];
+    data.catalog.forEach(c => {
+      c.tracked = c.tracked === true;
+      c.minStock = Number(c.minStock) || 0;
+      c.initialQty = Number(c.initialQty) || 0;
+      c.initialCost = Number(c.initialCost) || 0;
+    });
     if (!Array.isArray(data.fixedCategories)) data.fixedCategories = [];
     if (!Array.isArray(data.accounts)) data.accounts = [];
     if (!Array.isArray(data.movements)) data.movements = [];
@@ -442,7 +452,7 @@
       p.withholdingRate = Number(p.withholdingRate) || 0;
       p.fees = Number(p.fees) || 0;
     });
-    data.version = 4;
+    data.version = 5;
     return data;
   }
 
@@ -922,6 +932,9 @@
     (data.movements || []).filter(m => inPeriod(m.date, period && period.from, period && period.to)).forEach(m => {
       if (['salaire', 'emprunt', 'banque'].includes(m.kind)) fixed = round3(fixed + Math.abs(Number(m.amount) || 0));
     });
+    // Le coût des marchandises vendues est LA charge variable par excellence : pas de vente, pas de coût.
+    const cogs = costOfGoodsSold(data, period);
+    variable = round3(variable + cogs);
     // La dotation aux amortissements est une charge fixe : elle tombe que tu vendes ou non (3.5.0).
     const depreciation = depreciationFor(data, period);
     fixed = round3(fixed + depreciation);
@@ -929,7 +942,7 @@
     const rate = revenue > 0 ? marginOnVariable / revenue : 0;
     const point = rate > 0 ? round3(fixed / rate) : null;
     return {
-      revenue, fixed, variable, depreciation, marginOnVariable,
+      revenue, fixed, variable, cogs, depreciation, marginOnVariable,
       rate: revenue > 0 ? Math.round(rate * 1000) / 10 : null,
       breakEven: point,
       // Là où tu en es par rapport au seuil : négatif = il manque du chiffre d'affaires.
@@ -937,6 +950,222 @@
       result: round3(marginOnVariable - fixed),
       reached: point != null && revenue >= point
     };
+  }
+
+  // ---------- stock (4.0.0) ----------
+  // Aucune saisie en double, comme pour la trésorerie : les mouvements de stock sont DÉDUITS de ce qui
+  // existe déjà. Une ligne d'achat en destination « stock » fait une entrée ; une ligne de facture ou de
+  // bon de livraison fait une sortie. On n'ajoute à la main que ce qui n'existe nulle part ailleurs :
+  // le stock de départ, et les ajustements (casse, perte, inventaire).
+  //
+  // Valorisation au COÛT MOYEN PONDÉRÉ : à chaque entrée, le coût unitaire moyen est recalculé sur
+  // l'ensemble du stock. C'est la méthode la plus simple à tenir et la plus courante.
+  // À VÉRIFIER avec le comptable : la méthode de valorisation retenue pour tes comptes annuels.
+
+  const MOVE_SOURCES = [
+    ['achat', 'Achat'], ['vente', 'Vente'], ['livraison', 'Bon de livraison'],
+    ['avoir', 'Retour sur avoir'], ['depart', 'Stock de départ'],
+    ['inventaire', 'Inventaire'], ['casse', 'Casse ou perte'], ['ajustement', 'Ajustement']
+  ];
+  const moveSourceLabel = k => (MOVE_SOURCES.find(m => m[0] === k) || [, k])[1];
+
+  // Les articles du catalogue suivis en stock.
+  function trackedItems(data) {
+    return (data.catalog || []).filter(c => c.tracked);
+  }
+
+  // Retrouver l'article d'une ligne : par identifiant si la ligne en porte un (lignes posées depuis le
+  // catalogue), sinon par libellé — même règle que `lineCost`, pour que l'historique reste lisible.
+  function itemOfLine(line, data) {
+    if (line.itemId) {
+      const byId = (data.catalog || []).find(c => c.id === line.itemId);
+      if (byId) return byId;
+    }
+    const label = (line.label || '').trim().toLowerCase();
+    if (!label) return null;
+    return (data.catalog || []).find(c => (c.label || '').trim().toLowerCase() === label) || null;
+  }
+
+  // Tous les mouvements d'un article, dans l'ordre chronologique, déduits des pièces existantes.
+  // `itemId` restreint à un article ; sans lui, tout le stock.
+  function stockMovements(data, itemId, toIso) {
+    const out = [];
+    const keep = c => c && c.tracked && (!itemId || c.id === itemId);
+    const limit = toIso || null;
+
+    (data.catalog || []).forEach(c => {
+      if (!keep(c)) return;
+      const qty = Number(c.initialQty) || 0;
+      if (!qty) return;
+      const date = c.initialDate || '1970-01-01';
+      if (limit && date > limit) return;
+      out.push({ id: `init-${c.id}`, date, itemId: c.id, label: c.label, qty, unitCost: Number(c.initialCost) || 0,
+        source: 'depart', ref: '', docId: '', note: '' });
+    });
+
+    (data.purchases || []).forEach(p => {
+      (p.lines || []).forEach((l, i) => {
+        if (l.destination !== 'stock') return;
+        const c = itemOfLine(l, data);
+        if (!keep(c)) return;
+        if (limit && p.date > limit) return;
+        const qty = Number(l.qty) || 0;
+        if (!qty) return;
+        out.push({ id: `buy-${p.id}-${i}`, date: p.date, itemId: c.id, label: c.label, qty,
+          unitCost: Number(l.unitPrice) || 0, source: 'achat', ref: p.number || '', docId: p.id, note: '' });
+      });
+    });
+
+    // Sorties : factures émises et bons de livraison. Un devis, une proforma ou un bon de commande ne
+    // sortent rien — rien n'a encore quitté l'entrepôt.
+    (data.documents || []).forEach(d => {
+      const isSale = d.type === 'facture' && d.status !== 'brouillon' && d.status !== 'annulée';
+      const isDelivery = d.type === 'livraison' && d.status !== 'brouillon';
+      const isReturn = d.type === 'avoir' && d.status !== 'brouillon';
+      if (!isSale && !isDelivery && !isReturn) return;
+      if (limit && d.date > limit) return;
+      // Une facture tirée d'un bon de livraison sortirait le stock une seconde fois : c'est le bon de
+      // livraison qui fait foi, la facture ne fait que le suivre.
+      if (isSale && d.fromDocType === 'livraison') return;
+      (d.lines || []).forEach((l, i) => {
+        if (l.noDiscount) return;              // ligne d'acompte ou de déduction : aucune marchandise
+        const c = itemOfLine(l, data);
+        if (!keep(c)) return;
+        const qty = Number(l.qty) || 0;
+        if (!qty) return;
+        out.push({ id: `doc-${d.id}-${i}`, date: d.date, itemId: c.id, label: c.label,
+          qty: isReturn ? qty : -qty, unitCost: null,
+          source: isReturn ? 'avoir' : (isDelivery ? 'livraison' : 'vente'),
+          ref: d.number || '', docId: d.id, note: '' });
+      });
+    });
+
+    (data.stockAdjustments || []).forEach(a => {
+      const c = (data.catalog || []).find(x => x.id === a.itemId);
+      if (!keep(c)) return;
+      if (limit && a.date > limit) return;
+      out.push({ id: a.id, date: a.date, itemId: a.itemId, label: c.label, qty: Number(a.qty) || 0,
+        unitCost: a.unitCost === '' || a.unitCost == null ? null : Number(a.unitCost),
+        source: a.source || 'ajustement', ref: a.reference || '', docId: '', note: a.note || '', manual: true });
+    });
+
+    return out.sort((a, b) => (a.date || '').localeCompare(b.date || '') || String(a.id).localeCompare(String(b.id)));
+  }
+
+  // Déroule les mouvements d'un article et tient le coût moyen pondéré à jour.
+  // Une sortie sort au CMP du moment ; une entrée le recalcule.
+  function runningStock(moves) {
+    let qty = 0, value = 0, cmp = 0;
+    const rows = moves.map(m => {
+      const q = Number(m.qty) || 0;
+      if (q > 0) {
+        // Une entrée sans coût connu (retour sur avoir, ajustement) rentre au CMP courant.
+        const unit = m.unitCost == null ? cmp : Number(m.unitCost) || 0;
+        value = round3(value + q * unit);
+        qty = round3(qty + q);
+        cmp = qty > 0 ? round3(value / qty) : 0;
+      } else {
+        const unit = m.unitCost == null ? cmp : Number(m.unitCost) || 0;
+        qty = round3(qty + q);
+        value = round3(value + q * unit);
+        // Un stock retombé à zéro (ou négatif) ne garde aucune valeur : sinon le CMP dérive.
+        if (qty <= 0) { value = qty < 0 ? round3(qty * cmp) : 0; }
+      }
+      return { ...m, unitApplied: m.unitCost == null ? cmp : Number(m.unitCost) || 0, qtyAfter: qty, valueAfter: value, cmpAfter: cmp };
+    });
+    return { rows, qty, value, cmp };
+  }
+
+  // L'état d'un article à une date : quantité, valeur, coût moyen, et le signal qui compte — le négatif.
+  function stockOf(data, itemId, toIso) {
+    const item = (data.catalog || []).find(c => c.id === itemId) || {};
+    const r = runningStock(stockMovements(data, itemId, toIso));
+    const min = Number(item.minStock) || 0;
+    return {
+      itemId, label: item.label || '', unit: item.unit || '', location: item.location || '',
+      qty: r.qty, value: r.value, cmp: r.cmp, minStock: min, moves: r.rows,
+      negative: r.qty < 0,                       // on a vendu ce qu'on n'avait pas : erreur de saisie ou oubli d'achat
+      low: r.qty >= 0 && min > 0 && r.qty <= min,
+      unitPrice: Number(item.unitPrice) || 0
+    };
+  }
+
+  function stockList(data, toIso) {
+    return trackedItems(data).map(c => stockOf(data, c.id, toIso))
+      .sort((a, b) => (a.label || '').localeCompare(b.label || '', 'fr'));
+  }
+
+  function stockTotals(data, toIso) {
+    const rows = stockList(data, toIso);
+    return {
+      count: rows.length,
+      value: round3(rows.reduce((s, r) => s + Math.max(0, r.value), 0)),
+      low: rows.filter(r => r.low).length,
+      negative: rows.filter(r => r.negative).length,
+      rows
+    };
+  }
+
+  // Le journal des mouvements, tous articles confondus, avec le stock de l'article après chaque ligne.
+  function stockJournal(data, period) {
+    const byItem = {};
+    trackedItems(data).forEach(c => { byItem[c.id] = runningStock(stockMovements(data, c.id)).rows; });
+    const all = [];
+    Object.keys(byItem).forEach(id => byItem[id].forEach(r => all.push(r)));
+    return all.filter(r => inPeriod(r.date, period && period.from, period && period.to))
+      .sort((a, b) => (b.date || '').localeCompare(a.date || '') || String(b.id).localeCompare(String(a.id)));
+  }
+
+  // Ce qu'un inventaire physique révèle : l'écart entre ce que dit l'application et ce qu'on a compté.
+  // `counts` = { itemId: quantité comptée }. On ne modifie rien ici : on décrit, l'appelant décide.
+  function inventoryDiff(data, counts, dateIso) {
+    const d = dateIso || today();
+    return trackedItems(data).map(c => {
+      const s = stockOf(data, c.id, d);
+      const raw = counts && counts[c.id];
+      const counted = raw === '' || raw == null ? null : Number(raw);
+      const gap = counted == null ? null : round3(counted - s.qty);
+      return {
+        itemId: c.id, label: c.label, unit: c.unit || '', book: s.qty, counted, gap,
+        cmp: s.cmp, value: gap == null ? 0 : round3(gap * s.cmp)
+      };
+    }).sort((a, b) => (a.label || '').localeCompare(b.label || '', 'fr'));
+  }
+
+  // Ce qui manque ou ce qui cloche, trié par gravité : d'abord l'impossible, ensuite le bientôt épuisé.
+  function stockAlerts(data, toIso) {
+    const rows = stockList(data, toIso);
+    const neg = rows.filter(r => r.negative).map(r => ({ ...r, kind: 'negatif' }));
+    const low = rows.filter(r => r.low).map(r => ({ ...r, kind: r.qty === 0 ? 'rupture' : 'bas' }));
+    return neg.concat(low.sort((a, b) => a.qty - b.qty));
+  }
+
+  // Le coût des marchandises vendues sur une période : les sorties de stock, valorisées au coût moyen
+  // du moment. C'est LUI la charge de la période, pas l'achat — acheter de la marchandise ne coûte rien
+  // tant qu'elle est sur l'étagère, et la vendre coûte ce qu'elle a coûté. C'est la « variation de stock »
+  // que le résultat simplifié annonçait comme manquante jusqu'ici.
+  function costOfGoodsSold(data, period) {
+    return round3(stockJournal(data, period)
+      .filter(m => m.qty < 0 && ['vente', 'livraison'].includes(m.source))
+      .reduce((s, m) => s + Math.abs(m.qty) * (Number(m.unitApplied) || 0), 0));
+  }
+
+  // Ce qu'un document sortirait du stock : appelé avant d'émettre une facture ou un bon de livraison,
+  // pour prévenir quand on s'apprête à vendre ce qu'on n'a pas.
+  function stockImpact(doc, data) {
+    const out = [];
+    (doc.lines || []).forEach(l => {
+      if (l.noDiscount) return;
+      const c = itemOfLine(l, data);
+      if (!c || !c.tracked) return;
+      const qty = Number(l.qty) || 0;
+      if (qty <= 0) return;
+      // Le stock actuel ne compte pas ce document tant qu'il n'est pas émis.
+      const s = stockOf(data, c.id);
+      const after = round3(s.qty - qty);
+      if (after < 0) out.push({ itemId: c.id, label: c.label, unit: c.unit || '', have: s.qty, need: qty, after });
+    });
+    return out;
   }
 
   // ---------- immobilisations et amortissements (3.5.0) ----------
@@ -1290,11 +1519,11 @@
   // l'autre version pour qu'elle reste consultable. Rien n'est détruit sans trace.
 
   // Les listes du fichier qui se fusionnent pièce par pièce, grâce à leur identifiant.
-  const MERGE_LISTS = ['clients', 'catalog', 'documents', 'recurring', 'templates', 'snippets', 'suppliers', 'purchases', 'accounts', 'movements', 'projects', 'assets'];
+  const MERGE_LISTS = ['clients', 'catalog', 'documents', 'recurring', 'templates', 'snippets', 'suppliers', 'purchases', 'accounts', 'movements', 'projects', 'assets', 'stockAdjustments'];
   const LIST_LABELS = {
     clients: 'client', catalog: 'prestation', documents: 'document', recurring: 'contrat récurrent',
     templates: 'modèle', snippets: 'texte', suppliers: 'fournisseur', purchases: 'achat',
-    accounts: 'compte', movements: 'mouvement', projects: 'affaire', assets: 'immobilisation'
+    accounts: 'compte', movements: 'mouvement', projects: 'affaire', assets: 'immobilisation', stockAdjustments: 'mouvement de stock'
   };
 
   function sameJson(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
@@ -1495,6 +1724,7 @@
     const produits = round3(sales.reduce((s, r) => s + r.ht, 0));
     // Une ligne partie au stock ou en immobilisation n'est pas une charge de la période.
     let charges = 0, stock = 0, immo = 0;
+    const cogs = costOfGoodsSold(data, period);
     (data.purchases || []).filter(p => inPeriod(p.date, period && period.from, period && period.to)).forEach(p => {
       const t = purchaseTotals(p, company);
       charges = round3(charges + t.byDestination.charge + t.fees);
@@ -1504,9 +1734,9 @@
     // L'achat d'une immobilisation n'est pas une charge, mais son AMORTISSEMENT en est une : sans lui,
     // le résultat de l'année d'un gros investissement serait artificiellement bon (3.5.0).
     const depreciation = depreciationFor(data, period);
-    const resultat = round3(produits - charges - depreciation);
+    const resultat = round3(produits - charges - cogs - depreciation);
     return {
-      produits, charges, stock, immo, depreciation, resultat,
+      produits, charges, stock, immo, cogs, depreciation, resultat,
       marge: produits > 0 ? Math.round(resultat / produits * 100) : null,
       salesCount: sales.length, buysCount: buys.length
     };
@@ -1858,6 +2088,21 @@
       label: `${owedSoon.length} règlement${owedSoon.length > 1 ? 's' : ''} fournisseur cette semaine`,
       detail: `${fmt(round3(owedSoon.reduce((s, x) => s + x.remaining, 0)))} à prévoir sur ton compte.`,
       count: owedSoon.length, route: '#/achats', docs: []
+    });
+    // Stock : d'abord l'impossible (on a vendu ce qu'on n'avait pas), ensuite ce qui va manquer.
+    const negStock = stockList(data).filter(x => x.negative);
+    if (negStock.length) out.push({
+      id: 'stock-negatif', level: 'danger',
+      label: `${negStock.length} article${negStock.length > 1 ? 's' : ''} en stock négatif`,
+      detail: `${negStock.map(x => x.label).slice(0, 3).join(', ')}${negStock.length > 3 ? '…' : ''} : tu as vendu plus que tu n'as acheté. Un achat manque, ou une quantité a été saisie de travers.`,
+      count: negStock.length, route: '#/stock', docs: []
+    });
+    const lowStock = stockList(data).filter(x => x.low);
+    if (lowStock.length) out.push({
+      id: 'stock-bas', level: 'warn',
+      label: `${lowStock.length} article${lowStock.length > 1 ? 's' : ''} à recommander`,
+      detail: `${lowStock.map(x => `${x.label} (${x.qty} ${x.unit || ''})`.trim()).slice(0, 3).join(' · ')}${lowStock.length > 3 ? '…' : ''} — sous le seuil d'alerte.`,
+      count: lowStock.length, route: '#/stock', docs: []
     });
     // Lignes d'achat marquées « immobilisation » sans fiche : sans elles, aucune dotation n'est calculée
     // et le résultat de l'année est faussement bon (3.5.0).
@@ -2612,6 +2857,8 @@
     DEFAULT_ASSET_CLASSES, assetClassLabel, assetClassYears, days360, assetSchedule, assetYear,
     assetCumulated, assetNBV, disposalResult, assetsList, assetTotals, assetsToCreate, depreciationFor,
     cappedCumulated,
+    MOVE_SOURCES, moveSourceLabel, trackedItems, itemOfLine, stockMovements, runningStock, stockOf,
+    stockList, stockTotals, stockJournal, inventoryDiff, stockAlerts, stockImpact, costOfGoodsSold,
     mergeData, trackDeletion, MERGE_LISTS, LIST_LABELS,
     purchaseTotals, purchaseBalance, purchaseStatus, payablesList, purchaseJournal, purchaseSummary, supplierSummary, withholdingsToIssue, supplierPayments,
     periodBounds, issuedIn, salesTotals, revenueByMonth, topItems, clientMovement, AGING_BUCKETS, agedReceivables, payerRanking, quoteFunnel, objectiveProgress,

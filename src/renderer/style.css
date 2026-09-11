@@ -615,6 +615,9 @@ body.dark .danger-zone { border-color: #4a2a2a; }
 .vat-line { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
 .vat-line .num { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
 .vat-line.minus { color: var(--muted); }
+/* Sous-ligne d'un détail (« dont … ») : plus petite, décalée, sans trait de séparation. */
+.vat-line.sub-line { padding: 2px 0 8px 18px; border-bottom: none; font-size: 13px; }
+.vat-line.sub-line .num { font-weight: 500; }
 .vat-line.total { border-bottom: none; border-top: 2px solid var(--text); margin-top: 4px; padding-top: 14px; font-size: 16px; font-weight: 700; }
 .vat-line.total.due .num { color: var(--danger); font-size: 20px; }
 .vat-line.total.ok .num { color: var(--success); font-size: 20px; }

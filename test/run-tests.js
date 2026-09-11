@@ -163,7 +163,7 @@ t('journal des ventes, récap TVA, CSV', () => {
 
 t('migration 1.x → 4 : « payée » devient un paiement, les listes manquantes sont créées', () => {
   const d = core.migrateData({ version: 1, company: { name: 'X' }, documents: [inv({ status: 'payée', payments: undefined })], clients: [], catalog: [] });
-  assert.strictEqual(d.version, 4);
+  assert.strictEqual(d.version, 5);
   assert.deepStrictEqual([d.recurring, d.templates, d.snippets], [[], [], []]);
   // version 4 : les trois listes d'achats arrivent vides, sans rien casser de l'existant
   assert.deepStrictEqual([d.suppliers, d.purchases, d.expenseCategories], [[], [], []]);
@@ -399,7 +399,7 @@ const { buildDemoData } = require('../src/renderer/demo.js');
 t('démo : cohérente quelle que soit la date du jour, société conservée', () => {
   ['2026-09-11', '2026-09-01', '2026-01-31', '2026-03-01', '2026-12-31', '2027-02-28', '2028-02-29'].forEach(T => {
     const d = buildDemoData({ name: 'Ma société', logo: 'data:logo', theme: 'dark', phone: '' }, T);
-    assert.ok(isValidData(d) && d.version === 4);
+    assert.ok(isValidData(d) && d.version === 5);
     assert.strictEqual(d.company.name, 'Ma société', 'la démo ne remplace jamais le nom déjà saisi');
     assert.strictEqual(d.company.logo, 'data:logo'); assert.strictEqual(d.company.theme, 'dark');
     assert.strictEqual(d.company.phone, '+216 55 123 456'); // champ vide complété, le reste conservé
@@ -1242,7 +1242,7 @@ t('achats : catégories de charges, celles d\'origine plus les ajoutées', () =>
 t('démo : achats cohérents quelle que soit la date, tous les statuts présents', () => {
   ['2026-01-15', '2026-03-31', '2026-09-11', '2026-12-28', '2027-02-28'].forEach(day => {
     const d = buildDemoData({}, day);
-    assert.strictEqual(d.version, 4);
+    assert.strictEqual(d.version, 5);
     assert.ok(d.suppliers.length >= 4, day);
     assert.ok(d.purchases.length >= 8, day);
     // aucun règlement daté dans le futur : un jeu de démo ne doit jamais montrer l'impossible
@@ -1481,7 +1481,7 @@ t('fusion : société, achats et fournisseurs suivent la même règle', () => {
   assert.strictEqual(core.mergeData(mine, base({ ...mine, syncWrittenAt: 300 })).conflicts.filter(c => c.kind === 'company').length, 0);
   // le résultat reste un fichier valide au sens du stockage
   assert.ok(isValidData(r.data));
-  assert.strictEqual(r.data.version, 4);
+  assert.strictEqual(r.data.version, 5);
 });
 
 t('stockage : un autre poste a enregistré entre-temps — on refuse d\'écraser', () => {
@@ -1981,6 +1981,152 @@ t('dotation : sur un mois on amortit un mois, pas une année', () => {
   // après la cession, le bien sorti n'ajoute plus rien
   assert.strictEqual(core.depreciationFor(data, { from: '2026-06-01', to: '2026-06-30' }),
     core.round3(12000 / 4 / 12));
+});
+
+// ---------- stock (4.0.0) ----------
+
+// Un jeu minimal : un article suivi, un acheté sans suivi, un achat, une vente.
+function stockData(extra) {
+  return core.migrateData({
+    company: CO,
+    catalog: [
+      { id: 'k1', label: 'Disque dur 2 To', unitPrice: 320, unitCost: 210, vatRate: 19, unit: 'u', tracked: true, minStock: 3, initialQty: 5, initialCost: 200, initialDate: '2026-01-01' },
+      { id: 'k2', label: 'Prestation de conseil', unitPrice: 500, vatRate: 19, unit: 'h', tracked: false }
+    ],
+    ...extra
+  });
+}
+
+t('stock : les mouvements sont déduits des achats et des ventes, jamais ressaisis', () => {
+  const d = stockData({
+    purchases: [{ id: 'p1', kind: 'facture', supplierId: 's1', number: 'FA-1', date: '2026-02-10', category: 'Achats de marchandises',
+      lines: [{ label: 'Disque dur 2 To', qty: 10, unitPrice: 230, vatRate: 19, destination: 'stock', deductible: true },
+              { label: 'Câbles', qty: 5, unitPrice: 8, vatRate: 19, destination: 'charge', deductible: true }], payments: [], fees: 0 }],
+    documents: [{ id: 'd1', type: 'facture', number: 'FAC-2026-001', date: '2026-03-01', status: 'envoyée', clientId: 'c1',
+      lines: [{ label: 'Disque dur 2 To', qty: 4, unitPrice: 320, vatRate: 19 },
+              { label: 'Prestation de conseil', qty: 2, unitPrice: 500, vatRate: 19 }], payments: [], applyStamp: true }]
+  });
+  const s = core.stockOf(d, 'k1');
+  assert.strictEqual(s.qty, 11);                            // 5 de départ + 10 achetés − 4 vendus
+  // coût moyen pondéré : (5 × 200 + 10 × 230) / 15 = 220
+  const apresAchat = core.stockOf(d, 'k1', '2026-02-28');
+  assert.strictEqual(apresAchat.cmp, 220);
+  assert.strictEqual(apresAchat.qty, 15);
+  assert.strictEqual(s.cmp, 220);                           // une sortie ne change pas le coût moyen
+  assert.strictEqual(s.value, core.round3(11 * 220));
+  // la prestation n'est pas suivie : elle ne produit aucun mouvement
+  assert.strictEqual(core.stockList(d).length, 1);
+  // une ligne de charge n'entre pas en stock
+  assert.ok(!s.moves.some(m => m.label === 'Câbles'));
+});
+
+t('stock : un brouillon ne sort rien, un bon de livraison ne sort qu\'une fois', () => {
+  const base = {
+    purchases: [{ id: 'p1', kind: 'facture', supplierId: 's1', number: 'FA-1', date: '2026-02-10', category: 'Achats de marchandises',
+      lines: [{ label: 'Disque dur 2 To', qty: 10, unitPrice: 230, vatRate: 19, destination: 'stock', deductible: true }], payments: [], fees: 0 }]
+  };
+  // brouillon : rien ne bouge
+  const brouillon = stockData({ ...base, documents: [{ id: 'd1', type: 'facture', number: '', date: '2026-03-01', status: 'brouillon', clientId: 'c1',
+    lines: [{ label: 'Disque dur 2 To', qty: 4, unitPrice: 320, vatRate: 19 }], payments: [] }] });
+  assert.strictEqual(core.stockOf(brouillon, 'k1').qty, 15);
+  // bon de livraison puis facture tirée de lui : une seule sortie
+  const chaine = stockData({ ...base, documents: [
+    { id: 'bl', type: 'livraison', number: 'BL-2026-001', date: '2026-03-01', status: 'signé', clientId: 'c1',
+      lines: [{ label: 'Disque dur 2 To', qty: 4, unitPrice: 320, vatRate: 19 }], payments: [] },
+    { id: 'f', type: 'facture', number: 'FAC-2026-001', date: '2026-03-05', status: 'envoyée', clientId: 'c1',
+      fromDocId: 'bl', fromDocType: 'livraison', fromDocNumber: 'BL-2026-001',
+      lines: [{ label: 'Disque dur 2 To', qty: 4, unitPrice: 320, vatRate: 19 }], payments: [], applyStamp: true }
+  ] });
+  assert.strictEqual(core.stockOf(chaine, 'k1').qty, 11);
+  assert.strictEqual(core.stockOf(chaine, 'k1').moves.filter(m => m.qty < 0).length, 1);
+  // un avoir remet la marchandise en stock
+  const retour = stockData({ ...base, documents: [
+    { id: 'f', type: 'facture', number: 'FAC-2026-001', date: '2026-03-01', status: 'envoyée', clientId: 'c1',
+      lines: [{ label: 'Disque dur 2 To', qty: 4, unitPrice: 320, vatRate: 19 }], payments: [], applyStamp: true },
+    { id: 'a', type: 'avoir', number: 'AVO-2026-001', date: '2026-03-10', status: 'émis', clientId: 'c1', creditOf: 'f',
+      lines: [{ label: 'Disque dur 2 To', qty: 1, unitPrice: 320, vatRate: 19 }], payments: [] }
+  ] });
+  assert.strictEqual(core.stockOf(retour, 'k1').qty, 12);
+});
+
+t('stock : le négatif et la rupture sont signalés, pas cachés', () => {
+  const d = stockData({
+    documents: [{ id: 'd1', type: 'facture', number: 'FAC-2026-001', date: '2026-03-01', status: 'envoyée', clientId: 'c1',
+      lines: [{ label: 'Disque dur 2 To', qty: 8, unitPrice: 320, vatRate: 19 }], payments: [], applyStamp: true }]
+  });
+  const s = core.stockOf(d, 'k1');
+  assert.strictEqual(s.qty, -3);                            // on a vendu ce qu'on n'avait pas
+  assert.strictEqual(s.negative, true);
+  const alerts = core.stockAlerts(d);
+  assert.strictEqual(alerts[0].kind, 'negatif');
+  // stock bas : sous le seuil sans être négatif
+  const bas = stockData({
+    documents: [{ id: 'd1', type: 'facture', number: 'FAC-2026-001', date: '2026-03-01', status: 'envoyée', clientId: 'c1',
+      lines: [{ label: 'Disque dur 2 To', qty: 3, unitPrice: 320, vatRate: 19 }], payments: [], applyStamp: true }]
+  });
+  const sb = core.stockOf(bas, 'k1');
+  assert.strictEqual(sb.qty, 2);
+  assert.strictEqual(sb.low, true);
+  assert.strictEqual(sb.negative, false);
+  assert.strictEqual(core.stockAlerts(bas)[0].kind, 'bas');
+});
+
+t('stock : on prévient avant d\'émettre une pièce qui fait passer sous zéro', () => {
+  const d = stockData({});
+  const doc = { id: 'x', type: 'facture', date: '2026-03-01', status: 'brouillon', clientId: 'c1',
+    lines: [{ label: 'Disque dur 2 To', qty: 9, unitPrice: 320, vatRate: 19 },
+            { label: 'Prestation de conseil', qty: 1, unitPrice: 500, vatRate: 19 }] };
+  const impact = core.stockImpact(doc, d);
+  assert.strictEqual(impact.length, 1);
+  assert.strictEqual(impact[0].have, 5);
+  assert.strictEqual(impact[0].need, 9);
+  assert.strictEqual(impact[0].after, -4);
+  // ce qui tient dans le stock ne déclenche rien
+  assert.deepStrictEqual(core.stockImpact({ ...doc, lines: [{ label: 'Disque dur 2 To', qty: 5, unitPrice: 320, vatRate: 19 }] }, d), []);
+  // une ligne de déduction d'acompte ne sort aucune marchandise
+  assert.deepStrictEqual(core.stockImpact({ ...doc, lines: [{ label: 'Disque dur 2 To', qty: 9, unitPrice: -320, vatRate: 19, noDiscount: true }] }, d), []);
+});
+
+t('stock : l\'inventaire dit l\'écart, il ne le corrige pas tout seul', () => {
+  const d = stockData({});
+  const diff = core.inventoryDiff(d, { k1: 4 }, '2026-06-30');
+  assert.strictEqual(diff.length, 1);
+  assert.strictEqual(diff[0].book, 5);
+  assert.strictEqual(diff[0].counted, 4);
+  assert.strictEqual(diff[0].gap, -1);
+  assert.strictEqual(diff[0].value, -200);                  // une unité au coût moyen de 200
+  // un article non compté n'invente aucun écart
+  const vide = core.inventoryDiff(d, {}, '2026-06-30');
+  assert.strictEqual(vide[0].counted, null);
+  assert.strictEqual(vide[0].gap, null);
+  // l'ajustement saisi corrige bien le stock
+  d.stockAdjustments.push({ id: 'adj', date: '2026-06-30', itemId: 'k1', qty: -1, unitCost: '', source: 'inventaire', note: 'Inventaire du 30/06' });
+  assert.strictEqual(core.stockOf(d, 'k1').qty, 4);
+  assert.strictEqual(core.inventoryDiff(d, { k1: 4 }, '2026-06-30')[0].gap, 0);
+});
+
+t('stock : acheter de la marchandise ne coûte rien, la vendre coûte ce qu\'elle a coûté', () => {
+  const d = stockData({
+    purchases: [{ id: 'p1', kind: 'facture', supplierId: 's1', number: 'FA-1', date: '2026-02-10', category: 'Achats de marchandises',
+      lines: [{ label: 'Disque dur 2 To', qty: 10, unitPrice: 230, vatRate: 19, destination: 'stock', deductible: true }], payments: [], fees: 0 }],
+    documents: [{ id: 'd1', type: 'facture', number: 'FAC-2026-001', date: '2026-03-01', status: 'envoyée', clientId: 'c1',
+      lines: [{ label: 'Disque dur 2 To', qty: 4, unitPrice: 320, vatRate: 19 }], payments: [], applyStamp: true }]
+  });
+  const p = { from: '2026-01-01', to: '2026-12-31' };
+  // quatre disques sortis au coût moyen de 220
+  assert.strictEqual(core.costOfGoodsSold(d, p), 880);
+  const r = core.simpleResult(d, CO, p);
+  assert.strictEqual(r.stock, 2300);                     // l'achat est allé en stock…
+  assert.strictEqual(r.charges, 0);                      // …donc ce n'est pas une charge de la période
+  assert.strictEqual(r.cogs, 880);                       // la charge, c'est ce qui est sorti
+  assert.strictEqual(r.resultat, core.round3(1280 - 880));
+  // le coût des marchandises vendues est une charge VARIABLE : sans vente, il n'existe pas
+  const b = core.breakEven(d, CO, p);
+  assert.strictEqual(b.cogs, 880);
+  assert.strictEqual(b.variable, 880);
+  assert.strictEqual(b.fixed, 0);
+  // rien vendu sur février : aucun coût de marchandise
+  assert.strictEqual(core.costOfGoodsSold(d, { from: '2026-02-01', to: '2026-02-28' }), 0);
 });
 
 console.log(`\n${n} tests OK`);
