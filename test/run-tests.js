@@ -2473,4 +2473,82 @@ t('documents du personnel : attestation, certificat, registre', () => {
   assert.strictEqual(core.staffRegister(core.migrateData({ employees: [{ ...emp, endDate: '2026-01-31' }] }), '2026-09-11')[0].active, false);
 });
 
+// ---------- déclarations sociales (5.2.0) ----------
+
+function declData() {
+  const s = core.payrollSettings({});
+  const e1 = { id: 'e1', name: 'Ahmed', cin: '01', cnss: 'A1', grossSalary: 1500, hireDate: '2025-01-01' };
+  const e2 = { id: 'e2', name: 'Ines', cin: '02', cnss: 'B2', grossSalary: 1000, hireDate: '2025-01-01' };
+  const slip = (e, m) => ({ id: `${e.id}-${m}`, employeeId: e.id, year: 2026, month: m,
+    computed: core.computePayslip(e, {}, s) });
+  return core.migrateData({
+    company: CO,
+    employees: [e1, e2],
+    payslips: [1, 2, 3, 4, 5, 6].flatMap(m => [slip(e1, m), slip(e2, m)]),
+    suppliers: [{ id: 'f1', name: 'Cabinet Comptable', matricule: '8A/P/000' }],
+    purchases: [{ id: 'p1', kind: 'facture', supplierId: 'f1', number: 'H-1', date: '2026-03-10',
+      category: 'Honoraires (comptable, avocat)', withholdingRate: 3, fees: 1,
+      lines: [{ label: 'Honoraires', qty: 1, unitPrice: 1000, vatRate: 19, destination: 'charge', deductible: true }],
+      payments: [], withholdingCertificate: false }]
+  });
+}
+
+t('CNSS : le trimestre additionne les trois mois, par salarié', () => {
+  const d = declData();
+  const s = core.payrollSettings(d);
+  const un = core.computePayslip(d.employees[0], {}, s);
+  const q1 = core.cnssDeclaration(d, 2026, 1);
+  assert.strictEqual(q1.employees, 2);
+  assert.strictEqual(q1.slips, 6);                          // 2 salariés × 3 mois
+  assert.strictEqual(q1.rows[0].months, 3);
+  assert.strictEqual(q1.rows[0].employee, core.round3(un.cnssEmployee * 3));
+  // le total dû à la CNSS, c'est les deux parts plus l'accident du travail
+  assert.strictEqual(q1.total, core.round3(q1.employee + q1.employer + q1.accident));
+  assert.strictEqual(q1.dueDate, '2026-04-15');             // le 15 du mois suivant le trimestre
+  assert.strictEqual(core.cnssDeclaration(d, 2026, 4).dueDate, '2027-01-15');   // le quatrième bascule d'année
+  // un trimestre sans bulletin ne fabrique pas de lignes
+  assert.strictEqual(core.cnssDeclaration(d, 2026, 4).employees, 0);
+  assert.strictEqual(core.cnssDeclaration(d, 2026, 4).total, 0);
+});
+
+t('déclaration d\'employeur : salaires et retenues sur fournisseurs, séparés', () => {
+  const d = declData();
+  const a = core.employerAnnual(d, 2026, CO);
+  assert.strictEqual(a.employees, 2);
+  assert.strictEqual(a.rows[0].months, 6);
+  assert.strictEqual(a.gross, core.round3(a.rows.reduce((s, r) => s + r.gross, 0)));
+  assert.ok(a.irpp > 0);
+  assert.strictEqual(a.dueDate, '2027-04-30');
+  // la retenue opérée sur le comptable figure à part, avec l'attestation qui manque
+  assert.strictEqual(a.held.length, 1);
+  assert.strictEqual(a.held[0].rate, 3);
+  assert.strictEqual(a.heldMissing, 1);
+  assert.strictEqual(a.heldBySupplier.length, 1);
+  assert.strictEqual(a.heldBySupplier[0].supplier, 'Cabinet Comptable');
+  assert.strictEqual(a.heldTotal, a.held[0].amount);
+  // une année sans rien ne renvoie pas d'erreur
+  const vide = core.employerAnnual(d, 2020, CO);
+  assert.strictEqual(vide.employees, 0);
+  assert.strictEqual(vide.heldTotal, 0);
+});
+
+t('déclarations sociales : ce qui est dû, ce qui est en retard, ce qui est déposé', () => {
+  const d = declData();
+  const due = core.socialDue(d, '2026-08-01');
+  const t1 = due.find(x => x.id === 'cnss-2026-T1');
+  const t2 = due.find(x => x.id === 'cnss-2026-T2');
+  assert.ok(t1 && t1.late, 'le premier trimestre est en retard au 1er août');
+  assert.ok(t2 && t2.late);
+  // un trimestre sans bulletin n'est jamais réclamé
+  assert.ok(!due.some(x => x.id === 'cnss-2026-T4'));
+  // marquer déposé le fait disparaître
+  d.socialFilings.push({ id: 'cnss-2026-T1', filedAt: '2026-04-12' });
+  assert.ok(!core.socialDue(d, '2026-08-01').some(x => x.id === 'cnss-2026-T1'));
+  // l'échéance CNSS du calendrier fiscal s'allume d'elle-même dès qu'il y a un salarié
+  assert.strictEqual(core.fiscalDeadlines(d).find(x => x.id === 'cnss').active, true);
+  assert.strictEqual(core.fiscalDeadlines(core.migrateData({})).find(x => x.id === 'cnss').active, false);
+  // sans salarié, aucune déclaration sociale n'est réclamée
+  assert.deepStrictEqual(core.socialDue(core.migrateData({}), '2026-08-01'), []);
+});
+
 console.log(`\n${n} tests OK`);

@@ -134,6 +134,7 @@
     payrollSettings: {},     // barèmes CNSS/IRPP modifiés par l'utilisateur (v6)
     leaves: [],              // congés et absences (v6)
     advances: [],            // avances sur salaire (v6)
+    socialFilings: [],       // déclarations sociales marquées déposées (v6)
     vatCarryIn: {},          // crédit de TVA venu de l'année précédente, par année : { '2026': 1234 }
     projects: [],            // affaires : relient ventes et achats pour une marge exacte (v4)
     fixedCategories: [],     // catégories de charges considérées comme fixes (vide = valeurs par défaut)
@@ -449,6 +450,7 @@
     if (!data.payrollSettings || typeof data.payrollSettings !== 'object') data.payrollSettings = {};
     if (!Array.isArray(data.leaves)) data.leaves = [];
     if (!Array.isArray(data.advances)) data.advances = [];
+    if (!Array.isArray(data.socialFilings)) data.socialFilings = [];
     data.catalog.forEach(c => {
       c.tracked = c.tracked === true;
       c.minStock = Number(c.minStock) || 0;
@@ -1734,6 +1736,131 @@
       }));
   }
 
+  // ---------- déclarations sociales (5.2.0) ----------
+  // Deux formulaires que tout employeur doit déposer, et qu'on remplit à la main en recopiant des
+  // chiffres qu'on a déjà : la déclaration CNSS du trimestre, et la déclaration annuelle d'employeur.
+  // SkanFact ne dépose rien — il prépare le tableau, à recopier ou à exporter pour le comptable.
+  // À VÉRIFIER avec le comptable : la forme exacte, les dates et les modalités de dépôt.
+
+  const QUARTERS = [[1, '1er trimestre', [1, 2, 3]], [2, '2e trimestre', [4, 5, 6]],
+    [3, '3e trimestre', [7, 8, 9]], [4, '4e trimestre', [10, 11, 12]]];
+  const quarterMonths = q => (QUARTERS.find(x => x[0] === Number(q)) || [, , []])[2];
+  const quarterLabel = q => (QUARTERS.find(x => x[0] === Number(q)) || [, ''])[1];
+
+  // La déclaration CNSS d'un trimestre : un salarié par ligne, avec son assiette et les deux parts.
+  function cnssDeclaration(data, year, quarter) {
+    const months = quarterMonths(quarter);
+    const slips = (data.payslips || []).filter(p => Number(p.year) === Number(year) && months.includes(Number(p.month)));
+    const byEmp = {};
+    slips.forEach(p => {
+      const c = p.computed || {};
+      const e = byEmp[p.employeeId] || (byEmp[p.employeeId] = {
+        employeeId: p.employeeId, name: '', cnss: '', months: 0, days: 0,
+        base: 0, employee: 0, employer: 0, accident: 0, total: 0
+      });
+      const emp = (data.employees || []).find(x => x.id === p.employeeId) || {};
+      e.name = emp.name || ''; e.cnss = emp.cnss || '';
+      e.months += 1;
+      e.days = round3(e.days + Math.max(0, (Number(c.workedDays) || 0) - (Number(c.absentDays) || 0)));
+      e.base = round3(e.base + (c.cnssBase || 0));
+      e.employee = round3(e.employee + (c.cnssEmployee || 0));
+      e.employer = round3(e.employer + (c.cnssEmployer || 0));
+      e.accident = round3(e.accident + (c.accident || 0));
+      e.total = round3(e.employee + e.employer + e.accident);
+    });
+    const rows = Object.values(byEmp).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'fr'));
+    const sum = f => round3(rows.reduce((s, r) => s + (Number(f(r)) || 0), 0));
+    // Échéance usuelle : le 15 du mois suivant la fin du trimestre. À VÉRIFIER.
+    const lastMonth = months[months.length - 1];
+    const dueDate = lastMonth === 12 ? `${Number(year) + 1}-01-15` : `${year}-${String(lastMonth + 1).padStart(2, '0')}-15`;
+    return {
+      year: Number(year), quarter: Number(quarter), label: quarterLabel(quarter), months, dueDate,
+      employees: rows.length, slips: slips.length,
+      base: sum(r => r.base), employee: sum(r => r.employee), employer: sum(r => r.employer),
+      accident: sum(r => r.accident), total: sum(r => r.total), rows
+    };
+  }
+
+  // La déclaration annuelle d'employeur : le récapitulatif des salaires versés et des retenues opérées.
+  // Elle porte sur deux choses distinctes que l'on confond souvent : les salaires, et les retenues à la
+  // source pratiquées sur des fournisseurs (honoraires, loyers…).
+  function employerAnnual(data, year, company) {
+    const y = Number(year);
+    const slips = (data.payslips || []).filter(p => Number(p.year) === y);
+    const byEmp = {};
+    slips.forEach(p => {
+      const c = p.computed || {};
+      const emp = (data.employees || []).find(x => x.id === p.employeeId) || {};
+      const e = byEmp[p.employeeId] || (byEmp[p.employeeId] = {
+        employeeId: p.employeeId, name: emp.name || '', cin: emp.cin || '', cnss: emp.cnss || '',
+        position: emp.position || '', months: 0, gross: 0, cnss_: 0, taxable: 0, irpp: 0, css: 0, net: 0
+      });
+      e.months += 1;
+      e.gross = round3(e.gross + (c.gross || 0));
+      e.cnss_ = round3(e.cnss_ + (c.cnssEmployee || 0));
+      e.taxable = round3(e.taxable + ((c.annualTaxable || 0) / 12));
+      e.irpp = round3(e.irpp + (c.irpp || 0));
+      e.css = round3(e.css + (c.css || 0));
+      e.net = round3(e.net + (c.net || 0));
+    });
+    const rows = Object.values(byEmp).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'fr'));
+    const sum = f => round3(rows.reduce((s, r) => s + (Number(f(r)) || 0), 0));
+
+    // Retenues à la source opérées sur des fournisseurs dans l'année : l'autre moitié du formulaire.
+    const held = (data.purchases || [])
+      .filter(p => (p.date || '').slice(0, 4) === String(y) && Number(p.withholdingRate) > 0)
+      .map(p => {
+        const t = purchaseTotals(p, company || (data.company || {}));
+        const sup = (data.suppliers || []).find(s2 => s2.id === p.supplierId) || {};
+        return { purchaseId: p.id, supplier: sup.name || '—', matricule: sup.matricule || '',
+          number: p.number || '', date: p.date, base: round3(t.totalTTC - t.fees),
+          rate: Number(p.withholdingRate) || 0, amount: t.withholding, certificate: !!p.withholdingCertificate };
+      })
+      .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    const heldBySupplier = {};
+    held.forEach(x => {
+      const k = x.supplier + '|' + x.matricule;
+      const e = heldBySupplier[k] || (heldBySupplier[k] = { supplier: x.supplier, matricule: x.matricule, count: 0, base: 0, amount: 0, missing: 0 });
+      e.count += 1; e.base = round3(e.base + x.base); e.amount = round3(e.amount + x.amount);
+      if (!x.certificate) e.missing += 1;
+    });
+
+    return {
+      year: y, employees: rows.length, rows,
+      gross: sum(r => r.gross), cnss: sum(r => r.cnss_), irpp: sum(r => r.irpp), css: sum(r => r.css), net: sum(r => r.net),
+      held, heldBySupplier: Object.values(heldBySupplier).sort((a, b) => (a.supplier || '').localeCompare(b.supplier || '', 'fr')),
+      heldTotal: round3(held.reduce((s, x) => s + x.amount, 0)),
+      heldMissing: held.filter(x => !x.certificate).length,
+      dueDate: `${y + 1}-04-30`     // échéance usuelle — À VÉRIFIER
+    };
+  }
+
+  // Les déclarations sociales dues et pas encore marquées déposées.
+  function socialDue(data, todayIso) {
+    const t = todayIso || today();
+    if (!(data.employees || []).length) return [];
+    const done = new Set((data.socialFilings || []).map(f => f.id));
+    const out = [];
+    const y = Number(t.slice(0, 4));
+    [y - 1, y].forEach(yy => {
+      QUARTERS.forEach(([q]) => {
+        const d = cnssDeclaration(data, yy, q);
+        if (!d.slips || d.dueDate > addDays(t, 45)) return;       // pas encore d'actualité
+        const id = `cnss-${yy}-T${q}`;
+        if (done.has(id)) return;
+        out.push({ id, kind: 'cnss', year: yy, quarter: q, label: `Déclaration CNSS ${quarterLabel(q)} ${yy}`,
+          dueDate: d.dueDate, late: d.dueDate < t, amount: d.total });
+      });
+      const a = employerAnnual(data, yy, data.company);
+      if (a.rows.length && a.dueDate <= addDays(t, 60)) {
+        const id = `employeur-${yy}`;
+        if (!done.has(id)) out.push({ id, kind: 'employeur', year: yy, label: `Déclaration annuelle d'employeur ${yy}`,
+          dueDate: a.dueDate, late: a.dueDate < t, amount: round3(a.irpp + a.css) });
+      }
+    });
+    return out.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+  }
+
   // ---------- lecture d'une photo de facture (4.2.0) ----------
   // La partie testable du module : transformer ce qu'un service de lecture a cru voir en un achat
   // propre, et DIRE ce qui ne colle pas. Rien n'est enregistré ici — c'est l'utilisateur qui valide.
@@ -2256,11 +2383,11 @@
   // l'autre version pour qu'elle reste consultable. Rien n'est détruit sans trace.
 
   // Les listes du fichier qui se fusionnent pièce par pièce, grâce à leur identifiant.
-  const MERGE_LISTS = ['clients', 'catalog', 'documents', 'recurring', 'templates', 'snippets', 'suppliers', 'purchases', 'accounts', 'movements', 'projects', 'assets', 'stockAdjustments', 'serials', 'employees', 'payslips', 'leaves', 'advances'];
+  const MERGE_LISTS = ['clients', 'catalog', 'documents', 'recurring', 'templates', 'snippets', 'suppliers', 'purchases', 'accounts', 'movements', 'projects', 'assets', 'stockAdjustments', 'serials', 'employees', 'payslips', 'leaves', 'advances', 'socialFilings'];
   const LIST_LABELS = {
     clients: 'client', catalog: 'prestation', documents: 'document', recurring: 'contrat récurrent',
     templates: 'modèle', snippets: 'texte', suppliers: 'fournisseur', purchases: 'achat',
-    accounts: 'compte', movements: 'mouvement', projects: 'affaire', assets: 'immobilisation', stockAdjustments: 'mouvement de stock', serials: 'numéro de série', employees: 'salarié', payslips: 'bulletin de paie', leaves: 'congé', advances: 'avance sur salaire'
+    accounts: 'compte', movements: 'mouvement', projects: 'affaire', assets: 'immobilisation', stockAdjustments: 'mouvement de stock', serials: 'numéro de série', employees: 'salarié', payslips: 'bulletin de paie', leaves: 'congé', advances: 'avance sur salaire', socialFilings: 'déclaration sociale'
   };
 
   function sameJson(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
@@ -2420,7 +2547,12 @@
   function fiscalDeadlines(data) {
     const custom = (data && Array.isArray(data.fiscalDeadlines)) ? data.fiscalDeadlines : [];
     const byId = {};
-    DEFAULT_FISCAL_DEADLINES.forEach(d => { byId[d.id] = { ...d }; });
+    // Les échéances sociales ne concernent que les employeurs : elles s'allument d'elles-mêmes dès
+    // qu'un salarié existe, et restent éteintes sinon (5.2.0). L'utilisateur peut toujours trancher.
+    const hasStaff = !!(data && (data.employees || []).length);
+    DEFAULT_FISCAL_DEADLINES.forEach(d => {
+      byId[d.id] = { ...d, active: (d.id === 'cnss' && hasStaff) ? true : d.active };
+    });
     custom.forEach(d => { if (d && d.id) byId[d.id] = { ...(byId[d.id] || {}), ...d }; });
     return Object.values(byId);
   }
@@ -2843,6 +2975,14 @@
       label: `${lowStock.length} article${lowStock.length > 1 ? 's' : ''} à recommander`,
       detail: `${lowStock.map(x => `${x.label} (${x.qty} ${x.unit || ''})`.trim()).slice(0, 3).join(' · ')}${lowStock.length > 3 ? '…' : ''} — sous le seuil d'alerte.`,
       count: lowStock.length, route: '#/stock', docs: []
+    });
+    // Déclarations sociales à déposer : la CNSS ne relance pas, elle pénalise.
+    const soc = socialDue(data, t);
+    if (soc.length) out.push({
+      id: 'declarations-sociales', level: soc.some(x => x.late) ? 'danger' : 'warn',
+      label: `${soc.length} déclaration${soc.length > 1 ? 's' : ''} sociale${soc.length > 1 ? 's' : ''} à déposer`,
+      detail: soc.map(x => `${x.label} — ${x.late ? 'échéance dépassée le ' : 'avant le '}${fmtDate(x.dueDate)}`).join(' · '),
+      count: soc.length, route: '#/paie', docs: []
     });
     // Paie : les bulletins du mois écoulé qui manquent, et le doublon avec un mouvement « Salaires ».
     if ((data.employees || []).length) {
@@ -3640,6 +3780,7 @@
     CONTRACT_TYPES, contractLabel, DEFAULT_PAYROLL, payrollSettings, irppAnnual, computePayslip,
     activeEmployees, payslipView, payslipsOf, payslipDate, payrollCost, payrollSummary, missingPayslips,
     payslipHtml,
+    QUARTERS, quarterMonths, quarterLabel, cnssDeclaration, employerAnnual, socialDue,
     LEAVE_KINDS, leaveKindLabel, leaveIsPaid, workingDays, leaveDaysInMonth, leavesOf, leaveBalance,
     advancesOf, advanceBalance, payslipInputFor, HR_DOCS, hrDocLabel, hrDocumentHtml, staffRegister,
     SERIAL_STATUSES, serialStatusLabel, WARRANTY_CHOICES, serializedItems, warrantyEnd, serialView,

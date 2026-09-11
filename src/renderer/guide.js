@@ -137,6 +137,10 @@
     'ed.margin': { t: 'Marge estimée', d: 'Ce qu\'il resterait de ce document une fois retiré le <b>coût de revient</b> de chaque ligne (celui du catalogue, ou celui recopié sur la ligne). C\'est une estimation : elle ne tient pas compte du loyer, des salaires ni des frais généraux. Pour une marge exacte, rattache ce document à une <b>affaire</b> et rattaches-y aussi les achats correspondants.' },
     'buy.project': { t: 'Affaire', d: 'Rattache cet achat au chantier pour lequel tu l\'as fait. C\'est ce rattachement qui rend la marge exacte : sans lui, l\'affaire semblera plus rentable qu\'elle ne l\'est.' },
     'cat.cost': { t: 'Coût de revient HT', d: 'Ce que cette prestation ou cet article te coûte : prix d\'achat de la marchandise, sous-traitance, matériel. Facultatif, mais c\'est lui qui permet de calculer la marge sur les ventes qui ne sont pas rattachées à une affaire. Pour une prestation où tu ne vends que ton temps, laisse 0 : la marge affichée sera alors le prix de vente.' },
+    'soc.due': { t: 'Déclarations à déposer', d: 'Les déclarations sociales dont l\'échéance approche ou est passée. <b>SkanFact ne dépose rien</b> et ne se connecte à aucune administration : il prépare le tableau et te rappelle la date. « Marquer déposée » sert uniquement à faire taire le rappel une fois que tu l\'as fait. <em>À VÉRIFIER avec ton comptable : les dates et les modalités de dépôt.</em>' },
+    'soc.cnss': { t: 'Déclaration CNSS trimestrielle', d: 'Le tableau à recopier ou à envoyer : un salarié par ligne, avec son assiette, la part retenue sur son salaire, la part à ta charge et l\'accident du travail. <b>Le total est ce que tu dois verser à la CNSS</b>, les deux parts confondues. Échéance usuelle : le 15 du mois suivant la fin du trimestre — <em>à VÉRIFIER.</em>' },
+    'soc.annual': { t: 'Déclaration annuelle d\'employeur', d: 'Le récapitulatif de ce que tu as versé et retenu dans l\'année. Attention : elle porte sur <b>deux choses distinctes</b> qu\'on confond souvent — les salaires de tes employés d\'une part, et les retenues à la source que tu as pratiquées sur des <b>fournisseurs</b> (honoraires, loyers) d\'autre part. Les deux figurent sur le même formulaire.' },
+    'soc.held': { t: 'Retenues sur fournisseurs', d: 'Quand tu paies un prestataire soumis à retenue à la source, tu gardes une part et tu la reverses au Trésor à sa place. Tu dois lui en remettre une <b>attestation</b>, sinon il ne peut pas la déduire de son propre impôt — et il te la réclamera. Les attestations manquantes sont signalées ici et dans « À faire ».' },
     'hr.leaveKind': { t: 'Nature de l\'absence', d: '<b>Congé payé</b> entame le compteur annuel sans réduire le salaire. <b>Arrêt maladie</b>, <b>maternité</b> et <b>autorisation</b> ne réduisent pas le salaire non plus et n\'entament pas le compteur. <b>Sans solde</b> et <b>injustifiée</b> réduisent le brut au prorata des jours. <em>À VÉRIFIER avec ton comptable : le traitement d\'un arrêt maladie dépend de sa durée et de la prise en charge CNSS.</em>' },
     'hr.paid': { t: 'Effet sur le salaire', d: 'Chaque nature d\'absence a son comportement habituel, mais tu peux le forcer au cas par cas : une autorisation exceptionnelle retenue sur salaire, un arrêt maladie maintenu en totalité. Laisse « selon la nature » dans le doute.' },
     'hr.balance': { t: 'Compteur de congés', d: 'Les jours <b>acquis</b> se calculent au prorata des mois travaillés dans l\'année : un salarié arrivé en juillet n\'a pas droit à une année entière. On en retire les congés payés <b>pris</b> — les arrêts maladie et les absences sans solde n\'entament pas ce compteur. Un solde négatif n\'est pas interdit, mais il faut le savoir.' },
@@ -664,6 +668,33 @@
 <p>La liste que l'inspection du travail peut demander : qui a travaillé chez toi, à quel poste, sous quel contrat, entre quelles dates. Les salariés partis y figurent aussi — c'est le but. Exportable en CSV. <em>À VÉRIFIER : la forme exacte du registre relève du code du travail.</em></p>
 <h3>Ce que ça ne fait pas</h3>
 <p>Pas de demande de congé à valider, pas de planning d'équipe, pas de pointage. Pas de calcul d'indemnité de licenciement non plus : ce calcul dépend de l'ancienneté, du motif et de la convention, et se fait avec un comptable ou un juriste, pas dans un tableau.</p>`
+    },
+    {
+      id: 'declarations', title: 'Les déclarations sociales', sub: 'CNSS trimestrielle, déclaration d\'employeur',
+      body: `
+<p>Employer quelqu'un crée deux obligations qui reviennent : la <b>déclaration CNSS</b>, tous les trimestres, et la <b>déclaration annuelle d'employeur</b>, une fois par an. Aucune des deux ne se rappelle à toi : la CNSS ne relance pas, elle pénalise.</p>
+<p>SkanFact <b>ne dépose rien</b> et ne se connecte à aucune administration. Il prépare le tableau, te rappelle la date, et te laisse recopier ou envoyer. C'est volontaire : une application qui déposerait à ta place devrait être maintenue à chaque changement de formulaire, et se tromperait un jour sans que tu le saches.</p>
+<h3>La CNSS, tous les trimestres</h3>
+<p>Onglet <b>Paie → Déclarations</b>, choisis le trimestre. Un salarié par ligne, avec :</p>
+<ul>
+  <li>son <b>assiette</b> — le brut soumis à cotisation sur les trois mois ;</li>
+  <li>la <b>part salarié</b>, déjà retenue sur ses bulletins ;</li>
+  <li>la <b>part employeur</b> et l'<b>accident du travail</b>, à ta charge.</li>
+</ul>
+<p>Le <b>total est ce que tu verses à la CNSS</b>, les deux parts confondues. Un matricule CNSS manquant sur une fiche est signalé en rouge : la déclaration ne peut pas partir sans lui.</p>
+<p>Échéance usuelle : le 15 du mois suivant la fin du trimestre. <em>À VÉRIFIER avec ton comptable.</em></p>
+<h3>La déclaration annuelle d'employeur</h3>
+<p>Elle porte sur <b>deux choses distinctes</b>, et c'est la source de confusion la plus fréquente :</p>
+<ol>
+  <li>Les <b>salaires</b> que tu as versés : brut annuel, CNSS retenue, impôt retenu, net versé, par salarié.</li>
+  <li>Les <b>retenues à la source pratiquées sur des fournisseurs</b> — honoraires d'un comptable, d'un avocat, loyers. Tu as gardé une part de leur facture et tu la reverses au Trésor à leur place.</li>
+</ol>
+<p>Pour cette seconde partie, tu dois remettre à chaque fournisseur une <b>attestation de retenue</b>, sinon il ne peut pas la déduire de son propre impôt — et il te la réclamera. Les attestations manquantes sont comptées ici et rappelées dans « À faire ».</p>
+<h3>Le rappel</h3>
+<p>Dès qu'un salarié existe, l'échéance CNSS s'allume toute seule dans ton <a href="#/compta">calendrier fiscal</a>, et les déclarations dues remontent dans « À faire » sur l'accueil — en rouge si l'échéance est passée.</p>
+<p>Quand tu as déposé, clique <b>« Marquer déposée »</b>. Ça ne fait rien d'autre que faire taire le rappel : c'est un pense-bête, pas un accusé de réception.</p>
+<h3>Ce qu'il faut savoir</h3>
+<p>Ces chiffres sont l'arithmétique exacte de tes bulletins, pas une déclaration officielle. La forme du formulaire, les dates, les modalités de dépôt et les éventuelles exonérations (contrats SIVP, Karama) relèvent de ton comptable. <em>Fais-lui vérifier les premières déclarations, comme les premiers bulletins.</em></p>`
     },
     {
       id: 'lecture', title: 'Photographier une facture au lieu de la saisir', sub: 'Ce que ça envoie, ce que ça coûte, ce que ça ne fait pas',

@@ -228,7 +228,7 @@ en dernier : il faut que le reste soit stable et éprouvé avant.
 - **Attestation de travail, certificat de travail, solde de tout compte**, générés au même format que les autres documents
 - **Registre du personnel**
 
-### 5.2.0 — Déclarations sociales · M
+### 5.2.0 — Déclarations sociales · M — **livrée**
 
 - **Déclaration CNSS trimestrielle** : le tableau à recopier ou à exporter
 - **Déclaration employeur annuelle**

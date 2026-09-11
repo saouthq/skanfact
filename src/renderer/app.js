@@ -2512,7 +2512,7 @@
     const actions = [
       ['Nouveau devis', () => navigate('#/doc/new/devis')], ['Nouvelle facture', () => navigate('#/doc/new/facture')], ['Nouvel avoir', () => navigate('#/doc/new/avoir')],
       ['Accueil', () => navigate('#/dashboard')], ['Devis', () => navigate('#/devis')], ['Factures', () => navigate('#/factures')], ['Relances', () => navigate('#/relances')],
-      ['Contrats récurrents', () => navigate('#/contrats')], ['Achats et dépenses', () => navigate('#/achats')], ['Nouvelle facture d\'achat', () => navigate('#/achat/new')], ['Nouvelle dépense', () => navigate('#/achat/new/-/depense')], ['Fournisseurs', () => navigate('#/fournisseurs')], ['Trésorerie', () => navigate('#/tresorerie')], ['Marges et rentabilité', () => navigate('#/marges')], ['Paie', () => navigate('#/paie')], ['Bulletins de paie', () => { paieState.tab = 'bulletins'; navigate('#/paie'); }], ['Salariés', () => { paieState.tab = 'salaries'; navigate('#/paie'); }], ['Barèmes de paie', () => { paieState.tab = 'baremes'; navigate('#/paie'); }], ['Nouveau salarié', () => employeeForm(null, () => render())], ['Stock', () => navigate('#/stock')], ['Garanties', () => navigate('#/garanties')], ['Numéros de série', () => { stockState.tab = 'series'; navigate('#/stock'); }], ['Entrée de numéros de série', () => serialIntakeForm(null, () => render())], ['Inventaire', () => { stockState.tab = 'inventaire'; navigate('#/stock'); }], ['Mouvement de stock', () => adjustForm(null, () => render())], ['Immobilisations', () => navigate('#/immos')], ['Nouvelle immobilisation', () => assetForm(null, a => navigate('#/immo/' + a.id))], ['Lignes à immobiliser', () => { immoState.tab = 'attente'; navigate('#/immos'); }], ['Seuil de rentabilité', () => navigate('#/marges')], ['Nouvelle affaire', () => projectForm(null, p => navigate('#/affaire/' + p.id))], ['Nouveau fournisseur', () => supplierForm(null, () => render())], ['Proformas', () => navigate('#/autres/proforma')], ['Bons de commande', () => navigate('#/autres/commande')], ['Bons de livraison', () => navigate('#/autres/livraison')], ['Contrats à signer', () => navigate('#/autres/contrat')], ['Clients', () => navigate('#/clients')], ['Catalogue', () => navigate('#/catalogue')], ['Statistiques', () => navigate('#/stats')], ['Comptabilité', () => navigate('#/compta')], ['Paramètres', () => navigate('#/parametres')],
+      ['Contrats récurrents', () => navigate('#/contrats')], ['Achats et dépenses', () => navigate('#/achats')], ['Nouvelle facture d\'achat', () => navigate('#/achat/new')], ['Nouvelle dépense', () => navigate('#/achat/new/-/depense')], ['Fournisseurs', () => navigate('#/fournisseurs')], ['Trésorerie', () => navigate('#/tresorerie')], ['Marges et rentabilité', () => navigate('#/marges')], ['Paie', () => navigate('#/paie')], ['Bulletins de paie', () => { paieState.tab = 'bulletins'; navigate('#/paie'); }], ['Salariés', () => { paieState.tab = 'salaries'; navigate('#/paie'); }], ['Barèmes de paie', () => { paieState.tab = 'baremes'; navigate('#/paie'); }], ['Déclarations sociales', () => { paieState.tab = 'declarations'; navigate('#/paie'); }], ['Déclaration CNSS', () => { paieState.tab = 'declarations'; navigate('#/paie'); }], ['Registre du personnel', () => { paieState.tab = 'registre'; navigate('#/paie'); }], ['Nouveau salarié', () => employeeForm(null, () => render())], ['Stock', () => navigate('#/stock')], ['Garanties', () => navigate('#/garanties')], ['Numéros de série', () => { stockState.tab = 'series'; navigate('#/stock'); }], ['Entrée de numéros de série', () => serialIntakeForm(null, () => render())], ['Inventaire', () => { stockState.tab = 'inventaire'; navigate('#/stock'); }], ['Mouvement de stock', () => adjustForm(null, () => render())], ['Immobilisations', () => navigate('#/immos')], ['Nouvelle immobilisation', () => assetForm(null, a => navigate('#/immo/' + a.id))], ['Lignes à immobiliser', () => { immoState.tab = 'attente'; navigate('#/immos'); }], ['Seuil de rentabilité', () => navigate('#/marges')], ['Nouvelle affaire', () => projectForm(null, p => navigate('#/affaire/' + p.id))], ['Nouveau fournisseur', () => supplierForm(null, () => render())], ['Proformas', () => navigate('#/autres/proforma')], ['Bons de commande', () => navigate('#/autres/commande')], ['Bons de livraison', () => navigate('#/autres/livraison')], ['Contrats à signer', () => navigate('#/autres/contrat')], ['Clients', () => navigate('#/clients')], ['Catalogue', () => navigate('#/catalogue')], ['Statistiques', () => navigate('#/stats')], ['Comptabilité', () => navigate('#/compta')], ['Paramètres', () => navigate('#/parametres')],
       ['Aide et guide', () => navigate('#/aide')], ['Nouveau client', () => clientForm(null, () => render())]
     ].map(([label, run]) => ({ kind: 'Action', main: label, text: label.toLowerCase(), run }));
     const helps = G.ARTICLES.map(x => ({ kind: 'Aide', main: x.title, sub: x.sub, text: `aide ${x.title} ${x.sub}`.toLowerCase(), run: () => navigate('#/aide/' + x.id) }));
@@ -3917,9 +3917,10 @@
       });
   }
 
-  const paieState = { tab: 'bulletins', year: lastMonth.slice(0, 4), month: String(Number(lastMonth.slice(5, 7))) };
+  const paieState = { tab: 'bulletins', year: lastMonth.slice(0, 4), month: String(Number(lastMonth.slice(5, 7))),
+    quarter: String(Math.ceil(Number(lastMonth.slice(5, 7)) / 3)) };
   const PAIE_TABS = [['bulletins', 'Bulletins'], ['salaries', 'Salariés'], ['conges', 'Congés et absences'],
-    ['avances', 'Avances'], ['registre', 'Registre'], ['baremes', 'Barèmes']];
+    ['avances', 'Avances'], ['declarations', 'Déclarations'], ['registre', 'Registre'], ['baremes', 'Barèmes']];
 
   routes.paie = () => {
     const cur = company().currency;
@@ -4134,6 +4135,143 @@
       };
     }
 
+    function drawDeclarations() {
+      const y = Number(s.year);
+      const q = Number(s.quarter) || Math.ceil(Number(C.today().slice(5, 7)) / 3);
+      s.quarter = String(q);
+      const cn = C.cnssDeclaration(data, y, q);
+      const an = C.employerAnnual(data, y, company());
+      const due = C.socialDue(data);
+      const filed = id => (data.socialFilings || []).find(f => f.id === id);
+      const mark = async (id, label) => {
+        const f = filed(id);
+        if (f) {
+          if (!await confirmDialog(`Retirer la mention « déposée » de ${label} ?`)) return;
+          data.socialFilings = data.socialFilings.filter(x => x.id !== id);
+        } else {
+          data.socialFilings.push({ id, filedAt: C.today(), label });
+        }
+        save(true); draw();
+      };
+      $('#p-body').innerHTML = `
+        ${due.length ? `<div class="panel" style="border-left:3px solid var(--${due.some(x => x.late) ? 'danger' : 'warning'})">
+          <h2>À déposer ${info('soc.due')}</h2>
+          <table class="list compact"><tbody>
+            ${due.map(x => `<tr class="${x.late ? 'row-warn' : ''}"><td><strong>${h(x.label)}</strong></td>
+              <td class="nw">échéance ${C.fmtDate(x.dueDate)}${x.late ? ' <span class="warn-text">— dépassée</span>' : ''}</td>
+              <td class="r nw">${x.amount ? C.money(x.amount, cur) : ''}</td>
+              <td class="r"><button class="btn btn-sm" data-file="${h(x.id)}" data-lab="${h(x.label)}">Marquer déposée</button></td></tr>`).join('')}
+          </tbody></table>
+          <p class="small muted mt">SkanFact ne dépose rien et ne se connecte à aucune administration : il prépare le tableau et te rappelle la date. <em>À VÉRIFIER avec ton comptable : les dates et les modalités de dépôt.</em></p>
+        </div>` : ''}
+
+        <div class="panel"><h2>Déclaration CNSS ${info('soc.cnss')}</h2>
+          <div class="filters">
+            <select id="d-quarter">${C.QUARTERS.map(([n2, lab]) => `<option value="${n2}" ${q === n2 ? 'selected' : ''}>${lab}</option>`).join('')}</select>
+            <span class="small muted">Échéance usuelle : ${C.fmtDate(cn.dueDate)}${filed(`cnss-${y}-T${q}`) ? ` · <span class="ok-text">déposée le ${C.fmtDate(filed(`cnss-${y}-T${q}`).filedAt)}</span>` : ''}</span>
+          </div>
+          ${cn.rows.length ? `<div class="scroll-x"><table class="list compact"><thead><tr>
+            <th>Salarié</th><th>N° CNSS</th><th class="r">Mois</th><th class="r">Jours</th><th class="r">Assiette</th>
+            <th class="r">Part salarié</th><th class="r">Part employeur</th><th class="r">Accident</th><th class="r">Total</th></tr></thead><tbody>
+            ${cn.rows.map(r => `<tr><td><strong>${h(r.name)}</strong></td><td class="nw">${h(r.cnss) || '<span class="warn-text">manquant</span>'}</td>
+              <td class="r nw">${r.months}</td><td class="r nw">${pct(r.days)}</td>
+              <td class="r nw">${C.money(r.base, cur)}</td><td class="r nw">${C.money(r.employee, cur)}</td>
+              <td class="r nw">${C.money(r.employer, cur)}</td><td class="r nw">${C.money(r.accident, cur)}</td>
+              <td class="r nw"><strong>${C.money(r.total, cur)}</strong></td></tr>`).join('')}
+            <tr class="total-row"><td colspan="4"><strong>${cn.employees} salarié(s)</strong></td>
+              <td class="r"><strong>${C.money(cn.base, cur)}</strong></td>
+              <td class="r"><strong>${C.money(cn.employee, cur)}</strong></td>
+              <td class="r"><strong>${C.money(cn.employer, cur)}</strong></td>
+              <td class="r"><strong>${C.money(cn.accident, cur)}</strong></td>
+              <td class="r"><strong>${C.money(cn.total, cur)}</strong></td></tr>
+          </tbody></table></div>
+          <div class="inline mt">
+            <button class="btn" id="cn-csv">Exporter (CSV)</button>
+            <button class="btn" id="cn-mail">Envoyer au comptable</button>
+            <button class="btn ${filed(`cnss-${y}-T${q}`) ? '' : 'btn-primary'}" id="cn-file">${filed(`cnss-${y}-T${q}`) ? 'Retirer « déposée »' : 'Marquer déposée'}</button>
+          </div>
+          ${cn.rows.some(r => !r.cnss) ? '<p class="small warn-text mt">Un matricule CNSS manque sur une fiche : la déclaration ne peut pas être déposée sans lui.</p>' : ''}`
+            : `<div class="empty">Aucun bulletin sur ce trimestre.</div>`}
+        </div>
+
+        <div class="panel"><h2>Déclaration annuelle d'employeur — ${y} ${info('soc.annual')}</h2>
+          <p class="small muted mb">Le récapitulatif de ce que tu as versé et de ce que tu as retenu dans l'année. Il porte sur deux choses distinctes qu'on confond souvent : les <b>salaires</b>, et les <b>retenues à la source pratiquées sur des fournisseurs</b>. Échéance usuelle : ${C.fmtDate(an.dueDate)}${filed('employeur-' + y) ? ` · <span class="ok-text">déposée le ${C.fmtDate(filed('employeur-' + y).filedAt)}</span>` : ''}.</p>
+          <h3 class="sub-h">Salaires versés</h3>
+          ${an.rows.length ? `<div class="scroll-x"><table class="list compact"><thead><tr>
+            <th>Salarié</th><th>CIN</th><th class="r">Mois payés</th><th class="r">Brut annuel</th>
+            <th class="r">CNSS retenue</th><th class="r">IRPP retenu</th><th class="r">Solidarité</th><th class="r">Net versé</th></tr></thead><tbody>
+            ${an.rows.map(r => `<tr><td><strong>${h(r.name)}</strong>${r.position ? `<div class="small muted">${h(r.position)}</div>` : ''}</td>
+              <td class="nw">${h(r.cin) || '—'}</td><td class="r nw">${r.months}</td>
+              <td class="r nw">${C.money(r.gross, cur)}</td><td class="r nw">${C.money(r.cnss_, cur)}</td>
+              <td class="r nw">${C.money(r.irpp, cur)}</td><td class="r nw">${C.money(r.css, cur)}</td>
+              <td class="r nw"><strong>${C.money(r.net, cur)}</strong></td></tr>`).join('')}
+            <tr class="total-row"><td colspan="3"><strong>Total</strong></td>
+              <td class="r"><strong>${C.money(an.gross, cur)}</strong></td>
+              <td class="r"><strong>${C.money(an.cnss, cur)}</strong></td>
+              <td class="r"><strong>${C.money(an.irpp, cur)}</strong></td>
+              <td class="r"><strong>${C.money(an.css, cur)}</strong></td>
+              <td class="r"><strong>${C.money(an.net, cur)}</strong></td></tr>
+          </tbody></table></div>` : '<div class="empty">Aucun bulletin cette année.</div>'}
+
+          <h3 class="sub-h mt">Retenues à la source sur fournisseurs ${info('soc.held')}</h3>
+          ${an.heldBySupplier.length ? `<div class="scroll-x"><table class="list compact"><thead><tr>
+            <th>Fournisseur</th><th>Matricule</th><th class="r">Pièces</th><th class="r">Base</th><th class="r">Retenu</th><th>Attestations</th></tr></thead><tbody>
+            ${an.heldBySupplier.map(r => `<tr class="${r.missing ? 'row-warn' : ''}">
+              <td><strong>${h(r.supplier)}</strong></td><td class="nw">${h(r.matricule) || '<span class="warn-text">manquant</span>'}</td>
+              <td class="r nw">${r.count}</td><td class="r nw">${C.money(r.base, cur)}</td>
+              <td class="r nw"><strong>${C.money(r.amount, cur)}</strong></td>
+              <td>${r.missing ? `<span class="warn-text">${r.missing} à remettre</span>` : '<span class="ok-text">toutes remises</span>'}</td></tr>`).join('')}
+            <tr class="total-row"><td colspan="4"><strong>Total retenu</strong></td>
+              <td class="r"><strong>${C.money(an.heldTotal, cur)}</strong></td><td></td></tr>
+          </tbody></table></div>
+          ${an.heldMissing ? `<p class="small warn-text mt">${an.heldMissing} attestation(s) de retenue ne sont pas encore remises à tes fournisseurs. Sans elles, ils ne peuvent pas déduire ce que tu leur as retenu.</p>` : ''}`
+            : '<p class="small muted">Aucune retenue à la source opérée sur un fournisseur cette année.</p>'}
+          <div class="inline mt">
+            <button class="btn" id="an-csv">Exporter (CSV)</button>
+            <button class="btn ${filed('employeur-' + y) ? '' : 'btn-primary'}" id="an-file">${filed('employeur-' + y) ? 'Retirer « déposée »' : 'Marquer déposée'}</button>
+          </div>
+          <p class="small muted mt"><em>À VÉRIFIER avec ton comptable : la forme exacte du formulaire, les dates et les modalités de dépôt. SkanFact prépare les chiffres, il ne dépose rien.</em></p>
+        </div>`;
+      $('#d-quarter').onchange = e2 => { s.quarter = e2.target.value; draw(); };
+      $$('#p-body [data-file]').forEach(b => b.onclick = () => mark(b.dataset.file, b.dataset.lab));
+      if ($('#cn-file')) $('#cn-file').onclick = () => mark(`cnss-${y}-T${q}`, `la déclaration CNSS ${C.quarterLabel(q)} ${y}`);
+      if ($('#an-file')) $('#an-file').onclick = () => mark('employeur-' + y, `la déclaration d'employeur ${y}`);
+      const cnCols = [
+        { key: 'name', label: 'Salarié' }, { key: 'cnss', label: 'N° CNSS' }, { key: 'months', label: 'Mois' },
+        { key: 'days', label: 'Jours' }, { key: 'base', label: 'Assiette', type: 'money' },
+        { key: 'employee', label: 'Part salarié', type: 'money' }, { key: 'employer', label: 'Part employeur', type: 'money' },
+        { key: 'accident', label: 'Accident du travail', type: 'money' }, { key: 'total', label: 'Total', type: 'money' }
+      ];
+      if ($('#cn-csv')) $('#cn-csv').onclick = async () => {
+        const f = await bridge.saveText(`cnss-${y}-T${q}.csv`, C.toCsv(cn.rows, cnCols));
+        if (f) toast('Exporté : ' + f.split(/[\\/]/).pop());
+      };
+      if ($('#cn-mail')) $('#cn-mail').onclick = async () => {
+        const acc = (company().accountantEmail || '').trim();
+        const name = `cnss-${y}-T${q}.csv`;
+        const att = await bridge.saveTextSilent(name, C.toCsv(cn.rows, cnCols));
+        await bridge.composeMail({
+          to: acc, subject: `Déclaration CNSS ${C.quarterLabel(q)} ${y} — ${company().name}`,
+          body: `Bonjour,\n\nCi-joint le détail de la déclaration CNSS du ${C.quarterLabel(q).toLowerCase()} ${y} :\n`
+            + `${cn.employees} salarié(s), assiette ${C.money(cn.base, cur)}, part salarié ${C.money(cn.employee, cur)}, `
+            + `part employeur ${C.money(cn.employer, cur)}, accident du travail ${C.money(cn.accident, cur)}.\n`
+            + `Total dû : ${C.money(cn.total, cur)}. Échéance : ${C.fmtDate(cn.dueDate)}.\n\nMerci de vérifier avant dépôt.\n`,
+          attachments: att ? [att] : [], mode: 'auto'
+        });
+        toast(acc ? 'Message préparé pour le comptable' : 'Message préparé — renseigne l\'email du comptable dans Paramètres');
+      };
+      if ($('#an-csv')) $('#an-csv').onclick = async () => {
+        const cols = [
+          { key: 'name', label: 'Salarié' }, { key: 'cin', label: 'CIN' }, { key: 'cnss', label: 'N° CNSS' },
+          { key: 'months', label: 'Mois payés' }, { key: 'gross', label: 'Brut annuel', type: 'money' },
+          { key: 'cnss_', label: 'CNSS retenue', type: 'money' }, { key: 'irpp', label: 'IRPP retenu', type: 'money' },
+          { key: 'css', label: 'Solidarité', type: 'money' }, { key: 'net', label: 'Net versé', type: 'money' }
+        ];
+        const f = await bridge.saveText(`declaration-employeur-${y}.csv`, C.toCsv(an.rows, cols));
+        if (f) toast('Exporté : ' + f.split(/[\\/]/).pop());
+      };
+    }
+
     function drawRates() {
       const st = C.payrollSettings(data);
       const num = (k, lab, key, suffix) => `<label class="field">${lbl(lab, key)}<input type="number" name="${k}" value="${st[k]}" step="0.01" min="0" class="num">${suffix ? `<span class="small muted">${suffix}</span>` : ''}</label>`;
@@ -4237,6 +4375,7 @@
       if (s.tab === 'salaries') return drawEmployees();
       if (s.tab === 'conges') return drawLeaves();
       if (s.tab === 'avances') return drawAdvances();
+      if (s.tab === 'declarations') return drawDeclarations();
       if (s.tab === 'registre') return drawRegister();
       if (s.tab === 'baremes') return drawRates();
       drawSlips();

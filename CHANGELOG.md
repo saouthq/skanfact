@@ -7,6 +7,32 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 5.2.0 — 11/09/2026
+
+La CNSS ne relance pas : elle pénalise. Nouvel onglet **Déclarations** dans la page Paie.
+
+**Déclaration CNSS trimestrielle**
+- Un salarié par ligne : assiette du trimestre, part salarié déjà retenue, part employeur, accident du travail
+- Le total est ce que tu verses à la CNSS, les deux parts confondues
+- Un matricule CNSS manquant est signalé : la déclaration ne peut pas partir sans lui
+- Export CSV et envoi au comptable en un clic, pièce jointe comprise
+- Échéance usuelle : le 15 du mois suivant la fin du trimestre — *à VÉRIFIER*
+
+**Déclaration annuelle d'employeur**
+- Les **salaires versés** : brut annuel, CNSS retenue, IRPP retenu, solidarité, net versé, par salarié
+- Les **retenues à la source pratiquées sur des fournisseurs** (honoraires, loyers) — l'autre moitié du formulaire, celle qu'on oublie
+- Les **attestations de retenue non remises** sont comptées : sans elles, ton fournisseur ne peut pas déduire ce que tu lui as retenu
+- Export CSV
+
+**Les rappels**
+- Dès qu'un salarié existe, l'échéance CNSS s'allume d'elle-même dans le calendrier fiscal
+- Les déclarations dues remontent dans « À faire », en rouge si l'échéance est passée
+- « Marquer déposée » fait taire le rappel — c'est un pense-bête, pas un accusé de réception
+
+**SkanFact ne dépose rien** et ne se connecte à aucune administration. Il prépare le tableau, rappelle la date, et te laisse recopier ou envoyer. Une application qui déposerait à ta place se tromperait un jour sans que tu le saches.
+
+Nouvel article d'aide « Les déclarations sociales ». *À VÉRIFIER avec ton comptable : la forme des formulaires, les dates, les modalités de dépôt et les exonérations liées aux contrats SIVP et Karama.*
+
 ## 5.1.0 — 11/09/2026
 
 La paie savait calculer un bulletin. Elle sait maintenant d'où viennent les absences et les retenues.
