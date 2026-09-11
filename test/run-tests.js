@@ -702,4 +702,38 @@ t('document : nombre de pages mesuré comme dans l\'aperçu', () => {
   assert.strictEqual(core.pageCount(null), 1);
 });
 
+t('pagination : bornes, page hors limites, « Tout afficher »', () => {
+  const p1 = core.pageInfo(46, 1, 25);
+  assert.deepStrictEqual([p1.page, p1.pages, p1.from, p1.to, p1.start, p1.end], [1, 2, 1, 25, 0, 25]);
+  const p2 = core.pageInfo(46, 2, 25);
+  assert.deepStrictEqual([p2.page, p2.pages, p2.from, p2.to, p2.start, p2.end], [2, 2, 26, 46, 25, 46]);
+  // Un filtre réduit la liste alors qu'on était en page 5 : on revient sur la dernière page existante,
+  // sinon l'écran est vide sans rien expliquer.
+  const p3 = core.pageInfo(12, 5, 25);
+  assert.deepStrictEqual([p3.page, p3.pages, p3.from, p3.to], [1, 1, 1, 12]);
+  const p4 = core.pageInfo(60, 99, 25);
+  assert.strictEqual(p4.page, 3);
+  // taille 0 = tout afficher, sur une seule page
+  const all = core.pageInfo(137, 3, 0);
+  assert.deepStrictEqual([all.page, all.pages, all.from, all.to, all.size], [1, 1, 1, 137, 0]);
+  // liste vide : pas de « 1–0 sur 0 »
+  const none = core.pageInfo(0, 1, 25);
+  assert.deepStrictEqual([none.pages, none.from, none.to], [1, 0, 0]);
+  // page absurde ou non numérique : on retombe sur la première page
+  assert.strictEqual(core.pageInfo(50, 0, 25).page, 1);
+  assert.strictEqual(core.pageInfo(50, undefined, 25).page, 1);
+});
+
+t('tri des colonnes : nombres, accents, valeurs vides en fin', () => {
+  assert.ok(core.compareValues(2, 10) < 0);                 // numérique, pas alphabétique
+  assert.ok(core.compareValues('FAC-2026-2', 'FAC-2026-10') < 0);
+  assert.ok(core.compareValues('Élan', 'Zone') < 0);        // accents classés comme en français
+  assert.ok(core.compareValues('elan', 'Élan') === 0);      // casse et accents ignorés à la comparaison
+  assert.ok(core.compareValues('', 'Zone') > 0);            // vide toujours après, en tri croissant
+  assert.ok(core.compareValues(null, 'Zone') > 0);
+  assert.strictEqual(core.compareValues('', ''), 0);
+  const rows = [{ d: '' }, { d: '2026-03-01' }, { d: '2026-01-05' }];
+  assert.deepStrictEqual(rows.slice().sort((a, b) => core.compareValues(a.d, b.d)).map(x => x.d), ['2026-01-05', '2026-03-01', '']);
+});
+
 console.log(`\n${n} tests OK`);

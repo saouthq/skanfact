@@ -36,6 +36,12 @@
   try { previewHidden = localStorage.getItem('skanfact.preview') === '0'; } catch (_) {}
   let settingsTab = 'societe';   // onglet ouvert dans Paramètres
   let catalogTab = 'presta';     // onglet ouvert dans Catalogue
+  // Recherche, tri et page courante de chaque onglet du Catalogue
+  const catalogState = {
+    presta: { q: '', sort: { key: 'label', dir: 'asc' }, page: 1 },
+    modeles: { q: '', sort: { key: 'name', dir: 'asc' }, page: 1 },
+    textes: { q: '', sort: { key: 'name', dir: 'asc' }, page: 1 }
+  };
   let aideArticle = '';          // article ouvert dans l'Aide
 
   // Écran de verrouillage : demande le mot de passe tant que le fichier n'est pas déchiffré.
@@ -371,6 +377,93 @@
     return `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${grid}<line class="axis" x1="${left}" x2="${W}" y1="${H - bottom}" y2="${H - bottom}"/>${bars}</svg>`;
   }
 
+  // ---------- outils communs à toutes les listes : préférences, tri, pagination ----------
+  // Préférences d'affichage (taille de page, panneaux repliés). Elles décrivent l'écran, pas l'entreprise :
+  // elles restent sur cet ordinateur et ne partent ni dans le fichier de données ni dans les sauvegardes.
+  const prefs = {
+    get(key, dflt) { try { const v = localStorage.getItem('skanfact.' + key); return v == null ? dflt : JSON.parse(v); } catch (_) { return dflt; } },
+    set(key, value) { try { localStorage.setItem('skanfact.' + key, JSON.stringify(value)); } catch (_) {} }
+  };
+
+  const PAGE_SIZES = [[25, '25'], [50, '50'], [100, '100'], [0, 'Tout']];
+  const rowsPerPage = () => { const n = Number(prefs.get('rowsPerPage', 25)); return PAGE_SIZES.some(p => p[0] === n) ? n : 25; };
+
+  // Bascule de tri : recliquer la même colonne inverse le sens, une autre colonne repart de son sens naturel
+  // (croissant pour un texte, décroissant pour une date ou un montant — on veut voir le plus récent d'abord).
+  function toggleSort(sort, key, cols) {
+    if (sort && sort.key === key) return { key, dir: sort.dir === 'asc' ? 'desc' : 'asc' };
+    const col = (cols || []).find(c => c.key === key);
+    return { key, dir: col && col.asc ? 'asc' : 'desc' };
+  }
+  function applySort(list, cols, sort) {
+    const col = sort && cols.find(c => c.key === sort.key);
+    if (!col || !col.val) return list;
+    return list.slice().sort((a, b) => { const cmp = C.compareValues(col.val(a), col.val(b)); return sort.dir === 'asc' ? cmp : -cmp; });
+  }
+  // En-têtes cliquables. Une colonne triable porte toujours un repère « ⇅ » : sans lui, personne ne devine
+  // que l'en-tête est un bouton (remarque de Skander).
+  function sortHead(cols, sort, extra) {
+    return `<tr>${cols.map(c => {
+      const on = sort && sort.key === c.key;
+      const cls = [c.r ? 'r' : '', c.val ? 'sortable-h' : '', on ? 'sorted' : ''].filter(Boolean).join(' ');
+      const attrs = c.val ? ` data-sort="${h(c.key)}" title="Trier par ${h(c.label)}" role="button" tabindex="0"` : '';
+      const mark = c.val ? `<span class="sort-ar">${on ? (sort.dir === 'asc' ? '↑' : '↓') : '⇅'}</span>` : '';
+      return `<th class="${cls}"${attrs}${c.w ? ` style="width:${c.w}"` : ''}>${h(c.label)}${mark}</th>`;
+    }).join('')}${extra || ''}</tr>`;
+  }
+  function bindSort(root, redraw) {
+    $$('th[data-sort]', root).forEach(th => {
+      th.onclick = () => redraw(th.dataset.sort);
+      th.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); redraw(th.dataset.sort); } };
+    });
+  }
+
+  // Découpe la liste selon la page courante de `state` et renvoie { rows, pg } pour l'affichage.
+  function paginate(list, state) {
+    const pg = C.pageInfo(list.length, state.page || 1, rowsPerPage());
+    state.page = pg.page;
+    return { rows: pg.size ? list.slice(pg.start, pg.end) : list, pg };
+  }
+  // Barre de pagination. Masquée tant qu'il n'y a pas de quoi remplir une page : une liste de six lignes
+  // n'a pas besoin de « Page 1 / 1 ».
+  function pagerBar(pg, opts) {
+    opts = opts || {};
+    if (pg.pages <= 1 && pg.total <= PAGE_SIZES[0][0]) return '';
+    const noun = opts.noun || 'ligne';
+    const s = pg.total > 1 ? 's' : '';
+    const filtered = opts.grandTotal != null && opts.grandTotal !== pg.total;
+    const count = filtered
+      ? `${pg.from}–${pg.to} sur ${pg.total} ${noun}${s} après filtrage (${opts.grandTotal} au total)`
+      : `${pg.from}–${pg.to} sur ${pg.total} ${noun}${s}`;
+    return `<div class="pager">
+      <span class="pg-info">${h(count)}</span>
+      <div class="pg-nav">
+        <button type="button" class="btn btn-sm" data-pg="prev" ${pg.page <= 1 ? 'disabled' : ''}>‹ Précédent</button>
+        <span class="pg-page">Page ${pg.page} / ${pg.pages}</span>
+        <button type="button" class="btn btn-sm" data-pg="next" ${pg.page >= pg.pages ? 'disabled' : ''}>Suivant ›</button>
+      </div>
+      <label class="pg-size">Lignes par page <select data-pg="size">${PAGE_SIZES.map(([v, l]) => `<option value="${v}" ${v === pg.size ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      ${info('list.page')}</div>`;
+  }
+  // `root` limite la liaison à un tableau : la page Comptabilité et la page Relances en affichent deux.
+  function bindPager(root, state, redraw, anchor) {
+    $$('[data-pg]', root).forEach(el => {
+      if (el.dataset.pg === 'size') el.onchange = e => { prefs.set('rowsPerPage', Number(e.target.value)); state.page = 1; redraw(); };
+      else el.onclick = () => {
+        state.page = (state.page || 1) + (el.dataset.pg === 'next' ? 1 : -1);
+        redraw();
+        const a = anchor && $(anchor);
+        if (a && a.scrollIntoView) a.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      };
+    });
+  }
+  // Bandeau « filtres actifs » : sans lui, une liste filtrée ressemble à une liste vide.
+  // Le filtre par année s'applique tout seul sur les grosses listes : il faut pouvoir le défaire d'un clic.
+  function filterReset(active) {
+    if (!active) return '';
+    return `<button type="button" class="btn btn-sm btn-ghost" id="reset-f" title="Effacer la recherche et les filtres">✕ Réinitialiser les filtres</button>`;
+  }
+
   // ---------- listes devis / factures ----------
   // Colonnes d'une liste de documents. `get` sert à l'affichage, `val` au tri (nombre ou texte comparable).
   function docColumns(opts) {
@@ -381,10 +474,10 @@
       { key: 'number', label: 'Numéro', cls: 'nw', val: d => (d.number ? '1' : '0') + (d.number || ''), get: d => `<strong>${d.number ? h(d.number) : '<span class="muted">Brouillon</span>'}</strong>` },
       opts.quotes
         ? { key: 'due', label: 'Valable jusqu\'au', val: d => d.dueDate || '', get: d => C.fmtDate(d.dueDate) }
-        : { key: 'type', label: 'Type', val: d => d.type, get: d => C.TITLES[d.type] },
+        : { key: 'type', label: 'Type', asc: true, val: d => d.type, get: d => C.TITLES[d.type] },
       opts.hideClient
-        ? { key: 'subject', label: 'Objet', val: d => (d.subject || '').toLowerCase(), get: d => h(d.subject || '') || '<span class="muted">—</span>' }
-        : { key: 'client', label: 'Client', val: d => clientName(d.clientId).toLowerCase(), get: d => `${h(clientName(d.clientId))}${d.subject ? `<div class="small muted">${h(d.subject)}</div>` : ''}` },
+        ? { key: 'subject', label: 'Objet', asc: true, val: d => (d.subject || '').toLowerCase(), get: d => h(d.subject || '') || '<span class="muted">—</span>' }
+        : { key: 'client', label: 'Client', asc: true, val: d => clientName(d.clientId).toLowerCase(), get: d => `${h(clientName(d.clientId))}${d.subject ? `<div class="small muted">${h(d.subject)}</div>` : ''}` },
       { key: 'date', label: 'Date', val: d => d.date || '', get: d => C.fmtDate(d.date) },
       { key: 'status', label: 'Statut', val: d => effStatus(d), get: d => statusBadge(d) },
       { key: 'amount', label: opts.quotes ? 'Total TTC' : 'Net à payer', r: true, val: amountOf, get: d => C.money(amountOf(d), cur(d)) }
@@ -399,25 +492,18 @@
     const { cols, amountOf, restOf } = docColumns(opts);
     if (!list.length) return `<div class="empty">${h(opts.empty || 'Aucun document.')}</div>`;
     const cur = company().currency;
-    const sort = opts.sort;
-    if (sort) {
-      const col = cols.find(c => c.key === sort.key);
-      if (col) list = list.slice().sort((a, b) => {
-        const x = col.val(a), y = col.val(b);
-        const cmp = typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), 'fr', { numeric: true });
-        return sort.dir === 'asc' ? cmp : -cmp;
-      });
-    }
-    const arrow = key => sort && sort.key === key ? `<span class="sort-ar">${sort.dir === 'asc' ? '↑' : '↓'}</span>` : '';
-    // Totaux toujours dans la devise de la société : une facture en euros est convertie à son taux du jour
-    const mixed = list.some(d => docCur(d) !== cur);
-    const totalHT = list.reduce((s, d) => s + (d.type === 'avoir' ? -1 : 1) * C.toBase(d, C.computeTotals(d, company()).netHT, company()), 0);
-    const totalAmount = list.reduce((s, d) => s + C.toBase(d, amountOf(d), company()), 0);
-    const totalRest = list.reduce((s, d) => s + Math.max(0, C.toBase(d, restOf(d) || 0, company())), 0);
-    return `<table class="list sortable"><thead><tr>
-        ${cols.map(c => `<th class="${c.r ? 'r ' : ''}${opts.onSort ? 'sortable-h' : ''}" ${opts.onSort ? `data-sort="${c.key}"` : ''}>${h(c.label)}${arrow(c.key)}</th>`).join('')}
-        <th class="row-actions-h"></th></tr></thead><tbody>
-      ${list.map(d => `<tr class="clickable" data-id="${d.id}">
+    const sorted = applySort(list, cols, opts.sort);
+    // Le pied de tableau totalise toute la sélection, pas seulement la page affichée :
+    // un total qui changerait en tournant les pages ne voudrait rien dire.
+    const mixed = sorted.some(d => docCur(d) !== cur);
+    const totalHT = sorted.reduce((s, d) => s + (d.type === 'avoir' ? -1 : 1) * C.toBase(d, C.computeTotals(d, company()).netHT, company()), 0);
+    const totalAmount = sorted.reduce((s, d) => s + C.toBase(d, amountOf(d), company()), 0);
+    const totalRest = sorted.reduce((s, d) => s + Math.max(0, C.toBase(d, restOf(d) || 0, company())), 0);
+    const paged = opts.page ? paginate(sorted, opts.page) : { rows: sorted, pg: null };
+    return `<table class="list sortable"><thead>
+        ${sortHead(opts.onSort ? cols : cols.map(c => ({ ...c, val: null })), opts.sort, '<th class="row-actions-h"></th>')}
+      </thead><tbody>
+      ${paged.rows.map(d => `<tr class="clickable" data-id="${d.id}">
         ${cols.map(c => `<td class="${c.r ? 'r nw' : ''}${c.cls ? ' ' + c.cls : ''}">${c.get(d)}</td>`).join('')}
         <td class="row-actions"><span>
           <button class="btn btn-sm" data-pdf="${d.id}" title="Exporter en PDF">PDF</button>
@@ -426,19 +512,21 @@
           ${d.type !== 'avoir' ? `<button class="btn btn-sm btn-ghost" data-dup="${d.id}" title="Dupliquer">⧉</button>` : ''}
         </span></td></tr>`).join('')}
     </tbody><tfoot><tr>
-      <td colspan="${Math.max(1, cols.length - (opts.quotes ? 1 : 2))}">${list.length} document${list.length > 1 ? 's' : ''} · ${C.money(totalHT, cur)} HT${mixed ? ` <span class="muted">(devises étrangères converties en ${h(cur)})</span>` : ''}</td>
+      <td colspan="${Math.max(1, cols.length - (opts.quotes ? 1 : 2))}">${sorted.length} document${sorted.length > 1 ? 's' : ''} · ${C.money(totalHT, cur)} HT${mixed ? ` <span class="muted">(devises étrangères converties en ${h(cur)})</span>` : ''}</td>
       <td class="r">${C.money(totalAmount, cur)}</td>
       ${opts.quotes ? '' : `<td class="r">${totalRest > 0.0005 ? C.money(totalRest, cur) : '<span class="muted">—</span>'}</td>`}
-      <td></td></tr></tfoot></table>`;
+      <td></td></tr></tfoot></table>
+      ${paged.pg ? pagerBar(paged.pg, { noun: 'document', grandTotal: opts.grandTotal }) : ''}`;
   }
 
-  function bindDocTable(redraw) {
+  function bindDocTable(redraw, state, anchor) {
     $$('tr.clickable[data-id]').forEach(tr => tr.onclick = e => { if (e.target.closest('button')) return; navigate('#/doc/' + tr.dataset.id); });
     $$('button[data-pdf]').forEach(b => b.onclick = () => exportPdf(docById(b.dataset.pdf)));
     $$('button[data-mail]').forEach(b => b.onclick = () => sendByEmail(docById(b.dataset.mail)));
     $$('button[data-paye]').forEach(b => b.onclick = () => paymentForm(docById(b.dataset.paye), () => (redraw || render)()));
     $$('button[data-dup]').forEach(b => b.onclick = () => duplicateDoc(docById(b.dataset.dup)));
-    if (redraw) $$('th[data-sort]').forEach(th => th.onclick = () => redraw(th.dataset.sort));
+    if (redraw) bindSort(document, redraw);
+    if (redraw && state) bindPager(document, state, () => redraw(), anchor);
   }
 
   // Duplication d'un document : nouveau brouillon aux dates du jour, sans paiement ni rattachement
@@ -455,33 +543,44 @@
   // brouillons (sans numéro) en tête, puis numéros décroissants
   const byNumberDesc = (a, b) => ((a.number ? 1 : 0) - (b.number ? 1 : 0)) || (b.number || '').localeCompare(a.number || '', undefined, { numeric: true }) || (b.createdAt || 0) - (a.createdAt || 0);
 
-  const listState = { devis: { q: '', st: '', kind: '', year: '', sort: null }, facture: { q: '', st: '', kind: '', year: '', sort: null } };
+  const listState = {
+    devis: { q: '', st: '', kind: '', year: '', sort: null, page: 1, yearAuto: false, yearTouched: false },
+    facture: { q: '', st: '', kind: '', year: '', sort: null, page: 1, yearAuto: false, yearTouched: false }
+  };
 
   function listView(type) {
     const isQ = type === 'devis';
     const s = listState[type];
+    const { cols } = docColumns({ quotes: isQ });
     const mine = data.documents.filter(d => isQ ? d.type === 'devis' : (d.type === 'facture' || d.type === 'avoir'));
     const years = Array.from(new Set(mine.map(d => (d.date || '').slice(0, 4)).filter(Boolean))).sort().reverse();
     const thisYear = C.today().slice(0, 4);
-    // Par défaut on montre l'année en cours si elle contient quelque chose : une liste courte se lit, une liste de trois ans ne se lit pas
-    if (s.year === '' && years.includes(thisYear) && mine.length > 25) s.year = thisYear;
-    if (s.year && !years.includes(s.year)) s.year = '';
+    // Par défaut on montre l'année en cours si elle contient quelque chose : une liste courte se lit, une liste de trois ans ne se lit pas.
+    // C'est signalé sous les filtres : sans ça on croit avoir perdu les documents des années précédentes.
+    if (s.year === '' && !s.yearTouched && years.includes(thisYear) && mine.length > 25) { s.year = thisYear; s.yearAuto = true; }
+    if (s.year && !years.includes(s.year)) { s.year = ''; s.yearAuto = false; }
 
     const draw = (sortKey) => {
-      if (sortKey) s.sort = s.sort && s.sort.key === sortKey ? { key: sortKey, dir: s.sort.dir === 'asc' ? 'desc' : 'asc' } : { key: sortKey, dir: sortKey === 'client' ? 'asc' : 'desc' };
+      if (sortKey) { s.sort = toggleSort(s.sort, sortKey, cols); s.page = 1; }
       const list = mine
         .filter(d => !s.kind || d.type === s.kind)
         .filter(d => !s.year || (d.date || '').startsWith(s.year))
         .filter(d => !s.st || effStatus(d) === s.st)
         .filter(d => !s.q || [d.number, clientName(d.clientId), d.subject, d.reference].join(' ').toLowerCase().includes(s.q))
         .sort(byNumberDesc);
-      const filtered = s.q || s.st || s.kind || s.year;
+      const filtered = !!(s.q || s.st || s.kind || s.year);
       $('#list-wrap').innerHTML = docTable(list, {
-        quotes: isQ, sort: s.sort, onSort: true,
-        empty: filtered ? 'Aucun document ne correspond à ces filtres.' : (isQ ? 'Aucun devis. Crée le premier avec le bouton en haut à droite.' : 'Aucune facture. Crée la première avec le bouton en haut à droite.')
+        quotes: isQ, sort: s.sort, onSort: true, page: s, grandTotal: mine.length,
+        empty: filtered ? 'Aucun document ne correspond à ces filtres. Clique « Réinitialiser les filtres » pour tout revoir.' : (isQ ? 'Aucun devis. Crée le premier avec le bouton en haut à droite.' : 'Aucune facture. Crée la première avec le bouton en haut à droite.')
       });
-      bindDocTable(draw);
+      const note = $('#f-note');
+      note.hidden = !filtered;
+      note.innerHTML = !filtered ? '' :
+        `<span class="small muted">${list.length} sur ${mine.length}${s.year && s.yearAuto ? ` · année ${h(s.year)} affichée par défaut` : ''}</span>${filterReset(true)}`;
+      if ($('#reset-f')) $('#reset-f').onclick = resetFilters;
+      bindDocTable(draw, s, '#list-wrap');
     };
+    const resetFilters = () => { s.q = ''; s.st = ''; s.kind = ''; s.year = ''; s.yearAuto = false; s.yearTouched = true; s.page = 1; listView(type); };
     const statuses = isQ ? C.DISPLAY_STATUSES.devis : [...C.DISPLAY_STATUSES.facture, 'émis'];
     $('#view').innerHTML = `
       <div class="page-head"><h1>${isQ ? 'Devis' : 'Factures'}</h1>
@@ -492,14 +591,15 @@
         <select id="st"><option value="">Tous les statuts</option>${statuses.map(x => `<option value="${x}" ${s.st === x ? 'selected' : ''}>${h(C.statusLabel(x))}</option>`).join('')}</select>
         ${years.length > 1 ? `<select id="yr"><option value="">Toutes les années</option>${years.map(y => `<option value="${y}" ${s.year === y ? 'selected' : ''}>${y}</option>`).join('')}</select>` : ''}
         ${info('list.filters')}
+        <span class="f-note" id="f-note" hidden></span>
       </div>
       <div id="list-wrap"></div>`;
     $('#new').onclick = () => navigate('#/doc/new/' + type);
     if ($('#new-avoir')) $('#new-avoir').onclick = () => navigate('#/doc/new/avoir');
-    $('#q').oninput = e => { s.q = e.target.value.toLowerCase(); draw(); };
-    $('#st').onchange = e => { s.st = e.target.value; draw(); };
-    if ($('#yr')) $('#yr').onchange = e => { s.year = e.target.value; draw(); };
-    if ($('#kind')) $('#kind').onchange = e => { s.kind = e.target.value; draw(); };
+    $('#q').oninput = e => { s.q = e.target.value.toLowerCase(); s.page = 1; draw(); };
+    $('#st').onchange = e => { s.st = e.target.value; s.page = 1; draw(); };
+    if ($('#yr')) $('#yr').onchange = e => { s.year = e.target.value; s.yearAuto = false; s.yearTouched = true; s.page = 1; draw(); };
+    if ($('#kind')) $('#kind').onchange = e => { s.kind = e.target.value; s.page = 1; draw(); };
     draw();
   }
   routes.devis = () => listView('devis');
@@ -1036,44 +1136,60 @@
       });
   }
 
-  const clientState = { q: '', sort: { key: 'name', dir: 'asc' } };
+  const clientState = { q: '', f: '', sort: { key: 'name', dir: 'asc' }, page: 1 };
+  const clientDocState = { sort: null, page: 1 };  // liste des documents dans la fiche client
 
   routes.clients = () => {
     const cur = company().currency;
     const s = clientState;
+    const cols = [
+      { key: 'name', label: 'Nom', asc: true, val: r => r.c.name.toLowerCase(), get: r => `<strong>${h(r.c.name)}</strong>${r.c.contact ? `<div class="small muted">${h(r.c.contact)}</div>` : ''}` },
+      { key: 'mf', label: 'MF / CIN', get: r => `${h(r.c.matricule)}${r.c.withholdingRate !== '' && r.c.withholdingRate != null && Number(r.c.withholdingRate) ? `<div class="small muted">RS ${pct(r.c.withholdingRate)} %</div>` : ''}` },
+      { key: 'contact', label: 'Contact', get: r => `<span class="small">${h(r.c.phone)}${r.c.phone && r.c.email ? '<br>' : ''}${h(r.c.email)}</span>` },
+      { key: 'docs', label: 'Documents', r: true, val: r => r.sum.count, get: r => r.sum.count },
+      { key: 'ht', label: 'Facturé HT', r: true, val: r => r.sum.ht, get: r => r.sum.ht ? C.money(r.sum.ht, cur) : '<span class="muted">—</span>' },
+      { key: 'due', label: 'Reste à payer', r: true, val: r => r.sum.due, get: r => r.sum.due > 0.0005 ? `<strong>${C.money(r.sum.due, cur)}</strong>` : '<span class="muted">—</span>' },
+      { key: 'last', label: 'Dernier document', val: r => r.sum.last || '', get: r => r.sum.last ? C.fmtDate(r.sum.last) : '<span class="muted">—</span>' }
+    ];
+    const FILTERS = [['', 'Tous les clients'], ['due', 'Avec un impayé'], ['none', 'Sans aucun document']];
     const draw = (sortKey) => {
-      if (sortKey) s.sort = s.sort.key === sortKey ? { key: sortKey, dir: s.sort.dir === 'asc' ? 'desc' : 'asc' } : { key: sortKey, dir: sortKey === 'name' ? 'asc' : 'desc' };
-      const rows = data.clients
-        .filter(c => !s.q || [c.name, c.contact, c.matricule, c.email, c.phone].join(' ').toLowerCase().includes(s.q))
-        .map(c => ({ c, sum: C.clientSummary(data, company(), c.id) }));
-      const val = { name: r => r.c.name.toLowerCase(), docs: r => r.sum.count, ht: r => r.sum.ht, due: r => r.sum.due, last: r => r.sum.last };
-      rows.sort((a, b) => { const f = val[s.sort.key] || val.name; const x = f(a), y = f(b); const cmp = typeof x === 'number' ? x - y : String(x).localeCompare(String(y), 'fr'); return s.sort.dir === 'asc' ? cmp : -cmp; });
-      const arrow = k => s.sort.key === k ? `<span class="sort-ar">${s.sort.dir === 'asc' ? '↑' : '↓'}</span>` : '';
-      const th = (k, label, r) => `<th class="${r ? 'r ' : ''}sortable-h" data-sort="${k}">${label}${arrow(k)}</th>`;
-      $('#list-wrap').innerHTML = rows.length ? `<table class="list sortable"><thead><tr>
-          ${th('name', 'Nom')}<th>MF / CIN</th><th>Contact</th>${th('docs', 'Documents', true)}${th('ht', 'Facturé HT', true)}${th('due', 'Reste à payer', true)}${th('last', 'Dernier document')}<th class="row-actions-h"></th></tr></thead><tbody>
-        ${rows.map(({ c, sum }) => `<tr class="clickable" data-cid="${c.id}">
-          <td><strong>${h(c.name)}</strong>${c.contact ? `<div class="small muted">${h(c.contact)}</div>` : ''}</td>
-          <td>${h(c.matricule)}${c.withholdingRate !== '' && c.withholdingRate != null && Number(c.withholdingRate) ? `<div class="small muted">RS ${pct(c.withholdingRate)} %</div>` : ''}</td>
-          <td class="small">${h(c.phone)}${c.phone && c.email ? '<br>' : ''}${h(c.email)}</td>
-          <td class="r">${sum.count}</td>
-          <td class="r">${sum.ht ? C.money(sum.ht, cur) : '<span class="muted">—</span>'}</td>
-          <td class="r">${sum.due > 0.0005 ? `<strong>${C.money(sum.due, cur)}</strong>` : '<span class="muted">—</span>'}</td>
-          <td>${sum.last ? C.fmtDate(sum.last) : '<span class="muted">—</span>'}</td>
+      if (sortKey) { s.sort = toggleSort(s.sort, sortKey, cols); s.page = 1; }
+      const all = data.clients.map(c => ({ c, sum: C.clientSummary(data, company(), c.id) }));
+      const rows = applySort(all
+        .filter(r => !s.q || [r.c.name, r.c.contact, r.c.matricule, r.c.email, r.c.phone].join(' ').toLowerCase().includes(s.q))
+        .filter(r => !s.f || (s.f === 'due' ? r.sum.due > 0.0005 : r.sum.count === 0)), cols, s.sort);
+      const filtered = !!(s.q || s.f);
+      const { rows: page, pg } = paginate(rows, s);
+      $('#list-wrap').innerHTML = rows.length ? `<table class="list sortable"><thead>
+          ${sortHead(cols, s.sort, '<th class="row-actions-h"></th>')}</thead><tbody>
+        ${page.map(r => `<tr class="clickable" data-cid="${r.c.id}">
+          ${cols.map(c => `<td class="${c.r ? 'r nw' : ''}">${c.get(r)}</td>`).join('')}
           <td class="row-actions"><span>
-            <button class="btn btn-sm" data-devis="${c.id}" title="Nouveau devis pour ce client">+ Devis</button>
-            <button class="btn btn-sm" data-edit="${c.id}">Modifier</button>
+            <button class="btn btn-sm" data-devis="${r.c.id}" title="Nouveau devis pour ce client">+ Devis</button>
+            <button class="btn btn-sm" data-edit="${r.c.id}">Modifier</button>
           </span></td></tr>`).join('')}
-        </tbody></table>` : `<div class="empty">${s.q ? 'Aucun client ne correspond.' : 'Aucun client. Ajoute ton premier client : son adresse et son matricule fiscal se reporteront automatiquement sur tes documents.'}</div>`;
+        </tbody></table>${pagerBar(pg, { noun: 'client', grandTotal: all.length })}`
+        : `<div class="empty">${filtered ? 'Aucun client ne correspond à cette recherche.' : 'Aucun client. Ajoute ton premier client : son adresse et son matricule fiscal se reporteront automatiquement sur tes documents.'}</div>`;
+      const note = $('#f-note');
+      note.hidden = !filtered;
+      note.innerHTML = !filtered ? '' : `<span class="small muted">${rows.length} sur ${all.length}</span>${filterReset(true)}`;
+      if ($('#reset-f')) $('#reset-f').onclick = () => { s.q = ''; s.f = ''; s.page = 1; routes.clients(); };
       $$('tr.clickable[data-cid]').forEach(tr => tr.onclick = e => { if (e.target.closest('button')) return; navigate('#/client/' + tr.dataset.cid); });
       $$('[data-edit]').forEach(b => b.onclick = () => clientForm(clientById(b.dataset.edit), () => draw()));
       $$('[data-devis]').forEach(b => b.onclick = () => navigate('#/doc/new/devis/client/' + b.dataset.devis));
-      $$('th[data-sort]').forEach(x => x.onclick = () => draw(x.dataset.sort));
+      bindSort($('#list-wrap'), draw);
+      bindPager($('#list-wrap'), s, () => draw(), '#list-wrap');
     };
     $('#view').innerHTML = `<div class="page-head"><h1>Clients</h1><div class="actions"><button class="btn btn-primary" id="new">+ Nouveau client</button></div></div>
-      <div class="filters"><input type="text" id="q" placeholder="Rechercher : nom, contact, MF, email…" value="${h(s.q)}">${info('list.sort')}</div><div id="list-wrap"></div>`;
+      <div class="filters">
+        <input type="text" id="q" placeholder="Rechercher : nom, contact, MF, email…" value="${h(s.q)}">
+        <select id="f">${FILTERS.map(([v, l]) => `<option value="${v}" ${s.f === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        ${info('list.sort')}
+        <span class="f-note" id="f-note" hidden></span>
+      </div><div id="list-wrap"></div>`;
     $('#new').onclick = () => clientForm(null, () => draw());
-    $('#q').oninput = e => { s.q = e.target.value.toLowerCase(); draw(); };
+    $('#q').oninput = e => { s.q = e.target.value.toLowerCase(); s.page = 1; draw(); };
+    $('#f').onchange = e => { s.f = e.target.value; s.page = 1; draw(); };
     draw();
   };
 
@@ -1081,6 +1197,7 @@
   routes.client = (parts) => {
     const c = clientById(parts[0]);
     if (!c) return navigate('#/clients');
+    clientDocState.page = 1;   // on change de client : on repart de la première page
     const cur = company().currency;
     const sum = C.clientSummary(data, company(), c.id);
     const docs = sum.docs.slice().sort(byNumberDesc);
@@ -1124,8 +1241,16 @@
           </div>
       </div>
       <div class="panel"><h2>Documents</h2><div id="cl-docs"></div></div>`;
-    $('#cl-docs').innerHTML = docTable(docs, { hideClient: true, empty: 'Aucun document pour ce client. Commence par un devis.' });
-    bindDocTable(() => render(true));
+    const dcols = docColumns({ hideClient: true }).cols;
+    const drawDocs = (sortKey) => {
+      if (sortKey) { clientDocState.sort = toggleSort(clientDocState.sort, sortKey, dcols); clientDocState.page = 1; }
+      $('#cl-docs').innerHTML = docTable(docs, {
+        hideClient: true, sort: clientDocState.sort, onSort: true, page: clientDocState,
+        empty: 'Aucun document pour ce client. Commence par un devis.'
+      });
+      bindDocTable(drawDocs, clientDocState, '#cl-docs');
+    };
+    drawDocs();
     $('#back').onclick = () => navigate('#/clients');
     $('#edit').onclick = () => clientForm(c, () => render(true));
     $('#new-dev').onclick = () => navigate('#/doc/new/devis/client/' + c.id);
@@ -1160,32 +1285,86 @@
 
   routes.catalogue = () => {
     const cur = company().currency;
-    const draw = () => {
-      const list = data.catalog.slice().sort((a, b) => a.label.localeCompare(b.label));
-      $('#list-wrap').innerHTML = list.length ? `<table class="list"><thead><tr><th>Désignation</th><th class="r">P.U. HT</th><th class="r">TVA</th><th>Unité</th><th></th></tr></thead><tbody>
-        ${list.map(c => `<tr><td><strong>${h(c.label)}</strong><div class="small muted">${h(c.description || '')}</div></td><td class="r">${C.money(c.unitPrice, cur)}</td><td class="r">${c.vatRate}%</td><td>${h(c.unit || '')}</td>
-          <td class="actions"><button class="btn btn-sm" data-edit="${c.id}">Modifier</button> <button class="btn btn-sm btn-danger" data-del="${c.id}">Supprimer</button></td></tr>`).join('')}
-        </tbody></table>` : `<div class="empty">Catalogue vide. Ajoute tes prestations récurrentes pour remplir les devis en un clic.</div>`;
-      $$('[data-edit]').forEach(b => b.onclick = () => catalogForm(data.catalog.find(c => c.id === b.dataset.edit), draw));
-      $$('[data-del]').forEach(b => b.onclick = async () => { if (await confirmDialog('Supprimer cette prestation ?')) { data.catalog = data.catalog.filter(c => c.id !== b.dataset.del); save(true); draw(); } });
+    // Un onglet = une liste avec sa recherche, son tri et sa pagination. Le catalogue d'un revendeur
+    // atteint vite cent références : sans recherche, il n'est plus consultable.
+    const drawList = (wrapSel, state, cols, rows, opts) => {
+      let built = false;
+      const redraw = (sortKey) => {
+        const wrap = $(wrapSel);
+        if (!wrap) return;
+        if (sortKey) { state.sort = toggleSort(state.sort, sortKey, cols); state.page = 1; }
+        if (!built) {
+          // La barre de recherche est construite une seule fois : la redessiner à chaque frappe ferait perdre le curseur.
+          wrap.innerHTML = `<div class="filters">
+            <input type="text" class="q" placeholder="${h(opts.placeholder)}" value="${h(state.q)}">
+            ${info('list.sort')}<span class="f-note" hidden></span></div><div class="rows"></div>`;
+          $('.q', wrap).oninput = e => { state.q = e.target.value.toLowerCase(); state.page = 1; redraw(); };
+          built = true;
+        }
+        const all = rows();
+        const kept = applySort(all.filter(r => !state.q || opts.text(r).toLowerCase().includes(state.q)), cols, state.sort);
+        const { rows: page, pg } = paginate(kept, state);
+        $('.rows', wrap).innerHTML = kept.length
+          ? `<table class="list sortable"><thead>${sortHead(cols, state.sort, '<th class="row-actions-h"></th>')}</thead><tbody>
+              ${page.map(r => `<tr>${cols.map(c => `<td class="${c.r ? 'r nw' : ''}">${c.get(r)}</td>`).join('')}<td class="actions">${opts.actions(r)}</td></tr>`).join('')}
+            </tbody></table>${pagerBar(pg, { noun: opts.noun, grandTotal: all.length })}`
+          : `<div class="empty">${state.q ? 'Rien ne correspond à cette recherche.' : h(opts.empty)}</div>`;
+        const note = $('.f-note', wrap);
+        note.hidden = !state.q;
+        note.innerHTML = state.q ? `<span class="small muted">${kept.length} sur ${all.length}</span><button type="button" class="btn btn-sm btn-ghost reset-f" title="Effacer la recherche">✕ Réinitialiser</button>` : '';
+        if ($('.reset-f', wrap)) $('.reset-f', wrap).onclick = () => { state.q = ''; state.page = 1; $('.q', wrap).value = ''; redraw(); };
+        bindSort(wrap, redraw);
+        bindPager($('.rows', wrap), state, () => redraw(), wrapSel);
+        opts.bind(wrap, redraw);
+      };
+      return redraw;
     };
-    const drawTemplates = () => {
-      $('#tpl-wrap').innerHTML = data.templates.length ? `<table class="list"><thead><tr><th>Modèle</th><th>Type</th><th class="r">Lignes</th><th></th></tr></thead><tbody>
-        ${data.templates.map(t => `<tr><td><strong>${h(t.name)}</strong><div class="small muted">${h(t.subject || '')}</div></td><td>${C.TITLES[t.type] || t.type}</td><td class="r">${(t.lines || []).length}</td>
-          <td class="actions"><button class="btn btn-sm btn-primary" data-use="${t.id}">Nouveau ${t.type === 'devis' ? 'devis' : 'facture'}</button> <button class="btn btn-sm" data-ren="${t.id}">Renommer</button> <button class="btn btn-sm btn-danger" data-tdel="${t.id}">Supprimer</button></td></tr>`).join('')}
-        </tbody></table>` : `<div class="empty">Aucun modèle. Depuis un devis ou une facture : Plus ▾ → « Enregistrer comme modèle ».</div>`;
-      $$('[data-use]').forEach(b => b.onclick = () => { const t = data.templates.find(x => x.id === b.dataset.use); navigate(`#/doc/new/${t.type}/tpl/${t.id}`); });
-      $$('[data-ren]').forEach(b => b.onclick = () => { const t = data.templates.find(x => x.id === b.dataset.ren); promptDialog('Renommer le modèle', 'Nom', t.name, v => { t.name = v; save(true); drawTemplates(); }); });
-      $$('[data-tdel]').forEach(b => b.onclick = async () => { if (await confirmDialog('Supprimer ce modèle ?')) { data.templates = data.templates.filter(x => x.id !== b.dataset.tdel); save(true); drawTemplates(); } });
-    };
-    const drawSnippets = () => {
-      $('#snip-wrap').innerHTML = data.snippets.length ? `<table class="list"><thead><tr><th>Nom</th><th>Texte</th><th></th></tr></thead><tbody>
-        ${data.snippets.map(x => `<tr><td><strong>${h(x.name)}</strong></td><td class="small">${h(x.text).replace(/\n/g, '<br>')}</td>
-          <td class="actions"><button class="btn btn-sm" data-sedit="${x.id}">Modifier</button> <button class="btn btn-sm btn-danger" data-sdel="${x.id}">Supprimer</button></td></tr>`).join('')}
-        </tbody></table>` : `<div class="empty">Aucun texte prédéfini. Conditions de garantie, modalités, mentions récurrentes… à insérer dans les notes d'un document en un clic.</div>`;
-      $$('[data-sedit]').forEach(b => b.onclick = () => snippetForm(data.snippets.find(x => x.id === b.dataset.sedit), drawSnippets));
-      $$('[data-sdel]').forEach(b => b.onclick = async () => { if (await confirmDialog('Supprimer ce texte ?')) { data.snippets = data.snippets.filter(x => x.id !== b.dataset.sdel); save(true); drawSnippets(); } });
-    };
+
+    const prestaCols = [
+      { key: 'label', label: 'Désignation', asc: true, val: c => c.label.toLowerCase(), get: c => `<strong>${h(c.label)}</strong><div class="small muted">${h(c.description || '')}</div>` },
+      { key: 'price', label: 'P.U. HT', r: true, val: c => Number(c.unitPrice) || 0, get: c => C.money(c.unitPrice, cur) },
+      { key: 'vat', label: 'TVA', r: true, val: c => Number(c.vatRate) || 0, get: c => c.vatRate + ' %' },
+      { key: 'unit', label: 'Unité', asc: true, val: c => (c.unit || '').toLowerCase(), get: c => h(c.unit || '') }
+    ];
+    const draw = drawList('#list-wrap', catalogState.presta, prestaCols, () => data.catalog.slice(), {
+      noun: 'prestation', placeholder: 'Rechercher une prestation…', text: c => `${c.label} ${c.description || ''} ${c.unit || ''}`,
+      empty: 'Catalogue vide. Ajoute tes prestations récurrentes pour remplir les devis en un clic.',
+      actions: c => `<button class="btn btn-sm" data-edit="${c.id}">Modifier</button> <button class="btn btn-sm btn-danger" data-del="${c.id}">Supprimer</button>`,
+      bind: (wrap, redraw) => {
+        $$('[data-edit]', wrap).forEach(b => b.onclick = () => catalogForm(data.catalog.find(c => c.id === b.dataset.edit), redraw));
+        $$('[data-del]', wrap).forEach(b => b.onclick = async () => { if (await confirmDialog('Supprimer cette prestation ?')) { data.catalog = data.catalog.filter(c => c.id !== b.dataset.del); save(true); redraw(); } });
+      }
+    });
+
+    const tplCols = [
+      { key: 'name', label: 'Modèle', asc: true, val: t => (t.name || '').toLowerCase(), get: t => `<strong>${h(t.name)}</strong><div class="small muted">${h(t.subject || '')}</div>` },
+      { key: 'type', label: 'Type', asc: true, val: t => t.type || '', get: t => C.TITLES[t.type] || t.type },
+      { key: 'lines', label: 'Lignes', r: true, val: t => (t.lines || []).length, get: t => (t.lines || []).length }
+    ];
+    const drawTemplates = drawList('#tpl-wrap', catalogState.modeles, tplCols, () => data.templates.slice(), {
+      noun: 'modèle', placeholder: 'Rechercher un modèle…', text: t => `${t.name} ${t.subject || ''}`,
+      empty: 'Aucun modèle. Depuis un devis ou une facture : Plus ▾ → « Enregistrer comme modèle ».',
+      actions: t => `<button class="btn btn-sm btn-primary" data-use="${t.id}">Nouveau ${t.type === 'devis' ? 'devis' : 'facture'}</button> <button class="btn btn-sm" data-ren="${t.id}">Renommer</button> <button class="btn btn-sm btn-danger" data-tdel="${t.id}">Supprimer</button>`,
+      bind: (wrap, redraw) => {
+        $$('[data-use]', wrap).forEach(b => b.onclick = () => { const t = data.templates.find(x => x.id === b.dataset.use); navigate(`#/doc/new/${t.type}/tpl/${t.id}`); });
+        $$('[data-ren]', wrap).forEach(b => b.onclick = () => { const t = data.templates.find(x => x.id === b.dataset.ren); promptDialog('Renommer le modèle', 'Nom', t.name, v => { t.name = v; save(true); redraw(); }); });
+        $$('[data-tdel]', wrap).forEach(b => b.onclick = async () => { if (await confirmDialog('Supprimer ce modèle ?')) { data.templates = data.templates.filter(x => x.id !== b.dataset.tdel); save(true); redraw(); } });
+      }
+    });
+
+    const snipCols = [
+      { key: 'name', label: 'Nom', asc: true, val: x => (x.name || '').toLowerCase(), get: x => `<strong>${h(x.name)}</strong>` },
+      { key: 'text', label: 'Texte', get: x => `<span class="small">${h(x.text).replace(/\n/g, '<br>')}</span>` }
+    ];
+    const drawSnippets = drawList('#snip-wrap', catalogState.textes, snipCols, () => data.snippets.slice(), {
+      noun: 'texte', placeholder: 'Rechercher un texte…', text: x => `${x.name} ${x.text || ''}`,
+      empty: 'Aucun texte prédéfini. Conditions de garantie, modalités, mentions récurrentes… à insérer dans les notes d\'un document en un clic.',
+      actions: x => `<button class="btn btn-sm" data-sedit="${x.id}">Modifier</button> <button class="btn btn-sm btn-danger" data-sdel="${x.id}">Supprimer</button>`,
+      bind: (wrap, redraw) => {
+        $$('[data-sedit]', wrap).forEach(b => b.onclick = () => snippetForm(data.snippets.find(x => x.id === b.dataset.sedit), redraw));
+        $$('[data-sdel]', wrap).forEach(b => b.onclick = async () => { if (await confirmDialog('Supprimer ce texte ?')) { data.snippets = data.snippets.filter(x => x.id !== b.dataset.sdel); save(true); redraw(); } });
+      }
+    });
     const TABS = [['presta', 'Prestations', 'cat.catalog'], ['modeles', 'Modèles de documents', 'ed.template'], ['textes', 'Textes prédéfinis', 'cat.snippets']];
     if (!TABS.some(t => t[0] === catalogTab)) catalogTab = 'presta';
     const head = () => {
@@ -1365,18 +1544,46 @@
     if (n) save(true);
     return n;
   }
+  const contratState = { q: '', st: '', sort: { key: 'next', dir: 'asc' }, page: 1 };
   routes.contrats = () => {
     const cur = company().currency;
-    const draw = () => {
+    const s = contratState;
+    const cols = [
+      { key: 'client', label: 'Client', asc: true, val: r => clientName(r.clientId).toLowerCase(), get: r => `<strong>${h(clientName(r.clientId))}</strong>` },
+      { key: 'subject', label: 'Objet', asc: true, val: r => (r.subject || '').toLowerCase(), get: r => { const subj = C.fillTemplate(r.subject, { mois: C.monthLabel(r.nextDate) }); return `${h(subj)}${subj !== r.subject ? `<div class="small muted">${h(r.subject)}</div>` : ''}`; } },
+      { key: 'every', label: 'Période', asc: true, val: r => r.every || '', get: r => (C.PERIODS.find(p => p[0] === r.every) || [])[1] || '' },
+      { key: 'next', label: 'Prochaine facture', asc: true, val: r => r.nextDate || '', get: r => { const isDue = r.active !== false && r.nextDate <= C.today(); return `${C.fmtDate(r.nextDate)}${isDue ? ' <span class="level l2">à générer</span>' : ''}${r.lastIssued ? `<div class="small muted">dernière : ${C.fmtDate(r.lastIssued)}</div>` : ''}`; } },
+      { key: 'ht', label: 'HT / facture', r: true, val: r => C.computeTotals({ type: 'facture', lines: r.lines, discountRate: r.discountRate }, company()).netHT, get: r => C.money(C.computeTotals({ type: 'facture', lines: r.lines, discountRate: r.discountRate }, company()).netHT, cur) },
+      { key: 'state', label: 'État', asc: true, val: r => r.active !== false ? 'actif' : 'suspendu', get: r => r.active !== false ? '<span class="badge envoyée">actif</span>' : '<span class="badge">suspendu</span>' }
+    ];
+    const STATES = [['', 'Tous les contrats'], ['actif', 'Actifs'], ['suspendu', 'Suspendus'], ['due', 'À générer']];
+    const draw = (sortKey) => {
+      if (sortKey) { s.sort = toggleSort(s.sort, sortKey, cols); s.page = 1; }
       const due = C.dueRecurrences(data);
-      const list = data.recurring.slice().sort((a, b) => (a.nextDate || '').localeCompare(b.nextDate || ''));
+      const all = data.recurring.slice();
+      const kept = applySort(all
+        .filter(r => !s.st || (s.st === 'due' ? (r.active !== false && r.nextDate <= C.today()) : (s.st === 'actif') === (r.active !== false)))
+        .filter(r => !s.q || `${clientName(r.clientId)} ${r.subject || ''}`.toLowerCase().includes(s.q)), cols, s.sort);
+      const { rows: page, pg } = paginate(kept, s);
+      const filtered = !!(s.q || s.st);
       $('#c-wrap').innerHTML = `${due.length ? `<div class="banner">${due.length} facture(s) récurrente(s) à générer<button class="btn" id="gen-due">Générer les brouillons</button></div>` : ''}
-        ${list.length ? `<table class="list"><thead><tr><th>Client</th><th>Objet</th><th>Période</th><th>Prochaine facture</th><th class="r">HT / facture</th><th>État</th><th></th></tr></thead><tbody>
-        ${list.map(r => { const t = C.computeTotals({ type: 'facture', lines: r.lines, discountRate: r.discountRate }, company()); const isDue = r.active !== false && r.nextDate <= C.today();
-          const subj = C.fillTemplate(r.subject, { mois: C.monthLabel(r.nextDate) });
-          return `<tr><td><strong>${h(clientName(r.clientId))}</strong></td><td>${h(subj)}${subj !== r.subject ? `<div class="small muted">${h(r.subject)}</div>` : ''}</td><td>${(C.PERIODS.find(p => p[0] === r.every) || [])[1] || ''}</td><td>${C.fmtDate(r.nextDate)}${isDue ? ' <span class="level l2">à générer</span>' : ''}${r.lastIssued ? `<div class="small muted">dernière : ${C.fmtDate(r.lastIssued)}</div>` : ''}</td><td class="r">${C.money(t.netHT, cur)}</td><td>${r.active !== false ? '<span class="badge envoyée">actif</span>' : '<span class="badge">suspendu</span>'}</td>
-          <td class="actions"><button class="btn btn-sm" data-gen="${r.id}">Générer maintenant</button> <button class="btn btn-sm" data-edit="${r.id}">Modifier</button> <button class="btn btn-sm" data-toggle="${r.id}">${r.active !== false ? 'Suspendre' : 'Reprendre'}</button> <button class="btn btn-sm btn-danger" data-del="${r.id}">Supprimer</button></td></tr>`; }).join('')}
-        </tbody></table>` : `<div class="empty">Aucun contrat. Un contrat génère automatiquement un brouillon de facture à chaque échéance (mensuelle, trimestrielle, annuelle). Crée-le ici, ou depuis une facture existante : Plus ▾ → « Rendre récurrent ».</div>`}`;
+        <div class="filters">
+          <input type="text" id="q" placeholder="Rechercher : client, objet…" value="${h(s.q)}">
+          <select id="st">${STATES.map(([v, l]) => `<option value="${v}" ${s.st === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+          ${info('list.filters')}
+          ${filtered ? `<span class="f-note"><span class="small muted">${kept.length} sur ${all.length}</span><button type="button" class="btn btn-sm btn-ghost" id="reset-f" title="Effacer la recherche et les filtres">✕ Réinitialiser les filtres</button></span>` : ''}
+        </div>
+        ${kept.length ? `<table class="list sortable"><thead>${sortHead(cols, s.sort, '<th class="row-actions-h"></th>')}</thead><tbody>
+        ${page.map(r => `<tr>${cols.map(c => `<td class="${c.r ? 'r nw' : ''}">${c.get(r)}</td>`).join('')}
+          <td class="actions"><button class="btn btn-sm" data-gen="${r.id}">Générer maintenant</button> <button class="btn btn-sm" data-edit="${r.id}">Modifier</button> <button class="btn btn-sm" data-toggle="${r.id}">${r.active !== false ? 'Suspendre' : 'Reprendre'}</button> <button class="btn btn-sm btn-danger" data-del="${r.id}">Supprimer</button></td></tr>`).join('')}
+        </tbody></table>${pagerBar(pg, { noun: 'contrat', grandTotal: all.length })}`
+          : `<div class="empty">${filtered ? 'Aucun contrat ne correspond à ces filtres.' : 'Aucun contrat. Un contrat génère automatiquement un brouillon de facture à chaque échéance (mensuelle, trimestrielle, annuelle). Crée-le ici, ou depuis une facture existante : Plus ▾ → « Rendre récurrent ».'}</div>`}`;
+      const q = $('#q');
+      q.oninput = e => { s.q = e.target.value.toLowerCase(); s.page = 1; draw(); const el = $('#q'); el.focus(); el.setSelectionRange(el.value.length, el.value.length); };
+      $('#st').onchange = e => { s.st = e.target.value; s.page = 1; draw(); };
+      if ($('#reset-f')) $('#reset-f').onclick = () => { s.q = ''; s.st = ''; s.page = 1; draw(); };
+      bindSort($('#c-wrap'), draw);
+      bindPager($('#c-wrap'), s, () => draw(), '#c-wrap');
       if ($('#gen-due')) $('#gen-due').onclick = () => { const n = generateRecurring(); toast(`${n} brouillon(s) créé(s) — à émettre depuis Factures`); draw(); };
       $$('[data-gen]').forEach(b => b.onclick = () => { const r = data.recurring.find(x => x.id === b.dataset.gen); generateRecurring([r], true); toast('Brouillon créé pour ' + C.monthLabel(r.lastIssued)); draw(); });
       $$('[data-edit]').forEach(b => b.onclick = () => recurrenceForm(data.recurring.find(x => x.id === b.dataset.edit), draw));
@@ -1436,6 +1643,7 @@
       });
   }
 
+  const relState = { sort: null, page: 1 };   // tri et page de la liste des factures à relancer
   routes.relances = () => {
     const cur = company().currency;
     const draw = () => {
@@ -1459,11 +1667,22 @@
           <button class="btn btn-sm" data-pay="${x.doc.id}">Paiement reçu</button>
           <button class="btn btn-sm btn-ghost" data-snooze="${x.doc.id}" title="Ne pas relancer avant une date">⏱</button>
         </td></tr>`;
-      const head = `<thead><tr><th>Facture</th><th>Client</th><th>Échéance</th><th class="r">Retard</th><th class="r">Reste à payer</th><th>Dernière relance</th><th></th></tr></thead>`;
+      const relCols = [
+        { key: 'number', label: 'Facture', asc: true, val: x => x.doc.number || '' },
+        { key: 'client', label: 'Client', asc: true, val: x => clientName(x.doc.clientId).toLowerCase() },
+        { key: 'due', label: 'Échéance', asc: true, val: x => x.doc.dueDate || '' },
+        { key: 'late', label: 'Retard', r: true, val: x => x.daysLate },
+        { key: 'rest', label: 'Reste à payer', r: true, val: x => C.toBase(x.doc, x.remaining, company()) },
+        { key: 'last', label: 'Dernière relance', val: x => (x.lastReminder || {}).date || '' }
+      ];
+      const head = `<thead>${sortHead(relCols, relState.sort, '<th class="row-actions-h"></th>')}</thead>`;
+      const headFixed = `<thead>${sortHead(relCols.map(c => ({ ...c, val: null })), null, '<th class="row-actions-h"></th>')}</thead>`;
+      const odSorted = applySort(od, relCols, relState.sort);
+      const odPage = paginate(odSorted, relState);
       $('#r-wrap').innerHTML = `
         ${od.length ? `<div class="banner">${od.length} facture(s) à relancer — ${C.money(total, cur)} à récupérer</div>` : `<div class="banner info">Aucune facture à relancer${later.length ? ` (${later.length} reportée(s))` : ''}.</div>`}
-        ${od.length ? `<table class="list">${head}<tbody>${od.map(row).join('')}</tbody></table>` : ''}
-        ${later.length ? `<div class="section-head"><h2>Reportées ${info('rel.snooze')}</h2></div><table class="list">${head}<tbody>${later.map(row).join('')}</tbody></table>` : ''}
+        ${od.length ? `<table class="list sortable">${head}<tbody>${odPage.rows.map(row).join('')}</tbody></table>${pagerBar(odPage.pg, { noun: 'facture' })}` : ''}
+        ${later.length ? `<div class="section-head"><h2>Reportées ${info('rel.snooze')}</h2></div><table class="list">${headFixed}<tbody>${later.map(row).join('')}</tbody></table>` : ''}
         ${soon.length ? `<div class="section-head"><h2>Échéances dans les 7 jours ${info('rel.soon')}</h2></div><table class="list compact"><thead><tr><th>Facture</th><th>Client</th><th>Échéance</th><th class="r">Reste</th></tr></thead><tbody>
           ${soon.map(d => `<tr class="clickable" data-id="${d.id}"><td><strong>${h(d.number)}</strong></td><td>${h(clientName(d.clientId))}</td><td>${C.fmtDate(d.dueDate)}</td><td class="r">${C.money(balance(d).remaining, docCur(d))}</td></tr>`).join('')}
         </tbody></table>` : ''}
@@ -1473,6 +1692,8 @@
         </tbody></table>` : ''}
         <p class="small muted mt">Niveaux : rappel amical jusqu'à 15 jours, relance jusqu'à 45 jours, dernière relance au-delà. Textes modifiables dans Paramètres → Emails.</p>`;
       const find = id => all.find(x => x.doc.id === id);
+      bindSort($('#r-wrap'), key => { relState.sort = toggleSort(relState.sort, key, relCols); relState.page = 1; draw(); });
+      bindPager($('#r-wrap'), relState, () => draw(), '#r-wrap');
       $$('[data-rem]').forEach(b => b.onclick = () => sendReminder(find(b.dataset.rem)));
       $$('[data-tel]').forEach(b => b.onclick = () => phoneReminderForm(find(b.dataset.tel), draw));
       $$('[data-snooze]').forEach(b => b.onclick = () => snoozeForm(find(b.dataset.snooze), draw));
@@ -1499,8 +1720,16 @@
   function todoPanel() {
     const items = C.todoList(data, company());
     if (!items.length) return `<div class="todo-ok">Rien à faire aujourd'hui : aucun retard, aucun contrat en attente, aucune attestation à réclamer.</div>`;
-    return `<div class="panel todo"><h2>À faire ${info('todo')}</h2>
-      <ul>${items.map(x => `<li class="lvl-${x.level}">
+    // Panneau repliable : une fois la liste connue, elle prend la place du tableau de bord.
+    // L'état est gardé d'une session à l'autre, et le résumé replié dit ce qui reste.
+    const open = prefs.get('todoOpen', true) !== false;
+    const urgent = items.filter(x => x.level === 'danger').length;
+    const summary = `${items.length} chose${items.length > 1 ? 's' : ''} à faire${urgent ? ` · ${urgent} urgente${urgent > 1 ? 's' : ''}` : ''}`;
+    return `<div class="panel todo${open ? '' : ' collapsed'}">
+      <h2><button type="button" class="collapse-h" id="todo-toggle" aria-expanded="${open}" aria-controls="todo-list" title="${open ? 'Replier' : 'Déplier'} la liste">
+        <span class="chev">▾</span>À faire<span class="count">${items.length}</span></button> ${info('todo')}</h2>
+      <p class="todo-sum small muted" ${open ? 'hidden' : ''}>${h(summary)}</p>
+      <ul id="todo-list" ${open ? '' : 'hidden'}>${items.map(x => `<li class="lvl-${x.level}">
         <span class="td-dot"></span>
         <span class="td-txt"><strong>${h(x.label)}</strong><span class="small muted">${h(x.detail || '')}</span></span>
         <button class="btn btn-sm" data-todo="${x.id}">${h((TODO_ACTIONS[x.id] || {}).label || 'Voir')}</button>
@@ -1508,6 +1737,16 @@
   }
   function bindTodo() {
     $$('[data-todo]').forEach(b => b.onclick = () => { const a = TODO_ACTIONS[b.dataset.todo]; if (a) a.run(); });
+    const t = $('#todo-toggle');
+    if (t) t.onclick = () => {
+      const open = !(prefs.get('todoOpen', true) !== false);
+      prefs.set('todoOpen', open);
+      t.setAttribute('aria-expanded', String(open));
+      t.title = (open ? 'Replier' : 'Déplier') + ' la liste';
+      t.closest('.panel').classList.toggle('collapsed', !open);
+      $('#todo-list').hidden = !open;
+      $('.todo-sum').hidden = open;
+    };
   }
   function updateNavCounts() {
     if (!data) return;
@@ -1583,7 +1822,11 @@
     { key: 'statusLabel', label: 'Statut' }, { key: 'paid', label: 'Payé', type: 'money' }, { key: 'remaining', label: 'Reste', type: 'money' }
   ];
   const MONTHS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
-  const comptaState = { year: C.today().slice(0, 4), month: C.today().slice(5, 7) };
+  const comptaState = {
+    year: C.today().slice(0, 4), month: C.today().slice(5, 7),
+    journal: { sort: null, page: 1 },      // journal des ventes
+    pays: { sort: null, page: 1 }          // encaissements
+  };
 
   routes.compta = () => {
     const cur = company().currency;
@@ -1611,6 +1854,27 @@
       const openAmount = open.reduce((s, d) => s + balance(d).remaining, 0);
       const rsPending = data.documents.filter(d => d.type === 'facture' && d.status !== 'brouillon' && d.status !== 'annulée' && C.computeTotals(d, company()).withholding > 0 && !d.withholdingCertificate);
       const rsPendingAmount = rsPending.reduce((s, d) => s + C.computeTotals(d, company()).withholding, 0);
+      const journalCols = [
+        { key: 'date', label: 'Date', asc: true, val: r => r.date || '', get: r => C.fmtDate(r.date) },
+        { key: 'number', label: 'Numéro', asc: true, val: r => r.number || '', get: r => `<strong>${h(r.number)}</strong>${r.type === 'avoir' ? `<div class="small muted">avoir · ${h(r.creditOfNumber)}</div>` : ''}` },
+        { key: 'client', label: 'Client', asc: true, val: r => (r.client || '').toLowerCase(), get: r => `${h(r.client)}<div class="small muted">${h(r.subject)}</div>` },
+        { key: 'ht', label: 'HT', r: true, val: r => r.ht, get: r => C.money(r.ht) },
+        { key: 'tva', label: 'TVA', r: true, val: r => r.tva, get: r => C.money(r.tva) },
+        { key: 'ttc', label: 'TTC', r: true, val: r => r.ttc, get: r => C.money(r.ttc) },
+        { key: 'rs', label: 'RS', r: true, val: r => r.rs, get: r => r.rs ? C.money(r.rs) : '—' },
+        { key: 'net', label: 'Net', r: true, val: r => r.net, get: r => C.money(r.net) },
+        { key: 'status', label: 'Statut', asc: true, val: r => r.status || '', get: r => badge(r.status) }
+      ];
+      const payCols = [
+        { key: 'date', label: 'Date', asc: true, val: r => r.date || '', get: r => C.fmtDate(r.date) },
+        { key: 'number', label: 'Facture', asc: true, val: r => r.number || '', get: r => `<strong>${h(r.number)}</strong>` },
+        { key: 'client', label: 'Client', asc: true, val: r => (r.client || '').toLowerCase(), get: r => h(r.client) },
+        { key: 'method', label: 'Mode', asc: true, val: r => r.method || '', get: r => h(r.method) },
+        { key: 'reference', label: 'Référence', asc: true, val: r => (r.reference || '').toLowerCase(), get: r => h(r.reference) },
+        { key: 'amount', label: 'Montant', r: true, val: r => r.amount, get: r => C.money(r.amount, cur) }
+      ];
+      const jPage = paginate(applySort(rows, journalCols, comptaState.journal.sort), comptaState.journal);
+      const pPage = paginate(applySort(pays, payCols, comptaState.pays.sort), comptaState.pays);
       $('#c-body').innerHTML = `
         <div class="stats">
           <div class="stat"><div class="lbl">CA HT — ${h(periodLabel())} ${info('dash.caMonth')}</div><div class="val">${C.money(sum.ht, cur)}</div><div class="sub">${sum.count} document(s), avoirs déduits</div></div>
@@ -1627,15 +1891,15 @@
         </div>
         <div class="panel"><h2>Journal des ventes — ${h(periodLabel())} ${info('compta.journal')}</h2>
           <div class="inline mb"><button class="btn" id="exp-journal">Exporter en CSV (Excel)</button><button class="btn" id="exp-pdfs">Exporter tous les PDF de la période</button><button class="btn btn-primary" id="exp-comptable">Envoyer au comptable…</button>${info('compta.comptable')}</div>
-          ${rows.length ? `<div class="scroll-x"><table class="list compact"><thead><tr><th>Date</th><th>Numéro</th><th>Client</th><th class="r">HT</th><th class="r">TVA</th><th class="r">TTC</th><th class="r">RS</th><th class="r">Net</th><th>Statut</th></tr></thead><tbody>
-            ${rows.map(r => `<tr class="clickable" data-id="${r.id}"><td>${C.fmtDate(r.date)}</td><td><strong>${h(r.number)}</strong>${r.type === 'avoir' ? `<div class="small muted">avoir · ${h(r.creditOfNumber)}</div>` : ''}</td><td>${h(r.client)}<div class="small muted">${h(r.subject)}</div></td><td class="r">${C.money(r.ht)}</td><td class="r">${C.money(r.tva)}</td><td class="r">${C.money(r.ttc)}</td><td class="r">${r.rs ? C.money(r.rs) : '—'}</td><td class="r">${C.money(r.net)}</td><td>${badge(r.status)}</td></tr>`).join('')}
-          </tbody></table></div>` : '<div class="empty">Aucune facture émise sur cette période.</div>'}
+          ${rows.length ? `<div class="scroll-x" id="j-wrap"><table class="list compact sortable"><thead>${sortHead(journalCols, comptaState.journal.sort)}</thead><tbody>
+            ${jPage.rows.map(r => `<tr class="clickable" data-id="${r.id}">${journalCols.map(c => `<td class="${c.r ? 'r nw' : ''}">${c.get(r)}</td>`).join('')}</tr>`).join('')}
+          </tbody></table></div>${pagerBar(jPage.pg, { noun: 'document' })}` : '<div class="empty">Aucune facture émise sur cette période.</div>'}
         </div>
         <div class="panel"><h2>Encaissements — ${h(periodLabel())}</h2>
           <div class="inline mb"><button class="btn" id="exp-pays">Exporter en CSV (Excel)</button></div>
-          ${pays.length ? `<table class="list compact"><thead><tr><th>Date</th><th>Facture</th><th>Client</th><th>Mode</th><th>Référence</th><th class="r">Montant</th></tr></thead><tbody>
-            ${pays.map(r => `<tr class="clickable" data-id="${r.docId}"><td>${C.fmtDate(r.date)}</td><td><strong>${h(r.number)}</strong></td><td>${h(r.client)}</td><td>${h(r.method)}</td><td>${h(r.reference)}</td><td class="r">${C.money(r.amount, cur)}</td></tr>`).join('')}
-          </tbody></table>` : '<div class="empty">Aucun encaissement sur cette période.</div>'}
+          ${pays.length ? `<div id="p-wrap"><table class="list compact sortable"><thead>${sortHead(payCols, comptaState.pays.sort)}</thead><tbody>
+            ${pPage.rows.map(r => `<tr class="clickable" data-id="${r.docId}">${payCols.map(c => `<td class="${c.r ? 'r nw' : ''}">${c.get(r)}</td>`).join('')}</tr>`).join('')}
+          </tbody></table></div>${pagerBar(pPage.pg, { noun: 'paiement' })}` : '<div class="empty">Aucun encaissement sur cette période.</div>'}
         </div>
         <div class="panel"><h2>Retenues à la source — attestations à recevoir ${info('compta.rs')}</h2>
           ${rsPending.length ? `<p class="small muted">${C.money(rsPendingAmount, cur)} retenus par tes clients sans attestation reçue. Coche quand l'attestation arrive (elle justifie la retenue auprès du fisc).</p>
@@ -1644,6 +1908,17 @@
           </tbody></table>` : '<p class="small muted">Aucune attestation en attente.</p>'}
         </div>`;
       $$('tr.clickable[data-id]').forEach(tr => tr.onclick = () => navigate('#/doc/' + tr.dataset.id));
+      // Chaque tableau a son propre tri et sa propre pagination : on limite la liaison à son panneau.
+      const jPanel = $('#j-wrap') && $('#j-wrap').closest('.panel');
+      const pPanel = $('#p-wrap') && $('#p-wrap').closest('.panel');
+      if (jPanel) {
+        bindSort(jPanel, key => { comptaState.journal.sort = toggleSort(comptaState.journal.sort, key, journalCols); comptaState.journal.page = 1; draw(); });
+        bindPager(jPanel, comptaState.journal, () => draw(), '#j-wrap');
+      }
+      if (pPanel) {
+        bindSort(pPanel, key => { comptaState.pays.sort = toggleSort(comptaState.pays.sort, key, payCols); comptaState.pays.page = 1; draw(); });
+        bindPager(pPanel, comptaState.pays, () => draw(), '#p-wrap');
+      }
       $$('[data-cert]').forEach(b => b.onclick = () => { const d = docById(b.dataset.cert); d.withholdingCertificate = true; save(true); draw(); toast('Attestation notée pour ' + d.number); });
       const tag = comptaState.month ? `${comptaState.year}-${comptaState.month}` : comptaState.year;
       // Envoi au comptable : journal de la période en pièce jointe, message prérempli
@@ -1689,8 +1964,9 @@
         catch (e) { toast('Erreur : ' + e.message, true); }
       };
     };
-    $('#c-year').onchange = e => { comptaState.year = e.target.value; draw(); };
-    $('#c-month').onchange = e => { comptaState.month = e.target.value; draw(); };
+    const resetPages = () => { comptaState.journal.page = 1; comptaState.pays.page = 1; };
+    $('#c-year').onchange = e => { comptaState.year = e.target.value; resetPages(); draw(); };
+    $('#c-month').onchange = e => { comptaState.month = e.target.value; resetPages(); draw(); };
     draw();
   };
 

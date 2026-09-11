@@ -1115,8 +1115,33 @@
     return n;
   }
 
+  // ---------- pagination et tri des listes ----------
+  // Découpage d'une liste en pages. `size` à 0 (ou moins) = tout afficher.
+  // Renvoie des bornes déjà corrigées : une page hors limites est ramenée dans l'intervalle,
+  // ce qui évite l'écran vide quand un filtre réduit la liste alors qu'on est en page 5.
+  function pageInfo(total, page, size) {
+    total = Math.max(0, Math.floor(Number(total) || 0));
+    size = Math.floor(Number(size) || 0);
+    if (size <= 0) return { page: 1, pages: 1, size: 0, start: 0, end: total, from: total ? 1 : 0, to: total, total };
+    const pages = Math.max(1, Math.ceil(total / size));
+    const p = Math.min(Math.max(1, Math.floor(Number(page) || 1)), pages);
+    const start = (p - 1) * size;
+    const end = Math.min(total, start + size);
+    return { page: p, pages, size, start, end, from: total ? start + 1 : 0, to: end, total };
+  }
+
+  // Comparaison générique pour le tri d'une colonne : nombres en numérique, textes en français
+  // (« Élan » avant « Zone »), les valeurs vides toujours en fin de tri croissant.
+  function compareValues(x, y) {
+    const xEmpty = x == null || x === '', yEmpty = y == null || y === '';
+    if (xEmpty || yEmpty) return xEmpty && yEmpty ? 0 : (xEmpty ? 1 : -1);
+    if (typeof x === 'number' && typeof y === 'number') return x - y;
+    return String(x).localeCompare(String(y), 'fr', { numeric: true, sensitivity: 'base' });
+  }
+
   return {
     VAT_RATES, WITHHOLDING_RATES, PAYMENT_METHODS, PREFIX, TITLES, DEFAULT_DATA, DEFAULT_COMPANY, ACTIVITIES, STATUSES, DISPLAY_STATUSES, STATUS_LABELS,
+    pageInfo, compareValues,
     uid, round3, money, fmtDate, addDays, today, escapeHtml, nl2br, statusLabel,
     nextNumber, isLocked, isIssued, computeTotals, creditsFor, invoiceBalance, effectiveStatus,
     depositLines, settlementLines, salesJournal, vatSummary, paymentsJournal, toCsv, migrateData,

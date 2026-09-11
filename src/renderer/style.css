@@ -104,8 +104,11 @@ input[type=color] { height: 40px; padding: 4px; }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
 
 /* ---------- tables ---------- */
-table.list { width: 100%; border-collapse: separate; border-spacing: 0; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); }
+/* overflow: clip (et non hidden) : les coins restent arrondis, mais la table ne devient pas
+   une zone de défilement, ce qui laisse l'en-tête collant fonctionner sur les longues listes. */
+table.list { width: 100%; border-collapse: separate; border-spacing: 0; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); overflow: clip; box-shadow: var(--shadow); }
 table.list th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); padding: 12px 16px; background: #fafbfc; border-bottom: 1px solid var(--border); font-weight: 700; }
+table.list thead th { position: sticky; top: 0; z-index: 2; }
 table.list td { padding: 13px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; }
 table.list tr:last-child td { border-bottom: none; }
 table.list tr.clickable { cursor: pointer; }
@@ -229,6 +232,18 @@ table.lines-edit select { padding-right: 4px; min-width: 70px; }
 .td-txt .small { line-height: 1.4; }
 .lvl-danger .td-txt strong { color: var(--danger); }
 .todo-ok { background: var(--success-soft); color: var(--success); border-radius: var(--radius); padding: 14px 18px; margin-bottom: 20px; font-weight: 600; font-size: 13px; }
+/* En-tête repliable : le titre devient un bouton, le chevron tourne, le compteur reste visible replié. */
+.collapse-h {
+  background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit;
+  cursor: pointer; display: inline-flex; align-items: center; gap: 8px;
+}
+.collapse-h:hover { color: var(--primary); }
+.collapse-h:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; border-radius: 4px; }
+.collapse-h .chev { font-size: 11px; color: var(--muted); transition: transform .15s; }
+.panel.collapsed .collapse-h .chev { transform: rotate(-90deg); }
+.collapse-h .count { background: var(--ink-soft); color: var(--muted); font-size: 11px; font-weight: 700; border-radius: 999px; padding: 1px 8px; }
+.panel.todo .todo-sum { margin: 0; }
+body.dark .collapse-h .count { background: #1f2731; }
 
 /* ---------- historique d'un document ---------- */
 .timeline { list-style: none; margin: 0; padding: 0 0 0 6px; }
@@ -341,7 +356,11 @@ body.dark .kpi, body.dark .pay-grid > div, body.dark .notes-md { background: var
 /* ---------- listes : tri, totaux, actions au survol ---------- */
 th.sortable-h { cursor: pointer; user-select: none; }
 th.sortable-h:hover { color: var(--text); background: var(--ink-soft); }
+th.sortable-h:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
 .sort-ar { margin-left: 4px; color: var(--primary); }
+/* Sans repère au repos, personne ne devine qu'un en-tête se clique : « ⇅ » discret, flèche pleine une fois trié. */
+th.sortable-h:not(.sorted) .sort-ar { color: var(--muted); opacity: .45; }
+th.sortable-h:hover .sort-ar { opacity: 1; }
 table.list tfoot td { padding: 11px 16px; background: #fafbfc; border-top: 1px solid var(--border); font-size: 12px; color: var(--muted); font-weight: 600; }
 table.list tfoot td.r { color: var(--text); font-variant-numeric: tabular-nums; }
 td.row-actions { white-space: nowrap; text-align: right; width: 1%; }
@@ -351,6 +370,21 @@ th.row-actions-h { width: 1%; }
 .badge.expiré { background: var(--warning-soft); color: var(--warning); }
 body.dark table.list tfoot td { background: #171d25; }
 body.dark th.sortable-h:hover { background: #1f2731; }
+
+/* ---------- pagination ---------- */
+.pager {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  margin: 12px 2px 0; font-size: 12px; color: var(--muted);
+}
+.pg-info { font-weight: 600; }
+.pg-nav { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.pg-page { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pg-size { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.pg-size select { width: auto; padding: 5px 8px; font-size: 12px; background: var(--panel); }
+.pager .btn[disabled] { opacity: .4; cursor: default; }
+/* Repère « filtres actifs » : une liste filtrée ne doit jamais passer pour une liste vide. */
+.f-note { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; }
+.filters .f-note { margin-left: auto; }
 
 /* ---------- fiche client ---------- */
 .kv { display: flex; flex-direction: column; gap: 9px; font-size: 13px; }
@@ -465,6 +499,12 @@ kbd { font: inherit; font-size: 12px; font-family: -apple-system, system-ui, san
   .editor { grid-template-columns: 1fr 350px; }
   .dash-grid { grid-template-columns: 1fr; }
   .help-grid { grid-template-columns: 220px 1fr; }
+  /* Les listes à huit colonnes débordaient de quelques dizaines de pixels et forçaient un
+     défilement horizontal de toute la page. Des cellules plus serrées suffisent à les faire tenir. */
+  table.list th, table.list td, table.list tfoot td { padding-left: 10px; padding-right: 10px; }
+  table.list.compact th, table.list.compact td { padding-left: 8px; padding-right: 8px; }
+  table.list th { letter-spacing: .2px; }
+  td.row-actions > span { gap: 3px; }
 }
 @media (max-width: 1120px) {
   .editor { grid-template-columns: 1fr; }
