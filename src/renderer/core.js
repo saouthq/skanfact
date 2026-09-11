@@ -1051,8 +1051,13 @@
     const probe = d.createElement('div');
     probe.style.cssText = 'position:absolute;visibility:hidden;top:0;left:0;width:1px;height:296mm';
     page.appendChild(probe);
-    const overflow = page.offsetHeight > probe.offsetHeight + 1;
+    let overflow = page.offsetHeight > probe.offsetHeight + 1;
     probe.remove();
+    // Le pied de page est positionné en absolu : le contenu peut le chevaucher sans allonger la page.
+    if (!overflow) {
+      const foot = d.querySelector('.footer'), last = d.querySelector('.sign') || d.querySelector('.after');
+      if (foot && last) overflow = last.getBoundingClientRect().bottom > foot.getBoundingClientRect().top;
+    }
     if (overflow) page.classList.add('compact');
     return overflow;
   }
