@@ -126,6 +126,8 @@
     expenseCategories: [],   // catégories ajoutées par l'utilisateur, en plus de DEFAULT_EXPENSE_CATEGORIES
     fiscalDeadlines: [],     // échéances fiscales activées/modifiées par l'utilisateur (v4)
     vatCarryIn: {},          // crédit de TVA venu de l'année précédente, par année : { '2026': 1234 }
+    accounts: [],            // comptes de trésorerie : banque, caisse… (v4)
+    movements: [],           // mouvements libres : salaires, impôts, apports — ce qui n'a ni facture ni achat
     deleted: [],             // pièces supprimées, pour qu'elles ne reviennent pas d'un autre poste (v4)
     conflictArchive: [],     // versions écartées lors d'une fusion : rien n'est détruit sans trace
     counters: {}
@@ -423,6 +425,8 @@
     if (!Array.isArray(data.fiscalDeadlines)) data.fiscalDeadlines = [];   // échéances fiscales personnalisées
     if (!data.vatCarryIn || typeof data.vatCarryIn !== 'object') data.vatCarryIn = {};  // crédit de TVA reporté par année
     // Partage à deux (3.2.0) : suppressions mémorisées et versions écartées lors d'une fusion.
+    if (!Array.isArray(data.accounts)) data.accounts = [];
+    if (!Array.isArray(data.movements)) data.movements = [];
     if (!Array.isArray(data.deleted)) data.deleted = [];
     if (!Array.isArray(data.conflictArchive)) data.conflictArchive = [];
     data.purchases.forEach(p => {
@@ -739,6 +743,166 @@
       .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
   }
 
+  // ---------- trésorerie (3.3.0) ----------
+  // « Tu vois ce qu'on te doit, tu ne vois pas ce que tu as. » Ce bloc répond à la seule question qui
+  // tue les entreprises rentables : est-ce que j'aurai de quoi payer le mois prochain ?
+  //
+  // Principe : aucune saisie en double. Les mouvements sont DÉDUITS des paiements clients et des
+  // règlements fournisseurs déjà enregistrés. On n'ajoute que ce qui n'existe nulle part ailleurs :
+  // les comptes, le solde de départ, et les mouvements libres (salaires, impôts, apports, retraits).
+
+  const ACCOUNT_KINDS = [['banque', 'Compte bancaire'], ['caisse', 'Caisse espèces'], ['autre', 'Autre']];
+  // Nature d'un mouvement saisi à la main — ce qui ne vient ni d'une facture ni d'un achat.
+  const MOVE_KINDS = [
+    ['salaire', 'Salaires et charges', -1], ['impot', 'Impôts et taxes', -1], ['banque', 'Frais bancaires', -1],
+    ['retrait', 'Retrait ou dividende', -1], ['emprunt', 'Échéance d\'emprunt', -1], ['autre-sortie', 'Autre sortie', -1],
+    ['apport', 'Apport ou subvention', 1], ['pret', 'Déblocage de prêt', 1], ['autre-entree', 'Autre entrée', 1]
+  ];
+  const moveSign = kind => { const m = MOVE_KINDS.find(x => x[0] === kind); return m ? m[2] : -1; };
+
+  // Tous les mouvements réels d'une période, quelle que soit leur origine. Un mouvement porte
+  // toujours un compte : sans compte affecté, il est rattaché au compte par défaut.
+  function cashMovements(data, company, period, accountId) {
+    const out = [];
+    const defaultAccount = (data.accounts || []).find(a => a.isDefault) || (data.accounts || [])[0];
+    const fallback = defaultAccount ? defaultAccount.id : '';
+    const keep = id => !accountId || (id || fallback) === accountId;
+    const clientName = id => ((data.clients || []).find(c => c.id === id) || {}).name || '—';
+    const supplierName = id => ((data.suppliers || []).find(s => s.id === id) || {}).name || '—';
+
+    (data.documents || []).filter(d => d.type === 'facture').forEach(d => (d.payments || []).forEach(p => {
+      if (!inPeriod(p.date, period && period.from, period && period.to) || !keep(p.accountId)) return;
+      out.push({
+        id: p.id, kind: 'encaissement', date: p.date, accountId: p.accountId || fallback,
+        label: `Encaissement ${d.number || ''}`.trim(), party: clientName(d.clientId),
+        amount: round3(toBase(d, Number(p.amount) || 0, company)), method: p.method || '',
+        reference: p.reference || '', docId: d.id, reconciled: !!p.reconciled, source: 'vente'
+      });
+    }));
+    (data.purchases || []).forEach(pu => (pu.payments || []).forEach(p => {
+      if (!inPeriod(p.date, period && period.from, period && period.to) || !keep(p.accountId)) return;
+      out.push({
+        id: p.id, kind: 'decaissement', date: p.date, accountId: p.accountId || fallback,
+        label: `Règlement ${pu.number || 'sans numéro'}`, party: supplierName(pu.supplierId),
+        amount: -round3(Number(p.amount) || 0), method: p.method || '',
+        reference: p.reference || '', purchaseId: pu.id, reconciled: !!p.reconciled, source: 'achat'
+      });
+    }));
+    (data.movements || []).forEach(m => {
+      if (!inPeriod(m.date, period && period.from, period && period.to) || !keep(m.accountId)) return;
+      const label = (MOVE_KINDS.find(k => k[0] === m.kind) || [null, 'Mouvement'])[1];
+      out.push({
+        id: m.id, kind: moveSign(m.kind) > 0 ? 'entree' : 'sortie', date: m.date, accountId: m.accountId || fallback,
+        label: m.label || label, party: label, amount: round3(moveSign(m.kind) * Math.abs(Number(m.amount) || 0)),
+        method: m.method || '', reference: m.reference || '', movementId: m.id, reconciled: !!m.reconciled, source: 'libre'
+      });
+    });
+    return out.sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.label || '').localeCompare(b.label || ''));
+  }
+
+  // Solde d'un compte à une date : son solde de départ plus tous les mouvements jusque-là.
+  function accountBalance(data, company, accountId, toIso) {
+    const acc = (data.accounts || []).find(a => a.id === accountId);
+    if (!acc) return { opening: 0, movements: 0, balance: 0, count: 0 };
+    const moves = cashMovements(data, company, { from: acc.openingDate || '', to: toIso || '9999-12-31' }, accountId);
+    const sum = round3(moves.reduce((s, m) => s + m.amount, 0));
+    const opening = round3(Number(acc.opening) || 0);
+    return { opening, movements: sum, balance: round3(opening + sum), count: moves.length };
+  }
+
+  // Tableau de bord de tous les comptes, avec la part non pointée sur le relevé.
+  function cashPosition(data, company, todayIso) {
+    const t = todayIso || today();
+    const accounts = (data.accounts || []).map(a => {
+      const b = accountBalance(data, company, a.id, t);
+      const all = cashMovements(data, company, { from: a.openingDate || '', to: t }, a.id);
+      const pending = round3(all.filter(m => !m.reconciled).reduce((s, m) => s + m.amount, 0));
+      return { ...a, ...b, pending, reconciled: round3(b.balance - pending) };
+    });
+    return { accounts, total: round3(accounts.reduce((s, a) => s + a.balance, 0)) };
+  }
+
+  // Prévision : le solde d'aujourd'hui, puis ce qui doit rentrer et sortir, jour après jour.
+  // On ne prévoit que ce qui a une échéance connue — pas de projection statistique, pas de devinette.
+  function cashForecast(data, company, days, todayIso) {
+    const t = todayIso || today();
+    const horizon = addDays(t, Math.max(1, Number(days) || 90));
+    const start = cashPosition(data, company, t).total;
+    const events = [];
+
+    // Ce qui doit rentrer : le reste à payer de chaque facture ouverte, à son échéance.
+    (data.documents || []).filter(d => d.type === 'facture' && d.status !== 'brouillon' && d.status !== 'annulée').forEach(d => {
+      const rest = invoiceBalance(d, data, company).remaining;
+      if (rest <= 0.0005) return;
+      // Une facture déjà échue est attendue « tout de suite » : la repousser serait se mentir.
+      const due = d.dueDate && d.dueDate > t ? d.dueDate : t;
+      if (due > horizon) return;
+      events.push({ date: due, amount: round3(toBase(d, rest, company)), kind: 'client', late: !!(d.dueDate && d.dueDate < t),
+        label: `${d.number || 'Facture'} — ${((data.clients || []).find(c => c.id === d.clientId) || {}).name || ''}`.trim(), id: d.id });
+    });
+    // Ce qui doit sortir : le reste dû de chaque achat.
+    (data.purchases || []).forEach(p => {
+      const rest = purchaseBalance(p, company).remaining;
+      if (rest <= 0.0005) return;
+      const due = p.dueDate && p.dueDate > t ? p.dueDate : t;
+      if (due > horizon) return;
+      events.push({ date: due, amount: -rest, kind: 'fournisseur', late: !!(p.dueDate && p.dueDate < t),
+        label: `${p.number || 'Achat'} — ${((data.suppliers || []).find(s => s.id === p.supplierId) || {}).name || ''}`.trim(), id: p.id });
+    });
+    // Ce qui revient tout seul : les contrats récurrents déjà programmés.
+    (data.recurring || []).filter(r => r.active !== false).forEach(r => {
+      let d = r.nextDate;
+      for (let i = 0; i < 24 && d && d <= horizon; i++) {
+        if (d >= t) {
+          const inv = buildRecurringInvoice(r, d, company);
+          const due = addDays(d, Number(company.paymentTermsDays) || 30);
+          if (due <= horizon) events.push({ date: due, amount: round3(computeTotals(inv, company).netToPay), kind: 'contrat',
+            label: fillTemplate(r.subject, { mois: monthLabel(d), annee: d.slice(0, 4) }), id: r.id });
+        }
+        d = nextRecurrenceDate(d, r.every, r.day);
+      }
+    });
+    // Les échéances fiscales : on connaît la date, pas le montant. On les signale sans les chiffrer.
+    const fiscal = upcomingFiscal(data, t, Math.max(1, Number(days) || 90));
+
+    events.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    // Courbe jour par jour, uniquement aux dates où il se passe quelque chose (plus lisible qu'un point par jour).
+    const points = [{ date: t, balance: start, label: 'aujourd\'hui', delta: 0 }];
+    let running = start, lowest = { date: t, balance: start };
+    events.forEach(e => {
+      running = round3(running + e.amount);
+      points.push({ date: e.date, balance: running, label: e.label, delta: e.amount, kind: e.kind });
+      if (running < lowest.balance) lowest = { date: e.date, balance: running, label: e.label };
+    });
+    const inflow = round3(events.filter(e => e.amount > 0).reduce((s, e) => s + e.amount, 0));
+    const outflow = round3(events.filter(e => e.amount < 0).reduce((s, e) => s + e.amount, 0));
+    return {
+      today: t, horizon, start, events, points, inflow, outflow, end: running, lowest, fiscal,
+      // Le seul chiffre qui compte vraiment : à quelle date, si rien ne change, on passe en négatif.
+      shortfall: lowest.balance < 0 ? lowest : null,
+      late: { clients: events.filter(e => e.late && e.amount > 0), suppliers: events.filter(e => e.late && e.amount < 0) }
+    };
+  }
+
+  // Rapprochement : ce que dit ton relevé face à ce que dit SkanFact.
+  function reconciliation(data, company, accountId, toIso) {
+    const acc = (data.accounts || []).find(a => a.id === accountId);
+    if (!acc) return null;
+    const b = accountBalance(data, company, accountId, toIso);
+    const moves = cashMovements(data, company, { from: acc.openingDate || '', to: toIso || '9999-12-31' }, accountId);
+    const pending = moves.filter(m => !m.reconciled);
+    const statement = Number(acc.statementBalance);
+    const known = Number.isFinite(statement) && acc.statementBalance !== '' && acc.statementBalance != null;
+    // Solde pointé = départ + mouvements pointés. C'est lui qui doit tomber sur le relevé.
+    const pointed = round3(b.opening + moves.filter(m => m.reconciled).reduce((s, m) => s + m.amount, 0));
+    return {
+      account: acc, opening: b.opening, balance: b.balance, pointed,
+      pendingCount: pending.length, pendingAmount: round3(pending.reduce((s, m) => s + m.amount, 0)),
+      statement: known ? round3(statement) : null,
+      gap: known ? round3(pointed - statement) : null, moves
+    };
+  }
+
   // ---------- travailler à deux sur les mêmes données (3.2.0) ----------
   // Deux postes partagent un dossier (iCloud, OneDrive, clé USB, disque réseau). Chacun écrit le
   // fichier à son tour. Le danger n'est pas la panne : c'est le silence. Sans garde-fou, le dernier
@@ -749,10 +913,11 @@
   // l'autre version pour qu'elle reste consultable. Rien n'est détruit sans trace.
 
   // Les listes du fichier qui se fusionnent pièce par pièce, grâce à leur identifiant.
-  const MERGE_LISTS = ['clients', 'catalog', 'documents', 'recurring', 'templates', 'snippets', 'suppliers', 'purchases'];
+  const MERGE_LISTS = ['clients', 'catalog', 'documents', 'recurring', 'templates', 'snippets', 'suppliers', 'purchases', 'accounts', 'movements'];
   const LIST_LABELS = {
     clients: 'client', catalog: 'prestation', documents: 'document', recurring: 'contrat récurrent',
-    templates: 'modèle', snippets: 'texte', suppliers: 'fournisseur', purchases: 'achat'
+    templates: 'modèle', snippets: 'texte', suppliers: 'fournisseur', purchases: 'achat',
+    accounts: 'compte', movements: 'mouvement'
   };
 
   function sameJson(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
@@ -1329,6 +1494,17 @@
       detail: 'Un message avant l\'échéance évite souvent la relance après.',
       count: soon.length, route: '#/relances', docs: soon
     });
+
+    // Un trou de trésorerie prévu passe avant tout le reste : une entreprise rentable peut en mourir.
+    if ((data.accounts || []).length) {
+      const f = cashForecast(data, company, 60, t);
+      if (f.shortfall) out.unshift({
+        id: 'tresorerie', level: 'danger',
+        label: `Trou de trésorerie prévu le ${fmtDate(f.shortfall.date)}`,
+        detail: `Ton solde descendrait à ${fmt(f.shortfall.balance)} après « ${f.shortfall.label} ». Relance tes impayés ou décale un règlement.`,
+        count: 1, amount: f.shortfall.balance, route: '#/tresorerie', docs: []
+      });
+    }
 
     // Échéances fiscales des deux prochaines semaines. C'est un pense-bête réglé par l'utilisateur :
     // les dates et la périodicité relèvent du « À VÉRIFIER avec ton comptable ».
@@ -2040,6 +2216,7 @@
     EXTRA_TYPES, SALES_TYPES, CONVERSIONS, CONVERSION_LABELS, convertDoc, derivedDocs, DEFAULT_CLAUSES, CLAUSE_LABELS,
     PURCHASE_KINDS, LINE_DESTINATIONS, DEFAULT_EXPENSE_CATEGORIES, PURCHASE_STATUSES, expenseCategories,
     vatReturn, vatChain, DEFAULT_FISCAL_DEADLINES, fiscalDeadlines, nextDeadline, upcomingFiscal, simpleResult,
+    ACCOUNT_KINDS, MOVE_KINDS, cashMovements, accountBalance, cashPosition, cashForecast, reconciliation,
     mergeData, trackDeletion, MERGE_LISTS, LIST_LABELS,
     purchaseTotals, purchaseBalance, purchaseStatus, payablesList, purchaseJournal, purchaseSummary, supplierSummary, withholdingsToIssue, supplierPayments,
     periodBounds, issuedIn, salesTotals, revenueByMonth, topItems, clientMovement, AGING_BUCKETS, agedReceivables, payerRanking, quoteFunnel, objectiveProgress,

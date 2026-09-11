@@ -1531,4 +1531,156 @@ t('stockage : le garde-fou ne bloque jamais un poste seul', () => {
   assert.strictEqual(s2.write({ ...s2.read(), clients: [] }).ok, true);
 });
 
+// ---------- trésorerie (3.3.0) ----------
+
+const tAcc = (id, o) => ({ id, name: id, kind: 'banque', opening: 0, openingDate: '2026-01-01', isDefault: false, statementBalance: '', ...o });
+const tInv = (id, date, ht, pays) => ({ id, type: 'facture', number: 'FAC-' + id, status: 'envoyée', date,
+  dueDate: core.addDays(date, 30), clientId: 'c1', createdAt: 1,
+  lines: [{ label: 'x', qty: 1, unitPrice: ht, vatRate: 19 }], payments: pays || [] });
+const tBuy = (id, date, ht, pays) => ({ id, kind: 'facture', supplierId: 's1', number: 'F-' + id, date,
+  dueDate: core.addDays(date, 30), createdAt: 1, lines: [{ label: 'y', qty: 1, unitPrice: ht, vatRate: 19 }], payments: pays || [] });
+
+t('trésorerie : les mouvements sont déduits, jamais ressaisis', () => {
+  const data = core.migrateData({
+    clients: [{ id: 'c1', name: 'Alpha' }], suppliers: [{ id: 's1', name: 'Beta' }],
+    accounts: [tAcc('b1', { name: 'BIAT', opening: 5000, isDefault: true }), tAcc('cx', { name: 'Caisse', kind: 'caisse', opening: 200 })],
+    documents: [tInv('1', '2026-03-01', 1000, [{ id: 'p1', date: '2026-03-15', amount: 1191, method: 'virement' }])],
+    purchases: [tBuy('a', '2026-03-05', 500, [{ id: 'p2', date: '2026-03-20', amount: 595, method: 'cheque' }])],
+    movements: [{ id: 'm1', date: '2026-03-25', kind: 'salaire', amount: 900, accountId: 'b1' },
+                { id: 'm2', date: '2026-03-28', kind: 'apport', amount: 2000, accountId: 'b1' },
+                { id: 'm3', date: '2026-03-10', kind: 'autre-sortie', amount: 40, accountId: 'cx', label: 'Timbres' }]
+  });
+  const all = core.cashMovements(data, CO, { from: '2026-01-01', to: '2026-12-31' });
+  assert.strictEqual(all.length, 5);
+  assert.deepStrictEqual(all.map(m => m.date), ['2026-03-10', '2026-03-15', '2026-03-20', '2026-03-25', '2026-03-28']);
+  // signes : ce qui rentre est positif, ce qui sort est négatif — le signe vient du type, jamais de la saisie
+  assert.strictEqual(all.find(m => m.kind === 'encaissement').amount, 1191);
+  assert.strictEqual(all.find(m => m.kind === 'decaissement').amount, -595);
+  assert.strictEqual(all.find(m => m.movementId === 'm1').amount, -900);
+  assert.strictEqual(all.find(m => m.movementId === 'm2').amount, 2000);
+  // solde par compte : départ + mouvements du compte
+  const b = core.accountBalance(data, CO, 'b1', '2026-12-31');
+  assert.strictEqual(b.opening, 5000);
+  assert.strictEqual(b.balance, core.round3(5000 + 1191 - 595 - 900 + 2000));
+  assert.strictEqual(core.accountBalance(data, CO, 'cx', '2026-12-31').balance, 160);
+  // un solde à une date passée ignore ce qui vient après
+  assert.strictEqual(core.accountBalance(data, CO, 'b1', '2026-03-16').balance, 6191);
+  // total tous comptes
+  const pos = core.cashPosition(data, CO, '2026-12-31');
+  assert.strictEqual(pos.accounts.length, 2);
+  assert.strictEqual(pos.total, core.round3(6696 + 160));
+  // compte inconnu : pas de plantage
+  assert.strictEqual(core.accountBalance(data, CO, 'nexistepas', '2026-12-31').balance, 0);
+});
+
+t('trésorerie : un paiement sans compte tombe sur le compte par défaut', () => {
+  const data = core.migrateData({
+    clients: [{ id: 'c1', name: 'Alpha' }],
+    accounts: [tAcc('b1', { opening: 100, isDefault: true }), tAcc('b2', { opening: 0 })],
+    documents: [tInv('1', '2026-03-01', 1000, [{ id: 'p1', date: '2026-03-15', amount: 500 }])]
+  });
+  assert.strictEqual(core.accountBalance(data, CO, 'b1', '2026-12-31').balance, 600);
+  assert.strictEqual(core.accountBalance(data, CO, 'b2', '2026-12-31').balance, 0);
+  assert.strictEqual(core.cashMovements(data, CO, {}, 'b1').length, 1);
+  assert.strictEqual(core.cashMovements(data, CO, {}, 'b2').length, 0);
+});
+
+t('trésorerie : la prévision dit à quelle date on passe en négatif', () => {
+  const data = core.migrateData({
+    clients: [{ id: 'c1', name: 'Alpha' }], suppliers: [{ id: 's1', name: 'Beta' }],
+    accounts: [tAcc('b1', { opening: 1000, isDefault: true })],
+    // une grosse sortie proche, une rentrée lointaine : le classique trou de trésorerie
+    purchases: [tBuy('a', '2026-09-01', 5000)],                   // échéance 01/10
+    documents: [tInv('1', '2026-09-20', 8000)]                    // échéance 20/10
+  });
+  const f = core.cashForecast(data, CO, 90, '2026-09-11');
+  assert.strictEqual(f.start, 1000);
+  assert.strictEqual(f.events.length, 2);
+  assert.deepStrictEqual(f.events.map(e => e.kind), ['fournisseur', 'client']);
+  // on passe en négatif le 1er octobre, et on remonte le 20
+  assert.ok(f.shortfall, 'aucun creux détecté');
+  assert.strictEqual(f.shortfall.date, '2026-10-01');
+  assert.strictEqual(f.shortfall.balance, core.round3(1000 - 5950));
+  assert.strictEqual(f.end, core.round3(1000 - 5950 + 9521));
+  assert.ok(f.end > 0);                                           // à la fin tout va bien : c'est le piège
+  // l'ordre chronologique est garanti, et le premier point est aujourd'hui
+  assert.strictEqual(f.points[0].date, '2026-09-11');
+  assert.deepStrictEqual(f.points.map(p => p.date), ['2026-09-11', '2026-10-01', '2026-10-20']);
+  // sans trou, rien n'est signalé
+  const riche = core.cashForecast(core.migrateData({ ...data, accounts: [tAcc('b1', { opening: 50000, isDefault: true })] }), CO, 90, '2026-09-11');
+  assert.strictEqual(riche.shortfall, null);
+});
+
+t('trésorerie : une échéance déjà passée est attendue tout de suite, pas à sa date', () => {
+  const data = core.migrateData({
+    clients: [{ id: 'c1', name: 'Alpha' }], suppliers: [{ id: 's1', name: 'Beta' }],
+    accounts: [tAcc('b1', { opening: 0, isDefault: true })],
+    documents: [tInv('1', '2026-01-05', 1000)],                   // échue depuis longtemps
+    purchases: [tBuy('a', '2026-02-01', 200)]                     // échue aussi
+  });
+  const f = core.cashForecast(data, CO, 90, '2026-09-11');
+  // les deux sont ramenées à aujourd'hui : se dire qu'elles rentreront « à leur date » serait se mentir
+  assert.ok(f.events.every(e => e.date === '2026-09-11'));
+  assert.strictEqual(f.late.clients.length, 1);
+  assert.strictEqual(f.late.suppliers.length, 1);
+  // une facture soldée ne figure pas dans la prévision
+  const solde = core.migrateData({ ...data, documents: [tInv('1', '2026-01-05', 1000, [{ id: 'p', date: '2026-02-01', amount: 99999 }])] });
+  assert.strictEqual(core.cashForecast(solde, CO, 90, '2026-09-11').events.filter(e => e.kind === 'client').length, 0);
+  // rien au-delà de l'horizon
+  const loin = core.migrateData({ ...data, documents: [tInv('1', '2027-06-01', 1000)] });
+  assert.strictEqual(core.cashForecast(loin, CO, 30, '2026-09-11').events.filter(e => e.kind === 'client').length, 0);
+});
+
+t('trésorerie : rapprochement bancaire, écart avec le relevé', () => {
+  const data = core.migrateData({
+    clients: [{ id: 'c1', name: 'Alpha' }],
+    accounts: [tAcc('b1', { opening: 1000, isDefault: true, statementBalance: 1500 })],
+    documents: [tInv('1', '2026-03-01', 1000, [
+      { id: 'p1', date: '2026-03-10', amount: 500, reconciled: true },   // pointé sur le relevé
+      { id: 'p2', date: '2026-03-20', amount: 300 }                      // pas encore pointé
+    ])]
+  });
+  const r = core.reconciliation(data, CO, 'b1', '2026-12-31');
+  assert.strictEqual(r.balance, 1800);          // ce que dit SkanFact
+  assert.strictEqual(r.pointed, 1500);          // ce qui devrait tomber sur le relevé
+  assert.strictEqual(r.statement, 1500);
+  assert.strictEqual(r.gap, 0);                 // ça tombe juste
+  assert.strictEqual(r.pendingCount, 1);
+  assert.strictEqual(r.pendingAmount, 300);
+  // relevé faux : l'écart se voit
+  data.accounts[0].statementBalance = 1450;
+  assert.strictEqual(core.reconciliation(data, CO, 'b1', '2026-12-31').gap, 50);
+  // relevé non saisi : pas d'écart inventé
+  data.accounts[0].statementBalance = '';
+  assert.strictEqual(core.reconciliation(data, CO, 'b1', '2026-12-31').gap, null);
+  assert.strictEqual(core.reconciliation(data, CO, 'inconnu', '2026-12-31'), null);
+});
+
+t('démo : trésorerie cohérente quelle que soit la date', () => {
+  ['2026-01-15', '2026-09-11', '2026-12-28', '2027-02-28'].forEach(day => {
+    const d = buildDemoData({}, day);
+    assert.strictEqual(d.accounts.length, 2, day);
+    assert.ok(d.accounts.some(a => a.isDefault), 'aucun compte par défaut');
+    assert.ok(d.movements.length >= 20, day);
+    // aucun mouvement daté dans le futur : on ne montre jamais de l'argent qui n'est pas encore sorti
+    d.movements.forEach(m => assert.ok(m.date <= day, `mouvement futur ${m.date} > ${day}`));
+    // chaque mouvement pointe sur un compte qui existe
+    d.movements.forEach(m => assert.ok(d.accounts.some(a => a.id === m.accountId), 'compte orphelin'));
+    // le solde est positif et se recompose : départ + mouvements
+    const pos = core.cashPosition(d, d.company, day);
+    assert.ok(pos.total > 0, `solde négatif le ${day} : ${pos.total}`);
+    const recompose = core.round3(pos.accounts.reduce((s, a) => s + a.opening + a.movements, 0));
+    assert.strictEqual(pos.total, recompose);
+    // la prévision produit des échéances, et sa courbe part du solde du jour
+    const f = core.cashForecast(d, d.company, 90, day);
+    assert.ok(f.events.length > 0, `aucune échéance prévue le ${day}`);
+    assert.strictEqual(f.points[0].balance, pos.total);
+    assert.strictEqual(f.points.length, f.events.length + 1);
+    // le rapprochement a de quoi travailler : des mouvements pointés et d'autres non
+    const reco = core.reconciliation(d, d.company, d.accounts[0].id, day);
+    assert.ok(reco.pendingCount > 0, 'rien à pointer');
+    assert.ok(reco.moves.some(m => m.reconciled), 'rien de déjà pointé');
+  });
+});
+
 console.log(`\n${n} tests OK`);

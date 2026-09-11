@@ -238,6 +238,7 @@ function buildMenu() {
         { label: 'Autres documents', click: act('go:autres') },
         { label: 'Achats et dépenses', accelerator: 'CmdOrCtrl+7', click: act('go:achats') },
         { label: 'Fournisseurs', click: act('go:fournisseurs') },
+        { label: 'Trésorerie', accelerator: 'CmdOrCtrl+8', click: act('go:tresorerie') },
         { label: 'Statistiques', click: act('go:stats') },
         { label: 'Comptabilité', accelerator: 'CmdOrCtrl+6', click: act('go:compta') },
         { type: 'separator' },

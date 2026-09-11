@@ -7,6 +7,43 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 3.3.0 — 11/09/2026
+
+Tu voyais ce qu'on te doit. Tu vois maintenant ce que tu as.
+
+Nouvelle page **Trésorerie** (barre latérale, groupe Gestion), en quatre onglets
+
+**Où j'en suis**
+- **Comptes** : banque, caisse espèces, autant que nécessaire. Tu saisis leur solde de départ, une fois
+- **Aucune ressaisie** : les paiements clients et les règlements fournisseurs déjà enregistrés remontent tout seuls
+- Disponible aujourd'hui, à encaisser et à décaisser sous 30 jours, solde projeté
+
+**Ce qui arrive** — la prévision à 30, 60, 90 ou 180 jours
+- Courbe du solde, échéance par échéance, avec le zéro tracé en rouge
+- Seul ce qui est **déjà engagé** est projeté : factures ouvertes, achats à régler, contrats récurrents. Aucune estimation, aucune moyenne
+- Une facture **déjà échue** est ramenée à aujourd'hui, pas laissée à sa date passée
+- Les échéances fiscales sont listées mais pas chiffrées : SkanFact connaît la date, pas le montant
+
+**Le trou de trésorerie**
+- Si la courbe passe sous zéro, la date est affichée en rouge et l'alerte remonte **en tête du panneau « À faire »** de l'accueil
+- Il arrive souvent que le solde soit positif au début, positif à la fin, et négatif au milieu. En ne regardant que le total, tu ne le vois pas
+- Un trou anticipé se négocie ; un trou constaté se subit
+
+**Mouvements**
+- Tout ce qui est entré et sorti cette année, toutes origines confondues, avec entrées, sorties et variation
+- **Mouvements libres** pour ce qui n'a ni facture ni achat : salaires, impôts, frais bancaires, échéance d'emprunt, apport, retrait. Tu tapes toujours un montant positif, la nature donne le sens
+- Export CSV
+
+**Rapprochement**
+- Coche ce que tu retrouves sur ton relevé, recopie son solde final, SkanFact te dit l'écart
+- Ce qui reste décoché est soit en cours de traitement, soit oublié, soit une erreur de saisie
+- Sans rapprochement, ta trésorerie n'est qu'une opinion
+
+Détails
+- Le compteur de la barre latérale ne s'allume **que** pour un trou prévu : une alerte permanente n'alerte plus personne
+- Aucune connexion bancaire, aucun identifiant demandé. SkanFact n'a rien à faire avec tes accès bancaires
+- Aide : nouvel article « **La trésorerie** », et une bulle « i » sur chaque notion
+
 ## 3.2.0 — 11/09/2026
 
 Travailler à deux, et gérer deux entreprises sur le même ordinateur.

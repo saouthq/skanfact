@@ -288,6 +288,30 @@
     ];
     d.expenseCategories = [];
 
+    // ---------- trésorerie (3.3.0) ----------
+    // Un compte bancaire et une caisse, avec un solde de départ il y a un an et quelques
+    // mouvements qui n'ont ni facture ni achat : salaires, impôts, frais bancaires.
+    const accBank = { id: C.uid(), name: 'BIAT — compte courant', kind: 'banque', bank: 'BIAT', rib: '08 006 0000123456789 12',
+      opening: 12000, openingDate: mo(13, 1), isDefault: true, statementBalance: '', notes: '' };
+    const accCash = { id: C.uid(), name: 'Caisse espèces', kind: 'caisse', bank: '', rib: '',
+      opening: 400, openingDate: mo(13, 1), isDefault: false, statementBalance: '', notes: 'Petites dépenses du bureau.' };
+    d.accounts = [accBank, accCash];
+    const mv = (kind, monthsAgo, day, amount, label, acc) => ({
+      id: C.uid(), date: mo(monthsAgo, day), kind, amount, label,
+      accountId: (acc || accBank).id, method: kind === 'salaire' ? 'virement' : 'autre', reference: ''
+    });
+    d.movements = [];
+    // Salaire et loyer tous les mois sur douze mois : c'est ce qui fait respirer la trésorerie.
+    for (let i = 12; i >= 1; i--) {
+      d.movements.push(mv('salaire', i, 28, 1850, 'Salaire et charges — ' + C.monthLabel(mo(i, 28))));
+      d.movements.push(mv('banque', i, 5, 18, 'Frais de tenue de compte'));
+    }
+    d.movements.push(mv('impot', 4, 25, 2400, 'Acompte provisionnel'));
+    d.movements.push(mv('apport', 13, 3, 5000, 'Apport en compte courant'));
+    d.movements.push(mv('autre-sortie', 2, 14, 120, 'Fournitures diverses', accCash));
+    // Quelques encaissements déjà pointés sur le relevé, pour que le rapprochement ait du sens
+    d.documents.forEach((doc, i) => (doc.payments || []).forEach(p => { if (i % 3 === 0) p.reconciled = true; }));
+
     // ---------- modèles et textes prédéfinis ----------
     d.templates = [
       { id: C.uid(), name: 'Audit standard', type: 'devis', subject: 'Audit de sécurité et plan d\'action', lines: [line(k[0], 1), line(k[5], 2), line(k[7], 1)], discountRate: 0, notes: 'Rapport remis sous 10 jours ouvrés après l\'intervention.' },

@@ -355,6 +355,11 @@ table.mini input, table.mini select { padding: 6px 8px; font-size: 13px; }
 .list .bar i.f-neutral { background: #9aa7b4; }
 tr.row-warn td { background: var(--warning-soft); }
 .chart .bar-prev { fill: #9aa7b4; opacity: .55; }
+/* ---------- courbe de trésorerie : c'est le passage sous zéro qui doit sauter aux yeux ---------- */
+.chart.forecast { height: 210px; }
+.fc-area { fill: var(--primary); opacity: .10; }
+.fc-line { stroke: var(--primary); stroke-width: 2; stroke-linejoin: round; }
+.fc-zero { stroke: var(--danger); stroke-width: 1; stroke-dasharray: 4 3; opacity: .7; }
 .chart .bar-off { opacity: .28; }   /* mois hors de la période choisie : présents pour le contexte, en retrait */
 /* Deux panneaux de poids égal, contrairement à .dash-grid (2fr 1fr) qui met un graphique en vedette.
    minmax(0, 1fr) : sans lui, un tableau large impose sa largeur et casse le partage en deux. */

@@ -106,6 +106,22 @@
     'autres.commande': { t: 'Bon de commande', d: 'La pièce qui enregistre ce que le client a commandé, avant que tu livres ou que tu factures. Elle protège les deux parties : elle fixe par écrit ce qui a été demandé, en quelle quantité et à quel prix. Fais-la signer quand le montant est important.' },
     'autres.livraison': { t: 'Bon de livraison', d: 'La pièce qui accompagne la marchandise et se fait signer à la réception. C\'est ta preuve d\'avoir livré : sans elle, un client de mauvaise foi peut contester. Par défaut les prix y sont masqués. À partir de la version 4.0, c\'est ce bon qui sortira les articles du stock.' },
     'autres.contrat': { t: 'Contrat de prestation', d: 'Le vrai document que ton client signe : objet, durée, reconduction, préavis, conditions de paiement, confidentialité, litiges. À ne pas confondre avec les <b>contrats récurrents</b> de la barre latérale, qui ne font que fabriquer des brouillons de facture chaque mois. Les deux vont ensemble : on signe le contrat, puis on crée le contrat récurrent qui le facture.' },
+    'tre.accounts': { t: 'Comptes de trésorerie', d: 'Ton compte bancaire, ta caisse espèces, et autant d\'autres que nécessaire. Chacun a son solde de départ et son solde courant. C\'est la seule chose que tu saisis : tout le reste — encaissements clients, règlements fournisseurs — remonte automatiquement de ce que tu as déjà enregistré.' },
+    'tre.kind': { t: 'Type de compte', d: '<b>Compte bancaire</b> pour un compte courant, <b>Caisse</b> pour l\'argent liquide que tu gardes au bureau. La distinction sert à la lecture : une caisse ne se rapproche pas d\'un relevé.' },
+    'tre.opening': { t: 'Solde de départ', d: 'Le solde du compte le jour où tu commences à le suivre dans SkanFact — recopie-le de ton relevé. Tout ce que tu saisis après s\'y ajoute. Si tu te trompes, tout le reste sera décalé du même montant : c\'est le seul chiffre à vérifier deux fois.' },
+    'tre.openingDate': { t: 'Date du solde de départ', d: 'Le jour auquel correspond ce solde. Les mouvements antérieurs à cette date ne sont pas comptés : ils sont déjà dedans.' },
+    'tre.default': { t: 'Compte par défaut', d: 'Le compte sur lequel tombent les paiements pour lesquels tu n\'as rien précisé. Il en faut toujours un : si tu décoches celui-ci, un autre le devient.' },
+    'tre.total': { t: 'Disponible aujourd\'hui', d: 'La somme des soldes de tous tes comptes, calculée à partir de leur solde de départ et de tous les mouvements enregistrés depuis. C\'est ce que tu as <b>vraiment</b>, pas ce qu\'on te doit.' },
+    'tre.projected': { t: 'Solde projeté', d: 'Ce qu\'il restera dans 30 jours si toutes les échéances connues tombent à leur date : les factures clients ouvertes rentrent, les achats à régler sortent. Aucune estimation, aucune moyenne — uniquement ce qui est déjà engagé.' },
+    'tre.shortfall': { t: 'Trou de trésorerie', d: 'La date à laquelle ton solde passerait sous zéro si rien ne bouge. C\'est <b>l\'alerte la plus importante de l\'application</b> : une entreprise rentable peut mourir d\'un trou de trésorerie. Un trou anticipé se négocie avec la banque ou avec un fournisseur ; un trou constaté se subit.' },
+    'tre.forecast': { t: 'Horizon de prévision', d: '30 jours pour le pilotage au quotidien, 90 jours pour voir venir. Au-delà, il y a trop d\'inconnu pour que le chiffre veuille dire quelque chose.' },
+    'tre.curve': { t: 'Courbe du solde', d: 'Chaque point est une échéance : facture qui rentre, achat qui sort, facture de contrat récurrent. La ligne pointillée rouge est le zéro. Si la courbe passe dessous, la date du creux est signalée en haut de la page.' },
+    'tre.events': { t: 'Le détail des échéances', d: 'Toutes les échéances de la période, dans l\'ordre, avec le solde après chacune. Clique une ligne pour ouvrir la pièce. Les factures et achats <b>déjà échus</b> sont ramenés à aujourd\'hui : se dire qu\'ils rentreront « à leur date » quand cette date est passée, c\'est se mentir.' },
+    'tre.moves': { t: 'Mouvements', d: 'Tout ce qui est entré et sorti de tes comptes cette année, quelle que soit l\'origine. Les encaissements viennent des factures, les règlements des achats : ils se modifient là-bas. Seuls les <b>mouvements libres</b> (salaires, impôts, apports, frais bancaires) se saisissent et se modifient ici.' },
+    'tre.moveKind': { t: 'Nature du mouvement', d: 'Elle donne le sens : les natures marquées ↓ sortent de ton compte, celles marquées ↑ y entrent. Tu saisis toujours un montant positif, SkanFact applique le signe — impossible de se tromper.' },
+    'tre.reco': { t: 'Rapprochement bancaire', d: 'Comparer ce que dit ta banque avec ce que dit SkanFact. Tu coches les mouvements que tu retrouves sur ton relevé ; ce qui reste décoché est soit en cours de traitement, soit oublié, soit une erreur de saisie. À faire une fois par mois, c\'est ce qui garantit que tes chiffres sont vrais.' },
+    'tre.gap': { t: 'Écart avec le relevé', d: 'Le solde pointé (départ + mouvements cochés) doit tomber exactement sur le solde de ton relevé. S\'il y a un écart, c\'est qu\'une opération manque d\'un côté ou de l\'autre : un prélèvement non saisi, un chèque compté deux fois, un montant mal recopié.' },
+    'tre.pending': { t: 'Pas encore pointés', d: 'Les mouvements que SkanFact connaît et que tu n\'as pas encore retrouvés sur ton relevé. Un chèque mis à l\'encaissement met quelques jours : c\'est normal qu\'il reste ici. Un mouvement qui traîne depuis des semaines, en revanche, mérite un coup d\'œil.' },
     'data.dossiers': { t: 'Dossiers', d: 'Un dossier = une entreprise. Chacun a ses clients, ses documents, ses achats, sa numérotation et ses sauvegardes, et ils ne se mélangent jamais. Utile quand une même personne gère deux sociétés : tu passes de l\'une à l\'autre en un clic, l\'application se recharge sur le bon dossier. Retirer un dossier de la liste ne supprime pas ses fichiers.' },
     'data.shared': { t: 'Dossier partagé', d: 'Un dossier placé dans iCloud Drive, OneDrive, un disque réseau ou une clé USB, que deux ordinateurs ouvrent tour à tour. SkanFact <b>ne laisse jamais l\'un écraser le travail de l\'autre</b> : si vous avez modifié tous les deux, il fusionne pièce par pièce et te dit ce qui a changé. Le seul cas qu\'il ne peut pas trancher est deux factures émises en même temps sous le même numéro : il t\'alerte, à vous de corriger. Lis l\'article « Travailler à deux » avant de vous lancer.' },
     'data.device': { t: 'Nom de ce poste', d: 'Il sert uniquement à te dire qui a enregistré en dernier sur un dossier partagé (« les modifications du PC du bureau ont été reprises »). Il ne quitte jamais tes données et n\'identifie personne.' },
@@ -382,6 +398,35 @@
 <h3>Les pièces jointes</h3>
 <p>Sur n'importe quel document — devis, facture, bon, contrat — un panneau <b>Pièces jointes</b> permet d'attacher des fichiers : le devis signé scanné, le bon de commande du client, un contrat rendu signé, la photo d'un chantier.</p>
 <p>Les fichiers sont <b>copiés</b> à côté de tes données : si tu déplaces ou supprimes l'original, la pièce reste attachée au document. Attention à un point : elles ne sont <b>pas</b> dans les sauvegardes quotidiennes, qui ne contiennent qu'un fichier texte. Elles sont en revanche dans la <b>copie externe</b> (Paramètres → Sécurité et données). Si tu joins des documents importants, configure cette copie.</p>`
+    },
+    {
+      id: 'tresorerie', title: 'La trésorerie', sub: 'La seule question qui compte vraiment',
+      body: `
+<p>Une entreprise peut être <b>rentable et mourir quand même</b>. C'est même la cause de faillite la plus fréquente des petites entreprises en bonne santé : les clients paient à soixante jours, les fournisseurs et les salaires n'attendent pas trente. L'argent existe, il n'est simplement pas là au bon moment.</p>
+<p>La page Trésorerie répond à cette question-là, et à aucune autre : <b>est-ce que j'aurai de quoi payer le mois prochain ?</b></p>
+<h3>Ce que tu saisis, et ce qui se fait tout seul</h3>
+<p>Tu saisis <b>une seule chose</b> : tes comptes, avec leur solde de départ. Recopie-le de ton relevé au jour où tu commences. C'est le seul chiffre à vérifier deux fois — s'il est faux, tout le reste sera décalé du même montant.</p>
+<p>Le reste remonte automatiquement. Chaque paiement client que tu enregistres sur une facture, chaque règlement fournisseur sur un achat : ce sont déjà des mouvements de trésorerie, tu ne les ressaisis jamais.</p>
+<p>Restent les <b>mouvements libres</b>, ceux qui n'ont ni facture ni achat : salaires, impôts, frais bancaires, échéance d'emprunt, apport, retrait. Ceux-là se saisissent dans l'onglet Mouvements. Tu tapes toujours un montant positif ; la nature choisie donne le sens.</p>
+<h3>« Ce qui arrive » : la prévision</h3>
+<p>SkanFact prend ton solde d'aujourd'hui et y applique, date par date, tout ce qui est <b>déjà engagé</b> : les factures clients ouvertes à leur échéance, les achats à régler à la leur, les factures que tes contrats récurrents vont produire.</p>
+<p>Aucune estimation, aucune moyenne, aucune projection statistique. Ce que tu vois est ce qui est certain — si tout le monde paie à la date prévue.</p>
+<p>Deux détails qui changent tout :</p>
+<ul>
+  <li>Une facture <b>déjà échue</b> est ramenée à aujourd'hui, pas laissée à sa date passée. Se dire qu'elle rentrera « le 15 du mois dernier » n'a aucun sens.</li>
+  <li>Les <b>échéances fiscales</b> sont listées mais pas chiffrées : SkanFact connaît la date, pas le montant. Pense à les provisionner toi-même.</li>
+</ul>
+<h3>Le trou de trésorerie</h3>
+<p>Si la courbe passe sous zéro, la date est affichée en rouge en haut de la page, et l'alerte remonte dans « À faire » sur l'accueil. <b>C'est l'information la plus importante de toute l'application.</b></p>
+<p>Regarde bien : il arrive souvent que le solde soit positif au début, positif à la fin, et négatif au milieu. C'est exactement le piège — en ne regardant que le total, tu ne le vois pas.</p>
+<p>Un trou <b>anticipé</b> se règle : tu relances tes impayés, tu décales un règlement fournisseur en le prévenant, tu demandes une facilité à ta banque. Un trou <b>constaté</b> se subit : chèque rejeté, frais, et une conversation désagréable avec ton banquier. Toute la valeur de cette page est dans ces trois semaines d'avance.</p>
+<h3>Le rapprochement bancaire</h3>
+<p>Une fois par mois, prends ton relevé et coche dans SkanFact tout ce que tu y retrouves. Recopie ensuite le solde final du relevé : SkanFact te dit s'il y a un écart.</p>
+<p>Un écart veut toujours dire qu'une opération manque d'un côté ou de l'autre — un prélèvement que tu n'as pas saisi, un chèque compté deux fois, un montant mal recopié. C'est fastidieux, et c'est <b>la seule chose qui garantit que tes chiffres sont vrais</b>. Sans rapprochement, ta trésorerie n'est qu'une opinion.</p>
+<p>Ce qui reste décoché n'est pas forcément une erreur : un chèque mis à l'encaissement met quelques jours à apparaître. En revanche, un mouvement qui traîne depuis des semaines mérite un coup d'œil.</p>
+<h3>Ce que cette page ne fait pas</h3>
+<p>Elle ne se connecte pas à ta banque. Aucune synchronisation automatique, aucun identifiant bancaire demandé nulle part — et c'est volontaire : SkanFact n'a rien à faire avec tes accès bancaires.</p>
+<p>Elle ne devine pas non plus l'avenir. Un client qui ne paiera jamais apparaît comme une rentrée prévue. C'est à toi de savoir lesquels de tes impayés sont vraiment perdus.</p>`
     },
     {
       id: 'statistiques', title: 'Lire tes statistiques', sub: 'Ce que les chiffres disent, et ce qu\'ils ne disent pas',

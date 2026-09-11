@@ -132,7 +132,7 @@ sienne — et ils partagent les données de la seconde. La suite du bloc 3 est d
 - **Fusion pièce par pièce**, suppressions mémorisées, compteurs jamais redescendus, versions écartées archivées
 - **Alerte sur les numéros en double**, le seul cas qu'aucun logiciel ne peut trancher tout seul
 
-### 3.3.0 — Trésorerie · M
+### 3.3.0 — Trésorerie · M — ✅ **livré le 11/09/2026**
 
 Aujourd'hui tu vois ce qu'on te doit. Tu ne vois pas ce que tu as.
 
@@ -141,6 +141,11 @@ Aujourd'hui tu vois ce qu'on te doit. Tu ne vois pas ce que tu as.
 - **Rapprochement bancaire simple** : tu pointes les lignes qui apparaissent sur ton relevé, l'écart restant se voit
 - **Prévision à 30, 60 et 90 jours** : ce qui doit rentrer moins ce qui doit sortir, avec l'alerte quand ça passe en négatif
 - Import d'un relevé bancaire en CSV, si ta banque en fournit un
+
+*Écarts avec le plan :* l'import CSV d'un relevé est reporté — le format varie d'une banque à l'autre et il faudrait
+un assistant de correspondance de colonnes pour que ce soit utilisable. Le rapprochement se fait en cochant, ce qui
+couvre le besoin sans dépendre du format de la banque. Ajouté par rapport au plan : l'alerte de trou de trésorerie
+remonte en tête du panneau « À faire », et le compteur de la barre latérale ne s'allume que dans ce cas.
 
 ### 3.4.0 — Marges et rentabilité · M
 
