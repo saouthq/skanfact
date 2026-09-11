@@ -314,6 +314,10 @@
 
   .footer { position: absolute; left: 18mm; right: 18mm; bottom: 8mm; font-size: 7.6pt; color: #9aa3ae; display: flex; justify-content: space-between; gap: 6mm; border-top: .2mm solid #eceff3; padding-top: 2.5mm; }
   .footer .f-left { white-space: pre-line; }
+
+  /* documents longs : pas de ligne coupée entre deux pages, en-tête du tableau répété */
+  table.lines thead { display: table-header-group; }
+  table.lines tr, .after, .sign, .card, .parties { break-inside: avoid; page-break-inside: avoid; }
 </style></head>
 <body><div class="page">
   ${paid ? '<div class="stamp">Payée</div>' : ''}

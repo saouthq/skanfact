@@ -8,16 +8,19 @@
   // ---------- pont Electron (avec repli navigateur pour les tests) ----------
   const bridge = window.skanfact || {
     _mem: null,
-    loadData: async () => { try { return JSON.parse(localStorage.getItem('skanfact')); } catch { return null; } },
+    loadData: async () => { try { return { data: JSON.parse(localStorage.getItem('skanfact')), corruptFile: null }; } catch { return { data: null, corruptFile: null }; } },
     saveData: async (d) => { localStorage.setItem('skanfact', JSON.stringify(d)); return true; },
     dataPath: async () => 'localStorage (mode navigateur)',
     exportData: async () => null,
     importData: async () => null,
+    openBackups: async () => {}, createBackup: async () => null, listBackups: async () => [],
     pickLogo: async () => null,
     exportPdf: async (html) => { const w = window.open('', '_blank'); w.document.write(html); w.document.close(); w.print(); return null; },
     openPath: async () => {}, showInFolder: async () => {},
+    changelog: async () => '', onMenuAction: () => {},
     updateVersion: async () => ({ version: 'dev', packaged: false, platform: 'browser', macSigned: false }),
-    updateCheck: async () => ({ state: 'dev' }), updateDownload: async () => ({ state: 'dev' }), updateInstall: async () => true, updateSetToken: async () => ({ hasToken: false }),
+    updateCheck: async () => ({ state: 'dev' }), updateDownload: async () => ({ state: 'dev' }), updateInstall: async () => ({ state: 'dev' }), updateSetToken: async () => ({ hasToken: false }),
+    updateOpenReleases: async () => {},
     onUpdateEvent: () => {}
   };
 
@@ -167,7 +170,7 @@
       const list = data.documents.filter(d => d.type === type)
         .filter(d => !st || d.status === st)
         .filter(d => !q || [d.number, (clientById(d.clientId) || {}).name, d.subject].join(' ').toLowerCase().includes(q))
-        .sort((a, b) => (b.number || '').localeCompare(a.number || ''));
+        .sort((a, b) => (b.number || '').localeCompare(a.number || '', undefined, { numeric: true }));
       $('#list-wrap').innerHTML = docTable(list);
       bindDocTable();
     };
@@ -288,8 +291,9 @@
     let previewTimer = null;
     function schedulePreview() { clearTimeout(previewTimer); previewTimer = setTimeout(drawPreview, 250); }
     function drawPreview() {
-      const html = C.documentHtml({ ...doc, number: doc.number || (isQ ? 'DEV-…' : 'FAC-…') }, clientById(doc.clientId), data.company, { preview: true, zoom: Math.max(0.3, Math.floor(($('#preview').clientWidth - 2) / 794 * 100) / 100) });
-      $('#preview').srcdoc = html;
+      const pv = $('#preview'); if (!pv) return; // l'utilisateur a quitté l'éditeur avant la fin du délai
+      const html = C.documentHtml({ ...doc, number: doc.number || (isQ ? 'DEV-…' : 'FAC-…') }, clientById(doc.clientId), data.company, { preview: true, zoom: Math.max(0.3, Math.floor((pv.clientWidth - 2) / 794 * 100) / 100) });
+      pv.srcdoc = html;
     }
     function refreshTotals() {
       const t = C.computeTotals(doc, data.company);
@@ -477,9 +481,16 @@
         </div></div>
       </form>
       <div class="panel"><h2>Mises à jour</h2><div id="update-panel"></div></div>
-      <div class="panel"><h2>Données</h2>
-        <p class="small muted">Fichier de données : <code>${h(path)}</code><br>Une sauvegarde automatique quotidienne est conservée dans le dossier <code>backups</code> à côté (30 derniers jours).</p>
+      <div class="panel"><h2>Données et sauvegardes</h2>
+        <p class="small muted">Fichier de données : <code>${h(path)}</code></p>
         <p class="small">${data.documents.length} document(s), ${data.clients.length} client(s), ${data.catalog.length} prestation(s).</p>
+        <p class="small muted">Chaque jour, l'état du matin est copié dans le dossier <code>backups</code> (30 jours conservés) ; une copie est aussi prise avant tout import. Pour revenir en arrière : <em>Importer</em> et choisis un fichier de ce dossier.</p>
+        <div class="inline mt">
+          <button class="btn" id="backup-now">Sauvegarder maintenant</button>
+          <button class="btn" id="open-backups">Ouvrir le dossier des sauvegardes</button>
+          <button class="btn" id="export-data">Exporter les données…</button>
+          <button class="btn" id="import-data">Importer…</button>
+        </div>
         <div class="inline mt">
           <button class="btn" id="load-demo">Charger le jeu de données de démonstration</button>
           <button class="btn btn-danger" id="wipe-data">Tout effacer</button>
@@ -488,7 +499,11 @@
       </div>`;
     $('#save').onclick = () => { Object.assign(data.company, formValues($('#pf'))); save(true); toast('Paramètres enregistrés'); $('#brand-company').textContent = data.company.name; };
     drawUpdatePanel();
-    $('#pick-logo').onclick = async () => { const l = await bridge.pickLogo(); if (l) { data.company.logo = l; save(true); render(); } };
+    $('#backup-now').onclick = async () => { const p = await bridge.createBackup(); toast(p ? 'Sauvegarde créée : ' + p.split(/[\\/]/).pop() : 'Rien à sauvegarder pour l\'instant'); };
+    $('#open-backups').onclick = () => bridge.openBackups();
+    $('#export-data').onclick = exportAll;
+    $('#import-data').onclick = importAll;
+    $('#pick-logo').onclick = async () => { try { const l = await bridge.pickLogo(); if (l) { data.company.logo = l; save(true); render(); } } catch (e) { toast(e.message.replace(/^.*Error: /, ''), true); } };
     if ($('#rm-logo')) $('#rm-logo').onclick = () => { data.company.logo = ''; save(true); render(); };
     $('#load-demo').onclick = async () => {
       if (data.documents.length && !await confirmDialog('Remplacer toutes les données actuelles par la démonstration ?')) return;
@@ -501,45 +516,107 @@
   };
 
   // ---------- mises à jour ----------
-  const upd = { state: 'idle', version: '', percent: 0, message: '', app: null };
+  const upd = { state: 'idle', version: '', percent: 0, message: '', notes: '', app: null };
   bridge.onUpdateEvent(ev => {
     upd.state = ev.state;
     if (ev.version) upd.version = ev.version;
     if (ev.percent != null) upd.percent = ev.percent;
     if (ev.message) upd.message = ev.message;
+    if (ev.notes != null) upd.notes = ev.notes;
     drawUpdatePanel();
-    const pill = $('#update-pill');
-    if (pill) pill.hidden = !(ev.state === 'available' || ev.state === 'downloaded');
-    if (ev.state === 'available') toast('Mise à jour ' + ev.version + ' disponible — voir Paramètres');
+    drawUpdatePill();
+    if (ev.state === 'downloaded' && location.hash !== '#/parametres') toast('Version ' + ev.version + ' prête à installer — voir Paramètres');
   });
+
+  function drawUpdatePill() {
+    const pill = $('#update-pill'); if (!pill) return;
+    const show = upd.state === 'available' || upd.state === 'downloading' || upd.state === 'downloaded';
+    pill.hidden = !show;
+    if (show) pill.textContent = upd.state === 'downloaded' ? `Version ${upd.version} prête` : `Version ${upd.version} en cours de téléchargement…`;
+  }
+
+  // Notes de version (markdown simple : titres et puces) → HTML sûr
+  function notesHtml(md) {
+    const lines = String(md || '').split('\n').map(l => l.trim()).filter(Boolean);
+    if (!lines.length) return '';
+    let out = '', inList = false;
+    for (const l of lines) {
+      if (/^[-*] /.test(l)) { if (!inList) { out += '<ul>'; inList = true; } out += `<li>${h(l.slice(2))}</li>`; continue; }
+      if (inList) { out += '</ul>'; inList = false; }
+      if (/^#+ /.test(l)) out += `<h3>${h(l.replace(/^#+ /, ''))}</h3>`;
+      else out += `<p>${h(l)}</p>`;
+    }
+    if (inList) out += '</ul>';
+    return `<div class="notes-md">${out}</div>`;
+  }
 
   function drawUpdatePanel() {
     const el = $('#update-panel'); if (!el) return;
     const a = upd.app || {};
+    const isMacUnsigned = a.platform === 'darwin' && !a.macSigned;
     let body = '';
     const btnCheck = `<button class="btn" id="upd-check">Vérifier les mises à jour</button>`;
     if (!a.packaged) body = `<p class="muted small">Mode développement (npm start) : la vérification des mises à jour n'est active que dans l'application installée.</p>${btnCheck}`;
     else if (upd.state === 'checking') body = `<p class="muted">Vérification en cours…</p>`;
     else if (upd.state === 'none') body = `<p>Tu as la dernière version. <span class="muted">(${h(a.version)})</span></p>${btnCheck}`;
-    else if (upd.state === 'available') body = `<p><strong>Version ${h(upd.version)} disponible.</strong>${a.platform === 'darwin' && !a.macSigned ? ' Sur Mac, le téléchargement ouvre la page de la version : télécharge le .dmg et remplace l\'app dans Applications.' : ''}</p>
-      <div class="inline"><button class="btn btn-primary" id="upd-download">${a.platform === 'darwin' && !a.macSigned ? 'Ouvrir la page de téléchargement' : 'Télécharger la mise à jour'}</button>${btnCheck}</div>`;
-    else if (upd.state === 'downloading') body = `<p>Téléchargement… ${upd.percent}%</p><div class="progress"><div style="width:${upd.percent}%"></div></div>`;
-    else if (upd.state === 'downloaded') body = `<p><strong>Version ${h(upd.version)} prête.</strong> L'app va redémarrer pour l'installer (quelques secondes).</p><button class="btn btn-primary" id="upd-install">Redémarrer et installer</button>`;
-    else if (upd.state === 'unconfigured') body = `<p class="muted">Les mises à jour automatiques ne sont pas encore configurées : il faut un dépôt GitHub pour héberger les versions (voir README, section « Mises à jour automatiques »).</p>${btnCheck}`;
-    else if (upd.state === 'error') body = `<p class="small" style="color:var(--danger)">${h(upd.message)}</p>${btnCheck}`;
+    else if (upd.state === 'available') body = `<p><strong>Version ${h(upd.version)} disponible</strong> — téléchargement en cours…</p>${notesHtml(upd.notes)}`;
+    else if (upd.state === 'downloading') body = `<p>Téléchargement de la version ${h(upd.version)}… ${upd.percent}%</p><div class="progress"><div style="width:${upd.percent}%"></div></div>`;
+    else if (upd.state === 'downloaded') body = `<p><strong>Version ${h(upd.version)} prête à installer.</strong> ${isMacUnsigned ? 'SkanFact se ferme, remplace l\'application dans le dossier Applications et se relance (une dizaine de secondes).' : 'L\'app se ferme, s\'installe et redémarre (quelques secondes).'}</p>
+      ${notesHtml(upd.notes)}<button class="btn btn-primary" id="upd-install">Installer et redémarrer</button>`;
+    else if (upd.state === 'unconfigured') body = `<p class="muted">Les mises à jour automatiques ne sont pas configurées (package.json → build.publish).</p>${btnCheck}`;
+    else if (upd.state === 'error') body = `<p class="small" style="color:var(--danger)">${h(upd.message)}</p><div class="inline">${btnCheck}<button class="btn btn-ghost" id="upd-releases">Voir les versions sur GitHub</button></div>`;
     else body = btnCheck;
     const tokenBlock = `<div class="token-box">
       <div class="k-label">Accès au dépôt privé</div>
       <p class="small muted">Le dépôt GitHub de SkanFact est privé : un token de lecture est nécessaire pour vérifier les mises à jour. Il est enregistré uniquement sur cet ordinateur.</p>
       <div class="inline"><input type="text" id="upd-token" placeholder="${a.hasToken ? 'Token enregistré ✓ — coller un nouveau pour remplacer' : 'github_pat_… ou ghp_…'}" autocomplete="off" spellcheck="false"><button class="btn btn-sm" id="upd-token-save">Enregistrer</button>${a.hasToken ? '<button class="btn btn-sm btn-ghost" id="upd-token-clear">Retirer</button>' : ''}</div>
     </div>`;
-    el.innerHTML = `<div class="update-head"><div><div class="k-label">Version installée</div><div class="ver">${h(a.version || '…')}</div></div></div>${body}${tokenBlock}`;
-    $('#upd-token-save').onclick = async () => { const t = $('#upd-token').value.trim(); if (!t) return toast('Colle un token d\'abord', true); const r = await bridge.updateSetToken(t); upd.app.hasToken = r.hasToken; upd.state = 'idle'; drawUpdatePanel(); toast('Token enregistré'); };
-    if ($('#upd-token-clear')) $('#upd-token-clear').onclick = async () => { const r = await bridge.updateSetToken(''); upd.app.hasToken = r.hasToken; drawUpdatePanel(); };
-    if ($('#upd-check')) $('#upd-check').onclick = async () => { upd.state = 'checking'; drawUpdatePanel(); const r = await bridge.updateCheck(); if (r.state === 'error') { upd.state = 'error'; upd.message = r.message; drawUpdatePanel(); } else if (r.state === 'dev') { upd.state = 'idle'; drawUpdatePanel(); toast('Disponible uniquement dans l\'application installée'); } else if (r.state === 'unconfigured') { upd.state = 'unconfigured'; drawUpdatePanel(); } };
-    if ($('#upd-download')) $('#upd-download').onclick = async () => { const r = await bridge.updateDownload(); if (r.state === 'error') { upd.state = 'error'; upd.message = r.message; drawUpdatePanel(); } else if (r.state === 'manual') { toast('Page de téléchargement ouverte dans le navigateur'); } };
-    if ($('#upd-install')) $('#upd-install').onclick = () => bridge.updateInstall();
+    el.innerHTML = `<div class="update-head"><div><div class="k-label">Version installée</div><div class="ver">${h(a.version || '…')}</div></div><button class="btn btn-sm btn-ghost" id="upd-changelog">Nouveautés</button></div>${body}${tokenBlock}`;
+    $('#upd-changelog').onclick = showChangelog;
+    $('#upd-token-save').onclick = async () => {
+      const t = $('#upd-token').value.trim(); if (!t) return toast('Colle un token d\'abord', true);
+      const r = await bridge.updateSetToken(t); upd.app.hasToken = r.hasToken; toast('Token enregistré');
+      runCheck();
+    };
+    if ($('#upd-token-clear')) $('#upd-token-clear').onclick = async () => { const r = await bridge.updateSetToken(''); upd.app.hasToken = r.hasToken; upd.state = 'idle'; drawUpdatePanel(); };
+    if ($('#upd-check')) $('#upd-check').onclick = runCheck;
+    if ($('#upd-releases')) $('#upd-releases').onclick = () => bridge.updateOpenReleases();
+    if ($('#upd-install')) $('#upd-install').onclick = async () => {
+      const b = $('#upd-install'); b.disabled = true; b.textContent = 'Installation…';
+      const r = await bridge.updateInstall();
+      if (r && r.state === 'error') { upd.state = 'error'; upd.message = r.message; drawUpdatePanel(); }
+    };
   }
+
+  async function runCheck() {
+    if (upd.state === 'downloading' || upd.state === 'downloaded') return drawUpdatePanel();
+    upd.state = 'checking'; drawUpdatePanel();
+    const r = await bridge.updateCheck();
+    if (r.state === 'error') { upd.state = 'error'; upd.message = r.message; drawUpdatePanel(); }
+    else if (r.state === 'dev') { upd.state = 'idle'; drawUpdatePanel(); toast('Disponible uniquement dans l\'application installée'); }
+    else if (r.state === 'unconfigured') { upd.state = 'unconfigured'; drawUpdatePanel(); }
+    // sinon : les événements (none / available / downloading / downloaded) mettent le panneau à jour
+  }
+
+  async function showChangelog() {
+    const md = await bridge.changelog();
+    const body = md ? notesHtml(md.replace(/^# .*\n/, '').replace(/^Format[\s\S]*?\n\n/, '')) : '<p class="muted">Historique indisponible.</p>';
+    modal(`<h2>Nouveautés</h2><div class="changelog">${body}</div><div class="modal-actions"><button class="btn" data-close>Fermer</button></div>`);
+  }
+
+  // ---------- actions du menu de l'application ----------
+  bridge.onMenuAction(name => {
+    const click = sel => { const b = $(sel); if (b) b.click(); else toast('Ouvre d\'abord un devis ou une facture.', true); };
+    if (name === 'new-devis') navigate('#/doc/new/devis');
+    else if (name === 'new-facture') navigate('#/doc/new/facture');
+    else if (name === 'save') click('#save');
+    else if (name === 'pdf') click('#pdf');
+    else if (name === 'settings') navigate('#/parametres');
+    else if (name === 'export-data') exportAll();
+    else if (name === 'import-data') importAll();
+    else if (name === 'changelog') showChangelog();
+    else if (name.startsWith('go:')) navigate('#/' + name.slice(3));
+  });
 
 
   // ---------- jeu de données de démonstration ----------
@@ -604,20 +681,37 @@
   }
 
   // ---------- import / export ----------
-  $('#btn-export-data').onclick = async () => { const p = await bridge.exportData(data); if (p) toast('Exporté : ' + p.split(/[\\/]/).pop()); };
-  $('#btn-import-data').onclick = async () => {
-    if (!await confirmDialog('Importer un fichier remplacera toutes les données actuelles. Continuer ?')) return;
-    try { const d = await bridge.importData(); if (d) { data = migrate(d); toast('Données importées'); render(); } }
-    catch (e) { toast('Import impossible : ' + e.message, true); }
-  };
+  async function exportAll() { const p = await bridge.exportData(data); if (p) toast('Exporté : ' + p.split(/[\\/]/).pop()); }
+  async function importAll() {
+    if (!await confirmDialog('Importer un fichier remplacera toutes les données actuelles (une sauvegarde de l\'état actuel est faite avant). Continuer ?')) return;
+    try { const d = await bridge.importData(); if (d) { data = migrate(d); $('#brand-company').textContent = data.company.name; toast('Données importées'); render(); } }
+    catch (e) { toast('Import impossible : ' + e.message.replace(/^.*Error: /, ''), true); }
+  }
+  $('#btn-export-data').onclick = exportAll;
+  $('#btn-import-data').onclick = importAll;
 
   // ---------- démarrage ----------
   (async () => {
-    data = migrate(await bridge.loadData());
+    const loaded = await bridge.loadData();
+    data = migrate(loaded && loaded.data);
     $('#brand-company').textContent = data.company.name;
-    bridge.updateVersion().then(v => { upd.app = v; const el = $('#app-version'); if (el) el.textContent = 'v' + v.version; });
+    bridge.updateVersion().then(v => {
+      upd.app = v; const el = $('#app-version'); if (el) el.textContent = 'v' + v.version;
+      if (v.lastUpdate) {
+        if (v.lastUpdate.ok) toast('SkanFact mis à jour en version ' + v.version);
+        else modal(`<h2>Mise à jour non installée</h2><p>${h(v.lastUpdate.message || 'Erreur inconnue')}.</p><p class="small muted">Tu peux installer la nouvelle version à la main depuis la page des versions, ou réessayer depuis Paramètres → Mises à jour.</p>
+          <div class="modal-actions"><button class="btn" data-close>Fermer</button><button class="btn btn-primary" id="open-rel">Voir les versions</button></div>`, (root) => { $('#open-rel', root).onclick = () => bridge.updateOpenReleases(); });
+      }
+    });
     $('#update-pill').onclick = () => navigate('#/parametres');
     if (!location.hash) location.hash = '#/dashboard';
     render();
+    if (loaded && loaded.corruptFile) {
+      modal(`<h2>Fichier de données illisible</h2>
+        <p>Le fichier de données n'a pas pu être lu. Il n'a pas été effacé : il a été renommé en<br><code>${h(loaded.corruptFile.split(/[\\/]/).pop())}</code>.</p>
+        <p>Pour retrouver tes données : <strong>Importer</strong> puis choisis la sauvegarde la plus récente dans le dossier <code>backups</code>.</p>
+        <div class="modal-actions"><button class="btn" data-close>Plus tard</button><button class="btn" id="c-open">Ouvrir le dossier des sauvegardes</button><button class="btn btn-primary" id="c-import">Importer une sauvegarde</button></div>`,
+        (root, close) => { $('#c-open', root).onclick = () => bridge.openBackups(); $('#c-import', root).onclick = () => { close(); importAll(); }; });
+    }
   })();
 })();

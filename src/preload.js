@@ -7,15 +7,21 @@ contextBridge.exposeInMainWorld('skanfact', {
   dataPath: () => ipcRenderer.invoke('data:path'),
   exportData: (data) => ipcRenderer.invoke('data:export', data),
   importData: () => ipcRenderer.invoke('data:import'),
+  openBackups: () => ipcRenderer.invoke('backups:open'),
+  createBackup: () => ipcRenderer.invoke('backups:create'),
+  listBackups: () => ipcRenderer.invoke('backups:list'),
   pickLogo: () => ipcRenderer.invoke('logo:pick'),
   exportPdf: (html, suggestedName) => ipcRenderer.invoke('pdf:export', { html, suggestedName }),
   openPath: (p) => ipcRenderer.invoke('shell:open', p),
   showInFolder: (p) => ipcRenderer.invoke('shell:showInFolder', p),
+  changelog: () => ipcRenderer.invoke('app:changelog'),
+  onMenuAction: (cb) => { ipcRenderer.on('menu:action', (_e, name) => cb(name)); },
   // mises à jour
   updateVersion: () => ipcRenderer.invoke('update:version'),
   updateCheck: () => ipcRenderer.invoke('update:check'),
   updateDownload: () => ipcRenderer.invoke('update:download'),
   updateInstall: () => ipcRenderer.invoke('update:install'),
   updateSetToken: (t) => ipcRenderer.invoke('update:setToken', t),
+  updateOpenReleases: () => ipcRenderer.invoke('update:openReleases'),
   onUpdateEvent: (cb) => { ipcRenderer.on('update:event', (_e, data) => cb(data)); }
 });

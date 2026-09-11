@@ -172,7 +172,15 @@ table.lines-edit select { padding-right: 4px; min-width: 70px; }
 .update-pill { font: inherit; font-size: 12px; font-weight: 600; color: var(--primary); background: var(--primary-soft); border: none; border-radius: 999px; padding: 7px 12px; cursor: pointer; margin-bottom: 8px; text-align: left; }
 .update-pill:hover { background: var(--primary-soft-2); }
 .app-version { font-size: 11px; color: #b0b8c2; padding: 8px 12px 0; }
-#update-panel .update-head { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
+#update-panel .update-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 12px; }
+.notes-md { background: var(--bg); border-radius: 10px; padding: 10px 14px; margin: 8px 0 12px; font-size: 13px; }
+.notes-md h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); margin: 10px 0 4px; }
+.notes-md h3:first-child { margin-top: 0; }
+.notes-md p { margin: 4px 0; }
+.notes-md ul { margin: 4px 0 6px; padding-left: 20px; }
+.notes-md li { margin: 2px 0; }
+.changelog { max-height: 60vh; overflow-y: auto; }
+.changelog .notes-md { background: transparent; padding: 0; }
 #update-panel .k-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
 #update-panel .ver { font-size: 20px; font-weight: 700; margin-top: 2px; }
 .progress { height: 8px; background: var(--ink-soft); border-radius: 999px; overflow: hidden; margin-top: 8px; }

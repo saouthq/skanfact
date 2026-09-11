@@ -73,4 +73,76 @@ t('template HTML échappe les entrées', () => {
   assert.ok(html.includes('Client &lt;b&gt;'));
 });
 
+// ---------- stockage (src/storage.js) ----------
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { createStorage, isValidData } = require('../src/storage.js');
+const tmpDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'skanfact-test-'));
+
+t('stockage : écriture, lecture, refus des données invalides', () => {
+  const s = createStorage(tmpDir());
+  assert.strictEqual(s.read(), null);
+  s.write({ ...core.DEFAULT_DATA, clients: [{ id: 'a', name: 'X' }] });
+  assert.strictEqual(s.read().clients[0].name, 'X');
+  assert.ok(!fs.existsSync(s.file + '.tmp'));
+  assert.throws(() => s.write('pas un objet'));
+  assert.throws(() => s.write({ documents: 'oops' }));
+  assert.strictEqual(isValidData(null), false);
+  assert.strictEqual(isValidData({}), true);
+});
+
+t('stockage : fichier illisible mis de côté, jamais écrasé', () => {
+  const s = createStorage(tmpDir());
+  fs.mkdirSync(path.dirname(s.file), { recursive: true });
+  fs.writeFileSync(s.file, '{ ceci n\'est pas du JSON');
+  assert.strictEqual(s.read(), null);
+  assert.ok(s.state.corruptFile && fs.existsSync(s.state.corruptFile));
+  assert.ok(fs.readFileSync(s.state.corruptFile, 'utf8').includes('ceci n'));
+  assert.ok(!fs.existsSync(s.file));
+  s.write(core.DEFAULT_DATA); // repart sur un fichier neuf, l'ancien est conservé
+  assert.ok(fs.existsSync(s.state.corruptFile));
+});
+
+t('stockage : sauvegarde quotidienne = état de début de journée', () => {
+  let day = new Date('2026-09-11T09:00:00');
+  const s = createStorage(tmpDir(), { now: () => day });
+  s.write({ ...core.DEFAULT_DATA, clients: [{ id: '1', name: 'matin' }] });
+  assert.deepStrictEqual(s.listBackups(), []); // premier fichier : rien à sauvegarder
+  s.write({ ...core.DEFAULT_DATA, clients: [{ id: '1', name: 'midi' }] });
+  s.write({ ...core.DEFAULT_DATA, clients: [{ id: '1', name: 'soir' }] });
+  const b = s.listBackups();
+  assert.strictEqual(b.length, 1);
+  assert.strictEqual(b[0].name, 'skanfact-2026-09-11.json');
+  assert.strictEqual(JSON.parse(fs.readFileSync(b[0].path, 'utf8')).clients[0].name, 'matin');
+  day = new Date('2026-09-12T09:00:00');
+  s.write({ ...core.DEFAULT_DATA, clients: [{ id: '1', name: 'lendemain' }] });
+  const b2 = s.listBackups().map(x => x.name).sort();
+  assert.deepStrictEqual(b2, ['skanfact-2026-09-11.json', 'skanfact-2026-09-12.json']);
+  assert.strictEqual(JSON.parse(fs.readFileSync(path.join(s.backupDir, 'skanfact-2026-09-12.json'), 'utf8')).clients[0].name, 'soir');
+  const named = s.backupNow('avant-import');
+  assert.ok(/avant-import-2026-09-12_/.test(path.basename(named)));
+});
+
+t('stockage : rotation à 30 sauvegardes quotidiennes', () => {
+  let day = new Date('2026-01-01T09:00:00');
+  const s = createStorage(tmpDir(), { now: () => day });
+  for (let i = 0; i < 40; i++) {
+    s.write({ ...core.DEFAULT_DATA, counters: { i } });
+    day = new Date(day.getTime() + 86400000);
+  }
+  const names = s.listBackups().map(x => x.name).sort();
+  assert.strictEqual(names.length, 30);
+  assert.strictEqual(names[0], 'skanfact-2026-01-11.json'); // 39 créées (pas de copie au 1er jour), 30 gardées
+});
+
+t('stockage : import externe validé', () => {
+  const s = createStorage(tmpDir());
+  const p = path.join(tmpDir(), 'x.json');
+  fs.writeFileSync(p, JSON.stringify({ clients: [], documents: [] }));
+  assert.ok(s.readExternal(p));
+  fs.writeFileSync(p, JSON.stringify([1, 2, 3]));
+  assert.throws(() => s.readExternal(p), /export SkanFact/);
+});
+
 console.log(`\n${n} tests OK`);

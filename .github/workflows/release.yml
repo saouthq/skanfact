@@ -1,7 +1,7 @@
-# Construit SkanFact pour Mac et Windows et publie une release GitHub
-# à chaque tag de version (créé par `npm run release`).
-# Peut aussi être lancé à la main (onglet Actions → Release → Run workflow) :
-# electron-builder crée alors la release et le tag à partir de la version de package.json.
+# Construit SkanFact pour Mac et Windows et publie une release GitHub.
+# Déclenché par un tag de version (créé par `npm run release`) ou à la main
+# (onglet Actions → Release → Run workflow) : electron-builder crée alors la release
+# et le tag à partir de la version de package.json.
 name: Release
 
 on:
@@ -25,10 +25,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
 
-      - run: npm install --no-fund --no-audit
+      - run: npm ci --no-fund --no-audit
 
       - run: npm test
+
+      # Notes de version (section CHANGELOG.md de cette version) → latest.yml + page de la release
+      - run: node scripts/release-notes.js
 
       - name: Build & publish
         run: npx electron-builder --publish always
@@ -36,3 +40,12 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Pas de signature Apple pour l'instant : on désactive la notarisation.
           CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Release notes on GitHub
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        run: |
+          V=$(node -p "require('./package.json').version")
+          gh release edit "v$V" --title "SkanFact $V" --notes-file build/release-notes.md
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

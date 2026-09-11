@@ -7,6 +7,31 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 1.3.0 — 11/09/2026
+
+Mises à jour
+- Mac : vraie mise à jour automatique sans certificat Apple — l'app télécharge la nouvelle version, se ferme, se remplace dans Applications et se relance (plus de page web à ouvrir)
+- Téléchargement automatique en arrière-plan dès qu'une version est détectée ; pastille « Version X prête » puis un clic « Installer et redémarrer »
+- Windows : installation silencieuse et redémarrage automatique
+- Vérification au démarrage vraiment silencieuse (plus d'erreur affichée tant que le token n'est pas saisi) ; vérification lancée dès que le token est enregistré
+- Notes de version affichées dans l'app (Paramètres → Mises à jour → Nouveautés, menu Aide)
+
+Comme un vrai logiciel
+- Menu de l'application en français : Fichier (nouveau devis Ctrl/Cmd+N, nouvelle facture, enregistrer Ctrl/Cmd+S, PDF Ctrl/Cmd+P, export/import), Édition (copier/coller), Affichage (Ctrl/Cmd+1…5, zoom), Aide (nouveautés, à propos)
+- Une seule instance de l'app à la fois (deux fenêtres ouvertes pouvaient corrompre le fichier de données)
+- Taille et position de la fenêtre mémorisées
+- Installateur Windows en français, raccourcis Bureau et menu Démarrer, désinstallation propre
+- Image disque Mac avec le raccourci Applications
+- Electron 43 (moteur mis à jour, correctifs de sécurité)
+
+Sécurité des données
+- Un fichier de données illisible n'est plus écrasé : il est mis de côté et l'app propose de restaurer une sauvegarde
+- La sauvegarde quotidienne est désormais l'état du **début de journée** (avant, chaque enregistrement l'écrasait, on ne pouvait pas annuler une bêtise)
+- Sauvegarde automatique avant tout import ; import refusé si le fichier n'est pas un export SkanFact
+- Paramètres → Données : « Sauvegarder maintenant », « Ouvrir le dossier des sauvegardes »
+- Export PDF plus robuste (fichier temporaire au lieu d'une URL limitée en taille — les logos lourds faisaient échouer l'export) ; logo limité à 1 Mo
+- Documents longs : pas de ligne coupée entre deux pages, en-tête du tableau répété
+
 ## 1.2.1 — 11/09/2026
 
 - Première mise en ligne du code sur GitHub (`saouthq/skanfact`) et première release construite par GitHub Actions
