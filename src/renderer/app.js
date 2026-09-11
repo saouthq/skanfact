@@ -686,9 +686,24 @@
           ${top.length ? `<ul class="rank">${top.map(x => `<li><a class="name" href="#/client/${h(x.clientId)}" title="Ouvrir la fiche de ${h(x.name)}">${h(x.name)}</a><span class="bar"><i style="width:${Math.max(4, Math.round(x.ht / topMax * 100))}%"></i></span><span class="amt">${C.money(x.ht, cur)}</span></li>`).join('')}</ul>` : '<p class="small muted">Aucune facture émise cette année. Ton premier devis accepté la remplira.</p>'}
         </div>
       </div>
-      <div class="panel"><h2>Documents récents</h2>${docTable(recent)}</div>`;
+      <div class="panel"><h2>Documents récents</h2>${recent.length ? docTable(recent) : `
+        <div class="empty">
+          <p>Aucun document pour l'instant. Voilà par où commencer :</p>
+          <div class="inline" style="justify-content:center;margin-top:10px">
+            ${data.clients.length ? '' : '<button class="btn" id="start-client">1. Créer un client</button>'}
+            <button class="btn btn-primary" id="start-devis">${data.clients.length ? 'Créer ton premier devis' : '2. Créer un devis'}</button>
+            ${data.catalog.length ? '' : '<button class="btn" id="start-cat">Remplir le catalogue</button>'}
+            <button class="btn btn-ghost" id="start-demo">Voir un exemple rempli</button>
+          </div>
+          <p class="small muted mt">Un devis accepté se transforme en facture en un clic : commence toujours par là.</p>
+        </div>`}</div>`;
     $('#new-devis').onclick = () => navigate('#/doc/new/devis');
     $('#new-facture').onclick = () => navigate('#/doc/new/facture');
+    // Sur une installation neuve, « Aucun document » ne proposait rien (audit) : on montre le chemin.
+    if ($('#start-client')) $('#start-client').onclick = () => clientForm(null, () => navigate('#/clients'));
+    if ($('#start-devis')) $('#start-devis').onclick = () => navigate('#/doc/new/devis');
+    if ($('#start-cat')) $('#start-cat').onclick = () => navigate('#/catalogue');
+    if ($('#start-demo')) $('#start-demo').onclick = () => { settingsTab = 'donnees'; navigate('#/parametres'); toast('Le jeu de démonstration se charge depuis « Sécurité et données »'); };
     bindTodo();
     if ($('#go-expired')) $('#go-expired').onclick = e => { e.preventDefault(); TODO_ACTIONS['devis-expires'].run(); };
     bindDocTable();
@@ -1680,7 +1695,12 @@
             <button class="btn btn-sm" data-devis="${r.c.id}" title="Nouveau devis pour ce client">+ Devis</button>
             <button class="btn btn-sm" data-edit="${r.c.id}">Modifier</button>
           </span></td></tr>`).join('')}
-        </tbody></table>${pagerBar(pg, { noun: 'client', grandTotal: all.length })}`
+        </tbody><tfoot><tr>
+          <td colspan="3"><strong>${rows.length} client(s)</strong>${filtered ? `<span class="muted"> sur ${all.length}</span>` : ''}</td>
+          <td class="r"><strong>${rows.reduce((a, r) => a + r.sum.count, 0)}</strong></td>
+          <td class="r"><strong>${C.money(C.round3(rows.reduce((a, r) => a + r.sum.ht, 0)), cur)}</strong></td>
+          <td class="r"><strong>${C.money(C.round3(rows.reduce((a, r) => a + r.sum.due, 0)), cur)}</strong></td>
+          <td colspan="2"></td></tr></tfoot></table>${pagerBar(pg, { noun: 'client', grandTotal: all.length })}`
         : `<div class="empty">${filtered ? 'Aucun client ne correspond à cette recherche.' : 'Aucun client. Ajoute ton premier client : son adresse et son matricule fiscal se reporteront automatiquement sur tes documents.'}</div>`;
       const note = $('#f-note');
       note.hidden = !filtered;
@@ -1749,7 +1769,7 @@
           </div>
           <div class="panel"><h2>Notes internes</h2>
             <textarea id="cl-notes" rows="6" placeholder="Ce qu'il faut se rappeler : habitudes de paiement, interlocuteurs, historique…">${h(c.notes || '')}</textarea>
-            <p class="small muted mt">Ces notes ne sortent jamais sur un document.</p>
+            <p class="small muted mt">Ces notes ne sortent jamais sur un document, et <b>s'enregistrent toutes seules</b> au fil de la frappe. <span class="ok-text" id="cl-notes-saved" hidden>✓ enregistré</span></p>
           </div>
       </div>
       ${(() => {
@@ -1785,7 +1805,14 @@
     $('#new-fac').onclick = () => navigate('#/doc/new/facture/client/' + c.id);
     if ($('#mailto')) $('#mailto').onclick = () => bridge.composeMail({ to: c.email, subject: '', body: '', attachment: null, mode: 'mailto' });
     if ($('#go-rel')) $('#go-rel').onclick = () => navigate('#/relances');
-    $('#cl-notes').oninput = e => { c.notes = e.target.value; save(); };
+    // Ces notes s'enregistrent au fil de la frappe. C'est agréable, mais c'était surprenant tant que
+    // rien ne le disait — la fenêtre de modification, elle, attend « Enregistrer » (audit).
+    let notesTimer = null;
+    $('#cl-notes').oninput = e => {
+      c.notes = e.target.value; save();
+      const tag = $('#cl-notes-saved');
+      if (tag) { tag.hidden = false; clearTimeout(notesTimer); notesTimer = setTimeout(() => { tag.hidden = true; }, 1600); }
+    };
   };
 
   // ---------- Catalogue ----------
@@ -1820,9 +1847,22 @@
           </div>
         </div>
       </form>
-      <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
+      <div class="modal-actions">
+        ${item ? '<button class="btn btn-danger" id="del-cat" style="margin-right:auto">Supprimer</button>' : ''}
+        <button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
       (root, close) => {
         let unit = it.unit || '';
+        if ($('#del-cat', root)) $('#del-cat', root).onclick = async () => {
+          const used = data.documents.filter(d => (d.lines || []).some(l => l.itemId === it.id
+            || (l.label || '').trim().toLowerCase() === (it.label || '').trim().toLowerCase())).length;
+          const st = it.tracked ? C.stockOf(data, it.id) : null;
+          if (!await confirmDialog(`Supprimer « ${it.label} » du catalogue ?`
+            + (used ? ` ${used} document(s) la portent déjà : ils ne changent pas, elle ne sera simplement plus proposée.` : '')
+            + (st && st.qty ? ` Attention : il en reste ${pct(st.qty)} en stock, et son suivi disparaîtra avec elle.` : ''))) return;
+          forget('catalog', it.id, it.label);
+          data.catalog = data.catalog.filter(c => c.id !== it.id);
+          save(true); close(); if (done) done(null);
+        };
         bindUnitSelect($('#cat-unit', root), () => unit, u => { unit = u; });
         // La marge se montre pendant la saisie : c'est le moment où on se rend compte qu'on vend à perte.
         const hint = () => {
@@ -1853,6 +1893,80 @@
       });
   }
 
+  // Modifier un modèle : jusqu'ici seul son nom était changeable, alors que les deux autres onglets du
+  // Catalogue ont « Modifier ». On édite ici l'objet, les notes et les lignes — le reste d'un modèle
+  // (client, dates) n'existe pas : il se remplit au moment de créer le document.
+  function templateForm(tpl, done) {
+    const t = deepCopy(tpl);
+    if (!Array.isArray(t.lines)) t.lines = [];
+    const cur = company().currency;
+    modal(`<h2>Modifier le modèle</h2>
+      <form id="tf2" class="grid-2">
+        <label class="field span-2">Nom du modèle<input type="text" name="name" value="${h(t.name || '')}"></label>
+        <label class="field">Type<select name="type">${['devis', 'facture'].map(x => `<option value="${x}" ${t.type === x ? 'selected' : ''}>${C.TITLES[x]}</option>`).join('')}</select></label>
+        ${field('Remise globale (%)', 'discountRate', t.discountRate || 0, 'number', 'min="0" max="100" step="0.5" class="num"')}
+        <label class="field span-2">Objet<input type="text" name="subject" value="${h(t.subject || '')}" placeholder="Ce qui sera proposé comme objet du document"></label>
+        <label class="field span-2">Notes<textarea name="notes" rows="3">${h(t.notes || '')}</textarea></label>
+      </form>
+      <div class="panel"><h2>Lignes</h2>
+        <div class="catalog-pick"><div id="tf-cat">${combo({ items: [], placeholder: 'Ajouter depuis le catalogue…', search: 'Rechercher une prestation…' })}</div>
+          <button type="button" class="btn btn-sm" id="tf-add">+ Ligne vide</button></div>
+        <table class="lines-edit"><thead><tr><th>Désignation</th><th style="width:62px">Qté</th><th style="width:96px">P.U. HT</th><th style="width:76px">TVA</th><th class="r">Total HT</th><th></th></tr></thead>
+          <tbody id="tf-lines"></tbody></table>
+        <div class="inline mt"><span class="small muted" id="tf-sum"></span></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-danger" id="tf-del" style="margin-right:auto">Supprimer</button>
+        <button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
+      (root, close) => {
+        const drawLines = () => {
+          $('#tf-lines', root).innerHTML = t.lines.length ? t.lines.map((l, i) => `<tr data-i="${i}">
+            <td><input type="text" data-k="label" value="${h(l.label || '')}" placeholder="Désignation"></td>
+            <td><input type="number" class="num" data-k="qty" value="${l.qty != null ? l.qty : 1}" step="0.01"></td>
+            <td><input type="number" class="num" data-k="unitPrice" value="${l.unitPrice || 0}" step="0.001"></td>
+            <td><select data-k="vatRate">${C.VAT_RATES.map(r => `<option value="${r}" ${Number(l.vatRate) === r ? 'selected' : ''}>${r}%</option>`).join('')}</select></td>
+            <td class="total">${C.money(C.round3((Number(l.qty) || 0) * (Number(l.unitPrice) || 0)), cur)}</td>
+            <td class="line-tools"><button type="button" class="btn btn-ghost btn-sm" data-x="${i}" title="Supprimer">✕</button></td></tr>`).join('')
+            : '<tr><td colspan="6" class="small muted">Aucune ligne. Un modèle sans ligne sert quand même : il pose l\'objet et les notes.</td></tr>';
+          $$('[data-k]', $('#tf-lines', root)).forEach(el => el.oninput = el.onchange = () => {
+            const i = Number(el.closest('tr').dataset.i);
+            t.lines[i][el.dataset.k] = el.type === 'number' || el.dataset.k === 'vatRate' ? Number(el.value) : el.value;
+            drawLines();
+          });
+          $$('[data-x]', $('#tf-lines', root)).forEach(b => b.onclick = () => { t.lines.splice(Number(b.dataset.x), 1); drawLines(); });
+          const tot = C.round3(t.lines.reduce((a, l) => a + (Number(l.qty) || 0) * (Number(l.unitPrice) || 0), 0));
+          $('#tf-sum', root).innerHTML = `${t.lines.length} ligne(s) · <b>${C.money(tot, cur)}</b> HT`;
+        };
+        drawLines();
+        bindCombo($('.combo', $('#tf-cat', root)), {
+          reset: true, placeholder: 'Ajouter depuis le catalogue…',
+          items: data.catalog.slice().sort((a, b) => a.label.localeCompare(b.label, 'fr'))
+            .map(c => ({ v: c.id, label: c.label, sub: c.description || '', right: C.money(c.unitPrice, cur) + ' HT', text: `${c.label} ${c.description || ''}` })),
+          onPick: id => {
+            const it = data.catalog.find(c => c.id === id); if (!it) return;
+            t.lines.push({ label: it.label, description: it.description || '', qty: 1, unit: it.unit || '',
+              unitPrice: it.unitPrice, unitCost: it.unitCost || '', vatRate: it.vatRate, itemId: it.id });
+            drawLines();
+          }
+        });
+        $('#tf-add', root).onclick = () => { t.lines.push({ label: '', description: '', qty: 1, unit: '', unitPrice: 0, vatRate: 19 }); drawLines(); };
+        $('#ok', root).onclick = () => {
+          const v = formValues($('#tf2', root));
+          if (!(v.name || '').trim()) return toast('Donne un nom à ce modèle.', true);
+          const idx = data.templates.findIndex(x => x.id === t.id);
+          const next = { ...t, ...v, discountRate: Number(v.discountRate) || 0 };
+          if (idx >= 0) data.templates[idx] = next; else data.templates.push(next);
+          save(true); close(); if (done) done();
+        };
+        $('#tf-del', root).onclick = async () => {
+          if (!await confirmDialog(`Supprimer le modèle « ${t.name} » ?`)) return;
+          forget('templates', t.id, t.name);
+          data.templates = data.templates.filter(x => x.id !== t.id);
+          save(true); close(); if (done) done();
+        };
+      });
+  }
+
   routes.catalogue = () => {
     const cur = company().currency;
     // Un onglet = une liste avec sa recherche, son tri et sa pagination. Le catalogue d'un revendeur
@@ -1874,10 +1988,13 @@
         const all = rows();
         const kept = applySort(all.filter(r => !state.q || opts.text(r).toLowerCase().includes(state.q)), cols, state.sort);
         const { rows: page, pg } = paginate(kept, state);
+        // Pied totalisé, comme sur les listes de documents : il porte sur toute la sélection, jamais
+        // sur la page affichée (audit — Clients et Catalogue en étaient les seules listes dépourvues).
+        const foot = opts.foot ? opts.foot(kept, all) : '';
         $('.rows', wrap).innerHTML = kept.length
           ? `<table class="list sortable"><thead>${sortHead(cols, state.sort, '<th class="row-actions-h"></th>')}</thead><tbody>
               ${page.map(r => `<tr>${cols.map(c => `<td class="${c.r ? 'r nw' : ''}">${c.get(r)}</td>`).join('')}<td class="actions">${opts.actions(r)}</td></tr>`).join('')}
-            </tbody></table>${pagerBar(pg, { noun: opts.noun, grandTotal: all.length })}`
+            </tbody>${foot ? `<tfoot>${foot}</tfoot>` : ''}</table>${pagerBar(pg, { noun: opts.noun, grandTotal: all.length })}`
           : `<div class="empty">${state.q ? 'Rien ne correspond à cette recherche.' : h(opts.empty)}</div>`;
         const note = $('.f-note', wrap);
         note.hidden = !state.q;
@@ -1911,11 +2028,21 @@
     ];
     const draw = drawList('#list-wrap', catalogState.presta, prestaCols, () => data.catalog.slice(), {
       noun: 'prestation', placeholder: 'Rechercher une prestation…', text: c => `${c.label} ${c.description || ''} ${c.unit || ''}`,
+      foot: (kept) => {
+        const tracked = kept.filter(c => c.tracked);
+        const stockValue = C.round3(tracked.reduce((a, c) => a + Math.max(0, C.stockOf(data, c.id).value), 0));
+        const avg = kept.length ? C.round3(kept.reduce((a, c) => a + (Number(c.unitPrice) || 0), 0) / kept.length) : 0;
+        return `<tr><td><strong>${kept.length} prestation(s)</strong>${tracked.length ? `<span class="muted"> · ${tracked.length} suivie(s) en stock</span>` : ''}</td>
+          <td class="r"><span class="muted">moyenne</span> <strong>${C.money(avg, cur)}</strong></td>
+          <td colspan="2"></td>
+          <td class="r">${tracked.length ? `<span class="muted">stock</span> <strong>${C.money(stockValue, cur)}</strong>` : ''}</td>
+          <td colspan="3"></td></tr>`;
+      },
       empty: 'Catalogue vide. Ajoute tes prestations récurrentes pour remplir les devis en un clic.',
-      actions: c => `<button class="btn btn-sm" data-edit="${c.id}">Modifier</button> <button class="btn btn-sm btn-danger" data-del="${c.id}">Supprimer</button>`,
+      actions: c => `<button class="btn btn-sm" data-edit="${c.id}">Modifier</button>`,
       bind: (wrap, redraw) => {
         $$('[data-edit]', wrap).forEach(b => b.onclick = () => catalogForm(data.catalog.find(c => c.id === b.dataset.edit), redraw));
-        $$('[data-del]', wrap).forEach(b => b.onclick = async () => { if (await confirmDialog('Supprimer cette prestation ?')) { forget('catalog', b.dataset.del); data.catalog = data.catalog.filter(c => c.id !== b.dataset.del); save(true); redraw(); } });
+
       }
     });
 
@@ -1927,11 +2054,10 @@
     const drawTemplates = drawList('#tpl-wrap', catalogState.modeles, tplCols, () => data.templates.slice(), {
       noun: 'modèle', placeholder: 'Rechercher un modèle…', text: t => `${t.name} ${t.subject || ''}`,
       empty: 'Aucun modèle. Depuis un devis ou une facture : Plus ▾ → « Enregistrer comme modèle ».',
-      actions: t => `<button class="btn btn-sm btn-primary" data-use="${t.id}">Nouveau ${t.type === 'devis' ? 'devis' : 'facture'}</button> <button class="btn btn-sm" data-ren="${t.id}">Renommer</button> <button class="btn btn-sm btn-danger" data-tdel="${t.id}">Supprimer</button>`,
+      actions: t => `<button class="btn btn-sm btn-primary" data-use="${t.id}">Nouveau ${t.type === 'devis' ? 'devis' : 'facture'}</button> <button class="btn btn-sm" data-tedit="${t.id}">Modifier</button>`,
       bind: (wrap, redraw) => {
         $$('[data-use]', wrap).forEach(b => b.onclick = () => { const t = data.templates.find(x => x.id === b.dataset.use); navigate(`#/doc/new/${t.type}/tpl/${t.id}`); });
-        $$('[data-ren]', wrap).forEach(b => b.onclick = () => { const t = data.templates.find(x => x.id === b.dataset.ren); promptDialog('Renommer le modèle', 'Nom', t.name, v => { t.name = v; save(true); redraw(); }); });
-        $$('[data-tdel]', wrap).forEach(b => b.onclick = async () => { if (await confirmDialog('Supprimer ce modèle ?')) { forget('templates', b.dataset.tdel); data.templates = data.templates.filter(x => x.id !== b.dataset.tdel); save(true); redraw(); } });
+        $$('[data-tedit]', wrap).forEach(b => b.onclick = () => templateForm(data.templates.find(x => x.id === b.dataset.tedit), redraw));
       }
     });
 
@@ -1942,10 +2068,9 @@
     const drawSnippets = drawList('#snip-wrap', catalogState.textes, snipCols, () => data.snippets.slice(), {
       noun: 'texte', placeholder: 'Rechercher un texte…', text: x => `${x.name} ${x.text || ''}`,
       empty: 'Aucun texte prédéfini. Conditions de garantie, modalités, mentions récurrentes… à insérer dans les notes d\'un document en un clic.',
-      actions: x => `<button class="btn btn-sm" data-sedit="${x.id}">Modifier</button> <button class="btn btn-sm btn-danger" data-sdel="${x.id}">Supprimer</button>`,
+      actions: x => `<button class="btn btn-sm" data-sedit="${x.id}">Modifier</button>`,
       bind: (wrap, redraw) => {
         $$('[data-sedit]', wrap).forEach(b => b.onclick = () => snippetForm(data.snippets.find(x => x.id === b.dataset.sedit), redraw));
-        $$('[data-sdel]', wrap).forEach(b => b.onclick = async () => { if (await confirmDialog('Supprimer ce texte ?')) { forget('snippets', b.dataset.sdel); data.snippets = data.snippets.filter(x => x.id !== b.dataset.sdel); save(true); redraw(); } });
       }
     });
     const TABS = [['presta', 'Prestations', 'cat.catalog'], ['modeles', 'Modèles de documents', 'ed.template'], ['textes', 'Textes prédéfinis', 'cat.snippets']];
@@ -1982,8 +2107,18 @@
     const x = sn || { id: C.uid(), name: '', text: '' };
     modal(`<h2>${sn ? 'Modifier le texte' : 'Nouveau texte prédéfini'}</h2>
       <form id="sf" class="grid-2">${field('Nom', 'name', x.name, 'text', 'placeholder="Garantie, Conditions de paiement…"')}<label class="field span-2">Texte<textarea name="text" rows="5">${h(x.text)}</textarea></label></form>
-      <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
-      (root, close) => { $('#ok', root).onclick = () => { const v = formValues($('#sf', root)); if (!v.name.trim() || !v.text.trim()) return toast('Nom et texte obligatoires.', true); Object.assign(x, v); if (!sn) data.snippets.push(x); save(true); close(); if (done) done(); }; });
+      <div class="modal-actions">
+        ${sn ? '<button class="btn btn-danger" id="del-snip" style="margin-right:auto">Supprimer</button>' : ''}
+        <button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
+      (root, close) => {
+        $('#ok', root).onclick = () => { const v = formValues($('#sf', root)); if (!v.name.trim() || !v.text.trim()) return toast('Nom et texte obligatoires.', true); Object.assign(x, v); if (!sn) data.snippets.push(x); save(true); close(); if (done) done(); };
+        if ($('#del-snip', root)) $('#del-snip', root).onclick = async () => {
+          if (!await confirmDialog(`Supprimer le texte « ${x.name} » ? Les documents où il a déjà été inséré ne changent pas.`)) return;
+          forget('snippets', x.id, x.name);
+          data.snippets = data.snippets.filter(y => y.id !== x.id);
+          save(true); close(); if (done) done();
+        };
+      });
   }
 
   function promptDialog(title, label, value, done, type) {
@@ -2090,12 +2225,23 @@
       </form>
       <table class="mini"><thead><tr><th>Désignation</th><th style="width:58px">Qté</th><th style="width:104px">Unité ${info('ed.unit')}</th><th style="width:96px">P.U. HT</th><th style="width:74px">TVA</th><th></th></tr></thead><tbody id="rl"></tbody></table>
       <div class="inline mt"><button type="button" class="btn btn-sm" id="rl-add">+ Ligne</button><span class="small muted" id="rl-total"></span></div>
-      <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
+      <div class="modal-actions">
+        ${isNew ? '' : '<button class="btn btn-danger" id="del-rec" style="margin-right:auto">Supprimer</button>'}
+        <button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
       (root, close) => {
         const cliCombo = bindCombo($('[data-combo=clientId]', root), {
           items: clientItems(), placeholder: '— Choisir un client —',
           onAdd: () => clientForm(null, c => { cliCombo.setItems(clientItems()); cliCombo.setValue(c.id); })
         });
+        // La suppression vit ici, comme pour les clients, les prestations et les textes : c'est la
+        // fenêtre où l'on voit ce qu'on supprime (audit — elle était sur la ligne de la liste).
+        if ($('#del-rec', root)) $('#del-rec', root).onclick = async () => {
+          const n = data.documents.filter(d => d.recurringId === r.id).length;
+          if (!await confirmDialog(`Supprimer ce contrat ?${n ? ` ${n} facture(s) en sont issues : elles sont conservées.` : ''}`)) return;
+          forget('recurring', r.id, C.fillTemplate(r.subject || '', { mois: '', annee: '' }).trim());
+          data.recurring = data.recurring.filter(x => x.id !== r.id);
+          save(true); close(); if (done) done();
+        };
         const body = $('#rl', root);
         const openRl = new Set();                    // lignes dont la description est dépliée
         r.lines.forEach((l, i) => { if (l.description) openRl.add(i); });
@@ -2295,7 +2441,7 @@
         </div>
         ${kept.length ? `<table class="list sortable"><thead>${sortHead(cols, s.sort, '<th class="row-actions-h"></th>')}</thead><tbody>
         ${page.map(r => `<tr class="clickable" data-rid="${r.id}">${cols.map(c => `<td class="${c.r ? 'r nw' : ''}">${c.get(r)}</td>`).join('')}
-          <td class="actions"><button class="btn btn-sm" data-gen="${r.id}">Générer maintenant</button> <button class="btn btn-sm" data-edit="${r.id}">Modifier</button> <button class="btn btn-sm" data-toggle="${r.id}">${r.active !== false ? 'Suspendre' : 'Reprendre'}</button> <button class="btn btn-sm btn-danger" data-del="${r.id}">Supprimer</button></td></tr>`).join('')}
+          <td class="actions"><button class="btn btn-sm" data-gen="${r.id}">Générer maintenant</button> <button class="btn btn-sm" data-edit="${r.id}">Modifier</button> <button class="btn btn-sm" data-toggle="${r.id}">${r.active !== false ? 'Suspendre' : 'Reprendre'}</button></td></tr>`).join('')}
         </tbody></table>${pagerBar(pg, { noun: 'contrat', grandTotal: all.length })}`
           : `<div class="empty">${filtered ? 'Aucun contrat ne correspond à ces filtres.' : 'Aucun contrat. Un contrat génère automatiquement un brouillon de facture à chaque échéance (mensuelle, trimestrielle, annuelle). Crée-le ici, ou depuis une facture existante : Plus ▾ → « Rendre récurrent ».'}</div>`}`;
       const q = $('#q');
@@ -2322,7 +2468,6 @@
         }
         save(true); draw();
       });
-      $$('[data-del]').forEach(b => b.onclick = async () => { if (await confirmDialog('Supprimer ce contrat ? Les factures déjà générées sont conservées.')) { forget('recurring', b.dataset.del); data.recurring = data.recurring.filter(x => x.id !== b.dataset.del); save(true); draw(); } });
     };
     $('#view').innerHTML = `<div class="page-head"><h1>Contrats récurrents ${info('contrat.form')}</h1><div class="actions"><button class="btn btn-primary" id="new">+ Nouveau contrat</button></div></div><div id="c-wrap"></div>`;
     $('#new').onclick = () => recurrenceForm({ id: C.uid(), clientId: '', subject: '', lines: [], every: 'month', day: 1, nextDate: C.addMonths(C.today(), 1, 1), active: true, withholdingRate: 0, discountRate: 0, notes: '' }, draw);
@@ -2368,12 +2513,15 @@
       });
   }
 
-  const relState = { sort: null, page: 1 };   // tri et page de la liste des factures à relancer
+  const relState = { sort: null, page: 1, q: '' };   // tri, page et recherche de la liste des factures à relancer
   routes.relances = () => {
     const cur = company().currency;
     const draw = () => {
       const all = C.overdueInvoices(data, company());
-      const od = all.filter(x => !x.snoozed), later = all.filter(x => x.snoozed);
+      // Recherche : la page Relances était l'une des deux seules listes à ne pas en avoir (audit).
+      const q = relState.q.trim().toLowerCase();
+      const match = x => !q || `${x.doc.number || ''} ${clientName(x.doc.clientId)} ${x.doc.subject || ''}`.toLowerCase().includes(q);
+      const od = all.filter(x => !x.snoozed && match(x)), later = all.filter(x => x.snoozed && match(x));
       const soon = data.documents.filter(d => d.type === 'facture' && ['envoyée', 'partielle'].includes(effStatus(d)) && d.dueDate >= C.today() && C.daysBetween(C.today(), d.dueDate) <= 7);
       const quotes = data.documents.filter(d => d.type === 'devis' && ['envoyé', 'expiré'].includes(effStatus(d)) && d.date && C.daysBetween(d.date, C.today()) > 10)
         .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
@@ -2404,8 +2552,13 @@
       const headFixed = `<thead>${sortHead(relCols.map(c => ({ ...c, val: null })), null, '<th class="row-actions-h"></th>')}</thead>`;
       const odSorted = applySort(od, relCols, relState.sort);
       const odPage = paginate(odSorted, relState);
+      const nAll = all.filter(x => !x.snoozed).length;
       $('#r-wrap').innerHTML = `
-        ${od.length ? `<div class="banner">${od.length} facture(s) à relancer — ${C.money(total, cur)} à récupérer</div>` : `<div class="banner info">Aucune facture à relancer${later.length ? ` (${later.length} reportée(s))` : ''}.</div>`}
+        <div class="filters">
+          <input type="search" id="rel-q" placeholder="Rechercher : n°, client, objet…" value="${h(relState.q)}">
+          ${q ? `<span class="small muted">${od.length} sur ${nAll}</span><button class="btn btn-sm" id="rel-clear">Réinitialiser</button>` : ''}
+        </div>
+        ${od.length ? `<div class="banner">${od.length} facture(s) à relancer — ${C.money(total, cur)} à récupérer</div>` : `<div class="banner info">${q ? 'Aucune facture ne correspond à cette recherche.' : `Aucune facture à relancer${later.length ? ` (${later.length} reportée(s))` : ''}.`}</div>`}
         ${od.length ? `<table class="list sortable">${head}<tbody>${odPage.rows.map(row).join('')}</tbody></table>${pagerBar(odPage.pg, { noun: 'facture' })}` : ''}
         ${later.length ? `<div class="section-head"><h2>Reportées ${info('rel.snooze')}</h2></div><table class="list">${headFixed}<tbody>${later.map(row).join('')}</tbody></table>` : ''}
         ${soon.length ? `<div class="section-head"><h2>Échéances dans les 7 jours ${info('rel.soon')}</h2></div><table class="list compact"><thead><tr><th>Facture</th><th>Client</th><th>Échéance</th><th class="r">Reste</th></tr></thead><tbody>
@@ -2417,6 +2570,8 @@
         </tbody></table>` : ''}
         <p class="small muted mt">Niveaux : rappel amical jusqu'à 15 jours, relance jusqu'à 45 jours, dernière relance au-delà. Textes modifiables dans Paramètres → Emails.</p>`;
       const find = id => all.find(x => x.doc.id === id);
+      $('#rel-q').oninput = e => { relState.q = e.target.value; relState.page = 1; draw(); const el = $('#rel-q'); el.focus(); el.setSelectionRange(el.value.length, el.value.length); };
+      if ($('#rel-clear')) $('#rel-clear').onclick = () => { relState.q = ''; relState.page = 1; draw(); };
       bindSort($('#r-wrap'), key => { relState.sort = toggleSort(relState.sort, key, relCols); relState.page = 1; draw(); });
       bindPager($('#r-wrap'), relState, () => draw(), '#r-wrap');
       $$('[data-rem]').forEach(b => b.onclick = () => sendReminder(find(b.dataset.rem)));
@@ -2592,6 +2747,7 @@
   const comptaState = {
     tab: 'ventes',
     year: C.today().slice(0, 4), month: C.today().slice(5, 7),
+    q: '',                                 // recherche, commune aux journaux de la page
     journal: { sort: null, page: 1 },      // journal des ventes
     pays: { sort: null, page: 1 },         // encaissements
     buys: { sort: null, page: 1 }          // journal des achats
@@ -5949,9 +6105,14 @@
       if (comptaState.tab === 'tva') return drawVat();
       if (comptaState.tab === 'calendrier') return drawFiscal();
       const p = period();
-      const rows = C.salesJournal(data, company(), p);
+      // Recherche : la Comptabilité était l'autre page de liste sans champ de recherche (audit).
+      const q = comptaState.q.trim().toLowerCase();
+      const hit = (...parts) => !q || parts.filter(Boolean).join(' ').toLowerCase().includes(q);
+      const allRows = C.salesJournal(data, company(), p);
+      const rows = allRows.filter(r => hit(r.number, r.client, r.subject, r.creditOfNumber));
       const sum = C.vatSummary(rows);
-      const pays = C.paymentsJournal(data, company(), p);
+      const allPays = C.paymentsJournal(data, company(), p);
+      const pays = allPays.filter(r => hit(r.number, r.client, r.reference, r.method));
       const paidTotal = pays.reduce((s, r) => s + r.amount, 0);
       const open = data.documents.filter(d => d.type === 'facture' && ['envoyée', 'partielle', 'retard'].includes(effStatus(d)));
       const openAmount = open.reduce((s, d) => s + balance(d).remaining, 0);
@@ -5979,6 +6140,12 @@
       const jPage = paginate(applySort(rows, journalCols, comptaState.journal.sort), comptaState.journal);
       const pPage = paginate(applySort(pays, payCols, comptaState.pays.sort), comptaState.pays);
       $('#c-body').innerHTML = `
+        <div class="filters">
+          <input type="search" id="cpt-q" placeholder="Rechercher : n°, client, objet, référence…" value="${h(comptaState.q)}">
+          ${q ? `<span class="small muted">${rows.length} sur ${allRows.length} document(s) · ${pays.length} sur ${allPays.length} paiement(s)</span>
+            <button class="btn btn-sm" id="cpt-clear">Réinitialiser</button>
+            <span class="small warn-text">Les totaux ci-dessous ne portent que sur la sélection.</span>` : ''}
+        </div>
         <div class="stats">
           <div class="stat"><div class="lbl">CA HT — ${h(periodLabel())} ${info('dash.caMonth')}</div><div class="val">${C.money(sum.ht, cur)}</div><div class="sub">${sum.count} document(s), avoirs déduits</div></div>
           <div class="stat"><div class="lbl">TVA collectée ${info('compta.vat')}</div><div class="val">${C.money(sum.tva, cur)}</div><div class="sub">+ timbres ${C.money(sum.timbre, cur)}</div></div>
@@ -6052,6 +6219,8 @@
             } catch (e) { b.disabled = false; b.textContent = 'Ouvrir dans la messagerie'; toast('Erreur : ' + e.message.replace(/^.*Error: /, ''), true); }
           }; });
       };
+      $('#cpt-q').oninput = e => { comptaState.q = e.target.value; comptaState.journal.page = 1; comptaState.pays.page = 1; draw(); const el = $('#cpt-q'); el.focus(); el.setSelectionRange(el.value.length, el.value.length); };
+      if ($('#cpt-clear')) $('#cpt-clear').onclick = () => { comptaState.q = ''; draw(); };
       $('#exp-journal').onclick = async () => {
         const p2 = await bridge.saveText(`journal-ventes-${tag}.csv`, C.toCsv(rows, journalColumns())); if (p2) toast('Exporté : ' + p2.split(/[\\/]/).pop());
       };
@@ -6068,7 +6237,9 @@
     };
     // ---------- onglet Achats : le journal symétrique de celui des ventes ----------
     function drawBuyJournal(p, label) {
-      const rows = C.purchaseJournal(data, company(), p);
+      const q = comptaState.q.trim().toLowerCase();
+      const allRows = C.purchaseJournal(data, company(), p);
+      const rows = allRows.filter(r => !q || `${r.number || ''} ${r.supplier || ''} ${r.subject || ''} ${r.category || ''}`.toLowerCase().includes(q));
       const sum = C.purchaseSummary(rows);
       const cols = [
         { key: 'date', label: 'Date', asc: true, cls: 'nw', val: r => r.date || '', get: r => C.fmtDate(r.date) },
@@ -6083,6 +6254,11 @@
       ];
       const pg = paginate(applySort(rows, cols, comptaState.buys.sort), comptaState.buys);
       $('#c-body').innerHTML = `
+        <div class="filters">
+          <input type="search" id="cpt-q" placeholder="Rechercher : n°, fournisseur, objet, catégorie…" value="${h(comptaState.q)}">
+          ${q ? `<span class="small muted">${rows.length} sur ${allRows.length}</span><button class="btn btn-sm" id="cpt-clear">Réinitialiser</button>
+            <span class="small warn-text">Les totaux ne portent que sur la sélection.</span>` : ''}
+        </div>
         <div class="stats">
           <div class="stat"><div class="lbl">Achats HT — ${h(label)} ${info('compta.buyJournal')}</div><div class="val">${C.money(sum.ht, cur)}</div><div class="sub">${sum.count} pièce(s)</div></div>
           <div class="stat"><div class="lbl">TVA déductible ${info('compta.deductible')}</div><div class="val">${C.money(sum.deductible, cur)}</div><div class="sub">${sum.deductible === sum.tva ? 'toute la TVA payée' : `sur ${C.money(sum.tva, cur)} payés`}</div></div>
@@ -6101,6 +6277,8 @@
             : '<div class="empty">Aucun achat sur cette période.</div>'}
         </div>`;
       $$('#c-body tr[data-bid]').forEach(tr => tr.onclick = () => navigate('#/achat/' + tr.dataset.bid));
+      $('#cpt-q').oninput = e => { comptaState.q = e.target.value; comptaState.buys.page = 1; draw(); const el = $('#cpt-q'); el.focus(); el.setSelectionRange(el.value.length, el.value.length); };
+      if ($('#cpt-clear')) $('#cpt-clear').onclick = () => { comptaState.q = ''; draw(); };
       const panel = $('#b-wrap') && $('#b-wrap').closest('.panel');
       if (panel) {
         bindSort(panel, key => { comptaState.buys.sort = toggleSort(comptaState.buys.sort, key, cols); comptaState.buys.page = 1; draw(); });
@@ -6465,10 +6643,13 @@
     $('#open-backups').onclick = () => bridge.openBackups();
     $('#export-data').onclick = exportAll;
     $('#import-data').onclick = importAll;
-    $('#pick-logo').onclick = async () => { try { const l = await bridge.pickLogo(); if (l) { data.company.logo = l; save(true); render(); } } catch (e) { toast(e.message.replace(/^.*Error: /, ''), true); } };
-    if ($('#rm-logo')) $('#rm-logo').onclick = () => { data.company.logo = ''; save(true); render(); };
-    $('#pick-stamp').onclick = async () => { try { const l = await bridge.pickLogo('Choisir l\'image du cachet / de la signature'); if (l) { data.company.stampImage = l; save(true); render(); } } catch (e) { toast(e.message.replace(/^.*Error: /, ''), true); } };
-    if ($('#rm-stamp')) $('#rm-stamp').onclick = () => { data.company.stampImage = ''; save(true); render(); };
+    // Choisir une image redessine toute la page : sans ce `applySettings()` préalable, tout ce qui était
+    // saisi et pas encore enregistré dans le formulaire disparaissait en silence (défaut de l'audit).
+    const setImage = (field, value) => { applySettings(); data.company[field] = value; save(true); render(); };
+    $('#pick-logo').onclick = async () => { try { const l = await bridge.pickLogo(); if (l) setImage('logo', l); } catch (e) { toast(e.message.replace(/^.*Error: /, ''), true); } };
+    if ($('#rm-logo')) $('#rm-logo').onclick = () => setImage('logo', '');
+    $('#pick-stamp').onclick = async () => { try { const l = await bridge.pickLogo('Choisir l\'image du cachet / de la signature'); if (l) setImage('stampImage', l); } catch (e) { toast(e.message.replace(/^.*Error: /, ''), true); } };
+    if ($('#rm-stamp')) $('#rm-stamp').onclick = () => setImage('stampImage', '');
     $('#load-demo').onclick = async () => {
       const hasData = data.documents.length || data.clients.length;
       if (hasData && !await confirmDialog('Remplacer toutes les données actuelles par la démonstration ? Une sauvegarde de l\'état actuel est prise avant ; tes paramètres société (nom, logo, cachet, thème…) sont conservés.', 'Charger la démo', false)) return;

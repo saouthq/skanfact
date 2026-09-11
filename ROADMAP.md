@@ -15,7 +15,17 @@ Taille indicative : **S** = quelques heures, **M** = une journée, **L** = plusi
 
 ---
 
-## Où on en est
+## Où on en est — **plan intégralement livré le 11/09/2026**
+
+Les seize versions de ce plan sont écrites, testées et publiées, de la 2.4.0 à la 5.2.0. Ce qui suit garde la
+formulation d'origine : c'est le document de référence de ce qui a été décidé, et les paragraphes « livrée »
+disent où en est chaque brique. Les questions restées ouvertes en bas de page ont été tranchées en chemin,
+et leurs réponses sont notées dessous.
+
+Ce qui reste volontairement dehors n'a pas bougé : pas de cloud, pas d'e-facture tant qu'elle n'est pas
+obligatoire pour Skander, pas de certificats de signature payants.
+
+### L'état d'origine, pour mémoire
 
 SkanFact sait tout faire sur **l'argent qui rentre** : devis, factures, avoirs, acomptes, paiements,
 relances, contrats récurrents, clients, catalogue, TVA collectée, journal des ventes, export au comptable.
@@ -237,12 +247,18 @@ en dernier : il faut que le reste soit stable et éprouvé avant.
 
 ---
 
-## Questions à trancher avant de commencer
+## Questions à trancher — **tranchées en chemin**
 
-1. **La photo de facture** (4.2.0) : acceptes-tu une clé payante et l'envoi de l'image à un service externe ? Si non, on garde la photo comme simple justificatif et la saisie reste manuelle.
-2. **La paie** (5.0.0) : veux-tu que l'app calcule les bulletins, avec les barèmes à faire valider par ton comptable ? Ou préfères-tu que ton comptable continue de les établir et que l'app se contente de suivre les coûts ?
-3. **L'ordre** : ce plan met la trésorerie avant le stock. Si le stock te bloque davantage au quotidien, on l'avance.
-4. **Le rythme** : une version à la fois, installée et utilisée avant de passer à la suivante, ou plusieurs d'affilée ?
+1. **La photo de facture** (4.2.0). *Réponse retenue : les deux.* La fonction est livrée **éteinte par défaut** —
+   sans clé saisie par Skander, aucune requête ne quitte l'ordinateur et la photo reste un simple justificatif.
+   Avec une clé, seule l'image part, après une confirmation qui nomme le fichier, et l'app ne remplit jamais
+   les données toute seule. Rien à décider avant d'installer : la version marche dans les deux cas.
+2. **La paie** (5.0.0). *Réponse retenue : l'app calcule, le comptable valide.* Aucun taux n'est écrit en dur,
+   tout se règle dans l'onglet Barèmes, et chaque bulletin porte une mention imprimée invitant le comptable à
+   le contrôler. Un barème modifié ne réécrit jamais un bulletin déjà remis.
+3. **L'ordre.** La trésorerie (3.3.0) est bien passée avant le stock (4.0.0), comme prévu.
+4. **Le rythme.** Toutes d'affilée, à la demande de Skander. À lui de dire, maintenant, ce qu'il veut installer
+   et faire valider en premier — la paie est celle qui mérite le plus un regard de comptable avant usage réel.
 
 ---
 
@@ -252,4 +268,18 @@ en dernier : il faut que le reste soit stable et éprouvé avant.
 - **E-facture TTN / El Fatoora** et export TEIF : à faire le jour où la facture électronique devient obligatoire pour toi. *À VÉRIFIER avec ton comptable : la Tunisie la généralise progressivement aux assujettis TVA.*
 - **Signature Apple et Windows** : supprimerait les avertissements au premier lancement, mais demande des certificats payants annuels.
 - **Acceptation du devis en ligne** par le client : demanderait un serveur, donc un abonnement.
-- **Deux entreprises sur le même ordinateur** : aujourd'hui une session utilisateur par entreprise suffit.
+- **Deux entreprises sur le même ordinateur** : *finalement livré en 3.2.0* — les dossiers, parce que le père
+  de Skander gère Darium en plus de la société partagée. La note d'origine s'est révélée fausse à l'usage.
+
+---
+
+## Et après ?
+
+Rien n'est engagé. Les pistes connues, par ordre d'intérêt :
+
+- **Faire valider la paie par le comptable** avant de s'en servir pour de vrai. C'est la seule chose urgente.
+- **Corriger ce que l'usage révélera** : douze modules écrits d'affilée n'ont pas encore été utilisés une
+  journée entière. Un audit avec captures, comme ceux de la 2.1.0 et de la 2.4.0, serait le prochain pas utile.
+- **Séparer les installateurs arm64 / x64** pour diviser par deux les 222 Mo du dmg universel.
+- **E-facture TTN / El Fatoora** le jour où elle devient obligatoire — voir l'audit produit du 11/09/2026.
+- **Signature Apple et Windows**, si les certificats payants deviennent justifiés.

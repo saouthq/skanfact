@@ -7,6 +7,19 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 5.2.1 — 11/09/2026
+
+Les huit défauts relevés par l'audit du 11/09/2026 et laissés de côté depuis, corrigés d'un coup.
+
+- **Choisir un logo ou un cachet n'efface plus ce que tu venais de taper** dans Paramètres. Les autres champs sont enregistrés avant que la page ne se redessine.
+- **Recherche ajoutée aux deux dernières pages de liste qui n'en avaient pas** : Relances (n°, client, objet) et Comptabilité (journal des ventes et journal des achats). Quand une recherche est active, on te dit clairement que les totaux ne portent que sur la sélection.
+- **Un modèle de document se modifie enfin** : objet, notes, remise, et surtout ses lignes, ajoutables depuis le catalogue. Jusqu'ici seul son nom était changeable, alors que les deux autres onglets du Catalogue avaient « Modifier ».
+- **La suppression est au même endroit partout** : dans la fenêtre de modification, jamais sur la ligne de la liste. C'est là qu'on voit ce qu'on supprime — et la confirmation dit désormais ce qui est rattaché (documents portant une prestation, factures issues d'un contrat, stock restant).
+- **Les notes internes d'un client** disent qu'elles s'enregistrent toutes seules, et le montrent (« ✓ enregistré »). Elles le faisaient déjà en silence, alors que la fenêtre de modification, elle, attend « Enregistrer ».
+- **Clients et Catalogue ont leur pied de tableau totalisé**, comme les listes de documents : nombre, facturé, reste à payer d'un côté ; prix moyen et valeur du stock de l'autre. Les totaux portent sur toute la sélection, jamais sur la page affichée.
+- **Sur une installation neuve, « Documents récents » propose par où commencer** au lieu d'afficher « Aucun document. » : créer un client, créer un devis, remplir le catalogue, ou charger l'exemple.
+- **Les boutons de ligne restent visibles** sur Clients et sur les listes de documents, en retrait, et reprennent leur pleine opacité au survol. Cachés jusqu'au survol, ils étaient introuvables alors qu'ils étaient toujours affichés partout ailleurs.
+
 ## 5.2.0 — 11/09/2026
 
 La CNSS ne relance pas : elle pénalise. Nouvel onglet **Déclarations** dans la page Paie.

@@ -136,18 +136,18 @@ Il veut étendre l'app au-delà des ventes. Ordre recommandé et accepté en pri
 Ces modules feront passer les données en v4 (migration à écrire) et imposeront de regrouper la barre latérale en Ventes / Achats / Gestion.
 **Fait depuis :** 3.0.0 (achats/fournisseurs/dépenses, v4), 3.1.0 (TVA déductible et calendrier fiscal), 3.2.0 (travailler à deux), 3.3.0 (trésorerie), 3.4.0 (marges), 3.5.0 (immobilisations), 4.0.0 (stock, v5), 4.1.0 (séries et garanties), 4.2.0 (photo de facture, éteinte par défaut), 5.0.0 (paie, v6), 5.1.0 (congés, avances et documents du personnel), 5.2.0 (déclarations sociales). **Le plan accepté le 11/09/2026 est intégralement livré.**
 
-## Repéré par l'audit du 11/09/2026, pas encore corrigé
+## Repéré par l'audit du 11/09/2026 — les huit constats, corrigés en 5.2.1
 
-Constats confirmés mais laissés de côté en 2.4.0, par ordre d'intérêt :
+Constats laissés de côté en 2.4.0 et repris en bloc en **5.2.1**. Tous corrigés, gardés ici parce qu'ils décrivent des règles à ne pas casser :
 
-- Choisir un logo ou un cachet dans Paramètres écrase les autres modifications non encore enregistrées du formulaire.
-- Relances et Comptabilité sont les deux seules pages de liste sans champ de recherche.
-- Un modèle de document ne se modifie pas : seul son nom est changeable, alors que les deux autres onglets du Catalogue ont « Modifier ».
-- La suppression est incohérente : un client se supprime depuis sa fiche, prestations, textes, modèles et contrats depuis la liste.
-- Les notes internes d'un client s'enregistrent toutes seules dans la fiche mais demandent « Enregistrer » dans la fenêtre de modification.
-- Clients et Catalogue n'ont pas de pied de tableau totalisé, contrairement aux listes de documents.
-- Sur une installation neuve, « Documents récents » affiche « Aucun document. » sans rien proposer.
-- Les boutons de ligne n'apparaissent qu'au survol sur Clients et sur les listes de documents, mais sont toujours affichés ailleurs.
+- Choisir un logo ou un cachet dans Paramètres écrasait les modifications non encore enregistrées du formulaire → `setImage()` appelle `applySettings()` **avant** de redessiner. Toute action de Paramètres qui provoque un `render()` doit faire pareil.
+- Relances et Comptabilité étaient les deux seules pages de liste sans recherche → `relState.q` / `comptaState.q` ; quand un filtre est actif, la page **écrit** que les totaux ne portent que sur la sélection.
+- Un modèle de document ne se modifiait pas → `templateForm(tpl, done)` (nom, type, remise, objet, notes, lignes avec sélecteur de catalogue).
+- La suppression était incohérente (fiche pour les clients, ligne pour le reste) → elle vit désormais **dans la fenêtre de modification**, partout (`clientForm`, `catalogForm`, `snippetForm`, `templateForm`, `recurrenceForm`) ; plus aucun « Supprimer » en bout de ligne. La confirmation nomme ce qui est rattaché (documents portant la prestation, factures issues du contrat, stock restant).
+- Les notes internes d'un client s'enregistraient en silence → la fiche le dit et affiche un « ✓ enregistré » passager (`#cl-notes-saved`).
+- Clients et Catalogue n'avaient pas de pied totalisé → `drawList` accepte `opts.foot(kept, all)` ; comme pour les autres listes, le pied porte sur la **sélection entière**, pas sur la page affichée.
+- « Documents récents » vide n'offrait rien → propositions concrètes (`#start-client`, `#start-devis`, `#start-cat`, `#start-demo`).
+- Les boutons de ligne étaient invisibles hors survol sur Clients et les documents → `td.row-actions > span` passe de `opacity: 0` à `.45` (et `1` au survol).
 
 ## Pistes pour la suite (non demandées)
 
