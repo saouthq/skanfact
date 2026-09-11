@@ -111,7 +111,8 @@
     add('a-rest-double', { type: 'avoir', client: 4, date: mo(4, 6), status: 'émis', creditOf: 'f-rest-double', creditReason: 'Facture établie en double', applyStamp: true, lines: [line(k[4], 1), line(k[3], 1)] });
     add('f-rest-m2', { type: 'facture', client: 4, date: mo(3, 5), status: 'envoyée', subject: 'Supervision et sauvegarde — ' + C.monthLabel(mo(3, 5)), recurringId: recRestaurant.id, lines: [line(k[4], 1), line(k[3], 1)], payments: [pay(34, 'all', 'cheque', 'CHQ 0045902')] });
     add('f-rest-m3', { type: 'facture', client: 4, date: daysAgo(55), status: 'envoyée', subject: 'Supervision et sauvegarde — ' + C.monthLabel(daysAgo(55)), recurringId: recRestaurant.id,
-      lines: [line(k[4], 1), line(k[3], 1), line(k[8], 5)], notes: 'Antivirus déployé sur les 5 postes de la caisse et du bureau.', emails: [E(daysAgo(55), 'facture'), E(daysAgo(10), 'relance1')] });
+      lines: [line(k[4], 1), line(k[3], 1), line(k[8], 5)], notes: 'Antivirus déployé sur les 5 postes de la caisse et du bureau.', emails: [E(daysAgo(55), 'facture'), E(daysAgo(10), 'relance1')],
+      phone: [{ date: daysAgo(4), level: 2, note: 'Le gérant annonce un virement après le week-end.' }], remindAfter: C.addDays(T, 6) });
     add('q-rest-postes', { type: 'devis', client: 4, date: daysAgo(50), status: 'envoyé', subject: 'Renouvellement des postes de la caisse', lines: [line(k[6], 4), line(k[8], 4)], emails: [E(daysAgo(50), 'devis')] });
 
     // Particulier : petite facture payée en espèces, devis en attente, brouillon du jour
@@ -179,9 +180,12 @@
       if (!draft || s.type === 'devis') doc.number = C.nextNumber(d, s.type, s.date);
       if (s.emails && s.emails.length) {
         doc.emails = s.emails.map(e => ({ date: e.date, to: client.email, kind: e.kind, subject: C.emailFor(e.kind, doc, client, co, { jours: doc.dueDate ? Math.max(0, C.daysBetween(doc.dueDate, e.date)) : 0 }).subject }));
-        const rem = doc.emails.filter(e => /^relance\d$/.test(e.kind)).map(e => ({ date: e.date, level: Number(e.kind.slice(-1)) }));
+        const rem = doc.emails.filter(e => /^relance\d$/.test(e.kind)).map(e => ({ date: e.date, level: Number(e.kind.slice(-1)), channel: 'email' }));
         if (rem.length) doc.reminders = rem;
       }
+      // Relances notées à la main (téléphone) et report éventuel : le client a annoncé une date
+      if (s.phone) { doc.reminders = (doc.reminders || []).concat(s.phone.map(p => ({ date: p.date, level: p.level, channel: 'tel', note: p.note }))).sort((a, b) => a.date.localeCompare(b.date)); }
+      if (s.remindAfter) doc.remindAfter = s.remindAfter;
       byKey[s.key] = doc; s.doc = doc; d.documents.push(doc);
     });
     // Paiements après création de tous les documents : le reste à payer tient compte des avoirs

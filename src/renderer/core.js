@@ -465,6 +465,7 @@
   function daysBetween(fromIso, toIso) { return Math.round((new Date(toIso + 'T00:00:00') - new Date(fromIso + 'T00:00:00')) / 86400000); }
 
   // Factures échues (ou partiellement payées et échues), avec jours de retard et dernière relance.
+  // `snoozed` : l'utilisateur a demandé de ne pas relancer avant une date (doc.remindAfter).
   function overdueInvoices(data, company, todayIso) {
     const t = todayIso || today();
     return (data.documents || [])
@@ -475,9 +476,103 @@
         const daysLate = daysBetween(x.doc.dueDate, t);
         const reminders = x.doc.reminders || [];
         const last = reminders.length ? reminders[reminders.length - 1] : null;
-        return { doc: x.doc, remaining: x.balance.remaining, daysLate, level: reminderLevel(daysLate), reminders, lastReminder: last, status: x.status };
+        const snoozed = !!(x.doc.remindAfter && x.doc.remindAfter > t);
+        return { doc: x.doc, remaining: x.balance.remaining, daysLate, level: reminderLevel(daysLate), reminders, lastReminder: last, status: x.status, snoozed, remindAfter: x.doc.remindAfter || '' };
       })
-      .sort((a, b) => b.daysLate - a.daysLate);
+      .sort((a, b) => (a.snoozed ? 1 : 0) - (b.snoozed ? 1 : 0) || b.daysLate - a.daysLate);
+  }
+
+  // ---------- ce qui demande une action ----------
+
+  // Le panneau « À faire » de l'accueil. Renvoie des groupes ordonnés du plus urgent au moins urgent.
+  // Chaque groupe : { id, level (danger|warn|info), label, detail, count, amount, route, docs }
+  function todoList(data, company, todayIso) {
+    const t = todayIso || today();
+    const out = [];
+    const cur = company.currency;
+    const fmt = n => money(n, cur);
+
+    const overdue = overdueInvoices(data, company, t).filter(x => !x.snoozed);
+    const overdueAmount = round3(overdue.reduce((s, x) => s + toBase(x.doc, x.remaining, company), 0));
+    if (overdue.length) out.push({
+      id: 'retards', level: 'danger', label: `${overdue.length} facture${overdue.length > 1 ? 's' : ''} en retard`,
+      detail: `${fmt(overdueAmount)} à récupérer · plus ancienne : ${overdue[0].daysLate} jours`,
+      count: overdue.length, amount: overdueAmount, route: '#/relances', docs: overdue.map(x => x.doc)
+    });
+
+    const due = dueRecurrences(data, t);
+    if (due.length) out.push({
+      id: 'contrats', level: 'warn', label: `${due.length} facture${due.length > 1 ? 's' : ''} de contrat à générer`,
+      detail: due.map(r => fillTemplate(r.subject, { mois: monthLabel(r.nextDate) })).join(' · '),
+      count: due.length, route: '#/contrats', docs: []
+    });
+
+    const expired = (data.documents || []).filter(d => d.type === 'devis' && effectiveStatus(d, data, company, t) === 'expiré');
+    if (expired.length) out.push({
+      id: 'devis-expires', level: 'warn', label: `${expired.length} devis expiré${expired.length > 1 ? 's' : ''}`,
+      detail: 'La date de validité est passée sans réponse : relance ou classe-les en refusés.',
+      count: expired.length, route: '#/devis', docs: expired
+    });
+
+    // Devis envoyés, encore valables, mais sans nouvelle depuis plus de 15 jours
+    const silent = (data.documents || []).filter(d => d.type === 'devis' && effectiveStatus(d, data, company, t) === 'envoyé' && d.date && daysBetween(d.date, t) > 15);
+    if (silent.length) out.push({
+      id: 'devis-sans-reponse', level: 'info', label: `${silent.length} devis sans réponse depuis plus de 15 jours`,
+      detail: 'Un appel ou un email relance souvent une décision qui traîne.',
+      count: silent.length, route: '#/devis', docs: silent
+    });
+
+    const rsPending = (data.documents || []).filter(d => d.type === 'facture' && d.status !== 'brouillon' && d.status !== 'annulée'
+      && computeTotals(d, company).withholding > 0 && !d.withholdingCertificate);
+    const rsAmount = round3(rsPending.reduce((s, d) => s + toBase(d, computeTotals(d, company).withholding, company), 0));
+    if (rsPending.length) out.push({
+      id: 'attestations', level: 'warn', label: `${rsPending.length} attestation${rsPending.length > 1 ? 's' : ''} de retenue à réclamer`,
+      detail: `${fmt(rsAmount)} retenus par tes clients. Sans attestation, tu ne peux pas les déduire de ton impôt.`,
+      count: rsPending.length, amount: rsAmount, route: '#/compta', docs: rsPending
+    });
+
+    const soon = (data.documents || []).filter(d => d.type === 'facture' && ['envoyée', 'partielle'].includes(effectiveStatus(d, data, company, t))
+      && d.dueDate && d.dueDate >= t && daysBetween(t, d.dueDate) <= 7);
+    if (soon.length) out.push({
+      id: 'echeances', level: 'info', label: `${soon.length} facture${soon.length > 1 ? 's' : ''} à échéance cette semaine`,
+      detail: 'Un message avant l\'échéance évite souvent la relance après.',
+      count: soon.length, route: '#/relances', docs: soon
+    });
+
+    const oldDrafts = (data.documents || []).filter(d => d.status === 'brouillon' && d.date && daysBetween(d.date, t) > 7);
+    if (oldDrafts.length) out.push({
+      id: 'brouillons', level: 'info', label: `${oldDrafts.length} brouillon${oldDrafts.length > 1 ? 's' : ''} de plus de 7 jours`,
+      detail: 'Un brouillon oublié, c\'est un travail non facturé.',
+      count: oldDrafts.length, route: '#/factures', docs: oldDrafts
+    });
+
+    return out;
+  }
+
+  // Historique d'un document, reconstitué à partir de ce qui est déjà enregistré.
+  function documentHistory(doc, data, company) {
+    const ev = [];
+    const dateOf = ms => new Date(ms).toISOString().slice(0, 10);
+    if (doc.createdAt) ev.push({ date: dateOf(doc.createdAt), kind: 'cree', label: 'Brouillon créé' });
+    if (doc.fromQuoteNumber) ev.push({ date: doc.date, kind: 'devis', label: `Établi à partir du devis ${doc.fromQuoteNumber}` });
+    if (doc.number && doc.status !== 'brouillon') ev.push({ date: doc.date, kind: 'emis', label: `${TITLES[doc.type]} ${doc.number} ${doc.type === 'facture' ? 'émise' : 'émis'}` });
+    (doc.emails || []).forEach(e => ev.push({
+      date: e.date, kind: /^relance/.test(e.kind) ? 'relance' : 'email',
+      label: /^relance/.test(e.kind) ? (REMINDER_LABELS[Number(e.kind.slice(-1))] || 'Relance') + ' par email' : 'Envoyé par email',
+      detail: e.to || ''
+    }));
+    (doc.reminders || []).filter(r => r.channel && r.channel !== 'email').forEach(r => ev.push({
+      date: r.date, kind: 'relance', label: (REMINDER_LABELS[r.level] || 'Relance') + ' par téléphone', detail: r.note || ''
+    }));
+    (doc.payments || []).forEach(p => {
+      const m = PAYMENT_METHODS.find(x => x[0] === p.method);
+      ev.push({ date: p.date, kind: 'paiement', label: `Paiement de ${money(p.amount, doc.currency || company.currency)}`, detail: [m ? m[1] : p.method, p.reference].filter(Boolean).join(' · ') });
+    });
+    if (doc.remindAfter) ev.push({ date: doc.remindAfter, kind: 'report', label: 'Ne pas relancer avant cette date' });
+    if (doc.type === 'facture') creditsFor(data, doc.id).forEach(a => ev.push({ date: a.date, kind: 'avoir', label: `Avoir ${a.number}`, detail: a.creditReason || '', id: a.id }));
+    if (doc.withholdingCertificate) ev.push({ date: '', kind: 'attestation', label: 'Attestation de retenue à la source reçue' });
+    if (doc.status === 'annulée') ev.push({ date: '', kind: 'annule', label: 'Facture marquée annulée' });
+    return ev.filter(e => e.date !== undefined).sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999'));
   }
 
   // ---------- emails ----------
@@ -488,7 +583,9 @@
     avoir: { subject: 'Avoir {numero} — {societe}', body: 'Bonjour,\n\nVeuillez trouver ci-joint l\'avoir {numero} ({montant}) relatif à la facture {reference}.\n\nCordialement,\n{societe}' },
     relance1: { subject: 'Rappel — facture {numero}', body: 'Bonjour,\n\nSauf erreur de notre part, la facture {numero} ({montant}) arrivée à échéance le {echeance} reste en attente de règlement.\nSi le paiement a déjà été effectué, merci de ne pas tenir compte de ce message.\n\nCordialement,\n{societe}' },
     relance2: { subject: 'Relance — facture {numero} en retard de {jours} jours', body: 'Bonjour,\n\nNotre facture {numero} d\'un montant de {montant}, échue le {echeance}, n\'a pas été réglée à ce jour ({jours} jours de retard).\nMerci de procéder au règlement dans les meilleurs délais ou de nous indiquer la date prévue.\n\nCordialement,\n{societe}' },
-    relance3: { subject: 'Dernière relance — facture {numero}', body: 'Bonjour,\n\nMalgré nos précédents rappels, la facture {numero} ({montant}, échue le {echeance}) reste impayée après {jours} jours.\nSans règlement sous 8 jours, nous serons contraints d\'engager une procédure de recouvrement.\n\nCordialement,\n{societe}' }
+    relance3: { subject: 'Dernière relance — facture {numero}', body: 'Bonjour,\n\nMalgré nos précédents rappels, la facture {numero} ({montant}, échue le {echeance}) reste impayée après {jours} jours.\nSans règlement sous 8 jours, nous serons contraints d\'engager une procédure de recouvrement.\n\nCordialement,\n{societe}' },
+    relanceDevis: { subject: 'Notre devis {numero} — {objet}', body: 'Bonjour,\n\nNous vous avons adressé le devis {numero} ({montant} TTC) concernant : {objet}.\nAvez-vous pu l\'examiner ? Nous restons disponibles pour en discuter ou l\'ajuster si besoin.\n\nCordialement,\n{societe}' },
+    comptable: { subject: 'Comptabilité {objet} — {societe}', body: 'Bonjour,\n\nVeuillez trouver ci-joint le journal des ventes de {objet} : {numero} document(s), {montant} de chiffre d\'affaires hors taxes.\n\nJe reste à votre disposition pour tout complément.\n\nCordialement,\n{societe}' }
   };
 
   const DEFAULT_EMAIL_TEMPLATES_EN = {
@@ -497,7 +594,9 @@
     avoir: { subject: 'Credit note {numero} — {societe}', body: 'Hello,\n\nPlease find attached credit note {numero} ({montant}) related to invoice {reference}.\n\nBest regards,\n{societe}' },
     relance1: { subject: 'Reminder — invoice {numero}', body: 'Hello,\n\nUnless we are mistaken, invoice {numero} ({montant}) due on {echeance} is still awaiting payment.\nIf you have already paid, please disregard this message.\n\nBest regards,\n{societe}' },
     relance2: { subject: 'Second reminder — invoice {numero} is {jours} days overdue', body: 'Hello,\n\nOur invoice {numero} for {montant}, due on {echeance}, remains unpaid ({jours} days overdue).\nPlease proceed with payment as soon as possible or let us know the expected date.\n\nBest regards,\n{societe}' },
-    relance3: { subject: 'Final reminder — invoice {numero}', body: 'Hello,\n\nDespite our previous reminders, invoice {numero} ({montant}, due on {echeance}) remains unpaid after {jours} days.\nWithout payment within 8 days, we will have to start a recovery procedure.\n\nBest regards,\n{societe}' }
+    relance3: { subject: 'Final reminder — invoice {numero}', body: 'Hello,\n\nDespite our previous reminders, invoice {numero} ({montant}, due on {echeance}) remains unpaid after {jours} days.\nWithout payment within 8 days, we will have to start a recovery procedure.\n\nBest regards,\n{societe}' },
+    relanceDevis: { subject: 'Our quote {numero} — {objet}', body: 'Hello,\n\nWe sent you quote {numero} ({montant} incl. VAT) for: {objet}.\nHave you had a chance to review it? We remain available to discuss or adjust it.\n\nBest regards,\n{societe}' },
+    comptable: { subject: 'Accounting {objet} — {societe}', body: 'Hello,\n\nPlease find attached the sales journal for {objet}.\n\nBest regards,\n{societe}' }
   };
 
   function emailFor(kind, doc, client, company, extra) {
@@ -910,7 +1009,7 @@
     nextNumber, isLocked, isIssued, computeTotals, creditsFor, invoiceBalance, effectiveStatus,
     depositLines, settlementLines, salesJournal, vatSummary, paymentsJournal, toCsv, migrateData,
     PERIODS, MONTHS_FR, MONTHS_SHORT, monthLabel, addMonths, nextRecurrenceDate, dueRecurrences, fillTemplate, buildRecurringInvoice,
-    reminderLevel, REMINDER_LABELS, daysBetween, overdueInvoices, DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_TEMPLATES_EN, emailFor,
+    reminderLevel, REMINDER_LABELS, daysBetween, overdueInvoices, todoList, documentHistory, DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_TEMPLATES_EN, emailFor,
     CURRENCIES, decimalsFor, toBase, monthKeys, monthlySeries, topClients, quoteStats, avgPaymentDelay, clientSummary, I18N,
     amountToWords, intToWords, intToWordsEn, documentHtml, fitToPage, pageCount
   };

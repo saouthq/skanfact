@@ -17,7 +17,7 @@
     openBackups: async () => {}, createBackup: async () => null, listBackups: async () => [],
     pickLogo: async () => null,
     exportPdf: async (html) => { const w = window.open('', '_blank'); w.document.write(html); w.document.close(); w.print(); return null; },
-    exportPdfMany: async () => null, saveText: async () => null, exportPdfSilent: async () => null, composeMail: async () => ({ state: 'mailto' }),
+    exportPdfMany: async () => null, saveText: async () => null, exportPdfSilent: async () => null, saveTextSilent: async () => null, composeMail: async () => ({ state: 'mailto' }),
     openPath: async () => {}, showInFolder: async () => {},
     changelog: async () => '', onMenuAction: () => {}, setTitle: () => {},
     updateVersion: async () => ({ version: 'dev', packaged: false, platform: 'browser', macSigned: false }),
@@ -326,7 +326,7 @@
           <button class="btn" id="new-devis">+ Nouveau devis</button>
           <button class="btn btn-primary" id="new-facture">+ Nouvelle facture</button>
         </div></div>
-      ${dashboardBanners()}
+      ${todoPanel()}
       <div class="stats">
         <div class="stat"><div class="lbl">CA du mois (HT) ${info('dash.caMonth')}</div><div class="val">${C.money(sumHT(ofMonth), cur)}</div><div class="sub">${C.money(sumTTC(ofMonth), cur)} TTC, avoirs déduits</div></div>
         <div class="stat"><div class="lbl">CA de l'année (HT) ${info('dash.caYear')}</div><div class="val">${C.money(sumHT(ofYear), cur)}</div><div class="sub">${year} · ${C.money(sumTTC(ofYear), cur)} TTC</div></div>
@@ -349,7 +349,7 @@
       <div class="panel"><h2>Documents récents</h2>${docTable(recent)}</div>`;
     $('#new-devis').onclick = () => navigate('#/doc/new/devis');
     $('#new-facture').onclick = () => navigate('#/doc/new/facture');
-    bindBanners();
+    bindTodo();
     bindDocTable();
   };
 
@@ -621,6 +621,7 @@
             <div class="totals-box" id="totals"></div>
           </div>
           ${bal ? `<div class="panel" id="pay-panel"><h2>Paiements et situation ${info('ed.payments')}</h2><div id="pay-body"></div></div>` : ''}
+          ${isNew ? '' : `<div class="panel"><h2>Historique ${info('ed.history')}</h2><div id="doc-history"></div></div>`}
           <div class="panel"><h2>Notes (affichées sur le document) ${info('ed.notes')}</h2>
             ${!locked && data.snippets.length ? `<div class="catalog-pick"><select id="snip-pick"><option value="">Insérer un texte prédéfini…</option>${data.snippets.map(x => `<option value="${x.id}">${h(x.name)}</option>`).join('')}</select></div>` : ''}
             <textarea id="notes" placeholder="Conditions particulières, mentions…" ${ro}>${h(doc.notes || '')}</textarea>
@@ -914,8 +915,20 @@
     if ($('#more-btn')) $('#more-btn').onclick = e => { e.stopPropagation(); const l = $('#more-list'); const open = l.hidden; closeMenus(); l.hidden = !open; };
     $$('#more-list button').forEach(b => b.addEventListener('click', () => { $('#more-list').hidden = true; }));
 
+    // --- historique (reconstitué à partir de ce qui est enregistré : envois, relances, paiements, avoirs)
+    function drawHistory() {
+      const el = $('#doc-history'); if (!el) return;
+      const ev = C.documentHistory(docById(doc.id) || doc, data, company());
+      el.innerHTML = ev.length
+        ? `<ul class="timeline">${ev.map(e => `<li class="k-${h(e.kind)}">
+            <div class="tl-h">${e.id ? `<a href="#/doc/${e.id}">${h(e.label)}</a>` : h(e.label)}</div>
+            <div class="tl-d">${e.date ? C.fmtDate(e.date) : ''}${e.date && e.detail ? ' · ' : ''}${h(e.detail || '')}</div></li>`).join('')}</ul>`
+        : '<p class="small muted">Rien à afficher pour l\'instant.</p>';
+    }
+
     drawLines();
     drawPayments();
+    drawHistory();
   };
 
   function invoiceFromQuote(quote, lines, discountRate) {
@@ -1233,7 +1246,10 @@
     if (!client) return toast('Choisis un client.', true);
     kind = kind || doc.type;
     const m = C.emailFor(kind, doc, client, company(), extra);
-    modal(`<h2>${kind.startsWith('relance') ? C.REMINDER_LABELS[Number(kind.slice(-1))] + ' — ' + h(doc.number) : 'Envoyer ' + h(docLabel(doc)) + ' par email'}</h2>
+    const mtitle = kind === 'relanceDevis' ? 'Relancer le devis ' + h(doc.number)
+      : /^relance\d$/.test(kind) ? C.REMINDER_LABELS[Number(kind.slice(-1))] + ' — ' + h(doc.number)
+      : 'Envoyer ' + h(docLabel(doc)) + ' par email';
+    modal(`<h2>${mtitle}</h2>
       <form id="mf" class="grid-2">
         ${field('Destinataire', 'to', m.to, 'email', 'placeholder="email@client.tn"')}
         <label class="check" style="align-self:end"><input type="checkbox" name="attach" checked> Joindre le PDF</label>
@@ -1356,47 +1372,121 @@
   };
 
   // ---------- relances ----------
+  // Relance notée à la main (téléphone, visite) : elle compte dans l'historique comme un email.
+  function phoneReminderForm(item, done) {
+    const d = item.doc;
+    modal(`<h2>Relance par téléphone — ${h(d.number)}</h2>
+      <p class="small muted">${h(clientName(d.clientId))} · ${C.money(item.remaining, docCur(d))} · ${item.daysLate} jours de retard</p>
+      <form id="tf" class="grid-2">
+        ${field('Date de l\'appel', 'date', C.today(), 'date')}
+        <label class="field">Niveau<select name="level">${[1, 2, 3].map(l => `<option value="${l}" ${l === item.level ? 'selected' : ''}>${h(C.REMINDER_LABELS[l])}</option>`).join('')}</select></label>
+        <label class="field span-2">Ce qui a été dit<input type="text" name="note" placeholder="Promet un virement avant le 20, relancer si rien"></label>
+        ${field('Ne pas relancer avant le (optionnel)', 'remindAfter', '', 'date')}
+      </form>
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Noter la relance</button></div>`,
+      (root, close) => { $('#ok', root).onclick = () => {
+        const v = formValues($('#tf', root));
+        if (!v.date) return toast('Date obligatoire.', true);
+        const s = docById(d.id);
+        s.reminders = s.reminders || [];
+        s.reminders.push({ date: v.date, level: Number(v.level) || item.level, channel: 'tel', note: v.note || '' });
+        if (v.remindAfter) s.remindAfter = v.remindAfter;
+        save(true); close(); toast('Relance notée'); if (done) done();
+      }; });
+  }
+
+  function snoozeForm(item, done) {
+    const d = item.doc;
+    modal(`<h2>Reporter la relance — ${h(d.number)}</h2>
+      <p class="small muted">La facture reste en retard et continue de compter dans ton « reste à encaisser ». Elle passe simplement en bas de la liste des relances jusqu'à cette date.</p>
+      <form id="sf2" class="grid-2">${field('Ne pas relancer avant le', 'remindAfter', C.addDays(C.today(), 15), 'date')}</form>
+      <div class="modal-actions">${d.remindAfter ? '<button class="btn" id="clear" style="margin-right:auto">Retirer le report</button>' : ''}<button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Reporter</button></div>`,
+      (root, close) => {
+        $('#ok', root).onclick = () => {
+          const v = formValues($('#sf2', root)); if (!v.remindAfter) return toast('Choisis une date.', true);
+          docById(d.id).remindAfter = v.remindAfter; save(true); close(); toast('Relance reportée au ' + C.fmtDate(v.remindAfter)); if (done) done();
+        };
+        if ($('#clear', root)) $('#clear', root).onclick = () => { delete docById(d.id).remindAfter; save(true); close(); toast('Report retiré'); if (done) done(); };
+      });
+  }
+
   routes.relances = () => {
     const cur = company().currency;
     const draw = () => {
-      const od = C.overdueInvoices(data, company());
+      const all = C.overdueInvoices(data, company());
+      const od = all.filter(x => !x.snoozed), later = all.filter(x => x.snoozed);
       const soon = data.documents.filter(d => d.type === 'facture' && ['envoyée', 'partielle'].includes(effStatus(d)) && d.dueDate >= C.today() && C.daysBetween(C.today(), d.dueDate) <= 7);
-      const total = od.reduce((s, x) => s + x.remaining, 0);
+      const quotes = data.documents.filter(d => d.type === 'devis' && ['envoyé', 'expiré'].includes(effStatus(d)) && d.date && C.daysBetween(d.date, C.today()) > 10)
+        .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+      const total = od.reduce((s, x) => s + C.toBase(x.doc, x.remaining, company()), 0);
+      const row = x => `<tr class="${x.snoozed ? 'snoozed' : ''}">
+        <td><strong><a href="#/doc/${x.doc.id}">${h(x.doc.number)}</a></strong><div class="small muted">${h(x.doc.subject || '')}</div></td>
+        <td><a href="#/client/${x.doc.clientId}">${h(clientName(x.doc.clientId))}</a></td>
+        <td>${C.fmtDate(x.doc.dueDate)}</td>
+        <td class="r">${x.daysLate} j <span class="level l${x.level}">${h(C.REMINDER_LABELS[x.level])}</span></td>
+        <td class="r">${C.money(x.remaining, docCur(x.doc))}</td>
+        <td>${x.lastReminder ? `${C.fmtDate(x.lastReminder.date)} <span class="small muted">(${x.lastReminder.channel === 'tel' ? 'téléphone' : 'email'}, niveau ${x.lastReminder.level}, ${x.reminders.length} au total)</span>${x.lastReminder.note ? `<div class="small muted">« ${h(x.lastReminder.note)} »</div>` : ''}` : '<span class="muted">jamais</span>'}
+          ${x.snoozed ? `<div class="small warn-link">reporté au ${C.fmtDate(x.remindAfter)}</div>` : ''}</td>
+        <td class="actions">
+          <button class="btn btn-sm btn-primary" data-rem="${x.doc.id}">Email</button>
+          <button class="btn btn-sm" data-tel="${x.doc.id}">Téléphone…</button>
+          <button class="btn btn-sm" data-pay="${x.doc.id}">Paiement reçu</button>
+          <button class="btn btn-sm btn-ghost" data-snooze="${x.doc.id}" title="Ne pas relancer avant une date">⏱</button>
+        </td></tr>`;
+      const head = `<thead><tr><th>Facture</th><th>Client</th><th>Échéance</th><th class="r">Retard</th><th class="r">Reste à payer</th><th>Dernière relance</th><th></th></tr></thead>`;
       $('#r-wrap').innerHTML = `
-        ${od.length ? `<div class="banner">${od.length} facture(s) en retard — ${C.money(total, cur)} à récupérer</div>` : `<div class="banner info">Aucune facture en retard.</div>`}
-        ${od.length ? `<table class="list"><thead><tr><th>Facture</th><th>Client</th><th>Échéance</th><th class="r">Retard</th><th class="r">Reste à payer</th><th>Dernière relance</th><th></th></tr></thead><tbody>
-          ${od.map(x => `<tr><td><strong><a href="#/doc/${x.doc.id}">${h(x.doc.number)}</a></strong><div class="small muted">${h(x.doc.subject || '')}</div></td><td>${h(clientName(x.doc.clientId))}</td><td>${C.fmtDate(x.doc.dueDate)}</td><td class="r">${x.daysLate} j <span class="level l${x.level}">${h(C.REMINDER_LABELS[x.level])}</span></td><td class="r">${C.money(x.remaining, cur)}</td>
-            <td>${x.lastReminder ? `${C.fmtDate(x.lastReminder.date)} <span class="small muted">(niveau ${x.lastReminder.level}, ${x.reminders.length} envoi${x.reminders.length > 1 ? 's' : ''})</span>` : '<span class="muted">jamais</span>'}</td>
-            <td class="actions"><button class="btn btn-sm btn-primary" data-rem="${x.doc.id}">Relancer par email</button> <button class="btn btn-sm" data-pay="${x.doc.id}">Paiement reçu</button></td></tr>`).join('')}
-        </tbody></table>` : ''}
+        ${od.length ? `<div class="banner">${od.length} facture(s) à relancer — ${C.money(total, cur)} à récupérer</div>` : `<div class="banner info">Aucune facture à relancer${later.length ? ` (${later.length} reportée(s))` : ''}.</div>`}
+        ${od.length ? `<table class="list">${head}<tbody>${od.map(row).join('')}</tbody></table>` : ''}
+        ${later.length ? `<div class="section-head"><h2>Reportées ${info('rel.snooze')}</h2></div><table class="list">${head}<tbody>${later.map(row).join('')}</tbody></table>` : ''}
         ${soon.length ? `<div class="section-head"><h2>Échéances dans les 7 jours ${info('rel.soon')}</h2></div><table class="list compact"><thead><tr><th>Facture</th><th>Client</th><th>Échéance</th><th class="r">Reste</th></tr></thead><tbody>
-          ${soon.map(d => `<tr class="clickable" data-id="${d.id}"><td><strong>${h(d.number)}</strong></td><td>${h(clientName(d.clientId))}</td><td>${C.fmtDate(d.dueDate)}</td><td class="r">${C.money(balance(d).remaining, cur)}</td></tr>`).join('')}
+          ${soon.map(d => `<tr class="clickable" data-id="${d.id}"><td><strong>${h(d.number)}</strong></td><td>${h(clientName(d.clientId))}</td><td>${C.fmtDate(d.dueDate)}</td><td class="r">${C.money(balance(d).remaining, docCur(d))}</td></tr>`).join('')}
+        </tbody></table>` : ''}
+        ${quotes.length ? `<div class="section-head"><h2>Devis sans réponse ${info('rel.quotes')}</h2></div><table class="list compact"><thead><tr><th>Devis</th><th>Client</th><th>Envoyé il y a</th><th>Validité</th><th class="r">Montant</th><th></th></tr></thead><tbody>
+          ${quotes.map(d => `<tr><td><strong><a href="#/doc/${d.id}">${h(d.number)}</a></strong><div class="small muted">${h(d.subject || '')}</div></td><td>${h(clientName(d.clientId))}</td><td>${C.daysBetween(d.date, C.today())} jours</td><td>${effStatus(d) === 'expiré' ? '<span class="badge expiré">expiré</span>' : C.fmtDate(d.dueDate)}</td><td class="r">${C.money(C.computeTotals(d, company()).totalTTC, docCur(d))}</td>
+            <td class="actions"><button class="btn btn-sm" data-qrem="${d.id}">Relancer par email</button></td></tr>`).join('')}
         </tbody></table>` : ''}
         <p class="small muted mt">Niveaux : rappel amical jusqu'à 15 jours, relance jusqu'à 45 jours, dernière relance au-delà. Textes modifiables dans Paramètres → Emails.</p>`;
-      $$('[data-rem]').forEach(b => b.onclick = () => sendReminder(od.find(x => x.doc.id === b.dataset.rem)));
+      const find = id => all.find(x => x.doc.id === id);
+      $$('[data-rem]').forEach(b => b.onclick = () => sendReminder(find(b.dataset.rem)));
+      $$('[data-tel]').forEach(b => b.onclick = () => phoneReminderForm(find(b.dataset.tel), draw));
+      $$('[data-snooze]').forEach(b => b.onclick = () => snoozeForm(find(b.dataset.snooze), draw));
       $$('[data-pay]').forEach(b => b.onclick = () => paymentForm(docById(b.dataset.pay), draw));
+      $$('[data-qrem]').forEach(b => b.onclick = () => sendByEmail(docById(b.dataset.qrem), 'relanceDevis', null, () => {}));
       $$('tr.clickable[data-id]').forEach(tr => tr.onclick = () => navigate('#/doc/' + tr.dataset.id));
     };
     $('#view').innerHTML = `<div class="page-head"><h1>Relances ${info('rel.levels')}</h1></div><div id="r-wrap"></div>`;
     draw();
   };
 
-  // ---------- bannières et compteurs ----------
-  function dashboardBanners() {
-    const due = C.dueRecurrences(data).length;
-    const od = C.overdueInvoices(data, company());
-    const cur = company().currency;
-    return `${due ? `<div class="banner info">${due} facture(s) récurrente(s) à générer ce mois<button class="btn" id="b-gen">Générer les brouillons</button></div>` : ''}
-      ${od.length ? `<div class="banner">${od.length} facture(s) en retard — ${C.money(od.reduce((s, x) => s + x.remaining, 0), cur)}<button class="btn" id="b-rel">Voir les relances</button></div>` : ''}`;
+  // ---------- panneau « À faire » ----------
+  const TODO_ACTIONS = {
+    contrats: { label: 'Générer les brouillons', run: () => { const n = generateRecurring(); toast(`${n} brouillon(s) créé(s) — à relire puis émettre`); render(); } },
+    retards: { label: 'Voir les relances', run: () => navigate('#/relances') },
+    'devis-expires': { label: 'Voir les devis', run: () => navigate('#/devis') },
+    'devis-sans-reponse': { label: 'Voir les devis', run: () => navigate('#/devis') },
+    attestations: { label: 'Voir la liste', run: () => navigate('#/compta') },
+    echeances: { label: 'Voir les échéances', run: () => navigate('#/relances') },
+    brouillons: { label: 'Voir les brouillons', run: () => navigate('#/factures') }
+  };
+  function todoPanel() {
+    const items = C.todoList(data, company());
+    if (!items.length) return `<div class="todo-ok">Rien à faire aujourd'hui : aucun retard, aucun contrat en attente, aucune attestation à réclamer.</div>`;
+    return `<div class="panel todo"><h2>À faire ${info('todo')}</h2>
+      <ul>${items.map(x => `<li class="lvl-${x.level}">
+        <span class="td-dot"></span>
+        <span class="td-txt"><strong>${h(x.label)}</strong><span class="small muted">${h(x.detail || '')}</span></span>
+        <button class="btn btn-sm" data-todo="${x.id}">${h((TODO_ACTIONS[x.id] || {}).label || 'Voir')}</button>
+      </li>`).join('')}</ul></div>`;
   }
-  function bindBanners() {
-    if ($('#b-gen')) $('#b-gen').onclick = () => { const n = generateRecurring(); toast(`${n} brouillon(s) créé(s)`); render(); };
-    if ($('#b-rel')) $('#b-rel').onclick = () => navigate('#/relances');
+  function bindTodo() {
+    $$('[data-todo]').forEach(b => b.onclick = () => { const a = TODO_ACTIONS[b.dataset.todo]; if (a) a.run(); });
   }
   function updateNavCounts() {
-    const el = $('#nav-relances'); if (!el || !data) return;
-    const n = C.overdueInvoices(data, company()).length;
-    el.hidden = !n; el.textContent = n;
+    if (!data) return;
+    const rel = $('#nav-relances');
+    if (rel) { const n = C.overdueInvoices(data, company()).filter(x => !x.snoozed).length; rel.hidden = !n; rel.textContent = n; }
+    const ct = $('#nav-contrats');
+    if (ct) { const n = C.dueRecurrences(data).length; ct.hidden = !n; ct.textContent = n; }
   }
 
   // ---------- palette de recherche (Cmd/Ctrl+K) ----------
@@ -1454,6 +1544,16 @@
   // ---------- Paramètres ----------
 
   // ---------- Comptabilité ----------
+  // Colonnes du journal des ventes exporté en CSV (export manuel et envoi au comptable)
+  const journalColumns = () => [
+    { key: 'date', label: 'Date', type: 'date' }, { key: 'number', label: 'Numéro' }, { key: 'typeLabel', label: 'Type' }, { key: 'client', label: 'Client' }, { key: 'subject', label: 'Objet' },
+    { key: 'ht', label: 'Total HT', type: 'money' },
+    ...C.VAT_RATES.map(r => ({ label: `Base ${r}%`, type: 'money', get: x => x.vatByRate[r].base })),
+    ...C.VAT_RATES.map(r => ({ label: `TVA ${r}%`, type: 'money', get: x => x.vatByRate[r].vat })),
+    { key: 'tva', label: 'Total TVA', type: 'money' }, { key: 'timbre', label: 'Timbre', type: 'money' }, { key: 'ttc', label: 'TTC', type: 'money' },
+    { key: 'rs', label: 'Retenue source', type: 'money' }, { key: 'net', label: 'Net à payer', type: 'money' },
+    { key: 'statusLabel', label: 'Statut' }, { key: 'paid', label: 'Payé', type: 'money' }, { key: 'remaining', label: 'Reste', type: 'money' }
+  ];
   const MONTHS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
   const comptaState = { year: C.today().slice(0, 4), month: C.today().slice(5, 7) };
 
@@ -1498,7 +1598,7 @@
           <p class="small muted mt">Timbres fiscaux : ${C.money(sum.timbre, cur)} · TTC facturé : ${C.money(sum.ttc, cur)} · Retenues à la source subies : ${C.money(sum.rs, cur)}. <em>À VÉRIFIER avec le comptable</em> avant déclaration.</p>
         </div>
         <div class="panel"><h2>Journal des ventes — ${h(periodLabel())} ${info('compta.journal')}</h2>
-          <div class="inline mb"><button class="btn" id="exp-journal">Exporter en CSV (Excel)</button><button class="btn" id="exp-pdfs">Exporter tous les PDF de la période</button></div>
+          <div class="inline mb"><button class="btn" id="exp-journal">Exporter en CSV (Excel)</button><button class="btn" id="exp-pdfs">Exporter tous les PDF de la période</button><button class="btn btn-primary" id="exp-comptable">Envoyer au comptable…</button>${info('compta.comptable')}</div>
           ${rows.length ? `<div class="scroll-x"><table class="list compact"><thead><tr><th>Date</th><th>Numéro</th><th>Client</th><th class="r">HT</th><th class="r">TVA</th><th class="r">TTC</th><th class="r">RS</th><th class="r">Net</th><th>Statut</th></tr></thead><tbody>
             ${rows.map(r => `<tr class="clickable" data-id="${r.id}"><td>${C.fmtDate(r.date)}</td><td><strong>${h(r.number)}</strong>${r.type === 'avoir' ? `<div class="small muted">avoir · ${h(r.creditOfNumber)}</div>` : ''}</td><td>${h(r.client)}<div class="small muted">${h(r.subject)}</div></td><td class="r">${C.money(r.ht)}</td><td class="r">${C.money(r.tva)}</td><td class="r">${C.money(r.ttc)}</td><td class="r">${r.rs ? C.money(r.rs) : '—'}</td><td class="r">${C.money(r.net)}</td><td>${badge(r.status)}</td></tr>`).join('')}
           </tbody></table></div>` : '<div class="empty">Aucune facture émise sur cette période.</div>'}
@@ -1518,17 +1618,36 @@
       $$('tr.clickable[data-id]').forEach(tr => tr.onclick = () => navigate('#/doc/' + tr.dataset.id));
       $$('[data-cert]').forEach(b => b.onclick = () => { const d = docById(b.dataset.cert); d.withholdingCertificate = true; save(true); draw(); toast('Attestation notée pour ' + d.number); });
       const tag = comptaState.month ? `${comptaState.year}-${comptaState.month}` : comptaState.year;
+      // Envoi au comptable : journal de la période en pièce jointe, message prérempli
+      $('#exp-comptable').onclick = () => {
+        if (!rows.length) return toast('Rien à envoyer sur cette période.', true);
+        const tpl = { ...C.DEFAULT_EMAIL_TEMPLATES.comptable, ...((company().emailTemplates || {}).comptable || {}) };
+        const vars = { objet: periodLabel(), numero: rows.length, montant: C.money(sum.ht, cur), societe: company().name, client: company().accountantName || '' };
+        modal(`<h2>Envoyer la comptabilité au comptable</h2>
+          <p class="small muted">${rows.length} document(s) · ${C.money(sum.ht, cur)} HT · TVA ${C.money(sum.tva, cur)} — ${h(periodLabel())}</p>
+          <form id="cpf" class="grid-2">
+            ${field('Email du comptable', 'to', company().accountantEmail || '', 'email', 'placeholder="comptable@cabinet.tn"')}
+            <label class="check" style="align-self:end"><input type="checkbox" name="remember" checked> Retenir cette adresse</label>
+            <label class="field span-2">Objet<input type="text" name="subject" value="${h(C.fillTemplate(tpl.subject, vars))}"></label>
+            <label class="field span-2">Message<textarea name="body" rows="8">${h(C.fillTemplate(tpl.body, vars))}</textarea></label>
+          </form>
+          <p class="small muted">Le journal des ventes est joint en CSV. Les encaissements et les PDF s'exportent séparément si ton comptable les demande.</p>
+          <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Ouvrir dans la messagerie</button></div>`,
+          (root, close) => { $('#ok', root).onclick = async () => {
+            const v = formValues($('#cpf', root));
+            if (!v.to || !/^[^@\s]+@[^@\s]+$/.test(v.to)) return toast('Adresse email invalide.', true);
+            const b = $('#ok', root); b.disabled = true; b.textContent = 'Préparation…';
+            try {
+              const att = await bridge.saveTextSilent(`journal-ventes-${tag}.csv`, C.toCsv(rows, journalColumns()));
+              const r = await bridge.composeMail({ to: v.to, subject: v.subject, body: v.body, attachment: att, mode: company().mailClient === 'mailto' ? 'mailto' : 'auto' });
+              if (v.remember) { data.company.accountantEmail = v.to; save(true); }
+              close();
+              toast(r && r.state === 'mail' ? 'Message ouvert dans Mail avec le journal joint' : 'Message ouvert — glisse le fichier affiché dans le Finder');
+            } catch (e) { b.disabled = false; b.textContent = 'Ouvrir dans la messagerie'; toast('Erreur : ' + e.message.replace(/^.*Error: /, ''), true); }
+          }; });
+      };
       $('#exp-journal').onclick = async () => {
-        const cols = [
-          { key: 'date', label: 'Date', type: 'date' }, { key: 'number', label: 'Numéro' }, { key: 'typeLabel', label: 'Type' }, { key: 'client', label: 'Client' }, { key: 'subject', label: 'Objet' },
-          { key: 'ht', label: 'Total HT', type: 'money' },
-          ...C.VAT_RATES.map(r => ({ label: `Base ${r}%`, type: 'money', get: x => x.vatByRate[r].base })),
-          ...C.VAT_RATES.map(r => ({ label: `TVA ${r}%`, type: 'money', get: x => x.vatByRate[r].vat })),
-          { key: 'tva', label: 'Total TVA', type: 'money' }, { key: 'timbre', label: 'Timbre', type: 'money' }, { key: 'ttc', label: 'TTC', type: 'money' },
-          { key: 'rs', label: 'Retenue source', type: 'money' }, { key: 'net', label: 'Net à payer', type: 'money' },
-          { key: 'statusLabel', label: 'Statut' }, { key: 'paid', label: 'Payé', type: 'money' }, { key: 'remaining', label: 'Reste', type: 'money' }
-        ];
-        const p2 = await bridge.saveText(`journal-ventes-${tag}.csv`, C.toCsv(rows, cols)); if (p2) toast('Exporté : ' + p2.split(/[\\/]/).pop());
+        const p2 = await bridge.saveText(`journal-ventes-${tag}.csv`, C.toCsv(rows, journalColumns())); if (p2) toast('Exporté : ' + p2.split(/[\\/]/).pop());
       };
       $('#exp-pays').onclick = async () => {
         const cols = [{ key: 'date', label: 'Date', type: 'date' }, { key: 'number', label: 'Facture' }, { key: 'client', label: 'Client' }, { key: 'amount', label: 'Montant', type: 'money' }, { key: 'method', label: 'Mode' }, { key: 'reference', label: 'Référence' }, { key: 'note', label: 'Note' }];
@@ -1615,10 +1734,13 @@
             <label class="field">${lbl('Envoi des emails', 'mail.client')}<select name="mailClient"><option value="auto" ${c.mailClient !== 'mailto' ? 'selected' : ''}>Mail (Apple) avec le PDF joint — Mac</option><option value="mailto" ${c.mailClient === 'mailto' ? 'selected' : ''}>Autre messagerie (mailto, PDF à glisser)</option></select></label>
           </div>
         </div>
+        <div class="panel"><h2>Comptable</h2><div class="grid-2">
+          ${field(lbl('Email du comptable', 'compta.comptable'), 'accountantEmail', c.accountantEmail || '', 'email', 'placeholder="comptable@cabinet.tn"')}
+        </div><p class="small muted mt">Utilisé par « Envoyer au comptable » sur la page Comptabilité.</p></div>
         <div class="panel"><h2>Modèles de messages ${info('mail.templates')}</h2>
           <p class="small muted mt">Variables utilisables : {numero} {client} {objet} {montant} {echeance} {jours} {societe} {reference}. Les documents en anglais utilisent les modèles en anglais.</p>
           ${[['fr', 'et', 'Modèles en français', C.DEFAULT_EMAIL_TEMPLATES, c.emailTemplates || {}], ['en', 'eten', 'Modèles en anglais (clients étrangers)', C.DEFAULT_EMAIL_TEMPLATES_EN, c.emailTemplatesEn || {}]].map(([lg, prefix, title, defs, cur2]) => `<details ${lg === 'fr' ? 'open' : ''}><summary>${title}</summary>
-          ${[['devis', lg === 'fr' ? 'Envoi d\'un devis' : 'Quote'], ['facture', lg === 'fr' ? 'Envoi d\'une facture' : 'Invoice'], ['avoir', lg === 'fr' ? 'Envoi d\'un avoir' : 'Credit note'], ['relance1', lg === 'fr' ? 'Rappel (≤ 15 jours de retard)' : 'Reminder (≤ 15 days)'], ['relance2', lg === 'fr' ? 'Relance (16 à 45 jours)' : 'Second reminder (16–45 days)'], ['relance3', lg === 'fr' ? 'Dernière relance (> 45 jours)' : 'Final reminder (> 45 days)']].map(([k, label]) => {
+          ${[['devis', lg === 'fr' ? 'Envoi d\'un devis' : 'Quote'], ['facture', lg === 'fr' ? 'Envoi d\'une facture' : 'Invoice'], ['avoir', lg === 'fr' ? 'Envoi d\'un avoir' : 'Credit note'], ['relance1', lg === 'fr' ? 'Rappel (≤ 15 jours de retard)' : 'Reminder (≤ 15 days)'], ['relance2', lg === 'fr' ? 'Relance (16 à 45 jours)' : 'Second reminder (16–45 days)'], ['relance3', lg === 'fr' ? 'Dernière relance (> 45 jours)' : 'Final reminder (> 45 days)'], ['relanceDevis', lg === 'fr' ? 'Relance d\'un devis sans réponse' : 'Quote follow-up'], ['comptable', lg === 'fr' ? 'Envoi au comptable' : 'To the accountant']].map(([k, label]) => {
             const t = { ...defs[k], ...(cur2[k] || {}) };
             return `<div class="section-head"><h2 class="small">${label}</h2></div><div class="grid-2"><label class="field span-2">Objet<input type="text" name="${prefix}_${k}_subject" value="${h(t.subject)}"></label><label class="field span-2">Message<textarea name="${prefix}_${k}_body" rows="4">${h(t.body)}</textarea></label></div>`; }).join('')}
           </details>`).join('')}

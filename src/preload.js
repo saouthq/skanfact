@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld('skanfact', {
   exportPdfMany: (files, folderName) => ipcRenderer.invoke('pdf:exportMany', { files, folderName }),
   saveText: (suggestedName, content) => ipcRenderer.invoke('file:saveText', { suggestedName, content }),
   exportPdfSilent: (html, name) => ipcRenderer.invoke('pdf:exportSilent', { html, name }),
+  saveTextSilent: (name, content) => ipcRenderer.invoke('file:saveSilent', { name, content }),
   composeMail: (opts) => ipcRenderer.invoke('mail:compose', opts),
   openPath: (p) => ipcRenderer.invoke('shell:open', p),
   showInFolder: (p) => ipcRenderer.invoke('shell:showInFolder', p),

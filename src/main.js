@@ -438,6 +438,15 @@ ipcMain.handle('pdf:exportSilent', async (_e, { html, name }) => {
   return file;
 });
 
+// Fichier texte sans boîte de dialogue (pièce jointe d'un email) : userData/envois/<nom>
+ipcMain.handle('file:saveSilent', (_e, { name, content }) => {
+  const dir = path.join(app.getPath('userData'), 'envois');
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, String(name || 'export.csv').replace(/[\\/:*?"<>|]/g, '_'));
+  fs.writeFileSync(file, content, 'utf8');
+  return file;
+});
+
 // Composition d'un email dans le client de messagerie de l'utilisateur.
 //  - macOS + Apple Mail : nouveau message avec destinataire, objet, texte ET le PDF joint (AppleScript) ;
 //  - sinon : lien mailto (sans pièce jointe possible) + le PDF est montré dans le Finder / l'Explorateur.

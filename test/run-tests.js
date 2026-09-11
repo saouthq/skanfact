@@ -424,6 +424,10 @@ t('démo : cohérente quelle que soit la date du jour, société conservée', ()
     const od = core.overdueInvoices(d, d.company, T);
     assert.ok([1, 2, 3].every(l => od.some(x => x.level === l)), 'niveaux ' + od.map(x => x.level));
     assert.strictEqual(od[0].level, 3); assert.deepStrictEqual(od[0].reminders.map(r => r.level), [1, 2]); assert.strictEqual(od[0].doc.emails.length, 3);
+    // une relance téléphonique notée et une relance reportée figurent dans le jeu de démo
+    assert.ok(od.some(x => x.snoozed), 'aucune relance reportée');
+    assert.ok(d.documents.some(x => (x.reminders || []).some(r => r.channel === 'tel' && r.note)), 'aucune relance téléphonique');
+    assert.ok(core.todoList(d, d.company, T).length >= 4, 'panneau À faire vide');
     assert.strictEqual(core.dueRecurrences(d, T).length, 1);
     assert.ok(core.monthlySeries(d, d.company, T, 12).slice(0, 11).every(m => m.invoiced > 0));
     assert.ok(core.avgPaymentDelay(d, d.company, core.addMonths(T, -12, 1), T) > 0);
@@ -493,6 +497,70 @@ t('fiche client : facturé, reste à payer, délai, conversion', () => {
 t('contact du client imprimé sur le document', () => {
   const html = core.documentHtml(inv(), { name: 'ACME', contact: 'Me Sonia Ben Salah', matricule: '123' }, CO);
   assert.ok(html.includes('Me Sonia Ben Salah'));
+});
+
+t('à faire : ce qui demande une action, par ordre d\'urgence', () => {
+  const T = '2026-09-11';
+  const data = {
+    clients: [{ id: 'c1', name: 'ACME' }],
+    documents: [
+      inv({ id: 'i1', clientId: 'c1', number: 'FAC-2026-001', date: '2026-06-01', dueDate: '2026-07-01' }),                       // en retard
+      inv({ id: 'i2', clientId: 'c1', number: 'FAC-2026-002', date: '2026-09-05', dueDate: '2026-09-15' }),                       // échéance cette semaine
+      inv({ id: 'i3', clientId: 'c1', number: 'FAC-2026-003', date: '2026-08-01', dueDate: '2026-09-30', withholdingRate: 1.5 }), // attestation à réclamer
+      inv({ id: 'i4', clientId: 'c1', number: '', status: 'brouillon', date: '2026-08-20' }),                                     // vieux brouillon
+      { id: 'q1', type: 'devis', clientId: 'c1', number: 'DEV-2026-001', status: 'envoyé', date: '2026-07-01', dueDate: '2026-08-01', lines: [] }, // expiré
+      { id: 'q2', type: 'devis', clientId: 'c1', number: 'DEV-2026-002', status: 'envoyé', date: '2026-08-20', dueDate: '2026-10-20', lines: [] }  // sans réponse
+    ],
+    recurring: [{ id: 'r1', clientId: 'c1', subject: 'Maintenance — {mois}', lines: [], nextDate: '2026-09-01', active: true }]
+  };
+  const todo = core.todoList(data, CO, T);
+  const ids = todo.map(x => x.id);
+  assert.deepStrictEqual(ids, ['retards', 'contrats', 'devis-expires', 'devis-sans-reponse', 'attestations', 'echeances', 'brouillons']);
+  assert.strictEqual(todo[0].level, 'danger');
+  assert.strictEqual(todo[0].count, 1);
+  assert.ok(todo[0].detail.includes('72 jours'));
+  assert.ok(todo[0].detail.includes('1 191,000 DT'), 'montant non formaté : ' + todo[0].detail);
+  assert.ok(todo.find(x => x.id === 'attestations').detail.includes(' DT'));
+  assert.ok(todo[1].detail.includes('septembre 2026'));
+  // une facture reportée ne remonte plus dans « à faire » mais reste dans les relances
+  data.documents[0].remindAfter = '2026-09-30';
+  const todo2 = core.todoList(data, CO, T);
+  assert.ok(!todo2.some(x => x.id === 'retards'));
+  const od = core.overdueInvoices(data, CO, T);
+  assert.strictEqual(od.length, 1); assert.strictEqual(od[0].snoozed, true); assert.strictEqual(od[0].remindAfter, '2026-09-30');
+  // tout traité : plus rien à faire
+  assert.deepStrictEqual(core.todoList({ clients: [], documents: [], recurring: [] }, CO, T), []);
+});
+
+t('historique d\'un document : émission, envois, relances, paiements, avoir', () => {
+  const d = inv({
+    id: 'i1', number: 'FAC-2026-001', date: '2026-06-01', createdAt: new Date('2026-05-28T09:00:00Z').getTime(),
+    fromQuoteNumber: 'DEV-2026-001',
+    emails: [{ date: '2026-06-01', to: 'x@y.tn', kind: 'facture' }, { date: '2026-07-15', to: 'x@y.tn', kind: 'relance1' }],
+    reminders: [{ date: '2026-07-15', level: 1 }, { date: '2026-08-02', level: 2, channel: 'tel', note: 'Promet un virement' }],
+    payments: [{ id: 'p', date: '2026-08-20', amount: 500, method: 'virement', reference: 'VIR 12' }],
+    remindAfter: '2026-09-01', withholdingCertificate: true
+  });
+  const data = { clients: [], documents: [d, { id: 'a1', type: 'avoir', status: 'émis', number: 'AVO-2026-001', creditOf: 'i1', date: '2026-08-25', lines: [], creditReason: 'Geste commercial' }] };
+  const ev = core.documentHistory(d, data, CO);
+  const kinds = ev.map(e => e.kind);
+  assert.deepStrictEqual(kinds, ['cree', 'devis', 'emis', 'email', 'relance', 'relance', 'paiement', 'avoir', 'report', 'attestation']);
+  assert.ok(ev.find(e => e.kind === 'relance' && e.label.includes('téléphone')).detail.includes('Promet'));
+  assert.ok(ev.find(e => e.kind === 'paiement').label.includes('500,000'));
+  assert.strictEqual(ev.find(e => e.kind === 'avoir').id, 'a1');
+  // la relance email n'est comptée qu'une fois (elle existe dans emails ET dans reminders)
+  assert.strictEqual(ev.filter(e => e.kind === 'relance').length, 2);
+  assert.strictEqual(core.documentHistory({ type: 'devis', date: '2026-01-01', status: 'brouillon' }, data, CO).length, 0);
+});
+
+t('modèles d\'email : relance de devis et envoi au comptable', () => {
+  const q = { id: 'q', type: 'devis', number: 'DEV-2026-004', status: 'envoyé', date: '2026-08-01', dueDate: '2026-09-01', subject: 'Audit', lines: [{ label: 'x', qty: 1, unitPrice: 1000, vatRate: 19 }] };
+  const m = core.emailFor('relanceDevis', q, { name: 'ACME', email: 'a@b.tn' }, CO);
+  assert.strictEqual(m.subject, 'Notre devis DEV-2026-004 — Audit');
+  assert.ok(m.body.includes('1 190,000 DT') && m.body.includes('Audit'));
+  const en = core.emailFor('relanceDevis', { ...q, lang: 'en' }, { name: 'ACME' }, CO);
+  assert.ok(en.subject.startsWith('Our quote'));
+  assert.ok(core.DEFAULT_EMAIL_TEMPLATES.comptable.body.includes('{montant}'));
 });
 
 t('graphique : abréviations des mois distinctes', () => {
