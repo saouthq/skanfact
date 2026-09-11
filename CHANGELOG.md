@@ -7,6 +7,31 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 1.9.0 — 11/09/2026
+
+Retrouver et suivre : les listes et les clients.
+
+Listes de devis et de factures
+- **Tri par colonne** : un clic sur un titre trie, un deuxième inverse
+- **Filtre par année**, proposé dès que la liste s'allonge, et ouvert sur l'année en cours
+- **Pied de tableau** : nombre de documents, total HT et reste à payer de ce qui est affiché. Avec les filtres, tu obtiens en deux clics le total facturé à un client sur une année
+- **Actions au survol d'une ligne** : PDF, Email, Enregistrer un paiement, Dupliquer — sans ouvrir le document
+- Les filtres et le tri sont conservés quand tu ouvres un document et que tu reviens
+- La recherche porte aussi sur la référence (bon de commande)
+
+Devis
+- Nouvel état **« expiré »** : un devis envoyé dont la date de validité est passée sans réponse le montre, dans la liste comme sur l'accueil. Le statut enregistré, lui, ne bouge pas
+- La colonne « Type », inutile sur la page Devis, laisse la place à **« Valable jusqu'au »**
+
+Clients
+- **Fiche client** (clic sur une ligne) : facturé hors taxes, reste à payer, délai moyen de paiement de ce client, taux d'acceptation de ses devis, bannière s'il a des factures en retard, ses coordonnées, ses notes internes modifiables sur place et la liste de tous ses documents. Boutons « + Devis » et « + Facture » qui partent avec le client, sa langue, sa devise et son taux de retenue déjà réglés
+- **Personne à contacter** : le nom de ton interlocuteur, affiché dans la liste et imprimé sur les documents sous la raison sociale
+- Liste des clients : triable, avec facturé HT, reste à payer et date du dernier document
+- La suppression d'un client est passée dans sa fiche (elle reste impossible s'il a des documents)
+
+Catalogue
+- **Trois onglets** : Prestations, Modèles de documents, Textes prédéfinis
+
 ## 1.8.0 — 11/09/2026
 
 Comprendre ce qu'on fait, et ne plus rien perdre.

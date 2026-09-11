@@ -261,7 +261,7 @@ t('devises : conversion dans le journal et le tableau de bord', () => {
   assert.strictEqual(series[11].month, '2026-09'); assert.strictEqual(series[11].invoiced, 3400); assert.strictEqual(series[11].collected, core.round3(1191 * 3.4));
   assert.strictEqual(series[10].invoiced, 500);
   assert.deepStrictEqual(core.topClients(data, CO, '2026-01-01', '2026-12-31', 5).map(x => [x.name, x.ht]), [['ACME', 3400], ['Local', 500]]);
-  assert.deepStrictEqual(core.quoteStats(data, '2026-01-01', '2026-12-31'), { total: 3, accepted: 1, refused: 1, pending: 1, rate: 50 });
+  assert.deepStrictEqual(core.quoteStats(data, '2026-01-01', '2026-12-31', '2026-09-11'), { total: 3, accepted: 1, refused: 1, expired: 0, pending: 1, rate: 50 });
   assert.strictEqual(core.avgPaymentDelay(data, CO, '2026-01-01', '2026-12-31'), 8);
   assert.strictEqual(core.monthKeys('2026-01-15', 3).join(','), '2025-11,2025-12,2026-01');
 });
@@ -452,6 +452,47 @@ t('démo : acompte + solde, avoir total, client étranger en euros', () => {
   const pending = d.documents.filter(x => x.type === 'facture' && x.status !== 'brouillon' && core.computeTotals(x, d.company).withholding > 0 && !x.withholdingCertificate);
   assert.ok(pending.length >= 3 && d.documents.some(x => x.withholdingCertificate));
   d.documents.filter(x => x.type !== 'devis' && x.number).forEach(x => assert.ok(core.documentHtml(x, d.clients.find(c => c.id === x.clientId), d.company).length > 1000));
+});
+
+t('devis : « expiré » déduit de la date de validité, sans toucher au statut enregistré', () => {
+  const q = { id: 'q1', type: 'devis', number: 'DEV-2026-001', status: 'envoyé', date: '2026-08-01', dueDate: '2026-08-31', lines: [] };
+  const data = { documents: [q], clients: [] };
+  assert.strictEqual(core.effectiveStatus(q, data, CO, '2026-08-15'), 'envoyé');
+  assert.strictEqual(core.effectiveStatus(q, data, CO, '2026-09-15'), 'expiré');
+  assert.strictEqual(q.status, 'envoyé', 'le statut enregistré ne bouge pas');
+  assert.strictEqual(core.effectiveStatus({ ...q, status: 'accepté' }, data, CO, '2026-09-15'), 'accepté');
+  assert.strictEqual(core.effectiveStatus({ ...q, status: 'brouillon' }, data, CO, '2026-09-15'), 'brouillon');
+  assert.ok(core.DISPLAY_STATUSES.devis.includes('expiré'));
+  assert.strictEqual(core.quoteStats(data, '2026-01-01', '2026-12-31', '2026-09-15').expired, 1);
+});
+
+t('fiche client : facturé, reste à payer, délai, conversion', () => {
+  const data = {
+    clients: [{ id: 'c1', name: 'ACME' }, { id: 'c2', name: 'Autre' }],
+    documents: [
+      inv({ id: 'i1', clientId: 'c1', number: 'FAC-2026-001', date: '2026-03-01', payments: [{ id: 'p', date: '2026-03-21', amount: 1191 }] }),
+      inv({ id: 'i2', clientId: 'c1', number: 'FAC-2026-002', date: '2026-04-01', payments: [{ id: 'p2', date: '2026-04-11', amount: 500 }] }),
+      inv({ id: 'i3', clientId: 'c1', number: '', status: 'brouillon', date: '2026-05-01' }),
+      inv({ id: 'i4', clientId: 'c2', number: 'FAC-2026-003', date: '2026-05-01' }),
+      { id: 'q1', type: 'devis', clientId: 'c1', number: 'DEV-2026-001', status: 'accepté', date: '2026-02-01', lines: [] },
+      { id: 'q2', type: 'devis', clientId: 'c1', number: 'DEV-2026-002', status: 'refusé', date: '2026-02-05', lines: [] }
+    ]
+  };
+  const s = core.clientSummary(data, CO, 'c1');
+  assert.strictEqual(s.count, 5);                       // le brouillon compte comme document
+  assert.strictEqual(s.invoiceCount, 2);                // mais pas comme facture
+  assert.strictEqual(s.ht, 2000);                       // deux factures émises à 1000 HT
+  assert.strictEqual(s.paid, 1691);
+  assert.strictEqual(s.due, 691);                       // 1191 − 500 sur la deuxième
+  assert.strictEqual(s.delay, 20);                      // seule la facture soldée compte
+  assert.strictEqual(s.conversion, 50);
+  assert.strictEqual(s.first, '2026-02-01'); assert.strictEqual(s.last, '2026-05-01');
+  assert.strictEqual(core.clientSummary(data, CO, 'inconnu').count, 0);
+});
+
+t('contact du client imprimé sur le document', () => {
+  const html = core.documentHtml(inv(), { name: 'ACME', contact: 'Me Sonia Ben Salah', matricule: '123' }, CO);
+  assert.ok(html.includes('Me Sonia Ben Salah'));
 });
 
 t('graphique : abréviations des mois distinctes', () => {

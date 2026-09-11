@@ -93,6 +93,11 @@
     'compta.payments': { t: 'Encaissements', d: 'Les paiements reçus pendant la période, quelle que soit la date des factures concernées. À rapprocher de ton relevé bancaire pour vérifier que rien ne manque.' },
     'compta.rs': { t: 'Attestations de retenue à la source', d: 'Chaque client qui te retient une somme doit te remettre une attestation. Sans elle, tu ne peux pas déduire cette somme de ton impôt : c\'est de l\'argent perdu. Réclame-les, et coche ici quand elles arrivent.' },
     'cat.catalog': { t: 'Catalogue de prestations', d: 'Tes services avec leur prix et leur TVA, prêts à insérer dans un devis. Y mettre tes prestations habituelles t\'évite de retaper les descriptions et t\'empêche de te tromper de prix.' },
+    'cl.contact': { t: 'Personne à contacter', d: 'Le nom de ton interlocuteur chez ce client, avec sa fonction si tu veux. Il apparaît sur les documents sous la raison sociale : ta facture arrive directement sur le bon bureau au lieu de traîner à l\'accueil.' },
+    'cl.page': { t: 'Fiche client', d: 'Tout ce que tu sais de ce client : ce qu\'il t\'a rapporté, ce qu\'il te doit, son délai de paiement habituel, son taux d\'acceptation de devis et l\'historique de ses documents. Regarde-la avant de le rappeler ou de lui faire une remise.' },
+    'cl.due': { t: 'Reste à payer', d: 'Le total des factures de ce client non soldées, avoirs et paiements partiels déduits. Un client dont ce chiffre grossit mois après mois mérite une discussion avant la prochaine commande.' },
+    'list.sort': { t: 'Trier la liste', d: 'Clique sur un titre de colonne pour trier, une deuxième fois pour inverser. Le pied du tableau totalise ce qui est affiché : combine avec les filtres pour obtenir, par exemple, le total facturé à un client sur une année.' },
+    'list.year': { t: 'Année', d: 'La liste s\'ouvre sur l\'année en cours dès qu\'elle contient beaucoup de documents. Passe sur « Toutes les années » pour chercher un document ancien.' },
     'cat.snippets': { t: 'Textes prédéfinis', d: 'Les paragraphes que tu réutilises : garantie, confidentialité, modalités d\'acompte. Un clic les insère dans les notes d\'un document.' }
   };
 

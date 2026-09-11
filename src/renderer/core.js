@@ -62,11 +62,11 @@
     avoir: ['brouillon', 'émis']
   };
   const DISPLAY_STATUSES = {
-    devis: STATUSES.devis,
+    devis: ['brouillon', 'envoyé', 'expiré', 'accepté', 'refusé'],
     facture: ['brouillon', 'envoyée', 'partielle', 'retard', 'payée', 'annulée'],
     avoir: STATUSES.avoir
   };
-  const STATUS_LABELS = { partielle: 'partiellement payée', retard: 'en retard' };
+  const STATUS_LABELS = { partielle: 'partiellement payée', retard: 'en retard', expiré: 'expiré' };
 
   // ---------- utilitaires ----------
 
@@ -193,8 +193,12 @@
     return { totals, credits, credited, paid, remaining };
   }
 
-  // Statut affiché. Facture : déduit des paiements/avoirs ; devis et avoir : statut enregistré.
+  // Statut affiché. Facture : déduit des paiements et des avoirs. Devis : « expiré » quand la date de
+  // validité est passée sans réponse du client (le statut enregistré, lui, reste « envoyé »).
   function effectiveStatus(doc, data, company, todayIso) {
+    if (doc.type === 'devis') {
+      return doc.status === 'envoyé' && doc.dueDate && doc.dueDate < (todayIso || today()) ? 'expiré' : doc.status;
+    }
     if (doc.type !== 'facture') return doc.status;
     if (doc.status === 'brouillon' || doc.status === 'annulée') return doc.status;
     const b = invoiceBalance(doc, data, company);
@@ -407,11 +411,39 @@
   }
 
   // Devis émis sur la période : acceptés / refusés / en attente, taux de conversion (acceptés / décidés)
-  function quoteStats(data, fromIso, toIso) {
+  function quoteStats(data, fromIso, toIso, todayIso) {
     const q = (data.documents || []).filter(d => d.type === 'devis' && d.status !== 'brouillon' && inPeriod(d.date, fromIso, toIso));
     const accepted = q.filter(d => d.status === 'accepté').length, refused = q.filter(d => d.status === 'refusé').length;
     const decided = accepted + refused;
-    return { total: q.length, accepted, refused, pending: q.length - decided, rate: decided ? Math.round(accepted / decided * 100) : null };
+    const expired = q.filter(d => effectiveStatus(d, data, null, todayIso) === 'expiré').length;
+    return { total: q.length, accepted, refused, expired, pending: q.length - decided, rate: decided ? Math.round(accepted / decided * 100) : null };
+  }
+
+  // Chiffres d'un client : facturé HT, encaissé, reste à payer, délai moyen, dates du premier et du dernier document.
+  function clientSummary(data, company, clientId) {
+    const docs = (data.documents || []).filter(d => d.clientId === clientId);
+    const issued = docs.filter(d => (d.type === 'facture' || d.type === 'avoir') && d.status !== 'brouillon' && d.status !== 'annulée');
+    const ht = round3(issued.reduce((s, d) => s + (d.type === 'avoir' ? -1 : 1) * toBase(d, computeTotals(d, company).netHT, company), 0));
+    const invoices = docs.filter(d => d.type === 'facture' && d.status !== 'brouillon' && d.status !== 'annulée');
+    const paid = round3(invoices.reduce((s, d) => s + toBase(d, (d.payments || []).reduce((x, p) => x + (Number(p.amount) || 0), 0), company), 0));
+    const due = round3(invoices.reduce((s, d) => s + Math.max(0, toBase(d, invoiceBalance(d, data, company).remaining, company)), 0));
+    const dates = docs.map(d => d.date).filter(Boolean).sort();
+    const quotes = docs.filter(d => d.type === 'devis');
+    const accepted = quotes.filter(d => d.status === 'accepté').length;
+    const decided = accepted + quotes.filter(d => d.status === 'refusé').length;
+    // Délai moyen de paiement de ce client : on raisonne sur l'ensemble des données (les avoirs comptent)
+    const delays = [];
+    invoices.forEach(d => {
+      if (effectiveStatus(d, data, company, '9999-12-31') !== 'payée' || !(d.payments || []).length) return;
+      const last = d.payments.map(p => p.date).sort().pop();
+      if (last && d.date) delays.push(daysBetween(d.date, last));
+    });
+    return {
+      docs, ht, paid, due, count: docs.length, invoiceCount: invoices.length, quoteCount: quotes.length,
+      first: dates[0] || '', last: dates[dates.length - 1] || '',
+      conversion: decided ? Math.round(accepted / decided * 100) : null,
+      delay: delays.length ? Math.round(delays.reduce((s, x) => s + x, 0) / delays.length) : null
+    };
   }
 
   // Délai moyen (jours) entre la date de facture et le dernier paiement, sur les factures soldées de la période
@@ -648,7 +680,7 @@
       : `<tr><td>${L.vat}</td><td class="r num">${fmt(t.totalVAT)}</td></tr>`;
 
     const contact = [company.phone, company.email, company.website].filter(Boolean).map(escapeHtml).join('<br>');
-    const clientContact = [cl.matricule ? L.mfCin + ' ' + escapeHtml(cl.matricule) : '', cl.phone ? escapeHtml(cl.phone) : '', cl.email ? escapeHtml(cl.email) : ''].filter(Boolean).join('<br>');
+    const clientContact = [cl.contact ? escapeHtml(cl.contact) : '', cl.matricule ? L.mfCin + ' ' + escapeHtml(cl.matricule) : '', cl.phone ? escapeHtml(cl.phone) : '', cl.email ? escapeHtml(cl.email) : ''].filter(Boolean).join('<br>');
     const legal = [company.footer || '', company.rc ? 'RC ' + company.rc : '', company.capital ? (lang === 'en' ? 'Share capital ' : 'Capital ') + company.capital : ''].filter(Boolean).join(' — ');
     const grandLabel = isInvoice ? L.netToPay : isCredit ? L.creditAmount : L.totalTTC;
     const grandValue = isQuote ? t.totalTTC : t.netToPay;
@@ -879,7 +911,7 @@
     depositLines, settlementLines, salesJournal, vatSummary, paymentsJournal, toCsv, migrateData,
     PERIODS, MONTHS_FR, MONTHS_SHORT, monthLabel, addMonths, nextRecurrenceDate, dueRecurrences, fillTemplate, buildRecurringInvoice,
     reminderLevel, REMINDER_LABELS, daysBetween, overdueInvoices, DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_TEMPLATES_EN, emailFor,
-    CURRENCIES, decimalsFor, toBase, monthKeys, monthlySeries, topClients, quoteStats, avgPaymentDelay, I18N,
+    CURRENCIES, decimalsFor, toBase, monthKeys, monthlySeries, topClients, quoteStats, avgPaymentDelay, clientSummary, I18N,
     amountToWords, intToWords, intToWordsEn, documentHtml, fitToPage, pageCount
   };
 });

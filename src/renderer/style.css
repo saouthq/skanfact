@@ -306,6 +306,28 @@ body.dark .app-version { color: #5c6875; }
 body.dark code { background: var(--ink-soft); }
 body.dark .kpi, body.dark .pay-grid > div, body.dark .notes-md { background: var(--bg); }
 
+/* ---------- listes : tri, totaux, actions au survol ---------- */
+th.sortable-h { cursor: pointer; user-select: none; }
+th.sortable-h:hover { color: var(--text); background: var(--ink-soft); }
+.sort-ar { margin-left: 4px; color: var(--primary); }
+table.list tfoot td { padding: 11px 16px; background: #fafbfc; border-top: 1px solid var(--border); font-size: 12px; color: var(--muted); font-weight: 600; }
+table.list tfoot td.r { color: var(--text); font-variant-numeric: tabular-nums; }
+td.row-actions { white-space: nowrap; text-align: right; width: 1%; }
+td.row-actions > span { display: inline-flex; gap: 4px; opacity: 0; transition: opacity .12s; }
+tr:hover td.row-actions > span, tr:focus-within td.row-actions > span { opacity: 1; }
+th.row-actions-h { width: 1%; }
+.badge.expiré { background: var(--warning-soft); color: var(--warning); }
+body.dark table.list tfoot td { background: #171d25; }
+body.dark th.sortable-h:hover { background: #1f2731; }
+
+/* ---------- fiche client ---------- */
+.kv { display: flex; flex-direction: column; gap: 9px; font-size: 13px; }
+.kv > div { display: flex; gap: 12px; align-items: baseline; }
+.kv > div > span:first-child { color: var(--muted); min-width: 110px; flex-shrink: 0; font-size: 12px; }
+.kv > div > span:last-child { line-height: 1.5; }
+.warn-link { color: var(--warning); font-weight: 600; text-decoration: none; }
+.warn-link:hover { text-decoration: underline; }
+
 /* ---------- bulles d'explication « i » ---------- */
 button.i {
   font: inherit; font-size: 10px; font-weight: 800; line-height: 1; font-style: italic; font-family: Georgia, "Times New Roman", serif;

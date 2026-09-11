@@ -35,6 +35,7 @@
   let previewHidden = false;
   try { previewHidden = localStorage.getItem('skanfact.preview') === '0'; } catch (_) {}
   let settingsTab = 'societe';   // onglet ouvert dans Paramètres
+  let catalogTab = 'presta';     // onglet ouvert dans Catalogue
   let aideArticle = '';          // article ouvert dans l'Aide
 
   // Écran de verrouillage : demande le mot de passe tant que le fichier n'est pas déchiffré.
@@ -251,7 +252,7 @@
     if (name === 'doc') {
       const type = parts[1] === 'new' ? parts[2] : (docById(parts[1]) || {}).type;
       active = type === 'devis' ? 'devis' : 'factures';
-    }
+    } else if (name === 'client') active = 'clients';
     $$('nav a').forEach(a => a.classList.toggle('active', a.dataset.route === active));
     guard = null; previewRedraw = null;
     (routes[name] || routes.dashboard)(parts.slice(1));
@@ -282,6 +283,8 @@
     if (name === 'doc') {
       const d = parts[0] === 'new' ? null : docById(parts[0]);
       t = d ? docLabel(d) + ' — ' + clientName(d.clientId) : 'Nouveau document';
+    } else if (name === 'client') {
+      t = (clientById(parts[0]) || {}).name || 'Client';
     } else {
       const a = $(`nav a[data-route="${name}"]`);
       t = a ? a.textContent.trim().replace(/\d+$/, '').trim() : '';
@@ -305,7 +308,9 @@
     const open = data.documents.filter(d => d.type === 'facture' && ['envoyée', 'partielle', 'retard'].includes(effStatus(d)));
     const openAmount = open.reduce((s, d) => s + balance(d).remaining, 0);
     const late = open.filter(d => effStatus(d) === 'retard');
-    const pendingQuotes = data.documents.filter(d => d.type === 'devis' && d.status === 'envoyé');
+    const sentQuotes = data.documents.filter(d => d.type === 'devis' && d.status === 'envoyé');
+    const expiredQuotes = sentQuotes.filter(d => effStatus(d) === 'expiré');
+    const pendingQuotes = sentQuotes.filter(d => effStatus(d) === 'envoyé');
     const sumQ = list => list.reduce((s, d) => s + C.computeTotals(d, company()).totalTTC, 0);
     const recent = data.documents.slice().sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.createdAt || 0) - (a.createdAt || 0)).slice(0, 8);
     const series = C.monthlySeries(data, company(), C.today(), 12);
@@ -326,7 +331,7 @@
         <div class="stat"><div class="lbl">CA du mois (HT) ${info('dash.caMonth')}</div><div class="val">${C.money(sumHT(ofMonth), cur)}</div><div class="sub">${C.money(sumTTC(ofMonth), cur)} TTC, avoirs déduits</div></div>
         <div class="stat"><div class="lbl">CA de l'année (HT) ${info('dash.caYear')}</div><div class="val">${C.money(sumHT(ofYear), cur)}</div><div class="sub">${year} · ${C.money(sumTTC(ofYear), cur)} TTC</div></div>
         <div class="stat"><div class="lbl">Reste à encaisser ${info('dash.open')}</div><div class="val">${C.money(openAmount, cur)}</div><div class="sub">${open.length} facture(s), ${late.length} en retard</div></div>
-        <div class="stat"><div class="lbl">Devis en attente ${info('dash.quotes')}</div><div class="val">${C.money(sumQ(pendingQuotes), cur)}</div><div class="sub">${pendingQuotes.length} devis envoyé(s)</div></div>
+        <div class="stat"><div class="lbl">Devis en attente ${info('dash.quotes')}</div><div class="val">${C.money(sumQ(pendingQuotes), cur)}</div><div class="sub">${pendingQuotes.length} devis envoyé(s)${expiredQuotes.length ? ` · <a href="#/devis" class="warn-link">${expiredQuotes.length} expiré(s)</a>` : ''}</div></div>
       </div>
       <div class="dash-grid">
         <div class="panel"><h2>Activité des 12 derniers mois ${info('dash.chart')}</h2>
@@ -365,58 +370,134 @@
   }
 
   // ---------- listes devis / factures ----------
+  // Colonnes d'une liste de documents. `get` sert à l'affichage, `val` au tri (nombre ou texte comparable).
+  function docColumns(opts) {
+    const cur = doc => docCur(doc);
+    const amountOf = d => { const t = C.computeTotals(d, company()); return d.type === 'devis' ? t.totalTTC : (d.type === 'avoir' ? -t.netToPay : t.netToPay); };
+    const restOf = d => d.type === 'facture' && d.status !== 'brouillon' ? balance(d).remaining : null;
+    const cols = [
+      { key: 'number', label: 'Numéro', val: d => (d.number ? '1' : '0') + (d.number || ''), get: d => `<strong>${d.number ? h(d.number) : '<span class="muted">Brouillon</span>'}</strong>` },
+      opts.quotes
+        ? { key: 'due', label: 'Valable jusqu\'au', val: d => d.dueDate || '', get: d => C.fmtDate(d.dueDate) }
+        : { key: 'type', label: 'Type', val: d => d.type, get: d => C.TITLES[d.type] },
+      opts.hideClient
+        ? { key: 'subject', label: 'Objet', val: d => (d.subject || '').toLowerCase(), get: d => h(d.subject || '') || '<span class="muted">—</span>' }
+        : { key: 'client', label: 'Client', val: d => clientName(d.clientId).toLowerCase(), get: d => `${h(clientName(d.clientId))}${d.subject ? `<div class="small muted">${h(d.subject)}</div>` : ''}` },
+      { key: 'date', label: 'Date', val: d => d.date || '', get: d => C.fmtDate(d.date) },
+      { key: 'status', label: 'Statut', val: d => effStatus(d), get: d => statusBadge(d) },
+      { key: 'amount', label: opts.quotes ? 'Total TTC' : 'Net à payer', r: true, val: amountOf, get: d => C.money(amountOf(d), cur(d)) }
+    ];
+    if (!opts.quotes) cols.push({ key: 'rest', label: 'Reste', r: true, val: d => restOf(d) || 0, get: d => { const x = restOf(d); return x != null && x > 0.0005 ? C.money(x, cur(d)) : '<span class="muted">—</span>'; } });
+    return { cols, amountOf, restOf };
+  }
+
+  // Liste de documents triable, avec un pied de tableau qui totalise ce qui est affiché.
   function docTable(list, opts) {
     opts = opts || {};
-    if (!list.length) return `<div class="empty">Aucun document.</div>`;
+    const { cols, amountOf, restOf } = docColumns(opts);
+    if (!list.length) return `<div class="empty">${h(opts.empty || 'Aucun document.')}</div>`;
     const cur = company().currency;
-    return `<table class="list"><thead><tr><th>Numéro</th><th>Type</th><th>Client</th><th>Date</th><th>Statut</th><th class="r">${opts.invoices ? 'Net à payer' : 'Total TTC'}</th>${opts.invoices ? '<th class="r">Reste</th>' : ''}<th></th></tr></thead><tbody>
-      ${list.map(d => {
-        const t = C.computeTotals(d, company());
-        const amount = d.type === 'devis' ? t.totalTTC : (d.type === 'avoir' ? -t.netToPay : t.netToPay);
-        const rest = d.type === 'facture' && d.status !== 'brouillon' ? balance(d).remaining : null;
-        return `<tr class="clickable" data-id="${d.id}">
-        <td><strong>${d.number ? h(d.number) : '<span class="muted">Brouillon</span>'}</strong></td><td>${C.TITLES[d.type]}</td>
-        <td>${h(clientName(d.clientId))}</td><td>${C.fmtDate(d.date)}</td>
-        <td>${statusBadge(d)}</td><td class="r">${C.money(amount, docCur(d))}</td>
-        ${opts.invoices ? `<td class="r">${rest != null && rest > 0.0005 ? C.money(rest, docCur(d)) : '<span class="muted">—</span>'}</td>` : ''}
-        <td class="actions"><button class="btn btn-sm" data-pdf="${d.id}">PDF</button></td></tr>`; }).join('')}
-    </tbody></table>`;
+    const sort = opts.sort;
+    if (sort) {
+      const col = cols.find(c => c.key === sort.key);
+      if (col) list = list.slice().sort((a, b) => {
+        const x = col.val(a), y = col.val(b);
+        const cmp = typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), 'fr', { numeric: true });
+        return sort.dir === 'asc' ? cmp : -cmp;
+      });
+    }
+    const arrow = key => sort && sort.key === key ? `<span class="sort-ar">${sort.dir === 'asc' ? '↑' : '↓'}</span>` : '';
+    // Totaux toujours dans la devise de la société : une facture en euros est convertie à son taux du jour
+    const mixed = list.some(d => docCur(d) !== cur);
+    const totalHT = list.reduce((s, d) => s + (d.type === 'avoir' ? -1 : 1) * C.toBase(d, C.computeTotals(d, company()).netHT, company()), 0);
+    const totalAmount = list.reduce((s, d) => s + C.toBase(d, amountOf(d), company()), 0);
+    const totalRest = list.reduce((s, d) => s + Math.max(0, C.toBase(d, restOf(d) || 0, company())), 0);
+    return `<table class="list sortable"><thead><tr>
+        ${cols.map(c => `<th class="${c.r ? 'r ' : ''}${opts.onSort ? 'sortable-h' : ''}" ${opts.onSort ? `data-sort="${c.key}"` : ''}>${h(c.label)}${arrow(c.key)}</th>`).join('')}
+        <th class="row-actions-h"></th></tr></thead><tbody>
+      ${list.map(d => `<tr class="clickable" data-id="${d.id}">
+        ${cols.map(c => `<td class="${c.r ? 'r' : ''}">${c.get(d)}</td>`).join('')}
+        <td class="row-actions"><span>
+          <button class="btn btn-sm" data-pdf="${d.id}" title="Exporter en PDF">PDF</button>
+          ${d.number ? `<button class="btn btn-sm" data-mail="${d.id}" title="Envoyer par email">Email</button>` : ''}
+          ${d.type === 'facture' && d.status !== 'brouillon' && d.status !== 'annulée' && (restOf(d) || 0) > 0.0005 ? `<button class="btn btn-sm" data-paye="${d.id}" title="Enregistrer un paiement">Paiement</button>` : ''}
+          ${d.type !== 'avoir' ? `<button class="btn btn-sm btn-ghost" data-dup="${d.id}" title="Dupliquer">⧉</button>` : ''}
+        </span></td></tr>`).join('')}
+    </tbody><tfoot><tr>
+      <td colspan="${Math.max(1, cols.length - (opts.quotes ? 1 : 2))}">${list.length} document${list.length > 1 ? 's' : ''} · ${C.money(totalHT, cur)} HT${mixed ? ` <span class="muted">(devises étrangères converties en ${h(cur)})</span>` : ''}</td>
+      <td class="r">${C.money(totalAmount, cur)}</td>
+      ${opts.quotes ? '' : `<td class="r">${totalRest > 0.0005 ? C.money(totalRest, cur) : '<span class="muted">—</span>'}</td>`}
+      <td></td></tr></tfoot></table>`;
   }
-  function bindDocTable() {
+
+  function bindDocTable(redraw) {
     $$('tr.clickable[data-id]').forEach(tr => tr.onclick = e => { if (e.target.closest('button')) return; navigate('#/doc/' + tr.dataset.id); });
     $$('button[data-pdf]').forEach(b => b.onclick = () => exportPdf(docById(b.dataset.pdf)));
+    $$('button[data-mail]').forEach(b => b.onclick = () => sendByEmail(docById(b.dataset.mail)));
+    $$('button[data-paye]').forEach(b => b.onclick = () => paymentForm(docById(b.dataset.paye), () => (redraw || render)()));
+    $$('button[data-dup]').forEach(b => b.onclick = () => duplicateDoc(docById(b.dataset.dup)));
+    if (redraw) $$('th[data-sort]').forEach(th => th.onclick = () => redraw(th.dataset.sort));
   }
+
+  // Duplication d'un document : nouveau brouillon aux dates du jour, sans paiement ni rattachement
+  function duplicateDoc(doc) {
+    const isQ = doc.type === 'devis';
+    const copy = { ...deepCopy(doc), id: C.uid(), number: '', status: 'brouillon', date: C.today(), createdAt: Date.now(), payments: [], emails: [], reminders: [], withholdingCertificate: false, fromQuoteId: undefined, fromQuoteNumber: undefined, deposit: undefined, settles: undefined, recurringId: undefined };
+    copy.dueDate = C.addDays(copy.date, isQ ? company().quoteValidityDays : company().paymentTermsDays);
+    if (isQ) copy.number = C.nextNumber(data, 'devis', copy.date);
+    data.documents.push(copy); save(true);
+    toast(isQ ? 'Copie créée : ' + copy.number : 'Brouillon créé à partir de ' + (doc.number || 'ce brouillon'));
+    navigate('#/doc/' + copy.id);
+  }
+
   // brouillons (sans numéro) en tête, puis numéros décroissants
   const byNumberDesc = (a, b) => ((a.number ? 1 : 0) - (b.number ? 1 : 0)) || (b.number || '').localeCompare(a.number || '', undefined, { numeric: true }) || (b.createdAt || 0) - (a.createdAt || 0);
 
+  const listState = { devis: { q: '', st: '', kind: '', year: '', sort: null }, facture: { q: '', st: '', kind: '', year: '', sort: null } };
+
   function listView(type) {
     const isQ = type === 'devis';
-    let q = '', st = '', kind = '';
-    const draw = () => {
-      const list = data.documents.filter(d => isQ ? d.type === 'devis' : (d.type === 'facture' || d.type === 'avoir'))
-        .filter(d => !kind || d.type === kind)
-        .filter(d => !st || effStatus(d) === st)
-        .filter(d => !q || [d.number, clientName(d.clientId), d.subject].join(' ').toLowerCase().includes(q))
+    const s = listState[type];
+    const mine = data.documents.filter(d => isQ ? d.type === 'devis' : (d.type === 'facture' || d.type === 'avoir'));
+    const years = Array.from(new Set(mine.map(d => (d.date || '').slice(0, 4)).filter(Boolean))).sort().reverse();
+    const thisYear = C.today().slice(0, 4);
+    // Par défaut on montre l'année en cours si elle contient quelque chose : une liste courte se lit, une liste de trois ans ne se lit pas
+    if (s.year === '' && years.includes(thisYear) && mine.length > 25) s.year = thisYear;
+    if (s.year && !years.includes(s.year)) s.year = '';
+
+    const draw = (sortKey) => {
+      if (sortKey) s.sort = s.sort && s.sort.key === sortKey ? { key: sortKey, dir: s.sort.dir === 'asc' ? 'desc' : 'asc' } : { key: sortKey, dir: sortKey === 'client' ? 'asc' : 'desc' };
+      const list = mine
+        .filter(d => !s.kind || d.type === s.kind)
+        .filter(d => !s.year || (d.date || '').startsWith(s.year))
+        .filter(d => !s.st || effStatus(d) === s.st)
+        .filter(d => !s.q || [d.number, clientName(d.clientId), d.subject, d.reference].join(' ').toLowerCase().includes(s.q))
         .sort(byNumberDesc);
-      $('#list-wrap').innerHTML = docTable(list, { invoices: !isQ });
-      bindDocTable();
+      const filtered = s.q || s.st || s.kind || s.year;
+      $('#list-wrap').innerHTML = docTable(list, {
+        quotes: isQ, sort: s.sort, onSort: true,
+        empty: filtered ? 'Aucun document ne correspond à ces filtres.' : (isQ ? 'Aucun devis. Crée le premier avec le bouton en haut à droite.' : 'Aucune facture. Crée la première avec le bouton en haut à droite.')
+      });
+      bindDocTable(draw);
     };
     const statuses = isQ ? C.DISPLAY_STATUSES.devis : [...C.DISPLAY_STATUSES.facture, 'émis'];
     $('#view').innerHTML = `
       <div class="page-head"><h1>${isQ ? 'Devis' : 'Factures'}</h1>
         <div class="actions">${isQ ? '' : '<button class="btn" id="new-avoir">+ Avoir</button>'}<button class="btn btn-primary" id="new">+ ${isQ ? 'Nouveau devis' : 'Nouvelle facture'}</button></div></div>
       <div class="filters">
-        <input type="text" id="q" placeholder="Rechercher (numéro, client, objet)…">
-        ${isQ ? '' : `<select id="kind"><option value="">Factures et avoirs</option><option value="facture">Factures</option><option value="avoir">Avoirs</option></select>`}
-        <select id="st"><option value="">Tous les statuts</option>${statuses.map(s => `<option value="${s}">${h(C.statusLabel(s))}</option>`).join('')}</select>
+        <input type="text" id="q" placeholder="Rechercher (numéro, client, objet, référence)…" value="${h(s.q)}">
+        ${isQ ? '' : `<select id="kind"><option value="">Factures et avoirs</option><option value="facture" ${s.kind === 'facture' ? 'selected' : ''}>Factures</option><option value="avoir" ${s.kind === 'avoir' ? 'selected' : ''}>Avoirs</option></select>`}
+        <select id="st"><option value="">Tous les statuts</option>${statuses.map(x => `<option value="${x}" ${s.st === x ? 'selected' : ''}>${h(C.statusLabel(x))}</option>`).join('')}</select>
+        ${years.length > 1 ? `<select id="yr"><option value="">Toutes les années</option>${years.map(y => `<option value="${y}" ${s.year === y ? 'selected' : ''}>${y}</option>`).join('')}</select>` : ''}
         ${info('list.filters')}
       </div>
       <div id="list-wrap"></div>`;
     $('#new').onclick = () => navigate('#/doc/new/' + type);
     if ($('#new-avoir')) $('#new-avoir').onclick = () => navigate('#/doc/new/avoir');
-    $('#q').oninput = e => { q = e.target.value.toLowerCase(); draw(); };
-    $('#st').onchange = e => { st = e.target.value; draw(); };
-    if ($('#kind')) $('#kind').onchange = e => { kind = e.target.value; draw(); };
+    $('#q').oninput = e => { s.q = e.target.value.toLowerCase(); draw(); };
+    $('#st').onchange = e => { s.st = e.target.value; draw(); };
+    if ($('#yr')) $('#yr').onchange = e => { s.year = e.target.value; draw(); };
+    if ($('#kind')) $('#kind').onchange = e => { s.kind = e.target.value; draw(); };
     draw();
   }
   routes.devis = () => listView('devis');
@@ -451,8 +532,14 @@
     if (parts[0] === 'new') {
       const type = ['devis', 'facture', 'avoir'].includes(parts[1]) ? parts[1] : 'devis';
       doc = newDocument(type); isNew = true;
-      if (type === 'avoir' && parts[2] && parts[2] !== 'tpl') { const inv = docById(parts[2]); if (inv) Object.assign(doc, creditDraftFrom(inv)); }
+      if (type === 'avoir' && parts[2] && parts[2] !== 'tpl' && parts[2] !== 'client') { const inv = docById(parts[2]); if (inv) Object.assign(doc, creditDraftFrom(inv)); }
       if (parts[2] === 'tpl' && parts[3]) applyTemplate(doc, parts[3]);
+      // Depuis la fiche client : le client est déjà choisi, avec sa langue, sa devise et sa retenue
+      if (parts[2] === 'client' && parts[3] && clientById(parts[3])) {
+        doc.clientId = parts[3];
+        applyClientDefaults(doc, doc.clientId);
+        if (type !== 'devis') doc.withholdingRate = clientWithholding(doc.clientId);
+      }
     } else {
       doc = docById(parts[0]); if (!doc) return navigate('#/dashboard'); doc = deepCopy(doc);
     }
@@ -795,12 +882,7 @@
       if (!await confirmDialog(`Modifier ${doc.number} après émission ? Ce n'est pas conforme : une facture émise se corrige par un avoir. À réserver à une erreur repérée avant l'envoi au client.`, 'Modifier quand même')) return;
       unlockedIds.add(doc.id); render();
     };
-    if ($('#dup')) $('#dup').onclick = () => {
-      const copy = { ...deepCopy(doc), id: C.uid(), number: '', status: 'brouillon', date: C.today(), createdAt: Date.now(), payments: [], withholdingCertificate: false, fromQuoteId: undefined, fromQuoteNumber: undefined, deposit: undefined, settles: undefined };
-      copy.dueDate = C.addDays(copy.date, isQ ? company().quoteValidityDays : company().paymentTermsDays);
-      if (isQ) copy.number = C.nextNumber(data, 'devis', copy.date);
-      data.documents.push(copy); save(true); toast(isQ ? 'Copie créée : ' + copy.number : 'Brouillon créé à partir de ' + doc.number); navigate('#/doc/' + copy.id);
-    };
+    if ($('#dup')) $('#dup').onclick = () => { untouch(); duplicateDoc(doc); };
     if ($('#convert')) $('#convert').onclick = () => {
       const inv = invoiceFromQuote(doc, deepCopy(doc.lines), doc.discountRate);
       inv.fromQuoteId = doc.id; inv.fromQuoteNumber = doc.number;
@@ -891,10 +973,11 @@
 
   // ---------- Clients ----------
   function clientForm(client, done) {
-    const c = client || { id: C.uid(), name: '', matricule: '', address: '', phone: '', email: '', notes: '', withholdingRate: '' };
+    const c = client || { id: C.uid(), name: '', contact: '', matricule: '', address: '', phone: '', email: '', notes: '', withholdingRate: '' };
     modal(`<h2>${client ? 'Modifier le client' : 'Nouveau client'}</h2>
       <form id="cf" class="grid-2">
         <label class="field span-2">Nom / Raison sociale<input type="text" name="name" value="${h(c.name)}" required></label>
+        ${field(lbl('Personne à contacter', 'cl.contact'), 'contact', c.contact || '', 'text', 'placeholder="Mme Leïla Mansour, directrice"')}
         ${field(lbl('Matricule fiscal / CIN', 'co.matricule'), 'matricule', c.matricule)}
         <label class="field">${lbl('Retenue à la source appliquée par ce client', 'ed.withholding')}<select name="withholdingRate"><option value="" ${c.withholdingRate === '' || c.withholdingRate == null ? 'selected' : ''}>Par défaut (${pct(company().defaultWithholdingRate || 0)} %)</option>${C.WITHHOLDING_RATES.map(r => `<option value="${r}" ${String(c.withholdingRate) === String(r) ? 'selected' : ''}>${r === 0 ? 'Aucune' : pct(r) + ' %'}</option>`).join('')}</select></label>
         ${field('Téléphone', 'phone', c.phone)}
@@ -904,7 +987,9 @@
         <label class="field span-2">Adresse<textarea name="address">${h(c.address)}</textarea></label>
         <label class="field span-2">Notes internes<textarea name="notes">${h(c.notes || '')}</textarea></label>
       </form>
-      <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
+      <div class="modal-actions">
+        ${client ? '<button class="btn btn-danger" id="del-client" style="margin-right:auto">Supprimer ce client</button>' : ''}
+        <button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
       (root, close) => {
         $('#ok', root).onclick = () => {
           const v = formValues($('#cf', root));
@@ -913,35 +998,112 @@
           if (!client) data.clients.push(c);
           save(true); close(); if (done) done(c);
         };
+        if ($('#del-client', root)) $('#del-client', root).onclick = async () => {
+          const n = data.documents.filter(d => d.clientId === c.id).length;
+          if (n) return toast(`Impossible : ${n} document(s) sont liés à ce client. Un client qui a une histoire ne se supprime pas.`, true);
+          if (!await confirmDialog(`Supprimer ${c.name} ?`)) return;
+          data.clients = data.clients.filter(x => x.id !== c.id); save(true); close(); navigate('#/clients');
+        };
       });
   }
 
+  const clientState = { q: '', sort: { key: 'name', dir: 'asc' } };
+
   routes.clients = () => {
-    let q = '';
     const cur = company().currency;
-    const draw = () => {
-      const list = data.clients.filter(c => !q || [c.name, c.matricule, c.email, c.phone].join(' ').toLowerCase().includes(q)).sort((a, b) => a.name.localeCompare(b.name));
-      $('#list-wrap').innerHTML = list.length ? `<table class="list"><thead><tr><th>Nom</th><th>MF / CIN</th><th>Contact</th><th class="r">Documents</th><th class="r">Reste à payer</th><th></th></tr></thead><tbody>
-        ${list.map(c => {
-          const docs = data.documents.filter(d => d.clientId === c.id);
-          const due = docs.filter(d => d.type === 'facture' && d.status !== 'brouillon' && d.status !== 'annulée').reduce((s, d) => s + Math.max(0, balance(d).remaining), 0);
-          return `<tr><td><strong>${h(c.name)}</strong><div class="small muted">${h((c.address || '').split('\n')[0])}</div></td><td>${h(c.matricule)}${c.withholdingRate !== '' && c.withholdingRate != null && Number(c.withholdingRate) ? `<div class="small muted">RS ${pct(c.withholdingRate)} %</div>` : ''}</td>
-          <td>${h(c.phone)}${c.phone && c.email ? ' · ' : ''}${h(c.email)}</td>
-          <td class="r">${docs.length}</td><td class="r">${due > 0.0005 ? C.money(due, cur) : '<span class="muted">—</span>'}</td>
-          <td class="actions"><button class="btn btn-sm" data-edit="${c.id}">Modifier</button> <button class="btn btn-sm btn-danger" data-del="${c.id}">Supprimer</button></td></tr>`; }).join('')}
-        </tbody></table>` : `<div class="empty">Aucun client. Ajoute ton premier client.</div>`;
-      $$('[data-edit]').forEach(b => b.onclick = () => clientForm(clientById(b.dataset.edit), draw));
-      $$('[data-del]').forEach(b => b.onclick = async () => {
-        const n = data.documents.filter(d => d.clientId === b.dataset.del).length;
-        if (n) return toast(`Impossible : ${n} document(s) lié(s) à ce client.`, true);
-        if (await confirmDialog('Supprimer ce client ?')) { data.clients = data.clients.filter(c => c.id !== b.dataset.del); save(true); draw(); }
-      });
+    const s = clientState;
+    const draw = (sortKey) => {
+      if (sortKey) s.sort = s.sort.key === sortKey ? { key: sortKey, dir: s.sort.dir === 'asc' ? 'desc' : 'asc' } : { key: sortKey, dir: sortKey === 'name' ? 'asc' : 'desc' };
+      const rows = data.clients
+        .filter(c => !s.q || [c.name, c.contact, c.matricule, c.email, c.phone].join(' ').toLowerCase().includes(s.q))
+        .map(c => ({ c, sum: C.clientSummary(data, company(), c.id) }));
+      const val = { name: r => r.c.name.toLowerCase(), docs: r => r.sum.count, ht: r => r.sum.ht, due: r => r.sum.due, last: r => r.sum.last };
+      rows.sort((a, b) => { const f = val[s.sort.key] || val.name; const x = f(a), y = f(b); const cmp = typeof x === 'number' ? x - y : String(x).localeCompare(String(y), 'fr'); return s.sort.dir === 'asc' ? cmp : -cmp; });
+      const arrow = k => s.sort.key === k ? `<span class="sort-ar">${s.sort.dir === 'asc' ? '↑' : '↓'}</span>` : '';
+      const th = (k, label, r) => `<th class="${r ? 'r ' : ''}sortable-h" data-sort="${k}">${label}${arrow(k)}</th>`;
+      $('#list-wrap').innerHTML = rows.length ? `<table class="list sortable"><thead><tr>
+          ${th('name', 'Nom')}<th>MF / CIN</th><th>Contact</th>${th('docs', 'Documents', true)}${th('ht', 'Facturé HT', true)}${th('due', 'Reste à payer', true)}${th('last', 'Dernier document')}<th class="row-actions-h"></th></tr></thead><tbody>
+        ${rows.map(({ c, sum }) => `<tr class="clickable" data-cid="${c.id}">
+          <td><strong>${h(c.name)}</strong>${c.contact ? `<div class="small muted">${h(c.contact)}</div>` : ''}</td>
+          <td>${h(c.matricule)}${c.withholdingRate !== '' && c.withholdingRate != null && Number(c.withholdingRate) ? `<div class="small muted">RS ${pct(c.withholdingRate)} %</div>` : ''}</td>
+          <td class="small">${h(c.phone)}${c.phone && c.email ? '<br>' : ''}${h(c.email)}</td>
+          <td class="r">${sum.count}</td>
+          <td class="r">${sum.ht ? C.money(sum.ht, cur) : '<span class="muted">—</span>'}</td>
+          <td class="r">${sum.due > 0.0005 ? `<strong>${C.money(sum.due, cur)}</strong>` : '<span class="muted">—</span>'}</td>
+          <td>${sum.last ? C.fmtDate(sum.last) : '<span class="muted">—</span>'}</td>
+          <td class="row-actions"><span>
+            <button class="btn btn-sm" data-devis="${c.id}" title="Nouveau devis pour ce client">+ Devis</button>
+            <button class="btn btn-sm" data-edit="${c.id}">Modifier</button>
+          </span></td></tr>`).join('')}
+        </tbody></table>` : `<div class="empty">${s.q ? 'Aucun client ne correspond.' : 'Aucun client. Ajoute ton premier client : son adresse et son matricule fiscal se reporteront automatiquement sur tes documents.'}</div>`;
+      $$('tr.clickable[data-cid]').forEach(tr => tr.onclick = e => { if (e.target.closest('button')) return; navigate('#/client/' + tr.dataset.cid); });
+      $$('[data-edit]').forEach(b => b.onclick = () => clientForm(clientById(b.dataset.edit), () => draw()));
+      $$('[data-devis]').forEach(b => b.onclick = () => navigate('#/doc/new/devis/client/' + b.dataset.devis));
+      $$('th[data-sort]').forEach(x => x.onclick = () => draw(x.dataset.sort));
     };
     $('#view').innerHTML = `<div class="page-head"><h1>Clients</h1><div class="actions"><button class="btn btn-primary" id="new">+ Nouveau client</button></div></div>
-      <div class="filters"><input type="text" id="q" placeholder="Rechercher…"></div><div id="list-wrap"></div>`;
-    $('#new').onclick = () => clientForm(null, draw);
-    $('#q').oninput = e => { q = e.target.value.toLowerCase(); draw(); };
+      <div class="filters"><input type="text" id="q" placeholder="Rechercher (nom, contact, matricule, email…)" value="${h(s.q)}">${info('list.sort')}</div><div id="list-wrap"></div>`;
+    $('#new').onclick = () => clientForm(null, () => draw());
+    $('#q').oninput = e => { s.q = e.target.value.toLowerCase(); draw(); };
     draw();
+  };
+
+  // ---------- fiche client ----------
+  routes.client = (parts) => {
+    const c = clientById(parts[0]);
+    if (!c) return navigate('#/clients');
+    const cur = company().currency;
+    const sum = C.clientSummary(data, company(), c.id);
+    const docs = sum.docs.slice().sort(byNumberDesc);
+    const late = docs.filter(d => d.type === 'facture' && effStatus(d) === 'retard');
+    const lateAmount = late.reduce((s2, d) => s2 + C.toBase(d, balance(d).remaining, company()), 0);
+    const openQuotes = docs.filter(d => d.type === 'devis' && ['envoyé', 'expiré'].includes(effStatus(d)));
+
+    $('#view').innerHTML = `
+      <div class="page-head">
+        <div><h1>${h(c.name)} ${info('cl.page')}</h1>
+          <div class="small muted">${[c.contact, c.matricule ? 'MF ' + c.matricule : '', c.phone, c.email].filter(Boolean).map(h).join(' · ')}</div></div>
+        <div class="actions">
+          <button class="btn" id="back">← Clients</button>
+          ${c.email ? '<button class="btn" id="mailto">Écrire</button>' : ''}
+          <button class="btn" id="edit">Modifier</button>
+          <button class="btn" id="new-fac">+ Facture</button>
+          <button class="btn btn-primary" id="new-dev">+ Devis</button>
+        </div></div>
+      ${late.length ? `<div class="banner">${late.length} facture(s) en retard — ${C.money(lateAmount, cur)}<button class="btn" id="go-rel">Voir les relances</button></div>` : ''}
+      <div class="stats">
+        <div class="stat"><div class="lbl">Facturé HT ${info('dash.caYear')}</div><div class="val">${C.money(sum.ht, cur)}</div><div class="sub">${sum.invoiceCount} facture(s)${sum.first ? ' depuis ' + C.fmtDate(sum.first) : ''}</div></div>
+        <div class="stat"><div class="lbl">Reste à payer ${info('cl.due')}</div><div class="val">${C.money(sum.due, cur)}</div><div class="sub">${sum.due > 0.0005 ? 'à encaisser' : 'tout est réglé'}</div></div>
+        <div class="stat"><div class="lbl">Délai moyen de paiement ${info('dash.delay')}</div><div class="val">${sum.delay == null ? '—' : sum.delay + ' j'}</div><div class="sub">annoncé : ${company().paymentTermsDays} jours</div></div>
+        <div class="stat"><div class="lbl">Devis acceptés ${info('dash.conversion')}</div><div class="val">${sum.conversion == null ? '—' : sum.conversion + ' %'}</div><div class="sub">${sum.quoteCount} devis, ${openQuotes.length} sans réponse</div></div>
+      </div>
+      <div class="grid-2">
+          <div class="panel"><h2>Coordonnées</h2>
+            <div class="kv">
+              ${c.address ? `<div><span>Adresse</span><span>${h(c.address).replace(/\n/g, '<br>')}</span></div>` : ''}
+              ${c.contact ? `<div><span>Contact</span><span>${h(c.contact)}</span></div>` : ''}
+              ${c.phone ? `<div><span>Téléphone</span><span>${h(c.phone)}</span></div>` : ''}
+              ${c.email ? `<div><span>Email</span><span>${h(c.email)}</span></div>` : ''}
+              ${c.matricule ? `<div><span>MF / CIN</span><span>${h(c.matricule)}</span></div>` : ''}
+              <div><span>Retenue à la source</span><span>${c.withholdingRate === '' || c.withholdingRate == null ? `par défaut (${pct(company().defaultWithholdingRate || 0)} %)` : (Number(c.withholdingRate) ? pct(c.withholdingRate) + ' %' : 'aucune')}</span></div>
+              <div><span>Documents</span><span>${(c.lang === 'en' ? 'anglais' : 'français')} · ${h(c.currency || company().currency)}</span></div>
+            </div>
+          </div>
+          <div class="panel"><h2>Notes internes</h2>
+            <textarea id="cl-notes" rows="6" placeholder="Ce qu'il faut se rappeler : habitudes de paiement, interlocuteurs, historique…">${h(c.notes || '')}</textarea>
+            <p class="small muted mt">Ces notes ne sortent jamais sur un document.</p>
+          </div>
+      </div>
+      <div class="panel"><h2>Documents</h2><div id="cl-docs"></div></div>`;
+    $('#cl-docs').innerHTML = docTable(docs, { hideClient: true, empty: 'Aucun document pour ce client. Commence par un devis.' });
+    bindDocTable(() => render(true));
+    $('#back').onclick = () => navigate('#/clients');
+    $('#edit').onclick = () => clientForm(c, () => render(true));
+    $('#new-dev').onclick = () => navigate('#/doc/new/devis/client/' + c.id);
+    $('#new-fac').onclick = () => navigate('#/doc/new/facture/client/' + c.id);
+    if ($('#mailto')) $('#mailto').onclick = () => bridge.composeMail({ to: c.email, subject: '', body: '', attachment: null, mode: 'mailto' });
+    if ($('#go-rel')) $('#go-rel').onclick = () => navigate('#/relances');
+    $('#cl-notes').oninput = e => { c.notes = e.target.value; save(); };
   };
 
   // ---------- Catalogue ----------
@@ -995,11 +1157,33 @@
       $$('[data-sedit]').forEach(b => b.onclick = () => snippetForm(data.snippets.find(x => x.id === b.dataset.sedit), drawSnippets));
       $$('[data-sdel]').forEach(b => b.onclick = async () => { if (await confirmDialog('Supprimer ce texte ?')) { data.snippets = data.snippets.filter(x => x.id !== b.dataset.sdel); save(true); drawSnippets(); } });
     };
-    $('#view').innerHTML = `<div class="page-head"><h1>Catalogue de prestations ${info('cat.catalog')}</h1><div class="actions"><button class="btn btn-primary" id="new">+ Nouvelle prestation</button></div></div><div id="list-wrap"></div>
-      <div class="section-head"><h2>Modèles de documents ${info('ed.template')}</h2></div><div id="tpl-wrap"></div>
-      <div class="section-head"><h2>Textes prédéfinis ${info('cat.snippets')}</h2><button class="btn btn-sm" id="new-snip">+ Nouveau texte</button></div><div id="snip-wrap"></div>`;
-    $('#new').onclick = () => catalogForm(null, draw);
-    $('#new-snip').onclick = () => snippetForm(null, drawSnippets);
+    const TABS = [['presta', 'Prestations', 'cat.catalog'], ['modeles', 'Modèles de documents', 'ed.template'], ['textes', 'Textes prédéfinis', 'cat.snippets']];
+    if (!TABS.some(t => t[0] === catalogTab)) catalogTab = 'presta';
+    const head = () => {
+      const t = TABS.find(x => x[0] === catalogTab);
+      return `<h1>${t[1]} ${info(t[2])}</h1><div class="actions">
+        ${catalogTab === 'presta' ? '<button class="btn btn-primary" id="new">+ Nouvelle prestation</button>' : ''}
+        ${catalogTab === 'textes' ? '<button class="btn btn-primary" id="new-snip">+ Nouveau texte</button>' : ''}
+        ${catalogTab === 'modeles' ? '<span class="small muted">Depuis un devis ou une facture : Plus ▾ → « Enregistrer comme modèle »</span>' : ''}
+      </div>`;
+    };
+    $('#view').innerHTML = `<div class="page-head" id="cat-head">${head()}</div>
+      <div class="tabs" id="cat-tabs" role="tablist">${TABS.map(([id, label]) => `<button role="tab" data-tab="${id}" class="${id === catalogTab ? 'active' : ''}">${label}</button>`).join('')}</div>
+      <div data-pane="presta"><div id="list-wrap"></div></div>
+      <div data-pane="modeles" hidden><div id="tpl-wrap"></div></div>
+      <div data-pane="textes" hidden><div id="snip-wrap"></div></div>`;
+    const bindHead = () => {
+      if ($('#new')) $('#new').onclick = () => catalogForm(null, draw);
+      if ($('#new-snip')) $('#new-snip').onclick = () => snippetForm(null, drawSnippets);
+    };
+    const showTab = id => {
+      catalogTab = id;
+      $$('#cat-tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === id));
+      $$('[data-pane]').forEach(p => p.hidden = p.dataset.pane !== id);
+      $('#cat-head').innerHTML = head(); bindHead();
+    };
+    $$('#cat-tabs button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
+    showTab(catalogTab);
     draw(); drawTemplates(); drawSnippets();
   };
 
@@ -1231,7 +1415,7 @@
     ].map(([label, run]) => ({ kind: 'Action', main: label, text: label.toLowerCase(), run }));
     const helps = G.ARTICLES.map(x => ({ kind: 'Aide', main: x.title, sub: x.sub, text: `aide ${x.title} ${x.sub}`.toLowerCase(), run: () => navigate('#/aide/' + x.id) }));
     const docs = data.documents.map(d => { const t = C.computeTotals(d, company()); const cn = clientName(d.clientId); return { kind: C.TITLES[d.type], main: d.number || 'Brouillon', sub: `${cn}${d.subject ? ' — ' + d.subject : ''}`, amt: C.money(d.type === 'devis' ? t.totalTTC : t.netToPay, cur), text: `${d.number} ${cn} ${d.subject || ''} ${d.type}`.toLowerCase(), run: () => navigate('#/doc/' + d.id), ts: d.createdAt || 0 }; });
-    const clients = data.clients.map(c => ({ kind: 'Client', main: c.name, sub: [c.email, c.phone].filter(Boolean).join(' · '), text: `${c.name} ${c.email || ''} ${c.phone || ''} ${c.matricule || ''}`.toLowerCase(), run: () => clientForm(c, () => render()) }));
+    const clients = data.clients.map(c => ({ kind: 'Client', main: c.name, sub: [c.contact, c.email, c.phone].filter(Boolean).join(' · '), text: `${c.name} ${c.contact || ''} ${c.email || ''} ${c.phone || ''} ${c.matricule || ''}`.toLowerCase(), run: () => navigate('#/client/' + c.id) }));
     const items = data.catalog.map(c => ({ kind: 'Prestation', main: c.label, sub: C.money(c.unitPrice, cur) + ' HT', text: `${c.label} ${c.description || ''}`.toLowerCase(), run: () => navigate('#/catalogue') }));
     const all = [...actions, ...docs, ...clients, ...items, ...helps];
     let sel = 0, shown = [];
