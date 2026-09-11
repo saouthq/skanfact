@@ -1,0 +1,81 @@
+{
+  "name": "skanfact",
+  "productName": "SkanFact",
+  "version": "1.2.1",
+  "description": "Devis et factures pour SKANCYBER SECURITY",
+  "main": "src/main.js",
+  "author": "Skander Ben Amor",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "test": "node test/run-tests.js",
+    "build:mac": "electron-builder --mac",
+    "build:win": "electron-builder --win",
+    "release": "node scripts/release.js"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "build": {
+    "appId": "tn.skancyber.skanfact",
+    "productName": "SkanFact",
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
+      "category": "public.app-category.business",
+      "icon": "build/icon.png",
+      "hardenedRuntime": false,
+      "identity": null
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "saouthq",
+      "repo": "skanfact",
+      "releaseType": "release"
+    },
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/saouthq/skanfact.git"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
+  }
+}

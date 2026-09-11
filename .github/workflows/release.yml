@@ -1,0 +1,35 @@
+# Construit SkanFact pour Mac et Windows et publie une release GitHub
+# à chaque tag de version (créé par `npm run release`).
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm install --no-fund --no-audit
+
+      - run: npm test
+
+      - name: Build & publish
+        run: npx electron-builder --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Pas de signature Apple pour l'instant : on désactive la notarisation.
+          CSC_IDENTITY_AUTO_DISCOVERY: false
