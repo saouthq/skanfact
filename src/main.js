@@ -3,8 +3,13 @@ const { app, BrowserWindow, ipcMain, dialog, shell, Menu, screen } = require('el
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
-const pkg = require('../package.json');
 const { createStorage } = require('./storage');
+
+// Identifiants de l'app. Ne PAS les lire dans package.json au démarrage : electron-builder
+// retire la section « build » du package.json empaqueté (l'app installée n'a plus build.publish).
+const APP_ID = 'tn.skancyber.skanfact';
+const GITHUB = { owner: 'saouthq', repo: 'skanfact' };
+const RELEASES_URL = `https://github.com/${GITHUB.owner}/${GITHUB.repo}/releases`;
 
 const IS_MAC = process.platform === 'darwin';
 // macOS : sans certificat Apple Developer, Squirrel.Mac refuse d'installer une mise à jour.
@@ -37,7 +42,7 @@ function logError(where, err) {
 function main() {
   process.on('uncaughtException', (e) => logError('erreur inattendue', e));
   process.on('unhandledRejection', (e) => logError('promesse rejetée', e));
-  if (process.platform === 'win32') app.setAppUserModelId(pkg.build.appId);
+  if (process.platform === 'win32') app.setAppUserModelId(APP_ID);
 
   app.whenReady().then(() => {
     storage = createStorage(app.getPath('userData'));
@@ -137,7 +142,6 @@ function send(channel, payload) {
 
 function buildMenu() {
   const act = (name) => () => { if (!mainWindow) createWindow(); send('menu:action', name); };
-  const releasesUrl = `https://github.com/${pkg.build.publish.owner}/${pkg.build.publish.repo}/releases`;
 
   const appMenu = IS_MAC ? [{
     label: 'SkanFact',
@@ -221,7 +225,7 @@ function buildMenu() {
       role: 'help',
       submenu: [
         { label: 'Nouveautés de cette version', click: act('changelog') },
-        { label: 'Toutes les versions (GitHub)', click: () => shell.openExternal(releasesUrl) },
+        { label: 'Toutes les versions (GitHub)', click: () => shell.openExternal(RELEASES_URL) },
         { type: 'separator' },
         { label: 'Ouvrir le dossier des données', click: () => shell.openPath(app.getPath('userData')) },
         ...(IS_MAC ? [] : [
@@ -352,9 +356,8 @@ function readUpdateCfg() { try { return JSON.parse(fs.readFileSync(UPDATE_CFG(),
 function writeUpdateCfg(cfg) { fs.mkdirSync(path.dirname(UPDATE_CFG()), { recursive: true }); fs.writeFileSync(UPDATE_CFG(), JSON.stringify(cfg), { mode: 0o600 }); }
 
 function configureFeed(u) {
-  const pub = pkg.build.publish;
   const cfg = readUpdateCfg();
-  u.setFeedURL({ provider: 'github', owner: pub.owner, repo: pub.repo, private: !!cfg.token, token: cfg.token || undefined });
+  u.setFeedURL({ provider: 'github', owner: GITHUB.owner, repo: GITHUB.repo, private: !!cfg.token, token: cfg.token || undefined });
 }
 
 function notesToText(notes) {
@@ -372,7 +375,10 @@ function getUpdater() {
     autoUpdater.autoDownload = true;
     autoUpdater.autoInstallOnAppQuit = !IS_MAC || MAC_SIGNED;
     autoUpdater.autoRunAppAfterInstall = true;
-    autoUpdater.logger = null;
+    // journal des mises à jour (userData/updater.log) : indispensable pour diagnostiquer à distance
+    const ulog = path.join(app.getPath('userData'), 'updater.log');
+    const ul = (lvl) => (m) => { try { fs.appendFileSync(ulog, `${new Date().toISOString()} ${lvl} ${m}\n`); } catch {} };
+    autoUpdater.logger = { info: ul('info'), warn: ul('warn'), error: ul('error'), debug: ul('debug') };
     autoUpdater.on('checking-for-update', () => { if (!silent) sendUpdate('checking'); });
     autoUpdater.on('update-available', (info) => { updateInfo = info; downloaded = false; downloadedFile = null; sendUpdate('available', { version: info.version, notes: notesToText(info.releaseNotes) }); });
     autoUpdater.on('update-not-available', () => { if (!silent) sendUpdate('none'); });
@@ -387,10 +393,7 @@ function getUpdater() {
   return updater;
 }
 
-function updatesConfigured() {
-  const pub = pkg.build.publish;
-  return !!(pub && pub.owner && pub.repo);
-}
+function updatesConfigured() { return !!(GITHUB.owner && GITHUB.repo); }
 
 function friendlyError(err) {
   const m = String(err && err.message || err);
@@ -408,8 +411,14 @@ async function checkForUpdates(isSilent) {
   const u = getUpdater();
   if (!u) return { state: 'error', message: 'Module de mise à jour indisponible.' };
   if (downloaded) { sendUpdate('downloaded', { version: updateInfo && updateInfo.version, notes: notesToText(updateInfo && updateInfo.releaseNotes) }); return { state: 'ok' }; }
-  try { await u.checkForUpdates(); return { state: 'ok' }; }
-  catch (e) { return { state: 'error', message: friendlyError(e) }; }
+  // 45 s maximum : sans réponse de GitHub on rend la main avec un message plutôt que d'attendre sans fin
+  const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('ETIMEDOUT: pas de réponse de GitHub')), 45000));
+  try {
+    const r = await Promise.race([u.checkForUpdates(), timeout]);
+    // null = electron-updater inactif dans cette installation (ex. Linux hors AppImage) : aucun événement n'arrivera
+    if (!r) return { state: 'error', message: 'Le module de mise à jour est inactif dans cette installation. Télécharge la nouvelle version depuis GitHub.' };
+    return { state: 'ok' };
+  } catch (e) { return { state: 'error', message: friendlyError(e) }; }
 }
 
 // Résultat de la dernière mise à jour Mac (écrit par mac-update.sh), lu une seule fois au démarrage suivant.
@@ -452,7 +461,7 @@ ipcMain.handle('update:install', async () => {
   return { state: 'ok' };
 });
 
-ipcMain.handle('update:openReleases', () => shell.openExternal(`https://github.com/${pkg.build.publish.owner}/${pkg.build.publish.repo}/releases/latest`));
+ipcMain.handle('update:openReleases', () => shell.openExternal(RELEASES_URL + '/latest'));
 
 function installOnMac() {
   if (!downloaded || !downloadedFile || !fs.existsSync(downloadedFile)) return { state: 'error', message: 'Le téléchargement n\'est pas terminé.' };
