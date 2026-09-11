@@ -1115,6 +1115,81 @@
     return n;
   }
 
+  // ---------- unités de facturation ----------
+  // Liste proposée dans les lignes de document et dans le catalogue. Elle couvre les métiers
+  // courants ; une unité inhabituelle se saisit avec « Autre… » et rejoint ensuite la liste,
+  // puisqu'on relit les unités déjà employées dans les données.
+  const LINE_UNITS = [
+    ['u', 'unité (u)'], ['h', 'heure (h)'], ['j', 'jour (j)'], ['demi-journée', 'demi-journée'],
+    ['mois', 'mois'], ['an', 'année'], ['forfait', 'forfait'], ['intervention', 'intervention'],
+    ['licence', 'licence'], ['abonnement', 'abonnement'], ['poste', 'poste'], ['lot', 'lot'],
+    ['ml', 'mètre linéaire (ml)'], ['m²', 'mètre carré (m²)'], ['m³', 'mètre cube (m³)'],
+    ['kg', 'kilogramme (kg)'], ['L', 'litre (L)'], ['km', 'kilomètre (km)'], ['page', 'page']
+  ];
+  // Unités déjà employées dans les documents et le catalogue, hors liste standard : elles restent
+  // proposées d'une fois sur l'autre sans rien avoir à régler dans les paramètres.
+  function usedUnits(data, extra) {
+    const known = new Set(LINE_UNITS.map(u => u[0]));
+    const out = [];
+    const add = u => { u = (u || '').trim(); if (u && !known.has(u)) { known.add(u); out.push(u); } };
+    (data && data.catalog || []).forEach(c => add(c.unit));
+    (data && data.documents || []).forEach(d => (d.lines || []).forEach(l => add(l.unit)));
+    (extra || []).forEach(add);
+    return out.sort((a, b) => a.localeCompare(b, 'fr'));
+  }
+
+  // ---------- dates saisies à la main ----------
+  const pad2 = n => String(n).padStart(2, '0');
+  function isRealDate(y, m, d) {
+    if (!(y >= 1900 && y <= 2999) || !(m >= 1 && m <= 12) || !(d >= 1)) return false;
+    return d <= new Date(Date.UTC(y, m, 0)).getUTCDate();
+  }
+  function fmtDateInput(iso) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '');
+    return m ? `${m[3]}/${m[2]}/${m[1]}` : '';
+  }
+  // Comprend ce que l'utilisateur tape : 12/03/2026, 12-3-26, 12032026, 12/03 (année en cours),
+  // 12 (mois en cours), ou une date ISO collée. Renvoie '' si la date n'existe pas (31/02).
+  function parseDateInput(text, todayIso) {
+    const s = String(text == null ? '' : text).trim();
+    if (!s) return '';
+    const ref = todayIso || today();   // date de référence pour les saisies partielles
+    const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(s);
+    if (iso) {
+      const y = +iso[1], m = +iso[2], d = +iso[3];
+      return isRealDate(y, m, d) ? `${y}-${pad2(m)}-${pad2(d)}` : '';
+    }
+    const digits = s.replace(/\D/g, '');
+    let d, m, y;
+    const parts = s.split(/[^\d]+/).filter(Boolean);
+    if (parts.length >= 2) { d = +parts[0]; m = +parts[1]; y = parts.length > 2 ? +parts[2] : +ref.slice(0, 4); }
+    else if (digits.length === 8) { d = +digits.slice(0, 2); m = +digits.slice(2, 4); y = +digits.slice(4); }
+    else if (digits.length === 6) { d = +digits.slice(0, 2); m = +digits.slice(2, 4); y = 2000 + +digits.slice(4); }
+    else if (digits.length === 4) { d = +digits.slice(0, 2); m = +digits.slice(2, 4); y = +ref.slice(0, 4); }
+    else if (digits.length === 1 || digits.length === 2) { d = +digits; m = +ref.slice(5, 7); y = +ref.slice(0, 4); }
+    else return '';
+    if (y != null && y < 100) y += 2000;
+    return isRealDate(y, m, d) ? `${y}-${pad2(m)}-${pad2(d)}` : '';
+  }
+  // Grille du mois pour le calendrier : six semaines de sept jours, lundi en tête.
+  // Les jours débordant sur les mois voisins sont marqués `out` pour être affichés en gris.
+  function monthMatrix(year, month) {
+    const first = new Date(Date.UTC(year, month - 1, 1));
+    const shift = (first.getUTCDay() + 6) % 7;          // lundi = 0
+    const start = new Date(Date.UTC(year, month - 1, 1 - shift));
+    const weeks = [];
+    for (let w = 0; w < 6; w++) {
+      const days = [];
+      for (let i = 0; i < 7; i++) {
+        const cur = new Date(start.getTime() + (w * 7 + i) * 86400000);
+        const y = cur.getUTCFullYear(), m = cur.getUTCMonth() + 1, d = cur.getUTCDate();
+        days.push({ iso: `${y}-${pad2(m)}-${pad2(d)}`, day: d, out: m !== month });
+      }
+      weeks.push(days);
+    }
+    return weeks;
+  }
+
   // ---------- pagination et tri des listes ----------
   // Découpage d'une liste en pages. `size` à 0 (ou moins) = tout afficher.
   // Renvoie des bornes déjà corrigées : une page hors limites est ramenée dans l'intervalle,
@@ -1141,7 +1216,7 @@
 
   return {
     VAT_RATES, WITHHOLDING_RATES, PAYMENT_METHODS, PREFIX, TITLES, DEFAULT_DATA, DEFAULT_COMPANY, ACTIVITIES, STATUSES, DISPLAY_STATUSES, STATUS_LABELS,
-    pageInfo, compareValues,
+    pageInfo, compareValues, LINE_UNITS, usedUnits, parseDateInput, fmtDateInput, monthMatrix,
     uid, round3, money, fmtDate, addDays, today, escapeHtml, nl2br, statusLabel,
     nextNumber, isLocked, isIssued, computeTotals, creditsFor, invoiceBalance, effectiveStatus,
     depositLines, settlementLines, salesJournal, vatSummary, paymentsJournal, toCsv, migrateData,

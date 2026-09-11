@@ -736,4 +736,54 @@ t('tri des colonnes : nombres, accents, valeurs vides en fin', () => {
   assert.deepStrictEqual(rows.slice().sort((a, b) => core.compareValues(a.d, b.d)).map(x => x.d), ['2026-01-05', '2026-03-01', '']);
 });
 
+t('date tapée à la main : formats tolérés, dates impossibles refusées', () => {
+  const p = s => core.parseDateInput(s, '2026-09-11');
+  assert.strictEqual(p('12/03/2026'), '2026-03-12');
+  assert.strictEqual(p('12-3-26'), '2026-03-12');       // séparateurs libres, année sur deux chiffres
+  assert.strictEqual(p('12.03.2026'), '2026-03-12');
+  assert.strictEqual(p('12032026'), '2026-03-12');      // sans séparateur
+  assert.strictEqual(p('120326'), '2026-03-12');
+  assert.strictEqual(p('12/03'), '2026-03-12');         // année en cours sous-entendue
+  assert.strictEqual(p('12'), '2026-09-12');            // mois et année en cours sous-entendus
+  assert.strictEqual(p('2026-03-12'), '2026-03-12');    // ISO collée
+  assert.strictEqual(p('31/02/2026'), '');              // le 31 février n'existe pas
+  assert.strictEqual(p('30/02/2024'), '');              // même en année bissextile
+  assert.strictEqual(p('29/02/2024'), '2024-02-29');    // mais le 29 février bissextile, oui
+  assert.strictEqual(p('45/13/2026'), '');
+  assert.strictEqual(p(''), '');
+  assert.strictEqual(p('bonjour'), '');
+  // Appelée sans date de référence, la fonction doit se rabattre sur aujourd'hui sans exploser :
+  // c'est ainsi que l'interface l'appelle.
+  assert.strictEqual(core.parseDateInput('12/03/2026'), '2026-03-12');
+  assert.ok(/^\d{4}-\d{2}-\d{2}$/.test(core.parseDateInput('12')));
+  assert.strictEqual(core.fmtDateInput('2026-03-12'), '12/03/2026');
+  assert.strictEqual(core.fmtDateInput(''), '');
+  assert.strictEqual(core.fmtDateInput('pas une date'), '');
+});
+
+t('calendrier : six semaines commençant un lundi', () => {
+  const w = core.monthMatrix(2026, 9);                  // septembre 2026 commence un mardi
+  assert.strictEqual(w.length, 6);
+  assert.ok(w.every(x => x.length === 7));
+  assert.strictEqual(w[0][0].iso, '2026-08-31');        // le lundi précédent complète la première semaine
+  assert.strictEqual(w[0][0].out, true);
+  assert.strictEqual(w[0][1].iso, '2026-09-01');
+  assert.strictEqual(w[0][1].out, false);
+  const inMonth = w.flat().filter(d => !d.out);
+  assert.strictEqual(inMonth.length, 30);
+  assert.strictEqual(inMonth[29].iso, '2026-09-30');
+  // février d'une année bissextile
+  assert.strictEqual(core.monthMatrix(2024, 2).flat().filter(d => !d.out).length, 29);
+});
+
+t('unités : liste standard et unités déjà employées', () => {
+  assert.ok(core.LINE_UNITS.some(u => u[0] === 'h'));
+  assert.ok(core.LINE_UNITS.some(u => u[0] === 'forfait'));
+  const d = { catalog: [{ unit: 'rouleau' }, { unit: 'h' }], documents: [{ lines: [{ unit: 'palette' }, { unit: '' }] }] };
+  const extra = core.usedUnits(d);
+  assert.deepStrictEqual(extra, ['palette', 'rouleau']);   // triées, sans doublon, sans les standards
+  assert.deepStrictEqual(core.usedUnits(d, ['sac', 'rouleau']), ['palette', 'rouleau', 'sac']);
+  assert.deepStrictEqual(core.usedUnits({}), []);
+});
+
 console.log(`\n${n} tests OK`);

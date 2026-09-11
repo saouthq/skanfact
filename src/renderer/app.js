@@ -168,6 +168,7 @@
     modalClose = close;
     $('.modal-bg', root).addEventListener('click', e => { if (e.target.classList.contains('modal-bg')) close(); });
     $$('[data-close]', root).forEach(b => b.addEventListener('click', close));
+    bindDateFields(root);
     root.addEventListener('keydown', e => {
       if (e.key !== 'Enter' || e.shiftKey) return;
       if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'BUTTON') return;
@@ -210,6 +211,206 @@
       o[el.name] = el.type === 'checkbox' ? el.checked : el.type === 'number' ? (el.value === '' ? '' : Number(el.value)) : el.value;
     });
     return o;
+  }
+
+  let uiSeq = 0;                 // identifiants des composants posés dans la page
+  let closeOverlay = null;       // fermeture du calendrier ou de la liste déroulante ouverte
+
+  // ---------- liste déroulante avec recherche ----------
+  // Remplace <select> dès que la liste s'allonge (clients, factures, catalogue) : champ de recherche,
+  // liste filtrée, navigation au clavier. La valeur reste dans un <input type="hidden"> portant le nom
+  // de l'ancien <select>, si bien que formValues() et les gestionnaires de formulaire ne changent pas.
+  function combo(o) {
+    const id = 'cb' + (++uiSeq);
+    const cur = (o.items || []).find(x => x.v === o.value);
+    const lab = cur ? cur.label : '';
+    return `<div class="combo${o.ro ? ' ro' : ''}" id="${id}"${o.name ? ` data-combo="${h(o.name)}"` : ''}>
+      ${o.name ? `<input type="hidden" name="${h(o.name)}" value="${h(o.value || '')}">` : ''}
+      <button type="button" class="combo-btn" aria-haspopup="listbox" aria-expanded="false" ${o.ro ? 'disabled' : ''}>
+        <span class="combo-val${lab ? '' : ' ph'}">${h(lab || o.placeholder || 'Choisir…')}</span>
+        <span class="combo-caret" aria-hidden="true">▾</span>
+      </button>
+      <div class="combo-pop" hidden>
+        <input type="text" class="combo-q" placeholder="${h(o.search || 'Rechercher…')}" autocomplete="off" spellcheck="false">
+        <div class="combo-list" role="listbox"></div>
+        ${o.add ? `<button type="button" class="combo-add">${h(o.add)}</button>` : ''}
+      </div></div>`;
+  }
+  // `items` : [{ v, label, sub, right, text }]. `onPick(v, item)` est appelé après le choix.
+  // `reset: true` pour une liste d'action (catalogue, modèles) qui ne garde pas la valeur choisie.
+  function bindCombo(el, o) {
+    if (!el || el._bound) return el;
+    el._bound = true;
+    o = o || {};
+    const hidden = $('input[type=hidden]', el), btn = $('.combo-btn', el), pop = $('.combo-pop', el);
+    const q = $('.combo-q', el), list = $('.combo-list', el), add = $('.combo-add', el);
+    el._items = o.items || [];
+    el._value = hidden ? hidden.value : '';
+    let sel = 0, shown = [];
+
+    const paint = () => {
+      const it = el._items.find(x => x.v === el._value);
+      const span = $('.combo-val', el);
+      span.textContent = it ? it.label : (o.placeholder || 'Choisir…');
+      span.classList.toggle('ph', !it);
+      if (hidden) hidden.value = el._value || '';
+    };
+    const draw = () => {
+      const words = q.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+      shown = el._items.filter(x => !words.length || words.every(w => (x.text || x.label || '').toLowerCase().includes(w)));
+      sel = Math.max(0, Math.min(sel, shown.length - 1));
+      list.innerHTML = shown.length ? shown.map((x, i) => `<div class="combo-it${i === sel ? ' sel' : ''}${x.v === el._value ? ' cur' : ''}" data-i="${i}" role="option" aria-selected="${i === sel}">
+          <span class="ci-main">${h(x.label)}${x.sub ? `<span class="ci-sub">${h(x.sub)}</span>` : ''}</span>
+          ${x.right ? `<span class="ci-right">${h(x.right)}</span>` : ''}</div>`).join('')
+        : '<div class="combo-empty">Aucun résultat</div>';
+      $$('.combo-it', list).forEach(d => d.onmousedown = e => { e.preventDefault(); pick(shown[Number(d.dataset.i)]); });
+      const cur = $('.combo-it.sel', list); if (cur) cur.scrollIntoView({ block: 'nearest' });
+    };
+    const close = () => { pop.hidden = true; btn.setAttribute('aria-expanded', 'false'); el.classList.remove('up'); if (closeOverlay === close) closeOverlay = null; };
+    const open = () => {
+      if (closeOverlay) closeOverlay();
+      pop.hidden = false; btn.setAttribute('aria-expanded', 'true');
+      // Dans une fenêtre modale il n'y a pas toujours la place en dessous : on ouvre vers le haut.
+      el.classList.toggle('up', window.innerHeight - btn.getBoundingClientRect().bottom < 300);
+      q.value = ''; sel = Math.max(0, el._items.findIndex(x => x.v === el._value));
+      draw(); q.focus(); closeOverlay = close;
+    };
+    const pick = (x) => {
+      if (!x) return;
+      el._value = o.reset ? '' : x.v;
+      paint(); close(); btn.focus();
+      if (o.onPick) o.onPick(x.v, x);
+      if (hidden && !o.reset) hidden.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    btn.onclick = () => (pop.hidden ? open() : close());
+    q.oninput = () => { sel = 0; draw(); };
+    q.onkeydown = e => {
+      if (e.key === 'ArrowDown') { e.preventDefault(); sel = Math.min(sel + 1, shown.length - 1); draw(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); sel = Math.max(sel - 1, 0); draw(); }
+      // stopPropagation : sinon Entrée validerait aussi le bouton principal de la fenêtre modale
+      else if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); pick(shown[sel]); }
+      else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); btn.focus(); }
+      else if (e.key === 'Tab') close();
+    };
+    if (add) add.onclick = () => { close(); if (o.onAdd) o.onAdd(); };
+    el.setItems = (items, value) => { el._items = items; if (value !== undefined) el._value = value; paint(); if (!pop.hidden) draw(); };
+    el.setValue = (v, silent) => { el._value = v; paint(); if (hidden && !silent) hidden.dispatchEvent(new Event('change', { bubbles: true })); };
+    paint();
+    return el;
+  }
+
+  // ---------- champ date avec calendrier ----------
+  // Saisie libre tolérante (12/03/2026, 12-3-26, 12032026, 12/03, 12) et calendrier cliquable.
+  // La valeur ISO vit dans un <input type="hidden"> : le reste de l'app ne voit aucune différence.
+  const DOW = ['lun', 'mar', 'mer', 'jeu', 'ven', 'sam', 'dim'];
+  function dateInput(name, value, o) {
+    o = o || {};
+    return `<div class="datefield${o.ro ? ' ro' : ''}" id="dt${++uiSeq}"${o.quick ? ' data-quick="1"' : ''}${o.clearable ? ' data-clearable="1"' : ''}>
+      <input type="hidden" name="${h(name)}" value="${h(value || '')}">
+      <input type="text" class="d-txt" inputmode="numeric" autocomplete="off" spellcheck="false" placeholder="JJ/MM/AAAA" value="${h(C.fmtDateInput(value))}" ${o.ro ? 'disabled' : ''}>
+      <button type="button" class="d-btn" tabindex="-1" aria-label="Ouvrir le calendrier" title="Ouvrir le calendrier" ${o.ro ? 'disabled' : ''}>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>
+      </button>
+      <div class="cal-pop" hidden></div>
+    </div>`;
+  }
+  function dateFieldHtml(label, name, value, o) {
+    return `<div class="field">${label}${dateInput(name, value, o)}</div>`;
+  }
+  function bindDateFields(root) {
+    $$('.datefield', root || document).forEach(el => {
+      if (el._bound) return;
+      el._bound = true;
+      const hidden = $('input[type=hidden]', el), txt = $('.d-txt', el), btn = $('.d-btn', el), pop = $('.cal-pop', el);
+      const quick = el.dataset.quick === '1', clearable = el.dataset.clearable === '1';
+      let view = null;
+      const fire = () => hidden.dispatchEvent(new Event('change', { bubbles: true }));
+      const commit = (iso, silent) => {
+        if (hidden.value === iso) { txt.value = C.fmtDateInput(iso); return; }
+        hidden.value = iso; txt.value = C.fmtDateInput(iso);
+        if (!silent) fire();
+      };
+      // On vide le calendrier en le fermant : sinon deux champs date laissent deux grilles dans la page.
+      const closeCal = () => { pop.hidden = true; pop.innerHTML = ''; el.classList.remove('up'); if (closeOverlay === closeCal) closeOverlay = null; };
+      const drawCal = () => {
+        const cur = hidden.value || C.today();
+        view = view || { y: Number(cur.slice(0, 4)), m: Number(cur.slice(5, 7)) };
+        const t = C.today();
+        pop.innerHTML = `<div class="cal-head">
+            <button type="button" class="cal-nav" data-mv="-1" aria-label="Mois précédent">‹</button>
+            <select class="cal-m" aria-label="Mois">${C.MONTHS_FR.map((m, i) => `<option value="${i + 1}" ${i + 1 === view.m ? 'selected' : ''}>${m}</option>`).join('')}</select>
+            <input type="number" class="cal-y" aria-label="Année" value="${view.y}" min="1900" max="2999" step="1">
+            <button type="button" class="cal-nav" data-mv="1" aria-label="Mois suivant">›</button>
+          </div>
+          <div class="cal-dow">${DOW.map(d => `<span>${d}</span>`).join('')}</div>
+          <div class="cal-grid">${C.monthMatrix(view.y, view.m).map(w => w.map(d =>
+            `<button type="button" class="cal-d${d.out ? ' out' : ''}${d.iso === hidden.value ? ' sel' : ''}${d.iso === t ? ' today' : ''}" data-d="${d.iso}" tabindex="-1">${d.day}</button>`).join('')).join('')}</div>
+          <div class="cal-foot">
+            <button type="button" class="btn btn-sm" data-d="${t}">Aujourd'hui</button>
+            ${quick ? [7, 15, 30].map(n => `<button type="button" class="btn btn-sm" data-plus="${n}">+${n} j</button>`).join('') : ''}
+            ${clearable && hidden.value ? '<button type="button" class="btn btn-sm btn-ghost" data-clear="1">Effacer</button>' : ''}
+          </div>`;
+        $$('[data-mv]', pop).forEach(b => b.onclick = () => {
+          view.m += Number(b.dataset.mv);
+          if (view.m < 1) { view.m = 12; view.y--; } else if (view.m > 12) { view.m = 1; view.y++; }
+          drawCal();
+        });
+        $('.cal-m', pop).onchange = e => { view.m = Number(e.target.value); drawCal(); };
+        $('.cal-y', pop).onchange = e => { const y = Number(e.target.value); if (y >= 1900 && y <= 2999) { view.y = y; drawCal(); } };
+        $$('[data-d]', pop).forEach(b => b.onclick = () => { commit(b.dataset.d); closeCal(); txt.focus(); });
+        $$('[data-plus]', pop).forEach(b => b.onclick = () => { commit(C.addDays(hidden.value || t, Number(b.dataset.plus))); closeCal(); txt.focus(); });
+        if ($('[data-clear]', pop)) $('[data-clear]', pop).onclick = () => { commit(''); closeCal(); txt.focus(); };
+      };
+      const openCal = () => {
+        if (closeOverlay) closeOverlay();
+        view = null; pop.hidden = false;
+        el.classList.toggle('up', window.innerHeight - btn.getBoundingClientRect().bottom < 340);
+        drawCal(); closeOverlay = closeCal;
+      };
+      btn.onclick = () => (pop.hidden ? openCal() : closeCal());
+      // Confort de frappe : les séparateurs s'écrivent tout seuls, rien n'est validé avant de quitter le champ.
+      txt.oninput = () => {
+        const d = txt.value.replace(/\D/g, '').slice(0, 8);
+        if (txt.value.replace(/[\d/]/g, '') === '' && d.length >= 3) {
+          txt.value = d.length > 4 ? `${d.slice(0, 2)}/${d.slice(2, 4)}/${d.slice(4)}` : `${d.slice(0, 2)}/${d.slice(2)}`;
+        }
+      };
+      txt.onblur = () => {
+        const iso = C.parseDateInput(txt.value);
+        if (!txt.value.trim()) return commit('');
+        if (!iso) { txt.value = C.fmtDateInput(hidden.value); toast('Date incomprise : écris-la sous la forme 12/03/2026.', true); return; }
+        commit(iso);
+      };
+      txt.onkeydown = e => {
+        if (e.key === 'Enter') { txt.blur(); txt.focus(); }
+        else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+          e.preventDefault();
+          const base = C.parseDateInput(txt.value) || hidden.value || C.today();
+          commit(C.addDays(base, e.key === 'ArrowUp' ? 1 : -1));
+        } else if (e.key === 'Escape' && !pop.hidden) { e.stopPropagation(); closeCal(); }
+      };
+    });
+  }
+
+  // ---------- unité d'une ligne ----------
+  const UNIT_OTHER = '__autre__';
+  function unitOptions(value, extras) {
+    const list = C.LINE_UNITS.concat((extras || []).map(u => [u, u]));
+    if (value && !list.some(x => x[0] === value)) list.push([value, value]);
+    return `<option value="">—</option>${list.map(([v, l]) => `<option value="${h(v)}" ${v === value ? 'selected' : ''}>${h(l)}</option>`).join('')}<option value="${UNIT_OTHER}">Autre…</option>`;
+  }
+  // « Autre… » ouvre une saisie libre ; l'unité tapée rejoint la liste puisqu'elle est alors dans les données.
+  function bindUnitSelect(sel, get, set) {
+    sel.onchange = () => {
+      if (sel.value !== UNIT_OTHER) return set(sel.value);
+      const prev = get() || '';
+      sel.value = prev; set(prev);
+      promptDialog('Unité personnalisée', 'Unité (ex : rouleau, palette, ml)', '', v => {
+        const u = v.trim();
+        sel.innerHTML = unitOptions(u, []);
+        sel.value = u; set(u);
+      });
+    };
   }
 
   function badge(status) { return `<span class="badge ${h(status)}">${h(C.statusLabel(status))}</span>`; }
@@ -262,6 +463,7 @@
     $$('nav a').forEach(a => a.classList.toggle('active', a.dataset.route === active));
     guard = null; previewRedraw = null;
     (routes[name] || routes.dashboard)(parts.slice(1));
+    bindDateFields(view);            // champs date posés par la page qui vient d'être dessinée
     view.scrollTop = scroll;
     currentHash = location.hash;
     updateNavCounts();
@@ -654,11 +856,15 @@
     const canUnlock = locked && isInv && bal && !bal.paid && !bal.credits.length;
     const issuedDeposits = isQ && !isNew ? data.documents.filter(d => d.type === 'facture' && d.deposit && d.deposit.quoteId === doc.id && d.status !== 'brouillon') : [];
 
-    const clientOptions = () => `<option value="">— Choisir un client —</option>` +
-      data.clients.slice().sort((a, b) => a.name.localeCompare(b.name)).map(c => `<option value="${c.id}" ${c.id === doc.clientId ? 'selected' : ''}>${h(c.name)}</option>`).join('');
-    const invoiceOptions = () => `<option value="">— Facture concernée —</option>` +
-      data.documents.filter(d => d.type === 'facture' && d.status !== 'brouillon' && d.number).sort(byNumberDesc)
-        .map(d => `<option value="${d.id}" ${d.id === doc.creditOf ? 'selected' : ''}>${h(d.number)} — ${h(clientName(d.clientId))} — ${C.money(C.computeTotals(d, company()).netToPay, cur)}</option>`).join('');
+    const clientItems = () => data.clients.slice().sort((a, b) => a.name.localeCompare(b.name, 'fr')).map(c => ({
+      v: c.id, label: c.name, sub: [c.contact, c.matricule ? 'MF ' + c.matricule : ''].filter(Boolean).join(' · '),
+      text: `${c.name} ${c.contact || ''} ${c.email || ''} ${c.phone || ''} ${c.matricule || ''}`
+    }));
+    const invoiceItems = () => data.documents.filter(d => d.type === 'facture' && d.status !== 'brouillon' && d.number).sort(byNumberDesc).map(d => ({
+      v: d.id, label: d.number, sub: clientName(d.clientId) + (d.subject ? ' — ' + d.subject : ''),
+      right: C.money(C.computeTotals(d, company()).netToPay, docCur(d)),
+      text: `${d.number} ${clientName(d.clientId)} ${d.subject || ''}`
+    }));
 
     const title = isNew ? (isQ ? 'Nouveau devis' : isInv ? 'Nouvelle facture' : 'Nouvel avoir') : docLabel(doc);
     const statusCell = isQ
@@ -694,12 +900,12 @@
         <div>
           <div class="panel"><h2>Informations</h2>
             <form id="f-head" class="grid-3">
-              <label class="field">${lbl('Client', 'ed.client')}
-                <div class="inline"><select name="clientId" ${ro}>${clientOptions()}</select>${locked ? '' : '<button type="button" class="btn btn-sm" id="quick-client" title="Nouveau client">+</button>'}</div>
-              </label>
-              ${isAv ? `<label class="field span-2">Facture concernée<select name="creditOf" ${ro}>${invoiceOptions()}</select></label>` : ''}
-              ${field(lbl('Date', 'ed.date'), 'date', doc.date, 'date', ro)}
-              ${isAv ? '' : field(isQ ? lbl('Valable jusqu\'au', 'ed.validUntil') : lbl('Échéance', 'ed.due'), 'dueDate', doc.dueDate, 'date', ro)}
+              <div class="field">${lbl('Client', 'ed.client')}
+                ${combo({ name: 'clientId', value: doc.clientId, items: clientItems(), placeholder: '— Choisir un client —', search: 'Rechercher : nom, contact, MF…', add: locked ? null : '+ Nouveau client', ro: locked })}
+              </div>
+              ${isAv ? `<div class="field span-2">Facture concernée${combo({ name: 'creditOf', value: doc.creditOf, items: invoiceItems(), placeholder: '— Facture concernée —', search: 'Rechercher : n°, client, objet…', ro: locked })}</div>` : ''}
+              ${dateFieldHtml(lbl('Date', 'ed.date'), 'date', doc.date, { ro: locked })}
+              ${isAv ? '' : dateFieldHtml(isQ ? lbl('Valable jusqu\'au', 'ed.validUntil') : lbl('Échéance', 'ed.due'), 'dueDate', doc.dueDate, { ro: locked, quick: true })}
               <label class="field span-2">${lbl('Objet', 'ed.subject')}<input type="text" name="subject" value="${h(doc.subject)}" placeholder="Ex : Audit de sécurité du réseau" ${ro}></label>
               ${field(lbl('Référence (optionnel)', 'ed.reference'), 'reference', doc.reference || '', 'text', ro)}
               ${isAv ? field('Motif de l\'avoir', 'creditReason', doc.creditReason || '', 'text', ro + ' placeholder="Erreur de facturation, remise commerciale…"') : ''}
@@ -714,18 +920,18 @@
           </div>
           <div class="panel"><h2>Lignes ${info('ed.lines')}</h2>
             ${locked ? '' : `<div class="catalog-pick">
-              ${templatesFor(doc.type).length ? `<select id="tpl-pick"><option value="">Depuis un modèle…</option>${templatesFor(doc.type).map(t => `<option value="${t.id}">${h(t.name)}</option>`).join('')}</select>` : ''}
-              <select id="cat-pick"><option value="">Ajouter depuis le catalogue…</option>${data.catalog.slice().sort((a, b) => a.label.localeCompare(b.label)).map(c => `<option value="${c.id}">${h(c.label)} — ${C.money(c.unitPrice, cur)}</option>`).join('')}</select>
+              ${templatesFor(doc.type).length ? `<div id="tpl-pick">${combo({ items: [], placeholder: 'Depuis un modèle…', search: 'Rechercher un modèle…' })}</div>` : ''}
+              <div id="cat-pick">${combo({ items: [], placeholder: 'Ajouter depuis le catalogue…', search: 'Rechercher une prestation…' })}</div>
               <button class="btn btn-sm" id="add-line">+ Ligne vide</button>
             </div>`}
-            <table class="lines-edit"><thead><tr><th style="width:36%">Désignation</th><th style="width:9%">Qté</th><th style="width:9%">Unité</th><th style="width:15%">P.U. HT</th><th style="width:13%">TVA ${info('ed.vat')}</th><th class="r">Total HT</th><th></th></tr></thead>
+            <table class="lines-edit"><thead><tr><th>Désignation</th><th style="width:62px">Qté</th><th style="width:104px">Unité ${info('ed.unit')}</th><th style="width:92px">P.U. HT</th><th style="width:80px">TVA ${info('ed.vat')}</th><th class="r">Total HT</th><th></th></tr></thead>
               <tbody id="lines"></tbody></table>
             <div class="totals-box" id="totals"></div>
           </div>
           ${bal ? `<div class="panel" id="pay-panel"><h2>Paiements et situation ${info('ed.payments')}</h2><div id="pay-body"></div></div>` : ''}
           ${isNew ? '' : `<div class="panel"><h2>Historique ${info('ed.history')}</h2><div id="doc-history"></div></div>`}
           <div class="panel"><h2>Notes (affichées sur le document) ${info('ed.notes')}</h2>
-            ${!locked && data.snippets.length ? `<div class="catalog-pick"><select id="snip-pick"><option value="">Insérer un texte prédéfini…</option>${data.snippets.map(x => `<option value="${x.id}">${h(x.name)}</option>`).join('')}</select></div>` : ''}
+            ${!locked && data.snippets.length ? `<div class="catalog-pick"><div id="snip-pick">${combo({ items: [], placeholder: 'Insérer un texte prédéfini…', search: 'Rechercher un texte…' })}</div></div>` : ''}
             <textarea id="notes" placeholder="Conditions particulières, mentions…" ${ro}>${h(doc.notes || '')}</textarea>
           </div>
         </div>
@@ -764,13 +970,16 @@
     doc.lines.forEach((l, i) => { if (l.description) openDesc.add(i); });
     function drawLines() {
       const n = doc.lines.length;
+      // Unités déjà employées ailleurs dans les données, plus celles du document en cours :
+      // une unité saisie une fois reste proposée.
+      const extraUnits = C.usedUnits(data, doc.lines.map(l => l.unit));
       linesBody.innerHTML = doc.lines.map((l, i) => `<tr data-i="${i}">
         <td><input type="text" data-k="label" value="${h(l.label)}" placeholder="Désignation" ${ro}>
             ${openDesc.has(i)
               ? `<textarea data-k="description" placeholder="Description : ce que comprend la prestation" ${ro}>${h(l.description || '')}</textarea>`
               : (locked ? '' : `<button type="button" class="link-add" data-desc="${i}">+ description</button>`)}</td>
         <td><input type="number" class="num" data-k="qty" value="${l.qty}" step="0.01" ${ro}></td>
-        <td><input type="text" data-k="unit" value="${h(l.unit || '')}" placeholder="u, h, j" ${ro}></td>
+        <td><select data-k="unit" ${ro}>${unitOptions(l.unit, extraUnits)}</select></td>
         <td><input type="number" class="num" data-k="unitPrice" value="${l.unitPrice}" step="0.001" ${ro}></td>
         <td><select data-k="vatRate" ${ro}>${C.VAT_RATES.map(r => `<option value="${r}" ${Number(l.vatRate) === r ? 'selected' : ''}>${r}%</option>`).join('')}</select></td>
         <td class="total" data-total="${i}"></td>
@@ -779,10 +988,17 @@
           <button class="btn btn-ghost btn-sm" data-down="${i}" title="Descendre" ${i === n - 1 ? 'disabled' : ''}>↓</button>
           <button class="btn btn-ghost btn-sm" data-dup="${i}" title="Dupliquer la ligne">⧉</button>
           <button class="btn btn-ghost btn-sm" data-rm="${i}" title="Supprimer la ligne">✕</button>`}</td></tr>`).join('');
-      $$('[data-k]', linesBody).forEach(el => el.oninput = () => {
-        const i = Number(el.closest('tr').dataset.i);
-        doc.lines[i][el.dataset.k] = el.type === 'number' ? Number(el.value) : el.value;
-        touch(); refreshTotals();
+      $$('[data-k]', linesBody).forEach(el => {
+        if (el.dataset.k === 'unit') return;   // traité juste après : « Autre… » ouvre une saisie libre
+        el.oninput = () => {
+          const i = Number(el.closest('tr').dataset.i);
+          doc.lines[i][el.dataset.k] = el.type === 'number' ? Number(el.value) : el.value;
+          touch(); refreshTotals();
+        };
+      });
+      $$('select[data-k=unit]', linesBody).forEach(sel => {
+        const i = Number(sel.closest('tr').dataset.i);
+        bindUnitSelect(sel, () => doc.lines[i].unit, u => { doc.lines[i].unit = u; touch(); refreshTotals(); });
       });
       // Réordonner : on déplace aussi les descriptions dépliées pour qu'elles suivent leur ligne
       const reindex = map => { const next = new Set(); openDesc.forEach(i => next.add(map(i))); openDesc.clear(); next.forEach(i => openDesc.add(i)); };
@@ -805,26 +1021,41 @@
       refreshTotals();
     }
     if ($('#add-line')) $('#add-line').onclick = () => { doc.lines.push({ label: '', description: '', qty: 1, unit: '', unitPrice: 0, vatRate: 19 }); touch(); drawLines(); $$('input[data-k=label]', linesBody).pop().focus(); };
-    if ($('#cat-pick')) $('#cat-pick').onchange = e => {
-      const it = data.catalog.find(c => c.id === e.target.value); if (!it) return;
-      if (doc.lines.length === 1 && !doc.lines[0].label && !doc.lines[0].unitPrice) { doc.lines = []; openDesc.clear(); }
-      doc.lines.push({ label: it.label, description: it.description || '', qty: 1, unit: it.unit || '', unitPrice: it.unitPrice, vatRate: it.vatRate });
-      if (it.description) openDesc.add(doc.lines.length - 1);
-      e.target.value = ''; touch(); drawLines();
-    };
-    if ($('#tpl-pick')) $('#tpl-pick').onchange = async e => {
-      const id = e.target.value; e.target.value = ''; if (!id) return;
-      const hasContent = doc.lines.some(l => l.label) ;
-      if (hasContent && !await confirmDialog('Remplacer les lignes actuelles par celles du modèle ?', 'Remplacer', false)) return;
-      applyTemplate(doc, id);
-      openDesc.clear(); doc.lines.forEach((l, i) => { if (l.description) openDesc.add(i); });
-      $('input[name=subject]', head).value = doc.subject; $('input[name=discountRate]', head).value = doc.discountRate || 0; $('#notes').value = doc.notes || '';
-      touch(); drawLines();
-    };
-    if ($('#snip-pick')) $('#snip-pick').onchange = e => {
-      const sn = data.snippets.find(x => x.id === e.target.value); e.target.value = ''; if (!sn) return;
-      doc.notes = (doc.notes ? doc.notes.replace(/\s+$/, '') + '\n' : '') + sn.text; $('#notes').value = doc.notes; touch(); schedulePreview();
-    };
+    // Catalogue, modèles et textes : listes de choix qui ne gardent pas de valeur (reset), avec recherche.
+    if ($('#cat-pick')) bindCombo($('.combo', $('#cat-pick')), {
+      reset: true, placeholder: 'Ajouter depuis le catalogue…',
+      items: data.catalog.slice().sort((a, b) => a.label.localeCompare(b.label, 'fr')).map(c => ({
+        v: c.id, label: c.label, sub: c.description || '', right: C.money(c.unitPrice, cur) + ' HT',
+        text: `${c.label} ${c.description || ''} ${c.unit || ''}`
+      })),
+      onPick: id => {
+        const it = data.catalog.find(c => c.id === id); if (!it) return;
+        if (doc.lines.length === 1 && !doc.lines[0].label && !doc.lines[0].unitPrice) { doc.lines = []; openDesc.clear(); }
+        doc.lines.push({ label: it.label, description: it.description || '', qty: 1, unit: it.unit || '', unitPrice: it.unitPrice, vatRate: it.vatRate });
+        if (it.description) openDesc.add(doc.lines.length - 1);
+        touch(); drawLines();
+      }
+    });
+    if ($('#tpl-pick')) bindCombo($('.combo', $('#tpl-pick')), {
+      reset: true, placeholder: 'Depuis un modèle…',
+      items: templatesFor(doc.type).map(t => ({ v: t.id, label: t.name, sub: t.subject || '', right: `${(t.lines || []).length} ligne${(t.lines || []).length > 1 ? 's' : ''}`, text: `${t.name} ${t.subject || ''}` })),
+      onPick: async id => {
+        if (doc.lines.some(l => l.label) && !await confirmDialog('Remplacer les lignes actuelles par celles du modèle ?', 'Remplacer', false)) return;
+        applyTemplate(doc, id);
+        openDesc.clear(); doc.lines.forEach((l, i) => { if (l.description) openDesc.add(i); });
+        $('input[name=subject]', head).value = doc.subject; $('input[name=discountRate]', head).value = doc.discountRate || 0; $('#notes').value = doc.notes || '';
+        touch(); drawLines();
+      }
+    });
+    if ($('#snip-pick')) bindCombo($('.combo', $('#snip-pick')), {
+      reset: true, placeholder: 'Insérer un texte prédéfini…',
+      items: data.snippets.map(x => ({ v: x.id, label: x.name, sub: (x.text || '').slice(0, 90), text: `${x.name} ${x.text || ''}` })),
+      onPick: id => {
+        const sn = data.snippets.find(x => x.id === id); if (!sn) return;
+        doc.notes = (doc.notes ? doc.notes.replace(/\s+$/, '') + '\n' : '') + sn.text;
+        $('#notes').value = doc.notes; touch(); schedulePreview();
+      }
+    });
 
     // --- en-tête
     const head = $('#f-head');
@@ -847,12 +1078,18 @@
         drawLines();
       }
       if (e && e.target && e.target.name === 'creditOf') {
-        const inv = docById(doc.creditOf); if (inv) { doc.creditOfNumber = inv.number; if (!doc.clientId) { doc.clientId = inv.clientId; $('select[name=clientId]', head).value = inv.clientId; } }
+        const inv = docById(doc.creditOf); if (inv) { doc.creditOfNumber = inv.number; if (!doc.clientId) { doc.clientId = inv.clientId; clientCombo.setValue(inv.clientId, true); } }
       }
       refreshTotals();
     };
     $('#notes').oninput = e => { doc.notes = e.target.value; touch(); schedulePreview(); };
-    if ($('#quick-client')) $('#quick-client').onclick = () => clientForm(null, c => { $('select[name=clientId]', head).innerHTML = clientOptions(); $('select[name=clientId]', head).value = c.id; doc.clientId = c.id; doc.withholdingRate = isQ ? 0 : clientWithholding(c.id); const sel = $('select[name=withholdingRate]', head); if (sel) sel.innerHTML = withholdingOptions(doc.withholdingRate); applyClientDefaults(doc, c.id); $('select[name=lang]', head).value = doc.lang || 'fr'; $('select[name=currency]', head).value = docCur(doc); cur = docCur(doc); refreshTotals(); });
+    // Le client se choisit dans une liste avec recherche : au-delà d'une poignée de clients, un <select> devient
+    // une corvée. « + Nouveau client » crée la fiche et la sélectionne dans la foulée.
+    const clientCombo = bindCombo($('[data-combo=clientId]', head), {
+      items: clientItems(), placeholder: '— Choisir un client —',
+      onAdd: () => clientForm(null, c => { clientCombo.setItems(clientItems()); clientCombo.setValue(c.id); })
+    });
+    bindCombo($('[data-combo=creditOf]', head), { items: invoiceItems(), placeholder: '— Facture concernée —' });
 
     // --- totaux + aperçu
     let previewTimer = null;
@@ -1063,7 +1300,7 @@
     const b = balance(inv); const cur = docCur(inv);
     modal(`<h2>Enregistrer un paiement</h2><p class="small muted">${h(inv.number)} — reste à payer ${C.money(Math.max(0, b.remaining), cur)}</p>
       <form id="pf2" class="grid-2">
-        ${field('Date', 'date', C.today(), 'date')}
+        ${dateFieldHtml('Date', 'date', C.today())}
         ${field('Montant', 'amount', Math.max(0, b.remaining), 'number', 'step="0.001" min="0" class="num"')}
         <label class="field">Mode<select name="method">${C.PAYMENT_METHODS.map(m => `<option value="${m[0]}">${m[1]}</option>`).join('')}</select></label>
         ${field('Référence (n° chèque, virement…)', 'reference', '')}
@@ -1269,14 +1506,16 @@
         <label class="field span-2">Description<textarea name="description">${h(it.description || '')}</textarea></label>
         ${field('Prix unitaire HT', 'unitPrice', it.unitPrice, 'number', 'step="0.001" min="0" class="num"')}
         <label class="field">TVA<select name="vatRate">${C.VAT_RATES.map(r => `<option value="${r}" ${Number(it.vatRate) === r ? 'selected' : ''}>${r}%</option>`).join('')}</select></label>
-        ${field('Unité (u, h, jour, mois…)', 'unit', it.unit || '')}
+        <div class="field">Unité<select name="unit" id="cat-unit">${unitOptions(it.unit || '', C.usedUnits(data))}</select></div>
       </form>
       <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
       (root, close) => {
+        let unit = it.unit || '';
+        bindUnitSelect($('#cat-unit', root), () => unit, u => { unit = u; });
         $('#ok', root).onclick = () => {
           const v = formValues($('#kf', root));
           if (!v.label.trim()) return toast('La désignation est obligatoire.', true);
-          Object.assign(it, v, { vatRate: Number(v.vatRate) });
+          Object.assign(it, v, { vatRate: Number(v.vatRate), unit });
           if (!item) data.catalog.push(it);
           save(true); close(); if (done) done(it);
         };
@@ -1489,14 +1728,17 @@
     const r = deepCopy(rec);
     if (!r.lines || !r.lines.length) r.lines = [{ label: '', qty: 1, unit: '', unitPrice: 0, vatRate: 19 }];
     const cur = company().currency;
-    const clientOptions = () => `<option value="">— Client —</option>` + data.clients.slice().sort((a, b) => a.name.localeCompare(b.name)).map(c => `<option value="${c.id}" ${c.id === r.clientId ? 'selected' : ''}>${h(c.name)}</option>`).join('');
+    const clientItems = () => data.clients.slice().sort((a, b) => a.name.localeCompare(b.name, 'fr')).map(c => ({
+      v: c.id, label: c.name, sub: [c.contact, c.matricule ? 'MF ' + c.matricule : ''].filter(Boolean).join(' · '),
+      text: `${c.name} ${c.contact || ''} ${c.email || ''} ${c.phone || ''} ${c.matricule || ''}`
+    }));
     modal(`<h2>${isNew ? 'Nouveau contrat récurrent' : 'Modifier le contrat'}</h2>
       <form id="rf" class="grid-3">
-        <label class="field span-2">Client<select name="clientId">${clientOptions()}</select></label>
+        <div class="field span-2">Client${combo({ name: 'clientId', value: r.clientId, items: clientItems(), placeholder: '— Choisir un client —', search: 'Rechercher : nom, contact, MF…' })}</div>
         <label class="field">Période<select name="every">${C.PERIODS.map(p => `<option value="${p[0]}" ${p[0] === r.every ? 'selected' : ''}>${p[1]}</option>`).join('')}</select></label>
         <label class="field span-2">Objet des factures <span class="muted">({mois} = mois facturé)</span><input type="text" name="subject" value="${h(r.subject)}" placeholder="Maintenance et supervision — {mois}"></label>
         ${field('Jour du mois', 'day', r.day || 1, 'number', 'min="1" max="31" class="num"')}
-        ${field('Prochaine facture', 'nextDate', r.nextDate || C.today(), 'date')}
+        ${dateFieldHtml('Prochaine facture', 'nextDate', r.nextDate || C.today(), { quick: true })}
         <label class="field">Retenue à la source<select name="withholdingRate">${withholdingOptions(r.withholdingRate)}</select></label>
         ${field('Remise (%)', 'discountRate', r.discountRate || 0, 'number', 'min="0" max="100" step="0.5" class="num"')}
         <label class="field span-3">Notes sur la facture<textarea name="notes" rows="2">${h(r.notes || '')}</textarea></label>
@@ -1506,6 +1748,7 @@
       <div class="inline mt"><button type="button" class="btn btn-sm" id="rl-add">+ Ligne</button><span class="small muted" id="rl-total"></span></div>
       <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
       (root, close) => {
+        bindCombo($('[data-combo=clientId]', root), { items: clientItems(), placeholder: '— Choisir un client —' });
         const body = $('#rl', root);
         const drawL = () => {
           body.innerHTML = r.lines.map((l, i) => `<tr data-i="${i}"><td><input type="text" data-k="label" value="${h(l.label)}" placeholder="Désignation"></td><td><input type="number" class="num" data-k="qty" value="${l.qty}" step="0.01"></td><td><input type="number" class="num" data-k="unitPrice" value="${l.unitPrice}" step="0.001"></td><td><select data-k="vatRate">${C.VAT_RATES.map(v => `<option value="${v}" ${Number(l.vatRate) === v ? 'selected' : ''}>${v}%</option>`).join('')}</select></td><td><button type="button" class="btn btn-ghost btn-sm" data-rm="${i}">✕</button></td></tr>`).join('');
@@ -1611,10 +1854,10 @@
     modal(`<h2>Relance par téléphone — ${h(d.number)}</h2>
       <p class="small muted">${h(clientName(d.clientId))} · ${C.money(item.remaining, docCur(d))} · ${item.daysLate} jours de retard</p>
       <form id="tf" class="grid-2">
-        ${field('Date de l\'appel', 'date', C.today(), 'date')}
+        ${dateFieldHtml('Date de l\'appel', 'date', C.today())}
         <label class="field">Niveau<select name="level">${[1, 2, 3].map(l => `<option value="${l}" ${l === item.level ? 'selected' : ''}>${h(C.REMINDER_LABELS[l])}</option>`).join('')}</select></label>
         <label class="field span-2">Ce qui a été dit<input type="text" name="note" placeholder="Promet un virement avant le 20, relancer si rien"></label>
-        ${field('Ne pas relancer avant le (optionnel)', 'remindAfter', '', 'date')}
+        ${dateFieldHtml('Ne pas relancer avant le (optionnel)', 'remindAfter', '', { quick: true, clearable: true })}
       </form>
       <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Noter la relance</button></div>`,
       (root, close) => { $('#ok', root).onclick = () => {
@@ -1632,7 +1875,7 @@
     const d = item.doc;
     modal(`<h2>Reporter la relance — ${h(d.number)}</h2>
       <p class="small muted">La facture reste en retard et continue de compter dans ton « reste à encaisser ». Elle passe simplement en bas de la liste des relances jusqu'à cette date.</p>
-      <form id="sf2" class="grid-2">${field('Ne pas relancer avant le', 'remindAfter', C.addDays(C.today(), 15), 'date')}</form>
+      <form id="sf2" class="grid-2">${dateFieldHtml('Ne pas relancer avant le', 'remindAfter', C.addDays(C.today(), 15), { quick: true, clearable: true })}</form>
       <div class="modal-actions">${d.remindAfter ? '<button class="btn" id="clear" style="margin-right:auto">Retirer le report</button>' : ''}<button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Reporter</button></div>`,
       (root, close) => {
         $('#ok', root).onclick = () => {
@@ -1801,12 +2044,17 @@
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); openPalette(); }
     else if (e.key === 'Escape') {
       if ($('#info-pop')) { closeInfoPop(); return; }
+      if (closeOverlay) { closeOverlay(); return; }   // calendrier ou liste déroulante ouverte
       if ($$('.more-list').some(l => !l.hidden)) { closeMenus(); return; }
       if (!$('#palette-root').hidden) { closePalette(); return; }
       if (modalClose) modalClose();
     }
   });
   document.addEventListener('click', e => { if (!e.target.closest('.more')) closeMenus(); });
+  // Un clic ailleurs referme le calendrier ou la liste déroulante ouverte.
+  document.addEventListener('mousedown', e => {
+    if (closeOverlay && !e.target.closest('.combo') && !e.target.closest('.datefield')) closeOverlay();
+  });
 
   // ---------- Paramètres ----------
 

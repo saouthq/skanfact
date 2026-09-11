@@ -7,6 +7,31 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 2.3.0 — 11/09/2026
+
+Trois champs qu'on utilise vingt fois par jour, refaits.
+
+Unité
+- L'unité d'une ligne se **choisit dans une liste** au lieu de s'écrire : unité, heure, jour, demi-journée, mois, année, forfait, intervention, licence, abonnement, poste, lot, mètre linéaire, mètre carré, mètre cube, kilogramme, litre, kilomètre, page
+- **Autre…** pour une unité propre à ton métier. Une fois écrite, elle reste proposée dans toutes tes lignes suivantes
+- Même liste dans la fiche d'une prestation du catalogue
+- Fini les « j », « J », « jour » et « jours » mélangés dans un même document
+
+Choix du client, de la facture, d'une prestation
+- Le client se choisit dans une **liste moderne avec recherche** : tape les premières lettres, la liste se filtre sur le nom, la personne à contacter, l'email, le téléphone et le matricule fiscal. Flèches et Entrée pour choisir au clavier
+- Chaque ligne montre le nom, la personne à contacter et le matricule : on ne confond plus deux clients qui se ressemblent
+- **« + Nouveau client »** est dans la liste elle-même
+- Même liste pour la facture concernée par un avoir (avec son montant), pour le catalogue, les modèles de documents et les textes prédéfinis
+- Et aussi dans le formulaire de contrat récurrent
+
+Dates
+- **Nouveau sélecteur de date** à la place de celui du système : un champ où tu écris librement et un calendrier clair
+- La saisie est tolérante : `12/03/2026`, `12-3-26`, `12032026`, `12/03` pour l'année en cours, ou juste `12` pour le mois en cours. Les barres obliques s'écrivent toutes seules
+- Les flèches **↑** et **↓** avancent ou reculent d'un jour
+- Une date impossible, comme le 31 février, est refusée et l'ancienne valeur revient
+- Calendrier : navigation par mois, choix direct du mois et de l'année, aujourd'hui entouré, jour choisi en vert
+- Sur une échéance ou une validité : **Aujourd'hui, +7 j, +15 j, +30 j**
+
 ## 2.2.0 — 11/09/2026
 
 Les listes, quand elles deviennent longues.
