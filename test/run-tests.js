@@ -391,4 +391,73 @@ t('copie externe : miroir du fichier et des sauvegardes, support absent signalé
   s.setExternalDir(null); s.write(core.DEFAULT_DATA); assert.strictEqual(s.state.external.lastError, null);
 });
 
+// ---------- jeu de démonstration (src/renderer/demo.js) ----------
+const { buildDemoData } = require('../src/renderer/demo.js');
+
+t('démo : cohérente quelle que soit la date du jour, société conservée', () => {
+  ['2026-09-11', '2026-09-01', '2026-01-31', '2026-03-01', '2026-12-31', '2027-02-28', '2028-02-29'].forEach(T => {
+    const d = buildDemoData({ name: 'Ma société', logo: 'data:logo', theme: 'dark', phone: '' }, T);
+    assert.ok(isValidData(d) && d.version === 3);
+    assert.strictEqual(d.company.name, 'Ma société'); assert.strictEqual(d.company.logo, 'data:logo'); assert.strictEqual(d.company.theme, 'dark');
+    assert.strictEqual(d.company.phone, '+216 55 123 456'); // champ vide complété, le reste conservé
+    JSON.parse(JSON.stringify(d));
+    assert.ok(d.clients.length >= 8 && d.catalog.length >= 10 && d.recurring.length === 3 && d.templates.length === 3 && d.snippets.length === 3);
+    // numéros uniques et continus par type et par année, dans l'ordre des dates
+    ['devis', 'facture', 'avoir'].forEach(type => {
+      const byYear = {};
+      d.documents.filter(x => x.type === type && x.number).sort((a, b) => a.date.localeCompare(b.date) || a.createdAt - b.createdAt)
+        .forEach(x => { const y = x.number.slice(4, 8); (byYear[y] = byYear[y] || []).push(Number(x.number.slice(9))); });
+      Object.values(byYear).forEach(seq => assert.deepStrictEqual(seq, seq.map((_, i) => i + 1), `${type} ${T}`));
+    });
+    d.documents.forEach(x => { if (x.type === 'devis') assert.ok(x.number); else assert.strictEqual(!!x.number, x.status !== 'brouillon', x.subject); });
+    // aucun paiement dans le futur ni trop-perçu
+    d.documents.forEach(x => (x.payments || []).forEach(p => { assert.ok(p.date <= T && p.date >= x.date, `paiement ${x.number} ${p.date} (${T})`); assert.ok(p.amount > 0); }));
+    d.documents.filter(x => x.type === 'facture').forEach(x => assert.ok(core.invoiceBalance(x, d, d.company).remaining >= -0.0005, 'trop-perçu ' + x.number));
+    // tous les cas de figure présents
+    const st = new Set(d.documents.filter(x => x.type === 'facture').map(x => core.effectiveStatus(x, d, d.company, T)));
+    ['brouillon', 'envoyée', 'partielle', 'retard', 'payée', 'annulée'].forEach(s => assert.ok(st.has(s), `${s} manquant (${T})`));
+    const qs = new Set(d.documents.filter(x => x.type === 'devis').map(x => x.status));
+    ['brouillon', 'envoyé', 'accepté', 'refusé'].forEach(s => assert.ok(qs.has(s), s));
+    assert.strictEqual(d.documents.filter(x => x.type === 'avoir' && x.status === 'émis').length, 2);
+    assert.ok(d.documents.some(x => x.type === 'devis' && x.status === 'envoyé' && x.dueDate < T), 'devis expiré');
+    // relances aux trois niveaux (la plus ancienne a déjà reçu deux relances), un contrat dû, onze mois pleins
+    const od = core.overdueInvoices(d, d.company, T);
+    assert.ok([1, 2, 3].every(l => od.some(x => x.level === l)), 'niveaux ' + od.map(x => x.level));
+    assert.strictEqual(od[0].level, 3); assert.deepStrictEqual(od[0].reminders.map(r => r.level), [1, 2]); assert.strictEqual(od[0].doc.emails.length, 3);
+    assert.strictEqual(core.dueRecurrences(d, T).length, 1);
+    assert.ok(core.monthlySeries(d, d.company, T, 12).slice(0, 11).every(m => m.invoiced > 0));
+    assert.ok(core.avgPaymentDelay(d, d.company, core.addMonths(T, -12, 1), T) > 0);
+    assert.ok(core.topClients(d, d.company, core.addMonths(T, -12, 1), T, 5).length >= 5); // sur douze mois glissants, au moins cinq clients facturés
+  });
+});
+
+t('démo : acompte + solde, avoir total, client étranger en euros', () => {
+  const T = '2026-09-11';
+  const d = buildDemoData(null, T);
+  assert.strictEqual(d.company.name, core.DEFAULT_COMPANY.name);
+  const dep = d.documents.find(x => x.deposit), sold = d.documents.find(x => x.settles), quote = d.documents.find(x => x.id === dep.deposit.quoteId);
+  assert.strictEqual(dep.deposit.quoteNumber, quote.number); assert.strictEqual(sold.settles.depositIds[0], dep.id);
+  assert.ok(sold.lines.some(l => l.noDiscount && l.unitPrice < 0));
+  const tq = core.computeTotals(quote, d.company);
+  assert.strictEqual(core.round3(core.computeTotals(dep, d.company).netHT + core.computeTotals(sold, d.company).netHT), tq.netHT);
+  const cancelled = d.documents.find(x => x.type === 'facture' && core.effectiveStatus(x, d, d.company, T) === 'annulée');
+  const av = d.documents.find(x => x.type === 'avoir' && x.creditOf === cancelled.id);
+  assert.strictEqual(av.creditOfNumber, cancelled.number); assert.strictEqual(av.applyStamp, true);
+  const nova = d.documents.find(x => x.type === 'facture' && x.currency === 'EUR');
+  assert.strictEqual(nova.lang, 'en'); assert.strictEqual(nova.applyStamp, false); assert.strictEqual(core.computeTotals(nova, d.company).totalVAT, 0);
+  const html = core.documentHtml(nova, d.clients.find(c => c.id === nova.clientId), d.company);
+  assert.ok(html.includes('<div class="kind">Invoice</div>') && html.includes('<small>EUR</small>') && !html.includes('Stamp duty') && html.includes('1 EUR = 3,350 DT'));
+  const row = core.salesJournal(d, d.company, { from: nova.date, to: nova.date, today: T }).find(r => r.id === nova.id);
+  assert.strictEqual(row.ht, core.round3(1100 * 3.35));
+  const pending = d.documents.filter(x => x.type === 'facture' && x.status !== 'brouillon' && core.computeTotals(x, d.company).withholding > 0 && !x.withholdingCertificate);
+  assert.ok(pending.length >= 3 && d.documents.some(x => x.withholdingCertificate));
+  d.documents.filter(x => x.type !== 'devis' && x.number).forEach(x => assert.ok(core.documentHtml(x, d.clients.find(c => c.id === x.clientId), d.company).length > 1000));
+});
+
+t('graphique : abréviations des mois distinctes', () => {
+  const labels = core.monthlySeries({ documents: [] }, core.DEFAULT_COMPANY, '2026-09-11', 12).map(x => x.label);
+  assert.deepStrictEqual(labels, ['oct. 25', 'nov.', 'déc.', 'janv. 26', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.']);
+  assert.strictEqual(new Set(labels).size, 12);
+});
+
 console.log(`\n${n} tests OK`);

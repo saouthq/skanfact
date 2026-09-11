@@ -332,6 +332,7 @@
 
   const PERIODS = [['month', 'Chaque mois'], ['quarter', 'Chaque trimestre'], ['year', 'Chaque année']];
   const MONTHS_FR = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+  const MONTHS_SHORT = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
 
   function monthLabel(iso) { const [y, m] = (iso || today()).split('-'); return `${MONTHS_FR[Number(m) - 1]} ${y}`; }
 
@@ -384,7 +385,7 @@
   // CA HT facturé (avoirs déduits) et encaissements par mois, sur les n derniers mois, en devise société.
   function monthlySeries(data, company, todayIso, n) {
     const keys = monthKeys(todayIso, n || 12);
-    const series = keys.map(k => ({ month: k, label: MONTHS_FR[Number(k.slice(5, 7)) - 1].slice(0, 3) + (k.endsWith('-01') || k === keys[0] ? ' ' + k.slice(2, 4) : ''), invoiced: 0, collected: 0 }));
+    const series = keys.map(k => ({ month: k, label: MONTHS_SHORT[Number(k.slice(5, 7)) - 1] + (k.endsWith('-01') || k === keys[0] ? ' ' + k.slice(2, 4) : ''), invoiced: 0, collected: 0 }));
     const byKey = Object.fromEntries(series.map(x => [x.month, x]));
     (data.documents || []).forEach(d => {
       if (d.type === 'facture' || d.type === 'avoir') {
@@ -745,6 +746,21 @@
   /* documents longs : pas de ligne coupée entre deux pages, en-tête du tableau répété */
   table.lines thead { display: table-header-group; }
   table.lines tr, .after, .sign, .card, .parties { break-inside: avoid; page-break-inside: avoid; }
+
+  /* mode compact (fitToPage) : marges resserrées quand le contenu dépasse d'un peu la page, même design */
+  .page.compact .hero { padding: 8mm 18mm 6mm; }
+  .page.compact .chips { margin-top: 4mm; }
+  .page.compact .inner { padding-top: 4mm; }
+  .page.compact .parties { gap: 10mm; }
+  .page.compact .party .pname { margin-bottom: .4mm; }
+  .page.compact table.lines { margin-top: 3mm; }
+  .page.compact table.lines tbody td { padding: 1.4mm 3mm; }
+  .page.compact .after { margin-top: 2mm; }
+  .page.compact .card { padding: 3mm 5mm; }
+  .page.compact .info + .info, .page.compact .notes { margin-top: 3mm; }
+  .page.compact .words { margin-top: 1.8mm; }
+  .page.compact .sign { margin-top: 3.5mm; }
+  .page.compact .sign .s { height: 13mm; }
 </style></head>
 <body><div class="page">
   ${stampText ? `<div class="stamp${stampKey === 'draft' ? ' draft' : ''}">${escapeHtml(stampText)}</div>` : ''}
@@ -829,14 +845,29 @@
 </div></body></html>`;
   }
 
+  // À exécuter dans le document rendu (aperçu, fenêtre PDF) : si le contenu déborde de la page A4, passe en
+  // mode compact (marges resserrées, même design) pour qu'un document de quatre ou cinq lignes tienne sur
+  // une page. Renvoie true si le mode compact a été appliqué. Au-delà, le document fait légitimement deux pages.
+  function fitToPage(d) {
+    const page = d && d.querySelector && d.querySelector('.page');
+    if (!page || page.classList.contains('compact')) return false;
+    const probe = d.createElement('div');
+    probe.style.cssText = 'position:absolute;visibility:hidden;top:0;left:0;width:1px;height:296mm';
+    page.appendChild(probe);
+    const overflow = page.offsetHeight > probe.offsetHeight + 1;
+    probe.remove();
+    if (overflow) page.classList.add('compact');
+    return overflow;
+  }
+
   return {
     VAT_RATES, WITHHOLDING_RATES, PAYMENT_METHODS, PREFIX, TITLES, DEFAULT_DATA, DEFAULT_COMPANY, STATUSES, DISPLAY_STATUSES, STATUS_LABELS,
     uid, round3, money, fmtDate, addDays, today, escapeHtml, nl2br, statusLabel,
     nextNumber, isLocked, isIssued, computeTotals, creditsFor, invoiceBalance, effectiveStatus,
     depositLines, settlementLines, salesJournal, vatSummary, paymentsJournal, toCsv, migrateData,
-    PERIODS, MONTHS_FR, monthLabel, addMonths, nextRecurrenceDate, dueRecurrences, fillTemplate, buildRecurringInvoice,
+    PERIODS, MONTHS_FR, MONTHS_SHORT, monthLabel, addMonths, nextRecurrenceDate, dueRecurrences, fillTemplate, buildRecurringInvoice,
     reminderLevel, REMINDER_LABELS, daysBetween, overdueInvoices, DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_TEMPLATES_EN, emailFor,
     CURRENCIES, decimalsFor, toBase, monthKeys, monthlySeries, topClients, quoteStats, avgPaymentDelay, I18N,
-    amountToWords, intToWords, intToWordsEn, documentHtml
+    amountToWords, intToWords, intToWordsEn, documentHtml, fitToPage
   };
 });

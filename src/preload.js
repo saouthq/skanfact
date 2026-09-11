@@ -15,7 +15,7 @@ contextBridge.exposeInMainWorld('skanfact', {
   setExternalBackup: (dir) => ipcRenderer.invoke('backups:setExternal', dir),
   chooseExternalBackup: () => ipcRenderer.invoke('backups:chooseExternal'),
   openBackups: () => ipcRenderer.invoke('backups:open'),
-  createBackup: () => ipcRenderer.invoke('backups:create'),
+  createBackup: (label) => ipcRenderer.invoke('backups:create', label),
   listBackups: () => ipcRenderer.invoke('backups:list'),
   pickLogo: (title) => ipcRenderer.invoke('logo:pick', title),
   exportPdf: (html, suggestedName) => ipcRenderer.invoke('pdf:export', { html, suggestedName }),

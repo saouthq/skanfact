@@ -340,7 +340,7 @@ function openBackups() {
   return shell.openPath(storage.backupDir);
 }
 ipcMain.handle('backups:open', () => openBackups());
-ipcMain.handle('backups:create', () => storage.backupNow('manuelle'));
+ipcMain.handle('backups:create', (_e, label) => storage.backupNow(typeof label === 'string' && label ? label : 'manuelle'));
 ipcMain.handle('backups:list', () => storage.listBackups());
 
 // ---------- logo ----------
@@ -363,6 +363,8 @@ ipcMain.handle('logo:pick', async (_e, title) => {
 
 // ---------- PDF ----------
 
+const { fitToPage } = require('./renderer/core.js');
+
 // Rend un document HTML en PDF A4. Le HTML passe par un fichier temporaire : une URL data:
 // est limitée en taille (logo en base64).
 async function renderPdf(html, win) {
@@ -370,6 +372,8 @@ async function renderPdf(html, win) {
   fs.writeFileSync(tmp, html, 'utf8');
   try {
     await win.loadFile(tmp);
+    // Même règle que l'aperçu : si le contenu déborde d'un peu, marges resserrées pour tenir sur une page.
+    try { await win.webContents.executeJavaScript('(' + fitToPage.toString() + ')(document)'); } catch (e) { logToFile('fitToPage', e); }
     return await win.webContents.printToPDF({
       pageSize: 'A4',
       printBackground: true,

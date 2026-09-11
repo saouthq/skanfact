@@ -500,6 +500,7 @@
       const st = isInv && stored && stored.status !== 'brouillon' ? effStatus(stored) : null;
       const stampText = st === 'payée' ? 'Payée' : st === 'annulée' ? 'Annulée' : undefined;
       const html = C.documentHtml(doc, clientById(doc.clientId), company(), { preview: true, stampText, zoom: Math.max(0.3, Math.floor((pv.clientWidth - 2) / 794 * 100) / 100) });
+      pv.onload = () => { try { C.fitToPage(pv.contentDocument); } catch (_) { /* aperçu indisponible */ } }; // même resserrement que le PDF
       pv.srcdoc = html;
     }
     function refreshTotals() {
@@ -967,7 +968,7 @@
       $('#c-wrap').innerHTML = `${due.length ? `<div class="banner">${due.length} facture(s) récurrente(s) à générer<button class="btn" id="gen-due">Générer les brouillons</button></div>` : ''}
         ${list.length ? `<table class="list"><thead><tr><th>Client</th><th>Objet</th><th>Période</th><th>Prochaine facture</th><th class="r">HT / facture</th><th>État</th><th></th></tr></thead><tbody>
         ${list.map(r => { const t = C.computeTotals({ type: 'facture', lines: r.lines, discountRate: r.discountRate }, company()); const isDue = r.active !== false && r.nextDate <= C.today();
-          return `<tr><td><strong>${h(clientName(r.clientId))}</strong></td><td>${h(r.subject)}</td><td>${(C.PERIODS.find(p => p[0] === r.every) || [])[1] || ''}</td><td>${C.fmtDate(r.nextDate)}${isDue ? ' <span class="level l2">à générer</span>' : ''}${r.lastIssued ? `<div class="small muted">dernière : ${C.fmtDate(r.lastIssued)}</div>` : ''}</td><td class="r">${C.money(t.netHT, cur)}</td><td>${r.active !== false ? badge('envoyée').replace('envoyée', 'actif') : badge('brouillon').replace('brouillon', 'suspendu')}</td>
+          return `<tr><td><strong>${h(clientName(r.clientId))}</strong></td><td>${h(r.subject)}</td><td>${(C.PERIODS.find(p => p[0] === r.every) || [])[1] || ''}</td><td>${C.fmtDate(r.nextDate)}${isDue ? ' <span class="level l2">à générer</span>' : ''}${r.lastIssued ? `<div class="small muted">dernière : ${C.fmtDate(r.lastIssued)}</div>` : ''}</td><td class="r">${C.money(t.netHT, cur)}</td><td>${r.active !== false ? '<span class="badge envoyée">actif</span>' : '<span class="badge">suspendu</span>'}</td>
           <td class="actions"><button class="btn btn-sm" data-gen="${r.id}">Générer maintenant</button> <button class="btn btn-sm" data-edit="${r.id}">Modifier</button> <button class="btn btn-sm" data-toggle="${r.id}">${r.active !== false ? 'Suspendre' : 'Reprendre'}</button> <button class="btn btn-sm btn-danger" data-del="${r.id}">Supprimer</button></td></tr>`; }).join('')}
         </tbody></table>` : `<div class="empty">Aucun contrat. Un contrat génère automatiquement un brouillon de facture à chaque échéance (mensuelle, trimestrielle, annuelle). Crée-le ici, ou depuis une facture existante : Plus ▾ → « Rendre récurrent ».</div>`}`;
       if ($('#gen-due')) $('#gen-due').onclick = () => { const n = generateRecurring(); toast(`${n} brouillon(s) créé(s) — à émettre depuis Factures`); draw(); };
@@ -1251,7 +1252,7 @@
           <button class="btn" id="load-demo">Charger le jeu de données de démonstration</button>
           <button class="btn btn-danger" id="wipe-data">Tout effacer</button>
         </div>
-        <p class="small muted mt">La démo remplace tes données actuelles par des clients, prestations, devis et factures fictifs pour découvrir l'app. Exporte d'abord si tu veux garder quelque chose.</p>
+        <p class="small muted mt">La démo remplace tes données actuelles par treize mois d'activité fictive (clients, prestations, devis, factures, contrats, relances) pour découvrir l'app ; tes paramètres société sont conservés et une sauvegarde est prise avant.</p>
       </div>`;
     $('#save').onclick = () => {
       const v = formValues($('#pf'));
@@ -1283,12 +1284,15 @@
     $('#pick-stamp').onclick = async () => { try { const l = await bridge.pickLogo('Choisir l\'image du cachet / de la signature'); if (l) { data.company.stampImage = l; save(true); render(); } } catch (e) { toast(e.message.replace(/^.*Error: /, ''), true); } };
     if ($('#rm-stamp')) $('#rm-stamp').onclick = () => { data.company.stampImage = ''; save(true); render(); };
     $('#load-demo').onclick = async () => {
-      if (data.documents.length && !await confirmDialog('Remplacer toutes les données actuelles par la démonstration ?')) return;
-      data = buildDemoData(); save(true); applyTheme(); $('#brand-company').textContent = data.company.name; toast('Jeu de démonstration chargé'); navigate('#/dashboard');
+      const hasData = data.documents.length || data.clients.length;
+      if (hasData && !await confirmDialog('Remplacer toutes les données actuelles par la démonstration ? Une sauvegarde de l\'état actuel est prise avant ; tes paramètres société (nom, logo, cachet, thème…) sont conservés.', 'Charger la démo', false)) return;
+      if (hasData) await bridge.createBackup('avant-demo');
+      data = window.SkanDemo.buildDemoData(data.company); save(true); applyTheme(); $('#brand-company').textContent = data.company.name; toast('Jeu de démonstration chargé'); navigate('#/dashboard');
     };
     $('#wipe-data').onclick = async () => {
-      if (!await confirmDialog('Effacer TOUS les clients, prestations, devis et factures ? Les paramètres société sont conservés.')) return;
-      data.clients = []; data.catalog = []; data.documents = []; data.counters = {}; save(true); toast('Données effacées'); render();
+      if (!await confirmDialog('Effacer TOUS les clients, prestations, devis, factures, avoirs, contrats, modèles et textes ? Une sauvegarde est prise avant. Les paramètres société sont conservés.', 'Tout effacer')) return;
+      await bridge.createBackup('avant-effacement');
+      data.clients = []; data.catalog = []; data.documents = []; data.recurring = []; data.templates = []; data.snippets = []; data.counters = {}; save(true); toast('Données effacées'); render();
     };
   };
 
@@ -1400,83 +1404,6 @@
     else if (name === 'lock') lockNow();
     else if (name.startsWith('go:')) navigate('#/' + name.slice(3));
   });
-
-  // ---------- jeu de données de démonstration ----------
-  function buildDemoData() {
-    const d = migrate(null);
-    Object.assign(d.company, { phone: '+216 55 123 456', email: 'contact@skancyber.tn', website: 'www.skancyber.tn', bank: 'BIAT — Agence El Manar', rib: '08 006 0000123456789 12', rc: 'B01234562024', capital: '1 000 DT' });
-    const mk = (name, matricule, address, phone, email, withholdingRate) => ({ id: C.uid(), name, matricule, address, phone, email, notes: '', withholdingRate: withholdingRate == null ? '' : withholdingRate });
-    d.clients = [
-      mk('Clinique Les Jasmins', '1234567A/M/000', 'Avenue Habib Bourguiba\n2080 Ariana', '+216 71 700 100', 'direction@clinique-jasmins.tn', 1.5),
-      mk('Pharmacie Centrale El Menzah', '2345678B/A/000', '12 rue Ibn Khaldoun\n1004 El Menzah', '+216 71 234 567', 'pharmacie.menzah@gmail.com'),
-      mk('Cabinet Ben Salah Avocats', '3456789C/P/000', 'Immeuble Le Palmier, Lac 2\n1053 Tunis', '+216 71 960 200', 'contact@bensalah-avocats.tn', 1.5),
-      mk('Lemon Beach Hammamet', '4567890D/A/000', 'Zone touristique\n8050 Hammamet', '+216 72 280 300', 'hello@lemonbeach.tn'),
-      mk('Restaurant Dar El Jeld', '5678901E/A/000', '5 rue Dar El Jeld, Médina\n1006 Tunis', '+216 71 560 916', 'reservation@dareljeld.tn'),
-      mk('Mohamed Trabelsi', 'CIN 09876543', 'Résidence Les Oliviers, Bloc B\n2092 El Manar', '+216 98 765 432', 'm.trabelsi@outlook.com', 0)
-    ];
-    const cat = (label, description, unitPrice, vatRate, unit) => ({ id: C.uid(), label, description, unitPrice, vatRate, unit });
-    d.catalog = [
-      cat('Audit de sécurité réseau', 'Cartographie du réseau, scan de vulnérabilités, revue de configuration, rapport et plan d\'action', 1200, 19, 'forfait'),
-      cat('Test d\'intrusion applicatif', 'Test en boîte grise sur une application web, rapport détaillé avec preuves et recommandations', 2500, 19, 'forfait'),
-      cat('Installation et configuration pare-feu', 'Mise en place d\'un pare-feu (matériel fourni séparément), règles, VPN, journalisation', 850, 19, 'u'),
-      cat('Sauvegarde externalisée', 'Mise en place d\'une sauvegarde chiffrée automatique avec vérification mensuelle', 90, 19, 'mois'),
-      cat('Maintenance et supervision', 'Surveillance des équipements, mises à jour de sécurité, intervention sous 24 h', 250, 19, 'mois'),
-      cat('Formation sensibilisation cybersécurité', 'Session de 3 h pour les équipes : phishing, mots de passe, bonnes pratiques', 150, 7, 'h'),
-      cat('Installation poste de travail', 'Préparation, sécurisation et mise en réseau d\'un poste', 120, 19, 'u'),
-      cat('Déplacement hors Grand Tunis', 'Frais de déplacement', 60, 19, 'u')
-    ];
-    const cl = d.clients, k = d.catalog;
-    const line = (item, qty, price) => ({ label: item.label, description: item.description, qty, unit: item.unit, unitPrice: price != null ? price : item.unitPrice, vatRate: item.vatRate });
-    const daysAgo = n => C.addDays(C.today(), -n);
-    const specs = [
-      // [type, client, jours, statut, objet, lignes, remise, notes, devisLié]
-      ['devis', 0, 95, 'accepté', 'Sécurisation du réseau de la clinique', [line(k[0], 1), line(k[2], 2), line(k[5], 3)], 5, 'Matériel pare-feu facturé séparément après validation du devis.'],
-      ['facture', 0, 80, 'payée', 'Sécurisation du réseau de la clinique', [line(k[0], 1), line(k[2], 2), line(k[5], 3)], 5, 'Paiement par virement à réception.', 0],
-      ['devis', 2, 70, 'accepté', 'Test d\'intrusion du portail clients', [line(k[1], 1), line(k[5], 2)], 0, ''],
-      ['facture', 2, 62, 'payée', 'Test d\'intrusion du portail clients', [line(k[1], 1), line(k[5], 2)], 0, 'Rapport remis le jour de la facturation.', 2],
-      ['devis', 3, 55, 'refusé', 'Refonte du réseau Wi-Fi et supervision', [line(k[0], 1), line(k[4], 12), line(k[7], 2)], 10, ''],
-      ['devis', 1, 40, 'accepté', 'Sauvegarde et maintenance mensuelle', [line(k[3], 12), line(k[4], 12), line(k[6], 3)], 0, 'Engagement 12 mois, facturation mensuelle.'],
-      ['facture', 1, 35, 'payée', 'Sauvegarde et maintenance — mois 1', [line(k[3], 1), line(k[4], 1), line(k[6], 3)], 0, '', 5],
-      ['facture', 1, 5, 'envoyée', 'Sauvegarde et maintenance — mois 2', [line(k[3], 1), line(k[4], 1)], 0, ''],
-      ['facture', 4, 48, 'envoyée', 'Installation pare-feu et sensibilisation', [line(k[2], 1), line(k[5], 3), line(k[7], 1)], 0, 'Merci de régler avant l\'échéance.'],
-      ['devis', 5, 20, 'envoyé', 'Sécurisation du réseau domestique', [line(k[6], 2, 100), line(k[3], 12, 60)], 0, 'Tarif particulier.'],
-      ['devis', 4, 12, 'envoyé', 'Audit annuel et test d\'intrusion', [line(k[0], 1), line(k[1], 1)], 15, 'Remise fidélité 15 %.'],
-      ['facture', 3, 9, 'brouillon', 'Déplacement et diagnostic', [line(k[7], 1), line(k[6], 1)], 0, ''],
-      ['devis', 2, 3, 'brouillon', 'Formation des nouveaux collaborateurs', [line(k[5], 6)], 0, ''],
-      ['facture', 0, 2, 'envoyée', 'Extension de supervision — 6 mois', [line(k[4], 6), line(k[3], 6)], 0, '']
-    ];
-    // on crée d'abord dans l'ordre chronologique pour une numérotation cohérente
-    const created = [];
-    specs.slice().sort((a, b) => b[2] - a[2]).forEach(sp => {
-      const [type, ci, ago, status, subject, lines, discountRate, notes, fromIdx] = sp;
-      const date = daysAgo(ago);
-      const isDraftInvoice = type === 'facture' && status === 'brouillon';
-      const doc = { id: C.uid(), type, number: isDraftInvoice ? '' : C.nextNumber(d, type, date), date, dueDate: C.addDays(date, type === 'devis' ? d.company.quoteValidityDays : d.company.paymentTermsDays),
-        clientId: cl[ci].id, subject, reference: '', lines, discountRate, applyStamp: type === 'facture', status, notes, payments: [],
-        withholdingRate: type === 'facture' ? (Number(cl[ci].withholdingRate) || 0) : 0, createdAt: Date.now() - ago * 86400000 };
-      if (fromIdx != null) { const q = created.find(x => x.spec === specs[fromIdx]); if (q) { doc.fromQuoteId = q.doc.id; doc.fromQuoteNumber = q.doc.number; } }
-      created.push({ spec: sp, doc });
-      d.documents.push(doc);
-    });
-    // une facture en retard : échéance dépassée
-    const late = d.documents.find(x => x.type === 'facture' && x.status === 'envoyée' && x.subject.startsWith('Installation pare-feu'));
-    if (late) late.dueDate = daysAgo(18);
-    // un paiement partiel sur la facture de supervision
-    const partial = d.documents.find(x => x.type === 'facture' && x.subject.startsWith('Extension de supervision'));
-    if (partial) partial.payments.push({ id: C.uid(), date: daysAgo(1), amount: 1000, method: 'virement', reference: 'VIR 2026-0912', note: 'Acompte reçu' });
-    // un avoir partiel (remise commerciale) sur la facture de maintenance mois 2
-    const m2 = d.documents.find(x => x.type === 'facture' && x.subject.endsWith('mois 2'));
-    if (m2) {
-      const av = { id: C.uid(), type: 'avoir', number: C.nextNumber(d, 'avoir', daysAgo(2)), date: daysAgo(2), clientId: m2.clientId, creditOf: m2.id, creditOfNumber: m2.number, creditReason: 'Geste commercial : intervention tardive',
-        subject: `Avoir sur facture ${m2.number}`, lines: [line(k[3], 1)], discountRate: 0, applyStamp: false, status: 'émis', notes: '', payments: [], withholdingRate: 0, createdAt: Date.now() };
-      d.documents.push(av);
-    }
-    // un contrat mensuel dû aujourd'hui, un modèle de devis, un texte prédéfini
-    d.recurring.push({ id: C.uid(), clientId: cl[1].id, subject: 'Sauvegarde et maintenance — {mois}', reference: '', lines: [line(k[3], 1), line(k[4], 1)], discountRate: 0, withholdingRate: 0, notes: 'Contrat annuel, facturation mensuelle.', every: 'month', day: 1, nextDate: C.today(), lastIssued: daysAgo(30), active: true, createdAt: Date.now() });
-    d.templates.push({ id: C.uid(), name: 'Audit standard', type: 'devis', subject: 'Audit de sécurité et plan d\'action', lines: [line(k[0], 1), line(k[5], 2), line(k[7], 1)], discountRate: 0, notes: 'Rapport remis sous 10 jours ouvrés après l\'intervention.' });
-    d.snippets.push({ id: C.uid(), name: 'Garantie', text: 'Prestations garanties 3 mois. Toute intervention hors périmètre fera l\'objet d\'un devis complémentaire.' });
-    return migrate(d); // convertit les « payée » en paiements
-  }
 
   // ---------- import / export ----------
   async function exportAll() {
