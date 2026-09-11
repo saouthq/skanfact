@@ -7,6 +7,34 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 2.1.0 — 11/09/2026
+
+Deuxième audit, sur la version 2.0.0 installée : ce qui manquait et ce qui accrochait.
+
+À faire (accueil)
+- **Devis acceptés pas encore facturés** : un devis passé en « accepté » sans qu'aucune facture n'en soit tirée remonte sur l'accueil avec le montant vendu. Le bouton ouvre la liste des devis filtrée sur les acceptés
+- **Fiche société incomplète** : si la raison sociale, le matricule fiscal ou le RIB manquent, l'accueil le dit et mène directement à Paramètres → Société. Utile quand l'assistant de démarrage a été passé
+
+Garde-fous avant d'émettre
+- À l'émission d'une facture ou d'un avoir, la confirmation prévient si la fiche société est incomplète, si le RIB manque, ou si la date est **antérieure à la dernière facture émise** (la numérotation ne serait plus chronologique). On peut émettre quand même, en connaissance de cause
+- Une échéance ou une validité antérieure à la date du document est refusée
+- Un paiement daté dans le futur, ou supérieur au reste à payer, demande confirmation au lieu de passer en silence
+
+Devis et factures
+- **L'historique du devis** montre les factures qui en sont tirées (conversion, acompte, solde), même en brouillon, et l'historique de la facture renvoie vers son devis d'origine : chaque ligne est cliquable
+- Liste des factures : les montants et les numéros ne passent plus à la ligne
+
+Contrats
+- L'objet des contrats s'affiche avec le mois de la prochaine facture (« Maintenance — octobre 2026 ») au lieu du gabarit brut
+- **Reprendre un contrat suspendu** repart de la prochaine échéance à venir : les mois passés pendant la suspension ne sont pas facturés (la date reste modifiable)
+
+Corrections
+- Accueil vide : l'axe du graphique affichait « 1, 1, 0 »
+- « Tout effacer » : le libellé de confirmation s'affichait sur trois lignes
+- Les champs de recherche des listes ne tronquent plus leur texte d'aide
+- Le guide « Démarrer » citait des onglets qui n'existent pas (Paiement, Données) ; il pointe maintenant vers Société → Coordonnées bancaires et Sécurité et données
+- Le jeu de démonstration contient un devis accepté non facturé pour montrer la nouvelle ligne « À faire »
+
 ## 2.0.0 — 11/09/2026
 
 SkanFact devient le logiciel de n'importe quelle petite entreprise, pas seulement de la mienne.

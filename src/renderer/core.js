@@ -424,6 +424,14 @@
     return (data.recurring || []).filter(r => r.active !== false && r.nextDate && r.nextDate <= t);
   }
 
+  // Reprise d'un contrat suspendu : première échéance à partir d'aujourd'hui (les mois suspendus ne sont pas facturés).
+  function catchUpRecurrence(nextDate, every, day, todayIso) {
+    const t = todayIso || today();
+    let d = nextDate || t, guard = 0;
+    while (d < t && ++guard < 240) d = nextRecurrenceDate(d, every, day);
+    return d;
+  }
+
   // Remplace {client}, {mois}, {numero}… dans un gabarit.
   function fillTemplate(text, vars) {
     return String(text || '').replace(/\{(\w+)\}/g, (m, k) => (vars && vars[k] != null ? String(vars[k]) : m));
@@ -564,11 +572,29 @@
       count: overdue.length, amount: overdueAmount, route: '#/relances', docs: overdue.map(x => x.doc)
     });
 
+    // Fiche société : sans raison sociale ni matricule, une facture n'est pas conforme ; sans RIB, le client ne sait pas où payer
+    const missing = companyGaps(company);
+    if (missing.length) out.push({
+      id: 'societe', level: 'warn', label: 'Fiche société incomplète',
+      detail: `Il manque : ${missing.join(', ')}. Ces informations s'impriment sur chaque document.`,
+      count: missing.length, route: '#/parametres', docs: []
+    });
+
     const due = dueRecurrences(data, t);
     if (due.length) out.push({
       id: 'contrats', level: 'warn', label: `${due.length} facture${due.length > 1 ? 's' : ''} de contrat à générer`,
       detail: due.map(r => fillTemplate(r.subject, { mois: monthLabel(r.nextDate) })).join(' · '),
       count: due.length, route: '#/contrats', docs: []
+    });
+
+    // Devis acceptés dont aucune facture (même brouillon) n'a été tirée : le travail est vendu, pas facturé
+    const billed = new Set((data.documents || []).filter(d => d.type === 'facture' && d.fromQuoteId).map(d => d.fromQuoteId));
+    const accepted = (data.documents || []).filter(d => d.type === 'devis' && d.status === 'accepté' && !billed.has(d.id));
+    const acceptedAmount = round3(accepted.reduce((s, d) => s + toBase(d, computeTotals(d, company).totalTTC, company), 0));
+    if (accepted.length) out.push({
+      id: 'devis-acceptes', level: 'warn', label: `${accepted.length} devis accepté${accepted.length > 1 ? 's' : ''} à facturer`,
+      detail: `${fmt(acceptedAmount)} TTC vendus et pas encore facturés. Ouvre le devis puis « Facturer ▾ ».`,
+      count: accepted.length, amount: acceptedAmount, route: '#/devis', docs: accepted
     });
 
     const expired = (data.documents || []).filter(d => d.type === 'devis' && effectiveStatus(d, data, company, t) === 'expiré');
@@ -613,13 +639,28 @@
     return out;
   }
 
+  // Ce qui manque à la fiche société pour que les documents soient complets.
+  function companyGaps(company) {
+    const c = company || {};
+    const out = [];
+    if (!(c.name || '').trim()) out.push('la raison sociale');
+    if (!(c.matricule || '').trim()) out.push('le matricule fiscal');
+    if (!(c.rib || '').trim()) out.push('le RIB');
+    return out;
+  }
+
   // Historique d'un document, reconstitué à partir de ce qui est déjà enregistré.
   function documentHistory(doc, data, company) {
     const ev = [];
     const dateOf = ms => new Date(ms).toISOString().slice(0, 10);
     if (doc.createdAt) ev.push({ date: dateOf(doc.createdAt), kind: 'cree', label: 'Brouillon créé' });
-    if (doc.fromQuoteNumber) ev.push({ date: doc.date, kind: 'devis', label: `Établi à partir du devis ${doc.fromQuoteNumber}` });
+    if (doc.fromQuoteNumber) ev.push({ date: doc.date, kind: 'devis', label: `Établi à partir du devis ${doc.fromQuoteNumber}`, id: doc.fromQuoteId });
     if (doc.number && doc.status !== 'brouillon') ev.push({ date: doc.date, kind: 'emis', label: `${TITLES[doc.type]} ${doc.number} ${doc.type === 'facture' ? 'émise' : 'émis'}` });
+    // Côté devis : les factures qui en sont tirées (conversion, acompte, solde), même encore en brouillon
+    if (doc.type === 'devis' && doc.id) (data.documents || []).filter(d => d.type === 'facture' && d.fromQuoteId === doc.id).forEach(inv => {
+      const what = inv.deposit ? `Facture d'acompte ${inv.deposit.percent} %` : inv.settles ? 'Facture de solde' : 'Facture';
+      ev.push({ date: inv.date, kind: 'facture', label: `${what} ${inv.number || '(brouillon)'} établie`, detail: inv.status === 'brouillon' ? 'pas encore émise' : '', id: inv.id });
+    });
     (doc.emails || []).forEach(e => ev.push({
       date: e.date, kind: /^relance/.test(e.kind) ? 'relance' : 'email',
       label: /^relance/.test(e.kind) ? (REMINDER_LABELS[Number(e.kind.slice(-1))] || 'Relance') + ' par email' : 'Envoyé par email',
@@ -1079,8 +1120,8 @@
     uid, round3, money, fmtDate, addDays, today, escapeHtml, nl2br, statusLabel,
     nextNumber, isLocked, isIssued, computeTotals, creditsFor, invoiceBalance, effectiveStatus,
     depositLines, settlementLines, salesJournal, vatSummary, paymentsJournal, toCsv, migrateData,
-    PERIODS, MONTHS_FR, MONTHS_SHORT, monthLabel, addMonths, nextRecurrenceDate, dueRecurrences, fillTemplate, buildRecurringInvoice,
-    reminderLevel, REMINDER_LABELS, daysBetween, overdueInvoices, todoList, documentHistory, DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_TEMPLATES_EN, emailFor,
+    PERIODS, MONTHS_FR, MONTHS_SHORT, monthLabel, addMonths, nextRecurrenceDate, dueRecurrences, catchUpRecurrence, fillTemplate, buildRecurringInvoice,
+    reminderLevel, REMINDER_LABELS, daysBetween, overdueInvoices, todoList, companyGaps, documentHistory, DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_TEMPLATES_EN, emailFor,
     CURRENCIES, decimalsFor, toBase, monthKeys, monthlySeries, topClients, quoteStats, avgPaymentDelay, clientSummary, I18N,
     amountToWords, intToWords, intToWordsEn, documentHtml, fitToPage, pageCount
   };

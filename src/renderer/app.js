@@ -175,7 +175,7 @@
 
   function confirmDialog(msg, okLabel, danger) {
     return new Promise(resolve => {
-      modal(`<h2>Confirmation</h2><p>${h(msg)}</p>
+      modal(`<h2>Confirmation</h2><p>${C.nl2br(msg)}</p>
         <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn ${danger === false ? 'btn-primary' : 'btn-danger'}" id="ok">${h(okLabel || 'Confirmer')}</button></div>`,
         (root, close) => { $('#ok', root).onclick = () => { close(); resolve(true); }; $('[data-close]', root).onclick = () => { close(); resolve(false); }; });
     });
@@ -356,10 +356,12 @@
   // Histogramme SVG : facturé HT et encaissé par mois (sans bibliothèque)
   function barChart(series) {
     const W = 600, H = 220, left = 44, bottom = 26, top = 10;
-    const max = Math.max(1, ...series.map(x => Math.max(x.invoiced, x.collected)));
+    const real = Math.max(0, ...series.map(x => Math.max(x.invoiced, x.collected)));
+    const max = Math.max(1, real);
     const slot = (W - left) / series.length;
     const y = v => top + (H - bottom - top) * (1 - Math.max(0, v) / max);
-    const grid = [0, 0.5, 1].map(f => `<line class="grid" x1="${left}" x2="${W}" y1="${y(max * f)}" y2="${y(max * f)}"/><text class="lbl" x="${left - 6}" y="${y(max * f) + 4}" text-anchor="end">${short(max * f)}</text>`).join('');
+    // Sans aucune donnée, l'axe n'a qu'un zéro : afficher « 1 » deux fois n'aurait aucun sens
+    const grid = [0, 0.5, 1].map(f => `<line class="grid" x1="${left}" x2="${W}" y1="${y(max * f)}" y2="${y(max * f)}"/><text class="lbl" x="${left - 6}" y="${y(max * f) + 4}" text-anchor="end">${real || !f ? short(max * f) : ''}</text>`).join('');
     const bars = series.map((x, i) => {
       const x0 = left + i * slot;
       return `<rect class="bar-inv" x="${x0 + slot * 0.12}" width="${slot * 0.36}" y="${y(x.invoiced)}" height="${H - bottom - y(x.invoiced)}" rx="2"><title>${h(C.monthLabel(x.month + '-01'))} — facturé ${C.money(x.invoiced, company().currency)}</title></rect>
@@ -376,7 +378,7 @@
     const amountOf = d => { const t = C.computeTotals(d, company()); return d.type === 'devis' ? t.totalTTC : (d.type === 'avoir' ? -t.netToPay : t.netToPay); };
     const restOf = d => d.type === 'facture' && d.status !== 'brouillon' ? balance(d).remaining : null;
     const cols = [
-      { key: 'number', label: 'Numéro', val: d => (d.number ? '1' : '0') + (d.number || ''), get: d => `<strong>${d.number ? h(d.number) : '<span class="muted">Brouillon</span>'}</strong>` },
+      { key: 'number', label: 'Numéro', cls: 'nw', val: d => (d.number ? '1' : '0') + (d.number || ''), get: d => `<strong>${d.number ? h(d.number) : '<span class="muted">Brouillon</span>'}</strong>` },
       opts.quotes
         ? { key: 'due', label: 'Valable jusqu\'au', val: d => d.dueDate || '', get: d => C.fmtDate(d.dueDate) }
         : { key: 'type', label: 'Type', val: d => d.type, get: d => C.TITLES[d.type] },
@@ -416,7 +418,7 @@
         ${cols.map(c => `<th class="${c.r ? 'r ' : ''}${opts.onSort ? 'sortable-h' : ''}" ${opts.onSort ? `data-sort="${c.key}"` : ''}>${h(c.label)}${arrow(c.key)}</th>`).join('')}
         <th class="row-actions-h"></th></tr></thead><tbody>
       ${list.map(d => `<tr class="clickable" data-id="${d.id}">
-        ${cols.map(c => `<td class="${c.r ? 'r' : ''}">${c.get(d)}</td>`).join('')}
+        ${cols.map(c => `<td class="${c.r ? 'r nw' : ''}${c.cls ? ' ' + c.cls : ''}">${c.get(d)}</td>`).join('')}
         <td class="row-actions"><span>
           <button class="btn btn-sm" data-pdf="${d.id}" title="Exporter en PDF">PDF</button>
           ${d.number ? `<button class="btn btn-sm" data-mail="${d.id}" title="Envoyer par email">Email</button>` : ''}
@@ -485,7 +487,7 @@
       <div class="page-head"><h1>${isQ ? 'Devis' : 'Factures'}</h1>
         <div class="actions">${isQ ? '' : '<button class="btn" id="new-avoir">+ Avoir</button>'}<button class="btn btn-primary" id="new">+ ${isQ ? 'Nouveau devis' : 'Nouvelle facture'}</button></div></div>
       <div class="filters">
-        <input type="text" id="q" placeholder="Rechercher (numéro, client, objet, référence)…" value="${h(s.q)}">
+        <input type="text" id="q" placeholder="Rechercher : n°, client, objet…" value="${h(s.q)}">
         ${isQ ? '' : `<select id="kind"><option value="">Factures et avoirs</option><option value="facture" ${s.kind === 'facture' ? 'selected' : ''}>Factures</option><option value="avoir" ${s.kind === 'avoir' ? 'selected' : ''}>Avoirs</option></select>`}
         <select id="st"><option value="">Tous les statuts</option>${statuses.map(x => `<option value="${x}" ${s.st === x ? 'selected' : ''}>${h(C.statusLabel(x))}</option>`).join('')}</select>
         ${years.length > 1 ? `<select id="yr"><option value="">Toutes les années</option>${years.map(y => `<option value="${y}" ${s.year === y ? 'selected' : ''}>${y}</option>`).join('')}</select>` : ''}
@@ -829,7 +831,18 @@
       if (!doc.clientId) { toast('Choisis un client.', true); return false; }
       if (isAv && !doc.creditOf) { toast('Indique la facture concernée par l\'avoir.', true); return false; }
       if (!doc.lines.some(l => l.label && l.label.trim())) { toast('Ajoute au moins une ligne avec une désignation.', true); return false; }
+      if (!isAv && doc.dueDate && doc.date && doc.dueDate < doc.date) { toast(`${isQ ? 'La validité' : 'L\'échéance'} ne peut pas précéder la date du document.`, true); return false; }
       return true;
+    }
+    // Ce qui rendrait le document non conforme sans empêcher l'émission : on prévient, l'utilisateur décide
+    function issueWarnings() {
+      const w = [];
+      const co = company();
+      if (!(co.name || '').trim() || !(co.matricule || '').trim()) w.push('Ta fiche société est incomplète (raison sociale ou matricule fiscal) : le document ne sera pas conforme. Paramètres → Société.');
+      if (isInv && !(co.rib || '').trim()) w.push('Aucun RIB n\'est renseigné : le client ne saura pas où virer le paiement.');
+      const last = data.documents.filter(d => d.type === doc.type && d.id !== doc.id && d.number && d.status !== 'brouillon' && (d.date || '').slice(0, 4) === (doc.date || '').slice(0, 4)).sort(byNumberDesc)[0];
+      if (last && last.date > doc.date) w.push(`La date (${C.fmtDate(doc.date)}) est antérieure à la dernière ${isInv ? 'facture' : 'pièce'} émise, ${last.number} du ${C.fmtDate(last.date)} : la numérotation ne serait plus chronologique.`);
+      return w;
     }
     function persist() {
       if (!validate()) return false;
@@ -855,7 +868,8 @@
     if ($('#issue')) $('#issue').onclick = async () => {
       if (!validate()) return;
       const n = doc.number || peekNumber(doc.type, doc.date);
-      if (!await confirmDialog(`Émettre ${isInv ? 'la facture' : 'l\'avoir'} ${n} ? Le numéro devient définitif et le document ne sera plus modifiable. Pour corriger après coup, il faudra faire un avoir.`, 'Émettre', false)) return;
+      const warn = issueWarnings();
+      if (!await confirmDialog(`Émettre ${isInv ? 'la facture' : 'l\'avoir'} ${n} ? Le numéro devient définitif et le document ne sera plus modifiable. Pour corriger après coup, il faudra faire un avoir.${warn.length ? '\n\n⚠ ' + warn.join('\n⚠ ') : ''}`, warn.length ? 'Émettre quand même' : 'Émettre', false)) return;
       if (issue()) { if (isNew) navigate('#/doc/' + doc.id); else render(); }
     };
     if ($('#bill-btn')) $('#bill-btn').onclick = e => { e.stopPropagation(); const l = $('#bill-list'); const open = l.hidden; closeMenus(); l.hidden = !open; };
@@ -956,10 +970,12 @@
         <label class="field span-2">Note<input type="text" name="note" value=""></label>
       </form>
       <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
-      (root, close) => { $('#ok', root).onclick = () => {
+      (root, close) => { $('#ok', root).onclick = async () => {
         const v = formValues($('#pf2', root));
         if (!(Number(v.amount) > 0)) return toast('Montant invalide.', true);
         if (!v.date) return toast('Date obligatoire.', true);
+        if (v.date > C.today() && !await confirmDialog(`La date du paiement (${C.fmtDate(v.date)}) est dans le futur. Un paiement s'enregistre quand l'argent est reçu, pas quand il est promis. Enregistrer quand même ?`, 'Enregistrer quand même')) return;
+        if (Number(v.amount) > b.remaining + 0.0005 && !await confirmDialog(`Le montant (${C.money(v.amount, cur)}) dépasse le reste à payer (${C.money(Math.max(0, b.remaining), cur)}). La facture apparaîtra avec un trop-perçu. Enregistrer quand même ?`, 'Enregistrer quand même')) return;
         inv.payments = inv.payments || [];
         inv.payments.push({ id: C.uid(), date: v.date, amount: C.round3(v.amount), method: v.method, reference: v.reference || '', note: v.note || '' });
         save(true); close();
@@ -1055,7 +1071,7 @@
       $$('th[data-sort]').forEach(x => x.onclick = () => draw(x.dataset.sort));
     };
     $('#view').innerHTML = `<div class="page-head"><h1>Clients</h1><div class="actions"><button class="btn btn-primary" id="new">+ Nouveau client</button></div></div>
-      <div class="filters"><input type="text" id="q" placeholder="Rechercher (nom, contact, matricule, email…)" value="${h(s.q)}">${info('list.sort')}</div><div id="list-wrap"></div>`;
+      <div class="filters"><input type="text" id="q" placeholder="Rechercher : nom, contact, MF, email…" value="${h(s.q)}">${info('list.sort')}</div><div id="list-wrap"></div>`;
     $('#new').onclick = () => clientForm(null, () => draw());
     $('#q').oninput = e => { s.q = e.target.value.toLowerCase(); draw(); };
     draw();
@@ -1357,13 +1373,23 @@
       $('#c-wrap').innerHTML = `${due.length ? `<div class="banner">${due.length} facture(s) récurrente(s) à générer<button class="btn" id="gen-due">Générer les brouillons</button></div>` : ''}
         ${list.length ? `<table class="list"><thead><tr><th>Client</th><th>Objet</th><th>Période</th><th>Prochaine facture</th><th class="r">HT / facture</th><th>État</th><th></th></tr></thead><tbody>
         ${list.map(r => { const t = C.computeTotals({ type: 'facture', lines: r.lines, discountRate: r.discountRate }, company()); const isDue = r.active !== false && r.nextDate <= C.today();
-          return `<tr><td><strong>${h(clientName(r.clientId))}</strong></td><td>${h(r.subject)}</td><td>${(C.PERIODS.find(p => p[0] === r.every) || [])[1] || ''}</td><td>${C.fmtDate(r.nextDate)}${isDue ? ' <span class="level l2">à générer</span>' : ''}${r.lastIssued ? `<div class="small muted">dernière : ${C.fmtDate(r.lastIssued)}</div>` : ''}</td><td class="r">${C.money(t.netHT, cur)}</td><td>${r.active !== false ? '<span class="badge envoyée">actif</span>' : '<span class="badge">suspendu</span>'}</td>
+          const subj = C.fillTemplate(r.subject, { mois: C.monthLabel(r.nextDate) });
+          return `<tr><td><strong>${h(clientName(r.clientId))}</strong></td><td>${h(subj)}${subj !== r.subject ? `<div class="small muted">${h(r.subject)}</div>` : ''}</td><td>${(C.PERIODS.find(p => p[0] === r.every) || [])[1] || ''}</td><td>${C.fmtDate(r.nextDate)}${isDue ? ' <span class="level l2">à générer</span>' : ''}${r.lastIssued ? `<div class="small muted">dernière : ${C.fmtDate(r.lastIssued)}</div>` : ''}</td><td class="r">${C.money(t.netHT, cur)}</td><td>${r.active !== false ? '<span class="badge envoyée">actif</span>' : '<span class="badge">suspendu</span>'}</td>
           <td class="actions"><button class="btn btn-sm" data-gen="${r.id}">Générer maintenant</button> <button class="btn btn-sm" data-edit="${r.id}">Modifier</button> <button class="btn btn-sm" data-toggle="${r.id}">${r.active !== false ? 'Suspendre' : 'Reprendre'}</button> <button class="btn btn-sm btn-danger" data-del="${r.id}">Supprimer</button></td></tr>`; }).join('')}
         </tbody></table>` : `<div class="empty">Aucun contrat. Un contrat génère automatiquement un brouillon de facture à chaque échéance (mensuelle, trimestrielle, annuelle). Crée-le ici, ou depuis une facture existante : Plus ▾ → « Rendre récurrent ».</div>`}`;
       if ($('#gen-due')) $('#gen-due').onclick = () => { const n = generateRecurring(); toast(`${n} brouillon(s) créé(s) — à émettre depuis Factures`); draw(); };
       $$('[data-gen]').forEach(b => b.onclick = () => { const r = data.recurring.find(x => x.id === b.dataset.gen); generateRecurring([r], true); toast('Brouillon créé pour ' + C.monthLabel(r.lastIssued)); draw(); });
       $$('[data-edit]').forEach(b => b.onclick = () => recurrenceForm(data.recurring.find(x => x.id === b.dataset.edit), draw));
-      $$('[data-toggle]').forEach(b => b.onclick = () => { const r = data.recurring.find(x => x.id === b.dataset.toggle); r.active = r.active === false; save(true); draw(); });
+      $$('[data-toggle]').forEach(b => b.onclick = () => {
+        const r = data.recurring.find(x => x.id === b.dataset.toggle);
+        r.active = r.active === false;
+        if (r.active && r.nextDate < C.today()) {
+          // Reprise : on repart de la prochaine échéance, sans facturer les mois suspendus
+          r.nextDate = C.catchUpRecurrence(r.nextDate, r.every, r.day);
+          toast(`Contrat repris — prochaine facture le ${C.fmtDate(r.nextDate)} (les échéances passées pendant la suspension ne sont pas facturées ; modifie la date si besoin)`);
+        }
+        save(true); draw();
+      });
       $$('[data-del]').forEach(b => b.onclick = async () => { if (await confirmDialog('Supprimer ce contrat ? Les factures déjà générées sont conservées.')) { data.recurring = data.recurring.filter(x => x.id !== b.dataset.del); save(true); draw(); } });
     };
     $('#view').innerHTML = `<div class="page-head"><h1>Contrats récurrents ${info('contrat.form')}</h1><div class="actions"><button class="btn btn-primary" id="new">+ Nouveau contrat</button></div></div><div id="c-wrap"></div>`;
@@ -1462,6 +1488,8 @@
   const TODO_ACTIONS = {
     contrats: { label: 'Générer les brouillons', run: () => { const n = generateRecurring(); toast(`${n} brouillon(s) créé(s) — à relire puis émettre`); render(); } },
     retards: { label: 'Voir les relances', run: () => navigate('#/relances') },
+    societe: { label: 'Compléter', run: () => { settingsTab = 'societe'; navigate('#/parametres'); } },
+    'devis-acceptes': { label: 'Voir les devis', run: () => { listState.devis.st = 'accepté'; listState.devis.year = ''; navigate('#/devis'); } },
     'devis-expires': { label: 'Voir les devis', run: () => navigate('#/devis') },
     'devis-sans-reponse': { label: 'Voir les devis', run: () => navigate('#/devis') },
     attestations: { label: 'Voir la liste', run: () => navigate('#/compta') },
@@ -1861,7 +1889,7 @@
       modal(`<h2>Tout effacer</h2>
         <p>Cette action supprime <b>${data.documents.length} document(s)</b>, ${data.clients.length} client(s), ${data.catalog.length} prestation(s), ainsi que les contrats, modèles et textes prédéfinis. Les factures émises partent aussi.</p>
         <p class="small muted">Une sauvegarde nommée est prise juste avant : tu pourras revenir en arrière par <em>Importer</em>. Tes paramètres société sont conservés.</p>
-        <form id="wf"><label class="field">Pour confirmer, écris <b>EFFACER</b> ci-dessous<input type="text" name="w" autocomplete="off" spellcheck="false" placeholder="EFFACER"></label></form>
+        <form id="wf"><label class="field"><span class="fl">Pour confirmer, écris <b>EFFACER</b> ci-dessous</span><input type="text" name="w" autocomplete="off" spellcheck="false" placeholder="EFFACER"></label></form>
         <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-danger" id="ok" disabled>Tout effacer</button></div>`,
         (root, close) => {
           const inp = $('input[name=w]', root), ok = $('#ok', root);

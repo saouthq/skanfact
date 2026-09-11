@@ -123,7 +123,8 @@
 
     // Particulier : petite facture payée en espèces, devis en attente, brouillon du jour
     add('f-trab-poste', { type: 'facture', client: 5, date: mo(7, 22), status: 'envoyée', subject: 'Installation et sécurisation d\'un poste', lines: [line(k[6], 1), line(k[8], 1)], payments: [pay(3, 'all', 'especes')] });
-    add('q-trab-maison', { type: 'devis', client: 5, date: daysAgo(10), status: 'envoyé', subject: 'Sécurisation du réseau domestique', lines: [line(k[6], 2, 100), line(k[3], 12, 60)], notes: 'Tarif particulier.', emails: [E(daysAgo(10), 'devis')] });
+    // Devis accepté (bon pour accord reçu) mais pas encore facturé : il remonte dans « À faire »
+    add('q-trab-maison', { type: 'devis', client: 5, date: daysAgo(10), status: 'accepté', subject: 'Sécurisation du réseau domestique', lines: [line(k[6], 2, 100), line(k[3], 12, 60)], notes: 'Tarif particulier.', emails: [E(daysAgo(10), 'devis')] });
     add('f-trab-brouillon', { type: 'facture', client: 5, date: T, status: 'brouillon', subject: 'Dépannage et nettoyage d\'un poste',
       lines: [{ label: 'Dépannage et nettoyage d\'un poste', description: 'Suppression des logiciels indésirables, mises à jour, vérification de la sauvegarde', qty: 1, unit: 'u', unitPrice: 90, vatRate: 19 }] });
 

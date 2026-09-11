@@ -93,8 +93,8 @@
     'compta.payments': { t: 'Encaissements', d: 'Les paiements reçus pendant la période, quelle que soit la date des factures concernées. À rapprocher de ton relevé bancaire pour vérifier que rien ne manque.' },
     'compta.rs': { t: 'Attestations de retenue à la source', d: 'Chaque client qui te retient une somme doit te remettre une attestation. Sans elle, tu ne peux pas déduire cette somme de ton impôt : c\'est de l\'argent perdu. Réclame-les, et coche ici quand elles arrivent.' },
     'cat.catalog': { t: 'Catalogue de prestations', d: 'Tes services avec leur prix et leur TVA, prêts à insérer dans un devis. Y mettre tes prestations habituelles t\'évite de retaper les descriptions et t\'empêche de te tromper de prix.' },
-    'todo': { t: 'À faire', d: 'Ce que SkanFact a repéré et qui demande une action de ta part : factures en retard, contrats à générer, devis sans réponse, attestations de retenue à réclamer, brouillons oubliés, échéances de la semaine. Si cette liste est vide, ta gestion est à jour.' },
-    'ed.history': { t: 'Historique', d: 'Tout ce qui est arrivé à ce document : création, émission, envois par email, relances (email et téléphone), paiements reçus, avoirs. Rien à saisir : c\'est reconstitué à partir de ce que tu as déjà enregistré.' },
+    'todo': { t: 'À faire', d: 'Ce que SkanFact a repéré et qui demande une action de ta part : factures en retard, fiche société incomplète, contrats à générer, devis acceptés pas encore facturés, devis expirés ou sans réponse, attestations de retenue à réclamer, échéances de la semaine, brouillons oubliés. Si cette liste est vide, ta gestion est à jour.' },
+    'ed.history': { t: 'Historique', d: 'Tout ce qui est arrivé à ce document : création, émission, envois par email, relances (email et téléphone), paiements reçus, avoirs. Sur un devis, les factures qui en sont tirées ; sur une facture, le devis d\'origine — chaque ligne est cliquable. Rien à saisir : c\'est reconstitué à partir de ce que tu as déjà enregistré.' },
     'rel.snooze': { t: 'Relances reportées', d: 'Quand un client t\'annonce une date de paiement, reporte la relance : la facture descend en bas de la liste jusqu\'à cette date. Elle reste comptée dans ton « reste à encaisser » — on ne cache jamais un impayé.' },
     'rel.quotes': { t: 'Devis sans réponse', d: 'Les devis envoyés il y a plus de dix jours dont le client n\'a rien dit. Un rappel poli ne dérange personne et débloque souvent une décision qui traînait.' },
     'compta.comptable': { t: 'Envoyer au comptable', d: 'Prépare un email pour ton comptable avec le journal des ventes de la période en pièce jointe (CSV lisible dans Excel). Tu relis le message et tu envoies. À faire une fois par mois, après avoir pointé tes encaissements.' },
@@ -117,13 +117,13 @@
 <h3>1. Renseigne ton entreprise</h3>
 <p>Va dans <b>Paramètres → Société</b> et remplis au minimum : raison sociale, matricule fiscal, adresse, téléphone et email. Ces informations s'impriment sur chaque document. Une facture sans matricule fiscal n'est pas conforme.</p>
 <h3>2. Ajoute ton RIB</h3>
-<p>Dans <b>Paramètres → Paiement</b>. C'est ce que ton client copiera pour te virer l'argent. Relis-le caractère par caractère.</p>
+<p>Dans <b>Paramètres → Société</b>, bloc <b>Coordonnées bancaires</b>. C'est ce que ton client copiera pour te virer l'argent. Relis-le caractère par caractère.</p>
 <h3>3. Choisis tes délais</h3>
 <p>Dans <b>Paramètres → Documents</b> : validité des devis (30 jours est l'usage) et délai de paiement (30 jours aussi, souvent). Ces deux nombres calculent les dates imprimées sur tes documents.</p>
 <h3>4. Mets en place la copie externe</h3>
-<p><b>Paramètres → Données → Choisir un dossier</b>, puis sélectionne un dossier dans iCloud Drive ou sur une clé USB. À chaque enregistrement, tout est recopié là-bas. Fais-le maintenant, pas « plus tard ».</p>
+<p><b>Paramètres → Sécurité et données → Choisir un dossier</b>, puis sélectionne un dossier dans iCloud Drive ou sur une clé USB. À chaque enregistrement, tout est recopié là-bas. Fais-le maintenant, pas « plus tard ».</p>
 <h3>5. Explore avec la démo</h3>
-<p><b>Paramètres → Données → Charger le jeu de démonstration</b> remplit l'application de treize mois d'activité fictive. Clique partout, casse tout, ça n'a aucune importance. Quand tu es prêt pour tes vraies données : <b>Tout effacer</b>.</p>`
+<p><b>Paramètres → Sécurité et données → Charger le jeu de démonstration</b> remplit l'application de treize mois d'activité fictive. Clique partout, casse tout, ça n'a aucune importance. Quand tu es prêt pour tes vraies données : <b>Tout effacer</b>.</p>`
     },
     {
       id: 'devis', title: 'Le devis : proposer un prix', sub: 'Comment il se prépare, s\'envoie et se transforme',
@@ -281,7 +281,7 @@
     {
       id: 'donnees', title: 'Tes données : sauvegarder et protéger', sub: 'Le sujet le plus ennuyeux et le plus important',
       body: `
-<p>Tes données vivent dans un fichier unique sur ton ordinateur. Son chemin exact est affiché dans <b>Paramètres → Données</b>.</p>
+<p>Tes données vivent dans un fichier unique sur ton ordinateur. Son chemin exact est affiché dans <b>Paramètres → Sécurité et données</b>.</p>
 <h3>Les trois filets de sécurité</h3>
 <ul>
   <li><b>La sauvegarde quotidienne</b> : chaque jour, l'état de tes données au premier enregistrement est copié dans un dossier <b>backups</b>. Trente jours sont conservés. Une fausse manipulation aujourd'hui se répare en revenant à hier.</li>

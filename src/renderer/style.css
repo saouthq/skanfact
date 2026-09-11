@@ -111,6 +111,7 @@ table.list tr:last-child td { border-bottom: none; }
 table.list tr.clickable { cursor: pointer; }
 table.list tr.clickable:hover td { background: #f7fbfa; }
 td.r, th.r { text-align: right; font-variant-numeric: tabular-nums; }
+.nw { white-space: nowrap; }
 td.actions { white-space: nowrap; text-align: right; }
 .empty { padding: 48px 24px; text-align: center; color: var(--muted); background: var(--panel); border: 1px dashed #d5dbe3; border-radius: var(--radius); }
 
@@ -183,7 +184,7 @@ table.lines-edit .total { text-align: right; padding-top: 12px; font-weight: 600
 .small { font-size: 12px; }
 .mt { margin-top: 12px; }
 .filters { display: flex; gap: 8px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
-.filters input[type=text] { width: 280px; background: #fff; }
+.filters input[type=text] { width: 300px; background: #fff; }
 .filters select { width: auto; background: #fff; }
 .logo-preview { max-height: 60px; max-width: 200px; display: block; margin-bottom: 8px; border: 1px solid var(--border); padding: 6px; border-radius: 10px; background: #fff; }
 code { background: var(--ink-soft); padding: 2px 6px; border-radius: 6px; font-size: 12px; }
@@ -234,7 +235,7 @@ table.lines-edit select { padding-right: 4px; min-width: 70px; }
 .timeline li { position: relative; padding: 0 0 16px 22px; border-left: 2px solid var(--border); }
 .timeline li:last-child { border-left-color: transparent; padding-bottom: 0; }
 .timeline li::before { content: ""; position: absolute; left: -6px; top: 3px; width: 10px; height: 10px; border-radius: 50%; background: var(--border); border: 2px solid var(--panel); }
-.timeline li.k-emis::before, .timeline li.k-paiement::before { background: var(--primary); }
+.timeline li.k-emis::before, .timeline li.k-paiement::before, .timeline li.k-facture::before { background: var(--primary); }
 .timeline li.k-relance::before { background: var(--warning); }
 .timeline li.k-avoir::before, .timeline li.k-annule::before { background: var(--danger); }
 .timeline .tl-h { font-size: 13px; font-weight: 600; }

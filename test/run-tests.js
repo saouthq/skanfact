@@ -428,7 +428,10 @@ t('démo : cohérente quelle que soit la date du jour, société conservée', ()
     // une relance téléphonique notée et une relance reportée figurent dans le jeu de démo
     assert.ok(od.some(x => x.snoozed), 'aucune relance reportée');
     assert.ok(d.documents.some(x => (x.reminders || []).some(r => r.channel === 'tel' && r.note)), 'aucune relance téléphonique');
-    assert.ok(core.todoList(d, d.company, T).length >= 4, 'panneau À faire vide');
+    const todoIds = core.todoList(d, d.company, T).map(x => x.id);
+    assert.ok(todoIds.length >= 5, 'panneau À faire vide');
+    assert.ok(todoIds.includes('devis-acceptes'), 'la démo doit contenir un devis accepté non facturé');
+    assert.ok(!todoIds.includes('societe'), 'la société de démo est complète');
     assert.strictEqual(core.dueRecurrences(d, T).length, 1);
     assert.ok(core.monthlySeries(d, d.company, T, 12).slice(0, 11).every(m => m.invoiced > 0));
     assert.ok(core.avgPaymentDelay(d, d.company, core.addMonths(T, -12, 1), T) > 0);
@@ -510,27 +513,47 @@ t('à faire : ce qui demande une action, par ordre d\'urgence', () => {
       inv({ id: 'i3', clientId: 'c1', number: 'FAC-2026-003', date: '2026-08-01', dueDate: '2026-09-30', withholdingRate: 1.5 }), // attestation à réclamer
       inv({ id: 'i4', clientId: 'c1', number: '', status: 'brouillon', date: '2026-08-20' }),                                     // vieux brouillon
       { id: 'q1', type: 'devis', clientId: 'c1', number: 'DEV-2026-001', status: 'envoyé', date: '2026-07-01', dueDate: '2026-08-01', lines: [] }, // expiré
-      { id: 'q2', type: 'devis', clientId: 'c1', number: 'DEV-2026-002', status: 'envoyé', date: '2026-08-20', dueDate: '2026-10-20', lines: [] }  // sans réponse
+      { id: 'q2', type: 'devis', clientId: 'c1', number: 'DEV-2026-002', status: 'envoyé', date: '2026-08-20', dueDate: '2026-10-20', lines: [] },  // sans réponse
+      { id: 'q3', type: 'devis', clientId: 'c1', number: 'DEV-2026-003', status: 'accepté', date: '2026-08-25', dueDate: '2026-09-25', lines: [{ label: 'x', qty: 1, unitPrice: 1000, vatRate: 19 }] }, // accepté, pas facturé
+      { id: 'q4', type: 'devis', clientId: 'c1', number: 'DEV-2026-004', status: 'accepté', date: '2026-08-25', dueDate: '2026-09-25', lines: [] }, // accepté et déjà facturé (brouillon i5)
+      inv({ id: 'i5', clientId: 'c1', number: '', status: 'brouillon', date: T, fromQuoteId: 'q4', fromQuoteNumber: 'DEV-2026-004' })
     ],
     recurring: [{ id: 'r1', clientId: 'c1', subject: 'Maintenance — {mois}', lines: [], nextDate: '2026-09-01', active: true }]
   };
-  const todo = core.todoList(data, CO, T);
+  const FULL = { ...CO, name: 'ACME', matricule: '1234567A', rib: '12 345' };
+  const todo = core.todoList(data, FULL, T);
   const ids = todo.map(x => x.id);
-  assert.deepStrictEqual(ids, ['retards', 'contrats', 'devis-expires', 'devis-sans-reponse', 'attestations', 'echeances', 'brouillons']);
+  assert.deepStrictEqual(ids, ['retards', 'contrats', 'devis-acceptes', 'devis-expires', 'devis-sans-reponse', 'attestations', 'echeances', 'brouillons']);
   assert.strictEqual(todo[0].level, 'danger');
   assert.strictEqual(todo[0].count, 1);
   assert.ok(todo[0].detail.includes('72 jours'));
   assert.ok(todo[0].detail.includes('1 191,000 DT'), 'montant non formaté : ' + todo[0].detail);
   assert.ok(todo.find(x => x.id === 'attestations').detail.includes(' DT'));
   assert.ok(todo[1].detail.includes('septembre 2026'));
+  const acc = todo.find(x => x.id === 'devis-acceptes');
+  assert.strictEqual(acc.count, 1); assert.strictEqual(acc.docs[0].id, 'q3'); assert.ok(acc.detail.includes('1 190,000 DT'));
+  // fiche société incomplète : signalée juste après les retards, avec ce qui manque
+  const todoCo = core.todoList(data, { ...FULL, matricule: '', rib: '' }, T);
+  assert.strictEqual(todoCo[1].id, 'societe');
+  assert.ok(todoCo[1].detail.includes('le matricule fiscal') && todoCo[1].detail.includes('le RIB') && !todoCo[1].detail.includes('raison sociale'));
+  assert.deepStrictEqual(core.companyGaps({}), ['la raison sociale', 'le matricule fiscal', 'le RIB']);
+  assert.deepStrictEqual(core.companyGaps(FULL), []);
   // une facture reportée ne remonte plus dans « à faire » mais reste dans les relances
   data.documents[0].remindAfter = '2026-09-30';
-  const todo2 = core.todoList(data, CO, T);
+  const todo2 = core.todoList(data, FULL, T);
   assert.ok(!todo2.some(x => x.id === 'retards'));
-  const od = core.overdueInvoices(data, CO, T);
+  const od = core.overdueInvoices(data, FULL, T);
   assert.strictEqual(od.length, 1); assert.strictEqual(od[0].snoozed, true); assert.strictEqual(od[0].remindAfter, '2026-09-30');
   // tout traité : plus rien à faire
-  assert.deepStrictEqual(core.todoList({ clients: [], documents: [], recurring: [] }, CO, T), []);
+  assert.deepStrictEqual(core.todoList({ clients: [], documents: [], recurring: [] }, FULL, T), []);
+  assert.deepStrictEqual(core.todoList({ clients: [], documents: [], recurring: [] }, CO, T).map(x => x.id), ['societe']);
+});
+
+t('reprise d\'un contrat suspendu : première échéance à partir d\'aujourd\'hui', () => {
+  assert.strictEqual(core.catchUpRecurrence('2026-08-05', 'month', 5, '2026-09-11'), '2026-10-05');
+  assert.strictEqual(core.catchUpRecurrence('2026-09-15', 'month', 15, '2026-09-11'), '2026-09-15'); // déjà dans le futur : inchangée
+  assert.strictEqual(core.catchUpRecurrence('2025-11-15', 'quarter', 15, '2026-09-11'), '2026-11-15');
+  assert.strictEqual(core.catchUpRecurrence('2024-01-01', 'year', 1, '2026-09-11'), '2027-01-01');
 });
 
 t('historique d\'un document : émission, envois, relances, paiements, avoir', () => {
@@ -552,6 +575,15 @@ t('historique d\'un document : émission, envois, relances, paiements, avoir', (
   // la relance email n'est comptée qu'une fois (elle existe dans emails ET dans reminders)
   assert.strictEqual(ev.filter(e => e.kind === 'relance').length, 2);
   assert.strictEqual(core.documentHistory({ type: 'devis', date: '2026-01-01', status: 'brouillon' }, data, CO).length, 0);
+  // le devis voit les factures qui en sont tirées, la facture pointe vers son devis
+  const q = { id: 'q1', type: 'devis', number: 'DEV-2026-001', status: 'accepté', date: '2026-05-20', lines: [] };
+  const dep = inv({ id: 'd1', number: 'FAC-2026-002', date: '2026-05-25', fromQuoteId: 'q1', fromQuoteNumber: 'DEV-2026-001', deposit: { percent: 30, quoteId: 'q1' } });
+  const sold = inv({ id: 'd2', number: '', status: 'brouillon', date: '2026-06-10', fromQuoteId: 'q1', fromQuoteNumber: 'DEV-2026-001', settles: { quoteId: 'q1' } });
+  const evq = core.documentHistory(q, { clients: [], documents: [q, dep, sold] }, CO);
+  assert.deepStrictEqual(evq.map(e => e.kind), ['emis', 'facture', 'facture']);
+  assert.ok(evq[1].label.includes('acompte 30 %') && evq[1].id === 'd1');
+  assert.ok(evq[2].label.includes('solde') && evq[2].label.includes('brouillon') && evq[2].detail.includes('pas encore émise'));
+  assert.strictEqual(core.documentHistory(dep, { clients: [], documents: [q, dep] }, CO).find(e => e.kind === 'devis').id, 'q1');
 });
 
 t('modèles d\'email : relance de devis et envoi au comptable', () => {

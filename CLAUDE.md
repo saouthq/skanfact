@@ -68,6 +68,9 @@ L'audit (captures 1440×900 et 1280×800 avec la démo) a été entièrement tra
 - **1.9.0** : listes triables, filtre par année, totaux en pied, actions au survol ; devis « expiré » ; fiche client + champ Contact ; catalogue en onglets.
 - **1.10.0** : panneau « À faire » ; historique par document ; relance téléphonique et report ; relance de devis ; envoi au comptable ; barre latérale groupée.
 - **2.0.0** : assistant de première utilisation, secteurs d'activité, fin des valeurs société en dur.
+- **2.1.0** (second audit, sur 2.0.0 installée, captures des états vides et de toutes les modales) : « À faire » complété (devis acceptés non facturés, fiche société incomplète via `core.companyGaps`) ; avertissements à l'émission (`issueWarnings` dans app.js : société incomplète, RIB absent, date antérieure à la dernière pièce émise) ; paiement futur ou trop-perçu confirmé ; historique devis ↔ factures ; reprise de contrat via `core.catchUpRecurrence` ; corrections visuelles (nowrap `.nw` dans les listes, axe du graphique vide, libellé « Tout effacer », placeholders).
+
+Méthode d'audit qui a fonctionné : `scratchpad/shots.js` (captures 1440×900 + 1280×800, démo puis états vides juste après l'assistant, chaque modale ouverte), lecture de chaque capture, puis relecture des chemins de code correspondants (validations, confirmations, cas limites).
 
 Non retenu volontairement : multi-utilisateurs, synchronisation cloud, e-facture (voir plus haut), barre latérale réductible en icônes (les groupes ont suffi).
 
