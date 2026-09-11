@@ -235,6 +235,11 @@ function buildMenu() {
       label: 'Aide',
       role: 'help',
       submenu: [
+        { label: 'Guide d\'utilisation', accelerator: 'CmdOrCtrl+?', click: act('go:aide') },
+        { label: 'Comprendre la facturation', click: act('help:facture') },
+        { label: 'TVA, timbre et retenue à la source', click: act('help:fiscal') },
+        { label: 'Sauvegardes et sécurité', click: act('help:donnees') },
+        { type: 'separator' },
         { label: 'Nouveautés de cette version', click: act('changelog') },
         { label: 'Toutes les versions (GitHub)', click: () => shell.openExternal(RELEASES_URL) },
         { type: 'separator' },
@@ -341,6 +346,8 @@ function openBackups() {
 }
 ipcMain.handle('backups:open', () => openBackups());
 ipcMain.handle('backups:create', (_e, label) => storage.backupNow(typeof label === 'string' && label ? label : 'manuelle'));
+// Titre de la fenêtre : ce qui est ouvert se lit dans le Dock et le menu Fenêtre
+ipcMain.on('window:title', (_e, title) => { if (mainWindow && typeof title === 'string') mainWindow.setTitle(title.slice(0, 120)); });
 ipcMain.handle('backups:list', () => storage.listBackups());
 
 // ---------- logo ----------

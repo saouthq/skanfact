@@ -460,4 +460,55 @@ t('graphique : abréviations des mois distinctes', () => {
   assert.strictEqual(new Set(labels).size, 12);
 });
 
+// ---------- aide et bulles « i » (src/renderer/guide.js) ----------
+const guide = require('../src/renderer/guide.js');
+
+t('aide : toutes les bulles « i » de l\'interface existent et sont rédigées', () => {
+  const appSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
+  const used = new Set();
+  for (const m of appSrc.matchAll(/\binfo\('([^']+)'\)/g)) used.add(m[1]);
+  for (const m of appSrc.matchAll(/\blbl\((?:'(?:[^'\\]|\\.)*'|`[^`]*`|[^,]+),\s*'([^']+)'\)/g)) used.add(m[1]);
+  assert.ok(used.size >= 40, `seulement ${used.size} bulles posées dans l'interface`);
+  const missing = [...used].filter(k => !guide.INFO[k]);
+  assert.deepStrictEqual(missing, [], 'clés utilisées sans texte dans guide.js');
+  Object.entries(guide.INFO).forEach(([k, v]) => {
+    assert.ok(v && v.t && v.d, k);
+    assert.ok(v.t.length <= 60, `titre trop long : ${k}`);
+    assert.ok(v.d.length >= 60, `explication trop courte : ${k}`);
+    assert.ok(!/<script|onerror|onclick/i.test(v.d), `HTML interdit dans ${k}`);
+  });
+  // Les points fiscaux incertains portent tous la mention convenue
+  ['ed.withholding', 'doc.stampFee', 'ed.vat'].forEach(k => assert.ok(/À VÉRIFIER/.test(guide.INFO[k].d), k));
+});
+
+t('aide : les articles du guide sont complets', () => {
+  assert.ok(guide.ARTICLES.length >= 10);
+  const ids = new Set();
+  guide.ARTICLES.forEach(a => {
+    assert.ok(a.id && a.title && a.sub && a.body, a.id);
+    assert.ok(!ids.has(a.id), 'identifiant en double : ' + a.id); ids.add(a.id);
+    assert.ok(a.body.length > 500, 'article trop court : ' + a.id);
+    assert.ok(!/<script|onerror=|onclick=/i.test(a.body), 'HTML interdit dans ' + a.id);
+    // pas de balise ouverte non fermée pour les blocs courants
+    ['p', 'ul', 'ol', 'li', 'h3', 'dl', 'table'].forEach(tag => {
+      const open = (a.body.match(new RegExp(`<${tag}[ >]`, 'g')) || []).length;
+      const close = (a.body.match(new RegExp(`</${tag}>`, 'g')) || []).length;
+      assert.strictEqual(open, close, `<${tag}> déséquilibré dans ${a.id}`);
+    });
+  });
+  // les articles auxquels le menu de l'application renvoie doivent exister
+  ['facture', 'fiscal', 'donnees'].forEach(id => assert.ok(ids.has(id), id));
+});
+
+t('document : nombre de pages mesuré comme dans l\'aperçu', () => {
+  // fitToPage et pageCount tournent dans le document rendu : on vérifie le contrat (pas de dépendance au DOM réel)
+  const fake = (heightPx, probePx) => ({
+    querySelector: () => ({ offsetHeight: heightPx, classList: { contains: () => false, add() { this._c = true; } }, appendChild() {}, _c: false }),
+    createElement: () => ({ style: {}, offsetHeight: probePx, remove() {} })
+  });
+  assert.strictEqual(core.pageCount(fake(1000, 1120)), 1);
+  assert.strictEqual(core.pageCount(fake(1500, 1120)), 2);
+  assert.strictEqual(core.pageCount(null), 1);
+});
+
 console.log(`\n${n} tests OK`);

@@ -860,6 +860,18 @@
     return overflow;
   }
 
+  // Nombre de pages A4 qu'occupera le document rendu (à exécuter dans le document, après fitToPage).
+  function pageCount(d) {
+    const page = d && d.querySelector && d.querySelector('.page');
+    if (!page) return 1;
+    const probe = d.createElement('div');
+    probe.style.cssText = 'position:absolute;visibility:hidden;top:0;left:0;width:1px;height:297mm';
+    page.appendChild(probe);
+    const n = Math.max(1, Math.ceil((page.offsetHeight - 2) / probe.offsetHeight));
+    probe.remove();
+    return n;
+  }
+
   return {
     VAT_RATES, WITHHOLDING_RATES, PAYMENT_METHODS, PREFIX, TITLES, DEFAULT_DATA, DEFAULT_COMPANY, STATUSES, DISPLAY_STATUSES, STATUS_LABELS,
     uid, round3, money, fmtDate, addDays, today, escapeHtml, nl2br, statusLabel,
@@ -868,6 +880,6 @@
     PERIODS, MONTHS_FR, MONTHS_SHORT, monthLabel, addMonths, nextRecurrenceDate, dueRecurrences, fillTemplate, buildRecurringInvoice,
     reminderLevel, REMINDER_LABELS, daysBetween, overdueInvoices, DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_TEMPLATES_EN, emailFor,
     CURRENCIES, decimalsFor, toBase, monthKeys, monthlySeries, topClients, quoteStats, avgPaymentDelay, I18N,
-    amountToWords, intToWords, intToWordsEn, documentHtml, fitToPage
+    amountToWords, intToWords, intToWordsEn, documentHtml, fitToPage, pageCount
   };
 });
