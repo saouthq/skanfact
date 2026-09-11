@@ -7,6 +7,10 @@ entrée de CHANGELOG, release GitHub, mise à jour proposée dans l'app). Aucune
 que la précédente soit installée et utilisée. Tout ce qui touche à la fiscalité ou au social porte la mention
 **À VÉRIFIER avec le comptable** : l'app calcule et propose, le comptable valide.
 
+*Mis à jour le 11/09/2026 : ajout de la 2.4.0 (navigation et contrats visibles) et du contrat à faire signer
+en 2.6.0, après deux manques signalés par Skander. Les statistiques et les documents manquants ont glissé
+d'un numéro.*
+
 Taille indicative : **S** = quelques heures, **M** = une journée, **L** = plusieurs jours, **XL** = la plus grosse brique du logiciel.
 
 ---
@@ -23,10 +27,30 @@ les immobilisations, la marge réelle et la vraie déclaration de TVA.
 
 ## Bloc 0 — ce qui se fait tout de suite (aucune donnée nouvelle)
 
-Ces deux versions n'attendent rien : les données existent déjà. Elles donnent du résultat vite
+Ces trois versions n'attendent rien : les données existent déjà. Elles donnent du résultat vite
 pendant que le gros chantier des achats se prépare.
 
-### 2.4.0 — Statistiques et analyses · M
+### 2.4.0 — Revenir en arrière, et voir enfin un contrat · M
+
+Deux manques signalés par Skander le 11/09/2026, complétés par un audit du code sur quatre angles :
+navigation, contrats, impasses, cohérence entre écrans.
+
+**Navigation**
+- **Bouton retour sur chaque sous-page**, pas seulement sur la fiche client qui est la seule à en avoir un aujourd'hui
+- **Raccourci « précédent »** dans le menu de l'application et au clavier : aujourd'hui il n'en existe aucun
+- Après une action (enregistrer, supprimer, émettre), on revient toujours là où on était parti
+- Tout ce que l'audit remonte d'autre sur le même sujet
+
+**Contrats : les rendre visibles**
+
+Un contrat n'est aujourd'hui qu'une machine à fabriquer des brouillons de facture. Il n'a aucune existence
+à l'écran : ni aperçu, ni fiche, ni lien avec les factures qu'il a produites.
+- **Aperçu vivant** de la facture que le contrat produira, exactement comme l'aperçu d'un devis dans l'éditeur : tu vois ce que le client recevra avant de valider
+- **Fiche contrat** : ce qu'il facture, à qui, depuis quand, ce qu'il a rapporté depuis le début, et **la liste des factures déjà générées**
+- Depuis une facture issue d'un contrat, **un lien vers ce contrat**. Le rattachement existe déjà dans les données depuis la 1.5.0, il n'a jamais été affiché nulle part
+- L'historique d'une facture dit qu'elle vient d'un contrat
+
+### 2.5.0 — Statistiques et analyses · M
 
 Aujourd'hui l'accueil montre quatre chiffres et un graphique sur douze mois. C'est un tableau de bord,
 pas une analyse. Nouvelle page **Statistiques**, avec une période libre (mois, trimestre, année, ou dates choisies).
@@ -43,16 +67,17 @@ Ce que tu y verras :
 
 Ce que ça ne peut pas encore montrer : **la marge**. Elle a besoin des achats (voir 3.3.0).
 
-### 2.5.0 — Les documents qui manquent · M
+### 2.6.0 — Les documents qui manquent · M
 
-Quatre manques repérés, tous côté ventes, tous nécessaires avant le stock.
+Cinq manques repérés, tous côté ventes, tous nécessaires avant le stock.
 
 - **Facture proforma** : très demandée par les administrations et pour les dossiers de financement. Même document qu'une facture, sans valeur comptable, sans numéro de facture, sans timbre
 - **Bon de commande client** : quand le client commande avant que tu livres. Il devient la base de la facture
 - **Bon de livraison** : la pièce qui accompagne la marchandise, signée à la réception. C'est **lui** qui sortira le stock plus tard, souvent avant la facture
-- **Pièces jointes** sur n'importe quoi : le devis signé scanné, le bon de commande du client, un contrat, une photo. Stockées à côté du fichier de données, reprises dans les sauvegardes
+- **Contrat de prestation à faire signer** : un vrai document imprimable, avec objet, durée, reconduction, préavis, conditions et case de signature. À ne pas confondre avec le contrat récurrent de la 2.4.0, qui ne fait que générer des factures : ici c'est la pièce que le client signe. Les deux se relient
+- **Pièces jointes** sur n'importe quoi : le devis signé scanné, le bon de commande du client, un contrat rendu signé, une photo. Stockées à côté du fichier de données, reprises dans les sauvegardes
 
-Conséquence : la numérotation s'élargit (`PRO-`, `BC-`, `BL-`) et le menu « Facturer ▾ » gagne des chemins.
+Conséquence : la numérotation s'élargit (`PRO-`, `BC-`, `BL-`, `CTR-`) et le menu « Facturer ▾ » gagne des chemins.
 
 ---
 
