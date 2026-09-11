@@ -97,6 +97,20 @@
     'rel.levels': { t: 'Niveaux de relance', d: 'SkanFact choisit le ton selon le retard : <b>rappel</b> courtois jusqu\'à 15 jours (« sauf erreur de notre part »), <b>relance</b> ferme jusqu\'à 45 jours, <b>dernière relance</b> au-delà, qui annonce le recouvrement. Les trois textes sont modifiables.' },
     'rel.soon': { t: 'Échéances proches', d: 'Les factures qui arrivent à échéance dans les sept jours. Un message amical avant l\'échéance évite souvent la relance après.' },
     'contrat.form': { t: 'Contrat récurrent', d: 'Décris une fois la facture qui revient (client, lignes, période, jour du mois) et SkanFact te la proposera à chaque échéance. Elle arrive en <b>brouillon</b> : tu la relis, tu ajustes si besoin, tu émets. Rien n\'est envoyé sans toi.' },
+    'stat.ca': { t: 'Chiffre d\'affaires HT', d: 'Le total hors taxes de tes factures émises sur la période, avoirs déduits. Les brouillons et les factures annulées n\'y sont jamais comptés. La flèche compare avec la même période de l\'an dernier : c\'est la seule comparaison qui a du sens, parce qu\'elle neutralise la saisonnalité.' },
+    'stat.count': { t: 'Factures émises', d: 'Le nombre de factures numérotées sur la période. Beaucoup de factures pour peu de chiffre d\'affaires, c\'est du temps administratif : pense à regrouper ou à passer en contrat récurrent.' },
+    'stat.avg': { t: 'Panier moyen', d: 'Ton chiffre d\'affaires divisé par le nombre de factures. Le faire monter demande moins d\'efforts que de trouver de nouveaux clients : propose une prestation complémentaire, ou un forfait annuel plutôt qu\'une intervention.' },
+    'stat.vat': { t: 'TVA collectée', d: 'La TVA facturée à tes clients sur la période, avoirs déduits. Ce n\'est pas ton argent : tu la reverses à l\'État, moins la TVA que tu as toi-même payée sur tes achats. Le détail par taux est dans Comptabilité. <em>À VÉRIFIER avec ton comptable.</em>' },
+    'stat.objectif': { t: 'Objectif annuel', d: 'Le chiffre d\'affaires HT que tu veux atteindre sur l\'année. La barre montre où tu en es, le petit trait vertical où tu devrais en être aujourd\'hui si tu avançais régulièrement. Se fixer un objectif chiffré change la façon dont on prospecte. Il se règle dans Paramètres → Documents.' },
+    'stat.chart': { t: 'Chiffre d\'affaires mois par mois', d: 'Chaque mois de la période en couleur, le même mois de l\'année précédente en gris derrière. Les creux qui reviennent chaque année sont ta saisonnalité : c\'est là qu\'il faut prospecter à l\'avance, pas quand le trou est déjà là.' },
+    'stat.funnel': { t: 'Issue des devis', d: 'Ce que sont devenus les devis émis sur la période. Le taux d\'acceptation ne compte que les devis tranchés (acceptés ou refusés) : les devis encore en attente ne le font pas baisser. Beaucoup d\'expirés sans réponse veut souvent dire qu\'il manque une relance, pas que tes prix sont trop hauts.' },
+    'stat.aging': { t: 'Âge des impayés', d: 'Ce qui reste dû aujourd\'hui, rangé par ancienneté du retard — toutes périodes confondues, parce qu\'un impayé de l\'an dernier reste un impayé. Au-delà de 90 jours, les chances de récupérer baissent fortement : passe à l\'écrit et garde une trace.' },
+    'stat.items': { t: 'Prestations les plus vendues', d: 'Tes lignes de facture regroupées par libellé, sur la période. Utilise les mêmes libellés d\'un devis à l\'autre (le catalogue est là pour ça) pour que ce classement soit juste. Les lignes de déduction d\'acompte n\'y figurent pas : ce ne sont pas des ventes.' },
+    'stat.clients': { t: 'Meilleurs clients', d: 'Tes plus gros clients de la période, hors taxes. Si le premier pèse plus de la moitié de ton chiffre d\'affaires, ton entreprise est fragile : sa perte, ou simplement son retard de paiement, te mettrait en difficulté.' },
+    'stat.mouvement': { t: 'Mouvement des clients', d: '<b>Nouveaux</b> : ceux dont la toute première facture tombe dans la période. <b>Endormis</b> : ceux qui ont déjà travaillé avec toi mais dont plus rien n\'est sorti depuis longtemps — c\'est le fichier le plus rentable à rappeler, ils te connaissent déjà. Le seuil se règle dans Paramètres → Documents.' },
+    'stat.payeurs': { t: 'Qui paie vite, qui paie tard', d: 'Le délai moyen entre la date de facture et le dernier paiement, client par client, sur les factures soldées. Un client systématiquement au-delà de ton délai annoncé mérite un acompte à la commande plutôt qu\'une relance tous les mois.' },
+    'stat.target': { t: 'Objectif de chiffre d\'affaires', d: 'Le montant hors taxes que tu veux facturer sur une année entière. Il n\'apparaît que dans la page Statistiques, jamais sur un document. Laisse 0 si tu n\'en veux pas.' },
+    'stat.dormant': { t: 'Client endormi', d: 'Le nombre de jours de silence au-delà duquel un ancien client est signalé comme endormi dans les statistiques. 180 jours (six mois) convient à la plupart des activités ; descends-le si tes clients reviennent normalement tous les mois.' },
     'compta.vat': { t: 'TVA par taux', d: 'La base hors taxes et la TVA collectée, ventilées par taux, pour la période choisie. C\'est ce tableau que ton comptable utilise pour ta déclaration mensuelle. <em>À VÉRIFIER avec lui avant tout dépôt.</em>' },
     'compta.journal': { t: 'Journal des ventes', d: 'La liste chronologique de toutes tes factures et avoirs émis sur la période. C\'est le document de base de ta comptabilité : exporte-le en CSV pour ton comptable, avec les PDF de la période si besoin.' },
     'compta.payments': { t: 'Encaissements', d: 'Les paiements reçus pendant la période, quelle que soit la date des factures concernées. À rapprocher de ton relevé bancaire pour vérifier que rien ne manque.' },
@@ -287,6 +301,26 @@
   <li><b>Chaque trimestre</b> : réclame les attestations de retenue à la source manquantes.</li>
   <li><b>Chaque année</b> : vérifie que la numérotation repart à 001 en janvier (c'est automatique) et archive une copie complète de tes données.</li>
 </ul>`
+    },
+    {
+      id: 'statistiques', title: 'Lire tes statistiques', sub: 'Ce que les chiffres disent, et ce qu\'ils ne disent pas',
+      body: `
+<p>La page <b>Statistiques</b> ne sert pas à ta déclaration — ça, c'est Comptabilité. Elle sert à décider : où mettre ton énergie le mois prochain.</p>
+<h3>Choisir la période</h3>
+<p>En haut à droite : une année entière, un trimestre ou un mois. Tout ce qui est affiché en dessous suit ce choix, sauf l'âge des impayés (qui regarde toujours ce qui reste dû aujourd'hui, quelle que soit la date des factures).</p>
+<h3>La comparaison à l'an dernier</h3>
+<p>La petite flèche à côté de chaque chiffre le compare à la <b>même période l'année précédente</b>, jamais au mois d'avant. Comparer janvier à décembre ne veut rien dire : décembre est presque toujours plus chargé. Comparer janvier à janvier, oui.</p>
+<p>Sur le graphique, les barres grises derrière sont l'année précédente. Les creux qui reviennent au même moment chaque année, c'est ta saisonnalité : le bon moment pour prospecter, c'est deux mois avant le creux, pas pendant.</p>
+<h3>L'objectif</h3>
+<p>Donne-toi un chiffre d'affaires annuel dans <b>Paramètres → Documents</b>. La barre montre où tu en es ; le petit trait vertical montre où tu devrais en être aujourd'hui si tu avançais régulièrement. En dessous, SkanFact te dit combien il reste à facturer par mois pour y arriver. C'est ce chiffre-là qui fait décrocher le téléphone.</p>
+<h3>L'issue des devis</h3>
+<p>Le taux d'acceptation ne compte que les devis <b>tranchés</b> : un devis encore en attente ne le fait pas baisser. Si beaucoup de devis expirent sans réponse, le problème est rarement le prix — c'est qu'il a manqué une relance. La page Relances te les liste.</p>
+<h3>L'âge des impayés</h3>
+<p>C'est le tableau le plus important de la page. Un impayé de moins de 30 jours se règle par un rappel ; au-delà de 90 jours, les chances de récupérer baissent fortement et il faut passer à l'écrit, en gardant une trace. Regarde-le une fois par semaine.</p>
+<h3>Tes clients</h3>
+<p>Deux signaux à surveiller. D'abord la <b>concentration</b> : si ton premier client pèse plus de la moitié de ton chiffre d'affaires, son départ — ou simplement son retard de paiement — te met en difficulté. Ensuite les <b>clients endormis</b> : des gens qui t'ont déjà fait confiance et dont plus rien ne sort. Les rappeler coûte moins cher que de trouver un inconnu.</p>
+<h3>Ce que ces chiffres ne disent pas</h3>
+<p>Ils portent sur ce que tu as <b>facturé</b>, pas sur ce que tu as <b>gagné</b> : tes achats et tes charges n'y sont pas encore. Un mois record en facturation peut être un mauvais mois en trésorerie si personne ne paie. Garde toujours un œil sur le « reste à encaisser ».</p>`
     },
     {
       id: 'donnees', title: 'Tes données : sauvegarder et protéger', sub: 'Le sujet le plus ennuyeux et le plus important',

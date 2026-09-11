@@ -803,4 +803,172 @@ t('historique : une facture née d\'un contrat le dit et renvoie au contrat', ()
   assert.ok(!core.documentHistory({ ...inv, recurringId: undefined }, data, CO).some(e => e.kind === 'contrat'));
 });
 
+// ---------- statistiques (2.5.0) ----------
+
+// Petit jeu de données maison : deux clients, des factures sur deux années, un avoir, des paiements.
+function statsData() {
+  const inv = (id, num, date, clientId, ht, o) => ({
+    id, type: 'facture', number: num, status: 'envoyée', date, dueDate: core.addDays(date, 30),
+    clientId, lines: [{ label: o && o.label || 'Audit', qty: 1, unitPrice: ht, vatRate: 19 }],
+    payments: [], createdAt: 1, ...(o || {})
+  });
+  return {
+    version: 3,
+    clients: [{ id: 'c1', name: 'Alpha' }, { id: 'c2', name: 'Beta' }, { id: 'c3', name: 'Gamma sans facture' }],
+    documents: [
+      inv('i1', 'FAC-2025-001', '2025-03-10', 'c1', 1000),
+      inv('i2', 'FAC-2026-001', '2026-02-05', 'c1', 2000, { payments: [{ date: '2026-02-15', amount: 2381 }] }),
+      inv('i3', 'FAC-2026-002', '2026-05-20', 'c2', 500, { label: 'Licence' }),
+      inv('i4', 'FAC-2026-003', '2026-08-01', 'c1', 300, { label: 'Licence' }),
+      { id: 'i5', type: 'facture', number: null, status: 'brouillon', date: '2026-06-01', clientId: 'c2',
+        lines: [{ label: 'Jamais compté', qty: 1, unitPrice: 9999, vatRate: 19 }], payments: [], createdAt: 1 },
+      { id: 'a1', type: 'avoir', number: 'AVO-2026-001', status: 'émis', date: '2026-06-10', clientId: 'c2',
+        creditOf: 'i3', lines: [{ label: 'Licence', qty: 1, unitPrice: 100, vatRate: 19 }], createdAt: 1 },
+      { id: 'q1', type: 'devis', number: 'DEV-2026-001', status: 'accepté', date: '2026-01-10', dueDate: '2026-02-10',
+        clientId: 'c1', lines: [{ label: 'Audit', qty: 1, unitPrice: 2000, vatRate: 19 }], createdAt: 1 },
+      { id: 'q2', type: 'devis', number: 'DEV-2026-002', status: 'refusé', date: '2026-03-01', dueDate: '2026-04-01',
+        clientId: 'c2', lines: [{ label: 'Audit', qty: 1, unitPrice: 800, vatRate: 19 }], createdAt: 1 },
+      { id: 'q3', type: 'devis', number: 'DEV-2026-003', status: 'envoyé', date: '2026-04-01', dueDate: '2026-05-01',
+        clientId: 'c2', lines: [{ label: 'Audit', qty: 1, unitPrice: 400, vatRate: 19 }], createdAt: 1 },
+      { id: 'q4', type: 'devis', number: 'DEV-2026-004', status: 'envoyé', date: '2026-09-01', dueDate: '2026-12-01',
+        clientId: 'c1', lines: [{ label: 'Audit', qty: 1, unitPrice: 600, vatRate: 19 }], createdAt: 1 }
+    ],
+    catalog: [], recurring: [], templates: [], snippets: []
+  };
+}
+// la facture i2 découle du devis q1 (délai de réponse du funnel)
+const STATS = statsData();
+STATS.documents.find(d => d.id === 'i2').fromQuoteId = 'q1';
+
+t('statistiques : bornes de période et période comparable', () => {
+  const an = core.periodBounds('annee', 2026);
+  assert.strictEqual(an.from, '2026-01-01');
+  assert.strictEqual(an.to, '2026-12-31');
+  assert.strictEqual(an.prev.from, '2025-01-01');
+  assert.ok(an.label.includes('2026'));
+  const t2 = core.periodBounds('trimestre', 2026, 2);
+  assert.strictEqual(t2.from, '2026-04-01');
+  assert.strictEqual(t2.to, '2026-06-30');
+  assert.strictEqual(t2.prev.to, '2025-06-30');
+  const fev = core.periodBounds('mois', 2026, 2);
+  assert.strictEqual(fev.to, '2026-02-28');                 // fin de mois réelle
+  assert.strictEqual(core.periodBounds('mois', 2024, 2).to, '2024-02-29');  // bissextile
+  assert.strictEqual(core.periodBounds('mois', 2026, 12).to, '2026-12-31'); // décembre ne déborde pas
+  // valeurs hors bornes ramenées dans la plage plutôt que de produire une date absurde
+  assert.strictEqual(core.periodBounds('trimestre', 2026, 9).from, '2026-10-01');
+});
+
+t('statistiques : chiffre d\'affaires, brouillons exclus, avoirs déduits', () => {
+  const r = core.salesTotals(STATS, CO, '2026-01-01', '2026-12-31');
+  // 2000 + 500 + 300 − 100 (avoir) = 2700 HT ; le brouillon à 9999 n'entre pas
+  assert.strictEqual(r.ht, 2700);
+  assert.strictEqual(r.vat, core.round3(2700 * 0.19));
+  assert.strictEqual(r.invoices, 3);
+  assert.strictEqual(r.count, 4);                            // avoir compris
+  assert.strictEqual(r.avgTicket, core.round3(2700 / 3));
+  // timbre : 3 factures − 0 sur l'avoir
+  assert.strictEqual(r.ttc, core.round3(2700 + 2700 * 0.19 + 3));
+  assert.strictEqual(core.salesTotals(STATS, CO, '2025-01-01', '2025-12-31').ht, 1000);
+  const vide = core.salesTotals(STATS, CO, '2020-01-01', '2020-12-31');
+  assert.strictEqual(vide.ht, 0);
+  assert.strictEqual(vide.avgTicket, 0);                     // pas de division par zéro
+});
+
+t('statistiques : CA mois par mois, mois vides compris', () => {
+  const s = core.revenueByMonth(STATS, CO, '2026-01-01', '2026-12-31');
+  assert.strictEqual(s.length, 12);
+  assert.strictEqual(s[0].ht, 0);
+  assert.strictEqual(s[1].ht, 2000);                         // février
+  assert.strictEqual(s[4].ht, 500);                          // mai
+  assert.strictEqual(s[5].ht, -100);                         // juin : l'avoir seul
+  assert.strictEqual(s[7].ht, 300);                          // août
+  assert.strictEqual(core.round3(s.reduce((a, x) => a + x.ht, 0)), 2700);
+  // une période à cheval sur deux années reste continue
+  const ch = core.revenueByMonth(STATS, CO, '2025-11-01', '2026-02-28');
+  assert.deepStrictEqual(ch.map(x => x.month), ['2025-11', '2025-12', '2026-01', '2026-02']);
+});
+
+t('statistiques : prestations les plus vendues', () => {
+  const top = core.topItems(STATS, CO, '2026-01-01', '2026-12-31', 5);
+  assert.strictEqual(top[0].label, 'Audit');
+  assert.strictEqual(top[0].ht, 2000);
+  assert.strictEqual(top[1].label, 'Licence');
+  assert.strictEqual(top[1].ht, 700);                        // 500 + 300 − 100 d'avoir
+  // une ligne de déduction d'acompte n'est pas une vente
+  const avec = JSON.parse(JSON.stringify(STATS));
+  avec.documents.find(d => d.id === 'i4').lines.push({ label: 'Acompte déduit', qty: 1, unitPrice: -200, vatRate: 19, noDiscount: true });
+  assert.ok(!core.topItems(avec, CO, '2026-01-01', '2026-12-31', 9).some(x => x.label === 'Acompte déduit'));
+  assert.strictEqual(core.topItems(STATS, CO, '2026-01-01', '2026-12-31', 1).length, 1);
+});
+
+t('statistiques : nouveaux clients et clients endormis', () => {
+  const m = core.clientMovement(STATS, CO, '2026-01-01', '2026-12-31', 180, '2026-09-11');
+  // Alpha facture pour la première fois en 2025 : pas un nouveau client de 2026
+  assert.deepStrictEqual(m.nouveaux.map(x => x.name), ['Beta']);
+  assert.strictEqual(m.nouveaux[0].since, '2026-05-20');
+  // Beta : dernière pièce le 10/06/2026, soit 93 jours — pas encore endormi à 180
+  assert.deepStrictEqual(m.dormants.map(x => x.name), []);
+  const court = core.clientMovement(STATS, CO, '2026-01-01', '2026-12-31', 60, '2026-09-11');
+  assert.deepStrictEqual(court.dormants.map(x => x.name), ['Beta']);
+  assert.strictEqual(court.dormants[0].days, 93);
+  // un client sans aucune facture n'est ni nouveau ni endormi
+  assert.ok(!court.dormants.concat(court.nouveaux).some(x => x.name.startsWith('Gamma')));
+});
+
+t('statistiques : âge des impayés', () => {
+  const r = core.agedReceivables(STATS, CO, '2026-09-11');
+  const by = Object.fromEntries(r.buckets.map(b => [b.label, b]));
+  // i2 est soldée : elle ne pèse plus rien, aucune de ses lignes n'apparaît
+  assert.strictEqual(by['Pas encore échu'].amount, 0);
+  // i1 (échéance 09/04/2025) : très en retard
+  assert.strictEqual(by['Plus de 90 jours'].count, 1);
+  assert.strictEqual(by['Plus de 90 jours'].amount, core.round3(1000 * 1.19 + 1));
+  // i3 (échéance 19/06/2026, 84 jours) diminuée de l'avoir de 100 HT
+  assert.strictEqual(by['61 à 90 jours'].count, 1);
+  assert.strictEqual(by['61 à 90 jours'].amount, core.round3(500 * 1.19 + 1 - 100 * 1.19));
+  // i4 échéance 31/08/2026 : 11 jours de retard
+  assert.strictEqual(by['1 à 30 jours'].count, 1);
+  assert.strictEqual(by['31 à 60 jours'].count, 0);
+  assert.strictEqual(core.round3(r.buckets.reduce((s, b) => s + b.amount, 0)), r.total);
+  // rien d'impayé un jour où tout est encore à venir
+  assert.ok(core.agedReceivables({ documents: [], clients: [] }, CO, '2026-09-11').total === 0);
+});
+
+t('statistiques : classement des payeurs', () => {
+  const r = core.payerRanking(STATS, CO, 5);
+  assert.deepStrictEqual(r.tous.map(x => x.name), ['Alpha']); // seul client avec une facture soldée
+  assert.strictEqual(r.tous[0].delay, 10);                    // 05/02 → 15/02
+  assert.strictEqual(r.rapides[0].name, 'Alpha');
+  assert.strictEqual(r.lents[0].name, 'Alpha');
+  assert.deepStrictEqual(core.payerRanking({ documents: [], clients: [] }, CO, 5).tous, []);
+});
+
+t('statistiques : issue des devis', () => {
+  const f = core.quoteFunnel(STATS, CO, '2026-01-01', '2026-12-31', '2026-09-11');
+  assert.strictEqual(f.total, 4);
+  assert.strictEqual(f.accepted, 1);
+  assert.strictEqual(f.refused, 1);
+  assert.strictEqual(f.expired, 1);                           // q3, validité passée sans réponse
+  assert.strictEqual(f.pending, 1);                           // q4, encore valable
+  assert.strictEqual(f.rate, 50);                             // 1 accepté sur 2 décidés
+  assert.strictEqual(f.replyDelay, 26);                       // 10/01 → 05/02
+  assert.strictEqual(f.acceptedAmount, core.round3(2000 * 1.19));
+  // aucun devis : taux nul plutôt que NaN
+  assert.strictEqual(core.quoteFunnel(STATS, CO, '2020-01-01', '2020-12-31', '2026-09-11').rate, null);
+});
+
+t('statistiques : objectif annuel', () => {
+  assert.strictEqual(core.objectiveProgress(0, 1000, '2026-09-11', 2026), null);   // pas d'objectif saisi
+  const o = core.objectiveProgress(100000, 25000, '2026-07-02', 2026);             // 183 jours sur 365
+  assert.strictEqual(o.pct, 25);
+  assert.strictEqual(o.expectedPct, 50);
+  assert.ok(o.ahead < 0);                                                          // en retard sur le rythme
+  assert.strictEqual(o.remaining, 75000);
+  assert.ok(o.perMonth > 0 && o.monthsLeft >= 1);
+  // une année déjà terminée ne demande plus rien par mois
+  const fini = core.objectiveProgress(100000, 120000, '2027-01-05', 2026);
+  assert.strictEqual(fini.remaining, 0);
+  assert.strictEqual(fini.expectedPct, 100);
+});
+
 console.log(`\n${n} tests OK`);

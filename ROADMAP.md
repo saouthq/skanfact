@@ -50,7 +50,7 @@ Un contrat n'est aujourd'hui qu'une machine à fabriquer des brouillons de factu
 - Depuis une facture issue d'un contrat, **un lien vers ce contrat**. Le rattachement existe déjà dans les données depuis la 1.5.0, il n'a jamais été affiché nulle part
 - L'historique d'une facture dit qu'elle vient d'un contrat
 
-### 2.5.0 — Statistiques et analyses · M
+### 2.5.0 — Statistiques et analyses · M — ✅ **livré le 11/09/2026**
 
 Aujourd'hui l'accueil montre quatre chiffres et un graphique sur douze mois. C'est un tableau de bord,
 pas une analyse. Nouvelle page **Statistiques**, avec une période libre (mois, trimestre, année, ou dates choisies).
@@ -66,6 +66,8 @@ Ce que tu y verras :
 - Export de chaque tableau en CSV, et de la page entière en PDF
 
 Ce que ça ne peut pas encore montrer : **la marge**. Elle a besoin des achats (voir 3.3.0).
+
+*Écarts avec le plan :* la période se choisit dans une liste (année, trimestre, mois) plutôt qu'entre deux dates libres — plus simple, et c'est ce qui permet la comparaison automatique à la même période de l'an dernier. L'export est un CSV unique reprenant toute la page, pas un fichier par tableau ni un PDF : un tableur accepte le CSV, et un PDF de statistiques ne s'imprime jamais.
 
 ### 2.6.0 — Les documents qui manquent · M
 

@@ -154,6 +154,8 @@ input:disabled, select:disabled, textarea:disabled { background: #f3f5f7; color:
 .stat:nth-child(4)::before { background: #7c5cd6; }
 .stat .lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
 .stat .val { font-size: 22px; font-weight: 700; margin-top: 6px; letter-spacing: -.4px; font-variant-numeric: tabular-nums; }
+/* L'écart passe sous le montant quand la carte est étroite, mais jamais coupé en deux. */
+.stat .val { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
 .stat .sub { font-size: 12px; color: var(--muted); margin-top: 3px; }
 
 /* ---------- editor ---------- */
@@ -322,6 +324,44 @@ table.mini input, table.mini select { padding: 6px 8px; font-size: 13px; }
 .rank .amt { font-variant-numeric: tabular-nums; color: var(--muted); min-width: 110px; text-align: right; }
 .rank a.name { color: inherit; text-decoration: none; font-weight: 500; }
 .rank a.name:hover { color: var(--primary); text-decoration: underline; }
+/* Un libellé de prestation n'est pas cliquable : il occupe la même place qu'un nom de client. */
+.rank .name { flex: 0 0 auto; max-width: 42%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.rank.plain li { justify-content: space-between; }
+.rank.plain .amt { min-width: 46px; }
+.rank.plain .name { flex: 1; max-width: none; }   /* pas de barre à côté : le nom peut prendre la place */
+
+/* ---------- Statistiques ---------- */
+/* Écart avec la même période de l'an dernier, accolé au chiffre : vert si ça monte, rouge si ça baisse. */
+.delta { font-size: 12px; font-weight: 700; letter-spacing: 0; white-space: nowrap; }
+.delta.up { color: var(--success); }
+.delta.down { color: var(--danger); }
+.warn-text { color: var(--warning); }
+.ok-text { color: var(--success); }
+.sub-h { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); font-weight: 700; margin: 16px 0 8px; }
+.panel > .sub-h:first-of-type { margin-top: 4px; }
+.two-col { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+/* Jauge d'objectif : la barre est le réalisé, le trait vertical le rythme théorique du jour. */
+.gauge { margin-top: 4px; }
+.g-bar { position: relative; height: 14px; border-radius: 999px; background: var(--ink-soft); overflow: hidden; }
+.g-bar > i { display: block; height: 100%; background: var(--primary); border-radius: 999px; transition: width .3s; }
+.g-mark { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--text); opacity: .55; border-radius: 2px; }
+.g-legend { display: flex; justify-content: space-between; font-size: 13px; margin-top: 8px; }
+/* Barres d'appoint dans un tableau (issue des devis) : mêmes proportions que celles du classement. */
+.list .bar { display: block; height: 8px; background: var(--ink-soft); border-radius: 999px; overflow: hidden; }
+.list .bar i { display: block; height: 100%; border-radius: 999px; background: var(--primary); }
+.list .bar i.f-ok { background: var(--success); }
+.list .bar i.f-bad { background: var(--danger); }
+.list .bar i.f-warn { background: var(--warning); }
+.list .bar i.f-neutral { background: #9aa7b4; }
+tr.row-warn td { background: var(--warning-soft); }
+.chart .bar-prev { fill: #9aa7b4; opacity: .55; }
+.chart .bar-off { opacity: .28; }   /* mois hors de la période choisie : présents pour le contexte, en retrait */
+/* Deux panneaux de poids égal, contrairement à .dash-grid (2fr 1fr) qui met un graphique en vedette.
+   minmax(0, 1fr) : sans lui, un tableau large impose sa largeur et casse le partage en deux. */
+.split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; align-items: start; }
+#s-kind { min-width: 152px; }
+#s-n { min-width: 208px; }
+@media (max-width: 1100px) { .two-col, .split { grid-template-columns: 1fr; } }
 
 /* Bouton retour : présent mais discret, il ne doit pas concurrencer l'action principale de la page. */
 .btn-back { background: none; border-color: var(--border); color: var(--muted); font-weight: 500; }

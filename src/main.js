@@ -235,6 +235,7 @@ function buildMenu() {
         { label: 'Catalogue', accelerator: 'CmdOrCtrl+5', click: act('go:catalogue') },
         { label: 'Relances', click: act('go:relances') },
         { label: 'Contrats récurrents', click: act('go:contrats') },
+        { label: 'Statistiques', click: act('go:stats') },
         { label: 'Comptabilité', accelerator: 'CmdOrCtrl+6', click: act('go:compta') },
         { type: 'separator' },
         { label: 'Rechercher…', accelerator: 'CmdOrCtrl+K', click: act('search') },

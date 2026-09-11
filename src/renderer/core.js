@@ -44,6 +44,8 @@
     activity: '',         // secteur choisi à la première utilisation (voir ACTIVITIES)
     primaryColor: '#1b2430',
     accentColor: '#0f9d8f',
+    revenueTarget: 0,     // objectif de chiffre d'affaires HT pour l'année (0 = pas d'objectif)
+    dormantDays: 180,     // au-delà, un client est considéré comme endormi dans les statistiques
     setupDone: false      // l'assistant de première utilisation a été mené jusqu'au bout
   };
 
@@ -527,6 +529,179 @@
       if (last && d.date) delays.push(daysBetween(d.date, last));
     });
     return delays.length ? Math.round(delays.reduce((s, x) => s + x, 0) / delays.length) : null;
+  }
+
+  // ---------- statistiques ----------
+  // Bornes d'une période nommée. `kind` : 'annee' | 'trimestre' | 'mois'. `n` = numéro du trimestre (1-4)
+  // ou du mois (1-12). Renvoie aussi la même période de l'année précédente, pour la comparaison.
+  function periodBounds(kind, year, n) {
+    const y = Number(year);
+    const last = (yy, mm) => new Date(Date.UTC(yy, mm, 0)).getUTCDate();
+    const make = (yy, m1, m2) => ({ from: `${yy}-${pad2(m1)}-01`, to: `${yy}-${pad2(m2)}-${pad2(last(yy, m2))}` });
+    let cur, label;
+    if (kind === 'mois') { const m = Math.min(12, Math.max(1, Number(n) || 1)); cur = make(y, m, m); label = `${MONTHS_FR[m - 1]} ${y}`; }
+    else if (kind === 'trimestre') { const q = Math.min(4, Math.max(1, Number(n) || 1)); cur = make(y, q * 3 - 2, q * 3); label = `${q}ᵉ trimestre ${y}`; }
+    else { cur = make(y, 1, 12); label = `année ${y}`; }
+    const prev = kind === 'mois' ? make(y - 1, Number(n) || 1, Number(n) || 1)
+      : kind === 'trimestre' ? make(y - 1, (Number(n) || 1) * 3 - 2, (Number(n) || 1) * 3)
+        : make(y - 1, 1, 12);
+    return { ...cur, label, prev, kind, year: y, n: Number(n) || 0 };
+  }
+
+  // Factures et avoirs émis d'une période, avoirs comptés en négatif. Base de tous les chiffres qui suivent.
+  function issuedIn(data, fromIso, toIso) {
+    return (data.documents || []).filter(d => (d.type === 'facture' || d.type === 'avoir')
+      && d.status !== 'brouillon' && d.status !== 'annulée' && inPeriod(d.date, fromIso, toIso));
+  }
+  function salesTotals(data, company, fromIso, toIso) {
+    const docs = issuedIn(data, fromIso, toIso);
+    let ht = 0, ttc = 0, vat = 0;
+    docs.forEach(d => {
+      const t = computeTotals(d, company), sign = d.type === 'avoir' ? -1 : 1;
+      ht = round3(ht + sign * toBase(d, t.netHT, company));
+      ttc = round3(ttc + sign * toBase(d, t.totalTTC, company));
+      vat = round3(vat + sign * toBase(d, t.totalVAT, company));
+    });
+    const invoices = docs.filter(d => d.type === 'facture').length;
+    return { ht, ttc, vat, count: docs.length, invoices, avgTicket: invoices ? round3(ht / invoices) : 0 };
+  }
+
+  // CA HT mois par mois sur une période quelconque (sert au graphique et à la saisonnalité).
+  function revenueByMonth(data, company, fromIso, toIso) {
+    const out = [];
+    let y = Number(fromIso.slice(0, 4)), m = Number(fromIso.slice(5, 7));
+    const endY = Number(toIso.slice(0, 4)), endM = Number(toIso.slice(5, 7));
+    let guard = 0;
+    while ((y < endY || (y === endY && m <= endM)) && guard++ < 240) {
+      out.push({ month: `${y}-${pad2(m)}`, label: MONTHS_SHORT[m - 1], ht: 0, count: 0 });
+      m++; if (m > 12) { m = 1; y++; }
+    }
+    const byKey = Object.fromEntries(out.map(x => [x.month, x]));
+    issuedIn(data, fromIso, toIso).forEach(d => {
+      const k = (d.date || '').slice(0, 7);
+      if (!byKey[k]) return;
+      byKey[k].ht = round3(byKey[k].ht + (d.type === 'avoir' ? -1 : 1) * toBase(d, computeTotals(d, company).netHT, company));
+      byKey[k].count++;
+    });
+    return out;
+  }
+
+  // Prestations les plus vendues sur la période, regroupées par libellé (les lignes de déduction d'acompte sont ignorées).
+  function topItems(data, company, fromIso, toIso, limit) {
+    const totals = {};
+    issuedIn(data, fromIso, toIso).forEach(d => {
+      const sign = d.type === 'avoir' ? -1 : 1;
+      computeTotals(d, company).lines.forEach(l => {
+        const key = (l.label || '').trim().toLowerCase();
+        if (!key || l.noDiscount) return;                       // acompte déjà facturé : pas une vente
+        const t = totals[key] || (totals[key] = { label: (l.label || '').trim(), ht: 0, qty: 0, count: 0 });
+        t.ht = round3(t.ht + sign * toBase(d, l.ht, company));
+        t.qty = round3(t.qty + sign * (Number(l.qty) || 0));
+        t.count++;
+      });
+    });
+    return Object.values(totals).sort((a, b) => b.ht - a.ht).slice(0, limit || 8);
+  }
+
+  // Clients nouveaux sur la période (première facture dedans) et clients endormis (plus rien depuis `dormantDays`).
+  function clientMovement(data, company, fromIso, toIso, dormantDays, todayIso) {
+    const t = todayIso || today();
+    const seuil = Number(dormantDays) || 180;
+    const nouveaux = [], dormants = [];
+    const inside = issuedIn(data, fromIso, toIso);
+    (data.clients || []).forEach(c => {
+      const dates = (data.documents || []).filter(d => d.clientId === c.id && (d.type === 'facture' || d.type === 'avoir')
+        && d.status !== 'brouillon' && d.status !== 'annulée').map(d => d.date).filter(Boolean).sort();
+      if (!dates.length) return;
+      const first = dates[0], last = dates[dates.length - 1];
+      const ht = round3(inside.filter(d => d.clientId === c.id)
+        .reduce((s, d) => s + (d.type === 'avoir' ? -1 : 1) * toBase(d, computeTotals(d, company).netHT, company), 0));
+      if (inPeriod(first, fromIso, toIso)) nouveaux.push({ clientId: c.id, name: c.name, since: first, ht });
+      const idle = daysBetween(last, t);
+      if (idle >= seuil) dormants.push({ clientId: c.id, name: c.name, last, days: idle });
+    });
+    return {
+      nouveaux: nouveaux.sort((a, b) => b.ht - a.ht),
+      dormants: dormants.sort((a, b) => b.days - a.days)
+    };
+  }
+
+  // Âge des impayés : ce qui reste dû, rangé par retard. Un bon indicateur de ce qui part en créance douteuse.
+  const AGING_BUCKETS = [[0, 0, 'Pas encore échu'], [1, 30, '1 à 30 jours'], [31, 60, '31 à 60 jours'], [61, 90, '61 à 90 jours'], [91, 99999, 'Plus de 90 jours']];
+  function agedReceivables(data, company, todayIso) {
+    const t = todayIso || today();
+    const buckets = AGING_BUCKETS.map(([min, max, label]) => ({ label, min, max, amount: 0, count: 0 }));
+    let total = 0;
+    (data.documents || []).filter(d => d.type === 'facture' && d.status !== 'brouillon' && d.status !== 'annulée').forEach(d => {
+      const rest = invoiceBalance(d, data, company).remaining;
+      if (rest <= 0.0005) return;
+      const amount = round3(toBase(d, rest, company));
+      const late = d.dueDate && d.dueDate < t ? daysBetween(d.dueDate, t) : 0;
+      const b = buckets.find(x => late >= x.min && late <= x.max) || buckets[0];
+      b.amount = round3(b.amount + amount); b.count++;
+      total = round3(total + amount);
+    });
+    return { buckets, total };
+  }
+
+  // Classement des payeurs : délai moyen constaté par client, sur ses factures soldées.
+  function payerRanking(data, company, limit) {
+    const out = [];
+    (data.clients || []).forEach(c => {
+      const delays = [];
+      (data.documents || []).filter(d => d.type === 'facture' && d.clientId === c.id && d.status !== 'brouillon' && d.status !== 'annulée').forEach(d => {
+        if (effectiveStatus(d, data, company, '9999-12-31') !== 'payée' || !(d.payments || []).length) return;
+        const last = d.payments.map(p => p.date).sort().pop();
+        if (last && d.date) delays.push(daysBetween(d.date, last));
+      });
+      if (delays.length) out.push({ clientId: c.id, name: c.name, delay: Math.round(delays.reduce((s, x) => s + x, 0) / delays.length), count: delays.length });
+    });
+    out.sort((a, b) => a.delay - b.delay);
+    return { rapides: out.slice(0, limit || 5), lents: out.slice().reverse().slice(0, limit || 5), tous: out };
+  }
+
+  // Devis de la période : issue de chacun, montants gagnés et perdus, délai moyen de réponse.
+  function quoteFunnel(data, company, fromIso, toIso, todayIso) {
+    const t = todayIso || today();
+    const quotes = (data.documents || []).filter(d => d.type === 'devis' && d.status !== 'brouillon' && inPeriod(d.date, fromIso, toIso));
+    const amount = d => toBase(d, computeTotals(d, company).totalTTC, company);
+    const sum = list => round3(list.reduce((s, d) => s + amount(d), 0));
+    const accepted = quotes.filter(d => d.status === 'accepté');
+    const refused = quotes.filter(d => d.status === 'refusé');
+    const expired = quotes.filter(d => effectiveStatus(d, data, company, t) === 'expiré');
+    const pending = quotes.filter(d => d.status !== 'accepté' && d.status !== 'refusé' && effectiveStatus(d, data, company, t) !== 'expiré');
+    // Délai de réponse : on n'a pas de date de décision, on prend la date de la facture qui en découle.
+    const delays = [];
+    accepted.forEach(q => {
+      const inv = (data.documents || []).filter(d => d.type === 'facture' && d.fromQuoteId === q.id).map(d => d.date).filter(Boolean).sort()[0];
+      if (inv && q.date) delays.push(daysBetween(q.date, inv));
+    });
+    const decided = accepted.length + refused.length;
+    return {
+      total: quotes.length,
+      accepted: accepted.length, refused: refused.length, expired: expired.length, pending: pending.length,
+      acceptedAmount: sum(accepted), refusedAmount: sum(refused), expiredAmount: sum(expired), pendingAmount: sum(pending),
+      rate: decided ? Math.round(accepted.length / decided * 100) : null,
+      replyDelay: delays.length ? Math.round(delays.reduce((s, x) => s + x, 0) / delays.length) : null
+    };
+  }
+
+  // Objectif annuel : où on en est, et où on devrait en être à cette date de l'année.
+  function objectiveProgress(target, ht, todayIso, year) {
+    const goal = Number(target) || 0;
+    if (goal <= 0) return null;
+    const t = todayIso || today();
+    const y = Number(year) || Number(t.slice(0, 4));
+    const elapsed = Number(t.slice(0, 4)) > y ? 366 : Number(t.slice(0, 4)) < y ? 0 : daysBetween(`${y}-01-01`, t) + 1;
+    const yearDays = daysBetween(`${y}-01-01`, `${y}-12-31`) + 1;
+    const part = Math.min(1, Math.max(0, elapsed / yearDays));
+    const expected = round3(goal * part);
+    const months = Math.max(1, Math.round((1 - part) * 12));
+    return {
+      goal, ht, pct: Math.round(ht / goal * 100), expected, expectedPct: Math.round(part * 100),
+      ahead: round3(ht - expected), remaining: round3(Math.max(0, goal - ht)),
+      perMonth: round3(Math.max(0, goal - ht) / months), monthsLeft: months
+    };
   }
 
   // ---------- relances ----------
@@ -1233,6 +1408,7 @@
     PERIODS, MONTHS_FR, MONTHS_SHORT, monthLabel, addMonths, nextRecurrenceDate, dueRecurrences, catchUpRecurrence, fillTemplate, buildRecurringInvoice,
     reminderLevel, REMINDER_LABELS, daysBetween, overdueInvoices, todoList, companyGaps, documentHistory, DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_TEMPLATES_EN, emailFor,
     CURRENCIES, decimalsFor, toBase, monthKeys, monthlySeries, topClients, quoteStats, avgPaymentDelay, clientSummary, I18N,
+    periodBounds, issuedIn, salesTotals, revenueByMonth, topItems, clientMovement, AGING_BUCKETS, agedReceivables, payerRanking, quoteFunnel, objectiveProgress,
     amountToWords, intToWords, intToWordsEn, documentHtml, fitToPage, pageCount
   };
 });

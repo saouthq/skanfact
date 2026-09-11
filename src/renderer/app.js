@@ -478,7 +478,7 @@
   const PAGE_LABELS = {
     dashboard: 'Accueil', devis: 'Devis', factures: 'Factures', relances: 'Relances', contrats: 'Contrats',
     contrat: 'le contrat', clients: 'Clients', client: 'la fiche client', catalogue: 'Catalogue',
-    compta: 'Comptabilité', parametres: 'Paramètres', aide: 'Aide', doc: 'le document'
+    stats: 'Statistiques', compta: 'Comptabilité', parametres: 'Paramètres', aide: 'Aide', doc: 'le document'
   };
   const pageLabel = hash => PAGE_LABELS[(hash || '').replace(/^#\/?/, '').split('/')[0]] || 'Accueil';
   function pushHistory(previous) {
@@ -2220,7 +2220,7 @@
     const actions = [
       ['Nouveau devis', () => navigate('#/doc/new/devis')], ['Nouvelle facture', () => navigate('#/doc/new/facture')], ['Nouvel avoir', () => navigate('#/doc/new/avoir')],
       ['Accueil', () => navigate('#/dashboard')], ['Devis', () => navigate('#/devis')], ['Factures', () => navigate('#/factures')], ['Relances', () => navigate('#/relances')],
-      ['Contrats récurrents', () => navigate('#/contrats')], ['Clients', () => navigate('#/clients')], ['Catalogue', () => navigate('#/catalogue')], ['Comptabilité', () => navigate('#/compta')], ['Paramètres', () => navigate('#/parametres')],
+      ['Contrats récurrents', () => navigate('#/contrats')], ['Clients', () => navigate('#/clients')], ['Catalogue', () => navigate('#/catalogue')], ['Statistiques', () => navigate('#/stats')], ['Comptabilité', () => navigate('#/compta')], ['Paramètres', () => navigate('#/parametres')],
       ['Aide et guide', () => navigate('#/aide')], ['Nouveau client', () => clientForm(null, () => render())]
     ].map(([label, run]) => ({ kind: 'Action', main: label, text: label.toLowerCase(), run }));
     const helps = G.ARTICLES.map(x => ({ kind: 'Aide', main: x.title, sub: x.sub, text: `aide ${x.title} ${x.sub}`.toLowerCase(), run: () => navigate('#/aide/' + x.id) }));
@@ -2285,6 +2285,242 @@
     journal: { sort: null, page: 1 },      // journal des ventes
     pays: { sort: null, page: 1 }          // encaissements
   };
+
+  // ---------- Statistiques ----------
+  // Une page de pilotage : la même période comparée à l'an dernier, et les quatre questions
+  // que se pose un dirigeant — est-ce que je vends, est-ce qu'on me paie, qu'est-ce qui se vend,
+  // et qui sont mes clients.
+  const statsState = { kind: 'annee', year: C.today().slice(0, 4), n: String(Number(C.today().slice(5, 7))) };
+
+  routes.stats = () => {
+    const cur = company().currency;
+    const years = Array.from(new Set(data.documents.map(d => (d.date || '').slice(0, 4)).filter(Boolean)
+      .concat([C.today().slice(0, 4)]))).sort().reverse();
+    if (!years.includes(statsState.year)) statsState.year = years[0];
+    const QUARTERS = [['1', '1ᵉʳ trimestre · janv.–mars'], ['2', '2ᵉ trimestre · avr.–juin'], ['3', '3ᵉ trimestre · juil.–sept.'], ['4', '4ᵉ trimestre · oct.–déc.']];
+
+    $('#view').innerHTML = `
+      <div class="page-head"><h1>Statistiques</h1>
+        <div class="actions">
+          <select id="s-kind" title="Période analysée">
+            <option value="annee" ${statsState.kind === 'annee' ? 'selected' : ''}>Année entière</option>
+            <option value="trimestre" ${statsState.kind === 'trimestre' ? 'selected' : ''}>Trimestre</option>
+            <option value="mois" ${statsState.kind === 'mois' ? 'selected' : ''}>Mois</option>
+          </select>
+          <select id="s-year">${years.map(y => `<option ${y === statsState.year ? 'selected' : ''}>${y}</option>`).join('')}</select>
+          <select id="s-n" ${statsState.kind === 'annee' ? 'hidden' : ''}></select>
+          <button class="btn" id="s-export">Exporter en CSV (Excel)</button>
+        </div></div>
+      <div id="s-body"></div>`;
+
+    const fillN = () => {
+      const sel = $('#s-n');
+      sel.hidden = statsState.kind === 'annee';
+      if (sel.hidden) return;
+      const opts = statsState.kind === 'trimestre' ? QUARTERS : MONTHS.map((m, i) => [String(i + 1), m]);
+      if (!opts.some(o => o[0] === statsState.n)) statsState.n = opts[0][0];
+      sel.innerHTML = opts.map(([v, l]) => `<option value="${v}" ${v === statsState.n ? 'selected' : ''}>${h(l)}</option>`).join('');
+    };
+
+    const draw = () => {
+      const p = C.periodBounds(statsState.kind, statsState.year, statsState.n);
+      const now = C.today();
+      const cur1 = C.salesTotals(data, company(), p.from, p.to);
+      const prev = C.salesTotals(data, company(), p.prev.from, p.prev.to);
+      // Le graphique montre toujours l'année entière, avec la période choisie en couleur : un mois
+      // seul ne fait qu'une barre, et une barre isolée n'apprend rien. Vu dans les douze mois, si.
+      const series = C.revenueByMonth(data, company(), `${p.year}-01-01`, `${p.year}-12-31`);
+      const seriesPrev = C.revenueByMonth(data, company(), `${p.year - 1}-01-01`, `${p.year - 1}-12-31`);
+      series.forEach(x => { x.off = x.month < p.from.slice(0, 7) || x.month > p.to.slice(0, 7); });
+      const funnel = C.quoteFunnel(data, company(), p.from, p.to, now);
+      const items = C.topItems(data, company(), p.from, p.to, 8);
+      const clients = C.topClients(data, company(), p.from, p.to, 8);
+      const mvt = C.clientMovement(data, company(), p.from, p.to, company().dormantDays || 180, now);
+      const aging = C.agedReceivables(data, company(), now);
+      const payers = C.payerRanking(data, company(), 5);
+      const yearHT = C.salesTotals(data, company(), `${p.year}-01-01`, `${p.year}-12-31`).ht;
+      const obj = C.objectiveProgress(company().revenueTarget, yearHT, now, p.year);
+      const itemMax = items.length ? Math.max(...items.map(x => Math.abs(x.ht)), 1) : 1;
+      const clientMax = clients.length ? Math.max(...clients.map(x => x.ht), 1) : 1;
+      const funMax = Math.max(1, funnel.accepted, funnel.refused, funnel.expired, funnel.pending);
+
+      $('#s-body').innerHTML = `
+        <div class="stats">
+          ${statCard('Chiffre d\'affaires HT', C.money(cur1.ht, cur), cur1.ht, prev.ht, `${p.label} · avoirs déduits`, 'stat.ca')}
+          ${statCard('Factures émises', String(cur1.invoices), cur1.invoices, prev.invoices, `${cur1.count - cur1.invoices} avoir(s) sur la période`, 'stat.count')}
+          ${statCard('Panier moyen HT', C.money(cur1.avgTicket, cur), cur1.avgTicket, prev.avgTicket, 'par facture émise', 'stat.avg')}
+          ${statCard('TVA collectée', C.money(cur1.vat, cur), cur1.vat, prev.vat, 'à reverser, avoirs déduits', 'stat.vat')}
+        </div>
+        ${obj ? `<div class="panel"><h2>Objectif ${p.year} ${info('stat.objectif')}</h2>
+          <div class="gauge"><div class="g-bar"><i style="width:${Math.min(100, Math.max(0, obj.pct))}%"></i><span class="g-mark" style="left:${Math.min(100, obj.expectedPct)}%" title="Où tu devrais en être aujourd'hui"></span></div>
+            <div class="g-legend"><span><strong>${C.money(obj.ht, cur)}</strong> réalisés · ${obj.pct} % de l'objectif</span><span class="muted">objectif ${C.money(obj.goal, cur)}</span></div></div>
+          <p class="small ${obj.ahead >= 0 ? 'ok-text' : 'warn-text'}">${obj.ahead >= 0
+            ? `En avance de ${C.money(obj.ahead, cur)} sur le rythme de l'année.`
+            : `En retard de ${C.money(-obj.ahead, cur)} sur le rythme de l'année.`}
+            ${obj.remaining > 0 ? ` Il reste ${C.money(obj.remaining, cur)} à facturer, soit ${C.money(obj.perMonth, cur)} par mois sur les ${obj.monthsLeft} mois restants.` : ' Objectif atteint.'}</p>
+        </div>` : `<div class="panel"><h2>Objectif annuel ${info('stat.objectif')}</h2>
+          <p class="small muted">Aucun objectif défini. Donne-toi un chiffre d'affaires à atteindre : la page te dira chaque mois si tu tiens le rythme.</p>
+          <button class="btn btn-sm" id="s-goal">Définir un objectif…</button></div>`}
+        <div class="panel"><h2>Chiffre d'affaires mois par mois — ${p.year} ${info('stat.chart')}</h2>
+          ${compareChart(series, seriesPrev)}
+          <div class="legend"><span><i style="background:var(--primary)"></i>${h(p.label)}</span>${p.kind === 'annee' ? '' : `<span><i style="background:var(--primary);opacity:.28"></i>reste de ${p.year}</span>`}<span><i style="background:#9aa7b4;opacity:.6"></i>${p.year - 1}</span></div>
+        </div>
+        <div class="split">
+          <div class="panel"><h2>Issue des devis ${info('stat.funnel')}</h2>
+            ${funnel.total ? `<table class="list compact"><thead><tr><th>Issue</th><th class="r">Devis</th><th class="r">Montant TTC</th><th></th></tr></thead><tbody>
+              ${[['Acceptés', funnel.accepted, funnel.acceptedAmount, 'ok'], ['Refusés', funnel.refused, funnel.refusedAmount, 'bad'],
+                 ['Expirés sans réponse', funnel.expired, funnel.expiredAmount, 'warn'], ['Encore en attente', funnel.pending, funnel.pendingAmount, 'neutral']]
+                .map(([l, n2, amt, cls]) => `<tr><td>${l}</td><td class="r nw">${n2}</td><td class="r nw">${C.money(amt, cur)}</td><td style="width:34%"><span class="bar"><i class="f-${cls}" style="width:${Math.round(n2 / funMax * 100)}%"></i></span></td></tr>`).join('')}
+            </tbody></table>
+            <p class="small muted mt">Taux d'acceptation : <strong>${funnel.rate == null ? '—' : funnel.rate + ' %'}</strong> (sur les devis tranchés).
+            Délai moyen entre le devis et la première facture : <strong>${funnel.replyDelay == null ? '—' : funnel.replyDelay + ' jours'}</strong>.</p>`
+            : '<div class="empty">Aucun devis émis sur cette période.</div>'}
+          </div>
+          <div class="panel"><h2>Âge des impayés ${info('stat.aging')}</h2>
+            ${aging.total ? `<table class="list compact"><thead><tr><th>Retard</th><th class="r">Factures</th><th class="r">Montant</th></tr></thead><tbody>
+              ${aging.buckets.map(b => `<tr class="${b.min >= 61 && b.amount ? 'row-warn' : ''}"><td>${h(b.label)}</td><td class="r nw">${b.count || '—'}</td><td class="r nw">${b.amount ? C.money(b.amount, cur) : '—'}</td></tr>`).join('')}
+              <tr class="total-row"><td><strong>Total dû</strong></td><td></td><td class="r nw"><strong>${C.money(aging.total, cur)}</strong></td></tr>
+            </tbody></table>
+            <p class="small muted mt">Au-delà de 90 jours, une créance devient difficile à recouvrer : c'est le moment d'une relance écrite. <a href="#/relances" id="s-relances">Voir les relances</a></p>`
+            : '<div class="empty">Rien en attente de paiement. Tout est encaissé.</div>'}
+          </div>
+        </div>
+        <div class="split">
+          <div class="panel"><h2>Prestations les plus vendues ${info('stat.items')}</h2>
+            ${items.length ? `<ul class="rank">${items.map(x => `<li><span class="name">${h(x.label)}</span><span class="bar"><i style="width:${Math.max(4, Math.round(Math.abs(x.ht) / itemMax * 100))}%"></i></span><span class="amt">${C.money(x.ht, cur)}</span></li>`).join('')}</ul>
+            <p class="small muted mt">Regroupées par libellé, quantités et remises comprises. Les lignes de déduction d'acompte sont ignorées.</p>`
+            : '<div class="empty">Aucune vente sur cette période.</div>'}
+          </div>
+          <div class="panel"><h2>Meilleurs clients (HT) ${info('stat.clients')}</h2>
+            ${clients.length ? `<ul class="rank">${clients.map(x => `<li><a class="name" href="#/client/${h(x.clientId)}">${h(x.name)}</a><span class="bar"><i style="width:${Math.max(4, Math.round(x.ht / clientMax * 100))}%"></i></span><span class="amt">${C.money(x.ht, cur)}</span></li>`).join('')}</ul>
+            ${clients.length > 1 ? `<p class="small ${clients[0].ht / Math.max(1, cur1.ht) > 0.5 ? 'warn-text' : 'muted'} mt">Ton premier client pèse ${Math.round(clients[0].ht / Math.max(1, cur1.ht) * 100)} % du chiffre d'affaires.${clients[0].ht / Math.max(1, cur1.ht) > 0.5 ? ' C\'est beaucoup : perdre ce client ferait très mal.' : ''}</p>` : ''}`
+            : '<div class="empty">Aucun client facturé sur cette période.</div>'}
+          </div>
+        </div>
+        <div class="split">
+          <div class="panel"><h2>Mouvement des clients ${info('stat.mouvement')}</h2>
+            <h3 class="sub-h">Nouveaux sur la période (${mvt.nouveaux.length})</h3>
+            ${mvt.nouveaux.length ? `<table class="list compact"><thead><tr><th>Client</th><th>Première facture</th><th class="r">HT sur la période</th></tr></thead><tbody>
+              ${mvt.nouveaux.slice(0, 8).map(x => `<tr class="clickable" data-client="${h(x.clientId)}"><td>${h(x.name)}</td><td class="nw">${C.fmtDate(x.since)}</td><td class="r nw">${C.money(x.ht, cur)}</td></tr>`).join('')}
+            </tbody></table>` : '<p class="small muted">Aucun nouveau client sur cette période.</p>'}
+            <h3 class="sub-h">Endormis depuis plus de ${company().dormantDays || 180} jours (${mvt.dormants.length})</h3>
+            ${mvt.dormants.length ? `<table class="list compact"><thead><tr><th>Client</th><th>Dernière pièce</th><th class="r">Silence</th></tr></thead><tbody>
+              ${mvt.dormants.slice(0, 8).map(x => `<tr class="clickable" data-client="${h(x.clientId)}"><td>${h(x.name)}</td><td class="nw">${C.fmtDate(x.last)}</td><td class="r nw">${x.days} j</td></tr>`).join('')}
+            </tbody></table>
+            <p class="small muted mt">Un appel suffit parfois : ce sont des clients qui te connaissent déjà.</p>` : '<p class="small muted">Aucun client endormi. Tu les fais tous travailler.</p>'}
+          </div>
+          <div class="panel"><h2>Qui paie vite, qui paie tard ${info('stat.payeurs')}</h2>
+            ${payers.tous.length ? `<div class="two-col">
+              <div><h3 class="sub-h">Les plus rapides</h3><ul class="rank plain">${payers.rapides.map(x => `<li><a class="name" href="#/client/${h(x.clientId)}">${h(x.name)}</a><span class="amt">${x.delay} j</span></li>`).join('')}</ul></div>
+              <div><h3 class="sub-h">Les plus lents</h3><ul class="rank plain">${payers.lents.map(x => `<li><a class="name" href="#/client/${h(x.clientId)}">${h(x.name)}</a><span class="amt">${x.delay} j</span></li>`).join('')}</ul></div>
+            </div>
+            <p class="small muted mt">Délai moyen entre la date de facture et le dernier paiement, sur les factures soldées. Ton délai annoncé est de ${company().paymentTermsDays} jours.</p>`
+            : '<div class="empty">Aucune facture soldée pour l\'instant : le classement apparaîtra au premier paiement.</div>'}
+          </div>
+        </div>`;
+
+      $$('tr.clickable[data-client]').forEach(tr => tr.onclick = () => navigate('#/client/' + tr.dataset.client));
+      if ($('#s-goal')) $('#s-goal').onclick = () => askGoal(draw);
+      $('#s-export').onclick = async () => {
+        const rows = statsCsvRows(p, cur1, prev, funnel, aging, items, clients, mvt, payers, obj);
+        const cols = [{ key: 'section', label: 'Rubrique' }, { key: 'label', label: 'Libellé' }, { key: 'value', label: 'Valeur' }];
+        const name = `statistiques-${p.kind === 'annee' ? p.year : `${p.year}-${p.kind}${p.n}`}.csv`;
+        const f = await bridge.saveText(name, C.toCsv(rows, cols));
+        if (f) toast('Exporté : ' + f.split(/[\\/]/).pop());
+      };
+    };
+
+    fillN();
+    $('#s-kind').onchange = e => { statsState.kind = e.target.value; fillN(); draw(); };
+    $('#s-year').onchange = e => { statsState.year = e.target.value; draw(); };
+    $('#s-n').onchange = e => { statsState.n = e.target.value; draw(); };
+    draw();
+  };
+
+  // Carte de statistique avec comparaison à la même période de l'an dernier.
+  function statCard(label, value, now, before, sub, key) {
+    const delta = before ? Math.round((now - before) / Math.abs(before) * 100) : null;
+    const cls = delta == null ? '' : delta > 0 ? 'up' : delta < 0 ? 'down' : '';
+    const tip = delta == null ? 'Rien à comparer sur la même période l\'an dernier'
+      : `Même période l'an dernier : ${before}`;
+    return `<div class="stat"><div class="lbl">${label} ${info(key)}</div>
+      <div class="val"><span>${value}</span>${delta == null ? '' : `<span class="delta ${cls}" title="${h(tip)}">${delta > 0 ? '▲' : delta < 0 ? '▼' : '='} ${Math.abs(delta)} %</span>`}</div>
+      <div class="sub">${sub}</div></div>`;
+  }
+
+  // Histogramme comparatif : la période en cours devant, la même période l'an dernier derrière.
+  function compareChart(series, prev) {
+    const W = 640, H = 220, left = 48, bottom = 26, top = 10;
+    const vals = series.map(x => x.ht).concat(prev.map(x => x.ht));
+    const hi = Math.max(0, ...vals), lo = Math.min(0, ...vals);
+    const span = Math.max(1, hi - lo);
+    const slot = (W - left) / Math.max(1, series.length);
+    const y = v => top + (H - bottom - top) * (1 - (v - lo) / span);
+    const zero = y(0);
+    const grid = [0, 0.5, 1].map(f => { const v = lo + span * f; return `<line class="grid" x1="${left}" x2="${W}" y1="${y(v)}" y2="${y(v)}"/><text class="lbl" x="${left - 6}" y="${y(v) + 4}" text-anchor="end">${hi || lo ? short(v) : (f ? '' : '0')}</text>`; }).join('');
+    // Sur un mois seul, deux barres à 34 % d'un créneau large de 600 px seraient deux pavés :
+    // on plafonne la largeur et on centre la paire dans son créneau.
+    const bw = Math.min(slot * 0.34, 52), gap = Math.min(slot * 0.04, 8);
+    const bar = (v, x0, cls, title) => `<rect class="${cls}" x="${x0}" width="${bw}" y="${Math.min(y(v), zero)}" height="${Math.max(1, Math.abs(zero - y(v)))}" rx="2"><title>${h(title)}</title></rect>`;
+    const bars = series.map((x, i) => {
+      const mid = left + i * slot + slot / 2, p = prev[i];
+      const cy = company().currency;
+      return (p ? bar(p.ht, mid - bw - gap / 2, 'bar-prev', `${p.label} ${p.month.slice(0, 4)} — ${C.money(p.ht, cy)}`) : '')
+        + bar(x.ht, p ? mid + gap / 2 : mid - bw / 2, x.off ? 'bar-inv bar-off' : 'bar-inv', `${x.label} ${x.month.slice(0, 4)} — ${C.money(x.ht, cy)}`)
+        + `<text class="lbl" x="${mid}" y="${H - 8}" text-anchor="middle">${h(x.label)}</text>`;
+    }).join('');
+    return `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${grid}<line class="axis" x1="${left}" x2="${W}" y1="${zero}" y2="${zero}"/>${bars}</svg>`;
+  }
+
+  // Objectif annuel : demandé depuis la page Statistiques, enregistré dans la société.
+  function askGoal(after) {
+    modal(`<h2>Objectif de chiffre d'affaires</h2>
+      <p class="small muted">Le montant HT que tu veux facturer sur une année entière. Tu peux le changer quand tu veux dans Paramètres → Documents.</p>
+      <form id="gf"><label class="field">Objectif annuel HT<input type="number" name="target" min="0" step="1" value="${Number(company().revenueTarget) || ''}" placeholder="60000"></label></form>
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
+      (root, close) => { $('#ok', root).onclick = () => {
+        const v = formValues($('#gf', root));
+        data.company.revenueTarget = Math.max(0, Number(v.target) || 0);
+        save(true); close(); if (after) after();
+        toast(data.company.revenueTarget ? 'Objectif enregistré' : 'Objectif retiré');
+      }; });
+  }
+
+  // Export CSV de la page : une ligne par chiffre, pour reprise dans un tableur.
+  function statsCsvRows(p, cur1, prev, funnel, aging, items, clients, mvt, payers, obj) {
+    const cur = company().currency;
+    const m = n => C.money(n, cur);
+    const rows = [
+      { section: 'Période', label: 'Analysée', value: p.label },
+      { section: 'Période', label: 'Du', value: p.from }, { section: 'Période', label: 'Au', value: p.to },
+      { section: 'Ventes', label: 'Chiffre d\'affaires HT', value: m(cur1.ht) },
+      { section: 'Ventes', label: 'Chiffre d\'affaires HT — même période l\'an dernier', value: m(prev.ht) },
+      { section: 'Ventes', label: 'TVA collectée', value: m(cur1.vat) },
+      { section: 'Ventes', label: 'Total TTC', value: m(cur1.ttc) },
+      { section: 'Ventes', label: 'Factures émises', value: cur1.invoices },
+      { section: 'Ventes', label: 'Panier moyen HT', value: m(cur1.avgTicket) },
+      { section: 'Devis', label: 'Émis', value: funnel.total },
+      { section: 'Devis', label: 'Acceptés', value: `${funnel.accepted} (${m(funnel.acceptedAmount)})` },
+      { section: 'Devis', label: 'Refusés', value: `${funnel.refused} (${m(funnel.refusedAmount)})` },
+      { section: 'Devis', label: 'Expirés sans réponse', value: `${funnel.expired} (${m(funnel.expiredAmount)})` },
+      { section: 'Devis', label: 'En attente', value: `${funnel.pending} (${m(funnel.pendingAmount)})` },
+      { section: 'Devis', label: 'Taux d\'acceptation', value: funnel.rate == null ? '' : funnel.rate + ' %' },
+      { section: 'Devis', label: 'Délai moyen de réponse (jours)', value: funnel.replyDelay == null ? '' : funnel.replyDelay }
+    ];
+    aging.buckets.forEach(b => rows.push({ section: 'Impayés', label: b.label, value: `${b.count} — ${m(b.amount)}` }));
+    rows.push({ section: 'Impayés', label: 'Total dû', value: m(aging.total) });
+    items.forEach((x, i) => rows.push({ section: 'Prestations', label: `${i + 1}. ${x.label}`, value: m(x.ht) }));
+    clients.forEach((x, i) => rows.push({ section: 'Clients', label: `${i + 1}. ${x.name}`, value: m(x.ht) }));
+    mvt.nouveaux.forEach(x => rows.push({ section: 'Nouveaux clients', label: x.name, value: `${C.fmtDate(x.since)} — ${m(x.ht)}` }));
+    mvt.dormants.forEach(x => rows.push({ section: 'Clients endormis', label: x.name, value: `${C.fmtDate(x.last)} — ${x.days} jours` }));
+    payers.tous.forEach(x => rows.push({ section: 'Délai de paiement', label: x.name, value: `${x.delay} jours sur ${x.count} facture(s)` }));
+    if (obj) {
+      rows.push({ section: 'Objectif', label: 'Objectif annuel HT', value: m(obj.goal) });
+      rows.push({ section: 'Objectif', label: 'Réalisé', value: `${m(obj.ht)} (${obj.pct} %)` });
+      rows.push({ section: 'Objectif', label: 'Reste à facturer', value: m(obj.remaining) });
+    }
+    return rows;
+  }
 
   routes.compta = () => {
     const cur = company().currency;
@@ -2482,6 +2718,12 @@
           <label class="check" style="align-self:end"><input type="checkbox" name="openAfterExport" ${c.openAfterExport !== false ? 'checked' : ''}> Ouvrir le PDF après export ${info('doc.openAfterExport')}</label>
         </div>
         <p class="small muted mt">Retenue à la source : calculée sur le TTC hors timbre, modifiable sur chaque facture et par client. Les taux et l'assiette sont <em>À VÉRIFIER avec ton comptable</em>.</p></div>
+        <div class="panel"><h2>Objectifs et statistiques</h2>
+          <p class="small muted mb">Ces deux réglages ne servent qu'à la page Statistiques : ils ne s'impriment nulle part et ne changent aucun calcul de facture.</p>
+          <div class="grid-3">
+          ${field(lbl('Objectif de chiffre d\'affaires HT (par an)', 'stat.target'), 'revenueTarget', c.revenueTarget || 0, 'number', 'step="1" min="0" class="num"')}
+          ${field(lbl('Un client est « endormi » après (jours)', 'stat.dormant'), 'dormantDays', c.dormantDays || 180, 'number', 'min="1" class="num"')}
+        </div></div>
         <div class="panel"><h2>Textes imprimés sur les documents</h2><div class="grid-2">
           <label class="field span-2">${lbl('Conditions des devis', 'doc.quoteTerms')}<textarea name="quoteTerms">${h(c.quoteTerms || '')}</textarea></label>
           <label class="field span-2">${lbl('Pied de page des documents', 'doc.footer')}<textarea name="footer">${h(c.footer)}</textarea></label>
@@ -2584,6 +2826,8 @@
       Object.keys(v).forEach(k => { const m = k.match(/^(et|eten)_(\w+)_(subject|body)$/); if (m) { const bag = m[1] === 'et' ? et : eten; bag[m[2]] = bag[m[2]] || {}; bag[m[2]][m[3]] = v[k]; delete v[k]; } });
       Object.assign(data.company, v, { emailTemplates: et, emailTemplatesEn: eten });
       data.company.defaultWithholdingRate = Number(data.company.defaultWithholdingRate) || 0;
+      data.company.revenueTarget = Math.max(0, Number(data.company.revenueTarget) || 0);
+      data.company.dormantDays = Math.max(1, Number(data.company.dormantDays) || 180);
       save(true); applyTheme(); $('#brand-company').textContent = data.company.name || 'Ton entreprise';
       setDirty = false; $('#save-bar').hidden = true;
       return true;
