@@ -223,6 +223,49 @@ t('relances : factures échues, niveaux, gabarits d\'email', () => {
   assert.strictEqual(core.fillTemplate('{a}-{b}-{c}', { a: 1, b: 'deux' }), '1-deux-{c}');
 });
 
+// ---------- 1.6 : anglais, devises, tableau de bord ----------
+t('anglais : montant en lettres, format des nombres, template', () => {
+  assert.strictEqual(core.intToWordsEn(1191), 'one thousand one hundred and ninety-one');
+  assert.strictEqual(core.intToWordsEn(2000015), 'two million fifteen');
+  assert.strictEqual(core.amountToWords(1191.15, 'EUR', 'en'), 'One thousand one hundred and ninety-one euros and fifteen cents');
+  assert.strictEqual(core.amountToWords(2.5, 'EUR', 'fr'), 'Deux euros et cinquante centimes');
+  assert.strictEqual(core.amountToWords(1.001, 'DT', 'en'), 'One dinar and one millime');
+  assert.strictEqual(core.money(1234.5, 'EUR'), '1 234,50 EUR');
+  assert.strictEqual(core.money(1234.5, 'DT'), '1 234,500 DT');
+  assert.strictEqual(core.money(1234567.891, null, 2, 'en'), '1,234,567.89');
+  const html = core.documentHtml({ ...inv(), lang: 'en', currency: 'EUR', exchangeRate: 3.4, withholdingRate: 0 }, { name: 'ACME Ltd', matricule: 'GB123' }, CO);
+  assert.ok(html.includes('<div class="kind">Invoice</div>') && html.includes('Billed to') && html.includes('Amount due') && html.includes('Stamp duty'));
+  assert.ok(html.includes('1,191.00') && html.includes('<small>EUR</small>') && html.includes('1 EUR = 3,400 DT'));
+  assert.ok(html.includes('Total amount in words:') && html.includes('one thousand one hundred and ninety-one euros'));
+  assert.ok(html.includes('Tax ID GB123') && html.includes('Payment by bank transfer'));
+  const draft = core.documentHtml({ ...inv(), lang: 'en', number: '', status: 'brouillon' }, { name: 'X' }, CO);
+  assert.ok(draft.includes('>Draft<'));
+  const paid = core.documentHtml({ ...inv(), lang: 'en' }, { name: 'X' }, { ...CO, stampImage: 'data:image/png;base64,AAAA' }, { stampText: 'Payée' });
+  assert.ok(paid.includes('>Paid<') && paid.includes('src="data:image/png;base64,AAAA"'));
+  const fr = core.documentHtml(inv(), { name: 'X' }, CO);
+  assert.ok(fr.includes('<div class="kind">Facture</div>') && fr.includes('1 191,000'));
+});
+
+t('devises : conversion dans le journal et le tableau de bord', () => {
+  const data = { clients: [{ id: 'c1', name: 'ACME' }, { id: 'c2', name: 'Local' }], documents: [
+    inv({ id: 'e1', number: 'FAC-2026-001', clientId: 'c1', currency: 'EUR', exchangeRate: 3.4, date: '2026-09-02', payments: [{ id: 'p', date: '2026-09-10', amount: 1191 }] }),
+    inv({ id: 'l1', number: 'FAC-2026-002', clientId: 'c2', date: '2026-08-15', lines: [{ label: 'x', qty: 1, unitPrice: 500, vatRate: 19 }] }),
+    { id: 'q1', type: 'devis', number: 'DEV-2026-001', status: 'accepté', date: '2026-08-01', lines: [] },
+    { id: 'q2', type: 'devis', number: 'DEV-2026-002', status: 'refusé', date: '2026-08-05', lines: [] },
+    { id: 'q3', type: 'devis', number: 'DEV-2026-003', status: 'envoyé', date: '2026-09-05', lines: [] }
+  ] };
+  const rows = core.salesJournal(data, CO, { from: '2026-09-01', to: '2026-09-30', today: '2026-09-11' });
+  assert.strictEqual(rows[0].ht, 3400); assert.strictEqual(rows[0].currency, 'EUR'); assert.strictEqual(rows[0].rate, 3.4);
+  const series = core.monthlySeries(data, CO, '2026-09-11', 12);
+  assert.strictEqual(series.length, 12);
+  assert.strictEqual(series[11].month, '2026-09'); assert.strictEqual(series[11].invoiced, 3400); assert.strictEqual(series[11].collected, core.round3(1191 * 3.4));
+  assert.strictEqual(series[10].invoiced, 500);
+  assert.deepStrictEqual(core.topClients(data, CO, '2026-01-01', '2026-12-31', 5).map(x => [x.name, x.ht]), [['ACME', 3400], ['Local', 500]]);
+  assert.deepStrictEqual(core.quoteStats(data, '2026-01-01', '2026-12-31'), { total: 3, accepted: 1, refused: 1, pending: 1, rate: 50 });
+  assert.strictEqual(core.avgPaymentDelay(data, CO, '2026-01-01', '2026-12-31'), 8);
+  assert.strictEqual(core.monthKeys('2026-01-15', 3).join(','), '2025-11,2025-12,2026-01');
+});
+
 // ---------- stockage (src/storage.js) ----------
 const fs = require('fs');
 const os = require('os');

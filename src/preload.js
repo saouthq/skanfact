@@ -10,7 +10,7 @@ contextBridge.exposeInMainWorld('skanfact', {
   openBackups: () => ipcRenderer.invoke('backups:open'),
   createBackup: () => ipcRenderer.invoke('backups:create'),
   listBackups: () => ipcRenderer.invoke('backups:list'),
-  pickLogo: () => ipcRenderer.invoke('logo:pick'),
+  pickLogo: (title) => ipcRenderer.invoke('logo:pick', title),
   exportPdf: (html, suggestedName) => ipcRenderer.invoke('pdf:export', { html, suggestedName }),
   exportPdfMany: (files, folderName) => ipcRenderer.invoke('pdf:exportMany', { files, folderName }),
   saveText: (suggestedName, content) => ipcRenderer.invoke('file:saveText', { suggestedName, content }),

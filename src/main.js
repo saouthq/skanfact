@@ -293,9 +293,9 @@ ipcMain.handle('backups:list', () => storage.listBackups());
 
 // ---------- logo ----------
 
-ipcMain.handle('logo:pick', async () => {
+ipcMain.handle('logo:pick', async (_e, title) => {
   const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
-    title: 'Choisir un logo',
+    title: title || 'Choisir un logo',
     filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'svg'] }],
     properties: ['openFile']
   });

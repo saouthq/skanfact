@@ -31,7 +31,12 @@
     defaultWithholdingRate: 0,
     paymentTerms: 'Paiement par virement bancaire à réception de la facture.',
     quoteTerms: 'Pour accepter ce devis, retournez-le daté et signé avec la mention « Bon pour accord ».',
+    paymentTermsEn: 'Payment by bank transfer upon receipt of invoice.',
+    quoteTermsEn: 'To accept this quote, please return it dated and signed with the mention "Approved".',
     currency: 'DT',
+    defaultLang: 'fr',
+    stampImage: '',       // cachet / signature (data URL) sur les documents
+    theme: 'light',       // light | dark | auto
     tagline: 'Cybersécurité · Infrastructure · Services informatiques',
     primaryColor: '#1b2430',
     accentColor: '#0f9d8f'
@@ -71,12 +76,22 @@
 
   function round3(n) { return Math.round((Number(n) || 0) * 1000) / 1000; }
 
-  function money(n, currency) {
+  const CURRENCIES = ['DT', 'EUR', 'USD', 'GBP', 'CHF', 'MAD', 'DZD'];
+  function decimalsFor(currency) { return !currency || currency === 'DT' || currency === 'TND' ? 3 : 2; }
+  function money(n, currency, decimals, lang) {
     const v = round3(n);
     const neg = v < 0;
-    const s = Math.abs(v).toFixed(3).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    const dec = decimals != null ? decimals : decimalsFor(currency);
+    const en = lang === 'en';
+    const s = Math.abs(v).toFixed(dec).replace('.', en ? '.' : ',').replace(/\B(?=(\d{3})+(?!\d))/g, en ? ',' : ' ');
     const out = (neg ? '− ' : '') + s;
     return currency ? `${out} ${currency}` : out;
+  }
+  // Montant d'un document ramené à la devise de la société (taux saisi sur le document : 1 devise = x DT)
+  function toBase(doc, amount, company) {
+    const cur = doc.currency || company.currency;
+    if (!cur || cur === company.currency) return round3(amount);
+    return round3(amount * (Number(doc.exchangeRate) || 1));
   }
 
   function fmtDate(iso) {
@@ -229,7 +244,8 @@
     return docs.map(d => {
       const t = computeTotals(d, company);
       const cancelled = d.type === 'facture' && d.status === 'annulée';
-      const sign = cancelled ? 0 : (d.type === 'avoir' ? -1 : 1);
+      const rate = (d.currency && d.currency !== company.currency) ? (Number(d.exchangeRate) || 1) : 1;
+      const sign = (cancelled ? 0 : (d.type === 'avoir' ? -1 : 1)) * rate;
       const status = d.type === 'facture' ? effectiveStatus(d, data, company, period.today) : d.status;
       const bal = d.type === 'facture' ? invoiceBalance(d, data, company) : null;
       const vatByRate = {};
@@ -238,7 +254,7 @@
         id: d.id, date: d.date, number: d.number, type: d.type, typeLabel: TITLES[d.type], client: clientName(d.clientId), subject: d.subject || '',
         ht: round3(t.netHT * sign), vatByRate, tva: round3(t.totalVAT * sign), timbre: round3(t.stamp * sign), ttc: round3(t.totalTTC * sign),
         rs: round3(t.withholding * sign), net: round3(t.netToPay * sign), status, statusLabel: statusLabel(status),
-        paid: bal ? bal.paid : 0, remaining: bal ? bal.remaining : 0,
+        paid: bal ? round3(bal.paid * rate) : 0, remaining: bal ? round3(bal.remaining * rate) : 0, currency: d.currency || company.currency, rate,
         withholdingCertificate: !!d.withholdingCertificate, creditOfNumber: d.creditOfNumber || ''
       };
     });
@@ -263,7 +279,7 @@
       (d.payments || []).forEach(p => {
         if (!inPeriod(p.date, period.from, period.to)) return;
         const m = PAYMENT_METHODS.find(x => x[0] === p.method);
-        rows.push({ id: p.id, date: p.date, number: d.number, client: clientName(d.clientId), amount: round3(p.amount), method: m ? m[1] : (p.method || ''), reference: p.reference || '', note: p.note || '', docId: d.id });
+        rows.push({ id: p.id, date: p.date, number: d.number, client: clientName(d.clientId), amount: toBase(d, p.amount, company), method: m ? m[1] : (p.method || ''), reference: p.reference || '', note: p.note || '', docId: d.id, currency: d.currency || company.currency });
       });
     });
     return rows.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
@@ -352,8 +368,60 @@
       clientId: rec.clientId, subject: fillTemplate(rec.subject, vars), reference: rec.reference || '',
       lines: (rec.lines || []).map(l => ({ ...l, label: fillTemplate(l.label, vars), description: fillTemplate(l.description || '', vars) })),
       discountRate: rec.discountRate || 0, applyStamp: true, notes: fillTemplate(rec.notes || '', vars), payments: [],
-      withholdingRate: Number(rec.withholdingRate) || 0, recurringId: rec.id
+      withholdingRate: Number(rec.withholdingRate) || 0, recurringId: rec.id, lang: rec.lang || company.defaultLang || 'fr', currency: rec.currency || company.currency, exchangeRate: rec.exchangeRate || ''
     };
+  }
+
+  // ---------- tableau de bord ----------
+
+  function monthKeys(todayIso, n) {
+    const [y, m] = (todayIso || today()).split('-').map(Number);
+    const out = [];
+    for (let i = n - 1; i >= 0; i--) { const total = y * 12 + (m - 1) - i; out.push(`${Math.floor(total / 12)}-${String((total % 12) + 1).padStart(2, '0')}`); }
+    return out;
+  }
+
+  // CA HT facturé (avoirs déduits) et encaissements par mois, sur les n derniers mois, en devise société.
+  function monthlySeries(data, company, todayIso, n) {
+    const keys = monthKeys(todayIso, n || 12);
+    const series = keys.map(k => ({ month: k, label: MONTHS_FR[Number(k.slice(5, 7)) - 1].slice(0, 3) + (k.endsWith('-01') || k === keys[0] ? ' ' + k.slice(2, 4) : ''), invoiced: 0, collected: 0 }));
+    const byKey = Object.fromEntries(series.map(x => [x.month, x]));
+    (data.documents || []).forEach(d => {
+      if (d.type === 'facture' || d.type === 'avoir') {
+        if (d.status !== 'brouillon' && d.status !== 'annulée' && byKey[(d.date || '').slice(0, 7)]) {
+          byKey[d.date.slice(0, 7)].invoiced = round3(byKey[d.date.slice(0, 7)].invoiced + (d.type === 'avoir' ? -1 : 1) * toBase(d, computeTotals(d, company).netHT, company));
+        }
+        if (d.type === 'facture') (d.payments || []).forEach(p => { const k = (p.date || '').slice(0, 7); if (byKey[k]) byKey[k].collected = round3(byKey[k].collected + toBase(d, Number(p.amount) || 0, company)); });
+      }
+    });
+    return series;
+  }
+
+  function topClients(data, company, fromIso, toIso, limit) {
+    const totals = {};
+    (data.documents || []).filter(d => (d.type === 'facture' || d.type === 'avoir') && d.status !== 'brouillon' && d.status !== 'annulée' && inPeriod(d.date, fromIso, toIso))
+      .forEach(d => { totals[d.clientId] = round3((totals[d.clientId] || 0) + (d.type === 'avoir' ? -1 : 1) * toBase(d, computeTotals(d, company).netHT, company)); });
+    const name = id => ((data.clients || []).find(c => c.id === id) || {}).name || '—';
+    return Object.keys(totals).map(id => ({ clientId: id, name: name(id), ht: totals[id] })).sort((a, b) => b.ht - a.ht).slice(0, limit || 5);
+  }
+
+  // Devis émis sur la période : acceptés / refusés / en attente, taux de conversion (acceptés / décidés)
+  function quoteStats(data, fromIso, toIso) {
+    const q = (data.documents || []).filter(d => d.type === 'devis' && d.status !== 'brouillon' && inPeriod(d.date, fromIso, toIso));
+    const accepted = q.filter(d => d.status === 'accepté').length, refused = q.filter(d => d.status === 'refusé').length;
+    const decided = accepted + refused;
+    return { total: q.length, accepted, refused, pending: q.length - decided, rate: decided ? Math.round(accepted / decided * 100) : null };
+  }
+
+  // Délai moyen (jours) entre la date de facture et le dernier paiement, sur les factures soldées de la période
+  function avgPaymentDelay(data, company, fromIso, toIso) {
+    const delays = [];
+    (data.documents || []).filter(d => d.type === 'facture' && d.status !== 'brouillon' && d.status !== 'annulée' && inPeriod(d.date, fromIso, toIso)).forEach(d => {
+      if (effectiveStatus(d, data, company, '9999-12-31') !== 'payée' || !(d.payments || []).length) return;
+      const last = d.payments.map(p => p.date).sort().pop();
+      if (last && d.date) delays.push(daysBetween(d.date, last));
+    });
+    return delays.length ? Math.round(delays.reduce((s, x) => s + x, 0) / delays.length) : null;
   }
 
   // ---------- relances ----------
@@ -390,11 +458,21 @@
     relance3: { subject: 'Dernière relance — facture {numero}', body: 'Bonjour,\n\nMalgré nos précédents rappels, la facture {numero} ({montant}, échue le {echeance}) reste impayée après {jours} jours.\nSans règlement sous 8 jours, nous serons contraints d\'engager une procédure de recouvrement.\n\nCordialement,\n{societe}' }
   };
 
+  const DEFAULT_EMAIL_TEMPLATES_EN = {
+    devis: { subject: 'Quote {numero} — {societe}', body: 'Hello,\n\nPlease find attached our quote {numero} ({montant} incl. VAT) for: {objet}.\nIt is valid until {echeance}.\n\nWe remain at your disposal for any question.\n\nBest regards,\n{societe}' },
+    facture: { subject: 'Invoice {numero} — {societe}', body: 'Hello,\n\nPlease find attached our invoice {numero} for {montant}, due by {echeance}.\n\nThank you for your trust.\n\nBest regards,\n{societe}' },
+    avoir: { subject: 'Credit note {numero} — {societe}', body: 'Hello,\n\nPlease find attached credit note {numero} ({montant}) related to invoice {reference}.\n\nBest regards,\n{societe}' },
+    relance1: { subject: 'Reminder — invoice {numero}', body: 'Hello,\n\nUnless we are mistaken, invoice {numero} ({montant}) due on {echeance} is still awaiting payment.\nIf you have already paid, please disregard this message.\n\nBest regards,\n{societe}' },
+    relance2: { subject: 'Second reminder — invoice {numero} is {jours} days overdue', body: 'Hello,\n\nOur invoice {numero} for {montant}, due on {echeance}, remains unpaid ({jours} days overdue).\nPlease proceed with payment as soon as possible or let us know the expected date.\n\nBest regards,\n{societe}' },
+    relance3: { subject: 'Final reminder — invoice {numero}', body: 'Hello,\n\nDespite our previous reminders, invoice {numero} ({montant}, due on {echeance}) remains unpaid after {jours} days.\nWithout payment within 8 days, we will have to start a recovery procedure.\n\nBest regards,\n{societe}' }
+  };
+
   function emailFor(kind, doc, client, company, extra) {
-    const templates = { ...DEFAULT_EMAIL_TEMPLATES, ...(company.emailTemplates || {}) };
-    const tpl = templates[kind] || DEFAULT_EMAIL_TEMPLATES.facture;
+    const en = (doc.lang || (client && client.lang) || company.defaultLang) === 'en';
+    const templates = en ? { ...DEFAULT_EMAIL_TEMPLATES_EN, ...(company.emailTemplatesEn || {}) } : { ...DEFAULT_EMAIL_TEMPLATES, ...(company.emailTemplates || {}) };
+    const tpl = templates[kind] || templates.facture;
     const t = computeTotals(doc, company);
-    const cur = company.currency || 'DT';
+    const cur = doc.currency || company.currency || 'DT';
     const vars = {
       numero: doc.number || 'brouillon', objet: doc.subject || '', client: (client || {}).name || '', societe: company.name,
       montant: money(doc.type === 'devis' ? t.totalTTC : t.netToPay, cur), echeance: fmtDate(doc.dueDate), reference: doc.creditOfNumber || doc.reference || '',
@@ -447,34 +525,88 @@
     return parts.join(' ');
   }
 
-  function amountToWords(amount, currency) {
+  // ---------- montant en lettres (anglais) ----------
+
+  const UNITS_EN = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
+  const TENS_EN = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
+  function below1000En(n) {
+    const h = Math.floor(n / 100), r = n % 100;
+    let s = h ? UNITS_EN[h] + ' hundred' : '';
+    if (r) s += (s ? ' and ' : '') + (r < 20 ? UNITS_EN[r] : TENS_EN[Math.floor(r / 10)] + (r % 10 ? '-' + UNITS_EN[r % 10] : ''));
+    return s;
+  }
+  function intToWordsEn(n) {
+    n = Math.floor(Math.abs(n));
+    if (n === 0) return 'zero';
+    const parts = [];
+    [[1e9, 'billion'], [1e6, 'million'], [1e3, 'thousand']].forEach(([val, name]) => { if (n >= val) { parts.push(below1000En(Math.floor(n / val)) + ' ' + name); n %= val; } });
+    if (n) parts.push(below1000En(n));
+    return parts.join(' ');
+  }
+
+  // Unités monétaires : [singulier, pluriel, sous-unité singulier, pluriel, diviseur]
+  const CURRENCY_WORDS = {
+    fr: { DT: ['dinar', 'dinars', 'millime', 'millimes', 1000], TND: ['dinar', 'dinars', 'millime', 'millimes', 1000], EUR: ['euro', 'euros', 'centime', 'centimes', 100], USD: ['dollar', 'dollars', 'cent', 'cents', 100], GBP: ['livre', 'livres', 'penny', 'pence', 100], CHF: ['franc', 'francs', 'centime', 'centimes', 100], MAD: ['dirham', 'dirhams', 'centime', 'centimes', 100], DZD: ['dinar', 'dinars', 'centime', 'centimes', 100] },
+    en: { DT: ['dinar', 'dinars', 'millime', 'millimes', 1000], TND: ['dinar', 'dinars', 'millime', 'millimes', 1000], EUR: ['euro', 'euros', 'cent', 'cents', 100], USD: ['dollar', 'dollars', 'cent', 'cents', 100], GBP: ['pound', 'pounds', 'penny', 'pence', 100], CHF: ['franc', 'francs', 'centime', 'centimes', 100], MAD: ['dirham', 'dirhams', 'centime', 'centimes', 100], DZD: ['dinar', 'dinars', 'centime', 'centimes', 100] }
+  };
+
+  function amountToWords(amount, currency, lang) {
     const cur = currency || 'DT';
-    const curWord = cur === 'DT' || cur === 'TND' ? 'dinar' : cur;
+    const en = lang === 'en';
+    const w = (CURRENCY_WORDS[en ? 'en' : 'fr'][cur]) || [cur, cur, en ? 'cent' : 'centime', en ? 'cents' : 'centimes', 100];
     const v = round3(Math.abs(amount));
     const d = Math.floor(v);
-    const m = Math.round((v - d) * 1000);
-    let s = intToWords(d) + ' ' + curWord + (d > 1 && curWord === 'dinar' ? 's' : '');
-    if (m) s += ' et ' + intToWords(m) + ' millime' + (m > 1 ? 's' : '');
+    const m = Math.round((v - d) * w[4]);
+    const words = en ? intToWordsEn : intToWords;
+    let s = words(d) + ' ' + (d > 1 ? w[1] : w[0]);
+    if (m) s += (en ? ' and ' : ' et ') + words(m) + ' ' + (m > 1 ? w[3] : w[2]);
     return s.charAt(0).toUpperCase() + s.slice(1);
   }
 
   // ---------- template HTML (aperçu + PDF) ----------
 
+  const I18N = {
+    fr: {
+      devis: 'Devis', facture: 'Facture', avoir: 'Avoir', issuedF: 'Émise le', issued: 'Émis le', dueBy: 'À régler avant le', validUntil: 'Valable jusqu\'au',
+      deposit: 'Acompte', depositOf: '% du devis', balance: 'Solde', balanceOf: 'du devis', afterQuote: 'Suite au devis', reference: 'Référence', cancels: 'Annule / rectifie',
+      billedTo: 'Facturé à', preparedFor: 'Préparé pour', client: 'Client', subject: 'Objet', designation: 'Désignation', qty: 'Qté', unitPrice: 'Prix unit. HT', vat: 'TVA', lineTotal: 'Total HT',
+      payment: 'Règlement', bank: 'Banque', rib: 'RIB', motif: 'Motif', creditText: n => `Cet avoir vient en déduction de la facture ${n}`, conditions: 'Conditions', validText: d => `Devis valable jusqu'au ${d}.`,
+      subtotal: 'Total HT', discount: 'Remise', netHT: 'Net HT', on: 'sur', stamp: 'Timbre fiscal', totalTTC: 'Total TTC', withholding: 'Retenue à la source', netToPay: 'Net à payer', creditAmount: 'Montant de l\'avoir',
+      wordsInvoice: 'Arrêtée la présente facture à la somme de', wordsCredit: 'Arrêté le présent avoir à la somme de', wordsQuote: 'Arrêté le présent devis à la somme de',
+      approve: 'Bon pour accord', approveSub: 'Date, signature et cachet du client', stampSign: 'Cachet et signature', provider: 'Le prestataire', draft: 'Brouillon', paid: 'Payée', cancelled: 'Annulée', mf: 'MF', mfCin: 'MF / CIN', rate: 'Taux'
+    },
+    en: {
+      devis: 'Quote', facture: 'Invoice', avoir: 'Credit note', issuedF: 'Issued on', issued: 'Issued on', dueBy: 'Due by', validUntil: 'Valid until',
+      deposit: 'Deposit', depositOf: '% of quote', balance: 'Balance', balanceOf: 'of quote', afterQuote: 'Following quote', reference: 'Reference', cancels: 'Cancels / corrects',
+      billedTo: 'Billed to', preparedFor: 'Prepared for', client: 'Client', subject: 'Subject', designation: 'Description', qty: 'Qty', unitPrice: 'Unit price', vat: 'VAT', lineTotal: 'Total excl. VAT',
+      payment: 'Payment', bank: 'Bank', rib: 'Account (RIB)', motif: 'Reference', creditText: n => `This credit note is deducted from invoice ${n}`, conditions: 'Terms', validText: d => `This quote is valid until ${d}.`,
+      subtotal: 'Subtotal excl. VAT', discount: 'Discount', netHT: 'Net excl. VAT', on: 'on', stamp: 'Stamp duty', totalTTC: 'Total incl. VAT', withholding: 'Withholding tax', netToPay: 'Amount due', creditAmount: 'Credit amount',
+      wordsInvoice: 'Total amount in words:', wordsCredit: 'Total amount in words:', wordsQuote: 'Total amount in words:',
+      approve: 'Approved — signature', approveSub: 'Date, signature and stamp of the client', stampSign: 'Stamp and signature', provider: 'Provider', draft: 'Draft', paid: 'Paid', cancelled: 'Cancelled', mf: 'Tax ID', mfCin: 'Tax ID', rate: 'Rate'
+    }
+  };
+
   function documentHtml(doc, client, company, opts) {
     opts = opts || {};
     const t = computeTotals(doc, company);
-    const cur = company.currency || 'DT';
+    const lang = (doc.lang || company.defaultLang) === 'en' ? 'en' : 'fr';
+    const L = I18N[lang];
+    const cur = doc.currency || company.currency || 'DT';
+    const dec = decimalsFor(cur);
+    const fmt = n => money(n, null, dec, lang);
     const isInvoice = doc.type === 'facture';
     const isCredit = doc.type === 'avoir';
     const isQuote = doc.type === 'devis';
-    const title = TITLES[doc.type] || 'Document';
+    const title = L[doc.type] || 'Document';
     const cl = client || {};
     const ink = company.primaryColor || '#1b2430';
     const accent = company.accentColor || '#0f9d8f';
-    const numberText = doc.number || 'Brouillon';
-    const stampText = opts.stampText != null ? opts.stampText : (!isQuote && doc.status === 'brouillon' ? 'Brouillon' : '');
+    const numberText = doc.number || L.draft;
+    const stampKey = opts.stamp || ({ 'Payée': 'paid', 'Annulée': 'cancelled', 'Brouillon': 'draft' })[opts.stampText] || (opts.stampText ? 'custom' : (!isQuote && doc.status === 'brouillon' ? 'draft' : null));
+    const stampText = stampKey === 'custom' ? opts.stampText : (stampKey ? L[stampKey] : '');
     const multiVat = Object.keys(t.vatByRate).length > 1;
-    const pct = n => String(n).replace('.', ',');
+    const pct = n => String(n).replace('.', lang === 'en' ? '.' : ',');
+    const foreign = cur !== (company.currency || 'DT') && Number(doc.exchangeRate) > 0;
 
     // teinte claire dérivée de l'accent (mélange avec du blanc)
     const hex = accent.replace('#', '');
@@ -487,41 +619,44 @@
           <div class="lbl">${escapeHtml(l.label)}</div>
           ${l.description ? `<div class="desc">${nl2br(l.description)}</div>` : ''}
         </td>
-        <td class="r num">${escapeHtml(String(l.qty).replace('.', ','))}${l.unit ? `<span class="unit"> ${escapeHtml(l.unit)}</span>` : ''}</td>
-        <td class="r num">${money(l.unitPrice)}</td>
+        <td class="r num">${escapeHtml(String(l.qty).replace('.', lang === 'en' ? '.' : ','))}${l.unit ? `<span class="unit"> ${escapeHtml(l.unit)}</span>` : ''}</td>
+        <td class="r num">${fmt(l.unitPrice)}</td>
         <td class="r num dim">${l.vatRate}%</td>
-        <td class="r num strong">${money(l.ht)}</td>
+        <td class="r num strong">${fmt(l.ht)}</td>
       </tr>`).join('');
 
     const metaItems = isInvoice ? [
-      ['Émise le', fmtDate(doc.date)],
-      ['À régler avant le', fmtDate(doc.dueDate)],
-      doc.deposit ? ['Acompte', `${pct(doc.deposit.percent)} % du devis ${doc.deposit.quoteNumber}`] : (doc.settles ? ['Solde', `du devis ${doc.settles.quoteNumber}`] : (doc.fromQuoteNumber ? ['Suite au devis', doc.fromQuoteNumber] : null)),
-      doc.reference ? ['Référence', doc.reference] : null
+      [L.issuedF, fmtDate(doc.date)],
+      [L.dueBy, fmtDate(doc.dueDate)],
+      doc.deposit ? [L.deposit, `${pct(doc.deposit.percent)} ${L.depositOf} ${doc.deposit.quoteNumber}`] : (doc.settles ? [L.balance, `${L.balanceOf} ${doc.settles.quoteNumber}`] : (doc.fromQuoteNumber ? [L.afterQuote, doc.fromQuoteNumber] : null)),
+      doc.reference ? [L.reference, doc.reference] : null
     ] : isCredit ? [
-      ['Émis le', fmtDate(doc.date)],
-      doc.creditOfNumber ? ['Annule / rectifie', 'Facture ' + doc.creditOfNumber] : null,
-      doc.reference ? ['Référence', doc.reference] : null
+      [L.issued, fmtDate(doc.date)],
+      doc.creditOfNumber ? [L.cancels, L.facture + ' ' + doc.creditOfNumber] : null,
+      doc.reference ? [L.reference, doc.reference] : null
     ] : [
-      ['Émis le', fmtDate(doc.date)],
-      ['Valable jusqu\'au', fmtDate(doc.dueDate)],
-      doc.reference ? ['Référence', doc.reference] : null
+      [L.issued, fmtDate(doc.date)],
+      [L.validUntil, fmtDate(doc.dueDate)],
+      doc.reference ? [L.reference, doc.reference] : null
     ];
-    const meta = metaItems.filter(Boolean).map(([k, v]) => `<div class="chip"><span class="ck">${k}</span><span class="cv">${escapeHtml(v)}</span></div>`).join('');
+    if (foreign) metaItems.push([L.rate, `1 ${cur} = ${money(doc.exchangeRate, company.currency)}`]);
+    const meta = metaItems.filter(Boolean).map(([k, v]) => `<div class="chip"><span class="ck">${escapeHtml(k)}</span><span class="cv">${escapeHtml(v)}</span></div>`).join('');
 
     const vatRows = multiVat ? Object.keys(t.vatByRate).sort((a, b) => a - b).map(rate =>
-      `<tr><td>TVA ${rate}% <span class="dim">sur ${money(t.vatByRate[rate].base)}</span></td><td class="r num">${money(t.vatByRate[rate].vat)}</td></tr>`).join('')
-      : `<tr><td>TVA</td><td class="r num">${money(t.totalVAT)}</td></tr>`;
+      `<tr><td>${L.vat} ${rate}% <span class="dim">${L.on} ${fmt(t.vatByRate[rate].base)}</span></td><td class="r num">${fmt(t.vatByRate[rate].vat)}</td></tr>`).join('')
+      : `<tr><td>${L.vat}</td><td class="r num">${fmt(t.totalVAT)}</td></tr>`;
 
     const contact = [company.phone, company.email, company.website].filter(Boolean).map(escapeHtml).join('<br>');
-    const clientContact = [cl.matricule ? 'MF / CIN ' + escapeHtml(cl.matricule) : '', cl.phone ? escapeHtml(cl.phone) : '', cl.email ? escapeHtml(cl.email) : ''].filter(Boolean).join('<br>');
-    const legal = [company.footer || '', company.rc ? 'RC ' + company.rc : '', company.capital ? 'Capital ' + company.capital : ''].filter(Boolean).join(' — ');
-    const grandLabel = isInvoice ? 'Net à payer' : isCredit ? 'Montant de l\'avoir' : 'Total TTC';
+    const clientContact = [cl.matricule ? L.mfCin + ' ' + escapeHtml(cl.matricule) : '', cl.phone ? escapeHtml(cl.phone) : '', cl.email ? escapeHtml(cl.email) : ''].filter(Boolean).join('<br>');
+    const legal = [company.footer || '', company.rc ? 'RC ' + company.rc : '', company.capital ? (lang === 'en' ? 'Share capital ' : 'Capital ') + company.capital : ''].filter(Boolean).join(' — ');
+    const grandLabel = isInvoice ? L.netToPay : isCredit ? L.creditAmount : L.totalTTC;
     const grandValue = isQuote ? t.totalTTC : t.netToPay;
-    const wordsIntro = isInvoice ? 'Arrêtée la présente facture' : isCredit ? 'Arrêté le présent avoir' : 'Arrêté le présent devis';
+    const wordsIntro = isInvoice ? L.wordsInvoice : isCredit ? L.wordsCredit : L.wordsQuote;
+    const paymentTerms = lang === 'en' ? company.paymentTermsEn : company.paymentTerms;
+    const quoteTerms = lang === 'en' ? company.quoteTermsEn : company.quoteTerms;
 
     return `<!DOCTYPE html>
-<html lang="fr"><head><meta charset="utf-8">
+<html lang="${lang}"><head><meta charset="utf-8">
 <title>${title} ${escapeHtml(numberText)}</title>
 <style>
   @page { size: A4; margin: 0; }
@@ -597,8 +732,9 @@
   .notes { font-size: 9pt; color: #4b5563; white-space: pre-line; line-height: 1.45; }
 
   .sign { display: flex; justify-content: ${isQuote ? 'space-between' : 'flex-end'}; gap: 12mm; margin-top: 5mm; }
-  .sign .s { width: 64mm; height: 15mm; border: .3mm dashed ${tint(.5)}; border-radius: 3.5mm; padding: 3mm 4mm; }
+  .sign .s { width: 64mm; height: 15mm; border: .3mm dashed ${tint(.5)}; border-radius: 3.5mm; padding: 3mm 4mm; position: relative; }
   .sign .s small { display: block; color: #9aa3ae; font-size: 8pt; margin-top: .6mm; }
+  .sign .s img { position: absolute; right: 3mm; top: 1.5mm; max-height: 12mm; max-width: 34mm; }
 
   .stamp { position: absolute; top: 62mm; right: 24mm; transform: rotate(-12deg); border: .8mm solid ${accent}; color: ${accent}; border-radius: 2mm; padding: 1.5mm 5mm; font-size: 18pt; font-weight: 700; letter-spacing: 4px; text-transform: uppercase; opacity: .45; z-index: 2; }
   .stamp.draft { border-color: #9aa3ae; color: #9aa3ae; }
@@ -611,14 +747,14 @@
   table.lines tr, .after, .sign, .card, .parties { break-inside: avoid; page-break-inside: avoid; }
 </style></head>
 <body><div class="page">
-  ${stampText ? `<div class="stamp${stampText === 'Brouillon' ? ' draft' : ''}">${escapeHtml(stampText)}</div>` : ''}
+  ${stampText ? `<div class="stamp${stampKey === 'draft' ? ' draft' : ''}">${escapeHtml(stampText)}</div>` : ''}
   <div class="hero">
     <div class="head">
       <div class="brand">
         ${company.logo ? `<img class="logo" src="${company.logo}" alt="">` : ''}
         <div class="name">${escapeHtml(company.name)}</div>
         ${company.tagline ? `<div class="tag">${escapeHtml(company.tagline)}</div>` : ''}
-        <div class="addr">${nl2br(company.address)}<br>MF ${escapeHtml(company.matricule)}${contact ? '<br>' + contact : ''}</div>
+        <div class="addr">${nl2br(company.address)}<br>${L.mf} ${escapeHtml(company.matricule)}${contact ? '<br>' + contact : ''}</div>
       </div>
       <div class="title">
         <div class="kind">${title}</div>
@@ -631,58 +767,58 @@
   <div class="inner">
     <div class="parties">
       <div class="party">
-        <span class="k">${isInvoice ? 'Facturé à' : isCredit ? 'Client' : 'Préparé pour'}</span>
+        <span class="k">${isInvoice ? L.billedTo : isCredit ? L.client : L.preparedFor}</span>
         <div class="pname">${escapeHtml(cl.name || '')}</div>
         ${cl.address ? `<div class="addr">${nl2br(cl.address)}</div>` : ''}
         ${clientContact ? `<div class="more">${clientContact}</div>` : ''}
       </div>
-      ${doc.subject ? `<div class="party"><span class="k">Objet</span><div class="pname" style="font-weight:600;font-size:10.5pt">${escapeHtml(doc.subject)}</div></div>` : ''}
+      ${doc.subject ? `<div class="party"><span class="k">${L.subject}</span><div class="pname" style="font-weight:600;font-size:10.5pt">${escapeHtml(doc.subject)}</div></div>` : ''}
     </div>
 
     <table class="lines">
       <thead><tr>
-        <th>Désignation</th>
-        <th class="r" style="width:16mm">Qté</th><th class="r" style="width:26mm">Prix unit. HT</th>
-        <th class="r" style="width:12mm">TVA</th><th class="r" style="width:28mm">Total HT</th>
+        <th>${L.designation}</th>
+        <th class="r" style="width:16mm">${L.qty}</th><th class="r" style="width:26mm">${L.unitPrice}</th>
+        <th class="r" style="width:12mm">${L.vat}</th><th class="r" style="width:28mm">${L.lineTotal}</th>
       </tr></thead>
       <tbody>${linesHtml}</tbody>
     </table>
 
     <div class="after">
       <div>
-        ${isInvoice && (company.rib || company.bank || company.paymentTerms) ? `
-        <div class="info"><span class="k">Règlement</span>
-          ${company.bank ? `<div class="row"><span>Banque</span><span>${escapeHtml(company.bank)}</span></div>` : ''}
-          ${company.rib ? `<div class="row"><span>RIB</span><span class="mono">${escapeHtml(company.rib)}</span></div>` : ''}
-          ${doc.number ? `<div class="row"><span>Motif</span><span>${escapeHtml(doc.number)}</span></div>` : ''}
-          ${company.paymentTerms ? `<div class="terms">${nl2br(company.paymentTerms)}</div>` : ''}
+        ${isInvoice && (company.rib || company.bank || paymentTerms) ? `
+        <div class="info"><span class="k">${L.payment}</span>
+          ${company.bank ? `<div class="row"><span>${L.bank}</span><span>${escapeHtml(company.bank)}</span></div>` : ''}
+          ${company.rib ? `<div class="row"><span>${L.rib}</span><span class="mono">${escapeHtml(company.rib)}</span></div>` : ''}
+          ${doc.number ? `<div class="row"><span>${L.motif}</span><span>${escapeHtml(doc.number)}</span></div>` : ''}
+          ${paymentTerms ? `<div class="terms">${nl2br(paymentTerms)}</div>` : ''}
         </div>` : ''}
         ${isCredit ? `
-        <div class="info"><span class="k">Avoir</span>
-          Cet avoir vient en déduction de la facture ${escapeHtml(doc.creditOfNumber || '')}${doc.creditReason ? ' — ' + escapeHtml(doc.creditReason) : ''}.
+        <div class="info"><span class="k">${L.avoir}</span>
+          ${L.creditText(escapeHtml(doc.creditOfNumber || ''))}${doc.creditReason ? ' — ' + escapeHtml(doc.creditReason) : ''}.
         </div>` : ''}
         ${isQuote ? `
-        <div class="info"><span class="k">Conditions</span>
-          Devis valable jusqu'au ${fmtDate(doc.dueDate)}. ${escapeHtml(company.quoteTerms || '')}
+        <div class="info"><span class="k">${L.conditions}</span>
+          ${L.validText(fmtDate(doc.dueDate))} ${escapeHtml(quoteTerms || '')}
         </div>` : ''}
         ${doc.notes ? `<div class="notes">${nl2br(doc.notes)}</div>` : ''}
       </div>
       <div class="card">
         <table class="totals">
-          <tr><td>Total HT</td><td class="r num">${money(t.totalHT)}</td></tr>
-          ${t.discount ? `<tr><td>Remise ${pct(t.discountRate)}%</td><td class="r num">− ${money(t.discount)}</td></tr><tr><td>Net HT</td><td class="r num">${money(t.netHT)}</td></tr>` : ''}
+          <tr><td>${L.subtotal}</td><td class="r num">${fmt(t.totalHT)}</td></tr>
+          ${t.discount ? `<tr><td>${L.discount} ${pct(t.discountRate)}%</td><td class="r num">− ${fmt(t.discount)}</td></tr><tr><td>${L.netHT}</td><td class="r num">${fmt(t.netHT)}</td></tr>` : ''}
           ${vatRows}
-          ${t.stamp ? `<tr><td>Timbre fiscal</td><td class="r num">${money(t.stamp)}</td></tr>` : ''}
-          ${t.withholding ? `<tr class="sub"><td>Total TTC</td><td class="r num">${money(t.totalTTC)}</td></tr><tr><td>Retenue à la source ${pct(t.withholdingRate)}%</td><td class="r num">− ${money(t.withholding)}</td></tr>` : ''}
+          ${t.stamp ? `<tr><td>${L.stamp}</td><td class="r num">${fmt(t.stamp)}</td></tr>` : ''}
+          ${t.withholding ? `<tr class="sub"><td>${L.totalTTC}</td><td class="r num">${fmt(t.totalTTC)}</td></tr><tr><td>${L.withholding} ${pct(t.withholdingRate)}%</td><td class="r num">− ${fmt(t.withholding)}</td></tr>` : ''}
         </table>
-        <div class="grand"><span class="gl">${grandLabel}</span><span class="gv num">${money(grandValue)}<small>${escapeHtml(cur)}</small></span></div>
-        <div class="words">${wordsIntro} à la somme de <strong>${escapeHtml(amountToWords(grandValue, cur).toLowerCase())}</strong>.</div>
+        <div class="grand"><span class="gl">${grandLabel}</span><span class="gv num">${fmt(grandValue)}<small>${escapeHtml(cur)}</small></span></div>
+        <div class="words">${wordsIntro} <strong>${escapeHtml(amountToWords(grandValue, cur, lang).toLowerCase())}</strong>.</div>
       </div>
     </div>
 
     <div class="sign">
-      ${isQuote ? `<div class="s"><span class="k">Bon pour accord</span><small>Date, signature et cachet du client</small></div>` : ''}
-      <div class="s"><span class="k">${isQuote ? 'Le prestataire' : 'Cachet et signature'}</span><small>${escapeHtml(company.name)}</small></div>
+      ${isQuote ? `<div class="s"><span class="k">${L.approve}</span><small>${L.approveSub}</small></div>` : ''}
+      <div class="s"><span class="k">${isQuote ? L.provider : L.stampSign}</span><small>${escapeHtml(company.name)}</small>${company.stampImage ? `<img src="${company.stampImage}" alt="">` : ''}</div>
     </div>
   </div>
 
@@ -699,7 +835,8 @@
     nextNumber, isLocked, isIssued, computeTotals, creditsFor, invoiceBalance, effectiveStatus,
     depositLines, settlementLines, salesJournal, vatSummary, paymentsJournal, toCsv, migrateData,
     PERIODS, MONTHS_FR, monthLabel, addMonths, nextRecurrenceDate, dueRecurrences, fillTemplate, buildRecurringInvoice,
-    reminderLevel, REMINDER_LABELS, daysBetween, overdueInvoices, DEFAULT_EMAIL_TEMPLATES, emailFor,
-    amountToWords, intToWords, documentHtml
+    reminderLevel, REMINDER_LABELS, daysBetween, overdueInvoices, DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_TEMPLATES_EN, emailFor,
+    CURRENCIES, decimalsFor, toBase, monthKeys, monthlySeries, topClients, quoteStats, avgPaymentDelay, I18N,
+    amountToWords, intToWords, intToWordsEn, documentHtml
   };
 });

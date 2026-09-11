@@ -17,6 +17,7 @@ Pas d'e-facture (TTN / TEIF) : l'outil produit des PDF classiques.
 - Tableau de bord : CA HT du mois et de l'année (avoirs déduits), reste à encaisser, devis en attente
 - Comptabilité : par mois ou par année, TVA collectée par taux, journal des ventes et encaissements exportables en CSV (Excel), export groupé des PDF de la période, suivi des attestations de retenue à la source
 - Contrats récurrents (mensuel, trimestriel, annuel) qui génèrent les brouillons de factures à l'échéance ; relances des impayés par email avec niveaux automatiques ; envoi des documents par email (Mail sur Mac avec le PDF joint) ; recherche globale Cmd/Ctrl+K ; modèles de documents et textes prédéfinis
+- Tableau de bord graphique (12 mois, top clients, conversion des devis, délai de paiement) ; documents en français ou en anglais, devise par document avec taux ; cachet/signature sur les documents ; thème sombre
 - Export / import de toutes les données en JSON, sauvegarde automatique quotidienne (30 jours)
 
 ## Installation

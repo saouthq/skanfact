@@ -47,6 +47,11 @@
   const docLabel = doc => `${C.TITLES[doc.type]} ${doc.number || '(brouillon)'}`;
   const deepCopy = o => JSON.parse(JSON.stringify(o));
   const pct = n => String(n).replace('.', ',');
+  const docCur = doc => doc.currency || company().currency;
+  const short = n => Math.abs(n) >= 1000 ? (n / 1000).toFixed(Math.abs(n) >= 10000 ? 0 : 1).replace('.', ',') + ' k' : String(Math.round(n));
+  const mq = window.matchMedia('(prefers-color-scheme: dark)');
+  function applyTheme() { const t = company().theme || 'light'; document.body.classList.toggle('dark', t === 'dark' || (t === 'auto' && mq.matches)); }
+  mq.addEventListener('change', () => { if (data) applyTheme(); });
 
   // ---------- UI helpers ----------
   function toast(msg, isError) {
@@ -146,6 +151,12 @@
     const pendingQuotes = data.documents.filter(d => d.type === 'devis' && d.status === 'envoyé');
     const sumQ = list => list.reduce((s, d) => s + C.computeTotals(d, company()).totalTTC, 0);
     const recent = data.documents.slice().sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.createdAt || 0) - (a.createdAt || 0)).slice(0, 8);
+    const series = C.monthlySeries(data, company(), C.today(), 12);
+    const from12 = C.addMonths(C.today(), -12, 1);
+    const qs = C.quoteStats(data, from12, C.today());
+    const delay = C.avgPaymentDelay(data, company(), from12, C.today());
+    const top = C.topClients(data, company(), `${year}-01-01`, `${year}-12-31`, 5);
+    const topMax = top.length ? Math.max(...top.map(x => x.ht), 1) : 1;
 
     $('#view').innerHTML = `
       <div class="page-head"><h1>Accueil</h1>
@@ -160,12 +171,41 @@
         <div class="stat"><div class="lbl">Reste à encaisser</div><div class="val">${C.money(openAmount, cur)}</div><div class="sub">${open.length} facture(s), ${late.length} en retard</div></div>
         <div class="stat"><div class="lbl">Devis en attente</div><div class="val">${C.money(sumQ(pendingQuotes), cur)}</div><div class="sub">${pendingQuotes.length} devis envoyé(s)</div></div>
       </div>
+      <div class="dash-grid">
+        <div class="panel"><h2>Activité des 12 derniers mois</h2>
+          ${barChart(series)}
+          <div class="legend"><span><i style="background:var(--primary)"></i>Facturé HT (avoirs déduits)</span><span><i style="background:#2a6fd6;opacity:.55"></i>Encaissé</span></div>
+          <div class="kpis">
+            <div class="kpi"><div class="k-label">Devis → facture</div><div class="v">${qs.rate == null ? '—' : qs.rate + ' %'}</div><div class="sub">${qs.accepted} accepté(s), ${qs.refused} refusé(s), ${qs.pending} en attente</div></div>
+            <div class="kpi"><div class="k-label">Délai moyen de paiement</div><div class="v">${delay == null ? '—' : delay + ' jours'}</div><div class="sub">factures soldées, 12 derniers mois</div></div>
+          </div>
+        </div>
+        <div class="panel"><h2>Top clients ${year} (HT)</h2>
+          ${top.length ? `<ul class="rank">${top.map(x => `<li><span class="name">${h(x.name)}</span><span class="bar"><i style="width:${Math.max(4, Math.round(x.ht / topMax * 100))}%"></i></span><span class="amt">${C.money(x.ht, cur)}</span></li>`).join('')}</ul>` : '<p class="small muted">Aucune facture émise cette année.</p>'}
+        </div>
+      </div>
       <div class="panel"><h2>Documents récents</h2>${docTable(recent)}</div>`;
     $('#new-devis').onclick = () => navigate('#/doc/new/devis');
     $('#new-facture').onclick = () => navigate('#/doc/new/facture');
     bindBanners();
     bindDocTable();
   };
+
+  // Histogramme SVG : facturé HT et encaissé par mois (sans bibliothèque)
+  function barChart(series) {
+    const W = 600, H = 220, left = 44, bottom = 26, top = 10;
+    const max = Math.max(1, ...series.map(x => Math.max(x.invoiced, x.collected)));
+    const slot = (W - left) / series.length;
+    const y = v => top + (H - bottom - top) * (1 - Math.max(0, v) / max);
+    const grid = [0, 0.5, 1].map(f => `<line class="grid" x1="${left}" x2="${W}" y1="${y(max * f)}" y2="${y(max * f)}"/><text class="lbl" x="${left - 6}" y="${y(max * f) + 4}" text-anchor="end">${short(max * f)}</text>`).join('');
+    const bars = series.map((x, i) => {
+      const x0 = left + i * slot;
+      return `<rect class="bar-inv" x="${x0 + slot * 0.12}" width="${slot * 0.36}" y="${y(x.invoiced)}" height="${H - bottom - y(x.invoiced)}" rx="2"><title>${h(C.monthLabel(x.month + '-01'))} — facturé ${C.money(x.invoiced, company().currency)}</title></rect>
+        <rect class="bar-col" x="${x0 + slot * 0.52}" width="${slot * 0.36}" y="${y(x.collected)}" height="${H - bottom - y(x.collected)}" rx="2"><title>${h(C.monthLabel(x.month + '-01'))} — encaissé ${C.money(x.collected, company().currency)}</title></rect>
+        <text class="lbl" x="${x0 + slot / 2}" y="${H - 8}" text-anchor="middle">${h(x.label)}</text>`;
+    }).join('');
+    return `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${grid}<line class="axis" x1="${left}" x2="${W}" y1="${H - bottom}" y2="${H - bottom}"/>${bars}</svg>`;
+  }
 
   // ---------- listes devis / factures ----------
   function docTable(list, opts) {
@@ -180,8 +220,8 @@
         return `<tr class="clickable" data-id="${d.id}">
         <td><strong>${d.number ? h(d.number) : '<span class="muted">Brouillon</span>'}</strong></td><td>${C.TITLES[d.type]}</td>
         <td>${h(clientName(d.clientId))}</td><td>${C.fmtDate(d.date)}</td>
-        <td>${statusBadge(d)}</td><td class="r">${C.money(amount, cur)}</td>
-        ${opts.invoices ? `<td class="r">${rest != null && rest > 0.0005 ? C.money(rest, cur) : '<span class="muted">—</span>'}</td>` : ''}
+        <td>${statusBadge(d)}</td><td class="r">${C.money(amount, docCur(d))}</td>
+        ${opts.invoices ? `<td class="r">${rest != null && rest > 0.0005 ? C.money(rest, docCur(d)) : '<span class="muted">—</span>'}</td>` : ''}
         <td class="actions"><button class="btn btn-sm" data-pdf="${d.id}">PDF</button></td></tr>`; }).join('')}
     </tbody></table>`;
   }
@@ -232,8 +272,14 @@
       id: C.uid(), type, number: '', date, dueDate: C.addDays(date, days), clientId: '', subject: '', reference: '',
       lines: [{ label: '', description: '', qty: 1, unit: '', unitPrice: 0, vatRate: 19 }],
       discountRate: 0, applyStamp: type === 'facture', status: 'brouillon', notes: '', payments: [],
-      withholdingRate: type === 'devis' ? 0 : (Number(company().defaultWithholdingRate) || 0), createdAt: Date.now()
+      withholdingRate: type === 'devis' ? 0 : (Number(company().defaultWithholdingRate) || 0), createdAt: Date.now(),
+      lang: company().defaultLang || 'fr', currency: company().currency, exchangeRate: ''
     };
+  }
+  function applyClientDefaults(doc, clientId) {
+    const c = clientById(clientId); if (!c) return;
+    if (c.lang) doc.lang = c.lang;
+    if (c.currency) doc.currency = c.currency;
   }
 
   function clientWithholding(clientId) {
@@ -253,7 +299,7 @@
       doc = docById(parts[0]); if (!doc) return navigate('#/dashboard'); doc = deepCopy(doc);
     }
     const isQ = doc.type === 'devis', isInv = doc.type === 'facture', isAv = doc.type === 'avoir';
-    const cur = company().currency;
+    let cur = docCur(doc);
     const locked = C.isLocked(doc) && !unlockedIds.has(doc.id);
     const ro = locked ? 'disabled' : '';
     const stored = isNew ? null : docById(doc.id);
@@ -304,6 +350,9 @@
               <label class="field span-2">Objet<input type="text" name="subject" value="${h(doc.subject)}" placeholder="Ex : Audit de sécurité du réseau" ${ro}></label>
               ${field('Référence (optionnel)', 'reference', doc.reference || '', 'text', ro)}
               ${isAv ? field('Motif de l\'avoir', 'creditReason', doc.creditReason || '', 'text', ro + ' placeholder="Erreur de facturation, remise commerciale…"') : ''}
+              <label class="field">Langue du document<select name="lang" ${ro}><option value="fr" ${doc.lang !== 'en' ? 'selected' : ''}>Français</option><option value="en" ${doc.lang === 'en' ? 'selected' : ''}>English</option></select></label>
+              <label class="field">Devise<select name="currency" ${ro}>${C.CURRENCIES.map(c => `<option value="${c}" ${c === cur ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
+              <label class="field" id="rate-field" ${cur === company().currency ? 'hidden' : ''}>Taux : 1 ${h(cur)} = ? ${h(company().currency)}<input type="number" name="exchangeRate" value="${h(doc.exchangeRate || '')}" step="0.0001" min="0" class="num" placeholder="ex. 3.4" ${ro}></label>
               ${statusCell}
               ${field('Remise globale (%)', 'discountRate', doc.discountRate || 0, 'number', 'min="0" max="100" step="0.5" class="num" ' + ro)}
               ${!isQ ? `<label class="field">Retenue à la source<select name="withholdingRate" ${ro}>${withholdingOptions(doc.withholdingRate)}</select></label>` : ''}
@@ -374,10 +423,18 @@
     head.oninput = head.onchange = (e) => {
       const before = doc.clientId;
       Object.assign(doc, formValues(head));
-      if (e && e.target && e.target.name === 'clientId' && doc.clientId !== before && !isQ && doc.status === 'brouillon') {
-        // nouveau client : on reprend son taux de retenue à la source
-        doc.withholdingRate = clientWithholding(doc.clientId);
-        const sel = $('select[name=withholdingRate]', head); if (sel) sel.innerHTML = withholdingOptions(doc.withholdingRate);
+      if (e && e.target && e.target.name === 'currency') {
+        cur = docCur(doc);
+        const rf = $('#rate-field', head); rf.hidden = cur === company().currency; rf.firstChild.textContent = `Taux : 1 ${cur} = ? ${company().currency}`;
+        drawLines();
+      }
+      if (e && e.target && e.target.name === 'clientId' && doc.clientId !== before && doc.status === 'brouillon') {
+        // nouveau client : on reprend son taux de retenue à la source, sa langue et sa devise
+        if (!isQ) { doc.withholdingRate = clientWithholding(doc.clientId); const sel = $('select[name=withholdingRate]', head); if (sel) sel.innerHTML = withholdingOptions(doc.withholdingRate); }
+        applyClientDefaults(doc, doc.clientId);
+        $('select[name=lang]', head).value = doc.lang || 'fr'; $('select[name=currency]', head).value = docCur(doc);
+        cur = docCur(doc); const rf = $('#rate-field', head); rf.hidden = cur === company().currency; rf.firstChild.textContent = `Taux : 1 ${cur} = ? ${company().currency}`;
+        drawLines();
       }
       if (e && e.target && e.target.name === 'creditOf') {
         const inv = docById(doc.creditOf); if (inv) { doc.creditOfNumber = inv.number; if (!doc.clientId) { doc.clientId = inv.clientId; $('select[name=clientId]', head).value = inv.clientId; } }
@@ -385,7 +442,7 @@
       refreshTotals();
     };
     $('#notes').oninput = e => { doc.notes = e.target.value; schedulePreview(); };
-    if ($('#quick-client')) $('#quick-client').onclick = () => clientForm(null, c => { $('select[name=clientId]', head).innerHTML = clientOptions(); $('select[name=clientId]', head).value = c.id; doc.clientId = c.id; doc.withholdingRate = isQ ? 0 : clientWithholding(c.id); const sel = $('select[name=withholdingRate]', head); if (sel) sel.innerHTML = withholdingOptions(doc.withholdingRate); refreshTotals(); });
+    if ($('#quick-client')) $('#quick-client').onclick = () => clientForm(null, c => { $('select[name=clientId]', head).innerHTML = clientOptions(); $('select[name=clientId]', head).value = c.id; doc.clientId = c.id; doc.withholdingRate = isQ ? 0 : clientWithholding(c.id); const sel = $('select[name=withholdingRate]', head); if (sel) sel.innerHTML = withholdingOptions(doc.withholdingRate); applyClientDefaults(doc, c.id); $('select[name=lang]', head).value = doc.lang || 'fr'; $('select[name=currency]', head).value = docCur(doc); cur = docCur(doc); refreshTotals(); });
 
     // --- totaux + aperçu
     let previewTimer = null;
@@ -399,7 +456,7 @@
     }
     function refreshTotals() {
       const t = C.computeTotals(doc, company());
-      t.lines.forEach((l, i) => { const c = $(`[data-total="${i}"]`); if (c) c.textContent = C.money(l.ht); });
+      t.lines.forEach((l, i) => { const c = $(`[data-total="${i}"]`); if (c) c.textContent = C.money(l.ht, null, C.decimalsFor(cur)); });
       $('#totals').innerHTML = `<table>
         <tr><td>Total HT</td><td>${C.money(t.totalHT, cur)}</td></tr>
         ${t.discount ? `<tr><td>Remise ${pct(t.discountRate)}%</td><td>- ${C.money(t.discount, cur)}</td></tr><tr><td>Net HT</td><td>${C.money(t.netHT, cur)}</td></tr>` : ''}
@@ -413,6 +470,7 @@
     // --- paiements (facture émise)
     function drawPayments() {
       const el = $('#pay-body'); if (!el) return;
+      const cur = docCur(doc);
       const s = docById(doc.id); const b = balance(s); const t = b.totals;
       const rows = (s.payments || []).slice().sort((a, x) => (a.date || '').localeCompare(x.date || ''));
       el.innerHTML = `
@@ -542,19 +600,20 @@
 
   function invoiceFromQuote(quote, lines, discountRate) {
     const inv = newDocument('facture');
-    Object.assign(inv, { clientId: quote.clientId, subject: quote.subject, reference: quote.reference || '', lines, discountRate: discountRate || 0, notes: quote.notes || '', withholdingRate: clientWithholding(quote.clientId) });
+    Object.assign(inv, { clientId: quote.clientId, subject: quote.subject, reference: quote.reference || '', lines, discountRate: discountRate || 0, notes: quote.notes || '', withholdingRate: clientWithholding(quote.clientId), lang: quote.lang || 'fr', currency: quote.currency || company().currency, exchangeRate: quote.exchangeRate || '' });
     return inv;
   }
   function acceptQuote(id) { const orig = docById(id); if (orig && orig.status !== 'accepté') orig.status = 'accepté'; }
   function creditDraftFrom(inv) {
     return {
       creditOf: inv.id, creditOfNumber: inv.number, clientId: inv.clientId, subject: `Avoir sur facture ${inv.number}${inv.subject ? ' — ' + inv.subject : ''}`,
-      lines: deepCopy(inv.lines || []), discountRate: inv.discountRate || 0, withholdingRate: inv.withholdingRate || 0, applyStamp: false, creditReason: ''
+      lines: deepCopy(inv.lines || []), discountRate: inv.discountRate || 0, withholdingRate: inv.withholdingRate || 0, applyStamp: false, creditReason: '',
+      lang: inv.lang || 'fr', currency: inv.currency || company().currency, exchangeRate: inv.exchangeRate || ''
     };
   }
 
   function paymentForm(inv, done) {
-    const b = balance(inv); const cur = company().currency;
+    const b = balance(inv); const cur = docCur(inv);
     modal(`<h2>Enregistrer un paiement</h2><p class="small muted">${h(inv.number)} — reste à payer ${C.money(Math.max(0, b.remaining), cur)}</p>
       <form id="pf2" class="grid-2">
         ${field('Date', 'date', C.today(), 'date')}
@@ -602,6 +661,8 @@
         <label class="field">Retenue à la source appliquée par ce client<select name="withholdingRate"><option value="" ${c.withholdingRate === '' || c.withholdingRate == null ? 'selected' : ''}>Par défaut (${pct(company().defaultWithholdingRate || 0)} %)</option>${C.WITHHOLDING_RATES.map(r => `<option value="${r}" ${String(c.withholdingRate) === String(r) ? 'selected' : ''}>${r === 0 ? 'Aucune' : pct(r) + ' %'}</option>`).join('')}</select></label>
         ${field('Téléphone', 'phone', c.phone)}
         ${field('Email', 'email', c.email, 'email')}
+        <label class="field">Langue des documents<select name="lang"><option value="" ${!c.lang ? 'selected' : ''}>Par défaut</option><option value="fr" ${c.lang === 'fr' ? 'selected' : ''}>Français</option><option value="en" ${c.lang === 'en' ? 'selected' : ''}>English</option></select></label>
+        <label class="field">Devise<select name="currency"><option value="" ${!c.currency ? 'selected' : ''}>Par défaut (${h(company().currency)})</option>${C.CURRENCIES.map(x => `<option value="${x}" ${c.currency === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
         <label class="field span-2">Adresse<textarea name="address">${h(c.address)}</textarea></label>
         <label class="field span-2">Notes internes<textarea name="notes">${h(c.notes || '')}</textarea></label>
       </form>
@@ -787,7 +848,8 @@
   function recurrenceFromInvoice(doc) {
     const day = Number(doc.date.slice(8, 10)) || 1;
     return { id: C.uid(), clientId: doc.clientId, subject: (doc.subject || '').replace(/\s+—.*$/, '') + ' — {mois}', reference: '', lines: deepCopy(doc.lines || []).filter(l => !l.noDiscount),
-      discountRate: doc.discountRate || 0, withholdingRate: doc.withholdingRate || 0, notes: doc.notes || '', every: 'month', day, nextDate: C.addMonths(doc.date, 1, day), active: true, createdAt: Date.now() };
+      discountRate: doc.discountRate || 0, withholdingRate: doc.withholdingRate || 0, notes: doc.notes || '', every: 'month', day, nextDate: C.addMonths(doc.date, 1, day), active: true, createdAt: Date.now(),
+      lang: doc.lang || 'fr', currency: doc.currency || company().currency, exchangeRate: doc.exchangeRate || '' };
   }
   function recurrenceForm(rec, done) {
     const isNew = !data.recurring.find(r => r.id === rec.id);
@@ -1078,7 +1140,15 @@
             <div>${c.logo ? `<img class="logo-preview" src="${c.logo}">` : ''}
             <div class="inline"><button type="button" class="btn btn-sm" id="pick-logo">Choisir une image…</button>${c.logo ? '<button type="button" class="btn btn-sm btn-ghost" id="rm-logo">Retirer</button>' : ''}</div></div>
           </label>
+          <label class="field">Cachet / signature (dans la case « Cachet et signature » des documents)
+            <div>${c.stampImage ? `<img class="stamp-preview" src="${c.stampImage}">` : ''}
+            <div class="inline"><button type="button" class="btn btn-sm" id="pick-stamp">Choisir une image…</button>${c.stampImage ? '<button type="button" class="btn btn-sm btn-ghost" id="rm-stamp">Retirer</button>' : ''}</div></div>
+          </label>
         </div></div>
+        <div class="panel"><h2>Apparence</h2><div class="grid-3">
+          <label class="field">Thème<select name="theme"><option value="light" ${c.theme !== 'dark' && c.theme !== 'auto' ? 'selected' : ''}>Clair</option><option value="dark" ${c.theme === 'dark' ? 'selected' : ''}>Sombre</option><option value="auto" ${c.theme === 'auto' ? 'selected' : ''}>Comme le système</option></select></label>
+          <label class="field">Langue des documents par défaut<select name="defaultLang"><option value="fr" ${c.defaultLang !== 'en' ? 'selected' : ''}>Français</option><option value="en" ${c.defaultLang === 'en' ? 'selected' : ''}>English</option></select></label>
+        </div><p class="small muted mt">Le thème sombre ne concerne que l'interface : les documents restent clairs.</p></div>
         <div class="panel"><h2>Paiement</h2><div class="grid-2">
           ${field('Banque', 'bank', c.bank)}
           ${field('RIB', 'rib', c.rib)}
@@ -1093,16 +1163,20 @@
           <label class="check" style="align-self:end"><input type="checkbox" name="openAfterExport" ${c.openAfterExport !== false ? 'checked' : ''}> Ouvrir le PDF après export</label>
           <label class="field span-2">Conditions des devis<textarea name="quoteTerms">${h(c.quoteTerms || '')}</textarea></label>
           <label class="field">Pied de page des documents<textarea name="footer">${h(c.footer)}</textarea></label>
+          <label class="field span-2">Conditions de paiement (documents en anglais)<textarea name="paymentTermsEn">${h(c.paymentTermsEn || '')}</textarea></label>
+          <label class="field">Conditions des devis (anglais)<textarea name="quoteTermsEn">${h(c.quoteTermsEn || '')}</textarea></label>
         </div>
         <p class="small muted mt">Retenue à la source : calculée sur le TTC hors timbre, modifiable sur chaque facture et par client. Les taux et l'assiette sont <em>À VÉRIFIER avec ton comptable</em>.</p></div>
         <div class="panel"><h2>Emails</h2>
           <div class="grid-2">
             <label class="field">Envoi des emails<select name="mailClient"><option value="auto" ${c.mailClient !== 'mailto' ? 'selected' : ''}>Mail (Apple) avec le PDF joint — Mac</option><option value="mailto" ${c.mailClient === 'mailto' ? 'selected' : ''}>Autre messagerie (mailto, PDF à glisser)</option></select></label>
           </div>
-          <p class="small muted mt">Variables utilisables : {numero} {client} {objet} {montant} {echeance} {jours} {societe} {reference}.</p>
-          ${[['devis', 'Envoi d\'un devis'], ['facture', 'Envoi d\'une facture'], ['avoir', 'Envoi d\'un avoir'], ['relance1', 'Rappel (≤ 15 jours de retard)'], ['relance2', 'Relance (16 à 45 jours)'], ['relance3', 'Dernière relance (> 45 jours)']].map(([k, label]) => {
-            const t = { ...C.DEFAULT_EMAIL_TEMPLATES[k], ...((c.emailTemplates || {})[k] || {}) };
-            return `<div class="section-head"><h2 class="small">${label}</h2></div><div class="grid-2"><label class="field span-2">Objet<input type="text" name="et_${k}_subject" value="${h(t.subject)}"></label><label class="field span-2">Message<textarea name="et_${k}_body" rows="4">${h(t.body)}</textarea></label></div>`; }).join('')}
+          <p class="small muted mt">Variables utilisables : {numero} {client} {objet} {montant} {echeance} {jours} {societe} {reference}. Les documents en anglais utilisent les modèles en anglais.</p>
+          ${[['fr', 'et', 'Modèles en français', C.DEFAULT_EMAIL_TEMPLATES, c.emailTemplates || {}], ['en', 'eten', 'Modèles en anglais (clients étrangers)', C.DEFAULT_EMAIL_TEMPLATES_EN, c.emailTemplatesEn || {}]].map(([lg, prefix, title, defs, cur2]) => `<details ${lg === 'fr' ? 'open' : ''}><summary>${title}</summary>
+          ${[['devis', lg === 'fr' ? 'Envoi d\'un devis' : 'Quote'], ['facture', lg === 'fr' ? 'Envoi d\'une facture' : 'Invoice'], ['avoir', lg === 'fr' ? 'Envoi d\'un avoir' : 'Credit note'], ['relance1', lg === 'fr' ? 'Rappel (≤ 15 jours de retard)' : 'Reminder (≤ 15 days)'], ['relance2', lg === 'fr' ? 'Relance (16 à 45 jours)' : 'Second reminder (16–45 days)'], ['relance3', lg === 'fr' ? 'Dernière relance (> 45 jours)' : 'Final reminder (> 45 days)']].map(([k, label]) => {
+            const t = { ...defs[k], ...(cur2[k] || {}) };
+            return `<div class="section-head"><h2 class="small">${label}</h2></div><div class="grid-2"><label class="field span-2">Objet<input type="text" name="${prefix}_${k}_subject" value="${h(t.subject)}"></label><label class="field span-2">Message<textarea name="${prefix}_${k}_body" rows="4">${h(t.body)}</textarea></label></div>`; }).join('')}
+          </details>`).join('')}
         </div>
       </form>
       <div class="panel"><h2>Mises à jour</h2><div id="update-panel"></div></div>
@@ -1124,11 +1198,11 @@
       </div>`;
     $('#save').onclick = () => {
       const v = formValues($('#pf'));
-      const et = {};
-      Object.keys(v).forEach(k => { const m = k.match(/^et_(\w+)_(subject|body)$/); if (m) { et[m[1]] = et[m[1]] || {}; et[m[1]][m[2]] = v[k]; delete v[k]; } });
-      Object.assign(data.company, v, { emailTemplates: et });
+      const et = {}, eten = {};
+      Object.keys(v).forEach(k => { const m = k.match(/^(et|eten)_(\w+)_(subject|body)$/); if (m) { const bag = m[1] === 'et' ? et : eten; bag[m[2]] = bag[m[2]] || {}; bag[m[2]][m[3]] = v[k]; delete v[k]; } });
+      Object.assign(data.company, v, { emailTemplates: et, emailTemplatesEn: eten });
       data.company.defaultWithholdingRate = Number(data.company.defaultWithholdingRate) || 0;
-      save(true); toast('Paramètres enregistrés'); $('#brand-company').textContent = data.company.name;
+      save(true); applyTheme(); toast('Paramètres enregistrés'); $('#brand-company').textContent = data.company.name;
     };
     drawUpdatePanel();
     $('#backup-now').onclick = async () => { const p = await bridge.createBackup(); toast(p ? 'Sauvegarde créée : ' + p.split(/[\\/]/).pop() : 'Rien à sauvegarder pour l\'instant'); };
@@ -1137,9 +1211,11 @@
     $('#import-data').onclick = importAll;
     $('#pick-logo').onclick = async () => { try { const l = await bridge.pickLogo(); if (l) { data.company.logo = l; save(true); render(); } } catch (e) { toast(e.message.replace(/^.*Error: /, ''), true); } };
     if ($('#rm-logo')) $('#rm-logo').onclick = () => { data.company.logo = ''; save(true); render(); };
+    $('#pick-stamp').onclick = async () => { try { const l = await bridge.pickLogo('Choisir l\'image du cachet / de la signature'); if (l) { data.company.stampImage = l; save(true); render(); } } catch (e) { toast(e.message.replace(/^.*Error: /, ''), true); } };
+    if ($('#rm-stamp')) $('#rm-stamp').onclick = () => { data.company.stampImage = ''; save(true); render(); };
     $('#load-demo').onclick = async () => {
       if (data.documents.length && !await confirmDialog('Remplacer toutes les données actuelles par la démonstration ?')) return;
-      data = buildDemoData(); save(true); $('#brand-company').textContent = data.company.name; toast('Jeu de démonstration chargé'); navigate('#/dashboard');
+      data = buildDemoData(); save(true); applyTheme(); $('#brand-company').textContent = data.company.name; toast('Jeu de démonstration chargé'); navigate('#/dashboard');
     };
     $('#wipe-data').onclick = async () => {
       if (!await confirmDialog('Effacer TOUS les clients, prestations, devis et factures ? Les paramètres société sont conservés.')) return;
@@ -1336,7 +1412,7 @@
   async function exportAll() { const p = await bridge.exportData(data); if (p) toast('Exporté : ' + p.split(/[\\/]/).pop()); }
   async function importAll() {
     if (!await confirmDialog('Importer un fichier remplacera toutes les données actuelles (une sauvegarde de l\'état actuel est faite avant). Continuer ?')) return;
-    try { const d = await bridge.importData(); if (d) { data = migrate(d); $('#brand-company').textContent = data.company.name; toast('Données importées'); render(); } }
+    try { const d = await bridge.importData(); if (d) { data = migrate(d); applyTheme(); $('#brand-company').textContent = data.company.name; toast('Données importées'); render(); } }
     catch (e) { toast('Import impossible : ' + e.message.replace(/^.*Error: /, ''), true); }
   }
   $('#btn-export-data').onclick = exportAll;
@@ -1348,6 +1424,7 @@
     const raw = loaded && loaded.data;
     data = migrate(raw);
     if (raw && (raw.version || 1) < 3) save(true); // données migrées vers le nouveau format : on enregistre tout de suite
+    applyTheme();
     $('#brand-company').textContent = data.company.name;
     bridge.updateVersion().then(v => {
       upd.app = v; const el = $('#app-version'); if (el) el.textContent = 'v' + v.version;
