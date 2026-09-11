@@ -163,7 +163,8 @@ t('journal des ventes, récap TVA, CSV', () => {
 
 t('migration 1.x → 2 : « payée » devient un paiement', () => {
   const d = core.migrateData({ version: 1, company: { name: 'X' }, documents: [inv({ status: 'payée', payments: undefined })], clients: [], catalog: [] });
-  assert.strictEqual(d.version, 2);
+  assert.strictEqual(d.version, 3);
+  assert.deepStrictEqual([d.recurring, d.templates, d.snippets], [[], [], []]);
   assert.strictEqual(d.company.name, 'X');
   assert.strictEqual(d.company.paymentTermsDays, 30); // valeurs par défaut fusionnées
   const doc = d.documents[0];
@@ -183,6 +184,43 @@ t('template : avoir, brouillon et retenue à la source', () => {
   assert.ok(!av.includes('Timbre fiscal'));
   const paid = core.documentHtml(inv(), { name: 'C' }, { ...CO, rc: 'B123', capital: '1 000 DT' }, { stampText: 'Payée' });
   assert.ok(paid.includes('>Payée<') && paid.includes('RC B123 — Capital 1 000 DT'));
+});
+
+// ---------- 1.5 : récurrences, relances, emails ----------
+t('récurrences : dates (fin de mois, trimestre, année) et échéances dues', () => {
+  assert.strictEqual(core.addMonths('2026-01-31', 1, 31), '2026-02-28');
+  assert.strictEqual(core.addMonths('2026-02-28', 1, 31), '2026-03-31');
+  assert.strictEqual(core.nextRecurrenceDate('2026-11-15', 'month', 15), '2026-12-15');
+  assert.strictEqual(core.nextRecurrenceDate('2026-11-15', 'quarter', 1), '2027-02-01');
+  assert.strictEqual(core.nextRecurrenceDate('2026-02-29', 'year', 29), '2027-02-28');
+  assert.strictEqual(core.monthLabel('2026-09-11'), 'septembre 2026');
+  const data = { recurring: [{ id: 'r1', nextDate: '2026-09-01', active: true }, { id: 'r2', nextDate: '2026-10-01', active: true }, { id: 'r3', nextDate: '2026-08-01', active: false }] };
+  assert.deepStrictEqual(core.dueRecurrences(data, '2026-09-11').map(r => r.id), ['r1']);
+  const inv = core.buildRecurringInvoice({ id: 'r1', clientId: 'c', subject: 'Maintenance — {mois}', lines: [{ label: 'Supervision {mois}', qty: 1, unitPrice: 250, vatRate: 19 }], withholdingRate: 1.5 }, '2026-09-01', CO);
+  assert.strictEqual(inv.subject, 'Maintenance — septembre 2026');
+  assert.strictEqual(inv.lines[0].label, 'Supervision septembre 2026');
+  assert.strictEqual(inv.dueDate, '2026-10-01');
+  assert.strictEqual(inv.status, 'brouillon'); assert.strictEqual(inv.number, '');
+});
+
+t('relances : factures échues, niveaux, gabarits d\'email', () => {
+  const data = { clients: [{ id: 'c1', name: 'ACME', email: 'compta@acme.tn' }], documents: [
+    inv({ id: 'i1', number: 'FAC-2026-001', dueDate: '2026-08-01', clientId: 'c1' }),
+    inv({ id: 'i2', number: 'FAC-2026-002', dueDate: '2026-09-05', clientId: 'c1', payments: [{ id: 'p', date: '2026-09-06', amount: 1191 }] }),
+    inv({ id: 'i3', number: 'FAC-2026-003', dueDate: '2026-12-01', clientId: 'c1' }),
+    inv({ id: 'i4', number: '', status: 'brouillon', dueDate: '2026-01-01' })
+  ] };
+  const od = core.overdueInvoices(data, CO, '2026-09-11');
+  assert.deepStrictEqual(od.map(x => x.doc.number), ['FAC-2026-001']);
+  assert.strictEqual(od[0].daysLate, 41); assert.strictEqual(od[0].level, 2);
+  assert.strictEqual(core.reminderLevel(3), 1); assert.strictEqual(core.reminderLevel(60), 3);
+  const m = core.emailFor('relance2', od[0].doc, data.clients[0], CO, { jours: od[0].daysLate });
+  assert.strictEqual(m.to, 'compta@acme.tn');
+  assert.strictEqual(m.subject, 'Relance — facture FAC-2026-001 en retard de 41 jours');
+  assert.ok(m.body.includes('1 191,000 DT') && m.body.includes('01/08/2026') && m.body.endsWith(CO.name));
+  const custom = core.emailFor('facture', od[0].doc, data.clients[0], { ...CO, emailTemplates: { facture: { subject: 'Hello {client}', body: 'x' } } });
+  assert.strictEqual(custom.subject, 'Hello ACME');
+  assert.strictEqual(core.fillTemplate('{a}-{b}-{c}', { a: 1, b: 'deux' }), '1-deux-{c}');
 });
 
 // ---------- stockage (src/storage.js) ----------

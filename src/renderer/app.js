@@ -16,7 +16,7 @@
     openBackups: async () => {}, createBackup: async () => null, listBackups: async () => [],
     pickLogo: async () => null,
     exportPdf: async (html) => { const w = window.open('', '_blank'); w.document.write(html); w.document.close(); w.print(); return null; },
-    exportPdfMany: async () => null, saveText: async () => null,
+    exportPdfMany: async () => null, saveText: async () => null, exportPdfSilent: async () => null, composeMail: async () => ({ state: 'mailto' }),
     openPath: async () => {}, showInFolder: async () => {},
     changelog: async () => '', onMenuAction: () => {},
     updateVersion: async () => ({ version: 'dev', packaged: false, platform: 'browser', macSigned: false }),
@@ -124,6 +124,8 @@
     $$('nav a').forEach(a => a.classList.toggle('active', a.dataset.route === active));
     (routes[name] || routes.dashboard)(parts.slice(1));
     $('#view').scrollTop = 0;
+    updateNavCounts();
+    closePalette();
   }
   window.addEventListener('hashchange', render);
 
@@ -151,6 +153,7 @@
           <button class="btn" id="new-devis">+ Nouveau devis</button>
           <button class="btn btn-primary" id="new-facture">+ Nouvelle facture</button>
         </div></div>
+      ${dashboardBanners()}
       <div class="stats">
         <div class="stat"><div class="lbl">CA du mois (HT)</div><div class="val">${C.money(sumHT(ofMonth), cur)}</div><div class="sub">${C.money(sumTTC(ofMonth), cur)} TTC, avoirs déduits</div></div>
         <div class="stat"><div class="lbl">CA de l'année (HT)</div><div class="val">${C.money(sumHT(ofYear), cur)}</div><div class="sub">${year} · ${C.money(sumTTC(ofYear), cur)} TTC</div></div>
@@ -160,6 +163,7 @@
       <div class="panel"><h2>Documents récents</h2>${docTable(recent)}</div>`;
     $('#new-devis').onclick = () => navigate('#/doc/new/devis');
     $('#new-facture').onclick = () => navigate('#/doc/new/facture');
+    bindBanners();
     bindDocTable();
   };
 
@@ -243,7 +247,8 @@
     if (parts[0] === 'new') {
       const type = ['devis', 'facture', 'avoir'].includes(parts[1]) ? parts[1] : 'devis';
       doc = newDocument(type); isNew = true;
-      if (type === 'avoir' && parts[2]) { const inv = docById(parts[2]); if (inv) Object.assign(doc, creditDraftFrom(inv)); }
+      if (type === 'avoir' && parts[2] && parts[2] !== 'tpl') { const inv = docById(parts[2]); if (inv) Object.assign(doc, creditDraftFrom(inv)); }
+      if (parts[2] === 'tpl' && parts[3]) applyTemplate(doc, parts[3]);
     } else {
       doc = docById(parts[0]); if (!doc) return navigate('#/dashboard'); doc = deepCopy(doc);
     }
@@ -271,16 +276,20 @@
       <div class="page-head">
         <div><h1>${h(title)}</h1>${locked ? `<div class="small muted lock-note">Document émis : il n'est plus modifiable${isInv ? ' — pour corriger, crée un avoir' : ''}.</div>` : ''}</div>
         <div class="actions">
-          ${!isNew && !isAv ? `<button class="btn" id="dup">Dupliquer</button>` : ''}
+          ${!isNew && (locked || isQ) ? `<button class="btn" id="email">Envoyer par email</button>` : ''}
           ${!isNew && isQ ? `<button class="btn" id="deposit">Facture d'acompte…</button>` : ''}
           ${!isNew && isQ && issuedDeposits.length ? `<button class="btn" id="settle">Facture de solde</button>` : ''}
           ${!isNew && isQ ? `<button class="btn" id="convert">Convertir en facture</button>` : ''}
           ${locked && isInv && doc.status !== 'annulée' ? `<button class="btn" id="pay">Enregistrer un paiement</button><button class="btn" id="credit">Créer un avoir</button>` : ''}
-          ${canUnlock ? `<button class="btn btn-ghost" id="unlock">Modifier…</button>` : ''}
-          ${!isNew && !locked ? `<button class="btn btn-danger" id="del">Supprimer</button>` : ''}
           <button class="btn" id="pdf">Exporter en PDF</button>
           ${!locked ? `<button class="btn ${isQ ? 'btn-primary' : ''}" id="save">Enregistrer${isQ ? '' : ' le brouillon'}</button>` : ''}
           ${!locked && !isQ ? `<button class="btn btn-primary" id="issue">${isInv ? 'Émettre la facture' : 'Émettre l\'avoir'}</button>` : ''}
+          ${!isNew ? `<div class="more"><button class="btn" id="more-btn">Plus ▾</button><div class="more-list" id="more-list" hidden>
+            ${!isAv ? `<button id="dup">Dupliquer</button><button id="as-template">Enregistrer comme modèle…</button>` : ''}
+            ${isInv ? `<button id="make-recurring">Rendre récurrent (contrat)…</button>` : ''}
+            ${canUnlock ? `<button id="unlock">Modifier malgré l'émission…</button>` : ''}
+            ${!locked ? `<button id="del" class="danger">Supprimer</button>` : ''}
+          </div></div>` : ''}
         </div></div>
       <div class="editor">
         <div>
@@ -303,6 +312,7 @@
           </div>
           <div class="panel"><h2>Lignes</h2>
             ${locked ? '' : `<div class="catalog-pick">
+              ${templatesFor(doc.type).length ? `<select id="tpl-pick"><option value="">Depuis un modèle…</option>${templatesFor(doc.type).map(t => `<option value="${t.id}">${h(t.name)}</option>`).join('')}</select>` : ''}
               <select id="cat-pick"><option value="">Ajouter depuis le catalogue…</option>${data.catalog.map(c => `<option value="${c.id}">${h(c.label)} — ${C.money(c.unitPrice, cur)}</option>`).join('')}</select>
               <button class="btn btn-sm" id="add-line">+ Ligne vide</button>
             </div>`}
@@ -312,6 +322,7 @@
           </div>
           ${bal ? `<div class="panel" id="pay-panel"><h2>Paiements et situation</h2><div id="pay-body"></div></div>` : ''}
           <div class="panel"><h2>Notes (affichées sur le document)</h2>
+            ${!locked && data.snippets.length ? `<div class="catalog-pick"><select id="snip-pick"><option value="">Insérer un texte prédéfini…</option>${data.snippets.map(x => `<option value="${x.id}">${h(x.name)}</option>`).join('')}</select></div>` : ''}
             <textarea id="notes" placeholder="Conditions particulières, mentions…" ${ro}>${h(doc.notes || '')}</textarea>
           </div>
         </div>
@@ -344,6 +355,18 @@
       if (doc.lines.length === 1 && !doc.lines[0].label && !doc.lines[0].unitPrice) doc.lines = [];
       doc.lines.push({ label: it.label, description: it.description || '', qty: 1, unit: it.unit || '', unitPrice: it.unitPrice, vatRate: it.vatRate });
       e.target.value = ''; drawLines();
+    };
+    if ($('#tpl-pick')) $('#tpl-pick').onchange = async e => {
+      const id = e.target.value; e.target.value = ''; if (!id) return;
+      const hasContent = doc.lines.some(l => l.label) ;
+      if (hasContent && !await confirmDialog('Remplacer les lignes actuelles par celles du modèle ?', 'Remplacer', false)) return;
+      applyTemplate(doc, id);
+      $('input[name=subject]', head).value = doc.subject; $('input[name=discountRate]', head).value = doc.discountRate || 0; $('#notes').value = doc.notes || '';
+      drawLines();
+    };
+    if ($('#snip-pick')) $('#snip-pick').onchange = e => {
+      const sn = data.snippets.find(x => x.id === e.target.value); e.target.value = ''; if (!sn) return;
+      doc.notes = (doc.notes ? doc.notes.replace(/\s+$/, '') + '\n' : '') + sn.text; $('#notes').value = doc.notes; schedulePreview();
     };
 
     // --- en-tête
@@ -507,6 +530,11 @@
     };
     if ($('#pay')) $('#pay').onclick = () => paymentForm(docById(doc.id), () => render());
     if ($('#credit')) $('#credit').onclick = () => navigate('#/doc/new/avoir/' + doc.id);
+    if ($('#email')) $('#email').onclick = () => sendByEmail(docById(doc.id) || doc);
+    if ($('#as-template')) $('#as-template').onclick = () => saveAsTemplate(doc);
+    if ($('#make-recurring')) $('#make-recurring').onclick = () => recurrenceForm(recurrenceFromInvoice(doc), () => { toast('Contrat créé'); navigate('#/contrats'); });
+    if ($('#more-btn')) $('#more-btn').onclick = e => { e.stopPropagation(); const l = $('#more-list'); l.hidden = !l.hidden; };
+    $$('#more-list button').forEach(b => b.addEventListener('click', () => { $('#more-list').hidden = true; }));
 
     drawLines();
     drawPayments();
@@ -651,10 +679,288 @@
       $$('[data-edit]').forEach(b => b.onclick = () => catalogForm(data.catalog.find(c => c.id === b.dataset.edit), draw));
       $$('[data-del]').forEach(b => b.onclick = async () => { if (await confirmDialog('Supprimer cette prestation ?')) { data.catalog = data.catalog.filter(c => c.id !== b.dataset.del); save(true); draw(); } });
     };
-    $('#view').innerHTML = `<div class="page-head"><h1>Catalogue de prestations</h1><div class="actions"><button class="btn btn-primary" id="new">+ Nouvelle prestation</button></div></div><div id="list-wrap"></div>`;
+    const drawTemplates = () => {
+      $('#tpl-wrap').innerHTML = data.templates.length ? `<table class="list"><thead><tr><th>Modèle</th><th>Type</th><th class="r">Lignes</th><th></th></tr></thead><tbody>
+        ${data.templates.map(t => `<tr><td><strong>${h(t.name)}</strong><div class="small muted">${h(t.subject || '')}</div></td><td>${C.TITLES[t.type] || t.type}</td><td class="r">${(t.lines || []).length}</td>
+          <td class="actions"><button class="btn btn-sm btn-primary" data-use="${t.id}">Nouveau ${t.type === 'devis' ? 'devis' : 'facture'}</button> <button class="btn btn-sm" data-ren="${t.id}">Renommer</button> <button class="btn btn-sm btn-danger" data-tdel="${t.id}">Supprimer</button></td></tr>`).join('')}
+        </tbody></table>` : `<div class="empty">Aucun modèle. Depuis un devis ou une facture : Plus ▾ → « Enregistrer comme modèle ».</div>`;
+      $$('[data-use]').forEach(b => b.onclick = () => { const t = data.templates.find(x => x.id === b.dataset.use); navigate(`#/doc/new/${t.type}/tpl/${t.id}`); });
+      $$('[data-ren]').forEach(b => b.onclick = () => { const t = data.templates.find(x => x.id === b.dataset.ren); promptDialog('Renommer le modèle', 'Nom', t.name, v => { t.name = v; save(true); drawTemplates(); }); });
+      $$('[data-tdel]').forEach(b => b.onclick = async () => { if (await confirmDialog('Supprimer ce modèle ?')) { data.templates = data.templates.filter(x => x.id !== b.dataset.tdel); save(true); drawTemplates(); } });
+    };
+    const drawSnippets = () => {
+      $('#snip-wrap').innerHTML = data.snippets.length ? `<table class="list"><thead><tr><th>Nom</th><th>Texte</th><th></th></tr></thead><tbody>
+        ${data.snippets.map(x => `<tr><td><strong>${h(x.name)}</strong></td><td class="small">${h(x.text).replace(/\n/g, '<br>')}</td>
+          <td class="actions"><button class="btn btn-sm" data-sedit="${x.id}">Modifier</button> <button class="btn btn-sm btn-danger" data-sdel="${x.id}">Supprimer</button></td></tr>`).join('')}
+        </tbody></table>` : `<div class="empty">Aucun texte prédéfini. Conditions de garantie, modalités, mentions récurrentes… à insérer dans les notes d'un document en un clic.</div>`;
+      $$('[data-sedit]').forEach(b => b.onclick = () => snippetForm(data.snippets.find(x => x.id === b.dataset.sedit), drawSnippets));
+      $$('[data-sdel]').forEach(b => b.onclick = async () => { if (await confirmDialog('Supprimer ce texte ?')) { data.snippets = data.snippets.filter(x => x.id !== b.dataset.sdel); save(true); drawSnippets(); } });
+    };
+    $('#view').innerHTML = `<div class="page-head"><h1>Catalogue de prestations</h1><div class="actions"><button class="btn btn-primary" id="new">+ Nouvelle prestation</button></div></div><div id="list-wrap"></div>
+      <div class="section-head"><h2>Modèles de documents</h2></div><div id="tpl-wrap"></div>
+      <div class="section-head"><h2>Textes prédéfinis</h2><button class="btn btn-sm" id="new-snip">+ Nouveau texte</button></div><div id="snip-wrap"></div>`;
     $('#new').onclick = () => catalogForm(null, draw);
+    $('#new-snip').onclick = () => snippetForm(null, drawSnippets);
+    draw(); drawTemplates(); drawSnippets();
+  };
+
+  function snippetForm(sn, done) {
+    const x = sn || { id: C.uid(), name: '', text: '' };
+    modal(`<h2>${sn ? 'Modifier le texte' : 'Nouveau texte prédéfini'}</h2>
+      <form id="sf" class="grid-2">${field('Nom', 'name', x.name, 'text', 'placeholder="Garantie, Conditions de paiement…"')}<label class="field span-2">Texte<textarea name="text" rows="5">${h(x.text)}</textarea></label></form>
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
+      (root, close) => { $('#ok', root).onclick = () => { const v = formValues($('#sf', root)); if (!v.name.trim() || !v.text.trim()) return toast('Nom et texte obligatoires.', true); Object.assign(x, v); if (!sn) data.snippets.push(x); save(true); close(); if (done) done(); }; });
+  }
+
+  function promptDialog(title, label, value, done) {
+    modal(`<h2>${h(title)}</h2><form id="pr" class="grid-2"><label class="field span-2">${h(label)}<input type="text" name="v" value="${h(value || '')}"></label></form>
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">OK</button></div>`,
+      (root, close) => { $('#ok', root).onclick = () => { const v = $('input[name=v]', root).value.trim(); if (!v) return toast('Valeur obligatoire.', true); close(); done(v); }; });
+  }
+
+  // ---------- modèles de documents ----------
+  const templatesFor = type => data.templates.filter(t => t.type === (type === 'avoir' ? 'facture' : type) || !t.type);
+  function applyTemplate(doc, id) {
+    const t = data.templates.find(x => x.id === id); if (!t) return;
+    if (!doc.subject) doc.subject = t.subject || '';
+    doc.lines = deepCopy(t.lines || []).map(l => ({ ...l, noDiscount: false }));
+    if (!doc.lines.length) doc.lines = [{ label: '', description: '', qty: 1, unit: '', unitPrice: 0, vatRate: 19 }];
+    doc.discountRate = t.discountRate || 0;
+    if (!doc.notes) doc.notes = t.notes || '';
+  }
+  function saveAsTemplate(doc) {
+    promptDialog('Enregistrer comme modèle', 'Nom du modèle', doc.subject || '', name => {
+      data.templates.push({ id: C.uid(), name, type: doc.type === 'avoir' ? 'facture' : doc.type, subject: doc.subject || '', lines: deepCopy(doc.lines || []).filter(l => !l.noDiscount), discountRate: doc.discountRate || 0, notes: doc.notes || '' });
+      save(true); toast('Modèle « ' + name + ' » enregistré (Catalogue → Modèles)');
+    });
+  }
+
+  // ---------- envoi par email ----------
+  function docFileName(doc) {
+    const client = (clientById(doc.clientId) || {}).name || '';
+    const safe = s => String(s).replace(/[^\w\-àâäéèêëïîôöùûüç ]/gi, '').trim().replace(/\s+/g, '_');
+    return `${doc.number || 'Brouillon-' + doc.type}${client ? '_' + safe(client) : ''}.pdf`;
+  }
+  function stampFor(doc) {
+    const st = doc.type === 'facture' && doc.status !== 'brouillon' ? effStatus(doc) : null;
+    return st === 'payée' ? 'Payée' : st === 'annulée' ? 'Annulée' : undefined;
+  }
+  function sendByEmail(doc, kind, extra, afterSend) {
+    const client = clientById(doc.clientId);
+    if (!client) return toast('Choisis un client.', true);
+    kind = kind || doc.type;
+    const m = C.emailFor(kind, doc, client, company(), extra);
+    modal(`<h2>${kind.startsWith('relance') ? C.REMINDER_LABELS[Number(kind.slice(-1))] + ' — ' + h(doc.number) : 'Envoyer ' + h(docLabel(doc)) + ' par email'}</h2>
+      <form id="mf" class="grid-2">
+        ${field('Destinataire', 'to', m.to, 'email', 'placeholder="email@client.tn"')}
+        <label class="check" style="align-self:end"><input type="checkbox" name="attach" checked> Joindre le PDF</label>
+        <label class="field span-2">Objet<input type="text" name="subject" value="${h(m.subject)}"></label>
+        <label class="field span-2">Message<textarea name="body" rows="9">${h(m.body)}</textarea></label>
+      </form>
+      <p class="small muted">${company().mailClient === 'mailto' ? 'Le message s\'ouvre dans ta messagerie ; le PDF est affiché dans le Finder pour le glisser dans le message.' : 'Sur Mac, le message s\'ouvre dans Mail avec le PDF joint. Tu le relis et tu cliques sur Envoyer.'} Modèles d'email : Paramètres → Emails.</p>
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Ouvrir dans la messagerie</button></div>`,
+      (root, close) => { $('#ok', root).onclick = async () => {
+        const v = formValues($('#mf', root));
+        if (!v.to || !/^[^@\s]+@[^@\s]+$/.test(v.to)) return toast('Adresse email invalide.', true);
+        const b = $('#ok', root); b.disabled = true; b.textContent = 'Préparation…';
+        try {
+          let attachment = null;
+          if (v.attach) attachment = await bridge.exportPdfSilent(C.documentHtml(doc, client, company(), { stampText: stampFor(doc) }), docFileName(doc));
+          const r = await bridge.composeMail({ to: v.to, subject: v.subject, body: v.body, attachment, mode: company().mailClient === 'mailto' ? 'mailto' : 'auto' });
+          if (!client.email) { client.email = v.to; }
+          const stored = docById(doc.id) || doc;
+          stored.emails = stored.emails || []; stored.emails.push({ date: C.today(), to: v.to, subject: v.subject, kind });
+          if (stored.type === 'devis' && stored.status === 'brouillon') stored.status = 'envoyé';
+          if (afterSend) afterSend(stored);
+          save(true); close();
+          toast(r && r.state === 'mail' ? 'Message ouvert dans Mail avec le PDF joint' : 'Message ouvert dans ta messagerie' + (attachment ? ' — glisse le PDF affiché dans le Finder' : ''));
+          render();
+        } catch (e) { b.disabled = false; b.textContent = 'Ouvrir dans la messagerie'; toast('Erreur : ' + e.message.replace(/^.*Error: /, ''), true); }
+      }; });
+  }
+  function sendReminder(item) {
+    const level = item.level;
+    sendByEmail(item.doc, 'relance' + level, { jours: item.daysLate }, stored => { stored.reminders = stored.reminders || []; stored.reminders.push({ date: C.today(), level }); });
+  }
+
+  // ---------- contrats récurrents ----------
+  function recurrenceFromInvoice(doc) {
+    const day = Number(doc.date.slice(8, 10)) || 1;
+    return { id: C.uid(), clientId: doc.clientId, subject: (doc.subject || '').replace(/\s+—.*$/, '') + ' — {mois}', reference: '', lines: deepCopy(doc.lines || []).filter(l => !l.noDiscount),
+      discountRate: doc.discountRate || 0, withholdingRate: doc.withholdingRate || 0, notes: doc.notes || '', every: 'month', day, nextDate: C.addMonths(doc.date, 1, day), active: true, createdAt: Date.now() };
+  }
+  function recurrenceForm(rec, done) {
+    const isNew = !data.recurring.find(r => r.id === rec.id);
+    const r = deepCopy(rec);
+    if (!r.lines || !r.lines.length) r.lines = [{ label: '', qty: 1, unit: '', unitPrice: 0, vatRate: 19 }];
+    const cur = company().currency;
+    const clientOptions = () => `<option value="">— Client —</option>` + data.clients.slice().sort((a, b) => a.name.localeCompare(b.name)).map(c => `<option value="${c.id}" ${c.id === r.clientId ? 'selected' : ''}>${h(c.name)}</option>`).join('');
+    modal(`<h2>${isNew ? 'Nouveau contrat récurrent' : 'Modifier le contrat'}</h2>
+      <form id="rf" class="grid-3">
+        <label class="field span-2">Client<select name="clientId">${clientOptions()}</select></label>
+        <label class="field">Période<select name="every">${C.PERIODS.map(p => `<option value="${p[0]}" ${p[0] === r.every ? 'selected' : ''}>${p[1]}</option>`).join('')}</select></label>
+        <label class="field span-2">Objet des factures <span class="muted">({mois} = mois facturé)</span><input type="text" name="subject" value="${h(r.subject)}" placeholder="Maintenance et supervision — {mois}"></label>
+        ${field('Jour du mois', 'day', r.day || 1, 'number', 'min="1" max="31" class="num"')}
+        ${field('Prochaine facture', 'nextDate', r.nextDate || C.today(), 'date')}
+        <label class="field">Retenue à la source<select name="withholdingRate">${withholdingOptions(r.withholdingRate)}</select></label>
+        ${field('Remise (%)', 'discountRate', r.discountRate || 0, 'number', 'min="0" max="100" step="0.5" class="num"')}
+        <label class="field span-3">Notes sur la facture<textarea name="notes" rows="2">${h(r.notes || '')}</textarea></label>
+        <label class="check span-3"><input type="checkbox" name="active" ${r.active !== false ? 'checked' : ''}> Contrat actif (les factures sont proposées à la date prévue)</label>
+      </form>
+      <table class="mini"><thead><tr><th>Désignation</th><th style="width:70px">Qté</th><th style="width:110px">P.U. HT</th><th style="width:80px">TVA</th><th></th></tr></thead><tbody id="rl"></tbody></table>
+      <div class="inline mt"><button type="button" class="btn btn-sm" id="rl-add">+ Ligne</button><span class="small muted" id="rl-total"></span></div>
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
+      (root, close) => {
+        const body = $('#rl', root);
+        const drawL = () => {
+          body.innerHTML = r.lines.map((l, i) => `<tr data-i="${i}"><td><input type="text" data-k="label" value="${h(l.label)}" placeholder="Désignation"></td><td><input type="number" class="num" data-k="qty" value="${l.qty}" step="0.01"></td><td><input type="number" class="num" data-k="unitPrice" value="${l.unitPrice}" step="0.001"></td><td><select data-k="vatRate">${C.VAT_RATES.map(v => `<option value="${v}" ${Number(l.vatRate) === v ? 'selected' : ''}>${v}%</option>`).join('')}</select></td><td><button type="button" class="btn btn-ghost btn-sm" data-rm="${i}">✕</button></td></tr>`).join('');
+          $$('[data-k]', body).forEach(el => el.oninput = () => { const i = Number(el.closest('tr').dataset.i); r.lines[i][el.dataset.k] = el.type === 'number' ? Number(el.value) : el.value; tot(); });
+          $$('[data-rm]', body).forEach(b => b.onclick = () => { r.lines.splice(Number(b.dataset.rm), 1); if (!r.lines.length) r.lines.push({ label: '', qty: 1, unitPrice: 0, vatRate: 19 }); drawL(); });
+          tot();
+        };
+        const tot = () => { const t = C.computeTotals({ type: 'facture', lines: r.lines, discountRate: Number($('input[name=discountRate]', root).value) || 0 }, company()); $('#rl-total', root).textContent = `${C.money(t.netHT, cur)} HT · ${C.money(t.totalTTC, cur)} TTC par facture`; };
+        $('#rl-add', root).onclick = () => { r.lines.push({ label: '', qty: 1, unit: '', unitPrice: 0, vatRate: 19 }); drawL(); };
+        $('input[name=discountRate]', root).oninput = tot;
+        drawL();
+        $('#ok', root).onclick = () => {
+          const v = formValues($('#rf', root));
+          if (!v.clientId) return toast('Choisis un client.', true);
+          if (!v.subject.trim()) return toast('Indique l\'objet des factures.', true);
+          if (!r.lines.some(l => l.label && l.label.trim())) return toast('Ajoute au moins une ligne.', true);
+          if (!v.nextDate) return toast('Date de la prochaine facture obligatoire.', true);
+          Object.assign(r, v, { day: Math.min(31, Math.max(1, Number(v.day) || 1)), withholdingRate: Number(v.withholdingRate) || 0, discountRate: Number(v.discountRate) || 0 });
+          const idx = data.recurring.findIndex(x => x.id === r.id);
+          if (idx >= 0) data.recurring[idx] = r; else data.recurring.push(r);
+          save(true); close(); if (done) done(r);
+        };
+      });
+  }
+  // Génère les brouillons de factures dus (une par période manquée, 12 max) ; renvoie le nombre créé.
+  function generateRecurring(recs, force) {
+    let n = 0;
+    (recs || C.dueRecurrences(data)).forEach(rec => {
+      let guard = 0;
+      do {
+        const inv = { ...C.buildRecurringInvoice(rec, rec.nextDate, company()), id: C.uid(), createdAt: Date.now() };
+        data.documents.push(inv); n++;
+        rec.lastIssued = rec.nextDate; rec.nextDate = C.nextRecurrenceDate(rec.nextDate, rec.every, rec.day);
+      } while (!force && rec.active !== false && rec.nextDate <= C.today() && ++guard < 12);
+    });
+    if (n) save(true);
+    return n;
+  }
+  routes.contrats = () => {
+    const cur = company().currency;
+    const draw = () => {
+      const due = C.dueRecurrences(data);
+      const list = data.recurring.slice().sort((a, b) => (a.nextDate || '').localeCompare(b.nextDate || ''));
+      $('#c-wrap').innerHTML = `${due.length ? `<div class="banner">${due.length} facture(s) récurrente(s) à générer<button class="btn" id="gen-due">Générer les brouillons</button></div>` : ''}
+        ${list.length ? `<table class="list"><thead><tr><th>Client</th><th>Objet</th><th>Période</th><th>Prochaine facture</th><th class="r">HT / facture</th><th>État</th><th></th></tr></thead><tbody>
+        ${list.map(r => { const t = C.computeTotals({ type: 'facture', lines: r.lines, discountRate: r.discountRate }, company()); const isDue = r.active !== false && r.nextDate <= C.today();
+          return `<tr><td><strong>${h(clientName(r.clientId))}</strong></td><td>${h(r.subject)}</td><td>${(C.PERIODS.find(p => p[0] === r.every) || [])[1] || ''}</td><td>${C.fmtDate(r.nextDate)}${isDue ? ' <span class="level l2">à générer</span>' : ''}${r.lastIssued ? `<div class="small muted">dernière : ${C.fmtDate(r.lastIssued)}</div>` : ''}</td><td class="r">${C.money(t.netHT, cur)}</td><td>${r.active !== false ? badge('envoyée').replace('envoyée', 'actif') : badge('brouillon').replace('brouillon', 'suspendu')}</td>
+          <td class="actions"><button class="btn btn-sm" data-gen="${r.id}">Générer maintenant</button> <button class="btn btn-sm" data-edit="${r.id}">Modifier</button> <button class="btn btn-sm" data-toggle="${r.id}">${r.active !== false ? 'Suspendre' : 'Reprendre'}</button> <button class="btn btn-sm btn-danger" data-del="${r.id}">Supprimer</button></td></tr>`; }).join('')}
+        </tbody></table>` : `<div class="empty">Aucun contrat. Un contrat génère automatiquement un brouillon de facture à chaque échéance (mensuelle, trimestrielle, annuelle). Crée-le ici, ou depuis une facture existante : Plus ▾ → « Rendre récurrent ».</div>`}`;
+      if ($('#gen-due')) $('#gen-due').onclick = () => { const n = generateRecurring(); toast(`${n} brouillon(s) créé(s) — à émettre depuis Factures`); draw(); };
+      $$('[data-gen]').forEach(b => b.onclick = () => { const r = data.recurring.find(x => x.id === b.dataset.gen); generateRecurring([r], true); toast('Brouillon créé pour ' + C.monthLabel(r.lastIssued)); draw(); });
+      $$('[data-edit]').forEach(b => b.onclick = () => recurrenceForm(data.recurring.find(x => x.id === b.dataset.edit), draw));
+      $$('[data-toggle]').forEach(b => b.onclick = () => { const r = data.recurring.find(x => x.id === b.dataset.toggle); r.active = r.active === false; save(true); draw(); });
+      $$('[data-del]').forEach(b => b.onclick = async () => { if (await confirmDialog('Supprimer ce contrat ? Les factures déjà générées sont conservées.')) { data.recurring = data.recurring.filter(x => x.id !== b.dataset.del); save(true); draw(); } });
+    };
+    $('#view').innerHTML = `<div class="page-head"><h1>Contrats récurrents</h1><div class="actions"><button class="btn btn-primary" id="new">+ Nouveau contrat</button></div></div><div id="c-wrap"></div>`;
+    $('#new').onclick = () => recurrenceForm({ id: C.uid(), clientId: '', subject: '', lines: [], every: 'month', day: 1, nextDate: C.addMonths(C.today(), 1, 1), active: true, withholdingRate: 0, discountRate: 0, notes: '' }, draw);
     draw();
   };
+
+  // ---------- relances ----------
+  routes.relances = () => {
+    const cur = company().currency;
+    const draw = () => {
+      const od = C.overdueInvoices(data, company());
+      const soon = data.documents.filter(d => d.type === 'facture' && ['envoyée', 'partielle'].includes(effStatus(d)) && d.dueDate >= C.today() && C.daysBetween(C.today(), d.dueDate) <= 7);
+      const total = od.reduce((s, x) => s + x.remaining, 0);
+      $('#r-wrap').innerHTML = `
+        ${od.length ? `<div class="banner">${od.length} facture(s) en retard — ${C.money(total, cur)} à récupérer</div>` : `<div class="banner info">Aucune facture en retard.</div>`}
+        ${od.length ? `<table class="list"><thead><tr><th>Facture</th><th>Client</th><th>Échéance</th><th class="r">Retard</th><th class="r">Reste à payer</th><th>Dernière relance</th><th></th></tr></thead><tbody>
+          ${od.map(x => `<tr><td><strong><a href="#/doc/${x.doc.id}">${h(x.doc.number)}</a></strong><div class="small muted">${h(x.doc.subject || '')}</div></td><td>${h(clientName(x.doc.clientId))}</td><td>${C.fmtDate(x.doc.dueDate)}</td><td class="r">${x.daysLate} j <span class="level l${x.level}">${h(C.REMINDER_LABELS[x.level])}</span></td><td class="r">${C.money(x.remaining, cur)}</td>
+            <td>${x.lastReminder ? `${C.fmtDate(x.lastReminder.date)} <span class="small muted">(niveau ${x.lastReminder.level}, ${x.reminders.length} envoi${x.reminders.length > 1 ? 's' : ''})</span>` : '<span class="muted">jamais</span>'}</td>
+            <td class="actions"><button class="btn btn-sm btn-primary" data-rem="${x.doc.id}">Relancer par email</button> <button class="btn btn-sm" data-pay="${x.doc.id}">Paiement reçu</button></td></tr>`).join('')}
+        </tbody></table>` : ''}
+        ${soon.length ? `<div class="section-head"><h2>Échéances dans les 7 jours</h2></div><table class="list compact"><thead><tr><th>Facture</th><th>Client</th><th>Échéance</th><th class="r">Reste</th></tr></thead><tbody>
+          ${soon.map(d => `<tr class="clickable" data-id="${d.id}"><td><strong>${h(d.number)}</strong></td><td>${h(clientName(d.clientId))}</td><td>${C.fmtDate(d.dueDate)}</td><td class="r">${C.money(balance(d).remaining, cur)}</td></tr>`).join('')}
+        </tbody></table>` : ''}
+        <p class="small muted mt">Niveaux : rappel amical jusqu'à 15 jours, relance jusqu'à 45 jours, dernière relance au-delà. Textes modifiables dans Paramètres → Emails.</p>`;
+      $$('[data-rem]').forEach(b => b.onclick = () => sendReminder(od.find(x => x.doc.id === b.dataset.rem)));
+      $$('[data-pay]').forEach(b => b.onclick = () => paymentForm(docById(b.dataset.pay), draw));
+      $$('tr.clickable[data-id]').forEach(tr => tr.onclick = () => navigate('#/doc/' + tr.dataset.id));
+    };
+    $('#view').innerHTML = `<div class="page-head"><h1>Relances</h1></div><div id="r-wrap"></div>`;
+    draw();
+  };
+
+  // ---------- bannières et compteurs ----------
+  function dashboardBanners() {
+    const due = C.dueRecurrences(data).length;
+    const od = C.overdueInvoices(data, company());
+    const cur = company().currency;
+    return `${due ? `<div class="banner info">${due} facture(s) récurrente(s) à générer ce mois<button class="btn" id="b-gen">Générer les brouillons</button></div>` : ''}
+      ${od.length ? `<div class="banner">${od.length} facture(s) en retard — ${C.money(od.reduce((s, x) => s + x.remaining, 0), cur)}<button class="btn" id="b-rel">Voir les relances</button></div>` : ''}`;
+  }
+  function bindBanners() {
+    if ($('#b-gen')) $('#b-gen').onclick = () => { const n = generateRecurring(); toast(`${n} brouillon(s) créé(s)`); render(); };
+    if ($('#b-rel')) $('#b-rel').onclick = () => navigate('#/relances');
+  }
+  function updateNavCounts() {
+    const el = $('#nav-relances'); if (!el || !data) return;
+    const n = C.overdueInvoices(data, company()).length;
+    el.hidden = !n; el.textContent = n;
+  }
+
+  // ---------- palette de recherche (Cmd/Ctrl+K) ----------
+  function closePalette() { const r = $('#palette-root'); if (r && !r.hidden) { r.hidden = true; r.innerHTML = ''; } }
+  function openPalette() {
+    const root = $('#palette-root');
+    if (!root.hidden) return closePalette();
+    root.hidden = false;
+    root.innerHTML = `<div class="palette"><input type="text" id="pal-q" placeholder="Rechercher un document, un client, une prestation, une action…" autocomplete="off" spellcheck="false"><div class="results" id="pal-res"></div><div class="hint">↑ ↓ pour naviguer · Entrée pour ouvrir · Échap pour fermer</div></div>`;
+    const cur = company().currency;
+    const actions = [
+      ['Nouveau devis', () => navigate('#/doc/new/devis')], ['Nouvelle facture', () => navigate('#/doc/new/facture')], ['Nouvel avoir', () => navigate('#/doc/new/avoir')],
+      ['Accueil', () => navigate('#/dashboard')], ['Devis', () => navigate('#/devis')], ['Factures', () => navigate('#/factures')], ['Relances', () => navigate('#/relances')],
+      ['Contrats récurrents', () => navigate('#/contrats')], ['Clients', () => navigate('#/clients')], ['Catalogue', () => navigate('#/catalogue')], ['Comptabilité', () => navigate('#/compta')], ['Paramètres', () => navigate('#/parametres')],
+      ['Nouveau client', () => clientForm(null, () => render())]
+    ].map(([label, run]) => ({ kind: 'Action', main: label, text: label.toLowerCase(), run }));
+    const docs = data.documents.map(d => { const t = C.computeTotals(d, company()); const cn = clientName(d.clientId); return { kind: C.TITLES[d.type], main: d.number || 'Brouillon', sub: `${cn}${d.subject ? ' — ' + d.subject : ''}`, amt: C.money(d.type === 'devis' ? t.totalTTC : t.netToPay, cur), text: `${d.number} ${cn} ${d.subject || ''} ${d.type}`.toLowerCase(), run: () => navigate('#/doc/' + d.id), ts: d.createdAt || 0 }; });
+    const clients = data.clients.map(c => ({ kind: 'Client', main: c.name, sub: [c.email, c.phone].filter(Boolean).join(' · '), text: `${c.name} ${c.email || ''} ${c.phone || ''} ${c.matricule || ''}`.toLowerCase(), run: () => clientForm(c, () => render()) }));
+    const items = data.catalog.map(c => ({ kind: 'Prestation', main: c.label, sub: C.money(c.unitPrice, cur) + ' HT', text: `${c.label} ${c.description || ''}`.toLowerCase(), run: () => navigate('#/catalogue') }));
+    const all = [...actions, ...docs, ...clients, ...items];
+    let sel = 0, shown = [];
+    const input = $('#pal-q'), res = $('#pal-res');
+    const draw = () => {
+      const q = input.value.trim().toLowerCase();
+      const words = q.split(/\s+/).filter(Boolean);
+      shown = (q ? all.filter(x => words.every(w => x.text.includes(w))) : [...docs.slice().sort((a, b) => b.ts - a.ts).slice(0, 6), ...actions.slice(0, 4)]).slice(0, 12);
+      if (q) shown.sort((a, b) => (b.text.startsWith(q) ? 1 : 0) - (a.text.startsWith(q) ? 1 : 0));
+      sel = Math.min(sel, Math.max(0, shown.length - 1));
+      res.innerHTML = shown.length ? shown.map((x, i) => `<div class="res ${i === sel ? 'sel' : ''}" data-i="${i}"><span class="kind">${h(x.kind)}</span><span class="main">${h(x.main)}${x.sub ? `<span class="sub">${h(x.sub)}</span>` : ''}</span>${x.amt ? `<span class="amt">${h(x.amt)}</span>` : ''}</div>`).join('') : `<div class="res"><span class="main muted">Aucun résultat</span></div>`;
+      $$('.res[data-i]', res).forEach(el => el.onclick = () => { closePalette(); shown[Number(el.dataset.i)].run(); });
+    };
+    input.oninput = () => { sel = 0; draw(); };
+    input.onkeydown = e => {
+      if (e.key === 'ArrowDown') { e.preventDefault(); sel = Math.min(sel + 1, shown.length - 1); draw(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); sel = Math.max(sel - 1, 0); draw(); }
+      else if (e.key === 'Enter') { e.preventDefault(); const x = shown[sel]; if (x) { closePalette(); x.run(); } }
+      else if (e.key === 'Escape') { e.preventDefault(); closePalette(); }
+    };
+    root.onclick = e => { if (e.target === root) closePalette(); };
+    draw(); input.focus();
+  }
+  document.addEventListener('keydown', e => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); openPalette(); }
+    else if (e.key === 'Escape') { const l = $('#more-list'); if (l && !l.hidden) l.hidden = true; }
+  });
+  document.addEventListener('click', e => { const l = $('#more-list'); if (l && !l.hidden && !e.target.closest('.more')) l.hidden = true; });
+
+  // ---------- Paramètres ----------
 
   // ---------- Comptabilité ----------
   const MONTHS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
@@ -789,6 +1095,15 @@
           <label class="field">Pied de page des documents<textarea name="footer">${h(c.footer)}</textarea></label>
         </div>
         <p class="small muted mt">Retenue à la source : calculée sur le TTC hors timbre, modifiable sur chaque facture et par client. Les taux et l'assiette sont <em>À VÉRIFIER avec ton comptable</em>.</p></div>
+        <div class="panel"><h2>Emails</h2>
+          <div class="grid-2">
+            <label class="field">Envoi des emails<select name="mailClient"><option value="auto" ${c.mailClient !== 'mailto' ? 'selected' : ''}>Mail (Apple) avec le PDF joint — Mac</option><option value="mailto" ${c.mailClient === 'mailto' ? 'selected' : ''}>Autre messagerie (mailto, PDF à glisser)</option></select></label>
+          </div>
+          <p class="small muted mt">Variables utilisables : {numero} {client} {objet} {montant} {echeance} {jours} {societe} {reference}.</p>
+          ${[['devis', 'Envoi d\'un devis'], ['facture', 'Envoi d\'une facture'], ['avoir', 'Envoi d\'un avoir'], ['relance1', 'Rappel (≤ 15 jours de retard)'], ['relance2', 'Relance (16 à 45 jours)'], ['relance3', 'Dernière relance (> 45 jours)']].map(([k, label]) => {
+            const t = { ...C.DEFAULT_EMAIL_TEMPLATES[k], ...((c.emailTemplates || {})[k] || {}) };
+            return `<div class="section-head"><h2 class="small">${label}</h2></div><div class="grid-2"><label class="field span-2">Objet<input type="text" name="et_${k}_subject" value="${h(t.subject)}"></label><label class="field span-2">Message<textarea name="et_${k}_body" rows="4">${h(t.body)}</textarea></label></div>`; }).join('')}
+        </div>
       </form>
       <div class="panel"><h2>Mises à jour</h2><div id="update-panel"></div></div>
       <div class="panel"><h2>Données et sauvegardes</h2>
@@ -807,7 +1122,14 @@
         </div>
         <p class="small muted mt">La démo remplace tes données actuelles par des clients, prestations, devis et factures fictifs pour découvrir l'app. Exporte d'abord si tu veux garder quelque chose.</p>
       </div>`;
-    $('#save').onclick = () => { Object.assign(data.company, formValues($('#pf'))); data.company.defaultWithholdingRate = Number(data.company.defaultWithholdingRate) || 0; save(true); toast('Paramètres enregistrés'); $('#brand-company').textContent = data.company.name; };
+    $('#save').onclick = () => {
+      const v = formValues($('#pf'));
+      const et = {};
+      Object.keys(v).forEach(k => { const m = k.match(/^et_(\w+)_(subject|body)$/); if (m) { et[m[1]] = et[m[1]] || {}; et[m[1]][m[2]] = v[k]; delete v[k]; } });
+      Object.assign(data.company, v, { emailTemplates: et });
+      data.company.defaultWithholdingRate = Number(data.company.defaultWithholdingRate) || 0;
+      save(true); toast('Paramètres enregistrés'); $('#brand-company').textContent = data.company.name;
+    };
     drawUpdatePanel();
     $('#backup-now').onclick = async () => { const p = await bridge.createBackup(); toast(p ? 'Sauvegarde créée : ' + p.split(/[\\/]/).pop() : 'Rien à sauvegarder pour l\'instant'); };
     $('#open-backups').onclick = () => bridge.openBackups();
@@ -929,6 +1251,7 @@
     else if (name === 'export-data') exportAll();
     else if (name === 'import-data') importAll();
     else if (name === 'changelog') showChangelog();
+    else if (name === 'search') openPalette();
     else if (name.startsWith('go:')) navigate('#/' + name.slice(3));
   });
 
@@ -1002,6 +1325,10 @@
         subject: `Avoir sur facture ${m2.number}`, lines: [line(k[3], 1)], discountRate: 0, applyStamp: false, status: 'émis', notes: '', payments: [], withholdingRate: 0, createdAt: Date.now() };
       d.documents.push(av);
     }
+    // un contrat mensuel dû aujourd'hui, un modèle de devis, un texte prédéfini
+    d.recurring.push({ id: C.uid(), clientId: cl[1].id, subject: 'Sauvegarde et maintenance — {mois}', reference: '', lines: [line(k[3], 1), line(k[4], 1)], discountRate: 0, withholdingRate: 0, notes: 'Contrat annuel, facturation mensuelle.', every: 'month', day: 1, nextDate: C.today(), lastIssued: daysAgo(30), active: true, createdAt: Date.now() });
+    d.templates.push({ id: C.uid(), name: 'Audit standard', type: 'devis', subject: 'Audit de sécurité et plan d\'action', lines: [line(k[0], 1), line(k[5], 2), line(k[7], 1)], discountRate: 0, notes: 'Rapport remis sous 10 jours ouvrés après l\'intervention.' });
+    d.snippets.push({ id: C.uid(), name: 'Garantie', text: 'Prestations garanties 3 mois. Toute intervention hors périmètre fera l\'objet d\'un devis complémentaire.' });
     return migrate(d); // convertit les « payée » en paiements
   }
 
@@ -1020,7 +1347,7 @@
     const loaded = await bridge.loadData();
     const raw = loaded && loaded.data;
     data = migrate(raw);
-    if (raw && (raw.version || 1) < 2) save(true); // données migrées vers le nouveau format : on enregistre tout de suite
+    if (raw && (raw.version || 1) < 3) save(true); // données migrées vers le nouveau format : on enregistre tout de suite
     $('#brand-company').textContent = data.company.name;
     bridge.updateVersion().then(v => {
       upd.app = v; const el = $('#app-version'); if (el) el.textContent = 'v' + v.version;

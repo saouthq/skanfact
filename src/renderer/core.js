@@ -38,11 +38,14 @@
   };
 
   const DEFAULT_DATA = {
-    version: 2,
+    version: 3,
     company: DEFAULT_COMPANY,
     clients: [],
     catalog: [],
     documents: [],
+    recurring: [],   // contrats récurrents
+    templates: [],   // modèles de documents
+    snippets: [],    // textes prédéfinis
     counters: {}
   };
 
@@ -302,8 +305,102 @@
         doc.status = 'envoyée';
       }
     });
-    data.version = 2;
+    if (!Array.isArray(data.recurring)) data.recurring = [];
+    if (!Array.isArray(data.templates)) data.templates = [];
+    if (!Array.isArray(data.snippets)) data.snippets = [];
+    data.version = 3;
     return data;
+  }
+
+  // ---------- récurrences (contrats) ----------
+
+  const PERIODS = [['month', 'Chaque mois'], ['quarter', 'Chaque trimestre'], ['year', 'Chaque année']];
+  const MONTHS_FR = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+
+  function monthLabel(iso) { const [y, m] = (iso || today()).split('-'); return `${MONTHS_FR[Number(m) - 1]} ${y}`; }
+
+  // Ajoute n mois en gardant le jour demandé (31 → dernier jour du mois si besoin).
+  function addMonths(iso, n, day) {
+    const [y, m] = iso.split('-').map(Number);
+    const total = y * 12 + (m - 1) + n;
+    const ny = Math.floor(total / 12), nm = total % 12;
+    const last = new Date(Date.UTC(ny, nm + 1, 0)).getUTCDate();
+    const d = Math.min(Math.max(1, Number(day) || Number(iso.slice(8, 10))), last);
+    return `${ny}-${String(nm + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  }
+
+  function nextRecurrenceDate(fromIso, every, day) {
+    const months = every === 'year' ? 12 : every === 'quarter' ? 3 : 1;
+    return addMonths(fromIso, months, day);
+  }
+
+  function dueRecurrences(data, todayIso) {
+    const t = todayIso || today();
+    return (data.recurring || []).filter(r => r.active !== false && r.nextDate && r.nextDate <= t);
+  }
+
+  // Remplace {client}, {mois}, {numero}… dans un gabarit.
+  function fillTemplate(text, vars) {
+    return String(text || '').replace(/\{(\w+)\}/g, (m, k) => (vars && vars[k] != null ? String(vars[k]) : m));
+  }
+
+  // Brouillon de facture généré par un contrat pour une date donnée (l'app ajoute id/numéro/dates de création).
+  function buildRecurringInvoice(rec, dateIso, company) {
+    const vars = { mois: monthLabel(dateIso), annee: dateIso.slice(0, 4) };
+    return {
+      type: 'facture', number: '', status: 'brouillon', date: dateIso, dueDate: addDays(dateIso, company.paymentTermsDays || 30),
+      clientId: rec.clientId, subject: fillTemplate(rec.subject, vars), reference: rec.reference || '',
+      lines: (rec.lines || []).map(l => ({ ...l, label: fillTemplate(l.label, vars), description: fillTemplate(l.description || '', vars) })),
+      discountRate: rec.discountRate || 0, applyStamp: true, notes: fillTemplate(rec.notes || '', vars), payments: [],
+      withholdingRate: Number(rec.withholdingRate) || 0, recurringId: rec.id
+    };
+  }
+
+  // ---------- relances ----------
+
+  function reminderLevel(daysLate) { return daysLate > 45 ? 3 : daysLate > 15 ? 2 : 1; }
+  const REMINDER_LABELS = { 1: 'Rappel', 2: 'Relance', 3: 'Dernière relance' };
+
+  function daysBetween(fromIso, toIso) { return Math.round((new Date(toIso + 'T00:00:00') - new Date(fromIso + 'T00:00:00')) / 86400000); }
+
+  // Factures échues (ou partiellement payées et échues), avec jours de retard et dernière relance.
+  function overdueInvoices(data, company, todayIso) {
+    const t = todayIso || today();
+    return (data.documents || [])
+      .filter(d => d.type === 'facture' && d.status !== 'brouillon' && d.status !== 'annulée' && d.dueDate && d.dueDate < t)
+      .map(d => ({ doc: d, balance: invoiceBalance(d, data, company), status: effectiveStatus(d, data, company, t) }))
+      .filter(x => x.balance.remaining > 0.0005)
+      .map(x => {
+        const daysLate = daysBetween(x.doc.dueDate, t);
+        const reminders = x.doc.reminders || [];
+        const last = reminders.length ? reminders[reminders.length - 1] : null;
+        return { doc: x.doc, remaining: x.balance.remaining, daysLate, level: reminderLevel(daysLate), reminders, lastReminder: last, status: x.status };
+      })
+      .sort((a, b) => b.daysLate - a.daysLate);
+  }
+
+  // ---------- emails ----------
+
+  const DEFAULT_EMAIL_TEMPLATES = {
+    devis: { subject: 'Devis {numero} — {societe}', body: 'Bonjour,\n\nVeuillez trouver ci-joint notre devis {numero} ({montant} TTC) concernant : {objet}.\nIl est valable jusqu\'au {echeance}.\n\nNous restons à votre disposition pour toute question.\n\nCordialement,\n{societe}' },
+    facture: { subject: 'Facture {numero} — {societe}', body: 'Bonjour,\n\nVeuillez trouver ci-joint notre facture {numero} d\'un montant de {montant} TTC, à régler avant le {echeance}.\n\nMerci de votre confiance.\n\nCordialement,\n{societe}' },
+    avoir: { subject: 'Avoir {numero} — {societe}', body: 'Bonjour,\n\nVeuillez trouver ci-joint l\'avoir {numero} ({montant}) relatif à la facture {reference}.\n\nCordialement,\n{societe}' },
+    relance1: { subject: 'Rappel — facture {numero}', body: 'Bonjour,\n\nSauf erreur de notre part, la facture {numero} ({montant}) arrivée à échéance le {echeance} reste en attente de règlement.\nSi le paiement a déjà été effectué, merci de ne pas tenir compte de ce message.\n\nCordialement,\n{societe}' },
+    relance2: { subject: 'Relance — facture {numero} en retard de {jours} jours', body: 'Bonjour,\n\nNotre facture {numero} d\'un montant de {montant}, échue le {echeance}, n\'a pas été réglée à ce jour ({jours} jours de retard).\nMerci de procéder au règlement dans les meilleurs délais ou de nous indiquer la date prévue.\n\nCordialement,\n{societe}' },
+    relance3: { subject: 'Dernière relance — facture {numero}', body: 'Bonjour,\n\nMalgré nos précédents rappels, la facture {numero} ({montant}, échue le {echeance}) reste impayée après {jours} jours.\nSans règlement sous 8 jours, nous serons contraints d\'engager une procédure de recouvrement.\n\nCordialement,\n{societe}' }
+  };
+
+  function emailFor(kind, doc, client, company, extra) {
+    const templates = { ...DEFAULT_EMAIL_TEMPLATES, ...(company.emailTemplates || {}) };
+    const tpl = templates[kind] || DEFAULT_EMAIL_TEMPLATES.facture;
+    const t = computeTotals(doc, company);
+    const cur = company.currency || 'DT';
+    const vars = {
+      numero: doc.number || 'brouillon', objet: doc.subject || '', client: (client || {}).name || '', societe: company.name,
+      montant: money(doc.type === 'devis' ? t.totalTTC : t.netToPay, cur), echeance: fmtDate(doc.dueDate), reference: doc.creditOfNumber || doc.reference || '',
+      ...(extra || {})
+    };
+    return { to: (client || {}).email || '', subject: fillTemplate(tpl.subject, vars), body: fillTemplate(tpl.body, vars) };
   }
 
   // ---------- montant en lettres (français) ----------
@@ -601,6 +698,8 @@
     uid, round3, money, fmtDate, addDays, today, escapeHtml, nl2br, statusLabel,
     nextNumber, isLocked, isIssued, computeTotals, creditsFor, invoiceBalance, effectiveStatus,
     depositLines, settlementLines, salesJournal, vatSummary, paymentsJournal, toCsv, migrateData,
+    PERIODS, MONTHS_FR, monthLabel, addMonths, nextRecurrenceDate, dueRecurrences, fillTemplate, buildRecurringInvoice,
+    reminderLevel, REMINDER_LABELS, daysBetween, overdueInvoices, DEFAULT_EMAIL_TEMPLATES, emailFor,
     amountToWords, intToWords, documentHtml
   };
 });

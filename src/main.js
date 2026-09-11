@@ -33,6 +33,9 @@ if (!app.requestSingleInstanceLock()) {
 
 // Rien ne doit échouer en silence : une erreur du process principal est affichée à l'écran
 // et notée dans userData/main.log (à joindre en cas de problème).
+function logToFile(where, err) {
+  try { fs.appendFileSync(path.join(app.getPath('userData'), 'main.log'), `${new Date().toISOString()} [${where}] ${err && err.stack || err}\n`); } catch {}
+}
 function logError(where, err) {
   const msg = `${new Date().toISOString()} [${where}] ${err && err.stack || err}\n`;
   try { fs.appendFileSync(path.join(app.getPath('userData'), 'main.log'), msg); } catch {}
@@ -202,7 +205,11 @@ function buildMenu() {
         { label: 'Factures', accelerator: 'CmdOrCtrl+3', click: act('go:factures') },
         { label: 'Clients', accelerator: 'CmdOrCtrl+4', click: act('go:clients') },
         { label: 'Catalogue', accelerator: 'CmdOrCtrl+5', click: act('go:catalogue') },
+        { label: 'Relances', click: act('go:relances') },
+        { label: 'Contrats récurrents', click: act('go:contrats') },
         { label: 'Comptabilité', accelerator: 'CmdOrCtrl+6', click: act('go:compta') },
+        { type: 'separator' },
+        { label: 'Rechercher…', accelerator: 'CmdOrCtrl+K', click: act('search') },
         { type: 'separator' },
         { role: 'resetZoom', label: 'Taille réelle' },
         { role: 'zoomIn', label: 'Agrandir' },
@@ -355,6 +362,48 @@ ipcMain.handle('pdf:exportMany', async (_e, { files, folderName }) => {
     }
   } finally { win.destroy(); }
   return dir;
+});
+
+// PDF sans boîte de dialogue (pièce jointe d'un email) : userData/envois/<nom>.pdf
+ipcMain.handle('pdf:exportSilent', async (_e, { html, name }) => {
+  const dir = path.join(app.getPath('userData'), 'envois');
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, String(name || 'document.pdf').replace(/[\\/:*?"<>|]/g, '_'));
+  const win = pdfWindow();
+  try { fs.writeFileSync(file, await renderPdf(html, win)); }
+  finally { win.destroy(); }
+  return file;
+});
+
+// Composition d'un email dans le client de messagerie de l'utilisateur.
+//  - macOS + Apple Mail : nouveau message avec destinataire, objet, texte ET le PDF joint (AppleScript) ;
+//  - sinon : lien mailto (sans pièce jointe possible) + le PDF est montré dans le Finder / l'Explorateur.
+ipcMain.handle('mail:compose', async (_e, { to, subject, body, attachment, mode }) => {
+  if (IS_MAC && mode !== 'mailto') {
+    const esc = v => String(v || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    const script = [
+      'tell application "Mail"',
+      `  set m to make new outgoing message with properties {subject:"${esc(subject)}", content:"${esc(body)}", visible:true}`,
+      to ? `  tell m to make new to recipient at end of to recipients with properties {address:"${esc(to)}"}` : '',
+      attachment ? '  delay 0.5' : '',
+      attachment ? `  tell m to make new attachment with properties {file name:POSIX file "${esc(attachment)}"} at after the last paragraph` : '',
+      '  activate',
+      'end tell'
+    ].filter(Boolean).join('\n');
+    const tmp = path.join(app.getPath('temp'), `skanfact-mail-${Date.now()}.applescript`);
+    fs.writeFileSync(tmp, script, 'utf8');
+    try {
+      await new Promise((resolve, reject) => require('child_process').execFile('osascript', [tmp], { timeout: 20000 }, (err, _out, stderr) => err ? reject(new Error((stderr || err.message).trim())) : resolve()));
+      return { state: 'mail' };
+    } catch (e) {
+      logToFile('mail', e);
+      // Mail indisponible (autre client, refus d'automatisation…) : on retombe sur mailto
+    } finally { try { fs.unlinkSync(tmp); } catch {} }
+  }
+  const url = `mailto:${encodeURIComponent(to || '')}?subject=${encodeURIComponent(subject || '')}&body=${encodeURIComponent(body || '')}`;
+  await shell.openExternal(url);
+  if (attachment) shell.showItemInFolder(attachment);
+  return { state: 'mailto' };
 });
 
 // Enregistrement d'un fichier texte (CSV pour le comptable).
