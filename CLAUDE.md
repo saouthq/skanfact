@@ -481,6 +481,29 @@ depuis la 1.6.0 **affirmait le défaut**. Elle attendait 1 191,00 € là où le
 ainsi ne prouve rien — il grave le bug et empêche de le corriger. Une assertion sur un montant se
 calcule à la main, à partir de la règle, avant de regarder ce que le code renvoie.
 
+## 7.1.x — Ce qui se réécrit tout seul, et ce qui ne se rejoue jamais
+
+- **Une pièce émise garde une COPIE de ce qui a servi à la calculer.** `computeTotals` relisait
+  `company.stampFee` à chaque affichage : changer le réglage du timbre réécrivait le total de toutes
+  les factures déjà émises, envoyées et déclarées. Le PDF chez le client et l'écran ne disaient plus
+  la même chose, et le journal des ventes suivait l'écran. La règle existait depuis la 5.0.0 pour les
+  bulletins (`slip.computed`) ; elle n'avait jamais été portée aux factures. **Tout réglage de société
+  qui entre dans un total doit se figer sur la pièce à l'émission**, en même temps que le numéro — et
+  la migration fige l'existant, sinon il reste à la merci du prochain changement.
+- **Un réglage global qui a une bonne valeur par défaut par métier doit la prendre.** Le taux de TVA
+  était écrit `19` en dur à huit endroits, alors que `ACTIVITIES` sait depuis la 2.0.0 que « Santé et
+  paramédical » est exonéré : le catalogue arrivait à 0 % et les lignes tapées à la main à 19 %, sur
+  la même facture. Attention au `||` : `0` est une valeur légitime, le test doit être explicite.
+- **Un assistant qui ne se rejoue pas est un assistant qu'on n'a qu'une fois.** `needsSetup` exigeait
+  « ni société, ni document, ni client » : après le premier lancement il n'existait plus, et
+  « Passer » le condamnait définitivement. Il se rejoue depuis les Paramètres, prérempli, et ne
+  réécrit que ce qu'on lui redonne.
+- **« Passer » ne jette pas ce qui vient d'être tapé.** Quatre écrans remplis, un clic sur « Passer »
+  au cinquième, et la fiche société repartait vide — sans un mot.
+- **Un état lu une fois au démarrage se périme.** « Tes premiers pas » lisait la copie externe au
+  boot : choisir enfin un dossier laissait l'étape décochée jusqu'au lendemain. Tout état affiché
+  ailleurs que là où il se règle doit être rafraîchi à l'endroit où il change.
+
 ## Pistes pour la suite (non demandées)
 
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.

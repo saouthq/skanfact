@@ -1882,6 +1882,9 @@
       if (closedBlock(doc.date, 'Cette pièce')) return false;
       if (!data.documents.some(d => d.id === doc.id) && licenceBlock('Émettre une nouvelle pièce')) return false;
       if (!doc.number) doc.number = C.nextNumber(data, doc.type, doc.date);
+      // Le timbre se fige ici, avec le numéro : les deux deviennent définitifs au même instant.
+      // Sans ça, changer le réglage du timbre réécrivait le total des factures déjà envoyées.
+      if (doc.stampFee === undefined || doc.stampFee === null || doc.stampFee === '') doc.stampFee = Number(company().stampFee) || 0;
       doc.status = isInv ? 'envoyée' : 'émis';
       unlockedIds.delete(doc.id);
       persist();
@@ -7465,6 +7468,15 @@
         <div class="inline mt">${security.encrypted ? '<button class="btn" id="sec-change">Changer le mot de passe…</button><button class="btn" id="sec-lock">Verrouiller maintenant</button><button class="btn btn-danger" id="sec-remove">Retirer le mot de passe…</button>' : '<button class="btn btn-primary" id="sec-set">Activer un mot de passe…</button>'}</div>
         <p class="small muted mt">Le mot de passe protège les fichiers sur le disque (ordinateur perdu ou volé). Il n'existe aucune récupération : sans lui, les données sont définitivement illisibles, <b>y compris pour toi</b>.</p>
       </div>
+      <div class="panel"><h2>Ce que l'application t'affiche</h2>
+        <p class="small muted mb">SkanFact sait faire beaucoup de choses. Tu choisis lesquelles apparaissent
+        dans le menu de gauche — sans rien supprimer : ce qui est masqué reste atteignable par la
+        recherche, et un module qui contient des données se réaffiche tout seul.</p>
+        <div class="inline">
+          <button type="button" class="btn" id="go-modules">Choisir les modules affichés…</button>
+          <button type="button" class="btn btn-ghost" id="redo-setup">Revoir l'assistant de démarrage…</button>
+        </div>
+      </div>
       <div class="panel"><h2>Sauvegardes ${info('data.backups')}</h2>
         <p class="small muted">Fichier de données : <code>${h(path)}</code></p>
         <p class="small">${data.documents.length} document(s), ${data.clients.length} client(s), ${data.catalog.length} prestation(s).</p>
@@ -7569,9 +7581,24 @@
     drawLicencePanel();
     drawUpdatePanel();
     drawOcrPanel();
+    $('#go-modules').onclick = () => navigate('#/modules');
+    // L'assistant, rejouable (7.1.1). Il ne réécrit que ce qu'on lui redonne : les champs arrivent
+    // préremplis avec les réglages actuels, et le catalogue n'est pas re-proposé (on en a déjà un).
+    $('#redo-setup').onclick = async () => {
+      if (!await confirmDialog('Revoir l\'assistant de démarrage ? Tes réponses actuelles y sont déjà inscrites : tu peux les corriger ou simplement le parcourir. Aucune de tes pièces n\'est touchée.', 'Revoir l\'assistant', false)) return;
+      clearGuard();
+      await runSetup(true);
+      applyTheme();
+      $('#brand-company').textContent = data.company.name || 'Ton entreprise';
+      render();
+    };
     $('#backup-now').onclick = async () => { const p = await bridge.createBackup(); toast(p ? 'Sauvegarde créée : ' + p.split(/[\\/]/).pop() : 'Rien à sauvegarder pour l\'instant'); drawExternal(); };
     const drawExternal = async () => {
-      const i = await bridge.externalBackupInfo(); const el = $('#ext-status'); if (!el) return;
+      const i = await bridge.externalBackupInfo();
+      // « Tes premiers pas » lit cet état ; sans cette ligne, choisir enfin un dossier de copie
+      // laissait l'étape « Mettre tes données à l'abri » décochée jusqu'au prochain démarrage.
+      copieExterne = !!(i && i.dir);
+      const el = $('#ext-status'); if (!el) return;
       el.innerHTML = i.dir ? `Dossier : <code>${h(i.dir)}</code><br>${i.lastError ? `<span style="color:var(--danger)">Dernière copie impossible : ${h(i.lastError)}</span>` : (i.lastCopy ? `Dernière copie : ${h(new Date(i.lastCopy).toLocaleString('fr-FR'))}` : 'Copie à la prochaine sauvegarde.')}` : '<span class="muted">Aucun dossier de copie externe.</span>';
       $('#ext-remove').hidden = !i.dir;
     };
@@ -8089,10 +8116,17 @@
 
   // ---------- assistant de première utilisation ----------
   const OB = window.SkanOnboarding;
-  function runSetup() {
+  // `rejoue` : l'assistant se relance depuis les Paramètres, prérempli avec ce qui est déjà réglé.
+  // Jusqu'à la 7.1.1 il ne s'affichait qu'une fois — `needsSetup` exige qu'il n'y ait NI société, NI
+  // document, NI client — et « Passer » le condamnait pour de bon. Quelqu'un qui l'avait sauté par
+  // réflexe le premier jour ne pouvait plus jamais le revoir.
+  function runSetup(rejoue) {
     return new Promise(resolve => {
       const steps = OB.STEPS;
-      const a = { currency: 'DT', stampFee: 1, quoteValidityDays: 30, paymentTermsDays: 30, defaultWithholdingRate: 0, activity: '', fillCatalog: true };
+      const co = (data && data.company) || {};
+      const a = rejoue
+        ? { ...co, activity: co.activity || '', fillCatalog: false }
+        : { currency: 'DT', stampFee: 1, quoteValidityDays: 30, paymentTermsDays: 30, defaultWithholdingRate: 0, activity: '', fillCatalog: true };
       let i = 0;
       const root = document.createElement('div'); root.id = 'setup';
       document.body.appendChild(root);
@@ -8158,6 +8192,7 @@
         if ($('#sf-cat', root)) $('#sf-cat', root).onchange = e => { a.fillCatalog = e.target.checked; };
         if ($('#sf-ext', root)) $('#sf-ext', root).onclick = async () => {
           const x = await bridge.chooseExternalBackup();
+          copieExterne = !!(x && x.dir);      // « Tes premiers pas » coche l'étape tout de suite
           const st = $('#sf-ext-st', root); if (!st) return;
           st.textContent = x && x.dir ? 'Copie activée vers : ' + x.dir : 'Aucun dossier choisi.';
           st.className = x && x.dir ? 'small' : 'small muted';
@@ -8171,8 +8206,18 @@
         };
         root.onkeydown = e => { if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') { e.preventDefault(); $('#sf-next', root).click(); } };
         $('#sf-skip', root).onclick = async () => {
-          if (!await confirmDialog('Passer l\'assistant ? Tu pourras tout régler dans Paramètres, mais une facture sans raison sociale ni matricule fiscal n\'est pas conforme.', 'Passer', false)) return;
-          data.company.setupDone = true; save(true); root.remove(); resolve(false);
+          // On ramasse d'abord : « Passer » jetait tout ce qui venait d'être tapé, même au dernier
+          // écran, sans le dire. Quelqu'un qui avait rempli quatre écrans et cliquait « Passer » au
+          // cinquième repartait avec une fiche société vide.
+          collect();
+          const saisi = ['name', 'matricule', 'rc', 'address', 'phone', 'email', 'bank', 'rib', 'capital']
+            .filter(k => String(a[k] || '').trim()).length;
+          if (!await confirmDialog(
+            (saisi ? `Ce que tu as déjà rempli (${saisi} champ${saisi > 1 ? 's' : ''}) est conservé. ` : '')
+            + 'Passer la suite de l\'assistant ? Tu pourras tout régler dans Paramètres, mais une facture sans raison sociale ni matricule fiscal n\'est pas conforme.',
+            'Passer', false)) return;
+          OB.applySetup(data, a);            // on garde ce qui a été saisi, on n'invente rien
+          save(true); root.remove(); resolve(false);
         };
       };
       const collect = () => { const f = $('#sf-form', root); if (f) Object.assign(a, formValues(f)); };

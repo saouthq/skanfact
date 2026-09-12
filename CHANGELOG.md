@@ -7,6 +7,23 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 7.1.1 — 12/09/2026
+
+**Une facture émise ne change plus de total quand on change un réglage.**
+
+C'est la faute la plus grave trouvée aujourd'hui. `computeTotals` relisait le timbre fiscal **dans les Paramètres, à chaque affichage**. Le jour où l'État change le timbre — et où l'utilisateur met son réglage à jour — le total de **toutes les factures déjà émises, envoyées et déclarées** changeait avec lui : le PDF chez le client disait 1 191, l'application disait 1 192, et le journal des ventes suivait l'application.
+
+La règle existe pourtant depuis la 5.0.0 pour les bulletins de paie (« un bulletin garde une copie de son calcul ») ; elle n'avait jamais été appliquée aux factures. Le timbre se **fige maintenant à l'émission**, en même temps que le numéro : les deux deviennent définitifs au même instant. Les pièces déjà émises sont figées par la migration sur la valeur en vigueur aujourd'hui — sans ça elles resteraient à la merci du prochain changement. Un brouillon, lui, suit le réglage courant : il n'est encore rien.
+
+### Ce qui manquait dans les Paramètres
+
+- **« Choisir les modules affichés… »** : la page existait depuis la 7.0.0 et n'était atteignable que par la barre latérale et la recherche.
+- **« Revoir l'assistant de démarrage… »** : l'assistant ne s'affichait qu'**une seule fois dans la vie de l'installation** (`needsSetup` exige qu'il n'y ait ni société, ni document, ni client), et « Passer » le condamnait pour de bon. Il se rejoue, prérempli avec les réglages actuels, et ne réécrit que ce qu'on lui redonne.
+- **« Passer » conserve ce qui vient d'être tapé.** Quelqu'un qui avait rempli quatre écrans et cliquait « Passer » au cinquième repartait avec une fiche société vide, sans que rien ne le prévienne.
+- **Choisir un dossier de copie coche l'étape tout de suite** — l'état n'était lu qu'au démarrage, donc « Mettre tes données à l'abri » restait décoché jusqu'au lendemain.
+
+`npm run e2e:reglages` parcourt les quatre dans l'application réelle.
+
 ## 7.1.0 — 12/09/2026
 
 **Suite de l'audit : le taux de TVA qui ignorait le métier, et l'aide que rien n'atteignait.**

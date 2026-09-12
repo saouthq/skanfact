@@ -5232,5 +5232,36 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.deepStrictEqual(oubliees, [], `ces pages ne mènent à aucun article : ${oubliees.join(', ')}`);
   });
 
+  t('une facture émise ne change plus de total quand on change un réglage', () => {
+    const facture = {
+      id: 'f1', type: 'facture', status: 'envoyée', number: 'FAC-2026-001', date: '2026-03-10',
+      lines: [{ label: 'Audit', qty: 1, unitPrice: 1000, vatRate: 19 }]
+    };
+    const avant = { ...core.DEFAULT_COMPANY, stampFee: 1 };
+
+    // Avant la 7.1.1, `computeTotals` relisait `company.stampFee` à CHAQUE affichage : le jour où
+    // l'État change le timbre et où l'utilisateur met son réglage à jour, le total de toutes les
+    // factures déjà émises, envoyées et déclarées changeait avec lui. Le PDF chez le client disait
+    // 1 191, l'application disait 1 192, et le journal des ventes suivait l'application.
+    const data = core.migrateData({ version: 6, company: avant, documents: [facture] });
+    const gelee = data.documents[0];
+    assert.strictEqual(gelee.stampFee, 1, 'la migration doit figer le timbre des pièces déjà émises');
+
+    const apres = { ...core.DEFAULT_COMPANY, stampFee: 2 };
+    assert.strictEqual(core.computeTotals(gelee, avant).netToPay, 1191);
+    assert.strictEqual(core.computeTotals(gelee, apres).netToPay, 1191,
+      'changer le réglage du timbre ne doit RIEN changer à une pièce déjà émise');
+
+    // Un brouillon, lui, suit le réglage courant : il n'est encore rien.
+    const brouillon = { id: 'f2', type: 'facture', status: 'brouillon', date: '2026-03-10', lines: facture.lines };
+    const d2 = core.migrateData({ version: 6, company: avant, documents: [brouillon] });
+    assert.ok(d2.documents[0].stampFee === undefined, 'un brouillon ne fige rien');
+    assert.strictEqual(core.computeTotals(d2.documents[0], apres).netToPay, 1192);
+
+    // Et le gel tient aussi en devise : 1 DT figé reste 1 DT, converti au taux de la pièce.
+    const eur = core.migrateData({ version: 6, company: avant, documents: [{ ...facture, id: 'f3', currency: 'EUR', exchangeRate: 3.4 }] }).documents[0];
+    assert.strictEqual(core.round3(core.computeTotals(eur, apres).stamp * 3.4), 1);
+  });
+
   console.log(`\n${n} tests OK`);
 })().catch(e => { console.error(e); process.exit(1); });

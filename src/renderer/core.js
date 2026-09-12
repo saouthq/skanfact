@@ -500,7 +500,16 @@
     // en euros, l'ajouter tel quel ajoutait « 1 euro », soit 3,4 fois le timbre dû. Il se convertit
     // dans la devise du document, comme n'importe quel montant.
     // `exchangeRate` se lit « 1 devise = x DT » : un dinar vaut donc 1/x devise.
-    const stamp = stampApplies ? round3((company.stampFee || 0) / rateOf(doc, company)) : 0;
+    // Le montant du timbre est GELÉ sur la pièce au moment de l'émission (7.1.1). Avant, il était
+    // relu dans les réglages à chaque affichage : le jour où l'État change le timbre — et où
+    // l'utilisateur met son réglage à jour — le total de TOUTES les factures déjà émises, envoyées
+    // et déclarées changeait avec lui. Le PDF chez le client disait 1 191, l'application disait
+    // 1 192, et le journal des ventes suivait l'application.
+    // C'est la règle de la 5.0.0 sur les bulletins de paie (`slip.computed`), qui n'avait jamais été
+    // appliquée aux factures. Un brouillon, lui, suit le réglage courant : il n'est encore rien.
+    const timbreDu = doc.stampFee === undefined || doc.stampFee === null || doc.stampFee === ''
+      ? (company.stampFee || 0) : Number(doc.stampFee) || 0;
+    const stamp = stampApplies ? round3(timbreDu / rateOf(doc, company)) : 0;
     const totalTTC = round3(netHT + totalVAT + stamp);
     // Retenue à la source (factures / avoirs) : calculée sur le TTC hors timbre. À VÉRIFIER avec le comptable.
     // La retenue à la source ne se pratique que sur ce qui est réellement payé : facture, avoir, proforma.
@@ -707,6 +716,20 @@
       p.withholdingRate = Number(p.withholdingRate) || 0;
       p.fees = Number(p.fees) || 0;
     });
+    // Geler le timbre des pièces DÉJÀ émises sur la valeur en vigueur aujourd'hui. Sans ça, elles
+    // resteraient à la merci du prochain changement de réglage — c'est-à-dire dans l'état qu'on
+    // vient de corriger. On ne touche ni aux brouillons ni à celles qui ont déjà leur montant.
+    const timbreCourant = Number((data.company || {}).stampFee);
+    if (timbreCourant >= 0) {
+      data.documents.forEach(x => {
+        const emise = x.status && x.status !== 'brouillon';
+        const porteUnTimbre = (x.type === 'facture' && x.applyStamp !== false)
+          || ((x.type === 'avoir' || x.type === 'proforma') && x.applyStamp === true);
+        if (emise && porteUnTimbre && (x.stampFee === undefined || x.stampFee === null || x.stampFee === '')) {
+          x.stampFee = timbreCourant;
+        }
+      });
+    }
     data.version = 6;
     return data;
   }
