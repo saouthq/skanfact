@@ -770,6 +770,7 @@
           <td class="r muted nw">${esc(fmtBytes(p.bytes))}</td>
           <td class="actions row-actions">${p.path
             ? `<button class="btn btn-ghost btn-sm" data-open="${esc(p.month)}">Ouvrir</button>
+               <button class="btn btn-ghost btn-sm" data-acc="${esc(p.month)}" title="Prévenir le client que c'est bien arrivé">Accuser réception</button>
                <button class="btn btn-ghost btn-sm" data-xtr="${esc(p.month)}">Extraire…</button>
                <button class="btn btn-ghost btn-sm" data-rev="${esc(p.month)}">Fichier</button>
                <button class="btn btn-ghost btn-sm danger" data-del="${esc(p.month)}" title="Supprimer ce paquet">✕</button>`
@@ -809,6 +810,9 @@
     $$('[data-m]', view).forEach(c => { c.onclick = () => openPack(dossier, c.dataset.m); });
     $$('[data-open]', view).forEach(b => { b.onclick = () => openPack(dossier, b.dataset.open); });
     $$('[data-xtr]', view).forEach(b => { b.onclick = () => extractPack(dossier, b.dataset.xtr); });
+    $$('[data-acc]', view).forEach(b => {
+      b.onclick = () => { const p = packs.find(x => x.month === b.dataset.acc); if (p) accuseReception(dossier, p); };
+    });
     $$('[data-rev]', view).forEach(b => {
       b.onclick = () => { const p = packs.find(x => x.month === b.dataset.rev); if (p) api.reveal(p.path); };
     });
@@ -891,6 +895,36 @@
             catch (e) { toast(plainError(e), 'error'); }
           };
         });
+      }
+    );
+  }
+
+  // Prévenir le client que son envoi est arrivé. Il envoie son mois et n'entend plus parler de rien :
+  // il ne sait ni si c'est arrivé, ni si c'était lisible, ni s'il manquait quelque chose. Trois
+  // lignes du comptable valent mieux que trois relances du client.
+  function accuseReception(dossier, pack) {
+    const m = K.accuseMail(S.cabinet, dossier, pack);
+    modal(
+      `<h2>Accuser réception à ${esc(dossier.name)}</h2>
+       <label class="field">Destinataire<input type="text" id="a-to" value="${esc(m.to)}" placeholder="adresse@client.tn"></label>
+       <label class="field mt">Objet<input type="text" id="a-sub" value="${esc(m.subject)}"></label>
+       <label class="field mt">Message<textarea id="a-body" rows="10">${esc(m.body)}</textarea></label>
+       <p class="muted small mt">Le message s'ouvre dans ta messagerie : rien ne part sans que tu cliques sur « Envoyer ».</p>
+       <div class="modal-actions"><button class="btn" id="no">Annuler</button>
+       <button class="btn" id="copy">Copier</button>
+       <button class="btn btn-primary" id="ok">Ouvrir dans ma messagerie</button></div>`,
+      (layer, close) => {
+        $('#no', layer).onclick = close;
+        $('#copy', layer).onclick = async () => {
+          try { await navigator.clipboard.writeText($('#a-body', layer).value); toast('Texte copié.'); }
+          catch { toast('Copie impossible.', 'error'); }
+        };
+        $('#ok', layer).onclick = async () => {
+          const to = $('#a-to', layer).value.trim();
+          if (to && to !== dossier.email) { try { await api.saveDossier(dossier.id, { email: to }); } catch {} }
+          await api.mail({ to, subject: $('#a-sub', layer).value, body: $('#a-body', layer).value });
+          close();
+        };
       }
     );
   }

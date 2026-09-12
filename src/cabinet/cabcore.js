@@ -469,6 +469,32 @@
     return { to: row.email || '', subject: sujet, body: corps };
   }
 
+  // L'accusé de réception. Le client envoie son mois et n'entend plus parler de rien : il ne sait pas
+  // si c'est arrivé, si c'était lisible, s'il manquait quelque chose. Trois lignes du comptable
+  // valent mieux que trois relances du client — et c'est ce qui l'entretient dans l'habitude
+  // d'envoyer chaque mois.
+  function accuseMail(cabinet, dossier, pack) {
+    const p = pack || {};
+    const label = p.label || monthLabel(p.month);
+    const manques = (p.missing || []).reduce((s, m) => s + (m.count || 0), 0);
+    const detail = (p.missing || []).filter(m => m.count)
+      .map(m => `  · ${m.count} ${m.label}`).join('\n');
+    const corps = `Bonjour,\n\n`
+      + `J'ai bien reçu votre dossier ${de(label)}`
+      + (p.files ? `, ${pl(p.files, 'pièce')} en tout` : '')
+      + (p.definitive ? ' (mois clôturé).' : ' — il est marqué « provisoire » : le mois n\'a pas été clôturé dans SkanFact, donc les chiffres peuvent encore changer.')
+      + '\n\n'
+      + (manques
+        ? `Il me manque encore ${pl(manques, 'élément')} que SkanFact a signalé${manques > 1 ? 's' : ''} :\n${detail}\n\nQuand ce sera complété, clôturez le mois et renvoyez-moi le paquet.\n\n`
+        : (p.definitive ? 'Rien ne manque : je peux travailler dessus.\n\n' : 'Quand tout est saisi, clôturez le mois et renvoyez-moi le paquet : je pourrai alors déclarer sans risque.\n\n'))
+      + `Bien à vous,\n${(cabinet && cabinet.name) || ''}`;
+    return {
+      to: (dossier && dossier.email) || '',
+      subject: `Bien reçu : votre dossier ${de(label)}`,
+      body: corps
+    };
+  }
+
   // Un jeu d'exemple. Un comptable qui ouvre l'application pour la première fois tombe sinon sur un
   // écran vide, et ne voit pas ce qu'elle lui apporterait. Cinq dossiers suffisent à montrer les
   // quatre situations : à jour, en retard, provisoire, pièces manquantes. Les données sont
@@ -705,7 +731,7 @@
     FORMAT, MONTHS_FR, DEFAULT_STATE, DEFAULT_SETTINGS, TVA_PERIODS, REGIMES, RELANCE_WAYS, SORTS,
     monthLabel, monthListLabel, missingLabel, addMonth, monthsBetween, today, de,
     migrate, migrateDossier, dossierKey, packSummary, filePack, demoDossiers, checkIntegrity,
-    newDossier, parseDossierLines, noteRelance, portfolio, relanceDue, relanceRows,
+    newDossier, parseDossierLines, noteRelance, portfolio, relanceDue, relanceRows, accuseMail,
     parseCsv, toCsvLine, mergeEcritures, ecrituresPlan,
     DEFAULT_DEADLINES, deadlineSettings, echeances, dayOf,
     dossierMonths, dossierRow, dossierList, cabinetTodo, relanceMail, pairingFile

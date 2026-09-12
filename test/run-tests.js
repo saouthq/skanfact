@@ -3485,6 +3485,33 @@ t('cabinet : le jour de relance est enfin vivant, et l\'historique se garde', ()
   assert.strictEqual(d.relances.length, 50);
 });
 
+t('cabinet : l\'accusé de réception dit ce qui est arrivé, et ce qui manque', () => {
+  // Le client envoie son mois et n'entend plus parler de rien : il ne sait ni si c'est arrivé, ni
+  // si c'était lisible, ni s'il manquait quelque chose. Trois lignes valent mieux que trois relances.
+  const cabinet = { name: 'Cabinet Ben Salah' };
+  const d = cab.migrateDossier({ id: 'a', name: 'Menuiserie', email: 'contact@menuiserie.tn' });
+  const complet = cab.accuseMail(cabinet, d, { month: '2026-08', label: 'août 2026', definitive: true, files: 14, missing: [] });
+  assert.strictEqual(complet.to, 'contact@menuiserie.tn');
+  assert.strictEqual(complet.subject, "Bien reçu : votre dossier d'août 2026", 'élision : « de août » ne s\'écrit pas');
+  assert.ok(/14 pièces/.test(complet.body));
+  assert.ok(/mois clôturé/.test(complet.body));
+  assert.ok(/Rien ne manque/.test(complet.body));
+  assert.ok(complet.body.endsWith('Cabinet Ben Salah'));
+
+  // Un paquet provisoire le dit, et un paquet incomplet énumère ce qui manque : c'est là qu'un
+  // accusé de réception devient utile au lieu d'être poli.
+  const partiel = cab.accuseMail(cabinet, d, {
+    month: '2026-09', label: 'septembre 2026', definitive: false, files: 9,
+    missing: [{ id: 'justif', label: 'achats sans justificatif joint', count: 6 }, { id: 'brouillon', label: 'factures restées en brouillon', count: 1 }]
+  });
+  assert.ok(/provisoire/.test(partiel.body));
+  assert.ok(/7 éléments/.test(partiel.body), '6 + 1, comptés et pas énumérés à la louche');
+  assert.ok(/6 achats sans justificatif joint/.test(partiel.body));
+  assert.ok(/1 factures restées en brouillon/.test(partiel.body));
+  // Sans email au dossier, le message existe quand même : le comptable tapera l'adresse.
+  assert.strictEqual(cab.accuseMail(cabinet, cab.migrateDossier({ name: 'X' }), { month: '2026-08' }).to, '');
+});
+
 t('cabinet : le portefeuille se compte, hors SkanFact compris', () => {
   const S = cab.migrate({ dossiers: [
     { id: 'a', name: 'À jour', fees: 250, packs: [{ month: '2026-08', definitive: true, missing: [], figures: { ca: 10000, devise: 'DT' } }] },

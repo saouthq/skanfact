@@ -61,6 +61,10 @@ Nouvelle page **Écritures**. Chaque paquet portait déjà ses écritures en par
 - Un paquet illisible (scellé par mot de passe, ou trop ancien pour contenir des écritures) **n'échoue pas l'export** : le fichier est écrit avec le reste et le manque est nommé.
 - Le lecteur de CSV est un vrai lecteur : point-virgules dans les libellés, guillemets doublés, retours à la ligne dans un champ. Découper sur « ; » aurait été plus court et faux.
 
+### Prévenir le client que c'est arrivé
+
+- **Accuser réception** d'un paquet, depuis la fiche du client. Le client envoie son mois et n'entend plus parler de rien : il ne sait ni si c'est arrivé, ni si c'était lisible, ni s'il manquait quelque chose. Le message dit le nombre de pièces reçues, si le mois était clôturé, et **énumère ce qui manque** quand SkanFact l'a signalé. Trois lignes du comptable valent mieux que trois relances du client — et c'est ce qui entretient l'habitude d'envoyer chaque mois.
+
 ### Le suivi des relances
 
 - **Chaque relance est enregistrée** : date, moyen (email, téléphone, WhatsApp), mois réclamés, note. Avant, on cliquait « Écrire », le mail partait, et le lundi suivant plus personne ne savait qui avait été relancé.
