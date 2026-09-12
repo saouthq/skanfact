@@ -356,6 +356,7 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:apercu` | **voir ce qu'on fabrique** : le grand aperçu, son zoom, « Ajuster », Échap, et l'interrupteur qui reste en haut |
 | `npm run e2e:erreur` | **le droit à l'erreur** : une case de module se décoche ET se recoche, un module masqué revient quand on y écrit, et « Marquer déposée » se défait |
 | `npm run e2e:entreprises` | **changer d'entreprise depuis le haut du menu** : deux dossiers créés et ouverts tour à tour sans passer par les Paramètres |
+| `npm run e2e:chiffres` | **les chiffres qui mentent** : la conversion des devises sur l'accueil, les cartes de Marges, l'affaire qui suit le devis, le devis déjà facturé, le doublon de facture fournisseur |
 | `npm run e2e:cliquable` | **tout ce qui se lit se clique** : le filtre « Émis », la concordance carte/liste, les quatre chiffres de l'accueil et chaque ligne de « Ce qui manque » |
 
 Ils ont longtemps vécu dans un dossier de travail temporaire, effacé à chaque session : il fallait les réécrire de mémoire, et ils dérivaient (une assertion restée sur une version périmée, un écran neuf jamais parcouru). **Un test qu'on doit réécrire pour s'en servir n'est pas un test.** Le harnais (`test/e2e/harnais.js`) trouve Playwright où il est, lit la version dans `package.json` au lieu de l'écrire en dur, et range les captures dans `dist-e2e/` (ignoré par Git).
@@ -740,6 +741,48 @@ Règles apprises, à ne pas recasser :
   elle ne navigue pas : le gestionnaire l'exclut explicitement.
 - Piège de test : les listes sont paginées depuis la 2.2.0 — compter les `<tr>` affichés ne dit rien.
   C'est le bandeau « n sur N » qui porte la sélection entière, et c'est lui qu'un test doit lire.
+
+## 7.16.0 — Les chiffres qui mentent
+
+Audit page par page de l'app entreprise (six groupes d'écrans, un relecteur et un **contradicteur**
+par groupe, chacun tenu de ré-ancrer chaque ligne dans le code du jour) : **66 constats retenus,
+18 réfutés**. Le rapport complet est dans `dist-e2e/audit.json` — 8 graves, 47 moyens, 11 petits.
+Les cinq graves corrigés ici, et ce qu'ils apprennent :
+
+- **Un agrégat de montants porte une devise.** Les quatre cartes de l'accueil sommaient les montants
+  BRUTS : sur le jeu d'exemple, « CA de l'année » annonçait 41 307 DT contre 43 892 DT réels. Le
+  graphique juste en dessous, lui, passe par `toBase` depuis toujours — **deux chiffres du même écran
+  ne peuvent pas raconter deux années différentes**. C'est la faute de la 7.0.1 (le timbre en euros),
+  au même endroit conceptuel : tout ce qui ADDITIONNE plusieurs pièces se convertit, sans exception.
+- **Une carte de total et la liste qu'elle résume se calculent sur le même ensemble.** La page Marges
+  tronquait à vingt lignes puis totalisait ces vingt-là. Et le tri étant par marge décroissante, ce
+  qui tombait en premier, c'étaient les lignes à marge négative. La règle des listes depuis la 2.2.0
+  — « le pied et l'export portent sur la sélection entière, jamais sur la page affichée » — n'avait
+  jamais été appliquée ici.
+- **`limit || 20` rend le « tout » impossible à demander** : `0` y devient 20. Quand une valeur nulle
+  est légitime, le test doit être explicite (`limit === 0`), exactement comme pour le taux de TVA à
+  0 % en 7.1.0.
+- **Ce qui se recopie d'une pièce à l'autre se recopie EN ENTIER.** `invoiceFromQuote` énumère les
+  champs à la main et avait oublié `projectId` : les trois chemins de facturation fabriquaient une
+  facture sans affaire, donc une fiche d'affaire à 0 facturé avec ses achats comptés — elle paraissait
+  perdre de l'argent. `core.convertDoc` (« Transformer ▾ »), qui copie tout le document, la gardait :
+  **deux conversions, deux comportements**, dont une seule juste.
+- **Une action qui change l'état lu par sa propre condition d'affichage doit relire cet état.**
+  `facturerDevis` marque le devis « accepté », donc `devisFacturable` restait vrai : le bouton coloré
+  « Facturer ce devis » se represente à l'identique sur un devis DÉJÀ facturé, et un second clic
+  fabrique une seconde facture complète. Le pire cas est l'acompte, qui accepte lui aussi le devis :
+  le bouton principal proposait 100 % pendant que « Facture de solde » dormait dans le ▾.
+- **Un doublon de bonne foi est plus dangereux qu'un doublon volontaire.** `duplicatePurchase`
+  prévenait déjà — c'est le cas où l'utilisateur SAIT qu'il duplique. La ressaisie trois semaines plus
+  tard, elle, ne disait rien et comptait deux fois la TVA déductible et la charge. On prévient sans
+  refuser : un fournisseur peut recycler ses numéros d'une année sur l'autre.
+- Piège de tests : une assertion qui recopie une ligne de gestionnaire mot pour mot
+  (`$('#convert').onclick = () => facturerDevis(doc)`) tombe dès que le geste gagne une question, et
+  se « répare » en recopiant la nouvelle ligne — donc sans rien prouver. On ancre sur la RÈGLE
+  (le gestionnaire appelle `facturerDevis`), pas sur sa forme.
+- Piège d'environnement : deux `xvfb-run` simultanés sur la même machine se disputent le serveur X et
+  s'enlisent sans message. Un seul e2e à la fois, et `npm … | tail` masque toute progression
+  (stdout bufferisé) — rediriger vers un fichier quand un test paraît bloqué.
 
 ## Pistes pour la suite (non demandées)
 

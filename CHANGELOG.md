@@ -7,6 +7,39 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 7.16.0 — 12/09/2026
+
+**Les chiffres qui mentent.**
+
+Un audit page par page de toute l'application, chaque constat relu par un contradicteur chargé de le
+réfuter : 66 retenus, 18 rejetés. Voici les cinq graves — ceux qui ne plantent pas, ne s'affichent
+pas en rouge, et donnent un chiffre faux tous les jours.
+
+- **L'accueil additionnait des euros à des dinars.** Sur le jeu d'exemple, « CA de l'année »
+  annonçait **41 307 DT là où le total vaut 43 892 DT** — 2 585 DT manquants — pendant que le
+  graphique dix centimètres plus bas, lui, convertit depuis toujours. Deux chiffres du même écran,
+  deux années différentes, et rien pour l'expliquer. Les quatre cartes convertissent maintenant, et
+  celle de la Comptabilité aussi.
+- **La page Marges calculait ses trois cartes sur vingt lignes.** Le tableau est tronqué à vingt, et
+  « Chiffre d'affaires », « Marge totale » et « Coût des ventes » additionnaient ces vingt-là. Pire :
+  le tri est par marge **décroissante**, donc ce qui tombait en premier, c'étaient les lignes à marge
+  négative — exactement celles qu'on vient chercher. Les cartes portent sur tout, et la table est
+  paginée comme toutes les autres listes.
+- **Facturer un devis perdait son affaire.** Les trois chemins (facturer, acompte, solde) fabriquaient
+  une facture sans `projectId` : la fiche d'affaire affichait 0 facturé pendant que les achats
+  rattachés, eux, étaient comptés — l'affaire paraissait perdre de l'argent. L'avoir la garde aussi.
+- **Saisir deux fois la même facture fournisseur ne disait rien.** Sa TVA déductible et sa charge
+  comptaient alors deux fois, jusque dans le paquet du comptable. On ne refuse pas — un fournisseur
+  peut recycler ses numéros d'une année sur l'autre — on nomme la pièce déjà saisie, avec sa date et
+  son montant.
+- **« Facturer ce devis » restait proposé sur un devis déjà facturé**, en bouton coloré : un second
+  clic fabriquait une seconde facture complète. Pire avec un acompte émis, qui fait passer le devis à
+  « accepté » : le bouton principal proposait 100 % du devis pendant que « Facture de solde » dormait
+  dans le menu ▾. Le bouton mène désormais à la facture établie, ou propose le solde ; refacturer la
+  totalité reste possible, derrière une question qui nomme les pièces existantes.
+
+`npm run e2e:chiffres` refait les cinq dans l'application réelle, avec les montants du jeu d'exemple.
+
 ## 7.15.0 — 12/09/2026
 
 **Tout ce qui se lit se clique.**

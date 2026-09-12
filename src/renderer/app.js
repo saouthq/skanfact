@@ -1242,17 +1242,24 @@
     const year = C.today().slice(0, 4);
     const issued = data.documents.filter(d => (d.type === 'facture' || d.type === 'avoir') && d.status !== 'brouillon' && d.status !== 'annulée');
     const sign = d => d.type === 'avoir' ? -1 : 1;
-    const sumHT = list => list.reduce((s, d) => s + sign(d) * C.computeTotals(d, company()).netHT, 0);
-    const sumTTC = list => list.reduce((s, d) => s + sign(d) * C.computeTotals(d, company()).totalTTC, 0);
+    // Une facture en euros ne s'additionne pas à une facture en dinars (7.16.0). Ces quatre agrégats
+    // sommaient les montants BRUTS, dans la devise de chaque pièce : sur le jeu d'exemple, la carte
+    // « CA de l'année » annonçait 41 307 DT là où le total vaut 43 892 DT — 2 585 DT manquants,
+    // 5,9 %. Et le graphique dix centimètres plus bas, lui, passe par `toBase` depuis toujours :
+    // deux chiffres du même écran ne racontaient pas la même année. Même faute que la 7.0.1, au même
+    // endroit conceptuel, sur le premier écran qu'on regarde le matin.
+    const enDinars = (d, montant) => C.toBase(d, montant, company());
+    const sumHT = list => list.reduce((s, d) => s + sign(d) * enDinars(d, C.computeTotals(d, company()).netHT), 0);
+    const sumTTC = list => list.reduce((s, d) => s + sign(d) * enDinars(d, C.computeTotals(d, company()).totalTTC), 0);
     const ofMonth = issued.filter(d => d.date && d.date.startsWith(month));
     const ofYear = issued.filter(d => d.date && d.date.startsWith(year));
     const open = data.documents.filter(d => d.type === 'facture' && ['envoyée', 'partielle', 'retard'].includes(effStatus(d)));
-    const openAmount = open.reduce((s, d) => s + balance(d).remaining, 0);
+    const openAmount = open.reduce((s, d) => s + enDinars(d, balance(d).remaining), 0);
     const late = open.filter(d => effStatus(d) === 'retard');
     const sentQuotes = data.documents.filter(d => d.type === 'devis' && d.status === 'envoyé');
     const expiredQuotes = sentQuotes.filter(d => effStatus(d) === 'expiré');
     const pendingQuotes = sentQuotes.filter(d => effStatus(d) === 'envoyé');
-    const sumQ = list => list.reduce((s, d) => s + C.computeTotals(d, company()).totalTTC, 0);
+    const sumQ = list => list.reduce((s, d) => s + enDinars(d, C.computeTotals(d, company()).totalTTC), 0);
     const recent = data.documents.slice().sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.createdAt || 0) - (a.createdAt || 0)).slice(0, 8);
     const series = C.monthlySeries(data, company(), C.today(), 12);
     const from12 = C.addMonths(C.today(), -12, 1);
@@ -1723,12 +1730,30 @@
     // Dès que le client a dit oui, « Facturer » devient le bouton coloré et convertit directement ;
     // les deux autres chemins (acompte, solde) restent dans le ▾ accolé. « Enregistrer » redevient
     // ordinaire : sur un devis déjà écrit, il ne se passe rien de neuf quand on l'actionne.
-    const devisFacturable = !isNew && isQ && (doc.status === 'accepté' || doc.status === 'envoyé');
+    //
+    // Et (7.16.0) il ne le propose plus quand c'est DÉJÀ fait. `facturerDevis` marque le devis
+    // « accepté » : la condition restait donc vraie après coup, et un second clic sur le bouton
+    // coloré fabriquait une seconde facture complète. Avec un acompte émis c'était pire : le bouton
+    // principal proposait 100 % du devis pendant que « Facture de solde » dormait dans le ▾.
+    const dejaFacture = isNew || !isQ ? [] : C.facturesDuDevis(data, doc.id).filter(d => !d.deposit);
+    const devisFacturable = !isNew && isQ && !dejaFacture.length && !issuedDeposits.length
+      && (doc.status === 'accepté' || doc.status === 'envoyé');
     const autresChemins = `<button id="deposit">Facture d'acompte… ${info('ed.deposit')}</button>
-        ${issuedDeposits.length ? `<button id="settle">Facture de solde (${issuedDeposits.length} acompte${issuedDeposits.length > 1 ? 's' : ''} déduit${issuedDeposits.length > 1 ? 's' : ''}) ${info('ed.settle')}</button>` : ''}`;
+        ${issuedDeposits.length ? `<button id="settle">Facture de solde (${issuedDeposits.length} acompte${issuedDeposits.length > 1 ? 's' : ''} déduit${issuedDeposits.length > 1 ? 's' : ''}) ${info('ed.settle')}</button>` : ''}
+        ${dejaFacture.length || issuedDeposits.length ? `<button id="convert" class="danger">Refacturer la totalité…</button>` : ''}`;
     const facturerMenu = !isNew && isQ
       ? (devisFacturable
         ? `<button class="btn btn-primary" id="convert">Facturer ce devis ${info('ed.convert')}</button>
+           <div class="more"><button class="btn" id="bill-btn" aria-label="Autres façons de facturer">▾</button>
+             <div class="more-list" id="bill-list" hidden>${autresChemins}</div></div>`
+        // Un acompte est émis : le geste suivant est le SOLDE, pas une facture de plus.
+        : issuedDeposits.length
+        ? `<button class="btn btn-primary" id="settle2">Facture de solde ${info('ed.settle')}</button>
+           <div class="more"><button class="btn" id="bill-btn" aria-label="Autres façons de facturer">▾</button>
+             <div class="more-list" id="bill-list" hidden>${autresChemins}</div></div>`
+        // Déjà facturé : on mène à la facture au lieu d'en proposer une seconde.
+        : dejaFacture.length
+        ? `<button class="btn" id="voir-facture">Voir ${h(dejaFacture[0].number || 'la facture')}</button>
            <div class="more"><button class="btn" id="bill-btn" aria-label="Autres façons de facturer">▾</button>
              <div class="more-list" id="bill-list" hidden>${autresChemins}</div></div>`
         : `<div class="more"><button class="btn" id="bill-btn">Facturer ▾</button><div class="more-list" id="bill-list" hidden>
@@ -2361,7 +2386,19 @@
       unlockedIds.add(doc.id); render();
     };
     if ($('#dup')) $('#dup').onclick = () => { untouch(); duplicateDoc(doc); };
-    if ($('#convert')) $('#convert').onclick = () => facturerDevis(doc);
+    // Refacturer la totalité d'un devis déjà facturé est légitime (une commande annulée puis
+    // reprise) mais ce n'est jamais le geste ordinaire : on nomme d'abord ce qui existe déjà.
+    if ($('#convert')) $('#convert').onclick = async () => {
+      if (dejaFacture.length || issuedDeposits.length) {
+        const pieces = dejaFacture.concat(issuedDeposits).map(d => d.number || 'brouillon').join(', ');
+        if (!await confirmDialog(
+          `Ce devis a déjà donné ${pieces}.\n\nFacturer la totalité créerait une facture de plus, `
+          + 'pour le montant entier du devis. Si tu veux seulement le reste à payer, utilise « Facture de solde ».',
+          'Refacturer la totalité', true)) return;
+      }
+      facturerDevis(doc);
+    };
+    if ($('#voir-facture')) $('#voir-facture').onclick = () => navigate('#/doc/' + dejaFacture[0].id);
     if ($('#deposit')) $('#deposit').onclick = () => {
       modal(`<h2>Facture d'acompte</h2><p class="small muted">Une facture d'un pourcentage du devis ${h(doc.number)} (${C.money(C.computeTotals(doc, company()).totalTTC, cur)} TTC). La facture de solde déduira automatiquement cet acompte.</p>
         <form id="df" class="grid-2">${field('Pourcentage du devis', 'percent', 30, 'number', 'min="1" max="99" step="0.5" class="num"')}</form>
@@ -2374,6 +2411,7 @@
           acceptQuote(doc.id); data.documents.push(inv); save(true); close(); toast('Brouillon de facture d\'acompte créé'); navigate('#/doc/' + inv.id);
         }; });
     };
+    if ($('#settle2')) $('#settle2').onclick = () => $('#settle') ? $('#settle').click() : null;
     if ($('#settle')) $('#settle').onclick = () => {
       const inv = invoiceFromQuote(doc, C.settlementLines(doc, issuedDeposits), doc.discountRate);
       inv.settles = { quoteId: doc.id, quoteNumber: doc.number, depositIds: issuedDeposits.map(d => d.id) }; inv.fromQuoteId = doc.id; inv.fromQuoteNumber = doc.number;
@@ -2521,7 +2559,13 @@
 
   function invoiceFromQuote(quote, lines, discountRate) {
     const inv = newDocument('facture');
-    Object.assign(inv, { clientId: quote.clientId, subject: quote.subject, reference: quote.reference || '', lines, discountRate: discountRate || 0, notes: quote.notes || '', withholdingRate: clientWithholding(quote.clientId), lang: quote.lang || 'fr', currency: quote.currency || company().currency, exchangeRate: quote.exchangeRate || '' });
+    // `projectId` fait partie de ce qui se recopie (7.16.0). Il manquait : les TROIS chemins qui
+    // passent par ici — « Facturer ce devis », l'acompte, le solde — fabriquaient une facture sans
+    // affaire. `projectMargin` ne retient que `d.projectId === projectId`, donc la fiche d'affaire
+    // affichait 0 facturé et 0 encaissé pendant que les achats rattachés, eux, étaient comptés :
+    // l'affaire paraissait perdre de l'argent. Et `core.convertDoc` (« Transformer ▾ ») recopie le
+    // document en entier, donc il la gardait — deux conversions, deux comportements.
+    Object.assign(inv, { clientId: quote.clientId, subject: quote.subject, reference: quote.reference || '', lines, discountRate: discountRate || 0, notes: quote.notes || '', projectId: quote.projectId || '', withholdingRate: clientWithholding(quote.clientId), lang: quote.lang || 'fr', currency: quote.currency || company().currency, exchangeRate: quote.exchangeRate || '' });
     return inv;
   }
   function acceptQuote(id) { const orig = docById(id); if (orig && orig.status !== 'accepté') orig.status = 'accepté'; }
@@ -2529,6 +2573,7 @@
     return {
       creditOf: inv.id, creditOfNumber: inv.number, clientId: inv.clientId, subject: `Avoir sur facture ${inv.number}${inv.subject ? ' — ' + inv.subject : ''}`,
       lines: deepCopy(inv.lines || []), discountRate: inv.discountRate || 0, withholdingRate: inv.withholdingRate || 0, applyStamp: false, creditReason: '',
+      projectId: inv.projectId || '',     // un avoir se retranche de l'affaire de la facture qu'il annule
       lang: inv.lang || 'fr', currency: inv.currency || company().currency, exchangeRate: inv.exchangeRate || ''
     };
   }
@@ -4404,7 +4449,7 @@
     let dirty = false;
     const touch = () => { if (dirty) return; dirty = true; const el = $('#dirty-dot'); if (el) el.hidden = false; reportDirty(); };
     const untouch = () => { dirty = false; const el = $('#dirty-dot'); if (el) el.hidden = true; reportDirty(); };
-    setGuard({ dirty: () => dirty, what: isDep ? 'cette dépense' : 'cette facture d\'achat', save: () => { const ok = persist(); if (ok) untouch(); return ok; } });
+    setGuard({ dirty: () => dirty, what: isDep ? 'cette dépense' : 'cette facture d\'achat', save: async () => { if (!validate() || !await doublonOk()) return false; const ok = persist(); if (ok) untouch(); return ok; } });
 
     // --- lignes
     const body = $('#b-lines');
@@ -4637,6 +4682,21 @@
       if (p.dueDate && p.dueDate < p.date) return refus('[name=dueDate]', 'L\'échéance ne peut pas précéder la date de la pièce.');
       return true;
     }
+    // Saisir deux fois la même facture fournisseur ne déclenchait RIEN : elle entrait deux fois dans
+    // la TVA déductible, dans la charge, dans les écritures — sous le même numéro — et dans le paquet
+    // du comptable. On ne refuse pas (un fournisseur peut recycler ses numéros d'une année sur
+    // l'autre) : on nomme la pièce déjà saisie, avec sa date et son montant, et on laisse décider.
+    async function doublonOk() {
+      const jumeau = C.achatDoublon(data, p);
+      if (!jumeau) return true;
+      const t = C.purchaseTotals(jumeau, company());
+      return await confirmDialog(
+        `La facture n° ${p.number} de ${supplierName(p.supplierId)} est déjà saisie.\n\n`
+        + `Celle du ${C.fmtDate(jumeau.date)}, ${C.money(t.totalTTC, company().currency)} TTC. `
+        + 'La saisir une seconde fois compterait deux fois sa TVA déductible et sa charge.\n\n'
+        + 'Enregistrer quand même ?', 'Enregistrer quand même', true);
+    }
+
     function persist() {
       if (!validate()) return false;
       const wasDate = (data.purchases.find(x => x.id === p.id) || {}).date;
@@ -4649,7 +4709,9 @@
       return true;
     }
     bindBack('#/achats');
-    $('#save').onclick = () => {
+    $('#save').onclick = async () => {
+      if (!validate()) return;            // les contrôles de saisie AVANT la grande question (7.6.0)
+      if (!await doublonOk()) return;
       if (!persist()) return;
       toast('Enregistré');
       if (isNew) navigate('#/achat/' + p.id); else render(true);
@@ -4792,7 +4854,7 @@
       });
   }
 
-  const margeState = { tab: 'affaires', year: C.today().slice(0, 4), dim: 'client' };
+  const margeState = { tab: 'affaires', year: C.today().slice(0, 4), dim: 'client', page: 1 };
   const MARGE_TABS = [['affaires', 'Affaires'], ['analyse', 'Où est la marge'], ['contrats', 'Contrats'], ['seuil', 'Seuil de rentabilité']];
 
   routes.marges = () => {
@@ -4842,11 +4904,16 @@
 
     function drawAnalysis() {
       const p = period();
-      const rows = C.marginBy(data, company(), p.from, p.to, s.dim, 20);
+      // `0` = toutes les lignes. Les trois cartes et le compteur « n ligne(s) sans coût connu »
+      // portent sur la SÉLECTION ENTIÈRE, jamais sur la page affichée — la règle des listes depuis
+      // la 2.2.0, qui n'avait jamais été appliquée ici : le tableau était tronqué à vingt lignes
+      // et les cartes additionnaient ces vingt-là (7.16.0).
+      const rows = C.marginBy(data, company(), p.from, p.to, s.dim, 0);
       const max = rows.length ? Math.max(1, ...rows.map(r => Math.abs(r.margin))) : 1;
       const totalRev = C.round3(rows.reduce((a, r) => a + r.revenue, 0));
       const totalMar = C.round3(rows.reduce((a, r) => a + r.margin, 0));
       const incomplete = rows.filter(r => !r.complete).length;
+      const pg = paginate(rows, s);
       $('#mg-body').innerHTML = `
         <div class="filters">
           <select id="mg-dim"><option value="client" ${s.dim === 'client' ? 'selected' : ''}>Par client</option><option value="item" ${s.dim === 'item' ? 'selected' : ''}>Par prestation</option></select>
@@ -4860,16 +4927,17 @@
         </div>
         <div class="panel"><h2>${s.dim === 'client' ? 'Marge par client' : 'Marge par prestation'} — ${s.year}</h2>
           ${rows.length ? `<div class="scroll-x"><table class="list compact"><thead><tr><th>${s.dim === 'client' ? 'Client' : 'Prestation'}</th><th class="r">Vendu HT</th><th class="r">Coût</th><th class="r">Marge</th><th class="r">Taux</th><th style="width:24%"></th></tr></thead><tbody>
-            ${rows.map(r => `<tr class="${r.margin < 0 ? 'row-warn' : ''}">
+            ${pg.rows.map(r => `<tr class="${r.margin < 0 ? 'row-warn' : ''}">
               <td>${h(r.label)}</td><td class="r nw">${C.money(r.revenue, cur)}</td><td class="r nw">${C.money(r.cost, cur)}</td>
               <td class="r nw ${r.margin < 0 ? 'warn-text' : ''}"><strong>${C.money(r.margin, cur)}</strong></td>
               <td class="r nw">${rateCell(r.rate, r.complete)}</td>
               <td><span class="bar"><i class="${r.margin < 0 ? 'f-bad' : 'f-ok'}" style="width:${Math.max(3, Math.round(Math.abs(r.margin) / max * 100))}%"></i></span></td></tr>`).join('')}
-          </tbody></table></div>
+          </tbody></table></div>${pagerBar(pg, { noun: s.dim === 'client' ? 'client' : 'prestation', grandTotal: rows.length })}
           <p class="small muted mt">Le repère « ≈ » signale les lignes dont toutes les prestations n'ont pas de coût de revient : leur marge est optimiste. Renseigne le coût dans le catalogue pour la rendre juste.</p>`
             : '<div class="empty">Aucune vente sur cette année.</div>'}
         </div>`;
-      $('#mg-dim').onchange = e => { s.dim = e.target.value; draw(); };
+      $('#mg-dim').onchange = e => { s.dim = e.target.value; s.page = 1; draw(); };
+      bindPager($('#mg-body'), s, () => draw(), '#mg-body');
     }
 
     function drawContracts() {
@@ -7472,7 +7540,9 @@
       const pays = allPays.filter(r => hit(r.number, r.client, r.reference, r.method));
       const paidTotal = pays.reduce((s, r) => s + r.amount, 0);
       const open = data.documents.filter(d => d.type === 'facture' && ['envoyée', 'partielle', 'retard'].includes(effStatus(d)));
-      const openAmount = open.reduce((s, d) => s + balance(d).remaining, 0);
+      // Converti, comme sa jumelle de l'accueil : une facture en euros ne s'additionne pas
+      // à une facture en dinars (7.16.0).
+      const openAmount = open.reduce((s, d) => s + C.toBase(d, balance(d).remaining, company()), 0);
       const rsPending = data.documents.filter(d => d.type === 'facture' && d.status !== 'brouillon' && d.status !== 'annulée' && C.computeTotals(d, company()).withholding > 0 && !d.withholdingCertificate);
       const rsPendingAmount = rsPending.reduce((s, d) => s + C.computeTotals(d, company()).withholding, 0);
       const journalCols = [

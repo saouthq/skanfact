@@ -5644,7 +5644,11 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.ok(/\$\$\('button\[data-facturer\]'\)/.test(code), 'et il doit être branché');
     // Les deux chemins passent par la MÊME fonction : recopiés, ils divergeraient au premier
     // changement — et c'est le geste qui crée une facture.
-    assert.ok(/\$\('#convert'\)\.onclick = \(\) => facturerDevis\(doc\)/.test(code), 'le bouton de l\'éditeur doit passer par facturerDevis');
+    // Les deux chemins passent par `facturerDevis` — on teste la RÈGLE (le gestionnaire l'appelle),
+    // pas la forme exacte d'une ligne : depuis la 7.16.0 il pose d'abord une question quand le devis
+    // est déjà facturé, donc une assertion recopiée mot pour mot tomberait sans rien prouver.
+    assert.ok(/\$\('#convert'\)\.onclick = async \(\) => \{[\s\S]{0,700}?facturerDevis\(doc\);/.test(code),
+      'le bouton de l\'éditeur doit passer par facturerDevis');
     assert.ok(/facturerDevis\(docById\(b\.dataset\.facturer\)\)/.test(code), 'et celui de la liste aussi');
     assert.ok(!/invoiceFromQuote\(doc, deepCopy\(doc\.lines\)/.test(code), 'plus aucune copie du geste à la main');
     // Et le détail de « À faire » ne décrit plus un itinéraire.
@@ -6060,6 +6064,152 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // La bulle « i » explique le chiffre : elle ne doit pas naviguer.
     assert.ok(/e\.target\.closest\('button\.i, a'\)\) return/.test(app),
       'cliquer la bulle « i » d\'une carte navigue au lieu d\'expliquer');
+  });
+
+  // ---------- 7.16.0 : les chiffres qui mentent ----------
+
+  t('accueil : une facture en euros ne s\'additionne pas à une facture en dinars', () => {
+    // Montants calculés À LA MAIN avant de regarder ce que le code rend (règle de la 7.0.1, la
+    // leçon la plus coûteuse du projet) :
+    //   facture DT : 1 000 HT
+    //   facture EUR : 500 HT au taux 3,4 → 1 700 DT
+    //   total attendu : 2 700 DT — et surtout PAS 1 500.
+    const co = { ...core.DEFAULT_COMPANY, currency: 'DT', stampFee: 0 };
+    const ligne = (pu) => [{ label: 'x', qty: 1, unit: 'u', unitPrice: pu, vatRate: 0 }];
+    const data = core.migrateData({
+      version: 6, company: co,
+      documents: [
+        { id: 'a', type: 'facture', number: 'FAC-2026-001', status: 'envoyée', date: '2026-03-10', clientId: 'c', lines: ligne(1000), payments: [] },
+        { id: 'b', type: 'facture', number: 'FAC-2026-002', status: 'envoyée', date: '2026-03-11', clientId: 'c', currency: 'EUR', exchangeRate: 3.4, lines: ligne(500), payments: [] }
+      ],
+      clients: [{ id: 'c', name: 'Client' }]
+    });
+    const issued = data.documents;
+    const brut = issued.reduce((s, d) => s + core.computeTotals(d, co).netHT, 0);
+    const converti = issued.reduce((s, d) => s + core.toBase(d, core.computeTotals(d, co).netHT, co), 0);
+    assert.strictEqual(core.round3(brut), 1500, 'le calcul « sans conversion » n\'est pas celui qu\'on croit');
+    assert.strictEqual(core.round3(converti), 2700, '1 000 DT + 500 EUR à 3,4 font 2 700 DT');
+
+    // Et l'accueil doit prendre le second. Le graphique juste en dessous convertit depuis toujours
+    // (`monthlySeries` passe par `toBase`) : deux chiffres du même écran ne peuvent pas raconter
+    // deux années différentes.
+    const brutApp = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
+    const app = brutApp.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+    assert.ok(app.includes('routes.dashboard'), 'le nettoyage des commentaires a mangé le code');
+    const tdb = app.slice(app.indexOf('routes.dashboard = () =>'), app.indexOf('routes.modules = () =>'));
+    assert.ok(tdb.length > 400, 'le tableau de bord est introuvable');
+    ['sumHT', 'sumTTC', 'sumQ'].forEach(f => {
+      const m = tdb.match(new RegExp(`const ${f} = list => list\\.reduce\\([^\\n]*`));
+      assert.ok(m, `${f} est introuvable`);
+      assert.ok(/enDinars\(/.test(m[0]), `${f} additionne des devises sans les convertir : ${m[0].trim().slice(0, 90)}`);
+    });
+    const open = tdb.match(/const openAmount = open\.reduce\([^\n]*/);
+    assert.ok(open && /enDinars\(/.test(open[0]), '« Reste à encaisser » additionne des devises sans les convertir');
+    // La même carte existe sur Comptabilité : le correctif se vérifie des deux côtés.
+    const compta = app.slice(app.indexOf('routes.compta = () =>'), app.indexOf('function drawVat'));
+    const open2 = compta.match(/const openAmount = open\.reduce\([^\n]*/);
+    assert.ok(open2 && /C\.toBase\(/.test(open2[0]), '« Reste à encaisser » de la Comptabilité ne convertit pas');
+  });
+
+  t('marges : les cartes portent sur toutes les lignes, pas sur les vingt premières', () => {
+    // 25 clients, chacun une facture : la 21e à 25e ligne existent et doivent compter.
+    const co = { ...core.DEFAULT_COMPANY, currency: 'DT', stampFee: 0 };
+    const clients = [], docs = [];
+    for (let i = 0; i < 25; i++) {
+      clients.push({ id: 'c' + i, name: 'Client ' + String(i).padStart(2, '0') });
+      docs.push({ id: 'd' + i, type: 'facture', number: 'FAC-2026-' + String(i + 1).padStart(3, '0'),
+        status: 'envoyée', date: '2026-04-0' + (i % 9 + 1), clientId: 'c' + i,
+        lines: [{ label: 'p' + i, qty: 1, unit: 'u', unitPrice: 100, vatRate: 0 }], payments: [] });
+    }
+    const data = core.migrateData({ version: 6, company: co, documents: docs, clients });
+    const vingt = core.marginBy(data, co, '2026-01-01', '2026-12-31', 'client', 20);
+    const toutes = core.marginBy(data, co, '2026-01-01', '2026-12-31', 'client', 0);
+    assert.strictEqual(vingt.length, 20, 'une limite explicite doit encore tronquer');
+    assert.strictEqual(toutes.length, 25, '`limit` à 0 doit rendre TOUT — `limit || 20` le ramenait à 20');
+    // 25 factures à 100 HT : le chiffre d'affaires est 2 500, pas 2 000.
+    assert.strictEqual(core.round3(toutes.reduce((s, r) => s + r.revenue, 0)), 2500);
+    assert.strictEqual(core.round3(vingt.reduce((s, r) => s + r.revenue, 0)), 2000,
+      'la troncature coûte bien 500 DT : c\'est ce que la carte annonçait');
+    // Sans argument, le comportement d'avant ne change pas (les appelants existants).
+    assert.strictEqual(core.marginBy(data, co, '2026-01-01', '2026-12-31', 'client').length, 20);
+
+    const brutApp = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
+    const app = brutApp.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+    const bloc = app.slice(app.indexOf('function drawAnalysis'), app.indexOf('function drawContracts'));
+    assert.ok(/C\.marginBy\(data, company\(\), p\.from, p\.to, s\.dim, 0\)/.test(bloc),
+      'la page Marges calcule encore ses cartes sur un tableau tronqué');
+    assert.ok(/const pg = paginate\(rows, s\)/.test(bloc) && /pagerBar\(pg,/.test(bloc) && /bindPager\(/.test(bloc),
+      'la table des marges n\'est pas paginée comme toutes les autres listes');
+  });
+
+  t('l\'affaire suit le devis jusqu\'à la facture, et l\'avoir s\'en retranche', () => {
+    const brutApp = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
+    const app = brutApp.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+    // Les TROIS chemins de facturation d'un devis passent par `invoiceFromQuote` : c'est là que
+    // `projectId` se recopie, sinon la fiche d'affaire affiche 0 facturé pendant que les achats
+    // rattachés, eux, sont comptés — l'affaire paraît perdre de l'argent.
+    const inv = app.match(/Object\.assign\(inv, \{ clientId: quote\.clientId[^\n]*/);
+    assert.ok(inv, 'invoiceFromQuote est introuvable');
+    assert.ok(/projectId: quote\.projectId/.test(inv[0]), 'l\'affaire est perdue quand le devis devient facture');
+    const credit = app.slice(app.indexOf('function creditDraftFrom'), app.indexOf('function creditDraftFrom') + 700);
+    assert.ok(/projectId: inv\.projectId/.test(credit), 'l\'avoir ne se retranche pas de l\'affaire de sa facture');
+    // Et `projectMargin` lit bien ce champ-là : sans ça le correctif ne servirait à rien.
+    const coreSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'core.js'), 'utf8');
+    assert.ok(/d\.projectId === projectId/.test(coreSrc), 'projectMargin ne lit plus projectId');
+  });
+
+  t('une facture fournisseur saisie deux fois est signalée', () => {
+    const data = { purchases: [
+      { id: 'p1', kind: 'facture', supplierId: 's1', number: 'F-2026-88', date: '2026-03-01', lines: [] },
+      { id: 'p2', kind: 'depense', supplierId: 's1', number: '', date: '2026-03-02', lines: [] }
+    ] };
+    // Le même fournisseur et le même numéro, à la casse et aux espaces près.
+    assert.ok(core.achatDoublon(data, { id: 'neuf', kind: 'facture', supplierId: 's1', number: ' f-2026-88 ' }),
+      'le doublon doit être trouvé malgré la casse et les espaces');
+    assert.strictEqual(core.achatDoublon(data, { id: 'neuf', kind: 'facture', supplierId: 's2', number: 'F-2026-88' }), null,
+      'un autre fournisseur peut porter le même numéro : ce n\'est pas un doublon');
+    assert.strictEqual(core.achatDoublon(data, { id: 'p1', kind: 'facture', supplierId: 's1', number: 'F-2026-88' }), null,
+      'une pièce ne peut pas être son propre doublon — sinon on ne pourrait plus la modifier');
+    assert.strictEqual(core.achatDoublon(data, { id: 'n', kind: 'facture', supplierId: 's1', number: '' }), null,
+      'sans numéro, il n\'y a rien à comparer');
+    assert.strictEqual(core.achatDoublon(data, { id: 'n', kind: 'depense', supplierId: 's1', number: 'F-2026-88' }), null,
+      'une dépense n\'a pas de numéro qui fasse foi');
+
+    const brutApp = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
+    const app = brutApp.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+    // On PRÉVIENT, on ne refuse pas : un fournisseur peut recycler ses numéros d'une année sur
+    // l'autre. Et les deux chemins d'enregistrement posent la question — le bouton et le garde-fou.
+    assert.ok(/async function doublonOk\(\)[\s\S]{0,600}?await confirmDialog\(/.test(app),
+      'le doublon n\'est pas signalé au moment d\'enregistrer');
+    assert.ok(/if \(!await doublonOk\(\)\) return;/.test(app), 'le bouton « Enregistrer » ne pose pas la question');
+    assert.ok(/save: async \(\) => \{ if \(!validate\(\) \|\| !await doublonOk\(\)\)/.test(app),
+      'quitter la page en enregistrant contourne la question');
+  });
+
+  t('un devis déjà facturé ne propose plus « Facturer ce devis » en bouton coloré', () => {
+    const data = { documents: [
+      { id: 'q1', type: 'devis' }, { id: 'q2', type: 'devis' },
+      { id: 'f1', type: 'facture', fromQuoteId: 'q1' },
+      { id: 'f2', type: 'facture', fromQuoteId: 'q1', deposit: { percent: 30 } }
+    ] };
+    assert.strictEqual(core.facturesDuDevis(data, 'q1').length, 2);
+    assert.strictEqual(core.facturesDuDevis(data, 'q2').length, 0);
+    assert.strictEqual(core.facturesDuDevis(data, '').length, 0, 'un devis sans identifiant ne « descend » pas toute la base');
+
+    const brutApp = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
+    const app = brutApp.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+    // `facturerDevis` marque le devis « accepté » : la condition restait donc vraie après coup, et
+    // un second clic fabriquait une seconde facture complète.
+    assert.ok(/const devisFacturable = [\s\S]{0,220}?!dejaFacture\.length && !issuedDeposits\.length/.test(app),
+      'le bouton coloré reste offert sur un devis déjà facturé');
+    // Un acompte émis : le geste suivant est le SOLDE, pas 100 % du devis.
+    assert.ok(/issuedDeposits\.length\s*\n?\s*\? `<button class="btn btn-primary" id="settle2">Facture de solde/.test(app),
+      'après un acompte, le bouton principal doit être la facture de solde');
+    // Déjà facturé : on mène à la facture.
+    assert.ok(/id="voir-facture">Voir \$\{h\(dejaFacture\[0\]\.number/.test(app), 'rien ne mène à la facture déjà établie');
+    // Refacturer reste possible — derrière une question qui nomme les pièces existantes.
+    assert.ok(/Refacturer la totalité/.test(app) && /dejaFacture\.length \|\| issuedDeposits\.length\) \{[\s\S]{0,400}?await confirmDialog\(/.test(app),
+      'refacturer la totalité ne demande rien');
   });
 
   console.log(`\n${n} tests OK`);

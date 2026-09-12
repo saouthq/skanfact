@@ -1021,6 +1021,29 @@
   }
 
   // Statut déduit des paiements, jamais saisi — comme pour une facture de vente.
+  // Une facture fournisseur saisie deux fois (7.16.0). Rien ne la signalait : elle entre alors deux
+  // fois dans la TVA déductible, dans la charge, dans les écritures — sous le même numéro — et dans
+  // le paquet du comptable. `duplicatePurchase` prévient déjà, mais c'est le cas où l'utilisateur
+  // SAIT qu'il duplique ; le cas dangereux est la ressaisie de bonne foi trois semaines plus tard.
+  // Pur et testable : on compare fournisseur + numéro, en ignorant la casse et les espaces.
+  // Les factures déjà tirées d'un devis (7.16.0). La règle vivait enfouie dans `todoList` ; elle sert
+  // aussi à l'éditeur, qui proposait « Facturer ce devis » à l'identique sur un devis DÉJÀ facturé —
+  // un second clic fabriquait un second brouillon complet. Pire avec un acompte : l'acompte fait
+  // passer le devis à « accepté », donc le seul bouton coloré proposait ensuite une facture de 100 %
+  // pendant que l'action juste, « Facture de solde », dormait dans le menu « ▾ ».
+  function facturesDuDevis(data, quoteId) {
+    if (!quoteId) return [];
+    return (data.documents || []).filter(d => d.type === 'facture' && d.fromQuoteId === quoteId);
+  }
+
+  function achatDoublon(data, achat) {
+    if (!achat || achat.kind === 'depense') return null;       // une dépense n'a pas de numéro qui fasse foi
+    const num = String(achat.number || '').trim().toLowerCase();
+    if (!num || !achat.supplierId) return null;
+    return (data.purchases || []).find(x => x.id !== achat.id && x.supplierId === achat.supplierId
+      && String(x.number || '').trim().toLowerCase() === num) || null;
+  }
+
   function purchaseStatus(purchase, company, todayIso) {
     const b = purchaseBalance(purchase, company);
     if (b.remaining <= 0.0005) return 'payée';
@@ -1182,11 +1205,18 @@
         a.lines++; if (c > 0) a.costed++;
       });
     });
-    return Object.values(acc).map(a => ({
+    const rows = Object.values(acc).map(a => ({
       ...a, margin: round3(a.revenue - a.cost),
       rate: a.revenue !== 0 ? Math.round((a.revenue - a.cost) / a.revenue * 1000) / 10 : null,
       complete: a.lines > 0 && a.costed === a.lines
-    })).sort((x, y) => y.margin - x.margin).slice(0, limit || 20);
+    })).sort((x, y) => y.margin - x.margin);
+    // `limit` à 0 veut dire « tout ». La page Marges calculait ses trois cartes — chiffre d'affaires,
+    // marge totale, coût des ventes — sur un tableau DÉJÀ tronqué à vingt lignes, quel que soit le
+    // nombre de clients : au 21e, la carte « Chiffre d'affaires » annonçait moins que la réalité.
+    // Et le tri est par marge DÉCROISSANTE, donc ce qui tombait en premier, ce sont les lignes à
+    // marge négative — exactement celles qu'on vient chercher. `limit || 20` ramenait 0 à 20, ce qui
+    // rendait le « tout » impossible à demander : d'où le test explicite (7.16.0).
+    return limit === 0 ? rows : rows.slice(0, limit || 20);
   }
 
   // ---------- affaires ----------
@@ -4899,7 +4929,7 @@
     SERIAL_STATUSES, serialStatusLabel, WARRANTY_CHOICES, serializedItems, warrantyEnd, serialView,
     serialList, availableSerials, clientFleet, warrantiesEnding, serialGap, serialGaps,
     mergeData, trackDeletion, MERGE_LISTS, LIST_LABELS,
-    purchaseTotals, purchaseBalance, purchaseStatus, payablesList, purchaseJournal, purchaseSummary, supplierSummary, withholdingsToIssue, supplierPayments,
+    purchaseTotals, purchaseBalance, purchaseStatus, achatDoublon, facturesDuDevis, payablesList, purchaseJournal, purchaseSummary, supplierSummary, withholdingsToIssue, supplierPayments,
     periodBounds, issuedIn, salesTotals, revenueByMonth, topItems, clientMovement, AGING_BUCKETS, agedReceivables, payerRanking, quoteFunnel, objectiveProgress,
     amountToWords, intToWords, intToWordsEn, documentHtml, fitToPage, pageCount,
     MODULES, PAGES, moduleById, pageById, pageTitle, moduleCount, moduleCounts, modulesRevenus, moduleOn, moduleWhy, navPages,
