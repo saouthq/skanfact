@@ -675,6 +675,7 @@
   }
 
   // ---------- la fiche d'un dossier ----------
+  let ficheYear = '';                    // l'exercice choisi sur la fiche, entre deux redessins
   function drawDossier(view, id) {
     const dossier = (S.dossiers || []).find(d => d.id === decodeURIComponent(id || ''));
     if (!dossier) { view.innerHTML = `<div class="empty">Ce dossier n'existe plus.</div>`; return; }
@@ -684,6 +685,9 @@
     const relances = (dossier.relances || []).slice().reverse();
     // Les mois regroupés par année : douze cases par ligne valent mieux qu'une bande sans fin.
     const years = [...new Set(months.map(m => m.month.slice(0, 4)))];
+    // L'exercice choisi ne suit pas d'un client à l'autre : sans ce garde-fou, passer d'un dossier
+    // qui a 2025 à un dossier qui n'a que 2026 afficherait un graphique vide sans raison visible.
+    const anneeVue = years.includes(ficheYear) ? ficheYear : years[0];
     const totalCA = packs.reduce((s, p) => s + ((p.figures && p.figures.ca) || 0), 0);
 
     view.innerHTML = `
@@ -693,9 +697,11 @@
         <div class="muted small">${esc(dossier.matricule || 'Matricule inconnu')}${dossier.contact ? ' · ' + esc(dossier.contact) : ''}</div>
       </div><div class="actions">
         <button class="btn" id="edit">Modifier la fiche</button>
+        <button class="btn" id="print">Imprimer</button>
         ${dossier.phone ? '<button class="btn" id="call">Appeler</button><button class="btn" id="wa">WhatsApp</button>' : ''}
         ${row.missingCount || row.provisionalCount ? '<button class="btn btn-primary" id="rel">Relancer</button>' : ''}
       </div></div>
+      <div class="print-only print-head">${esc(S.cabinet.name || 'Cabinet')} — fiche client imprimée le ${esc(fmtDay(Date.now()))}</div>
 
       <div class="panel"><h2>La fiche</h2>
         <div class="kv two">
@@ -707,6 +713,12 @@
           <div><span>Honoraires</span><span>${dossier.fees ? esc(money(dossier.fees)) + ' / mois' : '—'}</span></div>
         </div>
       </div>
+
+      ${years.length ? `<div class="panel"><h2>Chiffre d'affaires ${info('d.ca')}</h2>
+        ${years.length > 1 ? `<div class="filters"><label class="inline small">Exercice
+          <select id="ca-year">${years.map(y => `<option value="${esc(y)}" ${y === anneeVue ? 'selected' : ''}>${esc(y)}</option>`).join('')}</select></label></div>` : ''}
+        ${caChart(packs, anneeVue) || '<div class="empty">Les paquets de cette année ne portent pas de chiffres (fabriqués avant la 6.2.1).</div>'}
+      </div>` : ''}
 
       <div class="panel"><h2>Les mois de ce client ${info('p.definitif')}</h2>
         ${months.length ? years.map(y => `<div class="year-row"><div class="year-lab">${esc(y)}</div>
@@ -763,6 +775,9 @@
 
     $('#back').onclick = () => { location.hash = '#/dossiers'; };
     $('#edit').onclick = () => dossierForm(dossier);
+    $('#print').onclick = () => window.print();
+    const cy = $('#ca-year');
+    if (cy) cy.onchange = e => { ficheYear = e.target.value; render(); };
     const call = $('#call'); if (call) call.onclick = () => api.tel({ number: dossier.phone }).catch(e => toast(plainError(e), 'error'));
     const wa = $('#wa'); if (wa) wa.onclick = () => {
       const m = K.relanceMail(S.cabinet, row);
@@ -791,6 +806,34 @@
   }
 
   const labelOf = (list, id) => { const x = (list || []).find(o => o.id === id); return x ? x.label : ''; };
+
+  // Le chiffre d'affaires mois par mois, en barres. Une fiche client qui ne montre que des cases
+  // « reçu / pas reçu » ne dit rien du client lui-même : c'est 60 % de blanc et aucune information
+  // que le comptable ne connaisse déjà.
+  // Les douze mois de l'année sont toujours dessinés, ceux sans paquet estompés : un graphique
+  // réduit aux trois mois reçus n'apprend rien (règle de la 2.5.0 côté entreprise).
+  function caChart(packs, annee) {
+    const parMois = {};
+    packs.forEach(p => { if (p.month.slice(0, 4) === annee && p.figures) parMois[p.month] = Number(p.figures.ca) || 0; });
+    const mois = Array.from({ length: 12 }, (_, i) => `${annee}-${String(i + 1).padStart(2, '0')}`);
+    const vals = mois.map(m => parMois[m]);
+    const max = Math.max(1, ...vals.map(v => v || 0));
+    const total = vals.reduce((s, v) => s + (v || 0), 0);
+    const recus = vals.filter(v => v != null).length;
+    if (!recus) return '';
+    const devise = (packs.find(p => p.figures) || { figures: {} }).figures.devise || 'DT';
+    return `<div class="ca-chart">
+      <div class="ca-bars">${mois.map((m, i) => {
+        const v = vals[i];
+        const haut = v == null ? 0 : Math.max(2, Math.round((v / max) * 100));
+        return `<div class="ca-col${v == null ? ' off' : ''}" title="${esc(K.monthLabel(m))} : ${v == null ? 'pas reçu' : esc(money(v, devise))}">
+          <div class="ca-v">${v == null ? '' : esc(money(v, devise).replace(' ' + devise, ''))}</div>
+          <div class="ca-bar" style="height:${haut}%"></div>
+          <div class="ca-m">${esc(K.MONTHS_FR[i].slice(0, 3))}</div></div>`;
+      }).join('')}</div>
+      <div class="ca-foot"><span class="muted small">${pl(recus, 'mois', 'mois')} reçu${recus > 1 ? 's' : ''} sur 12</span>
+        <strong>${esc(money(total, devise))}</strong></div></div>`;
+  }
 
   // Ouvrir un paquet : on montre ce qu'il contient, on n'extrait que ce qui est demandé.
   async function openPack(dossier, month) {
