@@ -15,6 +15,8 @@ Repéré par Skander dès la première vérification réussie : l'application du
 
 La cause est une ligne du module de mise à jour : **déclarer un canal remet l'autorisation de revenir en arrière**, et l'app du cabinet est la seule à déclarer un canal (le sien, pour ne pas se voir proposer l'application entreprise). C'est écrit dans la documentation d'electron-updater, et c'est voulu chez eux ; chez nous, non. L'interdiction est désormais reposée **après** le canal, dans les deux applications, et un test vérifie l'ordre.
 
+**Essayer une version depuis les sources ne touche plus tes vraies données.** Lancée par `npm start`, l'application s'appelle `skanfact` ; installée, elle s'appelle `SkanFact` — et macOS ne fait aucune différence entre les deux dans un nom de dossier. C'était donc **le même dossier de données** : tester du code non publié se serait fait sur les vraies factures. Le mode développement écrit maintenant dans « SkanFact (essais) », à part.
+
 ## 6.7.2 — 12/09/2026
 
 **« Module de mise à jour indisponible. » ne veut rien dire. Maintenant l'application dit pourquoi.**

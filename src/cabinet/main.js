@@ -443,6 +443,12 @@ if (!app.requestSingleInstanceLock()) {
   app.on('second-instance', () => { if (mainWindow) { if (mainWindow.isMinimized()) mainWindow.restore(); mainWindow.focus(); } });
   process.on('uncaughtException', e => logError('erreur inattendue', e));
   process.on('unhandledRejection', e => logError('promesse rejetée', e));
+  // Mode développement : dossier de données séparé, pour la même raison que dans src/main.js — sans
+  // ça on écrit dans les données réelles (macOS ne distingue pas « skanfact » de « SkanFact »).
+  // `--user-data-dir` reste prioritaire : les tests s'en servent pour s'isoler.
+  if (!app.isPackaged && !process.argv.some(a => a.startsWith('--user-data-dir'))) {
+    try { app.setPath('userData', path.join(app.getPath('appData'), 'SkanFact Cabinet (essais)')); } catch {}
+  }
   app.whenReady().then(() => {
     if (process.platform === 'win32') app.setAppUserModelId(APP_ID);
     try { Menu.setApplicationMenu(buildMenu()); } catch (e) { logError('menu', e); }

@@ -308,6 +308,8 @@ Règles :
 - **Un réglage qui s'active en effet de bord d'un autre est un piège à relire dans la source du module**, pas dans son README. C'est la deuxième fois de la journée qu'une ligne d'electron-updater se comporte autrement qu'attendu.
 - Ce bug ne se voyait que parce que la version installée (construite localement) était **plus récente** que celle publiée. Un écart de ce genre est un révélateur à exploiter, pas une anomalie à ignorer.
 
+Autre règle posée au même moment : **le mode développement écrit dans un dossier séparé** (`SkanFact (essais)` / `SkanFact Cabinet (essais)`), et `--user-data-dir` reste prioritaire pour que les tests s'isolent. `package.json.name` vaut `skanfact` et `productName` vaut `SkanFact` : sur macOS, dont le système de fichiers ignore la casse, c'était **le même dossier**. `npm start` travaillait donc sur les vraies factures de l'utilisateur — un accident qu'on ne découvre qu'après.
+
 ## Pistes pour la suite (non demandées)
 
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.

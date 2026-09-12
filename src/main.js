@@ -49,9 +49,22 @@ function logError(where, err) {
   try { dialog.showErrorBox('SkanFact — erreur', `${where}\n\n${err && err.message || err}\n\nDétail dans : ${path.join(app.getPath('userData'), 'main.log')}`); } catch {}
 }
 
+// En mode développement (`npm start`), on travaille dans un dossier de données SÉPARÉ.
+// Sans ça, on écrit dans les vraies données de l'utilisateur : l'application installée s'appelle
+// « SkanFact » et celle lancée depuis les sources « skanfact », or macOS ne distingue pas les
+// majuscules dans les noms de dossiers — c'est donc le MÊME dossier. Essayer une version pas encore
+// publiée sur ses factures réelles est le genre d'accident qu'on ne découvre qu'après.
+// On respecte `--user-data-dir` quand il est fourni : les tests s'en servent pour s'isoler.
+function separateDevData() {
+  if (app.isPackaged) return;
+  if (process.argv.some(a => a.startsWith('--user-data-dir'))) return;
+  try { app.setPath('userData', path.join(app.getPath('appData'), 'SkanFact (essais)')); } catch {}
+}
+
 function main() {
   process.on('uncaughtException', (e) => logError('erreur inattendue', e));
   process.on('unhandledRejection', (e) => logError('promesse rejetée', e));
+  separateDevData();
   if (process.platform === 'win32') app.setAppUserModelId(APP_ID);
 
   app.whenReady().then(() => {
