@@ -27,6 +27,9 @@
     const T = todayIso || C.today();
     const d = C.migrateData(null);
     d.company = { ...d.company, ...JSON.parse(JSON.stringify(currentCompany || {})) };
+    // Est-ce que l'utilisateur avait déjà une identité, ou est-ce que l'exemple la lui invente ?
+    // La raison sociale suffit à trancher : c'est le seul champ que l'assistant refuse de laisser vide.
+    const avaitUneSociete = !!(d.company.name || '').trim();
     Object.keys(DEMO_COMPANY).forEach(k => { if (!d.company[k]) d.company[k] = DEMO_COMPANY[k]; });
     const co = d.company;
     const daysAgo = n => C.addDays(T, -n);
@@ -462,6 +465,14 @@
       { id: C.uid(), name: 'Acompte', text: 'Un acompte de 30 % est demandé à la commande, le solde à la livraison.' },
       { id: C.uid(), name: 'Confidentialité', text: 'Les informations recueillies pendant la mission restent strictement confidentielles et ne sont communiquées à aucun tiers.' }
     ];
+    // Le jeu d'exemple se DÉCLARE (7.0.0). Sans cette marque, rien ne le distingue de vraies données :
+    // l'application ne pouvait ni le dire à l'écran, ni proposer d'en sortir, ni empêcher sa fausse
+    // identité de servir à une vraie facture. Le cas qui fait mal : charger l'exemple avant d'avoir
+    // rempli sa fiche société (c'est ce que fait un débutant), puis se mettre à travailler pour de
+    // vrai — le nom « DÉMO — Société de services SUARL », un matricule inventé et un RIB qui n'existe
+    // pas s'impriment alors sur chaque facture, et le client vire l'argent dans le vide.
+    d.demo = true;
+    d.company.demo = !avaitUneSociete;   // l'identité vient-elle de l'exemple, ou est-elle la sienne ?
     return C.migrateData(d);
   }
 

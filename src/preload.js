@@ -25,6 +25,10 @@ contextBridge.exposeInMainWorld('skanfact', {
   setTitle: (title) => ipcRenderer.send('window:title', title),
   setDirty: (dirty) => ipcRenderer.send('window:dirty', !!dirty),
   listBackups: () => ipcRenderer.invoke('backups:list'),
+  // Regarder une sauvegarde avant de s'en servir, puis la remettre en place (7.0.0). Deux appels
+  // distincts exprès : on dit ce qu'on va perdre AVANT d'écraser quoi que ce soit.
+  peekBackup: (name) => ipcRenderer.invoke('backups:peek', name),
+  restoreBackup: (name) => ipcRenderer.invoke('backups:restore', name),
   pickLogo: (title) => ipcRenderer.invoke('logo:pick', title),
   exportPdf: (html, suggestedName) => ipcRenderer.invoke('pdf:export', { html, suggestedName }),
   exportPdfMany: (files, folderName) => ipcRenderer.invoke('pdf:exportMany', { files, folderName }),

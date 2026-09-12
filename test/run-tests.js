@@ -4921,5 +4921,170 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     }
   });
 
+  // ---------- 7.0.0 : les modules et la barre latérale ----------
+
+  t('modules : on ne masque jamais ce que quelqu\'un a saisi', () => {
+    const vide = { ...core.DEFAULT_DATA, company: { ...core.DEFAULT_COMPANY, modules: ['ventes', 'fichiers', 'compta'] },
+      purchases: [], suppliers: [], employees: [], payslips: [], assets: [], catalog: [], serials: [], stockAdjustments: [],
+      accounts: [], movements: [], projects: [], documents: [], recurring: [] };
+    // Rien de saisi : les modules non choisis ne sont pas dans le menu.
+    assert.strictEqual(core.moduleOn(vide, 'achats'), false, 'un module non choisi et vide reste hors du menu');
+    assert.strictEqual(core.moduleOn(vide, 'paie'), false);
+    assert.strictEqual(core.moduleOn(vide, 'immos'), false);
+
+    // Une seule ligne suffit à le faire réapparaître : c'est LA règle de sécurité du filtrage.
+    // Sans elle, quelqu'un qui décoche « Achats » après avoir saisi trente factures fournisseur
+    // croirait les avoir perdues.
+    const avec = { ...vide, purchases: [{ id: 'p1', lines: [] }] };
+    assert.strictEqual(core.moduleOn(avec, 'achats'), true, 'un module rempli se montre tout seul');
+    assert.strictEqual(core.moduleWhy(avec, 'achats'), 'rempli');
+    assert.strictEqual(core.moduleCount(avec, 'achats'), 1);
+    // Et il reste hors du menu pour les autres : le garde-fou est par module, pas global.
+    assert.strictEqual(core.moduleOn(avec, 'paie'), false);
+
+    // Chaque module masquable sait se compter, sinon la règle ci-dessus ne le protège pas.
+    core.MODULES.filter(m => !m.toujours).forEach(m =>
+      assert.strictEqual(typeof m.compte, 'function', `le module « ${m.id} » n'a pas de compteur : il pourrait être masqué plein`));
+  });
+
+  t('modules : le cœur du métier ne se masque pas, et une installation existante ne perd rien', () => {
+    const choisi = { ...core.DEFAULT_DATA, company: { ...core.DEFAULT_COMPANY, modules: [] } };
+    ['ventes', 'fichiers', 'compta'].forEach(id => {
+      assert.strictEqual(core.moduleOn(choisi, id), true, `« ${id} » doit rester affiché quoi qu'il arrive`);
+      assert.strictEqual(core.moduleWhy(choisi, id), 'coeur');
+    });
+    // `modules` absent (toutes les installations d'avant la 7.0.0) = toute l'application, comme avant.
+    const ancien = { ...core.DEFAULT_DATA, company: { ...core.DEFAULT_COMPANY } };
+    delete ancien.company.modules;
+    core.MODULES.forEach(m => assert.strictEqual(core.moduleOn(ancien, m.id), true,
+      `sans réglage enregistré, « ${m.id} » doit s'afficher : une mise à jour ne fait disparaître aucune page`));
+    assert.strictEqual(core.DEFAULT_COMPANY.modules, null, 'la valeur par défaut doit être « aucun choix », pas une liste');
+  });
+
+  t('barre latérale : chaque page a son icône, et Paramètres et Aide ne défilent pas', () => {
+    const app = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
+    // Les commentaires HTML sont retirés avant de juger : sans ça, un lien mis en commentaire — donc
+    // inerte — satisfaisait le test. C'est la même faute que celle attrapée en 6.8.0 côté cabinet, et
+    // je l'ai refaite ici : elle s'est vue en essayant de faire échouer le test exprès.
+    const brut = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'index.html'), 'utf8');
+    const html = brut.replace(/<!--[\s\S]*?-->/g, '');
+    assert.ok(html.includes('sidebar-foot') && html.includes('<nav id="nav">'),
+      'le nettoyage des commentaires a mangé le code : le test ne prouve plus rien');
+
+    // Toutes les pages du menu doivent avoir un dessin, sinon elles portent l'icône de secours.
+    const icones = app.slice(app.indexOf('const ICONES = {'), app.indexOf('const icone ='));
+    core.PAGES.filter(p => !p.pied).forEach(p =>
+      assert.ok(new RegExp(`\\b${p.id}:`).test(icones), `la page « ${p.id} » n'a pas d'icône dans ICONES`));
+
+    // Le fond du problème de la 6.8.2 : `nav` défile, le pied non. Les deux liens dont un débutant a
+    // besoin quand il est perdu doivent vivre dans le pied. Test prouvé en les remettant dans nav.
+    const pied = html.slice(html.indexOf('<div class="sidebar-foot">'), html.indexOf('</aside>'));
+    ['parametres', 'aide'].forEach(r =>
+      assert.ok(pied.includes(`data-route="${r}"`), `« ${r} » doit être dans .sidebar-foot : nav défile, le pied non`));
+    // Et ils ne doivent PAS être dessinés une seconde fois dans nav, sinon on a deux liens actifs.
+    assert.ok(!core.PAGES.some(p => p.pied && !p.horsMenu && core.navPages(core.DEFAULT_DATA).some(q => q.id === p.id)),
+      'Paramètres et Aide ne doivent pas être redessinés dans nav');
+
+    // Le titre de la fenêtre se lisait dans le TEXTE du lien de la barre : un module masqué n'a plus
+    // de lien, et la fenêtre perdait son nom. Il doit venir des données.
+    assert.ok(!/nav a\[data-route="\$\{name\}"\]/.test(app),
+      'setWindowTitle ne doit plus lire le titre dans le DOM de la barre latérale');
+    core.PAGES.forEach(p => assert.ok(core.pageTitle(p.id), `« ${p.id} » n'a pas de titre`));
+
+    // La classe active doit couvrir les liens du pied, sinon Paramètres et Aide ne se marquent jamais.
+    assert.ok(/\$\$\('nav a, \.sidebar-foot a'\)/.test(app),
+      'le marquage de la page courante doit inclure les liens du pied');
+  });
+
+  t('barre latérale : tout ce que la palette propose reste atteignable', () => {
+    const app = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
+    // Filtrer le menu n'est acceptable QUE parce que la palette liste tout. Si une page du menu
+    // disparaissait de la palette, la masquer reviendrait à la supprimer.
+    const palette = app.slice(app.indexOf('function openPalette()'), app.indexOf('const closeMenus ='));
+    core.PAGES.filter(p => !p.horsMenu).forEach(p =>
+      assert.ok(palette.includes(`navigate('#/${p.id}`), `la page « ${p.id} » n'est pas dans la palette`));
+    assert.ok(palette.includes("navigate('#/modules')"), 'la palette doit mener à « Tous les modules »');
+    // Et la page qui permet de tout réafficher doit exister.
+    assert.ok(/routes\.modules\s*=/.test(app), 'la page « Tous les modules » doit exister');
+  });
+
+  t('À faire : aucun bouton ne mène nulle part', () => {
+    const app = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
+    const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'core.js'), 'utf8');
+
+    // Tout ce que `todoList` sait produire. On lit la source plutôt que d'exécuter la fonction :
+    // il faudrait fabriquer vingt-deux situations différentes pour les faire toutes apparaître, et
+    // c'est précisément parce que personne ne les voit toutes à la fois que treize d'entre elles
+    // ont pu rester sans action pendant des mois.
+    const bloc = src.slice(src.indexOf('function todoList'), src.indexOf('function companyGaps'));
+    assert.ok(bloc.length > 2000, 'le découpage de todoList a raté : le test ne prouve rien');
+    const produits = [...new Set([...bloc.matchAll(/id: '([a-z0-9-]+)'/g)].map(m => m[1]))];
+    assert.ok(produits.length >= 20, `todoList ne produit que ${produits.length} lignes : découpage suspect`);
+
+    // Toutes celles qui sont branchées.
+    const depart = app.indexOf('const TODO_ACTIONS = {');
+    assert.ok(depart > 0, 'TODO_ACTIONS introuvable');
+    const actions = app.slice(depart, app.indexOf('\n  };', depart));
+    const armes = [...new Set([...actions.matchAll(/^\s{4}'?([a-z0-9-]+)'?:\s*\{/gm)].map(m => m[1]))];
+
+    const orphelines = produits.filter(id => !armes.includes(id));
+    assert.deepStrictEqual(orphelines, [],
+      `ces lignes de « À faire » afficheraient un bouton qui ne fait rien au clic : ${orphelines.join(', ')}. `
+      + 'Ajoute-leur une entrée dans TODO_ACTIONS — un bouton muet est pire qu\'un bouton absent.');
+
+    // Et l'inverse : une action pour une ligne qui n'existe plus est du code mort qui trompe la lecture.
+    const mortes = armes.filter(id => !produits.includes(id));
+    assert.deepStrictEqual(mortes, [], `TODO_ACTIONS arme des lignes que todoList ne produit plus : ${mortes.join(', ')}`);
+
+    // Le filet : même sans action, le clic doit parler au lieu de se taire.
+    assert.ok(/Cette ligne n'a pas encore d'écran dédié/.test(app),
+      'bindTodo doit dire quelque chose quand une action manque, au lieu d\'avaler le clic');
+  });
+
+  t('« Tout effacer » efface tout, y compris les modules ajoutés demain', () => {
+    const demo = require('../src/renderer/demo.js');
+    // On part du jeu d'exemple : c'est le seul moyen simple d'avoir les trente listes remplies.
+    const d = demo.buildDemoData({ ...core.DEFAULT_COMPANY }, '2026-09-12');
+    const remplies = Object.keys(core.DEFAULT_DATA)
+      .filter(k => Array.isArray(d[k]) ? d[k].length : (d[k] && typeof d[k] === 'object' ? Object.keys(d[k]).length : false));
+    assert.ok(remplies.length >= 15, `l'exemple ne remplit que ${remplies.length} listes : le test ne prouve pas grand-chose`);
+
+    core.wipeData(d, { garderSociete: true });
+    const restes = Object.keys(core.DEFAULT_DATA)
+      .filter(k => k !== 'company' && k !== 'version')
+      .filter(k => Array.isArray(d[k]) ? d[k].length : (d[k] && typeof d[k] === 'object' ? Object.keys(d[k]).length : d[k]));
+    assert.deepStrictEqual(restes, [],
+      `ces données survivent à « Tout effacer » : ${restes.join(', ')}. `
+      + 'La liste se déduit de DEFAULT_DATA justement pour qu\'un module ajouté demain soit vidé sans y penser.');
+    assert.strictEqual(d.closedUntil, '', 'la clôture doit repartir à zéro');
+    assert.strictEqual(d.demo, false, 'les données effacées ne sont plus le jeu d\'exemple');
+  });
+
+  t('l\'exemple ne laisse jamais sa fausse identité servir à une vraie facture', () => {
+    const demo = require('../src/renderer/demo.js');
+
+    // Cas qui fait mal : charger l'exemple AVANT d'avoir rempli sa fiche — ce que fait un débutant.
+    const sansFiche = demo.buildDemoData({ ...core.DEFAULT_COMPANY }, '2026-09-12');
+    assert.ok(/DÉMO/.test(sansFiche.company.name), 'l\'exemple doit bien fournir une société de démonstration');
+    assert.strictEqual(sansFiche.company.demo, true, 'l\'identité empruntée doit être marquée comme telle');
+    assert.strictEqual(core.estDemo(sansFiche), true);
+    // Effacer emporte alors la fausse identité : sinon la première vraie facture part avec un
+    // matricule inventé et un RIB qui n'existe pas, et le client vire l'argent dans le vide.
+    core.wipeData(sansFiche, { garderSociete: !sansFiche.company.demo });
+    assert.strictEqual(sansFiche.company.name, '', 'la fausse raison sociale doit partir');
+    assert.strictEqual(sansFiche.company.matricule, '', 'le faux matricule doit partir');
+    assert.strictEqual(sansFiche.company.rib, '', 'le faux RIB doit partir');
+
+    // Cas normal : sa fiche est remplie, l'exemple ne la touche pas et l'effacement la garde.
+    const sienne = { ...core.DEFAULT_COMPANY, name: 'Atelier Ben Salah SUARL', matricule: '9876543Z/A/P/000', rib: '08 006 000 42' };
+    const avecFiche = demo.buildDemoData(sienne, '2026-09-12');
+    assert.strictEqual(avecFiche.company.name, 'Atelier Ben Salah SUARL');
+    assert.strictEqual(avecFiche.company.demo, false, 'son identité à lui n\'est pas une identité empruntée');
+    core.wipeData(avecFiche, { garderSociete: !avecFiche.company.demo });
+    assert.strictEqual(avecFiche.company.name, 'Atelier Ben Salah SUARL', 'on ne jette pas l\'identité de quelqu\'un en effaçant des factures');
+    assert.strictEqual(avecFiche.company.matricule, '9876543Z/A/P/000');
+    assert.ok(!('demo' in avecFiche.company), 'la marque d\'emprunt doit disparaître une fois l\'exemple effacé');
+  });
+
   console.log(`\n${n} tests OK`);
 })().catch(e => { console.error(e); process.exit(1); });

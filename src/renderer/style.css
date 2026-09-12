@@ -43,11 +43,20 @@ body {
 .brand-mark { width: 34px; height: 34px; border-radius: 10px; background: linear-gradient(135deg, #12b3a2, #0f9d8f 60%, #0b7f74); color: #fff; display: grid; place-items: center; font-weight: 800; font-size: 15px; letter-spacing: -.5px; box-shadow: 0 4px 12px rgba(15,157,143,.28); }
 .brand-name { font-size: 16px; font-weight: 700; letter-spacing: -.2px; line-height: 1.1; }
 .brand-sub { font-size: 11px; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 130px; }
-nav { display: flex; flex-direction: column; gap: 3px; overflow-y: auto; }
-.nav-group { font-size: 10px; text-transform: uppercase; letter-spacing: 1.2px; color: #aab3be; font-weight: 700; padding: 14px 12px 4px; }
+nav { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; }
+/* Une barre qui défile doit avoir l'air de défiler. Sur macOS la barre de défilement est masquée tant
+   qu'on ne fait pas défiler : la liste paraissait donc finie là où elle était coupée. On la force,
+   fine et discrète, mais visible — et seulement quand il y a vraiment de quoi défiler (7.0.0). */
+nav.deborde { scrollbar-width: thin; scrollbar-color: #c8d0d9 transparent; }
+nav.deborde::-webkit-scrollbar { width: 8px; }
+nav.deborde::-webkit-scrollbar-thumb { background: #c8d0d9; border-radius: 4px; border: 2px solid var(--panel); }
+nav.deborde::-webkit-scrollbar-thumb:hover { background: #aab3be; }
+body.dark nav.deborde::-webkit-scrollbar-thumb { background: #3c4654; }
+.nav-group { font-size: 10px; text-transform: uppercase; letter-spacing: 1.2px; color: #aab3be; font-weight: 700; padding: 12px 12px 3px; }
+.nav-group:first-child { padding-top: 4px; }
 body.dark .nav-group { color: #6c7785; }
 nav a {
-  color: #4b5563; text-decoration: none; padding: 9px 12px; border-radius: 10px; font-weight: 500;
+  color: #4b5563; text-decoration: none; padding: 8px 12px; border-radius: 10px; font-weight: 500;
   display: flex; align-items: center; gap: 10px; transition: background .12s, color .12s;
 }
 nav a svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; opacity: .8; }
@@ -57,6 +66,41 @@ nav a.active svg { opacity: 1; }
 .sidebar-foot { margin-top: auto; display: flex; flex-direction: column; gap: 2px; padding-top: 12px; border-top: 1px solid var(--border); }
 .sidebar-foot .btn-ghost { color: var(--muted); text-align: left; justify-content: flex-start; }
 .sidebar-foot .btn-ghost:hover { color: var(--text); background: var(--ink-soft); }
+/* Paramètres et Aide : mêmes liens que dans nav, mais dans le pied, qui ne défile jamais (7.0.0). */
+.sidebar-foot .foot-link {
+  color: #4b5563; text-decoration: none; padding: 8px 12px; border-radius: 10px; font-weight: 500;
+  font-size: 13px; display: flex; align-items: center; gap: 10px;
+}
+.sidebar-foot .foot-link svg { width: 17px; height: 17px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; opacity: .8; }
+.sidebar-foot .foot-link:hover { background: var(--ink-soft); color: var(--text); }
+.sidebar-foot .foot-link.active { background: var(--primary-soft); color: var(--primary); font-weight: 600; }
+/* « Tous les modules » ferme la liste : c'est la porte de ce qui n'est pas affiché. */
+nav a.nav-plus { color: var(--muted); font-weight: 600; }
+nav a.nav-plus svg { opacity: .55; }
+
+/* ---------- page « Tous les modules » (7.0.0) ---------- */
+.mod-row { display: grid; grid-template-columns: 30px 1fr auto; gap: 12px; align-items: start;
+  padding: 14px 2px; border-top: 1px solid var(--border); }
+.mod-row:first-child { border-top: none; }
+.mod-row .mod-t { font-weight: 700; }
+.mod-row:not(.on) { opacity: .62; }
+.mod-row:not(.on):hover { opacity: 1; }
+.mod-check { display: flex; align-items: center; justify-content: center; padding-top: 2px; }
+.mod-check input { width: 17px; height: 17px; cursor: pointer; }
+.mod-lock { color: var(--primary); font-size: 14px; cursor: help; }
+.mt-s { margin-top: 3px; }
+
+/* Le bandeau du jeu d'exemple (7.0.0) : il doit se remarquer sans faire peur, et ne jamais
+   ressembler à une alerte d'erreur — ce n'est pas un problème, c'est un mode. */
+.demo-banner {
+  background: #fff4e0; color: #8a5a08; border: 1px solid #f0d9ae;
+  align-items: flex-start; line-height: 1.45; font-weight: 500;
+}
+body.dark .demo-banner { background: #3a2f19; color: #f0c878; border-color: #55452a; }
+.demo-banner b { font-weight: 800; }
+.demo-banner .btn { background: #fff; color: #8a5a08; border-color: #e2c692; white-space: nowrap; }
+body.dark .demo-banner .btn { background: #4a3c20; color: #f5d9a0; border-color: #6a5430; }
+.mod-banner { align-items: center; }
 
 /* ---------- main ---------- */
 main { flex: 1; overflow-y: auto; padding: 32px 36px 48px; }

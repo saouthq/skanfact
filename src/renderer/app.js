@@ -5,6 +5,12 @@
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
   const h = C.escapeHtml;
 
+  // La touche de raccourci porte deux noms selon la machine. L'application écrivait tantôt « Cmd+K »,
+  // tantôt « Cmd/Ctrl+K » : le premier est faux sur Windows, le second demande à l'utilisateur de
+  // faire le tri lui-même. On décide une fois pour toutes, ici.
+  const SUR_MAC = /Mac|iP(hone|ad|od)/.test(navigator.platform || navigator.userAgent || '');
+  const MOD = SUR_MAC ? 'Cmd' : 'Ctrl';
+
   // ---------- pont Electron (avec repli navigateur pour les tests) ----------
   const bridge = window.skanfact || {
     _mem: null,
@@ -15,6 +21,7 @@
     importData: async () => null, unlock: async () => ({ ok: false }), lock: async () => true, securityInfo: async () => ({ encrypted: false }), setPassword: async () => ({ ok: true, encrypted: false }),
     externalBackupInfo: async () => ({ dir: null }), setExternalBackup: async () => ({ dir: null }), chooseExternalBackup: async () => null,
     openBackups: async () => {}, createBackup: async () => null, listBackups: async () => [],
+    peekBackup: async () => ({ ok: false, error: 'indisponible' }), restoreBackup: async () => ({ ok: false, error: 'indisponible' }),
     pickLogo: async () => null,
     exportPdf: async (html) => { const w = window.open('', '_blank'); w.document.write(html); w.document.close(); w.print(); return null; },
     exportPdfMany: async () => null, saveText: async () => null, exportPdfSilent: async () => null, saveTextSilent: async () => null, composeMail: async () => ({ state: 'mailto' }),
@@ -627,7 +634,8 @@
     tresorerie: 'Trésorerie', stats: 'Statistiques', compta: 'Comptabilité', parametres: 'Paramètres', aide: 'Aide', doc: 'le document',
     achats: 'Achats et dépenses', achat: 'l\'achat', fournisseurs: 'Fournisseurs', fournisseur: 'la fiche fournisseur',
     marges: 'Marges', affaire: 'l\'affaire', immos: 'Immobilisations', immo: 'l\'immobilisation',
-    stock: 'Stock', article: 'l\'article', garanties: 'Garanties', paie: 'Paie', salarie: 'la fiche du salarié'
+    stock: 'Stock', article: 'l\'article', garanties: 'Garanties', paie: 'Paie', salarie: 'la fiche du salarié',
+    modules: 'Tous les modules'
   };
   const pageLabel = hash => PAGE_LABELS[(hash || '').replace(/^#\/?/, '').split('/')[0]] || 'Accueil';
   function pushHistory(previous) {
@@ -666,6 +674,148 @@
     if (b) b.onclick = () => go(() => goBack(fallback, skip));
   }
 
+  // ---------- la barre latérale (7.0.0) ----------
+  // Les icônes vivaient dans index.html à côté de leur lien. Maintenant que les liens sont dessinés
+  // à partir de core.PAGES, elles vivent ici : une page = un dessin, et rien à retrouver dans deux
+  // fichiers quand on ajoute un module.
+  const ICONES = {
+    dashboard: '<path d="M3 12l9-8 9 8"/><path d="M5 10v10h14V10"/>',
+    devis: '<path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/><path d="M10 13h6M10 17h6"/>',
+    factures: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>',
+    relances: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
+    autres: '<path d="M9 3h8l4 4v12a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 3v5h4"/><path d="M5 7v13a2 2 0 0 0 2 2h9"/>',
+    contrats: '<path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/>',
+    achats: '<path d="M6 6h15l-1.5 9h-12z"/><path d="M6 6L5 3H2"/><circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/>',
+    fournisseurs: '<path d="M3 9l2-5h14l2 5"/><path d="M4 9h16v11H4z"/><path d="M9 20v-6h6v6"/>',
+    clients: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/>',
+    catalogue: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v16"/>',
+    tresorerie: '<rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20"/><circle cx="17" cy="15" r="1.5"/>',
+    marges: '<path d="M3 17l5-5 4 3 8-8"/><path d="M15 7h5v5"/><path d="M3 21h18"/>',
+    paie: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.3 3-5.5 6.5-5.5s6.5 2.2 6.5 5.5"/><path d="M17 4h5v6h-5z"/><path d="M18.5 6.5h2"/>',
+    stock: '<path d="M3 8l9-4 9 4v8l-9 4-9-4z"/><path d="M3 8l9 4 9-4"/><path d="M12 12v8"/>',
+    garanties: '<path d="M12 3l7 3v6c0 4.5-3 7.7-7 9-4-1.3-7-4.5-7-9V6z"/><path d="M9 12l2 2 4-4"/>',
+    immos: '<path d="M3 21h18"/><path d="M5 21V8l7-5 7 5v13"/><path d="M10 21v-6h4v6"/>',
+    stats: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+    compta: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h8M8 11h8M8 15h5"/>',
+    modules: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M17.5 14v7M14 17.5h7"/>'
+  };
+  const icone = id => `<svg viewBox="0 0 24 24">${ICONES[id] || ICONES.modules}</svg>`;
+
+  // Les compteurs de la barre : ils vivaient en dur dans index.html (<span id="nav-relances">…).
+  // Maintenant qu'on dessine, on les pose en même temps que le lien.
+  const NAV_COMPTEURS = { relances: 'nav-relances', contrats: 'nav-contrats', achats: 'nav-achats', tresorerie: 'nav-treso', paie: 'nav-paie', stock: 'nav-stock', immos: 'nav-immos' };
+  const NAV_INFO = ['contrats', 'immos'];          // compteur bleu « pour information », pas une alerte
+
+  function drawNav() {
+    const pages = C.navPages(data);
+    // Groupé par FAMILLE, pas par module : huit intertitres coûteraient 250 px de barre, et on aurait
+    // remplacé un débordement par un autre.
+    let html = '', famille = '§';
+    pages.forEach(p => {
+      if (p.famille && p.famille !== famille) { famille = p.famille; html += `<div class="nav-group">${h(famille)}</div>`; }
+      const cid = NAV_COMPTEURS[p.id];
+      html += `<a href="#/${p.id}" data-route="${p.id}"${p.famille ? '' : ' class="solo"'}>${icone(p.id)}${h(p.titre)}`
+        + (cid ? `<span class="nav-count${NAV_INFO.includes(p.id) ? ' info' : ''}" id="${cid}" hidden></span>` : '')
+        + '</a>';
+    });
+    // Toujours en dernier, toujours présent : c'est la porte de ce qui n'est pas affiché. Sans elle,
+    // masquer un module reviendrait à le supprimer pour quelqu'un qui ne connaît pas la palette.
+    html += `<a href="#/modules" data-route="modules" class="nav-plus">${icone('modules')}Tous les modules</a>`;
+    const nav = $('#nav');
+    nav.innerHTML = html;
+    // Une barre qui défile doit AVOIR L'AIR de défiler. Sur macOS, la barre de défilement est cachée
+    // tant qu'on ne fait pas défiler : Skander a donc regardé pendant des semaines une liste qui
+    // paraissait finie à « Immobilisations ». La classe force une barre visible (CSS).
+    nav.classList.toggle('deborde', nav.scrollHeight > nav.clientHeight + 1);
+  }
+
+  // On arrive sur la page d'un module retiré du menu (par la recherche, par une adresse, par un lien
+  // d'une autre page). Elle marche exactement comme les autres — mais si on ne dit rien, l'utilisateur
+  // croira l'avoir trouvée par hasard et ne saura pas la retrouver demain.
+  function bandeauModule(active) {
+    const p = C.pageById(active);
+    if (!p || !p.module || !data) return;
+    const choisis = company().modules;
+    if (!Array.isArray(choisis) || choisis.includes(p.module)) return;
+    if (C.moduleCount(data, p.module) > 0) return;    // déjà rempli : il est dans le menu tout seul
+    const m = C.moduleById(p.module);
+    if (!m) return;
+    const el = document.createElement('div');
+    el.className = 'banner info mod-banner';
+    el.innerHTML = `<span>« ${h(m.label)} » n'est pas dans ton menu. La page marche normalement — elle n'y est simplement pas affichée.</span>
+      <button class="btn btn-sm" id="mod-add">Ajouter au menu</button>`;
+    const view = $('#view');
+    const head = $('.page-head', view);
+    if (head && head.nextSibling) view.insertBefore(el, head.nextSibling); else view.appendChild(el);
+    $('#mod-add').onclick = () => {
+      const liste = (company().modules || []).slice();
+      if (!liste.includes(m.id)) liste.push(m.id);
+      company().modules = liste;
+      save(); drawNav(); el.remove();
+      toast(`« ${m.label} » ajouté au menu`);
+    };
+  }
+
+  // Tant que le jeu d'exemple est chargé, l'application le DIT — sur chaque page, en permanence.
+  // Sans ça, rien à l'écran ne distingue treize mois d'activité fictive de vraies données : on peut
+  // relancer un client qui n'existe pas, ou pire, envoyer une facture au nom d'une société inventée.
+  // Le bandeau porte la sortie, parce que « revenir à mes données » passait par Paramètres →
+  // Sécurité et données → Importer → choisir le bon fichier dans le dossier des sauvegardes.
+  function bandeauDemo() {
+    if (!data || !C.estDemo(data)) return;
+    const el = document.createElement('div');
+    el.className = 'banner demo-banner';
+    el.innerHTML = `<span><b>Jeu d'exemple</b> — ce ne sont pas tes données : treize mois d'activité fictive,
+      pour regarder comment l'application fonctionne. N'envoie rien à personne depuis ici.</span>
+      <button class="btn btn-sm" id="demo-out">Repartir de mes données</button>`;
+    const view = $('#view');
+    view.insertBefore(el, view.firstChild);
+    $('#demo-out').onclick = demoSortie;
+  }
+
+  // La sortie de l'exemple. Deux chemins, et l'app dit lequel elle propose :
+  //   — une sauvegarde « avant-demo » existe (on avait des données) → on les remet ;
+  //   — sinon (on a chargé l'exemple sur une installation neuve) → on repart à vide.
+  async function demoSortie() {
+    let avant = null;
+    try {
+      // La plus récente : recharger l'exemple deux fois crée deux « avant-demo ».
+      avant = (await bridge.listBackups() || []).filter(b => /avant-demo/.test(b.name || '')).sort((a, b) => b.mtime - a.mtime)[0];
+    } catch (_) {}
+    // On REGARDE avant de proposer : annoncer « tes données reviennent » sans avoir vérifié que la
+    // sauvegarde est lisible, c'est promettre quelque chose qu'on ne tiendra qu'après l'écrasement.
+    let vu = null;
+    if (avant) { try { vu = await bridge.peekBackup(avant.name); } catch (_) {} }
+    const ok = vu && vu.ok;
+    // Texte BRUT : confirmDialog passe par nl2br, qui échappe. Une balise écrite ici s'afficherait
+    // telle quelle à l'écran.
+    const msg = ok
+      ? `Tes données d'avant l'exemple ont été mises de côté au moment du chargement :\n`
+        + `${vu.compte.documents} document(s), ${vu.compte.clients} client(s), ${vu.compte.catalog} prestation(s)`
+        + `${vu.societe ? ` au nom de « ${vu.societe} »` : ''}.\n\nOn les remet en place, et l'exemple disparaît.`
+      : avant
+        ? `La sauvegarde d'avant l'exemple est illisible (${(vu && vu.error) || 'raison inconnue'}).\n\n`
+          + 'On peut effacer l\'exemple, mais tes données d\'avant ne reviendront pas d\'ici : elles sont dans le dossier des sauvegardes, et « Importer » sait les relire.'
+        : 'Il n\'y avait aucune donnée avant l\'exemple : l\'application repart vide, avec ta fiche société à remplir.';
+    if (!await confirmDialog(msg, ok ? 'Remettre mes données' : 'Effacer l\'exemple', !ok)) return;
+    clearGuard();
+    if (ok) {
+      const r = await bridge.restoreBackup(avant.name);
+      if (!r || !r.ok) return toast('Restauration impossible : ' + ((r && r.error) || 'sauvegarde illisible'), true);
+      data = migrate(r.data);
+      toast('Tes données sont revenues');
+    } else {
+      C.wipeData(data, { garderSociete: !(data.company && data.company.demo) });
+      save(true);
+      toast('L\'exemple est effacé');
+    }
+    applyTheme();
+    $('#brand-company').textContent = data.company.name;
+    settingsTab = 'societe';
+    navigate(data.company.name ? '#/dashboard' : '#/parametres');
+    render();
+  }
+
   function render(keepScroll) {
     const view = $('#view');
     const scroll = keepScroll ? view.scrollTop : 0;
@@ -684,10 +834,17 @@
     else if (name === 'article') active = 'stock';
     else if (name === 'garanties') active = 'stock';
     else if (name === 'salarie') active = 'paie';
-    $$('nav a').forEach(a => a.classList.toggle('active', a.dataset.route === active));
+    // La barre se redessine à chaque navigation : un module qui vient de recevoir sa première ligne
+    // doit apparaître tout de suite, pas au prochain démarrage.
+    drawNav();
+    // Les liens du pied (Paramètres, Aide) ne sont pas dans <nav> : sans eux dans le sélecteur, la
+    // page ouverte n'aurait jamais été marquée sur ces deux-là.
+    $$('nav a, .sidebar-foot a').forEach(a => a.classList.toggle('active', a.dataset.route === active));
     guard = null; previewRedraw = null;
     pushHistory(currentHash);        // d'où l'on vient, pour le bouton retour de la page qui s'ouvre
     (routes[name] || routes.dashboard)(parts.slice(1));
+    bandeauDemo();                   // « ce ne sont pas tes données » — sur chaque page, en permanence
+    bandeauModule(active);           // « cette page n'est pas dans ton menu » — et le bouton pour l'y mettre
     bindDateFields(view);            // champs date posés par la page qui vient d'être dessinée
     view.scrollTop = scroll;
     currentHash = location.hash;
@@ -735,8 +892,10 @@
     } else if (name === 'client') {
       t = (clientById(parts[0]) || {}).name || 'Client';
     } else {
-      const a = $(`nav a[data-route="${name}"]`);
-      t = a ? a.textContent.trim().replace(/\d+$/, '').trim() : '';
+      // Le titre se lisait dans le TEXTE du lien de la barre latérale. Un module masqué n'a plus de
+      // lien : la fenêtre se serait appelée « SkanFact » tout court sur ses pages. Le titre vient
+      // maintenant de core.PAGES, la même source que le lien.
+      t = C.pageTitle(name);
     }
     const title = (t ? t + ' — ' : '') + 'SkanFact';
     document.title = title;
@@ -2722,16 +2881,43 @@
   };
 
   // ---------- panneau « À faire » ----------
+  // Chaque ligne de « À faire » doit mener quelque part. Jusqu'à la 7.0.0, `core.todoList` savait
+  // produire vingt-deux sortes de lignes et neuf seulement avaient une action : les treize autres
+  // affichaient un bouton « Voir » qui, au clic, ne faisait RIEN — ni message, ni erreur, ni
+  // navigation, parce que `bindTodo` fait `if (a) a.run()`. Sur le tableau de bord du jeu de
+  // démonstration, sept boutons sur treize étaient morts.
+  //
+  // C'est très exactement « y'a des choses qu'on arrive pas à faire et on ne comprend pas pourquoi ».
+  // Un bouton qui ne répond pas n'apprend rien : on croit avoir mal cliqué, on recommence, on doute
+  // de soi, puis on doute du logiciel.
+  //
+  // Le test « À faire : aucun bouton ne mène nulle part » interdit d'en rajouter un.
+  const vers = (hash, avant) => () => { if (avant) avant(); navigate(hash); };
   const TODO_ACTIONS = {
     contrats: { label: 'Générer les brouillons', run: () => { const n = generateRecurring(); toast(`${n} brouillon(s) créé(s) — à relire puis émettre`); render(); } },
-    retards: { label: 'Voir les relances', run: () => navigate('#/relances') },
-    societe: { label: 'Compléter', run: () => { settingsTab = 'societe'; navigate('#/parametres'); } },
-    'devis-acceptes': { label: 'Voir les devis', run: () => { listState.devis.st = 'accepté'; listState.devis.year = ''; navigate('#/devis'); } },
-    'devis-expires': { label: 'Voir les devis', run: () => { listState.devis.st = 'expiré'; listState.devis.year = ''; listState.devis.yearTouched = true; navigate('#/devis'); } },
-    'devis-sans-reponse': { label: 'Voir les devis', run: () => { listState.devis.st = 'envoyé'; listState.devis.year = ''; listState.devis.yearTouched = true; navigate('#/devis'); } },
-    attestations: { label: 'Voir la liste', run: () => navigate('#/compta') },
-    echeances: { label: 'Voir les échéances', run: () => navigate('#/relances') },
-    brouillons: { label: 'Voir les brouillons', run: () => navigate('#/factures') }
+    retards: { label: 'Voir les relances', run: vers('#/relances') },
+    societe: { label: 'Compléter', run: vers('#/parametres', () => { settingsTab = 'societe'; }) },
+    'devis-acceptes': { label: 'Voir les devis', run: vers('#/devis', () => { listState.devis.st = 'accepté'; listState.devis.year = ''; }) },
+    'devis-expires': { label: 'Voir les devis', run: vers('#/devis', () => { listState.devis.st = 'expiré'; listState.devis.year = ''; listState.devis.yearTouched = true; }) },
+    'devis-sans-reponse': { label: 'Voir les devis', run: vers('#/devis', () => { listState.devis.st = 'envoyé'; listState.devis.year = ''; listState.devis.yearTouched = true; }) },
+    attestations: { label: 'Voir la liste', run: vers('#/compta', () => { comptaState.tab = 'ventes'; }) },
+    echeances: { label: 'Voir les échéances', run: vers('#/relances') },
+    brouillons: { label: 'Voir les brouillons', run: vers('#/factures', () => { listState.facture.st = 'brouillon'; listState.facture.year = ''; listState.facture.yearTouched = true; }) },
+    // Les treize qui ne menaient nulle part.
+    cloture: { label: 'Clôturer un mois', run: vers('#/compta', () => { comptaState.tab = 'clotures'; }) },
+    fiscal: { label: 'Voir le calendrier', run: vers('#/compta', () => { comptaState.tab = 'calendrier'; }) },
+    'fournisseurs-retard': { label: 'Voir les achats', run: vers('#/achats', () => { buyState.st = 'retard'; buyState.year = ''; }) },
+    'fournisseurs-echeances': { label: 'Voir les achats', run: vers('#/achats', () => { buyState.st = 'à payer'; buyState.year = ''; }) },
+    'attestations-fournisseurs': { label: 'Voir la liste', run: vers('#/compta', () => { comptaState.tab = 'achats'; }) },
+    'stock-negatif': { label: 'Voir les alertes', run: vers('#/stock', () => { stockState.tab = 'alertes'; }) },
+    'stock-bas': { label: 'Voir les alertes', run: vers('#/stock', () => { stockState.tab = 'alertes'; }) },
+    'series-ecart': { label: 'Voir les numéros', run: vers('#/stock', () => { stockState.tab = 'series'; }) },
+    garanties: { label: 'Voir les garanties', run: vers('#/garanties') },
+    immobilisations: { label: 'Voir les lignes', run: vers('#/immos', () => { immoState.tab = 'attente'; }) },
+    'declarations-sociales': { label: 'Voir les déclarations', run: vers('#/paie', () => { paieState.tab = 'declarations'; }) },
+    bulletins: { label: 'Voir les bulletins', run: vers('#/paie', () => { paieState.tab = 'bulletins'; }) },
+    'salaires-double': { label: 'Voir les mouvements', run: vers('#/tresorerie', () => { tresoState.tab = 'mouvements'; }) },
+    tresorerie: { label: 'Voir la prévision', run: vers('#/tresorerie', () => { tresoState.tab = 'prevision'; }) }
   };
   function todoPanel() {
     const items = C.todoList(data, company());
@@ -2752,7 +2938,14 @@
       </li>`).join('')}</ul></div>`;
   }
   function bindTodo() {
-    $$('[data-todo]').forEach(b => b.onclick = () => { const a = TODO_ACTIONS[b.dataset.todo]; if (a) a.run(); });
+    // `if (a) a.run()` avalait le clic en silence quand l'action manquait. Un bouton qui ne répond
+    // pas est pire qu'un bouton absent : on croit avoir mal cliqué. Le test de couverture rend ce
+    // cas impossible — et si jamais il revenait, l'application le DIT au lieu de se taire.
+    $$('[data-todo]').forEach(b => b.onclick = () => {
+      const a = TODO_ACTIONS[b.dataset.todo];
+      if (a) return a.run();
+      toast(`Cette ligne n'a pas encore d'écran dédié (${b.dataset.todo}) — signale-le dans Aide → Signaler un problème.`, true);
+    });
     const t = $('#todo-toggle');
     if (t) t.onclick = () => {
       const open = !(prefs.get('todoOpen', true) !== false);
@@ -2804,7 +2997,10 @@
       ['Nouveau devis', () => navigate('#/doc/new/devis')], ['Nouvelle facture', () => navigate('#/doc/new/facture')], ['Nouvel avoir', () => navigate('#/doc/new/avoir')],
       ['Accueil', () => navigate('#/dashboard')], ['Devis', () => navigate('#/devis')], ['Factures', () => navigate('#/factures')], ['Relances', () => navigate('#/relances')],
       ['Contrats récurrents', () => navigate('#/contrats')], ['Achats et dépenses', () => navigate('#/achats')], ['Nouvelle facture d\'achat', () => navigate('#/achat/new')], ['Nouvelle dépense', () => navigate('#/achat/new/-/depense')], ['Fournisseurs', () => navigate('#/fournisseurs')], ['Trésorerie', () => navigate('#/tresorerie')], ['Marges et rentabilité', () => navigate('#/marges')], ['Paie', () => navigate('#/paie')], ['Bulletins de paie', () => { paieState.tab = 'bulletins'; navigate('#/paie'); }], ['Salariés', () => { paieState.tab = 'salaries'; navigate('#/paie'); }], ['Barèmes de paie', () => { paieState.tab = 'baremes'; navigate('#/paie'); }], ['Déclarations sociales', () => { paieState.tab = 'declarations'; navigate('#/paie'); }], ['Déclaration CNSS', () => { paieState.tab = 'declarations'; navigate('#/paie'); }], ['Registre du personnel', () => { paieState.tab = 'registre'; navigate('#/paie'); }], ['Nouveau salarié', () => employeeForm(null, () => render())], ['Stock', () => navigate('#/stock')], ['Garanties', () => navigate('#/garanties')], ['Numéros de série', () => { stockState.tab = 'series'; navigate('#/stock'); }], ['Entrée de numéros de série', () => serialIntakeForm(null, () => render())], ['Inventaire', () => { stockState.tab = 'inventaire'; navigate('#/stock'); }], ['Mouvement de stock', () => adjustForm(null, () => render())], ['Immobilisations', () => navigate('#/immos')], ['Nouvelle immobilisation', () => assetForm(null, a => navigate('#/immo/' + a.id))], ['Lignes à immobiliser', () => { immoState.tab = 'attente'; navigate('#/immos'); }], ['Seuil de rentabilité', () => navigate('#/marges')], ['Nouvelle affaire', () => projectForm(null, p => navigate('#/affaire/' + p.id))], ['Nouveau fournisseur', () => supplierForm(null, () => render())], ['Proformas', () => navigate('#/autres/proforma')], ['Bons de commande', () => navigate('#/autres/commande')], ['Bons de livraison', () => navigate('#/autres/livraison')], ['Contrats à signer', () => navigate('#/autres/contrat')], ['Clients', () => navigate('#/clients')], ['Catalogue', () => navigate('#/catalogue')], ['Statistiques', () => navigate('#/stats')], ['Comptabilité', () => navigate('#/compta')], ['Paramètres', () => navigate('#/parametres')],
-      ['Aide et guide', () => navigate('#/aide')], ['Nouveau client', () => clientForm(null, () => render())]
+      ['Aide et guide', () => navigate('#/aide')], ['Nouveau client', () => clientForm(null, () => render())],
+      // La palette liste TOUTES les pages, y compris celles des modules retirés du menu : c'est ce
+      // qui rend le filtrage de la barre latérale inoffensif.
+      ['Tous les modules', () => navigate('#/modules')]
     ].map(([label, run]) => ({ kind: 'Action', main: label, text: label.toLowerCase(), run }));
     const helps = G.ARTICLES.map(x => ({ kind: 'Aide', main: x.title, sub: x.sub, text: `aide ${x.title} ${x.sub}`.toLowerCase(), run: () => navigate('#/aide/' + x.id) }));
     const docs = data.documents.map(d => { const t = C.computeTotals(d, company()); const cn = clientName(d.clientId); return { kind: C.TITLES[d.type], main: d.number || 'Brouillon', sub: `${cn}${d.subject ? ' — ' + d.subject : ''}`, amt: C.money(d.type === 'devis' ? t.totalTTC : t.netToPay, cur), text: `${d.number} ${cn} ${d.subject || ''} ${d.type}`.toLowerCase(), run: () => navigate('#/doc/' + d.id), ts: d.createdAt || 0 }; });
@@ -7234,9 +7430,20 @@
     };
     // Effacement définitif : on demande d'écrire le mot, pas juste de cliquer
     $('#wipe-data').onclick = () => {
+      // Le décompte est calculé, pas écrit à la main : jusqu'à la 7.0.0 la fenêtre annonçait trois
+      // chiffres et l'action en vidait sept listes sur trente — elle en vide maintenant trente, et
+      // il serait malhonnête de continuer à n'en annoncer que trois.
+      // On n'énumère que ce qui a un nom en français : les listes techniques (pièces supprimées,
+      // archive de fusion, journal des clôtures) partent aussi, mais les annoncer n'apprendrait rien.
+      const compte = Object.keys(C.LIST_LABELS)
+        .filter(k => Array.isArray(data[k]) && data[k].length)
+        .map(k => `${data[k].length} ${C.LIST_LABELS[k]}${data[k].length > 1 ? 's' : ''}`);
+      const empruntee = !!(data.company && data.company.demo);
       modal(`<h2>Tout effacer</h2>
-        <p>Cette action supprime <b>${data.documents.length} document(s)</b>, ${data.clients.length} client(s), ${data.catalog.length} prestation(s), ainsi que les contrats, modèles et textes prédéfinis. Les factures émises partent aussi.</p>
-        <p class="small muted">Une sauvegarde nommée est prise juste avant : tu pourras revenir en arrière par <em>Importer</em>. Tes paramètres société sont conservés.</p>
+        <p>Cette action supprime <b>tout ce que contient ce dossier</b> : ${h(compte.join(', ') || 'aucune donnée pour l\'instant')}. Les factures émises partent aussi.</p>
+        <p class="small muted">Une sauvegarde nommée est prise juste avant : tu pourras revenir en arrière par <em>Importer</em>. ${empruntee
+          ? '<b>La fiche société part également</b>, parce qu\'elle vient du jeu d\'exemple : garder un matricule et un RIB inventés ferait partir ta première vraie facture dans le vide.'
+          : 'Tes paramètres société sont conservés.'}</p>
         <form id="wf"><label class="field"><span class="fl">Pour confirmer, écris <b>EFFACER</b> ci-dessous</span><input type="text" name="w" autocomplete="off" spellcheck="false" placeholder="EFFACER"></label></form>
         <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-danger" id="ok" disabled>Tout effacer</button></div>`,
         (root, close) => {
@@ -7247,14 +7454,99 @@
             if (!await closedWipeOk('Tout effacer.')) return;
             clearGuard();                       // les données partent : plus rien à protéger
             await bridge.createBackup('avant-effacement');
-            data.clients = []; data.catalog = []; data.documents = []; data.recurring = []; data.templates = []; data.snippets = []; data.counters = {};
-            save(true); toast('Données effacées'); render();
+            // La liste des choses à vider se déduit des données (core.wipeData) : écrite à la main,
+            // elle avait raté treize modules sur vingt — après le jeu d'exemple il restait de faux
+            // fournisseurs, de faux salariés et de faux comptes bancaires.
+            // La fiche société est conservée SAUF si elle vient de l'exemple : garder un faux
+            // matricule et un faux RIB, c'est envoyer la première vraie facture dans le vide.
+            const identiteEmpruntee = !!(data.company && data.company.demo);
+            C.wipeData(data, { garderSociete: !identiteEmpruntee });
+            save(true);
+            toast(identiteEmpruntee
+              ? 'Données effacées — la fiche société de l\'exemple aussi : remplis la tienne dans Paramètres'
+              : 'Données effacées');
+            if (identiteEmpruntee) { settingsTab = 'societe'; navigate('#/parametres'); } else render();
+            $('#brand-company').textContent = data.company.name;
           };
         });
     };
   };
 
   // ---------- Aide ----------
+  // ---------- Tous les modules (7.0.0) ----------
+  // La contrepartie de la barre latérale filtrée. Elle n'a de sens que si cette page existe : sans
+  // elle, masquer un module reviendrait à le supprimer pour quelqu'un qui ne connaît pas la palette.
+  // Trois règles s'y voient à l'œil nu :
+  //   — le cœur du métier ne se décoche pas (il n'a même pas de case) ;
+  //   — un module qui contient des données ne se décoche pas non plus, et l'écran DIT pourquoi ;
+  //   — décocher ne supprime rien : la phrase le dit avant, pas après.
+  routes.modules = () => {
+    const co = company();
+    const choisis = Array.isArray(co.modules) ? co.modules.slice() : null;
+    const dessine = () => {
+      const lignes = C.MODULES.map(m => {
+        const n = C.moduleCount(data, m.id);
+        const why = C.moduleWhy(data, m.id);
+        const on = C.moduleOn(data, m.id);
+        const fige = m.toujours || (n > 0 && why === 'rempli');
+        const pages = C.PAGES.filter(p => p.module === m.id && !p.horsMenu).map(p => p.titre).join(' · ');
+        const note = m.toujours ? 'Toujours affiché : c\'est le cœur du métier.'
+          : why === 'rempli' ? `Affiché parce qu'il contient ${n} élément${n > 1 ? 's' : ''} — on ne masque pas ce que tu as saisi.`
+          : why === 'tout' ? 'Affiché : aucun choix enregistré pour l\'instant.'
+          : n > 0 ? `${n} élément${n > 1 ? 's' : ''} enregistré${n > 1 ? 's' : ''}.`
+          : 'Rien d\'enregistré pour l\'instant.';
+        return `<div class="mod-row${on ? ' on' : ''}">
+          <label class="mod-check">${fige
+            ? `<span class="mod-lock" title="${h(note)}">${m.toujours ? '★' : '●'}</span>`
+            : `<input type="checkbox" data-mod="${h(m.id)}" ${on ? 'checked' : ''}>`}</label>
+          <div class="mod-txt">
+            <div class="mod-t">${h(m.label)}</div>
+            <div class="small muted">${h(m.quoi)}</div>
+            <div class="small muted mt-s"><b>Pages :</b> ${h(pages)} · ${h(note)}</div>
+          </div>
+          <div class="mod-go">${on && pages ? `<button class="btn btn-sm" data-open="${h(m.id)}">Ouvrir</button>` : ''}</div>
+        </div>`;
+      }).join('');
+      $('#mod-list').innerHTML = lignes;
+      $$('[data-mod]').forEach(cb => cb.onchange = () => {
+        const liste = Array.isArray(company().modules) ? company().modules.slice() : C.MODULES.map(m => m.id);
+        const i = liste.indexOf(cb.dataset.mod);
+        if (cb.checked && i < 0) liste.push(cb.dataset.mod);
+        if (!cb.checked && i >= 0) liste.splice(i, 1);
+        company().modules = liste;
+        save();
+        const id = cb.dataset.mod;
+        dessine();
+        drawNav();
+        // Le panneau se redessine (les explications changent au premier choix) : sans ce rappel, le
+        // focus retombait sur le corps de la page et il fallait reprendre la souris à chaque case.
+        const encore = $(`[data-mod="${id}"]`);
+        if (encore) encore.focus();
+        toast(cb.checked ? 'Affiché dans le menu' : 'Retiré du menu — rien n\'est supprimé');
+      });
+      $$('[data-open]').forEach(b => b.onclick = () => {
+        const p = C.PAGES.find(x => x.module === b.dataset.open && !x.horsMenu);
+        if (p) navigate('#/' + p.id);
+      });
+    };
+    $('#view').innerHTML = `<div class="page-head"><h1>Tous les modules</h1>
+      <div class="actions">${backButton('#/dashboard')}${choisis ? '<button class="btn" id="mod-all">Tout afficher</button>' : ''}</div></div>
+      <p class="lead">SkanFact sait faire beaucoup de choses. Tu n'en as pas besoin le premier jour, et
+      une liste de dix-neuf entrées dans le menu ne t'aide pas à trouver la bonne.</p>
+      <div class="panel">
+        <p class="small muted mb"><b>Retirer un module du menu ne supprime rien</b> et ne désactive aucun calcul :
+        ses pages restent atteignables par la recherche (${MOD}+K) et par leur adresse. Un module qui
+        contient quelque chose reste affiché quoi qu'il arrive — on ne cache jamais ton travail.</p>
+        <div id="mod-list"></div>
+      </div>`;
+    dessine();
+    bindBack('#/dashboard');
+    if ($('#mod-all')) $('#mod-all').onclick = () => {
+      company().modules = null; save(); drawNav(); render();
+      toast('Toutes les pages sont affichées');
+    };
+  };
+
   routes.aide = (parts) => {
     const arts = G.ARTICLES;
     if (parts && parts[0]) aideArticle = parts[0];
@@ -7661,8 +7953,11 @@
       if (d) { clearGuard(); data = migrate(d); save(true); applyTheme(); $('#brand-company').textContent = data.company.name; toast('Données importées'); render(); }
     } catch (e) { toast('Import impossible : ' + e.message.replace(/^.*Error: /, ''), true); }
   }
-  $('#btn-export-data').onclick = exportAll;
-  $('#btn-import-data').onclick = importAll;
+  // « Exporter » et « Importer » vivaient dans le pied de la barre latérale, donc toujours visibles,
+  // alors que « Paramètres » et « Aide » ne l'étaient jamais. Les deux boutons dont un débutant n'a
+  // pas besoin occupaient la place des deux dont il a besoin. Ils n'ont pas disparu : ils étaient
+  // déjà en double dans Paramètres → Sécurité et données (#export-data / #import-data), à côté des
+  // sauvegardes, c'est-à-dire là où on les cherche.
 
   // ---------- chien de garde et messages du processus principal ----------
   // Abonnés AVANT la séquence de démarrage : l'assistant de première utilisation la met en attente,

@@ -16,8 +16,10 @@
           <div class="brand-sub" id="brand-company">—</div>
         </div>
       </div>
-      <nav>
-        <a href="#/dashboard" data-route="dashboard" class="solo"><svg viewBox="0 0 24 24"><path d="M3 12l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>Accueil</a>
+      <!-- La barre latérale est dessinée par app.js à partir de core.PAGES : à dix-neuf entrées
+           écrites à la main, elle ne tenait plus sur aucun écran, et « Aide » était hors champ
+           jusqu'à 1680×1050. Le contenu ci-dessous n'est qu'un repli si le script ne démarre pas. -->
+      <nav id="nav"><noscript>
         <div class="nav-group">Ventes</div>
         <a href="#/devis" data-route="devis"><svg viewBox="0 0 24 24"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/><path d="M10 13h6M10 17h6"/></svg>Devis</a>
         <a href="#/factures" data-route="factures"><svg viewBox="0 0 24 24"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg>Factures</a>
@@ -40,12 +42,16 @@
         <a href="#/compta" data-route="compta"><svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h8M8 11h8M8 15h5"/></svg>Comptabilité</a>
         <a href="#/parametres" data-route="parametres"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Paramètres</a>
         <a href="#/aide" data-route="aide"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.2 9.2a2.9 2.9 0 0 1 5.6 1c0 1.9-2.8 2.4-2.8 4"/><path d="M12 17.5v.01"/></svg>Aide</a>
-      </nav>
+      </noscript></nav>
+      <!-- Le pied de la barre est en `margin-top: auto` : il ne défile jamais, quelle que soit la
+           hauteur de la fenêtre. C'est pour ça que « Paramètres » et « Aide » vivent ici. Avant la
+           7.0.0 ils étaient en bout de `nav`, donc hors champ dès 1440×900 — et « Aide » l'était
+           même sur un écran de 1050 px de haut. Quelqu'un qui se perd cherche le bouton Aide. -->
       <div class="sidebar-foot">
         <button class="update-pill" id="lic-banner" hidden></button>
         <button class="update-pill" id="update-pill" hidden>Mise à jour disponible</button>
-        <button class="btn btn-ghost btn-sm" id="btn-export-data">Exporter les données</button>
-        <button class="btn btn-ghost btn-sm" id="btn-import-data">Importer</button>
+        <a href="#/parametres" data-route="parametres" class="foot-link"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Paramètres</a>
+        <a href="#/aide" data-route="aide" class="foot-link"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.2 9.2a2.9 2.9 0 0 1 5.6 1c0 1.9-2.8 2.4-2.8 4"/><path d="M12 17.5v.01"/></svg>Aide</a>
         <div class="app-version" id="app-version"></div>
       </div>
     </aside>

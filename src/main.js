@@ -662,6 +662,43 @@ ipcMain.on('window:title', (_e, title) => { if (mainWindow && typeof title === '
 ipcMain.on('window:dirty', (_e, dirty) => { rendererDirty = !!dirty; });
 ipcMain.handle('backups:list', () => storage.listBackups());
 
+// Revenir en arrière depuis l'application (7.0.0). Jusqu'ici, l'app entreprise n'avait AUCUNE
+// restauration : il fallait passer par « Importer », ouvrir une fenêtre de fichiers, trouver le
+// dossier `backups`, et reconnaître le bon fichier à son nom. L'application du cabinet, elle, sait
+// restaurer depuis la 6.8.0 — le filet existait d'un côté seulement.
+//
+// Deux garanties reprises du cabinet :
+//   — on REGARDE d'abord (`backups:peek`) pour pouvoir dire ce qu'on va perdre avant d'écraser ;
+//   — on met l'état actuel de côté avant de le remplacer. Une restauration qui ne protège pas ce
+//     qu'elle remplace est un pari, pas une restauration.
+ipcMain.handle('backups:peek', (_e, name) => {
+  try {
+    const cible = (storage.listBackups() || []).find(b => b.name === name);
+    if (!cible) return { ok: false, error: 'Sauvegarde introuvable.' };
+    const d = storage.readExternal(cible.path);
+    return {
+      ok: true, name: cible.name, mtime: cible.mtime,
+      compte: { documents: (d.documents || []).length, clients: (d.clients || []).length, catalog: (d.catalog || []).length },
+      societe: (d.company || {}).name || '', demo: !!d.demo
+    };
+  } catch (e) {
+    return { ok: false, error: e && e.code === 'ENCRYPTED' ? 'Cette sauvegarde est chiffrée : ouvre d\'abord la session.' : (e.message || String(e)) };
+  }
+});
+ipcMain.handle('backups:restore', (_e, name) => {
+  try {
+    const cible = (storage.listBackups() || []).find(b => b.name === name);
+    if (!cible) return { ok: false, error: 'Sauvegarde introuvable.' };
+    const d = storage.readExternal(cible.path);
+    storage.backupNow('avant-restauration');      // ce qu'on remplace ne disparaît pas
+    const r = storage.write(d, { force: true });
+    if (r && r.conflict) return { ok: false, error: 'Le fichier a changé entre-temps.' };
+    return { ok: true, data: d };
+  } catch (e) {
+    return { ok: false, error: e && e.code === 'ENCRYPTED' ? 'Cette sauvegarde est chiffrée : ouvre d\'abord la session.' : (e.message || String(e)) };
+  }
+});
+
 // ---------- logo ----------
 
 ipcMain.handle('logo:pick', async (_e, title) => {

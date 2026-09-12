@@ -51,7 +51,11 @@
     accentColor: '#0f9d8f',
     revenueTarget: 0,     // objectif de chiffre d'affaires HT pour l'année (0 = pas d'objectif)
     dormantDays: 180,     // au-delà, un client est considéré comme endormi dans les statistiques
-    setupDone: false      // l'assistant de première utilisation a été mené jusqu'au bout
+    setupDone: false,     // l'assistant de première utilisation a été mené jusqu'au bout
+    // Les modules affichés dans la barre latérale (7.0.0). `null` = aucun choix enregistré, donc
+    // toute l'application, comme avant : une installation existante ne perd rien à la mise à jour.
+    // Un module absent de cette liste mais qui contient des données se montre quand même (moduleOn).
+    modules: null
   };
 
   // Secteurs proposés au premier démarrage : ils préremplissent le catalogue, le taux de TVA
@@ -113,6 +117,176 @@
     { id: 'autre', label: 'Autre activité', tagline: '', vat: 19, catalog: [] }
   ];
 
+  // ---------- les modules et la barre latérale (7.0.0) ----------
+  //
+  // Pourquoi cette liste existe : la barre latérale vivait en dur dans index.html, 19 liens écrits à
+  // la main, et `setWindowTitle` relisait le TEXTE du lien pour composer le titre de la fenêtre. À
+  // dix-neuf entrées elle ne tenait plus sur aucun écran : à 1440×900 « Paramètres » et « Aide »
+  // étaient hors champ, et « Aide » l'était même à 1680×1050. Quelqu'un qui se perd cherche le bouton
+  // Aide ; il était sous le plancher.
+  //
+  // On ne retire aucune fonction : on les présente dans l'ordre. Un module que l'utilisateur n'a pas
+  // demandé reste atteignable par la palette, par son adresse et par la page « Tous les modules ».
+  //
+  // `toujours: true` = le cœur du métier, jamais masquable.
+  // `compte(data)`   = ce que le module contient. C'est LE garde-fou : un module qui contient quelque
+  //                    chose se montre tout seul, quoi qu'en dise le réglage. On ne cache jamais le
+  //                    travail de quelqu'un — surtout pas celui qu'il a saisi avant de changer d'avis.
+  const MODULES = [
+    { id: 'ventes', label: 'Devis et factures', toujours: true,
+      quoi: 'Proposer un prix, facturer, se faire payer.',
+      pages: ['devis', 'factures', 'relances'] },
+    { id: 'fichiers', label: 'Clients et catalogue', toujours: true,
+      quoi: 'Les gens à qui tu vends et ce que tu vends.',
+      pages: ['clients', 'catalogue'] },
+    { id: 'pieces', label: 'Proforma, bons et contrats',
+      quoi: 'Les pièces qui entourent la facture : proforma, bon de commande, bon de livraison, contrat à signer, et la facturation qui se répète toute seule.',
+      pages: ['autres', 'contrats'],
+      compte: d => (d.documents || []).filter(x => EXTRA_TYPES.includes(x.type)).length + (d.recurring || []).length },
+    { id: 'achats', label: 'Achats et fournisseurs',
+      quoi: "Ce que tu dépenses, et la TVA que tu récupères dessus.",
+      pages: ['achats', 'fournisseurs'],
+      compte: d => (d.purchases || []).length + (d.suppliers || []).length },
+    { id: 'stock', label: 'Stock et garanties',
+      quoi: 'Ce qui dort sur l\'étagère, et le matériel installé chez tes clients.',
+      pages: ['stock', 'garanties'],
+      compte: d => (d.stockAdjustments || []).length + (d.serials || []).length
+        + (d.catalog || []).filter(c => c.tracked).length },
+    { id: 'immos', label: 'Immobilisations',
+      quoi: 'Ce que tu gardes : matériel, véhicule, mobilier — et ce que ça coûte chaque année.',
+      pages: ['immos'],
+      compte: d => (d.assets || []).length },
+    { id: 'paie', label: 'Salariés et paie',
+      quoi: 'Bulletins, congés, avances et déclarations sociales.',
+      pages: ['paie'],
+      compte: d => (d.employees || []).length + (d.payslips || []).length },
+    { id: 'pilotage', label: 'Trésorerie, marges, statistiques',
+      quoi: "Est-ce que tu as de quoi payer le mois prochain, et est-ce que tu gagnes de l'argent ?",
+      pages: ['tresorerie', 'marges', 'stats'],
+      compte: d => (d.accounts || []).length + (d.movements || []).length + (d.projects || []).length },
+    { id: 'compta', label: 'Comptabilité', toujours: true,
+      quoi: 'Ce que tu donnes à ton comptable : journaux, TVA, écritures, clôtures, paquet mensuel.',
+      pages: ['compta'] }
+  ];
+
+  // Les pages, dans l'ordre de la barre latérale. `titre` sert à la fois au lien, au titre de la
+  // fenêtre et à la palette — une seule source, sinon les trois divergent (et ils divergeaient).
+  //
+  // `famille` est l'intertitre affiché. Elle ne suit PAS le découpage en modules : un intertitre par
+  // module en ferait huit, et huit intertitres coûtent 250 px de barre — on aurait remplacé un
+  // débordement par un autre. Les modules décident de ce qui s'affiche, les familles de comment
+  // c'est rangé. « Fichiers » a disparu : personne ne cherche un client dans « Fichiers ».
+  const PAGES = [
+    { id: 'dashboard', titre: 'Accueil', module: null, hash: '#/dashboard' },
+    { id: 'devis', titre: 'Devis', module: 'ventes', famille: 'Vendre' },
+    { id: 'factures', titre: 'Factures', module: 'ventes', famille: 'Vendre' },
+    { id: 'relances', titre: 'Relances', module: 'ventes', famille: 'Vendre' },
+    { id: 'clients', titre: 'Clients', module: 'fichiers', famille: 'Vendre' },
+    { id: 'catalogue', titre: 'Catalogue', module: 'fichiers', famille: 'Vendre' },
+    { id: 'autres', titre: 'Autres documents', module: 'pieces', famille: 'Vendre' },
+    { id: 'contrats', titre: 'Contrats', module: 'pieces', famille: 'Vendre' },
+    { id: 'achats', titre: 'Achats', module: 'achats', famille: 'Acheter' },
+    { id: 'fournisseurs', titre: 'Fournisseurs', module: 'achats', famille: 'Acheter' },
+    { id: 'stock', titre: 'Stock', module: 'stock', famille: 'Acheter' },
+    { id: 'garanties', titre: 'Garanties', module: 'stock', horsMenu: true },
+    { id: 'immos', titre: 'Immobilisations', module: 'immos', famille: 'Acheter' },
+    { id: 'tresorerie', titre: 'Trésorerie', module: 'pilotage', famille: 'Piloter' },
+    { id: 'marges', titre: 'Marges', module: 'pilotage', famille: 'Piloter' },
+    { id: 'stats', titre: 'Statistiques', module: 'pilotage', famille: 'Piloter' },
+    { id: 'paie', titre: 'Paie', module: 'paie', famille: 'Piloter' },
+    { id: 'compta', titre: 'Comptabilité', module: 'compta', famille: 'Piloter' },
+    { id: 'modules', titre: 'Tous les modules', module: null, horsMenu: true },
+    { id: 'parametres', titre: 'Paramètres', module: null, pied: true },
+    { id: 'aide', titre: 'Aide', module: null, pied: true }
+  ];
+
+  // ---------- tout effacer (7.0.0) ----------
+  //
+  // « Tout effacer » vidait sept listes sur trente, parce qu'elle était écrite à la main et qu'aucun
+  // des treize modules ajoutés depuis n'y a été ajouté. Après avoir chargé le jeu d'exemple puis
+  // cliqué « Tout effacer », il restait donc de faux fournisseurs, de faux salariés avec de faux
+  // numéros CIN, de faux bulletins, de faux comptes bancaires et de faux amortissements.
+  //
+  // La liste ne s'écrit plus : elle se DÉDUIT de DEFAULT_DATA. Un module ajouté demain est vidé sans
+  // que personne y pense, et un test vérifie qu'aucune clé n'y échappe.
+  //
+  // `garderSociete` : la fiche société (nom, logo, cachet, RIB, réglages) n'est pas une donnée de
+  // travail, c'est l'identité de l'entreprise — on ne la jette pas en effaçant des factures. Sauf
+  // si elle vient du jeu d'exemple : garder « DÉMO — Société de services SUARL » et son faux RIB,
+  // c'est envoyer la première vraie facture avec un matricule inventé et un compte qui n'existe pas.
+  const GARDE_A_LA_RACINE = ['version', 'company'];
+  function wipeData(data, opts) {
+    const o = opts || {};
+    const out = data;
+    Object.keys(DEFAULT_DATA).forEach(k => {
+      if (GARDE_A_LA_RACINE.includes(k)) return;
+      const vide = DEFAULT_DATA[k];
+      out[k] = Array.isArray(vide) ? [] : (vide && typeof vide === 'object') ? {} : vide;
+    });
+    if (!o.garderSociete) out.company = { ...DEFAULT_COMPANY, ...(o.company || {}) };
+    else if (out.company) delete out.company.demo;   // ce qui reste est bien à lui, désormais
+    return out;
+  }
+
+  // Le jeu d'exemple se reconnaît : sans ça, on ne peut ni le signaler à l'écran, ni proposer d'en
+  // sortir, ni empêcher sa fausse identité de servir à une vraie facture.
+  const estDemo = data => !!(data && data.demo);
+
+  const moduleById = id => MODULES.find(m => m.id === id) || null;
+  const pageById = id => PAGES.find(p => p.id === id) || null;
+  const pageTitle = id => { const p = pageById(id); return p ? p.titre : ''; };
+
+  // Ce que le module contient aujourd'hui. Un module sans compteur (le cœur) n'a pas à se justifier.
+  function moduleCount(data, id) {
+    const m = moduleById(id);
+    if (!m || !m.compte) return 0;
+    try { return Number(m.compte(data || {})) || 0; } catch (_) { return 0; }
+  }
+
+  // Un module est actif s'il est choisi OU s'il contient quelque chose. Le second terme n'est jamais
+  // stocké : il se recalcule, pour qu'un module rempli ne puisse pas être masqué par un réglage.
+  function moduleOn(data, id) {
+    const m = moduleById(id);
+    if (!m) return false;
+    if (m.toujours) return true;
+    const choisis = ((data || {}).company || {}).modules;
+    // Absent = toute l'application, comme avant : une installation existante ne perd rien.
+    if (!Array.isArray(choisis)) return true;
+    if (choisis.includes(id)) return true;
+    return moduleCount(data, id) > 0;
+  }
+
+  // Pourquoi ce module est visible : 'coeur', 'choisi', 'rempli' ou 'tout' (aucun choix enregistré).
+  function moduleWhy(data, id) {
+    const m = moduleById(id);
+    if (!m) return '';
+    if (m.toujours) return 'coeur';
+    const choisis = ((data || {}).company || {}).modules;
+    if (!Array.isArray(choisis)) return 'tout';
+    if (choisis.includes(id)) return 'choisi';
+    return moduleCount(data, id) > 0 ? 'rempli' : '';
+  }
+
+  // Les pages de la barre latérale, dans l'ordre, groupées par module. `pied` sort du compte : ces
+  // deux-là (Paramètres, Aide) vivent dans le pied de la barre, qui ne défile jamais.
+  function navPages(data) {
+    return PAGES.filter(p => !p.horsMenu && !p.pied && (!p.module || moduleOn(data, p.module)));
+  }
+
+  // Ce que l'assistant de première utilisation allume selon le métier déclaré. Rien n'est imposé :
+  // l'écran « Qu'est-ce que tu fais ? » propose ces cases cochées, et l'utilisateur décoche.
+  const MODULES_PAR_ACTIVITE = {
+    commerce: ['achats', 'stock', 'pilotage'],
+    artisanat: ['achats', 'stock', 'pieces'],
+    batiment: ['achats', 'pieces', 'pilotage'],
+    informatique: ['achats', 'pieces'],
+    conseil: ['pieces'],
+    sante: ['achats'],
+    autre: []
+  };
+  const modulesSuggeres = activity => ['ventes', 'fichiers', 'compta']
+    .concat(MODULES_PAR_ACTIVITE[activity] || []);
+
   const DEFAULT_DATA = {
     version: 6,
     company: DEFAULT_COMPANY,
@@ -145,6 +319,7 @@
     closedUntil: '',         // dernier jour clôturé : rien de daté avant ne bouge plus (6.0.0)
     closureLog: [],          // chaque clôture et chaque réouverture, avec son motif (6.0.0)
     packs: [],               // paquets mensuels construits pour le cabinet (6.1.0)
+    demo: false,             // ces données viennent du jeu d'exemple (7.0.0) — l'app le dit à l'écran
     counters: {}
   };
 
@@ -4462,6 +4637,8 @@
     mergeData, trackDeletion, MERGE_LISTS, LIST_LABELS,
     purchaseTotals, purchaseBalance, purchaseStatus, payablesList, purchaseJournal, purchaseSummary, supplierSummary, withholdingsToIssue, supplierPayments,
     periodBounds, issuedIn, salesTotals, revenueByMonth, topItems, clientMovement, AGING_BUCKETS, agedReceivables, payerRanking, quoteFunnel, objectiveProgress,
-    amountToWords, intToWords, intToWordsEn, documentHtml, fitToPage, pageCount
+    amountToWords, intToWords, intToWordsEn, documentHtml, fitToPage, pageCount,
+    MODULES, PAGES, moduleById, pageById, pageTitle, moduleCount, moduleOn, moduleWhy, navPages,
+    MODULES_PAR_ACTIVITE, modulesSuggeres, wipeData, estDemo
   };
 });

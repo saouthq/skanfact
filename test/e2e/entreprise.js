@@ -1694,8 +1694,15 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
   });
 
   await step('barre latérale groupée', async () => {
+    // Depuis la 7.0.0, les intertitres sont des VERBES et viennent de core.PAGES : « Fichiers » a
+    // disparu parce que personne ne cherche un client dans « Fichiers ». On les compare à la source
+    // plutôt qu'à une liste écrite ici, qui se périmerait au prochain module ajouté.
     const groups = await win.evaluate(() => Array.from(document.querySelectorAll('.nav-group')).map(g => g.textContent));
-    if (groups.join(',') !== 'Ventes,Achats,Fichiers,Gestion') throw new Error(groups.join(','));
+    const attendus = [...new Set(require('../../src/renderer/core.js').PAGES.filter(p => p.famille && !p.horsMenu).map(p => p.famille))];
+    if (groups.join(',') !== attendus.join(',')) throw new Error(`intertitres « ${groups.join(',')} », attendus « ${attendus.join(',')} »`);
+    // Paramètres et Aide ne doivent JAMAIS être dans nav : c'est ce qui les faisait sortir de l'écran.
+    const dansNav = await win.evaluate(() => ['parametres', 'aide'].filter(r => document.querySelector(`nav a[data-route="${r}"]`)));
+    if (dansNav.length) throw new Error('dans nav au lieu du pied : ' + dansNav.join(', '));
     // le contrat dû a déjà été généré plus haut : le compteur doit donc être masqué
     if (!(await win.evaluate(() => document.querySelector('#nav-contrats').hidden))) throw new Error('compteur contrats affiché sans échéance');
     if (await win.evaluate(() => document.querySelector('#nav-relances').hidden)) throw new Error('compteur relances masqué malgré des retards');
