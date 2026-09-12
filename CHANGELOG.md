@@ -7,6 +7,16 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 6.5.4 — 12/09/2026
+
+**SkanFact Cabinet 1.2.0 : l'exemple était introuvable.**
+
+Signalé par Skander dès la première ouverture : « l'appli est vide, il me manque le jeu de données ». Les cinq dossiers d'exemple existaient depuis la 1.0.0 — mais le bouton pour les charger était une phrase en gras au milieu d'un cadre pointillé, sans bordure ni couleur. Personne ne pouvait deviner que c'était un bouton.
+
+- **L'écran d'ouverture est refait** : deux vrais boutons côte à côte, « Importer un paquet… » et « Voir un exemple (5 clients fictifs) », avec ce que l'exemple contient et les trois étapes par lesquelles un paquet arrive jusque-là.
+- **L'exemple se charge aussi depuis Réglages**, à l'endroit où on va le chercher quand on ne l'a pas trouvé ailleurs — comme « Charger la démo » dans SkanFact.
+- Au passage : un cabinet sans aucun dossier n'affiche plus « Tout est à jour : tous tes dossiers ont envoyé leurs mois clôturés », ni une recherche, ni un filtre, ni « 0 sur 0 ». Il n'y a rien à chercher dans rien.
+
 ## 6.5.3 — 12/09/2026
 
 **SkanFact Cabinet 1.1.2** : à la taille minimale de la fenêtre (960 px), un nom de client comme « Café des Jasmins » se coupait en trois lignes dans la liste des dossiers et dans les relances. Les noms, les emails et les en-têtes ne se coupent plus ; le tableau défile horizontalement, ce qui est fait pour ça.

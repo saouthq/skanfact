@@ -253,13 +253,40 @@
     const demoOn = demoCount > 0;
     const all = K.dossierList(S, null, { withArchived: true });
     const todo = K.cabinetTodo(S);
+
+    // Écran d'ouverture d'un cabinet qui vient d'installer l'application : il n'a rien reçu, et il
+    // n'a rien à chercher ni à filtrer. Deux propositions, deux VRAIS boutons — la première version
+    // cachait l'exemple dans une phrase en gras au milieu d'un cadre, et personne ne le voyait.
+    if (!all.length) {
+      view.innerHTML = `
+        <div class="page-head"><h1>Dossiers</h1></div>
+        <div class="panel"><h2>Premiers pas</h2>
+          <p>Ici apparaîtront tes clients, un par ligne, avec le dernier mois reçu et ce qui manque.
+          Tant qu'aucun paquet n'est arrivé, il n'y a rien à afficher.</p>
+          <div class="inline mt">
+            <button class="btn btn-primary" id="imp">Importer un paquet…</button>
+            <button class="btn" id="demo-on">Voir un exemple (5 clients fictifs)</button>
+          </div>
+          <p class="small muted mt">L'exemple montre les quatre situations que tu rencontreras : un client à jour,
+          un en retard, un qui n'a envoyé que du provisoire, un dont les pièces sont incomplètes. Il s'efface
+          tout seul au premier vrai paquet, et tu peux l'effacer à la main quand tu veux.</p>
+        </div>
+        <div class="panel"><h2>Comment un paquet arrive jusqu'ici</h2>
+          <ol class="small" style="line-height:1.9;margin:0;padding-left:20px">
+            <li>Tu remets à ton client le <strong>fichier d'appairage</strong> (Réglages → Enregistrer le fichier d'appairage).</li>
+            <li>Il l'importe une fois dans son SkanFact, puis t'envoie son <strong>.skanpack</strong> chaque mois.</li>
+            <li>Tu l'enregistres et tu cliques sur <strong>Importer un paquet…</strong>.</li>
+          </ol>
+        </div>`;
+      $('#imp').onclick = () => doImport();
+      $('#demo-on').onclick = async () => { S = await api.demo(true); render(); toast('Exemple chargé : ces cinq dossiers sont fictifs.'); };
+      return;
+    }
+
     view.innerHTML = `
       <div class="page-head"><h1>Dossiers</h1>
         <div class="actions"><button class="btn btn-primary" id="imp">Importer un paquet…</button></div></div>
       ${todoPanel(todo)}
-      ${all.length ? '' : `<div class="drop" id="drop">Aucun paquet reçu pour l'instant.<br>
-        Quand un client t'envoie son <strong>.skanpack</strong>, enregistre-le puis clique ici pour l'ajouter.
-        <div class="mt"><button class="btn btn-ghost btn-sm" id="demo-on">Voir à quoi ça ressemble (exemple fictif)</button></div></div>`}
       ${demoOn ? `<div class="banner"><span>Ces ${pl(demoCount, 'dossier')} sont <strong>fictifs</strong> : ils montrent les quatre situations
         que tu rencontreras. Ils disparaîtront au premier vrai paquet importé.</span>
         <button class="btn btn-ghost btn-sm nw" id="demo-off">Effacer l'exemple</button></div>` : ''}
@@ -279,13 +306,10 @@
           <td class="r">${r.provisionalCount || '—'}</td>
           <td class="r">${r.issues || '—'}</td>
           <td class="muted nw">${esc(fmtWhen(r.lastAt))}</td></tr>`).join('')}</tbody></table></div>`
-        : `<div class="empty">${all.length ? 'Aucun dossier ne correspond à cette recherche.' : 'Importe le premier paquet pour voir apparaître un dossier.'}</div>`}`;
+        : `<div class="empty">Aucun dossier ne correspond à cette recherche.</div>`}`;
 
     $('#imp').onclick = () => doImport();
-    const drop = $('#drop');
-    if (drop) drop.onclick = e => { if (e.target.id !== 'demo-on') doImport(); };
-    const dOn = $('#demo-on'), dOff = $('#demo-off');
-    if (dOn) dOn.onclick = async e => { e.stopPropagation(); S = await api.demo(true); render(); toast('Exemple chargé : ces dossiers sont fictifs.'); };
+    const dOff = $('#demo-off');
     if (dOff) dOff.onclick = async () => { S = await api.demo(false); render(); toast('Exemple effacé.'); };
     const q = $('#q');
     q.oninput = () => { listQ = q.value; const pos = q.selectionStart; render(); const n = $('#q'); n.focus(); n.setSelectionRange(pos, pos); };
@@ -495,6 +519,18 @@
         <div class="modal-actions"><button class="btn btn-primary" id="c-pair">Enregistrer le fichier d'appairage…</button></div>
       </div>
 
+      <div class="panel"><h2>Exemple</h2>
+        ${(S.dossiers || []).some(d => d.demo)
+          ? `<p>Cinq dossiers <strong>fictifs</strong> sont chargés : ils montrent les quatre situations que tu rencontreras.
+             Ils disparaîtront d'eux-mêmes au premier vrai paquet importé.</p>
+             <div class="modal-actions"><button class="btn btn-danger" id="r-demo-off">Effacer l'exemple</button></div>`
+          : `<p>Tu peux charger cinq clients fictifs pour voir à quoi ressemble l'application pleine : un client à jour,
+             un en retard, un qui n'a envoyé que du provisoire, un dont les pièces sont incomplètes.</p>
+             <p class="small muted">C'est aussi ce qu'il faut montrer à un confrère à qui tu parles de SkanFact.
+             L'exemple s'efface tout seul dès qu'un vrai paquet arrive : aucun risque de mélange.</p>
+             <div class="modal-actions"><button class="btn btn-primary" id="r-demo-on">Charger l'exemple</button></div>`}
+      </div>
+
       <div class="panel"><h2>Sécurité</h2>
         <p class="small">Le fichier de ce cabinet est chiffré avec ton mot de passe (AES-256). Il contient la clé qui ouvre les paquets de
         tes clients : si ce poste est perdu ou volé, personne ne peut les lire.</p>
@@ -504,6 +540,12 @@
         <p class="muted small">À VÉRIFIER avec ton assureur ou ton Ordre : la conservation des pièces de tes clients sur ce poste
         relève des mêmes obligations que tes archives papier.</p>
       </div>`;
+    if ($('#r-demo-on')) $('#r-demo-on').onclick = async () => {
+      S = await api.demo(true); toast('Exemple chargé : ces cinq dossiers sont fictifs.'); location.hash = '#/dossiers';
+    };
+    if ($('#r-demo-off')) $('#r-demo-off').onclick = async () => {
+      S = await api.demo(false); render(); toast('Exemple effacé.');
+    };
     $('#c-save').onclick = async () => {
       try {
         S = await api.saveCabinet({ name: $('#c-name').value.trim(), email: $('#c-email').value.trim() });
