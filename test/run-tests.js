@@ -3392,6 +3392,40 @@ t('cabinet : un dossier se crée à la main, et le premier paquet l\'adopte', ()
   assert.strictEqual(S.dossiers[0].phone, '+216 22 333 444', 'la fiche saisie à la main survit au premier paquet');
 });
 
+t('cabinet : une liste de clients se colle depuis un tableur', () => {
+  // Un cabinet a soixante clients. Les saisir un par un dans un formulaire, personne ne le fera —
+  // et l'application resterait vide le jour de la démonstration, c'est-à-dire au moment précis où
+  // elle doit convaincre.
+  const r = cab.parseDossierLines(
+    'Nom ; Matricule ; Email ; Téléphone\n' +                       // entête collée avec le tableau
+    'Menuiserie Trabelsi SUARL ; 1122334A/M/P/000 ; contact@trabelsi.tn ; +216 22 333 444\n' +
+    '\n' +                                                           // ligne vide
+    'Pharmacie El Menzah\n' +                                        // le nom suffit
+    'Café des Jasmins ; ; jasmins@example.tn\n' +                     // colonne vide au milieu
+    'Studio Sfax\t3344556C/N/M/000\thello@sfax.tn', []);              // tabulations (copie d'Excel)
+  assert.strictEqual(r.dossiers.length, 4);
+  assert.deepStrictEqual(r.dossiers.map(d => d.name),
+    ['Menuiserie Trabelsi SUARL', 'Pharmacie El Menzah', 'Café des Jasmins', 'Studio Sfax']);
+  assert.strictEqual(r.dossiers[0].phone, '+216 22 333 444');
+  assert.strictEqual(r.dossiers[0].matricule, '1122334A/M/P/000');
+  assert.strictEqual(r.dossiers[2].email, 'jasmins@example.tn');
+  assert.strictEqual(r.dossiers[2].matricule, '', 'un email ne doit jamais finir dans le matricule');
+  assert.strictEqual(r.dossiers[3].matricule, '3344556C/N/M/000');
+  assert.ok(r.dossiers.every(d => d.manual), 'un client collé n\'utilise pas encore SkanFact');
+
+  // Les doublons sont écartés et NOMMÉS : un import silencieux qui perd la moitié des lignes
+  // est pire qu'un import qui échoue.
+  const existants = [cab.newDossier({ name: 'Pharmacie El Menzah' })];
+  const r2 = cab.parseDossierLines('Pharmacie El Menzah\nNouvelle Société\nPharmacie El Menzah', existants);
+  assert.strictEqual(r2.dossiers.length, 1);
+  assert.strictEqual(r2.dossiers[0].name, 'Nouvelle Société');
+  assert.deepStrictEqual(r2.ignorés, ['Pharmacie El Menzah', 'Pharmacie El Menzah']);
+  // Rien à lire ne casse rien.
+  assert.strictEqual(cab.parseDossierLines('', []).dossiers.length, 0);
+  assert.strictEqual(cab.parseDossierLines(null, null).dossiers.length, 0);
+  assert.strictEqual(cab.parseDossierLines('Nom\n', []).dossiers.length, 0, 'une entête seule ne crée pas un client « Nom »');
+});
+
 t('cabinet : la date de début de mission réclame les mois d\'avant', () => {
   // Sans elle, l'attente démarre au premier paquet reçu : un client repris en cours d'année n'est
   // jamais réclamé sur ses mois antérieurs, et on s'en aperçoit au bilan.
@@ -3844,6 +3878,25 @@ t('cabinet : l\'interface n\'appelle aucune fonction qui n\'existe pas', () => {
       const src = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
       assert.deepStrictEqual(appelsNonDefinis(src), [], `${f} appelle une fonction qui n'existe pas`);
     });
+});
+
+t('cabinet : ses classes à lui ne doivent pas exister dans la feuille partagée', () => {
+  // L'app cabinet charge style.css (partagée) PUIS cabinet.css. Une classe portant le même nom des
+  // deux côtés prend en silence les règles de l'autre application. C'est arrivé : l'assistant du
+  // cabinet utilisait `.setup-step`, que style.css réserve au petit « étape 3 sur 5 » de l'app
+  // entreprise — avec `white-space: nowrap`. Résultat : le texte ne revenait pas à la ligne et les
+  // boutons sortaient de la fenêtre. Aucune erreur, rien dans la console, juste une mise en page
+  // fausse qu'il faut voir pour la croire.
+  const partagee = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'style.css'), 'utf8');
+  const propre = fs.readFileSync(path.join(__dirname, '..', 'src', 'cabinet', 'renderer', 'cabinet.css'), 'utf8');
+  // Les classes que le cabinet DÉFINIT pour lui-même (préfixes et noms qui n'ont de sens qu'ici).
+  const siennes = [...propre.matchAll(/\.(wiz-[a-z-]+|drop-[a-z-]+|lock-warn|pw-[a-z-]+|warn-box|err-inline|ok-inline|year-[a-z-]+|b-hors|brand-tag|code-box|saved)\b/g)]
+    .map(m => m[1]);
+  assert.ok(siennes.length >= 10, 'le fichier propre au cabinet doit bien définir ses classes');
+  [...new Set(siennes)].forEach(c => {
+    assert.ok(!new RegExp('\\.' + c + '\\b').test(partagee),
+      `la classe « ${c} » existe aussi dans style.css : l'app cabinet héritera de règles pensées pour l'autre application`);
+  });
 });
 
 t('cabinet : chaque bulle « i » posée dans l\'interface a son texte', () => {

@@ -30,6 +30,14 @@ module.exports = {
   },
   files: ['src/**/*', 'package.json', 'CHANGELOG.md'],
   directories: { output: 'dist-cabinet' },
+  // Double-cliquer un paquet reçu par mail doit l'importer. C'est le geste le plus naturel après
+  // avoir enregistré la pièce jointe, et jusqu'ici le système ne savait pas quoi faire d'un
+  // `.skanpack` : il proposait une liste d'applications au hasard.
+  // `role: 'Viewer'` dit vrai : l'application du cabinet LIT les paquets, elle ne les modifie pas.
+  fileAssociations: [
+    { ext: 'skanpack', name: 'Paquet mensuel SkanFact', description: 'Les pièces comptables d\'un mois, envoyées par un client', role: 'Viewer', icon: 'build/icon-cabinet.png' },
+    { ext: 'skanrecover', name: 'Clé de secours SkanFact Cabinet', description: 'La clé qui rouvre les paquets déjà reçus', role: 'Viewer', icon: 'build/icon-cabinet.png' }
+  ],
   // Aucune dépendance native (electron-updater est du JavaScript pur) : l'étape de recompilation
   // d'electron-builder ne produit rien et coûte une minute de machine macOS à chaque publication.
   npmRebuild: false,

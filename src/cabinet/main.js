@@ -238,6 +238,18 @@ ipcMain.handle('cab:newDossier', (_e, fields) => {
   return { state: safeState(), id: d.id };
 });
 
+// Ajouter une liste de clients d'un coup, collée depuis un tableur. Un cabinet a soixante clients :
+// les saisir un par un, personne ne le fera, et l'application resterait vide le jour de la
+// démonstration — c'est-à-dire inutile au moment précis où elle doit convaincre.
+ipcMain.handle('cab:importDossiers', (_e, text) => {
+  requireOpen();
+  const r = K.parseDossierLines(text, state.dossiers);
+  if (!r.dossiers.length) return { added: 0, ignorés: r.ignorés, state: safeState() };
+  r.dossiers.forEach(d => { d.createdAt = Date.now(); state.dossiers.push(d); });
+  save();
+  return { added: r.dossiers.length, ignorés: r.ignorés, state: safeState() };
+});
+
 // Supprimer un dossier, ses paquets compris. Jusqu'ici seul l'archivage existait : un client entré
 // par erreur, ou un client parti qui demande l'effacement de ses pièces, restait là pour toujours.
 ipcMain.handle('cab:deleteDossier', (_e, id) => {

@@ -195,6 +195,37 @@
     return migrateDossier({ ...f, id, manual: true, packs: [] });
   }
 
+  // Lire une liste de clients collée depuis un tableur ou un carnet d'adresses. Un cabinet a
+  // soixante clients : les saisir un par un dans un formulaire, personne ne le fera, et
+  // l'application resterait vide le jour de la démonstration.
+  // Une ligne = un client. Les colonnes, quand il y en a : nom ; matricule ; email ; téléphone.
+  // On accepte le point-virgule et la tabulation (ce que produisent Excel et Numbers en français).
+  function parseDossierLines(text, existants) {
+    const vus = new Set((existants || []).map(d => d.id));
+    const out = [], ignorés = [];
+    String(text || '').split(/\r?\n/).forEach((ligne, i) => {
+      const l = ligne.trim();
+      if (!l) return;
+      const cols = l.split(/\s*[;\t]\s*/);
+      // Une ligne d'entête copiée avec le tableau ne doit pas devenir un client nommé « Nom ».
+      if (i === 0 && /^(nom|client|raison sociale|société)$/i.test(cols[0])) return;
+      const f = { name: cols[0] || '', matricule: cols[1] || '', email: cols[2] || '', phone: cols[3] || '' };
+      // Les colonnes arrivent parfois dans le désordre : on reconnaît un email et un téléphone.
+      cols.slice(1).forEach(c => {
+        if (/@/.test(c) && !f.email.includes('@')) f.email = c;
+        else if (/^\+?[\d\s().-]{6,}$/.test(c) && !f.phone) f.phone = c;
+      });
+      if (f.email === f.matricule) f.matricule = '';
+      if (f.phone === f.matricule) f.matricule = '';
+      if (!f.name) return;
+      const d = newDossier(f);
+      if (vus.has(d.id)) return ignorés.push(f.name);
+      vus.add(d.id);
+      out.push(d);
+    });
+    return { dossiers: out, ignorés };
+  }
+
   // Enregistrer qu'on a relancé. Le geste existait, la trace non : on cliquait « Écrire », le mail
   // partait, et le lundi suivant plus personne ne savait qui avait été relancé.
   function noteRelance(dossier, months, via, at, note) {
@@ -463,7 +494,7 @@
     FORMAT, MONTHS_FR, DEFAULT_STATE, DEFAULT_SETTINGS, TVA_PERIODS, REGIMES, RELANCE_WAYS, SORTS,
     monthLabel, monthListLabel, missingLabel, addMonth, monthsBetween, today, de,
     migrate, migrateDossier, dossierKey, packSummary, filePack, demoDossiers, checkIntegrity,
-    newDossier, noteRelance, portfolio, relanceDue, relanceRows,
+    newDossier, parseDossierLines, noteRelance, portfolio, relanceDue, relanceRows,
     dossierMonths, dossierRow, dossierList, cabinetTodo, relanceMail, pairingFile
   };
 }));

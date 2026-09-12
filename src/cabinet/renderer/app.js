@@ -374,10 +374,8 @@
     if (reorganized && reorganized.moved) {
       toast(`${pl(reorganized.moved, 'paquet')} rangé${reorganized.moved > 1 ? 's' : ''} par client et par année.`);
     }
-    if (created || !(S.cabinet.name || '').trim()) {
-      location.hash = '#/reglages';
-      setTimeout(() => toast('Commence par renseigner le nom de ton cabinet.'), 400);
-    }
+    // Premier lancement : l'assistant, pas un formulaire de réglages et un message passager.
+    if (created || !(S.cabinet.name || '').trim()) runSetup();
   }
 
   async function refresh() { S = await api.state(); }
@@ -536,7 +534,7 @@
       <div class="stat"><div class="lbl">Clients suivis</div><div class="val">${p.total}</div>
         <div class="sub">${p.surSkanfact} sur SkanFact${p.horsSkanfact ? ` · ${p.horsSkanfact} pas encore` : ''}</div></div>
       <div class="stat"><div class="lbl">À jour</div><div class="val ${p.enRetard ? '' : 'ok'}">${p.aJour}<span class="sub">/ ${p.surSkanfact || 0}</span></div>
-        <div class="sub">${p.enRetard ? `${pl(p.enRetard, 'en retard')}` : 'aucun retard'}${p.provisoires ? ` · ${p.provisoires} en provisoire` : ''}</div></div>
+        <div class="sub">${p.enRetard ? `${p.enRetard} en retard` : 'aucun retard'}${p.provisoires ? ` · ${p.provisoires} en provisoire` : ''}</div></div>
       <div class="stat"><div class="lbl">Mois manquants</div><div class="val ${p.moisManquants ? 'due' : 'ok'}">${p.moisManquants}</div>
         <div class="sub">${p.paquets ? pl(p.paquets, 'paquet') + ' reçu' + (p.paquets > 1 ? 's' : '') : 'aucun paquet reçu'}</div></div>
       <div class="stat"><div class="lbl">Dernier CA suivi</div><div class="val">${esc(money(p.dernierCA))}</div>
@@ -1265,7 +1263,7 @@
     } catch (e) { toast(plainError(e), 'error'); }
   }
 
-  function exportRecovery() {
+  function exportRecovery(onDone) {
     modal(
       `<h2>Clé de secours</h2>
        <p class="small">Ce fichier contient la clé qui <strong>ouvre les paquets de tes clients</strong>. Protège-le par un mot de passe
@@ -1291,6 +1289,7 @@
             close();
             recoveryAt = Date.now();
             drawBackupPanels();
+            if (onDone) onDone();
             const show = await confirmDialog('Clé de secours enregistrée',
               `<p class="muted small">${esc(r.path)}</p><p>Copie-la maintenant sur une clé USB ou un disque que tu ranges ailleurs, et <strong>efface-la de cet ordinateur</strong>.</p>`,
               'La montrer dans le dossier');
@@ -1370,6 +1369,154 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
         };
       }
     );
+  }
+
+  // ---------- assistant de première utilisation ----------
+  //
+  // C'est le premier contact d'un comptable avec le produit. Avant, on le laissait sur un formulaire
+  // de réglages avec un message passager, et il repartait sans savoir quoi faire. L'assistant lui
+  // fait faire, dans l'ordre, les quatre gestes qui rendent l'application utile : se nommer, entrer
+  // ses clients, poser ses filets, produire le fichier à remettre.
+  function runSetup() {
+    return new Promise(resolve => {
+      const el = document.createElement('div');
+      el.id = 'setup';
+      document.body.appendChild(el);
+      let etape = 0;
+      const fin = () => { el.remove(); resolve(); };
+
+      const etapes = [
+        {
+          t: 'Bienvenue dans SkanFact Cabinet',
+          html: () => `
+            <p class="lead">L'application répond à une seule question : <strong>lequel de mes clients ne m'a pas envoyé son mois ?</strong></p>
+            <div class="kv mt">
+              <div><span>Ce qu'elle fait</span><span>Elle reçoit les paquets mensuels de tes clients, vérifie qu'ils sont intacts, te dit ce qui manque et prépare tes relances.</span></div>
+              <div><span>Ce qu'elle ne fait pas</span><span>Elle ne modifie <strong>jamais</strong> la comptabilité d'un client et ne lui renvoie rien. Elle ne dépose aucune déclaration.</span></div>
+              <div><span>Ce qu'elle coûte</span><span>Rien. C'est ton client qui paie SkanFact, pas toi.</span></div>
+            </div>
+            <p class="muted small mt">Quatre écrans, deux minutes. Tu pourras tout changer ensuite dans Réglages.</p>`,
+          next: () => true
+        },
+        {
+          t: 'Ton cabinet',
+          html: () => `
+            <p class="small">Ce nom apparaît en bas des relances que tu envoies et dans le fichier que tes clients importeront.</p>
+            <div class="grid-2 mt">
+              <label class="field span-2">${lbl('Nom du cabinet', 'cab.name')}<input type="text" id="w-name" value="${esc(S.cabinet.name || '')}" placeholder="Cabinet Ben Salah"></label>
+              <label class="field">${lbl('Email', 'cab.email')}<input type="email" id="w-email" value="${esc(S.cabinet.email || '')}" placeholder="contact@cabinet.tn"></label>
+              <label class="field">${lbl('Téléphone', 'cab.phone')}<input type="tel" id="w-phone" value="${esc(S.cabinet.phone || '')}" placeholder="+216 …"></label>
+              <label class="field narrow">${lbl('Jour de relance', 'cab.relanceDay')}<input type="number" id="w-day" min="1" max="28" value="${Number((S.settings || {}).relanceDay) || 10}"></label>
+            </div>`,
+          next: async () => {
+            const nom = $('#w-name', el).value.trim();
+            if (!nom) { toast('Donne un nom à ton cabinet.', 'error'); return false; }
+            S = await api.saveCabinet({
+              name: nom, email: $('#w-email', el).value.trim(), phone: $('#w-phone', el).value.trim(),
+              settings: { relanceDay: Number($('#w-day', el).value) }
+            });
+            return true;
+          }
+        },
+        {
+          t: 'Tes clients',
+          html: () => `
+            <p class="small">Mets-les <strong>tous</strong>, même ceux qui n'utilisent pas encore SkanFact : l'application devient le tableau de bord
+            de ton portefeuille, et rien n'est réclamé à ceux qui n'ont pas commencé.</p>
+            <label class="field mt">${lbl('Un client par ligne', 'd.liste')}
+              <textarea id="w-clients" rows="8" placeholder="Menuiserie Trabelsi SUARL ; 1122334A/M/P/000 ; contact@trabelsi.tn ; +216 22 333 444&#10;Pharmacie El Menzah&#10;Café des Jasmins ; ; jasmins@example.tn"></textarea></label>
+            <p class="muted small">Tu peux coller une colonne entière depuis Excel. Les colonnes, quand tu en mets, se séparent par
+            un point-virgule : <strong>nom ; matricule ; email ; téléphone</strong>. Seul le nom est obligatoire.</p>
+            <p class="muted small">Pas envie maintenant ? Passe : tu pourras charger un jeu d'exemple ou ajouter tes clients un par un.</p>`,
+          next: async () => {
+            const txt = $('#w-clients', el).value.trim();
+            if (!txt) return true;
+            const r = await api.importDossiers(txt);
+            S = r.state;
+            if (r.added) toast(`${pl(r.added, 'client')} ajouté${r.added > 1 ? 's' : ''}.`);
+            if (r.ignorés && r.ignorés.length) toast(`${pl(r.ignorés.length, 'doublon')} ignoré${r.ignorés.length > 1 ? 's' : ''} : ${r.ignorés.slice(0, 3).join(', ')}`, 'error');
+            return true;
+          }
+        },
+        {
+          t: 'Ne rien perdre',
+          html: () => `
+            <p class="small">Cette application va contenir la comptabilité de tes clients <strong>et la clé qui ouvre leurs paquets</strong>.
+            Deux gestes, une fois, et un incident ne te coûtera plus rien.</p>
+            <div class="warn-box mt"><strong>Sans clé de secours, si ce Mac disparaît, aucun paquet déjà reçu ne pourra plus être ouvert.</strong>
+            Ni par nous, ni par personne. Tes clients devraient tous réimporter un nouvel appairage.</div>
+            <div class="wiz-steps mt">
+              <div class="wiz-step"><div><strong>1. Une copie hors de cet ordinateur</strong>
+                <div class="muted small">Clé USB, disque externe, iCloud Drive. La base, les sauvegardes et les paquets y seront recopiés à chaque enregistrement.</div></div>
+                <button class="btn" id="w-ext">Choisir un dossier…</button><span class="ok-inline" id="w-ext-ok" hidden>✓ fait</span></div>
+              <div class="wiz-step"><div><strong>2. La clé de secours</strong>
+                <div class="muted small">Un petit fichier protégé par son propre mot de passe, à ranger ailleurs que sur ce Mac.</div></div>
+                <button class="btn btn-primary" id="w-rec">Enregistrer la clé…</button><span class="ok-inline" id="w-rec-ok" hidden>✓ fait</span></div>
+            </div>
+            <p class="muted small mt">Tu peux les faire plus tard (Réglages → Sécurité), mais « plus tard » est exactement le moment où l'on oublie.</p>`,
+          mount: () => {
+            $('#w-ext', el).onclick = async () => {
+              try { const r = await api.pickExternal(); if (r && r.dir) { $('#w-ext-ok', el).hidden = false; refreshBackupInfo(); } }
+              catch (e) { toast(plainError(e), 'error'); }
+            };
+            $('#w-rec', el).onclick = () => { exportRecovery(() => { $('#w-rec-ok', el).hidden = false; }); };
+          },
+          next: () => true
+        },
+        {
+          t: 'Le fichier à remettre à tes clients',
+          html: () => `
+            <p class="small">Dernière étape. Chaque client importe ce fichier <strong>une fois</strong> dans son SkanFact
+            (Paramètres → Cabinet comptable). À partir de là, les paquets qu'il fabrique sont chiffrés
+            <strong>pour toi seul</strong>, et il n'a plus aucun mot de passe à te communiquer.</p>
+            <div class="mt"><div class="muted small">${lbl('Empreinte de ton cabinet', 'cab.fingerprint')}</div>
+              <div class="fingerprint">${esc(S.cabinet.fingerprint || '—')}</div></div>
+            <p class="muted small mt">S'il te la lit au téléphone après l'import et qu'elle correspond, c'est bien à toi qu'il envoie.</p>
+            <div class="wiz-steps mt">
+              <div class="wiz-step"><div><strong>Le fichier d'appairage</strong>
+                <div class="muted small">Un envoi par mail suffit : il ne contient rien de secret.</div></div>
+                <button class="btn btn-primary" id="w-pair">Enregistrer le fichier…</button><span class="ok-inline" id="w-pair-ok" hidden>✓ fait</span></div>
+            </div>`,
+          mount: () => {
+            $('#w-pair', el).onclick = async () => {
+              try { const r = await api.exportPairing(); if (r) { $('#w-pair-ok', el).hidden = false; toast('Fichier enregistré.'); } }
+              catch (e) { toast(plainError(e), 'error'); }
+            };
+          },
+          next: () => true
+        }
+      ];
+
+      function draw() {
+        const e = etapes[etape];
+        el.innerHTML = `<div class="wiz-card">
+          <div class="wiz-dots">${etapes.map((_, i) => `<span class="${i === etape ? 'on' : i < etape ? 'done' : ''}"></span>`).join('')}</div>
+          <h1>${esc(e.t)}</h1>
+          <div class="wiz-body">${e.html()}</div>
+          <div class="wiz-actions">
+            ${etape > 0 ? '<button class="btn" id="w-back">← Retour</button>' : ''}
+            <span class="grow"></span>
+            ${etape < etapes.length - 1 ? '<button class="btn btn-ghost" id="w-skip">Passer</button>' : ''}
+            <button class="btn btn-primary" id="w-next">${etape === etapes.length - 1 ? 'Commencer' : 'Continuer'}</button>
+          </div></div>`;
+        if (e.mount) e.mount();
+        const b = $('#w-back', el); if (b) b.onclick = () => { etape--; draw(); };
+        const s = $('#w-skip', el); if (s) s.onclick = () => { etape++; draw(); };
+        $('#w-next', el).onclick = async () => {
+          const btn = $('#w-next', el);
+          btn.disabled = true;
+          let ok = true;
+          try { ok = await e.next(); } catch (ex) { toast(plainError(ex), 'error'); ok = false; }
+          btn.disabled = false;
+          if (!ok) return;
+          if (etape === etapes.length - 1) { fin(); render(); return; }
+          etape++; draw();
+        };
+        const first = el.querySelector('input, textarea');
+        if (first) first.focus();
+      }
+      draw();
+    });
   }
 
   // ---------- recherche rapide (Cmd+K) ----------

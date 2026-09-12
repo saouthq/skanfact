@@ -25,6 +25,12 @@ C'est l'application qui détient la comptabilité de dizaines d'entreprises **et
 - **Supprimer existe** : un dossier (avec ses paquets) ou un paquet arrivé par erreur. Il n'y avait que l'archivage.
 - **Verrouiller sans quitter**, pour quitter son bureau sans laisser soixante comptabilités ouvertes.
 
+### Le premier quart d'heure
+
+- **Un assistant de première utilisation**, comme l'app entreprise en a un depuis la 2.0.0. Le cabinet atterrissait jusqu'ici sur un formulaire de réglages avec un message passager, et repartait sans savoir quoi faire. Cinq écrans : ce que l'application fait (et ne fait pas), le cabinet, **les clients**, les filets, le fichier d'appairage.
+- **Coller la liste de ses clients d'un coup**, une ligne par client, directement depuis Excel ou Numbers. Un cabinet a soixante clients : les saisir un par un dans un formulaire, personne ne le ferait — et l'application serait vide le jour de la démonstration, c'est-à-dire au moment précis où elle doit convaincre. Les colonnes (`nom ; matricule ; email ; téléphone`) sont facultatives et reconnues dans le désordre ; les doublons sont écartés **et nommés**.
+- **Double-cliquer un `.skanpack` dans le Finder l'importe.** Le système ne savait pas quoi faire de ces fichiers et proposait une liste d'applications au hasard.
+
 ### Le portefeuille, pas seulement SkanFact
 
 - **Créer un dossier à la main.** Un comptable a soixante clients dont deux sous SkanFact : l'application ne montrait que ces deux-là. Un client créé à la main compte dans le portefeuille et **rien ne lui est réclamé** tant qu'il n'a pas commencé ; le jour où son premier paquet arrive, il devient un dossier ordinaire tout seul, sans doublon.
@@ -48,6 +54,7 @@ C'est l'application qui détient la comptabilité de dizaines d'entreprises **et
 - **L'écran de mot de passe** a des étiquettes, un bouton « Afficher », un indicateur de solidité — et l'avertissement le plus important de toute l'application (« aucun moyen de le récupérer ») n'est plus la ligne la plus petite et la plus grise de l'écran. Le minimum passe de six à huit caractères.
 - **Des bulles « i » partout** (trente champs) et une rubrique Aide réécrite, avec un article « Ne rien perdre ». Un test vérifie que chaque bulle posée a son texte, et qu'aucun texte ne dort sans être affiché.
 - Le « ✓ enregistré » s'affiche **à côté** du bouton des Réglages, que le message passager recouvrait.
+- **L'assistant du cabinet réutilisait des noms de classes de la feuille de style partagée** (`.setup-step`, réservée au « étape 3 sur 5 » de l'app entreprise, qui interdit le retour à la ligne) : le texte ne revenait pas à la ligne et les boutons sortaient de la fenêtre. Aucune erreur, rien dans la console — le genre de défaut qu'il faut voir pour y croire. Un test interdit désormais qu'une classe propre au cabinet porte un nom déjà pris dans la feuille partagée.
 - Les fichiers extraits d'un paquet pour être lus sont **effacés à la fermeture** : ce sont les pièces comptables d'un client, elles n'ont rien à faire dans le dossier temporaire pour toujours.
 - La taille et la position de la fenêtre sont mémorisées ; un menu Aide donne accès au journal technique et au dossier de l'application.
 

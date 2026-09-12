@@ -105,6 +105,28 @@
 .year-row { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 10px; }
 .year-lab { font-size: 12px; font-weight: 700; color: var(--muted); width: 38px; flex-shrink: 0; padding-top: 9px; }
 
+/* L'assistant de première utilisation. C'est le premier contact d'un comptable avec le produit :
+   il doit ressembler à un produit fini, pas à un formulaire de réglages avec un message passager. */
+#setup .wiz-card {
+  background: var(--panel); border-radius: 18px; box-shadow: var(--shadow);
+  width: 720px; max-width: 100%; padding: 32px 36px 26px; max-height: 88vh; display: flex; flex-direction: column;
+}
+#setup h1 { font-size: 23px; margin: 4px 0 16px; letter-spacing: -.4px; }
+#setup .wiz-body { overflow-y: auto; flex: 1; }
+#setup .wiz-dots { display: flex; gap: 6px; }
+#setup .wiz-dots span { width: 26px; height: 4px; border-radius: 3px; background: var(--border); }
+#setup .wiz-dots span.on { background: var(--primary); }
+#setup .wiz-dots span.done { background: var(--primary-soft-2, var(--primary-soft)); }
+#setup .wiz-actions { display: flex; align-items: center; gap: 8px; margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--border); }
+#setup .wiz-steps { display: flex; flex-direction: column; gap: 10px; }
+#setup .wiz-step {
+  display: flex; align-items: center; gap: 14px; padding: 13px 15px;
+  border: 1px solid var(--border); border-radius: 12px;
+}
+#setup .wiz-step > div:first-child { flex: 1; min-width: 0; }
+#setup textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
+@media (max-width: 760px) { #setup .wiz-step { flex-wrap: wrap; } }
+
 .dot-lvl.hors { background: #9aa7b4; }
 .badge.b-hors { background: #eceff2; color: #5b6b7b; }
 body.dark .badge.b-hors { background: #2a3440; color: #9aa7b4; }

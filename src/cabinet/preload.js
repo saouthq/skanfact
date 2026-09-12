@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld('cabinet', {
   saveCabinet: (patch) => ipcRenderer.invoke('cab:saveCabinet', patch),
   saveDossier: (id, patch) => ipcRenderer.invoke('cab:saveDossier', { id, patch }),
   newDossier: (fields) => ipcRenderer.invoke('cab:newDossier', fields),
+  importDossiers: (text) => ipcRenderer.invoke('cab:importDossiers', text),
   deleteDossier: (id) => ipcRenderer.invoke('cab:deleteDossier', id),
   deletePack: (id, month) => ipcRenderer.invoke('cab:deletePack', { id, month }),
   noteRelance: (id, months, via, note) => ipcRenderer.invoke('cab:noteRelance', { id, months, via, note }),
