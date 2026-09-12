@@ -107,7 +107,17 @@ Si le fichier de données devient illisible (disque plein, coupure pendant l'éc
 npm test
 ```
 
-Vérifie les calculs, la numérotation, le montant en lettres, l'échappement HTML, le stockage (sauvegardes, fichier illisible, import), les paquets mensuels et la logique de SkanFact Cabinet. Pour tester l'app réelle sans écran (CI, session Claude), lancer Electron sous Xvfb avec Playwright (`_electron.launch`) et parcourir les écrans — y compris la boucle complète entreprise → cabinet, qui lance les deux applications à la suite.
+Vérifie les calculs, la numérotation, le montant en lettres, l'échappement HTML, le stockage (sauvegardes, fichier illisible, import), les paquets mensuels et la logique de SkanFact Cabinet. Pour l'application **réelle**, les tests de bout en bout vivent dans `test/e2e/` (Playwright + Electron, `npm i -D playwright`, sous `xvfb-run -a` sans écran) :
+
+```bash
+npm run e2e:entreprise   # l'app entreprise, écran par écran
+npm run e2e:cabinet      # l'app cabinet : assistant, portefeuille, sauvegardes, suppression et récupération
+npm run e2e:boucle       # les DEUX apps à la suite : appairage → paquet → import → écritures regroupées
+npm run e2e:refus        # les quatre cas tordus de l'import d'un paquet
+npm run e2e:gel          # le chien de garde, sur une interface vraiment gelée
+```
+
+Ce sont les seuls qui attrapent une fonction appelée mais jamais définie dans un gabarit, une classe CSS qui prend en silence les règles d'une autre application, ou un bouton inerte parce qu'un écran passe devant.
 
 ## Structure
 

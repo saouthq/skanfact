@@ -15,7 +15,12 @@
     "build:win": "electron-builder --win",
     "build:cabinet:mac": "electron-builder --mac -c build/cabinet.config.js",
     "build:cabinet:win": "electron-builder --win -c build/cabinet.config.js",
-    "release": "node scripts/release.js"
+    "release": "node scripts/release.js",
+    "e2e:cabinet": "node test/e2e/cabinet.js",
+    "e2e:boucle": "node test/e2e/boucle-complete.js",
+    "e2e:entreprise": "node test/e2e/entreprise.js",
+    "e2e:refus": "node test/e2e/cabinet-refus.js",
+    "e2e:gel": "node test/e2e/chien-de-garde.js"
   },
   "devDependencies": {
     "electron": "^43.0.0",

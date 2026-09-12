@@ -7,3 +7,6 @@ build/release-notes.md
 # pour construire l'app sur son propre Mac. Ce sont les mêmes valeurs que les secrets du dépôt :
 # elles ne doivent jamais entrer dans Git.
 relais.local.json
+
+# Captures et sorties des tests qui ouvrent l'application réelle (test/e2e/)
+dist-e2e/

@@ -125,7 +125,7 @@ Règles apprises sur les composants : un `<select>` reste le bon choix tant que 
 
 Règles apprises sur les listes : les totaux du pied de tableau et les exports CSV portent sur la **sélection entière**, jamais sur la page affichée ; toute nouvelle liste doit passer par `paginate` + `sortHead` + `pagerBar` pour rester cohérente ; `bindSort`/`bindPager` prennent un élément racine parce qu'une page peut afficher deux tableaux (Comptabilité, Relances).
 
-Méthode d'audit qui a fonctionné : `scratchpad/shots.js` (captures 1440×900 + 1280×800, démo puis états vides juste après l'assistant, chaque modale ouverte), lecture de chaque capture, puis relecture des chemins de code correspondants (validations, confirmations, cas limites).
+Méthode d'audit qui a fonctionné : `test/e2e/entreprise.js` (captures 1440×900 + 1280×800, démo puis états vides juste après l'assistant, chaque modale ouverte), lecture de chaque capture, puis relecture des chemins de code correspondants (validations, confirmations, cas limites).
 
 Non retenu volontairement : synchronisation cloud en temps réel (la 3.2.0 fait du partage de fichier à tour de rôle, pas du multi-utilisateur simultané), e-facture (voir plus haut), barre latérale réductible en icônes (les groupes ont suffi).
 
@@ -231,8 +231,8 @@ Règles apprises :
 - Le **jeu d'exemple** (`demoDossiers`) montre les quatre situations et s'efface tout seul au premier vrai paquet : des retards imaginaires à côté des vrais seraient pires que rien. Ses paquets n'ont pas de `path`, donc l'interface ne propose pas de les ouvrir.
 - Depuis la 6.2.1 le manifeste porte `chiffres` (CA, TVA collectée/déductible, à décaisser, encaissé) et `compte` : le cabinet affiche le chiffre d'affaires du dossier sans ouvrir un CSV. Champ **facultatif à la lecture** — un paquet plus ancien n'en a pas, et on écrit « — », jamais zéro.
 - « 7 pièces vérifiées, intactes » est la **seule affirmation rigoureuse** de l'app cabinet : elle doit compter juste. Le manifeste ne se liste pas lui-même (il ne peut pas porter sa propre empreinte), et un fichier **absent** n'est pas un fichier vérifié. La règle vit dans `cabcore.checkIntegrity(manifest, hashes)` — pure et testée — pendant que main.js se contente de calculer les empreintes. Corrigé en 6.5.2 : le code retranchait un de trop.
-- Les quatre cas tordus à retester après toute modification de `ingest` (`scratchpad/cab-refus.js`) : un fichier qui n'est pas un paquet, le même mois reçu deux fois, un paquet adressé à un autre cabinet, un paquet protégé par mot de passe. Chacun doit donner une phrase en français que le comptable comprend sans appeler personne.
-- Le test qui compte est `scratchpad/cabe2e.js` : **deux vraies applications Electron** à la suite — le cabinet exporte son appairage, l'entreprise l'importe et fabrique un paquet, le cabinet le reçoit, l'ouvre et prépare la relance. C'est le seul qui prouve que le plan tient debout ; le relancer avant toute release touchant au paquet ou à l'appairage.
+- Les quatre cas tordus à retester après toute modification de `ingest` (`test/e2e/cabinet-refus.js`) : un fichier qui n'est pas un paquet, le même mois reçu deux fois, un paquet adressé à un autre cabinet, un paquet protégé par mot de passe. Chacun doit donner une phrase en français que le comptable comprend sans appeler personne.
+- Le test qui compte est `test/e2e/boucle-complete.js` : **deux vraies applications Electron** à la suite — le cabinet exporte son appairage, l'entreprise l'importe et fabrique un paquet, le cabinet le reçoit, l'ouvre et prépare la relance. C'est le seul qui prouve que le plan tient debout ; le relancer avant toute release touchant au paquet ou à l'appairage.
 
 ## 6.3.0 — Les écritures comptables (aussi Cabinet 1.1.0)
 
@@ -270,7 +270,7 @@ Autre règle : les abonnements aux messages du processus principal (`onAlivePing
 
 Et une cinquième, trouvée en 6.5.1 : **un seul programme peut inspecter la page à la fois.** Le chien de garde se détache quand les outils de développement s'ouvrent et se rattache quand ils se ferment — sinon ouvrir les outils le débranchait en silence, et on se croyait surveillé sans l'être.
 
-Le test qui compte est `scratchpad/watchdog-e2e.js` : il **gèle vraiment** l'application avec une boucle infinie et vérifie que le journal nomme la fonction coupable. C'est le test qu'on aurait voulu avoir en 5.1.0.
+Le test qui compte est `test/e2e/chien-de-garde.js` : il **gèle vraiment** l'application avec une boucle infinie et vérifie que le journal nomme la fonction coupable. C'est le test qu'on aurait voulu avoir en 5.1.0.
 
 ## 6.7.0 — Le relais de mise à jour
 
@@ -331,7 +331,23 @@ Règles apprises :
 - **Associer les colonnes d'un CSV par NOM, jamais par position.** Un client sous une autre version de SkanFact n'a pas les mêmes colonnes ; aligner à l'aveugle met des montants dans « Tiers » sans que rien ne plante. Et le lecteur de CSV est un vrai lecteur : un libellé de facture contient un point-virgule un jour sur dix.
 - **Un paquet illisible ne fait pas échouer un export** : le fichier part avec le reste et le manque est nommé — même règle que `absents` dans le manifeste du paquet mensuel.
 - **Les fautes de français se voient sur capture, pas dans les tests** : « 2 en retards », « 3 sans le moiss », « TVA de octobre ». Le helper `de()` existait depuis la 1.0.0 et n'était pas utilisé au bon endroit. Relire les captures reste indispensable.
-- Le test qui compte est `scratchpad/cab2-e2e.js` (15 étapes dans l'app réelle) ; `cabe2e.js` prouve toujours la boucle entreprise → paquet → cabinet, et vérifie désormais l'export d'écritures **sur un vrai paquet**. Les deux doivent être relancés après toute modification du cabinet.
+- Le test qui compte est `test/e2e/cabinet.js` (16 étapes dans l'app réelle) ; `test/e2e/boucle-complete.js` prouve toujours la boucle entreprise → paquet → cabinet, et vérifie désormais l'export d'écritures **sur un vrai paquet**. Les deux doivent être relancés après toute modification du cabinet.
+
+### Les tests qui ouvrent vraiment l'application
+
+Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvfb-run -a` sur une machine sans écran) :
+
+| Commande | Ce qu'elle prouve |
+|---|---|
+| `npm run e2e:entreprise` | l'app entreprise, écran par écran |
+| `npm run e2e:cabinet` | l'app cabinet : verrou, assistant, portefeuille, relances, sauvegardes, suppression **et récupération**, échéances, écritures |
+| `npm run e2e:boucle` | les DEUX applications à la suite : cabinet → appairage → entreprise → paquet → cabinet → écritures regroupées |
+| `npm run e2e:refus` | les quatre cas tordus de l'import (fichier tronqué, mois reçu deux fois, paquet d'un autre cabinet, paquet protégé) |
+| `npm run e2e:gel` | le chien de garde : l'interface est VRAIMENT gelée, et le journal nomme la fonction coupable |
+
+Ils ont longtemps vécu dans un dossier de travail temporaire, effacé à chaque session : il fallait les réécrire de mémoire, et ils dérivaient (une assertion restée sur une version périmée, un écran neuf jamais parcouru). **Un test qu'on doit réécrire pour s'en servir n'est pas un test.** Le harnais (`test/e2e/harnais.js`) trouve Playwright où il est, lit la version dans `package.json` au lieu de l'écrire en dur, et range les captures dans `dist-e2e/` (ignoré par Git).
+
+Playwright n'est pas une dépendance du projet : `npm i -D playwright` avant de lancer ces tests.
 
 ## Pistes pour la suite (non demandées)
 
