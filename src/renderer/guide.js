@@ -11,8 +11,8 @@
   // clé → { t: titre, d: explication (HTML simple : <b>, <br>, <em>) }
   const INFO = {
     // — société —
-    'co.name': { t: 'Raison sociale', d: 'Le nom officiel de ton entreprise, exactement comme sur ton registre de commerce (avec la forme juridique : SUARL, SARL, SA…). C\'est ce nom qui apparaît en haut de tous tes documents et qui engage juridiquement.' },
-    'co.matricule': { t: 'Matricule fiscal', d: 'Ton identifiant auprès de l\'administration fiscale, obligatoire sur toute facture. En Tunisie il ressemble à <b>1234567X/A/M/000</b>. Une facture sans matricule peut être refusée par le client ou par le fisc. <em>À VÉRIFIER avec ton comptable : le format complet à écrire.</em>' },
+    'co.name': { t: 'Raison sociale', d: 'Le nom officiel de ton entreprise, exactement comme sur ton registre de commerce (avec la forme juridique : SUARL, SARL, SA…). C\'est ce nom qui apparaît en haut de tous tes documents et qui engage juridiquement.', a: 'demarrer' },
+    'co.matricule': { t: 'Matricule fiscal', d: 'Ton identifiant auprès de l\'administration fiscale, obligatoire sur toute facture. En Tunisie il ressemble à <b>1234567X/A/M/000</b>. Une facture sans matricule peut être refusée par le client ou par le fisc. <em>À VÉRIFIER avec ton comptable : le format complet à écrire.</em>', a: 'fiscal' },
     'co.rc': { t: 'Registre de commerce (RC)', d: 'Le numéro que tu as reçu en immatriculant ton entreprise au registre national des entreprises. Il s\'affiche dans le petit texte en bas de tes documents. Ce n\'est pas obligatoire partout, mais ça fait sérieux et beaucoup de clients le demandent.' },
     'co.capital': { t: 'Capital social', d: 'La somme que les associés ont apportée à la création de la société (par exemple « 1 000 DT »). Elle figure dans les mentions légales en bas des documents. Une entreprise individuelle n\'a pas de capital : laisse vide.' },
     'co.address': { t: 'Adresse', d: 'L\'adresse du siège social, celle qui est déclarée. Écris-la sur plusieurs lignes (rue, puis code postal et ville) : elle sera reproduite telle quelle sur les documents.' },
@@ -24,13 +24,13 @@
     'ap.theme': { t: 'Thème', d: 'L\'apparence de l\'application : clair, sombre, ou comme le réglage de ton Mac. Les documents PDF restent toujours clairs, quel que soit le thème.' },
     'ap.defaultLang': { t: 'Langue des documents par défaut', d: 'La langue utilisée pour les nouveaux devis et factures. Tu peux toujours la changer document par document, ou la fixer par client (utile pour un client étranger).' },
     // — paiement —
-    'pay.bank': { t: 'Banque et RIB', d: 'Ton RIB (Relevé d\'Identité Bancaire) s\'affiche sur les factures, dans le bloc « Règlement ». C\'est ce que ton client copie pour faire le virement : vérifie-le deux fois, une erreur ici, c\'est un paiement qui n\'arrive jamais.' },
+    'pay.bank': { t: 'Banque et RIB', d: 'Ton RIB (Relevé d\'Identité Bancaire) s\'affiche sur les factures, dans le bloc « Règlement ». C\'est ce que ton client copie pour faire le virement : vérifie-le deux fois, une erreur ici, c\'est un paiement qui n\'arrive jamais.', a: 'paiements' },
     'pay.terms': { t: 'Conditions de paiement', d: 'La phrase imprimée sur chaque facture pour dire comment et quand te payer. Exemple : « Paiement par virement bancaire à réception de la facture. » Être explicite réduit les retards.' },
     // — documents —
-    'doc.stampFee': { t: 'Timbre fiscal', d: 'Une taxe fixe que l\'État tunisien ajoute à chaque facture, indépendamment du montant (1 DT au moment où ces lignes sont écrites). Elle s\'ajoute après la TVA. Elle ne s\'applique pas aux devis. <em>À VÉRIFIER avec ton comptable : le montant en vigueur et les cas d\'exonération.</em>' },
+    'doc.stampFee': { t: 'Timbre fiscal', d: 'Une taxe fixe que l\'État tunisien ajoute à chaque facture, indépendamment du montant (1 DT au moment où ces lignes sont écrites). Elle s\'ajoute après la TVA. Elle ne s\'applique pas aux devis. <em>À VÉRIFIER avec ton comptable : le montant en vigueur et les cas d\'exonération.</em>', a: 'fiscal' },
     'doc.quoteValidity': { t: 'Validité des devis', d: 'Le nombre de jours pendant lesquels ton prix reste garanti. Au-delà, tu es libre de refaire un devis à un autre prix. 30 jours est l\'usage. La date calculée s\'imprime sur le devis.' },
     'doc.paymentDays': { t: 'Délai de paiement', d: 'Le nombre de jours dont ton client dispose pour payer, à partir de la date de facture. Il sert à calculer l\'échéance imprimée sur la facture, et c\'est lui qui déclenche le passage en « en retard » dans l\'application.' },
-    'doc.withholdingDefault': { t: 'Retenue à la source par défaut', d: 'Le taux appliqué automatiquement aux nouvelles factures. Laisse « Aucune » si la plupart de tes clients sont des particuliers, et règle le taux client par client pour les sociétés et les administrations. <em>À VÉRIFIER avec ton comptable.</em>' },
+    'doc.withholdingDefault': { t: 'Retenue à la source par défaut', d: 'Le taux appliqué automatiquement aux nouvelles factures. Laisse « Aucune » si la plupart de tes clients sont des particuliers, et règle le taux client par client pour les sociétés et les administrations. <em>À VÉRIFIER avec ton comptable.</em>', a: 'fiscal' },
     'doc.currency': { t: 'Devise', d: 'La monnaie de ton entreprise, celle de ta comptabilité (DT pour le dinar tunisien). Les statistiques et le journal des ventes sont toujours exprimés dans cette monnaie, même quand tu factures un client en euros.' },
     'doc.openAfterExport': { t: 'Ouvrir le PDF après export', d: 'Quand c\'est coché, le PDF s\'ouvre dans l\'Aperçu dès qu\'il est enregistré, pour que tu le relises. Décoche si tu exportes beaucoup de documents à la suite.' },
     'doc.quoteTerms': { t: 'Conditions des devis', d: 'Le texte imprimé en bas de chaque devis, sous la validité. Il sert à expliquer comment le client accepte : « retournez-le daté et signé avec la mention Bon pour accord ». Un devis signé est la meilleure preuve en cas de litige.' },
@@ -42,7 +42,7 @@
     // — mises à jour / sécurité / données —
     'upd.token': { t: 'Token GitHub', d: 'SkanFact se met à jour toute seule en allant chercher les nouvelles versions sur GitHub. Comme le dépôt est privé, il faut une clé d\'accès en lecture (le « token »). Elle est enregistrée uniquement sur cet ordinateur, jamais envoyée ailleurs.' },
     'sec.password': { t: 'Mot de passe', d: 'Il chiffre le fichier de données et toutes ses sauvegardes sur le disque (AES-256). Il protège contre un ordinateur perdu ou volé : sans le mot de passe, les fichiers sont illisibles, <b>y compris pour toi</b>. Il n\'existe aucune récupération : note-le ailleurs.' },
-    'data.backups': { t: 'Sauvegardes', d: 'Chaque jour, l\'état de tes données au premier enregistrement de la journée est copié dans un dossier <b>backups</b> (30 jours conservés). Pour revenir en arrière après une fausse manipulation : Importer, puis choisis le fichier du jour voulu.' },
+    'data.backups': { t: 'Sauvegardes', d: 'Chaque jour, l\'état de tes données au premier enregistrement de la journée est copié dans un dossier <b>backups</b> (30 jours conservés). Pour revenir en arrière après une fausse manipulation : Importer, puis choisis le fichier du jour voulu.', a: 'donnees' },
     'data.external': { t: 'Copie externe', d: 'Le geste le plus important de ta gestion. Choisis un dossier dans iCloud Drive, sur une clé USB ou un disque réseau : à chaque enregistrement, tes données et leurs sauvegardes y sont recopiées. Si ton Mac tombe en panne demain, ta comptabilité existe ailleurs.' },
     'data.demo': { t: 'Jeu de démonstration', d: 'Remplace tes données par treize mois d\'activité fictive : clients, devis, factures, relances, contrats. Parfait pour explorer sans rien casser. Tes paramètres société sont conservés et une sauvegarde est prise avant.' },
     'data.wipe': { t: 'Tout effacer', d: 'Supprime tous les clients, prestations et documents, y compris les factures émises. Utile après avoir joué avec la démo, avant de saisir tes vraies données. Une sauvegarde est prise avant, mais réfléchis quand même à deux fois.' },
@@ -75,10 +75,10 @@
     'ed.vat': { t: 'TVA', d: 'La taxe que tu collectes pour l\'État et que tu lui reverses. Les taux tunisiens sont 0, 7, 13 et 19 %. Le taux dépend de la nature de la prestation, pas de ton choix. <em>À VÉRIFIER avec ton comptable : le taux qui s\'applique à chacun de tes services.</em>' },
     'ed.notes': { t: 'Notes', d: 'Un texte libre imprimé sur le document : délai d\'intervention, matériel non inclus, conditions particulières. Enregistre les phrases que tu réutilises en « textes prédéfinis » (page Catalogue) pour les insérer en un clic.' },
     'ed.preview': { t: 'Aperçu', d: 'Exactement ce que ton client recevra. Il se met à jour pendant que tu tapes. Le compteur indique si le document tient sur une page : au-delà, les marges se resserrent automatiquement.' },
-    'ed.issue': { t: 'Émettre', d: 'Le moment où le document devient officiel : il reçoit son numéro définitif et n\'est plus modifiable. C\'est une règle comptable, pas un caprice du logiciel : une facture émise ne se corrige que par un <b>avoir</b>.' },
-    'ed.locked': { t: 'Document verrouillé', d: 'Cette facture est émise : son numéro est définitif et son contenu ne bouge plus. Pour corriger une erreur, crée un avoir (total ou partiel). Tant qu\'aucun paiement ni avoir n\'existe, un déverrouillage de secours reste possible dans le menu « Plus ».' },
+    'ed.issue': { t: 'Émettre', d: 'Le moment où le document devient officiel : il reçoit son numéro définitif et n\'est plus modifiable. C\'est une règle comptable, pas un caprice du logiciel : une facture émise ne se corrige que par un <b>avoir</b>.', a: 'facture' },
+    'ed.locked': { t: 'Document verrouillé', d: 'Cette facture est émise : son numéro est définitif et son contenu ne bouge plus. Pour corriger une erreur, crée un avoir (total ou partiel). Tant qu\'aucun paiement ni avoir n\'existe, un déverrouillage de secours reste possible dans le menu « Plus ».', a: 'facture' },
     'ed.payments': { t: 'Paiements', d: 'Enregistre chaque encaissement avec sa date, son montant et son mode. Plusieurs paiements partiels sont possibles. C\'est ce qui fait vivre ton « reste à encaisser », tes relances et ton délai moyen de paiement.' },
-    'ed.credit': { t: 'Avoir', d: 'Le document qui annule tout ou partie d\'une facture déjà émise : erreur de montant, prestation non rendue, geste commercial. Il porte son propre numéro (AVO-…) et se déduit de ton chiffre d\'affaires.' },
+    'ed.credit': { t: 'Avoir', d: 'Le document qui annule tout ou partie d\'une facture déjà émise : erreur de montant, prestation non rendue, geste commercial. Il porte son propre numéro (AVO-…) et se déduit de ton chiffre d\'affaires.', a: 'avoir' },
     'ed.deposit': { t: 'Facture d\'acompte', d: 'Une facture d\'un pourcentage du devis, émise avant de commencer le travail. Elle sécurise ta trésorerie sur les gros chantiers. La facture de solde déduira automatiquement ce qui a déjà été facturé.' },
     'ed.settle': { t: 'Facture de solde', d: 'La facture finale d\'un projet : elle reprend toutes les lignes du devis et retranche les acomptes déjà facturés. Ton client voit le détail complet et ne paie que ce qui reste.' },
     'ed.convert': { t: 'Convertir en facture', d: 'Crée un brouillon de facture reprenant le devis à l\'identique, et marque le devis « accepté ». Rien n\'est définitif tant que tu n\'as pas cliqué sur « Émettre ».' },
@@ -138,7 +138,7 @@
     'buy.project': { t: 'Affaire', d: 'Rattache cet achat au chantier pour lequel tu l\'as fait. C\'est ce rattachement qui rend la marge exacte : sans lui, l\'affaire semblera plus rentable qu\'elle ne l\'est.' },
     'cat.cost': { t: 'Coût de revient HT', d: 'Ce que cette prestation ou cet article te coûte : prix d\'achat de la marchandise, sous-traitance, matériel. Facultatif, mais c\'est lui qui permet de calculer la marge sur les ventes qui ne sont pas rattachées à une affaire. Pour une prestation où tu ne vends que ton temps, laisse 0 : la marge affichée sera alors le prix de vente.' },
     'soc.due': { t: 'Déclarations à déposer', d: 'Les déclarations sociales dont l\'échéance approche ou est passée. <b>SkanFact ne dépose rien</b> et ne se connecte à aucune administration : il prépare le tableau et te rappelle la date. « Marquer déposée » sert uniquement à faire taire le rappel une fois que tu l\'as fait. <em>À VÉRIFIER avec ton comptable : les dates et les modalités de dépôt.</em>' },
-    'soc.cnss': { t: 'Déclaration CNSS trimestrielle', d: 'Le tableau à recopier ou à envoyer : un salarié par ligne, avec son assiette, la part retenue sur son salaire, la part à ta charge et l\'accident du travail. <b>Le total est ce que tu dois verser à la CNSS</b>, les deux parts confondues. Échéance usuelle : le 15 du mois suivant la fin du trimestre — <em>à VÉRIFIER.</em>' },
+    'soc.cnss': { t: 'Déclaration CNSS trimestrielle', d: 'Le tableau à recopier ou à envoyer : un salarié par ligne, avec son assiette, la part retenue sur son salaire, la part à ta charge et l\'accident du travail. <b>Le total est ce que tu dois verser à la CNSS</b>, les deux parts confondues. Échéance usuelle : le 15 du mois suivant la fin du trimestre — <em>à VÉRIFIER.</em>', a: 'declarations' },
     'soc.annual': { t: 'Déclaration annuelle d\'employeur', d: 'Le récapitulatif de ce que tu as versé et retenu dans l\'année. Attention : elle porte sur <b>deux choses distinctes</b> qu\'on confond souvent — les salaires de tes employés d\'une part, et les retenues à la source que tu as pratiquées sur des <b>fournisseurs</b> (honoraires, loyers) d\'autre part. Les deux figurent sur le même formulaire.' },
     'soc.held': { t: 'Retenues sur fournisseurs', d: 'Quand tu paies un prestataire soumis à retenue à la source, tu gardes une part et tu la reverses au Trésor à sa place. Tu dois lui en remettre une <b>attestation</b>, sinon il ne peut pas la déduire de son propre impôt — et il te la réclamera. Les attestations manquantes sont signalées ici et dans « À faire ».' },
     'hr.leaveKind': { t: 'Nature de l\'absence', d: '<b>Congé payé</b> entame le compteur annuel sans réduire le salaire. <b>Arrêt maladie</b>, <b>maternité</b> et <b>autorisation</b> ne réduisent pas le salaire non plus et n\'entament pas le compteur. <b>Sans solde</b> et <b>injustifiée</b> réduisent le brut au prorata des jours. <em>À VÉRIFIER avec ton comptable : le traitement d\'un arrêt maladie dépend de sa durée et de la prise en charge CNSS.</em>' },
@@ -194,7 +194,7 @@
     'stk.initialCost': { t: 'Coût unitaire du départ', d: 'Ce que t\'a coûté, en moyenne, une unité de ce stock de départ. Il sert de base au coût moyen pondéré. Dans le doute, reprends le prix de ta dernière facture d\'achat.' },
     'stk.min': { t: 'Seuil d\'alerte', d: 'La quantité en dessous de laquelle il faut recommander. Mets-y de quoi tenir le temps que ton fournisseur livre : si une commande met deux semaines et que tu en vends deux par semaine, le seuil est de quatre. En dessous, l\'article remonte dans les alertes.' },
     'stk.value': { t: 'Valeur du stock', d: 'Ce que ta marchandise t\'a coûté, au coût moyen pondéré — pas ce qu\'elle rapportera vendue. C\'est le chiffre qu\'attend ton comptable à la clôture, et c\'est de l\'argent immobilisé : du stock, c\'est de la trésorerie qui dort sur une étagère.' },
-    'stk.cmp': { t: 'Coût moyen pondéré', d: 'À chaque entrée, le coût unitaire moyen est recalculé sur l\'ensemble du stock. Si tu as 5 disques à 200 DT et que tu en achètes 10 à 230, le coût moyen devient 220 DT. Les sorties partent à ce coût-là, et ne le changent pas. <em>À VÉRIFIER avec ton comptable : la méthode de valorisation retenue pour tes comptes annuels.</em>' },
+    'stk.cmp': { t: 'Coût moyen pondéré', d: 'À chaque entrée, le coût unitaire moyen est recalculé sur l\'ensemble du stock. Si tu as 5 disques à 200 DT et que tu en achètes 10 à 230, le coût moyen devient 220 DT. Les sorties partent à ce coût-là, et ne le changent pas. <em>À VÉRIFIER avec ton comptable : la méthode de valorisation retenue pour tes comptes annuels.</em>', a: 'stock' },
     'stk.negative': { t: 'Stock négatif', d: 'Tu as vendu plus que tu n\'as acheté : c\'est physiquement impossible, donc il manque une entrée. Un achat non saisi, une quantité mal recopiée, ou un stock de départ oublié. <b>Corrige la pièce en cause plutôt que d\'ajuster</b> — un ajustement cacherait l\'erreur sans la réparer, et fausserait ta TVA déductible.' },
     'stk.state': { t: 'État du stock', d: 'Ce que SkanFact déduit de tes pièces : aucune saisie de ta part. Une ligne d\'achat en destination « stock » fait une entrée, une facture ou un bon de livraison fait une sortie. Les brouillons, devis, proformas et bons de commande ne bougent rien : rien n\'a encore quitté l\'entrepôt.' },
     'stk.moves': { t: 'Mouvements', d: 'Le détail de tout ce qui est entré et sorti, avec le stock restant après chaque ligne. Clique une ligne pour ouvrir la pièce d\'origine. Une facture tirée d\'un bon de livraison ne sort rien une seconde fois : c\'est le bon de livraison qui fait foi.' },
@@ -209,7 +209,7 @@
     'immo.residual': { t: 'Valeur résiduelle', d: 'Ce que le bien vaudra encore à la fin de la durée, si tu comptes le revendre. On n\'amortit que la différence. Laisse zéro dans le doute : c\'est le cas le plus courant, et le plus simple.' },
     'immo.gross': { t: 'Valeur d\'acquisition totale', d: 'La somme des prix d\'achat de tous les biens encore à l\'actif à la fin de l\'exercice. Elle ne bouge pas avec le temps : c\'est l\'amortissement cumulé qui grandit en face.' },
     'immo.annuity': { t: 'Dotation de l\'exercice', d: 'La part de tes immobilisations que tu déduis cette année. C\'est une <b>charge</b> — elle est déjà retirée du résultat simplifié et comptée dans tes charges fixes au seuil de rentabilité — mais c\'est une charge qui ne sort pas d\'argent de ta banque : tu as payé le bien une fois, tu le déduis en plusieurs fois.' },
-    'immo.nbv': { t: 'Valeur nette comptable', d: 'Ce que le bien vaut encore dans tes comptes : valeur d\'achat moins tout ce qui a déjà été amorti. Ce n\'est pas sa valeur de revente — un ordinateur amorti à zéro peut encore se vendre, et une voiture peut valoir moins que sa VNC. C\'est elle qu\'on compare au prix obtenu le jour où tu le sors.' },
+    'immo.nbv': { t: 'Valeur nette comptable', d: 'Ce que le bien vaut encore dans tes comptes : valeur d\'achat moins tout ce qui a déjà été amorti. Ce n\'est pas sa valeur de revente — un ordinateur amorti à zéro peut encore se vendre, et une voiture peut valoir moins que sa VNC. C\'est elle qu\'on compare au prix obtenu le jour où tu le sors.', a: 'immobilisations' },
     'immo.table': { t: 'Tableau des amortissements', d: 'Le document que ton comptable te demandera à chaque clôture : un bien par ligne, avec sa valeur, ce qui était déjà amorti au 1er janvier, la dotation de l\'année et ce qu\'il en reste au 31 décembre. Le bouton « Exporter (CSV) » le lui envoie tel quel.' },
     'immo.waiting': { t: 'À immobiliser', d: 'Les lignes d\'achat que tu as marquées « immobilisation » et qui n\'ont pas encore de fiche. SkanFact ne les crée pas tout seul : la durée d\'amortissement est une décision. Tant qu\'une ligne reste ici, elle n\'est déduite <b>nulle part</b> — ni en charge, ni en amortissement.' },
     'immo.disposal': { t: 'Sortie du patrimoine', d: 'Un bien vendu, mis au rebut ou volé quitte l\'actif. On l\'amortit jusqu\'au jour de la sortie, puis on compare le prix obtenu à sa valeur nette comptable : au-dessus c\'est une plus-value, en dessous une moins-value. <em>À VÉRIFIER avec ton comptable : une plus-value de cession est en principe imposable.</em>' },
@@ -237,7 +237,7 @@
     'cab.motdepasse': { t: 'Protéger par mot de passe', d: 'Le paquet contient tes factures, tes achats et tes bulletins de paie : des informations qu\'on ne laisse pas traîner dans une boîte mail. Avec un mot de passe, le contenu est chiffré (AES-256) et illisible sans lui. <b>Transmets-le par un autre canal que le fichier</b> — par téléphone, pas dans le même message. L\'entête du paquet reste lisible sans le mot de passe (ton nom et le mois), pour que ton comptable sache de quoi il s\'agit avant de l\'ouvrir.' },
     'cab.historique': { t: 'Ce qui a déjà été envoyé', d: 'Chaque paquet fabriqué, avec sa date, son état (définitif si le mois était clôturé, provisoire sinon) et son <b>empreinte</b>. L\'empreinte est la carte d\'identité du fichier : si ton comptable calcule la même, le paquet qu\'il a reçu est exactement celui que tu as envoyé, à l\'octet près. C\'est ce qui permet de prouver que rien n\'a été modifié en route.' },
     'lic.etat': { t: 'Ta licence', d: 'SkanFact se vend, donc il y a une licence — mais elle est faite pour ne jamais te gêner. <b>Aucune connexion :</b> la clé est vérifiée sur ton ordinateur, elle n\'est envoyée nulle part, et l\'application fonctionne sans internet. <b>Aucune donnée en otage :</b> même expirée, tu peux lire, imprimer, exporter tes documents et envoyer le paquet à ton comptable — seule la création de nouvelles pièces attend le renouvellement. Si ton comptable utilise SkanFact Cabinet et t\'a remis son fichier d\'appairage, son empreinte part avec ta demande et te donne droit à la remise de parrainage.' },
-    'ecr.quoi': { t: 'Écritures comptables', d: 'Tes pièces traduites dans la langue de ton comptable : chaque facture, chaque achat, chaque règlement et chaque bulletin devient un jeu d\'écritures en <b>partie double</b> — autant au débit qu\'au crédit. C\'est exactement ce qu\'il retape aujourd\'hui à la main dans son logiciel ; ici, c\'est un fichier qu\'il importe. Le contrôle affiché en haut vérifie que chaque pièce tombe juste : sinon son logiciel refuserait le fichier. <b>Les numéros de compte ne sont pas une vérité :</b> ceux proposés suivent l\'usage du plan comptable tunisien, mais chaque cabinet a les siens. Demande-lui les bons et modifie-les dans « Plan de comptes ». <em>À VÉRIFIER avec ton comptable.</em>' },
+    'ecr.quoi': { t: 'Écritures comptables', d: 'Tes pièces traduites dans la langue de ton comptable : chaque facture, chaque achat, chaque règlement et chaque bulletin devient un jeu d\'écritures en <b>partie double</b> — autant au débit qu\'au crédit. C\'est exactement ce qu\'il retape aujourd\'hui à la main dans son logiciel ; ici, c\'est un fichier qu\'il importe. Le contrôle affiché en haut vérifie que chaque pièce tombe juste : sinon son logiciel refuserait le fichier. <b>Les numéros de compte ne sont pas une vérité :</b> ceux proposés suivent l\'usage du plan comptable tunisien, mais chaque cabinet a les siens. Demande-lui les bons et modifie-les dans « Plan de comptes ». <em>À VÉRIFIER avec ton comptable.</em>', a: 'compta' },
     'clot.etat': { t: 'Période clôturée', d: 'La date jusqu\'à laquelle tout est figé. Aucune pièce datée avant elle ne peut plus être créée, modifiée ou supprimée — ni facture, ni achat, ni paiement, ni bulletin. C\'est cette promesse qui permet à ton comptable de travailler sur un dossier qui ne bouge plus dans son dos. Tant que rien n\'est clôturé, une saisie d\'aujourd\'hui peut changer la TVA d\'un mois déjà déclaré, sans que personne ne s\'en aperçoive.' },
     'clot.cloturer': { t: 'Clôturer un mois', d: 'À faire une fois que le mois est terminé et que tu as tout saisi : les factures émises, les achats reçus, les paiements, les bulletins. L\'application te montre d\'abord ce qui mériterait d\'être réglé (un brouillon oublié, un achat sans justificatif, un mouvement non pointé) — mais elle ne t\'empêche jamais de clôturer : ces points sont là pour que tu les voies. Les mois se clôturent dans l\'ordre, du plus ancien au plus récent. Le mois en cours ne se clôture pas : il lui reste des pièces à venir.' },
     'clot.rouvrir': { t: 'Rouvrir une période', d: 'Quand une pièce a été oubliée dans un mois déjà clôturé. Ce n\'est pas interdit, c\'est encadré : tu écris un motif, et la réouverture s\'inscrit dans le journal. <b>Préviens ton comptable</b> avant de le faire : les chiffres qu\'il a reçus vont changer, et s\'il a déjà déclaré la TVA du mois, une correction sera peut-être nécessaire. <em>À VÉRIFIER avec lui</em> selon ce qui a déjà été déposé.' },
@@ -1072,7 +1072,14 @@
     },
     {
       id: 'vocabulaire', title: 'Le vocabulaire', sub: 'Les mots qu\'on emploie sans les expliquer',
+      // Ce glossaire s'était arrêté à la 2.0 : seize mots de vente, et pas un seul des quinze
+      // modules ajoutés depuis. Quelqu'un qui butait sur « VNC », « assiette », « prorata » ou
+      // « partie double » le consultait, ne trouvait rien, et concluait que le glossaire ne sert
+      // à rien. Un mot affiché quelque part dans l'application se définit ici.
       body: `
+<p class="small muted">Les mots de gestion qu'on emploie sans les expliquer, dans l'ordre où tu les
+rencontres. Si un mot affiché dans l'application manque ici, c'est un défaut : signale-le.</p>
+<h3>Vendre et facturer</h3>
 <dl class="gloss">
   <dt>HT (hors taxes)</dt><dd>Le prix avant la TVA. C'est ce qui constitue ton chiffre d'affaires et ton revenu réel.</dd>
   <dt>TTC (toutes taxes comprises)</dt><dd>Le prix TVA et timbre inclus. C'est ce que le client paie.</dd>
@@ -1090,6 +1097,73 @@
   <dt>Trésorerie</dt><dd>L'argent réellement disponible sur ton compte. Différent du chiffre d'affaires.</dd>
   <dt>Matricule fiscal</dt><dd>Ton identifiant fiscal, obligatoire sur les factures.</dd>
   <dt>RC</dt><dd>Registre de commerce : le numéro d'immatriculation de ton entreprise.</dd>
+  <dt>Proforma</dt><dd>Une facture « pour la forme » : elle a l'apparence d'une facture mais n'en est pas une. Elle sert à obtenir un accord, un financement ou un dédouanement. Elle ne compte ni dans ton chiffre d'affaires ni dans ta TVA.</dd>
+  <dt>Bon de livraison</dt><dd>La pièce qui accompagne la marchandise et que le client signe à la réception. Elle prouve la livraison ; la facture, elle, réclame l'argent.</dd>
+</dl>
+
+<h3>Acheter</h3>
+<dl class="gloss">
+  <dt>TVA déductible</dt><dd>La TVA que tu as payée à tes fournisseurs. Tu la retranches de la TVA que tu as collectée sur tes ventes : tu ne verses à l'État que la différence.</dd>
+  <dt>TVA collectée</dt><dd>La TVA que tes clients t'ont payée. Elle ne t'appartient pas : tu la gardes le temps de la reverser.</dd>
+  <dt>Crédit de TVA</dt><dd>Quand tu as payé plus de TVA que tu n'en as collecté (un gros achat, un mois creux). Il ne se perd pas : il se reporte sur le mois suivant.</dd>
+  <dt>Destination d'une ligne</dt><dd>Ce que devient ce que tu achètes : une <b>charge</b> (consommé tout de suite), du <b>stock</b> (revendu plus tard), ou une <b>immobilisation</b> (gardé plusieurs années). Le choix change où la dépense apparaît dans tes comptes.</dd>
+  <dt>Échéancier fournisseur</dt><dd>Ce que tu dois, et quand. L'équivalent de tes relances, vu de l'autre côté.</dd>
+</dl>
+
+<h3>Stock</h3>
+<dl class="gloss">
+  <dt>Coût moyen pondéré</dt><dd>Le prix de revient moyen d'un article, recalculé à chaque entrée. Cinq disques à 200 DT plus dix à 230 donnent un coût moyen de 220 DT. Les sorties partent à ce coût-là.</dd>
+  <dt>Coût des marchandises vendues</dt><dd>Ce que les articles sortis t'ont coûté. C'est <b>ça</b>, la charge — pas l'achat lui-même : acheter de la marchandise, c'est transformer de l'argent en stock, pas le dépenser.</dd>
+  <dt>Inventaire</dt><dd>Le comptage réel, rayon par rayon, comparé à ce que l'application croit avoir. L'écart se saisit, il ne se devine pas.</dd>
+  <dt>Numéro de série</dt><dd>L'identifiant unique d'une unité précise. Il permet de savoir qui a quoi, depuis quand, et jusqu'à quand c'est garanti.</dd>
+</dl>
+
+<h3>Ce que tu gardes</h3>
+<dl class="gloss">
+  <dt>Immobilisation</dt><dd>Un bien qui reste dans l'entreprise plusieurs années : ordinateur, véhicule, mobilier, machine. Il ne se déduit pas d'un coup, mais année après année.</dd>
+  <dt>Amortissement</dt><dd>La part de la valeur d'un bien que tu déduis chaque année, sur sa durée d'usage. Une camionnette à 60 000 DT sur 5 ans, c'est 12 000 DT par an.</dd>
+  <dt>Dotation</dt><dd>Le montant amorti sur une période précise. C'est la ligne qui part en charge dans tes comptes.</dd>
+  <dt>VNC (valeur nette comptable)</dt><dd>Ce que le bien vaut encore dans tes comptes : sa valeur d'achat moins tout ce qui a déjà été amorti. Ce n'est <b>pas</b> son prix de revente.</dd>
+  <dt>Prorata temporis</dt><dd>Au prorata du temps. Un bien mis en service le 1<sup>er</sup> octobre ne s'amortit que trois mois la première année, pas douze.</dd>
+  <dt>Base 360</dt><dd>Convention de calcul qui compte chaque mois pour 30 jours et l'année pour 360. Elle simplifie les proratas, et c'est l'usage. <em>À VÉRIFIER avec ton comptable.</em></dd>
+  <dt>Exercice</dt><dd>L'année comptable de l'entreprise. En général l'année civile, du 1<sup>er</sup> janvier au 31 décembre.</dd>
+  <dt>Plus ou moins-value de cession</dt><dd>La différence entre le prix auquel tu vends un bien et sa VNC du jour. Au-dessus, c'est un gain ; en dessous, une perte.</dd>
+</dl>
+
+<h3>Savoir si tu gagnes de l'argent</h3>
+<dl class="gloss">
+  <dt>Marge</dt><dd>Ce qui reste d'une vente une fois retiré ce qu'elle t'a coûté. Un chiffre d'affaires élevé avec une marge nulle ne nourrit personne.</dd>
+  <dt>Affaire</dt><dd>Un chantier, une mission, un projet : tout ce qui rassemble des ventes et des achats qui vont ensemble. C'est le seul endroit où la marge est <b>exacte</b>, parce qu'elle compare des factures réelles à des achats réels.</dd>
+  <dt>Charge fixe</dt><dd>Ce que tu paies que tu vendes ou non : loyer, salaires, assurances, abonnements.</dd>
+  <dt>Charge variable</dt><dd>Ce qui augmente avec les ventes : marchandises, sous-traitance, matières.</dd>
+  <dt>Marge sur coûts variables</dt><dd>Ce qui reste de chaque dinar vendu une fois payées les charges variables. C'est elle qui doit couvrir les charges fixes.</dd>
+  <dt>Seuil de rentabilité</dt><dd>Le chiffre d'affaires à partir duquel tu commences à gagner de l'argent. En dessous, tu travailles à perte. <em>À VÉRIFIER avec ton comptable : le classement fixe/variable de tes charges.</em></dd>
+  <dt>Prévision de trésorerie</dt><dd>Ce qui va entrer et sortir dans les semaines à venir, d'après les échéances déjà engagées. Ce n'est pas une promesse : un client peut payer en retard.</dd>
+  <dt>Rapprochement bancaire</dt><dd>Pointer un à un les mouvements de ton relevé avec ceux de l'application, pour vérifier qu'aucun ne manque.</dd>
+</dl>
+
+<h3>Payer quelqu'un</h3>
+<dl class="gloss">
+  <dt>Brut</dt><dd>Le salaire avant toute retenue. C'est ce qui figure sur le contrat.</dd>
+  <dt>Net</dt><dd>Ce que le salarié reçoit réellement, une fois retirées les cotisations et l'impôt.</dd>
+  <dt>Coût employeur</dt><dd>Ce que le salarié te coûte vraiment : son brut plus les cotisations à ta charge. C'est ce chiffre-là qui entre dans ton résultat, ni le brut ni le net.</dd>
+  <dt>Assiette</dt><dd>La part du salaire sur laquelle se calcule une cotisation. Elle n'est pas toujours égale au brut : certaines primes en sortent, certaines cotisations sont plafonnées. <em>À VÉRIFIER avec ton comptable.</em></dd>
+  <dt>CNSS</dt><dd>Caisse nationale de sécurité sociale. Chaque salaire lui donne lieu à une part retenue sur le salarié et une part à ta charge.</dd>
+  <dt>IRPP</dt><dd>Impôt sur le revenu des personnes physiques, retenu sur le salaire et reversé par toi. Il se calcule par tranches, chacune sur la part du revenu qui la traverse.</dd>
+  <dt>Déclaration d'employeur</dt><dd>Le formulaire annuel qui récapitule <b>deux choses distinctes</b> : les salaires versés, et les retenues à la source pratiquées sur des fournisseurs (honoraires, loyers).</dd>
+  <dt>Solde de tout compte</dt><dd>Le décompte remis au départ d'un salarié : dernier salaire, congés non pris, indemnités.</dd>
+</dl>
+
+<h3>Ton comptable</h3>
+<dl class="gloss">
+  <dt>Écriture comptable</dt><dd>La traduction d'une pièce dans la langue de ton comptable. Chaque facture, achat ou bulletin en produit plusieurs.</dd>
+  <dt>Partie double</dt><dd>La règle qui veut que toute écriture s'inscrive deux fois, pour le même montant : une fois au débit, une fois au crédit. Si les deux totaux ne sont pas égaux, il manque quelque chose.</dd>
+  <dt>Débit / Crédit</dt><dd>Les deux colonnes. Elles ne veulent pas dire « moins » et « plus » : leur sens dépend du compte. Un montant négatif change de colonne, il ne garde jamais son signe.</dd>
+  <dt>Plan de comptes</dt><dd>La liste des numéros de compte utilisés. <b>Ceux proposés ne sont pas une vérité</b> : chaque cabinet a les siens, demande-lui et modifie-les.</dd>
+  <dt>Clôturer une période</dt><dd>Déclarer qu'un mois ne bougera plus, parce que tu l'as transmis. L'application refuse ensuite toute écriture à ces dates, sauf réouverture motivée.</dd>
+  <dt>Paquet mensuel</dt><dd>Le fichier unique que tu envoies à ton comptable : tous les PDF du mois, les journaux, et une empreinte de chaque pièce pour qu'il puisse vérifier que rien n'a bougé en route.</dd>
+  <dt>Provisoire / définitif</dt><dd>Un paquet est <b>définitif</b> quand le mois était clôturé au moment de l'envoi : les chiffres ne bougeront plus. <b>Provisoire</b>, ils peuvent encore changer — ce n'est pas un défaut, c'est une information pour ton comptable.</dd>
+  <dt>Empreinte</dt><dd>Une suite de caractères calculée à partir d'un fichier. Deux fichiers identiques donnent la même ; un octet change, elle change entièrement. C'est ce qui prouve qu'une pièce reçue est bien celle qui a été envoyée.</dd>
 </dl>`
     },
     {

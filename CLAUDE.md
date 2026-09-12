@@ -347,6 +347,9 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:perte` | le scénario catastrophe : le fichier principal disparaît, l'application le dit, et tout revient — clé du cabinet comprise |
 | `npm run e2e:demenagement` | **changer d'ordinateur** : deux postes à la suite, une clé USB entre les deux, et la MÊME empreinte à l'arrivée |
 | `npm run e2e:couches` | **les couches et le clavier** : deux fenêtres empilées, Échap, Entrée, Cmd+K dans les deux sens |
+| `npm run e2e:barre` | **la barre latérale mesurée** : Aide et Paramètres atteignables sur quatre tailles d'écran, et rien de masqué n'est perdu |
+| `npm run e2e:exemple` | **charger le jeu d'exemple et en revenir** : le bandeau, la restauration, et la fausse identité qui ne survit pas à l'effacement |
+| `npm run e2e:captures` | photographie les 20 pages, leurs onglets et quatre gestes, en vierge et en démo, à 1440 et 1280 |
 | `npm run e2e:gel` | le chien de garde : l'interface est VRAIMENT gelée, et le journal nomme la fonction coupable |
 
 Ils ont longtemps vécu dans un dossier de travail temporaire, effacé à chaque session : il fallait les réécrire de mémoire, et ils dérivaient (une assertion restée sur une version périmée, un écran neuf jamais parcouru). **Un test qu'on doit réécrire pour s'en servir n'est pas un test.** Le harnais (`test/e2e/harnais.js`) trouve Playwright où il est, lit la version dans `package.json` au lieu de l'écrire en dur, et range les captures dans `dist-e2e/` (ignoré par Git).
@@ -379,6 +382,83 @@ Règles apprises, à ne pas recasser :
 - **electron-builder ne convertit pas une icône** : il échange `.ico` et `.icns` selon la plateforme, donc un `.png` déclaré ressort inchangé et s'installe là où un `.icns` est attendu. Rien n'échoue. Déclarer l'icône **sans extension** et fabriquer les vrais fichiers (`node scripts/icones.js`, Electron pour le dessin + app-builder pour l'assemblage ; le `.ico` porte ses sept tailles, parce que c'est à 16 px qu'on regarde une liste de fichiers).
 
 **Méthode qui a payé, à refaire :** un workflow de spécification en lecture seule (un agent par constat, qui lit le vrai code et rend des ancrages exacts), puis application à la main avec vérification d'unicité de chaque ancrage. Deux agents ont trouvé des défauts que je venais moi-même d'introduire, et un troisième a montré qu'un constat déjà « corrigé » l'était dans un seul sens (Cmd+K par-dessus une fenêtre, mais pas une fenêtre par-dessus la palette).
+
+## 7.0.0 — « Soit t'es pro soit tu te prends la tête »
+
+Skander, propriétaire de l'application : « je suis débutant et j'ai essayé de bidouiller en testant
+tout seul et **je me suis perdu** ». En six semaines, SkanFact est passé de « devis et factures » à
+quinze modules. Chacun est arrivé avec son aide, ses bulles et ses états vides ; **aucun n'a été livré
+avec une révision de l'ensemble**. Le plan complet et l'audit à douze angles sont dans `PLAN-UX.md`.
+
+**Ce n'était pas une application mal faite, c'était une application faite pour quelqu'un qui sait
+déjà.** Les défauts de ce genre ne se voient dans aucune console et aucun test de calcul ne les
+attrape : il faut mesurer dans l'application réelle, et regarder les captures.
+
+Règles apprises, à ne pas recasser :
+
+- **Le bouton qu'on cherche quand on est perdu doit être le seul qui ne bouge jamais.** `nav` demandait
+  866 px et en avait 705 à 1440×900 : « Aide » était hors champ sur **toutes** les tailles d'écran
+  courantes, y compris un écran de 1050 px de haut — derrière une barre de défilement que macOS masque
+  tant qu'on ne fait pas défiler. Pendant ce temps, « Exporter les données » et « Importer », dont un
+  débutant n'a aucun besoin, occupaient le pied toujours visible. Paramètres et Aide y vivent
+  désormais ; `npm run e2e:barre` le mesure sur quatre tailles.
+- **On ne masque jamais ce que quelqu'un a saisi.** Un module retiré du menu qui contient ne serait-ce
+  qu'une ligne réapparaît tout seul et ne se laisse plus décocher — et l'écran DIT pourquoi. Le
+  filtrage du menu n'est acceptable que parce que la palette liste tout, que l'adresse fonctionne, et
+  qu'une page « Tous les modules » existe : un test vérifie les trois. Sans réglage enregistré
+  (`company.modules` absent), **tout s'affiche** : une mise à jour ne fait disparaître aucune page.
+- **Un bouton qui ne répond pas est pire qu'un bouton absent.** `todoList` produisait 22 sortes de
+  lignes, `TODO_ACTIONS` en armait 9, et `bindTodo` faisait `if (a) a.run()` : treize boutons « Voir »
+  avalaient le clic en silence. On croit avoir mal cliqué, on recommence, on doute de soi, puis du
+  logiciel. **Toute liste dont les lignes portent un bouton a besoin d'un test de couverture** entre ce
+  que la source peut produire et ce que l'interface sait faire.
+- **Un refus dit trois choses : ce qui est refusé, pourquoi, et le bouton qui débloque.** Une pièce
+  émise montrait vingt champs gris et une explication de 12 px, avec la seule sortie cachée dans
+  « Plus ▾ ». Et le même refus ne se dit pas de deux façons : `closedToast` (bandeau de 2,6 s, sans
+  issue) doublait `closedBlock` (fenêtre avec « Aller aux clôtures ») — il a disparu.
+- **Une saisie refusée se MONTRE** : on amène le champ à l'écran, on y met le curseur, on le marque
+  (`refus()`). Un message seul oblige à relire tout le formulaire — et la barre d'actions est en haut
+  pendant que la ligne fautive est en bas.
+- **Un état vide qui explique le geste en prose n'est pas une interface, c'est une notice de montage.**
+  52 sur 58 n'avaient aucun bouton : « Ouvre le Catalogue, modifie un article suivi en stock et coche… »
+  demande de retenir une phrase, de naviguer ailleurs, et de retrouver la bonne case.
+- **Une liste qui se dit triée par urgence doit l'être.** Le commentaire de `todoList` le promettait
+  depuis la 1.10.0 ; l'ordre réel était celui dans lequel les modules ont été écrits. Un test qui fixe
+  l'ordre attendu **en dur** ne l'aurait jamais attrapé : il décrivait le défaut. On teste la RÈGLE.
+- **Une explication qui s'arrête là où la question devient précise est un cul-de-sac.** Les bulles
+  portent un `a` vers l'article qui développe ; un en-tête de colonne peut porter une bulle (c'était le
+  seul endroit où c'était impossible, et c'est là que vivent les abréviations) ; l'aide a une recherche
+  qui lit le CORPS des articles, parce qu'un mot comme « assiette » n'est dans aucun des 32 titres.
+- **Un glossaire qui s'arrête à une version ancienne ne ment pas, il déçoit** — et on n'y revient
+  jamais. Il est passé de 17 à 59 entrées, et un test exige que chaque mot affiché dans l'interface y
+  soit défini.
+- **Le jeu d'exemple ne doit jamais pouvoir signer une vraie facture.** Chargé avant que la fiche
+  société soit remplie — ce que fait un débutant — il donnait à l'entreprise le nom « DÉMO — Société de
+  services SUARL », un matricule et un RIB inventés, et « Tout effacer » **gardait cette fiche**. Les
+  données d'exemple se déclarent (`data.demo`), un bandeau permanent le dit, et l'identité empruntée
+  part avec l'effacement.
+- **Une liste de choses à effacer écrite à la main dérive à chaque module ajouté.** « Tout effacer »
+  vidait 7 listes sur 30 : après l'exemple, il restait de faux fournisseurs, salariés, bulletins,
+  immobilisations et comptes bancaires. `core.wipeData` la **déduit** de `DEFAULT_DATA`.
+- **Le premier message d'un logiciel ne peut pas être un toast.** Il durait 2,6 secondes, n'était pas
+  cliquable, et nommait un onglet de Paramètres que l'utilisateur ne voyait pas dans sa barre latérale.
+  Ce qu'il faut dire au premier lancement vit dans « Tes premiers pas », dont l'état de chaque étape est
+  **déduit des données** — une case qu'on coche soi-même ment le jour où on l'a cochée par erreur.
+- **Avant d'écrire une phrase rassurante, vérifier que l'univers concerné est non vide.** « Rien à faire
+  aujourd'hui : aucun retard » félicitait quelqu'un qui n'avait jamais rien facturé.
+- **Piège Playwright, revu :** un panneau qui se redessine à chaque clic détache les poignées obtenues
+  d'une seule requête. On reprend le premier élément encore dans l'état voulu à chaque tour. Au passage,
+  le redessin faisait perdre le focus — c'est un défaut d'interface autant qu'un piège de test.
+- **Piège des tests qui lisent du HTML :** un lien mis en commentaire satisfaisait `includes(...)`. Les
+  commentaires se retirent avant de juger, et on vérifie que le nettoyage n'a pas mangé le code. Trouvé
+  en essayant de faire échouer le test exprès — ce qui est la seule façon de savoir qu'il sert.
+
+**L'instrument qui manquait :** `npm run e2e:captures` photographie les 20 pages, leurs onglets et
+quatre gestes (éditeur, choix de client, palette, nouvelle fiche), dans deux états — **vierge** (juste
+après l'assistant) et **démo** — aux deux largeurs qui comptent. CLAUDE.md décrivait cette méthode
+comme si `e2e:entreprise` la fournissait : ce n'était plus vrai, et il fallait donc réécrire le
+photographe à chaque audit. Les défauts « je ne sais pas par où commencer » vivent tous dans l'état
+vierge, ceux de densité et de vocabulaire dans l'état démo.
 
 ## Pistes pour la suite (non demandées)
 

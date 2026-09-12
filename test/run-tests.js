@@ -5102,5 +5102,52 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.ok(!('demo' in avecFiche.company), 'la marque d\'emprunt doit disparaître une fois l\'exemple effacé');
   });
 
+  t('les mots : une bulle mène à son article, et un en-tête de colonne peut en porter une', () => {
+    const guide = require('../src/renderer/guide.js');
+    const app = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
+    const ids = new Set(guide.ARTICLES.map(a => a.id));
+
+    // Une bulle qui renvoie à un article disparu serait un lien mort — et personne ne le verrait,
+    // puisqu'il faut cliquer la bulle pour le découvrir.
+    const reliees = Object.entries(guide.INFO).filter(([, v]) => v.a);
+    assert.ok(reliees.length >= 10, `seulement ${reliees.length} bulles mènent à un article`);
+    reliees.forEach(([cle, v]) => assert.ok(ids.has(v.a),
+      `la bulle « ${cle} » renvoie à l'article « ${v.a} », qui n'existe pas`));
+    assert.ok(/ip-more/.test(app), 'openInfoPop doit afficher le lien vers l\'article');
+
+    // Les abréviations vivent dans les en-têtes de colonnes ; c'était le seul endroit de
+    // l'application où l'on ne pouvait pas poser de bulle.
+    assert.ok(/c\.info \? info\(c\.info\)/.test(app), 'sortHead doit savoir rendre la bulle d\'une colonne');
+    // Et cliquer cette bulle ne doit pas trier la colonne au passage : la liste sauterait sous les
+    // yeux de quelqu'un qui voulait seulement lire une définition.
+    assert.ok(/e\.target\.closest\('\.i\[data-info\]'\)\) return;/.test(app),
+      'bindSort doit ignorer un clic sur la bulle de l\'en-tête');
+
+    // La recherche de l'aide doit lire le CORPS des articles : un mot comme « assiette »
+    // n'apparaît dans aucun des trente-deux titres.
+    assert.ok(/sansBalises\(a\.body\)/.test(app), 'la recherche de l\'aide doit lire le corps des articles');
+    const glossaire = guide.ARTICLES.find(a => a.id === 'vocabulaire');
+    assert.ok(glossaire, 'le glossaire doit exister');
+
+    // Le glossaire s'était arrêté à la 2.0 : seize mots de vente, et pas un seul des quinze modules
+    // ajoutés depuis. Quelqu'un qui butait sur « VNC » le consultait, ne trouvait rien, et n'y
+    // revenait plus. Chaque mot ci-dessous est affiché quelque part dans l'interface ; s'il n'est
+    // pas défini, le glossaire ment par omission.
+    const AFFICHES = [
+      'VNC', 'amortissement', 'dotation', 'prorata', 'immobilisation', 'exercice',
+      'TVA déductible', 'TVA collectée', 'crédit de TVA', 'coût moyen pondéré', 'inventaire',
+      'numéro de série', 'marge', 'affaire', 'charge fixe', 'charge variable',
+      'seuil de rentabilité', 'rapprochement', 'brut', 'net', 'coût employeur', 'assiette',
+      'CNSS', 'IRPP', 'écriture comptable', 'partie double', 'plan de comptes',
+      'clôturer', 'paquet mensuel', 'provisoire', 'empreinte', 'proforma', 'bon de livraison'
+    ];
+    const corps = glossaire.body.toLowerCase();
+    const absents = AFFICHES.filter(m => !corps.includes(m.toLowerCase()));
+    assert.deepStrictEqual(absents, [],
+      `ces mots s'affichent dans l'application et ne sont définis nulle part : ${absents.join(', ')}`);
+    assert.ok((glossaire.body.match(/<dt>/g) || []).length >= 50,
+      'le glossaire doit couvrir tous les modules, pas seulement la vente');
+  });
+
   console.log(`\n${n} tests OK`);
 })().catch(e => { console.error(e); process.exit(1); });

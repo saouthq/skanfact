@@ -7,6 +7,67 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 7.0.0 — 12/09/2026
+
+**« Soit t'es pro soit tu te prends la tête. »** Skander, propriétaire de SkanFact, ne savait pas s'en servir. En six semaines l'application est passée de « devis et factures » à quinze modules ; chacun est arrivé avec son aide et ses bulles, aucun n'a été livré avec une révision de l'ensemble. Le résultat n'était pas une application mal faite, c'était une application **faite pour quelqu'un qui sait déjà**.
+
+Quatre chiffres, mesurés dans l'application réelle :
+
+| | |
+|---|---|
+| Le bouton **Aide** était hors de l'écran sur **toutes** les tailles d'écran courantes | `nav` demandait 866 px ; il en avait 705 à 1440×900, 563 à 1366×768 |
+| **52 états vides sur 58** n'avaient aucun bouton | ils écrivaient le geste en prose, à retenir puis à refaire ailleurs |
+| **13 boutons de « À faire »** ne faisaient rien du tout | ni message, ni erreur, ni navigation |
+| **« Tout effacer » vidait 7 listes sur 30** | et pouvait laisser une fausse identité sur de vraies factures |
+
+### Le bouton qu'on cherche quand on est perdu
+
+- **« Paramètres » et « Aide » descendent dans le pied de la barre latérale**, qui ne défile jamais. Ils étaient en bout de `nav` : à 1440×900, cinq entrées sur dix-neuf étaient hors champ, et « Aide » l'était même sur un écran de 1050 px de haut — derrière une barre de défilement que macOS masque tant qu'on ne fait pas défiler. L'article « Démarrer » y renvoie onze fois.
+- **La navigation devient une donnée** (`core.PAGES`, `core.MODULES`) au lieu de dix-neuf liens écrits à la main dans `index.html`. Le titre de la fenêtre se lisait dans le *texte* du lien ; il vient maintenant de la même source.
+- **Les modules qu'on n'utilise pas sortent du menu, jamais de l'application.** Une page **« Tous les modules »** les recense, la palette les trouve toujours, leur adresse fonctionne, et un bandeau explique et propose de les remettre. **Un module qui contient quelque chose revient tout seul et ne se laisse plus décocher** — on ne cache jamais le travail de quelqu'un. Sans réglage enregistré, tout s'affiche : une installation existante ne perd rien.
+- Les intertitres deviennent des verbes — **Vendre, Acheter, Piloter**. « Fichiers » a disparu : personne ne cherche un client dans « Fichiers ».
+- Quand la barre déborde vraiment, **elle a l'air de déborder** (barre de défilement forcée).
+
+### Le premier jour
+
+- **« Tes premiers pas »** : sept étapes dont l'état est **déduit des données**, jamais coché à la main, chacune avec son bouton. Le panneau remplace les quatre compteurs à « 0,000 DT », le graphique de douze mois vides et le « Top clients » vide — 548 px avant la première phrase utile — et disparaît tout seul quand tout est fait.
+- Le premier message de l'application n'est plus **un toast de 2,6 secondes** qui nommait un onglet de Paramètres invisible dans la barre latérale.
+- **« Voir un exemple rempli » charge enfin l'exemple.** Il déposait l'utilisateur dans Paramètres, devant un encadré rouge « Zone sensible », avec un toast qui nommait l'onglet où chercher le vrai bouton.
+- **« Rien à faire aujourd'hui »** ne félicite plus quelqu'un qui n'a jamais rien facturé.
+
+### « Y'a des choses qu'on arrive pas à faire et on ne comprend pas pourquoi »
+
+- **Treize boutons morts.** `todoList` produit 22 sortes de lignes ; `TODO_ACTIONS` en armait 9, et `bindTodo` faisait `if (a) a.run()` — le clic était avalé en silence. Sur le tableau de bord du jeu d'exemple, **7 boutons sur 13** ne faisaient rien. Tous branchés ; un test interdit d'en refabriquer un ; et si jamais il en revenait un, l'application le **dit** au lieu de se taire.
+- **Une pièce émise** montrait vingt champs gris, une explication de 12 px sous le titre, et cachait sa seule sortie dans « Plus ▾ ». C'est un **bandeau** qui dit la règle et porte « Corriger par un avoir… » et « Modifier quand même… » — ou, quand ce n'est plus possible, pourquoi.
+- **Un refus se dit d'une seule façon.** `closedToast` disparaît : c'était le même refus que `closedBlock`, dit une fois avec un bouton « Aller aux clôtures » et une fois en bandeau de deux secondes et demie qui nommait l'endroit sans y mener.
+- **Une saisie refusée amène le champ à l'écran**, y met le curseur et le marque en rouge, au lieu d'annoncer « ajoute une désignation » pendant qu'on regarde le haut d'un devis de huit lignes.
+- Le **« ✕ » de la dernière ligne d'un achat**, éteint et muet alors que le même bouton marche côté vente.
+- **« À faire » se hiérarchise enfin.** Le commentaire promettait « du plus urgent au moins urgent » depuis la 1.10.0 ; l'ordre réel était celui dans lequel les modules ont été écrits — deux déclarations sociales **en retard** arrivaient neuvièmes, sous cinq lignes orange. Tri stable par urgence, cinq lignes visibles, « voir les N autres » : en démonstration, le panneau affichait treize corvées et mangeait l'écran entier.
+
+### Les mots
+
+- **Le glossaire passe de 17 à 59 entrées.** Il s'était arrêté à la 2.0 : seize mots de vente, et pas un seul des quinze modules ajoutés depuis. VNC, assiette, prorata temporis, partie double, coût employeur, marge sur coûts variables, empreinte, provisoire/définitif… Un test vérifie que chaque mot affiché dans l'interface y est défini.
+- **Une bulle mène à l'article qui développe.** Les 275 explications étaient des culs-de-sac : elles laissaient avec une question plus précise et nulle part où aller.
+- **Un en-tête de colonne peut porter une bulle** — c'était le seul endroit de l'application où c'était impossible, et c'est là que vivent presque toutes les abréviations.
+- **Une recherche dans l'aide**, qui lit aussi le corps des articles : buter sur « assiette » et devoir deviner lequel des trente-deux articles en parle, ce n'est pas de l'aide.
+- La barre latérale dit à quoi sert chaque page au survol.
+
+### Le jeu d'exemple ne peut plus signer une vraie facture
+
+Charger l'exemple avant d'avoir rempli sa fiche — ce que fait un débutant — donnait à l'entreprise le nom **« DÉMO — Société de services SUARL »**, un matricule et un RIB inventés. « Tout effacer » **gardait cette fiche** et laissait de faux fournisseurs, salariés, bulletins, immobilisations et comptes bancaires : elle ne vidait que 7 listes sur 30. La première vraie facture partait donc au nom d'une société qui n'existe pas, vers un compte où l'argent n'arrive jamais.
+
+- La liste des choses à effacer **se déduit de la structure des données** : un module ajouté demain est vidé sans que personne y pense.
+- Les données d'exemple **se déclarent**, et un bandeau permanent le dit sur chaque page.
+- L'application entreprise gagne enfin la **restauration** que le cabinet a depuis la 6.8.0 : elle annonce ce qu'on va retrouver **avant** d'écraser quoi que ce soit. Revenir de l'exemple était jusqu'ici : Paramètres → Sécurité et données → Importer → retrouver le bon fichier dans le dossier des sauvegardes.
+
+### Les instruments
+
+- `npm run e2e:captures` — le photographe qui manquait : 20 pages, leurs onglets et quatre gestes, en vierge et en démonstration, aux deux largeurs qui comptent. CLAUDE.md décrivait cette méthode comme si `e2e:entreprise` la fournissait ; ce n'était plus vrai, et il fallait donc la réécrire à chaque audit.
+- `npm run e2e:barre` — la barre latérale **mesurée** dans l'application réelle, sur quatre tailles d'écran.
+- `npm run e2e:exemple` — charger l'exemple et en revenir, jusqu'au cas qui fait mal.
+
+**217 tests**, neuf suites e2e. Chaque correctif de test prouvé en réintroduisant son défaut d'origine.
+
 ## 6.8.2 — 12/09/2026
 
 **Le reste de ce que le second audit a trouvé : ce qui bloque un cabinet réel, ce qui se voit en démonstration, et trois tests qui ne pouvaient pas échouer.**

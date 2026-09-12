@@ -95,9 +95,16 @@ Trois règles qui découlent de là, et qu'aucune version ne doit casser :
 
 ## Les versions
 
-### 7.0.0 — « On te prend par la main »
+### 7.0.0 — « On te prend par la main » — **livrée le 12/09/2026**
 
-Le socle. Quatre changements structurels.
+Le socle. Ce qui est parti, au-delà du plan initial ci-dessous : les **treize boutons morts** de
+« À faire », le **bandeau d'une pièce émise** (qui porte maintenant « Corriger par un avoir »), la
+disparition de `closedToast`, les **saisies refusées qui montrent le champ**, le **glossaire de 17 à
+59 entrées**, les **bulles qui mènent à leur article**, les **en-têtes de colonne qui peuvent en
+porter une**, la **recherche dans l'aide**, et le **jeu d'exemple qui ne peut plus signer une vraie
+facture**. Le détail est dans `CHANGELOG.md`.
+
+Le plan initial, tel qu'écrit avant l'audit :
 
 **a) La navigation devient une donnée, pas du HTML en dur.**
 La barre latérale vit aujourd'hui dans `src/renderer/index.html` (19 liens écrits à la main) et

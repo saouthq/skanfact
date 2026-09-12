@@ -292,8 +292,17 @@
     closeInfoPop();
     const pop = document.createElement('div');
     pop.id = 'info-pop';
-    pop.innerHTML = `<div class="ip-head">${h(x.t)}<button type="button" class="ip-close" aria-label="Fermer">✕</button></div><div class="ip-body">${x.d}</div>`;
+    // Une bulle qui explique bien, et s'arrête là, est un cul-de-sac : elle laisse quelqu'un avec
+    // une question plus précise et aucun endroit où aller. `a` désigne l'article qui développe.
+    const art = x.a ? (G.ARTICLES.find(y => y.id === x.a) || null) : null;
+    pop.innerHTML = `<div class="ip-head">${h(x.t)}<button type="button" class="ip-close" aria-label="Fermer">✕</button></div>`
+      + `<div class="ip-body">${x.d}`
+      + (art ? `<p class="ip-more"><a href="#/aide/${h(art.id)}">Lire « ${h(art.title)} » →</a></p>` : '')
+      + '</div>';
     document.body.appendChild(pop);
+    // Le lien ferme la bulle : sans ça, elle restait ouverte par-dessus l'article qu'elle vient d'ouvrir.
+    const lien = $('.ip-more a', pop);
+    if (lien) lien.onclick = () => closeInfoPop();
     const r = btn.getBoundingClientRect();
     const w = pop.offsetWidth, hh = pop.offsetHeight;
     let left = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), window.innerWidth - w - 8);
@@ -736,7 +745,12 @@
     pages.forEach(p => {
       if (p.famille && p.famille !== famille) { famille = p.famille; html += `<div class="nav-group">${h(famille)}</div>`; }
       const cid = NAV_COMPTEURS[p.id];
-      html += `<a href="#/${p.id}" data-route="${p.id}"${p.famille ? '' : ' class="solo"'}>${icone(p.id)}${h(p.titre)}`
+      // « Immobilisations », « Marges », « Trésorerie » : trois mots de gestion qu'un créateur
+      // d'entreprise n'a jamais employés, et rien ne disait ce qu'il y avait derrière. La phrase
+      // existait déjà dans MODULES (`quoi`) : elle sert d'infobulle.
+      const m = p.module ? C.moduleById(p.module) : null;
+      const quoi = m && m.quoi ? ` title="${h(m.quoi)}"` : '';
+      html += `<a href="#/${p.id}" data-route="${p.id}"${quoi}${p.famille ? '' : ' class="solo"'}>${icone(p.id)}${h(p.titre)}`
         + (cid ? `<span class="nav-count${NAV_INFO.includes(p.id) ? ' info' : ''}" id="${cid}" hidden></span>` : '')
         + '</a>';
     });
@@ -1129,12 +1143,20 @@
       const cls = [c.r ? 'r' : '', c.val ? 'sortable-h' : '', on ? 'sorted' : ''].filter(Boolean).join(' ');
       const attrs = c.val ? ` data-sort="${h(c.key)}" title="Trier par ${h(c.label)}" role="button" tabindex="0"` : '';
       const mark = c.val ? `<span class="sort-ar">${on ? (sort.dir === 'asc' ? '↑' : '↓') : '⇅'}</span>` : '';
-      return `<th class="${cls}"${attrs}${c.w ? ` style="width:${c.w}"` : ''}>${h(c.label)}${mark}</th>`;
+      // Un en-tête de colonne peut porter sa bulle (7.0.0). C'est là que vivent presque toutes les
+      // abréviations que personne ne connaît — « VNC », « Assiette », « RS », « Débit », « Cumul » —
+      // et jusqu'ici c'était le seul endroit de l'application où on ne pouvait pas en poser une.
+      // Le tri reste sur le <th> ; le « i » arrête la propagation de son côté, donc cliquer la bulle
+      // ne trie pas la colonne au passage.
+      return `<th class="${cls}"${attrs}${c.w ? ` style="width:${c.w}"` : ''}>${h(c.label)}${c.info ? info(c.info) : ''}${mark}</th>`;
     }).join('')}${extra || ''}</tr>`;
   }
   function bindSort(root, redraw) {
     $$('th[data-sort]', root).forEach(th => {
-      th.onclick = () => redraw(th.dataset.sort);
+      // Le « i » posé dans l'en-tête (7.0.0) est à l'intérieur du <th> : sans ce garde, ouvrir la
+      // bulle trierait la colonne au passage, et la liste sauterait sous les yeux de quelqu'un qui
+      // voulait seulement savoir ce que veut dire « VNC ».
+      th.onclick = e => { if (e.target.closest('.i[data-info]')) return; redraw(th.dataset.sort); };
       th.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); redraw(th.dataset.sort); } };
     });
   }
@@ -7695,6 +7717,25 @@
     };
   };
 
+  // L'aide comptait trente-deux articles présentés en une liste plate de trente-deux titres, sans
+  // recherche : quelqu'un qui bute sur « assiette » ne pouvait pas taper « assiette ». Il devait
+  // deviner dans lequel des trente-deux ça se trouve — et le glossaire était l'avant-dernier.
+  // La recherche lit aussi le CORPS des articles : c'est ce qui permet de trouver un mot qui
+  // n'apparaît dans aucun titre.
+  let aideQ = '';
+  const sansBalises = s => String(s || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+  function aideFiltre(arts, q) {
+    const mots = (q || '').toLowerCase().trim().split(/\s+/).filter(Boolean);
+    if (!mots.length) return arts;
+    return arts.filter(a => {
+      const texte = `${a.title} ${a.sub} ${sansBalises(a.body)}`.toLowerCase();
+      return mots.every(m => texte.includes(m));
+    });
+  }
+  const aideListe = arts => arts.length
+    ? arts.map(x => `<button data-art="${x.id}" class="${x.id === aideArticle ? 'active' : ''}"><span class="ht">${h(x.title)}</span><span class="hs">${h(x.sub)}</span></button>`).join('')
+    : '<p class="small muted" style="padding:10px 12px">Aucun article ne contient ces mots. Essaie un seul mot, ou consulte « Le vocabulaire ».</p>';
+
   routes.aide = (parts) => {
     const arts = G.ARTICLES;
     if (parts && parts[0]) aideArticle = parts[0];
@@ -7705,7 +7746,11 @@
         <div class="actions">${backButton('#/dashboard', 'aide')}<button class="btn" id="aide-support">Signaler un problème</button><button class="btn" id="aide-changelog">Nouveautés de la version</button></div></div>
       <p class="lead">Comment marche SkanFact, et comment tenir la gestion d'une petite entreprise sans rien oublier. Partout dans l'application, les petits <span class="i-demo">i</span> expliquent le champ juste à côté.</p>
       <div class="help-grid">
-        <nav class="help-nav">${arts.map(x => `<button data-art="${x.id}" class="${x.id === aideArticle ? 'active' : ''}"><span class="ht">${h(x.title)}</span><span class="hs">${h(x.sub)}</span></button>`).join('')}</nav>
+        <nav class="help-nav">
+          <input type="search" id="aide-q" placeholder="Rechercher : un mot, une question…" autocomplete="off" spellcheck="false" value="${h(aideQ)}">
+          <div class="help-count small muted" id="aide-n" hidden></div>
+          <div id="aide-liste">${aideListe(arts)}</div>
+        </nav>
         <article class="panel help-body">
           <h2 class="help-h">${h(a.title)}</h2>
           <p class="help-sub">${h(a.sub)}</p>
@@ -7713,7 +7758,22 @@
           <p class="small muted help-foot">Une question de fiscalité ou de comptabilité que cette aide ne tranche pas ? Elle est pour ton comptable : lui seul connaît ta situation et la réglementation en vigueur.</p>
         </article>
       </div>`;
-    $$('[data-art]').forEach(b => b.onclick = () => { aideArticle = b.dataset.art; navigate('#/aide/' + b.dataset.art); });
+    const brancherListe = () => $$('[data-art]').forEach(b => b.onclick = () => { aideArticle = b.dataset.art; navigate('#/aide/' + b.dataset.art); });
+    brancherListe();
+    const q = $('#aide-q');
+    q.oninput = () => {
+      aideQ = q.value;
+      const trouves = aideFiltre(arts, aideQ);
+      $('#aide-liste').innerHTML = aideListe(trouves);
+      const n = $('#aide-n');
+      n.hidden = !aideQ.trim();
+      n.textContent = `${trouves.length} article${trouves.length > 1 ? 's' : ''} sur ${arts.length}`;
+      brancherListe();
+    };
+    // Échap vide la recherche plutôt que de fermer quoi que ce soit : c'est le geste attendu dans un
+    // champ de recherche, et il n'y a rien d'autre à fermer sur cette page.
+    q.onkeydown = e => { if (e.key === 'Escape' && q.value) { e.stopPropagation(); q.value = ''; q.oninput(); } };
+    if (aideQ) q.oninput();
     bindBack('#/dashboard', 'aide');
     $('#aide-changelog').onclick = showChangelog;
     $('#aide-support').onclick = supportForm;
@@ -7994,10 +8054,10 @@
       const bodyFor = s => {
         if (s.id === 'bienvenue') return s.intro;
         if (s.id === 'entreprise') return `<form id="sf-form" class="grid-2">
-          <label class="field span-2">Raison sociale <span class="req">obligatoire</span><input type="text" name="name" value="${h(a.name || '')}" placeholder="Nom exact de l'entreprise, forme juridique comprise" autofocus></label>
+          <label class="field span-2">${lbl('Raison sociale', 'co.name')} <span class="req">obligatoire</span><input type="text" name="name" value="${h(a.name || '')}" placeholder="Nom exact de l'entreprise, forme juridique comprise" autofocus></label>
           ${field(lbl('Matricule fiscal', 'co.matricule'), 'matricule', a.matricule || '', 'text', 'placeholder="1234567X/A/M/000"')}
           ${field(lbl('Registre de commerce (RC)', 'co.rc'), 'rc', a.rc || '', 'text', 'placeholder="facultatif"')}
-          <label class="field span-2">Adresse<textarea name="address" placeholder="Rue et numéro&#10;Code postal et ville">${h(a.address || '')}</textarea></label>
+          <label class="field span-2">${lbl('Adresse', 'co.address')}<textarea name="address" placeholder="Rue et numéro&#10;Code postal et ville">${h(a.address || '')}</textarea></label>
           ${field('Téléphone', 'phone', a.phone || '')}
           ${field('Email', 'email', a.email || '', 'email')}
           ${field(lbl('Capital social', 'co.capital'), 'capital', a.capital || '', 'text', 'placeholder="facultatif, ex. 1 000 DT"')}
