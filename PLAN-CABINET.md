@@ -88,20 +88,25 @@ Nouvelle app, même dépôt : `src/cabinet/`, `cabinet.html`, second installeur,
 - Formats : CSV générique + un ou deux formats des logiciels réellement utilisés par les cabinets rencontrés.
 - Le même export est offert **dans SkanFact** pour les entreprises dont le comptable n'installe rien.
 
-### SkanFact 6.4.0 — Vendable : licence et mises à jour *(~3 j)*
+### SkanFact 6.4.0 — Vendable : licence et mises à jour *(~3 j)* — **LICENCE LIVRÉE le 12/09/2026**
+
+*Livrée : toute la partie licence (voir CHANGELOG 6.4.0). Livrée **désarmée** : sans `build/licence-public.json`, l'application est libre et ne verrouille rien. Deux commandes suffisent pour l'armer, le jour où tu le décides — c'est écrit dans le README.*
+
+**Reste à décider par Skander — les mises à jour sans token.** La partie « second dépôt public » n'a pas été faite cette nuit, et volontairement : créer un dépôt GitHub public au nom de Skander et y publier les installeurs de son produit est une décision commerciale, pas une tâche technique. N'importe qui pourrait alors télécharger l'application (la licence limite l'usage, pas le téléchargement). C'est probablement le bon choix — c'est ce que font la plupart des logiciels vendus — mais c'est à lui de le dire.
+
+Le jour où il dit oui, voici exactement quoi faire :
+
+1. Créer `saouthq/skanfact-releases`, **public**, vide (pas de code, uniquement des releases).
+2. Dans `package.json`, `build.publish` : `owner: saouthq`, `repo: skanfact-releases`. Idem pour le cabinet si on veut lui donner la mise à jour automatique.
+3. Dans le workflow, `GH_TOKEN` doit être un **token personnel** ayant accès aux deux dépôts (le `GITHUB_TOKEN` par défaut ne peut écrire que dans le dépôt courant) → secret `RELEASES_TOKEN`.
+4. Dans `src/main.js`, `private: true` disparaît de la configuration de l'updater, et le panneau « token » de Paramètres → Mises à jour devient inutile (le laisser une version de plus, pour les installations déjà en place).
+5. **Les versions déjà installées continuent de chercher dans le dépôt privé** : il faut donc publier la première version « publique » dans les DEUX dépôts, sinon personne ne la reçoit.
+
 
 - **Licence** : une clé signée (Ed25519) contenant nom, matricule, date d'expiration, empreinte du cabinet parrain ; vérifiée **hors ligne** avec la clé publique embarquée. Pas de serveur. Skander génère les clés avec `scripts/licence.js` et sa clé privée, **qui ne va jamais dans le dépôt**.
 - **États** : essai (complet, 30 jours), active, expirée. À l'expiration : tout reste lisible, imprimable, exportable ; seule la création de nouvelles pièces attend le renouvellement. **Jamais de données en otage.**
 - **Mises à jour sans token** : un second dépôt GitHub **public** ne contenant que les fichiers de release. Le code reste privé. L'app installée cherche ses mises à jour là ; le champ « token » disparaît. (Le code d'une app installée est de toute façon lisible : publier les installeurs n'expose rien de plus que vendre l'app.)
 - **Écrans** : Paramètres → **Licence** : saisir, voir l'état, « Demander une licence » (mail prérempli avec les informations et l'empreinte du cabinet).
-
-### SkanFact 6.6.0 — Signature Apple et Windows *(~1 j + délais externes)* — **EN ATTENTE DES CERTIFICATS**
-
-*Décalée après les filets : elle dépend d'un achat (Apple Developer 99 $/an, certificat Windows) et d'un délai de validation externe. Rien n'est modifiable tant que les certificats n'existent pas — le workflow de publication n'a donc PAS été touché, pour ne pas fragiliser des releases qui fonctionnent. Ce qu'il faudra faire le jour venu est décrit ci-dessous.*
-
-- Apple Developer ID + notarisation ; certificat Windows. Les certificats vont dans les secrets du workflow, jamais dans le dépôt.
-- `MAC_SIGNED = true` : Squirrel prend le relais de `mac-update.sh`.
-- Deux installeurs à signer : vérifier que les certificats couvrent plusieurs produits d'une même société.
 
 ### SkanFact 6.5.0 — Les filets d'un produit vendu *(~2 j)* — **LIVRÉE le 12/09/2026**
 
@@ -111,9 +116,34 @@ Nouvelle app, même dépôt : `src/cabinet/`, `cabinet.html`, second installeur,
 - **« Envoyer un rapport »** dans l'Aide : mail avec `main.log`, version, système, sans données.
 - Page **Support** dans l'Aide : adresse, délai annoncé, ce qu'il faut joindre.
 
+### SkanFact 6.6.0 — Signature Apple et Windows *(~1 j + délais externes)* — **EN ATTENTE DES CERTIFICATS**
+
+*Décalée après les filets : elle dépend d'un achat (Apple Developer 99 $/an, certificat Windows) et d'un délai de validation externe. Rien n'est modifiable tant que les certificats n'existent pas — le workflow de publication n'a donc PAS été touché, pour ne pas fragiliser des releases qui fonctionnent. Ce qu'il faudra faire le jour venu est décrit ci-dessous.*
+
+- Apple Developer ID + notarisation ; certificat Windows. Les certificats vont dans les secrets du workflow, jamais dans le dépôt.
+- `MAC_SIGNED = true` : Squirrel prend le relais de `mac-update.sh`.
+- Deux installeurs à signer : vérifier que les certificats couvrent plusieurs produits d'une même société.
+
 ### Ensuite, seulement si un cabinet a dit oui — SkanFact 7.0.0
 
 Serveur de dépôt : les paquets circulent seuls ; comptes cabinet et entreprise ; INPDP ; hébergement ; abonnement mensuel justifié par un coût réel. Les deux applications ne changent pas, seul le transport change.
+
+## Où on en est — 12/09/2026 au matin
+
+**Tout le plan est livré, sauf ce qui dépend d'un achat ou d'une décision de Skander.**
+
+| Version | Quoi | État |
+|---|---|---|
+| 6.0.0 | Clôture de période | publiée |
+| 6.1.0 | Paquet mensuel `.skanpack` | publiée |
+| 6.2.0 | Appairage du cabinet | publiée |
+| 6.2.1 | **SkanFact Cabinet 1.0.0** | publiée, installeurs Mac et Windows joints |
+| 6.3.0 | Écritures comptables (Cabinet 1.1.0) | publiée |
+| 6.4.0 | Licence hors ligne | publiée (désarmée) |
+| 6.5.0 | Chien de garde et rapport de problème | publiée |
+| 6.6.0 | Signature Apple / Windows | **attend les certificats (achat)** |
+| — | Mises à jour sans token (dépôt public) | **attend un oui de Skander** |
+| 7.0.0 | Serveur | seulement si un cabinet dit oui |
 
 ## L'ordre et le calendrier
 
