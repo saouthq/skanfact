@@ -265,6 +265,8 @@ Règles apprises — les quatre, tenues par un test qui relit la source :
 
 Autre règle : les abonnements aux messages du processus principal (`onAlivePing`, `onFreezeNotice`) se posent **avant** la séquence de démarrage. L'assistant de première utilisation la met en attente, et tout message reçu pendant ce temps était perdu.
 
+Et une cinquième, trouvée en 6.5.1 : **un seul programme peut inspecter la page à la fois.** Le chien de garde se détache quand les outils de développement s'ouvrent et se rattache quand ils se ferment — sinon ouvrir les outils le débranchait en silence, et on se croyait surveillé sans l'être.
+
 Le test qui compte est `scratchpad/watchdog-e2e.js` : il **gèle vraiment** l'application avec une boucle infinie et vérifie que le journal nomme la fonction coupable. C'est le test qu'on aurait voulu avoir en 5.1.0.
 
 ## Pistes pour la suite (non demandées)
