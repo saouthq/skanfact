@@ -91,6 +91,50 @@ Nouvelle page **Écritures**. Chaque paquet portait déjà ses écritures en par
 - Les fichiers extraits d'un paquet pour être lus sont **effacés à la fermeture** : ce sont les pièces comptables d'un client, elles n'ont rien à faire dans le dossier temporaire pour toujours.
 - La taille et la position de la fenêtre sont mémorisées ; un menu Aide donne accès au journal technique et au dossier de l'application.
 
+## 6.8.1 — 12/09/2026
+
+**Un second audit, mené sur la 6.8.0 elle-même : 131 constats confirmés par un relecteur adverse, dont plusieurs défauts que le premier audit n'avait pas vus.** Les plus graves sont corrigés ici.
+
+### Ce qui détruisait des pièces
+
+- **Un mois renvoyé écrasait le paquet sur lequel le comptable avait déclaré.** Le 15 avril il dépose la TVA de mars sur le paquet définitif ; le 3 juin le client rouvre mars et renvoie — l'ancien fichier n'existait plus nulle part, ni les chiffres. Désormais chaque réception garde son fichier (`-r2`, `-r3`), les précédentes restent dans la fiche, et l'application **dit de combien les chiffres ont bougé** : c'est exactement une rectificative.
+- **Un paquet plus ancien détrônait un plus récent.** En rattrapant une boîte mail en retard, un vieux provisoire remontait : le chiffre d'affaires tombait, le mois repassait « provisoire », et le cabinet réclamait à son client un mois déjà reçu définitif. Un paquet fabriqué avant celui qu'on a est maintenant écarté, et l'application le dit.
+- **La sauvegarde « avant suppression » était effacée à la seconde où elle naissait.** Les sauvegardes se purgeaient par **ordre alphabétique** : « avant-changement-mot-de-passe » passait toujours en premier, et vingt sauvegardes manuelles suffisaient à chasser le filet pris juste avant d'effacer trois ans de pièces — pendant que la fenêtre affichait « Une sauvegarde est prise juste avant ». Purge par **date**, réserves séparées pour les filets et les sauvegardes volontaires, et `backupNow` échoue bruyamment si sa copie a disparu.
+- **Un paquet dont le fichier a disparu restait vert et « définitif ».** Il est maintenant repéré et marqué.
+
+### Ce qui mélangeait les clients
+
+- **Un nom de société en arabe n'avait pas d'identité.** `شركة الأمان` et `مخبزة الياسمين` donnaient tous deux la clé vide `NOM:` : dans un portefeuille tunisien, **tous** les clients dont la raison sociale est en arabe tombaient dans un seul dossier, et leurs paquets s'écrasaient. Un cabinet de Sfax qui colle ses soixante clients en perdait la moitié en « doublons ». Toutes les lettres sont désormais conservées, sur le disque comme dans l'identifiant.
+- **La recherche était sensible aux accents** : « epicerie » ne trouvait pas « Épicerie ».
+
+### Ce que le calendrier racontait
+
+- **Il réclamait des mois qui n'étaient pas finis.** Un cabinet parfaitement à jour voyait quatre cartes sur cinq en rouge, parce qu'on fabriquait des échéances pour le mois en cours et les trois suivants. Seuls les mois terminés en produisent.
+- **Il comptait les clients hors SkanFact comme des retardataires**, alors que la page Relances affirmait le contraire un clic plus loin. Il s'appuie maintenant sur exactement la même logique que la fiche client — début de mission compris.
+- **Le 1er du mois, tout le portefeuille basculait en retard.** Personne n'a encore envoyé le mois qui vient de finir : le compteur rouge était maximal le jour où personne n'était fautif. Le mois qui vient de s'achever se montre, il ne crie pas, jusqu'au jour de relance.
+
+### Ce que l'application affirmait sans le faire
+
+- **Ouvrir une pièce lançait le fichier avec le programme du système, sous un nom choisi par l'expéditeur.** Un paquet contenant « facture.pdf.command » aurait fait exécuter du code d'un simple clic. Seuls les documents (PDF, CSV, images, texte) sont ouverts ; le reste est montré dans le dossier, et l'application dit pourquoi.
+- **Rien ne validait le manifeste d'un paquet**, et ce manifeste servait à fabriquer un chemin de fichier : un mois de la forme `../../..` écrivait hors du dossier de l'application. Tout est contrôlé avant que quoi que ce soit ne touche au disque, et un paquet d'une version plus récente est refusé avec une phrase claire au lieu d'être rangé à moitié.
+- **Exporter la clé de secours ne demandait pas le mot de passe du cabinet** : n'importe qui devant un poste déverrouillé repartait avec la clé de toutes les comptabilités.
+
+### Ce qui affichait des chiffres faux
+
+- **`money()` prenait la valeur absolue** : un mois d'avoirs s'affichait comme un bon mois, et les lignes ne faisaient plus le total.
+- **Le total « Chiffre d'affaires »** additionnait un champ sans le convertir (une chaîne se concaténait, et 42 500 DT s'affichaient « 0,000 DT ») et mélangeait les devises sans le dire.
+- **Une date de début de mission n'avait ni plancher ni plafond**, et le rabot interne coupait par la **fin** : l'application réclamait des mois de 2006 et ne réclamait plus ceux réellement en retard. Bornée à cinq ans, en gardant la fin.
+- **« Renseigne un début de mission »** : l'écran réclamait un geste qui ne faisait rien pour un client hors SkanFact. Il fonctionne.
+
+### Finitions
+
+- Les en-têtes de colonnes triables portaient une classe que la feuille de style ne connaît pas : ni curseur, ni survol, ni flèche. Et le classement par urgence, qui est le tri par défaut, était irrécupérable après un clic — un bouton le rend.
+- Une relance n'est plus enregistrée quand il n'y a pas d'adresse : le journal de relance se mettait à mentir.
+- « il y a 3 jours » comptait des tranches de 24 h : la cellule affichait « 11/09/2026 (aujourd'hui) » le 12 au matin.
+- Les tailles de fichiers s'écrivent avec une virgule, comme les montants à côté.
+- Les accords : « tes 1 dossier … ont envoyé ».
+- Modifier une fiche et se voir refuser la modification ne laisse plus le changement en mémoire : il partait au disque à l'enregistrement suivant, sans que rien ne le dise.
+
 ## 6.7.3 — 12/09/2026
 
 **SkanFact Cabinet proposait d'installer une version plus ancienne que la sienne.**

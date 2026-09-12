@@ -46,7 +46,7 @@ contextBridge.exposeInMainWorld('cabinet', {
   clearExternal: () => ipcRenderer.invoke('cab:clearExternal'),
   mirrorNow: () => ipcRenderer.invoke('cab:mirrorNow'),
   changePassword: (current, next) => ipcRenderer.invoke('cab:changePassword', { current, next }),
-  exportRecovery: (password) => ipcRenderer.invoke('cab:exportRecovery', password),
+  exportRecovery: (password, current) => ipcRenderer.invoke('cab:exportRecovery', { password, current }),
   importRecovery: (password) => ipcRenderer.invoke('cab:importRecovery', password),
   recoveryStatus: () => ipcRenderer.invoke('cab:recoveryStatus'),
   exportCsv: (rows, name) => ipcRenderer.invoke('cab:exportCsv', { rows, name }),

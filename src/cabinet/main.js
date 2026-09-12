@@ -218,27 +218,34 @@ ipcMain.handle('cab:saveDossier', (_e, { id, patch } = {}) => {
   requireOpen();
   const d = state.dossiers.find(x => x.id === id);
   if (!d) throw new Error('Dossier introuvable.');
-  DOSSIER_TEXT.forEach(k => { if (patch && patch[k] != null) d[k] = String(patch[k]); });
-  if (patch && patch.fees != null) d.fees = Number(patch.fees) || 0;
-  if (patch && patch.archived != null) d.archived = !!patch.archived;
-  if (d.from && !/^\d{4}-\d{2}$/.test(d.from)) d.from = '';
+  // On calcule d'abord, on valide ensuite, on écrit en dernier. L'ancienne version modifiait l'objet
+  // vivant PUIS refusait : le comptable lisait « un autre dossier porte déjà ce matricule », fermait
+  // la fenêtre rassuré, et l'enregistrement suivant — une relance notée vingt minutes plus tard —
+  // écrivait tout sur le disque. Règle de ce fichier : un handler ne touche à `state` qu'après
+  // avoir passé toutes ses validations.
+  const futur = { ...d };
+  DOSSIER_TEXT.forEach(k => { if (patch && patch[k] != null) futur[k] = String(patch[k]); });
+  if (patch && patch.fees != null) futur.fees = Number(patch.fees) || 0;
+  if (patch && patch.archived != null) futur.archived = !!patch.archived;
+  if (futur.from && !/^\d{4}-\d{2}$/.test(futur.from)) futur.from = '';
   // Le matricule ne se modifie QUE tant qu'aucun paquet n'est arrivé. Après, c'est le client qui
   // fait foi : il vient de ses envois, et le changer ici détacherait le dossier de ses propres
   // paquets. (L'interface met déjà le champ en lecture seule ; on ne s'y fie pas.)
-  if (patch && patch.matricule != null && !(d.packs || []).length) d.matricule = String(patch.matricule);
+  if (patch && patch.matricule != null && !(d.packs || []).length) futur.matricule = String(patch.matricule);
   // L'identifiant d'un dossier vient du matricule (ou du nom à défaut) : c'est ce qui fait qu'un
   // paquet tombe dans le bon dossier. Tant qu'AUCUN paquet n'est arrivé, corriger le matricule doit
   // donc corriger l'identifiant — sinon le premier envoi du client créerait un second dossier à
   // côté du premier, et personne ne comprendrait pourquoi.
   if (!(d.packs || []).length) {
-    const neuf = K.dossierKey({ entreprise: { matricule: d.matricule, nom: d.name } });
-    if (neuf && neuf !== 'NOM:' && neuf !== d.id) {
+    const neuf = K.dossierKey({ entreprise: { matricule: futur.matricule, nom: futur.name } });
+    if (neuf && neuf !== d.id) {
       if (state.dossiers.some(x => x !== d && x.id === neuf)) {
         throw new Error('Un autre dossier porte déjà ce matricule (ou ce nom).');
       }
-      d.id = neuf;
+      futur.id = neuf;
     }
   }
+  Object.assign(d, futur);                       // tout est validé : on écrit maintenant
   // Le nom sert au rangement des paquets sur le disque : s'il change, les fichiers suivent.
   const moved = getStore().reorganize(state);
   save();
@@ -363,6 +370,26 @@ ipcMain.handle('cab:importPack', async (_e, opts) => {
   return { results, demoRemoved: demoOut, state: safeState() };
 });
 
+// Le format de paquet que cette version sait lire. Un paquet plus récent se refuse avec une phrase
+// compréhensible, il ne se range pas à moitié.
+const PACK_FORMAT = 1;
+
+function verifierManifeste(m) {
+  if (!m || typeof m !== 'object' || Array.isArray(m)) throw new Error('Le manifeste de ce paquet ne ressemble pas à un envoi SkanFact.');
+  const f = Number(m.format || m.version || 1);
+  if (f > PACK_FORMAT) throw new Error('Ce paquet vient d\'une version plus récente de SkanFact. Mets à jour SkanFact Cabinet pour le lire.');
+  const e = m.entreprise, p = m.periode;
+  if (!e || typeof e !== 'object' || Array.isArray(e)) throw new Error('Ce paquet ne dit pas de quelle entreprise il vient.');
+  if (typeof e.nom !== 'string' && typeof e.matricule !== 'string') throw new Error('Ce paquet ne dit ni le nom ni le matricule de l\'entreprise.');
+  if (!String(e.nom || e.matricule || '').trim()) throw new Error('Ce paquet ne dit ni le nom ni le matricule de l\'entreprise.');
+  if (!p || typeof p !== 'object' || Array.isArray(p)) throw new Error('Ce paquet ne dit pas de quel mois il parle.');
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(String(p.mois || ''))) {
+    throw new Error(`Le mois annoncé par ce paquet est illisible (« ${String(p.mois || '').slice(0, 30)} »).`);
+  }
+  if (m.fichiers != null && !Array.isArray(m.fichiers)) throw new Error('La liste des fichiers de ce paquet est illisible.');
+  return m;
+}
+
 function ingest(file, password) {
   let buf = fs.readFileSync(file);
   let sealed = false;
@@ -385,9 +412,10 @@ function ingest(file, password) {
   let manifest;
   try { manifest = JSON.parse(mEntry.data().toString('utf8')); }
   catch { throw new Error('Le manifeste de ce paquet est illisible : le fichier a été abîmé pendant l\'envoi.'); }
-  if (!manifest || typeof manifest !== 'object' || !manifest.entreprise || !manifest.periode) {
-    throw new Error('Le manifeste de ce paquet ne ressemble pas à un envoi SkanFact.');
-  }
+  // Un paquet arrive par mail : il vient de l'EXTÉRIEUR. Tout ce qu'il annonce est contrôlé avant
+  // que quoi que ce soit ne touche au disque — un mois de la forme « ../../.. » servait à fabriquer
+  // un chemin de fichier, et un paquet d'une version future était rangé à moitié vide, dossier vert.
+  verifierManifeste(manifest);
 
   // Vérification : chaque fichier annoncé est là, et avec l'empreinte annoncée. C'est ce qui permet
   // de dire « ce que j'ai reçu est exactement ce qui a été envoyé ».
@@ -418,6 +446,8 @@ function ingest(file, password) {
 // Les extractions sont effacées à la fermeture de l'application : elles contiennent les pièces
 // comptables d'un client, elles n'ont rien à faire dans /tmp pour toujours.
 const tempDirs = [];
+// Ce qu'un paquet comptable contient légitimement, et que le système peut ouvrir sans risque.
+const LISIBLES = new Set(['.pdf', '.csv', '.txt', '.json', '.xml', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.heic', '.tif', '.tiff']);
 ipcMain.handle('cab:openInPack', async (_e, { packPath, name, password } = {}) => {
   requireOpen();
   let buf = fs.readFileSync(packPath);
@@ -425,12 +455,22 @@ ipcMain.handle('cab:openInPack', async (_e, { packPath, name, password } = {}) =
   else if (Z.isSealed(buf)) buf = Z.openBuffer(buf, password || '');
   const e = Z.zipRead(buf).find(x => x.name === name);
   if (!e) throw new Error('Fichier absent du paquet.');
+  // Le NOM du fichier est choisi par l'expéditeur. `shell.openPath` lance le programme associé à
+  // l'extension : un paquet contenant « facture.pdf.command » ou « bulletin.exe » ferait exécuter
+  // du code par un simple clic dans une liste de pièces comptables. On n'ouvre que ce qui se lit.
+  const ext = path.extname(name).toLowerCase();
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'skanpack-'));
   tempDirs.push(dir);
-  const out = path.join(dir, path.basename(name));
+  const base = path.basename(name).replace(/[/\\:*?"<>|\u0000-\u001f]/g, '_');
+  const out = path.join(dir, base);
   fs.writeFileSync(out, e.data());
+  if (!LISIBLES.has(ext)) {
+    // On le montre dans le dossier plutôt que de le lancer : le comptable décide, pas l'expéditeur.
+    shell.showItemInFolder(out);
+    return { path: out, opened: false, reason: `« ${base} » n'est pas un document (${ext || 'sans extension'}) : SkanFact ne l'ouvre pas tout seul. Il est montré dans le dossier.` };
+  }
   await shell.openPath(out);
-  return out;
+  return { path: out, opened: true };
 });
 
 function cleanTemp() {
@@ -667,9 +707,14 @@ ipcMain.handle('cab:changePassword', (_e, { current, next } = {}) => {
 });
 
 // La clé de secours : le fichier le plus important que ce cabinet produira jamais.
-ipcMain.handle('cab:exportRecovery', async (_e, password) => {
+ipcMain.handle('cab:exportRecovery', async (_e, { password, current } = {}) => {
   requireOpen();
   if (String(password || '').length < 8) throw new Error('Choisis un mot de passe d\'au moins huit caractères pour ce fichier.');
+  // Ce fichier contient la clé qui ouvre les comptabilités de TOUS les clients. Le produire sans
+  // redemander le mot de passe du cabinet laissait n'importe qui, devant un poste déverrouillé,
+  // repartir avec — et sans la moindre trace.
+  const check = CS.createCabStore(app.getPath('userData'), {}).unlock(String(current || ''));
+  if (!check.ok) throw new Error('Mot de passe du cabinet incorrect.');
   const safe = CS.slug(state.cabinet.name || 'cabinet');
   const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
     title: 'Clé de secours du cabinet — à garder hors de cet ordinateur',

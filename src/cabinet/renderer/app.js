@@ -189,14 +189,20 @@
   // Même règle que côté entreprise : le dinar se compte en millimes (trois décimales), les autres
   // devises en centimes. « DT » et « TND » désignent la même monnaie.
   const dinar = cur => !cur || cur === 'DT' || cur === 'TND';
+  // Recopié de core.js en 1.0.0 — en perdant le signe. Un mois d'avoirs (chiffre d'affaires négatif)
+  // s'affichait donc comme un bon mois, et les lignes ne faisaient plus le total.
   const money = (n, cur) => {
-    if (n == null) return '—';
+    if (n == null || n === '') return '—';
+    const v = Number(n);
+    if (!isFinite(v)) return '—';
     const dec = dinar(cur) ? 3 : 2;
-    return Math.abs(Number(n) || 0).toFixed(dec).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
-      + ' ' + (cur || 'DT');
+    const corps = Math.abs(v).toFixed(dec).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    return (v < 0 ? '−' : '') + corps + ' ' + (cur || 'DT');
   };
-  const fmtBytes = n => !n ? '—' : n >= 1073741824 ? (n / 1073741824).toFixed(1) + ' Go'
-    : n >= 1048576 ? (n / 1048576).toFixed(1) + ' Mo' : Math.max(1, Math.round(n / 1024)) + ' Ko';
+  // Une virgule décimale, comme les montants juste à côté : « 2.4 Mo » dans un tableau où tout le
+  // reste s'écrit « 46 800,000 DT » se voit tout de suite.
+  const fmtBytes = n => !n ? '—' : n >= 1073741824 ? (n / 1073741824).toFixed(1).replace('.', ',') + ' Go'
+    : n >= 1048576 ? (n / 1048576).toFixed(1).replace('.', ',') + ' Mo' : Math.max(1, Math.round(n / 1024)) + ' Ko';
   function fmtWhen(ms) {
     if (!ms) return '—';
     const d = new Date(ms);
@@ -210,9 +216,12 @@
     return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`;
   }
   // « il y a 3 jours » : devant une colonne de dates, c'est ce qu'on cherche vraiment à savoir.
+  // Des JOURS DE CALENDRIER, pas des tranches de 24 h. « 11/09/2026 (aujourd'hui) » affiché le 12 au
+  // matin : la cellule se contredisait elle-même.
   function ago(ms) {
     if (!ms) return '';
-    const j = Math.floor((Date.now() - ms) / 86400000);
+    const jour = d => Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+    const j = Math.round((jour(new Date()) - jour(new Date(ms))) / 86400000);
     return j <= 0 ? "aujourd'hui" : j === 1 ? 'hier' : `il y a ${j} jours`;
   }
 
@@ -221,10 +230,12 @@
   // portent toujours sur la SÉLECTION ENTIÈRE, jamais sur la page affichée (règle de la 2.2.0).
   function sortHead(label, key, help) {
     const on = listState.sort === key;
-    return `<th class="nw sortable" data-sort="${esc(key)}" title="Trier">${esc(label)}${help ? ' ' + info(help) : ''}<span class="sort-ar">${on ? (listState.desc ? '↓' : '↑') : '⇅'}</span></th>`;
+    // `sortable-h` : c'est le nom que connaît la feuille partagée. Avec `sortable`, l'en-tête n'avait
+    // ni curseur, ni survol, ni flèche lisible — rien ne disait qu'on pouvait cliquer.
+    return `<th class="nw sortable-h${on ? ' sorted' : ''}" data-sort="${esc(key)}" title="Trier">${esc(label)}${help ? ' ' + info(help) : ''}<span class="sort-ar">${on ? (listState.desc ? '↓' : '↑') : '⇅'}</span></th>`;
   }
   function bindSort(root, redraw) {
-    $$('th.sortable', root).forEach(th => {
+    $$('th.sortable-h', root).forEach(th => {
       th.onclick = () => {
         const k = th.dataset.sort;
         if (listState.sort === k) listState.desc = !listState.desc;
@@ -601,7 +612,9 @@
     if (!todo.length) {
       const p = K.portfolio(S);
       if (!p.surSkanfact) return '';
-      return `<div class="todo-ok">Tout est à jour : tes ${pl(p.surSkanfact, 'dossier')} sur SkanFact ont envoyé leurs mois clôturés.</div>`;
+      return p.surSkanfact > 1
+        ? `<div class="todo-ok">Tout est à jour : tes ${p.surSkanfact} dossiers sur SkanFact ont envoyé leurs mois clôturés.</div>`
+        : `<div class="todo-ok">Tout est à jour : ton dossier sur SkanFact a envoyé ses mois clôturés.</div>`;
     }
     return `<div class="panel todo"><h2>À faire</h2><ul>${todo.map(t => `
       <li class="lvl-${t.level}"><span class="td-dot"></span>
@@ -623,6 +636,17 @@
       <div class="stat"><div class="lbl">Dernier CA suivi</div><div class="val">${esc(money(p.dernierCA))}</div>
         <div class="sub">${p.honoraires ? 'Honoraires : ' + esc(money(p.honoraires)) + ' / mois' : 'somme des derniers mois reçus'}</div></div>
     </div>`;
+  }
+
+  // Le total du pied de liste additionnait un champ venu du paquet SANS le convertir : une chaîne le
+  // faisait se concaténer, et 42 500 DT s'affichaient « 0,000 DT ». Il additionnait aussi des devises
+  // différentes sans le dire. On additionne ce qui est comparable, et on refuse le reste.
+  function totalCA(rows) {
+    const avec = rows.filter(r => r.lastFigures && isFinite(Number(r.lastFigures.ca)));
+    if (!avec.length) return '—';
+    const devises = [...new Set(avec.map(r => r.lastFigures.devise || 'DT'))];
+    if (devises.length > 1) return devises.length + ' devises';
+    return money(avec.reduce((s, r) => s + Number(r.lastFigures.ca), 0), devises[0]);
   }
 
   const CSV_COLS = [
@@ -708,10 +732,11 @@
         <label class="inline small muted"><input type="checkbox" id="onlysf" ${listState.onlySkanfact ? 'checked' : ''}> Sur SkanFact seulement</label>
         <span class="muted small">${rows.length} sur ${all.length}</span>
         ${rows.length !== all.length ? '<button class="btn btn-ghost btn-sm" id="reset-f">Réinitialiser</button>' : ''}
+        ${listState.sort !== 'urgence' ? '<button class="btn btn-ghost btn-sm" id="par-urgence">Reclasser par urgence</button>' : ''}
         <span class="grow"></span>
         <button class="btn btn-ghost btn-sm" id="csv">Exporter en CSV</button>
       </div>
-      ${rows.length ? `<div class="scroll-x"><table class="list">
+      ${rows.length ? `<div class="scroll-x"><table class="list sortable">
         <thead><tr>${sortHead('Client', 'nom')}${sortHead('Dernier mois reçu', 'dernier')}
         <th class="r nw">Chiffre d'affaires</th>${sortHead('Mois manquants', 'manquants')}
         <th class="r nw">Provisoires</th><th class="r nw">Signalé</th>${sortHead('Relancé le', 'relance', 'r.history')}${sortHead('Reçu le', 'recu')}</tr></thead>
@@ -725,7 +750,7 @@
           <td class="muted nw">${r.lastRelanceAt ? esc(fmtDay(r.lastRelanceAt)) + ` <span class="small">(${esc(ago(r.lastRelanceAt))})</span>` : '—'}</td>
           <td class="muted nw">${esc(fmtWhen(r.lastAt))}</td></tr>`).join('')}</tbody>
         <tfoot><tr><td class="nw"><strong>${pl(rows.length, 'dossier')}</strong></td><td></td>
-          <td class="r nw"><strong>${esc(money(rows.reduce((s, r) => s + ((r.lastFigures && r.lastFigures.ca) || 0), 0)))}</strong></td>
+          <td class="r nw"><strong>${esc(totalCA(rows))}</strong></td>
           <td class="r"><strong>${rows.reduce((s, r) => s + r.missingCount, 0) || '—'}</strong></td>
           <td class="r"><strong>${rows.reduce((s, r) => s + r.provisionalCount, 0) || '—'}</strong></td>
           <td class="r"><strong>${rows.reduce((s, r) => s + r.issues, 0) || '—'}</strong></td><td></td><td></td></tr></tfoot>
@@ -752,6 +777,12 @@
         const r = await api.exportCsv(toCsv(CSV_COLS, rows), 'dossiers-' + (S.cabinet.name || 'cabinet'));
         if (r) toast('Tableau enregistré.');
       } catch (e) { toast(plainError(e), 'error'); }
+    };
+    const pu = $('#par-urgence');
+    if (pu) pu.onclick = () => {
+      listState.sort = 'urgence'; listState.desc = false;
+      prefs.set('sort', 'urgence'); prefs.set('desc', false);
+      render();
     };
     bindInboxBanner(view);
     bindSort(view, render);
@@ -992,8 +1023,12 @@
         $('#xtr', layer).onclick = () => { close(); extractPack(dossier, month, password); };
         $$('tr[data-i]', layer).forEach(tr => {
           tr.onclick = async () => {
-            try { await api.openInPack(p.path, files[Number(tr.dataset.i)].name, password); }
-            catch (e) { toast(plainError(e), 'error'); }
+            try {
+              const r = await api.openInPack(p.path, files[Number(tr.dataset.i)].name, password);
+              // Un fichier dont l'extension n'est pas celle d'un document n'est pas lancé : c'est le
+              // nom choisi par l'expéditeur qui déciderait sinon quel programme s'exécute.
+              if (r && r.opened === false) toast(r.reason, 'error');
+            } catch (e) { toast(plainError(e), 'error'); }
           };
         });
       }
@@ -1220,7 +1255,13 @@
         };
         $('#ok', layer).onclick = async () => {
           const to = $('#r-to', layer).value.trim();
-          if (to && to !== row.email) { try { await api.saveDossier(row.id, { email: to }); } catch {} }
+          // Sans destinataire, la messagerie s'ouvre sur un message qui ne part pas — et le journal
+          // de relance se mettait à mentir, ce qui est pire que de ne rien noter.
+          if (!to) return toast('Renseigne une adresse : sans elle, rien ne partira et la relance serait notée à tort.', 'error');
+          if (to !== row.email) {
+            try { await api.saveDossier(row.id, { email: to }); }
+            catch (e) { return toast('L\'adresse n\'a pas pu être enregistrée : ' + plainError(e), 'error'); }
+          }
           await api.mail({ to, subject: $('#r-sub', layer).value, body: $('#r-body', layer).value });
           await recordRelance(row, 'email');
           close(); render(); if (onDone) onDone();
@@ -1672,6 +1713,8 @@
        (différent de celui de l'application : ce fichier a vocation à quitter cet ordinateur).</p>
        <div class="warn-box">Range-le <strong>ailleurs que sur ce Mac</strong> : une clé USB dans un tiroir, un coffre, chez ton associé.
        Une clé de secours posée à côté de l'ordinateur ne protège de rien.</div>
+       <label class="field mt">Mot de passe <strong>du cabinet</strong><input type="password" id="p0" autocomplete="current-password"></label>
+       <p class="muted small">Redemandé parce que ce fichier ouvre les comptabilités de tous tes clients : sans ça, n'importe qui passant devant ce poste déverrouillé repartirait avec.</p>
        <label class="field mt">Mot de passe de ce fichier<span class="pw-wrap"><input type="password" id="p1" autocomplete="new-password"><button type="button" class="pw-eye" id="eye">Afficher</button></span></label>
        <label class="field mt">Confirme<input type="password" id="p2" autocomplete="new-password"></label>
        <div class="modal-actions"><button class="btn" id="no">Annuler</button><button class="btn btn-primary" id="ok">Enregistrer le fichier…</button></div>`,
@@ -1686,7 +1729,7 @@
           if (p1.value.length < 8) return toast('Huit caractères au minimum.', 'error');
           if (p1.value !== p2.value) return toast('Les deux mots de passe ne sont pas les mêmes.', 'error');
           try {
-            const r = await api.exportRecovery(p1.value);
+            const r = await api.exportRecovery(p1.value, $('#p0', layer).value);
             if (!r) return;
             close();
             recoveryAt = Date.now();

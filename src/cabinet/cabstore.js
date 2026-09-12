@@ -32,9 +32,13 @@ function stamp(d) {
 
 // Un nom de dossier lisible par un humain qui ouvre le Finder. Le comptable doit pouvoir retrouver
 // les pièces d'un client sans lancer l'application — et pouvoir les lui rendre en copiant un dossier.
+// Toutes les lettres, pas seulement l'alphabet latin : « مخبزة الياسمين » et « شركة الأمان »
+// donnaient tous deux « sans-nom », donc le MÊME dossier sur le disque — et le paquet de l'un
+// écrasait celui de l'autre. Les systèmes de fichiers de macOS et de Windows acceptent l'arabe.
 function slug(s) {
-  return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
-    .replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'sans-nom';
+  const t = String(s || '').normalize('NFKC').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+  return t || 'sans-nom';
 }
 
 function isEnvelope(o) { return !!(o && typeof o === 'object' && o[MARK] === 1 && o.salt && o.iv && o.tag && o.data); }
@@ -219,17 +223,38 @@ function createCabStore(dir, opts) {
     const target = path.join(backupDir, `${safe}-${stamp(now())}.json`);
     fs.copyFileSync(file, target);
     prune();
+    // Une sauvegarde annoncée qui n'existe plus est pire que pas de sauvegarde : on le dit tout de
+    // suite plutôt que de laisser l'appelant effacer trente-six paquets en toute confiance.
+    if (!fs.existsSync(target)) throw new Error('La sauvegarde n\'a pas pu être conservée : vérifie l\'espace disque.');
     mirrorExternal();
     return target;
   }
 
+  // On purge par DATE, jamais par nom. L'ordre alphabétique mettait « avant-changement-mot-de-passe »
+  // en tête : c'était donc TOUJOURS la première effacée, y compris celle qu'on venait de prendre.
+  // Pire, vingt sauvegardes « manuelle » (Cmd+S, le réflexe universel) suffisaient à faire
+  // disparaître la copie « avant-suppression-dossier » à la seconde même où elle naissait — pendant
+  // que la fenêtre affichait « Une sauvegarde est prise juste avant ».
+  const FILETS = /^avant-/;
+  function dated(names) {
+    return names.map(name => {
+      let m = 0;
+      try { m = fs.statSync(path.join(backupDir, name)).mtimeMs; } catch {}
+      return { name, m };
+    }).sort((a, b) => a.m - b.m);                              // le plus ancien d'abord
+  }
   function prune() {
     let names;
     try { names = fs.readdirSync(backupDir).filter(f => f.endsWith('.json')); } catch { return; }
-    const daily = names.filter(f => DAILY_RE.test(f)).sort();
-    while (daily.length > DAILY_KEEP) fs.unlinkSync(path.join(backupDir, daily.shift()));
-    const named = names.filter(f => !DAILY_RE.test(f)).sort();
-    while (named.length > NAMED_KEEP) fs.unlinkSync(path.join(backupDir, named.shift()));
+    const jeter = liste => { while (liste.length > 0) { try { fs.unlinkSync(path.join(backupDir, liste.shift().name)); } catch {} } };
+    const daily = dated(names.filter(f => DAILY_RE.test(f)));
+    jeter(daily.slice(0, Math.max(0, daily.length - DAILY_KEEP)));
+    // Deux réserves séparées : les filets pris par l'application avant un geste risqué ne doivent
+    // jamais être chassés par des sauvegardes volontaires.
+    const filets = dated(names.filter(f => !DAILY_RE.test(f) && FILETS.test(f)));
+    jeter(filets.slice(0, Math.max(0, filets.length - NAMED_KEEP)));
+    const manuelles = dated(names.filter(f => !DAILY_RE.test(f) && !FILETS.test(f)));
+    jeter(manuelles.slice(0, Math.max(0, manuelles.length - NAMED_KEEP)));
   }
 
   function listBackups() {
@@ -300,15 +325,30 @@ function createCabStore(dir, opts) {
     return counts;
   }
 
+  // Le mois vient du manifeste d'un paquet reçu par mail — donc de l'extérieur. Le coller dans un
+  // chemin sans le contrôler laissait `mois = '../../../../tmp/piege'` écrire hors du dossier de
+  // l'application, par-dessus le paquet archivé d'un autre client.
+  const moisSain = m => (/^\d{4}-(0[1-9]|1[0-2])$/.test(String(m || '')) ? String(m) : 'inconnu');
   function packPathFor(dossier, month, collisions) {
-    const year = String(month || '').slice(0, 4) || 'sans-date';
-    return path.join(packRoot, folderName(dossier, collisions), year, `${month || 'inconnu'}.skanpack`);
+    const m = moisSain(month);
+    const year = m === 'inconnu' ? 'sans-date' : m.slice(0, 4);
+    const dest = path.join(packRoot, folderName(dossier, collisions), year, `${m}.skanpack`);
+    // Ceinture et bretelles : même si un nom de dossier venait à contenir une remontée.
+    if (!path.resolve(dest).startsWith(path.resolve(packRoot) + path.sep)) {
+      throw new Error('Chemin de paquet refusé : il sortirait du dossier de l\'application.');
+    }
+    return dest;
   }
 
   // Ranger un paquet reçu à sa place. Le fichier d'origine du comptable n'est jamais déplacé.
+  // Le comptable a déclaré sur un paquet. Si le client rouvre son mois et renvoie, l'ancien fichier
+  // ne doit PAS disparaître : sans lui, il ne peut ni montrer sur quoi il a déclaré, ni établir la
+  // rectificative par différence. On ne réutilise donc jamais un nom.
   function storePack(sourceFile, dossier, month, dossiers) {
-    const dest = packPathFor(dossier, month, folderIndex(dossiers));
-    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    const base = packPathFor(dossier, month, folderIndex(dossiers));
+    fs.mkdirSync(path.dirname(base), { recursive: true });
+    let dest = base;
+    for (let n = 2; fs.existsSync(dest) && n < 100; n++) dest = base.replace(/\.skanpack$/, `-r${n}.skanpack`);
     fs.copyFileSync(sourceFile, dest);
     mirrorExternal({ packs: true });
     return dest;
@@ -338,9 +378,13 @@ function createCabStore(dir, opts) {
       (d.packs || []).forEach(p => {
         if (!p.path) return;                                  // paquet d'exemple : aucun fichier
         const want = packPathFor(d, p.month, collisions);
-        if (p.path === want) return;
         try {
-          if (!fs.existsSync(p.path)) { lost++; return; }
+          // Le contrôle d'existence vient AVANT celui de la place : un paquet déjà bien rangé dont le
+          // fichier a disparu n'était jamais compté, et restait vert et « définitif » à l'écran.
+          if (!fs.existsSync(p.path)) { lost++; p.missingFile = true; return; }
+          delete p.missingFile;
+          if (p.path === want) return;
+          if (fs.existsSync(want)) return;                    // jamais écraser une autre réception
           fs.mkdirSync(path.dirname(want), { recursive: true });
           fs.renameSync(p.path, want);
           p.path = want;

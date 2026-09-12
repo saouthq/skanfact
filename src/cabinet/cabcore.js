@@ -62,6 +62,9 @@
     { id: 'autre', label: 'Autre' }
   ];
 
+  // Cinq ans : au-delà, ce n'est plus un retard, c'est une reprise d'archives — et réclamer soixante
+  // mois par mail ne fait bouger personne.
+  const MAX_MOIS_ATTENDUS = 60;
   const DEFAULT_SETTINGS = { relanceDay: 10, deadlines: null };
   const DEFAULT_STATE = { format: FORMAT, cabinet: { name: '', email: '', phone: '', publicKey: '', privateKey: '' }, dossiers: [], settings: { ...DEFAULT_SETTINGS } };
 
@@ -112,11 +115,22 @@
   // L'identité d'un dossier vient du MATRICULE FISCAL quand il existe : c'est le seul identifiant
   // stable d'une entreprise. Un nom se corrige, se raccourcit, change de forme juridique — et deux
   // clients peuvent s'appeler « Ben Ali ». Sans matricule, on retombe sur le nom normalisé.
+  // Garder TOUTES les lettres, pas seulement l'alphabet latin. « شركة الأمان » et « مخبزة الياسمين »
+  // donnaient tous deux la clé vide « NOM: » : dans un portefeuille tunisien, tous les clients dont
+  // la raison sociale est en arabe tombaient dans un SEUL dossier, et leurs paquets s'écrasaient les
+  // uns les autres. Un cabinet de Sfax qui colle ses soixante clients en aurait perdu la moitié.
+  const sansAccents = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  function normNom(s) {
+    return String(s || '').normalize('NFKC').normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/[^\p{L}\p{N}]+/gu, ' ').trim().toUpperCase();
+  }
   function dossierKey(manifest) {
     const e = (manifest && manifest.entreprise) || {};
     const mf = String(e.matricule || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
     if (mf) return 'MF:' + mf;
-    return 'NOM:' + String(e.nom || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim();
+    const nom = normNom(e.nom);
+    // Jamais de clé vide : elle ferait tomber tous les sans-nom dans le même dossier.
+    return nom ? 'NOM:' + nom : '';
   }
 
   // Ce qu'on retient d'un paquet reçu. On ne garde pas les fichiers ici : ils restent dans le paquet,
@@ -140,7 +154,9 @@
       appVersion: (manifest && manifest.versionApp) || '',
       // Les chiffres du mois, quand le paquet les porte (paquets fabriqués à partir de la 6.2.1).
       // Un paquet plus ancien n'en a pas : l'interface doit afficher « — », pas zéro.
-      figures: (manifest && manifest.chiffres) || null
+      figures: (manifest && manifest.chiffres) || null,
+      // Les réceptions précédentes de CE mois, quand il en a eu (voir filePack).
+      precedents: extra.precedents || undefined
     };
   }
 
@@ -182,13 +198,42 @@
     // le moment que le cabinet attendait : son client s'y est mis. On le dit à l'interface.
     if (dossier.manual) { dossier.manual = false; adopted = true; }
     const sum = packSummary(manifest, extra);
-    const before = dossier.packs.filter(p => p.month === sum.month);
+    const avant = dossier.packs.find(p => p.month === sum.month) || null;
+
+    // Un paquet ANTÉRIEUR ne détrône pas un plus récent. En rattrapant une boîte mail en retard, un
+    // vieux provisoire remontait : le chiffre d'affaires tombait, le mois repassait « provisoire »,
+    // et le cabinet réclamait à son client un mois qu'il avait déjà reçu définitif. C'est la relance
+    // qui fait perdre la confiance d'un client.
+    const quand = x => Date.parse((x && x.generatedAt) || 0) || (x && x.receivedAt) || 0;
+    const plusAncien = !!avant && quand(sum) > 0 && quand(avant) > 0 && quand(sum) < quand(avant);
+    if (plusAncien) {
+      return {
+        dossier, created, adopted, replaced: false, ignored: true,
+        wasDefinitive: !!avant.definitive, nowDefinitive: avant.definitive,
+        month: sum.month, summary: avant, refuse: sum
+      };
+    }
+
+    // On garde la trace de ce qu'on remplace. Le comptable a déclaré sur des chiffres : il doit
+    // pouvoir dire lesquels, et de combien ils ont bougé — c'est exactement une rectificative.
+    if (avant) {
+      sum.precedents = (avant.precedents || []).concat([{
+        digest: avant.digest, receivedAt: avant.receivedAt, generatedAt: avant.generatedAt,
+        definitive: avant.definitive, figures: avant.figures || null, path: avant.path || '', files: avant.files || 0
+      }]).slice(-10);
+    }
     dossier.packs = dossier.packs.filter(p => p.month !== sum.month).concat([sum])
       .sort((a, b) => a.month < b.month ? 1 : a.month > b.month ? -1 : 0);
     return {
-      dossier, created, adopted, replaced: before.length > 0,
-      wasDefinitive: before.some(p => p.definitive),
+      dossier, created, adopted, replaced: !!avant,
+      wasDefinitive: !!(avant && avant.definitive),
       nowDefinitive: sum.definitive,
+      // De combien les chiffres ont bougé : ce que « les chiffres ont pu changer » ne disait pas.
+      ecart: avant && avant.figures && sum.figures ? {
+        ca: round3((Number(sum.figures.ca) || 0) - (Number(avant.figures.ca) || 0)),
+        tvaADecaisser: round3((Number(sum.figures.tvaADecaisser) || 0) - (Number(avant.figures.tvaADecaisser) || 0)),
+        devise: sum.figures.devise || avant.figures.devise || 'DT'
+      } : null,
       month: sum.month, summary: sum
     };
   }
@@ -245,37 +290,55 @@
 
   // L'état d'un dossier, mois par mois. `from` = le premier mois qu'on attend de ce client ;
   // par défaut le premier reçu, parce qu'avant ça on ne sait rien et qu'on ne réclame pas le néant.
-  function dossierMonths(dossier, todayIso) {
+  // `graceDay` : le jour du mois avant lequel on ne réclame pas encore le mois qui vient de finir.
+  // Le 1er septembre, personne n'a encore envoyé août — et pourtant tout le portefeuille basculait
+  // en rouge d'un coup. Le compteur d'alerte était maximal le jour où personne n'était fautif.
+  function dossierMonths(dossier, todayIso, graceDay) {
     const t = todayIso || today();
     const curMonth = t.slice(0, 7);
+    const grace = Number(graceDay) > 0 ? Number(graceDay) : 0;
+    const jour = Number(t.slice(8, 10)) || 1;
+    const moisDeGrace = grace && jour < grace ? addMonth(curMonth, -1) : null;
     // Un dossier créé à la main suit un client qui n'utilise pas encore SkanFact : on ne lui réclame
     // rien tant qu'il n'a pas commencé. Le réclamer afficherait vingt mois manquants le jour de sa
     // création, et noierait les vrais retards.
-    if (dossier.manual) return [];
+    // Un client hors SkanFact n'a rien à envoyer — SAUF si le comptable a posé une date de début de
+    // mission : c'est précisément ce que la fiche lui propose de faire. Sans cette exception, l'écran
+    // réclamait un geste qui ne faisait rien.
+    if (dossier.manual && !dossier.from) return [];
     const got = (dossier.packs || []).slice().sort((a, b) => a.month < b.month ? -1 : 1);
     // `from` est la date de début de mission, saisie par le comptable. C'est le seul moyen de dire
     // « je reprends ce client à partir de janvier » : sans elle, l'attente démarre au premier paquet
     // reçu et les mois d'avant ne sont jamais réclamés — un client repris en cours d'année passait
     // à travers sans que rien ne l'annonce.
     if (!got.length && !dossier.from) return [];
-    const first = dossier.from || got[0].month;
     const last = addMonth(curMonth, -1);                    // le mois en cours n'est jamais attendu
-    if (last < first) return [];
-    return monthsBetween(first, last).map(m => {
+    // Une date de début de mission sans plancher fait réclamer vingt ans périmés — et le rabot de
+    // `monthsBetween` coupe par la FIN, donc les mois réellement en retard disparaissent de la liste
+    // pendant que des mois de 2006 s'affichent. On borne à cinq ans, et on le dit.
+    const plancher = addMonth(curMonth, -MAX_MOIS_ATTENDUS);
+    let first = dossier.from || got[0].month;
+    let tronque = false;
+    if (first < plancher) { first = plancher; tronque = true; }
+    if (first > last) return [];
+    const out = monthsBetween(first, last).map(m => {
       const p = (dossier.packs || []).find(x => x.month === m);
       return {
         month: m, label: monthLabel(m), pack: p || null,
-        state: !p ? 'manquant' : p.definitive ? 'complet' : 'provisoire',
+        state: !p ? (m === moisDeGrace ? 'attendu' : 'manquant') : p.definitive ? 'complet' : 'provisoire',
         missing: p ? (p.missing || []).reduce((s, x) => s + (x.count || 0), 0) : 0
       };
     });
+    if (tronque && out.length) out[0].tronque = true;       // l'interface peut le dire
+    return out;
   }
 
   // La ligne d'un dossier dans l'écran principal. Trois faits, dans l'ordre où ils comptent :
   // combien de mois manquent, où en est le dernier reçu, et quand il est arrivé.
-  function dossierRow(dossier, todayIso) {
-    const months = dossierMonths(dossier, todayIso);
+  function dossierRow(dossier, todayIso, graceDay) {
+    const months = dossierMonths(dossier, todayIso, graceDay);
     const missing = months.filter(m => m.state === 'manquant');
+    const attendus = months.filter(m => m.state === 'attendu');
     const provisional = months.filter(m => m.state === 'provisoire');
     const last = (dossier.packs || []).slice().sort((a, b) => a.month < b.month ? 1 : -1)[0] || null;
     const issues = (dossier.packs || []).reduce((s, p) => s + (p.missing || []).reduce((a, x) => a + (x.count || 0), 0), 0);
@@ -299,6 +362,8 @@
       lastAt: last ? last.receivedAt : null, lastDefinitive: last ? last.definitive : false,
       lastFigures: last ? (last.figures || null) : null,
       months: months.length, missingMonths: missing.map(m => m.month), missingCount: missing.length,
+      // Le mois qui vient de finir et qu'on ne réclame pas encore : il se montre, il ne crie pas.
+      awaited: attendus.map(m => m.month),
       provisionalCount: provisional.length, issues, level,
       packCount: (dossier.packs || []).length,
       // ce qui décide du tri : un dossier en retard de trois mois passe devant un dossier à jour
@@ -321,13 +386,16 @@
 
   function dossierList(state, todayIso, opts) {
     opts = opts || {};
+    const grace = Number((state.settings || {}).relanceDay) || 0;
     const rows = (state.dossiers || [])
       .filter(d => opts.withArchived ? true : !d.archived)
       .filter(d => opts.onlySkanfact ? !d.manual : true)
-      .map(d => dossierRow(d, todayIso));
-    const q = String(opts.q || '').trim().toLowerCase();
+      .map(d => dossierRow(d, todayIso, grace));
+    // « epicerie » doit trouver « Épicerie », « patisserie » « Pâtisserie » : personne ne tape les
+    // accents dans un champ de recherche, surtout pas sur un clavier arabe-français.
+    const q = sansAccents(opts.q).trim();
     const kept = q
-      ? rows.filter(r => (r.name + ' ' + r.matricule + ' ' + r.email + ' ' + r.phone + ' ' + r.contact).toLowerCase().includes(q))
+      ? rows.filter(r => sansAccents(r.name + ' ' + r.matricule + ' ' + r.email + ' ' + r.phone + ' ' + r.contact).includes(q))
       : rows;
     const cmp = SORTS[opts.sort] || SORTS.urgence;
     const out = kept.slice().sort(cmp);
@@ -563,31 +631,40 @@
     const t = todayIso || today();
     const cfg = deadlineSettings(state);
     const curMonth = t.slice(0, 7);
-    const avant = Number(opts.avant || 3), apres = Number(opts.apres || 3);
-    // Les dossiers d'exemple comptent ICI : une échéance n'a besoin que des mois reçus, pas des
-    // fichiers. Les exclure montrerait un calendrier vide à un comptable qui découvre l'application
-    // avec le jeu d'exemple — c'est-à-dire au moment où elle doit le convaincre.
-    const actifs = (state.dossiers || []).filter(d => !d.archived);
-    const out = [];
+    const grace = Number((state.settings || {}).relanceDay) || 0;
+    const avant = Number(opts.avant || 3);
+    // On ne fabrique d'échéance que pour des mois TERMINÉS. Un calendrier qui réclame le mois en
+    // cours et les trois suivants montre quatre cartes rouges sur cinq à un cabinet parfaitement à
+    // jour — et c'est l'inverse de ce que dit `dossierMonths` dix lignes plus haut.
+    const dernierMoisFini = addMonth(curMonth, -1);
 
-    for (let k = -avant; k <= apres; k++) {
-      // Le mois DÉCLARÉ : la TVA de septembre se dépose en octobre.
-      const mois = addMonth(curMonth, k - 1);
+    // Ce que chaque dossier doit VRAIMENT : `dossierMonths` connaît le début de mission, les clients
+    // hors SkanFact et le mois de grâce. Les recalculer ici séparément, c'était se contredire d'un
+    // écran à l'autre.
+    const actifs = (state.dossiers || []).filter(d => !d.archived);
+    const attendus = new Map();
+    actifs.forEach(d => attendus.set(d, new Map(dossierMonths(d, t, grace).map(m => [m.month, m.state]))));
+    const concerne = (d, mois) => mois.some(m => attendus.get(d).has(m));
+
+    const out = [];
+    for (let k = avant; k >= 0; k--) {
+      const mois = addMonth(dernierMoisFini, -k);
       const depot = addMonth(mois, 1);
 
-      const mensuels = actifs.filter(d => !d.tvaPeriod || d.tvaPeriod === 'mensuelle');
+      const mensuels = actifs.filter(d => (!d.tvaPeriod || d.tvaPeriod === 'mensuelle') && concerne(d, [mois]));
       // « TVA de octobre » ne s'écrit pas : quatre mois sur douze commencent par une voyelle.
-      if (mensuels.length) out.push(ligneEcheance('tva-m', `TVA ${de(monthLabel(mois))}`, dayOf(depot, cfg.tvaDay), mois, mensuels, t,
+      if (mensuels.length) out.push(ligneEcheance('tva-m', `TVA ${de(monthLabel(mois))}`, dayOf(depot, cfg.tvaDay), mois, mensuels, t, attendus,
         'Déclaration mensuelle de TVA. Les clients dont tu n\'as pas le mois ne peuvent pas être déclarés.'));
 
       const [, mm] = mois.split('-').map(Number);
       if (QUARTER_END[mm]) {
         const trim = QUARTER_END[mm];
         const moisTrim = [addMonth(mois, -2), addMonth(mois, -1), mois];
-        const trimestriels = actifs.filter(d => d.tvaPeriod === 'trimestrielle');
-        if (trimestriels.length) out.push(ligneEcheance('tva-t', `TVA du ${trim}ᵉ trimestre`, dayOf(depot, cfg.tvaDay), moisTrim, trimestriels, t,
+        const trimestriels = actifs.filter(d => d.tvaPeriod === 'trimestrielle' && concerne(d, moisTrim));
+        if (trimestriels.length) out.push(ligneEcheance('tva-t', `TVA du ${trim}ᵉ trimestre`, dayOf(depot, cfg.tvaDay), moisTrim, trimestriels, t, attendus,
           'Déclaration trimestrielle de TVA. Il te faut les trois mois du trimestre.'));
-        out.push(ligneEcheance('cnss', `CNSS du ${trim}ᵉ trimestre`, dayOf(depot, cfg.cnssDay), moisTrim, actifs, t,
+        const employeurs = actifs.filter(d => concerne(d, moisTrim));
+        if (employeurs.length) out.push(ligneEcheance('cnss', `CNSS du ${trim}ᵉ trimestre`, dayOf(depot, cfg.cnssDay), moisTrim, employeurs, t, attendus,
           'Déclaration sociale trimestrielle, pour les clients qui ont des salariés. SkanFact ne sait pas lesquels : à toi de filtrer.'));
       }
     }
@@ -596,19 +673,22 @@
       .sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : a.label.localeCompare(b.label, 'fr'));
   }
 
-  function ligneEcheance(id, label, date, mois, dossiers, todayIso, detail) {
+  function ligneEcheance(id, label, date, mois, dossiers, todayIso, attendus, detail) {
     const liste = Array.isArray(mois) ? mois : [mois];
     const manquants = [], provisoires = [];
     dossiers.forEach(d => {
-      const etats = liste.map(m => moisRecu(d, m));
+      // Un mois qui n'est pas attendu de ce client (avant son début de mission) n'est pas un manque.
+      const etats = liste.map(m => attendus.get(d).get(m)).filter(Boolean);
+      if (!etats.length) return;
       if (etats.some(e => e === 'manquant')) manquants.push(d.name);
       else if (etats.some(e => e === 'provisoire')) provisoires.push(d.name);
     });
     const jours = Math.round((Date.parse(date + 'T00:00:00Z') - Date.parse(todayIso + 'T00:00:00Z')) / 86400000);
+    const clients = dossiers.length;
     return {
       id, label, date, detail, mois: liste,
-      clients: dossiers.length, manquants, provisoires,
-      prets: dossiers.length - manquants.length - provisoires.length,
+      clients, manquants, provisoires,
+      prets: clients - manquants.length - provisoires.length,
       jours, passee: jours < 0,
       // Ce qui décide de la couleur : une échéance proche avec des pièces qui manquent est le seul
       // cas vraiment urgent. Une échéance proche mais complète n'a pas à crier.
