@@ -23,7 +23,9 @@ Signalé par Skander juste après avoir branché le relais : la vérification é
 - **Electron est mis en cache** d'une publication à l'autre (250 Mo par architecture, deux architectures, deux applications — c'était retéléchargé à chaque fois).
 - **L'étape de recompilation native est supprimée** : SkanFact n'a aucune dépendance native, elle ne produisait rien.
 - **Deux publications lancées coup sur coup ne se paient plus deux fois** : la première est annulée.
-- **`Installer SkanFact.command` connaît le relais** : il demande son adresse une fois, la garde dans `relais.local.json` (jamais commité) et construit une application identique à celle de GitHub — sans consommer une minute de quota.
+- **`Installer SkanFact.command` connaît le relais** : il demande son adresse une fois, la garde dans `relais.local.json` (jamais commité) et construit une application identique à celle de GitHub — sans consommer une minute de quota. Il propose aussi de construire **SkanFact Cabinet** au passage.
+
+**La cause de la panne, confirmée.** Le secret `UPDATE_BASE` du dépôt contenait une **espace en fin** — invisible, et attrapée par un copier-coller d'adresse. L'adresse devenait `https://…workers.dev /app`, que `new URL()` refuse : une espace n'a pas le droit d'exister dans un nom de domaine. L'erreur partait dans le `catch` muet, et il ne restait que « Module de mise à jour indisponible. ». Le `trim()` de cette version l'efface avant usage.
 
 ## 6.7.1 — 12/09/2026
 

@@ -107,8 +107,25 @@ if ask "Construire l'application et le .dmg ? (sinon tu la lanceras avec « npm 
   DMG=$(find dist -maxdepth 1 -name "*.dmg" -print -quit 2>/dev/null)
   if [[ -n "$DMG" ]]; then ok "Installateur créé : $DMG"; else warn "Pas de .dmg généré (l'app fonctionne quand même)."; fi
 
+  # L'application du comptable vit dans le même dépôt, avec sa propre configuration. Elle s'installe
+  # à côté de SkanFact (identifiants de paquet différents), et c'est celle qu'on montre à un cabinet.
+  CAB=""
+  if ask "Construire aussi SkanFact Cabinet (l'application du comptable) ?"; then
+    npx electron-builder -c build/cabinet.config.js --mac \
+      -c.extraMetadata.updateBase="${UPDATE_BASE//[[:space:]]/}" \
+      -c.extraMetadata.updateSecret="${UPDATE_SECRET//[[:space:]]/}" 2>&1 | grep -vE "^\s*$|• " || true
+    CAB=$(find dist-cabinet -maxdepth 3 -name "SkanFact Cabinet.app" -print -quit 2>/dev/null)
+    if [[ -n "$CAB" ]]; then ok "Application cabinet construite : $CAB"; else warn "L'application cabinet n'a pas été générée."; fi
+  fi
+
   # ---------------------------------------------------------------- 4. copie
   step 4 "Installation dans Applications"
+  if [[ -n "$CAB" ]] && ask "Copier SkanFact Cabinet.app dans Applications ?"; then
+    if [[ -w /Applications ]]; then CDEST=/Applications; else CDEST="$HOME/Applications"; mkdir -p "$CDEST"; fi
+    rm -rf "$CDEST/SkanFact Cabinet.app"
+    cp -R "$CAB" "$CDEST/" && xattr -dr com.apple.quarantine "$CDEST/SkanFact Cabinet.app" 2>/dev/null
+    ok "SkanFact Cabinet installée dans $CDEST"
+  fi
   if ask "Copier SkanFact.app dans le dossier Applications ?"; then
     if [[ -w /Applications ]]; then DEST=/Applications; else DEST="$HOME/Applications"; mkdir -p "$DEST"; fi
     rm -rf "$DEST/SkanFact.app"
