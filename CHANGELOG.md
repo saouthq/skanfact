@@ -7,6 +7,23 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 7.0.1 — 12/09/2026
+
+**Deux erreurs de montant, trouvées par l'audit et vérifiées avant d'y toucher.** Ce ne sont pas des défauts d'ergonomie : ce sont des chiffres faux sur des pièces officielles, et rien à l'écran ne les montrait.
+
+### Le timbre fiscal valait « 1 », pas « 1 dinar »
+
+Le timbre est une taxe **fixée en dinars** par l'État. Sur une facture en euros, l'application l'ajoutait tel quel : **1 euro au lieu de 1 dinar, soit 3,4 fois trop cher**. Il se convertit désormais dans la devise du document. Un devis n'a toujours pas de timbre, dans aucune devise.
+
+*Le test qui couvrait ce cas depuis la 1.6.0 affirmait le défaut : il attendait un total de 1 191,00 € sur une facture dont le total correct est 1 190,29 €. Une assertion écrite en recopiant ce que le code produisait ne prouve rien — elle grave le bug.*
+
+### Un taux de change vide faisait compter 1 EUR = 1 DT
+
+Le champ « Taux » pouvait rester vide sans que rien ne bloque. Toute la comptabilité comptait alors les euros comme des dinars : le journal des ventes, la **TVA à déclarer**, le chiffre d'affaires, le tableau de bord, et le paquet envoyé au comptable — faux d'un facteur trois, **en silence**.
+
+- Le taux devient **obligatoire** dès qu'une devise étrangère est choisie. C'est le seul champ dont l'oubli change des chiffres ailleurs sans rien afficher là où on le saisit.
+- Les pièces déjà enregistrées sans taux remontent **en rouge** dans « À faire » : elles faussent déjà la déclaration.
+
 ## 7.0.0 — 12/09/2026
 
 **« Soit t'es pro soit tu te prends la tête. »** Skander, propriétaire de SkanFact, ne savait pas s'en servir. En six semaines l'application est passée de « devis et factures » à quinze modules ; chacun est arrivé avec son aide et ses bulles, aucun n'a été livré avec une révision de l'ensemble. Le résultat n'était pas une application mal faite, c'était une application **faite pour quelqu'un qui sait déjà**.

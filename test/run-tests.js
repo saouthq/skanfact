@@ -245,8 +245,13 @@ t('anglais : montant en lettres, format des nombres, template', () => {
   assert.strictEqual(core.money(1234567.891, null, 2, 'en'), '1,234,567.89');
   const html = core.documentHtml({ ...inv(), lang: 'en', currency: 'EUR', exchangeRate: 3.4, withholdingRate: 0 }, { name: 'ACME Ltd', matricule: 'GB123' }, CO);
   assert.ok(html.includes('<div class="kind">Invoice</div>') && html.includes('Billed to') && html.includes('Amount due') && html.includes('Stamp duty'));
-  assert.ok(html.includes('1,191.00') && html.includes('<small>EUR</small>') && html.includes('1 EUR = 3,400 DT'));
-  assert.ok(html.includes('Total amount in words:') && html.includes('one thousand one hundred and ninety-one euros'));
+  // 1 000 HT + 190 de TVA + le timbre. Le timbre vaut **1 dinar**, pas « 1 » : sur une facture en
+  // euros il se convertit, soit 1 / 3,4 = 0,29 €. Jusqu'à la 7.0.1 il était ajouté tel quel, et
+  // cette assertion affirmait donc le défaut : elle attendait 1 191,00 €, c'est-à-dire un timbre de
+  // 3,40 DT sur une facture qui en doit 1,00.
+  assert.ok(html.includes('1,190.29'), 'le timbre doit être converti dans la devise du document');
+  assert.ok(html.includes('<small>EUR</small>') && html.includes('1 EUR = 3,400 DT'));
+  assert.ok(html.includes('Total amount in words:') && html.includes('one thousand one hundred and ninety euros'));
   assert.ok(html.includes('Tax ID GB123') && html.includes('Payment by bank transfer'));
   const draft = core.documentHtml({ ...inv(), lang: 'en', number: '', status: 'brouillon' }, { name: 'X' }, CO);
   assert.ok(draft.includes('>Draft<'));
@@ -5147,6 +5152,37 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       `ces mots s'affichent dans l'application et ne sont définis nulle part : ${absents.join(', ')}`);
     assert.ok((glossaire.body.match(/<dt>/g) || []).length >= 50,
       'le glossaire doit couvrir tous les modules, pas seulement la vente');
+  });
+
+  t('devise : le timbre vaut un DINAR, et un taux absent ne passe plus en silence', () => {
+    const co = { ...core.DEFAULT_COMPANY, stampFee: 1, currency: 'DT' };
+    const lignes = [{ label: 'Prestation', qty: 1, unitPrice: 1000, vatRate: 19 }];
+
+    // Le timbre fiscal est un montant fixé en dinars par l'État, pas un nombre sans unité. Ajouté tel
+    // quel sur une facture en euros, il valait 1 € — soit 3,4 fois le timbre dû.
+    const eur = core.computeTotals({ type: 'facture', currency: 'EUR', exchangeRate: 3.4, lines: lignes }, co);
+    assert.strictEqual(core.round3(eur.stamp * 3.4), 1,
+      `le timbre d'une facture en EUR vaut ${eur.stamp} €, soit ${core.round3(eur.stamp * 3.4)} DT au lieu de 1,000 DT`);
+    // Et il ne bouge pas dans la devise de l'entreprise, qui est le cas de presque toutes les factures.
+    assert.strictEqual(core.computeTotals({ type: 'facture', currency: 'DT', lines: lignes }, co).stamp, 1);
+    // Un devis n'a jamais de timbre, dans aucune devise.
+    assert.strictEqual(core.computeTotals({ type: 'devis', currency: 'EUR', exchangeRate: 3.4, lines: lignes }, co).stamp, 0);
+
+    // Le taux absent : le repli à 1 évite un écran cassé, mais il fait compter 1 EUR = 1 DT partout.
+    // Rien ne le montrait.
+    const sansTaux = { id: 'd1', type: 'facture', currency: 'EUR', date: '2026-05-10', status: 'envoyée', number: 'FAC-2026-009', lines: lignes };
+    assert.strictEqual(core.missingRate(sansTaux, co), true);
+    assert.strictEqual(core.missingRate({ type: 'facture', currency: 'DT', lines: [] }, co), false, 'la devise de l\'entreprise n\'a pas besoin de taux');
+    assert.strictEqual(core.missingRate({ type: 'facture', lines: [] }, co), false, 'une pièce sans devise déclarée suit celle de l\'entreprise');
+    assert.strictEqual(core.missingRate({ type: 'facture', currency: 'EUR', exchangeRate: 3.4, lines: [] }, co), false);
+    assert.strictEqual(core.rateOf(sansTaux, co), 1, 'le repli existe pour ne rien faire planter');
+
+    // Et « À faire » le remonte en rouge : les pièces déjà enregistrées faussent déjà la déclaration.
+    const ligne = core.todoList({ ...core.DEFAULT_DATA, documents: [sansTaux], clients: [] },
+      { ...co, name: 'ACME', matricule: '1234567A', rib: '12 345' }, '2026-09-12')
+      .find(x => x.id === 'taux-change');
+    assert.ok(ligne, '« À faire » doit signaler une pièce en devise sans taux de change');
+    assert.strictEqual(ligne.level, 'danger', 'des chiffres faux dans une déclaration, c\'est rouge');
   });
 
   console.log(`\n${n} tests OK`);

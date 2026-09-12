@@ -1496,7 +1496,7 @@
               ${isAv ? field('Motif de l\'avoir', 'creditReason', doc.creditReason || '', 'text', ro + ' placeholder="Erreur de facturation, remise commerciale…"') : ''}
               <label class="field">${lbl('Langue du document', 'ed.lang')}<select name="lang" ${ro}><option value="fr" ${doc.lang !== 'en' ? 'selected' : ''}>Français</option><option value="en" ${doc.lang === 'en' ? 'selected' : ''}>English</option></select></label>
               <label class="field">${lbl('Devise', 'ed.docCurrency')}<select name="currency" ${ro}>${C.CURRENCIES.map(c => `<option value="${c}" ${c === cur ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
-              <label class="field" id="rate-field" ${cur === company().currency ? 'hidden' : ''}><span class="fl"><span class="rate-lbl">Taux : 1 ${h(cur)} = ? ${h(company().currency)}</span> ${info('ed.rate')}</span><input type="number" name="exchangeRate" value="${h(doc.exchangeRate || '')}" step="0.0001" min="0" class="num" placeholder="ex. 3.4" ${ro}></label>
+              <label class="field" id="rate-field" ${cur === company().currency ? 'hidden' : ''}><span class="fl"><span class="rate-lbl">Taux : 1 ${h(cur)} = ? ${h(company().currency)}</span> <span class="req">obligatoire</span> ${info('ed.rate')}</span><input type="number" name="exchangeRate" value="${h(doc.exchangeRate || '')}" step="0.0001" min="0" class="num" placeholder="ex. 3.4" ${ro}></label>
               ${statusCell}
               ${field(lbl('Remise globale (%)', 'ed.discount'), 'discountRate', doc.discountRate || 0, 'number', 'min="0" max="100" step="0.5" class="num" ' + ro)}
               ${isInv || isAv || isProforma ? `<label class="field">${lbl('Retenue à la source', 'ed.withholding')}<select name="withholdingRate" ${ro}>${withholdingOptions(doc.withholdingRate)}</select></label>` : ''}
@@ -1795,6 +1795,14 @@
       // de huit lignes, la barre d'actions est en haut et la ligne oubliée en bas : le bandeau noir
       // passait deux secondes et demie tout en bas de l'écran, pendant qu'on regardait le haut.
       if (!doc.clientId) return refus('[data-combo=clientId] .combo-btn', 'Choisis un client.');
+      // Un taux de change absent ne se voit nulle part et fausse TOUT : le journal des ventes, la
+      // TVA à déclarer, le chiffre d'affaires, le tableau de bord et le paquet du comptable comptent
+      // alors 1 euro = 1 dinar. C'est le seul champ de l'application dont l'oubli change des chiffres
+      // ailleurs sans rien afficher ici — il est donc obligatoire, pas conseillé.
+      if (C.missingRate(doc, company())) {
+        return refus('[name=exchangeRate]',
+          `Indique le taux de change : combien vaut 1 ${doc.currency} en ${company().currency} ? Sans lui, toute ta comptabilité compterait 1 ${doc.currency} = 1 ${company().currency}.`);
+      }
       if (isAv && !doc.creditOf) return refus('[data-combo=creditOf] .combo-btn', 'Indique la facture concernée par l\'avoir.');
       if (!doc.lines.some(l => l.label && l.label.trim())) return refus('#lines input[data-k=label]', 'Ajoute au moins une ligne avec une désignation.');
       if (hasDue && doc.dueDate && doc.date && doc.dueDate < doc.date) return refus('[name=dueDate]', `${isQ ? 'La validité' : 'L\'échéance'} ne peut pas précéder la date du document.`);
@@ -3062,7 +3070,8 @@
     'declarations-sociales': { label: 'Voir les déclarations', run: vers('#/paie', () => { paieState.tab = 'declarations'; }) },
     bulletins: { label: 'Voir les bulletins', run: vers('#/paie', () => { paieState.tab = 'bulletins'; }) },
     'salaires-double': { label: 'Voir les mouvements', run: vers('#/tresorerie', () => { tresoState.tab = 'mouvements'; }) },
-    tresorerie: { label: 'Voir la prévision', run: vers('#/tresorerie', () => { tresoState.tab = 'prevision'; }) }
+    tresorerie: { label: 'Voir la prévision', run: vers('#/tresorerie', () => { tresoState.tab = 'prevision'; }) },
+    'taux-change': { label: 'Voir les pièces', run: vers('#/factures', () => { listState.facture.q = ''; listState.facture.year = ''; listState.facture.yearTouched = true; }) }
   };
   // Combien de lignes on montre avant de proposer « voir le reste ». En démo, « À faire » affichait
   // treize lignes et occupait l'écran entier : le chiffre d'affaires, le graphique et tout le reste

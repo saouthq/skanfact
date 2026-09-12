@@ -460,6 +460,27 @@ comme si `e2e:entreprise` la fournissait : ce n'était plus vrai, et il fallait 
 photographe à chaque audit. Les défauts « je ne sais pas par où commencer » vivent tous dans l'état
 vierge, ceux de densité et de vocabulaire dans l'état démo.
 
+## 7.0.1 — Deux erreurs de montant que l'ergonomie a fait tomber
+
+L'audit d'ergonomie cherchait des écrans ; il a trouvé des chiffres faux. Les deux règles :
+
+- **Un montant réglementaire porte une unité.** Le timbre fiscal est fixé *en dinars* : ajouté tel
+  quel sur une facture en euros, il valait 1 € au lieu de 1 DT — 3,4 fois trop cher, sur une pièce
+  officielle. Tout montant venu des réglages de la société (`stampFee` et ce qui suivra) se convertit
+  dans la devise du document.
+- **Un champ dont l'oubli fausse des chiffres AILLEURS est obligatoire, pas conseillé.** Le taux de
+  change pouvait rester vide ; `toBase` repliait alors sur 1 et toute la comptabilité comptait
+  1 EUR = 1 DT — journal des ventes, TVA à déclarer, chiffre d'affaires, tableau de bord, paquet du
+  comptable. Rien à l'écran où on le saisit ne le montrait, parce que la facture, elle, était juste.
+  `core.missingRate` existe pour que l'application le dise : la saisie refuse, et les pièces déjà
+  enregistrées remontent en rouge dans « À faire ».
+
+**Et la leçon sur les tests, la plus coûteuse :** l'assertion qui couvrait la facture en devise
+depuis la 1.6.0 **affirmait le défaut**. Elle attendait 1 191,00 € là où le total correct est
+1 190,29 €, parce qu'elle avait été écrite en recopiant ce que le code produisait. Un test écrit
+ainsi ne prouve rien — il grave le bug et empêche de le corriger. Une assertion sur un montant se
+calcule à la main, à partir de la règle, avant de regarder ce que le code renvoie.
+
 ## Pistes pour la suite (non demandées)
 
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.

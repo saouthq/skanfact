@@ -362,10 +362,29 @@
     return currency ? `${out} ${currency}` : out;
   }
   // Montant d'un document ramené à la devise de la société (taux saisi sur le document : 1 devise = x DT)
+  // Le taux d'un document : « 1 devise = x DT ». Vaut 1 quand le document est dans la devise de
+  // l'entreprise — c'est-à-dire dans la quasi-totalité des cas.
+  function rateOf(doc, company) {
+    const cur = (doc || {}).currency || (company || {}).currency;
+    if (!cur || cur === (company || {}).currency) return 1;
+    const r = Number((doc || {}).exchangeRate);
+    return r > 0 ? r : 1;      // le repli existe pour ne rien faire planter ; `missingRate` le signale
+  }
+
+  // Un document en devise étrangère SANS taux de change saisi. Le repli à 1 de `rateOf` évite un
+  // écran cassé, mais il fait compter 1 EUR = 1 DT : le journal des ventes, la TVA à déclarer, le
+  // chiffre d'affaires et le tableau de bord deviennent faux **en silence**, d'un facteur trois.
+  // Rien à l'écran ne le montrait. Cette fonction existe pour que l'application le dise.
+  function missingRate(doc, company) {
+    const cur = (doc || {}).currency || (company || {}).currency;
+    if (!cur || cur === (company || {}).currency) return false;
+    return !(Number((doc || {}).exchangeRate) > 0);
+  }
+
   function toBase(doc, amount, company) {
     const cur = doc.currency || company.currency;
     if (!cur || cur === company.currency) return round3(amount);
-    return round3(amount * (Number(doc.exchangeRate) || 1));
+    return round3(amount * rateOf(doc, company));
   }
 
   function fmtDate(iso) {
@@ -461,7 +480,11 @@
     // À VÉRIFIER avec le comptable.
     const stampApplies = (doc.type === 'facture' && doc.applyStamp !== false)
       || ((doc.type === 'avoir' || doc.type === 'proforma') && doc.applyStamp === true);
-    const stamp = stampApplies ? round3(company.stampFee || 0) : 0;
+    // Le timbre est un montant en DINARS fixé par l'État — pas un nombre sans unité. Sur une facture
+    // en euros, l'ajouter tel quel ajoutait « 1 euro », soit 3,4 fois le timbre dû. Il se convertit
+    // dans la devise du document, comme n'importe quel montant.
+    // `exchangeRate` se lit « 1 devise = x DT » : un dinar vaut donc 1/x devise.
+    const stamp = stampApplies ? round3((company.stampFee || 0) / rateOf(doc, company)) : 0;
     const totalTTC = round3(netHT + totalVAT + stamp);
     // Retenue à la source (factures / avoirs) : calculée sur le TTC hors timbre. À VÉRIFIER avec le comptable.
     // La retenue à la source ne se pratique que sur ce qui est réellement payé : facture, avoir, proforma.
@@ -3919,6 +3942,18 @@
       count: oldDrafts.length, route: '#/factures', docs: oldDrafts
     });
 
+    // Les pièces en devise étrangère sans taux de change. Elles ne se signalaient nulle part et
+    // faisaient compter 1 euro = 1 dinar dans le journal des ventes, la TVA à déclarer, le chiffre
+    // d'affaires et le paquet envoyé au comptable. Depuis la 7.0.1 la saisie les refuse ; celles qui
+    // existent déjà doivent se rattraper, sinon la déclaration part fausse.
+    const sansTaux = (data.documents || []).filter(d => missingRate(d, company));
+    if (sansTaux.length) out.push({
+      id: 'taux-change', level: 'danger',
+      label: `${sansTaux.length} pièce${sansTaux.length > 1 ? 's' : ''} en devise sans taux de change`,
+      detail: 'Tant que le taux manque, ces montants comptent comme des dinars : ton chiffre d\'affaires et ta TVA sont faux.',
+      count: sansTaux.length, route: '#/factures', docs: sansTaux
+    });
+
     // Le commentaire en tête de cette fonction promet « du plus urgent au moins urgent » depuis la
     // 1.10.0, et l'ordre réel était celui du code — c'est-à-dire l'ordre dans lequel les modules ont
     // été écrits. Sur le jeu d'exemple, « 3 factures en retard » (rouge) se retrouvait au-dessus,
@@ -4689,7 +4724,7 @@
     depositLines, settlementLines, salesJournal, vatSummary, paymentsJournal, toCsv, migrateData,
     PERIODS, MONTHS_FR, MONTHS_SHORT, monthLabel, addMonths, nextRecurrenceDate, dueRecurrences, catchUpRecurrence, fillTemplate, buildRecurringInvoice,
     reminderLevel, REMINDER_LABELS, daysBetween, overdueInvoices, todoList, companyGaps, documentHistory, DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_TEMPLATES_EN, emailFor,
-    CURRENCIES, decimalsFor, toBase, monthKeys, monthlySeries, topClients, quoteStats, avgPaymentDelay, clientSummary, I18N,
+    CURRENCIES, decimalsFor, toBase, rateOf, missingRate, monthKeys, monthlySeries, topClients, quoteStats, avgPaymentDelay, clientSummary, I18N,
     EXTRA_TYPES, SALES_TYPES, CONVERSIONS, CONVERSION_LABELS, convertDoc, derivedDocs, DEFAULT_CLAUSES, CLAUSE_LABELS,
     PURCHASE_KINDS, LINE_DESTINATIONS, DEFAULT_EXPENSE_CATEGORIES, PURCHASE_STATUSES, expenseCategories,
     vatReturn, vatChain, DEFAULT_FISCAL_DEADLINES, fiscalDeadlines, nextDeadline, upcomingFiscal, simpleResult,
