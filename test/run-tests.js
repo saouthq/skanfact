@@ -3164,8 +3164,22 @@ t('cabinet : le compte des pièces vérifiées est exact, et un fichier modifié
   assert.strictEqual(manquant.checked, 1, 'un fichier absent n\'est pas un fichier vérifié');
   assert.deepStrictEqual(manquant.bad, ['journaux/ventes.csv (absent)', 'ventes/FAC-1.pdf (absent)']);
 
+  // Et dans l'AUTRE sens : un fichier présent que le manifeste n'annonce pas. Il était invisible —
+  // « 3 pièces vérifiées, intactes » pour un paquet qui en contenait cinq, les deux autres listées,
+  // cliquables, et contrôlées par personne. Un intrus n'est pas une pièce vérifiée.
+  const enTrop = cab.checkIntegrity(man, {
+    'manifeste.json': 'peu importe', '00-page-de-garde.pdf': 'aaa', 'journaux/ventes.csv': 'bbb',
+    'ventes/FAC-1.pdf': 'ccc', 'z-bonus/facture.pdf.command': 'xxx', 'lisez-moi.exe': 'yyy'
+  });
+  assert.strictEqual(enTrop.checked, 3, 'un intrus ne gonfle pas le compte des pièces vérifiées');
+  assert.deepStrictEqual(enTrop.bad, [], 'un intrus n\'est pas une empreinte fausse : il se dit à part');
+  assert.deepStrictEqual(enTrop.intrus, ['lisez-moi.exe', 'z-bonus/facture.pdf.command']);
+  assert.strictEqual(enTrop.ok, false, 'un paquet qui contient autre chose que ce qu\'il annonce n\'est pas conforme');
+  // Le manifeste ne se liste pas lui-même : il est attendu, jamais intrus.
+  assert.ok(!enTrop.intrus.includes('manifeste.json'));
+
   // Un manifeste sans liste de fichiers ne doit pas faire croire à une vérification.
-  assert.deepStrictEqual(cab.checkIntegrity({}, {}), { checked: 0, bad: [], ok: true });
+  assert.deepStrictEqual(cab.checkIntegrity({}, {}), { checked: 0, bad: [], intrus: [], ok: true });
 });
 
 t('cabinet : les mois attendus, et jamais le mois en cours', () => {

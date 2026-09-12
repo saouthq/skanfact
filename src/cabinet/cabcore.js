@@ -169,17 +169,31 @@
   // C'est la seule affirmation rigoureuse de cette application : « ce que j'ai reçu est exactement
   // ce qui a été envoyé ». Elle doit donc compter juste — le manifeste ne se liste pas lui-même,
   // et un fichier absent n'est pas un fichier vérifié.
+  //
+  // Le compte va dans les DEUX sens. Ne parcourir que le manifeste laissait entrer sans un mot les
+  // fichiers qu'il n'annonce pas : un paquet de trente pièces dont douze annoncées affichait
+  // « 12 pièces vérifiées, intactes », et les dix-huit autres, comparées à rien, se listaient et
+  // s'ouvraient d'un clic. Un intrus n'est pas une pièce vérifiée : il a son propre compteur.
   function checkIntegrity(manifest, hashes) {
     const bad = [];
+    const intrus = [];
+    const annonces = new Set();
     let checked = 0;
     ((manifest && manifest.fichiers) || []).forEach(f => {
+      annonces.add(f.chemin);
       if (f.chemin === 'manifeste.json') return;
       const h = hashes && Object.prototype.hasOwnProperty.call(hashes, f.chemin) ? hashes[f.chemin] : null;
       if (h == null) return bad.push(f.chemin + ' (absent)');
       checked++;
       if (h !== f.empreinte) bad.push(f.chemin + ' (modifié)');
     });
-    return { checked, bad, ok: bad.length === 0 };
+    // Le manifeste ne peut pas porter sa propre empreinte : il est attendu, jamais intrus.
+    Object.keys(hashes || {}).forEach(chemin => {
+      if (chemin === 'manifeste.json' || annonces.has(chemin)) return;
+      intrus.push(chemin);
+    });
+    intrus.sort();
+    return { checked, bad, intrus, ok: bad.length === 0 && intrus.length === 0 };
   }
 
   // Ranger un paquet dans le bon dossier. Renvoie ce qui s'est passé, pour que l'interface puisse le

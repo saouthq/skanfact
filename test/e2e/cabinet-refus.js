@@ -1,6 +1,7 @@
 // Ce que le cabinet fait des cas tordus : un fichier qui n'est pas un paquet, le même mois reçu
-// deux fois, et un paquet adressé à quelqu'un d'autre. Ce sont les trois situations qu'un comptable
-// rencontrera pour de vrai, et dans lesquelles un mauvais message coûte un appel téléphonique.
+// deux fois, un paquet adressé à quelqu'un d'autre, un paquet protégé par mot de passe, et un
+// paquet qui contient un fichier que son manifeste n'annonce pas. Ce sont les situations qu'un
+// comptable rencontrera pour de vrai, et dans lesquelles un mauvais message coûte un appel.
 const { playwright, RACINE, ELECTRON, VERSION } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
@@ -23,6 +24,26 @@ function paquet(nom, matricule, mois, definitif) {
   return Z.zipBuffer([
     { name: 'manifeste.json', data: Buffer.from(JSON.stringify(man, null, 2)) },
     { name: '00-page-de-garde.pdf', data: cover }
+  ]);
+}
+
+// Le même paquet, mais avec un fichier glissé dedans APRÈS coup : il est dans le ZIP, il n'est pas
+// dans le manifeste. C'est le cas C6 — l'application comptait « 1 pièce vérifiée, intacte » pour un
+// paquet qui en contenait deux, et la seconde s'ouvrait d'un clic sans que personne l'ait regardée.
+function paquetAvecIntrus(nom, matricule, mois) {
+  const cover = Buffer.from('%PDF-1.4 page de garde');
+  const man = {
+    format: 1, app: 'SkanFact',
+    entreprise: { nom, matricule, devise: 'DT' },
+    periode: { mois, du: mois + '-01', au: mois + '-28', libelle: mois },
+    definitif: true, genereLe: new Date().toISOString(), poste: 'test',
+    manques: [], absents: [],
+    fichiers: [{ chemin: '00-page-de-garde.pdf', empreinte: Z.sha256(cover) }]
+  };
+  return Z.zipBuffer([
+    { name: 'manifeste.json', data: Buffer.from(JSON.stringify(man, null, 2)) },
+    { name: '00-page-de-garde.pdf', data: cover },
+    { name: 'bonus/lisez-moi.pdf', data: Buffer.from('%PDF-1.4 personne ne m a verifie') }
   ]);
 }
 
@@ -104,12 +125,48 @@ const ecrire = (nom, buf) => { const p = path.join(dir, nom); fs.writeFileSync(p
   console.log('6. ' + ouvert);
   await win.click('#modal-root #ok');
 
-  const dossiers = await win.evaluate(() => [...document.querySelectorAll('table.list tr[data-id] td:first-child')].map(t => t.textContent.trim()));
-  console.log('7. dossiers au final : ' + dossiers.join(' | '));
+  // 7. un paquet qui contient un fichier que son manifeste n'annonce pas
+  const p5 = ecrire('avec-intrus.skanpack', paquetAvecIntrus('Boulangerie Ariana', '4455667D', '2026-06'));
+  const rapport = await importer([p5]);
+  console.log('7. ' + rapport.slice(0, 170));
+  let souci = '';
+  if (!/non annoncé/.test(rapport)) souci = 'le rapport d\'import ne signale pas le fichier en trop';
+  if (/2 pièces vérifiées/.test(rapport)) souci = 'le fichier en trop est compté comme une pièce vérifiée';
+  // Et la liste des fichiers doit le montrer, marqué, avec une question avant l'ouverture.
+  await win.evaluate(() => { location.hash = '#/dossiers'; });
+  await win.waitForTimeout(400);
+  const versFiche = await win.$('table.list tr[data-id]:last-child');
+  if (versFiche) {
+    await versFiche.click();
+    await win.waitForTimeout(500);
+    const voir = await win.$('[data-open], .pack-open, tr[data-month] .btn');
+    if (voir) {
+      await voir.click();
+      await win.waitForSelector('#modal-root .modal', { timeout: 10000 });
+      const liste = (await win.textContent('#modal-root .modal')).replace(/\s+/g, ' ');
+      // Le bandeau le dit, et la ligne du fichier porte un « ? » : on vérifie les deux.
+      if (!/n'est pas annoncé|ne sont pas annoncés/.test(liste)) souci = souci || 'la liste des fichiers ne prévient pas';
+      const marque = await win.evaluate(() => [...document.querySelectorAll('#modal-root tr[data-i]')]
+        .filter(tr => tr.querySelector('.err-inline'))
+        .map(tr => tr.querySelector('td').textContent.trim()));
+      if (!marque.some(m => /lisez-moi/.test(m))) souci = souci || 'le fichier en trop ne porte pas de marque dans la liste';
+      else console.log('   · marqué dans la liste : ' + marque.join(', '));
+      console.log('8. liste : ' + liste.slice(0, 150));
+      await win.keyboard.press('Escape');
+      await win.waitForTimeout(400);
+    }
+  }
+  if (souci) { console.log('   ✗ ' + souci); errors.push(souci); }
+  else console.log('   ✓ le fichier non annoncé est signalé, et il ne compte pas comme vérifié');
 
-  // Deux dossiers attendus, et pas trois : le fichier qui n'est pas un paquet et celui adressé à un
+  await win.evaluate(() => { location.hash = '#/dossiers'; });
+  await win.waitForTimeout(400);
+  const dossiers = await win.evaluate(() => [...document.querySelectorAll('table.list tr[data-id] td:first-child')].map(t => t.textContent.trim()));
+  console.log('9. dossiers au final : ' + dossiers.join(' | '));
+
+  // Trois dossiers attendus, et pas cinq : le fichier qui n'est pas un paquet et celui adressé à un
   // autre cabinet ne doivent EN CRÉER AUCUN. C'est le vrai résultat du test.
-  const ok = dossiers.length === 2 && !errors.length;
+  const ok = dossiers.length === 3 && !errors.length;
   console.log('\nerreurs JS : ' + errors.length);
   errors.slice(0, 5).forEach(e => console.log('  - ' + e));
   console.log(ok ? '>>> CAS TORDUS OK' : '>>> À REGARDER');

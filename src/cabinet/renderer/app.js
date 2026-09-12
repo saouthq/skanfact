@@ -587,6 +587,10 @@
     bits.push(bad
       ? `⚠ ${pl(bad, 'fichier')} ne ${bad > 1 ? 'correspondent' : 'correspond'} pas à l'empreinte annoncée`
       : `${pl(integ.checked || 0, 'pièce')} ${(integ.checked || 0) > 1 ? 'vérifiées, intactes' : 'vérifiée, intacte'}`);
+    // Un fichier que le manifeste n'annonce pas n'a été comparé à rien : il ne compte pas parmi les
+    // pièces vérifiées, et il se dit à part — sinon le paquet aurait l'air entièrement contrôlé.
+    const trop = (integ.intrus || []).length;
+    if (trop) bits.push(`⚠ ${pl(trop, 'fichier')} ${trop > 1 ? 'présents' : 'présent'} mais non ${trop > 1 ? 'annoncés' : 'annoncé'} par ton client`);
     const miss = (x.summary && x.summary.missing || []).reduce((s, m) => s + (m.count || 0), 0);
     if (miss) bits.push(`${pl(miss, 'point')} ${miss > 1 ? 'signalés' : 'signalé'} par le client`);
     return `<li><strong>✓ ${esc(d.name || '')}</strong> — ${esc((x.summary && x.summary.label) || x.month || '')}
@@ -948,6 +952,9 @@
       ${packs.some(p => p.integrity && (p.integrity.bad || []).length)
         ? `<div class="warn-box mb"><strong>Au moins un paquet de ce client contient un fichier qui ne correspond pas à l'empreinte annoncée.</strong>
            Ce n'est pas ce qui a été envoyé : redemande-le avant de déclarer.</div>` : ''}
+      ${packs.some(p => p.integrity && (p.integrity.intrus || []).length)
+        ? `<div class="warn-box mb"><strong>Au moins un paquet de ce client contient un fichier que son manifeste n'annonce pas ${info('p.intrus')}</strong>
+           Personne ne l'a vérifié et il ne compte pas dans les pièces intactes. Ouvre-le seulement si tu sais d'où il vient.</div>` : ''}
       <div class="panel"><h2>Paquets reçus ${info('p.integrity')}</h2>
       ${packs.length ? `<div class="scroll-x"><table class="list compact">
         <thead><tr><th class="nw">Mois</th><th>État</th><th class="r nw">Chiffre d'affaires</th><th class="r nw">TVA à décaisser</th>
@@ -959,7 +966,10 @@
           <td class="r nw">${esc(p.figures ? money(p.figures.tvaADecaisser, p.figures.devise) : '—')}</td>
           <td class="r">${p.integrity && (p.integrity.bad || []).length
             ? `<span class="err-inline" title="${esc((p.integrity.bad || []).join(', '))}">⚠ ${p.integrity.bad.length}</span>`
-            : p.integrity ? `<span class="ok-inline" title="empreintes vérifiées à la réception">✓ ${p.integrity.checked}</span>` : p.files}</td>
+            : p.integrity ? `<span class="ok-inline" title="empreintes vérifiées à la réception">✓ ${p.integrity.checked}</span>` : p.files}
+            ${p.integrity && (p.integrity.intrus || []).length
+              ? `<span class="err-inline" title="${esc('non annoncés par le manifeste : ' + (p.integrity.intrus || []).join(', '))}">⚠ +${p.integrity.intrus.length}</span>`
+              : ''}</td>
           <td class="r">${(p.missing || []).reduce((s, m) => s + (m.count || 0), 0) || '—'}</td>
           <td class="muted nw">${esc(fmtWhen(p.receivedAt))}</td>
           <td class="muted nw">${esc(p.generatedAt ? fmtWhen(Date.parse(p.generatedAt)) : '—')}</td>
@@ -1076,19 +1086,35 @@
     }
     const order = f => (f.name === '00-page-de-garde.pdf' ? 0 : f.name.startsWith('journaux/') ? 1 : f.name === 'manifeste.json' ? 9 : 5);
     files.sort((a, b) => order(a) - order(b) || a.name.localeCompare(b.name, 'fr'));
+    // Ce que le manifeste n'annonce pas n'a été comparé à rien — ni son empreinte, ni son existence.
+    // Un paquet fabriqué par SkanFact n'en contient jamais.
+    const trop = files.filter(f => f.annonce === false);
     modal(
       `<h2>${esc(dossier.name)} — ${esc(p.label)}</h2>
        <p class="muted small">${pl(files.length, 'fichier')}. Commence par la page de garde : elle résume le mois et liste ce qui manque.</p>
+       ${trop.length ? `<div class="warn-box mt"><strong>${pl(trop.length, 'fichier')} ${trop.length > 1 ? 'ne sont pas annoncés' : 'n\'est pas annoncé'} par le manifeste de ton client ${info('p.intrus')}</strong>
+         ${trop.length > 1 ? 'Ils n\'ont' : 'Il n\'a'} été ${trop.length > 1 ? 'vérifiés' : 'vérifié'} par personne : ${trop.length > 1 ? 'ils portent' : 'il porte'} un « ? » dans la liste, et SkanFact pose une question avant l'ouverture.</div>` : ''}
        <table class="list compact mt"><tbody>${files.map((f, i) => `<tr class="clickable" data-i="${i}">
-         <td>${esc(f.name)}</td><td class="r muted nw">${esc(fmtBytes(f.size))}</td></tr>`).join('')}</tbody></table>
+         <td>${esc(f.name)}${f.annonce === false ? ' <span class="err-inline" title="non annoncé par le manifeste">?</span>' : ''}</td><td class="r muted nw">${esc(fmtBytes(f.size))}</td></tr>`).join('')}</tbody></table>
        <div class="modal-actions"><button class="btn" id="xtr">Tout extraire…</button><button class="btn btn-primary" id="ok">Fermer</button></div>`,
       (layer, close) => {
         $('#ok', layer).onclick = close;
         $('#xtr', layer).onclick = () => { close(); extractPack(dossier, month, password); };
         $$('tr[data-i]', layer).forEach(tr => {
           tr.onclick = async () => {
+            const f = files[Number(tr.dataset.i)];
+            // Un fichier que le manifeste n'annonce pas a pu être glissé dans le paquet après coup,
+            // par quelqu'un d'autre que le client. Le contrôle d'extension reste le filet du dessous ;
+            // celui-ci prévient AVANT, quand on peut encore ne pas cliquer.
+            if (f.annonce === false) {
+              const suite = await confirmDialog('Ce fichier n\'est pas annoncé par ton client',
+                `<p><strong>${esc(f.name)}</strong> se trouve dans le paquet, mais le manifeste ne le mentionne pas : son empreinte n'a été comparée à rien.</p>
+                 <p class="muted small">Un paquet fabriqué par SkanFact n'en contient jamais. Ouvre-le seulement si tu sais d'où il vient, et demande à ton client dans le doute.</p>`,
+                'Ouvrir quand même', true);
+              if (!suite) return;
+            }
             try {
-              const r = await api.openInPack(p.path, files[Number(tr.dataset.i)].name, password);
+              const r = await api.openInPack(p.path, f.name, password);
               // Un fichier dont l'extension n'est pas celle d'un document n'est pas lancé : c'est le
               // nom choisi par l'expéditeur qui déciderait sinon quel programme s'exécute.
               if (r && r.opened === false) toast(r.reason, 'error');

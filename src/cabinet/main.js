@@ -424,7 +424,8 @@ function ingest(file, password) {
   // (« ce que j'ai reçu est exactement ce qui a été envoyé »), elle doit compter juste.
   const hashes = {};
   entries.forEach(e => { try { hashes[e.name] = Z.sha256(e.data()); } catch { hashes[e.name] = '(illisible)'; } });
-  const { checked, bad } = K.checkIntegrity(manifest, hashes);
+  // Et dans l'autre sens : ce que le manifeste n'annonce pas (« intrus ») n'a été comparé à rien.
+  const { checked, bad, intrus } = K.checkIntegrity(manifest, hashes);
 
   // On range le paquet tel quel : c'est la pièce justificative, on ne la réécrit pas. Le classement
   // (client / année / mois) permet au comptable de retrouver les pièces sans ouvrir l'application —
@@ -438,9 +439,9 @@ function ingest(file, password) {
   const res = K.filePack(state, manifest, {
     receivedAt: Date.now(), digest: Z.sha256(mEntry.data()), bytes: fs.statSync(file).size,
     path: dest, sealed,
-    integrity: { checked, bad, at: Date.now() }
+    integrity: { checked, bad, intrus, at: Date.now() }
   });
-  return { ...res, integrity: { checked, bad } };
+  return { ...res, integrity: { checked, bad, intrus } };
 }
 
 // Ouvrir un fichier contenu dans un paquet : on l'extrait dans un dossier temporaire, en lecture.
@@ -481,13 +482,29 @@ function cleanTemp() {
   }
 }
 
-// La liste des fichiers d'un paquet, sans rien extraire.
+// La liste des fichiers d'un paquet, sans rien extraire. Chaque fichier dit s'il est ANNONCÉ par le
+// manifeste : celui qui ne l'est pas n'a été comparé à rien, et l'interface pose une question avant
+// de l'ouvrir. On relit le manifeste du paquet plutôt que le verdict rangé à la réception : un
+// paquet reçu avant cette version n'en porte pas, et la réponse est dans le fichier lui-même.
 ipcMain.handle('cab:listPack', (_e, { packPath, password } = {}) => {
   requireOpen();
   let buf = fs.readFileSync(packPath);
   if (Z.isSealedForCabinet(buf)) buf = Z.openWithCabinetKey(buf, state.cabinet.privateKey);
   else if (Z.isSealed(buf)) buf = Z.openBuffer(buf, password || '');
-  return Z.zipRead(buf).map(e => ({ name: e.name, size: e.size }));
+  const entries = Z.zipRead(buf);
+  // Sans manifeste lisible on ne sait pas : on n'accuse personne, tout passe pour annoncé.
+  let annonces = null;
+  const mEntry = entries.find(e => e.name === 'manifeste.json');
+  if (mEntry) {
+    try {
+      const m = JSON.parse(mEntry.data().toString('utf8'));
+      if (Array.isArray(m.fichiers)) annonces = new Set(m.fichiers.map(f => f && f.chemin));
+    } catch { annonces = null; }
+  }
+  return entries.map(e => ({
+    name: e.name, size: e.size,
+    annonce: !annonces || e.name === 'manifeste.json' || annonces.has(e.name)
+  }));
 });
 
 // Extraire TOUT un paquet dans un dossier choisi : c'est ce qu'on fait pour rendre ses pièces à un
