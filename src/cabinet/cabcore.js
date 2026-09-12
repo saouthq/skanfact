@@ -92,6 +92,24 @@
     };
   }
 
+  // Vérifier ce qu'annonce le manifeste contre ce qu'on a réellement reçu. `hashes` est un objet
+  // { chemin: empreinte } calculé par le processus principal (le calcul, lui, a besoin de Node).
+  // C'est la seule affirmation rigoureuse de cette application : « ce que j'ai reçu est exactement
+  // ce qui a été envoyé ». Elle doit donc compter juste — le manifeste ne se liste pas lui-même,
+  // et un fichier absent n'est pas un fichier vérifié.
+  function checkIntegrity(manifest, hashes) {
+    const bad = [];
+    let checked = 0;
+    ((manifest && manifest.fichiers) || []).forEach(f => {
+      if (f.chemin === 'manifeste.json') return;
+      const h = hashes && Object.prototype.hasOwnProperty.call(hashes, f.chemin) ? hashes[f.chemin] : null;
+      if (h == null) return bad.push(f.chemin + ' (absent)');
+      checked++;
+      if (h !== f.empreinte) bad.push(f.chemin + ' (modifié)');
+    });
+    return { checked, bad, ok: bad.length === 0 };
+  }
+
   // Ranger un paquet dans le bon dossier. Renvoie ce qui s'est passé, pour que l'interface puisse le
   // DIRE : un mois reçu deux fois n'est pas une erreur, c'est une information — le client a rouvert
   // sa période, et les chiffres qu'on avait ne sont plus les bons.
@@ -290,7 +308,7 @@
   return {
     FORMAT, MONTHS_FR, DEFAULT_STATE,
     monthLabel, monthListLabel, missingLabel, addMonth, monthsBetween, today,
-    migrate, dossierKey, packSummary, filePack, demoDossiers,
+    migrate, dossierKey, packSummary, filePack, demoDossiers, checkIntegrity,
     dossierMonths, dossierRow, dossierList, cabinetTodo, relanceMail, pairingFile
   };
 }));

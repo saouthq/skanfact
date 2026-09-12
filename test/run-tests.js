@@ -3131,6 +3131,35 @@ t('cabinet : ranger un paquet, et le dire quand il en remplace un définitif', (
   assert.strictEqual(s.dossiers[0].name, 'Trabelsi SUARL', 'le nom suit la raison sociale du client');
 });
 
+// « 7 pièces vérifiées, intactes » est la seule affirmation rigoureuse de l'app cabinet. Elle doit
+// compter juste : ni le manifeste (il ne peut pas porter sa propre empreinte), ni un fichier absent.
+t('cabinet : le compte des pièces vérifiées est exact, et un fichier modifié se voit', () => {
+  const man = {
+    fichiers: [
+      { chemin: 'manifeste.json', empreinte: '' },     // présent dans certains paquets : à ignorer
+      { chemin: '00-page-de-garde.pdf', empreinte: 'aaa' },
+      { chemin: 'journaux/ventes.csv', empreinte: 'bbb' },
+      { chemin: 'ventes/FAC-1.pdf', empreinte: 'ccc' }
+    ]
+  };
+  const tout = cab.checkIntegrity(man, { '00-page-de-garde.pdf': 'aaa', 'journaux/ventes.csv': 'bbb', 'ventes/FAC-1.pdf': 'ccc' });
+  assert.strictEqual(tout.checked, 3, 'trois fichiers vérifiés, pas deux ni quatre');
+  assert.deepStrictEqual(tout.bad, []);
+  assert.strictEqual(tout.ok, true);
+
+  const modifie = cab.checkIntegrity(man, { '00-page-de-garde.pdf': 'aaa', 'journaux/ventes.csv': 'AUTRE', 'ventes/FAC-1.pdf': 'ccc' });
+  assert.strictEqual(modifie.checked, 3, 'un fichier modifié a bien été vérifié');
+  assert.deepStrictEqual(modifie.bad, ['journaux/ventes.csv (modifié)']);
+  assert.strictEqual(modifie.ok, false);
+
+  const manquant = cab.checkIntegrity(man, { '00-page-de-garde.pdf': 'aaa' });
+  assert.strictEqual(manquant.checked, 1, 'un fichier absent n\'est pas un fichier vérifié');
+  assert.deepStrictEqual(manquant.bad, ['journaux/ventes.csv (absent)', 'ventes/FAC-1.pdf (absent)']);
+
+  // Un manifeste sans liste de fichiers ne doit pas faire croire à une vérification.
+  assert.deepStrictEqual(cab.checkIntegrity({}, {}), { checked: 0, bad: [], ok: true });
+});
+
 t('cabinet : les mois attendus, et jamais le mois en cours', () => {
   const s = cab.migrate({});
   cab.filePack(s, manif('X', '9A', '2026-05', true), { path: '/a' });

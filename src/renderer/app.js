@@ -6534,13 +6534,15 @@
             <div><div class="k-label">Total débit</div><div class="v">${C.money(bal.debit, cur)}</div></div>
             <div><div class="k-label">Total crédit</div><div class="v ${bal.balanced ? 'ok' : 'due'}">${C.money(bal.credit, cur)}</div></div>
           </div>
-          ${bal.balanced
+          ${!bal.lines
+            ? '<div class="banner info"><span>Aucune pièce sur cette période : il n\'y a rien à exporter. Choisis un autre mois en haut à droite.</span></div>'
+            : bal.balanced
             ? '<div class="todo-ok">Débit = crédit sur chaque pièce : le fichier passera à l\'import.</div>'
-            : `<div class="banner"><span>${bal.off.length} pièce(s) ne tombent pas juste — signale-le avant d'envoyer.</span></div>`}
+            : `<div class="banner"><span>${bal.off.length} pièce${bal.off.length > 1 ? 's' : ''} ne tombe${bal.off.length > 1 ? 'nt' : ''} pas juste — signale-le avant d'envoyer.</span></div>`}
           <p class="small muted"><em>À VÉRIFIER avec ton comptable :</em> les numéros de compte ci-dessous sont ceux du plan comptable tunisien tel qu'il est couramment utilisé, mais chaque cabinet a ses habitudes. Ils se modifient dans « Plan de comptes », et l'export suit.</p>
           <div class="inline mt">
-            <button class="btn btn-primary" id="ecr-csv">Exporter en CSV</button>
-            <button class="btn" id="ecr-mail">Envoyer au comptable</button>
+            <button class="btn btn-primary" id="ecr-csv" ${bal.lines ? '' : 'disabled'}>Exporter en CSV</button>
+            <button class="btn" id="ecr-mail" ${bal.lines ? '' : 'disabled'}>Envoyer au comptable</button>
             <button class="btn btn-ghost" id="ecr-plan">Plan de comptes…</button>
           </div>
         </div>

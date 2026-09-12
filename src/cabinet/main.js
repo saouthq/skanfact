@@ -215,14 +215,12 @@ function ingest(file, password) {
 
   // Vérification : chaque fichier annoncé est là, et avec l'empreinte annoncée. C'est ce qui permet
   // de dire « ce que j'ai reçu est exactement ce qui a été envoyé ».
-  const bad = [];
-  (manifest.fichiers || []).forEach(f => {
-    if (f.chemin === 'manifeste.json') return;
-    const e = entries.find(x => x.name === f.chemin);
-    if (!e) return bad.push(f.chemin + ' (absent)');
-    try { if (Z.sha256(e.data()) !== f.empreinte) bad.push(f.chemin + ' (modifié)'); }
-    catch { bad.push(f.chemin + ' (illisible)'); }
-  });
+  // On calcule l'empreinte de ce qu'on a reçu ; cabcore compare et compte. La règle du comptage
+  // vit dans la partie testable : c'est la seule affirmation rigoureuse de cette application
+  // (« ce que j'ai reçu est exactement ce qui a été envoyé »), elle doit compter juste.
+  const hashes = {};
+  entries.forEach(e => { try { hashes[e.name] = Z.sha256(e.data()); } catch { hashes[e.name] = '(illisible)'; } });
+  const { checked, bad } = K.checkIntegrity(manifest, hashes);
 
   // On garde le paquet tel quel : c'est la pièce justificative, on ne la réécrit pas.
   fs.mkdirSync(packDir(), { recursive: true });
@@ -234,7 +232,7 @@ function ingest(file, password) {
     receivedAt: Date.now(), digest: Z.sha256(mEntry.data()), bytes: fs.statSync(file).size,
     path: dest, sealed
   });
-  return { ...res, integrity: { checked: (manifest.fichiers || []).length - 1, bad } };
+  return { ...res, integrity: { checked, bad } };
 }
 
 // Ouvrir un fichier contenu dans un paquet : on l'extrait dans un dossier temporaire, en lecture.

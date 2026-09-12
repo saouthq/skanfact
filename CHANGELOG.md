@@ -7,6 +7,13 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 6.5.2 — 12/09/2026
+
+**Deux petites choses qui disaient faux.**
+
+- **Écritures, sur un mois sans pièce** : la page annonçait « débit = crédit, le fichier passera à l'import » alors qu'il n'y avait rien à exporter. Elle dit maintenant qu'il n'y a aucune pièce sur la période, et les deux boutons d'export sont éteints.
+- **SkanFact Cabinet 1.1.1** : le compte des pièces vérifiées était inférieur d'une unité à la réalité (« 7 pièces vérifiées » pour 8). C'est la seule affirmation rigoureuse de l'application cabinet — « ce que j'ai reçu est exactement ce qui a été envoyé » — donc elle doit compter juste. La règle du comptage vit désormais dans la partie testable, avec son test : un fichier absent n'est pas un fichier vérifié, et le manifeste ne se compte pas lui-même.
+
 ## 6.5.1 — 12/09/2026
 
 **Le chien de garde laisse la place aux outils de développement.**
