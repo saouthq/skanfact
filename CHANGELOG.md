@@ -7,6 +7,44 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 7.11.0 — 12/09/2026
+
+**Les réglages qu'on trouve, qu'on voit, et qui ne se jettent pas sans un mot.**
+
+Sept panneaux dans sept onglets, et rien pour s'y repérer : les liens de l'application y menaient
+sans désigner le réglage promis, les couleurs vivaient entre le matricule fiscal et le RIB, et le
+bouton collé à « Enregistrer » jetait tout sans une question.
+
+- **Un lien qui promet un réglage précis l'amène sous les yeux.** « Choisir un dossier » depuis
+  « À faire », « voir Paramètres » depuis le bandeau des mises à jour, « Compléter ma fiche » :
+  tous atterrissaient en haut d'une pile de panneaux identiques, et il fallait redescendre à la
+  main en cherchant le titre. Le panneau visé est désormais amené à l'écran et encadré une
+  seconde. Un test vérifie que chaque lien désigne un panneau **qui existe**, dans un onglet qui
+  existe.
+- **Les couleurs, le logo et le cachet sont passés dans l'onglet Apparence.** Ce sont des réglages
+  d'apparence ; les chercher dans l'onglet qui parle d'identité juridique n'avait rien d'évident.
+  Au passage, la phrase dit ce qu'ils habillent : les documents, pas l'application.
+- **Le thème sombre se voit tout de suite.** Il fallait le choisir, puis trouver « Enregistrer »
+  tout en bas de la page, pour savoir à quoi il ressemble — donc on ne l'essayait pas.
+  L'enregistrement reste explicite, et si on renonce, l'aperçu se défait : l'application ne reste
+  pas habillée d'un réglage qu'on vient de refuser.
+- **« Annuler » s'appelle maintenant « Abandonner les modifications », et il demande.** Collé à
+  « Enregistrer », il jetait sans un mot ce qui venait d'être tapé — y compris dix minutes de
+  modèles d'email.
+- **« Retirer » la copie externe demande aussi.** Le panneau écrit noir sur blanc que c'est le
+  réglage le plus important de la page, et le bouton qui l'éteint s'exécutait sans une question.
+- **Trois refus disent enfin le bouton qui débloque.** Verrouiller sans mot de passe renvoyait vers
+  « Paramètres → Sécurité », un onglet qui n'existe pas. Une photo de facture sans clé de lecture
+  demandait de retenir « Paramètres → Mises à jour → Lecture de factures ». Un envoi au comptable
+  sans adresse nommait « Paramètres » sans dire où. Chacun propose maintenant le bouton qui y mène.
+- **Trois réglages numériques n'étaient pas bornés.** Un champ vidé rend la chaîne vide, pas zéro :
+  vider le timbre fiscal le mettait silencieusement à 0 sur toutes les factures à venir, et vider
+  un délai donnait 0 jour sur un écran et 30 sur l'autre. Les six sont bornés, et le test les
+  déduit du formulaire — un septième réglage ajouté demain ne pourra pas y échapper.
+- **Un sélecteur de couleur ressemble à un bouton, pas à un trait de séparation.** Il s'étirait sur
+  toute la largeur du champ. Mesuré dans l'application, pas déduit du fichier : la règle commune
+  portait quatre `:not()` et gagnait en silence.
+
 ## 7.10.0 — 12/09/2026
 
 **L'aide décrit l'application d'aujourd'hui.**

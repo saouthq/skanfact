@@ -3562,7 +3562,7 @@
     const copy = JSON.parse(JSON.stringify(doc));
     NOT_COPIED.forEach(k => { delete copy[k]; });
     delete copy.fromQuoteId; delete copy.fromQuoteNumber;
-    const days = targetType === 'devis' ? company.quoteValidityDays : company.paymentTermsDays;
+    const days = Number(targetType === 'devis' ? company.quoteValidityDays : company.paymentTermsDays) || 30;
     const out = {
       ...copy, id: uid(), type: targetType, number: '', status: 'brouillon', date,
       dueDate: ['facture', 'proforma', 'devis'].includes(targetType) ? addDays(date, Number(days) || 30) : '',

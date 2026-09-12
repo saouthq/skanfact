@@ -53,6 +53,10 @@
   let previewHidden = false;
   try { previewHidden = localStorage.getItem('skanfact.preview') === '0'; } catch (_) {}
   let settingsTab = 'societe';   // onglet ouvert dans Paramètres
+  // Un lien qui promet un réglage précis doit y arriver, pas en haut d'une pile de six panneaux.
+  // `settingsFocus` porte l'identifiant du panneau visé ; il est consommé une seule fois.
+  let settingsFocus = '';
+  function allerParametres(tab, focus) { settingsTab = tab || 'societe'; settingsFocus = focus || ''; navigate('#/parametres'); }
   let catalogTab = 'presta';     // onglet ouvert dans Catalogue
   // Recherche, tri et page courante de chaque onglet du Catalogue
   const catalogState = {
@@ -80,8 +84,25 @@
     });
   }
 
+  // Le message est prêt, mais sans adresse il faudra la taper à la main à chaque envoi. Un bandeau
+  // qui nomme « Paramètres » sans y mener laisse chercher dans sept onglets.
+  async function emailComptablePret(adresse) {
+    if (adresse) return toast('Message préparé pour le comptable');
+    const c = await choiceDialog('Message préparé', 'L\'adresse de ton comptable n\'est pas enregistrée : le message s\'ouvre sans destinataire. Si tu la renseignes une fois, tous les envois suivants la reprendront.',
+      'Renseigner son email…', 'Plus tard');
+    if (c === 'a') allerParametres('emails', 'p-comptable');
+  }
+
   async function lockNow() {
-    if (!security.encrypted) return toast('Active d\'abord un mot de passe (Paramètres → Sécurité).', true);
+    // Un refus dit trois choses : ce qui est refusé, pourquoi, et le bouton qui débloque. Celui-ci
+    // était un bandeau de 2,6 s qui nommait en plus un onglet inexistant (« Sécurité »).
+    if (!security.encrypted) {
+      const c = await choiceDialog('Rien à verrouiller pour l\'instant',
+        'Le verrouillage demande un mot de passe à l\'ouverture de l\'application. Tu n\'en as pas encore : le fichier de données est en clair sur ce disque.',
+        'Activer un mot de passe…', 'Plus tard');
+      if (c === 'a') allerParametres('donnees', 'p-motdepasse');
+      return;
+    }
     await save(true);
     bridge.lock();
   }
@@ -204,7 +225,7 @@
         <li>Seule la création de nouvelles pièces attend la licence.</li>
       </ul>
       <div class="modal-actions"><button class="btn" data-close>Plus tard</button><button class="btn btn-primary" id="go-lic">Voir ma licence</button></div>`,
-      (root, close) => { $('#go-lic', root).onclick = () => { close(); settingsTab = 'licence'; navigate('#/parametres'); }; });
+      (root, close) => { $('#go-lic', root).onclick = () => { close(); allerParametres('licence', 'p-licence'); }; });
     return true;
   }
 
@@ -650,6 +671,9 @@
       'Enregistrer et continuer', 'Quitter sans enregistrer');
     if (c === null) return false;
     if (c === 'a') { const ok = await g.save(); if (ok === false) return false; }
+    // Un aperçu immédiat (le thème) doit se défaire si on renonce : sinon l'application reste
+    // habillée d'un réglage qu'on vient de refuser, et plus rien à l'écran ne le dit.
+    else if (typeof g.discard === 'function') g.discard();
     guard = null;
     return true;
   }
@@ -1006,7 +1030,7 @@
   // Le panneau prend la place des quatre compteurs à zéro tant que rien n'a été fait, et disparaît
   // tout seul quand tout est fait (il se retrouve alors dans l'Aide).
   const PAS_ACTIONS = {
-    societe: ['Compléter ma fiche', () => { settingsTab = 'societe'; navigate('#/parametres'); }],
+    societe: ['Compléter ma fiche', () => allerParametres('societe', 'p-identite')],
     client: ['+ Créer un client', () => clientForm(null, () => render())],
     catalogue: ['Remplir le catalogue', () => navigate('#/catalogue')],
     devis: ['+ Créer un devis', () => navigate('#/doc/new/devis')],
@@ -1015,7 +1039,7 @@
     // marqués « + Créer un devis » pour deux gestes différents.
     envoiDevis: ['Ouvrir mes devis', () => navigate('#/devis')],
     factures: ['Voir mes factures', () => navigate('#/factures')],
-    sauvegarde: ['Choisir un dossier', () => { settingsTab = 'donnees'; navigate('#/parametres'); }]
+    sauvegarde: ['Choisir un dossier', () => allerParametres('donnees', 'p-externe')]
   };
   // Le panneau est-il à l'écran ? `todoPanel` a besoin de le savoir pour ne pas répéter l'étape 1.
   // Le panneau ne s'affiche que pendant le démarrage : une fois une facture partie, il proposerait
@@ -1465,7 +1489,7 @@
   // ---------- éditeur de document ----------
   function newDocument(type) {
     const date = C.today();
-    const days = type === 'devis' ? company().quoteValidityDays : company().paymentTermsDays;
+    const days = Number(type === 'devis' ? company().quoteValidityDays : company().paymentTermsDays) || 30;
     // Une échéance n'a de sens que sur ce qui se paie ou se périme : un bon de livraison n'en a pas.
     const dated = ['devis', 'facture', 'proforma'].includes(type);
     const d = {
@@ -1983,7 +2007,7 @@
         `Il manque ${C.liste(gaps)} sur ta fiche société. Ces informations s'impriment en haut du document, et le matricule fiscal est obligatoire sur une facture en Tunisie.`,
         'Compléter ma fiche', 'Exporter quand même');
       if (!c) return false;
-      if (c === 'a') { settingsTab = 'societe'; navigate('#/parametres'); return false; }
+      if (c === 'a') { allerParametres('societe', 'p-identite'); return false; }
       co.premierExportAverti = true; save();
       return true;
     }
@@ -3365,7 +3389,7 @@
   const TODO_ACTIONS = {
     contrats: { label: 'Générer les brouillons', run: () => { const n = generateRecurring(); toast(`${n} brouillon(s) créé(s) — à relire puis émettre`); render(); } },
     retards: { label: 'Voir les relances', run: vers('#/relances') },
-    societe: { label: 'Compléter', run: vers('#/parametres', () => { settingsTab = 'societe'; }) },
+    societe: { label: 'Compléter', run: vers('#/parametres', () => { settingsTab = 'societe'; settingsFocus = 'p-identite'; }) },
     'devis-brouillons': { label: 'Voir les devis', run: vers('#/devis', () => { listState.devis.st = 'brouillon'; listState.devis.year = ''; listState.devis.yearTouched = true; }) },
     'devis-acceptes': { label: 'Facturer', run: vers('#/devis', () => { listState.devis.st = 'accepté'; listState.devis.year = ''; }) },
     'devis-expires': { label: 'Voir les devis', run: vers('#/devis', () => { listState.devis.st = 'expiré'; listState.devis.year = ''; listState.devis.yearTouched = true; }) },
@@ -3389,7 +3413,7 @@
     'salaires-double': { label: 'Voir les mouvements', run: vers('#/tresorerie', () => { tresoState.tab = 'mouvements'; }) },
     tresorerie: { label: 'Voir la prévision', run: vers('#/tresorerie', () => { tresoState.tab = 'prevision'; }) },
     'taux-change': { label: 'Voir les pièces', run: vers('#/factures', () => { listState.facture.q = ''; listState.facture.year = ''; listState.facture.yearTouched = true; }) },
-    sauvegarde: { label: 'Choisir un dossier', run: vers('#/parametres', () => { settingsTab = 'donnees'; }) }
+    sauvegarde: { label: 'Choisir un dossier', run: vers('#/parametres', () => { settingsTab = 'donnees'; settingsFocus = 'p-externe'; }) }
   };
   // Combien de lignes on montre avant de proposer « voir le reste ». En démo, « À faire » affichait
   // treize lignes et occupait l'écran entier : le chiffre d'affaires, le graphique et tout le reste
@@ -4202,10 +4226,13 @@
         catch (e) { toast(e.message || 'Impossible de joindre la photo', true); return false; }
       };
       if (!st.hasKey) {
-        const go = await confirmDialog(
-          `La lecture automatique n'est pas activée : rien ne peut être envoyé nulle part.\n\n« ${file.name} » peut quand même être jointe à cet achat comme justificatif, et tu saisis la facture à la main — c'est le fonctionnement normal, hors ligne.\n\nPour activer la lecture (clé payante, image envoyée sur internet), va dans Paramètres → Mises à jour → Lecture de factures.`,
-          'Joindre la photo', false);
+        // « va dans Paramètres → Mises à jour → Lecture de factures » demandait de retenir trois
+        // niveaux et de les retrouver seul. Le second bouton y mène, sur le bon panneau.
+        const go = await choiceDialog('La lecture automatique n\'est pas activée',
+          `Rien ne peut être envoyé nulle part.\n\n« ${file.name} » peut quand même être jointe à cet achat comme justificatif, et tu saisis la facture à la main — c'est le fonctionnement normal, hors ligne.`,
+          'Joindre la photo', 'Activer la lecture…');
         if (!go) return;
+        if (go === 'b') return allerParametres('maj', 'p-ocr');
         if (await attach()) { toast('Photo jointe'); render(true); }
         return;
       }
@@ -5350,7 +5377,7 @@
             + `Total dû : ${C.money(cn.total, cur)}. Échéance : ${C.fmtDate(cn.dueDate)}.\n\nMerci de vérifier avant dépôt.\n`,
           attachments: att ? [att] : [], mode: 'auto'
         });
-        toast(acc ? 'Message préparé pour le comptable' : 'Message préparé — renseigne l\'email du comptable dans Paramètres');
+        emailComptablePret(acc);
       };
       if ($('#an-csv')) $('#an-csv').onclick = async () => {
         const cols = [
@@ -7692,7 +7719,7 @@
       $('#cab-month').onchange = e => { cabinetState.month = e.target.value; draw(); };
       if ($('#cab-goclose')) $('#cab-goclose').onclick = e => { e.preventDefault(); comptaState.tab = 'clotures'; draw(); $$('#c-tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === 'clotures')); };
       if ($('#cab-seal')) $('#cab-seal').onchange = e => { cabinetState.seal = e.target.checked; $('#cab-pw').hidden = !e.target.checked; };
-      if ($('#cab-gopair')) $('#cab-gopair').onclick = e => { e.preventDefault(); settingsTab = 'cabinet'; navigate('#/parametres'); };
+      if ($('#cab-gopair')) $('#cab-gopair').onclick = e => { e.preventDefault(); allerParametres('cabinet', 'p-cabinet'); };
 
       if ($('#cab-vers-factures')) $('#cab-vers-factures').onclick = () => navigate('#/factures');
       $('#cab-build').onclick = async () => {
@@ -7756,7 +7783,7 @@
                : last.sealed ? 'Il est protégé par le mot de passe convenu — je te le donne par téléphone.\n' : '')
             + `\nEmpreinte du manifeste : ${String(last.digest || '').slice(0, 16)}\n\nBien à toi,\n${co.name || ''}`,
           attachments: [last.path]
-        }).then(() => toast(to ? 'Message préparé pour le comptable' : 'Message préparé — renseigne l\'email du comptable dans Paramètres'));
+        }).then(() => emailComptablePret(to));
       };
     }
 
@@ -7811,7 +7838,7 @@
       <div class="tabs" id="set-tabs" role="tablist">${TABS.map(([id, label]) => `<button role="tab" data-tab="${id}" class="${id === settingsTab ? 'active' : ''}">${label}</button>`).join('')}</div>
       <form id="pf">
         <section data-pane="societe">
-        <div class="panel"><h2>Identité de l'entreprise</h2>
+        <div class="panel" id="p-identite"><h2>Identité de l'entreprise</h2>
           <p class="small muted mb">Ces informations s'impriment en haut de chaque devis et facture. Le matricule fiscal est obligatoire sur une facture.
           <button type="button" class="btn btn-sm btn-ghost" id="redo-setup-2">Revoir l'assistant de démarrage…</button></p>
           <div class="grid-2">
@@ -7826,19 +7853,7 @@
           ${field('Site web', 'website', c.website || '')}
           <label class="field span-2">${lbl('Slogan (sous le nom, sur les documents)', 'co.tagline')}<input type="text" name="tagline" value="${h(c.tagline || '')}" placeholder="Ce que fait ton entreprise, en quelques mots"></label>
         </div></div>
-        <div class="panel"><h2>Image de marque</h2><div class="grid-2">
-          <label class="field">${lbl('Couleur principale', 'co.colors')}<input type="color" name="primaryColor" value="${h(c.primaryColor || '#1b2430')}"></label>
-          <label class="field">Couleur d'accent<input type="color" name="accentColor" value="${h(c.accentColor || '#0f9d8f')}"></label>
-          <label class="field">${lbl('Logo', 'co.logo')}
-            <div>${c.logo ? `<img class="logo-preview" src="${c.logo}">` : ''}
-            <div class="inline"><button type="button" class="btn btn-sm" id="pick-logo">Choisir une image…</button>${c.logo ? '<button type="button" class="btn btn-sm btn-ghost" id="rm-logo">Retirer</button>' : ''}</div></div>
-          </label>
-          <label class="field">${lbl('Cachet / signature', 'co.stampImage')}
-            <div>${c.stampImage ? `<img class="stamp-preview" src="${c.stampImage}">` : ''}
-            <div class="inline"><button type="button" class="btn btn-sm" id="pick-stamp">Choisir une image…</button>${c.stampImage ? '<button type="button" class="btn btn-sm btn-ghost" id="rm-stamp">Retirer</button>' : ''}</div></div>
-          </label>
-        </div></div>
-        <div class="panel"><h2>Coordonnées bancaires</h2>
+        <div class="panel" id="p-banque"><h2>Coordonnées bancaires</h2>
           <p class="small muted mb">Le RIB s'affiche sur les factures, dans le bloc « Règlement ». C'est ce que ton client copie pour te payer : relis-le deux fois.</p>
           <div class="grid-2">
           ${field(lbl('Banque', 'pay.bank'), 'bank', c.bank)}
@@ -7848,7 +7863,7 @@
         </section>
 
         <section data-pane="documents" hidden>
-        <div class="panel"><h2>Règles de facturation</h2><div class="grid-3">
+        <div class="panel" id="p-facturation"><h2>Règles de facturation</h2><div class="grid-3">
           ${field(lbl('Timbre fiscal par facture', 'doc.stampFee'), 'stampFee', c.stampFee, 'number', 'step="0.001" min="0" class="num"')}
           ${field(lbl('Validité des devis (jours)', 'doc.quoteValidity'), 'quoteValidityDays', c.quoteValidityDays, 'number', 'min="0" class="num"')}
           ${field(lbl('Délai de paiement (jours)', 'doc.paymentDays'), 'paymentTermsDays', c.paymentTermsDays, 'number', 'min="0" class="num"')}
@@ -7858,13 +7873,13 @@
           <label class="check" style="align-self:end"><input type="checkbox" name="openAfterExport" ${c.openAfterExport !== false ? 'checked' : ''}> Ouvrir le PDF après export ${info('doc.openAfterExport')}</label>
         </div>
         <p class="small muted mt">Retenue à la source : calculée sur le TTC hors timbre, modifiable sur chaque facture et par client. Les taux et l'assiette sont <em>À VÉRIFIER avec ton comptable</em>.</p></div>
-        <div class="panel"><h2>Objectifs et statistiques</h2>
+        <div class="panel" id="p-objectifs"><h2>Objectifs et statistiques</h2>
           <p class="small muted mb">Ces deux réglages ne servent qu'à la page Statistiques : ils ne s'impriment nulle part et ne changent aucun calcul de facture.</p>
           <div class="grid-3">
           ${field(lbl('Objectif de chiffre d\'affaires HT (par an)', 'stat.target'), 'revenueTarget', c.revenueTarget || 0, 'number', 'step="1" min="0" class="num"')}
           ${field(lbl('Un client est « endormi » après (jours)', 'stat.dormant'), 'dormantDays', c.dormantDays || 180, 'number', 'min="1" class="num"')}
         </div></div>
-        <div class="panel"><h2>Textes imprimés sur les documents</h2><div class="grid-2">
+        <div class="panel" id="p-textes"><h2>Textes imprimés sur les documents</h2><div class="grid-2">
           <label class="field span-2">${lbl('Conditions des devis', 'doc.quoteTerms')}<textarea name="quoteTerms">${h(c.quoteTerms || '')}</textarea></label>
           <label class="field span-2">${lbl('Pied de page des documents', 'doc.footer')}<textarea name="footer">${h(c.footer)}</textarea></label>
           <label class="field span-2">${lbl('Conditions de paiement — documents en anglais', 'doc.en')}<textarea name="paymentTermsEn">${h(c.paymentTermsEn || '')}</textarea></label>
@@ -7873,15 +7888,15 @@
         </section>
 
         <section data-pane="emails" hidden>
-        <div class="panel"><h2>Envoi</h2>
+        <div class="panel" id="p-envoi"><h2>Envoi</h2>
           <div class="grid-2">
             <label class="field">${lbl('Envoi des emails', 'mail.client')}<select name="mailClient"><option value="auto" ${c.mailClient !== 'mailto' ? 'selected' : ''}>Mail (Apple) avec le PDF joint — Mac</option><option value="mailto" ${c.mailClient === 'mailto' ? 'selected' : ''}>Autre messagerie (mailto, PDF à glisser)</option></select></label>
           </div>
         </div>
-        <div class="panel"><h2>Comptable</h2><div class="grid-2">
+        <div class="panel" id="p-comptable"><h2>Comptable</h2><div class="grid-2">
           ${field(lbl('Email du comptable', 'compta.comptable'), 'accountantEmail', c.accountantEmail || '', 'email', 'placeholder="comptable@cabinet.tn"')}
         </div><p class="small muted mt">Utilisé par « Envoyer au comptable » sur la page Comptabilité.</p></div>
-        <div class="panel"><h2>Modèles de messages ${info('mail.templates')}</h2>
+        <div class="panel" id="p-modeles"><h2>Modèles de messages ${info('mail.templates')}</h2>
           <p class="small muted mt">Variables utilisables : {numero} {client} {objet} {montant} {echeance} {jours} {societe} {reference}. Les documents en anglais utilisent les modèles en anglais.</p>
           ${[['fr', 'et', 'Modèles en français', C.DEFAULT_EMAIL_TEMPLATES, c.emailTemplates || {}], ['en', 'eten', 'Modèles en anglais (clients étrangers)', C.DEFAULT_EMAIL_TEMPLATES_EN, c.emailTemplatesEn || {}]].map(([lg, prefix, title, defs, cur2]) => `<details ${lg === 'fr' ? 'open' : ''}><summary>${title}</summary>
           ${[['devis', lg === 'fr' ? 'Envoi d\'un devis' : 'Quote'], ['facture', lg === 'fr' ? 'Envoi d\'une facture' : 'Invoice'], ['avoir', lg === 'fr' ? 'Envoi d\'un avoir' : 'Credit note'], ['relance1', lg === 'fr' ? 'Rappel (≤ 15 jours de retard)' : 'Reminder (≤ 15 days)'], ['relance2', lg === 'fr' ? 'Relance (16 à 45 jours)' : 'Second reminder (16–45 days)'], ['relance3', lg === 'fr' ? 'Dernière relance (> 45 jours)' : 'Final reminder (> 45 days)'], ['relanceDevis', lg === 'fr' ? 'Relance d\'un devis sans réponse' : 'Quote follow-up'], ['comptable', lg === 'fr' ? 'Envoi au comptable' : 'To the accountant']].map(([k, label]) => {
@@ -7892,48 +7907,64 @@
         </section>
 
         <section data-pane="apparence" hidden>
-        <div class="panel"><h2>Apparence</h2><div class="grid-3">
+        <div class="panel" id="p-apparence"><h2>L'application</h2><div class="grid-3">
           <label class="field">${lbl('Thème', 'ap.theme')}<select name="theme"><option value="light" ${c.theme !== 'dark' && c.theme !== 'auto' ? 'selected' : ''}>Clair</option><option value="dark" ${c.theme === 'dark' ? 'selected' : ''}>Sombre</option><option value="auto" ${c.theme === 'auto' ? 'selected' : ''}>Comme le système</option></select></label>
           <label class="field">${lbl('Langue des documents par défaut', 'ap.defaultLang')}<select name="defaultLang"><option value="fr" ${c.defaultLang !== 'en' ? 'selected' : ''}>Français</option><option value="en" ${c.defaultLang === 'en' ? 'selected' : ''}>English</option></select></label>
-        </div><p class="small muted mt">Le thème sombre ne concerne que l'interface : les documents restent clairs.</p></div>
+        </div><p class="small muted mt">Le thème sombre ne concerne que l'interface : les documents restent clairs. Le changement se voit tout de suite ; il n'est gardé qu'une fois enregistré.</p></div>
+        <!-- « Image de marque » vivait dans l'onglet Société, entre le matricule fiscal et le RIB.
+             Chercher où changer la couleur ou le logo dans un onglet qui parle d'identité juridique
+             n'a rien d'évident : ce sont des réglages d'apparence, ils vivent avec l'apparence. -->
+        <div class="panel" id="p-marque"><h2>Image de marque (sur tes documents)</h2><div class="grid-2">
+          <label class="field">${lbl('Couleur principale', 'co.colors')}<input type="color" name="primaryColor" value="${h(c.primaryColor || '#1b2430')}"></label>
+          <label class="field">Couleur d'accent<input type="color" name="accentColor" value="${h(c.accentColor || '#0f9d8f')}"></label>
+          <label class="field">${lbl('Logo', 'co.logo')}
+            <div>${c.logo ? `<img class="logo-preview" src="${c.logo}">` : ''}
+            <div class="inline"><button type="button" class="btn btn-sm" id="pick-logo">Choisir une image…</button>${c.logo ? '<button type="button" class="btn btn-sm btn-ghost" id="rm-logo">Retirer</button>' : ''}</div></div>
+          </label>
+          <label class="field">${lbl('Cachet / signature', 'co.stampImage')}
+            <div>${c.stampImage ? `<img class="stamp-preview" src="${c.stampImage}">` : ''}
+            <div class="inline"><button type="button" class="btn btn-sm" id="pick-stamp">Choisir une image…</button>${c.stampImage ? '<button type="button" class="btn btn-sm btn-ghost" id="rm-stamp">Retirer</button>' : ''}</div></div>
+          </label>
+        </div>
+        <p class="small muted mt">Ces deux couleurs habillent les devis et les factures, pas l'application. Pour les voir, ouvre un document : l'aperçu se met à jour.</p></div>
         </section>
       </form>
 
       <section data-pane="maj" hidden>
-        <div class="panel"><h2>Mises à jour</h2><div id="update-panel"></div></div>
-        <div class="panel"><h2>Lecture de factures d'achat ${info('ocr.key')}</h2><div id="ocr-panel"></div></div>
+        <div class="panel" id="p-maj"><h2>Mises à jour</h2><div id="update-panel"></div></div>
+        <div class="panel" id="p-ocr"><h2>Lecture de factures d'achat ${info('ocr.key')}</h2><div id="ocr-panel"></div></div>
       </section>
 
       <section data-pane="cabinet" hidden>
-        <div class="panel"><h2>Ton cabinet comptable ${info('cab.appaire')}</h2>
+        <div class="panel" id="p-cabinet"><h2>Ton cabinet comptable ${info('cab.appaire')}</h2>
           <div id="cab-pair"></div>
         </div>
       </section>
       <section data-pane="licence" hidden>
-        <div class="panel"><h2>Licence ${info('lic.etat')}</h2><div id="lic-panel"></div></div>
+        <div class="panel" id="p-licence"><h2>Licence ${info('lic.etat')}</h2><div id="lic-panel"></div></div>
       </section>
       <section data-pane="donnees" hidden>
-      <div class="panel"><h2>Dossiers — plusieurs entreprises sur cet ordinateur ${info('data.dossiers')}</h2>
+      <div class="panel" id="p-dossiers"><h2>Dossiers — plusieurs entreprises sur cet ordinateur ${info('data.dossiers')}</h2>
         <p class="small muted mb">Chaque dossier est une entreprise : ses clients, ses documents, ses achats, ses sauvegardes. Ils ne se mélangent jamais. Tu passes de l'un à l'autre en un clic, l'application se recharge.</p>
         <div id="dossiers-list"></div>
         <div class="inline mt"><button type="button" class="btn" id="dos-add">+ Nouveau dossier sur cet ordinateur</button>
           <button type="button" class="btn" id="dos-shared">+ Dossier partagé à deux…</button>${info('data.shared')}</div>
       </div>
-      <div class="panel"><h2>Ce poste ${info('data.device')}</h2>
+      <div class="panel" id="p-poste"><h2>Ce poste ${info('data.device')}</h2>
         <p class="small muted mb">Le nom de cet ordinateur. Il sert uniquement à dire qui a enregistré en dernier quand vous travaillez à deux sur un dossier partagé.</p>
         <div class="inline"><input type="text" id="dev-name" value="" style="max-width:280px"><button type="button" class="btn" id="dev-save">Renommer</button></div>
       </div>
-      <div class="panel"><h2>Copie externe ${info('data.external')}</h2>
+      <div class="panel" id="p-externe"><h2>Copie externe ${info('data.external')}</h2>
         <p class="small muted">iCloud Drive, clé USB, disque réseau. À chaque enregistrement, le fichier de données et les sauvegardes y sont copiés. Si le Mac meurt, tout est ailleurs. <b>C'est le réglage le plus important de cette page.</b></p>
         <div id="ext-status" class="small mt"></div>
         <div class="inline mt"><button class="btn btn-primary" id="ext-choose">Choisir un dossier…</button><button class="btn btn-ghost" id="ext-remove" hidden>Retirer</button></div>
       </div>
-      <div class="panel"><h2>Mot de passe ${info('sec.password')}</h2>
+      <div class="panel" id="p-motdepasse"><h2>Mot de passe ${info('sec.password')}</h2>
         <p id="sec-status">${security.encrypted ? '🔒 Mot de passe activé : le fichier de données et ses sauvegardes sont chiffrés (AES-256). Verrouiller : menu Fichier ou Cmd/Ctrl+L.' : 'Le fichier de données est en clair sur ce disque. Tu peux le protéger par un mot de passe demandé à chaque ouverture.'}</p>
         <div class="inline mt">${security.encrypted ? '<button class="btn" id="sec-change">Changer le mot de passe…</button><button class="btn" id="sec-lock">Verrouiller maintenant</button><button class="btn btn-danger" id="sec-remove">Retirer le mot de passe…</button>' : '<button class="btn btn-primary" id="sec-set">Activer un mot de passe…</button>'}</div>
         <p class="small muted mt">Le mot de passe protège les fichiers sur le disque (ordinateur perdu ou volé). Il n'existe aucune récupération : sans lui, les données sont définitivement illisibles, <b>y compris pour toi</b>.</p>
       </div>
-      <div class="panel"><h2>Ce que l'application t'affiche</h2>
+      <div class="panel" id="p-modules"><h2>Ce que l'application t'affiche</h2>
         <p class="small muted mb">SkanFact sait faire beaucoup de choses. Tu choisis lesquelles apparaissent
         dans le menu de gauche — sans rien supprimer : ce qui est masqué reste atteignable par la
         recherche, et un module qui contient des données se réaffiche tout seul.</p>
@@ -7942,7 +7973,7 @@
           <button type="button" class="btn btn-ghost" id="redo-setup">Revoir l'assistant de démarrage…</button>
         </div>
       </div>
-      <div class="panel"><h2>Sauvegardes ${info('data.backups')}</h2>
+      <div class="panel" id="p-sauvegardes"><h2>Sauvegardes ${info('data.backups')}</h2>
         <p class="small muted">Fichier de données : <code>${h(path)}</code></p>
         <p class="small">${data.documents.length} document(s), ${data.clients.length} client(s), ${data.catalog.length} prestation(s).</p>
         <p class="small muted">Chaque jour, l'état du matin est copié dans le dossier <code>backups</code> (30 jours conservés) ; une copie est aussi prise avant tout import, avant l'exemple et avant un effacement.</p>
@@ -7965,7 +7996,7 @@
            comme l'étape d'apprentissage. Il vivait pourtant dans l'encadré rouge, collé à « Tout
            effacer » — donc on hésitait à cliquer sur ce qu'on nous demandait de faire, puis on
            prenait le bouton écarlate d'à côté pour en sortir, et on perdait tout. -->
-      <div class="panel"><h2>Essayer sans risque ${info('data.demo')}</h2>
+      <div class="panel" id="p-exemple"><h2>Essayer sans risque ${info('data.demo')}</h2>
         <div class="dz-row">
           <div><b>Charger le jeu d'exemple</b>
             <div class="small muted">Remplace tes données par treize mois d'activité fictive, pour cliquer partout sans rien casser.
@@ -7973,7 +8004,7 @@
           <button class="btn" id="load-demo">Charger l'exemple</button>
         </div>
       </div>
-      <div class="panel danger-zone"><h2>Zone sensible</h2>
+      <div class="panel danger-zone" id="p-danger"><h2>Zone sensible</h2>
         <div class="dz-row">
           <div><b>Tout effacer</b> ${info('data.wipe')}
             <div class="small muted">Supprime clients, prestations, documents, contrats, modèles et textes. Les paramètres société restent. Une sauvegarde est prise avant.</div></div>
@@ -7984,7 +8015,7 @@
 
       <div class="save-bar" id="save-bar" hidden>
         <span>Modifications non enregistrées</span>
-        <button class="btn" id="cancel-set">Annuler</button>
+        <button class="btn" id="cancel-set">Abandonner les modifications</button>
         <button class="btn btn-primary" id="save">Enregistrer</button>
       </div>`;
 
@@ -7995,8 +8026,19 @@
       $$('[data-pane]').forEach(p => p.hidden = p.dataset.pane !== id);
       $('#view').scrollTop = 0;
     };
-    $$('#set-tabs button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
+    $$('#set-tabs button').forEach(b => b.onclick = () => { settingsFocus = ''; showTab(b.dataset.tab); });
     showTab(settingsTab);
+    // Un lien qui promet « le mot de passe » ou « la copie externe » atterrissait en haut d'une pile
+    // de six panneaux : on redescendait à la main en cherchant le titre. On amène le panneau visé.
+    if (settingsFocus) {
+      const cible = $('#' + settingsFocus);
+      settingsFocus = '';
+      if (cible) {
+        try { cible.scrollIntoView({ block: 'center' }); } catch (_) {}
+        cible.classList.add('flash');
+        setTimeout(() => cible.classList.remove('flash'), 1600);
+      }
+    }
 
     // --- barre « Enregistrer » : elle n'apparaît que s'il y a quelque chose à enregistrer
     let setDirty = false;
@@ -8008,16 +8050,39 @@
       const et = {}, eten = {};
       Object.keys(v).forEach(k => { const m = k.match(/^(et|eten)_(\w+)_(subject|body)$/); if (m) { const bag = m[1] === 'et' ? et : eten; bag[m[2]] = bag[m[2]] || {}; bag[m[2]][m[3]] = v[k]; delete v[k]; } });
       Object.assign(data.company, v, { emailTemplates: et, emailTemplatesEn: eten });
+      // Un champ `type=number` vidé rend la CHAÎNE VIDE, pas zéro. Trois réglages étaient bornés
+      // ici et trois autres du même bloc ne l'étaient pas : vider le timbre fiscal le mettait
+      // silencieusement à 0 sur toutes les factures à venir, et vider un délai donnait 0 jour sur
+      // un chemin (`newDocument`) et 30 sur l'autre (`invoiceFromQuote`, qui replie sur 30). Un
+      // réglage vidé par erreur ne doit pas donner deux réponses différentes selon l'écran.
       data.company.defaultWithholdingRate = Number(data.company.defaultWithholdingRate) || 0;
       data.company.revenueTarget = Math.max(0, Number(data.company.revenueTarget) || 0);
       data.company.dormantDays = Math.max(1, Number(data.company.dormantDays) || 180);
+      data.company.stampFee = Math.max(0, Number(data.company.stampFee) || 0);
+      data.company.quoteValidityDays = Math.max(0, Number(data.company.quoteValidityDays) || 30);
+      data.company.paymentTermsDays = Math.max(0, Number(data.company.paymentTermsDays) || 30);
       save(true); applyTheme(); $('#brand-company').textContent = data.company.name || 'Ton entreprise';
       setDirty = false; $('#save-bar').hidden = true;
       return true;
     };
-    setGuard({ dirty: () => setDirty, what: 'les paramètres', save: applySettings });
+    setGuard({ dirty: () => setDirty, what: 'les paramètres', save: applySettings, discard: applyTheme });
     $('#save').onclick = () => { applySettings(); toast('Paramètres enregistrés'); };
-    $('#cancel-set').onclick = () => { setDirty = false; render(); };
+    // « Annuler », collé à « Enregistrer », jetait sans un mot tout ce qui venait d'être tapé —
+    // y compris dix minutes de modèles d'email. Le mot dit maintenant ce qu'il fait, et il demande.
+    $('#cancel-set').onclick = async () => {
+      if (!await confirmDialog('Abandonner les modifications en cours des paramètres ?\n\nCe qui vient d\'être saisi et pas encore enregistré sera perdu.', 'Abandonner', true)) return;
+      setDirty = false; applyTheme(); render();
+    };
+    // Le thème et les couleurs sont purement visuels et réversibles : les montrer tout de suite
+    // évite de chercher « Enregistrer » pour savoir à quoi ça ressemble. L'enregistrement, lui,
+    // reste explicite — la barre du bas apparaît comme pour tout le reste.
+    const themeSel = $('#pf select[name=theme]');
+    if (themeSel) themeSel.onchange = () => {
+      const v = themeSel.value;
+      const sombre = v === 'dark' || (v === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
+      document.body.classList.toggle('dark', sombre);
+      markSet();
+    };
     // ---------- appairage du cabinet (6.2.0) ----------
     // Le cabinet remet à ses clients un petit fichier contenant sa clé publique. Une fois importé,
     // les paquets mensuels sont chiffrés POUR LUI : rien à transmettre, rien à retenir, et une clé
@@ -8185,7 +8250,12 @@
     };
 
     $('#ext-choose').onclick = async () => { const i = await bridge.chooseExternalBackup(); if (i) { toast(i.lastError ? 'Dossier choisi, mais copie impossible : ' + i.lastError : 'Copie externe activée'); drawExternal(); } };
-    $('#ext-remove').onclick = async () => { await bridge.setExternalBackup(null); toast('Copie externe désactivée'); drawExternal(); };
+    // Le panneau lui-même écrit « C'est le réglage le plus important de cette page » — et le bouton
+    // qui l'éteint s'exécutait sans une question, à côté de celui qui l'allume.
+    $('#ext-remove').onclick = async () => {
+      if (!await confirmDialog('Arrêter la copie externe ?\n\nLes fichiers déjà copiés restent où ils sont, mais plus rien n\'y sera copié : si cet ordinateur tombe en panne, tout ce que tu enregistreras à partir de maintenant sera perdu.', 'Arrêter la copie', true)) return;
+      await bridge.setExternalBackup(null); toast('Copie externe désactivée'); drawExternal();
+    };
     if ($('#sec-set')) $('#sec-set').onclick = () => passwordDialog('set');
     if ($('#sec-change')) $('#sec-change').onclick = () => passwordDialog('change');
     if ($('#sec-remove')) $('#sec-remove').onclick = () => passwordDialog('remove');
@@ -8238,7 +8308,7 @@
             toast(identiteEmpruntee
               ? 'Données effacées — la fiche société de l\'exemple aussi : remplis la tienne dans Paramètres'
               : 'Données effacées');
-            if (identiteEmpruntee) { settingsTab = 'societe'; navigate('#/parametres'); } else render();
+            if (identiteEmpruntee) allerParametres('societe', 'p-identite'); else render();
             $('#brand-company').textContent = data.company.name;
           };
         });
@@ -8959,8 +9029,8 @@
           <div class="modal-actions"><button class="btn" data-close>Fermer</button><button class="btn btn-primary" id="open-rel">Voir les versions</button></div>`, (root) => { $('#open-rel', root).onclick = () => bridge.updateOpenReleases(); });
       }
     });
-    $('#update-pill').onclick = () => { settingsTab = 'maj'; navigate('#/parametres'); };
-    $('#lic-banner').onclick = () => { settingsTab = 'licence'; navigate('#/parametres'); };
+    $('#update-pill').onclick = () => allerParametres('maj', 'p-maj');
+    $('#lic-banner').onclick = () => allerParametres('licence', 'p-licence');
     if (!location.hash) location.hash = '#/dashboard';
     render();
     if (loaded && loaded.corruptFile) {

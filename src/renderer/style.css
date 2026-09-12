@@ -194,6 +194,9 @@ main { flex: 1; overflow-y: auto; padding: 32px 36px 48px; }
 .page-head .actions { display: flex; gap: 8px; align-items: center; }
 
 .panel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px 24px; margin-bottom: 18px; box-shadow: var(--shadow); }
+/* Un lien qui promet un réglage précis l'amène et le désigne : sans repère, on atterrit au milieu
+   d'une pile de panneaux identiques et on cherche le titre à la main. */
+.panel.flash { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(15, 157, 143, .18); }
 .panel h2 { margin: 0 0 16px; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1.2px; font-weight: 700; }
 
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 20px; }
@@ -216,7 +219,14 @@ input:hover, select:hover, textarea:hover { border-color: #d5dbe3; }
 input:focus, select:focus, textarea:focus { outline: none; border-color: var(--primary); background: #fff; box-shadow: 0 0 0 3px rgba(15,157,143,.15); }
 textarea { resize: vertical; min-height: 68px; }
 input.num { text-align: right; font-variant-numeric: tabular-nums; }
-input[type=color] { height: 40px; padding: 4px; }
+/* Un sélecteur de couleur étiré sur toute la largeur du champ ressemble à un trait de séparation,
+   pas à un bouton qu'on clique. Il garde la taille d'une pastille.
+   La chaîne de `:not()` n'est pas décorative : la règle commune ci-dessus en porte quatre, donc
+   `input[type=color]` seul PERD contre elle et le `width` était ignoré en silence. Mesuré dans
+   l'application (537 px de large), pas déduit de la lecture du fichier. */
+input[type=color]:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]) {
+  height: 40px; width: 72px; padding: 4px; cursor: pointer;
+}
 .inline { display: flex; gap: 8px; align-items: center; }
 .check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); font-weight: 500; }
 .check input { accent-color: var(--primary); width: 16px; height: 16px; }

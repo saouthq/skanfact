@@ -5785,5 +5785,81 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     });
   });
 
+
+  t('les réglages : on les trouve, on les voit, et rien ne se jette sans un mot', () => {
+    const brut = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
+    // On juge le CODE : les commentaires de cette version citent justement les chemins en prose
+    // qu'elle vient de remplacer par des boutons, et le test se croirait en échec pour ça.
+    const app = brut.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+    assert.ok(app.includes('routes.parametres'), 'le nettoyage des commentaires a mangé le code');
+    const i = app.indexOf('routes.parametres = async () =>');
+    const j = app.indexOf('function drawCabinetPair');
+    assert.ok(i > 0 && j > i, 'la page Paramètres n\'a pas été trouvée dans app.js');
+    const page = app.slice(i, j);
+
+    // 1. Un lien qui promet un réglage précis doit désigner un panneau QUI EXISTE, dans un onglet
+    // qui existe : sinon on atterrit en haut d'une pile de six panneaux, exactement comme avant.
+    const onglets = (app.match(/const SETTINGS_TABS = \[[\s\S]*?\];/) || [''])[0];
+    const idsPanneaux = new Set((page.match(/id="(p-[a-z]+)"/g) || []).map(m => m.slice(4, -1)));
+    assert.ok(idsPanneaux.size >= 15, 'les panneaux de Paramètres n\'ont pas d\'identifiant : ' + idsPanneaux.size);
+    const liens = (app.match(/allerParametres\('([a-z]+)', *'([a-z-]+)'\)/g) || [])
+      .map(m => m.match(/allerParametres\('([a-z]+)', *'([a-z-]+)'\)/).slice(1))
+      .concat((app.match(/settingsFocus = '([a-z-]+)'/g) || []).map(m => ['', m.split("'")[1]]));
+    assert.ok(liens.length >= 8, 'aucun lien ne vise un panneau de Paramètres : ' + liens.length);
+    liens.forEach(([tab, focus]) => {
+      assert.ok(idsPanneaux.has(focus), `un lien vise le panneau « ${focus} », qui n'existe pas dans Paramètres`);
+      if (tab) assert.ok(onglets.includes(`'${tab}'`), `un lien vise l'onglet « ${tab} », qui n'est pas dans SETTINGS_TABS`);
+    });
+    assert.ok(/settingsFocus\)[\s\S]{0,400}?scrollIntoView/.test(page),
+      'le panneau visé n\'est pas amené à l\'écran');
+
+    // 2. Un champ `type=number` vidé rend la CHAÎNE VIDE. Tout réglage numérique de la fiche
+    // société doit être borné dans applySettings : trois l'étaient, trois ne l'étaient pas, et
+    // vider le timbre fiscal le mettait à 0 sur toutes les factures à venir sans un mot.
+    const bornes = page.slice(page.indexOf('const applySettings'), page.indexOf('setGuard('));
+    assert.ok(bornes.length > 200, 'applySettings n\'a pas été trouvé');
+    const nums = Array.from(new Set((page.match(/'(\w+)', *[^,]+, *'number'/g) || [])
+      .map(m => m.match(/'(\w+)'/)[1])));
+    assert.ok(nums.length >= 5, 'les champs numériques de Paramètres n\'ont pas été trouvés : ' + nums.join(', '));
+    const libres = nums.filter(k => !new RegExp(`data\\.company\\.${k} = `).test(bornes));
+    assert.deepStrictEqual(libres, [], 'des réglages numériques ne sont pas bornés après enregistrement');
+
+    // 3. Ce qui se jette sans retour se demande : « Annuler », collé à « Enregistrer », jetait dix
+    // minutes de saisie en silence ; « Retirer » éteignait la copie externe de la même façon, sur
+    // le panneau qui déclare être le réglage le plus important de la page.
+    [['#cancel-set', /#cancel-set'\)\.onclick = async \(\) => \{\s*if \(!await confirmDialog\(/],
+     ['#ext-remove', /#ext-remove'\)\.onclick = async \(\) => \{\s*if \(!await confirmDialog\(/]].forEach(([id, re]) => {
+      assert.ok(re.test(app), `« ${id} » agit sans poser de question`);
+    });
+    assert.ok(/setExternalBackup\(null\)/.test(app) && app.indexOf('confirmDialog(\'Arrêter la copie externe') < app.indexOf('await bridge.setExternalBackup(null)'),
+      'la copie externe s\'éteint avant la question');
+    assert.ok(!/id="cancel-set">Annuler</.test(page), 'le bouton dit encore « Annuler » sans dire ce qu\'il jette');
+
+    // 4. Choisir le thème ne changeait rien tant qu'on n'avait pas trouvé « Enregistrer » en bas de
+    // page. C'est visuel et réversible : ça se montre tout de suite. Et si on renonce, ça se défait
+    // — sinon l'application reste habillée d'un réglage qu'on vient de refuser.
+    assert.ok(/select\[name=theme\]/.test(page) && /themeSel\.onchange = \(\) => \{[\s\S]{0,400}?classList\.toggle\('dark'/.test(page),
+      'le thème ne se voit pas avant d\'être enregistré');
+    assert.ok(/discard: applyTheme/.test(page), 'un aperçu immédiat ne se défait pas quand on renonce');
+    assert.ok(/typeof g\.discard === 'function'/.test(app), 'le garde-fou de navigation ignore le retour en arrière de l\'aperçu');
+
+    // 5. Les couleurs et le logo habillent les DOCUMENTS : ce sont des réglages d'apparence. Les
+    // chercher entre le matricule fiscal et le RIB n'a rien d'évident.
+    const apparence = page.slice(page.indexOf('data-pane="apparence"'), page.indexOf('</form>'));
+    assert.ok(apparence.includes('id="p-marque"'), 'le panneau « Image de marque » n\'est pas dans l\'onglet Apparence');
+    const societe = page.slice(page.indexOf('data-pane="societe"'), page.indexOf('data-pane="documents"'));
+    assert.ok(!societe.includes('name="accentColor"'), 'les couleurs sont restées dans l\'onglet Société');
+
+    // 6. Un refus dit trois choses : ce qui est refusé, pourquoi, et le bouton qui débloque. Trois
+    // refus renvoyaient en prose vers un chemin à retenir — dont un vers un onglet inexistant.
+    assert.ok(!/Paramètres → Sécurité\./.test(app), 'un message nomme encore l\'onglet « Sécurité », qui n\'existe pas');
+    assert.ok(/security\.encrypted\) \{\s*const c = await choiceDialog\(/.test(app),
+      'le verrouillage sans mot de passe refuse sans proposer de l\'activer');
+    assert.ok(!/va dans Paramètres → Mises à jour → Lecture de factures/.test(app),
+      'la lecture de photo renvoie encore à un chemin à retenir plutôt qu\'à un bouton');
+    assert.ok(/emailComptablePret/.test(app) && /allerParametres\('emails', 'p-comptable'\)/.test(app),
+      'l\'email du comptable manquant ne mène pas au champ');
+  });
+
   console.log(`\n${n} tests OK`);
 })().catch(e => { console.error(e); process.exit(1); });

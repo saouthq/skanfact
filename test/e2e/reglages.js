@@ -126,6 +126,40 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   await win.waitForSelector('#att-save-first');
   j.ok('« Pièces jointes » existe sur une pièce neuve, avec le geste qui débloque');
 
+  j.etape('Les Paramètres : on voit, on trouve, et rien ne se jette sans un mot');
+  // Le thème se voyait seulement après avoir trouvé « Enregistrer » tout en bas d'une page de six
+  // panneaux — donc on ne l'essayait pas.
+  await win.evaluate(() => { location.hash = '#/parametres'; });
+  await win.waitForSelector('#set-tabs');
+  await win.click('#set-tabs button[data-tab=apparence]');
+  await win.selectOption('#pf select[name=theme]', 'dark');
+  if (!(await win.evaluate(() => document.body.classList.contains('dark')))) {
+    throw new Error('le thème sombre ne se voit pas avant d\'être enregistré');
+  }
+  if (await win.isHidden('#save-bar')) throw new Error('un aperçu ne dispense pas d\'enregistrer : la barre doit apparaître');
+  j.ok('le thème se voit tout de suite, et reste à enregistrer');
+
+  // Les couleurs et le logo vivaient dans l'onglet Société, entre le matricule fiscal et le RIB.
+  if (!(await win.isVisible('#p-marque'))) throw new Error('« Image de marque » n\'est pas dans l\'onglet Apparence');
+  j.ok('les couleurs et le logo sont rangés avec l\'apparence');
+
+  // « Annuler », collé à « Enregistrer », jetait sans un mot — et laissait l'aperçu en place.
+  await win.click('#cancel-set');
+  await win.waitForSelector('#modal-root #ok');
+  await win.click('#modal-root #ok');
+  await win.waitForFunction(() => !document.querySelector('#modal-root #ok'));
+  if (await win.evaluate(() => document.body.classList.contains('dark'))) {
+    throw new Error('renoncer doit défaire l\'aperçu : l\'application reste habillée d\'un réglage refusé');
+  }
+  j.ok('« Abandonner » demande, et défait l\'aperçu');
+
+  // Un lien qui promet un réglage précis doit l'amener sous les yeux, pas en haut d'une pile.
+  await win.evaluate(() => { location.hash = '#/dashboard'; });
+  await win.waitForSelector('#view');
+  await win.evaluate(() => { document.querySelector('#update-pill').click(); });
+  await win.waitForSelector('#p-maj.flash');
+  j.ok('le lien des mises à jour désigne son panneau');
+
   if (bac.length) { console.error('ERREURS JS :\n' + bac.join('\n')); process.exit(1); }
   await app.close(); console.log('\n>>> RÉGLAGES ET GESTES BLOQUÉS : OK'); process.exit(0);
 })().catch(e => { console.error('\n✗ ' + e.message); process.exit(1); });
