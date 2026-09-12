@@ -46,9 +46,15 @@ module.exports = {
   // avoir enregistré la pièce jointe, et jusqu'ici le système ne savait pas quoi faire d'un
   // `.skanpack` : il proposait une liste d'applications au hasard.
   // `role: 'Viewer'` dit vrai : l'application du cabinet LIT les paquets, elle ne les modifie pas.
+  //
+  // L'icône se déclare SANS EXTENSION. electron-builder ne convertit rien : il échange `.ico` et
+  // `.icns` selon la plateforme, donc un chemin en `.png` ressort inchangé et s'installe tel quel
+  // là où macOS attend un `.icns`. Rien n'échouait, rien n'était signalé, et le comptable voyait
+  // un fichier blanc générique parmi vingt autres. Les vrais fichiers sont fabriqués par
+  // `node scripts/icones.js` et commités (electron-builder REFUSE de construire s'ils manquent).
   fileAssociations: [
-    { ext: 'skanpack', name: 'Paquet mensuel SkanFact', description: 'Les pièces comptables d\'un mois, envoyées par un client', role: 'Viewer', icon: 'build/icon-cabinet.png' },
-    { ext: 'skanrecover', name: 'Clé de secours SkanFact Cabinet', description: 'La clé qui rouvre les paquets déjà reçus', role: 'Viewer', icon: 'build/icon-cabinet.png' }
+    { ext: 'skanpack', name: 'Paquet mensuel SkanFact', description: 'Les pièces comptables d\'un mois, envoyées par un client', role: 'Viewer', icon: 'skanpack' },
+    { ext: 'skanrecover', name: 'Clé de secours SkanFact Cabinet', description: 'La clé qui rouvre les paquets déjà reçus', role: 'Viewer', icon: 'skanrecover' }
   ],
   // Aucune dépendance native (electron-updater est du JavaScript pur) : l'étape de recompilation
   // d'electron-builder ne produit rien et coûte une minute de machine macOS à chaque publication.

@@ -1205,8 +1205,11 @@
         ${rows.length > 1 ? `<div class="actions"><button class="btn btn-primary" id="group">Relancer tout le monde ${info('r.group')}</button></div>` : ''}</div>
       <p class="muted small mb">Un message qui nomme les mois manquants fait bouger ; « envoie-moi tes documents » non.
       SkanFact prépare le texte, ton logiciel de messagerie l'envoie — et la relance est enregistrée pour que tu saches, lundi, qui tu as déjà relancé.</p>
-      ${rel.due && rel.count ? `<div class="banner"><span>On est le <strong>${rel.jour}</strong> : tu as fixé le ${rel.day} du mois comme jour de relance.
-        ${pl(rel.count, 'dossier')} ${rel.count > 1 ? 'n\'ont' : 'n\'a'} pas tout envoyé.</span></div>` : ''}
+      ${rel.due && rel.total ? `<div class="banner"><span>On est le <strong>${rel.jour}</strong> : tu as fixé le ${rel.day} du mois comme jour de relance.
+        ${[
+    rel.count ? `${pl(rel.count, 'dossier')} ${rel.count > 1 ? 'ont' : 'a'} des mois manquants` : '',
+    rel.provisoires ? `${pl(rel.provisoires, rel.count ? 'autre' : 'dossier')} ${rel.provisoires > 1 ? 'ont' : 'a'} envoyé un mois qui n'est pas clôturé` : ''
+  ].filter(Boolean).join(', et ')}.</span></div>` : ''}
       ${rows.length ? `<div class="scroll-x"><table class="list">
         <thead><tr><th class="nw">Client</th><th class="nw">Contact</th><th class="nw">Ce qui manque</th><th class="nw">Dernière relance</th><th></th></tr></thead>
         <tbody>${rows.map(r => `<tr>

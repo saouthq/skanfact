@@ -3301,16 +3301,46 @@ t('cabinet : le fichier d\'appairage ne contient QUE la clé publique', () => {
 });
 
 // Le même piège que côté entreprise : une date est un jour du calendrier, jamais un instant.
+// audit I2 : ce test ne pouvait pas échouer. Il changeait cinq fuseaux puis appelait trois
+// fonctions d'arithmétique de CHAÎNES, dont aucune ne construit un `Date` : vrai par construction.
+// La seule fonction de cabcore qui lit l'horloge, `today()`, n'y figurait pas et n'était appelée
+// par AUCUN test — tous passent une date de référence, alors que l'interface, elle, appelle
+// toujours sans. C'est la configuration exacte de la panne 5.2.3 (machine en UTC, utilisateur à
+// Tunis) : le jour où quelqu'un « harmonise » today() en toISOString().slice(0,10), tout reste
+// vert et le 1er octobre à 00 h 30 l'application croit qu'on est le 30 septembre.
 t('cabinet : l\'arithmétique des mois donne le même résultat sous tous les fuseaux', () => {
   const tzBefore = process.env.TZ;
   try {
-    for (const tz of ['Africa/Tunis', 'UTC', 'America/Los_Angeles', 'Pacific/Kiritimati']) {
+    for (const tz of ['Africa/Tunis', 'UTC', 'America/Los_Angeles', 'Pacific/Kiritimati', 'Asia/Kathmandu']) {
       process.env.TZ = tz;
       assert.strictEqual(cab.addMonth('2026-12', 1), '2027-01', tz);
       assert.strictEqual(cab.addMonth('2026-01', -1), '2025-12', tz);
       assert.deepStrictEqual(cab.monthsBetween('2026-11', '2027-02'), ['2026-11', '2026-12', '2027-01', '2027-02'], tz);
       assert.ok(cab.monthsBetween('1900-01', '2200-01').length <= 240, tz + ' : borné, jamais infini');
       assert.strictEqual(cab.monthLabel('2026-08'), 'août 2026', tz);
+
+      // today() rend le jour LOCAL, pas un instant UTC découpé. C'est le calendrier de
+      // l'utilisateur qui fait foi : à Tunis, à minuit passé, on est déjà demain.
+      const maintenant = new Date();
+      const attendu = `${maintenant.getFullYear()}-${String(maintenant.getMonth() + 1).padStart(2, '0')}-${String(maintenant.getDate()).padStart(2, '0')}`;
+      assert.strictEqual(cab.today(), attendu, tz + ' : today() ne suit pas le calendrier local');
+      assert.ok(/^\d{4}-\d{2}-\d{2}$/.test(cab.today()), tz + ' : today() n\'est pas un jour du calendrier');
+
+      // Et les fonctions que l'interface appelle SANS date de référence doivent marcher : c'est
+      // par là que passe le vrai code, et c'est la seule façon d'atteindre today().
+      const S = cab.migrate({ dossiers: cab.demoDossiers(), settings: { relanceDay: 10 } });
+      assert.ok(Array.isArray(cab.dossierList(S)), tz + ' : dossierList() sans date');
+      const mois = cab.dossierMonths(S.dossiers[0]);
+      assert.ok(mois.length && mois.length <= 61, tz + ' : dossierMonths() sans date donne ' + mois.length + ' mois');
+      const rel = cab.relanceDue(S);
+      assert.strictEqual(rel.jour, Number(cab.today().slice(8, 10)), tz + ' : relanceDue() sans date');
+      assert.ok(Array.isArray(cab.echeances(S)), tz + ' : echeances() sans date');
+      assert.ok(Array.isArray(cab.cabinetTodo(S)), tz + ' : cabinetTodo() sans date');
+      // Aucun mois attendu ne doit être dans le futur, quel que soit le fuseau : c'est ce qui
+      // faisait voir quatre cartes rouges sur cinq à un cabinet parfaitement à jour (B1).
+      const moisCourant = cab.today().slice(0, 7);
+      mois.forEach(m => assert.ok(m.month < moisCourant || m.state === 'ok' || m.state === 'provisoire',
+        tz + ' : le mois ' + m.month + ' est réclamé alors qu\'il n\'est pas fini'));
     }
   } finally { if (tzBefore === undefined) delete process.env.TZ; else process.env.TZ = tzBefore; }
 });
@@ -3353,14 +3383,37 @@ t('cabinet : son canal de mise à jour ne peut pas écraser celui de l\'app entr
 
 t('cabinet : la clé privée ne traverse jamais le pont vers l\'interface', () => {
   const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'cabinet', 'main.js'), 'utf8');
-  assert.ok(/function safeState\(\)[\s\S]*?delete s\.cabinet\.privateKey/.test(src), 'safeState doit retirer la clé privée');
-  // Tout handler qui renvoie l'état doit passer par safeState(), jamais par `state` directement.
-  const handlers = src.match(/ipcMain\.handle\([^]*?\n\}\);/g) || [];
-  src.split(/ipcMain\.handle\(/).slice(1).forEach(block => {
+
+  // audit I3 : ce test contenait `assert.ok(handlers.length >= 0)` — toujours vrai. Et la
+  // vérification part d'un découpage sur `ipcMain.handle(` : le jour où ce motif ne correspond plus
+  // (renommage, handleOnce, découpage en modules — ce qui vient d'arriver avec cabstore.js), le
+  // tableau est vide, la boucle ne s'exécute pas, et le test annonce « ok » sans avoir lu un seul
+  // handler. C'est le test censé garantir la promesse centrale faite au comptable.
+  const blocs = src.split(/ipcMain\.handle\(/).slice(1);
+  assert.ok(blocs.length >= 25,
+    `plus aucun handler reconnu (${blocs.length}) : le garde-fou ne garde plus rien`);
+  blocs.forEach(block => {
     const name = (block.match(/^'([^']+)'/) || [])[1] || '?';
     assert.ok(!/return\s+state\b/.test(block), `le handler ${name} renvoie l'état brut`);
   });
-  assert.ok(handlers.length >= 0);
+
+  // Et on exécute vraiment safeState au lieu de croire une expression régulière : celle-ci
+  // acceptait un `delete` situé n'importe où dans les 800 lignes suivantes.
+  const corps = (src.match(/function safeState\(\)\s*\{[\s\S]*?\n\}/) || [])[0];
+  assert.ok(corps, 'safeState() est introuvable dans main.js');
+  const faux = {
+    cabinet: { name: 'Cabinet Essai', email: 'c@example.tn', publicKey: 'PUB', privateKey: 'SECRET-A-NE-JAMAIS-SORTIR' },
+    dossiers: [{ id: 'MF:1', name: 'Client', packs: [] }], settings: { relanceDay: 10 }
+  };
+  // Le corps référence `state` et `Z.keyFingerprint` : on les fournit, et rien d'autre.
+  const faireSafeState = new Function('state', 'Z', corps + '; return safeState();');
+  const sorti = faireSafeState(faux, { keyFingerprint: k => 'EMPREINTE-DE-' + k });
+  const texte = JSON.stringify(sorti);
+  assert.ok(!/SECRET-A-NE-JAMAIS-SORTIR/.test(texte), 'safeState laisse passer la clé privée');
+  assert.ok(!('privateKey' in (sorti.cabinet || {})), 'la clé privée est encore là, même vide');
+  assert.strictEqual(sorti.cabinet.fingerprint, 'EMPREINTE-DE-PUB', 'l\'empreinte doit être calculée, pas recopiée');
+  assert.strictEqual(sorti.cabinet.name, 'Cabinet Essai', 'safeState ne doit pas vider le reste');
+  assert.strictEqual(faux.cabinet.privateKey, 'SECRET-A-NE-JAMAIS-SORTIR', 'safeState a muté l\'état d\'origine');
   // L'interface ne reçoit aucun moyen de demander la clé.
   const preRaw = fs.readFileSync(path.join(__dirname, '..', 'src', 'cabinet', 'preload.js'), 'utf8');
   // On juge le CODE, pas les commentaires : un commentaire qui explique la règle en la citant
@@ -4114,7 +4167,10 @@ const GLOBAUX = new Set([
   'RegExp', 'Error', 'Symbol', 'BigInt', 'parseInt', 'parseFloat', 'isNaN', 'isFinite',
   'encodeURIComponent', 'decodeURIComponent', 'encodeURI', 'decodeURI',
   'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'requestAnimationFrame',
-  'alert', 'confirm', 'prompt', 'fetch', 'structuredClone', 'queueMicrotask', 'require', 'async'
+  'alert', 'confirm', 'prompt', 'fetch', 'structuredClone', 'queueMicrotask', 'require', 'async',
+  // Côté processus principal (Node). Seuls les noms qui commencent par une minuscule peuvent être
+  // signalés par le détecteur — les constructeurs (Buffer, URL, TextEncoder…) ne le sont jamais.
+  'setImmediate', 'clearImmediate', 'process', 'globalThis'
 ]);
 
 function appelsNonDefinis(src) {
@@ -4147,7 +4203,7 @@ function appelsNonDefinis(src) {
   return [...manquants];
 }
 
-t('cabinet : l\'interface n\'appelle aucune fonction qui n\'existe pas', () => {
+t('cabinet : aucun de ses fichiers n\'appelle une fonction qui n\'existe pas', () => {
   // Le test se prouve lui-même d'abord : sur un cas fabriqué, il doit voir le défaut.
   assert.deepStrictEqual(appelsNonDefinis('const esc = x => x; const s = `<p>${h(a)}</p>`;'), ['h'],
     'le détecteur doit voir un appel manquant à l\'intérieur d\'un gabarit');
@@ -4155,11 +4211,19 @@ t('cabinet : l\'interface n\'appelle aucune fonction qui n\'existe pas', () => {
   assert.deepStrictEqual(appelsNonDefinis('// jamais lu : quelque chose (ici)\nconst s = "une phrase (entre guillemets)";'), [],
     'ni un commentaire ni une chaîne ne sont du code');
 
-  ['src/cabinet/renderer/app.js', 'src/cabinet/cabcore.js', 'src/cabinet/renderer/cabguide.js', 'src/cabinet/cabstore.js']
-    .forEach(f => {
-      const src = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
-      assert.deepStrictEqual(appelsNonDefinis(src), [], `${f} appelle une fonction qui n'existe pas`);
-    });
+  // audit I1 : les deux `main.js` manquaient à cette liste — et ce sont les seuls fichiers
+  // qu'AUCUN test n'exécute. Une faute du genre `h(...)` (le défaut que ce test existe pour
+  // attraper, déjà survenu une fois) dans un handler IPC ne se manifeste que le jour où un
+  // comptable clique : « Impossible d'importer », sans autre explication, et personne ne peut le
+  // reproduire avant d'avoir installé l'application.
+  [
+    'src/cabinet/renderer/app.js', 'src/cabinet/cabcore.js', 'src/cabinet/renderer/cabguide.js',
+    'src/cabinet/cabstore.js', 'src/cabinet/main.js', 'src/cabinet/preload.js',
+    'src/main.js', 'src/preload.js'
+  ].forEach(f => {
+    const src = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+    assert.deepStrictEqual(appelsNonDefinis(src), [], `${f} appelle une fonction qui n'existe pas`);
+  });
 });
 
 t('cabinet : ses classes à lui ne doivent pas exister dans la feuille partagée', () => {
@@ -4524,6 +4588,102 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
           nom + ' : allowDowngrade doit être remis APRÈS le canal, qui le rallume');
       }
     });
+  });
+
+  // ------------------------------------------------------------------
+  // audit B8 : un compteur et la liste qu'il annonce viennent de la même fonction.
+  t('audit B8 : le bandeau des relances compte exactement les lignes du tableau', () => {
+    const cab = require('../src/cabinet/cabcore.js');
+    const jour = '2026-09-20'; // après le jour de relance
+    const mk = (nom, mf, packs) => ({
+      id: 'MF:' + mf, name: nom, matricule: mf, email: 'x@example.tn', packs,
+      from: '2026-05', relances: []
+    });
+    const p = (m, definitif) => ({
+      month: m, label: cab.monthLabel(m), definitive: definitif,
+      receivedAt: Date.parse(cab.addMonth(m, 1) + '-06T09:30:00Z'),
+      generatedAt: cab.addMonth(m, 1) + '-06T08:15:00.000Z',
+      files: 3, missing: [], absent: 0, digest: '', bytes: 1000, path: '', sealed: true
+    });
+    // Trois dossiers : un à jour, un à qui il manque des mois, un qui n'a envoyé que du provisoire.
+    const S = cab.migrate({
+      cabinet: { name: 'Cabinet Essai' },
+      settings: { relanceDay: 10 },
+      dossiers: [
+        mk('À jour', '1111111A', ['2026-05', '2026-06', '2026-07', '2026-08'].map(m => p(m, true))),
+        mk('Il manque', '2222222B', [p('2026-05', true)]),
+        mk('Provisoire', '3333333C', ['2026-05', '2026-06', '2026-07'].map(m => p(m, true)).concat([p('2026-08', false)]))
+      ]
+    });
+    const rows = cab.relanceRows(S, jour);
+    const rel = cab.relanceDue(S, jour);
+    assert.strictEqual(rel.total, rows.length,
+      'le bandeau annonce ' + rel.total + ' dossiers au-dessus d\'un tableau de ' + rows.length + ' lignes');
+    assert.strictEqual(rel.count + rel.provisoires, rel.total, 'les deux motifs ne couvrent pas le total');
+    assert.strictEqual(rel.count, 1, 'un seul dossier a des mois manquants');
+    assert.strictEqual(rel.provisoires, 1, 'un seul dossier n\'a que du provisoire');
+    // Et « À faire » compte la même chose que la pastille et que la page.
+    const todo = cab.cabinetTodo(S, jour).find(x => x.id === 'jour-de-relance');
+    assert.ok(todo, 'le jour de relance ne remonte pas dans « À faire »');
+    assert.strictEqual(todo.count, rows.length, '« À faire » et la page Relances donnent deux nombres différents');
+  });
+
+  // ------------------------------------------------------------------
+  // audit B9 : un paquet se fabrique APRÈS le mois qu'il couvre.
+  // L'exemple datait chaque envoi du 8 du mois lui-même : « août, définitif,
+  // reçu le 08/08 ». C'est le premier écran qu'un comptable voit, et il dément
+  // la promesse centrale du produit (définitif = mois clôturé).
+  t('audit B9 : dans l\'exemple, aucun paquet n\'est reçu avant la fin de son mois', () => {
+    const cab = require('../src/cabinet/cabcore.js');
+    let paquets = 0;
+    const jours = ['2026-09-12', '2026-09-01', '2026-01-31', '2026-03-01', '2026-12-31'];
+    for (const jour of jours) {
+      for (const d of cab.demoDossiers(jour)) {
+        for (const p of d.packs) {
+          paquets++;
+          const finDuMois = Date.parse(cab.addMonth(p.month, 1) + '-01T00:00:00Z');
+          assert.ok(p.receivedAt >= finDuMois,
+            `${d.name} : ${p.month} reçu le ${new Date(p.receivedAt).toISOString().slice(0, 10)}, avant la fin du mois`);
+          assert.ok(p.receivedAt <= Date.parse(jour + 'T23:59:59Z'),
+            `${d.name} : ${p.month} reçu dans le futur (${new Date(p.receivedAt).toISOString().slice(0, 10)} alors qu'on est le ${jour})`);
+          assert.ok(Date.parse(p.generatedAt) <= p.receivedAt,
+            `${d.name} : ${p.month} fabriqué après avoir été reçu`);
+        }
+      }
+    }
+    assert.ok(paquets >= 50, 'le jeu d\'exemple a maigri : ' + paquets + ' paquets vérifiés');
+    // Les cinq dossiers ne doivent pas tous avoir envoyé à la même minute.
+    const heures = new Set(cab.demoDossiers('2026-06-20').map(d => d.packs[0].receivedAt));
+    assert.ok(heures.size >= 3, 'tous les clients de l\'exemple envoient le même jour à la même minute');
+  });
+
+  // ------------------------------------------------------------------
+  // audit H10 : une icône de fichier déclarée doit vraiment en être une.
+  // electron-builder ne CONVERTIT pas : il échange `.ico` et `.icns` selon la
+  // plateforme. Un chemin en `.png` ressort inchangé, s'installe tel quel là où
+  // macOS attend un `.icns`, et rien ne le signale — le comptable voit un
+  // fichier blanc générique. Ce test rejoue la résolution d'electron-builder.
+  t('audit H10 : les icônes de .skanpack et .skanrecover existent vraiment', () => {
+    const cfg = require('../build/cabinet.config.js');
+    const { getPlatformIconFileName } = require('builder-util');
+    const assoc = cfg.fileAssociations || [];
+    assert.ok(assoc.length >= 2, 'les associations de fichiers ont disparu de la configuration');
+    for (const fa of assoc) {
+      assert.ok(fa.icon, `.${fa.ext} : aucune icône déclarée`);
+      for (const [plateforme, estMac] of [['macOS', true], ['Windows', false]]) {
+        const attendu = getPlatformIconFileName(fa.icon, estMac);
+        const ext = path.extname(attendu).toLowerCase();
+        assert.strictEqual(ext, estMac ? '.icns' : '.ico',
+          `.${fa.ext} sous ${plateforme} : electron-builder installerait « ${attendu} », `
+          + 'qui n\'est pas une icône. Déclare l\'icône SANS extension (icon: \'skanpack\').');
+        // Résolu comme le fait getResource() : d'abord dans build/, puis à la racine.
+        const existe = fs.existsSync(path.join(__dirname, '..', 'build', attendu))
+          || fs.existsSync(path.join(__dirname, '..', attendu));
+        assert.ok(existe,
+          `.${fa.ext} sous ${plateforme} : « ${attendu} » est introuvable. `
+          + 'electron-builder refusera de construire. Lance « node scripts/icones.js » et commite le résultat.');
+      }
+    }
   });
 
   console.log(`\n${n} tests OK`);

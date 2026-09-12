@@ -439,12 +439,23 @@
 
   // « Le 10 : la page Dossiers te dit qui n'a rien envoyé » — l'aide le promettait depuis la 1.0.0
   // et rien ne l'implémentait. Voilà le jour venu.
+  // RÈGLE : un compteur et la liste qu'il annonce se calculent avec la MÊME fonction. Le bandeau de
+  // la page Relances comptait les seuls mois manquants pendant que le tableau, dix pixels plus bas,
+  // listait aussi les provisoires — « 2 dossiers » au-dessus de trois lignes. Une fois la question
+  // posée à voix haute, plus aucun chiffre n'est cru sur parole, et l'app n'est faite que de
+  // chiffres. Tout part donc de `relanceRows`, et on distingue les deux motifs à l'intérieur.
   function relanceDue(state, todayIso) {
     const t = todayIso || today();
     const day = Number((state.settings || {}).relanceDay) || 10;
     const jour = Number(t.slice(8, 10));
-    const rows = dossierList(state, t).filter(r => r.missingCount > 0);
-    return { day, due: jour >= day, jour, count: rows.length, rows };
+    const toutes = relanceRows(state, t);
+    const rows = toutes.filter(r => r.missingCount > 0);
+    return {
+      day, due: jour >= day, jour,
+      count: rows.length, rows,                                   // il manque des mois
+      provisoires: toutes.length - rows.length,                   // reçus, mais non clôturés
+      total: toutes.length, toutes                                // ce que la page affiche
+    };
   }
 
   // Qui figure sur la page Relances. La pastille de la barre latérale compte EXACTEMENT ces
@@ -461,11 +472,15 @@
     const out = [];
     // Le jour de relance, en tête : c'est une échéance, pas un état.
     const rel = relanceDue(state, todayIso);
-    if (rel.due && rel.count) out.push({
+    if (rel.due && rel.total) out.push({
       id: 'jour-de-relance', level: 'danger',
-      label: `On est le ${rel.jour} : ${pl(rel.count, 'dossier')} à relancer`,
-      detail: `Tu as fixé le ${rel.day} du mois comme jour de relance (Réglages). ${rel.count > 1 ? 'Ces dossiers n\'ont' : 'Ce dossier n\'a'} pas envoyé tous ${rel.count > 1 ? 'leurs' : 'ses'} mois clôturés.`,
-      count: rel.count, rows: rel.rows
+      label: `On est le ${rel.jour} : ${pl(rel.total, 'dossier')} à relancer`,
+      detail: `Tu as fixé le ${rel.day} du mois comme jour de relance (Réglages). `
+        + [
+          rel.count ? `${pl(rel.count, 'dossier')} ${rel.count > 1 ? 'ont' : 'a'} des mois manquants` : '',
+          rel.provisoires ? `${pl(rel.provisoires, rel.count ? 'autre' : 'dossier')} ${rel.provisoires > 1 ? 'ont' : 'a'} envoyé un mois qui n'est pas clôturé` : ''
+        ].filter(Boolean).join(', et ') + '.',
+      count: rel.total, rows: rel.toutes
     });
     // Une échéance qui approche avec des pièces qui manquent : c'est le seul cas où une date compte
     // plus qu'un état. Une échéance proche mais complète n'a pas à crier.
@@ -583,9 +598,23 @@
   function demoDossiers(todayIso) {
     const cur = (todayIso || today()).slice(0, 7);
     const M = n => addMonth(cur, n);
-    const pack = (m, definitif, manques, ca) => ({
+    // Un paquet se fabrique APRÈS la fin du mois qu'il couvre — jamais pendant. L'exemple datait
+    // chaque envoi du 8 du mois lui-même : « août, définitif, reçu le 08/08 ». Le premier
+    // comptable à qui on le montre pose la question (« il a clôturé août le 8 août ? ») et toute
+    // la promesse du produit s'écroule sur son premier exemple. Le jour change d'un client à
+    // l'autre : cinq dossiers reçus à la même minute, ça ne ressemble à rien non plus.
+    const JOURS_ENVOI = [6, 9, 11, 14, 19];
+    const cePourJour = Date.parse((todayIso || today()) + 'T09:30:00Z');
+    // Le jour d'envoi tombe dans le mois SUIVANT celui que le paquet couvre. Pour le mois qui
+    // vient tout juste de finir, ce jour peut ne pas être encore arrivé : on ramène alors la
+    // réception à aujourd'hui, plutôt que d'afficher une date future.
+    const recu = (m, rang) => {
+      const jour = JOURS_ENVOI[(rang || 0) % JOURS_ENVOI.length];
+      return Math.min(cePourJour, Date.parse(`${addMonth(m, 1)}-${String(jour).padStart(2, '0')}T09:30:00Z`));
+    };
+    const pack = (m, definitif, manques, ca, rang) => ({
       month: m, label: monthLabel(m), definitive: definitif,
-      receivedAt: Date.parse(m + '-08T09:30:00Z'), generatedAt: m + '-08T08:15:00.000Z',
+      receivedAt: recu(m, rang), generatedAt: new Date(recu(m, rang) - 75 * 60 * 1000).toISOString(),
       files: 14, missing: manques || [], absent: 0, digest: '', bytes: 180000, path: '', sealed: true, appVersion: '',
       figures: { ca: ca || 0, tvaCollectee: round3((ca || 0) * 0.19), tvaDeductible: round3((ca || 0) * 0.07),
         tvaADecaisser: round3((ca || 0) * 0.12), creditTva: 0, encaisse: round3((ca || 0) * 0.8), devise: 'DT' }
@@ -593,16 +622,16 @@
     const d = (name, matricule, email, packs) => ({ id: 'MF:' + matricule.replace(/[^A-Z0-9]/gi, '').toUpperCase(), name, matricule, email, note: '', archived: false, packs, demo: true });
     return [
       d('Menuiserie Trabelsi SUARL', '1122334A/M/P/000', 'contact@trabelsi.tn',
-        [pack(M(-1), true, null, 28450), pack(M(-2), true, null, 31200), pack(M(-3), true, null, 26980)]),
+        [pack(M(-1), true, null, 28450, 0), pack(M(-2), true, null, 31200, 0), pack(M(-3), true, null, 26980, 0)]),
       d('Pharmacie El Menzah', '2233445B/A/M/000', 'pharmacie.menzah@example.tn',
-        [pack(M(-4), true, null, 84300), pack(M(-5), true, null, 79150)]),    // deux mois de retard
+        [pack(M(-4), true, null, 84300, 1), pack(M(-5), true, null, 79150, 1)]),    // deux mois de retard
       d('Studio Sfax Design', '3344556C/N/M/000', 'hello@sfaxdesign.tn',
-        [pack(M(-1), false, null, 12400), pack(M(-2), true, null, 15750)]),   // dernier mois provisoire
+        [pack(M(-1), false, null, 12400, 2), pack(M(-2), true, null, 15750, 2)]),   // dernier mois provisoire
       d('Transports Béji & Fils', '4455667D/P/M/000', '',
-        [pack(M(-1), true, [{ id: 'justif', level: 'warn', label: 'achats sans justificatif joint', count: 6 }], 46800),
-         pack(M(-2), true, [{ id: 'brouillon', level: 'warn', label: 'factures restées en brouillon', count: 2 }], 44120)]),
+        [pack(M(-1), true, [{ id: 'justif', level: 'warn', label: 'achats sans justificatif joint', count: 6 }], 46800, 3),
+         pack(M(-2), true, [{ id: 'brouillon', level: 'warn', label: 'factures restées en brouillon', count: 2 }], 44120, 3)]),
       d('Café des Jasmins', '5566778E/C/M/000', 'jasmins@example.tn',
-        [pack(M(-6), true, null, 9870)])                                      // parti ou endormi
+        [pack(M(-6), true, null, 9870, 4)])                                         // parti ou endormi
     ];
   }
 
