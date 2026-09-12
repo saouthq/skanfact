@@ -12,6 +12,8 @@
   let S = null;                          // l'état du cabinet (sans la clé privée)
   let listQ = '';                        // recherche de la liste des dossiers
   let withArchived = false;
+  // Mises à jour : l'état de la dernière vérification, partagé entre le panneau et la pastille.
+  const upd = { state: 'idle', version: '', percent: 0, message: '', app: null };
 
   // ---------- petits outils ----------
   const $ = (sel, root) => (root || document).querySelector(sel);
@@ -147,10 +149,28 @@
 
   function start(created) {
     window.addEventListener('hashchange', render);
+    api.onUpdateEvent(ev => {
+      upd.state = ev.state;
+      if (ev.version) upd.version = ev.version;
+      if (ev.percent != null) upd.percent = ev.percent;
+      if (ev.message) upd.message = ev.message;
+      drawUpdatePanel();
+      updateBanner();
+    });
+    api.updVersion().then(v => {
+      upd.app = v;
+      const el = $('#app-version'); if (el) el.textContent = 'v' + v.version;
+      // Résultat de la mise à jour précédente sur macOS : l'app vient de se relancer, on le dit.
+      if (v.lastUpdate) {
+        if (v.lastUpdate.ok) toast('SkanFact Cabinet mis à jour en version ' + v.version);
+        else toast('Mise à jour non installée : ' + (v.lastUpdate.message || 'erreur inconnue'), 'error');
+      }
+    }).catch(() => {});
     api.onMenuAction(name => {
       if (name === 'import') doImport();
       else if (name.startsWith('go:')) location.hash = '#/' + name.slice(3);
     });
+    $('#upd-pill').onclick = () => { location.hash = '#/reglages'; };
     if (!location.hash) location.hash = '#/dossiers';
     render();
     if (created || !(S.cabinet.name || '').trim()) {
@@ -221,11 +241,22 @@
   }
 
   // ---------- rendu ----------
+  // Une pastille, et seulement quand il y a vraiment quelque chose à installer.
+  function updateBanner() {
+    const el = $('#upd-pill'); if (!el) return;
+    const montre = upd.state === 'available' || upd.state === 'downloading' || upd.state === 'downloaded';
+    el.hidden = !montre;
+    el.textContent = upd.state === 'downloaded' ? `Version ${upd.version} prête à installer`
+      : upd.state === 'downloading' ? `Téléchargement… ${upd.percent} %`
+      : `Version ${upd.version} disponible`;
+  }
+
   function render() {
     const hash = location.hash.replace(/^#\//, '') || 'dossiers';
     const [route, arg] = hash.split('/');
     $$('.sidebar nav a').forEach(a => a.classList.toggle('active', a.dataset.route === route));
     $('#brand-cab').textContent = S.cabinet.name || 'Cabinet';
+    updateBanner();
     const todo = K.cabinetTodo(S);
     const late = todo.find(t => t.id === 'manquants');
     const pill = $('#nav-relances');
@@ -519,6 +550,8 @@
         <div class="modal-actions"><button class="btn btn-primary" id="c-pair">Enregistrer le fichier d'appairage…</button></div>
       </div>
 
+      <div class="panel"><h2>Mises à jour</h2><div id="upd-panel"><p class="muted small">Chargement…</p></div></div>
+
       <div class="panel"><h2>Exemple</h2>
         ${(S.dossiers || []).some(d => d.demo)
           ? `<p>Cinq dossiers <strong>fictifs</strong> sont chargés : ils montrent les quatre situations que tu rencontreras.
@@ -540,6 +573,7 @@
         <p class="muted small">À VÉRIFIER avec ton assureur ou ton Ordre : la conservation des pièces de tes clients sur ce poste
         relève des mêmes obligations que tes archives papier.</p>
       </div>`;
+    drawUpdatePanel();
     if ($('#r-demo-on')) $('#r-demo-on').onclick = async () => {
       S = await api.demo(true); toast('Exemple chargé : ces cinq dossiers sont fictifs.'); location.hash = '#/dossiers';
     };
@@ -565,6 +599,72 @@
         }
       } catch (e) { toast(e.message || String(e), 'error'); }
     };
+  }
+
+  // ---------- mises à jour ----------
+  // Même mécanique que dans SkanFact, avec un canal séparé : l'app cabinet ne reçoit QUE ses
+  // versions à elle. Sur macOS l'app n'est pas signée, donc elle se remplace elle-même dans le
+  // dossier Applications puis se relance — c'est ce que fait mac-update.sh.
+  function drawUpdatePanel() {
+    const el = $('#upd-panel'); if (!el) return;
+    const a = upd.app || {};
+    const macNonSigne = a.platform === 'darwin' && !a.macSigned;
+    const btnCheck = '<button class="btn" id="u-check">Vérifier maintenant</button>';
+    let corps = '';
+    if (!a.packaged) corps = `<p class="muted small">Mode développement : la vérification n'est active que dans l'application installée.</p>${btnCheck}`;
+    else if (upd.state === 'checking') corps = '<p class="muted">Vérification en cours…</p>';
+    else if (upd.state === 'none') corps = `<p>Tu as la dernière version.</p>${btnCheck}`;
+    else if (upd.state === 'available') corps = `<p><strong>Version ${esc(upd.version)} disponible</strong> — téléchargement en cours…</p>`;
+    else if (upd.state === 'downloading') corps = `<p>Téléchargement de la version ${esc(upd.version)}… ${upd.percent} %</p>
+      <div class="progress"><div style="width:${upd.percent}%"></div></div>`;
+    else if (upd.state === 'downloaded') corps = `<p><strong>Version ${esc(upd.version)} prête.</strong>
+      ${macNonSigne ? 'L\'application se ferme, se remplace dans le dossier Applications et se relance (une dizaine de secondes).' : 'L\'application se ferme, s\'installe et redémarre.'}</p>
+      <button class="btn btn-primary" id="u-install">Installer et redémarrer</button>`;
+    else if (upd.state === 'error') corps = `<p class="small" style="color:var(--danger)">${esc(upd.message)}</p>
+      <div class="inline">${btnCheck}<button class="btn btn-ghost" id="u-rel">Voir les versions sur GitHub</button></div>`;
+    else if (upd.state === 'token' || !a.hasToken) corps = `<p class="muted small">Les mises à jour ne sont pas encore activées sur cet ordinateur : colle le jeton d'accès ci-dessous.</p>${btnCheck}`;
+    else corps = btnCheck;
+
+    const jeton = `<div class="token-box">
+      <div class="k-label">Accès au dépôt</div>
+      <p class="small muted">SkanFact est distribué depuis un dépôt privé : un jeton de lecture est nécessaire pour recevoir les mises à jour.
+      Demande-le à qui t'a remis l'application. Il reste sur cet ordinateur et ne sert qu'à télécharger les nouvelles versions.</p>
+      <div class="inline"><input type="text" id="u-token" placeholder="${a.hasToken ? 'Jeton enregistré ✓ — en coller un nouveau pour le remplacer' : 'github_pat_… ou ghp_…'}" autocomplete="off" spellcheck="false">
+      <button class="btn btn-sm" id="u-token-save">Enregistrer</button>${a.hasToken ? '<button class="btn btn-sm btn-ghost" id="u-token-clear">Retirer</button>' : ''}</div>
+    </div>`;
+
+    el.innerHTML = `<div class="update-head"><div><div class="k-label">Version installée</div><div class="ver">${esc(a.version || '…')}</div></div></div>${corps}${jeton}`;
+
+    const relire = async () => { upd.app = await api.updVersion(); drawUpdatePanel(); };
+    const verifier = async () => {
+      upd.state = 'checking'; drawUpdatePanel();
+      const r = await api.updCheck();
+      if (r && (r.state === 'dev' || r.state === 'token' || r.state === 'error')) {
+        upd.state = r.state === 'dev' ? 'idle' : r.state; upd.message = r.message || ''; drawUpdatePanel();
+      }
+    };
+    if ($('#u-check')) $('#u-check').onclick = verifier;
+    if ($('#u-rel')) $('#u-rel').onclick = () => api.updOpenReleases();
+    if ($('#u-install')) $('#u-install').onclick = async () => {
+      const b = $('#u-install'); b.disabled = true; b.textContent = 'Installation…';
+      const r = await api.updInstall();
+      if (r && r.state === 'error') { upd.state = 'error'; upd.message = r.message; drawUpdatePanel(); }
+    };
+    $('#u-token-save').onclick = async () => {
+      const t = $('#u-token').value.trim();
+      if (!t) return toast('Colle un jeton d\'abord', 'error');
+      if (!/^(github_pat_|ghp_|gho_|ghs_)[A-Za-z0-9_]+$/.test(t)) return toast('Ce n\'est pas un jeton GitHub : il commence par github_pat_ ou ghp_', 'error');
+      const r = await api.updSetToken(t);
+      upd.app = { ...(upd.app || {}), hasToken: r.hasToken };
+      upd.state = 'idle'; toast('Jeton enregistré');
+      verifier();
+    };
+    if ($('#u-token-clear')) $('#u-token-clear').onclick = async () => {
+      const r = await api.updSetToken('');
+      upd.app = { ...(upd.app || {}), hasToken: r.hasToken };
+      upd.state = 'idle'; drawUpdatePanel();
+    };
+    if (!upd.app) relire();
   }
 
   // ---------- aide ----------
@@ -595,6 +695,15 @@
         ni modifier ni supprimer une pièce de cette période sans rouvrir le mois, avec un motif écrit.</p>
         <p class="small">Un paquet <strong>provisoire</strong> se lit, mais ses chiffres peuvent encore bouger. Si tu reçois deux fois le même
         mois, SkanFact te le dit — et te prévient si le remplacé était définitif.</p>
+      </div>
+      <div class="panel"><h2>Les mises à jour</h2>
+        <p class="small">SkanFact Cabinet vérifie au démarrage s'il existe une version plus récente, la télécharge
+        et te propose de l'installer : <strong>Réglages → Mises à jour</strong>. Sur Mac, l'application se ferme,
+        se remplace toute seule et se relance — une dizaine de secondes.</p>
+        <p class="small">L'application et celle de tes clients portent le <strong>même numéro de version</strong> :
+        si un client dit « je suis en 6.6.0 » et que tu es en 6.6.0, vous parlez bien de la même chose.</p>
+        <p class="small muted">Un jeton d'accès est demandé une seule fois, parce que l'application n'est pas encore
+        distribuée publiquement. Demande-le à qui t'a remis SkanFact Cabinet ; il reste sur ton ordinateur.</p>
       </div>
       <div class="panel"><h2>Ce que cette application ne fait pas</h2>
         <p class="small">Elle <strong>ne modifie jamais</strong> la comptabilité de tes clients et ne leur renvoie rien.

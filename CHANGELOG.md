@@ -7,6 +7,20 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 6.6.0 — 12/09/2026
+
+**SkanFact Cabinet se met à jour tout seul.**
+
+Demandé par Skander : « il faut faciliter la mise à jour de l'app cabinet, comme sur SkanFact, que je ne sois pas obligé de la retélécharger ». C'est fait — **Réglages → Mises à jour** dans l'application du comptable : vérification au démarrage, téléchargement automatique, un bouton « Installer et redémarrer », et une pastille dans la barre de gauche quand une version est prête.
+
+- **Les deux applications portent désormais le même numéro de version.** SkanFact 6.6.0 et SkanFact Cabinet 6.6.0 sortent ensemble, dans la même release. C'est ce qui rend la mise à jour automatique possible, et ça permet à un comptable et à son client de comparer leurs versions d'un coup d'œil.
+- **Chacune a son propre canal.** Le fichier de mise à jour porte un nom fixe (`latest.yml`) : deux applications dans une même release se le seraient écrasé, et chacune aurait proposé à ses utilisateurs la version de l'autre. Le cabinet a donc `cabinet.yml`.
+- **macOS** : comme SkanFact, l'application se ferme, se remplace dans le dossier Applications et se relance toute seule (le certificat Apple n'est toujours pas acheté).
+
+**Une dernière fois à la main.** La version que tu as déjà installée (Cabinet 1.1.x) ne sait pas encore se mettre à jour : télécharge **SkanFact Cabinet 6.6.0** depuis la page des versions. À partir de celle-là, tu ne retéléchargeras plus rien.
+
+*À VÉRIFIER côté distribution : le dépôt étant privé, l'app cabinet demande un jeton d'accès, exactement comme SkanFact. Le jour où les installeurs seront publiés dans un dépôt public, ce champ disparaîtra pour les cabinets.*
+
 ## 6.5.4 — 12/09/2026
 
 **SkanFact Cabinet 1.2.0 : l'exemple était introuvable.**

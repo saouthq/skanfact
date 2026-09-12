@@ -15,5 +15,13 @@ contextBridge.exposeInMainWorld('cabinet', {
   openInPack: (packPath, name, password) => ipcRenderer.invoke('cab:openInPack', { packPath, name, password }),
   mail: (opts) => ipcRenderer.invoke('cab:mail', opts),
   reveal: (p) => ipcRenderer.invoke('cab:reveal', p),
+  // mises à jour (6.6.0)
+  updVersion: () => ipcRenderer.invoke('upd:version'),
+  updCheck: () => ipcRenderer.invoke('upd:check'),
+  updDownload: () => ipcRenderer.invoke('upd:download'),
+  updInstall: () => ipcRenderer.invoke('upd:install'),
+  updSetToken: (t) => ipcRenderer.invoke('upd:setToken', t),
+  updOpenReleases: () => ipcRenderer.invoke('upd:openReleases'),
+  onUpdateEvent: (cb) => { ipcRenderer.on('update:event', (_e, d) => cb(d)); },
   onMenuAction: (cb) => { ipcRenderer.on('menu:action', (_e, name) => cb(name)); }
 });

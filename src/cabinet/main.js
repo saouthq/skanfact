@@ -12,10 +12,11 @@ const Z = require('../zip');
 const K = require('./cabcore');
 
 const APP_ID = 'tn.skancyber.skanfact.cabinet';
-// La version du cabinet est indépendante de celle de l'app entreprise : elle vit dans
-// `cabinetVersion` de package.json, et c'est elle qu'electron-builder recopie dans le paquet.
-// On la lit là plutôt que par app.getVersion(), qui renvoie la version d'Electron en développement.
-const VERSION = require('../../package.json').cabinetVersion || app.getVersion();
+// Depuis la 6.6.0, les deux applications portent le MÊME numéro de version. C'est ce qui permet de
+// les publier dans la même release GitHub — et donc de donner au cabinet des mises à jour
+// automatiques. Un comptable et son client peuvent aussi comparer leurs versions d'un coup d'œil.
+// (On lit package.json plutôt qu'app.getVersion(), qui renvoie la version d'Electron en dev.)
+const VERSION = require('../../package.json').version;
 const SCRYPT = { N: 1 << 15, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
 
 let mainWindow = null;
@@ -259,6 +260,132 @@ ipcMain.handle('cab:listPack', (_e, { packPath, password } = {}) => {
   return Z.zipRead(buf).map(e => ({ name: e.name, size: e.size }));
 });
 
+// ---------- mises à jour (6.6.0) ----------
+//
+// Les deux applications sont publiées dans la MÊME release GitHub. Elles ne peuvent donc pas partager
+// le fichier de mise à jour (`latest.yml`), qui porte un nom fixe : le cabinet a son propre canal,
+// `cabinet.yml` / `cabinet-mac.yml`, produit par `build/cabinet.config.js`. C'est ce qui permet à un
+// comptable de recevoir SES mises à jour sans jamais voir passer celles de l'app entreprise.
+//
+// macOS : l'app n'est pas signée, donc Squirrel ne peut pas l'installer. On réutilise le même
+// `mac-update.sh` que SkanFact, en lui passant le nom du binaire.
+const GITHUB = { owner: 'saouthq', repo: 'skanfact', private: true };
+const RELEASES_URL = `https://github.com/${GITHUB.owner}/${GITHUB.repo}/releases`;
+const IS_MAC = process.platform === 'darwin';
+const MAC_SIGNED = false;
+const UPDATE_CHANNEL = 'cabinet';
+
+let updater = null, updateInfo = null, downloaded = false, downloadedFile = null, silentCheck = true;
+const UPDATE_CFG = () => path.join(app.getPath('userData'), 'update-config.json');
+const UPDATE_RESULT = () => path.join(app.getPath('userData'), 'update-result.json');
+const readUpdateCfg = () => { try { return JSON.parse(fs.readFileSync(UPDATE_CFG(), 'utf8')); } catch { return {}; } };
+function writeUpdateCfg(cfg) {
+  fs.mkdirSync(path.dirname(UPDATE_CFG()), { recursive: true });
+  fs.writeFileSync(UPDATE_CFG(), JSON.stringify(cfg), { mode: 0o600 });
+}
+const sendUpd = (state, payload) => { try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('update:event', { state, ...(payload || {}) }); } catch {} };
+
+function friendlyError(err) {
+  const m = String((err && err.message) || err);
+  if (/404/.test(m)) return 'Aucune version trouvée : le jeton d\'accès manque ou n\'a pas accès au dépôt (Réglages → Mises à jour).';
+  if (/401|403|Bad credentials/i.test(m)) return 'Jeton d\'accès refusé ou expiré. Demande-en un nouveau.';
+  if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|ECONNRESET|net::/i.test(m)) return 'Impossible de joindre GitHub. Vérifie ta connexion internet.';
+  if (/sha512|checksum/i.test(m)) return 'Le fichier téléchargé est abîmé. Réessaie.';
+  return m.split('\n')[0].slice(0, 200);
+}
+
+function getUpdater() {
+  if (updater) return updater;
+  try {
+    const { autoUpdater } = require('electron-updater');
+    autoUpdater.autoDownload = true;
+    autoUpdater.autoInstallOnAppQuit = !IS_MAC || MAC_SIGNED;
+    autoUpdater.autoRunAppAfterInstall = true;
+    autoUpdater.channel = UPDATE_CHANNEL;         // le canal du cabinet, jamais celui de l'app entreprise
+    const ulog = path.join(app.getPath('userData'), 'updater.log');
+    const ul = lvl => m => { try { fs.appendFileSync(ulog, `${new Date().toISOString()} ${lvl} ${m}\n`); } catch {} };
+    autoUpdater.logger = { info: ul('info'), warn: ul('warn'), error: ul('error'), debug: ul('debug') };
+    autoUpdater.on('checking-for-update', () => { if (!silentCheck) sendUpd('checking'); });
+    autoUpdater.on('update-available', info => { updateInfo = info; downloaded = false; downloadedFile = null; sendUpd('available', { version: info.version }); });
+    autoUpdater.on('update-not-available', () => { if (!silentCheck) sendUpd('none'); });
+    autoUpdater.on('download-progress', p => sendUpd('downloading', { percent: Math.round(p.percent), version: updateInfo && updateInfo.version }));
+    autoUpdater.on('update-downloaded', info => { downloaded = true; downloadedFile = info.downloadedFile || null; sendUpd('downloaded', { version: info.version }); });
+    autoUpdater.on('error', err => { if (!silentCheck) sendUpd('error', { message: friendlyError(err) }); });
+    const cfg = readUpdateCfg();
+    autoUpdater.setFeedURL({ provider: 'github', owner: GITHUB.owner, repo: GITHUB.repo, channel: UPDATE_CHANNEL, private: !!cfg.token, token: cfg.token || undefined });
+    updater = autoUpdater;
+  } catch { updater = null; }
+  return updater;
+}
+
+async function checkForUpdates(isSilent) {
+  silentCheck = !!isSilent;
+  if (!app.isPackaged) return { state: 'dev' };
+  // Dépôt privé sans jeton : GitHub répond 404 quoi qu'il arrive. Inutile de demander, on explique.
+  if (GITHUB.private && !readUpdateCfg().token) return { state: 'token' };
+  const u = getUpdater();
+  if (!u) return { state: 'error', message: 'Module de mise à jour indisponible.' };
+  if (downloaded) { sendUpd('downloaded', { version: updateInfo && updateInfo.version }); return { state: 'ok' }; }
+  const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('ETIMEDOUT: pas de réponse de GitHub')), 45000));
+  try {
+    const r = await Promise.race([u.checkForUpdates(), timeout]);
+    if (!r) return { state: 'error', message: 'Le module de mise à jour est inactif dans cette installation.' };
+    return { state: 'ok' };
+  } catch (e) { return { state: 'error', message: friendlyError(e) }; }
+}
+
+function takeLastUpdateResult() {
+  try { const r = JSON.parse(fs.readFileSync(UPDATE_RESULT(), 'utf8')); fs.unlinkSync(UPDATE_RESULT()); return r; } catch { return null; }
+}
+
+function installOnMac() {
+  if (!downloaded || !downloadedFile || !fs.existsSync(downloadedFile)) return { state: 'error', message: 'Le téléchargement n\'est pas terminé.' };
+  const appPath = path.resolve(app.getPath('exe'), '..', '..', '..');
+  if (!appPath.endsWith('.app')) return { state: 'error', message: 'Application introuvable sur le disque. Réinstalle depuis le .dmg.' };
+  try { fs.accessSync(path.dirname(appPath), fs.constants.W_OK); }
+  catch { return { state: 'error', message: `Impossible d'écrire dans ${path.dirname(appPath)}. Mets l'application dans ton dossier Applications, ou installe la nouvelle version depuis le .dmg.` }; }
+  const dir = app.getPath('userData');
+  const script = path.join(dir, 'mac-update.sh');
+  try {
+    fs.writeFileSync(script, fs.readFileSync(path.join(__dirname, '..', 'mac-update.sh'), 'utf8'), { mode: 0o755 });
+    try { fs.unlinkSync(UPDATE_RESULT()); } catch {}
+    const out = fs.openSync(path.join(dir, 'mac-update.log'), 'a');
+    const child = require('child_process').spawn('/bin/bash',
+      [script, String(process.pid), downloadedFile, appPath, UPDATE_RESULT(), updateInfo ? updateInfo.version : '', 'SkanFact Cabinet'],
+      { detached: true, stdio: ['ignore', out, out] });
+    child.unref();
+  } catch (e) { return { state: 'error', message: 'Impossible de lancer l\'installation : ' + e.message }; }
+  setTimeout(() => app.quit(), 300);
+  return { state: 'ok' };
+}
+
+ipcMain.handle('upd:version', () => ({
+  version: VERSION, packaged: app.isPackaged, platform: process.platform, macSigned: MAC_SIGNED,
+  hasToken: !!readUpdateCfg().token, lastUpdate: takeLastUpdateResult()
+}));
+ipcMain.handle('upd:setToken', (_e, token) => {
+  const cfg = readUpdateCfg();
+  if (token) cfg.token = String(token).trim(); else delete cfg.token;
+  writeUpdateCfg(cfg);
+  updater = null;                                  // le flux se reconstruit avec le nouveau jeton
+  return { hasToken: !!cfg.token };
+});
+ipcMain.handle('upd:check', () => checkForUpdates(false));
+ipcMain.handle('upd:download', () => {
+  const u = getUpdater();
+  if (!u || !updateInfo) return { state: 'error', message: 'Aucune mise à jour détectée.' };
+  silentCheck = false;
+  try { u.downloadUpdate(); return { state: 'ok' }; } catch (e) { return { state: 'error', message: friendlyError(e) }; }
+});
+ipcMain.handle('upd:install', () => {
+  const u = getUpdater();
+  if (!u) return { state: 'error', message: 'Module de mise à jour indisponible.' };
+  if (IS_MAC && !MAC_SIGNED) return installOnMac();
+  setImmediate(() => u.quitAndInstall(true, true));
+  return { state: 'ok' };
+});
+ipcMain.handle('upd:openReleases', () => shell.openExternal(RELEASES_URL + '/latest'));
+
 ipcMain.handle('cab:mail', async (_e, { to, subject, body } = {}) => {
   const url = `mailto:${encodeURIComponent(to || '')}?subject=${encodeURIComponent(subject || '')}&body=${encodeURIComponent(body || '')}`;
   await shell.openExternal(url);
@@ -278,6 +405,9 @@ if (!app.requestSingleInstanceLock()) {
     if (process.platform === 'win32') app.setAppUserModelId(APP_ID);
     try { Menu.setApplicationMenu(buildMenu()); } catch (e) { logError('menu', e); }
     createWindow();
+    // Vérification silencieuse au démarrage : si une version est là, la pastille s'allume dans la
+    // barre de gauche. Rien ne s'affiche s'il n'y a rien — on ne dérange pas pour dire « rien ».
+    setTimeout(() => { checkForUpdates(true).catch(() => {}); }, 4000);
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
   }).catch(e => logError('démarrage', e));
   app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

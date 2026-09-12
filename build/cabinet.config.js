@@ -5,10 +5,13 @@
 // permet à un comptable d'avoir les deux applications installées côte à côte — il est souvent
 // lui-même une entreprise.
 //
-// Sa version est indépendante de celle de l'app entreprise : elle vit dans `cabinetVersion` de
-// package.json. Le paquet n'est PAS publié par electron-updater (pas de latest.yml) : les artefacts
-// sont attachés à la release par le workflow. Le cabinet n'a donc pas encore de mise à jour
-// automatique — c'est assumé en 1.0.0, il y a au plus quelques dizaines d'installations.
+// Depuis la 6.6.0, les deux applications partagent le même numéro de version et la même release
+// GitHub. Ce qui les sépare, c'est le **canal** de mise à jour : `latest.yml` pour l'entreprise,
+// `cabinet.yml` pour le cabinet. Sans ça, le second écraserait le fichier du premier et chaque app
+// proposerait à ses utilisateurs la mise à jour de l'autre.
+//
+// Le `.zip` mac redevient nécessaire : c'est lui qu'electron-updater télécharge sur macOS (le .dmg
+// ne sert qu'à la première installation).
 const pkg = require('../package.json');
 
 module.exports = {
@@ -17,15 +20,13 @@ module.exports = {
   extraMetadata: {
     name: 'skanfact-cabinet',
     productName: 'SkanFact Cabinet',
-    version: pkg.cabinetVersion,
+    version: pkg.version,
     main: 'src/cabinet/main.js'
   },
   files: ['src/**/*', 'package.json', 'CHANGELOG.md'],
   directories: { output: 'dist-cabinet' },
   mac: {
-    // Pas de .zip : il ne sert qu'à electron-updater, dont l'app cabinet ne se sert pas encore.
-    // C'est 215 Mo de moins à téléverser à chaque release — et un téléversement de moins à rater.
-    target: [{ target: 'dmg', arch: ['universal'] }],
+    target: [{ target: 'dmg', arch: ['universal'] }, { target: 'zip', arch: ['universal'] }],
     category: 'public.app-category.business',
     icon: 'build/icon-cabinet.png',
     hardenedRuntime: false,
@@ -52,6 +53,12 @@ module.exports = {
     runAfterFinish: true,
     deleteAppDataOnUninstall: false
   },
-  publish: null,
+  publish: {
+    provider: 'github',
+    owner: 'saouthq',
+    repo: 'skanfact',
+    releaseType: 'release',
+    channel: 'cabinet'          // → cabinet.yml / cabinet-mac.yml, à côté de latest.yml
+  },
   artifactName: 'SkanFact-Cabinet-${version}-${os}-${arch}.${ext}'
 };

@@ -3303,6 +3303,40 @@ t('cabinet : l\'arithmétique des mois donne le même résultat sous tous les fu
 
 // La clé privée du cabinet ouvre toutes les comptabilités de ses clients. Elle ne doit jamais
 // traverser le pont vers l'interface : de là, elle finirait dans une capture d'écran ou un journal.
+// Deux applications dans une même release GitHub se partagent un espace de noms. Le fichier de
+// mise à jour porte un nom FIXE (`latest.yml`) : si le cabinet publiait sur le même canal, il
+// écraserait celui de l'app entreprise, et chaque application proposerait à ses utilisateurs la
+// version de l'autre. Rien ne planterait — les gens installeraient simplement le mauvais logiciel.
+t('cabinet : son canal de mise à jour ne peut pas écraser celui de l\'app entreprise', () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
+  const cfg = require('../build/cabinet.config.js');
+
+  assert.ok(cfg.publish && cfg.publish.channel, 'le cabinet doit publier sur un canal nommé');
+  assert.notStrictEqual(cfg.publish.channel, 'latest', 'le canal « latest » est celui de l\'app entreprise');
+  assert.strictEqual(cfg.publish.provider, 'github');
+  assert.strictEqual(cfg.publish.repo, pkg.build.publish.repo, 'les deux applications publient dans le même dépôt');
+
+  // Même version des deux côtés : c'est ce qui les met dans la même release, donc dans la même
+  // page de téléchargement, et ce qui permet de comparer deux installations d'un coup d'œil.
+  assert.strictEqual(cfg.extraMetadata.version, pkg.version, 'les deux applications doivent porter la même version');
+  assert.ok(!('cabinetVersion' in pkg), 'cabinetVersion n\'a plus lieu d\'être');
+
+  // Sur macOS, electron-updater télécharge le .zip, pas le .dmg : sans lui, aucune mise à jour.
+  const cibles = cfg.mac.target.map(t => t.target);
+  assert.ok(cibles.includes('zip'), 'le .zip mac est ce qu\'electron-updater télécharge');
+  assert.ok(cibles.includes('dmg'), 'le .dmg reste nécessaire à la première installation');
+
+  // Et l'application doit demander CE canal, sinon elle recevrait les versions de l'app entreprise.
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'cabinet', 'main.js'), 'utf8');
+  assert.ok(new RegExp(`UPDATE_CHANNEL = '${cfg.publish.channel}'`).test(src), 'le canal de l\'app et celui du paquet doivent être le même');
+  assert.ok(/autoUpdater\.channel = UPDATE_CHANNEL/.test(src));
+  // macOS n'est pas signé : Squirrel ne peut pas installer, c'est mac-update.sh qui remplace l'app.
+  assert.ok(/MAC_SIGNED = false/.test(src) && /mac-update\.sh/.test(src));
+  const sh = fs.readFileSync(path.join(__dirname, '..', 'src', 'mac-update.sh'), 'utf8');
+  assert.ok(/BIN="\$\{6:-SkanFact\}"/.test(sh), 'le script doit accepter le nom du binaire : il sert aux deux applications');
+  assert.ok(/MacOS\/\$BIN/.test(sh), 'et le vérifier avec ce nom, pas avec « SkanFact » en dur');
+});
+
 t('cabinet : la clé privée ne traverse jamais le pont vers l\'interface', () => {
   const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'cabinet', 'main.js'), 'utf8');
   assert.ok(/function safeState\(\)[\s\S]*?delete s\.cabinet\.privateKey/.test(src), 'safeState doit retirer la clé privée');
