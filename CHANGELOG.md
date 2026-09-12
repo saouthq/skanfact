@@ -40,6 +40,16 @@ C'est l'application qui détient la comptabilité de dizaines d'entreprises **et
 - **Listes tenables à soixante lignes** : tri sur chaque colonne, pagination, totaux en pied, export CSV. Les totaux et l'export portent sur la sélection entière, jamais sur la page affichée.
 - **Glisser-déposer** un `.skanpack` sur la fenêtre, ou le **double-cliquer dans le Finder**. **Cmd+K** cherche un client ou lance une action.
 
+### Les écritures de tous les clients, en un fichier
+
+Nouvelle page **Écritures**. Chaque paquet portait déjà ses écritures en partie double, mais rien ne les rassemblait : pour importer un mois dans son logiciel de production, le comptable devait ouvrir soixante paquets un par un — exactement le travail qu'on prétend lui épargner.
+
+- Un mois, ou un intervalle (« toute l'année »), tous clients confondus, dans **un seul CSV** avec le client, son matricule et le mois devant chaque ligne.
+- Les colonnes sont associées **par nom, pas par position** : un client sous une version plus ancienne ou plus récente de SkanFact n'a pas forcément les mêmes, et aligner à l'aveugle mettrait des montants dans la colonne « Tiers » sans que rien ne plante.
+- L'écran dit **avant** l'export ce qui sera lu, ce qui est encore provisoire, et quels clients n'ont rien envoyé — plutôt que de le découvrir en rapprochant les comptes.
+- Un paquet illisible (scellé par mot de passe, ou trop ancien pour contenir des écritures) **n'échoue pas l'export** : le fichier est écrit avec le reste et le manque est nommé.
+- Le lecteur de CSV est un vrai lecteur : point-virgules dans les libellés, guillemets doublés, retours à la ligne dans un champ. Découper sur « ; » aurait été plus court et faux.
+
 ### Le suivi des relances
 
 - **Chaque relance est enregistrée** : date, moyen (email, téléphone, WhatsApp), mois réclamés, note. Avant, on cliquait « Écrire », le mail partait, et le lundi suivant plus personne ne savait qui avait été relancé.

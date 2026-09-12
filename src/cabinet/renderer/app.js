@@ -508,6 +508,7 @@
     if (relCount) pill.textContent = relCount;
     const view = $('#view');
     if (route === 'dossier') drawDossier(view, arg);
+    else if (route === 'ecritures') drawEcritures(view);
     else if (route === 'relances') drawRelances(view);
     else if (route === 'reglages') drawReglages(view);
     else if (route === 'aide') drawAide(view);
@@ -1046,6 +1047,118 @@
           await recordRelance(row, $('#n-via', layer).value, $('#n-note', layer).value.trim());
           close(); render(); toast('Relance enregistrée.');
         };
+      }
+    );
+  }
+
+  // ---------- écritures regroupées ----------
+  //
+  // Chaque paquet porte déjà ses écritures en partie double. Mais rien ne les rassemblait : pour
+  // importer un mois dans son logiciel de production, le comptable devait ouvrir soixante paquets
+  // un par un — exactement le travail qu'on prétend lui épargner.
+  const ecrState = { from: '', to: '', ids: null };
+
+  function moisDisponibles() {
+    const s = new Set();
+    (S.dossiers || []).forEach(d => (d.packs || []).forEach(p => { if (p.path) s.add(p.month); }));
+    return [...s].sort();
+  }
+
+  function drawEcritures(view) {
+    const mois = moisDisponibles();
+    if (!mois.length) {
+      view.innerHTML = `<div class="page-head"><h1>Écritures</h1></div>
+        <div class="panel"><h2>Rien à regrouper pour l'instant</h2>
+          <p>Dès qu'un client t'aura envoyé un paquet, tu pourras sortir d'ici <strong>toutes les écritures du mois,
+          tous clients confondus</strong>, dans un seul fichier à importer dans ton logiciel.</p>
+          <p class="small muted">Chaque paquet contient déjà ses écritures en partie double : cette page les rassemble,
+          en ajoutant le nom du client et le mois devant chaque ligne.</p>
+          <div class="modal-actions"><button class="btn btn-primary" id="imp">Importer un paquet…</button></div></div>`;
+      $('#imp').onclick = () => doImport();
+      return;
+    }
+    if (!ecrState.from || !mois.includes(ecrState.from)) ecrState.from = mois[mois.length - 1];
+    if (!ecrState.to || ecrState.to < ecrState.from) ecrState.to = ecrState.from;
+    const plan = K.ecrituresPlan(S, { from: ecrState.from, to: ecrState.to, ids: ecrState.ids });
+    const opts = m => mois.map(x => `<option value="${esc(x)}" ${m === x ? 'selected' : ''}>${esc(K.monthLabel(x))}</option>`).join('');
+
+    view.innerHTML = `
+      <div class="page-head"><h1>Écritures</h1></div>
+      <p class="muted small mb">Un seul fichier CSV, toutes les écritures de la période, avec le client et le mois devant chaque ligne —
+      à importer dans ton logiciel au lieu de ressaisir. ${info('e.import')}</p>
+
+      <div class="panel"><h2>La période ${info('e.periode')}</h2>
+        <div class="filters">
+          <label class="inline small">Du <select id="e-from">${opts(ecrState.from)}</select></label>
+          <label class="inline small">au <select id="e-to">${opts(ecrState.to)}</select></label>
+          <button class="btn btn-ghost btn-sm" id="e-last">Le dernier mois</button>
+          <button class="btn btn-ghost btn-sm" id="e-year">Toute l'année ${esc(ecrState.to.slice(0, 4))}</button>
+        </div>
+        <div class="stats mt">
+          <div class="stat"><div class="lbl">Paquets</div><div class="val">${plan.packs.length}</div>
+            <div class="sub">${plan.mois.length ? pl(plan.mois.length, 'mois', 'mois') : 'aucun'}</div></div>
+          <div class="stat"><div class="lbl">Clients</div><div class="val">${new Set(plan.packs.map(p => p.id)).size}</div>
+            <div class="sub">${plan.sansPaquet.length ? pl(plan.sansPaquet.length, 'sans rien envoyé') : 'tous ont envoyé'}</div></div>
+          <div class="stat"><div class="lbl">Provisoires</div><div class="val ${plan.provisoires.length ? 'due' : 'ok'}">${plan.provisoires.length}</div>
+            <div class="sub">${plan.provisoires.length ? 'chiffres susceptibles de bouger' : 'tout est définitif'}</div></div>
+          <div class="stat"><div class="lbl">Période</div><div class="val" style="font-size:16px">${esc(plan.mois.length ? (plan.mois.length > 1 ? K.monthLabel(plan.mois[0]) + ' → ' + K.monthLabel(plan.mois[plan.mois.length - 1]) : K.monthLabel(plan.mois[0])) : '—')}</div></div>
+        </div>
+
+        ${plan.provisoires.length ? `<div class="warn-box mt">${info('e.provisoire')} <strong>${pl(plan.provisoires.length, 'paquet')} ${plan.provisoires.length > 1 ? 'ne sont' : 'n\'est'} pas définitif${plan.provisoires.length > 1 ? 's' : ''}</strong> :
+          ${esc(plan.provisoires.slice(0, 6).join(' · '))}${plan.provisoires.length > 6 ? ' …' : ''}.
+          Leur mois n'a pas été clôturé chez le client : les chiffres peuvent encore changer. Ils sont quand même exportés.</div>` : ''}
+        ${plan.sansPaquet.length ? `<p class="small mt">${info('e.manquants')} <span class="err-inline">${pl(plan.sansPaquet.length, 'client')} n'${plan.sansPaquet.length > 1 ? 'ont' : 'a'} rien envoyé sur cette période</span> :
+          ${esc(plan.sansPaquet.slice(0, 8).join(', '))}${plan.sansPaquet.length > 8 ? '…' : ''}. <a href="#/relances">Les relancer</a></p>` : ''}
+
+        <div class="modal-actions">
+          <button class="btn btn-primary" id="e-go" ${plan.packs.length ? '' : 'disabled'}>Exporter les écritures…</button>
+          <span class="muted small">${plan.packs.length ? 'Un seul fichier, prêt pour ton logiciel.' : 'Aucun paquet sur cette période.'}</span>
+        </div>
+      </div>
+
+      ${plan.packs.length ? `<div class="panel"><h2>Ce qui sera lu</h2>
+        <div class="scroll-x"><table class="list compact"><thead><tr><th class="nw">Mois</th><th>Client</th><th class="nw">Matricule</th><th>État</th></tr></thead>
+        <tbody>${plan.packs.map(p => `<tr>
+          <td class="nw">${esc(K.monthLabel(p.month))}</td><td>${esc(p.name)}</td>
+          <td class="muted nw">${esc(p.matricule || '—')}</td>
+          <td>${p.definitive ? '<span class="badge accepté">définitif</span>' : '<span class="badge partielle">provisoire</span>'}</td></tr>`).join('')}</tbody></table></div></div>` : ''}`;
+
+    $('#e-from').onchange = e => { ecrState.from = e.target.value; if (ecrState.to < ecrState.from) ecrState.to = ecrState.from; render(); };
+    $('#e-to').onchange = e => { ecrState.to = e.target.value; if (ecrState.to < ecrState.from) ecrState.from = ecrState.to; render(); };
+    $('#e-last').onclick = () => { ecrState.from = ecrState.to = mois[mois.length - 1]; render(); };
+    $('#e-year').onclick = () => {
+      const an = ecrState.to.slice(0, 4);
+      const dedans = mois.filter(m => m.slice(0, 4) === an);
+      if (dedans.length) { ecrState.from = dedans[0]; ecrState.to = dedans[dedans.length - 1]; render(); }
+    };
+    $('#e-go').onclick = async () => {
+      const b = $('#e-go'); b.disabled = true; b.textContent = 'Lecture des paquets…';
+      try {
+        const r = await api.exportEcritures({ from: ecrState.from, to: ecrState.to, ids: ecrState.ids });
+        if (r) showEcrituresReport(r);
+      } catch (e) { toast(plainError(e), 'error'); }
+      b.disabled = false; b.textContent = 'Exporter les écritures…';
+    };
+  }
+
+  function showEcrituresReport(r) {
+    modal(
+      `<h2>${pl(r.lignes, 'écriture')} regroupée${r.lignes > 1 ? 's' : ''}</h2>
+       <div class="kv mt">
+         <div><span>Clients</span><span>${r.dossiers}</span></div>
+         <div><span>Mois</span><span>${esc(r.mois.map(K.monthLabel).join(', '))}</span></div>
+         <div><span>Fichier</span><span class="path">${esc(r.path)}</span></div>
+       </div>
+       ${r.illisibles && r.illisibles.length ? `<div class="warn-box mt"><strong>${pl(r.illisibles.length, 'paquet')} n'${r.illisibles.length > 1 ? 'ont' : 'a'} pas pu être lu${r.illisibles.length > 1 ? 's' : ''}</strong> :
+         <ul class="small" style="margin:6px 0 0;padding-left:18px">${r.illisibles.map(x => `<li>${esc(x)}</li>`).join('')}</ul>
+         <div class="small mt">Le fichier a quand même été écrit avec le reste : mieux vaut 95 % avec le trou signalé qu'un export qui échoue.</div></div>` : ''}
+       ${r.vides && r.vides.length ? `<p class="small muted mt">${pl(r.vides.length, 'paquet')} sans aucune écriture (mois sans activité) : ${esc(r.vides.slice(0, 5).join(', '))}.</p>` : ''}
+       <p class="muted small mt">Les colonnes sont celles de tes clients, avec <strong>Client</strong>, <strong>Matricule</strong> et <strong>Mois</strong> ajoutées devant.
+       Si les numéros de compte ne sont pas les tiens, donne-les une fois à ton client : il les saisit dans son SkanFact et tous ses envois suivants sont à ton format.</p>
+       <div class="modal-actions"><button class="btn" id="rev">Montrer dans le dossier</button><span class="grow"></span><button class="btn btn-primary" id="ok">Fermer</button></div>`,
+      (layer, close) => {
+        $('#ok', layer).onclick = close;
+        $('#rev', layer).onclick = () => api.reveal(r.path);
       }
     );
   }

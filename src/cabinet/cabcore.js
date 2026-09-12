@@ -480,6 +480,107 @@
     ];
   }
 
+  // ---------- regrouper les écritures ----------
+  //
+  // Chaque paquet porte son `journaux/ecritures.csv`, déjà en partie double. Mais rien ne les
+  // rassemblait : pour importer un mois dans son logiciel de production, le comptable devait ouvrir
+  // soixante paquets un par un — exactement le travail qu'on prétend lui épargner.
+  //
+  // Un lecteur de CSV honnête : point-virgule, guillemets doublés, retours à la ligne dans les
+  // champs. Écrire le sien plutôt que découper sur « ; » n'est pas un luxe : un libellé de facture
+  // contient un point-virgule un jour sur dix, et la ligne partirait en morceaux sans rien signaler.
+  function parseCsv(text) {
+    const s = String(text || '').replace(/^﻿/, '');
+    const rows = [];
+    let ligne = [], champ = '', i = 0, guill = false;
+    while (i < s.length) {
+      const c = s[i];
+      if (guill) {
+        if (c === '"') {
+          if (s[i + 1] === '"') { champ += '"'; i += 2; continue; }
+          guill = false; i++; continue;
+        }
+        champ += c; i++; continue;
+      }
+      if (c === '"') { guill = true; i++; continue; }
+      if (c === ';') { ligne.push(champ); champ = ''; i++; continue; }
+      if (c === '\r') { i++; continue; }
+      if (c === '\n') { ligne.push(champ); rows.push(ligne); ligne = []; champ = ''; i++; continue; }
+      champ += c; i++;
+    }
+    if (champ !== '' || ligne.length) { ligne.push(champ); rows.push(ligne); }
+    return rows.filter(r => r.length > 1 || (r[0] || '').trim() !== '');
+  }
+
+  function toCsvLine(cells) {
+    return cells.map(v => {
+      const t = String(v == null ? '' : v);
+      return /[;"\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+    }).join(';');
+  }
+
+  // Fusionner les écritures de plusieurs paquets en un seul fichier, avec le client en tête de
+  // chaque ligne. Les colonnes sont associées PAR NOM, pas par position : un paquet fabriqué par une
+  // version plus ancienne ou plus récente de SkanFact n'a pas forcément les mêmes, et aligner à
+  // l'aveugle mettrait des montants dans la colonne « Tiers » sans que rien ne plante.
+  function mergeEcritures(sources) {
+    const colonnes = [];
+    const lues = [];
+    (sources || []).forEach(src => {
+      const rows = parseCsv(src.csv);
+      if (rows.length < 2) return lues.push({ ...src, lignes: [], vide: true });
+      const entete = rows[0].map(x => String(x).trim());
+      entete.forEach(c => { if (c && !colonnes.includes(c)) colonnes.push(c); });
+      const lignes = rows.slice(1).map(r => {
+        const o = {};
+        entete.forEach((c, i) => { if (c) o[c] = r[i] == null ? '' : r[i]; });
+        return o;
+      });
+      lues.push({ ...src, lignes });
+    });
+    const tete = ['Client', 'Matricule', 'Mois'].concat(colonnes);
+    const corps = [];
+    lues.forEach(src => {
+      (src.lignes || []).forEach(o => {
+        corps.push(toCsvLine([src.name || '', src.matricule || '', src.month || ''].concat(colonnes.map(c => o[c] == null ? '' : o[c]))));
+      });
+    });
+    return {
+      // Le BOM : sans lui, Excel en français lit « Société » comme « SociÃ©tÃ© ».
+      csv: '﻿' + [toCsvLine(tete)].concat(corps).join('\r\n') + '\r\n',
+      lignes: corps.length,
+      dossiers: lues.filter(s => (s.lignes || []).length).length,
+      vides: lues.filter(s => !(s.lignes || []).length).map(s => `${s.name} (${monthLabel(s.month)})`)
+    };
+  }
+
+  // Quels paquets lire pour une période donnée. Pur : l'interface montre ce qui partira AVANT de
+  // fabriquer quoi que ce soit, et le processus principal se contente d'exécuter.
+  function ecrituresPlan(state, opts) {
+    opts = opts || {};
+    const du = opts.from || opts.month || '';
+    const au = opts.to || opts.month || du;
+    const ids = opts.ids && opts.ids.length ? new Set(opts.ids) : null;
+    const pris = [], sansPaquet = [];
+    (state.dossiers || []).forEach(d => {
+      if (d.demo) return;                                   // les dossiers d'exemple n'ont pas de fichier
+      if (ids && !ids.has(d.id)) return;
+      const dans = (d.packs || []).filter(p => p.path && (!du || (p.month >= du && p.month <= au)))
+        .sort((a, b) => a.month < b.month ? -1 : 1);
+      if (!dans.length) { if (!d.manual && !d.archived) sansPaquet.push(d.name); return; }
+      dans.forEach(p => pris.push({
+        id: d.id, name: d.name, matricule: d.matricule, month: p.month,
+        path: p.path, definitive: !!p.definitive, sealed: !!p.sealed
+      }));
+    });
+    pris.sort((a, b) => (a.month < b.month ? -1 : a.month > b.month ? 1 : a.name.localeCompare(b.name, 'fr')));
+    return {
+      packs: pris, sansPaquet,
+      mois: [...new Set(pris.map(p => p.month))],
+      provisoires: pris.filter(p => !p.definitive).map(p => `${p.name} (${monthLabel(p.month)})`)
+    };
+  }
+
   // Le fichier d'appairage remis aux clients. Il ne contient QUE la clé publique : rien de secret,
   // mais tout ce qu'il faut pour que leurs paquets n'appartiennent qu'à ce cabinet.
   function pairingFile(cabinet, fingerprint) {
@@ -495,6 +596,7 @@
     monthLabel, monthListLabel, missingLabel, addMonth, monthsBetween, today, de,
     migrate, migrateDossier, dossierKey, packSummary, filePack, demoDossiers, checkIntegrity,
     newDossier, parseDossierLines, noteRelance, portfolio, relanceDue, relanceRows,
+    parseCsv, toCsvLine, mergeEcritures, ecrituresPlan,
     dossierMonths, dossierRow, dossierList, cabinetTodo, relanceMail, pairingFile
   };
 }));

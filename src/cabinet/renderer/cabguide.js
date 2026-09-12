@@ -41,6 +41,12 @@
     'p.delete': { t: 'Supprimer un paquet', d: 'À réserver à un paquet arrivé par erreur (mauvais client, essai). Le fichier est effacé de ton disque et le mois redevient « manquant » pour ce client. Une sauvegarde est prise juste avant, au cas où.' },
     'p.extract': { t: 'Extraire les pièces', d: 'Écrit tout le contenu du paquet dans un dossier de ton choix : la page de garde, les journaux CSV, les factures PDF, les justificatifs. C\'est ce qu\'on fait pour travailler dans son logiciel de production, ou pour rendre ses pièces à un client qui part.' },
 
+    // — écritures regroupées —
+    'e.import': { t: 'À quoi sert ce fichier', d: 'C\'est le fichier que tu importes dans ton logiciel de production, à la place de la ressaisie. Il rassemble les écritures en partie double de <b>tous</b> tes clients sur la période choisie, avec le nom du client, son matricule et le mois devant chaque ligne. Les colonnes sont celles que tes clients ont produites : date, journal, pièce, compte, tiers, libellé, débit, crédit, devise.' },
+    'e.periode': { t: 'La période', d: 'Un seul mois pour l\'import mensuel habituel, ou un intervalle pour rattraper un retard ou sortir un exercice entier. Seuls les mois où au moins un paquet est arrivé sont proposés : on ne propose pas d\'exporter le néant.' },
+    'e.provisoire': { t: 'Paquets provisoires dans l\'export', d: 'Un paquet <b>provisoire</b> vient d\'un mois que le client n\'a pas clôturé : ses chiffres peuvent encore changer. Il est quand même exporté — tu en as souvent besoin pour travailler — mais ne déclare pas dessus, et redemande le paquet définitif avant de déposer.' },
+    'e.manquants': { t: 'Les clients qui n\'ont rien envoyé', d: 'Ils ne figurent pas dans le fichier, forcément. La liste est là pour que tu saches ce qui manque <b>avant</b> d\'importer dans ton logiciel, plutôt que de t\'en apercevoir en rapprochant les comptes.' },
+
     // — relances —
     'r.via': { t: 'Moyen de relance', d: 'Comment tu l\'as relancé. C\'est ce qui te permet, la semaine suivante, de savoir qui a déjà été appelé et qui n\'a reçu qu\'un mail. Un client relancé trois fois par mail sans réponse se relance au téléphone.' },
     'r.history': { t: 'Historique des relances', d: 'Chaque relance est enregistrée avec sa date, son moyen et les mois réclamés. Sans cette trace, le lundi suivant tu ne sais plus qui tu as relancé — et tu relances deux fois les mêmes en oubliant les autres.' },

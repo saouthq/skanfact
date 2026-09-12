@@ -453,6 +453,55 @@ ipcMain.handle('cab:extractPack', async (_e, { packPath, password, label } = {})
   return { dir: target, files: n };
 });
 
+// ---------- IPC : regrouper les écritures ----------
+//
+// Le renderer décide de ce qui part (K.ecrituresPlan, pur et testable) et le montre au comptable
+// AVANT de fabriquer quoi que ce soit ; ici on ne fait qu'exécuter — même règle que pour le paquet
+// mensuel côté entreprise.
+ipcMain.handle('cab:ecrituresPlan', (_e, opts) => {
+  requireOpen();
+  return K.ecrituresPlan(state, opts);
+});
+
+ipcMain.handle('cab:exportEcritures', async (_e, opts) => {
+  requireOpen();
+  const plan = K.ecrituresPlan(state, opts);
+  if (!plan.packs.length) throw new Error('Aucun paquet sur cette période.');
+  const sources = [];
+  const illisibles = [];
+  for (const p of plan.packs) {
+    try {
+      let buf = fs.readFileSync(p.path);
+      if (Z.isSealedForCabinet(buf)) buf = Z.openWithCabinetKey(buf, state.cabinet.privateKey);
+      else if (Z.isSealed(buf)) {
+        // Un paquet scellé par mot de passe ne s'ouvre pas tout seul : on le dit plutôt que de
+        // livrer un fichier incomplet sans prévenir.
+        illisibles.push(`${p.name} (${p.month}) : protégé par un mot de passe`);
+        continue;
+      }
+      const e = Z.zipRead(buf).find(x => x.name === 'journaux/ecritures.csv');
+      if (!e) { illisibles.push(`${p.name} (${p.month}) : paquet sans écritures (version trop ancienne)`); continue; }
+      sources.push({ name: p.name, matricule: p.matricule, month: p.month, csv: e.data().toString('utf8') });
+    } catch (err) {
+      illisibles.push(`${p.name} (${p.month}) : ${err.message || err}`);
+    }
+  }
+  if (!sources.length) {
+    const e = new Error('Aucune écriture lisible sur cette période.' + (illisibles.length ? '\n' + illisibles.join('\n') : ''));
+    throw e;
+  }
+  const out = K.mergeEcritures(sources);
+  const periode = plan.mois.length > 1 ? `${plan.mois[0]}_${plan.mois[plan.mois.length - 1]}` : (plan.mois[0] || 'ecritures');
+  const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+    title: 'Écritures regroupées',
+    defaultPath: path.join(app.getPath('documents'), `ecritures-${CS.slug(state.cabinet.name || 'cabinet')}-${periode}.csv`),
+    filters: [{ name: 'Tableau CSV', extensions: ['csv'] }]
+  });
+  if (canceled || !filePath) return null;
+  fs.writeFileSync(filePath, out.csv, 'utf8');
+  return { path: filePath, lignes: out.lignes, dossiers: out.dossiers, vides: out.vides, illisibles, mois: plan.mois };
+});
+
 // ---------- IPC : sauvegardes, copie externe, clé de secours ----------
 ipcMain.handle('cab:backups', () => {
   const s = getStore();

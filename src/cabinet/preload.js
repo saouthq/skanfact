@@ -30,6 +30,8 @@ contextBridge.exposeInMainWorld('cabinet', {
   listPack: (packPath, password) => ipcRenderer.invoke('cab:listPack', { packPath, password }),
   openInPack: (packPath, name, password) => ipcRenderer.invoke('cab:openInPack', { packPath, name, password }),
   extractPack: (packPath, password, label) => ipcRenderer.invoke('cab:extractPack', { packPath, password, label }),
+  ecrituresPlan: (opts) => ipcRenderer.invoke('cab:ecrituresPlan', opts),
+  exportEcritures: (opts) => ipcRenderer.invoke('cab:exportEcritures', opts),
 
   // filets : sauvegardes, copie externe, clé de secours
   backups: () => ipcRenderer.invoke('cab:backups'),

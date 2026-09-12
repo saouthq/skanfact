@@ -3523,6 +3523,78 @@ t('cabinet : les listes se trient sans jamais perdre de ligne', () => {
   assert.deepStrictEqual(S.dossiers.map(d => d.name), ['Zeta', 'Alpha', 'Mu']);
 });
 
+t('cabinet : un CSV se lit vraiment, point-virgules et guillemets compris', () => {
+  // Découper sur « ; » serait plus court et faux : un libellé de facture contient un point-virgule
+  // un jour sur dix, et la ligne partirait en morceaux sans que rien ne le signale.
+  const rows = cab.parseCsv('﻿Date;Libellé;Débit\r\n01/08/2026;"Prestation ; maintenance";1 200,000\r\n02/08/2026;"Il a dit ""oui""";0,000\r\n');
+  assert.deepStrictEqual(rows[0], ['Date', 'Libellé', 'Débit']);
+  assert.deepStrictEqual(rows[1], ['01/08/2026', 'Prestation ; maintenance', '1 200,000']);
+  assert.deepStrictEqual(rows[2], ['02/08/2026', 'Il a dit "oui"', '0,000']);
+  assert.strictEqual(rows.length, 3, 'la ligne vide finale ne compte pas');
+  // Un retour à la ligne à l'intérieur d'un champ ne coupe pas la ligne.
+  const multi = cab.parseCsv('A;B\r\n1;"deux\nlignes"\r\n');
+  assert.strictEqual(multi.length, 2);
+  assert.strictEqual(multi[1][1], 'deux\nlignes');
+  assert.deepStrictEqual(cab.parseCsv(''), []);
+});
+
+t('cabinet : les écritures de plusieurs clients se regroupent en un seul fichier', () => {
+  // C'est ce qui fait gagner du temps à un comptable : un import, pas soixante.
+  const a = 'Date;Journal;Compte;Libellé;Débit;Crédit\r\n01/08/2026;VE;411000;Facture;1200,000;0,000\r\n';
+  // Deuxième client, colonnes DANS UN AUTRE ORDRE et une colonne en plus : une version différente
+  // de SkanFact chez le client. Aligner à l'aveugle mettrait des montants dans « Libellé ».
+  const b = 'Journal;Date;Libellé;Compte;Crédit;Débit;Devise\r\nVE;03/08/2026;Vente;707000;800,000;0,000;DT\r\n';
+  const r = cab.mergeEcritures([
+    { name: 'Menuiserie Trabelsi', matricule: '1122334A', month: '2026-08', csv: a },
+    { name: 'Pharmacie El Menzah', matricule: '2233445B', month: '2026-08', csv: b },
+    { name: 'Café des Jasmins', matricule: '5566778E', month: '2026-08', csv: 'Date;Journal\r\n' }   // mois sans activité
+  ]);
+  const lignes = r.csv.replace(/^﻿/, '').trim().split('\r\n');
+  // Le client vient en tête, puis les colonnes dans l'ordre où elles sont apparues.
+  assert.strictEqual(lignes[0], 'Client;Matricule;Mois;Date;Journal;Compte;Libellé;Débit;Crédit;Devise');
+  assert.strictEqual(r.lignes, 2);
+  assert.strictEqual(r.dossiers, 2);
+  assert.deepStrictEqual(r.vides, ['Café des Jasmins (août 2026)']);
+  // La ligne du second client est remise dans l'ordre des colonnes, pas recopiée telle quelle.
+  const cols = lignes[0].split(';');
+  const l2 = cab.parseCsv(lignes[0] + '\r\n' + lignes[2])[1];
+  const val = nom => l2[cols.indexOf(nom)];
+  assert.strictEqual(val('Client'), 'Pharmacie El Menzah');
+  assert.strictEqual(val('Date'), '03/08/2026');
+  assert.strictEqual(val('Compte'), '707000');
+  assert.strictEqual(val('Crédit'), '800,000');
+  assert.strictEqual(val('Devise'), 'DT');
+  // Le premier client n'a pas de colonne Devise : la case reste vide, elle ne décale rien.
+  const l1 = cab.parseCsv(lignes[0] + '\r\n' + lignes[1])[1];
+  assert.strictEqual(l1[cols.indexOf('Devise')], '');
+  assert.strictEqual(l1[cols.indexOf('Débit')], '1200,000');
+  assert.ok(r.csv.startsWith('﻿'), 'sans le BOM, Excel en français lit « Société » comme « SociÃ©tÃ© »');
+});
+
+t('cabinet : le plan d\'export dit ce qui sera lu et ce qui manque', () => {
+  const S = cab.migrate({ dossiers: [
+    { id: 'a', name: 'Alpha', matricule: '1111111A', packs: [
+      { month: '2026-07', definitive: true, path: '/p/a-07', missing: [] },
+      { month: '2026-08', definitive: false, path: '/p/a-08', missing: [] }] },
+    { id: 'b', name: 'Beta', matricule: '2222222B', packs: [{ month: '2026-08', definitive: true, path: '/p/b-08', missing: [] }] },
+    { id: 'c', name: 'Gamma', packs: [] },                                   // n'a rien envoyé
+    { id: 'd', name: 'Delta', manual: true, packs: [] },                     // pas encore sur SkanFact
+    { id: 'e', name: 'Exemple', demo: true, packs: [{ month: '2026-08', path: '' }] }
+  ] });
+  const plan = cab.ecrituresPlan(S, { month: '2026-08' });
+  assert.deepStrictEqual(plan.packs.map(p => p.name), ['Alpha', 'Beta']);
+  assert.deepStrictEqual(plan.mois, ['2026-08']);
+  assert.deepStrictEqual(plan.provisoires, ['Alpha (août 2026)']);
+  assert.deepStrictEqual(plan.sansPaquet, ['Gamma'], 'un client hors SkanFact n\'est pas « en manque »');
+  // Un intervalle prend les deux mois, dans l'ordre.
+  const large = cab.ecrituresPlan(S, { from: '2026-07', to: '2026-08' });
+  assert.deepStrictEqual(large.packs.map(p => p.month + ' ' + p.name), ['2026-07 Alpha', '2026-08 Alpha', '2026-08 Beta']);
+  // On peut se limiter à un client.
+  assert.deepStrictEqual(cab.ecrituresPlan(S, { month: '2026-08', ids: ['b'] }).packs.map(p => p.name), ['Beta']);
+  // Un paquet d'exemple n'a pas de fichier : il ne doit jamais entrer dans un export réel.
+  assert.ok(!plan.packs.some(p => p.id === 'e'));
+});
+
 // ---------- cabinet : le magasin et ses filets (src/cabinet/cabstore.js) ----------
 // C'est l'application qui détient la comptabilité de dizaines d'entreprises ET la clé qui ouvre
 // leurs paquets. Elle n'avait aucune sauvegarde. Ces tests prouvent les filets un par un.
