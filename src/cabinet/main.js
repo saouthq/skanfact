@@ -16,7 +16,11 @@ const APP_ID = 'tn.skancyber.skanfact.cabinet';
 // les publier dans la même release GitHub — et donc de donner au cabinet des mises à jour
 // automatiques. Un comptable et son client peuvent aussi comparer leurs versions d'un coup d'œil.
 // (On lit package.json plutôt qu'app.getVersion(), qui renvoie la version d'Electron en dev.)
-const VERSION = require('../../package.json').version;
+const PKG = require('../../package.json');
+const VERSION = PKG.version;
+// Adresse du relais de mise à jour, posée à la construction. Vide → l'application demande un jeton,
+// comme avant. C'est le relais qui détient l'accès au dépôt, pas le comptable.
+const relayBase = () => String(PKG.updateBase || '').replace(/\/+$/, '');
 const SCRYPT = { N: 1 << 15, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
 
 let mainWindow = null;
@@ -311,8 +315,15 @@ function getUpdater() {
     autoUpdater.on('download-progress', p => sendUpd('downloading', { percent: Math.round(p.percent), version: updateInfo && updateInfo.version }));
     autoUpdater.on('update-downloaded', info => { downloaded = true; downloadedFile = info.downloadedFile || null; sendUpd('downloaded', { version: info.version }); });
     autoUpdater.on('error', err => { if (!silentCheck) sendUpd('error', { message: friendlyError(err) }); });
-    const cfg = readUpdateCfg();
-    autoUpdater.setFeedURL({ provider: 'github', owner: GITHUB.owner, repo: GITHUB.repo, channel: UPDATE_CHANNEL, private: !!cfg.token, token: cfg.token || undefined });
+    // Relais si l'application a été construite avec son adresse, GitHub en direct sinon.
+    const base = relayBase();
+    if (base) {
+      autoUpdater.requestHeaders = { 'X-SkanFact-App': String(PKG.updateSecret || '') };
+      autoUpdater.setFeedURL({ provider: 'generic', url: `${base}/cabinet`, channel: UPDATE_CHANNEL });
+    } else {
+      const cfg = readUpdateCfg();
+      autoUpdater.setFeedURL({ provider: 'github', owner: GITHUB.owner, repo: GITHUB.repo, channel: UPDATE_CHANNEL, private: !!cfg.token, token: cfg.token || undefined });
+    }
     updater = autoUpdater;
   } catch { updater = null; }
   return updater;
@@ -322,7 +333,7 @@ async function checkForUpdates(isSilent) {
   silentCheck = !!isSilent;
   if (!app.isPackaged) return { state: 'dev' };
   // Dépôt privé sans jeton : GitHub répond 404 quoi qu'il arrive. Inutile de demander, on explique.
-  if (GITHUB.private && !readUpdateCfg().token) return { state: 'token' };
+  if (!relayBase() && GITHUB.private && !readUpdateCfg().token) return { state: 'token' };
   const u = getUpdater();
   if (!u) return { state: 'error', message: 'Module de mise à jour indisponible.' };
   if (downloaded) { sendUpd('downloaded', { version: updateInfo && updateInfo.version }); return { state: 'ok' }; }
@@ -361,7 +372,7 @@ function installOnMac() {
 
 ipcMain.handle('upd:version', () => ({
   version: VERSION, packaged: app.isPackaged, platform: process.platform, macSigned: MAC_SIGNED,
-  hasToken: !!readUpdateCfg().token, lastUpdate: takeLastUpdateResult()
+  hasToken: !!readUpdateCfg().token, relay: !!relayBase(), lastUpdate: takeLastUpdateResult()
 }));
 ipcMain.handle('upd:setToken', (_e, token) => {
   const cfg = readUpdateCfg();

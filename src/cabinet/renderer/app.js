@@ -622,10 +622,12 @@
       <button class="btn btn-primary" id="u-install">Installer et redémarrer</button>`;
     else if (upd.state === 'error') corps = `<p class="small" style="color:var(--danger)">${esc(upd.message)}</p>
       <div class="inline">${btnCheck}<button class="btn btn-ghost" id="u-rel">Voir les versions sur GitHub</button></div>`;
-    else if (upd.state === 'token' || !a.hasToken) corps = `<p class="muted small">Les mises à jour ne sont pas encore activées sur cet ordinateur : colle le jeton d'accès ci-dessous.</p>${btnCheck}`;
+    else if (!a.relay && (upd.state === 'token' || !a.hasToken)) corps = `<p class="muted small">Les mises à jour ne sont pas encore activées sur cet ordinateur : colle le jeton d'accès ci-dessous.</p>${btnCheck}`;
     else corps = btnCheck;
 
-    const jeton = `<div class="token-box">
+    // Avec le relais, il n'y a rien à saisir : c'est lui qui détient l'accès au dépôt. On ne montre
+    // pas un champ que personne n'a à remplir.
+    const jeton = a.relay ? '<p class="small muted mt">Les mises à jour arrivent toutes seules : rien à configurer.</p>' : `<div class="token-box">
       <div class="k-label">Accès au dépôt</div>
       <p class="small muted">SkanFact est distribué depuis un dépôt privé : un jeton de lecture est nécessaire pour recevoir les mises à jour.
       Demande-le à qui t'a remis l'application. Il reste sur cet ordinateur et ne sert qu'à télécharger les nouvelles versions.</p>
@@ -650,7 +652,7 @@
       const r = await api.updInstall();
       if (r && r.state === 'error') { upd.state = 'error'; upd.message = r.message; drawUpdatePanel(); }
     };
-    $('#u-token-save').onclick = async () => {
+    if ($('#u-token-save')) $('#u-token-save').onclick = async () => {
       const t = $('#u-token').value.trim();
       if (!t) return toast('Colle un jeton d\'abord', 'error');
       if (!/^(github_pat_|ghp_|gho_|ghs_)[A-Za-z0-9_]+$/.test(t)) return toast('Ce n\'est pas un jeton GitHub : il commence par github_pat_ ou ghp_', 'error');

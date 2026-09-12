@@ -34,10 +34,19 @@ jobs:
       # Notes de version (section CHANGELOG.md de cette version) → latest.yml + page de la release
       - run: node scripts/release-notes.js
 
+      # UPDATE_BASE / UPDATE_SECRET : les réglages du relais de mise à jour, pris dans les secrets du
+      # dépôt et posés dans le paquet. Non définis → les applications retombent sur GitHub + jeton
+      # saisi à la main, comme avant. Rien de tout ça n'existe dans le code.
+      # shell: bash est OBLIGATOIRE ici. Sur le poste Windows, le shell par défaut est PowerShell,
+      # où « $UPDATE_BASE » n'est pas la variable d'environnement mais une variable PowerShell vide :
+      # l'application Windows serait construite SANS le relais, sans que rien ne le signale.
       - name: Build & publish
-        run: npx electron-builder --publish always
+        shell: bash
+        run: npx electron-builder --publish always -c.extraMetadata.updateBase="$UPDATE_BASE" -c.extraMetadata.updateSecret="$UPDATE_SECRET"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          UPDATE_BASE: ${{ secrets.UPDATE_BASE }}
+          UPDATE_SECRET: ${{ secrets.UPDATE_SECRET }}
           # Pas de signature Apple pour l'instant : on désactive la notarisation.
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
@@ -57,4 +66,6 @@ jobs:
         run: npx electron-builder -c build/cabinet.config.js --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          UPDATE_BASE: ${{ secrets.UPDATE_BASE }}
+          UPDATE_SECRET: ${{ secrets.UPDATE_SECRET }}
           CSC_IDENTITY_AUTO_DISCOVERY: false

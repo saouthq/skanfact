@@ -9,6 +9,7 @@ const { zipBuffer, sha256, sealBuffer, sealForCabinet, keyFingerprint } = requir
 // Identifiants de l'app. Ne PAS les lire dans package.json au démarrage : electron-builder
 // retire la section « build » du package.json empaqueté (l'app installée n'a plus build.publish).
 const APP_ID = 'tn.skancyber.skanfact';
+const PKG = require('../package.json');
 const GITHUB = { owner: 'saouthq', repo: 'skanfact', private: true }; // dépôt privé : token de lecture obligatoire
 const RELEASES_URL = `https://github.com/${GITHUB.owner}/${GITHUB.repo}/releases`;
 
@@ -1106,7 +1107,25 @@ const UPDATE_RESULT = () => path.join(app.getPath('userData'), 'update-result.js
 function readUpdateCfg() { try { return JSON.parse(fs.readFileSync(UPDATE_CFG(), 'utf8')); } catch { return {}; } }
 function writeUpdateCfg(cfg) { fs.mkdirSync(path.dirname(UPDATE_CFG()), { recursive: true }); fs.writeFileSync(UPDATE_CFG(), JSON.stringify(cfg), { mode: 0o600 }); }
 
+// Deux chemins possibles, et c'est volontaire :
+//
+//  - **le relais** (`updateBase`), quand il est configuré à la construction : l'application demande
+//    ses mises à jour à un petit service qui détient le jeton GitHub. Elle présente le secret de
+//    l'application et, si elle en a une, sa licence. Personne d'autre ne peut télécharger.
+//  - **GitHub en direct**, sinon : l'utilisateur colle son propre jeton dans Paramètres. C'est le
+//    fonctionnement d'origine, et il reste le filet si le relais est indisponible ou pas déployé.
+function relayBase() { return String(PKG.updateBase || '').replace(/\/+$/, ''); }
+
 function configureFeed(u) {
+  const base = relayBase();
+  if (base) {
+    const lic = readLicence();
+    const h = { 'X-SkanFact-App': String(PKG.updateSecret || '') };
+    if (lic.key) h['X-SkanFact-Licence'] = lic.key;
+    u.requestHeaders = h;
+    u.setFeedURL({ provider: 'generic', url: `${base}/app`, channel: 'latest' });
+    return;
+  }
   const cfg = readUpdateCfg();
   u.setFeedURL({ provider: 'github', owner: GITHUB.owner, repo: GITHUB.repo, private: !!cfg.token, token: cfg.token || undefined });
 }
@@ -1148,7 +1167,11 @@ function updatesConfigured() { return !!(GITHUB.owner && GITHUB.repo); }
 
 function friendlyError(err) {
   const m = String(err && err.message || err);
-  if (/404/.test(m)) return 'Aucune version trouvée sur GitHub : token manquant ou sans accès au dépôt (Paramètres → Mises à jour).';
+  if (/403/.test(m) && relayBase()) return 'Le service de mise à jour a refusé cette installation. Vérifie ta licence dans Paramètres → Licence.';
+  if (/402/.test(m)) return 'Une licence en cours de validité est nécessaire pour recevoir les mises à jour.';
+  if (/404/.test(m)) return relayBase()
+    ? 'Aucune version trouvée. Réessaie plus tard, ou télécharge la nouvelle version à la main.'
+    : 'Aucune version trouvée sur GitHub : token manquant ou sans accès au dépôt (Paramètres → Mises à jour).';
   if (/401|403|Bad credentials/i.test(m)) return 'Token GitHub refusé ou expiré. Génère-en un nouveau et colle-le ci-dessous.';
   if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|ECONNRESET|net::/i.test(m)) return 'Impossible de joindre GitHub. Vérifie ta connexion internet.';
   if (/sha512|checksum/i.test(m)) return 'Le fichier téléchargé est corrompu. Réessaie.';
@@ -1159,8 +1182,9 @@ async function checkForUpdates(isSilent) {
   silent = !!isSilent;
   if (!app.isPackaged) return { state: 'dev' };
   if (!updatesConfigured()) return { state: 'unconfigured' };
-  // Sans token, un dépôt privé répond toujours 404 : inutile d'interroger GitHub, on explique quoi faire.
-  if (GITHUB.private && !readUpdateCfg().token) return { state: 'token' };
+  // Sans token, un dépôt privé répond toujours 404 : inutile d'interroger GitHub, on explique quoi
+  // faire. Avec le relais, il n'y a rien à saisir : c'est lui qui détient l'accès.
+  if (!relayBase() && GITHUB.private && !readUpdateCfg().token) return { state: 'token' };
   const u = getUpdater();
   if (!u) return { state: 'error', message: 'Module de mise à jour indisponible.' };
   if (downloaded) { sendUpdate('downloaded', { version: updateInfo && updateInfo.version, notes: notesToText(updateInfo && updateInfo.releaseNotes) }); return { state: 'ok' }; }
@@ -1185,7 +1209,7 @@ function takeLastUpdateResult() {
 
 ipcMain.handle('update:version', () => ({
   version: app.getVersion(), packaged: app.isPackaged, platform: process.platform, macSigned: MAC_SIGNED,
-  hasToken: !!readUpdateCfg().token, lastUpdate: takeLastUpdateResult()
+  hasToken: !!readUpdateCfg().token, relay: !!relayBase(), lastUpdate: takeLastUpdateResult()
 }));
 
 ipcMain.handle('update:setToken', (_e, token) => {

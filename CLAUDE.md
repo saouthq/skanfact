@@ -272,6 +272,19 @@ Et une cinquième, trouvée en 6.5.1 : **un seul programme peut inspecter la pag
 
 Le test qui compte est `scratchpad/watchdog-e2e.js` : il **gèle vraiment** l'application avec une boucle infinie et vérifie que le journal nomme la fonction coupable. C'est le test qu'on aurait voulu avoir en 5.1.0.
 
+## 6.7.0 — Le relais de mise à jour
+
+`worker/skanfact-maj.mjs` (module ES, déployé sur Cloudflare Workers, gratuit) + `worker/README.md`. Il détient le jeton GitHub ; les applications présentent le **secret de l'application** (`PKG.updateSecret`) et, si elles en ont une, leur **licence**. `route`, `fichierAutorise`, `memeSecret`, `licenceValide` et `autorise` sont purs et testés dans `npm test` (le module ES s'importe avec `await import`).
+
+Côté applications : `relayBase()` dans `src/main.js` et `src/cabinet/main.js`. `updateBase` et `updateSecret` arrivent par `extraMetadata` **à la construction** (secrets `UPDATE_BASE`/`UPDATE_SECRET` du dépôt) — jamais dans Git, conformément à la règle « ne jamais commiter de token ».
+
+Règles apprises :
+- **Tout ce qu'une application peut télécharger sans secret, un inconnu le peut aussi.** Il n'y a pas de mise à jour automatique « privée » sans déplacer le secret côté serveur. Un jeton embarqué dans l'app arrête les curieux, pas quelqu'un qui ouvre le paquet.
+- **Le repli doit exister** : sans réglages de relais, les deux applications retombent sur GitHub + jeton saisi à la main. Une version livrée ne doit jamais dépendre d'un service que personne n'a encore déployé. Un test le vérifie.
+- **Une licence expirée reçoit quand même les mises à jour.** Elle limite la création de pièces dans l'app, pas le droit de recevoir une correction de bug. `LICENCE_REQUISE=1` existe pour le jour où tous les clients auront une licence.
+- **Un canal ne doit jamais pouvoir réclamer les fichiers de l'autre** : sinon l'app du comptable proposerait d'installer l'app entreprise, sans que rien ne plante.
+- Piège du harnais de test : `t('…', async () => …)` affichait **« ok » sans rien vérifier** — la promesse n'était pas attendue, et le test ne pouvait plus jamais échouer. `t()` refuse maintenant une fonction asynchrone, et `ta()` existe pour ce cas. Vérifié en cassant volontairement une assertion.
+
 ## Pistes pour la suite (non demandées)
 
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.

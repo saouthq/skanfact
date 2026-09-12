@@ -21,7 +21,12 @@ module.exports = {
     name: 'skanfact-cabinet',
     productName: 'SkanFact Cabinet',
     version: pkg.version,
-    main: 'src/cabinet/main.js'
+    main: 'src/cabinet/main.js',
+    // Adresse du relais de mise à jour et secret de l'application, posés à la construction depuis
+    // les secrets du dépôt. Ils n'existent JAMAIS dans Git : vides, l'application retombe sur
+    // l'ancien fonctionnement (jeton saisi à la main), donc rien ne casse s'ils ne sont pas définis.
+    updateBase: process.env.UPDATE_BASE || '',
+    updateSecret: process.env.UPDATE_SECRET || ''
   },
   files: ['src/**/*', 'package.json', 'CHANGELOG.md'],
   directories: { output: 'dist-cabinet' },

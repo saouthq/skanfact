@@ -7473,16 +7473,20 @@
       ${notesHtml(upd.notes)}<button class="btn btn-primary" id="upd-install">Installer et redémarrer</button>`;
     else if (upd.state === 'unconfigured') body = `<p class="muted">Les mises à jour automatiques ne sont pas configurées (package.json → build.publish).</p>${btnCheck}`;
     else if (upd.state === 'error') body = `<p class="small" style="color:var(--danger)">${h(upd.message)}</p><div class="inline">${btnCheck}<button class="btn btn-ghost" id="upd-releases">Voir les versions sur GitHub</button></div>`;
-    else if (upd.state === 'token' || !a.hasToken) body = `<p class="muted">Les mises à jour automatiques ne sont pas encore activées sur cet ordinateur : colle ton token GitHub ci-dessous et clique sur Enregistrer.</p>${btnCheck}`;
+    else if (!a.relay && (upd.state === 'token' || !a.hasToken)) body = `<p class="muted">Les mises à jour automatiques ne sont pas encore activées sur cet ordinateur : colle ton token GitHub ci-dessous et clique sur Enregistrer.</p>${btnCheck}`;
     else body = btnCheck;
-    const tokenBlock = `<div class="token-box">
+    // Quand le relais est en place, il n'y a plus rien à saisir : c'est lui qui détient l'accès au
+    // dépôt. Montrer un champ « token » que personne n'a à remplir ne ferait qu'inquiéter.
+    const tokenBlock = a.relay
+      ? `<p class="small muted mt">Les mises à jour arrivent toutes seules : rien à configurer sur cet ordinateur.${a.hasToken ? ' <span class="muted">(Un ancien token est encore enregistré ; il ne sert plus.)</span>' : ''}</p>`
+      : `<div class="token-box">
       <div class="k-label">Accès au dépôt privé</div>
       <p class="small muted">Le dépôt GitHub de SkanFact est privé : un token de lecture est nécessaire pour vérifier les mises à jour. Il est enregistré uniquement sur cet ordinateur.</p>
       <div class="inline"><input type="text" id="upd-token" placeholder="${a.hasToken ? 'Token enregistré ✓ — coller un nouveau pour remplacer' : 'github_pat_… ou ghp_…'}" autocomplete="off" spellcheck="false"><button class="btn btn-sm" id="upd-token-save">Enregistrer</button>${a.hasToken ? '<button class="btn btn-sm btn-ghost" id="upd-token-clear">Retirer</button>' : ''}</div>
     </div>`;
     el.innerHTML = `<div class="update-head"><div><div class="k-label">Version installée</div><div class="ver">${h(a.version || '…')}</div></div><button class="btn btn-sm btn-ghost" id="upd-changelog">Nouveautés</button></div>${body}${tokenBlock}`;
     $('#upd-changelog').onclick = showChangelog;
-    $('#upd-token-save').onclick = async () => {
+    if ($('#upd-token-save')) $('#upd-token-save').onclick = async () => {
       const t = $('#upd-token').value.trim(); if (!t) return toast('Colle un token d\'abord', true);
       if (!/^(github_pat_|ghp_|gho_|ghs_)[A-Za-z0-9_]+$/.test(t)) return toast('Ce n\'est pas un token GitHub : il commence par github_pat_ ou ghp_', true);
       const r = await bridge.updateSetToken(t); upd.app.hasToken = r.hasToken; upd.state = 'idle'; toast('Token enregistré');

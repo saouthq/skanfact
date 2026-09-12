@@ -3,7 +3,15 @@ const assert = require('assert');
 const core = require('../src/renderer/core.js');
 
 let n = 0;
-function t(name, fn) { fn(); n++; console.log('ok -', name); }
+function t(name, fn) {
+  const r = fn();
+  // Un test asynchrone dont on n'attend pas la promesse affiche « ok » sans avoir rien vérifié :
+  // il ne peut plus jamais échouer. Ici, on refuse de le laisser passer.
+  if (r && typeof r.then === 'function') throw new Error(`le test « ${name} » est asynchrone : utilise ta() et attends-le`);
+  n++; console.log('ok -', name);
+}
+// Version asynchrone, à attendre explicitement : `await ta('…', async () => { … })`.
+async function ta(name, fn) { await fn(); n++; console.log('ok -', name); }
 
 t('montants en lettres', () => {
   assert.strictEqual(core.amountToWords(0), 'Zéro dinar');
@@ -3354,4 +3362,88 @@ t('cabinet : la clé privée ne traverse jamais le pont vers l\'interface', () =
   assert.ok(!/data:save|pack:build/.test(pre), 'l\'app cabinet ne doit rien pouvoir écrire chez un client');
 });
 
-console.log(`\n${n} tests OK`);
+// ---------- le relais de mise à jour (worker/skanfact-maj.mjs) ----------
+// Le relais est un module ES (c'est ce que Cloudflare exécute) : on l'importe de façon asynchrone.
+// Ses décisions sont pures et se testent sans réseau — ce sont elles qui décident qui télécharge.
+(async () => {
+  const W = await import('../worker/skanfact-maj.mjs');
+
+  t('relais : il ne sert que les chemins qu\'il connaît', () => {
+    assert.deepStrictEqual(W.route('/app/latest-mac.yml'), { canal: 'app', fichier: 'latest-mac.yml' });
+    assert.deepStrictEqual(W.route('/cabinet/cabinet.yml'), { canal: 'cabinet', fichier: 'cabinet.yml' });
+    // Tout ce qui sort du cadre est refusé avant même de regarder qui demande.
+    [' ', '/', '/app', '/app/x/y', '/autre/latest.yml', '/app/../package.json', '/app/.env',
+     '/app/' + 'a'.repeat(200)].forEach(p2 => assert.strictEqual(W.route(p2), null, 'chemin accepté à tort : ' + p2));
+  });
+
+  t('relais : un canal ne peut pas réclamer les fichiers de l\'autre', () => {
+    // Sans cette règle, l'app du comptable proposerait à ses utilisateurs d'installer l'app
+    // entreprise — sans que rien ne plante, ils installeraient juste le mauvais logiciel.
+    assert.strictEqual(W.fichierAutorise('app', 'latest-mac.yml'), true);
+    assert.strictEqual(W.fichierAutorise('app', 'cabinet-mac.yml'), false);
+    assert.strictEqual(W.fichierAutorise('cabinet', 'latest-mac.yml'), false);
+    assert.strictEqual(W.fichierAutorise('cabinet', 'cabinet-mac.yml'), true);
+    assert.strictEqual(W.fichierAutorise('app', 'SkanFact-6.6.0-mac-universal.zip'), true);
+    assert.strictEqual(W.fichierAutorise('app', 'SkanFact-Cabinet-6.6.0-mac-universal.zip'), false, 'préfixe du cabinet servi sur le canal entreprise');
+    assert.strictEqual(W.fichierAutorise('cabinet', 'SkanFact-Cabinet-6.6.0-win-x64.exe'), true);
+    assert.strictEqual(W.fichierAutorise('cabinet', 'SkanFact-6.6.0-win-x64.exe'), false);
+    // Et rien d'autre que des fichiers de release.
+    ['README.md', 'package.json', 'skanfact-data.json', 'SkanFact-6.6.0.tar.gz'].forEach(f =>
+      assert.strictEqual(W.fichierAutorise('app', f), false, 'fichier servi à tort : ' + f));
+  });
+
+  t('relais : le secret se compare à temps constant', () => {
+    assert.strictEqual(W.memeSecret('abcdef', 'abcdef'), true);
+    assert.strictEqual(W.memeSecret('abcdef', 'abcdeg'), false);
+    assert.strictEqual(W.memeSecret('abcdef', 'abcde'), false, 'une longueur différente n\'est jamais égale');
+    assert.strictEqual(W.memeSecret('', ''), false, 'un secret vide n\'ouvre rien');
+    assert.strictEqual(W.memeSecret(null, undefined), false);
+  });
+
+  await ta('relais : qui a le droit de télécharger', async () => {
+    const k = lic.generateKeys();
+    const cle = lic.signLicence({ nom: 'Menuiserie Trabelsi', exp: '2027-01-01' }, k.privateKey);
+    const env = { APP_SECRET: 'phrase-secrete-de-quarante-caracteres-ok', LICENCE_PUBLIC_KEY: k.publicKey };
+    const H = o => new Headers(o);
+    const bon = { 'x-skanfact-app': env.APP_SECRET };
+
+    // Un inconnu : refusé avant tout le reste.
+    assert.strictEqual((await W.autorise(H({}), env)).code, 403);
+    assert.strictEqual((await W.autorise(H({ 'x-skanfact-app': 'au hasard' }), env)).code, 403);
+    // Le secret seul suffit pendant l'essai et pour l'app du cabinet, qui est gratuite.
+    assert.strictEqual((await W.autorise(H(bon), env)).ok, true);
+    // Une licence valide passe, et on sait qui c'est.
+    const avec = await W.autorise(H({ ...bon, 'x-skanfact-licence': cle }), env);
+    assert.strictEqual(avec.ok, true);
+    assert.strictEqual(avec.qui, 'Menuiserie Trabelsi');
+    // Une licence inventée est un refus : c'est le seul cas où quelqu'un ment.
+    assert.strictEqual((await W.autorise(H({ ...bon, 'x-skanfact-licence': 'SKAN1.aa.bb' }), env)).code, 403);
+    const autre = lic.signLicence({ nom: 'X' }, lic.generateKeys().privateKey);
+    assert.strictEqual((await W.autorise(H({ ...bon, 'x-skanfact-licence': autre }), env)).code, 403, 'licence signée par une autre clé');
+    // Une licence EXPIRÉE reçoit quand même les corrections : on ne prend pas les gens en otage.
+    const perimee = lic.signLicence({ nom: 'Y', exp: '2020-01-01' }, k.privateKey);
+    assert.strictEqual((await W.autorise(H({ ...bon, 'x-skanfact-licence': perimee }), env)).ok, true);
+    // Le jour où le propriétaire l'exige, plus rien ne passe sans licence.
+    assert.strictEqual((await W.autorise(H(bon), { ...env, LICENCE_REQUISE: '1' })).code, 402);
+    // Relais mal configuré : on le dit, on n'ouvre pas la porte.
+    assert.strictEqual((await W.autorise(H(bon), {})).code, 503);
+  });
+
+  // Le secret et l'adresse du relais viennent de la construction : jamais du dépôt.
+  t('relais : ni l\'adresse ni le secret ne sont dans le code', () => {
+    const pkg2 = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
+    assert.ok(!pkg2.updateBase && !pkg2.updateSecret, 'les réglages du relais ne doivent pas être commités');
+    const cfg = fs.readFileSync(path.join(__dirname, '..', 'build', 'cabinet.config.js'), 'utf8');
+    assert.ok(/process\.env\.UPDATE_BASE/.test(cfg) && /process\.env\.UPDATE_SECRET/.test(cfg));
+    const wf = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'release.yml'), 'utf8');
+    assert.ok(/secrets\.UPDATE_BASE/.test(wf) && /secrets\.UPDATE_SECRET/.test(wf));
+    // Et sans eux, les applications retombent sur l'ancien fonctionnement au lieu de se bloquer.
+    [['src', 'main.js'], ['src', 'cabinet', 'main.js']].forEach(parts => {
+      const src = fs.readFileSync(path.join(__dirname, '..', ...parts), 'utf8');
+      assert.ok(/relayBase\(\)/.test(src), parts.join('/') + ' : pas de repli sans relais');
+      assert.ok(/provider: 'github'/.test(src), parts.join('/') + ' : le repli GitHub a disparu');
+    });
+  });
+
+  console.log(`\n${n} tests OK`);
+})().catch(e => { console.error(e); process.exit(1); });

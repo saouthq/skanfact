@@ -7,6 +7,23 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 6.7.0 — 12/09/2026
+
+**Les mises à jour passent par un relais : personne ne peut plus télécharger SkanFact sans y avoir droit.**
+
+Demande de Skander : pouvoir mettre à jour les deux applications sans que le logiciel soit téléchargeable par n'importe qui. Le nœud du problème : une application qui se met à jour toute seule doit atteindre ses fichiers **sans qu'on tape un mot de passe** — donc tout ce qu'elle peut atteindre, un inconnu le peut aussi. La solution est de déplacer le secret.
+
+- **Un petit relais** (`worker/`, une trentaine de lignes, hébergement gratuit) se met entre les applications et le dépôt privé. **C'est lui** qui détient le jeton GitHub ; les applications ne l'ont jamais.
+- **Un inconnu est refusé** : sans le secret de l'application, le relais répond « Accès refusé » avant même de regarder ce qui est demandé. Le code source, lui, n'est jamais servi — le relais ne connaît que les fichiers d'installation.
+- **Une licence inventée est refusée** : sa signature est vérifiée par le relais aussi. En revanche une licence **expirée** reçoit quand même les corrections : on ne prend pas les gens en otage.
+- **Chaque application a son canal**, et ne peut pas réclamer les fichiers de l'autre.
+- **Plus aucun jeton à saisir** : le champ disparaît des réglages des deux applications quand le relais est en place.
+- **Rien ne casse si le relais n'est pas déployé** : sans ses réglages, les applications fonctionnent exactement comme avant, avec le jeton collé à la main.
+
+*Ce qu'il reste à faire, côté Skander : créer le compte Cloudflare et coller le relais — dix minutes, sans terminal, tout est écrit dans `worker/README.md`.*
+
+*Au passage : un test asynchrone dont on n'attendait pas le résultat affichait « ok » sans rien vérifier. Le harnais de test refuse désormais de laisser passer ce cas.*
+
 ## 6.6.0 — 12/09/2026
 
 **SkanFact Cabinet se met à jour tout seul.**
