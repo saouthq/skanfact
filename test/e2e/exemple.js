@@ -82,6 +82,33 @@ const os = require('os');
   if (!pendant.demo) throw new Error('les données ne se déclarent pas comme un jeu d\'exemple');
   j.ok('bandeau présent sur quatre pages · sa société intacte');
 
+  j.etape('L\'exemple ne signe rien et n\'envoie rien');
+  // Le bandeau écrit « n'envoie rien à personne depuis ici » sur chaque page — et rien ne le tenait :
+  // `estDemo` n'avait qu'un seul appelant dans toute l'application, le bandeau lui-même.
+  await win.evaluate(() => { location.hash = '#/factures'; });
+  await win.waitForSelector('#view table.list tbody tr');
+  await win.click('#view table.list tbody tr');
+  await win.waitForSelector('#preview');
+  await win.waitForTimeout(500);
+  const tampon = await win.evaluate(() => {
+    const f = document.querySelector('#preview');
+    const d = f && (f.contentDocument || (f.contentWindow || {}).document);
+    return d ? (d.body.textContent || '') : '';
+  });
+  if (!/EXEMPLE/.test(tampon)) throw new Error('le PDF d\'une pièce d\'exemple doit porter la mention EXEMPLE');
+  j.ok('l\'aperçu porte le tampon EXEMPLE');
+
+  // Et le bouton Email refuse, avec la sortie.
+  if (await win.$('#email')) {
+    await win.click('#email');
+    await win.waitForSelector('#modal-root .modal');
+    const dit = await win.textContent('#modal-root .modal');
+    if (!/données d'exemple/.test(dit)) throw new Error('l\'envoi doit être refusé sur l\'exemple : ' + dit.slice(0, 160));
+    await win.click('#modal-root [data-close]');
+    await win.waitForFunction(() => !document.querySelector('#modal-root').children.length);
+    j.ok('« Email » refuse et propose de repartir des vraies données');
+  }
+
   j.etape('On en revient, et ses données reviennent avec');
   await win.evaluate(() => { location.hash = '#/dashboard'; });
   await win.waitForSelector('#demo-out');
@@ -150,6 +177,54 @@ const os = require('os');
   }
   if (net.demo) throw new Error('les données effacées se croient encore un exemple');
   j.ok('société, fournisseurs, salariés, immobilisations, comptes : tout est parti');
+
+  j.etape('Le faux matricule fiscal ne survit pas non plus');
+  // Le trou que la 7.0.0 n'avait pas vu : l'identité n'était jugée « empruntée » que sur la raison
+  // sociale. L'assistant invite pourtant à laisser le matricule fiscal et le RIB vides. L'exemple
+  // les remplissait donc avec les siens, et plus rien ne les enlevait — alors que les trois
+  // contrôles de conformité ne regardent que la présence d'une valeur : « tes documents sont en
+  // règle », en vert, sur un matricule inventé.
+  // On saisit par le VRAI formulaire : une première version de ce test posait les champs par
+  // `evaluate` sans jamais enregistrer, donc la sauvegarde « avant-demo » ne contenait pas la
+  // société, la sortie la rendait vide, et l'assertion « le nom reste » passait sur une chaîne
+  // vide. Un test qui passe pour une mauvaise raison ne prouve rien.
+  await win.evaluate(() => { location.hash = '#/parametres'; });
+  await win.waitForSelector('#set-tabs');
+  await win.click('#set-tabs button[data-tab="societe"]');
+  await win.waitForSelector('#pf input[name=name]');
+  await win.fill('#pf input[name=name]', 'Menuiserie Ben Salah SUARL');
+  await win.fill('#pf input[name=matricule]', '');          // « laisse vide », dit l'assistant
+  await win.fill('#pf input[name=rib]', '');
+  await win.waitForSelector('#save-bar:not([hidden])');
+  await win.click('#save');
+  await win.waitForTimeout(400);
+  const pose = await win.evaluate(() => ({ n: window.__data.company.name, m: window.__data.company.matricule }));
+  if (pose.n !== 'Menuiserie Ben Salah SUARL' || pose.m) throw new Error('la fiche de départ n\'est pas celle attendue : ' + JSON.stringify(pose));
+  await win.click('#set-tabs button[data-tab="donnees"]');
+  await win.waitForSelector('#load-demo');
+  await win.click('#load-demo');
+  for (let k = 0; k < 3 && await win.$('#modal-root .modal-actions .btn-primary'); k++) {
+    await win.click('#modal-root .modal-actions .btn-primary');
+    await win.waitForTimeout(250);
+  }
+  await win.waitForTimeout(500);
+  const emprunte = await win.evaluate(() => ({
+    mat: window.__data.company.matricule, nom: window.__data.company.name,
+    champs: window.__data.company.demoFields || []
+  }));
+  if (!emprunte.mat) throw new Error('l\'exemple devrait avoir prêté un matricule — le piège n\'existe plus, le test ne prouve rien');
+  if (!emprunte.champs.includes('matricule')) throw new Error('l\'emprunt n\'est pas noté : ' + JSON.stringify(emprunte));
+  if (emprunte.nom !== 'Menuiserie Ben Salah SUARL') throw new Error('son nom a été écrasé : ' + emprunte.nom);
+
+  // On sort de l'exemple : le nom reste, le faux matricule part.
+  await win.click('#demo-out');
+  await win.waitForSelector('#modal-root .modal-actions .btn-primary');
+  await win.click('#modal-root .modal-actions .btn-primary');
+  await win.waitForTimeout(900);
+  const rendu = await win.evaluate(() => ({ mat: window.__data.company.matricule, rib: window.__data.company.rib, nom: window.__data.company.name }));
+  if (rendu.mat) throw new Error('le faux matricule fiscal a survécu : ' + rendu.mat);
+  if (rendu.rib) throw new Error('le faux RIB a survécu : ' + rendu.rib);
+  j.ok('le nom reste (« ' + rendu.nom + ' »), le matricule et le RIB inventés sont partis');
 
   j.etape('Revenir en arrière : la restauration existait, aucun écran ne l\'appelait');
   // `backups:peek` et `backups:restore` vivent dans main.js depuis la 7.0.0, et seule la sortie du

@@ -5511,5 +5511,74 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.ok(!restants.includes('manuelle-000.json'), 'la plus ancienne aurait dû partir');
   });
 
+  t('l\'exemple rend ce qu\'il a emprunté, et ne signe jamais rien', () => {
+    const demo = require(path.join(__dirname, '..', 'src', 'renderer', 'demo.js'));
+
+    // Le trou de la 7.0.0 : l'identité était jugée « empruntée » sur la SEULE raison sociale. Or
+    // l'assistant invite explicitement à laisser le matricule fiscal et le RIB vides (« si tu ne
+    // l'as pas encore, laisse vide »). L'exemple les remplissait avec les siens, `demo` restait
+    // faux puisque le nom était là, et plus rien ne les enlevait — ni la sortie de l'exemple, ni
+    // « Tout effacer ». Les trois contrôles de conformité ne regardent que la PRÉSENCE d'une
+    // valeur : l'application affirmait donc en vert « tes documents sont en règle » sur un
+    // matricule fiscal inventé et un RIB qui n'est pas le sien.
+    const d = core.migrateData(null);
+    d.company.name = 'Menuiserie Ben Salah SUARL';          // le seul champ que l'assistant exige
+    const charge = demo.buildDemoData(d.company, '2026-09-12');
+    assert.strictEqual(charge.company.name, 'Menuiserie Ben Salah SUARL', 'son nom ne doit pas être écrasé');
+    assert.ok(charge.company.matricule, 'l\'exemple prête bien un matricule — c\'est le piège');
+    assert.ok((charge.company.demoFields || []).includes('matricule'), 'l\'emprunt doit être noté pour pouvoir être rendu');
+    assert.ok(charge.company.demoFields.includes('rib'));
+    assert.ok(!charge.company.demoFields.includes('name'), 'ce qu\'il avait déjà n\'est pas un emprunt');
+
+    // La sortie de l'exemple lui rend sa fiche telle qu'il l'avait laissée : incomplète, mais VRAIE.
+    charge.documents = [{ id: 'x', type: 'facture' }];
+    core.wipeData(charge, { garderSociete: true });
+    assert.strictEqual(charge.company.name, 'Menuiserie Ben Salah SUARL');
+    assert.strictEqual(charge.company.matricule, '', 'le faux matricule fiscal doit repartir avec l\'exemple');
+    assert.strictEqual(charge.company.rib, '', 'le faux RIB aussi — c\'est un paiement qui n\'arrive jamais');
+    assert.ok(!('demoFields' in charge.company));
+    // Et l'application le redit : la fiche est de nouveau incomplète, donc elle le signale.
+    assert.ok(core.companyGaps(charge.company).length >= 2, 'les contrôles doivent redevenir vrais');
+
+    // L'app le dit sur chaque page — « n'envoie rien à personne depuis ici » — et rien ne le tenait :
+    // `estDemo` n'avait qu'un seul appelant dans toute l'application, le bandeau lui-même.
+    const app = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
+    const code = app.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+    assert.ok(code.includes('async function demoBlock'), 'le nettoyage des commentaires a mangé le code');
+    const portes = (code.match(/await demoBlock\(/g) || []).length;
+    assert.ok(portes >= 6, `seulement ${portes} geste(s) sortant(s) protégé(s) : email au client, CNSS, journal, écritures, fabrication et envoi du paquet`);
+    // Le PDF, lui, ne se bloque pas — regarder un PDF EST l'apprentissage. Il se marque.
+    assert.ok(/function stampFor[\s\S]{0,200}estDemo\(data\)\) return 'EXEMPLE'/.test(code),
+      'un PDF de démonstration doit porter la mention EXEMPLE');
+    // Et les quatre chemins qui produisent un PDF doivent passer par stampFor : trois recopiaient
+    // la logique à la main, donc un tampon posé ici seul en aurait manqué trois sur quatre.
+    const copies = code.match(/st === 'payée' \? 'Payée'/g) || [];
+    assert.strictEqual(copies.length, 1, `${copies.length} endroits décident du tampon : il n'en faut qu'un`);
+    assert.strictEqual((code.match(/stampText: stampFor\(/g) || []).length, 5,
+      'les cinq appels à documentHtml doivent passer par stampFor');
+  });
+
+  t('charger l\'exemple prévient et sauvegarde, quelles que soient les listes remplies', () => {
+    const app = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
+    const code = app.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+    const bloc = code.slice(code.indexOf('async function loadDemo'), code.indexOf('async function demoSortie'));
+    assert.ok(bloc.length > 100, 'bloc loadDemo introuvable');
+
+    // `hasData` ne regardait que `documents` et `clients` : DEUX listes sur vingt. Or l'assistant en
+    // remplit une troisième — le catalogue du métier déclaré — donc quelqu'un qui finissait
+    // l'assistant puis cliquait « Voir un exemple rempli » perdait ses prestations sans une question
+    // et sans sauvegarde, pendant que l'article d'aide promet « tes données sont mises de côté ».
+    assert.ok(!/data\.documents\.length \|\| data\.clients\.length/.test(bloc),
+      'la question ne doit pas se décider sur deux listes sur vingt');
+    assert.ok(/Object\.keys\(C\.LIST_LABELS\)/.test(bloc), 'ce qui sera remplacé se DÉDUIT, comme pour « Tout effacer »');
+    // La sauvegarde n'est plus conditionnelle : elle coûte un fichier, et c'est le seul retour.
+    assert.ok(/\n\s*await bridge\.createBackup\('avant-demo'\);/.test(bloc),
+      'la sauvegarde « avant-demo » doit être prise sans condition');
+    // Et dans l'ordre de « Tout effacer » : le refus de la seconde question ne doit pas laisser une
+    // sauvegarde orpheline derrière lui.
+    assert.ok(bloc.indexOf('closedWipeOk') < bloc.indexOf("createBackup('avant-demo')"),
+      'le garde-fou de clôture se pose AVANT la sauvegarde, comme dans « Tout effacer »');
+  });
+
   console.log(`\n${n} tests OK`);
 })().catch(e => { console.error(e); process.exit(1); });

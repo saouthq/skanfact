@@ -566,6 +566,38 @@ Règles apprises, à ne pas recasser :
   reconnaît chaque écran à ce qu'il contient (`#sf-mods`, `[data-act]`, `input[name=name]`), jamais
   à son numéro : un septième écran a fait passer trois tests « à côté » sans un mot.
 
+## 7.6.0 — Le jeu d'exemple ne doit jamais toucher au vrai
+
+Trois constats graves sur le terrain même que la 7.0.0 croyait avoir traité. Règles :
+
+- **Une identité ne se juge pas sur un seul champ.** L'exemple ne se disait « emprunté » que si la
+  raison sociale était vide — or l'assistant invite explicitement à laisser le matricule fiscal et
+  le RIB vides. L'exemple les prêtait alors, et plus rien ne les reprenait : ni la sortie, ni
+  « Tout effacer ». Et les trois contrôles de conformité ne regardent que la PRÉSENCE d'une valeur,
+  donc l'application annonçait en vert « tes documents sont en règle » sur un matricule inventé.
+  On note ce qui a été emprunté, champ par champ (`company.demoFields`), et on le rend.
+- **Une phrase affichée qui n'est tenue par aucun code est un bug.** « N'envoie rien à personne
+  depuis ici » était sur chaque page, et `estDemo` n'avait qu'UN appelant dans toute l'application :
+  le bandeau lui-même. Six gestes sortaient sans contrôle.
+- **Prévenir, pas interdire.** `demoBlock` propose « Repartir de mes données » ET « Continuer quand
+  même ». Un logiciel ne peut pas empêcher une messagerie d'envoyer ; il peut nommer le danger une
+  fois. Deux boutons dont aucun ne laisse passer, ce serait un refus déguisé en choix — l'exact
+  travers que tout cet audit combat.
+- **Un geste d'apprentissage ne se bloque pas, il se marque.** L'export PDF reste libre depuis
+  l'exemple ; le document porte « EXEMPLE ». Et le tampon se décide en UN endroit : trois autres
+  recopiaient la règle à la main, donc un tampon posé dans la seule fonction prévue pour ça en
+  aurait manqué trois chemins sur quatre.
+- **Les contrôles de saisie passent avant les grandes questions.** Poser une question de fond puis
+  refuser sur un champ trop court fait répondre pour rien.
+- **Un panneau asynchrone redemande son élément APRÈS l'attente.** Entre la question au processus
+  principal et sa réponse, l'utilisateur a pu changer de page : la poignée obtenue avant désigne un
+  élément détaché, on écrit dedans sans rien afficher, puis on cherche ses boutons dans le document
+  vivant et `null.onclick` lève une exception que personne ne voit.
+- **Un test peut passer pour une mauvaise raison.** L'e2e du faux matricule posait les champs par
+  `evaluate` sans jamais enregistrer : la sauvegarde ne contenait donc pas la société, la sortie la
+  rendait vide, et l'assertion « le nom reste » passait sur une chaîne vide. Écrit par le vrai
+  formulaire, il prouve enfin ce qu'il annonce.
+
 ## Pistes pour la suite (non demandées)
 
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.

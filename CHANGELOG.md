@@ -7,6 +7,39 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 7.6.0 — 12/09/2026
+
+**Le jeu d'exemple ne doit jamais toucher au vrai.**
+
+Trois constats graves du contre-audit, sur le terrain même que la 7.0.0 croyait avoir traité.
+
+- **L'exemple posait un faux matricule fiscal et un faux RIB dans ta fiche société, et plus rien ne
+  les enlevait.** La 7.0.0 jugeait l'identité « empruntée » sur la seule raison sociale — or
+  l'assistant t'invite explicitement à laisser le matricule et le RIB vides (« si tu ne l'as pas
+  encore, laisse vide »). L'exemple les remplissait alors avec les siens, ton nom étant là,
+  l'identité n'était pas considérée comme empruntée, et ni la sortie de l'exemple ni « Tout effacer »
+  ne les reprenaient. Les trois contrôles de conformité ne regardent que la **présence** d'une
+  valeur : l'application affirmait donc en vert « tes documents sont en règle » sur un matricule
+  inventé. L'exemple note maintenant ce qu'il a emprunté, champ par champ, et le rend — tu retrouves
+  ta fiche telle que tu l'avais laissée : incomplète, mais vraie, et l'application te le redit.
+- **« N'envoie rien à personne depuis ici » était affiché sur chaque page, et rien ne le tenait.**
+  Six gestes sortaient de l'ordinateur sans contrôle : l'email au client, la déclaration CNSS, le
+  journal, les écritures, la fabrication et l'envoi du paquet mensuel. Ils demandent maintenant si
+  tu veux repartir de tes vraies données. Le PDF, lui, ne se bloque pas — le regarder est
+  l'apprentissage même : il porte la mention **EXEMPLE**. Les quatre chemins qui produisent un PDF
+  passent désormais par la même fonction ; trois recopiaient cette décision à la main, donc un
+  tampon posé à un seul endroit en aurait manqué trois sur quatre.
+- **Charger l'exemple détruisait le travail de l'assistant sans question et sans sauvegarde.** Le
+  contrôle ne regardait que deux listes sur vingt (documents et clients) ; l'assistant en remplit une
+  troisième, le catalogue de ton métier. Qui finissait l'assistant puis cliquait « Voir un exemple
+  rempli » perdait ses prestations en silence — pendant que l'aide promet « tes données sont mises
+  de côté avant ». La question nomme maintenant tout ce qui sera remplacé, et la sauvegarde est
+  prise **sans condition** : elle coûte un fichier, et c'est le seul chemin de retour.
+- Au passage, un vrai bug trouvé par le parcours : le panneau de lecture de factures écrivait dans
+  un écran déjà remplacé quand on quittait les Paramètres pendant son chargement, puis cherchait ses
+  boutons dans la page vivante — exception silencieuse. Deux panneaux redemandent désormais leur
+  élément après l'attente.
+
 ## 7.5.0 — 12/09/2026
 
 **Revenir en arrière.**

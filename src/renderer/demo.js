@@ -28,9 +28,18 @@
     const d = C.migrateData(null);
     d.company = { ...d.company, ...JSON.parse(JSON.stringify(currentCompany || {})) };
     // Est-ce que l'utilisateur avait déjà une identité, ou est-ce que l'exemple la lui invente ?
-    // La raison sociale suffit à trancher : c'est le seul champ que l'assistant refuse de laisser vide.
+    // La raison sociale dit si l'identité est ENTIÈREMENT empruntée — mais pas si elle l'est en
+    // partie, et c'était le trou : l'assistant invite explicitement à laisser le matricule fiscal
+    // et le RIB vides (« si tu ne l'as pas encore, laisse vide »). L'exemple les remplissait alors
+    // avec les siens, `demo` restait faux puisque le nom était là, et plus rien ne les enlevait —
+    // ni la sortie de l'exemple, ni « Tout effacer », ni les contrôles de conformité, qui ne
+    // regardent que la PRÉSENCE. Un faux matricule fiscal sur une vraie facture est une pièce
+    // non conforme, et l'application affirmait en vert que la fiche était en règle.
+    // On note donc ce qui a été EMPRUNTÉ, champ par champ, pour pouvoir le rendre.
     const avaitUneSociete = !!(d.company.name || '').trim();
-    Object.keys(DEMO_COMPANY).forEach(k => { if (!d.company[k]) d.company[k] = DEMO_COMPANY[k]; });
+    const empruntes = [];
+    Object.keys(DEMO_COMPANY).forEach(k => { if (!d.company[k]) { d.company[k] = DEMO_COMPANY[k]; empruntes.push(k); } });
+    d.company.demoFields = empruntes;
     const co = d.company;
     const daysAgo = n => C.addDays(T, -n);
     const mo = (n, day) => C.addMonths(T, -n, day);   // n mois en arrière, au jour demandé

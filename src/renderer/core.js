@@ -246,8 +246,23 @@
       out[k] = Array.isArray(vide) ? [] : (vide && typeof vide === 'object') ? {} : vide;
     });
     if (!o.garderSociete) out.company = { ...DEFAULT_COMPANY, ...(o.company || {}) };
-    else if (out.company) delete out.company.demo;   // ce qui reste est bien à lui, désormais
+    else if (out.company) { rendreLesEmprunts(out.company); delete out.company.demo; }
     return out;
+  }
+
+  // Les champs que le jeu d'exemple a PRÊTÉS à une fiche société qui en avait déjà une.
+  //
+  // L'assistant invite explicitement à laisser le matricule fiscal et le RIB vides (« si tu ne l'as
+  // pas encore, laisse vide »). L'exemple les remplissait alors avec les siens ; comme la raison
+  // sociale, elle, était renseignée, la fiche n'était pas considérée comme empruntée et plus rien
+  // ne les enlevait. Les trois contrôles de conformité — `companyGaps`, « Tes premiers pas »,
+  // l'avertissement d'émission — ne regardent que la PRÉSENCE d'une valeur : ils annonçaient donc
+  // en vert « tes documents sont en règle » sur un matricule fiscal inventé.
+  function rendreLesEmprunts(company) {
+    if (!company) return company;
+    (company.demoFields || []).forEach(k => { company[k] = DEFAULT_COMPANY[k] !== undefined ? DEFAULT_COMPANY[k] : ''; });
+    delete company.demoFields;
+    return company;
   }
 
   // Le jeu d'exemple se reconnaît : sans ça, on ne peut ni le signaler à l'écran, ni proposer d'en
@@ -4827,6 +4842,6 @@
     periodBounds, issuedIn, salesTotals, revenueByMonth, topItems, clientMovement, AGING_BUCKETS, agedReceivables, payerRanking, quoteFunnel, objectiveProgress,
     amountToWords, intToWords, intToWordsEn, documentHtml, fitToPage, pageCount,
     MODULES, PAGES, moduleById, pageById, pageTitle, moduleCount, moduleOn, moduleWhy, navPages,
-    MODULES_PAR_ACTIVITE, modulesSuggeres, wipeData, estDemo, firstSteps, liste, defaultVat, newLine
+    MODULES_PAR_ACTIVITE, modulesSuggeres, wipeData, rendreLesEmprunts, estDemo, firstSteps, liste, defaultVat, newLine
   };
 });

@@ -244,6 +244,11 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     const r = await win.textContent('#r-wrap'); if (!r.includes('à relancer') || !r.includes('Relance')) throw new Error(r.slice(0, 300));
     const n = await win.textContent('#nav-relances'); if (!/^\d+$/.test(n)) throw new Error('compteur nav: ' + n);
     await win.click('[data-rem]');
+    // Depuis la 7.6.0, un envoi depuis le jeu d'exemple prévient d'abord : les adresses des clients
+    // fictifs ressemblent à de vraies adresses. Elle prévient, elle n'interdit pas — « Continuer
+    // quand même » laisse passer, et c'est ce qu'on vérifie ici.
+    await win.waitForSelector('#modal-root #b');
+    await win.click('#modal-root #b');
     await win.waitForSelector('#mf');
     const subj = await win.inputValue('#mf input[name=subject]'); if (!subj.includes('FAC-')) throw new Error(subj);
     if (!(await win.inputValue('#mf textarea[name=body]')).includes('jours')) throw new Error('corps');
@@ -630,6 +635,8 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     await win.waitForFunction(() => (document.querySelector('#r-wrap') || {}).textContent.includes('Rappelé, paiement annoncé lundi'));
     // relancer un devis
     await win.click('[data-qrem]');
+    await win.waitForSelector('#modal-root #b');
+    await win.click('#modal-root #b');               // « Continuer quand même » — voir ci-dessus
     await win.waitForSelector('#mf');
     if (!(await win.inputValue('#mf input[name=subject]')).includes('DEV-')) throw new Error('objet de la relance de devis');
     await win.click('#modal-root [data-close]');
@@ -652,6 +659,8 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     await win.selectOption('#c-month', '');
     await win.waitForFunction(() => (document.querySelector('#c-body') || {}).textContent.includes('année'));
     await win.click('#exp-comptable');
+    await win.waitForSelector('#modal-root #b');
+    await win.click('#modal-root #b');               // jeu d'exemple : on prévient, on n'interdit pas
     await win.waitForSelector('#cpf');
     await win.fill('#cpf input[name=to]', 'comptable@cabinet.tn');
     if (!(await win.inputValue('#cpf textarea[name=body]')).includes('journal des ventes')) throw new Error('corps du message');

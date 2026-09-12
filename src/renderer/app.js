@@ -828,13 +828,28 @@
   // l'utilisateur dans une page à huit onglets, devant un encadré rouge « Zone sensible », avec un
   // toast qui nommait l'onglet où chercher. C'est le contraire d'un exemple.
   async function loadDemo() {
-    const hasData = data.documents.length || data.clients.length;
-    if (hasData && !await confirmDialog('Remplacer toutes les données actuelles par la démonstration ? Une sauvegarde de l\'état actuel est prise avant ; tes paramètres société (nom, logo, cachet, thème…) sont conservés.', 'Charger la démo', false)) return;
-    if (hasData) await bridge.createBackup('avant-demo');
+    // `hasData` ne regardait que les documents et les clients : DEUX listes sur vingt. L'assistant
+    // en remplit une troisième — le catalogue du métier déclaré — et quelqu'un qui venait de finir
+    // l'assistant puis cliquait « Voir un exemple rempli » perdait ses quatre prestations sans une
+    // question et sans sauvegarde, alors que l'article d'aide promet « tes données sont mises de
+    // côté avant ». Mêmes victimes : fournisseurs, achats, salariés, immobilisations, comptes.
+    // On DÉDUIT de `LIST_LABELS`, comme « Tout effacer » le fait déjà — une liste écrite à la main
+    // dérive à chaque module ajouté, c'est la leçon de la 7.0.0.
+    const remplies = Object.keys(C.LIST_LABELS)
+      .filter(k => Array.isArray(data[k]) && data[k].length)
+      .map(k => `${data[k].length} ${C.LIST_LABELS[k]}`);
+    if (remplies.length && !await confirmDialog(
+      `Remplacer tes données par le jeu d'exemple ?\n\nCe qui sera remplacé : ${C.liste(remplies)}.\n\n`
+      + 'Une sauvegarde est prise juste avant, et le bandeau orange te les rendra d\'un clic. '
+      + 'Tes paramètres société (nom, logo, cachet, thème…) sont conservés.',
+      'Charger l\'exemple', false)) return;
     // Toutes les données sont remplacées : le garde-fou de la page en cours n'a plus d'objet, et
     // laisser sa question surgir ensuite revenait à demander s'il faut enregistrer ce qu'on vient
-    // d'effacer sciemment.
-    if (!await closedWipeOk('Charger la démonstration remplace tout.')) return;
+    // d'effacer sciemment. Posé AVANT la sauvegarde : dans l'autre ordre, refuser cette seconde
+    // question laissait une sauvegarde orpheline. C'est l'ordre de « Tout effacer ».
+    if (!await closedWipeOk('Charger l\'exemple remplace tout.')) return;
+    // Sans condition : elle coûte un fichier, et c'est le seul chemin de retour.
+    await bridge.createBackup('avant-demo');
     clearGuard();
     data = window.SkanDemo.buildDemoData(data.company);
     save(true); applyTheme();
@@ -1773,9 +1788,7 @@
     previewRedraw = schedulePreview;
     function drawPreview() {
       const pv = $('#preview'); if (!pv || previewHidden) return; // masqué, ou l'utilisateur a quitté l'éditeur
-      const st = isInv && stored && stored.status !== 'brouillon' ? effStatus(stored) : null;
-      const stampText = st === 'payée' ? 'Payée' : st === 'annulée' ? 'Annulée' : undefined;
-      const html = C.documentHtml(doc, clientById(doc.clientId), company(), { preview: true, stampText, zoom: Math.max(0.3, Math.floor((pv.clientWidth - 2) / 794 * 100) / 100) });
+      const html = C.documentHtml(doc, clientById(doc.clientId), company(), { preview: true, stampText: stampFor(doc), zoom: Math.max(0.3, Math.floor((pv.clientWidth - 2) / 794 * 100) / 100) });
       pv.onload = () => {
         try {
           const compact = C.fitToPage(pv.contentDocument);   // même resserrement que le PDF
@@ -2023,6 +2036,9 @@
     if ($('#lock-credit')) $('#lock-credit').onclick = () => navigate('#/doc/new/avoir/' + doc.id);
     if ($('#lock-unlock')) $('#lock-unlock').onclick = () => { const u = $('#unlock'); if (u) u.onclick(); };
     if ($('#email')) $('#email').onclick = async () => {
+      // La porte de l'exemple AVANT tout le reste : sinon on explique d'abord comment émettre une
+      // facture de démonstration, ce qui n'a pas de sens, et on refuse seulement à la fin.
+      if (await demoBlock('Envoyer un email')) return;
       const d = docById(doc.id) || doc;
       // Un brouillon de facture ou d'avoir n'a pas de numéro : il ne part pas. On le DIT, et on
       // propose le geste qui débloque, au lieu de faire disparaître le bouton.
@@ -2209,9 +2225,7 @@
   }
 
   async function exportPdf(doc) {
-    const st = doc.type === 'facture' && doc.status !== 'brouillon' ? effStatus(doc) : null;
-    const stampText = st === 'payée' ? 'Payée' : st === 'annulée' ? 'Annulée' : undefined;
-    const html = C.documentHtml(doc, clientById(doc.clientId), company(), { stampText });
+    const html = C.documentHtml(doc, clientById(doc.clientId), company(), { stampText: stampFor(doc) });
     const client = (clientById(doc.clientId) || {}).name || '';
     const safe = s => String(s).replace(/[^\w\-àâäéèêëïîôöùûüç ]/gi, '').trim().replace(/\s+/g, '_');
     const name = `${doc.number || 'Brouillon-' + doc.type}${client ? '_' + safe(client) : ''}.pdf`;
@@ -2764,11 +2778,42 @@
     const safe = s => String(s).replace(/[^\w\-àâäéèêëïîôöùûüç ]/gi, '').trim().replace(/\s+/g, '_');
     return `${doc.number || 'Brouillon-' + doc.type}${client ? '_' + safe(client) : ''}.pdf`;
   }
+  // Le tampon du document. UNE seule source : trois autres endroits recopiaient cette ligne à la
+  // main (l'aperçu de l'éditeur, l'export PDF, l'envoi au comptable), donc un tampon posé ici seul
+  // aurait manqué trois chemins sur quatre.
+  //
+  // « EXEMPLE » passe avant tout le reste : le bandeau dit « n'envoie rien à personne depuis ici »,
+  // mais rien ne le tenait — `estDemo` n'avait qu'un seul appelant dans toute l'application, le
+  // bandeau lui-même. Un PDF de démonstration sortait au nom de l'entreprise, sans une marque, avec
+  // des clients aux adresses plausibles. Regarder un PDF reste le geste d'apprentissage : on ne le
+  // bloque pas, on le MARQUE.
   function stampFor(doc) {
+    if (C.estDemo(data)) return 'EXEMPLE';
     const st = doc.type === 'facture' && doc.status !== 'brouillon' ? effStatus(doc) : null;
     return st === 'payée' ? 'Payée' : st === 'annulée' ? 'Annulée' : undefined;
   }
-  function sendByEmail(doc, kind, extra, afterSend) {
+
+  // La porte de l'exemple. Elle ne s'applique qu'aux gestes qui SORTENT de l'ordinateur : envoyer un
+  // email, écrire au comptable, fabriquer le paquet mensuel. Lire, imprimer, exporter restent libres
+  // — c'est l'apprentissage même.
+  //
+  // Elle PRÉVIENT, elle n'interdit pas, et c'est voulu : les clients de l'exemple portent des
+  // adresses plausibles (« direction@clinique-jasmins.tn »), donc le risque réel est d'ouvrir un
+  // brouillon et d'appuyer sur Envoyer par réflexe. Un logiciel ne peut pas empêcher la messagerie
+  // d'envoyer ; il peut nommer le danger une fois, et laisser décider. C'est la règle posée en
+  // 6.0.0 pour les remplacements en masse : on prévient, on ne refuse pas un geste volontaire.
+  // Un refus déguisé en choix — deux boutons dont aucun ne laisse passer — serait pire que rien.
+  async function demoBlock(quoi) {
+    if (!C.estDemo(data)) return false;
+    const c = await choiceDialog('Ce sont des données d\'exemple',
+      `${quoi} depuis le jeu d'exemple : ces clients, ces adresses et ces montants sont inventés — `
+      + 'et les adresses ressemblent à de vraies adresses. Tes vraies données sont mises de côté, tu peux y revenir maintenant.',
+      'Repartir de mes données', 'Continuer quand même');
+    if (c === 'a') { demoSortie(); return true; }
+    return c !== 'b';                          // fermer la fenêtre vaut « ne rien faire »
+  }
+  async function sendByEmail(doc, kind, extra, afterSend) {
+    if (await demoBlock('Envoyer un email')) return;
     const client = clientById(doc.clientId);
     if (!client) return toast('Choisis un client.', true);
     kind = kind || doc.type;
@@ -5181,6 +5226,7 @@
         if (f) toast('Exporté : ' + f.split(/[\\/]/).pop());
       };
       if ($('#cn-mail')) $('#cn-mail').onclick = async () => {
+        if (await demoBlock('Envoyer une déclaration au comptable')) return;
         const acc = (company().accountantEmail || '').trim();
         const name = `cnss-${y}-T${q}.csv`;
         const att = await bridge.saveTextSilent(name, C.toCsv(cn.rows, cnCols));
@@ -7010,7 +7056,8 @@
       $$('[data-cert]').forEach(b => b.onclick = () => { const d = docById(b.dataset.cert); d.withholdingCertificate = true; save(true); draw(); toast('Attestation notée pour ' + d.number); });
       const tag = tagOf();
       // Envoi au comptable : journal de la période en pièce jointe, message prérempli
-      $('#exp-comptable').onclick = () => {
+      $('#exp-comptable').onclick = async () => {
+        if (await demoBlock('Envoyer la comptabilité au comptable')) return;
         if (!rows.length) return toast('Rien à envoyer sur cette période.', true);
         const tpl = { ...C.DEFAULT_EMAIL_TEMPLATES.comptable, ...((company().emailTemplates || {}).comptable || {}) };
         const vars = { objet: periodLabel(), numero: rows.length, montant: C.money(sum.ht, cur), societe: company().name, client: company().accountantName || '' };
@@ -7047,7 +7094,7 @@
       };
       $('#exp-pdfs').onclick = async () => {
         if (!rows.length) return toast('Rien à exporter sur cette période.', true);
-        const files = rows.map(r => { const d = docById(r.id); const st = d.type === 'facture' ? effStatus(d) : null; return { name: `${d.number}_${(r.client || '').replace(/[^\w\-àâäéèêëïîôöùûüç ]/gi, '').trim().replace(/\s+/g, '_')}.pdf`, html: C.documentHtml(d, clientById(d.clientId), company(), { stampText: st === 'payée' ? 'Payée' : st === 'annulée' ? 'Annulée' : undefined }) }; });
+        const files = rows.map(r => { const d = docById(r.id); return { name: `${d.number}_${(r.client || '').replace(/[^\w\-àâäéèêëïîôöùûüç ]/gi, '').trim().replace(/\s+/g, '_')}.pdf`, html: C.documentHtml(d, clientById(d.clientId), company(), { stampText: stampFor(d) }) }; });
         toast(`Génération de ${files.length} PDF…`);
         try { const dir = await bridge.exportPdfMany(files, `SkanFact-${tag}`); if (dir) { toast(`${files.length} PDF exportés`); bridge.openPath(dir); } }
         catch (e) { toast('Erreur : ' + e.message, true); }
@@ -7246,6 +7293,7 @@
         if (f) toast('Exporté : ' + f.split(/[\\/]/).pop());
       };
       $('#ecr-mail').onclick = async () => {
+        if (await demoBlock('Envoyer les écritures au comptable')) return;
         const att = await bridge.saveTextSilent(`ecritures-${tag}.csv`, C.toCsv(sorted, C.entryCsvColumns()));
         const r = await bridge.composeMail({
           to: company().accountantEmail || '', subject: `Écritures ${periodLabel()} — ${company().name || ''}`,
@@ -7491,8 +7539,11 @@
 
       if ($('#cab-vers-factures')) $('#cab-vers-factures').onclick = () => navigate('#/factures');
       $('#cab-build').onclick = async () => {
+        // Les contrôles de saisie d'abord, la grande question ensuite : poser une question de fond
+        // puis refuser sur un champ trop court, c'est faire répondre pour rien.
         const pw = (!paired && cabinetState.seal) ? ($('#cab-pwv').value || '').trim() : '';
         if (!paired && cabinetState.seal && pw.length < 6) return toast('Choisis un mot de passe d\'au moins six caractères.', true);
+        if (await demoBlock('Fabriquer le paquet du comptable')) return;
         if (!plan.definitive && !await confirmDialog(`${per.label} n'est pas clôturé : le paquet partira marqué « provisoire » et pourra encore changer.\n\nFabriquer quand même ?`, 'Fabriquer', false)) return;
 
         // Le HTML de chaque pièce est produit ici : c'est le renderer qui sait dessiner un document.
@@ -7535,7 +7586,8 @@
         } finally { if (typeof off === 'function') off(); }
       };
 
-      if ($('#cab-mail')) $('#cab-mail').onclick = () => {
+      if ($('#cab-mail')) $('#cab-mail').onclick = async () => {
+        if (await demoBlock('Envoyer le paquet au comptable')) return;
         const last = sent[0];
         const to = co.accountantEmail || '';
         bridge.composeMail({
@@ -7868,9 +7920,11 @@
     ];
     const nommer = f => (NOM_SAUVEGARDE.find(([re]) => re.test(f)) || [null, 'Sauvegarde'])[1];
     async function drawBackups() {
-      const el = $('#backup-list'); if (!el) return;
+      if (!$('#backup-list')) return;
       let liste = [];
       try { liste = (await bridge.listBackups()) || []; } catch (_) {}
+      // Redemandé APRÈS l'attente : changer de page pendant la question laisse une poignée détachée.
+      const el = $('#backup-list'); if (!el) return;
       if (!liste.length) {
         el.innerHTML = '<p class="small muted">Aucune sauvegarde pour l\'instant. La première sera prise demain matin, ou tout de suite avec le bouton ci-dessus.</p>';
         return;
@@ -8221,9 +8275,15 @@
   // ---------- lecture de factures : la clé et le consentement (4.2.0) ----------
   // Sans clé, aucune requête ne part de l'ordinateur. Le panneau le dit avant de proposer quoi que ce soit.
   async function drawOcrPanel() {
-    const el = $('#ocr-panel'); if (!el) return;
+    if (!$('#ocr-panel')) return;
     let st = { hasKey: false, model: '' };
     try { st = await bridge.ocrStatus(); } catch (_) {}
+    // On REDEMANDE l'élément après l'attente : entre la question au processus principal et sa
+    // réponse, l'utilisateur a pu changer de page, et l'écran est alors entièrement redessiné. La
+    // poignée obtenue avant l'attente désigne un élément détaché — on écrivait dedans sans rien
+    // afficher, puis `$('#ocr-key')` cherchait dans le document VIVANT, ne trouvait rien, et
+    // `null.onclick` levait une exception que personne ne voyait.
+    const el = $('#ocr-panel'); if (!el) return;
     el.innerHTML = `
       <p class="small mb">Photographier une facture fournisseur au lieu de la saisir. SkanFact envoie l'image à un service d'intelligence artificielle qui en lit les informations, puis <b>te propose un formulaire pré-rempli à valider</b>. Il ne remplit jamais tes données tout seul : une erreur de lecture sur une quantité fausserait tout ton stock.</p>
       <div class="vat-box" style="max-width:760px">
@@ -8238,8 +8298,8 @@
         <button class="btn ${st.hasKey ? '' : 'btn-primary'}" id="ocr-key">${st.hasKey ? 'Changer la clé' : 'Activer la lecture de factures…'}</button>
         ${st.hasKey ? '<button class="btn btn-danger" id="ocr-off">Désactiver et effacer la clé</button>' : ''}
       </div>`;
-    $('#ocr-key').onclick = () => ocrKeyForm(() => drawOcrPanel());
-    if ($('#ocr-off')) $('#ocr-off').onclick = async () => {
+    $('#ocr-key', el).onclick = () => ocrKeyForm(() => drawOcrPanel());
+    if ($('#ocr-off', el)) $('#ocr-off', el).onclick = async () => {
       if (!await confirmDialog('Effacer la clé de cet ordinateur ? Plus rien ne sera envoyé nulle part. Tu pourras toujours joindre les photos comme justificatifs.')) return;
       await bridge.ocrSetKey(null);
       toast('Clé effacée'); drawOcrPanel();
