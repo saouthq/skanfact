@@ -231,6 +231,42 @@ Règles apprises :
 - Depuis la 6.2.1 le manifeste porte `chiffres` (CA, TVA collectée/déductible, à décaisser, encaissé) et `compte` : le cabinet affiche le chiffre d'affaires du dossier sans ouvrir un CSV. Champ **facultatif à la lecture** — un paquet plus ancien n'en a pas, et on écrit « — », jamais zéro.
 - Le test qui compte est `scratchpad/cabe2e.js` : **deux vraies applications Electron** à la suite — le cabinet exporte son appairage, l'entreprise l'importe et fabrique un paquet, le cabinet le reçoit, l'ouvre et prépare la relance. C'est le seul qui prouve que le plan tient debout ; le relancer avant toute release touchant au paquet ou à l'appairage.
 
+## 6.3.0 — Les écritures comptables (aussi Cabinet 1.1.0)
+
+Dans core.js : `DEFAULT_ACCOUNTS` + `ACCOUNT_LABELS` + `ENTRY_JOURNALS`, `chartAccounts(data)` (surcharge par `data.chartAccounts`), `journalEntries(data, company, period, opts)`, `entriesBalance`, `entriesByAccount`, `entryCsvColumns`. `packPlan` ajoute `journaux/ecritures.csv` et renvoie `balance` ; la page de garde l'annonce. Dans app.js : onglet **Comptabilité → Écritures** (`ecrState`, tri, pagination, export CSV, envoi au comptable) et `chartForm`.
+
+Règles apprises :
+- **Aucun numéro de compte n'est une vérité.** Ceux proposés suivent l'usage tunisien ; chaque cabinet a les siens. Tout est modifiable, et la page, la bulle et l'aide écrivent « À VÉRIFIER ». Ce qui est garanti, c'est l'**équilibre** : débit = crédit sur chaque pièce, vérifié sur les 24 mois du jeu de démonstration.
+- **Un montant négatif change de colonne, il ne garde pas son signe.** Un avoir s'écrit D ventes / D TVA / C client. Aucun logiciel comptable n'accepte un débit négatif — c'est ce qui aurait fait refuser le fichier à l'import, sans que personne comprenne pourquoi.
+- Les arrondis de TVA ligne par ligne peuvent laisser quelques millimes d'écart : `entrySet.done()` les absorbe sur la dernière ligne plutôt que de livrer une pièce déséquilibrée.
+- Une facture **annulée** ne produit aucune écriture : comptablement, elle n'a jamais existé.
+- Piège : `toCsv` attend des colonnes `{key, label, type}`. Une liste de paires `['date','Date']` produit un fichier **sans entête**, et rien ne plante — d'où le test qui vérifie la première ligne au caractère près.
+
+## 6.4.0 — La licence hors ligne
+
+`src/licence.js` (Node pur, testé) : `generateKeys`, `signLicence`, `parseKey`, `verifyKey`, `licenceState`, `requestMail`. `scripts/licence.js` fabrique les clés (privée en mode 600 dans `~/.skanfact/`, **jamais** dans le dépôt ; publique dans `build/licence-public.json`, à commiter). Dans main.js : `licence:status` / `licence:set` (refuse une clé invalide au lieu de la stocker) / `licence:requestMail`, `installedAt` dans `app-config.json`. Dans app.js : `licenceBlock(quoi)` — une seule porte, comme `closedBlock` — et l'onglet **Paramètres → Licence**.
+
+Règles apprises :
+- **Jamais de données en otage.** Une licence expirée ne bloque QUE la création de nouvelles pièces. Lire, imprimer, exporter, sauvegarder, envoyer le paquet au comptable : toujours. Un test relit `app.js` et vérifie qu'aucun `licenceBlock` n'est posé ailleurs que sur une création.
+- **Modifier une pièce existante reste possible** même bloqué : sinon une licence expirée empêcherait de corriger une faute de frappe.
+- **L'application est livrée désarmée.** Sans `build/licence-public.json`, l'état est `libre` et rien ne se verrouille — un test vérifie que le fichier n'est pas dans le dépôt. Armer la licence est une décision du propriétaire, pas l'effet de bord d'une mise à jour.
+- Aucun appel réseau : la clé est vérifiée sur le poste. Une entreprise sans connexion ne doit pas perdre sa facturation, et l'app doit survivre à la disparition de son éditeur.
+- `plainError(e)` : une erreur venue du processus principal arrive habillée en « Error invoking remote method '…': Error: … ». On ne montre que la phrase écrite pour l'utilisateur.
+
+## 6.5.0 — Le chien de garde (les filets)
+
+`startWatchdog(win)` dans main.js, `alive:ping`/`alive:pong`, `freeze:notice`, `support:info`, `support:openLog` ; « Signaler un problème » dans l'Aide.
+
+Règles apprises — les quatre, tenues par un test qui relit la source :
+1. **`Debugger.enable` s'active AVANT le gel.** Demandé pendant, il attend le fil bloqué et n'arrive jamais.
+2. **`Debugger.resume` AVANT `Runtime.terminateExecution`.** Interrompre une machine virtuelle en pause ne rend jamais la main — le chien de garde gèle à son tour, et c'est ce qui est arrivé à la première version.
+3. **Aucune fenêtre synchrone.** `showMessageBoxSync` bloque le processus principal tant que personne ne répond ; devant une application figée, personne ne peut répondre. On recharge sans rien demander, puis on **dit** ce qui s'est passé — un redémarrage silencieux ferait douter de ce qui a été enregistré.
+4. **Chaque commande au débogueur est bornée** (`Promise.race`) : le surveillant ne doit jamais pouvoir geler.
+
+Autre règle : les abonnements aux messages du processus principal (`onAlivePing`, `onFreezeNotice`) se posent **avant** la séquence de démarrage. L'assistant de première utilisation la met en attente, et tout message reçu pendant ce temps était perdu.
+
+Le test qui compte est `scratchpad/watchdog-e2e.js` : il **gèle vraiment** l'application avec une boucle infinie et vérifie que le journal nomme la fonction coupable. C'est le test qu'on aurait voulu avoir en 5.1.0.
+
 ## Pistes pour la suite (non demandées)
 
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.
