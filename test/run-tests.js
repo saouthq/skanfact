@@ -4944,7 +4944,12 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
 
   // ---------- 7.0.0 : les modules et la barre latérale ----------
 
-  t('modules : on ne masque jamais ce que quelqu\'un a saisi', () => {
+  // Ce que ce test protège (7.12.0) : « quand je décoche, ça disparaît pas du menu et je peux pas le
+  // recocher ». Un module qui CONTENAIT quelque chose se rallumait tout seul à chaque calcul, au nom
+  // de « on ne masque pas ce que tu as saisi » — donc décocher sa case la transformait en cadenas
+  // sous le doigt, sans rien changer au menu. Le choix fait foi ; le filet, lui, est un ÉVÉNEMENT :
+  // le module revient le jour où on y enregistre quelque chose, et l'application le dit.
+  t('modules : une case décochée se recoche, et un module masqué revient quand on y écrit', () => {
     const vide = { ...core.DEFAULT_DATA, company: { ...core.DEFAULT_COMPANY, modules: ['ventes', 'fichiers', 'compta'] },
       purchases: [], suppliers: [], employees: [], payslips: [], assets: [], catalog: [], serials: [], stockAdjustments: [],
       accounts: [], movements: [], projects: [], documents: [], recurring: [] };
@@ -4953,19 +4958,55 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.strictEqual(core.moduleOn(vide, 'paie'), false);
     assert.strictEqual(core.moduleOn(vide, 'immos'), false);
 
-    // Une seule ligne suffit à le faire réapparaître : c'est LA règle de sécurité du filtrage.
-    // Sans elle, quelqu'un qui décoche « Achats » après avoir saisi trente factures fournisseur
-    // croirait les avoir perdues.
+    // Rempli mais masqué : il RESTE masqué. C'est ce qui rend la case à cocher utilisable.
     const avec = { ...vide, purchases: [{ id: 'p1', lines: [] }] };
-    assert.strictEqual(core.moduleOn(avec, 'achats'), true, 'un module rempli se montre tout seul');
-    assert.strictEqual(core.moduleWhy(avec, 'achats'), 'rempli');
+    assert.strictEqual(core.moduleOn(avec, 'achats'), false,
+      'un module masqué qui contient quelque chose se rallume tout seul : la case redevient un piège');
+    assert.strictEqual(core.moduleWhy(avec, 'achats'), 'masque');
     assert.strictEqual(core.moduleCount(avec, 'achats'), 1);
-    // Et il reste hors du menu pour les autres : le garde-fou est par module, pas global.
-    assert.strictEqual(core.moduleOn(avec, 'paie'), false);
 
-    // Chaque module masquable sait se compter, sinon la règle ci-dessus ne le protège pas.
+    // Le filet. Masquer un module plein ne le ramène pas : les compteurs n'ont pas bougé.
+    const reference = core.moduleCounts(avec);
+    assert.deepStrictEqual(core.modulesRevenus(avec, reference), [],
+      'masquer un module déjà plein le ferait revenir aussitôt');
+    // Y enregistrer quelque chose de NOUVEAU le ramène, lui et lui seul.
+    const apres = { ...avec, purchases: avec.purchases.concat([{ id: 'p2', lines: [] }]) };
+    assert.deepStrictEqual(core.modulesRevenus(apres, reference), ['achats'],
+      'un module masqué dans lequel on vient d\'écrire doit revenir dans le menu');
+    // Et le garde-fou est par module, pas global.
+    assert.strictEqual(core.moduleOn(apres, 'paie'), false);
+    // Sans choix enregistré, il n'y a rien à ramener : tout est déjà affiché.
+    const tout = { ...apres, company: { ...core.DEFAULT_COMPANY } };
+    delete tout.company.modules;
+    assert.deepStrictEqual(core.modulesRevenus(tout, {}), []);
+
+    // Chaque module masquable sait se compter, sinon le filet ne le rattrape jamais.
     core.MODULES.filter(m => !m.toujours).forEach(m =>
-      assert.strictEqual(typeof m.compte, 'function', `le module « ${m.id} » n'a pas de compteur : il pourrait être masqué plein`));
+      assert.strictEqual(typeof m.compte, 'function', `le module « ${m.id} » n'a pas de compteur : masqué, il ne reviendrait jamais`));
+  });
+
+  t('modules : l\'écran offre une case à tout ce qui n\'est pas le cœur, et prévient avant de masquer du plein', () => {
+    const brut = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
+    const app = brut.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+    assert.ok(app.includes('routes.modules'), 'le nettoyage des commentaires a mangé le code');
+    const page = app.slice(app.indexOf('routes.modules = () =>'), app.indexOf('let aideQ'));
+    assert.ok(page.length > 500, 'la page « Tous les modules » est introuvable');
+
+    // Le cadenas ne doit dépendre QUE du cœur du métier. Toute autre condition (« il est rempli »)
+    // ramène le piège : la case disparaît au moment précis où on s'en sert.
+    assert.ok(/\$\{m\.toujours\s*\n?\s*\? `<span class="mod-lock"/.test(page),
+      'la case à cocher est retirée pour autre chose que le cœur du métier');
+    assert.ok(!/fige/.test(page), 'une condition « figé » subsiste : elle peut encore enlever la case sous le doigt');
+
+    // Masquer un module qui contient quelque chose se confirme, et un refus REMET la case.
+    assert.ok(/if \(!cb\.checked && n\) \{[\s\S]{0,600}?await confirmDialog\(/.test(page),
+      'décocher un module plein ne demande rien');
+    assert.ok(/if \(!ok\) \{ cb\.checked = true; return; \}/.test(page),
+      'refuser la question laisse la case décochée : l\'écran ne dit plus la vérité');
+
+    // Et la page ne promet plus ce qui n'est plus vrai.
+    assert.ok(!/reste affiché quoi qu'il arrive/.test(page), 'la page promet encore qu\'un module rempli ne peut pas être masqué');
+    assert.ok(/revient tout seul/.test(page), 'la page ne dit pas ce qui ramène un module masqué');
   });
 
   t('modules : le cœur du métier ne se masque pas, et une installation existante ne perd rien', () => {
@@ -5859,6 +5900,62 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       'la lecture de photo renvoie encore à un chemin à retenir plutôt qu\'à un bouton');
     assert.ok(/emailComptablePret/.test(app) && /allerParametres\('emails', 'p-comptable'\)/.test(app),
       'l\'email du comptable manquant ne mène pas au champ');
+  });
+
+  // ---------- 7.12.0 : le droit à l'erreur ----------
+  //
+  // « Quand on fait une action en se trompant, on ne peut pas revenir en arrière. » Six gestes
+  // s'exécutaient sur un clic, sans question ET sans retour visible : celui qu'on a cliqué par
+  // erreur, on ne pouvait plus le défaire depuis l'écran où on était.
+  //
+  // La règle n'est pas « tout confirmer » : dix questions par jour ne se lisent plus, on clique
+  // « Oui » sans voir. C'est : ce qui détruit DEMANDE, ce qui se répare laisse un « Annuler » sous
+  // la main. Et un « Annuler » qu'on ne peut pas cliquer ne compte pas — d'où la vérification du CSS.
+  t('le droit à l\'erreur : ce qui détruit demande, ce qui se répare laisse un retour', () => {
+    const brut = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
+    const app = brut.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+    assert.ok(app.includes('function toastUndo'), 'le nettoyage des commentaires a mangé le code');
+    const css = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'style.css'), 'utf8');
+
+    // 1. Le bandeau « Annuler » doit pouvoir être CLIQUÉ. `#toast` vit en `pointer-events: none` :
+    // sans la levée, le bouton est parfaitement visible et parfaitement inerte — le défaut de la
+    // 5.2.2, qui n'apparaît dans aucune console.
+    assert.ok(/#toast\.avec-bouton[^}]*pointer-events:\s*auto/.test(css),
+      'le bandeau qui porte « Annuler » ne reçoit pas les clics : le bouton serait inerte');
+    assert.ok(/t\.className = 'show avec-bouton'/.test(app), 'le bandeau de retour n\'a pas sa classe');
+    // Et il dure plus longtemps qu'un message ordinaire : comprendre qu'on s'est trompé prend du temps.
+    const ordinaire = Number((app.match(/setTimeout\(\(\) => t\.className = '', (\d+)\)/) || [])[1]);
+    const retour = Number((app.match(/t\._timer = setTimeout\(fermer, (\d+)\)/) || [])[1]);
+    assert.ok(ordinaire > 0 && retour > ordinaire * 2,
+      `le « Annuler » dure ${retour} ms contre ${ordinaire} ms pour un message ordinaire : trop court pour être vu`);
+
+    // 2. Tout appel à `toastUndo` passe vraiment de quoi défaire. Un bandeau qui montre « Annuler »
+    // sans rien défaire serait pire que pas de bandeau.
+    const appels = (app.match(/toastUndo\([\s\S]{0,400}?\n/g) || []).filter(a => !/^toastUndo\(msg, undo\)/.test(a));
+    assert.ok(appels.length >= 4, `seulement ${appels.length} geste(s) offrent un retour : la règle n'est pas appliquée`);
+    appels.forEach(a => assert.ok(/, \(\) =>/.test(a), 'un « Annuler » est affiché sans fonction pour défaire : ' + a.slice(0, 90)));
+
+    // 3. Les gestes nommés, un par un. Chacun est ancré sur SON code, pas sur une mention.
+    const bloc = (depart, taille) => { const i = app.indexOf(depart); assert.ok(i > 0, 'ancre introuvable : ' + depart); return app.slice(i, i + taille); };
+    // « Marquer déposée » : la ligne quitte « À déposer », donc le bouton qui retire la mention
+    // n'est plus là où on vient de cliquer.
+    assert.ok(/toastUndo\(`Noté : \$\{label\} est déposée/.test(bloc('const mark = async (id, label)', 900)),
+      'noter une déclaration déposée ne laisse aucun retour');
+    // « Attestation reçue » : même chose, la ligne quitte la liste des manquantes.
+    assert.ok(/toastUndo\('Attestation notée reçue/.test(bloc("$$('[data-cert]')", 600)),
+      'noter une attestation reçue ne laisse aucun retour');
+    // Suspendre / reprendre un contrat DÉPLACE la prochaine échéance : l'ancienne date est perdue.
+    ["$$('[data-toggle]')", "$('#c-toggle').onclick"].forEach(ancre => {
+      const b = bloc(ancre, 900);
+      assert.ok(/const avant = \{ active: r\.active, nextDate: r\.nextDate \}/.test(b) && /toastUndo\(msg, \(\) => \{ Object\.assign\(r, avant\)/.test(b),
+        `reprendre un contrat déplace sa date sans retour possible (${ancre})`);
+    });
+    // Ce qui DÉTRUIT demande d'abord : les numéros de compte dictés par le cabinet, et une volée de
+    // brouillons qu'il faudrait ensuite supprimer un par un.
+    assert.ok(/await confirmDialog\(/.test(bloc("$('#ch-reset', layer).onclick", 700)),
+      'remettre le plan de comptes à zéro ne demande rien');
+    assert.ok(/await confirmDialog\(/.test(bloc("$('#gen-due').onclick", 700)),
+      'générer tous les brouillons d\'un coup ne demande rien');
   });
 
   console.log(`\n${n} tests OK`);

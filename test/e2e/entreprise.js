@@ -231,6 +231,10 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     if (!(await win.textContent('#c-wrap')).includes('à générer')) throw new Error('contrat dû absent');
     if (await win.evaluate(() => document.querySelector('#nav-contrats').textContent) !== '1') throw new Error('compteur contrats');
     await win.click('#gen-due');
+    // Depuis la 7.12.0, fabriquer plusieurs factures d'un coup annonce combien avant de le faire.
+    await win.waitForSelector('#modal-root #ok');
+    await win.click('#modal-root #ok');
+    await win.waitForFunction(() => !document.querySelector('#modal-root').children.length);
     await win.waitForSelector('#toast.show');
     if (!(await win.textContent('#toast')).includes('1 brouillon')) throw new Error(await win.textContent('#toast'));
     await win.evaluate(() => { location.hash = '#/factures'; });
@@ -856,6 +860,10 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     const chg = await win.evaluate(() => [...document.querySelectorAll('#ecr-t tbody tr td:nth-child(4)')].map(e => e.textContent.trim()));
     if (!chg.includes('4111') || chg.includes('411')) throw new Error('plan de comptes non appliqué : ' + chg.slice(0, 5).join(','));
     await win.click('#ecr-plan'); await win.waitForSelector('#chf'); await win.click('#ch-reset');
+    // Depuis la 7.12.0, jeter les comptes que le cabinet a dictés demande d'abord.
+    await win.waitForSelector('#modal-root #ok');
+    await win.click('#modal-root #ok');
+    await win.waitForFunction(() => !document.querySelector('#modal-root').children.length);
     await win.waitForTimeout(400);
 
     // onglet Achats : journal et ventilation par catégorie

@@ -7,6 +7,44 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 7.12.0 — 12/09/2026
+
+**Le droit à l'erreur.**
+
+Trois défauts trouvés en une minute en ouvrant l'application, et la règle qui manquait derrière :
+un geste fait par erreur doit pouvoir se défaire **depuis l'écran où on l'a fait**.
+
+- **Un bouton entièrement blanc sur une facture émise.** C'était « Corriger par un avoir… », la
+  seule sortie que propose le bandeau d'une pièce verrouillée : 155 × 32 pixels de blanc sur blanc.
+  Une règle CSS repeignait en blanc le fond de **tous** les boutons d'un bandeau — y compris celui
+  qui garde son texte blanc. Rien ne plante, rien n'apparaît en console. Un nouveau test
+  (`npm run e2e:contraste`) mesure désormais le contraste texte/fond de **chaque bouton visible**
+  des 21 pages, en clair et en sombre : 536 boutons, et aucun illisible.
+- **Décocher un module ne le retirait pas du menu, et sa case disparaissait.** Sur « Tous les
+  modules », un module qui contenait ne serait-ce qu'une ligne se rallumait tout seul après le clic,
+  et la case se changeait en cadenas — donc le module restait affiché **et** ne pouvait plus être
+  recoché. L'intention (« on ne cache pas ton travail ») était bonne, la mécanique était un piège.
+  Désormais **ton choix fait foi** : tout ce qui n'est pas le cœur du métier se décoche et se
+  recoche, toujours. Le filet devient un **événement** : un module que tu as masqué revient tout
+  seul le jour où tu y enregistres quelque chose, et l'application le dit.
+- **Masquer un module qui contient quelque chose demande d'abord**, en nommant ce qu'il contient,
+  le fait que rien n'est supprimé, et par où la page reste atteignable (la recherche et son adresse).
+- **« Marquer déposée » n'avait pas de retour en arrière.** Un clic, et la ligne quittait le panneau
+  « À déposer » : le bouton qui retire la mention existe, mais sur un autre panneau, et seulement si
+  on retrouve le bon trimestre. Le bandeau de confirmation porte maintenant un **« Annuler »** qui
+  défait vraiment — et qui dure trois fois plus longtemps qu'un message ordinaire, parce que
+  comprendre qu'on s'est trompé prend quelques secondes. Même chose pour **« Attestation reçue »**,
+  et pour **suspendre ou reprendre un contrat** (la reprise déplace la prochaine échéance, et
+  l'ancienne date était perdue).
+- **Deux gestes qui détruisent demandent maintenant** : remettre le plan de comptes à la proposition
+  de départ (les numéros dictés par ton comptable étaient jetés sans un mot) et générer d'un coup
+  tous les brouillons de contrats dus (il annonce désormais combien).
+
+La règle n'est pas « tout confirmer » : dix questions par jour ne se lisent plus. Ce qui **détruit**
+demande ; ce qui **se répare** laisse un « Annuler » sous la main. Un test tient les deux moitiés,
+et vérifie aussi que le bouton « Annuler » reçoit bien les clics — un bouton visible et inerte
+serait exactement le défaut qu'on vient de corriger ailleurs.
+
 ## 7.11.0 — 12/09/2026
 
 **Les réglages qu'on trouve, qu'on voit, et qui ne se jettent pas sans un mot.**

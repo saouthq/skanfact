@@ -133,8 +133,28 @@
   // REFUSE d'écraser et nous rend sa version : on fusionne pièce par pièce, on réécrit, et on dit
   // clairement ce qui s'est passé. Voir core.mergeData — rien n'est jamais perdu en silence.
   let merging = false;
+  // Les compteurs de modules au dernier enregistrement. Ils servent de référence pour savoir si on
+  // vient d'ENREGISTRER quelque chose dans un module masqué — auquel cas il revient dans le menu.
+  // Sans cette référence, le simple fait d'être plein rallumerait le module, et la case à cocher de
+  // « Tous les modules » redeviendrait le piège qu'elle était (voir `moduleOn` dans core.js).
+  let comptesModules = null;
+  function rappelerModules() {
+    const avant = comptesModules;
+    comptesModules = C.moduleCounts(data);
+    if (!avant) return;
+    const revenus = C.modulesRevenus(data, avant);
+    if (!revenus.length) return;
+    const liste = company().modules.slice().concat(revenus);
+    company().modules = liste;
+    comptesModules = C.moduleCounts(data);
+    drawNav();
+    const noms = revenus.map(id => C.moduleById(id).label);
+    toast(`${C.liste(noms)} ${revenus.length > 1 ? 'reviennent' : 'revient'} dans ton menu : tu viens d'y enregistrer quelque chose.`);
+  }
+
   function save(immediate) {
     try { window.__data = data; } catch (_) {}   // visible depuis les tests de bout en bout
+    rappelerModules();
     clearTimeout(saveTimer);
     const doSave = () => bridge.saveData(data)
       .then(r => { if (r && r.conflict) return resolveConflict(r); })
@@ -344,6 +364,28 @@
     const t = $('#toast');
     t.textContent = msg; t.className = 'show' + (isError ? ' error' : '');
     clearTimeout(t._timer); t._timer = setTimeout(() => t.className = '', 2600);
+  }
+
+  // Le droit à l'erreur (7.12.0).
+  //
+  // Toute action ne mérite pas une question : dix confirmations par jour ne se lisent plus, on clique
+  // « Oui » sans voir. Mais une action qui s'exécute en un clic doit laisser son retour en arrière
+  // SOUS LA MAIN, parce qu'au moment où on comprend qu'on s'est trompé, la ligne a déjà disparu de
+  // l'écran d'où on l'a cliquée. « Marquer déposée » en était l'exemple parfait : le bouton qui
+  // retire la mention existe, mais sur un AUTRE panneau, et seulement si on retrouve le bon
+  // trimestre — donc, vu d'ici, l'action était sans retour.
+  //
+  // Le bandeau dure trois fois plus longtemps qu'un message ordinaire : comprendre qu'on vient de se
+  // tromper prend quelques secondes. Et il rétablit les clics (`#toast` est en `pointer-events: none`
+  // le reste du temps, sans quoi le bouton serait parfaitement visible et parfaitement inerte).
+  function toastUndo(msg, undo) {
+    const t = $('#toast');
+    const fermer = () => { clearTimeout(t._timer); t.className = ''; t.textContent = ''; };
+    t.innerHTML = `<span>${h(msg)}</span><button class="toast-undo" id="toast-undo">Annuler</button>`;
+    t.className = 'show avec-bouton';
+    $('#toast-undo').onclick = () => { fermer(); undo(); };
+    clearTimeout(t._timer);
+    t._timer = setTimeout(fermer, 8000);
   }
 
   // Fenêtre modale. Échap ferme, Entrée valide le bouton principal (sauf dans un textarea).
@@ -811,7 +853,6 @@
     if (!p || !p.module || !data) return;
     const choisis = company().modules;
     if (!Array.isArray(choisis) || choisis.includes(p.module)) return;
-    if (C.moduleCount(data, p.module) > 0) return;    // déjà rempli : il est dans le menu tout seul
     const m = C.moduleById(p.module);
     if (!m) return;
     const el = document.createElement('div');
@@ -3162,12 +3203,15 @@
     $('#c-edit').onclick = () => recurrenceForm(r, () => render(true));
     $('#c-more-btn').onclick = e => { e.stopPropagation(); const l = $('#c-more'); l.hidden = !l.hidden; };
     $('#c-toggle').onclick = () => {
+      const avant = { active: r.active, nextDate: r.nextDate };
       r.active = !active;
+      let msg = r.active ? 'Contrat repris' : 'Contrat suspendu — plus aucun brouillon ne sera préparé';
       if (r.active && r.nextDate < C.today()) {
         r.nextDate = C.catchUpRecurrence(r.nextDate, r.every, r.day);
-        toast(`Contrat repris — prochaine facture le ${C.fmtDate(r.nextDate)} (les échéances passées pendant la suspension ne sont pas facturées)`);
+        msg = `Contrat repris — prochaine facture le ${C.fmtDate(r.nextDate)} (les échéances passées ne sont pas facturées)`;
       }
       save(true); render(true);
+      toastUndo(msg, () => { Object.assign(r, avant); save(true); render(true); });
     };
     const generate = () => { generateRecurring([r], true); toast('Brouillon créé pour ' + C.monthLabel(r.lastIssued)); render(true); };
     $('#c-gen').onclick = generate;
@@ -3232,18 +3276,33 @@
       $$('tr.clickable[data-rid]').forEach(tr => tr.onclick = e => { if (e.target.closest('button')) return; navigate('#/contrat/' + tr.dataset.rid); });
       bindSort($('#c-wrap'), draw);
       bindPager($('#c-wrap'), s, () => draw(), '#c-wrap');
-      if ($('#gen-due')) $('#gen-due').onclick = () => { const n = generateRecurring(); toast(`${n} brouillon(s) créé(s) — à émettre depuis Factures`); draw(); };
+      // Un clic qui fabrique plusieurs factures d'un coup annonce combien, et laisse reculer : les
+      // défaire ensuite veut dire ouvrir chaque brouillon et le supprimer un par un.
+      if ($('#gen-due')) $('#gen-due').onclick = async () => {
+        const combien = due.length;
+        if (!await confirmDialog(
+          `Générer ${combien} brouillon${combien > 1 ? 's' : ''} de facture ?\n\n`
+          + `${combien > 1 ? 'Ils arrivent' : 'Il arrive'} en brouillon dans Factures : rien n'est émis, rien n'est numéroté et rien ne part chez un client tant que tu ne l'as pas relu.`,
+          `Générer ${combien > 1 ? 'les brouillons' : 'le brouillon'}`)) return;
+        const n = generateRecurring(); toast(`${n} brouillon(s) créé(s) — à émettre depuis Factures`); draw();
+      };
       $$('[data-gen]').forEach(b => b.onclick = () => { const r = data.recurring.find(x => x.id === b.dataset.gen); generateRecurring([r], true); toast(`Brouillon créé pour ${C.monthLabel(r.lastIssued)} — à relire puis émettre depuis Factures`); navigate('#/contrat/' + r.id); });
       $$('[data-edit]').forEach(b => b.onclick = () => recurrenceForm(data.recurring.find(x => x.id === b.dataset.edit), draw));
+      // Reprendre un contrat suspendu DÉPLACE sa prochaine échéance, et l'ancienne date est perdue :
+      // un clic de trop sur « Suspendre » puis « Reprendre » décale la facturation sans qu'on puisse
+      // revenir à l'état d'avant. On garde donc de quoi le défaire.
       $$('[data-toggle]').forEach(b => b.onclick = () => {
         const r = data.recurring.find(x => x.id === b.dataset.toggle);
+        const avant = { active: r.active, nextDate: r.nextDate };
         r.active = r.active === false;
+        let msg = r.active ? 'Contrat repris' : 'Contrat suspendu — plus aucun brouillon ne sera préparé';
         if (r.active && r.nextDate < C.today()) {
           // Reprise : on repart de la prochaine échéance, sans facturer les mois suspendus
           r.nextDate = C.catchUpRecurrence(r.nextDate, r.every, r.day);
-          toast(`Contrat repris — prochaine facture le ${C.fmtDate(r.nextDate)} (les échéances passées pendant la suspension ne sont pas facturées ; modifie la date si besoin)`);
+          msg = `Contrat repris — prochaine facture le ${C.fmtDate(r.nextDate)} (les échéances passées ne sont pas facturées)`;
         }
         save(true); draw();
+        toastUndo(msg, () => { Object.assign(r, avant); save(true); draw(); });
       });
     };
     $('#view').innerHTML = `<div class="page-head"><h1>Facturation récurrente ${info('contrat.form')}</h1><div class="actions"><button class="btn btn-primary" id="new">+ Nouveau contrat</button></div></div><div id="c-wrap"></div>`;
@@ -5261,15 +5320,24 @@
       const an = C.employerAnnual(data, y, company());
       const due = C.socialDue(data);
       const filed = id => (data.socialFilings || []).find(f => f.id === id);
+      // Noter une déclaration déposée est un clic sans question — et c'est bien ainsi, on le fait
+      // douze fois par an. Mais la ligne quitte aussitôt le panneau « À déposer », donc le bouton
+      // qui retire la mention n'est plus là où on vient de cliquer : il faut descendre au bon
+      // panneau et retrouver le bon trimestre. D'où le « Annuler » sous la main.
       const mark = async (id, label) => {
         const f = filed(id);
         if (f) {
           if (!await confirmDialog(`Retirer la mention « déposée » de ${label} ?`)) return;
           data.socialFilings = data.socialFilings.filter(x => x.id !== id);
-        } else {
-          data.socialFilings.push({ id, filedAt: C.today(), label });
+          save(true); draw();
+          return;
         }
+        data.socialFilings.push({ id, filedAt: C.today(), label });
         save(true); draw();
+        toastUndo(`Noté : ${label} est déposée.`, () => {
+          data.socialFilings = (data.socialFilings || []).filter(x => x.id !== id);
+          save(true); draw();
+        });
       };
       $('#p-body').innerHTML = `
         ${due.length ? `<div class="panel" style="border-left:3px solid var(--${due.some(x => x.late) ? 'danger' : 'warning'})">
@@ -7222,7 +7290,13 @@
         bindSort(pPanel, key => { comptaState.pays.sort = toggleSort(comptaState.pays.sort, key, payCols); comptaState.pays.page = 1; draw(); });
         bindPager(pPanel, comptaState.pays, () => draw(), '#p-wrap');
       }
-      $$('[data-cert]').forEach(b => b.onclick = () => { const d = docById(b.dataset.cert); d.withholdingCertificate = true; save(true); draw(); toast('Attestation notée pour ' + d.number); });
+      // Même règle que « Marquer déposée » : la ligne quitte la liste des attestations manquantes,
+      // et le seul endroit où l'on peut décocher est la fiche de la facture. Le retour vient à nous.
+      $$('[data-cert]').forEach(b => b.onclick = () => {
+        const d = docById(b.dataset.cert);
+        d.withholdingCertificate = true; save(true); draw();
+        toastUndo('Attestation notée reçue pour ' + d.number, () => { d.withholdingCertificate = false; save(true); draw(); });
+      });
       const tag = tagOf();
       // Envoi au comptable : journal de la période en pièce jointe, message prérempli
       $('#exp-comptable').onclick = async () => {
@@ -7503,7 +7577,16 @@
         <div class="modal-actions"><button class="btn btn-ghost" id="ch-reset">Revenir aux comptes proposés</button>
           <button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ch-ok">Enregistrer</button></div>`,
         (layer, close) => {
-          $('#ch-reset', layer).onclick = () => { delete data.chartAccounts; save(); close(); toast('Comptes remis à la proposition de départ'); if (done) done(); };
+          // Ce bouton jette des numéros de compte que le cabinet a dictés un par un. Il ne s'exécute
+          // pas sur un clic : une fois la fenêtre fermée, plus rien ne les retrouve.
+          $('#ch-reset', layer).onclick = async () => {
+            const perso = Object.keys(data.chartAccounts || {}).length;
+            if (perso && !await confirmDialog(
+              `Remettre les ${perso} compte${perso > 1 ? 's' : ''} que tu as modifié${perso > 1 ? 's' : ''} à la proposition de départ ?\n\n`
+              + 'Les numéros que ton comptable t\'a donnés seront perdus : il n\'y a pas de retour en arrière une fois la fenêtre fermée.',
+              'Remettre la proposition', true)) return;
+            delete data.chartAccounts; save(); close(); toast('Comptes remis à la proposition de départ'); if (done) done();
+          };
           $('#ch-ok', layer).onclick = () => {
             const v = formValues($('#chf', layer));
             const out = {};
@@ -8321,8 +8404,11 @@
   // elle, masquer un module reviendrait à le supprimer pour quelqu'un qui ne connaît pas la palette.
   // Trois règles s'y voient à l'œil nu :
   //   — le cœur du métier ne se décoche pas (il n'a même pas de case) ;
-  //   — un module qui contient des données ne se décoche pas non plus, et l'écran DIT pourquoi ;
-  //   — décocher ne supprime rien : la phrase le dit avant, pas après.
+  //   — tout le reste se décoche ET se recoche, toujours : une case qui se change en cadenas sous le
+  //     doigt (ce qu'elle faisait jusqu'à la 7.12.0 dès que le module contenait une ligne) laissait
+  //     le module dans le menu sans plus aucun moyen de revenir en arrière ;
+  //   — décocher ne supprime rien : la phrase le dit avant, pas après, et masquer un module qui
+  //     contient quelque chose se confirme, en nommant ce qui reste atteignable.
   routes.modules = () => {
     const co = company();
     const choisis = Array.isArray(co.modules) ? co.modules.slice() : null;
@@ -8331,17 +8417,16 @@
         const n = C.moduleCount(data, m.id);
         const why = C.moduleWhy(data, m.id);
         const on = C.moduleOn(data, m.id);
-        const fige = m.toujours || (n > 0 && why === 'rempli');
         const pages = C.PAGES.filter(p => p.module === m.id && !p.horsMenu).map(p => p.titre).join(' · ');
+        const contenu = n ? `${n} élément${n > 1 ? 's' : ''} enregistré${n > 1 ? 's' : ''}.` : 'Rien d\'enregistré pour l\'instant.';
         const note = m.toujours ? 'Toujours affiché : c\'est le cœur du métier.'
-          : why === 'rempli' ? `Affiché parce qu'il contient ${n} élément${n > 1 ? 's' : ''} — on ne masque pas ce que tu as saisi.`
-          : why === 'tout' ? 'Affiché : aucun choix enregistré pour l\'instant.'
-          : n > 0 ? `${n} élément${n > 1 ? 's' : ''} enregistré${n > 1 ? 's' : ''}.`
-          : 'Rien d\'enregistré pour l\'instant.';
+          : why === 'tout' ? `Affiché : aucun choix enregistré pour l'instant. ${contenu}`
+          : why === 'masque' ? `Hors du menu. ${contenu}${n ? ' Rien n\'est supprimé.' : ''}`
+          : contenu;
         return `<div class="mod-row${on ? ' on' : ''}">
-          <label class="mod-check">${fige
-            ? `<span class="mod-lock" title="${h(note)}">${m.toujours ? '★' : '●'}</span>`
-            : `<input type="checkbox" data-mod="${h(m.id)}" ${on ? 'checked' : ''}>`}</label>
+          <label class="mod-check">${m.toujours
+            ? `<span class="mod-lock" title="${h(note)}">★</span>`
+            : `<input type="checkbox" data-mod="${h(m.id)}" data-n="${n}" ${on ? 'checked' : ''}>`}</label>
           <div class="mod-txt">
             <div class="mod-t">${h(m.label)}</div>
             <div class="small muted">${h(m.quoi)}</div>
@@ -8351,21 +8436,35 @@
         </div>`;
       }).join('');
       $('#mod-list').innerHTML = lignes;
-      $$('[data-mod]').forEach(cb => cb.onchange = () => {
+      $$('[data-mod]').forEach(cb => cb.onchange = async () => {
+        const id = cb.dataset.mod;
+        const n = Number(cb.dataset.n) || 0;
+        // Masquer un module qui contient quelque chose est un geste légitime — c'est son menu — mais
+        // il mérite une phrase : ce qu'il advient des données (rien), par où la page reste
+        // atteignable, et le fait qu'elle revienne d'elle-même le jour où il y enregistre autre
+        // chose. Sans elle, décocher « Achats » après trente factures fournisseur fait peur.
+        if (!cb.checked && n) {
+          const ok = await confirmDialog(
+            `Retirer « ${C.moduleById(id).label} » du menu ?\n\n`
+            + `Il contient ${n} élément${n > 1 ? 's' : ''} : rien n'est supprimé et aucun calcul ne change. `
+            + `Ses pages restent atteignables par la recherche (${MOD}+K) et par leur adresse, et le module revient tout seul `
+            + 'dans le menu le jour où tu y enregistres quelque chose de nouveau.',
+            'Retirer du menu', false);   // rien n'est détruit : le bouton n'a pas à être rouge
+          if (!ok) { cb.checked = true; return; }
+        }
         const liste = Array.isArray(company().modules) ? company().modules.slice() : C.MODULES.map(m => m.id);
-        const i = liste.indexOf(cb.dataset.mod);
-        if (cb.checked && i < 0) liste.push(cb.dataset.mod);
+        const i = liste.indexOf(id);
+        if (cb.checked && i < 0) liste.push(id);
         if (!cb.checked && i >= 0) liste.splice(i, 1);
         company().modules = liste;
         save();
-        const id = cb.dataset.mod;
         dessine();
         drawNav();
         // Le panneau se redessine (les explications changent au premier choix) : sans ce rappel, le
         // focus retombait sur le corps de la page et il fallait reprendre la souris à chaque case.
         const encore = $(`[data-mod="${id}"]`);
         if (encore) encore.focus();
-        toast(cb.checked ? 'Affiché dans le menu' : 'Retiré du menu — rien n\'est supprimé');
+        toast(cb.checked ? 'Affiché dans le menu' : 'Retiré du menu — rien n\'est supprimé, et la case reste là pour revenir en arrière');
       });
       $$('[data-open]').forEach(b => b.onclick = () => {
         const p = C.PAGES.find(x => x.module === b.dataset.open && !x.horsMenu);
@@ -8378,8 +8477,9 @@
       une liste de dix-neuf entrées dans le menu ne t'aide pas à trouver la bonne.</p>
       <div class="panel">
         <p class="small muted mb"><b>Retirer un module du menu ne supprime rien</b> et ne désactive aucun calcul :
-        ses pages restent atteignables par la recherche (${MOD}+K) et par leur adresse. Un module qui
-        contient quelque chose reste affiché quoi qu'il arrive — on ne cache jamais ton travail.</p>
+        ses pages restent atteignables par la recherche (${MOD}+K) et par leur adresse, et la case reste
+        là pour le remettre. Un module que tu as masqué <b>revient tout seul</b> le jour où tu y
+        enregistres quelque chose — on ne cache jamais ton travail.</p>
         <div id="mod-list"></div>
       </div>`;
     dessine();

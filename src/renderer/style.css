@@ -163,8 +163,13 @@ body.dark .demo-banner .btn { background: #4a3c20; color: #f5d9a0; border-color:
 .lock-banner b { font-weight: 800; }
 .lock-banner .lock-go { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
 .lock-banner .lock-go .small { color: var(--muted); cursor: help; }
-.lock-banner .btn { background: #fff; }
-body.dark .lock-banner .btn { background: rgba(255,255,255,.08); }
+/* Le fond blanc n'est là que pour le bouton NEUTRE : sur un bandeau teinté, un `.btn` gris paraît
+   sale. Un bouton qui porte déjà sa couleur (primaire, danger) doit en être exclu — sinon on lui
+   repeint le fond en blanc en lui laissant son texte blanc, et il devient un rectangle vide.
+   C'est ce qui est arrivé à « Corriger par un avoir… » : mesuré dans l'application, 155 × 32 px de
+   blanc sur blanc, la seule sortie offerte par le bandeau d'une facture émise. */
+.lock-banner .btn:not(.btn-primary):not(.btn-danger) { background: #fff; }
+body.dark .lock-banner .btn:not(.btn-primary):not(.btn-danger) { background: rgba(255,255,255,.08); }
 
 /* Le champ que la validation vient de refuser (7.0.0) : on l'amène à l'écran, on y met le curseur,
    et on le marque — le message seul obligeait à relire tout le formulaire pour trouver lequel. */
@@ -336,6 +341,14 @@ table.lines-edit .total { text-align: right; padding-top: 12px; font-weight: 600
 #toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%) translateY(6px); background: var(--text); color: #fff; padding: 11px 18px; border-radius: 12px; font-size: 13px; font-weight: 500; opacity: 0; transition: opacity .18s, transform .18s; pointer-events: none; z-index: 950; box-shadow: 0 10px 30px rgba(20,40,60,.25); }
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 #toast.error { background: var(--danger); }
+/* Le bandeau qui porte un « Annuler » (7.12.0). Il doit recevoir les clics : le reste du temps
+   `#toast` est en `pointer-events: none`, et un bouton posé dedans serait parfaitement visible et
+   parfaitement inerte — le défaut le plus difficile à croire qu'on ait rencontré (voir 5.2.2). */
+#toast.avec-bouton { pointer-events: auto; display: flex; align-items: center; gap: 16px; }
+.toast-undo { background: transparent; border: 1px solid rgba(255,255,255,.45); color: #fff; font: inherit; font-weight: 700; padding: 4px 12px; border-radius: 8px; cursor: pointer; }
+.toast-undo:hover { background: rgba(255,255,255,.14); }
+body.dark .toast-undo { border-color: rgba(18,22,28,.35); color: #12161c; }
+body.dark .toast-undo:hover { background: rgba(18,22,28,.1); }
 
 .muted { color: var(--muted); }
 .small { font-size: 12px; }
@@ -416,7 +429,7 @@ body.dark .collapse-h .count { background: #1f2731; }
 nav a.active .nav-count { background: #fff; }
 .banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--warning-soft); color: var(--warning); border-radius: var(--radius); padding: 12px 18px; margin-bottom: 16px; font-weight: 600; }
 .banner.info { background: var(--info-soft); color: var(--info); }
-.banner .btn { background: #fff; }
+.banner .btn:not(.btn-primary):not(.btn-danger) { background: #fff; }
 .level { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 700; background: var(--ink-soft); color: var(--muted); }
 .level.l2 { background: var(--warning-soft); color: var(--warning); }
 .level.l3 { background: var(--danger-soft); color: var(--danger); }
@@ -554,7 +567,8 @@ body.dark .preview iframe { background: #0e1217; }
 body.dark .totals-box table td { color: #c9d2dd; }
 body.dark .modal { background: var(--panel); }
 body.dark .palette input { background: var(--panel); color: var(--text); }
-body.dark .banner .btn, body.dark .banner.info .btn { background: var(--panel); color: var(--text); }
+body.dark .banner .btn:not(.btn-primary):not(.btn-danger),
+body.dark .banner.info .btn:not(.btn-primary):not(.btn-danger) { background: var(--panel); color: var(--text); }
 body.dark .logo-preview, body.dark .stamp-preview { background: #fff; }
 body.dark #toast { background: #e6eaf0; color: #12161c; }
 body.dark #toast.error { background: var(--danger); color: #fff; }

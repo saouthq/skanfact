@@ -352,6 +352,8 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:argent` | **où tombe l'argent** : deux comptes, un règlement en espèces qui va dans la caisse et pas à la banque, un paiement qu'on corrige, et le mois vide que le Cabinet ne déclare plus complet |
 | `npm run e2e:captures` | photographie les 20 pages, leurs onglets et quatre gestes, en vierge et en démo, à 1440 et 1280 |
 | `npm run e2e:gel` | le chien de garde : l'interface est VRAIMENT gelée, et le journal nomme la fonction coupable |
+| `npm run e2e:contraste` | **aucun bouton illisible** : le contraste texte/fond de chaque bouton visible des 21 pages, en clair et en sombre |
+| `npm run e2e:erreur` | **le droit à l'erreur** : une case de module se décoche ET se recoche, un module masqué revient quand on y écrit, et « Marquer déposée » se défait |
 
 Ils ont longtemps vécu dans un dossier de travail temporaire, effacé à chaque session : il fallait les réécrire de mémoire, et ils dérivaient (une assertion restée sur une version périmée, un écran neuf jamais parcouru). **Un test qu'on doit réécrire pour s'en servir n'est pas un test.** Le harnais (`test/e2e/harnais.js`) trouve Playwright où il est, lit la version dans `package.json` au lieu de l'écrire en dur, et range les captures dans `dist-e2e/` (ignoré par Git).
 
@@ -403,11 +405,11 @@ Règles apprises, à ne pas recasser :
   tant qu'on ne fait pas défiler. Pendant ce temps, « Exporter les données » et « Importer », dont un
   débutant n'a aucun besoin, occupaient le pied toujours visible. Paramètres et Aide y vivent
   désormais ; `npm run e2e:barre` le mesure sur quatre tailles.
-- **On ne masque jamais ce que quelqu'un a saisi.** Un module retiré du menu qui contient ne serait-ce
-  qu'une ligne réapparaît tout seul et ne se laisse plus décocher — et l'écran DIT pourquoi. Le
-  filtrage du menu n'est acceptable que parce que la palette liste tout, que l'adresse fonctionne, et
-  qu'une page « Tous les modules » existe : un test vérifie les trois. Sans réglage enregistré
-  (`company.modules` absent), **tout s'affiche** : une mise à jour ne fait disparaître aucune page.
+- **On ne masque jamais ce que quelqu'un a saisi** — mais un filet ne doit pas devenir un piège
+  (corrigé en 7.12.0, voir plus bas). Le filtrage du menu n'est acceptable que parce que la palette
+  liste tout, que l'adresse fonctionne, et qu'une page « Tous les modules » existe : un test vérifie
+  les trois. Sans réglage enregistré (`company.modules` absent), **tout s'affiche** : une mise à jour
+  ne fait disparaître aucune page.
 - **Un bouton qui ne répond pas est pire qu'un bouton absent.** `todoList` produisait 22 sortes de
   lignes, `TODO_ACTIONS` en armait 9, et `bindTodo` faisait `if (a) a.run()` : treize boutons « Voir »
   avalaient le clic en silence. On croit avoir mal cliqué, on recommence, on doute de soi, puis du
@@ -597,6 +599,50 @@ Trois constats graves sur le terrain même que la 7.0.0 croyait avoir traité. R
   `evaluate` sans jamais enregistrer : la sauvegarde ne contenait donc pas la société, la sortie la
   rendait vide, et l'assertion « le nom reste » passait sur une chaîne vide. Écrit par le vrai
   formulaire, il prouve enfin ce qu'il annonce.
+
+## 7.12.0 — Le droit à l'erreur
+
+Skander a ouvert l'application et a trouvé trois défauts en une minute : « y'a un bouton tout
+blanc », « quand je décoche un module ça disparaît pas du menu et je peux pas le recocher », « quand
+on fait une action en se trompant on ne peut pas revenir en arrière, comme marquer déposé ».
+
+Règles apprises, à ne pas recasser :
+
+- **Une règle CSS qui repeint un fond sans toucher à la couleur du texte doit exclure les boutons
+  qui portent déjà la leur.** `.banner .btn { background: #fff }` existe pour que le bouton NEUTRE
+  ne paraisse pas sale sur un bandeau teinté ; elle repeignait aussi `.btn-primary`, qui garde son
+  texte blanc. Résultat : « Corriger par un avoir… », la seule sortie du bandeau d'une facture
+  émise, était un rectangle blanc sur blanc. Rien ne plante, rien n'apparaît en console, et relire
+  le CSS ne suffit pas — c'est une question de spécificité entre deux règles séparées de 250 lignes.
+  D'où `npm run e2e:contraste` : il mesure le contraste texte/fond de **chaque bouton visible** des
+  21 pages, en clair et en sombre (536 boutons), et refuse tout ce qui est illisible. Seuil très bas
+  (2,0) exprès : il ne juge pas l'esthétique, il attrape ce qu'on ne peut pas lire du tout.
+- **Un filet qui se recalcule à chaque affichage devient un piège.** Un module qui CONTENAIT quelque
+  chose se rallumait tout seul : décocher sa case la transformait en cadenas sous le doigt, sans
+  rien changer au menu. **Le choix enregistré fait foi** ; ce que la règle protégeait vraiment est
+  repris par `modulesRevenus(data, comptesAvant)` — un module masqué revient le jour où on y
+  ENREGISTRE quelque chose, et l'application le dit. La différence entre un filet et un piège, c'est
+  qu'un filet est un **événement** (les compteurs ont bougé), pas un **état** (il est plein).
+- **Un réglage qui accepte un clic, ne fait rien de visible, et se retire ensuite la possibilité de
+  revenir en arrière est pire que pas de réglage du tout.** C'est le symptôme à reconnaître : « je
+  clique, rien ne change, et maintenant le bouton n'est plus là ».
+- **La règle du droit à l'erreur n'est pas « tout confirmer »** : dix questions par jour ne se lisent
+  plus, on clique « Oui » sans voir. C'est : ce qui **détruit** demande (le plan de comptes remis à
+  zéro, une volée de brouillons) ; ce qui **se répare** laisse un « Annuler » sous la main
+  (`toastUndo`), parce qu'au moment où on comprend son erreur, la ligne a déjà quitté l'écran d'où
+  on l'a cliquée — « Marquer déposée », « Attestation reçue », suspendre/reprendre un contrat.
+- **Le bandeau qui porte « Annuler » doit recevoir les clics.** `#toast` vit en
+  `pointer-events: none` : sans la levée explicite, le bouton est parfaitement visible et
+  parfaitement inerte (le défaut de la 5.2.2, en plus sournois puisqu'il ne concerne qu'un bouton).
+  Et il dure trois fois plus longtemps qu'un message ordinaire : comprendre qu'on s'est trompé prend
+  quelques secondes. Un test vérifie les deux.
+- **Un test e2e écrit contre une règle décrit cette règle, pas la vérité.** `barre-laterale.js`
+  affirmait « un module rempli ne doit pas offrir de case à décocher » : il gardait le piège en
+  place. Quand une règle change, c'est le test qui se relit en premier.
+
+Le test qui compte est `npm run e2e:erreur` : il refait les trois gestes dans l'application réelle
+(décocher/recocher un module vide, masquer un module plein avec sa question, remplir un module masqué
+pour le voir revenir, et noter une déclaration déposée puis l'annuler).
 
 ## Pistes pour la suite (non demandées)
 

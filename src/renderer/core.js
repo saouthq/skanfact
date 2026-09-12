@@ -292,8 +292,20 @@
     try { return Number(m.compte(data || {})) || 0; } catch (_) { return 0; }
   }
 
-  // Un module est actif s'il est choisi OU s'il contient quelque chose. Le second terme n'est jamais
-  // stocké : il se recalcule, pour qu'un module rempli ne puisse pas être masqué par un réglage.
+  // Un module est actif s'il est choisi. C'est le choix enregistré qui fait foi, et rien d'autre.
+  //
+  // Jusqu'à la 7.12.0, un module qui CONTENAIT quelque chose s'allumait aussi tout seul, au nom de
+  // « on ne masque jamais ce que quelqu'un a saisi ». L'intention était juste, la mécanique était un
+  // piège : sur la page « Tous les modules », décocher une case retirait le module de la liste, puis
+  // le re-calcul le rallumait aussitôt (il est plein), la ligne se redessinait en cadenas — et la
+  // case à cocher disparaissait sous le doigt. Le module restait donc dans le menu ET ne pouvait
+  // plus être recoché. Un réglage qui accepte un clic, ne fait rien de visible, et se retire ensuite
+  // la possibilité de revenir en arrière est pire que pas de réglage du tout.
+  //
+  // Ce que la règle protégeait vraiment — « je masque Stock, je commence à m'en servir ailleurs, et
+  // la page a disparu » — est repris par `modulesRevenus` : un module masqué dans lequel on vient
+  // d'enregistrer quelque chose revient dans le menu, et l'application le DIT. C'est un événement,
+  // pas un état : c'est ce qui fait la différence entre un filet et un piège.
   function moduleOn(data, id) {
     const m = moduleById(id);
     if (!m) return false;
@@ -301,19 +313,35 @@
     const choisis = ((data || {}).company || {}).modules;
     // Absent = toute l'application, comme avant : une installation existante ne perd rien.
     if (!Array.isArray(choisis)) return true;
-    if (choisis.includes(id)) return true;
-    return moduleCount(data, id) > 0;
+    return choisis.includes(id);
   }
 
-  // Pourquoi ce module est visible : 'coeur', 'choisi', 'rempli' ou 'tout' (aucun choix enregistré).
+  // Pourquoi ce module est visible — ou ne l'est pas : 'coeur', 'choisi', 'tout' (aucun choix
+  // enregistré) ou 'masque'.
   function moduleWhy(data, id) {
     const m = moduleById(id);
     if (!m) return '';
     if (m.toujours) return 'coeur';
     const choisis = ((data || {}).company || {}).modules;
     if (!Array.isArray(choisis)) return 'tout';
-    if (choisis.includes(id)) return 'choisi';
-    return moduleCount(data, id) > 0 ? 'rempli' : '';
+    return choisis.includes(id) ? 'choisi' : 'masque';
+  }
+
+  // Les compteurs de tous les modules, pour servir de référence au prochain enregistrement.
+  function moduleCounts(data) {
+    const o = {};
+    MODULES.forEach(m => { o[m.id] = moduleCount(data, m.id); });
+    return o;
+  }
+
+  // Les modules masqués dans lesquels quelque chose vient d'être enregistré. On compare aux
+  // compteurs de référence (ceux du dernier enregistrement) : masquer un module plein ne le rallume
+  // donc pas, alors qu'y ajouter une ligne le ramène.
+  function modulesRevenus(data, avant) {
+    const choisis = ((data || {}).company || {}).modules;
+    if (!Array.isArray(choisis)) return [];
+    return MODULES.filter(m => !m.toujours && !choisis.includes(m.id)
+      && moduleCount(data, m.id) > (Number((avant || {})[m.id]) || 0)).map(m => m.id);
   }
 
   // Les pages de la barre latérale, dans l'ordre, groupées par module. `pied` sort du compte : ces
@@ -4856,7 +4884,7 @@
     purchaseTotals, purchaseBalance, purchaseStatus, payablesList, purchaseJournal, purchaseSummary, supplierSummary, withholdingsToIssue, supplierPayments,
     periodBounds, issuedIn, salesTotals, revenueByMonth, topItems, clientMovement, AGING_BUCKETS, agedReceivables, payerRanking, quoteFunnel, objectiveProgress,
     amountToWords, intToWords, intToWordsEn, documentHtml, fitToPage, pageCount,
-    MODULES, PAGES, moduleById, pageById, pageTitle, moduleCount, moduleOn, moduleWhy, navPages,
+    MODULES, PAGES, moduleById, pageById, pageTitle, moduleCount, moduleCounts, modulesRevenus, moduleOn, moduleWhy, navPages,
     MODULES_PAR_ACTIVITE, modulesSuggeres, wipeData, rendreLesEmprunts, estDemo, firstSteps, liste, defaultVat, newLine
   };
 });

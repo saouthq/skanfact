@@ -188,13 +188,18 @@ const ECRANS = [[1680, 1050], [1440, 900], [1366, 768], [1280, 800]];
   }
   j.ok('un salarié suffit à faire revenir « Paie » au menu');
 
-  // Et il ne se laisse plus décocher : la case cède la place à une explication.
+  // Et sa case est toujours là (7.12.0). Jusque-là elle cédait la place à un cadenas, ce qui voulait
+  // dire : le module reste dans le menu ET on ne peut plus le décocher. Une case qui se retire au
+  // moment où on s'en sert est pire que pas de case — c'est ce que Skander a rencontré en ouvrant
+  // l'application (« ça disparaît pas du menu et je peux pas le recocher »).
   await win.evaluate(() => { location.hash = '#/modules'; });
   await win.waitForSelector('#mod-list');
-  if (await win.$('#mod-list input[data-mod="paie"]')) throw new Error('un module rempli ne doit pas offrir de case à décocher');
-  const ligne = await win.textContent('#mod-list');
-  if (!/on ne masque pas ce que tu as saisi/.test(ligne)) throw new Error('l\'écran doit DIRE pourquoi le module est figé');
-  j.ok('la case a cédé la place à la raison');
+  const casePaie = await win.$('#mod-list input[data-mod="paie"]');
+  if (!casePaie) throw new Error('la case « Paie » a disparu : on ne peut plus revenir en arrière');
+  if (!await casePaie.isChecked()) throw new Error('le module est revenu au menu sans que sa case le dise');
+  const ecran = await win.textContent('#view');
+  if (!/revient tout seul/.test(ecran)) throw new Error('l\'écran doit DIRE ce qui ramène un module masqué');
+  j.ok('la case est là, cochée, et l\'écran dit ce qui ramène un module');
 
   if (bac.length) { console.error('\nERREURS JS :\n' + bac.join('\n')); process.exit(1); }
   await app.close();
