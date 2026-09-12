@@ -7,6 +7,20 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 6.2.0 — 12/09/2026
+
+**Appairer ton cabinet : plus de mot de passe à transmettre.**
+
+Un mot de passe partagé a deux défauts : il se transmet, donc il finit par fuiter ; et c'est le même pour tous les clients d'un cabinet. Désormais, ton comptable te remet **un fichier d'appairage** contenant sa clé publique. Tu l'importes une fois dans **Paramètres → Cabinet comptable**, et chaque paquet mensuel est chiffré **pour lui seul**.
+
+- **Rien à retenir, rien à échanger.** Le fichier d'appairage ne contient rien de secret : une clé publique ne permet que de chiffrer à destination de quelqu'un, jamais de lire ce qu'il reçoit. Même volé, il ne donne accès à aucun paquet.
+- **Une empreinte de vingt caractères** à vérifier de vive voix la première fois. C'est la seule façon d'être sûr que la clé reçue est bien celle de ton comptable, et pas celle de quelqu'un qui se serait glissé entre vous.
+- **Une clé de chiffrement différente à chaque paquet** : deux envois du même mois ne produisent jamais deux fichiers identiques.
+- **L'entête reste lisible sans déchiffrer** — ton nom, le mois, le cabinet destinataire — pour qu'un paquet mal rangé reste identifiable.
+- Le mot de passe reste disponible pour les comptables qui n'utilisent pas encore SkanFact Cabinet.
+
+*Technique : X25519 pour l'échange de clés, HKDF-SHA256 pour la dérivation, AES-256-GCM pour le contenu. Aucune bibliothèque ajoutée.*
+
 ## 6.1.0 — 12/09/2026
 
 **Le mois de ton comptable, en un fichier.**

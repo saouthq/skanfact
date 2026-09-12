@@ -2677,6 +2677,39 @@ t('paquet : la page de garde dit le mois, l\'état et ce qui manque', () => {
 });
 
 
+t('paquet adressé à un cabinet : lui seul l\'ouvre, sans mot de passe échangé', () => {
+  const cab = zipmod.generateCabinetKeys();
+  const autre = zipmod.generateCabinetKeys();
+  const zip = zipmod.zipBuffer([{ name: 'j.csv', data: 'date;montant\n2026-08-01;1000' }], { date: new Date(Date.UTC(2026, 8, 12)) });
+
+  // l'empreinte est stable et se lit au téléphone : cinq groupes de quatre
+  const fp = zipmod.keyFingerprint(cab.publicKey);
+  assert.match(fp, /^[0-9A-F]{4}(-[0-9A-F]{4}){4}$/);
+  assert.strictEqual(zipmod.keyFingerprint(cab.publicKey), fp, 'stable');
+  assert.notStrictEqual(zipmod.keyFingerprint(autre.publicKey), fp, 'deux cabinets, deux empreintes');
+
+  const p1 = zipmod.sealForCabinet(zip, cab.publicKey, { entreprise: 'Ébénisterie', periode: '2026-08', definitif: true });
+  const p2 = zipmod.sealForCabinet(zip, cab.publicKey, { entreprise: 'Ébénisterie', periode: '2026-08', definitif: true });
+  assert.ok(!p1.equals(p2), 'clé éphémère par paquet : deux envois identiques ne donnent pas deux fichiers identiques');
+  assert.ok(!p1.includes(Buffer.from('date;montant')), 'rien en clair');
+
+  // l'entête reste lisible sans aucune clé : un paquet mal rangé doit rester identifiable
+  const head = zipmod.cabinetHeader(p1);
+  assert.strictEqual(head.entreprise, 'Ébénisterie');
+  assert.strictEqual(head.periode, '2026-08');
+  assert.strictEqual(head.destinataire, fp, 'l\'entête dit à quel cabinet le paquet s\'adresse');
+  assert.strictEqual(head.alg, 'x25519+aes-256-gcm');
+
+  assert.ok(zipmod.openWithCabinetKey(p1, cab.privateKey).equals(zip), 'le bon cabinet ouvre');
+  assert.throws(() => zipmod.openWithCabinetKey(p1, autre.privateKey), /pas destiné à ce cabinet/, 'un autre cabinet, non');
+  const falsifie = Buffer.from(p1); falsifie[falsifie.length - 2] ^= 1;
+  assert.throws(() => zipmod.openWithCabinetKey(falsifie, cab.privateKey), /modifié|pas destiné/);
+  assert.ok(!zipmod.isSealedForCabinet(zip) && zipmod.isSealedForCabinet(p1));
+  // les deux formes de scellement ne se confondent pas
+  assert.throws(() => zipmod.openBuffer(p1, 'x'), /n'est pas un paquet scellé/);
+});
+
+
 // ---------- clôture de période (6.0.0) ----------
 // Sans clôture, une pièce saisie aujourd'hui change la TVA d'un mois déjà déclaré, en silence.
 // Ces tests sont purs : ils vérifient la règle, pas l'interface qui l'applique.

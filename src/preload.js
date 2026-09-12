@@ -46,6 +46,7 @@ contextBridge.exposeInMainWorld('skanfact', {
   openPath: (p) => ipcRenderer.invoke('shell:open', p),
   showInFolder: (p) => ipcRenderer.invoke('shell:showInFolder', p),
   buildPack: (payload) => ipcRenderer.invoke('pack:build', payload),
+  importCabinet: () => ipcRenderer.invoke('cabinet:import'),
   onPackProgress: (cb) => { ipcRenderer.on('pack:progress', (_e, d) => cb(d)); },
   changelog: () => ipcRenderer.invoke('app:changelog'),
   onMenuAction: (cb) => { ipcRenderer.on('menu:action', (_e, name) => cb(name)); },

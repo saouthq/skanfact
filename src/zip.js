@@ -224,4 +224,89 @@ function openBuffer(buf, password) {
   catch { throw new Error('Mot de passe incorrect, ou paquet modifié depuis son envoi.'); }
 }
 
-module.exports = { zipBuffer, zipRead, crc32, sha256, dosDateTime, sealBuffer, openBuffer, sealHeader, isSealed };
+// ---------- sceller pour un cabinet précis (6.2.0) ----------
+// Le mot de passe partagé a deux défauts : il se transmet (donc il fuite), et il est le même pour
+// tous les clients d'un cabinet. Ici chaque cabinet a une paire de clés ; l'entreprise ne connaît
+// que la clé PUBLIQUE, et un paquet chiffré pour elle n'est lisible que par le cabinet. Rien à
+// transmettre, rien à retenir, et une clé volée chez un client n'ouvre aucun paquet.
+//
+// X25519 pour l'échange (une clé éphémère par paquet, donc deux paquets identiques donnent deux
+// fichiers différents), HKDF-SHA256 pour dériver la clé, AES-256-GCM pour le contenu.
+const SEALBOX_MAGIC = 'SKANPACKX1';
+const HKDF_INFO = Buffer.from('skanpack-v1');
+
+function generateCabinetKeys() {
+  const kp = crypto.generateKeyPairSync('x25519');
+  return {
+    publicKey: kp.publicKey.export({ type: 'spki', format: 'der' }).toString('base64'),
+    privateKey: kp.privateKey.export({ type: 'pkcs8', format: 'der' }).toString('base64')
+  };
+}
+
+// L'empreinte que le comptable lit à voix haute au téléphone pour que son client vérifie qu'il a bien
+// SA clé, et pas celle d'un imposteur. Vingt caractères en cinq groupes : assez court pour être dicté,
+// assez long pour qu'on ne puisse pas en fabriquer une identique.
+function keyFingerprint(publicKeyB64) {
+  const hex = sha256(Buffer.from(String(publicKeyB64 || ''), 'base64')).toUpperCase();
+  return (hex.slice(0, 20).match(/.{4}/g) || []).join('-');
+}
+
+function publicKeyFrom(b64) {
+  return crypto.createPublicKey({ key: Buffer.from(b64, 'base64'), type: 'spki', format: 'der' });
+}
+function privateKeyFrom(b64) {
+  return crypto.createPrivateKey({ key: Buffer.from(b64, 'base64'), type: 'pkcs8', format: 'der' });
+}
+function deriveShared(privateKey, publicKey, salt) {
+  const secret = crypto.diffieHellman({ privateKey, publicKey });
+  return Buffer.from(crypto.hkdfSync('sha256', secret, salt, HKDF_INFO, 32));
+}
+
+function sealForCabinet(buf, cabinetPublicKeyB64, headerExtra) {
+  const eph = crypto.generateKeyPairSync('x25519');
+  const salt = crypto.randomBytes(16);
+  const key = deriveShared(eph.privateKey, publicKeyFrom(cabinetPublicKeyB64), salt);
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const body = Buffer.concat([cipher.update(buf), cipher.final()]);
+  const head = Buffer.from(JSON.stringify({
+    alg: 'x25519+aes-256-gcm', kdf: 'hkdf-sha256',
+    ephemeral: eph.publicKey.export({ type: 'spki', format: 'der' }).toString('base64'),
+    destinataire: keyFingerprint(cabinetPublicKeyB64),
+    salt: salt.toString('base64'), iv: iv.toString('base64'),
+    tag: cipher.getAuthTag().toString('base64'),
+    ...(headerExtra || {})
+  }), 'utf8');
+  return Buffer.concat([Buffer.from(SEALBOX_MAGIC + '\n', 'utf8'), head, Buffer.from('\n', 'utf8'), body]);
+}
+
+function isSealedForCabinet(buf) {
+  return Buffer.isBuffer(buf) && buf.length > SEALBOX_MAGIC.length && buf.toString('utf8', 0, SEALBOX_MAGIC.length) === SEALBOX_MAGIC;
+}
+
+function cabinetHeader(buf) {
+  if (!isSealedForCabinet(buf)) return null;
+  const start = SEALBOX_MAGIC.length + 1;
+  const end = buf.indexOf(0x0A, start);
+  if (end < 0) throw new Error('Paquet illisible : entête tronquée.');
+  try { return JSON.parse(buf.toString('utf8', start, end)); }
+  catch { throw new Error('Paquet illisible : entête abîmée.'); }
+}
+
+function openWithCabinetKey(buf, cabinetPrivateKeyB64) {
+  const head = cabinetHeader(buf);
+  if (!head) throw new Error('Ce fichier n\'est pas un paquet adressé à un cabinet.');
+  const end = buf.indexOf(0x0A, SEALBOX_MAGIC.length + 1);
+  const body = buf.subarray(end + 1);
+  const key = deriveShared(privateKeyFrom(cabinetPrivateKeyB64), publicKeyFrom(head.ephemeral), Buffer.from(head.salt, 'base64'));
+  const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(head.iv, 'base64'));
+  decipher.setAuthTag(Buffer.from(head.tag, 'base64'));
+  try { return Buffer.concat([decipher.update(body), decipher.final()]); }
+  catch { throw new Error('Ce paquet n\'est pas destiné à ce cabinet, ou il a été modifié depuis son envoi.'); }
+}
+
+module.exports = {
+  zipBuffer, zipRead, crc32, sha256, dosDateTime,
+  sealBuffer, openBuffer, sealHeader, isSealed,
+  generateCabinetKeys, keyFingerprint, sealForCabinet, openWithCabinetKey, cabinetHeader, isSealedForCabinet
+};

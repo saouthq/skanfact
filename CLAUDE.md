@@ -175,6 +175,16 @@ Règles apprises :
 - Un JPEG ou un PDF ne se recompresse pas : deflate les rallonge. `ALREADY_COMPRESSED` les passe en mode « stocké ».
 - Le workflow de conception à trois approches a **échoué** (schéma de sortie à neuf champs obligatoires : les agents n'ont jamais produit de sortie valide en cinq essais). Leçon : un schéma structuré doit rester court, ou la conception se fait à la main.
 
+## 6.2.0 — L'appairage du cabinet
+
+`company.cabinet = { name, email, publicKey, fingerprint, pairedAt }`. Dans zip.js : `generateCabinetKeys` (X25519), `keyFingerprint` (SHA-256 de la clé, cinq groupes de quatre — assez court pour être dicté au téléphone), `sealForCabinet` / `openWithCabinetKey` / `cabinetHeader`. Dans main.js : `cabinet:import` lit un `.skanpair` et **recalcule l'empreinte** au lieu de croire celle du fichier. Onglet **Paramètres → Cabinet comptable**.
+
+Règles apprises :
+- **Une clé publique ne se protège pas, elle se vérifie.** Le fichier d'appairage ne contient rien de secret ; le seul risque est qu'il vienne d'un imposteur, d'où l'empreinte à lire de vive voix. `cabinet:import` refuse un fichier dont l'empreinte annoncée ne correspond pas à la clé qu'il contient.
+- **Une clé éphémère par paquet** : deux envois du même mois ne donnent jamais deux fichiers identiques, et compromettre un paquet ne compromet pas les autres.
+- L'entête reste en clair (entreprise, mois, empreinte du destinataire) : un paquet mal rangé doit rester identifiable sans clé.
+- Trois niveaux dans `pack:build`, dans cet ordre : cabinet appairé → mot de passe → rien. Quand un cabinet est appairé, le champ mot de passe **disparaît** de l'écran plutôt que de rester là à ne servir à rien.
+
 ## Règle apprise en 5.2.3 : les dates et le fuseau horaire
 
 **La machine de test est en UTC ; l'utilisateur est à Tunis (UTC+1).** `addDays` construisait la date en heure locale (`new Date(iso + 'T00:00:00')`) et la relisait en UTC (`toISOString()`) : à minuit à Tunis il est 23 h la veille en UTC, donc `addDays(d, 1)` renvoyait `d`. Depuis toujours, une échéance à 30 jours tombait un jour trop tôt chez lui ; depuis la 5.1.0, la boucle jour par jour de `workingDays` ne finissait jamais et l'app entière gelait au chargement de la démo (qui contient des congés). Sur la machine en UTC, **rien ne se voyait** : quatre reproductions différentes, tous les chronométrages, la vraie 5.1.0 dans Electron — tout passait. C'est le bisect fait à la main par Skander (3.4 → 4.2 → 5.0 ok, 5.1 gèle) qui a désigné `workingDays`, et la question « qu'est-ce qui diffère entre sa machine et la mienne ? » qui a donné le fuseau.

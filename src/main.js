@@ -4,7 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
 const { createStorage } = require('./storage');
-const { zipBuffer, sha256, sealBuffer } = require('./zip');
+const { zipBuffer, sha256, sealBuffer, sealForCabinet, keyFingerprint } = require('./zip');
 
 // Identifiants de l'app. Ne PAS les lire dans package.json au démarrage : electron-builder
 // retire la section « build » du package.json empaqueté (l'app installée n'a plus build.publish).
@@ -723,11 +723,33 @@ async function renderPdf(html, win) {
 }
 const pdfWindow = () => new BrowserWindow({ show: false, webPreferences: { sandbox: true, contextIsolation: true } });
 
+// Import du fichier d'appairage remis par le cabinet (6.2.0). On ne stocke QUE sa clé publique :
+// elle ne permet que de chiffrer POUR lui, jamais de lire ce qu'il reçoit. Rien de secret ici.
+ipcMain.handle('cabinet:import', async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+    title: 'Fichier d\'appairage du cabinet',
+    filters: [{ name: 'Appairage SkanFact', extensions: ['skanpair', 'json'] }],
+    properties: ['openFile']
+  });
+  if (canceled || !filePaths || !filePaths[0]) return null;
+  let j;
+  try { j = JSON.parse(fs.readFileSync(filePaths[0], 'utf8')); }
+  catch { throw new Error('Ce fichier n\'est pas lisible.'); }
+  if (!j || j.kind !== 'cabinet' || !j.publicKey) throw new Error('Ce fichier n\'est pas un appairage de cabinet.');
+  let fingerprint;
+  try { fingerprint = keyFingerprint(j.publicKey); }
+  catch { throw new Error('La clé de ce cabinet est illisible.'); }
+  // L'empreinte annoncée dans le fichier doit correspondre à la clé qu'il contient : sinon quelqu'un
+  // a changé l'une des deux, et c'est exactement ce qu'un imposteur ferait.
+  if (j.fingerprint && j.fingerprint !== fingerprint) throw new Error('Fichier incohérent : l\'empreinte ne correspond pas à la clé.');
+  return { name: String(j.name || ''), email: String(j.email || ''), publicKey: String(j.publicKey), fingerprint, pairedAt: new Date().toISOString() };
+});
+
 // ---------- le paquet mensuel pour le cabinet (6.1.0) ----------
 // Le renderer décide de CE QUE contient le paquet (core.packPlan, testable sans Electron) et fournit
 // le HTML des pièces à rendre. Ici on ne fait qu'exécuter : produire les octets, empreinter, zipper,
 // sceller, écrire. Cette séparation permet de tester tout le contenu du paquet sans lancer Electron.
-ipcMain.handle('pack:build', async (_e, { plan, coverHtml, password, suggestedName } = {}) => {
+ipcMain.handle('pack:build', async (_e, { plan, coverHtml, password, cabinetKey, suggestedName } = {}) => {
   if (!plan || !Array.isArray(plan.entries)) throw new Error('Plan de paquet invalide.');
   const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
     title: 'Enregistrer le paquet pour le cabinet',
@@ -780,19 +802,23 @@ ipcMain.handle('pack:build', async (_e, { plan, coverHtml, password, suggestedNa
     step('Manifeste');
 
     const zip = zipBuffer(files, { date: new Date() });
-    const out = password
-      ? sealBuffer(zip, password, {
-          entreprise: manifest.entreprise.nom, matricule: manifest.entreprise.matricule,
-          periode: manifest.periode.mois, definitif: manifest.definitif, format: manifest.format
-        })
-      : zip;
+    // Trois niveaux, dans cet ordre de préférence : chiffré pour le cabinet appairé (rien à
+    // transmettre), à défaut un mot de passe, à défaut rien du tout.
+    const entete = {
+      entreprise: manifest.entreprise.nom, matricule: manifest.entreprise.matricule,
+      periode: manifest.periode.mois, definitif: manifest.definitif, format: manifest.format
+    };
+    const out = cabinetKey ? sealForCabinet(zip, cabinetKey, entete)
+      : password ? sealBuffer(zip, password, entete)
+        : zip;
     // Écriture atomique : un paquet à moitié écrit, envoyé par erreur, serait pire que pas de paquet.
     const tmp = filePath + '.tmp';
     fs.writeFileSync(tmp, out);
     fs.renameSync(tmp, filePath);
     return {
       path: filePath, octets: out.length, fichiers: files.length,
-      chiffre: !!password, absents: missing, empreinte: sha256(manifestBuf)
+      chiffre: !!(password || cabinetKey), pourCabinet: cabinetKey ? keyFingerprint(cabinetKey) : null,
+      absents: missing, empreinte: sha256(manifestBuf)
     };
   } finally {
     win.destroy();

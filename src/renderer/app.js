@@ -6573,6 +6573,7 @@
       if (!cabinetState.month) cabinetState.month = months[0];
       const per = C.packPeriod(Number(cabinetState.month.slice(0, 4)), Number(cabinetState.month.slice(5, 7)));
       const plan = C.packPlan(data, co, per, { device: deviceLabel() });
+      const paired = co.cabinet && co.cabinet.publicKey ? co.cabinet : null;
       const sent = (data.packs || []).filter(x => x.month === per.month).sort((a, b) => (b.at || 0) - (a.at || 0));
       const history = (data.packs || []).slice().sort((a, b) => (b.at || 0) - (a.at || 0)).slice(0, 12);
       const cur = co.currency;
@@ -6618,11 +6619,16 @@
         </div>
 
         <div class="panel"><h2>Fabriquer et envoyer ${info('cab.envoyer')}</h2>
-          <label class="check mb"><input type="checkbox" id="cab-seal" ${cabinetState.seal ? 'checked' : ''}> Protéger le paquet par un mot de passe ${info('cab.motdepasse')}</label>
-          <div id="cab-pw" ${cabinetState.seal ? '' : 'hidden'} class="mb">
-            <input type="password" id="cab-pwv" placeholder="Mot de passe convenu avec ton comptable" style="max-width:340px">
-            <div class="small muted">Transmets-le-lui par un autre canal que le fichier : par téléphone, pas dans le même mail.</div>
-          </div>
+          ${paired
+            ? `<p class="small" style="background:var(--primary-soft);padding:10px 12px;border-radius:8px">
+                 Le paquet sera <b>chiffré pour ${h(paired.name || 'ton cabinet')}</b> (empreinte ${h(paired.fingerprint || '')}).
+                 Lui seul pourra l'ouvrir : aucun mot de passe à transmettre. ${info('cab.pourcabinet')}</p>`
+            : `<label class="check mb"><input type="checkbox" id="cab-seal" ${cabinetState.seal ? 'checked' : ''}> Protéger le paquet par un mot de passe ${info('cab.motdepasse')}</label>
+               <div id="cab-pw" ${cabinetState.seal ? '' : 'hidden'} class="mb">
+                 <input type="password" id="cab-pwv" placeholder="Mot de passe convenu avec ton comptable" style="max-width:340px">
+                 <div class="small muted">Transmets-le-lui par un autre canal que le fichier : par téléphone, pas dans le même mail.
+                   Mieux : demande-lui son fichier d'appairage et importe-le dans <a href="#" id="cab-gopair" class="warn-link">Paramètres → Cabinet comptable</a>.</div>
+               </div>`}
           <div class="inline">
             <button class="btn btn-primary" id="cab-build">Fabriquer le paquet…</button>
             ${sent.length ? `<button class="btn" id="cab-mail">Envoyer au comptable…</button>` : ''}
@@ -6635,7 +6641,7 @@
             ? `<div class="scroll-x"><table class="list compact"><thead><tr><th>Mois</th><th>Fabriqué le</th><th>État</th><th class="r">Fichiers</th><th class="r">Taille</th><th>Empreinte</th></tr></thead><tbody>
                 ${history.map(x => `<tr><td class="nw"><strong>${h(C.monthLabel(x.month + '-01'))}</strong></td>
                   <td class="nw small">${x.at ? C.fmtDate(new Date(x.at).toISOString().slice(0, 10)) : ''}</td>
-                  <td><span class="badge ${x.definitive ? 'b-paid' : 'b-due'}">${x.definitive ? 'définitif' : 'provisoire'}</span>${x.sealed ? ' <span class="small muted">chiffré</span>' : ''}</td>
+                  <td><span class="badge ${x.definitive ? 'b-paid' : 'b-due'}">${x.definitive ? 'définitif' : 'provisoire'}</span>${x.cabinet ? ' <span class="small muted">pour le cabinet</span>' : x.sealed ? ' <span class="small muted">chiffré</span>' : ''}</td>
                   <td class="r">${x.files || ''}</td><td class="r nw">${x.bytes ? (x.bytes / 1048576).toFixed(1).replace('.', ',') + ' Mo' : ''}</td>
                   <td class="small muted mono">${h(String(x.digest || '').slice(0, 12))}</td></tr>`).join('')}
               </tbody></table></div>
@@ -6645,11 +6651,12 @@
 
       $('#cab-month').onchange = e => { cabinetState.month = e.target.value; draw(); };
       if ($('#cab-goclose')) $('#cab-goclose').onclick = e => { e.preventDefault(); comptaState.tab = 'clotures'; draw(); $$('#c-tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === 'clotures')); };
-      $('#cab-seal').onchange = e => { cabinetState.seal = e.target.checked; $('#cab-pw').hidden = !e.target.checked; };
+      if ($('#cab-seal')) $('#cab-seal').onchange = e => { cabinetState.seal = e.target.checked; $('#cab-pw').hidden = !e.target.checked; };
+      if ($('#cab-gopair')) $('#cab-gopair').onclick = e => { e.preventDefault(); settingsTab = 'cabinet'; navigate('#/parametres'); };
 
       $('#cab-build').onclick = async () => {
-        const pw = cabinetState.seal ? ($('#cab-pwv').value || '').trim() : '';
-        if (cabinetState.seal && pw.length < 6) return toast('Choisis un mot de passe d\'au moins six caractères.', true);
+        const pw = (!paired && cabinetState.seal) ? ($('#cab-pwv').value || '').trim() : '';
+        if (!paired && cabinetState.seal && pw.length < 6) return toast('Choisis un mot de passe d\'au moins six caractères.', true);
         if (!plan.definitive && !await confirmDialog(`${per.label} n'est pas clôturé : le paquet partira marqué « provisoire » et pourra encore changer.\n\nFabriquer quand même ?`, 'Fabriquer', false)) return;
 
         // Le HTML de chaque pièce est produit ici : c'est le renderer qui sait dessiner un document.
@@ -6672,14 +6679,14 @@
         try {
           const r = await bridge.buildPack({
             plan: { manifest: plan.manifest, entries },
-            coverHtml: cover, password: pw,
+            coverHtml: cover, password: pw, cabinetKey: paired ? paired.publicKey : '',
             suggestedName: C.packFileName(co, per, plan.definitive)
           });
           prog.hidden = true;
           if (!r) return;
           data.packs = (data.packs || []).concat([{
             id: C.uid(), month: per.month, at: Date.now(), definitive: plan.definitive,
-            sealed: !!pw, files: r.fichiers, bytes: r.octets, digest: r.empreinte,
+            sealed: !!r.chiffre, cabinet: r.pourCabinet || '', files: r.fichiers, bytes: r.octets, digest: r.empreinte,
             path: r.path, missing: (r.absents || []).length
           }]);
           save(true);
@@ -6700,7 +6707,8 @@
           body: `Bonjour,\n\nVoici le dossier de ${per.label}.\n\n`
             + `${last.definitive ? 'Le mois est clôturé : ces chiffres ne bougeront plus.' : 'Le mois n\'est pas encore clôturé : ce dossier est provisoire.'}\n`
             + `Le paquet contient les journaux, les pièces en PDF, les justificatifs d'achat et la page de garde.\n`
-            + (last.sealed ? 'Il est protégé par le mot de passe convenu — je te le donne par téléphone.\n' : '')
+            + (last.cabinet ? 'Il est chiffré pour ta clé (empreinte ' + last.cabinet + ') : toi seul peux l\'ouvrir.\n'
+               : last.sealed ? 'Il est protégé par le mot de passe convenu — je te le donne par téléphone.\n' : '')
             + `\nEmpreinte du manifeste : ${String(last.digest || '').slice(0, 16)}\n\nBien à toi,\n${co.name || ''}`,
           attachments: [last.path]
         }).then(() => toast(to ? 'Message préparé pour le comptable' : 'Message préparé — renseigne l\'email du comptable dans Paramètres'));
@@ -6752,7 +6760,7 @@
   routes.parametres = async () => {
     const c = company();
     const path = await bridge.dataPath();
-    const TABS = [['societe', 'Société'], ['documents', 'Documents'], ['emails', 'Emails'], ['apparence', 'Apparence'], ['donnees', 'Sécurité et données'], ['maj', 'Mises à jour']];
+    const TABS = [['societe', 'Société'], ['documents', 'Documents'], ['emails', 'Emails'], ['apparence', 'Apparence'], ['cabinet', 'Cabinet comptable'], ['donnees', 'Sécurité et données'], ['maj', 'Mises à jour']];
     if (!TABS.some(t => t[0] === settingsTab)) settingsTab = 'societe';
     $('#view').innerHTML = `<div class="page-head"><h1>Paramètres</h1></div>
       <div class="tabs" id="set-tabs" role="tablist">${TABS.map(([id, label]) => `<button role="tab" data-tab="${id}" class="${id === settingsTab ? 'active' : ''}">${label}</button>`).join('')}</div>
@@ -6849,6 +6857,11 @@
         <div class="panel"><h2>Lecture de factures d'achat ${info('ocr.key')}</h2><div id="ocr-panel"></div></div>
       </section>
 
+      <section data-pane="cabinet" hidden>
+        <div class="panel"><h2>Ton cabinet comptable ${info('cab.appaire')}</h2>
+          <div id="cab-pair"></div>
+        </div>
+      </section>
       <section data-pane="donnees" hidden>
       <div class="panel"><h2>Dossiers — plusieurs entreprises sur cet ordinateur ${info('data.dossiers')}</h2>
         <p class="small muted mb">Chaque dossier est une entreprise : ses clients, ses documents, ses achats, ses sauvegardes. Ils ne se mélangent jamais. Tu passes de l'un à l'autre en un clic, l'application se recharge.</p>
@@ -6931,6 +6944,45 @@
     setGuard({ dirty: () => setDirty, what: 'les paramètres', save: applySettings });
     $('#save').onclick = () => { applySettings(); toast('Paramètres enregistrés'); };
     $('#cancel-set').onclick = () => { setDirty = false; render(); };
+    // ---------- appairage du cabinet (6.2.0) ----------
+    // Le cabinet remet à ses clients un petit fichier contenant sa clé publique. Une fois importé,
+    // les paquets mensuels sont chiffrés POUR LUI : rien à transmettre, rien à retenir, et une clé
+    // volée chez un client n'ouvre aucun paquet, pas même les siens.
+    function drawCabinetPair() {
+      const el = $('#cab-pair'); if (!el) return;
+      const cab = company().cabinet;
+      el.innerHTML = cab && cab.publicKey
+        ? `<p>Tes paquets mensuels sont chiffrés pour <strong>${h(cab.name || 'ton cabinet')}</strong>${cab.email ? ` <span class="muted">(${h(cab.email)})</span>` : ''}.</p>
+           <table class="list compact"><tbody>
+             <tr><td>Empreinte de sa clé ${info('cab.empreinte')}</td><td class="mono"><strong>${h(cab.fingerprint || '')}</strong></td></tr>
+             <tr><td>Appairé le</td><td>${cab.pairedAt ? C.fmtDate(String(cab.pairedAt).slice(0, 10)) : '—'}</td></tr>
+           </tbody></table>
+           <p class="small muted mt">Vérifie cette empreinte <b>de vive voix</b> avec ton comptable la première fois : c'est ce qui garantit que tu as bien sa clé et pas celle de quelqu'un d'autre.</p>
+           <div class="inline mt"><button class="btn" id="cab-repair">Remplacer par un autre cabinet…</button><button class="btn btn-danger" id="cab-unpair">Retirer</button></div>`
+        : `<p>Aucun cabinet appairé. Tes paquets mensuels peuvent être protégés par un mot de passe, mais c'est moins pratique et moins sûr : un mot de passe se transmet, donc il fuite.</p>
+           <p class="small muted">Demande à ton comptable son <b>fichier d'appairage</b> (il l'exporte depuis SkanFact Cabinet). Une fois importé ici, chaque paquet sera chiffré pour lui seul, sans mot de passe à échanger.</p>
+           <button class="btn btn-primary mt" id="cab-import">Importer le fichier du cabinet…</button>`;
+
+      const doImport = async () => {
+        try {
+          const r = await bridge.importCabinet();
+          if (!r) return;
+          applySettings();                 // ne jamais perdre ce qui est en cours de saisie (règle 5.2.1)
+          data.company.cabinet = r;
+          save(true); render();
+          toast(`Cabinet appairé : ${r.name || ''} — empreinte ${r.fingerprint}`);
+        } catch (e) { toast(e.message || 'Fichier illisible', true); }
+      };
+      if ($('#cab-import')) $('#cab-import').onclick = doImport;
+      if ($('#cab-repair')) $('#cab-repair').onclick = doImport;
+      if ($('#cab-unpair')) $('#cab-unpair').onclick = async () => {
+        if (!await confirmDialog('Retirer ce cabinet ? Tes prochains paquets ne seront plus chiffrés pour lui — il faudra revenir au mot de passe.')) return;
+        applySettings();
+        delete data.company.cabinet; save(true); render();
+        toast('Cabinet retiré');
+      };
+    }
+    drawCabinetPair();
     drawUpdatePanel();
     drawOcrPanel();
     $('#backup-now').onclick = async () => { const p = await bridge.createBackup(); toast(p ? 'Sauvegarde créée : ' + p.split(/[\\/]/).pop() : 'Rien à sauvegarder pour l\'instant'); drawExternal(); };
