@@ -1166,6 +1166,10 @@ function getUpdater() {
     autoUpdater.autoDownload = true;
     autoUpdater.autoInstallOnAppQuit = !IS_MAC || MAC_SIGNED;
     autoUpdater.autoRunAppAfterInstall = true;
+    // Jamais de retour en arrière : proposer une version plus ancienne que celle installée, c'est
+    // proposer de réinstaller un défaut déjà corrigé. (Voir src/cabinet/main.js : là-bas, affecter
+    // `channel` remet ce réglage à true, il faut donc le repositionner après.)
+    autoUpdater.allowDowngrade = false;
     // journal des mises à jour (userData/updater.log) : indispensable pour diagnostiquer à distance
     const ulog = path.join(app.getPath('userData'), 'updater.log');
     const ul = (lvl) => (m) => { try { fs.appendFileSync(ulog, `${new Date().toISOString()} ${lvl} ${m}\n`); } catch {} };

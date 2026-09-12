@@ -3478,6 +3478,15 @@ t('cabinet : la clé privée ne traverse jamais le pont vers l\'interface', () =
       // 4. … et l'écran le dit, pour que le champ jeton revienne.
       const ui = fs.readFileSync(path.join(__dirname, '..', ...vue), 'utf8');
       assert.ok(/relayFailure/.test(ui), vue.join('/') + ' : la panne de relais n\'est pas montrée');
+      // 5. Jamais de retour en arrière : installer une version plus ancienne, c'est réinstaller un
+      // défaut déjà corrigé. Piège d'electron-updater : affecter `channel` remet allowDowngrade à
+      // true — c'est ce qui a fait proposer la 6.7.1 à une application en 6.7.2.
+      assert.ok(/allowDowngrade = false/.test(src), nom + ' : le retour en arrière n\'est pas interdit');
+      const chan = src.indexOf('autoUpdater.channel =');
+      if (chan >= 0) {
+        assert.ok(src.indexOf('allowDowngrade = false') > chan,
+          nom + ' : allowDowngrade doit être remis APRÈS le canal, qui le rallume');
+      }
     });
   });
 

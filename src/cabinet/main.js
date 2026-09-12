@@ -312,6 +312,11 @@ function getUpdater() {
     autoUpdater.autoInstallOnAppQuit = !IS_MAC || MAC_SIGNED;
     autoUpdater.autoRunAppAfterInstall = true;
     autoUpdater.channel = UPDATE_CHANNEL;         // le canal du cabinet, jamais celui de l'app entreprise
+    // ATTENTION : affecter `channel` met `allowDowngrade` à true — c'est écrit dans electron-updater,
+    // et c'est voulu chez eux (changer de canal peut signifier revenir en arrière). Chez nous, non :
+    // l'application proposait d'installer une version PLUS ANCIENNE que celle en place, c'est-à-dire
+    // de revenir à un défaut déjà corrigé. Toujours remettre la valeur APRÈS le canal.
+    autoUpdater.allowDowngrade = false;
     const ulog = path.join(app.getPath('userData'), 'updater.log');
     const ul = lvl => m => { try { fs.appendFileSync(ulog, `${new Date().toISOString()} ${lvl} ${m}\n`); } catch {} };
     autoUpdater.logger = { info: ul('info'), warn: ul('warn'), error: ul('error'), debug: ul('debug') };

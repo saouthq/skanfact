@@ -7,6 +7,14 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 6.7.3 — 12/09/2026
+
+**SkanFact Cabinet proposait d'installer une version plus ancienne que la sienne.**
+
+Repéré par Skander dès la première vérification réussie : l'application du comptable, en 6.7.2, téléchargeait la **6.7.1**. C'est-à-dire qu'elle proposait de réinstaller un défaut déjà corrigé — et en l'occurrence celui qui cassait justement la mise à jour.
+
+La cause est une ligne du module de mise à jour : **déclarer un canal remet l'autorisation de revenir en arrière**, et l'app du cabinet est la seule à déclarer un canal (le sien, pour ne pas se voir proposer l'application entreprise). C'est écrit dans la documentation d'electron-updater, et c'est voulu chez eux ; chez nous, non. L'interdiction est désormais reposée **après** le canal, dans les deux applications, et un test vérifie l'ordre.
+
 ## 6.7.2 — 12/09/2026
 
 **« Module de mise à jour indisponible. » ne veut rien dire. Maintenant l'application dit pourquoi.**

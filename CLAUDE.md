@@ -299,6 +299,15 @@ Méthode qui a payé, à refaire : **séparer les deux moitiés avant de cherche
 
 **Le quota GitHub Actions est une ressource limitée.** Six versions publiées en une matinée ont consommé le quota gratuit d'un mois entier (~0,65 $ la publication : quatre applications, et les machines macOS sont facturées dix fois les autres). Skander a refusé de payer, et il a raison : c'est le rythme qui était fautif, pas le tarif. **Regrouper les corrections et publier une fois.** Quand le quota manque, `Installer SkanFact.command` construit les deux applications sur son Mac, avec le relais, gratuitement — c'est ce qui a permis de diagnostiquer cette panne-là.
 
+## 6.7.3 — Jamais de retour en arrière
+
+`autoUpdater.channel = 'cabinet'` met **`allowDowngrade` à `true`** : c'est écrit dans la documentation d'electron-updater (changer de canal peut légitimement vouloir dire reculer), et l'app du cabinet est la seule à déclarer un canal. Résultat : en 6.7.2 elle téléchargeait la 6.7.1, c'est-à-dire qu'elle proposait de réinstaller le défaut qu'on venait de corriger — et précisément celui qui cassait la mise à jour, donc sans retour possible.
+
+Règles :
+- **`allowDowngrade = false` se repose APRÈS l'affectation du canal**, jamais avant. Le test `mises à jour : une panne se nomme, et laisse un recours` vérifie l'ordre des deux lignes dans la source, et a été prouvé en retirant le correctif.
+- **Un réglage qui s'active en effet de bord d'un autre est un piège à relire dans la source du module**, pas dans son README. C'est la deuxième fois de la journée qu'une ligne d'electron-updater se comporte autrement qu'attendu.
+- Ce bug ne se voyait que parce que la version installée (construite localement) était **plus récente** que celle publiée. Un écart de ce genre est un révélateur à exploiter, pas une anomalie à ignorer.
+
 ## Pistes pour la suite (non demandées)
 
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.
