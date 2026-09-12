@@ -509,6 +509,7 @@
     const view = $('#view');
     if (route === 'dossier') drawDossier(view, arg);
     else if (route === 'ecritures') drawEcritures(view);
+    else if (route === 'echeances') drawEcheances(view);
     else if (route === 'relances') drawRelances(view);
     else if (route === 'reglages') drawReglages(view);
     else if (route === 'aide') drawAide(view);
@@ -1051,6 +1052,57 @@
     );
   }
 
+  // ---------- le calendrier des échéances ----------
+  //
+  // Une liste de dates, un comptable en a déjà une. Ce que personne d'autre ne fait pour lui :
+  // rattacher chaque échéance aux paquets qu'il n'a PAS reçus.
+  function drawEcheances(view) {
+    const liste = K.echeances(S);
+    const prochaines = liste.filter(e => !e.passee);
+    const passees = liste.filter(e => e.passee).reverse();
+
+    if (!liste.length) {
+      view.innerHTML = `<div class="page-head"><h1>Échéances</h1></div>
+        <div class="panel"><h2>Aucun client pour l'instant</h2>
+          <p>Le calendrier se remplit tout seul à partir de tes dossiers et de la périodicité de TVA que tu leur donnes.</p>
+          <div class="modal-actions"><button class="btn btn-primary" id="nd">Ajouter mes clients…</button></div></div>`;
+      $('#nd').onclick = () => newDossierForm();
+      return;
+    }
+
+    const carte = e => `<div class="ech lvl-${e.level}">
+      <div class="ech-date"><div class="ech-j">${esc(e.date.slice(8))}</div><div class="ech-m">${esc(K.monthLabel(e.date.slice(0, 7)).split(' ')[0])}</div></div>
+      <div class="ech-txt">
+        <div class="ech-lab">${esc(e.label)}<span class="ech-when">${e.passee ? `il y a ${-e.jours} j` : e.jours === 0 ? "aujourd'hui" : `dans ${e.jours} j`}</span></div>
+        <div class="small muted">${esc(e.detail)}</div>
+        <div class="ech-bar">
+          <span class="ok-inline">${e.prets} prêt${e.prets > 1 ? 's' : ''}</span>
+          ${e.provisoires.length ? `<span class="warn-inline">${e.provisoires.length} en provisoire</span>` : ''}
+          ${e.manquants.length ? `<span class="err-inline">${e.manquants.length} sans ${e.mois.length > 1 ? 'les mois' : 'le mois'}</span>` : ''}
+          <span class="muted small">sur ${pl(e.clients, 'client')}</span>
+        </div>
+        ${e.manquants.length ? `<div class="small mt">${esc(e.manquants.slice(0, 8).join(', '))}${e.manquants.length > 8 ? '…' : ''}
+          <a href="#/relances">Les relancer</a></div>` : ''}
+      </div></div>`;
+
+    view.innerHTML = `
+      <div class="page-head"><h1>Échéances</h1></div>
+      <p class="muted small mb">Chaque échéance est rattachée aux <strong>paquets que tu n'as pas reçus</strong> : c'est la seule chose
+      qu'un calendrier papier ne peut pas te dire. ${info('ec.dates')}</p>
+      <div class="warn-box mb"><strong>À VÉRIFIER avec l'usage de ton cabinet.</strong> Les jours proposés suivent la pratique courante en Tunisie
+      (TVA le ${K.deadlineSettings(S).tvaDay}, CNSS le ${K.deadlineSettings(S).cnssDay} du mois suivant) mais dépendent de la forme juridique,
+      du régime et de la loi de finances. Tu les règles dans <a href="#/reglages">Réglages</a>.</div>
+
+      <div class="panel"><h2>À venir</h2>
+        ${prochaines.length ? `<div class="ech-list">${prochaines.map(carte).join('')}</div>`
+          : '<div class="empty">Rien dans les trois prochains mois.</div>'}</div>
+
+      ${passees.length ? `<div class="panel"><h2>Déjà passées</h2>
+        <p class="small muted">SkanFact ne sait pas ce que tu as déposé : cette liste est là pour repérer un mois qu'on n'a jamais pu déclarer
+        faute de pièces. ${info('ec.passees')}</p>
+        <div class="ech-list">${passees.slice(0, 8).map(carte).join('')}</div></div>` : ''}`;
+  }
+
   // ---------- écritures regroupées ----------
   //
   // Chaque paquet porte déjà ses écritures en partie double. Mais rien ne les rassemblait : pour
@@ -1174,7 +1226,11 @@
           <label class="field">${lbl('Email', 'cab.email')}<input type="email" id="c-email" value="${esc(c.email)}" placeholder="contact@cabinet.tn"></label>
           <label class="field">${lbl('Téléphone', 'cab.phone')}<input type="tel" id="c-phone" value="${esc(c.phone || '')}" placeholder="+216 …"></label>
           <label class="field narrow">${lbl('Jour de relance', 'cab.relanceDay')}<input type="number" id="c-day" min="1" max="28" value="${Number((S.settings || {}).relanceDay) || 10}"></label>
+          <label class="field narrow">${lbl('TVA : jour de dépôt', 'ec.jours')}<input type="number" id="c-tvaday" min="1" max="31" value="${K.deadlineSettings(S).tvaDay}"></label>
+          <label class="field narrow">CNSS : jour de dépôt<input type="number" id="c-cnssday" min="1" max="31" value="${K.deadlineSettings(S).cnssDay}"></label>
         </div>
+        <p class="muted small">Les jours de dépôt alimentent la page <a href="#/echeances">Échéances</a>.
+        <strong>À VÉRIFIER</strong> : ils dépendent de la forme juridique, du régime et de la loi de finances.</p>
         <p class="muted small mt">Ce nom apparaît en bas des relances que tu envoies et dans le fichier d'appairage remis à tes clients.</p>
         <div class="modal-actions"><span class="saved" id="c-saved" hidden></span><button class="btn btn-primary" id="c-save">Enregistrer</button></div>
       </div>
@@ -1216,7 +1272,10 @@
       try {
         S = await api.saveCabinet({
           name: $('#c-name').value.trim(), email: $('#c-email').value.trim(), phone: $('#c-phone').value.trim(),
-          settings: { relanceDay: Number($('#c-day').value) }
+          settings: {
+            relanceDay: Number($('#c-day').value),
+            deadlines: { tvaDay: Number($('#c-tvaday').value), cnssDay: Number($('#c-cnssday').value) }
+          }
         });
         $('#brand-cab').textContent = S.cabinet.name || 'Cabinet';
         flash($('#c-saved'));

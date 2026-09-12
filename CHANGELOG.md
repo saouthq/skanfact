@@ -40,6 +40,16 @@ C'est l'application qui détient la comptabilité de dizaines d'entreprises **et
 - **Listes tenables à soixante lignes** : tri sur chaque colonne, pagination, totaux en pied, export CSV. Les totaux et l'export portent sur la sélection entière, jamais sur la page affichée.
 - **Glisser-déposer** un `.skanpack` sur la fenêtre, ou le **double-cliquer dans le Finder**. **Cmd+K** cherche un client ou lance une action.
 
+### Le calendrier des échéances
+
+Nouvelle page **Échéances**. Une liste de dates, un comptable en a déjà une ; ce que personne ne fait pour lui, c'est **rattacher chaque échéance aux paquets qu'il n'a pas reçus** : « TVA d'août, à déposer le 28 septembre — douze clients concernés, trois ne t'ont rien envoyé, voilà lesquels. »
+
+- Calculé à partir de la **périodicité de TVA** de chaque client (mensuelle, trimestrielle, non assujetti), sur trois mois en arrière et trois en avant.
+- Chaque échéance compte les clients **prêts**, ceux dont le mois est encore **provisoire**, et ceux dont il **manque**, avec leurs noms et un lien vers les relances.
+- La ligne remonte dans « À faire » quand l'échéance approche **et** que des pièces manquent. Une échéance proche mais complète n'a pas à crier.
+- **Aucune de ces dates ne fait foi** : elles suivent l'usage tunisien (TVA le 28, CNSS le 15 du mois suivant), elles sont réglables, et l'écran écrit « À VÉRIFIER » — les délais dépendent de la forme juridique, du régime et de la loi de finances. Un réglage aberrant retombe sur l'usage plutôt que de faire disparaître l'échéance.
+- SkanFact ne sait pas ce qui a réellement été déposé, et ne déposera jamais rien : les échéances passées servent à repérer un mois qu'on n'a jamais pu déclarer faute de pièces.
+
 ### Les écritures de tous les clients, en un fichier
 
 Nouvelle page **Écritures**. Chaque paquet portait déjà ses écritures en partie double, mais rien ne les rassemblait : pour importer un mois dans son logiciel de production, le comptable devait ouvrir soixante paquets un par un — exactement le travail qu'on prétend lui épargner.

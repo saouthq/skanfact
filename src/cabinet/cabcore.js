@@ -62,7 +62,7 @@
     { id: 'autre', label: 'Autre' }
   ];
 
-  const DEFAULT_SETTINGS = { relanceDay: 10 };
+  const DEFAULT_SETTINGS = { relanceDay: 10, deadlines: null };
   const DEFAULT_STATE = { format: FORMAT, cabinet: { name: '', email: '', phone: '', publicKey: '', privateKey: '' }, dossiers: [], settings: { ...DEFAULT_SETTINGS } };
 
   // Une fiche de dossier complète. Tout ce qui est ajouté ici doit être FACULTATIF à la lecture :
@@ -96,6 +96,14 @@
     s.settings = { ...DEFAULT_SETTINGS, ...(s.settings || {}) };
     const day = Number(s.settings.relanceDay);
     s.settings.relanceDay = day >= 1 && day <= 28 ? Math.round(day) : 10;
+    // Les jours d'échéance : aucun n'est une vérité, tous sont réglables, et un réglage aberrant
+    // retombe sur l'usage plutôt que de faire disparaître l'échéance du calendrier.
+    const dl = { ...DEFAULT_DEADLINES, ...(s.settings.deadlines || {}) };
+    ['tvaDay', 'cnssDay'].forEach(k => {
+      const v = Number(dl[k]);
+      dl[k] = v >= 1 && v <= 31 ? Math.round(v) : DEFAULT_DEADLINES[k];
+    });
+    s.settings.deadlines = dl;
     s.dossiers = Array.isArray(s.dossiers) ? s.dossiers.map(migrateDossier) : [];
     s.format = FORMAT;
     return s;
@@ -378,6 +386,17 @@
       detail: `Tu as fixé le ${rel.day} du mois comme jour de relance (Réglages). ${rel.count > 1 ? 'Ces dossiers n\'ont' : 'Ce dossier n\'a'} pas envoyé tous ${rel.count > 1 ? 'leurs' : 'ses'} mois clôturés.`,
       count: rel.count, rows: rel.rows
     });
+    // Une échéance qui approche avec des pièces qui manquent : c'est le seul cas où une date compte
+    // plus qu'un état. Une échéance proche mais complète n'a pas à crier.
+    const urgente = echeances(state, todayIso, { avant: 1, apres: 1 })
+      .filter(e => !e.passee && e.jours <= 12 && e.manquants.length)
+      .sort((a, b) => a.jours - b.jours)[0];
+    if (urgente) out.push({
+      id: 'echeance', level: urgente.jours <= 5 ? 'danger' : 'warn',
+      label: `${urgente.label} : ${pl(urgente.manquants.length, 'client')} ${urgente.manquants.length > 1 ? 'n\'ont' : 'n\'a'} pas envoyé ${urgente.mois.length > 1 ? 'ses mois' : 'son mois'}`,
+      detail: `À déposer dans ${urgente.jours} jour${urgente.jours > 1 ? 's' : ''} (${urgente.date}). ${urgente.manquants.slice(0, 5).join(', ')}${urgente.manquants.length > 5 ? '…' : ''}`,
+      count: urgente.manquants.length, rows: []
+    });
     const late = rows.filter(r => r.missingCount > 0);
     if (late.length) out.push({
       id: 'manquants', level: 'danger',
@@ -478,6 +497,97 @@
       d('Café des Jasmins', '5566778E/C/M/000', 'jasmins@example.tn',
         [pack(M(-6), true, null, 9870)])                                      // parti ou endormi
     ];
+  }
+
+  // ---------- le calendrier des échéances ----------
+  //
+  // La vie d'un comptable, ce sont des dates. Mais une liste de dates, il en a déjà une. Ce que
+  // SkanFact peut faire et que personne d'autre ne fait : rattacher chaque échéance aux paquets
+  // qu'il n'a PAS reçus. « TVA d'août, à déposer le 28 septembre : douze clients concernés, trois
+  // ne t'ont rien envoyé. » C'est ça qui vaut le détour.
+  //
+  // AUCUNE de ces dates n'est une vérité. Elles suivent l'usage tunisien, elles sont modifiables,
+  // et l'écran écrit « À VÉRIFIER » — les délais dépendent de la forme juridique, du régime et de
+  // la loi de finances de l'année.
+  const DEFAULT_DEADLINES = { tvaDay: 28, cnssDay: 15 };
+
+  const QUARTER_END = { 3: 1, 6: 2, 9: 3, 12: 4 };
+
+  function deadlineSettings(state) {
+    return { ...DEFAULT_DEADLINES, ...((state && state.settings && state.settings.deadlines) || {}) };
+  }
+
+  // Le jour J d'un mois, en date calendaire. Un mois plus court que le jour demandé ramène au
+  // dernier jour : « le 31 » n'existe pas en février, et une échéance qui disparaît est pire
+  // qu'une échéance approximative.
+  function dayOf(month, day) {
+    const [y, m] = String(month).split('-').map(Number);
+    const dernier = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    return `${month}-${pad2(Math.min(day, dernier))}`;
+  }
+
+  // Est-ce que ce dossier a envoyé ce mois-là, et de façon définitive ?
+  function moisRecu(dossier, month) {
+    const p = (dossier.packs || []).find(x => x.month === month);
+    return !p ? 'manquant' : p.definitive ? 'complet' : 'provisoire';
+  }
+
+  function echeances(state, todayIso, opts) {
+    opts = opts || {};
+    const t = todayIso || today();
+    const cfg = deadlineSettings(state);
+    const curMonth = t.slice(0, 7);
+    const avant = Number(opts.avant || 3), apres = Number(opts.apres || 3);
+    // Les dossiers d'exemple comptent ICI : une échéance n'a besoin que des mois reçus, pas des
+    // fichiers. Les exclure montrerait un calendrier vide à un comptable qui découvre l'application
+    // avec le jeu d'exemple — c'est-à-dire au moment où elle doit le convaincre.
+    const actifs = (state.dossiers || []).filter(d => !d.archived);
+    const out = [];
+
+    for (let k = -avant; k <= apres; k++) {
+      // Le mois DÉCLARÉ : la TVA de septembre se dépose en octobre.
+      const mois = addMonth(curMonth, k - 1);
+      const depot = addMonth(mois, 1);
+
+      const mensuels = actifs.filter(d => !d.tvaPeriod || d.tvaPeriod === 'mensuelle');
+      // « TVA de octobre » ne s'écrit pas : quatre mois sur douze commencent par une voyelle.
+      if (mensuels.length) out.push(ligneEcheance('tva-m', `TVA ${de(monthLabel(mois))}`, dayOf(depot, cfg.tvaDay), mois, mensuels, t,
+        'Déclaration mensuelle de TVA. Les clients dont tu n\'as pas le mois ne peuvent pas être déclarés.'));
+
+      const [, mm] = mois.split('-').map(Number);
+      if (QUARTER_END[mm]) {
+        const trim = QUARTER_END[mm];
+        const moisTrim = [addMonth(mois, -2), addMonth(mois, -1), mois];
+        const trimestriels = actifs.filter(d => d.tvaPeriod === 'trimestrielle');
+        if (trimestriels.length) out.push(ligneEcheance('tva-t', `TVA du ${trim}ᵉ trimestre`, dayOf(depot, cfg.tvaDay), moisTrim, trimestriels, t,
+          'Déclaration trimestrielle de TVA. Il te faut les trois mois du trimestre.'));
+        out.push(ligneEcheance('cnss', `CNSS du ${trim}ᵉ trimestre`, dayOf(depot, cfg.cnssDay), moisTrim, actifs, t,
+          'Déclaration sociale trimestrielle, pour les clients qui ont des salariés. SkanFact ne sait pas lesquels : à toi de filtrer.'));
+      }
+    }
+    return out
+      .filter(e => e.clients > 0)
+      .sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : a.label.localeCompare(b.label, 'fr'));
+  }
+
+  function ligneEcheance(id, label, date, mois, dossiers, todayIso, detail) {
+    const liste = Array.isArray(mois) ? mois : [mois];
+    const manquants = [], provisoires = [];
+    dossiers.forEach(d => {
+      const etats = liste.map(m => moisRecu(d, m));
+      if (etats.some(e => e === 'manquant')) manquants.push(d.name);
+      else if (etats.some(e => e === 'provisoire')) provisoires.push(d.name);
+    });
+    const jours = Math.round((Date.parse(date + 'T00:00:00Z') - Date.parse(todayIso + 'T00:00:00Z')) / 86400000);
+    return {
+      id, label, date, detail, mois: liste,
+      clients: dossiers.length, manquants, provisoires,
+      prets: dossiers.length - manquants.length - provisoires.length,
+      jours, passee: jours < 0,
+      // Ce qui décide de la couleur : une échéance proche avec des pièces qui manquent est le seul
+      // cas vraiment urgent. Une échéance proche mais complète n'a pas à crier.
+      level: manquants.length && jours <= 10 ? 'danger' : manquants.length ? 'warn' : jours <= 3 && jours >= 0 ? 'warn' : 'ok'
+    };
   }
 
   // ---------- regrouper les écritures ----------
@@ -597,6 +707,7 @@
     migrate, migrateDossier, dossierKey, packSummary, filePack, demoDossiers, checkIntegrity,
     newDossier, parseDossierLines, noteRelance, portfolio, relanceDue, relanceRows,
     parseCsv, toCsvLine, mergeEcritures, ecrituresPlan,
+    DEFAULT_DEADLINES, deadlineSettings, echeances, dayOf,
     dossierMonths, dossierRow, dossierList, cabinetTodo, relanceMail, pairingFile
   };
 }));

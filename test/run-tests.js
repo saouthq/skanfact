@@ -3523,6 +3523,54 @@ t('cabinet : les listes se trient sans jamais perdre de ligne', () => {
   assert.deepStrictEqual(S.dossiers.map(d => d.name), ['Zeta', 'Alpha', 'Mu']);
 });
 
+t('cabinet : les échéances savent qui n\'a pas envoyé ses pièces', () => {
+  // Une liste de dates, un comptable en a déjà une. Ce que personne d'autre ne fait pour lui :
+  // rattacher l'échéance aux paquets qu'il n'a PAS reçus.
+  const p = (m, def) => ({ month: m, label: cab.monthLabel(m), definitive: def, missing: [] });
+  const S = cab.migrate({ dossiers: [
+    { id: 'a', name: 'À jour', tvaPeriod: 'mensuelle', packs: [p('2026-07', true), p('2026-08', true)] },
+    { id: 'b', name: 'Rien envoyé', tvaPeriod: 'mensuelle', packs: [p('2026-06', true)] },
+    { id: 'c', name: 'Provisoire', tvaPeriod: 'mensuelle', packs: [p('2026-07', true), p('2026-08', false)] },
+    { id: 'd', name: 'Trimestriel', tvaPeriod: 'trimestrielle', packs: [] },
+    { id: 'e', name: 'Parti', archived: true, tvaPeriod: 'mensuelle', packs: [] }
+  ] });
+  const liste = cab.echeances(S, '2026-09-20');
+  const tvaAout = liste.find(e => e.label === "TVA d'août 2026");
+  assert.ok(tvaAout, 'la TVA du mois précédent doit figurer au calendrier');
+  assert.strictEqual(tvaAout.date, '2026-09-28', 'la TVA d\'août se dépose le 28 septembre');
+  assert.strictEqual(tvaAout.jours, 8);
+  assert.strictEqual(tvaAout.clients, 3, 'un client archivé ne compte pas, un trimestriel non plus');
+  assert.deepStrictEqual(tvaAout.manquants, ['Rien envoyé']);
+  assert.deepStrictEqual(tvaAout.provisoires, ['Provisoire']);
+  assert.strictEqual(tvaAout.prets, 1);
+  assert.strictEqual(tvaAout.level, 'danger', 'une échéance proche avec des pièces manquantes est urgente');
+
+  // Un trimestre : les trois mois comptent, pas seulement le dernier.
+  const trim = cab.echeances(S, '2026-10-05').find(e => /3.{0,3} trimestre/.test(e.label) && /TVA/.test(e.label));
+  assert.ok(trim, 'la TVA trimestrielle doit apparaître après un mois de fin de trimestre');
+  assert.deepStrictEqual(trim.mois, ['2026-07', '2026-08', '2026-09']);
+  assert.strictEqual(trim.date, '2026-10-28');
+
+  // Le jour est réglable, et un réglage aberrant ne fait pas disparaître l'échéance.
+  const S2 = cab.migrate({ ...S, settings: { deadlines: { tvaDay: 15 } } });
+  assert.strictEqual(cab.echeances(S2, '2026-09-20').find(e => e.label === "TVA d'août 2026").date, '2026-09-15');
+  assert.strictEqual(cab.migrate({ settings: { deadlines: { tvaDay: 0 } } }).settings.deadlines.tvaDay, 28);
+  assert.strictEqual(cab.migrate({ settings: { deadlines: { tvaDay: 99 } } }).settings.deadlines.tvaDay, 28);
+  // Un jour qui n'existe pas dans le mois retombe sur le dernier : une échéance approximative vaut
+  // mieux qu'une échéance disparue.
+  assert.strictEqual(cab.dayOf('2027-02', 31), '2027-02-28');
+  assert.strictEqual(cab.dayOf('2028-02', 31), '2028-02-29');
+
+  // « À faire » remonte l'échéance qui approche avec des pièces manquantes.
+  const todo = cab.cabinetTodo(S, '2026-09-20');
+  const ligne = todo.find(x => x.id === 'echeance');
+  assert.ok(ligne, 'une échéance à huit jours avec un client en défaut doit apparaître dans « À faire »');
+  assert.ok(/Rien envoyé/.test(ligne.detail));
+  // Un cabinet dont tout le monde a envoyé n'a pas de ligne d'échéance : on ne crie pas pour rien.
+  const propre = cab.migrate({ dossiers: [{ id: 'a', name: 'À jour', tvaPeriod: 'mensuelle', packs: [p('2026-07', true), p('2026-08', true)] }] });
+  assert.ok(!cab.cabinetTodo(propre, '2026-09-20').some(x => x.id === 'echeance'));
+});
+
 t('cabinet : un CSV se lit vraiment, point-virgules et guillemets compris', () => {
   // Découper sur « ; » serait plus court et faux : un libellé de facture contient un point-virgule
   // un jour sur dix, et la ligne partirait en morceaux sans que rien ne le signale.

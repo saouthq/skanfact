@@ -127,6 +127,22 @@
 #setup textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
 @media (max-width: 760px) { #setup .wiz-step { flex-wrap: wrap; } }
 
+/* Les échéances : une date lisible à gauche, ce qui manque à droite. Ce qui compte n'est pas la
+   date (le comptable la connaît) mais le nombre de clients dont il n'a pas les pièces. */
+.ech-list { display: flex; flex-direction: column; gap: 10px; }
+.ech { display: flex; gap: 14px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; border-left-width: 3px; }
+.ech.lvl-ok { border-left-color: var(--success); }
+.ech.lvl-warn { border-left-color: var(--warning); }
+.ech.lvl-danger { border-left-color: var(--danger); }
+.ech-date { text-align: center; min-width: 46px; flex-shrink: 0; }
+.ech-j { font-size: 21px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.ech-m { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+.ech-txt { flex: 1; min-width: 0; }
+.ech-lab { font-weight: 650; font-size: 14px; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.ech-when { font-size: 11.5px; color: var(--muted); font-weight: 400; }
+.ech-bar { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 6px; font-size: 12.5px; }
+.warn-inline { color: var(--warning); font-weight: 600; }
+
 .dot-lvl.hors { background: #9aa7b4; }
 .badge.b-hors { background: #eceff2; color: #5b6b7b; }
 body.dark .badge.b-hors { background: #2a3440; color: #9aa7b4; }

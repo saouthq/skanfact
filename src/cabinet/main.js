@@ -204,6 +204,10 @@ ipcMain.handle('cab:saveCabinet', (_e, patch) => {
   if (p.settings) {
     const day = Number(p.settings.relanceDay);
     state.settings = { ...state.settings, relanceDay: day >= 1 && day <= 28 ? Math.round(day) : state.settings.relanceDay };
+    if (p.settings.deadlines) state.settings.deadlines = { ...state.settings.deadlines, ...p.settings.deadlines };
+    // migrate() rejette les valeurs aberrantes et remet l'usage : un réglage à zéro ferait
+    // disparaître l'échéance du calendrier au lieu de la décaler.
+    state.settings = K.migrate(state).settings;
   }
   return save();
 });
