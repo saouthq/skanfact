@@ -111,9 +111,11 @@ if ask "Construire l'application et le .dmg ? (sinon tu la lanceras avec « npm 
   # à côté de SkanFact (identifiants de paquet différents), et c'est celle qu'on montre à un cabinet.
   CAB=""
   if ask "Construire aussi SkanFact Cabinet (l'application du comptable) ?"; then
-    npx electron-builder -c build/cabinet.config.js --mac \
-      -c.extraMetadata.updateBase="${UPDATE_BASE//[[:space:]]/}" \
-      -c.extraMetadata.updateSecret="${UPDATE_SECRET//[[:space:]]/}" 2>&1 | grep -vE "^\s*$|• " || true
+    # Ici les réglages passent par l'ENVIRONNEMENT, pas par « -c.extraMetadata… » : `-c` porte déjà
+    # le chemin du fichier de configuration, et les deux formes du même argument se marcheraient
+    # dessus. C'est build/cabinet.config.js qui lit process.env — exactement comme sur GitHub.
+    UPDATE_BASE="${UPDATE_BASE//[[:space:]]/}" UPDATE_SECRET="${UPDATE_SECRET//[[:space:]]/}" \
+      npx electron-builder -c build/cabinet.config.js --mac 2>&1 | grep -vE "^\s*$|• " || true
     CAB=$(find dist-cabinet -maxdepth 3 -name "SkanFact Cabinet.app" -print -quit 2>/dev/null)
     if [[ -n "$CAB" ]]; then ok "Application cabinet construite : $CAB"; else warn "L'application cabinet n'a pas été générée."; fi
   fi
