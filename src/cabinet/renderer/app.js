@@ -383,6 +383,22 @@
     render();
     refreshBackupInfo();
     refreshInbox(true);
+    // Le comptable enregistre ses pièces jointes dans sa messagerie, puis revient ici : c'est le
+    // moment exact où il faut regarder la boîte. Sans ça, il faudrait redémarrer l'application pour
+    // voir arriver ce qu'on vient d'y déposer.
+    let dernierCoupDOeil = 0;
+    window.addEventListener('focus', () => {
+      const t = Date.now();
+      if (t - dernierCoupDOeil < 4000) return;      // revenir deux fois de suite ne relance pas deux scans
+      dernierCoupDOeil = t;
+      const avant = inboxInfo && inboxInfo.nouveaux ? inboxInfo.nouveaux.length : 0;
+      refreshInbox(false).then(() => {
+        const apres = inboxInfo && inboxInfo.nouveaux ? inboxInfo.nouveaux.length : 0;
+        // On ne redessine que si quelque chose a changé : redessiner sous les doigts de quelqu'un
+        // qui revient à sa fenêtre lui ferait perdre sa saisie en cours.
+        if (apres !== avant && !$('#modal-root').children.length && !$('#palette-root')) render();
+      });
+    });
     if (reorganized && reorganized.moved) {
       toast(`${pl(reorganized.moved, 'paquet')} rangé${reorganized.moved > 1 ? 's' : ''} par client et par année.`);
     }
@@ -467,6 +483,22 @@
     render();
     refreshBackupInfo();
     refreshInbox(true);
+    // Le comptable enregistre ses pièces jointes dans sa messagerie, puis revient ici : c'est le
+    // moment exact où il faut regarder la boîte. Sans ça, il faudrait redémarrer l'application pour
+    // voir arriver ce qu'on vient d'y déposer.
+    let dernierCoupDOeil = 0;
+    window.addEventListener('focus', () => {
+      const t = Date.now();
+      if (t - dernierCoupDOeil < 4000) return;      // revenir deux fois de suite ne relance pas deux scans
+      dernierCoupDOeil = t;
+      const avant = inboxInfo && inboxInfo.nouveaux ? inboxInfo.nouveaux.length : 0;
+      refreshInbox(false).then(() => {
+        const apres = inboxInfo && inboxInfo.nouveaux ? inboxInfo.nouveaux.length : 0;
+        // On ne redessine que si quelque chose a changé : redessiner sous les doigts de quelqu'un
+        // qui revient à sa fenêtre lui ferait perdre sa saisie en cours.
+        if (apres !== avant && !$('#modal-root').children.length && !$('#palette-root')) render();
+      });
+    });
   }
 
   function importLine(x) {
