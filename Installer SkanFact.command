@@ -74,10 +74,33 @@ if [[ ! -d node_modules/electron ]]; then
 fi
 
 # ---------------------------------------------------------------- 3. build
+# Le relais de mise à jour : sur GitHub, son adresse et son secret viennent des « secrets » du
+# dépôt. Ici il n'y en a pas, donc on les demande une fois et on les garde dans relais.local.json
+# — jamais commité (.gitignore), lisible par toi seul (mode 600). Sans eux l'application se
+# construit quand même : elle retombe sur GitHub + jeton, comme avant la 6.7.0.
+RELAIS_FILE="relais.local.json"
+if [[ -z "$UPDATE_BASE" && -f "$RELAIS_FILE" ]]; then
+  UPDATE_BASE=$(node -p "require('./$RELAIS_FILE').updateBase || ''" 2>/dev/null)
+  UPDATE_SECRET=$(node -p "require('./$RELAIS_FILE').updateSecret || ''" 2>/dev/null)
+  [[ -n "$UPDATE_BASE" ]] && ok "Relais de mise à jour repris de $RELAIS_FILE"
+fi
+if [[ -z "$UPDATE_BASE" ]]; then
+  echo
+  echo "  ${DIM}Relais de mise à jour (laisse vide si tu ne sais pas : l'app utilisera GitHub).${RESET}"
+  read -r -p "  Adresse du relais : " UPDATE_BASE
+  if [[ -n "$UPDATE_BASE" ]]; then
+    read -r -p "  Secret de l'application : " UPDATE_SECRET
+    node -e "require('fs').writeFileSync('$RELAIS_FILE', JSON.stringify({updateBase:process.argv[1].trim(),updateSecret:process.argv[2].trim()},null,2)+'\n',{mode:0o600})" "$UPDATE_BASE" "$UPDATE_SECRET" \
+      && ok "Gardé dans $RELAIS_FILE — tu ne le retaperas plus"
+  fi
+fi
+
 step 3 "Construction de SkanFact.app et de l'installateur .dmg"
 if ask "Construire l'application et le .dmg ? (sinon tu la lanceras avec « npm start »)"; then
   echo "  ${DIM}Deux à trois minutes…${RESET}"
-  npx electron-builder --mac 2>&1 | grep -vE "^\s*$|• " || true
+  npx electron-builder --mac \
+    -c.extraMetadata.updateBase="${UPDATE_BASE//[[:space:]]/}" \
+    -c.extraMetadata.updateSecret="${UPDATE_SECRET//[[:space:]]/}" 2>&1 | grep -vE "^\s*$|• " || true
   APP=$(find dist -maxdepth 3 -name "SkanFact.app" -print -quit 2>/dev/null)
   [[ -n "$APP" ]] || fail "L'application n'a pas été générée (regarde les messages ci-dessus)."
   ok "Application construite : $APP"

@@ -1,4 +1,9 @@
 node_modules/
 dist/
+dist-cabinet/
 build/release-notes.md
 .DS_Store
+# Adresse et secret du relais de mise à jour, saisis une fois par « Installer SkanFact.command »
+# pour construire l'app sur son propre Mac. Ce sont les mêmes valeurs que les secrets du dépôt :
+# elles ne doivent jamais entrer dans Git.
+relais.local.json

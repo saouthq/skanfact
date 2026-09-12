@@ -102,7 +102,8 @@
       "repo": "skanfact",
       "releaseType": "release"
     },
-    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}"
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "npmRebuild": false
   },
   "repository": {
     "type": "git",

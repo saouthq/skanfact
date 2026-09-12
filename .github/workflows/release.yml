@@ -13,6 +13,13 @@ on:
 permissions:
   contents: write
 
+# Une publication coûte de l'argent : les machines macOS sont facturées dix fois le tarif des
+# autres. Si une seconde publication est lancée pendant qu'une première tourne, la première est
+# annulée au lieu d'être payée pour rien.
+concurrency:
+  group: release
+  cancel-in-progress: true
+
 jobs:
   build:
     strategy:
@@ -26,6 +33,22 @@ jobs:
         with:
           node-version: 22
           cache: npm
+
+      # Electron pèse ~250 Mo par architecture, et une construction « universal » en télécharge deux,
+      # pour chacune des deux applications. Le cache épargne ce téléchargement à chaque publication :
+      # sur une machine macOS facturée dix fois le tarif normal, c'est la minute la plus rentable.
+      - name: Cache Electron
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/electron
+            ~/.cache/electron-builder
+            ~/Library/Caches/electron
+            ~/Library/Caches/electron-builder
+            ~\AppData\Local\electron\Cache
+            ~\AppData\Local\electron-builder\Cache
+          key: electron-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: electron-${{ runner.os }}-
 
       - run: npm ci --no-fund --no-audit
 

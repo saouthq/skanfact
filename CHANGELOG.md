@@ -18,6 +18,13 @@ Signalé par Skander juste après avoir branché le relais : la vérification é
 - **L'adresse et le secret du relais sont nettoyés** avant usage : ils se collent à la main dans des formulaires web, où une espace ou un retour à la ligne invisible se glisse sans qu'on le voie. L'adresse est aussi **vérifiée** au démarrage plutôt qu'au premier téléchargement.
 - Les deux applications, entreprise et cabinet, sont corrigées pareil.
 
+**Et publier coûte moins cher.** Le quota GitHub d'un mois entier est parti en une matinée : chaque publication construit quatre applications, et les machines macOS sont facturées **dix fois** le tarif des autres.
+
+- **Electron est mis en cache** d'une publication à l'autre (250 Mo par architecture, deux architectures, deux applications — c'était retéléchargé à chaque fois).
+- **L'étape de recompilation native est supprimée** : SkanFact n'a aucune dépendance native, elle ne produisait rien.
+- **Deux publications lancées coup sur coup ne se paient plus deux fois** : la première est annulée.
+- **`Installer SkanFact.command` connaît le relais** : il demande son adresse une fois, la garde dans `relais.local.json` (jamais commité) et construit une application identique à celle de GitHub — sans consommer une minute de quota.
+
 ## 6.7.1 — 12/09/2026
 
 **Le jour où tu armes la licence, les comptables ne perdent pas leurs mises à jour.**

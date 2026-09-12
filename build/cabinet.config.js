@@ -30,6 +30,9 @@ module.exports = {
   },
   files: ['src/**/*', 'package.json', 'CHANGELOG.md'],
   directories: { output: 'dist-cabinet' },
+  // Aucune dépendance native (electron-updater est du JavaScript pur) : l'étape de recompilation
+  // d'electron-builder ne produit rien et coûte une minute de machine macOS à chaque publication.
+  npmRebuild: false,
   mac: {
     target: [{ target: 'dmg', arch: ['universal'] }, { target: 'zip', arch: ['universal'] }],
     category: 'public.app-category.business',
