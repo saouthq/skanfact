@@ -236,6 +236,7 @@
     'cab.envoyer': { t: 'Fabriquer le paquet', d: 'La fabrication prend quelques dizaines de secondes : chaque facture est redessinée en PDF, un par un. Le fichier est ensuite enregistré là où tu veux, puis tu peux l\'envoyer par mail depuis l\'app. Si un justificatif a disparu du disque, le paquet part quand même sans lui et le manifeste dit lequel manque — un fichier introuvable ne doit pas bloquer tout un envoi.' },
     'cab.motdepasse': { t: 'Protéger par mot de passe', d: 'Le paquet contient tes factures, tes achats et tes bulletins de paie : des informations qu\'on ne laisse pas traîner dans une boîte mail. Avec un mot de passe, le contenu est chiffré (AES-256) et illisible sans lui. <b>Transmets-le par un autre canal que le fichier</b> — par téléphone, pas dans le même message. L\'entête du paquet reste lisible sans le mot de passe (ton nom et le mois), pour que ton comptable sache de quoi il s\'agit avant de l\'ouvrir.' },
     'cab.historique': { t: 'Ce qui a déjà été envoyé', d: 'Chaque paquet fabriqué, avec sa date, son état (définitif si le mois était clôturé, provisoire sinon) et son <b>empreinte</b>. L\'empreinte est la carte d\'identité du fichier : si ton comptable calcule la même, le paquet qu\'il a reçu est exactement celui que tu as envoyé, à l\'octet près. C\'est ce qui permet de prouver que rien n\'a été modifié en route.' },
+    'lic.etat': { t: 'Ta licence', d: 'SkanFact se vend, donc il y a une licence — mais elle est faite pour ne jamais te gêner. <b>Aucune connexion :</b> la clé est vérifiée sur ton ordinateur, elle n\'est envoyée nulle part, et l\'application fonctionne sans internet. <b>Aucune donnée en otage :</b> même expirée, tu peux lire, imprimer, exporter tes documents et envoyer le paquet à ton comptable — seule la création de nouvelles pièces attend le renouvellement. Si ton comptable utilise SkanFact Cabinet et t\'a remis son fichier d\'appairage, son empreinte part avec ta demande et te donne droit à la remise de parrainage.' },
     'ecr.quoi': { t: 'Écritures comptables', d: 'Tes pièces traduites dans la langue de ton comptable : chaque facture, chaque achat, chaque règlement et chaque bulletin devient un jeu d\'écritures en <b>partie double</b> — autant au débit qu\'au crédit. C\'est exactement ce qu\'il retape aujourd\'hui à la main dans son logiciel ; ici, c\'est un fichier qu\'il importe. Le contrôle affiché en haut vérifie que chaque pièce tombe juste : sinon son logiciel refuserait le fichier. <b>Les numéros de compte ne sont pas une vérité :</b> ceux proposés suivent l\'usage du plan comptable tunisien, mais chaque cabinet a les siens. Demande-lui les bons et modifie-les dans « Plan de comptes ». <em>À VÉRIFIER avec ton comptable.</em>' },
     'clot.etat': { t: 'Période clôturée', d: 'La date jusqu\'à laquelle tout est figé. Aucune pièce datée avant elle ne peut plus être créée, modifiée ou supprimée — ni facture, ni achat, ni paiement, ni bulletin. C\'est cette promesse qui permet à ton comptable de travailler sur un dossier qui ne bouge plus dans son dos. Tant que rien n\'est clôturé, une saisie d\'aujourd\'hui peut changer la TVA d\'un mois déjà déclaré, sans que personne ne s\'en aperçoive.' },
     'clot.cloturer': { t: 'Clôturer un mois', d: 'À faire une fois que le mois est terminé et que tu as tout saisi : les factures émises, les achats reçus, les paiements, les bulletins. L\'application te montre d\'abord ce qui mériterait d\'être réglé (un brouillon oublié, un achat sans justificatif, un mouvement non pointé) — mais elle ne t\'empêche jamais de clôturer : ces points sont là pour que tu les voies. Les mois se clôturent dans l\'ordre, du plus ancien au plus récent. Le mois en cours ne se clôture pas : il lui reste des pièces à venir.' },
@@ -918,6 +919,34 @@
   <li><b>Chaque semaine</b> : pointe ton relevé bancaire dans les deux sens — encaissements clients et règlements fournisseurs.</li>
   <li><b>Chaque mois</b> : vérifie que rien ne traîne dans « À payer », et remets les attestations de retenue que tu dois.</li>
 </ul>`
+    },
+    {
+      id: 'licence', title: 'La licence', sub: 'Ce qu\'elle bloque, et surtout ce qu\'elle ne bloque pas',
+      body: `
+<p>SkanFact est un logiciel payant. Sa licence a été écrite en partant d'une question simple : <b>qu'est-ce qui serait insupportable à la place de l'utilisateur ?</b> Les réponses ont donné trois règles.</p>
+
+<h3>1. Aucune connexion</h3>
+<p>Ta clé est vérifiée <b>sur ton ordinateur</b>, avec une signature électronique. Elle n'est envoyée nulle part, il n'y a aucun compte à créer, et SkanFact fonctionne dans un chantier sans réseau comme dans un bureau. Si le fournisseur de SkanFact disparaissait demain, ton application continuerait de fonctionner jusqu'à la fin de ta licence.</p>
+
+<h3>2. Jamais tes données en otage</h3>
+<p>Une licence expirée <b>ne ferme rien de ce que tu as déjà</b>. Tu peux toujours :</p>
+<ul>
+<li>ouvrir, lire et imprimer tous tes documents ;</li>
+<li>exporter tes données, tes journaux, tes PDF ;</li>
+<li>fabriquer et envoyer le paquet mensuel à ton comptable ;</li>
+<li>faire tes sauvegardes.</li>
+</ul>
+<p>Seule la <b>création de nouvelles pièces</b> attend le renouvellement. C'est une limite commerciale, pas un chantage : tes factures sont à toi, dans un fichier lisible, sur ton disque.</p>
+
+<h3>3. Un essai complet</h3>
+<p>Les 30 premiers jours sont complets, sans rien à saisir. L'application te prévient une semaine avant la fin, dans la barre de gauche.</p>
+
+<h3>Demander ou renouveler</h3>
+<p><b>Paramètres → Licence → Demander une licence</b> prépare le message avec tout ce qu'il faut : ta raison sociale, ton matricule, et — si ton comptable t'a remis son fichier d'appairage — l'empreinte de son cabinet. <b>Un client envoyé par un cabinet qui utilise SkanFact Cabinet a droit à une remise.</b> Tu reçois une clé qui commence par <code>SKAN1.</code>, tu la colles, c'est fini.</p>
+<p>Si la clé est refusée, c'est presque toujours qu'elle a été copiée incomplètement : reprends-la depuis le <code>S</code> de <code>SKAN1.</code> jusqu'au tout dernier caractère, sans espace ni retour à la ligne oublié.</p>
+
+<h3>Changer d'ordinateur</h3>
+<p>La même clé fonctionne sur ton nouvel ordinateur : colle-la, et c'est tout. Elle est liée à ton entreprise, pas à une machine.</p>`
     },
     {
       id: 'donnees', title: 'Tes données : sauvegarder et protéger', sub: 'Le sujet le plus ennuyeux et le plus important',

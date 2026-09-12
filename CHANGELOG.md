@@ -7,6 +7,20 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 6.4.0 — 12/09/2026
+
+**La licence — écrite pour ne pas te gêner.**
+
+SkanFact est un logiciel payant, et sa licence a été conçue en partant d'une question : qu'est-ce qui serait insupportable à la place de l'utilisateur ?
+
+- **Aucune connexion.** La clé est vérifiée sur ton ordinateur par signature électronique (Ed25519). Elle n'est envoyée nulle part, il n'y a aucun compte à créer, et l'application fonctionne sans internet. Si demain SkanFact n'existait plus, ton application continuerait de tourner.
+- **Jamais tes données en otage.** Une licence expirée ne ferme rien de ce que tu as déjà : lire, imprimer, exporter, sauvegarder, envoyer le paquet au comptable — tout reste ouvert. Seule la **création de nouvelles pièces** attend le renouvellement.
+- **30 jours d'essai complets**, et un rappel une semaine avant la fin.
+- **La remise de parrainage automatique** : si ton comptable t'a remis son fichier d'appairage, l'empreinte de son cabinet part avec ta demande de licence.
+- Nouvel onglet **Paramètres → Licence** et article d'aide « La licence ».
+
+*Cette version est livrée **sans licence exigée** : la machinerie est là, elle ne verrouille rien tant que le propriétaire ne l'a pas armée. Un logiciel qui se verrouillerait tout seul à l'installation serait un défaut, pas une licence.*
+
 ## 6.3.0 — 12/09/2026
 
 **Les écritures comptables : ton comptable n'a plus rien à retaper.**

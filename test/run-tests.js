@@ -2871,6 +2871,93 @@ t('couches : une question passe au-dessus de tout, les bulles et messages au-des
   assert.strictEqual(Number(base[1]), modale, 'app.js et style.css ne partent pas de la même couche');
 });
 
+// ---------- licence hors ligne (6.4.0) ----------
+const lic = require('../src/licence.js');
+
+t('licence : signée par Skander, vérifiée sur l\'ordinateur du client, et par personne d\'autre', () => {
+  const k = lic.generateKeys();
+  const key = lic.signLicence({ nom: 'Menuiserie Trabelsi SUARL', matricule: '1234567A', exp: '2027-09-12', cabinet: 'AB12-CD34' }, k.privateKey);
+  const p = lic.verifyKey(key, k.publicKey);
+  assert.ok(p && p.nom === 'Menuiserie Trabelsi SUARL');
+  // Une licence émise avec une autre clé privée ne passe pas : c'est tout l'intérêt de la signature.
+  assert.strictEqual(lic.verifyKey(key, lic.generateKeys().publicKey), null, 'une autre clé publique doit refuser');
+  assert.strictEqual(lic.verifyKey(key.slice(0, -6), k.publicKey), null, 'une clé tronquée doit refuser');
+  assert.strictEqual(lic.verifyKey(key + 'x', k.publicKey), null, 'une clé rallongée doit refuser');
+  assert.strictEqual(lic.verifyKey('n\'importe quoi', k.publicKey), null);
+  assert.strictEqual(lic.verifyKey('', k.publicKey), null);
+  // Modifier le contenu (repousser la date) invalide la signature.
+  const parts = key.slice(lic.PREFIX.length).split('.');
+  const body = JSON.parse(Buffer.from(parts[0].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));
+  body.exp = '2099-01-01';
+  const forged = lic.PREFIX + Buffer.from(JSON.stringify(body)).toString('base64url') + '.' + parts[1];
+  assert.strictEqual(lic.verifyKey(forged, k.publicKey), null, 'une licence retouchée doit être refusée');
+});
+
+t('licence : les états, et ce qu\'ils bloquent', () => {
+  const k = lic.generateKeys();
+  const key = lic.signLicence({ nom: 'X', exp: '2027-09-12' }, k.privateKey);
+  const S = o => lic.licenceState({ publicKey: k.publicKey, installedAt: '2026-09-01', ...o });
+
+  // Sans clé publique configurée, l'application est LIBRE : elle ne se verrouille jamais toute seule.
+  const libre = lic.licenceState({ today: '2030-01-01', installedAt: '2020-01-01' });
+  assert.strictEqual(libre.state, 'libre');
+  assert.strictEqual(libre.locked, false, 'une version sans clé publique ne doit rien bloquer');
+
+  assert.strictEqual(S({ today: '2026-09-12' }).state, 'essai');
+  assert.strictEqual(S({ today: '2026-09-12' }).daysLeft, 19);
+  assert.strictEqual(S({ today: '2026-09-12' }).locked, false);
+  assert.strictEqual(S({ today: '2026-10-01' }).state, 'essai', 'le dernier jour d\'essai est encore un essai');
+  assert.strictEqual(S({ today: '2026-10-02' }).state, 'finessai');
+  assert.strictEqual(S({ today: '2026-10-02' }).locked, true);
+
+  assert.strictEqual(S({ today: '2030-01-01', key }).state, 'expiree');
+  assert.strictEqual(S({ today: '2027-09-12', key }).state, 'active', 'le jour de l\'échéance compte encore');
+  assert.strictEqual(S({ today: '2027-09-13', key }).state, 'expiree');
+  assert.strictEqual(S({ today: '2026-09-12', key }).locked, false);
+  assert.strictEqual(S({ today: '2026-09-12', key: 'SKAN1.faux.faux' }).state, 'invalide');
+
+  // Une licence sans date d'expiration ne se périme pas.
+  const perpet = lic.signLicence({ nom: 'Y' }, k.privateKey);
+  assert.strictEqual(S({ today: '2099-01-01', key: perpet }).state, 'active');
+
+  // Le message d'une licence expirée doit dire ce qui reste possible : jamais de données en otage.
+  assert.ok(/lisible|exportable/i.test(S({ today: '2030-01-01', key }).detail));
+});
+
+t('licence : les dates tiennent sous tous les fuseaux, et la demande porte le cabinet parrain', () => {
+  const tzBefore = process.env.TZ;
+  try {
+    const k = lic.generateKeys();
+    const key = lic.signLicence({ nom: 'X', exp: '2026-10-01' }, k.privateKey);
+    for (const tz of ['Africa/Tunis', 'UTC', 'America/Los_Angeles', 'Pacific/Kiritimati']) {
+      process.env.TZ = tz;
+      const st = lic.licenceState({ publicKey: k.publicKey, key, installedAt: '2026-09-01', today: '2026-09-12' });
+      assert.strictEqual(st.state, 'active', tz);
+      assert.strictEqual(st.daysLeft, 19, tz + ' : le décompte doit être le même partout');
+      assert.strictEqual(lic.addDays('2026-09-12', 30), '2026-10-12', tz);
+    }
+  } finally { if (tzBefore === undefined) delete process.env.TZ; else process.env.TZ = tzBefore; }
+
+  const m = lic.requestMail(
+    { name: 'Menuiserie Trabelsi', matricule: '1234567A', email: 'a@b.tn', cabinet: { name: 'Cabinet Ben Salah', fingerprint: 'AB12-CD34' } },
+    { label: 'Période d\'essai' }, 'MacBook de Skander');
+  assert.ok(m.body.includes('1234567A') && m.body.includes('AB12-CD34'), 'la demande doit porter le matricule et le parrain');
+  assert.ok(/parrainage/.test(m.body), 'et réclamer la remise de parrainage');
+});
+
+t('licence : le garde-fou ne barre que la création, et l\'app livrée ne se verrouille pas', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
+  // Le garde-fou ne doit être posé que sur des créations, jamais sur un export ou une lecture.
+  const calls = src.match(/licenceBlock\('[^']+'\)/g) || [];
+  assert.ok(calls.length >= 4, 'garde-fou de licence absent des chemins de création');
+  calls.forEach(c => assert.ok(/Créer|Émettre|Enregistrer un nouvel|Établir un nouveau/.test(c),
+    'le garde-fou de licence est posé ailleurs que sur une création : ' + c));
+  assert.ok(!/licenceBlock\([^)]*[Ee]xport/.test(src), 'un export ne doit jamais dépendre de la licence');
+  // Et la version livrée n'embarque pas de clé publique : elle ne peut donc verrouiller personne.
+  assert.ok(!fs.existsSync(path.join(__dirname, '..', 'build', 'licence-public.json')),
+    'build/licence-public.json est présent : la licence serait armée pour tout le monde — c\'est une décision du propriétaire, pas un effet de bord');
+});
+
 // ---------- écritures comptables (Cabinet 1.1.0) ----------
 // L'invariant, et le seul qui soit certain : débit = crédit, pièce par pièce. Les numéros de compte,
 // eux, sont une proposition — d'où le fait qu'ils soient modifiables et marqués « À VÉRIFIER ».

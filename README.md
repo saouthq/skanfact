@@ -129,6 +129,8 @@ src/renderer/app.js        interface
 src/renderer/style.css
 src/renderer/index.html
 src/zip.js                 fabrication et scellage des paquets .skanpack (sans dépendance)
+src/licence.js             licence hors ligne (Ed25519), testée sans Electron
+scripts/licence.js         fabrique les licences (clé privée hors du dépôt)
 src/cabinet/               SkanFact Cabinet : la seconde application, celle du comptable
   cabcore.js               sa logique, testée sans Electron
   main.js                  état chiffré, import des paquets, appairage
@@ -148,6 +150,18 @@ npm run build:cabinet:mac    # ou :win — installeur dans dist-cabinet/
 ```
 
 Sa version est `cabinetVersion` dans `package.json` (indépendante de celle de SkanFact). Le workflow Release la construit et attache ses installeurs à la release de l'app entreprise.
+
+## Licence (6.4.0)
+
+La vérification est **hors ligne** : une clé signée Ed25519, vérifiée avec la clé publique embarquée. Tant que `build/licence-public.json` n'existe pas, **l'application est libre** et ne verrouille rien. Pour armer la licence :
+
+```bash
+node scripts/licence.js --keygen        # clé privée dans ~/.skanfact/ (jamais commitée),
+                                        # clé publique dans build/licence-public.json (à commiter)
+node scripts/licence.js --nom "Client SUARL" --matricule 1234567A --mois 12
+```
+
+Une licence expirée n'empêche que la **création** de nouvelles pièces : lecture, impression, export, sauvegardes et paquet mensuel restent disponibles.
 
 ## Limites connues
 

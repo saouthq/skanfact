@@ -305,6 +305,31 @@ const APP_CFG = () => path.join(app.getPath('userData'), 'app-config.json');
 function readAppCfg() { try { return JSON.parse(fs.readFileSync(APP_CFG(), 'utf8')); } catch { return {}; } }
 function writeAppCfg(cfg) { fs.mkdirSync(path.dirname(APP_CFG()), { recursive: true }); fs.writeFileSync(APP_CFG(), JSON.stringify(cfg, null, 2)); }
 
+// ---------- licence (6.4.0) ----------
+// La clé publique est embarquée dans le paquet (`build/licence-public.json`). Tant qu'elle n'existe
+// pas, l'application est libre : livrer un logiciel qui se verrouille tout seul serait un défaut.
+const L = require('./licence');
+const LIC_FILE = () => path.join(app.getPath('userData'), 'licence.json');
+let licencePublicKey = null;
+function publicKey() {
+  if (licencePublicKey !== null) return licencePublicKey;
+  try { licencePublicKey = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'build', 'licence-public.json'), 'utf8')).publicKey || ''; }
+  catch { licencePublicKey = ''; }
+  return licencePublicKey;
+}
+function readLicence() { try { return JSON.parse(fs.readFileSync(LIC_FILE(), 'utf8')); } catch { return {}; } }
+// Date de première ouverture : le point de départ de l'essai. Elle vit dans app-config.json, donc
+// elle ne part pas avec une sauvegarde ni un export — un essai ne se rejoue pas en réimportant.
+function installedAt() {
+  const cfg = readAppCfg();
+  if (!cfg.installedAt) { cfg.installedAt = L.today(); writeAppCfg(cfg); }
+  return cfg.installedAt;
+}
+function licenceStatus() {
+  const lic = readLicence();
+  return L.licenceState({ key: lic.key || '', publicKey: publicKey(), installedAt: installedAt(), today: L.today() });
+}
+
 // ---------- dossiers : plusieurs entreprises sur le même ordinateur ----------
 // Chaque dossier a son fichier de données, ses sauvegardes et ses pièces jointes, dans
 // userData/dossiers/<id>/. Un dossier peut aussi vivre dans un dossier partagé (iCloud, réseau) :
@@ -722,6 +747,25 @@ async function renderPdf(html, win) {
   }
 }
 const pdfWindow = () => new BrowserWindow({ show: false, webPreferences: { sandbox: true, contextIsolation: true } });
+
+// ---------- licence ----------
+ipcMain.handle('licence:status', () => licenceStatus());
+// On refuse d'enregistrer une clé invalide : mieux vaut le dire tout de suite que laisser
+// l'utilisateur croire qu'il est en règle et découvrir le contraire au moment de facturer.
+ipcMain.handle('licence:set', (_e, key) => {
+  const k = String(key || '').trim();
+  if (!k) { try { fs.unlinkSync(LIC_FILE()); } catch {} return licenceStatus(); }
+  if (publicKey() && !L.verifyKey(k, publicKey())) {
+    const err = new Error('Cette clé n\'est pas reconnue. Vérifie qu\'elle a été copiée en entier, de « SKAN1. » jusqu\'au dernier caractère.');
+    err.code = 'LICENCE_INVALIDE';
+    throw err;
+  }
+  fs.mkdirSync(path.dirname(LIC_FILE()), { recursive: true });
+  fs.writeFileSync(LIC_FILE(), JSON.stringify({ key: k, savedAt: new Date().toISOString() }, null, 2));
+  return licenceStatus();
+});
+
+ipcMain.handle('licence:requestMail', (_e, { company, device } = {}) => L.requestMail(company || {}, licenceStatus(), device || ''));
 
 // Import du fichier d'appairage remis par le cabinet (6.2.0). On ne stocke QUE sa clé publique :
 // elle ne permet que de chiffrer POUR lui, jamais de lire ce qu'il reçoit. Rien de secret ici.

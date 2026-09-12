@@ -23,10 +23,20 @@
     updateVersion: async () => ({ version: 'dev', packaged: false, platform: 'browser', macSigned: false }),
     updateCheck: async () => ({ state: 'dev' }), updateDownload: async () => ({ state: 'dev' }), updateInstall: async () => ({ state: 'dev' }), updateSetToken: async () => ({ hasToken: false }),
     updateOpenReleases: async () => {},
+    licenceStatus: async () => ({ state: 'libre', locked: false, label: 'Licence non requise', detail: '' }),
+    licenceSet: async () => ({ state: 'libre', locked: false, label: 'Licence non requise', detail: '' }),
+    licenceMail: async () => ({ subject: 'Demande de licence SkanFact', body: '' }),
     onUpdateEvent: () => {}
   };
 
   // ---------- état ----------
+  // Licence (6.4.0). `locked` ne bloque QUE la création de nouvelles pièces : lire, imprimer,
+  // exporter, sauvegarder et envoyer le paquet au comptable restent toujours possibles. Une licence
+  // expirée ne prend pas les données en otage — c'est écrit dans l'app et dans l'aide.
+  let licence = { state: 'libre', locked: false, label: '', detail: '' };
+  // À qui s'adresse une demande de licence. Une seule ligne à changer le jour où ce sera une adresse
+  // de société plutôt qu'une adresse personnelle.
+  const LICENCE_CONTACT = 'licences@skanfact.tn';
   let data = null;
   let saveTimer = null;
   const unlockedIds = new Set(); // factures émises déverrouillées « quand même » pour la session
@@ -173,6 +183,23 @@
     return true;
   }
 
+  // Le garde-fou de la licence (6.4.0). Une seule porte, comme closedBlock : elle ne barre que la
+  // création de nouvelles pièces. Tout le reste — lire, imprimer, exporter, sauvegarder, envoyer le
+  // paquet au comptable — reste ouvert, et la fenêtre le dit noir sur blanc.
+  function licenceBlock(what) {
+    if (!licence.locked) return false;
+    modal(`<h2>${h(licence.label)}</h2>
+      <p>${h(what)} : il faut une licence en cours de validité.</p>
+      <p class="small">${h(licence.detail)}</p>
+      <ul class="small">
+        <li><strong>Tes données restent les tiennes</strong> : tu peux tout lire, imprimer, exporter et envoyer à ton comptable, aujourd'hui comme dans dix ans.</li>
+        <li>Seule la création de nouvelles pièces attend la licence.</li>
+      </ul>
+      <div class="modal-actions"><button class="btn" data-close>Plus tard</button><button class="btn btn-primary" id="go-lic">Voir ma licence</button></div>`,
+      (root, close) => { $('#go-lic', root).onclick = () => { close(); settingsTab = 'licence'; navigate('#/parametres'); }; });
+    return true;
+  }
+
   // Version courte pour les cas où un simple message suffit (une action de liste, pas un formulaire).
   function closedToast(dates, what) {
     const list = (Array.isArray(dates) ? dates : [dates]).filter(Boolean);
@@ -185,6 +212,13 @@
   // Le nom du poste, tel que le stockage l'estampille à chaque écriture (3.2.0). Il sert à dire QUI
   // a clôturé ou rouvert une période : sur un dossier partagé, c'est la première question posée.
   function deviceLabel() { return (data && data.syncDeviceName) || 'cet ordinateur'; }
+  // Une erreur venue du processus principal arrive habillée : « Error invoking remote method 'x:y':
+  // Error: … ». Ce préambule n'apprend rien à personne ; on ne garde que la phrase écrite pour
+  // l'utilisateur.
+  function plainError(e) {
+    const m = String((e && e.message) || e || '');
+    return m.replace(/^Error invoking remote method '[^']*':\s*/, '').replace(/^Error:\s*/, '').trim() || 'Erreur inattendue';
+  }
 
   // Mémoire des suppressions : sans elle, une pièce supprimée ici reviendrait à la fusion suivante,
   // renvoyée par le poste qui ne l'a pas encore vue disparaître.
@@ -1488,6 +1522,9 @@
       // contournerait la clôture aussi sûrement que d'en créer une dedans.
       const was = (data.documents.find(d => d.id === doc.id) || {}).date;
       if (closedBlock([was, doc.date], 'Ce document')) return false;
+      // Licence : seule la CRÉATION est retenue. Modifier ou corriger une pièce existante reste
+      // possible — sinon une licence expirée empêcherait de réparer une faute de frappe.
+      if (!data.documents.some(d => d.id === doc.id) && licenceBlock('Créer un nouveau document')) return false;
       if ((isQ || isExtra) && !doc.number) doc.number = C.nextNumber(data, doc.type, doc.date);
       if (isAv && doc.creditOf) { const inv = docById(doc.creditOf); if (inv) doc.creditOfNumber = inv.number; }
       const idx = data.documents.findIndex(d => d.id === doc.id);
@@ -1502,6 +1539,7 @@
       // Avant `nextNumber` : le compteur est écrit même quand l'enregistrement échoue ensuite. Un
       // garde-fou posé après aurait troué la numérotation à chaque tentative refusée.
       if (closedBlock(doc.date, 'Cette pièce')) return false;
+      if (!data.documents.some(d => d.id === doc.id) && licenceBlock('Émettre une nouvelle pièce')) return false;
       if (!doc.number) doc.number = C.nextNumber(data, doc.type, doc.date);
       doc.status = isInv ? 'envoyée' : 'émis';
       unlockedIds.delete(doc.id);
@@ -3479,6 +3517,7 @@
       if (!validate()) return false;
       const wasDate = (data.purchases.find(x => x.id === p.id) || {}).date;
       if (closedBlock([wasDate, p.date], 'Cet achat')) return false;
+      if (!data.purchases.some(x => x.id === p.id) && licenceBlock('Enregistrer un nouvel achat')) return false;
       const idx = data.purchases.findIndex(x => x.id === p.id);
       const clean = deepCopy(p);
       if (idx >= 0) data.purchases[idx] = clean; else data.purchases.push(clean);
@@ -3958,6 +3997,7 @@
           const v = formValues($('#bf', root));
           const i = input();
           if (closedBlock(C.payslipDate(p), 'Ce bulletin')) return;
+          if (!slip && licenceBlock('Établir un nouveau bulletin')) return;
           Object.assign(p, v, i, { gross: i.gross, computed: C.computePayslip(emp, i, s), issuedAt: p.issuedAt || C.today() });
           if (!slip) data.payslips.push(p);
           save(true); close(); if (done) done(p);
@@ -6874,7 +6914,7 @@
   routes.parametres = async () => {
     const c = company();
     const path = await bridge.dataPath();
-    const TABS = [['societe', 'Société'], ['documents', 'Documents'], ['emails', 'Emails'], ['apparence', 'Apparence'], ['cabinet', 'Cabinet comptable'], ['donnees', 'Sécurité et données'], ['maj', 'Mises à jour']];
+    const TABS = [['societe', 'Société'], ['documents', 'Documents'], ['emails', 'Emails'], ['apparence', 'Apparence'], ['cabinet', 'Cabinet comptable'], ['donnees', 'Sécurité et données'], ['licence', 'Licence'], ['maj', 'Mises à jour']];
     if (!TABS.some(t => t[0] === settingsTab)) settingsTab = 'societe';
     $('#view').innerHTML = `<div class="page-head"><h1>Paramètres</h1></div>
       <div class="tabs" id="set-tabs" role="tablist">${TABS.map(([id, label]) => `<button role="tab" data-tab="${id}" class="${id === settingsTab ? 'active' : ''}">${label}</button>`).join('')}</div>
@@ -6975,6 +7015,9 @@
         <div class="panel"><h2>Ton cabinet comptable ${info('cab.appaire')}</h2>
           <div id="cab-pair"></div>
         </div>
+      </section>
+      <section data-pane="licence" hidden>
+        <div class="panel"><h2>Licence ${info('lic.etat')}</h2><div id="lic-panel"></div></div>
       </section>
       <section data-pane="donnees" hidden>
       <div class="panel"><h2>Dossiers — plusieurs entreprises sur cet ordinateur ${info('data.dossiers')}</h2>
@@ -7098,6 +7141,7 @@
       };
     }
     drawCabinetPair();
+    drawLicencePanel();
     drawUpdatePanel();
     drawOcrPanel();
     $('#backup-now').onclick = async () => { const p = await bridge.createBackup(); toast(p ? 'Sauvegarde créée : ' + p.split(/[\\/]/).pop() : 'Rien à sauvegarder pour l\'instant'); drawExternal(); };
@@ -7318,6 +7362,62 @@
     }
     if (inList) out += '</ul>';
     return `<div class="notes-md">${out}</div>`;
+  }
+
+  // Le panneau de licence. Il dit l'état, ce qui est bloqué et ce qui ne l'est pas, et prépare la
+  // demande. Jamais d'appel réseau : la vérification se fait avec la clé publique embarquée.
+  function drawLicencePanel() {
+    const el = $('#lic-panel'); if (!el) return;
+    const st = licence || {};
+    const cls = st.state === 'active' || st.state === 'libre' ? 'accepté' : st.state === 'essai' ? 'émis' : 'annulée';
+    el.innerHTML = st.state === 'libre'
+      ? `<p><span class="badge accepté">Licence non requise</span></p>
+         <p class="small">Cette version de SkanFact n'exige aucune licence : tu peux l'utiliser et la partager telle quelle.</p>`
+      : `<p><span class="badge ${cls}">${h(st.label || '')}</span></p>
+         ${st.detail ? `<p class="small">${h(st.detail)}</p>` : ''}
+         ${st.name ? `<table class="list compact"><tbody>
+            <tr><td>Titulaire</td><td><strong>${h(st.name)}</strong></td></tr>
+            ${st.matricule ? `<tr><td>Matricule</td><td>${h(st.matricule)}</td></tr>` : ''}
+            ${st.exp ? `<tr><td>Valable jusqu'au</td><td>${C.fmtDate(st.exp)}</td></tr>` : ''}
+            ${st.cabinet ? `<tr><td>Cabinet parrain</td><td class="mono">${h(st.cabinet)}</td></tr>` : ''}
+          </tbody></table>` : ''}
+         <label class="field mt">Clé de licence
+           <textarea id="lic-key" rows="3" placeholder="SKAN1.…">${h(st.key || '')}</textarea></label>
+         <div class="inline mt">
+           <button type="button" class="btn btn-primary" id="lic-save">Enregistrer la clé</button>
+           <button type="button" class="btn" id="lic-ask">Demander une licence</button>
+           ${st.key ? '<button type="button" class="btn btn-ghost" id="lic-clear">Retirer la clé</button>' : ''}
+         </div>
+         <p class="small muted mt"><strong>Tes données t'appartiennent, licence ou pas.</strong> Même expirée, tu peux tout lire, imprimer, exporter et envoyer à ton comptable. Seule la création de nouvelles pièces attend le renouvellement.</p>
+         <p class="small muted">La vérification se fait <strong>sur cet ordinateur</strong>, sans aucune connexion : SkanFact n'envoie jamais ta clé nulle part.</p>`;
+
+    const setKey = async (key) => {
+      try {
+        licence = await bridge.licenceSet(key);
+        drawLicencePanel(); licenceBanner();
+        toast(licence.locked ? licence.label : 'Licence enregistrée : ' + licence.label);
+      } catch (e) { toast(plainError(e), true); }
+    };
+    if ($('#lic-save')) $('#lic-save').onclick = () => setKey($('#lic-key').value.trim());
+    if ($('#lic-clear')) $('#lic-clear').onclick = async () => {
+      if (!await confirmDialog('Retirer la clé de licence de cet ordinateur ?')) return;
+      setKey('');
+    };
+    if ($('#lic-ask')) $('#lic-ask').onclick = async () => {
+      const m = await bridge.licenceMail(company(), deviceLabel());
+      await bridge.composeMail({ to: LICENCE_CONTACT, subject: m.subject, body: m.body });
+      toast('Message préparé');
+    };
+  }
+
+  // Un bandeau, et seulement quand il sert : essai qui se termine, ou création bloquée.
+  function licenceBanner() {
+    const el = $('#lic-banner');
+    const show = licence.locked || (licence.state === 'essai' && licence.daysLeft != null && licence.daysLeft <= 7);
+    if (!el) return;
+    el.hidden = !show;
+    el.classList.toggle('warn', !!licence.locked);
+    if (show) el.textContent = licence.locked ? licence.label + ' — voir Paramètres → Licence' : licence.label;
   }
 
   function drawUpdatePanel() {
@@ -7544,6 +7644,9 @@
       }
     });
     $('#update-pill').onclick = () => { settingsTab = 'maj'; navigate('#/parametres'); };
+    $('#lic-banner').onclick = () => { settingsTab = 'licence'; navigate('#/parametres'); };
+    // La licence se lit une fois au démarrage : hors ligne, instantané, et jamais renvoyé nulle part.
+    bridge.licenceStatus().then(st => { licence = st || licence; licenceBanner(); }).catch(() => {});
     if (!location.hash) location.hash = '#/dashboard';
     render();
     if (loaded && loaded.corruptFile) {
