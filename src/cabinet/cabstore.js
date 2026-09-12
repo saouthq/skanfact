@@ -104,7 +104,15 @@ function createCabStore(dir, opts) {
   const file = path.join(dir, 'cabinet-data.json');
   const backupDir = path.join(dir, 'sauvegardes');
   const packRoot = path.join(dir, 'paquets');
-  const st = { key: null, salt: null, corruptFile: null, external: { dir: opts.externalDir || null, lastCopy: null, lastError: null } };
+  // `password` est gardé en mémoire pour la session, à UN seul usage : ouvrir une sauvegarde dont le
+  // sel diffère de celui du fichier courant. C'est le cas qui arrive précisément le jour où ça
+  // compte — le fichier principal a disparu, on rouvre l'application avec le MÊME mot de passe, mais
+  // un nouveau sel est tiré au hasard, donc la clé dérivée n'est plus la même et les sauvegardes
+  // paraissent verrouillées. Sans ça, l'application répond « cette sauvegarde a été faite avec un
+  // autre mot de passe » à quelqu'un qui vient de taper le bon, au pire moment possible.
+  // Ce n'est pas un affaiblissement : la clé dérivée, déjà gardée en mémoire, ouvre exactement les
+  // mêmes données.
+  const st = { key: null, salt: null, password: null, corruptFile: null, external: { dir: opts.externalDir || null, lastCopy: null, lastError: null } };
 
   const today = () => stamp(now()).slice(0, 10);
   const exists = () => { try { return fs.existsSync(file); } catch { return false; } };
@@ -130,6 +138,7 @@ function createCabStore(dir, opts) {
     const salt = crypto.randomBytes(16);
     st.salt = salt;
     st.key = deriveKey(password, salt);
+    st.password = String(password);
     const s = { ...initial };
     write(s);
     return s;
@@ -143,11 +152,11 @@ function createCabStore(dir, opts) {
     let plain;
     try { plain = openWithKey(env, key); }
     catch { return { ok: false, error: 'Mot de passe incorrect.' }; }
-    st.key = key; st.salt = salt;
+    st.key = key; st.salt = salt; st.password = String(password);
     return { ok: true, state: plain };
   }
 
-  function lock() { st.key = null; st.salt = null; }
+  function lock() { st.key = null; st.salt = null; st.password = null; }
   const unlocked = () => !!st.key;
 
   function write(state) {
@@ -173,6 +182,7 @@ function createCabStore(dir, opts) {
     const salt = crypto.randomBytes(16);
     st.salt = salt;
     st.key = deriveKey(password, salt);
+    st.password = String(password);
     write(state);
     let names = [];
     try { names = fs.readdirSync(backupDir).filter(f => f.endsWith('.json')); } catch { names = []; }
@@ -245,7 +255,16 @@ function createCabStore(dir, opts) {
     } else {
       if (!st.key) throw new Error('Aucun cabinet ouvert.');
       try { plain = openWithKey(env, st.key); }
-      catch { const e = new Error('Cette sauvegarde a été faite avec un autre mot de passe.'); e.code = 'OTHERPW'; throw e; }
+      catch {
+        // Même mot de passe, autre sel : c'est le cas d'une sauvegarde d'avant une recréation du
+        // cabinet. On réessaie avec le sel de la sauvegarde AVANT de conclure quoi que ce soit.
+        let ok2 = false;
+        if (st.password) {
+          try { plain = openWithKey(env, deriveKey(st.password, Buffer.from(env.salt, 'base64'))); ok2 = true; }
+          catch { ok2 = false; }
+        }
+        if (!ok2) { const e = new Error('Cette sauvegarde a été faite avec un autre mot de passe.'); e.code = 'OTHERPW'; throw e; }
+      }
     }
     return plain;
   }

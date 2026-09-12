@@ -20,7 +20,8 @@
     "e2e:boucle": "node test/e2e/boucle-complete.js",
     "e2e:entreprise": "node test/e2e/entreprise.js",
     "e2e:refus": "node test/e2e/cabinet-refus.js",
-    "e2e:gel": "node test/e2e/chien-de-garde.js"
+    "e2e:gel": "node test/e2e/chien-de-garde.js",
+    "e2e:perte": "node test/e2e/cabinet-perte.js"
   },
   "devDependencies": {
     "electron": "^43.0.0",

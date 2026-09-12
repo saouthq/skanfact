@@ -275,6 +275,16 @@
       $('#lock-err').innerHTML = 'Le fichier du cabinet était illisible. Il a été <b>mis de côté sans être effacé</b> : ouvre avec ton mot de passe, puis restaure une sauvegarde dans Réglages.';
       $('#lock-err').hidden = false;
     }
+    // Le pire des cas : plus de fichier de données, mais des sauvegardes. Sans ce message, l'écran
+    // dit « Bienvenue, choisis un mot de passe » — exactement comme au premier jour — et le
+    // comptable croit avoir tout perdu alors que tout est là, à côté.
+    const aRecuperer = !st.exists && st.backups > 0;
+    if (aRecuperer) {
+      $('#lock-err').innerHTML = `Le fichier principal de ce cabinet a disparu, mais <b>${st.backups === 1 ? 'une sauvegarde est là' : `${st.backups} sauvegardes sont là`}</b>.
+        Choisis un mot de passe pour rouvrir l'application : elle te proposera aussitôt de restaurer.
+        <br>Si tu connais ton ancien mot de passe, reprends-le : les sauvegardes sont chiffrées avec lui.`;
+      $('#lock-err').hidden = false;
+    }
     if (st.exists) {
       sub.textContent = 'Entre le mot de passe de ton cabinet.';
       note.innerHTML = 'Le dossier est chiffré sur ce poste : sans ce mot de passe, personne ne peut lire les comptabilités de tes clients.';
@@ -312,7 +322,7 @@
         S = r.state;
         $('#lock-screen').remove();
         $('#app').hidden = false;
-        start(r.created, r.reorganized);
+        start(r.created, r.reorganized, aRecuperer);
       } catch (ex) {
         err.innerHTML = esc(plainError(ex));
         err.hidden = false;
@@ -333,7 +343,7 @@
     return 'Faible : allonge-le, une phrase entière vaut mieux qu\'un mot compliqué.';
   }
 
-  function start(created, reorganized) {
+  function start(created, reorganized, aRecuperer) {
     window.addEventListener('hashchange', render);
     api.onUpdateEvent(ev => {
       upd.state = ev.state;
@@ -373,6 +383,17 @@
     refreshBackupInfo();
     if (reorganized && reorganized.moved) {
       toast(`${pl(reorganized.moved, 'paquet')} rangé${reorganized.moved > 1 ? 's' : ''} par client et par année.`);
+    }
+    // Un cabinet qui vient de perdre son fichier ne veut pas d'un assistant de bienvenue : il veut
+    // ses données. On l'emmène directement là où elles sont.
+    if (aRecuperer) {
+      location.hash = '#/reglages';
+      setTimeout(() => {
+        toast('Choisis la sauvegarde à restaurer.', 'error');
+        const p = $('#pan-backup');
+        if (p) p.scrollIntoView({ block: 'start' });
+      }, 600);
+      return;
     }
     // Premier lancement : l'assistant, pas un formulaire de réglages et un message passager.
     if (created || !(S.cabinet.name || '').trim()) runSetup();

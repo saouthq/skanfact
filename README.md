@@ -114,6 +114,7 @@ npm run e2e:entreprise   # l'app entreprise, écran par écran
 npm run e2e:cabinet      # l'app cabinet : assistant, portefeuille, sauvegardes, suppression et récupération
 npm run e2e:boucle       # les DEUX apps à la suite : appairage → paquet → import → écritures regroupées
 npm run e2e:refus        # les quatre cas tordus de l'import d'un paquet
+npm run e2e:perte        # le scénario catastrophe : la base disparaît, tout revient
 npm run e2e:gel          # le chien de garde, sur une interface vraiment gelée
 ```
 

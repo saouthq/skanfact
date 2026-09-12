@@ -3732,6 +3732,37 @@ t('cabstore : restaurer met l\'état actuel de côté avant de l\'écraser', () 
   assert.strictEqual(s.peek(retour.path).dossiers.length, 1, 'et il doit contenir ce qu\'on venait de perdre');
 });
 
+t('cabstore : le MÊME mot de passe rouvre une sauvegarde faite avant une recréation', () => {
+  // Le piège du jour où ça compte. Le fichier principal disparaît ; on rouvre l'application et on
+  // retape le bon mot de passe — mais un nouveau sel est tiré au hasard, donc la clé dérivée n'est
+  // plus la même et les sauvegardes paraissent verrouillées. L'application répondait « cette
+  // sauvegarde a été faite avec un autre mot de passe » à quelqu'un qui venait de taper le bon.
+  const dir = tmpCab();
+  let jour = new Date('2026-09-12T09:00:00Z');
+  const s = CS.createCabStore(dir, { now: () => jour });
+  const st = cabState();
+  st.dossiers.push(cab.newDossier({ name: 'Client à sauver' }));
+  s.create('mot-de-passe-long', st);
+  const sauvegarde = s.backupNow('avant-la-catastrophe');
+
+  // catastrophe : le fichier principal disparaît, les sauvegardes restent
+  cfs.unlinkSync(s.file);
+  jour = new Date('2026-09-12T11:00:00Z');
+  const s2 = CS.createCabStore(dir, { now: () => jour });
+  assert.strictEqual(s2.exists(), false);
+  s2.create('mot-de-passe-long', cabState());          // même mot de passe, NOUVEAU sel
+
+  const relu = s2.peek(sauvegarde);
+  assert.strictEqual(relu.dossiers.length, 1);
+  assert.strictEqual(relu.dossiers[0].name, 'Client à sauver');
+  // Et la clé du cabinet revient : sans elle, tous les paquets déjà reçus seraient illisibles.
+  assert.strictEqual(relu.cabinet.privateKey, 'PRIV');
+  // Un mot de passe qui n'est vraiment pas le bon reste refusé, lui.
+  const s3 = CS.createCabStore(tmpCab());
+  s3.create('un-tout-autre-mot-de-passe', cabState());
+  assert.throws(() => s3.peek(sauvegarde), /autre mot de passe/);
+});
+
 t('cabstore : changer le mot de passe rechiffre AUSSI les sauvegardes', () => {
   // Une sauvegarde restée sur l'ancien mot de passe est une sauvegarde qu'on ne pourra pas
   // restaurer le jour venu — c'est-à-dire pas une sauvegarde.
