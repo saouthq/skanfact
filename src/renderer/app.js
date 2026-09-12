@@ -6961,6 +6961,7 @@
            <div class="inline mt"><button class="btn" id="cab-repair">Remplacer par un autre cabinet…</button><button class="btn btn-danger" id="cab-unpair">Retirer</button></div>`
         : `<p>Aucun cabinet appairé. Tes paquets mensuels peuvent être protégés par un mot de passe, mais c'est moins pratique et moins sûr : un mot de passe se transmet, donc il fuite.</p>
            <p class="small muted">Demande à ton comptable son <b>fichier d'appairage</b> (il l'exporte depuis SkanFact Cabinet). Une fois importé ici, chaque paquet sera chiffré pour lui seul, sans mot de passe à échanger.</p>
+           <p class="small muted">Ton comptable n'a pas encore l'application ? <b>SkanFact Cabinet</b> est gratuite pour lui : elle est jointe à chaque version de SkanFact, sous le même lien de téléchargement. Elle lit tes paquets, ne modifie jamais tes données et ne t'envoie rien.</p>
            <button class="btn btn-primary mt" id="cab-import">Importer le fichier du cabinet…</button>`;
 
       const doImport = async () => {

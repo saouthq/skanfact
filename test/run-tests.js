@@ -2871,4 +2871,203 @@ t('couches : une question passe au-dessus de tout, les bulles et messages au-des
   assert.strictEqual(Number(base[1]), modale, 'app.js et style.css ne partent pas de la même couche');
 });
 
+// ---------- SkanFact Cabinet (src/cabinet/cabcore.js) ----------
+// La seconde application du dépôt. Sa logique est pure : elle se teste sans Electron, comme core.js.
+const cab = require('../src/cabinet/cabcore.js');
+
+const manif = (nom, mf, mois, def, extra) => ({
+  format: 1, entreprise: { nom, matricule: mf }, periode: { mois, libelle: cab.monthLabel(mois) },
+  definitif: !!def, genereLe: '2026-09-01T10:00:00.000Z',
+  fichiers: [{ chemin: 'manifeste.json', empreinte: '' }, { chemin: '00-page-de-garde.pdf', empreinte: 'a' }],
+  manques: (extra && extra.manques) || [], absents: (extra && extra.absents) || []
+});
+
+t('cabinet : un dossier est identifié par son matricule, pas par son nom', () => {
+  // Une entreprise qui change de raison sociale reste le même dossier…
+  const a = cab.dossierKey(manif('Menuiserie Trabelsi', '1234567A/M/P/000', '2026-07'));
+  const b = cab.dossierKey(manif('Menuiserie Trabelsi SUARL', '1234567a m p 000', '2026-08'));
+  assert.strictEqual(a, b, 'le matricule doit primer, quelle que soit sa ponctuation');
+  // … et deux homonymes sans matricule ne se confondent que s'ils portent vraiment le même nom.
+  assert.strictEqual(cab.dossierKey(manif('Café du Coin', '', '2026-07')), cab.dossierKey(manif('CAFE DU  COIN', '', '2026-08')));
+  assert.notStrictEqual(cab.dossierKey(manif('Ben Ali', '111A', '2026-07')), cab.dossierKey(manif('Ben Ali', '222B', '2026-07')));
+});
+
+t('cabinet : ranger un paquet, et le dire quand il en remplace un définitif', () => {
+  const s = cab.migrate({});
+  const r1 = cab.filePack(s, manif('Trabelsi', '1234567A', '2026-07', true), { receivedAt: 1, bytes: 10, path: '/a' });
+  assert.strictEqual(r1.created, true);
+  assert.strictEqual(r1.replaced, false);
+  assert.strictEqual(s.dossiers.length, 1);
+
+  // même mois renvoyé, cette fois provisoire : le comptable DOIT l'apprendre, ses chiffres bougent
+  const r2 = cab.filePack(s, manif('Trabelsi SUARL', '1234567A', '2026-07', false), { receivedAt: 2, bytes: 11, path: '/b' });
+  assert.strictEqual(r2.created, false);
+  assert.strictEqual(r2.replaced, true);
+  assert.strictEqual(r2.wasDefinitive, true);
+  assert.strictEqual(r2.nowDefinitive, false);
+  assert.strictEqual(s.dossiers.length, 1, 'un renvoi ne crée pas un second dossier');
+  assert.strictEqual(s.dossiers[0].packs.length, 1, 'un mois = un paquet, le dernier reçu');
+  assert.strictEqual(s.dossiers[0].name, 'Trabelsi SUARL', 'le nom suit la raison sociale du client');
+});
+
+t('cabinet : les mois attendus, et jamais le mois en cours', () => {
+  const s = cab.migrate({});
+  cab.filePack(s, manif('X', '9A', '2026-05', true), { path: '/a' });
+  cab.filePack(s, manif('X', '9A', '2026-07', false), { path: '/b' });
+  const months = cab.dossierMonths(s.dossiers[0], '2026-09-12');
+  assert.deepStrictEqual(months.map(m => m.month), ['2026-05', '2026-06', '2026-07', '2026-08']);
+  assert.deepStrictEqual(months.map(m => m.state), ['complet', 'manquant', 'provisoire', 'manquant']);
+  // On ne réclame rien avant le premier mois reçu : avant, on ne sait pas si ce client existait.
+  assert.ok(!months.some(m => m.month < '2026-05'));
+
+  const row = cab.dossierRow(s.dossiers[0], '2026-09-12');
+  assert.strictEqual(row.missingCount, 2);
+  assert.strictEqual(row.provisionalCount, 1);
+  assert.strictEqual(row.lastMonth, '2026-07');
+  assert.strictEqual(row.level, 'danger');
+});
+
+t('cabinet : les dossiers en retard passent devant, la recherche et l\'archivage filtrent', () => {
+  const s = cab.migrate({});
+  cab.filePack(s, manif('AJour SARL', '1A', '2026-07', true), { path: '/a' });
+  cab.filePack(s, manif('AJour SARL', '1A', '2026-08', true), { path: '/a2' });
+  cab.filePack(s, manif('Retard SUARL', '2B', '2026-05', true), { path: '/b' });
+  cab.filePack(s, manif('Parti SARL', '3C', '2026-06', true), { path: '/c' });
+  s.dossiers.find(d => d.name === 'Parti SARL').archived = true;
+
+  const rows = cab.dossierList(s, '2026-09-12');
+  assert.strictEqual(rows.length, 2, 'un dossier archivé ne se réclame plus');
+  assert.strictEqual(rows[0].name, 'Retard SUARL', 'trois mois de retard passent devant un dossier à jour');
+  assert.strictEqual(rows[1].missingCount, 0);
+  assert.strictEqual(cab.dossierList(s, '2026-09-12', { withArchived: true }).length, 3);
+  assert.strictEqual(cab.dossierList(s, '2026-09-12', { q: 'retard' }).length, 1);
+  assert.strictEqual(cab.dossierList(s, '2026-09-12', { q: '2B' }).length, 1, 'on cherche aussi par matricule');
+});
+
+t('cabinet : ce que le comptable a sur le feu', () => {
+  const s = cab.migrate({});
+  cab.filePack(s, manif('Retard', '1A', '2026-05', true), { path: '/a' });
+  cab.filePack(s, manif('Provisoire', '2B', '2026-07', false), { path: '/b' });
+  cab.filePack(s, manif('Provisoire', '2B', '2026-08', false), { path: '/b2' });
+  cab.filePack(s, manif('Trous', '3C', '2026-07', true, { manques: [{ id: 'justif', niveau: 'warn', quoi: 'justificatifs absents', combien: 4 }] }), { path: '/c' });
+  cab.filePack(s, manif('Trous', '3C', '2026-08', true), { path: '/c2' });
+
+  const todo = cab.cabinetTodo(s, '2026-09-12');
+  const byId = Object.fromEntries(todo.map(x => [x.id, x]));
+  assert.ok(byId.manquants, 'les mois jamais envoyés sont la première urgence');
+  assert.strictEqual(byId.manquants.count, 1);
+  assert.strictEqual(byId.manquants.level, 'danger');
+  assert.ok(byId.provisoires, 'un mois non clôturé se relance aussi');
+  assert.strictEqual(byId.provisoires.count, 1);
+  assert.ok(byId.pieces, 'les pièces signalées par le client remontent');
+  assert.strictEqual(byId.pieces.count, 1);
+});
+
+t('cabinet : la relance nomme les mois qui manquent', () => {
+  const s = cab.migrate({});
+  cab.filePack(s, manif('Trabelsi', '1A', '2026-05', true), { path: '/a' });
+  const row = cab.dossierRow(s.dossiers[0], '2026-09-12');
+  row.email = 'client@test.tn';
+  const m = cab.relanceMail({ name: 'Cabinet Ben Salah' }, row, '2026-09-12');
+  assert.strictEqual(m.to, 'client@test.tn');
+  assert.strictEqual(m.subject, 'Il me manque vos dossiers de juin, juillet et août 2026',
+    'les mois manquants sont nommés, l\'année ne se répète pas : ' + m.subject);
+  assert.ok(m.body.includes('Cabinet Ben Salah'), 'le cabinet signe sa relance');
+  assert.ok(m.body.includes('Clôtures'), 'la relance dit où cliquer dans SkanFact');
+
+  // Onze mois énumérés dans un objet de mail ne se lisent pas : on donne l'intervalle, et le détail
+  // dans le corps. Et « de octobre » ne s'écrit pas.
+  const long = cab.relanceMail({ name: 'C' }, { missingMonths: ['2025-10', '2025-11', '2025-12', '2026-01'], lastLabel: '', email: '' });
+  assert.strictEqual(long.subject, 'Il me manque 4 mois de dossiers (d\'octobre 2025 à janvier 2026)', long.subject);
+  assert.ok(long.body.includes('· décembre 2025'), 'le détail des mois reste dans le corps');
+  assert.strictEqual(cab.relanceMail({ name: 'C' }, { missingMonths: ['2026-04'], lastLabel: '', email: '' }).subject,
+    'Il me manque votre dossier d\'avril 2026');
+
+  // Rien ne manque, mais le dernier reçu est provisoire : le message change de sujet.
+  const s2 = cab.migrate({});
+  cab.filePack(s2, manif('X', '2B', '2026-08', false), { path: '/b' });
+  const m2 = cab.relanceMail({ name: 'C' }, cab.dossierRow(s2.dossiers[0], '2026-09-12'), '2026-09-12');
+  assert.ok(/n'est pas définitif/.test(m2.subject), m2.subject);
+});
+
+// Les chiffres du mois voyagent dans le manifeste depuis la 6.2.1 : le comptable voit le chiffre
+// d'affaires et la TVA de chaque dossier sans ouvrir un CSV. Un paquet plus ancien n'en a pas, et
+// l'application doit alors écrire « — », jamais zéro : zéro serait un chiffre, et il serait faux.
+t('cabinet : les chiffres du mois traversent le paquet, et leur absence se voit', () => {
+  const avec = { ...manif('X', '1A', '2026-07', true), chiffres: { ca: 1234.5, tvaCollectee: 234.5, tvaADecaisser: 120, devise: 'TND' } };
+  assert.strictEqual(cab.packSummary(avec, {}).figures.ca, 1234.5);
+  assert.strictEqual(cab.packSummary(manif('X', '1A', '2026-07', true), {}).figures, null, 'un paquet sans chiffres ne doit pas en inventer');
+  const s = cab.migrate({});
+  cab.filePack(s, avec, { path: '/a' });
+  assert.strictEqual(cab.dossierRow(s.dossiers[0], '2026-09-12').lastFigures.ca, 1234.5);
+
+  // Et côté entreprise, packPlan doit bien les poser dans le manifeste.
+  const data = core.migrateData({ company: { ...core.DEFAULT_COMPANY, name: 'T', matricule: '1A' }, documents: [], counters: {} });
+  const plan = core.packPlan(data, data.company, core.packPeriod(2026, 7), {});
+  assert.ok(plan.manifest.chiffres && 'ca' in plan.manifest.chiffres, 'le manifeste doit porter les chiffres du mois');
+  assert.ok(plan.manifest.compte && 'pieces' in plan.manifest.compte, 'et le compte des pièces');
+});
+
+t('cabinet : le jeu d\'exemple montre les quatre situations, à n\'importe quelle date', () => {
+  for (const jour of ['2026-09-12', '2026-01-03', '2026-12-31', '2027-02-28']) {
+    const s = cab.migrate({ dossiers: cab.demoDossiers(jour) });
+    assert.strictEqual(s.dossiers.length, 5, jour);
+    assert.ok(s.dossiers.every(d => d.demo), jour + ' : le drapeau « exemple » doit survivre à migrate()');
+    const rows = cab.dossierList(s, jour);
+    assert.ok(rows.some(r => r.missingCount > 0), jour + ' : un dossier en retard');
+    assert.ok(rows.some(r => r.provisionalCount > 0), jour + ' : un dossier provisoire');
+    assert.ok(rows.some(r => r.issues > 0), jour + ' : un dossier avec des pièces signalées');
+    assert.ok(rows.some(r => r.level === 'ok'), jour + ' : un dossier à jour');
+    assert.ok(rows[0].score >= rows[rows.length - 1].score, jour + ' : les retards en tête');
+    // Aucun paquet d'exemple n'a de fichier sur le disque : l'interface ne doit pas proposer de l'ouvrir.
+    assert.ok(s.dossiers.every(d => d.packs.every(p => !p.path)), jour);
+    // Jamais l'entreprise du propriétaire ni un matricule réel dans un jeu de démonstration.
+    const json = JSON.stringify(s);
+    assert.ok(!/SKANCYBER/i.test(json) && !/1998268D/.test(json), jour);
+  }
+});
+
+t('cabinet : le fichier d\'appairage ne contient QUE la clé publique', () => {
+  const f = cab.pairingFile({ name: 'C', email: 'c@t.tn', publicKey: 'PUB', privateKey: 'SECRET' }, 'AB12-CD34');
+  const json = JSON.stringify(f);
+  assert.ok(!/SECRET/.test(json), 'la clé privée ne doit jamais sortir du poste du cabinet');
+  assert.ok(!('privateKey' in f));
+  assert.strictEqual(f.publicKey, 'PUB');
+  assert.strictEqual(f.fingerprint, 'AB12-CD34');
+});
+
+// Le même piège que côté entreprise : une date est un jour du calendrier, jamais un instant.
+t('cabinet : l\'arithmétique des mois donne le même résultat sous tous les fuseaux', () => {
+  const tzBefore = process.env.TZ;
+  try {
+    for (const tz of ['Africa/Tunis', 'UTC', 'America/Los_Angeles', 'Pacific/Kiritimati']) {
+      process.env.TZ = tz;
+      assert.strictEqual(cab.addMonth('2026-12', 1), '2027-01', tz);
+      assert.strictEqual(cab.addMonth('2026-01', -1), '2025-12', tz);
+      assert.deepStrictEqual(cab.monthsBetween('2026-11', '2027-02'), ['2026-11', '2026-12', '2027-01', '2027-02'], tz);
+      assert.ok(cab.monthsBetween('1900-01', '2200-01').length <= 240, tz + ' : borné, jamais infini');
+      assert.strictEqual(cab.monthLabel('2026-08'), 'août 2026', tz);
+    }
+  } finally { if (tzBefore === undefined) delete process.env.TZ; else process.env.TZ = tzBefore; }
+});
+
+// La clé privée du cabinet ouvre toutes les comptabilités de ses clients. Elle ne doit jamais
+// traverser le pont vers l'interface : de là, elle finirait dans une capture d'écran ou un journal.
+t('cabinet : la clé privée ne traverse jamais le pont vers l\'interface', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'cabinet', 'main.js'), 'utf8');
+  assert.ok(/function safeState\(\)[\s\S]*?delete s\.cabinet\.privateKey/.test(src), 'safeState doit retirer la clé privée');
+  // Tout handler qui renvoie l'état doit passer par safeState(), jamais par `state` directement.
+  const handlers = src.match(/ipcMain\.handle\([^]*?\n\}\);/g) || [];
+  src.split(/ipcMain\.handle\(/).slice(1).forEach(block => {
+    const name = (block.match(/^'([^']+)'/) || [])[1] || '?';
+    assert.ok(!/return\s+state\b/.test(block), `le handler ${name} renvoie l'état brut`);
+  });
+  assert.ok(handlers.length >= 0);
+  // L'interface ne reçoit aucun moyen de demander la clé.
+  const pre = fs.readFileSync(path.join(__dirname, '..', 'src', 'cabinet', 'preload.js'), 'utf8');
+  assert.ok(!/privateKey/.test(pre), 'le préchargement ne parle pas de clé privée');
+  // Et elle n'écrit jamais chez un client : aucune fonction d'export de données vers l'entreprise.
+  assert.ok(!/data:save|pack:build/.test(pre), 'l\'app cabinet ne doit rien pouvoir écrire chez un client');
+});
+
 console.log(`\n${n} tests OK`);

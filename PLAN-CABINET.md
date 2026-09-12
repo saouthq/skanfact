@@ -65,7 +65,9 @@ Un bouton, un fichier complet.
 - **Écrans** : Paramètres → **Cabinet** : importer le fichier d'appairage, afficher l'empreinte, retirer. Le paquet se chiffre pour ce cabinet sans rien demander.
 - **Parrainage** : l'empreinte apparaît dans « Demander une licence » (6.3.0).
 
-### SkanFact Cabinet 1.0.0 — L'application du cabinet *(~5 j)*
+### SkanFact Cabinet 1.0.0 — L'application du cabinet *(~5 j)* — **LIVRÉE le 12/09/2026**
+
+*Livré : `src/cabinet/` (cabcore.js pur + main.js chiffré + renderer), second installeur `build/cabinet.config.js`, icône propre, joint à chaque release. Écarts assumés : pas de glisser-déposer (bouton et menu Fichier), pas encore de mise à jour automatique côté cabinet, pas d'isolation multi-dossiers (un cabinet = un fichier chiffré). Ajout non prévu : le manifeste porte depuis la 6.2.1 les chiffres du mois, donc la liste des dossiers affiche le CA sans ouvrir un CSV.*
 
 Nouvelle app, même dépôt : `src/cabinet/`, `cabinet.html`, second installeur, `appId` `tn.skancyber.skanfact.cabinet`. On enlève tout ce qui crée des pièces ; on garde listes, tri, pagination, chiffrement, bulles d'aide, PDF.
 

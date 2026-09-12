@@ -107,7 +107,7 @@ Si le fichier de données devient illisible (disque plein, coupure pendant l'éc
 npm test
 ```
 
-Vérifie les calculs, la numérotation, le montant en lettres, l'échappement HTML et le stockage (sauvegardes, fichier illisible, import). Pour tester l'app réelle sans écran (CI, session Claude), lancer Electron sous Xvfb avec Playwright (`_electron.launch`) et parcourir les écrans.
+Vérifie les calculs, la numérotation, le montant en lettres, l'échappement HTML, le stockage (sauvegardes, fichier illisible, import), les paquets mensuels et la logique de SkanFact Cabinet. Pour tester l'app réelle sans écran (CI, session Claude), lancer Electron sous Xvfb avec Playwright (`_electron.launch`) et parcourir les écrans — y compris la boucle complète entreprise → cabinet, qui lance les deux applications à la suite.
 
 ## Structure
 
@@ -128,8 +128,26 @@ src/renderer/onboarding.js assistant de première utilisation
 src/renderer/app.js        interface
 src/renderer/style.css
 src/renderer/index.html
+src/zip.js                 fabrication et scellage des paquets .skanpack (sans dépendance)
+src/cabinet/               SkanFact Cabinet : la seconde application, celle du comptable
+  cabcore.js               sa logique, testée sans Electron
+  main.js                  état chiffré, import des paquets, appairage
+  preload.js               pont sécurisé (aucune écriture chez un client)
+  renderer/                ses écrans (réutilise src/renderer/style.css)
+build/cabinet.config.js    configuration electron-builder du second installeur
 test/run-tests.js
 ```
+
+### SkanFact Cabinet
+
+Une seconde application, gratuite, destinée aux cabinets comptables : elle **reçoit** les paquets mensuels des entreprises, vérifie leur intégrité, montre qui n'a pas envoyé son mois et prépare les relances. Elle ne modifie jamais les données d'un client et ne lui renvoie rien.
+
+```bash
+npm run start:cabinet        # lancer l'app cabinet en développement
+npm run build:cabinet:mac    # ou :win — installeur dans dist-cabinet/
+```
+
+Sa version est `cabinetVersion` dans `package.json` (indépendante de celle de SkanFact). Le workflow Release la construit et attache ses installeurs à la release de l'app entreprise.
 
 ## Limites connues
 

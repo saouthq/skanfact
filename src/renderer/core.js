@@ -2926,6 +2926,21 @@
 
     const vs = vatSummary(sales);
     const bs = purchaseSummary(buys);
+
+    // Les chiffres du mois DANS le manifeste : le cabinet peut alors afficher le chiffre d'affaires
+    // et la TVA de chaque dossier sans ouvrir un seul CSV. Champ ajouté après coup, donc toujours
+    // facultatif à la lecture — un paquet d'une version antérieure n'en a pas.
+    manifest.chiffres = {
+      ca: vs.ht, tvaCollectee: vs.tva, tvaDeductible: (bs && bs.deductible) || 0,
+      tvaADecaisser: vat.toPay, creditTva: vat.carryOut,
+      encaisse: round3(pays.reduce((s2, r) => s2 + (Number(r.amount) || 0), 0)),
+      devise: company.currency || 'TND'
+    };
+    manifest.compte = {
+      ventes: sales.length, achats: buys.length, encaissements: pays.length,
+      pieces: issued.length, justificatifs: entries.filter(e => e.kind === 'attachment').length,
+      bulletins: slips.length
+    };
     return {
       manifest, entries, checklist, definitive, period,
       ca: vs.ht, tvaCollectee: vs.tva, tvaDeductible: (bs && bs.deductible) || 0,

@@ -7,6 +7,24 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 6.2.1 — 12/09/2026
+
+**SkanFact Cabinet 1.0.0 : l'application de ton comptable.**
+
+Elle est jointe à cette version, sous le même lien de téléchargement, et elle est **gratuite**. Ton comptable l'installe, te remet son fichier d'appairage, et reçoit tes paquets sans rien avoir à retenir.
+
+Ce qu'elle lui donne :
+
+- **Un écran qui répond à sa vraie question** : lequel de ses clients ne lui a pas envoyé son mois. Les dossiers en retard passent devant, mois par mois, en rouge, orange ou vert.
+- **L'import d'un paquet en un clic** : chaque empreinte du manifeste est recalculée, donc il peut affirmer que ce qu'il a reçu est exactement ce que tu as envoyé. Un mois renvoyé n'est pas une erreur : l'application le lui dit, et le prévient si celui qu'il remplace était définitif.
+- **Les relances écrites pour lui**, qui nomment les mois manquants — un message qui dit « il me manque juin, juillet et août » fait bouger, « envoie-moi tes documents » non.
+- **Ses dossiers chiffrés sur son poste** : son fichier contient la clé qui ouvre tes paquets, donc il est protégé par un mot de passe obligatoire, AES-256. Ni nous ni personne ne peut le reconstituer.
+- **Un exemple fictif** au premier lancement, pour voir à quoi ressemble l'application pleine ; il s'efface au premier vrai paquet.
+
+**Et ce qu'elle ne fait pas, volontairement** : elle ne modifie jamais tes données, ne t'envoie rien, et ne dépose aucune déclaration. Une correction se demande, elle ne s'impose pas — sinon deux versions de tes comptes coexistent et plus personne ne sait laquelle fait foi.
+
+*Côté SkanFact : Paramètres → Cabinet comptable dit maintenant où trouver l'application quand ton comptable ne l'a pas encore.*
+
 ## 6.2.0 — 12/09/2026
 
 **Appairer ton cabinet : plus de mot de passe à transmettre.**

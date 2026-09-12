@@ -212,6 +212,25 @@ Le test `couches : une question passe au-dessus de tout` lit `style.css` et `app
 
 Skander veut vendre SkanFact aux entreprises **en passant par les cabinets comptables** : cabinet gratuit (app **SkanFact Cabinet**, même dépôt, second installeur), entreprise payante, remise pour le client parrainé, jamais de commission au comptable (déontologie À VÉRIFIER). Pas de serveur en v1 : les deux apps s'échangent un **paquet mensuel chiffré** (`.skanpack`). Le plan complet, les versions dans l'ordre (6.0.0 clôture → 6.1.0 paquet → 6.2.0 appairage → Cabinet 1.0.0 → Cabinet 1.1.0 export d'écritures → 6.3.0 licence/mises à jour publiques → 6.4.0 signature → 6.5.0 filets → 7.0.0 serveur seulement si un cabinet dit oui) et l'inventaire (achats, décisions, questions au comptable, vérifications légales) sont dans **`PLAN-CABINET.md`**. Le lire avant de commencer une version 6.x. Règles fixées : l'app cabinet **ne modifie jamais** les données du client ; un paquet n'est **définitif** que si le mois est clôturé ; l'empreinte du cabinet est **à la fois** la clé de chiffrement et la preuve du parrainage ; à l'expiration d'une licence, **jamais de données en otage**.
 
+## Cabinet 1.0.0 — la seconde application
+
+`src/cabinet/` : une **autre application Electron dans le même dépôt**, construite par `build/cabinet.config.js` (`appId` `tn.skancyber.skanfact.cabinet`, `extraMetadata.main` → `src/cabinet/main.js`, sortie `dist-cabinet/`, `publish: null`). Sa version vit dans `cabinetVersion` de package.json, indépendante de celle de l'app entreprise ; le workflow Release la construit après l'app principale et attache ses installeurs à la même release (`gh release upload`). Elle n'a **pas** de mise à jour automatique (pas de `latest.yml` : deux flux electron-updater dans une même release s'écraseraient) — assumé en 1.0.0.
+
+- `src/cabinet/cabcore.js` : logique pure, testée sans Electron — `migrate`, `dossierKey` (**matricule d'abord**, nom en repli), `packSummary`, `filePack`, `dossierMonths`/`dossierRow`/`dossierList`, `cabinetTodo`, `monthListLabel`/`missingLabel`/`relanceMail`, `pairingFile`, `demoDossiers`.
+- `src/cabinet/main.js` : état chiffré (`cabinet-data.json`, scrypt + AES-256-GCM, mot de passe **obligatoire**), `safeState()` (la clé privée ne traverse jamais le pont), IPC `cab:status|unlock|state|saveCabinet|saveDossier|demo|exportPairing|importPack|listPack|openInPack|mail|reveal`, `ingest()` qui **recalcule chaque empreinte du manifeste**.
+- `src/cabinet/renderer/` : `index.html`, `app.js`, `cabinet.css` — le reste vient de `../../renderer/style.css`, partagé.
+- `build/icon-cabinet.png` : même langage visuel, fond ardoise, dossier au lieu de la feuille.
+
+Règles apprises :
+- **L'application cabinet ne modifie jamais les données d'un client et ne lui renvoie rien.** Le préchargement ne l'expose même pas : un test vérifie qu'il ne contient ni `data:save` ni `pack:build`, et qu'aucun handler ne renvoie `state` brut au lieu de `safeState()`.
+- Un dossier s'identifie par le **matricule fiscal**, jamais par le nom : un nom change de forme juridique, se corrige, et deux clients peuvent s'appeler pareil. Sans matricule seulement, on retombe sur le nom normalisé.
+- Un mois **reçu deux fois** n'est pas une erreur, c'est une information : le client a rouvert sa période. `filePack` renvoie `replaced`/`wasDefinitive`/`nowDefinitive` et l'interface le **dit**, surtout quand le remplacé était définitif.
+- Le **mois en cours n'est jamais réclamé**, et rien n'est réclamé avant le premier paquet reçu : on ne réclame pas le néant.
+- Un logiciel qui écrit « 1 dossier(s) » ou « de octobre » paraît bâclé — et c'est le premier contact d'un comptable avec SkanFact. D'où `pl()` des deux côtés, `de()` pour l'élision, et `missingLabel` qui donne l'intervalle au-delà de trois mois (un objet de mail qui énumère onze mois n'est plus lu).
+- Le **jeu d'exemple** (`demoDossiers`) montre les quatre situations et s'efface tout seul au premier vrai paquet : des retards imaginaires à côté des vrais seraient pires que rien. Ses paquets n'ont pas de `path`, donc l'interface ne propose pas de les ouvrir.
+- Depuis la 6.2.1 le manifeste porte `chiffres` (CA, TVA collectée/déductible, à décaisser, encaissé) et `compte` : le cabinet affiche le chiffre d'affaires du dossier sans ouvrir un CSV. Champ **facultatif à la lecture** — un paquet plus ancien n'en a pas, et on écrit « — », jamais zéro.
+- Le test qui compte est `scratchpad/cabe2e.js` : **deux vraies applications Electron** à la suite — le cabinet exporte son appairage, l'entreprise l'importe et fabrique un paquet, le cabinet le reçoit, l'ouvre et prépare la relance. C'est le seul qui prouve que le plan tient debout ; le relancer avant toute release touchant au paquet ou à l'appairage.
+
 ## Pistes pour la suite (non demandées)
 
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.

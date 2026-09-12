@@ -49,3 +49,19 @@ jobs:
           gh release edit "v$V" --title "SkanFact $V" --notes-file build/release-notes.md
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # SkanFact Cabinet : seconde application du dépôt, construite depuis le même code avec un autre
+      # point d'entrée. Elle n'a pas de mise à jour automatique (pas de latest.yml, donc `--publish
+      # never`) : ses installeurs sont simplement attachés à la release de l'app entreprise.
+      - name: Build SkanFact Cabinet
+        run: npx electron-builder -c build/cabinet.config.js --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Attach Cabinet installers
+        shell: bash
+        run: |
+          V=$(node -p "require('./package.json').version")
+          gh release upload "v$V" $(ls dist-cabinet/SkanFact-Cabinet-*.dmg dist-cabinet/SkanFact-Cabinet-*.zip dist-cabinet/SkanFact-Cabinet-*.exe 2>/dev/null) --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

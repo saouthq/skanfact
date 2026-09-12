@@ -1,7 +1,8 @@
 {
   "name": "skanfact",
   "productName": "SkanFact",
-  "version": "6.2.0",
+  "version": "6.2.1",
+  "cabinetVersion": "1.0.0",
   "description": "Devis et factures pour les petites entreprises",
   "main": "src/main.js",
   "author": "Skander Ben Amor",
@@ -10,8 +11,11 @@
   "scripts": {
     "start": "electron .",
     "test": "node test/run-tests.js",
+    "start:cabinet": "electron src/cabinet/main.js",
     "build:mac": "electron-builder --mac",
     "build:win": "electron-builder --win",
+    "build:cabinet:mac": "electron-builder --mac -c build/cabinet.config.js",
+    "build:cabinet:win": "electron-builder --win -c build/cabinet.config.js",
     "release": "node scripts/release.js"
   },
   "devDependencies": {

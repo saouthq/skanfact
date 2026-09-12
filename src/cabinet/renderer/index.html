@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'">
+  <title>SkanFact Cabinet</title>
+  <link rel="stylesheet" href="../../renderer/style.css">
+  <link rel="stylesheet" href="cabinet.css">
+</head>
+<body>
+  <div id="app" hidden>
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">SF</div>
+        <div>
+          <div class="brand-name">SkanFact Cabinet</div>
+          <div class="brand-sub" id="brand-cab">—</div>
+        </div>
+      </div>
+      <nav>
+        <a href="#/dossiers" data-route="dossiers" class="solo"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Dossiers</a>
+        <a href="#/relances" data-route="relances"><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>Relances<span class="nav-count" id="nav-relances" hidden></span></a>
+        <a href="#/reglages" data-route="reglages"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Réglages</a>
+        <a href="#/aide" data-route="aide"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.2 9.2a2.9 2.9 0 0 1 5.6 1c0 1.9-2.8 2.4-2.8 4"/><path d="M12 17.5v.01"/></svg>Aide</a>
+      </nav>
+      <div class="sidebar-foot">
+        <div class="app-version" id="app-version"></div>
+      </div>
+    </aside>
+    <main id="view"></main>
+  </div>
+
+  <div id="lock-screen">
+    <form class="lock-card" id="lock-form">
+      <div class="brand-mark">SF</div>
+      <h2 id="lock-title">SkanFact Cabinet</h2>
+      <p class="muted small" style="margin:0">L'application du comptable</p>
+      <p class="muted small" id="lock-sub">Chargement…</p>
+      <input type="password" id="lock-pw" autocomplete="current-password" placeholder="Mot de passe">
+      <input type="password" id="lock-pw2" autocomplete="new-password" placeholder="Confirme le mot de passe" hidden>
+      <div class="lock-err" id="lock-err" hidden></div>
+      <button class="btn btn-primary" id="lock-go" type="submit">Ouvrir</button>
+      <p class="muted small lock-note" id="lock-note"></p>
+    </form>
+  </div>
+
+  <div id="modal-root"></div>
+  <div id="toast"></div>
+
+  <script src="../cabcore.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
