@@ -20,7 +20,10 @@ const PKG = require('../../package.json');
 const VERSION = PKG.version;
 // Adresse du relais de mise à jour, posée à la construction. Vide → l'application demande un jeton,
 // comme avant. C'est le relais qui détient l'accès au dépôt, pas le comptable.
-const relayBase = () => String(PKG.updateBase || '').replace(/\/+$/, '');
+// Nettoyé avant usage : l'adresse et le secret sont collés à la main dans des formulaires web, où
+// une espace ou un retour à la ligne invisible se glisse facilement.
+const relayBase = () => String(PKG.updateBase || '').trim().replace(/\/+$/, '');
+const relaySecret = () => String(PKG.updateSecret || '').trim();
 const SCRYPT = { N: 1 << 15, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
 
 let mainWindow = null;
@@ -280,6 +283,9 @@ const MAC_SIGNED = false;
 const UPDATE_CHANNEL = 'cabinet';
 
 let updater = null, updateInfo = null, downloaded = false, downloadedFile = null, silentCheck = true;
+// Pourquoi le module n'a pas démarré, en clair : sans ça le comptable lit « indisponible » et
+// personne ne peut l'aider à distance.
+let updaterError = '', relayFailure = '';
 const UPDATE_CFG = () => path.join(app.getPath('userData'), 'update-config.json');
 const UPDATE_RESULT = () => path.join(app.getPath('userData'), 'update-result.json');
 const readUpdateCfg = () => { try { return JSON.parse(fs.readFileSync(UPDATE_CFG(), 'utf8')); } catch { return {}; } };
@@ -316,17 +322,34 @@ function getUpdater() {
     autoUpdater.on('update-downloaded', info => { downloaded = true; downloadedFile = info.downloadedFile || null; sendUpd('downloaded', { version: info.version }); });
     autoUpdater.on('error', err => { if (!silentCheck) sendUpd('error', { message: friendlyError(err) }); });
     // Relais si l'application a été construite avec son adresse, GitHub en direct sinon.
-    const base = relayBase();
-    if (base) {
-      autoUpdater.requestHeaders = { 'X-SkanFact-App': String(PKG.updateSecret || '') };
-      autoUpdater.setFeedURL({ provider: 'generic', url: `${base}/cabinet`, channel: UPDATE_CHANNEL });
-    } else {
+    const feedGithub = () => {
       const cfg = readUpdateCfg();
       autoUpdater.setFeedURL({ provider: 'github', owner: GITHUB.owner, repo: GITHUB.repo, channel: UPDATE_CHANNEL, private: !!cfg.token, token: cfg.token || undefined });
+    };
+    const base = relayBase();
+    if (!base) feedGithub();
+    else {
+      try {
+        // Une adresse invalide doit être vue ICI, pas au premier téléchargement.
+        const url = new URL(`${base}/cabinet`).toString();
+        autoUpdater.requestHeaders = { 'X-SkanFact-App': relaySecret() };
+        autoUpdater.setFeedURL({ provider: 'generic', url, channel: UPDATE_CHANNEL });
+      } catch (e) {
+        // Jamais de cabinet sans recours : on retombe sur GitHub + jeton, et on le dit.
+        relayFailure = `Relais injoignable (${String(e && e.message || e).slice(0, 120)}). Retour au téléchargement direct depuis GitHub.`;
+        feedGithub();
+      }
     }
     updater = autoUpdater;
-  } catch { updater = null; }
+  } catch (e) {
+    updaterError = String(e && e.message || e).split('\n')[0].slice(0, 200);
+    updater = null;
+  }
   return updater;
+}
+
+function updaterUnavailable() {
+  return { state: 'error', message: 'Module de mise à jour indisponible' + (updaterError ? ' : ' + updaterError : '.') };
 }
 
 async function checkForUpdates(isSilent) {
@@ -335,7 +358,7 @@ async function checkForUpdates(isSilent) {
   // Dépôt privé sans jeton : GitHub répond 404 quoi qu'il arrive. Inutile de demander, on explique.
   if (!relayBase() && GITHUB.private && !readUpdateCfg().token) return { state: 'token' };
   const u = getUpdater();
-  if (!u) return { state: 'error', message: 'Module de mise à jour indisponible.' };
+  if (!u) return updaterUnavailable();
   if (downloaded) { sendUpd('downloaded', { version: updateInfo && updateInfo.version }); return { state: 'ok' }; }
   const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('ETIMEDOUT: pas de réponse de GitHub')), 45000));
   try {
@@ -372,7 +395,10 @@ function installOnMac() {
 
 ipcMain.handle('upd:version', () => ({
   version: VERSION, packaged: app.isPackaged, platform: process.platform, macSigned: MAC_SIGNED,
-  hasToken: !!readUpdateCfg().token, relay: !!relayBase(), lastUpdate: takeLastUpdateResult()
+  hasToken: !!readUpdateCfg().token,
+  // Un relais qui a échoué n'est pas un relais : le champ jeton doit revenir.
+  relay: !!relayBase() && !relayFailure, relayFailure,
+  lastUpdate: takeLastUpdateResult()
 }));
 ipcMain.handle('upd:setToken', (_e, token) => {
   const cfg = readUpdateCfg();
@@ -390,7 +416,7 @@ ipcMain.handle('upd:download', () => {
 });
 ipcMain.handle('upd:install', () => {
   const u = getUpdater();
-  if (!u) return { state: 'error', message: 'Module de mise à jour indisponible.' };
+  if (!u) return updaterUnavailable();
   if (IS_MAC && !MAC_SIGNED) return installOnMac();
   setImmediate(() => u.quitAndInstall(true, true));
   return { state: 'ok' };

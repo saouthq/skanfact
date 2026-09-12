@@ -627,7 +627,10 @@
 
     // Avec le relais, il n'y a rien à saisir : c'est lui qui détient l'accès au dépôt. On ne montre
     // pas un champ que personne n'a à remplir.
-    const jeton = a.relay ? '<p class="small muted mt">Les mises à jour arrivent toutes seules : rien à configurer.</p>' : `<div class="token-box">
+    // Un relais en panne se dit : un écran qui affirme « rien à configurer » devant une mise à jour
+    // impossible laisse le comptable sans recours.
+    const noteRelais = a.relayFailure ? `<p class="small mt" style="color:var(--danger)">${h(a.relayFailure)}</p>` : '';
+    const jeton = a.relay ? '<p class="small muted mt">Les mises à jour arrivent toutes seules : rien à configurer.</p>' : noteRelais + `<div class="token-box">
       <div class="k-label">Accès au dépôt</div>
       <p class="small muted">SkanFact est distribué depuis un dépôt privé : un jeton de lecture est nécessaire pour recevoir les mises à jour.
       Demande-le à qui t'a remis l'application. Il reste sur cet ordinateur et ne sert qu'à télécharger les nouvelles versions.</p>

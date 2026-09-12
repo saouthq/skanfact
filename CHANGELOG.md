@@ -7,6 +7,17 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 6.7.2 — 12/09/2026
+
+**« Module de mise à jour indisponible. » ne veut rien dire. Maintenant l'application dit pourquoi.**
+
+Signalé par Skander juste après avoir branché le relais : la vérification échouait avec cette phrase, et il n'y avait **rien à faire de cette information** — ni pour lui, ni pour moi à distance. La cause était attrapée par un `catch` qui la jetait à la poubelle.
+
+- **La cause est nommée** dans le message et écrite dans le journal (`main.log`). Une panne qu'on ne peut pas nommer, on ne peut pas la réparer.
+- **Un relais mal réglé ne laisse plus l'application sans issue** : elle repasse automatiquement par GitHub avec le jeton, **le dit à l'écran**, et le champ jeton réapparaît. Avant, l'écran continuait d'affirmer « rien à configurer » alors que plus aucune mise à jour n'était possible.
+- **L'adresse et le secret du relais sont nettoyés** avant usage : ils se collent à la main dans des formulaires web, où une espace ou un retour à la ligne invisible se glisse sans qu'on le voie. L'adresse est aussi **vérifiée** au démarrage plutôt qu'au premier téléchargement.
+- Les deux applications, entreprise et cabinet, sont corrigées pareil.
+
 ## 6.7.1 — 12/09/2026
 
 **Le jour où tu armes la licence, les comptables ne perdent pas leurs mises à jour.**

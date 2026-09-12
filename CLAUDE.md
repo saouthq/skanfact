@@ -285,6 +285,16 @@ Règles apprises :
 - **Un canal ne doit jamais pouvoir réclamer les fichiers de l'autre** : sinon l'app du comptable proposerait d'installer l'app entreprise, sans que rien ne plante.
 - Piège du harnais de test : `t('…', async () => …)` affichait **« ok » sans rien vérifier** — la promesse n'était pas attendue, et le test ne pouvait plus jamais échouer. `t()` refuse maintenant une fonction asynchrone, et `ta()` existe pour ce cas. Vérifié en cassant volontairement une assertion.
 
+## 6.7.2 — Une panne de mise à jour se nomme
+
+Relais branché pour de vrai chez Skander : « Vérifier les mises à jour » répondait **« Module de mise à jour indisponible. »**, et ni lui ni moi ne pouvions rien en faire — `getUpdater()` attrapait l'erreur dans un `catch` muet. Le test `mises à jour : une panne se nomme, et laisse un recours` relit les quatre fichiers concernés et interdit les deux fautes.
+
+Règles apprises :
+- **Un `catch` qui jette la cause condamne l'utilisateur ET le dépannage à distance.** `updaterError` garde la phrase, le message la montre, `logToFile` l'écrit. Un diagnostic vaut une version à lui seul quand la boucle de correction coûte une réinstallation manuelle.
+- **Un chemin de secours ne sert que s'il se déclenche tout seul.** Le repli GitHub existait depuis la 6.7.0, mais seulement quand le relais n'était **pas configuré** — pas quand il était configuré et cassé, le seul cas qui arrive vraiment. Désormais `configureFeed` valide l'adresse (`new URL`) et retombe sur GitHub en cas d'échec.
+- **Un relais en panne n'est pas un relais** : `update:version` renvoie `relay: false` dans ce cas, sinon l'écran continue d'afficher « rien à configurer » pendant que plus rien ne peut se mettre à jour, et le champ jeton — la seule issue — reste caché.
+- **Tout ce qui arrive d'un copier-coller se `trim()`** avant usage. Une adresse et un secret saisis dans des formulaires web embarquent des espaces et des retours à la ligne invisibles ; un retour à la ligne dans un en-tête HTTP fait échouer la requête avec un message incompréhensible.
+
 ## Pistes pour la suite (non demandées)
 
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.

@@ -1101,6 +1101,10 @@ let updateInfo = null;
 let downloaded = false;
 let downloadedFile = null;
 let silent = true;
+// Pourquoi le module n'a pas pu démarrer, en clair. Sans ça, l'utilisateur lit « indisponible » et
+// n'a aucune piste — et moi non plus, à distance.
+let updaterError = '';
+let relayFailure = '';
 
 const UPDATE_CFG = () => path.join(app.getPath('userData'), 'update-config.json');
 const UPDATE_RESULT = () => path.join(app.getPath('userData'), 'update-result.json');
@@ -1114,20 +1118,37 @@ function writeUpdateCfg(cfg) { fs.mkdirSync(path.dirname(UPDATE_CFG()), { recurs
 //    l'application et, si elle en a une, sa licence. Personne d'autre ne peut télécharger.
 //  - **GitHub en direct**, sinon : l'utilisateur colle son propre jeton dans Paramètres. C'est le
 //    fonctionnement d'origine, et il reste le filet si le relais est indisponible ou pas déployé.
-function relayBase() { return String(PKG.updateBase || '').replace(/\/+$/, ''); }
+// L'adresse et le secret voyagent par des champs collés à la main dans des formulaires web : une
+// espace ou un retour à la ligne invisible s'y glisse facilement. Un secret avec un retour à la
+// ligne fait refuser l'en-tête par Node (« Invalid character in header content »), et une adresse
+// mal formée fait échouer la configuration entière — d'où le nettoyage AVANT toute utilisation.
+function relayBase() { return String(PKG.updateBase || '').trim().replace(/\/+$/, ''); }
+function relaySecret() { return String(PKG.updateSecret || '').trim(); }
+
+function feedGithub(u) {
+  const cfg = readUpdateCfg();
+  u.setFeedURL({ provider: 'github', owner: GITHUB.owner, repo: GITHUB.repo, private: !!cfg.token, token: cfg.token || undefined });
+}
 
 function configureFeed(u) {
   const base = relayBase();
-  if (base) {
+  if (!base) return feedGithub(u);
+  try {
+    // Une adresse invalide (chemin collé en trop, espace, texte au lieu d'une URL) doit être vue
+    // ICI, pas au premier téléchargement : `new URL` est le seul contrôle qui la rejette vraiment.
+    const url = new URL(`${base}/app`).toString();
     const lic = readLicence();
-    const h = { 'X-SkanFact-App': String(PKG.updateSecret || '') };
-    if (lic.key) h['X-SkanFact-Licence'] = lic.key;
+    const h = { 'X-SkanFact-App': relaySecret() };
+    if (lic.key) h['X-SkanFact-Licence'] = String(lic.key).trim();
     u.requestHeaders = h;
-    u.setFeedURL({ provider: 'generic', url: `${base}/app`, channel: 'latest' });
-    return;
+    u.setFeedURL({ provider: 'generic', url, channel: 'latest' });
+  } catch (e) {
+    // Le relais est mal réglé. On ne laisse JAMAIS l'application sans mise à jour possible pour
+    // autant : on retombe sur GitHub + jeton, et on le dit au lieu de le cacher.
+    relayFailure = `Relais injoignable (${String(e && e.message || e).slice(0, 120)}). Retour au téléchargement direct depuis GitHub.`;
+    logToFile('relais de mise à jour', e);
+    feedGithub(u);
   }
-  const cfg = readUpdateCfg();
-  u.setFeedURL({ provider: 'github', owner: GITHUB.owner, repo: GITHUB.repo, private: !!cfg.token, token: cfg.token || undefined });
 }
 
 function notesToText(notes) {
@@ -1158,9 +1179,18 @@ function getUpdater() {
     configureFeed(autoUpdater);
     updater = autoUpdater;
   } catch (e) {
+    // Une erreur avalée en silence laisse l'utilisateur devant « indisponible » sans aucune piste,
+    // et personne ne peut l'aider à distance. On garde la cause et on l'écrit dans le journal.
+    updaterError = String(e && e.message || e).split('\n')[0].slice(0, 200);
+    logToFile('module de mise à jour', e);
     updater = null;
   }
   return updater;
+}
+
+// Le message montré quand le module n'a pas démarré : il nomme la cause au lieu de constater l'échec.
+function updaterUnavailable() {
+  return { state: 'error', message: 'Module de mise à jour indisponible' + (updaterError ? ' : ' + updaterError : '.') };
 }
 
 function updatesConfigured() { return !!(GITHUB.owner && GITHUB.repo); }
@@ -1186,7 +1216,7 @@ async function checkForUpdates(isSilent) {
   // faire. Avec le relais, il n'y a rien à saisir : c'est lui qui détient l'accès.
   if (!relayBase() && GITHUB.private && !readUpdateCfg().token) return { state: 'token' };
   const u = getUpdater();
-  if (!u) return { state: 'error', message: 'Module de mise à jour indisponible.' };
+  if (!u) return updaterUnavailable();
   if (downloaded) { sendUpdate('downloaded', { version: updateInfo && updateInfo.version, notes: notesToText(updateInfo && updateInfo.releaseNotes) }); return { state: 'ok' }; }
   // 45 s maximum : sans réponse de GitHub on rend la main avec un message plutôt que d'attendre sans fin
   const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('ETIMEDOUT: pas de réponse de GitHub')), 45000));
@@ -1209,7 +1239,11 @@ function takeLastUpdateResult() {
 
 ipcMain.handle('update:version', () => ({
   version: app.getVersion(), packaged: app.isPackaged, platform: process.platform, macSigned: MAC_SIGNED,
-  hasToken: !!readUpdateCfg().token, relay: !!relayBase(), lastUpdate: takeLastUpdateResult()
+  hasToken: !!readUpdateCfg().token,
+  // Un relais qui a échoué n'est PAS un relais : le champ jeton doit revenir, sinon l'utilisateur
+  // n'a plus aucun moyen de se mettre à jour et l'écran lui dit qu'il n'a rien à faire.
+  relay: !!relayBase() && !relayFailure, relayFailure,
+  lastUpdate: takeLastUpdateResult()
 }));
 
 ipcMain.handle('update:setToken', (_e, token) => {
@@ -1232,7 +1266,7 @@ ipcMain.handle('update:download', async () => {
 
 ipcMain.handle('update:install', async () => {
   const u = getUpdater();
-  if (!u) return { state: 'error', message: 'Module de mise à jour indisponible.' };
+  if (!u) return updaterUnavailable();
   if (IS_MAC && !MAC_SIGNED) return installOnMac();
   setImmediate(() => u.quitAndInstall(true, true));
   return { state: 'ok' };

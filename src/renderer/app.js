@@ -7477,9 +7477,12 @@
     else body = btnCheck;
     // Quand le relais est en place, il n'y a plus rien à saisir : c'est lui qui détient l'accès au
     // dépôt. Montrer un champ « token » que personne n'a à remplir ne ferait qu'inquiéter.
+    // Et si le relais a échoué, on le DIT et on remontre le champ : un écran qui affirme « rien à
+    // configurer » devant une mise à jour impossible est pire que pas d'écran du tout.
+    const relayNote = a.relayFailure ? `<p class="small mt" style="color:var(--danger)">${h(a.relayFailure)}</p>` : '';
     const tokenBlock = a.relay
       ? `<p class="small muted mt">Les mises à jour arrivent toutes seules : rien à configurer sur cet ordinateur.${a.hasToken ? ' <span class="muted">(Un ancien token est encore enregistré ; il ne sert plus.)</span>' : ''}</p>`
-      : `<div class="token-box">
+      : relayNote + `<div class="token-box">
       <div class="k-label">Accès au dépôt privé</div>
       <p class="small muted">Le dépôt GitHub de SkanFact est privé : un token de lecture est nécessaire pour vérifier les mises à jour. Il est enregistré uniquement sur cet ordinateur.</p>
       <div class="inline"><input type="text" id="upd-token" placeholder="${a.hasToken ? 'Token enregistré ✓ — coller un nouveau pour remplacer' : 'github_pat_… ou ghp_…'}" autocomplete="off" spellcheck="false"><button class="btn btn-sm" id="upd-token-save">Enregistrer</button>${a.hasToken ? '<button class="btn btn-sm btn-ghost" id="upd-token-clear">Retirer</button>' : ''}</div>

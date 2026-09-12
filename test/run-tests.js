@@ -3452,5 +3452,34 @@ t('cabinet : la clé privée ne traverse jamais le pont vers l\'interface', () =
     });
   });
 
+  // Une panne de mise à jour doit se NOMMER et laisser un recours. Les deux fautes que ce test
+  // interdit ont vraiment eu lieu : un `catch` muet qui laissait l'utilisateur devant « Module de
+  // mise à jour indisponible. » sans aucune piste, et un écran qui continuait d'affirmer « rien à
+  // configurer » alors que plus rien ne pouvait se mettre à jour.
+  t('mises à jour : une panne se nomme, et laisse un recours', () => {
+    const cas = [
+      { parts: ['src', 'main.js'], vue: ['src', 'renderer', 'app.js'] },
+      { parts: ['src', 'cabinet', 'main.js'], vue: ['src', 'cabinet', 'renderer', 'app.js'] }
+    ];
+    cas.forEach(({ parts, vue }) => {
+      const nom = parts.join('/');
+      const src = fs.readFileSync(path.join(__dirname, '..', ...parts), 'utf8');
+      // 1. L'adresse et le secret sont nettoyés : ils arrivent d'un copier-coller dans un formulaire.
+      assert.ok(/updateBase \|\| ''\)\.trim\(\)/.test(src), nom + ' : l\'adresse du relais n\'est pas nettoyée');
+      assert.ok(/updateSecret \|\| ''\)\.trim\(\)/.test(src), nom + ' : le secret n\'est pas nettoyé');
+      // 2. Le module qui ne démarre pas dit POURQUOI (plus de `catch { updater = null; }` muet).
+      assert.ok(/updaterError\s*=/.test(src), nom + ' : la cause de la panne est avalée');
+      assert.ok(!/catch\s*\{\s*updater = null;?\s*\}/.test(src), nom + ' : catch muet sur le module');
+      assert.ok(/updaterUnavailable\(\)/.test(src), nom + ' : le message ne nomme pas la cause');
+      // 3. Un relais mal réglé retombe sur GitHub au lieu de laisser l'app sans issue…
+      assert.ok(/relayFailure\s*=/.test(src), nom + ' : une panne de relais n\'est pas signalée');
+      assert.ok(/new URL\(/.test(src), nom + ' : l\'adresse du relais n\'est jamais validée');
+      assert.ok(/relay: !!relayBase\(\) && !relayFailure/.test(src), nom + ' : un relais en panne se déclare encore actif');
+      // 4. … et l'écran le dit, pour que le champ jeton revienne.
+      const ui = fs.readFileSync(path.join(__dirname, '..', ...vue), 'utf8');
+      assert.ok(/relayFailure/.test(ui), vue.join('/') + ' : la panne de relais n\'est pas montrée');
+    });
+  });
+
   console.log(`\n${n} tests OK`);
 })().catch(e => { console.error(e); process.exit(1); });
