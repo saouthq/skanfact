@@ -816,6 +816,88 @@
   const NAV_COMPTEURS = { relances: 'nav-relances', contrats: 'nav-contrats', achats: 'nav-achats', tresorerie: 'nav-treso', paie: 'nav-paie', stock: 'nav-stock', immos: 'nav-immos' };
   const NAV_INFO = ['contrats', 'immos'];          // compteur bleu « pour information », pas une alerte
 
+  // ---------- le sélecteur d'entreprise (7.14.0) ----------
+  //
+  // Pourquoi : l'application gère plusieurs dossiers depuis la 3.2.0 — la société de Skander, celle
+  // de son père, un dossier partagé à deux — et le seul moyen d'en changer était Paramètres →
+  // Dossiers, cinq clics plus loin. Pendant ce temps, le nom du dossier ouvert est écrit en haut à
+  // gauche de la fenêtre, en permanence. **L'endroit qui AFFICHE un état est l'endroit où on
+  // s'attend à le changer** : c'est le même principe que « un lien qui promet un réglage l'amène ».
+  //
+  // Le menu liste aussi ce qu'on ne peut faire nulle part ailleurs en un geste : créer une seconde
+  // entreprise, et rejoindre un dossier partagé.
+  let dossiersConnus = null;                  // dernière liste lue, pour ne pas re-demander à chaque clic
+
+  // Deux noms pour la même chose, à dix pixels d'écart : l'en-tête affichait « Atelier Un SUARL »
+  // (la société, dans les données) pendant que le menu et Paramètres → Dossiers affichaient
+  // « Mon entreprise » (le nom du dossier, posé par main.js à la création). Personne ne peut savoir
+  // que ces deux lignes désignent le même dossier. Le nom du dossier suit donc celui de la société,
+  // tant qu'on ne l'a pas renommé soi-même — un nom choisi à la main n'est jamais écrasé.
+  const NOM_DOSSIER_DEFAUT = 'Mon entreprise';
+  async function accorderNomDossier() {
+    if (!bridge.listDossiers || !bridge.renameDossier) return;
+    const voulu = ((data && data.company && data.company.name) || '').trim();
+    if (!voulu) return;
+    try {
+      const r = await bridge.listDossiers();
+      const d = (r.dossiers || []).find(x => x.id === r.current);
+      if (!d || d.name === voulu) return;
+      if (d.name !== NOM_DOSSIER_DEFAUT) return;      // renommé à la main : on n'y touche pas
+      await bridge.renameDossier({ id: d.id, name: voulu });
+    } catch (_) { /* les dossiers ne sont pas disponibles ici */ }
+  }
+  function fermerDossiers() {
+    const m = $('#dos-menu'); if (!m) return;
+    m.hidden = true; m.innerHTML = '';
+    const b = $('#brand-btn'); if (b) b.setAttribute('aria-expanded', 'false');
+  }
+  async function ouvrirDossiers() {
+    const m = $('#dos-menu'); const bouton = $('#brand-btn');
+    if (!m || !bouton) return;
+    if (!m.hidden) return fermerDossiers();
+    // Le pont n'expose pas les dossiers dans les contextes de secours (tests unitaires, navigateur) :
+    // on le dit au lieu d'ouvrir un menu vide.
+    if (!bridge.listDossiers) return toast('Les dossiers ne sont pas disponibles ici.', true);
+    let r;
+    try { r = await bridge.listDossiers(); } catch (e) { return toast(plainError(e), true); }
+    dossiersConnus = r;
+    const autres = (r.dossiers || []).filter(d => d.id !== r.current);
+    // Pour le dossier ouvert on connaît la vraie société : on l'affiche plutôt que l'étiquette du
+    // dossier, qui peut être restée générique sur une installation ancienne.
+    const nomOuvert = d => ((data && data.company && data.company.name) || '').trim() || d.name;
+    m.innerHTML = `<div class="dm-titre">Entreprise ouverte</div>
+      ${(r.dossiers || []).filter(d => d.id === r.current).map(d => `<button type="button" class="on" data-dos="${h(d.id)}">
+        <span class="dm-mark">✓</span><span class="dm-nom">${h(nomOuvert(d))}</span>${d.shared ? '<span class="dm-tag">partagé</span>' : ''}</button>`).join('')}
+      ${autres.length ? `<div class="dm-titre">Basculer vers</div>
+        ${autres.map(d => `<button type="button" data-dos="${h(d.id)}" title="${h(d.name)}">
+          <span class="dm-mark"></span><span class="dm-nom">${h(d.name)}</span>${d.shared ? '<span class="dm-tag">partagé</span>' : ''}</button>`).join('')}` : ''}
+      <hr>
+      <button type="button" id="dm-new" title="Créer un second dossier, pour une autre entreprise"><span class="dm-mark">+</span><span class="dm-nom">Nouvelle entreprise…</span></button>
+      <button type="button" id="dm-shared" title="Un dossier posé dans iCloud, OneDrive ou sur une clé, que deux ordinateurs ouvrent tour à tour"><span class="dm-mark">↔</span><span class="dm-nom">Dossier partagé…</span></button>
+      <button type="button" id="dm-manage" title="Renommer, retirer de la liste, voir où vivent les fichiers"><span class="dm-mark">⚙</span><span class="dm-nom">Gérer les dossiers…</span></button>`;
+    m.hidden = false;
+    bouton.setAttribute('aria-expanded', 'true');
+    $$('[data-dos]', m).forEach(b => b.onclick = async () => {
+      fermerDossiers();
+      if (b.dataset.dos === r.current) return;
+      const d = (r.dossiers || []).find(x => x.id === b.dataset.dos);
+      // Le garde-fou des modifications non enregistrées vaut ici comme pour une navigation : changer
+      // de dossier recharge la fenêtre, donc ce qui n'est pas écrit est perdu.
+      if (!await leaveOk()) return;
+      toast(`Ouverture de « ${d ? d.name : 'ce dossier'} »…`);
+      try { await bridge.switchDossier(b.dataset.dos); } catch (e) { toast(plainError(e), true); }
+    });
+    $('#dm-new', m).onclick = () => {
+      fermerDossiers();
+      promptDialog('Nouvelle entreprise', 'Nom de l\'entreprise', '', async v => {
+        const res = await bridge.addDossier({ name: v, shared: false });
+        if (res && !res.ok && res.error) toast(res.error, true);
+      });
+    };
+    $('#dm-shared', m).onclick = () => { fermerDossiers(); allerParametres('donnees', 'p-dossiers'); };
+    $('#dm-manage', m).onclick = () => { fermerDossiers(); allerParametres('donnees', 'p-dossiers'); };
+  }
+
   function drawNav() {
     const pages = C.navPages(data);
     // Groupé par FAMILLE, pas par module : huit intertitres coûteraient 250 px de barre, et on aurait
@@ -3805,6 +3887,7 @@
     }
     else if (e.key === 'Escape') {
       if ($('#info-pop')) { closeInfoPop(); return; }
+      if ($('#dos-menu') && !$('#dos-menu').hidden) { fermerDossiers(); return; }
       if (closeOverlay) { closeOverlay(); return; }   // calendrier ou liste déroulante ouverte
       if ($$('.more-list').some(l => !l.hidden)) { closeMenus(); return; }
       if (!$('#palette-root').hidden) { closePalette(); return; }
@@ -3812,6 +3895,10 @@
     }
   });
   document.addEventListener('click', e => { if (!e.target.closest('.more')) closeMenus(); });
+  // Le sélecteur d'entreprise : un clic dessus l'ouvre, un clic ailleurs le referme.
+  const brandBtn = $('#brand-btn');
+  if (brandBtn) brandBtn.onclick = e => { e.stopPropagation(); ouvrirDossiers(); };
+  document.addEventListener('click', e => { if (!e.target.closest('.brand-wrap')) fermerDossiers(); });
   // Un clic ailleurs referme le calendrier ou la liste déroulante ouverte.
   document.addEventListener('mousedown', e => {
     if (closeOverlay && !e.target.closest('.combo') && !e.target.closest('.datefield')) closeOverlay();
@@ -8271,6 +8358,7 @@
       data.company.quoteValidityDays = Math.max(0, Number(data.company.quoteValidityDays) || 30);
       data.company.paymentTermsDays = Math.max(0, Number(data.company.paymentTermsDays) || 30);
       save(true); applyTheme(); $('#brand-company').textContent = data.company.name || 'Ton entreprise';
+      accorderNomDossier();     // le dossier porte le nom de la société, pas « Mon entreprise »
       setDirty = false; $('#save-bar').hidden = true;
       return true;
     };
@@ -9245,6 +9333,7 @@
       if (copieExterne !== avant && location.hash === '#/dashboard') render(true);
     }).catch(() => {});
     $('#brand-company').textContent = data.company.name || 'Ton entreprise';
+    accorderNomDossier();
     // La recherche générale, enfin visible et cliquable. La touche est écrite sur le bouton : c'est
     // ainsi qu'on apprend un raccourci — en le lisant là où on cliquerait de toute façon.
     if ($('#nav-search')) {

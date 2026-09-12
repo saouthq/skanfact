@@ -9,12 +9,20 @@
 <body>
   <div id="app">
     <aside class="sidebar">
-      <div class="brand">
-        <div class="brand-mark">SF</div>
-        <div>
-          <div class="brand-name">SkanFact</div>
-          <div class="brand-sub" id="brand-company">—</div>
-        </div>
+      <!-- L'en-tête est le sélecteur d'entreprise (7.14.0). Changer de dossier — la société de la
+           famille, celle du père, un essai — demandait d'aller dans Paramètres → Dossiers, cinq
+           clics plus loin, alors que le nom de l'entreprise ouverte est écrit là, en haut à gauche.
+           Ce qui affiche l'état est l'endroit où on s'attend à le changer. -->
+      <div class="brand-wrap">
+        <button class="brand" id="brand-btn" aria-haspopup="true" aria-expanded="false" title="Changer d'entreprise">
+          <span class="brand-mark">SF</span>
+          <span class="brand-txt">
+            <span class="brand-name">SkanFact</span>
+            <span class="brand-sub" id="brand-company">—</span>
+          </span>
+          <span class="brand-chev" aria-hidden="true">▾</span>
+        </button>
+        <div class="dos-menu" id="dos-menu" hidden></div>
       </div>
       <!-- La recherche générale existait depuis la 1.5.0 et n'était écrite NULLE PART dans la
            fenêtre : ni champ, ni bouton, seulement un raccourci clavier mentionné dans le menu

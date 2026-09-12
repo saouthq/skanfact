@@ -355,6 +355,7 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:contraste` | **aucun bouton illisible ni hors de l'écran** : contraste texte/fond et débordement de chaque bouton visible des 21 pages et de tous les éditeurs, en clair, en sombre, à 1440 et à 1280 |
 | `npm run e2e:apercu` | **voir ce qu'on fabrique** : le grand aperçu, son zoom, « Ajuster », Échap, et l'interrupteur qui reste en haut |
 | `npm run e2e:erreur` | **le droit à l'erreur** : une case de module se décoche ET se recoche, un module masqué revient quand on y écrit, et « Marquer déposée » se défait |
+| `npm run e2e:entreprises` | **changer d'entreprise depuis le haut du menu** : deux dossiers créés et ouverts tour à tour sans passer par les Paramètres |
 
 Ils ont longtemps vécu dans un dossier de travail temporaire, effacé à chaque session : il fallait les réécrire de mémoire, et ils dérivaient (une assertion restée sur une version périmée, un écran neuf jamais parcouru). **Un test qu'on doit réécrire pour s'en servir n'est pas un test.** Le harnais (`test/e2e/harnais.js`) trouve Playwright où il est, lit la version dans `package.json` au lieu de l'écrire en dur, et range les captures dans `dist-e2e/` (ignoré par Git).
 
@@ -680,6 +681,32 @@ Règles apprises, à ne pas recasser :
   changeant le chiffre, donc sans rien vérifier. Il teste maintenant la RÈGLE (chaque appel à
   `documentHtml` porte `stampText: stampFor(...)`, sauf l'aperçu d'une facture qui n'existe pas
   encore).
+
+## 7.14.0 — L'endroit qui affiche un état est celui où on le change
+
+Skander : « faut que ça soit le plus facile possible, par exemple choisir son entreprise dans le haut
+du menu en sélectionnant dans une liste afin de basculer sans aller dans paramètres ».
+
+Règles apprises :
+
+- **L'endroit qui AFFICHE un état est l'endroit où on s'attend à le changer.** Le nom du dossier
+  ouvert est écrit en permanence en haut à gauche ; changer de dossier demandait Paramètres →
+  Sécurité et données → Dossiers. C'est la même famille que « un lien qui promet un réglage
+  l'amène » (7.11.0), vue de l'autre côté.
+- **Un en-tête qui devient cliquable doit le DIRE par trois signes** : un `<button>` (donc le
+  clavier), un curseur de clic, un chevron, et un état au survol. Sans eux personne n'essaie — c'est
+  la leçon « un bouton sans bordure ni couleur n'est pas un bouton » (Cabinet 1.0.0), appliquée à un
+  élément qu'on ne soupçonne pas d'être un bouton.
+- **Deux noms pour la même chose est un défaut, même quand les deux sont justes.** L'en-tête
+  affichait la raison sociale (`data.company.name`) et la liste des dossiers l'étiquette du dossier
+  (« Mon entreprise », posée par `main.js` à l'installation) : rien ne permettait de deviner qu'il
+  s'agit du même dossier. `accorderNomDossier()` fait suivre l'étiquette — et **seulement** quand
+  elle est restée celle par défaut : un nom choisi à la main ne s'écrase jamais.
+- **Un menu ouvert par la barre latérale vit sous les fenêtres modales (400), jamais au-dessus** :
+  une question posée par-dessus doit rester devant. Ici, couche 70. Un test le mesure.
+- Piège Playwright : `waitForSelector('#x[hidden]')` attend que l'élément devienne **visible** et
+  n'aboutit donc jamais. Pour attendre qu'une chose disparaisse, `waitForFunction(() => el.hidden)`.
+  Le test échouait alors que le code était juste.
 
 ## Pistes pour la suite (non demandées)
 

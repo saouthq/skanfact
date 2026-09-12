@@ -7,6 +7,33 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 7.14.0 — 12/09/2026
+
+**Changer d'entreprise depuis le haut du menu.**
+
+L'application gère plusieurs dossiers depuis la 3.2.0 — ta société, celle de ton père, un dossier
+partagé à deux — et le seul chemin pour en changer était Paramètres → Sécurité et données →
+Dossiers : cinq clics et un onglet qu'il faut connaître. Pendant ce temps, le nom du dossier ouvert
+est écrit en permanence en haut à gauche de la fenêtre. **L'endroit qui affiche un état est celui où
+on s'attend à le changer.**
+
+- **L'en-tête de la barre est devenu un vrai bouton** — chevron, curseur de clic, état au survol,
+  atteignable au clavier. Il ouvre la liste des entreprises : celle qui est ouverte en tête, les
+  autres en dessous, et trois gestes qu'on ne pouvait faire nulle part en moins de cinq clics —
+  « Nouvelle entreprise… », « Dossier partagé… », « Gérer les dossiers… ». Échap ou un clic à côté
+  le referme, et il reste **sous** les fenêtres de confirmation : une question posée par-dessus
+  passe devant.
+- **Changer de dossier respecte le garde-fou des modifications non enregistrées.** Basculer recharge
+  l'application : sans ça, un devis à moitié tapé partait sans un mot.
+- **Le dossier porte le nom de ta société, plus « Mon entreprise ».** C'était le nom générique posé
+  à l'installation : l'en-tête affichait « Atelier Ben Salah SUARL » pendant que la liste des
+  dossiers, dix pixels plus bas, disait « Mon entreprise ». Deux noms pour la même chose, et rien
+  pour deviner qu'il s'agit du même dossier. Le nom suit désormais celui de la fiche société — sauf
+  si tu l'as renommé toi-même, auquel cas ton nom est gardé.
+- `npm run e2e:entreprises` fait le parcours en entier dans l'application réelle : créer une seconde
+  entreprise depuis le menu, remplir son assistant, revenir à la première, et vérifier la couche du
+  menu.
+
 ## 7.13.0 — 12/09/2026
 
 **Voir ce qu'on fabrique.**

@@ -39,10 +39,42 @@ body {
   width: 224px; background: var(--panel); border-right: 1px solid var(--border);
   display: flex; flex-direction: column; padding: 22px 14px; flex-shrink: 0;
 }
-.brand { padding: 2px 10px 22px; display: flex; align-items: center; gap: 10px; }
-.brand-mark { width: 34px; height: 34px; border-radius: 10px; background: linear-gradient(135deg, #12b3a2, #0f9d8f 60%, #0b7f74); color: #fff; display: grid; place-items: center; font-weight: 800; font-size: 15px; letter-spacing: -.5px; box-shadow: 0 4px 12px rgba(15,157,143,.28); }
-.brand-name { font-size: 16px; font-weight: 700; letter-spacing: -.2px; line-height: 1.1; }
-.brand-sub { font-size: 11px; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 130px; }
+/* L'en-tête de la barre est le sélecteur d'entreprise (7.14.0) : c'est là que le nom du dossier
+   ouvert est écrit, donc c'est là qu'on s'attend à en changer. Avant, il fallait passer par
+   Paramètres → Dossiers. Il reste un en-tête tant qu'on ne le survole pas : pas de bordure, pas de
+   fond — mais il a un chevron, un curseur de clic et un état au survol, les trois signes qui font
+   qu'on essaie de cliquer. */
+.brand-wrap { position: relative; padding-bottom: 22px; }
+.brand {
+  width: 100%; padding: 6px 8px; display: flex; align-items: center; gap: 10px; text-align: left;
+  font: inherit; color: inherit; background: transparent; border: 1px solid transparent;
+  border-radius: 12px; cursor: pointer;
+}
+.brand:hover, .brand[aria-expanded="true"] { background: var(--ink-soft); border-color: var(--border); }
+.brand-txt { min-width: 0; flex: 1 1 auto; display: block; }
+.brand-chev { font-size: 10px; color: var(--muted); flex-shrink: 0; }
+.brand-mark { width: 34px; height: 34px; border-radius: 10px; background: linear-gradient(135deg, #12b3a2, #0f9d8f 60%, #0b7f74); color: #fff; display: grid; place-items: center; font-weight: 800; font-size: 15px; letter-spacing: -.5px; box-shadow: 0 4px 12px rgba(15,157,143,.28); flex-shrink: 0; }
+.brand-name { font-size: 16px; font-weight: 700; letter-spacing: -.2px; line-height: 1.1; display: block; }
+.brand-sub { font-size: 11px; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+
+/* Le menu des dossiers. Au-dessus de la barre latérale mais sous les fenêtres modales (400) : une
+   question posée par-dessus doit rester devant. */
+.dos-menu {
+  position: absolute; left: 0; right: 0; top: 100%; margin-top: -14px; z-index: 70;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 6px;
+  box-shadow: 0 14px 40px rgba(20, 40, 60, .18); max-height: 60vh; overflow-y: auto;
+}
+.dos-menu button {
+  display: flex; width: 100%; align-items: baseline; gap: 8px; text-align: left; font: inherit;
+  background: none; border: none; border-radius: 8px; padding: 8px 10px; cursor: pointer; color: var(--text);
+}
+.dos-menu button:hover { background: var(--ink-soft); }
+.dos-menu button.on { background: var(--primary-soft); color: var(--primary); font-weight: 600; }
+.dos-menu .dm-mark { width: 14px; flex-shrink: 0; font-size: 11px; }
+.dos-menu .dm-nom { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dos-menu .dm-tag { font-size: 10px; color: var(--muted); flex-shrink: 0; }
+.dos-menu hr { border: none; border-top: 1px solid var(--border); margin: 6px 4px; }
+.dos-menu .dm-titre { font-size: 10px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); font-weight: 700; padding: 6px 10px 2px; }
 nav { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; }
 /* Une barre qui défile doit avoir l'air de défiler. Sur macOS la barre de défilement est masquée tant
    qu'on ne fait pas défiler : la liste paraissait donc finie là où elle était coupée. On la force,
