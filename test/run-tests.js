@@ -4027,6 +4027,71 @@ t('cabstore : le rangement reprend l\'ancien classement à plat sans rien perdre
   assert.strictEqual(s.reorganize(st).lost, 1);
 });
 
+t('cabinet : changer d\'ordinateur — le cabinet se reprend, paquets compris', () => {
+  // Le pire des défauts : celui qui punit quelqu'un qui a tout bien fait. Le comptable avait sa copie
+  // sur clé USB et sa clé de secours ; sur le poste neuf l'application disait « Bienvenue », lui
+  // fabriquait une clé NEUVE, et les paquets que ses clients enverraient ensuite étaient refusés
+  // (« adressé à un autre cabinet »). Huit cents paquets lisibles, et aucun bouton pour les reprendre.
+  const ancien = tmpCab(), ext = tmpCab(), neuf = tmpCab();
+  const s = CS.createCabStore(ancien, { externalDir: ext });
+  const st = cabState();
+  const d = cab.newDossier({ name: 'Menuiserie Trabelsi SUARL', matricule: '1122334A/M/P/000' });
+  st.dossiers.push(d);
+  s.create('mot-de-passe-long', st);
+  const recu = cpath.join(ancien, 'recu.skanpack');
+  cfs.writeFileSync(recu, 'le paquet du client');
+  d.packs.push({ month: '2026-08', label: 'août 2026', definitive: true, missing: [], path: s.storePack(recu, d, '2026-08', st.dossiers) });
+  s.write(st);
+
+  // Le poste neuf : rien du tout. On REGARDE avant de demander quoi que ce soit.
+  const s2 = CS.createCabStore(neuf);
+  assert.strictEqual(s2.exists(), false);
+  const vu = s2.inspectSource(ext);                    // la racine du support, pas le sous-dossier
+  assert.strictEqual(vu.kind, 'dossier');
+  assert.ok(vu.base, 'la copie externe porte le fichier du cabinet');
+  assert.strictEqual(vu.packs, 1, 'et le paquet du client');
+
+  // Un mot de passe faux ne laisse RIEN derrière lui : sur cette machine-là, il n'y a encore rien à
+  // quoi revenir.
+  assert.throws(() => s2.adoptSource(ext, 'mauvais'), /Mot de passe incorrect/);
+  assert.strictEqual(s2.exists(), false, 'un essai raté ne doit pas créer de cabinet');
+
+  const r = s2.adoptSource(ext, 'mot-de-passe-long');
+  assert.strictEqual(r.state.dossiers.length, 1);
+  assert.strictEqual(r.state.cabinet.privateKey, 'PRIV', 'la clé du cabinet revient : c\'est tout l\'enjeu');
+  assert.strictEqual(r.packs, 1, 'les paquets suivent la base');
+  assert.strictEqual(s2.unlocked(), true, 'la session repart ouverte : on ne redemande pas ce qu\'on vient de taper');
+
+  // Les chemins enregistrés désignent l'ANCIEN poste. Sans rattrapage, des paquets bien présents
+  // passeraient pour perdus, sans un mot.
+  const st2 = cab.migrate(r.state);
+  assert.ok(st2.dossiers[0].packs[0].path.startsWith(ancien), 'le chemin enregistré vient de l\'autre poste');
+  const rr = s2.reorganize(st2);
+  assert.strictEqual(rr.recovered, 1);
+  assert.strictEqual(rr.lost, 0);
+  assert.ok(st2.dossiers[0].packs[0].path.startsWith(s2.packRoot), 'le chemin doit être recollé sur ce poste');
+  assert.strictEqual(cfs.readFileSync(st2.dossiers[0].packs[0].path, 'utf8'), 'le paquet du client');
+  assert.ok(!st2.dossiers[0].packs[0].missingFile);
+  assert.strictEqual(s2.reorganize(st2).recovered, 0, 'un second passage ne retrouve plus rien : tout est en place');
+
+  // Un paquet vraiment absent reste absent : on ne fait pas semblant.
+  st2.dossiers[0].packs.push({ month: '2026-07', label: 'juillet 2026', missing: [], path: cpath.join(ancien, 'paquets', 'x', '2026', '2026-07.skanpack') });
+  assert.strictEqual(s2.reorganize(st2).lost, 1);
+  assert.strictEqual(st2.dossiers[0].packs[1].missingFile, true);
+
+  // Le fichier seul se reprend aussi — sans les paquets, et on ne le cache pas.
+  const seul = CS.createCabStore(tmpCab());
+  const r2 = seul.adoptSource(cpath.join(ext, 'SkanFact Cabinet', 'cabinet-data.json'), 'mot-de-passe-long');
+  assert.strictEqual(r2.state.dossiers.length, 1);
+  assert.strictEqual(r2.packs, 0, 'un fichier seul ne rapporte pas les pièces');
+
+  // Et ce qui n'est pas un cabinet est refusé AVANT qu'on demande un mot de passe.
+  const bidon = cpath.join(neuf, 'liste.txt');
+  cfs.writeFileSync(bidon, 'bonjour');
+  assert.throws(() => seul.inspectSource(bidon), /pas un cabinet SkanFact/);
+  assert.throws(() => seul.inspectSource(tmpCab()), /aucun cabinet SkanFact/);
+});
+
 t('cabstore : la copie externe emporte AUSSI les paquets', () => {
   // Une copie qui ne prend que la base laisserait le comptable avec l'index de ce qu'il a perdu :
   // les paquets SONT les pièces justificatives.
@@ -4250,7 +4315,7 @@ t('cabinet : ses classes à lui ne doivent pas exister dans la feuille partagée
   const partagee = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'style.css'), 'utf8');
   const propre = fs.readFileSync(path.join(__dirname, '..', 'src', 'cabinet', 'renderer', 'cabinet.css'), 'utf8');
   // Les classes que le cabinet DÉFINIT pour lui-même (préfixes et noms qui n'ont de sens qu'ici).
-  const siennes = [...propre.matchAll(/\.(wiz-[a-z-]+|drop-[a-z-]+|lock-warn|pw-[a-z-]+|warn-box|err-inline|ok-inline|year-[a-z-]+|b-hors|brand-tag|code-box|saved)\b/g)]
+  const siennes = [...propre.matchAll(/\.(wiz-[a-z-]+|reprise-[a-z-]+|drop-[a-z-]+|lock-warn|pw-[a-z-]+|warn-box|err-inline|ok-inline|year-[a-z-]+|b-hors|brand-tag|code-box|saved)\b/g)]
     .map(m => m[1]);
   assert.ok(siennes.length >= 10, 'le fichier propre au cabinet doit bien définir ses classes');
   [...new Set(siennes)].forEach(c => {

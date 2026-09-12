@@ -178,3 +178,15 @@ body.dark .badge.b-hors { background: #2a3440; color: #9aa7b4; }
 #upd-panel .update-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 12px; }
 #upd-panel .ver { font-size: 20px; font-weight: 700; margin-top: 2px; }
 #upd-panel .k-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
+
+/* Reprendre un cabinet venu d'un autre ordinateur : les mêmes lignes que l'assistant, mais dans une
+   fenêtre. `#setup .wiz-step` est accroché à l'assistant, il ne s'applique pas ici — et réutiliser un
+   nom de la feuille partagée hériterait en silence de règles pensées pour l'autre application. */
+.reprise-list { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+.reprise-row {
+  display: flex; align-items: center; gap: 14px; padding: 13px 15px;
+  border: 1px solid var(--border); border-radius: 12px;
+}
+.reprise-row > div:first-child { flex: 1; min-width: 0; }
+.reprise-row .btn { flex-shrink: 0; }
+@media (max-width: 760px) { .reprise-row { flex-wrap: wrap; } }

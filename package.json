@@ -22,7 +22,8 @@
     "e2e:refus": "node test/e2e/cabinet-refus.js",
     "e2e:gel": "node test/e2e/chien-de-garde.js",
     "e2e:perte": "node test/e2e/cabinet-perte.js",
-    "e2e:couches": "node test/e2e/cabinet-couches.js"
+    "e2e:couches": "node test/e2e/cabinet-couches.js",
+    "e2e:demenagement": "node test/e2e/cabinet-demenagement.js"
   },
   "devDependencies": {
     "electron": "^43.0.0",

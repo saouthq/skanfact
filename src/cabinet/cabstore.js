@@ -316,6 +316,126 @@ function createCabStore(dir, opts) {
     return plain;
   }
 
+  // ---------- reprendre un cabinet venu d'un autre ordinateur ----------
+  //
+  // Un comptable change de poste, ou son disque lâche. Il a fait exactement ce qu'on lui demandait :
+  // la copie sur clé USB, la clé de secours. Et l'application n'avait AUCUN chemin pour reprendre
+  // tout ça : sur la machine neuve elle disait « Bienvenue », fabriquait une clé NEUVE, et les
+  // paquets que ses clients lui enverraient ensuite seraient refusés — « adressé à un autre
+  // cabinet ». Huit cents paquets lisibles sur la table, et aucun bouton pour les reprendre. C'est le
+  // pire des défauts : celui qui punit quelqu'un qui a tout bien fait.
+  //
+  // Trois formes acceptées, parce que c'est sous ces trois-là que la chose se présente vraiment :
+  //  - le dossier de la copie externe (le bon cas : il porte AUSSI les paquets) ;
+  //  - le fichier cabinet-data.json seul ;
+  //  - une sauvegarde (même enveloppe, autre nom).
+  function scelle(p) {
+    let o = null;
+    try { o = JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return null; }
+    return isEnvelope(o) ? o : null;
+  }
+
+  // Ce qu'on a sous la main, AVANT de demander quoi que ce soit : on ne fait pas taper un mot de
+  // passe pour annoncer ensuite que ce n'était pas le bon fichier.
+  function inspectSource(p) {
+    let s;
+    try { s = fs.statSync(p); } catch { throw new Error('Ce fichier ou ce dossier est introuvable.'); }
+    if (!s.isDirectory()) {
+      if (!scelle(p)) throw new Error('Ce fichier n\'est pas un cabinet SkanFact : cherche « cabinet-data.json », ou un fichier du dossier « sauvegardes ».');
+      return { kind: 'fichier', source: p, base: p, backups: [], packs: 0, bytes: 0 };
+    }
+    // On accepte aussi bien le dossier « SkanFact Cabinet » que celui qui le contient (la racine de
+    // la clé USB) : personne ne se souvient duquel des deux il s'agit, et se tromper de niveau ne
+    // doit pas ressembler à « tes données ne sont pas là ».
+    const dedans = path.join(p, 'SkanFact Cabinet');
+    const racine = (scelle(path.join(dedans, 'cabinet-data.json')) || fs.existsSync(path.join(dedans, 'sauvegardes'))) ? dedans : p;
+    const base = scelle(path.join(racine, 'cabinet-data.json')) ? path.join(racine, 'cabinet-data.json') : null;
+    let backups = [];
+    try {
+      backups = fs.readdirSync(path.join(racine, 'sauvegardes'))
+        .filter(n => n.endsWith('.json')).map(n => path.join(racine, 'sauvegardes', n))
+        .filter(q => !!scelle(q));
+    } catch {}
+    if (!base && !backups.length) {
+      throw new Error('Ce dossier ne contient aucun cabinet SkanFact. Cherche le dossier « SkanFact Cabinet » de ta copie de sauvegarde : il contient « cabinet-data.json ».');
+    }
+    const stats = treeStats(path.join(racine, 'paquets'));
+    return { kind: 'dossier', source: racine, base, backups, packs: stats.files, bytes: stats.bytes };
+  }
+
+  // On ne remplace JAMAIS un fichier déjà présent ici : ce qui est sur ce poste y a été reçu, il fait
+  // foi. Et rien n'est déplacé chez la source — une clé USB reste une clé USB, et un premier essai
+  // raté ne doit pas la vider.
+  function reprendreFichier(src, dst) {
+    try {
+      if (fs.existsSync(dst)) return false;
+      fs.mkdirSync(path.dirname(dst), { recursive: true });
+      const a = fs.statSync(src);
+      fs.copyFileSync(src, dst);
+      try { fs.utimesSync(dst, a.atime, a.mtime); } catch {}
+      return true;
+    } catch (e) { log('reprise ' + path.basename(src), e); return false; }
+  }
+
+  function reprendreArbre(src, dst) {
+    let n = 0, entries = [];
+    try { entries = fs.readdirSync(src, { withFileTypes: true }); } catch { return 0; }
+    entries.forEach(e => {
+      const a = path.join(src, e.name), b = path.join(dst, e.name);
+      if (e.isDirectory()) n += reprendreArbre(a, b);
+      else if (reprendreFichier(a, b)) n++;
+    });
+    return n;
+  }
+
+  // Reprendre pour de bon. TOUT est vérifié avant d'écrire quoi que ce soit : un mot de passe raté ne
+  // laisse rien derrière lui — et sur cette machine-là, il n'y a encore rien à quoi revenir. La
+  // session repart ouverte : redemander le mot de passe qu'on vient de taper serait une question de
+  // plus au moment où l'on doute déjà de tout.
+  function adoptSource(p, password) {
+    const vu = inspectSource(p);
+    let depuis = vu.base;
+    if (!depuis) {
+      // Pas de fichier principal, seulement des sauvegardes : on prend la plus récente. C'est
+      // exactement l'état d'un poste dont le disque a lâché après la dernière copie.
+      depuis = vu.backups.map(q => {
+        let m = 0;
+        try { m = fs.statSync(q).mtimeMs; } catch {}
+        return { q, m };
+      }).sort((a, b) => b.m - a.m)[0].q;
+    }
+    const env = scelle(depuis);
+    if (!env) throw new Error('Ce fichier n\'est pas un cabinet SkanFact.');
+    const salt = Buffer.from(env.salt, 'base64');
+    const key = deriveKey(password, salt);
+    let plain;
+    try { plain = openWithKey(env, key); }
+    catch { throw new Error('Mot de passe incorrect : c\'est celui que tu utilisais sur l\'autre ordinateur, il n\'a pas changé.'); }
+    if (!isValidCabinet(plain)) throw new Error('Ce fichier ne contient pas un cabinet SkanFact.');
+
+    // À partir d'ici seulement, on touche au disque. Si un cabinet existait déjà sur ce poste (une
+    // création faite par erreur, avant d'avoir trouvé ce bouton), il est mis de côté, jamais effacé.
+    fs.mkdirSync(dir, { recursive: true });
+    if (exists()) backupNow('avant-reprise');
+    if (path.resolve(depuis) !== path.resolve(file)) {
+      const tmp = file + '.tmp';
+      fs.writeFileSync(tmp, JSON.stringify(env), 'utf8');
+      fs.renameSync(tmp, file);
+    }
+    st.salt = salt; st.key = key; st.password = String(password);
+
+    let backups = 0, packs = 0;
+    if (vu.kind === 'dossier') {
+      const sauv = path.join(vu.source, 'sauvegardes');
+      if (path.resolve(sauv) !== path.resolve(backupDir)) backups = reprendreArbre(sauv, backupDir);
+      const pq = path.join(vu.source, 'paquets');
+      if (path.resolve(pq) !== path.resolve(packRoot)) packs = reprendreArbre(pq, packRoot);
+    }
+    // Les chemins enregistrés dans l'état désignent encore l'autre poste : c'est `reorganize` qui les
+    // recolle, et c'est l'appelant qui enregistre ensuite.
+    return { state: plain, from: depuis, backups, packs };
+  }
+
   // ---------- les paquets ----------
   //
   // Ils étaient tous à plat dans un seul répertoire, nommés par matricule :
@@ -384,8 +504,12 @@ function createCabStore(dir, opts) {
   // reprise de l'ancien rangement à plat, et après un changement de nom de client.
   // Renvoie le nombre de fichiers déplacés ; l'appelant enregistre l'état ensuite.
   function reorganize(state) {
-    let moved = 0, lost = 0;
+    let moved = 0, lost = 0, recovered = 0;
     const collisions = folderIndex(state.dossiers);
+    // « Est-ce que ce chemin est dans MON dossier de paquets ? » Tout le reste vient d'ailleurs.
+    const dansPackRoot = q => {
+      try { return path.resolve(q).startsWith(path.resolve(packRoot) + path.sep); } catch { return false; }
+    };
     (state.dossiers || []).forEach(d => {
       (d.packs || []).forEach(p => {
         if (!p.path) return;                                  // paquet d'exemple : aucun fichier
@@ -393,9 +517,43 @@ function createCabStore(dir, opts) {
         try {
           // Le contrôle d'existence vient AVANT celui de la place : un paquet déjà bien rangé dont le
           // fichier a disparu n'était jamais compté, et restait vert et « définitif » à l'écran.
-          if (!fs.existsSync(p.path)) { lost++; p.missingFile = true; return; }
+          if (!fs.existsSync(p.path)) {
+            // Mais « ce chemin ne désigne rien » ne veut pas dire « le fichier n'est plus là ». Un
+            // paquet repris d'un autre ordinateur porte le chemin de CET autre ordinateur, alors que
+            // le fichier, lui, a été recopié ici avec le reste. On le cherche donc à sa place
+            // canonique — et sous son propre nom, pour les renvois (« -r2 ») — avant de déclarer
+            // perdu un paquet qui est sur le disque. Sans ça, un comptable qui change de poste voit
+            // ses huit cents pièces passer pour perdues, sans un mot.
+            const nom = String(p.path).replace(/\\/g, '/').split('/').pop();
+            const ici = [want, path.join(path.dirname(want), nom)].find(q => {
+              try { return q && fs.existsSync(q); } catch { return false; }
+            });
+            if (!ici) { lost++; p.missingFile = true; return; }
+            delete p.missingFile;
+            p.path = ici;
+            recovered++;
+            return;
+          }
           delete p.missingFile;
           if (p.path === want) return;
+          // Le chemin existe, mais est-il CHEZ NOUS ? Après une reprise, il peut désigner le support
+          // d'origine — la clé USB encore branchée, le dossier iCloud de l'ancien poste. Le fichier
+          // a pourtant été recopié ici avec le reste : c'est sur notre copie qu'il faut se recoller,
+          // sinon le cabinet lit les pièces de ses clients sur une clé qu'on va débrancher.
+          if (!dansPackRoot(p.path)) {
+            const nom = String(p.path).replace(/\\/g, '/').split('/').pop();
+            const ici = [path.join(path.dirname(want), nom), want].find(q => {
+              try { return fs.existsSync(q); } catch { return false; }
+            });
+            if (ici) { p.path = ici; recovered++; return; }
+            // Pas encore chez nous : on le rapatrie par COPIE. Un `rename` entre deux disques
+            // échoue (EXDEV), et surtout on ne vide pas le support de quelqu'un d'autre.
+            fs.mkdirSync(path.dirname(want), { recursive: true });
+            fs.copyFileSync(p.path, want);
+            p.path = want;
+            recovered++;
+            return;
+          }
           if (fs.existsSync(want)) return;                    // jamais écraser une autre réception
           fs.mkdirSync(path.dirname(want), { recursive: true });
           fs.renameSync(p.path, want);
@@ -412,12 +570,12 @@ function createCabStore(dir, opts) {
         try { if (!fs.readdirSync(p).length) fs.rmdirSync(p); } catch {}
       });
     } catch {}
-    return { moved, lost };
+    return { moved, lost, recovered };
   }
 
   // Taille occupée par les paquets : un comptable doit pouvoir répondre à « pourquoi mon disque se
   // remplit ». Personne ne l'a jamais dit dans l'application.
-  function packStats() {
+  function treeStats(root) {
     let files = 0, bytes = 0;
     const walk = p => {
       let entries = [];
@@ -428,9 +586,10 @@ function createCabStore(dir, opts) {
         try { const s = fs.statSync(q); files++; bytes += s.size; } catch {}
       });
     };
-    walk(packRoot);
+    walk(root);
     return { files, bytes };
   }
+  function packStats() { return treeStats(packRoot); }
 
   // ---------- copie externe ----------
 
@@ -509,6 +668,7 @@ function createCabStore(dir, opts) {
     file, backupDir, packRoot, state: st,
     exists, unlocked, create, unlock, lock, write, setPassword,
     snapshotDaily, backupNow, listBackups, peek, restore,
+    inspectSource, adoptSource,
     packPathFor, storePack, removePack, removeDossierFiles, reorganize, packStats, folderName, folderIndex,
     setExternalDir, mirrorExternal
   };

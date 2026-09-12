@@ -61,6 +61,10 @@
       <div class="lock-err" id="lock-err" hidden></div>
       <button class="btn btn-primary" id="lock-go" type="submit">Ouvrir</button>
       <p class="muted small lock-note" id="lock-note"></p>
+      <!-- Changer d'ordinateur n'avait aucun chemin : l'application disait « Bienvenue » et fabriquait
+           une clé NEUVE à quelqu'un qui avait tout gardé. Le bouton est ici, sur le seul écran où il
+           sert, et AVANT que la moindre clé existe. `type="button"` : il est dans un formulaire. -->
+      <button class="btn btn-ghost btn-sm" id="lock-move" type="button">J'ai déjà un cabinet sur un autre ordinateur…</button>
     </form>
   </div>
 

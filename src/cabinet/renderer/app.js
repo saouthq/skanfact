@@ -377,6 +377,9 @@
       pw.focus();
     };
     if (!st.exists) pw.oninput = () => { $('#lock-strength').textContent = strengthText(pw.value); };
+    // Le seul chemin de sortie pour qui change d'ordinateur. Proposé dans les DEUX cas : on y arrive
+    // aussi après avoir créé un cabinet neuf par erreur, et c'est même le cas le plus fréquent.
+    $('#lock-move').onclick = repriseDialog;
 
     $('#lock-form').onsubmit = async e => {
       e.preventDefault();
@@ -412,6 +415,116 @@
     if (v.length >= 16 || (v.length >= 12 && varie >= 3)) return 'Solide.';
     if (v.length >= 10 && varie >= 2) return 'Correct.';
     return 'Faible : allonge-le, une phrase entière vaut mieux qu\'un mot compliqué.';
+  }
+
+  // ---------- reprendre un cabinet venu d'un autre ordinateur ----------
+  //
+  // Le comptable qui change de poste a TOUT sur sa clé USB — et, jusqu'ici, aucun bouton pour le
+  // dire. L'application lui répondait « Bienvenue », lui fabriquait une clé neuve, et les paquets que
+  // ses clients enverraient ensuite étaient refusés : « adressé à un autre cabinet ». La question se
+  // pose donc ici, sur l'écran de mot de passe, avant toute création de clé.
+  let repriseParCle = false;             // « je n'ai que ma clé de secours » : à faire dès l'ouverture
+
+  function repriseDialog() {
+    modal(
+      `<h2>${lbl('Reprendre un cabinet existant', 'b.reprise')}</h2>
+       <p class="small">Tu changes d'ordinateur, ou tu réinstalles l'application ? <strong>Ne crée pas un cabinet neuf.</strong>
+       Il aurait une autre empreinte, et les paquets que tes clients t'enverraient ensuite seraient refusés : « adressé à un autre cabinet ».</p>
+       <div class="reprise-list">
+         <div class="reprise-row"><div><strong>J'ai mon dossier de copie</strong>
+           <div class="muted small">La clé USB, le disque externe ou le dossier iCloud choisi dans Réglages. Il s'appelle
+           <code>SkanFact Cabinet</code> et contient aussi <strong>tes paquets</strong> : c'est celui qu'il faut préférer.</div></div>
+           <button class="btn btn-primary" id="rp-dir">Choisir le dossier…</button></div>
+         <div class="reprise-row"><div><strong>J'ai le fichier de mon cabinet</strong>
+           <div class="muted small"><code>cabinet-data.json</code>, ou une sauvegarde du dossier <code>sauvegardes</code>.
+           Tes dossiers et ta clé reviennent ; les paquets déjà reçus, non.</div></div>
+           <button class="btn" id="rp-file">Choisir le fichier…</button></div>
+         <div class="reprise-row"><div><strong>Je n'ai que ma clé de secours</strong>
+           <div class="muted small">Le fichier <code>.skanrecover</code>. Il rend ta clé — donc ton empreinte, donc tes clients —
+           mais ni tes dossiers ni tes paquets.</div></div>
+           <button class="btn" id="rp-key">Faire comme ça</button></div>
+       </div>
+       <div class="modal-actions"><span class="grow"></span><button class="btn" id="rp-no">Annuler</button></div>`,
+      (layer, close) => {
+        $('#rp-no', layer).onclick = close;
+        $('#rp-dir', layer).onclick = () => { close(); repriseChoisir('dossier'); };
+        $('#rp-file', layer).onclick = () => { close(); repriseChoisir('fichier'); };
+        $('#rp-key', layer).onclick = () => {
+          close();
+          // Une clé de secours ne se restaure qu'une fois un cabinet ouvert : on crée donc d'abord, et
+          // `start()` réclame le fichier aussitôt après. Le dire maintenant évite de croire qu'on
+          // s'est trompé de bouton.
+          repriseParCle = true;
+          confirmDialog('Avec la clé de secours',
+            `<p>Une clé de secours ne contient <strong>que la clé</strong> du cabinet : ni tes dossiers, ni tes paquets.</p>
+             <p class="small">Choisis un mot de passe pour ce poste, puis l'application te demandera tout de suite ton fichier
+             <code>.skanrecover</code>. Ton empreinte redeviendra la même : tes clients n'auront rien à refaire.</p>`,
+            'J\'ai compris');
+        };
+      }
+    );
+  }
+
+  async function repriseChoisir(mode) {
+    let vu;
+    try { vu = await api.pickRecover(mode); }
+    catch (e) { return toast(plainError(e), 'error'); }
+    if (!vu) return;                                    // fenêtre annulée
+    const trouve = [];
+    if (vu.base) trouve.push('le fichier du cabinet');
+    if (vu.backups) trouve.push(pl(vu.backups, 'sauvegarde'));
+    if (vu.packs) trouve.push(`${pl(vu.packs, 'paquet')} (${fmtBytes(vu.bytes)})`);
+    modal(
+      `<h2>Reprendre ce cabinet</h2>
+       <p class="path">${esc(vu.path)}</p>
+       <div class="kv mt"><div><span>On y trouve</span><span>${esc(trouve.join(' · ') || 'une sauvegarde')}</span></div></div>
+       ${vu.packs ? '' : `<div class="warn-box mt">Aucun paquet là-dedans : tes dossiers et ta clé reviendront, pas les pièces déjà reçues.
+         Si tu as le dossier <code>paquets</code> ailleurs, recopie-le ensuite dans le dossier de l'application
+         (Réglages → « Ouvrir le dossier ») : elles seront retrouvées à l'ouverture suivante.</div>`}
+       <label class="field mt">Le mot de passe de ce cabinet<span class="pw-wrap">
+         <input type="password" id="rp-pw" autocomplete="current-password"><button type="button" class="pw-eye" id="rp-eye">Afficher</button></span></label>
+       <p class="muted small">Celui de l'autre ordinateur : c'est lui qui chiffre ce fichier, il n'a pas changé.</p>
+       <div class="modal-actions"><button class="btn" id="rp-no">Annuler</button><button class="btn btn-primary" id="rp-go">Reprendre ce cabinet</button></div>`,
+      (layer, close) => {
+        const pw = $('#rp-pw', layer), go = $('#rp-go', layer);
+        $('#rp-eye', layer).onclick = () => {
+          pw.type = pw.type === 'password' ? 'text' : 'password';
+          $('#rp-eye', layer).textContent = pw.type === 'password' ? 'Afficher' : 'Masquer';
+          pw.focus();
+        };
+        $('#rp-no', layer).onclick = close;
+        pw.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); go.click(); } };
+        go.onclick = async () => {
+          if (!pw.value) return toast('Entre le mot de passe de ce cabinet.', 'error');
+          go.disabled = true; go.textContent = 'Reprise…';
+          let r;
+          try { r = await api.adopt(vu.path, pw.value); }
+          catch (e) {
+            go.disabled = false; go.textContent = 'Reprendre ce cabinet';
+            pw.select();
+            return toast(plainError(e), 'error');
+          }
+          close();
+          S = r.state;
+          $('#lock-screen').remove();
+          $('#app').hidden = false;
+          start(false, r.reorganized, false);
+          const ok = await confirmDialog('Cabinet repris',
+            `<div class="kv"><div><span>Dossiers</span><span>${r.repris.dossiers}</span></div>
+             <div><span>Paquets repris</span><span>${r.repris.paquets}</span></div>
+             <div><span>Sauvegardes</span><span>${r.repris.sauvegardes}</span></div>
+             <div><span>Empreinte</span><span class="fingerprint">${esc(S.cabinet.fingerprint || '—')}</span></div></div>
+             <p class="small mt">Vérifie cette empreinte : c'est celle que tes clients connaissent. Si elle a changé, tu as repris le mauvais fichier.</p>
+             <div class="warn-box mt">Ce poste-ci n'a encore <strong>aucune copie de sauvegarde</strong> : celle de l'autre ordinateur
+             désignait un support branché là-bas. Choisis-en une maintenant — « plus tard » est exactement le moment où l'on oublie.</div>`,
+            'Choisir un dossier de copie…');
+          if (ok) {
+            try { await api.pickExternal(); refreshBackupInfo(); }
+            catch (e) { toast(plainError(e), 'error'); }
+          }
+        };
+      }
+    );
   }
 
   function start(created, reorganized, aRecuperer) {
@@ -469,8 +582,13 @@
         if (apres !== avant && !$('#modal-root').children.length && !$('#palette-root')) render();
       });
     });
-    if (reorganized && reorganized.moved) {
-      toast(`${pl(reorganized.moved, 'paquet')} rangé${reorganized.moved > 1 ? 's' : ''} par client et par année.`);
+    if (reorganized && (reorganized.moved || reorganized.recovered)) {
+      const dits = [];
+      if (reorganized.moved) dits.push(`${pl(reorganized.moved, 'paquet')} rangé${reorganized.moved > 1 ? 's' : ''} par client et par année`);
+      // Un paquet repris d'un autre poste porte le chemin de cet autre poste : on l'a retrouvé sur ce
+      // disque-ci. Le dire vaut mieux que de le compter perdu en silence.
+      if (reorganized.recovered) dits.push(`${pl(reorganized.recovered, 'paquet')} retrouvé${reorganized.recovered > 1 ? 's' : ''} sur ce poste`);
+      toast(dits.join(' · ') + '.');
     }
     // Un cabinet qui vient de perdre son fichier ne veut pas d'un assistant de bienvenue : il veut
     // ses données. On l'emmène directement là où elles sont.
@@ -481,6 +599,14 @@
         const p = $('#pan-backup');
         if (p) p.scrollIntoView({ block: 'start' });
       }, 600);
+      return;
+    }
+    // « Je n'ai que ma clé de secours » : le cabinet qu'on vient de créer est neuf, il lui manque la
+    // clé qui ouvre les paquets déjà reçus — et qui fait que les clients n'ont rien à refaire. On la
+    // demande tout de suite : c'est le seul moment où l'on est sûr qu'il l'a sous la main.
+    if (created && repriseParCle) {
+      repriseParCle = false;
+      importRecovery().then(() => { if (!(S.cabinet.name || '').trim()) runSetup(); });
       return;
     }
     // Premier lancement : l'assistant, pas un formulaire de réglages et un message passager.
@@ -1717,6 +1843,10 @@
         <button class="btn" id="s-pw">${lbl('Changer le mot de passe…', 'b.password')}</button>
         <button class="btn btn-ghost" id="s-lock">Verrouiller maintenant</button>
       </div>
+
+      <p class="muted small mt">Tu changes d'ordinateur ? N'y crée <strong>jamais</strong> un cabinet neuf : il aurait une autre empreinte,
+      et les paquets de tes clients y seraient refusés. Emporte ton dossier de copie, puis reprends-le depuis l'écran de mot de passe
+      (« J'ai déjà un cabinet sur un autre ordinateur »). <a href="#/aide">Aide → Changer d'ordinateur</a>.</p>
 
       <p class="muted small mt">À VÉRIFIER avec ton assureur ou ton Ordre : la conservation des pièces de tes clients sur ce poste
       relève des mêmes obligations que tes archives papier.</p>

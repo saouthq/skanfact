@@ -163,6 +163,10 @@ ipcMain.handle('cab:unlock', (_e, password) => {
   const s = getStore();
   if (!s.exists()) {
     // Première ouverture : on crée le cabinet avec sa paire de clés.
+    // C'est aussi, jusqu'ici, le chemin qu'empruntait sans le savoir un comptable qui changeait
+    // d'ordinateur : une clé NEUVE, une nouvelle empreinte, et tous les paquets suivants refusés chez
+    // lui (« adressé à un autre cabinet »). D'où `cab:adopt` juste en dessous, et le bouton « J'ai
+    // déjà un cabinet sur un autre ordinateur » de l'écran de mot de passe : on reprend AVANT de créer.
     const keys = Z.generateCabinetKeys();
     state = s.create(password, K.migrate({ cabinet: { name: '', email: '', phone: '', publicKey: keys.publicKey, privateKey: keys.privateKey } }));
     return { created: true, state: safeState() };
@@ -178,9 +182,44 @@ ipcMain.handle('cab:unlock', (_e, password) => {
   state = K.migrate(r.state);
   // Reprise du rangement à plat des versions précédentes : les paquets passent en
   // paquets/<client>/<année>/<mois>.skanpack. Silencieux, une seule fois.
+  // Un chemin recollé (paquet repris d'un autre poste) compte autant qu'un fichier déplacé : sans
+  // l'enregistrer, le rattrapage serait à refaire à chaque ouverture.
   const moved = s.reorganize(state);
-  if (moved.moved) s.write(state);
+  if (moved.moved || moved.recovered) s.write(state);
   return { created: false, state: safeState(), reorganized: moved };
+});
+
+// ---------- IPC : reprendre un cabinet venu d'un autre ordinateur ----------
+//
+// Les deux seuls handlers, avec `cab:status` et `cab:unlock`, qui travaillent cabinet fermé — et
+// c'est tout l'intérêt : ils passent AVANT la création d'une paire de clés.
+ipcMain.handle('cab:pickRecover', async (_e, mode) => {
+  // Un seul dialogue pour les deux ne marcherait que sur macOS : Windows ne sait pas proposer un
+  // fichier OU un dossier dans la même fenêtre. C'est l'interface qui pose la question.
+  const r = await dialog.showOpenDialog(mainWindow, mode === 'fichier'
+    ? { title: 'Le fichier de ton cabinet, ou une de ses sauvegardes', filters: [{ name: 'Cabinet SkanFact', extensions: ['json'] }], properties: ['openFile'] }
+    : { title: 'Le dossier de ta copie de sauvegarde', properties: ['openDirectory'] });
+  if (r.canceled || !r.filePaths.length) return null;
+  // On annonce ce qu'on a trouvé avant de demander le mot de passe : on ne le fait pas taper pour
+  // apprendre ensuite que ce n'était pas le bon dossier.
+  const vu = getStore().inspectSource(r.filePaths[0]);
+  return { path: r.filePaths[0], kind: vu.kind, base: !!vu.base, backups: vu.backups.length, packs: vu.packs, bytes: vu.bytes };
+});
+
+ipcMain.handle('cab:adopt', (_e, { path: p, password } = {}) => {
+  const s = getStore();
+  // adoptSource valide tout — enveloppe, mot de passe, structure — avant de toucher au disque : la
+  // règle de ce fichier vaut ici plus qu'ailleurs, puisqu'il n'y a encore rien à quoi revenir.
+  const r = s.adoptSource(String(p || ''), String(password || ''));
+  state = K.migrate(r.state);
+  // Les chemins enregistrés désignent l'autre poste. Le rangement les recolle sur les fichiers qu'on
+  // vient de reprendre, sans quoi des paquets bien présents passeraient pour perdus.
+  const moved = s.reorganize(state);
+  s.write(state);
+  return {
+    state: safeState(), reorganized: moved,
+    repris: { dossiers: state.dossiers.length, sauvegardes: r.backups, paquets: r.packs }
+  };
 });
 
 ipcMain.handle('cab:state', () => (state ? safeState() : null));

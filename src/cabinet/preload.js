@@ -14,6 +14,10 @@ contextBridge.exposeInMainWorld('cabinet', {
   lock: () => ipcRenderer.invoke('cab:lock'),
   state: () => ipcRenderer.invoke('cab:state'),
 
+  // reprendre un cabinet venu d'un autre ordinateur, avant toute création de clé
+  pickRecover: (mode) => ipcRenderer.invoke('cab:pickRecover', mode),
+  adopt: (source, password) => ipcRenderer.invoke('cab:adopt', { path: source, password }),
+
   // le cabinet et ses dossiers
   saveCabinet: (patch) => ipcRenderer.invoke('cab:saveCabinet', patch),
   saveDossier: (id, patch) => ipcRenderer.invoke('cab:saveDossier', { id, patch }),
