@@ -272,7 +272,7 @@
         <thead><tr><th>Client</th><th class="nw">Dernier mois reçu</th><th class="r nw">Chiffre d'affaires</th>
         <th class="r nw">Mois manquants</th><th class="r nw">Provisoires</th><th class="r nw">Signalé</th><th class="nw">Reçu le</th></tr></thead>
         <tbody>${rows.map(r => `<tr class="clickable" data-id="${esc(r.id)}">
-          <td><span class="dot-lvl ${r.level === 'ok' ? '' : r.level}"></span>${esc(r.name)}${r.archived ? ' <span class="badge">archivé</span>' : ''}</td>
+          <td class="nw">${`<span class="dot-lvl ${r.level === 'ok' ? '' : r.level}"></span>`}${esc(r.name)}${r.archived ? ' <span class="badge">archivé</span>' : ''}</td>
           <td class="nw">${esc(r.lastLabel || '—')}${r.lastMonth && !r.lastDefinitive ? ' <span class="badge partielle">provisoire</span>' : ''}</td>
           <td class="r nw">${esc(r.lastFigures ? money(r.lastFigures.ca, r.lastFigures.devise) : '—')}</td>
           <td class="r">${r.missingCount || '—'}</td>
@@ -424,10 +424,10 @@
       <p class="muted small mb">Un message qui nomme les mois manquants fait bouger ; « envoie-moi tes documents » non.
       SkanFact prépare le texte, ton logiciel de messagerie l'envoie.</p>
       ${rows.length ? `<div class="scroll-x"><table class="list">
-        <thead><tr><th>Client</th><th>Email</th><th>Ce qui manque</th><th></th></tr></thead>
+        <thead><tr><th class="nw">Client</th><th class="nw">Email</th><th class="nw">Ce qui manque</th><th></th></tr></thead>
         <tbody>${rows.map(r => `<tr>
-          <td><span class="dot-lvl ${r.level === 'ok' ? '' : r.level}"></span>${esc(r.name)}</td>
-          <td class="muted">${esc(r.email || '— à renseigner')}</td>
+          <td class="nw"><span class="dot-lvl ${r.level === 'ok' ? '' : r.level}"></span>${esc(r.name)}</td>
+          <td class="muted nw">${esc(r.email || '— à renseigner')}</td>
           <td>${r.missingCount
             ? esc(K.missingLabel(r.missingMonths))
             : `<span class="muted">${r.provisionalCount} mois non clôturé${r.provisionalCount > 1 ? 's' : ''}</span>`}</td>
