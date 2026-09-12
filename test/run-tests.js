@@ -4591,6 +4591,49 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   });
 
   // ------------------------------------------------------------------
+  // audit G6 / G7 : les couches du cabinet. Même règle que la 5.2.2 côté entreprise, jamais portée
+  // ici. Un bouton parfaitement visible peut être inerte, et rien n'apparaît dans aucune console.
+  t('audit G6/G7 : Échap ne ferme que la fenêtre du dessus, Entrée valide, Cmd+K attend son tour', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'cabinet', 'renderer', 'app.js'), 'utf8');
+    const css = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'style.css'), 'utf8');
+    const zIndex = sel => {
+      const m = css.match(new RegExp(sel.replace(/[.#]/g, '\\$&') + '[^{]*\\{[^}]*?z-index:\\s*(\\d+)'));
+      assert.ok(m, `z-index introuvable pour ${sel}`);
+      return Number(m[1]);
+    };
+    const modale = zIndex('.modal-bg');
+
+    // G6 — Échap : l'écouteur est posé sur `document`, donc stopPropagation n'arrête pas celui des
+    // autres fenêtres. La seule parade est de ne rien faire quand on n'est pas la couche du dessus.
+    const corps = src.slice(src.indexOf('function modal('), src.indexOf('function confirmDialog('));
+    assert.ok(corps, 'modal() introuvable dans le renderer du cabinet');
+    assert.ok(/layer !== root\.lastElementChild/.test(corps),
+      'Échap ferme toutes les fenêtres empilées d\'un coup : le garde de couche manque');
+    // G6 — Entrée valide le bouton principal, sauf dans une zone de texte.
+    assert.ok(/e\.key !== 'Enter'/.test(corps), 'aucun gestionnaire d\'Entrée dans les fenêtres du cabinet');
+    assert.ok(/TEXTAREA/.test(corps), 'Entrée ne doit pas valider depuis une zone de texte');
+    assert.ok(/\.modal-actions \.btn-primary, \.modal-actions \.btn-danger/.test(corps),
+      'Entrée doit déclencher le bouton principal de la fenêtre');
+    // G6 — le focus va à un champ de saisie, pas au bouton « Annuler ».
+    assert.ok(/input:not\(\[type=hidden\]\)/.test(corps),
+      'le focus se pose encore sur le premier élément venu — dans une confirmation, « Annuler »');
+    // Et les couches empilées partent de la même base que la feuille de style.
+    const base = corps.match(/layer\.style\.zIndex = String\((\d+) \+ root\.children\.length\)/);
+    assert.ok(base, 'base d\'empilement introuvable dans le renderer du cabinet');
+    assert.strictEqual(Number(base[1]), modale, 'le cabinet et style.css ne partent pas de la même couche');
+
+    // G7 — la palette ne doit jamais s'ouvrir sous une fenêtre : elle prendrait le clavier sans
+    // rien montrer. `#palette-root` est à 60, sous tout le reste.
+    ['#setup', '#lock-screen', '#palette-root'].forEach(sel =>
+      assert.ok(zIndex(sel) < modale, `${sel} (${zIndex(sel)}) couvre les fenêtres modales (${modale})`));
+    const garde = src.slice(src.indexOf('function palettePossible('), src.indexOf('function openPalette('));
+    assert.ok(garde, 'aucun garde avant l\'ouverture de la palette');
+    ['#palette-root', '#modal-root', '#setup', '#lock-screen'].forEach(sel =>
+      assert.ok(garde.includes(sel), `la palette peut encore s'ouvrir par-dessus ${sel}`));
+    assert.ok(/if \(!palettePossible\(\)\) return;/.test(src), 'openPalette n\'utilise pas son garde');
+  });
+
+  // ------------------------------------------------------------------
   // audit B8 : un compteur et la liste qu'il annonce viennent de la même fonction.
   t('audit B8 : le bandeau des relances compte exactement les lignes du tableau', () => {
     const cab = require('../src/cabinet/cabcore.js');

@@ -106,11 +106,17 @@
 
   // Une fenêtre = une couche. Jamais `innerHTML` sur le conteneur : cela détruirait la fenêtre du
   // dessous et la saisie en cours (règle apprise en 2.4.0 côté entreprise).
-  function modal(html, onMount, onDismiss) {
+  // `opts.garde` : une fonction qui répond « oui, il y a de la saisie non enregistrée ». Échap et le
+  // clic à côté posent alors la question au lieu de jeter le travail en silence.
+  function modal(html, onMount, onDismiss, opts) {
+    const root = $('#modal-root');
     const layer = document.createElement('div');
     layer.className = 'modal-bg';
+    // 400 et au-dessus : une question doit couvrir TOUT le reste, y compris l'assistant de première
+    // utilisation (250) et l'écran de verrouillage (200). C'est la règle de la 5.2.2 côté entreprise.
+    layer.style.zIndex = String(400 + root.children.length);
     layer.innerHTML = `<div class="modal">${html}</div>`;
-    $('#modal-root').appendChild(layer);
+    root.appendChild(layer);
     let done = false;
     const close = () => {
       if (done) return;
@@ -118,14 +124,60 @@
       layer.remove();
       document.removeEventListener('keydown', onKey);
     };
-    const dismiss = () => { if (!done) { const f = onDismiss; close(); if (f) f(); } };
-    const onKey = e => { if (e.key === 'Escape') { e.stopPropagation(); dismiss(); } };
+    let question = false;   // une seule question à la fois, sinon Échap répété les empile
+    const dismiss = async () => {
+      if (done || question) return;
+      const garde = opts && opts.garde;
+      if (garde && garde()) {
+        question = true;
+        const jeter = await confirmDialog(
+          'Abandonner cette saisie ?',
+          '<p>Ce que tu viens de taper ne sera pas enregistré.</p>',
+          'Abandonner', true
+        );
+        question = false;
+        if (!jeter) return;
+      }
+      if (done) return;
+      const f = onDismiss; close(); if (f) f();
+    };
+    // Échap ne ferme QUE la fenêtre du dessus. Chaque fenêtre posait son écouteur sur `document`,
+    // et `stopPropagation` n'arrête pas les autres écouteurs du MÊME nœud (il faudrait
+    // `stopImmediatePropagation`) : deux fenêtres ouvertes, un Échap, les deux disparaissaient.
+    // Le comptable remplissait une fiche, cliquait « Supprimer… » par erreur, faisait Échap pour
+    // annuler — et perdait la question ET les huit champs qu'il venait de taper.
+    const onKey = e => {
+      if (done || layer !== root.lastElementChild) return;
+      if (e.key === 'Escape') { e.stopPropagation(); dismiss(); }
+    };
     document.addEventListener('keydown', onKey);
     layer.addEventListener('mousedown', e => { if (e.target === layer) dismiss(); });
+    // Entrée valide, comme dans l'app entreprise depuis la 1.8.0. Sans ça, sur « Fichier créé ·
+    // Le montrer dans le dossier », le réflexe « Entrée = oui » répondait « Annuler ».
+    layer.addEventListener('keydown', e => {
+      if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
+      if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'BUTTON') return;
+      const principal = $('.modal-actions .btn-primary, .modal-actions .btn-danger', layer);
+      if (principal && !principal.disabled) { e.preventDefault(); principal.click(); }
+    });
     if (onMount) onMount(layer, close);
-    const first = layer.querySelector('input, select, textarea, button');
-    if (first) first.focus();
+    // Le focus va au premier champ de SAISIE. Il allait au premier `input, select, textarea,
+    // button` : dans une confirmation, qui n'a pas de champ, c'était le bouton « Annuler ».
+    const saisie = layer.querySelector('input:not([type=hidden]):not([disabled]), select, textarea');
+    const principal = $('.modal-actions .btn-primary, .modal-actions .btn-danger', layer);
+    const cible = saisie || (principal && !principal.disabled ? principal : null);
+    if (cible) cible.focus();
     return close;
+  }
+
+  // Un instantané des champs au moment où la fenêtre s'ouvre. Il sert à répondre à une seule
+  // question : « est-ce qu'il a tapé quelque chose ? ». Sans lui, Échap jetait huit champs sans un
+  // mot — et un comptable qui perd une saisie deux fois n'ouvre plus jamais ce formulaire sereinement.
+  function suivreSaisie(layer) {
+    const lire = () => JSON.stringify([...layer.querySelectorAll('input:not([type=hidden]), textarea, select')]
+      .map(c => (c.type === 'checkbox' || c.type === 'radio' ? String(c.checked) : c.value)));
+    const depart = lire();
+    return () => lire() !== depart;
   }
 
   // Une promesse posée par une boîte de dialogue DOIT toujours se résoudre : Échap et le clic à côté
@@ -1062,6 +1114,7 @@
        <button class="btn" id="copy">Copier</button>
        <button class="btn btn-primary" id="ok">Ouvrir dans ma messagerie</button></div>`,
       (layer, close) => {
+        change = suivreSaisie(layer);
         $('#no', layer).onclick = () => { close(); if (onDone) onDone(); };
         $('#copy', layer).onclick = async () => {
           try { await navigator.clipboard.writeText($('#a-body', layer).value); toast('Texte copié.'); }
@@ -1125,6 +1178,7 @@
 
   function newDossierForm() {
     const empty = { packs: [] };
+    let change = () => false;
     modal(
       `<h2>Nouveau dossier client</h2>
        <p class="muted small">Ajoute un client même s'il n'utilise pas encore SkanFact ${info('d.manual')} : il compte dans ton portefeuille,
@@ -1132,6 +1186,7 @@
        ${dossierFields(empty)}
        <div class="modal-actions"><button class="btn" id="no">Annuler</button><button class="btn btn-primary" id="ok">Créer le dossier</button></div>`,
       (layer, close) => {
+        change = suivreSaisie(layer);
         $('#no', layer).onclick = close;
         $('#ok', layer).onclick = async () => {
           const f = readDossierFields(layer);
@@ -1142,11 +1197,14 @@
             location.hash = '#/dossier/' + encodeURIComponent(r.id);
           } catch (e) { toast(plainError(e), 'error'); }
         };
-      }
+      },
+      null,
+      { garde: () => change() }
     );
   }
 
   function dossierForm(dossier) {
+    let change = () => false;
     modal(
       `<h2>Fiche du dossier</h2>
        ${dossierFields(dossier)}
@@ -1159,6 +1217,7 @@
          <span class="grow"></span>
          <button class="btn" id="no">Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
       (layer, close) => {
+        change = suivreSaisie(layer);
         $('#no', layer).onclick = close;
         $('#del', layer).onclick = async () => {
           const n = (dossier.packs || []).length;
@@ -1192,7 +1251,9 @@
             toast(r.moved ? `Fiche enregistrée · ${pl(r.moved, 'paquet')} rangé${r.moved > 1 ? 's' : ''} au nouveau nom.` : 'Fiche enregistrée.');
           } catch (e) { toast(plainError(e), 'error'); }
         };
-      }
+      },
+      null,
+      { garde: () => change() }
     );
   }
 
@@ -1243,6 +1304,7 @@
 
   function writeRelance(row, onDone) {
     const m = K.relanceMail(S.cabinet, row);
+    let change = () => false;
     modal(
       `<h2>Relancer ${esc(row.name)}</h2>
        <label class="field">Destinataire<input type="text" id="r-to" value="${esc(m.to)}" placeholder="adresse@client.tn"></label>
@@ -1980,8 +2042,21 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
   }
 
   // ---------- recherche rapide (Cmd+K) ----------
+  //
+  // La palette vit à z-index 60 dans la feuille partagée, sous les fenêtres (400), sous l'assistant
+  // (250) et sous l'écran de verrouillage (200). Elle s'ouvrait quand même — DERRIÈRE — et prenait
+  // le clavier avec `focus()` : la frappe suivante partait dans un champ invisible. Rien à l'écran,
+  // rien en console, et le comptable en concluait que l'application était bloquée. C'est le
+  // symptôme exact de la 5.2.2, réintroduit par une palette neuve.
+  function palettePossible() {
+    return !$('#palette-root')
+      && !$('#modal-root').children.length
+      && !$('#setup')
+      && !($('#lock-screen') && !$('#lock-screen').hidden);
+  }
+
   function openPalette() {
-    if ($('#palette-root')) return;
+    if (!palettePossible()) return;
     const root = document.createElement('div');
     root.id = 'palette-root';
     root.innerHTML = `<div class="palette">
