@@ -7,13 +7,35 @@ cd "$(dirname "$0")" || exit 1
 BOLD=$'\033[1m'; DIM=$'\033[2m'; GREEN=$'\033[32m'; YELLOW=$'\033[33m'; RED=$'\033[31m'; CYAN=$'\033[36m'; RESET=$'\033[0m'
 TOTAL=5
 
-title() { clear; echo "${CYAN}${BOLD}"; echo "  ███ SkanFact — Installation"; echo "${RESET}${DIM}  Devis & factures · SKANCYBER SECURITY${RESET}"; echo; }
+title() { clear; echo "${CYAN}${BOLD}"; echo "  ███ SkanFact — Installation"; echo "${RESET}${DIM}  Devis & factures${RESET}"; echo; }
 step()  { echo; echo "${BOLD}[$1/$TOTAL] $2${RESET}"; echo "${DIM}──────────────────────────────────────────────${RESET}"; }
 ok()    { echo "  ${GREEN}✔${RESET} $1"; }
 warn()  { echo "  ${YELLOW}▲${RESET} $1"; }
 fail()  { echo; echo "  ${RED}✖ $1${RESET}"; echo; echo "  Copie le message ci-dessus et envoie-le moi."; echo; read -r -p "  Appuie sur Entrée pour fermer." _; exit 1; }
+
+# Coller deux lignes d'un coup (une adresse et un secret, par exemple) laisse la seconde dans le
+# tampon du clavier : elle répond alors à la question SUIVANTE sans que personne ne s'en aperçoive.
+# C'est arrivé pour de vrai — la construction a été « refusée » par une URL collée en trop. On vide
+# donc ce qui traîne avant chaque question.
+# Uniquement sur un vrai terminal : si l'installeur est alimenté par un tuyau (tests), tout est
+# disponible d'un coup et on effacerait les réponses légitimes.
+vider() { [[ -t 0 ]] || return 0; local _j; while IFS= read -r -t 0.05 _j; do :; done 2>/dev/null; return 0; }
+
+demander() { # demander "question" VARIABLE
+  local _r; vider; read -r -p "  $1" _r; printf -v "$2" '%s' "$_r"; }
+
 ask()   { # ask "question" -> 0 si oui
-  local a; echo; read -r -p "  ${BOLD}$1${RESET} [O/n] " a; [[ -z "$a" || "$a" =~ ^[OoYy] ]]; }
+  local a
+  while :; do
+    echo; vider; read -r -p "  ${BOLD}$1${RESET} [O/n] " a
+    # Une réponse qu'on ne comprend pas ne vaut PAS « non » : on repose la question. Interpréter
+    # « https://… » comme un refus fait sauter une étape en silence, et personne ne comprend après.
+    case "$a" in
+      ''|[OoYy]*) return 0 ;;
+      [Nn]*)      return 1 ;;
+      *) echo "  ${YELLOW}▲${RESET} Réponse non comprise : tape ${BOLD}o${RESET} pour oui, ${BOLD}n${RESET} pour non." ;;
+    esac
+  done; }
 
 title
 echo "  Cet assistant va :"
@@ -87,9 +109,10 @@ fi
 if [[ -z "$UPDATE_BASE" ]]; then
   echo
   echo "  ${DIM}Relais de mise à jour (laisse vide si tu ne sais pas : l'app utilisera GitHub).${RESET}"
-  read -r -p "  Adresse du relais : " UPDATE_BASE
+  echo "  ${DIM}Colle UNE ligne à la fois, et valide par Entrée entre les deux.${RESET}"
+  demander "Adresse du relais : " UPDATE_BASE
   if [[ -n "$UPDATE_BASE" ]]; then
-    read -r -p "  Secret de l'application : " UPDATE_SECRET
+    demander "Secret de l'application : " UPDATE_SECRET
     node -e "require('fs').writeFileSync('$RELAIS_FILE', JSON.stringify({updateBase:process.argv[1].trim(),updateSecret:process.argv[2].trim()},null,2)+'\n',{mode:0o600})" "$UPDATE_BASE" "$UPDATE_SECRET" \
       && ok "Gardé dans $RELAIS_FILE — tu ne le retaperas plus"
   fi
