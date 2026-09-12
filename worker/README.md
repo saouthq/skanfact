@@ -20,23 +20,34 @@ deux ou trois requêtes par poste et par version.
    **Deploy**. Donne-lui un nom, par exemple `skanfact-maj`.
 3. Clique sur **Edit code**. Efface tout ce qu'il y a, et colle le contenu du fichier
    [`skanfact-maj.mjs`](./skanfact-maj.mjs). **Deploy**.
-4. Onglet **Settings** → **Variables and Secrets**. Ajoute **quatre** entrées :
+4. **Fabrique d'abord le jeton GitHub** (recette juste en dessous), puis reviens ici : onglet
+   **Settings** → **Variables and Secrets**. Il faut **quatre** entrées. Attention, la colonne de
+   droite décrit **ce qu'il faut aller chercher**, ce n'est pas un texte à recopier :
 
-   | Nom | Type | Valeur |
+   | Nom | Type | Ce qu'on met dedans |
    |---|---|---|
-   | `GITHUB_TOKEN` | Secret | un jeton GitHub en **lecture seule** sur le dépôt `skanfact` (voir plus bas) |
-   | `APP_SECRET` | Secret | une longue phrase au hasard, que tu inventes — 40 caractères, à garder |
+   | `GITHUB_TOKEN` | Secret | le jeton fabriqué ci-dessous — il commence par `github_pat_` |
+   | `APP_SECRET` | Secret | une longue suite de caractères au hasard (40 environ), à garder de côté |
    | `GITHUB_OWNER` | Texte | `saouthq` |
    | `GITHUB_REPO` | Texte | `skanfact` |
 
-   Facultatif, pour plus tard :
-
-   | Nom | Type | Valeur |
-   |---|---|---|
-   | `LICENCE_PUBLIC_KEY` | Texte | le contenu de `build/licence-public.json` (le champ `publicKey`) |
-   | `LICENCE_REQUISE` | Texte | `1` pour refuser les mises à jour sans licence valide |
-
 5. Note l'adresse du service, du genre `https://skanfact-maj.ton-compte.workers.dev`.
+
+### Les deux variables facultatives (pas tout de suite)
+
+| Nom | Type | Ce qu'on met dedans |
+|---|---|---|
+| `LICENCE_PUBLIC_KEY` | Texte | le champ `publicKey` de `build/licence-public.json` |
+| `LICENCE_REQUISE` | Texte | `1` pour refuser les mises à jour à qui n'a pas de licence valide |
+
+Elles n'ont de sens qu'une fois la licence **armée** : `build/licence-public.json` n'existe pas tant
+que `node scripts/licence.js --keygen` n'a pas été lancé, et l'application est livrée désarmée
+exprès. Tant qu'il n'y a pas de clé publique ici, une licence présentée est **refusée** (« aucune
+clé publique configurée ») : mieux vaut donc ne rien mettre que mettre une des deux à moitié.
+
+Et `LICENCE_REQUISE = 1` ne concerne **que** l'application entreprise. L'application du cabinet est
+gratuite, elle n'a pas de licence et n'en aura jamais : son canal est exempté dans le code, sinon
+le jour où tu armes la licence tous les comptables perdraient leurs mises à jour d'un coup.
 
 ### Le jeton GitHub
 
@@ -88,7 +99,8 @@ version.
 - ✅ Ton code source n'est jamais servi : le relais ne connaît que les fichiers d'installation.
 - ✅ Une licence inventée est refusée — la signature est vérifiée ici aussi.
 - ⚠️ Quelqu'un qui a déjà l'application peut l'ouvrir et y trouver le secret. Pour l'en empêcher
-  vraiment, il faut mettre `LICENCE_REQUISE = 1` : là, seule une licence signée par toi ouvre la
-  porte. À faire le jour où tous tes clients en ont une.
+  vraiment, il faut armer la licence puis mettre `LICENCE_REQUISE = 1` : là, seule une licence
+  signée par toi ouvre la porte (côté entreprise ; le cabinet reste gratuit et continue de se
+  mettre à jour). À faire le jour où tous tes clients en ont une.
 - ⚠️ Si le relais tombe, les mises à jour s'arrêtent — mais les applications continuent de
   fonctionner, et on peut toujours télécharger les fichiers à la main depuis GitHub.

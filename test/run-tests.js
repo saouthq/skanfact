@@ -3423,8 +3423,15 @@ t('cabinet : la clé privée ne traverse jamais le pont vers l\'interface', () =
     // Une licence EXPIRÉE reçoit quand même les corrections : on ne prend pas les gens en otage.
     const perimee = lic.signLicence({ nom: 'Y', exp: '2020-01-01' }, k.privateKey);
     assert.strictEqual((await W.autorise(H({ ...bon, 'x-skanfact-licence': perimee }), env)).ok, true);
-    // Le jour où le propriétaire l'exige, plus rien ne passe sans licence.
-    assert.strictEqual((await W.autorise(H(bon), { ...env, LICENCE_REQUISE: '1' })).code, 402);
+    // Le jour où le propriétaire l'exige, plus rien ne passe sans licence sur le canal entreprise.
+    assert.strictEqual((await W.autorise(H(bon), { ...env, LICENCE_REQUISE: '1' }, 'app')).code, 402);
+    // Mais l'app du cabinet est gratuite : elle n'a pas de licence et n'en aura jamais. L'exiger sur
+    // son canal couperait les mises à jour de tous les comptables sans que personne ne comprenne.
+    const cab = await W.autorise(H(bon), { ...env, LICENCE_REQUISE: '1' }, 'cabinet');
+    assert.strictEqual(cab.ok, true, 'le cabinet ne doit jamais être bloqué par LICENCE_REQUISE');
+    assert.strictEqual(cab.qui, 'cabinet (gratuit)');
+    // Et un canal inconnu ne contourne pas la règle : seul « cabinet » est exempté.
+    assert.strictEqual((await W.autorise(H(bon), { ...env, LICENCE_REQUISE: '1' }, 'autre')).code, 402);
     // Relais mal configuré : on le dit, on n'ouvre pas la porte.
     assert.strictEqual((await W.autorise(H(bon), {})).code, 503);
   });

@@ -98,15 +98,20 @@ export async function licenceValide(cle, pemPublique) {
   } catch (e) { return { ok: false, raison: 'vérification impossible : ' + (e && e.message) }; }
 }
 
-// Qui a le droit de télécharger. `env` porte les réglages du relais.
-export async function autorise(headers, env) {
+// Qui a le droit de télécharger. `env` porte les réglages du relais, `canal` dit quelle application
+// demande (voir CANAUX).
+export async function autorise(headers, env, canal) {
   const secret = headers.get('x-skanfact-app') || '';
   if (!env.APP_SECRET) return { ok: false, code: 503, message: 'Relais non configuré.' };
   if (!memeSecret(secret, env.APP_SECRET)) return { ok: false, code: 403, message: 'Accès refusé.' };
 
   const cle = headers.get('x-skanfact-licence') || '';
   if (!cle) {
-    // Pas encore de licence : période d'essai, ou application du cabinet (gratuite).
+    // L'application du cabinet est GRATUITE : elle n'a pas de licence et n'en aura jamais. Exiger
+    // une licence sur son canal couperait les mises à jour de tous les comptables d'un coup, sans
+    // que personne ne comprenne pourquoi — c'est exactement le contraire du but.
+    if (canal === 'cabinet') return { ok: true, qui: 'cabinet (gratuit)' };
+    // Pas encore de licence : période d'essai.
     if (env.LICENCE_REQUISE === '1') return { ok: false, code: 402, message: 'Licence requise pour les mises à jour.' };
     return { ok: true, qui: 'sans licence' };
   }
@@ -160,7 +165,7 @@ export default {
     if (!r) return new Response('Introuvable.', { status: 404 });
     if (!fichierAutorise(r.canal, r.fichier)) return new Response('Introuvable.', { status: 404 });
 
-    const a = await autorise(request.headers, env);
+    const a = await autorise(request.headers, env, r.canal);
     if (!a.ok) return new Response(a.message, { status: a.code });
 
     const f = await trouveFichier(r.fichier, env);

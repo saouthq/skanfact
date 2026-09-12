@@ -7,6 +7,15 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 6.7.1 — 12/09/2026
+
+**Le jour où tu armes la licence, les comptables ne perdent pas leurs mises à jour.**
+
+Trouvé en installant le relais pour de vrai : le réglage `LICENCE_REQUISE` s'appliquait aux **deux** applications. Or l'application du cabinet est gratuite — elle n'a pas de licence et n'en aura jamais. Le jour où le réglage aurait été activé, tous les comptables auraient cessé de recevoir les mises à jour d'un coup, sans message et sans que personne fasse le lien. Le canal du cabinet est désormais exempté, et un test l'exige.
+
+- Le mode d'emploi du relais est corrigé : la colonne de droite décrivait **ce qu'il faut aller chercher** et se lisait comme un texte à recopier — on a collé la description à la place du jeton.
+- Les deux réglages facultatifs de licence sont expliqués : ils n'ont de sens qu'une fois la licence armée, et en mettre un seul des deux fait **refuser** toutes les licences.
+
 ## 6.7.0 — 12/09/2026
 
 **Les mises à jour passent par un relais : personne ne peut plus télécharger SkanFact sans y avoir droit.**
