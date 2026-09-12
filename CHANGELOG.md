@@ -7,6 +7,10 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 6.5.3 — 12/09/2026
+
+**SkanFact Cabinet 1.1.2** : à la taille minimale de la fenêtre (960 px), un nom de client comme « Café des Jasmins » se coupait en trois lignes dans la liste des dossiers et dans les relances. Les noms, les emails et les en-têtes ne se coupent plus ; le tableau défile horizontalement, ce qui est fait pour ça.
+
 ## 6.5.2 — 12/09/2026
 
 **Deux petites choses qui disaient faux.**
