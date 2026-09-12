@@ -419,6 +419,23 @@
   };
   const STATUS_LABELS = { partielle: 'partiellement payée', retard: 'en retard', expiré: 'expiré' };
 
+  // Les filtres de liste qui ne sont PAS un statut (7.15.0). La liste des factures proposait déjà
+  // « Émis » dans son menu de statuts, et le filtrage comparait `effectiveStatus(d) === 'émis'` :
+  // aucune facture ne porte ce statut — mais les AVOIRS, si. Choisir « Émis » sur une liste de
+  // factures rendait donc deux avoirs sur vingt-cinq pièces. Une liste vide se remarque ; une liste
+  // fausse, non. Un filtre qui regroupe plusieurs statuts doit être une FONCTION, pas une chaîne
+  // comparée à un statut.
+  const DOC_FILTRES = {
+    'émis': st => st !== 'brouillon' && st !== 'annulée',
+    'à encaisser': st => st === 'envoyée' || st === 'partielle' || st === 'retard'
+  };
+  // Vrai si la pièce (dont le statut effectif est `st`) passe le filtre `choix`.
+  function docFiltre(choix, st) {
+    if (!choix) return true;
+    const f = DOC_FILTRES[choix];
+    return f ? f(st) : st === choix;
+  }
+
   // ---------- utilitaires ----------
 
   function uid() {
@@ -4848,6 +4865,7 @@
 
   return {
     VAT_RATES, WITHHOLDING_RATES, PAYMENT_METHODS, PREFIX, TITLES, DEFAULT_DATA, DEFAULT_COMPANY, ACTIVITIES, STATUSES, DISPLAY_STATUSES, STATUS_LABELS,
+    DOC_FILTRES, docFiltre,
     pageInfo, compareValues, LINE_UNITS, usedUnits, parseDateInput, fmtDateInput, monthMatrix,
     uid, round3, money, fmtDate, addDays, daysInMonth, today, escapeHtml, nl2br, statusLabel,
     CLOSURE_ACTIONS, closedUntil, isClosedDate, closedPeriodLabel, closableMonths, closureChecks, closePeriod, reopenPeriod, closureLog,

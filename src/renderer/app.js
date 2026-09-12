@@ -1276,11 +1276,15 @@
       ${premiersPas()}
       ${todoPanel()}
       ${!duGrain ? '' : `
+      <!-- Les quatre chiffres menaient nulle part (7.15.0). « Reste à encaisser : 8 400 DT,
+           6 factures » est une QUESTION — lesquelles ? — et il fallait ouvrir Factures, chercher
+           un filtre, et comprendre que ni « envoyée » ni « en retard » ne donnent le compte annoncé.
+           Chaque carte ouvre maintenant exactement la liste qu'elle résume. -->
       <div class="stats">
-        <div class="stat"><div class="lbl">CA du mois (HT) ${info('dash.caMonth')}</div><div class="val">${C.money(sumHT(ofMonth), cur)}</div><div class="sub">${C.money(sumTTC(ofMonth), cur)} TTC, avoirs déduits</div></div>
-        <div class="stat"><div class="lbl">CA de l'année (HT) ${info('dash.caYear')}</div><div class="val">${C.money(sumHT(ofYear), cur)}</div><div class="sub">${year} · ${C.money(sumTTC(ofYear), cur)} TTC</div></div>
-        <div class="stat"><div class="lbl">Reste à encaisser ${info('dash.open')}</div><div class="val">${C.money(openAmount, cur)}</div><div class="sub">${open.length} facture(s), ${late.length} en retard</div></div>
-        <div class="stat"><div class="lbl">Devis en attente ${info('dash.quotes')}</div><div class="val">${C.money(sumQ(pendingQuotes), cur)}</div><div class="sub">${pendingQuotes.length} devis envoyé(s)${expiredQuotes.length ? ` · <a href="#/devis" class="warn-link" id="go-expired">${expiredQuotes.length} expiré(s)</a>` : ''}</div></div>
+        <div class="stat" data-stat="ca-mois" role="button" tabindex="0" title="Voir le journal des ventes du mois"><div class="lbl">CA du mois (HT) ${info('dash.caMonth')}</div><div class="val">${C.money(sumHT(ofMonth), cur)}</div><div class="sub">${C.money(sumTTC(ofMonth), cur)} TTC, avoirs déduits</div></div>
+        <div class="stat" data-stat="ca-annee" role="button" tabindex="0" title="Voir les statistiques de l'année"><div class="lbl">CA de l'année (HT) ${info('dash.caYear')}</div><div class="val">${C.money(sumHT(ofYear), cur)}</div><div class="sub">${year} · ${C.money(sumTTC(ofYear), cur)} TTC</div></div>
+        <div class="stat" data-stat="encaisser" role="button" tabindex="0" title="Voir les ${open.length} facture(s) qui restent à encaisser"><div class="lbl">Reste à encaisser ${info('dash.open')}</div><div class="val">${C.money(openAmount, cur)}</div><div class="sub">${open.length} facture(s), ${late.length} en retard</div></div>
+        <div class="stat" data-stat="devis" role="button" tabindex="0" title="Voir les devis envoyés sans réponse"><div class="lbl">Devis en attente ${info('dash.quotes')}</div><div class="val">${C.money(sumQ(pendingQuotes), cur)}</div><div class="sub">${pendingQuotes.length} devis envoyé(s)${expiredQuotes.length ? ` · <a href="#/devis" class="warn-link" id="go-expired">${expiredQuotes.length} expiré(s)</a>` : ''}</div></div>
       </div>
       <div class="dash-grid">
         <div class="panel"><h2>Activité des 12 derniers mois ${info('dash.chart')}</h2>
@@ -1313,6 +1317,19 @@
     bindPremiersPas();
     bindTodo();
     if ($('#go-expired')) $('#go-expired').onclick = e => { e.preventDefault(); TODO_ACTIONS['devis-expires'].run(); };
+    // Chaque carte de chiffre ouvre la liste qu'elle résume. Le clic sur la bulle « i » n'y compte
+    // pas : elle explique le chiffre, elle ne navigue pas.
+    const STAT_ACTIONS = {
+      'ca-mois': vers('#/compta', () => { comptaState.tab = 'ventes'; comptaState.year = C.today().slice(0, 4); comptaState.month = C.today().slice(5, 7); }),
+      'ca-annee': vers('#/stats'),
+      encaisser: vers('#/factures', () => { listState.facture.st = 'à encaisser'; listState.facture.kind = ''; listState.facture.year = ''; listState.facture.yearTouched = true; }),
+      devis: vers('#/devis', () => { listState.devis.st = 'envoyé'; listState.devis.year = ''; listState.devis.yearTouched = true; })
+    };
+    $$('[data-stat]').forEach(c => {
+      const aller = e => { if (e.target.closest('button.i, a')) return; STAT_ACTIONS[c.dataset.stat](); };
+      c.onclick = aller;
+      c.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); aller(e); } };
+    });
     bindDocTable();
   };
 
@@ -1562,7 +1579,7 @@
       const list = mine
         .filter(d => !s.kind || d.type === s.kind)
         .filter(d => !s.year || (d.date || '').startsWith(s.year))
-        .filter(d => !s.st || effStatus(d) === s.st)
+        .filter(d => C.docFiltre(s.st, effStatus(d)))
         .filter(d => !s.q || [d.number, clientName(d.clientId), d.subject, d.reference].join(' ').toLowerCase().includes(s.q))
         .sort(byNumberDesc);
       const filtered = !!(s.q || s.st || s.kind || s.year);
@@ -1581,7 +1598,9 @@
       bindDocTable(draw, s, '#list-wrap');
     };
     const resetFilters = () => { s.q = ''; s.st = ''; s.kind = ''; s.year = ''; s.yearAuto = false; s.yearTouched = true; s.page = 1; listView(type); };
-    const statuses = isQ ? C.DISPLAY_STATUSES.devis : [...C.DISPLAY_STATUSES.facture, 'émis'];
+    // « Émis » et « À encaisser » regroupent plusieurs statuts : ils passent par `C.docFiltre`, pas
+    // par une comparaison de chaîne (voir DOC_FILTRES dans core.js — « Émis » rendait les avoirs).
+    const statuses = isQ ? C.DISPLAY_STATUSES.devis : [...C.DISPLAY_STATUSES.facture, 'émis', 'à encaisser'];
     $('#view').innerHTML = `
       <div class="page-head"><h1>${isQ ? 'Devis' : 'Factures'}</h1>
         <div class="actions">${isQ || !data.documents.some(d => d.type === 'facture' && d.status !== 'brouillon' && d.number) ? '' : '<button class="btn" id="new-avoir">+ Avoir</button>'}<button class="btn btn-primary" id="new">+ ${isQ ? 'Nouveau devis' : 'Nouvelle facture'}</button></div></div>
@@ -3645,7 +3664,15 @@
   // de soi, puis on doute du logiciel.
   //
   // Le test « À faire : aucun bouton ne mène nulle part » interdit d'en rajouter un.
-  const vers = (hash, avant) => () => { if (avant) avant(); navigate(hash); };
+  // `navigate` pose le hash, et le routeur réagit au `hashchange` : quand on est DÉJÀ sur la page
+  // visée, il n'y a pas de changement, donc pas de redessin — et le clic est avalé en silence, alors
+  // que l'état (onglet, filtre) vient d'être modifié juste au-dessus. C'était le cas de « Voir les
+  // factures » depuis Comptabilité → Cabinet, qui vise l'onglet Ventes de la même page : rien ne se
+  // passait. Même piège que `goBack` et son cas « on y est déjà » (2.4.0).
+  const vers = (hash, avant) => () => {
+    if (avant) avant();
+    if (location.hash === hash) render(); else navigate(hash);
+  };
   const TODO_ACTIONS = {
     contrats: { label: 'Générer les brouillons', run: () => { const n = generateRecurring(); toast(`${n} brouillon(s) créé(s) — à relire puis émettre`); render(); } },
     retards: { label: 'Voir les relances', run: vers('#/relances') },
@@ -3674,6 +3701,22 @@
     tresorerie: { label: 'Voir la prévision', run: vers('#/tresorerie', () => { tresoState.tab = 'prevision'; }) },
     'taux-change': { label: 'Voir les pièces', run: vers('#/factures', () => { listState.facture.q = ''; listState.facture.year = ''; listState.facture.yearTouched = true; }) },
     sauvegarde: { label: 'Choisir un dossier', run: vers('#/parametres', () => { settingsTab = 'donnees'; settingsFocus = 'p-externe'; }) }
+  };
+
+  // « Ce qui manque » (Comptabilité → Cabinet) et les contrôles avant clôture disent exactement ce
+  // qu'il faut aller regarder — « 3 achats sans justificatif », « 2 mouvements non pointés » — et
+  // c'étaient des lignes de texte inerte : un libellé, un compteur, et rien à cliquer. On lisait le
+  // reproche, on retrouvait la page à la main, puis on cherchait lesquels. Même famille que les
+  // treize boutons « Voir » morts de la 7.0.0, et même parade : une table, et un test de couverture
+  // entre ce que `core.packChecklist` peut PRODUIRE et ce que l'interface sait ouvrir.
+  const CHECK_ACTIONS = {
+    brouillons: { label: 'Voir les brouillons', run: vers('#/factures', () => { listState.facture.st = 'brouillon'; listState.facture.year = ''; listState.facture.yearTouched = true; }) },
+    justificatifs: { label: 'Voir les achats', run: vers('#/achats', () => { buyState.st = ''; buyState.year = ''; }) },
+    pointage: { label: 'Pointer les mouvements', run: vers('#/tresorerie', () => { tresoState.tab = 'rapprochement'; }) },
+    bulletins: { label: 'Voir les bulletins', run: vers('#/paie', () => { paieState.tab = 'bulletins'; }) },
+    stock: { label: 'Voir les alertes', run: vers('#/stock', () => { stockState.tab = 'alertes'; }) },
+    series: { label: 'Voir les numéros', run: vers('#/stock', () => { stockState.tab = 'series'; }) },
+    attestations: { label: 'Voir les factures', run: vers('#/compta', () => { comptaState.tab = 'ventes'; }) }
   };
   // Combien de lignes on montre avant de proposer « voir le reste ». En démo, « À faire » affichait
   // treize lignes et occupait l'écran entier : le chiffre d'affaires, le graphique et tout le reste
@@ -7976,7 +8019,8 @@
                <div class="inline mt"><button class="btn btn-primary" id="cab-vers-factures">Aller aux factures</button></div>`
             : plan.checklist.length
             ? `<table class="list compact"><tbody>${plan.checklist.map(c => `<tr class="${c.level === 'danger' ? 'row-warn' : ''}">
-                <td><strong>${h(c.label)}</strong><div class="small muted">${h(c.detail)}</div></td><td class="r nw">${c.count}</td></tr>`).join('')}</tbody></table>
+                <td><strong>${h(c.label)}</strong><div class="small muted">${h(c.detail)}</div></td><td class="r nw">${c.count}</td>
+                <td class="r nw">${CHECK_ACTIONS[c.id] ? `<button class="btn btn-sm" data-check="${h(c.id)}">${h(CHECK_ACTIONS[c.id].label)}</button>` : ''}</td></tr>`).join('')}</tbody></table>
                <p class="small muted mt">Ces points figureront sur la page de garde du paquet. Le comptable saura quoi te réclamer — c'est mieux qu'un dossier qu'il croit complet.</p>`
             : '<p class="small" style="color:var(--primary)">Rien à signaler : le dossier du mois est complet.</p>'}
         </div>
@@ -8018,6 +8062,9 @@
       if ($('#cab-gopair')) $('#cab-gopair').onclick = e => { e.preventDefault(); allerParametres('cabinet', 'p-cabinet'); };
 
       if ($('#cab-vers-factures')) $('#cab-vers-factures').onclick = () => navigate('#/factures');
+      // Chaque manque mène aux pièces concernées, filtrées. Le `if` n'est pas une précaution : la
+      // table est complète par construction, et un test le vérifie contre `core.packChecklist`.
+      $$('[data-check]').forEach(b => b.onclick = () => CHECK_ACTIONS[b.dataset.check].run());
       $('#cab-build').onclick = async () => {
         // Les contrôles de saisie d'abord, la grande question ensuite : poser une question de fond
         // puis refuser sur un champ trop court, c'est faire répondre pour rien.

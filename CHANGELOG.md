@@ -7,6 +7,35 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 7.15.0 — 12/09/2026
+
+**Tout ce qui se lit se clique.**
+
+- **« Ce qui manque » mène aux pièces.** Le panneau de Comptabilité → Cabinet dit exactement ce qu'il
+  faut aller regarder — « 3 achats sans justificatif », « 2 mouvements non pointés » — et c'étaient
+  des lignes de texte inerte : un libellé, un compteur, rien à cliquer. On lisait le reproche, on
+  retrouvait la page à la main, puis on cherchait lesquels. Chaque ligne porte son bouton, et un
+  test de couverture vérifie qu'aucune sorte de manque ne peut être produite sans qu'un écran sache
+  l'ouvrir.
+- **Les quatre chiffres du tableau de bord ouvrent la liste qu'ils résument.** « Reste à
+  encaisser : 8 400 DT, 6 factures » est une question — lesquelles ? Chaque carte a un chevron, un
+  curseur de clic, un relief au survol, et répond au clavier.
+- **Le filtre « Émis » de la liste des factures était faux.** Il comparait un statut qui n'existe
+  pas sur une facture — mais qui existe sur un **avoir**. Sur le jeu d'exemple, « Émis » rendait
+  2 avoirs au lieu des 27 pièces émises. Une liste vide se remarque tout de suite ; une liste fausse,
+  non. Un filtre qui regroupe plusieurs statuts est désormais une fonction (`core.docFiltre`), pas
+  une chaîne comparée à un statut.
+- **Nouveau filtre « À encaisser »** : exactement les factures que compte la carte du tableau de
+  bord. Les deux se calculent maintenant avec la même règle, et un test refuse qu'elles divergent —
+  une carte qui annonce six factures et une liste qui en montre quatre, c'est le genre d'écart qui
+  fait perdre confiance dans tous les autres chiffres.
+- **Un raccourci qui vise la page où l'on est déjà redessine au lieu de ne rien faire.** `navigate`
+  pose l'adresse et le routeur réagit au changement : viser la page courante ne changeait rien,
+  alors que l'onglet et le filtre venaient d'être modifiés. Plusieurs boutons étaient donc
+  parfaitement inertes depuis la page concernée.
+- `npm run e2e:cliquable` refait tout le parcours dans l'application réelle : le filtre, la
+  concordance carte/liste, les quatre cartes et chaque ligne de « Ce qui manque ».
+
 ## 7.14.0 — 12/09/2026
 
 **Changer d'entreprise depuis le haut du menu.**

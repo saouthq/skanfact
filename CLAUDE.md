@@ -356,6 +356,7 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:apercu` | **voir ce qu'on fabrique** : le grand aperçu, son zoom, « Ajuster », Échap, et l'interrupteur qui reste en haut |
 | `npm run e2e:erreur` | **le droit à l'erreur** : une case de module se décoche ET se recoche, un module masqué revient quand on y écrit, et « Marquer déposée » se défait |
 | `npm run e2e:entreprises` | **changer d'entreprise depuis le haut du menu** : deux dossiers créés et ouverts tour à tour sans passer par les Paramètres |
+| `npm run e2e:cliquable` | **tout ce qui se lit se clique** : le filtre « Émis », la concordance carte/liste, les quatre chiffres de l'accueil et chaque ligne de « Ce qui manque » |
 
 Ils ont longtemps vécu dans un dossier de travail temporaire, effacé à chaque session : il fallait les réécrire de mémoire, et ils dérivaient (une assertion restée sur une version périmée, un écran neuf jamais parcouru). **Un test qu'on doit réécrire pour s'en servir n'est pas un test.** Le harnais (`test/e2e/harnais.js`) trouve Playwright où il est, lit la version dans `package.json` au lieu de l'écrire en dur, et range les captures dans `dist-e2e/` (ignoré par Git).
 
@@ -707,6 +708,38 @@ Règles apprises :
 - Piège Playwright : `waitForSelector('#x[hidden]')` attend que l'élément devienne **visible** et
   n'aboutit donc jamais. Pour attendre qu'une chose disparaisse, `waitForFunction(() => el.hidden)`.
   Le test échouait alors que le code était juste.
+
+## 7.15.0 — Tout ce qui se lit se clique
+
+Skander : « dans comptabilité section manquant on ne peut pas sélectionner afin de voir directement ».
+
+Règles apprises, à ne pas recasser :
+
+- **Un écran qui NOMME un ensemble doit pouvoir l'ouvrir.** « 3 achats sans justificatif », « Reste
+  à encaisser : 6 factures » — ce sont des questions, pas des informations, tant qu'on ne peut pas
+  cliquer. Même parade que les treize boutons morts de la 7.0.0 : une table (`CHECK_ACTIONS`,
+  `STAT_ACTIONS`) et un **test de couverture** entre ce que la source peut produire
+  (`core.packChecklist`, lu dans core.js et jamais recopié) et ce que l'interface sait ouvrir.
+- **Un filtre qui regroupe plusieurs statuts est une FONCTION, jamais une chaîne comparée à un
+  statut.** La liste des factures proposait « Émis » et filtrait `effectiveStatus(d) === 'émis'` :
+  aucune facture ne porte ce statut, mais les **avoirs** si — le filtre rendait donc 2 avoirs au
+  lieu des 27 pièces émises. **Une liste vide se remarque ; une liste fausse, non.** Le regroupement
+  vit dans `core.DOC_FILTRES` / `core.docFiltre`, pur et testé.
+- **Un compteur et la liste qu'il ouvre se calculent avec la même règle.** La carte « Reste à
+  encaisser » comptait `envoyée|partielle|retard` et aucun filtre de la liste ne rendait ce
+  compte-là. Le test relit les statuts de la carte **dans app.js** et vérifie que le filtre les garde
+  tous : une liste en dur se périmerait au premier statut ajouté. (Même règle qu'en 6.8.1 pour le
+  bandeau des relances du cabinet — apprise d'un côté, à vérifier de l'autre.)
+- **`navigate(hash)` vers la page courante ne redessine rien.** Le routeur réagit au `hashchange` :
+  viser la page où l'on est déjà n'en produit aucun, alors que l'onglet et le filtre viennent d'être
+  changés juste au-dessus. Plusieurs raccourcis étaient donc inertes *depuis la page concernée* et
+  fonctionnaient d'ailleurs — le pire cas à diagnostiquer. `vers()` redessine quand le hash est
+  identique ; c'est le même piège que le cas « on y est déjà » de `goBack` (2.4.0).
+- **Une carte cliquable le dit par trois signes** (curseur, chevron, relief au survol) et répond au
+  clavier (`role="button"`, `tabindex`, Entrée/Espace). Et la bulle « i » posée dessus **explique**,
+  elle ne navigue pas : le gestionnaire l'exclut explicitement.
+- Piège de test : les listes sont paginées depuis la 2.2.0 — compter les `<tr>` affichés ne dit rien.
+  C'est le bandeau « n sur N » qui porte la sélection entière, et c'est lui qu'un test doit lire.
 
 ## Pistes pour la suite (non demandées)
 

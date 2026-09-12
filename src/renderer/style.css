@@ -341,6 +341,16 @@ input:disabled, select:disabled, textarea:disabled { background: #f3f5f7; color:
 /* L'écart passe sous le montant quand la carte est étroite, mais jamais coupé en deux. */
 .stat .val { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
 .stat .sub { font-size: 12px; color: var(--muted); margin-top: 3px; }
+/* Une carte qui mène à la liste qu'elle résume le DIT : curseur, chevron, et un relief au survol.
+   Sans ces trois signes, personne n'essaie de cliquer un chiffre (7.15.0). */
+.stat[data-stat] { cursor: pointer; transition: border-color .12s, box-shadow .12s, transform .12s; }
+.stat[data-stat]:hover { border-color: var(--primary); box-shadow: 0 8px 22px rgba(15,157,143,.14); transform: translateY(-1px); }
+.stat[data-stat]:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.stat[data-stat]::after {
+  content: '›'; position: absolute; right: 14px; top: 12px; font-size: 17px; line-height: 1;
+  color: var(--muted); opacity: .5;
+}
+.stat[data-stat]:hover::after { color: var(--primary); opacity: 1; }
 
 /* ---------- editor ---------- */
 .editor { display: grid; grid-template-columns: 1fr 430px; gap: 20px; align-items: start; }

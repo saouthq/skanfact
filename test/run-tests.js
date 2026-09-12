@@ -5965,5 +5965,102 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       'générer tous les brouillons d\'un coup ne demande rien');
   });
 
+  // ---------- 7.15.0 : tout ce qui se lit se clique ----------
+
+  t('un filtre qui regroupe plusieurs statuts est une fonction, pas une chaîne', () => {
+    // « Émis » figurait dans le menu de statuts de la liste des factures depuis la 2.x, et le
+    // filtrage faisait `effectiveStatus(d) === 'émis'`. Aucune facture ne porte ce statut — mais les
+    // AVOIRS, si : choisir « Émis » sur une liste de 25 pièces rendait 2 avoirs. Une liste vide se
+    // remarque tout de suite ; une liste FAUSSE, non. Mesuré dans l'application avant correction.
+    assert.strictEqual(typeof core.docFiltre, 'function');
+    // Sans filtre, tout passe.
+    ['brouillon', 'envoyée', 'partielle', 'retard', 'payée', 'annulée'].forEach(st =>
+      assert.strictEqual(core.docFiltre('', st), true, `sans filtre, « ${st} » doit passer`));
+    // « Émis » = tout ce qui porte un numéro et compte, donc ni brouillon ni annulée.
+    assert.strictEqual(core.docFiltre('émis', 'envoyée'), true, '« Émis » doit garder une facture envoyée');
+    assert.strictEqual(core.docFiltre('émis', 'payée'), true);
+    assert.strictEqual(core.docFiltre('émis', 'retard'), true);
+    assert.strictEqual(core.docFiltre('émis', 'brouillon'), false, 'un brouillon n\'est pas émis');
+    assert.strictEqual(core.docFiltre('émis', 'annulée'), false, 'une facture annulée ne compte plus');
+    // « À encaisser » = ce qu'on attend vraiment, c'est-à-dire le compteur du tableau de bord.
+    ['envoyée', 'partielle', 'retard'].forEach(st =>
+      assert.strictEqual(core.docFiltre('à encaisser', st), true, `« à encaisser » doit garder « ${st} »`));
+    ['payée', 'brouillon', 'annulée'].forEach(st =>
+      assert.strictEqual(core.docFiltre('à encaisser', st), false, `« à encaisser » ne doit pas garder « ${st} »`));
+    // Un statut ordinaire reste une égalité stricte.
+    assert.strictEqual(core.docFiltre('payée', 'payée'), true);
+    assert.strictEqual(core.docFiltre('payée', 'retard'), false);
+
+    // Et le compte annoncé sur l'accueil est CELUI que le filtre rend : les deux se calculent avec
+    // la même règle, sinon la carte promet six factures et la liste en montre quatre.
+    const app = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
+    const carte = app.match(/const open = data\.documents\.filter\(d => d\.type === 'facture' && \[([^\]]+)\]/);
+    assert.ok(carte, 'le calcul de « Reste à encaisser » est introuvable');
+    const statutsCarte = carte[1].match(/'([^']+)'/g).map(s => s.replace(/'/g, ''));
+    statutsCarte.forEach(st => assert.strictEqual(core.docFiltre('à encaisser', st), true,
+      `la carte « Reste à encaisser » compte « ${st} », que le filtre de la liste ne garde pas`));
+  });
+
+  t('« Ce qui manque » : chaque ligne mène aux pièces concernées', () => {
+    const brut = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
+    const app = brut.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+    assert.ok(app.includes('CHECK_ACTIONS'), 'le nettoyage des commentaires a mangé le code');
+
+    // La couverture, comme pour « À faire » en 7.0.0 : ce que la SOURCE peut produire contre ce que
+    // l'interface sait ouvrir. Les identifiants sont lus dans core.js, jamais recopiés à la main —
+    // une liste en dur se périmerait au premier contrôle ajouté.
+    const coreSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'core.js'), 'utf8');
+    const bloc = coreSrc.slice(coreSrc.indexOf('function closureChecks'), coreSrc.indexOf('function packPlan'));
+    const produits = new Set();
+    (bloc.match(/add\('([\w-]+)'/g) || []).forEach(m => produits.add(m.match(/'([\w-]+)'/)[1]));
+    (bloc.match(/id: '([\w-]+)', level:/g) || []).forEach(m => produits.add(m.match(/'([\w-]+)'/)[1]));
+    assert.ok(produits.size >= 7, `seulement ${produits.size} sortes de manques trouvées : l'analyse a raté des lignes`);
+
+    const table = app.slice(app.indexOf('const CHECK_ACTIONS = {'), app.indexOf('const TODO_VISIBLE'));
+    const armes = new Set((table.match(/^\s{4}'?([\w-]+)'?: \{ label:/gm) || [])
+      .map(m => m.match(/'?([\w-]+)'?: \{ label:/)[1]));
+    const orphelins = [...produits].filter(id => !armes.has(id));
+    assert.deepStrictEqual(orphelins, [],
+      'des lignes de « Ce qui manque » ne mènent nulle part : ' + orphelins.join(', '));
+
+    // Et le bouton est vraiment posé et branché, pas seulement décrit dans une table.
+    assert.ok(/data-check="\$\{h\(c\.id\)\}"/.test(app), 'les lignes ne portent pas de bouton');
+    assert.ok(/\$\$\('\[data-check\]'\)\.forEach\(b => b\.onclick = \(\) => CHECK_ACTIONS\[b\.dataset\.check\]\.run\(\)\)/.test(app),
+      'les boutons de « Ce qui manque » ne sont pas branchés');
+
+    // Et le piège qui rendait plusieurs de ces boutons inertes : `navigate` pose le hash, le routeur
+    // réagit au `hashchange` — donc viser la page où l'on EST déjà ne redessine rien, alors que
+    // l'onglet et le filtre viennent d'être changés juste au-dessus. « Voir les factures » depuis
+    // Comptabilité → Cabinet vise l'onglet Ventes de la même page : il ne se passait rien.
+    assert.ok(/const vers = \(hash, avant\) => \(\) => \{[\s\S]{0,200}?if \(location\.hash === hash\) render\(\); else navigate\(hash\);/.test(app),
+      'un raccourci qui vise la page courante ne redessine pas : le clic est avalé en silence');
+  });
+
+  t('les chiffres du tableau de bord mènent à la liste qu\'ils résument', () => {
+    const brut = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
+    const app = brut.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+    const css = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'style.css'), 'utf8');
+
+    // Chaque carte déclarée dans le tableau de bord a son action, et réciproquement : une carte sans
+    // action serait un clic avalé en silence, une action sans carte du code mort.
+    const cartes = new Set((app.match(/data-stat="([\w-]+)"/g) || []).map(m => m.match(/"([\w-]+)"/)[1]));
+    assert.ok(cartes.size >= 4, `seulement ${cartes.size} carte(s) cliquable(s) : les quatre chiffres doivent mener quelque part`);
+    const bloc = app.slice(app.indexOf('const STAT_ACTIONS = {'), app.indexOf('$$(\'[data-stat]\')'));
+    const armes = new Set((bloc.match(/^\s+'?([\w-]+)'?: vers\(/gm) || []).map(m => m.match(/'?([\w-]+)'?: vers\(/)[1]));
+    assert.deepStrictEqual([...cartes].filter(k => !armes.has(k)), [], 'une carte de chiffre ne mène nulle part');
+    assert.deepStrictEqual([...armes].filter(k => !cartes.has(k)), [], 'une action de carte ne correspond à aucune carte');
+
+    // Elle le DIT : curseur, relief au survol, chevron. Sans ces signes personne ne clique un chiffre.
+    assert.ok(/\.stat\[data-stat\][^}]*cursor: pointer/.test(css), 'une carte cliquable sans curseur de clic ne s\'essaie pas');
+    assert.ok(/\.stat\[data-stat\]:hover/.test(css), 'aucun état au survol');
+    assert.ok(/\.stat\[data-stat\]::after/.test(css), 'aucun chevron : rien ne dit que ça mène quelque part');
+    // Et au clavier : `role="button"` + tabindex + Entrée/Espace.
+    assert.ok(/role="button" tabindex="0"/.test(app), 'les cartes ne sont pas atteignables au clavier');
+    assert.ok(/e\.key === 'Enter' \|\| e\.key === ' '/.test(app), 'Entrée et Espace n\'activent pas la carte');
+    // La bulle « i » explique le chiffre : elle ne doit pas naviguer.
+    assert.ok(/e\.target\.closest\('button\.i, a'\)\) return/.test(app),
+      'cliquer la bulle « i » d\'une carte navigue au lieu d\'expliquer');
+  });
+
   console.log(`\n${n} tests OK`);
 })().catch(e => { console.error(e); process.exit(1); });
