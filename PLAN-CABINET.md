@@ -63,7 +63,7 @@ Un bouton, un fichier complet.
 
 - **Données** : `company.cabinet = { name, email, publicKey, fingerprint, pairedAt }`.
 - **Écrans** : Paramètres → **Cabinet** : importer le fichier d'appairage, afficher l'empreinte, retirer. Le paquet se chiffre pour ce cabinet sans rien demander.
-- **Parrainage** : l'empreinte apparaît dans « Demander une licence » (6.3.0).
+- **Parrainage** : l'empreinte apparaît dans « Demander une licence » (6.4.0).
 
 ### SkanFact Cabinet 1.0.0 — L'application du cabinet *(~5 j)* — **LIVRÉE le 12/09/2026**
 
@@ -80,26 +80,28 @@ Nouvelle app, même dépôt : `src/cabinet/`, `cabinet.html`, second installeur,
 - **Démo** : cinq dossiers fictifs — c'est avec ça qu'on va voir les cabinets.
 - **Utile même si un seul client utilise SkanFact** : sinon personne ne l'installe.
 
-### SkanFact Cabinet 1.1.0 — Export d'écritures *(~2 j, après les réponses du comptable)*
+### SkanFact Cabinet 1.1.0 — Export d'écritures *(~2 j)* — **LIVRÉE le 12/09/2026 (SkanFact 6.3.0)**
+
+*Livré sans attendre les réponses du comptable, en les rendant inutiles au démarrage : tous les numéros de compte sont modifiables dans « Plan de comptes » et marqués « À VÉRIFIER ». Ce qui est garanti, c'est l'équilibre débit = crédit, pièce par pièce, vérifié sur les 24 mois du jeu de démonstration. Les versions suivantes sont décalées d'un cran : licence 6.4.0, signature 6.5.0, filets 6.6.0.*
 
 - `core.journalEntries(data, period, plan)` : écritures en partie double, par pièce ou récapitulatives par mois, avec un **plan de comptes paramétrable** (ventes, clients, TVA collectée, TVA déductible, achats, fournisseurs, banque, caisse — numéros du plan comptable tunisien À VÉRIFIER).
 - Formats : CSV générique + un ou deux formats des logiciels réellement utilisés par les cabinets rencontrés.
 - Le même export est offert **dans SkanFact** pour les entreprises dont le comptable n'installe rien.
 
-### SkanFact 6.3.0 — Vendable : licence et mises à jour *(~3 j)*
+### SkanFact 6.4.0 — Vendable : licence et mises à jour *(~3 j)*
 
 - **Licence** : une clé signée (Ed25519) contenant nom, matricule, date d'expiration, empreinte du cabinet parrain ; vérifiée **hors ligne** avec la clé publique embarquée. Pas de serveur. Skander génère les clés avec `scripts/licence.js` et sa clé privée, **qui ne va jamais dans le dépôt**.
 - **États** : essai (complet, 30 jours), active, expirée. À l'expiration : tout reste lisible, imprimable, exportable ; seule la création de nouvelles pièces attend le renouvellement. **Jamais de données en otage.**
 - **Mises à jour sans token** : un second dépôt GitHub **public** ne contenant que les fichiers de release. Le code reste privé. L'app installée cherche ses mises à jour là ; le champ « token » disparaît. (Le code d'une app installée est de toute façon lisible : publier les installeurs n'expose rien de plus que vendre l'app.)
 - **Écrans** : Paramètres → **Licence** : saisir, voir l'état, « Demander une licence » (mail prérempli avec les informations et l'empreinte du cabinet).
 
-### SkanFact 6.4.0 — Signature Apple et Windows *(~1 j + délais externes)*
+### SkanFact 6.5.0 — Signature Apple et Windows *(~1 j + délais externes)*
 
 - Apple Developer ID + notarisation ; certificat Windows. Les certificats vont dans les secrets du workflow, jamais dans le dépôt.
 - `MAC_SIGNED = true` : Squirrel prend le relais de `mac-update.sh`.
 - Deux installeurs à signer : vérifier que les certificats couvrent plusieurs produits d'une même société.
 
-### SkanFact 6.5.0 — Les filets d'un produit vendu *(~2 j)*
+### SkanFact 6.6.0 — Les filets d'un produit vendu *(~2 j)*
 
 - **Chien de garde** : le processus principal interroge l'interface toutes les 3 s ; sans réponse, il lit la pile via le débogueur (domaine activé **avant** le gel), l'écrit dans `main.log`, interrompt l'exécution et recharge. Un gel devient un rapport.
 - **« Envoyer un rapport »** dans l'Aide : mail avec `main.log`, version, système, sans données.
@@ -115,7 +117,7 @@ Serveur de dépôt : les paquets circulent seuls ; comptes cabinet et entreprise
 2. **Phase 1 — Claude** : 6.0.0, 6.1.0, 6.2.0.
 3. **Phase 2 — Claude** : Cabinet 1.0.0 avec ses cinq dossiers de démo. **Dès qu'elle tourne, Skander va voir les cabinets** — sans attendre l'export d'écritures.
 4. **Phase 3 — Claude, avec les réponses** : Cabinet 1.1.0.
-5. **Phase 4 — Claude + les achats de Skander** : 6.3.0, 6.4.0, 6.5.0 → premier client payant.
+5. **Phase 4 — Claude + les achats de Skander** : 6.4.0, 6.5.0, 6.6.0 → premier client payant.
 6. **Phase 5 — si oui** : 7.0.0.
 
 Point de bascule : **un cabinet dit « je le mets chez tous mes clients »**. Avant, on ne dépense rien de récurrent.

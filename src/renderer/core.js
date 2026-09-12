@@ -2872,6 +2872,13 @@
     add({ path: 'journaux/reglements-fournisseurs.csv', kind: 'text', label: 'Règlements fournisseurs', text: toCsv(supPays, supplierPayCsvColumns()), rows: supPays.length });
     add({ path: 'journaux/tresorerie.csv', kind: 'text', label: 'Mouvements de trésorerie', text: toCsv(cash, cashCsvColumns()), rows: cash.length });
 
+    // 1 bis. Les écritures en partie double. C'est le fichier qui fait gagner des heures au cabinet :
+    // il l'importe au lieu de retaper les pièces une à une. Les numéros de compte sont ceux réglés
+    // par l'entreprise — À VÉRIFIER, et c'est écrit dans le fichier comme sur la page de garde.
+    const ecritures = journalEntries(data, company, period, {});
+    const balance = entriesBalance(ecritures);
+    add({ path: 'journaux/ecritures.csv', kind: 'text', label: 'Écritures comptables (partie double)', text: toCsv(ecritures, entryCsvColumns()), rows: ecritures.length });
+
     // 2. La TVA du mois, avec son report : un mois isolé sans le crédit reporté donne un chiffre faux.
     const vat = vatReturn(data, company, period, (data.vatCarryIn || {})[period.month.slice(0, 4)] || 0);
     add({ path: 'journaux/tva.json', kind: 'text', label: 'TVA du mois', text: JSON.stringify(vat, null, 2) });
@@ -2942,7 +2949,7 @@
       bulletins: slips.length
     };
     return {
-      manifest, entries, checklist, definitive, period,
+      manifest, entries, checklist, definitive, period, balance,
       ca: vs.ht, tvaCollectee: vs.tva, tvaDeductible: (bs && bs.deductible) || 0,
       encaisse: round3(pays.reduce((s2, r) => s2 + (Number(r.amount) || 0), 0)),
       totaux: {
@@ -3012,6 +3019,11 @@
         <tr><td>Bulletins de paie</td><td class="r">${t.bulletins}</td></tr>
       </tbody></table>
 
+      <h2>Écritures comptables</h2>
+      <p>Le fichier <b>journaux/ecritures.csv</b> contient ${plan.balance ? plan.balance.lines : 0} lignes d'écritures en partie double
+      (${plan.balance ? plan.balance.pieces : 0} pièces), ${plan.balance && plan.balance.balanced ? 'équilibrées&nbsp;: débit = crédit = ' + esc(m(plan.balance.debit)) : '<b>déséquilibrées — à vérifier avant import</b>'}.
+      Les numéros de compte sont ceux réglés dans SkanFact par l'entreprise&nbsp;: <i>à adapter au plan du cabinet si besoin</i>.</p>
+
       <h2>Ce qui manque</h2>
       ${rows.length
         ? `<table><thead><tr><th>Point</th><th class="r">Nombre</th></tr></thead><tbody>
@@ -3026,6 +3038,234 @@
       </div>
     </body></html>`;
   }
+
+  // ---------- écritures comptables (Cabinet 1.1.0) ----------
+  //
+  // Ce que le comptable fait aujourd'hui : il retape les pièces de son client dans son logiciel.
+  // Ce module produit directement les écritures en partie double, prêtes à importer. C'est le seul
+  // gain de temps qui se mesure en heures, pas en minutes — et c'est l'argument qui fait installer
+  // SkanFact Cabinet.
+  //
+  // AUCUN numéro de compte n'est certain : le plan comptable tunisien a ses usages, et chaque cabinet
+  // les siens. Tous les comptes sont donc **modifiables** (`data.chartAccounts`) et l'écran comme
+  // l'export portent un « À VÉRIFIER » visible. Ce qui est garanti ici, c'est l'équilibre :
+  // débit = crédit sur chaque pièce, toujours.
+  const DEFAULT_ACCOUNTS = {
+    clients: '411',              // Clients
+    fournisseurs: '401',         // Fournisseurs d'exploitation
+    ventes: '706',               // Prestations de services (707 pour les ventes de marchandises)
+    tvaCollectee: '4367',        // TVA collectée
+    tvaDeductible: '4366',       // TVA déductible
+    timbre: '4368',              // Timbre fiscal encaissé pour le compte de l'État
+    rsSubie: '4358',             // Retenue à la source subie par l'entreprise (créance sur l'État)
+    rsOperee: '4352',            // Retenue à la source opérée sur un fournisseur (dette envers l'État)
+    achatsStock: '607',          // Achats de marchandises destinées à la revente
+    charges: '606',              // Achats consommés (fournitures, services)
+    immobilisations: '24',       // Immobilisations — le compte exact dépend du bien
+    fraisAccessoires: '608',     // Frais accessoires d'achat (transport, douane)
+    banque: '532',               // Banques
+    caisse: '54',                // Caisse
+    salairesBruts: '640',        // Rémunérations du personnel
+    chargesPatronales: '645',    // Charges sociales patronales
+    personnel: '425',            // Personnel — rémunérations dues
+    cnss: '4531',                // CNSS (part salariale + part patronale)
+    irpp: '4321'                 // IRPP et contribution sociale retenus à la source
+  };
+  const ACCOUNT_LABELS = {
+    clients: 'Clients', fournisseurs: 'Fournisseurs', ventes: 'Ventes',
+    tvaCollectee: 'TVA collectée', tvaDeductible: 'TVA déductible', timbre: 'Timbre fiscal',
+    rsSubie: 'Retenue à la source subie', rsOperee: 'Retenue à la source opérée',
+    achatsStock: 'Achats de marchandises', charges: 'Charges', immobilisations: 'Immobilisations',
+    fraisAccessoires: 'Frais accessoires d\'achat', banque: 'Banque', caisse: 'Caisse',
+    salairesBruts: 'Salaires bruts', chargesPatronales: 'Charges patronales',
+    personnel: 'Personnel — net à payer', cnss: 'CNSS', irpp: 'IRPP retenu'
+  };
+  // Les journaux : le comptable range ses écritures par nature d'opération.
+  const ENTRY_JOURNALS = [
+    ['VT', 'Ventes'], ['AC', 'Achats'], ['BQ', 'Banque'], ['CA', 'Caisse'], ['PAIE', 'Paie'], ['OD', 'Opérations diverses']
+  ];
+
+  function chartAccounts(data) {
+    return { ...DEFAULT_ACCOUNTS, ...((data && data.chartAccounts) || {}) };
+  }
+
+  // Le compte de trésorerie d'un règlement : espèces → caisse, tout le reste → banque.
+  const cashAccountFor = (method, acc) => (method === 'espèces' || method === 'especes' || method === 'Espèces') ? acc.caisse : acc.banque;
+
+  // Une pièce = un ensemble d'écritures qui s'équilibrent. On la construit avec ce petit aide :
+  // il arrondit, ignore les montants nuls, et refuse de rendre un déséquilibre sans le signaler.
+  function entrySet(base) {
+    const lines = [];
+    const push = (account, label, debit, credit, extra) => {
+      let d = round3(debit || 0), c = round3(credit || 0);
+      // Un avoir produit des montants négatifs. Aucun logiciel comptable n'accepte un débit négatif :
+      // un montant négatif change de colonne, il ne garde pas son signe. C'est ce qui fait qu'un
+      // avoir s'écrit D ventes / D TVA / C client, exactement à l'envers d'une facture.
+      if (d < 0) { c = round3(c - d); d = 0; }
+      if (c < 0) { d = round3(d - c); c = 0; }
+      if (!d && !c) return;
+      lines.push({ ...base, account: String(account || ''), label: label || base.label || '', debit: d, credit: c, ...(extra || {}) });
+    };
+    return {
+      debit: (a, l, n, e) => push(a, l, n, 0, e),
+      credit: (a, l, n, e) => push(a, l, 0, n, e),
+      done() {
+        const d = round3(lines.reduce((s, x) => s + x.debit, 0));
+        const c = round3(lines.reduce((s, x) => s + x.credit, 0));
+        // Un écart de quelques millimes vient des arrondis de TVA ligne par ligne. On l'absorbe sur
+        // la dernière ligne plutôt que de livrer une pièce qui ne passera pas à l'import.
+        const gap = round3(d - c);
+        if (gap && lines.length) {
+          const last = lines[lines.length - 1];
+          if (gap > 0) last.credit = round3(last.credit + gap); else last.debit = round3(last.debit - gap);
+          if (last.credit < 0) { last.debit = round3(last.debit - last.credit); last.credit = 0; }
+          if (last.debit < 0) { last.credit = round3(last.credit - last.debit); last.debit = 0; }
+        }
+        return lines;
+      }
+    };
+  }
+
+  // Les écritures d'une période. `opts.auxiliaires` ajoute le nom du tiers en compte auxiliaire ;
+  // `opts.sections` permet de n'exporter qu'une partie (ventes, achats, encaissements, paie).
+  function journalEntries(data, company, period, opts) {
+    opts = opts || {};
+    const acc = chartAccounts(data);
+    const want = s => !opts.sections || opts.sections.indexOf(s) >= 0;
+    const out = [];
+    const cur = (company && company.currency) || 'DT';
+
+    // --- ventes : factures et avoirs émis
+    if (want('ventes')) {
+      salesJournal(data, company, period).forEach(r => {
+        if (r.status === 'annulée') return;             // une facture annulée n'a jamais existé comptablement
+        const e = entrySet({ date: r.date, journal: 'VT', piece: r.number, tiers: r.client, source: 'vente', docId: r.id, currency: cur });
+        const label = `${r.typeLabel} ${r.number}${r.client ? ' — ' + r.client : ''}`;
+        // Ce que le client devra réellement payer (le net après retenue) reste au compte client ;
+        // la retenue devient une créance sur l'État. À VÉRIFIER : certains cabinets la constatent
+        // seulement au paiement.
+        e.debit(acc.clients, label, r.net);
+        if (r.rs) e.debit(acc.rsSubie, `Retenue à la source ${r.number}`, r.rs);
+        VAT_RATES.forEach(rate => {
+          const v = r.vatByRate[rate];
+          if (v && v.base) e.credit(acc.ventes, `${label} (HT ${rate} %)`, v.base, { vatRate: rate });
+          if (v && v.vat) e.credit(acc.tvaCollectee, `TVA ${rate} % — ${r.number}`, v.vat, { vatRate: rate });
+        });
+        if (r.timbre) e.credit(acc.timbre, `Timbre fiscal ${r.number}`, r.timbre);
+        out.push(...e.done());
+      });
+    }
+
+    // --- achats : factures fournisseurs et dépenses
+    if (want('achats')) {
+      (data.purchases || [])
+        .filter(p => inPeriod(p.date, period && period.from, period && period.to))
+        .sort((a, b) => (a.date || '').localeCompare(b.date || ''))
+        .forEach(p => {
+          const t = purchaseTotals(p, company);
+          const sup = ((data.suppliers || []).find(s => s.id === p.supplierId) || {}).name || '';
+          const num = p.number || '(sans numéro)';
+          const e = entrySet({ date: p.date, journal: 'AC', piece: num, tiers: sup, source: 'achat', docId: p.id, currency: cur });
+          const label = `${p.kind === 'depense' ? 'Dépense' : 'Achat'} ${num}${sup ? ' — ' + sup : ''}`;
+          const dest = { charge: acc.charges, stock: acc.achatsStock, immobilisation: acc.immobilisations };
+          Object.keys(t.byDestination).forEach(k => {
+            if (t.byDestination[k]) e.debit(dest[k] || acc.charges, `${label} (${k})`, t.byDestination[k], { destination: k });
+          });
+          if (t.fees) e.debit(acc.fraisAccessoires, `Frais accessoires ${num}`, t.fees);
+          if (t.deductibleVAT) e.debit(acc.tvaDeductible, `TVA déductible ${num}`, t.deductibleVAT);
+          // TVA non déductible : elle n'est pas récupérable, elle grossit la charge.
+          const nonDeductible = round3(t.totalVAT - t.deductibleVAT);
+          if (nonDeductible) e.debit(acc.charges, `TVA non déductible ${num}`, nonDeductible);
+          if (t.withholding) e.credit(acc.rsOperee, `Retenue à la source opérée ${num}`, t.withholding);
+          e.credit(acc.fournisseurs, label, t.netToPay);
+          out.push(...e.done());
+        });
+    }
+
+    // --- encaissements clients
+    if (want('encaissements')) {
+      paymentsJournal(data, company, period).forEach(r => {
+        const e = entrySet({ date: r.date, journal: r.method === 'Espèces' ? 'CA' : 'BQ', piece: r.number || '', tiers: r.client, source: 'encaissement', docId: r.docId, currency: cur });
+        const label = `Règlement ${r.number || ''}${r.client ? ' — ' + r.client : ''}${r.reference ? ' (' + r.reference + ')' : ''}`;
+        e.debit(r.method === 'Espèces' ? acc.caisse : acc.banque, label, r.amount);
+        e.credit(acc.clients, label, r.amount);
+        out.push(...e.done());
+      });
+    }
+
+    // --- règlements fournisseurs
+    if (want('reglements')) {
+      supplierPayments(data, company, period).forEach(r => {
+        const e = entrySet({ date: r.date, journal: r.method === 'Espèces' ? 'CA' : 'BQ', piece: r.number || '', tiers: r.supplier, source: 'règlement', docId: r.purchaseId, currency: cur });
+        const label = `Règlement fournisseur ${r.number || ''}${r.supplier ? ' — ' + r.supplier : ''}`;
+        e.debit(acc.fournisseurs, label, r.amount);
+        e.credit(r.method === 'Espèces' ? acc.caisse : acc.banque, label, r.amount);
+        out.push(...e.done());
+      });
+    }
+
+    // --- paie : un bulletin = une écriture, avec la copie du calcul remise au salarié
+    if (want('paie')) {
+      (data.payslips || [])
+        .filter(s => inPeriod(payslipDate(s), period && period.from, period && period.to))
+        .forEach(s => {
+          const emp = (data.employees || []).find(x => x.id === s.employeeId) || {};
+          const c = s.computed || computePayslip(emp, s, payrollSettings(data));
+          const d = payslipDate(s);
+          const e = entrySet({ date: d, journal: 'PAIE', piece: `PAIE-${s.year}-${String(s.month).padStart(2, '0')}`, tiers: emp.name || '', source: 'bulletin', docId: s.id, currency: cur });
+          const label = `Salaire ${emp.name || ''} ${MONTHS_FR[Number(s.month) - 1] || ''} ${s.year}`;
+          e.debit(acc.salairesBruts, label, c.gross);
+          e.debit(acc.chargesPatronales, `Charges patronales — ${emp.name || ''}`, round3(c.cnssEmployer + c.accident));
+          e.credit(acc.cnss, `CNSS — ${emp.name || ''}`, round3(c.cnssEmployee + c.cnssEmployer + c.accident));
+          e.credit(acc.irpp, `IRPP et contribution sociale — ${emp.name || ''}`, round3(c.irpp + c.css));
+          // Les retenues diverses (remboursement d'avance) restent dues à l'entreprise : elles
+          // diminuent le net versé. À VÉRIFIER : compte d'avance au personnel si le cabinet en tient un.
+          e.credit(acc.personnel, label, round3(c.net + c.otherDeductions));
+          out.push(...e.done());
+        });
+    }
+
+    return out.sort((a, b) => (a.date || '').localeCompare(b.date || '')
+      || (a.journal || '').localeCompare(b.journal || '')
+      || (a.piece || '').localeCompare(b.piece || '', undefined, { numeric: true }));
+  }
+
+  // Le contrôle qu'un comptable fait en premier : est-ce que ça tombe juste ? Pièce par pièce, et
+  // en tout. Une pièce déséquilibrée serait refusée à l'import de son logiciel.
+  function entriesBalance(entries) {
+    const byPiece = {};
+    entries.forEach(e => {
+      const k = `${e.journal}|${e.piece}|${e.date}`;
+      byPiece[k] = byPiece[k] || { key: k, journal: e.journal, piece: e.piece, date: e.date, debit: 0, credit: 0 };
+      byPiece[k].debit = round3(byPiece[k].debit + e.debit);
+      byPiece[k].credit = round3(byPiece[k].credit + e.credit);
+    });
+    const pieces = Object.keys(byPiece).map(k => byPiece[k]);
+    const off = pieces.filter(p => round3(p.debit - p.credit) !== 0);
+    const debit = round3(entries.reduce((s, e) => s + e.debit, 0));
+    const credit = round3(entries.reduce((s, e) => s + e.credit, 0));
+    return { debit, credit, balanced: round3(debit - credit) === 0 && !off.length, pieces: pieces.length, off, lines: entries.length };
+  }
+
+  // La balance par compte : ce que le comptable regarde pour voir si un compte a été oublié.
+  function entriesByAccount(entries) {
+    const by = {};
+    entries.forEach(e => {
+      by[e.account] = by[e.account] || { account: e.account, debit: 0, credit: 0, lines: 0 };
+      by[e.account].debit = round3(by[e.account].debit + e.debit);
+      by[e.account].credit = round3(by[e.account].credit + e.credit);
+      by[e.account].lines++;
+    });
+    return Object.keys(by).sort().map(k => ({ ...by[k], solde: round3(by[k].debit - by[k].credit) }));
+  }
+
+  const entryCsvColumns = () => ([
+    { key: 'date', label: 'Date', type: 'date' }, { key: 'journal', label: 'Journal' },
+    { key: 'piece', label: 'Pièce' }, { key: 'account', label: 'Compte' }, { key: 'tiers', label: 'Tiers' },
+    { key: 'label', label: 'Libellé' },
+    { key: 'debit', label: 'Débit', type: 'money' }, { key: 'credit', label: 'Crédit', type: 'money' },
+    { key: 'currency', label: 'Devise' }
+  ]);
 
   // ---------- conversions entre documents (2.6.0) ----------
   // Ce qu'une pièce peut devenir. Le résultat est toujours un brouillon : rien n'est émis sans relecture.
@@ -4191,6 +4431,8 @@
     uid, round3, money, fmtDate, addDays, daysInMonth, today, escapeHtml, nl2br, statusLabel,
     CLOSURE_ACTIONS, closedUntil, isClosedDate, closedPeriodLabel, closableMonths, closureChecks, closePeriod, reopenPeriod, closureLog,
     PACK_FORMAT, packPeriod, packPlan, packChecklist, packFileName, packCoverHtml,
+    DEFAULT_ACCOUNTS, ACCOUNT_LABELS, ENTRY_JOURNALS, chartAccounts, journalEntries,
+    entriesBalance, entriesByAccount, entryCsvColumns,
     salesCsvColumns, buyCsvColumns, payCsvColumns, supplierPayCsvColumns, cashCsvColumns,
     nextNumber, isLocked, isIssued, computeTotals, creditsFor, invoiceBalance, effectiveStatus,
     depositLines, settlementLines, salesJournal, vatSummary, paymentsJournal, toCsv, migrateData,

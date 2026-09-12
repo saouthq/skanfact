@@ -2830,7 +2830,10 @@
     pays: { sort: null, page: 1 },         // encaissements
     buys: { sort: null, page: 1 }          // journal des achats
   };
-  const COMPTA_TABS = [['ventes', 'Ventes'], ['achats', 'Achats'], ['tva', 'TVA à payer'], ['calendrier', 'Calendrier fiscal'], ['clotures', 'Clôtures'], ['cabinet', 'Cabinet']];
+  const COMPTA_TABS = [['ventes', 'Ventes'], ['achats', 'Achats'], ['tva', 'TVA à payer'], ['ecritures', 'Écritures'], ['calendrier', 'Calendrier fiscal'], ['clotures', 'Clôtures'], ['cabinet', 'Cabinet']];
+  // État propre à l'onglet Écritures : sa pagination et son tri ne doivent pas se mélanger à ceux
+  // des journaux de la même page.
+  const ecrState = { page: 1, sort: null };
 
   // ---------- Fournisseurs ----------
   const supplierById = id => data.suppliers.find(s => s.id === id);
@@ -6208,6 +6211,7 @@
       $('#c-period').hidden = ['calendrier', 'clotures', 'cabinet'].includes(comptaState.tab);
       if (comptaState.tab === 'achats') return drawBuyJournal(period(), periodLabel());
       if (comptaState.tab === 'tva') return drawVat();
+      if (comptaState.tab === 'ecritures') return drawEntries();
       if (comptaState.tab === 'calendrier') return drawFiscal();
       if (comptaState.tab === 'clotures') return drawClosures();
       if (comptaState.tab === 'cabinet') return drawCabinet();
@@ -6459,6 +6463,116 @@
     // ---------- onglet Calendrier fiscal ----------
     // Clôturer un mois, c'est promettre que ce mois ne bougera plus. C'est ce qui permet d'envoyer
     // un dossier au comptable sans qu'il change dans son dos. Rouvrir reste possible — mais tracé.
+    // ---------- Écritures comptables (Cabinet 1.1.0) ----------
+    // Ce que le comptable retape aujourd'hui pièce par pièce. Ici, c'est un fichier.
+    function drawEntries() {
+      const cur = company().currency;
+      const p = period();
+      const entries = C.journalEntries(data, company(), p, {});
+      const bal = C.entriesBalance(entries);
+      const acc = C.chartAccounts(data);
+      const byAcc = C.entriesByAccount(entries);
+      const cols = [
+        { key: 'date', label: 'Date', val: e => e.date },
+        { key: 'journal', label: 'Journal', val: e => e.journal },
+        { key: 'piece', label: 'Pièce', val: e => e.piece },
+        { key: 'account', label: 'Compte', val: e => e.account },
+        { key: 'label', label: 'Libellé', val: e => e.label },
+        { key: 'debit', label: 'Débit', r: true, val: e => e.debit },
+        { key: 'credit', label: 'Crédit', r: true, val: e => e.credit }
+      ];
+      const sorted = applySort(entries, cols, ecrState.sort);
+      const { rows, pg } = paginate(sorted, ecrState);
+
+      $('#c-body').innerHTML = `
+        <div class="panel"><h2>Écritures — ${h(periodLabel())} ${info('ecr.quoi')}</h2>
+          <p class="small">Les pièces de la période transformées en écritures comptables, en partie double, prêtes à importer dans le logiciel de ton comptable. Il n'a plus rien à retaper.</p>
+          <div class="pay-grid">
+            <div><div class="k-label">Lignes</div><div class="v">${bal.lines}</div></div>
+            <div><div class="k-label">Pièces</div><div class="v">${bal.pieces}</div></div>
+            <div><div class="k-label">Total débit</div><div class="v">${C.money(bal.debit, cur)}</div></div>
+            <div><div class="k-label">Total crédit</div><div class="v ${bal.balanced ? 'ok' : 'due'}">${C.money(bal.credit, cur)}</div></div>
+          </div>
+          ${bal.balanced
+            ? '<div class="todo-ok">Débit = crédit sur chaque pièce : le fichier passera à l\'import.</div>'
+            : `<div class="banner"><span>${bal.off.length} pièce(s) ne tombent pas juste — signale-le avant d'envoyer.</span></div>`}
+          <p class="small muted"><em>À VÉRIFIER avec ton comptable :</em> les numéros de compte ci-dessous sont ceux du plan comptable tunisien tel qu'il est couramment utilisé, mais chaque cabinet a ses habitudes. Ils se modifient dans « Plan de comptes », et l'export suit.</p>
+          <div class="inline mt">
+            <button class="btn btn-primary" id="ecr-csv">Exporter en CSV</button>
+            <button class="btn" id="ecr-mail">Envoyer au comptable</button>
+            <button class="btn btn-ghost" id="ecr-plan">Plan de comptes…</button>
+          </div>
+        </div>
+
+        <div class="panel"><h2>Par compte</h2>
+          ${byAcc.length ? `<div class="scroll-x"><table class="list compact"><thead><tr><th>Compte</th><th>Intitulé</th><th class="r">Débit</th><th class="r">Crédit</th><th class="r">Solde</th></tr></thead><tbody>
+            ${byAcc.map(a => { const key = Object.keys(acc).find(k => acc[k] === a.account); return `<tr>
+              <td class="nw"><strong>${h(a.account)}</strong></td>
+              <td class="muted">${h(key ? C.ACCOUNT_LABELS[key] : 'Compte hors plan')}</td>
+              <td class="r nw">${C.money(a.debit)}</td><td class="r nw">${C.money(a.credit)}</td>
+              <td class="r nw">${C.money(a.solde)}</td></tr>`; }).join('')}
+          </tbody></table></div>` : '<div class="empty">—</div>'}
+          <p class="small muted mt">Un compte inattendu ou un solde qui surprend se corrige dans le plan de comptes : les écritures se recalculent aussitôt.</p>
+        </div>
+
+        <div class="panel"><h2>Le détail</h2>
+          ${entries.length ? `<div class="scroll-x"><table class="list compact" id="ecr-t">
+            <thead>${sortHead(cols, ecrState.sort)}</thead>
+            <tbody>${rows.map(e => `<tr>
+              <td class="nw">${C.fmtDate(e.date)}</td><td>${h(e.journal)}</td><td class="nw">${h(e.piece)}</td>
+              <td class="nw"><strong>${h(e.account)}</strong></td><td>${h(e.label)}</td>
+              <td class="r nw">${e.debit ? C.money(e.debit) : '<span class="muted">—</span>'}</td>
+              <td class="r nw">${e.credit ? C.money(e.credit) : '<span class="muted">—</span>'}</td></tr>`).join('')}</tbody>
+            <tfoot><tr class="total-row"><td colspan="5">Total de la sélection</td>
+              <td class="r nw"><strong>${C.money(bal.debit)}</strong></td><td class="r nw"><strong>${C.money(bal.credit)}</strong></td></tr></tfoot>
+          </table></div>${pagerBar(pg, { noun: 'écriture' })}`
+            : '<div class="empty">Aucune pièce sur cette période.</div>'}
+        </div>`;
+
+      bindSort($('#c-body'), key => { ecrState.sort = toggleSort(ecrState.sort, key, cols); ecrState.page = 1; drawEntries(); });
+      bindPager($('#c-body'), ecrState, drawEntries);
+      const tag = comptaState.month ? `${comptaState.year}-${comptaState.month}` : comptaState.year;
+      $('#ecr-csv').onclick = async () => {
+        const f = await bridge.saveText(`ecritures-${tag}.csv`, C.toCsv(sorted, C.entryCsvColumns()));
+        if (f) toast('Exporté : ' + f.split(/[\\/]/).pop());
+      };
+      $('#ecr-mail').onclick = async () => {
+        const att = await bridge.saveTextSilent(`ecritures-${tag}.csv`, C.toCsv(sorted, C.entryCsvColumns()));
+        const r = await bridge.composeMail({
+          to: company().accountantEmail || '', subject: `Écritures ${periodLabel()} — ${company().name || ''}`,
+          body: `Bonjour,\n\nVoici les écritures comptables de ${periodLabel()} : ${bal.lines} lignes, ${bal.pieces} pièces, débit = crédit = ${C.money(bal.debit, cur)}.\n\nLes numéros de compte sont ceux réglés dans SkanFact ; dis-moi s'ils ne correspondent pas aux tiens, je les change.\n\nBien à toi,\n${company().name || ''}`,
+          attachments: att ? [att] : []
+        });
+        toast(r && r.state === 'mail' ? 'Message préparé dans Mail' : 'Message préparé');
+      };
+      $('#ecr-plan').onclick = () => chartForm(drawEntries);
+    }
+
+    // Le plan de comptes. Aucun numéro n'est certain : le comptable a le dernier mot, donc tout
+    // se modifie, et « Revenir aux comptes proposés » ramène la proposition de départ.
+    function chartForm(done) {
+      const acc = C.chartAccounts(data);
+      const keys = Object.keys(C.DEFAULT_ACCOUNTS);
+      modal(`<h2>Plan de comptes</h2>
+        <p class="small muted">Demande ces numéros à ton comptable : ce sont les siens qui comptent, pas les nôtres. Les écritures exportées les reprendront tels quels. <em>À VÉRIFIER.</em></p>
+        <form id="chf"><table class="list compact"><tbody>
+          ${keys.map(k => `<tr><td>${h(C.ACCOUNT_LABELS[k] || k)}</td>
+            <td style="width:140px"><input type="text" name="${h(k)}" value="${h(acc[k])}" placeholder="${h(C.DEFAULT_ACCOUNTS[k])}"></td></tr>`).join('')}
+        </tbody></table></form>
+        <div class="modal-actions"><button class="btn btn-ghost" id="ch-reset">Revenir aux comptes proposés</button>
+          <button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ch-ok">Enregistrer</button></div>`,
+        (layer, close) => {
+          $('#ch-reset', layer).onclick = () => { delete data.chartAccounts; save(); close(); toast('Comptes remis à la proposition de départ'); if (done) done(); };
+          $('#ch-ok', layer).onclick = () => {
+            const v = formValues($('#chf', layer));
+            const out = {};
+            keys.forEach(k => { const val = String(v[k] || '').trim(); if (val && val !== C.DEFAULT_ACCOUNTS[k]) out[k] = val; });
+            if (Object.keys(out).length) data.chartAccounts = out; else delete data.chartAccounts;
+            save(); close(); toast('Plan de comptes enregistré'); if (done) done();
+          };
+        });
+    }
+
     function drawClosures() {
       const closed = C.closedUntil(data);
       const months = C.closableMonths(data, C.today());

@@ -2871,6 +2871,100 @@ t('couches : une question passe au-dessus de tout, les bulles et messages au-des
   assert.strictEqual(Number(base[1]), modale, 'app.js et style.css ne partent pas de la même couche');
 });
 
+// ---------- écritures comptables (Cabinet 1.1.0) ----------
+// L'invariant, et le seul qui soit certain : débit = crédit, pièce par pièce. Les numéros de compte,
+// eux, sont une proposition — d'où le fait qu'ils soient modifiables et marqués « À VÉRIFIER ».
+t('écritures : chaque pièce tombe juste, sur toute l\'année de démonstration', () => {
+  const demo = require('../src/renderer/demo.js');
+  const company = { ...core.DEFAULT_COMPANY, name: 'Test SUARL', matricule: '1234567A' };
+  const data = core.migrateData(demo.buildDemoData(company, '2026-09-12'));
+  let lines = 0;
+  for (const year of [2025, 2026]) {
+    for (let m = 1; m <= 12; m++) {
+      const entries = core.journalEntries(data, data.company, core.packPeriod(year, m), {});
+      const bal = core.entriesBalance(entries);
+      lines += entries.length;
+      assert.ok(bal.balanced, `${year}-${m} : ${bal.off.length} pièce(s) déséquilibrée(s)`);
+      // Aucun logiciel comptable n'accepte un montant négatif : un avoir change de colonne.
+      entries.forEach(e => assert.ok(e.debit >= 0 && e.credit >= 0, `${year}-${m} : montant négatif sur ${e.piece}`));
+      entries.forEach(e => assert.ok(!(e.debit && e.credit), `${year}-${m} : une ligne au débit ET au crédit sur ${e.piece}`));
+    }
+  }
+  assert.ok(lines > 200, 'le jeu de démonstration doit produire des écritures : ' + lines);
+});
+
+t('écritures : une facture, un avoir, un achat et un bulletin s\'écrivent comme il faut', () => {
+  const company = { ...core.DEFAULT_COMPANY, name: 'T', matricule: '1A', stampFee: 1 };
+  const data = core.migrateData({
+    company,
+    clients: [{ id: 'c1', name: 'Client Un' }],
+    suppliers: [{ id: 's1', name: 'Fournisseur Un' }],
+    documents: [
+      { id: 'd1', type: 'facture', number: 'FAC-2026-001', date: '2026-05-10', status: 'envoyée', clientId: 'c1',
+        lines: [{ label: 'Prestation', qty: 1, unitPrice: 1000, vatRate: 19 }] },
+      { id: 'd2', type: 'avoir', number: 'AVO-2026-001', date: '2026-05-12', status: 'émis', clientId: 'c1',
+        lines: [{ label: 'Retour', qty: 1, unitPrice: 200, vatRate: 19 }] }
+    ],
+    purchases: [{ id: 'p1', kind: 'facture', supplierId: 's1', number: 'F-77', date: '2026-05-11',
+      lines: [{ label: 'Marchandise', qty: 1, unitPrice: 500, vatRate: 19, destination: 'stock', deductible: true }] }]
+  });
+  const acc = core.chartAccounts(data);
+  const e = core.journalEntries(data, data.company, core.packPeriod(2026, 5), {});
+  const at = (piece, account) => e.filter(x => x.piece === piece && x.account === account);
+
+  // Facture : le client doit le TTC (timbre compris), la TVA et le timbre sont des dettes.
+  assert.strictEqual(at('FAC-2026-001', acc.clients)[0].debit, 1191, 'client débité du TTC');
+  assert.strictEqual(at('FAC-2026-001', acc.ventes)[0].credit, 1000);
+  assert.strictEqual(at('FAC-2026-001', acc.tvaCollectee)[0].credit, 190);
+  assert.strictEqual(at('FAC-2026-001', acc.timbre)[0].credit, 1, 'le timbre est encaissé pour l\'État, pas un produit');
+
+  // Avoir : exactement l'inverse, en colonnes inversées — jamais en négatif.
+  assert.strictEqual(at('AVO-2026-001', acc.clients)[0].credit, 238, 'le client est crédité');
+  assert.strictEqual(at('AVO-2026-001', acc.ventes)[0].debit, 200, 'la vente est débitée');
+
+  // Achat de marchandise : stock au débit, TVA déductible au débit, fournisseur au crédit.
+  assert.strictEqual(at('F-77', acc.achatsStock)[0].debit, 500, 'acheter du stock n\'est pas une charge');
+  assert.strictEqual(at('F-77', acc.tvaDeductible)[0].debit, 95);
+  assert.strictEqual(at('F-77', acc.fournisseurs)[0].credit, 595);
+
+  // Le plan de comptes se change, et les écritures suivent.
+  data.chartAccounts = { clients: '4111', ventes: '7061' };
+  const e2 = core.journalEntries(data, data.company, core.packPeriod(2026, 5), {});
+  assert.ok(e2.some(x => x.account === '4111'), 'le compte client modifié doit être repris');
+  assert.ok(e2.some(x => x.account === '7061'));
+  assert.ok(!e2.some(x => x.account === '411'), 'et l\'ancien ne doit plus apparaître');
+  assert.strictEqual(core.entriesBalance(e2).balanced, true, 'changer un compte ne déséquilibre rien');
+});
+
+t('écritures : une facture annulée ne produit aucune écriture', () => {
+  const company = { ...core.DEFAULT_COMPANY, name: 'T', matricule: '1A' };
+  const data = core.migrateData({
+    company, clients: [{ id: 'c1', name: 'C' }],
+    documents: [{ id: 'd1', type: 'facture', number: 'FAC-2026-001', date: '2026-05-10', status: 'annulée', clientId: 'c1',
+      lines: [{ label: 'X', qty: 1, unitPrice: 100, vatRate: 19 }] }]
+  });
+  assert.strictEqual(core.journalEntries(data, data.company, core.packPeriod(2026, 5), {}).length, 0);
+});
+
+t('écritures : le paquet mensuel les emporte, équilibrées', () => {
+  const demo = require('../src/renderer/demo.js');
+  const company = { ...core.DEFAULT_COMPANY, name: 'T', matricule: '1A' };
+  const data = core.migrateData(demo.buildDemoData(company, '2026-09-12'));
+  const plan = core.packPlan(data, data.company, core.packPeriod(2026, 5), {});
+  const file = plan.entries.find(e => e.path === 'journaux/ecritures.csv');
+  assert.ok(file, 'le paquet doit contenir les écritures');
+  assert.ok(file.text.split('\n').length > 5, 'et elles ne doivent pas être vides');
+  // Un CSV sans entête est illisible par le logiciel du comptable : la première ligne doit nommer
+  // les colonnes (le défaut est passé inaperçu parce que rien ne plante — le fichier est juste vide).
+  const head = file.text.split('\r\n')[0].replace('﻿', '');
+  assert.strictEqual(head, 'Date;Journal;Pièce;Compte;Tiers;Libellé;Débit;Crédit;Devise', head);
+  assert.ok(/;\d+,\d{3};/.test(file.text.split('\r\n')[1]), 'les montants doivent être écrits à la française');
+  assert.ok(plan.balance && plan.balance.balanced, 'le plan doit annoncer l\'équilibre');
+  // La page de garde le dit au comptable, avec le mot « à adapter » : les comptes sont une proposition.
+  const cover = core.packCoverHtml(plan, data.company, {});
+  assert.ok(/Écritures comptables/.test(cover) && /adapter au plan du cabinet/.test(cover));
+});
+
 // ---------- SkanFact Cabinet (src/cabinet/cabcore.js) ----------
 // La seconde application du dépôt. Sa logique est pure : elle se teste sans Electron, comme core.js.
 const cab = require('../src/cabinet/cabcore.js');

@@ -7,6 +7,20 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 6.3.0 — 12/09/2026
+
+**Les écritures comptables : ton comptable n'a plus rien à retaper.**
+
+Nouvel onglet **Comptabilité → Écritures**. Chaque facture, chaque avoir, chaque achat, chaque règlement et chaque bulletin de paie y devient un jeu d'écritures en **partie double** — autant au débit qu'au crédit — prêt à importer dans le logiciel de ton cabinet. C'est le travail qu'un comptable fait aujourd'hui pièce par pièce, à la main.
+
+- **Un contrôle avant d'envoyer** : l'application vérifie que chaque pièce tombe juste. Un fichier déséquilibré serait refusé à l'import ; tu le sais avant lui.
+- **Un plan de comptes modifiable.** Les numéros proposés suivent l'usage du plan comptable tunisien, mais chaque cabinet a les siens : demande-lui les bons une fois, saisis-les, et tous tes envois suivants sont à son format. *À VÉRIFIER avec ton comptable — aucun numéro de compte n'est une vérité.*
+- **Le fichier part avec le paquet mensuel** (`journaux/ecritures.csv`), et la page de garde annonce le nombre de lignes et l'équilibre.
+- Export CSV et envoi direct au comptable depuis la page.
+- Les avoirs s'écrivent à l'envers d'une facture, **en changeant de colonne** : aucun logiciel comptable n'accepte un montant négatif.
+
+**SkanFact Cabinet 1.1.0** : les écritures reçues apparaissent dans le contenu du paquet, à ouvrir d'un clic.
+
 ## 6.2.1 — 12/09/2026
 
 **SkanFact Cabinet 1.0.0 : l'application de ton comptable.**

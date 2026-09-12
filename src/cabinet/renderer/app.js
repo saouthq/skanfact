@@ -542,6 +542,9 @@
         <p class="small">La page de garde (un PDF qui résume le mois et liste ce qui manque), les journaux au format CSV
         (ventes, achats, encaissements, règlements fournisseurs, trésorerie), les factures et avoirs en PDF, les bulletins de paie,
         et les justificatifs que ton client a joints à ses achats.</p>
+        <p class="small"><strong>Et surtout <code>journaux/ecritures.csv</code></strong> : les pièces du mois déjà transformées en écritures
+        en partie double, à importer dans ton logiciel au lieu de les ressaisir. Si les numéros de compte ne sont pas les tiens,
+        donne-les à ton client une fois : il les saisit dans son SkanFact et tous ses envois suivants sont à ton format.</p>
         <p class="small">Un <strong>manifeste</strong> porte l'empreinte de chaque fichier. À l'import, SkanFact les recalcule toutes :
         c'est ce qui te permet d'affirmer que ce que tu as reçu est exactement ce qui a été envoyé.</p>
       </div>

@@ -1,8 +1,8 @@
 {
   "name": "skanfact",
   "productName": "SkanFact",
-  "version": "6.2.1",
-  "cabinetVersion": "1.0.0",
+  "version": "6.3.0",
+  "cabinetVersion": "1.1.0",
   "description": "Devis et factures pour les petites entreprises",
   "main": "src/main.js",
   "author": "Skander Ben Amor",
