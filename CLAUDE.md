@@ -149,6 +149,18 @@ Constats laissés de côté en 2.4.0 et repris en bloc en **5.2.1**. Tous corrig
 - « Documents récents » vide n'offrait rien → propositions concrètes (`#start-client`, `#start-devis`, `#start-cat`, `#start-demo`).
 - Les boutons de ligne étaient invisibles hors survol sur Clients et les documents → `td.row-actions > span` passe de `opacity: 0` à `.45` (et `1` au survol).
 
+## 6.0.0 — La clôture de période
+
+`data.closedUntil` (dernier jour clôturé) + `data.closureLog` (chaque clôture et réouverture, avec motif). Dans core.js : `isClosedDate`, `closedPeriodLabel`, `closableMonths`, `closureChecks`, `closePeriod`, `reopenPeriod`, `closureLog`. Dans app.js : **`closedBlock(dates, quoi)`** — une seule porte pour toute l'application, qui affiche la fenêtre d'explication et renvoie `true` si c'est refusé ; `closedToast` pour les actions de liste ; `closedWipeOk` pour les remplacements en masse. Onglet **Comptabilité → Clôtures**, ligne « À faire » à dix jours.
+
+Règles apprises :
+- **Tester l'ANCIENNE date autant que la nouvelle** quand on modifie une pièce. Sans ça, il suffirait de changer la date d'une facture de mars pour la sortir d'un mois déjà déclaré, et la TVA de mars changerait en silence.
+- **Le garde-fou se pose AVANT `nextNumber`.** `nextNumber` écrit `data.counters` même si l'enregistrement échoue ensuite : posé après, chaque refus aurait troué la numérotation. C'est ce qui a révélé que `issue()` consommait le numéro avant d'enregistrer (corrigé), et que l'export PDF d'un brouillon ignorait l'échec de `persist()` et exportait une pièce non écrite (corrigé).
+- **Les contrôles avant clôture ne bloquent jamais.** Un mois clôturé avec deux manques signalés vaut mieux qu'un mois jamais clôturé parce que l'app faisait la difficile.
+- **Une réouverture exige un motif** : c'est la seule trace qui explique au comptable pourquoi un chiffre a changé après son envoi.
+- Un remplacement en masse (démo, import, effacement) **prévient** au lieu de refuser : c'est un geste volontaire.
+- Méthode qui a payé : un workflow de 18 agents a recensé **347 points d'écriture datés** famille par famille, puis proposé le garde-fou de chacun. Il a trouvé cinq écritures manquées à la main, dont les deux fautes ci-dessus. À refaire avant toute règle transversale de ce genre.
+
 ## Règle apprise en 5.2.3 : les dates et le fuseau horaire
 
 **La machine de test est en UTC ; l'utilisateur est à Tunis (UTC+1).** `addDays` construisait la date en heure locale (`new Date(iso + 'T00:00:00')`) et la relisait en UTC (`toISOString()`) : à minuit à Tunis il est 23 h la veille en UTC, donc `addDays(d, 1)` renvoyait `d`. Depuis toujours, une échéance à 30 jours tombait un jour trop tôt chez lui ; depuis la 5.1.0, la boucle jour par jour de `workingDays` ne finissait jamais et l'app entière gelait au chargement de la démo (qui contient des congés). Sur la machine en UTC, **rien ne se voyait** : quatre reproductions différentes, tous les chronométrages, la vraie 5.1.0 dans Electron — tout passait. C'est le bisect fait à la main par Skander (3.4 → 4.2 → 5.0 ok, 5.1 gèle) qui a désigné `workingDays`, et la question « qu'est-ce qui diffère entre sa machine et la mienne ? » qui a donné le fuseau.

@@ -228,6 +228,10 @@
     'compta.vatMonths': { t: 'Mois par mois', d: 'Chaque mois de l\'année avec sa collectée, sa déductible, le crédit repris du mois d\'avant et ce qu\'il restait à payer. Le total en bas n\'est pas la somme des lignes : un crédit reporté ne se compte qu\'une fois.' },
     'compta.result': { t: 'Résultat simplifié', d: 'Tes ventes hors taxes moins tes charges hors taxes. Les achats partis en stock ou en immobilisation n\'y sont pas comptés : ils ne sont pas consommés. <em>Ce n\'est pas ton résultat comptable</em> — il manque les amortissements, la variation de stock, les salaires et les provisions. C\'est un ordre de grandeur pour savoir où tu en es entre deux bilans.' },
     'compta.fiscal': { t: 'Calendrier fiscal', d: 'Un pense-bête des déclarations qui reviennent, que tu règles toi-même : active celles qui te concernent et ajuste le jour limite. Les échéances proches remontent aussi dans « À faire » sur l\'accueil. <em>À VÉRIFIER avec ton comptable :</em> les dates, la périodicité et les déclarations applicables dépendent de ta forme juridique, de ton régime et de la présence de salariés.' },
+    'clot.etat': { t: 'Période clôturée', d: 'La date jusqu\'à laquelle tout est figé. Aucune pièce datée avant elle ne peut plus être créée, modifiée ou supprimée — ni facture, ni achat, ni paiement, ni bulletin. C\'est cette promesse qui permet à ton comptable de travailler sur un dossier qui ne bouge plus dans son dos. Tant que rien n\'est clôturé, une saisie d\'aujourd\'hui peut changer la TVA d\'un mois déjà déclaré, sans que personne ne s\'en aperçoive.' },
+    'clot.cloturer': { t: 'Clôturer un mois', d: 'À faire une fois que le mois est terminé et que tu as tout saisi : les factures émises, les achats reçus, les paiements, les bulletins. L\'application te montre d\'abord ce qui mériterait d\'être réglé (un brouillon oublié, un achat sans justificatif, un mouvement non pointé) — mais elle ne t\'empêche jamais de clôturer : ces points sont là pour que tu les voies. Les mois se clôturent dans l\'ordre, du plus ancien au plus récent. Le mois en cours ne se clôture pas : il lui reste des pièces à venir.' },
+    'clot.rouvrir': { t: 'Rouvrir une période', d: 'Quand une pièce a été oubliée dans un mois déjà clôturé. Ce n\'est pas interdit, c\'est encadré : tu écris un motif, et la réouverture s\'inscrit dans le journal. <b>Préviens ton comptable</b> avant de le faire : les chiffres qu\'il a reçus vont changer, et s\'il a déjà déclaré la TVA du mois, une correction sera peut-être nécessaire. <em>À VÉRIFIER avec lui</em> selon ce qui a déjà été déposé.' },
+    'clot.journal': { t: 'Journal des clôtures', d: 'Chaque clôture et chaque réouverture, avec sa date, le poste qui l\'a faite et le motif. C\'est la ligne qu\'on relit le jour où un chiffre a changé après un envoi : elle dit quand, qui et pourquoi. Rien ne s\'efface de ce journal.' },
     'cl.notes': { t: 'Notes internes', d: 'Ce qu\'il faut se rappeler et qui ne s\'imprime nulle part : l\'interlocuteur à appeler, les délais réels, les conditions négociées, la façon de travailler. Enregistré tout seul au fil de la frappe.' },
     'sup.terms': { t: 'Délai de paiement accordé', d: 'Le nombre de jours que ce fournisseur t\'accorde pour le régler. Il se reporte automatiquement sur l\'échéance de chaque achat que tu enregistres chez lui. Laisse vide si tu paies comptant.' },
     'sup.withholding': { t: 'Retenue à la source à opérer', d: 'Quand tu paies certains prestataires (comptable, avocat, consultant), la loi te demande de <b>retenir</b> un pourcentage et de le reverser toi-même au fisc. Tu paies moins au fournisseur, et tu lui remets une attestation. Qui doit retenir et à quel taux : <em>À VÉRIFIER avec ton comptable.</em> Laisse « Aucune » dans le doute.' },
@@ -668,6 +672,33 @@
 <p>La liste que l'inspection du travail peut demander : qui a travaillé chez toi, à quel poste, sous quel contrat, entre quelles dates. Les salariés partis y figurent aussi — c'est le but. Exportable en CSV. <em>À VÉRIFIER : la forme exacte du registre relève du code du travail.</em></p>
 <h3>Ce que ça ne fait pas</h3>
 <p>Pas de demande de congé à valider, pas de planning d'équipe, pas de pointage. Pas de calcul d'indemnité de licenciement non plus : ce calcul dépend de l'ancienneté, du motif et de la convention, et se fait avec un comptable ou un juriste, pas dans un tableau.</p>`
+    },
+    {
+      id: 'cloture', title: 'Clôturer un mois', sub: 'Promettre à ton comptable que le passé ne bougera plus',
+      body: `
+<p>Voici ce qui se passe sans clôture. Tu déclares la TVA de mars. Trois semaines plus tard, tu retrouves une facture d'achat de mars au fond d'un tiroir et tu la saisis à sa vraie date. La TVA de mars vient de changer. Ton comptable a déclaré l'ancien chiffre, personne ne le sait, et vous le découvrirez peut-être des années plus tard.</p>
+<p><b>Clôturer un mois, c'est le figer.</b> Après ça, aucune pièce datée de ce mois ne peut plus être créée, modifiée ou supprimée : ni facture, ni achat, ni paiement, ni mouvement de trésorerie, ni bulletin de paie. C'est ce qui permet de dire à ton comptable « voilà mars, il est complet, il ne bougera plus ».</p>
+
+<h3>Quand clôturer</h3>
+<p>Une fois le mois terminé <b>et</b> tout saisi : tes factures émises, les achats reçus, les paiements encaissés et versés, les bulletins établis. En pratique, une à deux semaines après la fin du mois — le temps que les dernières factures d'achat arrivent. SkanFact te le rappelle dans « À faire » dès qu'un mois terminé depuis dix jours n'est toujours pas clôturé.</p>
+<p>Les mois se clôturent <b>dans l'ordre</b>, du plus ancien au plus récent. Le mois en cours ne se clôture jamais : il lui reste des pièces à venir.</p>
+
+<h3>Ce que SkanFact vérifie avant</h3>
+<p>Au moment de clôturer, l'application te montre ce qui mériterait d'être réglé : une facture restée en brouillon (elle n'a pas de numéro et n'apparaît dans aucun journal), un achat sans justificatif (ton comptable ne pourra pas en récupérer la TVA), un mouvement de trésorerie non pointé, un bulletin de paie manquant, un stock négatif.</p>
+<p><b>Rien de tout cela ne t'empêche de clôturer.</b> Ces points sont là pour que tu les voies, pas pour te bloquer. Un mois clôturé avec deux justificatifs manquants signalés vaut mieux qu'un mois jamais clôturé parce que l'application faisait la difficile.</p>
+
+<h3>Et si j'ai oublié quelque chose ?</h3>
+<p>Deux façons de t'en sortir, et la première est presque toujours la bonne :</p>
+<ul>
+<li><b>Sans toucher au passé.</b> Une facture client à corriger ? Un avoir, daté d'aujourd'hui — c'est de toute façon la seule façon correcte de corriger une facture émise. Une facture d'achat oubliée ? Saisis-la à la date d'aujourd'hui et signale-le à ton comptable, il saura la rattacher au bon exercice.</li>
+<li><b>En rouvrant la période.</b> Comptabilité → Clôtures → Rouvrir. Il faut écrire un motif, et la réouverture s'inscrit dans le journal. <b>Préviens ton comptable avant</b> : les chiffres qu'il a reçus vont changer, et s'il a déjà déposé la déclaration du mois, il devra peut-être la corriger. <em>À VÉRIFIER avec lui</em> selon ce qui a déjà été déposé.</li>
+</ul>
+
+<h3>Le journal des clôtures</h3>
+<p>Chaque clôture et chaque réouverture y figure, avec sa date, l'ordinateur qui l'a faite et le motif. C'est la ligne qu'on relit le jour où un chiffre a bougé après un envoi. Rien ne s'en efface.</p>
+
+<h3>Si vous êtes deux sur le même dossier</h3>
+<p>La clôture est une donnée comme une autre : elle voyage avec le dossier partagé. Si ton associé clôture mars sur son poste, ton poste le verra à la prochaine synchronisation et refusera lui aussi les pièces de mars. Mettez-vous d'accord sur qui clôture — comme pour l'émission des factures.</p>`
     },
     {
       id: 'declarations', title: 'Les déclarations sociales', sub: 'CNSS trimestrielle, déclaration d\'employeur',

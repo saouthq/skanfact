@@ -142,6 +142,8 @@
     movements: [],           // mouvements libres : salaires, impôts, apports — ce qui n'a ni facture ni achat
     deleted: [],             // pièces supprimées, pour qu'elles ne reviennent pas d'un autre poste (v4)
     conflictArchive: [],     // versions écartées lors d'une fusion : rien n'est détruit sans trace
+    closedUntil: '',         // dernier jour clôturé : rien de daté avant ne bouge plus (6.0.0)
+    closureLog: [],          // chaque clôture et chaque réouverture, avec son motif (6.0.0)
     counters: {}
   };
 
@@ -465,6 +467,10 @@
     if (!Array.isArray(data.leaves)) data.leaves = [];
     if (!Array.isArray(data.advances)) data.advances = [];
     if (!Array.isArray(data.socialFilings)) data.socialFilings = [];
+    // 6.0.0 : clôture de période. Rien à convertir — un dossier existant n'a simplement rien de
+    // clôturé, et l'utilisateur clôture quand il veut.
+    if (typeof data.closedUntil !== 'string') data.closedUntil = '';
+    if (!Array.isArray(data.closureLog)) data.closureLog = [];
     data.catalog.forEach(c => {
       c.tracked = c.tracked === true;
       c.minStock = Number(c.minStock) || 0;
@@ -2634,6 +2640,134 @@
     };
   }
 
+  // ---------- clôture de période (6.0.0) ----------
+  // Ce que le comptable a reçu ne doit plus bouger. Sans ça, une pièce saisie en mars après que mars
+  // a été déclaré change la TVA de mars en silence, et personne ne le sait avant un contrôle.
+  // `data.closedUntil` = dernier jour clôturé ('' si rien). `data.closureLog` garde chaque clôture
+  // et chaque réouverture : une réouverture n'est pas interdite, elle est **tracée**.
+  const CLOSURE_ACTIONS = { cloture: 'Clôture', reouverture: 'Réouverture' };
+
+  function closedUntil(data) { return (data && typeof data.closedUntil === 'string') ? data.closedUntil : ''; }
+
+  // La question que tout le reste pose : cette date est-elle dans une période close ?
+  // Une date vide ne l'est jamais : un brouillon sans date ne se refuse pas, il se date.
+  function isClosedDate(data, iso) {
+    const c = closedUntil(data);
+    return !!(c && iso && String(iso).slice(0, 10) <= c);
+  }
+
+  // Le mois clôturé qui contient cette date, pour l'écrire dans le message d'erreur.
+  function closedPeriodLabel(data, iso) {
+    if (!isClosedDate(data, iso)) return '';
+    return monthLabel(String(iso).slice(0, 10));
+  }
+
+  // Les mois qu'on peut clôturer aujourd'hui : ceux qui suivent le dernier clôturé et qui sont
+  // terminés. On ne propose jamais de clôturer un mois en cours — il lui reste des pièces à recevoir.
+  function closableMonths(data, todayIso) {
+    const t = todayIso || today();
+    const curMonth = t.slice(0, 7);
+    const c = closedUntil(data);
+    let first;
+    if (c) {
+      first = addDays(c, 1).slice(0, 7);
+    } else {
+      // Rien n'a jamais été clôturé : on part du mois de la plus ancienne pièce datée.
+      const dates = [
+        ...(data.documents || []).map(d => d.date),
+        ...(data.purchases || []).map(p => p.date),
+        ...(data.movements || []).map(m => m.date)
+      ].filter(Boolean).sort();
+      if (!dates.length) return [];
+      first = dates[0].slice(0, 7);
+    }
+    const out = [];
+    let m = first;
+    // 120 mois : dix ans de retard suffisent, et la boucle ne peut pas s'emballer.
+    while (m < curMonth && out.length < 120) {
+      const [y, mm] = m.split('-').map(Number);
+      out.push({ month: m, label: monthLabel(m + '-01'), from: `${m}-01`, to: `${m}-${pad2(daysInMonth(y, mm))}` });
+      m = addMonths(m + '-01', 1, 1).slice(0, 7);
+    }
+    return out;
+  }
+
+  // Ce qu'il vaut mieux régler AVANT de clôturer. On n'interdit rien : on montre, et l'utilisateur
+  // décide. Un cabinet préfère un mois clôturé avec deux justificatifs manquants signalés qu'un mois
+  // jamais clôturé parce que l'app faisait la difficile.
+  function closureChecks(data, company, from, to) {
+    const out = [];
+    const inRange = d => d && d >= from && d <= to;
+    const add = (id, level, label, detail, count) => { if (count) out.push({ id, level, label, detail, count }); };
+
+    const drafts = (data.documents || []).filter(d => d.type === 'facture' && d.status === 'brouillon' && inRange(d.date));
+    add('brouillons', 'danger', `${drafts.length} facture(s) en brouillon dans la période`,
+      'Un brouillon n\'a pas de numéro et n\'entre dans aucun journal. Émets-le ou change sa date avant de clôturer, sinon il restera invisible pour ton comptable.', drafts.length);
+
+    const noProof = (data.purchases || []).filter(p => inRange(p.date) && !(p.attachments || []).length);
+    add('justificatifs', 'warn', `${noProof.length} achat(s) sans justificatif`,
+      'Sans la pièce jointe, ton comptable ne peut pas récupérer la TVA de ces achats.', noProof.length);
+
+    const unticked = cashMovements(data, company).filter(m => inRange(m.date) && !m.reconciled);
+    add('pointage', 'warn', `${unticked.length} mouvement(s) non pointé(s)`,
+      'Pointer les mouvements contre le relevé bancaire, c\'est ce qui prouve que la trésorerie est juste.', unticked.length);
+
+    // Bulletins manquants : un salarié actif sans bulletin sur un mois travaillé
+    const months = [];
+    let m = from.slice(0, 7);
+    while (m <= to.slice(0, 7) && months.length < 24) { months.push(m); m = addMonths(m + '-01', 1, 1).slice(0, 7); }
+    const slipsMissing = months.reduce((s, mm) =>
+      s + missingPayslips(data, Number(mm.slice(0, 4)), Number(mm.slice(5, 7))).length, 0);
+    add('bulletins', 'danger', `${slipsMissing} bulletin(s) de paie à établir`,
+      'Un salarié payé sans bulletin, c\'est une charge qui manque au résultat et une déclaration sociale fausse.', slipsMissing);
+
+    const negative = stockList(data).filter(s => s.qty < 0);
+    add('stock', 'warn', `${negative.length} article(s) en stock négatif`,
+      'Un stock négatif est une pièce d\'achat manquante, pas une erreur de comptage.', negative.length);
+
+    const gaps = serialGaps(data);
+    add('series', 'warn', `${gaps.length} écart(s) entre quantités et numéros de série`,
+      'Les deux comptes devraient dire la même chose.', gaps.length);
+
+    return out;
+  }
+
+  // Clôturer. Renvoie { ok } ou { error } — on ne clôture pas dans le futur, ni en arrière (ça, c'est
+  // rouvrir, et ça porte un autre nom pour que ce soit un geste conscient).
+  function closePeriod(data, iso, opts) {
+    opts = opts || {};
+    const t = opts.todayIso || today();
+    const day = String(iso || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return { error: 'Date de clôture invalide.' };
+    if (day > t) return { error: 'On ne clôture pas une période qui n\'est pas terminée.' };
+    const c = closedUntil(data);
+    if (c && day <= c) return { error: `Déjà clôturé jusqu'au ${fmtDate(c)}. Pour revenir en arrière, il faut rouvrir.` };
+    data.closedUntil = day;
+    if (!Array.isArray(data.closureLog)) data.closureLog = [];
+    data.closureLog.push({ id: uid(), action: 'cloture', until: day, previous: c || '', at: opts.at || null, by: opts.by || '', reason: opts.reason || '' });
+    return { ok: true, until: day };
+  }
+
+  // Rouvrir jusqu'à une date antérieure (ou tout rouvrir avec ''). Toujours tracé, toujours motivé :
+  // c'est cette ligne que le comptable lira le jour où un chiffre a bougé après son envoi.
+  function reopenPeriod(data, iso, opts) {
+    opts = opts || {};
+    const c = closedUntil(data);
+    if (!c) return { error: 'Aucune période n\'est clôturée.' };
+    const day = iso ? String(iso).slice(0, 10) : '';
+    if (day && !/^\d{4}-\d{2}-\d{2}$/.test(day)) return { error: 'Date de réouverture invalide.' };
+    if (day && day >= c) return { error: 'La réouverture doit porter sur une date antérieure à la clôture actuelle.' };
+    if (!opts.reason) return { error: 'Une réouverture demande un motif : c\'est lui qui explique au comptable pourquoi un chiffre a changé.' };
+    data.closedUntil = day;
+    if (!Array.isArray(data.closureLog)) data.closureLog = [];
+    data.closureLog.push({ id: uid(), action: 'reouverture', until: day, previous: c, at: opts.at || null, by: opts.by || '', reason: opts.reason });
+    return { ok: true, until: day };
+  }
+
+  function closureLog(data) {
+    return (Array.isArray(data.closureLog) ? data.closureLog : []).slice().reverse();
+  }
+
   // ---------- conversions entre documents (2.6.0) ----------
   // Ce qu'une pièce peut devenir. Le résultat est toujours un brouillon : rien n'est émis sans relecture.
   // Le chemin complet d'une vente de marchandise : devis → bon de commande → bon de livraison → facture.
@@ -2923,6 +3057,22 @@
       detail: `Il manque : ${missing.join(', ')}. Ces informations s'impriment sur chaque document.`,
       count: missing.length, route: '#/parametres', docs: []
     });
+
+    // Clôture : un mois terminé depuis plus de dix jours et jamais clôturé, c'est un mois qui peut
+    // encore bouger sans que personne ne le voie. Dix jours, parce qu'avant ça il manque toujours
+    // une facture d'achat qui arrive par la poste.
+    const toClose = closableMonths(data, t).filter(m => daysBetween(m.to, t) >= 10);
+    if (toClose.length) {
+      const last = toClose[toClose.length - 1];
+      out.push({
+        id: 'cloture', level: toClose.length > 2 ? 'warn' : 'info',
+        label: toClose.length === 1 ? `${last.label} est à clôturer` : `${toClose.length} mois à clôturer`,
+        detail: toClose.length === 1
+          ? 'Le mois est terminé et tout devrait être saisi. Clôturer, c\'est promettre à ton comptable que ce mois ne bougera plus.'
+          : `De ${toClose[0].label} à ${last.label}. Tant qu\'un mois n\'est pas clôturé, une saisie d\'aujourd\'hui peut en changer la TVA sans que personne ne le voie.`,
+        count: toClose.length, route: '#/compta', docs: []
+      });
+    }
 
     const due = dueRecurrences(data, t);
     if (due.length) out.push({
@@ -3780,6 +3930,7 @@
     VAT_RATES, WITHHOLDING_RATES, PAYMENT_METHODS, PREFIX, TITLES, DEFAULT_DATA, DEFAULT_COMPANY, ACTIVITIES, STATUSES, DISPLAY_STATUSES, STATUS_LABELS,
     pageInfo, compareValues, LINE_UNITS, usedUnits, parseDateInput, fmtDateInput, monthMatrix,
     uid, round3, money, fmtDate, addDays, daysInMonth, today, escapeHtml, nl2br, statusLabel,
+    CLOSURE_ACTIONS, closedUntil, isClosedDate, closedPeriodLabel, closableMonths, closureChecks, closePeriod, reopenPeriod, closureLog,
     nextNumber, isLocked, isIssued, computeTotals, creditsFor, invoiceBalance, effectiveStatus,
     depositLines, settlementLines, salesJournal, vatSummary, paymentsJournal, toCsv, migrateData,
     PERIODS, MONTHS_FR, MONTHS_SHORT, monthLabel, addMonths, nextRecurrenceDate, dueRecurrences, catchUpRecurrence, fillTemplate, buildRecurringInvoice,

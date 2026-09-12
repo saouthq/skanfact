@@ -7,6 +7,29 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 6.0.0 — 12/09/2026
+
+**Clôturer un mois : lui promettre qu'il ne bougera plus.**
+
+Voici ce qui se passait sans ça. Tu déclares la TVA de mars. Trois semaines plus tard, tu retrouves une facture d'achat de mars au fond d'un tiroir et tu la saisis à sa vraie date. La TVA de mars vient de changer. Ton comptable a déclaré l'ancien chiffre, personne ne le sait, et vous le découvrirez peut-être des années plus tard, pendant un contrôle.
+
+Nouvel onglet **Comptabilité → Clôtures**.
+
+- **Clôturer un mois le fige.** Après ça, aucune pièce datée de ce mois ne peut plus être créée, modifiée ou supprimée : ni facture, ni devis, ni achat, ni paiement client ou fournisseur, ni mouvement de trésorerie, ni bulletin de paie, ni congé, ni avance, ni mouvement de stock, ni immobilisation, ni cession. Déplacer une pièce *hors* d'un mois clos est refusé aussi — sinon il suffirait de changer une date pour contourner la clôture.
+- **Avant de clôturer, l'application montre ce qui mérite d'être réglé** : une facture restée en brouillon, un achat sans justificatif, un mouvement non pointé, un bulletin manquant, un stock négatif, un écart de numéros de série. **Rien de tout cela ne bloque** : ces points sont là pour que tu les voies. Un mois clôturé avec deux manques signalés vaut mieux qu'un mois jamais clôturé.
+- **Rouvrir reste possible**, avec un motif obligatoire, et c'est inscrit dans un journal qui garde qui, quand et pourquoi. C'est la ligne qu'on relit le jour où un chiffre a bougé après un envoi.
+- **« À faire » réclame les mois terminés depuis dix jours** et jamais clôturés — dix jours, parce qu'avant ça il manque toujours une facture d'achat qui arrive par la poste.
+- Les contrats récurrents **sautent** les échéances tombées dans un mois clos plutôt que d'y créer une facture, et le disent.
+- Charger la démonstration, importer un fichier ou tout effacer **prévient** quand des périodes sont clôturées : ce que ton comptable a reçu ne correspondra plus.
+- Nouvel article d'aide « Clôturer un mois ».
+
+**Deux fautes trouvées en chemin, corrigées :**
+
+- **Émettre une facture consommait le numéro avant d'enregistrer.** Si l'enregistrement échouait ensuite, le numéro était perdu et la série trouée. Le contrôle passe désormais avant.
+- **Exporter en PDF un brouillon ignorait l'échec de l'enregistrement** et exportait un document qui n'avait pas été écrit.
+
+*Données : `closedUntil` et `closureLog`. Rien à convertir — un dossier existant n'a simplement rien de clôturé, et tu clôtures quand tu veux.*
+
 ## 5.2.3 — 12/09/2026
 
 **Le gel au chargement de la démo est corrigé — et il cachait un défaut plus ancien sur toutes les dates.**

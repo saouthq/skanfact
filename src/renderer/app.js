@@ -143,6 +143,49 @@
     }
   }
 
+  // Remplacer toutes les données efface aussi les périodes clôturées. On ne l'interdit pas — c'est un
+  // geste volontaire — mais on prévient : le dossier que le comptable a reçu ne correspondra plus.
+  async function closedWipeOk(what) {
+    const c = C.closedUntil(data);
+    if (!c) return true;
+    return await confirmDialog(`${what}\n\nTes données sont clôturées jusqu'au ${C.fmtDate(c)}. Ce que ton comptable a déjà reçu ne correspondra plus à ce que contient l'application. Une sauvegarde de l'état actuel est prise avant.`, 'Continuer quand même');
+  }
+
+  // ---------- garde-fou de clôture (6.0.0) ----------
+  // Une seule porte pour toute l'application. On lui donne la ou les dates concernées ; si l'une
+  // d'elles tombe dans une période clôturée, elle explique et refuse. Deux dates quand on MODIFIE
+  // une pièce : l'ancienne et la nouvelle — sortir une facture d'un mois clos est aussi interdit
+  // que d'y en entrer une, sinon il suffirait de changer la date pour contourner la clôture.
+  function closedBlock(dates, what) {
+    const list = (Array.isArray(dates) ? dates : [dates]).filter(Boolean);
+    const hit = list.find(d => C.isClosedDate(data, d));
+    if (!hit) return false;
+    const until = C.closedUntil(data);
+    modal(`<h2>Période clôturée</h2>
+      <p>${h(what)} porte la date du <strong>${C.fmtDate(hit)}</strong>, dans <strong>${h(C.closedPeriodLabel(data, hit))}</strong> — une période clôturée jusqu'au ${C.fmtDate(until)}.</p>
+      <p class="small">Ce qui est clôturé a été transmis à ton comptable et ne doit plus bouger. Deux façons d'avancer :</p>
+      <ul class="small">
+        <li><strong>Sans toucher au passé</strong> — refais la pièce à la date d'aujourd'hui. Pour corriger une facture déjà émise, c'est un avoir.</li>
+        <li><strong>En rouvrant la période</strong> — Comptabilité → Clôtures, avec un motif. Préviens ton comptable : les chiffres qu'il a reçus vont changer.</li>
+      </ul>
+      <div class="modal-actions"><button class="btn" data-close>Compris</button><button class="btn btn-primary" id="go-clot">Aller aux clôtures</button></div>`,
+      (root, close) => { $('#go-clot', root).onclick = () => { close(); comptaState.tab = 'clotures'; navigate('#/compta'); }; });
+    return true;
+  }
+
+  // Version courte pour les cas où un simple message suffit (une action de liste, pas un formulaire).
+  function closedToast(dates, what) {
+    const list = (Array.isArray(dates) ? dates : [dates]).filter(Boolean);
+    const hit = list.find(d => C.isClosedDate(data, d));
+    if (!hit) return false;
+    toast(`${what} : ${C.closedPeriodLabel(data, hit)} est clôturé. Rouvre la période depuis Comptabilité → Clôtures.`, true);
+    return true;
+  }
+
+  // Le nom du poste, tel que le stockage l'estampille à chaque écriture (3.2.0). Il sert à dire QUI
+  // a clôturé ou rouvert une période : sur un dossier partagé, c'est la première question posée.
+  function deviceLabel() { return (data && data.syncDeviceName) || 'cet ordinateur'; }
+
   // Mémoire des suppressions : sans elle, une pièce supprimée ici reviendrait à la fusion suivante,
   // renvoyée par le poste qui ne l'a pas encore vue disparaître.
   function forget(kind, id, label) { C.trackDeletion(data, kind, id, label); }
@@ -1398,15 +1441,21 @@
         </div>`;
       $$('[data-rmpay]', el).forEach(btn => btn.onclick = async () => {
         if (!await confirmDialog('Supprimer ce paiement ?')) return;
+        const gone = (s.payments || []).find(p => p.id === btn.dataset.rmpay);
+        if (gone && closedToast(gone.date, 'Ce paiement ne peut pas être supprimé')) return;
         s.payments = s.payments.filter(p => p.id !== btn.dataset.rmpay); save(true); render();
       });
       if ($('#pay2')) $('#pay2').onclick = () => paymentForm(s, () => render());
       if ($('#rs-cert')) $('#rs-cert').onchange = e => { s.withholdingCertificate = e.target.checked; save(true); };
       if ($('#cancel-inv')) $('#cancel-inv').onclick = async () => {
         if (!await confirmDialog(`Marquer ${s.number} comme annulée ? La facture reste dans la numérotation. La façon conforme de corriger une facture émise est d'établir un avoir.`, 'Marquer annulée')) return;
+        if (closedBlock(s.date, 'Cette facture')) return;
         s.status = 'annulée'; save(true); render();
       };
-      if ($('#uncancel')) $('#uncancel').onclick = () => { s.status = 'envoyée'; save(true); render(); };
+      if ($('#uncancel')) $('#uncancel').onclick = () => {
+        if (closedBlock(s.date, 'Cette facture')) return;
+        s.status = 'envoyée'; save(true); render();
+      };
     }
 
     // --- actions
@@ -1435,6 +1484,10 @@
     }
     function persist() {
       if (!validate()) return false;
+      // L'ancienne date compte autant que la nouvelle : déplacer une pièce hors d'un mois clos
+      // contournerait la clôture aussi sûrement que d'en créer une dedans.
+      const was = (data.documents.find(d => d.id === doc.id) || {}).date;
+      if (closedBlock([was, doc.date], 'Ce document')) return false;
       if ((isQ || isExtra) && !doc.number) doc.number = C.nextNumber(data, doc.type, doc.date);
       if (isAv && doc.creditOf) { const inv = docById(doc.creditOf); if (inv) doc.creditOfNumber = inv.number; }
       const idx = data.documents.findIndex(d => d.id === doc.id);
@@ -1446,6 +1499,9 @@
     }
     function issue() {
       if (!validate()) return false;
+      // Avant `nextNumber` : le compteur est écrit même quand l'enregistrement échoue ensuite. Un
+      // garde-fou posé après aurait troué la numérotation à chaque tentative refusée.
+      if (closedBlock(doc.date, 'Cette pièce')) return false;
       if (!doc.number) doc.number = C.nextNumber(data, doc.type, doc.date);
       doc.status = isInv ? 'envoyée' : 'émis';
       unlockedIds.delete(doc.id);
@@ -1473,7 +1529,7 @@
         const c = await choiceDialog('Exporter en PDF', `Ce document est un brouillon. Tu peux l'émettre maintenant (numéro ${n}, définitif) ou exporter un brouillon marqué « Brouillon », sans numéro.`, `Émettre ${n} et exporter`, 'Exporter le brouillon');
         if (!c) return;
         if (c === 'a') { if (!issue()) return; }
-        else persist();
+        else if (!persist()) return;   // sans ce refus, on exportait un document qui n'a pas été écrit
         exportPdf(docById(doc.id));
         if (isNew) navigate('#/doc/' + doc.id); else render();
         return;
@@ -1482,6 +1538,7 @@
     };
     if ($('#del')) $('#del').onclick = async () => {
       if (!await confirmDialog(`Supprimer ${docLabel(doc)} ?${doc.number ? ' Le numéro ne sera pas réutilisé.' : ''}`)) return;
+      if (closedBlock(doc.date, 'Ce document')) return;
       forget('documents', doc.id, docLabel(doc));
       data.documents = data.documents.filter(d => d.id !== doc.id); save(true); navigate(backTo);
     };
@@ -1633,6 +1690,7 @@
         if (!v.date) return toast('Date obligatoire.', true);
         if (v.date > C.today() && !await confirmDialog(`La date du paiement (${C.fmtDate(v.date)}) est dans le futur. Un paiement s'enregistre quand l'argent est reçu, pas quand il est promis. Enregistrer quand même ?`, 'Enregistrer quand même')) return;
         if (Number(v.amount) > b.remaining + 0.0005 && !await confirmDialog(`Le montant (${C.money(v.amount, cur)}) dépasse le reste à payer (${C.money(Math.max(0, b.remaining), cur)}). La facture apparaîtra avec un trop-perçu. Enregistrer quand même ?`, 'Enregistrer quand même')) return;
+        if (closedBlock(v.date, 'Ce paiement')) return;
         inv.payments = inv.payments || [];
         inv.payments.push({ id: C.uid(), date: v.date, amount: C.round3(v.amount), method: v.method, reference: v.reference || '', note: v.note || '' });
         save(true); close();
@@ -2318,16 +2376,24 @@
   }
   // Génère les brouillons de factures dus (une par période manquée, 12 max) ; renvoie le nombre créé.
   function generateRecurring(recs, force) {
-    let n = 0;
+    let n = 0, skipped = 0;
     (recs || C.dueRecurrences(data)).forEach(rec => {
       let guard = 0;
       do {
+        // Une échéance tombée dans un mois déjà clôturé ne crée rien : on la passe, et on le dit.
+        // Générer là-dedans ferait apparaître une facture dans un dossier déjà remis au comptable.
+        if (C.isClosedDate(data, rec.nextDate)) {
+          skipped++;
+          rec.lastIssued = rec.nextDate; rec.nextDate = C.nextRecurrenceDate(rec.nextDate, rec.every, rec.day);
+          continue;
+        }
         const inv = { ...C.buildRecurringInvoice(rec, rec.nextDate, company()), id: C.uid(), createdAt: Date.now() };
         data.documents.push(inv); n++;
         rec.lastIssued = rec.nextDate; rec.nextDate = C.nextRecurrenceDate(rec.nextDate, rec.every, rec.day);
       } while (!force && rec.active !== false && rec.nextDate <= C.today() && ++guard < 12);
     });
-    if (n) save(true);
+    if (n || skipped) save(true);
+    if (skipped) toast(`${skipped} échéance(s) passée(s) : leur mois est clôturé. Rouvre la période si ces factures doivent exister.`, true);
     return n;
   }
   // ---------- fiche d'un contrat ----------
@@ -2783,7 +2849,7 @@
     pays: { sort: null, page: 1 },         // encaissements
     buys: { sort: null, page: 1 }          // journal des achats
   };
-  const COMPTA_TABS = [['ventes', 'Ventes'], ['achats', 'Achats'], ['tva', 'TVA à payer'], ['calendrier', 'Calendrier fiscal']];
+  const COMPTA_TABS = [['ventes', 'Ventes'], ['achats', 'Achats'], ['tva', 'TVA à payer'], ['calendrier', 'Calendrier fiscal'], ['clotures', 'Clôtures']];
 
   // ---------- Fournisseurs ----------
   const supplierById = id => data.suppliers.find(s => s.id === id);
@@ -3114,6 +3180,7 @@
         if (!v.date) return toast('Date invalide.', true);
         if (v.date > C.today() && !await confirmDialog(`La date (${C.fmtDate(v.date)}) est dans le futur. Enregistrer quand même ?`, 'Enregistrer')) return;
         if (Number(v.amount) > b.remaining + 0.0005 && !await confirmDialog(`Le montant (${C.money(v.amount, cur)}) dépasse le reste dû (${C.money(Math.max(0, b.remaining), cur)}). Enregistrer quand même ?`, 'Enregistrer quand même')) return;
+        if (closedBlock(v.date, 'Ce règlement')) return;
         const stored = purchaseById(p.id) || p;
         stored.payments = (stored.payments || []).concat([{ id: C.uid(), date: v.date, amount: C.round3(v.amount), method: v.method, reference: v.reference || '', note: v.note || '' }]);
         save(true); close(); toast('Règlement enregistré'); if (done) done();
@@ -3380,6 +3447,8 @@
         </div>`;
       $$('[data-rmpay]', el).forEach(btn => btn.onclick = async () => {
         if (!await confirmDialog('Supprimer ce règlement ?')) return;
+        const gone2 = (s2.payments || []).find(x => x.id === btn.dataset.rmpay);
+        if (gone2 && closedToast(gone2.date, 'Ce règlement ne peut pas être supprimé')) return;
         s2.payments = s2.payments.filter(x => x.id !== btn.dataset.rmpay); save(true); render();
       });
       if ($('#pay2')) $('#pay2').onclick = () => supplierPaymentForm(s2, () => render());
@@ -3424,6 +3493,8 @@
     }
     function persist() {
       if (!validate()) return false;
+      const wasDate = (data.purchases.find(x => x.id === p.id) || {}).date;
+      if (closedBlock([wasDate, p.date], 'Cet achat')) return false;
       const idx = data.purchases.findIndex(x => x.id === p.id);
       const clean = deepCopy(p);
       if (idx >= 0) data.purchases[idx] = clean; else data.purchases.push(clean);
@@ -3442,6 +3513,7 @@
     if ($('#dup')) $('#dup').onclick = () => { untouch(); duplicatePurchase(purchaseById(p.id)); };
     if ($('#del')) $('#del').onclick = async () => {
       if (!await confirmDialog(`Supprimer ${p.number || 'cette pièce'} ? Les règlements enregistrés seront perdus.`)) return;
+      if (closedBlock(p.date, 'Cet achat')) return;
       forget('purchases', p.id, p.number || '');
       data.purchases = data.purchases.filter(x => x.id !== p.id); save(true); untouch(); navigate('#/achats');
     };
@@ -3901,12 +3973,14 @@
         $('#ok', root).onclick = () => {
           const v = formValues($('#bf', root));
           const i = input();
+          if (closedBlock(C.payslipDate(p), 'Ce bulletin')) return;
           Object.assign(p, v, i, { gross: i.gross, computed: C.computePayslip(emp, i, s), issuedAt: p.issuedAt || C.today() });
           if (!slip) data.payslips.push(p);
           save(true); close(); if (done) done(p);
         };
         if ($('#del-slip', root)) $('#del-slip', root).onclick = async () => {
           if (!await confirmDialog('Supprimer ce bulletin ? S\'il a déjà été remis au salarié, mieux vaut le corriger que le faire disparaître.')) return;
+          if (closedBlock(C.payslipDate(p), 'Ce bulletin')) return;
           forget('payslips', p.id, `${emp.name} ${p.month}/${p.year}`);
           data.payslips = data.payslips.filter(x => x.id !== p.id);
           save(true); close(); if (done) done(null);
@@ -3969,12 +4043,14 @@
           if (!v.employeeId) return toast('Choisis le salarié.', true);
           if (!v.from || !v.to) return toast('Dates invalides.', true);
           if (v.to < v.from) return toast('La fin ne peut pas précéder le début.', true);
+          if (closedBlock([l.from, l.to, v.from, v.to], 'Cette absence')) return;
           Object.assign(l, v, { paid: v.paid === '' ? null : v.paid === '1' });
           if (!leave) data.leaves.push(l);
           save(true); close(); if (done) done();
         };
         if ($('#del-lv', root)) $('#del-lv', root).onclick = async () => {
           if (!await confirmDialog('Supprimer cette absence ? Les bulletins déjà établis ne changeront pas.')) return;
+          if (closedBlock([l.from, l.to], 'Cette absence')) return;
           forget('leaves', l.id, C.leaveKindLabel(l.kind));
           data.leaves = data.leaves.filter(x => x.id !== l.id);
           save(true); close(); if (done) done();
@@ -4021,6 +4097,7 @@
           if (!v.employeeId) return toast('Choisis le salarié.', true);
           if (!(Number(v.amount) > 0)) return toast('Le montant doit être supérieur à zéro.', true);
           if (!(Number(v.monthly) > 0)) return toast('Indique la retenue mensuelle.', true);
+          if (closedBlock([a.date, v.date], 'Cette avance')) return;
           Object.assign(a, v, { amount: Number(v.amount), monthly: Number(v.monthly) });
           if (!advance) data.advances.push(a);
           save(true); close(); if (done) done();
@@ -4028,6 +4105,7 @@
         if ($('#del-av', root)) $('#del-av', root).onclick = async () => {
           const r = C.advancesOf(data, a.employeeId).find(x => x.id === a.id);
           if (!await confirmDialog(`Supprimer cette avance ?${r && r.repaid ? ` ${C.money(r.repaid, cur)} ont déjà été retenus sur des bulletins : ces retenues resteront sur les bulletins concernés.` : ''}`)) return;
+          if (closedBlock(a.date, 'Cette avance')) return;
           forget('advances', a.id, C.money(a.amount, cur));
           data.advances = data.advances.filter(x => x.id !== a.id);
           save(true); close(); if (done) done();
@@ -4174,6 +4252,7 @@
       if ($('#p-gen')) $('#p-gen').onclick = async () => {
         if (!await confirmDialog(`Établir ${missing.length} bulletin(s) pour ${MONTHS_LONG[m - 1]} ${s.year} ?\n\nLe brut vient de chaque fiche, les absences non payées et les échéances d'avance sont reprises automatiquement. Tu pourras encore ajouter les primes, bulletin par bulletin. Rien n'est payé : c'est toi qui marques chaque bulletin comme réglé.`, 'Établir', false)) return;
         const st = C.payrollSettings(data);
+        if (closedBlock(C.payslipDate({ year: y, month: m }), 'Ces bulletins')) return;
         missing.forEach(e => {
           // Les absences non payées du mois et les échéances d'avance arrivent toutes seules (5.1.0).
           const input = C.payslipInputFor(data, e, y, m);
@@ -4715,6 +4794,7 @@
           if (!v.itemId) return toast('Choisis un article.', true);
           if (!Number(v.qty)) return toast('La quantité ne peut pas être zéro.', true);
           if (!v.date) return toast('Date invalide.', true);
+          if (closedBlock(v.date, 'Ce mouvement de stock')) return;
           data.stockAdjustments.push({ ...a, ...v, qty: Number(v.qty), unitCost: v.unitCost === '' ? '' : Number(v.unitCost) });
           save(true); close(); if (done) done();
         };
@@ -4847,6 +4927,7 @@
       $('#inv-clear').onclick = () => { s.counts = {}; drawInventory(); };
       $('#inv-apply').onclick = async () => {
         if (!await confirmDialog(`Enregistrer ${gaps.length} mouvement(s) d'inventaire au ${C.fmtDate(s.countDate)} ? Le stock théorique sera aligné sur ce que tu as compté. Cette opération est tracée dans les mouvements et se corrige comme n'importe quel ajustement.`, 'Enregistrer')) return;
+        if (closedBlock(s.countDate, 'Cet inventaire')) return;
         gaps.forEach(r => data.stockAdjustments.push({ id: C.uid(), date: s.countDate, itemId: r.itemId, qty: r.gap,
           unitCost: '', source: 'inventaire', reference: '', note: `Inventaire du ${C.fmtDate(s.countDate)}` }));
         s.counts = {}; save(true); toast(`${gaps.length} écart(s) enregistré(s)`); draw();
@@ -4986,6 +5067,8 @@
     $('#adj-item').onclick = () => adjustForm(item.id, () => render());
     $$('[data-rm]').forEach(b => b.onclick = async () => {
       if (!await confirmDialog('Supprimer ce mouvement saisi à la main ?')) return;
+      const gone3 = (data.stockAdjustments || []).find(x => x.id === b.dataset.rm);
+      if (gone3 && closedBlock(gone3.date, 'Ce mouvement de stock')) return;
       forget('stockAdjustments', b.dataset.rm, item.label);
       data.stockAdjustments = data.stockAdjustments.filter(x => x.id !== b.dataset.rm);
       save(true); render();
@@ -5328,12 +5411,14 @@
           if (!(Number(v.years) > 0)) return toast('La durée d\'amortissement doit être d\'au moins un an.', true);
           if (Number(v.residual) >= Number(v.amount)) return toast('La valeur résiduelle doit rester inférieure à la valeur d\'acquisition.', true);
           if (!v.date) return toast('Date de mise en service invalide.', true);
+          if (closedBlock([a.date, v.date], 'Ce bien')) return;
           Object.assign(a, v, { amount: Number(v.amount), residual: Number(v.residual) || 0, years: Number(v.years) });
           if (!asset) data.assets.push(a);
           save(true); close(); if (done) done(a);
         };
         if ($('#del-imm', root)) $('#del-imm', root).onclick = async () => {
           if (!await confirmDialog(`Supprimer « ${a.label} » ?${a.purchaseId ? ' La ligne d\'achat correspondante repassera dans « À immobiliser ».' : ''} L\'achat lui-même n\'est pas touché.`)) return;
+          if (closedBlock([a.date, a.disposal && a.disposal.date], 'Ce bien')) return;
           forget('assets', a.id, a.label);
           data.assets = data.assets.filter(x => x.id !== a.id);
           save(true); close(); navigate('#/immos');
@@ -5383,11 +5468,13 @@
           if (!v.date) return toast('Date de sortie invalide.', true);
           if (v.date < asset.date) return toast('La sortie ne peut pas précéder la mise en service.', true);
           if (v.date > C.today() && !await confirmDialog(`La date (${C.fmtDate(v.date)}) est dans le futur. Enregistrer quand même ?`, 'Enregistrer')) return;
+          if (closedBlock([asset.disposal && asset.disposal.date, v.date], 'Cette sortie')) return;
           asset.disposal = { date: v.date, amount: Number(v.amount) || 0, reason: v.reason || '' };
           save(true); close(); if (done) done(asset);
         };
         if ($('#undo-dis', root)) $('#undo-dis', root).onclick = async () => {
           if (!await confirmDialog('Remettre ce bien à l\'actif ? L\'amortissement reprendra comme s\'il n\'était jamais sorti.')) return;
+          if (closedBlock(asset.disposal && asset.disposal.date, 'Cette sortie')) return;
           delete asset.disposal; save(true); close(); if (done) done(asset);
         };
       });
@@ -5596,6 +5683,10 @@
         $('#ok', root).onclick = () => {
           const v = formValues($('#af', root));
           if (!v.name.trim()) return toast('Donne un nom à ce compte.', true);
+          // Le solde de départ et sa date sont le point zéro de toute la trésorerie : les changer
+          // après coup déplace tous les soldes, y compris ceux des mois déjà clôturés.
+          if (acc && (Number(v.opening) !== Number(acc.opening) || v.openingDate !== acc.openingDate)
+              && closedBlock([acc.openingDate, v.openingDate], 'Ce solde de départ')) return;
           Object.assign(a, v, { opening: Number(v.opening) || 0 });
           if (a.isDefault) data.accounts.forEach(x => { if (x.id !== a.id) x.isDefault = false; });
           else if (!data.accounts.some(x => x.isDefault && x.id !== a.id)) a.isDefault = true;   // il en faut toujours un
@@ -5635,12 +5726,14 @@
           if (!(Number(v.amount) > 0)) return toast('Montant invalide.', true);
           if (!v.date) return toast('Date invalide.', true);
           if (v.date > C.today() && !await confirmDialog(`La date (${C.fmtDate(v.date)}) est dans le futur. Un mouvement de trésorerie se saisit quand il a eu lieu. Enregistrer quand même ?`, 'Enregistrer')) return;
+          if (closedBlock([mv && mv.date, v.date], 'Ce mouvement')) return;
           Object.assign(m, v, { amount: Math.abs(Number(v.amount)) });
           if (!mv) data.movements.push(m);
           save(true); close(); if (done) done(m);
         };
         if ($('#del-mv', root)) $('#del-mv', root).onclick = async () => {
           if (!await confirmDialog('Supprimer ce mouvement ?')) return;
+          if (closedBlock(m.date, 'Ce mouvement')) return;
           forget('movements', m.id, m.label || '');
           data.movements = data.movements.filter(x => x.id !== m.id); save(true); close(); render();
         };
@@ -6131,10 +6224,11 @@
         `<button role="tab" data-tab="${id}" class="${id === comptaState.tab ? 'active' : ''}">${label}</button>`).join('')}</div>
       <div id="c-body"></div>`;
     const draw = () => {
-      $('#c-period').hidden = comptaState.tab === 'calendrier';
+      $('#c-period').hidden = comptaState.tab === 'calendrier' || comptaState.tab === 'clotures';
       if (comptaState.tab === 'achats') return drawBuyJournal(period(), periodLabel());
       if (comptaState.tab === 'tva') return drawVat();
       if (comptaState.tab === 'calendrier') return drawFiscal();
+      if (comptaState.tab === 'clotures') return drawClosures();
       const p = period();
       // Recherche : la Comptabilité était l'autre page de liste sans champ de recherche (audit).
       const q = comptaState.q.trim().toLowerCase();
@@ -6381,6 +6475,108 @@
     }
 
     // ---------- onglet Calendrier fiscal ----------
+    // Clôturer un mois, c'est promettre que ce mois ne bougera plus. C'est ce qui permet d'envoyer
+    // un dossier au comptable sans qu'il change dans son dos. Rouvrir reste possible — mais tracé.
+    function drawClosures() {
+      const closed = C.closedUntil(data);
+      const months = C.closableMonths(data, C.today());
+      const next = months[0] || null;
+      const checks = next ? C.closureChecks(data, company(), next.from, next.to) : [];
+      const log = C.closureLog(data);
+      const blocking = checks.filter(c => c.level === 'danger');
+
+      $('#c-body').innerHTML = `
+        <div class="panel"><h2>État ${info('clot.etat')}</h2>
+          ${closed
+            ? `<p>Tout ce qui est daté jusqu'au <strong>${C.fmtDate(closed)}</strong> est clôturé : plus aucune pièce de cette période ne peut être créée, modifiée ou supprimée.</p>`
+            : '<p>Aucune période n\'est clôturée. Tes pièces passées peuvent encore être modifiées — y compris celles que ton comptable a déjà reçues.</p>'}
+          <p class="small muted">Clôturer un mois est la promesse que ce mois ne bougera plus. C'est ce qui permet à ton comptable de travailler sur un dossier stable. Une réouverture reste possible, avec un motif, et elle est inscrite dans le journal ci-dessous.</p>
+        </div>
+
+        <div class="panel"><h2>Clôturer ${info('clot.cloturer')}</h2>
+          ${!next
+            ? `<div class="empty">${months.length === 0 && !closed ? 'Aucune pièce datée pour l\'instant.' : 'Tout est clôturé jusqu\'au mois en cours. Le mois en cours ne se clôture qu\'une fois terminé.'}</div>`
+            : `<p>Prochain mois à clôturer : <strong>${h(next.label)}</strong> <span class="muted small">(du ${C.fmtDate(next.from)} au ${C.fmtDate(next.to)})</span></p>
+               ${checks.length
+                 ? `<div class="panel sub" style="margin:12px 0">
+                      <h3 style="margin-top:0">À regarder avant de clôturer</h3>
+                      <table class="list compact"><tbody>
+                        ${checks.map(c => `<tr class="${c.level === 'danger' ? 'row-warn' : ''}"><td><strong>${h(c.label)}</strong><div class="small muted">${h(c.detail)}</div></td></tr>`).join('')}
+                      </tbody></table>
+                      <p class="small muted">Tu peux clôturer quand même : ces points sont là pour que tu les voies, pas pour t'empêcher d'avancer.</p>
+                    </div>`
+                 : '<p class="small" style="color:var(--primary)">Rien à signaler sur ce mois.</p>'}
+               <div class="inline mt">
+                 <button class="btn btn-primary" id="do-close">Clôturer ${h(next.label)}</button>
+                 ${months.length > 1 ? `<button class="btn" id="close-to">Clôturer jusqu'à un mois plus récent…</button>` : ''}
+               </div>`}
+        </div>
+
+        <div class="panel"><h2>Rouvrir ${info('clot.rouvrir')}</h2>
+          ${closed
+            ? `<p class="small">Rouvrir sert quand une pièce a été oubliée dans une période déjà clôturée. <strong>Préviens ton comptable</strong> : les chiffres qu'il a reçus vont changer. Le motif que tu écris ici est ce qu'il lira.</p>
+               <button class="btn btn-danger" id="do-reopen">Rouvrir une période…</button>`
+            : '<div class="empty">Rien n\'est clôturé, donc rien à rouvrir.</div>'}
+        </div>
+
+        <div class="panel"><h2>Journal des clôtures ${info('clot.journal')}</h2>
+          ${log.length
+            ? `<table class="list compact"><thead><tr><th>Action</th><th>Jusqu'au</th><th>Motif</th></tr></thead><tbody>
+                ${log.map(e => `<tr><td><span class="badge ${e.action === 'reouverture' ? 'b-late' : 'b-paid'}">${h(C.CLOSURE_ACTIONS[e.action] || e.action)}</span></td>
+                  <td class="nw">${e.until ? C.fmtDate(e.until) : '<span class="muted">tout rouvert</span>'}</td>
+                  <td class="small">${h(e.reason || '')}${e.previous ? `<div class="muted">auparavant : ${C.fmtDate(e.previous)}</div>` : ''}</td></tr>`).join('')}
+              </tbody></table>`
+            : '<div class="empty">Aucune clôture pour l\'instant.</div>'}
+        </div>`;
+
+      if ($('#do-close')) $('#do-close').onclick = async () => {
+        const warn = blocking.length
+          ? `\n\nPoint(s) à régler d'abord : ${blocking.map(c => c.label).join(', ')}.`
+          : '';
+        if (!await confirmDialog(`Clôturer ${next.label} ?\n\nAprès ça, aucune pièce datée du ${C.fmtDate(next.from)} au ${C.fmtDate(next.to)} ne pourra plus être créée, modifiée ou supprimée. Tu pourras rouvrir si besoin, avec un motif.${warn}`, 'Clôturer', false)) return;
+        const r = C.closePeriod(data, next.to, { at: Date.now(), by: deviceLabel() });
+        if (r.error) return toast(r.error, true);
+        save(true); toast(`${next.label} clôturé`); draw(); updateNavCounts();
+      };
+
+      if ($('#close-to')) $('#close-to').onclick = () => {
+        modal(`<h2>Clôturer jusqu'à…</h2>
+          <p class="small">Tous les mois jusqu'à celui que tu choisis seront clôturés d'un coup.</p>
+          <form id="ct" class="grid-2"><label class="field span-2">Dernier mois à clôturer
+            <select name="m">${months.map(m => `<option value="${m.to}">${h(m.label)}</option>`).join('')}</select></label></form>
+          <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Clôturer</button></div>`,
+          (root, close) => {
+            $('#ok', root).onclick = () => {
+              const to = $('select[name=m]', root).value;
+              const r = C.closePeriod(data, to, { at: Date.now(), by: deviceLabel() });
+              close();
+              if (r.error) return toast(r.error, true);
+              save(true); toast('Clôturé jusqu\'au ' + C.fmtDate(to)); draw(); updateNavCounts();
+            };
+          });
+      };
+
+      if ($('#do-reopen')) $('#do-reopen').onclick = () => {
+        const opts = C.closureLog(data).filter(e => e.action === 'cloture').map(e => e.previous).filter((v, i, a) => a.indexOf(v) === i);
+        modal(`<h2>Rouvrir une période</h2>
+          <p class="small">Les chiffres déjà envoyés à ton comptable vont changer. <strong>Préviens-le</strong>, et écris ici pourquoi : c'est ce motif qu'il lira.</p>
+          <form id="rf" class="grid-2">
+            ${dateFieldHtml('Rouvrir jusqu\'au (exclu)', 'until', opts[0] || '', { span: true })}
+            <label class="field span-2">Motif<input type="text" name="reason" placeholder="Facture d'achat retrouvée, erreur de montant…"></label>
+            <label class="check span-2"><input type="checkbox" name="all"> Tout rouvrir (plus aucune période clôturée)</label>
+          </form>
+          <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-danger" id="ok">Rouvrir</button></div>`,
+          (root, close) => {
+            $('#ok', root).onclick = () => {
+              const v = formValues($('#rf', root));
+              const r = C.reopenPeriod(data, v.all ? '' : v.until, { at: Date.now(), by: deviceLabel(), reason: (v.reason || '').trim() });
+              if (r.error) return toast(r.error, true);
+              close(); save(true); toast('Période rouverte'); draw(); updateNavCounts();
+            };
+          });
+      };
+    }
+
     function drawFiscal() {
       const rules = C.fiscalDeadlines(data);
       const up = C.upcomingFiscal(data, C.today(), 120);
@@ -6688,6 +6884,7 @@
       // Toutes les données sont remplacées : le garde-fou de la page en cours n'a plus d'objet, et
       // laisser sa question surgir ensuite revenait à demander s'il faut enregistrer ce qu'on vient
       // d'effacer sciemment.
+      if (!await closedWipeOk('Charger la démonstration remplace tout.')) return;
       clearGuard();
       data = window.SkanDemo.buildDemoData(data.company); save(true); applyTheme(); $('#brand-company').textContent = data.company.name; toast('Jeu de démonstration chargé'); navigate('#/dashboard');
     };
@@ -6703,6 +6900,7 @@
           inp.oninput = () => { ok.disabled = inp.value.trim().toUpperCase() !== 'EFFACER'; };
           ok.onclick = async () => {
             close();
+            if (!await closedWipeOk('Tout effacer.')) return;
             clearGuard();                       // les données partent : plus rien à protéger
             await bridge.createBackup('avant-effacement');
             data.clients = []; data.catalog = []; data.documents = []; data.recurring = []; data.templates = []; data.snippets = []; data.counters = {};
@@ -7007,6 +7205,7 @@
   }
   async function importAll() {
     if (!await confirmDialog('Importer un fichier remplacera toutes les données actuelles (une sauvegarde de l\'état actuel est faite avant). Continuer ?')) return;
+    if (!await closedWipeOk('Importer un fichier remplace tout.')) return;
     try {
       let r = await bridge.importData();
       if (r && r.needPassword) {

@@ -525,19 +525,23 @@ t('à faire : ce qui demande une action, par ordre d\'urgence', () => {
   const FULL = { ...CO, name: 'ACME', matricule: '1234567A', rib: '12 345' };
   const todo = core.todoList(data, FULL, T);
   const ids = todo.map(x => x.id);
-  assert.deepStrictEqual(ids, ['retards', 'contrats', 'devis-acceptes', 'devis-expires', 'devis-sans-reponse', 'attestations', 'echeances', 'brouillons']);
+  assert.deepStrictEqual(ids, ['retards', 'cloture', 'contrats', 'devis-acceptes', 'devis-expires', 'devis-sans-reponse', 'attestations', 'echeances', 'brouillons']);
+  // 'cloture' : les pièces du jeu de test remontent à des mois terminés et rien n'est clôturé (6.0.0)
+  assert.ok(todo.find(x => x.id === 'cloture').count > 0, 'des mois à clôturer');
   assert.strictEqual(todo[0].level, 'danger');
   assert.strictEqual(todo[0].count, 1);
   assert.ok(todo[0].detail.includes('72 jours'));
   assert.ok(todo[0].detail.includes('1 191,000 DT'), 'montant non formaté : ' + todo[0].detail);
   assert.ok(todo.find(x => x.id === 'attestations').detail.includes(' DT'));
-  assert.ok(todo[1].detail.includes('septembre 2026'));
+  assert.ok(todo.find(x => x.id === 'contrats').detail.includes('septembre 2026'));
   const acc = todo.find(x => x.id === 'devis-acceptes');
   assert.strictEqual(acc.count, 1); assert.strictEqual(acc.docs[0].id, 'q3'); assert.ok(acc.detail.includes('1 190,000 DT'));
   // fiche société incomplète : signalée juste après les retards, avec ce qui manque
   const todoCo = core.todoList(data, { ...FULL, matricule: '', rib: '' }, T);
-  assert.strictEqual(todoCo[1].id, 'societe');
-  assert.ok(todoCo[1].detail.includes('le matricule fiscal') && todoCo[1].detail.includes('le RIB') && !todoCo[1].detail.includes('raison sociale'));
+  const gapItem = todoCo.find(x => x.id === 'societe');
+  assert.ok(gapItem, 'fiche société signalée');
+  assert.ok(todoCo.indexOf(gapItem) <= 2, 'signalée tôt dans la liste');
+  assert.ok(gapItem.detail.includes('le matricule fiscal') && gapItem.detail.includes('le RIB') && !gapItem.detail.includes('raison sociale'));
   assert.deepStrictEqual(core.companyGaps({}), ['la raison sociale', 'le matricule fiscal', 'le RIB']);
   assert.deepStrictEqual(core.companyGaps(FULL), []);
   // une facture reportée ne remonte plus dans « à faire » mais reste dans les relances
@@ -2550,6 +2554,104 @@ t('déclarations sociales : ce qui est dû, ce qui est en retard, ce qui est dé
   // sans salarié, aucune déclaration sociale n'est réclamée
   assert.deepStrictEqual(core.socialDue(core.migrateData({}), '2026-08-01'), []);
 });
+
+// ---------- clôture de période (6.0.0) ----------
+// Sans clôture, une pièce saisie aujourd'hui change la TVA d'un mois déjà déclaré, en silence.
+// Ces tests sont purs : ils vérifient la règle, pas l'interface qui l'applique.
+t('clôture : ce qui est clôturé ne bouge plus, et rouvrir laisse une trace', () => {
+  const d = core.migrateData({});
+  assert.strictEqual(core.closedUntil(d), '', 'rien de clôturé au départ');
+  assert.strictEqual(core.isClosedDate(d, '2020-01-01'), false, 'sans clôture, aucune date n\'est close');
+
+  // clôture
+  assert.deepStrictEqual(core.closePeriod(d, '2026-08-31', { todayIso: '2026-09-12' }), { ok: true, until: '2026-08-31' });
+  assert.strictEqual(core.isClosedDate(d, '2026-08-31'), true, 'le jour de clôture est inclus');
+  assert.strictEqual(core.isClosedDate(d, '2026-08-01'), true);
+  assert.strictEqual(core.isClosedDate(d, '2026-09-01'), false, 'le lendemain est libre');
+  assert.strictEqual(core.isClosedDate(d, ''), false, 'une date vide ne se refuse pas : un brouillon se date');
+  assert.ok(core.closedPeriodLabel(d, '2026-08-15').includes('août'), 'le message nomme le mois');
+
+  // on ne clôture ni le futur, ni deux fois, ni en arrière
+  assert.ok(core.closePeriod(d, '2026-12-31', { todayIso: '2026-09-12' }).error, 'pas de clôture dans le futur');
+  assert.ok(core.closePeriod(d, '2026-07-31', { todayIso: '2026-09-12' }).error, 'pas de clôture en arrière : c\'est rouvrir');
+
+  // réouverture : le motif est obligatoire, c'est lui que le comptable lira
+  assert.ok(core.reopenPeriod(d, '2026-07-31', {}).error, 'pas de réouverture sans motif');
+  assert.ok(core.reopenPeriod(d, '2026-09-30', { reason: 'x' }).error, 'une réouverture va en arrière, pas en avant');
+  assert.deepStrictEqual(core.reopenPeriod(d, '2026-07-31', { reason: 'facture d\'achat retrouvée' }), { ok: true, until: '2026-07-31' });
+  assert.strictEqual(core.isClosedDate(d, '2026-08-15'), false, 'août est rouvert');
+  assert.strictEqual(core.isClosedDate(d, '2026-07-15'), true, 'juillet reste clos');
+
+  // tout rouvrir
+  assert.ok(core.reopenPeriod(d, '', { reason: 'reprise complète' }).ok);
+  assert.strictEqual(core.closedUntil(d), '');
+  assert.ok(core.reopenPeriod(d, '2026-01-01', { reason: 'x' }).error, 'plus rien à rouvrir');
+
+  // le journal garde tout, du plus récent au plus ancien
+  const log = core.closureLog(d);
+  assert.strictEqual(log.length, 3);
+  assert.deepStrictEqual(log.map(e => e.action), ['reouverture', 'reouverture', 'cloture']);
+  assert.strictEqual(log[0].reason, 'reprise complète');
+  assert.strictEqual(log[2].until, '2026-08-31');
+  assert.ok(core.CLOSURE_ACTIONS.cloture && core.CLOSURE_ACTIONS.reouverture);
+});
+
+t('clôture : les mois proposés s\'arrêtent au mois en cours et suivent le dernier clôturé', () => {
+  const d = core.migrateData({ documents: [{ id: 'a', type: 'facture', date: '2026-06-10', status: 'envoyée', lines: [] }] });
+  const m = core.closableMonths(d, '2026-09-12');
+  assert.deepStrictEqual(m.map(x => x.month), ['2026-06', '2026-07', '2026-08'], 'de la première pièce au mois précédent');
+  assert.strictEqual(m[0].from, '2026-06-01');
+  assert.strictEqual(m[0].to, '2026-06-30', 'le dernier jour du mois, pas le 31');
+  assert.strictEqual(m[2].to, '2026-08-31');
+
+  core.closePeriod(d, '2026-06-30', { todayIso: '2026-09-12' });
+  assert.deepStrictEqual(core.closableMonths(d, '2026-09-12').map(x => x.month), ['2026-07', '2026-08'], 'reprend après le dernier clôturé');
+
+  // février bissextile, et un dossier vide ne propose rien
+  const d2 = core.migrateData({ documents: [{ id: 'b', type: 'facture', date: '2028-02-03', status: 'envoyée', lines: [] }] });
+  assert.strictEqual(core.closableMonths(d2, '2028-03-15')[0].to, '2028-02-29');
+  assert.deepStrictEqual(core.closableMonths(core.migrateData({}), '2026-09-12'), []);
+});
+
+t('clôture : les contrôles montrent ce qui manque, sans jamais bloquer', () => {
+  const co = { name: 'T', currency: 'TND', paymentTermsDays: 30, stampFee: 1 };
+  const d = core.migrateData({
+    documents: [{ id: 'br', type: 'facture', clientId: 'c', number: '', status: 'brouillon', date: '2026-08-20', lines: [{ label: 'x', qty: 1, unitPrice: 100, vatRate: 19 }] }],
+    purchases: [{ id: 'p1', kind: 'facture', date: '2026-08-05', lines: [{ label: 'y', qty: 1, unitPrice: 50, vatRate: 19, destination: 'charge', deductible: true }], attachments: [] }]
+  });
+  const checks = core.closureChecks(d, co, '2026-08-01', '2026-08-31');
+  const ids = checks.map(c => c.id);
+  assert.ok(ids.includes('brouillons'), 'le brouillon de facture est signalé');
+  assert.ok(ids.includes('justificatifs'), 'l\'achat sans pièce jointe est signalé');
+  assert.strictEqual(checks.find(c => c.id === 'brouillons').level, 'danger');
+  assert.strictEqual(checks.find(c => c.id === 'justificatifs').level, 'warn');
+  // un contrôle n'empêche jamais de clôturer
+  assert.ok(core.closePeriod(d, '2026-08-31', { todayIso: '2026-09-12' }).ok, 'on clôture malgré les signalements');
+  // et un mois propre ne signale rien
+  assert.deepStrictEqual(core.closureChecks(core.migrateData({}), co, '2026-08-01', '2026-08-31'), []);
+});
+
+t('clôture : « À faire » réclame les mois terminés depuis dix jours', () => {
+  const co = { name: 'T', matricule: 'M', rib: 'R', currency: 'TND', paymentTermsDays: 30 };
+  const d = core.migrateData({ documents: [{ id: 'a', type: 'facture', clientId: 'c', number: 'F1', status: 'payée', date: '2026-07-10', lines: [] }] });
+  const item = () => core.todoList(d, co, '2026-09-12').find(x => x.id === 'cloture');
+  assert.ok(item(), 'juillet et août sont à clôturer');
+  assert.strictEqual(item().count, 2);
+  core.closePeriod(d, '2026-08-31', { todayIso: '2026-09-12' });
+  assert.strictEqual(item(), undefined, 'plus rien à réclamer une fois à jour');
+  // le mois qui vient de se terminer n'est pas encore réclamé : les factures d'achat arrivent en retard
+  const d2 = core.migrateData({ documents: [{ id: 'b', type: 'facture', clientId: 'c', number: 'F2', status: 'payée', date: '2026-08-10', lines: [] }] });
+  assert.strictEqual(core.todoList(d2, co, '2026-09-05').find(x => x.id === 'cloture'), undefined, 'cinq jours après : trop tôt');
+  assert.ok(core.todoList(d2, co, '2026-09-11').find(x => x.id === 'cloture'), 'dix jours après : réclamé');
+});
+
+t('clôture : elle voyage avec le dossier partagé et survit à une fusion', () => {
+  const mine = core.migrateData({ closedUntil: '2026-08-31', syncRevision: 2 });
+  const disk = core.migrateData({ closedUntil: '2026-08-31', syncRevision: 3, closureLog: [{ id: 'x', action: 'cloture', until: '2026-08-31', reason: '' }] });
+  const m = core.mergeData(mine, disk);
+  assert.strictEqual(m.data.closedUntil, '2026-08-31', 'la clôture est reprise du fichier écrit en dernier');
+});
+
 
 // ---------- dates et fuseaux horaires ----------
 // Le gel de la 5.1.0 → 5.2.2 sur le Mac de Skander : `addDays` construisait la date en heure locale
