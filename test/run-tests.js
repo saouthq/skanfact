@@ -5580,5 +5580,86 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       'le garde-fou de clôture se pose AVANT la sauvegarde, comme dans « Tout effacer »');
   });
 
+  t('le geste qui rapporte de l\'argent n\'est pas au fond d\'un menu gris', () => {
+    const app = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
+    const code = app.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+    assert.ok(code.includes('function facturerDevis'), 'le nettoyage des commentaires a mangé le code');
+
+    // Facturer un devis était la seule porte de l'application : un bouton gris au contenu invisible
+    // avant clic, sans aucun double dans la liste ni dans la palette. Le panneau « À faire » en
+    // était réduit à écrire l'itinéraire — « Ouvre le devis puis « Facturer ▾ » ». Une application
+    // qui doit décrire son propre chemin décrit surtout un bouton mal placé.
+    assert.ok(/const devisFacturable = [\s\S]{0,160}accepté[\s\S]{0,40}envoyé/.test(code),
+      'un devis que le client a accepté doit proposer « Facturer » en premier');
+    assert.ok(/btn btn-primary" id="convert">Facturer ce devis/.test(code), 'et ce bouton doit être le bouton coloré');
+    assert.ok(/data-facturer="\$\{d\.id\}"/.test(code), 'la LISTE doit aussi porter le bouton, sans avoir à ouvrir le devis');
+    assert.ok(/\$\$\('button\[data-facturer\]'\)/.test(code), 'et il doit être branché');
+    // Les deux chemins passent par la MÊME fonction : recopiés, ils divergeraient au premier
+    // changement — et c'est le geste qui crée une facture.
+    assert.ok(/\$\('#convert'\)\.onclick = \(\) => facturerDevis\(doc\)/.test(code), 'le bouton de l\'éditeur doit passer par facturerDevis');
+    assert.ok(/facturerDevis\(docById\(b\.dataset\.facturer\)\)/.test(code), 'et celui de la liste aussi');
+    assert.ok(!/invoiceFromQuote\(doc, deepCopy\(doc\.lines\)/.test(code), 'plus aucune copie du geste à la main');
+    // Et le détail de « À faire » ne décrit plus un itinéraire.
+    const core2 = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'core.js'), 'utf8');
+    assert.ok(!/Ouvre le devis puis/.test(core2), 'l\'application ne doit plus décrire son propre chemin');
+  });
+
+  t('un devis en brouillon est rappelé, et son rappel mène à la bonne liste', () => {
+    const co = { ...core.DEFAULT_COMPANY, currency: 'DT' };
+    const vieux = core.addDays('2026-09-12', -30);
+    const d = core.migrateData({
+      version: 6, company: co,
+      documents: [
+        { id: 'q1', type: 'devis', status: 'brouillon', number: 'DEV-2026-001', date: vieux, lines: [{ label: 'x', qty: 1, unitPrice: 100, vatRate: 0 }] },
+        { id: 'f1', type: 'facture', status: 'brouillon', date: vieux, lines: [{ label: 'y', qty: 1, unitPrice: 100, vatRate: 0 }] }
+      ]
+    });
+    const todo = core.todoList(d, co, '2026-09-12');
+    const dev = todo.find(x => x.id === 'devis-brouillons');
+    const fac = todo.find(x => x.id === 'brouillons');
+    // Le défaut : UNE ligne comptait les deux familles, et son unique bouton ouvrait la liste des
+    // FACTURES filtrée sur « brouillon » — où un devis ne peut pas figurer. Le rappel existait, et
+    // menait à une liste où la pièce annoncée était invisible. Un compteur et la liste qu'il annonce
+    // se calculent avec la même fonction.
+    assert.ok(dev, 'un devis en brouillon depuis un mois doit être rappelé');
+    assert.strictEqual(dev.route, '#/devis', 'et son bouton doit mener aux DEVIS');
+    assert.strictEqual(dev.count, 1);
+    assert.ok(fac, 'le brouillon de facture garde sa propre ligne');
+    assert.strictEqual(fac.route, '#/factures');
+    assert.strictEqual(fac.count, 1, 'et il ne compte que les factures');
+
+    // Le seul endroit du code qui faisait avancer le statut d'un devis était le bouton Email : un
+    // devis envoyé par WhatsApp ou remis en main propre restait brouillon à vie — ni relancé, ni
+    // compté dans le taux de transformation, ni jamais déclaré expiré — alors que son PDF, qui
+    // porte déjà son numéro, est indiscernable d'un devis envoyé.
+    const app = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
+    const code = app.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+    assert.ok(/Ce devis part chez ton client \?/.test(code), 'exporter le PDF d\'un devis brouillon doit poser la question');
+    assert.ok(/'Le marquer envoyé', 'Le garder en brouillon'/.test(code), 'et laisser le choix');
+  });
+
+  t('le bouton vert de l\'en-tête suit l\'onglet ouvert', () => {
+    const app = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
+    const code = app.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+
+    // Sur « Congés », le gros bouton vert en haut à droite disait « + Salarié » pendant que le vrai
+    // geste de l'onglet était un bouton vert plus petit dans le panneau : deux boutons verts sur
+    // l'écran, et le mauvais à la place canonique. Le Catalogue redessine son en-tête à chaque
+    // onglet depuis la 1.9.0 ; Paie et Stock ne le faisaient pas.
+    [['p-head', 'pHead', 'P_ACTION'], ['st-head', 'stHead', 'ST_ACTION']].forEach(([id, fn, table]) => {
+      assert.ok(code.includes(`const ${table} = {`), `${id} : la table des actions par onglet manque`);
+      assert.ok(new RegExp(`\\$\\('#${id}'\\)\\.innerHTML = ${fn}\\(\\); bind`).test(code),
+        `${id} : l'en-tête doit être redessiné avec le corps`);
+    });
+    // Un seul bouton vert par écran : ceux des panneaux repassent en ordinaire, sinon on en a deux.
+    ['new-lv', 'new-av', 'se-add'].forEach(b =>
+      assert.ok(!new RegExp(`btn-sm btn-primary" id="${b}"`).test(code),
+        `« ${b} » est encore un second bouton vert dans son panneau`));
+    // Et chaque bouton du nouvel en-tête est réarmé : un bouton visible et inerte est pire qu'absent.
+    ['new-emp', 'new-lv', 'new-av', 'st-adj', 'se-add'].forEach(b =>
+      assert.ok(new RegExp(`\\$\\('#${b}'\\)\\) \\$\\('#${b}'\\)\\.onclick`).test(code),
+        `« ${b} » n'est pas rebranché après le redessin de l'en-tête`));
+  });
+
   console.log(`\n${n} tests OK`);
 })().catch(e => { console.error(e); process.exit(1); });

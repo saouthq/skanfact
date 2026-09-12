@@ -1325,6 +1325,7 @@
           <button class="btn btn-sm" data-pdf="${d.id}" title="Exporter en PDF">PDF</button>
           ${d.number ? `<button class="btn btn-sm" data-mail="${d.id}" title="Envoyer par email">Email</button>` : ''}
           ${d.type === 'facture' && d.status !== 'brouillon' && d.status !== 'annulée' && (restOf(d) || 0) > 0.0005 ? `<button class="btn btn-sm" data-paye="${d.id}" title="Enregistrer un paiement">Paiement</button>` : ''}
+          ${d.type === 'devis' && d.status === 'accepté' ? `<button class="btn btn-sm" data-facturer="${d.id}" title="Créer la facture de ce devis">Facturer</button>` : ''}
           ${d.type !== 'avoir' ? `<button class="btn btn-sm btn-ghost" data-dup="${d.id}" title="Dupliquer">⧉</button>` : ''}
         </span></td></tr>`).join('')}
     </tbody><tfoot><tr>
@@ -1341,6 +1342,10 @@
     $$('button[data-mail]').forEach(b => b.onclick = () => sendByEmail(docById(b.dataset.mail)));
     $$('button[data-paye]').forEach(b => b.onclick = () => paymentForm(docById(b.dataset.paye), () => (redraw || render)()));
     $$('button[data-dup]').forEach(b => b.onclick = () => duplicateDoc(docById(b.dataset.dup)));
+    // Facturer depuis la LISTE : c'est le geste qui rapporte de l'argent, et il n'existait qu'au
+    // fond d'un menu gris, à l'intérieur du devis. Le panneau « À faire » renvoyait sur cette liste
+    // en écrivant « ouvre le devis puis Facturer ▾ » — l'itinéraire au lieu du bouton.
+    $$('button[data-facturer]').forEach(b => b.onclick = () => facturerDevis(docById(b.dataset.facturer)));
     if (redraw) bindSort(document, redraw);
     if (redraw && state) bindPager(document, state, () => redraw(), anchor);
   }
@@ -1502,12 +1507,27 @@
       ? `<label class="field">${lbl('Statut', isQ ? 'ed.statusQuote' : 'ed.statusExtra')}<select name="status">${C.STATUSES[doc.type].map(s => `<option ${s === doc.status ? 'selected' : ''}>${s}</option>`).join('')}</select></label>`
       : `<div class="field">${lbl('Statut', isInv ? 'ed.statusInvoice' : '')}<div class="status-cell">${isNew || doc.status === 'brouillon' ? `${badge('brouillon')}<span class="small muted">numéro attribué à l'émission</span> ${info('ed.draftNumber')}` : (isInv ? statusBadge(stored) : badge(doc.status))}</div></div>`;
 
-    // « Facturer ▾ » regroupe ce qu'on fait d'un devis accepté : les trois chemins de facturation
-    const facturerMenu = !isNew && isQ ? `<div class="more"><button class="btn" id="bill-btn">Facturer ▾</button><div class="more-list" id="bill-list" hidden>
-        <button id="convert">Convertir en facture ${info('ed.convert')}</button>
-        <button id="deposit">Facture d'acompte… ${info('ed.deposit')}</button>
-        ${issuedDeposits.length ? `<button id="settle">Facture de solde (${issuedDeposits.length} acompte${issuedDeposits.length > 1 ? 's' : ''} déduit${issuedDeposits.length > 1 ? 's' : ''}) ${info('ed.settle')}</button>` : ''}
-      </div></div>` : '';
+    // Facturer un devis, c'est le geste qui rapporte de l'argent — et c'était la seule porte de
+    // toute l'application : un bouton gris, au contenu invisible avant clic, sans aucun double dans
+    // la liste ni dans la palette. Le panneau « À faire » en était réduit à écrire l'itinéraire
+    // (« Ouvre le devis puis « Facturer ▾ » ») : une application qui doit décrire son propre chemin
+    // décrit surtout un bouton mal placé.
+    //
+    // Dès que le client a dit oui, « Facturer » devient le bouton coloré et convertit directement ;
+    // les deux autres chemins (acompte, solde) restent dans le ▾ accolé. « Enregistrer » redevient
+    // ordinaire : sur un devis déjà écrit, il ne se passe rien de neuf quand on l'actionne.
+    const devisFacturable = !isNew && isQ && (doc.status === 'accepté' || doc.status === 'envoyé');
+    const autresChemins = `<button id="deposit">Facture d'acompte… ${info('ed.deposit')}</button>
+        ${issuedDeposits.length ? `<button id="settle">Facture de solde (${issuedDeposits.length} acompte${issuedDeposits.length > 1 ? 's' : ''} déduit${issuedDeposits.length > 1 ? 's' : ''}) ${info('ed.settle')}</button>` : ''}`;
+    const facturerMenu = !isNew && isQ
+      ? (devisFacturable
+        ? `<button class="btn btn-primary" id="convert">Facturer ce devis ${info('ed.convert')}</button>
+           <div class="more"><button class="btn" id="bill-btn" aria-label="Autres façons de facturer">▾</button>
+             <div class="more-list" id="bill-list" hidden>${autresChemins}</div></div>`
+        : `<div class="more"><button class="btn" id="bill-btn">Facturer ▾</button><div class="more-list" id="bill-list" hidden>
+             <button id="convert">Convertir en facture ${info('ed.convert')}</button>${autresChemins}
+           </div></div>`)
+      : '';
 
     // « Transformer ▾ » : les pièces qu'on peut tirer de celle-ci. Chacune arrive en brouillon.
     const convertibles = isNew ? [] : (C.CONVERSIONS[doc.type] || []).filter(t => t !== 'facture' || !isQ);
@@ -1528,7 +1548,7 @@
           <button class="btn" id="pdf">PDF</button>
           ${locked && isInv && doc.status !== 'annulée' ? `<button class="btn btn-primary" id="pay">Enregistrer un paiement</button>` : ''}
           ${facturerMenu}${transformMenu}
-          ${!locked ? `<button class="btn ${isQ || isExtra ? 'btn-primary' : ''}" id="save">Enregistrer${isQ || isExtra ? '' : ' le brouillon'}</button>` : ''}
+          ${!locked ? `<button class="btn ${(isQ || isExtra) && !devisFacturable ? 'btn-primary' : ''}" id="save">Enregistrer${isQ || isExtra ? '' : ' le brouillon'}</button>` : ''}
           ${!locked && (isInv || isAv) ? `<button class="btn btn-primary" id="issue">${isInv ? 'Émettre la facture' : 'Émettre l\'avoir'}</button> ${info('ed.issue')}` : ''}
           ${!isNew && (!isAv || !locked) ? `<div class="more"><button class="btn" id="more-btn" aria-label="Autres actions">Plus ▾</button><div class="more-list" id="more-list" hidden>
             ${!isAv ? `<button id="dup">Dupliquer</button><button id="as-template">Enregistrer comme modèle…</button>` : ''}
@@ -1992,7 +2012,23 @@
         if (isNew) navigate('#/doc/' + doc.id); else render();
         return;
       }
-      if (persist()) { exportPdf(docById(doc.id)); if (isNew) navigate('#/doc/' + doc.id); }
+      if (!persist()) return;
+      exportPdf(docById(doc.id));
+      // Le seul moment où l'application SAIT qu'un devis part. Un devis reste « brouillon » tant
+      // qu'on ne l'envoie pas par le bouton Email — le seul endroit du code qui fasse avancer son
+      // statut. Envoyé par WhatsApp, imprimé, remis en main propre, il reste brouillon à vie : ni
+      // relancé, ni compté dans le taux de transformation, ni jamais déclaré expiré. Et son PDF est
+      // indiscernable d'un devis envoyé, puisqu'il porte déjà son numéro.
+      if (isQ && doc.status === 'brouillon') {
+        const c = await choiceDialog('Ce devis part chez ton client ?',
+          'Tant qu\'il est en brouillon, SkanFact ne le relance pas, ne le compte pas dans tes statistiques et ne le déclare jamais expiré.',
+          'Le marquer envoyé', 'Le garder en brouillon');
+        if (c === 'a') {
+          const st = docById(doc.id);
+          if (st) { st.status = 'envoyé'; doc.status = 'envoyé'; save(true); toast(`${st.number} marqué envoyé`); }
+        }
+      }
+      if (isNew) navigate('#/doc/' + doc.id); else render();
     };
     if ($('#del')) $('#del').onclick = async () => {
       if (!await confirmDialog(`Supprimer ${docLabel(doc)} ?${doc.number ? ' Le numéro ne sera pas réutilisé.' : ''}`)) return;
@@ -2005,11 +2041,7 @@
       unlockedIds.add(doc.id); render();
     };
     if ($('#dup')) $('#dup').onclick = () => { untouch(); duplicateDoc(doc); };
-    if ($('#convert')) $('#convert').onclick = () => {
-      const inv = invoiceFromQuote(doc, deepCopy(doc.lines), doc.discountRate);
-      inv.fromQuoteId = doc.id; inv.fromQuoteNumber = doc.number;
-      acceptQuote(doc.id); data.documents.push(inv); save(true); toast('Brouillon de facture créé — clique sur « Émettre » quand elle est prête'); navigate('#/doc/' + inv.id);
-    };
+    if ($('#convert')) $('#convert').onclick = () => facturerDevis(doc);
     if ($('#deposit')) $('#deposit').onclick = () => {
       modal(`<h2>Facture d'acompte</h2><p class="small muted">Une facture d'un pourcentage du devis ${h(doc.number)} (${C.money(C.computeTotals(doc, company()).totalTTC, cur)} TTC). La facture de solde déduira automatiquement cet acompte.</p>
         <form id="df" class="grid-2">${field('Pourcentage du devis', 'percent', 30, 'number', 'min="1" max="99" step="0.5" class="num"')}</form>
@@ -2153,6 +2185,18 @@
     if (b < 1024) return b + ' o';
     if (b < 1024 * 1024) return (b / 1024).toFixed(0) + ' Ko';
     return (b / 1024 / 1024).toFixed(1).replace('.', ',') + ' Mo';
+  }
+
+  // Le devis devient une facture. Une seule fonction pour les deux chemins — le bouton de l'éditeur
+  // et celui de la liste — sinon ils divergeraient : c'est le geste qui rapporte de l'argent.
+  function facturerDevis(q) {
+    if (!q) return;
+    const inv = invoiceFromQuote(q, deepCopy(q.lines), q.discountRate);
+    inv.fromQuoteId = q.id; inv.fromQuoteNumber = q.number;
+    acceptQuote(q.id);
+    data.documents.push(inv); save(true);
+    toast('Brouillon de facture créé — clique sur « Émettre » quand elle est prête');
+    navigate('#/doc/' + inv.id);
   }
 
   function invoiceFromQuote(quote, lines, discountRate) {
@@ -3269,7 +3313,8 @@
     contrats: { label: 'Générer les brouillons', run: () => { const n = generateRecurring(); toast(`${n} brouillon(s) créé(s) — à relire puis émettre`); render(); } },
     retards: { label: 'Voir les relances', run: vers('#/relances') },
     societe: { label: 'Compléter', run: vers('#/parametres', () => { settingsTab = 'societe'; }) },
-    'devis-acceptes': { label: 'Voir les devis', run: vers('#/devis', () => { listState.devis.st = 'accepté'; listState.devis.year = ''; }) },
+    'devis-brouillons': { label: 'Voir les devis', run: vers('#/devis', () => { listState.devis.st = 'brouillon'; listState.devis.year = ''; listState.devis.yearTouched = true; }) },
+    'devis-acceptes': { label: 'Facturer', run: vers('#/devis', () => { listState.devis.st = 'accepté'; listState.devis.year = ''; }) },
     'devis-expires': { label: 'Voir les devis', run: vers('#/devis', () => { listState.devis.st = 'expiré'; listState.devis.year = ''; listState.devis.yearTouched = true; }) },
     'devis-sans-reponse': { label: 'Voir les devis', run: vers('#/devis', () => { listState.devis.st = 'envoyé'; listState.devis.year = ''; listState.devis.yearTouched = true; }) },
     attestations: { label: 'Voir la liste', run: vers('#/compta', () => { comptaState.tab = 'ventes'; }) },
@@ -4906,15 +4951,33 @@
     const years = Array.from(new Set(data.payslips.map(p => String(p.year)).concat([C.today().slice(0, 4)]))).sort().reverse();
     if (!years.includes(s.year)) s.year = years[0];
 
-    $('#view').innerHTML = `
-      <div class="page-head"><h1>Paie</h1>
+    // L'en-tête suit l'onglet ouvert. Il était écrit UNE fois, hors du redessin : sur « Congés »,
+    // le gros bouton vert en haut à droite disait « + Salarié » pendant que le vrai geste de
+    // l'onglet — « + Congé ou absence » — était un bouton vert plus petit, dans le panneau. Deux
+    // boutons verts sur un écran, et le mauvais à la place canonique. Le Catalogue sait faire ça
+    // depuis la 1.9.0 (`head()` redessiné à chaque onglet) : on reprend son mécanisme.
+    const P_ACTION = {
+      salaries: ['new-emp', '+ Salarié'],
+      conges: ['new-lv', '+ Congé ou absence'],
+      avances: ['new-av', '+ Avance']
+    };
+    const pHead = () => {
+      // Sans aucun salarié, les onglets sont masqués : le bouton doit alors être là quoi qu'il
+      // arrive, sinon l'écran dit « commence par créer la fiche d'un salarié » sans offrir de quoi
+      // le faire. (Défaut introduit par cette même version, attrapé par `npm run e2e:barre`.)
+      const a = data.employees.length ? P_ACTION[s.tab] : P_ACTION.salaries;
+      return `<h1>Paie</h1>
         <div class="actions">
           <select id="p-year" ${s.tab === 'baremes' ? 'hidden' : ''}>${years.map(y => `<option ${y === s.year ? 'selected' : ''}>${y}</option>`).join('')}</select>
-          <button class="btn btn-primary" id="new-emp">+ Salarié</button>
-        </div></div>
+          ${a ? `<button class="btn btn-primary" id="${a[0]}">${a[1]}</button>` : ''}
+        </div>`;
+    };
+    $('#view').innerHTML = `
+      <div class="page-head" id="p-head">${pHead()}</div>
       ${data.employees.length ? '' : `<div class="panel"><h2>Aucun salarié</h2>
         <p class="small">Ce module calcule les bulletins de paie à partir de barèmes que <b>tu règles toi-même</b> : CNSS, impôt sur le revenu, contribution de solidarité. Les valeurs livrées sont celles couramment appliquées en Tunisie, mais elles changent à chaque loi de finances — <em>fais valider les premiers bulletins par ton comptable avant de les remettre.</em></p>
-        <p class="small muted">Commence par créer la fiche d'un salarié, avec son brut mensuel.</p></div>`}
+        <p class="small muted">Commence par créer la fiche d'un salarié, avec son brut mensuel.</p>
+        <button class="btn btn-primary mt" id="emp-first">+ Créer mon premier salarié</button></div>`}
       <div class="tabs" id="p-tabs" role="tablist" ${data.employees.length ? '' : 'hidden'}>${PAIE_TABS.map(([id, label]) =>
         `<button role="tab" data-tab="${id}" class="${id === s.tab ? 'active' : ''}">${label}</button>`).join('')}</div>
       <div id="p-body"></div>`;
@@ -5033,8 +5096,7 @@
             : '<div class="empty">Aucun salarié en poste.</div>'}
         </div>
         <div class="panel"><h2>Congés et absences de ${h(s.year)}</h2>
-          <div class="filters"><button class="btn btn-sm btn-primary" id="new-lv">+ Congé ou absence</button>
-            <span class="small muted">${all.length} enregistrement(s)</span></div>
+          <div class="filters"><span class="small muted">${all.length} enregistrement(s)</span></div>
           ${all.length ? `<div class="scroll-x"><table class="list compact"><thead><tr>
             <th>Salarié</th><th>Nature</th><th>Du</th><th>Au</th><th class="r">Jours</th><th>Effet</th><th>Motif</th><th></th></tr></thead><tbody>
             ${all.map(l => { const e = employeeById(l.employeeId) || {};
@@ -5048,7 +5110,6 @@
           </tbody></table></div>`
             : '<div class="empty">Aucun congé ni absence enregistré cette année. Une absence non payée se retire toute seule du bulletin du mois concerné.</div>'}
         </div>`;
-      $('#new-lv').onclick = () => leaveForm(null, null, () => draw());
       $$('#p-body [data-lv]').forEach(b => b.onclick = () => leaveForm(data.leaves.find(x => x.id === b.dataset.lv), null, () => draw()));
       $$('#p-body tr[data-eid]').forEach(tr => tr.onclick = e2 => { if (e2.target.closest('button')) return; navigate('#/salarie/' + tr.dataset.eid); });
     }
@@ -5058,8 +5119,7 @@
       const open = all.filter(a => !a.done);
       $('#p-body').innerHTML = `
         <div class="panel"><h2>Avances sur salaire ${info('hr.advance')}</h2>
-          <div class="filters"><button class="btn btn-sm btn-primary" id="new-av">+ Avance</button>
-            <span class="small muted">${open.length} en cours sur ${all.length}${open.length ? ` · ${C.money(C.round3(open.reduce((a, x) => a + x.remaining, 0)), cur)} restant à récupérer` : ''}</span></div>
+          <div class="filters"><span class="small muted">${open.length} en cours sur ${all.length}${open.length ? ` · ${C.money(C.round3(open.reduce((a, x) => a + x.remaining, 0)), cur)} restant à récupérer` : ''}</span></div>
           ${all.length ? `<div class="scroll-x"><table class="list compact"><thead><tr>
             <th>Salarié</th><th>Date</th><th class="r">Avancé</th><th class="r">Par mois</th><th class="r">Remboursé</th><th class="r">Reste</th><th>Note</th><th></th></tr></thead><tbody>
             ${all.map(a => { const e = employeeById(a.employeeId) || {};
@@ -5075,7 +5135,6 @@
           <p class="small muted mt">La retenue se pose toute seule sur chaque bulletin établi, jusqu'à extinction — la dernière échéance ne prend que ce qui reste. Ce qui est remboursé se lit sur les bulletins, pas sur un compteur à part : supprimer une avance ne défait donc pas les retenues déjà passées.</p>`
             : '<div class="empty">Aucune avance. Une avance sur salaire se rembourse par retenues mensuelles sur les bulletins suivants.</div>'}
         </div>`;
-      $('#new-av').onclick = () => advanceForm(null, null, () => draw());
       $$('#p-body [data-av]').forEach(b => b.onclick = () => advanceForm(data.advances.find(x => x.id === b.dataset.av), null, () => draw()));
     }
 
@@ -5349,9 +5408,20 @@
       };
     }
 
+    // L'en-tête se redessine AVEC le corps : c'est ce qui manquait, et c'est pour ça que le bouton
+    // vert contredisait l'onglet. `bindHead` rearme le bouton du moment — sans quoi il serait
+    // visible et inerte, ce qui est pire qu'absent.
+    const bindHead = () => {
+      $('#p-year').onchange = e => { s.year = e.target.value; draw(); };
+      const ouvrirSalarie = () => employeeForm(null, () => { paieState.tab = 'salaries'; render(); });
+      if ($('#new-emp')) $('#new-emp').onclick = ouvrirSalarie;
+      if ($('#emp-first')) $('#emp-first').onclick = ouvrirSalarie;
+      if ($('#new-lv')) $('#new-lv').onclick = () => leaveForm(null, null, () => draw());
+      if ($('#new-av')) $('#new-av').onclick = () => advanceForm(null, null, () => draw());
+    };
     const draw = () => {
+      $('#p-head').innerHTML = pHead(); bindHead();
       if (!data.employees.length) { $('#p-body').innerHTML = ''; return; }
-      $('#p-year').hidden = ['baremes', 'registre', 'avances'].includes(s.tab);
       if (s.tab === 'salaries') return drawEmployees();
       if (s.tab === 'conges') return drawLeaves();
       if (s.tab === 'avances') return drawAdvances();
@@ -5365,8 +5435,6 @@
       $$('#p-tabs button').forEach(x => x.classList.toggle('active', x === b));
       draw();
     });
-    $('#p-year').onchange = e => { s.year = e.target.value; draw(); };
-    $('#new-emp').onclick = () => employeeForm(null, () => { paieState.tab = 'salaries'; render(); });
     draw();
   };
 
@@ -5521,13 +5589,21 @@
     const items = C.trackedItems(data);
     const alerts = C.stockAlerts(data);
 
-    $('#view').innerHTML = `
-      <div class="page-head"><h1>Stock</h1>
+    // Même défaut que sur Paie : le bouton vert de l'en-tête ne suivait pas l'onglet. Sur
+    // « Numéros de série », il disait « + Mouvement » pendant que « + Entrée de numéros », le vrai
+    // geste, était un bouton vert plus petit dans le panneau.
+    const ST_ACTION = { etat: ['st-adj', '+ Mouvement'], series: ['se-add', '+ Entrée de numéros'] };
+    const stHead = () => {
+      const a = items.length ? ST_ACTION[s.tab] : ST_ACTION.etat;   // même garde-fou que sur Paie
+      return `<h1>Stock</h1>
         <div class="actions">
           <button class="btn" id="st-csv">Exporter (CSV)</button>
           <button class="btn" id="st-war">Garanties</button>
-          <button class="btn btn-primary" id="st-adj">+ Mouvement</button>
-        </div></div>
+          ${a ? `<button class="btn btn-primary" id="${a[0]}">${a[1]}</button>` : ''}
+        </div>`;
+    };
+    $('#view').innerHTML = `
+      <div class="page-head" id="st-head">${stHead()}</div>
       ${items.length ? '' : `<div class="panel"><h2>Aucun article suivi</h2>
         <p class="small">Le stock ne se saisit pas : il se déduit de tes achats et de tes ventes. Pour qu'un article soit compté, ouvre le <a href="#/catalogue">Catalogue</a>, modifie la prestation et coche <b>« Suivi en stock »</b>. Indique ce que tu as en rayon aujourd'hui, et SkanFact suit le reste tout seul.</p>
         <p class="small muted">Les prestations (du temps, du conseil) n'ont pas de stock : ne coche la case que pour de la marchandise.</p></div>`}
@@ -5684,7 +5760,6 @@
           ${serialized.length ? `<div class="filters">
             <input type="search" id="se-q" placeholder="Rechercher : numéro, article, client…" value="${h(s.ser.q)}">
             <select id="se-st"><option value="">Tous les états</option>${C.SERIAL_STATUSES.map(([v, l]) => `<option value="${v}" ${s.ser.status === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
-            <button class="btn btn-sm btn-primary" id="se-add">+ Entrée de numéros</button>
             <span class="small muted">${all.length} numéro(s)</span>
           </div>
           ${all.length ? `<div class="scroll-x"><table class="list compact"><thead><tr>
@@ -5712,7 +5787,6 @@
         </div>`;
       if ($('#se-q')) $('#se-q').oninput = e => { s.ser.q = e.target.value; s.ser.page = 1; drawSerials(); const el = $('#se-q'); el.focus(); el.setSelectionRange(el.value.length, el.value.length); };
       if ($('#se-st')) $('#se-st').onchange = e => { s.ser.status = e.target.value; s.ser.page = 1; drawSerials(); };
-      if ($('#se-add')) $('#se-add').onclick = () => serialIntakeForm(null, () => draw());
       // L'état vide expliquait le geste en prose et laissait retraverser l'application de mémoire.
       if ($('#ser-pick')) $('#ser-pick').onclick = () => navigate('#/catalogue');
       if ($('#ser-new')) $('#ser-new').onclick = () => catalogForm(null, () => render());
@@ -5720,7 +5794,14 @@
       bindPager($('#st-body'), s.ser, () => drawSerials(), '#st-body');
     }
 
+    const bindStHead = () => {
+      if ($('#st-adj')) $('#st-adj').onclick = () => adjustForm(null, () => draw());
+      if ($('#se-add')) $('#se-add').onclick = () => serialIntakeForm(null, () => draw());
+      $('#st-war').onclick = () => navigate('#/garanties');
+      $('#st-csv').onclick = exportStock;
+    };
     const draw = () => {
+      $('#st-head').innerHTML = stHead(); bindStHead();
       if (!items.length) { $('#st-body').innerHTML = ''; return; }
       if (s.tab === 'series') return drawSerials();
       if (s.tab === 'mouvements') return drawMoves();
@@ -5733,9 +5814,7 @@
       $$('#st-tabs button').forEach(x => x.classList.toggle('active', x === b));
       draw();
     });
-    $('#st-adj').onclick = () => adjustForm(null, () => draw());
-    $('#st-war').onclick = () => navigate('#/garanties');
-    $('#st-csv').onclick = async () => {
+    async function exportStock() {
       const t = C.stockTotals(data);
       if (!t.rows.length) return toast('Rien à exporter.', true);
       const cols = [

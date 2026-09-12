@@ -7,6 +7,31 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 7.7.0 — 12/09/2026
+
+**Les trois derniers constats graves : le geste qui rapporte, le devis oublié, le bouton qui ment.**
+
+- **Facturer un devis était la seule porte de toute l'application.** Un bouton gris « Facturer ▾ »,
+  dont le contenu est invisible avant le clic, à l'intérieur du devis — sans aucun double dans la
+  liste, ni dans la recherche, ni sur la fiche client. Le panneau « À faire » en était réduit à
+  écrire l'itinéraire : « Ouvre le devis puis « Facturer ▾ » ». Une application qui doit décrire son
+  propre chemin décrit surtout un bouton mal placé. Dès que le client a dit oui, **« Facturer ce
+  devis » est le bouton coloré** de l'éditeur (les deux autres chemins — acompte, solde — restent
+  dans un ▾ accolé), et **chaque ligne de la liste porte son bouton « Facturer »**.
+- **Un devis envoyé autrement que par le bouton Email restait « brouillon » à vie.** C'était le seul
+  endroit du code qui faisait avancer son statut. Envoyé par WhatsApp, imprimé, remis en main
+  propre : il n'était ni relancé, ni compté dans ton taux de transformation, ni jamais déclaré
+  expiré — alors que son PDF, qui porte déjà son numéro, est indiscernable d'un devis envoyé. Après
+  l'export, l'application pose la question une fois : « Ce devis part chez ton client ? ». Et le
+  rappel des vieux brouillons, qui comptait devis et factures ensemble mais renvoyait toujours vers
+  la liste des **factures** — où un devis ne peut pas figurer —, s'est scindé en deux lignes qui
+  mènent chacune à leur propre liste.
+- **Sur Paie et Stock, le gros bouton vert de l'en-tête ne suivait pas l'onglet ouvert.** Sur
+  « Congés », il disait « + Salarié » pendant que « + Congé ou absence », le vrai geste, était un
+  bouton vert **plus petit**, plus bas, dans le panneau : deux boutons verts sur l'écran, et le
+  mauvais à la place canonique. L'en-tête se redessine maintenant avec le corps, comme le Catalogue
+  le fait depuis la 1.9.0 — un seul bouton vert par écran, et c'est celui de l'onglet.
+
 ## 7.6.0 — 12/09/2026
 
 **Le jeu d'exemple ne doit jamais toucher au vrai.**

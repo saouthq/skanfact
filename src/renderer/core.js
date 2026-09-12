@@ -3858,7 +3858,7 @@
     const acceptedAmount = round3(accepted.reduce((s, d) => s + toBase(d, computeTotals(d, company).totalTTC, company), 0));
     if (accepted.length) out.push({
       id: 'devis-acceptes', level: 'warn', label: `${accepted.length} devis accepté${accepted.length > 1 ? 's' : ''} à facturer`,
-      detail: `${fmt(acceptedAmount)} TTC vendus et pas encore facturés. Ouvre le devis puis « Facturer ▾ ».`,
+      detail: `${fmt(acceptedAmount)} TTC vendus et pas encore facturés : le bouton « Facturer » est sur chaque ligne.`,
       count: accepted.length, amount: acceptedAmount, route: '#/devis', docs: accepted
     });
 
@@ -4009,11 +4009,26 @@
       count: fisc.length, route: '#/compta', docs: []
     });
 
-    const oldDrafts = (data.documents || []).filter(d => d.status === 'brouillon' && d.date && daysBetween(d.date, t) > 7);
-    if (oldDrafts.length) out.push({
-      id: 'brouillons', level: 'info', label: `${oldDrafts.length} brouillon${oldDrafts.length > 1 ? 's' : ''} de plus de 7 jours`,
+    // Deux lignes, pas une. La ligne unique comptait TOUS les brouillons — devis compris — et son
+    // seul bouton ouvrait la liste des FACTURES filtrée sur « brouillon », où un devis ne peut pas
+    // figurer : le rappel existait, et menait à une liste où la pièce annoncée était invisible.
+    // La règle du projet : un compteur et la liste qu'il annonce se calculent avec la même fonction.
+    const vieux = d => d.status === 'brouillon' && d.date && daysBetween(d.date, t) > 7;
+    const draftInv = (data.documents || []).filter(d => vieux(d) && d.type !== 'devis');
+    if (draftInv.length) out.push({
+      id: 'brouillons', level: 'info', label: `${draftInv.length} brouillon${draftInv.length > 1 ? 's' : ''} de facture de plus de 7 jours`,
       detail: 'Un brouillon oublié, c\'est un travail non facturé.',
-      count: oldDrafts.length, route: '#/factures', docs: oldDrafts
+      count: draftInv.length, route: '#/factures', docs: draftInv
+    });
+    // Un devis en brouillon est plus insidieux : il porte déjà son numéro (attribué au premier
+    // enregistrement), son PDF est indiscernable d'un devis envoyé, et tant qu'il reste brouillon
+    // SkanFact ne le relance pas, ne le compte pas dans le taux de transformation, et ne le déclare
+    // jamais expiré. Un devis parti par WhatsApp ou remis en main propre reste donc invisible.
+    const draftQuotes = (data.documents || []).filter(d => vieux(d) && d.type === 'devis');
+    if (draftQuotes.length) out.push({
+      id: 'devis-brouillons', level: 'info', label: `${draftQuotes.length} devis en brouillon de plus de 7 jours`,
+      detail: 'Tant qu\'un devis est en brouillon, il n\'est ni relancé, ni compté, ni jamais déclaré expiré. Si tu l\'as envoyé autrement (WhatsApp, main propre), passe-le à « envoyé ».',
+      count: draftQuotes.length, route: '#/devis', docs: draftQuotes
     });
 
     // La copie de sauvegarde, quand c'est la seule étape de démarrage qui manque. Elle quitte alors

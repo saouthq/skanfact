@@ -171,6 +171,10 @@ const ECRANS = [[1680, 1050], [1440, 900], [1366, 768], [1280, 800]];
   if (await win.$('nav a[data-route="paie"]')) throw new Error('décoché, le module devrait quitter le menu');
   await win.evaluate(() => { location.hash = '#/paie'; });
   await win.waitForSelector('#view h1');
+  // Depuis la 7.7.0, le bouton vert de l'en-tête suit l'onglet ouvert — SAUF quand la page est
+  // vide : les onglets sont alors masqués, et un écran qui dit « commence par créer la fiche d'un
+  // salarié » doit offrir de quoi le faire. Ce test l'a attrapé le jour même.
+  await win.waitForSelector('#view .page-head .btn-primary');
   await win.click('#view .page-head .btn-primary');           // + Salarié
   await win.waitForSelector('#modal-root input[name=name]');
   await win.fill('#modal-root input[name=name]', 'Fatma Trabelsi');
