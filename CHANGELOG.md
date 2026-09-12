@@ -7,6 +7,31 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 7.8.0 — 12/09/2026
+
+**Un écran vide doit apprendre quelque chose.**
+
+- **Les états vides décrivaient un itinéraire au lieu d'offrir un bouton.** « Aucun devis. Crée le
+  premier avec le bouton en haut à droite » demande de retenir une phrase, de lever les yeux et de
+  retrouver le bon bouton. Devis, Factures, Relances, Facturation récurrente et « À immobiliser »
+  disent maintenant **à quoi sert la page** — ce qu'est un devis, pourquoi une facture n'est plus
+  modifiable, que la page Relances se remplit toute seule et qu'il n'y a rien à y saisir — et
+  portent les vrais boutons.
+- **Une barre de recherche et des filtres s'affichaient au-dessus de zéro ligne.** Ils occupaient
+  exactement la place où devrait vivre l'explication, et laissaient croire que quelque chose était
+  filtré. Ils se taisent désormais sur une liste vide — mais restent, évidemment, quand la liste est
+  vide **à cause** d'un filtre : sinon on ne pourrait plus le retirer.
+- **Deux écrans te félicitaient pour un travail que tu n'as pas commencé** : « Rien en attente de
+  paiement. Tout est encaissé. » à quelqu'un qui n'a jamais émis de facture, et « Toutes les lignes
+  d'achat marquées immobilisation ont leur fiche » à quelqu'un qui n'a jamais saisi d'achat. La
+  règle existait depuis la 7.0.0 pour l'accueil ; elle s'applique partout.
+- **La page TVA affichait en vert « Crédit de TVA reportable sur la période suivante »** sur un mois
+  sans une seule vente ni un seul achat — parce que le montant à reverser vaut alors zéro. Elle
+  nomme maintenant le cas, explique ce qu'elle calculera, et le tableau des douze mois ne s'affiche
+  plus tant qu'aucun mois ne porte de montant. Au passage, sa branche « Rien à déclarer » était du
+  **code mort** : elle ne pouvait jamais s'afficher, et faisait croire à la relecture que le cas
+  était traité.
+
 ## 7.7.0 — 12/09/2026
 
 **Les trois derniers constats graves : le geste qui rapporte, le devis oublié, le bouton qui ment.**

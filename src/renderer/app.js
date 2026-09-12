@@ -1276,6 +1276,27 @@
     return `<button type="button" class="btn btn-sm btn-ghost" id="reset-f" title="Effacer la recherche et les filtres">✕ Réinitialiser les filtres</button>`;
   }
 
+  // Une barre de recherche et des filtres au-dessus de ZÉRO ligne n'aident personne : ils occupent
+  // la place où devrait vivre l'explication, et laissent croire que quelque chose est filtré. Huit
+  // listes les affichaient sans condition. On la garde évidemment quand la liste est vide À CAUSE
+  // d'un filtre : sinon on ne pourrait plus le retirer.
+  function filtersBar(html, total, filtered) {
+    if (!total && !filtered) return '';
+    return `<div class="filters">${html}</div>`;
+  }
+
+  // Un état vide qui explique le geste en prose n'est pas une interface, c'est une notice de
+  // montage : il demande de retenir une phrase, de naviguer ailleurs, et de retrouver le bon
+  // bouton. Celui-ci dit à quoi sert la chose, puis donne les vrais boutons.
+  //   titre, phrases[], boutons[[id, label, primaire?]]
+  function etatVide(titre, phrases, boutons) {
+    return `<div class="panel vide-utile"><h2>${h(titre)}</h2>
+      ${(phrases || []).map(p => `<p class="small">${p}</p>`).join('')}
+      ${(boutons || []).length ? `<div class="inline mt">${boutons.map(([id, label, p]) =>
+        `<button class="btn ${p ? 'btn-primary' : ''}" id="${h(id)}">${h(label)}</button>`).join('')}</div>` : ''}
+    </div>`;
+  }
+
   // ---------- listes devis / factures ----------
   // Colonnes d'une liste de documents. `get` sert à l'affichage, `val` au tri (nombre ou texte comparable).
   function docColumns(opts) {
@@ -1383,6 +1404,7 @@
     if (s.year && !years.includes(s.year)) { s.year = ''; s.yearAuto = false; }
 
     const draw = (sortKey) => {
+      if (!$('#list-wrap')) return;                 // liste vide : l'écran explique au lieu de lister
       if (sortKey) { s.sort = toggleSort(s.sort, sortKey, cols); s.page = 1; }
       const list = mine
         .filter(d => !s.kind || d.type === s.kind)
@@ -1393,9 +1415,12 @@
       const filtered = !!(s.q || s.st || s.kind || s.year);
       $('#list-wrap').innerHTML = docTable(list, {
         quotes: isQ, sort: s.sort, onSort: true, page: s, grandTotal: mine.length,
-        empty: filtered ? 'Aucun document ne correspond à ces filtres. Clique « Réinitialiser les filtres » pour tout revoir.' : (isQ ? 'Aucun devis. Crée le premier avec le bouton en haut à droite.' : 'Aucune facture. Crée la première avec le bouton en haut à droite.')
+        // `draw` ne tourne que si `#list-wrap` existe, c'est-à-dire s'il y a au moins une pièce :
+        // une liste vide ici ne peut venir que d'un filtre. L'autre cas est traité par `etatVide`.
+        empty: 'Aucun document ne correspond à ces filtres. Clique « Réinitialiser les filtres » pour tout revoir.'
       });
       const note = $('#f-note');
+      if (!note) return bindDocTable(draw, s, '#list-wrap');
       note.hidden = !filtered;
       note.innerHTML = !filtered ? '' :
         `<span class="small muted">${list.length} sur ${mine.length}${s.year && s.yearAuto ? ` · année ${h(s.year)} affichée par défaut` : ''}</span>${filterReset(true)}`;
@@ -1407,19 +1432,29 @@
     $('#view').innerHTML = `
       <div class="page-head"><h1>${isQ ? 'Devis' : 'Factures'}</h1>
         <div class="actions">${isQ || !data.documents.some(d => d.type === 'facture' && d.status !== 'brouillon' && d.number) ? '' : '<button class="btn" id="new-avoir">+ Avoir</button>'}<button class="btn btn-primary" id="new">+ ${isQ ? 'Nouveau devis' : 'Nouvelle facture'}</button></div></div>
-      <div class="filters">
+      ${filtersBar(`
         <input type="text" id="q" placeholder="Rechercher : n°, client, objet…" value="${h(s.q)}">
         ${isQ ? '' : `<select id="kind"><option value="">Factures et avoirs</option><option value="facture" ${s.kind === 'facture' ? 'selected' : ''}>Factures</option><option value="avoir" ${s.kind === 'avoir' ? 'selected' : ''}>Avoirs</option></select>`}
         <select id="st"><option value="">Tous les statuts</option>${statuses.map(x => `<option value="${x}" ${s.st === x ? 'selected' : ''}>${h(C.statusLabel(x))}</option>`).join('')}</select>
         ${years.length > 1 ? `<select id="yr"><option value="">Toutes les années</option>${years.map(y => `<option value="${y}" ${s.year === y ? 'selected' : ''}>${y}</option>`).join('')}</select>${info('list.year')}` : ''}
         ${info('list.filters')}
         <span class="f-note" id="f-note" hidden></span>
-      </div>
-      <div id="list-wrap"></div>`;
+        `, mine.length, !!(s.q || s.st || s.kind || s.year))}
+      ${mine.length ? '<div id="list-wrap"></div>' : etatVide(
+        isQ ? 'Proposer un prix, avant de travailler' : 'Réclamer l\'argent du travail fait',
+        isQ
+          ? ['Un devis annonce un prix ferme à ton client. Il n\'engage rien tant qu\'il n\'est pas accepté — et une fois accepté, il devient une facture <b>en un clic</b>, sans rien ressaisir.',
+             'Tu n\'as pas besoin de créer le client d\'abord : tu le crées depuis le devis.']
+          : ['Une facture est la pièce officielle : elle prend son numéro au moment où tu l\'émets, et n\'est plus modifiable ensuite. Pour corriger après coup, on fait un avoir.',
+             'SkanFact suit ensuite toute seule ce qu\'on te doit, et te la remonte dans « Relances » dès qu\'elle dépasse son échéance.'],
+        [['vide-new', isQ ? '+ Créer mon premier devis' : '+ Créer ma première facture', true],
+         ['vide-demo', 'Voir un exemple rempli']])}`;
+    if ($('#vide-new')) $('#vide-new').onclick = () => navigate('#/doc/new/' + type);
+    if ($('#vide-demo')) $('#vide-demo').onclick = loadDemo;
     $('#new').onclick = () => navigate('#/doc/new/' + type);
     if ($('#new-avoir')) $('#new-avoir').onclick = () => navigate('#/doc/new/avoir');
-    $('#q').oninput = e => { s.q = e.target.value.toLowerCase(); s.page = 1; draw(); };
-    $('#st').onchange = e => { s.st = e.target.value; s.page = 1; draw(); };
+    if ($('#q')) $('#q').oninput = e => { s.q = e.target.value.toLowerCase(); s.page = 1; draw(); };
+    if ($('#st')) $('#st').onchange = e => { s.st = e.target.value; s.page = 1; draw(); };
     if ($('#yr')) $('#yr').onchange = e => { s.year = e.target.value; s.yearAuto = false; s.yearTouched = true; s.page = 1; draw(); };
     if ($('#kind')) $('#kind').onchange = e => { s.kind = e.target.value; s.page = 1; draw(); };
     draw();
@@ -3144,24 +3179,31 @@
       const { rows: page, pg } = paginate(kept, s);
       const filtered = !!(s.q || s.st);
       $('#c-wrap').innerHTML = `${due.length ? `<div class="banner">${due.length} facture(s) récurrente(s) à générer<button class="btn" id="gen-due">Générer les brouillons</button></div>` : ''}
-        <div class="filters">
+        ${filtersBar(`
           <input type="text" id="q" placeholder="Rechercher : client, objet…" value="${h(s.q)}">
           <select id="st">${STATES.map(([v, l]) => `<option value="${v}" ${s.st === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
           ${info('list.filters')}
-          ${filtered ? `<span class="f-note"><span class="small muted">${kept.length} sur ${all.length}</span><button type="button" class="btn btn-sm btn-ghost" id="reset-f" title="Effacer la recherche et les filtres">✕ Réinitialiser les filtres</button></span>` : ''}
-        </div>
+          ${filtered ? `<span class="f-note"><span class="small muted">${kept.length} sur ${all.length}</span><button type="button" class="btn btn-sm btn-ghost" id="reset-f" title="Effacer la recherche et les filtres">✕ Réinitialiser les filtres</button></span>` : ''}`, all.length, filtered)}
         ${kept.length ? `<table class="list sortable"><thead>${sortHead(cols, s.sort, '<th class="row-actions-h"></th>')}</thead><tbody>
         ${page.map(r => `<tr class="clickable" data-rid="${r.id}">${cols.map(c => `<td class="${c.r ? 'r nw' : ''}">${c.get(r)}</td>`).join('')}
           <td class="actions"><button class="btn btn-sm" data-gen="${r.id}">Générer maintenant</button> <button class="btn btn-sm" data-edit="${r.id}">Modifier</button> <button class="btn btn-sm" data-toggle="${r.id}">${r.active !== false ? 'Suspendre' : 'Reprendre'}</button></td></tr>`).join('')}
         </tbody></table>${pagerBar(pg, { noun: 'contrat', grandTotal: all.length })}`
-          : `<div class="empty">${filtered ? 'Aucun contrat ne correspond à ces filtres.' : 'Aucun contrat. Un contrat génère automatiquement un brouillon de facture à chaque échéance (mensuelle, trimestrielle, annuelle). Crée-le ici, ou depuis une facture existante : Plus ▾ → « Rendre récurrent ».'}</div>`}`;
+          : filtered ? '<div class="empty">Aucun contrat ne correspond à ces filtres.</div>'
+          : etatVide('Les factures qui se répètent toutes seules',
+              ['Un abonnement, une maintenance, un forfait mensuel : tu le décris une fois — client, lignes, périodicité — et SkanFact prépare le <b>brouillon de facture</b> à chaque échéance. Tu n\'as plus qu\'à le relire et l\'émettre.',
+               'Rien n\'est envoyé à ta place : un brouillon t\'attend, c\'est tout.',
+               'À ne pas confondre avec le <b>contrat que ton client signe</b>, qui est dans « Proforma, bons et contrats ».'],
+              [['rec-first', '+ Créer mon premier contrat', true],
+               ['rec-depuis', 'Partir d\'une facture existante']])}`;
+      if ($('#rec-first')) $('#rec-first').onclick = () => recurrenceForm(null, draw);
+      if ($('#rec-depuis')) $('#rec-depuis').onclick = () => navigate('#/factures');
       const q = $('#q');
-      q.oninput = e => {
+      if (q) q.oninput = e => {
         const pos = e.target.selectionStart;                 // on redessine la page : il faut rendre le curseur où il était
         s.q = e.target.value.toLowerCase(); s.page = 1; draw();
         const el = $('#q'); if (el) { el.focus(); el.setSelectionRange(pos, pos); }
       };
-      $('#st').onchange = e => { s.st = e.target.value; s.page = 1; draw(); };
+      if ($('#st')) $('#st').onchange = e => { s.st = e.target.value; s.page = 1; draw(); };
       if ($('#reset-f')) $('#reset-f').onclick = () => { s.q = ''; s.st = ''; s.page = 1; draw(); };
       $$('tr.clickable[data-rid]').forEach(tr => tr.onclick = e => { if (e.target.closest('button')) return; navigate('#/contrat/' + tr.dataset.rid); });
       bindSort($('#c-wrap'), draw);
@@ -3264,11 +3306,20 @@
       const odSorted = applySort(od, relCols, relState.sort);
       const odPage = paginate(odSorted, relState);
       const nAll = all.filter(x => !x.snoozed).length;
-      $('#r-wrap').innerHTML = `
-        <div class="filters">
+      // Rien à relancer ET rien à venir : la page ne dit jamais la seule chose qui compte ici, à
+      // savoir qu'elle se remplit TOUTE SEULE et qu'il n'y a rien à y saisir. Elle ouvrait sur un
+      // moteur de recherche posé au-dessus de zéro ligne, et une note sur trois niveaux de relance
+      // dont aucun exemple n'était visible.
+      const rienDuTout = !all.length && !soon.length && !quotes.length && !q;
+      const aDesFactures = data.documents.some(d => d.type === 'facture' && d.number);
+      $('#r-wrap').innerHTML = rienDuTout ? etatVide('Relancer tes impayés',
+        ['Dès qu\'une facture dépasse son échéance, elle apparaît ici toute seule : le nombre de jours de retard, ce qui reste à récupérer, et un email prêt à partir. <b>Tu n\'as rien à saisir sur cette page.</b>',
+         'Trois tons, choisis pour toi selon le retard : rappel amical jusqu\'à 15 jours, relance jusqu\'à 45 jours, dernière relance au-delà. Les textes se modifient dans Paramètres → Emails.'],
+        aDesFactures ? [['rel-vers-fac', 'Voir mes factures', true]] : [['rel-vers-new', '+ Créer ma première facture', true]])
+        : `
+        ${filtersBar(`
           <input type="search" id="rel-q" placeholder="Rechercher : n°, client, objet…" value="${h(relState.q)}">
-          ${q ? `<span class="small muted">${od.length} sur ${nAll}</span><button class="btn btn-sm" id="rel-clear">Réinitialiser</button>` : ''}
-        </div>
+          ${q ? `<span class="small muted">${od.length} sur ${nAll}</span><button class="btn btn-sm" id="rel-clear">Réinitialiser</button>` : ''}`, all.length, !!q)}
         ${od.length ? `<div class="banner">${od.length} facture(s) à relancer — ${C.money(total, cur)} à récupérer</div>` : `<div class="banner info">${q ? 'Aucune facture ne correspond à cette recherche.' : `Aucune facture à relancer${later.length ? ` (${later.length} reportée(s))` : ''}.`}</div>`}
         ${od.length ? `<table class="list sortable">${head}<tbody>${odPage.rows.map(row).join('')}</tbody></table>${pagerBar(odPage.pg, { noun: 'facture' })}` : ''}
         ${later.length ? `<div class="section-head"><h2>Reportées ${info('rel.snooze')}</h2></div><table class="list">${headFixed}<tbody>${later.map(row).join('')}</tbody></table>` : ''}
@@ -3281,7 +3332,9 @@
         </tbody></table>` : ''}
         <p class="small muted mt">Niveaux : rappel amical jusqu'à 15 jours, relance jusqu'à 45 jours, dernière relance au-delà. Textes modifiables dans Paramètres → Emails.</p>`;
       const find = id => all.find(x => x.doc.id === id);
-      $('#rel-q').oninput = e => { relState.q = e.target.value; relState.page = 1; draw(); const el = $('#rel-q'); el.focus(); el.setSelectionRange(el.value.length, el.value.length); };
+      if ($('#rel-vers-fac')) $('#rel-vers-fac').onclick = () => navigate('#/factures');
+      if ($('#rel-vers-new')) $('#rel-vers-new').onclick = () => navigate('#/doc/new/facture');
+      if ($('#rel-q')) $('#rel-q').oninput = e => { relState.q = e.target.value; relState.page = 1; draw(); const el = $('#rel-q'); el.focus(); el.setSelectionRange(el.value.length, el.value.length); };
       if ($('#rel-clear')) $('#rel-clear').onclick = () => { relState.q = ''; relState.page = 1; draw(); };
       bindSort($('#r-wrap'), key => { relState.sort = toggleSort(relState.sort, key, relCols); relState.page = 1; draw(); });
       bindPager($('#r-wrap'), relState, () => draw(), '#r-wrap');
@@ -6366,8 +6419,14 @@
               <td class="r"><button class="btn btn-sm btn-primary" data-mk="${i}">Créer la fiche</button>
                 <button class="btn btn-sm btn-ghost" data-open="${h(w.purchaseId)}">Voir l'achat</button></td></tr>`).join('')}
           </tbody></table></div>`
-            : '<div class="empty">Rien en attente. Toutes les lignes d\'achat marquées « immobilisation » ont leur fiche.</div>'}
+            : (data.purchases || []).length
+              ? '<div class="empty">Rien en attente. Toutes les lignes d\'achat marquées « immobilisation » ont leur fiche.</div>'
+              : etatVide('Rien à immobiliser pour l\'instant',
+                  ['Une ligne apparaît ici dès que tu saisis un achat dont la destination est <b>« immobilisation »</b> : un ordinateur, un véhicule, du mobilier — tout ce que tu gardes plus d\'un an.',
+                   'Tant qu\'une ligne reste en attente, son amortissement n\'est déduit nulle part.'],
+                  [['immo-vers-achats', '+ Saisir une facture d\'achat', true]])}
         </div>`;
+      if ($('#immo-vers-achats')) $('#immo-vers-achats').onclick = () => navigate('#/achat/new');
       $$('#im-body [data-mk]').forEach(b => b.onclick = () => {
         const w = waiting[Number(b.dataset.mk)];
         assetForm(null, () => render(), { label: w.label, amount: w.amount, date: w.date, supplierId: w.supplierId, purchaseId: w.purchaseId, lineIndex: w.lineIndex });
@@ -6881,7 +6940,11 @@
               <tr class="total-row"><td><strong>Total dû</strong></td><td></td><td class="r nw"><strong>${C.money(aging.total, cur)}</strong></td></tr>
             </tbody></table>
             <p class="small muted mt">Au-delà de 90 jours, une créance devient difficile à recouvrer : c'est le moment d'une relance écrite. <a href="#/relances" id="s-relances">Voir les relances</a></p>`
-            : '<div class="empty">Rien en attente de paiement. Tout est encaissé.</div>'}
+            : data.documents.some(d => d.type === 'facture' && d.number)
+              ? '<div class="empty">Rien en attente de paiement. Tout est encaissé.</div>'
+              // Avant d'écrire une phrase rassurante, vérifier que l'univers concerné est non vide :
+              // « tout est encaissé » félicitait quelqu'un qui n'avait jamais émis une facture.
+              : '<div class="empty">Aucune facture émise pour l\'instant : il n\'y a rien à encaisser.</div>'}
           </div>
         </div>
         <div class="split">
@@ -7250,7 +7313,14 @@
       $('#c-body').innerHTML = `
         <div class="panel"><h2>Déclaration de TVA — ${h(MONTHS[upTo - 1])} ${year} ${info('compta.vatReturn')}</h2>
           ${auto ? `<p class="small muted mb">La TVA se déclare mois par mois : voici ${h(MONTHS[upTo - 1])}. Choisis un autre mois en haut à droite, ou lis le tableau ci-dessous pour toute l'année.</p>` : ''}
-          ${cur1 ? `<div class="vat-box">
+          ${cur1 && !cur1.collected && !cur1.deductible && !cur1.carryIn
+            // Sur une base vide, `toPay` vaut 0, donc la ligne verte annonçait « Crédit de TVA
+            // reportable sur la période suivante » à quelqu'un qui n'a jamais facturé. Et la
+            // branche « Rien à déclarer » était du CODE MORT : `vatChain` renvoie toujours douze
+            // mois, donc `cur1` n'est jamais null — elle faisait croire que le cas était traité.
+            ? `<p>Rien à déclarer pour ${h(MONTHS[upTo - 1])} ${year} : aucune vente, aucun achat sur ce mois.</p>
+               <p class="small muted">Cette page calculera <b>TVA collectée sur tes ventes − TVA déductible sur tes achats</b>. Si le résultat est négatif, le crédit se reporte sur le mois suivant tout seul. <em>À VÉRIFIER avec ton comptable : ta périodicité de dépôt et les taux qui s'appliquent à ton activité.</em></p>`
+            : cur1 ? `<div class="vat-box">
             <div class="vat-line"><span>TVA collectée sur tes ventes</span><span class="num">${C.money(cur1.collected, cur)}</span></div>
             <div class="vat-line minus"><span>− TVA déductible sur tes achats</span><span class="num">${C.money(cur1.deductible, cur)}</span></div>
             ${cur1.carryIn ? `<div class="vat-line minus"><span>− Crédit de TVA reporté ${info('compta.carry')}</span><span class="num">${C.money(cur1.carryIn, cur)}</span></div>` : ''}
@@ -7258,9 +7328,10 @@
               <span>${cur1.toPay ? 'TVA à reverser' : 'Crédit de TVA reportable sur la période suivante'}</span>
               <span class="num">${C.money(cur1.toPay || cur1.carryOut, cur)}</span></div>
           </div>
-          <p class="small muted mt">Timbres fiscaux encaissés sur la période : ${C.money(cur1.stamps, cur)} · retenues subies : ${C.money(cur1.withheldBySale, cur)} · retenues que tu as opérées : ${C.money(cur1.withheldOnBuys, cur)}. Ces trois lignes se déclarent séparément de la TVA. <em>À VÉRIFIER avec ton comptable.</em></p>` : '<div class="empty">Rien à déclarer.</div>'}
+          <p class="small muted mt">Timbres fiscaux encaissés sur la période : ${C.money(cur1.stamps, cur)} · retenues subies : ${C.money(cur1.withheldBySale, cur)} · retenues que tu as opérées : ${C.money(cur1.withheldOnBuys, cur)}. Ces trois lignes se déclarent séparément de la TVA. <em>À VÉRIFIER avec ton comptable.</em></p>` : ''}
           <div class="inline mt"><button class="btn btn-sm" id="set-carry">Crédit de TVA venu de ${Number(year) - 1} : ${C.money(carryIn, cur)}</button>${info('compta.carryIn')}</div>
         </div>
+        ${chain.some(m => m.collected || m.deductible || m.carryIn) ? `
         <div class="panel"><h2>Mois par mois — ${year} ${info('compta.vatMonths')}</h2>
           <table class="list compact"><thead><tr><th>Mois</th><th class="r">Collectée</th><th class="r">Déductible</th><th class="r">Crédit repris</th><th class="r">À payer</th><th class="r">Crédit reporté</th></tr></thead><tbody>
             ${chain.map(m => `<tr class="${m.toPay ? '' : 'row-ok'}"><td>${h(m.label)}</td><td class="r nw">${C.money(m.collected)}</td><td class="r nw">${C.money(m.deductible)}</td>
@@ -7273,6 +7344,7 @@
           </tbody></table>
           <p class="small muted mt">Le crédit d'un mois vient en déduction du suivant : c'est pour ça que le total ne se lit pas ligne par ligne. <em>Ces chiffres sont l'arithmétique exacte de tes données, pas une déclaration officielle : à faire valider par ton comptable avant tout dépôt.</em></p>
         </div>
+        ` : ''}
         <div class="panel"><h2>Résultat simplifié — ${h(periodLabel())} ${info('compta.result')}</h2>
           <div class="stats compact-stats">
             <div class="stat"><div class="lbl">Produits (ventes HT)</div><div class="val">${C.money(res.produits, cur)}</div><div class="sub">${res.salesCount} pièce(s)</div></div>

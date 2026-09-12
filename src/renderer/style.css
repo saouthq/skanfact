@@ -90,6 +90,12 @@ nav a.active svg { opacity: 1; }
   border: 1px solid var(--border); background: var(--panel); color: var(--muted);
 }
 
+/* L'état vide qui apprend quelque chose (7.8.0) : à la place d'une phrase grise qui décrit un
+   itinéraire, un panneau qui dit à quoi sert la page et porte les vrais boutons. */
+.vide-utile { max-width: 720px; }
+.vide-utile h2 { margin-bottom: 6px; }
+.vide-utile p { line-height: 1.6; color: var(--muted); }
+
 /* ---------- page « Tous les modules » (7.0.0) ---------- */
 .mod-row { display: grid; grid-template-columns: 30px 1fr auto; gap: 12px; align-items: start;
   padding: 14px 2px; border-top: 1px solid var(--border); }

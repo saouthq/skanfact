@@ -5661,5 +5661,42 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
         `« ${b} » n'est pas rebranché après le redessin de l'en-tête`));
   });
 
+  t('un écran vide apprend quelque chose, et ne félicite pas un travail jamais commencé', () => {
+    const app = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
+    const code = app.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+    assert.ok(code.includes('function etatVide'), 'le nettoyage des commentaires a mangé le code');
+
+    // Un état vide qui explique le geste en prose n'est pas une interface, c'est une notice de
+    // montage : « Aucun devis. Crée le premier avec le bouton en haut à droite » demande de retenir
+    // une phrase et de retrouver le bon bouton. Le patron dit à quoi sert la page, puis donne les
+    // vrais boutons.
+    ['Crée le premier avec le bouton en haut à droite', 'Crée la première avec le bouton en haut à droite']
+      .forEach(p => assert.ok(!code.includes(p), `un état vide décrit encore un itinéraire : « ${p} »`));
+    assert.ok(/etatVide\(/.test(code));
+    ['vide-new', 'rec-first', 'rel-vers-new', 'immo-vers-achats', 'emp-first'].forEach(id =>
+      assert.ok(new RegExp(`\\$\\('#${id}'\\)\\) \\$\\('#${id}'\\)\\.onclick`).test(code),
+        `le bouton « ${id} » d'un état vide n'est pas branché — un bouton inerte est pire qu'une phrase`));
+
+    // Une barre de recherche et des filtres au-dessus de ZÉRO ligne occupent la place où devrait
+    // vivre l'explication, et laissent croire que quelque chose est filtré. On la garde évidemment
+    // quand la liste est vide À CAUSE d'un filtre : sinon on ne peut plus le retirer.
+    assert.ok(/function filtersBar\(html, total, filtered\) \{[\s\S]{0,120}if \(!total && !filtered\) return ''/.test(code),
+      'filtersBar doit se taire sur une liste vide, mais rester quand un filtre est actif');
+    assert.ok((code.match(/filtersBar\(`/g) || []).length >= 3, 'les listes principales doivent passer par filtersBar');
+
+    // Avant d'écrire une phrase rassurante, vérifier que l'univers concerné est non vide. La règle
+    // était déjà écrite pour l'accueil en 7.0.0 ; deux écrans ne l'appliquaient pas.
+    assert.ok(/documents\.some\(d => d\.type === 'facture' && d\.number\)[\s\S]{0,120}Tout est encaissé/.test(code),
+      '« Tout est encaissé » ne doit s\'afficher que si une facture a été émise');
+    assert.ok(/\(data\.purchases \|\| \[\]\)\.length[\s\S]{0,160}ont leur fiche/.test(code),
+      '« Toutes les lignes d\'achat ont leur fiche » suppose qu\'il existe un achat');
+    // La TVA : sur une base vide, `toPay` vaut 0, donc la ligne verte annonçait un « crédit de TVA
+    // reportable » à quelqu'un qui n'a jamais facturé. Et la branche « Rien à déclarer » était du
+    // code mort (`vatChain` renvoie toujours douze mois) : elle faisait croire le cas traité.
+    assert.ok(/!cur1\.collected && !cur1\.deductible && !cur1\.carryIn/.test(code),
+      'un mois sans la moindre écriture doit être nommé, pas verdict en vert');
+    assert.ok(!/: '<div class="empty">Rien à déclarer.<\/div>'/.test(code), 'la branche morte doit disparaître');
+  });
+
   console.log(`\n${n} tests OK`);
 })().catch(e => { console.error(e); process.exit(1); });
