@@ -204,7 +204,11 @@ main { flex: 1; overflow-y: auto; padding: 32px 36px 48px; }
 /* .field (et non label.field) : les champs date et les listes déroulantes sont des <div>,
    un <label> y renverrait le clic du bouton calendrier vers le champ texte. */
 .field { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: var(--muted); font-weight: 600; }
-input[type=text], input[type=number], input[type=date], input[type=email], input[type=color], select, textarea {
+/* Énuméré type par type, ce sélecteur oubliait `search` : cinq listes affichaient donc une petite
+   boîte native, non dimensionnée, dont le texte était coupé au milieu d'un mot — à côté de six
+   listes correctement stylées. On exclut ce qui doit garder son apparence native plutôt que
+   d'énumérer ce qui doit être stylé : le prochain type d'input sera juste. */
+input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]), select, textarea {
   font: inherit; font-size: 14px; color: var(--text); padding: 9px 11px; border: 1px solid var(--border);
   border-radius: var(--radius-sm); background: #fbfcfd; width: 100%; transition: border-color .12s, box-shadow .12s, background .12s;
 }
@@ -327,7 +331,7 @@ table.lines-edit .total { text-align: right; padding-top: 12px; font-weight: 600
 .small { font-size: 12px; }
 .mt { margin-top: 12px; }
 .filters { display: flex; gap: 8px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
-.filters input[type=text] { width: 300px; background: #fff; }
+.filters input:not([type=checkbox]):not([type=radio]) { width: 300px; background: #fff; }
 .filters select { width: auto; background: #fff; }
 .logo-preview { max-height: 60px; max-width: 200px; display: block; margin-bottom: 8px; border: 1px solid var(--border); padding: 6px; border-radius: 10px; background: #fff; }
 code { background: var(--ink-soft); padding: 2px 6px; border-radius: 6px; font-size: 12px; }
@@ -535,7 +539,7 @@ body.dark table.list tr.total-row td { background: #171d25; }
 body.dark .empty { border-color: var(--border); }
 body.dark nav a { color: #b6c0cc; }
 body.dark nav a.active .nav-count { background: var(--panel); }
-body.dark .filters input[type=text], body.dark .filters select { background: var(--panel); }
+body.dark .filters input:not([type=checkbox]):not([type=radio]), body.dark .filters select { background: var(--panel); }
 body.dark .preview iframe { background: #0e1217; }
 body.dark .totals-box table td { color: #c9d2dd; }
 body.dark .modal { background: var(--panel); }
@@ -562,7 +566,7 @@ td.row-actions { white-space: nowrap; text-align: right; width: 1%; }
 /* Les boutons de ligne restent visibles, en retrait, et reprennent leur pleine opacité au survol.
    Cachés jusqu'au survol (audit), ils étaient introuvables sur les listes de documents et de clients
    alors qu'ils étaient toujours affichés partout ailleurs. */
-td.row-actions > span { display: inline-flex; gap: 4px; opacity: .45; transition: opacity .12s; }
+td.row-actions > span { display: inline-flex; gap: 4px; opacity: .7; transition: opacity .12s; }
 tr:hover td.row-actions > span, tr:focus-within td.row-actions > span { opacity: 1; }
 th.row-actions-h { width: 1%; }
 .badge.expiré { background: var(--warning-soft); color: var(--warning); }

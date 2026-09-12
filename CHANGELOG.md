@@ -7,6 +7,32 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 7.9.0 — 12/09/2026
+
+**Un même geste porte partout le même nom et le même habit.**
+
+Rien de neuf ici : que des divergences accumulées au fil des quinze modules. Chacune est minuscule,
+et ensemble elles obligent à **relire** chaque bouton au lieu de le reconnaître.
+
+- **« Exporter en CSV » avait quatre libellés** — « Exporter (CSV) », « Exporter en CSV (Excel) »,
+  « Exporter le registre (CSV) », « Exporter en CSV » — sur onze boutons. Un seul, désormais. Et
+  aucun n'est plus le bouton coloré : exporter n'est l'action principale d'aucun écran, et il ne
+  peut pas y avoir deux boutons colorés sur un écran.
+- **Le bouton qui annule les filtres portait trois libellés, deux styles et deux identifiants**
+  selon la page. Les cinq écrans qui s'en écartaient passent par la même fonction que les six
+  autres : le prochain écran de liste l'héritera sans qu'on y pense.
+- **« Modifier » était une action bordée sur quatre listes et du texte nu sur huit autres.** Les
+  pictogrammes (✕, ⧉) gardent leur forme légère — elle porte déjà le sens ; le texte reprend sa
+  bordure partout. Et les boutons de ligne passent de 45 % à 70 % d'opacité : sur fond blanc, une
+  pastille grise à 45 % passe pour désactivée.
+- **Le champ « Rechercher » n'était pas stylé sur cinq pages** : une petite boîte native, non
+  dimensionnée, dont le texte était coupé au milieu d'un mot — à côté de six listes correctes. La
+  règle CSS énumérait les types à styler et avait oublié `search` ; elle exclut maintenant ceux qui
+  doivent rester natifs, donc le prochain type sera juste d'office.
+- **Deux bulles « i » identiques se touchaient** dans la barre de filtres des Devis, même glyphe,
+  même infobulle : impossible de savoir laquelle explique quoi — et les deux textes se recouvraient
+  déjà presque mot pour mot. Une seule, désormais.
+
 ## 7.8.0 — 12/09/2026
 
 **Un écran vide doit apprendre quelque chose.**

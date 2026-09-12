@@ -1436,7 +1436,7 @@
         <input type="text" id="q" placeholder="Rechercher : n°, client, objet…" value="${h(s.q)}">
         ${isQ ? '' : `<select id="kind"><option value="">Factures et avoirs</option><option value="facture" ${s.kind === 'facture' ? 'selected' : ''}>Factures</option><option value="avoir" ${s.kind === 'avoir' ? 'selected' : ''}>Avoirs</option></select>`}
         <select id="st"><option value="">Tous les statuts</option>${statuses.map(x => `<option value="${x}" ${s.st === x ? 'selected' : ''}>${h(C.statusLabel(x))}</option>`).join('')}</select>
-        ${years.length > 1 ? `<select id="yr"><option value="">Toutes les années</option>${years.map(y => `<option value="${y}" ${s.year === y ? 'selected' : ''}>${y}</option>`).join('')}</select>${info('list.year')}` : ''}
+        ${years.length > 1 ? `<select id="yr"><option value="">Toutes les années</option>${years.map(y => `<option value="${y}" ${s.year === y ? 'selected' : ''}>${y}</option>`).join('')}</select>` : ''}
         ${info('list.filters')}
         <span class="f-note" id="f-note" hidden></span>
         `, mine.length, !!(s.q || s.st || s.kind || s.year))}
@@ -2705,8 +2705,8 @@
           : `<div class="empty">${state.q ? 'Rien ne correspond à cette recherche.' : h(opts.empty)}</div>`;
         const note = $('.f-note', wrap);
         note.hidden = !state.q;
-        note.innerHTML = state.q ? `<span class="small muted">${kept.length} sur ${all.length}</span><button type="button" class="btn btn-sm btn-ghost reset-f" title="Effacer la recherche">✕ Réinitialiser</button>` : '';
-        if ($('.reset-f', wrap)) $('.reset-f', wrap).onclick = () => { state.q = ''; state.page = 1; $('.q', wrap).value = ''; redraw(); };
+        note.innerHTML = state.q ? `<span class="small muted">${kept.length} sur ${all.length}</span>${filterReset(true)}` : '';
+        if ($('#reset-f', wrap)) $('#reset-f', wrap).onclick = () => { state.q = ''; state.page = 1; $('.q', wrap).value = ''; redraw(); };
         bindSort(wrap, redraw);
         bindPager($('.rows', wrap), state, () => redraw(), wrapSel);
         opts.bind(wrap, redraw);
@@ -3183,7 +3183,7 @@
           <input type="text" id="q" placeholder="Rechercher : client, objet…" value="${h(s.q)}">
           <select id="st">${STATES.map(([v, l]) => `<option value="${v}" ${s.st === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
           ${info('list.filters')}
-          ${filtered ? `<span class="f-note"><span class="small muted">${kept.length} sur ${all.length}</span><button type="button" class="btn btn-sm btn-ghost" id="reset-f" title="Effacer la recherche et les filtres">✕ Réinitialiser les filtres</button></span>` : ''}`, all.length, filtered)}
+          ${filtered ? `<span class="f-note"><span class="small muted">${kept.length} sur ${all.length}</span>${filterReset(true)}</span>` : ''}`, all.length, filtered)}
         ${kept.length ? `<table class="list sortable"><thead>${sortHead(cols, s.sort, '<th class="row-actions-h"></th>')}</thead><tbody>
         ${page.map(r => `<tr class="clickable" data-rid="${r.id}">${cols.map(c => `<td class="${c.r ? 'r nw' : ''}">${c.get(r)}</td>`).join('')}
           <td class="actions"><button class="btn btn-sm" data-gen="${r.id}">Générer maintenant</button> <button class="btn btn-sm" data-edit="${r.id}">Modifier</button> <button class="btn btn-sm" data-toggle="${r.id}">${r.active !== false ? 'Suspendre' : 'Reprendre'}</button></td></tr>`).join('')}
@@ -3319,7 +3319,7 @@
         : `
         ${filtersBar(`
           <input type="search" id="rel-q" placeholder="Rechercher : n°, client, objet…" value="${h(relState.q)}">
-          ${q ? `<span class="small muted">${od.length} sur ${nAll}</span><button class="btn btn-sm" id="rel-clear">Réinitialiser</button>` : ''}`, all.length, !!q)}
+          ${q ? `<span class="small muted">${od.length} sur ${nAll}</span>${filterReset(true)}` : ''}`, all.length, !!q)}
         ${od.length ? `<div class="banner">${od.length} facture(s) à relancer — ${C.money(total, cur)} à récupérer</div>` : `<div class="banner info">${q ? 'Aucune facture ne correspond à cette recherche.' : `Aucune facture à relancer${later.length ? ` (${later.length} reportée(s))` : ''}.`}</div>`}
         ${od.length ? `<table class="list sortable">${head}<tbody>${odPage.rows.map(row).join('')}</tbody></table>${pagerBar(odPage.pg, { noun: 'facture' })}` : ''}
         ${later.length ? `<div class="section-head"><h2>Reportées ${info('rel.snooze')}</h2></div><table class="list">${headFixed}<tbody>${later.map(row).join('')}</tbody></table>` : ''}
@@ -3335,7 +3335,7 @@
       if ($('#rel-vers-fac')) $('#rel-vers-fac').onclick = () => navigate('#/factures');
       if ($('#rel-vers-new')) $('#rel-vers-new').onclick = () => navigate('#/doc/new/facture');
       if ($('#rel-q')) $('#rel-q').oninput = e => { relState.q = e.target.value; relState.page = 1; draw(); const el = $('#rel-q'); el.focus(); el.setSelectionRange(el.value.length, el.value.length); };
-      if ($('#rel-clear')) $('#rel-clear').onclick = () => { relState.q = ''; relState.page = 1; draw(); };
+      if ($('#reset-f')) $('#reset-f').onclick = () => { relState.q = ''; relState.page = 1; draw(); };
       bindSort($('#r-wrap'), key => { relState.sort = toggleSort(relState.sort, key, relCols); relState.page = 1; draw(); });
       bindPager($('#r-wrap'), relState, () => draw(), '#r-wrap');
       $$('[data-rem]').forEach(b => b.onclick = () => sendReminder(find(b.dataset.rem)));
@@ -5063,7 +5063,7 @@
               <td class="r nw">${C.money(x.c.employerCost, cur)}</td>
               <td class="nw">${x.paidDate ? C.fmtDate(x.paidDate) : '<span class="warn-text">pas encore</span>'}</td>
               <td class="r nw"><button class="btn btn-sm" data-pdf="${h(x.id)}">PDF</button>
-                <button class="btn btn-sm btn-ghost" data-ed="${h(x.id)}">Modifier</button></td></tr>`).join('')}
+                <button class="btn btn-sm" data-ed="${h(x.id)}">Modifier</button></td></tr>`).join('')}
             <tr class="total-row"><td><strong>Total du mois</strong></td>
               <td class="r"><strong>${C.money(C.round3(month.reduce((a, x) => a + x.c.gross, 0)), cur)}</strong></td>
               <td class="r">${C.money(C.round3(month.reduce((a, x) => a + x.c.cnssEmployee, 0)), cur)}</td>
@@ -5111,7 +5111,7 @@
                 <td class="r nw">${C.money(e.grossSalary, cur)}</td>
                 <td class="r nw">${C.money(c.net, cur)}</td>
                 <td class="r nw"><strong>${C.money(c.employerCost, cur)}</strong></td>
-                <td class="r"><button class="btn btn-sm btn-ghost" data-ee="${h(e.id)}">Modifier</button></td></tr>`;
+                <td class="r"><button class="btn btn-sm" data-ee="${h(e.id)}">Modifier</button></td></tr>`;
             }).join('')}
             <tr class="total-row"><td colspan="4"><strong>${active} salarié(s) en poste</strong></td>
               <td class="r"><strong>${C.money(C.round3(C.activeEmployees(data).reduce((a, e) => a + (Number(e.grossSalary) || 0), 0)), cur)}</strong></td>
@@ -5158,7 +5158,7 @@
                 <td class="r nw">${pct(l.days)}</td>
                 <td>${l.paid ? '<span class="ok-text">payée</span>' : '<span class="warn-text">retirée du salaire</span>'}</td>
                 <td>${h(l.note || '')}</td>
-                <td class="r"><button class="btn btn-sm btn-ghost" data-lv="${h(l.id)}">Modifier</button></td></tr>`;
+                <td class="r"><button class="btn btn-sm" data-lv="${h(l.id)}">Modifier</button></td></tr>`;
             }).join('')}
           </tbody></table></div>`
             : '<div class="empty">Aucun congé ni absence enregistré cette année. Une absence non payée se retire toute seule du bulletin du mois concerné.</div>'}
@@ -5182,7 +5182,7 @@
                 <td class="r nw">${C.money(a.repaid, cur)}</td>
                 <td class="r nw">${a.done ? '<span class="ok-text">soldée</span>' : `<strong>${C.money(a.remaining, cur)}</strong>`}</td>
                 <td>${h(a.note || '')}</td>
-                <td class="r"><button class="btn btn-sm btn-ghost" data-av="${h(a.id)}">Modifier</button></td></tr>`;
+                <td class="r"><button class="btn btn-sm" data-av="${h(a.id)}">Modifier</button></td></tr>`;
             }).join('')}
           </tbody></table></div>
           <p class="small muted mt">La retenue se pose toute seule sur chaque bulletin établi, jusqu'à extinction — la dernière échéance ne prend que ce qui reste. Ce qui est remboursé se lit sur les bulletins, pas sur un compteur à part : supprimer une avance ne défait donc pas les retenues déjà passées.</p>`
@@ -5205,7 +5205,7 @@
               <td class="nw">${r.endDate ? C.fmtDate(r.endDate) : '<span class="ok-text">en poste</span>'}</td>
               <td class="r nw">${C.money(r.grossSalary, cur)}</td></tr>`).join('')}
           </tbody></table></div>
-          <div class="inline mt"><button class="btn" id="reg-csv">Exporter le registre (CSV)</button></div>`
+          <div class="inline mt"><button class="btn" id="reg-csv">Exporter en CSV</button></div>`
             : '<div class="empty">Aucun salarié.</div>'}
         </div>
         <div class="panel"><h2>Documents à remettre ${info('hr.doc')}</h2>
@@ -5277,7 +5277,7 @@
               <td class="r"><strong>${C.money(cn.total, cur)}</strong></td></tr>
           </tbody></table></div>
           <div class="inline mt">
-            <button class="btn" id="cn-csv">Exporter (CSV)</button>
+            <button class="btn" id="cn-csv">Exporter en CSV</button>
             <button class="btn" id="cn-mail">Envoyer au comptable</button>
             <button class="btn ${filed(`cnss-${y}-T${q}`) ? '' : 'btn-primary'}" id="cn-file">${filed(`cnss-${y}-T${q}`) ? 'Retirer « déposée »' : 'Marquer déposée'}</button>
           </div>
@@ -5318,7 +5318,7 @@
           ${an.heldMissing ? `<p class="small warn-text mt">${an.heldMissing} attestation(s) de retenue ne sont pas encore remises à tes fournisseurs. Sans elles, ils ne peuvent pas déduire ce que tu leur as retenu.</p>` : ''}`
             : '<p class="small muted">Aucune retenue à la source opérée sur un fournisseur cette année.</p>'}
           <div class="inline mt">
-            <button class="btn" id="an-csv">Exporter (CSV)</button>
+            <button class="btn" id="an-csv">Exporter en CSV</button>
             <button class="btn ${filed('employeur-' + y) ? '' : 'btn-primary'}" id="an-file">${filed('employeur-' + y) ? 'Retirer « déposée »' : 'Marquer déposée'}</button>
           </div>
           <p class="small muted mt"><em>À VÉRIFIER avec ton comptable : la forme exacte du formulaire, les dates et les modalités de dépôt. SkanFact prépare les chiffres, il ne dépose rien.</em></p>
@@ -5554,7 +5554,7 @@
             <td class="nw">${C.fmtDate(l.from)}</td><td class="nw">${C.fmtDate(l.to)}</td><td class="r nw">${pct(l.days)}</td>
             <td>${l.paid ? '<span class="ok-text">payée</span>' : '<span class="warn-text">retirée du salaire</span>'}</td>
             <td>${h(l.note || '')}</td>
-            <td class="r"><button class="btn btn-sm btn-ghost" data-lv="${h(l.id)}">Modifier</button></td></tr>`).join('')}
+            <td class="r"><button class="btn btn-sm" data-lv="${h(l.id)}">Modifier</button></td></tr>`).join('')}
         </tbody></table>` : `<div class="empty">Aucun congé ni absence en ${h(year)}.</div>`}
       </div>
       <div class="panel"><h2>Bulletins</h2>
@@ -5568,7 +5568,7 @@
             <td class="r nw">${C.money(x.c.employerCost, cur)}</td>
             <td class="nw">${x.paidDate ? C.fmtDate(x.paidDate) : '<span class="warn-text">pas encore</span>'}</td>
             <td class="r nw"><button class="btn btn-sm" data-pdf="${h(x.id)}">PDF</button>
-              <button class="btn btn-sm btn-ghost" data-ed="${h(x.id)}">Modifier</button></td></tr>`).join('')}
+              <button class="btn btn-sm" data-ed="${h(x.id)}">Modifier</button></td></tr>`).join('')}
         </tbody></table></div>`
           : '<div class="empty">Aucun bulletin pour ce salarié.</div>'}
       </div>`;
@@ -5650,7 +5650,7 @@
       const a = items.length ? ST_ACTION[s.tab] : ST_ACTION.etat;   // même garde-fou que sur Paie
       return `<h1>Stock</h1>
         <div class="actions">
-          <button class="btn" id="st-csv">Exporter (CSV)</button>
+          <button class="btn" id="st-csv">Exporter en CSV</button>
           <button class="btn" id="st-war">Garanties</button>
           ${a ? `<button class="btn btn-primary" id="${a[0]}">${a[1]}</button>` : ''}
         </div>`;
@@ -5826,7 +5826,7 @@
               <td class="nw">${!x.warrantyEndDate ? '<span class="muted">—</span>'
                 : x.expired ? `<span class="muted">expirée le ${C.fmtDate(x.warrantyEndDate)}</span>`
                 : `<span class="${x.warrantyEndingSoon ? 'warn-text' : 'ok-text'}">jusqu'au ${C.fmtDate(x.warrantyEndDate)}</span>`}</td>
-              <td class="r"><button class="btn btn-sm btn-ghost" data-ser="${h(x.id)}">Modifier</button></td></tr>`).join('')}
+              <td class="r"><button class="btn btn-sm" data-ser="${h(x.id)}">Modifier</button></td></tr>`).join('')}
           </tbody></table></div>
           ${paged.pg ? pagerBar(paged.pg, { noun: 'numéro' }) : ''}`
             : '<div class="empty">Aucun numéro ne correspond.</div>'}`
@@ -6364,7 +6364,7 @@
       <div class="page-head"><h1>Immobilisations</h1>
         <div class="actions">
           <select id="im-year" ${s.tab === 'attente' ? 'hidden' : ''}>${years.map(y => `<option ${y === s.year ? 'selected' : ''}>${y}</option>`).join('')}</select>
-          <button class="btn" id="im-csv">Exporter (CSV)</button>
+          <button class="btn" id="im-csv">Exporter en CSV</button>
           <button class="btn btn-primary" id="new-imm">+ Nouveau bien</button>
         </div></div>
       <div class="tabs" id="im-tabs" role="tablist">${IMMO_TABS.map(([id, label]) =>
@@ -6736,7 +6736,7 @@
           <div class="stat"><div class="lbl">Variation</div><div class="val ${entrees + sorties < 0 ? 'due' : 'ok'}">${C.money(C.round3(entrees + sorties), cur)}</div><div class="sub">sur l'année en cours</div></div>
         </div>
         <div class="panel"><h2>Tous les mouvements</h2>
-          <div class="inline mb"><button class="btn btn-sm" id="exp-moves">Exporter en CSV (Excel)</button></div>
+          <div class="inline mb"><button class="btn btn-sm" id="exp-moves">Exporter en CSV</button></div>
           ${rows.length ? `<div id="m-wrap"><table class="list compact sortable"><thead>${sortHead(cols, s.moves.sort)}</thead><tbody>
             ${pg.rows.map(m => `<tr class="${m.source === 'libre' ? 'clickable' : ''}" data-mv="${m.source === 'libre' ? h(m.movementId) : ''}">
               ${cols.map(c => `<td class="${c.r ? 'r nw' : ''}${c.cls ? ' ' + c.cls : ''}">${c.get(m)}</td>`).join('')}</tr>`).join('')}
@@ -6867,7 +6867,7 @@
           </select>
           <select id="s-year">${years.map(y => `<option ${y === statsState.year ? 'selected' : ''}>${y}</option>`).join('')}</select>
           <select id="s-n" ${statsState.kind === 'annee' ? 'hidden' : ''}></select>
-          <button class="btn" id="s-export">Exporter en CSV (Excel)</button>
+          <button class="btn" id="s-export">Exporter en CSV</button>
         </div></div>
       <div id="s-body"></div>`;
 
@@ -7149,7 +7149,7 @@
         <div class="filters">
           <input type="search" id="cpt-q" placeholder="Rechercher : n°, client, objet, référence…" value="${h(comptaState.q)}">
           ${q ? `<span class="small muted">${rows.length} sur ${allRows.length} document(s) · ${pays.length} sur ${allPays.length} paiement(s)</span>
-            <button class="btn btn-sm" id="cpt-clear">Réinitialiser</button>
+            ${filterReset(true)}
             <span class="small warn-text">Les totaux ci-dessous ne portent que sur la sélection.</span>` : ''}
         </div>
         <div class="stats">
@@ -7166,13 +7166,13 @@
           <p class="small muted mt">Timbres fiscaux : ${C.money(sum.timbre, cur)} · TTC facturé : ${C.money(sum.ttc, cur)} · Retenues à la source subies : ${C.money(sum.rs, cur)}. <em>À VÉRIFIER avec le comptable</em> avant déclaration.</p>
         </div>
         <div class="panel"><h2>Journal des ventes — ${h(periodLabel())} ${info('compta.journal')}</h2>
-          <div class="inline mb"><button class="btn" id="exp-journal">Exporter en CSV (Excel)</button><button class="btn" id="exp-pdfs">Exporter tous les PDF de la période</button><button class="btn btn-primary" id="exp-comptable">Envoyer au comptable…</button>${info('compta.comptable')}</div>
+          <div class="inline mb"><button class="btn" id="exp-journal">Exporter en CSV</button><button class="btn" id="exp-pdfs">Exporter tous les PDF de la période</button><button class="btn btn-primary" id="exp-comptable">Envoyer au comptable…</button>${info('compta.comptable')}</div>
           ${rows.length ? `<div class="scroll-x" id="j-wrap"><table class="list compact sortable"><thead>${sortHead(journalCols, comptaState.journal.sort)}</thead><tbody>
             ${jPage.rows.map(r => `<tr class="clickable" data-id="${r.id}">${journalCols.map(c => `<td class="${c.r ? 'r nw' : ''}">${c.get(r)}</td>`).join('')}</tr>`).join('')}
           </tbody></table></div>${pagerBar(jPage.pg, { noun: 'document' })}` : '<div class="empty">Aucune facture émise sur cette période.</div>'}
         </div>
         <div class="panel"><h2>Encaissements — ${h(periodLabel())}</h2>
-          <div class="inline mb"><button class="btn" id="exp-pays">Exporter en CSV (Excel)</button></div>
+          <div class="inline mb"><button class="btn" id="exp-pays">Exporter en CSV</button></div>
           ${pays.length ? `<div id="p-wrap"><table class="list compact sortable"><thead>${sortHead(payCols, comptaState.pays.sort)}</thead><tbody>
             ${pPage.rows.map(r => `<tr class="clickable" data-id="${r.docId}">${payCols.map(c => `<td class="${c.r ? 'r nw' : ''}">${c.get(r)}</td>`).join('')}</tr>`).join('')}
           </tbody></table></div>${pagerBar(pPage.pg, { noun: 'paiement' })}` : '<div class="empty">Aucun encaissement sur cette période.</div>'}
@@ -7227,7 +7227,7 @@
           }; });
       };
       $('#cpt-q').oninput = e => { comptaState.q = e.target.value; comptaState.journal.page = 1; comptaState.pays.page = 1; draw(); const el = $('#cpt-q'); el.focus(); el.setSelectionRange(el.value.length, el.value.length); };
-      if ($('#cpt-clear')) $('#cpt-clear').onclick = () => { comptaState.q = ''; draw(); };
+      if ($('#reset-f')) $('#reset-f').onclick = () => { comptaState.q = ''; draw(); };
       $('#exp-journal').onclick = async () => {
         const p2 = await bridge.saveText(`journal-ventes-${tag}.csv`, C.toCsv(rows, journalColumns())); if (p2) toast('Exporté : ' + p2.split(/[\\/]/).pop());
       };
@@ -7263,7 +7263,7 @@
       $('#c-body').innerHTML = `
         <div class="filters">
           <input type="search" id="cpt-q" placeholder="Rechercher : n°, fournisseur, objet, catégorie…" value="${h(comptaState.q)}">
-          ${q ? `<span class="small muted">${rows.length} sur ${allRows.length}</span><button class="btn btn-sm" id="cpt-clear">Réinitialiser</button>
+          ${q ? `<span class="small muted">${rows.length} sur ${allRows.length}</span>${filterReset(true)}
             <span class="small warn-text">Les totaux ne portent que sur la sélection.</span>` : ''}
         </div>
         <div class="stats">
@@ -7276,7 +7276,7 @@
           <ul class="rank">${sum.byCategory.slice(0, 10).map(x => `<li><span class="name">${h(x.label)}</span><span class="bar"><i style="width:${Math.max(4, Math.round(x.ht / Math.max(1, sum.byCategory[0].ht) * 100))}%"></i></span><span class="amt">${C.money(x.ht, cur)}</span></li>`).join('')}</ul>
         </div>` : ''}
         <div class="panel"><h2>Journal des achats — ${h(label)} ${info('compta.buyJournal')}</h2>
-          <div class="inline mb"><button class="btn" id="exp-buys">Exporter en CSV (Excel)</button></div>
+          <div class="inline mb"><button class="btn" id="exp-buys">Exporter en CSV</button></div>
           ${rows.length ? `<div class="scroll-x" id="b-wrap"><table class="list compact sortable"><thead>${sortHead(cols, comptaState.buys.sort)}</thead><tbody>
             ${pg.rows.map(r => `<tr class="clickable" data-bid="${r.id}">${cols.map(c => `<td class="${c.r ? 'r nw' : ''}${c.cls ? ' ' + c.cls : ''}">${c.get(r)}</td>`).join('')}</tr>`).join('')}
           </tbody><tfoot><tr><td colspan="4"><strong>Total</strong></td><td class="r"><strong>${C.money(sum.ht)}</strong></td><td class="r"><strong>${C.money(sum.tva)}</strong></td>
@@ -7285,7 +7285,7 @@
         </div>`;
       $$('#c-body tr[data-bid]').forEach(tr => tr.onclick = () => navigate('#/achat/' + tr.dataset.bid));
       $('#cpt-q').oninput = e => { comptaState.q = e.target.value; comptaState.buys.page = 1; draw(); const el = $('#cpt-q'); el.focus(); el.setSelectionRange(el.value.length, el.value.length); };
-      if ($('#cpt-clear')) $('#cpt-clear').onclick = () => { comptaState.q = ''; draw(); };
+      if ($('#reset-f')) $('#reset-f').onclick = () => { comptaState.q = ''; draw(); };
       const panel = $('#b-wrap') && $('#b-wrap').closest('.panel');
       if (panel) {
         bindSort(panel, key => { comptaState.buys.sort = toggleSort(comptaState.buys.sort, key, cols); comptaState.buys.page = 1; draw(); });
@@ -7405,7 +7405,7 @@
             : `<div class="banner"><span>${bal.off.length} pièce${bal.off.length > 1 ? 's' : ''} ne tombe${bal.off.length > 1 ? 'nt' : ''} pas juste — signale-le avant d'envoyer.</span></div>`}
           <p class="small muted"><em>À VÉRIFIER avec ton comptable :</em> les numéros de compte ci-dessous sont ceux du plan comptable tunisien tel qu'il est couramment utilisé, mais chaque cabinet a ses habitudes. Ils se modifient dans « Plan de comptes », et l'export suit.</p>
           <div class="inline mt">
-            <button class="btn btn-primary" id="ecr-csv" ${bal.lines ? '' : 'disabled'}>Exporter en CSV</button>
+            <button class="btn" id="ecr-csv" ${bal.lines ? '' : 'disabled'}>Exporter en CSV</button>
             <button class="btn" id="ecr-mail" ${bal.lines ? '' : 'disabled'}>Envoyer au comptable</button>
             <button class="btn btn-ghost" id="ecr-plan">Plan de comptes…</button>
           </div>

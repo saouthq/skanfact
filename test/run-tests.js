@@ -5698,5 +5698,41 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.ok(!/: '<div class="empty">Rien à déclarer.<\/div>'/.test(code), 'la branche morte doit disparaître');
   });
 
+  t('un même geste porte partout le même nom et le même habit', () => {
+    const app = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
+    const css = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'style.css'), 'utf8');
+    const code = app.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+    assert.ok(code.includes('function filterReset'), 'le nettoyage des commentaires a mangé le code');
+
+    // Quatre libellés pour le même geste obligent à RELIRE chaque bouton au lieu de le reconnaître.
+    ['Exporter (CSV)', 'Exporter en CSV (Excel)', 'Exporter le registre (CSV)'].forEach(l =>
+      assert.ok(!code.includes('>' + l + '<'), `« ${l} » : un seul libellé, « Exporter en CSV »`));
+    assert.ok(code.split('>Exporter en CSV<').length - 1 >= 10, 'tous les exports portent le libellé commun');
+    // Exporter n'est l'action principale d'aucun écran : le bouton coloré dit « voici le geste du
+    // jour », et il ne peut pas y en avoir deux.
+    assert.ok(!/btn btn-primary" id="[a-z-]*csv/.test(code), 'un export ne doit jamais être le bouton coloré');
+
+    // Le bouton qui annule les filtres portait trois libellés, deux styles et deux identifiants.
+    assert.ok(!/id="rel-clear"|id="cpt-clear"|btn-ghost reset-f/.test(code),
+      'tous les écrans passent par filterReset() : un libellé, un style, un id');
+
+    // « Modifier » est une action, pas un pictogramme : elle garde sa bordure. Huit listes
+    // l'écrivaient en `btn-ghost` (fond et bordure transparents) là où quatre autres la bordaient.
+    assert.ok(!/btn btn-sm btn-ghost" data-\w+="[^"]*">Modifier</.test(code),
+      '« Modifier » sans bordure : le même bouton ne peut pas avoir deux apparences');
+
+    // Le sélecteur des champs était énuméré type par type et oubliait `search` : cinq listes
+    // affichaient une petite boîte native dont le texte était coupé au milieu d'un mot.
+    assert.ok(!/input\[type=text\], input\[type=number\]/.test(css),
+      'on exclut ce qui doit rester natif, on n\'énumère pas ce qui doit être stylé');
+    assert.ok(/input:not\(\[type=checkbox\]\)[^{]*\{/.test(css), 'le sélecteur générique doit exister');
+    assert.ok(!/\.filters input\[type=text\]/.test(css), 'la barre de filtres doit styler tous ses champs');
+
+    // Deux bulles « i » identiques qui se touchent : même glyphe, même infobulle, impossible de
+    // savoir laquelle explique quoi. Si elles portent sur le même bloc, c'est une seule clé.
+    assert.ok(!/\$\{info\('[a-z.]+'\)\}\s*\$\{info\('/.test(code),
+      'deux bulles « i » ne se suivent jamais sans texte entre elles');
+  });
+
   console.log(`\n${n} tests OK`);
 })().catch(e => { console.error(e); process.exit(1); });

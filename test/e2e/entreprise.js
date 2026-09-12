@@ -473,7 +473,7 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     const before = (await win.$$('#list-wrap tbody tr')).length;
     await win.fill('#list-wrap .filters .q', 'zzzz-introuvable');
     await win.waitForSelector('#list-wrap .empty');
-    await win.click('#list-wrap .reset-f');
+    await win.click('#list-wrap #reset-f');
     await win.waitForFunction(n => document.querySelectorAll('#list-wrap tbody tr').length === n, before);
     await win.evaluate(() => { location.hash = '#/contrats'; });
     await win.waitForSelector('#c-wrap .filters #st');
