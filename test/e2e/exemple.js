@@ -151,6 +151,47 @@ const os = require('os');
   if (net.demo) throw new Error('les données effacées se croient encore un exemple');
   j.ok('société, fournisseurs, salariés, immobilisations, comptes : tout est parti');
 
+  j.etape('Revenir en arrière : la restauration existait, aucun écran ne l\'appelait');
+  // `backups:peek` et `backups:restore` vivent dans main.js depuis la 7.0.0, et seule la sortie du
+  // jeu d'exemple s'en servait. Le seul chemin proposé à quelqu'un qui vient de perdre quelque chose
+  // était « Importer et choisis un fichier de ce dossier » : naviguer dans un dossier caché, y
+  // reconnaître un nom, et remplacer tout sans savoir ce qu'on perd.
+  await win.evaluate(() => { location.hash = '#/parametres'; });
+  await win.waitForSelector('#set-tabs');
+  await win.click('#set-tabs button[data-tab="donnees"]');
+  await win.waitForSelector('#backup-list');
+  await win.waitForTimeout(300);
+  if (!(await win.$('#backup-list [data-restore]'))) {
+    throw new Error('aucune sauvegarde restaurable à l\'écran : la seule issue reste « Importer », dans un dossier caché');
+  }
+  // On ajoute un client, on restaure, il doit disparaître — et la fenêtre doit DIRE ce qu'on perd.
+  const avantNom = await win.evaluate(() => window.__data.clients.length);
+  await win.evaluate(() => { location.hash = '#/clients'; });
+  await win.waitForSelector('#view .page-head');
+  await win.click('#view .page-head .btn-primary');
+  await win.waitForSelector('#modal-root input[name=name]');
+  await win.fill('#modal-root input[name=name]', 'Client de trop');
+  await win.click('#modal-root .modal-actions .btn-primary');
+  await win.waitForFunction(() => !document.querySelector('#modal-root').children.length);
+
+  await win.evaluate(() => { location.hash = '#/parametres'; });
+  await win.waitForSelector('#set-tabs');
+  await win.click('#set-tabs button[data-tab="donnees"]');
+  await win.waitForSelector('#backup-list [data-restore]');
+  await win.click('#backup-list [data-restore]');
+  await win.waitForSelector('#modal-root .modal');
+  const q2 = await win.textContent('#modal-root .modal');
+  if (!/Aujourd'hui tu as/.test(q2)) throw new Error('la question doit dire ce qu\'on va perdre : ' + q2.slice(0, 200));
+  if (!/se défait/.test(q2)) throw new Error('elle doit dire que le geste est réversible : ' + q2.slice(0, 200));
+  await win.click('#modal-root .modal-actions .btn-primary');
+  await win.waitForTimeout(900);
+  const restes = await win.evaluate(() => window.__data.clients.map(c => c.name));
+  if (restes.includes('Client de trop')) throw new Error('la restauration n\'a rien remis : ' + restes.join(', '));
+  // À ce point du test, « Tout effacer » vient de passer : la sauvegarde la plus récente est le filet
+  // pris juste avant. La restaurer défait donc l'effacement — ce qui est précisément ce qu'on veut
+  // pouvoir faire le jour où on a cliqué trop vite.
+  j.ok(`l'effacement est défait : ${restes.length} client(s) sont revenus`);
+
   if (bac.length) { console.error('\nERREURS JS :\n' + bac.join('\n')); process.exit(1); }
   await app.close();
   console.log('\n>>> JEU D\'EXEMPLE OK');

@@ -5478,5 +5478,38 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       assert.ok(code.includes(`<h1>${titre}`), `la page « ${id} » doit s'intituler « ${titre} », comme dans le menu`));
   });
 
+  t('sauvegardes : on purge la plus ANCIENNE, jamais la première par ordre alphabétique', () => {
+    const dir = tmpDir();
+    const s = createStorage(dir);
+    s.write({ ...core.DEFAULT_DATA, company: { ...core.DEFAULT_COMPANY, name: 'Test' } });
+
+    // Le défaut : `named.sort()` triait par NOM. « avant-demo », « avant-effacement » et
+    // « avant-import » passent toujours avant « manuelle-… », donc les trois filets partaient les
+    // premiers — celui qu'on vient de prendre disparaissait à la seconde où il servait, pendant que
+    // l'écran annonçait « une sauvegarde est prise juste avant ». C'est exactement le défaut corrigé
+    // dans l'app cabinet en 6.8.1, et jamais porté ici.
+    const dossier = path.join(dir, 'backups');
+    fs.mkdirSync(dossier, { recursive: true });
+    const noms = [];
+    for (let i = 0; i < 25; i++) noms.push('manuelle-' + String(i).padStart(3, '0'));
+    noms.forEach((nom, i) => {
+      const f = path.join(dossier, nom + '.json');
+      fs.writeFileSync(f, JSON.stringify({ ...core.DEFAULT_DATA, company: { ...core.DEFAULT_COMPANY, name: nom } }));
+      fs.utimesSync(f, new Date(2020, 0, 1 + i), new Date(2020, 0, 1 + i));   // les plus vieilles
+    });
+    // Le filet, pris à l'instant : le plus RÉCENT de tous, et le premier par ordre alphabétique.
+    const filet = path.join(dossier, 'avant-effacement-2026-09-12.json');
+    fs.writeFileSync(filet, JSON.stringify({ ...core.DEFAULT_DATA, company: { ...core.DEFAULT_COMPANY, name: 'FILET' } }));
+    fs.utimesSync(filet, new Date(2026, 8, 12), new Date(2026, 8, 12));
+
+    s.backupNow('manuelle');            // déclenche la purge
+
+    const restants = fs.readdirSync(dossier);
+    assert.ok(restants.includes('avant-effacement-2026-09-12.json'),
+      'le filet le plus récent a été purgé alors que vingt-cinq sauvegardes plus vieilles restaient : ' + restants.join(', '));
+    // Et ce sont bien les plus vieilles qui sont parties.
+    assert.ok(!restants.includes('manuelle-000.json'), 'la plus ancienne aurait dû partir');
+  });
+
   console.log(`\n${n} tests OK`);
 })().catch(e => { console.error(e); process.exit(1); });

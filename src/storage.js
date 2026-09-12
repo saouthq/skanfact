@@ -235,10 +235,18 @@ function createStorage(dir, opts) {
   function prune() {
     let names;
     try { names = fs.readdirSync(backupDir).filter(f => f.endsWith('.json')); } catch { return; }
+    // Les quotidiennes portent leur date dans leur nom : l'ordre alphabétique EST l'ordre du temps.
     const daily = names.filter(f => DAILY_RE.test(f)).sort();
     while (daily.length > DAILY_KEEP) fs.unlinkSync(path.join(backupDir, daily.shift()));
-    const named = names.filter(f => !DAILY_RE.test(f)).sort();
-    while (named.length > NAMED_KEEP) fs.unlinkSync(path.join(backupDir, named.shift()));
+    // Les nommées, non — et elles étaient purgées par ordre ALPHABÉTIQUE. « avant-demo »,
+    // « avant-effacement », « avant-import » passent toujours avant « manuelle-… » : le filet
+    // disparaissait donc à la seconde où il était pris, pendant que l'écran annonçait qu'une
+    // sauvegarde est faite avant. Même défaut corrigé dans l'app cabinet en 6.8.1, jamais porté
+    // ici. Une purge se fait par DATE, jamais par nom — la plus ancienne part, point.
+    const named = names.filter(f => !DAILY_RE.test(f))
+      .map(f => { let t = 0; try { t = fs.statSync(path.join(backupDir, f)).mtimeMs; } catch (_) {} return { f, t }; })
+      .sort((a, b) => a.t - b.t || a.f.localeCompare(b.f));
+    while (named.length > NAMED_KEEP) fs.unlinkSync(path.join(backupDir, named.shift().f));
   }
 
   function listBackups() {

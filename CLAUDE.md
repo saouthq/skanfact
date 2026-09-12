@@ -551,6 +551,17 @@ Règles apprises, à ne pas recasser :
 - **La capture montre ce que la relecture du code ne montre pas.** L'écran des modules, relu et jugé
   correct, mettait trois lignes verrouillées en tête et poussait les vraies questions — et la phrase
   qui dit qu'on ne perd rien — sous la coupe du panneau. Une photo, dix secondes.
+- **Un moteur sans écran n'existe pas.** `backups:peek` et `backups:restore` étaient écrits, testés
+  et branchés… uniquement sur la sortie du jeu d'exemple. Pour tout le reste, la seule issue
+  proposée restait « Importer et choisis un fichier de ce dossier » : un dossier caché, un nom de
+  fichier à reconnaître, et un remplacement total sans savoir ce qu'on perd. **Le jour où on a
+  besoin d'une restauration est le pire jour pour apprendre un chemin.** Même famille que la
+  fonction morte ci-dessus : ce qui compte n'est pas que le code existe, c'est qu'un écran l'appelle.
+- **Un correctif de l'une des deux applications doit être cherché dans l'autre.** Les sauvegardes
+  nommées de l'app entreprise étaient purgées par ordre alphabétique — « avant-demo »,
+  « avant-effacement », « avant-import » partant toujours en premier — exactement le défaut corrigé
+  dans l'app cabinet en 6.8.1, jamais porté. Elles partagent des fichiers (`style.css`) et des idées,
+  pas leur code de stockage : une règle apprise d'un côté se vérifie de l'autre, à la main.
 - **Une boucle e2e qui compte les écrans d'un assistant se périme à la version suivante.** On
   reconnaît chaque écran à ce qu'il contient (`#sf-mods`, `[data-act]`, `input[name=name]`), jamais
   à son numéro : un septième écran a fait passer trois tests « à côté » sans un mot.

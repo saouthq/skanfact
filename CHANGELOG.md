@@ -7,6 +7,26 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 7.5.0 — 12/09/2026
+
+**Revenir en arrière.**
+
+- **Restaurer une sauvegarde existait dans le moteur depuis la 7.0.0, et aucun écran ne l'appelait.**
+  Seule la sortie du jeu d'exemple s'en servait. À quelqu'un qui venait de perdre quelque chose,
+  l'application proposait une seule issue : « Importer et choisis un fichier de ce dossier » —
+  c'est-à-dire naviguer dans un dossier caché, y reconnaître un nom de fichier, et remplacer **tout**
+  sans savoir ce qu'on perd. Le jour où on en a besoin est le pire jour pour apprendre un chemin.
+  Paramètres → Sécurité et données liste maintenant les sauvegardes avec leur date et ce qu'elles
+  étaient (« Juste avant « Tout effacer » », « État du matin »…), et « Restaurer… » dit d'abord ce
+  que contient la sauvegarde et ce que tu as aujourd'hui. L'état actuel est mis de côté juste avant :
+  **le geste se défait**, y compris un « Tout effacer » cliqué trop vite.
+- **Les sauvegardes nommées étaient purgées par ordre alphabétique.** « avant-demo »,
+  « avant-effacement » et « avant-import » passent toujours avant « manuelle-… » : les trois filets
+  partaient donc les premiers, et celui qu'on venait de prendre disparaissait à la seconde où il
+  servait — pendant que l'écran annonçait qu'une sauvegarde est faite avant. Une purge se fait par
+  **date**, jamais par nom. Le même défaut avait été corrigé dans l'app du cabinet en 6.8.1 ; il
+  n'avait jamais été porté ici.
+
 ## 7.4.0 — 12/09/2026
 
 **Trouver sans savoir où c'est.**

@@ -7736,13 +7736,20 @@
       <div class="panel"><h2>Sauvegardes ${info('data.backups')}</h2>
         <p class="small muted">Fichier de données : <code>${h(path)}</code></p>
         <p class="small">${data.documents.length} document(s), ${data.clients.length} client(s), ${data.catalog.length} prestation(s).</p>
-        <p class="small muted">Chaque jour, l'état du matin est copié dans le dossier <code>backups</code> (30 jours conservés) ; une copie est aussi prise avant tout import. Pour revenir en arrière : <em>Importer</em> et choisis un fichier de ce dossier.</p>
+        <p class="small muted">Chaque jour, l'état du matin est copié dans le dossier <code>backups</code> (30 jours conservés) ; une copie est aussi prise avant tout import, avant l'exemple et avant un effacement.</p>
         <div class="inline mt">
           <button class="btn" id="backup-now">Sauvegarder maintenant</button>
           <button class="btn" id="open-backups">Ouvrir le dossier des sauvegardes</button>
           <button class="btn" id="export-data">Exporter les données…</button>
           <button class="btn" id="import-data">Importer…</button>
         </div>
+        <!-- Le moteur sait restaurer depuis la 7.0.0 (backups:peek et backups:restore), et
+             AUCUN écran ne l'appelait : seule la sortie du jeu d'exemple s'en servait. Le seul
+             chemin proposé à quelqu'un qui vient de perdre quelque chose était « Importer et
+             choisis un fichier de ce dossier » — c'est-à-dire naviguer dans un dossier caché, y
+             reconnaître un nom de fichier, et remplacer TOUT sans savoir ce qu'on perd. Le jour où
+             on en a besoin est le pire jour pour apprendre un chemin. -->
+        <div id="backup-list" class="mt"></div>
       </div>
       <!-- Charger l'exemple n'est PAS un geste dangereux : une sauvegarde est prise, la société est
            conservée, un bandeau permanent offre le retour, et l'article « Démarrer » le présente
@@ -7847,7 +7854,64 @@
     drawOcrPanel();
     $('#go-modules').onclick = () => navigate('#/modules');
     $$('#redo-setup, #redo-setup-2').forEach(b => b.onclick = rejouerAssistant);
-    $('#backup-now').onclick = async () => { const p = await bridge.createBackup(); toast(p ? 'Sauvegarde créée : ' + p.split(/[\\/]/).pop() : 'Rien à sauvegarder pour l\'instant'); drawExternal(); };
+    $('#backup-now').onclick = async () => { const p = await bridge.createBackup(); toast(p ? 'Sauvegarde créée : ' + p.split(/[\\/]/).pop() : 'Rien à sauvegarder pour l\'instant'); drawExternal(); drawBackups(); };
+
+    // La liste des sauvegardes, avec le bouton qui les remet. Chaque nom est traduit : « avant-demo »
+    // ne veut rien dire pour quelqu'un qui n'a pas écrit le code.
+    const NOM_SAUVEGARDE = [
+      [/^avant-demo/, 'Juste avant de charger l\'exemple'],
+      [/^avant-restauration/, 'Juste avant une restauration'],
+      [/^avant-effacement/, 'Juste avant « Tout effacer »'],
+      [/^avant-import/, 'Juste avant un import'],
+      [/^manuelle/, 'Sauvegarde que tu as demandée'],
+      [/^\d{4}-\d{2}-\d{2}/, 'État du matin']
+    ];
+    const nommer = f => (NOM_SAUVEGARDE.find(([re]) => re.test(f)) || [null, 'Sauvegarde'])[1];
+    async function drawBackups() {
+      const el = $('#backup-list'); if (!el) return;
+      let liste = [];
+      try { liste = (await bridge.listBackups()) || []; } catch (_) {}
+      if (!liste.length) {
+        el.innerHTML = '<p class="small muted">Aucune sauvegarde pour l\'instant. La première sera prise demain matin, ou tout de suite avec le bouton ci-dessus.</p>';
+        return;
+      }
+      const vues = liste.slice(0, 12);
+      el.innerHTML = `<p class="small muted mb"><b>Revenir en arrière.</b> Restaurer remet l'application dans l'état de la sauvegarde choisie.
+        L'état actuel est mis de côté juste avant, donc ce geste se défait.</p>
+        <table class="list compact"><thead><tr><th>Quand</th><th>Ce que c'était</th><th></th></tr></thead><tbody>
+        ${vues.map(b => `<tr><td class="nw">${h(new Date(b.mtime).toLocaleString('fr-FR'))}</td>
+          <td>${h(nommer(b.name))}<div class="small muted">${h(b.name)}</div></td>
+          <td class="r"><button type="button" class="btn btn-sm" data-restore="${h(b.name)}">Restaurer…</button></td></tr>`).join('')}
+        </tbody></table>
+        ${liste.length > vues.length ? `<p class="small muted mt">${liste.length - vues.length} sauvegarde(s) plus ancienne(s) dans le dossier.</p>` : ''}`;
+      $$('[data-restore]', el).forEach(b => b.onclick = () => restaurer(b.dataset.restore));
+    }
+    // On REGARDE d'abord, et on dit ce qu'on va perdre. Sans ça, une restauration est un pari.
+    async function restaurer(nom) {
+      const vu = await bridge.peekBackup(nom);
+      if (!vu || !vu.ok) return toast('Sauvegarde illisible : ' + ((vu && vu.error) || 'erreur inconnue'), true);
+      const ici = { documents: data.documents.length, clients: data.clients.length, catalog: data.catalog.length };
+      const dit = c => `${c.documents} document(s), ${c.clients} client(s), ${c.catalog} prestation(s)`;
+      const ok = await confirmDialog(
+        `Revenir à la sauvegarde du ${new Date(vu.mtime).toLocaleString('fr-FR')} ?\n\n`
+        + `Elle contient : ${dit(vu.compte)}${vu.societe ? ' — ' + vu.societe : ''}${vu.demo ? '\n⚠ C\'est le jeu d\'exemple, pas de vraies données.' : ''}\n`
+        + `Aujourd'hui tu as : ${dit(ici)}\n\n`
+        + 'Ton état actuel est sauvegardé juste avant, sous « avant-restauration » : ce geste se défait.',
+        'Restaurer', false)
+        || false;
+      if (!ok) return;
+      if (!await closedWipeOk('Une restauration remplace tout.')) return;
+      const r = await bridge.restoreBackup(nom);
+      if (!r || !r.ok) return toast('Restauration impossible : ' + ((r && r.error) || 'erreur inconnue'), true);
+      data = C.migrateData(r.data);
+      try { window.__data = data; } catch (_) {}
+      applyTheme();
+      $('#brand-company').textContent = data.company.name || 'Ton entreprise';
+      drawNav();
+      toast('Restauré : ' + dit(vu.compte));
+      navigate('#/dashboard');
+    }
+    drawBackups();
     const drawExternal = async () => {
       const i = await bridge.externalBackupInfo();
       // « Tes premiers pas » lit cet état ; sans cette ligne, choisir enfin un dossier de copie
