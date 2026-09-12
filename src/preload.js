@@ -45,6 +45,8 @@ contextBridge.exposeInMainWorld('skanfact', {
   removeAttachment: (docId, file) => ipcRenderer.invoke('attach:remove', { docId, file }),
   openPath: (p) => ipcRenderer.invoke('shell:open', p),
   showInFolder: (p) => ipcRenderer.invoke('shell:showInFolder', p),
+  buildPack: (payload) => ipcRenderer.invoke('pack:build', payload),
+  onPackProgress: (cb) => { ipcRenderer.on('pack:progress', (_e, d) => cb(d)); },
   changelog: () => ipcRenderer.invoke('app:changelog'),
   onMenuAction: (cb) => { ipcRenderer.on('menu:action', (_e, name) => cb(name)); },
   // mises à jour

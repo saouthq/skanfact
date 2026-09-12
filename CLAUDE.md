@@ -161,6 +161,20 @@ Règles apprises :
 - Un remplacement en masse (démo, import, effacement) **prévient** au lieu de refuser : c'est un geste volontaire.
 - Méthode qui a payé : un workflow de 18 agents a recensé **347 points d'écriture datés** famille par famille, puis proposé le garde-fou de chacun. Il a trouvé cinq écritures manquées à la main, dont les deux fautes ci-dessus. À refaire avant toute règle transversale de ce genre.
 
+## 6.1.0 — Le paquet mensuel (`.skanpack`)
+
+Nouveau module **`src/zip.js`** (Node pur, testé sans Electron) : `zipBuffer`/`zipRead` écrivent et relisent un vrai ZIP sans aucune dépendance, `sealBuffer`/`openBuffer`/`sealHeader` scellent en AES-256-GCM + scrypt. Dans core.js : `packPeriod`, **`packPlan`** (la liste exacte de ce qui partira, pure et testable), `packChecklist`, `packCoverHtml`, `packFileName`, plus les colonnes de journaux (`salesCsvColumns`…) que app.js réutilise. Dans main.js : `pack:build` exécute le plan (PDF, empreintes, zip, scellement, écriture atomique). Onglet **Comptabilité → Cabinet**, `data.packs` pour l'historique.
+
+Règles apprises :
+- **Le paquet est un ZIP ordinaire**, pas un format maison. Le comptable doit pouvoir l'ouvrir avec le Finder même si SkanFact disparaît : on ne devient jamais le seul lecteur possible des pièces comptables de quelqu'un d'autre.
+- **Le renderer décide du contenu, main.js ne fait qu'exécuter.** `packPlan` est pur : tout le contenu du paquet se teste sans lancer Electron, et l'utilisateur voit ce qui partira **avant** la fabrication.
+- **Un fichier introuvable ne fait pas échouer l'envoi** : le paquet part sans lui et le manifeste le dit (`absents`). Mieux vaut 99 % avec le trou signalé qu'un envoi qui échoue.
+- **L'entête d'un paquet scellé reste en clair** (nom, mois) : sans elle, un paquet mal rangé serait impossible à identifier avant d'avoir la clé. Le corps est binaire, pas base64 — sur 50 Mo de photos, base64 ajouterait 17 Mo pour rien.
+- **Le manifeste s'écrit en dernier** : il porte l'empreinte des fichiers réellement produits, et ne peut pas contenir la sienne (un test le vérifie).
+- Piège JavaScript : `0o100644 << 16` devient **négatif** (décalage sur 32 bits signés) et `writeUInt32LE` le refuse — d'où le `>>> 0` sur les droits Unix du répertoire central.
+- Un JPEG ou un PDF ne se recompresse pas : deflate les rallonge. `ALREADY_COMPRESSED` les passe en mode « stocké ».
+- Le workflow de conception à trois approches a **échoué** (schéma de sortie à neuf champs obligatoires : les agents n'ont jamais produit de sortie valide en cinq essais). Leçon : un schéma structuré doit rester court, ou la conception se fait à la main.
+
 ## Règle apprise en 5.2.3 : les dates et le fuseau horaire
 
 **La machine de test est en UTC ; l'utilisateur est à Tunis (UTC+1).** `addDays` construisait la date en heure locale (`new Date(iso + 'T00:00:00')`) et la relisait en UTC (`toISOString()`) : à minuit à Tunis il est 23 h la veille en UTC, donc `addDays(d, 1)` renvoyait `d`. Depuis toujours, une échéance à 30 jours tombait un jour trop tôt chez lui ; depuis la 5.1.0, la boucle jour par jour de `workingDays` ne finissait jamais et l'app entière gelait au chargement de la démo (qui contient des congés). Sur la machine en UTC, **rien ne se voyait** : quatre reproductions différentes, tous les chronométrages, la vraie 5.1.0 dans Electron — tout passait. C'est le bisect fait à la main par Skander (3.4 → 4.2 → 5.0 ok, 5.1 gèle) qui a désigné `workingDays`, et la question « qu'est-ce qui diffère entre sa machine et la mienne ? » qui a donné le fuseau.

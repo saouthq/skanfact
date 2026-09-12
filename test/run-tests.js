@@ -2555,6 +2555,128 @@ t('déclarations sociales : ce qui est dû, ce qui est en retard, ce qui est dé
   assert.deepStrictEqual(core.socialDue(core.migrateData({}), '2026-08-01'), []);
 });
 
+// ---------- le paquet mensuel (6.1.0) ----------
+// Le paquet part chez quelqu'un qui n'a pas SkanFact. Ces tests vérifient qu'il s'ouvre partout,
+// qu'il dit la vérité sur son contenu, et qu'on ne peut pas le modifier sans que ça se voie.
+const zipmod = require('../src/zip.js');
+
+t('paquet : le ZIP écrit à la main se relit, entrée par entrée', () => {
+  const gros = Buffer.from('date,numéro,montant\n'.repeat(300));
+  const photo = Buffer.concat([Buffer.from([0xFF, 0xD8, 0xFF, 0xE0]), Buffer.alloc(600, 0x41)]);
+  const buf = zipmod.zipBuffer([
+    { name: 'manifeste.json', data: JSON.stringify({ société: 'Ébénisterie' }) },
+    { name: 'journaux/ventes.csv', data: gros },
+    { name: 'achats/reçu été.jpg', data: photo },
+    { name: 'vide.txt', data: '' }
+  ], { date: new Date(Date.UTC(2026, 8, 12, 10, 30, 0)) });
+
+  assert.ok(buf.length < gros.length / 2, 'le CSV doit être compressé');
+  const back = zipmod.zipRead(buf);
+  assert.deepStrictEqual(back.map(e => e.name), ['manifeste.json', 'journaux/ventes.csv', 'achats/reçu été.jpg', 'vide.txt']);
+  assert.ok(back[1].data().equals(gros), 'le CSV revient identique');
+  assert.strictEqual(back[2].method, 0, 'une photo n\'est pas recompressée : ça la rallonge');
+  assert.ok(back[2].data().equals(photo));
+  assert.strictEqual(back[3].data().length, 0, 'un fichier vide reste un fichier');
+  assert.strictEqual(JSON.parse(back[0].data().toString('utf8')).société, 'Ébénisterie', 'accents préservés');
+
+  // un octet changé dans le corps : le CRC le dit. On isole une seule entrée pour viser à coup sûr
+  // l'intérieur des données compressées (30 octets d'entête + le nom, puis le corps).
+  const seul = zipmod.zipBuffer([{ name: 'j.csv', data: gros }], { date: new Date(Date.UTC(2026, 8, 12)) });
+  const abime = Buffer.from(seul);
+  const dansLeCorps = 30 + 'j.csv'.length + 12;
+  abime[dansLeCorps] = abime[dansLeCorps] ^ 0xFF;
+  assert.throws(() => zipmod.zipRead(abime)[0].data(), /abîmé|incorrect|invalid/i);
+  // un fichier tronqué n'a plus de fin d'archive
+  assert.throws(() => zipmod.zipRead(buf.subarray(0, buf.length - 10)), /tronqué|Fin d'archive/);
+  // on ne s'échappe pas du dossier du paquet
+  assert.throws(() => zipmod.zipBuffer([{ name: '../ailleurs.txt', data: 'x' }]), /interdit/);
+});
+
+t('paquet scellé : lisible de l\'extérieur, illisible sans le mot de passe, infalsifiable', () => {
+  const zip = zipmod.zipBuffer([{ name: 'a.csv', data: 'date,montant\n2026-08-01,1000' }], { date: new Date(Date.UTC(2026, 8, 12)) });
+  const sealed = zipmod.sealBuffer(zip, 'le-mot-convenu', { entreprise: 'Ébénisterie Test', periode: '2026-08', definitif: true });
+
+  assert.ok(zipmod.isSealed(sealed) && !zipmod.isSealed(zip));
+  // l'entête est en clair À DESSEIN : sans elle, un paquet mal rangé serait impossible à identifier
+  const head = zipmod.sealHeader(sealed);
+  assert.strictEqual(head.entreprise, 'Ébénisterie Test');
+  assert.strictEqual(head.periode, '2026-08');
+  assert.strictEqual(head.definitif, true);
+  assert.strictEqual(head.alg, 'aes-256-gcm');
+  assert.ok(!sealed.includes(Buffer.from('date,montant')), 'le contenu ne doit pas rester en clair');
+
+  assert.ok(zipmod.openBuffer(sealed, 'le-mot-convenu').equals(zip), 'le bon mot de passe rend le zip intact');
+  assert.throws(() => zipmod.openBuffer(sealed, 'autre-chose'), /Mot de passe incorrect/);
+  const falsifie = Buffer.from(sealed); falsifie[falsifie.length - 3] ^= 1;
+  assert.throws(() => zipmod.openBuffer(falsifie, 'le-mot-convenu'), /Mot de passe incorrect|modifié/);
+  assert.throws(() => zipmod.openBuffer(zip, 'x'), /n'est pas un paquet scellé/);
+});
+
+t('paquet : le plan dit exactement ce qui partira', () => {
+  const co = { name: 'Ébénisterie Test SUARL', matricule: '9876543Z/A/P/000', currency: 'TND', paymentTermsDays: 30, stampFee: 1 };
+  const d = core.migrateData({
+    documents: [
+      { id: 'f1', type: 'facture', clientId: 'c1', number: 'FAC-2026-001', status: 'envoyée', date: '2026-08-10', dueDate: '2026-09-09',
+        lines: [{ label: 'Pose', qty: 1, unitPrice: 1000, vatRate: 19 }], payments: [{ id: 'p1', date: '2026-08-20', amount: 500, method: 'virement' }] },
+      { id: 'f2', type: 'facture', clientId: 'c1', number: '', status: 'brouillon', date: '2026-08-12', lines: [{ label: 'x', qty: 1, unitPrice: 50, vatRate: 19 }] },
+      { id: 'f3', type: 'facture', clientId: 'c1', number: 'FAC-2026-002', status: 'envoyée', date: '2026-07-10', lines: [] }   // hors période
+    ],
+    clients: [{ id: 'c1', name: 'Client A' }],
+    purchases: [{ id: 'a1', kind: 'facture', supplierId: 's1', number: 'F-99', date: '2026-08-05',
+      lines: [{ label: 'bois', qty: 1, unitPrice: 200, vatRate: 19, destination: 'charge', deductible: true }],
+      attachments: [{ name: 'recu.jpg', file: 'recu.jpg' }] }],
+    suppliers: [{ id: 's1', name: 'Scierie' }]
+  });
+  const per = core.packPeriod(2026, 8);
+  const plan = core.packPlan(d, co, per, { device: 'Poste de test' });
+  const paths = plan.entries.map(e => e.path);
+
+  assert.ok(paths.includes('journaux/ventes.csv') && paths.includes('journaux/achats.csv')
+    && paths.includes('journaux/encaissements.csv') && paths.includes('journaux/tresorerie.csv')
+    && paths.includes('journaux/tva.json'), 'les journaux sont là');
+  assert.ok(paths.includes('ventes/FAC-2026-001.pdf'), 'la facture émise du mois est jointe');
+  assert.ok(!paths.some(x => x.includes('f2')), 'un brouillon n\'a pas de PDF : il n\'a pas de numéro');
+  assert.ok(!paths.includes('ventes/FAC-2026-002.pdf'), 'une facture d\'un autre mois n\'entre pas');
+  assert.ok(paths.includes('achats/F-99/recu.jpg'), 'le justificatif d\'achat est joint');
+
+  // les chiffres de la page de garde sont ceux des journaux
+  assert.strictEqual(plan.totaux.pieces, 1);
+  assert.strictEqual(plan.ca, 1000);
+  assert.strictEqual(plan.tvaCollectee, 190);
+  assert.strictEqual(plan.tvaDeductible, 38);
+  assert.strictEqual(plan.encaisse, 500);
+
+  // provisoire tant que le mois n'est pas clôturé, définitif après
+  assert.strictEqual(plan.definitive, false);
+  assert.ok(core.packFileName(co, per, false).endsWith('-provisoire.skanpack'));
+  core.closePeriod(d, '2026-08-31', { todayIso: '2026-09-12' });
+  assert.strictEqual(core.packPlan(d, co, per, {}).definitive, true);
+  assert.strictEqual(core.packFileName(co, per, true), 'Ebenisterie-Test-SUARL-2026-08.skanpack');
+
+  // ce qui manque est annoncé : ici un brouillon dans la période
+  assert.ok(plan.checklist.some(c => c.id === 'brouillons'), 'le brouillon est signalé');
+  assert.ok(plan.manifest.manques.some(m => m.id === 'brouillons'), 'et il passe dans le manifeste');
+  assert.strictEqual(plan.manifest.periode.mois, '2026-08');
+  assert.strictEqual(plan.manifest.entreprise.matricule, '9876543Z/A/P/000');
+  assert.strictEqual(plan.manifest.format, core.PACK_FORMAT);
+});
+
+t('paquet : la page de garde dit le mois, l\'état et ce qui manque', () => {
+  const co = { name: 'Ébénisterie <Test>', currency: 'TND', paymentTermsDays: 30, stampFee: 1 };
+  const d = core.migrateData({ documents: [{ id: 'f1', type: 'facture', clientId: 'c1', number: 'FAC-1', status: 'brouillon', date: '2026-08-10', lines: [] }] });
+  const plan = core.packPlan(d, co, core.packPeriod(2026, 8), {});
+  const html = core.packCoverHtml(plan, co, { version: '6.1.0', at: '12/09/2026' });
+  assert.ok(html.includes('août 2026'));
+  assert.ok(html.includes('PROVISOIRE'), 'un mois non clôturé est annoncé comme provisoire');
+  assert.ok(html.includes('facture(s) en brouillon'), 'ce qui manque figure sur la page de garde');
+  assert.ok(!html.includes('<Test>'), 'le nom de société est échappé, pas injecté');
+  assert.ok(html.includes('&lt;Test&gt;'));
+  // un dossier complet le dit aussi
+  const plan2 = core.packPlan(core.migrateData({}), co, core.packPeriod(2026, 8), {});
+  assert.ok(core.packCoverHtml(plan2, co, {}).includes('le dossier est complet'));
+});
+
+
 // ---------- clôture de période (6.0.0) ----------
 // Sans clôture, une pièce saisie aujourd'hui change la TVA d'un mois déjà déclaré, en silence.
 // Ces tests sont purs : ils vérifient la règle, pas l'interface qui l'applique.

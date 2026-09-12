@@ -7,6 +7,32 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 6.1.0 — 12/09/2026
+
+**Le mois de ton comptable, en un fichier.**
+
+Nouvel onglet **Comptabilité → Cabinet**. Tu choisis un mois, tu vois exactement ce qui partira, tu fabriques le paquet, tu l'envoies.
+
+Ce que contient un paquet :
+
+- **Une page de garde** en PDF : le mois en chiffres, l'inventaire du paquet, et **la liste de ce qui manque** — un brouillon oublié, un achat sans justificatif, un mouvement non pointé, une attestation de retenue non remise.
+- **Les journaux en CSV** : ventes, achats, encaissements, règlements fournisseurs, trésorerie. Les mêmes colonnes que l'export manuel — une seule définition, pour que deux exports du même mois ne se contredisent jamais.
+- **La TVA du mois**, crédit reporté compris.
+- **Le PDF de chaque facture et avoir émis**, les **justificatifs d'achat** joints, les **bulletins de paie**, et la **déclaration CNSS** quand le trimestre se termine.
+- **Un manifeste** qui liste chaque fichier avec son empreinte SHA-256.
+
+Les choix qui comptent :
+
+- **C'est une archive ZIP ordinaire.** Ton comptable la renomme en `.zip` et l'ouvre avec le Finder ou l'Explorateur, sans rien installer, même si SkanFact disparaît. Écrite sans aucune bibliothèque ajoutée : le paquet comptable de quelqu'un d'autre ne doit jamais dépendre de nous.
+- **Provisoire tant que le mois n'est pas clôturé**, et c'est écrit en toutes lettres sur la page de garde. Un paquet définitif suit la clôture (6.0.0).
+- **Mot de passe optionnel** (AES-256) : le paquet contient tes factures et les salaires de tes employés. L'entête reste lisible sans le mot de passe — ton nom et le mois — pour qu'un paquet mal rangé reste identifiable. Le mot de passe se transmet **par un autre canal que le fichier**.
+- **Un justificatif disparu du disque ne fait pas échouer l'envoi** : le paquet part sans lui et le manifeste dit lequel manque. Mieux vaut un dossier à 99 % avec le trou signalé qu'un envoi qui échoue.
+- **L'empreinte prouve que rien n'a bougé** entre l'envoi et la réception. Elle figure dans l'historique des envois et dans le mail préparé.
+
+Nouvel article d'aide « Envoyer le mois à ton comptable ».
+
+*Données : `packs` (l'historique des envois). Rien à convertir.*
+
 ## 6.0.0 — 12/09/2026
 
 **Clôturer un mois : lui promettre qu'il ne bougera plus.**

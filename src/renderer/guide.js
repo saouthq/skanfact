@@ -228,6 +228,11 @@
     'compta.vatMonths': { t: 'Mois par mois', d: 'Chaque mois de l\'année avec sa collectée, sa déductible, le crédit repris du mois d\'avant et ce qu\'il restait à payer. Le total en bas n\'est pas la somme des lignes : un crédit reporté ne se compte qu\'une fois.' },
     'compta.result': { t: 'Résultat simplifié', d: 'Tes ventes hors taxes moins tes charges hors taxes. Les achats partis en stock ou en immobilisation n\'y sont pas comptés : ils ne sont pas consommés. <em>Ce n\'est pas ton résultat comptable</em> — il manque les amortissements, la variation de stock, les salaires et les provisions. C\'est un ordre de grandeur pour savoir où tu en es entre deux bilans.' },
     'compta.fiscal': { t: 'Calendrier fiscal', d: 'Un pense-bête des déclarations qui reviennent, que tu règles toi-même : active celles qui te concernent et ajuste le jour limite. Les échéances proches remontent aussi dans « À faire » sur l\'accueil. <em>À VÉRIFIER avec ton comptable :</em> les dates, la périodicité et les déclarations applicables dépendent de ta forme juridique, de ton régime et de la présence de salariés.' },
+    'cab.paquet': { t: 'Le paquet du mois', d: 'Un seul fichier qui contient tout ce que ton comptable attend pour ce mois : les journaux en CSV (ventes, achats, encaissements, règlements, trésorerie), la TVA, le PDF de chaque facture et avoir émis, les justificatifs d\'achat que tu as joints, les bulletins de paie, et la déclaration CNSS si le trimestre se termine ce mois-là. Plus une page de garde qui résume le mois et dit ce qui manque. Le fichier s\'ouvre avec n\'importe quel outil de décompression : ton comptable n\'a rien à installer.' },
+    'cab.manques': { t: 'Ce qui manque', d: 'Les points que ton comptable te réclamerait : une facture restée en brouillon, un achat sans justificatif (il ne pourra pas en récupérer la TVA), un mouvement non pointé, un bulletin manquant, une attestation de retenue non remise. <b>Ils n\'empêchent pas l\'envoi</b> : ils sont écrits sur la page de garde, pour qu\'il sache quoi te demander. Un dossier dont on connaît les trous vaut mieux qu\'un dossier qu\'on croit complet.' },
+    'cab.envoyer': { t: 'Fabriquer le paquet', d: 'La fabrication prend quelques dizaines de secondes : chaque facture est redessinée en PDF, un par un. Le fichier est ensuite enregistré là où tu veux, puis tu peux l\'envoyer par mail depuis l\'app. Si un justificatif a disparu du disque, le paquet part quand même sans lui et le manifeste dit lequel manque — un fichier introuvable ne doit pas bloquer tout un envoi.' },
+    'cab.motdepasse': { t: 'Protéger par mot de passe', d: 'Le paquet contient tes factures, tes achats et tes bulletins de paie : des informations qu\'on ne laisse pas traîner dans une boîte mail. Avec un mot de passe, le contenu est chiffré (AES-256) et illisible sans lui. <b>Transmets-le par un autre canal que le fichier</b> — par téléphone, pas dans le même message. L\'entête du paquet reste lisible sans le mot de passe (ton nom et le mois), pour que ton comptable sache de quoi il s\'agit avant de l\'ouvrir.' },
+    'cab.historique': { t: 'Ce qui a déjà été envoyé', d: 'Chaque paquet fabriqué, avec sa date, son état (définitif si le mois était clôturé, provisoire sinon) et son <b>empreinte</b>. L\'empreinte est la carte d\'identité du fichier : si ton comptable calcule la même, le paquet qu\'il a reçu est exactement celui que tu as envoyé, à l\'octet près. C\'est ce qui permet de prouver que rien n\'a été modifié en route.' },
     'clot.etat': { t: 'Période clôturée', d: 'La date jusqu\'à laquelle tout est figé. Aucune pièce datée avant elle ne peut plus être créée, modifiée ou supprimée — ni facture, ni achat, ni paiement, ni bulletin. C\'est cette promesse qui permet à ton comptable de travailler sur un dossier qui ne bouge plus dans son dos. Tant que rien n\'est clôturé, une saisie d\'aujourd\'hui peut changer la TVA d\'un mois déjà déclaré, sans que personne ne s\'en aperçoive.' },
     'clot.cloturer': { t: 'Clôturer un mois', d: 'À faire une fois que le mois est terminé et que tu as tout saisi : les factures émises, les achats reçus, les paiements, les bulletins. L\'application te montre d\'abord ce qui mériterait d\'être réglé (un brouillon oublié, un achat sans justificatif, un mouvement non pointé) — mais elle ne t\'empêche jamais de clôturer : ces points sont là pour que tu les voies. Les mois se clôturent dans l\'ordre, du plus ancien au plus récent. Le mois en cours ne se clôture pas : il lui reste des pièces à venir.' },
     'clot.rouvrir': { t: 'Rouvrir une période', d: 'Quand une pièce a été oubliée dans un mois déjà clôturé. Ce n\'est pas interdit, c\'est encadré : tu écris un motif, et la réouverture s\'inscrit dans le journal. <b>Préviens ton comptable</b> avant de le faire : les chiffres qu\'il a reçus vont changer, et s\'il a déjà déclaré la TVA du mois, une correction sera peut-être nécessaire. <em>À VÉRIFIER avec lui</em> selon ce qui a déjà été déposé.' },
@@ -672,6 +677,39 @@
 <p>La liste que l'inspection du travail peut demander : qui a travaillé chez toi, à quel poste, sous quel contrat, entre quelles dates. Les salariés partis y figurent aussi — c'est le but. Exportable en CSV. <em>À VÉRIFIER : la forme exacte du registre relève du code du travail.</em></p>
 <h3>Ce que ça ne fait pas</h3>
 <p>Pas de demande de congé à valider, pas de planning d'équipe, pas de pointage. Pas de calcul d'indemnité de licenciement non plus : ce calcul dépend de l'ancienneté, du motif et de la convention, et se fait avec un comptable ou un juriste, pas dans un tableau.</p>`
+    },
+    {
+      id: 'cabinet', title: 'Envoyer le mois à ton comptable', sub: 'Un fichier, complet, vérifiable',
+      body: `
+<p>Ce que la plupart des petites entreprises envoient à leur comptable, c'est un mail par-ci, une photo par-là, un classeur en fin d'année. Le comptable passe son temps à réclamer. SkanFact fabrique à la place <b>un fichier unique par mois</b>, qui contient tout, et qui dit lui-même ce qui lui manque.</p>
+
+<h3>Ce qu'il y a dedans</h3>
+<ul>
+<li><b>Une page de garde</b> en PDF : le mois en chiffres, ce que contient le paquet, et la liste de ce qui manque.</li>
+<li><b>Les journaux en CSV</b> — ventes, achats, encaissements, règlements fournisseurs, trésorerie — que ton comptable ouvre dans Excel ou importe dans son logiciel.</li>
+<li><b>La TVA du mois</b>, avec le crédit reporté du mois précédent.</li>
+<li><b>Le PDF de chaque facture et de chaque avoir émis</b> : le justificatif, pas seulement la ligne du tableau.</li>
+<li><b>Les justificatifs d'achat</b> que tu as joints à tes achats. Sans eux, il ne peut pas récupérer ta TVA.</li>
+<li><b>Les bulletins de paie</b> du mois, et la déclaration CNSS quand le trimestre se termine.</li>
+<li><b>Un manifeste</b> qui liste chaque fichier avec son empreinte.</li>
+</ul>
+<p>Le fichier porte l'extension <code>.skanpack</code>, mais c'est une archive ordinaire : ton comptable peut la renommer en <code>.zip</code> et l'ouvrir avec le Finder ou l'Explorateur, sans rien installer. Rien ne l'enferme dans SkanFact.</p>
+
+<h3>Provisoire ou définitif</h3>
+<p>Un paquet n'est <b>définitif</b> que si le mois a été clôturé (voir « Clôturer un mois »). Sinon il part marqué <b>provisoire</b>, en toutes lettres sur la page de garde : ton comptable sait que les chiffres peuvent encore bouger. Tu peux envoyer un provisoire en cours de mois si ton comptable le demande — mais l'envoi qui compte est celui d'après la clôture.</p>
+
+<h3>Le mot de passe</h3>
+<p>Le paquet contient tes factures, tes achats et les salaires de tes employés. Ce n'est pas ce qu'on laisse traîner dans une boîte mail. Coche « Protéger par un mot de passe » : le contenu devient illisible sans lui.</p>
+<p><b>Transmets le mot de passe par un autre canal que le fichier</b> — par téléphone, par message, mais pas dans le mail qui contient la pièce jointe : sinon la protection ne sert à rien. Le nom de ton entreprise et le mois restent lisibles sans mot de passe, pour que ton comptable sache de quoi il s'agit avant de l'ouvrir.</p>
+
+<h3>L'empreinte, et à quoi elle sert</h3>
+<p>Chaque fichier du paquet a une empreinte : une suite de caractères calculée à partir de son contenu. Change un seul octet, l'empreinte change du tout au tout. Elle sert le jour où quelqu'un se demande si le fichier reçu est bien celui qui a été envoyé — un mail qui tronque une pièce jointe, une clé USB abîmée, un doute. Si les deux empreintes se ressemblent, le paquet est intact.</p>
+
+<h3>Si un justificatif a disparu</h3>
+<p>Si une photo jointe à un achat n'est plus sur le disque, le paquet part quand même <b>sans elle</b>, et le manifeste dit laquelle manque. Un fichier introuvable ne doit pas bloquer tout un envoi : mieux vaut un dossier à 99 % avec le trou signalé qu'un envoi qui échoue.</p>
+
+<h3>La routine</h3>
+<p>Une fois par mois, quand tout est saisi : clôture le mois, va dans <b>Comptabilité → Cabinet</b>, vérifie ce qui manque, fabrique le paquet, envoie-le. Dix minutes, et ton comptable a tout.</p>`
     },
     {
       id: 'cloture', title: 'Clôturer un mois', sub: 'Promettre à ton comptable que le passé ne bougera plus',

@@ -144,6 +144,7 @@
     conflictArchive: [],     // versions écartées lors d'une fusion : rien n'est détruit sans trace
     closedUntil: '',         // dernier jour clôturé : rien de daté avant ne bouge plus (6.0.0)
     closureLog: [],          // chaque clôture et chaque réouverture, avec son motif (6.0.0)
+    packs: [],               // paquets mensuels construits pour le cabinet (6.1.0)
     counters: {}
   };
 
@@ -471,6 +472,7 @@
     // clôturé, et l'utilisateur clôture quand il veut.
     if (typeof data.closedUntil !== 'string') data.closedUntil = '';
     if (!Array.isArray(data.closureLog)) data.closureLog = [];
+    if (!Array.isArray(data.packs)) data.packs = [];   // 6.1.0 : historique des envois au cabinet
     data.catalog.forEach(c => {
       c.tracked = c.tracked === true;
       c.minStock = Number(c.minStock) || 0;
@@ -2409,11 +2411,11 @@
   // l'autre version pour qu'elle reste consultable. Rien n'est détruit sans trace.
 
   // Les listes du fichier qui se fusionnent pièce par pièce, grâce à leur identifiant.
-  const MERGE_LISTS = ['clients', 'catalog', 'documents', 'recurring', 'templates', 'snippets', 'suppliers', 'purchases', 'accounts', 'movements', 'projects', 'assets', 'stockAdjustments', 'serials', 'employees', 'payslips', 'leaves', 'advances', 'socialFilings'];
+  const MERGE_LISTS = ['clients', 'catalog', 'documents', 'recurring', 'templates', 'snippets', 'suppliers', 'purchases', 'accounts', 'movements', 'projects', 'assets', 'stockAdjustments', 'serials', 'employees', 'payslips', 'leaves', 'advances', 'socialFilings', 'packs'];
   const LIST_LABELS = {
     clients: 'client', catalog: 'prestation', documents: 'document', recurring: 'contrat récurrent',
     templates: 'modèle', snippets: 'texte', suppliers: 'fournisseur', purchases: 'achat',
-    accounts: 'compte', movements: 'mouvement', projects: 'affaire', assets: 'immobilisation', stockAdjustments: 'mouvement de stock', serials: 'numéro de série', employees: 'salarié', payslips: 'bulletin de paie', leaves: 'congé', advances: 'avance sur salaire', socialFilings: 'déclaration sociale'
+    accounts: 'compte', movements: 'mouvement', projects: 'affaire', assets: 'immobilisation', stockAdjustments: 'mouvement de stock', serials: 'numéro de série', employees: 'salarié', payslips: 'bulletin de paie', leaves: 'congé', advances: 'avance sur salaire', socialFilings: 'déclaration sociale', packs: 'envoi au cabinet'
   };
 
   function sameJson(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
@@ -2766,6 +2768,248 @@
 
   function closureLog(data) {
     return (Array.isArray(data.closureLog) ? data.closureLog : []).slice().reverse();
+  }
+
+
+  // ---------- le paquet mensuel pour le cabinet (6.1.0) ----------
+  // Un fichier unique, complet, vérifiable, que le comptable ouvre sans rien installer. Tout ce qui
+  // décide de son CONTENU vit ici : c'est pur, donc testable sans Electron. L'écriture du fichier
+  // (zip, chiffrement, PDF) est dans main.js, parce qu'elle a besoin du disque.
+  const PACK_FORMAT = 1;
+
+  // Les colonnes des journaux, définies une seule fois : le CSV exporté à la main et celui du paquet
+  // doivent dire exactement la même chose, sinon deux exports du même mois ne se ressemblent pas.
+  function salesCsvColumns() {
+    return [
+      { key: 'date', label: 'Date', type: 'date' }, { key: 'number', label: 'Numéro' }, { key: 'typeLabel', label: 'Type' },
+      { key: 'client', label: 'Client' }, { key: 'subject', label: 'Objet' }, { key: 'ht', label: 'Total HT', type: 'money' },
+      ...VAT_RATES.map(r => ({ label: `Base ${r}%`, type: 'money', get: x => x.vatByRate[r].base })),
+      ...VAT_RATES.map(r => ({ label: `TVA ${r}%`, type: 'money', get: x => x.vatByRate[r].vat })),
+      { key: 'tva', label: 'Total TVA', type: 'money' }, { key: 'timbre', label: 'Timbre', type: 'money' }, { key: 'ttc', label: 'TTC', type: 'money' },
+      { key: 'rs', label: 'Retenue source', type: 'money' }, { key: 'net', label: 'Net à payer', type: 'money' },
+      { key: 'statusLabel', label: 'Statut' }, { key: 'paid', label: 'Payé', type: 'money' }, { key: 'remaining', label: 'Reste', type: 'money' }
+    ];
+  }
+  function buyCsvColumns() {
+    return [
+      { key: 'date', label: 'Date', type: 'date' }, { key: 'number', label: 'N° fournisseur' }, { key: 'supplier', label: 'Fournisseur' },
+      { key: 'kind', label: 'Nature' }, { key: 'category', label: 'Catégorie' }, { key: 'subject', label: 'Objet' },
+      { key: 'ht', label: 'HT', type: 'money' }, { key: 'tva', label: 'TVA', type: 'money' }, { key: 'deductible', label: 'TVA déductible', type: 'money' },
+      { key: 'fees', label: 'Timbre et frais', type: 'money' }, { key: 'ttc', label: 'TTC', type: 'money' },
+      { key: 'rs', label: 'Retenue opérée', type: 'money' }, { key: 'net', label: 'Net à payer', type: 'money' }, { key: 'status', label: 'Statut' }
+    ];
+  }
+  function payCsvColumns() {
+    return [
+      { key: 'date', label: 'Date', type: 'date' }, { key: 'number', label: 'Facture' }, { key: 'client', label: 'Client' },
+      { key: 'amount', label: 'Montant', type: 'money' }, { key: 'method', label: 'Mode' }, { key: 'reference', label: 'Référence' }, { key: 'note', label: 'Note' }
+    ];
+  }
+  function supplierPayCsvColumns() {
+    return [
+      { key: 'date', label: 'Date', type: 'date' }, { key: 'number', label: 'Pièce fournisseur' }, { key: 'supplier', label: 'Fournisseur' },
+      { key: 'amount', label: 'Montant', type: 'money' }, { key: 'method', label: 'Mode' }, { key: 'reference', label: 'Référence' }, { key: 'note', label: 'Note' }
+    ];
+  }
+  function cashCsvColumns() {
+    return [
+      { key: 'date', label: 'Date', type: 'date' }, { key: 'label', label: 'Libellé' }, { key: 'kindLabel', label: 'Nature' },
+      { key: 'accountName', label: 'Compte' }, { key: 'inAmount', label: 'Entrée', type: 'money' }, { key: 'outAmount', label: 'Sortie', type: 'money' },
+      { key: 'reference', label: 'Référence' }, { key: 'reconciled', label: 'Pointé' }
+    ];
+  }
+
+  // Nom de fichier : lisible d'un coup d'œil dans une boîte mail encombrée, et triable.
+  function packFileName(company, period, definitive) {
+    const slug = String(company.name || 'entreprise').normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'entreprise';
+    return `${slug}-${period.month}${definitive ? '' : '-provisoire'}.skanpack`;
+  }
+
+  // Le mois, borné aux vrais jours du calendrier.
+  function packPeriod(year, month) {
+    const y = Number(year), m = Number(month);
+    const mm = String(m).padStart(2, '0');
+    return { month: `${y}-${mm}`, from: `${y}-${mm}-01`, to: `${y}-${mm}-${pad2(daysInMonth(y, m))}`, label: monthLabel(`${y}-${mm}-01`) };
+  }
+
+  // Ce qui manque dans ce mois, du point de vue du comptable. On reprend les contrôles de clôture —
+  // ce sont les mêmes questions — et on ajoute ce qui ne se voit qu'à l'envoi.
+  function packChecklist(data, company, period) {
+    const out = closureChecks(data, company, period.from, period.to).slice();
+    const inRange = d => d && d >= period.from && d <= period.to;
+    // Une facture émise dont la retenue à la source n'a pas d'attestation : le fournisseur (nous) doit
+    // la fournir, et sans elle le client ne peut pas déduire ce qu'il a retenu.
+    const certs = (data.documents || []).filter(d => d.type === 'facture' && inRange(d.date)
+      && d.status !== 'brouillon' && d.status !== 'annulée'
+      && computeTotals(d, company).withholding > 0 && !d.withholdingCertificate);
+    if (certs.length) out.push({
+      id: 'attestations', level: 'warn', count: certs.length,
+      label: `${certs.length} attestation(s) de retenue à la source non remise(s)`,
+      detail: 'Sans elle, ton client ne peut pas justifier ce qu\'il t\'a retenu.'
+    });
+    return out;
+  }
+
+  // Le plan du paquet : la liste exacte de ce qu'il contiendra, chaque entrée sachant d'où vient son
+  // contenu. main.js n'a plus qu'à exécuter ce plan. Le séparer ainsi permet de le tester entièrement
+  // sans Electron, et de montrer à l'utilisateur ce qui va partir AVANT de le fabriquer.
+  function packPlan(data, company, period, opts) {
+    opts = opts || {};
+    const entries = [];
+    const inRange = d => d && d >= period.from && d <= period.to;
+    const add = e => { entries.push(e); return e; };
+
+    // 1. Les journaux, en CSV — ce que le comptable saisit dans son logiciel.
+    const sales = salesJournal(data, company, period);
+    const buys = purchaseJournal(data, company, period);
+    const pays = paymentsJournal(data, company, period);
+    const supPays = supplierPayments(data, company, period);
+    const cash = cashMovements(data, company, period);
+    add({ path: 'journaux/ventes.csv', kind: 'text', label: 'Journal des ventes', text: toCsv(sales, salesCsvColumns()), rows: sales.length });
+    add({ path: 'journaux/achats.csv', kind: 'text', label: 'Journal des achats', text: toCsv(buys, buyCsvColumns()), rows: buys.length });
+    add({ path: 'journaux/encaissements.csv', kind: 'text', label: 'Encaissements clients', text: toCsv(pays, payCsvColumns()), rows: pays.length });
+    add({ path: 'journaux/reglements-fournisseurs.csv', kind: 'text', label: 'Règlements fournisseurs', text: toCsv(supPays, supplierPayCsvColumns()), rows: supPays.length });
+    add({ path: 'journaux/tresorerie.csv', kind: 'text', label: 'Mouvements de trésorerie', text: toCsv(cash, cashCsvColumns()), rows: cash.length });
+
+    // 2. La TVA du mois, avec son report : un mois isolé sans le crédit reporté donne un chiffre faux.
+    const vat = vatReturn(data, company, period, (data.vatCarryIn || {})[period.month.slice(0, 4)] || 0);
+    add({ path: 'journaux/tva.json', kind: 'text', label: 'TVA du mois', text: JSON.stringify(vat, null, 2) });
+
+    // 3. Le PDF de chaque pièce émise. C'est le justificatif, pas le tableau.
+    const issued = (data.documents || []).filter(d => (d.type === 'facture' || d.type === 'avoir')
+      && inRange(d.date) && d.status !== 'brouillon');
+    issued.forEach(d => add({
+      path: `ventes/${(d.number || d.id).replace(/[^\w.-]+/g, '_')}.pdf`,
+      kind: 'pdf', label: `${TITLES[d.type] || 'Pièce'} ${d.number || ''}`, docId: d.id, docType: d.type
+    }));
+
+    // 4. Les justificatifs d'achat. Sans eux, la TVA déductible n'est pas récupérable.
+    (data.purchases || []).filter(p => inRange(p.date)).forEach(p => {
+      (p.attachments || []).forEach(a => add({
+        path: `achats/${(p.number || p.id).replace(/[^\w.-]+/g, '_')}/${String(a.name || a.file).replace(/[^\w.\- ]+/g, '_')}`,
+        kind: 'attachment', label: `Justificatif ${p.number || ''}`, ownerId: p.id, file: a.file
+      }));
+    });
+
+    // 5. Les bulletins du mois.
+    const slips = (data.payslips || []).filter(s => `${s.year}-${String(s.month).padStart(2, '0')}` === period.month);
+    slips.forEach(s => {
+      const emp = (data.employees || []).find(e => e.id === s.employeeId) || {};
+      add({ path: `paie/${String(emp.name || s.employeeId).replace(/[^\w.-]+/g, '_')}.pdf`, kind: 'payslip', label: `Bulletin ${emp.name || ''}`, slipId: s.id });
+    });
+
+    // 6. La déclaration CNSS, seulement si le trimestre se termine ce mois-ci.
+    const m = Number(period.month.slice(5, 7));
+    if (m % 3 === 0 && (data.employees || []).length) {
+      const q = m / 3;
+      const dec = cnssDeclaration(data, Number(period.month.slice(0, 4)), q);
+      if (dec && dec.rows && dec.rows.length) {
+        add({ path: `social/cnss-T${q}.json`, kind: 'text', label: `Déclaration CNSS T${q}`, text: JSON.stringify(dec, null, 2) });
+      }
+    }
+
+    const checklist = packChecklist(data, company, period);
+    const definitive = isClosedDate(data, period.to);
+    const manifest = {
+      format: PACK_FORMAT,
+      app: 'SkanFact',
+      entreprise: { nom: company.name || '', matricule: company.matricule || '', devise: company.currency || 'TND' },
+      periode: { mois: period.month, du: period.from, au: period.to, libelle: period.label },
+      definitif: definitive,
+      cloturéJusquAu: closedUntil(data) || null,
+      genereLe: opts.at || null,
+      poste: opts.device || '',
+      manques: checklist.map(c => ({ id: c.id, niveau: c.level, quoi: c.label, combien: c.count })),
+      fichiers: []          // rempli par main.js une fois chaque fichier produit, avec son empreinte
+    };
+
+    const vs = vatSummary(sales);
+    const bs = purchaseSummary(buys);
+    return {
+      manifest, entries, checklist, definitive, period,
+      ca: vs.ht, tvaCollectee: vs.tva, tvaDeductible: (bs && bs.deductible) || 0,
+      encaisse: round3(pays.reduce((s2, r) => s2 + (Number(r.amount) || 0), 0)),
+      totaux: {
+        ventes: sales.length, achats: buys.length, encaissements: pays.length,
+        pieces: issued.length, justificatifs: entries.filter(e => e.kind === 'attachment').length,
+        bulletins: slips.length
+      }
+    };
+  }
+
+  // La page de garde du paquet : la première chose que le comptable ouvre. Elle répond à trois
+  // questions dans cet ordre — de qui, pour quel mois, et **qu'est-ce qui manque**. Un dossier dont
+  // on connaît les trous vaut mieux qu'un dossier qu'on croit complet.
+  function packCoverHtml(plan, company, opts) {
+    opts = opts || {};
+    const cur = company.currency || 'TND';
+    const m = n => money(n, cur);
+    const accent = company.accentColor || '#0f9d8f';
+    const p = plan.period;
+    const t = plan.totaux;
+    const rows = (plan.checklist || []);
+    const esc = escapeHtml;
+    return `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><style>
+      @page { size: A4; margin: 16mm 14mm; }
+      * { box-sizing: border-box; }
+      body { font: 11pt/1.45 -apple-system, "Segoe UI", Roboto, sans-serif; color: #1b2430; margin: 0; }
+      h1 { font-size: 20pt; margin: 0 0 2mm; }
+      h2 { font-size: 12pt; margin: 8mm 0 2mm; padding-bottom: 1.5mm; border-bottom: 1.5pt solid ${esc(accent)}; }
+      .sub { color: #5c6875; margin: 0 0 6mm; }
+      .tag { display: inline-block; padding: 1mm 3mm; border-radius: 3mm; font-size: 9pt; font-weight: 600; }
+      .def { background: ${esc(accent)}22; color: ${esc(accent)}; }
+      .prov { background: #fbf1e0; color: #a15c00; }
+      table { width: 100%; border-collapse: collapse; font-size: 10pt; }
+      td, th { text-align: left; padding: 1.6mm 2mm; border-bottom: 0.4pt solid #e3e8ee; vertical-align: top; }
+      th { color: #5c6875; font-weight: 600; font-size: 9pt; text-transform: uppercase; letter-spacing: .04em; }
+      .r { text-align: right; font-variant-numeric: tabular-nums; }
+      .grid { display: flex; gap: 4mm; flex-wrap: wrap; }
+      .card { flex: 1 1 34mm; border: 0.5pt solid #e3e8ee; border-radius: 2mm; padding: 3mm; }
+      .card .k { font-size: 8.5pt; color: #5c6875; }
+      .card .v { font-size: 15pt; font-weight: 600; }
+      .warn td { background: #fdf6ec; }
+      .danger td { background: #fdeeec; }
+      .none { color: ${esc(accent)}; font-weight: 600; }
+      .foot { margin-top: 10mm; font-size: 8.5pt; color: #5c6875; border-top: 0.4pt solid #e3e8ee; padding-top: 2.5mm; }
+    </style></head><body>
+      <h1>${esc(company.name || 'Entreprise')} — ${esc(p.label)}</h1>
+      <p class="sub">${company.matricule ? 'Matricule fiscal ' + esc(company.matricule) + ' · ' : ''}du ${fmtDate(p.from)} au ${fmtDate(p.to)}
+        &nbsp; <span class="tag ${plan.definitive ? 'def' : 'prov'}">${plan.definitive ? 'DÉFINITIF — mois clôturé' : 'PROVISOIRE — mois non clôturé'}</span></p>
+
+      ${plan.definitive ? '' : '<p style="background:#fbf1e0;padding:3mm;border-radius:2mm;font-size:9.5pt;margin:0 0 5mm"><b>Ce dossier peut encore changer.</b> Le mois n\'a pas été clôturé dans SkanFact : des pièces peuvent encore y être ajoutées ou modifiées. Un envoi définitif suivra une fois le mois clôturé.</p>'}
+
+      <h2>Le mois en chiffres</h2>
+      <div class="grid">
+        <div class="card"><div class="k">Chiffre d'affaires HT</div><div class="v">${m(plan.ca || 0)}</div></div>
+        <div class="card"><div class="k">TVA collectée</div><div class="v">${m(plan.tvaCollectee || 0)}</div></div>
+        <div class="card"><div class="k">TVA déductible</div><div class="v">${m(plan.tvaDeductible || 0)}</div></div>
+        <div class="card"><div class="k">Encaissé</div><div class="v">${m(plan.encaisse || 0)}</div></div>
+      </div>
+
+      <h2>Ce que contient ce paquet</h2>
+      <table><tbody>
+        <tr><td>Pièces de vente émises (PDF joints)</td><td class="r">${t.pieces}</td></tr>
+        <tr><td>Lignes au journal des ventes</td><td class="r">${t.ventes}</td></tr>
+        <tr><td>Lignes au journal des achats</td><td class="r">${t.achats}</td></tr>
+        <tr><td>Justificatifs d'achat joints</td><td class="r">${t.justificatifs}</td></tr>
+        <tr><td>Encaissements clients</td><td class="r">${t.encaissements}</td></tr>
+        <tr><td>Bulletins de paie</td><td class="r">${t.bulletins}</td></tr>
+      </tbody></table>
+
+      <h2>Ce qui manque</h2>
+      ${rows.length
+        ? `<table><thead><tr><th>Point</th><th class="r">Nombre</th></tr></thead><tbody>
+            ${rows.map(c => `<tr class="${esc(c.level)}"><td><b>${esc(c.label)}</b><div style="color:#5c6875;font-size:9pt">${esc(c.detail)}</div></td><td class="r">${c.count}</td></tr>`).join('')}
+          </tbody></table>`
+        : '<p class="none">Rien à signaler : le dossier est complet.</p>'}
+
+      <div class="foot">
+        Paquet produit par SkanFact${opts.version ? ' ' + esc(opts.version) : ''}${opts.at ? ' le ' + esc(opts.at) : ''}${plan.manifest.poste ? ' depuis « ' + esc(plan.manifest.poste) + ' »' : ''}.
+        Le fichier <b>manifeste.json</b> liste chaque fichier du paquet avec son empreinte : elles permettent de vérifier que rien n'a été modifié depuis l'envoi.
+        <br>Les montants sont ceux enregistrés dans SkanFact. <i>À VÉRIFIER par le comptable</i> avant toute déclaration.
+      </div>
+    </body></html>`;
   }
 
   // ---------- conversions entre documents (2.6.0) ----------
@@ -3931,6 +4175,8 @@
     pageInfo, compareValues, LINE_UNITS, usedUnits, parseDateInput, fmtDateInput, monthMatrix,
     uid, round3, money, fmtDate, addDays, daysInMonth, today, escapeHtml, nl2br, statusLabel,
     CLOSURE_ACTIONS, closedUntil, isClosedDate, closedPeriodLabel, closableMonths, closureChecks, closePeriod, reopenPeriod, closureLog,
+    PACK_FORMAT, packPeriod, packPlan, packChecklist, packFileName, packCoverHtml,
+    salesCsvColumns, buyCsvColumns, payCsvColumns, supplierPayCsvColumns, cashCsvColumns,
     nextNumber, isLocked, isIssued, computeTotals, creditsFor, invoiceBalance, effectiveStatus,
     depositLines, settlementLines, salesJournal, vatSummary, paymentsJournal, toCsv, migrateData,
     PERIODS, MONTHS_FR, MONTHS_SHORT, monthLabel, addMonths, nextRecurrenceDate, dueRecurrences, catchUpRecurrence, fillTemplate, buildRecurringInvoice,

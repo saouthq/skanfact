@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
 const { createStorage } = require('./storage');
+const { zipBuffer, sha256, sealBuffer } = require('./zip');
 
 // Identifiants de l'app. Ne PAS les lire dans package.json au démarrage : electron-builder
 // retire la section « build » du package.json empaqueté (l'app installée n'a plus build.publish).
@@ -721,6 +722,82 @@ async function renderPdf(html, win) {
   }
 }
 const pdfWindow = () => new BrowserWindow({ show: false, webPreferences: { sandbox: true, contextIsolation: true } });
+
+// ---------- le paquet mensuel pour le cabinet (6.1.0) ----------
+// Le renderer décide de CE QUE contient le paquet (core.packPlan, testable sans Electron) et fournit
+// le HTML des pièces à rendre. Ici on ne fait qu'exécuter : produire les octets, empreinter, zipper,
+// sceller, écrire. Cette séparation permet de tester tout le contenu du paquet sans lancer Electron.
+ipcMain.handle('pack:build', async (_e, { plan, coverHtml, password, suggestedName } = {}) => {
+  if (!plan || !Array.isArray(plan.entries)) throw new Error('Plan de paquet invalide.');
+  const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+    title: 'Enregistrer le paquet pour le cabinet',
+    defaultPath: path.join(app.getPath('documents'), suggestedName || 'paquet.skanpack'),
+    filters: [{ name: 'Paquet SkanFact', extensions: ['skanpack'] }]
+  });
+  if (canceled || !filePath) return null;
+
+  const total = plan.entries.length + 2;                 // + la page de garde + le manifeste
+  let done = 0;
+  const step = (label) => { done++; send('pack:progress', { done, total, label }); };
+
+  const win = pdfWindow();
+  const files = [];                                      // { name, data } prêts pour le zip
+  const missing = [];                                    // ce qu'on n'a pas pu joindre : on le DIT, on ne l'efface pas
+  try {
+    for (const e of plan.entries) {
+      try {
+        if (e.kind === 'text') {
+          files.push({ name: e.path, data: Buffer.from(String(e.text == null ? '' : e.text), 'utf8') });
+        } else if (e.kind === 'pdf' || e.kind === 'payslip') {
+          if (!e.html) throw new Error('document non rendu');
+          files.push({ name: e.path, data: await renderPdf(e.html, win) });
+        } else if (e.kind === 'attachment') {
+          files.push({ name: e.path, data: fs.readFileSync(storage.attachmentPath(e.ownerId, e.file)) });
+        }
+      } catch (err) {
+        // Un justificatif effacé du disque ne doit pas faire échouer tout l'envoi : le paquet part
+        // sans lui, et le manifeste comme la page de garde disent lequel manque.
+        missing.push({ fichier: e.path, quoi: e.label || '', pourquoi: err && err.message || String(err) });
+        logToFile('paquet', new Error(`${e.path} : ${err && err.message}`));
+      }
+      step(e.label || e.path);
+    }
+
+    const cover = await renderPdf(coverHtml || '<html><body></body></html>', win);
+    files.unshift({ name: '00-page-de-garde.pdf', data: cover });
+    step('Page de garde');
+
+    // Le manifeste est écrit EN DERNIER : il porte l'empreinte de chaque fichier réellement produit.
+    const manifest = {
+      ...plan.manifest,
+      genereLe: new Date().toISOString(),
+      versionApp: app.getVersion(),
+      absents: missing,
+      fichiers: files.map(f => ({ chemin: f.name, octets: f.data.length, empreinte: sha256(f.data) }))
+    };
+    const manifestBuf = Buffer.from(JSON.stringify(manifest, null, 2), 'utf8');
+    files.unshift({ name: 'manifeste.json', data: manifestBuf });
+    step('Manifeste');
+
+    const zip = zipBuffer(files, { date: new Date() });
+    const out = password
+      ? sealBuffer(zip, password, {
+          entreprise: manifest.entreprise.nom, matricule: manifest.entreprise.matricule,
+          periode: manifest.periode.mois, definitif: manifest.definitif, format: manifest.format
+        })
+      : zip;
+    // Écriture atomique : un paquet à moitié écrit, envoyé par erreur, serait pire que pas de paquet.
+    const tmp = filePath + '.tmp';
+    fs.writeFileSync(tmp, out);
+    fs.renameSync(tmp, filePath);
+    return {
+      path: filePath, octets: out.length, fichiers: files.length,
+      chiffre: !!password, absents: missing, empreinte: sha256(manifestBuf)
+    };
+  } finally {
+    win.destroy();
+  }
+});
 
 ipcMain.handle('pdf:export', async (_e, { html, suggestedName }) => {
   const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {

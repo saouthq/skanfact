@@ -2813,34 +2813,15 @@
   // ---------- Paramètres ----------
 
   // ---------- Comptabilité ----------
-  // Colonnes du journal des ventes exporté en CSV (export manuel et envoi au comptable)
-  const journalColumns = () => [
-    { key: 'date', label: 'Date', type: 'date' }, { key: 'number', label: 'Numéro' }, { key: 'typeLabel', label: 'Type' }, { key: 'client', label: 'Client' }, { key: 'subject', label: 'Objet' },
-    { key: 'ht', label: 'Total HT', type: 'money' },
-    ...C.VAT_RATES.map(r => ({ label: `Base ${r}%`, type: 'money', get: x => x.vatByRate[r].base })),
-    ...C.VAT_RATES.map(r => ({ label: `TVA ${r}%`, type: 'money', get: x => x.vatByRate[r].vat })),
-    { key: 'tva', label: 'Total TVA', type: 'money' }, { key: 'timbre', label: 'Timbre', type: 'money' }, { key: 'ttc', label: 'TTC', type: 'money' },
-    { key: 'rs', label: 'Retenue source', type: 'money' }, { key: 'net', label: 'Net à payer', type: 'money' },
-    { key: 'statusLabel', label: 'Statut' }, { key: 'paid', label: 'Payé', type: 'money' }, { key: 'remaining', label: 'Reste', type: 'money' }
-  ];
-  // Colonnes des CSV d'achats et de trésorerie, partagées entre l'export manuel et l'envoi au comptable.
-  const buyJournalColumns = () => [
-    { key: 'date', label: 'Date', type: 'date' }, { key: 'number', label: 'N° fournisseur' }, { key: 'supplier', label: 'Fournisseur' },
-    { key: 'kind', label: 'Nature' }, { key: 'category', label: 'Catégorie' }, { key: 'subject', label: 'Objet' },
-    { key: 'ht', label: 'HT', type: 'money' }, { key: 'tva', label: 'TVA', type: 'money' }, { key: 'deductible', label: 'TVA déductible', type: 'money' },
-    { key: 'fees', label: 'Timbre et frais', type: 'money' }, { key: 'ttc', label: 'TTC', type: 'money' },
-    { key: 'rs', label: 'Retenue opérée', type: 'money' }, { key: 'net', label: 'Net à payer', type: 'money' }, { key: 'status', label: 'Statut' }
-  ];
-  const payColumns = () => [
-    { key: 'date', label: 'Date', type: 'date' }, { key: 'number', label: 'Facture' }, { key: 'client', label: 'Client' },
-    { key: 'amount', label: 'Montant', type: 'money' }, { key: 'method', label: 'Mode' }, { key: 'reference', label: 'Référence' }, { key: 'note', label: 'Note' }
-  ];
-  const decColumns = () => [
-    { key: 'date', label: 'Date', type: 'date' }, { key: 'number', label: 'Pièce fournisseur' }, { key: 'supplier', label: 'Fournisseur' },
-    { key: 'amount', label: 'Montant', type: 'money' }, { key: 'method', label: 'Mode' }, { key: 'reference', label: 'Référence' }, { key: 'note', label: 'Note' }
-  ];
+  // Les colonnes des journaux vivent dans core.js depuis la 6.1.0 : l'export manuel et le paquet
+  // envoyé au cabinet doivent dire exactement la même chose, sinon deux exports du même mois diffèrent.
+  const journalColumns = () => C.salesCsvColumns();
+  const buyJournalColumns = () => C.buyCsvColumns();
+  const payColumns = () => C.payCsvColumns();
+  const decColumns = () => C.supplierPayCsvColumns();
 
   const MONTHS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+  const cabinetState = { month: '', seal: false };
   const comptaState = {
     tab: 'ventes',
     year: C.today().slice(0, 4), month: C.today().slice(5, 7),
@@ -2849,7 +2830,7 @@
     pays: { sort: null, page: 1 },         // encaissements
     buys: { sort: null, page: 1 }          // journal des achats
   };
-  const COMPTA_TABS = [['ventes', 'Ventes'], ['achats', 'Achats'], ['tva', 'TVA à payer'], ['calendrier', 'Calendrier fiscal'], ['clotures', 'Clôtures']];
+  const COMPTA_TABS = [['ventes', 'Ventes'], ['achats', 'Achats'], ['tva', 'TVA à payer'], ['calendrier', 'Calendrier fiscal'], ['clotures', 'Clôtures'], ['cabinet', 'Cabinet']];
 
   // ---------- Fournisseurs ----------
   const supplierById = id => data.suppliers.find(s => s.id === id);
@@ -6224,11 +6205,12 @@
         `<button role="tab" data-tab="${id}" class="${id === comptaState.tab ? 'active' : ''}">${label}</button>`).join('')}</div>
       <div id="c-body"></div>`;
     const draw = () => {
-      $('#c-period').hidden = comptaState.tab === 'calendrier' || comptaState.tab === 'clotures';
+      $('#c-period').hidden = ['calendrier', 'clotures', 'cabinet'].includes(comptaState.tab);
       if (comptaState.tab === 'achats') return drawBuyJournal(period(), periodLabel());
       if (comptaState.tab === 'tva') return drawVat();
       if (comptaState.tab === 'calendrier') return drawFiscal();
       if (comptaState.tab === 'clotures') return drawClosures();
+      if (comptaState.tab === 'cabinet') return drawCabinet();
       const p = period();
       // Recherche : la Comptabilité était l'autre page de liste sans champ de recherche (audit).
       const q = comptaState.q.trim().toLowerCase();
@@ -6574,6 +6556,154 @@
               close(); save(true); toast('Période rouverte'); draw(); updateNavCounts();
             };
           });
+      };
+    }
+
+    // Le paquet mensuel : tout ce que le comptable attend, dans un fichier, vérifiable.
+    // Avant de le fabriquer, on montre exactement ce qu'il contiendra — y compris ce qui manque.
+    function drawCabinet() {
+      const co = company();
+      const months = (() => {
+        // Les douze derniers mois terminés, le plus récent d'abord : c'est celui qu'on envoie.
+        const out = [];
+        let m = C.addMonths(C.today().slice(0, 7) + '-01', -1, 1).slice(0, 7);
+        for (let i = 0; i < 12; i++) { out.push(m); m = C.addMonths(m + '-01', -1, 1).slice(0, 7); }
+        return out;
+      })();
+      if (!cabinetState.month) cabinetState.month = months[0];
+      const per = C.packPeriod(Number(cabinetState.month.slice(0, 4)), Number(cabinetState.month.slice(5, 7)));
+      const plan = C.packPlan(data, co, per, { device: deviceLabel() });
+      const sent = (data.packs || []).filter(x => x.month === per.month).sort((a, b) => (b.at || 0) - (a.at || 0));
+      const history = (data.packs || []).slice().sort((a, b) => (b.at || 0) - (a.at || 0)).slice(0, 12);
+      const cur = co.currency;
+
+      $('#c-body').innerHTML = `
+        <div class="panel"><h2>Le paquet du mois ${info('cab.paquet')}</h2>
+          <div class="inline mb">
+            <select id="cab-month">${months.map(m => `<option value="${m}" ${m === cabinetState.month ? 'selected' : ''}>${h(C.monthLabel(m + '-01'))}</option>`).join('')}</select>
+            <span class="badge ${plan.definitive ? 'b-paid' : 'b-due'}">${plan.definitive ? 'définitif — mois clôturé' : 'provisoire — mois non clôturé'}</span>
+          </div>
+          ${plan.definitive
+            ? '<p class="small muted">Ce mois est clôturé : le paquet est <b>définitif</b>. Ton comptable peut travailler dessus en sachant que rien ne bougera.</p>'
+            : `<p class="small" style="background:var(--warning-soft);padding:10px 12px;border-radius:8px">
+                 Ce mois n'est <b>pas clôturé</b> : le paquet partira marqué « provisoire ». Tu peux l'envoyer quand même — mais l'envoi qui compte est celui qui suit la clôture.
+                 <a href="#" id="cab-goclose" class="warn-link">Clôturer ${h(per.label)}</a></p>`}
+
+          <div class="dash-grid mt">
+            <div>
+              <table class="list compact"><thead><tr><th>Ce que contient le paquet</th><th class="r">Nombre</th></tr></thead><tbody>
+                <tr><td>Pièces de vente émises (PDF joints)</td><td class="r">${plan.totaux.pieces}</td></tr>
+                <tr><td>Lignes au journal des ventes</td><td class="r">${plan.totaux.ventes}</td></tr>
+                <tr><td>Lignes au journal des achats</td><td class="r">${plan.totaux.achats}</td></tr>
+                <tr><td>Justificatifs d'achat joints</td><td class="r">${plan.totaux.justificatifs}</td></tr>
+                <tr><td>Encaissements clients</td><td class="r">${plan.totaux.encaissements}</td></tr>
+                <tr><td>Bulletins de paie</td><td class="r">${plan.totaux.bulletins}</td></tr>
+                <tr class="total-row"><td><b>Fichiers en tout</b></td><td class="r"><b>${plan.entries.length + 2}</b></td></tr>
+              </tbody></table>
+            </div>
+            <div>
+              <div class="stat"><div class="lbl">CA HT du mois</div><div class="val">${C.money(plan.ca, cur)}</div></div>
+              <div class="stat"><div class="lbl">TVA collectée</div><div class="val">${C.money(plan.tvaCollectee, cur)}</div></div>
+              <div class="stat"><div class="lbl">TVA déductible</div><div class="val">${C.money(plan.tvaDeductible, cur)}</div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel"><h2>Ce qui manque ${info('cab.manques')}</h2>
+          ${plan.checklist.length
+            ? `<table class="list compact"><tbody>${plan.checklist.map(c => `<tr class="${c.level === 'danger' ? 'row-warn' : ''}">
+                <td><strong>${h(c.label)}</strong><div class="small muted">${h(c.detail)}</div></td><td class="r nw">${c.count}</td></tr>`).join('')}</tbody></table>
+               <p class="small muted mt">Ces points figureront sur la page de garde du paquet. Le comptable saura quoi te réclamer — c'est mieux qu'un dossier qu'il croit complet.</p>`
+            : '<p class="small" style="color:var(--primary)">Rien à signaler : le dossier du mois est complet.</p>'}
+        </div>
+
+        <div class="panel"><h2>Fabriquer et envoyer ${info('cab.envoyer')}</h2>
+          <label class="check mb"><input type="checkbox" id="cab-seal" ${cabinetState.seal ? 'checked' : ''}> Protéger le paquet par un mot de passe ${info('cab.motdepasse')}</label>
+          <div id="cab-pw" ${cabinetState.seal ? '' : 'hidden'} class="mb">
+            <input type="password" id="cab-pwv" placeholder="Mot de passe convenu avec ton comptable" style="max-width:340px">
+            <div class="small muted">Transmets-le-lui par un autre canal que le fichier : par téléphone, pas dans le même mail.</div>
+          </div>
+          <div class="inline">
+            <button class="btn btn-primary" id="cab-build">Fabriquer le paquet…</button>
+            ${sent.length ? `<button class="btn" id="cab-mail">Envoyer au comptable…</button>` : ''}
+          </div>
+          <div id="cab-prog" class="small muted mt" hidden></div>
+        </div>
+
+        <div class="panel"><h2>Ce qui a déjà été envoyé ${info('cab.historique')}</h2>
+          ${history.length
+            ? `<div class="scroll-x"><table class="list compact"><thead><tr><th>Mois</th><th>Fabriqué le</th><th>État</th><th class="r">Fichiers</th><th class="r">Taille</th><th>Empreinte</th></tr></thead><tbody>
+                ${history.map(x => `<tr><td class="nw"><strong>${h(C.monthLabel(x.month + '-01'))}</strong></td>
+                  <td class="nw small">${x.at ? C.fmtDate(new Date(x.at).toISOString().slice(0, 10)) : ''}</td>
+                  <td><span class="badge ${x.definitive ? 'b-paid' : 'b-due'}">${x.definitive ? 'définitif' : 'provisoire'}</span>${x.sealed ? ' <span class="small muted">chiffré</span>' : ''}</td>
+                  <td class="r">${x.files || ''}</td><td class="r nw">${x.bytes ? (x.bytes / 1048576).toFixed(1).replace('.', ',') + ' Mo' : ''}</td>
+                  <td class="small muted mono">${h(String(x.digest || '').slice(0, 12))}</td></tr>`).join('')}
+              </tbody></table></div>
+               <p class="small muted mt">L'empreinte est la carte d'identité du paquet : si ton comptable obtient la même, le fichier qu'il a reçu est bien celui que tu as envoyé, à l'octet près.</p>`
+            : '<div class="empty">Aucun paquet fabriqué pour l\'instant.</div>'}
+        </div>`;
+
+      $('#cab-month').onchange = e => { cabinetState.month = e.target.value; draw(); };
+      if ($('#cab-goclose')) $('#cab-goclose').onclick = e => { e.preventDefault(); comptaState.tab = 'clotures'; draw(); $$('#c-tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === 'clotures')); };
+      $('#cab-seal').onchange = e => { cabinetState.seal = e.target.checked; $('#cab-pw').hidden = !e.target.checked; };
+
+      $('#cab-build').onclick = async () => {
+        const pw = cabinetState.seal ? ($('#cab-pwv').value || '').trim() : '';
+        if (cabinetState.seal && pw.length < 6) return toast('Choisis un mot de passe d\'au moins six caractères.', true);
+        if (!plan.definitive && !await confirmDialog(`${per.label} n'est pas clôturé : le paquet partira marqué « provisoire » et pourra encore changer.\n\nFabriquer quand même ?`, 'Fabriquer', false)) return;
+
+        // Le HTML de chaque pièce est produit ici : c'est le renderer qui sait dessiner un document.
+        const entries = plan.entries.map(e => {
+          if (e.kind === 'pdf') {
+            const d = docById(e.docId);
+            return d ? { ...e, html: C.documentHtml(d, clientById(d.clientId), co, { stampText: stampFor(d) }) } : e;
+          }
+          if (e.kind === 'payslip') {
+            const sl = (data.payslips || []).find(x => x.id === e.slipId);
+            return sl ? { ...e, html: C.payslipHtml(sl, data, co, {}) } : e;
+          }
+          return e;
+        });
+        const cover = C.packCoverHtml(plan, co, { version: $('#app-version').textContent, at: C.fmtDate(C.today()) });
+
+        const prog = $('#cab-prog');
+        prog.hidden = false; prog.textContent = 'Préparation…';
+        const off = bridge.onPackProgress(d => { prog.textContent = `${d.done} / ${d.total} — ${d.label}`; });
+        try {
+          const r = await bridge.buildPack({
+            plan: { manifest: plan.manifest, entries },
+            coverHtml: cover, password: pw,
+            suggestedName: C.packFileName(co, per, plan.definitive)
+          });
+          prog.hidden = true;
+          if (!r) return;
+          data.packs = (data.packs || []).concat([{
+            id: C.uid(), month: per.month, at: Date.now(), definitive: plan.definitive,
+            sealed: !!pw, files: r.fichiers, bytes: r.octets, digest: r.empreinte,
+            path: r.path, missing: (r.absents || []).length
+          }]);
+          save(true);
+          const warn = (r.absents || []).length ? ` ${r.absents.length} fichier(s) n'ont pas pu être joints (voir le manifeste).` : '';
+          toast(`Paquet créé : ${r.path.split(/[\\/]/).pop()}${warn}`);
+          draw();
+        } catch (err) {
+          prog.hidden = true;
+          toast('Fabrication impossible : ' + (err.message || err), true);
+        } finally { if (typeof off === 'function') off(); }
+      };
+
+      if ($('#cab-mail')) $('#cab-mail').onclick = () => {
+        const last = sent[0];
+        const to = co.accountantEmail || '';
+        bridge.composeMail({
+          to, subject: `${co.name || ''} — comptabilité ${per.label}${last.definitive ? '' : ' (provisoire)'}`,
+          body: `Bonjour,\n\nVoici le dossier de ${per.label}.\n\n`
+            + `${last.definitive ? 'Le mois est clôturé : ces chiffres ne bougeront plus.' : 'Le mois n\'est pas encore clôturé : ce dossier est provisoire.'}\n`
+            + `Le paquet contient les journaux, les pièces en PDF, les justificatifs d'achat et la page de garde.\n`
+            + (last.sealed ? 'Il est protégé par le mot de passe convenu — je te le donne par téléphone.\n' : '')
+            + `\nEmpreinte du manifeste : ${String(last.digest || '').slice(0, 16)}\n\nBien à toi,\n${co.name || ''}`,
+          attachments: [last.path]
+        }).then(() => toast(to ? 'Message préparé pour le comptable' : 'Message préparé — renseigne l\'email du comptable dans Paramètres'));
       };
     }
 
