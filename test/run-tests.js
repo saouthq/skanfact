@@ -533,7 +533,23 @@ t('à faire : ce qui demande une action, par ordre d\'urgence', () => {
   const FULL = { ...CO, name: 'ACME', matricule: '1234567A', rib: '12 345' };
   const todo = core.todoList(data, FULL, T);
   const ids = todo.map(x => x.id);
-  assert.deepStrictEqual(ids, ['retards', 'cloture', 'contrats', 'devis-acceptes', 'devis-expires', 'devis-sans-reponse', 'attestations', 'echeances', 'brouillons']);
+  // Les mêmes neuf lignes, quel que soit l'ordre : c'est le CONTENU qu'on vérifie ici.
+  assert.deepStrictEqual(ids.slice().sort(),
+    ['attestations', 'brouillons', 'cloture', 'contrats', 'devis-acceptes', 'devis-expires', 'devis-sans-reponse', 'echeances', 'retards'].sort());
+  // Et l'ordre, lui, se vérifie par sa RÈGLE plutôt que par une liste écrite à la main : le panneau
+  // promet « du plus urgent au moins urgent » depuis la 1.10.0 et rendait en fait l'ordre du code,
+  // c'est-à-dire celui dans lequel les modules ont été écrits. Une liste en dur ne l'aurait jamais
+  // attrapé — elle décrivait le défaut.
+  const rang = { danger: 0, warn: 1, info: 2 };
+  todo.forEach((x, i) => {
+    if (!i) return;
+    assert.ok(rang[todo[i - 1].level] <= rang[x.level],
+      `« ${todo[i - 1].label} » (${todo[i - 1].level}) passe avant « ${x.label} » (${x.level}) : la liste doit aller du plus urgent au moins urgent`);
+  });
+  // Le tri est STABLE : à urgence égale, l'ordre thématique du code est conservé (il est lisible).
+  const warns = todo.filter(x => x.level === 'warn').map(x => x.id);
+  assert.deepStrictEqual(warns, ['cloture', 'contrats', 'devis-acceptes', 'devis-expires', 'attestations'],
+    'à urgence égale, l\'ordre du code doit être conservé');
   // 'cloture' : les pièces du jeu de test remontent à des mois terminés et rien n'est clôturé (6.0.0)
   assert.ok(todo.find(x => x.id === 'cloture').count > 0, 'des mois à clôturer');
   assert.strictEqual(todo[0].level, 'danger');

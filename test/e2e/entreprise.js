@@ -120,6 +120,15 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     await win.waitForFunction(() => /Facture FAC-\d{4}-001/.test((document.querySelector('#view h1') || {}).textContent || ''));
     if (await win.$('#save')) throw new Error('bouton enregistrer présent sur une facture émise');
     if (!(await win.isDisabled('#f-head input[name=subject]'))) throw new Error('champ non verrouillé');
+    // 7.0.0 : vingt champs gris et une ligne d'explication de 12 px sous le titre, c'était une
+    // application qui a l'air cassée. Le verrouillage s'annonce maintenant en toutes lettres, et la
+    // sortie est SUR l'écran — pas dans un menu « Plus ▾ » qu'on n'a pas encore ouvert.
+    await win.waitForSelector('.lock-banner');
+    const txt = await win.textContent('.lock-banner');
+    if (!/ne se modifie plus/.test(txt)) throw new Error('bandeau de verrouillage : ' + txt.slice(0, 160));
+    if (!/avoir/.test(txt)) throw new Error('le bandeau doit nommer l\'avoir comme chemin de correction');
+    if (!(await win.$('#lock-credit'))) throw new Error('le bandeau doit porter le bouton « Corriger par un avoir »');
+    if (!(await win.$('#lock-unlock'))) throw new Error('une facture sans paiement ni avoir doit encore proposer « Modifier quand même »');
     if (!(await win.textContent('#pay-body')).includes('1 191,000')) throw new Error('situation');
   });
   await step('paiement partiel puis solde → payée', async () => {

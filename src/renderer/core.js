@@ -3919,7 +3919,17 @@
       count: oldDrafts.length, route: '#/factures', docs: oldDrafts
     });
 
-    return out;
+    // Le commentaire en tête de cette fonction promet « du plus urgent au moins urgent » depuis la
+    // 1.10.0, et l'ordre réel était celui du code — c'est-à-dire l'ordre dans lequel les modules ont
+    // été écrits. Sur le jeu d'exemple, « 3 factures en retard » (rouge) se retrouvait au-dessus,
+    // mais « 2 déclarations sociales en retard » (rouge aussi) arrivait NEUVIÈME, sous cinq lignes
+    // orange et une bleue. Un tri stable : l'urgence décide, et à urgence égale l'ordre du code
+    // (qui est thématique, donc lisible) est conservé.
+    const rang = { danger: 0, warn: 1, info: 2 };
+    return out
+      .map((x, i) => [x, i])
+      .sort((a, b) => (rang[a[0].level] - rang[b[0].level]) || (a[1] - b[1]))
+      .map(p => p[0]);
   }
 
   // Ce qui manque à la fiche société pour que les documents soient complets.
@@ -3930,6 +3940,72 @@
     if (!(c.matricule || '').trim()) out.push('le matricule fiscal');
     if (!(c.rib || '').trim()) out.push('le RIB');
     return out;
+  }
+
+  // ---------- les premiers pas (7.0.0) ----------
+  //
+  // Ce que quelqu'un qui vient d'installer SkanFact doit faire, dans l'ordre, pour que l'application
+  // lui serve à quelque chose. Sept étapes, et un principe : **l'état de chacune est DÉDUIT des
+  // données**, jamais coché à la main. Une case qu'on coche soi-même ment le jour où on l'a cochée
+  // par erreur, ou reste vide le jour où on a fait le geste par un autre chemin.
+  //
+  // Pourquoi ça n'existait pas : jusqu'ici, le premier jour, l'accueil montrait quatre compteurs à
+  // zéro, un graphique de douze mois vides, un « Top clients » vide — et, huit cents pixels plus bas,
+  // deux boutons. La seule autre orientation était un toast de deux secondes et demie et un article
+  // d'aide que rien ne proposait. La première phrase que l'application adressait à son utilisateur
+  // était « Fiche société incomplète », c'est-à-dire un reproche, juste après un assistant qu'il
+  // venait de mener jusqu'au bout.
+  //
+  // `opts.copieExterne` : la copie de sauvegarde vers un dossier externe ne vit pas dans les données
+  // (elle est dans app-config.json, propre au poste), donc l'appelant la fournit. Elle est ici parce
+  // que c'est l'étape que tout le monde saute et la seule dont l'absence coûte tout.
+  function firstSteps(data, company, opts) {
+    const d = data || {};
+    const o = opts || {};
+    const docs = d.documents || [];
+    const devis = docs.filter(x => x.type === 'devis');
+    const gaps = companyGaps(company);
+    const facturesEmises = docs.filter(x => x.type === 'facture' && x.status !== 'brouillon');
+    const unPaiement = docs.some(x => (x.payments || []).length);
+
+    const etapes = [
+      { id: 'societe', titre: 'Compléter ta fiche société', fait: !gaps.length,
+        quoi: gaps.length
+          ? `Il manque ${liste(gaps)}. Ces informations s'impriment en haut de chaque document, et une facture sans matricule fiscal n'est pas conforme.`
+          : 'Raison sociale, matricule fiscal et RIB sont renseignés : tes documents sont en règle.',
+        action: 'societe' },
+      { id: 'client', titre: 'Enregistrer ton premier client', fait: (d.clients || []).length > 0,
+        quoi: 'Son adresse et son matricule se reporteront tout seuls sur chaque devis et chaque facture.',
+        action: 'client' },
+      { id: 'catalogue', titre: 'Remplir ton catalogue', fait: (d.catalog || []).length > 0,
+        quoi: 'Ce que tu vends, avec son prix et sa TVA. Une ligne de devis se choisit alors dans une liste au lieu d\'être retapée.',
+        action: 'catalogue' },
+      { id: 'devis', titre: 'Faire ton premier devis', fait: devis.length > 0,
+        quoi: 'Un devis annonce un prix avant de travailler. C\'est la pièce par laquelle presque tout commence.',
+        action: 'devis' },
+      { id: 'envoi', titre: 'L\'envoyer à ton client', fait: devis.some(x => x.status && x.status !== 'brouillon'),
+        quoi: 'Ouvre le devis, puis « Envoyer » : le PDF part en pièce jointe. Tant qu\'un devis reste en brouillon, SkanFact ne le compte nulle part.',
+        action: devis.length ? 'envoiDevis' : null },
+      { id: 'facture', titre: 'Transformer un devis accepté en facture', fait: facturesEmises.length > 0,
+        quoi: 'En un clic, sans rien ressaisir. C\'est à ce moment-là que le numéro est attribué et que la pièce se verrouille.',
+        action: 'factures' },
+      { id: 'sauvegarde', titre: 'Mettre tes données à l\'abri', fait: !!o.copieExterne,
+        quoi: 'Une copie automatique vers iCloud, un disque ou une clé USB. C\'est l\'étape que tout le monde saute, et la seule dont l\'absence coûte tout.',
+        action: 'sauvegarde' }
+    ];
+    if (unPaiement) {
+      etapes.push({ id: 'encaissement', titre: 'Encaisser', fait: true,
+        quoi: 'Un paiement enregistré fait basculer la facture toute seule : tu ne saisis jamais « payée » à la main.', action: 'factures' });
+    }
+    const faits = etapes.filter(x => x.fait).length;
+    return { etapes, faits, total: etapes.length, fini: faits === etapes.length };
+  }
+
+  // « a », « a et b », « a, b et c » — parce qu'« il manque le matricule fiscal, le RIB » se voit.
+  function liste(mots) {
+    const m = (mots || []).filter(Boolean);
+    if (m.length <= 1) return m[0] || '';
+    return m.slice(0, -1).join(', ') + ' et ' + m[m.length - 1];
   }
 
   // Historique d'un document, reconstitué à partir de ce qui est déjà enregistré.
@@ -4639,6 +4715,6 @@
     periodBounds, issuedIn, salesTotals, revenueByMonth, topItems, clientMovement, AGING_BUCKETS, agedReceivables, payerRanking, quoteFunnel, objectiveProgress,
     amountToWords, intToWords, intToWordsEn, documentHtml, fitToPage, pageCount,
     MODULES, PAGES, moduleById, pageById, pageTitle, moduleCount, moduleOn, moduleWhy, navPages,
-    MODULES_PAR_ACTIVITE, modulesSuggeres, wipeData, estDemo
+    MODULES_PAR_ACTIVITE, modulesSuggeres, wipeData, estDemo, firstSteps, liste
   };
 });

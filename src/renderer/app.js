@@ -208,13 +208,35 @@
     return true;
   }
 
-  // Version courte pour les cas où un simple message suffit (une action de liste, pas un formulaire).
-  function closedToast(dates, what) {
-    const list = (Array.isArray(dates) ? dates : [dates]).filter(Boolean);
-    const hit = list.find(d => C.isClosedDate(data, d));
-    if (!hit) return false;
-    toast(`${what} : ${C.closedPeriodLabel(data, hit)} est clôturé. Rouvre la période depuis Comptabilité → Clôtures.`, true);
-    return true;
+  // `closedToast` existait pour les « cas où un simple message suffit ». Il n'y en avait pas :
+  // c'était le MÊME refus que `closedBlock`, dit deux fois de deux façons. Depuis un formulaire, une
+  // fenêtre avec un bouton « Aller aux clôtures » ; depuis une ligne de liste, un bandeau noir de
+  // deux secondes et demie en bas de l'écran, qui nommait l'endroit sans y mener et disparaissait
+  // avant qu'on ait fini de le lire. Un refus se dit d'une seule façon, et il porte sa sortie.
+  const closedToast = (dates, what) => closedBlock(dates, what);
+
+  // Refuser une saisie en MONTRANT ce qui ne va pas. Trois gestes, toujours les mêmes : on amène le
+  // champ à l'écran, on y met le curseur, on le marque en rouge le temps qu'il soit corrigé. Sans ça,
+  // le message dit « ajoute une désignation » et on cherche laquelle parmi huit lignes.
+  // Renvoie toujours `false` : les validateurs s'écrivent `return refus(...)`.
+  function refus(selecteur, message) {
+    toast(message, true);
+    const el = $(selecteur);
+    if (el) {
+      try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (_) { el.scrollIntoView(); }
+      // Un `<input type=hidden>` (combo, date) ne se focalise pas : on marque son enveloppe visible.
+      const cible = el.type === 'hidden' ? (el.closest('.combo') || el.closest('.datefield') || el) : el;
+      try { cible.focus({ preventScroll: true }); } catch (_) {}
+      const marque = cible.closest('.field') || cible;
+      marque.classList.add('champ-faute');
+      // Le rouge s'efface dès qu'on touche au champ : le laisser serait accuser quelqu'un qui a
+      // déjà corrigé.
+      const nettoyer = () => marque.classList.remove('champ-faute');
+      marque.addEventListener('input', nettoyer, { once: true });
+      marque.addEventListener('change', nettoyer, { once: true });
+      setTimeout(nettoyer, 6000);
+    }
+    return false;
   }
 
   // Le nom du poste, tel que le stockage l'estampille à chaque écriture (3.2.0). Il sert à dire QUI
@@ -773,6 +795,27 @@
     $('#demo-out').onclick = demoSortie;
   }
 
+  // Charger l'exemple. Sorti des Paramètres pour que l'accueil puisse le proposer vraiment : le
+  // bouton « Voir un exemple rempli » du tableau de bord n'ouvrait pas l'exemple, il déposait
+  // l'utilisateur dans une page à huit onglets, devant un encadré rouge « Zone sensible », avec un
+  // toast qui nommait l'onglet où chercher. C'est le contraire d'un exemple.
+  async function loadDemo() {
+    const hasData = data.documents.length || data.clients.length;
+    if (hasData && !await confirmDialog('Remplacer toutes les données actuelles par la démonstration ? Une sauvegarde de l\'état actuel est prise avant ; tes paramètres société (nom, logo, cachet, thème…) sont conservés.', 'Charger la démo', false)) return;
+    if (hasData) await bridge.createBackup('avant-demo');
+    // Toutes les données sont remplacées : le garde-fou de la page en cours n'a plus d'objet, et
+    // laisser sa question surgir ensuite revenait à demander s'il faut enregistrer ce qu'on vient
+    // d'effacer sciemment.
+    if (!await closedWipeOk('Charger la démonstration remplace tout.')) return;
+    clearGuard();
+    data = window.SkanDemo.buildDemoData(data.company);
+    save(true); applyTheme();
+    $('#brand-company').textContent = data.company.name;
+    toast('Jeu de démonstration chargé');
+    navigate('#/dashboard');
+    render();
+  }
+
   // La sortie de l'exemple. Deux chemins, et l'app dit lequel elle propose :
   //   — une sauvegarde « avant-demo » existe (on avait des données) → on les remet ;
   //   — sinon (on a chargé l'exemple sur une installation neuve) → on repart à vide.
@@ -903,6 +946,60 @@
   }
 
   // ---------- Accueil ----------
+
+  // L'état de la copie externe vit sur le poste, pas dans les données : on le lit une fois et on le
+  // garde, pour que `firstSteps` reste une fonction pure qu'on peut tester sans Electron.
+  let copieExterne = null;
+
+  // Les premiers pas. Sept étapes, dont l'état est DÉDUIT des données — jamais coché à la main.
+  // Le panneau prend la place des quatre compteurs à zéro tant que rien n'a été fait, et disparaît
+  // tout seul quand tout est fait (il se retrouve alors dans l'Aide).
+  const PAS_ACTIONS = {
+    societe: ['Compléter ma fiche', () => { settingsTab = 'societe'; navigate('#/parametres'); }],
+    client: ['+ Créer un client', () => clientForm(null, () => render())],
+    catalogue: ['Remplir le catalogue', () => navigate('#/catalogue')],
+    devis: ['+ Créer un devis', () => navigate('#/doc/new/devis')],
+    // « L'envoyer » ne se fait pas depuis l'accueil : le geste vit sur le devis lui-même. Le bouton
+    // mène donc à la liste. Il portait le même libellé que l'étape précédente — deux boutons voisins
+    // marqués « + Créer un devis » pour deux gestes différents.
+    envoiDevis: ['Ouvrir mes devis', () => navigate('#/devis')],
+    factures: ['Voir mes factures', () => navigate('#/factures')],
+    sauvegarde: ['Choisir un dossier', () => { settingsTab = 'donnees'; navigate('#/parametres'); }]
+  };
+  // Le panneau est-il à l'écran ? `todoPanel` a besoin de le savoir pour ne pas répéter l'étape 1.
+  const premiersPasVisibles = () => !C.firstSteps(data, company(), { copieExterne }).fini;
+  function premiersPas() {
+    const p = C.firstSteps(data, company(), { copieExterne });
+    if (p.fini) return '';
+    const suivante = p.etapes.find(e => !e.fait);
+    return `<div class="panel premiers-pas">
+      <h2>Tes premiers pas <span class="pp-compte">${p.faits} / ${p.total}</span></h2>
+      <p class="small muted mb">SkanFact fait beaucoup de choses, mais elles s'enchaînent toujours dans le même ordre.
+        Voilà celui-là. Ce panneau disparaît tout seul quand tu l'as parcouru, et se retrouve ensuite dans l'Aide.</p>
+      <ol class="pp-list">${p.etapes.map(e => {
+        const a = PAS_ACTIONS[e.action];
+        const encours = e === suivante;
+        return `<li class="${e.fait ? 'fait' : ''}${encours ? ' encours' : ''}">
+          <span class="pp-marque">${e.fait ? '✓' : ''}</span>
+          <span class="pp-txt"><strong>${h(e.titre)}</strong><span class="small muted">${h(e.quoi)}</span></span>
+          <span class="pp-go">${!e.fait && a ? `<button class="btn btn-sm ${encours ? 'btn-primary' : ''}" data-pas="${h(e.action)}">${h(a[0])}</button>` : ''}</span>
+        </li>`;
+      }).join('')}</ol>
+      <p class="small muted mt">${helpLink('demarrer', 'Lire « Démarrer : les cinq premières minutes »')}</p>
+    </div>`;
+  }
+  function bindPremiersPas() {
+    $$('[data-pas]').forEach(b => b.onclick = () => {
+      const a = PAS_ACTIONS[b.dataset.pas];
+      if (a) a[1]();
+    });
+  }
+
+  // Le lien vers l'article d'aide qui explique l'écran où l'on est. Trente-deux articles existaient,
+  // et aucune page n'y menait : on ne les atteignait qu'en ouvrant l'Aide et en lisant trente-deux
+  // titres — depuis un bouton qui, lui, était hors de l'écran.
+  const helpLink = (id, label) => `<a href="#/aide/${h(id)}" class="help-link">${h(label || 'Comprendre cette page')} →</a>`;
+
   routes.dashboard = () => {
     const cur = company().currency;
     const month = C.today().slice(0, 7);
@@ -928,13 +1025,21 @@
     const top = C.topClients(data, company(), `${year}-01-01`, `${year}-12-31`, 5);
     const topMax = top.length ? Math.max(...top.map(x => x.ht), 1) : 1;
 
+    // Y a-t-il quelque chose à montrer ? Tant que non, quatre compteurs à « 0,000 DT », un graphique
+    // de douze mois vides et un « Top clients » vide occupent 548 px avant la première phrase utile.
+    // La place revient alors aux premiers pas, qui eux disent quoi faire.
+    const duGrain = data.documents.length > 0;
+    const duGraphique = series.some(x => x.invoiced || x.collected);
+
     $('#view').innerHTML = `
       <div class="page-head"><h1>Accueil</h1>
         <div class="actions">
           <button class="btn" id="new-devis">+ Nouveau devis</button>
           <button class="btn btn-primary" id="new-facture">+ Nouvelle facture</button>
         </div></div>
+      ${premiersPas()}
       ${todoPanel()}
+      ${!duGrain ? '' : `
       <div class="stats">
         <div class="stat"><div class="lbl">CA du mois (HT) ${info('dash.caMonth')}</div><div class="val">${C.money(sumHT(ofMonth), cur)}</div><div class="sub">${C.money(sumTTC(ofMonth), cur)} TTC, avoirs déduits</div></div>
         <div class="stat"><div class="lbl">CA de l'année (HT) ${info('dash.caYear')}</div><div class="val">${C.money(sumHT(ofYear), cur)}</div><div class="sub">${year} · ${C.money(sumTTC(ofYear), cur)} TTC</div></div>
@@ -943,8 +1048,9 @@
       </div>
       <div class="dash-grid">
         <div class="panel"><h2>Activité des 12 derniers mois ${info('dash.chart')}</h2>
-          ${barChart(series)}
-          <div class="legend"><span><i style="background:var(--primary)"></i>Facturé HT (avoirs déduits)</span><span><i style="background:#2a6fd6;opacity:.55"></i>Encaissé</span></div>
+          ${duGraphique ? `${barChart(series)}
+          <div class="legend"><span><i style="background:var(--primary)"></i>Facturé HT (avoirs déduits)</span><span><i style="background:#2a6fd6;opacity:.55"></i>Encaissé</span></div>`
+          : '<p class="small muted">Ce graphique se remplira tout seul : une barre verte par mois facturé, une barre bleue par mois encaissé. L\'écart entre les deux, c\'est ce qu\'on te doit.</p>'}
           <div class="kpis">
             <div class="kpi"><div class="k-label">Devis → facture ${info('dash.conversion')}</div><div class="v">${qs.rate == null ? '—' : qs.rate + ' %'}</div><div class="sub">${qs.accepted} accepté(s), ${qs.refused} refusé(s), ${qs.pending} en attente</div></div>
             <div class="kpi"><div class="k-label">Délai moyen de paiement ${info('dash.delay')}</div><div class="v">${delay == null ? '—' : delay + ' jours'}</div><div class="sub">factures soldées, 12 derniers mois</div></div>
@@ -953,25 +1059,22 @@
         <div class="panel"><h2>Top clients ${year} (HT) ${info('dash.top')}</h2>
           ${top.length ? `<ul class="rank">${top.map(x => `<li><a class="name" href="#/client/${h(x.clientId)}" title="Ouvrir la fiche de ${h(x.name)}">${h(x.name)}</a><span class="bar"><i style="width:${Math.max(4, Math.round(x.ht / topMax * 100))}%"></i></span><span class="amt">${C.money(x.ht, cur)}</span></li>`).join('')}</ul>` : '<p class="small muted">Aucune facture émise cette année. Ton premier devis accepté la remplira.</p>'}
         </div>
-      </div>
-      <div class="panel"><h2>Documents récents</h2>${recent.length ? docTable(recent) : `
-        <div class="empty">
-          <p>Aucun document pour l'instant. Voilà par où commencer :</p>
-          <div class="inline" style="justify-content:center;margin-top:10px">
-            ${data.clients.length ? '' : '<button class="btn" id="start-client">1. Créer un client</button>'}
-            <button class="btn btn-primary" id="start-devis">${data.clients.length ? 'Créer ton premier devis' : '2. Créer un devis'}</button>
-            ${data.catalog.length ? '' : '<button class="btn" id="start-cat">Remplir le catalogue</button>'}
-            <button class="btn btn-ghost" id="start-demo">Voir un exemple rempli</button>
-          </div>
-          <p class="small muted mt">Un devis accepté se transforme en facture en un clic : commence toujours par là.</p>
-        </div>`}</div>`;
+      </div>`}
+      ${!recent.length ? '' : `<div class="panel"><h2>Documents récents</h2>${docTable(recent)}</div>`}
+      ${duGrain || !data.clients.length ? '' : `
+      <div class="panel"><h2>Et maintenant</h2>
+        <p>Tu as ${data.clients.length} client${data.clients.length > 1 ? 's' : ''} et aucun document. La suite tient en un geste :</p>
+        <div class="inline mt"><button class="btn btn-primary" id="start-devis">+ Créer ton premier devis</button>
+          <button class="btn btn-ghost" id="start-demo">Voir un exemple rempli</button></div>
+      </div>`}`;
     $('#new-devis').onclick = () => navigate('#/doc/new/devis');
     $('#new-facture').onclick = () => navigate('#/doc/new/facture');
     // Sur une installation neuve, « Aucun document » ne proposait rien (audit) : on montre le chemin.
     if ($('#start-client')) $('#start-client').onclick = () => clientForm(null, () => navigate('#/clients'));
     if ($('#start-devis')) $('#start-devis').onclick = () => navigate('#/doc/new/devis');
     if ($('#start-cat')) $('#start-cat').onclick = () => navigate('#/catalogue');
-    if ($('#start-demo')) $('#start-demo').onclick = () => { settingsTab = 'donnees'; navigate('#/parametres'); toast('Le jeu de démonstration se charge depuis « Sécurité et données »'); };
+    if ($('#start-demo')) $('#start-demo').onclick = loadDemo;
+    bindPremiersPas();
     bindTodo();
     if ($('#go-expired')) $('#go-expired').onclick = e => { e.preventDefault(); TODO_ACTIONS['devis-expires'].run(); };
     bindDocTable();
@@ -1323,7 +1426,7 @@
 
     $('#view').innerHTML = `
       <div class="page-head">
-        <div><h1>${h(title)} <span class="dirty-dot" id="dirty-dot" hidden title="Modifications non enregistrées">non enregistré</span></h1>${locked ? `<div class="small muted lock-note">Document émis : il n'est plus modifiable${isInv ? ' — pour corriger, crée un avoir' : ''}. ${info('ed.locked')}</div>` : ''}${doc.recurringId ? `<div class="small muted">Générée par un contrat récurrent — <a href="#/contrat/${h(doc.recurringId)}">voir le contrat</a></div>` : ''}</div>
+        <div><h1>${h(title)} <span class="dirty-dot" id="dirty-dot" hidden title="Modifications non enregistrées">non enregistré</span></h1>${doc.recurringId ? `<div class="small muted">Générée par un contrat récurrent — <a href="#/contrat/${h(doc.recurringId)}">voir le contrat</a></div>` : ''}</div>
         <div class="actions">
           ${backButton(backTo)}
           ${!isNew && (locked || isQ || isExtra) ? `<button class="btn" id="email">Email</button>` : ''}
@@ -1341,6 +1444,18 @@
             ${!locked ? `<button id="del" class="danger">Supprimer</button>` : ''}
           </div></div>` : ''}
         </div></div>
+      ${!locked ? '' : `<div class="banner info lock-banner">
+        <span><b>Cette pièce est émise : elle ne se modifie plus.</b> C'est la règle qui rend une
+        numérotation crédible — un numéro attribué ne doit jamais désigner deux contenus différents.
+        ${isInv && doc.status !== 'annulée'
+          ? 'Pour corriger, on fabrique un avoir : il annule tout ou partie de celle-ci, et les deux pièces restent.'
+          : 'Tu peux la lire, l\'imprimer, l\'envoyer et l\'exporter : seule la modification est fermée.'}
+        ${info('ed.locked')}</span>
+        <span class="lock-go">
+          ${isInv && doc.status !== 'annulée' ? '<button class="btn btn-sm btn-primary" id="lock-credit">Corriger par un avoir…</button>' : ''}
+          ${canUnlock ? '<button class="btn btn-sm" id="lock-unlock">Modifier quand même…</button>'
+            : (isInv && doc.status !== 'annulée' ? `<span class="small" title="${h(bal && bal.paid ? 'Cette facture est soldée.' : 'Cette facture a déjà reçu un paiement ou un avoir.')}">Plus déverrouillable${bal && bal.credits.length ? ' (un avoir existe)' : (bal && (bal.paid || bal.remaining < C.computeTotals(doc, company()).netToPay) ? ' (déjà payée en partie)' : '')}</span>` : '')}
+        </span></div>`}
       <div class="editor">
         <div>
           <div class="panel"><h2>Informations</h2>
@@ -1654,10 +1769,13 @@
 
     // --- actions
     function validate() {
-      if (!doc.clientId) { toast('Choisis un client.', true); return false; }
-      if (isAv && !doc.creditOf) { toast('Indique la facture concernée par l\'avoir.', true); return false; }
-      if (!doc.lines.some(l => l.label && l.label.trim())) { toast('Ajoute au moins une ligne avec une désignation.', true); return false; }
-      if (hasDue && doc.dueDate && doc.date && doc.dueDate < doc.date) { toast(`${isQ ? 'La validité' : 'L\'échéance'} ne peut pas précéder la date du document.`, true); return false; }
+      // Un refus qui ne montre pas le champ fautif oblige à relire tout le formulaire. Sur un devis
+      // de huit lignes, la barre d'actions est en haut et la ligne oubliée en bas : le bandeau noir
+      // passait deux secondes et demie tout en bas de l'écran, pendant qu'on regardait le haut.
+      if (!doc.clientId) return refus('[data-combo=clientId] .combo-btn', 'Choisis un client.');
+      if (isAv && !doc.creditOf) return refus('[data-combo=creditOf] .combo-btn', 'Indique la facture concernée par l\'avoir.');
+      if (!doc.lines.some(l => l.label && l.label.trim())) return refus('#lines input[data-k=label]', 'Ajoute au moins une ligne avec une désignation.');
+      if (hasDue && doc.dueDate && doc.date && doc.dueDate < doc.date) return refus('[name=dueDate]', `${isQ ? 'La validité' : 'L\'échéance'} ne peut pas précéder la date du document.`);
       return true;
     }
     // Ce qui rendrait le document non conforme sans empêcher l'émission : on prévient, l'utilisateur décide
@@ -1770,6 +1888,11 @@
     };
     if ($('#pay')) $('#pay').onclick = () => paymentForm(docById(doc.id), () => render());
     if ($('#credit')) $('#credit').onclick = () => navigate('#/doc/new/avoir/' + doc.id);
+    // Les deux mêmes sorties, portées cette fois par le bandeau plutôt que cachées dans « Plus ▾ » :
+    // quelqu'un qui vient de comprendre pourquoi il ne peut rien taper doit trouver la suite là où il
+    // l'a lu, pas dans un menu qu'il n'a pas encore ouvert.
+    if ($('#lock-credit')) $('#lock-credit').onclick = () => navigate('#/doc/new/avoir/' + doc.id);
+    if ($('#lock-unlock')) $('#lock-unlock').onclick = () => { const u = $('#unlock'); if (u) u.onclick(); };
     if ($('#email')) $('#email').onclick = () => sendByEmail(docById(doc.id) || doc);
     if ($('#as-template')) $('#as-template').onclick = () => saveAsTemplate(doc);
     if ($('#make-recurring')) $('#make-recurring').onclick = () => recurrenceForm(recurrenceFromInvoice(doc), () => { toast('Contrat créé'); navigate('#/contrats'); });
@@ -2919,9 +3042,26 @@
     'salaires-double': { label: 'Voir les mouvements', run: vers('#/tresorerie', () => { tresoState.tab = 'mouvements'; }) },
     tresorerie: { label: 'Voir la prévision', run: vers('#/tresorerie', () => { tresoState.tab = 'prevision'; }) }
   };
+  // Combien de lignes on montre avant de proposer « voir le reste ». En démo, « À faire » affichait
+  // treize lignes et occupait l'écran entier : le chiffre d'affaires, le graphique et tout le reste
+  // du tableau de bord passaient sous la ligne de flottaison. Treize corvées d'un coup, ça ne se
+  // hiérarchise pas — ça se subit.
+  const TODO_VISIBLE = 5;
+
   function todoPanel() {
-    const items = C.todoList(data, company());
-    if (!items.length) return `<div class="todo-ok">Rien à faire aujourd'hui : aucun retard, aucun contrat en attente, aucune attestation à réclamer.</div>`;
+    let items = C.todoList(data, company());
+    // Tant que « Tes premiers pas » est à l'écran, il porte déjà la fiche société — en étape 1, et
+    // formulée comme une étape. La répéter dix centimètres plus bas sous le titre « À faire » et le
+    // libellé « Fiche société incomplète », c'est dire deux fois la même chose, dont une fois comme
+    // un reproche, à quelqu'un qui vient de finir l'assistant.
+    if (premiersPasVisibles()) items = items.filter(x => x.id !== 'societe');
+    // Rien à faire et rien du tout ne sont pas la même chose. « Aucun retard, aucun contrat en
+    // attente » sur une entreprise qui n'a jamais rien facturé, c'est féliciter quelqu'un pour un
+    // travail qu'il n'a pas commencé. Dans ce cas la place revient aux premiers pas.
+    if (!items.length) {
+      if (!data.documents.length && !data.clients.length) return '';
+      return `<div class="todo-ok">Rien à faire aujourd'hui : aucun retard, aucun contrat en attente, aucune attestation à réclamer.</div>`;
+    }
     // Panneau repliable : une fois la liste connue, elle prend la place du tableau de bord.
     // L'état est gardé d'une session à l'autre, et le résumé replié dit ce qui reste.
     const open = prefs.get('todoOpen', true) !== false;
@@ -2931,12 +3071,17 @@
       <h2><button type="button" class="collapse-h" id="todo-toggle" aria-expanded="${open}" aria-controls="todo-list" title="${open ? 'Replier' : 'Déplier'} la liste">
         <span class="chev">▾</span>À faire<span class="count">${items.length}</span></button> ${info('todo')}</h2>
       <p class="todo-sum small muted" ${open ? 'hidden' : ''}>${h(summary)}</p>
-      <ul id="todo-list" ${open ? '' : 'hidden'}>${items.map(x => `<li class="lvl-${x.level}">
+      <ul id="todo-list" ${open ? '' : 'hidden'}>${items.map((x, i) => `<li class="lvl-${x.level}" ${i >= TODO_VISIBLE && !todoTout ? 'hidden' : ''}>
         <span class="td-dot"></span>
         <span class="td-txt"><strong>${h(x.label)}</strong><span class="small muted">${h(x.detail || '')}</span></span>
         <button class="btn btn-sm" data-todo="${x.id}">${h((TODO_ACTIONS[x.id] || {}).label || 'Voir')}</button>
-      </li>`).join('')}</ul></div>`;
+      </li>`).join('')}</ul>
+      ${items.length > TODO_VISIBLE && !todoTout ? `<button class="btn btn-sm btn-ghost todo-more" id="todo-more" ${open ? '' : 'hidden'}>Voir les ${items.length - TODO_VISIBLE} autres</button>` : ''}
+      </div>`;
   }
+  // Déplié pour la session en cours seulement : demain, la liste repart courte. Ce n'est pas un
+  // réglage, c'est un geste — le mémoriser ramènerait le mur de treize lignes tous les matins.
+  let todoTout = false;
   function bindTodo() {
     // `if (a) a.run()` avalait le clic en silence quand l'action manquait. Un bouton qui ne répond
     // pas est pire qu'un bouton absent : on croit avoir mal cliqué. Le test de couverture rend ce
@@ -2946,6 +3091,12 @@
       if (a) return a.run();
       toast(`Cette ligne n'a pas encore d'écran dédié (${b.dataset.todo}) — signale-le dans Aide → Signaler un problème.`, true);
     });
+    const plus = $('#todo-more');
+    if (plus) plus.onclick = () => {
+      todoTout = true;
+      $$('#todo-list li').forEach(li => { li.hidden = false; });
+      plus.remove();
+    };
     const t = $('#todo-toggle');
     if (t) t.onclick = () => {
       const open = !(prefs.get('todoOpen', true) !== false);
@@ -3503,7 +3654,7 @@
         <td class="total" data-total="${i}"></td>
         <td class="line-tools">
           <button class="btn btn-ghost btn-sm" data-dup="${i}" title="Dupliquer la ligne">⧉</button>
-          <button class="btn btn-ghost btn-sm" data-rm="${i}" title="Supprimer la ligne" ${n === 1 ? 'disabled' : ''}>✕</button></td></tr>`).join('');
+          <button class="btn btn-ghost btn-sm" data-rm="${i}" title="Supprimer la ligne">✕</button></td></tr>`).join('');
       $$('[data-k]', body).forEach(el => {
         const ev = el.type === 'checkbox' || el.tagName === 'SELECT' ? 'onchange' : 'oninput';
         el[ev] = () => {
@@ -3513,7 +3664,14 @@
         };
       });
       $$('[data-dup]', body).forEach(b => b.onclick = () => { const i = Number(b.dataset.dup); p.lines.splice(i + 1, 0, deepCopy(p.lines[i])); touch(); drawLines(); });
-      $$('[data-rm]', body).forEach(b => b.onclick = () => { p.lines.splice(Number(b.dataset.rm), 1); touch(); drawLines(); });
+      // Le « ✕ » de la dernière ligne était éteint et muet ici, alors que le même bouton marche dans
+      // l'éditeur de vente : on y remet simplement une ligne vide. Un bouton qui ne répond pas fait
+      // recommencer, puis douter — et on finit par tout retaper.
+      $$('[data-rm]', body).forEach(b => b.onclick = () => {
+        p.lines.splice(Number(b.dataset.rm), 1);
+        if (!p.lines.length) p.lines.push({ label: '', qty: 1, unit: '', unitPrice: 0, vatRate: 19, destination: 'charge', deductible: true });
+        touch(); drawLines();
+      });
       refresh();
     }
     $('#add-line').onclick = () => { p.lines.push({ label: '', qty: 1, unit: '', unitPrice: 0, vatRate: 19, destination: 'charge', deductible: true }); touch(); drawLines(); $$('input[data-k=label]', body).pop().focus(); };
@@ -3704,10 +3862,10 @@
     }
 
     function validate() {
-      if (!p.supplierId) { toast('Choisis un fournisseur.', true); return false; }
-      if (!p.date) { toast('La date de la pièce est obligatoire.', true); return false; }
-      if (!p.lines.some(l => (l.label || '').trim() || Number(l.unitPrice))) { toast('Saisis au moins une ligne avec un montant.', true); return false; }
-      if (p.dueDate && p.dueDate < p.date) { toast('L\'échéance ne peut pas précéder la date de la pièce.', true); return false; }
+      if (!p.supplierId) return refus('[data-combo=supplierId] .combo-btn', 'Choisis un fournisseur.');
+      if (!p.date) return refus('[name=date]', 'La date de la pièce est obligatoire.');
+      if (!p.lines.some(l => (l.label || '').trim() || Number(l.unitPrice))) return refus('#b-lines input[data-k=label]', 'Saisis au moins une ligne avec un montant.');
+      if (p.dueDate && p.dueDate < p.date) return refus('[name=dueDate]', 'L\'échéance ne peut pas précéder la date de la pièce.');
       return true;
     }
     function persist() {
@@ -7417,17 +7575,7 @@
     if ($('#rm-logo')) $('#rm-logo').onclick = () => setImage('logo', '');
     $('#pick-stamp').onclick = async () => { try { const l = await bridge.pickLogo('Choisir l\'image du cachet / de la signature'); if (l) setImage('stampImage', l); } catch (e) { toast(e.message.replace(/^.*Error: /, ''), true); } };
     if ($('#rm-stamp')) $('#rm-stamp').onclick = () => setImage('stampImage', '');
-    $('#load-demo').onclick = async () => {
-      const hasData = data.documents.length || data.clients.length;
-      if (hasData && !await confirmDialog('Remplacer toutes les données actuelles par la démonstration ? Une sauvegarde de l\'état actuel est prise avant ; tes paramètres société (nom, logo, cachet, thème…) sont conservés.', 'Charger la démo', false)) return;
-      if (hasData) await bridge.createBackup('avant-demo');
-      // Toutes les données sont remplacées : le garde-fou de la page en cours n'a plus d'objet, et
-      // laisser sa question surgir ensuite revenait à demander s'il faut enregistrer ce qu'on vient
-      // d'effacer sciemment.
-      if (!await closedWipeOk('Charger la démonstration remplace tout.')) return;
-      clearGuard();
-      data = window.SkanDemo.buildDemoData(data.company); save(true); applyTheme(); $('#brand-company').textContent = data.company.name; toast('Jeu de démonstration chargé'); navigate('#/dashboard');
-    };
+    $('#load-demo').onclick = loadDemo;
     // Effacement définitif : on demande d'écrire le mot, pas juste de cliquer
     $('#wipe-data').onclick = () => {
       // Le décompte est calculé, pas écrit à la main : jusqu'à la 7.0.0 la fenêtre annonçait trois
@@ -7991,8 +8139,20 @@
     if (OB.needsSetup(data)) {
       const done = await runSetup();
       applyTheme();
-      if (done) toast('Bienvenue ! Commence par un devis, ou charge la démo depuis Paramètres.');
+      // Le premier message de l'application était un toast de deux secondes et demie, qui nommait
+      // un onglet de Paramètres — une entrée de menu que l'utilisateur ne voyait même pas dans sa
+      // barre latérale. Ce qu'il faut dire au premier lancement est maintenant dans le panneau
+      // « Tes premiers pas », qui reste à l'écran et dont chaque ligne est cliquable.
+      if (done) toast('C\'est prêt.');
     }
+    // La copie de sauvegarde externe ne vit pas dans les données : on la lit une fois ici pour que
+    // « Tes premiers pas » sache si l'étape est faite. Un échec n'empêche rien : l'étape s'affiche
+    // simplement comme à faire.
+    bridge.externalBackupInfo().then(i => {
+      const avant = copieExterne;
+      copieExterne = !!(i && i.dir);
+      if (copieExterne !== avant && location.hash === '#/dashboard') render(true);
+    }).catch(() => {});
     $('#brand-company').textContent = data.company.name || 'Ton entreprise';
     bridge.updateVersion().then(v => {
       upd.app = v; const el = $('#app-version'); if (el) el.textContent = 'v' + v.version;
