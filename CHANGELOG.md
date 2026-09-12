@@ -7,6 +7,12 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 6.5.1 — 12/09/2026
+
+**Le chien de garde laisse la place aux outils de développement.**
+
+Un seul programme peut inspecter la page à la fois. Le chien de garde (6.5.0) occupait cette place en permanence : ouvrir les outils de développement (menu Affichage) aurait échoué, ou l'aurait débranché en silence — ce qui est pire, puisqu'on aurait cru être surveillé sans l'être. Il s'efface maintenant tant que les outils sont ouverts, et reprend son poste dès qu'ils se referment.
+
 ## 6.5.0 — 12/09/2026
 
 **Un gel devient un rapport. Et SkanFact redémarre tout seul.**

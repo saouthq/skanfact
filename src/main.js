@@ -114,10 +114,23 @@ function startWatchdog(win) {
   let lastPong = Date.now();
   let reported = false;
 
-  try {
-    if (!win.webContents.debugger.isAttached()) win.webContents.debugger.attach('1.3');
-    win.webContents.debugger.sendCommand('Debugger.enable').catch(() => {});
-  } catch (e) { logToFile('chien de garde', e); }
+  const attach = () => {
+    try {
+      if (win.isDestroyed() || win.webContents.isDevToolsOpened()) return;
+      if (!win.webContents.debugger.isAttached()) win.webContents.debugger.attach('1.3');
+      win.webContents.debugger.sendCommand('Debugger.enable').catch(() => {});
+    } catch (e) { logToFile('chien de garde', e); }
+  };
+  attach();
+  // Un seul débogueur à la fois : tant que les outils de développement sont ouverts, le chien de
+  // garde s'efface. Sans ça, ouvrir les outils échouerait — ou détacherait le chien de garde sans
+  // que personne ne le sache, ce qui est pire.
+  win.webContents.on('devtools-opened', () => {
+    try { if (win.webContents.debugger.isAttached()) win.webContents.debugger.detach(); } catch {}
+  });
+  win.webContents.on('devtools-closed', attach);
+  // Rechargement de la page : le débogueur reste attaché, mais le domaine se réactive par sécurité.
+  win.webContents.on('did-finish-load', () => { if (!win.webContents.isDevToolsOpened()) attach(); });
 
   ipcMain.on('alive:pong', (e) => { if (!win.isDestroyed() && e.sender === win.webContents) { lastPong = Date.now(); reported = false; } });
 
