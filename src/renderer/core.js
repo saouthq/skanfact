@@ -196,13 +196,27 @@
     return `${d}/${m}/${y}`;
   }
 
+  // ---------- dates : une règle, une seule ----------
+  // Une date de l'application est un JOUR DU CALENDRIER (« 2026-09-12 »), jamais un instant. Toute
+  // l'arithmétique se fait donc en UTC pur, sur la chaîne, sans jamais passer par l'heure locale.
+  // L'ancienne version construisait la date en heure LOCALE puis la relisait en UTC : à minuit à
+  // Tunis (UTC+1) il est encore 23 h la veille en UTC, et `addDays(d, 1)` renvoyait… `d`. Sur une
+  // machine réglée en UTC, rien ne se voyait ; sur le Mac de l'utilisateur, une échéance à 30 jours
+  // tombait un jour trop tôt et la boucle de `workingDays` ne finissait jamais — l'app entière gelait.
+  // `today()` est l'exception qui confirme la règle : c'est le jour LOCAL, celui du calendrier de
+  // l'utilisateur, pas le jour UTC (qui, le soir, est déjà demain à l'est et encore hier à l'ouest).
+  function isoDay(dt) { return dt.toISOString().slice(0, 10); }
   function addDays(iso, days) {
-    const d = new Date(iso + 'T00:00:00');
-    d.setDate(d.getDate() + (Number(days) || 0));
-    return d.toISOString().slice(0, 10);
+    const d = new Date(iso + 'T00:00:00Z');
+    if (isNaN(d)) return '';
+    d.setUTCDate(d.getUTCDate() + (Number(days) || 0));
+    return isoDay(d);
   }
-
-  function today() { return new Date().toISOString().slice(0, 10); }
+  function daysInMonth(year, month) { return new Date(Date.UTC(year, month, 0)).getUTCDate(); }   // month 1-12
+  function today() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
 
   function escapeHtml(s) {
     return String(s == null ? '' : s)
@@ -1341,7 +1355,7 @@
   function payslipDate(slip) {
     const y = Number(slip.year), m = Number(slip.month);
     if (!y || !m) return '';
-    return addDays(`${y}-${String(m).padStart(2, '0')}-01`, new Date(y, m, 0).getDate() - 1);
+    return addDays(`${y}-${String(m).padStart(2, '0')}-01`, daysInMonth(y, m) - 1);
   }
 
   // Ce que la paie coûte vraiment sur une période : le coût employeur, pas le net versé.
@@ -1368,7 +1382,7 @@
   // Les bulletins du mois qui manquent : un salarié actif sans bulletin, c'est un oubli, pas un choix.
   function missingPayslips(data, year, month) {
     const done = new Set((data.payslips || []).filter(p => Number(p.year) === Number(year) && Number(p.month) === Number(month)).map(p => p.employeeId));
-    const last = addDays(`${year}-${String(month).padStart(2, '0')}-01`, new Date(year, month, 0).getDate() - 1);
+    const last = addDays(`${year}-${String(month).padStart(2, '0')}-01`, daysInMonth(year, month) - 1);
     return activeEmployees(data, last).filter(e => !done.has(e.id));
   }
 
@@ -1542,9 +1556,15 @@
   function workingDays(fromIso, toIso, offDays) {
     if (!fromIso || !toIso || toIso < fromIso) return 0;
     const off = Array.isArray(offDays) ? offDays : [0];
+    // On compte sur des instants UTC, jamais en avançant une chaîne jour par jour : c'est cette
+    // boucle-là qui ne finissait jamais dès que l'ordinateur n'était pas réglé en UTC. Et une borne,
+    // parce qu'une absence de trente ans est une faute de saisie, pas un calcul à faire.
+    const start = Date.parse(fromIso + 'T00:00:00Z'), end = Date.parse(toIso + 'T00:00:00Z');
+    if (isNaN(start) || isNaN(end)) return 0;
+    const span = Math.min(Math.round((end - start) / 86400000), 366 * 30);
     let n = 0;
-    for (let d = fromIso; d <= toIso; d = addDays(d, 1)) {
-      if (!off.includes(new Date(d + 'T00:00:00').getDay())) n++;
+    for (let i = 0; i <= span; i++) {
+      if (!off.includes(new Date(start + i * 86400000).getUTCDay())) n++;
     }
     return n;
   }
@@ -1553,7 +1573,7 @@
   // entre les deux bulletins, sinon le salarié serait retenu deux fois ou pas du tout.
   function leaveDaysInMonth(leave, year, month, offDays) {
     const first = `${year}-${String(month).padStart(2, '0')}-01`;
-    const last = addDays(first, new Date(year, month, 0).getDate() - 1);
+    const last = addDays(first, daysInMonth(year, month) - 1);
     const from = leave.from > first ? leave.from : first;
     const to = leave.to < last ? leave.to : last;
     if (to < from) return 0;
@@ -2858,7 +2878,7 @@
   function reminderLevel(daysLate) { return daysLate > 45 ? 3 : daysLate > 15 ? 2 : 1; }
   const REMINDER_LABELS = { 1: 'Rappel', 2: 'Relance', 3: 'Dernière relance' };
 
-  function daysBetween(fromIso, toIso) { return Math.round((new Date(toIso + 'T00:00:00') - new Date(fromIso + 'T00:00:00')) / 86400000); }
+  function daysBetween(fromIso, toIso) { return Math.round((Date.parse(toIso + 'T00:00:00Z') - Date.parse(fromIso + 'T00:00:00Z')) / 86400000); }
 
   // Factures échues (ou partiellement payées et échues), avec jours de retard et dernière relance.
   // `snoozed` : l'utilisateur a demandé de ne pas relancer avant une date (doc.remindAfter).
@@ -3091,7 +3111,7 @@
   // Historique d'un document, reconstitué à partir de ce qui est déjà enregistré.
   function documentHistory(doc, data, company) {
     const ev = [];
-    const dateOf = ms => new Date(ms).toISOString().slice(0, 10);
+    const dateOf = ms => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
     if (doc.createdAt) ev.push({ date: dateOf(doc.createdAt), kind: 'cree', label: 'Brouillon créé' });
     if (doc.fromQuoteNumber) ev.push({ date: doc.date, kind: 'devis', label: `Établi à partir du devis ${doc.fromQuoteNumber}`, id: doc.fromQuoteId });
     // Une facture née d'un contrat récurrent le disait nulle part : on retrouve le contrat d'origine,
@@ -3759,7 +3779,7 @@
   return {
     VAT_RATES, WITHHOLDING_RATES, PAYMENT_METHODS, PREFIX, TITLES, DEFAULT_DATA, DEFAULT_COMPANY, ACTIVITIES, STATUSES, DISPLAY_STATUSES, STATUS_LABELS,
     pageInfo, compareValues, LINE_UNITS, usedUnits, parseDateInput, fmtDateInput, monthMatrix,
-    uid, round3, money, fmtDate, addDays, today, escapeHtml, nl2br, statusLabel,
+    uid, round3, money, fmtDate, addDays, daysInMonth, today, escapeHtml, nl2br, statusLabel,
     nextNumber, isLocked, isIssued, computeTotals, creditsFor, invoiceBalance, effectiveStatus,
     depositLines, settlementLines, salesJournal, vatSummary, paymentsJournal, toCsv, migrateData,
     PERIODS, MONTHS_FR, MONTHS_SHORT, monthLabel, addMonths, nextRecurrenceDate, dueRecurrences, catchUpRecurrence, fillTemplate, buildRecurringInvoice,

@@ -7,6 +7,21 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 5.2.3 — 12/09/2026
+
+**Le gel au chargement de la démo est corrigé — et il cachait un défaut plus ancien sur toutes les dates.**
+
+Sur un ordinateur réglé sur l'heure de Tunis (ou tout fuseau à l'est de Greenwich), la fonction qui ajoute des jours à une date construisait la date en heure locale et la relisait en heure universelle. À minuit à Tunis, il est encore 23 h la veille en temps universel : le jour retombait. Conséquences, silencieuses depuis toujours :
+
+- **Les échéances calculées par l'app tombaient un jour trop tôt** (délai de paiement, validité d'un devis, rappels). Une facture à 30 jours affichait 29. Les documents déjà émis gardent la date qui y est imprimée ; les prochains seront justes.
+- **Depuis la 5.1.0, l'app gelait complètement** dès qu'un calcul de jours ouvrables entrait en jeu — par exemple en chargeant le jeu de démonstration, qui contient des congés. La fonction avançait jour par jour vers une date qu'elle n'atteignait jamais : boucle infinie, plus aucun clic, Cmd+Q sans effet, et rien dans aucun journal puisque rien ne « plantait ».
+
+Ce défaut ne se voyait pas sur la machine de test, réglée en temps universel, où le décalage est nul. Il a fallu quatre versions rétrogradées à la main par Skander pour le cerner — merci à lui.
+
+- Toute l'arithmétique de dates travaille désormais en temps universel pur, sur le jour du calendrier, sans jamais passer par l'heure locale. « Aujourd'hui » reste le jour du calendrier de l'utilisateur.
+- Le calcul des jours ouvrables ne peut plus boucler, quelle que soit la saisie.
+- Un test rejoue désormais ces calculs sous cinq fuseaux horaires (Tunis, Greenwich, Los Angeles, Kiritimati, Calcutta) à chaque vérification.
+
 ## 5.2.2 — 11/09/2026
 
 **Le bouton qui ne répondait pas est corrigé.**

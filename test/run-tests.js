@@ -2551,6 +2551,42 @@ t('déclarations sociales : ce qui est dû, ce qui est en retard, ce qui est dé
   assert.deepStrictEqual(core.socialDue(core.migrateData({}), '2026-08-01'), []);
 });
 
+// ---------- dates et fuseaux horaires ----------
+// Le gel de la 5.1.0 → 5.2.2 sur le Mac de Skander : `addDays` construisait la date en heure locale
+// et la relisait en UTC. À Tunis (UTC+1), minuit est encore 23 h la veille en UTC : `addDays(d, 1)`
+// renvoyait `d`, une échéance à 30 jours tombait un jour trop tôt, et la boucle de `workingDays`
+// ne finissait jamais. Rien ne se voyait sur une machine réglée en UTC — la nôtre. Ce test change
+// de fuseau à chaud (Node le permet) et exige le même résultat partout.
+t('dates : le même résultat à Tunis, à Los Angeles, à Kiritimati et en UTC', () => {
+  const tzBefore = process.env.TZ;
+  try {
+    for (const tz of ['Africa/Tunis', 'UTC', 'America/Los_Angeles', 'Pacific/Kiritimati', 'Asia/Kolkata']) {
+      process.env.TZ = tz;
+      assert.strictEqual(core.addDays('2026-09-12', 1), '2026-09-13', `${tz} : +1 jour`);
+      assert.strictEqual(core.addDays('2026-09-12', 30), '2026-10-12', `${tz} : +30 jours (une échéance)`);
+      assert.strictEqual(core.addDays('2026-12-31', 1), '2027-01-01', `${tz} : passage d'année`);
+      assert.strictEqual(core.addDays('2026-03-01', -1), '2026-02-28', `${tz} : −1 jour`);
+      assert.strictEqual(core.addDays('n\'importe quoi', 1), '', `${tz} : date invalide → vide, jamais une boucle`);
+      assert.strictEqual(core.daysInMonth(2026, 2), 28, `${tz} : février`);
+      assert.strictEqual(core.daysInMonth(2028, 2), 29, `${tz} : février bissextile`);
+      // 1er septembre 2026 = mardi ; du mardi au samedi : 5 jours ouvrables, dimanche seul chômé
+      const t0 = Date.now();
+      assert.strictEqual(core.workingDays('2026-09-01', '2026-09-05'), 5, `${tz} : jours ouvrables`);
+      assert.strictEqual(core.workingDays('2026-09-01', '2026-09-30'), 26, `${tz} : un mois de six jours`);
+      assert.strictEqual(core.workingDays('2026-09-01', '2026-09-30', [0, 6]), 22, `${tz} : semaine de cinq jours`);
+      assert.strictEqual(core.workingDays('2026-09-05', '2026-09-01'), 0, `${tz} : à l'envers → 0`);
+      assert.strictEqual(core.workingDays('2026-09-01', '2099-12-31') > 0, true, `${tz} : borné, pas infini`);
+      assert.ok(Date.now() - t0 < 2000, `${tz} : workingDays doit rendre la main tout de suite`);
+      assert.strictEqual(core.leaveDaysInMonth({ from: '2026-08-28', to: '2026-09-02' }, 2026, 9), 2, `${tz} : congé à cheval, part de septembre`);
+      // « aujourd'hui » est le jour du calendrier LOCAL de l'utilisateur, pas le jour UTC
+      const d = new Date();
+      const local = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      assert.strictEqual(core.today(), local, `${tz} : today() = jour local`);
+      assert.ok(/^\d{4}-\d{2}-\d{2}$/.test(core.nextRecurrenceDate('2026-01-31', 'mois', 31)), `${tz} : récurrence`);
+    }
+  } finally { if (tzBefore === undefined) delete process.env.TZ; else process.env.TZ = tzBefore; }
+});
+
 // ---------- superposition des couches (src/renderer/style.css) ----------
 // Une fenêtre de confirmation affichée sous l'assistant de première utilisation avait toutes ses
 // commandes visibles mais inertes : les clics atterrissaient sur l'écran du dessus. Aucune erreur

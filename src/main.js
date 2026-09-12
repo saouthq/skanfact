@@ -35,6 +35,9 @@ if (!app.requestSingleInstanceLock()) {
 
 // Rien ne doit échouer en silence : une erreur du process principal est affichée à l'écran
 // et notée dans userData/main.log (à joindre en cas de problème).
+// Le jour du calendrier de l'utilisateur (pas le jour UTC, qui le soir est déjà demain à l'est).
+function localDay() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+
 function logToFile(where, err) {
   try { fs.appendFileSync(path.join(app.getPath('userData'), 'main.log'), `${new Date().toISOString()} [${where}] ${err && err.stack || err}\n`); } catch {}
 }
@@ -467,7 +470,7 @@ ipcMain.handle('backups:chooseExternal', async () => {
 ipcMain.handle('data:export', async (_e, data) => {
   const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
     title: 'Exporter les données',
-    defaultPath: path.join(app.getPath('documents'), `skanfact-export-${new Date().toISOString().slice(0, 10)}.json`),
+    defaultPath: path.join(app.getPath('documents'), `skanfact-export-${localDay()}.json`),
     filters: [{ name: 'JSON', extensions: ['json'] }]
   });
   if (canceled || !filePath) return null;

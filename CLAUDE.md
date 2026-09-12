@@ -149,6 +149,19 @@ Constats laissés de côté en 2.4.0 et repris en bloc en **5.2.1**. Tous corrig
 - « Documents récents » vide n'offrait rien → propositions concrètes (`#start-client`, `#start-devis`, `#start-cat`, `#start-demo`).
 - Les boutons de ligne étaient invisibles hors survol sur Clients et les documents → `td.row-actions > span` passe de `opacity: 0` à `.45` (et `1` au survol).
 
+## Règle apprise en 5.2.3 : les dates et le fuseau horaire
+
+**La machine de test est en UTC ; l'utilisateur est à Tunis (UTC+1).** `addDays` construisait la date en heure locale (`new Date(iso + 'T00:00:00')`) et la relisait en UTC (`toISOString()`) : à minuit à Tunis il est 23 h la veille en UTC, donc `addDays(d, 1)` renvoyait `d`. Depuis toujours, une échéance à 30 jours tombait un jour trop tôt chez lui ; depuis la 5.1.0, la boucle jour par jour de `workingDays` ne finissait jamais et l'app entière gelait au chargement de la démo (qui contient des congés). Sur la machine en UTC, **rien ne se voyait** : quatre reproductions différentes, tous les chronométrages, la vraie 5.1.0 dans Electron — tout passait. C'est le bisect fait à la main par Skander (3.4 → 4.2 → 5.0 ok, 5.1 gèle) qui a désigné `workingDays`, et la question « qu'est-ce qui diffère entre sa machine et la mienne ? » qui a donné le fuseau.
+
+Règles :
+- Une date de l'app est un **jour du calendrier** (`AAAA-MM-JJ`), jamais un instant. Toute arithmétique se fait en **UTC pur** : `new Date(iso + 'T00:00:00Z')`, `setUTCDate`, `getUTCDay`, `Date.UTC(...)`. Jamais `new Date(y, m, d)` ni `T00:00:00` sans `Z` ni `getDay()`.
+- `today()` est l'exception : c'est le jour **local** (composantes `getFullYear/getMonth/getDate`), parce que c'est le calendrier de l'utilisateur. Un instant enregistré (`createdAt`, `at` d'un paiement) se convertit en jour local de la même façon, jamais par `toISOString().slice(0, 10)`.
+- Jamais de boucle qui avance une chaîne de date « jusqu'à » une autre : compter des jours sur des instants UTC, avec une borne.
+- Le test « dates : le même résultat à Tunis… » change `process.env.TZ` à chaud sur cinq fuseaux. Toute nouvelle fonction de date s'y ajoute.
+- Symptôme à reconnaître : un bug **que la machine de test ne reproduit jamais** malgré des données identiques → chercher ce qui diffère dans l'environnement (fuseau, locale, plateforme, heure) avant de chercher dans le code. Un gel sans aucune erreur, Cmd+Q sans effet, défilement qui marche encore = boucle infinie JavaScript (le défilement est composé hors du fil principal).
+
+Idée gardée pour plus tard, non livrée : un chien de garde dans `main.js` qui interroge l'interface toutes les 3 s et, sans réponse, branche `webContents.debugger` pour lire la pile (le domaine Debugger doit être activé **avant** le gel, sinon `Debugger.enable` attend le fil bloqué) puis `Runtime.terminateExecution`. Utile pour un produit vendu : un gel deviendrait un rapport dans `main.log`.
+
 ## Règle apprise en 5.2.2 : l'ordre des couches
 
 Un bouton parfaitement visible peut être inerte. Une fenêtre modale (`.modal-bg`, z-index 400 et au-dessus, empilée par `modal()` depuis la même base) doit couvrir **tout** écran qui occupe la fenêtre entière — l'assistant `#setup` (250), `#lock-screen` (200), `#palette-root` (60) — et rester sous `#info-pop` (900) et `#toast` (950), qui doivent se lire par-dessus elle. Avant la 5.2.2, une confirmation ouverte depuis l'assistant s'affichait derrière lui : les clics atterrissaient sur l'écran du dessus.
