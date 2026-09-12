@@ -23,7 +23,9 @@ module.exports = {
   files: ['src/**/*', 'package.json', 'CHANGELOG.md'],
   directories: { output: 'dist-cabinet' },
   mac: {
-    target: [{ target: 'dmg', arch: ['universal'] }, { target: 'zip', arch: ['universal'] }],
+    // Pas de .zip : il ne sert qu'à electron-updater, dont l'app cabinet ne se sert pas encore.
+    // C'est 215 Mo de moins à téléverser à chaque release — et un téléversement de moins à rater.
+    target: [{ target: 'dmg', arch: ['universal'] }],
     category: 'public.app-category.business',
     icon: 'build/icon-cabinet.png',
     hardenedRuntime: false,

@@ -58,10 +58,19 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
+      # Un fichier à la fois, avec une reprise : un téléversement de 200 Mo qui se coupe ne doit pas
+      # faire échouer toute la release (« ReleaseAsset.name already exists » après une coupure).
       - name: Attach Cabinet installers
         shell: bash
         run: |
           V=$(node -p "require('./package.json').version")
-          gh release upload "v$V" $(ls dist-cabinet/SkanFact-Cabinet-*.dmg dist-cabinet/SkanFact-Cabinet-*.zip dist-cabinet/SkanFact-Cabinet-*.exe 2>/dev/null) --clobber
+          for f in $(ls dist-cabinet/SkanFact-Cabinet-*.dmg dist-cabinet/SkanFact-Cabinet-*.exe 2>/dev/null); do
+            for try in 1 2 3; do
+              if gh release upload "v$V" "$f" --clobber; then echo "envoyé : $f"; break; fi
+              echo "échec du téléversement de $f (essai $try) — nouvelle tentative"
+              sleep $((try * 15))
+              if [ "$try" = "3" ]; then exit 1; fi
+            done
+          done
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
