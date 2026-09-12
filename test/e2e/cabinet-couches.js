@@ -175,6 +175,35 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   if (await couches() !== 0) throw new Error('« Abandonner » n\'a pas fermé la fiche');
   ok('« Abandonner » ferme la fiche');
 
+  // ---- 6. L'AUTRE sens : une fenêtre qui s'ouvre par-dessus une palette déjà ouverte.
+  // La palette écoute le clavier en phase de CAPTURE : elle passe devant la fenêtre quoi qu'il
+  // arrive, et lui vole Échap, Entrée et les flèches. Le garde de `openPalette` ne sert à rien ici,
+  // puisque ce n'est pas la palette qui s'ouvre en second.
+  étape('Une fenêtre s\'ouvre pendant que la palette est ouverte');
+  await win.keyboard.press('Control+k');
+  await attendre(500);
+  if (!await win.$('#palette-root')) throw new Error('la palette ne s\'ouvre pas');
+  // La palette couvre la page : on ne peut PAS cliquer derrière. Le vrai déclencheur est donc
+  // ailleurs — le menu natif (Cmd+N), un paquet double-cliqué dans le Finder, un fichier déposé.
+  // C'est exactement pour ça que le garde de `openPalette` ne suffisait pas : ce n'est pas la
+  // palette qui s'ouvre en second.
+  await app.evaluate(({ BrowserWindow }) => {
+    const w = BrowserWindow.getAllWindows()[0];
+    w.webContents.send('menu:action', 'new-dossier');
+  });
+  await win.waitForSelector('#modal-root .modal-bg', { timeout: 8000 });
+  await attendre(400);
+  if (await win.$('#palette-root')) throw new Error('la palette est restée ouverte SOUS la fenêtre : elle lui vole le clavier');
+  ok('la palette se referme quand une fenêtre s\'ouvre');
+  // Et le clavier est bien à la fenêtre.
+  await win.fill(dessus('#f-name'), 'Preuve clavier');
+  if (await win.inputValue(dessus('#f-name')) !== 'Preuve clavier') throw new Error('la frappe n\'atteint pas la fenêtre');
+  await win.keyboard.press('Escape');
+  await attendre(500);
+  // La saisie déclenche la question d'abandon : on répond « Abandonner ».
+  if (await couches() === 2) { await win.click('#modal-root .modal-bg:last-child .btn-danger'); await attendre(400); }
+  await attendre(300);
+
   // Et sans fenêtre ouverte, la palette s'ouvre toujours : on ne l'a pas cassée.
   étape('La palette, une fois la voie libre');
   await win.keyboard.press('Control+k');

@@ -208,6 +208,47 @@ async function launchCabinet() {
   await win.keyboard.press('Escape');
   await win.waitForTimeout(300);
 
+  // ---------- 13 bis. accuser réception, sur un VRAI paquet ----------
+  // Cette fenêtre n'était parcourue par AUCUN test, et c'est comme ça qu'une ReferenceError dans son
+  // `onMount` est passée : elle s'affichait, et plus aucun bouton n'était branché. Rien en console,
+  // rien qui plante — juste des boutons morts. C'est aussi le dernier maillon de la boucle : le
+  // client envoie son mois, et il doit savoir que c'est arrivé.
+  await win.evaluate(() => { location.hash = '#/dossiers'; });
+  await win.waitForTimeout(500);
+  const ids = await win.evaluate(() => [...document.querySelectorAll('table.list tr[data-id]')].map(r => r.dataset.id));
+  let boutonAcc = null;
+  for (const id of ids) {
+    await win.evaluate(i => { location.hash = '#/dossier/' + encodeURIComponent(i); }, id);
+    await win.waitForTimeout(500);
+    boutonAcc = await win.$('[data-acc]');
+    if (boutonAcc) break;
+  }
+  if (!boutonAcc) throw new Error('aucun bouton « accuser réception » sur la fiche du client qui vient d\'envoyer');
+  await boutonAcc.click();
+  await win.waitForSelector('#modal-root .modal-bg', { timeout: 8000 });
+  const accBranche = await win.evaluate(() =>
+    ['#no', '#copy', '#ok'].filter(id => {
+      const b = document.querySelector('#modal-root .modal-bg:last-child ' + id);
+      return b && typeof b.onclick === 'function';
+    }));
+  if (accBranche.length !== 3) {
+    throw new Error('les boutons de l\'accusé de réception ne sont pas branchés : ' + JSON.stringify(accBranche));
+  }
+  const accTexte = (await win.textContent('#modal-root .modal-bg:last-child')).replace(/\s+/g, ' ');
+  if (!/bien reçu/i.test(accTexte)) throw new Error('le message ne ressemble pas à un accusé de réception : ' + accTexte.slice(0, 120));
+  console.log(`13 bis. accusé de réception : 3 boutons branchés · « ${(accTexte.match(/Bien reçu[^«]{0,60}/i) || ['?'])[0].trim()} »`);
+  await shot(win, 'accuse-reception');
+  // Un message retouché ne se jette pas en silence.
+  await win.fill('#modal-root .modal-bg:last-child #a-body', 'Bonjour, bien reçu — je vous rappelle demain.');
+  await win.keyboard.press('Escape');
+  await win.waitForTimeout(500);
+  const q = await win.textContent('#modal-root .modal-bg:last-child h2');
+  if (!/abandonner/i.test(q || '')) throw new Error('un message retouché est jeté sans un mot : ' + q);
+  await win.click('#modal-root .modal-bg:last-child .btn-danger');
+  await win.waitForTimeout(400);
+  await win.keyboard.press('Escape');
+  await win.waitForTimeout(300);
+
   // ---------- 14. les écritures regroupées, sur le VRAI paquet ----------
   const csvFile = path.join(tmp, 'ecritures.csv');
   await app.evaluate(({ dialog }, p) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: p }); }, csvFile);

@@ -57,16 +57,16 @@ SkanFact                                            SkanFact Cabinet
 | 6.7.0 → 6.7.3 | Relais de mise à jour, et ses trois corrections | publiées |
 | **6.8.0** | **Cabinet 2.0 — le premier audit traité en bloc** | écrite et vérifiée, **pas encore publiée** |
 | **6.8.1** | **Le second audit — ce qui détruisait, mélangeait ou mentait** | écrite et vérifiée, **pas encore publiée** |
-| **6.8.2** | **Le reste de la liste « avant publication »** | **en cours** |
+| **6.8.2** | **Le reste de la liste « avant publication »** | écrite et vérifiée, **pas encore publiée** |
 | 6.9.0 | Cabinet 2.1 — la confiance et le travail du cabinet | à faire, avec les retours des cabinets |
 | 6.10.0 | Cabinet 2.2 — le confort, la vente, la distribution | à faire |
 | 6.11.0 | Signature Apple / Windows | **attend les certificats (achat)** |
 | — | Mises à jour sans token (dépôt public) | **attend un oui de Skander** |
 | 7.0.0 | Serveur | seulement si un cabinet dit oui |
 
-> **Une seule publication, dès le 1ᵉʳ octobre** (retour du quota GitHub Actions), portant 6.8.0 + 6.8.1 + 6.8.2. Six versions publiées en une matinée ont consommé le quota gratuit d'un mois entier : c'est le rythme qui était fautif, pas le tarif. En attendant, tout se teste avec `npm start`, `npm run e2e:*` ou `Installer SkanFact.command`, sans consommer une minute.
+> **Une seule publication, dès le 1ᵉʳ octobre** (retour du quota GitHub Actions), portant 6.8.0 + 6.8.1 + 6.8.2 — la liste « avant publication » est intégralement traitée. Six versions publiées en une matinée ont consommé le quota gratuit d'un mois entier : c'est le rythme qui était fautif, pas le tarif. En attendant, tout se teste avec `npm start`, `npm run e2e:*` ou `Installer SkanFact.command`, sans consommer une minute.
 >
-> **État de vérification à ce jour** : `npm test` → **202 tests OK**. Les cinq suites qui ouvrent vraiment les applications (`e2e:cabinet`, `e2e:refus`, `e2e:perte`, `e2e:boucle`, `e2e:entreprise`) passent, zéro erreur JS.
+> **État de vérification à ce jour** : `npm test` → **209 tests OK**. Les huit suites qui ouvrent vraiment les applications (`e2e:cabinet`, `e2e:refus`, `e2e:perte`, `e2e:boucle`, `e2e:couches`, `e2e:demenagement`, `e2e:entreprise`, `e2e:gel`) passent, zéro erreur JS.
 
 ---
 
@@ -169,20 +169,22 @@ Les 30 constats qui font perdre une pièce, afficher un chiffre faux, ou se voir
 - **Livraison** : H5 l'app gratuite du comptable n'embarque plus le code de l'app payante · H9 SKANCYBER dans l'installeur Windows.
 - **Quotidien** : G9 tri (classe absente, flèche inversée, urgence irrécupérable) · G11 pas de relance enregistrée si rien n'est parti · G18 « il y a 3 jours » en jours de calendrier · G19 tailles de fichiers à la virgule · G24 « ce Mac » / « le Finder » sous Windows.
 
-### 6.8.2 — **à faire avant de publier** *(le reste de la liste « avant publication »)*
+### 6.8.2 — livrée le 12/09/2026 *(le reste de la liste « avant publication »)*
 
-*Règle d'admission : ça bloque un cabinet réel, ou ça rend un test menteur.*
+*Règle d'admission : ça bloque un cabinet réel, ou ça rend un test menteur.* **Les huit sont faits.**
 
-| Code | Ce que c'est | Pourquoi avant publication |
+| Code | Ce que c'était | Ce qui a été livré |
 |---|---|---|
-| **A6** | **Changer d'ordinateur n'a aucun chemin.** Sur le Mac neuf, le premier mot de passe fabrique un cabinet **vide avec une clé neuve** ; les paquets que les clients enverront ensuite seront refusés (« adressé à un autre cabinet »). | Le comptable a fait tout ce que l'app lui demandait — clé USB, clé de secours — et il a 812 paquets sur la table sans aucun bouton pour les reprendre. |
-| **C6** | Un **fichier en trop** dans un paquet n'est ni vérifié ni signalé, alors qu'il s'affiche et s'ouvre. | « 7 pièces vérifiées, intactes » est la seule affirmation rigoureuse de l'app. Elle doit compter juste. |
-| **G1** | Importer vingt paquets **bloque 22 secondes sans un mot**, et le cabinet n'a pas de chien de garde. | C'est le geste quotidien à soixante clients, et une application figée sans message se referme. |
-| **G6 / G7** | Échap ferme tout, Entrée ne valide rien, le focus se pose sur « Annuler » ; **Cmd+K ouvre la palette DERRIÈRE la fenêtre** et lui vole le clavier. | C'est exactement le défaut de la 5.2.2 côté entreprise, avec sa règle d'ordre des couches. Il n'a jamais été porté. |
-| **B8** | Le bandeau de la page Relances contredit le tableau dix pixels plus bas. | Deux chiffres différents sur le même écran. |
-| **B9** | Dans le jeu d'exemple, chaque paquet est **reçu le 8 du mois qu'il couvre** — avant que le mois soit fini. | C'est le premier écran que verra un comptable. |
-| **H10** | Les icônes déclarées pour `.skanpack` et `.skanrecover` sont des **PNG**, silencieusement ignorés (il faut `.icns` / `.ico`). | Les fichiers apparaissent sans icône dans le Finder. |
-| **I1 / I2 / I3** | Trois tests **qui ne peuvent pas échouer** : `main.js` du cabinet est hors du seul contrôle statique ; le test « sous tous les fuseaux » n'appelle aucune fonction qui regarde l'horloge ; le test qui protège la clé privée contient une assertion toujours vraie. | Un test qui ne peut pas échouer est pire que pas de test : il fait croire que le sujet est couvert. |
+| **A6** | **Changer d'ordinateur n'avait aucun chemin.** Sur le Mac neuf, le premier mot de passe fabriquait un cabinet **vide avec une clé neuve** ; les paquets que les clients enverraient ensuite étaient refusés (« adressé à un autre cabinet »). | « J'ai déjà un cabinet sur un autre ordinateur… » sur l'écran de mot de passe, **avant** toute création de clé. L'app annonce ce qu'elle a trouvé avant de demander le mot de passe, valide tout avant de toucher au disque, recolle les chemins des paquets sur ce poste, et finit par l'empreinte. `npm run e2e:demenagement` joue les deux postes. |
+| **C6** | Un **fichier en trop** dans un paquet n'était ni vérifié ni signalé, alors qu'il s'affichait et s'ouvrait. | Troisième compteur « intrus ». Il n'entre jamais dans les pièces vérifiées, il est dit au rapport, gardé avec le paquet, marqué d'un « ? », et son ouverture passe par une question. |
+| **G1** | Importer vingt paquets **bloquait 22 secondes sans un mot**, et le cabinet n'avait pas de chien de garde. | Fenêtre d'avancement (« paquet 7 sur 20 — Pharmacie El Menzah ») avec un bouton Arrêter qui agit entre deux paquets ; plus de double hachage du manifeste ; le chien de garde de la 6.5.0 porté, avec une 6ᵉ règle propre au cabinet. |
+| **G6 / G7** | Échap fermait tout, Entrée ne validait rien, le focus se posait sur « Annuler » ; **Cmd+K ouvrait la palette DERRIÈRE la fenêtre** et lui volait le clavier. | Les deux sens fermés (la palette refuse de s'ouvrir sous une fenêtre, et se referme quand une fenêtre s'ouvre par le menu), Entrée valide, le focus va au premier champ, et Échap sur un formulaire rempli prévient. `npm run e2e:couches`. |
+| **B8** | Le bandeau de la page Relances contredisait le tableau dix pixels plus bas. | Un compteur et la liste qu'il annonce partent maintenant de la même fonction — règle générale posée. |
+| **B9** | Dans le jeu d'exemple, chaque paquet était **reçu le 8 du mois qu'il couvre**. | Réception au mois suivant, à des jours différents d'un client à l'autre, jamais dans le futur. |
+| **H10** | Les icônes de `.skanpack` et `.skanrecover` étaient des **PNG**, silencieusement ignorés. | De vrais `.icns` / `.ico` (`node scripts/icones.js`), le `.ico` à sept tailles, et un test qui rejoue la résolution d'electron-builder. |
+| **I1 / I2 / I3** | Trois tests **qui ne pouvaient pas échouer**. | Les deux `main.js` entrent dans le contrôle statique ; le test des fuseaux appelle enfin `today()` et les fonctions sans date de référence ; l'assertion toujours vraie est remplacée et `safeState` est **exécutée**. Chacun prouvé en réintroduisant son défaut. |
+
+> **Deux défauts trouvés pendant la 6.8.2, et corrigés :** en posant le garde-fou « ne jette pas la saisie », un remplacement de texte trop gourmand a armé la mauvaise fenêtre — l'accusé de réception s'ouvrait **avec aucun bouton branché**, sans rien en console. Et la fenêtre d'avancement de l'import pouvait se **rouvrir pour toujours** sur un dernier message arrivé en retard, par-dessus le compte rendu. Les deux sont désormais couverts par un test.
 
 ### 6.9.0 — Cabinet 2.1 : la confiance et le travail du cabinet
 
@@ -246,7 +248,7 @@ Serveur de dépôt : les paquets circulent seuls ; comptes cabinet et entreprise
 
 ## L'ordre et le calendrier
 
-1. **Tout de suite** : finir la 6.8.2 — ce qui bloque un cabinet réel et les trois tests qui ne peuvent pas échouer.
+1. **Fait** : la 6.8.2 — ce qui bloquait un cabinet réel, et les trois tests qui ne pouvaient pas échouer.
 2. **Maintenant, Skander seul** : montrer l'application à deux ou trois cabinets. Elle est complète — c'était la condition qu'il posait le matin même. L'installeur local construit les deux apps sur son Mac sans consommer de quota.
 3. **1ᵉʳ octobre** : publier **une seule fois** 6.8.0 + 6.8.1 + 6.8.2.
 4. **Avec les réponses des cabinets** : 6.9.0, construite sur ce qu'ils auront demandé et pas sur ce qu'on aura supposé. C1 (la signature du client) en est la pièce maîtresse : c'est un changement de format, il ne se fait qu'une fois.

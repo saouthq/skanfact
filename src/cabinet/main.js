@@ -44,9 +44,15 @@ function writeAppCfg(patch) {
   return cfg;
 }
 
-function logError(where, err) {
+// Écrire dans le journal, sans rien montrer. Le chien de garde s'en sert : devant une application
+// figée, une fenêtre d'erreur ne sert à personne, et `logError` en ouvre une.
+function logToFile(where, err) {
   const msg = `${new Date().toISOString()} [${where}] ${err && err.stack || err}\n`;
   try { fs.appendFileSync(path.join(app.getPath('userData'), 'main.log'), msg); } catch {}
+}
+
+function logError(where, err) {
+  logToFile(where, err);
   try { dialog.showErrorBox('SkanFact Cabinet — erreur', `${where}\n\n${err && err.message || err}`); } catch {}
 }
 
@@ -98,6 +104,112 @@ function rememberBounds() {
   try { writeAppCfg({ window: { ...mainWindow.getNormalBounds(), maximized: mainWindow.isMaximized() } }); } catch {}
 }
 
+// ---------- chien de garde (porté de l'app entreprise, 6.5.0) ----------
+//
+// L'app cabinet n'en avait pas. Un gel de son interface ne laisse AUCUNE trace : rien ne plante,
+// aucune erreur, le journal reste vide — et le comptable n'a rien à envoyer à personne. C'est le
+// même chien de garde qu'en 6.5.0, avec les mêmes règles, plus une qui n'existe qu'ici (voir
+// `retard` plus bas) : dans cette application, c'est le processus PRINCIPAL qui travaille
+// longtemps, et son silence à lui ne doit pas être mis sur le dos de l'interface.
+//
+// Le point à ne pas rater : le domaine Debugger doit être activé **avant** le gel. `Debugger.enable`
+// attend le fil principal ; demandé pendant le gel, il attendrait pour toujours.
+const WATCHDOG = { every: 3000, dead: 12000, enabled: true };
+// Le dernier gel constaté, pour le dire à l'utilisateur une fois l'interface revenue et pour le
+// joindre à un rapport de problème.
+let lastFreeze = null;
+function startWatchdog(win) {
+  if (!WATCHDOG.enabled || !win || win.isDestroyed()) return;
+  let lastPong = Date.now();
+  let reported = false;
+
+  const attach = () => {
+    try {
+      if (win.isDestroyed() || win.webContents.isDevToolsOpened()) return;
+      if (!win.webContents.debugger.isAttached()) win.webContents.debugger.attach('1.3');
+      win.webContents.debugger.sendCommand('Debugger.enable').catch(() => {});
+    } catch (e) { logToFile('chien de garde', e); }
+  };
+  attach();
+  // Un seul programme peut inspecter la page à la fois : tant que les outils de développement sont
+  // ouverts, le chien de garde s'efface, puis revient. Sans ça, ouvrir les outils le débranchait en
+  // silence — et on se croyait surveillé sans l'être.
+  win.webContents.on('devtools-opened', () => {
+    try { if (win.webContents.debugger.isAttached()) win.webContents.debugger.detach(); } catch {}
+  });
+  win.webContents.on('devtools-closed', attach);
+  // Rechargement de la page : le débogueur reste attaché, mais le domaine se réactive par sécurité.
+  win.webContents.on('did-finish-load', () => { if (!win.webContents.isDevToolsOpened()) attach(); });
+
+  ipcMain.on('alive:pong', (e) => { if (!win.isDestroyed() && e.sender === win.webContents) { lastPong = Date.now(); reported = false; } });
+
+  let lastTick = Date.now();
+  const timer = setInterval(async () => {
+    if (win.isDestroyed()) return clearInterval(timer);
+    const maintenant = Date.now();
+    const retard = maintenant - lastTick;      // le temps RÉELLEMENT écoulé depuis le battement d'avant
+    lastTick = maintenant;
+    // La règle propre au cabinet : ici, le processus principal travaille longtemps (ranger vingt
+    // paquets, en extraire un, relire soixante paquets pour un export d'écritures). Pendant ce
+    // temps aucun battement ne part, et le silence qu'on mesure est le sien, pas celui de
+    // l'interface. On repart de zéro plutôt que d'accuser un innocent — et de recharger une page
+    // qui n'avait rien fait, sous les doigts du comptable.
+    if (retard > WATCHDOG.every * 2) lastPong = maintenant;
+    try { win.webContents.send('alive:ping'); } catch { return; }
+    const silence = maintenant - lastPong;
+    if (silence < WATCHDOG.dead || reported) return;
+    reported = true;                       // un seul rapport par gel, sinon le journal se remplit
+    logToFile('gel détecté', new Error(`L'interface n'a pas répondu depuis ${Math.round(silence / 1000)} s`));
+    // Aucune de ces commandes ne doit pouvoir bloquer le chien de garde lui-même : un gel annoncé
+    // par un processus qui gèle à son tour ne servirait à personne. Chacune a donc sa borne.
+    const cmd = (name, args, ms) => Promise.race([
+      win.webContents.debugger.sendCommand(name, args || {}).catch(() => null),
+      new Promise(res => setTimeout(() => res(null), ms || 4000))
+    ]);
+    let stack = '';
+    try {
+      // Où en est le programme ? C'est la seule question qui compte, et le débogueur est le seul
+      // à pouvoir y répondre pendant que le fil principal est bloqué.
+      const paused = new Promise(res => {
+        const onMsg = (_e, method, params) => {
+          if (method !== 'Debugger.paused') return;
+          win.webContents.debugger.off('message', onMsg);
+          res(params);
+        };
+        win.webContents.debugger.on('message', onMsg);
+        setTimeout(() => { win.webContents.debugger.off('message', onMsg); res(null); }, 4000);
+      });
+      cmd('Debugger.pause');
+      const p = await paused;
+      stack = ((p && p.callFrames) || []).slice(0, 12)
+        .map(f => `    à ${f.functionName || '(anonyme)'} — ${(f.url || '').split('/').pop()}:${(f.location || {}).lineNumber}`)
+        .join('\n');
+      logToFile('gel — pile d\'appels', new Error('\n' + (stack || '(pile indisponible)')));
+      // L'ORDRE compte : on relâche d'abord le débogueur, puis on interrompt l'exécution.
+      // `Runtime.terminateExecution` sur une machine virtuelle en pause ne rend jamais la main.
+      if (p) await cmd('Debugger.resume');
+      await cmd('Runtime.terminateExecution');
+    } catch (e) { logToFile('chien de garde', e); }
+
+    // On recharge, sans rien demander. Une fenêtre de question qu'on ne peut pas lire dans une
+    // application figée ne ferait qu'ajouter au blocage. On le DIT après coup, une fois vivant.
+    lastFreeze = { at: new Date().toISOString(), silence: Math.round(silence / 1000), stack };
+    try { if (!win.isDestroyed()) { lastPong = Date.now(); lastTick = Date.now(); win.webContents.reload(); } }
+    catch (e) { logToFile('chien de garde', e); }
+  }, WATCHDOG.every);
+
+  // Le message d'après : la première fois que l'interface reparle après un gel, elle l'explique.
+  // Ici c'est indispensable — le cabinet se rouvre sur son écran de verrouillage, et sans un mot le
+  // comptable ne comprend pas pourquoi on lui redemande son mot de passe.
+  win.webContents.on('did-finish-load', () => {
+    if (!lastFreeze || lastFreeze.told) return;
+    lastFreeze.told = true;
+    setTimeout(() => { try { win.webContents.send('freeze:notice', lastFreeze); } catch {} }, 1200);
+  });
+
+  win.on('closed', () => clearInterval(timer));
+}
+
 function createWindow() {
   const saved = savedBounds();
   mainWindow = new BrowserWindow({
@@ -115,7 +227,9 @@ function createWindow() {
   // sans ça, un .skanpack déposé au mauvais endroit fait naviguer la fenêtre vers le fichier et
   // l'application disparaît, sans erreur et sans retour possible.
   mainWindow.webContents.on('will-navigate', (e, url) => { if (!url.startsWith('file://') || !url.includes('renderer/index.html')) e.preventDefault(); });
-  ['resize', 'move'].forEach(ev => mainWindow.on(ev, () => { clearTimeout(mainWindow.__t); mainWindow.__t = setTimeout(rememberBounds, 400); }));
+  // Si l'interface cesse de répondre, il nomme la fonction coupable dans le journal, interrompt la
+  // boucle et recharge la page — puis le dit. Sans lui, un gel du cabinet ne laissait rien du tout.
+  startWatchdog(mainWindow);
   mainWindow.on('close', rememberBounds);
   mainWindow.on('closed', () => { mainWindow = null; });
 }
@@ -378,6 +492,18 @@ ipcMain.handle('cab:exportPairing', async () => {
 });
 
 // ---------- IPC : import d'un paquet ----------
+//
+// Vingt paquets de cinquante mégaoctets, c'est une vingtaine de secondes de travail : lecture,
+// déchiffrement, vérification pièce par pièce, copie. Tout cela est synchrone — et tant que la
+// boucle ne rend pas la main, le processus principal ne lit AUCUN message : l'avancement ne part
+// pas, la demande d'arrêt n'arrive pas, et le comptable a devant lui une application qui paraît
+// morte. Beaucoup la tuent au bout de dix secondes, en plein rangement. D'où la respiration entre
+// deux paquets : une ligne, et l'application redevient vivante.
+let importAnnule = false;
+// Arrêter un import en cours. Le drapeau est lu ENTRE deux paquets, jamais pendant : un paquet
+// interrompu au milieu de sa copie serait pire que pas de paquet du tout.
+ipcMain.on('cab:importCancel', () => { importAnnule = true; });
+
 ipcMain.handle('cab:importPack', async (_e, opts) => {
   requireOpen();
   opts = opts || {};
@@ -394,10 +520,27 @@ ipcMain.handle('cab:importPack', async (_e, opts) => {
   // Une sauvegarde AVANT d'ingérer : un import qui range mal (ou un paquet inattendu) doit pouvoir
   // être défait. Même règle que l'app entreprise avant un import.
   getStore().backupNow('avant-import');
+  importAnnule = false;                    // un arrêt demandé à l'import précédent ne vaut pas ici
+  const progres = p => {
+    try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('import:progress', p); } catch {}
+  };
   const results = [];
-  for (const f of files) {
+  let restants = 0;
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i];
+    progres({ numero: i + 1, total: files.length, faits: i, nom: path.basename(f) });
+    // LA respiration. Le message d'avancement part vers l'écran, et une demande d'arrêt a le temps
+    // d'arriver. Sans elle, la boucle entière tenait le processus principal sans un mot.
+    await new Promise(res => setImmediate(res));
+    // L'arrêt prend effet ENTRE deux paquets : ce qui est rangé l'est pour de bon, et rien n'est
+    // laissé à moitié écrit.
+    if (importAnnule) { restants = files.length - i; break; }
     try { results.push({ file: f, ...ingest(f, opts.password) }); }
     catch (err) { results.push({ file: f, error: err.message || String(err) }); }
+    // Le paquet est rangé : on peut enfin dire de QUI il venait. « paquet 7 sur 20 — Pharmacie El
+    // Menzah » dit quelque chose ; un nom de fichier, non.
+    const dernier = results[results.length - 1];
+    progres({ numero: i + 1, total: files.length, faits: i + 1, nom: (dernier.dossier && dernier.dossier.name) || path.basename(f) });
   }
   // Un vrai paquet est arrivé : les dossiers d'exemple s'effacent d'eux-mêmes. Les laisser
   // reviendrait à afficher des retards imaginaires à côté des vrais.
@@ -406,7 +549,8 @@ ipcMain.handle('cab:importPack', async (_e, opts) => {
   save();
   // Un paquet venu de la boîte de réception et rangé ne doit plus être proposé.
   markSeen(results.filter(r => !r.error).map(r => r.file));
-  return { results, demoRemoved: demoOut, state: safeState() };
+  importAnnule = false;
+  return { results, demoRemoved: demoOut, restants, state: safeState() };
 });
 
 // Le format de paquet que cette version sait lire. Un paquet plus récent se refuse avec une phrase
@@ -448,8 +592,12 @@ function ingest(file, password) {
   const entries = Z.zipRead(buf);
   const mEntry = entries.find(e => e.name === 'manifeste.json');
   if (!mEntry) throw new Error('Ce fichier n\'est pas un paquet SkanFact : le manifeste est absent.');
-  let manifest;
-  try { manifest = JSON.parse(mEntry.data().toString('utf8')); }
+  // Le manifeste n'est décompressé QU'UNE FOIS : `data()` refait l'inflate et le contrôle CRC à
+  // chaque appel, et il était appelé trois fois par paquet (la lecture, la boucle d'empreintes,
+  // puis l'empreinte du paquet). La lecture reste DANS le try : un CRC abîmé doit continuer de
+  // donner la même phrase en français, pas une erreur de bibliothèque.
+  let manifest, mBuf;
+  try { mBuf = mEntry.data(); manifest = JSON.parse(mBuf.toString('utf8')); }
   catch { throw new Error('Le manifeste de ce paquet est illisible : le fichier a été abîmé pendant l\'envoi.'); }
   // Un paquet arrive par mail : il vient de l'EXTÉRIEUR. Tout ce qu'il annonce est contrôlé avant
   // que quoi que ce soit ne touche au disque — un mois de la forme « ../../.. » servait à fabriquer
@@ -461,8 +609,13 @@ function ingest(file, password) {
   // On calcule l'empreinte de ce qu'on a reçu ; cabcore compare et compte. La règle du comptage
   // vit dans la partie testable : c'est la seule affirmation rigoureuse de cette application
   // (« ce que j'ai reçu est exactement ce qui a été envoyé »), elle doit compter juste.
+  // Le manifeste ne peut pas porter sa propre empreinte : le hacher était du travail que personne ne
+  // lit, sur chaque fichier de chaque paquet. Vingt paquets de 50 Mo, ça compte.
   const hashes = {};
-  entries.forEach(e => { try { hashes[e.name] = Z.sha256(e.data()); } catch { hashes[e.name] = '(illisible)'; } });
+  entries.forEach(e => {
+    if (e.name === 'manifeste.json') return;
+    try { hashes[e.name] = Z.sha256(e.data()); } catch { hashes[e.name] = '(illisible)'; }
+  });
   // Et dans l'autre sens : ce que le manifeste n'annonce pas (« intrus ») n'a été comparé à rien.
   const { checked, bad, intrus } = K.checkIntegrity(manifest, hashes);
 
@@ -476,7 +629,7 @@ function ingest(file, password) {
   const dest = getStore().storePack(file, fiche, month, state.dossiers.concat(known ? [] : [fiche]));
 
   const res = K.filePack(state, manifest, {
-    receivedAt: Date.now(), digest: Z.sha256(mEntry.data()), bytes: fs.statSync(file).size,
+    receivedAt: Date.now(), digest: Z.sha256(mBuf), bytes: fs.statSync(file).size,
     path: dest, sealed,
     integrity: { checked, bad, intrus, at: Date.now() }
   });
@@ -822,7 +975,10 @@ ipcMain.handle('cab:support', () => ({
   log: path.join(app.getPath('userData'), 'main.log'),
   dossiers: state ? state.dossiers.length : 0,
   paquets: state ? state.dossiers.reduce((s, d) => s + (d.packs || []).length, 0) : 0,
-  external: getStore().state.external
+  external: getStore().state.external,
+  // Un gel passé est la première chose à joindre à un rapport : c'est justement ce qu'aucune
+  // console n'aurait montré. La pile, elle, reste dans le journal technique.
+  dernierGel: lastFreeze ? { at: lastFreeze.at, silence: lastFreeze.silence } : null
 }));
 
 ipcMain.handle('cab:openLog', () => shell.openPath(path.join(app.getPath('userData'), 'main.log')));

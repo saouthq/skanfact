@@ -13,6 +13,7 @@
   let S = null;                          // l'état du cabinet (sans la clé privée)
   let backupInfo = null;                 // sauvegardes, copie externe, place disque
   let inboxInfo = null;                  // la boîte de réception : dossier surveillé, paquets nouveaux
+  let fermerPalette = null;              // de quoi refermer la palette quand une fenêtre s'ouvre au-dessus
   // Mises à jour : l'état de la dernière vérification, partagé entre le panneau et la pastille.
   const upd = { state: 'idle', version: '', percent: 0, message: '', app: null };
 
@@ -109,6 +110,14 @@
   // `opts.garde` : une fonction qui répond « oui, il y a de la saisie non enregistrée ». Échap et le
   // clic à côté posent alors la question au lieu de jeter le travail en silence.
   function modal(html, onMount, onDismiss, opts) {
+    // Une fenêtre s'ouvre TOUJOURS au-dessus de la palette (400 contre 60). `palettePossible()` ne
+    // garde qu'un sens : il empêche la palette de passer sous une fenêtre, jamais une fenêtre de
+    // passer au-dessus d'elle. Or le menu reste actif pendant que la palette est ouverte (Cmd+O,
+    // Cmd+N, Cmd+S), et un paquet double-cliqué dans le Finder ouvre lui aussi une fenêtre. La
+    // palette écoute le clavier en phase de CAPTURE : restée dessous, elle passerait devant, Échap
+    // la fermerait sans rien montrer et Entrée lancerait une recherche au lieu de valider. C'est le
+    // même défaut pris par l'autre bout — on la referme.
+    if (fermerPalette) fermerPalette();
     const root = $('#modal-root');
     const layer = document.createElement('div');
     layer.className = 'modal-bg';
@@ -546,6 +555,9 @@
         else toast('Mise à jour non installée : ' + (v.lastUpdate.message || 'erreur inconnue'), 'error');
       }
     }).catch(() => {});
+    // L'avancement d'un import : la fenêtre s'ouvre au premier signal reçu, que les fichiers aient
+    // été choisis ici (glisser-déposer, boîte de réception) ou dans la fenêtre du système.
+    api.onImportProgress(suivreImport);
     api.onMenuAction(name => {
       if (name === 'import') doImport();
       else if (name === 'new-dossier') newDossierForm();
@@ -654,9 +666,84 @@
   }
 
   // ---------- import d'un paquet ----------
+  //
+  // Vingt paquets de cinquante mégaoctets, c'est une vingtaine de secondes. Sans un mot à l'écran,
+  // on croit l'application morte — et on la tue en plein rangement. On montre donc où on en est, et
+  // on laisse arrêter : l'arrêt prend effet APRÈS le paquet en cours, jamais au milieu.
+  //
+  // La fenêtre s'ouvre tout de suite s'il y a plusieurs paquets, et seulement après une demi-seconde
+  // s'il n'y en a qu'un : un petit paquet part et revient en un clin d'œil, et une fenêtre qui
+  // clignote pour rien fait douter de tout le reste.
+  // `importEnCours` dit si un import est vraiment en train de tourner. Sans lui, le DERNIER message
+  // d'avancement — envoyé par le processus principal juste après le dernier paquet — pouvait arriver
+  // APRÈS la fermeture de la fenêtre et la rouvrir pour toujours, par-dessus le compte rendu : le
+  // bouton « Fermer » restait visible et parfaitement inerte, recouvert par une fenêtre qui
+  // annonçait un travail déjà fini.
+  let importUI = null, importTimer = null, importDernier = null, importEnCours = false;
+
+  function importProgress() {
+    const etat = { annule: false, close: null, maj: () => {} };
+    const stop = layer => {
+      if (etat.annule) return;
+      etat.annule = true;
+      api.cancelImport();
+      const b = $('#ip-stop', layer), t = $('#ip-txt', layer);
+      if (b) b.disabled = true;
+      if (t) t.textContent = 'Arrêt demandé — on termine le paquet en cours, puis on s\'arrête.';
+    };
+    etat.close = modal(
+      `<h2>Rangement des paquets ${info('p.arret')}</h2>
+       <p id="ip-txt">Ouverture du premier paquet…</p>
+       <div class="progress"><div id="ip-bar" style="width:0%"></div></div>
+       <p class="muted small mt">Chaque paquet est ouvert, vérifié pièce par pièce, puis copié dans le dossier de l'application. Un gros mois prend une seconde ou deux.</p>
+       <div class="modal-actions"><span class="grow"></span><button class="btn" id="ip-stop">Arrêter</button></div>`,
+      (layer) => { $('#ip-stop', layer).onclick = () => stop(layer); },
+      // Échap et le clic à côté valent « Arrêter », pas « rien » : une fenêtre d'avancement qui
+      // disparaît pendant que le travail continue laisserait le comptable devant une application
+      // muette, exactement ce qu'on est en train de corriger.
+      () => { etat.annule = true; api.cancelImport(); }
+    );
+    etat.maj = p => {
+      if (etat.annule) return;                 // on n'écrase pas « Arrêt demandé… »
+      const t = $('#ip-txt'), b = $('#ip-bar');
+      const total = Math.max(1, p.total || 1);
+      if (t) t.textContent = `Paquet ${p.numero || 1} sur ${total}${p.nom ? ' — ' + p.nom : ''}`;
+      if (b) b.style.width = Math.round(((p.faits || 0) / total) * 100) + '%';
+    };
+    return etat;
+  }
+
+  function ouvrirImport() {
+    importTimer = null;
+    if (!importUI) importUI = importProgress();
+    if (importDernier) importUI.maj(importDernier);
+  }
+
+  function suivreImport(p) {
+    if (!importEnCours) return;              // message en retard : l'import est déjà fini
+    importDernier = p;
+    if (importUI) return importUI.maj(p);
+    if (importTimer) return;
+    if (p.total > 1) ouvrirImport(); else importTimer = setTimeout(ouvrirImport, 500);
+  }
+
+  function fermerImport() {
+    importEnCours = false;
+    clearTimeout(importTimer);
+    importTimer = null;
+    importDernier = null;
+    if (importUI) { importUI.close(); importUI = null; }
+  }
+
   async function doImport(paths) {
+    // Un seul chemin vers l'import : la fenêtre d'avancement s'ouvre au premier signal et se referme
+    // ici, que l'import ait réussi, échoué ou été arrêté.
+    const ranger = async opts => {
+      importEnCours = true;
+      try { return await api.importPack(opts); } finally { fermerImport(); }
+    };
     let r;
-    try { r = await api.importPack({ paths }); }
+    try { r = await ranger({ paths }); }
     catch (e) { return toast(plainError(e), 'error'); }
     if (!r) return;                                     // fenêtre annulée
     S = r.state;
@@ -667,34 +754,20 @@
       const pw = await askPassword('Paquet protégé', `${pl(locked.length, 'paquet')} ${locked.length > 1 ? 'sont scellés' : 'est scellé'} par un mot de passe. Demande-le à ton client s'il ne te l'a pas donné.`);
       if (pw) {
         try {
-          const r2 = await api.importPack({ paths: locked.map(x => x.file), password: pw });
+          const r2 = await ranger({ paths: locked.map(x => x.file), password: pw });
           if (r2) {
             S = r2.state;
-            r = { results: r.results.filter(x => !locked.includes(x)).concat(r2.results), state: r2.state, demoRemoved: r.demoRemoved || r2.demoRemoved };
+            r = { results: r.results.filter(x => !locked.includes(x)).concat(r2.results), state: r2.state, demoRemoved: r.demoRemoved || r2.demoRemoved, restants: (r.restants || 0) + (r2.restants || 0) };
           }
         } catch (e) { toast(plainError(e), 'error'); }
       }
     }
-    showImportReport(r.results, r.demoRemoved);
+    showImportReport(r.results, r.demoRemoved, r.restants || 0);
     render();
     refreshBackupInfo();
     refreshInbox(true);
-    // Le comptable enregistre ses pièces jointes dans sa messagerie, puis revient ici : c'est le
-    // moment exact où il faut regarder la boîte. Sans ça, il faudrait redémarrer l'application pour
-    // voir arriver ce qu'on vient d'y déposer.
-    let dernierCoupDOeil = 0;
-    window.addEventListener('focus', () => {
-      const t = Date.now();
-      if (t - dernierCoupDOeil < 4000) return;      // revenir deux fois de suite ne relance pas deux scans
-      dernierCoupDOeil = t;
-      const avant = inboxInfo && inboxInfo.nouveaux ? inboxInfo.nouveaux.length : 0;
-      refreshInbox(false).then(() => {
-        const apres = inboxInfo && inboxInfo.nouveaux ? inboxInfo.nouveaux.length : 0;
-        // On ne redessine que si quelque chose a changé : redessiner sous les doigts de quelqu'un
-        // qui revient à sa fenêtre lui ferait perdre sa saisie en cours.
-        if (apres !== avant && !$('#modal-root').children.length && !$('#palette-root')) render();
-      });
-    });
+    // (La boîte de réception est déjà surveillée depuis start() : y reposer un écouteur ici en
+    // ajouterait un par import — vingt imports, vingt scans à chaque retour dans la fenêtre.)
   }
 
   function importLine(x) {
@@ -717,20 +790,30 @@
     // pièces vérifiées, et il se dit à part — sinon le paquet aurait l'air entièrement contrôlé.
     const trop = (integ.intrus || []).length;
     if (trop) bits.push(`⚠ ${pl(trop, 'fichier')} ${trop > 1 ? 'présents' : 'présent'} mais non ${trop > 1 ? 'annoncés' : 'annoncé'} par ton client`);
+    // Un fichier présent dans le paquet sans être annoncé au manifeste : il ne se compare à rien,
+    // mais sa présence se dit — c'est la seule chose honnête à en faire.
+    const nonDits = (integ.intrus || []).length;
+    if (nonDits) bits.push(`⚠ ${pl(nonDits, 'fichier')} ${nonDits > 1 ? 'non annoncés' : 'non annoncé'} au manifeste`);
     const miss = (x.summary && x.summary.missing || []).reduce((s, m) => s + (m.count || 0), 0);
     if (miss) bits.push(`${pl(miss, 'point')} ${miss > 1 ? 'signalés' : 'signalé'} par le client`);
     return `<li><strong>✓ ${esc(d.name || '')}</strong> — ${esc((x.summary && x.summary.label) || x.month || '')}
             <div class="imp-sub">${bits.map(esc).join(' · ')}</div></li>`;
   }
 
-  function showImportReport(results, demoRemoved) {
+  function showImportReport(results, demoRemoved, restants) {
     const ok = results.filter(x => !x.error).length;
     const ko = results.length - ok;
+    // Un import arrêté n'est pas un import raté : ce qui est rangé l'est pour de bon, et le reste
+    // attend sagement là où il était.
+    const arret = restants > 0
+      ? `<p class="small mt">Import arrêté : ${pl(restants, 'paquet')} ${restants > 1 ? 'n\'ont pas été ouverts' : 'n\'a pas été ouvert'}. Redépose-les quand tu veux, rien n'est perdu.</p>`
+      : '';
     // Le bon moment pour accuser réception, c'est maintenant — pas en retournant fiche par fiche.
     const aPrevenir = results.filter(x => !x.error && x.dossier && !x.dossier.demo);
     modal(
       `<h2>${ok ? `${pl(ok, 'paquet')} ${ok > 1 ? 'rangés' : 'rangé'}` : 'Aucun paquet rangé'}${ko ? ` · ${pl(ko, 'refusé')}` : ''}</h2>
        <ul class="imp-list">${results.map(importLine).join('')}</ul>
+       ${arret}
        ${demoRemoved ? '<p class="small mt">Les dossiers d\'exemple ont été effacés : place aux vrais.</p>' : ''}
        <p class="muted small mt">Les paquets sont copiés dans le dossier de l'application, rangés par client et par année : le fichier d'origine reste où il est.</p>
        <div class="modal-actions">
@@ -1256,6 +1339,7 @@
   // lignes du comptable valent mieux que trois relances du client.
   function accuseReception(dossier, pack, onDone) {
     const m = K.accuseMail(S.cabinet, dossier, pack);
+    let change = () => false;
     modal(
       `<h2>Accuser réception à ${esc(dossier.name)}</h2>
        <label class="field">Destinataire<input type="text" id="a-to" value="${esc(m.to)}" placeholder="adresse@client.tn"></label>
@@ -1279,7 +1363,8 @@
           close(); if (onDone) onDone();
         };
       },
-      () => { if (onDone) onDone(); }
+      () => { if (onDone) onDone(); },
+      { garde: () => change() }
     );
   }
 
@@ -1469,6 +1554,7 @@
        ${row.phone ? '<button class="btn" id="wa">WhatsApp</button>' : ''}
        <button class="btn btn-primary" id="ok">Ouvrir dans ma messagerie</button></div>`,
       (layer, close) => {
+        change = suivreSaisie(layer);
         $('#no', layer).onclick = () => { close(); if (onDone) onDone(); };
         $('#copy', layer).onclick = async () => {
           try { await navigator.clipboard.writeText($('#r-body', layer).value); toast('Texte copié.'); }
@@ -1496,7 +1582,8 @@
           close(); render(); if (onDone) onDone();
         };
       },
-      () => { if (onDone) onDone(); }
+      () => { if (onDone) onDone(); },
+      { garde: () => change() }
     );
   }
 
@@ -2029,13 +2116,16 @@
   async function supportDialog() {
     let inf = {};
     try { inf = await api.support(); } catch {}
+    // Un gel passé est la première chose à joindre à un rapport : c'est justement ce dont aucune
+    // console n'aurait gardé la trace.
+    const gel = inf.dernierGel ? `\nDernier blocage : ${inf.dernierGel.at} (${inf.dernierGel.silence} s sans réponse)` : '';
     modal(
       `<h2>Signaler un problème</h2>
        <p class="small">Copie ces informations dans ton message : elles disent où en est ton installation, sans rien révéler du contenu de tes dossiers.</p>
        <pre class="code-box" id="sup">SkanFact Cabinet ${esc(inf.version || '')}
 Système : ${esc(inf.platform || '')} ${esc(inf.arch || '')} · Electron ${esc(inf.electron || '')}
 Dossiers : ${inf.dossiers || 0} · Paquets : ${inf.paquets || 0}
-Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.external && inf.external.lastError ? ' (erreur : ' + esc(inf.external.lastError) + ')' : ''}</pre>
+Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.external && inf.external.lastError ? ' (erreur : ' + esc(inf.external.lastError) + ')' : ''}${esc(gel)}</pre>
        <div class="modal-actions"><button class="btn" id="log">Ouvrir le journal technique</button><span class="grow"></span>
        <button class="btn" id="copy">Copier</button><button class="btn btn-primary" id="ok">Fermer</button></div>`,
       (layer, close) => {
@@ -2204,6 +2294,9 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
   // le clavier avec `focus()` : la frappe suivante partait dans un champ invisible. Rien à l'écran,
   // rien en console, et le comptable en concluait que l'application était bloquée. C'est le
   // symptôme exact de la 5.2.2, réintroduit par une palette neuve.
+  //
+  // Ce garde ne vaut que dans un sens : il refuse d'ouvrir la palette sous une fenêtre. L'autre sens
+  // — une fenêtre qui s'ouvre pendant que la palette est là — est tenu par `modal()`, qui la referme.
   function palettePossible() {
     return !$('#palette-root')
       && !$('#modal-root').children.length
@@ -2220,7 +2313,7 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
       <div class="results" id="pal-res"></div>
       <div class="hint">↑ ↓ pour choisir · Entrée pour ouvrir · Échap pour fermer</div></div>`;
     document.body.appendChild(root);
-    const close = () => { root.remove(); document.removeEventListener('keydown', onKey, true); };
+    const close = () => { root.remove(); document.removeEventListener('keydown', onKey, true); fermerPalette = null; };
     let sel = 0, items = [];
 
     const actions = [
@@ -2260,6 +2353,7 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
       if (e.key === 'Enter') { e.preventDefault(); const x = items[sel]; close(); if (x) x.go(); }
     };
     document.addEventListener('keydown', onKey, true);
+    fermerPalette = close;                // la seule prise depuis l'extérieur : `modal()` s'en sert
     root.addEventListener('mousedown', e => { if (e.target === root) close(); });
     $('#pal-q', root).oninput = () => { sel = 0; draw(); };
     draw();
@@ -2345,5 +2439,27 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
       ${G.ARTICLES.map(a => `<div class="panel"><h2>${esc(a.t)}</h2>${a.d}</div>`).join('')}`;
   }
 
+  // ---------- chien de garde et messages du processus principal ----------
+  // Abonnés AVANT la séquence de démarrage : l'écran de verrouillage la met en attente, et un
+  // message reçu pendant ce temps serait perdu pour toujours (règle apprise en 6.5.0).
+  // Le battement de cœur : répondre tant que l'interface tourne. La réponse part du fil principal
+  // du renderer — c'est exactement lui qu'une boucle infinie bloquerait.
+  api.onAlivePing();
+  // Après un gel, l'application se recharge toute seule. Elle le dit : sans un mot, le comptable se
+  // retrouve devant l'écran de verrouillage sans comprendre pourquoi, et doute de ce qui a été
+  // enregistré.
+  api.onFreezeNotice(f => {
+    modal(`<h2>SkanFact Cabinet s'était bloqué</h2>
+      <p>L'application n'a plus répondu pendant ${esc(String((f && f.silence) || '?'))} secondes, et elle vient de redémarrer toute seule.</p>
+      <p class="small"><strong>Rien n'est perdu :</strong> les paquets déjà rangés le restent et ton cabinet est intact. Il faut seulement rouvrir avec ton mot de passe.</p>
+      <p class="small">SkanFact a noté où le programme s'était arrêté. Si cela se reproduit, envoie-le : <em>Aide → Signaler un problème</em>. C'est ce qui permet de corriger.</p>
+      <div class="modal-actions"><span class="grow"></span><button class="btn" id="fz-ok">Continuer</button><button class="btn btn-primary" id="fz-rep">Signaler</button></div>`,
+      (layer, close) => {
+        $('#fz-ok', layer).onclick = close;
+        $('#fz-rep', layer).onclick = () => { close(); supportDialog(); };
+      });
+  });
+
+  // ---------- démarrage ----------
   boot().catch(e => { $('#lock-sub').textContent = 'Erreur au démarrage : ' + plainError(e); });
 })();

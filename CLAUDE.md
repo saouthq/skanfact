@@ -343,13 +343,42 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:entreprise` | l'app entreprise, écran par écran |
 | `npm run e2e:cabinet` | l'app cabinet : verrou, assistant, portefeuille, relances, sauvegardes, suppression **et récupération**, échéances, écritures |
 | `npm run e2e:boucle` | les DEUX applications à la suite : cabinet → appairage → entreprise → paquet → cabinet → écritures regroupées |
-| `npm run e2e:refus` | les quatre cas tordus de l'import (fichier tronqué, mois reçu deux fois, paquet d'un autre cabinet, paquet protégé) |
+| `npm run e2e:refus` | les cinq cas tordus de l'import (fichier tronqué, mois reçu deux fois, paquet d'un autre cabinet, paquet protégé, **fichier glissé dans le paquet après coup**) |
 | `npm run e2e:perte` | le scénario catastrophe : le fichier principal disparaît, l'application le dit, et tout revient — clé du cabinet comprise |
+| `npm run e2e:demenagement` | **changer d'ordinateur** : deux postes à la suite, une clé USB entre les deux, et la MÊME empreinte à l'arrivée |
+| `npm run e2e:couches` | **les couches et le clavier** : deux fenêtres empilées, Échap, Entrée, Cmd+K dans les deux sens |
 | `npm run e2e:gel` | le chien de garde : l'interface est VRAIMENT gelée, et le journal nomme la fonction coupable |
 
 Ils ont longtemps vécu dans un dossier de travail temporaire, effacé à chaque session : il fallait les réécrire de mémoire, et ils dérivaient (une assertion restée sur une version périmée, un écran neuf jamais parcouru). **Un test qu'on doit réécrire pour s'en servir n'est pas un test.** Le harnais (`test/e2e/harnais.js`) trouve Playwright où il est, lit la version dans `package.json` au lieu de l'écrire en dur, et range les captures dans `dist-e2e/` (ignoré par Git).
 
 Playwright n'est pas une dépendance du projet : `npm i -D playwright` avant de lancer ces tests.
+
+## 6.8.1 et 6.8.2 — le second audit, mené sur la 6.8.0 elle-même
+
+Skander : « creuse encore plus profond, il manque encore, je suis sûr ». Il avait raison. Audit à treize angles, chaque constat relu par un contradicteur chargé de le réfuter, deux critiques de complétude, un second tour sur les angles manqués : **131 constats confirmés, 87 retenus**, et tous ceux de la liste « avant publication » sont corrigés (6.8.1 puis 6.8.2). Le détail est dans `PLAN-CABINET.md`.
+
+**Le premier audit avait regardé ce qui MANQUAIT ; celui-ci a regardé ce qui était FAUX.** Les seconds sont plus graves : une fonction absente se voit, une fonction qui ment ne se voit pas.
+
+Règles apprises, à ne pas recasser :
+
+- **Un compteur et la liste qu'il annonce se calculent avec la même fonction.** Le bandeau de la page Relances comptait les seuls mois manquants pendant que le tableau, dix pixels plus bas, listait aussi les provisoires. Une fois la question posée à voix haute, plus aucun chiffre n'est cru sur parole — et l'app n'est faite que de chiffres.
+- **Une purge se fait par DATE, jamais par nom.** Les sauvegardes se purgeaient par ordre alphabétique : « avant-suppression » passait toujours en premier, donc le filet disparaissait à la seconde où il était pris, pendant que la fenêtre affichait « Une sauvegarde est prise juste avant ».
+- **Une identité ne se fabrique jamais à partir de `[A-Za-z]`.** `شركة الأمان` et `مخبزة الياسمين` donnaient la même clé vide : dans un portefeuille tunisien, tous les clients en raison sociale arabe tombaient dans un seul dossier et leurs paquets s'écrasaient. `\p{L}\p{N}` avec le drapeau `u`, partout.
+- **Ce qui vient de l'extérieur se valide AVANT de toucher au disque.** Un mois de la forme `../../..` servait à fabriquer un chemin de fichier. Et un fichier reçu ne s'ouvre pas avec le programme du système sous un nom choisi par l'expéditeur (« facture.pdf.command »).
+- **Un compte se fait dans les DEUX sens.** « 7 pièces vérifiées, intactes » ne regardait que ce que le manifeste annonce : un fichier présent sans y figurer n'était ni compté, ni vérifié, ni signalé, et s'ouvrait d'un clic.
+- **Un verdict qui vit deux secondes n'est pas un verdict** : le résultat du contrôle d'intégrité est rangé avec le paquet, et se relit un mois plus tard.
+- **Un exemple qui dément la promesse du produit vaut mieux pas d'exemple.** Le jeu de démonstration datait chaque paquet du 8 du mois qu'il couvrait : « août, définitif, reçu le 08/08 ». Le premier comptable à qui on le montre demande s'il a clôturé août le 8 août.
+- **Le pire défaut est celui qui punit quelqu'un qui a tout bien fait.** Changer d'ordinateur n'avait aucun chemin : le comptable avait sa clé USB et sa clé de secours, et le poste neuf lui fabriquait une clé neuve, donc une autre empreinte, donc des clients refusés. Toute donnée qu'on demande à quelqu'un de conserver doit avoir un bouton pour la reprendre.
+- **Après une reprise, un chemin enregistré désigne l'autre poste.** On le recolle sur le nôtre — et s'il désigne encore le support d'origine (la clé encore branchée), on se recolle quand même sur la copie locale : on ne lit pas les pièces de ses clients sur une clé qu'on va débrancher.
+- **Un travail long dans le processus principal rend l'application muette.** Vingt paquets, c'était vingt-deux secondes sans un mot ni recours. `await new Promise(res => setImmediate(res))` entre deux unités, un avancement, et un arrêt qui agit ENTRE deux unités — jamais au milieu d'une écriture.
+- **Le chien de garde du cabinet a une règle de plus que celui de l'entreprise** : ici c'est le processus principal qui travaille longtemps, et **son** silence ne doit pas passer pour un gel de l'interface, sinon il recharge une page innocente.
+- **Un test qui ne peut pas échouer est pire que pas de test.** Trois l'étaient : `assert.ok(x.length >= 0)` ; un test « sous tous les fuseaux » qui n'appelait que de l'arithmétique de chaînes ; et les deux `main.js` absents du seul contrôle statique, alors que ce sont les seuls fichiers qu'aucun test n'exécute. **Tout correctif de test se prouve en réintroduisant le défaut d'origine.**
+- **Un e2e ne doit jamais rejouer le code qu'il teste.** Écrire `modal()` à l'intérieur d'un `evaluate()` produit un test vert qui ne teste rien : on passe par les vrais écrans et les vrais boutons.
+- **Piège des remplacements de texte en masse** : un `replace(..., count=1)` a armé la mauvaise fenêtre (`accuseReception` au lieu de `writeRelance`). En mode strict, l'affectation à une variable non déclarée lève une ReferenceError — la fenêtre s'ouvrait avec **aucun bouton branché**, sans rien en console, et le détecteur d'appels inexistants ne pouvait pas le voir (ce n'est pas un appel). Vérifier l'ancrage, pas seulement le nombre d'occurrences. Un test relit désormais chaque fenêtre et exige le garde-fou de saisie en ENTIER (déclaré, armé, passé) ou pas du tout.
+- **Un message d'avancement en retard peut ressusciter sa fenêtre.** Le dernier `import:progress` arrivait après la fermeture et rouvrait la fenêtre pour toujours, par-dessus le compte rendu : le bouton « Fermer » restait visible et parfaitement inerte. Un drapeau « en cours » ferme la porte.
+- **electron-builder ne convertit pas une icône** : il échange `.ico` et `.icns` selon la plateforme, donc un `.png` déclaré ressort inchangé et s'installe là où un `.icns` est attendu. Rien n'échoue. Déclarer l'icône **sans extension** et fabriquer les vrais fichiers (`node scripts/icones.js`, Electron pour le dessin + app-builder pour l'assemblage ; le `.ico` porte ses sept tailles, parce que c'est à 16 px qu'on regarde une liste de fichiers).
+
+**Méthode qui a payé, à refaire :** un workflow de spécification en lecture seule (un agent par constat, qui lit le vrai code et rend des ancrages exacts), puis application à la main avec vérification d'unicité de chaque ancrage. Deux agents ont trouvé des défauts que je venais moi-même d'introduire, et un troisième a montré qu'un constat déjà « corrigé » l'était dans un seul sens (Cmd+K par-dessus une fenêtre, mais pas une fenêtre par-dessus la palette).
 
 ## Pistes pour la suite (non demandées)
 

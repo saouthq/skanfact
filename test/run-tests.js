@@ -4305,6 +4305,81 @@ t('cabinet : aucun de ses fichiers n\'appelle une fonction qui n\'existe pas', (
   });
 });
 
+t('cabinet : un import de vingt paquets parle, s\'arrête, et son interface est surveillée', () => {
+  const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'cabinet', 'main.js'), 'utf8');
+  const pre = fs.readFileSync(path.join(__dirname, '..', 'src', 'cabinet', 'preload.js'), 'utf8');
+  const app = fs.readFileSync(path.join(__dirname, '..', 'src', 'cabinet', 'renderer', 'app.js'), 'utf8');
+
+  // ---- la boucle d'import rend la main ----
+  // Vingt paquets de cinquante mégaoctets, c'est vingt secondes pendant lesquelles le processus
+  // principal ne lit AUCUN message : ni l'avancement qu'il devrait envoyer, ni l'arrêt qu'on lui
+  // demande. Une seule ligne empêche ça, et elle doit rester.
+  const boucle = main.slice(main.indexOf('ipcMain.handle(\'cab:importPack\''), main.indexOf('const PACK_FORMAT'));
+  assert.ok(boucle, 'le handler d\'import est introuvable');
+  assert.ok(!/for \(const f of files\)/.test(boucle), 'la boucle d\'import ne doit plus être synchrone');
+  assert.ok(/await new Promise\(res => setImmediate\(res\)\)/.test(boucle),
+    'l\'import doit rendre la main entre deux paquets');
+  assert.ok(/import:progress/.test(boucle), 'l\'import doit dire où il en est');
+  assert.ok(/ipcMain\.on\('cab:importCancel'/.test(main), 'il faut un moyen d\'arrêter un import en cours');
+  // L'arrêt se lit ENTRE deux paquets : après la respiration (sinon il n'arriverait jamais) et
+  // avant d'en ouvrir un nouveau (jamais au milieu d'une écriture).
+  const respire = boucle.indexOf('setImmediate');
+  const arret = boucle.indexOf('if (importAnnule)');
+  const range = boucle.indexOf('ingest(f');
+  assert.ok(respire > 0 && arret > respire && range > arret,
+    'l\'arrêt doit être lu après la respiration et avant de ranger le paquet suivant');
+
+  // ---- on ne hache rien deux fois ----
+  // `data()` refait l'inflate ET le contrôle CRC à chaque appel : le manifeste était décompressé
+  // trois fois par paquet, et haché deux fois, pour un fichier qui ne peut pas porter sa propre
+  // empreinte.
+  const ing = main.slice(main.indexOf('function ingest('), main.indexOf('ipcMain.handle(\'cab:openInPack\''));
+  assert.strictEqual((ing.match(/mEntry\.data\(\)/g) || []).length, 1,
+    'le manifeste ne doit être décompressé qu\'une seule fois');
+  assert.ok(/e\.name === 'manifeste\.json'\) return;/.test(ing),
+    'le manifeste ne se hache pas : il ne peut pas porter sa propre empreinte');
+
+  // ---- le chien de garde, porté de l'app entreprise (6.5.0) ----
+  const wd = main.slice(main.indexOf('function startWatchdog'), main.indexOf('function createWindow'));
+  assert.ok(wd, 'l\'app cabinet n\'a pas de chien de garde');
+  // 1. Le domaine Debugger s'active AVANT le gel : demandé pendant, il attendrait le fil bloqué.
+  const enable = wd.indexOf('sendCommand(\'Debugger.enable\'');
+  const surveille = wd.indexOf('setInterval');
+  assert.ok(enable > 0 && enable < surveille, 'Debugger.enable doit être demandé avant la surveillance');
+  // 2. On relâche le débogueur AVANT d'interrompre : terminateExecution sur une VM en pause ne rend
+  //    jamais la main, et le surveillant gèlerait à son tour.
+  const resume = wd.indexOf('cmd(\'Debugger.resume\')');
+  const terminate = wd.indexOf('cmd(\'Runtime.terminateExecution\')');
+  assert.ok(resume > 0 && terminate > 0 && resume < terminate,
+    'Debugger.resume doit précéder Runtime.terminateExecution');
+  // 3. Aucune fenêtre synchrone : devant une application figée, personne ne peut répondre.
+  assert.ok(!/showMessageBoxSync/.test(wd), 'le chien de garde ne doit jamais ouvrir de fenêtre synchrone');
+  // 4. Chaque commande au débogueur est bornée.
+  assert.ok(/Promise\.race/.test(wd), 'les commandes du débogueur doivent être bornées dans le temps');
+  // 5. Un seul programme peut inspecter la page à la fois (6.5.1).
+  assert.ok(/devtools-opened/.test(wd) && /devtools-closed/.test(wd),
+    'le chien de garde doit se détacher quand les outils de développement s\'ouvrent');
+  // Et une règle propre au cabinet : ici c'est le processus PRINCIPAL qui travaille longtemps
+  // (ranger vingt paquets, en extraire un, relire soixante paquets pour un export). Son silence à
+  // lui ne doit pas passer pour un gel de l'interface, sinon il recharge une page innocente.
+  assert.ok(/retard > WATCHDOG\.every/.test(wd),
+    'un blocage du processus principal ne doit pas être pris pour un gel de l\'interface');
+  assert.ok(/startWatchdog\(mainWindow\)/.test(main), 'le chien de garde doit être lancé avec la fenêtre');
+
+  // ---- le pont et l'interface ----
+  ['cancelImport', 'onImportProgress', 'onAlivePing', 'onFreezeNotice'].forEach(k =>
+    assert.ok(new RegExp('\\b' + k + ':').test(pre), `le pont n'expose pas ${k}`));
+  assert.ok(!/data:save|pack:build/.test(pre),
+    'l\'app cabinet ne doit toujours rien pouvoir écrire chez un client');
+  // Le battement de cœur et l'annonce d'après-gel sont branchés AVANT la séquence de démarrage :
+  // l'écran de verrouillage la met en attente, et un message reçu pendant ce temps serait perdu.
+  const ping = app.indexOf('api.onAlivePing()');
+  const notice = app.indexOf('api.onFreezeNotice');
+  const demarrage = app.indexOf('// ---------- démarrage ----------');
+  assert.ok(ping > 0 && demarrage > 0 && ping < demarrage, 'le battement de cœur doit être branché avant le démarrage');
+  assert.ok(notice > 0 && notice < demarrage, 'l\'annonce d\'après-gel doit être branchée avant le démarrage');
+});
+
 t('cabinet : ses classes à lui ne doivent pas exister dans la feuille partagée', () => {
   // L'app cabinet charge style.css (partagée) PUIS cabinet.css. Une classe portant le même nom des
   // deux côtés prend en silence les règles de l'autre application. C'est arrivé : l'assistant du
@@ -4670,6 +4745,33 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   });
 
   // ------------------------------------------------------------------
+  // Le garde-fou de saisie se pose en TROIS morceaux : déclarer `change`, l'armer au montage, et le
+  // passer à `modal()`. Deux d'entre eux ont été posés dans la mauvaise fenêtre par un
+  // remplacement de texte trop gourmand : `accuseReception` armait une variable qu'elle n'avait pas
+  // déclarée — en mode strict, c'est une ReferenceError, et la fenêtre s'ouvrait avec AUCUN bouton
+  // branché — pendant que `writeRelance`, la fenêtre nommée dans le constat, n'avait rien du tout.
+  // Le détecteur d'appels inexistants ne pouvait pas le voir : ce n'est pas un appel.
+  t('cabinet : le garde-fou de saisie est posé en entier, ou pas du tout', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'cabinet', 'renderer', 'app.js'), 'utf8');
+    assert.ok(/'use strict'/.test(src), 'le fichier n\'est plus en mode strict : une variable non déclarée passerait');
+    // On découpe par fonction de premier niveau et on compte les trois morceaux dans chacune.
+    const noms = [...src.matchAll(/\n  (?:async )?function ([A-Za-z_$][\w$]*)\s*\(/g)].map(m => ({ nom: m[1], a: m.index }));
+    noms.forEach((f, i) => { f.corps = src.slice(f.a, i + 1 < noms.length ? noms[i + 1].a : src.length); });
+    let poses = 0;
+    for (const f of noms) {
+      const declare = /let change = \(\) => false;/.test(f.corps);
+      const arme = /change = suivreSaisie\(layer\);/.test(f.corps);
+      const passe = /garde: \(\) => change\(\)/.test(f.corps);
+      if (!declare && !arme && !passe) continue;            // cette fenêtre n'en a pas : c'est permis
+      poses++;
+      assert.ok(declare, `${f.nom} arme le garde-fou sans déclarer « change » : ReferenceError à l'ouverture`);
+      assert.ok(arme, `${f.nom} déclare « change » sans jamais l'armer : le garde-fou répond toujours « rien n'a changé »`);
+      assert.ok(passe, `${f.nom} arme le garde-fou sans le donner à modal() : Échap jette la saisie quand même`);
+    }
+    assert.ok(poses >= 4, `seules ${poses} fenêtres ont un garde-fou de saisie : il en faut au moins quatre`);
+  });
+
+  // ------------------------------------------------------------------
   // audit G6 / G7 : les couches du cabinet. Même règle que la 5.2.2 côté entreprise, jamais portée
   // ici. Un bouton parfaitement visible peut être inerte, et rien n'apparaît dans aucune console.
   t('audit G6/G7 : Échap ne ferme que la fenêtre du dessus, Entrée valide, Cmd+K attend son tour', () => {
@@ -4710,6 +4812,17 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     ['#palette-root', '#modal-root', '#setup', '#lock-screen'].forEach(sel =>
       assert.ok(garde.includes(sel), `la palette peut encore s'ouvrir par-dessus ${sel}`));
     assert.ok(/if \(!palettePossible\(\)\) return;/.test(src), 'openPalette n\'utilise pas son garde');
+    // G7, l'autre sens. Le garde ci-dessus empêche la palette de passer sous une fenêtre ; rien
+    // n'empêchait une fenêtre de passer au-dessus d'elle. Le menu reste actif pendant que la palette
+    // est ouverte (Cmd+O, Cmd+N, Cmd+S) et un paquet double-cliqué dans le Finder ouvre aussi une
+    // fenêtre. La palette écoute en phase de CAPTURE : restée dessous, elle garde le clavier —
+    // Échap la ferme sans rien montrer, Entrée lance une recherche au lieu de valider.
+    assert.ok(/document\.addEventListener\('keydown', onKey, true\);/.test(src),
+      'la palette n\'écoute plus en capture : ce garde est à relire');
+    assert.ok(/fermerPalette = close;/.test(src) && /fermerPalette = null;/.test(src),
+      'rien ne permet de refermer la palette depuis l\'extérieur');
+    assert.ok(/if \(fermerPalette\) fermerPalette\(\);/.test(corps),
+      'une fenêtre peut encore s\'ouvrir par-dessus la palette, qui lui vole alors le clavier');
   });
 
   // ------------------------------------------------------------------

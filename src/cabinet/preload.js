@@ -31,6 +31,9 @@ contextBridge.exposeInMainWorld('cabinet', {
 
   // paquets
   importPack: (opts) => ipcRenderer.invoke('cab:importPack', opts || {}),
+  // Arrêter un import en cours. Le message part tout de suite ; l'arrêt, lui, attend la fin du
+  // paquet en cours : on n'interrompt jamais une écriture au milieu.
+  cancelImport: () => ipcRenderer.send('cab:importCancel'),
   listPack: (packPath, password) => ipcRenderer.invoke('cab:listPack', { packPath, password }),
   openInPack: (packPath, name, password) => ipcRenderer.invoke('cab:openInPack', { packPath, name, password }),
   extractPack: (packPath, password, label) => ipcRenderer.invoke('cab:extractPack', { packPath, password, label }),
@@ -80,5 +83,10 @@ contextBridge.exposeInMainWorld('cabinet', {
 
   onUpdateEvent: (cb) => { ipcRenderer.on('update:event', (_e, d) => cb(d)); },
   onMenuAction: (cb) => { ipcRenderer.on('menu:action', (_e, name) => cb(name)); },
+  onImportProgress: (cb) => { ipcRenderer.on('import:progress', (_e, d) => cb(d)); },
+  // Le chien de garde : la réponse part du fil principal du renderer — c'est exactement lui qu'une
+  // boucle infinie bloquerait, et c'est pour ça que son silence vaut diagnostic.
+  onAlivePing: (cb) => { ipcRenderer.on('alive:ping', () => { ipcRenderer.send('alive:pong'); if (cb) cb(); }); },
+  onFreezeNotice: (cb) => { ipcRenderer.on('freeze:notice', (_e, d) => cb(d)); },
   onFileOpen: (cb) => { ipcRenderer.on('file:open', (_e, f) => cb(f)); }
 });

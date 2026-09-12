@@ -42,6 +42,7 @@
     'p.intrus': { t: 'Fichier non annoncé', d: 'Le manifeste liste chacun des fichiers du paquet avec son empreinte. Un fichier qui se trouve dans le paquet <b>sans y figurer</b> n\'a été comparé à rien : il ne compte pas dans les « pièces vérifiées », il porte un « ? » dans la liste, et SkanFact te pose une question avant de l\'ouvrir. Un paquet fabriqué par SkanFact n\'en contient jamais — si tu en vois un, demande à ton client d\'où il vient avant de le lancer.' },
     'p.delete': { t: 'Supprimer un paquet', d: 'À réserver à un paquet arrivé par erreur (mauvais client, essai). Le fichier est effacé de ton disque et le mois redevient « manquant » pour ce client. Une sauvegarde est prise juste avant, au cas où.' },
     'p.extract': { t: 'Extraire les pièces', d: 'Écrit tout le contenu du paquet dans un dossier de ton choix : la page de garde, les journaux CSV, les factures PDF, les justificatifs. C\'est ce qu\'on fait pour travailler dans son logiciel de production, ou pour rendre ses pièces à un client qui part.' },
+    'p.arret': { t: 'Arrêter un rangement', d: 'Vingt paquets d\'un mois chargé, c\'est une vingtaine de secondes : chacun est ouvert, vérifié pièce par pièce, puis copié. Tu peux arrêter à tout moment — l\'arrêt prend effet <b>à la fin du paquet en cours</b>, jamais au milieu d\'une copie. Les paquets déjà rangés le restent pour de bon ; les autres n\'ont pas été touchés et se redéposent quand tu veux.' },
 
     // — échéances —
     'ec.dates': { t: 'D\'où viennent ces dates', d: 'Elles sont calculées à partir de la <b>périodicité de TVA</b> que tu donnes à chaque client, et des jours que tu règles dans Réglages. Ce qui fait la différence avec un calendrier papier : chaque échéance compte les clients dont tu <b>n\'as pas encore le mois</b>. <em>À VÉRIFIER : les délais réels dépendent de la forme juridique, du régime et de la loi de finances de l\'année.</em>' },
@@ -88,7 +89,8 @@
       <p class="small"><b>Et surtout <code>journaux/ecritures.csv</code></b> : les pièces du mois déjà transformées en écritures en partie double, à importer dans ton logiciel au lieu de les ressaisir. Si les numéros de compte ne sont pas les tiens, donne-les à ton client une fois : il les saisit dans son SkanFact et tous ses envois suivants sont à ton format.</p>
       <p class="small">Un <b>manifeste</b> porte l'empreinte de chaque fichier. À l'import, SkanFact les recalcule toutes : c'est ce qui te permet d'affirmer que ce que tu as reçu est exactement ce qui a été envoyé.</p>
       <p class="small">Le compte va dans les <b>deux sens</b>. Un fichier présent dans le paquet que le manifeste n'annonce pas est signalé à part (« non annoncé ») : il n'entre jamais dans les pièces vérifiées, il porte un « ? » dans la liste, et l'application te pose une question avant de l'ouvrir. Un paquet fabriqué par SkanFact n'en contient jamais.</p>
-      <p class="small">Les paquets sont rangés sur ton disque par <b>client</b>, puis par <b>année</b>. Tu peux les retrouver dans ton gestionnaire de fichiers sans ouvrir l'application, et rendre à un client ses pièces en copiant un dossier.</p>` },
+      <p class="small">Les paquets sont rangés sur ton disque par <b>client</b>, puis par <b>année</b>. Tu peux les retrouver dans ton gestionnaire de fichiers sans ouvrir l'application, et rendre à un client ses pièces en copiant un dossier.</p>
+      <p class="small">Tu peux en déposer <b>vingt d'un coup</b> : l'application les range l'un après l'autre en te disant où elle en est, et tu peux arrêter en cours de route. L'arrêt attend la fin du paquet en cours — ce qui est rangé l'est pour de bon, le reste se redépose plus tard.</p>` },
     {
       id: 'travail', t: 'Ce que tu fais des paquets reçus', d: `
       <p class="small">Deux pages vivent de ce que tes clients t'envoient :</p>
@@ -109,7 +111,8 @@
         <li><b>La copie vers un autre support</b> te protège de <i>l'ordinateur</i> : panne, vol, incendie. Elle emporte la base, les sauvegardes et les paquets. Choisis une clé USB ou un dossier iCloud dans Réglages.</li>
         <li><b>La clé de secours</b> te protège de la <i>perte totale</i>. Elle contient la clé qui ouvre les paquets de tes clients. Sans elle et sans cet ordinateur, aucun paquet déjà reçu ne se rouvre — jamais. Range-la ailleurs.</li>
       </ul>
-      <p class="small">Ton mot de passe, lui, ne se récupère pas. C'est voulu : c'est ce qui fait qu'un portable volé n'emporte pas soixante comptabilités. Note-le quelque part de sûr le jour où tu le choisis.</p>` },
+      <p class="small">Ton mot de passe, lui, ne se récupère pas. C'est voulu : c'est ce qui fait qu'un portable volé n'emporte pas soixante comptabilités. Note-le quelque part de sûr le jour où tu le choisis.</p>
+      <p class="small">Et un quatrième filet, invisible celui-là : si l'application se bloque, elle s'en aperçoit toute seule, note dans son journal technique <b>où</b> le programme s'était arrêté, puis redémarre et te le dit. Tu reviens sur l'écran du mot de passe : c'est normal, rien n'est perdu. Si cela se reproduit, envoie le rapport par <em>Aide → Signaler un problème</em> — c'est ce qui permet de corriger.</p>` },
     {
       id: 'demenager', t: 'Changer d\'ordinateur', d: `
       <p class="small">Ton cabinet, c'est <b>trois</b> choses : tes dossiers, tes paquets, et <b>la clé</b> qui les ouvre. La clé compte autant que le reste : c'est elle qui porte ton <b>empreinte</b>, celle que tes clients ont enregistrée dans leur SkanFact.</p>
