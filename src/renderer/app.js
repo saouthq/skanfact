@@ -222,7 +222,10 @@
     const root = $('#modal-root');
     const layer = document.createElement('div');
     layer.className = 'modal-bg';
-    layer.style.zIndex = String(50 + root.children.length);
+    // 400 et au-dessus : une question doit couvrir TOUT le reste, y compris l'assistant de première
+    // utilisation (250) et l'écran de verrouillage (200). En dessous d'eux, ses boutons existaient
+    // mais les clics atterrissaient sur l'écran du dessus — la question paraissait morte.
+    layer.style.zIndex = String(400 + root.children.length);
     layer.innerHTML = `<div class="modal">${html}</div>`;
     root.appendChild(layer);
     const under = modalClose;

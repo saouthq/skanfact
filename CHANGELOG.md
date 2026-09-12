@@ -9,7 +9,14 @@ Le numéro affiché en bas de la barre latérale de l'app est celui de `package.
 
 ## 5.2.2 — 11/09/2026
 
-Correctifs de robustesse trouvés en cherchant un blocage signalé par Skander (app qui ne répond plus aux clics après avoir chargé les données). La cause de son blocage n'est pas encore confirmée ; ces quatre défauts-là sont réels et corrigés.
+**Le bouton qui ne répondait pas est corrigé.**
+
+Une fenêtre de confirmation ouverte depuis l'assistant de première utilisation s'affichait *derrière* lui. Ses boutons étaient parfaitement visibles, mais les clics atterrissaient sur l'écran du dessus : « Passer » et « Annuler » semblaient morts, et en insistant très fort on finissait par tomber sur un endroit où le bouton passait devant. Le curseur qui change de forme d'un pixel à l'autre venait de là aussi. Aucune erreur n'apparaissait dans la console, puisque techniquement rien ne plantait.
+
+- **Les fenêtres de confirmation passent maintenant au-dessus de tout** : assistant de première utilisation, écran de verrouillage, recherche rapide. Les bulles d'aide et les messages restent lisibles par-dessus elles. Un test vérifie cet ordre à chaque version.
+- Ce défaut existait depuis longtemps — il fallait passer l'assistant ou créer un second dossier pour le rencontrer.
+
+Corrigés en même temps, trouvés en cherchant celui-là :
 
 - **Une question fermée par Échap ou par un clic à côté ne répondait jamais.** La promesse restait en suspens indéfiniment et bloquait tout ce qui l'attendait, sans la moindre erreur visible. Elle vaut « Annuler » désormais.
 - **Le routeur pouvait empiler plusieurs questions** « Modifications non enregistrées » l'une sur l'autre. Une seule à la fois.

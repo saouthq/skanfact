@@ -177,7 +177,11 @@ table.lines-edit .total { text-align: right; padding-top: 12px; font-weight: 600
 .catalog-pick { display: flex; gap: 8px; align-items: center; margin: 4px 0 14px; }
 
 /* ---------- modal ---------- */
-.modal-bg { position: fixed; inset: 0; background: rgba(27,36,48,.38); backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: center; z-index: 50; }
+/* Ordre des couches, du plus bas au plus haut : palette (60), écran de verrouillage (200),
+   assistant (250), fenêtres modales (400+), bulles d'aide (900), messages (950).
+   Une fenêtre modale DOIT couvrir l'assistant et le verrouillage : en dessous, ses boutons
+   recevaient les clics de l'écran du dessus et la question semblait ne plus répondre. */
+.modal-bg { position: fixed; inset: 0; background: rgba(27,36,48,.38); backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: center; z-index: 400; }
 /* Fenêtres empilées : un seul voile, celui du dessus. Sinon deux voiles se cumulent et la fenêtre
    du dessous devient illisible alors qu'on a justement besoin de la voir. */
 .modal-bg:not(:last-child) { background: none; backdrop-filter: none; }
@@ -186,7 +190,7 @@ table.lines-edit .total { text-align: right; padding-top: 12px; font-weight: 600
 .modal .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
 
 /* ---------- toast ---------- */
-#toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%) translateY(6px); background: var(--text); color: #fff; padding: 11px 18px; border-radius: 12px; font-size: 13px; font-weight: 500; opacity: 0; transition: opacity .18s, transform .18s; pointer-events: none; z-index: 100; box-shadow: 0 10px 30px rgba(20,40,60,.25); }
+#toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%) translateY(6px); background: var(--text); color: #fff; padding: 11px 18px; border-radius: 12px; font-size: 13px; font-weight: 500; opacity: 0; transition: opacity .18s, transform .18s; pointer-events: none; z-index: 950; box-shadow: 0 10px 30px rgba(20,40,60,.25); }
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 #toast.error { background: var(--danger); }
 
@@ -560,7 +564,7 @@ button.i:hover, button.i:focus-visible { background: var(--primary-soft-2); colo
 .i-demo { display: inline-grid; place-items: center; width: 15px; height: 15px; border-radius: 50%; background: var(--primary-soft-2); color: var(--primary); font: italic 800 10px/1 Georgia, serif; vertical-align: 1px; }
 
 #info-pop {
-  position: fixed; z-index: 300; width: 340px; max-width: calc(100vw - 16px); background: var(--panel);
+  position: fixed; z-index: 900; width: 340px; max-width: calc(100vw - 16px); background: var(--panel);
   border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 16px 50px rgba(20,40,60,.22); overflow: hidden;
 }
 #info-pop .ip-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 10px 10px 14px; font-weight: 700; font-size: 13px; background: var(--primary-soft); color: var(--primary); }

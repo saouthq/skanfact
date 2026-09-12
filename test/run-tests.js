@@ -2551,4 +2551,31 @@ t('déclarations sociales : ce qui est dû, ce qui est en retard, ce qui est dé
   assert.deepStrictEqual(core.socialDue(core.migrateData({}), '2026-08-01'), []);
 });
 
+// ---------- superposition des couches (src/renderer/style.css) ----------
+// Une fenêtre de confirmation affichée sous l'assistant de première utilisation avait toutes ses
+// commandes visibles mais inertes : les clics atterrissaient sur l'écran du dessus. Aucune erreur
+// JS, aucune trace — seulement un bouton qui « ne marche pas », et un curseur qui change de forme
+// d'un pixel à l'autre selon ce qui se trouve dessus. L'invariant se vérifie sans Electron.
+t('couches : une question passe au-dessus de tout, les bulles et messages au-dessus d\'elle', () => {
+  const css = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'style.css'), 'utf8');
+  const z = sel => {
+    const re = new RegExp(sel.replace(/[.#]/g, '\\$&') + '[^{]*\\{[^}]*?z-index:\\s*(\\d+)');
+    const m = css.match(re);
+    assert.ok(m, `z-index introuvable pour ${sel}`);
+    return Number(m[1]);
+  };
+  const modale = z('.modal-bg');
+  // Tout écran qui occupe la fenêtre entière doit rester SOUS les fenêtres modales.
+  ['#setup', '#lock-screen', '#palette-root'].forEach(sel =>
+    assert.ok(z(sel) < modale, `${sel} (${z(sel)}) couvre les fenêtres modales (${modale})`));
+  // La bulle d'aide et les messages doivent rester lisibles par-dessus une fenêtre modale.
+  ['#info-pop', '#toast'].forEach(sel =>
+    assert.ok(z(sel) > modale, `${sel} (${z(sel)}) passe sous les fenêtres modales (${modale})`));
+  // Les couches empilées par modal() partent de la même base que la règle CSS.
+  const appSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
+  const base = appSrc.match(/layer\.style\.zIndex = String\((\d+) \+ root\.children\.length\)/);
+  assert.ok(base, 'base d\'empilement des fenêtres modales introuvable dans app.js');
+  assert.strictEqual(Number(base[1]), modale, 'app.js et style.css ne partent pas de la même couche');
+});
+
 console.log(`\n${n} tests OK`);

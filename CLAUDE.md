@@ -149,6 +149,16 @@ Constats laissés de côté en 2.4.0 et repris en bloc en **5.2.1**. Tous corrig
 - « Documents récents » vide n'offrait rien → propositions concrètes (`#start-client`, `#start-devis`, `#start-cat`, `#start-demo`).
 - Les boutons de ligne étaient invisibles hors survol sur Clients et les documents → `td.row-actions > span` passe de `opacity: 0` à `.45` (et `1` au survol).
 
+## Règle apprise en 5.2.2 : l'ordre des couches
+
+Un bouton parfaitement visible peut être inerte. Une fenêtre modale (`.modal-bg`, z-index 400 et au-dessus, empilée par `modal()` depuis la même base) doit couvrir **tout** écran qui occupe la fenêtre entière — l'assistant `#setup` (250), `#lock-screen` (200), `#palette-root` (60) — et rester sous `#info-pop` (900) et `#toast` (950), qui doivent se lire par-dessus elle. Avant la 5.2.2, une confirmation ouverte depuis l'assistant s'affichait derrière lui : les clics atterrissaient sur l'écran du dessus.
+
+Ce bug n'était visible dans **aucune** console : rien ne plante, le clic n'existe simplement pas. Les deux signes à reconnaître, parce qu'aucune trace n'en sera jamais laissée : un bouton qui finit par répondre **après plusieurs essais** (on tombe sur un pixel où il passe devant), et un **curseur qui change de forme d'un pixel à l'autre** (`elementFromPoint` renvoie tantôt le bouton, tantôt l'écran du dessus). Devant ce symptôme, la première chose à faire est `document.elementFromPoint(x, y)` au centre du bouton, pas la lecture des erreurs.
+
+Une promesse posée par une boîte de dialogue doit **toujours** se résoudre : `modal()` prend un `onDismiss`, et Échap comme le clic à côté valent « Annuler ». Une promesse en suspens bloque son appelant pour toujours, sans erreur.
+
+Le test `couches : une question passe au-dessus de tout` lit `style.css` et `app.js` et vérifie cet ordre sans Electron.
+
 ## Pistes pour la suite (non demandées)
 
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.
