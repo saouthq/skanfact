@@ -1484,7 +1484,11 @@
         <div><h1>${h(title)} <span class="dirty-dot" id="dirty-dot" hidden title="Modifications non enregistrées">non enregistré</span></h1>${doc.recurringId ? `<div class="small muted">Générée par un contrat récurrent — <a href="#/contrat/${h(doc.recurringId)}">voir le contrat</a></div>` : ''}</div>
         <div class="actions">
           ${backButton(backTo)}
-          ${!isNew && (locked || isQ || isExtra) ? `<button class="btn" id="email">Email</button>` : ''}
+          <!-- Le bouton existe sur TOUTE pièce enregistrée (7.1.2). Sur un brouillon de facture il
+               n'envoie pas — une facture sans numéro n'a pas à partir chez un client — mais il
+               explique pourquoi et propose d'émettre. Avant, la ligne « Brouillon » était la seule
+               sans bouton Email de toute la liste, et aucun écran ne disait pourquoi. -->
+          ${!isNew ? `<button class="btn" id="email">Email</button>` : ''}
           <button class="btn" id="pdf">PDF</button>
           ${locked && isInv && doc.status !== 'annulée' ? `<button class="btn btn-primary" id="pay">Enregistrer un paiement</button>` : ''}
           ${facturerMenu}${transformMenu}
@@ -1553,7 +1557,19 @@
             <form id="f-clauses">${C.CLAUSE_LABELS.map(([k, label]) =>
               `<label class="field mb">${h(label)}<textarea name="${k}" rows="2" ${ro}>${h((doc.clauses || {})[k] || '')}</textarea></label>`).join('')}
             <button type="button" class="btn btn-sm" id="reset-clauses">Revenir aux textes proposés</button></form></div>` : ''}
-          ${isNew ? '' : `<div class="panel"><h2>Pièces jointes ${info('ed.attachments')}</h2><div id="attachments"></div></div>`}
+          <!-- Le panneau existe MÊME sur une pièce neuve (7.1.2). Il n'apparaissait qu'après
+               l'enregistrement : quelqu'un qui saisissait sa première facture avec la photo du
+               justificatif ouverte à côté ne trouvait aucun endroit où l'accrocher, et en concluait
+               que l'application ne sait pas faire. Une pièce jointe a besoin d'un identifiant, donc
+               d'un enregistrement : le panneau le dit, et propose de l'enregistrer tout de suite. -->
+          <div class="panel"><h2>Pièces jointes ${info('ed.attachments')}</h2>
+            ${isNew
+              ? `<p class="small muted">Bon de commande du client, photo d'un justificatif, plan, contrat signé :
+                 tout ce qui doit rester avec cette pièce. Les pièces jointes s'attachent à un document enregistré —
+                 <b>enregistre d'abord</b>, le panneau s'ouvre ensuite.</p>
+                 <button type="button" class="btn btn-sm mt" id="att-save-first">Enregistrer maintenant pour joindre un fichier</button>`
+              : '<div id="attachments"></div>'}
+          </div>
           ${isNew ? '' : `<div class="panel"><h2>Historique ${info('ed.history')}</h2><div id="doc-history"></div></div>`}
           <div class="panel"><h2>Notes (affichées sur le document) ${info('ed.notes')}</h2>
             ${!locked && data.snippets.length ? `<div class="catalog-pick"><div id="snip-pick">${combo({ items: [], placeholder: 'Insérer un texte prédéfini…', search: 'Rechercher un texte…' })}</div></div>` : ''}
@@ -1959,7 +1975,30 @@
     // l'a lu, pas dans un menu qu'il n'a pas encore ouvert.
     if ($('#lock-credit')) $('#lock-credit').onclick = () => navigate('#/doc/new/avoir/' + doc.id);
     if ($('#lock-unlock')) $('#lock-unlock').onclick = () => { const u = $('#unlock'); if (u) u.onclick(); };
-    if ($('#email')) $('#email').onclick = () => sendByEmail(docById(doc.id) || doc);
+    if ($('#email')) $('#email').onclick = async () => {
+      const d = docById(doc.id) || doc;
+      // Un brouillon de facture ou d'avoir n'a pas de numéro : il ne part pas. On le DIT, et on
+      // propose le geste qui débloque, au lieu de faire disparaître le bouton.
+      if ((isInv || isAv) && !locked && !d.number) {
+        const n = peekNumber(doc.type, doc.date);
+        return modal(`<h2>Ce brouillon n'a pas encore de numéro</h2>
+          <p>Une ${isInv ? 'facture' : 'avoir'} part chez un client avec son numéro : c'est lui qui la rend
+          opposable et qui permet à ton comptable de la retrouver. Tant qu'elle est en brouillon, elle n'en a pas.</p>
+          <p class="small muted">En l'émettant, elle prendra le numéro <b>${h(n)}</b> et ne sera plus modifiable.
+          Pour corriger après coup, ce sera un avoir.</p>
+          <div class="modal-actions"><button class="btn" data-close>Rester en brouillon</button>
+            <button class="btn btn-primary" id="em-issue">Émettre puis envoyer</button></div>`,
+          (root, close) => {
+            $('#em-issue', root).onclick = () => {
+              close();
+              if (!issue()) return;
+              render();
+              sendByEmail(docById(doc.id) || doc);
+            };
+          });
+      }
+      sendByEmail(d);
+    };
     if ($('#as-template')) $('#as-template').onclick = () => saveAsTemplate(doc);
     if ($('#make-recurring')) $('#make-recurring').onclick = () => recurrenceForm(recurrenceFromInvoice(doc), () => { toast('Contrat créé'); navigate('#/contrats'); });
     if ($('#more-btn')) $('#more-btn').onclick = e => { e.stopPropagation(); const l = $('#more-list'); const open = l.hidden; closeMenus(); l.hidden = !open; };
@@ -2036,6 +2075,13 @@
     drawPayments();
     drawHistory();
     drawAttachments();
+    // Sur une pièce neuve, le panneau propose d'enregistrer pour pouvoir joindre : le geste suivant
+    // est alors à portée, au lieu d'être à deviner.
+    if ($('#att-save-first')) $('#att-save-first').onclick = () => {
+      if (!persist()) return;
+      toast('Enregistré — tu peux joindre tes fichiers');
+      if (isNew) navigate('#/doc/' + doc.id); else render(true);
+    };
   };
 
   // Taille de fichier lisible : « 1,4 Mo » vaut mieux que 1468006.
@@ -2307,6 +2353,14 @@
         <div class="field span-2" id="marge-hint"></div>
         <div class="field">${lbl('Unité', 'ed.unit')}<select name="unit" id="cat-unit">${unitOptions(it.unit || '', C.usedUnits(data))}</select></div>
         <label class="check span-2"><input type="checkbox" name="tracked" ${it.tracked ? 'checked' : ''}> Suivi en stock ${info('stk.tracked')}</label>
+        <!-- Cette case vivait À L'INTÉRIEUR du bloc masqué par « Suivi en stock » : quelqu'un qui
+             venait de lire « coche l'option sur une prestation du catalogue » ouvrait la fiche et ne
+             la trouvait pas — elle n'existait pas à l'écran. Elle est ici, toujours visible, et elle
+             coche « Suivi en stock » elle-même : suivre des numéros implique de suivre le stock. -->
+        <label class="check span-2"><input type="checkbox" name="serialized" ${it.serialized ? 'checked' : ''}> Suivre chaque unité par son numéro de série ${info('ser.serialized')}</label>
+        <div class="field span-2" id="serial-block" ${it.serialized ? '' : 'hidden'}>
+          <label class="field">${lbl('Garantie proposée', 'ser.warranty')}<select name="warrantyMonths">${C.WARRANTY_CHOICES.map(m => `<option value="${m}" ${Number(it.warrantyMonths) === m ? 'selected' : ''}>${m ? m + ' mois' : 'Aucune'}</option>`).join('')}</select></label>
+        </div>
         <div class="field span-2" id="stock-block" ${it.tracked ? '' : 'hidden'}>
           <div class="grid-2">
             ${field(lbl('Seuil d\'alerte', 'stk.min'), 'minStock', it.minStock || 0, 'number', 'step="0.01" min="0" class="num"')}
@@ -2317,10 +2371,6 @@
           ${already && already.moves.length > 1
             ? `<p class="small muted mt">Stock actuel : <b>${already.qty} ${h(already.unit)}</b> au coût moyen de ${C.money(already.cmp, company().currency)}. Le stock de départ n'est plus modifiable ici — des mouvements s'y appuient. Passe par un ajustement sur la page Stock.</p>`
             : '<p class="small muted mt">Ce que tu as en rayon aujourd\'hui, avant que SkanFact ne commence à compter. Les achats et les ventes s\'y ajoutent tout seuls ensuite.</p>'}
-          <label class="check mt"><input type="checkbox" name="serialized" ${it.serialized ? 'checked' : ''}> Suivre chaque unité par son numéro de série ${info('ser.serialized')}</label>
-          <div id="serial-block" ${it.serialized ? '' : 'hidden'}>
-            <label class="field mt">${lbl('Garantie proposée', 'ser.warranty')}<select name="warrantyMonths">${C.WARRANTY_CHOICES.map(m => `<option value="${m}" ${Number(it.warrantyMonths) === m ? 'selected' : ''}>${m ? m + ' mois' : 'Aucune'}</option>`).join('')}</select></label>
-          </div>
         </div>
       </form>
       <div class="modal-actions">
@@ -2352,8 +2402,20 @@
         $('#kf', root).oninput = hint; hint();
         // Le bloc stock n'apparaît que si l'article est suivi : inutile d'imposer quatre champs de plus
         // à qui ne vend que des prestations.
-        $('input[name=tracked]', root).onchange = e => { $('#stock-block', root).hidden = !e.target.checked; };
-        $('input[name=serialized]', root).onchange = e => { $('#serial-block', root).hidden = !e.target.checked; };
+        const caseStock = $('input[name=tracked]', root), caseSerie = $('input[name=serialized]', root);
+        caseStock.onchange = e => {
+          $('#stock-block', root).hidden = !e.target.checked;
+          // Décocher le stock retire forcément le suivi par numéro (il s'appuie dessus) : on le dit
+          // en le faisant, plutôt que de laisser une case cochée qui ne s'enregistrera pas.
+          if (!e.target.checked && caseSerie.checked) { caseSerie.checked = false; caseSerie.onchange({ target: caseSerie }); }
+        };
+        caseSerie.onchange = e => {
+          $('#serial-block', root).hidden = !e.target.checked;
+          // Suivre chaque unité par son numéro implique de suivre le stock : `save` le forçait déjà
+          // en silence (`serialized: !!v.tracked && !!v.serialized`), ce qui faisait disparaître la
+          // case à l'enregistrement sans un mot.
+          if (e.target.checked && !caseStock.checked) { caseStock.checked = true; caseStock.onchange({ target: caseStock }); }
+        };
         $('#ok', root).onclick = () => {
           const v = formValues($('#kf', root));
           if (!v.label.trim()) return toast('La désignation est obligatoire.', true);
@@ -3697,7 +3759,19 @@
             <div id="b-stock-hint" hidden></div>
           </div>
           ${isNew ? '' : `<div class="panel"><h2>Règlements ${info('buy.payments')}</h2><div id="b-pay"></div></div>`}
-          ${isNew ? '' : `<div class="panel"><h2>Pièces jointes ${info('ed.attachments')}</h2><div id="attachments"></div></div>`}
+          <!-- Le panneau existe MÊME sur une pièce neuve (7.1.2). Il n'apparaissait qu'après
+               l'enregistrement : quelqu'un qui saisissait sa première facture avec la photo du
+               justificatif ouverte à côté ne trouvait aucun endroit où l'accrocher, et en concluait
+               que l'application ne sait pas faire. Une pièce jointe a besoin d'un identifiant, donc
+               d'un enregistrement : le panneau le dit, et propose de l'enregistrer tout de suite. -->
+          <div class="panel"><h2>Pièces jointes ${info('ed.attachments')}</h2>
+            ${isNew
+              ? `<p class="small muted">Bon de commande du client, photo d'un justificatif, plan, contrat signé :
+                 tout ce qui doit rester avec cette pièce. Les pièces jointes s'attachent à un document enregistré —
+                 <b>enregistre d'abord</b>, le panneau s'ouvre ensuite.</p>
+                 <button type="button" class="btn btn-sm mt" id="att-save-first">Enregistrer maintenant pour joindre un fichier</button>`
+              : '<div id="attachments"></div>'}
+          </div>
           <div class="panel"><h2>Notes internes</h2>
             <textarea id="b-notes" placeholder="Ce qu'il faut se rappeler sur cet achat">${h(p.notes || '')}</textarea>
           </div>
@@ -3969,6 +4043,11 @@
     drawLines();
     drawPayments();
     drawBuyAttachments();
+    if ($('#att-save-first')) $('#att-save-first').onclick = () => {
+      if (!persist()) return;
+      toast('Enregistré — tu peux joindre ton justificatif');
+      navigate('#/achat/' + p.id);
+    };
   };
 
   // ---------- Autres documents : proforma, bon de commande, bon de livraison, contrat ----------
@@ -5437,11 +5516,20 @@
           </tbody></table></div>
           ${paged.pg ? pagerBar(paged.pg, { noun: 'numéro' }) : ''}`
             : '<div class="empty">Aucun numéro ne correspond.</div>'}`
-            : `<div class="empty">Aucun article n'est suivi par numéro de série. Ouvre le <a href="#/catalogue">Catalogue</a>, modifie un article suivi en stock et coche « Suivre chaque unité par son numéro de série ». C'est utile pour du matériel garanti : tu sauras qui a quoi, depuis quand, et jusqu'à quand c'est couvert.</div>`}
+            : `<div class="empty">
+                <p><b>Aucun article n'est suivi par numéro de série.</b> C'est utile pour du matériel garanti :
+                tu sauras qui a quoi, depuis quand, et jusqu'à quand c'est couvert.</p>
+                <div class="inline" style="justify-content:center;margin-top:10px">
+                  ${data.catalog.length ? '<button class="btn btn-primary" id="ser-pick">Choisir une prestation à suivre…</button>' : ''}
+                  <button class="btn${data.catalog.length ? ' btn-ghost' : ' btn-primary'}" id="ser-new">+ Nouvelle prestation suivie</button>
+                </div></div>`}
         </div>`;
       if ($('#se-q')) $('#se-q').oninput = e => { s.ser.q = e.target.value; s.ser.page = 1; drawSerials(); const el = $('#se-q'); el.focus(); el.setSelectionRange(el.value.length, el.value.length); };
       if ($('#se-st')) $('#se-st').onchange = e => { s.ser.status = e.target.value; s.ser.page = 1; drawSerials(); };
       if ($('#se-add')) $('#se-add').onclick = () => serialIntakeForm(null, () => draw());
+      // L'état vide expliquait le geste en prose et laissait retraverser l'application de mémoire.
+      if ($('#ser-pick')) $('#ser-pick').onclick = () => navigate('#/catalogue');
+      if ($('#ser-new')) $('#ser-new').onclick = () => catalogForm(null, () => render());
       $$('#st-body [data-ser]').forEach(b => b.onclick = () => { const x = data.serials.find(y => y.id === b.dataset.ser); if (x) serialForm(x, () => draw()); });
       bindPager($('#st-body'), s.ser, () => drawSerials(), '#st-body');
     }
@@ -5614,7 +5702,21 @@
   // Entrée : on colle une liste de numéros, un par ligne. Coller vaut mieux que saisir vingt fois.
   function serialIntakeForm(itemId, done) {
     const items = C.serializedItems(data);
-    if (!items.length) return toast('Aucun article n\'est suivi par numéro de série. Coche l\'option sur une prestation du catalogue.', true);
+    // Un refus qui nomme un geste sans le proposer oblige à traverser l'application de mémoire.
+    if (!items.length) {
+      return modal(`<h2>Aucun article suivi par numéro</h2>
+        <p>Pour saisir des numéros de série, il faut d'abord dire quelle prestation se suit unité par unité.</p>
+        <p class="small muted">Une case à cocher sur la fiche de l'article, dans le Catalogue. Elle active aussi le suivi en stock, dont elle dépend.</p>
+        <div class="modal-actions"><button class="btn" data-close>Plus tard</button>
+          <button class="btn btn-primary" id="ser-go">${data.catalog.length ? 'Choisir une prestation…' : 'Créer une prestation suivie'}</button></div>`,
+        (root, close) => {
+          $('#ser-go', root).onclick = () => {
+            close();
+            if (data.catalog.length) navigate('#/catalogue');
+            else catalogForm(null, () => render());
+          };
+        });
+    }
     const first = itemId && items.some(c => c.id === itemId) ? itemId : items[0].id;
     modal(`<h2>Entrée de numéros de série</h2>
       <p class="small muted">Un numéro par ligne. Tu peux les coller depuis un bon de livraison fournisseur ou un fichier : SkanFact ignore les lignes vides et refuse les doublons.</p>

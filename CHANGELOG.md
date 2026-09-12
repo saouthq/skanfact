@@ -7,6 +7,15 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 7.1.2 — 12/09/2026
+
+**Quatre gestes qu'on ne pouvait pas faire, et dont rien ne disait pourquoi.**
+
+- **La case « numéro de série » n'existait pas à l'écran.** Elle vivait *à l'intérieur* du bloc que « Suivi en stock » masque : quelqu'un qui venait de lire « coche l'option sur une prestation du catalogue » ouvrait la fiche et ne la trouvait pas. Elle est maintenant à côté de « Suivi en stock », toujours visible — et la cocher coche le suivi en stock, dont elle dépend, au lieu de se faire annuler en silence à l'enregistrement.
+- **Le panneau « Pièces jointes » n'apparaissait qu'après l'enregistrement.** Quelqu'un qui saisissait sa première facture d'achat avec la photo du ticket ouverte à côté ne trouvait aucun endroit où l'accrocher. Le panneau est là dès le départ : il explique qu'une pièce jointe a besoin d'un document enregistré, et propose de l'enregistrer tout de suite.
+- **Une facture en brouillon ne pouvait être envoyée nulle part.** Sa ligne était la seule de la liste sans bouton Email, et aucun écran ne disait pourquoi. Le bouton existe désormais partout : sur un brouillon, il explique qu'une facture part chez un client avec son numéro, annonce lequel elle prendra, et propose « Émettre puis envoyer ».
+- **Les deux messages qui envoyaient chercher les numéros de série** décrivaient un geste au lieu de le proposer. Ils portent leurs boutons.
+
 ## 7.1.1 — 12/09/2026
 
 **Une facture émise ne change plus de total quand on change un réglage.**

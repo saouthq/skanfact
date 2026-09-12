@@ -72,6 +72,29 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   const tel = await win.evaluate(() => (JSON.parse(localStorage.getItem('skanfact') || '{}').company || {}).phone);
   j.ok('« Passer » a gardé la saisie');
 
+  j.etape('Ce qu\'on ne pouvait pas faire, et qu\'on ne comprenait pas');
+  // La case « numéro de série » vivait DANS le bloc masqué par « Suivi en stock » : le message qui
+  // envoyait la chercher décrivait une case qui n'existait pas à l'écran.
+  await win.evaluate(() => { location.hash = '#/catalogue'; });
+  await win.waitForSelector('#view .page-head');
+  await win.click('#view .page-head .btn-primary');
+  await win.waitForSelector('#modal-root input[name=serialized]');
+  if (!(await win.isVisible('#modal-root input[name=serialized]'))) {
+    throw new Error('la case « numéro de série » doit être visible sans avoir coché autre chose d\'abord');
+  }
+  // Et la cocher coche « Suivi en stock », dont elle dépend — au lieu d'être annulée en silence.
+  await win.check('#modal-root input[name=serialized]');
+  if (!(await win.isChecked('#modal-root input[name=tracked]'))) {
+    throw new Error('cocher le suivi par numéro doit cocher le suivi en stock : sinon l\'enregistrement l\'annule sans un mot');
+  }
+  await win.click('#modal-root [data-close]');
+  j.ok('la case des numéros de série est visible, et elle entraîne le suivi en stock');
+
+  // Le panneau « Pièces jointes » existe même sur une pièce neuve.
+  await win.evaluate(() => { location.hash = '#/doc/new/facture'; });
+  await win.waitForSelector('#att-save-first');
+  j.ok('« Pièces jointes » existe sur une pièce neuve, avec le geste qui débloque');
+
   if (bac.length) { console.error('ERREURS JS :\n' + bac.join('\n')); process.exit(1); }
-  await app.close(); console.log('\n>>> 7.1.1 OK'); process.exit(0);
+  await app.close(); console.log('\n>>> RÉGLAGES ET GESTES BLOQUÉS : OK'); process.exit(0);
 })().catch(e => { console.error('\n✗ ' + e.message); process.exit(1); });
