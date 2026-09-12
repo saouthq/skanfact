@@ -133,9 +133,11 @@ src/licence.js             licence hors ligne (Ed25519), testée sans Electron
 scripts/licence.js         fabrique les licences (clé privée hors du dépôt)
 src/cabinet/               SkanFact Cabinet : la seconde application, celle du comptable
   cabcore.js               sa logique, testée sans Electron
+  cabstore.js              ses filets : sauvegardes, copie externe, clé de secours, rangement
   main.js                  état chiffré, import des paquets, appairage
   preload.js               pont sécurisé (aucune écriture chez un client)
   renderer/                ses écrans (réutilise src/renderer/style.css)
+    cabguide.js            ses bulles « i » et ses articles d'aide
 build/cabinet.config.js    configuration electron-builder du second installeur
 test/run-tests.js
 ```
@@ -149,7 +151,17 @@ npm run start:cabinet        # lancer l'app cabinet en développement
 npm run build:cabinet:mac    # ou :win — installeur dans dist-cabinet/
 ```
 
-Sa version est `cabinetVersion` dans `package.json` (indépendante de celle de SkanFact). Le workflow Release la construit et attache ses installeurs à la release de l'app entreprise.
+Ce qu'elle fait, depuis la 6.8.0 :
+
+- **Dossiers** — un par client, y compris ceux qui n'utilisent pas encore SkanFact (créés à la main, ou collés depuis un tableur). Tableau de bord du portefeuille, tri, pagination, export CSV, Cmd+K.
+- **Échéances** — le calendrier des dépôts, rattaché aux paquets qu'on n'a pas reçus. Les dates suivent l'usage tunisien, se règlent, et portent « À VÉRIFIER ».
+- **Écritures** — toutes les écritures en partie double de tous les clients sur un mois ou un exercice, en un seul CSV pour le logiciel de production.
+- **Relances** — enregistrées (date, moyen, mois réclamés), groupées, avec un jour de relance réglable.
+- **Les filets** — sauvegarde quotidienne, copie vers un autre support (base, sauvegardes **et** paquets), clé de secours exportable, mot de passe modifiable, restauration qui annonce ce qu'on perdrait.
+
+Les paquets reçus sont rangés dans `userData/paquets/<client>/<année>/<mois>.skanpack` : on les retrouve dans le Finder sans ouvrir l'application, et on rend ses pièces à un client en copiant un dossier.
+
+Les deux applications partagent le **même numéro de version** (`package.json`) depuis la 6.6.0, ce qui permet de les publier dans la même release ; ce qui les sépare est le **canal** de mise à jour (`latest.yml` contre `cabinet.yml`).
 
 ## Licence (6.4.0)
 
@@ -166,7 +178,8 @@ Une licence expirée n'empêche que la **création** de nouvelles pièces : lect
 ## Limites connues
 
 - Un document qui déborde d'un peu se resserre automatiquement pour tenir sur une page A4 ; au-delà, il passe sur plusieurs pages (lignes jamais coupées, en-tête du tableau répété) mais le pied de page n'apparaît qu'à la fin. L'aperçu indique le nombre de pages.
-- Une installation = une entreprise. Pour gérer deux sociétés sur le même ordinateur, il faut deux sessions utilisateur (les données sont rangées par utilisateur).
+- Plusieurs entreprises sur un même ordinateur sont possibles depuis la 3.2.0 (dossiers, `userData/dossiers/<id>/`), et un dossier peut vivre dans un espace partagé — mais **à tour de rôle**, pas à deux en même temps : l'application détecte le conflit, fusionne et le dit, elle ne synchronise pas en temps réel.
+- SkanFact Cabinet : un poste, un mot de passe, une personne. Pas encore de collaborateurs.
 - Retenue à la source : calculée sur le TTC hors timbre ; taux et assiette **à vérifier avec le comptable** selon la nature de la prestation.
 - Apps non signées (pas de certificat Apple ni Windows) : avertissements au premier lancement, voir « Installation ».
 - L'icône de l'app est `build/icon.png` (1024×1024) ; electron-builder la convertit en `.icns` / `.ico` au build. Pour en changer, remplace ce fichier.
