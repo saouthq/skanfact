@@ -1,6 +1,8 @@
 # SkanFact — Plan Cabinet
 
-*Vendre SkanFact aux entreprises en passant par les cabinets comptables. Rédigé le 12/09/2026 à partir de la discussion avec Skander, réécrit le soir même après la livraison de la 6.8.0. Les points marqués « À VÉRIFIER » relèvent d'un comptable, d'un juriste ou de l'Ordre.*
+*Vendre SkanFact aux entreprises en passant par les cabinets comptables. Rédigé le 12/09/2026 à partir de la discussion avec Skander, réécrit le soir même après **deux audits** de l'application du cabinet et la livraison de la 6.8.1. Les points marqués « À VÉRIFIER » relèvent d'un comptable, d'un juriste ou de l'Ordre.*
+
+> **Pour aller droit au but** : où on en est → *Où on en est*. Ce qu'il reste à corriger et dans quel ordre → **Les versions à venir**. Ce qui attend une décision de Skander → *Ce qui ne dépend pas de nous*.
 
 ## En une page
 
@@ -41,7 +43,7 @@ SkanFact                                            SkanFact Cabinet
 
 ## Où on en est — 12/09/2026 au soir
 
-**Tout le plan initial est livré, sauf ce qui dépend d'un achat ou d'une décision de Skander.**
+**Tout le plan initial est livré**, sauf ce qui dépend d'un achat ou d'une décision de Skander. Deux audits ont été passés sur l'application du cabinet dans la même journée : le premier a dit ce qui **manquait**, le second ce qui était **faux**.
 
 | Version | Quoi | État |
 |---|---|---|
@@ -53,12 +55,18 @@ SkanFact                                            SkanFact Cabinet
 | 6.4.0 | Licence hors ligne | publiée (désarmée) |
 | 6.5.0 | Chien de garde et rapport de problème | publiée |
 | 6.7.0 → 6.7.3 | Relais de mise à jour, et ses trois corrections | publiées |
-| **6.8.0** | **SkanFact Cabinet 2.0 — l'audit traité en bloc** | **écrite et vérifiée, PAS ENCORE PUBLIÉE (quota GitHub)** |
-| 6.6.0 | Signature Apple / Windows | **attend les certificats (achat)** |
+| **6.8.0** | **Cabinet 2.0 — le premier audit traité en bloc** | écrite et vérifiée, **pas encore publiée** |
+| **6.8.1** | **Le second audit — ce qui détruisait, mélangeait ou mentait** | écrite et vérifiée, **pas encore publiée** |
+| **6.8.2** | **Le reste de la liste « avant publication »** | **en cours** |
+| 6.9.0 | Cabinet 2.1 — la confiance et le travail du cabinet | à faire, avec les retours des cabinets |
+| 6.10.0 | Cabinet 2.2 — le confort, la vente, la distribution | à faire |
+| 6.11.0 | Signature Apple / Windows | **attend les certificats (achat)** |
 | — | Mises à jour sans token (dépôt public) | **attend un oui de Skander** |
 | 7.0.0 | Serveur | seulement si un cabinet dit oui |
 
-> **À publier dès le 1ᵉʳ octobre** (retour du quota GitHub Actions) : la 6.8.0 est la plus grosse version du cabinet. Elle se teste dès maintenant avec `npm start` ou l'installeur local, sans rien publier.
+> **Une seule publication, dès le 1ᵉʳ octobre** (retour du quota GitHub Actions), portant 6.8.0 + 6.8.1 + 6.8.2. Six versions publiées en une matinée ont consommé le quota gratuit d'un mois entier : c'est le rythme qui était fautif, pas le tarif. En attendant, tout se teste avec `npm start`, `npm run e2e:*` ou `Installer SkanFact.command`, sans consommer une minute.
+>
+> **État de vérification à ce jour** : `npm test` → **202 tests OK**. Les cinq suites qui ouvrent vraiment les applications (`e2e:cabinet`, `e2e:refus`, `e2e:perte`, `e2e:boucle`, `e2e:entreprise`) passent, zéro erreur JS.
 
 ---
 
@@ -114,7 +122,91 @@ Les tests qui ouvrent vraiment l'application vivaient dans un dossier de travail
 
 ---
 
-## Ce qui reste à faire
+## Le second audit — 12/09/2026 au soir
+
+Demande de Skander : « creuse encore plus profond, il manque encore, je suis sûr ». Audit mené **sur la 6.8.0 elle-même**, c'est-à-dire sur l'application qu'on venait de finir : treize angles en parallèle (perte de données, sécurité, protocole du paquet, métier comptable, écran par écran, écart avec l'app entreprise, passage à soixante clients, français et finitions, tests, construction et livraison, relation client, première démonstration, confidentialité), chaque constat **relu par un contradicteur** chargé de le réfuter, puis deux critiques de complétude et un second tour sur les angles manqués.
+
+**131 constats confirmés, 87 retenus.** Le premier audit avait regardé *ce qui manquait* ; celui-ci a regardé *ce qui était faux*. Ce ne sont pas les mêmes défauts, et les seconds sont plus graves : une fonction absente se voit, une fonction qui ment ne se voit pas.
+
+> **La phrase à garder de cet audit.** L'application disait trois choses qu'elle ne faisait pas : « vérifiées, intactes » (rien n'est signé, et le verdict s'effaçait), « personne ne peut les lire » (les paquets dorment en clair sur le disque), « une sauvegarde est prise juste avant » (elle venait d'être purgée). Un comptable achète — ou recommande — sur la parole d'un logiciel.
+
+### Les neuf familles
+
+| | Famille | Constats | Corrigés |
+|---|---|---|---|
+| **A** | Ce qui détruit des pièces ou des chiffres | 10 | 9 |
+| **B** | Ce qui tue la démonstration | 12 | 8 |
+| **C** | Ce que l'application affirme et qui n'est pas vrai | 14 | 5 |
+| **D** | L'identité d'un dossier | 5 | 5 |
+| **E** | Ce que le paquet apporte, et que le cabinet jette | 4 | 0 |
+| **F** | Le travail du cabinet, absent de l'application | 2 | 0 |
+| **G** | Le geste quotidien | 25 | 5 |
+| **H** | Livrer le produit et le vendre | 14 | 2 |
+| **I** | Les tests qui ne peuvent pas échouer | 3 | 0 |
+
+### Les cinq constats les plus graves, et ce qu'ils coûtaient
+
+1. **La sauvegarde « avant suppression » était effacée à la seconde où elle naissait** (A4). Les sauvegardes se purgeaient par **ordre alphabétique** : « avant-… » passait toujours en premier. La fenêtre affichait « Une sauvegarde est prise juste avant » pendant que le filet disparaissait. → corrigé en 6.8.1.
+2. **Un mois renvoyé écrasait le paquet sur lequel le comptable avait déclaré** (A2). Le 15 avril il dépose la TVA de mars ; le 3 juin le client rouvre mars et renvoie — l'ancien fichier n'existait plus nulle part. → corrigé en 6.8.1.
+3. **Un nom de société en arabe n'avait pas d'identité** (A5). `شركة الأمان` et `مخبزة الياسمين` donnaient la même clé vide : dans un portefeuille tunisien, **tous** les clients en raison sociale arabe tombaient dans un seul dossier et leurs paquets s'écrasaient. → corrigé en 6.8.1.
+4. **Ouvrir une pièce lançait le fichier avec le programme du système, sous un nom choisi par l'expéditeur** (C2). Un paquet contenant `facture.pdf.command` exécutait du code d'un simple clic, sur le poste qui détient soixante comptabilités. → corrigé en 6.8.1.
+5. **Rien ne prouve qui a envoyé un paquet, et l'application certifie quand même « vérifiées, intactes »** (C1). Le paquet est chiffré **pour** le cabinet avec sa clé publique — que n'importe qui peut avoir. L'empreinte prouve que le fichier n'a pas bougé depuis sa fabrication, pas **qui** l'a fabriqué. → **reste à faire (6.9.0)**, c'est un changement de format.
+
+---
+
+## Les versions à venir
+
+*Contrainte qui décide de tout : la 6.8.x n'est **pas encore publiée** et le quota GitHub Actions revient le 1ᵉʳ octobre. Une publication coûte quatre applications et ~0,65 $ de quota, les machines macOS étant facturées dix fois les autres. Donc : **tout ce qui détruit une pièce ou tue une démonstration entre avant la publication**, et on publie **une seule fois**.*
+
+### 6.8.1 — livrée le 12/09/2026 *(ce qui détruisait, mélangeait ou mentait)*
+
+Les 30 constats qui font perdre une pièce, afficher un chiffre faux, ou se voir dans les cinq premières minutes d'une démonstration.
+
+- **Données** : A1 manifeste validé avant de toucher au disque · A2 un mois renvoyé garde son fichier (`-r2`) et annonce l'écart de chiffres · A3 la copie externe remplace ce qui a changé · A4 purge par date, avec réserves séparées · A5 noms non latins · A7 valider avant de muter l'état · A8 un paquet plus ancien est écarté · A9 un paquet sans fichier est marqué.
+- **Démonstration** : B1 seuls les mois révolus produisent une échéance · B2 les échéances et les relances comptent la même chose · B3 le début de mission est respecté partout · B4 le 1ᵉʳ du mois ne bascule plus tout en retard · B5 `money()` garde le signe · B6 le total de CA refuse les devises mélangées · B11 les accords.
+- **Affirmations** : C2 liste blanche d'extensions à l'ouverture · C4 décompression bornée · C5 le verdict d'intégrité est conservé · C7 mot de passe exigé pour exporter la clé de secours.
+- **Identité** : D2 matricule modifiable, identité recalculée · D3 « début de mission » qui fonctionne · D4 borné à cinq ans, en gardant la fin · D5 recherche sans accents.
+- **Livraison** : H5 l'app gratuite du comptable n'embarque plus le code de l'app payante · H9 SKANCYBER dans l'installeur Windows.
+- **Quotidien** : G9 tri (classe absente, flèche inversée, urgence irrécupérable) · G11 pas de relance enregistrée si rien n'est parti · G18 « il y a 3 jours » en jours de calendrier · G19 tailles de fichiers à la virgule · G24 « ce Mac » / « le Finder » sous Windows.
+
+### 6.8.2 — **à faire avant de publier** *(le reste de la liste « avant publication »)*
+
+*Règle d'admission : ça bloque un cabinet réel, ou ça rend un test menteur.*
+
+| Code | Ce que c'est | Pourquoi avant publication |
+|---|---|---|
+| **A6** | **Changer d'ordinateur n'a aucun chemin.** Sur le Mac neuf, le premier mot de passe fabrique un cabinet **vide avec une clé neuve** ; les paquets que les clients enverront ensuite seront refusés (« adressé à un autre cabinet »). | Le comptable a fait tout ce que l'app lui demandait — clé USB, clé de secours — et il a 812 paquets sur la table sans aucun bouton pour les reprendre. |
+| **C6** | Un **fichier en trop** dans un paquet n'est ni vérifié ni signalé, alors qu'il s'affiche et s'ouvre. | « 7 pièces vérifiées, intactes » est la seule affirmation rigoureuse de l'app. Elle doit compter juste. |
+| **G1** | Importer vingt paquets **bloque 22 secondes sans un mot**, et le cabinet n'a pas de chien de garde. | C'est le geste quotidien à soixante clients, et une application figée sans message se referme. |
+| **G6 / G7** | Échap ferme tout, Entrée ne valide rien, le focus se pose sur « Annuler » ; **Cmd+K ouvre la palette DERRIÈRE la fenêtre** et lui vole le clavier. | C'est exactement le défaut de la 5.2.2 côté entreprise, avec sa règle d'ordre des couches. Il n'a jamais été porté. |
+| **B8** | Le bandeau de la page Relances contredit le tableau dix pixels plus bas. | Deux chiffres différents sur le même écran. |
+| **B9** | Dans le jeu d'exemple, chaque paquet est **reçu le 8 du mois qu'il couvre** — avant que le mois soit fini. | C'est le premier écran que verra un comptable. |
+| **H10** | Les icônes déclarées pour `.skanpack` et `.skanrecover` sont des **PNG**, silencieusement ignorés (il faut `.icns` / `.ico`). | Les fichiers apparaissent sans icône dans le Finder. |
+| **I1 / I2 / I3** | Trois tests **qui ne peuvent pas échouer** : `main.js` du cabinet est hors du seul contrôle statique ; le test « sous tous les fuseaux » n'appelle aucune fonction qui regarde l'horloge ; le test qui protège la clé privée contient une assertion toujours vraie. | Un test qui ne peut pas échouer est pire que pas de test : il fait croire que le sujet est couvert. |
+
+### 6.9.0 — Cabinet 2.1 : la confiance et le travail du cabinet
+
+*Ce qui demande un changement de format, ou une réponse d'un vrai comptable. À construire avec les retours des premiers cabinets.*
+
+- **L'origine et le secret** — **C1 signer le paquet côté client** et épingler la clé au dossier : c'est la réponse à « comment tu sais que ça vient de moi ? » · **C3** rechiffrer les paquets à l'arrivée (ou corriger les deux phrases qui affirment le contraire) · C8 verrouillage automatique · C9 les pièces extraites · C10 un journal de ce qui sort (secret professionnel) · C11 et C14 les versions et paramètres écrits **et relus** · C12 renouveler la clé du cabinet sans rendre les archives illisibles · C13 neutraliser les cellules CSV venues de soixante fichiers tiers.
+- **L'identité** — D1 adopter et fusionner deux dossiers quand un matricule a été écrit autrement.
+- **Ce que le paquet apporte et que le cabinet jette** — B7 le crédit de TVA (« 0,000 DT » se lit « rien à déclarer ») · B12 et E3 les vrais compteurs du mois, et savoir quels clients ont des salariés · E1 afficher ce que l'app entreprise n'a **pas pu joindre** · E2 l'empreinte du manifeste, sur laquelle repose le rituel promis au client · E4 deux fichiers de même chemin.
+- **Le travail du cabinet** — **F1** un mois n'a que trois états, tous du côté du client : *reçu → saisi → déclaré → payé* n'existe nulle part · F2 les échéances annuelles d'un cabinet tunisien. **À VÉRIFIER** : toutes ces dates restent réglables et marquées comme telles.
+- **Les filets** — A10 deux postes du cabinet sur le même dossier partagé s'écrasent en silence (la leçon de la 3.2.0, jamais portée à l'app qui contient soixante comptabilités) · A9 un bouton « Vérifier mes paquets » qui compare l'index et le disque dans les deux sens.
+- **Ce que le premier plan réservait déjà à 2.1** — les **collaborateurs** (constat n° 20 du premier audit), les **formats d'import** du logiciel de production du cabinet, les **honoraires**. Trois choses qui se demandent, pas qui se devinent.
+
+### 6.10.0 — Cabinet 2.2 : le confort, la vente, la distribution
+
+*Rien ici n'empêche de vendre ; tout ici décide si le produit est gardé.*
+
+- **La vente** — **H1** un cabinet n'a aucun moyen de télécharger l'application, et le seul bouton offert mène à un 404 (route publique dans le relais) · **H2** l'application est le canal de vente et n'a pas un bouton pour **inviter un client** · H3 associer le `.skanpair` côté entreprise · H4 accepter la clé de secours quand on la dépose · H8 README et fiche d'installation · H6 et H7 construction locale des deux apps sous Windows et sur Mac.
+- **Le pont entreprise ↔ cabinet** — **H11** sous Windows, « Envoyer au comptable » n'attache pas le paquet et l'app dit quand même « Message préparé » · H12 rappeler d'**envoyer**, pas seulement de fabriquer · H13 le sélecteur de mois ne remonte qu'à douze · H14 l'appairage récupère l'adresse du comptable, et l'envoi l'ignore.
+- **La démonstration complète** — **B10** Écritures, la fonction qui fait gagner des heures, est **vide pendant toute la démonstration**.
+- **Le quotidien** — G2 à G5 performances (copie externe, déchiffrement répété, recherche, pont) · G8 la tournée de relances interruptible · G10 le destinataire d'une relance · G12 le bouton retour câblé en dur · G13 « Ce dossier n'existe plus. » · G14 les boutons hors écran à la taille minimale · **G15** coller une liste de clients partout, pas seulement dans l'assistant · G16 rendre ses pièces à un client d'un geste · G17 l'impression emporte les notes internes · G20 le thème sombre · G21 les erreurs en anglais avec leur code errno · G22 « À propos » · G23 une mise à jour qui n'annonce pas ce qu'elle change · G25 la signature promise par la bulle.
+
+---
+
+## Ce qui ne dépend pas de nous
 
 ### Décisions et achats de Skander (rien ne bouge sans lui)
 
@@ -128,15 +220,7 @@ Les tests qui ouvrent vraiment l'application vivaient dans un dossier de travail
 | Acheter un **certificat Windows** (~200–400 $/an) | Vérification de l'entreprise | semaines |
 | Dire oui ou non au **dépôt public de releases** | Décision commerciale, pas technique | — |
 
-### Cabinet 2.1 — ce qui viendra d'un vrai cabinet
-
-Volontairement **non construit** : ce sont les choses qu'un comptable demandera en cinq minutes de démonstration, et qu'il vaut mieux entendre de lui que deviner.
-
-- **Plusieurs collaborateurs** sur un même cabinet (constat n° 20). Un poste, un mot de passe, une personne aujourd'hui. La vraie question n'est pas technique : qui voit quels dossiers ?
-- **Les formats d'import de son logiciel de production** : aujourd'hui un CSV générique. Le format exact ne se devine pas, il se demande.
-- **La facturation des honoraires du cabinet** : le champ existe (il totalise le portefeuille) mais SkanFact Cabinet ne facture rien et n'envoie rien.
-
-### SkanFact 6.6.0 — Signature Apple et Windows *(~1 j + délais externes)*
+### 6.11.0 — Signature Apple et Windows *(~1 j + délais externes)*
 
 Rien n'est modifiable tant que les certificats n'existent pas ; le workflow de publication n'a donc pas été touché.
 
@@ -162,15 +246,16 @@ Serveur de dépôt : les paquets circulent seuls ; comptes cabinet et entreprise
 
 ## L'ordre et le calendrier
 
-1. **Maintenant, Skander seul** : montrer l'application à deux ou trois cabinets. Elle est complète — c'était la condition qu'il posait le matin même.
-2. **1ᵉʳ octobre** : publier la 6.8.0 (le quota GitHub Actions revient). Une seule publication, pas six.
-3. **Avec les réponses des cabinets** : Cabinet 2.1, construit sur ce qu'ils auront demandé et pas sur ce qu'on aura supposé.
-4. **Avec les achats** : 6.6.0, puis premier client payant.
-5. **Si oui** : 7.0.0.
+1. **Tout de suite** : finir la 6.8.2 — ce qui bloque un cabinet réel et les trois tests qui ne peuvent pas échouer.
+2. **Maintenant, Skander seul** : montrer l'application à deux ou trois cabinets. Elle est complète — c'était la condition qu'il posait le matin même. L'installeur local construit les deux apps sur son Mac sans consommer de quota.
+3. **1ᵉʳ octobre** : publier **une seule fois** 6.8.0 + 6.8.1 + 6.8.2.
+4. **Avec les réponses des cabinets** : 6.9.0, construite sur ce qu'ils auront demandé et pas sur ce qu'on aura supposé. C1 (la signature du client) en est la pièce maîtresse : c'est un changement de format, il ne se fait qu'une fois.
+5. **Puis** 6.10.0, le confort et la vente.
+6. **Avec les achats** : 6.11.0, puis premier client payant.
+7. **Si oui** : 7.0.0.
 
 **Point de bascule : un cabinet dit « je le mets chez tous mes clients ».** Avant, on ne dépense rien de récurrent.
 
----
 
 ## L'inventaire — ce qu'il nous faut
 
