@@ -85,6 +85,14 @@
       <p class="small">Un <b>manifeste</b> porte l'empreinte de chaque fichier. À l'import, SkanFact les recalcule toutes : c'est ce qui te permet d'affirmer que ce que tu as reçu est exactement ce qui a été envoyé.</p>
       <p class="small">Les paquets sont rangés sur ton disque par <b>client</b>, puis par <b>année</b>. Tu peux les retrouver dans le Finder sans ouvrir l'application, et rendre à un client ses pièces en copiant un dossier.</p>` },
     {
+      id: 'travail', t: 'Ce que tu fais des paquets reçus', d: `
+      <p class="small">Deux pages vivent de ce que tes clients t'envoient :</p>
+      <ul class="small" style="line-height:1.8">
+        <li><b>Échéances</b> rattache chaque date de dépôt aux clients dont tu n'as <i>pas</i> les pièces. Un calendrier papier te donne la date ; celui-ci te donne la date <b>et</b> la liste de ceux qu'il faut relancer avant. Les jours proposés suivent l'usage tunisien et se règlent dans Réglages — <b>À VÉRIFIER</b>, ils dépendent de la forme juridique et du régime.</li>
+        <li><b>Écritures</b> sort en un seul fichier CSV les écritures en partie double de <b>tous</b> tes clients sur le mois (ou l'année), avec le client, son matricule et le mois devant chaque ligne. C'est ce fichier que tu importes dans ton logiciel, au lieu de ressaisir.</li>
+      </ul>
+      <p class="small">Si les numéros de compte proposés ne sont pas les tiens, donne-les une fois à ton client : il les saisit dans son SkanFact (Comptabilité → Écritures → Plan comptable) et tous ses envois suivants arrivent à ton format.</p>` },
+    {
       id: 'definitif', t: 'Définitif ou provisoire', d: `
       <p class="small">Un paquet n'est <b>définitif</b> que si le client a clôturé son mois : après une clôture, il ne peut plus ni modifier ni supprimer une pièce de cette période sans rouvrir le mois, avec un motif écrit.</p>
       <p class="small">Un paquet <b>provisoire</b> se lit, mais ses chiffres peuvent encore bouger. Si tu reçois deux fois le même mois, SkanFact te le dit — et te prévient si le remplacé était définitif.</p>` },

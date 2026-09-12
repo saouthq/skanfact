@@ -222,10 +222,27 @@ ipcMain.handle('cab:saveDossier', (_e, { id, patch } = {}) => {
   if (patch && patch.fees != null) d.fees = Number(patch.fees) || 0;
   if (patch && patch.archived != null) d.archived = !!patch.archived;
   if (d.from && !/^\d{4}-\d{2}$/.test(d.from)) d.from = '';
+  // Le matricule ne se modifie QUE tant qu'aucun paquet n'est arrivé. Après, c'est le client qui
+  // fait foi : il vient de ses envois, et le changer ici détacherait le dossier de ses propres
+  // paquets. (L'interface met déjà le champ en lecture seule ; on ne s'y fie pas.)
+  if (patch && patch.matricule != null && !(d.packs || []).length) d.matricule = String(patch.matricule);
+  // L'identifiant d'un dossier vient du matricule (ou du nom à défaut) : c'est ce qui fait qu'un
+  // paquet tombe dans le bon dossier. Tant qu'AUCUN paquet n'est arrivé, corriger le matricule doit
+  // donc corriger l'identifiant — sinon le premier envoi du client créerait un second dossier à
+  // côté du premier, et personne ne comprendrait pourquoi.
+  if (!(d.packs || []).length) {
+    const neuf = K.dossierKey({ entreprise: { matricule: d.matricule, nom: d.name } });
+    if (neuf && neuf !== 'NOM:' && neuf !== d.id) {
+      if (state.dossiers.some(x => x !== d && x.id === neuf)) {
+        throw new Error('Un autre dossier porte déjà ce matricule (ou ce nom).');
+      }
+      d.id = neuf;
+    }
+  }
   // Le nom sert au rangement des paquets sur le disque : s'il change, les fichiers suivent.
   const moved = getStore().reorganize(state);
   save();
-  return { state: safeState(), moved: moved.moved };
+  return { state: safeState(), moved: moved.moved, id: d.id };
 });
 
 // Créer un dossier à la main. C'est ce qui transforme l'application en tableau de bord du

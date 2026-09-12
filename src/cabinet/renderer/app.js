@@ -935,7 +935,11 @@
             if (dossier.packs && dossier.packs.length) delete patch.matricule;  // il vient des paquets
             const r = await api.saveDossier(dossier.id, patch);
             S = r.state;
-            close(); render();
+            close();
+            // Corriger le matricule d'un dossier sans paquet change son identifiant : il faut suivre,
+            // sinon la fiche qu'on vient d'enregistrer affiche « ce dossier n'existe plus ».
+            if (r.id && r.id !== dossier.id) location.hash = '#/dossier/' + encodeURIComponent(r.id);
+            else render();
             toast(r.moved ? `Fiche enregistrée · ${pl(r.moved, 'paquet')} rangé${r.moved > 1 ? 's' : ''} au nouveau nom.` : 'Fiche enregistrée.');
           } catch (e) { toast(plainError(e), 'error'); }
         };
