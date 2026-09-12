@@ -5185,5 +5185,52 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.strictEqual(ligne.level, 'danger', 'des chiffres faux dans une déclaration, c\'est rouge');
   });
 
+  t('TVA : une ligne neuve suit le métier déclaré, pas 19 % en dur', () => {
+    const OB = require('../src/renderer/onboarding.js');
+    const app = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
+
+    // « Santé et paramédical » est exonéré dans ACTIVITIES depuis la 2.0.0. L'assistant s'en servait
+    // pour préremplir le catalogue à 0 %, et toute ligne tapée ensuite naissait à 19 % : le même
+    // document portait donc les deux taux, et celui de trop était celui qu'on ne doit pas facturer.
+    const sante = core.ACTIVITIES.find(a => a.id === 'sante');
+    assert.strictEqual(sante.vat, 0, 'le métier de référence du test doit rester exonéré');
+    const d = OB.applySetup({ company: { ...core.DEFAULT_COMPANY }, catalog: [] }, { name: 'Cabinet X', activity: 'sante', fillCatalog: true });
+    assert.strictEqual(d.company.defaultVatRate, 0, 'l\'assistant doit retenir le taux du métier');
+    assert.strictEqual(core.defaultVat(d.company), 0);
+    assert.strictEqual(core.newLine(d.company).vatRate, 0, 'une ligne neuve doit naître au taux du métier');
+
+    // Un métier à 19 % reste à 19 %, et une valeur absente aussi : rien ne change pour l'existant.
+    const info = OB.applySetup({ company: { ...core.DEFAULT_COMPANY }, catalog: [] }, { name: 'Y', activity: 'informatique' });
+    assert.strictEqual(core.defaultVat(info.company), 19);
+    assert.strictEqual(core.defaultVat({}), 19, 'sans réglage, on reste sur le taux le plus courant');
+    assert.strictEqual(core.defaultVat({ defaultVatRate: 42 }), 19, 'un taux qui n\'existe pas ne doit pas se retrouver sur une facture');
+
+    // Plus aucun 19 % en dur du côté VENTE. Côté achat, le taux est celui du fournisseur : une
+    // entreprise exonérée paie quand même la TVA de ses fournisseurs, et le réglage ne s'y applique pas.
+    const venteDur = app.split('\n').filter(l => /vatRate: 19/.test(l) && !/destination: 'charge'/.test(l));
+    assert.deepStrictEqual(venteDur, [],
+      'il reste des lignes de vente créées à 19 % en dur :\n' + venteDur.join('\n'));
+  });
+
+  t('chaque page mène à son article d\'aide', () => {
+    const guide = require('../src/renderer/guide.js');
+    const app = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
+    const ids = new Set(guide.ARTICLES.map(a => a.id));
+
+    const bloc = app.slice(app.indexOf('const PAGE_AIDE = {'), app.indexOf('function poserLienAide'));
+    assert.ok(bloc.length > 200, 'PAGE_AIDE introuvable');
+    const paires = [...bloc.matchAll(/(\w+):\s*'([a-z-]+)'/g)].map(m => [m[1], m[2]]);
+    assert.ok(paires.length >= 20, `PAGE_AIDE ne couvre que ${paires.length} pages`);
+    paires.forEach(([page, art]) => assert.ok(ids.has(art),
+      `la page « ${page} » renvoie à l'article « ${art} », qui n'existe pas`));
+
+    // Toutes les pages du menu doivent avoir leur article : trente-deux articles que rien n'atteint
+    // au moment où on en a besoin ne servent à rien.
+    const couvertes = new Set(paires.map(p => p[0]));
+    // « aide » est la seule exception : c'est l'aide elle-même, elle n'a pas à se renvoyer à elle-même.
+    const oubliees = core.PAGES.filter(p => !p.horsMenu && p.id !== 'aide' && !couvertes.has(p.id)).map(p => p.id);
+    assert.deepStrictEqual(oubliees, [], `ces pages ne mènent à aucun article : ${oubliees.join(', ')}`);
+  });
+
   console.log(`\n${n} tests OK`);
 })().catch(e => { console.error(e); process.exit(1); });

@@ -52,6 +52,10 @@
     revenueTarget: 0,     // objectif de chiffre d'affaires HT pour l'année (0 = pas d'objectif)
     dormantDays: 180,     // au-delà, un client est considéré comme endormi dans les statistiques
     setupDone: false,     // l'assistant de première utilisation a été mené jusqu'au bout
+    // Le taux de TVA des nouvelles lignes (7.1.0). Il valait 19 % en dur partout, y compris pour un
+    // métier que l'assistant sait exonéré : quelqu'un qui choisissait « Santé et paramédical » (TVA
+    // 0 %) obtenait un catalogue à 0 % et, dès qu'il tapait une ligne à la main, du 19 %. Vide = 19 %.
+    defaultVatRate: '',
     // Les modules affichés dans la barre latérale (7.0.0). `null` = aucun choix enregistré, donc
     // toute l'application, comme avant : une installation existante ne perd rien à la mise à jour.
     // Un module absent de cette liste mais qui contient des données se montre quand même (moduleOn).
@@ -231,6 +235,18 @@
   // Le jeu d'exemple se reconnaît : sans ça, on ne peut ni le signaler à l'écran, ni proposer d'en
   // sortir, ni empêcher sa fausse identité de servir à une vraie facture.
   const estDemo = data => !!(data && data.demo);
+
+  // Le taux de TVA d'une ligne neuve. Il se règle dans Paramètres et l'assistant le pose à partir du
+  // métier déclaré. `''`, `null` ou `undefined` = 19 % ; `0` est une valeur légitime (exonération),
+  // d'où le test explicite plutôt qu'un `||`.
+  function defaultVat(company) {
+    const v = (company || {}).defaultVatRate;
+    if (v === '' || v === null || v === undefined) return 19;
+    const n = Number(v);
+    return VAT_RATES.includes(n) ? n : 19;
+  }
+  // Une ligne de document neuve, avec le bon taux. Il y avait huit `vatRate: 19` écrits à la main.
+  const newLine = (company, extra) => ({ label: '', description: '', qty: 1, unit: '', unitPrice: 0, vatRate: defaultVat(company), ...(extra || {}) });
 
   const moduleById = id => MODULES.find(m => m.id === id) || null;
   const pageById = id => PAGES.find(p => p.id === id) || null;
@@ -3733,7 +3749,9 @@
 
   // Le panneau « À faire » de l'accueil. Renvoie des groupes ordonnés du plus urgent au moins urgent.
   // Chaque groupe : { id, level (danger|warn|info), label, detail, count, amount, route, docs }
-  function todoList(data, company, todayIso) {
+  // `opts.copieExterne` : l'état de la copie de sauvegarde vit sur le poste, pas dans les données.
+  // L'appelant le fournit ; absent, la ligne correspondante ne s'allume simplement pas.
+  function todoList(data, company, todayIso, opts) {
     const t = todayIso || today();
     const out = [];
     const cur = company.currency;
@@ -3942,6 +3960,16 @@
       count: oldDrafts.length, route: '#/factures', docs: oldDrafts
     });
 
+    // La copie de sauvegarde, quand c'est la seule étape de démarrage qui manque. Elle quitte alors
+    // le panneau « Tes premiers pas » (qui disparaît) pour devenir une ligne ordinaire : c'est
+    // l'étape que tout le monde saute, et la seule dont l'absence coûte tout.
+    const pas = firstSteps(data, company, opts || {});
+    if (pas.sauvegardeSeule) out.push({
+      id: 'sauvegarde', level: 'warn', label: 'Tes données ne sont copiées nulle part',
+      detail: 'Un disque qui lâche, un ordinateur volé, et tout est perdu. Une copie automatique vers iCloud, un disque ou une clé USB prend deux minutes à mettre en place.',
+      count: 1, route: '#/parametres'
+    });
+
     // Les pièces en devise étrangère sans taux de change. Elles ne se signalaient nulle part et
     // faisaient compter 1 euro = 1 dinar dans le journal des ventes, la TVA à déclarer, le chiffre
     // d'affaires et le paquet envoyé au comptable. Depuis la 7.0.1 la saisie les refuse ; celles qui
@@ -4033,7 +4061,15 @@
         quoi: 'Un paiement enregistré fait basculer la facture toute seule : tu ne saisis jamais « payée » à la main.', action: 'factures' });
     }
     const faits = etapes.filter(x => x.fait).length;
-    return { etapes, faits, total: etapes.length, fini: faits === etapes.length };
+    // Le panneau ne vaut que pendant le DÉMARRAGE. Une fois qu'une facture est partie, quelqu'un qui
+    // a deux ans d'activité n'a plus rien à faire d'un écran qui lui propose « crée ton premier
+    // client » — et le panneau reprendrait tout l'écran, exactement le défaut qu'il corrige.
+    // La copie de sauvegarde, elle, reste importante : quand c'est la seule étape qui manque, elle
+    // devient une ligne de « À faire », pas un panneau.
+    const metier = etapes.filter(x => x.id !== 'sauvegarde');
+    const demarrage = metier.some(x => !x.fait);
+    return { etapes, faits, total: etapes.length, fini: faits === etapes.length, demarrage,
+      sauvegardeSeule: !demarrage && !etapes.find(x => x.id === 'sauvegarde').fait };
   }
 
   // « a », « a et b », « a, b et c » — parce qu'« il manque le matricule fiscal, le RIB » se voit.
@@ -4750,6 +4786,6 @@
     periodBounds, issuedIn, salesTotals, revenueByMonth, topItems, clientMovement, AGING_BUCKETS, agedReceivables, payerRanking, quoteFunnel, objectiveProgress,
     amountToWords, intToWords, intToWordsEn, documentHtml, fitToPage, pageCount,
     MODULES, PAGES, moduleById, pageById, pageTitle, moduleCount, moduleOn, moduleWhy, navPages,
-    MODULES_PAR_ACTIVITE, modulesSuggeres, wipeData, estDemo, firstSteps, liste
+    MODULES_PAR_ACTIVITE, modulesSuggeres, wipeData, estDemo, firstSteps, liste, defaultVat, newLine
   };
 });

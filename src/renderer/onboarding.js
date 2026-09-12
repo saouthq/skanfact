@@ -32,6 +32,11 @@
     if (a.currency) co.currency = a.currency;
     const act = C.ACTIVITIES.find(x => x.id === a.activity);
     if (act && act.tagline && !co.tagline) co.tagline = act.tagline;
+    // Le taux de TVA du métier ne servait qu'à préremplir le catalogue : dès qu'on tapait une ligne
+    // à la main, elle naissait à 19 %. Un kinésithérapeute qui déclare « Santé et paramédical »
+    // (exonéré) obtenait donc un catalogue à 0 % et des lignes à 19 % — sur la même facture.
+    // On ne l'écrase pas s'il a déjà été réglé à la main (0 est une valeur légitime : exonération).
+    if (act && (co.defaultVatRate === '' || co.defaultVatRate == null)) co.defaultVatRate = act.vat;
     if (act && a.fillCatalog && !(data.catalog || []).length) {
       data.catalog = act.catalog.map(([label, description, unitPrice, unit]) => ({
         id: C.uid(), label, description: description || '', unitPrice, vatRate: act.vat, unit: unit || 'u'

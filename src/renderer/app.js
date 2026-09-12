@@ -900,6 +900,7 @@
     guard = null; previewRedraw = null;
     pushHistory(currentHash);        // d'où l'on vient, pour le bouton retour de la page qui s'ouvre
     (routes[name] || routes.dashboard)(parts.slice(1));
+    poserLienAide(name);             // « Comprendre cette page → » : l'article qui explique cet écran
     bandeauDemo();                   // « ce ne sont pas tes données » — sur chaque page, en permanence
     bandeauModule(active);           // « cette page n'est pas dans ton menu » — et le bouton pour l'y mettre
     bindDateFields(view);            // champs date posés par la page qui vient d'être dessinée
@@ -981,10 +982,13 @@
     sauvegarde: ['Choisir un dossier', () => { settingsTab = 'donnees'; navigate('#/parametres'); }]
   };
   // Le panneau est-il à l'écran ? `todoPanel` a besoin de le savoir pour ne pas répéter l'étape 1.
-  const premiersPasVisibles = () => !C.firstSteps(data, company(), { copieExterne }).fini;
+  // Le panneau ne s'affiche que pendant le démarrage : une fois une facture partie, il proposerait
+  // « crée ton premier client » à quelqu'un qui a deux ans d'activité — et reprendrait tout l'écran,
+  // exactement le défaut qu'il corrige.
+  const premiersPasVisibles = () => C.firstSteps(data, company(), { copieExterne }).demarrage;
   function premiersPas() {
     const p = C.firstSteps(data, company(), { copieExterne });
-    if (p.fini) return '';
+    if (!p.demarrage) return '';
     const suivante = p.etapes.find(e => !e.fait);
     return `<div class="panel premiers-pas">
       <h2>Tes premiers pas <span class="pp-compte">${p.faits} / ${p.total}</span></h2>
@@ -1013,6 +1017,35 @@
   // et aucune page n'y menait : on ne les atteignait qu'en ouvrant l'Aide et en lisant trente-deux
   // titres — depuis un bouton qui, lui, était hors de l'écran.
   const helpLink = (id, label) => `<a href="#/aide/${h(id)}" class="help-link">${h(label || 'Comprendre cette page')} →</a>`;
+
+  // Quel article explique quelle page. Trente-deux articles existaient et **aucune page n'y menait** :
+  // il fallait ouvrir l'Aide — depuis un bouton qui était hors de l'écran — et lire trente-deux
+  // titres. Le lien se pose une seule fois, dans le routeur : dix-huit `page-head` à modifier à la
+  // main, c'est dix-huit endroits qu'on oublie au prochain module ajouté.
+  const PAGE_AIDE = {
+    dashboard: 'demarrer', devis: 'devis', factures: 'facture', doc: 'facture',
+    relances: 'paiements', autres: 'pieces', contrats: 'contrats', contrat: 'contrats',
+    clients: 'gestion', client: 'gestion', catalogue: 'gestion',
+    achats: 'achats', achat: 'achats', fournisseurs: 'achats', fournisseur: 'achats',
+    tresorerie: 'tresorerie', marges: 'marges', affaire: 'marges',
+    paie: 'paie', salarie: 'conges', stock: 'stock', article: 'stock', garanties: 'series',
+    immos: 'immobilisations', immo: 'immobilisations', stats: 'statistiques',
+    compta: 'compta', parametres: 'donnees'
+  };
+  function poserLienAide(route) {
+    const id = PAGE_AIDE[route];
+    if (!id || !G.ARTICLES.some(a => a.id === id)) return;
+    const head = $('#view .page-head');
+    if (!head || $('.page-help', head)) return;
+    const a = document.createElement('a');
+    a.href = '#/aide/' + id;
+    a.className = 'help-link page-help';
+    a.textContent = 'Comprendre cette page →';
+    // Dans le bloc d'actions quand il existe, sinon en bout de titre : la place doit être la même
+    // d'une page à l'autre, sinon on la cherche.
+    const actions = $('.actions', head);
+    if (actions) actions.insertBefore(a, actions.firstChild); else head.appendChild(a);
+  }
 
   routes.dashboard = () => {
     const cur = company().currency;
@@ -1361,7 +1394,7 @@
     const dated = ['devis', 'facture', 'proforma'].includes(type);
     const d = {
       id: C.uid(), type, number: '', date, dueDate: dated ? C.addDays(date, days) : '', clientId: '', subject: '', reference: '',
-      lines: [{ label: '', description: '', qty: 1, unit: '', unitPrice: 0, vatRate: 19 }],
+      lines: [C.newLine(company())],
       discountRate: 0, applyStamp: type === 'facture', status: 'brouillon', notes: '', payments: [],
       withholdingRate: ['facture', 'avoir', 'proforma'].includes(type) ? (Number(company().defaultWithholdingRate) || 0) : 0, createdAt: Date.now(),
       lang: company().defaultLang || 'fr', currency: company().currency, exchangeRate: ''
@@ -1606,14 +1639,14 @@
       });
       $$('[data-rm]', linesBody).forEach(b => b.onclick = () => {
         const i = Number(b.dataset.rm);
-        doc.lines.splice(i, 1); if (!doc.lines.length) doc.lines.push({ label: '', description: '', qty: 1, unit: '', unitPrice: 0, vatRate: 19 });
+        doc.lines.splice(i, 1); if (!doc.lines.length) doc.lines.push(C.newLine(company()));
         reindex(k => k > i ? k - 1 : k); openDesc.delete(doc.lines.length);
         touch(); drawLines();
       });
       $$('[data-desc]', linesBody).forEach(b => b.onclick = () => { openDesc.add(Number(b.dataset.desc)); drawLines(); const ta = $$('textarea[data-k=description]', linesBody).pop(); if (ta) ta.focus(); });
       refreshTotals();
     }
-    if ($('#add-line')) $('#add-line').onclick = () => { doc.lines.push({ label: '', description: '', qty: 1, unit: '', unitPrice: 0, vatRate: 19 }); touch(); drawLines(); $$('input[data-k=label]', linesBody).pop().focus(); };
+    if ($('#add-line')) $('#add-line').onclick = () => { doc.lines.push(C.newLine(company())); touch(); drawLines(); $$('input[data-k=label]', linesBody).pop().focus(); };
     // Catalogue, modèles et textes : listes de choix qui ne gardent pas de valeur (reset), avec recherche.
     if ($('#cat-pick')) bindCombo($('.combo', $('#cat-pick')), {
       reset: true, placeholder: 'Ajouter depuis le catalogue…',
@@ -2257,7 +2290,7 @@
 
   // ---------- Catalogue ----------
   function catalogForm(item, done) {
-    const it = item || { id: C.uid(), label: '', description: '', unit: '', unitPrice: 0, unitCost: 0, vatRate: 19,
+    const it = item || { id: C.uid(), label: '', description: '', unit: '', unitPrice: 0, unitCost: 0, vatRate: C.defaultVat(company()),
       tracked: false, minStock: 0, location: '', initialQty: 0, initialCost: 0, initialDate: C.today(),
       serialized: false, warrantyMonths: 0 };
     const already = item ? C.stockOf(data, it.id) : null;   // stock déjà constitué : on ne rejoue pas le départ
@@ -2389,7 +2422,7 @@
             drawLines();
           }
         });
-        $('#tf-add', root).onclick = () => { t.lines.push({ label: '', description: '', qty: 1, unit: '', unitPrice: 0, vatRate: 19 }); drawLines(); };
+        $('#tf-add', root).onclick = () => { t.lines.push(C.newLine(company())); drawLines(); };
         $('#ok', root).onclick = () => {
           const v = formValues($('#tf2', root));
           if (!(v.name || '').trim()) return toast('Donne un nom à ce modèle.', true);
@@ -2573,7 +2606,7 @@
     const t = data.templates.find(x => x.id === id); if (!t) return;
     if (!doc.subject) doc.subject = t.subject || '';
     doc.lines = deepCopy(t.lines || []).map(l => ({ ...l, noDiscount: false }));
-    if (!doc.lines.length) doc.lines = [{ label: '', description: '', qty: 1, unit: '', unitPrice: 0, vatRate: 19 }];
+    if (!doc.lines.length) doc.lines = [C.newLine(company())];
     doc.discountRate = t.discountRate || 0;
     if (!doc.notes) doc.notes = t.notes || '';
   }
@@ -2645,7 +2678,7 @@
   function recurrenceForm(rec, done) {
     const isNew = !data.recurring.find(r => r.id === rec.id);
     const r = deepCopy(rec);
-    if (!r.lines || !r.lines.length) r.lines = [{ label: '', qty: 1, unit: '', unitPrice: 0, vatRate: 19 }];
+    if (!r.lines || !r.lines.length) r.lines = [C.newLine(company())];
     const cur = company().currency;
     const clientItems = () => data.clients.slice().sort((a, b) => a.name.localeCompare(b.name, 'fr')).map(c => ({
       v: c.id, label: c.name, sub: [c.contact, c.matricule ? 'MF ' + c.matricule : ''].filter(Boolean).join(' · '),
@@ -2701,7 +2734,7 @@
           $$('[data-rdesc]', body).forEach(b => b.onclick = () => { openRl.add(Number(b.dataset.rdesc)); drawL(); const ta = $$('textarea[data-k=description]', body).pop(); if (ta) ta.focus(); });
           $$('[data-rm]', body).forEach(b => b.onclick = () => {
             const i = Number(b.dataset.rm);
-            r.lines.splice(i, 1); if (!r.lines.length) r.lines.push({ label: '', qty: 1, unit: '', unitPrice: 0, vatRate: 19 });
+            r.lines.splice(i, 1); if (!r.lines.length) r.lines.push(C.newLine(company()));
             const next = new Set(); openRl.forEach(k => { if (k < i) next.add(k); else if (k > i) next.add(k - 1); });
             openRl.clear(); next.forEach(k => openRl.add(k));
             drawL();
@@ -2709,7 +2742,7 @@
           tot();
         };
         const tot = () => { const t = C.computeTotals({ type: 'facture', lines: r.lines, discountRate: Number($('input[name=discountRate]', root).value) || 0 }, company()); $('#rl-total', root).textContent = `${C.money(t.netHT, cur)} HT · ${C.money(t.totalTTC, cur)} TTC par facture`; };
-        $('#rl-add', root).onclick = () => { r.lines.push({ label: '', qty: 1, unit: '', unitPrice: 0, vatRate: 19 }); drawL(); };
+        $('#rl-add', root).onclick = () => { r.lines.push(C.newLine(company())); drawL(); };
         $('input[name=discountRate]', root).oninput = tot;
         drawL();
         $('#ok', root).onclick = () => {
@@ -3071,7 +3104,8 @@
     bulletins: { label: 'Voir les bulletins', run: vers('#/paie', () => { paieState.tab = 'bulletins'; }) },
     'salaires-double': { label: 'Voir les mouvements', run: vers('#/tresorerie', () => { tresoState.tab = 'mouvements'; }) },
     tresorerie: { label: 'Voir la prévision', run: vers('#/tresorerie', () => { tresoState.tab = 'prevision'; }) },
-    'taux-change': { label: 'Voir les pièces', run: vers('#/factures', () => { listState.facture.q = ''; listState.facture.year = ''; listState.facture.yearTouched = true; }) }
+    'taux-change': { label: 'Voir les pièces', run: vers('#/factures', () => { listState.facture.q = ''; listState.facture.year = ''; listState.facture.yearTouched = true; }) },
+    sauvegarde: { label: 'Choisir un dossier', run: vers('#/parametres', () => { settingsTab = 'donnees'; }) }
   };
   // Combien de lignes on montre avant de proposer « voir le reste ». En démo, « À faire » affichait
   // treize lignes et occupait l'écran entier : le chiffre d'affaires, le graphique et tout le reste
@@ -3080,7 +3114,7 @@
   const TODO_VISIBLE = 5;
 
   function todoPanel() {
-    let items = C.todoList(data, company());
+    let items = C.todoList(data, company(), null, { copieExterne });
     // Tant que « Tes premiers pas » est à l'écran, il porte déjà la fiche société — en étape 1, et
     // formulée comme une étape. La répéter dix centimètres plus bas sous le titre « À faire » et le
     // libellé « Fiche société incomplète », c'est dire deux fois la même chose, dont une fois comme
@@ -3546,6 +3580,8 @@
       date, dueDate: kind === 'depense' ? '' : C.addDays(date, days),
       subject: '', category: '', notes: '', fees: 0,
       withholdingRate: sup && Number(sup.withholdingRate) ? Number(sup.withholdingRate) : 0,
+      // Côté ACHAT, le taux est celui du FOURNISSEUR, pas le nôtre : une entreprise exonérée paie
+      // quand même la TVA de ses fournisseurs. Le réglage `defaultVatRate` ne s'applique donc pas ici.
       lines: [{ label: '', qty: 1, unit: '', unitPrice: 0, vatRate: 19, destination: 'charge', deductible: true }],
       payments: [], attachments: [], createdAt: Date.now()
     };
@@ -7349,6 +7385,7 @@
           ${field(lbl('Validité des devis (jours)', 'doc.quoteValidity'), 'quoteValidityDays', c.quoteValidityDays, 'number', 'min="0" class="num"')}
           ${field(lbl('Délai de paiement (jours)', 'doc.paymentDays'), 'paymentTermsDays', c.paymentTermsDays, 'number', 'min="0" class="num"')}
           <label class="field">${lbl('Retenue à la source par défaut', 'doc.withholdingDefault')}<select name="defaultWithholdingRate">${withholdingOptions(c.defaultWithholdingRate)}</select></label>
+          <label class="field">${lbl('TVA des nouvelles lignes', 'doc.defaultVat')}<select name="defaultVatRate">${C.VAT_RATES.map(v => `<option value="${v}" ${C.defaultVat(c) === v ? 'selected' : ''}>${v} %</option>`).join('')}</select></label>
           ${field(lbl('Devise', 'doc.currency'), 'currency', c.currency)}
           <label class="check" style="align-self:end"><input type="checkbox" name="openAfterExport" ${c.openAfterExport !== false ? 'checked' : ''}> Ouvrir le PDF après export ${info('doc.openAfterExport')}</label>
         </div>

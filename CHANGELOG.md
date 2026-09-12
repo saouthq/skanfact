@@ -7,6 +7,27 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 7.1.0 — 12/09/2026
+
+**Suite de l'audit : le taux de TVA qui ignorait le métier, et l'aide que rien n'atteignait.**
+
+### Une ligne neuve suit ton métier
+
+L'assistant sait depuis la 2.0.0 que « Santé et paramédical » est exonéré : il préremplissait donc le catalogue à 0 %. Mais **toute ligne tapée à la main naissait à 19 %**, parce que le taux était écrit en dur à huit endroits. Le même document portait les deux taux, et celui de trop était celui qu'il ne faut pas facturer.
+
+- `company.defaultVatRate`, posé par l'assistant d'après le métier déclaré et modifiable dans **Paramètres → Documents**. `0 %` est une valeur légitime : le code la distingue d'un réglage absent.
+- Côté **achat**, le taux reste celui du fournisseur : une entreprise exonérée paie quand même la TVA de ses fournisseurs. C'est écrit dans le code, à l'endroit où on se poserait la question.
+
+### « Comprendre cette page → »
+
+Trente-deux articles d'aide existaient et **aucune page n'y menait**. Le lien est maintenant posé une seule fois, dans le routeur — dix-huit en-têtes à modifier à la main, c'est dix-huit endroits qu'on oublie au prochain module. Un test vérifie que chaque page du menu a son article, et qu'aucune ne renvoie à un article disparu.
+
+### « Tes premiers pas » sait s'arrêter
+
+Le panneau ne s'affiche plus que pendant le **démarrage**. Une fois une facture partie, il proposait « crée ton premier client » à quelqu'un qui a deux ans d'activité — et reprenait tout l'écran, exactement le défaut qu'il corrige. Quand la copie de sauvegarde est la seule étape qui manque, elle devient une ligne de « À faire » : c'est l'étape que tout le monde saute, et la seule dont l'absence coûte tout.
+
+*Au passage : le garde-fou « aucun bouton ne mène nulle part », posé le matin même, a attrapé cette nouvelle ligne avant qu'elle ne parte avec un bouton muet.*
+
 ## 7.0.1 — 12/09/2026
 
 **Deux erreurs de montant, trouvées par l'audit et vérifiées avant d'y toucher.** Ce ne sont pas des défauts d'ergonomie : ce sont des chiffres faux sur des pièces officielles, et rien à l'écran ne les montrait.
