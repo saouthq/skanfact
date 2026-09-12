@@ -5734,5 +5734,56 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       'deux bulles « i » ne se suivent jamais sans texte entre elles');
   });
 
+  t('l\'aide décrit l\'application d\'aujourd\'hui, pas celle d\'il y a six versions', () => {
+    const guide = require(path.join(__dirname, '..', 'src', 'renderer', 'guide.js'));
+    const app = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
+    const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'main.js'), 'utf8');
+    const corpus = guide.ARTICLES.map(a => a.body).join('\n');
+    const bulles = Object.values(guide.INFO).map(x => x.d).join('\n');
+
+    // Le panneau « Tes premiers pas » donne SEPT étapes et renvoie à un article qui en donnait
+    // CINQ, différentes : « les cinq premières minutes » contre « compléter ta fiche société,
+    // enregistrer ton premier client… ». Quelqu'un qui suit la notice ne fait pas ce que
+    // l'application lui demande. Les deux se calculent maintenant sur la même liste.
+    const d = core.migrateData(null);
+    const art = guide.ARTICLES.find(a => a.id === 'demarrer');
+    core.firstSteps(d, d.company, {}).etapes.forEach(e =>
+      assert.ok(art.body.includes(e.titre),
+        `l'article « Démarrer » ne parle pas de l'étape « ${e.titre} » que l'accueil affiche`));
+
+    // Chaque onglet de l'application doit être nommé au moins une fois dans l'aide : l'article
+    // Comptabilité annonçait « quatre onglets » quand la page en avait sept, et les trois nouveaux
+    // (Écritures, Clôtures, Cabinet) n'y figuraient nulle part.
+    const onglets = [];
+    // L'extraction doit tenir les apostrophes échappées (« Où j\'en suis ») : une première version
+    // découpait sur `', '` et rendait « Où j\ », donc le test cherchait un libellé qui n'existe pas.
+    (app.match(/const (COMPTA|PAIE|STOCK|MARGE|TRESO|IMMO|AUTRES|CATALOG|SETTINGS)_TABS = \[[\s\S]*?\];/g) || [])
+      .forEach(bloc => {
+        const paires = bloc.match(/\['(?:[^'\\]|\\.)*', *'((?:[^'\\]|\\.)*)'/g) || [];
+        paires.forEach(m => {
+          const lab = m.slice(m.indexOf("', '") >= 0 ? 0 : 0).match(/, *'((?:[^'\\]|\\.)*)'$/);
+          if (lab) onglets.push(lab[1].replace(/\\'/g, "'"));
+        });
+      });
+    assert.ok(onglets.length > 30, 'les tableaux d\'onglets n\'ont pas été trouvés : ' + onglets.length);
+    const jamais = onglets.filter(l => !corpus.includes(l));
+    assert.deepStrictEqual(jamais, [], 'des onglets de l\'application ne sont nommés nulle part dans l\'aide');
+
+    // Le menu est la source de vérité des raccourcis : l'article en oubliait six, dont celui qui
+    // ouvre l'aide et celui qui revient en arrière.
+    const touches = Array.from(new Set((main.match(/accelerator: '([^']+)'/g) || [])
+      .map(m => m.split("'")[1]).map(a => a.replace(/^(CmdOrCtrl|Cmd|Ctrl)\+/, '').replace('Shift+', ''))));
+    const racc = guide.ARTICLES.find(a => a.id === 'raccourcis').body;
+    const absents = touches.filter(k => !new RegExp(`<kbd>${k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}</kbd>`).test(racc)
+      && !(/^[1-9]$/.test(k) && /<kbd>1<\/kbd> à <kbd>5<\/kbd>/.test(racc) && Number(k) <= 5));
+    assert.deepStrictEqual(absents, [], 'des raccourcis du menu ne figurent pas dans l\'article');
+
+    // Une aide qui parle au futur d'un module livré depuis un an fait douter de tout le reste.
+    [corpus, bulles].forEach(txt => {
+      const dates = txt.match(/(À partir de la version|quand ils arriveront|n'aient pas à te faire tout ressaisir|la page a quatre onglets)/g);
+      assert.strictEqual(dates, null, 'un texte d\'aide parle encore au futur d\'un module déjà livré : ' + (dates || []).join(' · '));
+    });
+  });
+
   console.log(`\n${n} tests OK`);
 })().catch(e => { console.error(e); process.exit(1); });

@@ -105,7 +105,7 @@
     'ed.attachments': { t: 'Pièces jointes', d: 'Tout ce qui justifie ce document : le devis signé scanné, le bon de commande du client, un contrat rendu signé, une photo du chantier. Les fichiers sont <b>copiés</b> à côté de tes données — si tu déplaces ou supprimes l\'original, la pièce reste attachée. Elles ne sont pas dans les sauvegardes quotidiennes (qui ne contiennent qu\'un fichier texte) mais bien dans la copie externe : une raison de plus de la configurer.' },
     'autres.proforma': { t: 'Facture proforma', d: 'Un document qui annonce un prix ferme <b>sans être une facture</b> : pas de numéro de facture, pas de TVA déclarée, aucune écriture comptable. Les administrations, les banques et les dossiers de financement la réclament souvent avant d\'engager la dépense. Quand la commande est confirmée, tu la transformes en vraie facture en un clic.' },
     'autres.commande': { t: 'Bon de commande', d: 'La pièce qui enregistre ce que le client a commandé, avant que tu livres ou que tu factures. Elle protège les deux parties : elle fixe par écrit ce qui a été demandé, en quelle quantité et à quel prix. Fais-la signer quand le montant est important.' },
-    'autres.livraison': { t: 'Bon de livraison', d: 'La pièce qui accompagne la marchandise et se fait signer à la réception. C\'est ta preuve d\'avoir livré : sans elle, un client de mauvaise foi peut contester. Par défaut les prix y sont masqués. À partir de la version 4.0, c\'est ce bon qui sortira les articles du stock.' },
+    'autres.livraison': { a: 'pieces', t: 'Bon de livraison', d: 'La pièce qui accompagne la marchandise et se fait signer à la réception. C\'est ta preuve d\'avoir livré : sans elle, un client de mauvaise foi peut contester. Par défaut les prix y sont masqués. C\'est ce bon qui <b>sort les articles du stock</b> : une facture tirée d\'un bon de livraison ne les sort donc pas une seconde fois.' },
     'autres.contrat': { t: 'Contrat de prestation', d: 'Le vrai document que ton client signe : objet, durée, reconduction, préavis, conditions de paiement, confidentialité, litiges. À ne pas confondre avec les <b>contrats récurrents</b> de la barre latérale, qui ne font que fabriquer des brouillons de facture chaque mois. Les deux vont ensemble : on signe le contrat, puis on crée le contrat récurrent qui le facture.' },
     'tre.accounts': { t: 'Comptes de trésorerie', d: 'Ton compte bancaire, ta caisse espèces, et autant d\'autres que nécessaire. Chacun a son solde de départ et son solde courant. C\'est la seule chose que tu saisis : tout le reste — encaissements clients, règlements fournisseurs — remonte automatiquement de ce que tu as déjà enregistré.' },
     'tre.kind': { t: 'Type de compte', d: '<b>Compte bancaire</b> pour un compte courant, <b>Caisse</b> pour l\'argent liquide que tu gardes au bureau. La distinction sert à la lecture : une caisse ne se rapproche pas d\'un relevé.' },
@@ -239,6 +239,7 @@
     'cab.motdepasse': { t: 'Protéger par mot de passe', d: 'Le paquet contient tes factures, tes achats et tes bulletins de paie : des informations qu\'on ne laisse pas traîner dans une boîte mail. Avec un mot de passe, le contenu est chiffré (AES-256) et illisible sans lui. <b>Transmets-le par un autre canal que le fichier</b> — par téléphone, pas dans le même message. L\'entête du paquet reste lisible sans le mot de passe (ton nom et le mois), pour que ton comptable sache de quoi il s\'agit avant de l\'ouvrir.' },
     'cab.historique': { t: 'Ce qui a déjà été envoyé', d: 'Chaque paquet fabriqué, avec sa date, son état (définitif si le mois était clôturé, provisoire sinon) et son <b>empreinte</b>. L\'empreinte est la carte d\'identité du fichier : si ton comptable calcule la même, le paquet qu\'il a reçu est exactement celui que tu as envoyé, à l\'octet près. C\'est ce qui permet de prouver que rien n\'a été modifié en route.' },
     'lic.etat': { t: 'Ta licence', d: 'SkanFact se vend, donc il y a une licence — mais elle est faite pour ne jamais te gêner. <b>Aucune connexion :</b> la clé est vérifiée sur ton ordinateur, elle n\'est envoyée nulle part, et l\'application fonctionne sans internet. <b>Aucune donnée en otage :</b> même expirée, tu peux lire, imprimer, exporter tes documents et envoyer le paquet à ton comptable — seule la création de nouvelles pièces attend le renouvellement. Si ton comptable utilise SkanFact Cabinet et t\'a remis son fichier d\'appairage, son empreinte part avec ta demande et te donne droit à la remise de parrainage.' },
+    'ecr.rs': { a: 'achats', t: 'Opérée ou subie ?', d: 'Deux mots voisins pour deux choses opposées. <b>Opérée</b> : tu as retenu une part du montant en payant un fournisseur (honoraires, loyer) — cette somme, tu la dois au Trésor à sa place, et tu remets une attestation au fournisseur. <b>Subie</b> : un client a retenu une part de TA facture — cette somme, tu la récupères sur ton impôt, à condition qu\'il te remette son attestation. <em>À VÉRIFIER avec ton comptable : les taux et les cas où la retenue s\'applique.</em>' },
     'ecr.quoi': { t: 'Écritures comptables', d: 'Tes pièces traduites dans la langue de ton comptable : chaque facture, chaque achat, chaque règlement et chaque bulletin devient un jeu d\'écritures en <b>partie double</b> — autant au débit qu\'au crédit. C\'est exactement ce qu\'il retape aujourd\'hui à la main dans son logiciel ; ici, c\'est un fichier qu\'il importe. Le contrôle affiché en haut vérifie que chaque pièce tombe juste : sinon son logiciel refuserait le fichier. <b>Les numéros de compte ne sont pas une vérité :</b> ceux proposés suivent l\'usage du plan comptable tunisien, mais chaque cabinet a les siens. Demande-lui les bons et modifie-les dans « Plan de comptes ». <em>À VÉRIFIER avec ton comptable.</em>', a: 'compta' },
     'clot.etat': { t: 'Période clôturée', d: 'La date jusqu\'à laquelle tout est figé. Aucune pièce datée avant elle ne peut plus être créée, modifiée ou supprimée — ni facture, ni achat, ni paiement, ni bulletin. C\'est cette promesse qui permet à ton comptable de travailler sur un dossier qui ne bouge plus dans son dos. Tant que rien n\'est clôturé, une saisie d\'aujourd\'hui peut changer la TVA d\'un mois déjà déclaré, sans que personne ne s\'en aperçoive.' },
     'clot.cloturer': { t: 'Clôturer un mois', d: 'À faire une fois que le mois est terminé et que tu as tout saisi : les factures émises, les achats reçus, les paiements, les bulletins. L\'application te montre d\'abord ce qui mériterait d\'être réglé (un brouillon oublié, un achat sans justificatif, un mouvement non pointé) — mais elle ne t\'empêche jamais de clôturer : ces points sont là pour que tu les voies. Les mois se clôturent dans l\'ordre, du plus ancien au plus récent. Le mois en cours ne se clôture pas : il lui reste des pièces à venir.' },
@@ -259,7 +260,7 @@
     'buy.category': { t: 'Catégorie de charge', d: 'À quoi sert cette dépense : loyer, carburant, sous-traitance, honoraires… Elle sert à savoir où part ton argent. Une liste de départ est fournie ; « + Nouvelle catégorie » en ajoute une qui restera proposée ensuite. Le rattachement comptable exact relève du plan comptable : <em>À VÉRIFIER avec ton comptable.</em>' },
     'buy.subject': { t: 'Objet', d: 'À quoi se rapporte cet achat, dans tes mots. « Disques durs pour la Clinique » vaut mieux que « matériel » : dans six mois, c\'est ce qui te permettra de retrouver la pièce et, plus tard, de calculer ta marge sur une affaire.' },
     'buy.lines': { t: 'Lignes de l\'achat', d: 'Recopie au minimum le total hors taxes et son taux de TVA : c\'est ce qui permet de récupérer la TVA. Détaille ligne par ligne quand la facture mélange plusieurs taux, plusieurs destinations, ou des articles que tu revendras.' },
-    'buy.destination': { t: 'Destination de la ligne', d: 'Ce que devient ce que tu achètes. <b>Charge</b> : consommé tout de suite (fournitures, loyer, carburant). <b>Stock</b> : marchandise achetée pour être revendue — elle sortira à la vente. <b>Immobilisation</b> : matériel qui reste dans l\'entreprise plus d\'un an (ordinateur, climatiseur, véhicule) et qui s\'amortit. Ce choix est posé dès maintenant pour que les modules stock et immobilisations n\'aient pas à te faire tout ressaisir.' },
+    'buy.destination': { a: 'achats', t: 'Destination de la ligne', d: 'Ce que devient ce que tu achètes. <b>Charge</b> : consommé tout de suite (fournitures, loyer, carburant). <b>Stock</b> : marchandise achetée pour être revendue — elle sortira à la vente. <b>Immobilisation</b> : matériel qui reste dans l\'entreprise plus d\'un an (ordinateur, climatiseur, véhicule) et qui s\'amortit. Ce choix décide de ce qui se passe ensuite : une ligne <b>stock</b> entre en stock à la date de l\'achat et en sort à la vente ; une ligne <b>immobilisation</b> apparaît dans Immobilisations → À immobiliser et attend que tu fixes sa durée — tant qu\'elle attend, elle n\'est déduite nulle part.' },
     'buy.deductible': { t: 'TVA déductible', d: 'Coché par défaut : la TVA que tu as payée est récupérable sur ta déclaration. Décoche pour les cas où la loi l\'interdit — voiture de tourisme, cadeaux, frais de réception. Quels cas exactement : <em>À VÉRIFIER avec ton comptable.</em>' },
     'buy.fees': { t: 'Timbre et frais', d: 'Le timbre fiscal que ton fournisseur a facturé, et les frais annexes non soumis à TVA (port, assurance). Ils s\'ajoutent au total à payer mais ne donnent droit à aucune récupération de TVA.' },
     'buy.withholding': { t: 'Retenue à la source opérée', d: 'Le pourcentage que tu retiens en payant ce prestataire, et que tu reverses toi-même au fisc. Tu lui paies le net, et tu lui dois une attestation. Proposé automatiquement d\'après sa fiche fournisseur. <em>À VÉRIFIER avec ton comptable.</em>' },
@@ -301,19 +302,26 @@
   // { id, title, sub, body: HTML }
   const ARTICLES = [
     {
-      id: 'demarrer', title: 'Démarrer : les cinq premières minutes', sub: 'Ce qu\'il faut régler avant ton premier devis',
+      id: 'demarrer', title: 'Démarrer : tes premiers pas', sub: 'Les sept étapes du panneau d\'accueil, expliquées',
       body: `
 <p>SkanFact fonctionne entièrement sur ton ordinateur. Rien n'est envoyé sur Internet, personne d'autre ne voit tes données. En contrepartie, <b>c'est toi qui es responsable de tes sauvegardes</b> : on y revient plus bas.</p>
 <p>Au tout premier démarrage, un assistant t'a demandé ta raison sociale, ton activité, ce dont tu as besoin et tes règles de facturation. <b>Il se rejoue</b>, prérempli avec tes réponses actuelles : le bouton « Revoir l'assistant de démarrage… » est en tête de <b>Paramètres → Société</b>, et la recherche (<kbd>⌘</kbd> <kbd>K</kbd>, ou <kbd>Ctrl</kbd> <kbd>K</kbd> sous Windows) le trouve en tapant « assistant ». Le rejouer ne touche aucune de tes pièces.</p>
-<h3>1. Renseigne ton entreprise</h3>
-<p>Va dans <b>Paramètres → Société</b> et remplis au minimum : raison sociale, matricule fiscal, adresse, téléphone et email. Ces informations s'impriment sur chaque document. Une facture sans matricule fiscal n'est pas conforme.</p>
-<h3>2. Ajoute ton RIB</h3>
-<p>Dans <b>Paramètres → Société</b>, bloc <b>Coordonnées bancaires</b>. C'est ce que ton client copiera pour te virer l'argent. Relis-le caractère par caractère.</p>
-<h3>3. Choisis tes délais</h3>
-<p>Dans <b>Paramètres → Documents</b> : validité des devis (30 jours est l'usage) et délai de paiement (30 jours aussi, souvent). Ces deux nombres calculent les dates imprimées sur tes documents.</p>
-<h3>4. Mets en place la copie externe</h3>
-<p><b>Paramètres → Sécurité et données → Choisir un dossier</b>, puis sélectionne un dossier dans iCloud Drive ou sur une clé USB. À chaque enregistrement, tout est recopié là-bas. Fais-le maintenant, pas « plus tard ».</p>
-<h3>5. Explore avec l'exemple</h3>
+<p>L'accueil affiche un panneau <b>« Tes premiers pas »</b> tant que tout n'est pas fait. Chaque ligne y porte son bouton, et son état est <b>déduit de tes données</b> — rien à cocher soi-même. Voici ces sept étapes, dans l'ordre, avec ce qu'il faut savoir pour chacune.</p>
+<h3>1. Compléter ta fiche société</h3>
+<p><b>Paramètres → Société</b>, au minimum : raison sociale, matricule fiscal, adresse, téléphone, email. Ces informations s'impriment en haut de chaque document — une facture sans matricule fiscal n'est pas conforme. Ajoute ton <b>RIB</b> dans le même écran, bloc <b>Coordonnées bancaires</b> : c'est ce que ton client copiera pour te virer l'argent, relis-le caractère par caractère. Et vérifie tes délais dans <b>Paramètres → Documents</b> : validité des devis et délai de paiement (30 jours est l'usage pour les deux) calculent les dates imprimées.</p>
+<h3>2. Enregistrer ton premier client</h3>
+<p>Tu n'es pas obligé de commencer par là : le sélecteur de client, dans le devis, porte un bouton <b>« + Nouveau client »</b>. Le matricule fiscal du client est utile dès qu'il s'agit d'une entreprise ; une retenue à la source propre à ce client se règle sur sa fiche, une fois pour toutes.</p>
+<h3>3. Remplir ton catalogue</h3>
+<p>Le catalogue sert à insérer une prestation dans un devis <b>en un clic</b>, sans retaper le libellé, le prix ni le taux de TVA. Si tu as choisi ton métier dans l'assistant, il t'en a déjà proposé quelques-unes : ajuste les prix.</p>
+<h3>4. Faire ton premier devis</h3>
+<p>Un devis annonce un prix avant de travailler. Il prend son numéro dès le premier enregistrement, et reste modifiable. Voir <a href="#/aide/devis">Le devis : proposer un prix</a>.</p>
+<h3>5. L'envoyer à ton client</h3>
+<p>Le bouton <b>Email</b> prépare le message avec le PDF joint, et fait passer le devis en « envoyé ». Si tu l'envoies autrement — WhatsApp, impression, main propre — l'application te demande après l'export si elle doit le marquer envoyé : réponds oui, sinon elle ne le relancera jamais et ne le comptera pas dans tes statistiques.</p>
+<h3>6. Transformer un devis accepté en facture</h3>
+<p>Quand le client dit oui, passe le devis en « accepté » : le bouton <b>Facturer ce devis</b> devient le bouton vert de l'écran, et il existe aussi sur chaque ligne de la liste. La facture reprend tout, sans ressaisie. Voir <a href="#/aide/facture">La facture : réclamer ton argent</a>.</p>
+<h3>7. Mettre tes données à l'abri</h3>
+<p><b>Paramètres → Sécurité et données → Choisir un dossier</b>, puis un dossier dans iCloud Drive ou sur une clé USB. À chaque enregistrement, tout y est recopié. Fais-le maintenant, pas « plus tard » : c'est la seule étape dont l'oubli coûte tout. Le même écran liste tes sauvegardes et sait <b>revenir en arrière</b>.</p>
+<h3>Explore avec l'exemple</h3>
 <p>Sur l'accueil, le bouton <b>Voir un exemple rempli</b> charge treize mois d'activité fictive. Clique partout, casse tout, ça n'a aucune importance : <b>tes données sont mises de côté avant</b>, et un bandeau orange reste affiché sur chaque page tant que l'exemple est chargé.</p>
 <p>Pour en sortir, ce même bandeau porte <b>Repartir de mes données</b> : il te rend exactement ce que tu avais. N'utilise pas « Tout effacer » pour ça — ce bouton-là efface pour de bon, il ne restaure rien.</p>
 <h3>Et si tu veux revoir les questions du départ</h3>
@@ -322,6 +330,7 @@
     {
       id: 'devis', title: 'Le devis : proposer un prix', sub: 'Comment il se prépare, s\'envoie et se transforme',
       body: `
+<p class="small muted">Le <b>Catalogue</b> a trois onglets : <b>Prestations</b> (ce que tu vends, avec son prix), <b>Modèles de documents</b> (un devis type qu'on réutilise), <b>Textes prédéfinis</b> (les paragraphes qu'on recopie sans arrêt).</p>
 <p>Un devis est une <b>proposition de prix</b>. Il n'engage rien tant que le client ne l'a pas accepté, mais une fois accepté, il t'engage sur le prix et le contenu. Écris-le avec soin.</p>
 <h3>Ce qui fait un bon devis</h3>
 <ul>
@@ -467,12 +476,21 @@
 <p>Le bouton <b>Envoyer au comptable</b> prépare l'email avec les journaux cochés en pièces jointes : ventes, achats, encaissements et règlements fournisseurs, un fichier par journal.</p>
 <h3>Journal des achats</h3>
 <p>Le symétrique, dans l'onglet <b>Achats</b> : tout ce que tu as acheté sur la période, avec la part de TVA récupérable. Le classement « où part ton argent » regroupe tes charges par catégorie, du plus gros au plus petit — c'est souvent une surprise.</p>
+<h3>Les sept onglets</h3>
+<p><b>Ventes</b> et <b>Achats</b> : les journaux de la période, à exporter ou à envoyer. <b>TVA à payer</b> : la soustraction du mois. <b>Écritures</b> : les mêmes pièces traduites en comptabilité, prêtes pour le logiciel de ton comptable. <b>Calendrier fiscal</b> : ce qu'il faut déposer et quand. <b>Clôtures</b> : fermer un mois pour qu'il ne bouge plus. <b>Cabinet</b> : fabriquer et envoyer le paquet mensuel.</p>
+
 <h3>Onglet TVA : la soustraction qui compte</h3>
-<p>Depuis la version 3.1, la page a quatre onglets. Celui qui s'appelle <b>TVA à payer</b> fait enfin le calcul complet : la TVA que tu as <b>collectée</b> sur tes ventes, moins celle que tu as <b>payée</b> sur tes achats. Tu ne reverses que la différence.</p>
+<p>L'onglet <b>TVA à payer</b> fait le calcul complet : la TVA que tu as <b>collectée</b> sur tes ventes, moins celle que tu as <b>payée</b> sur tes achats. Tu ne reverses que la différence.</p>
 <p>Si la différence est négative — un mois où tu as beaucoup acheté — tu as un <b>crédit de TVA</b>. Il n'est pas perdu : il vient en déduction du mois suivant, automatiquement. Le tableau « mois par mois » montre cet enchaînement, c'est pour ça que le total ne se lit pas ligne par ligne.</p>
 <p>Ces chiffres sont l'arithmétique exacte de ce que tu as saisi. Ce ne sont pas une déclaration officielle : <em>fais-les valider par ton comptable avant tout dépôt.</em></p>
 <h3>Onglet Calendrier fiscal</h3>
 <p>Un pense-bête des déclarations qui reviennent. Active celles qui te concernent, ajuste le jour limite, et les échéances proches remonteront dans « À faire » sur l'accueil. <em>À VÉRIFIER avec ton comptable :</em> les dates, la périodicité et les déclarations applicables dépendent de ta forme juridique, de ton régime fiscal et de la présence de salariés.</p>
+<h3>Onglet Écritures : ce que ton comptable importe</h3>
+<p>Les mêmes pièces, traduites en comptabilité à partie double — débit d'un côté, crédit de l'autre, à l'équilibre sur chaque pièce. Le fichier s'importe directement dans son logiciel : il n'a plus rien à retaper. <em>À VÉRIFIER : les numéros de compte proposés suivent l'usage tunisien, mais chaque cabinet a les siens — ils se modifient dans « Plan de comptes… ».</em> Voir <a href="#/aide/cabinet">Envoyer à ton comptable</a>.</p>
+<h3>Onglet Clôtures : fermer un mois</h3>
+<p>Clôturer un mois le fige : plus aucune écriture ne peut le changer sans que tu le décides et que tu dises pourquoi. C'est ce qui garantit qu'un chiffre déjà déclaré ne bouge plus dans ton dos. Voir <a href="#/aide/cloture">Clôturer un mois</a>.</p>
+<h3>Onglet Cabinet : le paquet du mois</h3>
+<p>Un seul fichier qui contient tout ce que ton comptable attend pour le mois : les PDF des pièces, les journaux, les justificatifs d'achat et une page de garde qui dit ce qui manque. Voir <a href="#/aide/cabinet">Envoyer à ton comptable</a>.</p>
 <h3>Ta routine</h3>
 <ul>
   <li><b>Chaque semaine</b> : pointe ton relevé bancaire et enregistre les paiements reçus. Regarde les relances.</li>
@@ -484,6 +502,7 @@
     {
       id: 'pieces', title: 'Proforma, bons et contrat', sub: 'Les pièces qui entourent la facture',
       body: `
+<p>Quatre onglets, une pièce chacun : <b>Proformas</b>, <b>Bons de commande</b>, <b>Bons de livraison</b>, <b>Contrats à signer</b>.</p>
 <p>À côté du devis et de la facture, SkanFact sait établir quatre autres pièces. Elles sont réunies dans <b>Proforma, bons et contrats</b>. Aucune n'a de valeur comptable : elles n'entrent ni dans ton chiffre d'affaires, ni dans ta TVA, ni dans le journal des ventes. Elles servent à documenter ce qui se passe autour de la vente.</p>
 <h3>La facture proforma (PRO-)</h3>
 <p>Elle annonce un prix ferme <b>sans être une facture</b>. Les administrations, les banques et les dossiers de financement la réclament souvent avant d'engager la dépense. Elle porte la mention « document sans valeur comptable » et, par défaut, pas de timbre fiscal — on ne paie pas de droit de timbre sur un document qui n'est pas une facture. <em>À VÉRIFIER avec ton comptable.</em></p>
@@ -513,6 +532,7 @@
     {
       id: 'tresorerie', title: 'La trésorerie', sub: 'La seule question qui compte vraiment',
       body: `
+<p>Quatre onglets : <b>Où j'en suis</b> (tes soldes réels), <b>Ce qui arrive</b> (la courbe des trente prochains jours), <b>Mouvements</b>, <b>Rapprochement</b> (pointer ton relevé).</p>
 <p>Une entreprise peut être <b>rentable et mourir quand même</b>. C'est même la cause de faillite la plus fréquente des petites entreprises en bonne santé : les clients paient à soixante jours, les fournisseurs et les salaires n'attendent pas trente. L'argent existe, il n'est simplement pas là au bon moment.</p>
 <p>La page Trésorerie répond à cette question-là, et à aucune autre : <b>est-ce que j'aurai de quoi payer le mois prochain ?</b></p>
 <h3>Ce que tu saisis, et ce qui se fait tout seul</h3>
@@ -542,6 +562,7 @@
     {
       id: 'marges', title: 'Gagnes-tu vraiment de l\'argent ?', sub: 'Marge, affaires et seuil de rentabilité',
       body: `
+<p>Quatre onglets : <b>Affaires</b> (un chantier, un projet), <b>Où est la marge</b> (par client, par prestation), <b>Contrats</b> (ce que rapporte chaque abonnement), <b>Seuil de rentabilité</b>.</p>
 <p>Le chiffre d'affaires ne dit rien. Deux entreprises qui facturent 200 000 DT par an peuvent, l'une vivre très bien, l'autre déposer le bilan. Ce qui compte, c'est ce qu'il <b>reste</b> une fois payé ce que tu as fallu acheter pour vendre. La page <b>Marges</b> est là pour ça.</p>
 <h3>D'où vient le coût ?</h3>
 <p>SkanFact connaît tes ventes : elles sont dans tes factures. Il ne peut pas deviner ce qu'elles t'ont coûté. Tu as donc deux façons de le lui dire, et elles ne se valent pas.</p>
@@ -584,6 +605,7 @@
     {
       id: 'stock', title: 'Tenir son stock sans y passer ses soirées', sub: 'Suivi automatique, coût moyen, inventaire',
       body: `
+<p>Cinq onglets : <b>État du stock</b>, <b>Mouvements</b>, <b>Numéros de série</b>, <b>Inventaire</b>, <b>Alertes</b>.</p>
 <p>Si tu ne vends que des prestations — du temps, du conseil — cette page ne te servira à rien : passe ton chemin. Si tu achètes de la marchandise pour la revendre, elle t'évitera deux ennuis classiques : promettre ce que tu n'as pas, et ne pas savoir combien d'argent dort sur tes étagères.</p>
 <h3>Le principe : tu ne saisis rien</h3>
 <p>SkanFact ne te demande pas de tenir un cahier de stock. Il <b>déduit</b> les mouvements de ce que tu saisis déjà :</p>
@@ -625,6 +647,7 @@
     {
       id: 'paie', title: 'Payer quelqu\'un', sub: 'Bulletins, cotisations, et ce que ça coûte vraiment',
       body: `
+<p>Sept onglets : <b>Bulletins</b>, <b>Salariés</b>, <b>Congés et absences</b>, <b>Avances</b>, <b>Déclarations</b>, <b>Registre</b>, <b>Barèmes</b>.</p>
 <p>Embaucher, c'est le moment où la gestion cesse d'être un confort. Un bulletin faux se voit, se conteste, et se paie. Cette page calcule les bulletins — mais elle ne remplace pas ton comptable, et la première chose à faire est de lui montrer les trois premiers.</p>
 <h3>Aucun taux n'est écrit en dur</h3>
 <p>C'est le point le plus important. Tout ce qui sert au calcul — CNSS, impôt, contribution de solidarité, frais professionnels, déductions familiales, tranches du barème — se lit dans l'onglet <b>Barèmes</b>, et rien ne se calcule ailleurs.</p>
@@ -838,6 +861,7 @@
     {
       id: 'immobilisations', title: 'Ce que tu gardes : les immobilisations', sub: 'Amortissement, valeur nette comptable, cession',
       body: `
+<p>Trois onglets : <b>Tableau des amortissements</b>, <b>À immobiliser</b> (les lignes d'achat qui attendent leur fiche), <b>Sorties et cessions</b>.</p>
 <p>Une rame de papier se consomme : c'est une charge, tu la déduis en entier l'année où tu l'achètes. Un ordinateur reste : tu le déduis un peu chaque année, pendant sa durée d'usage. C'est tout l'objet de cette page, et ce n'est pas une subtilité de comptable — c'est ce qui fait qu'une année où tu investis beaucoup ne ruine pas ton résultat, et qu'une année où tu n'investis rien ne le gonfle pas artificiellement.</p>
 <h3>Ce qui est une immobilisation</h3>
 <p>Un bien durable qui reste dans l'entreprise et lui sert plusieurs années : ordinateur, serveur, véhicule, mobilier, outillage, agencement du local, logiciel acheté. En dessous d'un certain montant, l'usage est de passer directement en charge — <em>à VÉRIFIER avec ton comptable, ce seuil dépend de la réglementation en vigueur.</em></p>
@@ -904,7 +928,7 @@
   <li><b>Stock</b> : de la marchandise achetée pour être revendue. Elle sortira du stock quand tu la vendras.</li>
   <li><b>Immobilisation</b> : du matériel qui reste dans l'entreprise plus d'un an — ordinateur, climatiseur, véhicule, mobilier. Il ne se déduit pas d'un coup : il s'amortit sur plusieurs années.</li>
 </ul>
-<p>Les modules stock et immobilisations liront ce champ. Le renseigner dès maintenant t'évitera de ressaisir un an d'historique quand ils arriveront.</p>
+<p>Ce champ est lu par le <b>stock</b> et par les <b>immobilisations</b> : une ligne « stock » entre en stock à la date de l'achat, une ligne « immobilisation » attend sa fiche dans Immobilisations → À immobiliser. Une ligne mal rangée, c'est une déduction qui n'arrive jamais.</p>
 <h3>La TVA déductible</h3>
 <p>La TVA que tu as payée à tes fournisseurs se <b>déduit</b> de celle que tu as facturée à tes clients. Tu ne reverses à l'État que la différence. C'est pour ça qu'il faut tout saisir : chaque facture d'achat oubliée, c'est de la TVA payée deux fois.</p>
 <p>Trois conditions, et elles sont strictes : il faut une <b>facture en bonne et due forme</b> (pas un ticket), au nom de <b>ton entreprise</b> avec son matricule, et une dépense <b>professionnelle</b>. La case « déductible » est cochée par défaut ; décoche-la pour les cas où la loi l'interdit — voiture de tourisme, cadeaux, frais de réception. <em>Quels cas exactement, et à quelles conditions : À VÉRIFIER avec ton comptable.</em></p>
@@ -956,6 +980,7 @@
       id: 'donnees', title: 'Tes données : sauvegarder et protéger', sub: 'Le sujet le plus ennuyeux et le plus important',
       body: `
 <p>Tes données vivent dans un fichier unique sur ton ordinateur. Son chemin exact est affiché dans <b>Paramètres → Sécurité et données</b>.</p>
+<p class="small muted">Les Paramètres ont huit onglets : <b>Société</b> (ce qui s'imprime sur tes documents), <b>Documents</b> (délais, taxes, taux par défaut), <b>Emails</b> (les modèles de messages), <b>Apparence</b> (thème, logo, couleur), <b>Cabinet comptable</b> (l'appairage avec ton comptable), <b>Sécurité et données</b> (cette page), <b>Licence</b> et <b>Mises à jour</b>.</p>
 <h3>Les trois filets de sécurité</h3>
 <ul>
   <li><b>La sauvegarde quotidienne</b> : chaque jour, l'état de tes données au premier enregistrement est copié dans un dossier <b>backups</b>. Trente jours sont conservés. Une fausse manipulation aujourd'hui se répare en revenant à hier.</li>
@@ -1173,19 +1198,27 @@ rencontres. Si un mot affiché dans l'application manque ici, c'est un défaut :
     {
       id: 'raccourcis', title: 'Raccourcis clavier', sub: 'Aller plus vite au clavier',
       body: `
+<p>Les deux premiers sont ceux qui servent tous les jours : l'un ouvre cette aide, l'autre cherche n'importe quoi — un client, une facture, une prestation, un écran.</p>
 <table class="keys">
+  <tr><th>Ouvrir l'aide</th><td><kbd>⌘</kbd> <kbd>?</kbd></td></tr>
   <tr><th>Rechercher partout</th><td><kbd>⌘</kbd> <kbd>K</kbd></td></tr>
+  <tr><th>Revenir à l'écran précédent</th><td><kbd>⌘</kbd> <kbd>[</kbd></td></tr>
   <tr><th>Nouveau devis</th><td><kbd>⌘</kbd> <kbd>N</kbd></td></tr>
   <tr><th>Nouvelle facture</th><td><kbd>⌘</kbd> <kbd>⇧</kbd> <kbd>N</kbd></td></tr>
   <tr><th>Enregistrer</th><td><kbd>⌘</kbd> <kbd>S</kbd></td></tr>
   <tr><th>Exporter en PDF</th><td><kbd>⌘</kbd> <kbd>P</kbd></td></tr>
+  <tr><th>Réglages</th><td><kbd>⌘</kbd> <kbd>,</kbd></td></tr>
   <tr><th>Accueil, Devis, Factures, Clients, Catalogue</th><td><kbd>⌘</kbd> <kbd>1</kbd> à <kbd>5</kbd></td></tr>
   <tr><th>Comptabilité</th><td><kbd>⌘</kbd> <kbd>6</kbd></td></tr>
+  <tr><th>Achats et dépenses</th><td><kbd>⌘</kbd> <kbd>7</kbd></td></tr>
+  <tr><th>Trésorerie</th><td><kbd>⌘</kbd> <kbd>8</kbd></td></tr>
+  <tr><th>Marges et rentabilité</th><td><kbd>⌘</kbd> <kbd>9</kbd></td></tr>
   <tr><th>Verrouiller l'application</th><td><kbd>⌘</kbd> <kbd>L</kbd></td></tr>
   <tr><th>Valider une fenêtre</th><td><kbd>Entrée</kbd></td></tr>
   <tr><th>Fermer une fenêtre</th><td><kbd>Échap</kbd></td></tr>
 </table>
-<p class="small muted">Sur Windows, remplace <kbd>⌘</kbd> par <kbd>Ctrl</kbd>.</p>`
+<p class="small muted">Sur Windows, remplace <kbd>⌘</kbd> par <kbd>Ctrl</kbd>.</p>
+<p class="small muted">Tu n'as rien à retenir : le champ <b>Rechercher…</b> en haut de la barre de gauche fait la même chose que <kbd>⌘</kbd> <kbd>K</kbd>, et chaque raccourci est écrit à côté de sa commande dans les menus de l'application.</p>`
     }
   ];
 

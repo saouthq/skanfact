@@ -1039,7 +1039,7 @@
           <span class="pp-go">${!e.fait && a ? `<button class="btn btn-sm ${encours ? 'btn-primary' : ''}" data-pas="${h(e.action)}">${h(a[0])}</button>` : ''}</span>
         </li>`;
       }).join('')}</ol>
-      <p class="small muted mt">${helpLink('demarrer', 'Lire « Démarrer : les cinq premières minutes »')}</p>
+      <p class="small muted mt">${helpLink('demarrer', 'Ces sept étapes, expliquées en détail')}</p>
     </div>`;
   }
   function bindPremiersPas() {
@@ -5685,7 +5685,7 @@
             <span class="small muted">${rows.length} sur ${t.count}</span>
           </div>
           ${rows.length ? `<div class="scroll-x"><table class="list compact"><thead><tr>
-            <th>Article</th><th>Emplacement</th><th class="r">En stock</th><th class="r">Seuil</th><th class="r">Coût moyen</th><th class="r">Valeur</th><th class="r">Prix de vente</th></tr></thead><tbody>
+            <th>Article</th><th>Emplacement</th><th class="r">En stock</th><th class="r">Seuil</th><th class="r">Coût moyen ${info('stk.cmp')}</th><th class="r">Valeur</th><th class="r">Prix de vente</th></tr></thead><tbody>
             ${rows.map(r => `<tr class="clickable ${r.negative ? 'row-warn' : ''}" data-iid="${h(r.itemId)}">
               <td><strong>${h(r.label)}</strong>${r.negative ? '<div class="small warn-text">stock négatif : une entrée manque</div>' : r.low ? '<div class="small warn-text">sous le seuil d\'alerte</div>' : ''}</td>
               <td>${h(r.location) || '<span class="muted">—</span>'}</td>
@@ -6384,7 +6384,7 @@
         <div class="panel"><h2>Tableau des amortissements — ${s.year} ${info('immo.table')}</h2>
           ${t.rows.length ? `<div class="scroll-x"><table class="list compact"><thead><tr>
             <th>Bien</th><th>Famille</th><th class="r">Mise en service</th><th class="r">Durée</th>
-            <th class="r">Valeur HT</th><th class="r">Cumul au 01/01</th><th class="r">Dotation ${s.year}</th><th class="r">Cumul au 31/12</th><th class="r">VNC</th></tr></thead><tbody>
+            <th class="r">Valeur HT</th><th class="r">Cumul au 01/01</th><th class="r">Dotation ${s.year} ${info('immo.annuity')}</th><th class="r">Cumul au 31/12</th><th class="r">VNC ${info('immo.nbv')}</th></tr></thead><tbody>
             ${t.rows.map(a => `<tr class="clickable" data-aid="${h(a.id)}">
               <td><strong>${h(a.label)}</strong>${a.out ? `<div class="small warn-text">sorti le ${C.fmtDate(a.disposalResult.date)}</div>` : ''}</td>
               <td>${h(C.assetClassLabel(a.category))}</td>
@@ -7383,8 +7383,8 @@
         { key: 'piece', label: 'Pièce', val: e => e.piece },
         { key: 'account', label: 'Compte', val: e => e.account },
         { key: 'label', label: 'Libellé', val: e => e.label },
-        { key: 'debit', label: 'Débit', r: true, val: e => e.debit },
-        { key: 'credit', label: 'Crédit', r: true, val: e => e.credit }
+        { key: 'debit', label: 'Débit', r: true, info: 'ecr.quoi', val: e => e.debit },
+        { key: 'credit', label: 'Crédit', r: true, info: 'ecr.quoi', val: e => e.credit }
       ];
       const sorted = applySort(entries, cols, ecrState.sort);
       const { rows, pg } = paginate(sorted, ecrState);
@@ -7419,6 +7419,12 @@
               <td class="r nw">${C.money(a.debit)}</td><td class="r nw">${C.money(a.credit)}</td>
               <td class="r nw">${C.money(a.solde)}</td></tr>`; }).join('')}
           </tbody></table></div>` : '<div class="empty">—</div>'}
+          <!-- « Retenue à la source opérée » et « subie » s'affichent l'une SOUS l'autre, avec des
+               numéros de compte voisins, et rien dans toute l'application ne les distinguait : deux
+               mots de la même famille pour deux choses opposées, au seul endroit où on les voit
+               côte à côte. -->
+          <p class="small muted mt"><b>Retenue à la source opérée</b> : ce que <b>tu</b> as retenu en payant un fournisseur, et que tu dois reverser au Trésor à sa place — tu lui en remets l'attestation.
+          <b>Subie</b> : ce que <b>tes clients</b> t'ont retenu sur tes factures, et que tu récupéreras sur ton impôt, avec l'attestation qu'ils te doivent. ${info('ecr.rs')}</p>
           <p class="small muted mt">Un compte inattendu ou un solde qui surprend se corrige dans le plan de comptes : les écritures se recalculent aussitôt.</p>
         </div>
 

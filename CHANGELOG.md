@@ -7,6 +7,36 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 7.10.0 — 12/09/2026
+
+**L'aide décrit l'application d'aujourd'hui.**
+
+Une aide qui a six versions de retard ne se contente pas d'être incomplète : elle fait douter de
+tout le reste, et on n'y revient plus.
+
+- **L'article « Démarrer » contredisait le panneau qui y mène.** L'accueil affiche sept étapes —
+  « Compléter ta fiche société », « Enregistrer ton premier client »… — et son lien menait à
+  « les cinq premières minutes », qui en donnait cinq autres, dans un autre ordre. Quelqu'un qui
+  suit la notice ne faisait pas ce que l'application lui demandait. L'article reprend les sept
+  étapes, mot pour mot et dans le même ordre, et un test empêche les deux de diverger à nouveau.
+- **L'article Comptabilité annonçait « quatre onglets » ; la page en a sept**, et les trois
+  nouveaux — Écritures, Clôtures, Cabinet — n'y figuraient nulle part. Plus largement, **vingt
+  libellés d'onglets sur quarante-cinq n'étaient nommés dans aucun article** : on ne peut pas
+  chercher un mot qu'on n'a jamais lu. Chaque page à onglets les nomme maintenant en une phrase.
+- **Trois textes parlaient au futur de modules livrés depuis un an** : « à partir de la version
+  4.0, ce bon sortira les articles du stock », « pour que les modules stock et immobilisations
+  n'aient pas à te faire tout ressaisir », « quand ils arriveront ». Ils disent désormais ce que
+  le champ fait aujourd'hui.
+- **L'article « Raccourcis clavier » en oubliait six**, dont celui qui ouvre l'aide (⌘ ?) et celui
+  qui revient en arrière (⌘ [). Le menu de l'application est maintenant la source de vérité, et un
+  test le vérifie raccourci par raccourci.
+- **« Retenue à la source opérée » et « subie » s'affichaient l'une sous l'autre**, avec des
+  numéros de compte voisins, et rien dans toute l'application ne les distinguait — deux mots de la
+  même famille pour deux choses opposées. La différence est écrite là où on les voit côte à côte.
+- **Un en-tête de colonne peut porter une bulle « i » depuis la 7.0.0, et pas une seule ne s'en
+  servait** — alors que c'est exactement là que vivent les abréviations. VNC, Dotation, Coût moyen,
+  Débit et Crédit ont la leur.
+
 ## 7.9.0 — 12/09/2026
 
 **Un même geste porte partout le même nom et le même habit.**
