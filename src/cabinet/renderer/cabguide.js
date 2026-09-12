@@ -61,11 +61,11 @@
     // — filets —
     'b.daily': { t: 'Sauvegarde quotidienne', d: 'Chaque jour, avant la première modification, SkanFact met de côté le fichier tel qu\'il était. Tu peux donc revenir à « hier matin » après une fausse manœuvre. Trente jours sont conservés, plus les sauvegardes nommées (avant un import, avant une suppression).' },
     'b.external': { t: 'Copie vers un autre support', d: 'Un dossier sur une clé USB, un disque externe ou iCloud Drive. À chaque enregistrement, SkanFact y recopie ta base, tes sauvegardes <b>et tes paquets</b>. C\'est ce qui te sauve quand l\'ordinateur lui-même disparaît — vol, panne de disque, dégât des eaux.' },
-    'b.recovery': { t: 'Clé de secours', d: 'Le fichier le plus important que tu produiras avec cette application. Il contient la clé qui <b>ouvre les paquets de tes clients</b>. Sans elle et sans ton ordinateur, aucun paquet déjà reçu ne pourra plus jamais être ouvert, et tes clients devront tous réimporter un nouvel appairage. Range-la ailleurs que sur ce Mac : clé USB dans un tiroir, coffre, chez ton associé.' },
+    'b.recovery': { t: 'Clé de secours', d: 'Le fichier le plus important que tu produiras avec cette application. Il contient la clé qui <b>ouvre les paquets de tes clients</b>. Sans elle et sans ton ordinateur, aucun paquet déjà reçu ne pourra plus jamais être ouvert, et tes clients devront tous réimporter un nouvel appairage. Range-la ailleurs que sur cet ordinateur : clé USB dans un tiroir, coffre, chez ton associé.' },
     'b.password': { t: 'Mot de passe du cabinet', d: 'Il chiffre tout ce que tes clients t\'envoient. Personne ne peut le récupérer, pas même nous : c\'est ce qui garantit qu\'un portable volé n\'emporte pas soixante comptabilités. Change-le si tu penses qu\'il a été vu, ou quand un collaborateur s\'en va.' },
     'b.restore': { t: 'Restaurer une sauvegarde', d: 'Remplace l\'état actuel par celui de la sauvegarde choisie. L\'application te dit d\'abord ce que la sauvegarde contient et ce que tu as maintenant, pour que tu voies ce que tu perdrais. Une sauvegarde de l\'état actuel est prise juste avant : une restauration n\'est jamais un aller simple.' },
     'b.inbox': { t: 'Boîte de réception', d: 'Le dossier où tu ranges les paquets que tes clients t\'envoient — celui où ta messagerie enregistre les pièces jointes, un dossier partagé, une clé USB. SkanFact le regarde à l\'ouverture et te dit ce qui est arrivé. <b>Il n\'importe jamais tout seul</b> : il propose, tu cliques. Et il n\'efface rien — ce sont les pièces de tes clients, pas les siennes. « Ignorer » ne fait que cesser de te les proposer.' },
-    'b.where': { t: 'Où sont mes données', d: 'Tout vit dans un seul dossier sur cet ordinateur : la base chiffrée, les sauvegardes, et les paquets rangés par client et par année. Tu peux l\'ouvrir dans le Finder, le copier sur un disque, le sauvegarder avec Time Machine.' }
+    'b.where': { t: 'Où sont mes données', d: 'Tout vit dans un seul dossier sur cet ordinateur : la base chiffrée, les sauvegardes, et les paquets rangés par client et par année. Tu peux l\'ouvrir dans ton gestionnaire de fichiers, le copier sur un disque, l\'inclure dans ta sauvegarde habituelle (Time Machine sur Mac, Historique des fichiers sur Windows).' }
   };
 
   // Les articles de la rubrique Aide. Ils vivent ici plutôt que dans app.js pour se relire et se
@@ -76,7 +76,7 @@
       id: 'demarrer', t: 'En trois gestes', d: `
       <ol class="small" style="line-height:1.9">
         <li><b>Une fois :</b> renseigne ton cabinet dans Réglages, enregistre le fichier d'appairage (<code>.skanpair</code>) et envoie-le à chacun de tes clients.</li>
-        <li><b>Chaque mois :</b> ton client clôture son mois puis t'envoie un paquet (<code>.skanpack</code>). Tu le glisses sur la fenêtre, ou tu le double-cliques dans le Finder.</li>
+        <li><b>Chaque mois :</b> ton client clôture son mois puis t'envoie un paquet (<code>.skanpack</code>). Tu le glisses sur la fenêtre, ou tu le double-cliques dans ton gestionnaire de fichiers.</li>
         <li><b>Le jour que tu as choisi</b> (le 10 par défaut, réglable dans Réglages) : la page Dossiers met en tête ceux qui n'ont rien envoyé. Un clic sur « Relancer » prépare le message, et la relance est enregistrée.</li>
       </ol>
       <p class="small">Tes clients qui n'utilisent pas encore SkanFact ont leur place ici aussi : <b>Nouveau dossier client</b> les fait entrer dans ton portefeuille. Rien ne leur est réclamé tant qu'ils n'ont pas commencé.</p>` },
@@ -85,7 +85,7 @@
       <p class="small">La page de garde (un PDF qui résume le mois et liste ce qui manque), les journaux au format CSV (ventes, achats, encaissements, règlements fournisseurs, trésorerie), les factures et avoirs en PDF, les bulletins de paie, et les justificatifs que ton client a joints à ses achats.</p>
       <p class="small"><b>Et surtout <code>journaux/ecritures.csv</code></b> : les pièces du mois déjà transformées en écritures en partie double, à importer dans ton logiciel au lieu de les ressaisir. Si les numéros de compte ne sont pas les tiens, donne-les à ton client une fois : il les saisit dans son SkanFact et tous ses envois suivants sont à ton format.</p>
       <p class="small">Un <b>manifeste</b> porte l'empreinte de chaque fichier. À l'import, SkanFact les recalcule toutes : c'est ce qui te permet d'affirmer que ce que tu as reçu est exactement ce qui a été envoyé.</p>
-      <p class="small">Les paquets sont rangés sur ton disque par <b>client</b>, puis par <b>année</b>. Tu peux les retrouver dans le Finder sans ouvrir l'application, et rendre à un client ses pièces en copiant un dossier.</p>` },
+      <p class="small">Les paquets sont rangés sur ton disque par <b>client</b>, puis par <b>année</b>. Tu peux les retrouver dans ton gestionnaire de fichiers sans ouvrir l'application, et rendre à un client ses pièces en copiant un dossier.</p>` },
     {
       id: 'travail', t: 'Ce que tu fais des paquets reçus', d: `
       <p class="small">Deux pages vivent de ce que tes clients t'envoient :</p>
@@ -104,7 +104,7 @@
       <ul class="small" style="line-height:1.8">
         <li><b>La sauvegarde quotidienne</b> te protège de <i>toi</i> : une suppression de trop, un import raté. Elle est automatique, trente jours.</li>
         <li><b>La copie vers un autre support</b> te protège de <i>l'ordinateur</i> : panne, vol, incendie. Elle emporte la base, les sauvegardes et les paquets. Choisis une clé USB ou un dossier iCloud dans Réglages.</li>
-        <li><b>La clé de secours</b> te protège de la <i>perte totale</i>. Elle contient la clé qui ouvre les paquets de tes clients. Sans elle et sans ce Mac, aucun paquet déjà reçu ne se rouvre — jamais. Range-la ailleurs.</li>
+        <li><b>La clé de secours</b> te protège de la <i>perte totale</i>. Elle contient la clé qui ouvre les paquets de tes clients. Sans elle et sans cet ordinateur, aucun paquet déjà reçu ne se rouvre — jamais. Range-la ailleurs.</li>
       </ul>
       <p class="small">Ton mot de passe, lui, ne se récupère pas. C'est voulu : c'est ce qui fait qu'un portable volé n'emporte pas soixante comptabilités. Note-le quelque part de sûr le jour où tu le choisis.</p>` },
     {

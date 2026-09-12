@@ -200,7 +200,19 @@ function createCabStore(dir, opts) {
         fs.renameSync(p + '.tmp', p);
       } catch (e) { log('conversion sauvegarde ' + n, e); }
     });
-    mirrorExternal();
+    // Les sauvegardes déjà copiées sur la clé USB restent chiffrées avec l'ANCIEN mot de passe.
+    // Comme on ne remplace que ce qui diffère par la taille et la date, et que le rechiffrement
+    // change les deux, elles seront bien réécrites — mais on vide d'abord ce qui ne correspond plus
+    // à aucune sauvegarde locale, sinon la clé garde des fichiers qu'aucun mot de passe n'ouvre.
+    const ext = st.external.dir;
+    if (ext) {
+      const cible = path.join(ext, 'SkanFact Cabinet', 'sauvegardes');
+      try {
+        const locales = new Set(fs.readdirSync(backupDir));
+        fs.readdirSync(cible).forEach(n => { if (!locales.has(n)) fs.unlinkSync(path.join(cible, n)); });
+      } catch {}
+    }
+    mirrorExternal({ packs: false });
     return true;
   }
 
@@ -439,6 +451,37 @@ function createCabStore(dir, opts) {
   // enregistrer un numéro de téléphone bloquerait l'application plusieurs secondes, à chaque frappe
   // d'un bouton Enregistrer — et sur une clé USB, bien plus. `avecPaquets` n'est donc vrai que
   // lorsqu'ils ont vraiment changé.
+  // `cpSync(..., { force: false })` ne remplace JAMAIS ce qui existe déjà. Sur la clé USB, l'index
+  // disait « mars, définitif » pendant que le paquet posé à côté était la version d'avant. Une
+  // sauvegarde qui ment est pire que pas de sauvegarde : on compare taille et date, et on recopie
+  // ce qui diffère. (On n'efface rien : une sauvegarde qui supprime ce qu'on supprime n'en est plus
+  // une. L'interface le dit dans les fenêtres de suppression.)
+  function copierSiDifferent(src, dst) {
+    try {
+      const a = fs.statSync(src);
+      let b = null;
+      try { b = fs.statSync(dst); } catch {}
+      if (b && b.size === a.size && Math.abs(b.mtimeMs - a.mtimeMs) < 2000) return false;
+      fs.mkdirSync(path.dirname(dst), { recursive: true });
+      const tmp = dst + '.tmp';
+      fs.copyFileSync(src, tmp);
+      fs.renameSync(tmp, dst);
+      try { fs.utimesSync(dst, a.atime, a.mtime); } catch {}
+      return true;
+    } catch (e) { log('copie externe ' + path.basename(src), e); return false; }
+  }
+
+  function copierArbre(src, dst) {
+    let entries = [];
+    try { entries = fs.readdirSync(src, { withFileTypes: true }); } catch { return; }
+    fs.mkdirSync(dst, { recursive: true });
+    entries.forEach(e => {
+      const a = path.join(src, e.name), b = path.join(dst, e.name);
+      if (e.isDirectory()) copierArbre(a, b);
+      else copierSiDifferent(a, b);
+    });
+  }
+
   function mirrorExternal(opts) {
     const avecPaquets = !!(opts && opts.packs);
     const ext = st.external.dir;
@@ -447,18 +490,11 @@ function createCabStore(dir, opts) {
       if (!fs.existsSync(ext)) throw new Error('dossier introuvable (support débranché ?)');
       const target = path.join(ext, 'SkanFact Cabinet');
       fs.mkdirSync(path.join(target, 'sauvegardes'), { recursive: true });
-      if (exists()) {
-        const tmp = path.join(target, 'cabinet-data.json.tmp');
-        fs.copyFileSync(file, tmp);
-        fs.renameSync(tmp, path.join(target, 'cabinet-data.json'));
-      }
+      if (exists()) copierSiDifferent(file, path.join(target, 'cabinet-data.json'));
       let names = [];
       try { names = fs.readdirSync(backupDir).filter(f => f.endsWith('.json')); } catch {}
-      names.forEach(n => {
-        const dst = path.join(target, 'sauvegardes', n);
-        if (!fs.existsSync(dst)) fs.copyFileSync(path.join(backupDir, n), dst);
-      });
-      if (avecPaquets && fs.existsSync(packRoot)) fs.cpSync(packRoot, path.join(target, 'paquets'), { recursive: true, force: false, errorOnExist: false });
+      names.forEach(n => copierSiDifferent(path.join(backupDir, n), path.join(target, 'sauvegardes', n)));
+      if (avecPaquets && fs.existsSync(packRoot)) copierArbre(packRoot, path.join(target, 'paquets'));
       st.external.lastCopy = now().toISOString();
       st.external.lastError = null;
       return true;

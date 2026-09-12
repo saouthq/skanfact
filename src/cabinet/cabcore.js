@@ -155,6 +155,10 @@
       // Les chiffres du mois, quand le paquet les porte (paquets fabriqués à partir de la 6.2.1).
       // Un paquet plus ancien n'en a pas : l'interface doit afficher « — », pas zéro.
       figures: (manifest && manifest.chiffres) || null,
+      // Le verdict de la vérification des empreintes — la SEULE affirmation rigoureuse de cette
+      // application. Il vivait deux secondes dans une fenêtre puis disparaissait : un paquet dont un
+      // fichier ne correspondait pas redevenait un mois vert « définitif » dès la fenêtre fermée.
+      integrity: extra.integrity || null,
       // Les réceptions précédentes de CE mois, quand il en a eu (voir filePack).
       precedents: extra.precedents || undefined
     };
@@ -262,14 +266,23 @@
       const cols = l.split(/\s*[;\t]\s*/);
       // Une ligne d'entête copiée avec le tableau ne doit pas devenir un client nommé « Nom ».
       if (i === 0 && /^(nom|client|raison sociale|société)$/i.test(cols[0])) return;
-      const f = { name: cols[0] || '', matricule: cols[1] || '', email: cols[2] || '', phone: cols[3] || '' };
-      // Les colonnes arrivent parfois dans le désordre : on reconnaît un email et un téléphone.
-      cols.slice(1).forEach(c => {
-        if (/@/.test(c) && !f.email.includes('@')) f.email = c;
-        else if (/^\+?[\d\s().-]{6,}$/.test(c) && !f.phone) f.phone = c;
+      // Les colonnes arrivent parfois dans le désordre. Mais la DEUXIÈME reste le matricule tant
+      // qu'elle n'est pas manifestement une adresse : un matricule tunisien écrit en chiffres seuls
+      // (« 1234567 ») ressemble à un numéro de téléphone, et l'ancienne heuristique le déplaçait
+      // dans le téléphone puis effaçait le matricule — c'est-à-dire l'identifiant du dossier.
+      const f = { name: cols[0] || '', matricule: '', email: '', phone: '' };
+      const reste = [];
+      cols.slice(1).forEach((c, i) => {
+        const v = String(c || '').trim();
+        if (!v) return;
+        if (i === 0 && !v.includes('@')) { f.matricule = v; return; }
+        reste.push(v);
       });
-      if (f.email === f.matricule) f.matricule = '';
-      if (f.phone === f.matricule) f.matricule = '';
+      reste.forEach(v => {
+        if (v.includes('@')) { if (!f.email) f.email = v; return; }
+        if (/^\+?[\d\s().-]{6,}$/.test(v)) { if (!f.phone) f.phone = v; return; }
+        if (!f.matricule) f.matricule = v;
+      });
       if (!f.name) return;
       const d = newDossier(f);
       if (vus.has(d.id)) return ignorés.push(f.name);

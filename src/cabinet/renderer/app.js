@@ -42,6 +42,13 @@
 
   // Une erreur venue du processus principal arrive habillée en « Error invoking remote method '…' ».
   // On ne montre que la phrase écrite pour l'utilisateur.
+  // Windows est une cible de construction : l'application parlait pourtant de « ce Mac », du
+  // « Finder » et de « Time Machine » à un comptable tunisien qui l'aura très probablement installée
+  // sur Windows. `upd.app.platform` arrive au démarrage ; avant, on reste neutre.
+  const surMac = () => !upd.app || upd.app.platform === 'darwin';
+  const CE_POSTE = () => (surMac() ? 'ce Mac' : 'cet ordinateur');
+  const EXPLORATEUR = () => (surMac() ? 'le Finder' : 'l\'Explorateur');
+
   const plainError = e => String((e && e.message) || e || '')
     .replace(/^Error invoking remote method '[^']*':\s*/, '').replace(/^Error:\s*/, '') || 'Erreur inconnue.';
 
@@ -886,16 +893,21 @@
         ne déclare pas dessus. Le mois en cours n'est jamais réclamé.</p>` : ''}
       </div>
 
+      ${packs.some(p => p.integrity && (p.integrity.bad || []).length)
+        ? `<div class="warn-box mb"><strong>Au moins un paquet de ce client contient un fichier qui ne correspond pas à l'empreinte annoncée.</strong>
+           Ce n'est pas ce qui a été envoyé : redemande-le avant de déclarer.</div>` : ''}
       <div class="panel"><h2>Paquets reçus ${info('p.integrity')}</h2>
       ${packs.length ? `<div class="scroll-x"><table class="list compact">
         <thead><tr><th class="nw">Mois</th><th>État</th><th class="r nw">Chiffre d'affaires</th><th class="r nw">TVA à décaisser</th>
-        <th class="r">Pièces</th><th class="r">Signalé</th><th class="nw">Reçu le</th><th class="nw">Fabriqué le</th><th class="r">Taille</th><th></th></tr></thead>
+        <th class="r">Vérifiées</th><th class="r">Signalé</th><th class="nw">Reçu le</th><th class="nw">Fabriqué le</th><th class="r">Taille</th><th></th></tr></thead>
         <tbody>${packs.map(p => `<tr>
           <td class="nw">${esc(p.label)}</td>
           <td>${p.definitive ? '<span class="badge accepté">définitif</span>' : '<span class="badge partielle">provisoire</span>'}</td>
           <td class="r nw">${esc(p.figures ? money(p.figures.ca, p.figures.devise) : '—')}</td>
           <td class="r nw">${esc(p.figures ? money(p.figures.tvaADecaisser, p.figures.devise) : '—')}</td>
-          <td class="r">${p.files}</td>
+          <td class="r">${p.integrity && (p.integrity.bad || []).length
+            ? `<span class="err-inline" title="${esc((p.integrity.bad || []).join(', '))}">⚠ ${p.integrity.bad.length}</span>`
+            : p.integrity ? `<span class="ok-inline" title="empreintes vérifiées à la réception">✓ ${p.integrity.checked}</span>` : p.files}</td>
           <td class="r">${(p.missing || []).reduce((s, m) => s + (m.count || 0), 0) || '—'}</td>
           <td class="muted nw">${esc(fmtWhen(p.receivedAt))}</td>
           <td class="muted nw">${esc(p.generatedAt ? fmtWhen(Date.parse(p.generatedAt)) : '—')}</td>
@@ -1666,7 +1678,7 @@
   function recoveryLine() {
     const at = (backupInfo && backupInfo.recoveryExportedAt) || recoveryAt;
     return at
-      ? `<span class="ok-inline">✓ Clé de secours enregistrée le ${esc(fmtDay(at))}.</span> <span class="muted small">Vérifie qu'elle n'est pas sur ce Mac.</span>`
+      ? `<span class="ok-inline">✓ Clé de secours enregistrée le ${esc(fmtDay(at))}.</span> <span class="muted small">Vérifie qu'elle n'est pas sur ${CE_POSTE()}.</span>`
       : `<span class="err-inline">⚠ Tu n'as jamais enregistré de clé de secours.</span> <span class="muted small">C'est le filet le plus important : trois minutes maintenant, ou tout est perdu le jour où le disque lâche.</span>`;
   }
   let recoveryAt = null;
@@ -1711,7 +1723,7 @@
       `<h2>Clé de secours</h2>
        <p class="small">Ce fichier contient la clé qui <strong>ouvre les paquets de tes clients</strong>. Protège-le par un mot de passe
        (différent de celui de l'application : ce fichier a vocation à quitter cet ordinateur).</p>
-       <div class="warn-box">Range-le <strong>ailleurs que sur ce Mac</strong> : une clé USB dans un tiroir, un coffre, chez ton associé.
+       <div class="warn-box">Range-le <strong>ailleurs que sur ${CE_POSTE()}</strong> : une clé USB dans un tiroir, un coffre, chez ton associé.
        Une clé de secours posée à côté de l'ordinateur ne protège de rien.</div>
        <label class="field mt">Mot de passe <strong>du cabinet</strong><input type="password" id="p0" autocomplete="current-password"></label>
        <p class="muted small">Redemandé parce que ce fichier ouvre les comptabilités de tous tes clients : sans ça, n'importe qui passant devant ce poste déverrouillé repartirait avec.</p>
@@ -1736,7 +1748,7 @@
             drawBackupPanels();
             if (onDone) onDone();
             const show = await confirmDialog('Clé de secours enregistrée',
-              `<p class="muted small">${esc(r.path)}</p><p>Copie-la maintenant sur une clé USB ou un disque que tu ranges ailleurs, et <strong>efface-la de cet ordinateur</strong>.</p>`,
+              `<p class="muted small">${esc(r.path)}</p><p>Copie-la maintenant sur une clé USB ou un disque que tu ranges ailleurs, et <strong>efface-la de ${CE_POSTE()}</strong>.</p>`,
               'La montrer dans le dossier');
             if (show) api.reveal(r.path);
           } catch (e) { toast(plainError(e), 'error'); }
@@ -1888,14 +1900,14 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
           html: () => `
             <p class="small">Cette application va contenir la comptabilité de tes clients <strong>et la clé qui ouvre leurs paquets</strong>.
             Deux gestes, une fois, et un incident ne te coûtera plus rien.</p>
-            <div class="warn-box mt"><strong>Sans clé de secours, si ce Mac disparaît, aucun paquet déjà reçu ne pourra plus être ouvert.</strong>
+            <div class="warn-box mt"><strong>Sans clé de secours, si ${CE_POSTE()} disparaît, aucun paquet déjà reçu ne pourra plus être ouvert.</strong>
             Ni par nous, ni par personne. Tes clients devraient tous réimporter un nouvel appairage.</div>
             <div class="wiz-steps mt">
               <div class="wiz-step"><div><strong>1. Une copie hors de cet ordinateur</strong>
                 <div class="muted small">Clé USB, disque externe, iCloud Drive. La base, les sauvegardes et les paquets y seront recopiés à chaque enregistrement.</div></div>
                 <button class="btn" id="w-ext">Choisir un dossier…</button><span class="ok-inline" id="w-ext-ok" hidden>✓ fait</span></div>
               <div class="wiz-step"><div><strong>2. La clé de secours</strong>
-                <div class="muted small">Un petit fichier protégé par son propre mot de passe, à ranger ailleurs que sur ce Mac.</div></div>
+                <div class="muted small">Un petit fichier protégé par son propre mot de passe, à ranger ailleurs que sur ${CE_POSTE()}.</div></div>
                 <button class="btn btn-primary" id="w-rec">Enregistrer la clé…</button><span class="ok-inline" id="w-rec-ok" hidden>✓ fait</span></div>
             </div>
             <p class="muted small mt">Tu peux les faire plus tard (Réglages → Sécurité), mais « plus tard » est exactement le moment où l'on oublie.</p>`,

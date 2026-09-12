@@ -3283,6 +3283,12 @@ t('cabinet : le jeu d\'exemple montre les quatre situations, à n\'importe quell
     const json = JSON.stringify(s);
     assert.ok(!/SKANCYBER/i.test(json) && !/1998268D/.test(json), jour);
   }
+  // La règle vaut pour TOUT ce qu'on livre, pas seulement pour le jeu de démonstration : elle était
+  // encore écrite dans la bannière de l'installeur Windows, que Skander montre à qui l'installe.
+  ['Installer SkanFact.command', 'Installer SkanFact (Windows).bat', 'README.md'].forEach(f => {
+    const texte = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+    assert.ok(!/SKANCYBER/i.test(texte) && !/1998268D/.test(texte), `${f} porte encore le nom d'une autre entreprise`);
+  });
 });
 
 t('cabinet : le fichier d\'appairage ne contient QUE la clé publique', () => {
@@ -3420,6 +3426,12 @@ t('cabinet : une liste de clients se colle depuis un tableur', () => {
   assert.strictEqual(r2.dossiers.length, 1);
   assert.strictEqual(r2.dossiers[0].name, 'Nouvelle Société');
   assert.deepStrictEqual(r2.ignorés, ['Pharmacie El Menzah', 'Pharmacie El Menzah']);
+  // Un matricule tunisien écrit en chiffres seuls ressemble à un téléphone : il était déplacé dans
+  // la colonne téléphone PUIS effacé — c'est-à-dire l'identifiant du dossier, perdu en silence.
+  const r3 = cab.parseDossierLines('Boulangerie Hamdi ; 1234567 ; h@x.tn ; +216 98 111 222', []);
+  assert.strictEqual(r3.dossiers[0].matricule, '1234567');
+  assert.strictEqual(r3.dossiers[0].phone, '+216 98 111 222');
+  assert.strictEqual(r3.dossiers[0].email, 'h@x.tn');
   // Rien à lire ne casse rien.
   assert.strictEqual(cab.parseDossierLines('', []).dossiers.length, 0);
   assert.strictEqual(cab.parseDossierLines(null, null).dossiers.length, 0);
@@ -3611,6 +3623,71 @@ t('cabinet : les échéances savent qui n\'a pas envoyé ses pièces', () => {
   assert.ok(!cab.cabinetTodo(propre, '2026-09-20').some(x => x.id === 'echeance'));
 });
 
+
+t('audit H5 : l\'app gratuite du comptable n\'embarque pas le code de l\'app payante', () => {
+  const cfg = require('../build/cabinet.config.js');
+  const motifs = cfg.files.map(String);
+  assert.ok(!motifs.includes('src/**/*'), 'src/**/* emporte toute la logique de facturation, de paie et de stock');
+  assert.ok(motifs.some(m => m.startsWith('src/cabinet/')), 'mais bien tout le code du cabinet');
+  // Et ce dont elle a besoin doit y être : on relit ses propres require et les balises de son HTML.
+  const lus = ['main.js', 'cabcore.js', 'cabstore.js', 'preload.js']
+    .map(f => fs.readFileSync(path.join(__dirname, '..', 'src', 'cabinet', f), 'utf8')).join('\n')
+    + fs.readFileSync(path.join(__dirname, '..', 'src', 'cabinet', 'renderer', 'index.html'), 'utf8');
+  const besoins = [];
+  if (/require\('\.\.\/zip'\)/.test(lus)) besoins.push('src/zip.js');
+  if (/mac-update\.sh/.test(lus)) besoins.push('src/mac-update.sh');
+  if (/renderer\/style\.css/.test(lus)) besoins.push('src/renderer/style.css');
+  besoins.forEach(f => assert.ok(motifs.includes(f), `l'app cabinet a besoin de ${f} et il n'est pas livré`));
+  // Les fichiers de l'app entreprise qui ne doivent PAS partir.
+  ['src/renderer/app.js', 'src/renderer/core.js', 'src/main.js', 'src/storage.js', 'src/licence.js']
+    .forEach(f => assert.ok(!motifs.includes(f), `${f} n'a rien à faire dans l'app du comptable`));
+});
+
+t('audit G24 : les textes fixes ne parlent pas d\'une seule plateforme', () => {
+  // Windows est une cible de construction : l'application parlait de « ce Mac », du « Finder » et de
+  // « Time Machine » à un comptable tunisien qui l'aura très probablement installée sur Windows.
+  // Les textes qui dépendent vraiment de la plateforme passent par `surMac()` dans app.js ; ceux de
+  // l'aide, qui sont fixes, doivent rester neutres.
+  const guide = fs.readFileSync(path.join(__dirname, '..', 'src', 'cabinet', 'renderer', 'cabguide.js'), 'utf8');
+  [/\bce Mac\b/, /\bdans le Finder\b/, /\bton Finder\b/].forEach(re => {
+    assert.ok(!re.test(guide), `l'aide du cabinet parle encore d'une seule plateforme : ${re}`);
+  });
+  // « Time Machine » est autorisé s'il est cité à côté de son équivalent Windows.
+  if (/Time Machine/.test(guide)) {
+    assert.ok(/Historique des fichiers/.test(guide), 'Time Machine doit être cité avec son équivalent Windows');
+  }
+});
+
+t('audit C4 : une bombe à décompression est refusée au lieu de tuer l\'application', () => {
+  // Un ZIP de quelques centaines de kilo-octets peut produire plusieurs gigaoctets. Le paquet vient
+  // de l'extérieur, par mail : la mémoire du processus explosait avant qu'aucun contrôle ne
+  // s'exécute, et l'application mourait sans un mot.
+  const zlib = require('zlib');
+  const zip = require('../src/zip.js');
+  const gros = Buffer.alloc(600 * 1024 * 1024, 0);                 // > MAX_FICHIER une fois gonflé
+  const b = zip.zipBuffer([{ name: 'bombe.bin', data: gros }]);
+  assert.ok(b.length < 2 * 1024 * 1024, 'le zip compressé doit rester minuscule : ' + b.length);
+  const e = zip.zipRead(b).find(x => x.name === 'bombe.bin');
+  // Node arrête l'inflation à la borne posée : l'erreur est nette, la mémoire tient.
+  assert.throws(() => e.data(), /anormalement gros|larger than|output length|maxOutputLength/i,
+    'la décompression doit échouer proprement, pas remplir la mémoire');
+  // Un paquet honnête reste lisible.
+  const ok = zip.zipRead(zip.zipBuffer([{ name: 'a.txt', data: Buffer.from('bonjour') }]));
+  assert.strictEqual(ok[0].data().toString(), 'bonjour');
+});
+
+t('audit C5 : le verdict d\'intégrité est conservé avec le paquet', () => {
+  // « 7 pièces vérifiées, intactes » est la seule affirmation rigoureuse de cette application. Elle
+  // vivait deux secondes dans une fenêtre : un paquet dont un fichier ne correspondait pas
+  // redevenait un mois vert « définitif » dès la fenêtre fermée.
+  const S = cab.migrate({});
+  const manifest = { entreprise: { nom: 'X', matricule: '1A' }, periode: { mois: '2026-08' }, fichiers: [], definitif: true };
+  cab.filePack(S, manifest, { receivedAt: 1, path: '/x', integrity: { checked: 7, bad: [], at: 2 } });
+  assert.deepStrictEqual(S.dossiers[0].packs[0].integrity, { checked: 7, bad: [], at: 2 });
+  const abime = cab.migrate({});
+  cab.filePack(abime, { ...manifest, periode: { mois: '2026-09' } }, { receivedAt: 1, path: '/y', integrity: { checked: 6, bad: ['ventes/FAC-1.pdf (modifié)'], at: 3 } });
+  assert.deepStrictEqual(abime.dossiers[0].packs[0].integrity.bad, ['ventes/FAC-1.pdf (modifié)']);
+});
 
 t('cabinet : un CSV se lit vraiment, point-virgules et guillemets compris', () => {
   // Découper sur « ; » serait plus court et faux : un libellé de facture contient un point-virgule
@@ -4272,6 +4349,36 @@ t('audit A2 : un mois renvoyé n\'écrase jamais le paquet sur lequel on a décl
   assert.strictEqual(cfs.readFileSync(p1, 'utf8'), 'la version sur laquelle j\'ai déclaré',
     'sans le premier fichier, le comptable ne peut ni montrer sur quoi il a déclaré, ni rectifier');
   assert.strictEqual(cfs.readFileSync(p2, 'utf8'), 'la version rouverte');
+});
+
+t('audit A3 : la copie externe remplace ce qui a changé, au lieu de garder l\'ancien', () => {
+  // `cpSync(..., { force: false })` ne remplaçait jamais ce qui existait déjà : sur la clé USB,
+  // l'index disait « mars, définitif » pendant que le paquet à côté était la version d'avant.
+  const dir = tmpCab();
+  const ext = tmpCab();
+  const s = CS.createCabStore(dir, { externalDir: ext });
+  const st = cabState();
+  s.create('mot-de-passe-long', st);
+  const d = cab.newDossier({ name: 'Client A', matricule: '1111111A' });
+  st.dossiers.push(d);
+  const src = cpath.join(dir, 'v1.skanpack');
+  cfs.writeFileSync(src, 'version du 8 avril, celle sur laquelle j\'ai déclaré');
+  const p1 = s.storePack(src, d, '2026-03', st.dossiers);
+  const cible = cpath.join(ext, 'SkanFact Cabinet', 'paquets', 'Client-A', '2026', '2026-03.skanpack');
+  assert.strictEqual(cfs.readFileSync(cible, 'utf8'), 'version du 8 avril, celle sur laquelle j\'ai déclaré');
+
+  // Le même fichier change sur le poste (restauration, réorganisation) : le miroir doit suivre.
+  cfs.writeFileSync(p1, 'contenu corrigé');
+  cfs.utimesSync(p1, new Date(), new Date(Date.now() + 10000));
+  assert.strictEqual(s.mirrorExternal({ packs: true }), true);
+  assert.strictEqual(cfs.readFileSync(cible, 'utf8'), 'contenu corrigé',
+    'une copie qui ne remplace jamais rien est une sauvegarde qui ment');
+
+  // La base aussi.
+  st.dossiers[0].note = 'modifiée';
+  s.write(st);
+  const baseExt = cpath.join(ext, 'SkanFact Cabinet', 'cabinet-data.json');
+  assert.strictEqual(cfs.readFileSync(baseExt).length, cfs.readFileSync(s.file).length);
 });
 
 t('audit A9 : un paquet dont le fichier a disparu se signale', () => {

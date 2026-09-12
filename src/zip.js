@@ -129,6 +129,11 @@ function zipBuffer(entries, opts) {
 
 // Lecture : on n'a besoin que du répertoire central, qui donne tout. On lit depuis la fin, comme le
 // veut le format — c'est ce qui permet d'ajouter des fichiers à un ZIP sans le réécrire.
+// Ce qu'un paquet comptable contient de plus gros, très largement : un scan de justificatifs d'un
+// mois entier. Au-delà, ce n'est plus une pièce, c'est une bombe à décompression.
+const MAX_FICHIER = 512 * 1024 * 1024;
+const MAX_ENTREES = 20000;
+
 function zipRead(buf) {
   if (!Buffer.isBuffer(buf) || buf.length < 22) throw new Error('Ce fichier n\'est pas un paquet lisible.');
   let eocd = -1;
@@ -137,6 +142,7 @@ function zipRead(buf) {
   }
   if (eocd < 0) throw new Error('Fin d\'archive introuvable : le fichier est tronqué ou n\'est pas un paquet.');
   const count = buf.readUInt16LE(eocd + 10);
+  if (count > MAX_ENTREES) throw new Error('Ce paquet annonce un nombre de fichiers déraisonnable : refusé.');
   let p = buf.readUInt32LE(eocd + 16);
   const out = [];
   for (let i = 0; i < count; i++) {
@@ -158,7 +164,14 @@ function zipRead(buf) {
     out.push({
       name, method, crc, size: rawSize,
       data: () => {
-        const raw = method === METHOD_DEFLATE ? zlib.inflateRawSync(body) : Buffer.from(body);
+        // Une borne à la décompression. Un ZIP de 200 Ko peut annoncer — et produire — plusieurs
+        // gigaoctets : la mémoire du processus explose avant qu'aucun contrôle ne s'exécute, et
+        // l'application meurt sans un mot. Le paquet vient de l'extérieur, par mail.
+        // `maxOutputLength` fait échouer inflateRawSync proprement au lieu de remplir la mémoire.
+        const raw = method === METHOD_DEFLATE
+          ? zlib.inflateRawSync(body, { maxOutputLength: MAX_FICHIER })
+          : Buffer.from(body);
+        if (raw.length > MAX_FICHIER) throw new Error(`Le fichier « ${name} » du paquet est anormalement gros : refusé.`);
         if (crc32(raw) !== crc) throw new Error(`Le fichier « ${name} » du paquet est abîmé.`);
         return raw;
       }

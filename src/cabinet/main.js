@@ -437,7 +437,8 @@ function ingest(file, password) {
 
   const res = K.filePack(state, manifest, {
     receivedAt: Date.now(), digest: Z.sha256(mEntry.data()), bytes: fs.statSync(file).size,
-    path: dest, sealed
+    path: dest, sealed,
+    integrity: { checked, bad, at: Date.now() }
   });
   return { ...res, integrity: { checked, bad } };
 }

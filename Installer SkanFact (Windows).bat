@@ -6,7 +6,7 @@ chcp 65001 >nul
 
 echo.
 echo   === SkanFact - Installation ===
-echo   Devis ^& factures - SKANCYBER SECURITY
+echo   Devis ^& factures pour une petite entreprise
 echo.
 echo   Cet assistant va :
 echo    1. verifier Node.js (et l'installer si besoin)

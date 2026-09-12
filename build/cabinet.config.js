@@ -28,7 +28,19 @@ module.exports = {
     updateBase: process.env.UPDATE_BASE || '',
     updateSecret: process.env.UPDATE_SECRET || ''
   },
-  files: ['src/**/*', 'package.json', 'CHANGELOG.md'],
+  // L'application GRATUITE du comptable embarquait le code source complet de l'application PAYANTE :
+  // `src/**/*` emportait `src/renderer/app.js`, `core.js`, toute la logique de facturation, de paie
+  // et de stock. N'importe qui recevant l'app cabinet repartait avec le produit qu'on vend.
+  // On ne livre que ce dont elle a vraiment besoin (vérifié par un test qui relit les `require` et
+  // les balises de son HTML) :
+  files: [
+    'src/cabinet/**/*',
+    'src/zip.js',                      // fabrication et lecture des paquets
+    'src/mac-update.sh',               // remplacement de l'app sur macOS non signé
+    'src/renderer/style.css',          // la feuille partagée, chargée par son index.html
+    'package.json',
+    'CHANGELOG.md'
+  ],
   directories: { output: 'dist-cabinet' },
   // Double-cliquer un paquet reçu par mail doit l'importer. C'est le geste le plus naturel après
   // avoir enregistré la pièce jointe, et jusqu'ici le système ne savait pas quoi faire d'un
