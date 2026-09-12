@@ -7,6 +7,19 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 6.5.0 — 12/09/2026
+
+**Un gel devient un rapport. Et SkanFact redémarre tout seul.**
+
+Le pire défaut d'un logiciel n'est pas celui qui plante : c'est celui qui **fige**. Rien ne s'affiche, aucune erreur n'est écrite, les journaux restent vides — et devant l'écran, personne n'a rien à envoyer pour se faire aider. C'est exactement ce qui s'est passé avec la 5.1.0, et ce qui a coûté une soirée entière à retrouver.
+
+- **SkanFact se surveille lui-même.** Toutes les trois secondes, il vérifie que son interface répond. Après une douzaine de secondes de silence, il note **où le programme s'est arrêté** — le nom de la fonction fautive, ligne comprise — interrompt ce qui tourne en boucle, et recharge.
+- **Il le dit après coup.** Un redémarrage silencieux ferait douter de ce qui a été enregistré : l'application explique ce qui s'est passé et rappelle que les données enregistrées sont intactes.
+- **Aide → Signaler un problème** prépare le message : ta description, la version, ton système, et le journal technique. **Aucune donnée de ton entreprise** — ni client, ni montant, ni document — et un bouton pour lire le journal avant d'envoyer.
+- Nouvel article d'aide « Si quelque chose ne va pas ».
+
+*Vérifié pour de vrai : un test gèle volontairement l'application avec une boucle infinie ; le chien de garde réagit en 13 secondes, nomme la fonction coupable dans le journal, et l'application repart.*
+
 ## 6.4.0 — 12/09/2026
 
 **La licence — écrite pour ne pas te gêner.**

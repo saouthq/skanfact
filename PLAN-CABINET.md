@@ -95,13 +95,17 @@ Nouvelle app, même dépôt : `src/cabinet/`, `cabinet.html`, second installeur,
 - **Mises à jour sans token** : un second dépôt GitHub **public** ne contenant que les fichiers de release. Le code reste privé. L'app installée cherche ses mises à jour là ; le champ « token » disparaît. (Le code d'une app installée est de toute façon lisible : publier les installeurs n'expose rien de plus que vendre l'app.)
 - **Écrans** : Paramètres → **Licence** : saisir, voir l'état, « Demander une licence » (mail prérempli avec les informations et l'empreinte du cabinet).
 
-### SkanFact 6.5.0 — Signature Apple et Windows *(~1 j + délais externes)*
+### SkanFact 6.6.0 — Signature Apple et Windows *(~1 j + délais externes)* — **EN ATTENTE DES CERTIFICATS**
+
+*Décalée après les filets : elle dépend d'un achat (Apple Developer 99 $/an, certificat Windows) et d'un délai de validation externe. Rien n'est modifiable tant que les certificats n'existent pas — le workflow de publication n'a donc PAS été touché, pour ne pas fragiliser des releases qui fonctionnent. Ce qu'il faudra faire le jour venu est décrit ci-dessous.*
 
 - Apple Developer ID + notarisation ; certificat Windows. Les certificats vont dans les secrets du workflow, jamais dans le dépôt.
 - `MAC_SIGNED = true` : Squirrel prend le relais de `mac-update.sh`.
 - Deux installeurs à signer : vérifier que les certificats couvrent plusieurs produits d'une même société.
 
-### SkanFact 6.6.0 — Les filets d'un produit vendu *(~2 j)*
+### SkanFact 6.5.0 — Les filets d'un produit vendu *(~2 j)* — **LIVRÉE le 12/09/2026**
+
+*Livré : chien de garde (détection d'un gel en ~13 s, pile d'appels dans main.log, interruption, rechargement, explication à l'utilisateur), « Signaler un problème » dans l'Aide, article « Si quelque chose ne va pas ». Vérifié par un test qui gèle volontairement l'application.*
 
 - **Chien de garde** : le processus principal interroge l'interface toutes les 3 s ; sans réponse, il lit la pile via le débogueur (domaine activé **avant** le gel), l'écrit dans `main.log`, interrompt l'exécution et recharge. Un gel devient un rapport.
 - **« Envoyer un rapport »** dans l'Aide : mail avec `main.log`, version, système, sans données.

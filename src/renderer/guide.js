@@ -1049,6 +1049,28 @@
 <p class="small muted">Chaque activité a ses taux de TVA et ses obligations. Ce que dit cette aide vaut pour le cas général : c'est le comptable de chacun qui tranche pour son entreprise.</p>`
     },
     {
+      id: 'support', title: 'Si quelque chose ne va pas', sub: 'Ce qu\'il faut faire, et ce qu\'il faut envoyer',
+      body: `
+<h3>L'application ne répond plus</h3>
+<p>Depuis la version 6.6.0, SkanFact <b>se surveille lui-même</b> : toutes les trois secondes, il vérifie que son interface répond encore. Si elle reste muette une douzaine de secondes, il note dans son journal <b>où le programme s'est arrêté</b>, interrompt ce qui tourne en boucle, et te propose de recharger.</p>
+<p>Pourquoi c'est important : un gel ne laisse normalement <b>aucune trace</b>. Rien ne plante, aucune erreur n'apparaît, les journaux restent vides — et la personne devant l'écran n'a rien à envoyer pour qu'on l'aide. C'est exactement ce qui est arrivé avec la version 5.1.0. Maintenant, un gel devient un rapport.</p>
+<p>Réponds <b>Recharger l'application</b> : tes données enregistrées ne risquent rien. Ce qui était en cours de saisie et jamais enregistré est perdu — il l'était déjà de toute façon.</p>
+
+<h3>Signaler un problème</h3>
+<p><b>Aide → Signaler un problème</b> prépare le message. Décris ce que tu faisais : c'est le seul élément qu'on ne peut pas deviner, et c'est celui qui permet de reproduire le problème — donc de le corriger.</p>
+<p>Le message emporte la version, ton système, et le journal technique. <b>Il ne contient aucune donnée de ton entreprise</b> : ni nom de client, ni montant, ni document. Le bouton « Voir le journal » te le montre avant.</p>
+
+<h3>Avant d'appeler à l'aide</h3>
+<ul>
+<li><b>Note la version</b> (en bas de la barre de gauche) et ce que tu faisais exactement.</li>
+<li><b>Fais une sauvegarde</b> (Paramètres → Sécurité et données) : ça ne coûte rien et ça protège tout.</li>
+<li>Si l'application refuse de démarrer, tes données sont toujours là : le fichier et les sauvegardes vivent dans le dossier indiqué dans Paramètres → Sécurité et données.</li>
+</ul>
+
+<h3>Ce qui n'est jamais perdu</h3>
+<p>Tes données sont un fichier sur ton disque, plus une sauvegarde par jour pendant 30 jours, plus les sauvegardes nommées que tu as prises. Même une application cassée ne les emporte pas : réinstaller SkanFact les retrouve telles quelles.</p>`
+    },
+    {
       id: 'vocabulaire', title: 'Le vocabulaire', sub: 'Les mots qu\'on emploie sans les expliquer',
       body: `
 <dl class="gloss">

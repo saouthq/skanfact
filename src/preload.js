@@ -52,6 +52,12 @@ contextBridge.exposeInMainWorld('skanfact', {
   licenceMail: (company, device) => ipcRenderer.invoke('licence:requestMail', { company, device }),
   onPackProgress: (cb) => { ipcRenderer.on('pack:progress', (_e, d) => cb(d)); },
   changelog: () => ipcRenderer.invoke('app:changelog'),
+  // Battement de cœur du chien de garde (6.6.0) : le processus principal demande « tu es là ? »,
+  // l'interface répond. Sans réponse, c'est qu'elle est bloquée — et un gel ne laisse aucune autre trace.
+  onAlivePing: (cb) => { ipcRenderer.on('alive:ping', () => { ipcRenderer.send('alive:pong'); if (cb) cb(); }); },
+  onFreezeNotice: (cb) => { ipcRenderer.on('freeze:notice', (_e, d) => cb(d)); },
+  supportInfo: () => ipcRenderer.invoke('support:info'),
+  openLog: () => ipcRenderer.invoke('support:openLog'),
   onMenuAction: (cb) => { ipcRenderer.on('menu:action', (_e, name) => cb(name)); },
   // mises à jour
   updateVersion: () => ipcRenderer.invoke('update:version'),

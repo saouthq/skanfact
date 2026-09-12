@@ -96,6 +96,102 @@ function readWindowState() {
   } catch { return null; }
 }
 
+// ---------- chien de garde (6.6.0) ----------
+//
+// Un gel de l'interface ne laisse AUCUNE trace : rien ne plante, aucune erreur, les journaux restent
+// vides. C'est exactement ce qui s'est passé en 5.1.0 — une boucle infinie dans un calcul de dates,
+// invisible sur la machine de test, et un utilisateur devant une application morte sans rien à
+// envoyer. Ce chien de garde transforme ce silence en rapport.
+//
+// Le point à ne pas rater : le domaine Debugger doit être activé **avant** le gel. `Debugger.enable`
+// attend le fil principal ; demandé pendant le gel, il attendrait pour toujours.
+const WATCHDOG = { every: 3000, dead: 12000, enabled: true };
+// Le dernier gel constaté, pour le dire à l'utilisateur une fois l'interface revenue et pour le
+// joindre à un rapport de problème.
+let lastFreeze = null;
+function startWatchdog(win) {
+  if (!WATCHDOG.enabled || !win || win.isDestroyed()) return;
+  let lastPong = Date.now();
+  let reported = false;
+
+  try {
+    if (!win.webContents.debugger.isAttached()) win.webContents.debugger.attach('1.3');
+    win.webContents.debugger.sendCommand('Debugger.enable').catch(() => {});
+  } catch (e) { logToFile('chien de garde', e); }
+
+  ipcMain.on('alive:pong', (e) => { if (!win.isDestroyed() && e.sender === win.webContents) { lastPong = Date.now(); reported = false; } });
+
+  const timer = setInterval(async () => {
+    if (win.isDestroyed()) return clearInterval(timer);
+    try { win.webContents.send('alive:ping'); } catch { return; }
+    const silence = Date.now() - lastPong;
+    if (silence < WATCHDOG.dead || reported) return;
+    reported = true;                       // un seul rapport par gel, sinon le journal se remplit
+    logToFile('gel détecté', new Error(`L'interface n'a pas répondu depuis ${Math.round(silence / 1000)} s`));
+    // Aucune de ces commandes ne doit pouvoir bloquer le chien de garde lui-même : un gel annoncé
+    // par un processus qui gèle à son tour ne servirait à personne. Chacune a donc sa borne.
+    const cmd = (name, args, ms) => Promise.race([
+      win.webContents.debugger.sendCommand(name, args || {}).catch(() => null),
+      new Promise(res => setTimeout(() => res(null), ms || 4000))
+    ]);
+    let stack = '';
+    try {
+      // Où en est le programme ? C'est la seule question qui compte, et le débogueur est le seul
+      // à pouvoir y répondre pendant que le fil principal est bloqué.
+      const paused = new Promise(res => {
+        const onMsg = (_e, method, params) => {
+          if (method !== 'Debugger.paused') return;
+          win.webContents.debugger.off('message', onMsg);
+          res(params);
+        };
+        win.webContents.debugger.on('message', onMsg);
+        setTimeout(() => { win.webContents.debugger.off('message', onMsg); res(null); }, 4000);
+      });
+      cmd('Debugger.pause');
+      const p = await paused;
+      stack = ((p && p.callFrames) || []).slice(0, 12)
+        .map(f => `    à ${f.functionName || '(anonyme)'} — ${(f.url || '').split('/').pop()}:${(f.location || {}).lineNumber}`)
+        .join('\n');
+      logToFile('gel — pile d\'appels', new Error('\n' + (stack || '(pile indisponible)')));
+      // L'ORDRE compte : on relâche d'abord le débogueur, puis on interrompt l'exécution.
+      // `Runtime.terminateExecution` sur une machine virtuelle en pause ne rend jamais la main.
+      if (p) await cmd('Debugger.resume');
+      await cmd('Runtime.terminateExecution');
+    } catch (e) { logToFile('chien de garde', e); }
+
+    // On recharge, sans rien demander. Il n'y a pas de choix à offrir : après l'interruption, la
+    // page est morte de toute façon, et une fenêtre de question qu'on ne peut pas lire dans une
+    // application figée ne ferait qu'ajouter au blocage. On le DIT après coup, une fois vivant.
+    lastFreeze = { at: new Date().toISOString(), silence: Math.round(silence / 1000), stack };
+    try { if (!win.isDestroyed()) { lastPong = Date.now(); win.webContents.reload(); } }
+    catch (e) { logToFile('chien de garde', e); }
+  }, WATCHDOG.every);
+
+  // Le message d'après : la première fois que l'interface reparle après un gel, elle l'explique.
+  win.webContents.on('did-finish-load', () => {
+    if (!lastFreeze || lastFreeze.told) return;
+    lastFreeze.told = true;
+    setTimeout(() => { try { win.webContents.send('freeze:notice', lastFreeze); } catch {} }, 1200);
+  });
+
+  win.on('closed', () => clearInterval(timer));
+}
+
+// Ce qu'il faut joindre à un rapport de problème — et rien d'autre : aucune donnée d'entreprise,
+// aucun nom de client, aucun montant. Seulement de quoi comprendre ce qui a planté.
+ipcMain.handle('support:info', () => {
+  const logPath = path.join(app.getPath('userData'), 'main.log');
+  let log = '';
+  try { const b = fs.readFileSync(logPath, 'utf8'); log = b.length > 40000 ? b.slice(-40000) : b; } catch {}
+  return {
+    version: app.getVersion(), electron: process.versions.electron, chrome: process.versions.chrome,
+    platform: `${process.platform} ${process.arch} ${require('os').release()}`,
+    packaged: app.isPackaged, logPath, log, lines: log ? log.split('\n').length - 1 : 0,
+    lastFreeze: lastFreeze ? { at: lastFreeze.at, silence: lastFreeze.silence } : null
+  };
+});
+ipcMain.handle('support:openLog', () => shell.showItemInFolder(path.join(app.getPath('userData'), 'main.log')));
+
 function createWindow() {
   const st = readWindowState() || {};
   mainWindow = new BrowserWindow({
@@ -125,6 +221,8 @@ function createWindow() {
   win.webContents.on('render-process-gone', (_e, d) => logError('interface arrêtée', new Error(d.reason)));
   win.webContents.on('preload-error', (_e, p, err) => logError('preload', err));
   win.loadFile(path.join(__dirname, 'renderer', 'index.html')).catch(e => logError('chargement de l\'interface', e));
+
+  startWatchdog(win);
 
   let saveTimer = null;
   const saveState = () => {

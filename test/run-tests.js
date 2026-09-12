@@ -2871,6 +2871,46 @@ t('couches : une question passe au-dessus de tout, les bulles et messages au-des
   assert.strictEqual(Number(base[1]), modale, 'app.js et style.css ne partent pas de la même couche');
 });
 
+// ---------- chien de garde (6.5.0) ----------
+// Un gel ne laisse aucune trace : ni erreur, ni journal, rien à envoyer. Ce test ne peut pas geler
+// une vraie application (c'est le rôle de scratchpad/watchdog-e2e.js), mais il tient les quatre
+// invariants sans lesquels le chien de garde se retournerait contre l'application.
+t('chien de garde : les quatre règles sans lesquelles il ferait plus de mal que de bien', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'main.js'), 'utf8');
+  const wd = src.slice(src.indexOf('function startWatchdog'), src.indexOf('function createWindow'));
+  assert.ok(wd, 'chien de garde introuvable');
+
+  // 1. Le domaine Debugger s'active AVANT le gel : demandé pendant, il attendrait le fil bloqué.
+  // On cherche les APPELS, pas les mots : les commentaires parlent des mêmes commandes, dans
+  // l'ordre du raisonnement et pas dans celui de l'exécution.
+  const enable = wd.indexOf("sendCommand('Debugger.enable'");
+  const boucle = wd.indexOf('setInterval');
+  assert.ok(enable > 0 && enable < boucle, 'Debugger.enable doit être demandé avant la surveillance');
+
+  // 2. On relâche le débogueur AVANT d'interrompre : terminateExecution sur une VM en pause ne
+  //    rend jamais la main, et le chien de garde resterait bloqué à son tour.
+  const resume = wd.indexOf("cmd('Debugger.resume')");
+  const terminate = wd.indexOf("cmd('Runtime.terminateExecution')");
+  assert.ok(resume > 0 && terminate > 0 && resume < terminate,
+    'Debugger.resume doit précéder Runtime.terminateExecution');
+
+  // 3. Aucune fenêtre SYNCHRONE : showMessageBoxSync bloque le processus principal tant que
+  //    personne ne répond — devant une application figée, personne ne peut répondre.
+  assert.ok(!/showMessageBoxSync/.test(wd), 'le chien de garde ne doit jamais ouvrir de fenêtre synchrone');
+
+  // 4. Chaque commande au débogueur est bornée : le surveillant ne doit pas pouvoir geler.
+  assert.ok(/Promise\.race/.test(wd), 'les commandes du débogueur doivent être bornées dans le temps');
+
+  // Et côté interface : le battement de cœur et l'annonce d'après-gel sont branchés AVANT la
+  // séquence de démarrage, sinon l'assistant de première utilisation les ferait manquer.
+  const app = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
+  const ping = app.indexOf('bridge.onAlivePing()');
+  const notice = app.indexOf('bridge.onFreezeNotice');
+  const demarrage = app.indexOf('// ---------- démarrage ----------');
+  assert.ok(ping > 0 && ping < demarrage, 'le battement de cœur doit être branché avant le démarrage');
+  assert.ok(notice > 0 && notice < demarrage, 'l\'annonce d\'après-gel doit être branchée avant le démarrage');
+});
+
 // ---------- licence hors ligne (6.4.0) ----------
 const lic = require('../src/licence.js');
 

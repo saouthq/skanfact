@@ -20,6 +20,7 @@
     exportPdfMany: async () => null, saveText: async () => null, exportPdfSilent: async () => null, saveTextSilent: async () => null, composeMail: async () => ({ state: 'mailto' }),
     openPath: async () => {}, showInFolder: async () => {}, setDirty: () => {},
     changelog: async () => '', onMenuAction: () => {}, setTitle: () => {},
+    onAlivePing: () => {}, onFreezeNotice: () => {}, supportInfo: async () => ({ version: 'dev', platform: 'browser', log: '', lines: 0 }), openLog: async () => {},
     updateVersion: async () => ({ version: 'dev', packaged: false, platform: 'browser', macSigned: false }),
     updateCheck: async () => ({ state: 'dev' }), updateDownload: async () => ({ state: 'dev' }), updateInstall: async () => ({ state: 'dev' }), updateSetToken: async () => ({ hasToken: false }),
     updateOpenReleases: async () => {},
@@ -7259,7 +7260,7 @@
     const a = arts.find(x => x.id === aideArticle) || { title: '', sub: '', body: '' };
     $('#view').innerHTML = `
       <div class="page-head"><h1>Aide</h1>
-        <div class="actions">${backButton('#/dashboard', 'aide')}<button class="btn" id="aide-changelog">Nouveautés de la version</button></div></div>
+        <div class="actions">${backButton('#/dashboard', 'aide')}<button class="btn" id="aide-support">Signaler un problème</button><button class="btn" id="aide-changelog">Nouveautés de la version</button></div></div>
       <p class="lead">Comment marche SkanFact, et comment tenir la gestion d'une petite entreprise sans rien oublier. Partout dans l'application, les petits <span class="i-demo">i</span> expliquent le champ juste à côté.</p>
       <div class="help-grid">
         <nav class="help-nav">${arts.map(x => `<button data-art="${x.id}" class="${x.id === aideArticle ? 'active' : ''}"><span class="ht">${h(x.title)}</span><span class="hs">${h(x.sub)}</span></button>`).join('')}</nav>
@@ -7273,7 +7274,42 @@
     $$('[data-art]').forEach(b => b.onclick = () => { aideArticle = b.dataset.art; navigate('#/aide/' + b.dataset.art); });
     bindBack('#/dashboard', 'aide');
     $('#aide-changelog').onclick = showChangelog;
+    $('#aide-support').onclick = supportForm;
   };
+
+  // ---------- signaler un problème (6.6.0) ----------
+  // Un rapport utile tient en trois choses : ce qui s'est passé, la version, et le journal technique.
+  // Ce qu'il ne contient JAMAIS : un nom de client, un montant, une donnée d'entreprise.
+  async function supportForm() {
+    let info = {};
+    try { info = await bridge.supportInfo(); } catch {}
+    const tech = `SkanFact ${info.version || '?'} · ${info.platform || '?'} · Electron ${info.electron || '?'}`;
+    modal(`<h2>Signaler un problème</h2>
+      <p class="small">Décris ce que tu faisais au moment du problème : c'est ce qui permet de le reproduire, et donc de le corriger. Le reste est déjà rempli.</p>
+      <label class="field">Ce qui s'est passé
+        <textarea id="sup-what" rows="4" placeholder="Ex. : j'ai cliqué sur « Émettre » depuis un devis et l'application n'a plus répondu."></textarea></label>
+      <div class="notes-md mt"><strong>Joint automatiquement</strong>
+        <p class="small">${h(tech)}</p>
+        <p class="small">Le journal technique : ${info.lines || 0} ligne(s)${info.lines ? ' — dates, erreurs et piles d\'appels' : ' (aucune erreur enregistrée, bon signe)'}.</p>
+        <p class="small muted">Ce journal ne contient <strong>aucune donnée de ton entreprise</strong> : ni client, ni montant, ni document. Tu peux le lire avant d'envoyer.</p>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="sup-log">Voir le journal</button>
+        <button class="btn" data-close>Annuler</button>
+        <button class="btn btn-primary" id="sup-send">Préparer le message</button></div>`,
+      (root, close) => {
+        $('#sup-log', root).onclick = () => bridge.openLog();
+        $('#sup-send', root).onclick = async () => {
+          const what = $('#sup-what', root).value.trim();
+          const body = `Bonjour,\n\nJ'ai rencontré un problème avec SkanFact.\n\n`
+            + `Ce qui s'est passé :\n${what || '(à compléter)'}\n\n`
+            + `--- informations techniques ---\n${tech}\nDossier : ${info.logPath || ''}\n\n`
+            + (info.log ? `--- journal (${info.lines} lignes) ---\n${String(info.log).slice(-6000)}\n` : '(journal vide)\n');
+          await bridge.composeMail({ to: LICENCE_CONTACT, subject: `Problème SkanFact ${info.version || ''}`, body });
+          close(); toast('Message préparé — relis-le avant de l\'envoyer');
+        };
+      });
+  }
 
   // ---------- mises à jour ----------
   const upd = { state: 'idle', version: '', percent: 0, message: '', notes: '', app: null };
@@ -7619,6 +7655,25 @@
   $('#btn-export-data').onclick = exportAll;
   $('#btn-import-data').onclick = importAll;
 
+  // ---------- chien de garde et messages du processus principal ----------
+  // Abonnés AVANT la séquence de démarrage : l'assistant de première utilisation la met en attente,
+  // et un message reçu pendant ce temps serait perdu pour toujours.
+  // Le chien de garde : répondre au processus principal tant que l'interface tourne. La réponse
+  // part du fil principal du renderer — c'est exactement lui qu'une boucle infinie bloquerait.
+  bridge.onAlivePing();
+  // Après un gel, l'application se recharge toute seule. Elle le dit : un redémarrage silencieux
+  // ferait douter de ce qui a été enregistré, alors qu'il ne s'est rien perdu de ce qui l'était.
+  bridge.onFreezeNotice(f => {
+    modal(`<h2>SkanFact s'était bloqué</h2>
+      <p>L'application n'a plus répondu pendant ${h(String((f && f.silence) || '?'))} secondes, et elle vient de redémarrer toute seule.</p>
+      <p class="small"><strong>Ce qui était enregistré est intact.</strong> Ce qui était en cours de saisie sans avoir été enregistré est perdu — c'était déjà le cas avant le redémarrage.</p>
+      <p class="small">SkanFact a noté où le programme s'était arrêté. Si cela se reproduit, envoie-le : <em>Aide → Signaler un problème</em>. C'est ce qui permet de corriger.</p>
+      <div class="modal-actions"><button class="btn" data-close>Continuer</button><button class="btn btn-primary" id="fz-rep">Signaler</button></div>`,
+      (root, close) => { $('#fz-rep', root).onclick = () => { close(); supportForm(); }; });
+  });
+  // La licence se lit une fois au démarrage : hors ligne, instantané, et jamais renvoyé nulle part.
+  bridge.licenceStatus().then(st => { licence = st || licence; licenceBanner(); }).catch(() => {});
+
   // ---------- démarrage ----------
   (async () => {
     const loaded = await bridge.loadData();
@@ -7645,8 +7700,6 @@
     });
     $('#update-pill').onclick = () => { settingsTab = 'maj'; navigate('#/parametres'); };
     $('#lic-banner').onclick = () => { settingsTab = 'licence'; navigate('#/parametres'); };
-    // La licence se lit une fois au démarrage : hors ligne, instantané, et jamais renvoyé nulle part.
-    bridge.licenceStatus().then(st => { licence = st || licence; licenceBanner(); }).catch(() => {});
     if (!location.hash) location.hash = '#/dashboard';
     render();
     if (loaded && loaded.corruptFile) {
