@@ -494,13 +494,31 @@
   function showImportReport(results, demoRemoved) {
     const ok = results.filter(x => !x.error).length;
     const ko = results.length - ok;
+    // Le bon moment pour accuser réception, c'est maintenant — pas en retournant fiche par fiche.
+    const aPrevenir = results.filter(x => !x.error && x.dossier && !x.dossier.demo);
     modal(
       `<h2>${ok ? `${pl(ok, 'paquet')} ${ok > 1 ? 'rangés' : 'rangé'}` : 'Aucun paquet rangé'}${ko ? ` · ${pl(ko, 'refusé')}` : ''}</h2>
        <ul class="imp-list">${results.map(importLine).join('')}</ul>
        ${demoRemoved ? '<p class="small mt">Les dossiers d\'exemple ont été effacés : place aux vrais.</p>' : ''}
        <p class="muted small mt">Les paquets sont copiés dans le dossier de l'application, rangés par client et par année : le fichier d'origine reste où il est.</p>
-       <div class="modal-actions"><button class="btn btn-primary" id="ok">Fermer</button></div>`,
-      (layer, close) => { $('#ok', layer).onclick = close; }
+       <div class="modal-actions">
+         ${aPrevenir.length ? `<button class="btn" id="acc-all">Prévenir ${aPrevenir.length > 1 ? 'les clients' : 'le client'}…</button>` : ''}
+         <span class="grow"></span><button class="btn btn-primary" id="ok">Fermer</button></div>`,
+      (layer, close) => {
+        $('#ok', layer).onclick = close;
+        const a = $('#acc-all', layer);
+        if (a) a.onclick = () => {
+          close();
+          const file = aPrevenir.slice();
+          const suivant = () => {
+            const x = file.shift();
+            if (!x) return;
+            const d = (S.dossiers || []).find(y => y.id === x.dossier.id);
+            if (d) accuseReception(d, x.summary, suivant); else suivant();
+          };
+          suivant();
+        };
+      }
     );
   }
 
@@ -953,7 +971,7 @@
   // Prévenir le client que son envoi est arrivé. Il envoie son mois et n'entend plus parler de rien :
   // il ne sait ni si c'est arrivé, ni si c'était lisible, ni s'il manquait quelque chose. Trois
   // lignes du comptable valent mieux que trois relances du client.
-  function accuseReception(dossier, pack) {
+  function accuseReception(dossier, pack, onDone) {
     const m = K.accuseMail(S.cabinet, dossier, pack);
     modal(
       `<h2>Accuser réception à ${esc(dossier.name)}</h2>
@@ -961,11 +979,11 @@
        <label class="field mt">Objet<input type="text" id="a-sub" value="${esc(m.subject)}"></label>
        <label class="field mt">Message<textarea id="a-body" rows="10">${esc(m.body)}</textarea></label>
        <p class="muted small mt">Le message s'ouvre dans ta messagerie : rien ne part sans que tu cliques sur « Envoyer ».</p>
-       <div class="modal-actions"><button class="btn" id="no">Annuler</button>
+       <div class="modal-actions"><button class="btn" id="no">${onDone ? 'Passer' : 'Annuler'}</button>
        <button class="btn" id="copy">Copier</button>
        <button class="btn btn-primary" id="ok">Ouvrir dans ma messagerie</button></div>`,
       (layer, close) => {
-        $('#no', layer).onclick = close;
+        $('#no', layer).onclick = () => { close(); if (onDone) onDone(); };
         $('#copy', layer).onclick = async () => {
           try { await navigator.clipboard.writeText($('#a-body', layer).value); toast('Texte copié.'); }
           catch { toast('Copie impossible.', 'error'); }
@@ -974,9 +992,10 @@
           const to = $('#a-to', layer).value.trim();
           if (to && to !== dossier.email) { try { await api.saveDossier(dossier.id, { email: to }); } catch {} }
           await api.mail({ to, subject: $('#a-sub', layer).value, body: $('#a-body', layer).value });
-          close();
+          close(); if (onDone) onDone();
         };
-      }
+      },
+      () => { if (onDone) onDone(); }
     );
   }
 
@@ -1888,6 +1907,8 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
       { kind: 'action', main: 'Nouveau dossier client…', go: () => newDossierForm() },
       { kind: 'action', main: 'Sauvegarder maintenant', go: () => quickBackup() },
       { kind: 'action', main: 'Relances', go: () => { location.hash = '#/relances'; } },
+      { kind: 'action', main: 'Échéances', go: () => { location.hash = '#/echeances'; } },
+      { kind: 'action', main: 'Écritures — exporter un mois', go: () => { location.hash = '#/ecritures'; } },
       { kind: 'action', main: 'Réglages', go: () => { location.hash = '#/reglages'; } },
       { kind: 'action', main: 'Aide', go: () => { location.hash = '#/aide'; } }
     ];
