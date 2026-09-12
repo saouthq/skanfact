@@ -358,6 +358,8 @@ ipcMain.handle('cab:importPack', async (_e, opts) => {
   const demoOut = results.some(r => !r.error) && state.dossiers.some(d => d.demo);
   if (demoOut) state.dossiers = state.dossiers.filter(d => !d.demo);
   save();
+  // Un paquet venu de la boîte de réception et rangé ne doit plus être proposé.
+  markSeen(results.filter(r => !r.error).map(r => r.file));
   return { results, demoRemoved: demoOut, state: safeState() };
 });
 
@@ -473,6 +475,70 @@ ipcMain.handle('cab:extractPack', async (_e, { packPath, password, label } = {})
   });
   return { dir: target, files: n };
 });
+
+// ---------- IPC : la boîte de réception ----------
+//
+// À soixante clients, le geste quotidien n'est pas d'importer un paquet : c'est d'en importer douze.
+// Enregistrer chaque pièce jointe puis cliquer douze fois sur « Importer », c'est le genre de corvée
+// qui fait abandonner un logiciel. Le comptable désigne un dossier (celui où sa messagerie range les
+// pièces jointes, ou un dossier partagé), et l'application lui dit ce qui est arrivé.
+//
+// Elle n'importe JAMAIS toute seule : elle propose, il clique. C'est la même règle que la lecture de
+// photo de facture côté entreprise — l'application ne remplit rien sans décision humaine.
+function inboxSeen() { const c = readAppCfg(); return c.inboxSeen && typeof c.inboxSeen === 'object' ? c.inboxSeen : {}; }
+
+function scanInbox() {
+  const dir = readAppCfg().inboxDir;
+  if (!dir) return { dir: null, nouveaux: [] };
+  let entries = [];
+  try { entries = fs.readdirSync(dir, { withFileTypes: true }); }
+  catch (e) { return { dir, erreur: 'Dossier introuvable (support débranché ?)', nouveaux: [] }; }
+  const vus = inboxSeen();
+  const nouveaux = [];
+  entries.forEach(e => {
+    if (!e.isFile() || !/\.skanpack$/i.test(e.name)) return;
+    const p = path.join(dir, e.name);
+    let s;
+    try { s = fs.statSync(p); } catch { return; }
+    // Une empreinte bon marché : chemin + taille + date. Recopier le même fichier sous un autre nom
+    // le reproposera — et c'est voulu : le comptable saura pourquoi, l'application non.
+    const cle = `${s.size}:${Math.round(s.mtimeMs)}`;
+    if (vus[p] === cle) return;
+    nouveaux.push({ path: p, name: e.name, size: s.size, mtime: s.mtimeMs });
+  });
+  nouveaux.sort((a, b) => a.mtime - b.mtime);
+  return { dir, nouveaux };
+}
+
+function markSeen(paths) {
+  const vus = inboxSeen();
+  (paths || []).forEach(p => {
+    try { const s = fs.statSync(p); vus[p] = `${s.size}:${Math.round(s.mtimeMs)}`; } catch {}
+  });
+  // On ne garde pas l'historique de toute une carrière : les 500 derniers suffisent à ne pas
+  // reproposer ce qu'on vient d'importer.
+  const cles = Object.keys(vus);
+  if (cles.length > 500) cles.slice(0, cles.length - 500).forEach(k => { delete vus[k]; });
+  writeAppCfg({ inboxSeen: vus });
+}
+
+ipcMain.handle('cab:inbox', () => scanInbox());
+
+ipcMain.handle('cab:pickInbox', async () => {
+  const r = await dialog.showOpenDialog(mainWindow, {
+    title: 'Le dossier où tu ranges les paquets reçus',
+    properties: ['openDirectory', 'createDirectory']
+  });
+  if (r.canceled || !r.filePaths.length) return null;
+  writeAppCfg({ inboxDir: r.filePaths[0] });
+  return scanInbox();
+});
+
+ipcMain.handle('cab:clearInbox', () => { writeAppCfg({ inboxDir: null }); return { dir: null, nouveaux: [] }; });
+
+// Ne plus proposer ces fichiers, sans les importer : un paquet déjà traité ailleurs, un fichier
+// d'essai. On ne les efface pas — ce sont les pièces d'un client, pas les nôtres.
+ipcMain.handle('cab:inboxIgnore', (_e, paths) => { markSeen(paths); return scanInbox(); });
 
 // ---------- IPC : regrouper les écritures ----------
 //

@@ -383,6 +383,39 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   ok('page Écritures : ' + ecr.replace(/\s+/g, ' ').slice(0, 70));
   await shot('17-ecritures');
 
+  // 10ter — la boîte de réception
+  étape('Boîte de réception surveillée');
+  const boite = path.join(dir, 'boite');
+  fs.mkdirSync(boite, { recursive: true });
+  fs.writeFileSync(path.join(boite, 'trabelsi-2026-08.skanpack'), 'pas un vrai paquet');
+  fs.writeFileSync(path.join(boite, 'menzah-2026-08.skanpack'), 'pas un vrai paquet non plus');
+  fs.writeFileSync(path.join(boite, 'notes.txt'), 'un fichier qui ne nous regarde pas');
+  await app.evaluate(({ dialog }, d) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [d] }); }, boite);
+  await win.evaluate(() => { location.hash = '#/reglages'; });
+  await win.waitForSelector('#i-pick', { timeout: 8000 });
+  await win.click('#i-pick');
+  await attendre(1200);
+  const reglagesBoite = await win.textContent('#pan-backup');
+  if (!/2 paquets en attente/.test(reglagesBoite)) throw new Error('la boîte ne compte pas les paquets : ' + reglagesBoite.slice(0, 200));
+  ok('dossier surveillé, 2 paquets vus (le .txt est ignoré)');
+
+  await win.evaluate(() => { location.hash = '#/dossiers'; });
+  await attendre(800);
+  if (!await win.$('#inbox-go')) throw new Error('aucun bandeau sur la page Dossiers');
+  const bandeau = await win.textContent('.banner');
+  if (!/2 nouveaux paquets/.test(bandeau)) throw new Error('bandeau inattendu : ' + bandeau);
+  ok('bandeau : ' + bandeau.replace(/\s+/g, ' ').trim().slice(0, 80));
+  await shot('16-boite');
+
+  // « Ignorer » ne doit rien effacer : ce sont les pièces d'un client.
+  await win.click('#inbox-skip');
+  await win.waitForSelector('#modal-root .modal');
+  await win.click('#modal-root .modal-bg:last-child .btn-primary');
+  await attendre(1200);
+  if (await win.$('#inbox-go')) throw new Error('« Ignorer » ne fait pas disparaître le bandeau');
+  if (!fs.existsSync(path.join(boite, 'trabelsi-2026-08.skanpack'))) throw new Error('« Ignorer » a EFFACÉ un fichier du client');
+  ok('« Ignorer » cesse de proposer, sans rien effacer');
+
   // 11 — l'aide ne parle plus du jeton
   étape('Aide');
   await win.evaluate(() => { location.hash = '#/aide'; });

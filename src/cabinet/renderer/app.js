@@ -12,6 +12,7 @@
 
   let S = null;                          // l'état du cabinet (sans la clé privée)
   let backupInfo = null;                 // sauvegardes, copie externe, place disque
+  let inboxInfo = null;                  // la boîte de réception : dossier surveillé, paquets nouveaux
   // Mises à jour : l'état de la dernière vérification, partagé entre le panneau et la pastille.
   const upd = { state: 'idle', version: '', percent: 0, message: '', app: null };
 
@@ -381,6 +382,7 @@
     if (!location.hash) location.hash = '#/dossiers';
     render();
     refreshBackupInfo();
+    refreshInbox(true);
     if (reorganized && reorganized.moved) {
       toast(`${pl(reorganized.moved, 'paquet')} rangé${reorganized.moved > 1 ? 's' : ''} par client et par année.`);
     }
@@ -403,6 +405,13 @@
   async function refreshBackupInfo() {
     try { backupInfo = await api.backups(); } catch { backupInfo = null; }
     if (location.hash.startsWith('#/reglages')) drawBackupPanels();
+  }
+
+  // La boîte de réception : le dossier où le comptable range les paquets reçus par mail. On regarde,
+  // on propose, on n'importe jamais tout seul.
+  async function refreshInbox(redraw) {
+    try { inboxInfo = await api.inbox(); } catch { inboxInfo = null; }
+    if (redraw) render();
   }
 
   // ---------- glisser-déposer ----------
@@ -457,6 +466,7 @@
     showImportReport(r.results, r.demoRemoved);
     render();
     refreshBackupInfo();
+    refreshInbox(true);
   }
 
   function importLine(x) {
@@ -614,6 +624,7 @@
           un en retard, un qui n'a envoyé que du provisoire, un dont les pièces sont incomplètes. Il s'efface
           tout seul au premier vrai paquet, et tu peux l'effacer à la main quand tu veux.</p>
         </div>
+        ${inboxBanner()}
         <div class="panel"><h2>Comment un paquet arrive jusqu'ici</h2>
           <ol class="small" style="line-height:1.9;margin:0;padding-left:20px">
             <li>Tu remets à ton client le <strong>fichier d'appairage</strong> (Réglages → Enregistrer le fichier d'appairage).</li>
@@ -624,6 +635,7 @@
       $('#imp').onclick = () => doImport();
       $('#new-d').onclick = () => newDossierForm();
       $('#demo-on').onclick = async () => { S = await api.demo(true); render(); toast('Exemple chargé : ces cinq dossiers sont fictifs.'); };
+      bindInboxBanner(view);
       return;
     }
 
@@ -635,6 +647,7 @@
           <button class="btn btn-primary" id="imp">Importer un paquet…</button>
         </div></div>
       ${portfolioPanel(p)}
+      ${inboxBanner()}
       ${todoPanel(todo)}
       ${demoCount ? `<div class="banner"><span>Ces ${pl(demoCount, 'dossier')} sont <strong>fictifs</strong> : ils montrent les quatre situations
         que tu rencontreras. Ils disparaîtront au premier vrai paquet importé.</span>
@@ -690,9 +703,47 @@
         if (r) toast('Tableau enregistré.');
       } catch (e) { toast(plainError(e), 'error'); }
     };
+    bindInboxBanner(view);
     bindSort(view, render);
     bindPager(view, render);
     $$('tr[data-id]', view).forEach(tr => { tr.onclick = () => { location.hash = '#/dossier/' + encodeURIComponent(tr.dataset.id); }; });
+  }
+
+  // À soixante clients, le geste quotidien n'est pas d'importer UN paquet, c'est d'en importer douze.
+  // L'application regarde le dossier désigné et dit ce qui est arrivé ; elle n'importe jamais toute
+  // seule — c'est la même règle que la lecture de photo côté entreprise.
+  function inboxBanner() {
+    if (!inboxInfo || !inboxInfo.dir) return '';
+    if (inboxInfo.erreur) {
+      return `<div class="banner"><span><strong>Boîte de réception introuvable</strong> — ${esc(inboxInfo.erreur)}
+        <span class="muted small">${esc(inboxInfo.dir)}</span></span>
+        <a class="btn btn-ghost btn-sm nw" href="#/reglages">Réglages</a></div>`;
+    }
+    const n = (inboxInfo.nouveaux || []).length;
+    if (!n) return '';
+    return `<div class="banner"><span><strong>${pl(n, 'nouveau paquet', 'nouveaux paquets')}</strong> dans ta boîte de réception :
+      ${esc((inboxInfo.nouveaux || []).slice(0, 3).map(x => x.name).join(', '))}${n > 3 ? '…' : ''}</span>
+      <button class="btn btn-ghost btn-sm nw" id="inbox-skip">Ignorer</button>
+      <button class="btn btn-primary btn-sm nw" id="inbox-go">Tout importer</button></div>`;
+  }
+
+  function bindInboxBanner(view) {
+    const go = $('#inbox-go', view);
+    if (go) go.onclick = async () => {
+      const paths = (inboxInfo.nouveaux || []).map(x => x.path);
+      await doImport(paths);
+      await refreshInbox(true);
+    };
+    const skip = $('#inbox-skip', view);
+    if (skip) skip.onclick = async () => {
+      const n = (inboxInfo.nouveaux || []).length;
+      const ok = await confirmDialog('Ne plus proposer ces paquets ?',
+        `<p>${pl(n, 'fichier')} ${n > 1 ? 'resteront' : 'restera'} dans ton dossier — on ne les efface pas, ce sont les pièces de tes clients.
+         Ils ne te seront simplement plus proposés.</p>`, 'Ignorer');
+      if (!ok) return;
+      try { inboxInfo = await api.inboxIgnore((inboxInfo.nouveaux || []).map(x => x.path)); render(); }
+      catch (e) { toast(plainError(e), 'error'); }
+    };
   }
 
   // ---------- la fiche d'un dossier ----------
@@ -1424,6 +1475,21 @@
         Les sauvegardes quotidiennes sont sur le même disque que tes données : elles ne te sauveront pas d'une panne, d'un vol ou d'un vol d'ordinateur.
         Choisis une clé USB, un disque externe ou un dossier iCloud Drive.</div>` : ''}
 
+      <h3 class="mt">${lbl('Boîte de réception', 'b.inbox')}</h3>
+      <p class="small">Le dossier où tu ranges les paquets reçus par mail. SkanFact regarde ce qui est arrivé et te le propose —
+      il n'importe jamais tout seul, et n'efface jamais rien.</p>
+      <div class="kv">
+        <div><span>Dossier surveillé</span><span>${inboxInfo && inboxInfo.dir
+          ? esc(inboxInfo.dir) + (inboxInfo.erreur ? ` <span class="err-inline">⚠ ${esc(inboxInfo.erreur)}</span>`
+            : ` <span class="muted small">${(inboxInfo.nouveaux || []).length ? pl(inboxInfo.nouveaux.length, 'paquet') + ' en attente' : 'rien de nouveau'}</span>`)
+          : '<span class="muted">aucun — tu importes les paquets un par un</span>'}</span></div>
+      </div>
+      <div class="modal-actions wrap">
+        <button class="btn" id="i-pick">${inboxInfo && inboxInfo.dir ? 'Changer de dossier…' : 'Choisir un dossier…'}</button>
+        ${inboxInfo && inboxInfo.dir ? '<button class="btn btn-ghost" id="i-off">Ne plus surveiller</button>' : ''}
+      </div>
+
+      <h3 class="mt">Sauvegardes et copies</h3>
       <div class="modal-actions wrap">
         <button class="btn" id="b-now">Sauvegarder maintenant</button>
         <button class="btn" id="b-ext">${ext.dir ? 'Changer le dossier de copie…' : 'Choisir un dossier de copie…'}</button>
@@ -1461,6 +1527,15 @@
       relève des mêmes obligations que tes archives papier.</p>
       <div class="modal-actions"><button class="btn btn-ghost btn-sm" id="s-support">Signaler un problème…</button></div>`;
 
+    const ip = $('#i-pick', b);
+    if (ip) ip.onclick = async () => {
+      try {
+        const r = await api.pickInbox();
+        if (r) { inboxInfo = r; drawBackupPanels(); toast(r.nouveaux.length ? `${pl(r.nouveaux.length, 'paquet')} en attente dans ce dossier.` : 'Dossier surveillé.'); }
+      } catch (e) { toast(plainError(e), 'error'); }
+    };
+    const io = $('#i-off', b);
+    if (io) io.onclick = async () => { inboxInfo = await api.clearInbox(); drawBackupPanels(); };
     $('#b-now').onclick = quickBackup;
     $('#b-open').onclick = () => api.openDataDir();
     $('#b-ext').onclick = async () => {

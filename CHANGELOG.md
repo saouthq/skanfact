@@ -61,6 +61,14 @@ Nouvelle page **Écritures**. Chaque paquet portait déjà ses écritures en par
 - Un paquet illisible (scellé par mot de passe, ou trop ancien pour contenir des écritures) **n'échoue pas l'export** : le fichier est écrit avec le reste et le manque est nommé.
 - Le lecteur de CSV est un vrai lecteur : point-virgules dans les libellés, guillemets doublés, retours à la ligne dans un champ. Découper sur « ; » aurait été plus court et faux.
 
+### La boîte de réception
+
+À soixante clients, le geste quotidien n'est pas d'importer *un* paquet : c'est d'en importer douze. Enregistrer chaque pièce jointe puis cliquer douze fois sur « Importer », c'est le genre de corvée qui fait abandonner un logiciel.
+
+- Le comptable désigne **un dossier** — celui où sa messagerie range les pièces jointes, un dossier partagé, une clé USB. L'application regarde ce qui est arrivé et le lui dit, en haut de la page Dossiers.
+- **Elle n'importe jamais toute seule** : elle propose, il clique. Même règle que la lecture de photo de facture côté entreprise.
+- **Elle n'efface jamais rien** : ce sont les pièces de ses clients. « Ignorer » cesse simplement de les proposer.
+
 ### Prévenir le client que c'est arrivé
 
 - **Accuser réception** d'un paquet, depuis la fiche du client. Le client envoie son mois et n'entend plus parler de rien : il ne sait ni si c'est arrivé, ni si c'était lisible, ni s'il manquait quelque chose. Le message dit le nombre de pièces reçues, si le mois était clôturé, et **énumère ce qui manque** quand SkanFact l'a signalé. Trois lignes du comptable valent mieux que trois relances du client — et c'est ce qui entretient l'habitude d'envoyer chaque mois.

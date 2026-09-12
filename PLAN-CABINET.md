@@ -133,7 +133,6 @@ Les tests qui ouvrent vraiment l'application vivaient dans un dossier de travail
 Volontairement **non construit** : ce sont les choses qu'un comptable demandera en cinq minutes de démonstration, et qu'il vaut mieux entendre de lui que deviner.
 
 - **Plusieurs collaborateurs** sur un même cabinet (constat n° 20). Un poste, un mot de passe, une personne aujourd'hui. La vraie question n'est pas technique : qui voit quels dossiers ?
-- **Une boîte de réception surveillée** : un dossier que l'application regarde, et où les paquets enregistrés depuis le mail s'importent d'eux-mêmes.
 - **Les formats d'import de son logiciel de production** : aujourd'hui un CSV générique. Le format exact ne se devine pas, il se demande.
 - **La facturation des honoraires du cabinet** : le champ existe (il totalise le portefeuille) mais SkanFact Cabinet ne facture rien et n'envoie rien.
 
