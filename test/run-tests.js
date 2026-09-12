@@ -3823,9 +3823,8 @@ t('cabstore : la copie externe emporte AUSSI les paquets', () => {
   cfs.writeFileSync(src, 'pièce justificative');
   const d = cab.newDossier({ name: 'Client A', matricule: '1111111A/M/P/000' });
   st.dossiers.push(d);
-  s.storePack(src, d, '2026-08', st.dossiers);
+  s.storePack(src, d, '2026-08', st.dossiers);      // ranger un paquet entraîne la copie complète
   s.backupNow('manuelle');
-  assert.strictEqual(s.mirrorExternal(), true);
 
   const cible = cpath.join(ext, 'SkanFact Cabinet');
   assert.ok(cfs.existsSync(cpath.join(cible, 'cabinet-data.json')), 'la base doit être copiée');
@@ -3833,6 +3832,20 @@ t('cabstore : la copie externe emporte AUSSI les paquets', () => {
   assert.strictEqual(
     cfs.readFileSync(cpath.join(cible, 'paquets', 'Client-A', '2026', '2026-08.skanpack'), 'utf8'),
     'pièce justificative', 'et les paquets, rangés pareil');
+
+  // Mais PAS à chaque enregistrement : les paquets ne bougent qu'à l'import et à la suppression,
+  // et parcourir deux mille fichiers pour enregistrer un numéro de téléphone bloquerait
+  // l'application plusieurs secondes à chaque bouton Enregistrer.
+  const nouveau = cpath.join(dir, 'apres.skanpack');
+  cfs.writeFileSync(nouveau, 'ajouté à la main dans le dossier local');
+  cfs.copyFileSync(nouveau, cpath.join(s.packRoot, 'Client-A', '2026', '2026-09.skanpack'));
+  st.dossiers[0].note = 'une modification de fiche ordinaire';
+  s.write(st);
+  assert.strictEqual(cfs.existsSync(cpath.join(cible, 'paquets', 'Client-A', '2026', '2026-09.skanpack')), false,
+    'un enregistrement ordinaire ne doit pas parcourir toute l\'arborescence des paquets');
+  assert.strictEqual(s.mirrorExternal({ packs: true }), true);
+  assert.strictEqual(cfs.existsSync(cpath.join(cible, 'paquets', 'Client-A', '2026', '2026-09.skanpack')), true,
+    'la copie complète, elle, les emporte');
 
   // Support débranché : on note l'erreur, on ne bloque rien.
   s.setExternalDir(cpath.join(ext, 'nulle-part-du-tout'));

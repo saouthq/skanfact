@@ -291,6 +291,7 @@ function createCabStore(dir, opts) {
     const dest = packPathFor(dossier, month, folderIndex(dossiers));
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     fs.copyFileSync(sourceFile, dest);
+    mirrorExternal({ packs: true });
     return dest;
   }
 
@@ -362,14 +363,21 @@ function createCabStore(dir, opts) {
     st.external.dir = p || null;
     st.external.lastError = null;
     st.external.lastCopy = null;
-    if (p) mirrorExternal();
+    if (p) mirrorExternal({ packs: true });
     return st.external;
   }
 
   // Vers <externe>/SkanFact Cabinet : la base, les sauvegardes, et les paquets. Les paquets SONT les
   // pièces justificatives : une copie qui ne les emporte pas laisserait le comptable avec un index de
   // ce qu'il a perdu.
-  function mirrorExternal() {
+  //
+  // Mais les paquets ne bougent qu'à l'import et à la suppression, alors que la base est réécrite à
+  // chaque modification de fiche. Parcourir deux mille fichiers et cinquante gigaoctets pour
+  // enregistrer un numéro de téléphone bloquerait l'application plusieurs secondes, à chaque frappe
+  // d'un bouton Enregistrer — et sur une clé USB, bien plus. `avecPaquets` n'est donc vrai que
+  // lorsqu'ils ont vraiment changé.
+  function mirrorExternal(opts) {
+    const avecPaquets = !!(opts && opts.packs);
     const ext = st.external.dir;
     if (!ext) return false;
     try {
@@ -387,7 +395,7 @@ function createCabStore(dir, opts) {
         const dst = path.join(target, 'sauvegardes', n);
         if (!fs.existsSync(dst)) fs.copyFileSync(path.join(backupDir, n), dst);
       });
-      if (fs.existsSync(packRoot)) fs.cpSync(packRoot, path.join(target, 'paquets'), { recursive: true, force: false, errorOnExist: false });
+      if (avecPaquets && fs.existsSync(packRoot)) fs.cpSync(packRoot, path.join(target, 'paquets'), { recursive: true, force: false, errorOnExist: false });
       st.external.lastCopy = now().toISOString();
       st.external.lastError = null;
       return true;

@@ -797,7 +797,8 @@
         if (!p) return;
         const ok = await confirmDialog('Supprimer ce paquet ?',
           `<p>Le paquet <strong>${esc(p.label)}</strong> de ${esc(dossier.name)} sera effacé de ton disque, et ce mois redeviendra « manquant » pour ce client.</p>
-           <p class="muted small">Une sauvegarde est prise juste avant. À réserver à un paquet arrivé par erreur.</p>`, 'Supprimer', true);
+           <p class="muted small">Une sauvegarde est prise juste avant. À réserver à un paquet arrivé par erreur.</p>
+           ${backupInfo && backupInfo.external && backupInfo.external.dir ? '<p class="muted small">La copie externe n\'est pas touchée : une sauvegarde qui efface ce que tu effaces n\'en est plus une. Va l\'y supprimer à la main si c\'est ce que tu veux.</p>' : ''}`, 'Supprimer', true);
         if (!ok) return;
         try { S = await api.deletePack(dossier.id, p.month); render(); toast('Paquet supprimé.'); refreshBackupInfo(); }
         catch (e) { toast(plainError(e), 'error'); }
@@ -960,7 +961,8 @@
           const ok = await confirmTyped('Supprimer ce dossier ?',
             `<p>Le dossier <strong>${esc(dossier.name)}</strong> et ${n ? `ses ${pl(n, 'paquet')}` : 'son historique'} seront <strong>effacés de ce poste</strong>.
              ${n ? 'Les pièces comptables que ce client t\'a envoyées seront supprimées du disque.' : ''}</p>
-             <p class="muted small">Une sauvegarde est prise juste avant. Si le client est simplement parti, préfère <strong>l'archivage</strong> : il disparaît des listes sans rien perdre.</p>`,
+             <p class="muted small">Une sauvegarde est prise juste avant. Si le client est simplement parti, préfère <strong>l'archivage</strong> : il disparaît des listes sans rien perdre.</p>
+             ${backupInfo && backupInfo.external && backupInfo.external.dir ? '<p class="muted small">La copie externe n\'est pas touchée : une sauvegarde qui efface ce que tu effaces n\'en est plus une. Si le client demande l\'effacement de ses pièces, supprime-les aussi là-bas.</p>' : ''}`,
             'SUPPRIMER');
           if (!ok) return;
           try {
