@@ -71,15 +71,23 @@ const LARGEURS = [[1440, 900], [1280, 800]];
     // L'assistant de première utilisation, déroulé comme le ferait quelqu'un de pressé : on renseigne
     // le strict minimum (la raison sociale est le seul champ refusé vide) et on enchaîne.
     await win.waitForSelector('#setup');
-    for (const [i] of [[0], [1], [2], [3], [4], [5]].entries()) {
-      if (i === 1) {
-        await win.waitForSelector('#sf-form input[name=name]');
+    // On reconnaît chaque écran à ce qu'il contient : le nombre d'écrans change au fil des versions
+    // (sept depuis la 7.2.0), et une boucle comptée photographierait un assistant à moitié déroulé.
+    // Les modules restent tels que l'assistant les propose : c'est ce que verrait quelqu'un de pressé.
+    for (let garde = 0; garde < 15 && await win.$('#setup'); garde++) {
+      if (await win.$('#sf-form input[name=name]')) {
         await win.fill('#sf-form input[name=name]', 'Atelier Ben Salah SUARL');
         await win.fill('#sf-form input[name=matricule]', '1234567X/A/M/000');
         await win.fill('#sf-form textarea[name=address]', 'Rue de Carthage\n2080 Ariana');
       }
-      if (i === 2) { await win.click('[data-act="batiment"]'); await win.waitForSelector('[data-act="batiment"].sel'); }
+      if (await win.$('[data-act="batiment"]')) { await win.click('[data-act="batiment"]'); await win.waitForSelector('[data-act="batiment"].sel'); }
+      if (await win.$('#sf-mods')) {
+        const d = path.join(racine, `${etat}-assistant`);
+        fs.mkdirSync(d, { recursive: true });
+        await win.screenshot({ path: path.join(d, 'modules.png') });
+      }
       await win.click('#sf-next');
+      await win.waitForTimeout(120);
     }
     await win.waitForFunction(() => !document.querySelector('#setup'));
     j.ok('assistant terminé');

@@ -41,13 +41,16 @@ const os = require('os');
 
   j.etape('Une vraie entreprise, avec une vraie pièce');
   await win.waitForSelector('#setup');
-  for (let i = 0; i < 6; i++) {
-    if (i === 1) {
+  // On reconnaît chaque écran à son contenu : l'assistant a gagné un septième écran en 7.2.0, et
+  // une boucle comptée s'arrêterait avant la fin sans rien dire.
+  for (let garde = 0; garde < 15 && await win.$('#setup'); garde++) {
+    if (await win.$('#sf-form input[name=name]')) {
       await win.fill('#sf-form input[name=name]', 'Atelier Ben Salah SUARL');
       await win.fill('#sf-form input[name=matricule]', '9876543Z/A/P/000');
     }
-    if (i === 2) { await win.click('[data-act="batiment"]'); await win.waitForSelector('[data-act="batiment"].sel'); }
+    if (await win.$('[data-act="batiment"]')) { await win.click('[data-act="batiment"]'); await win.waitForSelector('[data-act="batiment"].sel'); }
     await win.click('#sf-next');
+    await win.waitForTimeout(120);
   }
   await win.waitForFunction(() => !document.querySelector('#setup'));
   // Un client bien à lui : c'est lui qu'on devra retrouver à la sortie de l'exemple.

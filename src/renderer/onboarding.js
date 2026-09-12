@@ -10,18 +10,29 @@
 })(typeof self !== 'undefined' ? self : this, function (C) {
 
   // Un assistant est nécessaire quand rien n'a encore été saisi.
+  //
+  // `setupStarted` : depuis la 7.2.0 l'assistant écrit à chaque étape. Sans le drapeau, écrire la
+  // raison sociale au deuxième écran suffisait à rendre `needsSetup` faux — donc fermer la fenêtre
+  // au cinquième écran ne reprenait rien du tout. On ne relance QUE l'assistant réellement
+  // interrompu : une installation ancienne sans `setupDone` mais avec une société renseignée ne
+  // doit pas se voir soudain proposer un assistant qu'elle n'a jamais commencé.
   function needsSetup(data) {
     if (!data || !data.company) return false;
     if (data.company.setupDone) return false;
-    return !data.company.name && !(data.documents || []).length && !(data.clients || []).length;
+    const vierge = !(data.documents || []).length && !(data.clients || []).length;
+    if (data.company.setupStarted) return vierge;
+    return !data.company.name && vierge;
   }
 
   // Applique les réponses de l'assistant à un jeu de données (utilisé aussi par les tests).
   // answers : { name, matricule, rc, capital, address, phone, email, activity, currency,
   //             stampFee, quoteValidityDays, paymentTermsDays, defaultWithholdingRate,
-  //             bank, rib, fillCatalog }
-  function applySetup(data, answers) {
+  //             bank, rib, fillCatalog, modules }
+  // opts    : { done: false, step: n } — écriture intermédiaire entre deux étapes ; sans opts,
+  //           l'assistant est déclaré terminé.
+  function applySetup(data, answers, opts) {
     const a = answers || {};
+    const o = opts || {};
     const co = data.company;
     ['name', 'matricule', 'rc', 'capital', 'address', 'phone', 'email', 'website', 'bank', 'rib', 'activity'].forEach(k => {
       if (a[k] != null) co[k] = String(a[k]).trim();
@@ -42,7 +53,26 @@
         id: C.uid(), label, description: description || '', unitPrice, vatRate: act.vat, unit: unit || 'u'
       }));
     }
-    co.setupDone = true;
+    // Les modules que l'utilisateur a demandés. Tout le mécanisme existait depuis la 7.0.0 —
+    // MODULES, moduleOn, navPages, la page « Tous les modules », le bandeau de rattrapage — et
+    // `modulesSuggeres`, la table qui relie le métier aux modules, n'avait AUCUN appelant. Le menu
+    // faisait donc vingt et une lignes au premier jour, pour quelqu'un qui venait de déclarer à
+    // l'écran précédent qu'il fait du conseil. Les trois modules `toujours` sont ajoutés d'office :
+    // sans eux, un réglage enregistré ne contiendrait pas le cœur du métier.
+    if (Array.isArray(a.modules)) {
+      const coeur = C.MODULES.filter(m => m.toujours).map(m => m.id);
+      const demandes = a.modules.filter(x => C.moduleById(x) && !C.moduleById(x).toujours);
+      co.modules = coeur.concat(demandes);
+    }
+    if (o.done === false) {
+      // Reprise après fermeture : on garde la trace de l'étape atteinte sans déclarer terminé.
+      co.setupStarted = true;
+      if (o.step != null) co.setupStep = Number(o.step) || 0;
+    } else {
+      co.setupDone = true;
+      delete co.setupStarted;
+      delete co.setupStep;
+    }
     return data;
   }
 
@@ -56,6 +86,7 @@
     },
     { id: 'entreprise', title: 'Ton entreprise', sub: 'Ce qui s\'imprimera en haut de chaque document' },
     { id: 'activite', title: 'Ton activité', sub: 'Pour te proposer un catalogue de départ' },
+    { id: 'modules', title: 'De quoi as-tu besoin ?', sub: 'On range le menu — on ne retire aucune fonction' },
     { id: 'facturation', title: 'Tes règles de facturation', sub: 'Délais, taxes, devise' },
     { id: 'paiement', title: 'Comment tes clients te paient', sub: 'Ce bloc s\'affiche sur tes factures' },
     { id: 'sauvegarde', title: 'Protéger tes données', sub: 'L\'étape que tout le monde saute, et qu\'il ne faut pas sauter' }

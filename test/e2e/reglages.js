@@ -20,15 +20,42 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   const app = await electron.launch({ args: ['--no-sandbox', `--user-data-dir=${userData}`, RACINE], executablePath: ELECTRON });
   const win = await app.firstWindow(); surveiller(win, '', bac);
   await win.waitForSelector('#setup');
-  for (let i = 0; i < 6; i++) {
-    if (i === 1) { await win.fill('#sf-form input[name=name]', 'Cabinet Test'); await win.fill('#sf-form input[name=matricule]', '1234567X/A/M/000'); }
-    if (i === 2) { await win.click('[data-act="sante"]'); }
+  // On avance en reconnaissant chaque écran à ce qu'il contient, pas à son numéro : l'assistant a
+  // gagné un septième écran en 7.2.0, et une boucle « six fois Continuer » se serait arrêtée avant
+  // la fin sans rien dire. Le compteur de garde n'est là que pour ne pas boucler à l'infini.
+  let vuModules = false;
+  for (let garde = 0; garde < 15 && await win.$('#setup'); garde++) {
+    if (await win.$('#sf-form input[name=name]')) {
+      await win.fill('#sf-form input[name=name]', 'Cabinet Test');
+      await win.fill('#sf-form input[name=matricule]', '1234567X/A/M/000');
+    }
+    if (await win.$('[data-act="sante"]')) await win.click('[data-act="sante"]');
+    if (await win.$('#sf-mods')) {
+      vuModules = true;
+      // « Santé et paramédical » ne propose ni stock, ni paie, ni immobilisations : les cases
+      // arrivent décochées, et on les laisse telles quelles.
+      const coches = await win.evaluate(() => [...document.querySelectorAll('[data-sfmod]')].filter(c => c.checked).map(c => c.dataset.sfmod));
+      if (coches.includes('paie')) throw new Error('la Paie ne devrait pas être proposée à un cabinet de santé');
+    }
     await win.click('#sf-next');
+    await win.waitForTimeout(120);
   }
   await win.waitForFunction(() => !document.querySelector('#setup'));
+  if (!vuModules) throw new Error('l\'assistant n\'a jamais montré l\'écran « De quoi as-tu besoin ? »');
+
+  j.etape('L\'assistant a VRAIMENT rangé le menu');
+  // Le défaut : tout le mécanisme existait depuis la 7.0.0 et personne ne l'armait. `company.modules`
+  // restait à null, donc le menu affichait ses dix-sept entrées à quelqu'un qui venait de déclarer
+  // son métier à l'écran précédent.
+  const lire = () => JSON.parse(fs.readFileSync(path.join(userData, 'dossiers', 'principal', 'skanfact-data.json'), 'utf8'));
+  const mods = (lire().company || {}).modules;
+  if (!Array.isArray(mods)) throw new Error('l\'assistant n\'a rien enregistré : company.modules = ' + JSON.stringify(mods));
+  const liens = await win.evaluate(() => [...document.querySelectorAll('nav a')].map(a => a.dataset.route));
+  if (liens.includes('paie')) throw new Error('« Paie » est dans le menu alors que le métier ne la demande pas');
+  if (!liens.includes('devis') || !liens.includes('compta')) throw new Error('le cœur du métier a disparu du menu : ' + liens.join(','));
+  j.ok(liens.length + ' entrées au menu au lieu de dix-sept · modules enregistrés : ' + mods.join(', '));
 
   j.etape('Le métier exonéré décide du taux des nouvelles lignes');
-  const tva = await win.evaluate(() => JSON.parse(localStorage.getItem('skanfact') || 'null'));
   await win.evaluate(() => { location.hash = '#/doc/new/devis'; });
   await win.waitForSelector('#lines select[data-k=vatRate]');
   const v = await win.inputValue('#lines select[data-k=vatRate]');
@@ -69,8 +96,12 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   if (!/est conservé/.test(q)) throw new Error('la question doit dire que la saisie est gardée : ' + q.slice(0, 160));
   await win.click('#modal-root #ok');
   await win.waitForFunction(() => !document.querySelector('#setup'));
-  const tel = await win.evaluate(() => (JSON.parse(localStorage.getItem('skanfact') || '{}').company || {}).phone);
-  j.ok('« Passer » a gardé la saisie');
+  // Ce contrôle lisait `localStorage`, où l'application n'écrit rien : il renvoyait `undefined` et
+  // affichait « ok » sans rien vérifier. Un test qui ne peut pas échouer est pire que pas de test —
+  // celui-là couvrait depuis la 7.1.1 un défaut qu'il aurait laissé revenir sans un mot.
+  const tel = (lire().company || {}).phone;
+  if (tel !== '+216 55 000 000') throw new Error('« Passer » a jeté ce qui venait d\'être tapé : phone = ' + JSON.stringify(tel));
+  j.ok('« Passer » a gardé la saisie (' + tel + ')');
 
   j.etape('Ce qu\'on ne pouvait pas faire, et qu\'on ne comprenait pas');
   // La case « numéro de série » vivait DANS le bloc masqué par « Suivi en stock » : le message qui

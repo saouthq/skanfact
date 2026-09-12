@@ -304,7 +304,7 @@
       id: 'demarrer', title: 'Démarrer : les cinq premières minutes', sub: 'Ce qu\'il faut régler avant ton premier devis',
       body: `
 <p>SkanFact fonctionne entièrement sur ton ordinateur. Rien n'est envoyé sur Internet, personne d'autre ne voit tes données. En contrepartie, <b>c'est toi qui es responsable de tes sauvegardes</b> : on y revient plus bas.</p>
-<p>Au tout premier démarrage, un assistant t'a demandé ta raison sociale, ton activité et tes règles de facturation. Si tu l'as passé, ou si tu veux corriger une réponse, tout se retrouve dans <b>Paramètres</b>.</p>
+<p>Au tout premier démarrage, un assistant t'a demandé ta raison sociale, ton activité, ce dont tu as besoin et tes règles de facturation. <b>Il se rejoue</b>, prérempli avec tes réponses actuelles : le bouton « Revoir l'assistant de démarrage… » est en tête de <b>Paramètres → Société</b>, et la recherche (<kbd>⌘</kbd> <kbd>K</kbd>, ou <kbd>Ctrl</kbd> <kbd>K</kbd> sous Windows) le trouve en tapant « assistant ». Le rejouer ne touche aucune de tes pièces.</p>
 <h3>1. Renseigne ton entreprise</h3>
 <p>Va dans <b>Paramètres → Société</b> et remplis au minimum : raison sociale, matricule fiscal, adresse, téléphone et email. Ces informations s'impriment sur chaque document. Une facture sans matricule fiscal n'est pas conforme.</p>
 <h3>2. Ajoute ton RIB</h3>

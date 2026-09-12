@@ -5263,5 +5263,107 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.strictEqual(core.round3(core.computeTotals(eur, apres).stamp * 3.4), 1);
   });
 
+  t('l\'assistant range le menu d\'après le métier déclaré', () => {
+    const OB = require(path.join(__dirname, '..', 'src', 'renderer', 'onboarding.js'));
+
+    // Le défaut que ce test existe pour empêcher : la 7.0.0 a construit TOUT le mécanisme de tri
+    // des modules — MODULES, moduleOn, navPages, la page « Tous les modules », le bandeau de
+    // rattrapage — et la seule fonction qui devait l'allumer, `modulesSuggeres`, n'avait aucun
+    // appelant. Le menu faisait donc ses dix-sept entrées au premier jour, pour quelqu'un qui
+    // venait de déclarer à l'écran précédent qu'il fait du conseil. Rien ne plantait, aucun test
+    // ne tombait : une fonction morte est invisible.
+    const neuf = () => JSON.parse(JSON.stringify({ ...core.DEFAULT_DATA, company: { ...core.DEFAULT_COMPANY } }));
+
+    const sans = neuf();
+    OB.applySetup(sans, { name: 'Test SUARL', activity: 'conseil', fillCatalog: false });
+    assert.strictEqual(sans.company.modules, null, 'sans réponse à l\'écran des modules, on n\'invente aucun choix');
+    const toutes = core.navPages(sans).length;
+
+    const avec = neuf();
+    OB.applySetup(avec, { name: 'Test SUARL', activity: 'conseil', fillCatalog: false, modules: core.modulesSuggeres('conseil') });
+    assert.ok(Array.isArray(avec.company.modules), 'l\'assistant doit écrire le choix des modules');
+    assert.ok(core.navPages(avec).length < toutes,
+      'répondre à l\'écran des modules doit RACCOURCIR le menu, sinon l\'écran ne sert à rien');
+
+    // Le cœur du métier est ajouté d'office : un réglage enregistré qui ne contiendrait ni les
+    // devis ni les clients ferait disparaître l'application de son propre menu.
+    core.MODULES.filter(m => m.toujours).forEach(m =>
+      assert.ok(avec.company.modules.includes(m.id), `« ${m.id} » doit figurer d'office dans le choix enregistré`));
+    assert.strictEqual(core.moduleOn(avec, 'paie'), false, 'un conseil sans salarié n\'a pas la Paie dans son menu');
+    assert.strictEqual(core.moduleOn(avec, 'pieces'), true, 'le conseil signe des contrats : le module est proposé');
+
+    // Un identifiant inventé ne doit pas se retrouver enregistré.
+    const bruit = neuf();
+    OB.applySetup(bruit, { name: 'X', activity: 'autre', modules: ['paie', 'nexistepas', 'ventes'] });
+    assert.ok(!bruit.company.modules.includes('nexistepas'));
+    assert.strictEqual(bruit.company.modules.filter(x => x === 'ventes').length, 1, '« ventes » ne doit pas être compté deux fois');
+
+    // Chaque métier propose quelque chose de sensé, et jamais un module qui n'existe pas.
+    core.ACTIVITIES.forEach(act => core.modulesSuggeres(act.id).forEach(id =>
+      assert.ok(core.moduleById(id), `« ${act.id} » propose un module inconnu : ${id}`)));
+  });
+
+  t('l\'assistant : chaque écran a son contenu, et l\'écran qu\'on quitte est écrit sur le disque', () => {
+    const OB = require(path.join(__dirname, '..', 'src', 'renderer', 'onboarding.js'));
+    const app = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
+
+    // Un écran ajouté à STEPS sans corps dans `bodyFor` s'affiche VIDE : le titre, la barre de
+    // progression, les boutons — et rien entre les deux. Aucune erreur, aucune trace.
+    OB.STEPS.forEach(s => assert.ok(app.includes(`s.id === '${s.id}'`),
+      `l'écran « ${s.id} » de l'assistant n'a pas de contenu dans app.js`));
+
+    // Rien n'était écrit entre deux étapes : fermer la fenêtre au cinquième écran effaçait les
+    // cinq, alors que « Passer » — geste plus radical — les conservait depuis la 7.1.1.
+    const d = JSON.parse(JSON.stringify({ ...core.DEFAULT_DATA, company: { ...core.DEFAULT_COMPANY } }));
+    assert.strictEqual(OB.needsSetup(d), true);
+    OB.applySetup(d, { name: 'Reprise SUARL', matricule: '1234567X/A/M/000' }, { done: false, step: 3 });
+    assert.strictEqual(d.company.name, 'Reprise SUARL', 'ce qui a été tapé doit être sur le disque');
+    assert.ok(!d.company.setupDone, 'une écriture intermédiaire ne déclare pas l\'assistant terminé');
+    assert.strictEqual(d.company.setupStep, 3);
+    assert.strictEqual(OB.needsSetup(d), true, 'un assistant interrompu doit reprendre, pas disparaître');
+
+    OB.applySetup(d, { name: 'Reprise SUARL' });
+    assert.strictEqual(d.company.setupDone, true);
+    assert.ok(!('setupStarted' in d.company) && !('setupStep' in d.company), 'la trace de reprise s\'efface à la fin');
+    assert.strictEqual(OB.needsSetup(d), false);
+
+    // Et une installation ancienne, société renseignée mais `setupDone` absent, ne doit PAS se voir
+    // proposer un assistant qu'elle n'a jamais commencé.
+    const vieux = { ...core.DEFAULT_DATA, company: { ...core.DEFAULT_COMPANY, name: 'Déjà là' }, documents: [], clients: [] };
+    assert.strictEqual(OB.needsSetup(vieux), false);
+  });
+
+  t('l\'assistant ne promet rien qu\'il ne tient : activité obligatoire, taux en liste, copie vérifiée', () => {
+    const app = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
+    const code = app.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+    assert.ok(code.includes('runSetup'), 'le nettoyage des commentaires a mangé le code');
+
+    // L'écran « Ton activité » se traversait sans rien cliquer, la case « Préremplir mon catalogue »
+    // cochée d'office : le catalogue n'arrivait pas, `defaultVatRate` restait vide, et une bulle de
+    // Paramètres affirmait pourtant que l'assistant l'avait réglé d'après le métier déclaré.
+    assert.ok(/steps\[i\]\.id === 'activite' && !a\.activity/.test(code),
+      'quitter l\'écran « Ton activité » sans choix doit être refusé');
+
+    // La retenue à la source était le SEUL point de saisie libre de l'application : partout
+    // ailleurs c'est une liste fermée. Et c'est le premier endroit où on la rencontre.
+    const bloc = code.slice(code.indexOf('function runSetup'), code.indexOf('async function rejouerAssistant'));
+    assert.ok(bloc.includes('withholdingOptions(a.defaultWithholdingRate)'),
+      'la retenue à la source doit être une liste dans l\'assistant, comme dans Paramètres');
+    assert.ok(!/name="defaultWithholdingRate", a\.defaultWithholdingRate, 'number'/.test(bloc));
+
+    // L'écran de sauvegarde écrivait « Copie activée vers : … » sans jamais lire `lastError` :
+    // un dossier iCloud pas encore synchronisé ou une clé en lecture seule donnaient le même
+    // message rassurant que le succès — sur le seul écran dont le sous-titre dit qu'il ne faut
+    // pas le sauter.
+    // On exige la BRANCHE, pas une mention : un premier jet de ce test se contentait de trouver la
+    // chaîne « x.lastError » quelque part dans le bloc, et restait vert quand on débranchait le
+    // `if` — parce que le mot survivait dans le message d'erreur juste en dessous. Vérifié en
+    // remettant le défaut : il ne tombait pas.
+    assert.ok(/if \(x\.lastError\)/.test(bloc), 'l\'écran de sauvegarde doit REFUSER d\'annoncer une copie qui a échoué');
+    assert.ok(/copieExterne = false/.test(bloc), 'une copie en échec ne doit pas cocher l\'étape des premiers pas');
+    assert.ok(bloc.includes('bridge.externalBackupInfo()'),
+      'l\'écran de sauvegarde doit montrer l\'état réel, pas un texte par défaut');
+  });
+
   console.log(`\n${n} tests OK`);
 })().catch(e => { console.error(e); process.exit(1); });

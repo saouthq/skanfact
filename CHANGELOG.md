@@ -7,6 +7,45 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 7.2.0 — 12/09/2026
+
+**L'assistant ne demandait jamais de quoi tu as besoin.**
+
+La 7.0.0 avait construit tout le tri des modules : la liste, la règle qui empêche de masquer ce qui
+contient quelque chose, la page « Tous les modules », le bandeau de rattrapage — et la table qui
+relie ton métier aux modules dont tu as besoin. **Cette table n'avait aucun appelant.** Tu déclarais
+« Conseil » à un écran, et l'écran suivant t'ouvrait les dix-sept entrées du menu, Paie et
+Immobilisations comprises, le jour où tu n'avais pas encore un seul client.
+
+- **Un septième écran : « De quoi as-tu besoin ? »** Six cases, déjà posées d'après le métier que tu
+  viens de déclarer, chacune avec la phrase qui dit à quoi elle sert. Devis, clients et comptabilité
+  sont toujours là. Résultat mesuré dans l'application : **dix entrées au menu au lieu de dix-sept**.
+  Rien n'est supprimé ni désactivé : une page retirée reste atteignable par la recherche, et un
+  module qui contient quelque chose revient tout seul. Qui passe l'assistant garde tout affiché.
+- **L'écran « Ton activité » se traversait sans rien cliquer**, la case « Préremplir mon catalogue »
+  cochée d'office. Le catalogue n'arrivait pas, le taux de TVA du métier n'était pas réglé, et une
+  bulle d'aide affirmait ailleurs que l'assistant l'avait fait. Le choix est maintenant demandé —
+  « Autre activité » existe pour ceux qui ne se reconnaissent nulle part.
+- **Rien n'était écrit entre deux écrans.** Fermer la fenêtre au cinquième effaçait les cinq, alors
+  que « Passer » — geste bien plus radical — les conservait depuis la 7.1.1. L'assistant reprend
+  maintenant là où il s'est arrêté.
+- **L'écran de sauvegarde annonçait « Copie activée » quand la copie venait d'échouer.** Un dossier
+  iCloud pas encore synchronisé ou une clé en lecture seule donnaient le même message rassurant que
+  le succès — sur le seul écran dont le sous-titre dit qu'il ne faut pas le sauter. Il montre
+  désormais l'état réel, à l'ouverture comme après le choix.
+- **La retenue à la source était le seul champ libre de l'application** : partout ailleurs c'est une
+  liste fermée (Aucune / 1,5 / 3 / 5 / 10 / 15 %). C'était aussi le premier endroit où on la
+  rencontre, et un nombre tapé au hasard amputait toutes les factures à venir.
+- **Créer un second dossier demandait le nom de l'entreprise deux fois**, sous deux libellés
+  différents, le second champ vide. Il arrive prérempli, avec la phrase qui relie les deux.
+- **« Revoir l'assistant » était introuvable** : rangé dans un panneau qui parle du menu, cinquième
+  de sept, dans le sixième des huit onglets de Paramètres, et absent de la recherche. Il est
+  maintenant en tête de **Paramètres → Société**, dans la palette, et l'article « Démarrer » le nomme.
+- **Un devis s'exportait sans aucun contrôle de fiche société.** L'avertissement « il manque ton
+  matricule fiscal » n'existait que pour les factures — or la première pièce qu'on fabrique est un
+  devis, et il partait chez le premier client avec un nom et rien d'autre. Une question, une seule
+  fois, avec le bouton qui mène à la fiche.
+
 ## 7.1.2 — 12/09/2026
 
 **Quatre gestes qu'on ne pouvait pas faire, et dont rien ne disait pourquoi.**

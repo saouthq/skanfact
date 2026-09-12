@@ -42,6 +42,15 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     await win.waitForSelector('[data-act="batiment"]');
     await win.click('[data-act="batiment"]');
     await win.waitForSelector('[data-act="batiment"].sel');
+    await win.click('#sf-next');                                          // → modules
+    // L'écran ajouté en 7.2.0 : le tri des modules existait depuis la 7.0.0 et rien ne l'armait.
+    await win.waitForSelector('#sf-mods');
+    if (!(await win.$('#sf-mods input[data-sfmod="pieces"]:checked'))) {
+      throw new Error('le bâtiment signe des devis et des bons : « pieces » devrait être proposé coché');
+    }
+    if (await win.$('#sf-mods input[data-sfmod="paie"]:checked')) {
+      throw new Error('la Paie ne devrait pas être cochée d\'office pour un artisan sans salarié');
+    }
     await win.click('#sf-next');                                          // → facturation
     await win.waitForSelector('#sf-form input[name=paymentTermsDays]');
     await win.fill('#sf-form input[name=paymentTermsDays]', '45');
@@ -902,6 +911,7 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     await win.fill('#sf-form input[name=name]', 'Darium SARL');
     await win.fill('#sf-form input[name=matricule]', '1111111A/A/000');
     await win.click('#sf-next'); await win.waitForSelector('[data-act="commerce"]'); await win.click('[data-act="commerce"]');
+    await win.click('#sf-next'); await win.waitForSelector('#sf-mods');
     await win.click('#sf-next'); await win.waitForSelector('#sf-form input[name=paymentTermsDays]');
     await win.click('#sf-next'); await win.waitForSelector('#sf-form input[name=rib]');
     await win.click('#sf-next'); await win.waitForSelector('#sf-ext');

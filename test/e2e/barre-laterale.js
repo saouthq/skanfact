@@ -32,16 +32,36 @@ const ECRANS = [[1680, 1050], [1440, 900], [1366, 768], [1280, 800]];
 
   j.etape('L\'assistant de première utilisation, mené au plus court');
   await win.waitForSelector('#setup');
-  for (let i = 0; i < 6; i++) {
-    if (i === 1) {
+  // On reconnaît chaque écran à ce qu'il contient plutôt qu'à son numéro : l'assistant a gagné un
+  // septième écran en 7.2.0, et une boucle « six fois Continuer » se serait arrêtée avant la fin.
+  let propose = null;
+  for (let garde = 0; garde < 15 && await win.$('#setup'); garde++) {
+    if (await win.$('#sf-form input[name=name]')) {
       await win.fill('#sf-form input[name=name]', 'Atelier Ben Salah SUARL');
       await win.fill('#sf-form input[name=matricule]', '1234567X/A/M/000');
     }
-    if (i === 2) { await win.click('[data-act="conseil"]'); await win.waitForSelector('[data-act="conseil"].sel'); }
+    if (await win.$('[data-act="conseil"]')) { await win.click('[data-act="conseil"]'); await win.waitForSelector('[data-act="conseil"].sel'); }
+    if (await win.$('#sf-mods')) {
+      propose = await win.evaluate(() => ({
+        coches: [...document.querySelectorAll('[data-sfmod]')].filter(c => c.checked).length,
+        total: document.querySelectorAll('[data-sfmod]').length
+      }));
+      // On coche TOUT : la suite mesure le pire cas, celui du menu complet. C'est l'état d'avant la
+      // 7.2.0, et c'est celui qu'il faut continuer à mesurer — sinon le test deviendrait vert parce
+      // que le menu a rétréci, et il ne dirait plus rien sur ce qui se passe quand il ne rétrécit pas.
+      for (let k = 0; k < 20; k++) {
+        const c = await win.$('#sf-mods input[type=checkbox]:not(:checked)');
+        if (!c) break;
+        await c.click();
+      }
+    }
     await win.click('#sf-next');
+    await win.waitForTimeout(120);
   }
   await win.waitForFunction(() => !document.querySelector('#setup'));
-  j.ok('entreprise créée');
+  if (!propose) throw new Error('l\'assistant n\'a jamais montré l\'écran « De quoi as-tu besoin ? »');
+  if (!(propose.coches < propose.total)) throw new Error(`l'assistant propose ${propose.coches} modules sur ${propose.total} : il ne trie rien`);
+  j.ok(`entreprise créée · l'assistant proposait ${propose.coches} modules sur ${propose.total} pour « conseil », on les a tous pris`);
 
   // Mesure : ce que `nav` demande, ce dont il dispose, et ce qui tombe hors champ.
   const mesurer = async () => win.evaluate(() => {

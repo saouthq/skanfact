@@ -88,6 +88,11 @@ nav a.nav-plus svg { opacity: .55; }
 .mod-check { display: flex; align-items: center; justify-content: center; padding-top: 2px; }
 .mod-check input { width: 17px; height: 17px; cursor: pointer; }
 .mod-lock { color: var(--primary); font-size: 14px; cursor: help; }
+/* Dans l'assistant, la liste doit tenir en entier sous la question : six modules, la phrase du
+   dessus et celle du dessous. Sinon le choix se fait à moitié, et la phrase qui dit qu'on ne perd
+   rien — la seule qui rende le tri acceptable — reste sous la coupe. */
+.mods-serre .mod-row { padding: 9px 2px; grid-template-columns: 26px 1fr; gap: 10px; }
+.mods-serre .mod-row .small { line-height: 1.35; }
 .mt-s { margin-top: 3px; }
 
 /* Le bandeau du jeu d'exemple (7.0.0) : il doit se remarquer sans faire peur, et ne jamais

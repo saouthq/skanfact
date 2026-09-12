@@ -1873,6 +1873,26 @@
       }
       return w;
     }
+    // L'avertissement « ta fiche société est incomplète » n'existait que sur `#issue`, c'est-à-dire
+    // pour les factures et les avoirs. Or la première pièce qu'un débutant fabrique est un devis —
+    // « Tes premiers pas » le lui demande en quatrième ligne — et le devis s'exporte par `#pdf`,
+    // qui ne contrôlait rien. Il partait chez le premier client avec un nom, pas de matricule et
+    // pas d'adresse, alors que l'application le savait et l'écrivait sur son propre accueil.
+    // Une seule fois : c'est un rattrapage du premier jour, pas un rappel de tous les matins.
+    async function premierEnvoiOk() {
+      const co = company();
+      if (co.premierExportAverti) return true;
+      const gaps = C.companyGaps(co);
+      if (!gaps.length) return true;
+      if (data.documents.some(d => d.number && d.id !== doc.id)) return true;   // plus le premier jour
+      const c = await choiceDialog('Avant d\'envoyer ce document',
+        `Il manque ${C.liste(gaps)} sur ta fiche société. Ces informations s'impriment en haut du document, et le matricule fiscal est obligatoire sur une facture en Tunisie.`,
+        'Compléter ma fiche', 'Exporter quand même');
+      if (!c) return false;
+      if (c === 'a') { settingsTab = 'societe'; navigate('#/parametres'); return false; }
+      co.premierExportAverti = true; save();
+      return true;
+    }
     function persist() {
       if (!validate()) return false;
       // L'ancienne date compte autant que la nouvelle : déplacer une pièce hors d'un mois clos
@@ -1922,6 +1942,7 @@
     $('#pdf').onclick = async () => {
       if (locked) return exportPdf(docById(doc.id) || doc);
       if (!validate()) return;
+      if (!await premierEnvoiOk()) return;
       if (!isQ && !isExtra && doc.status === 'brouillon') {
         const n = doc.number || peekNumber(doc.type, doc.date);
         const c = await choiceDialog('Exporter en PDF', `Ce document est un brouillon. Tu peux l'émettre maintenant (numéro ${n}, définitif) ou exporter un brouillon marqué « Brouillon », sans numéro.`, `Émettre ${n} et exporter`, 'Exporter le brouillon');
@@ -3281,7 +3302,8 @@
       ['Aide et guide', () => navigate('#/aide')], ['Nouveau client', () => clientForm(null, () => render())],
       // La palette liste TOUTES les pages, y compris celles des modules retirés du menu : c'est ce
       // qui rend le filtrage de la barre latérale inoffensif.
-      ['Tous les modules', () => navigate('#/modules')]
+      ['Tous les modules', () => navigate('#/modules')],
+      ['Revoir l\'assistant de démarrage', () => rejouerAssistant()]
     ].map(([label, run]) => ({ kind: 'Action', main: label, text: label.toLowerCase(), run }));
     const helps = G.ARTICLES.map(x => ({ kind: 'Aide', main: x.title, sub: x.sub, text: `aide ${x.title} ${x.sub}`.toLowerCase(), run: () => navigate('#/aide/' + x.id) }));
     const docs = data.documents.map(d => { const t = C.computeTotals(d, company()); const cn = clientName(d.clientId); return { kind: C.TITLES[d.type], main: d.number || 'Brouillon', sub: `${cn}${d.subject ? ' — ' + d.subject : ''}`, amt: C.money(d.type === 'devis' ? t.totalTTC : t.netToPay, cur), text: `${d.number} ${cn} ${d.subject || ''} ${d.type}`.toLowerCase(), run: () => navigate('#/doc/' + d.id), ts: d.createdAt || 0 }; });
@@ -7450,7 +7472,8 @@
       <form id="pf">
         <section data-pane="societe">
         <div class="panel"><h2>Identité de l'entreprise</h2>
-          <p class="small muted mb">Ces informations s'impriment en haut de chaque devis et facture. Le matricule fiscal est obligatoire sur une facture.</p>
+          <p class="small muted mb">Ces informations s'impriment en haut de chaque devis et facture. Le matricule fiscal est obligatoire sur une facture.
+          <button type="button" class="btn btn-sm btn-ghost" id="redo-setup-2">Revoir l'assistant de démarrage…</button></p>
           <div class="grid-2">
           ${field(lbl('Raison sociale', 'co.name'), 'name', c.name)}
           ${field(lbl('Matricule fiscal', 'co.matricule'), 'matricule', c.matricule, 'text', 'placeholder="1234567X/A/M/000"')}
@@ -7684,16 +7707,7 @@
     drawUpdatePanel();
     drawOcrPanel();
     $('#go-modules').onclick = () => navigate('#/modules');
-    // L'assistant, rejouable (7.1.1). Il ne réécrit que ce qu'on lui redonne : les champs arrivent
-    // préremplis avec les réglages actuels, et le catalogue n'est pas re-proposé (on en a déjà un).
-    $('#redo-setup').onclick = async () => {
-      if (!await confirmDialog('Revoir l\'assistant de démarrage ? Tes réponses actuelles y sont déjà inscrites : tu peux les corriger ou simplement le parcourir. Aucune de tes pièces n\'est touchée.', 'Revoir l\'assistant', false)) return;
-      clearGuard();
-      await runSetup(true);
-      applyTheme();
-      $('#brand-company').textContent = data.company.name || 'Ton entreprise';
-      render();
-    };
+    $$('#redo-setup, #redo-setup-2').forEach(b => b.onclick = rejouerAssistant);
     $('#backup-now').onclick = async () => { const p = await bridge.createBackup(); toast(p ? 'Sauvegarde créée : ' + p.split(/[\\/]/).pop() : 'Rien à sauvegarder pour l\'instant'); drawExternal(); };
     const drawExternal = async () => {
       const i = await bridge.externalBackupInfo();
@@ -8226,10 +8240,17 @@
     return new Promise(resolve => {
       const steps = OB.STEPS;
       const co = (data && data.company) || {};
-      const a = rejoue
-        ? { ...co, activity: co.activity || '', fillCatalog: false }
-        : { currency: 'DT', stampFee: 1, quoteValidityDays: 30, paymentTermsDays: 30, defaultWithholdingRate: 0, activity: '', fillCatalog: true };
-      let i = 0;
+      const defauts = { currency: 'DT', stampFee: 1, quoteValidityDays: 30, paymentTermsDays: 30, defaultWithholdingRate: 0, activity: '', fillCatalog: true };
+      // Reprise : l'assistant écrit à chaque étape depuis la 7.2.0, on repart donc là où il s'est
+      // arrêté, avec ce qui avait déjà été tapé. Avant, fermer la fenêtre au cinquième écran
+      // effaçait les cinq — alors que « Passer », geste plus radical, les conservait.
+      const reprise = !rejoue && !!co.setupStarted;
+      const a = rejoue ? { ...co, activity: co.activity || '', fillCatalog: false }
+        : reprise ? { ...defauts, ...co, activity: co.activity || '', fillCatalog: !(data.catalog || []).length }
+        : { ...defauts };
+      if (!Array.isArray(a.modules)) delete a.modules;      // rejeu : null ne doit pas passer pour un choix
+      a.modulesTouche = Array.isArray(a.modules);           // un choix déjà enregistré ne se fait pas écraser
+      let i = reprise ? Math.min(Math.max(Number(co.setupStep) || 0, 0), steps.length - 1) : 0;
       const root = document.createElement('div'); root.id = 'setup';
       document.body.appendChild(root);
 
@@ -8244,6 +8265,7 @@
           ${field('Email', 'email', a.email || '', 'email')}
           ${field(lbl('Capital social', 'co.capital'), 'capital', a.capital || '', 'text', 'placeholder="facultatif, ex. 1 000 DT"')}
         </form>
+        ${a.nomDuDossier ? '<p class="small muted">C\'est le nom du dossier que tu viens de créer. Corrige-le ici pour qu\'il s\'imprime exactement comme sur tes papiers, forme juridique comprise.</p>' : ''}
         <p class="small muted">Le matricule fiscal est obligatoire sur une facture en Tunisie. Si tu ne l'as pas encore, laisse vide et complète-le avant ta première facture.</p>`;
         if (s.id === 'activite') return `<div class="act-grid">
           ${C.ACTIVITIES.map(x => `<button type="button" class="act ${a.activity === x.id ? 'sel' : ''}" data-act="${x.id}">
@@ -8252,10 +8274,37 @@
         </div>
         <label class="check mt"><input type="checkbox" id="sf-cat" ${a.fillCatalog ? 'checked' : ''}> Préremplir mon catalogue avec ces prestations (prix à ajuster ensuite)</label>
         <p class="small muted mt">Le catalogue sert à insérer une prestation dans un devis en un clic, sans retaper le libellé ni le prix. Les taux de TVA proposés sont les plus courants — <em>à faire confirmer par ton comptable</em>.</p>`;
+        // Tant que personne ne posait la question, `company.modules` restait à `null` et le menu
+        // affichait ses dix-sept entrées dès le premier jour : Stock, Paie, Immobilisations et
+        // Marges à quelqu'un qui n'a pas encore un seul client. Le tri existait, personne ne
+        // l'armait. Les cases arrivent cochées d'après le métier déclaré à l'écran précédent.
+        if (s.id === 'modules') {
+          if (!a.modulesTouche) a.modules = C.modulesSuggeres(a.activity);
+          const suggere = C.modulesSuggeres(a.activity);
+          const coeur = C.MODULES.filter(m => m.toujours);
+          const choix = C.MODULES.filter(m => !m.toujours);
+          // Le cœur du métier tient en UNE ligne. La première version lui donnait trois lignes
+          // verrouillées en tête de liste : elles ne se cochent pas, elles ne se décochent pas, et
+          // elles poussaient les vraies questions — et la phrase qui rassure — sous la coupe. Une
+          // capture l'a montré tout de suite ; la relecture du code, non.
+          return `<p class="small muted">Les cases sont posées d'après ton métier. ${C.liste(coeur.map(m => m.label))} sont toujours là.</p>
+          <div id="sf-mods" class="mods-serre">${choix.map(m => {
+            const on = a.modules.includes(m.id);
+            return `<div class="mod-row${on ? ' on' : ''}">
+              <label class="mod-check"><input type="checkbox" data-sfmod="${h(m.id)}" ${on ? 'checked' : ''}></label>
+              <div class="mod-txt">
+                <div class="mod-t">${h(m.label)}${suggere.includes(m.id) ? ' <span class="small muted">— proposé pour ton métier</span>' : ''}</div>
+                <div class="small muted">${h(m.quoi)}</div>
+              </div>
+            </div>`;
+          }).join('')}</div>
+          <p class="small muted"><b>Rien n'est supprimé ni désactivé.</b> Une page retirée du menu reste atteignable par la recherche
+          (${MOD}+K), et un module qui contient quelque chose revient tout seul.</p>`;
+        }
         if (s.id === 'facturation') return `<form id="sf-form" class="grid-3">
           ${field(lbl('Devise', 'doc.currency'), 'currency', a.currency, 'text')}
           ${field(lbl('Timbre fiscal par facture', 'doc.stampFee'), 'stampFee', a.stampFee, 'number', 'step="0.001" min="0" class="num"')}
-          ${field(lbl('Retenue à la source par défaut', 'doc.withholdingDefault'), 'defaultWithholdingRate', a.defaultWithholdingRate, 'number', 'step="0.5" min="0" class="num"')}
+          <label class="field">${lbl('Retenue à la source par défaut', 'doc.withholdingDefault')}<select name="defaultWithholdingRate">${withholdingOptions(a.defaultWithholdingRate)}</select></label>
           ${field(lbl('Validité des devis (jours)', 'doc.quoteValidity'), 'quoteValidityDays', a.quoteValidityDays, 'number', 'min="0" class="num"')}
           ${field(lbl('Délai de paiement (jours)', 'doc.paymentDays'), 'paymentTermsDays', a.paymentTermsDays, 'number', 'min="0" class="num"')}
         </form>
@@ -8268,6 +8317,7 @@
         if (s.id === 'sauvegarde') return `<p>Tes données vivent dans un seul fichier, sur cet ordinateur. S'il tombe en panne, est volé ou perdu, ta comptabilité disparaît avec lui.</p>
           <p>Choisis un dossier dans <b>iCloud Drive</b>, sur une <b>clé USB</b> ou un disque réseau : à chaque enregistrement, SkanFact y recopiera tout, sans que tu aies à y penser.</p>
           <div class="inline mt"><button type="button" class="btn btn-primary" id="sf-ext">Choisir un dossier…</button><span id="sf-ext-st" class="small muted">Aucun dossier choisi.</span></div>
+          <p class="small muted mt" id="sf-ext-note" hidden></p>
           <p class="small muted mt">Tu peux le faire plus tard dans Paramètres → Sécurité et données, mais l'expérience montre que « plus tard » n'arrive jamais.</p>`;
         return '';
       };
@@ -8292,18 +8342,49 @@
         if (form) { const f = $('input, textarea', form); if (f) f.focus(); }
         $$('[data-act]', root).forEach(b => b.onclick = () => { a.activity = b.dataset.act; a.fillCatalog = $('#sf-cat', root).checked; draw(); });
         if ($('#sf-cat', root)) $('#sf-cat', root).onchange = e => { a.fillCatalog = e.target.checked; };
-        if ($('#sf-ext', root)) $('#sf-ext', root).onclick = async () => {
-          const x = await bridge.chooseExternalBackup();
-          copieExterne = !!(x && x.dir);      // « Tes premiers pas » coche l'étape tout de suite
-          const st = $('#sf-ext-st', root); if (!st) return;
-          st.textContent = x && x.dir ? 'Copie activée vers : ' + x.dir : 'Aucun dossier choisi.';
-          st.className = x && x.dir ? 'small' : 'small muted';
+        $$('[data-sfmod]', root).forEach(cb => cb.onchange = () => {
+          const liste = Array.isArray(a.modules) ? a.modules.slice() : C.modulesSuggeres(a.activity);
+          const k = liste.indexOf(cb.dataset.sfmod);
+          if (cb.checked && k < 0) liste.push(cb.dataset.sfmod);
+          if (!cb.checked && k >= 0) liste.splice(k, 1);
+          a.modules = liste;
+          a.modulesTouche = true;            // un choix fait à la main ne se fait plus écraser
+          cb.closest('.mod-row').classList.toggle('on', cb.checked);
+        });
+        // L'écran de sauvegarde montre l'état RÉEL, à l'ouverture comme après le choix. Il écrivait
+        // « Copie activée vers : … » sans jamais lire `lastError` : un dossier iCloud pas encore
+        // synchronisé ou une clé en lecture seule donnaient le même message rassurant que le
+        // succès. Et il repartait sur « Aucun dossier choisi » dès qu'on revenait dessus.
+        const direExt = x => {
+          const st = $('#sf-ext-st', root), note = $('#sf-ext-note', root);
+          if (!st) return;
+          if (!x || !x.dir) { st.textContent = 'Aucun dossier choisi.'; st.className = 'small muted'; if (note) note.hidden = true; return; }
+          if (x.lastError) {
+            st.innerHTML = `<span style="color:var(--danger)">La copie a échoué : ${h(x.lastError)}</span>`;
+            st.className = 'small';
+            if (note) { note.hidden = false; note.textContent = 'Dossier choisi : ' + x.dir + ' — choisis-en un autre, ou vérifie que le disque est branché et accessible en écriture.'; }
+            copieExterne = false;
+            return;
+          }
+          st.textContent = 'Copie activée vers : ' + x.dir; st.className = 'small';
+          if (note) note.hidden = true;
+          copieExterne = true;
         };
-        if ($('#sf-prev', root)) $('#sf-prev', root).onclick = () => { collect(); i--; draw(); };
+        if ($('#sf-ext', root)) {
+          $('#sf-ext', root).onclick = async () => direExt(await bridge.chooseExternalBackup());
+          Promise.resolve(bridge.externalBackupInfo()).then(direExt).catch(() => {});
+        }
+        if ($('#sf-prev', root)) $('#sf-prev', root).onclick = () => { collect(); etape(i - 1); i--; draw(); };
         $('#sf-next', root).onclick = () => {
           collect();
           if (steps[i].id === 'entreprise' && !String(a.name || '').trim()) return toast('La raison sociale est nécessaire : c\'est le nom qui apparaît sur tes documents.', true);
+          // L'écran « Ton activité » se traversait sans rien cliquer, et la case « Préremplir mon
+          // catalogue » était cochée d'office : on promettait un catalogue qui n'arrivait jamais,
+          // et `defaultVatRate` restait vide alors qu'une bulle affirme ailleurs que l'assistant
+          // l'a réglé d'après le métier. « Autre activité » existe précisément pour ce cas.
+          if (steps[i].id === 'activite' && !a.activity) return toast('Choisis une activité — « Autre activité » convient si aucune ne correspond.', true);
           if (i === steps.length - 1) return finish();
+          etape(i + 1);
           i++; draw();
         };
         root.onkeydown = e => { if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') { e.preventDefault(); $('#sf-next', root).click(); } };
@@ -8319,18 +8400,55 @@
             + 'Passer la suite de l\'assistant ? Tu pourras tout régler dans Paramètres, mais une facture sans raison sociale ni matricule fiscal n\'est pas conforme.',
             'Passer', false)) return;
           OB.applySetup(data, a);            // on garde ce qui a été saisi, on n'invente rien
-          save(true); root.remove(); resolve(false);
+          save(true); drawNav(); root.remove(); resolve(false);
         };
       };
       const collect = () => { const f = $('#sf-form', root); if (f) Object.assign(a, formValues(f)); };
+      // Écrire à chaque changement d'étape, sans déclarer l'assistant terminé. Rien ne vivait sur
+      // le disque avant `finish()` : une veille, un Cmd+Q ou un rechargement du chien de garde au
+      // cinquième écran, et les cinq écrans étaient à retaper. En rejeu on ne touche à rien tant
+      // que l'utilisateur n'a pas fini : ses données existent déjà, elles ne sont pas un brouillon.
+      const etape = n => {
+        if (rejoue) return;
+        try { OB.applySetup(data, a, { done: false, step: n }); save(true); } catch (_) {}
+      };
       const finish = () => {
         OB.applySetup(data, a);
         save(true);
+        drawNav();                           // le choix des modules change le menu tout de suite
         root.remove();
         resolve(true);
       };
-      draw();
+      // « + Nouveau dossier sur cet ordinateur » demande déjà le nom de l'entreprise ; l'assistant
+      // le redemandait aussitôt sous un autre libellé, champ vide, et on se demandait si les deux
+      // désignaient la même chose. On ne reprend PAS le dossier d'origine, dont le nom d'usine est
+      // « Mon entreprise » : ce serait remplacer la page blanche par une fausse réponse.
+      (async () => {
+        if (!rejoue && !reprise && !String(a.name || '').trim() && bridge.listDossiers) {
+          try {
+            const r = await bridge.listDossiers();
+            const d = ((r || {}).dossiers || []).find(x => x.id === r.current);
+            if (d && d.id !== 'principal' && String(d.name || '').trim()) { a.name = d.name; a.nomDuDossier = true; }
+          } catch (_) { /* pas de dossiers : on démarre sur la page blanche, comme avant */ }
+        }
+        draw();
+      })();
     });
+  }
+
+  // L'assistant, rejouable (7.1.1). Il ne réécrit que ce qu'on lui redonne : les champs arrivent
+  // préremplis avec les réglages actuels, et le catalogue n'est pas re-proposé (on en a déjà un).
+  // Hors de `routes.parametres` depuis la 7.2.0 : le bouton était rangé dans un panneau qui parle
+  // de la barre latérale, cinquième de sept, dans le sixième des huit onglets, et absent de la
+  // palette. Quelqu'un qui veut revoir les questions ne le trouvait pas, et concluait qu'on ne
+  // peut pas revoir l'assistant — alors qu'il a été écrit pour ça.
+  async function rejouerAssistant() {
+    if (!await confirmDialog('Revoir l\'assistant de démarrage ? Tes réponses actuelles y sont déjà inscrites : tu peux les corriger ou simplement le parcourir. Aucune de tes pièces n\'est touchée.', 'Revoir l\'assistant', false)) return;
+    clearGuard();
+    await runSetup(true);
+    applyTheme();
+    $('#brand-company').textContent = data.company.name || 'Ton entreprise';
+    render();
   }
 
   // ---------- import / export ----------
