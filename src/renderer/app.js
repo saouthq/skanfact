@@ -609,6 +609,16 @@
   function buyBadge(status) { return `<span class="badge ${BUY_BADGE[status] || ''}">${h(status)}</span>`; }
   function statusBadge(doc) { return badge(effStatus(doc)); }
   function methodLabel(m) { const x = C.PAYMENT_METHODS.find(p => p[0] === m); return x ? x[1] : (m || ''); }
+  // Le compte d'un paiement qui n'en porte pas : c'est celui sur lequel `cashMovements` le fait
+  // tomber (le compte par défaut). On l'écrit ainsi plutôt que de laisser la case vide — une case
+  // vide laisserait croire que l'argent n'est nulle part.
+  function accountLabel(id) {
+    const cptes = data.accounts || [];
+    const a = cptes.find(x => x.id === id);
+    if (a) return a.name || 'Compte';
+    const d = cptes.find(x => x.isDefault) || cptes[0];
+    return d ? (d.name || 'Compte') + ' (par défaut)' : '—';
+  }
   // Numéro que recevrait le document à l'émission, sans consommer le compteur
   function peekNumber(type, date) { return C.nextNumber({ documents: data.documents, counters: { ...data.counters } }, type, date); }
   function withholdingOptions(value) {
@@ -1804,6 +1814,7 @@
       const cur = docCur(doc);
       const s = docById(doc.id); const b = balance(s); const t = b.totals;
       const rows = (s.payments || []).slice().sort((a, x) => (a.date || '').localeCompare(x.date || ''));
+      const plusieursComptes = (data.accounts || []).length > 1;
       el.innerHTML = `
         <div class="pay-grid">
           <div><div class="k-label">Net à payer</div><div class="v">${C.money(t.netToPay, cur)}</div>${t.withholding ? `<div class="small muted">TTC ${C.money(t.totalTTC, cur)} − RS ${C.money(t.withholding, cur)} ${info('ed.withholding')}</div>` : ''}</div>
@@ -1811,8 +1822,8 @@
           <div><div class="k-label">Payé</div><div class="v">${C.money(b.paid, cur)}</div></div>
           <div><div class="k-label">Reste à payer</div><div class="v ${b.remaining > 0.0005 ? 'due' : 'ok'}">${C.money(Math.max(0, b.remaining), cur)}</div>${b.remaining < -0.0005 ? `<div class="small muted">trop-perçu ${C.money(-b.remaining, cur)}</div>` : ''}</div>
         </div>
-        ${rows.length ? `<table class="list compact"><thead><tr><th>Date</th><th>Mode</th><th>Référence</th><th class="r">Montant</th><th></th></tr></thead><tbody>
-          ${rows.map(p => `<tr><td>${C.fmtDate(p.date)}</td><td>${h(methodLabel(p.method))}</td><td>${h(p.reference || '')}${p.note ? `<div class="small muted">${h(p.note)}</div>` : ''}</td><td class="r">${C.money(p.amount, cur)}</td><td class="actions"><button class="btn btn-ghost btn-sm" data-rmpay="${p.id}" title="Supprimer">✕</button></td></tr>`).join('')}
+        ${rows.length ? `<table class="list compact"><thead><tr><th>Date</th><th>Mode</th>${plusieursComptes ? '<th>Compte</th>' : ''}<th>Référence</th><th class="r">Montant</th><th></th></tr></thead><tbody>
+          ${rows.map(p => `<tr><td>${C.fmtDate(p.date)}</td><td>${h(methodLabel(p.method))}</td>${plusieursComptes ? `<td>${h(accountLabel(p.accountId))}</td>` : ''}<td>${h(p.reference || '')}${p.note ? `<div class="small muted">${h(p.note)}</div>` : ''}</td><td class="r">${C.money(p.amount, cur)}</td><td class="actions"><button class="btn btn-ghost btn-sm" data-edpay="${p.id}" title="Modifier">✎</button><button class="btn btn-ghost btn-sm" data-rmpay="${p.id}" title="Supprimer">✕</button></td></tr>`).join('')}
         </tbody></table>` : `<p class="small muted">Aucun paiement enregistré.</p>`}
         <div class="inline mt">
           ${s.status !== 'annulée' && b.remaining > 0.0005 ? `<button class="btn btn-primary" id="pay2">+ Enregistrer un paiement</button>` : ''}
@@ -1824,6 +1835,10 @@
         const gone = (s.payments || []).find(p => p.id === btn.dataset.rmpay);
         if (gone && closedToast(gone.date, 'Ce paiement ne peut pas être supprimé')) return;
         s.payments = s.payments.filter(p => p.id !== btn.dataset.rmpay); save(true); render();
+      });
+      $$('[data-edpay]', el).forEach(btn => btn.onclick = () => {
+        const p = (s.payments || []).find(x => x.id === btn.dataset.edpay);
+        if (p) paymentForm(s, () => render(), p);
       });
       if ($('#pay2')) $('#pay2').onclick = () => paymentForm(s, () => render());
       if ($('#rs-cert')) $('#rs-cert').onchange = e => { s.withholdingCertificate = e.target.checked; save(true); };
@@ -2127,28 +2142,57 @@
     };
   }
 
-  function paymentForm(inv, done) {
+  // Le compte de trésorerie sur lequel tombe un encaissement ou un règlement.
+  //
+  // `cashMovements` lit `p.accountId` depuis la 3.3.0 — et RIEN ne l'écrivait : seuls les mouvements
+  // libres et les bulletins avaient le champ. Tout ce qui vient d'une facture ou d'un achat tombait
+  // donc sur le compte par défaut, quel que soit le mode de paiement. Un règlement en espèces
+  // montait sur le compte bancaire, et le rapprochement ne tombait jamais juste. Pendant ce temps
+  // deux bulles d'aide parlaient des paiements « pour lesquels tu n'as rien précisé », et la page
+  // Trésorerie renvoyait sur la facture en disant « ils se modifient là-bas » — là où le champ
+  // n'existait pas. Sans compte, ou avec un seul, le champ ne sert à rien : on ne le montre pas.
+  function accountFieldHtml(valeur) {
+    const cptes = data.accounts || [];
+    if (cptes.length < 2) return '';
+    const defaut = (cptes.find(a => a.isDefault) || cptes[0]).id;
+    const sel = valeur || defaut;
+    return `<label class="field">${lbl('Compte', 'treso.compteDuPaiement')}<select name="accountId">${cptes
+      .map(a => `<option value="${h(a.id)}" ${a.id === sel ? 'selected' : ''}>${h(a.name || 'Compte')}${a.isDefault ? ' (par défaut)' : ''}</option>`).join('')}</select></label>`;
+  }
+
+  // `pay` : le paiement à modifier. Un paiement ne se modifiait pas — la seule action de sa ligne
+  // était « ✕ » — donc une erreur de compte, de date ou de mode obligeait à supprimer et resaisir.
+  function paymentForm(inv, done, pay) {
     const b = balance(inv); const cur = docCur(inv);
-    modal(`<h2>Enregistrer un paiement</h2><p class="small muted">${h(inv.number)} — reste à payer ${C.money(Math.max(0, b.remaining), cur)}</p>
+    const p0 = pay || null;
+    const reste = Math.max(0, b.remaining + (p0 ? Number(p0.amount) || 0 : 0));
+    modal(`<h2>${p0 ? 'Modifier le paiement' : 'Enregistrer un paiement'}</h2><p class="small muted">${h(inv.number)} — reste à payer ${C.money(p0 ? Math.max(0, b.remaining) : reste, cur)}</p>
       <form id="pf2" class="grid-2">
-        ${dateFieldHtml('Date', 'date', C.today())}
-        ${field('Montant', 'amount', Math.max(0, b.remaining), 'number', 'step="0.001" min="0" class="num"')}
-        <label class="field">Mode<select name="method">${C.PAYMENT_METHODS.map(m => `<option value="${m[0]}">${m[1]}</option>`).join('')}</select></label>
-        ${field('Référence (n° chèque, virement…)', 'reference', '')}
-        <label class="field span-2">Note<input type="text" name="note" value=""></label>
+        ${dateFieldHtml('Date', 'date', p0 ? p0.date : C.today())}
+        ${field('Montant', 'amount', p0 ? p0.amount : reste, 'number', 'step="0.001" min="0" class="num"')}
+        <label class="field">Mode<select name="method">${C.PAYMENT_METHODS.map(m => `<option value="${m[0]}" ${p0 && p0.method === m[0] ? 'selected' : ''}>${m[1]}</option>`).join('')}</select></label>
+        ${accountFieldHtml(p0 && p0.accountId)}
+        ${field('Référence (n° chèque, virement…)', 'reference', p0 ? p0.reference || '' : '')}
+        <label class="field span-2">Note<input type="text" name="note" value="${h(p0 ? p0.note || '' : '')}"></label>
       </form>
+      ${!(data.accounts || []).length ? '<p class="small muted">Aucun compte de trésorerie n\'est créé : ce paiement ne sera rattaché à aucun compte. Tu peux en créer dans <a href="#/tresorerie">Trésorerie</a>.</p>' : ''}
       <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
       (root, close) => { $('#ok', root).onclick = async () => {
         const v = formValues($('#pf2', root));
         if (!(Number(v.amount) > 0)) return toast('Montant invalide.', true);
         if (!v.date) return toast('Date obligatoire.', true);
         if (v.date > C.today() && !await confirmDialog(`La date du paiement (${C.fmtDate(v.date)}) est dans le futur. Un paiement s'enregistre quand l'argent est reçu, pas quand il est promis. Enregistrer quand même ?`, 'Enregistrer quand même')) return;
-        if (Number(v.amount) > b.remaining + 0.0005 && !await confirmDialog(`Le montant (${C.money(v.amount, cur)}) dépasse le reste à payer (${C.money(Math.max(0, b.remaining), cur)}). La facture apparaîtra avec un trop-perçu. Enregistrer quand même ?`, 'Enregistrer quand même')) return;
-        if (closedBlock(v.date, 'Ce paiement')) return;
+        if (Number(v.amount) > reste + 0.0005 && !await confirmDialog(`Le montant (${C.money(v.amount, cur)}) dépasse le reste à payer (${C.money(reste, cur)}). La facture apparaîtra avec un trop-perçu. Enregistrer quand même ?`, 'Enregistrer quand même')) return;
+        // Modifier la date d'un paiement le sort d'un mois peut-être déjà déclaré : l'ancienne date
+        // compte autant que la nouvelle, comme pour un document.
+        if (closedBlock(p0 ? [p0.date, v.date] : v.date, 'Ce paiement')) return;
         inv.payments = inv.payments || [];
-        inv.payments.push({ id: C.uid(), date: v.date, amount: C.round3(v.amount), method: v.method, reference: v.reference || '', note: v.note || '' });
+        const cible = p0 ? inv.payments.find(x => x.id === p0.id) : null;
+        const champs = { date: v.date, amount: C.round3(v.amount), method: v.method, accountId: v.accountId || (p0 ? p0.accountId || '' : ''), reference: v.reference || '', note: v.note || '' };
+        if (cible) Object.assign(cible, champs);
+        else inv.payments.push({ id: C.uid(), ...champs });
         save(true); close();
-        const st = effStatus(inv); toast(st === 'payée' ? `${inv.number} payée intégralement` : 'Paiement enregistré');
+        const st = effStatus(inv); toast(p0 ? 'Paiement modifié' : st === 'payée' ? `${inv.number} payée intégralement` : 'Paiement enregistré');
         if (done) done();
       }; });
   }
@@ -3694,6 +3738,7 @@
         ${dateFieldHtml('Date du règlement', 'date', C.today(), {})}
         ${field('Montant', 'amount', C.round3(Math.max(0, b.remaining)), 'number', 'step="0.001" min="0" class="num"')}
         <label class="field">Mode<select name="method">${C.PAYMENT_METHODS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></label>
+        ${accountFieldHtml('')}
         ${field('Référence', 'reference', '', 'text', 'placeholder="N° de chèque, référence du virement…"')}
         <label class="field span-2">Note<input type="text" name="note" value=""></label>
       </form>
@@ -3706,7 +3751,7 @@
         if (Number(v.amount) > b.remaining + 0.0005 && !await confirmDialog(`Le montant (${C.money(v.amount, cur)}) dépasse le reste dû (${C.money(Math.max(0, b.remaining), cur)}). Enregistrer quand même ?`, 'Enregistrer quand même')) return;
         if (closedBlock(v.date, 'Ce règlement')) return;
         const stored = purchaseById(p.id) || p;
-        stored.payments = (stored.payments || []).concat([{ id: C.uid(), date: v.date, amount: C.round3(v.amount), method: v.method, reference: v.reference || '', note: v.note || '' }]);
+        stored.payments = (stored.payments || []).concat([{ id: C.uid(), date: v.date, amount: C.round3(v.amount), method: v.method, accountId: v.accountId || '', reference: v.reference || '', note: v.note || '' }]);
         save(true); close(); toast('Règlement enregistré'); if (done) done();
       }; });
   }
@@ -6440,7 +6485,7 @@
               ${cols.map(c => `<td class="${c.r ? 'r nw' : ''}${c.cls ? ' ' + c.cls : ''}">${c.get(m)}</td>`).join('')}</tr>`).join('')}
           </tbody></table></div>${pagerBar(pg.pg, { noun: 'mouvement' })}`
             : '<div class="empty">Aucun mouvement cette année.</div>'}
-          <p class="small muted mt">Les encaissements et les règlements viennent des factures et des achats : ils se modifient là-bas. Seuls les mouvements libres se cliquent ici.</p>
+          <p class="small muted mt">Les encaissements et les règlements viennent des factures et des achats : ils se modifient sur la pièce d'origine, avec le bouton ✎ à côté du paiement — c'est là que se règle aussi le compte sur lequel l'argent tombe. Seuls les mouvements libres se cliquent ici.</p>
         </div>`;
       $('#t-acc').onchange = e => { s.account = e.target.value; s.moves.page = 1; draw(); };
       $$('#t-body tr[data-mv]').forEach(tr => { if (tr.dataset.mv) tr.onclick = () => movementForm(data.movements.find(m => m.id === tr.dataset.mv), () => draw()); });
@@ -7282,6 +7327,8 @@
       const sent = (data.packs || []).filter(x => x.month === per.month).sort((a, b) => (b.at || 0) - (a.at || 0));
       const history = (data.packs || []).slice().sort((a, b) => (b.at || 0) - (a.at || 0)).slice(0, 12);
       const cur = co.currency;
+      const tt = plan.totaux;
+      const moisVide = !(tt.pieces + tt.ventes + tt.achats + tt.encaissements + tt.bulletins);
 
       $('#c-body').innerHTML = `
         <div class="panel"><h2>Le paquet du mois ${info('cab.paquet')}</h2>
@@ -7304,7 +7351,7 @@
                 <tr><td>Justificatifs d'achat joints</td><td class="r">${plan.totaux.justificatifs}</td></tr>
                 <tr><td>Encaissements clients</td><td class="r">${plan.totaux.encaissements}</td></tr>
                 <tr><td>Bulletins de paie</td><td class="r">${plan.totaux.bulletins}</td></tr>
-                <tr class="total-row"><td><b>Fichiers en tout</b></td><td class="r"><b>${plan.entries.length + 2}</b></td></tr>
+                <tr class="total-row"><td><b>Fichiers en tout</b></td><td class="r"><b>${moisVide ? 0 : plan.entries.length + 2}</b></td></tr>
               </tbody></table>
             </div>
             <div>
@@ -7316,7 +7363,17 @@
         </div>
 
         <div class="panel"><h2>Ce qui manque ${info('cab.manques')}</h2>
-          ${plan.checklist.length
+          ${moisVide
+            // « Rien à signaler : le dossier du mois est complet » était la SEULE alternative à une
+            // liste de manques. Sur un mois sans une seule pièce, tous les compteurs valent zéro,
+            // donc la liste est vide, donc l'application félicitait — en vert — quelqu'un qui n'a
+            // rien fait, en annonçant neuf fichiers (cinq journaux vides, les écritures et la TVA)
+            // et en armant le bouton d'envoi. Avant d'écrire une phrase rassurante, vérifier que
+            // l'univers dont elle parle n'est pas vide.
+            ? `<p>Ce mois ne contient <b>aucune pièce</b> : il n'y a rien à envoyer à ton comptable.</p>
+               <p class="small muted">Choisis un autre mois en haut de la page, ou commence par émettre une facture.</p>
+               <div class="inline mt"><button class="btn btn-primary" id="cab-vers-factures">Aller aux factures</button></div>`
+            : plan.checklist.length
             ? `<table class="list compact"><tbody>${plan.checklist.map(c => `<tr class="${c.level === 'danger' ? 'row-warn' : ''}">
                 <td><strong>${h(c.label)}</strong><div class="small muted">${h(c.detail)}</div></td><td class="r nw">${c.count}</td></tr>`).join('')}</tbody></table>
                <p class="small muted mt">Ces points figureront sur la page de garde du paquet. Le comptable saura quoi te réclamer — c'est mieux qu'un dossier qu'il croit complet.</p>`
@@ -7335,7 +7392,7 @@
                    Mieux : demande-lui son fichier d'appairage et importe-le dans <a href="#" id="cab-gopair" class="warn-link">Paramètres → Cabinet comptable</a>.</div>
                </div>`}
           <div class="inline">
-            <button class="btn btn-primary" id="cab-build">Fabriquer le paquet…</button>
+            <button class="btn btn-primary" id="cab-build" ${moisVide ? 'disabled title="Ce mois ne contient aucune pièce."' : ''}>Fabriquer le paquet…</button>
             ${sent.length ? `<button class="btn" id="cab-mail">Envoyer au comptable…</button>` : ''}
           </div>
           <div id="cab-prog" class="small muted mt" hidden></div>
@@ -7359,6 +7416,7 @@
       if ($('#cab-seal')) $('#cab-seal').onchange = e => { cabinetState.seal = e.target.checked; $('#cab-pw').hidden = !e.target.checked; };
       if ($('#cab-gopair')) $('#cab-gopair').onclick = e => { e.preventDefault(); settingsTab = 'cabinet'; navigate('#/parametres'); };
 
+      if ($('#cab-vers-factures')) $('#cab-vers-factures').onclick = () => navigate('#/factures');
       $('#cab-build').onclick = async () => {
         const pw = (!paired && cabinetState.seal) ? ($('#cab-pwv').value || '').trim() : '';
         if (!paired && cabinetState.seal && pw.length < 6) return toast('Choisis un mot de passe d\'au moins six caractères.', true);

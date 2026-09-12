@@ -7,6 +7,38 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 7.3.0 — 12/09/2026
+
+**Où tombe l'argent — et le mois vide qu'on félicitait.**
+
+Deux constats graves du contre-audit, tous deux vérifiés à la main avant d'y toucher. Ce ne sont pas
+des défauts d'ergonomie : ce sont des chiffres faux et une phrase fausse.
+
+- **Aucun écran ne permettait de dire sur quel compte tombe un encaissement ou un règlement.**
+  Depuis la 3.3.0, le calcul de trésorerie lit ce compte sur chaque paiement — et **rien ne
+  l'écrivait** : ni le formulaire de paiement client, ni celui de règlement fournisseur n'avaient le
+  champ. Un client qui te règle 300 DT en espèces faisait donc monter ton compte **bancaire**, et ta
+  caisse ne bougeait pas. Ton rapprochement ne pouvait pas tomber juste. Pendant ce temps, la bulle
+  « Compte par défaut » parlait des paiements « pour lesquels tu n'as rien précisé » — sans qu'il
+  existe nulle part un endroit où le préciser — et la page Trésorerie renvoyait sur la facture en
+  disant « ils se modifient là-bas », c'est-à-dire là où le champ n'existait pas.
+  Le champ est posé des deux côtés, il n'apparaît qu'à partir de deux comptes (avec un seul, il n'y
+  a pas de choix à faire), et la liste des paiements affiche la colonne Compte.
+- **Un paiement ne se modifiait pas.** La seule action de sa ligne était « ✕ » : une erreur de
+  compte, de date ou de mode obligeait à supprimer et resaisir. Sans ce bouton, tout ce qui a été
+  saisi jusqu'ici resterait sur le mauvais compte pour toujours. Un bouton ✎ ouvre le paiement, et
+  changer sa date repasse par le contrôle de clôture — dans les deux sens, l'ancienne comme la
+  nouvelle.
+- **Comptabilité → Cabinet écrivait en vert « Rien à signaler : le dossier du mois est complet »
+  sur un mois où il n'y a rien**, annonçait neuf fichiers et armait le bouton d'envoi. La liste des
+  manques ne signale que ce qui existe : sur un mois sans une seule pièce elle est vide, et c'était
+  la seule alternative à la félicitation. L'écran nomme maintenant ce qui se passe — « ce mois ne
+  contient aucune pièce » — compte zéro fichier et refuse de fabriquer le paquet.
+
+Nouveau test de bout en bout : `npm run e2e:argent` fait le geste en entier dans l'application
+réelle — deux comptes, une facture émise, un règlement en espèces, la caisse qui monte et la banque
+qui ne bouge pas, la correction du paiement, puis le mois vide.
+
 ## 7.2.0 — 12/09/2026
 
 **L'assistant ne demandait jamais de quoi tu as besoin.**

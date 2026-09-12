@@ -349,6 +349,7 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:couches` | **les couches et le clavier** : deux fenêtres empilées, Échap, Entrée, Cmd+K dans les deux sens |
 | `npm run e2e:barre` | **la barre latérale mesurée** : Aide et Paramètres atteignables sur quatre tailles d'écran, et rien de masqué n'est perdu |
 | `npm run e2e:exemple` | **charger le jeu d'exemple et en revenir** : le bandeau, la restauration, et la fausse identité qui ne survit pas à l'effacement |
+| `npm run e2e:argent` | **où tombe l'argent** : deux comptes, un règlement en espèces qui va dans la caisse et pas à la banque, un paiement qu'on corrige, et le mois vide que le Cabinet ne déclare plus complet |
 | `npm run e2e:captures` | photographie les 20 pages, leurs onglets et quatre gestes, en vierge et en démo, à 1440 et 1280 |
 | `npm run e2e:gel` | le chien de garde : l'interface est VRAIMENT gelée, et le journal nomme la fonction coupable |
 
@@ -503,6 +504,56 @@ calcule à la main, à partir de la règle, avant de regarder ce que le code ren
 - **Un état lu une fois au démarrage se périme.** « Tes premiers pas » lisait la copie externe au
   boot : choisir enfin un dossier laissait l'étape décochée jusqu'au lendemain. Tout état affiché
   ailleurs que là où il se règle doit être rafraîchi à l'endroit où il change.
+
+## 7.2.0 et 7.3.0 — le contre-audit : ce qui est écrit, et ce qui est branché
+
+Audit à douze angles sur l'app entreprise, chaque constat relu par un contradicteur chargé de le
+**réfuter** et de ré-ancrer chaque ligne dans le code du jour. Les contradicteurs ont rejeté la
+moitié des constats (déjà corrigés en 7.0.0–7.1.2, ou appuyés sur des captures qui n'existent pas)
+et en ont trouvé d'autres. Le détail est dans `PLAN-UX.md`.
+
+Règles apprises, à ne pas recasser :
+
+- **Une fonction écrite pour l'interface et jamais appelée est invisible.** La 7.0.0 avait construit
+  tout le tri des modules — `MODULES`, `moduleOn`, `navPages`, « Tous les modules », le bandeau de
+  rattrapage — ET `modulesSuggeres`, la table qui relie le métier aux modules. Cette table n'avait
+  **aucun appelant** : le menu faisait ses dix-sept entrées au premier jour, pour quelqu'un qui
+  venait de déclarer son métier à l'écran précédent. Rien ne plante, aucun test ne tombe, et le
+  commentaire au-dessus décrivait un écran qui n'existait pas — c'est ce commentaire qui a fait
+  croire que le travail était fini. Quand un mécanisme est livré, le test doit porter sur l'EFFET
+  (« le menu raccourcit »), jamais sur la présence de la fonction.
+- **Un champ lu mais jamais écrit donne un chiffre faux tous les jours.** `cashMovements` lisait
+  `p.accountId` depuis la 3.3.0 ; aucun formulaire de paiement ne l'écrivait. Un règlement en
+  espèces montait sur le compte bancaire. Deux bulles d'aide et une phrase de la page Trésorerie
+  décrivaient le champ manquant comme s'il existait — **une phrase d'aide qui décrit une fonction
+  absente est un bug**, pas une imprécision.
+- **Ce qui se saisit doit pouvoir se corriger.** Un paiement n'avait que « ✕ ». Sans bouton de
+  modification, tout ce qui a été saisi avant un correctif reste faux pour toujours : livrer le
+  champ sans le moyen de revenir dessus n'aurait réparé que l'avenir.
+- **Avant d'écrire une phrase rassurante, vérifier que l'univers concerné est non vide** (déjà notée
+  en 7.0.0, re-trouvée ailleurs) : « Rien à signaler : le dossier du mois est complet » s'affichait
+  en vert sur un mois sans une seule pièce, avec neuf fichiers annoncés et l'envoi armé. La liste
+  des manques ne signale que ce qui existe ; sur le néant elle est vide, et le vide passait pour la
+  perfection.
+- **Un assistant écrit par étapes doit écrire à chaque étape.** Fermer la fenêtre au cinquième écran
+  effaçait les cinq, alors que « Passer » les conservait. Et la reprise a besoin d'un drapeau propre
+  (`setupStarted`) : se fier au fait que la société est renseignée ferait réapparaître l'assistant
+  chez des installations qui ne l'ont jamais commencé.
+- **Un champ de l'assistant doit être au moins aussi guidé que son jumeau dans les Paramètres**,
+  jamais moins. La retenue à la source était une liste fermée partout — sauf au premier endroit où
+  on la rencontre.
+- **Deux tests que j'ai écrits ne pouvaient pas échouer**, et je ne l'ai su qu'en essayant de les
+  faire tomber : ils cherchaient une *mention* (`includes('x.lastError')`, `includes('data-edpay')`)
+  là où il fallait exiger la *branche* — le mot survivait dans le message d'erreur, ou dans le
+  gestionnaire. Un troisième, hérité de la 7.1.1, lisait un `localStorage` où l'application n'écrit
+  rien : il affichait « ok » depuis deux versions. **Tout test de source s'ancre sur la structure, et
+  se prouve en réintroduisant le défaut — sinon on ne sait pas ce qu'on a écrit.**
+- **La capture montre ce que la relecture du code ne montre pas.** L'écran des modules, relu et jugé
+  correct, mettait trois lignes verrouillées en tête et poussait les vraies questions — et la phrase
+  qui dit qu'on ne perd rien — sous la coupe du panneau. Une photo, dix secondes.
+- **Une boucle e2e qui compte les écrans d'un assistant se périme à la version suivante.** On
+  reconnaît chaque écran à ce qu'il contient (`#sf-mods`, `[data-act]`, `input[name=name]`), jamais
+  à son numéro : un septième écran a fait passer trois tests « à côté » sans un mot.
 
 ## Pistes pour la suite (non demandées)
 

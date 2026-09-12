@@ -5365,5 +5365,74 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       'l\'écran de sauvegarde doit montrer l\'état réel, pas un texte par défaut');
   });
 
+  t('trésorerie : un encaissement tombe sur le compte qu\'on a désigné', () => {
+    const co = { ...core.DEFAULT_COMPANY, currency: 'DT' };
+    const banque = { id: 'acc-b', name: 'BIAT', isDefault: true, opening: 0, openingDate: '2026-01-01' };
+    const caisse = { id: 'acc-c', name: 'Caisse espèces', opening: 0, openingDate: '2026-01-01' };
+    const d = core.migrateData({
+      version: 6, company: co, accounts: [banque, caisse], movements: [], purchases: [],
+      documents: [{
+        id: 'f1', type: 'facture', status: 'envoyée', number: 'FAC-2026-001', date: '2026-03-01',
+        lines: [{ label: 'Audit', qty: 1, unitPrice: 300, vatRate: 0 }],
+        payments: [{ id: 'p1', date: '2026-03-05', amount: 300, method: 'especes', accountId: 'acc-c' }]
+      }]
+    });
+    // Le défaut : `cashMovements` lisait `p.accountId` depuis la 3.3.0 et RIEN ne l'écrivait — aucun
+    // écran n'avait le champ. Un règlement en espèces montait donc sur le compte bancaire, pendant
+    // que deux bulles d'aide parlaient des paiements « pour lesquels tu n'as rien précisé ».
+    const mv = core.cashMovements(d, co);
+    const enc = mv.find(x => x.kind === 'encaissement');
+    assert.strictEqual(enc.accountId, 'acc-c', 'l\'encaissement doit tomber sur le compte désigné');
+    assert.strictEqual(core.accountBalance(d, co, 'acc-c').balance, 300, 'la caisse doit monter de 300');
+    assert.strictEqual(core.accountBalance(d, co, 'acc-b').balance, 0, 'la banque ne doit pas bouger');
+
+    // Sans compte désigné, on retombe sur le compte par défaut — c'est le comportement de toutes les
+    // pièces saisies avant la 7.3.0, et il ne doit pas changer.
+    delete d.documents[0].payments[0].accountId;
+    assert.strictEqual(core.accountBalance(d, co, 'acc-b').balance, 300, 'sans compte désigné, le défaut prend');
+
+    // Et l'interface doit poser le champ des DEUX côtés : c'est l'absence de ces deux lignes qui a
+    // laissé le champ mort pendant quatre versions.
+    const app = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
+    const code = app.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+    assert.ok(code.includes('function accountFieldHtml'), 'le nettoyage des commentaires a mangé le code');
+    const bloc = f => { const i = code.indexOf('function ' + f); return code.slice(i, i + 2600); };
+    ['paymentForm', 'supplierPaymentForm'].forEach(f =>
+      assert.ok(bloc(f).includes('accountFieldHtml'), `${f} doit proposer le compte de trésorerie`));
+    assert.ok(/accountId: v\.accountId/.test(bloc('paymentForm')), 'paymentForm doit ÉCRIRE le compte, pas seulement le proposer');
+    assert.ok(/accountId: v\.accountId/.test(bloc('supplierPaymentForm')), 'supplierPaymentForm doit écrire le compte');
+    // Un paiement qui ne se modifie pas condamne l'erreur : le bouton de modification est la moitié
+    // qui manque, sans quoi tout ce qui a été saisi avant reste sur le mauvais compte pour toujours.
+    // Deux moitiés, toutes deux nécessaires : l'attribut sur la ligne ET le gestionnaire. Un premier
+    // jet cherchait juste la chaîne « data-edpay » quelque part — il restait vert quand on cassait
+    // le bouton, parce que le mot survivait dans le gestionnaire. Vérifié en cassant chacun des deux.
+    assert.ok(/data-edpay="\$\{p\.id\}"/.test(code), 'la ligne d\'un paiement doit porter un bouton Modifier');
+    assert.ok(/\$\$\('\[data-edpay\]'/.test(code), 'et ce bouton doit être branché');
+  });
+
+  t('le paquet du comptable ne félicite pas un mois vide', () => {
+    const co = { ...core.DEFAULT_COMPANY, name: 'Test SUARL', matricule: '1X/A/M/000', currency: 'DT' };
+    const vide = core.migrateData({ version: 6, company: co, documents: [] });
+    const plan = core.packPlan(vide, co, core.packPeriod(2026, 3), {});
+    const t0 = plan.totaux;
+    assert.strictEqual(t0.pieces + t0.ventes + t0.achats + t0.encaissements + t0.bulletins, 0);
+    // C'est LA raison du défaut : `packChecklist` ne signale que ce qui existe, donc sur un mois
+    // sans rien elle est vide — et l'écran n'avait qu'une alternative à une liste de manques :
+    // « Rien à signaler : le dossier du mois est complet. » En vert, avec neuf fichiers annoncés et
+    // le bouton d'envoi armé, à quelqu'un qui n'a pas encore émis une seule facture.
+    assert.strictEqual(plan.checklist.length, 0, 'un mois vide n\'a rien à signaler — c\'est bien le piège');
+    assert.ok(plan.entries.length > 0, 'le plan contient quand même des journaux vides : ce ne sont pas des pièces');
+
+    const app = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
+    const code = app.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+    const i = code.indexOf('function drawCabinet');
+    const bloc = code.slice(i, code.indexOf('function drawCabinetPair'));
+    assert.ok(/const moisVide = !\(/.test(bloc), 'la page Cabinet doit savoir que le mois est vide');
+    // Le panneau « Ce qui manque » doit brancher SA phrase sur ce calcul — pas ailleurs dans la page.
+    assert.ok(/Ce qui manque[\s\S]{0,120}\$\{moisVide[\s\S]{0,300}Ce mois ne contient/.test(bloc),
+      'le panneau « Ce qui manque » doit dire que le mois est vide au lieu de féliciter');
+    assert.ok(/id="cab-build" \$\{moisVide \? 'disabled/.test(bloc), 'et refuser de fabriquer un paquet de rien');
+  });
+
   console.log(`\n${n} tests OK`);
 })().catch(e => { console.error(e); process.exit(1); });

@@ -114,6 +114,7 @@ npm run e2e:entreprise   # l'app entreprise, écran par écran
 npm run e2e:barre        # la barre latérale MESURÉE : Aide et Paramètres visibles sur 4 tailles d'écran
 npm run e2e:exemple      # charger le jeu d'exemple, et en revenir sans rien perdre
 npm run e2e:reglages     # TVA du métier, modules dans les Paramètres, assistant rejouable
+npm run e2e:argent       # sur quel compte tombe un encaissement, et le mois vide qu'on félicitait
 npm run e2e:captures     # photographie les 20 pages (vierge + démo, 1440 et 1280) → dist-e2e/captures
 npm run e2e:cabinet      # l'app cabinet : assistant, portefeuille, sauvegardes, suppression et récupération
 npm run e2e:boucle       # les DEUX apps à la suite : appairage → paquet → import → écritures regroupées
