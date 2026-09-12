@@ -145,6 +145,61 @@ Serveur de dépôt : les paquets circulent seuls ; comptes cabinet et entreprise
 | — | Mises à jour sans token (dépôt public) | **attend un oui de Skander** |
 | 7.0.0 | Serveur | seulement si un cabinet dit oui |
 
+## Audit de l'application Cabinet — 12/09/2026, après-midi
+
+Constat de Skander : « il manque beaucoup de choses, et c'est pas trop pratique ; pour la montrer à un comptable il faut qu'elle soit complète ». Audit fait sur l'application réelle (captures 1440×900 et 1280×800 de chaque écran et de chaque fenêtre, avec le jeu d'exemple), puis relecture de `cabcore.js`, `main.js`, `preload.js` et du rendu.
+
+**Verdict** : la 1.0.0 a été conçue pour *démontrer un mécanisme* avec cinq dossiers. Elle est juste et honnête, mais ce n'est pas encore l'outil quotidien d'un cabinet qui suit soixante clients. Rien n'est à jeter ; il manque des couches.
+
+### Ce qui bloquerait une démonstration
+
+1. **Impossible de créer un dossier à la main.** Un dossier n'existe que si un paquet arrive. Le comptable à qui on montre l'application a soixante clients dont aucun sous SkanFact : il ouvre, c'est vide, et sa première question (« mes autres clients, je les mets où ? ») n'a pas de réponse. Un dossier créé à la main, marqué « n'utilise pas encore SkanFact », transforme l'app en **tableau de bord de son portefeuille** — et lui donne une raison de pousser SkanFact chez ses clients.
+2. **Aucun assistant de première utilisation.** L'app entreprise en a un depuis la 2.0.0 ; le cabinet atterrit sur un formulaire de réglages avec un message passager. C'est le premier contact d'un comptable avec le produit.
+3. **Écrans creux.** La fiche d'un client, c'est 40 % de contenu et 60 % de blanc : pas d'année entière, pas de cumul, pas de courbe, rien à imprimer pour un dossier papier.
+
+### Ce qui casse au premier vrai usage
+
+4. **Les listes ne tiennent pas la charge** : ni tri, ni pagination, ni export CSV, ni recherche globale (Cmd+K). Tout existe côté entreprise depuis la 2.2.0. À soixante lignes, la page devient un mur.
+5. **Aucune trace des relances.** On clique « Écrire », le mail part, **rien n'est enregistré** : ni date, ni compteur, ni historique. Le lundi suivant, on ne sait plus qui a été relancé. Et pas de relance groupée : douze retardataires = douze fois le même geste.
+6. **Pas de numéro de téléphone.** Seul l'email existe. En Tunisie, un comptable qui court après des pièces appelle ou envoie un WhatsApp.
+7. **Aucune sauvegarde.** Les dossiers vivent dans **un seul fichier chiffré** : pas de sauvegarde quotidienne, pas de copie externe, pas d'export. Le Mac tombe, tout est perdu. L'app entreprise a les trois depuis la 1.7.0 — c'est l'application *professionnelle*, celle qui détient les données de dizaines d'entreprises, qui n'a rien.
+8. **Le mot de passe ne peut jamais être changé.** Aucun IPC pour ça. S'il fuite, ou si un collaborateur part, il n'y a aucun recours.
+9. **Ni suppression d'un dossier, ni d'un paquet.** Un paquet importé par erreur (mauvais client, essai) reste là pour toujours. Seul l'archivage existe.
+10. **Pas de glisser-déposer.** Le geste le plus naturel — attraper le `.skanpack` reçu par mail et le lâcher sur la fenêtre — n'existe pas.
+
+### Promesses non tenues dans le code
+
+11. **`settings.relanceDay` (10) est mort** : il est dans les données, l'aide annonce « Le 10 : la page Dossiers te dit qui n'a rien envoyé », et **rien ne l'implémente ni ne le règle**.
+12. **`dossier.from` est lu mais jamais réglable** : impossible de dire « je reprends ce client à partir de janvier 2026 ». L'attente démarre au premier paquet reçu, donc un client repris en cours d'année n'est jamais réclamé sur ses mois antérieurs.
+13. **L'aide est fausse sur un point** : elle parle du jeton d'accès à saisir, remplacé par le relais en 6.7.0.
+14. **La pastille « Relances » compte les manquants, la page en liste trois** (elle inclut les provisoires) : deux chiffres pour la même chose.
+
+### Ce qui manque au métier
+
+15. **Aucun calendrier d'échéances.** La vie d'un comptable, ce sont des dates : TVA, CNSS, acomptes. L'app entreprise a `fiscalDeadlines` ; le cabinet n'affiche rien.
+16. **Aucun profil fiscal par client** : régime, TVA mensuelle ou trimestrielle, date de début de mission, honoraires. Sans ça, on ne sait pas *quoi* attendre ni *quand*.
+17. **Aucune vue de portefeuille** : total du chiffre d'affaires suivi, nombre de dossiers à jour, évolution. C'est précisément ce qui impressionne en démonstration.
+18. **Pas de vue par exercice** : six mois glissants au lieu des douze mois d'une année, avec sélecteur d'année.
+19. **Aucun regroupement d'écritures** : chaque paquet porte son `ecritures.csv`, mais rien ne les rassemble par client ou par mois pour l'import dans le logiciel du cabinet.
+20. **Aucun collaborateur** : un cabinet, c'est plusieurs personnes. Hors périmètre v1, mais à nommer.
+
+### Finitions
+
+21. **Aucune bulle « i »** — zéro, alors qu'un test les impose côté entreprise. Deux applications de la même famille, deux niveaux de finition.
+22. **La marque dans l'application est celle de l'app entreprise** : pastille « SF » vert d'eau des deux côtés, alors que l'icône du cabinet (ardoise, dossier) est différente. Une fois ouverte, on ne sait plus laquelle on regarde.
+23. **L'écran de mot de passe est nu** : champs sans étiquette, sans bouton « afficher », et l'avertissement le plus important de toute l'application (« aucun moyen de le récupérer ») est la ligne la plus petite et la plus grise de l'écran.
+24. Un message passager recouvre le bouton « Enregistrer » des Réglages.
+
+### Le plan qui en découle
+
+| Version | Quoi |
+|---|---|
+| **Cabinet 2.0.0** | Créer un dossier à la main · téléphone et contact · **sauvegarde quotidienne, copie externe, export** · changement du mot de passe · suppression d'un dossier et d'un paquet · tri, pagination, export CSV · glisser-déposer · Cmd+K |
+| **Cabinet 2.1.0** | Historique et relance groupée · `relanceDay` enfin vivant · date de début de mission (`from`) · profil fiscal par client · calendrier d'échéances |
+| **Cabinet 2.2.0** | Assistant de première utilisation · bulles « i » · marque propre au cabinet · vue par exercice + courbe · tableau de bord du portefeuille · fiche client imprimable · regroupement des écritures |
+
+Ordre retenu : **2.0.0 d'abord, et dedans la sauvegarde en premier** — c'est le seul point où un incident coûterait vraiment cher. Tout se construit et se teste sans publier (`npm start` et l'installeur local), donc le quota GitHub épuisé ne bloque rien.
+
 ## L'ordre et le calendrier
 
 1. **Phase 0 — cette semaine, Skander seul** : les quatre questions à deux ou trois cabinets ; l'Ordre ; l'objet social ; lancer l'achat des certificats (les délais de vérification se comptent en semaines) ; choisir le nom commercial de l'app cabinet.
