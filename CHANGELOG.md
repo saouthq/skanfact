@@ -7,6 +7,32 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 7.13.0 — 12/09/2026
+
+**Voir ce qu'on fabrique.**
+
+La colonne d'aperçu fait 430 pixels de large — 350 sur un portable — pour une page A4 qui en fait
+794. Le document y était donc affiché à 54 %, puis à 44 % : on distinguait une mise en page, on ne
+lisait ni un prix, ni une désignation, ni une mention légale. C'est pourtant la seule chose que ton
+client, lui, verra.
+
+- **« Agrandir » ouvre le document sur toute la fenêtre**, avec un zoom (⌘⇧A, ou Affichage → « Voir
+  le document en grand »). « Ajuster » montre la **page entière** — pas seulement sa largeur : caler
+  sur la largeur donnait 177 % et il fallait défiler pour voir le total, ce qui n'est pas un aperçu
+  ajusté. Il se met à jour pendant que tu tapes, comme la colonne, et Échap le referme.
+- **L'interrupteur de l'aperçu est monté dans la barre d'actions, en haut.** Une fois l'aperçu
+  masqué, son bouton repartait à la **fin du formulaire**, trois écrans plus bas : on ne le
+  retrouvait pas, et on croyait l'aperçu perdu pour de bon. Il ne bouge plus, et la colonne
+  disparaît maintenant entièrement au lieu de rester là réduite à un bouton.
+- **La barre d'actions revient à la ligne au lieu de sortir de l'écran.** Sur un brouillon de
+  facture à 1280 px, « Émettre la facture » — le bouton principal — dépassait de 25 pixels,
+  « Plus ▾ » de 125, et rien ne permettait de les atteindre : la page ne défilait pas, elle les
+  coupait. Mesuré dans l'application.
+- **Un contrôle de plus, permanent** : `npm run e2e:contraste` vérifiait déjà que chaque bouton est
+  lisible ; il vérifie maintenant qu'aucun ne **sort de la fenêtre**, sur les 21 pages et sur tous
+  les éditeurs, à 1440 comme à 1280. Et `npm run e2e:apercu` mesure le grand aperçu aux deux
+  largeurs.
+
 ## 7.12.0 — 12/09/2026
 
 **Le droit à l'erreur.**

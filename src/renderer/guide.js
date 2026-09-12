@@ -75,7 +75,7 @@
     'ed.lines': { t: 'Les lignes du document', d: 'Une ligne par prestation. La <b>désignation</b> est le titre, la <b>description</b> le détail (facultative, elle rassure le client). <b>Qté</b> multiplie le prix unitaire : 3 heures, 12 mois, 1 forfait. Prends les prestations que tu factures souvent depuis le catalogue, tu gagneras du temps.' },
     'ed.vat': { t: 'TVA', d: 'La taxe que tu collectes pour l\'État et que tu lui reverses. Les taux tunisiens sont 0, 7, 13 et 19 %. Le taux dépend de la nature de la prestation, pas de ton choix. <em>À VÉRIFIER avec ton comptable : le taux qui s\'applique à chacun de tes services.</em>' },
     'ed.notes': { t: 'Notes', d: 'Un texte libre imprimé sur le document : délai d\'intervention, matériel non inclus, conditions particulières. Enregistre les phrases que tu réutilises en « textes prédéfinis » (page Catalogue) pour les insérer en un clic.' },
-    'ed.preview': { t: 'Aperçu', d: 'Exactement ce que ton client recevra. Il se met à jour pendant que tu tapes. Le compteur indique si le document tient sur une page : au-delà, les marges se resserrent automatiquement.' },
+    'ed.preview': { t: 'Aperçu', d: 'Exactement ce que ton client recevra. Il se met à jour pendant que tu tapes. Le compteur indique si le document tient sur une page : au-delà, les marges se resserrent automatiquement.<br><br>Cette colonne montre la page à la moitié de sa taille : pour <b>lire</b> le document, clique <b>Agrandir</b> (ou <kbd>⌘</kbd> <kbd>⇧</kbd> <kbd>A</kbd>) — il s\'ouvre sur toute la fenêtre, avec un zoom. Le bouton <b>Aperçu</b>, à côté, masque la colonne quand tu veux saisir sur toute la largeur.' },
     'ed.issue': { t: 'Émettre', d: 'Le moment où le document devient officiel : il reçoit son numéro définitif et n\'est plus modifiable. C\'est une règle comptable, pas un caprice du logiciel : une facture émise ne se corrige que par un <b>avoir</b>.', a: 'facture' },
     'ed.locked': { t: 'Document verrouillé', d: 'Cette facture est émise : son numéro est définitif et son contenu ne bouge plus. Pour corriger une erreur, crée un avoir (total ou partiel). Tant qu\'aucun paiement ni avoir n\'existe, un déverrouillage de secours reste possible dans le menu « Plus ».', a: 'facture' },
     'ed.payments': { t: 'Paiements', d: 'Enregistre chaque encaissement avec sa date, son montant et son mode. Plusieurs paiements partiels sont possibles. C\'est ce qui fait vivre ton « reste à encaisser », tes relances et ton délai moyen de paiement.' },
@@ -1207,6 +1207,7 @@ rencontres. Si un mot affiché dans l'application manque ici, c'est un défaut :
   <tr><th>Nouvelle facture</th><td><kbd>⌘</kbd> <kbd>⇧</kbd> <kbd>N</kbd></td></tr>
   <tr><th>Enregistrer</th><td><kbd>⌘</kbd> <kbd>S</kbd></td></tr>
   <tr><th>Exporter en PDF</th><td><kbd>⌘</kbd> <kbd>P</kbd></td></tr>
+  <tr><th>Voir le document en grand</th><td><kbd>⌘</kbd> <kbd>⇧</kbd> <kbd>A</kbd></td></tr>
   <tr><th>Réglages</th><td><kbd>⌘</kbd> <kbd>,</kbd></td></tr>
   <tr><th>Accueil, Devis, Factures, Clients, Catalogue</th><td><kbd>⌘</kbd> <kbd>1</kbd> à <kbd>5</kbd></td></tr>
   <tr><th>Comptabilité</th><td><kbd>⌘</kbd> <kbd>6</kbd></td></tr>

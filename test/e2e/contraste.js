@@ -47,7 +47,20 @@ const SONDE = () => {
     const f = fondDe(b);
     const a = lum(t), c = lum(f);
     const ratio = (Math.max(a, c) + 0.05) / (Math.min(a, c) + 0.05);
-    out.push({ texte: b.textContent.trim().slice(0, 40), id: b.id, cls: b.className, ratio: Math.round(ratio * 100) / 100, color: s.color, bg: s.backgroundColor });
+    // Hors de la fenêtre ? Un bouton peut être parfaitement lisible ET coupé par le bord de l'écran.
+    // Le document, lui, ne déborde pas : un ancêtre le rogne, donc `scrollWidth` ne voit rien.
+    // Les conteneurs qui défilent horizontalement (.scroll-x, les tableaux larges) sont exclus :
+    // leur contenu est hors champ à dessein, et on peut l'amener à soi.
+    // `.scroll-x` est le marqueur explicite du projet : « ce tableau défile horizontalement, c'est
+    // voulu ». Exclure tout ancêtre dont `overflow-x` vaut auto — ce qu'essayait la première
+    // version — désarmait le contrôle en entier, parce que le conteneur de page en est un : le test
+    // restait vert avec le défaut réintroduit. Un test qui ne peut pas échouer ne sert à rien.
+    let defilable = false;
+    for (let nd = b.parentElement; nd && nd !== document.body; nd = nd.parentElement) {
+      if (nd.classList.contains('scroll-x')) { defilable = true; break; }
+    }
+    const hors = defilable ? 0 : Math.max(0, Math.round(r.right - document.documentElement.clientWidth), Math.round(-r.left));
+    out.push({ texte: b.textContent.trim().slice(0, 40), id: b.id, cls: b.className, ratio: Math.round(ratio * 100) / 100, color: s.color, bg: s.backgroundColor, hors });
   });
   return out;
 };
@@ -63,6 +76,12 @@ const SEUIL = 2.0;
   const sonder = async (ou) => {
     const boutons = await win.evaluate(SONDE);
     boutons.filter(b => b.ratio < SEUIL).forEach(b => fautes.push(`${ou} → « ${b.texte} » (${b.id || b.cls}) : contraste ${b.ratio} — ${b.color} sur ${b.bg}`));
+    // Même famille : un bouton parfaitement lisible peut être COUPÉ par le bord de la fenêtre. À
+    // 1280 px, la barre d'actions de l'éditeur poussait « Émettre la facture » 105 px hors champ
+    // (corrigé en 7.13.0). Le document, lui, ne débordait pas — un ancêtre le rognait — donc
+    // `scrollWidth` n'en savait rien : c'est le bouton qu'il faut mesurer, pas la page.
+    boutons.filter(b => b.hors > 2).forEach(b =>
+      fautes.push(`${ou} → « ${b.texte} » (${b.id || b.cls}) dépasse de ${b.hors} px hors de la fenêtre`));
     return boutons.length;
   };
 
@@ -118,6 +137,30 @@ const SEUIL = 2.0;
   }
   if (!vu) throw new Error('aucune facture émise trouvée : le bandeau de verrouillage n\'a pas été mesuré');
   j.ok('mesuré');
+
+  j.etape('Les mêmes écrans sur un portable de 1280 px');
+  await win.setViewportSize({ width: 1280, height: 800 });
+  await win.waitForTimeout(200);
+  let p = 0;
+  for (const page of PAGES) {
+    await win.evaluate(x => { location.hash = '#/' + x; }, page);
+    await win.waitForTimeout(150);
+    p += await sonder('1280 #/' + page);
+  }
+  // Et les éditeurs, qui portent le plus de boutons. Le pire cas n'est pas le premier document de la
+  // liste : c'est le BROUILLON (« Émettre la facture » + « Transformer ▾ » + « Plus ▾ » en plus), et
+  // un test qui n'ouvrirait qu'une pièce émise passerait à côté. On les parcourt donc tous.
+  await win.evaluate(() => { location.hash = '#/doc/new/facture'; });
+  await win.waitForTimeout(300);
+  await sonder('1280 nouvelle facture');
+  for (const id of ids) {
+    await win.evaluate(i => { location.hash = '#/doc/' + i; }, id);
+    await win.waitForTimeout(220);
+    await sonder('1280 éditeur ' + id);
+  }
+  j.ok(`${p} boutons mesurés, largeur comprise`);
+  await win.setViewportSize({ width: 1440, height: 900 });
+  await win.waitForTimeout(200);
 
   j.etape('Les mêmes écrans en thème sombre');
   await win.evaluate(() => document.body.classList.add('dark'));

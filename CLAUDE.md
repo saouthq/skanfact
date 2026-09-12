@@ -352,7 +352,8 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:argent` | **où tombe l'argent** : deux comptes, un règlement en espèces qui va dans la caisse et pas à la banque, un paiement qu'on corrige, et le mois vide que le Cabinet ne déclare plus complet |
 | `npm run e2e:captures` | photographie les 20 pages, leurs onglets et quatre gestes, en vierge et en démo, à 1440 et 1280 |
 | `npm run e2e:gel` | le chien de garde : l'interface est VRAIMENT gelée, et le journal nomme la fonction coupable |
-| `npm run e2e:contraste` | **aucun bouton illisible** : le contraste texte/fond de chaque bouton visible des 21 pages, en clair et en sombre |
+| `npm run e2e:contraste` | **aucun bouton illisible ni hors de l'écran** : contraste texte/fond et débordement de chaque bouton visible des 21 pages et de tous les éditeurs, en clair, en sombre, à 1440 et à 1280 |
+| `npm run e2e:apercu` | **voir ce qu'on fabrique** : le grand aperçu, son zoom, « Ajuster », Échap, et l'interrupteur qui reste en haut |
 | `npm run e2e:erreur` | **le droit à l'erreur** : une case de module se décoche ET se recoche, un module masqué revient quand on y écrit, et « Marquer déposée » se défait |
 
 Ils ont longtemps vécu dans un dossier de travail temporaire, effacé à chaque session : il fallait les réécrire de mémoire, et ils dérivaient (une assertion restée sur une version périmée, un écran neuf jamais parcouru). **Un test qu'on doit réécrire pour s'en servir n'est pas un test.** Le harnais (`test/e2e/harnais.js`) trouve Playwright où il est, lit la version dans `package.json` au lieu de l'écrire en dur, et range les captures dans `dist-e2e/` (ignoré par Git).
@@ -643,6 +644,42 @@ Règles apprises, à ne pas recasser :
 Le test qui compte est `npm run e2e:erreur` : il refait les trois gestes dans l'application réelle
 (décocher/recocher un module vide, masquer un module plein avec sa question, remplir un module masqué
 pour le voir revenir, et noter une déclaration déposée puis l'annuler).
+
+## 7.13.0 — Voir ce qu'on fabrique
+
+Skander : « l'aperçu du document est bon mais quand on a un petit écran comme un Mac ou un Windows
+on ne voit rien », et « le bouton aperçu est en bas, on ne le voit même pas des fois ».
+
+Règles apprises, à ne pas recasser :
+
+- **Un aperçu de 430 px pour une page de 794 n'est pas un aperçu, c'est une vignette.** À 54 % (44 %
+  sur un portable) on distingue une mise en page ; on ne lit ni un prix, ni une mention légale —
+  c'est-à-dire rien de ce que le client verra. Le grand aperçu (`#pv-full`, ⌘⇧A) est la vraie
+  réponse ; la colonne reste ce qu'elle est, un repère pendant la saisie.
+- **« Ajuster » ajuste la PAGE, pas sa largeur.** Caler sur la largeur donnait 177 % à 1440 px :
+  le haut de la facture remplissait l'écran et il fallait défiler pour voir le total. Un aperçu
+  « ajusté » qu'on doit faire défiler n'est pas ajusté. Mesuré, pas déduit.
+- **Un interrupteur reste là où on l'a actionné.** « Masquer l'aperçu » vivait au-dessus de la
+  colonne de droite : une fois masqué, il repartait à la fin du formulaire, trois écrans plus bas.
+  Il est monté dans la barre d'actions, et la colonne disparaît **entièrement** au lieu de rester
+  réduite à son seul bouton.
+- **Un bouton coupé par le bord de la fenêtre ne se voit pas dans `scrollWidth`.** À 1280 px,
+  « Émettre la facture » dépassait de 25 px et « Plus ▾ » de 125 — mais le document, lui, ne
+  débordait pas : un ancêtre le rognait. **On mesure le bouton (`getBoundingClientRect().right`
+  contre `clientWidth`), jamais la page.** Une première version du contrôle regardait le document :
+  elle restait verte avec le défaut réintroduit.
+- **Une exclusion trop large désarme un contrôle en silence.** Pour ne pas signaler les tableaux
+  larges, le contrôle ignorait tout bouton sous un ancêtre en `overflow-x: auto` — or le conteneur
+  de page en est un, donc il n'examinait plus rien. L'exclusion porte maintenant sur la classe
+  `.scroll-x`, le marqueur explicite du projet. Vérifié dans les deux sens.
+- **Un test qui pilote un bouton par son identifiant se casse quand le bouton change de rôle.**
+  `#pv-hide` masquait l'aperçu, il l'agrandit désormais : trois tests le cliquaient. Quand un
+  libellé change, les tests qui le nomment se relisent avant de conclure à une régression.
+- Piège du compte en dur : le test « tout document passe par `stampFor` » exigeait **cinq** appels.
+  Le grand aperçu en a ajouté un sixième, légitime, et le test tombait — et se « réparait » en
+  changeant le chiffre, donc sans rien vérifier. Il teste maintenant la RÈGLE (chaque appel à
+  `documentHtml` porte `stampText: stampFor(...)`, sauf l'aperçu d'une facture qui n'existe pas
+  encore).
 
 ## Pistes pour la suite (non demandées)
 

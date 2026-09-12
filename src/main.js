@@ -356,6 +356,9 @@ function buildMenu() {
         // Revenir à l'écran précédent : la seule façon de sortir d'une sous-page était de cliquer
         // dans la barre latérale, ce qui fait perdre l'endroit d'où l'on venait.
         { label: 'Précédent', accelerator: 'CmdOrCtrl+[', click: act('back') },
+        // Le document tel que le client le recevra, en grand. Dans la colonne de droite il s'affiche
+        // à la moitié de sa taille — on y voit une mise en page, pas un prix.
+        { label: 'Voir le document en grand', accelerator: 'CmdOrCtrl+Shift+A', click: act('apercu') },
         { type: 'separator' },
         { label: 'Accueil', accelerator: 'CmdOrCtrl+1', click: act('go:dashboard') },
         { label: 'Devis', accelerator: 'CmdOrCtrl+2', click: act('go:devis') },

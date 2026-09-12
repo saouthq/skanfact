@@ -5595,8 +5595,15 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // la logique à la main, donc un tampon posé ici seul en aurait manqué trois sur quatre.
     const copies = code.match(/st === 'payée' \? 'Payée'/g) || [];
     assert.strictEqual(copies.length, 1, `${copies.length} endroits décident du tampon : il n'en faut qu'un`);
-    assert.strictEqual((code.match(/stampText: stampFor\(/g) || []).length, 5,
-      'les cinq appels à documentHtml doivent passer par stampFor');
+    // On teste la RÈGLE, pas un compte : « tout document qu'on fabrique porte le tampon décidé par
+    // `stampFor` ». Un nombre en dur se périme au premier écran ajouté (c'est arrivé en 7.13.0 avec
+    // le grand aperçu) et, pire, il se « répare » en changeant le chiffre — sans rien vérifier.
+    // Seule exception : l'aperçu de la PROCHAINE facture d'un contrat, qui n'existe pas encore.
+    const appelsDoc = code.match(/C\.documentHtml\([\s\S]{0,260}?\);/g) || [];
+    assert.ok(appelsDoc.length >= 6, `seulement ${appelsDoc.length} fabrications de document trouvées : l'analyse a raté des appels`);
+    appelsDoc.filter(a => !/C\.documentHtml\(next,/.test(a)).forEach(a =>
+      assert.ok(/stampText: stampFor\(/.test(a),
+        'un document se fabrique sans passer par stampFor : ' + a.replace(/\s+/g, ' ').slice(0, 110)));
   });
 
   t('charger l\'exemple prévient et sauvegarde, quelles que soient les listes remplies', () => {

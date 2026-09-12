@@ -196,7 +196,11 @@ body.dark .lock-banner .btn:not(.btn-primary):not(.btn-danger) { background: rgb
 main { flex: 1; overflow-y: auto; padding: 32px 36px 48px; }
 .page-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; gap: 12px; flex-wrap: wrap; }
 .page-head h1 { margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -.4px; }
-.page-head .actions { display: flex; gap: 8px; align-items: center; }
+/* La barre d'actions revient à la ligne plutôt que de sortir de la fenêtre (7.13.0). Sur l'éditeur
+   d'un devis facturable elle porte jusqu'à neuf commandes : à 1280 px, « Émettre la facture » —
+   le bouton principal — était coupé, et toute la page avait une barre de défilement horizontale.
+   Mesuré dans l'application (scrollWidth > clientWidth), pas déduit. */
+.page-head .actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
 
 .panel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px 24px; margin-bottom: 18px; box-shadow: var(--shadow); }
 /* Un lien qui promet un réglage précis l'amène et le désigne : sans repère, on atterrit au milieu
@@ -792,13 +796,32 @@ tr.row-ok td { background: rgba(28, 143, 90, .05); }
 .compact-stats .stat .val { font-size: 19px; }
 .stat .val.ok { color: var(--success); }
 .stat .val.due { color: var(--danger); }
-.editor.no-preview .preview { position: static; flex-direction: row; justify-content: flex-end; height: auto; }
+/* Aperçu masqué : la colonne disparaît ENTIÈREMENT. Jusqu'à la 7.13.0 elle restait là, réduite à son
+   seul bouton, qui se retrouvait donc à la fin du formulaire — trois écrans plus bas que là où on
+   venait de cliquer. L'interrupteur vit maintenant dans la barre d'actions, en haut, et ne bouge
+   plus (.pv-cmd). */
+.editor.no-preview .preview { display: none; }
+.pv-cmd { display: inline-flex; gap: 4px; align-items: center; padding-right: 6px; margin-right: 2px; border-right: 1px solid var(--border); }
+.pv-cmd .btn.on { background: var(--primary-soft); color: var(--primary); border-color: transparent; }
+
+/* ---------- l'aperçu en grand (7.13.0) ----------
+   Une colonne de 430 px montre une page A4 à 54 %, et à 35 % sur un portable : on distingue une mise
+   en page, on ne lit ni un prix ni une mention légale. Sous la barre modale (400) : une question
+   posée par-dessus doit rester devant. */
+#pv-full { position: fixed; inset: 0; z-index: 300; background: rgba(20, 32, 44, .55); display: flex; flex-direction: column; }
+.pv-full-bar { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--border); flex: 0 0 auto; flex-wrap: wrap; }
+.pv-full-bar .k-label { font-size: 12px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; color: var(--muted); }
+.pv-full-bar #pv-full-close { margin-left: 0; }
+.pv-zoom { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.pv-zoom .btn { min-width: 32px; justify-content: center; }
+.pv-zoom #pv-zoom-val { min-width: 96px; text-align: center; font-variant-numeric: tabular-nums; }
+.pv-full-body { flex: 1 1 auto; min-height: 0; padding: 14px; }
+.pv-full-body iframe { width: 100%; height: 100%; border: none; border-radius: var(--radius); background: #e9edf1; }
 /* les flèches du champ numérique mangent la colonne Qté sur un écran étroit */
 table.lines-edit input[type=number]::-webkit-inner-spin-button,
 table.lines-edit input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 table.lines-edit input.num { padding-left: 6px; padding-right: 6px; }
 table.mini input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-.editor.no-preview .preview iframe, .editor.no-preview .pv-pages { display: none; }
 td.line-tools { white-space: nowrap; text-align: right; padding-top: 9px; }
 td.line-tools .btn { padding: 4px 6px; min-width: 24px; justify-content: center; color: var(--muted); }
 td.line-tools .btn:hover:not(:disabled) { color: var(--text); }

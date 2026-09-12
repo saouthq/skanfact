@@ -400,9 +400,11 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     await win.click('#lines tr[data-i="0"] [data-desc]');
     await win.waitForSelector('#lines textarea[data-k=description]');
     await win.waitForFunction(() => { const el = document.querySelector('#pv-pages'); return el && /page/.test(el.textContent); });
-    await win.click('#pv-hide');
+    // Depuis la 7.13.0 l'interrupteur vit dans la barre d'actions (#pv-toggle) : quand l'aperçu est
+    // masqué, la colonne disparaît entièrement, donc un bouton posé DANS l'aperçu serait injoignable.
+    await win.click('#pv-toggle');
     await win.waitForFunction(() => document.querySelector('.editor').classList.contains('no-preview'));
-    await win.click('#pv-hide');
+    await win.click('#pv-toggle');
     await win.waitForFunction(() => !document.querySelector('.editor').classList.contains('no-preview'));
   });
   await step('garde-fou : quitter un document modifié propose d\'enregistrer', async () => {

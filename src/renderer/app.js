@@ -324,6 +324,9 @@
 
   // L'aperçu est rendu à une échelle calculée sur la largeur disponible : il faut le refaire au redimensionnement.
   let previewRedraw = null;
+  // L'éditeur ouvert publie ici sa fonction « aperçu en grand », pour que le raccourci clavier et le
+  // menu Affichage puissent l'appeler. `null` ailleurs : le raccourci le dit au lieu de ne rien faire.
+  let pleinEcranCourant = null;
   let resizeTimer = null;
   window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { if (previewRedraw) previewRedraw(); }, 200); });
 
@@ -998,7 +1001,10 @@
     // menés. `block: 'nearest'` ne bouge rien quand l'entrée est déjà dans le champ.
     const courante = $('nav a.active');
     if (courante) { try { courante.scrollIntoView({ block: 'nearest' }); } catch (_) {} }
-    guard = null; previewRedraw = null;
+    guard = null; previewRedraw = null; pleinEcranCourant = null;
+    // Le grand aperçu appartient au document qu'on quitte : le laisser ouvert par-dessus la page
+    // suivante montrerait une pièce qui n'est plus celle qu'on regarde.
+    const grand = $('#pv-full'); if (grand) grand.remove();
     pushHistory(currentHash);        // d'où l'on vient, pour le bouton retour de la page qui s'ouvre
     (routes[name] || routes.dashboard)(parts.slice(1));
     poserLienAide(name);             // « Comprendre cette page → » : l'article qui explique cet écran
@@ -1644,6 +1650,16 @@
                n'envoie pas — une facture sans numéro n'a pas à partir chez un client — mais il
                explique pourquoi et propose d'émettre. Avant, la ligne « Brouillon » était la seule
                sans bouton Email de toute la liste, et aucun écran ne disait pourquoi. -->
+          <!-- L'aperçu se commande depuis la barre d'actions (7.13.0), pas depuis l'aperçu lui-même.
+               Avant, le bouton « Masquer » vivait au-dessus de la colonne de droite : une fois
+               masqué, il repartait à la FIN du formulaire, c'est-à-dire trois écrans plus bas —
+               donc on ne le retrouvait pas, et on croyait l'aperçu perdu. Un interrupteur doit
+               rester là où on l'a actionné. « Agrandir » est ce qui manquait le plus : sur un
+               écran de portable, la colonne de droite montre un A4 à 45 %, illisible. -->
+          <div class="pv-cmd">
+            <button class="btn btn-sm" id="pv-toggle" aria-pressed="false">Aperçu</button>
+            <button class="btn btn-sm" id="pv-big" title="Voir le document en grand (⌘⇧A)">Agrandir</button>
+          </div>
           ${!isNew ? `<button class="btn" id="email">Email</button>` : ''}
           <button class="btn" id="pdf">PDF</button>
           ${locked && isInv && doc.status !== 'annulée' ? `<button class="btn btn-primary" id="pay">Enregistrer un paiement</button>` : ''}
@@ -1733,17 +1749,32 @@
           </div>
         </div>
         <div class="preview">
-          <div class="pv-head"><span class="k-label">Aperçu ${info('ed.preview')}</span><span class="pv-pages" id="pv-pages"></span><button class="btn btn-ghost btn-sm" id="pv-hide">Masquer</button></div>
+          <div class="pv-head"><span class="k-label">Aperçu ${info('ed.preview')}</span><span class="pv-pages" id="pv-pages"></span>
+            <button class="btn btn-ghost btn-sm" id="pv-hide">Agrandir</button></div>
           <iframe id="preview" title="Aperçu du document"></iframe>
         </div>
       </div>`;
-    // Aperçu masqué : le choix est mémorisé d'un document à l'autre
+    // Aperçu masqué : le choix est mémorisé d'un document à l'autre. La colonne disparaît ENTIÈREMENT
+    // quand il est masqué — un bouton isolé au bas du formulaire ne se retrouve pas — et c'est
+    // l'interrupteur de la barre d'actions, en haut, qui le ramène.
     const applyPreview = () => {
       const ed = $('.editor'); if (!ed) return;
       ed.classList.toggle('no-preview', previewHidden);
-      const b = $('#pv-hide'); if (b) b.textContent = previewHidden ? 'Afficher l\'aperçu' : 'Masquer';
+      const t = $('#pv-toggle');
+      if (t) {
+        t.textContent = previewHidden ? 'Afficher l\'aperçu' : 'Aperçu';
+        t.classList.toggle('on', !previewHidden);
+        t.setAttribute('aria-pressed', previewHidden ? 'false' : 'true');
+        t.title = previewHidden ? 'Remettre l\'aperçu du document à droite' : 'Masquer l\'aperçu et travailler sur toute la largeur';
+      }
     };
-    $('#pv-hide').onclick = () => { previewHidden = !previewHidden; try { localStorage.setItem('skanfact.preview', previewHidden ? '0' : '1'); } catch (_) {} applyPreview(); if (!previewHidden) drawPreview(); };
+    $('#pv-toggle').onclick = () => {
+      previewHidden = !previewHidden;
+      try { localStorage.setItem('skanfact.preview', previewHidden ? '0' : '1'); } catch (_) {}
+      applyPreview(); if (!previewHidden) drawPreview();
+    };
+    $('#pv-hide').onclick = () => apercuPleinEcran();
+    $('#pv-big').onclick = () => apercuPleinEcran();
     applyPreview();
 
     // --- modifications non enregistrées : marqueur visible + garde-fou à la navigation
@@ -1924,7 +1955,95 @@
         } catch (_) { /* aperçu indisponible */ }
       };
       pv.srcdoc = html;
+      if ($('#pv-full')) dessinerPleinEcran();
     }
+
+    // ---------- l'aperçu en grand (7.13.0) ----------
+    //
+    // Pourquoi : la colonne de droite fait 430 px, et une page A4 en fait 794. Le document y est
+    // donc affiché à 54 % — et à 35 % sur un portable de 1280 px, où la colonne tombe à 350. On
+    // voit une mise en page, on ne LIT rien : ni un prix, ni une désignation, ni une mention
+    // légale. C'est pourtant la seule chose que le client, lui, verra.
+    //
+    // Le zoom est explicite (`pvZoom`), avec « Ajuster » comme valeur de départ : un aperçu qui
+    // décide seul de sa taille ne se corrige pas quand il se trompe.
+    let pvZoom = null;                                  // null = la page entière à l'écran
+    const PV_PAS = [0.5, 0.65, 0.8, 1, 1.25, 1.5, 2, 2.5];
+    // « Ajuster » montre la PAGE ENTIÈRE, pas seulement sa largeur. Mesuré dans l'application : caler
+    // sur la largeur seule donnait 177 % à 1440 px — le haut de la facture remplissait l'écran et il
+    // fallait défiler pour voir le total. Un aperçu « ajusté » qu'on doit faire défiler n'est pas
+    // ajusté. Les 60 px sont le `padding: 8mm 0` que le gabarit d'aperçu pose autour de la page.
+    function pvAjuste() {
+      const b = $('#pv-full-frame'); if (!b) return 1;
+      const l = b.parentElement.clientWidth - 28;
+      const ht = b.parentElement.clientHeight - 28;
+      return Math.max(0.3, Math.floor(Math.min(l / 794, ht / 1190) * 100) / 100);
+    }
+    function dessinerPleinEcran() {
+      const f = $('#pv-full-frame'); if (!f) return;
+      const z = pvZoom || pvAjuste();
+      const val = $('#pv-zoom-val'); if (val) val.textContent = pvZoom ? Math.round(z * 100) + ' %' : 'Ajusté (' + Math.round(z * 100) + ' %)';
+      f.onload = () => {
+        try {
+          const compact = C.fitToPage(f.contentDocument);
+          const pages = C.pageCount(f.contentDocument);
+          const el = $('#pv-full-pages');
+          if (el) { el.textContent = pages <= 1 ? (compact ? '1 page (resserrée)' : '1 page') : pages + ' pages'; el.className = 'pv-pages' + (pages > 1 ? ' warn' : ''); }
+        } catch (_) { /* aperçu indisponible */ }
+      };
+      f.srcdoc = C.documentHtml(doc, clientById(doc.clientId), company(), { preview: true, stampText: stampFor(doc), zoom: z });
+    }
+    function fermerPleinEcran() {
+      const el = $('#pv-full'); if (!el) return;
+      el.remove();
+      document.removeEventListener('keydown', pvTouche, true);
+    }
+    function pvTouche(e) {
+      // Une fenêtre ouverte par-dessus (une confirmation) garde la priorité sur Échap : sinon on
+      // ferme l'aperçu et la question reste seule au milieu de l'écran.
+      if (e.key !== 'Escape' || $('#modal-root').children.length) return;
+      e.preventDefault(); e.stopPropagation(); fermerPleinEcran();
+    }
+    function apercuPleinEcran() {
+      if ($('#pv-full')) return fermerPleinEcran();
+      const el = document.createElement('div');
+      el.id = 'pv-full';
+      el.innerHTML = `<div class="pv-full-bar">
+          <span class="k-label">${h(doc.number || title)}</span>
+          <span class="pv-pages" id="pv-full-pages"></span>
+          <div class="pv-zoom">
+            <button class="btn btn-sm" id="pv-zoom-out" title="Réduire">−</button>
+            <span id="pv-zoom-val" class="small muted"></span>
+            <button class="btn btn-sm" id="pv-zoom-in" title="Agrandir">+</button>
+            <button class="btn btn-sm" id="pv-fit">Ajuster</button>
+          </div>
+          <button class="btn btn-sm" id="pv-full-pdf">Exporter en PDF</button>
+          <button class="btn btn-sm btn-primary" id="pv-full-close">Fermer</button>
+        </div>
+        <div class="pv-full-body"><iframe id="pv-full-frame" title="Aperçu du document en grand"></iframe></div>`;
+      document.body.appendChild(el);
+      // On monte au premier palier strictement au-dessus, on descend au premier strictement en
+      // dessous : le zoom actuel peut être une valeur « ajustée » quelconque (0,91), pas un palier.
+      const bouger = (sens) => {
+        const courant = pvZoom || pvAjuste();
+        const suivant = sens > 0
+          ? PV_PAS.find(p => p > courant + 0.001)
+          : PV_PAS.slice().reverse().find(p => p < courant - 0.001);
+        if (suivant === undefined) return toast(sens > 0 ? 'Zoom maximum atteint.' : 'Zoom minimum atteint.');
+        pvZoom = suivant;
+        dessinerPleinEcran();
+      };
+      $('#pv-zoom-in').onclick = () => bouger(1);
+      $('#pv-zoom-out').onclick = () => bouger(-1);
+      $('#pv-fit').onclick = () => { pvZoom = null; dessinerPleinEcran(); };
+      $('#pv-full-close').onclick = fermerPleinEcran;
+      $('#pv-full-pdf').onclick = () => exportPdf(doc);
+      el.onclick = e => { if (e.target === el) fermerPleinEcran(); };
+      document.addEventListener('keydown', pvTouche, true);
+      dessinerPleinEcran();
+    }
+    // Le raccourci est écrit sur le bouton : ⌘⇧A (Ctrl+Maj+A) ouvre et referme le grand aperçu.
+    pleinEcranCourant = apercuPleinEcran;
     function refreshTotals() {
       const t = C.computeTotals(doc, company());
       t.lines.forEach((l, i) => { const c = $(`[data-total="${i}"]`); if (c) c.textContent = C.money(l.ht, null, C.decimalsFor(cur)); });
@@ -3677,6 +3796,13 @@
   const closeMenus = () => $$('.more-list').forEach(l => l.hidden = true);
   document.addEventListener('keydown', e => {
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); openPalette(); }
+    // ⌘⇧A : voir le document en grand. Ailleurs que dans un éditeur, on le DIT plutôt que de ne
+    // rien faire — un raccourci silencieux fait douter du clavier avant de faire douter de l'app.
+    else if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'a') {
+      e.preventDefault();
+      if (pleinEcranCourant) pleinEcranCourant();
+      else toast('Le grand aperçu s\'ouvre depuis un devis ou une facture.');
+    }
     else if (e.key === 'Escape') {
       if ($('#info-pop')) { closeInfoPop(); return; }
       if (closeOverlay) { closeOverlay(); return; }   // calendrier ou liste déroulante ouverte
@@ -8816,6 +8942,10 @@
     else if (name === 'search') openPalette();
     else if (name === 'lock') lockNow();
     else if (name === 'back') go(() => goBack());
+    else if (name === 'apercu') {
+      if (pleinEcranCourant) pleinEcranCourant();
+      else toast('Le grand aperçu s\'ouvre depuis un devis ou une facture.', true);
+    }
     else if (name.startsWith('help:')) navigate('#/aide/' + name.slice(5));
     else if (name.startsWith('go:')) navigate('#/' + name.slice(3));
   });
