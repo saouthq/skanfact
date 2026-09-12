@@ -74,9 +74,21 @@ nav a.active svg { opacity: 1; }
 .sidebar-foot .foot-link svg { width: 17px; height: 17px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; opacity: .8; }
 .sidebar-foot .foot-link:hover { background: var(--ink-soft); color: var(--text); }
 .sidebar-foot .foot-link.active { background: var(--primary-soft); color: var(--primary); font-weight: 600; }
-/* « Tous les modules » ferme la liste : c'est la porte de ce qui n'est pas affiché. */
-nav a.nav-plus { color: var(--muted); font-weight: 600; }
-nav a.nav-plus svg { opacity: .55; }
+/* La recherche générale, dessinée comme un champ au-dessus de <nav> : elle ne défile jamais, elle
+   dit sa touche, et elle est cliquable — trois choses qui manquaient à un raccourci clavier. */
+.nav-search {
+  font: inherit; font-size: 13px; margin: 0 0 8px; width: 100%; cursor: pointer;
+  display: flex; align-items: center; gap: 8px; text-align: left;
+  padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border);
+  background: var(--ink-soft); color: var(--muted);
+}
+.nav-search:hover { border-color: var(--primary); color: var(--text); }
+.nav-search svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.9; stroke-linecap: round; }
+.nav-search span { flex: 1; }
+.nav-search kbd {
+  font: inherit; font-size: 11px; padding: 1px 5px; border-radius: 5px;
+  border: 1px solid var(--border); background: var(--panel); color: var(--muted);
+}
 
 /* ---------- page « Tous les modules » (7.0.0) ---------- */
 .mod-row { display: grid; grid-template-columns: 30px 1fr auto; gap: 12px; align-items: start;

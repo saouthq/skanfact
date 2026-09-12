@@ -670,8 +670,8 @@
   try { window.__navStack = navStack; } catch (_) {}   // visible depuis les tests
   let goingBack = false;
   const PAGE_LABELS = {
-    dashboard: 'Accueil', devis: 'Devis', factures: 'Factures', relances: 'Relances', contrats: 'Contrats',
-    contrat: 'le contrat', autres: 'Autres documents', clients: 'Clients', client: 'la fiche client', catalogue: 'Catalogue',
+    dashboard: 'Accueil', devis: 'Devis', factures: 'Factures', relances: 'Relances', contrats: 'Facturation récurrente',
+    contrat: 'le contrat', autres: 'Proforma, bons et contrats', clients: 'Clients', client: 'la fiche client', catalogue: 'Catalogue',
     tresorerie: 'Trésorerie', stats: 'Statistiques', compta: 'Comptabilité', parametres: 'Paramètres', aide: 'Aide', doc: 'le document',
     achats: 'Achats et dépenses', achat: 'l\'achat', fournisseurs: 'Fournisseurs', fournisseur: 'la fiche fournisseur',
     marges: 'Marges', affaire: 'l\'affaire', immos: 'Immobilisations', immo: 'l\'immobilisation',
@@ -758,15 +758,19 @@
       // « Immobilisations », « Marges », « Trésorerie » : trois mots de gestion qu'un créateur
       // d'entreprise n'a jamais employés, et rien ne disait ce qu'il y avait derrière. La phrase
       // existait déjà dans MODULES (`quoi`) : elle sert d'infobulle.
+      // La phrase de la PAGE d'abord, celle du module en repli : trois pages d'un même module
+      // partageaient au survol exactement la même phrase, donc l'infobulle affirmait trois fois que
+      // Trésorerie, Marges et Statistiques font la même chose.
       const m = p.module ? C.moduleById(p.module) : null;
-      const quoi = m && m.quoi ? ` title="${h(m.quoi)}"` : '';
+      const texte = p.quoi || (m && m.quoi) || '';
+      const quoi = texte ? ` title="${h(texte)}"` : '';
       html += `<a href="#/${p.id}" data-route="${p.id}"${quoi}${p.famille ? '' : ' class="solo"'}>${icone(p.id)}${h(p.titre)}`
         + (cid ? `<span class="nav-count${NAV_INFO.includes(p.id) ? ' info' : ''}" id="${cid}" hidden></span>` : '')
         + '</a>';
     });
-    // Toujours en dernier, toujours présent : c'est la porte de ce qui n'est pas affiché. Sans elle,
-    // masquer un module reviendrait à le supprimer pour quelqu'un qui ne connaît pas la palette.
-    html += `<a href="#/modules" data-route="modules" class="nav-plus">${icone('modules')}Tous les modules</a>`;
+    // « Tous les modules » vivait ici, en dernier : donc la première entrée à passer sous la coupe,
+    // et mesurée hors champ dès 1366×768. C'est la porte de ce qui n'est pas affiché — elle est
+    // maintenant dans le pied de la barre (index.html), qui ne défile jamais.
     const nav = $('#nav');
     nav.innerHTML = html;
     // Une barre qui défile doit AVOIR L'AIR de défiler. Sur macOS, la barre de défilement est cachée
@@ -907,6 +911,13 @@
     // Les liens du pied (Paramètres, Aide) ne sont pas dans <nav> : sans eux dans le sélecteur, la
     // page ouverte n'aurait jamais été marquée sur ces deux-là.
     $$('nav a, .sidebar-foot a').forEach(a => a.classList.toggle('active', a.dataset.route === active));
+    // `drawNav` réécrit `nav.innerHTML`, ce qui remet le défilement à zéro : sur les quatre dernières
+    // pages (Statistiques, Paie, Comptabilité, et tout ce qui suit), l'entrée allumée était cent
+    // pixels sous le bord et AUCUNE entrée en vert n'était visible. On arrivait au bon écran sans
+    // apprendre où il vit dans le menu — donc en dépendant à chaque fois du bouton qui nous y a
+    // menés. `block: 'nearest'` ne bouge rien quand l'entrée est déjà dans le champ.
+    const courante = $('nav a.active');
+    if (courante) { try { courante.scrollIntoView({ block: 'nearest' }); } catch (_) {} }
     guard = null; previewRedraw = null;
     pushHistory(currentHash);        // d'où l'on vient, pour le bouton retour de la page qui s'ouvre
     (routes[name] || routes.dashboard)(parts.slice(1));
@@ -2676,7 +2687,7 @@
         $$('[data-sedit]', wrap).forEach(b => b.onclick = () => snippetForm(data.snippets.find(x => x.id === b.dataset.sedit), redraw));
       }
     });
-    const TABS = [['presta', 'Prestations', 'cat.catalog'], ['modeles', 'Modèles de documents', 'ed.template'], ['textes', 'Textes prédéfinis', 'cat.snippets']];
+    const TABS = CATALOG_TABS;
     if (!TABS.some(t => t[0] === catalogTab)) catalogTab = 'presta';
     const head = () => {
       const t = TABS.find(x => x[0] === catalogTab);
@@ -3080,7 +3091,7 @@
         save(true); draw();
       });
     };
-    $('#view').innerHTML = `<div class="page-head"><h1>Contrats récurrents ${info('contrat.form')}</h1><div class="actions"><button class="btn btn-primary" id="new">+ Nouveau contrat</button></div></div><div id="c-wrap"></div>`;
+    $('#view').innerHTML = `<div class="page-head"><h1>Facturation récurrente ${info('contrat.form')}</h1><div class="actions"><button class="btn btn-primary" id="new">+ Nouveau contrat</button></div></div><div id="c-wrap"></div>`;
     $('#new').onclick = () => recurrenceForm({ id: C.uid(), clientId: '', subject: '', lines: [], every: 'month', day: 1, nextDate: C.addMonths(C.today(), 1, 1), active: true, withholdingRate: 0, discountRate: 0, notes: '' }, draw);
     draw();
   };
@@ -3331,7 +3342,53 @@
     if (stk) { const n = C.stockAlerts(data).length + C.serialGaps(data).length; stk.hidden = !n; stk.textContent = n; }
   }
 
+  // Les onglets du Catalogue et des Paramètres vivaient dans leur fonction de route, donc hors de
+  // portée de la palette. Une seule source pour les deux usages : l'écran les dessine, la recherche
+  // les indexe. Le troisième élément du catalogue est la clé de sa bulle « i ».
+  const CATALOG_TABS = [['presta', 'Prestations', 'cat.catalog'], ['modeles', 'Modèles de documents', 'ed.template'], ['textes', 'Textes prédéfinis', 'cat.snippets']];
+  const SETTINGS_TABS = [['societe', 'Société'], ['documents', 'Documents'], ['emails', 'Emails'], ['apparence', 'Apparence'],
+    ['cabinet', 'Cabinet comptable'], ['donnees', 'Sécurité et données'], ['licence', 'Licence'], ['maj', 'Mises à jour']];
+
   // ---------- palette de recherche (Cmd/Ctrl+K) ----------
+  //
+  // Les onglets de l'application, lus dans les tableaux qui les dessinent. Appelée au moment de
+  // l'ouverture, jamais au chargement : la plupart de ces tableaux sont déclarés plus bas.
+  // Catalogue et Paramètres gardent les leurs dans leur fonction de route ; on les reprend ici, et
+  // le test « la palette connaît tous les onglets » vérifie que les deux copies concordent.
+  function ongletsDePalette() {
+    return [
+      ['Comptabilité', '#/compta', v => { comptaState.tab = v; }, COMPTA_TABS],
+      ['Paie', '#/paie', v => { paieState.tab = v; }, PAIE_TABS],
+      ['Stock', '#/stock', v => { stockState.tab = v; }, STOCK_TABS],
+      ['Marges', '#/marges', v => { margeState.tab = v; }, MARGE_TABS],
+      ['Trésorerie', '#/tresorerie', v => { tresoState.tab = v; }, TRESO_TABS],
+      ['Immobilisations', '#/immos', v => { immoState.tab = v; }, IMMO_TABS],
+      ['Proforma, bons et contrats', '#/autres', v => { autresTab = v; }, AUTRES_TABS],
+      ['Catalogue', '#/catalogue', v => { catalogTab = v; }, CATALOG_TABS],
+      ['Paramètres', '#/parametres', v => { settingsTab = v; }, SETTINGS_TABS]
+    ];
+  }
+  // Les mots qu'on tape et qui ne figurent dans aucun libellé. Sans eux, « maj », « backup »,
+  // « démo » ou « mot de passe » ne rendent rien — et deux réponses vides suffisent à faire croire
+  // que la recherche ne connaît pas l'application.
+  const ALIAS = {
+    'Paramètres → Mises à jour': 'maj version mise à jour nouvelle version télécharger',
+    'Paramètres → Sécurité et données': 'sauvegarde backup copie externe chiffrer mot de passe verrou effacer exemple démo importer exporter dossier',
+    'Paramètres → Apparence': 'logo cachet signature couleur thème sombre police',
+    'Paramètres → Société': 'raison sociale matricule fiscal rib rc capital adresse',
+    'Paramètres → Cabinet comptable': 'appairage empreinte comptable expert',
+    'Paramètres → Licence': 'clé activation abonnement expiration',
+    'Comptabilité → TVA à payer': 'tva déclaration collectée déductible crédit',
+    'Comptabilité → Calendrier fiscal': 'échéance acompte déclaration date limite',
+    'Comptabilité → Cabinet': 'paquet skanpack envoyer comptable mensuel',
+    'Comptabilité → Écritures': 'journal comptable débit crédit compte plan',
+    'Comptabilité → Clôtures': 'clôturer fermer mois verrouiller période',
+    'Trésorerie → Rapprochement': 'pointer relevé bancaire',
+    'Paie → Congés et absences': 'vacances maladie absence',
+    'Paie → Déclarations': 'cnss trimestre employeur annuelle',
+    'Tous les modules': 'menu cacher afficher page manquante',
+    'Revoir l\'assistant de démarrage': 'assistant onboarding recommencer premier démarrage bienvenue'
+  };
   function closePalette() { const r = $('#palette-root'); if (r && !r.hidden) { r.hidden = true; r.innerHTML = ''; } }
   function openPalette() {
     const root = $('#palette-root');
@@ -3342,13 +3399,29 @@
     const actions = [
       ['Nouveau devis', () => navigate('#/doc/new/devis')], ['Nouvelle facture', () => navigate('#/doc/new/facture')], ['Nouvel avoir', () => navigate('#/doc/new/avoir')],
       ['Accueil', () => navigate('#/dashboard')], ['Devis', () => navigate('#/devis')], ['Factures', () => navigate('#/factures')], ['Relances', () => navigate('#/relances')],
-      ['Contrats récurrents', () => navigate('#/contrats')], ['Achats et dépenses', () => navigate('#/achats')], ['Nouvelle facture d\'achat', () => navigate('#/achat/new')], ['Nouvelle dépense', () => navigate('#/achat/new/-/depense')], ['Fournisseurs', () => navigate('#/fournisseurs')], ['Trésorerie', () => navigate('#/tresorerie')], ['Marges et rentabilité', () => navigate('#/marges')], ['Paie', () => navigate('#/paie')], ['Bulletins de paie', () => { paieState.tab = 'bulletins'; navigate('#/paie'); }], ['Salariés', () => { paieState.tab = 'salaries'; navigate('#/paie'); }], ['Barèmes de paie', () => { paieState.tab = 'baremes'; navigate('#/paie'); }], ['Déclarations sociales', () => { paieState.tab = 'declarations'; navigate('#/paie'); }], ['Déclaration CNSS', () => { paieState.tab = 'declarations'; navigate('#/paie'); }], ['Registre du personnel', () => { paieState.tab = 'registre'; navigate('#/paie'); }], ['Nouveau salarié', () => employeeForm(null, () => render())], ['Stock', () => navigate('#/stock')], ['Garanties', () => navigate('#/garanties')], ['Numéros de série', () => { stockState.tab = 'series'; navigate('#/stock'); }], ['Entrée de numéros de série', () => serialIntakeForm(null, () => render())], ['Inventaire', () => { stockState.tab = 'inventaire'; navigate('#/stock'); }], ['Mouvement de stock', () => adjustForm(null, () => render())], ['Immobilisations', () => navigate('#/immos')], ['Nouvelle immobilisation', () => assetForm(null, a => navigate('#/immo/' + a.id))], ['Lignes à immobiliser', () => { immoState.tab = 'attente'; navigate('#/immos'); }], ['Seuil de rentabilité', () => navigate('#/marges')], ['Nouvelle affaire', () => projectForm(null, p => navigate('#/affaire/' + p.id))], ['Nouveau fournisseur', () => supplierForm(null, () => render())], ['Proformas', () => navigate('#/autres/proforma')], ['Bons de commande', () => navigate('#/autres/commande')], ['Bons de livraison', () => navigate('#/autres/livraison')], ['Contrats à signer', () => navigate('#/autres/contrat')], ['Clients', () => navigate('#/clients')], ['Catalogue', () => navigate('#/catalogue')], ['Statistiques', () => navigate('#/stats')], ['Comptabilité', () => navigate('#/compta')], ['Paramètres', () => navigate('#/parametres')],
+      ['Facturation récurrente (contrats qui refacturent)', () => navigate('#/contrats')], ['Achats et dépenses', () => navigate('#/achats')], ['Nouvelle facture d\'achat', () => navigate('#/achat/new')], ['Nouvelle dépense', () => navigate('#/achat/new/-/depense')], ['Fournisseurs', () => navigate('#/fournisseurs')], ['Trésorerie', () => navigate('#/tresorerie')], ['Marges et rentabilité', () => navigate('#/marges')], ['Paie', () => navigate('#/paie')], ['Bulletins de paie', () => { paieState.tab = 'bulletins'; navigate('#/paie'); }], ['Salariés', () => { paieState.tab = 'salaries'; navigate('#/paie'); }], ['Barèmes de paie', () => { paieState.tab = 'baremes'; navigate('#/paie'); }], ['Déclarations sociales', () => { paieState.tab = 'declarations'; navigate('#/paie'); }], ['Déclaration CNSS', () => { paieState.tab = 'declarations'; navigate('#/paie'); }], ['Registre du personnel', () => { paieState.tab = 'registre'; navigate('#/paie'); }], ['Nouveau salarié', () => employeeForm(null, () => render())], ['Stock', () => navigate('#/stock')], ['Garanties', () => navigate('#/garanties')], ['Numéros de série', () => { stockState.tab = 'series'; navigate('#/stock'); }], ['Entrée de numéros de série', () => serialIntakeForm(null, () => render())], ['Inventaire', () => { stockState.tab = 'inventaire'; navigate('#/stock'); }], ['Mouvement de stock', () => adjustForm(null, () => render())], ['Immobilisations', () => navigate('#/immos')], ['Nouvelle immobilisation', () => assetForm(null, a => navigate('#/immo/' + a.id))], ['Lignes à immobiliser', () => { immoState.tab = 'attente'; navigate('#/immos'); }], ['Seuil de rentabilité', () => navigate('#/marges')], ['Nouvelle affaire', () => projectForm(null, p => navigate('#/affaire/' + p.id))], ['Nouveau fournisseur', () => supplierForm(null, () => render())], ['Proformas', () => navigate('#/autres/proforma')], ['Bons de commande', () => navigate('#/autres/commande')], ['Bons de livraison', () => navigate('#/autres/livraison')], ['Contrats à signer', () => navigate('#/autres/contrat')], ['Clients', () => navigate('#/clients')], ['Catalogue', () => navigate('#/catalogue')], ['Statistiques', () => navigate('#/stats')], ['Comptabilité', () => navigate('#/compta')], ['Paramètres', () => navigate('#/parametres')],
       ['Aide et guide', () => navigate('#/aide')], ['Nouveau client', () => clientForm(null, () => render())],
       // La palette liste TOUTES les pages, y compris celles des modules retirés du menu : c'est ce
       // qui rend le filtrage de la barre latérale inoffensif.
       ['Tous les modules', () => navigate('#/modules')],
       ['Revoir l\'assistant de démarrage', () => rejouerAssistant()]
-    ].map(([label, run]) => ({ kind: 'Action', main: label, text: label.toLowerCase(), run }));
+    ]
+      // Les ONGLETS. La palette n'en connaissait aucun : « TVA » ne rendait que des articles à lire,
+      // « cabinet », « mise à jour », « écritures », « calendrier fiscal » et « apparence » ne
+      // rendaient RIEN — deux réponses vides d'affilée, et on en conclut que la chose n'existe pas
+      // dans SkanFact. Elle existe : ce sont sept onglets de Comptabilité et huit de Paramètres.
+      // Un onglet n'a de nom qu'une fois la page ouverte : impossible à deviner.
+      //
+      // On les ENGENDRE à partir des tableaux qui les dessinent, au lieu de les recopier : un onglet
+      // ajouté demain devient trouvable le jour même, sans que personne y pense. Le libellé est
+      // préfixé par la page — « Cabinet » tout seul ne dit pas où l'on va.
+      .concat(ongletsDePalette().map(([page, route, poser, tabs]) => tabs.map(([id, label]) =>
+        [`${page} → ${label}`, () => { poser(id); navigate(route); }]
+      )).flat())
+      .map(([label, run]) => ({ kind: 'Action', main: label, text: label.toLowerCase(), run }))
+      // Les mots qu'on tape vraiment, et qui ne sont dans aucun libellé : « maj », « backup »,
+      // « démo », « logo », « mot de passe »… `text` sert déjà au filtrage, on lui ajoute les alias.
+      .map(a => { const al = ALIAS[a.main]; return al ? { ...a, text: a.text + ' ' + al } : a; });
     const helps = G.ARTICLES.map(x => ({ kind: 'Aide', main: x.title, sub: x.sub, text: `aide ${x.title} ${x.sub}`.toLowerCase(), run: () => navigate('#/aide/' + x.id) }));
     const docs = data.documents.map(d => { const t = C.computeTotals(d, company()); const cn = clientName(d.clientId); return { kind: C.TITLES[d.type], main: d.number || 'Brouillon', sub: `${cn}${d.subject ? ' — ' + d.subject : ''}`, amt: C.money(d.type === 'devis' ? t.totalTTC : t.netToPay, cur), text: `${d.number} ${cn} ${d.subject || ''} ${d.type}`.toLowerCase(), run: () => navigate('#/doc/' + d.id), ts: d.createdAt || 0 }; });
     const clients = data.clients.map(c => ({ kind: 'Client', main: c.name, sub: [c.contact, c.email, c.phone].filter(Boolean).join(' · '), text: `${c.name} ${c.contact || ''} ${c.email || ''} ${c.phone || ''} ${c.matricule || ''}`.toLowerCase(), run: () => navigate('#/client/' + c.id) }));
@@ -4140,7 +4213,7 @@
     const years = Array.from(new Set(mine.map(d => (d.date || '').slice(0, 4)).filter(Boolean))).sort().reverse();
 
     $('#view').innerHTML = `
-      <div class="page-head"><h1>Autres documents</h1>
+      <div class="page-head"><h1>Proforma, bons et contrats</h1>
         <div class="actions"><button class="btn btn-primary" id="new">+ ${h(NEW_LABELS[type])}</button></div></div>
       <div class="tabs" id="a-tabs" role="tablist">${AUTRES_TABS.map(([t, label]) =>
         `<button role="tab" data-tab="${t}" class="${t === type ? 'active' : ''}">${h(label)}${data.documents.some(d => d.type === t) ? ` <span class="tab-n">${data.documents.filter(d => d.type === t).length}</span>` : ''}</button>`).join('')}</div>
@@ -7523,7 +7596,7 @@
   routes.parametres = async () => {
     const c = company();
     const path = await bridge.dataPath();
-    const TABS = [['societe', 'Société'], ['documents', 'Documents'], ['emails', 'Emails'], ['apparence', 'Apparence'], ['cabinet', 'Cabinet comptable'], ['donnees', 'Sécurité et données'], ['licence', 'Licence'], ['maj', 'Mises à jour']];
+    const TABS = SETTINGS_TABS;
     if (!TABS.some(t => t[0] === settingsTab)) settingsTab = 'societe';
     $('#view').innerHTML = `<div class="page-head"><h1>Paramètres</h1></div>
       <div class="tabs" id="set-tabs" role="tablist">${TABS.map(([id, label]) => `<button role="tab" data-tab="${id}" class="${id === settingsTab ? 'active' : ''}">${label}</button>`).join('')}</div>
@@ -7671,12 +7744,20 @@
           <button class="btn" id="import-data">Importer…</button>
         </div>
       </div>
-      <div class="panel danger-zone"><h2>Zone sensible</h2>
+      <!-- Charger l'exemple n'est PAS un geste dangereux : une sauvegarde est prise, la société est
+           conservée, un bandeau permanent offre le retour, et l'article « Démarrer » le présente
+           comme l'étape d'apprentissage. Il vivait pourtant dans l'encadré rouge, collé à « Tout
+           effacer » — donc on hésitait à cliquer sur ce qu'on nous demandait de faire, puis on
+           prenait le bouton écarlate d'à côté pour en sortir, et on perdait tout. -->
+      <div class="panel"><h2>Essayer sans risque ${info('data.demo')}</h2>
         <div class="dz-row">
-          <div><b>Charger le jeu de démonstration</b> ${info('data.demo')}
-            <div class="small muted">Remplace tes données par treize mois d'activité fictive. Tes paramètres société sont conservés et une sauvegarde est prise avant.</div></div>
-          <button class="btn" id="load-demo">Charger la démo</button>
+          <div><b>Charger le jeu d'exemple</b>
+            <div class="small muted">Remplace tes données par treize mois d'activité fictive, pour cliquer partout sans rien casser.
+            Une sauvegarde est prise avant, ta fiche société est conservée, et un bandeau orange te rendra tes données d'un clic.</div></div>
+          <button class="btn" id="load-demo">Charger l'exemple</button>
         </div>
+      </div>
+      <div class="panel danger-zone"><h2>Zone sensible</h2>
         <div class="dz-row">
           <div><b>Tout effacer</b> ${info('data.wipe')}
             <div class="small muted">Supprime clients, prestations, documents, contrats, modèles et textes. Les paramètres société restent. Une sauvegarde est prise avant.</div></div>
@@ -8583,6 +8664,12 @@
       if (copieExterne !== avant && location.hash === '#/dashboard') render(true);
     }).catch(() => {});
     $('#brand-company').textContent = data.company.name || 'Ton entreprise';
+    // La recherche générale, enfin visible et cliquable. La touche est écrite sur le bouton : c'est
+    // ainsi qu'on apprend un raccourci — en le lisant là où on cliquerait de toute façon.
+    if ($('#nav-search')) {
+      $('#nav-search-k').textContent = SUR_MAC ? '⌘K' : 'Ctrl K';
+      $('#nav-search').onclick = () => openPalette();
+    }
     bridge.updateVersion().then(v => {
       upd.app = v; const el = $('#app-version'); if (el) el.textContent = 'v' + v.version;
       if (v.lastUpdate) {

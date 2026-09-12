@@ -5434,5 +5434,49 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.ok(/id="cab-build" \$\{moisVide \? 'disabled/.test(bloc), 'et refuser de fabriquer un paquet de rien');
   });
 
+  t('la recherche connaît les onglets, et chaque page dit ce qu\'elle fait', () => {
+    const app = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
+    const code = app.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+    assert.ok(code.includes('function ongletsDePalette'), 'le nettoyage des commentaires a mangé le code');
+
+    // La palette n'indexait AUCUN onglet : « TVA » ne rendait que des articles à lire, et « cabinet »,
+    // « mise à jour », « écritures », « calendrier fiscal », « apparence » ne rendaient rien du tout.
+    // Deux réponses vides d'affilée, et on en conclut que la chose n'existe pas dans SkanFact.
+    // On exige que les onglets soient ENGENDRÉS depuis les tableaux qui les dessinent : recopiés à
+    // la main, ils divergeraient au premier onglet ajouté — c'est exactement ce qui est arrivé.
+    const bloc = code.slice(code.indexOf('function ongletsDePalette'), code.indexOf('const ALIAS'));
+    ['COMPTA_TABS', 'PAIE_TABS', 'STOCK_TABS', 'MARGE_TABS', 'TRESO_TABS', 'IMMO_TABS', 'AUTRES_TABS', 'CATALOG_TABS', 'SETTINGS_TABS']
+      .forEach(t2 => assert.ok(bloc.includes(t2), `la palette ignore les onglets de ${t2}`));
+    // Et une seule source : ces deux tableaux vivaient dans leur fonction de route, hors de portée.
+    assert.ok(/const TABS = CATALOG_TABS;/.test(code), 'le Catalogue doit dessiner ses onglets depuis CATALOG_TABS');
+    assert.ok(/const TABS = SETTINGS_TABS;/.test(code), 'les Paramètres doivent dessiner leurs onglets depuis SETTINGS_TABS');
+    // Les mots qu'on tape et qui ne sont dans aucun libellé.
+    ['maj', 'backup', 'mot de passe', 'logo', 'assistant'].forEach(mot =>
+      assert.ok(code.slice(code.indexOf('const ALIAS'), code.indexOf('function closePalette')).includes(mot),
+        `« ${mot} » ne rend rien dans la recherche`));
+
+    // Trois pages d'un même module affichaient au survol EXACTEMENT la même phrase : l'infobulle,
+    // seul secours ajouté en 7.0.0, affirmait que Trésorerie, Marges et Statistiques font la même
+    // chose. La phrase de la page passe avant celle du module.
+    assert.ok(/const texte = p\.quoi \|\| \(m && m\.quoi\)/.test(code), 'la phrase de la page doit primer sur celle du module');
+    const parModule = {};
+    core.PAGES.filter(p => p.module && !p.horsMenu && !p.pied).forEach(p => {
+      (parModule[p.module] = parModule[p.module] || []).push(p);
+    });
+    Object.keys(parModule).filter(id => parModule[id].length > 1).forEach(id => {
+      const phrases = parModule[id].map(p => p.quoi || (core.moduleById(id) || {}).quoi);
+      assert.strictEqual(new Set(phrases).size, phrases.length,
+        `les pages du module « ${id} » partagent la même infobulle : ${parModule[id].map(p => p.titre).join(', ')}`);
+    });
+
+    // « Contrats » menait aux contrats récurrents, et le contrat que le client signe était ailleurs.
+    assert.strictEqual(core.pageTitle('contrats'), 'Facturation récurrente');
+    assert.ok(/contrats/i.test(core.pageTitle('autres')), 'la page qui CONTIENT les contrats doit le dire dans son nom');
+    // Le titre affiché en haut de la page doit être celui du menu : deux noms pour le même écran, et
+    // on croit s'être trompé de porte.
+    [['contrats', 'Facturation récurrente'], ['autres', 'Proforma, bons et contrats']].forEach(([id, titre]) =>
+      assert.ok(code.includes(`<h1>${titre}`), `la page « ${id} » doit s'intituler « ${titre} », comme dans le menu`));
+  });
+
   console.log(`\n${n} tests OK`);
 })().catch(e => { console.error(e); process.exit(1); });

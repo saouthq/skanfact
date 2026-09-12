@@ -16,6 +16,16 @@
           <div class="brand-sub" id="brand-company">—</div>
         </div>
       </div>
+      <!-- La recherche générale existait depuis la 1.5.0 et n'était écrite NULLE PART dans la
+           fenêtre : ni champ, ni bouton, seulement un raccourci clavier mentionné dans le menu
+           natif « Affichage » et dans l'avant-dernier des trente-deux articles d'aide. Beaucoup de
+           débutants n'emploient aucun raccourci : pour eux, le meilleur outil de l'application
+           n'existait pas. Ce bouton est dessiné comme un champ, il dit la touche, et il est
+           au-dessus de <nav> — donc il ne défile jamais. -->
+      <button class="nav-search" id="nav-search" type="button">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+        <span>Rechercher…</span><kbd id="nav-search-k"></kbd>
+      </button>
       <!-- La barre latérale est dessinée par app.js à partir de core.PAGES : à dix-neuf entrées
            écrites à la main, elle ne tenait plus sur aucun écran, et « Aide » était hors champ
            jusqu'à 1680×1050. Le contenu ci-dessous n'est qu'un repli si le script ne démarre pas. -->
@@ -50,6 +60,11 @@
       <div class="sidebar-foot">
         <button class="update-pill" id="lic-banner" hidden></button>
         <button class="update-pill" id="update-pill" hidden>Mise à jour disponible</button>
+        <!-- « Tous les modules » était la DERNIÈRE entrée de <nav>, donc la première à tomber sous
+             la coupe : mesuré à 1366×768, cinq entrées hors champ dont celle-là. Une porte de
+             sortie hors champ n'est pas une porte de sortie — et c'est la condition qui rend le
+             filtrage du menu inoffensif. Le pied est en margin-top:auto : il ne défile jamais. -->
+        <a href="#/modules" data-route="modules" class="foot-link"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M17.5 14v7M14 17.5h7"/></svg>Tous les modules</a>
         <a href="#/parametres" data-route="parametres" class="foot-link"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Paramètres</a>
         <a href="#/aide" data-route="aide" class="foot-link"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.2 9.2a2.9 2.9 0 0 1 5.6 1c0 1.9-2.8 2.4-2.8 4"/><path d="M12 17.5v.01"/></svg>Aide</a>
         <div class="app-version" id="app-version"></div>

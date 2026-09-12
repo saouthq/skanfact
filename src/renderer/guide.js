@@ -314,8 +314,11 @@
 <p>Dans <b>Paramètres → Documents</b> : validité des devis (30 jours est l'usage) et délai de paiement (30 jours aussi, souvent). Ces deux nombres calculent les dates imprimées sur tes documents.</p>
 <h3>4. Mets en place la copie externe</h3>
 <p><b>Paramètres → Sécurité et données → Choisir un dossier</b>, puis sélectionne un dossier dans iCloud Drive ou sur une clé USB. À chaque enregistrement, tout est recopié là-bas. Fais-le maintenant, pas « plus tard ».</p>
-<h3>5. Explore avec la démo</h3>
-<p><b>Paramètres → Sécurité et données → Charger le jeu de démonstration</b> remplit l'application de treize mois d'activité fictive. Clique partout, casse tout, ça n'a aucune importance. Quand tu es prêt pour tes vraies données : <b>Tout effacer</b>.</p>`
+<h3>5. Explore avec l'exemple</h3>
+<p>Sur l'accueil, le bouton <b>Voir un exemple rempli</b> charge treize mois d'activité fictive. Clique partout, casse tout, ça n'a aucune importance : <b>tes données sont mises de côté avant</b>, et un bandeau orange reste affiché sur chaque page tant que l'exemple est chargé.</p>
+<p>Pour en sortir, ce même bandeau porte <b>Repartir de mes données</b> : il te rend exactement ce que tu avais. N'utilise pas « Tout effacer » pour ça — ce bouton-là efface pour de bon, il ne restaure rien.</p>
+<h3>Et si tu veux revoir les questions du départ</h3>
+<p>L'assistant se rejoue à tout moment : <b>Paramètres → Société → Revoir l'assistant de démarrage…</b>. Tes réponses actuelles y sont déjà inscrites, et aucune de tes pièces n'est touchée.</p>`
     },
     {
       id: 'devis', title: 'Le devis : proposer un prix', sub: 'Comment il se prépare, s\'envoie et se transforme',
@@ -482,7 +485,7 @@
     {
       id: 'pieces', title: 'Proforma, bons et contrat', sub: 'Les pièces qui entourent la facture',
       body: `
-<p>À côté du devis et de la facture, SkanFact sait établir quatre autres pièces. Elles sont réunies dans <b>Autres documents</b>. Aucune n'a de valeur comptable : elles n'entrent ni dans ton chiffre d'affaires, ni dans ta TVA, ni dans le journal des ventes. Elles servent à documenter ce qui se passe autour de la vente.</p>
+<p>À côté du devis et de la facture, SkanFact sait établir quatre autres pièces. Elles sont réunies dans <b>Proforma, bons et contrats</b>. Aucune n'a de valeur comptable : elles n'entrent ni dans ton chiffre d'affaires, ni dans ta TVA, ni dans le journal des ventes. Elles servent à documenter ce qui se passe autour de la vente.</p>
 <h3>La facture proforma (PRO-)</h3>
 <p>Elle annonce un prix ferme <b>sans être une facture</b>. Les administrations, les banques et les dossiers de financement la réclament souvent avant d'engager la dépense. Elle porte la mention « document sans valeur comptable » et, par défaut, pas de timbre fiscal — on ne paie pas de droit de timbre sur un document qui n'est pas une facture. <em>À VÉRIFIER avec ton comptable.</em></p>
 <p>Quand la commande est confirmée, le menu <b>Transformer</b> en fait une vraie facture, avec son numéro FAC.</p>

@@ -7,6 +7,44 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 7.4.0 — 12/09/2026
+
+**Trouver sans savoir où c'est.**
+
+- **La recherche générale existait depuis la 1.5.0 et n'était écrite nulle part dans la fenêtre.**
+  Ni champ, ni bouton : seulement un raccourci clavier, mentionné dans le menu natif « Affichage » et
+  dans l'avant-dernier des trente-deux articles d'aide. Beaucoup de débutants n'emploient aucun
+  raccourci — pour eux, le meilleur outil de l'application n'existait pas. Un champ **Rechercher…**
+  est posé en haut de la barre de gauche, au-dessus du menu : il ne défile jamais, il se clique, et
+  il écrit la touche (⌘K ou Ctrl K) pour qu'on l'apprenne en le lisant.
+- **La recherche ne connaissait aucun onglet.** « TVA » ne rendait que des articles à lire, et
+  « cabinet », « mise à jour », « écritures », « calendrier fiscal », « apparence » ne rendaient
+  **rien du tout** — deux réponses vides d'affilée, et on en conclut que la chose n'existe pas.
+  Elle existait : sept onglets de Comptabilité, huit de Paramètres, et un onglet n'a de nom qu'une
+  fois la page ouverte. Les quarante-six onglets de l'application sont maintenant engendrés à partir
+  des tableaux qui les dessinent — un onglet ajouté demain sera trouvable le jour même — et les mots
+  qu'on tape vraiment y mènent : « maj », « backup », « mot de passe », « logo », « démo »,
+  « assistant », « pointer », « clôturer ».
+- **La barre repartait en haut à chaque navigation** : sur Comptabilité, Paie et Statistiques,
+  l'entrée allumée était cent pixels sous le bord et **aucune entrée en vert n'était visible**. On
+  arrivait au bon écran sans apprendre où il vit dans le menu.
+- **« Tous les modules » était la dernière entrée du menu** — donc la première à passer sous la
+  coupe, mesurée hors champ dès 1366×768. Une porte de sortie hors champ n'est pas une porte de
+  sortie : elle est dans le pied de la barre, avec Paramètres et Aide.
+- **« Contrats » menait aux contrats récurrents**, et le contrat que ton client signe était un onglet
+  d'« Autres documents ». Qui voulait rédiger un contrat cliquait « Contrats », tombait sur des jours
+  de facturation et concluait que SkanFact n'en fait pas. Les deux pages s'appellent maintenant
+  **Facturation récurrente** et **Proforma, bons et contrats** — dans le menu, en haut de la page et
+  dans la recherche.
+- **Douze pages partageaient l'infobulle de leur module** : Trésorerie, Marges et Statistiques
+  affichaient au survol exactement la même phrase, l'infobulle affirmait donc trois fois que les
+  trois font la même chose. Chaque page a la sienne.
+- **L'article « Démarrer » envoyait encore dans la Zone sensible** pour voir l'exemple, et conseillait
+  « Tout effacer » pour en sortir — c'est-à-dire le chemin le plus long, puis le plus effrayant, puis
+  le mauvais : « Tout effacer » efface pour de bon, il ne rend rien. Réécrit, et « Charger l'exemple »
+  a quitté l'encadré rouge pour son propre panneau : une sauvegarde est prise, la société est
+  conservée, un bandeau permanent offre le retour — ce n'est pas un geste dangereux.
+
 ## 7.3.0 — 12/09/2026
 
 **Où tombe l'argent — et le mois vide qu'on félicitait.**

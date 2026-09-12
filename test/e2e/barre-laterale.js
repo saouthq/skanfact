@@ -81,7 +81,12 @@ const ECRANS = [[1680, 1050], [1440, 900], [1366, 768], [1280, 800]];
       deborde: nav.classList.contains('deborde'),
       parametres: visible(document.querySelector('.sidebar-foot a[data-route="parametres"]')),
       aide: visible(document.querySelector('.sidebar-foot a[data-route="aide"]')),
-      tousLesModules: !!document.querySelector('nav a[data-route="modules"]')
+      // VISIBLE, pas seulement présent : « Tous les modules » était la dernière entrée de <nav>,
+      // donc la première à passer sous la coupe — mesurée hors champ dès 1366×768. Le test se
+      // contentait de sa présence dans le document, et restait donc vert sur une porte de sortie
+      // qu'on ne pouvait pas voir. Il vit maintenant dans le pied, qui ne défile jamais.
+      tousLesModules: visible(document.querySelector('.sidebar-foot a[data-route="modules"]')),
+      recherche: visible(document.querySelector('#nav-search'))
     };
   });
 
@@ -92,10 +97,32 @@ const ECRANS = [[1680, 1050], [1440, 900], [1366, 768], [1280, 800]];
     const m = await mesurer();
     if (!m.aide) throw new Error(`${L}×${H} : « Aide » n'est pas visible sans faire défiler. C'est le bouton que cherche quelqu'un qui se perd.`);
     if (!m.parametres) throw new Error(`${L}×${H} : « Paramètres » n'est pas visible sans faire défiler, alors que l'aide y renvoie onze fois.`);
-    if (!m.tousLesModules) throw new Error(`${L}×${H} : « Tous les modules » a disparu de la barre — plus aucune porte vers ce qui est masqué.`);
-    j.ok(`${L}×${H} : Aide, Paramètres et « Tous les modules » atteignables · nav ${m.besoin}px / ${m.place}px`
+    if (!m.tousLesModules) throw new Error(`${L}×${H} : « Tous les modules » n'est pas visible sans faire défiler — une porte de sortie hors champ n'est pas une porte de sortie.`);
+    if (!m.recherche) throw new Error(`${L}×${H} : le champ « Rechercher… » n'est pas visible. Sans lui, la recherche générale n'existe que pour qui connaît déjà le raccourci.`);
+    j.ok(`${L}×${H} : Aide, Paramètres, « Tous les modules » et la recherche atteignables · nav ${m.besoin}px / ${m.place}px`
       + (m.hors.length ? ` · ${m.hors.length} entrée(s) à faire défiler` : ' · tout tient'));
   }
+
+  j.etape('L\'entrée allumée est toujours dans le champ');
+  // `drawNav` réécrit nav.innerHTML à chaque navigation, ce qui remet le défilement à zéro : sur les
+  // quatre dernières pages, l'entrée marquée « active » était cent pixels sous le bord et AUCUNE
+  // entrée en vert n'était visible. On arrivait au bon écran sans apprendre où il vit dans le menu.
+  await win.setViewportSize({ width: 1280, height: 800 });
+  for (const route of ['compta', 'paie', 'stats', 'devis']) {
+    await win.evaluate(r => { location.hash = '#/' + r; }, route);
+    await win.waitForSelector('#view h1');
+    await win.waitForTimeout(180);
+    const vu = await win.evaluate(() => {
+      const a = document.querySelector('nav a.active');
+      if (!a) return { manque: true };
+      const nav = document.querySelector('nav');
+      const b = a.getBoundingClientRect(), n = nav.getBoundingClientRect();
+      return { dedans: b.top >= n.top - 1 && b.bottom <= n.bottom + 1, texte: a.textContent.trim() };
+    });
+    if (vu.manque) throw new Error(`#/${route} : aucune entrée du menu n'est allumée`);
+    if (!vu.dedans) throw new Error(`#/${route} : l'entrée allumée (« ${vu.texte} ») est hors du champ de la barre — rien ne montre où vit cette page`);
+  }
+  j.ok('sur les quatre pages, l\'entrée du menu est visible et allumée');
 
   j.etape('Avec les modules d\'un débutant, la barre tient en entier sur le plus petit écran');
   await win.setViewportSize({ width: 1366, height: 768 });
