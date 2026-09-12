@@ -3,13 +3,16 @@
 // Une seconde application, dans le même dépôt, qui partage tout ce qui peut l'être : core.js pour
 // les calculs, zip.js pour les paquets, style.css pour l'apparence. Ce qui change, c'est le métier :
 // ici on REÇOIT et on LIT. Aucune donnée de client n'est jamais modifiée ni renvoyée.
+//
+// Depuis la 2.0.0, le stockage et les filets vivent dans cabstore.js (sauvegardes, copie externe,
+// clé de secours, rangement des paquets) : ce fichier ne fait plus que l'orchestration et l'IPC.
 const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const crypto = require('crypto');
 const Z = require('../zip');
 const K = require('./cabcore');
+const CS = require('./cabstore');
 
 const APP_ID = 'tn.skancyber.skanfact.cabinet';
 // Depuis la 6.6.0, les deux applications portent le MÊME numéro de version. C'est ce qui permet de
@@ -24,14 +27,22 @@ const VERSION = PKG.version;
 // une espace ou un retour à la ligne invisible se glisse facilement.
 const relayBase = () => String(PKG.updateBase || '').trim().replace(/\/+$/, '');
 const relaySecret = () => String(PKG.updateSecret || '').trim();
-const SCRYPT = { N: 1 << 15, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
 
 let mainWindow = null;
-let key = null;            // clé dérivée du mot de passe, en mémoire pour la session seulement
-let state = null;          // l'état déchiffré
+let store = null;          // le magasin (cabstore) : fichier chiffré, sauvegardes, paquets
+let state = null;          // l'état déchiffré, en mémoire pour la session
+let pendingOpen = [];      // paquets ouverts depuis le Finder avant que la fenêtre soit prête
 
-const dataFile = () => path.join(app.getPath('userData'), 'cabinet-data.json');
-const packDir = () => path.join(app.getPath('userData'), 'paquets');
+const APP_CFG = () => path.join(app.getPath('userData'), 'app-config.json');
+const readAppCfg = () => { try { return JSON.parse(fs.readFileSync(APP_CFG(), 'utf8')); } catch { return {}; } };
+function writeAppCfg(patch) {
+  const cfg = { ...readAppCfg(), ...patch };
+  try {
+    fs.mkdirSync(path.dirname(APP_CFG()), { recursive: true });
+    fs.writeFileSync(APP_CFG(), JSON.stringify(cfg, null, 2), 'utf8');
+  } catch (e) { logError('réglages du poste', e); }
+  return cfg;
+}
 
 function logError(where, err) {
   const msg = `${new Date().toISOString()} [${where}] ${err && err.stack || err}\n`;
@@ -39,76 +50,73 @@ function logError(where, err) {
   try { dialog.showErrorBox('SkanFact Cabinet — erreur', `${where}\n\n${err && err.message || err}`); } catch {}
 }
 
-// ---------- état chiffré ----------
-// Le fichier contient la clé privée du cabinet ET la comptabilité de tous ses clients. Le chiffrer
-// n'est pas une option : un portable de comptable qui se perd ne doit pas emporter soixante dossiers.
-function deriveKey(password, salt) { return crypto.scryptSync(String(password), salt, 32, SCRYPT); }
-
-function writeState() {
-  if (!state || !key) throw new Error('Aucun dossier ouvert.');
-  const salt = state.__salt ? Buffer.from(state.__salt, 'base64') : crypto.randomBytes(16);
-  const iv = crypto.randomBytes(12);
-  const plain = { ...state }; delete plain.__salt;
-  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
-  const body = Buffer.concat([cipher.update(Buffer.from(JSON.stringify(plain), 'utf8')), cipher.final()]);
-  const env = {
-    skanfactCabinet: 1, salt: salt.toString('base64'), iv: iv.toString('base64'),
-    tag: cipher.getAuthTag().toString('base64'), data: body.toString('base64')
-  };
-  const tmp = dataFile() + '.tmp';
-  fs.mkdirSync(path.dirname(dataFile()), { recursive: true });
-  fs.writeFileSync(tmp, JSON.stringify(env), 'utf8');
-  fs.renameSync(tmp, dataFile());
-  state.__salt = salt.toString('base64');
-}
-
-function fileExists() { try { return fs.existsSync(dataFile()); } catch { return false; } }
-
-function unlock(password) {
-  if (!fileExists()) {
-    // Première ouverture : on crée le dossier du cabinet avec sa paire de clés.
-    const salt = crypto.randomBytes(16);
-    key = deriveKey(password, salt);
-    const keys = Z.generateCabinetKeys();
-    state = K.migrate({ cabinet: { name: '', email: '', publicKey: keys.publicKey, privateKey: keys.privateKey } });
-    state.__salt = salt.toString('base64');
-    writeState();
-    return { created: true, state: safeState() };
+function getStore() {
+  if (!store) {
+    store = CS.createCabStore(app.getPath('userData'), {
+      log: (w, e) => { try { fs.appendFileSync(path.join(app.getPath('userData'), 'main.log'), `${new Date().toISOString()} [${w}] ${e && e.stack || e}\n`); } catch {} },
+      externalDir: readAppCfg().externalBackupDir || null
+    });
   }
-  const env = JSON.parse(fs.readFileSync(dataFile(), 'utf8'));
-  const salt = Buffer.from(env.salt, 'base64');
-  key = deriveKey(password, salt);
-  const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(env.iv, 'base64'));
-  decipher.setAuthTag(Buffer.from(env.tag, 'base64'));
-  let plain;
-  try { plain = JSON.parse(Buffer.concat([decipher.update(Buffer.from(env.data, 'base64')), decipher.final()]).toString('utf8')); }
-  catch { key = null; throw new Error('Mot de passe incorrect.'); }
-  state = K.migrate(plain);
-  state.__salt = env.salt;
-  return { created: false, state: safeState() };
+  return store;
 }
+
+function requireOpen() {
+  if (!state || !getStore().unlocked()) throw new Error('Aucun cabinet ouvert.');
+  return state;
+}
+
+function save() { getStore().write(state); return safeState(); }
 
 // La clé privée ne sort JAMAIS vers l'interface : elle n'y servirait à rien et un jour elle finirait
 // dans un journal ou une capture d'écran.
 function safeState() {
   const s = JSON.parse(JSON.stringify({ ...state }));
   delete s.__salt;
-  if (s.cabinet) { delete s.cabinet.privateKey; s.cabinet.fingerprint = state.cabinet.publicKey ? Z.keyFingerprint(state.cabinet.publicKey) : ''; }
+  if (s.cabinet) {
+    delete s.cabinet.privateKey;
+    s.cabinet.fingerprint = state.cabinet.publicKey ? Z.keyFingerprint(state.cabinet.publicKey) : '';
+  }
   return s;
 }
 
 // ---------- fenêtre ----------
+// La taille et la position sont mémorisées : une application qu'on rouvre douze fois par jour et qui
+// revient chaque fois au milieu de l'écran donne l'impression de ne pas être finie.
+function savedBounds() {
+  const w = readAppCfg().window;
+  if (!w || !w.width || !w.height) return {};
+  const { screen } = require('electron');
+  const visible = screen.getAllDisplays().some(d => {
+    const a = d.workArea;
+    return w.x != null && w.y != null && w.x < a.x + a.width && w.x + w.width > a.x && w.y < a.y + a.height && w.y + w.height > a.y;
+  });
+  return visible ? { width: w.width, height: w.height, x: w.x, y: w.y } : { width: w.width, height: w.height };
+}
+
+function rememberBounds() {
+  if (!mainWindow || mainWindow.isDestroyed() || mainWindow.isMinimized()) return;
+  try { writeAppCfg({ window: { ...mainWindow.getNormalBounds(), maximized: mainWindow.isMaximized() } }); } catch {}
+}
+
 function createWindow() {
+  const saved = savedBounds();
   mainWindow = new BrowserWindow({
-    width: 1240, height: 820, minWidth: 960, minHeight: 620,
+    width: 1240, height: 820, minWidth: 960, minHeight: 620, ...saved,
     title: 'SkanFact Cabinet', show: false, backgroundColor: '#f5f7fa',
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true }
   });
+  if (readAppCfg().window && readAppCfg().window.maximized) mainWindow.maximize();
   mainWindow.once('ready-to-show', () => mainWindow.show());
   setTimeout(() => { if (mainWindow && !mainWindow.isVisible()) mainWindow.show(); }, 1500);
   mainWindow.webContents.on('render-process-gone', (_e, d) => logError('interface arrêtée', new Error(d.reason)));
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html')).catch(e => logError('chargement', e));
   mainWindow.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:/.test(url)) shell.openExternal(url); return { action: 'deny' }; });
+  // Un fichier lâché à côté de la zone prévue ne doit JAMAIS remplacer l'application par lui-même :
+  // sans ça, un .skanpack déposé au mauvais endroit fait naviguer la fenêtre vers le fichier et
+  // l'application disparaît, sans erreur et sans retour possible.
+  mainWindow.webContents.on('will-navigate', (e, url) => { if (!url.startsWith('file://') || !url.includes('renderer/index.html')) e.preventDefault(); });
+  ['resize', 'move'].forEach(ev => mainWindow.on(ev, () => { clearTimeout(mainWindow.__t); mainWindow.__t = setTimeout(rememberBounds, 400); }));
+  mainWindow.on('close', rememberBounds);
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
@@ -116,53 +124,170 @@ function buildMenu() {
   const mac = process.platform === 'darwin';
   const act = name => () => { if (mainWindow) mainWindow.webContents.send('menu:action', name); };
   return Menu.buildFromTemplate([
-    ...(mac ? [{ label: 'SkanFact Cabinet', submenu: [{ role: 'about', label: 'À propos' }, { type: 'separator' }, { role: 'hide', label: 'Masquer' }, { role: 'quit', label: 'Quitter' }] }] : []),
-    { label: 'Fichier', submenu: [{ label: 'Importer un paquet…', accelerator: 'CmdOrCtrl+O', click: act('import') }, { type: 'separator' }, mac ? { role: 'close', label: 'Fermer' } : { role: 'quit', label: 'Quitter' }] },
-    { label: 'Édition', submenu: [{ role: 'undo', label: 'Annuler' }, { role: 'redo', label: 'Rétablir' }, { type: 'separator' }, { role: 'cut', label: 'Couper' }, { role: 'copy', label: 'Copier' }, { role: 'paste', label: 'Coller' }, { role: 'selectAll', label: 'Tout sélectionner' }] },
-    { label: 'Affichage', submenu: [{ label: 'Dossiers', accelerator: 'CmdOrCtrl+1', click: act('go:dossiers') }, { label: 'Relances', accelerator: 'CmdOrCtrl+2', click: act('go:relances') }, { label: 'Réglages', accelerator: 'CmdOrCtrl+,', click: act('go:reglages') }, { type: 'separator' }, { role: 'reload', label: 'Recharger' }, { role: 'toggleDevTools', label: 'Outils de développement' }, { type: 'separator' }, { role: 'resetZoom', label: 'Taille réelle' }, { role: 'zoomIn', label: 'Agrandir' }, { role: 'zoomOut', label: 'Réduire' }] },
-    { label: 'Fenêtre', submenu: [{ role: 'minimize', label: 'Réduire' }, { role: 'zoom', label: 'Zoom' }] }
+    ...(mac ? [{ label: 'SkanFact Cabinet', submenu: [{ role: 'about', label: 'À propos' }, { type: 'separator' }, { label: 'Réglages…', accelerator: 'Cmd+,', click: act('go:reglages') }, { type: 'separator' }, { role: 'hide', label: 'Masquer' }, { role: 'quit', label: 'Quitter' }] }] : []),
+    { label: 'Fichier', submenu: [
+      { label: 'Importer un paquet…', accelerator: 'CmdOrCtrl+O', click: act('import') },
+      { label: 'Nouveau dossier client…', accelerator: 'CmdOrCtrl+N', click: act('new-dossier') },
+      { type: 'separator' },
+      { label: 'Sauvegarder maintenant', accelerator: 'CmdOrCtrl+S', click: act('backup') },
+      { type: 'separator' },
+      mac ? { role: 'close', label: 'Fermer' } : { role: 'quit', label: 'Quitter' }
+    ] },
+    { label: 'Édition', submenu: [{ role: 'undo', label: 'Annuler' }, { role: 'redo', label: 'Rétablir' }, { type: 'separator' }, { role: 'cut', label: 'Couper' }, { role: 'copy', label: 'Copier' }, { role: 'paste', label: 'Coller' }, { role: 'selectAll', label: 'Tout sélectionner' }, { type: 'separator' }, { label: 'Rechercher…', accelerator: 'CmdOrCtrl+K', click: act('palette') }] },
+    { label: 'Affichage', submenu: [
+      { label: 'Dossiers', accelerator: 'CmdOrCtrl+1', click: act('go:dossiers') },
+      { label: 'Relances', accelerator: 'CmdOrCtrl+2', click: act('go:relances') },
+      { label: 'Réglages', accelerator: 'CmdOrCtrl+3', click: act('go:reglages') },
+      { type: 'separator' }, { role: 'reload', label: 'Recharger' }, { role: 'toggleDevTools', label: 'Outils de développement' },
+      { type: 'separator' }, { role: 'resetZoom', label: 'Taille réelle' }, { role: 'zoomIn', label: 'Agrandir' }, { role: 'zoomOut', label: 'Réduire' }
+    ] },
+    { label: 'Fenêtre', submenu: [{ role: 'minimize', label: 'Réduire' }, { role: 'zoom', label: 'Zoom' }] },
+    { label: 'Aide', submenu: [
+      { label: 'Comment ça marche', click: act('go:aide') },
+      { label: 'Signaler un problème…', click: act('support') },
+      { type: 'separator' },
+      { label: 'Ouvrir le journal technique', click: () => { try { shell.openPath(path.join(app.getPath('userData'), 'main.log')); } catch {} } },
+      { label: 'Ouvrir le dossier de l\'application', click: () => { try { shell.openPath(app.getPath('userData')); } catch {} } }
+    ] }
   ]);
 }
 
-// ---------- IPC ----------
-ipcMain.handle('cab:status', () => ({ exists: fileExists(), unlocked: !!state, version: VERSION }));
-ipcMain.handle('cab:unlock', (_e, password) => unlock(password));
-ipcMain.handle('cab:state', () => (state ? safeState() : null));
+// ---------- IPC : ouverture ----------
+ipcMain.handle('cab:status', () => ({
+  exists: getStore().exists(), unlocked: !!state, version: VERSION,
+  corruptFile: getStore().state.corruptFile || '',
+  backups: getStore().listBackups().length
+}));
 
-ipcMain.handle('cab:saveCabinet', (_e, patch) => {
-  if (!state) throw new Error('Aucun dossier ouvert.');
-  state.cabinet = { ...state.cabinet, name: String((patch && patch.name) || ''), email: String((patch && patch.email) || '') };
-  writeState();
-  return safeState();
+ipcMain.handle('cab:unlock', (_e, password) => {
+  const s = getStore();
+  if (!s.exists()) {
+    // Première ouverture : on crée le cabinet avec sa paire de clés.
+    const keys = Z.generateCabinetKeys();
+    state = s.create(password, K.migrate({ cabinet: { name: '', email: '', phone: '', publicKey: keys.publicKey, privateKey: keys.privateKey } }));
+    return { created: true, state: safeState() };
+  }
+  const r = s.unlock(password);
+  if (r.missing) {
+    // Le fichier existait et n'était pas lisible : cabstore l'a mis de côté SANS l'écraser.
+    const e = new Error('Le fichier du cabinet est illisible. Il a été mis de côté, rien n\'a été effacé : restaure une sauvegarde depuis l\'écran suivant.');
+    e.corrupt = s.state.corruptFile || '';
+    throw e;
+  }
+  if (!r.ok) throw new Error(r.error);
+  state = K.migrate(r.state);
+  // Reprise du rangement à plat des versions précédentes : les paquets passent en
+  // paquets/<client>/<année>/<mois>.skanpack. Silencieux, une seule fois.
+  const moved = s.reorganize(state);
+  if (moved.moved) s.write(state);
+  return { created: false, state: safeState(), reorganized: moved };
 });
 
+ipcMain.handle('cab:state', () => (state ? safeState() : null));
+
+ipcMain.handle('cab:lock', () => {
+  // Verrouiller à la demande : un comptable qui quitte son bureau doit pouvoir fermer le coffre sans
+  // quitter l'application. Jusqu'ici, une fois ouvert, tout restait lisible pour qui passait devant.
+  getStore().lock();
+  state = null;
+  return true;
+});
+
+// ---------- IPC : le cabinet et ses dossiers ----------
+ipcMain.handle('cab:saveCabinet', (_e, patch) => {
+  requireOpen();
+  const p = patch || {};
+  state.cabinet = {
+    ...state.cabinet,
+    name: String(p.name || ''), email: String(p.email || ''), phone: String(p.phone || '')
+  };
+  if (p.settings) {
+    const day = Number(p.settings.relanceDay);
+    state.settings = { ...state.settings, relanceDay: day >= 1 && day <= 28 ? Math.round(day) : state.settings.relanceDay };
+  }
+  return save();
+});
+
+const DOSSIER_TEXT = ['name', 'email', 'phone', 'contact', 'note', 'regime', 'tvaPeriod', 'from'];
+
 ipcMain.handle('cab:saveDossier', (_e, { id, patch } = {}) => {
-  if (!state) throw new Error('Aucun dossier ouvert.');
+  requireOpen();
   const d = state.dossiers.find(x => x.id === id);
   if (!d) throw new Error('Dossier introuvable.');
-  ['name', 'email', 'note'].forEach(k => { if (patch && patch[k] != null) d[k] = String(patch[k]); });
+  DOSSIER_TEXT.forEach(k => { if (patch && patch[k] != null) d[k] = String(patch[k]); });
+  if (patch && patch.fees != null) d.fees = Number(patch.fees) || 0;
   if (patch && patch.archived != null) d.archived = !!patch.archived;
-  writeState();
-  return safeState();
+  if (d.from && !/^\d{4}-\d{2}$/.test(d.from)) d.from = '';
+  // Le nom sert au rangement des paquets sur le disque : s'il change, les fichiers suivent.
+  const moved = getStore().reorganize(state);
+  save();
+  return { state: safeState(), moved: moved.moved };
+});
+
+// Créer un dossier à la main. C'est ce qui transforme l'application en tableau de bord du
+// portefeuille au lieu d'une liste des deux clients déjà passés à SkanFact.
+ipcMain.handle('cab:newDossier', (_e, fields) => {
+  requireOpen();
+  const f = fields || {};
+  if (!String(f.name || '').trim()) throw new Error('Donne au moins un nom à ce client.');
+  const d = K.newDossier({ ...f, name: String(f.name).trim(), createdAt: Date.now() });
+  if (!d.id || d.id === 'NOM:') throw new Error('Nom de client inutilisable.');
+  if (state.dossiers.some(x => x.id === d.id)) throw new Error('Un dossier existe déjà pour ce client (même matricule ou même nom).');
+  state.dossiers.push(d);
+  save();
+  return { state: safeState(), id: d.id };
+});
+
+// Supprimer un dossier, ses paquets compris. Jusqu'ici seul l'archivage existait : un client entré
+// par erreur, ou un client parti qui demande l'effacement de ses pièces, restait là pour toujours.
+ipcMain.handle('cab:deleteDossier', (_e, id) => {
+  requireOpen();
+  const i = state.dossiers.findIndex(x => x.id === id);
+  if (i < 0) throw new Error('Dossier introuvable.');
+  const d = state.dossiers[i];
+  getStore().backupNow('avant-suppression-dossier');
+  getStore().removeDossierFiles(d, state.dossiers);
+  state.dossiers.splice(i, 1);
+  return save();
+});
+
+// Supprimer un paquet reçu par erreur (mauvais client, essai pendant une démonstration).
+ipcMain.handle('cab:deletePack', (_e, { id, month } = {}) => {
+  requireOpen();
+  const d = state.dossiers.find(x => x.id === id);
+  if (!d) throw new Error('Dossier introuvable.');
+  const p = (d.packs || []).find(x => x.month === month);
+  if (!p) throw new Error('Paquet introuvable.');
+  getStore().backupNow('avant-suppression-paquet');
+  if (p.path) getStore().removePack(p.path);
+  d.packs = d.packs.filter(x => x.month !== month);
+  return save();
+});
+
+ipcMain.handle('cab:noteRelance', (_e, { id, months, via, note } = {}) => {
+  requireOpen();
+  const d = state.dossiers.find(x => x.id === id);
+  if (!d) throw new Error('Dossier introuvable.');
+  K.noteRelance(d, months, via, Date.now(), note);
+  return save();
 });
 
 // Un jeu d'exemple, pour qu'un comptable qui découvre l'application voie à quoi elle ressemble
 // pleine. Il disparaît au premier vrai paquet importé (voir `cab:importPack`) : on ne mélange jamais
 // des dossiers fictifs avec les comptabilités réelles de ses clients.
 ipcMain.handle('cab:demo', (_e, on) => {
-  if (!state) throw new Error('Aucun dossier ouvert.');
+  requireOpen();
   state.dossiers = on
-    ? state.dossiers.filter(d => !d.demo).concat(K.demoDossiers())
+    ? state.dossiers.filter(d => !d.demo).concat(K.demoDossiers().map(K.migrateDossier))
     : state.dossiers.filter(d => !d.demo);
-  writeState();
-  return safeState();
+  return save();
 });
 
 // Le fichier d'appairage à remettre aux clients : uniquement la clé publique.
 ipcMain.handle('cab:exportPairing', async () => {
-  if (!state) throw new Error('Aucun dossier ouvert.');
+  requireOpen();
   const fp = Z.keyFingerprint(state.cabinet.publicKey);
-  const safe = (state.cabinet.name || 'cabinet').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'cabinet';
+  const safe = CS.slug(state.cabinet.name || 'cabinet');
   const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
     title: 'Fichier d\'appairage à remettre à tes clients',
     defaultPath: path.join(app.getPath('documents'), `${safe}.skanpair`),
@@ -173,9 +298,9 @@ ipcMain.handle('cab:exportPairing', async () => {
   return { path: filePath, fingerprint: fp };
 });
 
-// Importer un paquet. C'est le geste central de l'application.
+// ---------- IPC : import d'un paquet ----------
 ipcMain.handle('cab:importPack', async (_e, opts) => {
-  if (!state) throw new Error('Aucun dossier ouvert.');
+  requireOpen();
   opts = opts || {};
   let files = opts.paths;
   if (!files || !files.length) {
@@ -187,6 +312,9 @@ ipcMain.handle('cab:importPack', async (_e, opts) => {
     if (r.canceled || !r.filePaths.length) return null;
     files = r.filePaths;
   }
+  // Une sauvegarde AVANT d'ingérer : un import qui range mal (ou un paquet inattendu) doit pouvoir
+  // être défait. Même règle que l'app entreprise avant un import.
+  getStore().backupNow('avant-import');
   const results = [];
   for (const f of files) {
     try { results.push({ file: f, ...ingest(f, opts.password) }); }
@@ -196,7 +324,7 @@ ipcMain.handle('cab:importPack', async (_e, opts) => {
   // reviendrait à afficher des retards imaginaires à côté des vrais.
   const demoOut = results.some(r => !r.error) && state.dossiers.some(d => d.demo);
   if (demoOut) state.dossiers = state.dossiers.filter(d => !d.demo);
-  writeState();
+  save();
   return { results, demoRemoved: demoOut, state: safeState() };
 });
 
@@ -219,7 +347,12 @@ function ingest(file, password) {
   const entries = Z.zipRead(buf);
   const mEntry = entries.find(e => e.name === 'manifeste.json');
   if (!mEntry) throw new Error('Ce fichier n\'est pas un paquet SkanFact : le manifeste est absent.');
-  const manifest = JSON.parse(mEntry.data().toString('utf8'));
+  let manifest;
+  try { manifest = JSON.parse(mEntry.data().toString('utf8')); }
+  catch { throw new Error('Le manifeste de ce paquet est illisible : le fichier a été abîmé pendant l\'envoi.'); }
+  if (!manifest || typeof manifest !== 'object' || !manifest.entreprise || !manifest.periode) {
+    throw new Error('Le manifeste de ce paquet ne ressemble pas à un envoi SkanFact.');
+  }
 
   // Vérification : chaque fichier annoncé est là, et avec l'empreinte annoncée. C'est ce qui permet
   // de dire « ce que j'ai reçu est exactement ce qui a été envoyé ».
@@ -230,11 +363,14 @@ function ingest(file, password) {
   entries.forEach(e => { try { hashes[e.name] = Z.sha256(e.data()); } catch { hashes[e.name] = '(illisible)'; } });
   const { checked, bad } = K.checkIntegrity(manifest, hashes);
 
-  // On garde le paquet tel quel : c'est la pièce justificative, on ne la réécrit pas.
-  fs.mkdirSync(packDir(), { recursive: true });
-  const key2 = K.dossierKey(manifest).replace(/[^A-Za-z0-9]/g, '_');
-  const dest = path.join(packDir(), `${key2}-${(manifest.periode || {}).mois || 'inconnu'}.skanpack`);
-  fs.copyFileSync(file, dest);
+  // On range le paquet tel quel : c'est la pièce justificative, on ne la réécrit pas. Le classement
+  // (client / année / mois) permet au comptable de retrouver les pièces sans ouvrir l'application —
+  // et de les rendre à un client en copiant un dossier.
+  const key = K.dossierKey(manifest);
+  const month = (manifest.periode || {}).mois || 'inconnu';
+  const known = state.dossiers.find(d => d.id === key);
+  const fiche = known || { id: key, name: (manifest.entreprise || {}).nom || '(sans nom)', matricule: (manifest.entreprise || {}).matricule || '' };
+  const dest = getStore().storePack(file, fiche, month, state.dossiers.concat(known ? [] : [fiche]));
 
   const res = K.filePack(state, manifest, {
     receivedAt: Date.now(), digest: Z.sha256(mEntry.data()), bytes: fs.statSync(file).size,
@@ -244,28 +380,203 @@ function ingest(file, password) {
 }
 
 // Ouvrir un fichier contenu dans un paquet : on l'extrait dans un dossier temporaire, en lecture.
+// Les extractions sont effacées à la fermeture de l'application : elles contiennent les pièces
+// comptables d'un client, elles n'ont rien à faire dans /tmp pour toujours.
+const tempDirs = [];
 ipcMain.handle('cab:openInPack', async (_e, { packPath, name, password } = {}) => {
-  if (!state) throw new Error('Aucun dossier ouvert.');
+  requireOpen();
   let buf = fs.readFileSync(packPath);
   if (Z.isSealedForCabinet(buf)) buf = Z.openWithCabinetKey(buf, state.cabinet.privateKey);
   else if (Z.isSealed(buf)) buf = Z.openBuffer(buf, password || '');
   const e = Z.zipRead(buf).find(x => x.name === name);
   if (!e) throw new Error('Fichier absent du paquet.');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'skanpack-'));
+  tempDirs.push(dir);
   const out = path.join(dir, path.basename(name));
   fs.writeFileSync(out, e.data());
   await shell.openPath(out);
   return out;
 });
 
+function cleanTemp() {
+  while (tempDirs.length) {
+    const d = tempDirs.pop();
+    try { fs.rmSync(d, { recursive: true, force: true }); } catch {}
+  }
+}
+
 // La liste des fichiers d'un paquet, sans rien extraire.
 ipcMain.handle('cab:listPack', (_e, { packPath, password } = {}) => {
-  if (!state) throw new Error('Aucun dossier ouvert.');
+  requireOpen();
   let buf = fs.readFileSync(packPath);
   if (Z.isSealedForCabinet(buf)) buf = Z.openWithCabinetKey(buf, state.cabinet.privateKey);
   else if (Z.isSealed(buf)) buf = Z.openBuffer(buf, password || '');
   return Z.zipRead(buf).map(e => ({ name: e.name, size: e.size }));
 });
+
+// Extraire TOUT un paquet dans un dossier choisi : c'est ce qu'on fait pour rendre ses pièces à un
+// client qui part, ou pour travailler dessus dans son logiciel de production.
+ipcMain.handle('cab:extractPack', async (_e, { packPath, password, label } = {}) => {
+  requireOpen();
+  const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+    title: 'Où extraire les pièces ?', properties: ['openDirectory', 'createDirectory']
+  });
+  if (canceled || !filePaths.length) return null;
+  let buf = fs.readFileSync(packPath);
+  if (Z.isSealedForCabinet(buf)) buf = Z.openWithCabinetKey(buf, state.cabinet.privateKey);
+  else if (Z.isSealed(buf)) buf = Z.openBuffer(buf, password || '');
+  const target = path.join(filePaths[0], CS.slug(label || 'paquet'));
+  let n = 0;
+  Z.zipRead(buf).forEach(e => {
+    // Jamais de chemin qui remonte : une entrée « ../../ » dans un ZIP écrirait hors du dossier
+    // choisi. Un paquet vient d'un client, pas de nous : on ne lui fait pas confiance sur parole.
+    const rel = String(e.name).replace(/\\/g, '/').split('/').filter(s => s && s !== '.' && s !== '..').join('/');
+    if (!rel) return;
+    const out = path.join(target, rel);
+    if (!path.resolve(out).startsWith(path.resolve(target))) return;
+    fs.mkdirSync(path.dirname(out), { recursive: true });
+    fs.writeFileSync(out, e.data());
+    n++;
+  });
+  return { dir: target, files: n };
+});
+
+// ---------- IPC : sauvegardes, copie externe, clé de secours ----------
+ipcMain.handle('cab:backups', () => {
+  const s = getStore();
+  return {
+    list: s.listBackups(),
+    external: s.state.external,
+    packs: s.packStats(),
+    dir: app.getPath('userData'),
+    corruptFile: s.state.corruptFile || ''
+  };
+});
+
+ipcMain.handle('cab:backupNow', (_e, label) => {
+  requireOpen();
+  const p = getStore().backupNow(label || 'manuelle');
+  if (!p) throw new Error('Rien à sauvegarder pour l\'instant.');
+  return { path: p, list: getStore().listBackups() };
+});
+
+// Montrer ce que contient une sauvegarde AVANT de restaurer. Une restauration qui ne dit pas ce
+// qu'on va perdre n'est pas une restauration, c'est un pari.
+ipcMain.handle('cab:peekBackup', (_e, { path: p, password } = {}) => {
+  requireOpen();
+  const d = K.migrate(getStore().peek(p, password));
+  return {
+    dossiers: d.dossiers.length,
+    paquets: d.dossiers.reduce((s, x) => s + (x.packs || []).length, 0),
+    cabinet: (d.cabinet || {}).name || '',
+    // Ce que la restauration ferait perdre : ce qu'on a maintenant et que la sauvegarde n'a pas.
+    actuels: { dossiers: state.dossiers.length, paquets: state.dossiers.reduce((s, x) => s + (x.packs || []).length, 0) }
+  };
+});
+
+ipcMain.handle('cab:restore', (_e, { path: p, password } = {}) => {
+  requireOpen();
+  const plain = getStore().restore(p, password);
+  state = K.migrate(plain);
+  getStore().reorganize(state);
+  getStore().write(state);
+  return safeState();
+});
+
+ipcMain.handle('cab:pickExternal', async () => {
+  const r = await dialog.showOpenDialog(mainWindow, {
+    title: 'Dossier de copie (clé USB, iCloud Drive, disque externe…)',
+    properties: ['openDirectory', 'createDirectory']
+  });
+  if (r.canceled || !r.filePaths.length) return null;
+  writeAppCfg({ externalBackupDir: r.filePaths[0] });
+  const ext = getStore().setExternalDir(r.filePaths[0]);
+  return { ...ext };
+});
+
+ipcMain.handle('cab:clearExternal', () => {
+  writeAppCfg({ externalBackupDir: null });
+  return { ...getStore().setExternalDir(null) };
+});
+
+ipcMain.handle('cab:mirrorNow', () => {
+  const ok = getStore().mirrorExternal();
+  return { ok, ...getStore().state.external };
+});
+
+// Changer le mot de passe. Il n'y avait aucun moyen de le faire : s'il fuitait, ou si un
+// collaborateur partait, il n'existait aucun recours.
+ipcMain.handle('cab:changePassword', (_e, { current, next } = {}) => {
+  requireOpen();
+  if (String(next || '').length < 8) throw new Error('Choisis un mot de passe d\'au moins huit caractères.');
+  // On revérifie l'ancien en relisant le fichier : sans ça, quelqu'un qui passe devant un poste
+  // déverrouillé changerait le mot de passe sans connaître l'ancien.
+  const check = CS.createCabStore(app.getPath('userData'), {}).unlock(String(current || ''));
+  if (!check.ok) throw new Error('Mot de passe actuel incorrect.');
+  getStore().backupNow('avant-changement-mot-de-passe');
+  getStore().setPassword(state, String(next));
+  return { ok: true };
+});
+
+// La clé de secours : le fichier le plus important que ce cabinet produira jamais.
+ipcMain.handle('cab:exportRecovery', async (_e, password) => {
+  requireOpen();
+  if (String(password || '').length < 8) throw new Error('Choisis un mot de passe d\'au moins huit caractères pour ce fichier.');
+  const safe = CS.slug(state.cabinet.name || 'cabinet');
+  const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+    title: 'Clé de secours du cabinet — à garder hors de cet ordinateur',
+    defaultPath: path.join(app.getPath('documents'), `${safe}-cle-de-secours.skanrecover`),
+    filters: [{ name: 'Clé de secours SkanFact', extensions: ['skanrecover'] }]
+  });
+  if (canceled || !filePath) return null;
+  fs.writeFileSync(filePath, JSON.stringify(CS.makeRecovery(state.cabinet, String(password), new Date()), null, 2), { mode: 0o600 });
+  writeAppCfg({ recoveryExportedAt: Date.now() });
+  return { path: filePath };
+});
+
+ipcMain.handle('cab:importRecovery', async (_e, password) => {
+  requireOpen();
+  const r = await dialog.showOpenDialog(mainWindow, {
+    title: 'Clé de secours à restaurer', filters: [{ name: 'Clé de secours SkanFact', extensions: ['skanrecover'] }], properties: ['openFile']
+  });
+  if (r.canceled || !r.filePaths.length) return null;
+  const obj = JSON.parse(fs.readFileSync(r.filePaths[0], 'utf8'));
+  const keys = CS.readRecovery(obj, String(password || ''));
+  if (!keys.privateKey || !keys.publicKey) throw new Error('Cette clé de secours est vide.');
+  getStore().backupNow('avant-restauration-cle');
+  state.cabinet = { ...state.cabinet, publicKey: keys.publicKey, privateKey: keys.privateKey };
+  save();
+  return { fingerprint: Z.keyFingerprint(keys.publicKey), name: keys.name || '' };
+});
+
+ipcMain.handle('cab:recoveryStatus', () => ({ exportedAt: readAppCfg().recoveryExportedAt || null }));
+
+// Exporter la liste des dossiers en CSV : un comptable doit pouvoir sortir ses données de
+// l'application. Une application qui garde ce qu'on lui confie n'inspire pas confiance.
+ipcMain.handle('cab:exportCsv', async (_e, { rows, name } = {}) => {
+  requireOpen();
+  const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+    title: 'Enregistrer le tableau',
+    defaultPath: path.join(app.getPath('documents'), `${CS.slug(name || 'dossiers')}.csv`),
+    filters: [{ name: 'Tableau CSV', extensions: ['csv'] }]
+  });
+  if (canceled || !filePath) return null;
+  // BOM : sans lui, Excel en français lit « Société » comme « SociÃ©tÃ© ».
+  fs.writeFileSync(filePath, '﻿' + String(rows || ''), 'utf8');
+  return { path: filePath };
+});
+
+ipcMain.handle('cab:support', () => ({
+  version: VERSION, electron: process.versions.electron, platform: process.platform, arch: process.arch,
+  userData: app.getPath('userData'),
+  log: path.join(app.getPath('userData'), 'main.log'),
+  dossiers: state ? state.dossiers.length : 0,
+  paquets: state ? state.dossiers.reduce((s, d) => s + (d.packs || []).length, 0) : 0,
+  external: getStore().state.external
+}));
+
+ipcMain.handle('cab:openLog', () => shell.openPath(path.join(app.getPath('userData'), 'main.log')));
+ipcMain.handle('cab:openDataDir', () => shell.openPath(app.getPath('userData')));
 
 // ---------- mises à jour (6.6.0) ----------
 //
@@ -293,7 +604,7 @@ function writeUpdateCfg(cfg) {
   fs.mkdirSync(path.dirname(UPDATE_CFG()), { recursive: true });
   fs.writeFileSync(UPDATE_CFG(), JSON.stringify(cfg), { mode: 0o600 });
 }
-const sendUpd = (state, payload) => { try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('update:event', { state, ...(payload || {}) }); } catch {} };
+const sendUpd = (s, payload) => { try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('update:event', { state: s, ...(payload || {}) }); } catch {} };
 
 function friendlyError(err) {
   const m = String((err && err.message) || err);
@@ -434,13 +745,38 @@ ipcMain.handle('cab:mail', async (_e, { to, subject, body } = {}) => {
   return true;
 });
 
+// Un numéro de téléphone tunisien composé depuis l'ordinateur, ou le message WhatsApp tout prêt :
+// en Tunisie, un comptable qui court après des pièces appelle bien plus souvent qu'il n'écrit.
+ipcMain.handle('cab:tel', async (_e, { number, whatsapp, text } = {}) => {
+  const n = String(number || '').replace(/[^\d+]/g, '');
+  if (!n) throw new Error('Ce dossier n\'a pas de numéro de téléphone.');
+  const url = whatsapp
+    ? `https://wa.me/${n.replace(/^\+/, '')}${text ? '?text=' + encodeURIComponent(text) : ''}`
+    : `tel:${n}`;
+  await shell.openExternal(url);
+  return true;
+});
+
 ipcMain.handle('cab:reveal', (_e, p) => shell.showItemInFolder(p));
+
+// ---------- ouverture d'un .skanpack depuis le Finder ----------
+// Double-cliquer un paquet reçu par mail doit l'importer, pas ouvrir un dossier d'archives.
+function queueOpen(file) {
+  if (!file || !/\.(skanpack|skanpair|skanrecover)$/i.test(file)) return;
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('file:open', file);
+  else pendingOpen.push(file);
+}
+app.on('open-file', (e, file) => { e.preventDefault(); queueOpen(file); });
+ipcMain.handle('cab:takePending', () => { const p = pendingOpen.slice(); pendingOpen = []; return p; });
 
 // ---------- démarrage ----------
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on('second-instance', () => { if (mainWindow) { if (mainWindow.isMinimized()) mainWindow.restore(); mainWindow.focus(); } });
+  app.on('second-instance', (_e, argv) => {
+    if (mainWindow) { if (mainWindow.isMinimized()) mainWindow.restore(); mainWindow.focus(); }
+    argv.filter(a => /\.(skanpack|skanpair|skanrecover)$/i.test(a)).forEach(queueOpen);
+  });
   process.on('uncaughtException', e => logError('erreur inattendue', e));
   process.on('unhandledRejection', e => logError('promesse rejetée', e));
   // Mode développement : dossier de données séparé, pour la même raison que dans src/main.js — sans
@@ -449,6 +785,7 @@ if (!app.requestSingleInstanceLock()) {
   if (!app.isPackaged && !process.argv.some(a => a.startsWith('--user-data-dir'))) {
     try { app.setPath('userData', path.join(app.getPath('appData'), 'SkanFact Cabinet (essais)')); } catch {}
   }
+  process.argv.filter(a => /\.(skanpack|skanpair|skanrecover)$/i.test(a)).forEach(f => pendingOpen.push(f));
   app.whenReady().then(() => {
     if (process.platform === 'win32') app.setAppUserModelId(APP_ID);
     try { Menu.setApplicationMenu(buildMenu()); } catch (e) { logError('menu', e); }
@@ -458,5 +795,6 @@ if (!app.requestSingleInstanceLock()) {
     setTimeout(() => { checkForUpdates(true).catch(() => {}); }, 4000);
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
   }).catch(e => logError('démarrage', e));
-  app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+  app.on('before-quit', cleanTemp);
+  app.on('window-all-closed', () => { cleanTemp(); if (process.platform !== 'darwin') app.quit(); });
 }

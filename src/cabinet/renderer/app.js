@@ -7,13 +7,26 @@
   'use strict';
 
   const K = window.CabCore;
+  const G = window.CabGuide || { INFO: {}, ARTICLES: [] };
   const api = window.cabinet;
 
   let S = null;                          // l'état du cabinet (sans la clé privée)
-  let listQ = '';                        // recherche de la liste des dossiers
-  let withArchived = false;
+  let backupInfo = null;                 // sauvegardes, copie externe, place disque
   // Mises à jour : l'état de la dernière vérification, partagé entre le panneau et la pastille.
   const upd = { state: 'idle', version: '', percent: 0, message: '', app: null };
+
+  // Les préférences d'affichage vivent sur le poste, pas dans la base chiffrée : ce n'est pas une
+  // donnée de cabinet, et une colonne triée n'a pas à être sauvegardée avec les comptabilités.
+  const prefs = {
+    get(k, def) { try { const v = localStorage.getItem('cab.' + k); return v == null ? def : JSON.parse(v); } catch { return def; } },
+    set(k, v) { try { localStorage.setItem('cab.' + k, JSON.stringify(v)); } catch {} }
+  };
+
+  const listState = {
+    q: '', withArchived: false, onlySkanfact: false,
+    sort: prefs.get('sort', 'urgence'), desc: prefs.get('desc', false),
+    page: 1, size: prefs.get('size', 25)
+  };
 
   // ---------- petits outils ----------
   const $ = (sel, root) => (root || document).querySelector(sel);
@@ -21,6 +34,15 @@
   const esc = s => String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  // `h` est le nom de la fonction d'échappement dans l'app entreprise. On l'aliase ici parce qu'une
+  // ligne copiée d'un fichier à l'autre a déjà appelé `h()` dans ce fichier-ci, où il n'existait
+  // pas : le panneau des mises à jour plantait au moment précis où il devait annoncer une panne.
+  const h = esc;
+
+  // Une erreur venue du processus principal arrive habillée en « Error invoking remote method '…' ».
+  // On ne montre que la phrase écrite pour l'utilisateur.
+  const plainError = e => String((e && e.message) || e || '')
+    .replace(/^Error invoking remote method '[^']*':\s*/, '').replace(/^Error:\s*/, '') || 'Erreur inconnue.';
 
   let toastTimer = null;
   function toast(msg, kind) {
@@ -30,6 +52,49 @@
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => { t.className = ''; }, kind === 'error' ? 5200 : 2800);
   }
+
+  // Un « ✓ enregistré » posé À CÔTÉ du bouton, plutôt qu'un message passager au bas de l'écran qui
+  // recouvrait justement ce bouton-là.
+  function flash(el, text) {
+    if (!el) return;
+    el.textContent = text || '✓ enregistré';
+    el.hidden = false;
+    clearTimeout(el.__t);
+    el.__t = setTimeout(() => { el.hidden = true; }, 2600);
+  }
+
+  // ---------- bulles « i » ----------
+  function info(key) {
+    if (!G.INFO[key]) return '';
+    return `<button type="button" class="i" data-info="${esc(key)}" aria-label="Qu'est-ce que c'est ?" title="Qu'est-ce que c'est ?">i</button>`;
+  }
+  const lbl = (text, key) => key ? `<span class="fl">${text} ${info(key)}</span>` : text;
+
+  function closeInfoPop() { const p = $('#info-pop'); if (p) p.remove(); }
+  function openInfoPop(btn) {
+    const x = G.INFO[btn.dataset.info]; if (!x) return;
+    closeInfoPop();
+    const pop = document.createElement('div');
+    pop.id = 'info-pop';
+    pop.innerHTML = `<div class="ip-head">${esc(x.t)}<button type="button" class="ip-close" aria-label="Fermer">✕</button></div><div class="ip-body">${x.d}</div>`;
+    document.body.appendChild(pop);
+    const r = btn.getBoundingClientRect();
+    const w = pop.offsetWidth, hh = pop.offsetHeight;
+    pop.style.left = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), window.innerWidth - w - 8) + 'px';
+    pop.style.top = (r.bottom + 8 + hh > window.innerHeight - 8 ? Math.max(8, r.top - hh - 8) : r.bottom + 8) + 'px';
+    $('.ip-close', pop).onclick = closeInfoPop;
+  }
+  document.addEventListener('click', e => {
+    const btn = e.target.closest('.i[data-info]');
+    if (btn) {
+      e.preventDefault(); e.stopPropagation();
+      const open = $('#info-pop'); closeInfoPop();
+      if (!open || open._key !== btn.dataset.info) { openInfoPop(btn); if ($('#info-pop')) $('#info-pop')._key = btn.dataset.info; }
+      return;
+    }
+    if (!e.target.closest('#info-pop')) closeInfoPop();
+  }, true);
+  window.addEventListener('resize', closeInfoPop);
 
   // Une fenêtre = une couche. Jamais `innerHTML` sur le conteneur : cela détruirait la fenêtre du
   // dessous et la saisie en cours (règle apprise en 2.4.0 côté entreprise).
@@ -72,16 +137,43 @@
     });
   }
 
-  function askPassword(title, note) {
+  // Une confirmation dangereuse où il faut RECOPIER un mot. Réservée à ce qui ne se défait pas :
+  // supprimer un dossier, c'est effacer les pièces d'un client.
+  function confirmTyped(title, body, word, okLabel) {
+    return new Promise(resolve => {
+      modal(
+        `<h2>${esc(title)}</h2><div>${body}</div>
+         <label class="field mt">Recopie <b>${esc(word)}</b> pour confirmer<input type="text" id="w" autocomplete="off" spellcheck="false"></label>
+         <div class="modal-actions"><button class="btn" id="no">Annuler</button>
+         <button class="btn btn-danger" id="ok" disabled>${esc(okLabel || 'Supprimer')}</button></div>`,
+        (layer, close) => {
+          const w = $('#w', layer), ok = $('#ok', layer);
+          w.oninput = () => { ok.disabled = w.value.trim().toUpperCase() !== word.toUpperCase(); };
+          w.onkeydown = e => { if (e.key === 'Enter' && !ok.disabled) { e.preventDefault(); close(); resolve(true); } };
+          $('#no', layer).onclick = () => { close(); resolve(false); };
+          ok.onclick = () => { close(); resolve(true); };
+        },
+        () => resolve(false)
+      );
+    });
+  }
+
+  function askPassword(title, note, okLabel) {
     return new Promise(resolve => {
       modal(
         `<h2>${esc(title)}</h2><p class="muted small">${esc(note || '')}</p>
-         <label class="field mt">Mot de passe<input type="password" id="pw" autocomplete="off"></label>
+         <label class="field mt">Mot de passe<span class="pw-wrap"><input type="password" id="pw" autocomplete="off"><button type="button" class="pw-eye" id="eye" aria-label="Afficher le mot de passe">Afficher</button></span></label>
          <div class="modal-actions"><button class="btn" id="no">Annuler</button>
-         <button class="btn btn-primary" id="ok">Ouvrir</button></div>`,
+         <button class="btn btn-primary" id="ok">${esc(okLabel || 'Ouvrir')}</button></div>`,
         (layer, close) => {
-          const go = () => { const v = $('#pw', layer).value; close(); resolve(v); };
-          $('#pw', layer).onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); go(); } };
+          const pw = $('#pw', layer);
+          const go = () => { const v = pw.value; close(); resolve(v); };
+          $('#eye', layer).onclick = () => {
+            pw.type = pw.type === 'password' ? 'text' : 'password';
+            $('#eye', layer).textContent = pw.type === 'password' ? 'Afficher' : 'Masquer';
+            pw.focus();
+          };
+          pw.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); go(); } };
           $('#no', layer).onclick = () => { close(); resolve(null); };
           $('#ok', layer).onclick = go;
         },
@@ -102,52 +194,146 @@
     return Math.abs(Number(n) || 0).toFixed(dec).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
       + ' ' + (cur || 'DT');
   };
-  const fmtBytes = n => n >= 1048576 ? (n / 1048576).toFixed(1) + ' Mo' : Math.max(1, Math.round(n / 1024)) + ' Ko';
+  const fmtBytes = n => !n ? '—' : n >= 1073741824 ? (n / 1073741824).toFixed(1) + ' Go'
+    : n >= 1048576 ? (n / 1048576).toFixed(1) + ' Mo' : Math.max(1, Math.round(n / 1024)) + ' Ko';
   function fmtWhen(ms) {
     if (!ms) return '—';
     const d = new Date(ms);
     const p = x => String(x).padStart(2, '0');
     return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
   }
+  function fmtDay(ms) {
+    if (!ms) return '—';
+    const d = new Date(ms);
+    const p = x => String(x).padStart(2, '0');
+    return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`;
+  }
+  // « il y a 3 jours » : devant une colonne de dates, c'est ce qu'on cherche vraiment à savoir.
+  function ago(ms) {
+    if (!ms) return '';
+    const j = Math.floor((Date.now() - ms) / 86400000);
+    return j <= 0 ? "aujourd'hui" : j === 1 ? 'hier' : `il y a ${j} jours`;
+  }
+
+  // ---------- listes : tri et pagination ----------
+  // À soixante dossiers, une liste sans tri ni pages devient un mur. Les totaux et les exports
+  // portent toujours sur la SÉLECTION ENTIÈRE, jamais sur la page affichée (règle de la 2.2.0).
+  function sortHead(label, key, help) {
+    const on = listState.sort === key;
+    return `<th class="nw sortable" data-sort="${esc(key)}" title="Trier">${esc(label)}${help ? ' ' + info(help) : ''}<span class="sort-ar">${on ? (listState.desc ? '↓' : '↑') : '⇅'}</span></th>`;
+  }
+  function bindSort(root, redraw) {
+    $$('th.sortable', root).forEach(th => {
+      th.onclick = () => {
+        const k = th.dataset.sort;
+        if (listState.sort === k) listState.desc = !listState.desc;
+        else { listState.sort = k; listState.desc = false; }
+        prefs.set('sort', listState.sort); prefs.set('desc', listState.desc);
+        listState.page = 1;
+        redraw();
+      };
+    });
+  }
+  function pagerBar(total) {
+    const pages = Math.max(1, Math.ceil(total / listState.size));
+    if (listState.page > pages) listState.page = pages;
+    if (pages <= 1 && listState.size >= total) return '';
+    const from = total ? (listState.page - 1) * listState.size + 1 : 0;
+    const to = Math.min(total, listState.page * listState.size);
+    return `<div class="pager">
+      <button class="btn btn-sm" id="pg-prev" ${listState.page <= 1 ? 'disabled' : ''}>← Précédent</button>
+      <span class="muted small">${from}–${to} sur ${total}</span>
+      <button class="btn btn-sm" id="pg-next" ${listState.page >= pages ? 'disabled' : ''}>Suivant →</button>
+      <select id="pg-size" class="sm" aria-label="Lignes par page">
+        ${[25, 50, 100, 500].map(n => `<option value="${n}" ${listState.size === n ? 'selected' : ''}>${n} par page</option>`).join('')}
+      </select></div>`;
+  }
+  function bindPager(root, redraw) {
+    const p = $('#pg-prev', root), n = $('#pg-next', root), s = $('#pg-size', root);
+    if (p) p.onclick = () => { listState.page--; redraw(); };
+    if (n) n.onclick = () => { listState.page++; redraw(); };
+    if (s) s.onchange = () => { listState.size = Number(s.value); listState.page = 1; prefs.set('size', listState.size); redraw(); };
+  }
+  const paginate = rows => rows.slice((listState.page - 1) * listState.size, listState.page * listState.size);
+
+  function toCsv(cols, rows) {
+    const q = v => {
+      const s = String(v == null ? '' : v);
+      return /[";\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    };
+    // Point-virgule : c'est le séparateur qu'attend Excel dans une configuration française.
+    return [cols.map(c => q(c.label)).join(';')]
+      .concat(rows.map(r => cols.map(c => q(c.get(r))).join(';'))).join('\r\n');
+  }
 
   // ---------- ouverture ----------
   async function boot() {
     const st = await api.status();
     $('#app-version').textContent = 'v' + st.version;
-    const sub = $('#lock-sub'), pw2 = $('#lock-pw2'), note = $('#lock-note');
+    const sub = $('#lock-sub'), pw2wrap = $('#lock-pw2-wrap'), note = $('#lock-note');
+    if (st.corruptFile) {
+      $('#lock-err').innerHTML = 'Le fichier du cabinet était illisible. Il a été <b>mis de côté sans être effacé</b> : ouvre avec ton mot de passe, puis restaure une sauvegarde dans Réglages.';
+      $('#lock-err').hidden = false;
+    }
     if (st.exists) {
       sub.textContent = 'Entre le mot de passe de ton cabinet.';
-      note.textContent = 'Le dossier est chiffré sur ce poste : sans ce mot de passe, personne ne peut lire les comptabilités de tes clients.';
+      note.innerHTML = 'Le dossier est chiffré sur ce poste : sans ce mot de passe, personne ne peut lire les comptabilités de tes clients.';
     } else {
       $('#lock-title').textContent = 'Bienvenue';
       sub.textContent = 'Choisis le mot de passe de ton cabinet. Il chiffre tout ce que tes clients t\'enverront.';
-      pw2.hidden = false;
+      pw2wrap.hidden = false;
       $('#lock-go').textContent = 'Créer mon cabinet';
-      note.textContent = 'Il n\'y a aucun moyen de le récupérer : note-le quelque part de sûr.';
+      // L'avertissement le plus important de toute l'application était jusqu'ici la ligne la plus
+      // petite et la plus grise de l'écran. Il est maintenant impossible à manquer.
+      note.innerHTML = '<span class="lock-warn">⚠ Il n\'y a aucun moyen de récupérer ce mot de passe.</span> '
+        + 'Ni nous, ni personne. Note-le maintenant, quelque part de sûr — c\'est le prix à payer pour qu\'un ordinateur volé n\'emporte pas les comptabilités de tes clients.';
     }
+    const pw = $('#lock-pw'), pw2 = $('#lock-pw2');
+    $('#lock-eye').onclick = () => {
+      const t = pw.type === 'password' ? 'text' : 'password';
+      pw.type = t; pw2.type = t;
+      $('#lock-eye').textContent = t === 'password' ? 'Afficher' : 'Masquer';
+      pw.focus();
+    };
+    if (!st.exists) pw.oninput = () => { $('#lock-strength').textContent = strengthText(pw.value); };
+
     $('#lock-form').onsubmit = async e => {
       e.preventDefault();
-      const pw = $('#lock-pw').value;
       const err = $('#lock-err');
       err.hidden = true;
-      if (pw.length < 6) { err.textContent = 'Six caractères au minimum.'; err.hidden = false; return; }
-      if (!st.exists && pw !== pw2.value) { err.textContent = 'Les deux mots de passe ne sont pas les mêmes.'; err.hidden = false; return; }
+      const v = pw.value;
+      if (!st.exists && v.length < 8) { err.textContent = 'Huit caractères au minimum : ce mot de passe protège les comptes de tous tes clients.'; err.hidden = false; return; }
+      if (st.exists && v.length < 1) { err.textContent = 'Entre ton mot de passe.'; err.hidden = false; return; }
+      if (!st.exists && v !== pw2.value) { err.textContent = 'Les deux mots de passe ne sont pas les mêmes.'; err.hidden = false; return; }
+      const go = $('#lock-go');
+      go.disabled = true; go.textContent = 'Ouverture…';
       try {
-        const r = await api.unlock(pw);
+        const r = await api.unlock(v);
         S = r.state;
         $('#lock-screen').remove();
         $('#app').hidden = false;
-        start(r.created);
+        start(r.created, r.reorganized);
       } catch (ex) {
-        err.textContent = ex.message || String(ex);
+        err.innerHTML = esc(plainError(ex));
         err.hidden = false;
-        $('#lock-pw').select();
+        go.disabled = false;
+        go.textContent = st.exists ? 'Ouvrir' : 'Créer mon cabinet';
+        pw.select();
       }
     };
-    $('#lock-pw').focus();
+    pw.focus();
   }
 
-  function start(created) {
+  function strengthText(v) {
+    if (!v) return '';
+    const varie = [/[a-z]/, /[A-Z]/, /\d/, /[^A-Za-z0-9]/].filter(r => r.test(v)).length;
+    if (v.length < 8) return 'Trop court (8 caractères minimum).';
+    if (v.length >= 16 || (v.length >= 12 && varie >= 3)) return 'Solide.';
+    if (v.length >= 10 && varie >= 2) return 'Correct.';
+    return 'Faible : allonge-le, une phrase entière vaut mieux qu\'un mot compliqué.';
+  }
+
+  function start(created, reorganized) {
     window.addEventListener('hashchange', render);
     api.onUpdateEvent(ev => {
       upd.state = ev.state;
@@ -168,11 +354,26 @@
     }).catch(() => {});
     api.onMenuAction(name => {
       if (name === 'import') doImport();
+      else if (name === 'new-dossier') newDossierForm();
+      else if (name === 'backup') quickBackup();
+      else if (name === 'palette') openPalette();
+      else if (name === 'support') supportDialog();
       else if (name.startsWith('go:')) location.hash = '#/' + name.slice(3);
+    });
+    // Un paquet double-cliqué dans le Finder : c'est le geste le plus naturel après avoir reçu un mail.
+    api.onFileOpen(f => handleDropped([f]));
+    api.takePending().then(list => { if (list && list.length) handleDropped(list); }).catch(() => {});
+    setupDrop();
+    document.addEventListener('keydown', e => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); openPalette(); }
     });
     $('#upd-pill').onclick = () => { location.hash = '#/reglages'; };
     if (!location.hash) location.hash = '#/dossiers';
     render();
+    refreshBackupInfo();
+    if (reorganized && reorganized.moved) {
+      toast(`${pl(reorganized.moved, 'paquet')} rangé${reorganized.moved > 1 ? 's' : ''} par client et par année.`);
+    }
     if (created || !(S.cabinet.name || '').trim()) {
       location.hash = '#/reglages';
       setTimeout(() => toast('Commence par renseigner le nom de ton cabinet.'), 400);
@@ -180,12 +381,43 @@
   }
 
   async function refresh() { S = await api.state(); }
+  async function refreshBackupInfo() {
+    try { backupInfo = await api.backups(); } catch { backupInfo = null; }
+    if (location.hash.startsWith('#/reglages')) drawBackupPanels();
+  }
+
+  // ---------- glisser-déposer ----------
+  // Le geste le plus naturel — attraper le .skanpack reçu par mail et le lâcher sur la fenêtre.
+  function setupDrop() {
+    const veil = $('#drop-veil');
+    let depth = 0;
+    const show = on => { veil.hidden = !on; };
+    window.addEventListener('dragenter', e => { e.preventDefault(); depth++; show(true); });
+    window.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+    window.addEventListener('dragleave', e => { e.preventDefault(); depth = Math.max(0, depth - 1); if (!depth) show(false); });
+    window.addEventListener('drop', e => {
+      e.preventDefault(); depth = 0; show(false);
+      const files = [...(e.dataTransfer.files || [])].map(f => api.pathForFile(f)).filter(Boolean);
+      if (files.length) handleDropped(files);
+    });
+  }
+
+  function handleDropped(paths) {
+    const packs = paths.filter(p => /\.(skanpack|zip)$/i.test(p));
+    const others = paths.filter(p => !/\.(skanpack|zip)$/i.test(p));
+    if (packs.length) doImport(packs);
+    if (others.length && !packs.length) {
+      toast(others.some(p => /\.skanpair$/i.test(p))
+        ? 'Ce fichier d\'appairage est celui que TU remets à tes clients : il s\'importe dans leur SkanFact, pas ici.'
+        : 'Dépose un paquet .skanpack reçu d\'un client.', 'error');
+    }
+  }
 
   // ---------- import d'un paquet ----------
   async function doImport(paths) {
     let r;
     try { r = await api.importPack({ paths }); }
-    catch (e) { return toast(e.message || String(e), 'error'); }
+    catch (e) { return toast(plainError(e), 'error'); }
     if (!r) return;                                     // fenêtre annulée
     S = r.state;
 
@@ -198,13 +430,14 @@
           const r2 = await api.importPack({ paths: locked.map(x => x.file), password: pw });
           if (r2) {
             S = r2.state;
-            r = { results: r.results.filter(x => !locked.includes(x)).concat(r2.results), state: r2.state };
+            r = { results: r.results.filter(x => !locked.includes(x)).concat(r2.results), state: r2.state, demoRemoved: r.demoRemoved || r2.demoRemoved };
           }
-        } catch (e) { toast(e.message || String(e), 'error'); }
+        } catch (e) { toast(plainError(e), 'error'); }
       }
     }
     showImportReport(r.results, r.demoRemoved);
     render();
+    refreshBackupInfo();
   }
 
   function importLine(x) {
@@ -213,6 +446,7 @@
     const d = x.dossier || {};
     const bits = [];
     if (x.created) bits.push('nouveau dossier');
+    if (x.adopted) bits.push('✓ ce client s\'est mis à SkanFact');
     if (x.replaced) bits.push(x.wasDefinitive && !x.nowDefinitive
       ? '⚠ remplace un mois qui était définitif — les chiffres ont pu changer'
       : 'remplace le mois déjà reçu');
@@ -230,14 +464,25 @@
 
   function showImportReport(results, demoRemoved) {
     const ok = results.filter(x => !x.error).length;
+    const ko = results.length - ok;
     modal(
-      `<h2>${pl(ok, 'paquet')} ${ok > 1 ? 'rangés' : 'rangé'}</h2>
+      `<h2>${ok ? `${pl(ok, 'paquet')} ${ok > 1 ? 'rangés' : 'rangé'}` : 'Aucun paquet rangé'}${ko ? ` · ${pl(ko, 'refusé')}` : ''}</h2>
        <ul class="imp-list">${results.map(importLine).join('')}</ul>
        ${demoRemoved ? '<p class="small mt">Les dossiers d\'exemple ont été effacés : place aux vrais.</p>' : ''}
-       <p class="muted small mt">Les paquets sont copiés dans le dossier de l'application : le fichier d'origine reste où il est.</p>
+       <p class="muted small mt">Les paquets sont copiés dans le dossier de l'application, rangés par client et par année : le fichier d'origine reste où il est.</p>
        <div class="modal-actions"><button class="btn btn-primary" id="ok">Fermer</button></div>`,
       (layer, close) => { $('#ok', layer).onclick = close; }
     );
+  }
+
+  async function quickBackup() {
+    try {
+      const r = await api.backupNow('manuelle');
+      backupInfo = await api.backups();
+      toast('Sauvegarde prise.');
+      if (location.hash.startsWith('#/reglages')) drawBackupPanels();
+      return r;
+    } catch (e) { toast(plainError(e), 'error'); }
   }
 
   // ---------- rendu ----------
@@ -257,11 +502,12 @@
     $$('.sidebar nav a').forEach(a => a.classList.toggle('active', a.dataset.route === route));
     $('#brand-cab').textContent = S.cabinet.name || 'Cabinet';
     updateBanner();
-    const todo = K.cabinetTodo(S);
-    const late = todo.find(t => t.id === 'manquants');
+    // La pastille compte EXACTEMENT les lignes de la page Relances. Deux chiffres pour la même chose
+    // faisaient douter de tout le reste.
+    const relCount = K.relanceRows(S).length;
     const pill = $('#nav-relances');
-    pill.hidden = !late;
-    if (late) pill.textContent = late.count;
+    pill.hidden = !relCount;
+    if (relCount) pill.textContent = relCount;
     const view = $('#view');
     if (route === 'dossier') drawDossier(view, arg);
     else if (route === 'relances') drawRelances(view);
@@ -271,34 +517,79 @@
   }
 
   function todoPanel(todo) {
-    if (!todo.length) return `<div class="todo-ok">Tout est à jour : tous tes dossiers ont envoyé leurs mois clôturés.</div>`;
+    if (!todo.length) {
+      const p = K.portfolio(S);
+      if (!p.surSkanfact) return '';
+      return `<div class="todo-ok">Tout est à jour : tes ${pl(p.surSkanfact, 'dossier')} sur SkanFact ont envoyé leurs mois clôturés.</div>`;
+    }
     return `<div class="panel todo"><h2>À faire</h2><ul>${todo.map(t => `
       <li class="lvl-${t.level}"><span class="td-dot"></span>
         <span class="td-txt"><strong>${esc(t.label)}</strong><span class="small muted">${esc(t.detail)}</span></span>
         <a class="btn btn-ghost btn-sm" href="#/relances">Voir</a></li>`).join('')}</ul></div>`;
   }
 
+  // Le portefeuille d'un coup d'œil. C'est ce qui manquait pour qu'un comptable voie autre chose
+  // qu'une liste — et c'est précisément ce qui impressionne en démonstration.
+  function portfolioPanel(p) {
+    if (!p.total) return '';
+    return `<div class="stats">
+      <div class="stat"><div class="lbl">Clients suivis</div><div class="val">${p.total}</div>
+        <div class="sub">${p.surSkanfact} sur SkanFact${p.horsSkanfact ? ` · ${p.horsSkanfact} pas encore` : ''}</div></div>
+      <div class="stat"><div class="lbl">À jour</div><div class="val ${p.enRetard ? '' : 'ok'}">${p.aJour}<span class="sub">/ ${p.surSkanfact || 0}</span></div>
+        <div class="sub">${p.enRetard ? `${pl(p.enRetard, 'en retard')}` : 'aucun retard'}${p.provisoires ? ` · ${p.provisoires} en provisoire` : ''}</div></div>
+      <div class="stat"><div class="lbl">Mois manquants</div><div class="val ${p.moisManquants ? 'due' : 'ok'}">${p.moisManquants}</div>
+        <div class="sub">${p.paquets ? pl(p.paquets, 'paquet') + ' reçu' + (p.paquets > 1 ? 's' : '') : 'aucun paquet reçu'}</div></div>
+      <div class="stat"><div class="lbl">Dernier CA suivi</div><div class="val">${esc(money(p.dernierCA))}</div>
+        <div class="sub">${p.honoraires ? 'Honoraires : ' + esc(money(p.honoraires)) + ' / mois' : 'somme des derniers mois reçus'}</div></div>
+    </div>`;
+  }
+
+  const CSV_COLS = [
+    { label: 'Client', get: r => r.name },
+    { label: 'Matricule', get: r => r.matricule },
+    { label: 'Email', get: r => r.email },
+    { label: 'Téléphone', get: r => r.phone },
+    { label: 'Interlocuteur', get: r => r.contact },
+    { label: 'Sur SkanFact', get: r => r.manual ? 'non' : 'oui' },
+    { label: 'Dernier mois reçu', get: r => r.lastLabel },
+    { label: 'Définitif', get: r => r.lastMonth ? (r.lastDefinitive ? 'oui' : 'non') : '' },
+    { label: 'Chiffre d\'affaires', get: r => r.lastFigures ? String(r.lastFigures.ca).replace('.', ',') : '' },
+    { label: 'Mois manquants', get: r => r.missingCount },
+    { label: 'Provisoires', get: r => r.provisionalCount },
+    { label: 'Points signalés', get: r => r.issues },
+    { label: 'Dernière relance', get: r => r.lastRelanceAt ? fmtDay(r.lastRelanceAt) : '' },
+    { label: 'Régime', get: r => r.regime },
+    { label: 'TVA', get: r => r.tvaPeriod },
+    { label: 'Honoraires', get: r => r.fees || '' },
+    { label: 'Archivé', get: r => r.archived ? 'oui' : '' }
+  ];
+
   function drawDossiers(view) {
-    const rows = K.dossierList(S, null, { q: listQ, withArchived });
-    const demoCount = (S.dossiers || []).filter(d => d.demo).length;
-    const demoOn = demoCount > 0;
     const all = K.dossierList(S, null, { withArchived: true });
+    const rows = K.dossierList(S, null, {
+      q: listState.q, withArchived: listState.withArchived, onlySkanfact: listState.onlySkanfact,
+      sort: listState.sort, desc: listState.desc
+    });
+    const demoCount = (S.dossiers || []).filter(d => d.demo).length;
     const todo = K.cabinetTodo(S);
+    const p = K.portfolio(S);
 
     // Écran d'ouverture d'un cabinet qui vient d'installer l'application : il n'a rien reçu, et il
-    // n'a rien à chercher ni à filtrer. Deux propositions, deux VRAIS boutons — la première version
+    // n'a rien à chercher ni à filtrer. Trois propositions, trois VRAIS boutons — la première version
     // cachait l'exemple dans une phrase en gras au milieu d'un cadre, et personne ne le voyait.
     if (!all.length) {
       view.innerHTML = `
         <div class="page-head"><h1>Dossiers</h1></div>
         <div class="panel"><h2>Premiers pas</h2>
-          <p>Ici apparaîtront tes clients, un par ligne, avec le dernier mois reçu et ce qui manque.
-          Tant qu'aucun paquet n'est arrivé, il n'y a rien à afficher.</p>
+          <p>Ici apparaîtront tes clients, un par ligne, avec le dernier mois reçu et ce qui manque.</p>
           <div class="inline mt">
-            <button class="btn btn-primary" id="imp">Importer un paquet…</button>
+            <button class="btn btn-primary" id="new-d">Ajouter mes clients…</button>
+            <button class="btn" id="imp">Importer un paquet…</button>
             <button class="btn" id="demo-on">Voir un exemple (5 clients fictifs)</button>
           </div>
-          <p class="small muted mt">L'exemple montre les quatre situations que tu rencontreras : un client à jour,
+          <p class="small muted mt"><strong>Commence par tes clients.</strong> Ajoute-les même s'ils n'utilisent pas encore SkanFact :
+          l'application devient le tableau de bord de ton portefeuille, et rien ne leur est réclamé tant qu'ils n'ont pas commencé.</p>
+          <p class="small muted">L'exemple montre les quatre situations que tu rencontreras : un client à jour,
           un en retard, un qui n'a envoyé que du provisoire, un dont les pièces sont incomplètes. Il s'efface
           tout seul au premier vrai paquet, et tu peux l'effacer à la main quand tu veux.</p>
         </div>
@@ -306,75 +597,131 @@
           <ol class="small" style="line-height:1.9;margin:0;padding-left:20px">
             <li>Tu remets à ton client le <strong>fichier d'appairage</strong> (Réglages → Enregistrer le fichier d'appairage).</li>
             <li>Il l'importe une fois dans son SkanFact, puis t'envoie son <strong>.skanpack</strong> chaque mois.</li>
-            <li>Tu l'enregistres et tu cliques sur <strong>Importer un paquet…</strong>.</li>
+            <li>Tu le <strong>glisses sur cette fenêtre</strong>, ou tu le double-cliques dans le Finder.</li>
           </ol>
         </div>`;
       $('#imp').onclick = () => doImport();
+      $('#new-d').onclick = () => newDossierForm();
       $('#demo-on').onclick = async () => { S = await api.demo(true); render(); toast('Exemple chargé : ces cinq dossiers sont fictifs.'); };
       return;
     }
 
+    const shown = paginate(rows);
     view.innerHTML = `
       <div class="page-head"><h1>Dossiers</h1>
-        <div class="actions"><button class="btn btn-primary" id="imp">Importer un paquet…</button></div></div>
+        <div class="actions">
+          <button class="btn" id="new-d">Nouveau client…</button>
+          <button class="btn btn-primary" id="imp">Importer un paquet…</button>
+        </div></div>
+      ${portfolioPanel(p)}
       ${todoPanel(todo)}
-      ${demoOn ? `<div class="banner"><span>Ces ${pl(demoCount, 'dossier')} sont <strong>fictifs</strong> : ils montrent les quatre situations
+      ${demoCount ? `<div class="banner"><span>Ces ${pl(demoCount, 'dossier')} sont <strong>fictifs</strong> : ils montrent les quatre situations
         que tu rencontreras. Ils disparaîtront au premier vrai paquet importé.</span>
         <button class="btn btn-ghost btn-sm nw" id="demo-off">Effacer l'exemple</button></div>` : ''}
       <div class="filters">
-        <input type="text" id="q" placeholder="Chercher un client, un matricule…" value="${esc(listQ)}">
-        <label class="inline small muted"><input type="checkbox" id="arch" ${withArchived ? 'checked' : ''}> Voir les dossiers archivés</label>
+        <input type="text" id="q" placeholder="Chercher un client, un matricule, un téléphone…" value="${esc(listState.q)}">
+        <label class="inline small muted"><input type="checkbox" id="arch" ${listState.withArchived ? 'checked' : ''}> Archivés</label>
+        <label class="inline small muted"><input type="checkbox" id="onlysf" ${listState.onlySkanfact ? 'checked' : ''}> Sur SkanFact seulement</label>
         <span class="muted small">${rows.length} sur ${all.length}</span>
+        ${rows.length !== all.length ? '<button class="btn btn-ghost btn-sm" id="reset-f">Réinitialiser</button>' : ''}
+        <span class="grow"></span>
+        <button class="btn btn-ghost btn-sm" id="csv">Exporter en CSV</button>
       </div>
       ${rows.length ? `<div class="scroll-x"><table class="list">
-        <thead><tr><th>Client</th><th class="nw">Dernier mois reçu</th><th class="r nw">Chiffre d'affaires</th>
-        <th class="r nw">Mois manquants</th><th class="r nw">Provisoires</th><th class="r nw">Signalé</th><th class="nw">Reçu le</th></tr></thead>
-        <tbody>${rows.map(r => `<tr class="clickable" data-id="${esc(r.id)}">
-          <td class="nw">${`<span class="dot-lvl ${r.level === 'ok' ? '' : r.level}"></span>`}${esc(r.name)}${r.archived ? ' <span class="badge">archivé</span>' : ''}</td>
+        <thead><tr>${sortHead('Client', 'nom')}${sortHead('Dernier mois reçu', 'dernier')}
+        <th class="r nw">Chiffre d'affaires</th>${sortHead('Mois manquants', 'manquants')}
+        <th class="r nw">Provisoires</th><th class="r nw">Signalé</th>${sortHead('Relancé le', 'relance', 'r.history')}${sortHead('Reçu le', 'recu')}</tr></thead>
+        <tbody>${shown.map(r => `<tr class="clickable" data-id="${esc(r.id)}">
+          <td class="nw"><span class="dot-lvl ${r.level === 'ok' ? '' : esc(r.level)}"></span>${esc(r.name)}${r.archived ? ' <span class="badge">archivé</span>' : ''}${r.manual ? ' <span class="badge b-hors">pas encore sur SkanFact</span>' : ''}</td>
           <td class="nw">${esc(r.lastLabel || '—')}${r.lastMonth && !r.lastDefinitive ? ' <span class="badge partielle">provisoire</span>' : ''}</td>
           <td class="r nw">${esc(r.lastFigures ? money(r.lastFigures.ca, r.lastFigures.devise) : '—')}</td>
           <td class="r">${r.missingCount || '—'}</td>
           <td class="r">${r.provisionalCount || '—'}</td>
           <td class="r">${r.issues || '—'}</td>
-          <td class="muted nw">${esc(fmtWhen(r.lastAt))}</td></tr>`).join('')}</tbody></table></div>`
+          <td class="muted nw">${r.lastRelanceAt ? esc(fmtDay(r.lastRelanceAt)) + ` <span class="small">(${esc(ago(r.lastRelanceAt))})</span>` : '—'}</td>
+          <td class="muted nw">${esc(fmtWhen(r.lastAt))}</td></tr>`).join('')}</tbody>
+        <tfoot><tr><td class="nw"><strong>${pl(rows.length, 'dossier')}</strong></td><td></td>
+          <td class="r nw"><strong>${esc(money(rows.reduce((s, r) => s + ((r.lastFigures && r.lastFigures.ca) || 0), 0)))}</strong></td>
+          <td class="r"><strong>${rows.reduce((s, r) => s + r.missingCount, 0) || '—'}</strong></td>
+          <td class="r"><strong>${rows.reduce((s, r) => s + r.provisionalCount, 0) || '—'}</strong></td>
+          <td class="r"><strong>${rows.reduce((s, r) => s + r.issues, 0) || '—'}</strong></td><td></td><td></td></tr></tfoot>
+        </table></div>${pagerBar(rows.length)}
+        <p class="muted small mt">Les totaux et l'export portent sur la sélection entière, pas sur la page affichée.</p>`
         : `<div class="empty">Aucun dossier ne correspond à cette recherche.</div>`}`;
 
     $('#imp').onclick = () => doImport();
+    $('#new-d').onclick = () => newDossierForm();
     const dOff = $('#demo-off');
     if (dOff) dOff.onclick = async () => { S = await api.demo(false); render(); toast('Exemple effacé.'); };
     const q = $('#q');
-    q.oninput = () => { listQ = q.value; const pos = q.selectionStart; render(); const n = $('#q'); n.focus(); n.setSelectionRange(pos, pos); };
-    $('#arch').onchange = e => { withArchived = e.target.checked; render(); };
+    q.oninput = () => {
+      listState.q = q.value; listState.page = 1;
+      const pos = q.selectionStart; render();
+      const n = $('#q'); if (n) { n.focus(); n.setSelectionRange(pos, pos); }
+    };
+    $('#arch').onchange = e => { listState.withArchived = e.target.checked; listState.page = 1; render(); };
+    $('#onlysf').onchange = e => { listState.onlySkanfact = e.target.checked; listState.page = 1; render(); };
+    const rf = $('#reset-f');
+    if (rf) rf.onclick = () => { listState.q = ''; listState.withArchived = false; listState.onlySkanfact = false; listState.page = 1; render(); };
+    $('#csv').onclick = async () => {
+      try {
+        const r = await api.exportCsv(toCsv(CSV_COLS, rows), 'dossiers-' + (S.cabinet.name || 'cabinet'));
+        if (r) toast('Tableau enregistré.');
+      } catch (e) { toast(plainError(e), 'error'); }
+    };
+    bindSort(view, render);
+    bindPager(view, render);
     $$('tr[data-id]', view).forEach(tr => { tr.onclick = () => { location.hash = '#/dossier/' + encodeURIComponent(tr.dataset.id); }; });
   }
 
+  // ---------- la fiche d'un dossier ----------
   function drawDossier(view, id) {
     const dossier = (S.dossiers || []).find(d => d.id === decodeURIComponent(id || ''));
     if (!dossier) { view.innerHTML = `<div class="empty">Ce dossier n'existe plus.</div>`; return; }
     const row = K.dossierRow(dossier);
     const months = K.dossierMonths(dossier).slice().reverse();
     const packs = (dossier.packs || []).slice().sort((a, b) => a.month < b.month ? 1 : -1);
+    const relances = (dossier.relances || []).slice().reverse();
+    // Les mois regroupés par année : douze cases par ligne valent mieux qu'une bande sans fin.
+    const years = [...new Set(months.map(m => m.month.slice(0, 4)))];
+    const totalCA = packs.reduce((s, p) => s + ((p.figures && p.figures.ca) || 0), 0);
 
     view.innerHTML = `
       <button class="btn btn-ghost btn-sm btn-back" id="back">← Dossiers</button>
       <div class="page-head"><div>
-        <h1>${esc(dossier.name)}</h1>
-        <div class="muted small">${esc(dossier.matricule || 'Matricule inconnu')}${dossier.email ? ' · ' + esc(dossier.email) : ''}</div>
+        <h1>${esc(dossier.name)}${dossier.archived ? ' <span class="badge">archivé</span>' : ''}${dossier.manual ? ' <span class="badge b-hors">pas encore sur SkanFact</span>' : ''}</h1>
+        <div class="muted small">${esc(dossier.matricule || 'Matricule inconnu')}${dossier.contact ? ' · ' + esc(dossier.contact) : ''}</div>
       </div><div class="actions">
         <button class="btn" id="edit">Modifier la fiche</button>
+        ${dossier.phone ? '<button class="btn" id="call">Appeler</button><button class="btn" id="wa">WhatsApp</button>' : ''}
         ${row.missingCount || row.provisionalCount ? '<button class="btn btn-primary" id="rel">Relancer</button>' : ''}
       </div></div>
 
-      <div class="panel"><h2>Les mois de ce client</h2>
-        <div class="mgrid">${months.map(m => `<div class="mcell ${m.state}${m.pack && m.pack.path ? ' clickable' : ''}" ${m.pack && m.pack.path ? `data-m="${esc(m.month)}"` : ''}>
-          <div class="m-lab">${esc(m.label)}</div>
-          <div class="m-st">${m.state === 'complet' ? 'définitif' : m.state === 'provisoire' ? 'provisoire' : 'manquant'}</div>
-        </div>`).join('') || '<span class="muted small">Aucun mois attendu pour l\'instant.</span>'}</div>
-        <p class="muted small mt">Un mois <strong>provisoire</strong> n'a pas été clôturé chez le client : ses chiffres peuvent encore changer,
-        ne déclare pas dessus. Le mois en cours n'est jamais réclamé.</p>
+      <div class="panel"><h2>La fiche</h2>
+        <div class="kv two">
+          <div><span>Email</span><span>${dossier.email ? esc(dossier.email) : '<span class="muted">— à renseigner</span>'}</span></div>
+          <div><span>Téléphone</span><span>${dossier.phone ? esc(dossier.phone) : '<span class="muted">— à renseigner</span>'}</span></div>
+          <div><span>Régime</span><span>${esc(labelOf(K.REGIMES, dossier.regime) || '—')}</span></div>
+          <div><span>TVA</span><span>${esc(labelOf(K.TVA_PERIODS, dossier.tvaPeriod) || '—')}</span></div>
+          <div><span>Début de mission</span><span>${dossier.from ? esc(K.monthLabel(dossier.from)) : '<span class="muted">au premier paquet reçu</span>'}</span></div>
+          <div><span>Honoraires</span><span>${dossier.fees ? esc(money(dossier.fees)) + ' / mois' : '—'}</span></div>
+        </div>
       </div>
 
-      <div class="panel"><h2>Paquets reçus</h2>
+      <div class="panel"><h2>Les mois de ce client ${info('p.definitif')}</h2>
+        ${months.length ? years.map(y => `<div class="year-row"><div class="year-lab">${esc(y)}</div>
+          <div class="mgrid">${months.filter(m => m.month.slice(0, 4) === y).map(m => `<div class="mcell ${m.state}${m.pack && m.pack.path ? ' clickable' : ''}" ${m.pack && m.pack.path ? `data-m="${esc(m.month)}"` : ''}>
+            <div class="m-lab">${esc(m.label.split(' ')[0])}</div>
+            <div class="m-st">${m.state === 'complet' ? 'définitif' : m.state === 'provisoire' ? 'provisoire' : 'manquant'}</div>
+          </div>`).join('')}</div></div>`).join('')
+          : `<span class="muted small">${dossier.manual
+              ? 'Ce client n\'utilise pas encore SkanFact : rien ne lui est réclamé. Renseigne un « début de mission » dans sa fiche si tu veux commencer à attendre ses mois.'
+              : 'Aucun mois attendu pour l\'instant : l\'attente démarre au premier paquet reçu, ou à la date de début de mission que tu renseignes dans la fiche.'}</span>`}
+        ${months.length ? `<p class="muted small mt">Un mois <strong>provisoire</strong> n'a pas été clôturé chez le client : ses chiffres peuvent encore changer,
+        ne déclare pas dessus. Le mois en cours n'est jamais réclamé.</p>` : ''}
+      </div>
+
+      <div class="panel"><h2>Paquets reçus ${info('p.integrity')}</h2>
       ${packs.length ? `<div class="scroll-x"><table class="list compact">
         <thead><tr><th class="nw">Mois</th><th>État</th><th class="r nw">Chiffre d'affaires</th><th class="r nw">TVA à décaisser</th>
         <th class="r">Pièces</th><th class="r">Signalé</th><th class="nw">Reçu le</th><th class="nw">Fabriqué le</th><th class="r">Taille</th><th></th></tr></thead>
@@ -388,40 +735,79 @@
           <td class="muted nw">${esc(fmtWhen(p.receivedAt))}</td>
           <td class="muted nw">${esc(p.generatedAt ? fmtWhen(Date.parse(p.generatedAt)) : '—')}</td>
           <td class="r muted nw">${esc(fmtBytes(p.bytes))}</td>
-          <td class="actions">${p.path
+          <td class="actions row-actions">${p.path
             ? `<button class="btn btn-ghost btn-sm" data-open="${esc(p.month)}">Ouvrir</button>
-               <button class="btn btn-ghost btn-sm" data-rev="${esc(p.month)}">Voir le fichier</button>`
-            : '<span class="muted small">exemple</span>'}</td></tr>`).join('')}</tbody></table></div>`
-        : '<div class="empty">Aucun paquet.</div>'}
+               <button class="btn btn-ghost btn-sm" data-xtr="${esc(p.month)}">Extraire…</button>
+               <button class="btn btn-ghost btn-sm" data-rev="${esc(p.month)}">Fichier</button>
+               <button class="btn btn-ghost btn-sm danger" data-del="${esc(p.month)}" title="Supprimer ce paquet">✕</button>`
+            : '<span class="muted small">exemple</span>'}</td></tr>`).join('')}</tbody>
+        <tfoot><tr><td class="nw"><strong>${pl(packs.length, 'mois', 'mois')}</strong></td><td></td>
+          <td class="r nw"><strong>${esc(money(totalCA))}</strong></td><td colspan="7"></td></tr></tfoot></table></div>
+        <p class="muted small mt">« Extraire » écrit tout le contenu d'un paquet dans un dossier de ton choix ${info('p.extract')} — pour travailler dans ton logiciel, ou pour rendre ses pièces à un client.
+        La croix supprime un paquet arrivé par erreur ${info('p.delete')}.</p>`
+        : '<div class="empty">Aucun paquet reçu.</div>'}
       </div>
 
-      ${(dossier.note || '').trim() ? `<div class="panel"><h2>Note</h2><div class="notes-md">${esc(dossier.note)}</div></div>` : ''}`;
+      <div class="panel"><h2>Relances ${info('r.history')}</h2>
+      ${relances.length ? `<table class="list compact"><thead><tr><th class="nw">Date</th><th class="nw">Moyen</th><th>Mois réclamés</th><th>Note</th></tr></thead>
+        <tbody>${relances.map(r => `<tr>
+          <td class="nw">${esc(fmtWhen(r.at))} <span class="muted small">${esc(ago(r.at))}</span></td>
+          <td class="nw">${esc(labelOf(K.RELANCE_WAYS, r.via) || r.via)}</td>
+          <td>${esc((r.months || []).map(K.monthLabel).join(', ') || '—')}</td>
+          <td class="muted">${esc(r.note || '')}</td></tr>`).join('')}</tbody></table>`
+        : '<div class="empty">Aucune relance enregistrée.</div>'}
+        <div class="modal-actions"><button class="btn btn-ghost btn-sm" id="note-rel">Noter une relance faite ailleurs…</button></div>
+      </div>
+
+      ${(dossier.note || '').trim() ? `<div class="panel"><h2>Note interne</h2><div class="notes-md">${esc(dossier.note)}</div></div>` : ''}`;
 
     $('#back').onclick = () => { location.hash = '#/dossiers'; };
     $('#edit').onclick = () => dossierForm(dossier);
+    const call = $('#call'); if (call) call.onclick = () => api.tel({ number: dossier.phone }).catch(e => toast(plainError(e), 'error'));
+    const wa = $('#wa'); if (wa) wa.onclick = () => {
+      const m = K.relanceMail(S.cabinet, row);
+      api.tel({ number: dossier.phone, whatsapp: true, text: m.body }).catch(e => toast(plainError(e), 'error'));
+    };
     const rel = $('#rel'); if (rel) rel.onclick = () => writeRelance(row);
+    $('#note-rel').onclick = () => noteRelanceForm(row);
     $$('[data-m]', view).forEach(c => { c.onclick = () => openPack(dossier, c.dataset.m); });
     $$('[data-open]', view).forEach(b => { b.onclick = () => openPack(dossier, b.dataset.open); });
+    $$('[data-xtr]', view).forEach(b => { b.onclick = () => extractPack(dossier, b.dataset.xtr); });
     $$('[data-rev]', view).forEach(b => {
-      b.onclick = () => {
-        const p = packs.find(x => x.month === b.dataset.rev);
-        if (p) api.reveal(p.path);
+      b.onclick = () => { const p = packs.find(x => x.month === b.dataset.rev); if (p) api.reveal(p.path); };
+    });
+    $$('[data-del]', view).forEach(b => {
+      b.onclick = async () => {
+        const p = packs.find(x => x.month === b.dataset.del);
+        if (!p) return;
+        const ok = await confirmDialog('Supprimer ce paquet ?',
+          `<p>Le paquet <strong>${esc(p.label)}</strong> de ${esc(dossier.name)} sera effacé de ton disque, et ce mois redeviendra « manquant » pour ce client.</p>
+           <p class="muted small">Une sauvegarde est prise juste avant. À réserver à un paquet arrivé par erreur.</p>`, 'Supprimer', true);
+        if (!ok) return;
+        try { S = await api.deletePack(dossier.id, p.month); render(); toast('Paquet supprimé.'); refreshBackupInfo(); }
+        catch (e) { toast(plainError(e), 'error'); }
       };
     });
   }
 
+  const labelOf = (list, id) => { const x = (list || []).find(o => o.id === id); return x ? x.label : ''; };
+
   // Ouvrir un paquet : on montre ce qu'il contient, on n'extrait que ce qui est demandé.
   async function openPack(dossier, month) {
     const p = (dossier.packs || []).find(x => x.month === month);
-    if (!p) return;
+    if (!p || !p.path) return;
     let files, password = null;
     try { files = await api.listPack(p.path); }
     catch (e) {
-      if (!/mot de passe|déchiffr|authenticate/i.test(e.message || '')) return toast(e.message || String(e), 'error');
+      const msg = plainError(e);
+      if (/ENOENT|introuvable|no such file/i.test(msg)) {
+        return toast('Le fichier de ce paquet est introuvable sur le disque. Restaure une sauvegarde, ou demande-le à nouveau à ton client.', 'error');
+      }
+      if (!/mot de passe|déchiffr|authenticate/i.test(msg)) return toast(msg, 'error');
       password = await askPassword('Paquet protégé', 'Ce paquet est scellé par un mot de passe.');
       if (!password) return;
       try { files = await api.listPack(p.path, password); }
-      catch (e2) { return toast(e2.message || String(e2), 'error'); }
+      catch (e2) { return toast(plainError(e2), 'error'); }
     }
     const order = f => (f.name === '00-page-de-garde.pdf' ? 0 : f.name.startsWith('journaux/') ? 1 : f.name === 'manifeste.json' ? 9 : 5);
     files.sort((a, b) => order(a) - order(b) || a.name.localeCompare(b.name, 'fr'));
@@ -430,15 +816,84 @@
        <p class="muted small">${pl(files.length, 'fichier')}. Commence par la page de garde : elle résume le mois et liste ce qui manque.</p>
        <table class="list compact mt"><tbody>${files.map((f, i) => `<tr class="clickable" data-i="${i}">
          <td>${esc(f.name)}</td><td class="r muted nw">${esc(fmtBytes(f.size))}</td></tr>`).join('')}</tbody></table>
-       <div class="modal-actions"><button class="btn btn-primary" id="ok">Fermer</button></div>`,
+       <div class="modal-actions"><button class="btn" id="xtr">Tout extraire…</button><button class="btn btn-primary" id="ok">Fermer</button></div>`,
       (layer, close) => {
         $('#ok', layer).onclick = close;
+        $('#xtr', layer).onclick = () => { close(); extractPack(dossier, month, password); };
         $$('tr[data-i]', layer).forEach(tr => {
           tr.onclick = async () => {
             try { await api.openInPack(p.path, files[Number(tr.dataset.i)].name, password); }
-            catch (e) { toast(e.message || String(e), 'error'); }
+            catch (e) { toast(plainError(e), 'error'); }
           };
         });
+      }
+    );
+  }
+
+  async function extractPack(dossier, month, password) {
+    const p = (dossier.packs || []).find(x => x.month === month);
+    if (!p || !p.path) return;
+    try {
+      const r = await api.extractPack(p.path, password, `${dossier.name}-${month}`);
+      if (!r) return;
+      toast(`${pl(r.files, 'fichier')} extrait${r.files > 1 ? 's' : ''}.`);
+      api.reveal(r.dir);
+    } catch (e) { toast(plainError(e), 'error'); }
+  }
+
+  // ---------- les formulaires de dossier ----------
+  function dossierFields(d) {
+    return `<div class="grid-2">
+        <label class="field span-2">${lbl('Nom du client', 'd.name')}<input type="text" id="f-name" value="${esc(d.name || '')}"></label>
+        <label class="field span-2">${lbl('Matricule fiscal', 'd.matricule')}<input type="text" id="f-mat" value="${esc(d.matricule || '')}" placeholder="1234567X/A/M/000" ${d.packs && d.packs.length ? 'readonly' : ''}></label>
+        <label class="field">${lbl('Email', 'd.email')}<input type="email" id="f-email" value="${esc(d.email || '')}" placeholder="Pour les relances"></label>
+        <label class="field">${lbl('Téléphone', 'd.phone')}<input type="tel" id="f-phone" value="${esc(d.phone || '')}" placeholder="+216 …"></label>
+        <label class="field span-2">${lbl('Interlocuteur', 'd.contact')}<input type="text" id="f-contact" value="${esc(d.contact || '')}" placeholder="La personne que tu appelles"></label>
+        <label class="field">${lbl('Régime fiscal', 'd.regime')}<select id="f-regime">
+          <option value="">— non précisé —</option>${K.REGIMES.map(r => `<option value="${esc(r.id)}" ${d.regime === r.id ? 'selected' : ''}>${esc(r.label)}</option>`).join('')}</select></label>
+        <label class="field">${lbl('TVA', 'd.tvaPeriod')}<select id="f-tva">
+          <option value="">— non précisé —</option>${K.TVA_PERIODS.map(r => `<option value="${esc(r.id)}" ${d.tvaPeriod === r.id ? 'selected' : ''}>${esc(r.label)}</option>`).join('')}</select></label>
+        <label class="field">${lbl('Début de mission', 'd.from')}<input type="text" id="f-from" value="${esc(d.from || '')}" placeholder="2026-01" pattern="\\d{4}-\\d{2}"></label>
+        <label class="field">${lbl('Honoraires mensuels', 'd.fees')}<input type="number" id="f-fees" value="${d.fees || ''}" step="0.001" min="0" placeholder="0"></label>
+      </div>
+      <label class="field mt">${lbl('Note interne', 'd.note')}<textarea id="f-note" rows="3">${esc(d.note || '')}</textarea></label>`;
+  }
+
+  function readDossierFields(layer) {
+    const from = $('#f-from', layer).value.trim();
+    return {
+      name: $('#f-name', layer).value.trim(),
+      matricule: $('#f-mat', layer).value.trim(),
+      email: $('#f-email', layer).value.trim(),
+      phone: $('#f-phone', layer).value.trim(),
+      contact: $('#f-contact', layer).value.trim(),
+      regime: $('#f-regime', layer).value,
+      tvaPeriod: $('#f-tva', layer).value,
+      from: /^\d{4}-\d{2}$/.test(from) ? from : '',
+      fees: Number($('#f-fees', layer).value) || 0,
+      note: $('#f-note', layer).value
+    };
+  }
+
+  function newDossierForm() {
+    const empty = { packs: [] };
+    modal(
+      `<h2>Nouveau dossier client</h2>
+       <p class="muted small">Ajoute un client même s'il n'utilise pas encore SkanFact ${info('d.manual')} : il compte dans ton portefeuille,
+       et rien ne lui est réclamé tant qu'il n'a pas commencé.</p>
+       ${dossierFields(empty)}
+       <div class="modal-actions"><button class="btn" id="no">Annuler</button><button class="btn btn-primary" id="ok">Créer le dossier</button></div>`,
+      (layer, close) => {
+        $('#no', layer).onclick = close;
+        $('#ok', layer).onclick = async () => {
+          const f = readDossierFields(layer);
+          if (!f.name) return toast('Donne au moins un nom à ce client.', 'error');
+          try {
+            const r = await api.newDossier(f);
+            S = r.state; close(); render(); toast('Dossier créé.');
+            location.hash = '#/dossier/' + encodeURIComponent(r.id);
+          } catch (e) { toast(plainError(e), 'error'); }
+        };
       }
     );
   }
@@ -446,26 +901,43 @@
   function dossierForm(dossier) {
     modal(
       `<h2>Fiche du dossier</h2>
-       <div class="grid-2">
-         <label class="field span-2">Nom du client<input type="text" id="f-name" value="${esc(dossier.name)}"></label>
-         <label class="field span-2">Adresse email<input type="email" id="f-email" value="${esc(dossier.email)}" placeholder="Pour les relances"></label>
-       </div>
-       <label class="field mt">Note interne<textarea id="f-note">${esc(dossier.note)}</textarea></label>
-       <label class="inline small mt"><input type="checkbox" id="f-arch" ${dossier.archived ? 'checked' : ''}> Dossier archivé (client parti : on ne le réclame plus)</label>
-       <p class="muted small mt">Le matricule fiscal (${esc(dossier.matricule || 'absent')}) vient des paquets du client : c'est lui qui identifie le dossier, il ne se modifie pas ici.</p>
-       <div class="modal-actions"><button class="btn" id="no">Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
+       ${dossierFields(dossier)}
+       <label class="inline small mt"><input type="checkbox" id="f-arch" ${dossier.archived ? 'checked' : ''}> ${lbl('Dossier archivé (client parti : on ne le réclame plus)', 'd.archived')}</label>
+       ${dossier.packs && dossier.packs.length
+         ? `<p class="muted small mt">Le matricule vient des paquets de ce client : c'est lui qui identifie le dossier, il ne se modifie plus ici.</p>`
+         : ''}
+       <div class="modal-actions">
+         <button class="btn btn-danger" id="del">Supprimer…</button>
+         <span class="grow"></span>
+         <button class="btn" id="no">Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
       (layer, close) => {
         $('#no', layer).onclick = close;
-        $('#ok', layer).onclick = async () => {
+        $('#del', layer).onclick = async () => {
+          const n = (dossier.packs || []).length;
+          const ok = await confirmTyped('Supprimer ce dossier ?',
+            `<p>Le dossier <strong>${esc(dossier.name)}</strong> et ${n ? `ses ${pl(n, 'paquet')}` : 'son historique'} seront <strong>effacés de ce poste</strong>.
+             ${n ? 'Les pièces comptables que ce client t\'a envoyées seront supprimées du disque.' : ''}</p>
+             <p class="muted small">Une sauvegarde est prise juste avant. Si le client est simplement parti, préfère <strong>l'archivage</strong> : il disparaît des listes sans rien perdre.</p>`,
+            'SUPPRIMER');
+          if (!ok) return;
           try {
-            S = await api.saveDossier(dossier.id, {
-              name: $('#f-name', layer).value.trim() || dossier.name,
-              email: $('#f-email', layer).value.trim(),
-              note: $('#f-note', layer).value,
-              archived: $('#f-arch', layer).checked
-            });
-            close(); render(); toast('Fiche enregistrée.');
-          } catch (e) { toast(e.message || String(e), 'error'); }
+            S = await api.deleteDossier(dossier.id);
+            close(); location.hash = '#/dossiers'; render(); toast('Dossier supprimé.'); refreshBackupInfo();
+          } catch (e) { toast(plainError(e), 'error'); }
+        };
+        $('#ok', layer).onclick = async () => {
+          const f = readDossierFields(layer);
+          if (!f.name) return toast('Le nom ne peut pas être vide.', 'error');
+          const fromRaw = $('#f-from', layer).value.trim();
+          if (fromRaw && !/^\d{4}-\d{2}$/.test(fromRaw)) return toast('Le début de mission s\'écrit comme 2026-01.', 'error');
+          try {
+            const patch = { ...f, archived: $('#f-arch', layer).checked };
+            if (dossier.packs && dossier.packs.length) delete patch.matricule;  // il vient des paquets
+            const r = await api.saveDossier(dossier.id, patch);
+            S = r.state;
+            close(); render();
+            toast(r.moved ? `Fiche enregistrée · ${pl(r.moved, 'paquet')} rangé${r.moved > 1 ? 's' : ''} au nouveau nom.` : 'Fiche enregistrée.');
+          } catch (e) { toast(plainError(e), 'error'); }
         };
       }
     );
@@ -473,53 +945,108 @@
 
   // ---------- relances ----------
   function drawRelances(view) {
-    const rows = K.dossierList(S).filter(r => r.missingCount > 0 || r.provisionalCount > 0);
+    const rows = K.relanceRows(S);
+    const rel = K.relanceDue(S);
     view.innerHTML = `
-      <div class="page-head"><h1>Relances</h1></div>
+      <div class="page-head"><h1>Relances</h1>
+        ${rows.length > 1 ? `<div class="actions"><button class="btn btn-primary" id="group">Relancer tout le monde ${info('r.group')}</button></div>` : ''}</div>
       <p class="muted small mb">Un message qui nomme les mois manquants fait bouger ; « envoie-moi tes documents » non.
-      SkanFact prépare le texte, ton logiciel de messagerie l'envoie.</p>
+      SkanFact prépare le texte, ton logiciel de messagerie l'envoie — et la relance est enregistrée pour que tu saches, lundi, qui tu as déjà relancé.</p>
+      ${rel.due && rel.count ? `<div class="banner"><span>On est le <strong>${rel.jour}</strong> : tu as fixé le ${rel.day} du mois comme jour de relance.
+        ${pl(rel.count, 'dossier')} ${rel.count > 1 ? 'n\'ont' : 'n\'a'} pas tout envoyé.</span></div>` : ''}
       ${rows.length ? `<div class="scroll-x"><table class="list">
-        <thead><tr><th class="nw">Client</th><th class="nw">Email</th><th class="nw">Ce qui manque</th><th></th></tr></thead>
+        <thead><tr><th class="nw">Client</th><th class="nw">Contact</th><th class="nw">Ce qui manque</th><th class="nw">Dernière relance</th><th></th></tr></thead>
         <tbody>${rows.map(r => `<tr>
-          <td class="nw"><span class="dot-lvl ${r.level === 'ok' ? '' : r.level}"></span>${esc(r.name)}</td>
-          <td class="muted nw">${esc(r.email || '— à renseigner')}</td>
+          <td class="nw"><span class="dot-lvl ${r.level === 'ok' ? '' : esc(r.level)}"></span>${esc(r.name)}</td>
+          <td class="muted nw">${esc(r.email || r.phone || '— à renseigner')}</td>
           <td>${r.missingCount
             ? esc(K.missingLabel(r.missingMonths))
-            : `<span class="muted">${r.provisionalCount} mois non clôturé${r.provisionalCount > 1 ? 's' : ''}</span>`}</td>
-          <td class="actions"><button class="btn btn-ghost btn-sm" data-fiche="${esc(r.id)}">Le dossier</button>
+            : `<span class="muted">${pl(r.provisionalCount, 'mois', 'mois')} non clôturé${r.provisionalCount > 1 ? 's' : ''}</span>`}</td>
+          <td class="muted nw">${r.lastRelanceAt ? esc(fmtDay(r.lastRelanceAt)) + ` <span class="small">(${esc(ago(r.lastRelanceAt))}, ${esc(labelOf(K.RELANCE_WAYS, r.lastRelanceVia) || r.lastRelanceVia)})</span>` : 'jamais'}</td>
+          <td class="actions row-actions"><button class="btn btn-ghost btn-sm" data-fiche="${esc(r.id)}">Le dossier</button>
+            ${r.phone ? `<button class="btn btn-ghost btn-sm" data-tel="${esc(r.id)}">Appeler</button>` : ''}
             <button class="btn btn-primary btn-sm" data-rel="${esc(r.id)}">Écrire</button></td></tr>`).join('')}</tbody></table></div>`
         : `<div class="todo-ok">Personne à relancer : tous tes dossiers sont à jour.</div>`}`;
-    $$('[data-rel]', view).forEach(b => {
-      b.onclick = () => {
-        const r = K.dossierList(S).find(x => x.id === b.dataset.rel);
-        if (r) writeRelance(r);
+    const findRow = id => K.dossierList(S).find(x => x.id === id);
+    $$('[data-rel]', view).forEach(b => { b.onclick = () => { const r = findRow(b.dataset.rel); if (r) writeRelance(r); }; });
+    $$('[data-tel]', view).forEach(b => {
+      b.onclick = async () => {
+        const r = findRow(b.dataset.tel); if (!r) return;
+        try { await api.tel({ number: r.phone }); await recordRelance(r, 'tel'); render(); }
+        catch (e) { toast(plainError(e), 'error'); }
       };
     });
     $$('[data-fiche]', view).forEach(b => { b.onclick = () => { location.hash = '#/dossier/' + encodeURIComponent(b.dataset.fiche); }; });
+    const g = $('#group'); if (g) g.onclick = () => groupRelance(rows.slice());
   }
 
-  function writeRelance(row) {
+  async function recordRelance(row, via, note) {
+    try { S = await api.noteRelance(row.id, row.missingMonths || [], via, note || ''); }
+    catch (e) { toast(plainError(e), 'error'); }
+  }
+
+  function writeRelance(row, onDone) {
     const m = K.relanceMail(S.cabinet, row);
     modal(
       `<h2>Relancer ${esc(row.name)}</h2>
        <label class="field">Destinataire<input type="text" id="r-to" value="${esc(m.to)}" placeholder="adresse@client.tn"></label>
        <label class="field mt">Objet<input type="text" id="r-sub" value="${esc(m.subject)}"></label>
        <label class="field mt">Message<textarea id="r-body" rows="10">${esc(m.body)}</textarea></label>
-       <p class="muted small mt">Le message s'ouvre dans ton logiciel de messagerie : rien ne part sans que tu cliques sur « Envoyer ».</p>
-       <div class="modal-actions"><button class="btn" id="no">Annuler</button>
-       <button class="btn" id="copy">Copier le texte</button>
+       <p class="muted small mt">Le message s'ouvre dans ton logiciel de messagerie : rien ne part sans que tu cliques sur « Envoyer ».
+       La relance est enregistrée dans la fiche du client dès que tu l'ouvres.</p>
+       <div class="modal-actions"><button class="btn" id="no">${onDone ? 'Passer' : 'Annuler'}</button>
+       <button class="btn" id="copy">Copier</button>
+       ${row.phone ? '<button class="btn" id="wa">WhatsApp</button>' : ''}
        <button class="btn btn-primary" id="ok">Ouvrir dans ma messagerie</button></div>`,
       (layer, close) => {
-        $('#no', layer).onclick = close;
+        $('#no', layer).onclick = () => { close(); if (onDone) onDone(); };
         $('#copy', layer).onclick = async () => {
           try { await navigator.clipboard.writeText($('#r-body', layer).value); toast('Texte copié.'); }
           catch { toast('Copie impossible.', 'error'); }
         };
+        const wa = $('#wa', layer);
+        if (wa) wa.onclick = async () => {
+          try {
+            await api.tel({ number: row.phone, whatsapp: true, text: $('#r-body', layer).value });
+            await recordRelance(row, 'whatsapp');
+            close(); render(); if (onDone) onDone();
+          } catch (e) { toast(plainError(e), 'error'); }
+        };
         $('#ok', layer).onclick = async () => {
           const to = $('#r-to', layer).value.trim();
-          if (to && to !== row.email) { try { S = await api.saveDossier(row.id, { email: to }); } catch {} }
+          if (to && to !== row.email) { try { await api.saveDossier(row.id, { email: to }); } catch {} }
           await api.mail({ to, subject: $('#r-sub', layer).value, body: $('#r-body', layer).value });
-          close(); render();
+          await recordRelance(row, 'email');
+          close(); render(); if (onDone) onDone();
+        };
+      },
+      () => { if (onDone) onDone(); }
+    );
+  }
+
+  // Douze retardataires ne doivent pas coûter douze allers-retours dans la liste.
+  function groupRelance(rows) {
+    const next = () => {
+      const r = rows.shift();
+      if (!r) { render(); return toast('Tournée de relances terminée.'); }
+      const fresh = K.dossierList(S).find(x => x.id === r.id) || r;
+      writeRelance(fresh, next);
+    };
+    next();
+  }
+
+  function noteRelanceForm(row) {
+    modal(
+      `<h2>Noter une relance</h2>
+       <p class="muted small">Tu l'as appelé, croisé, ou relancé depuis ton téléphone : garde-en la trace ici.</p>
+       <label class="field">${lbl('Moyen', 'r.via')}<select id="n-via">${K.RELANCE_WAYS.map(w => `<option value="${esc(w.id)}">${esc(w.label)}</option>`).join('')}</select></label>
+       <label class="field mt">Note<input type="text" id="n-note" placeholder="« promet d'envoyer avant vendredi »"></label>
+       <div class="modal-actions"><button class="btn" id="no">Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
+      (layer, close) => {
+        $('#no', layer).onclick = close;
+        $('#ok', layer).onclick = async () => {
+          await recordRelance(row, $('#n-via', layer).value, $('#n-note', layer).value.trim());
+          close(); render(); toast('Relance enregistrée.');
         };
       }
     );
@@ -532,23 +1059,28 @@
       <div class="page-head"><h1>Réglages</h1></div>
       <div class="panel"><h2>Ton cabinet</h2>
         <div class="grid-2">
-          <label class="field span-2">Nom du cabinet<input type="text" id="c-name" value="${esc(c.name)}" placeholder="Cabinet Ben Salah"></label>
-          <label class="field span-2">Email<input type="email" id="c-email" value="${esc(c.email)}" placeholder="contact@cabinet.tn"></label>
+          <label class="field span-2">${lbl('Nom du cabinet', 'cab.name')}<input type="text" id="c-name" value="${esc(c.name)}" placeholder="Cabinet Ben Salah"></label>
+          <label class="field">${lbl('Email', 'cab.email')}<input type="email" id="c-email" value="${esc(c.email)}" placeholder="contact@cabinet.tn"></label>
+          <label class="field">${lbl('Téléphone', 'cab.phone')}<input type="tel" id="c-phone" value="${esc(c.phone || '')}" placeholder="+216 …"></label>
+          <label class="field narrow">${lbl('Jour de relance', 'cab.relanceDay')}<input type="number" id="c-day" min="1" max="28" value="${Number((S.settings || {}).relanceDay) || 10}"></label>
         </div>
         <p class="muted small mt">Ce nom apparaît en bas des relances que tu envoies et dans le fichier d'appairage remis à tes clients.</p>
-        <div class="modal-actions"><button class="btn btn-primary" id="c-save">Enregistrer</button></div>
+        <div class="modal-actions"><span class="saved" id="c-saved" hidden></span><button class="btn btn-primary" id="c-save">Enregistrer</button></div>
       </div>
 
-      <div class="panel"><h2>Le fichier à remettre à tes clients</h2>
+      <div class="panel"><h2>Le fichier à remettre à tes clients ${info('cab.pairing')}</h2>
         <p class="small">Chaque client doit importer ce fichier une fois, dans <strong>Paramètres → Cabinet comptable</strong> de son SkanFact.
         À partir de là, les paquets qu'il fabrique sont chiffrés <strong>pour toi seul</strong> : personne d'autre ne peut les ouvrir,
         même en interceptant le mail, et il n'a plus aucun mot de passe à te communiquer.</p>
-        <div class="mt"><div class="muted small">Empreinte de ton cabinet</div>
+        <div class="mt"><div class="muted small">${lbl('Empreinte de ton cabinet', 'cab.fingerprint')}</div>
           <div class="fingerprint">${esc(c.fingerprint || '—')}</div></div>
         <p class="muted small mt">Cette empreinte identifie ton cabinet. Ton client la voit après l'import : s'il te la lit au téléphone
         et qu'elle correspond, c'est bien à toi qu'il envoie.</p>
         <div class="modal-actions"><button class="btn btn-primary" id="c-pair">Enregistrer le fichier d'appairage…</button></div>
       </div>
+
+      <div class="panel" id="pan-backup"><h2>Sauvegardes</h2><p class="muted small">Chargement…</p></div>
+      <div class="panel" id="pan-secu"><h2>Sécurité</h2><p class="muted small">Chargement…</p></div>
 
       <div class="panel"><h2>Mises à jour</h2><div id="upd-panel"><p class="muted small">Chargement…</p></div></div>
 
@@ -562,43 +1094,336 @@
              <p class="small muted">C'est aussi ce qu'il faut montrer à un confrère à qui tu parles de SkanFact.
              L'exemple s'efface tout seul dès qu'un vrai paquet arrive : aucun risque de mélange.</p>
              <div class="modal-actions"><button class="btn btn-primary" id="r-demo-on">Charger l'exemple</button></div>`}
-      </div>
-
-      <div class="panel"><h2>Sécurité</h2>
-        <p class="small">Le fichier de ce cabinet est chiffré avec ton mot de passe (AES-256). Il contient la clé qui ouvre les paquets de
-        tes clients : si ce poste est perdu ou volé, personne ne peut les lire.</p>
-        <p class="small"><strong>Ta clé n'existe qu'ici.</strong> Ni nous, ni personne d'autre ne peut la reconstituer.
-        Si tu changes d'ordinateur, copie le dossier de l'application au lieu de repartir de zéro — sinon tes clients devront
-        réimporter un nouveau fichier d'appairage.</p>
-        <p class="muted small">À VÉRIFIER avec ton assureur ou ton Ordre : la conservation des pièces de tes clients sur ce poste
-        relève des mêmes obligations que tes archives papier.</p>
       </div>`;
     drawUpdatePanel();
+    drawBackupPanels();
     if ($('#r-demo-on')) $('#r-demo-on').onclick = async () => {
       S = await api.demo(true); toast('Exemple chargé : ces cinq dossiers sont fictifs.'); location.hash = '#/dossiers';
     };
-    if ($('#r-demo-off')) $('#r-demo-off').onclick = async () => {
-      S = await api.demo(false); render(); toast('Exemple effacé.');
-    };
+    if ($('#r-demo-off')) $('#r-demo-off').onclick = async () => { S = await api.demo(false); render(); toast('Exemple effacé.'); };
     $('#c-save').onclick = async () => {
       try {
-        S = await api.saveCabinet({ name: $('#c-name').value.trim(), email: $('#c-email').value.trim() });
-        render(); toast('Réglages enregistrés.');
-      } catch (e) { toast(e.message || String(e), 'error'); }
+        S = await api.saveCabinet({
+          name: $('#c-name').value.trim(), email: $('#c-email').value.trim(), phone: $('#c-phone').value.trim(),
+          settings: { relanceDay: Number($('#c-day').value) }
+        });
+        $('#brand-cab').textContent = S.cabinet.name || 'Cabinet';
+        flash($('#c-saved'));
+      } catch (e) { toast(plainError(e), 'error'); }
     };
     $('#c-pair').onclick = async () => {
       if (!(S.cabinet.name || '').trim()) return toast('Renseigne d\'abord le nom de ton cabinet.', 'error');
       try {
         const r = await api.exportPairing();
         if (r) {
-          toast('Fichier enregistré.');
           const ok = await confirmDialog('Fichier d\'appairage créé',
             `<p>Envoie ce fichier à tes clients (par mail, il ne contient rien de secret).</p>
              <p class="muted small">${esc(r.path)}</p>`, 'Le montrer dans le dossier');
           if (ok) api.reveal(r.path);
         }
-      } catch (e) { toast(e.message || String(e), 'error'); }
+      } catch (e) { toast(plainError(e), 'error'); }
     };
+  }
+
+  // ---------- les filets : sauvegardes et sécurité ----------
+  function drawBackupPanels() {
+    const b = $('#pan-backup'), s = $('#pan-secu');
+    if (!b || !s) return;
+    const inf = backupInfo || { list: [], external: {}, packs: {}, dir: '' };
+    const ext = inf.external || {};
+    const list = inf.list || [];
+
+    b.innerHTML = `<h2>Sauvegardes ${info('b.daily')}</h2>
+      <p class="small">Chaque jour, avant la première modification, SkanFact met de côté ton fichier tel qu'il était ce matin-là.
+      Une sauvegarde est prise aussi avant chaque import et avant chaque suppression. Trente jours sont conservés.</p>
+
+      <div class="kv mt">
+        <div><span>Sauvegardes</span><span>${list.length ? `${pl(list.length, 'fichier')} · la plus récente ${esc(fmtWhen(list[0].mtime))}` : '<span class="muted">aucune pour l\'instant</span>'}</span></div>
+        <div><span>${lbl('Copie externe', 'b.external')}</span><span>${ext.dir
+          ? esc(ext.dir) + (ext.lastError ? ` <span class="err-inline">⚠ ${esc(ext.lastError)}</span>` : ext.lastCopy ? ` <span class="muted small">copié ${esc(fmtWhen(Date.parse(ext.lastCopy)))}</span>` : '')
+          : '<span class="muted">aucune — c\'est le seul filet qui te protège d\'une panne de disque</span>'}</span></div>
+        <div><span>Paquets sur ce poste</span><span>${inf.packs && inf.packs.files ? `${pl(inf.packs.files, 'fichier')} · ${esc(fmtBytes(inf.packs.bytes))}` : '<span class="muted">aucun</span>'}</span></div>
+        <div><span>${lbl('Emplacement', 'b.where')}</span><span class="path">${esc(inf.dir || '')}</span></div>
+      </div>
+
+      ${!ext.dir ? `<div class="warn-box mt"><strong>Aucune copie hors de cet ordinateur.</strong>
+        Les sauvegardes quotidiennes sont sur le même disque que tes données : elles ne te sauveront pas d'une panne, d'un vol ou d'un vol d'ordinateur.
+        Choisis une clé USB, un disque externe ou un dossier iCloud Drive.</div>` : ''}
+
+      <div class="modal-actions wrap">
+        <button class="btn" id="b-now">Sauvegarder maintenant</button>
+        <button class="btn" id="b-ext">${ext.dir ? 'Changer le dossier de copie…' : 'Choisir un dossier de copie…'}</button>
+        ${ext.dir ? '<button class="btn" id="b-mirror">Copier maintenant</button><button class="btn btn-ghost" id="b-ext-off">Ne plus copier</button>' : ''}
+        <span class="grow"></span>
+        <button class="btn" id="b-open">Ouvrir le dossier</button>
+      </div>
+
+      ${list.length ? `<h3 class="mt">${lbl('Restaurer une sauvegarde', 'b.restore')}</h3>
+      <div class="scroll-x"><table class="list compact"><thead><tr><th>Sauvegarde</th><th class="nw">Date</th><th class="r">Taille</th><th></th></tr></thead>
+      <tbody>${list.slice(0, 40).map((x, i) => `<tr>
+        <td>${esc(x.daily ? 'Quotidienne' : x.name.replace(/-\d{4}-\d{2}-\d{2}_.*$/, '').replace(/_/g, ' '))}</td>
+        <td class="nw">${esc(fmtWhen(x.mtime))} <span class="muted small">${esc(ago(x.mtime))}</span></td>
+        <td class="r muted nw">${esc(fmtBytes(x.size))}</td>
+        <td class="actions row-actions"><button class="btn btn-ghost btn-sm" data-restore="${i}">Restaurer…</button></td></tr>`).join('')}</tbody></table></div>` : ''}`;
+
+    s.innerHTML = `<h2>Sécurité</h2>
+      <p class="small">Le fichier de ce cabinet est chiffré avec ton mot de passe (AES-256). Il contient la clé qui ouvre les paquets de
+      tes clients : si ce poste est perdu ou volé, personne ne peut les lire.</p>
+
+      <div class="warn-box mt"><strong>${lbl('Ta clé n\'existe qu\'ici.', 'b.recovery')}</strong>
+      Ni nous, ni personne d\'autre ne peut la reconstituer. Sans elle et sans cet ordinateur, <strong>aucun paquet déjà reçu ne pourra plus être ouvert</strong>,
+      et tes clients devront tous réimporter un nouveau fichier d'appairage.
+      <div class="mt">${recoveryLine()}</div></div>
+
+      <div class="modal-actions wrap">
+        <button class="btn btn-primary" id="s-rec">Enregistrer ma clé de secours…</button>
+        <button class="btn" id="s-rec-in">Restaurer une clé de secours…</button>
+        <span class="grow"></span>
+        <button class="btn" id="s-pw">${lbl('Changer le mot de passe…', 'b.password')}</button>
+        <button class="btn btn-ghost" id="s-lock">Verrouiller maintenant</button>
+      </div>
+
+      <p class="muted small mt">À VÉRIFIER avec ton assureur ou ton Ordre : la conservation des pièces de tes clients sur ce poste
+      relève des mêmes obligations que tes archives papier.</p>
+      <div class="modal-actions"><button class="btn btn-ghost btn-sm" id="s-support">Signaler un problème…</button></div>`;
+
+    $('#b-now').onclick = quickBackup;
+    $('#b-open').onclick = () => api.openDataDir();
+    $('#b-ext').onclick = async () => {
+      try {
+        const r = await api.pickExternal();
+        if (r) { backupInfo = await api.backups(); drawBackupPanels(); toast(r.lastError ? 'Dossier choisi, mais la copie a échoué : ' + r.lastError : 'Copie faite.'); }
+      } catch (e) { toast(plainError(e), 'error'); }
+    };
+    const off = $('#b-ext-off');
+    if (off) off.onclick = async () => {
+      const ok = await confirmDialog('Ne plus copier ?', '<p>Les fichiers déjà copiés restent où ils sont. Plus rien n\'y sera ajouté.</p>', 'Arrêter la copie', true);
+      if (!ok) return;
+      await api.clearExternal(); backupInfo = await api.backups(); drawBackupPanels();
+    };
+    const mir = $('#b-mirror');
+    if (mir) mir.onclick = async () => {
+      const r = await api.mirrorNow();
+      backupInfo = await api.backups(); drawBackupPanels();
+      toast(r.ok ? 'Copie faite.' : 'Copie impossible : ' + (r.lastError || 'support introuvable'), r.ok ? '' : 'error');
+    };
+    $$('[data-restore]', b).forEach(btn => { btn.onclick = () => doRestore(list[Number(btn.dataset.restore)]); });
+
+    $('#s-rec').onclick = exportRecovery;
+    $('#s-rec-in').onclick = importRecovery;
+    $('#s-pw').onclick = changePassword;
+    $('#s-lock').onclick = async () => {
+      const ok = await confirmDialog('Verrouiller le cabinet ?',
+        '<p>L\'application se referme sur son écran de mot de passe. Rien n\'est perdu : tu rouvres avec ton mot de passe.</p>', 'Verrouiller');
+      if (!ok) return;
+      await api.lock();
+      location.reload();
+    };
+    $('#s-support').onclick = supportDialog;
+  }
+
+  function recoveryLine() {
+    const at = (backupInfo && backupInfo.recoveryExportedAt) || recoveryAt;
+    return at
+      ? `<span class="ok-inline">✓ Clé de secours enregistrée le ${esc(fmtDay(at))}.</span> <span class="muted small">Vérifie qu'elle n'est pas sur ce Mac.</span>`
+      : `<span class="err-inline">⚠ Tu n'as jamais enregistré de clé de secours.</span> <span class="muted small">C'est le filet le plus important : trois minutes maintenant, ou tout est perdu le jour où le disque lâche.</span>`;
+  }
+  let recoveryAt = null;
+  api.recoveryStatus && api.recoveryStatus().then(r => { recoveryAt = r && r.exportedAt; }).catch(() => {});
+
+  async function doRestore(entry) {
+    if (!entry) return;
+    let peek;
+    try { peek = await api.peekBackup(entry.path); }
+    catch (e) {
+      const msg = plainError(e);
+      if (!/autre mot de passe/i.test(msg)) return toast(msg, 'error');
+      const pw = await askPassword('Sauvegarde d\'un autre mot de passe', 'Cette sauvegarde a été chiffrée avec un mot de passe différent de celui d\'aujourd\'hui.', 'Lire');
+      if (!pw) return;
+      try { peek = await api.peekBackup(entry.path, pw); } catch (e2) { return toast(plainError(e2), 'error'); }
+      return confirmRestore(entry, peek, pw);
+    }
+    confirmRestore(entry, peek, null);
+  }
+
+  async function confirmRestore(entry, peek, password) {
+    const dd = peek.actuels.dossiers - peek.dossiers;
+    const dp = peek.actuels.paquets - peek.paquets;
+    const ok = await confirmDialog('Restaurer cette sauvegarde ?',
+      `<p>Sauvegarde du <strong>${esc(fmtWhen(entry.mtime))}</strong>.</p>
+       <table class="list compact"><thead><tr><th></th><th class="r">La sauvegarde</th><th class="r">Maintenant</th></tr></thead>
+       <tbody><tr><td>Dossiers</td><td class="r">${peek.dossiers}</td><td class="r">${peek.actuels.dossiers}</td></tr>
+       <tr><td>Paquets</td><td class="r">${peek.paquets}</td><td class="r">${peek.actuels.paquets}</td></tr></tbody></table>
+       ${dd > 0 || dp > 0 ? `<p class="warn-box mt">Tu perdrais <strong>${dd > 0 ? pl(dd, 'dossier') : ''}${dd > 0 && dp > 0 ? ' et ' : ''}${dp > 0 ? pl(dp, 'paquet') : ''}</strong> enregistrés depuis.</p>` : ''}
+       <p class="muted small">Une sauvegarde de l'état actuel est prise juste avant : tu pourras revenir en arrière.</p>`,
+      'Restaurer', dd > 0 || dp > 0);
+    if (!ok) return;
+    try {
+      S = await api.restore(entry.path, password);
+      backupInfo = await api.backups();
+      render(); toast('Sauvegarde restaurée.');
+    } catch (e) { toast(plainError(e), 'error'); }
+  }
+
+  function exportRecovery() {
+    modal(
+      `<h2>Clé de secours</h2>
+       <p class="small">Ce fichier contient la clé qui <strong>ouvre les paquets de tes clients</strong>. Protège-le par un mot de passe
+       (différent de celui de l'application : ce fichier a vocation à quitter cet ordinateur).</p>
+       <div class="warn-box">Range-le <strong>ailleurs que sur ce Mac</strong> : une clé USB dans un tiroir, un coffre, chez ton associé.
+       Une clé de secours posée à côté de l'ordinateur ne protège de rien.</div>
+       <label class="field mt">Mot de passe de ce fichier<span class="pw-wrap"><input type="password" id="p1" autocomplete="new-password"><button type="button" class="pw-eye" id="eye">Afficher</button></span></label>
+       <label class="field mt">Confirme<input type="password" id="p2" autocomplete="new-password"></label>
+       <div class="modal-actions"><button class="btn" id="no">Annuler</button><button class="btn btn-primary" id="ok">Enregistrer le fichier…</button></div>`,
+      (layer, close) => {
+        const p1 = $('#p1', layer), p2 = $('#p2', layer);
+        $('#eye', layer).onclick = () => {
+          const t = p1.type === 'password' ? 'text' : 'password';
+          p1.type = t; p2.type = t; $('#eye', layer).textContent = t === 'password' ? 'Afficher' : 'Masquer';
+        };
+        $('#no', layer).onclick = close;
+        $('#ok', layer).onclick = async () => {
+          if (p1.value.length < 8) return toast('Huit caractères au minimum.', 'error');
+          if (p1.value !== p2.value) return toast('Les deux mots de passe ne sont pas les mêmes.', 'error');
+          try {
+            const r = await api.exportRecovery(p1.value);
+            if (!r) return;
+            close();
+            recoveryAt = Date.now();
+            drawBackupPanels();
+            const show = await confirmDialog('Clé de secours enregistrée',
+              `<p class="muted small">${esc(r.path)}</p><p>Copie-la maintenant sur une clé USB ou un disque que tu ranges ailleurs, et <strong>efface-la de cet ordinateur</strong>.</p>`,
+              'La montrer dans le dossier');
+            if (show) api.reveal(r.path);
+          } catch (e) { toast(plainError(e), 'error'); }
+        };
+      }
+    );
+  }
+
+  async function importRecovery() {
+    const ok = await confirmDialog('Restaurer une clé de secours ?',
+      `<p>La clé actuelle de ce cabinet sera <strong>remplacée</strong> par celle du fichier.</p>
+       <p class="muted small">À faire quand tu réinstalles l'application sur un nouvel ordinateur. Si tu le fais par erreur,
+       les paquets déjà reçus avec l'ancienne clé ne s'ouvriront plus. Une sauvegarde est prise juste avant.</p>`,
+      'Continuer', true);
+    if (!ok) return;
+    const pw = await askPassword('Mot de passe de la clé de secours', 'Celui que tu as choisi en l\'enregistrant.', 'Restaurer');
+    if (!pw) return;
+    try {
+      const r = await api.importRecovery(pw);
+      if (!r) return;
+      await refresh(); render();
+      toast('Clé restaurée. Empreinte : ' + r.fingerprint);
+    } catch (e) { toast(plainError(e), 'error'); }
+  }
+
+  function changePassword() {
+    modal(
+      `<h2>Changer le mot de passe</h2>
+       <p class="small">Le fichier du cabinet et toutes ses sauvegardes seront rechiffrés avec le nouveau mot de passe.</p>
+       <label class="field">Mot de passe actuel<input type="password" id="p0" autocomplete="current-password"></label>
+       <label class="field mt">Nouveau mot de passe<span class="pw-wrap"><input type="password" id="p1" autocomplete="new-password"><button type="button" class="pw-eye" id="eye">Afficher</button></span><span class="muted small" id="str"></span></label>
+       <label class="field mt">Confirme<input type="password" id="p2" autocomplete="new-password"></label>
+       <div class="warn-box mt">Il n'y a toujours aucun moyen de le récupérer. Note le nouveau avant de valider.</div>
+       <div class="modal-actions"><button class="btn" id="no">Annuler</button><button class="btn btn-primary" id="ok">Changer</button></div>`,
+      (layer, close) => {
+        const p1 = $('#p1', layer), p2 = $('#p2', layer);
+        p1.oninput = () => { $('#str', layer).textContent = strengthText(p1.value); };
+        $('#eye', layer).onclick = () => {
+          const t = p1.type === 'password' ? 'text' : 'password';
+          p1.type = t; p2.type = t; $('#eye', layer).textContent = t === 'password' ? 'Afficher' : 'Masquer';
+        };
+        $('#no', layer).onclick = close;
+        $('#ok', layer).onclick = async () => {
+          if (p1.value.length < 8) return toast('Huit caractères au minimum.', 'error');
+          if (p1.value !== p2.value) return toast('Les deux mots de passe ne sont pas les mêmes.', 'error');
+          try {
+            await api.changePassword($('#p0', layer).value, p1.value);
+            close();
+            backupInfo = await api.backups(); drawBackupPanels();
+            toast('Mot de passe changé. Les sauvegardes ont été rechiffrées.');
+          } catch (e) { toast(plainError(e), 'error'); }
+        };
+      }
+    );
+  }
+
+  async function supportDialog() {
+    let inf = {};
+    try { inf = await api.support(); } catch {}
+    modal(
+      `<h2>Signaler un problème</h2>
+       <p class="small">Copie ces informations dans ton message : elles disent où en est ton installation, sans rien révéler du contenu de tes dossiers.</p>
+       <pre class="code-box" id="sup">SkanFact Cabinet ${esc(inf.version || '')}
+Système : ${esc(inf.platform || '')} ${esc(inf.arch || '')} · Electron ${esc(inf.electron || '')}
+Dossiers : ${inf.dossiers || 0} · Paquets : ${inf.paquets || 0}
+Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.external && inf.external.lastError ? ' (erreur : ' + esc(inf.external.lastError) + ')' : ''}</pre>
+       <div class="modal-actions"><button class="btn" id="log">Ouvrir le journal technique</button><span class="grow"></span>
+       <button class="btn" id="copy">Copier</button><button class="btn btn-primary" id="ok">Fermer</button></div>`,
+      (layer, close) => {
+        $('#ok', layer).onclick = close;
+        $('#log', layer).onclick = () => api.openLog();
+        $('#copy', layer).onclick = async () => {
+          try { await navigator.clipboard.writeText($('#sup', layer).textContent); toast('Copié.'); }
+          catch { toast('Copie impossible.', 'error'); }
+        };
+      }
+    );
+  }
+
+  // ---------- recherche rapide (Cmd+K) ----------
+  function openPalette() {
+    if ($('#palette-root')) return;
+    const root = document.createElement('div');
+    root.id = 'palette-root';
+    root.innerHTML = `<div class="palette">
+      <input type="text" id="pal-q" placeholder="Chercher un client, ou taper une action…" autocomplete="off" spellcheck="false">
+      <div class="results" id="pal-res"></div>
+      <div class="hint">↑ ↓ pour choisir · Entrée pour ouvrir · Échap pour fermer</div></div>`;
+    document.body.appendChild(root);
+    const close = () => { root.remove(); document.removeEventListener('keydown', onKey, true); };
+    let sel = 0, items = [];
+
+    const actions = [
+      { kind: 'action', main: 'Importer un paquet…', go: () => doImport() },
+      { kind: 'action', main: 'Nouveau dossier client…', go: () => newDossierForm() },
+      { kind: 'action', main: 'Sauvegarder maintenant', go: () => quickBackup() },
+      { kind: 'action', main: 'Relances', go: () => { location.hash = '#/relances'; } },
+      { kind: 'action', main: 'Réglages', go: () => { location.hash = '#/reglages'; } },
+      { kind: 'action', main: 'Aide', go: () => { location.hash = '#/aide'; } }
+    ];
+
+    function draw() {
+      const q = $('#pal-q', root).value.trim().toLowerCase();
+      const rows = K.dossierList(S, null, { q, withArchived: true }).slice(0, 30).map(r => ({
+        kind: 'client', main: r.name,
+        sub: [r.matricule, r.missingCount ? pl(r.missingCount, 'mois', 'mois') + ' manquant' + (r.missingCount > 1 ? 's' : '') : ''].filter(Boolean).join(' · '),
+        go: () => { location.hash = '#/dossier/' + encodeURIComponent(r.id); }
+      }));
+      const acts = actions.filter(a => !q || a.main.toLowerCase().includes(q));
+      items = rows.concat(acts);
+      if (sel >= items.length) sel = Math.max(0, items.length - 1);
+      $('#pal-res', root).innerHTML = items.length
+        ? items.map((x, i) => `<div class="res ${i === sel ? 'sel' : ''}" data-i="${i}">
+            <span class="kind">${esc(x.kind)}</span><span class="main">${esc(x.main)}</span>
+            ${x.sub ? `<span class="sub">${esc(x.sub)}</span>` : ''}</div>`).join('')
+        : '<div class="res"><span class="main muted">Rien ne correspond.</span></div>';
+      $$('.res[data-i]', root).forEach(el => {
+        el.onclick = () => { const x = items[Number(el.dataset.i)]; close(); if (x) x.go(); };
+      });
+    }
+    const onKey = e => {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); return close(); }
+      if (e.key === 'ArrowDown') { e.preventDefault(); sel = Math.min(items.length - 1, sel + 1); draw(); }
+      if (e.key === 'ArrowUp') { e.preventDefault(); sel = Math.max(0, sel - 1); draw(); }
+      if (e.key === 'Enter') { e.preventDefault(); const x = items[sel]; close(); if (x) x.go(); }
+    };
+    document.addEventListener('keydown', onKey, true);
+    root.addEventListener('mousedown', e => { if (e.target === root) close(); });
+    $('#pal-q', root).oninput = () => { sel = 0; draw(); };
+    draw();
+    $('#pal-q', root).focus();
   }
 
   // ---------- mises à jour ----------
@@ -629,7 +1454,7 @@
     // pas un champ que personne n'a à remplir.
     // Un relais en panne se dit : un écran qui affirme « rien à configurer » devant une mise à jour
     // impossible laisse le comptable sans recours.
-    const noteRelais = a.relayFailure ? `<p class="small mt" style="color:var(--danger)">${h(a.relayFailure)}</p>` : '';
+    const noteRelais = a.relayFailure ? `<p class="small mt" style="color:var(--danger)">${esc(a.relayFailure)}</p>` : '';
     const jeton = a.relay ? '<p class="small muted mt">Les mises à jour arrivent toutes seules : rien à configurer.</p>' : noteRelais + `<div class="token-box">
       <div class="k-label">Accès au dépôt</div>
       <p class="small muted">SkanFact est distribué depuis un dépôt privé : un jeton de lecture est nécessaire pour recevoir les mises à jour.
@@ -676,47 +1501,9 @@
   function drawAide(view) {
     view.innerHTML = `
       <div class="page-head"><h1>Comment ça marche</h1></div>
-      <div class="panel"><h2>En trois gestes</h2>
-        <ol class="small" style="line-height:1.8">
-          <li><strong>Une fois :</strong> renseigne ton cabinet dans Réglages, enregistre le fichier d'appairage
-          (<code>.skanpair</code>) et envoie-le à chacun de tes clients.</li>
-          <li><strong>Chaque mois :</strong> ton client clôture son mois puis t'envoie un paquet (<code>.skanpack</code>).
-          Tu l'enregistres et tu cliques sur « Importer un paquet… ».</li>
-          <li><strong>Le 10 :</strong> la page Dossiers te dit qui n'a rien envoyé. Un clic sur « Relancer » prépare le message.</li>
-        </ol>
-      </div>
-      <div class="panel"><h2>Ce que contient un paquet</h2>
-        <p class="small">La page de garde (un PDF qui résume le mois et liste ce qui manque), les journaux au format CSV
-        (ventes, achats, encaissements, règlements fournisseurs, trésorerie), les factures et avoirs en PDF, les bulletins de paie,
-        et les justificatifs que ton client a joints à ses achats.</p>
-        <p class="small"><strong>Et surtout <code>journaux/ecritures.csv</code></strong> : les pièces du mois déjà transformées en écritures
-        en partie double, à importer dans ton logiciel au lieu de les ressaisir. Si les numéros de compte ne sont pas les tiens,
-        donne-les à ton client une fois : il les saisit dans son SkanFact et tous ses envois suivants sont à ton format.</p>
-        <p class="small">Un <strong>manifeste</strong> porte l'empreinte de chaque fichier. À l'import, SkanFact les recalcule toutes :
-        c'est ce qui te permet d'affirmer que ce que tu as reçu est exactement ce qui a été envoyé.</p>
-      </div>
-      <div class="panel"><h2>Définitif ou provisoire</h2>
-        <p class="small">Un paquet n'est <strong>définitif</strong> que si le client a clôturé son mois : après une clôture, il ne peut plus
-        ni modifier ni supprimer une pièce de cette période sans rouvrir le mois, avec un motif écrit.</p>
-        <p class="small">Un paquet <strong>provisoire</strong> se lit, mais ses chiffres peuvent encore bouger. Si tu reçois deux fois le même
-        mois, SkanFact te le dit — et te prévient si le remplacé était définitif.</p>
-      </div>
-      <div class="panel"><h2>Les mises à jour</h2>
-        <p class="small">SkanFact Cabinet vérifie au démarrage s'il existe une version plus récente, la télécharge
-        et te propose de l'installer : <strong>Réglages → Mises à jour</strong>. Sur Mac, l'application se ferme,
-        se remplace toute seule et se relance — une dizaine de secondes.</p>
-        <p class="small">L'application et celle de tes clients portent le <strong>même numéro de version</strong> :
-        si un client dit « je suis en 6.6.0 » et que tu es en 6.6.0, vous parlez bien de la même chose.</p>
-        <p class="small muted">Un jeton d'accès est demandé une seule fois, parce que l'application n'est pas encore
-        distribuée publiquement. Demande-le à qui t'a remis SkanFact Cabinet ; il reste sur ton ordinateur.</p>
-      </div>
-      <div class="panel"><h2>Ce que cette application ne fait pas</h2>
-        <p class="small">Elle <strong>ne modifie jamais</strong> la comptabilité de tes clients et ne leur renvoie rien.
-        Une correction se demande au client, qui la saisit chez lui : sinon deux versions des mêmes comptes coexistent,
-        et plus personne ne sait laquelle fait foi.</p>
-        <p class="small">Elle ne dépose aucune déclaration et ne se connecte à aucune administration.</p>
-      </div>`;
+      <p class="lead">Partout dans l'application, les petits <span class="i-demo">i</span> expliquent le champ juste à côté.</p>
+      ${G.ARTICLES.map(a => `<div class="panel"><h2>${esc(a.t)}</h2>${a.d}</div>`).join('')}`;
   }
 
-  boot().catch(e => { $('#lock-sub').textContent = 'Erreur au démarrage : ' + (e.message || e); });
+  boot().catch(e => { $('#lock-sub').textContent = 'Erreur au démarrage : ' + plainError(e); });
 })();

@@ -42,17 +42,61 @@
     return out;
   }
 
-  const DEFAULT_STATE = { format: FORMAT, cabinet: { name: '', email: '', publicKey: '', privateKey: '' }, dossiers: [], settings: { relanceDay: 10 } };
+  // Les régimes de TVA qu'on rencontre en Tunisie. Ils ne changent pas ce qu'on ATTEND (un client
+  // tient sa comptabilité tous les mois quoi qu'il arrive) mais ce qu'on DÉCLARE pour lui.
+  // À VÉRIFIER avec le comptable : les périodicités et les échéances dépendent du régime réel.
+  const TVA_PERIODS = [
+    { id: 'mensuelle', label: 'TVA mensuelle' },
+    { id: 'trimestrielle', label: 'TVA trimestrielle' },
+    { id: 'non-assujetti', label: 'Non assujetti à la TVA' }
+  ];
+  const REGIMES = [
+    { id: 'reel', label: 'Régime réel' },
+    { id: 'forfaitaire', label: 'Régime forfaitaire' },
+    { id: 'autre', label: 'Autre / à préciser' }
+  ];
+  const RELANCE_WAYS = [
+    { id: 'email', label: 'Email' },
+    { id: 'tel', label: 'Téléphone' },
+    { id: 'whatsapp', label: 'WhatsApp' },
+    { id: 'autre', label: 'Autre' }
+  ];
+
+  const DEFAULT_SETTINGS = { relanceDay: 10 };
+  const DEFAULT_STATE = { format: FORMAT, cabinet: { name: '', email: '', phone: '', publicKey: '', privateKey: '' }, dossiers: [], settings: { ...DEFAULT_SETTINGS } };
+
+  // Une fiche de dossier complète. Tout ce qui est ajouté ici doit être FACULTATIF à la lecture :
+  // un cabinet qui ouvre une base d'avant cette version ne doit rien perdre et rien voir casser.
+  function migrateDossier(d) {
+    d = d || {};
+    return {
+      id: d.id || '', name: d.name || '', matricule: d.matricule || '',
+      email: d.email || '', phone: d.phone || '', contact: d.contact || '',
+      note: d.note || '', archived: !!d.archived, demo: !!d.demo,
+      // Créé à la main : le client n'utilise pas (encore) SkanFact. On ne lui réclame rien, mais il
+      // compte dans le portefeuille — c'est ce qui permet au cabinet de voir ses 60 clients ici.
+      manual: !!d.manual,
+      // Premier mois attendu de ce client. Vide = le premier mois reçu. C'est ce qui permet de dire
+      // « je reprends ce dossier à partir de janvier » et d'être alerté sur les mois d'avant.
+      from: /^\d{4}-\d{2}$/.test(String(d.from || '')) ? d.from : '',
+      regime: d.regime || '', tvaPeriod: d.tvaPeriod || '', fees: Number(d.fees) || 0,
+      createdAt: d.createdAt || null,
+      // L'historique des relances. Sans lui, le lundi suivant on ne sait plus qui a été relancé.
+      relances: Array.isArray(d.relances) ? d.relances.map(r => ({
+        at: r.at || null, months: Array.isArray(r.months) ? r.months : [],
+        via: r.via || 'email', note: r.note || ''
+      })) : [],
+      packs: Array.isArray(d.packs) ? d.packs : []
+    };
+  }
 
   function migrate(state) {
     const s = { ...DEFAULT_STATE, ...(state && typeof state === 'object' ? state : {}) };
     s.cabinet = { ...DEFAULT_STATE.cabinet, ...(s.cabinet || {}) };
-    s.settings = { ...DEFAULT_STATE.settings, ...(s.settings || {}) };
-    s.dossiers = Array.isArray(s.dossiers) ? s.dossiers.map(d => ({
-      id: d.id || '', name: d.name || '', matricule: d.matricule || '', email: d.email || '',
-      note: d.note || '', archived: !!d.archived, demo: !!d.demo,
-      packs: Array.isArray(d.packs) ? d.packs : []
-    })) : [];
+    s.settings = { ...DEFAULT_SETTINGS, ...(s.settings || {}) };
+    const day = Number(s.settings.relanceDay);
+    s.settings.relanceDay = day >= 1 && day <= 28 ? Math.round(day) : 10;
+    s.dossiers = Array.isArray(s.dossiers) ? s.dossiers.map(migrateDossier) : [];
     s.format = FORMAT;
     return s;
   }
@@ -118,23 +162,46 @@
     const e = (manifest && manifest.entreprise) || {};
     let dossier = state.dossiers.find(d => d.id === key);
     let created = false;
+    let adopted = false;
     if (!dossier) {
-      dossier = { id: key, name: e.nom || '(sans nom)', matricule: e.matricule || '', email: '', note: '', archived: false, packs: [] };
+      dossier = migrateDossier({ id: key, name: e.nom || '(sans nom)', matricule: e.matricule || '' });
       state.dossiers.push(dossier);
       created = true;
     } else if (e.nom && e.nom !== dossier.name) {
       dossier.name = e.nom;                     // l'entreprise a changé de raison sociale : on suit
     }
+    // Un dossier créé à la main qui reçoit son premier paquet cesse d'être « hors SkanFact ». C'est
+    // le moment que le cabinet attendait : son client s'y est mis. On le dit à l'interface.
+    if (dossier.manual) { dossier.manual = false; adopted = true; }
     const sum = packSummary(manifest, extra);
     const before = dossier.packs.filter(p => p.month === sum.month);
     dossier.packs = dossier.packs.filter(p => p.month !== sum.month).concat([sum])
       .sort((a, b) => a.month < b.month ? 1 : a.month > b.month ? -1 : 0);
     return {
-      dossier, created, replaced: before.length > 0,
+      dossier, created, adopted, replaced: before.length > 0,
       wasDefinitive: before.some(p => p.definitive),
       nowDefinitive: sum.definitive,
       month: sum.month, summary: sum
     };
+  }
+
+  // Créer un dossier à la main : le cabinet a soixante clients, deux sous SkanFact. Sans ça,
+  // l'application ne montre que la portion congrue de son portefeuille et ne sert à rien tant que
+  // tout le monde n'a pas migré. L'identifiant suit la MÊME règle que celle des paquets : le jour où
+  // ce client enverra son premier paquet, il tombera dans ce dossier-ci au lieu d'en créer un second.
+  function newDossier(fields) {
+    const f = fields || {};
+    const id = dossierKey({ entreprise: { matricule: f.matricule || '', nom: f.name || '' } });
+    return migrateDossier({ ...f, id, manual: true, packs: [] });
+  }
+
+  // Enregistrer qu'on a relancé. Le geste existait, la trace non : on cliquait « Écrire », le mail
+  // partait, et le lundi suivant plus personne ne savait qui avait été relancé.
+  function noteRelance(dossier, months, via, at, note) {
+    dossier.relances = (dossier.relances || []).concat([{
+      at: at || Date.now(), months: (months || []).slice(), via: via || 'email', note: note || ''
+    }]).slice(-50);
+    return dossier;
   }
 
   // L'état d'un dossier, mois par mois. `from` = le premier mois qu'on attend de ce client ;
@@ -142,8 +209,16 @@
   function dossierMonths(dossier, todayIso) {
     const t = todayIso || today();
     const curMonth = t.slice(0, 7);
+    // Un dossier créé à la main suit un client qui n'utilise pas encore SkanFact : on ne lui réclame
+    // rien tant qu'il n'a pas commencé. Le réclamer afficherait vingt mois manquants le jour de sa
+    // création, et noierait les vrais retards.
+    if (dossier.manual) return [];
     const got = (dossier.packs || []).slice().sort((a, b) => a.month < b.month ? -1 : 1);
-    if (!got.length) return [];
+    // `from` est la date de début de mission, saisie par le comptable. C'est le seul moyen de dire
+    // « je reprends ce client à partir de janvier » : sans elle, l'attente démarre au premier paquet
+    // reçu et les mois d'avant ne sont jamais réclamés — un client repris en cours d'année passait
+    // à travers sans que rien ne l'annonce.
+    if (!got.length && !dossier.from) return [];
     const first = dossier.from || got[0].month;
     const last = addMonth(curMonth, -1);                    // le mois en cours n'est jamais attendu
     if (last < first) return [];
@@ -165,34 +240,113 @@
     const provisional = months.filter(m => m.state === 'provisoire');
     const last = (dossier.packs || []).slice().sort((a, b) => a.month < b.month ? 1 : -1)[0] || null;
     const issues = (dossier.packs || []).reduce((s, p) => s + (p.missing || []).reduce((a, x) => a + (x.count || 0), 0), 0);
-    const level = missing.length ? 'danger' : provisional.length ? 'warn' : 'ok';
+    // « hors » n'est pas « à jour » : un client qui n'utilise pas SkanFact n'a rien envoyé, mais il
+    // n'est pas en retard non plus. Les confondre ferait afficher « tout est à jour » à un cabinet
+    // dont cinquante-huit clients sur soixante n'envoient rien.
+    const level = dossier.manual ? 'hors' : missing.length ? 'danger' : provisional.length ? 'warn' : 'ok';
+    const relances = dossier.relances || [];
+    const lastRel = relances.length ? relances[relances.length - 1] : null;
     return {
-      id: dossier.id, name: dossier.name, matricule: dossier.matricule, email: dossier.email,
-      archived: !!dossier.archived,
+      id: dossier.id, name: dossier.name, matricule: dossier.matricule,
+      email: dossier.email, phone: dossier.phone || '', contact: dossier.contact || '',
+      archived: !!dossier.archived, manual: !!dossier.manual,
+      regime: dossier.regime || '', tvaPeriod: dossier.tvaPeriod || '', fees: Number(dossier.fees) || 0,
+      from: dossier.from || '',
+      relanceCount: relances.length,
+      lastRelanceAt: lastRel ? lastRel.at : null,
+      lastRelanceVia: lastRel ? lastRel.via : '',
+      lastRelanceMonths: lastRel ? (lastRel.months || []) : [],
       lastMonth: last ? last.month : '', lastLabel: last ? last.label : '',
       lastAt: last ? last.receivedAt : null, lastDefinitive: last ? last.definitive : false,
       lastFigures: last ? (last.figures || null) : null,
       months: months.length, missingMonths: missing.map(m => m.month), missingCount: missing.length,
       provisionalCount: provisional.length, issues, level,
+      packCount: (dossier.packs || []).length,
       // ce qui décide du tri : un dossier en retard de trois mois passe devant un dossier à jour
       score: missing.length * 1000 + provisional.length * 10 + (issues ? 1 : 0)
     };
   }
 
+  // Le tri des listes. On garde le classement par urgence comme tri PAR DÉFAUT (c'est la question
+  // que l'application existe pour répondre), mais un cabinet à soixante lignes a besoin de ranger
+  // par nom, par dernier mois reçu, par chiffre d'affaires.
+  const SORTS = {
+    urgence: (a, b) => b.score - a.score || a.name.localeCompare(b.name, 'fr'),
+    nom: (a, b) => a.name.localeCompare(b.name, 'fr'),
+    dernier: (a, b) => String(b.lastMonth || '').localeCompare(String(a.lastMonth || '')) || a.name.localeCompare(b.name, 'fr'),
+    recu: (a, b) => (b.lastAt || 0) - (a.lastAt || 0) || a.name.localeCompare(b.name, 'fr'),
+    ca: (a, b) => ((b.lastFigures && b.lastFigures.ca) || 0) - ((a.lastFigures && a.lastFigures.ca) || 0) || a.name.localeCompare(b.name, 'fr'),
+    manquants: (a, b) => b.missingCount - a.missingCount || a.name.localeCompare(b.name, 'fr'),
+    relance: (a, b) => (a.lastRelanceAt || 0) - (b.lastRelanceAt || 0) || a.name.localeCompare(b.name, 'fr')
+  };
+
   function dossierList(state, todayIso, opts) {
     opts = opts || {};
     const rows = (state.dossiers || [])
       .filter(d => opts.withArchived ? true : !d.archived)
+      .filter(d => opts.onlySkanfact ? !d.manual : true)
       .map(d => dossierRow(d, todayIso));
     const q = String(opts.q || '').trim().toLowerCase();
-    const kept = q ? rows.filter(r => (r.name + ' ' + r.matricule + ' ' + r.email).toLowerCase().includes(q)) : rows;
-    return kept.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, 'fr'));
+    const kept = q
+      ? rows.filter(r => (r.name + ' ' + r.matricule + ' ' + r.email + ' ' + r.phone + ' ' + r.contact).toLowerCase().includes(q))
+      : rows;
+    const cmp = SORTS[opts.sort] || SORTS.urgence;
+    const out = kept.slice().sort(cmp);
+    if (opts.desc && opts.sort && opts.sort !== 'urgence') out.reverse();
+    return out;
+  }
+
+  // Le portefeuille d'un coup d'œil. C'est ce qui manquait pour qu'un comptable voie autre chose
+  // qu'une liste : combien de clients, combien sont à jour, combien de chiffre d'affaires suivi.
+  function portfolio(state, todayIso) {
+    const rows = dossierList(state, todayIso, { withArchived: false });
+    const suivis = rows.filter(r => !r.manual);
+    const ca = suivis.reduce((s, r) => s + ((r.lastFigures && r.lastFigures.ca) || 0), 0);
+    const fees = rows.reduce((s, r) => s + (r.fees || 0), 0);
+    return {
+      total: rows.length,
+      surSkanfact: suivis.length,
+      horsSkanfact: rows.filter(r => r.manual).length,
+      aJour: suivis.filter(r => r.level === 'ok').length,
+      enRetard: suivis.filter(r => r.missingCount > 0).length,
+      provisoires: suivis.filter(r => r.provisionalCount > 0 && !r.missingCount).length,
+      moisManquants: suivis.reduce((s, r) => s + r.missingCount, 0),
+      dernierCA: round3(ca),
+      honoraires: round3(fees),
+      paquets: rows.reduce((s, r) => s + r.packCount, 0)
+    };
+  }
+
+  // « Le 10 : la page Dossiers te dit qui n'a rien envoyé » — l'aide le promettait depuis la 1.0.0
+  // et rien ne l'implémentait. Voilà le jour venu.
+  function relanceDue(state, todayIso) {
+    const t = todayIso || today();
+    const day = Number((state.settings || {}).relanceDay) || 10;
+    const jour = Number(t.slice(8, 10));
+    const rows = dossierList(state, t).filter(r => r.missingCount > 0);
+    return { day, due: jour >= day, jour, count: rows.length, rows };
+  }
+
+  // Qui figure sur la page Relances. La pastille de la barre latérale compte EXACTEMENT ces
+  // lignes-là : avant, elle comptait les seuls retardataires pendant que la page en listait trois
+  // (elle y ajoutait les provisoires). Deux chiffres pour la même chose, et aucun des deux faux —
+  // c'est le genre d'incohérence qui fait douter de tout le reste.
+  function relanceRows(state, todayIso) {
+    return dossierList(state, todayIso).filter(r => r.missingCount > 0 || r.provisionalCount > 0);
   }
 
   // Ce que le cabinet a sur le feu, tous dossiers confondus. C'est ce qu'il regarde en arrivant.
   function cabinetTodo(state, todayIso) {
     const rows = dossierList(state, todayIso);
     const out = [];
+    // Le jour de relance, en tête : c'est une échéance, pas un état.
+    const rel = relanceDue(state, todayIso);
+    if (rel.due && rel.count) out.push({
+      id: 'jour-de-relance', level: 'danger',
+      label: `On est le ${rel.jour} : ${pl(rel.count, 'dossier')} à relancer`,
+      detail: `Tu as fixé le ${rel.day} du mois comme jour de relance (Réglages). ${rel.count > 1 ? 'Ces dossiers n\'ont' : 'Ce dossier n\'a'} pas envoyé tous ${rel.count > 1 ? 'leurs' : 'ses'} mois clôturés.`,
+      count: rel.count, rows: rel.rows
+    });
     const late = rows.filter(r => r.missingCount > 0);
     if (late.length) out.push({
       id: 'manquants', level: 'danger',
@@ -306,9 +460,10 @@
   }
 
   return {
-    FORMAT, MONTHS_FR, DEFAULT_STATE,
-    monthLabel, monthListLabel, missingLabel, addMonth, monthsBetween, today,
-    migrate, dossierKey, packSummary, filePack, demoDossiers, checkIntegrity,
+    FORMAT, MONTHS_FR, DEFAULT_STATE, DEFAULT_SETTINGS, TVA_PERIODS, REGIMES, RELANCE_WAYS, SORTS,
+    monthLabel, monthListLabel, missingLabel, addMonth, monthsBetween, today, de,
+    migrate, migrateDossier, dossierKey, packSummary, filePack, demoDossiers, checkIntegrity,
+    newDossier, noteRelance, portfolio, relanceDue, relanceRows,
     dossierMonths, dossierRow, dossierList, cabinetTodo, relanceMail, pairingFile
   };
 }));

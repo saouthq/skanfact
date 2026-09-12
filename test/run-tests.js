@@ -3356,10 +3356,527 @@ t('cabinet : la clé privée ne traverse jamais le pont vers l\'interface', () =
   });
   assert.ok(handlers.length >= 0);
   // L'interface ne reçoit aucun moyen de demander la clé.
-  const pre = fs.readFileSync(path.join(__dirname, '..', 'src', 'cabinet', 'preload.js'), 'utf8');
+  const preRaw = fs.readFileSync(path.join(__dirname, '..', 'src', 'cabinet', 'preload.js'), 'utf8');
+  // On juge le CODE, pas les commentaires : un commentaire qui explique la règle en la citant
+  // faisait échouer le test qui la fait respecter. Le garde-fou doit viser ce qui s'exécute.
+  const pre = preRaw.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
   assert.ok(!/privateKey/.test(pre), 'le préchargement ne parle pas de clé privée');
   // Et elle n'écrit jamais chez un client : aucune fonction d'export de données vers l'entreprise.
   assert.ok(!/data:save|pack:build/.test(pre), 'l\'app cabinet ne doit rien pouvoir écrire chez un client');
+  // Le garde-fou lui-même doit rester efficace : la version sans commentaires contient bien le code.
+  assert.ok(/contextBridge\.exposeInMainWorld/.test(pre), 'le nettoyage des commentaires a mangé le code');
+});
+
+// ---------- cabinet 2.0.0 : le portefeuille, les relances, les filets ----------
+
+t('cabinet : un dossier se crée à la main, et le premier paquet l\'adopte', () => {
+  const S = cab.migrate({});
+  // Un cabinet a soixante clients dont deux sous SkanFact. Sans création manuelle, l'application
+  // ne montre que ces deux-là et ne sert à rien tant que tout le monde n'a pas migré.
+  const d = cab.newDossier({ name: 'Menuiserie Trabelsi SUARL', matricule: '1122334A/M/P/000', phone: '+216 22 333 444' });
+  S.dossiers.push(d);
+  assert.strictEqual(d.manual, true);
+  assert.strictEqual(cab.dossierRow(d, '2026-09-12').level, 'hors', 'un client hors SkanFact n\'est ni à jour ni en retard');
+  assert.strictEqual(cab.dossierMonths(d, '2026-09-12').length, 0, 'on ne réclame rien à qui n\'a pas l\'application');
+  assert.strictEqual(cab.relanceRows(S, '2026-09-12').length, 0);
+
+  // L'identifiant suit la MÊME règle que celle des paquets : le premier envoi tombe dans CE
+  // dossier-ci au lieu d'en créer un second.
+  const manifest = { entreprise: { nom: 'Menuiserie Trabelsi SUARL', matricule: '1122334A/M/P/000' }, periode: { mois: '2026-08' }, fichiers: [], definitif: true };
+  assert.strictEqual(cab.dossierKey(manifest), d.id, 'la clé d\'un dossier créé à la main doit être celle des paquets');
+  const r = cab.filePack(S, manifest, { receivedAt: 1, path: '/x' });
+  assert.strictEqual(S.dossiers.length, 1, 'le paquet ne doit pas créer un doublon');
+  assert.strictEqual(r.created, false);
+  assert.strictEqual(r.adopted, true, 'le passage à SkanFact est une bonne nouvelle : elle se dit');
+  assert.strictEqual(S.dossiers[0].manual, false);
+  assert.strictEqual(S.dossiers[0].phone, '+216 22 333 444', 'la fiche saisie à la main survit au premier paquet');
+});
+
+t('cabinet : la date de début de mission réclame les mois d\'avant', () => {
+  // Sans elle, l'attente démarre au premier paquet reçu : un client repris en cours d'année n'est
+  // jamais réclamé sur ses mois antérieurs, et on s'en aperçoit au bilan.
+  const d = cab.migrateDossier({ id: 'MF:X', name: 'Repris', packs: [
+    { month: '2026-07', label: 'juillet 2026', definitive: true, missing: [] }
+  ] });
+  assert.deepStrictEqual(cab.dossierMonths(d, '2026-09-12').map(m => m.month), ['2026-07', '2026-08']);
+  d.from = '2026-04';
+  assert.deepStrictEqual(cab.dossierMonths(d, '2026-09-12').map(m => m.month),
+    ['2026-04', '2026-05', '2026-06', '2026-07', '2026-08']);
+  assert.strictEqual(cab.dossierRow(d, '2026-09-12').missingCount, 4);
+  // Elle vaut aussi AVANT tout paquet : « je reprends ce client à partir de janvier ».
+  const neuf = cab.migrateDossier({ id: 'MF:Y', name: 'Neuf', from: '2026-07', packs: [] });
+  assert.deepStrictEqual(cab.dossierMonths(neuf, '2026-09-12').map(m => m.month), ['2026-07', '2026-08']);
+  // Un format inventé ne doit pas casser le calcul : il est écarté à la migration.
+  assert.strictEqual(cab.migrateDossier({ from: 'janvier' }).from, '');
+});
+
+t('cabinet : la pastille et la page Relances comptent la même chose', () => {
+  // Avant, la pastille comptait les seuls retardataires pendant que la page en listait trois (elle
+  // y ajoutait les provisoires). Deux chiffres pour la même chose font douter de tout le reste.
+  const S = cab.migrate({ dossiers: [
+    { id: 'a', name: 'En retard', packs: [{ month: '2026-05', definitive: true, missing: [] }] },
+    { id: 'b', name: 'Provisoire', packs: [{ month: '2026-08', definitive: false, missing: [] }] },
+    { id: 'c', name: 'À jour', packs: [{ month: '2026-08', definitive: true, missing: [] }] }
+  ] });
+  const rows = cab.relanceRows(S, '2026-09-12');
+  assert.deepStrictEqual(rows.map(r => r.name).sort(), ['En retard', 'Provisoire']);
+  assert.strictEqual(rows.length, 2);
+});
+
+t('cabinet : le jour de relance est enfin vivant, et l\'historique se garde', () => {
+  // L'aide promettait « Le 10 : la page Dossiers te dit qui n'a rien envoyé » depuis la 1.0.0, et
+  // rien ne l'implémentait ni ne permettait de le régler.
+  const S = cab.migrate({ settings: { relanceDay: 10 }, dossiers: [
+    { id: 'a', name: 'En retard', packs: [{ month: '2026-05', definitive: true, missing: [] }] }
+  ] });
+  assert.strictEqual(cab.relanceDue(S, '2026-09-03').due, false, 'le 3, la tournée n\'a pas commencé');
+  assert.strictEqual(cab.relanceDue(S, '2026-09-10').due, true);
+  assert.strictEqual(cab.relanceDue(S, '2026-09-12').count, 1);
+  assert.ok(cab.cabinetTodo(S, '2026-09-12').some(x => x.id === 'jour-de-relance'));
+  assert.ok(!cab.cabinetTodo(S, '2026-09-03').some(x => x.id === 'jour-de-relance'));
+  // Un réglage aberrant ne doit pas rendre la relance impossible ou permanente.
+  assert.strictEqual(cab.migrate({ settings: { relanceDay: 0 } }).settings.relanceDay, 10);
+  assert.strictEqual(cab.migrate({ settings: { relanceDay: 99 } }).settings.relanceDay, 10);
+  assert.strictEqual(cab.migrate({ settings: { relanceDay: 5 } }).settings.relanceDay, 5);
+
+  // La trace : sans elle, le lundi suivant on ne sait plus qui a été relancé.
+  const d = S.dossiers[0];
+  cab.noteRelance(d, ['2026-06', '2026-07'], 'tel', 1757000000000, 'promet vendredi');
+  const row = cab.dossierRow(d, '2026-09-12');
+  assert.strictEqual(row.relanceCount, 1);
+  assert.strictEqual(row.lastRelanceVia, 'tel');
+  assert.deepStrictEqual(row.lastRelanceMonths, ['2026-06', '2026-07']);
+  // L'historique ne gonfle pas indéfiniment.
+  for (let i = 0; i < 60; i++) cab.noteRelance(d, [], 'email', 1757000000000 + i);
+  assert.strictEqual(d.relances.length, 50);
+});
+
+t('cabinet : le portefeuille se compte, hors SkanFact compris', () => {
+  const S = cab.migrate({ dossiers: [
+    { id: 'a', name: 'À jour', fees: 250, packs: [{ month: '2026-08', definitive: true, missing: [], figures: { ca: 10000, devise: 'DT' } }] },
+    { id: 'b', name: 'En retard', fees: 180, packs: [{ month: '2026-05', definitive: true, missing: [], figures: { ca: 4000, devise: 'DT' } }] },
+    { id: 'c', name: 'Pas encore', manual: true, fees: 300, packs: [] },
+    { id: 'd', name: 'Parti', archived: true, packs: [] }
+  ] });
+  const p = cab.portfolio(S, '2026-09-12');
+  assert.strictEqual(p.total, 3, 'les archivés ne comptent pas dans le portefeuille actif');
+  assert.strictEqual(p.surSkanfact, 2);
+  assert.strictEqual(p.horsSkanfact, 1);
+  assert.strictEqual(p.aJour, 1);
+  assert.strictEqual(p.enRetard, 1);
+  assert.strictEqual(p.dernierCA, 14000);
+  assert.strictEqual(p.honoraires, 730);
+  // « tout est à jour » ne doit jamais s'afficher à un cabinet dont personne n'envoie rien.
+  const vide = cab.migrate({ dossiers: [{ id: 'x', name: 'Pas encore', manual: true, packs: [] }] });
+  assert.strictEqual(cab.portfolio(vide, '2026-09-12').surSkanfact, 0);
+});
+
+t('cabinet : les listes se trient sans jamais perdre de ligne', () => {
+  const S = cab.migrate({ dossiers: [
+    { id: 'a', name: 'Zeta', phone: '22111222', packs: [{ month: '2026-08', definitive: true, missing: [], receivedAt: 3, figures: { ca: 100, devise: 'DT' } }] },
+    { id: 'b', name: 'Alpha', packs: [{ month: '2026-06', definitive: true, missing: [], receivedAt: 1, figures: { ca: 900, devise: 'DT' } }] },
+    { id: 'c', name: 'Mu', packs: [{ month: '2026-07', definitive: true, missing: [], receivedAt: 2, figures: { ca: 500, devise: 'DT' } }] }
+  ] });
+  const noms = o => cab.dossierList(S, '2026-09-12', o).map(r => r.name);
+  assert.deepStrictEqual(noms({ sort: 'nom' }), ['Alpha', 'Mu', 'Zeta']);
+  assert.deepStrictEqual(noms({ sort: 'nom', desc: true }), ['Zeta', 'Mu', 'Alpha']);
+  assert.deepStrictEqual(noms({ sort: 'ca' }), ['Alpha', 'Mu', 'Zeta']);
+  assert.deepStrictEqual(noms({ sort: 'dernier' }), ['Zeta', 'Mu', 'Alpha']);
+  assert.strictEqual(noms({ sort: 'inconnu' }).length, 3, 'un tri inconnu retombe sur le classement par urgence');
+  // La recherche couvre le téléphone : un comptable cherche par ce qu'il a sous la main.
+  assert.deepStrictEqual(noms({ q: '22111' }), ['Zeta']);
+  // Le tri ne modifie jamais l'état.
+  assert.deepStrictEqual(S.dossiers.map(d => d.name), ['Zeta', 'Alpha', 'Mu']);
+});
+
+// ---------- cabinet : le magasin et ses filets (src/cabinet/cabstore.js) ----------
+// C'est l'application qui détient la comptabilité de dizaines d'entreprises ET la clé qui ouvre
+// leurs paquets. Elle n'avait aucune sauvegarde. Ces tests prouvent les filets un par un.
+const CS = require('../src/cabinet/cabstore.js');
+const cfs = require('fs');
+const cpath = require('path');
+const cos = require('os');
+
+function tmpCab() { return cfs.mkdtempSync(cpath.join(cos.tmpdir(), 'cabstore-')); }
+function cabState(extra) { return cab.migrate({ cabinet: { name: 'Cabinet Test', publicKey: 'PUB', privateKey: 'PRIV' }, ...(extra || {}) }); }
+
+t('cabstore : le coffre s\'ouvre avec le bon mot de passe, et avec lui seul', () => {
+  const dir = tmpCab();
+  const s = CS.createCabStore(dir);
+  assert.strictEqual(s.exists(), false);
+  s.create('mot-de-passe-long', cabState());
+  assert.strictEqual(s.exists(), true);
+  // Le fichier sur le disque ne laisse rien filtrer : ni les noms des clients, ni la clé privée.
+  const brut = cfs.readFileSync(s.file, 'utf8');
+  assert.ok(!/Cabinet Test|PRIV/.test(brut), 'le fichier chiffré ne doit rien laisser lire en clair');
+
+  const autre = CS.createCabStore(dir);
+  assert.strictEqual(autre.unlock('mauvais').ok, false);
+  const r = autre.unlock('mot-de-passe-long');
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.state.cabinet.privateKey, 'PRIV');
+});
+
+t('cabstore : un fichier illisible est mis de côté, jamais écrasé', () => {
+  // C'est la règle qui a sauvé l'app entreprise : sans elle, la première écriture après une
+  // corruption détruit la seule copie qui restait.
+  const dir = tmpCab();
+  const s = CS.createCabStore(dir);
+  s.create('mot-de-passe-long', cabState());
+  cfs.writeFileSync(s.file, 'ceci n\'est pas du JSON', 'utf8');
+  const s2 = CS.createCabStore(dir);
+  const r = s2.unlock('mot-de-passe-long');
+  assert.strictEqual(r.missing, true);
+  assert.ok(s2.state.corruptFile, 'le fichier abîmé doit être nommé pour qu\'on puisse le récupérer');
+  assert.ok(cfs.existsSync(s2.state.corruptFile));
+  assert.strictEqual(cfs.readFileSync(s2.state.corruptFile, 'utf8'), 'ceci n\'est pas du JSON');
+  assert.strictEqual(cfs.existsSync(s.file), false, 'et l\'original ne doit plus être là pour être écrasé');
+});
+
+t('cabstore : la sauvegarde du jour garde l\'état du matin, pas celui de midi', () => {
+  const dir = tmpCab();
+  let jour = new Date('2026-09-12T09:00:00Z');
+  const s = CS.createCabStore(dir, { now: () => jour });
+  const st = cabState();
+  s.create('mot-de-passe-long', st);
+  st.dossiers.push(cab.newDossier({ name: 'Premier client' }));
+  s.write(st);                                   // première écriture du jour → photo de l'état d'avant
+  st.dossiers.push(cab.newDossier({ name: 'Deuxième client' }));
+  s.write(st);                                   // deuxième écriture → pas de seconde photo
+  const list = s.listBackups();
+  assert.strictEqual(list.filter(x => x.daily).length, 1, 'une seule sauvegarde quotidienne par jour');
+  const photo = s.peek(list[0].path, 'mot-de-passe-long');
+  assert.strictEqual(photo.dossiers.length, 0, 'la photo est l\'état de CE MATIN, avant la première modification');
+
+  // Le lendemain, une nouvelle photo — celle de la veille au soir.
+  jour = new Date('2026-09-13T09:00:00Z');
+  st.dossiers.push(cab.newDossier({ name: 'Troisième client' }));
+  s.write(st);
+  const list2 = s.listBackups().filter(x => x.daily);
+  assert.strictEqual(list2.length, 2);
+  assert.strictEqual(s.peek(list2[0].path, 'mot-de-passe-long').dossiers.length, 2);
+});
+
+t('cabstore : restaurer met l\'état actuel de côté avant de l\'écraser', () => {
+  // Une restauration qui se révèle être la mauvaise sauvegarde ne doit pas être un aller simple.
+  const dir = tmpCab();
+  let jour = new Date('2026-09-12T09:00:00Z');
+  const s = CS.createCabStore(dir, { now: () => jour });
+  const st = cabState();
+  s.create('mot-de-passe-long', st);
+  const avant = s.backupNow('point-de-depart');
+  st.dossiers.push(cab.newDossier({ name: 'Ajouté après' }));
+  jour = new Date('2026-09-12T10:00:00Z');
+  s.write(st);
+  assert.strictEqual(s.unlock('mot-de-passe-long').state.dossiers.length, 1);
+
+  jour = new Date('2026-09-12T11:00:00Z');
+  const restauré = s.restore(avant);
+  assert.strictEqual(restauré.dossiers.length, 0);
+  assert.ok(s.listBackups().some(x => /avant-restauration/.test(x.name)), 'l\'état d\'avant la restauration doit être gardé');
+  const retour = s.listBackups().find(x => /avant-restauration/.test(x.name));
+  assert.strictEqual(s.peek(retour.path).dossiers.length, 1, 'et il doit contenir ce qu\'on venait de perdre');
+});
+
+t('cabstore : changer le mot de passe rechiffre AUSSI les sauvegardes', () => {
+  // Une sauvegarde restée sur l'ancien mot de passe est une sauvegarde qu'on ne pourra pas
+  // restaurer le jour venu — c'est-à-dire pas une sauvegarde.
+  const dir = tmpCab();
+  let jour = new Date('2026-09-12T09:00:00Z');
+  const s = CS.createCabStore(dir, { now: () => jour });
+  const st = cabState();
+  s.create('ancien-mot-de-passe', st);
+  s.backupNow('avant');
+  jour = new Date('2026-09-12T10:00:00Z');
+  s.setPassword(st, 'nouveau-mot-de-passe');
+
+  const s2 = CS.createCabStore(dir);
+  assert.strictEqual(s2.unlock('ancien-mot-de-passe').ok, false, 'l\'ancien mot de passe ne doit plus ouvrir');
+  assert.strictEqual(s2.unlock('nouveau-mot-de-passe').ok, true);
+  s2.listBackups().forEach(b => {
+    assert.doesNotThrow(() => s2.peek(b.path), `la sauvegarde ${b.name} doit s'ouvrir avec le nouveau mot de passe`);
+  });
+});
+
+t('cabstore : les paquets se rangent par client et par année', () => {
+  // Ils étaient tous à plat, nommés par matricule : deux mille fichiers illisibles dans un dossier.
+  const dir = tmpCab();
+  const s = CS.createCabStore(dir);
+  const st = cabState();
+  s.create('mot-de-passe-long', st);
+  const src = cpath.join(dir, 'source.skanpack');
+  cfs.writeFileSync(src, 'contenu');
+
+  const d = cab.newDossier({ name: 'Menuiserie Trabelsi SUARL', matricule: '1122334A/M/P/000' });
+  st.dossiers.push(d);
+  const p = s.storePack(src, d, '2026-08', st.dossiers);
+  assert.ok(p.endsWith(cpath.join('Menuiserie-Trabelsi-SUARL', '2026', '2026-08.skanpack')), 'chemin inattendu : ' + p);
+  assert.strictEqual(cfs.readFileSync(p, 'utf8'), 'contenu');
+  assert.strictEqual(cfs.existsSync(src), true, 'le fichier d\'origine du comptable n\'est jamais déplacé');
+
+  // Deux clients de même nom ne doivent pas se mélanger : le matricule les sépare.
+  const d2 = cab.newDossier({ name: 'Menuiserie Trabelsi SUARL', matricule: '9988776Z/M/P/000' });
+  st.dossiers.push(d2);
+  const p2 = s.storePack(src, d2, '2026-08', st.dossiers);
+  assert.notStrictEqual(p, p2, 'deux clients homonymes écriraient dans le même fichier');
+
+  const stats = s.packStats();
+  assert.strictEqual(stats.files, 2);
+  assert.ok(stats.bytes > 0);
+});
+
+t('cabstore : le rangement reprend l\'ancien classement à plat sans rien perdre', () => {
+  const dir = tmpCab();
+  const s = CS.createCabStore(dir);
+  const st = cabState();
+  s.create('mot-de-passe-long', st);
+  // L'ancien rangement : paquets/MF_1122334AMP000-2026-08.skanpack
+  const vieux = cpath.join(s.packRoot, 'MF_1122334AMP000-2026-08.skanpack');
+  cfs.mkdirSync(s.packRoot, { recursive: true });
+  cfs.writeFileSync(vieux, 'vieux contenu');
+  st.dossiers.push(cab.migrateDossier({
+    id: 'MF:1122334AMP000', name: 'Menuiserie Trabelsi SUARL', matricule: '1122334A/M/P/000',
+    packs: [{ month: '2026-08', label: 'août 2026', definitive: true, missing: [], path: vieux }]
+  }));
+
+  const r = s.reorganize(st);
+  assert.strictEqual(r.moved, 1);
+  assert.strictEqual(r.lost, 0);
+  const neuf = st.dossiers[0].packs[0].path;
+  assert.ok(neuf.endsWith(cpath.join('Menuiserie-Trabelsi-SUARL', '2026', '2026-08.skanpack')));
+  assert.strictEqual(cfs.readFileSync(neuf, 'utf8'), 'vieux contenu');
+  assert.strictEqual(cfs.existsSync(vieux), false);
+  // Deux passages de suite ne cassent rien et ne déplacent plus rien.
+  assert.strictEqual(s.reorganize(st).moved, 0);
+  // Un paquet d'exemple n'a pas de fichier : il ne doit ni être compté ni faire échouer le rangement.
+  st.dossiers.push(cab.migrateDossier({ id: 'demo', name: 'Exemple', demo: true, packs: [{ month: '2026-07', path: '' }] }));
+  assert.strictEqual(s.reorganize(st).lost, 0);
+  // Un fichier disparu se compte, sans faire tomber l'application.
+  cfs.unlinkSync(neuf);
+  st.dossiers[0].name = 'Menuiserie Trabelsi SARL';
+  assert.strictEqual(s.reorganize(st).lost, 1);
+});
+
+t('cabstore : la copie externe emporte AUSSI les paquets', () => {
+  // Une copie qui ne prend que la base laisserait le comptable avec l'index de ce qu'il a perdu :
+  // les paquets SONT les pièces justificatives.
+  const dir = tmpCab();
+  const ext = tmpCab();
+  const s = CS.createCabStore(dir, { externalDir: ext });
+  const st = cabState();
+  s.create('mot-de-passe-long', st);
+  const src = cpath.join(dir, 'source.skanpack');
+  cfs.writeFileSync(src, 'pièce justificative');
+  const d = cab.newDossier({ name: 'Client A', matricule: '1111111A/M/P/000' });
+  st.dossiers.push(d);
+  s.storePack(src, d, '2026-08', st.dossiers);
+  s.backupNow('manuelle');
+  assert.strictEqual(s.mirrorExternal(), true);
+
+  const cible = cpath.join(ext, 'SkanFact Cabinet');
+  assert.ok(cfs.existsSync(cpath.join(cible, 'cabinet-data.json')), 'la base doit être copiée');
+  assert.ok(cfs.readdirSync(cpath.join(cible, 'sauvegardes')).length > 0, 'les sauvegardes aussi');
+  assert.strictEqual(
+    cfs.readFileSync(cpath.join(cible, 'paquets', 'Client-A', '2026', '2026-08.skanpack'), 'utf8'),
+    'pièce justificative', 'et les paquets, rangés pareil');
+
+  // Support débranché : on note l'erreur, on ne bloque rien.
+  s.setExternalDir(cpath.join(ext, 'nulle-part-du-tout'));
+  assert.strictEqual(s.mirrorExternal(), false);
+  assert.ok(s.state.external.lastError, 'l\'échec doit être nommé, pas avalé');
+  assert.doesNotThrow(() => s.write(st), 'une copie impossible n\'empêche jamais d\'enregistrer');
+});
+
+t('cabstore : supprimer un dossier emporte ses paquets', () => {
+  const dir = tmpCab();
+  const s = CS.createCabStore(dir);
+  const st = cabState();
+  s.create('mot-de-passe-long', st);
+  const src = cpath.join(dir, 'source.skanpack');
+  cfs.writeFileSync(src, 'x');
+  const d = cab.newDossier({ name: 'Client Parti', matricule: '2222222B/M/P/000' });
+  st.dossiers.push(d);
+  const p = s.storePack(src, d, '2026-08', st.dossiers);
+  d.packs.push({ month: '2026-08', path: p });
+  assert.strictEqual(cfs.existsSync(p), true);
+  s.removeDossierFiles(d, st.dossiers);
+  assert.strictEqual(cfs.existsSync(p), false, 'garder les pièces d\'un dossier supprimé serait le pire des deux mondes');
+  // Un chemin hors du dossier des paquets n'est jamais supprimé, même si l'état le prétend.
+  const dehors = cpath.join(dir, 'important.txt');
+  cfs.writeFileSync(dehors, 'ne pas toucher');
+  s.removePack(dehors);
+  assert.strictEqual(cfs.existsSync(dehors), true, 'la suppression ne doit jamais sortir du dossier des paquets');
+});
+
+t('cabstore : la clé de secours se rouvre, et elle seule', () => {
+  // Sans elle, perdre le poste rend illisible TOUT ce que les clients ont envoyé, pour toujours.
+  const fichier = CS.makeRecovery({ name: 'Cabinet Test', email: 'c@t.tn', publicKey: 'PUB', privateKey: 'PRIV' }, 'secours-long-mdp', new Date('2026-09-12T10:00:00Z'));
+  // L'entête reste lisible : une clé mal rangée doit rester identifiable sans mot de passe.
+  assert.strictEqual(fichier.cabinet, 'Cabinet Test');
+  assert.ok(fichier.avertissement.length > 40, 'le fichier doit dire lui-même ce qu\'il est et ce qu\'on risque');
+  assert.ok(!JSON.stringify(fichier.coffre).includes('PRIV'), 'la clé privée ne doit jamais être en clair');
+
+  const relu = CS.readRecovery(fichier, 'secours-long-mdp');
+  assert.strictEqual(relu.privateKey, 'PRIV');
+  assert.strictEqual(relu.publicKey, 'PUB');
+  assert.throws(() => CS.readRecovery(fichier, 'mauvais'), /incorrect/);
+  assert.throws(() => CS.readRecovery({ quoi: 'autre chose' }, 'x'), /clé de secours/);
+});
+
+// Un appel à une fonction qui n'existe pas ne se voit NULLE PART avant l'exécution : pas à la
+// lecture, pas au `node --check`, pas dans les tests qui ne touchent pas cette ligne. C'est comme ça
+// que `h(a.relayFailure)` est arrivé dans le renderer du cabinet (où la fonction s'appelle `esc`),
+// copié d'app.js côté entreprise : le panneau des mises à jour plantait au moment précis où il
+// devait annoncer qu'une mise à jour était impossible. Ce test lit le code, sans les commentaires ni
+// le texte des chaînes — mais EN GARDANT les `${…}` des gabarits, puisque c'est là qu'il était.
+function codeSeulement(src) {
+  let out = '', i = 0;
+  // La pile dit où l'on est : dans le TEXTE d'un gabarit, ou dans le CODE d'un ${…}. Sans elle, un
+  // gabarit imbriqué dans une interpolation (il y en a partout dans le renderer) désynchronise tout
+  // et la moitié du fichier est prise pour du texte.
+  const pile = [];
+  const dansTexte = () => pile.length && pile[pile.length - 1].type === 'tpl';
+  // Un « / » ouvre une expression régulière seulement après un opérateur ou une ouverture ; après un
+  // identifiant ou une parenthèse fermante, c'est une division. Sans cette distinction, le `/'/g` de
+  // la fonction d'échappement fait croire à une chaîne et décale la lecture.
+  const avantRegex = () => {
+    const m = out.replace(/\s+$/, '');
+    if (!m) return true;
+    const c = m[m.length - 1];
+    if ('([{,;:=!&|?+-*%~^<>'.includes(c)) return true;
+    return /\b(return|typeof|case|in|of|new|delete|void|instanceof|do|else)$/.test(m);
+  };
+  while (i < src.length) {
+    const c = src[i], d = src[i + 1];
+    if (dansTexte()) {
+      if (c === '\\') { i += 2; continue; }
+      if (c === '`') { pile.pop(); out += ' "" '; i++; continue; }
+      if (c === '$' && d === '{') { pile.push({ type: 'expr', prof: 0 }); out += ' ; '; i += 2; continue; }
+      i++; continue;                                   // le texte du gabarit n'est pas du code
+    }
+    if (c === '/' && d === '*') { const j = src.indexOf('*/', i + 2); i = j < 0 ? src.length : j + 2; out += ' '; continue; }
+    if (c === '/' && d === '/') { const j = src.indexOf('\n', i); i = j < 0 ? src.length : j; out += ' '; continue; }
+    if (c === '/' && avantRegex()) {                   // expression régulière
+      i++;
+      let classe = false;
+      while (i < src.length) {
+        if (src[i] === '\\') { i += 2; continue; }
+        if (src[i] === '[') classe = true;
+        else if (src[i] === ']') classe = false;
+        else if (src[i] === '/' && !classe) break;
+        else if (src[i] === '\n') break;
+        i++;
+      }
+      i++;
+      while (i < src.length && /[a-z]/.test(src[i])) i++;
+      out += ' 0 '; continue;
+    }
+    if (c === '"' || c === "'") {
+      const q = c; i++;
+      while (i < src.length && src[i] !== q) { if (src[i] === '\\') i++; i++; }
+      i++; out += ' "" '; continue;
+    }
+    if (c === '`') { pile.push({ type: 'tpl' }); out += ' '; i++; continue; }
+    if (c === '{') { const top = pile[pile.length - 1]; if (top && top.type === 'expr') top.prof++; out += c; i++; continue; }
+    if (c === '}') {
+      const top = pile[pile.length - 1];
+      if (top && top.type === 'expr') {
+        if (top.prof === 0) { pile.pop(); out += ' ; '; i++; continue; }   // fin du ${ }
+        top.prof--;
+      }
+      out += c; i++; continue;
+    }
+    out += c; i++;
+  }
+  return out;
+}
+
+const GLOBAUX = new Set([
+  'if', 'for', 'while', 'switch', 'catch', 'return', 'typeof', 'function', 'new', 'delete', 'await',
+  'do', 'else', 'in', 'of', 'void', 'yield', 'case', 'throw', 'instanceof',
+  'String', 'Number', 'Boolean', 'Array', 'Object', 'JSON', 'Math', 'Date', 'Promise', 'Set', 'Map',
+  'RegExp', 'Error', 'Symbol', 'BigInt', 'parseInt', 'parseFloat', 'isNaN', 'isFinite',
+  'encodeURIComponent', 'decodeURIComponent', 'encodeURI', 'decodeURI',
+  'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'requestAnimationFrame',
+  'alert', 'confirm', 'prompt', 'fetch', 'structuredClone', 'queueMicrotask', 'require', 'async'
+]);
+
+function appelsNonDefinis(src) {
+  const code = codeSeulement(src);
+  const defs = new Set();
+  // déclarations
+  [...code.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)/g)].forEach(m => defs.add(m[1]));
+  [...code.matchAll(/\bfunction\s*\*?\s*([A-Za-z_$][\w$]*)/g)].forEach(m => defs.add(m[1]));
+  [...code.matchAll(/\bclass\s+([A-Za-z_$][\w$]*)/g)].forEach(m => defs.add(m[1]));
+  // déstructurations : const { a, b: c } = …  et  const [a, b] = …
+  [...code.matchAll(/\b(?:const|let|var)\s*[[{]([^}\]]*)[}\]]/g)].forEach(m =>
+    m[1].split(',').forEach(p => { const x = (p.split(':').pop() || '').trim().replace(/=.*$/, '').trim(); if (/^[A-Za-z_$][\w$]*$/.test(x)) defs.add(x); }));
+  // paramètres : function f(a, b), (a, b) => , a =>, catch (e)
+  [...code.matchAll(/(?:function\s*\*?\s*[A-Za-z_$][\w$]*\s*|function\s*|catch\s*)\(([^)]*)\)/g)].forEach(m =>
+    m[1].split(',').forEach(p => { const x = p.trim().replace(/=.*$/, '').replace(/^\.\.\./, '').trim(); if (/^[A-Za-z_$][\w$]*$/.test(x)) defs.add(x); }));
+  [...code.matchAll(/\(([^()]*)\)\s*=>/g)].forEach(m =>
+    m[1].split(',').forEach(p => { const x = p.trim().replace(/=.*$/, '').replace(/^\.\.\./, '').trim(); if (/^[A-Za-z_$][\w$]*$/.test(x)) defs.add(x); }));
+  [...code.matchAll(/\b([A-Za-z_$][\w$]*)\s*=>/g)].forEach(m => defs.add(m[1]));
+  // méthodes abrégées d'un objet : { get(k, def) { … } } — ce sont des définitions, pas des appels
+  [...code.matchAll(/([A-Za-z_$][\w$]*)\s*\(([^()]*)\)\s*\{/g)].forEach(m => {
+    defs.add(m[1]);
+    m[2].split(',').forEach(p => { const x = p.trim().replace(/=.*$/, '').replace(/^\.\.\./, '').trim(); if (/^[A-Za-z_$][\w$]*$/.test(x)) defs.add(x); });
+  });
+  // appels : nom( — sauf après un point (méthode) ou précédé d'un mot
+  const manquants = new Set();
+  [...code.matchAll(/(^|[^.\w$])([a-z_$][\w$]*)\s*\(/g)].forEach(m => {
+    const nom = m[2];
+    if (!defs.has(nom) && !GLOBAUX.has(nom)) manquants.add(nom);
+  });
+  return [...manquants];
+}
+
+t('cabinet : l\'interface n\'appelle aucune fonction qui n\'existe pas', () => {
+  // Le test se prouve lui-même d'abord : sur un cas fabriqué, il doit voir le défaut.
+  assert.deepStrictEqual(appelsNonDefinis('const esc = x => x; const s = `<p>${h(a)}</p>`;'), ['h'],
+    'le détecteur doit voir un appel manquant à l\'intérieur d\'un gabarit');
+  assert.deepStrictEqual(appelsNonDefinis('const h = x => x; const s = `<p>${h(a)}</p>`;'), []);
+  assert.deepStrictEqual(appelsNonDefinis('// jamais lu : quelque chose (ici)\nconst s = "une phrase (entre guillemets)";'), [],
+    'ni un commentaire ni une chaîne ne sont du code');
+
+  ['src/cabinet/renderer/app.js', 'src/cabinet/cabcore.js', 'src/cabinet/renderer/cabguide.js', 'src/cabinet/cabstore.js']
+    .forEach(f => {
+      const src = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+      assert.deepStrictEqual(appelsNonDefinis(src), [], `${f} appelle une fonction qui n'existe pas`);
+    });
+});
+
+t('cabinet : chaque bulle « i » posée dans l\'interface a son texte', () => {
+  // Même règle que côté entreprise depuis la 1.8.0 : un champ sans explication fait deviner, et le
+  // comptable qui devine se trompe. L'inverse compte aussi — un texte que personne n'affiche est un
+  // texte que personne ne relit.
+  const guide = require('../src/cabinet/renderer/cabguide.js');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'cabinet', 'renderer', 'app.js'), 'utf8');
+  // Une clé de bulle est toujours le DERNIER argument : `info('d.name')` ou `lbl('…', 'd.name')`.
+  // La chercher ainsi évite de confondre avec un sélecteur CSS de même allure (« th.sortable »),
+  // et supporte un libellé qui contient lui-même des parenthèses.
+  const posees = new Set([...src.matchAll(/(?:info\(|,\s*)'([a-z]{1,4}\.[A-Za-z]+)'\s*\)/g)].map(m => m[1]));
+  assert.ok(posees.size >= 20, 'l\'interface du cabinet doit expliquer ses champs (posées : ' + posees.size + ')');
+  posees.forEach(k => assert.ok(guide.INFO[k], `la bulle « ${k} » est posée dans l'interface mais n'a pas de texte`));
+  Object.keys(guide.INFO).forEach(k => assert.ok(posees.has(k), `le texte « ${k} » n'est affiché nulle part`));
+  // Et les articles de l'aide existent vraiment.
+  assert.ok(guide.ARTICLES.length >= 5);
+  guide.ARTICLES.forEach(a => {
+    assert.ok(a.id && a.t && a.d, 'un article incomplet');
+    assert.ok(a.d.length > 120, `l'article « ${a.t} » est trop court pour expliquer quoi que ce soit`);
+  });
+});
+
+t('cabstore : on refuse d\'écrire autre chose qu\'un cabinet', () => {
+  const dir = tmpCab();
+  const s = CS.createCabStore(dir);
+  s.create('mot-de-passe-long', cabState());
+  assert.throws(() => s.write(null), /invalides/);
+  assert.throws(() => s.write({ dossiers: 'pas un tableau' }), /invalides/);
+  assert.throws(() => s.write([]), /invalides/);
+  // Et rien ne s'écrit tant que personne n'a ouvert le coffre.
+  const ferme = CS.createCabStore(tmpCab());
+  assert.throws(() => ferme.write(cabState()), /Aucun cabinet ouvert/);
 });
 
 // ---------- le relais de mise à jour (worker/skanfact-maj.mjs) ----------

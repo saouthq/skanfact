@@ -11,9 +11,14 @@
   <div id="app" hidden>
     <aside class="sidebar">
       <div class="brand">
-        <div class="brand-mark">SF</div>
+        <!-- La marque du cabinet est la sienne : ardoise et dossier, comme son icône. Les deux
+             applications portaient la même pastille « SF » vert d'eau, et une fois ouvertes on ne
+             savait plus laquelle on regardait. -->
+        <div class="brand-mark cab" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+        </div>
         <div>
-          <div class="brand-name">SkanFact Cabinet</div>
+          <div class="brand-name">SkanFact <span class="brand-tag">Cabinet</span></div>
           <div class="brand-sub" id="brand-cab">—</div>
         </div>
       </div>
@@ -33,22 +38,44 @@
 
   <div id="lock-screen">
     <form class="lock-card" id="lock-form">
-      <div class="brand-mark">SF</div>
+      <div class="brand-mark cab" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+      </div>
       <h2 id="lock-title">SkanFact Cabinet</h2>
       <p class="muted small" style="margin:0">L'application du comptable</p>
       <p class="muted small" id="lock-sub">Chargement…</p>
-      <input type="password" id="lock-pw" autocomplete="current-password" placeholder="Mot de passe">
-      <input type="password" id="lock-pw2" autocomplete="new-password" placeholder="Confirme le mot de passe" hidden>
+      <!-- Des champs sans étiquette font deviner. Un mot de passe qu'on ne peut pas relire fait
+           taper trois fois. -->
+      <label class="field lock-field">Mot de passe
+        <span class="pw-wrap">
+          <input type="password" id="lock-pw" autocomplete="current-password" placeholder="••••••••">
+          <button type="button" class="pw-eye" id="lock-eye" aria-label="Afficher le mot de passe">Afficher</button>
+        </span>
+      </label>
+      <span class="muted small" id="lock-strength"></span>
+      <label class="field lock-field" id="lock-pw2-wrap" hidden>Confirme le mot de passe
+        <input type="password" id="lock-pw2" autocomplete="new-password" placeholder="••••••••">
+      </label>
       <div class="lock-err" id="lock-err" hidden></div>
       <button class="btn btn-primary" id="lock-go" type="submit">Ouvrir</button>
       <p class="muted small lock-note" id="lock-note"></p>
     </form>
   </div>
 
+  <!-- Le voile qui apparaît quand on fait glisser un paquet sur la fenêtre. -->
+  <div id="drop-veil" hidden>
+    <div class="drop-card">
+      <svg viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/></svg>
+      <div class="drop-title">Lâche ici les paquets reçus</div>
+      <div class="drop-sub">Les fichiers <code>.skanpack</code> que tes clients t'envoient chaque mois</div>
+    </div>
+  </div>
+
   <div id="modal-root"></div>
   <div id="toast"></div>
 
   <script src="../cabcore.js"></script>
+  <script src="cabguide.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

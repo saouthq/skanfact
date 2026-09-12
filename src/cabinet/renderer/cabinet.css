@@ -32,13 +32,83 @@
 .imp-list .imp-err { color: var(--danger); }
 .imp-list .imp-sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
 
-/* La zone où l'on dépose les paquets reçus par mail. */
-.drop {
-  border: 2px dashed #d5dbe3; border-radius: var(--radius); padding: 26px; text-align: center;
-  color: var(--muted); font-size: 13.5px; background: var(--panel); margin-bottom: 18px;
+/* Le voile de dépôt : il couvre toute la fenêtre dès qu'un fichier la survole. Le geste naturel est
+   d'attraper le paquet reçu par mail et de le lâcher n'importe où, pas de viser un cadre. */
+#drop-veil {
+  position: fixed; inset: 0; z-index: 800; display: flex; align-items: center; justify-content: center;
+  background: rgba(27,36,48,.45); backdrop-filter: blur(2px); pointer-events: none;
 }
-.drop.over { border-color: var(--primary); background: rgba(15,157,143,.06); color: var(--text); }
-body.dark .drop { border-color: #2a3440; }
+#drop-veil .drop-card {
+  background: var(--panel); border: 2px dashed var(--primary); border-radius: 18px;
+  padding: 40px 56px; text-align: center; box-shadow: 0 24px 70px rgba(20,40,60,.3);
+}
+#drop-veil svg { width: 40px; height: 40px; fill: none; stroke: var(--primary); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+#drop-veil .drop-title { font-size: 17px; font-weight: 700; margin-top: 10px; }
+#drop-veil .drop-sub { font-size: 13px; color: var(--muted); margin-top: 4px; }
+
+/* La marque du cabinet : ardoise et dossier, comme son icône. Les deux applications portaient la
+   même pastille vert d'eau, et une fois ouvertes plus rien ne les distinguait. */
+.brand-mark.cab { background: #33414f; display: flex; align-items: center; justify-content: center; }
+.brand-mark.cab svg { width: 19px; height: 19px; fill: none; stroke: #fff; stroke-width: 1.8; stroke-linejoin: round; }
+.lock-card .brand-mark.cab { width: 46px; height: 46px; border-radius: 13px; margin: 0 auto; }
+.lock-card .brand-mark.cab svg { width: 24px; height: 24px; }
+.brand-tag {
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;
+  background: #33414f; color: #fff; border-radius: 5px; padding: 1px 5px; margin-left: 3px; vertical-align: 2px;
+}
+
+/* L'écran de verrouillage : des étiquettes, un bouton pour relire, et l'avertissement qui compte
+   écrit comme un avertissement. */
+.lock-card .lock-field { width: 100%; text-align: left; margin-top: 4px; }
+.pw-wrap { position: relative; display: block; }
+.pw-wrap input { width: 100%; padding-right: 82px; }
+.pw-eye {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  background: transparent; border: none; color: var(--muted); font: inherit; font-size: 12px;
+  cursor: pointer; padding: 4px 8px; border-radius: 7px;
+}
+.pw-eye:hover { color: var(--primary); background: var(--primary-soft); }
+.lock-warn { color: var(--danger); font-weight: 700; }
+
+/* Ce qui doit être lu avant d'agir : jamais une ligne grise de plus. */
+.warn-box {
+  background: var(--warning-soft); border-left: 3px solid var(--warning); border-radius: 8px;
+  padding: 11px 14px; font-size: 13px; line-height: 1.55;
+}
+.err-inline { color: var(--danger); font-weight: 600; }
+.ok-inline { color: var(--success); font-weight: 600; }
+
+/* Dans une fenêtre modale, style.css met déjà ces boutons en ligne et à droite. Dans un PANNEAU,
+   la règle ne s'appliquait pas du tout : les boutons restaient collés au texte et le « ✓ enregistré »
+   passait sous le bouton. */
+.panel .modal-actions {
+  display: flex; align-items: center; gap: 10px; margin-top: 18px; flex-wrap: wrap;
+}
+/* « ✓ enregistré » posé à côté du bouton : le message passager au bas de l'écran recouvrait
+   justement le bouton Enregistrer des Réglages. */
+.saved { color: var(--success); font-size: 12.5px; font-weight: 600; }
+.grow { flex: 1; }
+.modal-actions.wrap { flex-wrap: wrap; }
+/* Un champ pour deux chiffres n'a pas besoin de la moitié de l'écran. */
+.field.narrow input { max-width: 120px; }
+
+.path { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; word-break: break-all; }
+.code-box {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.7;
+  white-space: pre-wrap; margin: 0;
+}
+.kv.two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px 24px; }
+@media (max-width: 1100px) { .kv.two { grid-template-columns: 1fr; } }
+
+/* Les mois groupés par année : une bande sans fin devient illisible au bout de deux ans. */
+.year-row { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 10px; }
+.year-lab { font-size: 12px; font-weight: 700; color: var(--muted); width: 38px; flex-shrink: 0; padding-top: 9px; }
+
+.dot-lvl.hors { background: #9aa7b4; }
+.badge.b-hors { background: #eceff2; color: #5b6b7b; }
+body.dark .badge.b-hors { background: #2a3440; color: #9aa7b4; }
+.btn-ghost.danger:hover { color: var(--danger); background: var(--danger-soft); }
 
 /* Panneau des mises à jour. Les règles de style.css sont accrochées à `#update-panel`, l'identifiant
    de l'app entreprise : on reprend les deux qui manquent plutôt que de renommer un identifiant

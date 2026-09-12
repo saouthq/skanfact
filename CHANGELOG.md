@@ -7,6 +7,50 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 6.8.0 — 12/09/2026
+
+**SkanFact Cabinet ne peut plus rien perdre — et devient le tableau de bord du portefeuille, pas la liste des deux clients déjà passés à SkanFact.**
+
+C'est l'application qui détient la comptabilité de dizaines d'entreprises **et** la clé qui ouvre leurs paquets. Elle n'avait **aucune sauvegarde**. C'était le seul point où un incident coûtait vraiment cher.
+
+### Ne rien perdre
+
+- **Sauvegarde quotidienne automatique** : avant la première modification de la journée, le fichier est mis de côté tel qu'il était ce matin-là. On peut donc revenir à « hier » après une fausse manœuvre. Trente jours conservés, plus une sauvegarde avant chaque import et avant chaque suppression.
+- **Copie vers un autre support** (clé USB, disque externe, iCloud Drive) : la base, les sauvegardes **et les paquets**. Une copie qui ne prendrait pas les paquets laisserait le comptable avec l'index de ce qu'il a perdu.
+- **Clé de secours** : le fichier le plus important que ce cabinet produira. Il contient la clé qui ouvre les paquets de ses clients. Sans elle et sans l'ordinateur, **aucun paquet déjà reçu ne se rouvre, jamais**. L'application le dit, en rouge, tant qu'elle n'a pas été enregistrée.
+- **Le mot de passe se change enfin.** Il n'existait aucun moyen de le faire : s'il fuitait, ou si un collaborateur partait, il n'y avait aucun recours. Les sauvegardes sont rechiffrées avec lui — une sauvegarde restée sur l'ancien mot de passe n'est pas une sauvegarde.
+- **Restaurer dit d'abord ce qu'on va perdre** : combien de dossiers et de paquets dans la sauvegarde, combien maintenant. Et l'état actuel est mis de côté avant : une restauration n'est jamais un aller simple.
+- **Un fichier illisible n'est plus jamais écrasé** : il est mis de côté et l'écran d'ouverture explique quoi faire.
+- **Les paquets sont rangés par client, puis par année** (`paquets/Menuiserie-Trabelsi/2026/2026-08.skanpack`). Ils étaient tous à plat, nommés par matricule : à soixante clients sur trois ans, deux mille fichiers illisibles dans un seul dossier. Le rangement se fait tout seul à la première ouverture, et suit un changement de nom de client. On peut maintenant rendre ses pièces à un client en copiant un dossier.
+- **Supprimer existe** : un dossier (avec ses paquets) ou un paquet arrivé par erreur. Il n'y avait que l'archivage.
+- **Verrouiller sans quitter**, pour quitter son bureau sans laisser soixante comptabilités ouvertes.
+
+### Le portefeuille, pas seulement SkanFact
+
+- **Créer un dossier à la main.** Un comptable a soixante clients dont deux sous SkanFact : l'application ne montrait que ces deux-là. Un client créé à la main compte dans le portefeuille et **rien ne lui est réclamé** tant qu'il n'a pas commencé ; le jour où son premier paquet arrive, il devient un dossier ordinaire tout seul, sans doublon.
+- **Une vraie fiche client** : téléphone, interlocuteur, régime fiscal, périodicité de TVA, honoraires mensuels, et **date de début de mission**. Cette dernière manquait cruellement : sans elle, l'attente démarrait au premier paquet reçu, donc un client repris en cours d'année n'était **jamais** réclamé sur ses mois antérieurs — et on s'en apercevait au bilan.
+- **Appeler ou écrire sur WhatsApp** depuis la fiche. En Tunisie, un comptable qui court après des pièces appelle.
+- **Tableau de bord du portefeuille** : clients suivis, à jour, mois manquants, chiffre d'affaires suivi.
+- **Listes tenables à soixante lignes** : tri sur chaque colonne, pagination, totaux en pied, export CSV. Les totaux et l'export portent sur la sélection entière, jamais sur la page affichée.
+- **Glisser-déposer** un `.skanpack` sur la fenêtre, ou le **double-cliquer dans le Finder**. **Cmd+K** cherche un client ou lance une action.
+
+### Le suivi des relances
+
+- **Chaque relance est enregistrée** : date, moyen (email, téléphone, WhatsApp), mois réclamés, note. Avant, on cliquait « Écrire », le mail partait, et le lundi suivant plus personne ne savait qui avait été relancé.
+- **Relance groupée** : douze retardataires, douze messages préparés à la suite, sans revenir à la liste.
+- **Le jour de relance existe enfin.** L'aide promettait « Le 10 : la page Dossiers te dit qui n'a rien envoyé » depuis la première version, et rien ne l'implémentait ni ne permettait de le régler.
+- **La pastille et la page Relances comptent enfin la même chose.** Elles donnaient deux chiffres différents pour la même question.
+
+### Finitions
+
+- **Le panneau des mises à jour plantait** au moment précis où il devait annoncer qu'une mise à jour était impossible : il appelait une fonction qui n'existe pas dans ce fichier (`h`, copiée de l'app entreprise où elle s'appelle ainsi). Corrigé — et **un test relit désormais tout le code du cabinet pour y traquer les appels à des fonctions inexistantes**, y compris à l'intérieur des gabarits, là où rien ne se voit avant l'exécution.
+- **L'application du cabinet a sa propre marque** : ardoise et dossier, comme son icône. Les deux applications portaient la même pastille vert d'eau et, une fois ouvertes, plus rien ne les distinguait.
+- **L'écran de mot de passe** a des étiquettes, un bouton « Afficher », un indicateur de solidité — et l'avertissement le plus important de toute l'application (« aucun moyen de le récupérer ») n'est plus la ligne la plus petite et la plus grise de l'écran. Le minimum passe de six à huit caractères.
+- **Des bulles « i » partout** (trente champs) et une rubrique Aide réécrite, avec un article « Ne rien perdre ». Un test vérifie que chaque bulle posée a son texte, et qu'aucun texte ne dort sans être affiché.
+- Le « ✓ enregistré » s'affiche **à côté** du bouton des Réglages, que le message passager recouvrait.
+- Les fichiers extraits d'un paquet pour être lus sont **effacés à la fermeture** : ce sont les pièces comptables d'un client, elles n'ont rien à faire dans le dossier temporaire pour toujours.
+- La taille et la position de la fenêtre sont mémorisées ; un menu Aide donne accès au journal technique et au dossier de l'application.
+
 ## 6.7.3 — 12/09/2026
 
 **SkanFact Cabinet proposait d'installer une version plus ancienne que la sienne.**
