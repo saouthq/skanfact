@@ -577,6 +577,18 @@
   function dateFieldHtml(label, name, value, o) {
     return `<div class="field">${label}${dateInput(name, value, o)}</div>`;
   }
+  // Un champ date est un COUPLE : un <input type=hidden> nommé et un champ texte visible dans le
+  // même `.datefield` (règle apprise en 3.0.0). Le mettre à jour depuis du code demande de toucher
+  // les deux — sinon la valeur enregistrée change et l'écran continue d'afficher l'ancienne.
+  function poserDateField(root, name, iso) {
+    const hid = $(`input[name=${name}]`, root);
+    if (!hid) return;
+    hid.value = iso;
+    const box = hid.closest('.datefield');
+    const txt = box && $('.d-txt', box);
+    if (txt) txt.value = iso ? C.fmtDateInput(iso) : '';
+  }
+
   function bindDateFields(root) {
     $$('.datefield', root || document).forEach(el => {
       if (el._bound) return;
@@ -1734,6 +1746,22 @@
     const stored = isNew ? null : docById(doc.id);
     const bal = isInv && !isNew && doc.status !== 'brouillon' ? balance(stored) : null;
     const canUnlock = locked && isInv && bal && !bal.paid && !bal.credits.length;
+    // Le timbre fiscal est fixé EN DINARS (7.0.1) : sur une facture en euros il vaut 1 DT converti,
+    // soit 0,29 € au taux 3,4. L'étiquette à côté de la case annonçait le réglage brut — donc
+    // « 1,00 € » sur une pièce où le total, lui, comptait 0,29 €. Et une pièce émise garde son
+    // propre `stampFee` figé (7.1.0) : c'est celui-là qu'il faut montrer, pas le réglage du jour.
+    // L'échéance posée par l'application (30 j par défaut) : tant que `doc.dueDate` lui est égale,
+    // c'est qu'elle n'a pas été touchée à la main et elle suit la date du document.
+    const joursEcheance = Number(isQ ? company().quoteValidityDays : company().paymentTermsDays) || 30;
+    let dueAuto = doc.dueDate;
+    const poserDate = (name, iso) => poserDateField(head, name, iso);
+    const timbreAffiche = () => {
+      const t = C.computeTotals(doc, company());
+      if (t.stamp) return t.stamp;
+      const brut = doc.stampFee === undefined || doc.stampFee === null || doc.stampFee === ''
+        ? Number(company().stampFee) || 0 : Number(doc.stampFee) || 0;
+      return C.round3(brut / C.rateOf(doc, company()));
+    };
     // Attribuer des numéros de série n'a de sens que sur une pièce qui livre vraiment : facture ou bon
     // de livraison, et seulement si une de ses lignes porte un article suivi par numéro.
     const hasSerials = (isInv || doc.type === 'livraison')
@@ -1823,7 +1851,7 @@
           </div>
           ${!isNew ? `<button class="btn" id="email">Email</button>` : ''}
           <button class="btn" id="pdf">PDF</button>
-          ${locked && isInv && doc.status !== 'annulée' ? `<button class="btn btn-primary" id="pay">Enregistrer un paiement</button>` : ''}
+          ${locked && isInv && doc.status !== 'annulée' && bal && bal.remaining > 0.0005 ? `<button class="btn btn-primary" id="pay">Enregistrer un paiement</button>` : ''}
           ${facturerMenu}${transformMenu}
           ${!locked ? `<button class="btn ${(isQ || isExtra) && !devisFacturable ? 'btn-primary' : ''}" id="save">Enregistrer${isQ || isExtra ? '' : ' le brouillon'}</button>` : ''}
           ${!locked && (isInv || isAv) ? `<button class="btn btn-primary" id="issue">${isInv ? 'Émettre la facture' : 'Émettre l\'avoir'}</button> ${info('ed.issue')}` : ''}
@@ -1854,10 +1882,12 @@
             <form id="f-head" class="grid-3">
               <div class="field">${lbl('Client', 'ed.client')}
                 ${combo({ name: 'clientId', value: doc.clientId, items: clientItems(), placeholder: '— Choisir un client —', search: 'Rechercher : nom, contact, MF…', add: locked ? null : '+ Nouveau client', ro: locked })}
+                <button type="button" class="btn btn-sm btn-ghost mt" id="cl-edit" ${doc.clientId ? '' : 'hidden'} title="Corriger l'adresse, le matricule, l'email de ce client">✎ Fiche du client</button>
               </div>
               ${isAv ? `<div class="field span-2">Facture concernée${combo({ name: 'creditOf', value: doc.creditOf, items: invoiceItems(), placeholder: '— Facture concernée —', search: 'Rechercher : n°, client, objet…', ro: locked })}</div>` : ''}
               ${dateFieldHtml(lbl('Date', 'ed.date'), 'date', doc.date, { ro: locked })}
               ${hasDue ? dateFieldHtml(isQ ? lbl('Valable jusqu\'au', 'ed.validUntil') : lbl('Échéance', 'ed.due'), 'dueDate', doc.dueDate, { ro: locked, quick: true }) : ''}
+              ${hasDue ? '<div class="small muted" id="due-auto" hidden></div>' : ''}
               <label class="field span-2">${lbl('Objet', 'ed.subject')}<input type="text" name="subject" value="${h(doc.subject)}" placeholder="Ex : Audit de sécurité du réseau" ${ro}></label>
               ${field(lbl('Référence (optionnel)', 'ed.reference'), 'reference', doc.reference || '', 'text', ro)}
               <div class="field">${lbl('Affaire (optionnel)', 'ed.project')}
@@ -1870,7 +1900,7 @@
               ${statusCell}
               ${field(lbl('Remise globale (%)', 'ed.discount'), 'discountRate', doc.discountRate || 0, 'number', 'min="0" max="100" step="0.5" class="num" ' + ro)}
               ${isInv || isAv || isProforma ? `<label class="field">${lbl('Retenue à la source', 'ed.withholding')}<select name="withholdingRate" ${ro}>${withholdingOptions(doc.withholdingRate)}</select></label>` : ''}
-              ${isInv || isAv || isProforma ? `<label class="check" style="align-self:end"><input type="checkbox" name="applyStamp" ${doc.applyStamp === true || (isInv && doc.applyStamp !== false) ? 'checked' : ''} ${ro}> Timbre fiscal (${C.money(company().stampFee, cur)}) ${info(isProforma ? 'ed.stampProforma' : 'ed.applyStamp')}</label>` : ''}
+              ${isInv || isAv || isProforma ? `<label class="check" style="align-self:end"><input type="checkbox" name="applyStamp" ${doc.applyStamp === true || (isInv && doc.applyStamp !== false) ? 'checked' : ''} ${ro}> Timbre fiscal (<span id="stamp-lbl">${C.money(timbreAffiche(), cur)}</span>) ${info(isProforma ? 'ed.stampProforma' : 'ed.applyStamp')}</label>` : ''}
               ${isDelivery ? `<label class="check" style="align-self:end"><input type="checkbox" name="hidePrices" ${doc.hidePrices !== false ? 'checked' : ''}> Masquer les prix sur le bon ${info('ed.hidePrices')}</label>` : ''}
             </form>
           </div>
@@ -1982,7 +2012,18 @@
         if (el.dataset.k === 'unit') return;   // traité juste après : « Autre… » ouvre une saisie libre
         el.oninput = () => {
           const i = Number(el.closest('tr').dataset.i);
-          doc.lines[i][el.dataset.k] = el.type === 'number' ? Number(el.value) : el.value;
+          if (el.type === 'number') {
+            // `Number('')` vaut 0 : effacer une quantité pour la retaper faisait passer la ligne à
+            // zéro, donc le total du document, donc l'aperçu — sans un mot. On ne retient rien tant
+            // que le champ n'est pas lisible ; le marquage dit que la valeur affichée n'est pas celle
+            // qui est retenue. (`badInput` : « 12,,5 » ou « e » dans un champ numérique.)
+            const vide = el.value.trim() === '' || el.validity.badInput;
+            el.classList.toggle('champ-faute', vide);
+            if (vide) return;
+            doc.lines[i][el.dataset.k] = Number(el.value);
+          } else {
+            doc.lines[i][el.dataset.k] = el.value;
+          }
           touch(); refreshTotals();
         };
       });
@@ -2072,10 +2113,23 @@
         cur = docCur(doc); setRateLabel();
         // les affaires proposées suivent le client : celles d'un autre client n'ont rien à faire ici
         if (projectCombo) projectCombo.setItems(projectItems(doc.clientId));
+        majFicheClient();
         drawLines();
       }
       if (e && e.target && e.target.name === 'creditOf') {
         const inv = docById(doc.creditOf); if (inv) { doc.creditOfNumber = inv.number; if (!doc.clientId) { doc.clientId = inv.clientId; clientCombo.setValue(inv.clientId, true); } }
+      }
+      // Changer la date ne recalculait jamais l'échéance : on corrigeait la date d'une facture et
+      // elle restait due au 30e jour de l'ANCIENNE. On ne recalcule que tant que l'échéance est
+      // restée celle que l'application avait posée — une date saisie à la main ne s'écrase jamais.
+      if (e && e.target && e.target.name === 'date' && doc.date && dueAuto && doc.dueDate === dueAuto) {
+        const neuf = C.addDays(doc.date, joursEcheance);
+        if (neuf !== doc.dueDate) {
+          doc.dueDate = neuf; dueAuto = neuf;
+          poserDate('dueDate', neuf);
+          const note = $('#due-auto', head);
+          if (note) { note.textContent = `Échéance recalculée au ${C.fmtDate(neuf)} (${joursEcheance} j). Change-la si besoin.`; note.hidden = false; }
+        }
       }
       refreshTotals();
     };
@@ -2086,6 +2140,19 @@
       items: clientItems(), placeholder: '— Choisir un client —',
       onAdd: () => clientForm(null, c => { clientCombo.setItems(clientItems()); clientCombo.setValue(c.id); })
     });
+    // Une adresse fausse ou un matricule oublié se découvrent EN REGARDANT l'aperçu : il fallait
+    // pourtant quitter le document (donc le garde-fou « modifications non enregistrées »), aller aux
+    // Clients, chercher la fiche, corriger, revenir. Tout existait déjà — le formulaire, la pile de
+    // fenêtres, le redessin de l'aperçu : il manquait le bouton.
+    const majFicheClient = () => {
+      const b = $('#cl-edit', head);
+      if (b) b.hidden = !doc.clientId;
+    };
+    if ($('#cl-edit', head)) $('#cl-edit', head).onclick = () => {
+      const c = clientById(doc.clientId); if (!c) return;
+      clientForm(c, () => { clientCombo.setItems(clientItems()); refreshTotals(); schedulePreview(); });
+    };
+    majFicheClient();
     bindCombo($('[data-combo=creditOf]', head), { items: invoiceItems(), placeholder: '— Facture concernée —' });
     const projectCombo = bindCombo($('[data-combo=projectId]', head), {
       items: projectItems(doc.clientId), placeholder: '— Aucune affaire —',
@@ -2207,6 +2274,7 @@
     pleinEcranCourant = apercuPleinEcran;
     function refreshTotals() {
       const t = C.computeTotals(doc, company());
+      const lbl2 = $('#stamp-lbl'); if (lbl2) lbl2.textContent = C.money(timbreAffiche(), cur);
       t.lines.forEach((l, i) => { const c = $(`[data-total="${i}"]`); if (c) c.textContent = C.money(l.ht, null, C.decimalsFor(cur)); });
       $('#totals').innerHTML = `<table>
         <tr><td>Total HT</td><td>${C.money(t.totalHT, cur)}</td></tr>
@@ -2310,6 +2378,12 @@
         C.stockImpact(doc, data).forEach(x => w.push(
           `Stock insuffisant sur « ${x.label} » : il en reste ${pct(x.have)}${x.unit ? ' ' + x.unit : ''} et cette pièce en sort ${pct(x.need)}. Le stock passerait à ${pct(x.after)}. Vérifie qu'une facture d'achat n'a pas été oubliée.`));
       }
+      // Une ligne à zéro est légitime (une prestation offerte), mais c'est aussi la trace d'une
+      // quantité effacée et jamais retapée. On la nomme avant d'émettre : après, la pièce est
+      // verrouillée et il faut un avoir.
+      (doc.lines || []).filter(l => (l.label || '').trim() && !l.noDiscount
+        && (!(Number(l.qty) > 0) || !(Number(l.unitPrice) > 0)))
+        .forEach(l => w.push(`La ligne « ${l.label} » est à 0 : ${!(Number(l.qty) > 0) ? 'quantité' : 'prix unitaire'} manquant. Si c'est une prestation offerte, ignore cet avertissement.`));
       return w;
     }
     // L'avertissement « ta fiche société est incomplète » n'existait que sur `#issue`, c'est-à-dire
@@ -2411,7 +2485,14 @@
       if (isNew) navigate('#/doc/' + doc.id); else render();
     };
     if ($('#del')) $('#del').onclick = async () => {
-      if (!await confirmDialog(`Supprimer ${docLabel(doc)} ?${doc.number ? ' Le numéro ne sera pas réutilisé.' : ''}`)) return;
+      // Une suppression qui laisse des liens morts doit au moins les nommer : une facture qui
+      // annonce « établie à partir du devis DEV-2026-012 » et dont le lien mène au tableau de bord
+      // est un mystère qu'on n'élucide plus six mois après.
+      const liees = C.piecesLiees(data, doc);
+      const quoi = liees.length
+        ? `\n\n${pl(liees.length, 'pièce en est issue', 'pièces en sont issues')} : ${liees.map(x => `${x.number} (${x.quoi})`).join(', ')}. ${liees.length > 1 ? 'Elles resteront' : 'Elle restera'}, mais ${liees.length > 1 ? 'leur lien' : 'son lien'} vers cette pièce sera rompu.`
+        : '';
+      if (!await confirmDialog(`Supprimer ${docLabel(doc)} ?${doc.number ? ' Le numéro ne sera pas réutilisé.' : ''}${quoi}`, 'Supprimer', true)) return;
       if (closedBlock(doc.date, 'Ce document')) return;
       forget('documents', doc.id, docLabel(doc));
       data.documents = data.documents.filter(d => d.id !== doc.id); save(true); navigate(backTo);
@@ -2435,16 +2516,49 @@
     };
     if ($('#voir-facture')) $('#voir-facture').onclick = () => navigate('#/doc/' + dejaFacture[0].id);
     if ($('#deposit')) $('#deposit').onclick = () => {
-      modal(`<h2>Facture d'acompte</h2><p class="small muted">Une facture d'un pourcentage du devis ${h(doc.number)} (${C.money(C.computeTotals(doc, company()).totalTTC, cur)} TTC). La facture de solde déduira automatiquement cet acompte.</p>
-        <form id="df" class="grid-2">${field('Pourcentage du devis', 'percent', 30, 'number', 'min="1" max="99" step="0.5" class="num"')}</form>
+      // Un acompte se négocie au téléphone en DINARS (« tu me mets 5 000 à la commande »), jamais en
+      // pourcentage : il fallait diviser de tête, tomber sur 33,33 %, et découvrir le montant réel
+      // seulement une fois le brouillon créé. Les deux modes vivent dans la même fenêtre, et le TTC
+      // obtenu s'affiche en direct — l'écart d'arrondi se voit AVANT, pas après.
+      const ttcDevis = C.computeTotals(doc, company()).totalTTC;
+      modal(`<h2>Facture d'acompte</h2><p class="small muted">Une part du devis ${h(doc.number)} (${C.money(ttcDevis, cur)} TTC). La facture de solde déduira automatiquement cet acompte.</p>
+        <form id="df" class="grid-2">
+          <label class="field">Exprimé en<select name="mode"><option value="pct">Pourcentage du devis</option><option value="dt">Montant TTC (${h(cur)})</option></select></label>
+          <label class="field" id="dp-pct">Pourcentage<input type="number" name="percent" value="30" min="0.1" max="99.9" step="0.5" class="num"></label>
+          <label class="field" id="dp-dt" hidden>Montant TTC${info('ed.depositAmount')}<input type="number" name="montant" value="${C.round3(ttcDevis * 0.3)}" min="0" step="0.001" class="num"></label>
+          <div class="small muted span-2" id="dp-apercu"></div>
+        </form>
         <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Créer le brouillon</button></div>`,
-        (root, close) => { $('#ok', root).onclick = () => {
-          const p = Number($('input[name=percent]', root).value); if (!(p > 0 && p < 100)) return toast('Pourcentage entre 1 et 99.', true);
+        (root, close) => {
+        // Le pourcentage réellement demandé à `depositLines`, quel que soit le mode de saisie.
+        const lirePct = () => {
+          const v = formValues($('#df', root));
+          if (v.mode === 'dt') { const m = Number(v.montant); return ttcDevis > 0 ? (m / ttcDevis) * 100 : 0; }
+          return Number(v.percent);
+        };
+        const apercu = () => {
+          const p2 = lirePct();
+          const el = $('#dp-apercu', root);
+          if (!(p2 > 0 && p2 < 100)) { el.textContent = 'Un acompte est une PART du devis : entre 0 et 100 % de son total TTC.'; return; }
+          const t = C.computeTotals({ ...doc, type: 'facture', lines: C.depositLines(doc, p2, company()), discountRate: 0, applyStamp: true }, company());
+          el.innerHTML = `L'acompte fera <b>${h(C.money(t.netToPay, cur))}</b> à payer (${pct(p2)} % du devis, timbre compris). Le solde restera de ${h(C.money(C.round3(ttcDevis - t.totalTTC), cur))}.`;
+        };
+        $('#df', root).oninput = $('#df', root).onchange = () => {
+          const v = formValues($('#df', root));
+          $('#dp-pct', root).hidden = v.mode === 'dt';
+          $('#dp-dt', root).hidden = v.mode !== 'dt';
+          apercu();
+        };
+        apercu();
+        $('#ok', root).onclick = () => {
+          const p = C.round3(lirePct());
+          if (!(p > 0 && p < 100)) return refus('#df [name=' + (formValues($('#df', root)).mode === 'dt' ? 'montant' : 'percent') + ']', 'Un acompte est une part du devis : entre 0 et 100 % de son total TTC.');
           const inv = invoiceFromQuote(doc, C.depositLines(doc, p, company()), 0);
           inv.deposit = { percent: p, quoteId: doc.id, quoteNumber: doc.number }; inv.fromQuoteId = doc.id; inv.fromQuoteNumber = doc.number;
           inv.subject = `Acompte ${pct(p)} % — ${doc.subject || doc.number}`;
           acceptQuote(doc.id); data.documents.push(inv); save(true); close(); toast('Brouillon de facture d\'acompte créé'); navigate('#/doc/' + inv.id);
-        }; });
+        };
+      });
     };
     if ($('#settle2')) $('#settle2').onclick = () => $('#settle') ? $('#settle').click() : null;
     if ($('#settle')) $('#settle').onclick = () => {
@@ -4626,13 +4740,7 @@
         if (sup) {
           if (sup.paymentTermsDays !== '' && sup.paymentTermsDays != null && p.date) {
             p.dueDate = C.addDays(p.date, Number(sup.paymentTermsDays) || 0);
-            // un champ date est un couple <input hidden> + champ texte visible : les deux doivent suivre
-            const hid = $('input[name=dueDate]', head);
-            if (hid) {
-              hid.value = p.dueDate;
-              const txt = hid.closest('.datefield') && $('.d-txt', hid.closest('.datefield'));
-              if (txt) txt.value = C.fmtDateInput(p.dueDate);
-            }
+            poserDateField(head, 'dueDate', p.dueDate);
           }
           if (Number(sup.withholdingRate)) { p.withholdingRate = Number(sup.withholdingRate); $('select[name=withholdingRate]', head).value = String(p.withholdingRate); }
         }

@@ -6473,5 +6473,129 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       'répondre à un devis ne laisse aucun retour en arrière');
   });
 
+  // ---------- 7.19.0 : l'éditeur de document ----------
+
+  t('le timbre annoncé à côté de la case est celui qui sera compté', () => {
+    const app = lireApp();
+    // Le timbre est fixé EN DINARS (7.0.1) : sur une facture en euros au taux 3,4 il vaut 0,29 €.
+    // L'étiquette montrait le réglage brut — « 1,00 € » — à côté d'un total qui comptait 0,29 €.
+    assert.ok(/const timbreAffiche = \(\) => \{[\s\S]{0,420}?C\.rateOf\(doc, company\(\)\)/.test(app),
+      'le montant du timbre affiché n\'est plus converti dans la devise de la pièce');
+    assert.ok(/<span id="stamp-lbl">\$\{C\.money\(timbreAffiche\(\), cur\)\}<\/span>/.test(app),
+      'l\'étiquette du timbre n\'utilise pas le montant réellement compté');
+    assert.ok(/const lbl2 = \$\('#stamp-lbl'\); if \(lbl2\) lbl2\.textContent = C\.money\(timbreAffiche\(\), cur\);/.test(app),
+      'l\'étiquette ne se recalcule pas quand la devise ou le taux changent');
+    // Et le calcul de core reste la référence : sur une facture en EUR, l'étiquette vaut `stamp`.
+    const co = { currency: 'DT', stampFee: 1, vatRate: 19 };
+    const f = { type: 'facture', currency: 'EUR', exchangeRate: 3.4, applyStamp: true, status: 'envoyée',
+      lines: [{ label: 'X', qty: 1, unitPrice: 100, vatRate: 19 }] };
+    const t2 = core.computeTotals(f, co);
+    assert.ok(Math.abs(t2.stamp - core.round3(1 / 3.4)) < 0.0005,
+      `le timbre d'une facture en EUR vaut ${t2.stamp} au lieu de ${core.round3(1 / 3.4)}`);
+  });
+
+  t('changer la date recalcule l\'échéance, sauf si elle a été saisie à la main', () => {
+    const app = lireApp();
+    assert.ok(/let dueAuto = doc\.dueDate;/.test(app), 'l\'échéance automatique n\'est plus mémorisée');
+    // La condition porte les DEUX moitiés : c'est la date qui a changé, et l'échéance n'a pas été touchée.
+    assert.ok(/e\.target\.name === 'date' && doc\.date && dueAuto && doc\.dueDate === dueAuto/.test(app),
+      'l\'échéance se recalcule même quand elle a été saisie à la main');
+    assert.ok(/doc\.dueDate = neuf; dueAuto = neuf;\s*\n\s*poserDate\('dueDate', neuf\);/.test(app),
+      'la nouvelle échéance n\'est pas écrite dans le champ visible');
+    // Un champ date est un COUPLE (règle 3.0.0) : le helper touche les deux, et il est partagé.
+    assert.ok(/function poserDateField\(root, name, iso\)[\s\S]{0,420}?hid\.value = iso;[\s\S]{0,300}?txt\.value = iso \? C\.fmtDateInput\(iso\) : '';/.test(app),
+      'le helper de champ date ne met plus à jour le couple hidden + texte');
+    assert.ok(/poserDateField\(head, 'dueDate', p\.dueDate\);/.test(app), 'l\'éditeur d\'achat ne passe pas par le helper');
+    assert.ok(/id="due-auto"/.test(app), 'rien ne dit que l\'échéance vient d\'être recalculée');
+  });
+
+  t('une quantité effacée ne vaut pas zéro', () => {
+    const app = lireApp();
+    // `Number('')` vaut 0 : effacer une quantité pour la retaper faisait tomber la ligne, le total
+    // du document et l'aperçu à zéro, sans un mot.
+    assert.ok(/const vide = el\.value\.trim\(\) === '' \|\| el\.validity\.badInput;/.test(app),
+      'une saisie numérique vide ou illisible est encore convertie en 0');
+    assert.ok(/el\.classList\.toggle\('champ-faute', vide\);\s*\n\s*if \(vide\) return;/.test(app),
+      'un champ numérique vide n\'est ni marqué ni ignoré');
+    // Et on PRÉVIENT à l'émission : une ligne offerte reste légitime.
+    assert.ok(/La ligne « \$\{l\.label\} » est à 0/.test(app), 'une ligne à zéro n\'est pas signalée avant d\'émettre');
+    assert.ok(/issueWarnings[\s\S]{0,3000}?!\(Number\(l\.qty\) > 0\) \|\| !\(Number\(l\.unitPrice\) > 0\)/.test(app),
+      'le contrôle des lignes à zéro n\'est pas dans issueWarnings');
+  });
+
+  t('la fiche du client se corrige depuis le document', () => {
+    const app = lireApp();
+    assert.ok(/id="cl-edit"/.test(app), 'rien ne mène à la fiche du client depuis l\'éditeur');
+    assert.ok(/\$\('#cl-edit', head\)\.onclick = \(\) => \{[\s\S]{0,300}?clientForm\(c, \(\)/.test(app),
+      'le bouton « Fiche du client » n\'ouvre pas le formulaire');
+    // Il n'apparaît que s'il y a un client, et suit le choix.
+    assert.ok(/const majFicheClient = \(\) => \{[\s\S]{0,160}?b\.hidden = !doc\.clientId;/.test(app),
+      'le bouton reste visible sans client choisi');
+    assert.ok(/majFicheClient\(\);\s*\n\s*drawLines\(\);/.test(app), 'le bouton ne suit pas le changement de client');
+  });
+
+  t('une facture soldée n\'invite plus à enregistrer un paiement', () => {
+    const app = lireApp();
+    // Le calcul existait dix lignes plus haut (`bal`), la barre d'actions ne le lisait pas.
+    assert.ok(/locked && isInv && doc\.status !== 'annulée' && bal && bal\.remaining > 0\.0005 \? `<button class="btn btn-primary" id="pay">/.test(app),
+      'le bouton « Enregistrer un paiement » s\'affiche encore sur une facture soldée');
+  });
+
+  t('supprimer une pièce nomme ce qui en dépend', () => {
+    // La fonction est pure : elle se teste sans Electron.
+    const data = { documents: [
+      { id: 'q1', type: 'devis', number: 'DEV-1' },
+      { id: 'f1', type: 'facture', number: 'FAC-1', fromQuoteId: 'q1', deposit: { percent: 30, quoteId: 'q1' } },
+      { id: 'f2', type: 'facture', number: 'FAC-2', fromQuoteId: 'q1', settles: { quoteId: 'q1' } },
+      { id: 'a1', type: 'avoir', number: 'AVO-1', creditOf: 'f1' },
+      { id: 'bl', type: 'livraison', number: 'BL-1', fromDocId: 'q1' },
+      { id: 'x', type: 'facture', number: 'FAC-9' }
+    ] };
+    const liees = core.piecesLiees(data, { id: 'q1' });
+    assert.strictEqual(liees.length, 3, `3 pièces dépendent du devis, trouvé ${liees.length}`);
+    assert.ok(liees.some(x => x.number === 'FAC-1' && /acompte 30/.test(x.quoi)), 'l\'acompte n\'est pas nommé comme tel');
+    assert.ok(liees.some(x => x.number === 'FAC-2' && /solde/.test(x.quoi)), 'la facture de solde n\'est pas nommée');
+    assert.ok(liees.some(x => x.number === 'BL-1'), 'la pièce issue du devis n\'est pas comptée');
+    const surF1 = core.piecesLiees(data, { id: 'f1' });
+    assert.strictEqual(surF1.length, 1, `un avoir dépend de sa facture : ${surF1.length} pièce(s) liée(s) trouvée(s) au lieu d'une`);
+    assert.strictEqual(surF1[0].number, 'AVO-1', 'l\'avoir ne dépend pas de sa facture');
+    // Sans identifiant, on ne « descend » pas toute la base (le piège de derivedDocs, 2.6.0).
+    assert.deepStrictEqual(core.piecesLiees(data, { id: '' }), []);
+    assert.deepStrictEqual(core.piecesLiees(data, null), []);
+    // Une pièce sans lien ne réclame rien.
+    assert.deepStrictEqual(core.piecesLiees(data, { id: 'x' }), []);
+
+    const app = lireApp();
+    assert.ok(/const liees = C\.piecesLiees\(data, doc\);[\s\S]{0,600}?await confirmDialog\(`Supprimer/.test(app),
+      'la suppression ne nomme pas les pièces liées');
+  });
+
+  t('un acompte se demande aussi en dinars', () => {
+    const app = lireApp();
+    // Un acompte se négocie au téléphone en dinars : il fallait diviser de tête et découvrir le
+    // montant réel une fois le brouillon créé.
+    assert.ok(/<select name="mode"><option value="pct">.*?<option value="dt">/.test(app),
+      'l\'acompte ne se demande qu\'en pourcentage');
+    assert.ok(/const lirePct = \(\) => \{[\s\S]{0,300}?if \(v\.mode === 'dt'\) \{ const m = Number\(v\.montant\); return ttcDevis > 0 \? \(m \/ ttcDevis\) \* 100 : 0; \}/.test(app),
+      'le montant n\'est pas converti en pourcentage (c\'est ce que depositLines attend)');
+    // Le TTC réellement obtenu s'affiche AVANT : l'écart d'arrondi ne se découvre pas après coup.
+    assert.ok(/L'acompte fera <b>\$\{h\(C\.money\(t\.netToPay, cur\)\)\}<\/b> à payer/.test(app),
+      'le montant réellement obtenu n\'est pas annoncé avant de créer le brouillon');
+    assert.ok(/ttcDevis > 0 \? \(m \/ ttcDevis\) \* 100 : 0/.test(app), 'une division par zéro reste possible sur un devis à 0');
+    // `depositLines` ne change pas : c'est tout l'intérêt de convertir en amont.
+    const co = { currency: 'DT', stampFee: 1 };
+    const q = { type: 'devis', lines: [{ label: 'X', qty: 1, unitPrice: 1000, vatRate: 19 }] };
+    const ttc = core.computeTotals(q, co).totalTTC;
+    const lignes = core.depositLines(q, (300 / ttc) * 100, co);
+    const sansTimbre = core.computeTotals({ type: 'facture', lines: lignes, applyStamp: false }, co);
+    assert.ok(Math.abs(sansTimbre.totalTTC - 300) < 0.01,
+      `les lignes d'un acompte demandé à 300 DT doivent totaliser 300 DT TTC, obtenu ${sansTimbre.totalTTC}`);
+    // Et le timbre s'ajoute PAR-DESSUS : c'est précisément l'écart que la fenêtre annonce avant de
+    // créer le brouillon, au lieu de le laisser découvrir sur la facture.
+    const avecTimbre = core.computeTotals({ type: 'facture', lines: lignes, applyStamp: true }, co);
+    assert.ok(Math.abs(avecTimbre.netToPay - 301) < 0.01,
+      `l'acompte réellement à payer vaut 300 + 1 DT de timbre, obtenu ${avecTimbre.netToPay}`);
+  });
+
   console.log(`\n${n} tests OK`);
 })().catch(e => { console.error(e); process.exit(1); });

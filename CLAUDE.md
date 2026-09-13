@@ -360,6 +360,7 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:cliquable` | **tout ce qui se lit se clique** : le filtre « Émis », la concordance carte/liste, les quatre chiffres de l'accueil et chaque ligne de « Ce qui manque » |
 | `npm run e2e:repondre` | **les écrans qui ne répondent pas** : le pointage qui se défait, le curseur qui ne saute plus, le sélecteur d'année inerte, le tri qui ne triait pas, l'année figée, l'export qui suit l'onglet |
 | `npm run e2e:accueil` | **l'accueil tient ses promesses** : le filtre qui ne se rearme pas, le raccourci qui vise un panneau, l'extrait sans total, le contrat suspendu qui demande, la recherche des Relances, la réponse à un devis |
+| `npm run e2e:editeur` | **l'éditeur de document** : le timbre dans la devise de la pièce, l'échéance qui suit la date, la quantité effacée, la fiche du client, l'acompte en dinars, la suppression qui nomme les liens, le bouton d'une facture soldée |
 
 Ils ont longtemps vécu dans un dossier de travail temporaire, effacé à chaque session : il fallait les réécrire de mémoire, et ils dérivaient (une assertion restée sur une version périmée, un écran neuf jamais parcouru). **Un test qu'on doit réécrire pour s'en servir n'est pas un test.** Le harnais (`test/e2e/harnais.js`) trouve Playwright où il est, lit la version dans `package.json` au lieu de l'écrire en dur, et range les captures dans `dist-e2e/` (ignoré par Git).
 
@@ -889,6 +890,52 @@ Règles apprises, à ne pas recasser :
 - Piège de test : le sélecteur d'année d'une liste s'appelle `#yr`, pas `#year`. Mon e2e lisait un
   élément inexistant et passait **avec le défaut réintroduit**. Un test e2e se prouve en
   réintroduisant le défaut, exactement comme un test de source.
+
+## 7.19.0 — L'éditeur de document
+
+L'écran le plus utilisé de l'application. Sept endroits où il laissait faire une erreur sans rien
+dire — et où l'information manquante existait déjà, dix lignes plus haut dans le même fichier.
+
+Règles apprises, à ne pas recasser :
+
+- **Un montant annoncé à côté d'une case est le montant que cette case AJOUTE.** L'étiquette du
+  timbre montrait `company().stampFee` brut : « 1,00 € » sur une facture en euros, à trois
+  centimètres d'un total qui comptait 0,29 €. Deux règles déjà écrites s'y croisaient — la
+  conversion (7.0.1) et le figement à l'émission (7.1.0) — et l'étiquette n'en appliquait aucune.
+  `timbreAffiche()` les applique toutes les deux, et se recalcule dans `refreshTotals`.
+- **Une valeur DÉDUITE d'une autre la suit tant qu'on n'y a pas touché.** L'échéance à 30 jours
+  restait sur l'ancienne date quand on corrigeait la date du document. La parade tient en une
+  variable (`dueAuto`) : on ne recalcule que tant que la valeur est encore celle qu'on avait posée.
+  Le contraire — recalculer toujours — écraserait une échéance négociée avec le client.
+- **`Number('')` vaut 0, et un champ numérique vidé n'est pas un champ à zéro.** Effacer « 2 » pour
+  taper « 12 » faisait passer la ligne, le total du document et l'aperçu à zéro entre les deux
+  frappes. On ne retient rien tant que le champ n'est pas lisible (`value.trim() === ''` ou
+  `validity.badInput`), et on le marque : sinon l'écran affiche une valeur que les données n'ont pas.
+- **Un champ date est un COUPLE** (règle 3.0.0, re-trouvée) : `poserDateField(root, name, iso)` est
+  maintenant partagé, au lieu d'être recopié dans l'éditeur d'achat.
+- **Ce qu'on découvre en regardant l'aperçu se corrige depuis l'aperçu.** Une adresse client fausse
+  se voit sur le document et se corrigeait aux Clients, trois écrans plus loin, en traversant le
+  garde-fou des modifications non enregistrées. Tout existait — le formulaire, la pile de fenêtres,
+  le redessin — il manquait un bouton. Même famille que « un moteur sans écran n'existe pas » (7.3.0).
+- **Un bouton principal propose le geste SUIVANT, pas le geste passé.** « Enregistrer un paiement »
+  restait le bouton coloré d'une facture intégralement payée, alors que le reste dû était calculé
+  dix lignes plus haut.
+- **Une suppression nomme ce qu'elle casse.** `core.piecesLiees` est pur et testé : il retrouve les
+  acomptes, les soldes, les avoirs et les pièces dérivées. On ne refuse pas — la pièce appartient à
+  son auteur — mais une facture qui annonce « établie à partir du devis DEV-2026-012 » avec un lien
+  mort est un mystère qu'on n'élucide plus six mois après.
+- **On saisit dans l'unité où l'on pense.** Un acompte se négocie en dinars, pas en pourcentage :
+  il fallait diviser de tête, tomber sur 33,33 %, et découvrir le montant réel une fois le brouillon
+  créé. `core.depositLines` ne change pas — c'est l'interface qui convertit, et qui **annonce le
+  total obtenu avant** de fabriquer quoi que ce soit, timbre compris.
+- Piège de test e2e : quitter un brouillon modifié réveille le garde-fou « modifications non
+  enregistrées », qui REMET la page précédente dans la barre d'adresse pour poser sa question
+  (2.4.0). Une navigation suivante n'a alors tout simplement pas lieu, et le test cherche un bouton
+  sur un écran qu'il n'a jamais quitté — l'erreur arrive trente secondes plus tard, sur un sélecteur
+  qui n'a rien à voir.
+- Piège de test e2e : un acompte demandé à 300 DT donne 300 DT **de lignes** plus le timbre. Une
+  assertion qui compare 300 au `totalTTC` décrit une règle fausse ; c'est `netToPay` qui vaut 301,
+  et c'est très exactement ce que la fenêtre annonce désormais avant de créer le brouillon.
 
 ## Pistes pour la suite (non demandées)
 

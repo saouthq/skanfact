@@ -3656,6 +3656,25 @@
   }
 
   // Les pièces issues d'une autre, dans l'ordre où elles ont été établies.
+  // Tout ce qui pointe vers cette pièce. Supprimer un devis laissait des factures pointant vers un
+  // identifiant qui n'existe plus : leur en-tête continuait d'annoncer « établie à partir du devis
+  // DEV-2026-012 », et le lien de l'historique menait au tableau de bord. On ne refuse pas la
+  // suppression — la pièce reste la propriété de son auteur — mais on NOMME ce qui va se rompre.
+  function piecesLiees(data, doc) {
+    if (!doc || !doc.id) return [];
+    const out = [];
+    (data.documents || []).forEach(d => {
+      if (d.id === doc.id) return;
+      let quoi = '';
+      if (d.fromQuoteId === doc.id) quoi = d.deposit ? `acompte ${d.deposit.percent} %` : d.settles ? 'facture de solde' : 'facture du devis';
+      else if (d.fromDocId === doc.id) quoi = 'issue de cette pièce';
+      else if (d.creditOf === doc.id) quoi = 'avoir sur cette facture';
+      else if (d.settles && d.settles.quoteId === doc.id) quoi = 'facture de solde';
+      if (quoi) out.push({ id: d.id, number: d.number || '(brouillon)', type: d.type, quoi });
+    });
+    return out.sort((a2, b2) => (a2.number || '').localeCompare(b2.number || '', undefined, { numeric: true }));
+  }
+
   function derivedDocs(doc, data) {
     if (!doc || !doc.id) return [];   // sans identifiant, `undefined === undefined` renverrait toute la base
     return (data.documents || []).filter(d => d.fromDocId === doc.id)
@@ -4943,7 +4962,7 @@
     advancesOf, advanceBalance, payslipInputFor, HR_DOCS, hrDocLabel, hrDocumentHtml, staffRegister,
     SERIAL_STATUSES, serialStatusLabel, WARRANTY_CHOICES, serializedItems, warrantyEnd, serialView,
     serialList, availableSerials, clientFleet, warrantiesEnding, serialGap, serialGaps,
-    mergeData, trackDeletion, MERGE_LISTS, LIST_LABELS,
+    mergeData, trackDeletion, MERGE_LISTS, LIST_LABELS, piecesLiees,
     purchaseTotals, purchaseBalance, purchaseStatus, achatDoublon, facturesDuDevis, payablesList, purchaseJournal, purchaseSummary, supplierSummary, withholdingsToIssue, supplierPayments,
     periodBounds, issuedIn, salesTotals, revenueByMonth, topItems, clientMovement, AGING_BUCKETS, agedReceivables, payerRanking, quoteFunnel, objectiveProgress,
     amountToWords, intToWords, intToWordsEn, documentHtml, fitToPage, pageCount,

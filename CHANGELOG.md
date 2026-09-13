@@ -7,6 +7,41 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 7.19.0 — 13/09/2026
+
+**L'éditeur de document.**
+
+L'écran le plus utilisé de l'application, et sept endroits où il laissait faire une erreur sans rien
+dire.
+
+- **Le timbre annoncé n'était pas celui qui serait compté.** Le timbre fiscal est fixé en dinars :
+  sur une facture en euros au taux 3,4 il vaut 0,29 €. L'étiquette à côté de la case affichait le
+  réglage brut — « 1,00 € » — juste au-dessus d'un total qui, lui, comptait 0,29 €. Et une pièce
+  émise garde son propre timbre figé : c'est celui-là qu'on montre, pas le réglage du jour.
+- **Changer la date ne recalculait jamais l'échéance.** On corrigeait la date d'une facture et elle
+  restait due au 30ᵉ jour de l'ANCIENNE. Elle suit maintenant — sauf si l'échéance a été saisie à
+  la main, auquel cas elle n'est jamais écrasée — et une ligne discrète dit qu'elle vient de bouger.
+- **Effacer une quantité la mettait à zéro.** `Number('')` vaut 0 : effacer « 2 » pour taper « 12 »
+  faisait tomber la ligne, le total et l'aperçu à zéro entre les deux frappes. Rien n'est retenu
+  tant que le champ n'est pas lisible, et il est marqué en attendant.
+- **Rien ne refusait d'émettre une ligne à zéro.** On ne l'interdit pas (une prestation offerte
+  existe), on la nomme avant d'émettre — après, la pièce est verrouillée et il faut un avoir.
+- **Le client choisi ne se corrigeait pas depuis le document.** Une adresse fausse se découvre EN
+  REGARDANT l'aperçu : il fallait quitter le document, aller aux Clients, chercher, corriger,
+  revenir. Un bouton « ✎ Fiche du client » ouvre la fiche par-dessus.
+- **Sur une facture soldée, le bouton principal invitait encore à enregistrer un paiement.** Le
+  calcul du reste dû était fait dix lignes plus haut ; la barre d'actions ne le lisait pas.
+- **Supprimer une pièce ne disait pas ce qui en dépend.** Une facture continuait d'annoncer
+  « établie à partir du devis DEV-2026-012 » avec un lien qui mène au tableau de bord. La question
+  les nomme maintenant : « FAC-2026-018 (acompte 30 %) en est issue — elle restera, mais son lien
+  vers cette pièce sera rompu. »
+- **Un acompte ne se demandait qu'en pourcentage.** Il se négocie au téléphone en dinars (« 5 000 à
+  la commande ») : il fallait diviser de tête, tomber sur 33,33 %, et découvrir le montant réel une
+  fois le brouillon créé. Les deux modes vivent dans la même fenêtre, et le total obtenu — timbre
+  compris — s'affiche en direct, avant de fabriquer quoi que ce soit.
+
+`npm run e2e:editeur` refait les huit gestes dans l'application réelle ; `npm test` passe à 272.
+
 ## 7.18.0 — 13/09/2026
 
 **L'accueil tient ses promesses.**
