@@ -12,8 +12,11 @@ rem  et un test de npm test empechent la recidive.
 rem ---------------------------------------------------------------------------
 
 set "LOG=%~dp0installation-windows.log"
+set "BLOG=%~dp0construction.log"
 echo ===== SkanFact - installation du %DATE% a %TIME% =====> "%LOG%"
 echo Dossier : %~dp0>> "%LOG%"
+rem  Le chemin, la version de Node et celle de npm sont ce qui change d'un poste
+rem  a l'autre : sans eux, un echec de construction est impossible a expliquer.
 
 echo.
 echo   === SkanFact - Installation ===
@@ -27,6 +30,7 @@ echo    4. le lancer
 echo.
 echo   Si quelque chose se passe mal, tout est note dans :
 echo   %LOG%
+echo   et le detail de la construction dans construction.log
 echo.
 set "go="
 set /p go="  On commence ? [O/n] "
@@ -74,6 +78,7 @@ call npm install --no-fund --no-audit
 if errorlevel 1 goto :echec_npm
 echo   OK  Dependances installees
 echo dependances ok>> "%LOG%"
+for /f "tokens=*" %%v in ('npm -v') do echo npm %%v>> "%LOG%"
 goto :construire
 
 :echec_npm
@@ -89,10 +94,17 @@ echo   [3/4] Construction de l'installateur
 set "build="
 set /p build="  Construire l'installateur SkanFact (.exe) ? [O/n] "
 if /i "%build%"=="n" goto :dev
-echo   Patiente, 2 a 5 minutes.
+echo   Patiente, 2 a 5 minutes. Rien ne s'affiche pendant ce temps :
+echo   tout est ecrit au fur et a mesure dans construction.log.
 echo.
-call npm run build:win
-if errorlevel 1 goto :echec_build
+call npm run build:win > "%BLOG%" 2>&1
+set "RC=%errorlevel%"
+rem  La sortie d electron-builder est versee dans le journal principal : un seul
+rem  fichier a envoyer, et il porte la cause au lieu du seul mot "echec".
+echo ----- sortie de npm run build:win ----->> "%LOG%"
+type "%BLOG%" >> "%LOG%"
+echo ----- fin de la sortie ----->> "%LOG%"
+if not "%RC%"=="0" goto :echec_build
 set "EXE="
 for %%f in ("dist\*.exe") do set "EXE=%%~ff"
 if not defined EXE goto :sans_exe
@@ -123,9 +135,16 @@ goto :fin
 :echec_build
 echo construction : echec>> "%LOG%"
 echo.
-echo   La construction a echoue. Les messages ci-dessus disent pourquoi.
-echo   Envoie-moi une photo de cette fenetre, ou le fichier :
+echo   --- Ce que la construction a repondu ---
+echo.
+type "%BLOG%"
+echo.
+echo   --- Fin du message ---
+echo.
+echo   La construction a echoue, et la raison est juste au-dessus.
+echo   Envoie-moi le fichier :
 echo   %LOG%
+echo   Il porte tout : ton systeme, tes versions et ce message.
 goto :fin
 
 :dev

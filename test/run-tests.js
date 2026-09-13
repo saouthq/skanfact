@@ -6800,8 +6800,16 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // ferme sans un mot — impossible a diagnostiquer pour qui double-clique le fichier.
     // C'est ce qui est arrive a l'installeur Windows jusqu'a la 7.21.1.
     const racine = path.join(__dirname, '..');
-    const bats = fs.readdirSync(racine).filter(f => /\.(bat|cmd|ps1)$/i.test(f));
-    assert.ok(bats.length, 'aucun fichier batch trouve : le test ne prouve rien');
+    // On descend dans les sous-dossiers : un .bat en fins de ligne Unix ferme la fenetre ou
+    // qu'il soit, et le recolleur de « Installateur Temporaire/ » n'est pas a la racine.
+    const ignore = new Set(['node_modules', 'dist', 'dist-cabinet', 'dist-e2e', '.git']);
+    const parcourir = (dir, prefixe = '') => fs.readdirSync(dir, { withFileTypes: true })
+      .filter(e => !ignore.has(e.name))
+      .flatMap(e => e.isDirectory()
+        ? parcourir(path.join(dir, e.name), prefixe + e.name + '/')
+        : (/\.(bat|cmd|ps1)$/i.test(e.name) ? [prefixe + e.name] : []));
+    const bats = parcourir(racine);
+    assert.ok(bats.length >= 1, `aucun fichier batch lu : le parcours des sous-dossiers ne marche pas`);
     bats.forEach(f => {
       const brut = fs.readFileSync(path.join(racine, f));
       const lf = (brut.toString('binary').match(/\n/g) || []).length;
@@ -6822,6 +6830,31 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.ok(/^\*\.command\s+text eol=lf$/m.test(attrs), '.gitattributes ne force plus le LF sur les .command');
   });
 
+  t('un echec de construction se nomme, au lieu du seul mot « echec »', () => {
+    // 7.21.2 : le journal d'installation ne portait que « construction : echec ». Une panne qui ne
+    // se nomme pas condamne l'utilisateur ET le depannage a distance (regle de la 6.7.2).
+    const bat = fs.readFileSync(path.join(__dirname, '..', 'Installer SkanFact (Windows).bat'), 'ascii');
+    assert.ok(/call npm run build:win > "%BLOG%" 2>&1/.test(bat),
+      'la sortie de la construction n\'est plus capturee : l\'echec redeviendrait muet');
+    // Capturer ne suffit pas : il faut que la sortie arrive dans le journal qu'on envoie...
+    const versLeJournal = bat.indexOf('type "%BLOG%" >> "%LOG%"');
+    assert.ok(versLeJournal > 0, 'le journal de construction n\'est pas verse dans le journal principal');
+    // ... ET a l'ecran, dans la branche d'echec, sinon il faut savoir qu'un second fichier existe.
+    // On ancre sur les DECLARATIONS d'etiquette (debut de ligne), pas sur `goto :dev` /
+    // `goto :echec_build` qui apparaissent plus haut et dans l'autre ordre : la tranche serait vide.
+    const debut = bat.search(/^:echec_build$/m);
+    const fin = bat.search(/^:dev$/m);
+    assert.ok(debut > 0 && fin > debut, 'le decoupage de la branche d\'echec est faux');
+    const echec = bat.slice(debut, fin);
+    assert.ok(echec.length > 100, 'la branche d\'echec est vide');
+    assert.ok(!echec.includes('npm run build:win'), 'la tranche deborde sur la construction : elle prouverait autre chose');
+    assert.ok(/\ntype "%BLOG%"\r?\n/.test(echec), 'la branche d\'echec n\'affiche pas ce que la construction a repondu');
+    // errorlevel se lit AVANT les `type` qui suivent : chacun le remet a zero. C'est la faute
+    // exacte qu'un `if errorlevel 1` place apres aurait introduite, sans que rien ne le signale.
+    assert.ok(bat.indexOf('set "RC=%errorlevel%"') < versLeJournal,
+      'errorlevel est lu APRES un autre appel : il vaudra celui du `type`, et tout echec passera pour un succes');
+  });
+
   t('l\'installeur Windows appelle des commandes qui existent', () => {
     const racine = path.join(__dirname, '..');
     const bat = fs.readFileSync(path.join(racine, 'Installer SkanFact (Windows).bat'), 'ascii');
@@ -6831,10 +6864,15 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     (bat.match(/npm run ([\w:-]+)/g) || []).map(x => x.slice(8)).forEach(s2 =>
       assert.ok(pkg.scripts[s2], `l'installeur appelle « npm run ${s2} », qui n'existe pas dans package.json`));
     // Tout `goto :label` doit avoir sa cible : un label absent fait sortir cmd.exe du script.
-    const labels = new Set((bat.match(/^:(\w+)/gm) || []).map(x => x.slice(1)));
-    const sauts = [...new Set((bat.match(/goto :(\w+)/g) || []).map(x => x.slice(6)))];
-    assert.ok(sauts.length >= 5, `seulement ${sauts.length} saut(s) lus : le decoupage est faux`);
-    sauts.forEach(l => assert.ok(labels.has(l), `« goto :${l} » ne mene a aucun label : cmd.exe quitterait le script`));
+    // Vaut pour TOUS les .bat du depot, pas seulement celui de la racine.
+    const sautsTiennent = (nom, source, minimum) => {
+      const labels = new Set((source.match(/^:(\w+)/gm) || []).map(x => x.slice(1)));
+      const sauts = [...new Set((source.match(/goto :(\w+)/g) || []).map(x => x.slice(6)))];
+      assert.ok(sauts.length >= minimum, `« ${nom} » : seulement ${sauts.length} saut(s) lus, le decoupage est faux`);
+      sauts.forEach(l => assert.ok(labels.has(l),
+        `« ${nom} » : goto :${l} ne mene a aucun label, cmd.exe quitterait le script`));
+    };
+    sautsTiennent('Installer SkanFact (Windows).bat', bat, 5);
   });
 
   console.log(`\n${n} tests OK`);

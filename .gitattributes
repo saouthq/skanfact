@@ -13,3 +13,11 @@
 # echoue avec « bad interpreter: /bin/bash^M ».
 *.command   text eol=lf
 *.sh        text eol=lf
+
+# Binaires : surtout PAS de normalisation de fins de ligne. Un seul octet 0x0D
+# converti dans un .exe ou une icone, et le fichier ne s'ouvre plus.
+*.exe       binary
+*.001       binary
+*.002       binary
+*.ico       binary
+*.icns      binary

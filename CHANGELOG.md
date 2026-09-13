@@ -7,6 +7,26 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 7.21.2 — 13/09/2026
+
+**L'installateur Windows tout prêt, et un échec de construction qui se nomme.**
+
+La construction locale a échoué sur un poste Windows, et le journal ne portait qu'un mot :
+`construction : echec`. Une panne qui ne se nomme pas condamne l'utilisateur **et** le dépannage à
+distance — c'est la règle apprise en 6.7.2, jamais appliquée à l'installeur.
+
+- La sortie de `npm run build:win` est capturée dans `construction.log`, versée dans
+  `installation-windows.log`, et **affichée à l'écran** en cas d'échec. Un seul fichier à envoyer,
+  et il porte la cause.
+- Le journal note aussi la version de npm, à côté de celle de Node et du chemin : c'est ce qui
+  change d'un poste à l'autre, et donc ce qui explique qu'une construction passe ici et pas là.
+- Le test des fichiers batch descend désormais dans les **sous-dossiers** : un `.bat` en fins de
+  ligne Unix ferme la fenêtre où qu'il soit, pas seulement à la racine.
+
+Le dépôt est passé **public**. GitHub Actions y est gratuit : la publication normale reprend, et
+l'installateur Windows se télécharge à nouveau depuis la page **Releases**, avec le `.dmg` et le
+`.zip` macOS, les installateurs du Cabinet, et les fichiers de mise à jour automatique.
+
 ## 7.21.1 — 13/09/2026
 
 **L'installeur Windows se fermait tout seul.**
