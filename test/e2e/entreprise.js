@@ -577,6 +577,11 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     await win.evaluate(() => { location.hash = '#/contrats'; });
     await win.waitForSelector('#c-wrap tr.clickable');
     await win.click('#c-wrap [data-gen]');
+    // Depuis la 7.18.0, générer un contrat suspendu ou dont l'échéance n'est pas encore arrivée
+    // pose d'abord la question : le geste avance le calendrier de facturation. Ici l'échéance a
+    // déjà été consommée par l'étape « contrats », donc la question apparaît.
+    const q = await win.waitForSelector('#modal-root #ok', { timeout: 2500 }).catch(() => null);
+    if (q) await q.click();
     await win.waitForFunction(() => location.hash.startsWith('#/contrat/'));
     await win.waitForSelector('#c-docs tr.clickable');
     await win.click('#c-docs tr.clickable');

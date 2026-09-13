@@ -632,11 +632,15 @@ th.sortable-h:not(.sorted) .sort-ar { color: var(--muted); opacity: .45; }
 th.sortable-h:hover .sort-ar { opacity: 1; }
 table.list tfoot td { padding: 11px 16px; background: #fafbfc; border-top: 1px solid var(--border); font-size: 12px; color: var(--muted); font-weight: 600; }
 table.list tfoot td.r { color: var(--text); font-variant-numeric: tabular-nums; }
-td.row-actions { white-space: nowrap; text-align: right; width: 1%; }
+/* Les boutons de ligne ne tiennent plus sur une seule ligne dès qu'une pièce en porte cinq (un devis
+   en attente : PDF, Email, Accepté, Refusé, Dupliquer). `nowrap` les poussait alors hors de l'écran,
+   et un bouton hors champ n'existe pas — c'est `npm run e2e:contraste` qui l'a mesuré. On les laisse
+   passer à la ligne plutôt que disparaître ; la cellule reste au plus étroit tant qu'ils tiennent. */
+td.row-actions { text-align: right; width: 1%; }
 /* Les boutons de ligne restent visibles, en retrait, et reprennent leur pleine opacité au survol.
    Cachés jusqu'au survol (audit), ils étaient introuvables sur les listes de documents et de clients
    alors qu'ils étaient toujours affichés partout ailleurs. */
-td.row-actions > span { display: inline-flex; gap: 4px; opacity: .7; transition: opacity .12s; }
+td.row-actions > span { display: inline-flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; opacity: .7; transition: opacity .12s; }
 tr:hover td.row-actions > span, tr:focus-within td.row-actions > span { opacity: 1; }
 th.row-actions-h { width: 1%; }
 .badge.expiré { background: var(--warning-soft); color: var(--warning); }

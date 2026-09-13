@@ -359,6 +359,7 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:chiffres` | **les chiffres qui mentent** : la conversion des devises sur l'accueil, les cartes de Marges, l'affaire qui suit le devis, le devis déjà facturé, le doublon de facture fournisseur |
 | `npm run e2e:cliquable` | **tout ce qui se lit se clique** : le filtre « Émis », la concordance carte/liste, les quatre chiffres de l'accueil et chaque ligne de « Ce qui manque » |
 | `npm run e2e:repondre` | **les écrans qui ne répondent pas** : le pointage qui se défait, le curseur qui ne saute plus, le sélecteur d'année inerte, le tri qui ne triait pas, l'année figée, l'export qui suit l'onglet |
+| `npm run e2e:accueil` | **l'accueil tient ses promesses** : le filtre qui ne se rearme pas, le raccourci qui vise un panneau, l'extrait sans total, le contrat suspendu qui demande, la recherche des Relances, la réponse à un devis |
 
 Ils ont longtemps vécu dans un dossier de travail temporaire, effacé à chaque session : il fallait les réécrire de mémoire, et ils dérivaient (une assertion restée sur une version périmée, un écran neuf jamais parcouru). **Un test qu'on doit réécrire pour s'en servir n'est pas un test.** Le harnais (`test/e2e/harnais.js`) trouve Playwright où il est, lit la version dans `package.json` au lieu de l'écrire en dur, et range les captures dans `dist-e2e/` (ignoré par Git).
 
@@ -837,6 +838,57 @@ Règles apprises, à ne pas recasser :
 
 Le test qui compte est `npm run e2e:repondre` : neuf gestes dans l'application réelle, dont la frappe
 lettre par lettre avec vérification du focus après chaque caractère.
+
+## 7.18.0 — L'accueil tient ses promesses
+
+Suite de l'audit page par page. Onze constats, même famille : **l'écran annonce une chose et en
+montre une autre**.
+
+Règles apprises, à ne pas recasser :
+
+- **Un réglage composite se pose par une fonction, jamais par recopie.** Poser un filtre depuis
+  « À faire » demande cinq remises à zéro (`q`, `st`, `kind`, `year`, `yearTouched`, `page`),
+  recopiées à la main dans six actions — et une en oubliait une. `yearTouched` manquant, la liste
+  d'arrivée se re-filtre d'elle-même sur l'année en cours et **cache précisément les pièces que la
+  ligne venait d'annoncer**. `filtre(liste, st)` rend l'oubli impossible, et un test interdit
+  d'écrire `listState.x.y =` dans une table d'actions.
+- **Un raccourci vise un PANNEAU, pas une page.** `settingsFocus` faisait ça depuis la 7.11.0 pour
+  les Paramètres ; `pageFocus` le généralise. Arriver en haut d'une page de six panneaux, c'est
+  redescendre à la main en cherchant le bon titre — et on ne sait même pas si on est au bon endroit,
+  d'où le marquage d'une seconde et demie.
+- **Deux panneaux qui se contredisent à dix centimètres.** « Rien à faire aujourd'hui » s'affichait
+  sous « Tes premiers pas 1 / 7 ». La règle de la 7.0.0 (« vérifier que l'univers concerné est non
+  vide ») avait un second cas : l'univers n'est pas vide, mais un autre panneau dit déjà quoi faire.
+- **Une étape ne se coche pas parce que le logiciel l'a faite.** L'assistant préremplit le catalogue
+  avec les prestations du métier, prix à 0 : « Remplir ton catalogue » passait au vert sur des
+  exemples. Ce que l'application a posé se marque (`fromSetup`) pour pouvoir être distingué de ce
+  que l'utilisateur a décidé.
+- **Un extrait n'a pas de total.** Huit pièces sur deux cents, additionnées en HT, devis et bons de
+  livraison mélangés aux factures, sous une colonne « Net à payer ». Un chiffre dont on ne sait pas
+  sur quoi il porte est pire qu'aucun chiffre.
+- **Le pluriel se porte d'une application à l'autre.** `pl()` vivait dans l'app cabinet depuis sa
+  1.0.0 (« un logiciel qui écrit "1 dossier(s)" paraît bâclé ») et l'app entreprise écrivait
+  « 1 facture(s) » sur son écran d'accueil. Une règle apprise d'un côté se vérifie de l'autre.
+- **Un geste qui a DEUX effets doit pouvoir défaire les deux.** « Générer maintenant » fabrique une
+  facture et repousse l'échéance du contrat. `generateRecurring` ne renvoyait qu'un compteur : sans
+  les identifiants des brouillons créés, il n'y avait rien à annuler. Et le bouton s'affichait sur
+  un contrat suspendu, c'est-à-dire sur un contrat dont l'utilisateur vient de dire qu'il ne veut
+  plus de factures.
+- **Ce qui porte une devise l'affiche et se trie dedans.** Un contrat récurrent porte la sienne
+  (`buildRecurringInvoice` la reporte sur chaque facture) : la colonne l'affichait en dinars, et le
+  tri comparait des euros à des dinars. Même faute que la 7.16.0, un écran plus loin.
+- **Un filtre s'applique à TOUT l'écran ou à rien.** La recherche des Relances ne touchait qu'un
+  tableau sur quatre pendant que le bandeau annonçait « n sur N ».
+- **Ce qui se saisit à la main se saisit là où on le lit.** Le statut d'un devis n'est pas déduit
+  (contrairement à celui d'une facture) : il fallait pourtant ouvrir la pièce pour dire « le client
+  a dit oui ».
+- **Le budget de boutons d'une ligne est réel.** Ajouter deux réponses en poussait un cinquième hors
+  de l'écran à 1280 px — `npm run e2e:contraste` l'a mesuré, et un bouton hors champ n'existe pas.
+  Deux réponses : les deux réponses REMPLACENT « Facturer » tant que le devis n'en a pas reçu une,
+  et `td.row-actions` laisse passer à la ligne au lieu de déborder.
+- Piège de test : le sélecteur d'année d'une liste s'appelle `#yr`, pas `#year`. Mon e2e lisait un
+  élément inexistant et passait **avec le défaut réintroduit**. Un test e2e se prouve en
+  réintroduisant le défaut, exactement comme un test de source.
 
 ## Pistes pour la suite (non demandées)
 

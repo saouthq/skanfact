@@ -49,8 +49,12 @@
     // On ne l'écrase pas s'il a déjà été réglé à la main (0 est une valeur légitime : exonération).
     if (act && (co.defaultVatRate === '' || co.defaultVatRate == null)) co.defaultVatRate = act.vat;
     if (act && a.fillCatalog && !(data.catalog || []).length) {
+      // `fromSetup` marque ce que l'assistant a posé. Sans lui, « Remplir ton catalogue » se cochait
+      // tout seul dans « Tes premiers pas » : l'étape était réputée faite parce que l'assistant
+      // l'avait faite, avec des prix à 0 que personne n'a encore ajustés.
       data.catalog = act.catalog.map(([label, description, unitPrice, unit]) => ({
-        id: C.uid(), label, description: description || '', unitPrice, vatRate: act.vat, unit: unit || 'u'
+        id: C.uid(), label, description: description || '', unitPrice, vatRate: act.vat, unit: unit || 'u',
+        fromSetup: true
       }));
     }
     // Les modules que l'utilisateur a demandés. Tout le mécanisme existait depuis la 7.0.0 —

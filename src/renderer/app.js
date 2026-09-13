@@ -57,6 +57,10 @@
   // `settingsFocus` porte l'identifiant du panneau visé ; il est consommé une seule fois.
   let settingsFocus = '';
   function allerParametres(tab, focus) { settingsTab = tab || 'societe'; settingsFocus = focus || ''; navigate('#/parametres'); }
+  // La même idée, pour n'importe quelle page : « n attestations à réclamer » déposait tout en haut de
+  // Comptabilité → Ventes, trois écrans au-dessus du panneau qui les liste. Le routeur consomme
+  // `pageFocus` APRÈS le rendu de la page, une seule fois.
+  let pageFocus = '';
   let catalogTab = 'presta';     // onglet ouvert dans Catalogue
   // Recherche, tri et page courante de chaque onglet du Catalogue
   const catalogState = {
@@ -1099,6 +1103,17 @@
     closePalette();
     closeInfoPop();
     setWindowTitle(name, parts.slice(1));
+    // Le panneau visé est amené à l'écran et marqué une seconde et demie : arriver en haut d'une page
+    // de six panneaux, c'est redescendre à la main en cherchant le bon titre.
+    if (pageFocus) {
+      const cible = $('#' + pageFocus);
+      pageFocus = '';
+      if (cible) {
+        try { cible.scrollIntoView({ block: 'start' }); } catch (_) {}
+        cible.classList.add('flash');
+        setTimeout(() => cible.classList.remove('flash'), 1600);
+      }
+    }
   }
 
   // Poser l'adresse sans réveiller notre propre routeur. Si l'adresse ne change pas, aucun événement
@@ -1290,8 +1305,8 @@
       <div class="stats">
         <div class="stat" data-stat="ca-mois" role="button" tabindex="0" title="Voir le journal des ventes du mois"><div class="lbl">CA du mois (HT) ${info('dash.caMonth')}</div><div class="val">${C.money(sumHT(ofMonth), cur)}</div><div class="sub">${C.money(sumTTC(ofMonth), cur)} TTC, avoirs déduits</div></div>
         <div class="stat" data-stat="ca-annee" role="button" tabindex="0" title="Voir les statistiques de l'année"><div class="lbl">CA de l'année (HT) ${info('dash.caYear')}</div><div class="val">${C.money(sumHT(ofYear), cur)}</div><div class="sub">${year} · ${C.money(sumTTC(ofYear), cur)} TTC</div></div>
-        <div class="stat" data-stat="encaisser" role="button" tabindex="0" title="Voir les ${open.length} facture(s) qui restent à encaisser"><div class="lbl">Reste à encaisser ${info('dash.open')}</div><div class="val">${C.money(openAmount, cur)}</div><div class="sub">${open.length} facture(s), ${late.length} en retard</div></div>
-        <div class="stat" data-stat="devis" role="button" tabindex="0" title="Voir les devis envoyés sans réponse"><div class="lbl">Devis en attente ${info('dash.quotes')}</div><div class="val">${C.money(sumQ(pendingQuotes), cur)}</div><div class="sub">${pendingQuotes.length} devis envoyé(s)${expiredQuotes.length ? ` · <a href="#/devis" class="warn-link" id="go-expired">${expiredQuotes.length} expiré(s)</a>` : ''}</div></div>
+        <div class="stat" data-stat="encaisser" role="button" tabindex="0" title="Voir les ${pl(open.length, 'facture')} qui restent à encaisser"><div class="lbl">Reste à encaisser ${info('dash.open')}</div><div class="val">${C.money(openAmount, cur)}</div><div class="sub">${pl(open.length, 'facture')}, ${late.length} en retard</div></div>
+        <div class="stat" data-stat="devis" role="button" tabindex="0" title="Voir les devis envoyés sans réponse"><div class="lbl">Devis en attente ${info('dash.quotes')}</div><div class="val">${C.money(sumQ(pendingQuotes), cur)}</div><div class="sub">${pendingQuotes.length} devis ${pendingQuotes.length > 1 ? 'envoyés' : 'envoyé'}${expiredQuotes.length ? ` · <a href="#/devis" class="warn-link" id="go-expired">${expiredQuotes.length} ${expiredQuotes.length > 1 ? 'expirés' : 'expiré'}</a>` : ''}</div></div>
       </div>
       <div class="dash-grid">
         <div class="panel"><h2>Activité des 12 derniers mois ${info('dash.chart')}</h2>
@@ -1299,7 +1314,7 @@
           <div class="legend"><span><i style="background:var(--primary)"></i>Facturé HT (avoirs déduits)</span><span><i style="background:#2a6fd6;opacity:.55"></i>Encaissé</span></div>`
           : '<p class="small muted">Ce graphique se remplira tout seul : une barre verte par mois facturé, une barre bleue par mois encaissé. L\'écart entre les deux, c\'est ce qu\'on te doit.</p>'}
           <div class="kpis">
-            <div class="kpi"><div class="k-label">Devis → facture ${info('dash.conversion')}</div><div class="v">${qs.rate == null ? '—' : qs.rate + ' %'}</div><div class="sub">${qs.accepted} accepté(s), ${qs.refused} refusé(s), ${qs.pending} en attente</div></div>
+            <div class="kpi"><div class="k-label">Devis → facture ${info('dash.conversion')}</div><div class="v">${qs.rate == null ? '—' : qs.rate + ' %'}</div><div class="sub">${qs.accepted} ${qs.accepted > 1 ? 'acceptés' : 'accepté'}, ${qs.refused} ${qs.refused > 1 ? 'refusés' : 'refusé'}, ${qs.pending} en attente</div></div>
             <div class="kpi"><div class="k-label">Délai moyen de paiement ${info('dash.delay')}</div><div class="v">${delay == null ? '—' : delay + ' jours'}</div><div class="sub">factures soldées, 12 derniers mois</div></div>
           </div>
         </div>
@@ -1307,7 +1322,8 @@
           ${top.length ? `<ul class="rank">${top.map(x => `<li><a class="name" href="#/client/${h(x.clientId)}" title="Ouvrir la fiche de ${h(x.name)}">${h(x.name)}</a><span class="bar"><i style="width:${Math.max(4, Math.round(x.ht / topMax * 100))}%"></i></span><span class="amt">${C.money(x.ht, cur)}</span></li>`).join('')}</ul>` : '<p class="small muted">Aucune facture émise cette année. Ton premier devis accepté la remplira.</p>'}
         </div>
       </div>`}
-      ${!recent.length ? '' : `<div class="panel"><h2>Documents récents</h2>${docTable(recent)}</div>`}
+      ${!recent.length ? '' : `<div class="panel"><h2>Documents récents <span class="small muted">— les ${recent.length} dernières pièces sur ${data.documents.length}</span></h2>${docTable(recent, { noFoot: true })}
+        <div class="inline mt"><a class="btn btn-sm" href="#/factures">Toutes les factures</a><a class="btn btn-sm" href="#/devis">Tous les devis</a></div></div>`}
       ${duGrain || !data.clients.length ? '' : `
       <div class="panel"><h2>Et maintenant</h2>
         <p>Tu as ${data.clients.length} client${data.clients.length > 1 ? 's' : ''} et aucun document. La suite tient en un geste :</p>
@@ -1329,8 +1345,8 @@
     const STAT_ACTIONS = {
       'ca-mois': vers('#/compta', () => { comptaState.tab = 'ventes'; comptaState.year = C.today().slice(0, 4); comptaState.month = C.today().slice(5, 7); }),
       'ca-annee': vers('#/stats'),
-      encaisser: vers('#/factures', () => { listState.facture.st = 'à encaisser'; listState.facture.kind = ''; listState.facture.year = ''; listState.facture.yearTouched = true; }),
-      devis: vers('#/devis', () => { listState.devis.st = 'envoyé'; listState.devis.year = ''; listState.devis.yearTouched = true; })
+      encaisser: vers('#/factures', filtre('facture', 'à encaisser')),
+      devis: vers('#/devis', filtre('devis', 'envoyé'))
     };
     $$('[data-stat]').forEach(c => {
       const aller = e => { if (e.target.closest('button.i, a')) return; STAT_ACTIONS[c.dataset.stat](); };
@@ -1501,6 +1517,11 @@
   }
 
   // Liste de documents triable, avec un pied de tableau qui totalise ce qui est affiché.
+  // « 1 facture(s), 0 en retard ». La règle du pluriel existait dans l'app cabinet depuis sa 1.0.0
+  // et n'avait jamais été portée ici : un logiciel qui écrit « (s) » paraît bâclé, et c'est l'écran
+  // que l'utilisateur regarde le plus souvent.
+  const pl = (n, un, plur) => `${n} ${n > 1 ? (plur || un + 's') : un}`;
+
   function docTable(list, opts) {
     opts = opts || {};
     const { cols, amountOf, restOf } = docColumns(opts);
@@ -1524,13 +1545,14 @@
           ${d.number ? `<button class="btn btn-sm" data-mail="${d.id}" title="Envoyer par email">Email</button>` : ''}
           ${d.type === 'facture' && d.status !== 'brouillon' && d.status !== 'annulée' && (restOf(d) || 0) > 0.0005 ? `<button class="btn btn-sm" data-paye="${d.id}" title="Enregistrer un paiement">Paiement</button>` : ''}
           ${d.type === 'devis' && d.status === 'accepté' ? `<button class="btn btn-sm" data-facturer="${d.id}" title="Créer la facture de ce devis">Facturer</button>` : ''}
+          ${d.type === 'devis' && ['envoyé', 'expiré'].includes(effStatus(d)) ? `<button class="btn btn-sm" data-accepte="${d.id}" title="Le client a dit oui">Accepté ✓</button><button class="btn btn-sm btn-ghost" data-refuse="${d.id}" title="Le client a dit non">Refusé ✕</button>` : ''}
           ${d.type !== 'avoir' ? `<button class="btn btn-sm btn-ghost" data-dup="${d.id}" title="Dupliquer">⧉</button>` : ''}
         </span></td></tr>`).join('')}
-    </tbody><tfoot><tr>
-      <td colspan="${Math.max(1, cols.length - (opts.quotes ? 1 : 2))}">${sorted.length} document${sorted.length > 1 ? 's' : ''} · ${C.money(totalHT, cur)} HT${mixed ? ` <span class="muted">(devises étrangères converties en ${h(cur)})</span>` : ''}</td>
+    </tbody>${opts.noFoot ? '' : `<tfoot><tr>
+      <td colspan="${Math.max(1, cols.length - (opts.quotes ? 1 : 2))}">${pl(sorted.length, 'document')} · ${C.money(totalHT, cur)} HT${mixed ? ` <span class="muted">(devises étrangères converties en ${h(cur)})</span>` : ''}</td>
       <td class="r">${C.money(totalAmount, cur)}</td>
       ${opts.quotes ? '' : `<td class="r">${totalRest > 0.0005 ? C.money(totalRest, cur) : '<span class="muted">—</span>'}</td>`}
-      <td></td></tr></tfoot></table>
+      <td></td></tr></tfoot>`}</table>
       ${paged.pg ? pagerBar(paged.pg, { noun: 'document', grandTotal: opts.grandTotal }) : ''}`;
   }
 
@@ -1544,6 +1566,19 @@
     // fond d'un menu gris, à l'intérieur du devis. Le panneau « À faire » renvoyait sur cette liste
     // en écrivant « ouvre le devis puis Facturer ▾ » — l'itinéraire au lieu du bouton.
     $$('button[data-facturer]').forEach(b => b.onclick = () => facturerDevis(docById(b.dataset.facturer)));
+    // Le statut d'un devis se saisit à la main (contrairement à celui d'une facture, qui se déduit
+    // des paiements) : il n'y avait pourtant aucun moyen de répondre « le client a dit oui » depuis
+    // la liste. Il fallait ouvrir le devis, trouver le sélecteur, enregistrer. Et « Facturer »
+    // n'apparaissait que sur un devis déjà « accepté » — alors que l'éditeur, lui, l'accepte
+    // depuis un devis « envoyé » et passe le statut lui-même.
+    const repondre = (id, st) => {
+      const d = docById(id); if (!d) return;
+      const avant = d.status;
+      d.status = st; save(true); (redraw || render)();
+      toastUndo(`${d.number || 'Devis'} marqué ${st}`, () => { const x = docById(id); if (x) { x.status = avant; save(true); (redraw || render)(); } });
+    };
+    $$('button[data-accepte]').forEach(b => b.onclick = () => repondre(b.dataset.accepte, 'accepté'));
+    $$('button[data-refuse]').forEach(b => b.onclick = () => repondre(b.dataset.refuse, 'refusé'));
     if (redraw) bindSort(document, redraw);
     if (redraw && state) bindPager(document, state, () => redraw(), anchor);
   }
@@ -3354,8 +3389,11 @@
       });
   }
   // Génère les brouillons de factures dus (une par période manquée, 12 max) ; renvoie le nombre créé.
+  // Renvoie `{ n, skipped, ids }` : sans les identifiants des brouillons créés, « Générer
+  // maintenant » n'était pas annulable — or il fabrique une facture ET repousse l'échéance du
+  // contrat, deux effets qu'un clic de trop laissait en place sans un mot.
   function generateRecurring(recs, force) {
-    let n = 0, skipped = 0;
+    let n = 0, skipped = 0; const ids = [];
     (recs || C.dueRecurrences(data)).forEach(rec => {
       let guard = 0;
       do {
@@ -3367,13 +3405,35 @@
           continue;
         }
         const inv = { ...C.buildRecurringInvoice(rec, rec.nextDate, company()), id: C.uid(), createdAt: Date.now() };
-        data.documents.push(inv); n++;
+        data.documents.push(inv); n++; ids.push(inv.id);
         rec.lastIssued = rec.nextDate; rec.nextDate = C.nextRecurrenceDate(rec.nextDate, rec.every, rec.day);
       } while (!force && rec.active !== false && rec.nextDate <= C.today() && ++guard < 12);
     });
     if (n || skipped) save(true);
-    if (skipped) toast(`${skipped} échéance(s) passée(s) : leur mois est clôturé. Rouvre la période si ces factures doivent exister.`, true);
-    return n;
+    if (skipped) toast(`${pl(skipped, 'échéance passée', 'échéances passées')} : leur mois est clôturé. Rouvre la période si ces factures doivent exister.`, true);
+    return { n, skipped, ids };
+  }
+
+  // Générer un contrat en le rendant annulable : on garde les deux dates AVANT, et « Annuler »
+  // supprime le brouillon créé et les remet. Sur un contrat suspendu ou dont l'échéance n'est pas
+  // encore arrivée, on demande d'abord — c'est un geste qui avance le calendrier de facturation.
+  async function genererContrat(r, apres) {
+    const avance = r.active === false || r.nextDate > C.today();
+    if (avance) {
+      const quoi = r.active === false
+        ? 'Ce contrat est suspendu.' : `La prochaine échéance est le ${C.fmtDate(r.nextDate)}, elle n'est pas encore arrivée.`;
+      if (!await confirmDialog(`${quoi}\n\nGénérer quand même le brouillon de facture ? L'échéance suivante sera repoussée d'une période.`, 'Générer', false)) return;
+    }
+    const avant = { lastIssued: r.lastIssued, nextDate: r.nextDate };
+    const res = generateRecurring([r], true);
+    if (!res.n) return;
+    if (apres) apres();
+    toastUndo(`Brouillon créé pour ${C.monthLabel(r.lastIssued)} — prochaine échéance le ${C.fmtDate(r.nextDate)}`, () => {
+      data.documents = data.documents.filter(d => !res.ids.includes(d.id));
+      res.ids.forEach(id => forget('documents', id, 'brouillon récurrent'));
+      Object.assign(r, avant); save(true);
+      if (apres) apres();
+    });
   }
   // ---------- fiche d'un contrat ----------
   // Un contrat n'existait que comme ligne de tableau : on ne voyait ni ce qu'il facturera,
@@ -3478,7 +3538,7 @@
       save(true); render(true);
       toastUndo(msg, () => { Object.assign(r, avant); save(true); render(true); });
     };
-    const generate = () => { generateRecurring([r], true); toast('Brouillon créé pour ' + C.monthLabel(r.lastIssued)); render(true); };
+    const generate = () => genererContrat(r, () => render(true));
     $('#c-gen').onclick = generate;
     if ($('#c-gen2')) $('#c-gen2').onclick = generate;
     $('#c-del').onclick = async () => {
@@ -3493,12 +3553,21 @@
   routes.contrats = () => {
     const cur = company().currency;
     const s = contratState;
+    // Un contrat porte sa devise (`buildRecurringInvoice` la reporte sur chaque facture) : la
+    // colonne l'affichait pourtant en dinars, quel que soit le contrat. Et le tri comparait des
+    // euros à des dinars — donc classait de travers.
+    const curOf = r => r.currency || cur;
+    const htOf = r => C.computeTotals({ type: 'facture', lines: r.lines, discountRate: r.discountRate,
+      currency: r.currency, exchangeRate: r.exchangeRate }, company()).netHT;
+    const htBase = r => C.toBase({ currency: r.currency, exchangeRate: r.exchangeRate }, htOf(r), company());
+    // Ramené au mois : c'est le seul chiffre qui dit ce que ces contrats rapportent vraiment.
+    const PAR_AN = { month: 12, quarter: 4, year: 1 };
     const cols = [
       { key: 'client', label: 'Client', asc: true, val: r => clientName(r.clientId).toLowerCase(), get: r => `<strong>${h(clientName(r.clientId))}</strong>` },
       { key: 'subject', label: 'Objet', asc: true, val: r => (r.subject || '').toLowerCase(), get: r => { const subj = C.fillTemplate(r.subject, { mois: C.monthLabel(r.nextDate) }); return `${h(subj)}${subj !== r.subject ? `<div class="small muted">${h(r.subject)}</div>` : ''}`; } },
       { key: 'every', label: 'Période', asc: true, val: r => r.every || '', get: r => (C.PERIODS.find(p => p[0] === r.every) || [])[1] || '' },
       { key: 'next', label: 'Prochaine facture', asc: true, val: r => r.nextDate || '', get: r => { const isDue = r.active !== false && r.nextDate <= C.today(); return `${C.fmtDate(r.nextDate)}${isDue ? ' <span class="level l2">à générer</span>' : ''}${r.lastIssued ? `<div class="small muted">dernière : ${C.fmtDate(r.lastIssued)}</div>` : ''}`; } },
-      { key: 'ht', label: 'HT / facture', r: true, val: r => C.computeTotals({ type: 'facture', lines: r.lines, discountRate: r.discountRate }, company()).netHT, get: r => C.money(C.computeTotals({ type: 'facture', lines: r.lines, discountRate: r.discountRate }, company()).netHT, cur) },
+      { key: 'ht', label: 'HT / facture', r: true, val: htBase, get: r => C.money(htOf(r), curOf(r)) },
       { key: 'state', label: 'État', asc: true, val: r => r.active !== false ? 'actif' : 'suspendu', get: r => r.active !== false ? '<span class="badge envoyée">actif</span>' : '<span class="badge">suspendu</span>' }
     ];
     const STATES = [['', 'Tous les contrats'], ['actif', 'Actifs'], ['suspendu', 'Suspendus'], ['due', 'À générer']];
@@ -3511,6 +3580,11 @@
         .filter(r => !s.q || `${clientName(r.clientId)} ${r.subject || ''}`.toLowerCase().includes(s.q)), cols, s.sort);
       const { rows: page, pg } = paginate(kept, s);
       const filtered = !!(s.q || s.st);
+      // Le pied porte sur la sélection ENTIÈRE (règle des listes depuis la 2.2.0), et ne compte que
+      // les contrats actifs : un contrat suspendu ne rapporte rien ce mois-ci.
+      const actifs = kept.filter(r => r.active !== false);
+      const parAn = C.round3(actifs.reduce((a2, r) => a2 + htBase(r) * (PAR_AN[r.every] || 12), 0));
+      const parMois = C.round3(parAn / 12);
       $('#c-wrap').innerHTML = `${due.length ? `<div class="banner">${due.length} facture(s) récurrente(s) à générer<button class="btn" id="gen-due">Générer les brouillons</button></div>` : ''}
         ${filtersBar(`
           <input type="text" id="q" placeholder="Rechercher : client, objet…" value="${h(s.q)}">
@@ -3520,7 +3594,10 @@
         ${kept.length ? `<table class="list sortable"><thead>${sortHead(cols, s.sort, '<th class="row-actions-h"></th>')}</thead><tbody>
         ${page.map(r => `<tr class="clickable" data-rid="${r.id}">${cols.map(c => `<td class="${c.r ? 'r nw' : ''}">${c.get(r)}</td>`).join('')}
           <td class="actions"><button class="btn btn-sm" data-gen="${r.id}">Générer maintenant</button> <button class="btn btn-sm" data-edit="${r.id}">Modifier</button> <button class="btn btn-sm" data-toggle="${r.id}">${r.active !== false ? 'Suspendre' : 'Reprendre'}</button></td></tr>`).join('')}
-        </tbody></table>${pagerBar(pg, { noun: 'contrat', grandTotal: all.length })}`
+        </tbody><tfoot><tr>
+          <td colspan="4"><strong>${pl(actifs.length, 'contrat actif', 'contrats actifs')}</strong>${filtered ? '<span class="muted"> dans cette sélection</span>' : ''}</td>
+          <td class="r"><strong>${C.money(parMois, cur)}</strong><div class="small muted">par mois · ${C.money(parAn, cur)} par an</div></td>
+          <td colspan="2"></td></tr></tfoot></table>${pagerBar(pg, { noun: 'contrat', grandTotal: all.length })}`
           : filtered ? '<div class="empty">Aucun contrat ne correspond à ces filtres.</div>'
           : etatVide('Les factures qui se répètent toutes seules',
               ['Un abonnement, une maintenance, un forfait mensuel : tu le décris une fois — client, lignes, périodicité — et SkanFact prépare le <b>brouillon de facture</b> à chaque échéance. Tu n\'as plus qu\'à le relire et l\'émettre.',
@@ -3549,9 +3626,15 @@
           `Générer ${combien} brouillon${combien > 1 ? 's' : ''} de facture ?\n\n`
           + `${combien > 1 ? 'Ils arrivent' : 'Il arrive'} en brouillon dans Factures : rien n'est émis, rien n'est numéroté et rien ne part chez un client tant que tu ne l'as pas relu.`,
           `Générer ${combien > 1 ? 'les brouillons' : 'le brouillon'}`)) return;
-        const n = generateRecurring(); toast(`${n} brouillon(s) créé(s) — à émettre depuis Factures`); draw();
+        const res = generateRecurring(); toast(`${pl(res.n, 'brouillon créé', 'brouillons créés')} — à émettre depuis Factures`); draw();
       };
-      $$('[data-gen]').forEach(b => b.onclick = () => { const r = data.recurring.find(x => x.id === b.dataset.gen); generateRecurring([r], true); toast(`Brouillon créé pour ${C.monthLabel(r.lastIssued)} — à relire puis émettre depuis Factures`); navigate('#/contrat/' + r.id); });
+      // On mène à la fiche du contrat : c'est là qu'on voit le brouillon qui vient d'être créé.
+      // `vers()` redessine quand on y est déjà — l'annulation repasse par ici et le hash n'a pas
+      // changé, donc aucun `hashchange` ne viendrait rafraîchir la page (piège de la 7.15.0).
+      $$('[data-gen]').forEach(b => b.onclick = () => {
+        const r = data.recurring.find(x => x.id === b.dataset.gen);
+        genererContrat(r, vers('#/contrat/' + r.id));
+      });
       $$('[data-edit]').forEach(b => b.onclick = () => recurrenceForm(data.recurring.find(x => x.id === b.dataset.edit), draw));
       // Reprendre un contrat suspendu DÉPLACE sa prochaine échéance, et l'ancienne date est perdue :
       // un clic de trop sur « Suspendre » puis « Reprendre » décale la facturation sans qu'on puisse
@@ -3621,10 +3704,14 @@
       const all = C.overdueInvoices(data, company());
       // Recherche : la page Relances était l'une des deux seules listes à ne pas en avoir (audit).
       const q = relState.q.trim().toLowerCase();
-      const match = x => !q || `${x.doc.number || ''} ${clientName(x.doc.clientId)} ${x.doc.subject || ''}`.toLowerCase().includes(q);
+      // La recherche ne filtrait qu'un tableau sur quatre : on tapait le nom d'un client, le premier
+      // tableau se réduisait, et les trois autres continuaient d'afficher tout le monde — pendant que
+      // le bandeau annonçait « n sur N ». Un filtre qui ne s'applique qu'à une partie de l'écran ment.
+      const matchDoc = d => !q || `${d.number || ''} ${clientName(d.clientId)} ${d.subject || ''}`.toLowerCase().includes(q);
+      const match = x => matchDoc(x.doc);
       const od = all.filter(x => !x.snoozed && match(x)), later = all.filter(x => x.snoozed && match(x));
-      const soon = data.documents.filter(d => d.type === 'facture' && ['envoyée', 'partielle'].includes(effStatus(d)) && d.dueDate >= C.today() && C.daysBetween(C.today(), d.dueDate) <= 7);
-      const quotes = data.documents.filter(d => d.type === 'devis' && ['envoyé', 'expiré'].includes(effStatus(d)) && d.date && C.daysBetween(d.date, C.today()) > 10)
+      const soon = data.documents.filter(d => d.type === 'facture' && ['envoyée', 'partielle'].includes(effStatus(d)) && d.dueDate >= C.today() && C.daysBetween(C.today(), d.dueDate) <= 7 && matchDoc(d));
+      const quotes = data.documents.filter(d => d.type === 'devis' && ['envoyé', 'expiré'].includes(effStatus(d)) && d.date && C.daysBetween(d.date, C.today()) > 10 && matchDoc(d))
         .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
       const total = od.reduce((s, x) => s + C.toBase(x.doc, x.remaining, company()), 0);
       const row = x => `<tr class="${x.snoozed ? 'snoozed' : ''}">
@@ -3718,17 +3805,23 @@
     if (avant) avant();
     if (location.hash === hash) render(); else navigate(hash);
   };
+  // Poser un filtre sur une liste, en ENTIER. Chaque action recopiait à la main les cinq réglages à
+  // remettre, et « Facturer » en oubliait un : `yearTouched`. Sans lui, la liste d'arrivée se
+  // re-filtre toute seule sur l'année en cours et cache précisément les pièces que la ligne venait
+  // d'annoncer. Une recopie à cinq morceaux se trompe un jour ; un helper, jamais.
+  const filtre = (liste, st, extra) => () => Object.assign(listState[liste],
+    { q: '', st: st || '', kind: '', year: '', yearAuto: false, yearTouched: true, page: 1 }, extra || {});
   const TODO_ACTIONS = {
-    contrats: { label: 'Générer les brouillons', run: () => { const n = generateRecurring(); toast(`${n} brouillon(s) créé(s) — à relire puis émettre`); render(); } },
+    contrats: { label: 'Générer les brouillons', run: () => { const res = generateRecurring(); toast(`${pl(res.n, 'brouillon créé', 'brouillons créés')} — à relire puis émettre`); render(); } },
     retards: { label: 'Voir les relances', run: vers('#/relances') },
     societe: { label: 'Compléter', run: vers('#/parametres', () => { settingsTab = 'societe'; settingsFocus = 'p-identite'; }) },
-    'devis-brouillons': { label: 'Voir les devis', run: vers('#/devis', () => { listState.devis.st = 'brouillon'; listState.devis.year = ''; listState.devis.yearTouched = true; }) },
-    'devis-acceptes': { label: 'Facturer', run: vers('#/devis', () => { listState.devis.st = 'accepté'; listState.devis.year = ''; }) },
-    'devis-expires': { label: 'Voir les devis', run: vers('#/devis', () => { listState.devis.st = 'expiré'; listState.devis.year = ''; listState.devis.yearTouched = true; }) },
-    'devis-sans-reponse': { label: 'Voir les devis', run: vers('#/devis', () => { listState.devis.st = 'envoyé'; listState.devis.year = ''; listState.devis.yearTouched = true; }) },
-    attestations: { label: 'Voir la liste', run: vers('#/compta', () => { comptaState.tab = 'ventes'; }) },
+    'devis-brouillons': { label: 'Voir les devis', run: vers('#/devis', filtre('devis', 'brouillon')) },
+    'devis-acceptes': { label: 'Facturer', run: vers('#/devis', filtre('devis', 'accepté')) },
+    'devis-expires': { label: 'Voir les devis', run: vers('#/devis', filtre('devis', 'expiré')) },
+    'devis-sans-reponse': { label: 'Voir les devis', run: vers('#/devis', filtre('devis', 'envoyé')) },
+    attestations: { label: 'Voir la liste', run: vers('#/compta', () => { comptaState.tab = 'ventes'; pageFocus = 'p-rs-clients'; }) },
     echeances: { label: 'Voir les échéances', run: vers('#/relances') },
-    brouillons: { label: 'Voir les brouillons', run: vers('#/factures', () => { listState.facture.st = 'brouillon'; listState.facture.year = ''; listState.facture.yearTouched = true; }) },
+    brouillons: { label: 'Voir les brouillons', run: vers('#/factures', filtre('facture', 'brouillon')) },
     // Les treize qui ne menaient nulle part.
     cloture: { label: 'Clôturer un mois', run: vers('#/compta', () => { comptaState.tab = 'clotures'; }) },
     fiscal: { label: 'Voir le calendrier', run: vers('#/compta', () => { comptaState.tab = 'calendrier'; }) },
@@ -3744,7 +3837,7 @@
     bulletins: { label: 'Voir les bulletins', run: vers('#/paie', () => { paieState.tab = 'bulletins'; }) },
     'salaires-double': { label: 'Voir les mouvements', run: vers('#/tresorerie', () => { tresoState.tab = 'mouvements'; }) },
     tresorerie: { label: 'Voir la prévision', run: vers('#/tresorerie', () => { tresoState.tab = 'prevision'; }) },
-    'taux-change': { label: 'Voir les pièces', run: vers('#/factures', () => { listState.facture.q = ''; listState.facture.year = ''; listState.facture.yearTouched = true; }) },
+    'taux-change': { label: 'Voir les pièces', run: vers('#/factures', filtre('facture')) },
     sauvegarde: { label: 'Choisir un dossier', run: vers('#/parametres', () => { settingsTab = 'donnees'; settingsFocus = 'p-externe'; }) }
   };
 
@@ -3755,7 +3848,7 @@
   // treize boutons « Voir » morts de la 7.0.0, et même parade : une table, et un test de couverture
   // entre ce que `core.packChecklist` peut PRODUIRE et ce que l'interface sait ouvrir.
   const CHECK_ACTIONS = {
-    brouillons: { label: 'Voir les brouillons', run: vers('#/factures', () => { listState.facture.st = 'brouillon'; listState.facture.year = ''; listState.facture.yearTouched = true; }) },
+    brouillons: { label: 'Voir les brouillons', run: vers('#/factures', filtre('facture', 'brouillon')) },
     justificatifs: { label: 'Voir les achats', run: vers('#/achats', () => { buyState.st = ''; buyState.year = ''; }) },
     pointage: { label: 'Pointer les mouvements', run: vers('#/tresorerie', () => { tresoState.tab = 'rapprochement'; }) },
     bulletins: { label: 'Voir les bulletins', run: vers('#/paie', () => { paieState.tab = 'bulletins'; }) },
@@ -3780,7 +3873,10 @@
     // attente » sur une entreprise qui n'a jamais rien facturé, c'est féliciter quelqu'un pour un
     // travail qu'il n'a pas commencé. Dans ce cas la place revient aux premiers pas.
     if (!items.length) {
-      if (!data.documents.length && !data.clients.length) return '';
+      // Et tant que « Tes premiers pas » est à l'écran, ILS SONT la liste des choses à faire :
+      // annoncer « rien à faire » juste en dessous de « étape 1 sur 7 » se contredit à dix
+      // centimètres d'intervalle.
+      if (premiersPasVisibles() || (!data.documents.length && !data.clients.length)) return '';
       return `<div class="todo-ok">Rien à faire aujourd'hui : aucun retard, aucun contrat en attente, aucune attestation à réclamer.</div>`;
     }
     // Panneau repliable : une fois la liste connue, elle prend la place du tableau de bord.
@@ -7705,7 +7801,7 @@
             ${pPage.rows.map(r => `<tr class="clickable" data-id="${r.docId}">${payCols.map(c => `<td class="${c.r ? 'r nw' : ''}">${c.get(r)}</td>`).join('')}</tr>`).join('')}
           </tbody></table></div>${pagerBar(pPage.pg, { noun: 'paiement' })}` : '<div class="empty">Aucun encaissement sur cette période.</div>'}
         </div>
-        <div class="panel"><h2>Retenues à la source — attestations à recevoir ${info('compta.rs')}</h2>
+        <div class="panel" id="p-rs-clients"><h2>Retenues à la source — attestations à recevoir ${info('compta.rs')}</h2>
           ${rsPending.length ? `<p class="small muted">${C.money(rsPendingAmount, cur)} retenus par tes clients sans attestation reçue. Coche quand l'attestation arrive (elle justifie la retenue auprès du fisc).</p>
           <table class="list compact"><thead><tr><th>Facture</th><th>Client</th><th>Date</th><th class="r">Retenue</th><th></th></tr></thead><tbody>
             ${rsPending.map(d => { const t = C.computeTotals(d, company()); return `<tr class="clickable" data-id="${d.id}"><td><strong>${h(d.number)}</strong></td><td>${h(clientName(d.clientId))}</td><td>${C.fmtDate(d.date)}</td><td class="r">${C.money(t.withholding, cur)} <span class="muted small">(${pct(t.withholdingRate)} %)</span></td><td class="actions"><button class="btn btn-sm" data-cert="${d.id}">Attestation reçue</button></td></tr>`; }).join('')}

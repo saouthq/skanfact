@@ -4168,6 +4168,20 @@
   // `opts.copieExterne` : la copie de sauvegarde vers un dossier externe ne vit pas dans les données
   // (elle est dans app-config.json, propre au poste), donc l'appelant la fournit. Elle est ici parce
   // que c'est l'étape que tout le monde saute et la seule dont l'absence coûte tout.
+  function catalogueStep(d) {
+    const cat = d.catalog || [];
+    const aRegler = cat.filter(c => c.fromSetup && !(Number(c.unitPrice) > 0));
+    const propre = cat.some(c => !c.fromSetup || Number(c.unitPrice) > 0);
+    if (cat.length && aRegler.length && !propre) {
+      return { id: 'catalogue', titre: 'Ajuster les prix de ton catalogue', fait: false,
+        quoi: `L'assistant t'a proposé ${cat.length} prestation${cat.length > 1 ? 's' : ''}, dont ${aRegler.length} sans prix : ce sont des exemples, pas tes tarifs.`,
+        action: 'catalogue' };
+    }
+    return { id: 'catalogue', titre: 'Remplir ton catalogue', fait: propre,
+      quoi: 'Ce que tu vends, avec son prix et sa TVA. Une ligne de devis se choisit alors dans une liste au lieu d\'être retapée.',
+      action: 'catalogue' };
+  }
+
   function firstSteps(data, company, opts) {
     const d = data || {};
     const o = opts || {};
@@ -4186,9 +4200,10 @@
       { id: 'client', titre: 'Enregistrer ton premier client', fait: (d.clients || []).length > 0,
         quoi: 'Son adresse et son matricule se reporteront tout seuls sur chaque devis et chaque facture.',
         action: 'client' },
-      { id: 'catalogue', titre: 'Remplir ton catalogue', fait: (d.catalog || []).length > 0,
-        quoi: 'Ce que tu vends, avec son prix et sa TVA. Une ligne de devis se choisit alors dans une liste au lieu d\'être retapée.',
-        action: 'catalogue' },
+      // Une étape ne peut pas se cocher parce que l'ASSISTANT l'a faite. Il propose les prestations
+      // du métier avec des prix à 0 ; tant que le catalogue n'est que celui-là et qu'il reste des
+      // zéros, il n'y a pas de catalogue — il y a des exemples. L'étape change alors de titre.
+      catalogueStep(d),
       { id: 'devis', titre: 'Faire ton premier devis', fait: devis.length > 0,
         quoi: 'Un devis annonce un prix avant de travailler. C\'est la pièce par laquelle presque tout commence.',
         action: 'devis' },

@@ -7,6 +7,42 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 7.18.0 — 13/09/2026
+
+**L'accueil tient ses promesses.**
+
+Suite de l'audit. Un écran qui annonce un ensemble et n'ouvre pas le bon, une étape qui se coche
+parce qu'un assistant l'a remplie, un total calculé sur un extrait : rien de tout ça ne plante.
+
+- **« n devis acceptés à facturer » cachait une partie des devis annoncés.** Cinq réglages sont à
+  remettre quand on pose un filtre depuis « À faire », recopiés à la main dans chaque action — et
+  « Facturer » en oubliait un. La liste d'arrivée se re-filtrait alors toute seule sur l'année en
+  cours. Un helper unique remplace les six recopies.
+- **« n attestations de retenue à réclamer » déposait en haut de Comptabilité → Ventes**, trois
+  écrans au-dessus du panneau qui les liste. Le mécanisme qui amène au bon panneau existait depuis
+  la 7.11.0 pour les Paramètres ; il vaut maintenant pour n'importe quelle page.
+- **« Rien à faire aujourd'hui » s'affichait juste sous « Tes premiers pas 1 / 7 ».** Tant que les
+  premiers pas sont à l'écran, ils SONT la liste des choses à faire.
+- **« Remplir ton catalogue » se cochait tout seul.** L'assistant propose les prestations du métier
+  avec des prix à 0 ; l'étape était réputée faite. Elle devient « Ajuster les prix de ton catalogue »
+  et dit combien de prestations n'ont pas encore de prix.
+- **« Documents récents » totalisait huit pièces sur deux cents**, en mélangeant devis, factures et
+  bons de livraison sous « Net à payer ». Un extrait n'a pas de total : le titre dit maintenant
+  « les 8 dernières pièces sur 81 » et deux boutons mènent aux listes complètes.
+- **« 1 facture(s), 0 en retard ».** La règle du pluriel existait dans l'app du cabinet depuis sa
+  première version et n'avait jamais été portée ici — sur l'écran qu'on regarde le plus souvent.
+- **« Générer maintenant » fabriquait une facture et repoussait l'échéance sans un mot**, y compris
+  sur un contrat suspendu. Il demande d'abord quand le contrat est suspendu ou que l'échéance n'est
+  pas encore arrivée, et laisse un « Annuler » qui supprime le brouillon ET remet les deux dates.
+- **Un contrat en euros s'affichait en dinars** dans la colonne « HT / facture », et le tri comparait
+  des euros à des dinars. La page dit aussi, enfin, ce que les contrats rapportent par mois et par an.
+- **La recherche des Relances ne filtrait qu'un tableau sur quatre.** On tapait un nom de client, le
+  premier tableau se réduisait, les trois autres continuaient d'afficher tout le monde.
+- **Répondre à un devis depuis la liste.** « Accepté ✓ » et « Refusé ✕ » sur les devis en attente,
+  avec retour en arrière : le statut d'un devis se saisit à la main, et il fallait ouvrir la pièce.
+
+`npm run e2e:accueil` refait les sept gestes dans l'application réelle ; `npm test` passe à 265.
+
 ## 7.17.0 — 13/09/2026
 
 **Les écrans qui ne répondent pas.**

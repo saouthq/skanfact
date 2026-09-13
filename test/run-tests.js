@@ -6332,5 +6332,146 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.ok(/\$\$\('#st-body \.stat\[data-stat\]'\)\.forEach\([\s\S]{0,500}?onkeydown/.test(app), 'les compteurs du Stock ne répondent pas au clavier');
   });
 
+  // ---------- 7.18.0 : l'accueil tient ses promesses ----------
+
+  t('une ligne « À faire » qui pose un filtre le pose en entier', () => {
+    const app = lireApp();
+    // Cinq réglages à remettre, recopiés à la main dans chaque action : « Facturer » en oubliait un
+    // (`yearTouched`), et la liste d'arrivée se re-filtrait toute seule sur l'année en cours — donc
+    // cachait précisément les devis que la ligne venait d'annoncer. Le helper rend l'oubli impossible.
+    assert.ok(/const filtre = \(liste, st, extra\) => \(\) => Object\.assign\(listState\[liste\],[\s\S]{0,240}?yearTouched: true, page: 1 \}/.test(app),
+      'le helper de filtre de liste n\'existe plus');
+    // Plus aucune action ne bricole `listState` à la main dans une table d'actions.
+    const tables = app.slice(app.indexOf('const TODO_ACTIONS = {'), app.indexOf('const TODO_VISIBLE'))
+      + app.slice(app.indexOf('const STAT_ACTIONS = {'), app.indexOf('$$(\'[data-stat]\')'));
+    const bricolage = (tables.match(/listState\.\w+\.\w+ =/g) || []);
+    assert.deepStrictEqual(bricolage, [],
+      `une action pose un filtre à la main au lieu de passer par filtre() : ${bricolage.join(' · ')}`);
+  });
+
+  t('un raccourci qui vise un panneau y amène', () => {
+    const app = lireApp();
+    // « n attestations à réclamer » déposait en haut de Comptabilité → Ventes, trois écrans au-dessus
+    // du panneau visé. `settingsFocus` faisait déjà ça pour les Paramètres depuis la 7.11.0.
+    assert.ok(/let pageFocus = '';/.test(app), 'le mécanisme de mise au point sur un panneau n\'existe plus');
+    assert.ok(/if \(pageFocus\) \{[\s\S]{0,300}?pageFocus = '';[\s\S]{0,300}?scrollIntoView/.test(app),
+      'le routeur ne consomme pas pageFocus après le rendu');
+    assert.ok(/pageFocus = 'p-rs-clients';/.test(app) && /id="p-rs-clients"/.test(app),
+      'la ligne des attestations ne vise pas le panneau des retenues');
+  });
+
+  t('« Rien à faire » ne s\'affiche pas au-dessus de « Tes premiers pas »', () => {
+    const app = lireApp();
+    assert.ok(/if \(premiersPasVisibles\(\) \|\| \(!data\.documents\.length && !data\.clients\.length\)\) return '';/.test(app),
+      '« Rien à faire aujourd\'hui » peut encore s\'afficher sous « étape 1 sur 7 »');
+  });
+
+  t('l\'étape « catalogue » ne se coche pas parce que l\'assistant l\'a faite', () => {
+    // L'assistant propose les prestations du métier, avec des prix à 0. L'étape était réputée faite.
+    const avecSetup = { catalog: [{ id: 'a', label: 'X', unitPrice: 0, fromSetup: true }] };
+    const e1 = core.firstSteps(avecSetup, {}, {}).etapes.find(x => x.id === 'catalogue');
+    assert.strictEqual(e1.fait, false, 'un catalogue d\'exemples sans prix ne vaut pas un catalogue');
+    assert.ok(/Ajuster les prix/.test(e1.titre), 'le titre ne dit pas ce qu\'il reste à faire');
+    assert.ok(/exemples, pas tes tarifs/.test(e1.quoi), 'l\'explication ne dit pas que ce sont des exemples');
+    // Un prix ajusté suffit : on ne réclame pas les douze.
+    const ajuste = { catalog: [{ id: 'a', label: 'X', unitPrice: 0, fromSetup: true }, { id: 'b', label: 'Y', unitPrice: 120, fromSetup: true }] };
+    assert.strictEqual(core.firstSteps(ajuste, {}, {}).etapes.find(x => x.id === 'catalogue').fait, true);
+    // Une prestation saisie à la main aussi, même à 0 (c'est une décision, pas un reste d'assistant).
+    const main = { catalog: [{ id: 'a', label: 'X', unitPrice: 0 }] };
+    assert.strictEqual(core.firstSteps(main, {}, {}).etapes.find(x => x.id === 'catalogue').fait, true);
+    assert.strictEqual(core.firstSteps({ catalog: [] }, {}, {}).etapes.find(x => x.id === 'catalogue').fait, false);
+    // Et l'assistant marque bien ce qu'il pose.
+    const ob = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'onboarding.js'), 'utf8');
+    assert.ok(/fromSetup: true/.test(ob), 'l\'assistant ne marque plus les prestations qu\'il propose');
+  });
+
+  t('l\'accueil accorde ses pluriels', () => {
+    const app = lireApp();
+    assert.ok(/const pl = \(n, un, plur\) =>/.test(app), 'le helper de pluriel n\'existe pas dans l\'app entreprise');
+    // La règle : un compteur interpolé juste avant « (s) » est un pluriel non accordé. On lit le
+    // tableau de bord et `docTable`, les écrans qu'on regarde le plus souvent.
+    const zone = app.slice(app.indexOf('routes.dashboard ='), app.indexOf('function bindDocTable('));
+    const fautes = (zone.match(/\$\{[^}]+\}\s*[A-Za-zÀ-ÿ' -]+\(s\)/g) || []);
+    assert.deepStrictEqual(fautes, [], `pluriel non accordé sur l'accueil : ${fautes.join(' · ')}`);
+  });
+
+  t('un extrait de liste n\'affiche pas de total', () => {
+    const app = lireApp();
+    // « Documents récents » totalisait en HT des devis, des factures et des bons de livraison, et
+    // les rangeait sous « Net à payer ». Huit pièces sur deux cents ne font pas un total.
+    assert.ok(/\$\{opts\.noFoot \? '' : `<tfoot>/.test(app), 'docTable n\'a plus de mode « sans pied »');
+    assert.ok(/docTable\(recent, \{ noFoot: true \}\)/.test(app), '« Documents récents » affiche encore un total');
+    assert.ok(/les \$\{recent\.length\} dernières pièces sur \$\{data\.documents\.length\}/.test(app),
+      '« Documents récents » ne dit pas qu\'il n\'est qu\'un extrait');
+  });
+
+  t('la bulle « À faire » décrit la liste d\'aujourd\'hui', () => {
+    const g = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'guide.js'), 'utf8');
+    const bulle = (g.match(/'todo': \{ t: 'À faire', d: '([\s\S]*?)', a: '/) || [, ''])[1];
+    assert.ok(bulle, 'la bulle « À faire » est introuvable');
+    // Une énumération figée se périme à chaque module ajouté : elle en listait huit sur vingt-six.
+    // On interdit la forme, et on exige ce qui ne se périme pas : l'ordre, les couleurs, la limite.
+    assert.ok(!/contrats à générer, devis acceptés/.test(bulle), 'la bulle énumère encore les lignes une par une');
+    assert.ok(/urgent/.test(bulle), 'la bulle ne dit pas que la liste est triée par urgence');
+    assert.ok(/rouge/.test(bulle), 'la bulle ne dit pas ce que veut dire une ligne rouge');
+    assert.ok(/cinq premières/.test(bulle), 'la bulle ne dit pas que la liste est tronquée à cinq');
+  });
+
+  t('« Générer maintenant » se demande et se défait', () => {
+    const app = lireApp();
+    // Le geste fabrique une facture ET repousse l'échéance du contrat : deux effets qu'un clic de
+    // trop laissait en place sans un mot, y compris sur un contrat suspendu.
+    assert.ok(/function generateRecurring\(recs, force\) \{\n    let n = 0, skipped = 0; const ids = \[\];/.test(app),
+      'generateRecurring ne renvoie plus de quoi annuler');
+    assert.ok(/return \{ n, skipped, ids \};/.test(app), 'generateRecurring renvoie encore un simple compteur');
+    assert.ok(/async function genererContrat\(r, apres\)[\s\S]{0,900}?await confirmDialog\(/.test(app),
+      'générer un contrat suspendu ou en avance ne demande rien');
+    assert.ok(/const avance = r\.active === false \|\| r\.nextDate > C\.today\(\);/.test(app),
+      'la condition « suspendu ou en avance » a disparu');
+    assert.ok(/toastUndo\(`Brouillon créé pour[\s\S]{0,300}?Object\.assign\(r, avant\); save\(true\);/.test(app),
+      '« Annuler » ne remet pas les dates du contrat');
+    // Et plus aucun appelant ne génère à côté du garde-fou.
+    const brut = (app.match(/generateRecurring\(\[r\], true\)/g) || []).length;
+    assert.strictEqual(brut, 1, 'un bouton génère encore un contrat sans passer par genererContrat');
+  });
+
+  t('un contrat en euros s\'affiche et se trie en euros', () => {
+    const app = lireApp();
+    const zone = app.slice(app.indexOf('routes.contrats = () => {'), app.indexOf('const relState'));
+    assert.ok(/const curOf = r => r\.currency \|\| cur;/.test(zone), 'la devise du contrat n\'est plus lue');
+    assert.ok(/get: r => C\.money\(htOf\(r\), curOf\(r\)\)/.test(zone), 'la colonne « HT / facture » affiche la devise de la société');
+    // Le tri doit comparer des montants comparables, donc convertis.
+    assert.ok(/const htBase = r => C\.toBase\(/.test(zone) && /val: htBase,/.test(zone),
+      'le tri compare encore des euros à des dinars');
+    // Et le pied dit ce que les contrats rapportent, sur la sélection entière.
+    assert.ok(/const actifs = kept\.filter\(r => r\.active !== false\);/.test(zone),
+      'le pied des contrats compte les contrats suspendus');
+    assert.ok(/par mois · \$\{C\.money\(parAn, cur\)\} par an/.test(zone), 'la page ne dit pas ce que les contrats rapportent');
+  });
+
+  t('la recherche des Relances filtre les quatre tableaux', () => {
+    const app = lireApp();
+    assert.ok(/const matchDoc = d => !q \|\|/.test(app), 'le filtre de document des Relances n\'est plus factorisé');
+    const zone = app.slice(app.indexOf('const matchDoc = d => !q'), app.indexOf('const total = od.reduce'));
+    const lignes = zone.split('\n').filter(l => /^\s+const (od|soon|quotes) =/.test(l));
+    assert.strictEqual(lignes.length, 3, 'les trois sélections des Relances n\'ont pas été relues');
+    lignes.forEach(l => assert.ok(/match/.test(l), `une section des Relances ignore la recherche : ${l.trim().slice(0, 70)}`));
+  });
+
+  t('on répond à un devis depuis la liste', () => {
+    const app = lireApp();
+    // Le statut d'un devis se saisit à la main : il fallait pourtant ouvrir la pièce pour dire
+    // « le client a dit oui ». Et « Facturer » n'apparaissait qu'après.
+    // Trois boutons de plus par ligne sortaient de l'écran à 1280 px (`npm run e2e:contraste` l'a
+    // mesuré) : un bouton hors champ n'existe pas. Les deux réponses remplacent donc « Facturer »
+    // tant que le devis n'a pas reçu la sienne — un clic sur « Accepté ✓ » le fait apparaître.
+    assert.ok(/data-accepte="\$\{d\.id\}"/.test(app) && /data-refuse="\$\{d\.id\}"/.test(app),
+      'rien ne permet de répondre à un devis depuis la liste');
+    assert.ok(/d\.type === 'devis' && \['envoyé', 'expiré'\]\.includes\(effStatus\(d\)\) \? `<button class="btn btn-sm" data-accepte=/.test(app),
+      'les réponses ne sont pas offertes sur les devis en attente');
+    assert.ok(/const repondre = \(id, st\) => \{[\s\S]{0,400}?toastUndo\(/.test(app),
+      'répondre à un devis ne laisse aucun retour en arrière');
+  });
+
   console.log(`\n${n} tests OK`);
 })().catch(e => { console.error(e); process.exit(1); });
