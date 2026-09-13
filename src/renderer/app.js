@@ -4137,7 +4137,7 @@
         </tbody></table>${pagerBar(pg, { noun: 'achat' })}`
         : '<div class="empty">Aucun achat chez ce fournisseur pour l\'instant.</div>';
       $$('#sup-docs tr.clickable').forEach(tr => tr.onclick = () => navigate('#/achat/' + tr.dataset.id));
-      bindSort($('#sup-docs'), () => draw());
+      bindSort($('#sup-docs'), key => { supplierBuyState.sort = toggleSort(supplierBuyState.sort, key, cols); supplierBuyState.page = 1; draw(); });
       bindPager($('#sup-docs'), supplierBuyState, () => draw(), '#sup-docs');
     };
     $('#view').innerHTML = `
@@ -4856,6 +4856,8 @@
 
   const margeState = { tab: 'affaires', year: C.today().slice(0, 4), dim: 'client', page: 1 };
   const MARGE_TABS = [['affaires', 'Affaires'], ['analyse', 'Où est la marge'], ['contrats', 'Contrats'], ['seuil', 'Seuil de rentabilité']];
+  // Les onglets qui ne lisent pas l'année : le sélecteur y disparaît au lieu d'y être inerte.
+  const MG_SANS_ANNEE = ['affaires', 'contrats'];
 
   routes.marges = () => {
     const cur = company().currency;
@@ -4867,7 +4869,7 @@
     $('#view').innerHTML = `
       <div class="page-head"><h1>Marges</h1>
         <div class="actions">
-          <select id="mg-year" ${s.tab === 'affaires' ? 'hidden' : ''}>${years.map(y => `<option ${y === s.year ? 'selected' : ''}>${y}</option>`).join('')}</select>
+          <select id="mg-year" ${MG_SANS_ANNEE.includes(s.tab) ? 'hidden' : ''}>${years.map(y => `<option ${y === s.year ? 'selected' : ''}>${y}</option>`).join('')}</select>
           <button class="btn btn-primary" id="new-proj">+ Nouvelle affaire</button>
         </div></div>
       <div class="tabs" id="mg-tabs" role="tablist">${MARGE_TABS.map(([id, label]) =>
@@ -5003,7 +5005,10 @@
     }
 
     const draw = () => {
-      $('#mg-year').hidden = s.tab === 'affaires';
+      // Un sélecteur visible et sans effet est pire qu'absent : on change d'année, rien ne bouge, et
+      // on croit que l'application est cassée. « Affaires » et « Contrats » portent sur toute la vie
+      // de l'affaire ou du contrat, pas sur un exercice.
+      $('#mg-year').hidden = MG_SANS_ANNEE.includes(s.tab);
       if (s.tab === 'analyse') return drawAnalysis();
       if (s.tab === 'contrats') return drawContracts();
       if (s.tab === 'seuil') return drawBreakEven();
@@ -5361,6 +5366,7 @@
       </div>
       <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Exporter en PDF</button></div>`,
       (root, close) => {
+        const total = () => C.round3(lines.reduce((a, l) => a + (Number(l.amount) || 0), 0));
         const drawLines = () => {
           $('#hf-lines', root).innerHTML = `<table class="lines-edit"><tbody>
             ${lines.map((l, i) => `<tr data-i="${i}">
@@ -5369,11 +5375,15 @@
               <td class="line-tools"><button type="button" class="btn btn-ghost btn-sm" data-x="${i}">✕</button></td></tr>`).join('')}
           </tbody></table>
           <div class="inline mt"><button type="button" class="btn btn-sm" id="hf-add">+ Ligne</button>
-            <span class="small muted">Net à percevoir : <b>${C.money(C.round3(lines.reduce((a, l) => a + (Number(l.amount) || 0), 0)), cur)}</b></span></div>`;
+            <span class="small muted">Net à percevoir : <b id="hf-total">${C.money(total(), cur)}</b></span></div>`;
+          // Chaque frappe redessinait tout le bloc : l'élément qu'on tapait était détruit et recréé,
+          // donc le curseur repartait dans le vide à chaque caractère. On ne peut pas écrire un
+          // libellé dans un champ pareil. Seul le total se recalcule ; le tableau ne bouge qu'à
+          // l'ajout ou au retrait d'une ligne.
           $$('[data-f]', $('#hf-lines', root)).forEach(el => el.oninput = () => {
             const i = Number(el.closest('tr').dataset.i);
             lines[i][el.dataset.f] = el.type === 'number' ? Number(el.value) : el.value;
-            drawLines();
+            $('#hf-total', root).textContent = C.money(total(), cur);
           });
           $$('[data-x]', $('#hf-lines', root)).forEach(b => b.onclick = () => { lines.splice(Number(b.dataset.x), 1); drawLines(); });
           $('#hf-add', root).onclick = () => { lines.push({ label: '', amount: 0 }); drawLines(); };
@@ -5407,6 +5417,9 @@
     quarter: String(Math.ceil(Number(lastMonth.slice(5, 7)) / 3)) };
   const PAIE_TABS = [['bulletins', 'Bulletins'], ['salaries', 'Salariés'], ['conges', 'Congés et absences'],
     ['avances', 'Avances'], ['declarations', 'Déclarations'], ['registre', 'Registre'], ['baremes', 'Barèmes']];
+  // Idem sur la Paie : la liste des salariés, les avances en cours et le registre du personnel sont
+  // des états du jour, pas d'un exercice. Ils affichaient un sélecteur d'année qui ne faisait rien.
+  const P_SANS_ANNEE = ['salaries', 'avances', 'registre', 'baremes'];
 
   routes.paie = () => {
     const cur = company().currency;
@@ -5431,7 +5444,7 @@
       const a = data.employees.length ? P_ACTION[s.tab] : P_ACTION.salaries;
       return `<h1>Paie</h1>
         <div class="actions">
-          <select id="p-year" ${s.tab === 'baremes' ? 'hidden' : ''}>${years.map(y => `<option ${y === s.year ? 'selected' : ''}>${y}</option>`).join('')}</select>
+          <select id="p-year" ${P_SANS_ANNEE.includes(s.tab) ? 'hidden' : ''}>${years.map(y => `<option ${y === s.year ? 'selected' : ''}>${y}</option>`).join('')}</select>
           ${a ? `<button class="btn btn-primary" id="${a[0]}">${a[1]}</button>` : ''}
         </div>`;
     };
@@ -6006,7 +6019,7 @@
   };
 
   // ---------- Stock (4.0.0) ----------
-  const stockState = { tab: 'etat', q: '', only: '', counts: {}, countDate: C.today(), moves: { page: 1 },
+  const stockState = { tab: 'etat', q: '', only: '', counts: {}, countDate: C.today(), year: C.today().slice(0, 4), moves: { page: 1 },
     ser: { q: '', status: '', page: 1 } };
   const STOCK_TABS = [['etat', 'État du stock'], ['mouvements', 'Mouvements'], ['series', 'Numéros de série'], ['inventaire', 'Inventaire'], ['alertes', 'Alertes']];
 
@@ -6065,11 +6078,15 @@
     // « Numéros de série », il disait « + Mouvement » pendant que « + Entrée de numéros », le vrai
     // geste, était un bouton vert plus petit dans le panneau.
     const ST_ACTION = { etat: ['st-adj', '+ Mouvement'], series: ['se-add', '+ Entrée de numéros'] };
+    // Le bouton d'export DIT ce qu'il exporte : jusqu'ici il s'appelait « Exporter en CSV » sur les
+    // cinq onglets et renvoyait l'état du stock sur les cinq.
+    const ST_LABELS = { etat: 'l\'état du stock', mouvements: 'les mouvements', series: 'les numéros de série',
+      inventaire: 'l\'inventaire', alertes: 'ce qu\'il faut recommander' };
     const stHead = () => {
       const a = items.length ? ST_ACTION[s.tab] : ST_ACTION.etat;   // même garde-fou que sur Paie
       return `<h1>Stock</h1>
         <div class="actions">
-          <button class="btn" id="st-csv">Exporter en CSV</button>
+          <button class="btn" id="st-csv" data-csv="${h(s.tab)}">Exporter ${h(ST_LABELS[s.tab] || ST_LABELS.etat)}</button>
           <button class="btn" id="st-war">Garanties</button>
           ${a ? `<button class="btn btn-primary" id="${a[0]}">${a[1]}</button>` : ''}
         </div>`;
@@ -6093,8 +6110,8 @@
       $('#st-body').innerHTML = `
         <div class="stats">
           <div class="stat"><div class="lbl">Valeur du stock ${info('stk.value')}</div><div class="val">${C.money(t.value, cur)}</div><div class="sub">${t.count} article(s) suivi(s)</div></div>
-          <div class="stat"><div class="lbl">Sous le seuil ${info('stk.min')}</div><div class="val ${t.low ? 'due' : ''}">${t.low}</div><div class="sub">à recommander</div></div>
-          <div class="stat"><div class="lbl">Stocks négatifs ${info('stk.negative')}</div><div class="val ${t.negative ? 'due' : ''}">${t.negative}</div><div class="sub">${t.negative ? 'une entrée manque quelque part' : 'rien d\'impossible'}</div></div>
+          <div class="stat" ${t.low ? 'data-stat="low" role="button" tabindex="0"' : ''}><div class="lbl">Sous le seuil ${info('stk.min')}</div><div class="val ${t.low ? 'due' : ''}">${t.low}</div><div class="sub">${t.low ? 'à recommander — voir lesquels' : 'à recommander'}</div></div>
+          <div class="stat" ${t.negative ? 'data-stat="neg" role="button" tabindex="0"' : ''}><div class="lbl">Stocks négatifs ${info('stk.negative')}</div><div class="val ${t.negative ? 'due' : ''}">${t.negative}</div><div class="sub">${t.negative ? 'une entrée manque quelque part — voir lesquels' : 'rien d\'impossible'}</div></div>
           <div class="stat"><div class="lbl">Prix de vente du stock</div><div class="val">${C.money(C.round3(t.rows.reduce((a, r) => a + Math.max(0, r.qty) * r.unitPrice, 0)), cur)}</div><div class="sub">ce qu'il rapporterait vendu</div></div>
         </div>
         <div class="panel"><h2>État du stock ${info('stk.state')}</h2>
@@ -6121,15 +6138,31 @@
         </div>`;
       $('#st-q').oninput = e => { s.q = e.target.value; drawState(); const el = $('#st-q'); el.focus(); el.setSelectionRange(el.value.length, el.value.length); };
       $('#st-only').onchange = e => { s.only = e.target.value; drawState(); };
+      // Un compteur rouge qui nomme un ensemble doit l'ouvrir (7.15.0) : ces deux-là annonçaient un
+      // problème et laissaient chercher les articles concernés à la main dans toute la liste.
+      const versAlertes = () => { s.tab = 'alertes'; $$('#st-tabs button').forEach(x => x.classList.toggle('active', x.dataset.tab === 'alertes')); draw(); };
+      $$('#st-body .stat[data-stat]').forEach(el => {
+        const go = e2 => { if (e2.target.closest('.i[data-info]')) return; versAlertes(); };
+        el.onclick = go;
+        el.onkeydown = e2 => { if (e2.key === 'Enter' || e2.key === ' ') { e2.preventDefault(); versAlertes(); } };
+      });
       $$('#st-body tr[data-iid]').forEach(tr => tr.onclick = () => navigate('#/article/' + tr.dataset.iid));
     }
 
     function drawMoves() {
-      const year = C.today().slice(0, 4);
+      // Même défaut que sur la Trésorerie : l'année était écrite dans le code. Un inventaire se
+      // justifie sur l'exercice écoulé, et la page n'offrait aucun moyen d'y retourner.
+      const tout = C.stockJournal(data, { from: '', to: '9999-12-31' });
+      const annees = Array.from(new Set(tout.map(m => (m.date || '').slice(0, 4)).filter(Boolean)
+        .concat([C.today().slice(0, 4)]))).sort().reverse();
+      if (!annees.includes(s.year)) s.year = annees[0];
+      const year = s.year;
       const all = C.stockJournal(data, { from: `${year}-01-01`, to: `${year}-12-31` });
       const paged = paginate(all, s.moves);
       $('#st-body').innerHTML = `
-        <div class="panel"><h2>Mouvements de ${year} ${info('stk.moves')}</h2>
+        <div class="panel"><h2>Mouvements de ${h(year)} ${info('stk.moves')}</h2>
+          <div class="filters"><select id="st-year">${annees.map(y => `<option ${y === s.year ? 'selected' : ''}>${y}</option>`).join('')}</select>
+            <span class="small muted">${all.length} mouvement(s)</span></div>
           ${all.length ? `<div class="scroll-x"><table class="list compact"><thead><tr>
             <th>Date</th><th>Article</th><th>Origine</th><th>Référence</th><th class="r">Quantité</th><th class="r">Coût unitaire</th><th class="r">Stock après</th></tr></thead><tbody>
             ${paged.rows.map(m => `<tr class="${m.docId ? 'clickable' : ''}" ${m.docId ? `data-go="${h(m.source === 'achat' ? '#/achat/' : '#/doc/')}${h(m.docId)}"` : ''}>
@@ -6142,8 +6175,9 @@
           </tbody></table></div>
           ${paged.pg ? pagerBar(paged.pg, { noun: 'mouvement' }) : ''}
           <p class="small muted mt">Tout vient des pièces déjà saisies : une ligne d'achat en destination « stock » fait une entrée, une facture ou un bon de livraison fait une sortie. Seuls les mouvements « casse », « inventaire » et « ajustement » se saisissent à la main.</p>`
-            : '<div class="empty">Aucun mouvement cette année.</div>'}
+            : `<div class="empty">Aucun mouvement en ${h(year)}.</div>`}
         </div>`;
+      $('#st-year').onchange = e => { s.year = e.target.value; s.moves.page = 1; drawMoves(); };
       $$('#st-body tr[data-go]').forEach(tr => tr.onclick = () => navigate(tr.dataset.go));
       bindPager($('#st-body'), s.moves, () => drawMoves(), '#st-body');
     }
@@ -6286,17 +6320,50 @@
       $$('#st-tabs button').forEach(x => x.classList.toggle('active', x === b));
       draw();
     });
+    // Le bouton exportait l'état du stock quel que soit l'onglet ouvert : depuis « Mouvements », on
+    // demandait le journal et on recevait l'inventaire, sans un mot. Un export suit ce qu'on regarde.
+    const ST_EXPORTS = {
+      etat: () => ({
+        nom: `stock-${C.today()}.csv`, rows: C.stockTotals(data).rows, cols: [
+          { key: 'label', label: 'Article' }, { key: 'location', label: 'Emplacement' },
+          { key: 'qty', label: 'En stock' }, { key: 'unit', label: 'Unité' },
+          { key: 'minStock', label: 'Seuil' }, { key: 'cmp', label: 'Coût moyen', type: 'money' },
+          { label: 'Valeur', type: 'money', get: r => Math.max(0, r.value) },
+          { key: 'unitPrice', label: 'Prix de vente', type: 'money' }]
+      }),
+      mouvements: () => ({
+        nom: `mouvements-stock-${s.year}.csv`,
+        rows: C.stockJournal(data, { from: `${s.year}-01-01`, to: `${s.year}-12-31` }), cols: [
+          { key: 'date', label: 'Date', type: 'date' }, { key: 'label', label: 'Article' },
+          { label: 'Origine', get: m => C.moveSourceLabel(m.source) }, { key: 'ref', label: 'Référence' },
+          { key: 'note', label: 'Note' }, { key: 'qty', label: 'Quantité' },
+          { key: 'unitApplied', label: 'Coût unitaire', type: 'money' }, { key: 'qtyAfter', label: 'Stock après' }]
+      }),
+      series: () => ({
+        nom: `numeros-serie-${C.today()}.csv`, rows: C.serialList(data, { status: s.ser.status }), cols: [
+          { key: 'serial', label: 'Numéro' }, { key: 'itemLabel', label: 'Article' },
+          { label: 'Statut', get: x => C.serialStatusLabel(x.status) }, { key: 'clientName', label: 'Client' },
+          { key: 'inDate', label: 'Entrée', type: 'date' }, { key: 'outDate', label: 'Sortie', type: 'date' },
+          { key: 'warrantyEndDate', label: 'Fin de garantie', type: 'date' }]
+      }),
+      inventaire: () => ({
+        nom: `inventaire-${s.countDate}.csv`, rows: C.inventoryDiff(data, s.counts, s.countDate), cols: [
+          { key: 'label', label: 'Article' }, { key: 'unit', label: 'Unité' },
+          { key: 'book', label: 'Selon SkanFact' }, { key: 'counted', label: 'Compté' },
+          { key: 'gap', label: 'Écart' }, { key: 'value', label: 'Valeur de l\'écart', type: 'money' }]
+      }),
+      alertes: () => ({
+        nom: `a-recommander-${C.today()}.csv`, rows: C.stockAlerts(data), cols: [
+          { key: 'label', label: 'Article' }, { key: 'location', label: 'Emplacement' },
+          { key: 'kind', label: 'Problème' }, { key: 'qty', label: 'En stock' },
+          { key: 'minStock', label: 'Seuil' },
+          { label: 'À commander', get: r => r.kind === 'negatif' ? '' : C.round3(Math.max(r.minStock, 1) - r.qty) }]
+      })
+    };
     async function exportStock() {
-      const t = C.stockTotals(data);
-      if (!t.rows.length) return toast('Rien à exporter.', true);
-      const cols = [
-        { key: 'label', label: 'Article' }, { key: 'location', label: 'Emplacement' },
-        { key: 'qty', label: 'En stock' }, { key: 'unit', label: 'Unité' },
-        { key: 'minStock', label: 'Seuil' }, { key: 'cmp', label: 'Coût moyen', type: 'money' },
-        { label: 'Valeur', type: 'money', get: r => Math.max(0, r.value) },
-        { key: 'unitPrice', label: 'Prix de vente', type: 'money' }
-      ];
-      const f = await bridge.saveText(`stock-${C.today()}.csv`, C.toCsv(t.rows, cols));
+      const e = (ST_EXPORTS[s.tab] || ST_EXPORTS.etat)();
+      if (!e.rows.length) return toast('Rien à exporter dans cet onglet.', true);
+      const f = await bridge.saveText(e.nom, C.toCsv(e.rows, e.cols));
       if (f) toast('Exporté : ' + f.split(/[\\/]/).pop());
     };
     draw();
@@ -6953,7 +7020,8 @@
   };
 
   // ---------- Trésorerie ----------
-  const tresoState = { tab: 'position', account: '', days: 90, moves: { sort: null, page: 1 } };
+  const tresoState = { tab: 'position', account: '', days: 90, year: C.today().slice(0, 4), showPointed: false,
+    moves: { sort: null, page: 1 } };
   const TRESO_TABS = [['position', 'Où j\'en suis'], ['prevision', 'Ce qui arrive'], ['mouvements', 'Mouvements'], ['rapprochement', 'Rapprochement']];
 
   function accountForm(acc, done) {
@@ -7137,7 +7205,13 @@
         { key: 'reference', label: 'Référence', asc: true, val: m => (m.reference || '').toLowerCase(), get: m => h(m.reference || '') || '<span class="muted">—</span>' },
         { key: 'amount', label: 'Montant', r: true, val: m => m.amount, get: m => `<span class="${m.amount > 0 ? 'ok-text' : ''}">${m.amount > 0 ? '+' : ''}${C.money(m.amount, cur)}</span>` }
       ];
-      const period = { from: `${C.today().slice(0, 4)}-01-01`, to: '9999-12-31' };
+      // L'année se choisit. Elle était figée sur l'année en cours, sans le moindre moyen de
+      // remonter : le 3 janvier, la page de trésorerie devenait vide et l'année écoulée
+      // inatteignable — alors que c'est exactement le moment où on la regarde.
+      const annees = Array.from(new Set(C.cashMovements(data, company(), { from: '', to: '9999-12-31' }, null)
+        .map(m => (m.date || '').slice(0, 4)).filter(Boolean).concat([C.today().slice(0, 4)]))).sort().reverse();
+      if (!annees.includes(s.year)) s.year = annees[0];
+      const period = { from: `${s.year}-01-01`, to: `${s.year}-12-31` };
       const all = C.cashMovements(data, company(), period, s.account || null);
       const rows = applySort(all.slice().reverse(), cols, s.moves.sort);
       const pg = paginate(rows, s.moves);
@@ -7146,33 +7220,41 @@
       $('#t-body').innerHTML = `
         <div class="filters">
           <select id="t-acc"><option value="">Tous les comptes</option>${data.accounts.map(a => `<option value="${a.id}" ${s.account === a.id ? 'selected' : ''}>${h(a.name)}</option>`).join('')}</select>
+          <select id="t-year">${annees.map(y => `<option ${y === s.year ? 'selected' : ''}>${y}</option>`).join('')}</select>
           ${info('tre.moves')}
-          <span class="small muted">Année ${C.today().slice(0, 4)} · ${all.length} mouvement(s)</span>
+          <span class="small muted">${all.length} mouvement(s)</span>
         </div>
         <div class="stats">
           <div class="stat"><div class="lbl">Entrées</div><div class="val ok">${C.money(entrees, cur)}</div><div class="sub">encaissements et apports</div></div>
           <div class="stat"><div class="lbl">Sorties</div><div class="val due">${C.money(-sorties, cur)}</div><div class="sub">règlements et charges</div></div>
-          <div class="stat"><div class="lbl">Variation</div><div class="val ${entrees + sorties < 0 ? 'due' : 'ok'}">${C.money(C.round3(entrees + sorties), cur)}</div><div class="sub">sur l'année en cours</div></div>
+          <div class="stat"><div class="lbl">Variation</div><div class="val ${entrees + sorties < 0 ? 'due' : 'ok'}">${C.money(C.round3(entrees + sorties), cur)}</div><div class="sub">sur ${h(s.year)}</div></div>
         </div>
-        <div class="panel"><h2>Tous les mouvements</h2>
+        <div class="panel"><h2>Tous les mouvements de ${h(s.year)}</h2>
           <div class="inline mb"><button class="btn btn-sm" id="exp-moves">Exporter en CSV</button></div>
           ${rows.length ? `<div id="m-wrap"><table class="list compact sortable"><thead>${sortHead(cols, s.moves.sort)}</thead><tbody>
             ${pg.rows.map(m => `<tr class="${m.source === 'libre' ? 'clickable' : ''}" data-mv="${m.source === 'libre' ? h(m.movementId) : ''}">
               ${cols.map(c => `<td class="${c.r ? 'r nw' : ''}${c.cls ? ' ' + c.cls : ''}">${c.get(m)}</td>`).join('')}</tr>`).join('')}
           </tbody></table></div>${pagerBar(pg.pg, { noun: 'mouvement' })}`
-            : '<div class="empty">Aucun mouvement cette année.</div>'}
+            : `<div class="empty">Aucun mouvement en ${h(s.year)}.</div>`}
           <p class="small muted mt">Les encaissements et les règlements viennent des factures et des achats : ils se modifient sur la pièce d'origine, avec le bouton ✎ à côté du paiement — c'est là que se règle aussi le compte sur lequel l'argent tombe. Seuls les mouvements libres se cliquent ici.</p>
         </div>`;
       $('#t-acc').onchange = e => { s.account = e.target.value; s.moves.page = 1; draw(); };
+      $('#t-year').onchange = e => { s.year = e.target.value; s.moves.page = 1; draw(); };
       $$('#t-body tr[data-mv]').forEach(tr => { if (tr.dataset.mv) tr.onclick = () => movementForm(data.movements.find(m => m.id === tr.dataset.mv), () => draw()); });
       const wrap = $('#m-wrap');
-      if (wrap) { bindSort(wrap.closest('.panel'), () => draw()); bindPager(wrap.closest('.panel'), s.moves, () => draw(), '#m-wrap'); }
+      // `bindSort` passe la colonne cliquée à son rappel : `() => draw()` la jetait, et les six
+      // en-têtes affichaient leur « ⇅ » sans jamais rien trier. Un tri qui ne trie pas ne se voit
+      // pas — on croit que la liste était déjà dans cet ordre.
+      if (wrap) {
+        bindSort(wrap.closest('.panel'), key => { s.moves.sort = toggleSort(s.moves.sort, key, cols); s.moves.page = 1; draw(); });
+        bindPager(wrap.closest('.panel'), s.moves, () => draw(), '#m-wrap');
+      }
       $('#exp-moves').onclick = async () => {
         if (!all.length) return toast('Rien à exporter.', true);
         const cs = [{ key: 'date', label: 'Date', type: 'date' }, { key: 'label', label: 'Libellé' }, { key: 'party', label: 'Tiers' },
           { label: 'Compte', get: m => ((data.accounts.find(a => a.id === m.accountId)) || {}).name || '' },
           { key: 'method', label: 'Mode' }, { key: 'reference', label: 'Référence' }, { key: 'amount', label: 'Montant', type: 'money' }];
-        const f2 = await bridge.saveText(`mouvements-${C.today().slice(0, 4)}.csv`, C.toCsv(all, cs));
+        const f2 = await bridge.saveText(`mouvements-${s.year}.csv`, C.toCsv(all, cs));
         if (f2) toast('Exporté : ' + f2.split(/[\\/]/).pop());
       };
     }
@@ -7182,6 +7264,15 @@
       const accId = s.account || (data.accounts.find(a => a.isDefault) || data.accounts[0]).id;
       const r = C.reconciliation(data, company(), accId, C.today());
       const pending = r.moves.filter(m => !m.reconciled).slice().reverse();
+      // Ce qui est déjà pointé se relit et se dépointe. Avant la 7.17.0, cocher faisait disparaître
+      // la ligne à l'instant même : un clic à côté était définitif, et rien nulle part ne montrait
+      // ce qui avait été pointé. Or pointer par erreur fausse l'écart avec le relevé — c'est-à-dire
+      // exactement le chiffre pour lequel on est venu sur cette page.
+      const pointes = r.moves.filter(m => m.reconciled).slice().reverse();
+      const ligne = m => `<tr><td><input type="checkbox" data-rec="${h(m.id)}" data-src="${h(m.source)}" ${m.reconciled ? 'checked' : ''}></td>
+              <td class="nw">${C.fmtDate(m.date)}</td><td>${h(m.label)}<div class="small muted">${h(m.party || '')}</div></td>
+              <td class="small">${h(m.reference || '')}</td>
+              <td class="r nw ${m.amount > 0 ? 'ok-text' : ''}">${m.amount > 0 ? '+' : ''}${C.money(m.amount, cur)}</td></tr>`;
       $('#t-body').innerHTML = `
         <div class="filters">
           <select id="t-acc2">${data.accounts.map(a => `<option value="${a.id}" ${accId === a.id ? 'selected' : ''}>${h(a.name)}</option>`).join('')}</select>
@@ -7203,13 +7294,17 @@
         <div class="panel"><h2>Pas encore pointés — ${pending.length} mouvement(s) ${info('tre.pending')}</h2>
           <p class="small muted mb">Coche ce que tu retrouves sur ton relevé. Ce qui reste décoché est soit en cours de traitement à la banque, soit une erreur de saisie.</p>
           ${pending.length ? `<table class="list compact"><thead><tr><th style="width:46px"></th><th>Date</th><th>Libellé</th><th>Référence</th><th class="r">Montant</th></tr></thead><tbody>
-            ${pending.map(m => `<tr><td><input type="checkbox" data-rec="${h(m.id)}" data-src="${h(m.source)}"></td>
-              <td class="nw">${C.fmtDate(m.date)}</td><td>${h(m.label)}<div class="small muted">${h(m.party || '')}</div></td>
-              <td class="small">${h(m.reference || '')}</td>
-              <td class="r nw ${m.amount > 0 ? 'ok-text' : ''}">${m.amount > 0 ? '+' : ''}${C.money(m.amount, cur)}</td></tr>`).join('')}
+            ${pending.map(ligne).join('')}
           </tbody><tfoot><tr><td colspan="4"><strong>Total non pointé</strong></td><td class="r"><strong>${C.money(r.pendingAmount, cur)}</strong></td></tr></tfoot></table>`
             : '<div class="empty">Tout est pointé. Ton relevé et SkanFact sont alignés.</div>'}
-        </div>`;
+        </div>
+        ${pointes.length ? `<div class="panel"><h2><button class="btn btn-ghost btn-sm" id="t-vus">${s.showPointed ? '▾' : '▸'}</button> Déjà pointés — ${pointes.length} mouvement(s)</h2>
+          <p class="small muted mb">Décoche si tu t'es trompé : le mouvement revient dans la liste du dessus et le solde pointé se recalcule.</p>
+          ${s.showPointed ? `<table class="list compact"><thead><tr><th style="width:46px"></th><th>Date</th><th>Libellé</th><th>Référence</th><th class="r">Montant</th></tr></thead><tbody>
+            ${pointes.map(ligne).join('')}
+          </tbody></table>` : ''}
+        </div>` : ''}`;
+      if ($('#t-vus')) $('#t-vus').onclick = () => { s.showPointed = !s.showPointed; draw(); };
       $('#t-acc2').onchange = e => { s.account = e.target.value; draw(); };
       $('#stmt').onchange = e => {
         const acc = data.accounts.find(a => a.id === accId);
@@ -7217,13 +7312,25 @@
         save(true); draw();
       };
       // Pointer un mouvement : le drapeau vit sur le paiement d'origine, pas sur une copie.
-      $$('[data-rec]').forEach(cb => cb.onchange = () => {
-        const id = cb.dataset.rec;
+      // La ligne quitte l'écran à l'instant du clic : au moment où on comprend qu'on s'est trompé,
+      // il n'y a plus rien sous le doigt. D'où « Annuler » (7.12.0), en plus du panneau du dessous.
+      const porteur = id => {
         let hit = null;
         data.documents.forEach(d => (d.payments || []).forEach(p => { if (p.id === id) hit = p; }));
         data.purchases.forEach(pu => (pu.payments || []).forEach(p => { if (p.id === id) hit = p; }));
         data.movements.forEach(m => { if (m.id === id) hit = m; });
-        if (hit) { hit.reconciled = cb.checked; save(true); draw(); }
+        return hit;
+      };
+      $$('[data-rec]').forEach(cb => cb.onchange = () => {
+        const id = cb.dataset.rec;
+        const hit = porteur(id);
+        if (!hit) return;
+        const avant = !!hit.reconciled;
+        hit.reconciled = cb.checked; save(true); draw();
+        toastUndo(cb.checked ? 'Mouvement pointé' : 'Mouvement dépointé', () => {
+          const h2 = porteur(id);
+          if (h2) { h2.reconciled = avant; save(true); draw(); }
+        });
       });
     }
 

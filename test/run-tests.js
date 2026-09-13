@@ -13,6 +13,18 @@ function t(name, fn) {
 // Version asynchrone, à attendre explicitement : `await ta('…', async () => { … })`.
 async function ta(name, fn) { await fn(); n++; console.log('ok -', name); }
 
+// Un test qui lit du code doit lire du CODE : un appel cité dans un commentaire, ou un lien mis en
+// commentaire, satisfait un `includes` sans que le code fasse quoi que ce soit (6.8.0, 7.0.0). On
+// retire donc les commentaires — et on vérifie que le nettoyage n'a pas mangé le code au passage.
+function lireApp() {
+  const fs2 = require('fs'), path2 = require('path');
+  const brut = fs2.readFileSync(path2.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
+  const net = brut.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+  assert.ok(net.includes('routes.dashboard') && net.length > brut.length * 0.6,
+    'le nettoyage des commentaires a mangé le code : le test ne jugerait plus rien');
+  return net;
+}
+
 t('montants en lettres', () => {
   assert.strictEqual(core.amountToWords(0), 'Zéro dinar');
   assert.strictEqual(core.amountToWords(1), 'Un dinar');
@@ -6047,12 +6059,25 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
 
     // Chaque carte déclarée dans le tableau de bord a son action, et réciproquement : une carte sans
     // action serait un clic avalé en silence, une action sans carte du code mort.
-    const cartes = new Set((app.match(/data-stat="([\w-]+)"/g) || []).map(m => m.match(/"([\w-]+)"/)[1]));
+    // On lit le tableau de bord seul : d'autres pages posent des cartes cliquables avec leur propre
+    // gestionnaire (le Stock depuis la 7.17.0). La règle universelle — toute page qui pose une carte
+    // doit aussi l'armer — est vérifiée juste après, page par page.
+    const dash = app.slice(app.indexOf('routes.dashboard ='), app.indexOf('function barChart('));
+    const cartes = new Set((dash.match(/data-stat="([\w-]+)"/g) || []).map(m => m.match(/"([\w-]+)"/)[1]));
     assert.ok(cartes.size >= 4, `seulement ${cartes.size} carte(s) cliquable(s) : les quatre chiffres doivent mener quelque part`);
     const bloc = app.slice(app.indexOf('const STAT_ACTIONS = {'), app.indexOf('$$(\'[data-stat]\')'));
     const armes = new Set((bloc.match(/^\s+'?([\w-]+)'?: vers\(/gm) || []).map(m => m.match(/'?([\w-]+)'?: vers\(/)[1]));
     assert.deepStrictEqual([...cartes].filter(k => !armes.has(k)), [], 'une carte de chiffre ne mène nulle part');
     assert.deepStrictEqual([...armes].filter(k => !cartes.has(k)), [], 'une action de carte ne correspond à aucune carte');
+
+    // La règle qui vaut pour toutes les pages : celle qui POSE une carte cliquable doit l'armer.
+    // Sans ce contrôle, une carte ajoutée ailleurs afficherait son chevron et avalerait le clic.
+    app.split(/\n  routes\.(?=\w+ =)/).forEach(bloc2 => {
+      if (!/data-stat="/.test(bloc2)) return;
+      const nom = (bloc2.match(/^(\w+) =/) || [, 'dashboard'])[1];
+      assert.ok(/data-stat\]'\)/.test(bloc2) || /STAT_ACTIONS\[/.test(bloc2),
+        `la page « ${nom} » pose une carte cliquable et ne l'arme pas : le clic serait avalé`);
+    });
 
     // Elle le DIT : curseur, relief au survol, chevron. Sans ces signes personne ne clique un chiffre.
     assert.ok(/\.stat\[data-stat\][^}]*cursor: pointer/.test(css), 'une carte cliquable sans curseur de clic ne s\'essaie pas');
@@ -6210,6 +6235,101 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // Refacturer reste possible — derrière une question qui nomme les pièces existantes.
     assert.ok(/Refacturer la totalité/.test(app) && /dejaFacture\.length \|\| issuedDeposits\.length\) \{[\s\S]{0,400}?await confirmDialog\(/.test(app),
       'refacturer la totalité ne demande rien');
+  });
+
+  // ---------- 7.17.0 : les écrans qui ne répondent pas ----------
+  // Un écran qui accepte un geste et n'en fait rien est le pire défaut d'interface : rien ne plante,
+  // aucune console ne dit rien, et l'utilisateur finit par douter de lui avant de douter du logiciel.
+  // Ces contrôles lisent la SOURCE : ce sont des branchements, et aucun calcul ne les couvre.
+
+  t('pointer un mouvement se défait', () => {
+    const app = lireApp();
+    // Le drapeau vit sur le paiement d'origine. Le retrouver deux fois (au clic, puis à l'annulation)
+    // est indispensable : entre les deux, `draw()` a reconstruit la liste et l'objet cherché par
+    // référence n'est plus celui qu'on afficherait.
+    assert.ok(/const porteur = id => \{/.test(app), 'la recherche du porteur du drapeau n\'est plus factorisée');
+    assert.ok(/const avant = !!hit\.reconciled;[\s\S]{0,260}?toastUndo\([\s\S]{0,200}?const h2 = porteur\(id\);[\s\S]{0,140}?h2\.reconciled = avant;/.test(app),
+      'pointer un mouvement ne laisse aucun « Annuler » qui remette l\'état d\'avant');
+    // Et le panneau qui rend la chose relisible un mois plus tard.
+    assert.ok(/const pointes = r\.moves\.filter\(m => m\.reconciled\)/.test(app), 'les mouvements déjà pointés ne sont listés nulle part');
+    assert.ok(/Déjà pointés — \$\{pointes\.length\} mouvement\(s\)/.test(app), 'le panneau des pointés ne dit pas combien il en contient');
+    // La case doit porter son état : sans `checked`, le panneau des pointés afficherait des cases vides.
+    assert.ok(/data-rec="\$\{h\(m\.id\)\}"[^\n]*\$\{m\.reconciled \? 'checked' : ''\}/.test(app),
+      'la case d\'un mouvement pointé ne se montre pas cochée');
+  });
+
+  t('le solde de tout compte se tape sans perdre le curseur', () => {
+    const app = lireApp();
+    // Le total a son propre élément : c'est LUI qu'on recalcule, jamais tout le tableau.
+    assert.ok(/const total = \(\) => C\.round3\(lines\.reduce/.test(app), 'le total du solde de tout compte n\'est plus une fonction à part');
+    assert.ok(/<b id="hf-total">/.test(app), 'le total n\'a pas d\'élément à lui : il faut redessiner pour le mettre à jour');
+    const bloc = (app.match(/\$\$\('\[data-f\]', \$\('#hf-lines', root\)\)\.forEach\(el => el\.oninput = \(\) => \{[\s\S]*?\n          \}\);/) || [''])[0];
+    assert.ok(bloc, 'le gestionnaire de saisie du solde de tout compte est introuvable');
+    assert.ok(/#hf-total.*?textContent/.test(bloc), 'la saisie ne met pas le total à jour');
+    assert.ok(!/drawLines\(\);/.test(bloc), 'la saisie redessine tout le bloc : le curseur saute à chaque caractère');
+  });
+
+  t('un sélecteur d\'année ne reste jamais visible sur un onglet qui l\'ignore', () => {
+    const app = lireApp();
+    // La RÈGLE, pas la liste : tout onglet qui ne lit pas l'année doit figurer dans la liste
+    // d'exclusion. On la vérifie en confrontant les deux listes du code.
+    const mg = (app.match(/const MG_SANS_ANNEE = \[([^\]]*)\]/) || [, ''])[1];
+    const pa = (app.match(/const P_SANS_ANNEE = \[([^\]]*)\]/) || [, ''])[1];
+    ['affaires', 'contrats'].forEach(k => assert.ok(mg.includes(`'${k}'`), `Marges → ${k} n'utilise pas l'année : le sélecteur doit y disparaître`));
+    ['salaries', 'avances', 'registre', 'baremes'].forEach(k => assert.ok(pa.includes(`'${k}'`), `Paie → ${k} n'utilise pas l'année : le sélecteur doit y disparaître`));
+    assert.ok(/\$\('#mg-year'\)\.hidden = MG_SANS_ANNEE\.includes\(s\.tab\)/.test(app), 'le sélecteur de Marges ne suit pas la liste');
+    assert.ok(/id="p-year" \$\{P_SANS_ANNEE\.includes\(s\.tab\) \? 'hidden' : ''\}/.test(app), 'le sélecteur de Paie ne suit pas la liste');
+  });
+
+  t('un en-tête qui annonce un tri trie vraiment', () => {
+    const app = lireApp();
+    // `bindSort` passe la colonne cliquée à son rappel. Un rappel qui ne la prend pas la jette : les
+    // « ⇅ » s'affichent, le clic est accepté, et la liste ne bouge pas.
+    const mauvais = (app.match(/bindSort\([^,]+,\s*\(\)\s*=>/g) || []);
+    assert.deepStrictEqual(mauvais, [], `un bindSort jette la colonne cliquée : ${mauvais.join(' · ')}`);
+    // Et les deux qui étaient fautifs portent bien leur toggleSort.
+    assert.ok(/bindSort\(wrap\.closest\('\.panel'\), key => \{ s\.moves\.sort = toggleSort/.test(app), 'Trésorerie → Mouvements ne trie pas');
+    assert.ok(/bindSort\(\$\('#sup-docs'\), key => \{ supplierBuyState\.sort = toggleSort/.test(app), 'la fiche fournisseur ne trie pas');
+  });
+
+  t('les mouvements ne sont plus figés sur l\'année en cours', () => {
+    const app = lireApp();
+    // Trésorerie et Stock écrivaient l'année dans le code : le 3 janvier, la page devenait vide et
+    // l'exercice écoulé inatteignable — le moment précis où on vient le consulter.
+    assert.ok(/const period = \{ from: `\$\{s\.year\}-01-01`, to: `\$\{s\.year\}-12-31` \};/.test(app),
+      'la Trésorerie lit encore une année écrite dans le code');
+    assert.ok(/<select id="t-year">/.test(app) && /\$\('#t-year'\)\.onchange/.test(app), 'la Trésorerie n\'offre pas de choisir l\'année');
+    assert.ok(/<select id="st-year">/.test(app) && /\$\('#st-year'\)\.onchange/.test(app), 'le Stock n\'offre pas de choisir l\'année');
+    assert.ok(!/const year = C\.today\(\)\.slice\(0, 4\);\n      const all = C\.stockJournal/.test(app),
+      'le journal de stock repart de l\'année en cours quoi qu\'on choisisse');
+  });
+
+  t('l\'export CSV du Stock suit l\'onglet ouvert', () => {
+    const app = lireApp();
+    const bloc = (app.match(/const ST_EXPORTS = \{[\s\S]*?\n    \};/) || [''])[0];
+    assert.ok(bloc, 'l\'export du Stock ne connaît pas les onglets');
+    // La RÈGLE : chaque onglet de STOCK_TABS a son export. Une liste en dur se périmerait au
+    // prochain onglet ajouté ; on relit les onglets déclarés dans la source.
+    const tabs = (app.match(/const STOCK_TABS = (\[[\s\S]*?\]\];)/) || [, ''])[1];
+    const ids = (tabs.match(/\['([a-z]+)',/g) || []).map(x => x.slice(2, -2));
+    assert.ok(ids.length >= 5, 'les onglets du Stock n\'ont pas été relus');
+    ids.forEach(id => assert.ok(new RegExp(`\\n      ${id}: \\(\\) => \\(\\{`).test(bloc), `l'onglet « ${id} » n'a pas d'export : il recevrait l'état du stock`));
+    assert.ok(/const e = \(ST_EXPORTS\[s\.tab\] \|\| ST_EXPORTS\.etat\)\(\);/.test(app), 'l\'export ne consulte pas l\'onglet ouvert');
+    // Et le bouton DIT ce qu'il exporte : « Exporter en CSV » sur cinq onglets ne renseigne personne.
+    ids.forEach(id => assert.ok(new RegExp(`${id}: '`).test((app.match(/const ST_LABELS = \{[\s\S]*?\};/) || [''])[0]),
+      `l'onglet « ${id} » n'a pas de libellé d'export`));
+    assert.ok(/id="st-csv" data-csv="\$\{h\(s\.tab\)\}">Exporter \$\{h\(ST_LABELS\[s\.tab\]/.test(app),
+      'le bouton d\'export du Stock ne nomme pas ce qu\'il exporte');
+  });
+
+  t('les compteurs rouges du Stock ouvrent la liste qu\'ils annoncent', () => {
+    const app = lireApp();
+    assert.ok(/data-stat="low"/.test(app) && /data-stat="neg"/.test(app), 'les deux compteurs du Stock ne sont pas cliquables');
+    assert.ok(/const versAlertes = \(\) => \{ s\.tab = 'alertes';/.test(app), 'les compteurs ne mènent pas aux alertes');
+    // Clavier ET souris, et la bulle « i » explique sans naviguer (règle de la 7.15.0).
+    assert.ok(/\$\$\('#st-body \.stat\[data-stat\]'\)\.forEach\([\s\S]{0,400}?e2\.target\.closest\('\.i\[data-info\]'\)/.test(app),
+      'cliquer la bulle « i » du compteur navigue au lieu d\'expliquer');
+    assert.ok(/\$\$\('#st-body \.stat\[data-stat\]'\)\.forEach\([\s\S]{0,500}?onkeydown/.test(app), 'les compteurs du Stock ne répondent pas au clavier');
   });
 
   console.log(`\n${n} tests OK`);

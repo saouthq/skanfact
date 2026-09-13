@@ -7,6 +7,44 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 7.17.0 — 13/09/2026
+
+**Les écrans qui ne répondent pas.**
+
+Un bouton absent se voit tout de suite. Un bouton qui accepte le clic et n'en fait rien ne se voit
+nulle part : aucune erreur, aucune trace, aucun test de calcul. On croit avoir mal cliqué, on
+recommence, on doute de soi — puis du logiciel. Voici les huit, trouvés par la suite de l'audit.
+
+- **Pointer un mouvement par erreur était définitif.** La ligne quittait l'écran à l'instant du clic,
+  le drapeau n'était écrit nulle part ailleurs, et rien ne montrait ce qui avait déjà été pointé.
+  Or un pointage de trop fausse l'écart avec le relevé — le seul chiffre pour lequel on vient sur
+  cette page. Il y a maintenant un **« Annuler »** sous la main, et un panneau **« Déjà pointés »**
+  qui se déplie et se décoche des semaines plus tard.
+- **Le solde de tout compte perdait le curseur à chaque caractère.** Chaque frappe redessinait tout
+  le bloc : le champ qu'on remplissait était détruit et recréé, donc le curseur repartait dans le
+  vide. Écrire « Prime de départ » y était littéralement impossible. Seul le total se recalcule
+  désormais ; le tableau ne bouge qu'à l'ajout ou au retrait d'une ligne.
+- **Un sélecteur d'année visible et parfaitement inerte sur quatre onglets.** Paie → Salariés,
+  Avances et Registre, et Marges → Contrats : on change l'année, rien ne bouge. Ce sont des états du
+  jour, pas d'un exercice — le sélecteur y disparaît au lieu d'y mentir.
+- **Six colonnes qui annoncent un tri et n'en font aucun.** Trésorerie → Mouvements et la fiche
+  fournisseur affichaient leur « ⇅ » sur chaque en-tête, acceptaient le clic, et ne triaient pas :
+  la colonne cliquée était jetée en chemin. Un tri qui ne trie pas ne se remarque pas — on croit que
+  la liste était déjà dans cet ordre.
+- **Les mouvements figés sur l'année en cours.** Trésorerie et Stock écrivaient l'année dans le
+  code : le 3 janvier, les deux pages devenaient vides et l'exercice écoulé inatteignable — le
+  moment précis où on vient le consulter. L'année se choisit, et le panneau dit laquelle il montre.
+- **« Exporter en CSV » du Stock exportait l'état, quel que soit l'onglet.** Depuis « Mouvements »,
+  on demandait le journal et on recevait l'inventaire, sans un mot. Chaque onglet a son export — et
+  le bouton NOMME ce qu'il exporte (« Exporter les mouvements », « Exporter les numéros de série »…).
+- **Les deux compteurs rouges du Stock ne menaient nulle part.** « 3 sous le seuil », « 1 stock
+  négatif » : des questions, pas des informations, tant qu'on ne peut pas les ouvrir. Ils mènent
+  maintenant à la liste des articles concernés, à la souris comme au clavier.
+
+Deux tests nouveaux : `npm run e2e:repondre` refait les neuf gestes dans l'application réelle, et
+`npm test` passe à 254 contrôles — dont une règle qui vaut désormais pour toutes les pages : celle
+qui pose une carte cliquable doit l'armer.
+
 ## 7.16.0 — 12/09/2026
 
 **Les chiffres qui mentent.**

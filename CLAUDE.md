@@ -358,6 +358,7 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:entreprises` | **changer d'entreprise depuis le haut du menu** : deux dossiers créés et ouverts tour à tour sans passer par les Paramètres |
 | `npm run e2e:chiffres` | **les chiffres qui mentent** : la conversion des devises sur l'accueil, les cartes de Marges, l'affaire qui suit le devis, le devis déjà facturé, le doublon de facture fournisseur |
 | `npm run e2e:cliquable` | **tout ce qui se lit se clique** : le filtre « Émis », la concordance carte/liste, les quatre chiffres de l'accueil et chaque ligne de « Ce qui manque » |
+| `npm run e2e:repondre` | **les écrans qui ne répondent pas** : le pointage qui se défait, le curseur qui ne saute plus, le sélecteur d'année inerte, le tri qui ne triait pas, l'année figée, l'export qui suit l'onglet |
 
 Ils ont longtemps vécu dans un dossier de travail temporaire, effacé à chaque session : il fallait les réécrire de mémoire, et ils dérivaient (une assertion restée sur une version périmée, un écran neuf jamais parcouru). **Un test qu'on doit réécrire pour s'en servir n'est pas un test.** Le harnais (`test/e2e/harnais.js`) trouve Playwright où il est, lit la version dans `package.json` au lieu de l'écrire en dur, et range les captures dans `dist-e2e/` (ignoré par Git).
 
@@ -783,6 +784,59 @@ Les cinq graves corrigés ici, et ce qu'ils apprennent :
 - Piège d'environnement : deux `xvfb-run` simultanés sur la même machine se disputent le serveur X et
   s'enlisent sans message. Un seul e2e à la fois, et `npm … | tail` masque toute progression
   (stdout bufferisé) — rediriger vers un fichier quand un test paraît bloqué.
+
+## 7.17.0 — Les écrans qui ne répondent pas
+
+Suite de l'audit page par page. Huit constats qui partagent la même signature : **l'écran accepte le
+geste et n'en fait rien**. Aucune console, aucune erreur, aucun test de calcul ne peut les voir.
+
+Règles apprises, à ne pas recasser :
+
+- **Une action dont la trace quitte l'écran à l'instant du clic a besoin d'un retour en arrière ET
+  d'un endroit où se relire.** Pointer un mouvement le faisait disparaître sur-le-champ : au moment
+  où on comprend qu'on s'est trompé, il n'y a plus rien sous le doigt, et le drapeau n'était écrit
+  nulle part ailleurs. `toastUndo` (7.12.0) répond à la seconde qui suit ; le panneau **« Déjà
+  pointés »** répond au mois qui suit. Les deux sont nécessaires — le premier seul serait un filet
+  qui ne dure que huit secondes.
+- **Le porteur d'un drapeau se RECHERCHE au moment de l'annuler.** Entre le clic et l'annulation,
+  `draw()` a reconstruit la liste : la référence gardée en fermeture désigne un objet qui n'est plus
+  celui qu'on affiche. C'est la même famille que le piège Playwright des poignées détachées, côté
+  application cette fois.
+- **Un champ qui se redessine à chaque frappe est un champ dans lequel on ne peut pas écrire.** Le
+  solde de tout compte réécrivait tout son bloc à chaque caractère : l'élément était détruit et
+  recréé, le curseur repartait dans le vide, et « Prime de départ » était littéralement impossible à
+  taper. La parade est la même que sur les bulletins (5.0.0) : on met à jour la donnée, on recalcule
+  le seul élément qui en dépend (`#hf-total`), et on ne redessine qu'à l'ajout ou au retrait d'une
+  ligne.
+- **Un réglage visible sur un écran qui l'ignore ment.** Un sélecteur d'année sur « Salariés »,
+  « Avances », « Registre » et « Contrats » : on le change, rien ne bouge. Ce sont des états du jour,
+  pas d'un exercice. La liste d'exclusion vit en un seul endroit (`MG_SANS_ANNEE`, `P_SANS_ANNEE`) et
+  un test confronte les deux listes au lieu de recopier des noms d'onglets.
+- **`bindSort(root, redraw)` passe la colonne cliquée à son rappel : un rappel `() => draw()` la
+  jette.** Six en-têtes affichaient leur « ⇅ », acceptaient le clic et ne triaient pas. Un tri qui ne
+  trie pas ne se remarque pas — on croit que la liste était déjà dans cet ordre. Le test interdit
+  désormais la forme `bindSort(…, () =>` dans toute la source ; c'est un contrôle de FORME assumé,
+  parce que la faute est exactement une forme.
+- **Une période écrite dans le code se périme au 1er janvier.** Trésorerie et Stock affichaient
+  l'année en cours sans aucun moyen d'en sortir : le 3 janvier, les deux pages devenaient vides et
+  l'exercice écoulé — celui qu'on vient justement consulter — était inatteignable.
+- **Un export suit ce qu'on regarde, et le bouton le NOMME.** « Exporter en CSV » sur les cinq
+  onglets du Stock renvoyait l'état du stock sur les cinq. Le libellé variable (« Exporter les
+  mouvements ») est la moitié qui manquait : sans lui, la correction serait invisible jusqu'à ce
+  qu'on ouvre le fichier.
+- **Un compteur rouge qui nomme un ensemble doit l'ouvrir** (règle de la 7.15.0, re-trouvée ailleurs).
+  Et la règle est passée au général : un test découpe `app.js` par route et exige que toute page qui
+  pose une carte `data-stat` l'arme elle-même.
+- Piège de test rencontré : une assertion sur un tri ne présume pas du sens. La colonne « Montant »
+  part en décroissant (c'est ce qu'on veut voir en premier) ; le test lit la flèche affichée et
+  vérifie la monotonie **dans ce sens-là**, puis qu'un second clic la renverse.
+- Piège de test rencontré : on ne remplace pas `window.skanfact.saveText` depuis un `evaluate` — le
+  pont `contextBridge` est figé, et le renderer a de toute façon capturé `bridge` au chargement. Ce
+  qui se teste, c'est ce que l'application AFFICHE (ici le libellé du bouton), pas ce qu'on espère
+  intercepter.
+
+Le test qui compte est `npm run e2e:repondre` : neuf gestes dans l'application réelle, dont la frappe
+lettre par lettre avec vérification du focus après chaque caractère.
 
 ## Pistes pour la suite (non demandées)
 
