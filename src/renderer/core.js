@@ -386,6 +386,7 @@
     leaves: [],              // congés et absences (v6)
     advances: [],            // avances sur salaire (v6)
     socialFilings: [],       // déclarations sociales marquées déposées (v6)
+    fiscalFilings: [],       // échéances fiscales marquées déposées (7.21.0)
     vatCarryIn: {},          // crédit de TVA venu de l'année précédente, par année : { '2026': 1234 }
     projects: [],            // affaires : relient ventes et achats pour une marge exacte (v4)
     fixedCategories: [],     // catégories de charges considérées comme fixes (vide = valeurs par défaut)
@@ -769,6 +770,7 @@
     if (!Array.isArray(data.leaves)) data.leaves = [];
     if (!Array.isArray(data.advances)) data.advances = [];
     if (!Array.isArray(data.socialFilings)) data.socialFilings = [];
+    if (!Array.isArray(data.fiscalFilings)) data.fiscalFilings = [];
     // 6.0.0 : clôture de période. Rien à convertir — un dossier existant n'a simplement rien de
     // clôturé, et l'utilisateur clôture quand il veut.
     if (typeof data.closedUntil !== 'string') data.closedUntil = '';
@@ -2756,11 +2758,11 @@
   // l'autre version pour qu'elle reste consultable. Rien n'est détruit sans trace.
 
   // Les listes du fichier qui se fusionnent pièce par pièce, grâce à leur identifiant.
-  const MERGE_LISTS = ['clients', 'catalog', 'documents', 'recurring', 'templates', 'snippets', 'suppliers', 'purchases', 'accounts', 'movements', 'projects', 'assets', 'stockAdjustments', 'serials', 'employees', 'payslips', 'leaves', 'advances', 'socialFilings', 'packs'];
+  const MERGE_LISTS = ['clients', 'catalog', 'documents', 'recurring', 'templates', 'snippets', 'suppliers', 'purchases', 'accounts', 'movements', 'projects', 'assets', 'stockAdjustments', 'serials', 'employees', 'payslips', 'leaves', 'advances', 'socialFilings', 'fiscalFilings', 'packs'];
   const LIST_LABELS = {
     clients: 'client', catalog: 'prestation', documents: 'document', recurring: 'contrat récurrent',
     templates: 'modèle', snippets: 'texte', suppliers: 'fournisseur', purchases: 'achat',
-    accounts: 'compte', movements: 'mouvement', projects: 'affaire', assets: 'immobilisation', stockAdjustments: 'mouvement de stock', serials: 'numéro de série', employees: 'salarié', payslips: 'bulletin de paie', leaves: 'congé', advances: 'avance sur salaire', socialFilings: 'déclaration sociale', packs: 'envoi au cabinet'
+    accounts: 'compte', movements: 'mouvement', projects: 'affaire', assets: 'immobilisation', stockAdjustments: 'mouvement de stock', serials: 'numéro de série', employees: 'salarié', payslips: 'bulletin de paie', leaves: 'congé', advances: 'avance sur salaire', socialFilings: 'déclaration sociale', fiscalFilings: 'échéance fiscale déposée', packs: 'envoi au cabinet'
   };
 
   function sameJson(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
@@ -2948,12 +2950,25 @@
   }
 
   // Les échéances fiscales qui arrivent, pour le panneau « À faire » et la page Comptabilité.
+  // Une échéance déjà déposée ne doit plus crier. La clé est `ruleId + date` : c'est une OCCURRENCE
+  // qu'on pointe, pas une règle — la TVA d'octobre se dépose, celle de novembre reste due.
+  const fiscalFilingId = (ruleId, dateIso) => `${ruleId}@${dateIso}`;
+  function fiscalDone(data) { return new Set((data.fiscalFilings || []).map(f => f.id)); }
+
   function upcomingFiscal(data, todayIso, withinDays) {
     const t = todayIso || today();
     const within = Number(withinDays) || 30;
+    const done = fiscalDone(data);
     return fiscalDeadlines(data).filter(r => r.active !== false).map(r => {
-      const date = nextDeadline(r, t);
-      return date ? { id: r.id, label: r.label, note: r.note || '', date, days: daysBetween(t, date) } : null;
+      let date = nextDeadline(r, t);
+      // Déjà déposée : on saute à l'occurrence suivante plutôt que de faire disparaître la règle —
+      // sinon pointer la TVA d'octobre effacerait aussi celle de novembre.
+      let garde = 0;
+      while (date && done.has(fiscalFilingId(r.id, date)) && garde++ < 24) {
+        date = nextDeadline(r, addDays(date, 1));
+      }
+      return date ? { id: r.id, label: r.label, note: r.note || '', date, days: daysBetween(t, date),
+        filingId: fiscalFilingId(r.id, date) } : null;
     }).filter(x => x && x.days <= within).sort((a, b) => a.date.localeCompare(b.date));
   }
 
@@ -4944,7 +4959,7 @@
     CURRENCIES, decimalsFor, toBase, rateOf, missingRate, monthKeys, monthlySeries, topClients, quoteStats, avgPaymentDelay, clientSummary, I18N,
     EXTRA_TYPES, SALES_TYPES, CONVERSIONS, CONVERSION_LABELS, convertDoc, derivedDocs, DEFAULT_CLAUSES, CLAUSE_LABELS,
     PURCHASE_KINDS, LINE_DESTINATIONS, DEFAULT_EXPENSE_CATEGORIES, PURCHASE_STATUSES, expenseCategories,
-    vatReturn, vatChain, DEFAULT_FISCAL_DEADLINES, fiscalDeadlines, nextDeadline, upcomingFiscal, simpleResult,
+    vatReturn, vatChain, DEFAULT_FISCAL_DEADLINES, fiscalDeadlines, nextDeadline, upcomingFiscal, fiscalFilingId, fiscalDone, simpleResult,
     ACCOUNT_KINDS, MOVE_KINDS, cashMovements, accountBalance, cashPosition, cashForecast, reconciliation,
     lineCost, documentMargin, marginBy, PROJECT_STATUSES, projectMargin, projectList, recurringProfitability,
     DEFAULT_FIXED_CATEGORIES, isFixedCategory, breakEven,

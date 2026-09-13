@@ -7,6 +7,34 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 7.21.0 — 13/09/2026
+
+**La comptabilité qui mène aux pièces.**
+
+Six endroits où la page Comptabilité et la Trésorerie nommaient quelque chose sans pouvoir l'ouvrir,
+ou affirmaient un état qu'on ne pouvait pas corriger.
+
+- **Les contrôles avant clôture étaient du texte mort.** « 3 achats sans justificatif » sans rien
+  pour les ouvrir — alors que la **même liste porte ses boutons** dans l'onglet Cabinet, à un onglet
+  de distance. Un manque qu'on ne peut pas ouvrir n'est pas un manque, c'est un reproche.
+- **Une échéance fiscale restait rouge après le dépôt, pour toujours.** Le seul recours était de
+  désactiver la règle — donc de perdre aussi l'échéance suivante. « Marquer déposée » pointe
+  désormais **une occurrence** (la TVA d'octobre, pas la règle TVA), avec un « Annuler » sous la
+  main. SkanFact ne dépose toujours rien : c'est un pense-bête, pas un accusé de réception.
+- **Aucun des cinq chiffres de la TVA ne menait à sa pièce.** Les douze lignes « Mois par mois » se
+  cliquent, et deux boutons mènent aux ventes et aux achats du mois affiché — sur le bon onglet,
+  **allumé** (arriver sur le bon contenu avec le mauvais onglet en surbrillance était le piège).
+- **Un encaissement de la Trésorerie ne menait pas à sa facture**, pendant que la phrase juste en
+  dessous disait d'aller la corriger là-bas. Chaque mouvement ouvre maintenant sa pièce — facture,
+  achat ou bulletin.
+- **Un paquet fabriqué ne se retrouvait plus sur le disque.** L'historique donnait son empreinte et
+  jamais son emplacement ; six semaines plus tard, le comptable réclame « le fichier de mars ». Le
+  chemin était pourtant enregistré depuis la 6.1.0 — il n'était affiché nulle part.
+- **« Reste à encaisser » de la Comptabilité n'ouvrait rien**, alors que sa jumelle de l'accueil le
+  fait depuis la 7.15.0.
+
+`npm run e2e:compta` refait les sept gestes dans l'application réelle ; `npm test` passe à 283.
+
 ## 7.20.0 — 13/09/2026
 
 **Ce qui est obligatoire, et ce qui mène quelque part.**

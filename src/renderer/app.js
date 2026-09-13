@@ -7521,15 +7521,21 @@
         <div class="panel"><h2>Tous les mouvements de ${h(s.year)}</h2>
           <div class="inline mb"><button class="btn btn-sm" id="exp-moves">Exporter en CSV</button></div>
           ${rows.length ? `<div id="m-wrap"><table class="list compact sortable"><thead>${sortHead(cols, s.moves.sort)}</thead><tbody>
-            ${pg.rows.map(m => `<tr class="${m.source === 'libre' ? 'clickable' : ''}" data-mv="${m.source === 'libre' ? h(m.movementId) : ''}">
-              ${cols.map(c => `<td class="${c.r ? 'r nw' : ''}${c.cls ? ' ' + c.cls : ''}">${c.get(m)}</td>`).join('')}</tr>`).join('')}
+            ${pg.rows.map(m => { const cible = m.source === 'libre' ? '' : m.docId ? '#/doc/' + m.docId : m.purchaseId ? '#/achat/' + m.purchaseId : m.payslipId ? '#/paie' : '';
+              return `<tr class="${m.source === 'libre' || cible ? 'clickable' : ''}" data-mv="${m.source === 'libre' ? h(m.movementId) : ''}" data-go="${h(cible)}">
+              ${cols.map(c => `<td class="${c.r ? 'r nw' : ''}${c.cls ? ' ' + c.cls : ''}">${c.get(m)}</td>`).join('')}</tr>`; }).join('')}
           </tbody></table></div>${pagerBar(pg.pg, { noun: 'mouvement' })}`
             : `<div class="empty">Aucun mouvement en ${h(s.year)}.</div>`}
-          <p class="small muted mt">Les encaissements et les règlements viennent des factures et des achats : ils se modifient sur la pièce d'origine, avec le bouton ✎ à côté du paiement — c'est là que se règle aussi le compte sur lequel l'argent tombe. Seuls les mouvements libres se cliquent ici.</p>
+          <p class="small muted mt">Clique une ligne pour ouvrir la pièce d'où elle vient : le compte et le mode de règlement se corrigent là-bas, avec le bouton ✎ à côté du paiement. Les mouvements libres (salaires, impôts, apports, frais bancaires) se modifient ici même.</p>
         </div>`;
       $('#t-acc').onchange = e => { s.account = e.target.value; s.moves.page = 1; draw(); };
       $('#t-year').onchange = e => { s.year = e.target.value; s.moves.page = 1; draw(); };
-      $$('#t-body tr[data-mv]').forEach(tr => { if (tr.dataset.mv) tr.onclick = () => movementForm(data.movements.find(m => m.id === tr.dataset.mv), () => draw()); });
+      // Un mouvement déduit d'un paiement ne se modifie pas ici — mais il DOIT mener à sa pièce :
+      // la phrase juste en dessous disait d'aller la corriger, sans offrir d'y aller.
+      $$('#t-body tr[data-mv], #t-body tr[data-go]').forEach(tr => {
+        if (tr.dataset.mv) tr.onclick = () => movementForm(data.movements.find(m => m.id === tr.dataset.mv), () => draw());
+        else if (tr.dataset.go) tr.onclick = () => navigate(tr.dataset.go);
+      });
       const wrap = $('#m-wrap');
       // `bindSort` passe la colonne cliquée à son rappel : `() => draw()` la jetait, et les six
       // en-têtes affichaient leur « ⇅ » sans jamais rien trier. Un tri qui ne trie pas ne se voit
@@ -7973,7 +7979,7 @@
           <div class="stat"><div class="lbl">CA HT — ${h(periodLabel())} ${info('dash.caMonth')}</div><div class="val">${C.money(sum.ht, cur)}</div><div class="sub">${sum.count} document(s), avoirs déduits</div></div>
           <div class="stat"><div class="lbl">TVA collectée ${info('compta.vat')}</div><div class="val">${C.money(sum.tva, cur)}</div><div class="sub">+ timbres ${C.money(sum.timbre, cur)}</div></div>
           <div class="stat"><div class="lbl">Encaissé sur la période ${info('compta.payments')}</div><div class="val">${C.money(paidTotal, cur)}</div><div class="sub">${pays.length} paiement(s)</div></div>
-          <div class="stat"><div class="lbl">Reste à encaisser (total) ${info('dash.open')}</div><div class="val">${C.money(openAmount, cur)}</div><div class="sub">${open.length} facture(s) ouverte(s)</div></div>
+          <div class="stat" data-cstat="encaisser" role="button" tabindex="0" title="Voir les factures qui restent à encaisser"><div class="lbl">Reste à encaisser (total) ${info('dash.open')}</div><div class="val">${C.money(openAmount, cur)}</div><div class="sub">${pl(open.length, 'facture ouverte', 'factures ouvertes')}</div></div>
         </div>
         <div class="panel"><h2>TVA par taux — ${h(periodLabel())} ${info('compta.vat')}</h2>
           <table class="list compact"><thead><tr><th>Taux</th><th class="r">Base HT</th><th class="r">TVA</th></tr></thead><tbody>
@@ -8049,6 +8055,13 @@
             } catch (e) { b.disabled = false; b.textContent = 'Ouvrir dans la messagerie'; toast('Erreur : ' + e.message.replace(/^.*Error: /, ''), true); }
           }; });
       };
+      // La carte « Reste à encaisser » affichait le même chiffre que sa jumelle de l'accueil et,
+      // contrairement à elle, n'ouvrait rien : la 7.15.0 n'avait armé que le tableau de bord.
+      $$('#c-body .stat[data-cstat]').forEach(el => {
+        const go = e => { if (e.target.closest('.i[data-info]')) return; filtre('facture', 'à encaisser')(); navigate('#/factures'); };
+        el.onclick = go;
+        el.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(e); } };
+      });
       $('#cpt-q').oninput = e => { comptaState.q = e.target.value; comptaState.journal.page = 1; comptaState.pays.page = 1; draw(); const el = $('#cpt-q'); el.focus(); el.setSelectionRange(el.value.length, el.value.length); };
       if ($('#reset-f')) $('#reset-f').onclick = () => { comptaState.q = ''; draw(); };
       $('#exp-journal').onclick = async () => {
@@ -8152,12 +8165,16 @@
               <span class="num">${C.money(cur1.toPay || cur1.carryOut, cur)}</span></div>
           </div>
           <p class="small muted mt">Timbres fiscaux encaissés sur la période : ${C.money(cur1.stamps, cur)} · retenues subies : ${C.money(cur1.withheldBySale, cur)} · retenues que tu as opérées : ${C.money(cur1.withheldOnBuys, cur)}. Ces trois lignes se déclarent séparément de la TVA. <em>À VÉRIFIER avec ton comptable.</em></p>` : ''}
+          ${cur1 && (cur1.collected || cur1.deductible) ? `<div class="inline mt">
+            <button class="btn btn-sm" id="vat-ventes">Voir les ventes de ${h(MONTHS[upTo - 1])}</button>
+            <button class="btn btn-sm" id="vat-achats">Voir les achats de ${h(MONTHS[upTo - 1])}</button>
+          </div>` : ''}
           <div class="inline mt"><button class="btn btn-sm" id="set-carry">Crédit de TVA venu de ${Number(year) - 1} : ${C.money(carryIn, cur)}</button>${info('compta.carryIn')}</div>
         </div>
         ${chain.some(m => m.collected || m.deductible || m.carryIn) ? `
         <div class="panel"><h2>Mois par mois — ${year} ${info('compta.vatMonths')}</h2>
           <table class="list compact"><thead><tr><th>Mois</th><th class="r">Collectée</th><th class="r">Déductible</th><th class="r">Crédit repris</th><th class="r">À payer</th><th class="r">Crédit reporté</th></tr></thead><tbody>
-            ${chain.map(m => `<tr class="${m.toPay ? '' : 'row-ok'}"><td>${h(m.label)}</td><td class="r nw">${C.money(m.collected)}</td><td class="r nw">${C.money(m.deductible)}</td>
+            ${chain.map((m, i) => `<tr class="clickable ${m.toPay ? '' : 'row-ok'}" data-vm="${String(i + 1).padStart(2, '0')}" title="Voir la déclaration de ${h(m.label)}"><td>${h(m.label)}</td><td class="r nw">${C.money(m.collected)}</td><td class="r nw">${C.money(m.deductible)}</td>
               <td class="r nw">${m.carryIn ? C.money(m.carryIn) : '<span class="muted">—</span>'}</td>
               <td class="r nw">${m.toPay ? `<strong>${C.money(m.toPay)}</strong>` : '<span class="muted">—</span>'}</td>
               <td class="r nw">${m.carryOut ? C.money(m.carryOut) : '<span class="muted">—</span>'}</td></tr>`).join('')}
@@ -8180,6 +8197,13 @@
           </div>
           <p class="small muted mt"><em>Ce n'est pas ton résultat comptable :</em> il manque les provisions. Les amortissements y sont depuis la 3.5.0 (<a href="#/immos">Immobilisations</a>), la variation de stock depuis la 4.0.0 (<a href="#/stock">Stock</a>) et les salaires depuis la 5.0.0 (<a href="#/paie">Paie</a>). C'est un ordre de grandeur pour savoir où tu en es, pas un bilan. <em>À VÉRIFIER avec ton comptable.</em></p>
         </div>`;
+      // Cinq chiffres sur lesquels tout repose, et aucun ne menait à la pièce qui le fabrique : il
+      // fallait retenir le mois, changer d'onglet, refaire le filtre. Les douze lignes du tableau
+      // ouvrent maintenant leur propre mois, et deux boutons mènent au journal correspondant.
+      const versOnglet = (tab, mois) => { comptaState.month = mois; comptaState.tab = tab; draw(); $$('#c-tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === tab)); };
+      $$('#c-body tr[data-vm]').forEach(tr => tr.onclick = () => { comptaState.month = tr.dataset.vm; if ($('#c-month')) $('#c-month').value = tr.dataset.vm; draw(); });
+      if ($('#vat-ventes')) $('#vat-ventes').onclick = () => versOnglet('ventes', String(upTo).padStart(2, '0'));
+      if ($('#vat-achats')) $('#vat-achats').onclick = () => versOnglet('achats', String(upTo).padStart(2, '0'));
       $('#set-carry').onclick = () => promptDialog('Crédit de TVA reporté',
         `Crédit de TVA restant à la fin de ${Number(year) - 1}, tel qu'il figure sur ta dernière déclaration. Il viendra en déduction du premier mois de ${year}.`,
         String(carryIn || ''), v => {
@@ -8343,7 +8367,9 @@
                  ? `<div class="panel sub" style="margin:12px 0">
                       <h3 style="margin-top:0">À regarder avant de clôturer</h3>
                       <table class="list compact"><tbody>
-                        ${checks.map(c => `<tr class="${c.level === 'danger' ? 'row-warn' : ''}"><td><strong>${h(c.label)}</strong><div class="small muted">${h(c.detail)}</div></td></tr>`).join('')}
+                        ${checks.map(c => `<tr class="${c.level === 'danger' ? 'row-warn' : ''}"><td><strong>${h(c.label)}</strong><div class="small muted">${h(c.detail)}</div></td>
+                          <td class="r nw">${c.count == null ? '' : c.count}</td>
+                          <td class="r nw">${CHECK_ACTIONS[c.id] ? `<button class="btn btn-sm" data-check="${h(c.id)}">${h(CHECK_ACTIONS[c.id].label)}</button>` : ''}</td></tr>`).join('')}
                       </tbody></table>
                       <p class="small muted">Tu peux clôturer quand même : ces points sont là pour que tu les voies, pas pour t'empêcher d'avancer.</p>
                     </div>`
@@ -8371,6 +8397,11 @@
             : '<div class="empty">Aucune clôture pour l\'instant.</div>'}
         </div>`;
 
+      // Les contrôles avant clôture étaient du TEXTE : « 3 achats sans justificatif » sans rien pour
+      // les ouvrir, alors que la même liste porte ses boutons à un onglet de distance (Cabinet).
+      // Même table, même branchement — un manque qu'on ne peut pas ouvrir n'est pas un manque,
+      // c'est un reproche.
+      $$('[data-check]').forEach(b => b.onclick = () => CHECK_ACTIONS[b.dataset.check].run());
       if ($('#do-close')) $('#do-close').onclick = async () => {
         const warn = blocking.length
           ? `\n\nPoint(s) à régler d'abord : ${blocking.map(c => c.label).join(', ')}.`
@@ -8511,12 +8542,13 @@
 
         <div class="panel"><h2>Ce qui a déjà été envoyé ${info('cab.historique')}</h2>
           ${history.length
-            ? `<div class="scroll-x"><table class="list compact"><thead><tr><th>Mois</th><th>Fabriqué le</th><th>État</th><th class="r">Fichiers</th><th class="r">Taille</th><th>Empreinte</th></tr></thead><tbody>
+            ? `<div class="scroll-x"><table class="list compact"><thead><tr><th>Mois</th><th>Fabriqué le</th><th>État</th><th class="r">Fichiers</th><th class="r">Taille</th><th>Empreinte</th><th></th></tr></thead><tbody>
                 ${history.map(x => `<tr><td class="nw"><strong>${h(C.monthLabel(x.month + '-01'))}</strong></td>
                   <td class="nw small">${x.at ? C.fmtDate(new Date(x.at).toISOString().slice(0, 10)) : ''}</td>
                   <td><span class="badge ${x.definitive ? 'b-paid' : 'b-due'}">${x.definitive ? 'définitif' : 'provisoire'}</span>${x.cabinet ? ' <span class="small muted">pour le cabinet</span>' : x.sealed ? ' <span class="small muted">chiffré</span>' : ''}</td>
                   <td class="r">${x.files || ''}</td><td class="r nw">${x.bytes ? (x.bytes / 1048576).toFixed(1).replace('.', ',') + ' Mo' : ''}</td>
-                  <td class="small muted mono">${h(String(x.digest || '').slice(0, 12))}</td></tr>`).join('')}
+                  <td class="small muted mono">${h(String(x.digest || '').slice(0, 12))}</td>
+                  <td class="actions"><button class="btn btn-sm" data-reveal="${h(x.path || '')}" ${x.path ? '' : 'disabled title="Paquet fabriqué avant cette version : son chemin n\'a pas été gardé."'}>Montrer le fichier</button></td></tr>`).join('')}
               </tbody></table></div>
                <p class="small muted mt">L'empreinte est la carte d'identité du paquet : si ton comptable obtient la même, le fichier qu'il a reçu est bien celui que tu as envoyé, à l'octet près.</p>`
             : '<div class="empty">Aucun paquet fabriqué pour l\'instant.</div>'}
@@ -8528,6 +8560,10 @@
       if ($('#cab-gopair')) $('#cab-gopair').onclick = e => { e.preventDefault(); allerParametres('cabinet', 'p-cabinet'); };
 
       if ($('#cab-vers-factures')) $('#cab-vers-factures').onclick = () => navigate('#/factures');
+      // L'historique donnait l'empreinte du paquet et jamais son emplacement : six semaines plus
+      // tard, le comptable réclame « le fichier de mars » et rien ne dit où il est. Le chemin était
+      // pourtant enregistré depuis la 6.1.0 — il n'était affiché nulle part.
+      $$('[data-reveal]').forEach(b2 => { if (b2.dataset.reveal) b2.onclick = () => bridge.showInFolder(b2.dataset.reveal); });
       // Chaque manque mène aux pièces concernées, filtrées. Le `if` n'est pas une précaution : la
       // table est complète par construction, et un test le vérifie contre `core.packChecklist`.
       $$('[data-check]').forEach(b => b.onclick = () => CHECK_ACTIONS[b.dataset.check].run());
@@ -8596,14 +8632,22 @@
       };
     }
 
+    // Là où se PRÉPARE chaque échéance. Une règle sans écran ne porte pas de bouton : mieux vaut
+    // rien qu'un bouton qui mène au hasard.
+    const FISCAL_VERS = {
+      tva: () => { comptaState.tab = 'tva'; draw(); $$('#c-tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === 'tva')); },
+      cnss: () => { paieState.tab = 'declarations'; navigate('#/paie'); },
+      employeur: () => { paieState.tab = 'declarations'; navigate('#/paie'); }
+    };
     function drawFiscal() {
       const rules = C.fiscalDeadlines(data);
       const up = C.upcomingFiscal(data, C.today(), 120);
       $('#c-body').innerHTML = `
         <div class="panel"><h2>Ce qui arrive ${info('compta.fiscal')}</h2>
-          ${up.length ? `<table class="list compact"><thead><tr><th>Échéance</th><th>Date</th><th class="r">Dans</th></tr></thead><tbody>
+          ${up.length ? `<table class="list compact"><thead><tr><th>Échéance</th><th>Date</th><th class="r">Dans</th><th></th></tr></thead><tbody>
             ${up.map(x => `<tr class="${x.days <= 7 ? 'row-warn' : ''}"><td><strong>${h(x.label)}</strong>${x.note ? `<div class="small muted">${h(x.note)}</div>` : ''}</td>
-              <td class="nw">${C.fmtDate(x.date)}</td><td class="r nw">${x.days === 0 ? "aujourd'hui" : x.days + ' j'}</td></tr>`).join('')}
+              <td class="nw">${C.fmtDate(x.date)}</td><td class="r nw">${x.days === 0 ? "aujourd'hui" : x.days + ' j'}</td>
+              <td class="actions">${FISCAL_VERS[x.id] ? `<button class="btn btn-sm btn-ghost" data-fvers="${h(x.id)}">Préparer</button>` : ''}<button class="btn btn-sm" data-fdone="${h(x.filingId)}" data-flab="${h(x.label)}">Marquer déposée</button></td></tr>`).join('')}
           </tbody></table>` : '<div class="empty">Aucune échéance activée. Active celles qui te concernent ci-dessous.</div>'}
           <p class="small muted mt"><em>À VÉRIFIER avec ton comptable :</em> les dates limites, la périodicité et les déclarations qui te concernent dépendent de ta forme juridique, de ton régime fiscal et de la présence de salariés. Ce calendrier est un pense-bête que tu règles toi-même, pas une source officielle.</p>
         </div>
@@ -8621,6 +8665,20 @@
         if (i >= 0) list[i] = { ...list[i], ...patch }; else list.push({ id, ...patch });
         data.fiscalDeadlines = list; save(true);
       };
+      // Une échéance restait rouge après le dépôt : le calendrier ne savait pas ce qu'on avait fait,
+      // et le seul recours était de désactiver la règle — donc de perdre l'échéance suivante.
+      // « Marquer déposée » pointe une OCCURRENCE, et laisse un « Annuler » (règle de la 7.12.0).
+      $$('[data-fdone]').forEach(b => b.onclick = () => {
+        const id = b.dataset.fdone;
+        data.fiscalFilings = (data.fiscalFilings || []).concat([{ id, at: Date.now() }]);
+        save(true); draw();
+        toastUndo(`${b.dataset.flab} marquée déposée`, () => {
+          data.fiscalFilings = (data.fiscalFilings || []).filter(f => f.id !== id);
+          save(true); draw();
+        });
+      });
+      // Et chaque échéance mène à l'écran où on la prépare : la TVA du mois, les déclarations de paie.
+      $$('[data-fvers]').forEach(b => b.onclick = () => FISCAL_VERS[b.dataset.fvers]());
       $$('[data-active]').forEach(c => c.onchange = () => { setRule(c.dataset.active, { active: c.checked }); draw(); });
       $$('[data-day]').forEach(i => i.onchange = () => { setRule(i.dataset.day, { day: Math.min(31, Math.max(1, Number(i.value) || 28)) }); draw(); });
     }

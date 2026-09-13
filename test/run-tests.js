@@ -6679,5 +6679,118 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.ok(/C\.money\(ht, r\.currency \|\| cur\)/.test(zone), 'le contrat de la fiche client s\'affiche en devise société');
   });
 
+  // ---------- 7.21.0 : la comptabilité qui mène aux pièces ----------
+
+  t('une échéance fiscale déposée cesse de crier — et seulement celle-là', () => {
+    const data = core.migrateData({ company: {}, fiscalDeadlines: [{ id: 'tva', active: true, every: 'month', day: 28 }] });
+    assert.ok(Array.isArray(data.fiscalFilings), 'la liste des échéances déposées n\'existe pas après migration');
+    const t0 = '2026-10-01';
+    const avant = core.upcomingFiscal(data, t0, 120);
+    const tva = avant.filter(x => x.id === 'tva');
+    assert.ok(tva.length, 'aucune échéance TVA sur 120 jours : le test ne prouve rien');
+    assert.ok(tva[0].filingId, 'une occasion d\'échéance n\'a pas d\'identifiant pointable');
+    // On pointe la PREMIÈRE occurrence.
+    data.fiscalFilings.push({ id: tva[0].filingId, at: Date.now() });
+    const apres = core.upcomingFiscal(data, t0, 120).filter(x => x.id === 'tva');
+    assert.ok(apres.length, 'pointer une échéance a fait disparaître la règle : les mois suivants ne sont plus réclamés');
+    assert.ok(apres[0].date > tva[0].date,
+      `l'échéance pointée revient : ${apres[0].date} au lieu d'une date après ${tva[0].date}`);
+    // L'identifiant est bien « règle @ date » : c'est une occurrence, pas une règle.
+    assert.strictEqual(core.fiscalFilingId('tva', '2026-10-28'), 'tva@2026-10-28');
+
+    const app = lireApp();
+    assert.ok(/data-fdone="\$\{h\(x\.filingId\)\}"/.test(app), 'aucun bouton pour marquer une échéance déposée');
+    assert.ok(/\$\$\('\[data-fdone\]'\)\.forEach[\s\S]{0,500}?toastUndo\(/.test(app),
+      'marquer une échéance déposée ne laisse aucun retour en arrière');
+    // Chaque règle qui a un écran de préparation y mène ; celles qui n'en ont pas ne portent pas de
+    // bouton — mieux vaut rien qu'un bouton qui mène au hasard.
+    const vers = (app.match(/const FISCAL_VERS = \{[\s\S]*?\n    \};/) || [''])[0];
+    assert.ok(vers, 'la table des écrans de préparation a disparu');
+    Object.keys({ tva: 1, cnss: 1, employeur: 1 }).forEach(k =>
+      assert.ok(new RegExp(`\\n      ${k}: `).test(vers), `l'échéance « ${k} » ne mène nulle part`));
+    const connus = core.DEFAULT_FISCAL_DEADLINES.map(r => r.id);
+    (vers.match(/\n      (\w+): /g) || []).map(x => x.trim().replace(':', '')).forEach(k =>
+      assert.ok(connus.includes(k), `« ${k} » n'est pas une échéance connue de core : le bouton mènerait au hasard`));
+  });
+
+  t('les contrôles avant clôture portent leur bouton', () => {
+    const app = lireApp();
+    // La même liste porte ses boutons dans l'onglet Cabinet depuis la 7.15.0 ; ici c'était du texte.
+    // Le bloc du Cabinet vit ENTRE `drawClosures` et `drawFiscal` : découper de l'une à l'autre
+    // incluait ses boutons, et le test passait même si les contrôles de clôture n'en avaient aucun.
+    // (Trouvé en réintroduisant le défaut : le test restait vert.) On découpe sur le panneau lui-même.
+    const debut2 = app.indexOf('À regarder avant de clôturer');
+    assert.ok(debut2 > 0, 'le panneau des contrôles avant clôture est introuvable');
+    const zone = app.slice(debut2, app.indexOf('</table>', debut2));
+    assert.ok(!zone.includes('cab-'), 'la tranche déborde sur le panneau du Cabinet : le test ne prouverait rien');
+    assert.ok(/data-check="\$\{h\(c\.id\)\}"/.test(zone), 'les contrôles avant clôture n\'ont toujours aucun bouton');
+    // Le branchement vit dans le CORPS de `drawClosures`, pas dans son gabarit : on le cherche là.
+    const corps = app.slice(app.indexOf('function drawClosures()'), app.indexOf('#do-close'));
+    assert.ok(/\$\$\('\[data-check\]'\)\.forEach\(b => b\.onclick = \(\) => CHECK_ACTIONS\[b\.dataset\.check\]\.run\(\)\);/.test(corps),
+      'les boutons des contrôles avant clôture ne sont pas branchés');
+    // `closureChecks` est un sous-ensemble de `packChecklist` : le test de couverture de la 7.15.0
+    // vaut donc aussi ici, et on le vérifie au lieu de le supposer.
+    const core2 = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'core.js'), 'utf8');
+    const bloc2 = core2.slice(core2.indexOf('function closureChecks('), core2.indexOf('function closePeriod('));
+    // Les contrôles se déclarent par `add('id', …)`, jamais par un littéral `{ id: … }` : lire la
+    // mauvaise forme donnait zéro contrôle, donc un test qui ne vérifiait rien.
+    const ids = [...new Set((bloc2.match(/\n    add\('([\w-]+)'/g) || []).map(x => x.trim().slice(5, -1)))];
+    assert.ok(ids.length >= 3, `seulement ${ids.length} contrôle(s) lus dans closureChecks : le découpage est faux`);
+    const table = app.slice(app.indexOf('const CHECK_ACTIONS = {'), app.indexOf('const TODO_VISIBLE'));
+    ids.forEach(id => assert.ok(new RegExp(`(^|\\s)'?${id}'?: \\{`, 'm').test(table),
+      `le contrôle « ${id} » n'a pas d'action : son bouton avalerait le clic`));
+  });
+
+  t('les chiffres de la TVA mènent aux pièces qui les font', () => {
+    const app = lireApp();
+    assert.ok(/data-vm="\$\{String\(i \+ 1\)\.padStart\(2, '0'\)\}"/.test(app),
+      'les douze lignes « Mois par mois » ne se cliquent toujours pas');
+    assert.ok(/\$\$\('#c-body tr\[data-vm\]'\)\.forEach\(tr => tr\.onclick[\s\S]{0,220}?comptaState\.month = tr\.dataset\.vm;/.test(app),
+      'cliquer un mois ne change pas la déclaration affichée');
+    assert.ok(/id="vat-ventes"/.test(app) && /id="vat-achats"/.test(app),
+      'rien ne mène du bloc de TVA aux journaux qui le fabriquent');
+    // Le bouton bascule aussi l'onglet ACTIF : sans ça on arrive sur le bon contenu avec le mauvais
+    // onglet allumé (le piège déjà rencontré avec `#cab-goclose`).
+    assert.ok(/const versOnglet = \(tab, mois\) => \{[\s\S]{0,300}?classList\.toggle\('active', b\.dataset\.tab === tab\)/.test(app),
+      'changer d\'onglet par un bouton n\'allume pas l\'onglet d\'arrivée');
+  });
+
+  t('un mouvement mène à la pièce d\'où il vient', () => {
+    const app = lireApp();
+    // La phrase sous le tableau disait d'aller corriger le paiement sur sa pièce, sans offrir d'y aller.
+    assert.ok(/const cible = m\.source === 'libre' \? '' : m\.docId \? '#\/doc\/' \+ m\.docId : m\.purchaseId \? '#\/achat\/' \+ m\.purchaseId : m\.payslipId \? '#\/paie' : '';/.test(app),
+      'un mouvement ne sait pas d\'où il vient');
+    assert.ok(/else if \(tr\.dataset\.go\) tr\.onclick = \(\) => navigate\(tr\.dataset\.go\);/.test(app),
+      'les lignes de mouvement venues d\'une pièce ne sont pas branchées');
+    assert.ok(/Clique une ligne pour ouvrir la pièce d'où elle vient/.test(app),
+      'la note sous le tableau décrit encore un geste impossible');
+    // Les trois sources que `cashMovements` sait produire sont bien couvertes.
+    const core2 = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'core.js'), 'utf8');
+    const bloc2 = core2.slice(core2.indexOf('function cashMovements('), core2.indexOf('function accountBalance('));
+    ['docId', 'purchaseId', 'payslipId'].forEach(k =>
+      assert.ok(bloc2.includes(k + ':'), `cashMovements ne produit plus « ${k} » : le lien est mort`));
+  });
+
+  t('un paquet fabriqué se retrouve sur le disque', () => {
+    const app = lireApp();
+    assert.ok(/data-reveal="\$\{h\(x\.path \|\| ''\)\}"/.test(app), 'l\'historique des paquets ne mène pas au fichier');
+    assert.ok(/bridge\.showInFolder\(b2\.dataset\.reveal\)/.test(app), 'le bouton « Montrer le fichier » n\'est pas branché');
+    // Un paquet d'avant cette version n'a pas de chemin : le bouton le DIT au lieu de ne rien faire.
+    assert.ok(/disabled title="Paquet fabriqué avant cette version/.test(app),
+      'un paquet sans chemin offre un bouton qui ne ferait rien');
+  });
+
+  t('la carte « Reste à encaisser » de la Comptabilité ouvre sa liste', () => {
+    const app = lireApp();
+    const css = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'style.css'), 'utf8');
+    assert.ok(/data-cstat="encaisser"/.test(app), 'la carte de la Comptabilité n\'est pas cliquable');
+    assert.ok(/\$\$\('#c-body \.stat\[data-cstat\]'\)\.forEach[\s\S]{0,400}?filtre\('facture', 'à encaisser'\)\(\); navigate\('#\/factures'\);/.test(app),
+      'la carte de la Comptabilité n\'ouvre pas la même liste que sa jumelle de l\'accueil');
+    // Elle le DIT : curseur, chevron, relief (règle de la 7.15.0, à étendre au nouvel attribut).
+    assert.ok(/\.stat\[data-stat\], \.stat\[data-cstat\] \{[^}]*cursor: pointer/.test(css),
+      'la carte cliquable de la Comptabilité n\'a pas de curseur de clic');
+    assert.ok(/\.stat\[data-stat\]::after, \.stat\[data-cstat\]::after/.test(css), 'elle n\'a pas de chevron');
+  });
+
   console.log(`\n${n} tests OK`);
 })().catch(e => { console.error(e); process.exit(1); });

@@ -362,6 +362,7 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:accueil` | **l'accueil tient ses promesses** : le filtre qui ne se rearme pas, le raccourci qui vise un panneau, l'extrait sans total, le contrat suspendu qui demande, la recherche des Relances, la réponse à un devis |
 | `npm run e2e:editeur` | **l'éditeur de document** : le timbre dans la devise de la pièce, l'échéance qui suit la date, la quantité effacée, la fiche du client, l'acompte en dinars, la suppression qui nomme les liens, le bouton d'une facture soldée |
 | `npm run e2e:fiches` | **les fiches et les formulaires** : l'étoile des champs obligatoires et le refus qui montre, la fiche article depuis le Catalogue, le catalogue dans un achat, la ligne en immobilisation, les affaires et contrats du client |
+| `npm run e2e:compta` | **la comptabilité mène aux pièces** : les contrôles de clôture armés, les douze mois de TVA cliquables, l'échéance fiscale qu'on pointe et qu'on dépointe, le mouvement qui ouvre sa facture, la carte « Reste à encaisser » |
 
 Ils ont longtemps vécu dans un dossier de travail temporaire, effacé à chaque session : il fallait les réécrire de mémoire, et ils dérivaient (une assertion restée sur une version périmée, un écran neuf jamais parcouru). **Un test qu'on doit réécrire pour s'en servir n'est pas un test.** Le harnais (`test/e2e/harnais.js`) trouve Playwright où il est, lit la version dans `package.json` au lieu de l'écrire en dur, et range les captures dans `dist-e2e/` (ignoré par Git).
 
@@ -978,6 +979,38 @@ Règles apprises, à ne pas recasser :
 - Piège de test : `app.indexOf('routes.client = ')` … `app.indexOf('function clientForm(')` donnait
   une tranche **vide**, parce que `clientForm` est déclaré AVANT la route dans le fichier. Un
   découpage de source se vérifie par sa longueur avant d'être jugé.
+
+## 7.21.0 — La comptabilité qui mène aux pièces
+
+Règles apprises, à ne pas recasser :
+
+- **Deux écrans qui affichent la MÊME liste doivent offrir les mêmes gestes.** Les contrôles avant
+  clôture et la liste « Ce qui manque » du Cabinet sortent toutes deux de `closureChecks` /
+  `packChecklist` ; l'une portait ses boutons depuis la 7.15.0, l'autre était du texte. Le test
+  relit les identifiants **dans core.js** (`add('brouillons', …)`) et exige une action pour chacun.
+- **On pointe une OCCURRENCE, jamais une règle.** `data.fiscalFilings` retient `ruleId@date` : la
+  TVA d'octobre cesse de crier, celle de novembre reste réclamée. Faire disparaître la règle aurait
+  été plus simple à écrire et faux dès le mois suivant — c'est exactement ce que faisait le seul
+  recours existant (désactiver la règle).
+- **Un bouton qui change d'onglet doit ALLUMER l'onglet d'arrivée.** Arriver sur le bon contenu avec
+  le mauvais onglet en surbrillance est pire que ne pas y aller : on croit s'être trompé. Le
+  mécanisme existait sur `#cab-goclose` et n'avait jamais été repris ailleurs.
+- **Une phrase qui décrit un geste doit être tenue par un chemin.** « Ils se modifient sur la pièce
+  d'origine » était sous un tableau dont aucune ligne ne menait à ladite pièce (même famille que
+  « une phrase d'aide qui décrit une fonction absente est un bug », 7.3.0).
+- **Une donnée enregistrée et jamais affichée n'existe pas.** Le chemin du paquet était écrit dans
+  `data.packs` depuis la 6.1.0 ; l'historique affichait l'empreinte — inutilisable — et pas le
+  chemin. Et un paquet d'avant cette version le DIT (bouton désactivé avec son motif) au lieu
+  d'offrir un bouton qui ne ferait rien.
+- Piège de test, coûteux : ma tranche `drawClosures … drawFiscal` **contenait le bloc du Cabinet**,
+  dont les boutons portent le même `data-check`. Le test restait vert avec le défaut réintroduit.
+  Une tranche de source se prouve par ce qu'elle NE contient pas (`assert.ok(!zone.includes('cab-'))`)
+  autant que par ce qu'elle contient.
+- Piège de test : le gabarit et son branchement vivent à cent lignes d'écart. Chercher le
+  branchement dans la tranche du gabarit échoue sur du code correct — deux assertions, deux tranches.
+- Piège de test e2e : `document.querySelector('#st').value` vaut `undefined` quand l'élément
+  n'existe pas encore. On attend le sélecteur avant de le lire, sinon le message accuse un filtre
+  qui n'a jamais été posé.
 
 ## Pistes pour la suite (non demandées)
 
