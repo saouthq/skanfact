@@ -7,6 +7,25 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 7.21.1 — 13/09/2026
+
+**L'installeur Windows se fermait tout seul.**
+
+`Installer SkanFact (Windows).bat` avait des **fins de ligne Unix**. `cmd.exe` lit un fichier batch
+octet par octet : il se désynchronise sur le premier bloc `if ... ( ... )`, tombe en erreur de
+syntaxe, et la fenêtre se ferme sans un mot — exactement ce qui arrivait après avoir appuyé sur
+Entrée.
+
+- Le fichier est en **CRLF**, et un `.gitattributes` le garantit à chaque copie du dépôt, quel que
+  soit le réglage du poste. L'inverse est posé pour `.command` et `.sh`, qu'un CRLF casserait.
+- Le script passe par des **étiquettes** (`goto :label`) au lieu de blocs parenthésés, plus robustes.
+- La fenêtre **ne se ferme jamais sans un mot** : chaque chemin finit par une pause, et tout est noté
+  dans `installation-windows.log`, à côté du fichier.
+- Il écrit ce qu'il faut faire quand ça échoue (connexion, Node.js à installer, journal à envoyer),
+  au lieu de disparaître.
+- Deux contrôles dans `npm test` : aucune fin de ligne Unix ni caractère accentué dans un `.bat`,
+  et chaque `goto` comme chaque `npm run` du script existe vraiment.
+
 ## 7.21.0 — 13/09/2026
 
 **La comptabilité qui mène aux pièces.**

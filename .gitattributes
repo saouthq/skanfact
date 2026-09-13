@@ -1,0 +1,15 @@
+# Les fins de ligne, parce qu'un .bat en LF ne marche PAS sur Windows.
+#
+# cmd.exe lit un fichier batch octet par octet. Avec des fins de ligne Unix il
+# se desynchronise sur le premier bloc « if ... ( ... ) » : erreur de syntaxe,
+# et la fenetre se ferme sans un mot. C'est ce qui est arrive a l'installeur
+# Windows jusqu'a la 7.21.1. Git doit donc garantir le CRLF au checkout, quelle
+# que soit la plateforme et quel que soit le reglage core.autocrlf du poste.
+*.bat       text eol=crlf
+*.cmd       text eol=crlf
+*.ps1       text eol=crlf
+
+# Et l'inverse pour ce qui s'execute sur un shell Unix : un script avec des CRLF
+# echoue avec « bad interpreter: /bin/bash^M ».
+*.command   text eol=lf
+*.sh        text eol=lf

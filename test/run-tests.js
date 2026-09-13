@@ -6792,5 +6792,50 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.ok(/\.stat\[data-stat\]::after, \.stat\[data-cstat\]::after/.test(css), 'elle n\'a pas de chevron');
   });
 
+  // ---------- 7.21.1 : l'installeur Windows ----------
+
+  t('l\'installeur Windows a des fins de ligne Windows', () => {
+    // `cmd.exe` lit un fichier batch OCTET PAR OCTET. Avec des fins de ligne Unix il se
+    // desynchronise sur le premier bloc « if ... ( ... ) » : erreur de syntaxe, et la fenetre se
+    // ferme sans un mot — impossible a diagnostiquer pour qui double-clique le fichier.
+    // C'est ce qui est arrive a l'installeur Windows jusqu'a la 7.21.1.
+    const racine = path.join(__dirname, '..');
+    const bats = fs.readdirSync(racine).filter(f => /\.(bat|cmd|ps1)$/i.test(f));
+    assert.ok(bats.length, 'aucun fichier batch trouve : le test ne prouve rien');
+    bats.forEach(f => {
+      const brut = fs.readFileSync(path.join(racine, f));
+      const lf = (brut.toString('binary').match(/\n/g) || []).length;
+      const crlf = (brut.toString('binary').match(/\r\n/g) || []).length;
+      assert.strictEqual(lf - crlf, 0, `« ${f} » contient ${lf - crlf} fin(s) de ligne Unix : cmd.exe fermera la fenetre`);
+      // Et pas d'accent : une console Windows sans la bonne page de code les affiche de travers,
+      // et le fichier devient illisible au moment precis ou il doit expliquer une erreur.
+      const horsAscii = [...brut].filter(b => b > 127);
+      assert.strictEqual(horsAscii.length, 0, `« ${f} » contient ${horsAscii.length} caractere(s) non-ASCII`);
+      // Une fenetre qui se ferme toute seule ne dit rien : il faut une pause finale.
+      assert.ok(/\npause/i.test(brut.toString('ascii')), `« ${f} » ne met jamais la fenetre en pause : une erreur serait invisible`);
+    });
+
+    // `.gitattributes` garantit le CRLF au checkout, quel que soit le reglage du poste. Sans lui,
+    // le fichier peut etre re-normalise en LF a la prochaine copie du depot.
+    const attrs = fs.readFileSync(path.join(racine, '.gitattributes'), 'utf8');
+    assert.ok(/^\*\.bat\s+text eol=crlf$/m.test(attrs), '.gitattributes ne force plus le CRLF sur les .bat');
+    assert.ok(/^\*\.command\s+text eol=lf$/m.test(attrs), '.gitattributes ne force plus le LF sur les .command');
+  });
+
+  t('l\'installeur Windows appelle des commandes qui existent', () => {
+    const racine = path.join(__dirname, '..');
+    const bat = fs.readFileSync(path.join(racine, 'Installer SkanFact (Windows).bat'), 'ascii');
+    const pkg = JSON.parse(fs.readFileSync(path.join(racine, 'package.json'), 'utf8'));
+    // Chaque `npm run <x>` du script doit exister dans package.json : sinon npm repond « Missing
+    // script » et le script continue comme si de rien n'etait.
+    (bat.match(/npm run ([\w:-]+)/g) || []).map(x => x.slice(8)).forEach(s2 =>
+      assert.ok(pkg.scripts[s2], `l'installeur appelle « npm run ${s2} », qui n'existe pas dans package.json`));
+    // Tout `goto :label` doit avoir sa cible : un label absent fait sortir cmd.exe du script.
+    const labels = new Set((bat.match(/^:(\w+)/gm) || []).map(x => x.slice(1)));
+    const sauts = [...new Set((bat.match(/goto :(\w+)/g) || []).map(x => x.slice(6)))];
+    assert.ok(sauts.length >= 5, `seulement ${sauts.length} saut(s) lus : le decoupage est faux`);
+    sauts.forEach(l => assert.ok(labels.has(l), `« goto :${l} » ne mene a aucun label : cmd.exe quitterait le script`));
+  });
+
   console.log(`\n${n} tests OK`);
 })().catch(e => { console.error(e); process.exit(1); });
