@@ -212,6 +212,15 @@ body.dark .lock-banner .btn:not(.btn-primary):not(.btn-danger) { background: rgb
 }
 .champ-faute > .fl, .champ-faute > span:first-child { color: var(--danger); }
 
+/* Ce qui est obligatoire se voit AVANT d'appuyer sur « Enregistrer ». L'attribut `required` posé sur
+   un <input> d'une fenêtre modale est inerte : rien ne soumet le formulaire, c'est un bouton qui
+   lit les valeurs. On le dit donc nous-mêmes — une étoile rouge, et une légende en pied. */
+.field.obligatoire > span:first-child::after, .field.obligatoire > .fl::after {
+  content: ' *'; color: var(--danger); font-weight: 700;
+}
+.oblig-note { font-size: 12px; color: var(--muted); margin-right: auto; align-self: center; }
+.oblig-note b { color: var(--danger); }
+
 /* Recherche dans l'aide (7.0.0) : trente-deux titres en liste plate, sans moyen de taper le mot
    sur lequel on vient de buter. */
 .help-nav #aide-q {

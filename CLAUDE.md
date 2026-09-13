@@ -361,6 +361,7 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:repondre` | **les écrans qui ne répondent pas** : le pointage qui se défait, le curseur qui ne saute plus, le sélecteur d'année inerte, le tri qui ne triait pas, l'année figée, l'export qui suit l'onglet |
 | `npm run e2e:accueil` | **l'accueil tient ses promesses** : le filtre qui ne se rearme pas, le raccourci qui vise un panneau, l'extrait sans total, le contrat suspendu qui demande, la recherche des Relances, la réponse à un devis |
 | `npm run e2e:editeur` | **l'éditeur de document** : le timbre dans la devise de la pièce, l'échéance qui suit la date, la quantité effacée, la fiche du client, l'acompte en dinars, la suppression qui nomme les liens, le bouton d'une facture soldée |
+| `npm run e2e:fiches` | **les fiches et les formulaires** : l'étoile des champs obligatoires et le refus qui montre, la fiche article depuis le Catalogue, le catalogue dans un achat, la ligne en immobilisation, les affaires et contrats du client |
 
 Ils ont longtemps vécu dans un dossier de travail temporaire, effacé à chaque session : il fallait les réécrire de mémoire, et ils dérivaient (une assertion restée sur une version périmée, un écran neuf jamais parcouru). **Un test qu'on doit réécrire pour s'en servir n'est pas un test.** Le harnais (`test/e2e/harnais.js`) trouve Playwright où il est, lit la version dans `package.json` au lieu de l'écrire en dur, et range les captures dans `dist-e2e/` (ignoré par Git).
 
@@ -936,6 +937,47 @@ Règles apprises, à ne pas recasser :
 - Piège de test e2e : un acompte demandé à 300 DT donne 300 DT **de lignes** plus le timbre. Une
   assertion qui compare 300 au `totalTTC` décrit une règle fausse ; c'est `netToPay` qui vaut 301,
   et c'est très exactement ce que la fenêtre annonce désormais avant de créer le brouillon.
+
+## 7.20.0 — Ce qui est obligatoire, et ce qui mène quelque part
+
+Règles apprises, à ne pas recasser :
+
+- **`required` dans une fenêtre modale est INERTE.** Rien ne soumet le formulaire — c'est un bouton
+  qui lit les valeurs — donc le navigateur ne validera jamais rien. L'attribut était posé sur deux
+  champs depuis des versions, et n'a jamais rien fait. Ce qui est obligatoire se dit à la main :
+  une étoile sur le champ, et une légende.
+- **Une légende se DÉDUIT, elle ne se recopie pas.** « * obligatoire » est posée par `modal()` dès
+  qu'un champ de la couche porte la classe : recopiée fenêtre par fenêtre, elle manquerait à la
+  première fenêtre qui gagne un champ obligatoire. Même principe que `wipeData` déduit de
+  `DEFAULT_DATA` (7.0.0) et que la couverture des cartes `data-stat` (7.17.0).
+- **Un refus MONTRE le champ** (règle 7.0.0, jamais appliquée aux fenêtres) : `refus()` n'était
+  appelé que dans les deux éditeurs pleine page. Les cinq fenêtres les plus utilisées se
+  contentaient d'un message, sur un formulaire qui peut avoir défilé.
+- **Un chiffre affiché s'ouvre, même quand une autre page l'ouvre déjà.** La fiche d'un article
+  n'était atteignable que depuis Stock ; le Catalogue, qui affiche pourtant sa quantité, n'y menait
+  pas. Le bouton retour de la pile de navigation ramène au Catalogue quand on vient de là.
+- **On ne reproche pas ce qu'on n'a pas offert.** L'éditeur d'achat signalait qu'une ligne ne
+  correspond à aucun article du catalogue, sans avoir jamais proposé de le choisir dans la liste.
+  Et le prix repris est le **coût d'achat**, pas le prix de vente : dans un achat, on achète.
+- **Une valeur qui n'est déduite NULLE PART doit le dire là où on la saisit.** Une ligne en
+  destination « immobilisation » n'entre ni en charge ni en amortissement tant que la fiche du bien
+  n'existe pas. Le compteur de la barre latérale existait depuis la 3.5.0 — personne ne le regarde
+  au moment de saisir un achat.
+- **Un historique client s'arrête là où on le programme.** Affaires et contrats récurrents portent
+  tous deux un `clientId` depuis longtemps ; la fiche ne lisait que les documents.
+- **Une variable d'une autre route est une bombe silencieuse.** Écrire `locked` dans l'éditeur
+  d'achat (où il n'existe pas) lève une ReferenceError **pendant la construction du gabarit** : la
+  page entière reste blanche, sans une ligne dans la console de l'utilisateur. C'est l'e2e qui l'a
+  attrapé, pas la relecture — le `node --check` ne voit rien, et aucun test de calcul n'exécute
+  cette route.
+- **Un commentaire HTML à l'intérieur d'un gabarit ne doit contenir aucun backtick** : il referme le
+  `template literal` et casse le fichier. Le commentaire va dans le code, au-dessus.
+- Piège de test e2e : un achat neuf commence avec **une ligne vide**. Celle qu'on ajoute depuis le
+  catalogue arrive en dessous — lire `querySelector('#b-lines tr')` renvoie donc la ligne vide, et
+  le test annonce un défaut qui n'existe pas.
+- Piège de test : `app.indexOf('routes.client = ')` … `app.indexOf('function clientForm(')` donnait
+  une tranche **vide**, parce que `clientForm` est déclaré AVANT la route dans le fichier. Un
+  découpage de source se vérifie par sa longueur avant d'être jugé.
 
 ## Pistes pour la suite (non demandées)
 

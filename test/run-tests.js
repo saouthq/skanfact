@@ -6597,5 +6597,87 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       `l'acompte réellement à payer vaut 300 + 1 DT de timbre, obtenu ${avecTimbre.netToPay}`);
   });
 
+  // ---------- 7.20.0 : ce qui est obligatoire, et ce qui mène quelque part ----------
+
+  t('ce qui est obligatoire se voit avant d\'appuyer sur Enregistrer', () => {
+    const app = lireApp();
+    const css = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'style.css'), 'utf8');
+    // `required` sur un <input> d'une fenêtre modale est INERTE : rien ne soumet le formulaire,
+    // c'est un bouton qui lit les valeurs. On le dit donc nous-mêmes.
+    assert.ok(/\.field\.obligatoire > span:first-child::after[^}]*content: ' \*'/.test(css),
+      'l\'étoile des champs obligatoires n\'est plus dessinée');
+    // La légende est DÉDUITE : posée par modal() dès qu'un champ la porte, jamais recopiée fenêtre
+    // par fenêtre — sinon la première fenêtre qui gagne un champ obligatoire l'oublie.
+    assert.ok(/if \(actions && \$\('\.field\.obligatoire', layer\) && !\$\('\.oblig-note', layer\)\)/.test(app),
+      'la légende « * obligatoire » n\'est plus posée automatiquement');
+    assert.ok(/actions\.insertBefore\(note, actions\.firstChild\);/.test(app), 'la légende n\'est pas insérée dans la barre d\'actions');
+    // Et chaque fenêtre qui REFUSE sur un champ doit le MONTRER (règle 7.0.0), pas se contenter
+    // d'un toast : la fenêtre peut avoir défilé, et rien ne dit lequel des champs relire.
+    ['cf', 'sf', 'kf', 'ef'].forEach(f => {
+      assert.ok(app.includes(`refus('#${f} `), `la fenêtre « ${f} » refuse encore par un simple message`);
+    });
+    // Chaque formulaire qui refuse sur un champ porte aussi la marque sur ce champ.
+    const oblig = (app.match(/class="field[^"]*obligatoire/g) || []).length;
+    assert.ok(oblig >= 6, `seulement ${oblig} champ(s) marqué(s) obligatoire(s) : les formulaires principaux doivent l'être`);
+  });
+
+  t('le Catalogue mène à la fiche de l\'article suivi', () => {
+    const app = lireApp();
+    // Le Catalogue AFFICHE une quantité en stock ; la fiche qui l'explique n'était atteignable que
+    // depuis la page Stock.
+    assert.ok(/data-fiche="\$\{c\.id\}"/.test(app), 'aucun chemin du Catalogue vers la fiche de l\'article');
+    assert.ok(/\$\$\('\[data-fiche\]', wrap\)\.forEach\(b => b\.onclick = \(\) => navigate\('#\/article\/' \+ b\.dataset\.fiche\)\);/.test(app),
+      'le bouton « Fiche stock » n\'est pas branché');
+    // Et seulement sur un article suivi : la fiche d'un article sans stock n'aurait rien à montrer.
+    assert.ok(/c\.tracked \? `<button class="btn btn-sm" data-fiche=/.test(app),
+      'le bouton est offert sur un article qui n\'est pas suivi en stock');
+  });
+
+  t('l\'éditeur d\'achat propose le catalogue au lieu de le reprocher', () => {
+    const app = lireApp();
+    assert.ok(/if \(\$\('#b-cat'\)\) bindCombo/.test(app), 'l\'éditeur d\'achat n\'a pas de sélecteur de catalogue');
+    // On ACHÈTE : c'est le coût d'achat qui est repris, pas le prix de vente.
+    assert.ok(/unitPrice: Number\(it\.unitCost\) \|\| Number\(it\.unitPrice\) \|\| 0/.test(app),
+      'la ligne d\'achat reprend le prix de VENTE du catalogue');
+    // Et la ligne porte l'itemId : c'est lui qui relie l'achat au stock, sans dépendre du libellé.
+    assert.ok(/itemId: it\.id, destination: it\.tracked \? 'stock' : 'charge'/.test(app),
+      'la ligne choisie au catalogue ne porte pas son itemId ni sa destination');
+  });
+
+  t('une ligne en immobilisation dit qu\'elle n\'est déduite nulle part', () => {
+    const app = lireApp();
+    // Le rappel ne regardait que « stock » : « immobilisation » ne disait rien, alors que la ligne
+    // n'est déduite ni en charge, ni en amortissement tant que la fiche du bien n'existe pas.
+    assert.ok(/const immos = t\.lines\.filter\(l => l\.destination === 'immobilisation'/.test(app),
+      'les lignes en immobilisation ne sont pas comptées dans l\'éditeur d\'achat');
+    assert.ok(/l'amortissement ne commencera qu'une fois la fiche du bien créée/.test(app),
+      'rien ne dit ce qui manque pour qu\'une immobilisation soit déduite');
+    assert.ok(/\$\('#b-immo'\)\.onclick = \(\) => \{ immoState\.tab = 'attente'; navigate\('#\/immos'\); \}/.test(app),
+      'le rappel des immobilisations ne mène pas aux biens à créer');
+  });
+
+  t('la fiche client montre ses affaires et ses contrats', () => {
+    const app = lireApp();
+    // `clientForm` est déclaré AVANT `routes.client` dans le fichier : découper de l'un à l'autre
+    // donnait une tranche vide, et le test aurait échoué en annonçant un défaut qui n'existe pas.
+    const debut = app.indexOf('routes.client = ');
+    assert.ok(debut > 0, 'la fiche client est introuvable dans app.js');
+    const zone = app.slice(debut, app.indexOf('\n  routes.', debut + 10));
+    assert.ok(zone.length > 2000, `la tranche de la fiche client fait ${zone.length} caractères : le découpage est faux`);
+    assert.ok(/const affaires = C\.projectList\(data, company\(\)\)\.filter\(x => x\.clientId === c\.id\);/.test(zone),
+      'la fiche client ne lit pas ses affaires');
+    assert.ok(/const contrats = \(data\.recurring \|\| \[\]\)\.filter\(r => r\.clientId === c\.id\);/.test(zone),
+      'la fiche client ne lit pas ses contrats récurrents');
+    // Masqués quand il n'y en a pas : un panneau vide n'apprend rien (règle des états vides, 7.0.0).
+    assert.ok(/if \(!affaires\.length && !contrats\.length\) return '';/.test(zone),
+      'les deux panneaux s\'affichent même vides');
+    assert.ok(/data-pid="\$\{h\(x\.id\)\}"/.test(zone) && /navigate\('#\/affaire\/' \+ tr\.dataset\.pid\)/.test(zone),
+      'les affaires de la fiche client ne s\'ouvrent pas');
+    assert.ok(/data-rid="\$\{h\(r\.id\)\}"/.test(zone) && /navigate\('#\/contrat\/' \+ tr\.dataset\.rid\)/.test(zone),
+      'les contrats de la fiche client ne s\'ouvrent pas');
+    // Un contrat en euros s'affiche en euros, ici aussi (règle de la 7.18.0, re-vérifiée ailleurs).
+    assert.ok(/C\.money\(ht, r\.currency \|\| cur\)/.test(zone), 'le contrat de la fiche client s\'affiche en devise société');
+  });
+
   console.log(`\n${n} tests OK`);
 })().catch(e => { console.error(e); process.exit(1); });

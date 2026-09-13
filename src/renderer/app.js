@@ -420,6 +420,16 @@
     layer.addEventListener('click', e => { if (e.target === layer) close(); });
     $$('[data-close]', layer).forEach(b => b.addEventListener('click', close));
     bindDateFields(layer);
+    // « * obligatoire » se pose TOUT SEUL dès qu'un champ de la fenêtre porte la classe. Une légende
+    // recopiée fenêtre par fenêtre se périme à la première qui gagne un champ obligatoire ; déduite,
+    // elle ne peut pas manquer. (Même principe que `wipeData` déduit de `DEFAULT_DATA`, 7.0.0.)
+    const actions = $('.modal-actions', layer);
+    if (actions && $('.field.obligatoire', layer) && !$('.oblig-note', layer)) {
+      const note = document.createElement('span');
+      note.className = 'oblig-note';
+      note.innerHTML = '<b>*</b> obligatoire';
+      actions.insertBefore(note, actions.firstChild);
+    }
     layer.addEventListener('keydown', e => {
       if (e.key !== 'Enter' || e.shiftKey) return;
       if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'BUTTON') return;
@@ -2801,7 +2811,7 @@
     const c = client || { id: C.uid(), name: '', contact: '', matricule: '', address: '', phone: '', email: '', notes: '', withholdingRate: '' };
     modal(`<h2>${client ? 'Modifier le client' : 'Nouveau client'}</h2>
       <form id="cf" class="grid-2">
-        <label class="field span-2">Nom / Raison sociale<input type="text" name="name" value="${h(c.name)}" required></label>
+        <label class="field span-2 obligatoire">Nom / Raison sociale<input type="text" name="name" value="${h(c.name)}" required></label>
         ${field(lbl('Personne à contacter', 'cl.contact'), 'contact', c.contact || '', 'text', 'placeholder="Mme Leïla Mansour, directrice"')}
         ${field(lbl('Matricule fiscal / CIN', 'co.matricule'), 'matricule', c.matricule)}
         <label class="field">${lbl('Retenue à la source appliquée par ce client', 'ed.withholding')}<select name="withholdingRate"><option value="" ${c.withholdingRate === '' || c.withholdingRate == null ? 'selected' : ''}>Par défaut (${pct(company().defaultWithholdingRate || 0)} %)</option>${C.WITHHOLDING_RATES.map(r => `<option value="${r}" ${String(c.withholdingRate) === String(r) ? 'selected' : ''}>${r === 0 ? 'Aucune' : pct(r) + ' %'}</option>`).join('')}</select></label>
@@ -2818,7 +2828,9 @@
       (root, close) => {
         $('#ok', root).onclick = () => {
           const v = formValues($('#cf', root));
-          if (!v.name.trim()) return toast('Le nom est obligatoire.', true);
+          // `refus()` amène le champ à l'écran, y met le curseur et le marque (7.0.0). Un toast seul
+          // oblige à relire tout le formulaire — et la fenêtre peut avoir défilé.
+          if (!v.name.trim()) return refus('#cf input[name=name]', 'Le nom est obligatoire : c\'est lui qui apparaît sur chaque document.');
           Object.assign(c, v, { withholdingRate: v.withholdingRate === '' ? '' : Number(v.withholdingRate) });
           if (!client) data.clients.push(c);
           save(true); close(); if (done) done(c);
@@ -2958,7 +2970,38 @@
               <td class="nw">${x.outDocId && docById(x.outDocId) ? `<a href="#/doc/${h(x.outDocId)}">${h(docById(x.outDocId).number || 'voir')}</a>` : '<span class="muted">—</span>'}</td></tr>`).join('')}
           </tbody></table></div></div>`;
       })()}
+      ${(() => {
+        // L'historique d'un client s'arrêtait aux documents : ni ses affaires (où l'on sait
+        // exactement ce qu'il a rapporté, achats déduits), ni ses contrats récurrents (le revenu
+        // qui revient tous les mois). Les deux données existaient, aucune n'était montrée ici.
+        const affaires = C.projectList(data, company()).filter(x => x.clientId === c.id);
+        const contrats = (data.recurring || []).filter(r => r.clientId === c.id);
+        if (!affaires.length && !contrats.length) return '';
+        return `${affaires.length ? `<div class="panel"><h2>Affaires ${info('mg.projects')}</h2>
+          <div class="scroll-x"><table class="list compact"><thead><tr><th>Affaire</th><th>Statut</th><th class="r">Vendu HT</th><th class="r">Acheté HT</th><th class="r">Marge</th><th class="r">En caisse</th></tr></thead><tbody>
+            ${affaires.map(x => `<tr class="clickable ${x.margin < 0 ? 'row-warn' : ''}" data-pid="${h(x.id)}">
+              <td><strong>${h(x.name)}</strong></td>
+              <td><span class="badge ${x.status === 'en cours' ? 'b-due' : x.status === 'terminée' ? 'b-paid' : ''}">${h(x.status)}</span></td>
+              <td class="r nw">${C.money(x.revenue, cur)}</td><td class="r nw">${C.money(x.cost, cur)}</td>
+              <td class="r nw"><strong class="${x.margin < 0 ? 'warn-text' : ''}">${C.money(x.margin, cur)}</strong></td>
+              <td class="r nw">${C.money(x.cash, cur)}</td></tr>`).join('')}
+          </tbody></table></div></div>` : ''}
+        ${contrats.length ? `<div class="panel"><h2>Contrats récurrents ${info('rec.what')}</h2>
+          <div class="scroll-x"><table class="list compact"><thead><tr><th>Objet</th><th>Période</th><th>Prochaine facture</th><th class="r">HT / facture</th><th>État</th></tr></thead><tbody>
+            ${contrats.map(r => {
+              const ht = C.computeTotals({ type: 'facture', lines: r.lines, discountRate: r.discountRate, currency: r.currency, exchangeRate: r.exchangeRate }, company()).netHT;
+              return `<tr class="clickable" data-rid="${h(r.id)}">
+                <td><strong>${h(C.fillTemplate(r.subject, { mois: '', annee: '' }).trim() || 'Contrat')}</strong></td>
+                <td>${h((C.PERIODS.find(x => x[0] === r.every) || [])[1] || '')}</td>
+                <td class="nw">${r.active === false ? '<span class="muted">suspendu</span>' : C.fmtDate(r.nextDate)}</td>
+                <td class="r nw">${C.money(ht, r.currency || cur)}</td>
+                <td>${r.active !== false ? '<span class="badge envoyée">actif</span>' : '<span class="badge">suspendu</span>'}</td></tr>`;
+            }).join('')}
+          </tbody></table></div></div>` : ''}`;
+      })()}
       <div class="panel"><h2>Documents</h2><div id="cl-docs"></div></div>`;
+    $$('#view tr[data-pid]').forEach(tr => tr.onclick = () => navigate('#/affaire/' + tr.dataset.pid));
+    $$('#view tr[data-rid]').forEach(tr => tr.onclick = () => navigate('#/contrat/' + tr.dataset.rid));
     const dcols = docColumns({ hideClient: true }).cols;
     const drawDocs = (sortKey) => {
       if (sortKey) { clientDocState.sort = toggleSort(clientDocState.sort, sortKey, dcols); clientDocState.page = 1; }
@@ -2993,7 +3036,7 @@
     const already = item ? C.stockOf(data, it.id) : null;   // stock déjà constitué : on ne rejoue pas le départ
     modal(`<h2>${item ? 'Modifier la prestation' : 'Nouvelle prestation'}</h2>
       <form id="kf" class="grid-2">
-        <label class="field span-2">${lbl('Désignation', 'cat.catalog')}<input type="text" name="label" value="${h(it.label)}"></label>
+        <label class="field span-2 obligatoire">${lbl('Désignation', 'cat.catalog')}<input type="text" name="label" value="${h(it.label)}"></label>
         <label class="field span-2">Description<textarea name="description">${h(it.description || '')}</textarea></label>
         ${field('Prix unitaire HT', 'unitPrice', it.unitPrice, 'number', 'step="0.001" min="0" class="num"')}
         ${field(lbl('Coût de revient HT', 'cat.cost'), 'unitCost', it.unitCost || 0, 'number', 'step="0.001" min="0" class="num"')}
@@ -3066,7 +3109,7 @@
         };
         $('#ok', root).onclick = () => {
           const v = formValues($('#kf', root));
-          if (!v.label.trim()) return toast('La désignation est obligatoire.', true);
+          if (!v.label.trim()) return refus('#kf input[name=label]', 'La désignation est obligatoire : c\'est elle qui s\'écrit sur la ligne du devis.');
           if (v.tracked && already && already.moves.length > 1) { v.initialQty = it.initialQty; v.initialCost = it.initialCost; }
           Object.assign(it, v, { vatRate: Number(v.vatRate), unitCost: Number(v.unitCost) || 0, unit,
             tracked: !!v.tracked, minStock: Number(v.minStock) || 0,
@@ -3088,7 +3131,7 @@
     const cur = company().currency;
     modal(`<h2>Modifier le modèle</h2>
       <form id="tf2" class="grid-2">
-        <label class="field span-2">Nom du modèle<input type="text" name="name" value="${h(t.name || '')}"></label>
+        <label class="field span-2 obligatoire">Nom du modèle<input type="text" name="name" value="${h(t.name || '')}"></label>
         <label class="field">Type<select name="type">${['devis', 'facture'].map(x => `<option value="${x}" ${t.type === x ? 'selected' : ''}>${C.TITLES[x]}</option>`).join('')}</select></label>
         ${field('Remise globale (%)', 'discountRate', t.discountRate || 0, 'number', 'min="0" max="100" step="0.5" class="num"')}
         <label class="field span-2">Objet<input type="text" name="subject" value="${h(t.subject || '')}" placeholder="Ce qui sera proposé comme objet du document"></label>
@@ -3225,10 +3268,13 @@
           <td colspan="3"></td></tr>`;
       },
       empty: 'Catalogue vide. Ajoute tes prestations récurrentes pour remplir les devis en un clic.',
-      actions: c => `<button class="btn btn-sm" data-edit="${c.id}">Modifier</button>`,
+      // Le Catalogue AFFICHE une quantité en stock et n'offrait aucun moyen d'aller voir d'où elle
+      // vient : la fiche de l'article — mouvements, coût moyen, historique — n'était atteignable que
+      // depuis la page Stock. Un chiffre qu'on lit doit s'ouvrir (7.15.0).
+      actions: c => `${c.tracked ? `<button class="btn btn-sm" data-fiche="${c.id}" title="Mouvements, coût moyen, historique">Fiche stock</button>` : ''}<button class="btn btn-sm" data-edit="${c.id}">Modifier</button>`,
       bind: (wrap, redraw) => {
         $$('[data-edit]', wrap).forEach(b => b.onclick = () => catalogForm(data.catalog.find(c => c.id === b.dataset.edit), redraw));
-
+        $$('[data-fiche]', wrap).forEach(b => b.onclick = () => navigate('#/article/' + b.dataset.fiche));
       }
     });
 
@@ -3292,12 +3338,19 @@
   function snippetForm(sn, done) {
     const x = sn || { id: C.uid(), name: '', text: '' };
     modal(`<h2>${sn ? 'Modifier le texte' : 'Nouveau texte prédéfini'}</h2>
-      <form id="sf" class="grid-2">${field('Nom', 'name', x.name, 'text', 'placeholder="Garantie, Conditions de paiement…"')}<label class="field span-2">Texte<textarea name="text" rows="5">${h(x.text)}</textarea></label></form>
+      <form id="sf" class="grid-2"><label class="field obligatoire">Nom<input type="text" name="name" value="${h(x.name)}" placeholder="Garantie, Conditions de paiement…"></label><label class="field span-2 obligatoire">Texte<textarea name="text" rows="5">${h(x.text)}</textarea></label></form>
       <div class="modal-actions">
         ${sn ? '<button class="btn btn-danger" id="del-snip" style="margin-right:auto">Supprimer</button>' : ''}
         <button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
       (root, close) => {
-        $('#ok', root).onclick = () => { const v = formValues($('#sf', root)); if (!v.name.trim() || !v.text.trim()) return toast('Nom et texte obligatoires.', true); Object.assign(x, v); if (!sn) data.snippets.push(x); save(true); close(); if (done) done(); };
+        $('#ok', root).onclick = () => {
+          const v = formValues($('#sf', root));
+          // On montre CELUI qui manque, pas « Nom et texte obligatoires » : avec deux champs, un
+          // message qui les nomme tous les deux ne dit pas lequel relire.
+          if (!v.name.trim()) return refus('#sf input[name=name]', 'Donne un nom à ce texte : c\'est lui que tu choisiras dans la liste.');
+          if (!v.text.trim()) return refus('#sf textarea[name=text]', 'Le texte est vide.');
+          Object.assign(x, v); if (!sn) data.snippets.push(x); save(true); close(); if (done) done();
+        };
         if ($('#del-snip', root)) $('#del-snip', root).onclick = async () => {
           if (!await confirmDialog(`Supprimer le texte « ${x.name} » ? Les documents où il a déjà été inséré ne changent pas.`)) return;
           forget('snippets', x.id, x.name);
@@ -4235,7 +4288,7 @@
     const s = supplier || Object.assign({ id: C.uid(), name: '', contact: '', matricule: '', address: '', phone: '', email: '', rib: '', bank: '', notes: '', paymentTermsDays: '', withholdingRate: '' }, preset || {});
     modal(`<h2>${supplier ? 'Modifier le fournisseur' : 'Nouveau fournisseur'}</h2>
       <form id="sf" class="grid-2">
-        <label class="field span-2">Nom / Raison sociale<input type="text" name="name" value="${h(s.name)}" required></label>
+        <label class="field span-2 obligatoire">Nom / Raison sociale<input type="text" name="name" value="${h(s.name)}" required></label>
         ${field(lbl('Personne à contacter', 'cl.contact'), 'contact', s.contact || '', 'text', 'placeholder="M. Sami Gharbi, commercial"')}
         ${field(lbl('Matricule fiscal', 'co.matricule'), 'matricule', s.matricule || '')}
         ${field('Téléphone', 'phone', s.phone || '')}
@@ -4253,7 +4306,7 @@
       (root, close) => {
         $('#ok', root).onclick = () => {
           const v = formValues($('#sf', root));
-          if (!v.name.trim()) return toast('Le nom est obligatoire.', true);
+          if (!v.name.trim()) return refus('#sf input[name=name]', 'Le nom est obligatoire : c\'est lui qui apparaît sur chaque achat.');
           Object.assign(s, v, {
             withholdingRate: v.withholdingRate === '' ? '' : Number(v.withholdingRate),
             paymentTermsDays: v.paymentTermsDays === '' ? '' : Number(v.paymentTermsDays)
@@ -4568,6 +4621,9 @@
 
   // Éditeur d'achat. Pas d'aperçu ni de PDF : le document existe déjà, c'est celui du fournisseur.
   // On le saisit pour récupérer la TVA, suivre ce qu'on doit et, plus tard, alimenter le stock.
+  // Un achat n'est JAMAIS verrouillé (contrairement à une facture émise) : `locked` n'existe pas
+  // dans cette route. L'y écrire lève une ReferenceError au moment de construire le gabarit, et
+  // c'est TOUTE la page qui reste blanche — sans rien dans la console de l'utilisateur.
   routes.achat = (parts) => {
     let p, isNew = false;
     if (parts[0] === 'new') {
@@ -4627,7 +4683,8 @@
             </form>
           </div>
           <div class="panel"><h2>Lignes ${info('buy.lines')}</h2>
-            <div class="catalog-pick"><button class="btn btn-sm" id="add-line">+ Ligne</button>
+            <div class="catalog-pick"><div id="b-cat">${combo({ items: [], placeholder: 'Ajouter depuis le catalogue…', search: 'Rechercher une prestation…' })}</div>
+              <button class="btn btn-sm" id="add-line">+ Ligne</button>
               <span class="small muted">Saisis au moins le total hors taxes et son taux de TVA : c'est ce qui permet de récupérer la TVA.</span></div>
             <table class="lines-edit buy-lines"><thead><tr><th>Désignation</th><th style="width:62px">Qté</th><th style="width:92px">P.U. HT</th><th style="width:76px">TVA</th>
               <th style="width:150px">Destination ${info('buy.destination')}</th><th style="width:74px">Déduct. ${info('buy.deductible')}</th><th class="r">Total HT</th><th></th></tr></thead>
@@ -4696,6 +4753,24 @@
       refresh();
     }
     $('#add-line').onclick = () => { p.lines.push({ label: '', qty: 1, unit: '', unitPrice: 0, vatRate: 19, destination: 'charge', deductible: true }); touch(); drawLines(); $$('input[data-k=label]', body).pop().focus(); };
+    // L'éditeur d'achat reprochait ensuite un libellé qui ne correspond à aucun article du catalogue
+    // (« cette ligne n'entrera dans aucun stock ») sans jamais avoir offert de le choisir dans la
+    // liste. On pose le même sélecteur que dans l'éditeur de document et les modèles.
+    // Le PRIX repris est le coût d'achat (`unitCost`) quand il existe : ici on achète, on ne vend pas.
+    if ($('#b-cat')) bindCombo($('.combo', $('#b-cat')), {
+      reset: true, placeholder: 'Ajouter depuis le catalogue…',
+      items: data.catalog.slice().sort((a2, b2) => (a2.label || '').localeCompare(b2.label || '', 'fr'))
+        .map(c => ({ v: c.id, label: c.label, sub: c.tracked ? 'suivi en stock' : (c.description || ''),
+          right: C.money(Number(c.unitCost) || Number(c.unitPrice) || 0, cur) + ' HT',
+          text: `${c.label} ${c.description || ''}` })),
+      onPick: id => {
+        const it = data.catalog.find(c => c.id === id); if (!it) return;
+        p.lines.push({ label: it.label, qty: 1, unit: it.unit || '',
+          unitPrice: Number(it.unitCost) || Number(it.unitPrice) || 0, vatRate: Number(it.vatRate) || 0,
+          itemId: it.id, destination: it.tracked ? 'stock' : 'charge', deductible: true });
+        touch(); drawLines();
+      }
+    });
 
     function refresh() {
       const t = C.purchaseTotals(p, company());
@@ -4714,10 +4789,20 @@
       // sans ce rappel, l'entrée disparaît en silence et le stock finit par passer en négatif.
       const orphelines = t.lines.filter(l => l.destination === 'stock' && (Number(l.qty) || 0) > 0)
         .filter(l => { const it = C.itemOfLine(l, data); return !it || !it.tracked; });
+      // Choisir « Immobilisation » ne disait rien — or la ligne n'est déduite NULLE PART tant que la
+      // fiche du bien n'existe pas : ni en charge (ce n'en est pas une), ni en amortissement (il n'y
+      // a pas encore de durée). Elle dormait dans un compteur de barre latérale que personne ne
+      // regarde au moment où on saisit l'achat.
+      const immos = t.lines.filter(l => l.destination === 'immobilisation' && C.round3((Number(l.qty) || 0) * (Number(l.unitPrice) || 0)) > 0);
       const box = $('#b-stock-hint');
       if (box) {
-        box.hidden = !orphelines.length;
-        box.innerHTML = orphelines.length ? `<span class="small warn-text">${orphelines.length} ligne(s) en destination « stock » ne correspondent à aucun article suivi du catalogue : ${orphelines.map(l => h(l.label || 'sans désignation')).join(', ')}. Elles n'entreront dans aucun stock. ${info('stk.orphan')}</span>` : '';
+        const morceaux = [];
+        if (orphelines.length) morceaux.push(`<span class="small warn-text">${pl(orphelines.length, 'ligne')} en destination « stock » ${orphelines.length > 1 ? 'ne correspondent' : 'ne correspond'} à aucun article suivi du catalogue : ${orphelines.map(l => h(l.label || 'sans désignation')).join(', ')}. ${orphelines.length > 1 ? 'Elles n\'entreront' : 'Elle n\'entrera'} dans aucun stock. ${info('stk.orphan')}</span>`);
+        if (immos.length) morceaux.push(`<div class="small warn-text mt">${pl(immos.length, 'ligne')} en immobilisation : l'amortissement ne commencera qu'une fois la fiche du bien créée (famille, durée, date de mise en service). En attendant, ${immos.length > 1 ? 'ces montants ne sont déduits' : 'ce montant n\'est déduit'} nulle part. ${info('immo.attente')}
+          <button class="btn btn-sm mt" id="b-immo" type="button">Voir les biens à créer</button></div>`);
+        box.hidden = !morceaux.length;
+        box.innerHTML = morceaux.join('');
+        if ($('#b-immo')) $('#b-immo').onclick = () => { immoState.tab = 'attente'; navigate('#/immos'); };
       }
     }
 
@@ -5025,7 +5110,7 @@
     modal(`<h2>${proj ? 'Modifier l\'affaire' : 'Nouvelle affaire'}</h2>
       <p class="small muted">Une affaire relie des ventes et des achats. C'est le seul endroit où la marge est <b>exacte</b> : on ne devine plus le coût, on l'a payé.</p>
       <form id="pf3" class="grid-2">
-        <label class="field span-2">Nom de l'affaire<input type="text" name="name" value="${h(p.name)}" placeholder="Salle serveur — École Les Lauriers"></label>
+        <label class="field span-2 obligatoire">Nom de l'affaire<input type="text" name="name" value="${h(p.name)}" placeholder="Salle serveur — École Les Lauriers"></label>
         <div class="field">Client
           ${combo({ name: 'clientId', value: p.clientId, items: data.clients.slice().sort((a, b) => a.name.localeCompare(b.name, 'fr')).map(c => ({ v: c.id, label: c.name, text: c.name })), placeholder: '— Aucun client précis —', search: 'Rechercher un client…' })}
         </div>
@@ -5280,7 +5365,7 @@
     const cur = company().currency;
     modal(`<h2>${employee ? 'Modifier le salarié' : 'Nouveau salarié'}</h2>
       <form id="ef" class="grid-2">
-        <label class="field span-2">Nom et prénom<input type="text" name="name" value="${h(e.name)}" placeholder="Ahmed Ben Ali"></label>
+        <label class="field span-2 obligatoire">Nom et prénom<input type="text" name="name" value="${h(e.name)}" placeholder="Ahmed Ben Ali"></label>
         ${field('CIN', 'cin', e.cin || '', 'text', '')}
         ${field(lbl('Matricule CNSS', 'pay.cnss'), 'cnss', e.cnss || '', 'text', '')}
         ${field('Poste', 'position', e.position || '', 'text', 'placeholder="Technicien"')}
@@ -5309,7 +5394,7 @@
         $('#ef', root).oninput = $('#ef', root).onchange = hint; hint();
         $('#ok', root).onclick = () => {
           const v = formValues($('#ef', root));
-          if (!v.name.trim()) return toast('Le nom est obligatoire.', true);
+          if (!v.name.trim()) return refus('#ef input[name=name]', 'Le nom du salarié est obligatoire : il figure sur chaque bulletin.');
           if (!(Number(v.grossSalary) > 0)) return toast('Le salaire brut doit être supérieur à zéro.', true);
           if (v.endDate && v.hireDate && v.endDate < v.hireDate) return toast('La sortie ne peut pas précéder l\'embauche.', true);
           Object.assign(e, v, { grossSalary: Number(v.grossSalary) || 0, children: Number(v.children) || 0, headOfFamily: !!v.headOfFamily });
@@ -7233,7 +7318,7 @@
     modal(`<h2>${acc ? 'Modifier le compte' : 'Nouveau compte'}</h2>
       <p class="small muted">Le <b>solde de départ</b> est celui de ton relevé au jour où tu commences à suivre ce compte dans SkanFact. Tout ce qui est saisi après s'y ajoute.</p>
       <form id="af" class="grid-2">
-        <label class="field span-2">Nom du compte<input type="text" name="name" value="${h(a.name)}" placeholder="BIAT — compte courant" required></label>
+        <label class="field span-2 obligatoire">Nom du compte<input type="text" name="name" value="${h(a.name)}" placeholder="BIAT — compte courant" required></label>
         <label class="field">${lbl('Type', 'tre.kind')}<select name="kind">${C.ACCOUNT_KINDS.map(([v, l]) => `<option value="${v}" ${a.kind === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
         ${field('Banque', 'bank', a.bank || '')}
         ${field('RIB', 'rib', a.rib || '')}

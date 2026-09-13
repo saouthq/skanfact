@@ -7,6 +7,39 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 7.20.0 — 13/09/2026
+
+**Ce qui est obligatoire, et ce qui mène quelque part.**
+
+Six endroits où l'application savait quelque chose et ne le montrait pas.
+
+- **Rien ne disait ce qui est obligatoire.** L'attribut `required` posé sur un champ d'une fenêtre
+  est **inerte** : rien ne soumet le formulaire, c'est un bouton qui lit les valeurs. Une étoile
+  rouge marque les champs obligatoires, et la légende « * obligatoire » se pose **toute seule** dès
+  qu'une fenêtre en contient un — une légende recopiée fenêtre par fenêtre s'oublie à la première
+  qui gagne un champ.
+- **Le refus ne montrait pas le champ fautif.** Client, Fournisseur, Prestation, Texte prédéfini,
+  Salarié : un message et rien d'autre, alors qu'il fallait relire tout le formulaire. Le champ est
+  maintenant amené à l'écran, reçoit le curseur et se marque.
+- **Le Catalogue affichait une quantité en stock sans pouvoir l'ouvrir.** La fiche de l'article —
+  mouvements, coût moyen, historique — n'était atteignable que depuis la page Stock.
+- **L'éditeur d'achat n'offrait aucun sélecteur de catalogue** et reprochait ensuite le libellé qui
+  ne correspond à rien (« cette ligne n'entrera dans aucun stock »). Le sélecteur est là, et il
+  reprend le **coût d'achat** (pas le prix de vente : ici on achète), l'identifiant de l'article et
+  sa destination.
+- **Choisir « Immobilisation » ne disait rien** — alors que la ligne n'est déduite **nulle part**
+  tant que la fiche du bien n'existe pas : ni en charge (ce n'en est pas une), ni en amortissement
+  (il n'y a pas encore de durée). Elle dormait dans un compteur de barre latérale que personne ne
+  regarde en saisissant un achat.
+- **La fiche client s'arrêtait aux documents.** Ni ses affaires (où l'on sait exactement ce qu'il a
+  rapporté, achats déduits), ni ses contrats récurrents. Les deux panneaux sont là, cliquables, et
+  disparaissent quand il n'y a rien à montrer.
+
+Et un défaut trouvé par le test lui-même : une garde `locked` écrite dans l'éditeur d'achat, où
+cette variable n'existe pas — la page entière restait blanche, sans rien dans la console.
+
+`npm run e2e:fiches` refait les sept gestes dans l'application réelle ; `npm test` passe à 277.
+
 ## 7.19.0 — 13/09/2026
 
 **L'éditeur de document.**
