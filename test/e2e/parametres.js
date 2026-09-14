@@ -151,6 +151,21 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
     return { champs, bulles, titres, boutons,
       hauteur: v.scrollHeight, ecrans: Math.round(v.scrollHeight / v.clientHeight * 10) / 10 };
   });
+  // Panneau par panneau : c'est ce chiffre-là qui dit si un découpage en onglets serait équilibré
+  // ou s'il fabriquerait des onglets d'un demi-écran (règle 7.30.0 : ce n'est alors pas un onglet,
+  // c'est un clic de plus).
+  mesures.cabinet.panneaux = await cw.evaluate(() => {
+    const v = document.querySelector('#view');
+    return [...v.querySelectorAll('.panel')].map(p => ({
+      id: p.id,
+      titre: (p.querySelector('h2') || {}).textContent ? p.querySelector('h2').textContent.replace(/\s+/g, ' ').trim() : '',
+      onglet: (p.closest('section[data-pane]') || {}).dataset ? p.closest('section[data-pane]').dataset.pane : '',
+      champs: p.querySelectorAll('input:not([type=hidden]), select, textarea').length,
+      boutons: p.querySelectorAll('button:not(.i)').length,
+      hauteur: Math.round(p.getBoundingClientRect().height),
+      ecrans: Math.round(p.getBoundingClientRect().height / v.clientHeight * 100) / 100
+    }));
+  });
   // Trois captures : le haut, le milieu, le bas — c'est une seule page qui défile.
   for (const [nom, frac] of [['haut', 0], ['milieu', 0.5], ['bas', 1]]) {
     await cw.evaluate(f => { const v = document.querySelector('#view'); v.scrollTop = (v.scrollHeight - v.clientHeight) * f; }, frac);
