@@ -1985,6 +1985,69 @@ Livré en même temps, sur ses demandes :
   taille avant d'être jugée (7.21.0). Et une assertion sur du texte source doit tenir compte des
   **apostrophes échappées** : `/n'a encore/` ne correspond pas à `n\'a encore`.
 
+### 8.2.0 — Le cycle de vie d'une licence
+
+Skander, après avoir émis sa première licence de test : « le code doit être écrit quelque part non ?
+quand je fais émettre ça me renvoie vers la facture et après je suis obligé de revenir dans licence
+pour l'envoyer, c'est pas intuitif » ; « j'aimerais upgrade une licence sans forcément en envoyer une
+autre » ; « imagine des gens veulent se rétracter, il faut pouvoir révoquer cette clé et rembourser
+la facture, il me faut tout un système de gestion ».
+
+**La limite à connaître avant tout le reste : une clé livrée ne se reprend pas.** La licence est
+vérifiée sur le poste du client, hors ligne, contre la clé publique embarquée. Il n'existe aucun
+serveur à interroger, donc **rien ne peut faire cesser de fonctionner une clé déjà envoyée**. C'est
+le prix de la promesse inverse — celle qui fait la valeur du produit : le client travaille sans
+connexion, et l'application lui survit même si son éditeur disparaît. Décision prise avec Skander :
+on ne coupe PAS non plus les mises à jour d'une clé révoquée (règle 6.7.0, « une licence expirée
+reçoit quand même les corrections de bugs »).
+
+- **« Révoquer » dit donc trois choses vraies, et une quatrième qu'il refuse de cacher** : la licence
+  sort des actives avec son motif et sa date ; la facture émise se corrige par un **avoir** (jamais
+  une suppression) ; et **la clé continue chez le client jusqu'à sa date de fin**, ce que la fenêtre
+  écrit en orange avec le pourquoi. Un bouton qui prétendrait couper serait un mensonge, et c'est
+  exactement le genre d'affirmation que cette application s'interdit (« 7 pièces vérifiées,
+  intactes », Cabinet 1.0.0). Un test exige ces phrases dans la fenêtre.
+- **Un geste finit là où il se termine vraiment.** `montrerCle` remplace `navigate('#/doc/' + inv.id)` :
+  la CLÉ est le produit, la facture est une conséquence. Même famille que « un bouton principal
+  propose le geste SUIVANT » (7.19.0).
+- **Le prorata, parce que refaire payer une année fait refuser la montée en gamme.**
+  `core.prorataOffre` : la date de fin ne bouge pas, on facture la différence sur les jours restants.
+  Une licence **à vie** n'a pas de fin sur laquelle répartir — `jours`/`total` valent `null` pour que
+  l'écran le DISE au lieu d'afficher un ratio inventé. Et une « montée » vers moins cher ne rend
+  jamais d'argent toute seule : un remboursement est une décision, il passe par un avoir.
+- **Ce qui est dans la charge signée ne se modifie pas à distance** — l'offre ET le matricule. Les
+  deux gestes signent donc une clé neuve ; ce qui change, c'est ce qu'ils facturent : la différence
+  au prorata pour l'offre, **rien** pour un matricule corrigé (cette licence est déjà payée, et la
+  facture reste attachée à la ligne remplacée, sinon « À faire » en réclamerait une seconde).
+- **`LICENCE_MOTIFS` : trois gestes, trois libellés.** Renouvellement, changement d'offre et
+  correction de matricule produisent tous un `remplaceePar` ; les montrer tous comme « Renouvelée »
+  ferait mentir la colonne.
+- **Trois manques d'argent que personne ne voyait** (`core.licencesAFaire`) : clé jamais envoyée,
+  facture restée en brouillon, licence livrée et impayée. Chaque ligne pose une **vue** de la liste
+  (`licState.tri`) au lieu d'ouvrir cent licences — règle 7.15.0 — et « Réinitialiser les filtres »
+  doit pouvoir en sortir, sinon la vue est un piège.
+- **`invoiceBalance(doc, data, company)` et `effectiveStatus(doc, data, company, today)` prennent la
+  société en TROISIÈME argument**, jamais lue dans `data`. L'oublier ne lève rien à l'appel : ça
+  plante plus loin dans `computeTotals` sur `company.stampFee`. `licenceSuivi` la prend en option
+  avec un repli sur `data.company`.
+- **Un compteur rafraîchi par EFFET DE BORD d'une navigation disparaît avec elle.** Le compte de la
+  barre latérale se mettait à jour parce qu'on partait sur la facture ; en finissant sur la clé, une
+  licence émise à l'instant n'était comptée nulle part jusqu'au prochain changement de page. C'est
+  `e2e:licence` qui l'a vu — jamais la relecture. `redessinerBarre()` après chacun des quatre gestes.
+- **Deux assertions gravaient le défaut, retournées** (quatrième et cinquième occurrence du motif) :
+  le test de source exigeait `navigate('#/doc/' + inv.id)`, et l'e2e attendait `#/doc/…` après
+  l'émission. **Quand une règle change, c'est le test qui se relit en premier.**
+- Piège de test : **`lireApp()` RETIRE les commentaires de ligne** — une tranche ne peut jamais
+  s'ancrer sur un commentaire, seulement sur du code. Mon ancre `// ---------- le cycle de vie…`
+  donnait `indexOf` = −1, donc `slice(x, -1)`, donc 56 000 caractères au lieu de 3 000.
+- Piège de test, re-rencontré : une assertion qui recopie une ligne de menu mot pour mot
+  (`/peut && !r\.remplaceePar \? \{ icon: 'contrat', label: 'Renouveler'/`) tombe dès que l'entrée
+  gagne un garde-fou, et se « répare » en recopiant la nouvelle ligne — donc sans rien prouver. On
+  extrait la LIGNE et on exige la règle qu'elle doit porter (7.16.0).
+- Piège de remplacement en masse : `const filtered = !!(s.q || s.st);` existe dans plusieurs routes.
+  Un remplacement global aurait touché la page Clients. On borne la zone à la route visée — et
+  `s.index('\n  routes.', d)` rend −1 quand la route est la dernière du fichier.
+
 - **`LICENCE_CONTACT` vaut `contact@skanfact.tn`** : la boîte Zimbra Starter du domaine `skanfact.tn`, commandé chez OVH le 14/09/2026 (une seule adresse personnalisée pour l'instant, d'où « contact » et pas « licences »). C'est l'adresse vers laquelle « Demander une licence » et « Signaler un problème » composent le mail. Elle doit exister avant la fin du premier essai (14/10/2026), sinon un client en fin d'essai écrit dans le vide.
 
 ## Pistes pour la suite (non demandées)

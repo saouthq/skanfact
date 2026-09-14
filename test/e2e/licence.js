@@ -149,8 +149,21 @@ const L = require('../../src/licence.js');
   await win.fill('#modal-root input[name=prix]', '390');
   await win.selectOption('#modal-root select[name=tva]', '19');
   await win.click('#modal-root #ok');
-  await win.waitForFunction(() => /^#\/doc\//.test(location.hash), null, { timeout: 15000 });
-  await win.waitForTimeout(600);
+  // 8.2.0 — le geste finit sur la CLÉ, plus sur la facture. L'assertion précédente attendait
+  // `#/doc/…` : elle gravait le défaut que Skander a signalé — on atterrissait sur la facture et il
+  // fallait revenir à la page Licences pour envoyer au client le produit qu'il attend.
+  await win.waitForSelector('#modal-root #cle-txt', { timeout: 15000 });
+  const panneauCle = await win.evaluate(() => ({
+    cle: (document.querySelector('#cle-txt') || {}).textContent || '',
+    copier: !!document.querySelector('#cle-copier'), mail: !!document.querySelector('#cle-mail'),
+    facture: !!document.querySelector('#cle-fact'),
+    brouillon: /brouillon/i.test((document.querySelector('#modal-root .modal') || document.body).textContent)
+  }));
+  if (!/^SKAN1\./.test(panneauCle.cle.trim())) throw new Error('le panneau doit montrer la clé : ' + panneauCle.cle.slice(0, 60));
+  if (!panneauCle.copier || !panneauCle.mail || !panneauCle.facture) throw new Error('copier / envoyer / ouvrir la facture : il en manque — ' + JSON.stringify(panneauCle));
+  if (!panneauCle.brouillon) throw new Error('le panneau doit dire que la facture est un brouillon à émettre');
+  await win.click('#modal-root [data-close]');
+  await win.waitForTimeout(400);
   const emise = await win.evaluate(() => {
     const d = window.__data;
     const l = d.licences[0];
@@ -284,7 +297,11 @@ const L = require('../../src/licence.js');
   if (prerempli.client !== l1.clientId || prerempli.offre !== 'independant' || prerempli.prix !== '390') throw new Error('le renouvellement n\'est pas prérempli : ' + JSON.stringify(prerempli));
   await win.selectOption('#modal-root select[name=duree]', 'vie');
   await win.click('#modal-root #ok');
-  await win.waitForFunction(() => /^#\/doc\//.test(location.hash), null, { timeout: 15000 });
+  // Un renouvellement finit lui aussi sur la CLÉ (8.2.0), plus sur la facture.
+  await win.waitForSelector('#modal-root #cle-txt', { timeout: 15000 });
+  const cle2 = (await win.textContent('#modal-root #cle-txt')).trim();
+  if (!/^SKAN1\./.test(cle2) || cle2 === l1.key) throw new Error('le renouvellement doit montrer une clé NEUVE');
+  await win.click('#modal-root [data-close]');
   await win.waitForTimeout(500);
   const apresRenouv = await win.evaluate(() => {
     const d = window.__data; const [a, b] = d.licences;

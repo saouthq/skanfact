@@ -3479,10 +3479,15 @@ t('éditeur : le renderer relit la licence avec le matricule, et la page Licence
   const form = app.slice(app.indexOf('function licenceForm('), app.indexOf('async function envoyerLicence('));
   assert.ok(/bridge\.licenceEmettre\(\{/.test(form) && !/signLicence/.test(form), 'le formulaire signe par le pont, jamais lui-même');
   assert.ok(/newDocument\('facture'\)/.test(form) && !/nextNumber/.test(form), 'la facture est un brouillon fabriqué par newDocument, sans numéro');
-  assert.ok(/data\.licences\.push\(/.test(form) && /data\.documents\.push\(inv\)/.test(form) && /navigate\('#\/doc\/' \+ inv\.id\)/.test(form), 'le geste écrit l\'historique, la facture, et ouvre le brouillon');
+  // 8.2.0 — l'assertion exigeait `navigate('#/doc/' + inv.id)` : elle gravait le défaut. Filer sur la
+  // facture enterrait la CLÉ, c'est-à-dire le produit que le client attend, et obligeait à revenir à
+  // la page Licences pour l'envoyer. Le geste finit maintenant là où il se termine vraiment.
+  assert.ok(/data\.licences\.push\(/.test(form) && /data\.documents\.push\(inv\)/.test(form), 'le geste doit écrire l\'historique et la facture');
+  assert.ok(/montrerCle\(lic, \{ neuve: true \}\)/.test(form) && !/navigate\('#\/doc\//.test(form), 'le geste doit finir sur la CLÉ, pas sur la facture');
   assert.ok(/discountRate: v\.parrain \? /.test(form), 'la remise de parrainage se pose sur la facture (doc.discountRate), pas sur la ligne');
   // Le mail porte la clé, et la facture en PDF passe par le tampon comme tout document.
-  const mail = app.slice(app.indexOf('async function envoyerLicence('), app.indexOf('const licState = '));
+  const mail = app.slice(app.indexOf('async function envoyerLicence('), app.indexOf('function montrerCle('));
+  assert.ok(mail.length > 800 && mail.length < 6000, 'tranche du mail de licence improbable (' + mail.length + ')');
   assert.ok(/demoBlock\('Envoyer un email'\)/.test(mail), 'le mail de licence prévient depuis l\'exemple, comme les autres envois');
   assert.ok(/cle: lic\.key/.test(mail) && /stampText: stampFor\(inv\)/.test(mail), 'le mail porte la clé et le PDF passe par stampFor');
 });
@@ -3560,7 +3565,14 @@ t('éditeur : ce que la relecture adversariale a trouvé (7.33.0), tenu par des 
   assert.ok(/await demoBlock\('Émettre une licence'\)/.test(app), 'licenceForm doit prévenir depuis le jeu d\'exemple');
   assert.ok(/licenceBlock\('Créer une facture de licence'\)/.test(app), 'la facture de licence passe par licenceBlock');
   // 6. Une licence déjà renouvelée ne se renouvelle pas deux fois.
-  assert.ok(/peut && !r\.remplaceePar \? \{ icon: 'contrat', label: 'Renouveler'/.test(app), '« Renouveler » ne s\'offre pas sur une licence déjà renouvelée');
+  // On ancre sur la RÈGLE, pas sur la forme : l'assertion recopiait la ligne mot pour mot et tombait
+  // dès que l'entrée gagnait un garde-fou de plus (8.2.0 : `&& !revoquee`), ce qui pousse à recopier
+  // la nouvelle ligne — donc à ne plus rien prouver (piège 7.16.0).
+  const ligneRen = app.split('\n').find(l => /label: 'Renouveler'/.test(l));
+  assert.ok(ligneRen, '« Renouveler » introuvable dans le menu de ligne');
+  assert.ok(/!r\.remplaceePar/.test(ligneRen), '« Renouveler » ne s\'offre pas sur une licence déjà remplacée : ' + ligneRen.trim());
+  // Et pas davantage sur une licence révoquée : on ne revend pas ce qu'on vient de rembourser.
+  assert.ok(/!revoquee/.test(ligneRen), '« Renouveler » ne s\'offre pas sur une licence révoquée : ' + ligneRen.trim());
   // 7. Le mail n'annonce la facture jointe que si elle part vraiment, et l'historique de la facture aussi.
   assert.ok(/facture: phraseFacture/.test(app) && /if \(attachment && inv\) \{ inv\.emails/.test(app), 'la phrase « facture jointe » et la trace ne valent qu\'avec la pièce');
   assert.ok(/\{facture\}/.test(core.DEFAULT_EMAIL_TEMPLATES.licence.body) && /\{facture\}/.test(core.DEFAULT_EMAIL_TEMPLATES_EN.licence.body), 'le gabarit porte {facture}, pas une phrase inconditionnelle');
@@ -5577,6 +5589,109 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.ok(zone.length > 200 && zone.length < 1200, 'tranche licenceBanner improbable (' + zone.length + ' caractères)');
     assert.ok(/C\.pastilleLicence\(licence\)/.test(zone), 'la pastille ne passe pas par la règle partagée');
     assert.ok(!/daysLeft/.test(zone), 'le renderer rejuge les jours au lieu de poser la décision : ' + zone);
+  });
+
+  // 8.2.0 — Le cycle de vie d'une licence. Ce qui suit l'émission ne se voyait nulle part : la clé
+  // n'était pas montrée, la facture pouvait rester brouillon, l'impayé n'était signalé par personne,
+  // et une rétractation n'avait aucun chemin.
+  t('licence : le prorata d\'un changement d\'offre ne refait jamais payer une année', () => {
+    const lic = { id: 'a', exp: '2027-09-14', emisLe: '2026-09-14', prix: 390 };
+
+    // 1. Le jour de l'émission, tout reste à courir : la différence est due en entier.
+    const j0 = core.prorataOffre(lic, 690, 390, '2026-09-14');
+    assert.strictEqual(j0.total, 365);
+    assert.strictEqual(j0.jours, 365);
+    assert.strictEqual(j0.montant, 300, 'au premier jour, la différence entière');
+
+    // 2. À mi-parcours, on ne facture que ce qui reste. Le calcul est fait à la MAIN à partir de la
+    //    règle, jamais recopié de ce que le code renvoie (leçon 7.0.1, la plus coûteuse du projet) :
+    //    du 16/03/2027 au 14/09/2027 il reste 182 jours sur 365, soit 300 × 182/365 = 149,589.
+    const mi = core.prorataOffre(lic, 690, 390, '2027-03-16');
+    assert.strictEqual(mi.jours, 182);
+    assert.strictEqual(mi.montant, 149.589, 'prorata à mi-parcours : ' + mi.montant);
+
+    // 3. Une licence À VIE n'a pas de fin sur laquelle répartir : la différence est due en entier,
+    //    et `jours`/`total` valent null pour que l'écran le DISE au lieu d'un ratio inventé.
+    const vie = core.prorataOffre({ id: 'b', exp: '', prix: 390 }, 690, 390, '2026-09-14');
+    assert.strictEqual(vie.jours, null);
+    assert.strictEqual(vie.total, null);
+    assert.strictEqual(vie.montant, 300);
+
+    // 4. Une « montée » vers moins cher ne rend pas d'argent toute seule : un remboursement est une
+    //    décision, et il passe par un avoir. Jamais un montant négatif sur une facture.
+    assert.strictEqual(core.prorataOffre(lic, 390, 690, '2026-09-14').montant, 0, 'jamais de différence négative');
+  });
+
+  t('licence : une révocation dit la vérité — dans les livres, pas sur le poste du client', () => {
+    // 1. L'état passe avant tout le reste : ni active, ni à renouveler, quelle que soit la date.
+    assert.strictEqual(core.licenceEtat({ revoqueeLe: '2026-09-20', exp: '2027-09-14' }, '2026-09-25').etat, 'revoquee');
+    assert.strictEqual(core.licenceEtat({ revoqueeLe: '2026-09-20', exp: '' }, '2026-09-25').etat, 'revoquee',
+      'même une licence à vie révoquée n\'est plus « à vie »');
+    // Le libellé se juge par la SURFACE que l'écran consomme (`licenceRows`), pas en exportant une
+    // table interne pour la commodité d'un test.
+    const libelle = core.licenceRows({ licences: [{ id: 'x', nom: 'X', exp: '2027-01-01', revoqueeLe: '2026-09-10' }] }, '2026-09-14')[0];
+    assert.strictEqual(libelle.etatLabel, 'Révoquée');
+
+    // 2. Elle ne réclame plus rien : on ne relance pas le renouvellement de ce qu'on a remboursé.
+    const d = { licences: [
+      { id: 'a', nom: 'A', exp: '2026-10-01' },
+      { id: 'r', nom: 'R', exp: '2026-10-01', revoqueeLe: '2026-09-10', revoqueeMotif: 'rétractation' }
+    ] };
+    assert.deepStrictEqual(core.licencesExpirant(d, '2026-09-14').map(x => x.id), ['a'],
+      'une licence révoquée ne réclame plus son renouvellement');
+
+    // 3. L'écran doit DIRE que la clé survit. C'est la seule chose qui compte ici : prétendre couper
+    //    une licence hors ligne serait un mensonge, et c'est ce que cette application s'interdit.
+    const app = lireApp();
+    const dd = app.indexOf('async function revoquerForm(');
+    assert.ok(dd > 0, 'revoquerForm manque');
+    const zone = app.slice(dd, app.indexOf('\n  }\n', dd));
+    assert.ok(zone.length > 900, 'tranche de revoquerForm improbable (' + zone.length + ')');
+    assert.ok(/continue de fonctionner/.test(zone), 'la fenêtre doit dire que la clé survit chez le client');
+    assert.ok(/hors ligne/.test(zone) && /aucun serveur/.test(zone), 'elle doit dire POURQUOI rien ne peut la couper');
+    assert.ok(/avoir/.test(zone) && /doc\/new\/avoir\//.test(zone), 'le remboursement passe par un avoir, pas une suppression');
+    assert.ok(/refus\('#rvf input\[name=motif\]'/.test(zone), 'le motif est obligatoire, et le refus MONTRE le champ');
+  });
+
+  t('licence : ce qui suit l\'émission se voit — la clé, la facture, l\'argent', () => {
+    const co = { currency: 'TND', stampFee: 1 };
+    const inv = n => ({ id: 'i' + n, type: 'facture', number: n === 'd' ? '' : 'FAC-2026-00' + n, date: '2026-09-01',
+      status: n === 'd' ? 'brouillon' : 'envoyée', lines: [{ label: 'L', qty: 1, unitPrice: 690, vatRate: 19 }], payments: [] });
+    const d = { company: co, documents: [inv(1), inv('d')], licences: [
+      { id: 'envoyee', nom: 'A', invoiceId: 'i1', emails: [{ date: '2026-09-12' }] },
+      { id: 'muette', nom: 'B', invoiceId: 'i1', emails: [] },
+      { id: 'brouillon', nom: 'C', invoiceId: 'id', emails: [{ date: '2026-09-13' }] },
+      { id: 'revoquee', nom: 'D', invoiceId: 'i1', emails: [], revoqueeLe: '2026-09-10' },
+      { id: 'remplacee', nom: 'E', invoiceId: 'i1', emails: [], remplaceePar: 'envoyee' }
+    ] };
+    const f = core.licencesAFaire(d, co, '2026-09-14');
+
+    // Une clé signée et jamais partie, c'est un client qui attend — et il a peut-être déjà payé.
+    assert.deepStrictEqual(f.jamaisEnvoyees.map(x => x.id), ['muette'], 'clés jamais envoyées');
+    // Un brouillon n'a pas de numéro : la vente n'existe ni pour la TVA ni pour le journal.
+    assert.deepStrictEqual(f.nonFacturees.map(x => x.id), ['brouillon'], 'factures restées en brouillon');
+    // Livrée et pas payée : le cas qui coûte, puisqu'une licence hors ligne ne se reprend pas.
+    assert.deepStrictEqual(f.impayees.map(x => x.id).sort(), ['envoyee', 'muette'], 'licences impayées');
+    // Révoquée et remplacée ne figurent dans AUCUNE des trois : on ne réclame pas l'argent qu'on
+    // vient de rendre, ni une facture pour une clé qui n'est plus la bonne.
+    ['revoquee', 'remplacee'].forEach(id => ['jamaisEnvoyees', 'nonFacturees', 'impayees'].forEach(k =>
+      assert.ok(!f[k].some(x => x.id === id), id + ' ne doit pas figurer dans ' + k)));
+
+    // `licenceSuivi` réclame la société en TROISIÈME argument : l'oublier ne lève rien ici mais fait
+    // planter `computeTotals` sur `company.stampFee`. Le repli sur `data.company` doit tenir.
+    assert.strictEqual(core.licenceSuivi(d.licences[0], d).payee, false, 'le repli sur data.company doit fonctionner');
+
+    const app = lireApp();
+    // Le geste finit sur la clé, et chaque ligne de « À faire » sait où elle mène.
+    assert.ok(/function montrerCle\(/.test(app), 'montrerCle manque');
+    ['licences-a-envoyer', 'licences-sans-facture', 'licences-impayees'].forEach(id => {
+      assert.ok(new RegExp("'" + id + "':").test(app), 'ligne « À faire » ' + id + ' sans action');
+      assert.ok(new RegExp("'" + id + "'[\\s\\S]{0,240}?licState\\.tri = '").test(app), id + ' doit poser une vue de la liste, pas juste ouvrir la page');
+    });
+    // Et la vue posée doit exister dans le filtre, sinon on arrive sur une liste qui ignore la ligne.
+    ['envoi', 'facture', 'impaye'].forEach(v => assert.ok(new RegExp("s\\.tri === '" + v + "'").test(app), 'la liste ignore la vue « ' + v + ' »'));
+    // « Réinitialiser les filtres » doit pouvoir en sortir : un filtre sans sortie est un piège.
+    assert.ok(/s\.q = ''; s\.st = ''; s\.tri = ''; s\.page = 1; routes\.licences\(\)/.test(app), 'on doit pouvoir sortir de la vue');
   });
 
   // 8.1.0 — L'empreinte d'un cabinet arrive recopiée d'un message ou dictée au téléphone. Mal

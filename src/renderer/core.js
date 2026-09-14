@@ -4229,25 +4229,89 @@
   // dans les trente jours — c'est le moment de facturer le renouvellement), 'expiree'.
   function licenceEtat(lic, todayIso) {
     const t = todayIso || today();
+    // Une licence révoquée passe avant tout le reste : elle n'est plus ni active, ni à renouveler,
+    // et surtout elle ne doit plus rien réclamer (8.2.0). Ce que la révocation ne fait PAS, c'est
+    // désactiver la clé chez le client — voir `licenceRevoquee` et la phrase qui l'accompagne.
+    if (lic && lic.revoqueeLe) return { etat: 'revoquee', jours: null };
     if (!lic || !lic.exp) return { etat: 'vie', jours: null };
     const jours = daysBetween(t, lic.exp);
     return { etat: jours < 0 ? 'expiree' : jours <= LICENCE_PREAVIS ? 'bientot' : 'active', jours };
   }
-  const LICENCE_ETAT_LABELS = { vie: 'À vie', active: 'Active', bientot: 'À renouveler', expiree: 'Expirée' };
+  const LICENCE_ETAT_LABELS = { vie: 'À vie', active: 'Active', bientot: 'À renouveler', expiree: 'Expirée', revoquee: 'Révoquée' };
+  // Pourquoi une licence a été remplacée. Un renouvellement, un changement d'offre et une correction
+  // de matricule fabriquent tous une clé neuve — l'offre et le matricule voyagent DANS la charge
+  // signée, on ne peut pas les changer sans re-signer — mais ce ne sont pas le même geste, et la
+  // liste mentirait en les montrant tous comme « renouvelée ».
+  const LICENCE_MOTIFS = { renouvellement: 'Renouvelée', offre: 'Offre changée', matricule: 'Matricule corrigé' };
+
+  // Le prorata d'un changement d'offre. On ne refait pas une année : on facture la DIFFÉRENCE de
+  // prix sur les jours qui restent, et la date de fin ne bouge pas. Sans ça, passer d'Indépendant à
+  // Entreprise au sixième mois coûterait une année pleine au client — ce qui est un très bon moyen
+  // de lui faire refuser la montée en gamme.
+  //   `total` : la durée de la licence en cours, du jour d'émission à la date de fin.
+  //   `jours` : ce qui reste à courir depuis aujourd'hui.
+  // Une licence à vie n'a pas de prorata : la différence se facture en entier (il n'y a pas de fin
+  // sur laquelle répartir), et `jours`/`total` valent null pour que l'écran le dise au lieu
+  // d'afficher un ratio inventé.
+  function prorataOffre(lic, prixNouveau, prixAncien, todayIso) {
+    const t = todayIso || today();
+    const diff = Math.max(0, (Number(prixNouveau) || 0) - (Number(prixAncien) || 0));
+    if (!lic || !lic.exp) return { jours: null, total: null, part: 1, montant: round3(diff) };
+    const total = Math.max(1, daysBetween(lic.emisLe || t, lic.exp));
+    const jours = Math.max(0, daysBetween(t, lic.exp));
+    const part = Math.min(1, jours / total);
+    return { jours, total, part, montant: round3(diff * part) };
+  }
+
+  // Ce qu'on sait d'une licence côté ARGENT et côté ENVOI. Deux questions que la page posait
+  // nulle part : la clé est-elle partie, et la vente est-elle facturée puis encaissée ? Une licence
+  // émise, jamais envoyée et jamais facturée est le pire des cas — le client attend, et la vente
+  // n'existe pour personne.
+  // `company` est un TROISIÈME argument chez `invoiceBalance` et `effectiveStatus`, jamais lu dans
+  // `data` : l'oublier ne lève rien ici mais fait planter `computeTotals` sur `company.stampFee`.
+  // On le laisse facultatif avec un repli sur `data.company`, qui est bien la société du dossier.
+  function licenceSuivi(lic, data, company) {
+    const co = company || (data && data.company) || {};
+    const envois = (lic && lic.emails) || [];
+    const inv = lic && lic.invoiceId ? (data.documents || []).find(d => d.id === lic.invoiceId) : null;
+    const emise = !!(inv && inv.number);
+    const st = inv && emise ? effectiveStatus(inv, data, co) : '';
+    const reste = inv && emise ? invoiceBalance(inv, data, co).remaining : 0;
+    return {
+      envoyee: envois.length > 0, envoyeeLe: envois.length ? envois[envois.length - 1].date : '',
+      envois: envois.length,
+      facture: inv || null, brouillon: !!(inv && !emise), facturee: emise,
+      statutFacture: st, reste, payee: emise && reste <= 0
+    };
+  }
+
+  // Les trois manques que « À faire » doit remonter, dans cet ordre de gravité. Une licence
+  // révoquée n'y figure jamais : on ne réclame pas l'argent qu'on vient de rendre.
+  function licencesAFaire(data, company, todayIso) {
+    const t = todayIso || today();
+    const vivantes = (data.licences || []).filter(l => l && !l.revoqueeLe && !l.remplaceePar);
+    const jamaisEnvoyees = vivantes.filter(l => !licenceSuivi(l, data, company).envoyee);
+    const nonFacturees = vivantes.filter(l => { const s = licenceSuivi(l, data, company); return !s.facturee; });
+    const impayees = vivantes.filter(l => { const s = licenceSuivi(l, data, company); return s.facturee && !s.payee; });
+    return { jamaisEnvoyees, nonFacturees, impayees, expirant: licencesExpirant(data, t) };
+  }
   // Les lignes de la page Licences : ce qui presse d'abord (à renouveler, puis expirées), puis les
   // actives par date de fin, puis celles à vie. Une licence renouvelée pointe sur sa remplaçante
   // (`remplaceePar`) : elle sort du compte des choses à faire.
-  function licenceRows(data, todayIso) {
+  function licenceRows(data, todayIso, company) {
     const t = todayIso || today();
-    const ordre = { bientot: 0, expiree: 1, active: 2, vie: 3 };
+    const ordre = { bientot: 0, expiree: 1, active: 2, vie: 3, revoquee: 4 };
     return (data.licences || []).map(l => {
       const e = licenceEtat(l, t);
-      return { ...l, etat: e.etat, jours: e.jours, etatLabel: LICENCE_ETAT_LABELS[e.etat], renouvelee: !!l.remplaceePar };
+      const suivi = licenceSuivi(l, data, company);
+      return { ...l, etat: e.etat, jours: e.jours, etatLabel: LICENCE_ETAT_LABELS[e.etat],
+        renouvelee: !!l.remplaceePar, motifLabel: l.remplaceePar ? (LICENCE_MOTIFS[l.motif] || LICENCE_MOTIFS.renouvellement) : '',
+        envoyee: suivi.envoyee, envoyeeLe: suivi.envoyeeLe, facturee: suivi.facturee, payee: suivi.payee, resteDu: suivi.reste };
     }).sort((a, b) => (ordre[a.etat] - ordre[b.etat]) || ((a.exp || '9999').localeCompare(b.exp || '9999')) || (a.nom || '').localeCompare(b.nom || ''));
   }
   // Les licences qui finissent dans les trente jours et qu'on n'a pas encore renouvelées.
   function licencesExpirant(data, todayIso) {
-    return licenceRows(data, todayIso).filter(l => l.etat === 'bientot' && !l.renouvelee);
+    return licenceRows(data, todayIso).filter(l => l.etat === 'bientot' && !l.renouvelee && !l.revoqueeLe);
   }
 
   // ---------- ce qui demande une action ----------
@@ -4505,7 +4569,32 @@
     // Les licences que l'ÉDITEUR a émises et qui finissent dans les trente jours — sur son poste
     // seulement (`opts.editeur` : la clé privée existe sur cet ordinateur). Chez un client, cette
     // liste est vide et la ligne n'existe pas : elle parlerait de licences qu'il n'a pas émises.
-    const licExp = (opts || {}).editeur ? licencesExpirant(data, t) : [];
+    const editeurIci = (opts || {}).editeur;
+    // Ce qui suit l'émission d'une licence, dans l'ordre où ça coûte cher (8.2.0). Une clé signée
+    // est un produit livré : tant qu'elle n'est pas partie, un client paie et attend ; tant que la
+    // facture est un brouillon, la vente n'existe ni pour la TVA ni pour le journal ; tant qu'elle
+    // n'est pas réglée, c'est un client qui a le produit et pas l'éditeur l'argent. Aucune de ces
+    // trois lignes ne se voyait nulle part.
+    const licSuite = editeurIci ? licencesAFaire(data, company, t) : { jamaisEnvoyees: [], nonFacturees: [], impayees: [], expirant: [] };
+    if (licSuite.jamaisEnvoyees.length) out.push({
+      id: 'licences-a-envoyer', level: 'bad',
+      label: `${plFr(licSuite.jamaisEnvoyees.length, 'clé de licence')} jamais ${licSuite.jamaisEnvoyees.length > 1 ? 'envoyées' : 'envoyée'}`,
+      detail: 'La clé est signée mais n\'a jamais quitté cet ordinateur : le client l\'attend, et il a peut-être déjà payé. « Envoyer la clé par email » depuis la page Licences.',
+      count: licSuite.jamaisEnvoyees.length, route: '#/licences', docs: []
+    });
+    if (licSuite.nonFacturees.length) out.push({
+      id: 'licences-sans-facture', level: 'bad',
+      label: `${plFr(licSuite.nonFacturees.length, 'licence')} dont la facture est restée en brouillon`,
+      detail: 'Un brouillon n\'a pas de numéro : cette vente n\'entre ni dans ton journal, ni dans ta TVA, ni dans le dossier du comptable. Ouvre la facture et émets-la.',
+      count: licSuite.nonFacturees.length, route: '#/licences', docs: []
+    });
+    if (licSuite.impayees.length) out.push({
+      id: 'licences-impayees', level: 'warn',
+      label: `${plFr(licSuite.impayees.length, 'licence')} ${licSuite.impayees.length > 1 ? 'livrées' : 'livrée'} et pas encore ${licSuite.impayees.length > 1 ? 'payées' : 'payée'}`,
+      detail: 'Le client a sa clé, elle fonctionne, et la facture n\'est pas réglée. C\'est le cas qui coûte : une licence hors ligne ne se reprend pas.',
+      count: licSuite.impayees.length, route: '#/licences', docs: []
+    });
+    const licExp = licSuite.expirant;
     if (licExp.length) out.push({
       id: 'licences-expirent', level: 'warn',
       label: `${plFr(licExp.length, 'licence')} ${licExp.length > 1 ? 'expirent' : 'expire'} dans les ${LICENCE_PREAVIS} jours`,
@@ -5590,6 +5679,7 @@
     MODULES, PAGES, moduleById, pageById, pageTitle, moduleCount, moduleCounts, modulesRevenus, moduleOn, moduleWhy, navPages,
     MODULES_PAR_ACTIVITE, modulesSuggeres, wipeData, rendreLesEmprunts, estDemo, firstSteps, liste, defaultVat, newLine,
     canalDe, estBeta, pastilleLicence, empreinteCabinet, licencesDuCabinet,
+    LICENCE_MOTIFS, prorataOffre, licenceSuivi, licencesAFaire,
     LICENCE_PREAVIS, licenceEtat, licenceRows, licencesExpirant
   };
 });

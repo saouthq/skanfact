@@ -7,6 +7,47 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 8.2.0 — 14/09/2026
+
+**Le cycle de vie d'une licence** — ce qui se passe après l'émission, et qui ne se voyait nulle part.
+
+**La clé est montrée dès qu'elle est signée.** « Émettre » filait droit sur la facture : le produit
+que le client attend n'était sous les yeux à aucun moment, et il fallait revenir à la page Licences
+pour l'envoyer. Le geste finit maintenant sur une fenêtre qui porte la clé, son offre, sa date de
+fin — et les trois boutons qui suivent : **Copier**, **Envoyer par email**, **Ouvrir la facture**.
+Elle rappelle aussi, en orange, qu'une facture restée en brouillon n'entre ni dans le journal ni
+dans la TVA. Le menu de chaque ligne gagne « Voir la clé ».
+
+**Changer d'offre sans repartir d'une année.** Indépendant → Entreprise en cours de route : la date
+de fin **ne bouge pas**, et seule la différence de prix est facturée, **au prorata des jours
+restants** — 300 DT de différence à mi-parcours d'une année donnent 149,589 DT, pas 690. Une clé
+neuve est signée (l'offre est inscrite dedans, elle ne peut pas se modifier à distance) et l'ancienne
+continue de fonctionner jusqu'à ce que le client colle la nouvelle.
+
+**Corriger un matricule sans refacturer.** Le matricule voyage dans la clé signée : un client qui
+corrige sa fiche société voit sa clé refusée du jour au lendemain, alors qu'il a bien fait. « Corriger
+le matricule » signe une clé neuve — même offre, même date de fin, **aucune facture** : cette licence
+est déjà payée.
+
+**Révoquer, et dire la vérité.** Pour une rétractation ou un remboursement : la licence sort des
+actives avec son motif et sa date, et l'application propose l'**avoir** sur la facture émise — une
+facture ne se supprime pas. ⚠️ **La clé, elle, continue de fonctionner chez le client** jusqu'à sa
+date de fin : SkanFact vérifie les licences *hors ligne*, sans aucun serveur, et c'est précisément
+ce qui permet à tes clients de travailler sans connexion. Rien ne peut désactiver une clé à
+distance, la fenêtre l'écrit noir sur blanc, et elle te dit de demander au client de la retirer.
+
+**Trois manques d'argent remontent dans « À faire »**, chacun avec le bouton qui ouvre la bonne vue :
+
+- *n clés de licence jamais envoyées* — le client attend, et il a peut-être déjà payé.
+- *n licences dont la facture est restée en brouillon* — la vente n'existe ni pour la TVA, ni pour le
+  journal, ni pour le comptable.
+- *n licences livrées et pas encore payées* — le cas qui coûte, puisqu'une licence hors ligne ne se
+  reprend pas.
+
+La liste des licences gagne une colonne **Clé envoyée** (« jamais » en orange), le filtre
+**Révoquées**, et l'état distingue enfin une licence *renouvelée*, dont l'*offre a changé* et dont le
+*matricule a été corrigé* — trois gestes que la colonne montrait tous comme « Renouvelée ».
+
 ## 8.1.0 — 14/09/2026
 
 **Endormir son ordinateur ne coûte plus rien.** Quand le Mac ou le PC se met en veille, l'interface

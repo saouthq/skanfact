@@ -4281,7 +4281,12 @@
     tresorerie: { label: 'Voir la prévision', run: vers('#/tresorerie', () => { tresoState.tab = 'prevision'; }) },
     'taux-change': { label: 'Voir les pièces', run: vers('#/factures', filtre('facture')) },
     sauvegarde: { label: 'Choisir un dossier', run: vers('#/parametres', () => { settingsTab = 'donnees'; settingsFocus = 'p-externe'; }) },
-    'licences-expirent': { label: 'Voir les licences', run: vers('#/licences') }
+    'licences-expirent': { label: 'Voir les licences', run: vers('#/licences') },
+    // Chaque ligne emmène sur la liste AVEC sa vue : arriver sur cent licences quand trois seulement
+    // posent problème, c'est la même impasse que de ne pas pouvoir cliquer du tout (7.15.0).
+    'licences-a-envoyer': { label: 'Voir les clés à envoyer', run: vers('#/licences', () => { licState.q = ''; licState.st = ''; licState.tri = 'envoi'; licState.page = 1; }) },
+    'licences-sans-facture': { label: 'Voir les factures à émettre', run: vers('#/licences', () => { licState.q = ''; licState.st = ''; licState.tri = 'facture'; licState.page = 1; }) },
+    'licences-impayees': { label: 'Voir les impayées', run: vers('#/licences', () => { licState.q = ''; licState.st = ''; licState.tri = 'impaye'; licState.page = 1; }) }
   };
 
   // « Ce qui manque » (Comptabilité → Cabinet) et les contrôles avant clôture disent exactement ce
@@ -10596,9 +10601,15 @@
           // La licence remplacée sort du compte des choses à faire ; elle reste lisible dans la liste.
           if (prec) { const p = data.licences.find(x => x.id === prec.id); if (p) p.remplaceePar = lic.id; }
           save(true); close();
-          toast(prec ? 'Licence renouvelée — relis la facture, puis émets-la' : 'Licence émise — relis la facture, puis émets-la');
           if (done) done(lic);
-          navigate('#/doc/' + inv.id);
+          // Le compteur de la barre latérale se rafraîchissait par EFFET DE BORD de la navigation
+          // vers la facture. Sans elle, il restait sur son ancienne valeur — une licence émise à
+          // l'instant n'était comptée nulle part jusqu'au prochain changement de page. C'est l'e2e
+          // qui l'a vu (8.2.0) : un état lu une fois ne se met pas à jour tout seul (règle 7.1.x).
+          redessinerBarre();
+          // On finit le geste là où il se termine vraiment : sur la clé. Filer sur la facture
+          // enterrait le produit que le client attend, et obligeait à revenir ici pour l'envoyer.
+          montrerCle(lic, { neuve: true });
         };
       });
   }
@@ -10658,7 +10669,182 @@
       }; });
   }
 
-  const licState = { q: '', st: '', sort: null, page: 1 };
+  // ---------- le cycle de vie d'une licence (8.2.0) ----------
+  //
+  // Jusqu'ici, « Émettre » signait la clé, fabriquait la facture et filait droit sur cette dernière :
+  // la CLÉ — c'est-à-dire le produit que le client attend — n'était montrée nulle part, et il fallait
+  // revenir à la page Licences pour l'envoyer. On finit le geste là où il se termine vraiment.
+  function montrerCle(lic, opts) {
+    opts = opts || {};
+    const client = clientById(lic.clientId);
+    const inv = lic.invoiceId ? docById(lic.invoiceId) : null;
+    const suivi = C.licenceSuivi(lic, data, company());
+    modal(`<h2>${opts.neuve ? 'Licence émise' : 'La clé de ' + h(lic.nom || '')}</h2>
+      <p class="small">Voici ce que ${h(client ? client.name : 'le client')} doit coller dans <em>Paramètres → L'application → Licence</em>.</p>
+      <pre class="code-box mono" id="cle-txt">${h(lic.key || '')}</pre>
+      <p class="small muted">${h(offreLabelDe(lic.offre))}${lic.exp ? ' · jusqu\'au ' + C.fmtDate(lic.exp) : ' · sans limite de durée'}${lic.matricule ? ' · matricule ' + h(lic.matricule) : ' · sans matricule (s\'active partout)'}</p>
+      ${suivi.envoyee ? `<p class="small ok-text">Déjà envoyée le ${C.fmtDate(suivi.envoyeeLe)}${suivi.envois > 1 ? ' (' + pl(suivi.envois, 'envoi') + ')' : ''}.</p>` : ''}
+      ${inv && !inv.number ? '<p class="small warn-text">La facture est un <strong>brouillon</strong> : relis-la puis émets-la, sinon cette vente n\'entre ni dans ton journal ni dans ta TVA.</p>' : ''}
+      <div class="modal-actions">
+        <button class="btn" data-close>Fermer</button>
+        ${inv ? '<button class="btn" id="cle-fact">Ouvrir la facture</button>' : ''}
+        <button class="btn" id="cle-copier">Copier la clé</button>
+        <button class="btn btn-primary" id="cle-mail">Envoyer par email</button></div>`,
+      (root, close) => {
+        $('#cle-copier', root).onclick = () => copierTexte(lic.key, 'Clé de licence copiée');
+        $('#cle-mail', root).onclick = () => { close(); envoyerLicence(lic); };
+        if ($('#cle-fact', root)) $('#cle-fact', root).onclick = () => { close(); navigate('#/doc/' + inv.id); };
+      });
+  }
+
+  // Changer d'offre en cours de route. L'offre voyage DANS la charge signée : on ne peut pas la
+  // changer sans re-signer, donc une clé neuve part forcément. Mais commercialement ce n'est pas un
+  // achat : la date de fin ne bouge pas, et on ne facture que la DIFFÉRENCE au prorata des jours qui
+  // restent. Refaire payer une année pleine au sixième mois est le meilleur moyen de faire refuser
+  // la montée en gamme.
+  async function changerOffreForm(lic, done) {
+    if (await demoBlock('Changer l\'offre d\'une licence')) return;
+    if (lic.exp && C.daysBetween(C.today(), lic.exp) < 0) {
+      return modal(`<h2>Cette licence est expirée</h2>
+        <p>On ne change pas l'offre d'une licence terminée : il n'y a plus de jours à reporter, et la clé qu'on signerait serait déjà périmée. C'est un <strong>renouvellement</strong> qu'il faut, dans l'offre voulue.</p>
+        <div class="modal-actions"><button class="btn" data-close>Fermer</button><button class="btn btn-primary" id="co-ren">Renouveler</button></div>`,
+        (root, close) => { $('#co-ren', root).onclick = () => { close(); licenceForm(lic, done); }; });
+    }
+    const offres = Object.keys(editeur.offres || {}).filter(o => o !== lic.offre);
+    if (!offres.length) return toast('Il n\'existe pas d\'autre offre.', true);
+    const cur = company().currency;
+    const majPrix = () => {
+      const pr = C.prorataOffre(lic, Number($('#co-prix').value) || 0, Number(lic.prix) || 0);
+      const el = $('#co-calc'); if (!el) return;
+      el.innerHTML = pr.jours == null
+        ? `Licence <strong>à vie</strong> : pas de prorata possible, la différence se facture en entier — <strong>${h(C.money(pr.montant, cur))} HT</strong>.`
+        : `Il reste <strong>${pl(pr.jours, 'jour')}</strong> sur ${pl(pr.total, 'jour')}. Différence au prorata : <strong>${h(C.money(pr.montant, cur))} HT</strong>.`;
+    };
+    modal(`<h2>Changer l'offre</h2>
+      <p class="small">${h(lic.nom)} est en <strong>${h(offreLabelDe(lic.offre))}</strong>${lic.exp ? ` jusqu'au <strong>${C.fmtDate(lic.exp)}</strong>` : ' sans limite de durée'}. La date de fin ne change pas : seule la différence de prix est facturée.</p>
+      <form id="cof" class="grid-2">
+        <label class="field"><span>Nouvelle offre</span><select name="offre">${offres.map(o => `<option value="${h(o)}">${h(editeur.offres[o].label)}</option>`).join('')}</select></label>
+        <label class="field obligatoire"><span>Prix plein de la nouvelle offre (${h(cur)} HT)</span><input type="number" id="co-prix" name="prix" class="num" step="0.001" min="0" placeholder="690"></label>
+      </form>
+      <div class="notes-md mt"><p class="small" id="co-calc">Indique le prix plein de la nouvelle offre pour voir la différence.</p>
+      <p class="small muted">Prix payé pour l'offre actuelle : ${h(C.money(Number(lic.prix) || 0, cur))} HT.</p></div>
+      <p class="small muted">Une clé neuve sera signée — l'offre est inscrite dedans, elle ne peut pas se modifier à distance. Envoie-la au client : l'ancienne continue de fonctionner jusqu'à ce qu'il colle la nouvelle.</p>
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Changer et facturer la différence</button></div>`,
+      (root, close) => {
+        $('#co-prix', root).oninput = majPrix;
+        $('#ok', root).onclick = async () => {
+          const v = formValues($('#cof', root));
+          if (v.prix === '' || !(Number(v.prix) >= 0)) return refus('#co-prix', 'Indique le prix plein de la nouvelle offre.');
+          const pr = C.prorataOffre(lic, Number(v.prix), Number(lic.prix) || 0);
+          if (licenceBlock('Créer une facture de licence')) return;
+          const client = clientById(lic.clientId);
+          const b = $('#ok', root); b.disabled = true;
+          let r;
+          try {
+            r = await bridge.licenceEmettre({ nom: lic.nom, matricule: lic.matricule || '', offre: v.offre,
+              exp: lic.exp || '', cabinet: lic.cabinet || '', note: lic.note || '' });
+          } catch (e) { b.disabled = false; return toast(plainError(e), true); }
+          const inv = newDocument('facture');
+          applyClientDefaults(inv, lic.clientId);
+          inv.currency = company().currency; inv.exchangeRate = '';
+          inv.lines = [{ label: `Passage à l'offre ${offreLabelDe(r.offre)}`,
+            description: `Différence depuis ${offreLabelDe(lic.offre)}${pr.jours == null ? '' : `, au prorata des ${pl(pr.jours, 'jour')} restants`}${lic.exp ? ' jusqu\'au ' + C.fmtDate(lic.exp) : ''}`,
+            qty: 1, unit: '', unitPrice: pr.montant, unitCost: '', vatRate: Number(lic.tva) || C.defaultVat(company()) }];
+          Object.assign(inv, { clientId: lic.clientId, subject: `Changement d'offre SkanFact — ${offreLabelDe(r.offre)}`,
+            discountRate: 0, withholdingRate: clientWithholding(lic.clientId), licenceId: r.id });
+          data.documents.push(inv);
+          const neuve = { id: r.id, clientId: lic.clientId, nom: r.nom, matricule: r.matricule, offre: r.offre, exp: r.exp,
+            key: r.key, emisLe: r.emisLe, cabinet: r.cabinet, note: r.note, invoiceId: inv.id, itemId: '',
+            prix: Number(v.prix), tva: Number(lic.tva) || C.defaultVat(company()), emails: [], remplace: lic.id };
+          data.licences.push(neuve);
+          const anc = data.licences.find(x => x.id === lic.id);
+          if (anc) { anc.remplaceePar = neuve.id; anc.motif = 'offre'; }
+          save(true); close(); redessinerBarre();
+          if (done) done(neuve);
+          montrerCle(neuve, { neuve: true });
+        };
+      });
+  }
+
+  // Réémettre la MÊME licence pour un matricule corrigé. Le matricule voyage dans la charge signée :
+  // le client qui corrige sa fiche société voit sa clé refusée du jour au lendemain, et c'est LUI qui
+  // a bien fait. Aucune facture n'est créée — il a déjà payé cette licence-là.
+  async function corrigerMatriculeForm(lic, done) {
+    if (await demoBlock('Réémettre une licence')) return;
+    if (lic.exp && C.daysBetween(C.today(), lic.exp) < 0) return toast('Cette licence est expirée : c\'est un renouvellement qu\'il faut.', true);
+    modal(`<h2>Corriger le matricule</h2>
+      <p class="small">La clé de ${h(lic.nom)} porte le matricule <strong>${h(lic.matricule || '(aucun)')}</strong>. S'il a été mal saisi — ou si le client vient de renseigner sa fiche — sa clé est refusée sur son poste. On en signe une neuve, <strong>sans rien refacturer</strong> : même offre, même date de fin.</p>
+      <form id="cmf">
+        <label class="field"><span>Matricule fiscal exact</span><input type="text" name="matricule" value="${h(lic.matricule || '')}" placeholder="1234567A/M/P/000" class="mono"></label>
+        <p class="small muted">Laisse vide pour une clé sans matricule : elle s'active dans n'importe quelle société. Pratique en dépannage, à éviter pour un client payant — il pourrait la partager.</p>
+      </form>
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Signer la clé corrigée</button></div>`,
+      (root, close) => {
+        $('#ok', root).onclick = async () => {
+          const v = formValues($('#cmf', root));
+          if (String(v.matricule || '').trim() === String(lic.matricule || '').trim()) return refus('#cmf input[name=matricule]', 'Ce matricule est déjà celui de la clé : il n\'y a rien à corriger.');
+          const b = $('#ok', root); b.disabled = true;
+          let r;
+          try {
+            r = await bridge.licenceEmettre({ nom: lic.nom, matricule: v.matricule, offre: lic.offre,
+              exp: lic.exp || '', cabinet: lic.cabinet || '', note: lic.note || '' });
+          } catch (e) { b.disabled = false; return toast(plainError(e), true); }
+          // La facture reste attachée à la licence d'ORIGINE : c'est elle qui a été vendue, et la
+          // nouvelle clé n'est pas une seconde vente. Sans ça, « À faire » réclamerait une facture
+          // qui n'a aucune raison d'exister.
+          const neuve = { id: r.id, clientId: lic.clientId, nom: r.nom, matricule: r.matricule, offre: r.offre, exp: r.exp,
+            key: r.key, emisLe: r.emisLe, cabinet: r.cabinet, note: r.note, invoiceId: lic.invoiceId || '', itemId: lic.itemId || '',
+            prix: Number(lic.prix) || 0, tva: Number(lic.tva) || 0, emails: [], remplace: lic.id, sansFacture: true };
+          data.licences.push(neuve);
+          const anc = data.licences.find(x => x.id === lic.id);
+          if (anc) { anc.remplaceePar = neuve.id; anc.motif = 'matricule'; }
+          save(true); close(); redessinerBarre();
+          if (done) done(neuve);
+          montrerCle(neuve, { neuve: true });
+        };
+      });
+  }
+
+  // Révoquer. Ce que ce geste fait, et surtout ce qu'il NE FAIT PAS : la licence est hors ligne,
+  // vérifiée sur le poste du client contre la clé publique embarquée, sans aucun réseau. Rien ne
+  // peut faire cesser de fonctionner une clé déjà envoyée — c'est le prix de la promesse inverse,
+  // celle qui fait la valeur du produit (le client travaille sans connexion, et l'application lui
+  // survit même si son éditeur disparaît). Un bouton qui prétendrait couper serait un mensonge, et
+  // c'est exactement le genre d'affirmation que cette application s'interdit.
+  async function revoquerForm(lic, done) {
+    if (await demoBlock('Révoquer une licence')) return;
+    const inv = lic.invoiceId ? docById(lic.invoiceId) : null;
+    const emise = !!(inv && inv.number);
+    modal(`<h2>Révoquer la licence de ${h(lic.nom)}</h2>
+      <p class="small">À faire quand le client se rétracte ou qu'on le rembourse. Ce qui se passe :</p>
+      <div class="notes-md">
+        <p class="small"><strong>Dans tes livres</strong> — la licence sort des actives, ne réclame plus de renouvellement, et l'historique garde le motif et la date.</p>
+        <p class="small"><strong>En comptabilité</strong> — ${emise ? `la facture <strong>${h(inv.number)}</strong> est émise : elle se corrige par un <strong>avoir</strong>, jamais par une suppression. Le bouton ci-dessous l'ouvre.` : inv ? 'la facture est encore un <strong>brouillon</strong> : tu peux simplement la supprimer, rien n\'est parti nulle part.' : 'aucune facture n\'est rattachée.'}</p>
+        <p class="small warn-text"><strong>Chez le client, la clé continue de fonctionner</strong> jusqu'au ${lic.exp ? C.fmtDate(lic.exp) : '… (elle est à vie)'}. SkanFact vérifie les licences <em>hors ligne</em> : il n'existe aucun serveur qui puisse la désactiver à distance. Demande-lui de la retirer dans Paramètres → L'application → Licence.</p>
+      </div>
+      <form id="rvf"><label class="field obligatoire"><span>Motif</span><input type="text" name="motif" placeholder="Ex. : rétractation sous 14 jours, remboursé le 20/09."></label></form>
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Révoquer</button></div>`,
+      (root, close) => {
+        $('#ok', root).onclick = () => {
+          const v = formValues($('#rvf', root));
+          if (!String(v.motif || '').trim()) return refus('#rvf input[name=motif]', 'Dis pourquoi : c\'est la seule trace qui expliquera ce chiffre dans six mois.');
+          const stored = data.licences.find(x => x.id === lic.id) || lic;
+          stored.revoqueeLe = C.today(); stored.revoqueeMotif = String(v.motif).trim();
+          save(true); close(); redessinerBarre();
+          if (done) done(stored);
+          if (emise) {
+            modal(`<h2>Et la facture ?</h2>
+              <p>La facture <strong>${h(inv.number)}</strong> est émise : la rembourser se fait par un avoir, qui reprend ses lignes et son client.</p>
+              <div class="modal-actions"><button class="btn" data-close>Plus tard</button><button class="btn btn-primary" id="rv-av">Créer l'avoir</button></div>`,
+              (r2, c2) => { $('#rv-av', r2).onclick = () => { c2(); navigate('#/doc/new/avoir/' + inv.id); }; });
+          } else {
+            toast('Licence révoquée');
+          }
+        };
+      });
+  }
+
+  const licState = { q: '', st: '', sort: null, tri: '', page: 1 };
   routes.licences = () => {
     const s = licState;
     // Émettre et renouveler demandent la clé privée ; LIRE l'historique, non. Un dossier restauré ou
@@ -10673,47 +10859,60 @@
     }
     const cols = [
       { key: 'nom', label: 'Client', asc: true, val: r => (r.nom || '').toLowerCase(),
-        get: r => `<strong>${h(r.nom)}</strong>${r.matricule ? `<div class="small muted">MF ${h(r.matricule)}</div>` : ''}${(r.emails || []).length ? `<div class="small muted">clé envoyée le ${C.fmtDate(r.emails[r.emails.length - 1].date)}</div>` : ''}` },
+        get: r => `<strong>${h(r.nom)}</strong>${r.matricule ? `<div class="small muted">MF ${h(r.matricule)}</div>` : ''}` },
       { key: 'offre', label: 'Offre', asc: true, val: r => r.offre, get: r => h(offreLabelDe(r.offre)) },
       { key: 'exp', label: 'Fin', val: r => r.exp || '9999', get: r => r.exp ? C.fmtDate(r.exp) : '<span class="muted">À vie</span>' },
-      { key: 'etat', label: 'État', val: r => ({ bientot: 0, expiree: 1, active: 2, vie: 3 })[r.etat],
-        get: r => `<span class="badge ${r.renouvelee ? '' : r.etat === 'bientot' ? 'retard' : r.etat === 'expiree' ? 'annulée' : 'accepté'}">${h(r.renouvelee ? 'Renouvelée' : r.etatLabel)}</span>${r.etat === 'bientot' && !r.renouvelee ? `<div class="small muted">dans ${pl(r.jours, 'jour')}</div>` : ''}` },
+      { key: 'etat', label: 'État', val: r => ({ bientot: 0, expiree: 1, active: 2, vie: 3, revoquee: 4 })[r.etat],
+        get: r => `<span class="badge ${r.renouvelee ? '' : r.etat === 'bientot' ? 'retard' : r.etat === 'expiree' || r.etat === 'revoquee' ? 'annulée' : 'accepté'}">${h(r.renouvelee ? r.motifLabel : r.etatLabel)}</span>${r.etat === 'bientot' && !r.renouvelee ? `<div class="small muted">dans ${pl(r.jours, 'jour')}</div>` : ''}${r.revoqueeLe ? `<div class="small muted">le ${C.fmtDate(r.revoqueeLe)}${r.revoqueeMotif ? ' — ' + h(r.revoqueeMotif) : ''}</div>` : ''}` },
       { key: 'facture', label: 'Facture', val: r => { const d = r.invoiceId && docById(r.invoiceId); return d ? (d.number || 'brouillon') : ''; },
         get: r => { const d = r.invoiceId && docById(r.invoiceId); return d ? `<a href="#/doc/${h(d.id)}">${h(d.number || 'Brouillon')}</a>${d.status !== 'brouillon' ? ` <span class="badge ${h(effStatus(d))}">${h(effStatus(d))}</span>` : ''}` : '<span class="muted">—</span>'; } },
+      { key: 'envoyee', label: 'Clé envoyée', val: r => r.envoyee ? (r.envoyeeLe || '1') : '',
+        get: r => r.envoyee ? `<span class="ok-text">${C.fmtDate(r.envoyeeLe)}</span>`
+          : r.revoqueeLe || r.remplaceePar ? '<span class="muted">—</span>'
+          : '<span class="warn-text">jamais</span>' },
       { key: 'emise', label: 'Émise le', val: r => r.emisLe || '', get: r => r.emisLe ? C.fmtDate(r.emisLe) : '—' }
     ];
-    const FILTRES = [['', 'Toutes'], ['bientot', 'À renouveler'], ['active', 'Actives'], ['vie', 'À vie'], ['expiree', 'Expirées']];
+    const FILTRES = [['', 'Toutes'], ['bientot', 'À renouveler'], ['active', 'Actives'], ['vie', 'À vie'], ['expiree', 'Expirées'], ['revoquee', 'Révoquées']];
     const draw = (sortKey) => {
       if (sortKey) { s.sort = toggleSort(s.sort, sortKey, cols); s.page = 1; }
-      const all = C.licenceRows(data, C.today());
+      const all = C.licenceRows(data, C.today(), company());
       const kept = applySort(all
         .filter(r => !s.q || [r.nom, r.matricule, r.id, offreLabelDe(r.offre), r.note].join(' ').toLowerCase().includes(s.q))
-        .filter(r => !s.st || r.etat === s.st), cols, s.sort);
-      const filtered = !!(s.q || s.st);
+        .filter(r => !s.st || r.etat === s.st)
+        .filter(r => !s.tri || (s.tri === 'envoi' ? (!r.envoyee && !r.revoqueeLe && !r.remplaceePar)
+          : s.tri === 'facture' ? (!r.facturee && !r.revoqueeLe && !r.remplaceePar)
+          : s.tri === 'impaye' ? (r.facturee && !r.payee && !r.revoqueeLe && !r.remplaceePar) : true)), cols, s.sort);
+      const filtered = !!(s.q || s.st || s.tri);
       const { rows: page, pg } = paginate(kept, s);
       const aRenouveler = kept.filter(r => r.etat === 'bientot' && !r.renouvelee).length;
       $('#lic-wrap').innerHTML = kept.length ? `<table class="list sortable"><thead>${sortHead(cols, s.sort, '<th class="row-actions-h"></th>')}</thead><tbody>
           ${page.map(r => `<tr>${cols.map(c => `<td class="${c.r ? 'r nw' : ''}">${c.get(r)}</td>`).join('')}${rowMenuCell(r.id)}</tr>`).join('')}
-        </tbody><tfoot><tr><td colspan="6">${pl(kept.length, 'licence')}${filtered ? ` sur ${all.length}` : ''}${aRenouveler ? ` · ${aRenouveler} à renouveler` : ''}</td><td></td></tr></tfoot></table>${pagerBar(pg, { noun: 'licence', grandTotal: all.length })}`
+        </tbody><tfoot><tr><td colspan="7">${pl(kept.length, 'licence')}${filtered ? ` sur ${all.length}` : ''}${aRenouveler ? ` · ${aRenouveler} à renouveler` : ''}</td><td></td></tr></tfoot></table>${pagerBar(pg, { noun: 'licence', grandTotal: all.length })}`
         : (filtered ? '<div class="empty">Aucune licence ne correspond.</div>'
           : etatVide('Aucune licence émise', ['Chaque licence que tu vends passe par ici : la clé est signée avec ta clé privée, la facture est créée dans tes ventes, et le mail au client est prêt.'], peut ? [['lic-first', '+ Émettre ma première licence', true]] : []));
       const note = $('#lic-note');
       if (note) { note.hidden = !filtered; note.innerHTML = filtered ? `<span class="small muted">${kept.length} sur ${all.length}</span>${filterReset(true)}` : ''; }
-      if ($('#reset-f')) $('#reset-f').onclick = () => { s.q = ''; s.st = ''; s.page = 1; routes.licences(); };
+      if ($('#reset-f')) $('#reset-f').onclick = () => { s.q = ''; s.st = ''; s.tri = ''; s.page = 1; routes.licences(); };
       if ($('#lic-first')) $('#lic-first').onclick = () => licenceForm(null, draw);
       bindRowMenus($('#lic-wrap'), id => {
         const r = data.licences.find(x => x.id === id); if (!r) return [];
         const inv = r.invoiceId ? docById(r.invoiceId) : null;
         const suite = r.remplaceePar ? data.licences.find(x => x.id === r.remplaceePar) : null;
+        const revoquee = !!r.revoqueeLe;
         return [
+          { icon: 'contrat', label: 'Voir la clé', hint: 'La clé, son offre, sa date de fin — et de quoi l\'envoyer', run: () => montrerCle(r) },
           { icon: 'copier', label: 'Copier la clé', hint: 'Dans le presse-papiers, pour la coller où tu veux', run: () => copierTexte(r.key, 'Clé de licence copiée') },
           { icon: 'email', label: 'Envoyer la clé par email', hint: inv && inv.number ? `Avec la facture ${inv.number} en PDF` : 'La clé et la marche à suivre', run: () => envoyerLicence(r) },
           inv ? { icon: 'facture', label: 'Ouvrir la facture', hint: inv.number || 'Encore en brouillon', run: () => navigate('#/doc/' + inv.id) } : null,
           // Une licence déjà renouvelée ne se renouvelle pas une seconde fois : c'est sa remplaçante
           // qui porte la suite — sinon on fabriquerait une troisième clé et une troisième facture.
           peut ? { sep: true } : null,
-          peut && !r.remplaceePar ? { icon: 'contrat', label: 'Renouveler', hint: 'Une nouvelle clé et une nouvelle facture', run: () => licenceForm(r, draw) } : null,
-          peut && suite ? { icon: 'contrat', label: 'Renouveler la suivante', hint: `Cette licence a déjà été renouvelée (n° ${suite.id})`, run: () => licenceForm(suite, draw) } : null
+          peut && !r.remplaceePar && !revoquee ? { icon: 'contrat', label: 'Renouveler', hint: 'Une nouvelle clé et une nouvelle facture', run: () => licenceForm(r, draw) } : null,
+          peut && suite ? { icon: 'contrat', label: 'Renouveler la suivante', hint: `Cette licence a déjà été remplacée (n° ${suite.id})`, run: () => licenceForm(suite, draw) } : null,
+          peut && !r.remplaceePar && !revoquee ? { icon: 'contrat', label: 'Changer l\'offre', hint: 'Même date de fin, on ne facture que la différence au prorata', run: () => changerOffreForm(r, draw) } : null,
+          peut && !r.remplaceePar && !revoquee ? { icon: 'client', label: 'Corriger le matricule', hint: 'Une clé neuve pour le bon matricule, sans refacturer', run: () => corrigerMatriculeForm(r, draw) } : null,
+          peut && !revoquee ? { sep: true } : null,
+          peut && !revoquee ? { icon: 'supprimer', label: 'Révoquer la licence', hint: 'Rétractation ou remboursement — la clé, elle, vit jusqu\'à sa date de fin', run: () => revoquerForm(r, draw) } : null
         ];
       });
       bindSort($('#lic-wrap'), draw);
