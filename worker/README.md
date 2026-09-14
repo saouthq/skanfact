@@ -33,6 +33,17 @@ deux ou trois requêtes par poste et par version.
 
 5. Note l'adresse du service, du genre `https://skanfact-maj.ton-compte.workers.dev`.
 
+> **Le jour où le dépôt redevient privé.** Le relais continue de fonctionner **à l'identique** :
+> c'est justement à ça qu'il sert, il détient le jeton et les applications ne présentent rien.
+> Une seule chose à vérifier ce jour-là — que le `GITHUB_TOKEN` ci-dessus ait bien accès au dépôt
+> privé (droit **Contents : Read-only** sur `saouthq/skanfact`). Sur un dépôt public, un jeton même
+> sans droits suffit à lire les releases : la panne ne se verrait donc qu'au moment de la bascule,
+> et elle couperait les mises à jour de tout le monde d'un coup.
+>
+> Dans l'application, la bascule est **une seule ligne** : `private` dans `src/depot.js`. Les deux
+> applications la lisent, le champ « jeton d'accès » revient tout seul dans leurs Paramètres, et les
+> phrases affichées redeviennent vraies.
+
 ### Les deux variables facultatives (pas tout de suite)
 
 | Nom | Type | Ce qu'on met dedans |

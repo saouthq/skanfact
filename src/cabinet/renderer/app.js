@@ -2379,9 +2379,10 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
     else if (upd.state === 'downloaded') corps = `<p><strong>Version ${esc(upd.version)} prête.</strong>
       ${macNonSigne ? 'L\'application se ferme, se remplace dans le dossier Applications et se relance (une dizaine de secondes).' : 'L\'application se ferme, s\'installe et redémarre.'}</p>
       <button class="btn btn-primary" id="u-install">Installer et redémarrer</button>`;
-    else if (upd.state === 'error') corps = `<p class="small" style="color:var(--danger)">${esc(upd.message)}</p>
-      <div class="inline">${btnCheck}<button class="btn btn-ghost" id="u-rel">Voir les versions sur GitHub</button></div>`;
-    else if (!a.relay && (upd.state === 'token' || !a.hasToken)) corps = `<p class="muted small">Les mises à jour ne sont pas encore activées sur cet ordinateur : colle le jeton d'accès ci-dessous.</p>${btnCheck}`;
+    else if (upd.state === 'error') corps = `<p class="${upd.soft ? 'muted' : 'small'}"${upd.soft ? '' : ' style="color:var(--danger)"'}>${esc(upd.message)}</p>
+      ${upd.detail ? `<details class="tech"><summary>Détails techniques</summary><code>${esc(upd.detail)}</code></details>` : ''}
+      <div class="inline">${btnCheck}<button class="btn btn-ghost" id="u-rel">Voir les versions</button></div>`;
+    else if (!a.relay && a.private && (upd.state === 'token' || !a.hasToken)) corps = `<p class="muted small">Les mises à jour ne sont pas encore activées sur cet ordinateur : colle le jeton d'accès ci-dessous.</p>${btnCheck}`;
     else corps = btnCheck;
 
     // Avec le relais, il n'y a rien à saisir : c'est lui qui détient l'accès au dépôt. On ne montre
@@ -2389,13 +2390,25 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
     // Un relais en panne se dit : un écran qui affirme « rien à configurer » devant une mise à jour
     // impossible laisse le comptable sans recours.
     const noteRelais = a.relayFailure ? `<p class="small mt" style="color:var(--danger)">${esc(a.relayFailure)}</p>` : '';
-    const jeton = a.relay ? '<p class="small muted mt">Les mises à jour arrivent toutes seules : rien à configurer.</p>' : noteRelais + `<div class="token-box">
+    // Trois états, un seul interrupteur (`a.private`, qui vaut `GITHUB.private` dans main.js) :
+    // relais en place → rien à saisir ; dépôt privé → le champ jeton ; dépôt public → rien non plus,
+    // sinon un bouton pour retirer un jeton devenu inutile. Avant la 7.26.0, cet écran affirmait
+    // « SkanFact est distribué depuis un dépôt privé » alors que le dépôt était public depuis
+    // treize versions : le comptable cherchait un jeton que personne n'avait à lui donner.
+    const jeton = a.relay
+      ? '<p class="small muted mt">Les mises à jour arrivent toutes seules : rien à configurer.</p>'
+      : a.private ? noteRelais + `<div class="token-box">
       <div class="k-label">Accès au dépôt</div>
       <p class="small muted">SkanFact est distribué depuis un dépôt privé : un jeton de lecture est nécessaire pour recevoir les mises à jour.
       Demande-le à qui t'a remis l'application. Il reste sur cet ordinateur et ne sert qu'à télécharger les nouvelles versions.</p>
       <div class="inline"><input type="text" id="u-token" placeholder="${a.hasToken ? 'Jeton enregistré ✓ — en coller un nouveau pour le remplacer' : 'github_pat_… ou ghp_…'}" autocomplete="off" spellcheck="false">
       <button class="btn btn-sm" id="u-token-save">Enregistrer</button>${a.hasToken ? '<button class="btn btn-sm btn-ghost" id="u-token-clear">Retirer</button>' : ''}</div>
-    </div>`;
+    </div>`
+        : noteRelais + (a.hasToken ? `<div class="token-box">
+      <div class="k-label">Ancien jeton d'accès</div>
+      <p class="small muted">Les mises à jour arrivent sans rien présenter. Un jeton datant de l'époque où le dépôt était privé est encore enregistré sur cet ordinateur ; il ne sert plus à rien.</p>
+      <div class="inline"><button class="btn btn-sm btn-ghost" id="u-token-clear">Retirer ce jeton</button></div>
+    </div>` : '<p class="small muted mt">Les mises à jour arrivent toutes seules : rien à configurer.</p>');
 
     el.innerHTML = `<div class="update-head"><div><div class="k-label">Version installée</div><div class="ver">${esc(a.version || '…')}</div></div></div>${corps}${jeton}`;
 

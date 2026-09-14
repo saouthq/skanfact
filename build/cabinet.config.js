@@ -36,6 +36,7 @@ module.exports = {
   files: [
     'src/cabinet/**/*',
     'src/zip.js',                      // fabrication et lecture des paquets
+    'src/depot.js',                    // public ou privé : la même vérité que l'app entreprise
     'src/mac-update.sh',               // remplacement de l'app sur macOS non signé
     'src/renderer/style.css',          // la feuille partagée, chargée par son index.html
     'package.json',

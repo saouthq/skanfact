@@ -14,7 +14,7 @@ const PKG = require('../package.json');
 // Tant que `private` valait `true`, l'application réclamait un jeton de lecture que plus personne
 // n'a besoin de fournir, et l'écran des mises à jour affirmait « Le dépôt GitHub de SkanFact est
 // privé » — une phrase devenue fausse, sur l'écran qu'on regarde au moment d'installer.
-const GITHUB = { owner: 'saouthq', repo: 'skanfact', private: false };
+const GITHUB = require('./depot');            // public ou privé : une seule ligne, dans src/depot.js
 const RELEASES_URL = `https://github.com/${GITHUB.owner}/${GITHUB.repo}/releases`;
 
 const IS_MAC = process.platform === 'darwin';
@@ -1261,7 +1261,7 @@ function getUpdater() {
     autoUpdater.on('update-not-available', () => { if (!silent) sendUpdate('none'); });
     autoUpdater.on('download-progress', (p) => sendUpdate('downloading', { percent: Math.round(p.percent), version: updateInfo && updateInfo.version }));
     autoUpdater.on('update-downloaded', (info) => { downloaded = true; downloadedFile = info.downloadedFile || null; sendUpdate('downloaded', { version: info.version, notes: notesToText(info.releaseNotes) }); });
-    autoUpdater.on('error', (err) => { if (!silent) sendUpdate('error', { message: friendlyError(err) }); });
+    autoUpdater.on('error', (err) => { if (!silent) sendUpdate('error', updateProblem(err)); });
     configureFeed(autoUpdater);
     updater = autoUpdater;
   } catch (e) {
@@ -1281,21 +1281,55 @@ function updaterUnavailable() {
 
 function updatesConfigured() { return !!(GITHUB.owner && GITHUB.repo); }
 
-function friendlyError(err) {
-  const m = String(err && err.message || err);
-  // Une bêta qui n'existe pas encore n'est pas une panne : c'est le cas normal entre deux essais.
-  // Sans cette phrase, l'écran répondait « Aucune version trouvée » en rouge et faisait croire que
-  // les mises à jour étaient cassées.
-  if (/404|CHANNEL_FILE_NOT_FOUND/.test(m) && readUpdateCfg().beta) return 'Aucune version bêta publiée pour l\'instant. Tu as la dernière version stable ; décoche la case pour revenir au canal normal.';
-  if (/403/.test(m) && relayBase()) return 'Le service de mise à jour a refusé cette installation. Vérifie ta licence dans Paramètres → Licence.';
-  if (/402/.test(m)) return 'Une licence en cours de validité est nécessaire pour recevoir les mises à jour.';
-  if (/404/.test(m)) return relayBase()
-    ? 'Aucune version trouvée. Réessaie plus tard, ou télécharge la nouvelle version à la main.'
-    : 'Aucune version trouvée sur GitHub : token manquant ou sans accès au dépôt (Paramètres → Mises à jour).';
-  if (/401|403|Bad credentials/i.test(m)) return 'Token GitHub refusé ou expiré. Génère-en un nouveau et colle-le ci-dessous.';
-  if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|ECONNRESET|net::/i.test(m)) return 'Impossible de joindre GitHub. Vérifie ta connexion internet.';
-  if (/sha512|checksum/i.test(m)) return 'Le fichier téléchargé est corrompu. Réessaie.';
-  return m.split('\n')[0].slice(0, 200);
+// Ce que l'utilisateur lit quand une mise à jour n'aboutit pas.
+//
+// **On ne montre jamais une phrase qu'on n'a pas écrite.** Les messages d'electron-updater sont en
+// anglais et portent une URL, un chemin de fichier ou une pile d'appels. « Cannot find
+// latest-mac.yml in the release https://github.com/… » est techniquement exact et parfaitement
+// inutilisable : celui qui le lit ne peut rien en faire, et une application qui affiche ça a l'air
+// cassée alors qu'elle ne l'est pas.
+//
+// Le texte d'origine n'est pas perdu pour autant — c'est lui qui sert au dépannage à distance
+// (règle 6.7.2). Il part dans `detail`, replié derrière « Détails techniques », et dans le journal.
+//
+// `soft` marque ce qui n'est PAS une panne : une version en cours de publication, une bêta qui
+// n'existe pas encore. Ça s'affiche en gris et pas en rouge — du rouge sur une situation normale
+// apprend à ignorer le rouge.
+function updateProblem(err) {
+  const brut = String((err && err.message) || err || '').trim();
+  // Le code vit sur l'ERREUR, pas dans son message : `ERR_UPDATER_CHANNEL_FILE_NOT_FOUND` ne figure
+  // nulle part dans « Cannot find latest-mac.yml in the release … ». Le chercher dans le texte,
+  // c'est ne jamais le trouver — et c'est exactement ce que faisait la version précédente.
+  const code = String((err && err.code) || '');
+  const tout = code + ' ' + brut;
+  const detail = brut.split('\n')[0].slice(0, 300);
+  const dit = (message, soft) => ({ message, detail, soft: !!soft });
+  try { logToFile('mise à jour', err); } catch {}
+
+  // Le fichier d'index manque dans une release qui, elle, EXISTE. C'est la signature d'une
+  // publication en cours : GitHub crée le tag et la page de la version avant que les installateurs
+  // finissent de monter, et il y a quelques minutes entre les deux — pile le moment où l'on va voir
+  // si la nouvelle version est là.
+  if (/CHANNEL_FILE_NOT_FOUND/.test(code) || /Cannot find .+ in the (latest )?release/i.test(brut)) {
+    return readUpdateCfg().beta
+      ? dit('Aucune version bêta publiée pour l\'instant. Tu as la dernière version stable ; décoche la case pour revenir au canal normal.', true)
+      : dit('Une nouvelle version vient d\'être publiée et ses fichiers d\'installation finissent de monter en ligne. Réessaie dans quelques minutes.', true);
+  }
+  if (/NO_PUBLISHED_VERSIONS|LATEST_VERSION_NOT_FOUND/.test(code)) return dit('Aucune version publiée pour l\'instant.', true);
+  if (/402/.test(tout)) return dit('Une licence en cours de validité est nécessaire pour recevoir les mises à jour.');
+  if (/403/.test(tout) && relayBase()) return dit('Le service de mise à jour a refusé cette installation. Vérifie ta licence dans Paramètres → Licence.');
+  if (/401|403|Bad credentials/i.test(tout)) return dit('Le jeton d\'accès a été refusé ou a expiré. Génères-en un nouveau et colle-le ci-dessous.');
+  if (/404/.test(tout)) return dit(
+    relayBase() ? 'Aucune version trouvée. Réessaie plus tard, ou installe la nouvelle version à la main.'
+      : GITHUB.private ? 'Aucune version trouvée : le jeton d\'accès manque, ou il n\'a pas accès au dépôt. Colle-le ci-dessous.'
+        : 'Aucune version trouvée pour l\'instant.',
+    !relayBase() && !GITHUB.private);
+  if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|ECONNRESET|EAI_AGAIN|net::/i.test(tout)) return dit('Impossible de joindre le service de mise à jour. Vérifie ta connexion internet.');
+  if (/sha512|checksum|integrity/i.test(tout)) return dit('Le fichier téléchargé est incomplet ou abîmé. Réessaie.');
+  if (/ENOSPC/i.test(tout)) return dit('Il n\'y a plus assez d\'espace disque pour télécharger la mise à jour.');
+  if (/EACCES|EPERM/i.test(tout)) return dit('SkanFact n\'a pas le droit d\'écrire la mise à jour ici. Place l\'application dans le dossier Applications, puis réessaie.');
+  // Dernier recours : on ne recopie pas l'anglais. On dit ce qu'on sait et on garde la cause.
+  return dit('La mise à jour n\'a pas abouti. Réessaie dans un moment ; si ça continue, envoie le journal (Aide → Signaler un problème).');
 }
 
 async function checkForUpdates(isSilent) {
@@ -1315,7 +1349,7 @@ async function checkForUpdates(isSilent) {
     // null = electron-updater inactif dans cette installation (ex. Linux hors AppImage) : aucun événement n'arrivera
     if (!r) return { state: 'error', message: 'Le module de mise à jour est inactif dans cette installation. Télécharge la nouvelle version depuis GitHub.' };
     return { state: 'ok' };
-  } catch (e) { return { state: 'error', message: friendlyError(e) }; }
+  } catch (e) { return { state: 'error', ...updateProblem(e) }; }
 }
 
 // Résultat de la dernière mise à jour Mac (écrit par mac-update.sh), lu une seule fois au démarrage suivant.
@@ -1339,6 +1373,13 @@ ipcMain.handle('update:version', () => ({
   // « Relais injoignable » en rouge alarme pour une panne qui n'empêche rien. On le garde dans le
   // journal (logToFile le fait déjà) et on ne le montre plus.
   relayFailure: GITHUB.private ? relayFailure : '',
+  // `GITHUB.private` doit rester UN SEUL interrupteur : le jour où le dépôt redevient privé, on
+  // bascule cette constante et l'écran se réarme tout seul — le champ où coller un jeton revient,
+  // les phrases redeviennent vraies. Sans ce drapeau ici, l'interface ne pouvait plus le savoir :
+  // la 7.24.0 avait retiré le champ « en dur » parce que le dépôt venait de passer public, et
+  // basculer la constante n'aurait plus rien réarmé — on aurait lu « colle ton jeton ci-dessous »
+  // au-dessus de rien du tout.
+  private: GITHUB.private,
   // Le canal choisi, et ce que la version installée EST réellement. Les deux, parce qu'ils peuvent
   // se contredire une journée entière : on décoche la case un matin en tournant sur une bêta, et on
   // reste dessus jusqu'à ce que la stable suivante arrive. L'écran doit pouvoir le dire.
@@ -1375,7 +1416,7 @@ ipcMain.handle('update:download', async () => {
   if (!u || !updateInfo) return { state: 'error', message: 'Aucune mise à jour détectée.' };
   silent = false;
   try { u.downloadUpdate(); return { state: 'ok' }; }
-  catch (e) { return { state: 'error', message: friendlyError(e) }; }
+  catch (e) { return { state: 'error', ...updateProblem(e) }; }
 });
 
 ipcMain.handle('update:install', async () => {

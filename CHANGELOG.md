@@ -7,6 +7,41 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 7.26.0 — 14/09/2026
+
+**« Cannot find latest-mac.yml in the release https://github.com/… »**
+
+C'est ce que l'écran des mises à jour a affiché, en toutes lettres, à quelqu'un qui venait
+simplement de cliquer sur « Vérifier les mises à jour ». Techniquement exact — et parfaitement
+inutilisable : celui qui le lit ne peut rien en faire, et une application qui montre ça a l'air
+cassée. Elle ne l'était pas : la version venait d'être publiée, sa page existait déjà, et ses
+fichiers d'installation finissaient de monter en ligne. Deux minutes d'écart.
+
+**Désormais, SkanFact ne montre jamais une phrase qu'il n'a pas écrite.** Chaque cas connu a la
+sienne, en français, qui dit ce qui se passe et quoi faire — publication en cours, pas de connexion,
+fichier abîmé, disque plein, droits manquants, jeton refusé. Ce qui n'est pas une panne s'affiche en
+gris et non en rouge : du rouge sur une situation normale apprend à ignorer le rouge. Et le texte
+d'origine n'est pas jeté pour autant : il est replié sous **« Détails techniques »**, avec un bouton
+qui ouvre le journal — c'est lui qui sert à dépanner à distance.
+
+**Public ou privé : une seule ligne, pour les deux applications.** Le dépôt a été rendu public pour
+que les publications soient gratuites, et il redeviendra peut-être privé. Sur un dépôt privé, GitHub
+refuse tout sans jeton d'accès : il faut donc un champ où le coller et des phrases qui l'expliquent.
+Trois choses ont été remises d'aplomb :
+
+- la 7.24.0 avait **supprimé** le champ « jeton » puisqu'il ne servait plus. Remettre le dépôt en
+  privé aurait alors donné un cul-de-sac : l'écran aurait écrit « colle ton jeton ci-dessous »
+  au-dessus de rien du tout. Le champ existe de nouveau, mais **sous condition** ;
+- l'application du comptable, elle, n'avait jamais été mise à jour : elle affirmait encore « SkanFact
+  est distribué depuis un dépôt privé : un jeton de lecture est nécessaire » et faisait chercher un
+  jeton que personne n'avait à lui donner ;
+- les deux applications avaient chacune **leur** drapeau, et elles avaient donc divergé. La vérité
+  vit maintenant dans un seul fichier, `src/depot.js`, que les deux lisent. Basculer le dépôt, c'est
+  changer `private: false` en `private: true` — et tout suit.
+
+À noter pour le jour venu : quand le **relais de mise à jour** est branché, il n'y a jamais rien à
+saisir, privé ou public. C'est lui qui détient le jeton, côté serveur.
+
 ## 7.25.0 — 14/09/2026
 
 **Le canal bêta : garder la version stable intacte pendant qu'on travaille sur la suivante.**

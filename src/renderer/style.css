@@ -473,6 +473,20 @@ table.lines-edit select { padding-right: 4px; min-width: 70px; }
 .token-box .k-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 700; margin-bottom: 6px; }
 .token-box input { max-width: 520px; font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 12px; }
 
+/* « Détails techniques » (7.26.0) : la cause exacte d'un échec de mise à jour, repliée.
+   Elle ne s'adresse pas à l'utilisateur — elle s'adresse à celui qui dépanne — mais la jeter
+   priverait le dépannage à distance de la seule information utile (règle 6.7.2). */
+details.tech { margin: 8px 0 10px; }
+details.tech > summary { cursor: pointer; font-size: 12px; color: var(--muted); user-select: none; }
+details.tech > summary:hover { color: var(--text); }
+details.tech > code {
+  display: block; margin-top: 6px; padding: 8px 10px;
+  background: var(--panel-2, #f1f4f7); border: 1px solid var(--border); border-radius: 6px;
+  font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 11px; line-height: 1.5;
+  color: var(--muted); word-break: break-all; white-space: pre-wrap;
+}
+body.dark details.tech > code { background: #1d232b; }
+
 /* ---------- relances / contrats / bannière ---------- */
 .nav-count { margin-left: auto; background: var(--warning-soft); color: var(--warning); font-size: 11px; font-weight: 700; border-radius: 999px; padding: 1px 7px; }
 .nav-count.info { background: var(--info-soft); color: var(--info); }

@@ -7006,24 +7006,113 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       'les quatre sorties de notesHtml (liste, titre, citation, paragraphe) doivent passer par inlineMd');
   });
 
-  t('le dépôt est public : plus aucun jeton n\'est réclamé', () => {
-    const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'main.js'), 'utf8');
+  // Public ou privé : UN SEUL interrupteur, et les deux applications le suivent.
+  //
+  // Ce test a d'abord décrit la mauvaise règle. Écrit en 7.24.0, il exigeait l'ABSENCE du champ
+  // jeton — vrai le jour où le dépôt est passé public, faux comme règle : le jour où il redevient
+  // privé, basculer le drapeau n'aurait plus rien réarmé et l'écran aurait dit « colle ton jeton
+  // ci-dessous » au-dessus de rien. On teste l'interrupteur, pas la position dans laquelle il est.
+  t('public ou privé : un seul interrupteur, et les deux applications le suivent', () => {
+    const main = lireSource('src', 'main.js');
+    const cab = lireSource('src', 'cabinet', 'main.js');
     const app = lireApp();
-    // Le dépôt est public depuis le 13/09/2026. Tant que `private` valait `true`, l'application
-    // réclamait un jeton de lecture dont plus personne n'a besoin — et l'écran des mises à jour
-    // affirmait « Le dépôt GitHub de SkanFact est privé », une phrase devenue fausse.
-    assert.ok(/const GITHUB = \{[^}]*private: false[^}]*\}/.test(main.replace(/\n/g, ' ')),
-      'le dépôt est de nouveau déclaré privé : le champ jeton et sa phrase reviendraient');
-    assert.ok(!app.includes('Le dépôt GitHub de SkanFact est privé'),
-      'l\'écran des mises à jour affirme encore que le dépôt est privé');
-    assert.ok(!/id="upd-token"/.test(app), 'le champ de saisie du jeton est revenu');
-    // Retirer un ancien jeton doit rester possible : on ne laisse pas une valeur morte sur le poste
-    // de quelqu'un sans bouton pour l'enlever (règle « ce qui se saisit doit pouvoir se corriger »).
-    assert.ok(/id="upd-token-clear"/.test(app), 'plus aucun moyen de retirer un jeton d\'avant');
-    // Et la panne du relais ne s'affiche plus en rouge : sur un dépôt public, le repli GitHub suffit
-    // tout seul, donc elle n'empêche rien. Elle reste dans le journal.
-    assert.ok(/relayFailure: GITHUB\.private \? relayFailure : ''/.test(main),
-      'une panne de relais est de nouveau montrée en rouge alors qu\'elle n\'empêche plus rien');
+
+    // 1. La vérité vit dans UN fichier, et les deux applications la lisent. Chacune avait la sienne,
+    // et elles ont divergé : l'app entreprise disait « public » pendant que celle du comptable
+    // affichait encore « dépôt privé, colle un jeton ». Deux vérités pour un seul fait.
+    const D = require('../src/depot.js');
+    assert.strictEqual(typeof D.private, 'boolean', 'src/depot.js doit déclarer `private`');
+    assert.ok(/const GITHUB = require\('\.\/depot'\)/.test(main), 'src/main.js redéclare le dépôt au lieu de le lire');
+    assert.ok(/const GITHUB = require\('\.\.\/depot'\)/.test(cab), 'src/cabinet/main.js redéclare le dépôt au lieu de le lire');
+    [['src/main.js', main], ['src/cabinet/main.js', cab]].forEach(([nom, src]) =>
+      assert.ok(!/private:\s*(true|false)/.test(src), nom + ' : un second drapeau `private` est réapparu, il divergera'));
+    // Et le fichier doit être EMBARQUÉ dans l'app cabinet, sinon elle ne démarre plus une fois
+    // construite : un `require` manquant ne se voit pas avant l'installation.
+    const conf = lireSource('build', 'cabinet.config.js');
+    assert.ok(/'src\/depot\.js'/.test(conf), 'src/depot.js n\'est pas livré avec l\'app cabinet');
+
+    // 2. L'interrupteur traverse le pont : sans ça, l'interface ne peut pas le suivre.
+    assert.ok(/private: GITHUB\.private/.test(main), 'update:version ne dit pas à l\'écran si le dépôt est privé');
+    assert.ok(/private: GITHUB\.private/.test(cab), 'upd:version (cabinet) ne dit pas à l\'écran si le dépôt est privé');
+
+    // 3. Le champ de saisie existe, et il est posé SOUS la condition — jamais en dur.
+    const i = app.indexOf('const tokenBlock = a.relay');
+    const j = app.indexOf('el.innerHTML = `<div class="update-head">');
+    const bloc = app.slice(i, j);
+    assert.ok(i > 0 && j > i && bloc.length > 400, 'découpage du bloc jeton raté');
+    assert.ok(bloc.includes('id="upd-token"'), 'plus aucun champ où coller un jeton : un dépôt privé serait un cul-de-sac');
+    assert.ok(bloc.indexOf('a.private ?') > 0 && bloc.indexOf('a.private ?') < bloc.indexOf('id="upd-token"'),
+      'le champ jeton doit être posé SOUS `a.private`, sinon il s\'affiche sur un dépôt public');
+    // Retirer un ancien jeton reste possible dans les deux cas : on ne laisse pas une valeur morte
+    // sur le poste de quelqu'un sans bouton pour l'enlever.
+    assert.ok((bloc.match(/id="upd-token-clear"/g) || []).length >= 2, 'retirer un jeton doit rester possible des deux côtés');
+    // Même chose côté cabinet.
+    const cabui = lireSource('src', 'cabinet', 'renderer', 'app.js');
+    assert.ok(/a\.private \? noteRelais/.test(cabui), 'l\'app cabinet affiche son champ jeton sans regarder le drapeau');
+
+    // 4. Une panne de relais ne s'affiche en rouge que si elle empêche quelque chose : sur un dépôt
+    // public le repli GitHub suffit tout seul. Elle reste dans le journal.
+    [['src/main.js', main], ['src/cabinet/main.js', cab]].forEach(([nom, src]) =>
+      assert.ok(/relayFailure: GITHUB\.private \? relayFailure : ''/.test(src),
+        nom + ' : une panne de relais est montrée en rouge alors qu\'elle n\'empêche rien'));
+  });
+
+  // Un message d'erreur venu d'une bibliothèque n'est jamais montré tel quel.
+  //
+  // Vu par le propriétaire sur son écran, en toutes lettres : « Cannot find latest-mac.yml in the
+  // release https://github.com/saouthq/skanfact/releases/tag/v7.25.0 ». Techniquement exact,
+  // parfaitement inutilisable, et ça donne l'impression d'un logiciel cassé — alors que la release
+  // était simplement en train de monter ses fichiers.
+  t('mises à jour : aucun message brut ne remonte à l\'écran', () => {
+    [['src/main.js', lireSource('src', 'main.js')],
+     ['src/cabinet/main.js', lireSource('src', 'cabinet', 'main.js')]].forEach(([nom, src]) => {
+      const i = src.indexOf('function updateProblem(err)');
+      assert.ok(i > 0, nom + ' : updateProblem introuvable');
+      const fin = src.indexOf('\n}', src.indexOf('return dit(', i));
+      const f = src.slice(i, fin > i ? fin + 2 : i + 4000);
+      assert.ok(f.length > 600, nom + ' : découpage de updateProblem raté');
+
+      // 1. Plus AUCUN chemin ne renvoie le texte d'origine. C'était la dernière ligne de l'ancienne
+      // version (`return m.split('\n')[0].slice(0, 200)`), et c'est elle qu'on a lue à l'écran.
+      //
+      // On lit l'ARGUMENT de chaque `return dit(…)`, parenthèses équilibrées : une assertion sur la
+      // forme `return brut` laissait passer `return dit(brut.split(…))`, vérifié en le réintroduisant.
+      const rendus = [];
+      for (let k = f.indexOf('return dit('); k >= 0; k = f.indexOf('return dit(', k + 1)) {
+        let p = f.indexOf('(', k), prof = 0, fin = p;
+        for (; fin < f.length; fin++) {
+          if (f[fin] === '(') prof++;
+          else if (f[fin] === ')') { prof--; if (!prof) break; }
+        }
+        rendus.push(f.slice(p + 1, fin));
+      }
+      assert.ok(rendus.length >= 5, nom + ' : trop peu de cas traités, le découpage est faux');
+      rendus.forEach(arg => assert.ok(!/\bbrut\b|\bm\.split\b/.test(arg),
+        nom + ' : un message brut est renvoyé à l\'écran — ' + arg.slice(0, 60)));
+      // Et le dernier recours — celui qui attrape tout ce qu'on n'a pas prévu — est une phrase écrite.
+      assert.ok(/^'[A-ZÀ-Ý]/.test(rendus[rendus.length - 1].trim()),
+        nom + ' : le dernier recours n\'est pas une phrase en français');
+
+      // 2. Le code d'erreur se lit sur l'ERREUR, pas dans son texte : `CHANNEL_FILE_NOT_FOUND` ne
+      // figure nulle part dans « Cannot find latest-mac.yml in the release … ». Le chercher dans le
+      // message, c'est ne jamais le trouver — c'est ce que faisait la version d'avant.
+      assert.ok(/err && err\.code/.test(f), nom + ' : le code de l\'erreur n\'est jamais lu');
+      assert.ok(/CHANNEL_FILE_NOT_FOUND/.test(f) && /Cannot find/.test(f),
+        nom + ' : une release en cours de publication n\'est pas reconnue');
+
+      // 3. Le texte d'origine n'est pas jeté pour autant : c'est lui qui sert à dépanner (6.7.2).
+      assert.ok(/detail = brut/.test(f), nom + ' : la cause technique est perdue');
+      // 4. Ce qui n'est pas une panne ne s'affiche pas en rouge.
+      assert.ok(/, true\)/.test(f), nom + ' : aucun cas n\'est marqué « pas une panne »');
+    });
+
+    // Côté écran : la phrase, le détail replié, et le gris pour ce qui n'est pas une panne.
+    const app = lireApp();
+    const e = app.slice(app.indexOf("else if (upd.state === 'error')"), app.indexOf('const relayNote'));
+    assert.ok(e.length > 200 && e.includes('upd.message'), 'découpage du bloc erreur raté');
+    assert.ok(/upd\.soft \?/.test(e), 'un échec sans gravité s\'affiche encore en rouge');
+    assert.ok(/details class="tech"/.test(e) && /upd\.detail/.test(e), 'le détail technique n\'est pas montrable');
+    assert.ok(/id="upd-log"/.test(e), 'aucun accès au journal depuis l\'erreur');
   });
 
   // ---------- 7.23.0 : l'Aide ----------

@@ -993,7 +993,7 @@ ipcMain.handle('cab:openDataDir', () => shell.openPath(app.getPath('userData')))
 //
 // macOS : l'app n'est pas signée, donc Squirrel ne peut pas l'installer. On réutilise le même
 // `mac-update.sh` que SkanFact, en lui passant le nom du binaire.
-const GITHUB = { owner: 'saouthq', repo: 'skanfact', private: true };
+const GITHUB = require('../depot');           // le MÊME fichier que l'app entreprise : un seul dépôt, une seule vérité
 const RELEASES_URL = `https://github.com/${GITHUB.owner}/${GITHUB.repo}/releases`;
 const IS_MAC = process.platform === 'darwin';
 const MAC_SIGNED = false;
@@ -1012,13 +1012,31 @@ function writeUpdateCfg(cfg) {
 }
 const sendUpd = (s, payload) => { try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('update:event', { state: s, ...(payload || {}) }); } catch {} };
 
-function friendlyError(err) {
-  const m = String((err && err.message) || err);
-  if (/404/.test(m)) return 'Aucune version trouvée : le jeton d\'accès manque ou n\'a pas accès au dépôt (Réglages → Mises à jour).';
-  if (/401|403|Bad credentials/i.test(m)) return 'Jeton d\'accès refusé ou expiré. Demande-en un nouveau.';
-  if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|ECONNRESET|net::/i.test(m)) return 'Impossible de joindre GitHub. Vérifie ta connexion internet.';
-  if (/sha512|checksum/i.test(m)) return 'Le fichier téléchargé est abîmé. Réessaie.';
-  return m.split('\n')[0].slice(0, 200);
+// Voir src/main.js : **on ne montre jamais une phrase qu'on n'a pas écrite.** Le message brut
+// d'electron-updater est en anglais et porte une URL — « Cannot find cabinet-mac.yml in the release
+// https://github.com/… » n'apprend rien à un comptable et donne l'impression d'un logiciel cassé.
+// La cause part dans `detail`, replié à l'écran, et dans le journal : c'est elle qui sert à dépanner.
+function updateProblem(err) {
+  const brut = String((err && err.message) || err || '').trim();
+  const code = String((err && err.code) || '');       // le code vit sur l'erreur, pas dans son texte
+  const tout = code + ' ' + brut;
+  const detail = brut.split('\n')[0].slice(0, 300);
+  const dit = (message, soft) => ({ message, detail, soft: !!soft });
+  // Une release existe mais son fichier d'index n'est pas encore en ligne : c'est une publication
+  // en cours, pas une panne. Gris, pas rouge.
+  if (/CHANNEL_FILE_NOT_FOUND/.test(code) || /Cannot find .+ in the (latest )?release/i.test(brut)) {
+    return dit('Une nouvelle version vient d\'être publiée et ses fichiers finissent de monter en ligne. Réessaie dans quelques minutes.', true);
+  }
+  if (/NO_PUBLISHED_VERSIONS|LATEST_VERSION_NOT_FOUND/.test(code)) return dit('Aucune version publiée pour l\'instant.', true);
+  if (/401|403|Bad credentials/i.test(tout)) return dit('Le jeton d\'accès a été refusé ou a expiré. Demandes-en un nouveau.');
+  if (/404/.test(tout)) return dit(GITHUB.private
+    ? 'Aucune version trouvée : le jeton d\'accès manque, ou il n\'a pas accès au dépôt (Réglages → Mises à jour).'
+    : 'Aucune version trouvée pour l\'instant.', !GITHUB.private);
+  if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|ECONNRESET|EAI_AGAIN|net::/i.test(tout)) return dit('Impossible de joindre le service de mise à jour. Vérifie ta connexion internet.');
+  if (/sha512|checksum|integrity/i.test(tout)) return dit('Le fichier téléchargé est incomplet ou abîmé. Réessaie.');
+  if (/ENOSPC/i.test(tout)) return dit('Il n\'y a plus assez d\'espace disque pour télécharger la mise à jour.');
+  if (/EACCES|EPERM/i.test(tout)) return dit('L\'application n\'a pas le droit d\'écrire la mise à jour ici. Place-la dans le dossier Applications, puis réessaie.');
+  return dit('La mise à jour n\'a pas abouti. Réessaie dans un moment ; si ça continue, envoie le journal.');
 }
 
 function getUpdater() {
@@ -1042,7 +1060,7 @@ function getUpdater() {
     autoUpdater.on('update-not-available', () => { if (!silentCheck) sendUpd('none'); });
     autoUpdater.on('download-progress', p => sendUpd('downloading', { percent: Math.round(p.percent), version: updateInfo && updateInfo.version }));
     autoUpdater.on('update-downloaded', info => { downloaded = true; downloadedFile = info.downloadedFile || null; sendUpd('downloaded', { version: info.version }); });
-    autoUpdater.on('error', err => { if (!silentCheck) sendUpd('error', { message: friendlyError(err) }); });
+    autoUpdater.on('error', err => { if (!silentCheck) sendUpd('error', updateProblem(err)); });
     // Relais si l'application a été construite avec son adresse, GitHub en direct sinon.
     const feedGithub = () => {
       const cfg = readUpdateCfg();
@@ -1087,7 +1105,7 @@ async function checkForUpdates(isSilent) {
     const r = await Promise.race([u.checkForUpdates(), timeout]);
     if (!r) return { state: 'error', message: 'Le module de mise à jour est inactif dans cette installation.' };
     return { state: 'ok' };
-  } catch (e) { return { state: 'error', message: friendlyError(e) }; }
+  } catch (e) { return { state: 'error', ...updateProblem(e) }; }
 }
 
 function takeLastUpdateResult() {
@@ -1119,7 +1137,11 @@ ipcMain.handle('upd:version', () => ({
   version: VERSION, packaged: app.isPackaged, platform: process.platform, macSigned: MAC_SIGNED,
   hasToken: !!readUpdateCfg().token,
   // Un relais qui a échoué n'est pas un relais : le champ jeton doit revenir.
-  relay: !!relayBase() && !relayFailure, relayFailure,
+  relay: !!relayBase() && !relayFailure,
+  // Sur un dépôt public, une panne de relais n'empêche plus rien (le repli GitHub suffit) : on ne
+  // l'affiche pas en rouge pour autant, elle reste dans le journal. Même règle que la 7.24.0.
+  relayFailure: GITHUB.private ? relayFailure : '',
+  private: GITHUB.private,
   lastUpdate: takeLastUpdateResult()
 }));
 ipcMain.handle('upd:setToken', (_e, token) => {
@@ -1134,7 +1156,7 @@ ipcMain.handle('upd:download', () => {
   const u = getUpdater();
   if (!u || !updateInfo) return { state: 'error', message: 'Aucune mise à jour détectée.' };
   silentCheck = false;
-  try { u.downloadUpdate(); return { state: 'ok' }; } catch (e) { return { state: 'error', message: friendlyError(e) }; }
+  try { u.downloadUpdate(); return { state: 'ok' }; } catch (e) { return { state: 'error', ...updateProblem(e) }; }
 });
 ipcMain.handle('upd:install', () => {
   const u = getUpdater();

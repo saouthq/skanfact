@@ -9630,7 +9630,14 @@
     else if (upd.state === 'downloaded') body = `<p><strong>Version ${h(upd.version)} prête à installer.</strong> ${isMacUnsigned ? 'SkanFact se ferme, remplace l\'application dans le dossier Applications et se relance (une dizaine de secondes).' : 'L\'app se ferme, s\'installe et redémarre (quelques secondes).'}</p>
       ${notesHtml(upd.notes)}<button class="btn btn-primary" id="upd-install">Installer et redémarrer</button>`;
     else if (upd.state === 'unconfigured') body = `<p class="muted">Les mises à jour automatiques ne sont pas configurées (package.json → build.publish).</p>${btnCheck}`;
-    else if (upd.state === 'error') body = `<p class="small" style="color:var(--danger)">${h(upd.message)}</p><div class="inline">${btnCheck}<button class="btn btn-ghost" id="upd-releases">Voir les versions sur GitHub</button></div>`;
+    // Un échec de mise à jour se lit en français, en une phrase qui dit quoi faire. Le texte
+    // d'origine — anglais, avec une URL et parfois une pile d'appels — n'est pas jeté : il est
+    // replié derrière « Détails techniques », parce que c'est lui qui sert au dépannage. Et ce qui
+    // n'est pas une panne (`soft` : version en cours de publication, bêta pas encore là) s'affiche
+    // en gris : du rouge sur une situation normale apprend à ignorer le rouge.
+    else if (upd.state === 'error') body = `<p class="${upd.soft ? 'muted' : 'small'}"${upd.soft ? '' : ' style="color:var(--danger)"'}>${h(upd.message)}</p>
+      ${upd.detail ? `<details class="tech"><summary>Détails techniques</summary><code>${h(upd.detail)}</code></details>` : ''}
+      <div class="inline">${btnCheck}<button class="btn btn-ghost" id="upd-releases">Voir les versions</button>${upd.soft ? '' : `<button class="btn btn-ghost" id="upd-log">Ouvrir le journal</button>`}</div>`;
     else if (!a.relay && (upd.state === 'token' || !a.hasToken)) body = `<p class="muted">Les mises à jour automatiques ne sont pas encore activées sur cet ordinateur : colle ton token GitHub ci-dessous et clique sur Enregistrer.</p>${btnCheck}`;
     else body = btnCheck;
     // Quand le relais est en place, il n'y a plus rien à saisir : c'est lui qui détient l'accès au
@@ -9638,13 +9645,26 @@
     // Et si le relais a échoué, on le DIT et on remontre le champ : un écran qui affirme « rien à
     // configurer » devant une mise à jour impossible est pire que pas d'écran du tout.
     const relayNote = a.relayFailure ? `<p class="small mt" style="color:var(--danger)">${h(a.relayFailure)}</p>` : '';
+    // Trois états, et un seul interrupteur pour passer de l'un à l'autre (`a.private`, qui vaut
+    // `GITHUB.private` dans main.js) :
+    //
+    //  1. relais en place  → rien à saisir, c'est lui qui détient l'accès ;
+    //  2. dépôt PRIVÉ      → le champ où coller un jeton, parce que sans lui rien ne se télécharge ;
+    //  3. dépôt PUBLIC     → rien à saisir non plus ; on ne garde qu'un bouton pour RETIRER un
+    //     ancien jeton, hérité de l'époque où le dépôt était privé.
+    //
+    // La 7.24.0 avait supprimé le champ purement et simplement, le dépôt venant de passer public.
+    // Remettre le dépôt en privé aurait alors donné un cul-de-sac : l'écran aurait écrit « colle
+    // ton jeton ci-dessous » au-dessus de rien du tout.
     const tokenBlock = a.relay
-      ? `<p class="small muted mt">Les mises à jour arrivent toutes seules : rien à configurer sur cet ordinateur.${a.hasToken ? ' <span class="muted">(Un ancien token est encore enregistré ; il ne sert plus.)</span>' : ''}</p>`
-      // Le dépôt est PUBLIC depuis le 13/09/2026 : il n'y a plus de jeton à saisir. `update:version`
-      // ne renvoie donc plus l'état « token », et le champ ne s'affiche que s'il en reste un
-      // d'avant — pour pouvoir le retirer, pas pour en poser un nouveau. Un écran qui réclame un
-      // jeton dont personne n'a besoin fait douter de tout le reste.
-      : relayNote + (a.hasToken ? `<div class="token-box">
+      ? `<p class="small muted mt">Les mises à jour arrivent toutes seules : rien à configurer sur cet ordinateur.${a.hasToken ? ' <span class="muted">(Un ancien jeton est encore enregistré ; il ne sert plus.)</span>' : ''}</p>`
+      : a.private ? relayNote + `<div class="token-box">
+      <div class="k-label">Jeton d'accès au dépôt</div>
+      <p class="small muted">SkanFact est distribué depuis un dépôt <b>privé</b> : un jeton de lecture est nécessaire pour recevoir les mises à jour. Il reste sur cet ordinateur et n'est envoyé à personne d'autre qu'à GitHub. ${info('upd.token')}</p>
+      <div class="inline"><input type="password" id="upd-token" placeholder="github_pat_…" autocomplete="off" spellcheck="false"><button class="btn btn-sm" id="upd-token-save">Enregistrer</button>${a.hasToken ? `<button class="btn btn-sm btn-ghost" id="upd-token-clear">Retirer</button>` : ''}</div>
+      ${a.hasToken ? '<p class="small muted">Un jeton est déjà enregistré sur cet ordinateur.</p>' : ''}
+    </div>`
+        : relayNote + (a.hasToken ? `<div class="token-box">
       <div class="k-label">Ancien jeton d'accès</div>
       <p class="small muted">Le dépôt de SkanFact est <b>public</b> : les mises à jour arrivent sans rien présenter. Un jeton datant de l'époque où il était privé est encore enregistré sur cet ordinateur ; il ne sert plus à rien.</p>
       <div class="inline"><button class="btn btn-sm btn-ghost" id="upd-token-clear">Retirer ce jeton</button></div>
@@ -9653,14 +9673,15 @@
     $('#upd-changelog').onclick = showChangelog;
     if ($('#upd-beta')) $('#upd-beta').onchange = e => setBeta(e.target.checked);
     if ($('#upd-token-save')) $('#upd-token-save').onclick = async () => {
-      const t = $('#upd-token').value.trim(); if (!t) return toast('Colle un token d\'abord', true);
-      if (!/^(github_pat_|ghp_|gho_|ghs_)[A-Za-z0-9_]+$/.test(t)) return toast('Ce n\'est pas un token GitHub : il commence par github_pat_ ou ghp_', true);
-      const r = await bridge.updateSetToken(t); upd.app.hasToken = r.hasToken; upd.state = 'idle'; toast('Token enregistré');
+      const t = $('#upd-token').value.trim(); if (!t) return refus('#upd-token', 'Colle d\'abord le jeton d\'accès.');
+      if (!/^(github_pat_|ghp_|gho_|ghs_)[A-Za-z0-9_]+$/.test(t)) return refus('#upd-token', 'Ce n\'est pas un jeton GitHub : il commence par github_pat_ ou ghp_.');
+      const r = await bridge.updateSetToken(t); upd.app.hasToken = r.hasToken; upd.state = 'idle'; toast('Jeton enregistré');
       runCheck();
     };
     if ($('#upd-token-clear')) $('#upd-token-clear').onclick = async () => { const r = await bridge.updateSetToken(''); upd.app.hasToken = r.hasToken; upd.state = 'idle'; drawUpdatePanel(); };
     if ($('#upd-check')) $('#upd-check').onclick = runCheck;
     if ($('#upd-releases')) $('#upd-releases').onclick = () => bridge.updateOpenReleases();
+    if ($('#upd-log')) $('#upd-log').onclick = () => bridge.openLog();
     if ($('#upd-install')) $('#upd-install').onclick = async () => {
       const b = $('#upd-install'); b.disabled = true; b.textContent = 'Installation…';
       const r = await bridge.updateInstall();

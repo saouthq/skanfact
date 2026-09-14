@@ -10,8 +10,9 @@ L'utilisateur est débutant en gestion (première entreprise) : chaque champ por
 
 - **Chaque amélioration livrée = une nouvelle version** (semver) : correctif 1.0.x, fonctionnalité 1.x.0, gros changement x.0.0. Mettre à jour `package.json` (`version`) **et** ajouter une entrée datée dans `CHANGELOG.md` (c'est elle qui devient les notes de version dans l'app et sur GitHub). Toujours annoncer le numéro de version dans la réponse.
 - Lancer `npm test` avant tout commit (calculs, numérotation, montant en lettres, échappement HTML, stockage/sauvegardes). Pour un changement d'interface, lancer aussi l'app réelle (`xvfb-run` + Playwright `_electron`, voir README « Tests ») : elle attrape les erreurs JS du renderer.
-- Ne jamais commiter de token. Le token GitHub de l'app (dépôt privé) est saisi par l'utilisateur dans Paramètres → Mises à jour et stocké dans `userData/update-config.json`.
-- Le dépôt est **privé**. Les mises à jour utilisent `electron-updater` avec `private: true` + token fourni par l'utilisateur.
+- Ne jamais commiter de token. Le jeton GitHub que l'utilisateur colle (quand le dépôt est privé) est stocké dans `userData/update-config.json`, jamais dans le code.
+- **Le dépôt est PUBLIC depuis le 13/09/2026** (GitHub Actions y est gratuit) et redeviendra peut-être privé. La bascule est **une seule ligne** : `private` dans **`src/depot.js`**, que les deux applications lisent — le champ « jeton d'accès » revient alors tout seul dans leurs Paramètres. Ne jamais redéclarer ce drapeau ailleurs : il avait été écrit dans les deux `main.js`, et ils ont divergé. `npm run e2e:depot` bascule vraiment et vérifie l'écran.
+- **Aucun message d'erreur brut ne remonte à l'écran** : `updateProblem(err)` (dans les deux `main.js`) rend une phrase en français, range le texte d'origine dans `detail` (replié sous « Détails techniques »), et marque `soft` ce qui n'est pas une panne.
 - macOS : app non signée → `MAC_SIGNED = false` dans `src/main.js`. electron-updater télécharge le `.zip` (sha512 vérifié) et `src/mac-update.sh` remplace l'app dans Applications puis la relance. Ne pas prétendre que Squirrel.Mac fonctionne sans signature Apple.
 
 ## Publier une version
@@ -51,7 +52,7 @@ Le propriétaire veut un rendu « beau et épuré, couleurs claires ». Palette 
 - Electron + JS pur, pas de React/Vite ; stockage JSON, pas SQLite.
 - La lecture de photo de facture (4.2.0) est **éteinte par défaut** et le restera : aucune requête réseau sans clé saisie par l'utilisateur, et l'app ne remplit jamais les données toute seule.
 - Pas d'e-facture TTN/El Fatoora tant que Skander ne le demande pas. À VÉRIFIER avec son comptable : la Tunisie généralise la facture électronique pour les assujettis TVA.
-- Dépôt privé (il l'exige), d'où le token dans l'app.
+- Dépôt **public** depuis le 13/09/2026, pour que les publications soient gratuites ; il pourra redevenir privé (`src/depot.js`). Le relais de mise à jour fonctionne à l'identique dans les deux cas.
 
 ## Contexte fiscal (À VÉRIFIER avec le comptable)
 
@@ -368,6 +369,7 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:colonnes` | **les colonnes alignées** : l'en-tête de chaque colonne de chaque tableau comparé à ses valeurs, sur 19 pages et tous leurs onglets (392 colonnes) |
 | `npm run e2e:entetes` | **les barres d'actions mesurées** : aucun contrôle d'en-tête étiré sur toute la largeur, aucune barre empilée sur trois rangées (21 pages) |
 | `npm run e2e:beta` | **le canal bêta** : la case décochée à l'installation, la question avant de cocher, le refus qui décoche vraiment, la sauvegarde « avant-beta » écrite sur le disque, et le retour en arrière sans question |
+| `npm run e2e:depot` | **public ou privé** : `src/depot.js` est VRAIMENT basculé en privé, l'application ouverte, le champ jeton doit revenir — puis repartir au retour au public (le fichier est restauré quoi qu'il arrive) |
 
 Ils ont longtemps vécu dans un dossier de travail temporaire, effacé à chaque session : il fallait les réécrire de mémoire, et ils dérivaient (une assertion restée sur une version périmée, un écran neuf jamais parcouru). **Un test qu'on doit réécrire pour s'en servir n'est pas un test.** Le harnais (`test/e2e/harnais.js`) trouve Playwright où il est, lit la version dans `package.json` au lieu de l'écrire en dur, et range les captures dans `dist-e2e/` (ignoré par Git).
 
@@ -1216,6 +1218,58 @@ kinésithérapeute qui venait de cliquer sur son propre métier. `core.regimeSug
 **propose** de nouveau, `a.regimeTouche` empêche d'écraser un choix fait à la main (même motif que
 `modulesTouche` et que la durée proposée par la famille d'un bien). **Retirer un mécanisme
 n'autorise pas à perdre ce qu'il savait** — et un e2e ne sert que si on le relance.
+
+## 7.26.0 — Aucun message brut, et un seul interrupteur public/privé
+
+Skander, sur capture : « je n'aime pas que ça affiche cette ligne, ça ne fait pas pro un message
+d'erreur — `Cannot find latest-mac.yml in the release https://github.com/…` ». Et, séparément :
+« le dépôt redeviendra privé, est-ce que t'as réglé la ligne avec le token ? »
+
+Les deux tenaient au même endroit du code, et la seconde question a révélé que la réponse était
+**non** : la 7.24.0 avait supprimé le champ jeton parce que le dépôt venait de passer public.
+
+Règles apprises, à ne pas recasser :
+
+- **On ne montre jamais à l'utilisateur une phrase qu'on n'a pas écrite.** `friendlyError` finissait
+  par `return m.split('\n')[0].slice(0, 200)` : tout cas non prévu recopiait l'anglais
+  d'electron-updater, avec son URL. `updateProblem(err)` rend `{ message, detail, soft }` — une
+  phrase en français pour chaque cas, le texte d'origine rangé dans `detail` (replié sous « Détails
+  techniques », plus un bouton qui ouvre le journal : c'est lui qui sert à dépanner, règle 6.7.2),
+  et `soft` pour ce qui **n'est pas une panne**. Du rouge sur une situation normale apprend à
+  ignorer le rouge.
+- **Le code d'une erreur vit sur l'erreur, pas dans son message.** `ERR_UPDATER_CHANNEL_FILE_NOT_FOUND`
+  ne figure nulle part dans « Cannot find latest-mac.yml in the release … ». Le chercher dans le
+  texte, c'est ne jamais le trouver — c'est ce que faisait la branche bêta écrite en 7.25.0, qui
+  n'aurait donc jamais été atteinte. On lit `err.code` **et** `err.message`.
+- **Une release existe AVANT ses fichiers.** GitHub crée le tag et la page, puis les installateurs
+  montent pendant deux à quatre minutes — et c'est exactement le moment où l'on va voir si la
+  nouvelle version est là. Ce n'est pas une panne, ça a sa phrase et son gris. (Vérifié sur les
+  horodatages de la 7.25.0 : page à 08:22:24, `latest-mac.yml` à 08:24:38, message vu à 08:22.)
+- **Un test de source qui interdit une forme doit lire l'ARGUMENT, pas la ligne.** Mon assertion
+  `!/return\s+(m|brut)\b/` laissait passer `return dit(brut.split(…))` — vert avec le défaut
+  réintroduit. Elle scanne maintenant l'argument de chaque `return dit(…)`, parenthèses équilibrées.
+- **Un drapeau qui vit en double diverge, toujours.** `GITHUB.private` existait dans les DEUX
+  `main.js`. L'app entreprise disait « public » depuis la 7.24.0 pendant que celle du comptable
+  affichait encore « SkanFact est distribué depuis un dépôt privé : un jeton de lecture est
+  nécessaire » — et le faisait chercher un jeton que personne n'avait à lui donner. La vérité vit
+  dans **`src/depot.js`**, que les deux applications lisent (et qui doit figurer dans les `files` de
+  `build/cabinet.config.js`, sinon l'app cabinet ne démarre plus une fois construite).
+- **Retirer un mécanisme devenu inutile, c'est désarmer l'interrupteur qui le rallume.** La 7.24.0
+  avait supprimé le champ jeton « puisque le dépôt est public » : basculer `private` à `true`
+  n'aurait plus rien réarmé, et l'écran aurait écrit « colle ton jeton ci-dessous » au-dessus de
+  rien du tout. Ce qui dépend d'un drapeau se pose **sous** ce drapeau, jamais en dur ni supprimé.
+- **Un test écrit contre l'état du jour décrit cet état, pas la règle.** Celui de la 7.24.0 exigeait
+  l'ABSENCE du champ. Il a fallu le réécrire pour livrer la bonne version — même famille que
+  `barre-laterale.js` en 7.12.0. On teste l'interrupteur, pas la position dans laquelle il est.
+- Sur le relais : il fonctionne **à l'identique** sur un dépôt privé — c'est justement sa raison
+  d'être. Une seule chose à vérifier le jour de la bascule, et c'est noté dans `worker/README.md` :
+  que le `GITHUB_TOKEN` du worker ait bien **Contents: Read-only** sur le dépôt. Sur un dépôt
+  public, un jeton sans droits suffit à lire les releases : la panne ne se verrait qu'au moment de
+  la bascule, et couperait les mises à jour de tout le monde d'un coup.
+
+Le test qui compte est `npm run e2e:depot` : il **bascule vraiment** `src/depot.js` en privé, ouvre
+l'application, vérifie que le champ est revenu, repasse en public et vérifie qu'il repart — le
+fichier étant remis dans son état d'origine quoi qu'il arrive (`finally`).
 
 ## Pistes pour la suite (non demandées)
 
