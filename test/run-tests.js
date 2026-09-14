@@ -7115,6 +7115,51 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.ok(/id="upd-log"/.test(e), 'aucun accès au journal depuis l\'erreur');
   });
 
+  // Un relais en panne bascule TOUT SEUL sur GitHub.
+  //
+  // Le repli existait depuis la 6.7.0 — mais seulement quand le relais était MAL RÉGLÉ (adresse
+  // invalide, attrapée par `new URL`). Pas quand il répondait mal : le seul cas qui arrive
+  // vraiment. L'app du comptable affichait donc « Aucune version trouvée : le jeton d'accès
+  // manque » pendant qu'un second chemin, parfaitement fonctionnel, l'attendait juste à côté.
+  // C'est le défaut de la 6.7.2, une couche plus bas.
+  t('mises à jour : un relais qui répond mal bascule tout seul sur GitHub', () => {
+    [['src/main.js', lireSource('src', 'main.js')],
+     ['src/cabinet/main.js', lireSource('src', 'cabinet', 'main.js')]].forEach(([nom, src]) => {
+      // 1. Le repli se souvient : on ne repasse pas par un service qui vient de refuser.
+      assert.ok(/let relayDown = false;/.test(src), nom + ' : rien ne retient qu\'un relais a échoué');
+      assert.ok(/if \(!base \|\| relayDown\)/.test(src), nom + ' : configureFeed repasse par un relais en panne');
+
+      // 2. Et il se déclenche DANS la vérification, pas seulement au réglage.
+      const i = src.indexOf('async function checkForUpdates');
+      const f = src.slice(i, src.indexOf('\n}', src.indexOf('return { state: \'error\', ...updateProblem(e) };', i)));
+      assert.ok(i > 0 && f.length > 500, nom + ' : découpage de checkForUpdates raté');
+      assert.ok(/relayDown = true;/.test(f), nom + ' : un échec du relais ne le débranche pas');
+      assert.ok(/configureFeed\(u\)/.test(f), nom + ' : le flux n\'est jamais rebranché sur GitHub');
+      assert.strictEqual((f.match(/u\.checkForUpdates\(\)/g) || []).length, 2,
+        nom + ' : il n\'y a pas de SECOND essai après l\'échec du relais');
+
+      // 3. On ne crie pas avant d'avoir essayé le second chemin : l'événement `error` du premier
+      // échec afficherait un rouge que le repli dément une seconde plus tard.
+      assert.ok(/silencerErreur/.test(f), nom + ' : le premier échec s\'affiche avant le second essai');
+      assert.ok(/&& !silencerErreur\) send/.test(src), nom + ' : l\'événement d\'erreur n\'est jamais retenu');
+      // Et il se rouvre sur tous les chemins, sinon une erreur suivante resterait muette.
+      assert.ok((src.match(/silencerErreur = false/g) || []).length >= 3,
+        nom + ' : silencerErreur doit être relevé sur chaque sortie, sinon l\'écran devient muet');
+    });
+
+    // Côté écran : le détail et la gravité voyagent avec le message renvoyé par `check`, et l'état
+    // du relais est relu — sinon l'écran continue d'annoncer « rien à configurer » après la bascule.
+    const app = lireApp();
+    assert.ok(/upd\.detail = r\.detail \|\| ''; upd\.soft = !!r\.soft;/.test(app),
+      'app.js : une erreur renvoyée par check perd son détail et sa gravité');
+    const rc = app.slice(app.indexOf('async function runCheck()'), app.indexOf('async function showChangelog'));
+    assert.ok(rc.length > 300 && /bridge\.updateVersion\(\)/.test(rc), 'app.js : l\'état du relais n\'est pas relu après la vérification');
+    const cab = lireSource('src', 'cabinet', 'renderer', 'app.js');
+    assert.ok(/upd\.detail = r\.detail \|\| ''; upd\.soft = !!r\.soft;/.test(cab),
+      'cabinet : une erreur renvoyée par check perd son détail et sa gravité');
+    assert.ok(/upd\.app = await api\.updVersion\(\);/.test(cab), 'cabinet : l\'état du relais n\'est pas relu');
+  });
+
   // ---------- 7.23.0 : l'Aide ----------
 
   t('l\'Aide range ses trente-deux articles en thèmes, sans en perdre ni en dupliquer', () => {

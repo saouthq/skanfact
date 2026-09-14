@@ -7,6 +7,33 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 7.26.1 — 14/09/2026
+
+**Le repli n'est pas un réglage, c'est un réflexe.**
+
+L'application du comptable affichait, sur le même écran et à dix lignes d'écart :
+
+> Aucune version trouvée : le jeton d'accès manque ou n'a pas accès au dépôt.
+> Les mises à jour arrivent toutes seules : rien à configurer.
+
+Les deux ne peuvent pas être vraies. Et aucune des deux ne l'était vraiment : il y a **deux chemins**
+pour se mettre à jour — le service de relais, et GitHub en direct — et le second existait depuis la
+6.7.0 sans jamais servir. Il ne se déclenchait que lorsque le relais était **mal réglé** (adresse
+invalide), jamais quand il **répondait mal** — c'est-à-dire le seul cas qui arrive vraiment. C'est
+exactement le défaut corrigé en 6.7.2, une couche plus bas : *un chemin de secours ne sert que s'il
+se déclenche tout seul.*
+
+Désormais : si le relais échoue pendant une vérification, SkanFact rebranche **tout seul** le
+téléchargement direct depuis GitHub et réessaie immédiatement. Sur un dépôt public, ce chemin-là
+fonctionne sans rien présenter. Personne n'a rien à faire, rien à choisir, et rien ne s'affiche en
+rouge tant qu'un second essai reste possible — un message d'erreur qu'on va démentir une seconde
+plus tard vaut moins que pas de message du tout. Les deux applications sont corrigées.
+
+Au passage : le détail technique et la gravité d'une erreur ne voyageaient qu'avec les messages
+venus d'un événement, pas avec ceux renvoyés directement après un clic sur « Vérifier » —
+c'est-à-dire précisément ceux qu'on lit. « Détails techniques » et l'affichage en gris marchent
+maintenant dans les deux cas.
+
 ## 7.26.0 — 14/09/2026
 
 **« Cannot find latest-mac.yml in the release https://github.com/… »**

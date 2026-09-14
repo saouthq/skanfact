@@ -2417,8 +2417,17 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
       upd.state = 'checking'; drawUpdatePanel();
       const r = await api.updCheck();
       if (r && (r.state === 'dev' || r.state === 'token' || r.state === 'error')) {
-        upd.state = r.state === 'dev' ? 'idle' : r.state; upd.message = r.message || ''; drawUpdatePanel();
+        upd.state = r.state === 'dev' ? 'idle' : r.state; upd.message = r.message || '';
+        // Le détail et la gravité voyagent avec le message, sinon « Détails techniques » et le gris
+        // ne servent que pour les erreurs venues d'un événement — jamais pour celles qu'on lit
+        // après avoir cliqué.
+        upd.detail = r.detail || ''; upd.soft = !!r.soft;
+        drawUpdatePanel();
       }
+      // Le repli automatique a pu débrancher le relais : on relit l'état plutôt que de continuer à
+      // annoncer « rien à configurer ».
+      upd.app = await api.updVersion();
+      drawUpdatePanel();
     };
     if ($('#u-check')) $('#u-check').onclick = verifier;
     if ($('#u-rel')) $('#u-rel').onclick = () => api.updOpenReleases();

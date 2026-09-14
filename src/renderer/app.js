@@ -9742,10 +9742,16 @@
     if (upd.state === 'downloading' || upd.state === 'downloaded') return drawUpdatePanel();
     upd.state = 'checking'; drawUpdatePanel();
     const r = await bridge.updateCheck();
-    if (r.state === 'error') { upd.state = 'error'; upd.message = r.message; drawUpdatePanel(); }
+    // Le détail technique et la gravité voyagent avec le message : sans eux, « Détails techniques »
+    // et le gris ne servent que pour les erreurs venues d'un ÉVÉNEMENT, jamais pour celles que
+    // `update:check` renvoie directement — c'est-à-dire justement celles qu'on lit après un clic.
+    if (r.state === 'error') { upd.state = 'error'; upd.message = r.message; upd.detail = r.detail || ''; upd.soft = !!r.soft; drawUpdatePanel(); }
     else if (r.state === 'dev') { upd.state = 'idle'; drawUpdatePanel(); toast('Disponible uniquement dans l\'application installée'); }
     else if (r.state === 'unconfigured') { upd.state = 'unconfigured'; drawUpdatePanel(); }
     else if (r.state === 'token') { upd.state = 'token'; drawUpdatePanel(); const i = $('#upd-token'); if (i) i.focus(); }
+    // Le repli automatique a pu débrancher le relais pendant la vérification : on relit l'état de
+    // l'application, sinon l'écran continue d'annoncer « rien à configurer » à tort.
+    bridge.updateVersion().then(v => { upd.app = v; drawUpdatePanel(); });
     // sinon : les événements (none / available / downloading / downloaded) mettent le panneau à jour
   }
 

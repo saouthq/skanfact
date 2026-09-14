@@ -1003,6 +1003,8 @@ let updater = null, updateInfo = null, downloaded = false, downloadedFile = null
 // Pourquoi le module n'a pas démarré, en clair : sans ça le comptable lit « indisponible » et
 // personne ne peut l'aider à distance.
 let updaterError = '', relayFailure = '';
+// Une erreur qu'on va peut-être démentir par un second essai ne s'affiche pas tout de suite.
+let silencerErreur = false;
 const UPDATE_CFG = () => path.join(app.getPath('userData'), 'update-config.json');
 const UPDATE_RESULT = () => path.join(app.getPath('userData'), 'update-result.json');
 const readUpdateCfg = () => { try { return JSON.parse(fs.readFileSync(UPDATE_CFG(), 'utf8')); } catch { return {}; } };
@@ -1039,6 +1041,35 @@ function updateProblem(err) {
   return dit('La mise à jour n\'a pas abouti. Réessaie dans un moment ; si ça continue, envoie le journal.');
 }
 
+// Relais si l'application a été construite avec son adresse, GitHub en direct sinon.
+//
+// `feedGithub` et `configureFeed` vivent au niveau du MODULE et non plus dans `getUpdater` : le
+// repli automatique (voir checkForUpdates) doit pouvoir rebrancher le flux après coup. Enfermé dans
+// une fermeture, il n'existait qu'au moment de la construction du module — c'est-à-dire au seul
+// moment où l'on ne sait pas encore si le relais répond.
+function feedGithub(u) {
+  const cfg = readUpdateCfg();
+  u.setFeedURL({ provider: 'github', owner: GITHUB.owner, repo: GITHUB.repo, channel: UPDATE_CHANNEL, private: !!cfg.token, token: cfg.token || undefined });
+}
+
+// Le relais a échoué pendant une vérification : on ne repasse plus par lui de la session.
+let relayDown = false;
+
+function configureFeed(u) {
+  const base = relayBase();
+  if (!base || relayDown) return feedGithub(u);
+  try {
+    // Une adresse invalide doit être vue ICI, pas au premier téléchargement.
+    const url = new URL(`${base}/cabinet`).toString();
+    u.requestHeaders = { 'X-SkanFact-App': relaySecret() };
+    u.setFeedURL({ provider: 'generic', url, channel: UPDATE_CHANNEL });
+  } catch (e) {
+    // Jamais de cabinet sans recours : on retombe sur GitHub, et on le dit.
+    relayFailure = `Relais injoignable (${String(e && e.message || e).slice(0, 120)}). Retour au téléchargement direct depuis GitHub.`;
+    feedGithub(u);
+  }
+}
+
 function getUpdater() {
   if (updater) return updater;
   try {
@@ -1060,26 +1091,8 @@ function getUpdater() {
     autoUpdater.on('update-not-available', () => { if (!silentCheck) sendUpd('none'); });
     autoUpdater.on('download-progress', p => sendUpd('downloading', { percent: Math.round(p.percent), version: updateInfo && updateInfo.version }));
     autoUpdater.on('update-downloaded', info => { downloaded = true; downloadedFile = info.downloadedFile || null; sendUpd('downloaded', { version: info.version }); });
-    autoUpdater.on('error', err => { if (!silentCheck) sendUpd('error', updateProblem(err)); });
-    // Relais si l'application a été construite avec son adresse, GitHub en direct sinon.
-    const feedGithub = () => {
-      const cfg = readUpdateCfg();
-      autoUpdater.setFeedURL({ provider: 'github', owner: GITHUB.owner, repo: GITHUB.repo, channel: UPDATE_CHANNEL, private: !!cfg.token, token: cfg.token || undefined });
-    };
-    const base = relayBase();
-    if (!base) feedGithub();
-    else {
-      try {
-        // Une adresse invalide doit être vue ICI, pas au premier téléchargement.
-        const url = new URL(`${base}/cabinet`).toString();
-        autoUpdater.requestHeaders = { 'X-SkanFact-App': relaySecret() };
-        autoUpdater.setFeedURL({ provider: 'generic', url, channel: UPDATE_CHANNEL });
-      } catch (e) {
-        // Jamais de cabinet sans recours : on retombe sur GitHub + jeton, et on le dit.
-        relayFailure = `Relais injoignable (${String(e && e.message || e).slice(0, 120)}). Retour au téléchargement direct depuis GitHub.`;
-        feedGithub();
-      }
-    }
+    autoUpdater.on('error', err => { if (!silentCheck && !silencerErreur) sendUpd('error', updateProblem(err)); });
+    configureFeed(autoUpdater);
     updater = autoUpdater;
   } catch (e) {
     updaterError = String(e && e.message || e).split('\n')[0].slice(0, 200);
@@ -1100,12 +1113,32 @@ async function checkForUpdates(isSilent) {
   const u = getUpdater();
   if (!u) return updaterUnavailable();
   if (downloaded) { sendUpd('downloaded', { version: updateInfo && updateInfo.version }); return { state: 'ok' }; }
-  const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('ETIMEDOUT: pas de réponse de GitHub')), 45000));
+  const patiente = () => new Promise((_, rej) => setTimeout(() => rej(new Error('ETIMEDOUT: pas de réponse')), 45000));
+  // **Le repli n'est pas un réglage, c'est un réflexe.** Deux chemins existent — le relais et
+  // GitHub en direct — et le second ne servait que lorsque le premier était MAL RÉGLÉ, pas quand il
+  // répondait mal : le seul cas qui arrive vraiment. Le comptable lisait « Aucune version trouvée :
+  // le jeton d'accès manque » pendant qu'un chemin parfaitement fonctionnel l'attendait à côté.
+  const avecRelais = !!relayBase() && !relayDown;
+  silencerErreur = avecRelais;
   try {
-    const r = await Promise.race([u.checkForUpdates(), timeout]);
+    const r = await Promise.race([u.checkForUpdates(), patiente()]);
+    silencerErreur = false;
     if (!r) return { state: 'error', message: 'Le module de mise à jour est inactif dans cette installation.' };
     return { state: 'ok' };
-  } catch (e) { return { state: 'error', ...updateProblem(e) }; }
+  } catch (e) {
+    if (avecRelais) {
+      relayDown = true;
+      relayFailure = `Le service de mise à jour n'a pas répondu (${String((e && e.message) || e).slice(0, 120)}). Téléchargement direct depuis GitHub.`;
+      configureFeed(u);                              // relayDown est posé : on repart sur GitHub
+      try {
+        const r2 = await Promise.race([u.checkForUpdates(), patiente()]);
+        silencerErreur = false;
+        if (r2) return { state: 'ok' };
+      } catch (e2) { silencerErreur = false; return { state: 'error', ...updateProblem(e2) }; }
+    }
+    silencerErreur = false;
+    return { state: 'error', ...updateProblem(e) };
+  }
 }
 
 function takeLastUpdateResult() {

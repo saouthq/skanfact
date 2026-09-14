@@ -1162,6 +1162,8 @@ let silent = true;
 // n'a aucune piste — et moi non plus, à distance.
 let updaterError = '';
 let relayFailure = '';
+// Une erreur qu'on va peut-être démentir par un second essai ne s'affiche pas tout de suite.
+let silencerErreur = false;
 
 const UPDATE_CFG = () => path.join(app.getPath('userData'), 'update-config.json');
 const UPDATE_RESULT = () => path.join(app.getPath('userData'), 'update-result.json');
@@ -1209,9 +1211,13 @@ function appliquerCanal(u) {
   u.allowDowngrade = !beta && canalDe(app.getVersion()) !== 'latest';
 }
 
+// Le relais a échoué PENDANT une vérification (et pas seulement au réglage). On n'y revient plus de
+// la session : réessayer un service qui vient de refuser, c'est faire attendre pour rien.
+let relayDown = false;
+
 function configureFeed(u) {
   const base = relayBase();
-  if (!base) { feedGithub(u); return appliquerCanal(u); }
+  if (!base || relayDown) { feedGithub(u); return appliquerCanal(u); }
   try {
     // Une adresse invalide (chemin collé en trop, espace, texte au lieu d'une URL) doit être vue
     // ICI, pas au premier téléchargement : `new URL` est le seul contrôle qui la rejette vraiment.
@@ -1261,7 +1267,7 @@ function getUpdater() {
     autoUpdater.on('update-not-available', () => { if (!silent) sendUpdate('none'); });
     autoUpdater.on('download-progress', (p) => sendUpdate('downloading', { percent: Math.round(p.percent), version: updateInfo && updateInfo.version }));
     autoUpdater.on('update-downloaded', (info) => { downloaded = true; downloadedFile = info.downloadedFile || null; sendUpdate('downloaded', { version: info.version, notes: notesToText(info.releaseNotes) }); });
-    autoUpdater.on('error', (err) => { if (!silent) sendUpdate('error', updateProblem(err)); });
+    autoUpdater.on('error', (err) => { if (!silent && !silencerErreur) sendUpdate('error', updateProblem(err)); });
     configureFeed(autoUpdater);
     updater = autoUpdater;
   } catch (e) {
@@ -1342,14 +1348,39 @@ async function checkForUpdates(isSilent) {
   const u = getUpdater();
   if (!u) return updaterUnavailable();
   if (downloaded) { sendUpdate('downloaded', { version: updateInfo && updateInfo.version, notes: notesToText(updateInfo && updateInfo.releaseNotes) }); return { state: 'ok' }; }
-  // 45 s maximum : sans réponse de GitHub on rend la main avec un message plutôt que d'attendre sans fin
-  const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('ETIMEDOUT: pas de réponse de GitHub')), 45000));
+  // 45 s maximum : sans réponse on rend la main avec un message plutôt que d'attendre sans fin.
+  const patiente = () => new Promise((_, rej) => setTimeout(() => rej(new Error('ETIMEDOUT: pas de réponse')), 45000));
+  // **Le repli n'est pas un réglage, c'est un réflexe.** Il y a DEUX chemins pour se mettre à jour —
+  // le relais, et GitHub en direct — et jusqu'ici le second ne servait que lorsque le premier était
+  // MAL RÉGLÉ (adresse invalide). Pas quand il répondait mal, c'est-à-dire le seul cas qui arrive
+  // vraiment : l'application affichait alors une erreur en rouge alors qu'un autre chemin
+  // parfaitement fonctionnel l'attendait juste à côté. C'est le défaut de la 6.7.2, une couche plus
+  // bas. Sur un dépôt public, GitHub en direct marche sans rien présenter du tout.
+  const avecRelais = !!relayBase() && !relayDown;
+  // Tant qu'un second essai reste possible, on ne crie pas : l'événement `error` du premier
+  // échec afficherait un message rouge que le repli va démentir une seconde plus tard.
+  silencerErreur = avecRelais;
   try {
-    const r = await Promise.race([u.checkForUpdates(), timeout]);
+    const r = await Promise.race([u.checkForUpdates(), patiente()]);
+    silencerErreur = false;
     // null = electron-updater inactif dans cette installation (ex. Linux hors AppImage) : aucun événement n'arrivera
-    if (!r) return { state: 'error', message: 'Le module de mise à jour est inactif dans cette installation. Télécharge la nouvelle version depuis GitHub.' };
+    if (!r) return { state: 'error', message: 'Le module de mise à jour est inactif dans cette installation. Installe la nouvelle version à la main.' };
     return { state: 'ok' };
-  } catch (e) { return { state: 'error', ...updateProblem(e) }; }
+  } catch (e) {
+    if (avecRelais) {
+      relayDown = true;
+      relayFailure = `Le service de mise à jour n'a pas répondu (${String((e && e.message) || e).slice(0, 120)}). Téléchargement direct depuis GitHub.`;
+      logToFile('relais de mise à jour', e);
+      configureFeed(u);                              // relayDown est posé : on repart sur GitHub
+      try {
+        const r2 = await Promise.race([u.checkForUpdates(), patiente()]);
+        silencerErreur = false;
+        if (r2) return { state: 'ok' };
+      } catch (e2) { silencerErreur = false; return { state: 'error', ...updateProblem(e2) }; }
+    }
+    silencerErreur = false;
+    return { state: 'error', ...updateProblem(e) };
+  }
 }
 
 // Résultat de la dernière mise à jour Mac (écrit par mac-update.sh), lu une seule fois au démarrage suivant.

@@ -1271,6 +1271,31 @@ Le test qui compte est `npm run e2e:depot` : il **bascule vraiment** `src/depot.
 l'application, vérifie que le champ est revenu, repasse en public et vérifie qu'il repart — le
 fichier étant remis dans son état d'origine quoi qu'il arrive (`finally`).
 
+### 7.26.1 — le repli n'est pas un réglage, c'est un réflexe
+
+L'app du comptable affichait, sur le même écran et à dix lignes d'écart : « Aucune version trouvée :
+le jeton d'accès manque ou n'a pas accès au dépôt » **et** « Les mises à jour arrivent toutes seules :
+rien à configurer ». Deux phrases qui ne peuvent pas être vraies ensemble.
+
+- **Un chemin de secours ne sert que s'il se déclenche tout seul** — règle de la 6.7.2, re-trouvée
+  une couche plus bas. Le repli GitHub existait depuis la 6.7.0 mais ne se déclenchait **que si le
+  relais était mal réglé** (`new URL` qui lève), jamais s'il *répondait mal* : le seul cas qui
+  arrive vraiment. `checkForUpdates` rebranche maintenant GitHub et **réessaie immédiatement**
+  (`relayDown` retient l'échec pour la session, `configureFeed` le respecte).
+- **On ne crie pas avant d'avoir essayé le second chemin.** L'événement `error` du premier échec
+  affichait un rouge que le repli dément une seconde plus tard : `silencerErreur` le retient tant
+  qu'un second essai reste possible — et se relève sur **chaque** sortie, sinon l'écran devient
+  muet pour de bon.
+- **Une fermeture, c'est un mécanisme qui n'existe qu'au moment où on ne peut pas encore s'en
+  servir.** `feedGithub` vivait à l'intérieur de `getUpdater()` dans l'app cabinet : impossible de
+  rebrancher le flux après coup. Sorti au niveau du module, comme dans l'app entreprise.
+- **Ce que `check` RENVOIE et ce qu'un ÉVÉNEMENT envoie doivent porter la même chose.** `detail` et
+  `soft` ne voyageaient qu'avec les événements ; les erreurs renvoyées après un clic sur
+  « Vérifier » — c'est-à-dire celles qu'on lit vraiment — les perdaient en route, et « Détails
+  techniques » ne s'affichait jamais dans le cas le plus courant.
+- Et l'écran **relit l'état de l'application** après une vérification : le repli a pu débrancher le
+  relais entre-temps, et sans cette relecture la page continue d'annoncer « rien à configurer ».
+
 ## Pistes pour la suite (non demandées)
 
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.
