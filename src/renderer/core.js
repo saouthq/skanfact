@@ -651,6 +651,18 @@
 
   const CURRENCIES = ['DT', 'EUR', 'USD', 'GBP', 'CHF', 'MAD', 'DZD'];
   function decimalsFor(currency) { return !currency || currency === 'DT' || currency === 'TND' ? 3 : 2; }
+  // « 3 achat(s) sans justificatif » : un logiciel qui écrit ça paraît bâclé, et c'est écrit noir
+  // sur blanc dans les consignes depuis Cabinet 1.0.0. `pl` existait — mais LOCALEMENT dans
+  // app.js, donc hors de portée d'ici, où vivent pourtant les libellés concernés : ceux de
+  // `closureChecks`, de `packChecklist`, des bulletins et des congés. Une règle apprise d'un côté
+  // se vérifie de l'autre ; celle-ci ne l'avait jamais été — et c'est une capture destinée au
+  // site qui l'a montrée, pas un test.
+  // Le pluriel français commence à DEUX : « 0 achat », « 1 achat », « 2 achats ».
+  function pl(n, un, plur) {
+    const x = Number(n) || 0;
+    return `${x} ${x >= 2 ? (plur || un + 's') : un}`;
+  }
+
   function money(n, currency, decimals, lang) {
     const v = round3(n);
     const neg = v < 0;
@@ -2036,7 +2048,7 @@
       ${emp.cnss ? `<div class="kv"><span>N° CNSS</span><span>${escapeHtml(emp.cnss)}</span></div>` : ''}
       ${emp.hireDate ? `<div class="kv"><span>Embauché le</span><span>${fmtDate(emp.hireDate)}</span></div>` : ''}
       <div class="kv"><span>Contrat</span><span>${escapeHtml(contractLabel(emp.contract || 'cdi'))}</span></div>
-      <div class="kv"><span>Situation</span><span>${emp.headOfFamily ? 'Chef de famille' : 'Célibataire'}${Number(emp.children) ? ` · ${emp.children} enfant(s) à charge` : ''}</span></div>
+      <div class="kv"><span>Situation</span><span>${emp.headOfFamily ? 'Chef de famille' : 'Célibataire'}${Number(emp.children) ? ` · ${pl(emp.children, 'enfant')} à charge` : ''}</span></div>
     </div>
     <div class="box"><h2>Période</h2>
       <div class="kv"><span>Mois</span><span><b>${escapeHtml(label)}</b></span></div>
@@ -2052,7 +2064,7 @@
     <thead><tr><th>Désignation</th><th class="n">Base</th><th class="n">Taux</th><th class="n">Part salarié</th><th class="n">Part employeur</th></tr></thead>
     <tbody>
       ${row('Salaire de base', null, null, c.baseGross, null)}
-      ${c.absenceCut ? row(`Absence (${pct(c.absentDays)} jour(s))`, null, null, -c.absenceCut, null) : ''}
+      ${c.absenceCut ? row(`Absence (${pct(c.absentDays)} jour${Number(c.absentDays) >= 2 ? 's' : ''})`, null, null, -c.absenceCut, null) : ''}
       ${c.bonuses.map(b => row(b.label + (b.taxable ? '' : ' (non imposable)'), null, null, b.amount, null)).join('')}
       <tr class="sec"><td>Salaire brut</td><td class="n"></td><td class="n"></td><td class="n">${fmt(c.gross)}</td><td class="n"></td></tr>
       ${row('CNSS', c.cnssBase, c.rates.cnssEmployee, -c.cnssEmployee, c.cnssEmployer)}
@@ -2251,7 +2263,7 @@
           ${(opts.lines || []).map(l => `<tr><td>${escapeHtml(l.label)}</td><td class="n">${fmt(l.amount)}</td></tr>`).join('')}
           <tr class="tot"><td>Net à percevoir</td><td class="n">${fmt(round3((opts.lines || []).reduce((a, l) => a + (Number(l.amount) || 0), 0)))} ${escapeHtml(cur)}</td></tr>
         </table>
-        <p class="small">Solde de congés non pris au départ : <b>${pctFr(bal.remaining)} jour(s)</b>${leavePay > 0 ? `, soit ${fmt(leavePay)} ${escapeHtml(cur)} sur la base du dernier salaire` : ''}.</p>
+        <p class="small">Solde de congés non pris au départ : <b>${pctFr(bal.remaining)} jour${Number(bal.remaining) >= 2 ? 's' : ''}</b>${leavePay > 0 ? `, soit ${fmt(leavePay)} ${escapeHtml(cur)} sur la base du dernier salaire` : ''}.</p>
         <p>Le présent solde est établi en double exemplaire. <em>À VÉRIFIER : les indemnités de fin de contrat dépendent du motif de la rupture et de la convention collective applicable — faites relire ce document avant signature.</em></p>`
     }[kind] || '';
 
@@ -3271,15 +3283,15 @@
     const add = (id, level, label, detail, count) => { if (count) out.push({ id, level, label, detail, count }); };
 
     const drafts = (data.documents || []).filter(d => d.type === 'facture' && d.status === 'brouillon' && inRange(d.date));
-    add('brouillons', 'danger', `${drafts.length} facture(s) en brouillon dans la période`,
+    add('brouillons', 'danger', `${pl(drafts.length, 'facture')} en brouillon dans la période`,
       'Un brouillon n\'a pas de numéro et n\'entre dans aucun journal. Émets-le ou change sa date avant de clôturer, sinon il restera invisible pour ton comptable.', drafts.length);
 
     const noProof = (data.purchases || []).filter(p => inRange(p.date) && !(p.attachments || []).length);
-    add('justificatifs', 'warn', `${noProof.length} achat(s) sans justificatif`,
+    add('justificatifs', 'warn', `${pl(noProof.length, 'achat')} sans justificatif`,
       'Sans la pièce jointe, ton comptable ne peut pas récupérer la TVA de ces achats.', noProof.length);
 
     const unticked = cashMovements(data, company).filter(m => inRange(m.date) && !m.reconciled);
-    add('pointage', 'warn', `${unticked.length} mouvement(s) non pointé(s)`,
+    add('pointage', 'warn', `${pl(unticked.length, 'mouvement')} non pointé${unticked.length >= 2 ? 's' : ''}`,
       'Pointer les mouvements contre le relevé bancaire, c\'est ce qui prouve que la trésorerie est juste.', unticked.length);
 
     // Bulletins manquants : un salarié actif sans bulletin sur un mois travaillé
@@ -3288,15 +3300,15 @@
     while (m <= to.slice(0, 7) && months.length < 24) { months.push(m); m = addMonths(m + '-01', 1, 1).slice(0, 7); }
     const slipsMissing = months.reduce((s, mm) =>
       s + missingPayslips(data, Number(mm.slice(0, 4)), Number(mm.slice(5, 7))).length, 0);
-    add('bulletins', 'danger', `${slipsMissing} bulletin(s) de paie à établir`,
+    add('bulletins', 'danger', `${pl(slipsMissing, 'bulletin')} de paie à établir`,
       'Un salarié payé sans bulletin, c\'est une charge qui manque au résultat et une déclaration sociale fausse.', slipsMissing);
 
     const negative = stockList(data).filter(s => s.qty < 0);
-    add('stock', 'warn', `${negative.length} article(s) en stock négatif`,
+    add('stock', 'warn', `${pl(negative.length, 'article')} en stock négatif`,
       'Un stock négatif est une pièce d\'achat manquante, pas une erreur de comptage.', negative.length);
 
     const gaps = serialGaps(data);
-    add('series', 'warn', `${gaps.length} écart(s) entre quantités et numéros de série`,
+    add('series', 'warn', `${pl(gaps.length, 'écart')} entre quantités et numéros de série`,
       'Les deux comptes devraient dire la même chose.', gaps.length);
 
     return out;
@@ -3413,7 +3425,7 @@
       && computeTotals(d, company).withholding > 0 && !d.withholdingCertificate);
     if (certs.length) out.push({
       id: 'attestations', level: 'warn', count: certs.length,
-      label: `${certs.length} attestation(s) de retenue à la source non remise(s)`,
+      label: `${pl(certs.length, 'attestation')} de retenue à la source non remise${certs.length >= 2 ? 's' : ''}`,
       detail: 'Sans elle, ton client ne peut pas justifier ce qu\'il t\'a retenu.'
     });
     return out;
@@ -4276,7 +4288,7 @@
     if (gaps.length) out.push({
       id: 'series-ecart', level: 'warn',
       label: `${gaps.length} article${gaps.length > 1 ? 's' : ''} dont les numéros de série ne collent pas au stock`,
-      detail: gaps.map(g => `${g.label} : ${g.qty} en stock, ${g.serials} numéro(s) disponible(s)`).join(' · ') + '. Un numéro n\'a pas été saisi à l\'entrée, ou pas attribué à la sortie.',
+      detail: gaps.map(g => `${g.label} : ${g.qty} en stock, ${pl(g.serials, 'numéro')} disponible${Number(g.serials) >= 2 ? 's' : ''}`).join(' · ') + '. Un numéro n\'a pas été saisi à l\'entrée, ou pas attribué à la sortie.',
       count: gaps.length, route: '#/stock', docs: []
     });
     // Lignes d'achat marquées « immobilisation » sans fiche : sans elles, aucune dotation n'est calculée
@@ -5171,7 +5183,7 @@
     REGIMES, regimeOf, regimeSuggere, assujettiTVA, mentionTVA, estLiberal, docLabel, ribAttendu,
     DOC_FILTRES, docFiltre,
     pageInfo, compareValues, LINE_UNITS, usedUnits, parseDateInput, fmtDateInput, monthMatrix,
-    uid, round3, money, fmtDate, addDays, daysInMonth, today, escapeHtml, nl2br, statusLabel,
+    uid, round3, pl, money, fmtDate, addDays, daysInMonth, today, escapeHtml, nl2br, statusLabel,
     CLOSURE_ACTIONS, closedUntil, isClosedDate, closedPeriodLabel, closableMonths, closureChecks, closePeriod, reopenPeriod, closureLog,
     PACK_FORMAT, packPeriod, packPlan, packChecklist, packFileName, packCoverHtml,
     DEFAULT_ACCOUNTS, ACCOUNT_LABELS, ENTRY_JOURNALS, chartAccounts, journalEntries,

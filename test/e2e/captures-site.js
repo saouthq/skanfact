@@ -37,8 +37,22 @@ const DETAILS = [
   { nom: 'd-factures', route: 'factures', selecteur: '#view table.list', haut: 430 },
   { nom: 'd-relances', route: 'relances', selecteur: '#view table.list', haut: 300 },
   { nom: 'd-tresorerie', route: 'tresorerie', onglet: 'prevision', titre: 'Courbe du solde', haut: 400 },
-  { nom: 'd-tva', route: 'compta', onglet: 'tva', titre: 'Déclaration de TVA', haut: 400 },
+  // La TVA se photographie sur un mois COMPLET. Prise sur le mois en cours, à la moitié, elle
+  // montrait 42 000 DT collectés contre 189 240 DT déductibles — une entreprise qui aurait acheté
+  // quatre fois et demie ce qu'elle a vendu, et un crédit de TVA de 147 240 DT. C'est
+  // arithmétiquement juste et commercialement absurde : personne ne se reconnaît là-dedans.
+  { nom: 'd-tva', route: 'compta', onglet: 'tva', titre: 'Déclaration de TVA', haut: 400, mois: '08' },
   { nom: 'd-manque', route: 'compta', onglet: 'cabinet', titre: 'Ce qui manque', haut: 330 },
+  // Le paquet qu'on ENVOIE, et pas seulement ce qui lui manque : la page d'accueil promet « un
+  // bouton lui envoie tout », et montrait la liste des trous du dossier.
+  // L'onglet Cabinet masque le sélecteur de la page (`#c-period`) et pose le sien : il porte un
+  // mois complet, `2026-08`, pas seulement son numéro.
+  // On cadre sur le TABLEAU du contenu, pas sur le panneau entier : celui-ci commence par le
+  // sélecteur de mois et par un avertissement (« ce mois n'est pas clôturé »), qui prendraient un
+  // tiers de l'image pour dire une réserve — alors que ce que la page d'accueil promet, c'est ce
+  // que le paquet CONTIENT.
+  { nom: 'd-paquet', route: 'compta', onglet: 'cabinet', selecteur: '#c-body table.list.compact',
+    haut: 430, mois: '2026-08', moisSel: '#cab-month' },
   { nom: 'd-marges', route: 'marges', titre: 'Affaires', haut: 330 },
   { nom: 'd-stock', route: 'stock', titre: 'État du stock', haut: 420 },
   { nom: 'd-paie', route: 'paie', onglet: 'bulletins', titre: 'Bulletins du mois', haut: 380 },
@@ -150,6 +164,15 @@ const SANS_MARQUEURS = `
       const t = await win.$(`[data-tab="${d.onglet}"]`);
       if (t && await t.isVisible().catch(() => false)) await t.click({ timeout: 1500 }).catch(() => {});
     }
+    // Le mois de la page Comptabilité. Annoncé et introuvable, il fait ÉCHOUER le parcours : une
+    // capture prise sur le mauvais mois ne se voit pas — elle est juste fausse.
+    if (d.mois) {
+      const quel = d.moisSel || '#c-month';
+      const sel = await win.$(quel);
+      if (!sel) throw new Error(`« ${d.nom} » : le sélecteur de mois ${quel} est introuvable`);
+      await sel.selectOption(d.mois);
+      await win.waitForTimeout(400);
+    }
     await win.waitForTimeout(400);
     await win.addStyleTag({ content: SANS_MARQUEURS });
 
@@ -167,6 +190,13 @@ const SANS_MARQUEURS = `
       if (!el) return false;
       el.setAttribute('data-cadre', '1');
       el.scrollIntoView({ block: 'start' });
+      // `block: 'start'` colle le haut de l'élément au haut de la zone défilante — c'est-à-dire
+      // SOUS l'en-tête collant du tableau, qui recouvre alors sa première ligne. Sur « ce que
+      // contient le paquet », la ligne « Pièces de vente émises (PDF joints) » disparaissait ;
+      // sur la liste des factures, la première ligne arrivait coupée en deux. Rien ne le signale :
+      // l'image est simplement fausse d'une ligne. On redescend de quoi dégager l'en-tête.
+      const zone = document.querySelector('#view');
+      if (zone) zone.scrollBy(0, -70);
       return true;
     }, d);
     if (!trouve) throw new Error(`recadrage « ${d.nom} » : ${d.selecteur || d.titre} introuvable sur #/${d.route}`);

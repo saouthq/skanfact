@@ -2744,7 +2744,11 @@ t('paquet : la page de garde dit le mois, l\'état et ce qui manque', () => {
   const html = core.packCoverHtml(plan, co, { version: '6.1.0', at: '12/09/2026' });
   assert.ok(html.includes('août 2026'));
   assert.ok(html.includes('PROVISOIRE'), 'un mois non clôturé est annoncé comme provisoire');
-  assert.ok(html.includes('facture(s) en brouillon'), 'ce qui manque figure sur la page de garde');
+  // Le libellé s'accorde depuis que `core.pl` existe : on ancre sur ce qui ne bouge pas (le
+  // manque annoncé), pas sur la forme exacte que le test décrivait — c'est elle qui portait la
+  // faute « facture(s) », et un test écrit contre l'état du jour décrit cet état, pas la règle.
+  assert.ok(/facture(s)? en brouillon/.test(html), 'ce qui manque figure sur la page de garde');
+  assert.ok(!html.includes('facture(s)'), 'et il s\'accorde');
   assert.ok(!html.includes('<Test>'), 'le nom de société est échappé, pas injecté');
   assert.ok(html.includes('&lt;Test&gt;'));
   // un dossier complet le dit aussi
@@ -4830,6 +4834,49 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.strictEqual(c.repondreA, 'a@b.tn');
     assert.ok(c.texte.includes('Matricule fiscal : 1234567X/A/M/000'), 'le corps du site doit arriver tel quel');
     assert.ok(!W.contactCourriel({ ...cle, genre: 'contact' }).sujet.includes('demande de clé'));
+  });
+
+  // « 3 achat(s) sans justificatif » s'est retrouvé sur une capture destinée à la page d'accueil
+  // du site. La règle existe depuis Cabinet 1.0.0 — « un logiciel qui écrit 1 dossier(s) paraît
+  // bâclé » — et `pl` vivait dans app.js, LOCALEMENT, donc hors de portée de core.js où sont les
+  // libellés. Le test porte sur la RÈGLE (aucun « (s) » affiché), pas sur une liste de libellés
+  // qui se périmerait au prochain ajout.
+  t('le pluriel : aucun libellé ne s’écrit « achat(s) »', () => {
+    assert.strictEqual(core.pl(0, 'achat'), '0 achat');
+    assert.strictEqual(core.pl(1, 'achat'), '1 achat');
+    assert.strictEqual(core.pl(2, 'achat'), '2 achats');
+    assert.strictEqual(core.pl(3, 'cheval', 'chevaux'), '3 chevaux');
+
+    // On teste ce qui est AFFICHÉ, pas la source. Une première version lisait core.js et en
+    // extrayait les chaînes à coups d'expressions régulières : elle se désynchronisait sur le
+    // premier backtick d'un commentaire ou d'un gabarit imbriqué, et ratait précisément la ligne
+    // qu'elle devait juger. C'est le piège déjà rencontré en 6.8.0 — un analyseur de source doit
+    // être un automate, ou ne pas exister. Ici il n'a pas à exister : les libellés se produisent.
+    const co = { ...core.DEFAULT_COMPANY, name: 'Essai', stampFee: 1 };
+    const jeu = core.migrateData(buildDemoData(co, '2026-09-14'));
+    // `closureChecks(data, company, from, to)` prend deux dates, `packChecklist` une période :
+    // deux signatures voisines, et c'est en les confondant qu'on obtient « from.slice n'est pas
+    // une fonction » — une erreur qui ne dit pas laquelle des deux on a mal appelée.
+    const affiche = [
+      core.closureChecks(jeu, co, '2026-08-01', '2026-08-31').map(c => c.label + ' ' + (c.detail || '')).join(' | '),
+      core.packChecklist(jeu, co, core.packPeriod(2026, 8)).map(c => c.label + ' ' + (c.detail || '')).join(' | '),
+      core.todoList(jeu, co).map(l => (l.label || '') + ' ' + (l.detail || '')).join(' | ')
+    ];
+    assert.ok(affiche.every(x => x.length > 40), 'des listes vides ne prouveraient rien');
+    for (const texte of affiche) {
+      assert.ok(!/[a-zà-ÿ]{3,}\(s\)/i.test(texte),
+        'pluriel « (s) » affiché : ' + (texte.match(/\S*[a-zà-ÿ]{3,}\(s\)\S*/i) || [])[0]);
+    }
+
+    // Et le bulletin de paie, qui écrivait « 2 enfant(s) à charge » et « Absence (3 jour(s)) ».
+    const bareme = core.payrollSettings({});
+    const employe = { id: 'e1', name: 'Salarié', grossSalary: 2000, children: 2, headOfFamily: true };
+    const calcul = core.computePayslip(employe, { absentDays: 3 }, bareme);
+    const bulletin = core.payslipHtml(
+      { employeeId: 'e1', year: 2026, month: 8, computed: calcul }, { ...jeu, employees: [employe] }, co);
+    assert.ok(bulletin.includes('enfant'), 'le bulletin ne porte pas la ligne attendue');
+    assert.ok(!/[a-zà-ÿ]{3,}\(s\)/i.test(bulletin),
+      'pluriel « (s) » sur un bulletin : ' + (bulletin.match(/\S*[a-zà-ÿ]{3,}\(s\)\S*/i) || [])[0]);
   });
 
   t('relais : le secret se compare à temps constant', () => {
