@@ -93,8 +93,15 @@ jobs:
           # Pas de signature Apple pour l'instant : on désactive la notarisation.
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
+      # Le titre et les notes se posent sur les DEUX postes, pas seulement sur le Mac. La page de la
+      # release existe dès le premier fichier envoyé — c'est-à-dire dès que le poste Windows a fini,
+      # deux minutes avant le Mac, dont la construction « universal » compile deux architectures.
+      # Tant que cette étape n'a pas tourné, la page affiche le titre par défaut d'electron-builder
+      # (le numéro de version tout seul) et pas de notes : quelqu'un qui regarde à ce moment-là voit
+      # une release qui a l'air bâclée. Les deux postes écrivent exactement la même chose, donc
+      # celui qui arrive en second ne fait que réécrire à l'identique — et si l'un des deux échoue,
+      # les notes sont quand même posées par l'autre.
       - name: Release notes on GitHub
-        if: matrix.os == 'macos-latest'
         shell: bash
         run: |
           V="${{ steps.canal.outputs.version }}"
