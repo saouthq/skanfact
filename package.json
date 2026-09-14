@@ -26,6 +26,7 @@
     "e2e:demenagement": "node test/e2e/cabinet-demenagement.js",
     "e2e:barre": "node test/e2e/barre-laterale.js",
     "e2e:captures": "node test/e2e/captures.js",
+    "e2e:captures-site": "node test/e2e/captures-site.js",
     "e2e:exemple": "node test/e2e/exemple.js",
     "e2e:reglages": "node test/e2e/reglages.js",
     "e2e:argent": "node test/e2e/argent.js",
