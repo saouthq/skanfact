@@ -20,6 +20,35 @@ const FORMAT = 1;
 const TRIAL_DAYS = 30;
 const PREFIX = 'SKAN1.';
 
+// ---------- les offres (7.33.0) ----------
+// Ce que la page Tarifs du site promet, et rien d'autre. L'offre voyage DANS la clé signée : un client
+// ne peut pas se la changer. `reserves` liste les modules (ids de core.MODULES) dont la CRÉATION est
+// réservée à l'offre du dessus — jamais la lecture : quelqu'un qui repasse d'Entreprise à Indépendant
+// garde ses bulletins de paie lisibles pour toujours, il ne peut plus en établir de nouveaux.
+// `partage` n'est pas un module de la barre latérale : c'est le dossier partagé à deux (3.2.0).
+// Une clé sans `offre` (émise avant la 7.33.0) vaut Entreprise, et une offre inconnue aussi : en cas de
+// doute, on ouvre — jamais de données en otage.
+const OFFRES = {
+  independant: { label: 'Indépendant', reserves: ['achats', 'stock', 'immos', 'pilotage', 'paie', 'partage'] },
+  entreprise: { label: 'Entreprise', reserves: [] }
+};
+const OFFRE_DEFAUT = 'entreprise';
+function offreDe(payload) {
+  const o = payload && payload.offre;
+  return OFFRES[o] ? o : OFFRE_DEFAUT;
+}
+
+// Les durées qu'on propose à l'émission. « À vie » = pas de date d'expiration du tout.
+const DUREES = [
+  { id: '1m', label: '1 mois', mois: 1 },
+  { id: '3m', label: '3 mois', mois: 3 },
+  { id: '6m', label: '6 mois', mois: 6 },
+  { id: '1a', label: '1 an', mois: 12 },
+  { id: '2a', label: '2 ans', mois: 24 },
+  { id: 'vie', label: 'À vie', mois: null },
+  { id: 'date', label: 'Jusqu\'à une date précise', mois: null }
+];
+
 // ---------- dates : mêmes règles que partout ailleurs (voir CLAUDE.md, 5.2.3) ----------
 const isoDay = dt => dt.toISOString().slice(0, 10);
 function today() {
@@ -32,10 +61,57 @@ function addDays(iso, days) {
   d.setUTCDate(d.getUTCDate() + (Number(days) || 0));
   return isoDay(d);
 }
+// Un mois de licence est un mois du calendrier, pas 30,44 jours : « un an » à partir du 14 septembre
+// finit le 14 septembre suivant, et le 31 janvier + 1 mois donne le 28 février, pas le 3 mars.
+function addMonths(iso, months) {
+  const d = new Date(iso + 'T00:00:00Z');
+  if (isNaN(d)) return '';
+  const jour = d.getUTCDate();
+  d.setUTCDate(1);
+  d.setUTCMonth(d.getUTCMonth() + (Number(months) || 0));
+  const dernier = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+  d.setUTCDate(Math.min(jour, dernier));
+  return isoDay(d);
+}
 function daysBetween(fromIso, toIso) {
   const a = Date.parse(fromIso + 'T00:00:00Z'), b = Date.parse(toIso + 'T00:00:00Z');
   if (isNaN(a) || isNaN(b)) return 0;
   return Math.round((b - a) / 86400000);
+}
+// Un jour qui existe vraiment : « 2027-02-30 » a la bonne forme et Date.parse le fait rouler au
+// 2 mars sans rien dire — une licence finirait un jour que personne n'a choisi.
+const dateValide = iso => /^\d{4}-\d{2}-\d{2}$/.test(String(iso || '')) && isoDay(new Date(iso + 'T00:00:00Z')) === iso;
+// La date de fin d'une licence pour cette durée, à partir de `fromIso` ('' = à vie). Une date libre
+// doit être dans le futur : une licence née expirée n'est pas une licence.
+function expirationPour(fromIso, dureeId, dateLibre) {
+  if (dureeId === 'vie') return '';
+  if (dureeId === 'date') {
+    const d = String(dateLibre || '').trim();
+    return dateValide(d) && daysBetween(fromIso, d) > 0 ? d : null;
+  }
+  const du = DUREES.find(x => x.id === dureeId);
+  return du && du.mois ? addMonths(fromIso, du.mois) : null;
+}
+
+// ---------- le matricule fiscal : ce qui attache une clé à UNE entreprise ----------
+// Une clé émise pour Trabelsi ne s'active pas sur le dossier d'une autre société. On compare le CŒUR
+// du matricule : les sept chiffres, et la lettre-clé quand les deux côtés l'écrivent — « MF 1234567A »,
+// « 1234567/A/M/000 », « 1234567-a » désignent la même entreprise. Un côté vide ne compte pas : on ne
+// punit pas quelqu'un qui n'a pas encore rempli sa fiche — ses factures, elles, n'auront pas de
+// matricule, et c'est déjà son problème.
+function normMatricule(s) {
+  const brut = String(s || '').toUpperCase();
+  // La lettre-clé est COLLÉE aux chiffres (« 1234567A ») ; ce qui suit une barre (« /A/M/000 ») est
+  // le code TVA et le suffixe, pas la clé — les confondre ferait refuser une clé légitime.
+  const m = brut.match(/(\d{7})\s?([A-Z])?/);
+  if (m) return { chiffres: m[1], lettre: m[2] || '' };
+  const reste = brut.replace(/[^A-Z0-9]/g, '');
+  return reste ? { chiffres: reste, lettre: '' } : null;
+}
+function memeMatricule(a, b) {
+  const na = normMatricule(a), nb = normMatricule(b);
+  if (!na || !nb) return true;
+  return na.chiffres === nb.chiffres && (!na.lettre || !nb.lettre || na.lettre === nb.lettre);
 }
 
 const b64u = buf => Buffer.from(buf).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -89,55 +165,82 @@ function verifyKey(key, publicKeyPem) {
 //   active    : licence valide
 //   expiree   : licence dépassée → seule la création de nouvelles pièces attend
 //   invalide  : clé illisible ou signature fausse
+//   autre     : clé authentique, mais émise pour une autre entreprise (matricule différent)
 //   finessai  : essai terminé sans licence
+// `offre` et `reserves` : l'offre en cours et les modules dont la création lui est fermée. Pendant
+// l'essai, tout est ouvert (c'est la seule façon de savoir de quelle offre on a besoin) ; une fois
+// verrouillé, `reserves` ne sert plus — `locked` ferme déjà toute création.
 function licenceState(opts) {
   opts = opts || {};
   const t = opts.today || today();
   const pub = opts.publicKey || '';
+  const jours = n => `${n} jour${n === 1 ? '' : 's'}`;
   if (!pub) {
     return { state: 'libre', locked: false, label: 'Licence non requise',
-      detail: 'Cette version n\'exige pas de licence.', key: '', name: '', exp: '', daysLeft: null };
+      detail: 'Cette version n\'exige pas de licence.', key: '', name: '', exp: '', daysLeft: null,
+      offre: OFFRE_DEFAUT, offreLabel: '', reserves: [] };
   }
+  // L'essai compte à partir du jour où la licence a été ARMÉE (la date du fichier de clé publique)
+  // quand celui-ci est postérieur à l'installation : la date d'installation est enregistrée depuis
+  // la 6.4.0, et sans ce garde-fou toute installation de plus de trente jours se verrouillerait à
+  // la minute même de la mise à jour qui arme la licence.
   const installedAt = opts.installedAt || t;
-  const trialEnd = addDays(installedAt, TRIAL_DAYS);
+  const armedAt = /^\d{4}-\d{2}-\d{2}$/.test(String(opts.armedAt || '')) ? opts.armedAt : '';
+  const trialStart = armedAt && armedAt > installedAt ? armedAt : installedAt;
+  const trialEnd = addDays(trialStart, TRIAL_DAYS);
   const payload = opts.key ? verifyKey(opts.key, pub) : null;
 
   if (opts.key && !payload) {
     return { state: 'invalide', locked: true, label: 'Licence non reconnue',
       detail: 'Cette clé n\'est pas lisible ou n\'a pas été émise pour SkanFact. Vérifie qu\'elle a été collée en entier.',
-      key: opts.key, name: '', exp: '', daysLeft: null };
+      key: opts.key, name: '', exp: '', daysLeft: null, offre: OFFRE_DEFAUT, offreLabel: '', reserves: [] };
   }
 
   if (payload) {
+    const offre = offreDe(payload);
+    const commun = {
+      key: opts.key, name: payload.nom || '', matricule: payload.matricule || '',
+      cabinet: payload.cabinet || '', payload, offre, offreLabel: OFFRES[offre].label
+    };
+    if (!memeMatricule(payload.matricule, opts.matricule)) {
+      return {
+        ...commun, state: 'autre', locked: true, label: 'Licence d\'une autre entreprise',
+        detail: `Cette clé a été émise pour ${payload.nom || 'une autre société'} (matricule ${payload.matricule}), `
+          + `pas pour le matricule ${opts.matricule} de cette entreprise. Demande une licence à ton nom.`,
+        exp: String(payload.exp || ''), daysLeft: null, reserves: []
+      };
+    }
     const exp = String(payload.exp || '');
     const left = exp ? daysBetween(t, exp) : null;
     if (!exp || left >= 0) {
       return {
-        state: 'active', locked: false,
-        label: exp ? `Licence active jusqu'au ${exp}` : 'Licence sans limite de durée',
-        detail: left != null && left <= 30 ? `Elle se termine dans ${left} jour(s) : pense à la renouveler.` : '',
-        key: opts.key, name: payload.nom || '', matricule: payload.matricule || '',
-        cabinet: payload.cabinet || '', exp, daysLeft: left, payload
+        ...commun, state: 'active', locked: false,
+        label: (exp ? `Licence active jusqu'au ${exp}` : 'Licence sans limite de durée') + ` — offre ${OFFRES[offre].label}`,
+        detail: left != null && left <= 30 ? `Elle se termine dans ${jours(left)} : pense à la renouveler.` : '',
+        exp, daysLeft: left, reserves: OFFRES[offre].reserves.slice()
       };
     }
     return {
-      state: 'expiree', locked: true, label: `Licence expirée le ${exp}`,
+      ...commun, state: 'expiree', locked: true, label: `Licence expirée le ${exp}`,
       detail: 'Tout reste lisible, imprimable et exportable. Seule la création de nouvelles pièces attend le renouvellement.',
-      key: opts.key, name: payload.nom || '', matricule: payload.matricule || '',
-      cabinet: payload.cabinet || '', exp, daysLeft: left, payload
+      exp, daysLeft: left, reserves: []
     };
   }
 
   const left = daysBetween(t, trialEnd);
   if (left >= 0) {
-    return { state: 'essai', locked: false, label: `Période d'essai — ${left} jour(s) restants`,
+    return { state: 'essai', locked: false, label: `Période d'essai — ${jours(left)} restant${left === 1 ? '' : 's'}`,
       detail: 'Tout est disponible pendant l\'essai. Demande ta licence avant la fin pour ne pas être interrompu.',
-      key: '', name: '', exp: trialEnd, daysLeft: left };
+      key: '', name: '', exp: trialEnd, daysLeft: left, offre: OFFRE_DEFAUT, offreLabel: '', reserves: [] };
   }
   return { state: 'finessai', locked: true, label: 'Période d\'essai terminée',
     detail: 'Tes données restent lisibles, imprimables et exportables. La création de nouvelles pièces attend ta licence.',
-    key: '', name: '', exp: trialEnd, daysLeft: left };
+    key: '', name: '', exp: trialEnd, daysLeft: left, offre: OFFRE_DEFAUT, offreLabel: '', reserves: [] };
 }
+
+// Un identifiant court pour retrouver une licence dans l'historique de l'éditeur : il voyage dans la
+// clé, donc un client qui écrit « ma licence 3f9a2c1e » désigne une ligne précise.
+function licenceId() { return crypto.randomBytes(4).toString('hex'); }
 
 // Le mail de demande de licence : tout ce qu'il faut pour émettre la clé, déjà écrit.
 function requestMail(company, state, deviceName) {
@@ -156,4 +259,5 @@ function requestMail(company, state, deviceName) {
   };
 }
 
-module.exports = { FORMAT, TRIAL_DAYS, PREFIX, generateKeys, signLicence, parseKey, verifyKey, licenceState, requestMail, today, addDays, daysBetween };
+module.exports = { FORMAT, TRIAL_DAYS, PREFIX, OFFRES, OFFRE_DEFAUT, DUREES, generateKeys, signLicence, parseKey, verifyKey,
+  licenceState, licenceId, offreDe, expirationPour, dateValide, memeMatricule, normMatricule, requestMail, today, addDays, addMonths, daysBetween };

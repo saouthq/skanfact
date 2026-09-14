@@ -388,6 +388,11 @@
     { id: 'paie', titre: 'Paie', module: 'paie', famille: 'Piloter' },
     { id: 'compta', titre: 'Comptabilité', module: 'compta', famille: 'Piloter' },
     { id: 'modules', titre: 'Tous les modules', module: null, horsMenu: true },
+    // La page de l'ÉDITEUR de SkanFact (7.33.0) : les licences qu'il a émises. Hors menu ici parce
+    // que sa présence dépend du POSTE (la clé privée existe-t-elle sur cet ordinateur ?), que la
+    // barre ajoute elle-même quand c'est le cas — jamais d'un réglage du dossier.
+    { id: 'licences', titre: 'Licences', module: null, horsMenu: true,
+      quoi: 'Les licences SkanFact que tu as émises : à qui, quelle offre, jusqu\'à quand.' },
     { id: 'parametres', titre: 'Paramètres', module: null, pied: true },
     { id: 'aide', titre: 'Aide', module: null, pied: true }
   ];
@@ -596,6 +601,7 @@
     fixedCategories: [],     // catégories de charges considérées comme fixes (vide = valeurs par défaut)
     accounts: [],            // comptes de trésorerie : banque, caisse… (v4)
     movements: [],           // mouvements libres : salaires, impôts, apports — ce qui n'a ni facture ni achat
+    licences: [],            // licences SkanFact ÉMISES par l'éditeur depuis ce dossier (7.33.0) — vide chez un client
     deleted: [],             // pièces supprimées, pour qu'elles ne reviennent pas d'un autre poste (v4)
     conflictArchive: [],     // versions écartées lors d'une fusion : rien n'est détruit sans trace
     closedUntil: '',         // dernier jour clôturé : rien de daté avant ne bouge plus (6.0.0)
@@ -1004,6 +1010,7 @@
     if (typeof data.closedUntil !== 'string') data.closedUntil = '';
     if (!Array.isArray(data.closureLog)) data.closureLog = [];
     if (!Array.isArray(data.packs)) data.packs = [];   // 6.1.0 : historique des envois au cabinet
+    if (!Array.isArray(data.licences)) data.licences = [];   // 7.33.0 : licences émises par l'éditeur
     data.catalog.forEach(c => {
       c.tracked = c.tracked === true;
       c.minStock = Number(c.minStock) || 0;
@@ -2990,11 +2997,11 @@
   // l'autre version pour qu'elle reste consultable. Rien n'est détruit sans trace.
 
   // Les listes du fichier qui se fusionnent pièce par pièce, grâce à leur identifiant.
-  const MERGE_LISTS = ['clients', 'catalog', 'documents', 'recurring', 'templates', 'snippets', 'suppliers', 'purchases', 'accounts', 'movements', 'projects', 'assets', 'stockAdjustments', 'serials', 'employees', 'payslips', 'leaves', 'advances', 'socialFilings', 'fiscalFilings', 'packs'];
+  const MERGE_LISTS = ['clients', 'catalog', 'documents', 'recurring', 'templates', 'snippets', 'suppliers', 'purchases', 'accounts', 'movements', 'projects', 'assets', 'stockAdjustments', 'serials', 'employees', 'payslips', 'leaves', 'advances', 'socialFilings', 'fiscalFilings', 'packs', 'licences'];
   const LIST_LABELS = {
     clients: 'client', catalog: 'prestation', documents: 'document', recurring: 'contrat récurrent',
     templates: 'modèle', snippets: 'texte', suppliers: 'fournisseur', purchases: 'achat',
-    accounts: 'compte', movements: 'mouvement', projects: 'affaire', assets: 'immobilisation', stockAdjustments: 'mouvement de stock', serials: 'numéro de série', employees: 'salarié', payslips: 'bulletin de paie', leaves: 'congé', advances: 'avance sur salaire', socialFilings: 'déclaration sociale', fiscalFilings: 'échéance fiscale déposée', packs: 'envoi au cabinet'
+    accounts: 'compte', movements: 'mouvement', projects: 'affaire', assets: 'immobilisation', stockAdjustments: 'mouvement de stock', serials: 'numéro de série', employees: 'salarié', payslips: 'bulletin de paie', leaves: 'congé', advances: 'avance sur salaire', socialFilings: 'déclaration sociale', fiscalFilings: 'échéance fiscale déposée', packs: 'envoi au cabinet', licences: 'licence émise'
   };
 
   function sameJson(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
@@ -4142,6 +4149,38 @@
       .sort((a, b) => (a.snoozed ? 1 : 0) - (b.snoozed ? 1 : 0) || b.daysLate - a.daysLate);
   }
 
+  // ---------- les licences émises par l'éditeur (7.33.0) ----------
+  //
+  // L'éditeur de SkanFact vend des licences depuis SA propre application : la vente est une facture
+  // comme une autre (journal des ventes, TVA, paquet du comptable), et l'historique vit ici, dans
+  // `data.licences`. Chaque ligne garde la clé signée (elle n'a rien de secret : c'est celle qu'a
+  // le client), l'offre, la date de fin, et la facture qui l'a portée.
+  const LICENCE_PREAVIS = 30;   // jours avant l'échéance où une licence passe « à renouveler »
+  // L'état d'une licence émise, vu de l'éditeur : 'vie' (sans fin), 'active', 'bientot' (elle finit
+  // dans les trente jours — c'est le moment de facturer le renouvellement), 'expiree'.
+  function licenceEtat(lic, todayIso) {
+    const t = todayIso || today();
+    if (!lic || !lic.exp) return { etat: 'vie', jours: null };
+    const jours = daysBetween(t, lic.exp);
+    return { etat: jours < 0 ? 'expiree' : jours <= LICENCE_PREAVIS ? 'bientot' : 'active', jours };
+  }
+  const LICENCE_ETAT_LABELS = { vie: 'À vie', active: 'Active', bientot: 'À renouveler', expiree: 'Expirée' };
+  // Les lignes de la page Licences : ce qui presse d'abord (à renouveler, puis expirées), puis les
+  // actives par date de fin, puis celles à vie. Une licence renouvelée pointe sur sa remplaçante
+  // (`remplaceePar`) : elle sort du compte des choses à faire.
+  function licenceRows(data, todayIso) {
+    const t = todayIso || today();
+    const ordre = { bientot: 0, expiree: 1, active: 2, vie: 3 };
+    return (data.licences || []).map(l => {
+      const e = licenceEtat(l, t);
+      return { ...l, etat: e.etat, jours: e.jours, etatLabel: LICENCE_ETAT_LABELS[e.etat], renouvelee: !!l.remplaceePar };
+    }).sort((a, b) => (ordre[a.etat] - ordre[b.etat]) || ((a.exp || '9999').localeCompare(b.exp || '9999')) || (a.nom || '').localeCompare(b.nom || ''));
+  }
+  // Les licences qui finissent dans les trente jours et qu'on n'a pas encore renouvelées.
+  function licencesExpirant(data, todayIso) {
+    return licenceRows(data, todayIso).filter(l => l.etat === 'bientot' && !l.renouvelee);
+  }
+
   // ---------- ce qui demande une action ----------
 
   // Le panneau « À faire » de l'accueil. Renvoie des groupes ordonnés du plus urgent au moins urgent.
@@ -4394,6 +4433,17 @@
       count: sansTaux.length, route: '#/factures', docs: sansTaux
     });
 
+    // Les licences que l'ÉDITEUR a émises et qui finissent dans les trente jours — sur son poste
+    // seulement (`opts.editeur` : la clé privée existe sur cet ordinateur). Chez un client, cette
+    // liste est vide et la ligne n'existe pas : elle parlerait de licences qu'il n'a pas émises.
+    const licExp = (opts || {}).editeur ? licencesExpirant(data, t) : [];
+    if (licExp.length) out.push({
+      id: 'licences-expirent', level: 'warn',
+      label: `${plFr(licExp.length, 'licence')} ${licExp.length > 1 ? 'expirent' : 'expire'} dans les ${LICENCE_PREAVIS} jours`,
+      detail: 'Renouveler, c\'est une facture de plus — et un client qui n\'est pas interrompu. Chaque ligne se renouvelle en un clic depuis la page Licences.',
+      count: licExp.length, route: '#/licences', docs: []
+    });
+
     // Le commentaire en tête de cette fonction promet « du plus urgent au moins urgent » depuis la
     // 1.10.0, et l'ordre réel était celui du code — c'est-à-dire l'ordre dans lequel les modules ont
     // été écrits. Sur le jeu d'exemple, « 3 factures en retard » (rouge) se retrouvait au-dessus,
@@ -4530,6 +4580,13 @@
       date: doc.date, kind: 'source', id: doc.fromDocId,
       label: `Établi à partir du ${(TITLES[doc.fromDocType] || 'document').toLowerCase()} ${doc.fromDocNumber || '(brouillon)'}`
     });
+    // Une facture de licence (7.33.0) dit quelle clé elle a portée : la ligne renvoie à la page
+    // Licences de l'éditeur, où la clé se copie et se renvoie.
+    if (doc.licenceId) {
+      const lic = (data.licences || []).find(l => l.id === doc.licenceId);
+      ev.push({ date: doc.date, kind: 'licence', label: `Porte la licence n° ${doc.licenceId}`,
+        detail: lic ? `${lic.offre === 'independant' ? 'Indépendant' : 'Entreprise'}${lic.exp ? ', jusqu\'au ' + fmtDate(lic.exp) : ', à vie'}` : 'licence introuvable dans l\'historique' });
+    }
     if (doc.number && doc.status !== 'brouillon') ev.push({ date: doc.date, kind: 'emis', label: `${TITLES[doc.type]} ${doc.number} ${doc.type === 'facture' ? 'émise' : 'émis'}` });
     // Ce qui en découle : la proforma tirée du devis, le bon de livraison tiré de la commande, etc.
     derivedDocs(doc, data).forEach(d => ev.push({
@@ -4576,7 +4633,11 @@
     proforma: { subject: 'Facture proforma {numero} — {societe}', body: 'Bonjour,\n\nVeuillez trouver ci-joint notre facture proforma {numero} d\'un montant de {montant}, concernant : {objet}.\nCe document est établi pour vos démarches : il n\'a pas de valeur comptable et sera suivi d\'une facture définitive.\n\nCordialement,\n{societe}' },
     commande: { subject: 'Bon de commande {numero} — {societe}', body: 'Bonjour,\n\nVeuillez trouver ci-joint le bon de commande {numero} ({montant} TTC) reprenant votre demande concernant : {objet}.\nMerci de nous le retourner daté et signé pour que nous lancions l\'exécution.\n\nCordialement,\n{societe}' },
     livraison: { subject: 'Bon de livraison {numero} — {societe}', body: 'Bonjour,\n\nVeuillez trouver ci-joint le bon de livraison {numero} concernant : {objet}.\nMerci de nous le retourner signé après réception.\n\nCordialement,\n{societe}' },
-    contrat: { subject: 'Contrat de prestation {numero} — {societe}', body: 'Bonjour,\n\nVeuillez trouver ci-joint notre contrat de prestation {numero} concernant : {objet}.\nAprès lecture, merci de nous le retourner daté, signé et revêtu de votre cachet.\n\nNous restons à votre disposition pour en discuter les termes.\n\nCordialement,\n{societe}' }
+    contrat: { subject: 'Contrat de prestation {numero} — {societe}', body: 'Bonjour,\n\nVeuillez trouver ci-joint notre contrat de prestation {numero} concernant : {objet}.\nAprès lecture, merci de nous le retourner daté, signé et revêtu de votre cachet.\n\nNous restons à votre disposition pour en discuter les termes.\n\nCordialement,\n{societe}' },
+    // La clé de licence envoyée par l'éditeur de SkanFact à son client (7.33.0). `{cle}` est la
+    // chaîne « SKAN1.… », `{offre}` et `{fin}` viennent de la licence, `{facture}` est la phrase
+    // « Votre facture N est jointe… » — présente SEULEMENT quand la pièce part vraiment avec.
+    licence: { subject: 'Votre licence SkanFact — {offre}', body: 'Bonjour,\n\nVoici votre clé de licence SkanFact ({offre}{fin}) :\n\n{cle}\n\nPour l\'activer : dans SkanFact, ouvrez Paramètres → L\'application → Licence, collez la clé en entier (de « SKAN1. » jusqu\'au dernier caractère) et cliquez sur « Enregistrer la clé ». Aucune connexion n\'est nécessaire.\n\n{facture}Merci de votre confiance.\n\nCordialement,\n{societe}' }
   };
 
   const DEFAULT_EMAIL_TEMPLATES_EN = {
@@ -4587,7 +4648,10 @@
     relance2: { subject: 'Second reminder — invoice {numero} is {jours} days overdue', body: 'Hello,\n\nOur invoice {numero} for {montant}, due on {echeance}, remains unpaid ({jours} days overdue).\nPlease proceed with payment as soon as possible or let us know the expected date.\n\nBest regards,\n{societe}' },
     relance3: { subject: 'Final reminder — invoice {numero}', body: 'Hello,\n\nDespite our previous reminders, invoice {numero} ({montant}, due on {echeance}) remains unpaid after {jours} days.\nWithout payment within 8 days, we will have to start a recovery procedure.\n\nBest regards,\n{societe}' },
     relanceDevis: { subject: 'Our quote {numero} — {objet}', body: 'Hello,\n\nWe sent you quote {numero} ({montant} incl. VAT) for: {objet}.\nHave you had a chance to review it? We remain available to discuss or adjust it.\n\nBest regards,\n{societe}' },
-    comptable: { subject: 'Accounting {objet} — {societe}', body: 'Hello,\n\nPlease find attached the sales journal for {objet}.\n\nBest regards,\n{societe}' }
+    comptable: { subject: 'Accounting {objet} — {societe}', body: 'Hello,\n\nPlease find attached the sales journal for {objet}.\n\nBest regards,\n{societe}' },
+    // L'interface de SkanFact est en français : le mail anglais cite les libellés RÉELS des menus,
+    // avec leur traduction — un client anglophone doit pouvoir les retrouver à l'écran.
+    licence: { subject: 'Your SkanFact licence — {offre}', body: 'Hello,\n\nHere is your SkanFact licence key ({offre}{fin}):\n\n{cle}\n\nTo activate it: in SkanFact, open « Paramètres → L\'application → Licence » (Settings → The application → Licence), paste the whole key (from "SKAN1." to the last character) and click « Enregistrer la clé » (Save the key). No internet connection is needed.\n\n{facture}Thank you for your trust.\n\nBest regards,\n{societe}' }
   };
 
   function emailFor(kind, doc, client, company, extra) {
@@ -5456,6 +5520,7 @@
     amountToWords, intToWords, intToWordsEn, documentHtml, fitToPage, paginate, pageCount,
     MODULES, PAGES, moduleById, pageById, pageTitle, moduleCount, moduleCounts, modulesRevenus, moduleOn, moduleWhy, navPages,
     MODULES_PAR_ACTIVITE, modulesSuggeres, wipeData, rendreLesEmprunts, estDemo, firstSteps, liste, defaultVat, newLine,
-    canalDe, estBeta
+    canalDe, estBeta,
+    LICENCE_PREAVIS, licenceEtat, licenceRows, licencesExpirant
   };
 });

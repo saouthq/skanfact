@@ -449,19 +449,58 @@ const APP_CFG = () => path.join(app.getPath('userData'), 'app-config.json');
 function readAppCfg() { try { return JSON.parse(fs.readFileSync(APP_CFG(), 'utf8')); } catch { return {}; } }
 function writeAppCfg(cfg) { fs.mkdirSync(path.dirname(APP_CFG()), { recursive: true }); fs.writeFileSync(APP_CFG(), JSON.stringify(cfg, null, 2)); }
 
-// ---------- licence (6.4.0) ----------
+// ---------- licence (6.4.0 — offres et éditeur en 7.33.0) ----------
 // La clé publique est embarquée dans le paquet (`build/licence-public.json`). Tant qu'elle n'existe
 // pas, l'application est libre : livrer un logiciel qui se verrouille tout seul serait un défaut.
+// Depuis la 7.33.0 le fichier est bien LIVRÉ (il figure dans les `files` d'electron-builder) : avant,
+// `build/` n'entrait pas dans le paquet, donc l'app installée restait libre quoi qu'on commite.
 const L = require('./licence');
-const LIC_FILE = () => path.join(app.getPath('userData'), 'licence.json');
-let licencePublicKey = null;
-function publicKey() {
-  if (licencePublicKey !== null) return licencePublicKey;
-  try { licencePublicKey = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'build', 'licence-public.json'), 'utf8')).publicKey || ''; }
-  catch { licencePublicKey = ''; }
-  return licencePublicKey;
+const os = require('os');
+const crypto = require('crypto');
+// La clé de licence vit DANS LE DOSSIER de l'entreprise (7.33.0) : une clé est émise pour UN
+// matricule, et un même ordinateur ouvre plusieurs entreprises (le père de Skander gère la sienne
+// et Darium). Une clé au niveau de l'ordinateur — c'était le cas en 6.4.0 — verrouillait le second
+// dossier avec la clé du premier. Un dossier partagé (iCloud) emporte sa clé avec lui : c'est
+// exactement ce qu'on veut pour « trois postes ».
+const LIC_FILE = () => path.join(currentDossier().dir, 'licence.json');
+const LIC_ANCIEN = () => path.join(app.getPath('userData'), 'licence.json');
+// Les clés de l'ÉDITEUR : la privée signe les licences ; la publique du même jeu arme son propre
+// poste, donc il voit exactement ce que verront ses clients. Hors du dépôt, hors des données, hors
+// des sauvegardes. `SKANFACT_DOSSIER_CLES` ne sert qu'aux tests : ils posent une clé d'essai dans un
+// dossier temporaire au lieu du vrai ~/.skanfact.
+const CLES_DIR = () => process.env.SKANFACT_DOSSIER_CLES || path.join(os.homedir(), '.skanfact');
+const CLE_PRIVEE = () => path.join(CLES_DIR(), 'licence-privee.pem');
+const CLE_PUBLIQUE_EDITEUR = () => path.join(CLES_DIR(), 'licence-publique.json');
+const CLE_EMBARQUEE = () => path.join(__dirname, '..', 'build', 'licence-public.json');
+const lireJson = p => { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return null; } };
+const editeurActif = () => fs.existsSync(CLE_PRIVEE());
+const lirePrivee = () => fs.readFileSync(CLE_PRIVEE(), 'utf8');
+// `{ publicKey, createdAt }` : la date du fichier est le point de départ de l'essai (voir licence.js).
+// Le cache se remet à `null` quand l'éditeur crée ou reprend ses clés pendant la session.
+let clePubliqueCache = null;
+function clePublique() {
+  if (clePubliqueCache !== null) return clePubliqueCache;
+  const lire = p => { const j = lireJson(p); return j && j.publicKey ? { publicKey: j.publicKey, createdAt: j.createdAt || '' } : null; };
+  clePubliqueCache = lire(CLE_EMBARQUEE()) || lire(CLE_PUBLIQUE_EDITEUR()) || { publicKey: '', createdAt: '' };
+  return clePubliqueCache;
 }
-function readLicence() { try { return JSON.parse(fs.readFileSync(LIC_FILE(), 'utf8')); } catch { return {}; } }
+function publicKey() { return clePublique().publicKey; }
+function ecrireLicence(key) {
+  fs.mkdirSync(path.dirname(LIC_FILE()), { recursive: true });
+  fs.writeFileSync(LIC_FILE(), JSON.stringify({ key, savedAt: new Date().toISOString() }, null, 2));
+}
+// La clé du dossier ouvert. Une clé rangée par la 6.4.0 au niveau de l'ordinateur est reprise pour
+// le dossier qu'elle concerne (même matricule, ou clé sans matricule) — et pour lui seul.
+function readLicence(matricule) {
+  const mien = lireJson(LIC_FILE());
+  if (mien && mien.key) return mien;
+  const ancien = lireJson(LIC_ANCIEN());
+  if (ancien && ancien.key) {
+    const p = publicKey() ? L.verifyKey(ancien.key, publicKey()) : ((L.parseKey(ancien.key) || {}).payload || null);
+    if (p && L.memeMatricule(p.matricule, matricule || '')) { try { ecrireLicence(ancien.key); } catch {} return ancien; }
+  }
+  return {};
+}
 // Date de première ouverture : le point de départ de l'essai. Elle vit dans app-config.json, donc
 // elle ne part pas avec une sauvegarde ni un export — un essai ne se rejoue pas en réimportant.
 function installedAt() {
@@ -469,9 +508,59 @@ function installedAt() {
   if (!cfg.installedAt) { cfg.installedAt = L.today(); writeAppCfg(cfg); }
   return cfg.installedAt;
 }
-function licenceStatus() {
-  const lic = readLicence();
-  return L.licenceState({ key: lic.key || '', publicKey: publicKey(), installedAt: installedAt(), today: L.today() });
+// Le jour où l'application a été ARMÉE sur ce poste : la première fois qu'elle y voit une clé
+// publique. La date de fabrication de la clé (createdAt) ne suffit pas — la version qui l'embarque
+// peut arriver sur ce poste des semaines après le keygen, et l'essai doit compter à partir de LÀ.
+function armedAt() {
+  const pub = clePublique();
+  if (!pub.publicKey) return '';
+  const cfg = readAppCfg();
+  if (!cfg.armedAt) { cfg.armedAt = L.today(); writeAppCfg(cfg); }
+  return cfg.armedAt > (pub.createdAt || '') ? cfg.armedAt : (pub.createdAt || cfg.armedAt);
+}
+// Le matricule de la société vit dans les données du renderer : c'est lui qui le passe, et il
+// redemande l'état quand il change (chargement du dossier, fiche société enregistrée).
+function licenceStatus(matricule) {
+  const lic = readLicence(matricule);
+  const pub = clePublique();
+  return {
+    ...L.licenceState({ key: lic.key || '', publicKey: pub.publicKey, installedAt: installedAt(), armedAt: armedAt(),
+      matricule: matricule || '', today: L.today() }),
+    editeur: editeurActif()
+  };
+}
+// L'état de l'éditeur, tel que l'écran le reçoit. JAMAIS la clé privée dedans — elle ne traverse
+// pas le pont, exactement comme la clé du cabinet dans l'autre application.
+// `depuis` : le jour d'où partent les durées proposées (aujourd'hui, ou la fin de la licence qu'on
+// renouvelle — un client qui renouvelle pendant le préavis ne perd pas les jours déjà payés).
+function editeurStatus(depuis) {
+  const depart = L.dateValide(depuis) && depuis > L.today() ? depuis : L.today();
+  const actif = editeurActif();
+  let pub = null;
+  if (actif) {
+    pub = lireJson(CLE_PUBLIQUE_EDITEUR());
+    if (!pub || !pub.publicKey) {
+      // Clés créées par l'outil en ligne de commande d'avant : la publique se déduit de la privée.
+      try {
+        const publicKey = crypto.createPublicKey(crypto.createPrivateKey(lirePrivee())).export({ type: 'spki', format: 'pem' });
+        pub = { format: L.FORMAT, publicKey, createdAt: L.today() };
+        fs.writeFileSync(CLE_PUBLIQUE_EDITEUR(), JSON.stringify(pub, null, 2) + '\n');
+        clePubliqueCache = null;
+      } catch { pub = null; }
+    }
+  }
+  const embarquee = lireJson(CLE_EMBARQUEE());
+  return {
+    actif, dossier: CLES_DIR(), chemin: CLE_PRIVEE(),
+    publicKey: pub ? pub.publicKey : '', createdAt: pub ? pub.createdAt || '' : '',
+    // La clé embarquée dans l'application (celle des clients) est-elle la sienne ? Tant que non, ses
+    // clés n'arment que son poste : c'est l'état « en attente d'armement ».
+    armee: !!(embarquee && embarquee.publicKey),
+    correspond: !!(pub && embarquee && embarquee.publicKey === pub.publicKey),
+    // Les durées portent la date de fin qu'elles donneraient à partir de `depart` : l'écran l'affiche
+    // sans avoir à recalculer un mois du calendrier de son côté (une seule règle, dans licence.js).
+    depart, offres: L.OFFRES, durees: L.DUREES.map(d => ({ ...d, exp: L.expirationPour(depart, d.id) }))
+  };
 }
 
 // ---------- dossiers : plusieurs entreprises sur le même ordinateur ----------
@@ -1047,23 +1136,125 @@ async function renderPdf(html, win) {
 const pdfWindow = () => new BrowserWindow({ show: false, webPreferences: { sandbox: true, contextIsolation: true } });
 
 // ---------- licence ----------
-ipcMain.handle('licence:status', () => licenceStatus());
+ipcMain.handle('licence:status', (_e, opts) => licenceStatus((opts || {}).matricule));
+ipcMain.handle('editeur:status', (_e, opts) => editeurStatus((opts || {}).depuis));
 // On refuse d'enregistrer une clé invalide : mieux vaut le dire tout de suite que laisser
 // l'utilisateur croire qu'il est en règle et découvrir le contraire au moment de facturer.
-ipcMain.handle('licence:set', (_e, key) => {
+// Même chose pour une clé authentique émise pour une AUTRE entreprise : on dit pour qui elle est.
+ipcMain.handle('licence:set', (_e, key, opts) => {
   const k = String(key || '').trim();
-  if (!k) { try { fs.unlinkSync(LIC_FILE()); } catch {} return licenceStatus(); }
+  const matricule = (opts || {}).matricule || '';
+  if (!k) { try { fs.unlinkSync(LIC_FILE()); } catch {} return licenceStatus(matricule); }
   if (publicKey() && !L.verifyKey(k, publicKey())) {
     const err = new Error('Cette clé n\'est pas reconnue. Vérifie qu\'elle a été copiée en entier, de « SKAN1. » jusqu\'au dernier caractère.');
     err.code = 'LICENCE_INVALIDE';
     throw err;
   }
-  fs.mkdirSync(path.dirname(LIC_FILE()), { recursive: true });
-  fs.writeFileSync(LIC_FILE(), JSON.stringify({ key: k, savedAt: new Date().toISOString() }, null, 2));
-  return licenceStatus();
+  const essai = L.licenceState({ key: k, publicKey: publicKey(), matricule, today: L.today() });
+  if (essai.state === 'autre') {
+    const err = new Error(essai.detail);
+    err.code = 'LICENCE_AUTRE_ENTREPRISE';
+    throw err;
+  }
+  ecrireLicence(k);
+  return licenceStatus(matricule);
 });
 
-ipcMain.handle('licence:requestMail', (_e, { company, device } = {}) => L.requestMail(company || {}, licenceStatus(), device || ''));
+ipcMain.handle('licence:requestMail', (_e, { company, device } = {}) => L.requestMail(company || {}, licenceStatus((company || {}).matricule), device || ''));
+
+// ---------- éditeur (7.33.0) : les clés, et l'émission d'une licence ----------
+// Tout ce qui touche à la clé privée se passe ICI. L'écran demande, le processus principal signe,
+// et ce qui repasse le pont est une chaîne « SKAN1.… » — jamais le fichier .pem.
+ipcMain.handle('editeur:keygen', () => {
+  if (editeurActif()) {
+    const err = new Error(`Il existe déjà une clé privée sur cet ordinateur (${CLE_PRIVEE()}). En créer une nouvelle rendrait INVALIDES toutes les licences déjà émises.`);
+    err.code = 'CLE_EXISTANTE';
+    throw err;
+  }
+  const { publicKey: pubPem, privateKey } = L.generateKeys();
+  fs.mkdirSync(CLES_DIR(), { recursive: true });
+  fs.writeFileSync(CLE_PRIVEE(), privateKey, { mode: 0o600 });
+  fs.writeFileSync(CLE_PUBLIQUE_EDITEUR(), JSON.stringify({ format: L.FORMAT, publicKey: pubPem, createdAt: L.today() }, null, 2) + '\n');
+  clePubliqueCache = null;
+  return editeurStatus();
+});
+// Changer d'ordinateur : on reprend le fichier de clé privée mis à l'abri (clé USB, gestionnaire de
+// mots de passe). La publique se déduit — inutile de la transporter.
+ipcMain.handle('editeur:importer', async () => {
+  const r = await dialog.showOpenDialog(mainWindow, {
+    title: 'Reprendre ma clé privée de signature', properties: ['openFile'],
+    filters: [{ name: 'Clé privée', extensions: ['pem'] }, { name: 'Tous les fichiers', extensions: ['*'] }]
+  });
+  if (r.canceled || !r.filePaths[0]) return { canceled: true };
+  const pem = fs.readFileSync(r.filePaths[0], 'utf8');
+  let pubPem;
+  try { pubPem = crypto.createPublicKey(crypto.createPrivateKey(pem)).export({ type: 'spki', format: 'pem' }); }
+  catch { const err = new Error('Ce fichier n\'est pas une clé privée de signature SkanFact.'); err.code = 'CLE_ILLISIBLE'; throw err; }
+  if (editeurActif() && lirePrivee().trim() !== pem.trim()) {
+    const err = new Error(`Une AUTRE clé privée existe déjà sur cet ordinateur (${CLE_PRIVEE()}). Deux clés, ce sont deux jeux de licences incompatibles : mets l'ancienne de côté d'abord.`);
+    err.code = 'CLE_EXISTANTE';
+    throw err;
+  }
+  // La date d'armement voyage avec le fichier public posé à côté du .pem, quand il y en a un ;
+  // sinon c'est aujourd'hui — elle ne compte que pour un poste éditeur, jamais pour les clients.
+  const voisin = lireJson(path.join(path.dirname(r.filePaths[0]), 'licence-publique.json'));
+  fs.mkdirSync(CLES_DIR(), { recursive: true });
+  fs.writeFileSync(CLE_PRIVEE(), pem, { mode: 0o600 });
+  fs.writeFileSync(CLE_PUBLIQUE_EDITEUR(), JSON.stringify({ format: L.FORMAT, publicKey: pubPem, createdAt: (voisin && voisin.createdAt) || L.today() }, null, 2) + '\n');
+  clePubliqueCache = null;
+  return editeurStatus();
+});
+// Une copie de la clé privée, là où l'éditeur la met à l'abri. Sans copie, un disque qui lâche
+// rend impossible tout renouvellement chez les clients existants.
+ipcMain.handle('editeur:exporter', async () => {
+  if (!editeurActif()) return { canceled: true };
+  const r = await dialog.showSaveDialog(mainWindow, {
+    title: 'Enregistrer une copie de ma clé privée', defaultPath: 'skanfact-licence-privee.pem',
+    filters: [{ name: 'Clé privée', extensions: ['pem'] }]
+  });
+  if (r.canceled || !r.filePath) return { canceled: true };
+  fs.copyFileSync(CLE_PRIVEE(), r.filePath);
+  try { fs.chmodSync(r.filePath, 0o600); } catch {}
+  // Le fichier public voyage avec elle : c'est lui qui porte la date d'armement. On le DIT (deux
+  // fichiers déposés, pas un), et on n'écrase jamais un fichier public d'une AUTRE clé.
+  const voisin = path.join(path.dirname(r.filePath), 'licence-publique.json');
+  const mienne = lireJson(CLE_PUBLIQUE_EDITEUR());
+  const deja = lireJson(voisin);
+  let publique = '';
+  if (mienne && (!deja || deja.publicKey === mienne.publicKey)) {
+    try { fs.copyFileSync(CLE_PUBLIQUE_EDITEUR(), voisin); publique = voisin; } catch {}
+  }
+  return { ok: true, path: r.filePath, publique, autreCle: !!(deja && mienne && deja.publicKey !== mienne.publicKey) };
+});
+// La clé PUBLIQUE, dans le presse-papiers : c'est elle que l'éditeur colle pour armer l'application
+// de tout le monde (build/licence-public.json). Elle n'a rien de secret.
+ipcMain.handle('editeur:copierPublique', () => {
+  const txt = fs.readFileSync(CLE_PUBLIQUE_EDITEUR(), 'utf8');
+  require('electron').clipboard.writeText(txt);
+  return { ok: true, texte: txt };
+});
+// Émettre une licence : l'écran envoie les champs, le processus principal vérifie et signe.
+ipcMain.handle('licence:emettre', (_e, p) => {
+  if (!editeurActif()) { const err = new Error('Aucune clé privée sur cet ordinateur : crée tes clés dans Paramètres → L\'application → Licence.'); err.code = 'PAS_EDITEUR'; throw err; }
+  p = p || {};
+  const nom = String(p.nom || '').trim();
+  if (!nom) { const err = new Error('La licence doit porter le nom de l\'entreprise.'); err.code = 'LICENCE_NOM'; throw err; }
+  const offre = L.OFFRES[p.offre] ? p.offre : '';
+  if (!offre) { const err = new Error('Choisis une offre : Indépendant ou Entreprise.'); err.code = 'LICENCE_OFFRE'; throw err; }
+  // Soit une durée (« 1a », « vie », « date » + date libre), soit une date de fin toute faite ('' = à vie).
+  // `depuis` : un renouvellement part de la fin de la licence précédente quand elle est encore
+  // future — « À faire » réclame le renouvellement trente jours AVANT, et ces trente jours sont payés.
+  const depart = L.dateValide(p.depuis) && p.depuis > L.today() ? p.depuis : L.today();
+  const exp = p.duree ? L.expirationPour(depart, p.duree, p.dateLibre) : (p.exp == null ? null : String(p.exp));
+  if (exp === null || (exp && !(L.dateValide(exp) && L.daysBetween(L.today(), exp) > 0))) {
+    const err = new Error('La date de fin doit être dans le futur (ou vide pour une licence à vie).'); err.code = 'LICENCE_DATE'; throw err;
+  }
+  const payload = {
+    id: L.licenceId(), nom, matricule: String(p.matricule || '').trim(), offre, exp,
+    cabinet: String(p.cabinet || '').trim(), note: String(p.note || '').trim(), emisLe: L.today()
+  };
+  return { key: L.signLicence(payload, lirePrivee()), ...payload };
+});
 
 // Import du fichier d'appairage remis par le cabinet (6.2.0). On ne stocke QUE sa clé publique :
 // elle ne permet que de chiffrer POUR lui, jamais de lire ce qu'il reçoit. Rien de secret ici.

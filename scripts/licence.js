@@ -8,20 +8,25 @@
 //       c'est elle que l'application embarque pour vérifier.
 //
 //   node scripts/licence.js --nom "Menuiserie Trabelsi SUARL" --matricule 1234567A/M/P/000 \
-//                           --mois 12 [--cabinet AB12-CD34-...] [--note "parrainé"]
-//       Émet une licence valable 12 mois et l'affiche. Il n'y a plus qu'à la coller dans le mail.
+//                           --offre independant --duree 1a [--cabinet AB12-CD34-...] [--note "parrainé"]
+//       Émet une licence et l'affiche. Offres : independant | entreprise (défaut). Durées : 1m, 3m,
+//       6m, 1a (défaut), 2a, vie, ou --expire AAAA-MM-JJ. Il n'y a plus qu'à la coller dans le mail.
 //
 //   node scripts/licence.js --verifier "SKAN1...."
 //       Relit une licence déjà émise.
 //
-// Rien n'est enregistré nulle part : aucune base de licences. Si tu veux garder une trace de ce que
-// tu as émis, colle la sortie dans un tableur — c'est volontairement à toi de décider.
+// Depuis la 7.33.0, tout ceci se fait aussi DEPUIS L'APPLICATION (Paramètres → L'application →
+// Licence → « Créer mes clés », puis la page Licences) — avec la facture et l'historique en plus.
+// Cet outil reste pour les cas où l'on préfère le terminal ; il écrit aux mêmes emplacements.
+// Rien n'est enregistré nulle part : aucune base de licences ici. L'historique, c'est l'application.
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const L = require('../src/licence.js');
 
-const PRIV = path.join(os.homedir(), '.skanfact', 'licence-privee.pem');
+const CLES_DIR = process.env.SKANFACT_DOSSIER_CLES || path.join(os.homedir(), '.skanfact');
+const PRIV = path.join(CLES_DIR, 'licence-privee.pem');
+const PUB_EDITEUR = path.join(CLES_DIR, 'licence-publique.json');
 const PUB = path.join(__dirname, '..', 'build', 'licence-public.json');
 
 const args = process.argv.slice(2);
@@ -38,9 +43,15 @@ function keygen() {
   const { publicKey, privateKey } = L.generateKeys();
   fs.mkdirSync(path.dirname(PRIV), { recursive: true });
   fs.writeFileSync(PRIV, privateKey, { mode: 0o600 });
-  fs.writeFileSync(PUB, JSON.stringify({ format: L.FORMAT, publicKey, createdAt: L.today() }, null, 2) + '\n', 'utf8');
+  const pub = JSON.stringify({ format: L.FORMAT, publicKey, createdAt: L.today() }, null, 2) + '\n';
+  // La publique à côté de la privée : c'est elle que l'application lit sur le poste de l'éditeur.
+  // Elle n'est PAS écrite dans le dépôt : armer l'application de tout le monde est une décision
+  // (copier ce fichier dans build/licence-public.json et le commiter), jamais l'effet de bord d'un
+  // keygen — un test exige d'ailleurs l'absence du fichier tant que ce n'est pas décidé.
+  fs.writeFileSync(PUB_EDITEUR, pub, 'utf8');
   console.log(`\nClé privée  : ${PRIV}   (mode 600 — ne la commite jamais, ne l'envoie à personne)`);
-  console.log(`Clé publique : ${PUB}   (à commiter : c'est elle qui arme la licence dans l'app)`);
+  console.log(`Clé publique : ${PUB_EDITEUR}`);
+  console.log(`\nPour ARMER l'application de tout le monde, le jour venu : copie ce fichier public dans\n  ${PUB}\net commite-le. C'est ce jour-là que l'essai de 30 jours commence chez chacun.`);
   console.log(`\nSauvegarde la clé privée ailleurs que sur ce Mac (gestionnaire de mots de passe, disque\n`
     + `chiffré). Si tu la perds, tu ne peux plus émettre de licence pour les clients existants.\n`);
 }
@@ -49,17 +60,23 @@ function emettre() {
   if (!fs.existsSync(PRIV)) { console.error(`Aucune clé privée. Lance d'abord :\n  node scripts/licence.js --keygen`); process.exit(1); }
   const nom = arg('nom');
   if (!nom) { console.error('Il manque --nom "Raison sociale"'); process.exit(1); }
-  const mois = Number(arg('mois') || 12);
-  const exp = arg('expire') || L.addDays(L.today(), Math.round(mois * 30.44));
+  const offre = arg('offre') || L.OFFRE_DEFAUT;
+  if (!L.OFFRES[offre]) { console.error(`Offre inconnue : ${offre}. Choisis parmi : ${Object.keys(L.OFFRES).join(', ')}`); process.exit(1); }
+  // `--mois N` reste accepté (l'ancienne forme) ; `--duree` et `--expire` sont les nouvelles.
+  const exp = arg('expire') ? L.expirationPour(L.today(), 'date', arg('expire'))
+    : arg('duree') ? L.expirationPour(L.today(), arg('duree'))
+    : arg('mois') ? L.addMonths(L.today(), Number(arg('mois')))
+    : L.expirationPour(L.today(), '1a');
+  if (exp === null) { console.error('Durée ou date de fin invalide (1m, 3m, 6m, 1a, 2a, vie, ou --expire AAAA-MM-JJ dans le futur).'); process.exit(1); }
   const payload = {
-    nom, matricule: arg('matricule') || '', exp,
+    id: L.licenceId(), nom, matricule: arg('matricule') || '', offre, exp,
     cabinet: arg('cabinet') || '', note: arg('note') || '',
     emisLe: L.today()
   };
   const key = L.signLicence(payload, fs.readFileSync(PRIV, 'utf8'));
-  console.log(`\nLicence pour ${nom}`);
+  console.log(`\nLicence pour ${nom} — offre ${L.OFFRES[offre].label}`);
   console.log(`Matricule : ${payload.matricule || '—'}`);
-  console.log(`Valable jusqu'au ${exp}${payload.cabinet ? ` · cabinet parrain ${payload.cabinet}` : ''}`);
+  console.log(`${exp ? `Valable jusqu'au ${exp}` : 'Sans limite de durée'}${payload.cabinet ? ` · cabinet parrain ${payload.cabinet}` : ''}`);
   console.log(`\n${key}\n`);
   console.log(`À coller dans SkanFact : Paramètres → Licence.\n`);
 }

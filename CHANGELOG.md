@@ -7,6 +7,84 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 7.33.0 — 14/09/2026
+
+**SkanFact sait maintenant se vendre : deux offres portées par la clé de licence, et un module
+Éditeur qui émet la clé, fait la facture et tient l'historique — depuis SkanFact lui-même.**
+
+Rien n'est armé dans cette version : la licence reste libre pour tout le monde tant que la clé
+publique de l'éditeur n'est pas embarquée. Ce qui change, c'est que tout est prêt pour le jour où
+elle le sera.
+
+### Les offres
+
+La clé de licence porte désormais l'**offre** — *Indépendant* ou *Entreprise* — et un client ne peut
+pas se la changer : elle est dans la signature. En Indépendant, les modules **Achats, Stock,
+Immobilisations, Trésorerie et marges, Paie** et le **dossier partagé à deux** portent un cadenas
+dans le menu et un bandeau en tête de page : **tout ce qui y existe reste lisible, imprimable et
+exportable**, seule la création de nouvelles pièces y attend l'offre Entreprise. Les Statistiques
+restent ouvertes (elles ne créent rien). Pendant l'essai, tout est ouvert.
+
+La clé est aussi **attachée au matricule fiscal** : émise pour Trabelsi, elle ne s'active pas sur le
+dossier d'une autre société, et le refus nomme les deux matricules. Un dossier sans matricule saisi
+n'est pas puni.
+
+La durée est libre à l'émission — 1, 3, 6 mois, 1 ou 2 ans, **à vie**, ou une date précise — et un
+mois de licence est un mois du calendrier (« 1 an » finit le même jour l'an prochain).
+
+**L'essai de 30 jours compte à partir du jour où la licence est armée**, pas du premier lancement.
+Sans ça, toute installation de plus de trente jours se serait verrouillée à la minute même de la mise
+à jour qui l'arme — chez toute ta famille.
+
+### Le module Éditeur
+
+Il n'apparaît que sur l'ordinateur où vit ta clé privée de signature — jamais chez un client.
+
+- **Créer mes clés** (Paramètres → L'application → Licence) : la clé privée est écrite dans un
+  fichier protégé, hors de tes données, de tes sauvegardes et du paquet du comptable ; la clé
+  publique se copie d'un clic pour être embarquée dans la prochaine version. Une copie de la clé
+  privée s'enregistre où tu veux (clé USB, gestionnaire de mots de passe) — et on te le demande
+  tout de suite, parce que sans elle aucun renouvellement n'est plus possible.
+- **Émettre une licence** (page **Licences**, ou Cmd+K) : le client, l'offre, la durée, la
+  prestation de ton catalogue (c'est là que vit le prix, jamais dans le code), le parrainage d'un
+  cabinet avec sa remise. Un clic : la clé est signée dans le processus principal (elle ne traverse
+  jamais l'écran), un **brouillon de facture** est créé dans tes ventes avec la bonne ligne, et
+  l'historique garde tout. Tu relis la facture, tu l'émets, comme d'habitude.
+- **Envoyer la clé par email** : la clé, la marche à suivre, et la facture en PDF une fois émise.
+  Nouveau modèle de message « Envoi d'une clé de licence », modifiable dans Paramètres → Envois.
+- **Renouveler** : une nouvelle clé et une nouvelle facture en un clic, préremplies ; l'ancienne
+  reste valable jusqu'à sa date et sort du compte des choses à faire.
+- **« À faire »** te dit « n licences expirent dans les 30 jours » — comme il te dit tes relances.
+
+Pourquoi pas un programme à part ? Parce qu'une vente de licence est une facture comme une autre :
+elle doit entrer dans ton journal des ventes, ta TVA collectée et le dossier de ton comptable. Un
+programme séparé aurait refait la facturation et laissé ta comptabilité fausse.
+
+### Ce qui a été trouvé en chemin
+
+- **`build/licence-public.json` n'était pas embarqué dans l'application construite** : `build/` ne
+  faisait pas partie des fichiers du paquet. La licence n'aurait jamais pu se verrouiller ailleurs
+  qu'en développement. Corrigé.
+- **Deux créations échappaient au garde-fou de la licence** depuis la 6.4.0 : « Dupliquer » un achat
+  et « Établir n bulletins ». Le test de l'époque exigeait « au moins quatre » garde-fous et n'a
+  jamais pu voir le trou ; il exige maintenant chaque point de création, un par un.
+- **La clé de licence vit maintenant dans le dossier de l'entreprise**, plus au niveau de
+  l'ordinateur : un même Mac ouvre plusieurs entreprises (la tienne et Darium), et une clé émise
+  pour l'une aurait verrouillé l'autre. Un dossier partagé emporte sa clé avec lui.
+- Une phrase de l'assistant de licence nommait un onglet qui n'existe plus.
+
+Une relecture adversariale (sept angles, chaque constat contredit) a ensuite trouvé quatorze défauts
+dans ce qui venait d'être écrit, tous corrigés avant publication — les trois qui comptent : un
+**renouvellement repartait d'aujourd'hui** et reprenait au client les trente jours de préavis déjà
+payés (il part maintenant de la fin de la licence en cours) ; une **licence expirée barrait le
+partage d'un dossier**, qui n'est pas une création ; et l'essai comptait depuis la fabrication de
+la clé plutôt que depuis le jour où la version armée arrive **sur ce poste**.
+
+Tests : 329, chaque nouvelle assertion prouvée en réintroduisant son défaut. Nouveau parcours
+`npm run e2e:licence` : les clés, l'émission, la facture, l'offre Indépendant qui refuse un
+fournisseur mais pas les Statistiques, la clé d'un autre matricule refusée, le renouvellement, et
+rien de ce qui traverse le pont ne contient la clé privée.
+
 ## 7.32.0 — 14/09/2026
 
 **L'application du comptable range ses Réglages en trois onglets, comme la tienne — et l'alerte la

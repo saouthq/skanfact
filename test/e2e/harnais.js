@@ -37,6 +37,14 @@ function playwright() {
 const RACINE = path.join(__dirname, '..', '..');
 const ELECTRON = path.join(RACINE, 'node_modules', '.bin', 'electron');
 
+// Les clés de signature de l'ÉDITEUR vivent dans ~/.skanfact (7.33.0). Un parcours lancé sur son Mac
+// ouvrirait l'application ARMÉE avec sa clé — puis verrouillée au trente-et-unième jour. Tout test
+// qui lance Electron hérite de `process.env` : on désigne ici, une fois pour toutes, un dossier de
+// clés vide et temporaire. Un test qui veut le sien (licence.js) le remplace dans son `env`.
+if (!process.env.SKANFACT_DOSSIER_CLES) {
+  process.env.SKANFACT_DOSSIER_CLES = fs.mkdtempSync(path.join(require('os').tmpdir(), 'skanfact-cles-vide-'));
+}
+
 // La version que les tests doivent voir affichée. Lue dans package.json plutôt qu'écrite en dur :
 // c'est exactement l'assertion qui se périmait à chaque publication.
 const VERSION = require(path.join(RACINE, 'package.json')).version;

@@ -3157,16 +3157,330 @@ t('licence : les dates tiennent sous tous les fuseaux, et la demande porte le ca
 });
 
 t('licence : le garde-fou ne barre que la création, et l\'app livrée ne se verrouille pas', () => {
-  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
+  const src = lireApp();
   // Le garde-fou ne doit être posé que sur des créations, jamais sur un export ou une lecture.
-  const calls = src.match(/licenceBlock\('[^']+'\)/g) || [];
-  assert.ok(calls.length >= 4, 'garde-fou de licence absent des chemins de création');
-  calls.forEach(c => assert.ok(/Créer|Émettre|Enregistrer un nouvel|Établir un nouveau/.test(c),
-    'le garde-fou de licence est posé ailleurs que sur une création : ' + c));
+  // Depuis la 7.33.0 il prend un second argument (le module fermé par l'offre) : la regex de 6.4.0
+  // ne voyait que la forme à un argument, et un appel à deux arguments lui échappait en silence.
+  const calls = [...src.matchAll(/licenceBlock\('([^']+)'(?:, '([a-z]+)')?\)/g)];
+  assert.ok(calls.length >= 18, 'garde-fou de licence absent des chemins de création : ' + calls.length + ' appels');
+  calls.forEach(m => assert.ok(/^(Créer|Émettre|Enregistrer un nouvel|Établir un nouveau)/.test(m[1]),
+    'le garde-fou de licence est posé ailleurs que sur une création : ' + m[0]));
   assert.ok(!/licenceBlock\([^)]*[Ee]xport/.test(src), 'un export ne doit jamais dépendre de la licence');
+  // Un appel qui ne suivrait ni l'une ni l'autre forme (troisième argument, variable) ne serait pas
+  // vérifié : on compte aussi les appels bruts.
+  assert.strictEqual((src.match(/licenceBlock\(/g) || []).length, calls.length + 1, 'un appel à licenceBlock échappe au contrôle (la définition mise à part)');
   // Et la version livrée n'embarque pas de clé publique : elle ne peut donc verrouiller personne.
   assert.ok(!fs.existsSync(path.join(__dirname, '..', 'build', 'licence-public.json')),
     'build/licence-public.json est présent : la licence serait armée pour tout le monde — c\'est une décision du propriétaire, pas un effet de bord');
+});
+
+t('offre Indépendant : chaque module réservé est fermé à la création, partout où l\'on crée', () => {
+  const src = lireApp();
+  const calls = [...src.matchAll(/licenceBlock\('([^']+)'(?:, '([a-z]+)')?\)/g)];
+  const modules = new Set(calls.map(m => m[2]).filter(Boolean));
+  // Tout module que licence.js réserve à l'offre Entreprise doit être nommé au moins une fois.
+  lic.OFFRES.independant.reserves.forEach(id => assert.ok(modules.has(id), `aucun garde-fou d'offre ne nomme le module « ${id} »`));
+  // …et jamais un module qui n'existe pas (une faute de frappe ne bloquerait personne, en silence).
+  const connus = new Set(core.MODULES.map(m => m.id).concat(['partage']));
+  modules.forEach(id => assert.ok(connus.has(id), `garde-fou d'offre sur un module inconnu : ${id}`));
+  // Les points de création, un par un : la porte va DANS le formulaire, sur la branche création,
+  // parce que chacun s'ouvre depuis plusieurs pages (règle 7.29.0). Une tranche par fonction.
+  const tranche = (debut, fin) => { const a = src.indexOf(debut), b = src.indexOf(fin, a + 1); assert.ok(a >= 0 && b > a, 'tranche introuvable : ' + debut); return src.slice(a, b); };
+  const attendus = [
+    ['function supplierForm(', 'const supplierState', 'achats', '!supplier &&'],
+    ['function duplicatePurchase(', 'function ', 'achats', ''],
+    ['function projectForm(', 'routes.marges', 'pilotage', '!proj &&'],
+    ['function accountForm(', 'function movementForm(', 'pilotage', '!acc &&'],
+    ['function movementForm(', 'routes.tresorerie', 'pilotage', '!mv &&'],
+    ['function employeeForm(', 'function payslipForm(', 'paie', '!employee &&'],
+    ['function payslipForm(', 'function leaveForm(', 'paie', '!slip &&'],
+    ['function leaveForm(', 'function advanceForm(', 'paie', '!leave &&'],
+    ['function advanceForm(', 'function hrDocForm(', 'paie', '!advance &&'],
+    ['$(\'#p-gen\').onclick', 'confirmDialog', 'paie', ''],
+    ['function adjustForm(', 'routes.stock', 'stock', ''],
+    ['$(\'#inv-apply\').onclick', 'confirmDialog', 'stock', ''],
+    ['function serialIntakeForm(', 'function serialAssignForm(', 'stock', ''],
+    ['function assetForm(', 'routes.immos', 'immos', '!asset &&'],
+    ['async function partagerDossier(', 'async function rejoindreDossier(', 'partage', '']
+  ];
+  attendus.forEach(([debut, fin, module, cond]) => {
+    const t = tranche(debut, fin);
+    const re = new RegExp((cond ? cond.replace(/[!&]/g, '\\$&') + '\\s*' : '') + "licenceBlock\\('[^']+', '" + module + "'\\)");
+    assert.ok(re.test(t), `${debut} : pas de garde-fou d'offre « ${module} »${cond ? ' sur la branche création (' + cond + ')' : ''}`);
+  });
+  // Deux créations avaient échappé au garde-fou de 6.4.0 : la copie d'un achat et « Établir n
+  // bulletins ». Les contrôles passent AVANT la grande question (règle 7.6.0).
+  const gen = tranche('$(\'#p-gen\').onclick', 'closedBlock');
+  assert.ok(gen.indexOf('licenceBlock(') < gen.indexOf('confirmDialog('), '« Établir n bulletins » pose sa question avant le garde-fou');
+  const inv = tranche('$(\'#inv-apply\').onclick', 'closedBlock');
+  assert.ok(inv.indexOf('licenceBlock(') < inv.indexOf('confirmDialog('), 'l\'inventaire pose sa question avant le garde-fou');
+  // La porte lit `licence.reserves` (jamais moduleOn : l'offre ne masque rien) et ne ferme que le
+  // module nommé. Statistiques vit dans Pilotage et ne crée rien : elle reste ouverte, sans bandeau.
+  const porte = tranche('function licenceBlock(', 'function pageReservee(');
+  assert.ok(/licence\.reserves \|\| \[\]\)\.includes\(module\)/.test(porte), 'la porte de l\'offre doit lire licence.reserves');
+  assert.ok(!/moduleOn\(/.test(porte), 'l\'offre ne passe pas par moduleOn : elle ne masque rien');
+  const res = tranche('function pageReservee(', 'const closedToast');
+  assert.ok(/p\.id !== 'stats'/.test(res), 'les Statistiques doivent rester ouvertes (elles ne créent rien)');
+  // Le bandeau se pose dans render(), après la route, comme celui des modules.
+  const rendu = tranche('function render(keepScroll)', 'function setWindowTitle');
+  assert.ok(rendu.indexOf('bandeauOffre(active)') > rendu.indexOf('(routes[name] || routes.dashboard)'), 'bandeauOffre doit suivre la route');
+  // Et la barre garde la page, avec un cadenas : on ne masque jamais ce qui existe.
+  const barre = tranche('function drawNav(', 'function bandeauModule(');
+  assert.ok(/ferme \? CADENAS : ''/.test(barre) && !/pageReservee\(p\) \? '' :/.test(barre), 'un module fermé garde son entrée dans la barre, avec un cadenas');
+});
+
+// ---------- les offres (7.33.0) ----------
+t('licence : l\'offre voyage dans la clé, le matricule l\'attache, et l\'essai compte depuis l\'armement', () => {
+  const k = lic.generateKeys();
+  const S = o => lic.licenceState({ publicKey: k.publicKey, installedAt: '2026-01-01', today: '2026-09-14', ...o });
+
+  // L'offre est DANS la clé signée : un client ne peut pas se la changer, et l'application sait
+  // quels modules lui sont fermés à la création. Un client Entreprise n'a rien de fermé.
+  const indep = lic.signLicence({ nom: 'Trabelsi', matricule: '1234567A/M/P/000', offre: 'independant', exp: '2027-09-14' }, k.privateKey);
+  const st = S({ key: indep, matricule: '1234567 A' });
+  assert.strictEqual(st.state, 'active');
+  assert.strictEqual(st.offre, 'independant');
+  assert.deepStrictEqual(st.reserves, ['achats', 'stock', 'immos', 'pilotage', 'paie', 'partage']);
+  assert.ok(/Indépendant/.test(st.label), 'l\'écran doit nommer l\'offre : ' + st.label);
+  const entr = lic.signLicence({ nom: 'Y', offre: 'entreprise', exp: '2027-09-14' }, k.privateKey);
+  assert.deepStrictEqual(S({ key: entr }).reserves, []);
+  // Une clé d'avant la 7.33.0 n'a pas d'offre : elle vaut Entreprise. Une offre inconnue aussi —
+  // en cas de doute on OUVRE, on ne prend jamais personne en otage.
+  const vieille = lic.signLicence({ nom: 'X', exp: '2027-01-01' }, k.privateKey);
+  assert.strictEqual(S({ key: vieille }).offre, 'entreprise');
+  assert.deepStrictEqual(S({ key: vieille }).reserves, []);
+  const inconnue = lic.signLicence({ nom: 'X', offre: 'premium', exp: '2027-01-01' }, k.privateKey);
+  assert.strictEqual(S({ key: inconnue }).offre, 'entreprise');
+  // Pendant l'essai, tout est ouvert : c'est la seule façon de savoir de quelle offre on a besoin.
+  assert.deepStrictEqual(S({ installedAt: '2026-09-01' }).reserves, []);
+  // Expirée : `locked` ferme déjà toute création, `reserves` n'a plus de sens.
+  assert.deepStrictEqual(S({ key: indep, today: '2030-01-01' }).reserves, []);
+
+  // Le matricule attache la clé à UNE entreprise : émise pour Trabelsi, elle ne s'active pas ailleurs.
+  const autre = S({ key: indep, matricule: '7654321B/A/M/000' });
+  assert.strictEqual(autre.state, 'autre');
+  assert.strictEqual(autre.locked, true);
+  assert.ok(/7654321B/.test(autre.detail) && /1234567A/.test(autre.detail), 'le refus nomme les deux matricules');
+  // …mais on compare le CŒUR du matricule (sept chiffres + lettre), pas sa ponctuation ni son suffixe,
+  // et un côté vide ne compte pas : on ne punit pas qui n'a pas encore rempli sa fiche.
+  assert.ok(lic.memeMatricule('1234567A/M/P/000', '1234567-a'));
+  assert.ok(lic.memeMatricule('1234567A', ''));
+  assert.ok(!lic.memeMatricule('1234567A', '1234567B'));
+  assert.strictEqual(S({ key: indep }).state, 'active', 'sans matricule saisi, la clé passe');
+  assert.strictEqual(S({ key: vieille, matricule: '1234567A' }).state, 'active', 'une clé sans matricule s\'active partout');
+
+  // L'essai compte à partir du jour où la licence est ARMÉE quand il est postérieur à l'installation.
+  // Sans ça, toute installation de plus de trente jours se verrouillerait à la minute de la mise à
+  // jour qui arme la licence — c'est-à-dire chez tous ceux qui ont installé l'app avant.
+  assert.strictEqual(S({}).state, 'finessai', 'installée en janvier, sans armement : l\'essai est fini');
+  assert.strictEqual(S({ armedAt: '2026-09-10' }).state, 'essai');
+  assert.strictEqual(S({ armedAt: '2026-09-10' }).daysLeft, 26);
+  assert.strictEqual(S({ armedAt: '2025-01-01' }).state, 'finessai', 'un armement ANTÉRIEUR à l\'installation ne rallonge rien');
+  assert.strictEqual(S({ armedAt: 'n\'importe quoi' }).state, 'finessai', 'une date illisible est ignorée');
+
+  // Les durées : un mois de licence est un mois du calendrier. « À vie » = pas de date.
+  assert.strictEqual(lic.addMonths('2026-09-14', 12), '2027-09-14');
+  assert.strictEqual(lic.addMonths('2026-01-31', 1), '2026-02-28', 'le 31 janvier + 1 mois finit en février, pas le 3 mars');
+  assert.strictEqual(lic.addMonths('2024-02-29', 12), '2025-02-28');
+  assert.strictEqual(lic.expirationPour('2026-09-14', '1a'), '2027-09-14');
+  assert.strictEqual(lic.expirationPour('2026-09-14', '3m'), '2026-12-14');
+  assert.strictEqual(lic.expirationPour('2026-09-14', 'vie'), '');
+  assert.strictEqual(lic.expirationPour('2026-09-14', 'date', '2027-01-01'), '2027-01-01');
+  assert.strictEqual(lic.expirationPour('2026-09-14', 'date', '2026-09-14'), null, 'une licence née expirée n\'est pas une licence');
+  assert.strictEqual(lic.expirationPour('2026-09-14', 'date', '14/09/2027'), null, 'une date mal écrite est refusée, pas devinée');
+  assert.strictEqual(lic.expirationPour('2026-09-14', 'jamais-vu'), null);
+  assert.ok(lic.DUREES.some(d => d.id === 'vie') && lic.DUREES.some(d => d.mois === 12));
+  assert.strictEqual(S({ key: lic.signLicence({ nom: 'Z', offre: 'independant' }, k.privateKey), today: '2099-01-01' }).state, 'active', 'à vie');
+
+  // Le singulier : « 1 jour restant », jamais « 1 jour(s) ».
+  assert.ok(!/\(s\)/.test(S({ installedAt: '2026-08-16' }).label + S({ installedAt: '2026-08-16' }).detail));
+  assert.ok(/1 jour restant\b/.test(S({ installedAt: '2026-08-16' }).label), S({ installedAt: '2026-08-16' }).label);
+  assert.ok(/0 jours restants/.test(S({ installedAt: '2026-08-15' }).label), 'le dernier jour se lit « 0 jours restants »');
+});
+
+t('éditeur : la clé privée ne traverse jamais le pont, et l\'app livrée embarque la clé publique', () => {
+  const main = lireSource('src', 'main.js').replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+  // La tranche part de `editeurStatus()` — c'est l'objet qui traverse le pont — et va jusqu'à la fin
+  // de `licence:emettre`, en passant par tous les handlers de l'éditeur.
+  const a = main.indexOf('function editeurStatus('), b = main.indexOf("ipcMain.handle('licence:emettre'");
+  const c = main.indexOf('\n});', b);
+  assert.ok(a > 0 && b > a && c > b, 'la section éditeur de main.js est introuvable');
+  const section = main.slice(a, c);
+  assert.ok(/ipcMain\.handle\('editeur:keygen'/.test(section) && /ipcMain\.handle\('editeur:importer'/.test(section), 'la tranche ne couvre pas les handlers de l\'éditeur');
+  // La clé privée n'est lue que pour signer, pour en déduire la publique, ou pour la comparer à
+  // un fichier repris. Aucun `return` ne la contient.
+  // Chaque occurrence est jugée sur ce qui la SUIT immédiatement : une regex gourmande jusqu'à la
+  // fin de la ligne avalait une seconde lecture posée sur la même ligne (prouvé en l'y mettant).
+  const lectures = [...section.matchAll(/lirePrivee\(\)(.{0,12})/g)].map(m => m[1]);
+  assert.ok(lectures.length >= 3, 'la section éditeur ne lit pas la clé privée ?');
+  assert.ok(!/JSON\.stringify\([^)]*lirePrivee|privateKey: lirePrivee|pem: lirePrivee/.test(section), 'la clé privée ne se sérialise pas');
+  lectures.forEach(suite => assert.ok(/^\)/.test(suite) || /^\.trim\(\) !==/.test(suite),
+    'la clé privée est lue pour autre chose que signer / déduire / comparer : lirePrivee()' + suite));
+  assert.ok(/L\.signLicence\(payload, lirePrivee\(\)\)/.test(section), 'la signature se fait dans main.js, avec le fichier de clé privée');
+  assert.ok(!/return \{[^}]*privateKey/.test(section) && !/privateKey:/.test(section.replace(/publicKey/g, '')), 'un handler renvoie la clé privée');
+  // Une clé émise pour une AUTRE entreprise est refusée à l'enregistrement, en nommant les deux.
+  assert.ok(/essai\.state === 'autre'/.test(main) && /LICENCE_AUTRE_ENTREPRISE/.test(main), 'licence:set doit refuser la clé d\'une autre entreprise');
+  // Le pont expose l'état et la signature, jamais un canal qui rendrait le fichier .pem.
+  const preload = lireSource('src', 'preload.js');
+  ['licenceEmettre', 'editeurStatus', 'editeurKeygen', 'editeurImporter', 'editeurExporter', 'editeurCopierPublique'].forEach(n =>
+    assert.ok(preload.includes(n + ':'), 'le pont n\'expose pas ' + n));
+  assert.ok(!/privee|private/i.test(preload.replace(/\/\/.*$/gm, '')), 'le pont ne doit rien exposer qui nomme la clé privée');
+  // L'essai compte depuis la date du fichier de clé publique, et le matricule voyage avec la demande.
+  assert.ok(/armedAt: armedAt\(\)/.test(main) && /matricule: matricule \|\| ''/.test(main), 'licenceStatus doit passer armedAt et le matricule');
+  // Et le paquet EMBARQUE la clé publique : `build/` n'était pas dans les fichiers d'electron-builder,
+  // donc l'app installée restait libre quoi qu'on commite. Un glob : son absence ne casse rien.
+  const pkg = JSON.parse(lireSource('package.json'));
+  assert.ok(pkg.build.files.some(f => /^build\/licence-public\*?\.json$/.test(f)), 'build/licence-public.json doit figurer dans build.files');
+  assert.ok(pkg.build.files.some(f => f.includes('*')), 'le motif doit être un glob : un fichier absent ferait échouer la construction');
+});
+
+t('éditeur : le renderer relit la licence avec le matricule, et la page Licences n\'existe que chez lui', () => {
+  const app = lireApp();
+  // Relue AVANT le premier dessin, avec le matricule de la société ouverte, et à chaque fiche société enregistrée.
+  const boot = app.slice(app.indexOf('const loaded = await bridge.loadData()'), app.indexOf('render();', app.indexOf('const loaded = await bridge.loadData()')));
+  assert.ok(/await rafraichirLicence\(\)/.test(boot), 'la licence doit être relue (et attendue) avant le premier render');
+  assert.ok(!/bridge\.licenceStatus\(\)\.then/.test(app), 'plus de lecture sans matricule au chargement');
+  const applique = app.slice(app.indexOf('const applySettings = () => {'), app.indexOf('setGuard({ dirty: () => setDirty'));
+  assert.ok(/rafraichirLicence\(\)/.test(applique), 'enregistrer la fiche société doit revérifier la licence (attachée au matricule)');
+  assert.ok(/const mf = data \? \(company\(\)\.matricule \|\| ''\) : '';\s*const st = await bridge\.licenceStatus\(mf\)/.test(app), 'le matricule doit voyager avec la demande d\'état');
+  assert.ok(/bridge\.licenceSet\(key, company\(\)\.matricule \|\| ''\)/.test(app), 'le matricule doit voyager avec la clé collée');
+  // La page Licences : hors menu dans PAGES, ajoutée à la barre SEULEMENT sur le poste de l'éditeur.
+  const p = core.PAGES.find(x => x.id === 'licences');
+  assert.ok(p && p.horsMenu && p.titre === 'Licences', 'la page licences doit être déclarée hors menu');
+  const nav = app.slice(app.indexOf('function drawNav()'), app.indexOf('function bandeauModule('));
+  const lien = nav.indexOf('href="#/licences"');
+  assert.ok(lien > 0 && nav.lastIndexOf('if (licence.editeur)', lien) > 0, 'le lien Licences doit être sous `if (licence.editeur)`');
+  assert.ok(/routes\.licences = \(\) => \{/.test(app) && /const peut = !!licence\.editeur;/.test(app.slice(app.indexOf('routes.licences = '))) && /if \(!peut && !\(data\.licences \|\| \[\]\)\.length\) \{/.test(app), 'la route existe, ne montre l\'état vide que sans clé ET sans historique, et n\'émet que chez l\'éditeur');
+  // Le panneau Éditeur n'est posé que chez lui ; la palette et les modèles d'email aussi.
+  assert.ok(/\$\{licence\.editeur \? `\$\{panneau\('p-editeur'/.test(app), 'le panneau p-editeur doit être conditionnel');
+  assert.ok(/\.\.\.\(licence\.editeur \? \[\['Licences émises'/.test(app), 'l\'entrée de palette « Licences émises » doit être conditionnelle');
+  assert.ok(/\.\.\.\(licence\.editeur \? \[\['licence', /.test(app), 'le gabarit d\'email « licence » ne s\'édite que chez l\'éditeur');
+  // « À faire » reçoit le drapeau, et la ligne mène à la page.
+  assert.ok(/C\.todoList\(data, company\(\), null, \{ copieExterne, editeur: !!licence\.editeur \}\)/.test(app), 'todoList doit recevoir editeur');
+  // Émettre = signer dans main.js + un BROUILLON (jamais nextNumber) + l'historique + la page de la facture.
+  const form = app.slice(app.indexOf('function licenceForm('), app.indexOf('async function envoyerLicence('));
+  assert.ok(/bridge\.licenceEmettre\(\{/.test(form) && !/signLicence/.test(form), 'le formulaire signe par le pont, jamais lui-même');
+  assert.ok(/newDocument\('facture'\)/.test(form) && !/nextNumber/.test(form), 'la facture est un brouillon fabriqué par newDocument, sans numéro');
+  assert.ok(/data\.licences\.push\(/.test(form) && /data\.documents\.push\(inv\)/.test(form) && /navigate\('#\/doc\/' \+ inv\.id\)/.test(form), 'le geste écrit l\'historique, la facture, et ouvre le brouillon');
+  assert.ok(/discountRate: v\.parrain \? /.test(form), 'la remise de parrainage se pose sur la facture (doc.discountRate), pas sur la ligne');
+  // Le mail porte la clé, et la facture en PDF passe par le tampon comme tout document.
+  const mail = app.slice(app.indexOf('async function envoyerLicence('), app.indexOf('const licState = '));
+  assert.ok(/demoBlock\('Envoyer un email'\)/.test(mail), 'le mail de licence prévient depuis l\'exemple, comme les autres envois');
+  assert.ok(/cle: lic\.key/.test(mail) && /stampText: stampFor\(inv\)/.test(mail), 'le mail porte la clé et le PDF passe par stampFor');
+});
+
+t('éditeur : les données, la fusion, l\'effacement, le gabarit d\'email et « À faire »', () => {
+  // La liste naît vide, se migre, se fusionne par identifiant et s\'efface avec le reste.
+  assert.deepStrictEqual(core.DEFAULT_DATA.licences, []);
+  assert.deepStrictEqual(core.migrateData({ version: 6, company: {}, clients: [], catalog: [], documents: [] }).licences, []);
+  assert.deepStrictEqual(core.migrateData({ version: 6, licences: 'abîmé' }).licences, [], 'une liste abîmée est remise à vide');
+  assert.ok(core.MERGE_LISTS.includes('licences') && core.LIST_LABELS.licences, 'sans MERGE_LISTS, les licences du poste perdant disparaîtraient en silence à la fusion');
+  const licA = { id: 'aaaa1111', nom: 'A', offre: 'independant', exp: '2027-01-01', key: 'SKAN1.a.a' };
+  const licB = { id: 'bbbb2222', nom: 'B', offre: 'entreprise', exp: '', key: 'SKAN1.b.b' };
+  const mine = { ...JSON.parse(JSON.stringify(core.DEFAULT_DATA)), licences: [licA], syncWrittenAt: 100 };
+  const theirs = { ...JSON.parse(JSON.stringify(core.DEFAULT_DATA)), licences: [licB], syncWrittenAt: 200 };
+  assert.deepStrictEqual(core.mergeData(mine, theirs).data.licences.map(l => l.id).sort(), ['aaaa1111', 'bbbb2222']);
+  const w = { ...JSON.parse(JSON.stringify(core.DEFAULT_DATA)), licences: [licA, licB] };
+  core.wipeData(w, { garderSociete: true });
+  assert.deepStrictEqual(w.licences, [], '« Tout effacer » emporte aussi les licences émises (une sauvegarde est prise avant)');
+
+  // Le gabarit du mail existe dans les deux langues et porte la clé ; sans lui, emailFor
+  // retomberait sur le gabarit de facture et le client recevrait « veuillez trouver ci-joint… ».
+  [core.DEFAULT_EMAIL_TEMPLATES, core.DEFAULT_EMAIL_TEMPLATES_EN].forEach(T => {
+    assert.ok(T.licence && /\{cle\}/.test(T.licence.body) && /\{offre\}/.test(T.licence.subject), 'gabarit licence incomplet');
+    assert.ok(/SKAN1\./.test(T.licence.body), 'le mail dit d\'où commence la clé');
+  });
+  assert.strictEqual(core.fillTemplate(core.DEFAULT_EMAIL_TEMPLATES.licence.body, { cle: 'SKAN1.x.y', offre: 'Indépendant', fin: ', valable jusqu\'au 14/09/2027', numero: 'FAC-2026-001', societe: 'S' }).includes('SKAN1.x.y'), true);
+
+  // « À faire » : les licences qui finissent dans les 30 jours, chez l\'éditeur seulement.
+  const T = '2026-09-14';
+  const d = { ...JSON.parse(JSON.stringify(core.DEFAULT_DATA)), licences: [
+    { id: 'a', nom: 'A', exp: '2026-10-01' },            // dans 17 jours → à renouveler
+    { id: 'b', nom: 'B', exp: '' },                      // à vie
+    { id: 'c', nom: 'C', exp: '2026-09-01' },            // expirée
+    { id: 'd', nom: 'D', exp: '2027-06-01' },            // active
+    { id: 'e', nom: 'E', exp: '2026-09-20', remplaceePar: 'd' }   // déjà renouvelée : ne réclame plus
+  ] };
+  const rows = core.licenceRows(d, T);
+  assert.deepStrictEqual(rows.map(r => r.id + ':' + r.etat), ['e:bientot', 'a:bientot', 'c:expiree', 'd:active', 'b:vie'], 'ce qui presse d\'abord');
+  assert.deepStrictEqual(core.licencesExpirant(d, T).map(r => r.id), ['a'], 'une licence déjà renouvelée ne réclame plus');
+  const ligne = core.todoList(d, core.DEFAULT_COMPANY, T, { editeur: true }).find(x => x.id === 'licences-expirent');
+  assert.ok(ligne && ligne.level === 'warn' && ligne.count === 1 && /1 licence expire dans les 30 jours/.test(ligne.label) && ligne.route === '#/licences', JSON.stringify(ligne));
+  assert.strictEqual(core.todoList(d, core.DEFAULT_COMPANY, T).find(x => x.id === 'licences-expirent'), undefined, 'chez un client (pas de clé privée), la ligne n\'existe pas');
+  assert.strictEqual(core.todoList(d, core.DEFAULT_COMPANY, T, { editeur: false }).find(x => x.id === 'licences-expirent'), undefined);
+  d.licences.push({ id: 'f', nom: 'F', exp: '2026-10-10' });
+  assert.ok(/2 licences expirent/.test(core.todoList(d, core.DEFAULT_COMPANY, T, { editeur: true }).find(x => x.id === 'licences-expirent').label));
+
+  // L'outil en ligne de commande écrit aux mêmes emplacements que l'application — et n'arme pas le
+  // dépôt en effet de bord (build/licence-public.json se copie à la main, le jour décidé).
+  const cli = lireSource('scripts', 'licence.js');
+  assert.ok(/SKANFACT_DOSSIER_CLES/.test(cli) && /licence-publique\.json/.test(cli) && /--offre/.test(cli), 'scripts/licence.js doit suivre main.js (dossier de clés, clé publique à côté, offre)');
+  assert.ok(!/fs\.writeFileSync\(PUB,/.test(cli), 'le keygen ne doit pas écrire build/licence-public.json : armer est une décision');
+});
+
+t('éditeur : ce que la relecture adversariale a trouvé (7.33.0), tenu par des tests', () => {
+  const app = lireApp();
+  const main = lireSource('src', 'main.js').replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+  // 1. Une licence EXPIRÉE ne barre pas le partage d'un dossier : partager n'est pas créer une pièce,
+  //    c'est mettre ses données à l'abri. Seule l'OFFRE est jugée.
+  const partage = app.slice(app.indexOf('async function partagerDossier('), app.indexOf('async function rejoindreDossier('));
+  assert.ok(/if \(!licence\.locked && licenceBlock\('[^']+', 'partage'\)\) return;/.test(partage), 'le partage ne doit dépendre que de l\'offre, jamais de licence.locked');
+  // 2. La clé vit DANS LE DOSSIER (un ordinateur ouvre plusieurs entreprises), et une clé rangée par
+  //    la 6.4.0 au niveau de l'ordinateur n'est reprise que pour le dossier qu'elle concerne.
+  assert.ok(/const LIC_FILE = \(\) => path\.join\(currentDossier\(\)\.dir, 'licence\.json'\)/.test(main), 'la clé de licence doit vivre dans le dossier de l\'entreprise');
+  assert.ok(/L\.memeMatricule\(p\.matricule, matricule \|\| ''\)/.test(main), 'l\'ancienne clé (6.4.0) ne se reprend que si son matricule correspond');
+  // 3. L'essai compte depuis le jour où CE poste a vu une clé publique (armedAt écrit dans
+  //    app-config.json), pas seulement depuis la fabrication de la clé.
+  assert.ok(/if \(!cfg\.armedAt\) \{ cfg\.armedAt = L\.today\(\); writeAppCfg\(cfg\); \}/.test(main) && /armedAt: armedAt\(\)/.test(main), 'armedAt doit être posé sur le poste à la première clé vue');
+  // 4. Un renouvellement part de la fin de la licence précédente quand elle est encore future.
+  assert.ok(/const depuis = prec && prec\.exp && prec\.exp > C\.today\(\) \? prec\.exp : ''/.test(app) && /depuis, cabinet:/.test(app), 'licenceForm doit transmettre `depuis` au renouvellement');
+  assert.ok(/const depart = L\.dateValide\(p\.depuis\) && p\.depuis > L\.today\(\) \? p\.depuis : L\.today\(\)/.test(main), 'licence:emettre doit partir de `depuis`');
+  assert.ok(/bridge\.editeurStatus\(depuis\)/.test(app), 'les durées se relisent à l\'ouverture du formulaire, depuis la bonne date');
+  //    …et la remise de parrainage (« première année ») ne se recoche pas toute seule.
+  assert.ok(/remise: prec \? 0 : 20/.test(app), 'au renouvellement la remise repart à zéro');
+  // 5. Émettre depuis l'exemple prévient ; une facture de licence passe par le garde-fou de création.
+  assert.ok(/await demoBlock\('Émettre une licence'\)/.test(app), 'licenceForm doit prévenir depuis le jeu d\'exemple');
+  assert.ok(/licenceBlock\('Créer une facture de licence'\)/.test(app), 'la facture de licence passe par licenceBlock');
+  // 6. Une licence déjà renouvelée ne se renouvelle pas deux fois.
+  assert.ok(/peut && !r\.remplaceePar \? \{ icon: 'contrat', label: 'Renouveler'/.test(app), '« Renouveler » ne s\'offre pas sur une licence déjà renouvelée');
+  // 7. Le mail n'annonce la facture jointe que si elle part vraiment, et l'historique de la facture aussi.
+  assert.ok(/facture: phraseFacture/.test(app) && /if \(attachment && inv\) \{ inv\.emails/.test(app), 'la phrase « facture jointe » et la trace ne valent qu\'avec la pièce');
+  assert.ok(/\{facture\}/.test(core.DEFAULT_EMAIL_TEMPLATES.licence.body) && /\{facture\}/.test(core.DEFAULT_EMAIL_TEMPLATES_EN.licence.body), 'le gabarit porte {facture}, pas une phrase inconditionnelle');
+  // 8. Cmd+K ne propose pas le panneau Éditeur à un client ; la porte « Créer mes clés » n'existe que
+  //    tant que l'application n'est pas armée ; Paramètres enregistre avant d'agir.
+  assert.ok(/filter\(id => !SETTINGS_PANNEAUX\[id\]\.visible \|\| SETTINGS_PANNEAUX\[id\]\.visible\(\)\)/.test(app), 'la palette doit taire un panneau non visible');
+  assert.ok(/visible: \(\) => !!licence\.editeur/.test(app), 'p-editeur doit déclarer sa visibilité');
+  assert.ok(/if \(!licence\.editeur && licence\.state === 'libre'\) el\.innerHTML \+= /.test(app), '« Créer mes clés » n\'existe que sur une application non armée');
+  const cle = app.slice(app.indexOf('const setKey = async (key) => {'), app.indexOf("if ($('#lic-save'))"));
+  assert.ok(/enregistrerEnCours\(\);/.test(cle), '« Enregistrer la clé » compare au matricule du formulaire (enregistré d\'abord)');
+  assert.ok(/async function devenirEditeur\(\) \{\s*enregistrerEnCours\(\);/.test(app), 'devenirEditeur enregistre les Paramètres avant de redessiner');
+  assert.ok(/if \(saisie && saisie !== \(st\.key \|\| ''\)/.test(app), 'une clé collée survit au redessin du panneau');
+  // 9. Le stock de départ d'un article est un mouvement de stock : garde-fou d'offre.
+  assert.ok(/licenceBlock\('Créer un stock de départ', 'stock'\)/.test(app), 'le stock de départ du catalogue doit passer par le garde-fou');
+  // 10. Un matricule changé par un remplacement de données (import, restauration, exemple) se revoit.
+  assert.ok(/\(company\(\)\.matricule \|\| ''\) !== licenceMatriculeVu/.test(app.slice(app.indexOf('function render(keepScroll)'))), 'render() doit relire la licence quand le matricule change');
+  // 11. Le libellé d'un module fermé ne cite pas les Statistiques ; le retour depuis une facture de
+  //     licence nomme la page ; la facture dit quelle licence elle porte.
+  assert.ok(/pilotage: 'Trésorerie et marges'/.test(app), 'le module Pilotage fermé se nomme sans les Statistiques');
+  assert.ok(/licences: 'Licences'/.test(app.slice(app.indexOf('const PAGE_LABELS'), app.indexOf('const PAGE_LABELS') + 2000)), 'PAGE_LABELS doit connaître la page Licences');
+  const hist = core.documentHistory({ id: 'i', type: 'facture', date: '2026-09-14', licenceId: 'abcd1234', lines: [] }, { ...core.DEFAULT_DATA, licences: [{ id: 'abcd1234', offre: 'independant', exp: '2027-09-14' }] }, core.DEFAULT_COMPANY);
+  assert.ok(hist.some(e => e.kind === 'licence' && /abcd1234/.test(e.label) && /Indépendant/.test(e.detail)), 'la facture doit dire quelle licence elle porte');
+  // 12. Le harnais e2e isole les clés : aucun parcours ne tourne sur le vrai ~/.skanfact.
+  assert.ok(/process\.env\.SKANFACT_DOSSIER_CLES = /.test(lireSource('test', 'e2e', 'harnais.js')), 'le harnais doit poser SKANFACT_DOSSIER_CLES');
+  // 13. Le matricule se compare sur ses sept chiffres et sa lettre, quelle que soit l'écriture ; et une
+  //     date impossible (30 février) est refusée au lieu de rouler au 2 mars.
+  assert.ok(lic.memeMatricule('MF 1234567A/M/000', '1234567/A/M/000'), '« MF 1234567A » et « 1234567/A » sont la même entreprise');
+  assert.ok(lic.memeMatricule('MF: 1234567A', '1234567A/M/P/000'));
+  assert.ok(lic.memeMatricule('1234567/M/000', '1234567B'), 'une lettre absente d\'un côté ne compte pas');
+  assert.ok(!lic.memeMatricule('1234567A', '1234567B'), 'même chiffres, autre lettre : deux entreprises');
+  assert.ok(!lic.memeMatricule('1234567A', '7654321A'));
+  assert.deepStrictEqual(lic.normMatricule('mf 1234567 a / m / 000'), { chiffres: '1234567', lettre: 'A' });
+  assert.strictEqual(lic.normMatricule(''), null);
+  assert.strictEqual(lic.dateValide('2027-02-30'), false);
+  assert.strictEqual(lic.dateValide('2028-02-29'), true);
+  assert.strictEqual(lic.expirationPour('2026-09-14', 'date', '2027-02-30'), null, 'un 30 février n\'est pas une date de fin');
+  // 14. Trois états dans le panneau de l'éditeur : armée avec cette clé, pas armée, armée avec une autre.
+  assert.ok(/const etat = editeur\.correspond \? 'ok' : editeur\.armee \? 'autre' : 'attente'/.test(app), 'le panneau Éditeur doit distinguer « armée avec une AUTRE clé »');
 });
 
 // ---------- écritures comptables (Cabinet 1.1.0) ----------

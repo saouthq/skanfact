@@ -32,9 +32,13 @@
     updateCheck: async () => ({ state: 'dev' }), updateDownload: async () => ({ state: 'dev' }), updateInstall: async () => ({ state: 'dev' }), updateSetToken: async () => ({ hasToken: false }),
     updateSetBeta: async () => ({ beta: false }),
     updateOpenReleases: async () => {},
-    licenceStatus: async () => ({ state: 'libre', locked: false, label: 'Licence non requise', detail: '' }),
-    licenceSet: async () => ({ state: 'libre', locked: false, label: 'Licence non requise', detail: '' }),
+    licenceStatus: async () => ({ state: 'libre', locked: false, label: 'Licence non requise', detail: '', offre: 'entreprise', reserves: [], editeur: false }),
+    licenceSet: async () => ({ state: 'libre', locked: false, label: 'Licence non requise', detail: '', offre: 'entreprise', reserves: [], editeur: false }),
     licenceMail: async () => ({ subject: 'Demande de licence SkanFact', body: '' }),
+    licenceEmettre: async () => { throw new Error('Pas de clé privée dans un navigateur.'); },
+    editeurStatus: async () => ({ actif: false, offres: {}, durees: [] }),
+    editeurKeygen: async () => ({ actif: false }), editeurImporter: async () => ({ canceled: true }),
+    editeurExporter: async () => ({ canceled: true }), editeurCopierPublique: async () => ({ ok: false }),
     onUpdateEvent: () => {}
   };
 
@@ -42,7 +46,12 @@
   // Licence (6.4.0). `locked` ne bloque QUE la création de nouvelles pièces : lire, imprimer,
   // exporter, sauvegarder et envoyer le paquet au comptable restent toujours possibles. Une licence
   // expirée ne prend pas les données en otage — c'est écrit dans l'app et dans l'aide.
-  let licence = { state: 'libre', locked: false, label: '', detail: '' };
+  // `offre` / `reserves` (7.33.0) : l'offre en cours et les modules dont la CRÉATION lui est fermée.
+  // `editeur` : la clé privée de signature existe sur CET ordinateur — c'est l'état du poste de
+  // l'éditeur de SkanFact, jamais une donnée du dossier.
+  let licence = { state: 'libre', locked: false, label: '', detail: '', offre: 'entreprise', reserves: [], editeur: false };
+  let editeur = null;   // l'état complet de l'éditeur (clés, offres, durées), lu quand `licence.editeur` est vrai
+  let licenceMatriculeVu = null;   // le matricule pour lequel `licence` a été calculée (voir render)
   // À qui s'adresse une demande de licence. Une seule ligne à changer le jour où ce sera une adresse
   // de société plutôt qu'une adresse personnelle.
   const LICENCE_CONTACT = 'licences@skanfact.tn';
@@ -244,18 +253,44 @@
   // Le garde-fou de la licence (6.4.0). Une seule porte, comme closedBlock : elle ne barre que la
   // création de nouvelles pièces. Tout le reste — lire, imprimer, exporter, sauvegarder, envoyer le
   // paquet au comptable — reste ouvert, et la fenêtre le dit noir sur blanc.
-  function licenceBlock(what) {
-    if (!licence.locked) return false;
-    modal(`<h2>${h(licence.label)}</h2>
-      <p>${h(what)} : il faut une licence en cours de validité.</p>
-      <p class="small">${h(licence.detail)}</p>
+  // Depuis la 7.33.0 elle a un second motif : l'OFFRE. Une licence Indépendant est active (rien
+  // de verrouillé) mais la création dans certains modules — Achats, Stock, Immobilisations,
+  // Trésorerie et marges, Paie, dossier partagé — fait partie de l'offre Entreprise. Même règle :
+  // ce qui existe déjà dans ces modules reste lisible, imprimable et exportable ; on n'y crée plus.
+  // `module` est l'identifiant du module (voir core.MODULES, et 'partage' pour le dossier à deux).
+  function licenceBlock(what, module) {
+    if (licence.locked) {
+      modal(`<h2>${h(licence.label)}</h2>
+        <p>${h(what)} : il faut une licence en cours de validité.</p>
+        <p class="small">${h(licence.detail)}</p>
+        <ul class="small">
+          <li><strong>Tes données restent les tiennes</strong> : tu peux tout lire, imprimer, exporter et envoyer à ton comptable, aujourd'hui comme dans dix ans.</li>
+          <li>Seule la création de nouvelles pièces attend la licence.</li>
+        </ul>
+        <div class="modal-actions"><button class="btn" data-close>Plus tard</button><button class="btn btn-primary" id="go-lic">Voir ma licence</button></div>`,
+        (root, close) => { $('#go-lic', root).onclick = () => { close(); allerParametres('app', 'p-licence'); }; });
+      return true;
+    }
+    if (!module || !(licence.reserves || []).includes(module)) return false;
+    modal(`<h2>Offre ${h(licence.offreLabel || 'Indépendant')}</h2>
+      <p>${h(what)} fait partie de l'offre <strong>Entreprise</strong> (module « ${h(libelleOffre(module))} »).</p>
       <ul class="small">
-        <li><strong>Tes données restent les tiennes</strong> : tu peux tout lire, imprimer, exporter et envoyer à ton comptable, aujourd'hui comme dans dix ans.</li>
-        <li>Seule la création de nouvelles pièces attend la licence.</li>
+        <li><strong>Tout ce qui existe déjà ici reste à toi</strong> : lisible, imprimable, exportable, envoyé à ton comptable — comme avant.</li>
+        <li>Seule la création de nouvelles pièces dans ce module attend l'offre Entreprise.</li>
       </ul>
       <div class="modal-actions"><button class="btn" data-close>Plus tard</button><button class="btn btn-primary" id="go-lic">Voir ma licence</button></div>`,
       (root, close) => { $('#go-lic', root).onclick = () => { close(); allerParametres('app', 'p-licence'); }; });
     return true;
+  }
+  // Le nom d'un module fermé, tel que l'offre le dit. Le module Pilotage s'appelle « Trésorerie,
+  // marges, statistiques » — or les Statistiques restent ouvertes : reprendre ce libellé ferait lire
+  // à un client Indépendant que ses statistiques lui sont fermées.
+  const LIBELLES_OFFRE = { pilotage: 'Trésorerie et marges', partage: 'Dossier partagé à deux' };
+  const libelleOffre = id => LIBELLES_OFFRE[id] || (C.moduleById(id) || { label: id }).label;
+  // Une page appartient-elle à un module fermé par l'offre ? Les Statistiques vivent dans le module
+  // Pilotage mais ne créent rien : elles restent ouvertes, et le bandeau ne s'y affiche pas.
+  function pageReservee(p) {
+    return !!(p && p.module && p.id !== 'stats' && (licence.reserves || []).includes(p.module));
   }
 
   // `closedToast` existait pour les « cas où un simple message suffit ». Il n'y en avait pas :
@@ -790,7 +825,7 @@
   const PAGE_LABELS = {
     dashboard: 'Accueil', devis: 'Devis', factures: 'Factures', relances: 'Relances', contrats: 'Facturation récurrente',
     contrat: 'le contrat', autres: 'Proforma, bons et contrats', clients: 'Clients', client: 'la fiche client', catalogue: 'Catalogue',
-    tresorerie: 'Trésorerie', stats: 'Statistiques', compta: 'Comptabilité', parametres: 'Paramètres', aide: 'Aide', doc: 'le document',
+    tresorerie: 'Trésorerie', stats: 'Statistiques', compta: 'Comptabilité', parametres: 'Paramètres', aide: 'Aide', doc: 'le document', licences: 'Licences',
     achats: 'Achats et dépenses', achat: 'l\'achat', fournisseurs: 'Fournisseurs', fournisseur: 'la fiche fournisseur',
     marges: 'Marges', affaire: 'l\'affaire', immos: 'Immobilisations', immo: 'l\'immobilisation',
     stock: 'Stock', article: 'l\'article', garanties: 'Garanties', paie: 'Paie', salarie: 'la fiche du salarié',
@@ -856,13 +891,16 @@
     immos: '<path d="M3 21h18"/><path d="M5 21V8l7-5 7 5v13"/><path d="M10 21v-6h4v6"/>',
     stats: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
     compta: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h8M8 11h8M8 15h5"/>',
-    modules: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M17.5 14v7M14 17.5h7"/>'
+    modules: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M17.5 14v7M14 17.5h7"/>',
+    licences: '<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9"/><path d="M17 6l2 2M14 9l2 2"/>'
   };
   const icone = id => `<svg viewBox="0 0 24 24">${ICONES[id] || ICONES.modules}</svg>`;
+  // Le cadenas d'un module fermé par l'offre (7.33.0), à côté du titre dans la barre.
+  const CADENAS = '<svg class="nav-lock" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
 
   // Les compteurs de la barre : ils vivaient en dur dans index.html (<span id="nav-relances">…).
   // Maintenant qu'on dessine, on les pose en même temps que le lien.
-  const NAV_COMPTEURS = { relances: 'nav-relances', contrats: 'nav-contrats', achats: 'nav-achats', tresorerie: 'nav-treso', paie: 'nav-paie', stock: 'nav-stock', immos: 'nav-immos' };
+  const NAV_COMPTEURS = { relances: 'nav-relances', contrats: 'nav-contrats', achats: 'nav-achats', tresorerie: 'nav-treso', paie: 'nav-paie', stock: 'nav-stock', immos: 'nav-immos', licences: 'nav-licences' };
   const NAV_INFO = ['contrats', 'immos'];          // compteur bleu « pour information », pas une alerte
 
   // ---------- le sélecteur d'entreprise (7.14.0) ----------
@@ -960,6 +998,11 @@
   //
   // Le pire défaut est celui qui punit quelqu'un qui a tout bien fait (règle 6.8.1).
   async function partagerDossier() {
+    // Le dossier partagé à deux fait partie de l'offre Entreprise (7.33.0). Rejoindre, lui, reste
+    // libre : rejoindre n'est pas créer. Et une licence EXPIRÉE ne le barre pas non plus — partager
+    // n'est pas créer une pièce, c'est mettre ses données à l'abri chez l'autre : « jamais de
+    // données en otage » vaut ici, d'où `!licence.locked &&` (seule l'offre est jugée).
+    if (!licence.locked && licenceBlock('Créer un dossier partagé', 'partage')) return;
     const ouvert = ((data.company && data.company.name) || '').trim() || 'ce dossier';
     if (!await confirmDialog(
       `SkanFact va poser « ${ouvert} » — avec ses documents, ses clients, ses achats, ses sauvegardes et ses pièces jointes — dans un emplacement que vous voyez tous les deux : iCloud Drive, OneDrive, un disque réseau ou une clé USB.\n\n` +
@@ -1001,12 +1044,22 @@
       // partageaient au survol exactement la même phrase, donc l'infobulle affirmait trois fois que
       // Trésorerie, Marges et Statistiques font la même chose.
       const m = p.module ? C.moduleById(p.module) : null;
+      // Un module fermé par l'offre reste dans la barre — on ne masque jamais ce qui existe — mais
+      // il porte un cadenas et l'infobulle le dit, avant même le premier clic.
+      const ferme = pageReservee(p);
       const texte = p.quoi || (m && m.quoi) || '';
-      const quoi = texte ? ` title="${h(texte)}"` : '';
-      html += `<a href="#/${p.id}" data-route="${p.id}"${quoi}${p.famille ? '' : ' class="solo"'}>${icone(p.id)}${h(p.titre)}`
+      const bulle = (texte + (ferme ? ' — Offre Entreprise : tu peux lire, pas créer.' : '')).trim();
+      const quoi = bulle ? ` title="${h(bulle)}"` : '';
+      html += `<a href="#/${p.id}" data-route="${p.id}"${quoi}${p.famille ? '' : ' class="solo"'}>${icone(p.id)}${h(p.titre)}${ferme ? CADENAS : ''}`
         + (cid ? `<span class="nav-count${NAV_INFO.includes(p.id) ? ' info' : ''}" id="${cid}" hidden></span>` : '')
         + '</a>';
     });
+    // La page de l'ÉDITEUR de SkanFact : elle n'existe que sur le poste où vit la clé privée de
+    // signature. Elle n'est pas un module (elle ne se coche pas, elle ne dépend pas du dossier).
+    if (licence.editeur) {
+      const p = C.pageById('licences');
+      html += `<div class="nav-group">Éditeur</div><a href="#/licences" data-route="licences" title="${h(p.quoi || '')}">${icone('licences')}${h(p.titre)}<span class="nav-count" id="nav-licences" hidden></span></a>`;
+    }
     // « Tous les modules » vivait ici, en dernier : donc la première entrée à passer sous la coupe,
     // et mesurée hors champ dès 1366×768. C'est la porte de ce qui n'est pas affiché — elle est
     // maintenant dans le pied de la barre (index.html), qui ne défile jamais.
@@ -1042,6 +1095,22 @@
       save(); drawNav(); el.remove();
       toast(`« ${m.label} » ajouté au menu`);
     };
+  }
+
+  // On arrive sur la page d'un module que l'offre ferme à la création (7.33.0). La page marche —
+  // tout ce qui y est reste lisible — mais si on ne le dit qu'au moment du refus, on a laissé
+  // quelqu'un remplir un formulaire entier pour rien. Le bandeau prévient à l'entrée.
+  function bandeauOffre(active) {
+    const p = C.pageById(active);
+    if (!p || !pageReservee(p)) return;
+    const el = document.createElement('div');
+    el.className = 'banner info offre-banner';
+    el.innerHTML = `<span><b>Offre ${h(licence.offreLabel || 'Indépendant')}</b> — « ${h(libelleOffre(p.module))} » fait partie de l'offre Entreprise : tu peux tout lire ici, pas créer de nouvelles pièces.</span>
+      <button class="btn btn-sm" id="offre-voir">Voir ma licence</button>`;
+    const view = $('#view');
+    const head = $('.page-head', view);
+    if (head && head.nextSibling) view.insertBefore(el, head.nextSibling); else view.appendChild(el);
+    $('#offre-voir').onclick = () => allerParametres('app', 'p-licence');
   }
 
   // Tant que le jeu d'exemple est chargé, l'application le DIT — sur chaque page, en permanence.
@@ -1164,6 +1233,13 @@
     // La barre se redessine à chaque navigation : un module qui vient de recevoir sa première ligne
     // doit apparaître tout de suite, pas au prochain démarrage.
     drawNav();
+    // La licence est attachée au matricule : si celui-ci a changé par un chemin qui remplace les
+    // données (import, restauration, exemple, effacement, assistant rejoué), on la relit — sans
+    // avoir à retrouver chacun de ces chemins un par un.
+    if (data && (company().matricule || '') !== licenceMatriculeVu) {
+      licenceMatriculeVu = company().matricule || '';
+      rafraichirLicence().then(() => { redessinerBarre(); if (location.hash === '#/parametres') drawLicencePanel(); });
+    }
     // Les liens du pied (Paramètres, Aide) ne sont pas dans <nav> : sans eux dans le sélecteur, la
     // page ouverte n'aurait jamais été marquée sur ces deux-là.
     $$('nav a, .sidebar-foot a').forEach(a => a.classList.toggle('active', a.dataset.route === active));
@@ -1183,6 +1259,7 @@
     poserLienAide(name);             // « Comprendre cette page → » : l'article qui explique cet écran
     bandeauDemo();                   // « ce ne sont pas tes données » — sur chaque page, en permanence
     bandeauModule(active);           // « cette page n'est pas dans ton menu » — et le bouton pour l'y mettre
+    bandeauOffre(active);            // « ce module fait partie de l'offre Entreprise » — lecture libre, création fermée
     bindDateFields(view);            // champs date posés par la page qui vient d'être dessinée
     view.scrollTop = scroll;
     currentHash = location.hash;
@@ -3277,6 +3354,9 @@
           const v = formValues($('#kf', root));
           if (!v.label.trim()) return refus('#kf input[name=label]', 'La désignation est obligatoire : c\'est elle qui s\'écrit sur la ligne du devis.');
           if (v.tracked && already && already.moves.length > 1) { v.initialQty = it.initialQty; v.initialCost = it.initialCost; }
+          // Un stock de départ EST un mouvement de stock (core.stockMovements en fabrique un) : il
+          // passe par le garde-fou de l'offre comme un ajustement, la première fois seulement.
+          if (v.tracked && Number(v.initialQty) && !(it.tracked && Number(it.initialQty)) && licenceBlock('Créer un stock de départ', 'stock')) return;
           Object.assign(it, v, { vatRate: Number(v.vatRate), unitCost: Number(v.unitCost) || 0, unit,
             tracked: !!v.tracked, minStock: Number(v.minStock) || 0,
             serialized: !!v.tracked && !!v.serialized, warrantyMonths: Number(v.warrantyMonths) || 0,
@@ -4200,7 +4280,8 @@
     'salaires-double': { label: 'Voir les mouvements', run: vers('#/tresorerie', () => { tresoState.tab = 'mouvements'; }) },
     tresorerie: { label: 'Voir la prévision', run: vers('#/tresorerie', () => { tresoState.tab = 'prevision'; }) },
     'taux-change': { label: 'Voir les pièces', run: vers('#/factures', filtre('facture')) },
-    sauvegarde: { label: 'Choisir un dossier', run: vers('#/parametres', () => { settingsTab = 'donnees'; settingsFocus = 'p-externe'; }) }
+    sauvegarde: { label: 'Choisir un dossier', run: vers('#/parametres', () => { settingsTab = 'donnees'; settingsFocus = 'p-externe'; }) },
+    'licences-expirent': { label: 'Voir les licences', run: vers('#/licences') }
   };
 
   // « Ce qui manque » (Comptabilité → Cabinet) et les contrôles avant clôture disent exactement ce
@@ -4225,7 +4306,7 @@
   const TODO_VISIBLE = 5;
 
   function todoPanel() {
-    let items = C.todoList(data, company(), null, { copieExterne });
+    let items = C.todoList(data, company(), null, { copieExterne, editeur: !!licence.editeur });
     // Tant que « Tes premiers pas » est à l'écran, il porte déjà la fiche société — en étape 1, et
     // formulée comme une étape. La répéter dix centimètres plus bas sous le titre « À faire » et le
     // libellé « Fiche société incomplète », c'est dire deux fois la même chose, dont une fois comme
@@ -4295,6 +4376,8 @@
     if (ct) { const n = C.dueRecurrences(data).length; ct.hidden = !n; ct.textContent = n; }
     const ach = $('#nav-achats');
     if (ach) { const n = C.payablesList(data, company(), C.today()).filter(x => x.late > 0).length; ach.hidden = !n; ach.textContent = n; }
+    const lic = $('#nav-licences');
+    if (lic) { const n = C.licencesExpirant(data, C.today()).length; lic.hidden = !n; lic.textContent = n; }
     const tr = $('#nav-treso');
     if (tr) {
       // Le compteur ne s'allume que pour un trou prévu : une alerte permanente n'alerte plus personne.
@@ -4359,7 +4442,10 @@
     'p-apparence': { onglet: 'app', titre: 'Apparence', mots: 'theme sombre clair systeme langue anglais francais apparence' },
     'p-modules': { onglet: 'app', titre: 'Ce que l\'application t\'affiche', mots: 'modules menu masquer afficher pages barre laterale assistant demarrage' },
     'p-maj': { onglet: 'app', titre: 'Mises à jour', mots: 'mise a jour version nouveautes beta jeton token telecharger installer maj' },
-    'p-licence': { onglet: 'app', titre: 'Licence', mots: 'licence cle activation essai expiration acheter abonnement' },
+    'p-licence': { onglet: 'app', titre: 'Licence', mots: 'licence cle activation essai expiration acheter abonnement offre independant entreprise' },
+    // `visible` : le panneau n'est posé que sur le poste de l'éditeur — et la palette Cmd+K, qui
+    // engendre une entrée par panneau, doit le taire au même moment (sinon elle mène nulle part).
+    'p-editeur': { onglet: 'app', titre: 'Éditeur de SkanFact — tes clés de signature', mots: 'editeur cle privee publique signature vendre licences emettre armer', visible: () => !!licence.editeur },
     'p-depannage': { onglet: 'app', titre: 'Aide et dépannage', mots: 'journal log erreur bug probleme support aide depannage gel' }
   };
   // L'ouverture d'un panneau de réglages. `extra` est la bulle « i » qui suit le titre.
@@ -4393,7 +4479,7 @@
   // « → Apparence »…) ne correspondaient plus à aucune entrée, donc ne rendaient plus rien du tout.
   // Engendrés depuis `SETTINGS_PANNEAUX`, ils ne peuvent plus se périmer.
   function reglagesDePalette() {
-    return Object.keys(SETTINGS_PANNEAUX).map(id => {
+    return Object.keys(SETTINGS_PANNEAUX).filter(id => !SETTINGS_PANNEAUX[id].visible || SETTINGS_PANNEAUX[id].visible()).map(id => {
       const p = SETTINGS_PANNEAUX[id];
       const court = p.titre.split(' — ')[0];
       return {
@@ -4445,7 +4531,9 @@
       // La palette liste TOUTES les pages, y compris celles des modules retirés du menu : c'est ce
       // qui rend le filtrage de la barre latérale inoffensif.
       ['Tous les modules', () => navigate('#/modules')],
-      ['Revoir l\'assistant de démarrage', () => rejouerAssistant()]
+      ['Revoir l\'assistant de démarrage', () => rejouerAssistant()],
+      // La page de l'éditeur n'existe que sur son poste : la palette ne la propose qu'à lui.
+      ...(licence.editeur ? [['Licences émises', () => navigate('#/licences')], ['Émettre une licence', () => licenceForm(null, () => render())]] : [])
     ]
       // Les ONGLETS. La palette n'en connaissait aucun : « TVA » ne rendait que des articles à lire,
       // « cabinet », « mise à jour », « écritures », « calendrier fiscal » et « apparence » ne
@@ -4588,6 +4676,8 @@
         $('#ok', root).onclick = () => {
           const v = formValues($('#sf', root));
           if (!v.name.trim()) return refus('#sf input[name=name]', 'Le nom est obligatoire : c\'est lui qui apparaît sur chaque achat.');
+          // La porte va DANS le formulaire, sur la branche création : il s'ouvre depuis trois pages.
+          if (!supplier && licenceBlock('Créer un fournisseur', 'achats')) return;
           Object.assign(s, v, {
             withholdingRate: v.withholdingRate === '' ? '' : Number(v.withholdingRate),
             paymentTermsDays: v.paymentTermsDays === '' ? '' : Number(v.paymentTermsDays)
@@ -4873,6 +4963,8 @@
 
   function duplicatePurchase(p) {
     if (!p) return;
+    // Une copie est une CRÉATION : elle échappait au garde-fou de la licence depuis la 6.4.0.
+    if (licenceBlock('Créer une copie de cet achat', 'achats')) return;
     const copy = { ...deepCopy(p), id: C.uid(), number: '', date: C.today(), createdAt: Date.now(), payments: [], attachments: [], withholdingCertificate: false };
     if (copy.dueDate) copy.dueDate = C.addDays(copy.date, 30);
     data.purchases.push(copy); save(true);
@@ -5280,7 +5372,7 @@
       if (!validate()) return false;
       const wasDate = (data.purchases.find(x => x.id === p.id) || {}).date;
       if (closedBlock([wasDate, p.date], 'Cet achat')) return false;
-      if (!data.purchases.some(x => x.id === p.id) && licenceBlock('Enregistrer un nouvel achat')) return false;
+      if (!data.purchases.some(x => x.id === p.id) && licenceBlock('Enregistrer un nouvel achat', 'achats')) return false;
       const idx = data.purchases.findIndex(x => x.id === p.id);
       const clean = deepCopy(p);
       if (idx >= 0) data.purchases[idx] = clean; else data.purchases.push(clean);
@@ -5417,6 +5509,7 @@
         $('#ok', root).onclick = () => {
           const v = formValues($('#pf3', root));
           if (!v.name.trim()) return toast('Donne un nom à cette affaire.', true);
+          if (!proj && licenceBlock('Créer une affaire', 'pilotage')) return;
           Object.assign(p, v);
           if (!proj) data.projects.push(p);
           save(true); close(); if (done) done(p);
@@ -5696,6 +5789,7 @@
           if (!v.name.trim()) return refus('#ef input[name=name]', 'Le nom du salarié est obligatoire : il figure sur chaque bulletin.');
           if (!(Number(v.grossSalary) > 0)) return toast('Le salaire brut doit être supérieur à zéro.', true);
           if (v.endDate && v.hireDate && v.endDate < v.hireDate) return toast('La sortie ne peut pas précéder l\'embauche.', true);
+          if (!employee && licenceBlock('Créer une fiche de salarié', 'paie')) return;
           Object.assign(e, v, { grossSalary: Number(v.grossSalary) || 0, children: Number(v.children) || 0, headOfFamily: !!v.headOfFamily });
           if (!employee) data.employees.push(e);
           save(true); close(); if (done) done(e);
@@ -5787,7 +5881,7 @@
           const v = formValues($('#bf', root));
           const i = input();
           if (closedBlock(C.payslipDate(p), 'Ce bulletin')) return;
-          if (!slip && licenceBlock('Établir un nouveau bulletin')) return;
+          if (!slip && licenceBlock('Établir un nouveau bulletin', 'paie')) return;
           Object.assign(p, v, i, { gross: i.gross, computed: C.computePayslip(emp, i, s), issuedAt: p.issuedAt || C.today() });
           if (!slip) data.payslips.push(p);
           save(true); close(); if (done) done(p);
@@ -5858,6 +5952,7 @@
           if (!v.from || !v.to) return toast('Dates invalides.', true);
           if (v.to < v.from) return toast('La fin ne peut pas précéder le début.', true);
           if (closedBlock([l.from, l.to, v.from, v.to], 'Cette absence')) return;
+          if (!leave && licenceBlock('Créer une absence', 'paie')) return;
           Object.assign(l, v, { paid: v.paid === '' ? null : v.paid === '1' });
           if (!leave) data.leaves.push(l);
           save(true); close(); if (done) done();
@@ -5912,6 +6007,7 @@
           if (!(Number(v.amount) > 0)) return toast('Le montant doit être supérieur à zéro.', true);
           if (!(Number(v.monthly) > 0)) return toast('Indique la retenue mensuelle.', true);
           if (closedBlock([a.date, v.date], 'Cette avance')) return;
+          if (!advance && licenceBlock('Créer une avance sur salaire', 'paie')) return;
           Object.assign(a, v, { amount: Number(v.amount), monthly: Number(v.monthly) });
           if (!advance) data.advances.push(a);
           save(true); close(); if (done) done();
@@ -6090,6 +6186,9 @@
       $$('#p-body [data-pdf]').forEach(b => b.onclick = () => exportPayslip(payslipById(b.dataset.pdf)));
       $$('#p-body [data-ed]').forEach(b => b.onclick = () => { const x = payslipById(b.dataset.ed); payslipForm(x, employeeById(x.employeeId), x.year, x.month, () => draw()); });
       if ($('#p-gen')) $('#p-gen').onclick = async () => {
+        // Les contrôles AVANT la grande question (règle 7.6.0) — et ce bouton créait des bulletins
+        // sans passer par le garde-fou de la licence depuis la 6.4.0.
+        if (licenceBlock('Créer les bulletins du mois', 'paie')) return;
         if (!await confirmDialog(`Établir ${pl(missing.length, 'bulletin')} pour ${MONTHS_LONG[m - 1]} ${s.year} ?\n\nLe brut vient de chaque fiche, les absences non payées et les échéances d'avance sont reprises automatiquement. Tu pourras encore ajouter les primes, bulletin par bulletin. Rien n'est payé : c'est toi qui marques chaque bulletin comme réglé.`, 'Établir', false)) return;
         const st = C.payrollSettings(data);
         if (closedBlock(C.payslipDate({ year: y, month: m }), 'Ces bulletins')) return;
@@ -6650,6 +6749,7 @@
           if (!Number(v.qty)) return toast('La quantité ne peut pas être zéro.', true);
           if (!v.date) return toast('Date invalide.', true);
           if (closedBlock(v.date, 'Ce mouvement de stock')) return;
+          if (licenceBlock('Créer un mouvement de stock', 'stock')) return;
           data.stockAdjustments.push({ ...a, ...v, qty: Number(v.qty), unitCost: v.unitCost === '' ? '' : Number(v.unitCost) });
           save(true); close(); if (done) done();
         };
@@ -6824,6 +6924,7 @@
       });
       $('#inv-clear').onclick = () => { s.counts = {}; drawInventory(); };
       $('#inv-apply').onclick = async () => {
+        if (licenceBlock('Créer les mouvements de cet inventaire', 'stock')) return;
         if (!await confirmDialog(`Enregistrer ${pl(gaps.length, 'mouvement')} d'inventaire au ${C.fmtDate(s.countDate)} ? Le stock théorique sera aligné sur ce que tu as compté. Cette opération est tracée dans les mouvements et se corrige comme n'importe quel ajustement.`, 'Enregistrer')) return;
         if (closedBlock(s.countDate, 'Cet inventaire')) return;
         gaps.forEach(r => data.stockAdjustments.push({ id: C.uid(), date: s.countDate, itemId: r.itemId, qty: r.gap,
@@ -7159,6 +7260,7 @@
           const nums = parse();
           if (!v.itemId) return toast('Choisis un article.', true);
           if (!nums.length) return toast('Saisis au moins un numéro de série.', true);
+          if (licenceBlock('Créer des numéros de série', 'stock')) return;
           const item = data.catalog.find(c => c.id === v.itemId) || {};
           const known = new Set(data.serials.filter(x => x.itemId === v.itemId).map(x => (x.serial || '').toLowerCase()));
           let added = 0;
@@ -7370,6 +7472,7 @@
           if (Number(v.residual) >= Number(v.amount)) return toast('La valeur résiduelle doit rester inférieure à la valeur d\'acquisition.', true);
           if (!v.date) return toast('Date de mise en service invalide.', true);
           if (closedBlock([a.date, v.date], 'Ce bien')) return;
+          if (!asset && licenceBlock('Créer la fiche du bien', 'immos')) return;
           Object.assign(a, v, { amount: Number(v.amount), residual: Number(v.residual) || 0, years: Number(v.years) });
           if (!asset) data.assets.push(a);
           save(true); close(); if (done) done(a);
@@ -7651,6 +7754,7 @@
         $('#ok', root).onclick = () => {
           const v = formValues($('#af', root));
           if (!v.name.trim()) return toast('Donne un nom à ce compte.', true);
+          if (!acc && licenceBlock('Créer un compte de trésorerie', 'pilotage')) return;
           // Le solde de départ et sa date sont le point zéro de toute la trésorerie : les changer
           // après coup déplace tous les soldes, y compris ceux des mois déjà clôturés.
           if (acc && (Number(v.opening) !== Number(acc.opening) || v.openingDate !== acc.openingDate)
@@ -7693,6 +7797,7 @@
           const v = formValues($('#mf2', root));
           if (!(Number(v.amount) > 0)) return toast('Montant invalide.', true);
           if (!v.date) return toast('Date invalide.', true);
+          if (!mv && licenceBlock('Créer un mouvement de trésorerie', 'pilotage')) return;
           if (v.date > C.today() && !await confirmDialog(`La date (${C.fmtDate(v.date)}) est dans le futur. Un mouvement de trésorerie se saisit quand il a eu lieu. Enregistrer quand même ?`, 'Enregistrer')) return;
           if (closedBlock([mv && mv.date, v.date], 'Ce mouvement')) return;
           Object.assign(m, v, { amount: Math.abs(Number(v.amount)) });
@@ -9180,8 +9285,10 @@
                deux écrans et demi pour un onglet qui en compte quatre. Un modèle de message se
                modifie une fois par an ; on l'ouvre quand on vient pour ça. Le sommaire de l'onglet
                et la recherche mènent ici directement, donc rien n'est perdu. -->
-          ${[['fr', 'et', 'Modèles en français', C.DEFAULT_EMAIL_TEMPLATES, c.emailTemplates || {}], ['en', 'eten', 'Modèles en anglais (clients étrangers)', C.DEFAULT_EMAIL_TEMPLATES_EN, c.emailTemplatesEn || {}]].map(([lg, prefix, title, defs, cur2]) => `<details><summary>${title} <span class="muted small">— 8 messages</span></summary>
-          ${[['devis', lg === 'fr' ? 'Envoi d\'un devis' : 'Quote'], ['facture', lg === 'fr' ? 'Envoi d\'une facture' : 'Invoice'], ['avoir', lg === 'fr' ? 'Envoi d\'un avoir' : 'Credit note'], ['relance1', lg === 'fr' ? 'Rappel (≤ 15 jours de retard)' : 'Reminder (≤ 15 days)'], ['relance2', lg === 'fr' ? 'Relance (16 à 45 jours)' : 'Second reminder (16–45 days)'], ['relance3', lg === 'fr' ? 'Dernière relance (> 45 jours)' : 'Final reminder (> 45 days)'], ['relanceDevis', lg === 'fr' ? 'Relance d\'un devis sans réponse' : 'Quote follow-up'], ['comptable', lg === 'fr' ? 'Envoi au comptable' : 'To the accountant']].map(([k, label]) => {
+          ${[['fr', 'et', 'Modèles en français', C.DEFAULT_EMAIL_TEMPLATES, c.emailTemplates || {}], ['en', 'eten', 'Modèles en anglais (clients étrangers)', C.DEFAULT_EMAIL_TEMPLATES_EN, c.emailTemplatesEn || {}]].map(([lg, prefix, title, defs, cur2]) => `<details><summary>${title} <span class="muted small">— ${licence.editeur ? 9 : 8} messages</span></summary>
+          ${[['devis', lg === 'fr' ? 'Envoi d\'un devis' : 'Quote'], ['facture', lg === 'fr' ? 'Envoi d\'une facture' : 'Invoice'], ['avoir', lg === 'fr' ? 'Envoi d\'un avoir' : 'Credit note'], ['relance1', lg === 'fr' ? 'Rappel (≤ 15 jours de retard)' : 'Reminder (≤ 15 days)'], ['relance2', lg === 'fr' ? 'Relance (16 à 45 jours)' : 'Second reminder (16–45 days)'], ['relance3', lg === 'fr' ? 'Dernière relance (> 45 jours)' : 'Final reminder (> 45 days)'], ['relanceDevis', lg === 'fr' ? 'Relance d\'un devis sans réponse' : 'Quote follow-up'], ['comptable', lg === 'fr' ? 'Envoi au comptable' : 'To the accountant'],
+            // Le gabarit de la clé de licence n'a de sens que sur le poste de l'éditeur (7.33.0).
+            ...(licence.editeur ? [['licence', lg === 'fr' ? 'Envoi d\'une clé de licence (éditeur)' : 'Licence key (publisher)']] : [])].map(([k, label]) => {
             const t = { ...defs[k], ...(cur2[k] || {}) };
             return `<div class="section-head"><h2 class="small">${label}</h2></div><div class="grid-2"><label class="field span-2">Objet<input type="text" name="${prefix}_${k}_subject" value="${h(t.subject)}"></label><label class="field span-2">Message<textarea name="${prefix}_${k}_body" rows="4">${h(t.body)}</textarea></label></div>`; }).join('')}
           </details>`).join('')}
@@ -9221,6 +9328,7 @@
       </div>
       ${panneau('p-maj')}<div id="update-panel"></div></div>
       ${panneau('p-licence', info('lic.etat'))}<div id="lic-panel"></div></div>
+      ${licence.editeur ? `${panneau('p-editeur', info('lic.editeur'))}<div id="editeur-panel"></div></div>` : ''}
       ${panneau('p-depannage')}
         <p class="small muted mb">Quand quelque chose ne va pas, ces deux boutons valent mieux qu'une description :
         le journal dit où l'application s'est arrêtée, et il ne contient ni nom de client, ni montant.</p>
@@ -9369,6 +9477,8 @@
       data.company.paymentTermsDays = Math.max(0, Number(data.company.paymentTermsDays) || 30);
       save(true); applyTheme(); $('#brand-company').textContent = data.company.name || 'Ton entreprise';
       accorderNomDossier();     // le dossier porte le nom de la société, pas « Mon entreprise »
+      // La licence est attachée au matricule fiscal : une fiche société modifiée se revérifie.
+      rafraichirLicence().then(() => { drawLicencePanel(); redessinerBarre(); });
       setDirty = false; $('#save-bar').hidden = true;
       return true;
     };
@@ -9431,6 +9541,7 @@
     }
     drawCabinetPair();
     drawLicencePanel();
+    drawEditeurPanel();
     drawUpdatePanel();
     // Les vérifications silencieuses (toutes les quatre heures) n'envoient rien quand il n'y a rien
     // à annoncer : sans cette relecture, la date affichée serait celle du démarrage, pour toujours.
@@ -10117,6 +10228,7 @@
   function drawLicencePanel() {
     const el = $('#lic-panel'); if (!el) return;
     const st = licence || {};
+    const saisie = $('#lic-key') ? $('#lic-key').value.trim() : '';
     const cls = st.state === 'active' || st.state === 'libre' ? 'accepté' : st.state === 'essai' ? 'émis' : 'annulée';
     el.innerHTML = st.state === 'libre'
       ? `<p><span class="badge accepté">Licence non requise</span></p>
@@ -10126,6 +10238,7 @@
          ${st.name ? `<table class="list compact"><tbody>
             <tr><td>Titulaire</td><td><strong>${h(st.name)}</strong></td></tr>
             ${st.matricule ? `<tr><td>Matricule</td><td>${h(st.matricule)}</td></tr>` : ''}
+            <tr><td>Offre ${info('lic.offre')}</td><td><strong>${h(st.offreLabel || 'Entreprise')}</strong>${(st.reserves || []).length ? ' <span class="small muted">— Achats, Stock, Immobilisations, Trésorerie et marges, Paie et le dossier partagé restent lisibles ; leur création fait partie de l\'offre Entreprise.</span>' : ''}</td></tr>
             ${st.exp ? `<tr><td>Valable jusqu'au</td><td>${C.fmtDate(st.exp)}</td></tr>` : ''}
             ${st.cabinet ? `<tr><td>Cabinet parrain</td><td class="mono">${h(st.cabinet)}</td></tr>` : ''}
           </tbody></table>` : ''}
@@ -10138,14 +10251,25 @@
          </div>
          <p class="small muted mt"><strong>Tes données t'appartiennent, licence ou pas.</strong> Même expirée, tu peux tout lire, imprimer, exporter et envoyer à ton comptable. Seule la création de nouvelles pièces attend le renouvellement.</p>
          <p class="small muted">La vérification se fait <strong>sur cet ordinateur</strong>, sans aucune connexion : SkanFact n'envoie jamais ta clé nulle part.</p>`;
+    // La porte de l'éditeur — discrète exprès : elle ne concerne qu'une personne, et elle n'existe
+    // que tant que l'application n'est PAS armée (`libre`). Une fois la clé publique embarquée, plus
+    // aucun client ne la voit ; sur le poste de l'éditeur, le panneau « Éditeur » a pris le relais.
+    if (!licence.editeur && licence.state === 'libre') el.innerHTML += `<p class="small muted mt"><button type="button" class="btn btn-ghost btn-sm" id="lic-devenir">Tu édites SkanFact ? Créer mes clés de signature…</button></p>`;
+    // Une clé collée mais pas encore enregistrée survit à un redessin du panneau (« Enregistrer » des
+    // Paramètres le redessine) : on ne jette pas ce qui vient d'être tapé.
+    if (saisie && saisie !== (st.key || '') && $('#lic-key')) $('#lic-key').value = saisie;
 
     const setKey = async (key) => {
       try {
-        licence = await bridge.licenceSet(key);
-        drawLicencePanel(); licenceBanner();
+        // La clé est attachée au matricule : celui du FORMULAIRE compte, s'il vient d'être corrigé
+        // et pas encore enregistré (règle 5.2.1 : tout geste des Paramètres enregistre d'abord).
+        enregistrerEnCours();
+        licence = await bridge.licenceSet(key, company().matricule || '');
+        drawLicencePanel(); licenceBanner(); redessinerBarre();
         toast(licence.locked ? licence.label : 'Licence enregistrée : ' + licence.label);
       } catch (e) { toast(plainError(e), true); }
     };
+    if ($('#lic-devenir')) $('#lic-devenir').onclick = devenirEditeur;
     if ($('#lic-save')) $('#lic-save').onclick = () => setKey($('#lic-key').value.trim());
     if ($('#lic-clear')) $('#lic-clear').onclick = async () => {
       if (!await confirmDialog('Retirer la clé de licence de cet ordinateur ?')) return;
@@ -10167,6 +10291,334 @@
     el.classList.toggle('warn', !!licence.locked);
     if (show) el.textContent = licence.locked ? licence.label + ' — voir Paramètres → L\'application → Licence' : licence.label;
   }
+
+  // ---------- l'éditeur de SkanFact (7.33.0) ----------
+  //
+  // SkanFact se vend, et la vente d'une licence est une facture comme une autre : elle passe par le
+  // dossier de l'ÉDITEUR — client, prestation du catalogue, TVA, timbre, journal des ventes, paquet du
+  // comptable. Un programme à part aurait refait la facturation et laissé sa comptabilité fausse.
+  // Le module n'apparaît que sur le poste où vit la clé privée de signature (`licence.editeur`), et
+  // la clé ne traverse jamais le pont : l'écran envoie les champs, main.js signe.
+
+  // L'état de licence du poste, relu avec le matricule de la société ouverte. Rejoué au chargement
+  // du dossier et quand la fiche société change : un état lu une fois au démarrage se périme (7.1.x).
+  async function rafraichirLicence() {
+    try {
+      const mf = data ? (company().matricule || '') : '';
+      const st = await bridge.licenceStatus(mf);
+      if (st) { licence = st; licenceMatriculeVu = mf; }
+      editeur = licence.editeur ? await bridge.editeurStatus().catch(() => null) : null;
+    } catch (_) {}
+    licenceBanner();
+  }
+  // Redessiner la barre sans changer de page : `drawNav` réécrit les liens, donc le marquage de la
+  // page ouverte se refait ici.
+  function redessinerBarre() {
+    if (!data) return;
+    const actif = $('nav a.active, .sidebar-foot a.active');
+    const route = actif ? actif.dataset.route : '';
+    drawNav();
+    $$('nav a, .sidebar-foot a').forEach(a => a.classList.toggle('active', a.dataset.route === route));
+    updateNavCounts();
+  }
+  const offreLabelDe = id => ((editeur && editeur.offres && editeur.offres[id]) || {}).label || (id === 'independant' ? 'Indépendant' : 'Entreprise');
+  const dureeLabelDe = id => (((editeur && editeur.durees) || []).find(d => d.id === id) || {}).label || '';
+
+  async function copierTexte(txt, msg) {
+    try { await navigator.clipboard.writeText(txt); toast(msg || 'Copié'); }
+    catch (_) { toast('Impossible d\'accéder au presse-papiers.', true); }
+  }
+  async function copierClePublique() {
+    try { await bridge.editeurCopierPublique(); toast('Clé publique copiée — colle-la dans la conversation qui prépare la prochaine version'); }
+    catch (e) { toast(plainError(e), true); }
+  }
+  async function abriterClePrivee() {
+    try {
+      const r = await bridge.editeurExporter();
+      if (!r || !r.ok) return;
+      if (r.autreCle) toast(`Copie enregistrée : ${r.path} — le fichier public déjà présent à côté est celui d'une AUTRE clé, il n'a pas été touché.`, true);
+      else toast(r.publique ? `Deux fichiers enregistrés : ${r.path} et licence-publique.json à côté` : 'Copie enregistrée : ' + r.path);
+    } catch (e) { toast(plainError(e), true); }
+  }
+
+  // Devenir l'éditeur : créer ses clés de signature, ou reprendre celles d'un autre ordinateur.
+  async function devenirEditeur() {
+    enregistrerEnCours();   // la suite redessine la page : rien de ce qui est tapé ne doit se perdre
+    const c = await choiceDialog('Tes clés de signature — réservé à l\'éditeur de SkanFact',
+      'Si tu n\'es pas l\'éditeur de SkanFact, ferme cette fenêtre : ces clés ne servent qu\'à VENDRE des licences. '
+      + 'La clé PRIVÉE signe les licences ; elle reste sur cet ordinateur. La clé PUBLIQUE, embarquée dans SkanFact, permet à l\'application de chaque client de reconnaître ta signature. '
+      + 'Si tu as déjà créé tes clés sur un autre ordinateur, reprends-les : en créer de nouvelles rendrait invalides toutes les licences déjà émises.',
+      'Créer de nouvelles clés', 'Reprendre ma clé existante…');
+    if (!c) return;
+    try {
+      if (c === 'a') await bridge.editeurKeygen();
+      else { const r = await bridge.editeurImporter(); if (!r || r.canceled) return; }
+    } catch (e) { return toast(plainError(e), true); }
+    await rafraichirLicence();
+    redessinerBarre();
+    modal(`<h2>Tes clés sont ${c === 'a' ? 'créées' : 'reprises'}</h2>
+      <p>Ta clé privée est dans <code>${h((editeur || {}).chemin || '')}</code>. Elle ne quitte jamais cet ordinateur : ni dans tes données, ni dans tes sauvegardes, ni dans le paquet du comptable.</p>
+      <p class="small"><strong>Mets-en une copie à l'abri maintenant</strong> (gestionnaire de mots de passe, clé USB à part). Si tu la perds, tu ne pourras plus renouveler aucun client existant — aucun logiciel ne peut la refabriquer.</p>
+      <p class="small">La clé <strong>publique</strong> n'a rien de secret : c'est elle qu'il faut embarquer dans la prochaine version de SkanFact pour armer l'application de tout le monde. « Copier la clé publique » la met dans le presse-papiers.</p>
+      <div class="modal-actions"><button class="btn" data-close>Plus tard</button><button class="btn" id="ed-copie">Copier la clé publique</button><button class="btn btn-primary" id="ed-abri">Enregistrer une copie de la clé privée…</button></div>`,
+      (root) => {
+        $('#ed-copie', root).onclick = copierClePublique;
+        $('#ed-abri', root).onclick = abriterClePrivee;
+      });
+    render();
+  }
+
+  // Le panneau de l'éditeur (Paramètres → L'application), sous le panneau Licence.
+  function drawEditeurPanel() {
+    const el = $('#editeur-panel'); if (!el || !editeur) return;
+    const n = (data.licences || []).length;
+    // Trois états, pas deux : armée avec CETTE clé, pas encore armée, ou armée avec une AUTRE clé —
+    // dans ce dernier cas les licences émises ici ne valent nulle part, pas même sur ce poste.
+    const etat = editeur.correspond ? 'ok' : editeur.armee ? 'autre' : 'attente';
+    el.innerHTML = `<p><span class="badge accepté">Clés de signature présentes sur cet ordinateur</span>
+        ${etat === 'ok' ? '<span class="badge accepté">Application armée avec cette clé</span>' : etat === 'autre' ? '<span class="badge annulée">Application armée avec une AUTRE clé</span>' : '<span class="badge émis">En attente d\'armement</span>'}</p>
+      <p class="small">Clé privée : <code>${h(editeur.chemin)}</code>. ${etat === 'ok'
+        ? 'L\'application de tes clients est armée avec cette clé : les licences que tu émets sont valables chez eux.'
+        : etat === 'autre'
+          ? 'SkanFact embarque une autre clé publique que la tienne : les licences que tu émettrais ne seraient reconnues NULLE PART, pas même ici. Reprends la bonne clé privée, ou fais embarquer celle-ci dans la prochaine version.'
+          : 'Tant que la clé publique n\'est pas embarquée dans SkanFact, les licences que tu émets ne sont reconnues que sur ce poste : copie-la et fais-la embarquer dans la prochaine version.'}</p>
+      <div class="inline mt">
+        <button type="button" class="btn btn-primary" id="ed-lic">Ouvrir la page Licences${n ? ` (${n})` : ''}</button>
+        <button type="button" class="btn" id="ed-emettre">Émettre une licence…</button>
+        <button type="button" class="btn" id="ed-pub">Copier la clé publique</button>
+        <button type="button" class="btn" id="ed-exp">Enregistrer une copie de la clé privée…</button>
+      </div>
+      <p class="small muted mt"><strong>Sans copie de la clé privée, un disque qui lâche rend impossible tout renouvellement chez tes clients.</strong> Une copie dans ton gestionnaire de mots de passe ou sur une clé USB à part suffit.</p>`;
+    $('#ed-lic').onclick = () => navigate('#/licences');
+    $('#ed-emettre').onclick = () => licenceForm(null, null);
+    $('#ed-pub').onclick = copierClePublique;
+    $('#ed-exp').onclick = abriterClePrivee;
+  }
+
+  // Émettre une licence — ou la renouveler (`prec` : la licence qu'on remplace). Un seul geste fait
+  // les trois choses qui vont ensemble : la clé signée, le brouillon de facture dans les ventes, et
+  // la ligne dans l'historique. Le prix vit dans le catalogue, jamais dans le code.
+  async function licenceForm(prec, done) {
+    if (!editeur || !editeur.actif) return toast('Crée d\'abord tes clés de signature : Paramètres → L\'application → Licence.', true);
+    // Une clé signée depuis le jeu d'exemple sortirait vraiment, et sa facture disparaîtrait avec
+    // l'exemple : même porte que les envois (7.6.0), on prévient.
+    if (await demoBlock('Émettre une licence')) return;
+    // Les durées partent d'aujourd'hui — ou de la FIN de la licence qu'on renouvelle si elle est
+    // encore à venir : « À faire » réclame le renouvellement trente jours avant, et ces trente jours
+    // sont payés. Elles se recalculent à chaque ouverture, jamais sur une copie prise au démarrage.
+    const depuis = prec && prec.exp && prec.exp > C.today() ? prec.exp : '';
+    try { const frais = await bridge.editeurStatus(depuis); if (frais && frais.actif) editeur = frais; } catch (_) {}
+    const cur = company().currency;
+    const dur = editeur.durees || [];
+    const offres = Object.keys(editeur.offres || {});
+    const l = {
+      clientId: prec ? prec.clientId : '', offre: prec ? prec.offre : 'independant', duree: '1a', expDate: '',
+      itemId: prec ? prec.itemId || '' : '', prix: prec ? prec.prix : '', tva: prec ? prec.tva : C.defaultVat(company()),
+      // La remise de parrainage vaut pour la PREMIÈRE année : au renouvellement, l'empreinte reste
+      // (elle est la preuve) et la remise repart à zéro — à remettre à la main si on l'accorde encore.
+      parrain: !!(prec && prec.cabinet), empreinte: prec ? prec.cabinet || '' : '', remise: prec ? 0 : 20, note: ''
+    };
+    const items = data.catalog.slice().sort((a, b) => a.label.localeCompare(b.label, 'fr')).map(c => ({
+      v: c.id, label: c.label, sub: c.description || '', right: C.money(c.unitPrice, cur) + ' HT', text: `${c.label} ${c.description || ''}`
+    }));
+    modal(`<h2>${prec ? 'Renouveler la licence' : 'Émettre une licence'}</h2>
+      ${editeur.armee && !editeur.correspond ? '<p class="banner danger">SkanFact embarque une AUTRE clé publique que la tienne : cette licence ne serait reconnue nulle part. Reprends la bonne clé privée avant d\'émettre.</p>' : ''}
+      ${prec ? `<p class="small muted">Nouvelle clé pour ${h(prec.nom)}${depuis ? ` : les durées partent du <strong>${C.fmtDate(depuis)}</strong>, fin de la licence actuelle — rien de ce qui est déjà payé n'est repris` : ''}. Une facture est créée, comme pour une première licence.</p>` : ''}
+      <form id="lf" class="grid-2">
+        <div class="field span-2 obligatoire">${lbl('Client', 'lic.client')}${combo({ name: 'clientId', value: l.clientId, items: clientItems(), placeholder: '— Choisir un client —', search: 'Rechercher : nom, contact, MF…', add: '+ Nouveau client' })}</div>
+        <label class="field">${lbl('Offre', 'lic.offre')}<select name="offre">${offres.map(o => `<option value="${h(o)}" ${l.offre === o ? 'selected' : ''}>${h(editeur.offres[o].label)}</option>`).join('')}</select></label>
+        <label class="field">${lbl('Durée', 'lic.duree')}<select name="duree">${dur.map(d => `<option value="${h(d.id)}" ${l.duree === d.id ? 'selected' : ''}>${h(d.label)}${d.exp ? ` — jusqu'au ${C.fmtDate(d.exp)}` : ''}</option>`).join('')}</select></label>
+        <div class="span-2" id="lf-date" hidden>${dateFieldHtml('Date de fin', 'expDate', l.expDate)}</div>
+        <div class="field span-2">${lbl('Prestation du catalogue', 'lic.prestation')}${combo({ name: 'itemId', value: l.itemId, items, placeholder: '— Facultatif : la ligne de la facture —', search: 'Rechercher une prestation…' })}</div>
+        <label class="field obligatoire">${lbl('Prix HT', 'lic.prix')}<input type="number" name="prix" class="num" step="0.001" min="0" value="${h(l.prix)}"></label>
+        <label class="field">TVA<select name="tva">${C.VAT_RATES.map(r => `<option value="${r}" ${Number(l.tva) === r ? 'selected' : ''}>${r} %</option>`).join('')}</select></label>
+        <label class="check span-2"><input type="checkbox" name="parrain" ${l.parrain ? 'checked' : ''}> ${lbl('Client parrainé par un cabinet comptable', 'lic.parrain')}</label>
+        <div class="grid-2 span-2" id="lf-parrain" ${l.parrain ? '' : 'hidden'}>
+          ${field('Empreinte du cabinet', 'empreinte', l.empreinte, 'text', 'placeholder="AB12-CD34-…" class="mono"')}
+          ${field('Remise sur la facture (%)', 'remise', l.remise, 'number', 'min="0" max="100" class="num"')}
+        </div>
+        ${field('Note interne', 'note', l.note, 'text', 'placeholder="visible seulement ici"')}
+      </form>
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">${prec ? 'Renouveler et facturer' : 'Émettre et facturer'}</button></div>`,
+      (root, close) => {
+        const form = $('#lf', root);
+        const cc = bindCombo($('[data-combo=clientId]', root), { items: clientItems(), placeholder: '— Choisir un client —',
+          onAdd: () => clientForm(null, c => { cc.setItems(clientItems()); cc.setValue(c.id); }) });
+        bindCombo($('[data-combo=itemId]', root), { items, placeholder: '— Facultatif : la ligne de la facture —',
+          onPick: id => {
+            const it = data.catalog.find(c => c.id === id); if (!it) return;
+            $('input[name=prix]', root).value = it.unitPrice; $('select[name=tva]', root).value = String(it.vatRate);
+          } });
+        const majDate = () => { $('#lf-date', root).hidden = $('select[name=duree]', root).value !== 'date'; };
+        $('select[name=duree]', root).onchange = majDate; majDate();
+        $('input[name=parrain]', root).onchange = e => { $('#lf-parrain', root).hidden = !e.target.checked; };
+        $('#ok', root).onclick = async () => {
+          const v = formValues(form);
+          const client = clientById(v.clientId);
+          if (!client) return refus('#lf [data-combo=clientId]', 'Choisis le client qui reçoit la licence.');
+          if (v.duree === 'date' && !v.expDate) return refus('#lf-date .d-txt', 'Indique la date de fin.');
+          if (v.prix === '' || !(Number(v.prix) >= 0)) return refus('#lf input[name=prix]', 'Indique le prix HT de la licence (0 pour une licence offerte).');
+          // La facture de licence est une facture : elle passe par le garde-fou de création comme
+          // les autres — l'éditeur aussi a une licence (la sienne), et un essai qui se termine.
+          if (licenceBlock('Créer une facture de licence')) return;
+          const b = $('#ok', root); b.disabled = true;
+          let r;
+          try {
+            r = await bridge.licenceEmettre({ nom: client.name, matricule: client.matricule || '', offre: v.offre, duree: v.duree, dateLibre: v.expDate,
+              depuis, cabinet: v.parrain ? v.empreinte : '', note: v.note });
+          } catch (e) { b.disabled = false; return toast(plainError(e), true); }
+          // La facture : un brouillon, comme « Facturer ce devis ». Pas de numéro avant l'émission.
+          const it = v.itemId ? data.catalog.find(c => c.id === v.itemId) : null;
+          const inv = newDocument('facture');
+          applyClientDefaults(inv, client.id);
+          const label = it ? it.label : `Licence SkanFact ${offreLabelDe(r.offre)} — ${v.duree === 'date' ? 'jusqu\'au ' + C.fmtDate(r.exp) : dureeLabelDe(v.duree)}`;
+          inv.lines = [{ label, description: `Licence n° ${r.id}${r.exp ? ', valable jusqu\'au ' + C.fmtDate(r.exp) : ', sans limite de durée'}`,
+            qty: 1, unit: (it && it.unit) || '', unitPrice: Number(v.prix), unitCost: (it && it.unitCost) || '', vatRate: Number(v.tva), ...(it ? { itemId: it.id } : {}) }];
+          Object.assign(inv, { clientId: client.id, subject: `Licence SkanFact ${offreLabelDe(r.offre)}`,
+            discountRate: v.parrain ? Math.min(100, Math.max(0, Number(v.remise) || 0)) : 0, withholdingRate: clientWithholding(client.id), licenceId: r.id });
+          data.documents.push(inv);
+          const lic = { id: r.id, clientId: client.id, nom: r.nom, matricule: r.matricule, offre: r.offre, exp: r.exp, key: r.key, emisLe: r.emisLe,
+            cabinet: r.cabinet, note: r.note, invoiceId: inv.id, itemId: it ? it.id : '', prix: Number(v.prix), tva: Number(v.tva), emails: [],
+            remplace: prec ? prec.id : '' };
+          data.licences.push(lic);
+          // La licence remplacée sort du compte des choses à faire ; elle reste lisible dans la liste.
+          if (prec) { const p = data.licences.find(x => x.id === prec.id); if (p) p.remplaceePar = lic.id; }
+          save(true); close();
+          toast(prec ? 'Licence renouvelée — relis la facture, puis émets-la' : 'Licence émise — relis la facture, puis émets-la');
+          if (done) done(lic);
+          navigate('#/doc/' + inv.id);
+        };
+      });
+  }
+
+  // Le mail au client : la clé, la marche à suivre, et la facture en PDF si elle est émise.
+  async function envoyerLicence(lic) {
+    if (await demoBlock('Envoyer un email')) return;
+    const client = clientById(lic.clientId);
+    const inv = lic.invoiceId ? docById(lic.invoiceId) : null;
+    const en = ((client && client.lang) || company().defaultLang) === 'en';
+    const defs = en ? C.DEFAULT_EMAIL_TEMPLATES_EN : C.DEFAULT_EMAIL_TEMPLATES;
+    const sur = en ? (company().emailTemplatesEn || {}) : (company().emailTemplates || {});
+    const tpl = { ...defs.licence, ...(sur.licence || {}) };
+    const emise = !!(inv && inv.number);
+    // « Votre facture N est jointe » n'est écrit que si la pièce part vraiment : une phrase qui
+    // annonce une pièce absente est un bug, pas une formule.
+    const phraseFacture = emise ? (en ? `Your invoice ${inv.number} is attached.\n\n` : `Votre facture ${inv.number} est jointe à ce message.\n\n`) : '';
+    const vars = {
+      cle: lic.key, offre: offreLabelDe(lic.offre),
+      fin: lic.exp ? (en ? ', valid until ' : ', valable jusqu\'au ') + C.fmtDate(lic.exp) : (en ? ', lifetime' : ', à vie'),
+      client: client ? client.name : lic.nom, societe: company().name,
+      numero: emise ? inv.number : (en ? '(draft)' : '(brouillon)'), facture: phraseFacture
+    };
+    modal(`<h2>Envoyer la clé de licence</h2>
+      <form id="mf" class="grid-2">
+        ${field('Destinataire', 'to', (client && client.email) || '', 'email', 'placeholder="email@client.tn"')}
+        <label class="check" style="align-self:end"><input type="checkbox" name="attach" ${emise ? 'checked' : 'disabled'}> Joindre la facture en PDF${inv && !emise ? ' (encore en brouillon)' : ''}</label>
+        <label class="field span-2">Objet<input type="text" name="subject" value="${h(C.fillTemplate(tpl.subject, vars))}"></label>
+        <label class="field span-2">Message<textarea name="body" rows="10">${h(C.fillTemplate(tpl.body, vars))}</textarea></label>
+      </form>
+      <p class="small muted">${inv && !emise ? 'La facture est encore en brouillon : émets-la d\'abord pour pouvoir la joindre. ' : ''}Modèle du message : Paramètres → Envois.</p>
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Ouvrir dans la messagerie</button></div>`,
+      (root, close) => {
+        // Décocher la pièce jointe retire la phrase qui l'annonce (et la recocher la remet).
+        const caseJointe = $('input[name=attach]', root);
+        if (caseJointe && phraseFacture) caseJointe.onchange = e => {
+          const ta = $('textarea[name=body]', root);
+          if (!e.target.checked) ta.value = ta.value.replace(phraseFacture, '');
+          else if (!ta.value.includes(phraseFacture)) ta.value = ta.value.replace(/(Merci de votre confiance|Thank you for your trust)/, phraseFacture + '$1');
+        };
+        $('#ok', root).onclick = async () => {
+        const v = formValues($('#mf', root));
+        if (!v.to || !/^[^@\s]+@[^@\s]+$/.test(v.to)) return refus('#mf input[name=to]', 'Adresse email invalide.');
+        const b = $('#ok', root); b.disabled = true; b.textContent = 'Préparation…';
+        try {
+          let attachment = null;
+          if (v.attach && inv) attachment = await bridge.exportPdfSilent(C.documentHtml(inv, client, company(), { stampText: stampFor(inv) }), docFileName(inv));
+          const r = await bridge.composeMail({ to: v.to, subject: v.subject, body: v.body, attachment, mode: company().mailClient === 'mailto' ? 'mailto' : 'auto' });
+          if (client && !client.email) client.email = v.to;
+          const stored = data.licences.find(x => x.id === lic.id) || lic;
+          stored.emails = stored.emails || []; stored.emails.push({ date: C.today(), to: v.to, facture: !!attachment });
+          // L'historique de la FACTURE ne note l'envoi que si elle est vraiment partie avec la clé.
+          if (attachment && inv) { inv.emails = inv.emails || []; inv.emails.push({ date: C.today(), to: v.to, subject: v.subject, kind: 'licence' }); }
+          save(true); close();
+          toast(r && r.state === 'mail' ? 'Message ouvert dans Mail' + (attachment ? ' avec la facture jointe' : '') : 'Message ouvert dans ta messagerie');
+        } catch (e) { b.disabled = false; b.textContent = 'Ouvrir dans la messagerie'; toast(plainError(e), true); }
+      }; });
+  }
+
+  const licState = { q: '', st: '', sort: null, page: 1 };
+  routes.licences = () => {
+    const s = licState;
+    // Émettre et renouveler demandent la clé privée ; LIRE l'historique, non. Un dossier restauré ou
+    // partagé sur un poste sans clé montre ses licences (copier la clé, renvoyer le mail, ouvrir la
+    // facture) au lieu d'affirmer qu'il n'y a rien.
+    const peut = !!licence.editeur;
+    if (!peut && !(data.licences || []).length) {
+      $('#view').innerHTML = `<div class="page-head"><h1>Licences</h1></div>
+        ${etatVide('Cette page est celle de l\'éditeur de SkanFact', ['Elle liste les licences qu\'il a émises. Sur cet ordinateur, aucune clé de signature n\'est installée et ce dossier n\'en a émis aucune : il n\'y a rien à montrer ici. Ta propre licence, elle, se lit dans les Paramètres.'], [['lic-param', 'Voir ma licence', true]])}`;
+      $('#lic-param').onclick = () => allerParametres('app', 'p-licence');
+      return;
+    }
+    const cols = [
+      { key: 'nom', label: 'Client', asc: true, val: r => (r.nom || '').toLowerCase(),
+        get: r => `<strong>${h(r.nom)}</strong>${r.matricule ? `<div class="small muted">MF ${h(r.matricule)}</div>` : ''}${(r.emails || []).length ? `<div class="small muted">clé envoyée le ${C.fmtDate(r.emails[r.emails.length - 1].date)}</div>` : ''}` },
+      { key: 'offre', label: 'Offre', asc: true, val: r => r.offre, get: r => h(offreLabelDe(r.offre)) },
+      { key: 'exp', label: 'Fin', val: r => r.exp || '9999', get: r => r.exp ? C.fmtDate(r.exp) : '<span class="muted">À vie</span>' },
+      { key: 'etat', label: 'État', val: r => ({ bientot: 0, expiree: 1, active: 2, vie: 3 })[r.etat],
+        get: r => `<span class="badge ${r.renouvelee ? '' : r.etat === 'bientot' ? 'retard' : r.etat === 'expiree' ? 'annulée' : 'accepté'}">${h(r.renouvelee ? 'Renouvelée' : r.etatLabel)}</span>${r.etat === 'bientot' && !r.renouvelee ? `<div class="small muted">dans ${pl(r.jours, 'jour')}</div>` : ''}` },
+      { key: 'facture', label: 'Facture', val: r => { const d = r.invoiceId && docById(r.invoiceId); return d ? (d.number || 'brouillon') : ''; },
+        get: r => { const d = r.invoiceId && docById(r.invoiceId); return d ? `<a href="#/doc/${h(d.id)}">${h(d.number || 'Brouillon')}</a>${d.status !== 'brouillon' ? ` <span class="badge ${h(effStatus(d))}">${h(effStatus(d))}</span>` : ''}` : '<span class="muted">—</span>'; } },
+      { key: 'emise', label: 'Émise le', val: r => r.emisLe || '', get: r => r.emisLe ? C.fmtDate(r.emisLe) : '—' }
+    ];
+    const FILTRES = [['', 'Toutes'], ['bientot', 'À renouveler'], ['active', 'Actives'], ['vie', 'À vie'], ['expiree', 'Expirées']];
+    const draw = (sortKey) => {
+      if (sortKey) { s.sort = toggleSort(s.sort, sortKey, cols); s.page = 1; }
+      const all = C.licenceRows(data, C.today());
+      const kept = applySort(all
+        .filter(r => !s.q || [r.nom, r.matricule, r.id, offreLabelDe(r.offre), r.note].join(' ').toLowerCase().includes(s.q))
+        .filter(r => !s.st || r.etat === s.st), cols, s.sort);
+      const filtered = !!(s.q || s.st);
+      const { rows: page, pg } = paginate(kept, s);
+      const aRenouveler = kept.filter(r => r.etat === 'bientot' && !r.renouvelee).length;
+      $('#lic-wrap').innerHTML = kept.length ? `<table class="list sortable"><thead>${sortHead(cols, s.sort, '<th class="row-actions-h"></th>')}</thead><tbody>
+          ${page.map(r => `<tr>${cols.map(c => `<td class="${c.r ? 'r nw' : ''}">${c.get(r)}</td>`).join('')}${rowMenuCell(r.id)}</tr>`).join('')}
+        </tbody><tfoot><tr><td colspan="6">${pl(kept.length, 'licence')}${filtered ? ` sur ${all.length}` : ''}${aRenouveler ? ` · ${aRenouveler} à renouveler` : ''}</td><td></td></tr></tfoot></table>${pagerBar(pg, { noun: 'licence', grandTotal: all.length })}`
+        : (filtered ? '<div class="empty">Aucune licence ne correspond.</div>'
+          : etatVide('Aucune licence émise', ['Chaque licence que tu vends passe par ici : la clé est signée avec ta clé privée, la facture est créée dans tes ventes, et le mail au client est prêt.'], peut ? [['lic-first', '+ Émettre ma première licence', true]] : []));
+      const note = $('#lic-note');
+      if (note) { note.hidden = !filtered; note.innerHTML = filtered ? `<span class="small muted">${kept.length} sur ${all.length}</span>${filterReset(true)}` : ''; }
+      if ($('#reset-f')) $('#reset-f').onclick = () => { s.q = ''; s.st = ''; s.page = 1; routes.licences(); };
+      if ($('#lic-first')) $('#lic-first').onclick = () => licenceForm(null, draw);
+      bindRowMenus($('#lic-wrap'), id => {
+        const r = data.licences.find(x => x.id === id); if (!r) return [];
+        const inv = r.invoiceId ? docById(r.invoiceId) : null;
+        const suite = r.remplaceePar ? data.licences.find(x => x.id === r.remplaceePar) : null;
+        return [
+          { icon: 'copier', label: 'Copier la clé', hint: 'Dans le presse-papiers, pour la coller où tu veux', run: () => copierTexte(r.key, 'Clé de licence copiée') },
+          { icon: 'email', label: 'Envoyer la clé par email', hint: inv && inv.number ? `Avec la facture ${inv.number} en PDF` : 'La clé et la marche à suivre', run: () => envoyerLicence(r) },
+          inv ? { icon: 'facture', label: 'Ouvrir la facture', hint: inv.number || 'Encore en brouillon', run: () => navigate('#/doc/' + inv.id) } : null,
+          // Une licence déjà renouvelée ne se renouvelle pas une seconde fois : c'est sa remplaçante
+          // qui porte la suite — sinon on fabriquerait une troisième clé et une troisième facture.
+          peut ? { sep: true } : null,
+          peut && !r.remplaceePar ? { icon: 'contrat', label: 'Renouveler', hint: 'Une nouvelle clé et une nouvelle facture', run: () => licenceForm(r, draw) } : null,
+          peut && suite ? { icon: 'contrat', label: 'Renouveler la suivante', hint: `Cette licence a déjà été renouvelée (n° ${suite.id})`, run: () => licenceForm(suite, draw) } : null
+        ];
+      });
+      bindSort($('#lic-wrap'), draw);
+      bindPager($('#lic-wrap'), s, () => draw(), '#lic-wrap');
+    };
+    const all = data.licences || [];
+    $('#view').innerHTML = `<div class="page-head"><h1>Licences ${info('lic.liste')}</h1><div class="actions">${peut ? '<button class="btn btn-primary" id="lic-new">+ Émettre une licence</button>' : ''}</div></div>
+      ${peut ? '' : '<div class="banner info"><span>Historique en lecture : les clés de signature ne sont pas sur cet ordinateur. Copier une clé, la renvoyer ou ouvrir sa facture reste possible ; émettre et renouveler, non.</span></div>'}
+      ${filtersBar(`<input type="text" id="q" placeholder="Rechercher : client, matricule, n° de licence…" value="${h(s.q)}">
+        <select id="st">${FILTRES.map(([v, l]) => `<option value="${v}" ${s.st === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        ${info('list.sort')}<span class="f-note" id="lic-note" hidden></span>`, all.length, !!(s.q || s.st))}
+      <div id="lic-wrap"></div>`;
+    if ($('#lic-new')) $('#lic-new').onclick = () => licenceForm(null, draw);
+    if ($('#q')) $('#q').oninput = e => { s.q = e.target.value.toLowerCase(); s.page = 1; draw(); };
+    if ($('#st')) $('#st').onchange = e => { s.st = e.target.value; s.page = 1; draw(); };
+    draw();
+  };
 
   // Quand une vérification a eu lieu, écrit comme on le dirait. Une date seule (« 14/09/2026
   // 09:12 ») oblige à la comparer mentalement à aujourd'hui ; ce qu'on veut savoir, c'est si c'est
@@ -10689,9 +11141,6 @@
       <div class="modal-actions"><button class="btn" data-close>Continuer</button><button class="btn btn-primary" id="fz-rep">Signaler</button></div>`,
       (root, close) => { $('#fz-rep', root).onclick = () => { close(); supportForm(); }; });
   });
-  // La licence se lit une fois au démarrage : hors ligne, instantané, et jamais renvoyé nulle part.
-  bridge.licenceStatus().then(st => { licence = st || licence; licenceBanner(); }).catch(() => {});
-
   // ---------- démarrage ----------
   (async () => {
     const loaded = await bridge.loadData();
@@ -10711,6 +11160,10 @@
       // « Tes premiers pas », qui reste à l'écran et dont chaque ligne est cliquable.
       if (done) toast('C\'est prêt.');
     }
+    // La licence se lit AVANT le premier dessin — hors ligne, instantané, jamais renvoyé nulle part —
+    // et avec le matricule de la société, parce qu'une clé est émise pour UNE entreprise. Elle dit
+    // aussi si ce poste est celui de l'éditeur : la barre en dépend.
+    await rafraichirLicence();
     // La copie de sauvegarde externe ne vit pas dans les données : on la lit une fois ici pour que
     // « Tes premiers pas » sache si l'étape est faite. Un échec n'empêche rien : l'étape s'affiche
     // simplement comme à faire.

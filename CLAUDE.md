@@ -390,6 +390,7 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:beta` | **le canal bêta** : la case décochée à l'installation, la question avant de cocher, le refus qui décoche vraiment, la sauvegarde « avant-beta » écrite sur le disque, et le retour en arrière sans question |
 | `npm run e2e:depot` | **public ou privé** : `src/depot.js` est VRAIMENT basculé en privé, l'application ouverte, le champ jeton doit revenir — puis repartir au retour au public (le fichier est restauré quoi qu'il arrive) |
 | `npm run e2e:pages` | **les pages d'un document imprimé** : 161 documents (7 types × 6 variantes × 1 à 40 lignes) rendus dans chromium et imprimés en PDF — aucune ligne perdue, aucune page qui déborde, aucun pied par-dessus le contenu, une feuille par page et chacune numérotée. **Pas besoin de `xvfb`** : il n'ouvre pas Electron |
+| `npm run e2e:licence` | **l'éditeur et les offres** : sans clé rien n'apparaît ; « Créer mes clés » écrit la privée dans un dossier isolé (`SKANFACT_DOSSIER_CLES`) et arme le poste ; « Émettre » signe une clé vérifiable, crée un BROUILLON de facture et l'historique ; la clé Indépendant collée refuse un nouveau fournisseur, pose un cadenas sur Achats et laisse les Statistiques ; la clé d'un autre matricule est refusée en nommant les deux ; « Renouveler » ; et rien de ce qui traverse le pont ne contient la clé privée |
 
 Ils ont longtemps vécu dans un dossier de travail temporaire, effacé à chaque session : il fallait les réécrire de mémoire, et ils dérivaient (une assertion restée sur une version périmée, un écran neuf jamais parcouru). **Un test qu'on doit réécrire pour s'en servir n'est pas un test.** Le harnais (`test/e2e/harnais.js`) trouve Playwright où il est, lit la version dans `package.json` au lieu de l'écrire en dur, et range les captures dans `dist-e2e/` (ignoré par Git).
 
@@ -1701,6 +1702,112 @@ Règles apprises, à ne pas recasser :
   panneau soit **visible** : on peut être sur la bonne page et sur le mauvais onglet.
 - Piège de test rencontré : `new RegExp(\`panneauReg\\\\('${id}'\`)` dans `run-tests.js` casse le
   fichier. Une concaténation de chaînes fait le même travail sans le risque.
+
+## 7.33.0 — Les offres, et l'éditeur qui vend depuis sa propre application
+
+Skander : « l'étape d'après c'est de mettre en place la licence… l'essai de 30 jours, générer des
+clés, limiter les fonctionnalités quand t'es indépendant », puis « un petit programme qui génère les
+clés, fait la facture, avec un historique… protégé dans un repo privé ». Le site (`skanfact-site`,
+page Tarifs) annonce : Essai 0 DT · Indépendant 390 DT HT/an · Entreprise 690 DT HT/an, 20 % la
+première année si un cabinet parraine.
+
+**Le programme demandé existait déjà : c'est SkanFact.** Une vente de licence est une facture comme
+une autre — journal des ventes, TVA collectée, paquet du comptable. Un programme à part aurait refait
+la facturation et laissé la comptabilité de l'éditeur fausse. D'où un module **Éditeur** dans l'app
+entreprise, visible seulement sur le poste où vit la clé privée (`~/.skanfact/licence-privee.pem`,
+ou `SKANFACT_DOSSIER_CLES` pour les tests). Et « repo privé » ne protège rien : **le secret n'est pas
+le code, c'est la clé** — le code qui signe tient en une ligne, celui qui vérifie est public depuis
+la 6.4.0.
+
+La séquence d'armement, en quatre gestes : (1) 7.33.0 publiée, désarmée ; (2) Skander clique
+« Créer mes clés » ; (3) il colle la clé PUBLIQUE dans la conversation ; (4) on la commite dans
+`build/licence-public.json`, on retourne le test qui exige son absence, on publie **8.0.0** — ce
+jour-là chaque installation a 30 jours. Entre (2) et (4), son propre poste est armé avec sa clé (il
+la déduit de la privée) et il voit ce que verront ses clients.
+
+Règles apprises, à ne pas recasser :
+
+- **`build/` n'était pas dans les `files` d'electron-builder** : `build/licence-public.json`
+  n'aurait jamais été embarqué, et l'app installée serait restée libre quoi qu'on commite. Le seul
+  chemin où la licence ait jamais pu se verrouiller était `npm start`. Le motif est un **glob**
+  (`build/licence-public*.json`) : son absence ne fait pas échouer la construction. Un test le tient.
+- **L'offre voyage DANS la clé signée**, et une clé sans offre (d'avant) ou avec une offre inconnue
+  vaut Entreprise : en cas de doute on ouvre. `reserves` ne porte que sur la CRÉATION : les modules
+  fermés gardent leur entrée dans la barre (avec un cadenas), leur page, leur lecture, leur export.
+  Ne jamais passer par `moduleOn` : l'offre ne masque rien.
+- **Statistiques vit dans le module Pilotage et ne crée rien** : elle reste ouverte. Le blocage se
+  décide par module + `p.id !== 'stats'`, jamais par « le module entier ».
+- **`licenceBlock(what, module)` est la porte unique**, et elle va DANS le formulaire, sur la branche
+  création (`!supplier &&`), parce que `supplierForm`, `projectForm`, `assetForm` s'ouvrent depuis
+  plusieurs pages (règle 7.29.0). Le test de 6.4.0 exigeait « au moins quatre » appels et n'a jamais
+  vu deux créations sans garde-fou (« Dupliquer » un achat, « Établir n bulletins ») ; il nomme
+  maintenant chaque point de création. Et sa regex ne voyait que la forme à un argument : **un appel
+  à deux arguments lui échappait en silence** — on compte aussi les appels bruts.
+- **L'essai compte depuis l'armement SUR CE POSTE** : `armedAt` (app-config.json) est écrit la
+  première fois que l'application y voit une clé publique, et l'essai part du plus tardif de
+  `installedAt`, `armedAt` et `createdAt` de la clé. La date de fabrication de la clé ne suffit pas :
+  la version qui l'embarque peut arriver des semaines après le keygen. `installedAt` est écrit depuis
+  la 6.4.0, donc sans ce garde-fou toute installation de plus de trente jours se serait verrouillée
+  à la minute de la mise à jour.
+- **La clé de licence vit DANS LE DOSSIER de l'entreprise** (`<dossier>/licence.json`), plus dans
+  `userData` : un ordinateur ouvre plusieurs entreprises, et une clé est émise pour UN matricule —
+  au niveau de l'ordinateur, la clé du premier dossier verrouillait le second (« autre entreprise »).
+  Une clé rangée par la 6.4.0 dans `userData` n'est reprise que pour le dossier dont le matricule
+  correspond. Un dossier partagé (iCloud) emporte sa clé : c'est ce qu'on veut pour « trois postes ».
+- **Un renouvellement part de la FIN de la licence en cours** quand elle est encore future
+  (`depuis` transmis à `licence:emettre`, durées relues à l'ouverture du formulaire avec
+  `editeurStatus(depuis)`) : « À faire » réclame le renouvellement trente jours avant, et ces trente
+  jours sont payés. La remise de parrainage (« première année ») repart à zéro au renouvellement.
+- **Une licence expirée ne barre pas le partage d'un dossier** : partager n'est pas créer une pièce.
+  `partagerDossier` ne juge que l'offre (`!licence.locked && licenceBlock(…, 'partage')`). C'est le
+  contradicteur qui l'a vu : `licenceBlock` teste `locked` avant l'offre, pour tout module.
+- **La clé est attachée au matricule** (cœur : sept chiffres + lettre, ponctuation et suffixes
+  ignorés), et un côté vide ne compte pas — on ne punit pas qui n'a pas rempli sa fiche. Le
+  matricule vit dans les données du renderer : il VOYAGE avec `licence:status` et `licence:set`, et
+  l'état se relit après le chargement du dossier et après chaque fiche société enregistrée (« un
+  état lu une fois au démarrage se périme », 7.1.x). `licence:set` refuse la clé d'une autre
+  entreprise en nommant les deux matricules, plutôt que de l'enregistrer et d'afficher « autre ».
+- **La clé privée ne traverse jamais le pont** : `licence:emettre` reçoit les champs, signe dans
+  main.js, rend `SKAN1.…`. `editeur:status` rend la publique, le chemin, `armee` (la clé embarquée
+  existe) et `correspond` (c'est la sienne) — sans elle, l'éditeur ne saurait pas si ses licences
+  valent chez ses clients ou seulement chez lui. Un test relit chaque `lirePrivee()` de la section.
+- **Un mois de licence est un mois du calendrier** (`addMonths`, 31 janvier + 1 mois = 28 février),
+  pas 30,44 jours ; les durées arrivent à l'écran avec la date qu'elles donnent AUJOURD'HUI, calculée
+  une seule fois dans licence.js. « À vie » = pas d'`exp`. Une date libre doit être future.
+- **Émettre fait trois choses dans le même geste** : la clé, un BROUILLON de facture (`newDocument`,
+  jamais `nextNumber`), la ligne d'historique (`data.licences`, dans `MERGE_LISTS` sinon le poste
+  perdant les perdrait à la fusion, et vidée par « Tout effacer » comme le reste). Le prix vient du
+  catalogue ou d'un champ, jamais du code ; la remise de parrainage se pose sur `doc.discountRate`,
+  il n'existe pas de remise par ligne.
+- **Le mail de licence a son gabarit** (`DEFAULT_EMAIL_TEMPLATES.licence`, FR et EN, avec `{cle}`) :
+  sans lui, `emailFor` retombe sur le gabarit de facture. Il ne s'édite dans Paramètres → Envois que
+  chez l'éditeur, comme la page Licences, le panneau, l'entrée de palette et la ligne « À faire » :
+  chez un client, aucune trace.
+- **Renouveler crée une seconde clé et une seconde facture** ; la première porte `remplaceePar` et
+  sort de « À faire » sans disparaître. `licenceRows` trie : à renouveler, expirées, actives, à vie.
+- **La porte « Tu édites SkanFact ? Créer mes clés » n'existe que sur une application NON armée**
+  (`licence.state === 'libre'`) : le jour où la clé publique est embarquée, plus aucun client ne la
+  voit. `scripts/licence.js --keygen` n'écrit plus `build/licence-public.json` : armer tout le monde
+  est une décision (copier le fichier public, le commiter), jamais l'effet de bord d'un keygen — et
+  un test exige l'absence du fichier tant que ce n'est pas décidé.
+- **Ce que la relecture adversariale a trouvé après coup** (sept angles, un contradicteur par
+  constat, 40 constats bruts) : le renouvellement qui repartait d'aujourd'hui, le partage barré par
+  une licence expirée, l'essai compté depuis le keygen, la clé au niveau de l'ordinateur, Cmd+K qui
+  proposait le panneau Éditeur à tout le monde (`visible` dans SETTINGS_PANNEAUX, filtré par
+  `reglagesDePalette`), « Enregistrer la clé » comparée au matricule ENREGISTRÉ et non à celui du
+  formulaire (`enregistrerEnCours()` d'abord), une clé collée effacée par un redessin du panneau, le
+  stock de départ du catalogue qui crée un mouvement sans garde-fou, le libellé « Trésorerie,
+  marges, statistiques » sur un bandeau qui laisse les Statistiques ouvertes (`LIBELLES_OFFRE`), le
+  mail qui annonçait une facture jointe quand rien ne l'était (`{facture}` conditionnel), une
+  licence déjà renouvelée qu'on pouvait renouveler encore, `normMatricule` qui prenait le code TVA
+  (« /A ») pour la lettre-clé, et le 30 février accepté comme date de fin (`dateValide`). Le test
+  « ce que la relecture adversariale a trouvé » tient chacun. À refaire sur toute version qui touche
+  à de l'argent ou à une clé.
+- Piège d'e2e : ce que « Copier la clé publique » met dans le presse-papiers est le fichier JSON
+  entier (les retours à la ligne y sont échappés) — comparer les champs après `JSON.parse`, pas le
+  texte. Et la clé privée de l'e2e vit dans `SKANFACT_DOSSIER_CLES` : jamais dans le vrai
+  `~/.skanfact`, qui appartient à l'éditeur — le harnais pose un dossier vide par défaut pour TOUS
+  les parcours, sinon ils tourneraient armés sur le Mac de l'éditeur.
 
 ## Pistes pour la suite (non demandées)
 
