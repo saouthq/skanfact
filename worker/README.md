@@ -68,12 +68,20 @@ tokens** → **Fine-grained tokens** → **Generate new token**.
 
 - Repository access : **Only select repositories** → `saouthq/skanfact`
 - Permissions → Repository permissions → **Contents : Read-only**
-- Expiration : la plus longue possible, et **note la date**. Le jeton part dans l'en-tête
-  `Authorization` à **chaque** appel, dépôt public ou non : expiré, GitHub répond `401` et le
-  relais ne sert plus personne. Sur un dépôt **public**, les applications s'en sortent — elles
-  retombent d'elles-mêmes sur GitHub en direct (7.26.1) et continuent de se mettre à jour. Sur un
-  dépôt **privé**, rien ne rattrape : plus de relais, plus de mises à jour, pour tout le monde en
-  même temps. C'est la seule échéance du système.
+- Expiration : **aucune**. Le jeton part dans l'en-tête `Authorization` à **chaque** appel, dépôt
+  public ou non : dès qu'il cesse d'être valide, GitHub répond `401` et le relais ne sert plus
+  personne. Sur un dépôt **public**, les applications s'en sortent — elles retombent d'elles-mêmes
+  sur GitHub en direct (7.26.1) et continuent de se mettre à jour. Sur un dépôt **privé**, rien ne
+  rattrape : plus de relais, plus de mises à jour, pour tout le monde en même temps, et sans moyen
+  de recevoir le correctif. Une date d'expiration serait donc une panne **programmée** un jour où
+  personne ne s'y attend. Ce qu'on échange contre ça : un jeton sans expiration ne tourne jamais
+  tout seul — s'il fuit un jour, il faut le régénérer à la main ici et le recoller dans Cloudflare.
+  Vu ce qu'il peut faire (lire, sur un seul dépôt, rien d'autre), c'est le bon compromis.
+
+**État au 14/09/2026** — jeton `relais-skanfact`, créé le 12/09/2026, vérifié sur les trois points :
+`saouthq/skanfact` en « Only select repositories », **Read access to code and metadata** (c'est ce
+qui couvre les releases et leurs fichiers), aucune expiration. **Le relais est donc prêt pour le
+passage en dépôt privé**, le jour où le propriétaire le décidera.
 
 C'est le seul jeton qui existe, et il ne quitte jamais Cloudflare.
 
