@@ -40,6 +40,7 @@ module.exports = {
     'src/mac-update.sh',               // remplacement de l'app sur macOS non signé
     'src/renderer/style.css',          // la feuille partagée, chargée par son index.html
     'src/renderer/rowmenu.js',         // le menu d'actions d'une ligne, partagé lui aussi
+    'src/renderer/reglages.js',        // le sommaire et la recherche des réglages, partagés aussi
     'package.json',
     'CHANGELOG.md'
   ],

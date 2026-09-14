@@ -95,7 +95,7 @@
     if (adresse) return toast('Message préparé pour le comptable');
     const c = await choiceDialog('Message préparé', 'L\'adresse de ton comptable n\'est pas enregistrée : le message s\'ouvre sans destinataire. Si tu la renseignes une fois, tous les envois suivants la reprendront.',
       'Renseigner son email…', 'Plus tard');
-    if (c === 'a') allerParametres('emails', 'p-comptable');
+    if (c === 'a') allerParametres('envois', 'p-comptable');
   }
 
   async function lockNow() {
@@ -128,6 +128,10 @@
           if (v.password !== v.confirm) return toast('Les deux mots de passe ne correspondent pas.', true);
         }
         const b = $('#ok', root); b.disabled = true; b.textContent = 'Chiffrement…';
+        // Ce geste finit par `render()` : sans ça, activer un mot de passe depuis les Paramètres
+        // jetait tout ce qui venait d'être tapé sur la page, sans un mot. Et il faut enregistrer
+        // AVANT, parce que c'est `data` tel qu'il est ici qui part se faire chiffrer.
+        enregistrerEnCours();
         const r = await bridge.setPassword({ data, password: mode === 'remove' ? '' : v.password, current: v.current || '' });
         if (!r || !r.ok) { b.disabled = false; b.textContent = mode === 'remove' ? 'Retirer' : 'Enregistrer'; return toast((r && r.error) || 'Échec', true); }
         security.encrypted = r.encrypted; close(); toast(r.encrypted ? 'Données chiffrées — mot de passe demandé à chaque ouverture' : 'Mot de passe retiré : données en clair'); render();
@@ -189,21 +193,21 @@
     if (m.counts.duplicates || m.counts.conflicts) {
       modal(`<h2>${m.counts.duplicates ? 'Attention : numéros en double' : 'Modifications des deux côtés'}</h2>
         <p class="small">Les modifications de <strong>${h(who)}</strong> ont été reprises et ton travail a été conservé.
-        ${m.counts.added ? `${m.counts.added} pièce(s) venaient de l'autre poste.` : ''}</p>
+        ${m.counts.added ? `${pl(m.counts.added, 'pièce')} ${m.counts.added > 1 ? 'venaient' : 'venait'} de l'autre poste.` : ''}</p>
         ${m.counts.duplicates ? `<div class="panel" style="margin:12px 0;border-color:var(--danger)">
-          <h2 style="color:var(--danger)">${m.counts.duplicates} numéro(s) attribué(s) deux fois</h2>
+          <h2 style="color:var(--danger)">${pl(m.counts.duplicates, 'numéro')} attribué${sPl(m.counts.duplicates)} deux fois</h2>
           <p class="small">Vous avez émis ces pièces chacun de votre côté, sans voir le travail de l'autre. Deux documents ne peuvent pas porter le même numéro : il faut en annuler un par un avoir et le réémettre.</p>
           <ul class="small">${m.duplicates.map(d => `<li><strong>${h(d.label)}</strong></li>`).join('')}</ul>
           <p class="small muted">Pour que ça n'arrive plus : n'émettez pas de factures en même temps, ou mettez-vous d'accord sur qui émet.</p>
         </div>` : ''}
         ${m.counts.conflicts ? `<div class="panel" style="margin:12px 0">
-          <h2>${m.counts.conflicts} pièce(s) modifiée(s) des deux côtés</h2>
+          <h2>${pl(m.counts.conflicts, 'pièce')} modifiée${sPl(m.counts.conflicts)} des deux côtés</h2>
           <p class="small">La version du fichier enregistré en dernier (<strong>${h(m.keptFrom)}</strong>) a été gardée. L'autre version n'est pas détruite : elle est conservée dans tes données et ton comptable peut la retrouver si besoin.</p>
           <ul class="small">${m.conflicts.slice(0, 12).map(c => `<li>${h(c.label)} <span class="muted">(${h(C.LIST_LABELS[c.kind] || c.kind)})</span></li>`).join('')}</ul>
         </div>` : ''}
         <div class="modal-actions"><button class="btn btn-primary" data-close>J'ai compris</button></div>`);
     } else if (m.counts.added) {
-      toast(`${m.counts.added} nouveauté(s) reprise(s) de ${who}`);
+      toast(`${pl(m.counts.added, 'nouveauté')} reprise${sPl(m.counts.added)} de ${who}`);
     }
   }
 
@@ -250,7 +254,7 @@
         <li>Seule la création de nouvelles pièces attend la licence.</li>
       </ul>
       <div class="modal-actions"><button class="btn" data-close>Plus tard</button><button class="btn btn-primary" id="go-lic">Voir ma licence</button></div>`,
-      (root, close) => { $('#go-lic', root).onclick = () => { close(); allerParametres('licence', 'p-licence'); }; });
+      (root, close) => { $('#go-lic', root).onclick = () => { close(); allerParametres('app', 'p-licence'); }; });
     return true;
   }
 
@@ -725,6 +729,18 @@
   let guard = null;                       // { dirty: () => bool, save: () => bool|Promise, what: 'ce devis' }
   function setGuard(g) { guard = g; reportDirty(); }
   function clearGuard(g) { if (!g || guard === g) guard = null; reportDirty(); }
+  // Enregistrer ce qui est en cours de saisie AVANT un geste qui redessine la page.
+  //
+  // La règle vient de l'audit de la 5.2.1 : choisir un logo dans les Paramètres redessinait tout et
+  // jetait en silence ce qui venait d'être tapé. `setImage` appelle donc `applySettings()` depuis.
+  // Mais la règle n'était posée que là : activer un mot de passe, par exemple, finit par `render()`
+  // et emportait de la même façon vingt champs remplis — sans un mot, et sans que la barre
+  // « Modifications non enregistrées » ait le temps de dire quoi que ce soit. On passe par le
+  // garde-fou actif, qui porte déjà la bonne fonction (`save: applySettings`) : ce qui marche pour
+  // les Paramètres marchera pour tout écran qui en posera un.
+  function enregistrerEnCours() {
+    if (guard && typeof guard.save === 'function' && guard.dirty()) { try { guard.save(); } catch (_) { } }
+  }
   // Le process principal doit savoir s'il reste du travail non enregistré : sans ça, fermer la fenêtre
   // pendant la saisie d'un devis le perdait sans un mot.
   let dirtyReported = null;
@@ -1070,6 +1086,9 @@
     // d'effacer sciemment. Posé AVANT la sauvegarde : dans l'autre ordre, refuser cette seconde
     // question laissait une sauvegarde orpheline. C'est l'ordre de « Tout effacer ».
     if (!await closedWipeOk('Charger l\'exemple remplace tout.')) return;
+    // La fenêtre promet que « tes paramètres société sont conservés » : encore faut-il qu'ils
+    // soient enregistrés. Fait AVANT la sauvegarde, sinon le filet de retour ne les contiendrait pas.
+    enregistrerEnCours();
     // Sans condition : elle coûte un fichier, et c'est le seul chemin de retour.
     await bridge.createBackup('avant-demo');
     clearGuard();
@@ -1099,7 +1118,7 @@
     // telle quelle à l'écran.
     const msg = ok
       ? `Tes données d'avant l'exemple ont été mises de côté au moment du chargement :\n`
-        + `${vu.compte.documents} document(s), ${vu.compte.clients} client(s), ${vu.compte.catalog} prestation(s)`
+        + `${pl(vu.compte.documents, 'document')}, ${pl(vu.compte.clients, 'client')}, ${pl(vu.compte.catalog, 'prestation')}`
         + `${vu.societe ? ` au nom de « ${vu.societe} »` : ''}.\n\nOn les remet en place, et l'exemple disparaît.`
       : avant
         ? `La sauvegarde d'avant l'exemple est illisible (${(vu && vu.error) || 'raison inconnue'}).\n\n`
@@ -1581,6 +1600,11 @@
   // et n'avait jamais été portée ici : un logiciel qui écrit « (s) » paraît bâclé, et c'est l'écran
   // que l'utilisateur regarde le plus souvent.
   const pl = (n, un, plur) => `${n} ${n > 1 ? (plur || un + 's') : un}`;
+  // L'accord de ce qui SUIT le nom — un adjectif, un participe. « 3 écarts enregistrés », mais
+  // « 1 écart enregistré ». Sans lui, la moitié du travail de `pl` se perdait un mot plus loin.
+  // Il sert aussi là où le nombre est déjà mis en forme (« 2,5 jours » : `pct` rend une chaîne, et
+  // comparer une chaîne à 1 aurait rendu « 2,5 jour »).
+  const sPl = n => (Number(n) > 1 ? 's' : '');
 
   // La liste des clients pour un `combo()`. Elle vivait en DOUBLE, déclarée localement dans deux
   // formulaires — et `serialForm` l'appelait sans en avoir : « Modifier » sur un numéro de série
@@ -2488,7 +2512,7 @@
     function issueWarnings() {
       const w = [];
       const co = company();
-      if (!(co.name || '').trim() || !(co.matricule || '').trim()) w.push('Ta fiche société est incomplète (raison sociale ou matricule fiscal) : le document ne sera pas conforme. Paramètres → Société.');
+      if (!(co.name || '').trim() || !(co.matricule || '').trim()) w.push('Ta fiche société est incomplète (raison sociale ou matricule fiscal) : le document ne sera pas conforme. Paramètres → Mon entreprise.');
       // Le RIB ne se réclame que si on attend un virement (7.22.0, même règle que `companyGaps`).
       // Un restaurant ou un salon encaissent sur place : leur répéter à chaque facture qu'il manque
       // un RIB, c'est un avertissement qu'ils ne peuvent pas satisfaire — et on cesse de lire les
@@ -2682,7 +2706,7 @@
       const inv = invoiceFromQuote(doc, C.settlementLines(doc, issuedDeposits), doc.discountRate);
       inv.settles = { quoteId: doc.id, quoteNumber: doc.number, depositIds: issuedDeposits.map(d => d.id) }; inv.fromQuoteId = doc.id; inv.fromQuoteNumber = doc.number;
       inv.subject = `Solde — ${doc.subject || doc.number}`;
-      data.documents.push(inv); save(true); toast(`Brouillon de facture de solde créé (${issuedDeposits.length} acompte(s) déduit(s))`); navigate('#/doc/' + inv.id);
+      data.documents.push(inv); save(true); toast(`Brouillon de facture de solde créé (${pl(issuedDeposits.length, 'acompte')} déduit${sPl(issuedDeposits.length)})`); navigate('#/doc/' + inv.id);
     };
     if ($('#pay')) $('#pay').onclick = () => paymentForm(docById(doc.id), () => render());
     if ($('#credit')) $('#credit').onclick = () => navigate('#/doc/new/avoir/' + doc.id);
@@ -2971,7 +2995,7 @@
         };
         if ($('#del-client', root)) $('#del-client', root).onclick = async () => {
           const n = data.documents.filter(d => d.clientId === c.id).length;
-          if (n) return toast(`Impossible : ${n} document(s) sont liés à ce client. Un client qui a une histoire ne se supprime pas.`, true);
+          if (n) return toast(`Impossible : ${pl(n, 'document')} ${n > 1 ? 'sont liés' : 'est lié'} à ce client. Un client qui a une histoire ne se supprime pas.`, true);
           if (!await confirmDialog(`Supprimer ${c.name} ?`)) return;
           forget('clients', c.id, c.name);
           data.clients = data.clients.filter(x => x.id !== c.id); save(true); close(); navigate('#/clients');
@@ -3009,7 +3033,7 @@
           ${cols.map(c => `<td class="${c.r ? 'r nw' : ''}">${c.get(r)}</td>`).join('')}
           ${rowMenuCell(r.c.id)}</tr>`).join('')}
         </tbody><tfoot><tr>
-          <td colspan="3"><strong>${rows.length} client(s)</strong>${filtered ? `<span class="muted"> sur ${all.length}</span>` : ''}</td>
+          <td colspan="3"><strong>${pl(rows.length, 'client')}</strong>${filtered ? `<span class="muted"> sur ${all.length}</span>` : ''}</td>
           <td class="r"><strong>${rows.reduce((a, r) => a + r.sum.count, 0)}</strong></td>
           <td class="r"><strong>${C.money(C.round3(rows.reduce((a, r) => a + r.sum.ht, 0)), cur)}</strong></td>
           <td class="r"><strong>${C.money(C.round3(rows.reduce((a, r) => a + r.sum.due, 0)), cur)}</strong></td>
@@ -3068,9 +3092,9 @@
           <button class="btn" id="new-fac">+ Facture</button>
           <button class="btn btn-primary" id="new-dev">+ Devis</button>
         </div></div>
-      ${late.length ? `<div class="banner">${late.length} facture(s) en retard — ${C.money(lateAmount, cur)}<button class="btn" id="go-rel">Voir les relances</button></div>` : ''}
+      ${late.length ? `<div class="banner">${pl(late.length, 'facture')} en retard — ${C.money(lateAmount, cur)}<button class="btn" id="go-rel">Voir les relances</button></div>` : ''}
       <div class="stats">
-        <div class="stat"><div class="lbl">Facturé HT ${info('dash.caYear')}</div><div class="val">${C.money(sum.ht, cur)}</div><div class="sub">${sum.invoiceCount} facture(s)${sum.first ? ' depuis ' + C.fmtDate(sum.first) : ''}</div></div>
+        <div class="stat"><div class="lbl">Facturé HT ${info('dash.caYear')}</div><div class="val">${C.money(sum.ht, cur)}</div><div class="sub">${pl(sum.invoiceCount, 'facture')}${sum.first ? ' depuis ' + C.fmtDate(sum.first) : ''}</div></div>
         <div class="stat"><div class="lbl">Reste à payer ${info('cl.due')}</div><div class="val">${C.money(sum.due, cur)}</div><div class="sub">${sum.due > 0.0005 ? 'à encaisser' : 'tout est réglé'}</div></div>
         <div class="stat"><div class="lbl">Délai moyen de paiement ${info('dash.delay')}</div><div class="val">${sum.delay == null ? '—' : sum.delay + ' j'}</div><div class="sub">annoncé : ${company().paymentTermsDays} jours</div></div>
         <div class="stat"><div class="lbl">Devis acceptés ${info('dash.conversion')}</div><div class="val">${sum.conversion == null ? '—' : sum.conversion + ' %'}</div><div class="sub">${sum.quoteCount} devis, ${openQuotes.length} sans réponse</div></div>
@@ -3097,7 +3121,7 @@
         if (!parc.length) return '';
         const soon = parc.filter(x => x.warrantyEndingSoon).length;
         return `<div class="panel"><h2>Matériel installé chez ce client ${info('ser.fleet')}</h2>
-          ${soon ? `<p class="small warn-text mb">${soon} garantie(s) se terminent dans moins de deux mois : le moment de proposer un contrat de maintenance.</p>` : ''}
+          ${soon ? `<p class="small warn-text mb">${pl(soon, 'garantie')} ${soon > 1 ? 'se terminent' : 'se termine'} dans moins de deux mois : le moment de proposer un contrat de maintenance.</p>` : ''}
           <div class="scroll-x"><table class="list compact"><thead><tr><th>Article</th><th>Numéro</th><th>Livré le</th><th>Garantie</th><th>Pièce</th></tr></thead><tbody>
             ${parc.map(x => `<tr class="${x.warrantyEndingSoon ? 'row-warn' : ''}">
               <td><strong>${h(x.itemLabel)}</strong></td><td class="nw">${h(x.serial)}</td>
@@ -3218,7 +3242,7 @@
             || (l.label || '').trim().toLowerCase() === (it.label || '').trim().toLowerCase())).length;
           const st = it.tracked ? C.stockOf(data, it.id) : null;
           if (!await confirmDialog(`Supprimer « ${it.label} » du catalogue ?`
-            + (used ? ` ${used} document(s) la portent déjà : ils ne changent pas, elle ne sera simplement plus proposée.` : '')
+            + (used ? ` ${pl(used, 'document')} la ${used > 1 ? 'portent' : 'porte'} déjà : ${used > 1 ? 'ils ne changent pas' : 'il ne change pas'}, elle ne sera simplement plus proposée.` : '')
             + (st && st.qty ? ` Attention : il en reste ${pct(st.qty)} en stock, et son suivi disparaîtra avec elle.` : ''))) return;
           forget('catalog', it.id, it.label);
           data.catalog = data.catalog.filter(c => c.id !== it.id);
@@ -3308,7 +3332,7 @@
           });
           $$('[data-x]', $('#tf-lines', root)).forEach(b => b.onclick = () => { t.lines.splice(Number(b.dataset.x), 1); drawLines(); });
           const tot = C.round3(t.lines.reduce((a, l) => a + (Number(l.qty) || 0) * (Number(l.unitPrice) || 0), 0));
-          $('#tf-sum', root).innerHTML = `${t.lines.length} ligne(s) · <b>${C.money(tot, cur)}</b> HT`;
+          $('#tf-sum', root).innerHTML = `${pl(t.lines.length, 'ligne')} · <b>${C.money(tot, cur)}</b> HT`;
         };
         drawLines();
         bindCombo($('.combo', $('#tf-cat', root)), {
@@ -3419,7 +3443,7 @@
         const tracked = kept.filter(c => c.tracked);
         const stockValue = C.round3(tracked.reduce((a, c) => a + Math.max(0, C.stockOf(data, c.id).value), 0));
         const avg = kept.length ? C.round3(kept.reduce((a, c) => a + (Number(c.unitPrice) || 0), 0) / kept.length) : 0;
-        return `<tr><td><strong>${kept.length} prestation(s)</strong>${tracked.length ? `<span class="muted"> · ${tracked.length} suivie(s) en stock</span>` : ''}</td>
+        return `<tr><td><strong>${pl(kept.length, 'prestation')}</strong>${tracked.length ? `<span class="muted"> · ${pl(tracked.length, 'suivie')} en stock</span>` : ''}</td>
           <td class="r"><span class="muted">moyenne</span> <strong>${C.money(avg, cur)}</strong></td>
           <td colspan="2"></td>
           <td class="r">${tracked.length ? `<span class="muted">stock</span> <strong>${C.money(stockValue, cur)}</strong>` : ''}</td>
@@ -3595,7 +3619,7 @@
         <label class="field span-2">Objet<input type="text" name="subject" value="${h(m.subject)}"></label>
         <label class="field span-2">Message<textarea name="body" rows="9">${h(m.body)}</textarea></label>
       </form>
-      <p class="small muted">${company().mailClient === 'mailto' ? 'Le message s\'ouvre dans ta messagerie ; le PDF est affiché dans le Finder pour le glisser dans le message.' : 'Sur Mac, le message s\'ouvre dans Mail avec le PDF joint. Tu le relis et tu cliques sur Envoyer.'} Modèles d'email : Paramètres → Emails.</p>
+      <p class="small muted">${company().mailClient === 'mailto' ? 'Le message s\'ouvre dans ta messagerie ; le PDF est affiché dans le Finder pour le glisser dans le message.' : 'Sur Mac, le message s\'ouvre dans Mail avec le PDF joint. Tu le relis et tu cliques sur Envoyer.'} Modèles d'email : Paramètres → Envois.</p>
       <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Ouvrir dans la messagerie</button></div>`,
       (root, close) => { $('#ok', root).onclick = async () => {
         const v = formValues($('#mf', root));
@@ -3659,7 +3683,7 @@
         // fenêtre où l'on voit ce qu'on supprime (audit — elle était sur la ligne de la liste).
         if ($('#del-rec', root)) $('#del-rec', root).onclick = async () => {
           const n = data.documents.filter(d => d.recurringId === r.id).length;
-          if (!await confirmDialog(`Supprimer ce contrat ?${n ? ` ${n} facture(s) en sont issues : elles sont conservées.` : ''}`)) return;
+          if (!await confirmDialog(`Supprimer ce contrat ?${n ? ` ${pl(n, 'facture')} en ${n > 1 ? 'sont issues : elles sont conservées' : 'est issue : elle est conservée'}.` : ''}`)) return;
           forget('recurring', r.id, C.fillTemplate(r.subject || '', { mois: '', annee: '' }).trim());
           data.recurring = data.recurring.filter(x => x.id !== r.id);
           save(true); close(); if (done) done();
@@ -3795,7 +3819,7 @@
       <div class="stats">
         <div class="stat"><div class="lbl">Par facture (HT) ${info('contrat.montant')}</div><div class="val">${C.money(t.netHT, cur)}</div><div class="sub">${C.money(t.totalTTC, cur)} TTC</div></div>
         <div class="stat"><div class="lbl">Prochaine facture ${info('contrat.next')}</div><div class="val">${C.fmtDate(r.nextDate)}</div><div class="sub">${isDue ? 'à générer' : period.toLowerCase()}${r.lastIssued ? ' · dernière : ' + C.fmtDate(r.lastIssued) : ''}</div></div>
-        <div class="stat"><div class="lbl">Facturé depuis le début ${info('contrat.total')}</div><div class="val">${C.money(facture, co.currency)}</div><div class="sub">${issued.length} facture(s) émise(s)${drafts.length ? ` · ${drafts.length} brouillon(s)` : ''}</div></div>
+        <div class="stat"><div class="lbl">Facturé depuis le début ${info('contrat.total')}</div><div class="val">${C.money(facture, co.currency)}</div><div class="sub">${pl(issued.length, 'facture')} émise${sPl(issued.length)}${drafts.length ? ` · ${pl(drafts.length, 'brouillon')}` : ''}</div></div>
         <div class="stat"><div class="lbl">Encaissé ${info('dash.open')}</div><div class="val">${C.money(encaisse, co.currency)}</div><div class="sub">${C.money(C.round3(facture - encaisse), co.currency)} restant, avoirs et taxes compris</div></div>
       </div>
       <div class="editor editor-short">
@@ -3904,7 +3928,7 @@
       const actifs = kept.filter(r => r.active !== false);
       const parAn = C.round3(actifs.reduce((a2, r) => a2 + htBase(r) * (PAR_AN[r.every] || 12), 0));
       const parMois = C.round3(parAn / 12);
-      $('#c-wrap').innerHTML = `${due.length ? `<div class="banner">${due.length} facture(s) récurrente(s) à générer<button class="btn" id="gen-due">Générer les brouillons</button></div>` : ''}
+      $('#c-wrap').innerHTML = `${due.length ? `<div class="banner">${pl(due.length, 'facture')} récurrente${sPl(due.length)} à générer<button class="btn" id="gen-due">Générer les brouillons</button></div>` : ''}
         ${filtersBar(`
           <input type="text" id="q" placeholder="Rechercher : client, objet…" value="${h(s.q)}">
           <select id="st">${STATES.map(([v, l]) => `<option value="${v}" ${s.st === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
@@ -4069,13 +4093,13 @@
       const aDesFactures = data.documents.some(d => d.type === 'facture' && d.number);
       $('#r-wrap').innerHTML = rienDuTout ? etatVide('Relancer tes impayés',
         ['Dès qu\'une facture dépasse son échéance, elle apparaît ici toute seule : le nombre de jours de retard, ce qui reste à récupérer, et un email prêt à partir. <b>Tu n\'as rien à saisir sur cette page.</b>',
-         'Trois tons, choisis pour toi selon le retard : rappel amical jusqu\'à 15 jours, relance jusqu\'à 45 jours, dernière relance au-delà. Les textes se modifient dans Paramètres → Emails.'],
+         'Trois tons, choisis pour toi selon le retard : rappel amical jusqu\'à 15 jours, relance jusqu\'à 45 jours, dernière relance au-delà. Les textes se modifient dans Paramètres → Envois.'],
         aDesFactures ? [['rel-vers-fac', 'Voir mes factures', true]] : [['rel-vers-new', '+ Créer ma première facture', true]])
         : `
         ${filtersBar(`
           <input type="search" id="rel-q" placeholder="Rechercher : n°, client, objet…" value="${h(relState.q)}">
           ${q ? `<span class="small muted">${od.length} sur ${nAll}</span>${filterReset(true)}` : ''}`, all.length, !!q)}
-        ${od.length ? `<div class="banner">${od.length} facture(s) à relancer — ${C.money(total, cur)} à récupérer</div>` : `<div class="banner info">${q ? 'Aucune facture ne correspond à cette recherche.' : `Aucune facture à relancer${later.length ? ` (${later.length} reportée(s))` : ''}.`}</div>`}
+        ${od.length ? `<div class="banner">${pl(od.length, 'facture')} à relancer — ${C.money(total, cur)} à récupérer</div>` : `<div class="banner info">${q ? 'Aucune facture ne correspond à cette recherche.' : `Aucune facture à relancer${later.length ? ` (${pl(later.length, 'reportée')})` : ''}.`}</div>`}
         ${od.length ? `<table class="list sortable">${head}<tbody>${odPage.rows.map(row).join('')}</tbody></table>${pagerBar(odPage.pg, { noun: 'facture' })}` : ''}
         ${later.length ? `<div class="section-head"><h2>Reportées ${info('rel.snooze')}</h2></div><table class="list">${headFixed}<tbody>${later.map(row).join('')}</tbody></table>` : ''}
         ${soon.length ? `<div class="section-head"><h2>Échéances dans les 7 jours ${info('rel.soon')}</h2></div><table class="list compact"><thead><tr><th>Facture</th><th>Client</th><th>Échéance</th><th class="r">Reste</th></tr></thead><tbody>
@@ -4085,7 +4109,7 @@
           ${quotes.map(d => `<tr><td><strong><a href="#/doc/${d.id}">${h(d.number)}</a></strong><div class="small muted">${h(d.subject || '')}</div></td><td>${h(clientName(d.clientId))}</td><td>${C.daysBetween(d.date, C.today())} jours</td><td>${effStatus(d) === 'expiré' ? '<span class="badge expiré">expiré</span>' : C.fmtDate(d.dueDate)}</td><td class="r">${C.money(C.computeTotals(d, company()).totalTTC, docCur(d))}</td>
             <td class="actions"><button class="btn btn-sm" data-qrem="${d.id}">Relancer par email</button></td></tr>`).join('')}
         </tbody></table>` : ''}
-        <p class="small muted mt">Niveaux : rappel amical jusqu'à 15 jours, relance jusqu'à 45 jours, dernière relance au-delà. Textes modifiables dans Paramètres → Emails.</p>`;
+        <p class="small muted mt">Niveaux : rappel amical jusqu'à 15 jours, relance jusqu'à 45 jours, dernière relance au-delà. Textes modifiables dans Paramètres → Envois.</p>`;
       const find = id => all.find(x => x.doc.id === id);
       if ($('#rel-vers-fac')) $('#rel-vers-fac').onclick = () => navigate('#/factures');
       if ($('#rel-vers-new')) $('#rel-vers-new').onclick = () => navigate('#/doc/new/facture');
@@ -4288,8 +4312,54 @@
   // portée de la palette. Une seule source pour les deux usages : l'écran les dessine, la recherche
   // les indexe. Le troisième élément du catalogue est la clé de sa bulle « i ».
   const CATALOG_TABS = [['presta', 'Prestations', 'cat.catalog'], ['modeles', 'Modèles de documents', 'ed.template'], ['textes', 'Textes prédéfinis', 'cat.snippets']];
-  const SETTINGS_TABS = [['societe', 'Société'], ['documents', 'Documents'], ['emails', 'Emails'], ['apparence', 'Apparence'],
-    ['cabinet', 'Cabinet comptable'], ['donnees', 'Sécurité et données'], ['licence', 'Licence'], ['maj', 'Mises à jour']];
+  // Cinq onglets, et chacun pèse quelque chose (refonte 7.30.0 ; voir le commentaire au-dessus de
+  // `routes.parametres`). « Licence » et « Cabinet comptable » avaient leur propre onglet pour une
+  // phrase chacun ; « Apparence » n'en portait plus que deux une fois l'image de marque partie avec
+  // les documents. Les identifiants sont ceux que visent `allerParametres` et la palette : un test
+  // vérifie qu'aucun lien ne désigne un onglet ou un panneau disparu.
+  const SETTINGS_TABS = [['societe', 'Mon entreprise'], ['documents', 'Documents'], ['envois', 'Envois'],
+    ['donnees', 'Données et sécurité'], ['app', 'L\'application']];
+
+  // Les PANNEAUX, et une seule fois. Cette table dit, pour chacun : dans quel onglet il vit, comment
+  // il s'intitule, et les mots qu'on tape pour le chercher et qui ne sont écrits nulle part à
+  // l'écran (« ocr », « iban », « token », « démo »).
+  //
+  // Elle sert à TROIS choses qui divergeaient jusqu'ici : le titre `<h2>` du panneau (posé par
+  // `panneau()`), son `data-mots` (que lit la recherche interne), et l'entrée de palette Cmd+K. La
+  // palette, elle, indexait les ONGLETS — donc chercher « mot de passe » menait, au mieux, en haut
+  // d'un onglet de sept panneaux. Elle mène maintenant au panneau lui-même. Un test vérifie que
+  // chaque entrée de cette table est posée une fois et une seule dans la page, et qu'aucun panneau
+  // de la page ne lui échappe : c'est ce qui empêche un panneau ajouté demain d'être introuvable.
+  const SETTINGS_PANNEAUX = {
+    'p-identite': { onglet: 'societe', titre: 'Identité de l\'entreprise', mots: 'raison sociale matricule fiscal registre commerce rc cnss capital adresse telephone email site web slogan assistant' },
+    'p-regime': { onglet: 'societe', titre: 'Régime fiscal et TVA', mots: 'tva assujetti forfaitaire reel exonere regime fiscal taux mention' },
+    'p-banque': { onglet: 'societe', titre: 'Coordonnées bancaires', mots: 'rib banque iban virement reglement paiement conditions' },
+    'p-facturation': { onglet: 'documents', titre: 'Règles de facturation', mots: 'timbre fiscal validite devis delai paiement echeance retenue source devise pdf export' },
+    'p-marque': { onglet: 'documents', titre: 'Image de marque (sur tes documents)', mots: 'logo cachet signature couleur accent marque entete image' },
+    'p-textes': { onglet: 'documents', titre: 'Textes imprimés sur les documents', mots: 'pied de page footer conditions mentions anglais english' },
+    'p-objectifs': { onglet: 'documents', titre: 'Objectifs et statistiques', mots: 'objectif chiffre affaires client endormi dormant statistiques' },
+    'p-envoi': { onglet: 'envois', titre: 'Envoi des emails', mots: 'mail messagerie apple mailto envoyer piece jointe' },
+    'p-comptable': { onglet: 'envois', titre: 'Ton comptable', mots: 'comptable email adresse envoyer journaux' },
+    'p-modeles': { onglet: 'envois', titre: 'Modèles de messages', mots: 'modele message objet relance rappel email gabarit variables' },
+    'p-cabinet': { onglet: 'envois', titre: 'Ton cabinet comptable', mots: 'cabinet comptable appairage empreinte cle publique paquet chiffre' },
+    'p-dossiers': { onglet: 'donnees', titre: 'Dossiers — plusieurs entreprises sur cet ordinateur', mots: 'dossier entreprise changer basculer partager deux postes rejoindre poste ordinateur nom appareil machine' },
+    'p-sauvegardes': { onglet: 'donnees', titre: 'Sauvegardes', mots: 'sauvegarde restaurer restauration perdu recuperer export import fichier donnees backup' },
+    'p-externe': { onglet: 'donnees', titre: 'Copie externe', mots: 'copie externe icloud onedrive usb disque reseau miroir abri' },
+    'p-motdepasse': { onglet: 'donnees', titre: 'Mot de passe', mots: 'mot de passe chiffrement verrouiller securite aes protection vol' },
+    'p-ocr': { onglet: 'donnees', titre: 'Lecture de factures d\'achat — ce qui sort de cet ordinateur', mots: 'photo scanner ocr lecture facture achat intelligence artificielle cle api internet confidentialite' },
+    'p-exemple': { onglet: 'donnees', titre: 'Essayer sans risque', mots: 'exemple demo essayer decouvrir jeu donnees fictives' },
+    'p-danger': { onglet: 'donnees', titre: 'Zone sensible', classe: 'danger-zone', mots: 'effacer supprimer tout remise a zero vider' },
+    'p-apparence': { onglet: 'app', titre: 'Apparence', mots: 'theme sombre clair systeme langue anglais francais apparence' },
+    'p-modules': { onglet: 'app', titre: 'Ce que l\'application t\'affiche', mots: 'modules menu masquer afficher pages barre laterale assistant demarrage' },
+    'p-maj': { onglet: 'app', titre: 'Mises à jour', mots: 'mise a jour version nouveautes beta jeton token telecharger installer maj' },
+    'p-licence': { onglet: 'app', titre: 'Licence', mots: 'licence cle activation essai expiration acheter abonnement' },
+    'p-depannage': { onglet: 'app', titre: 'Aide et dépannage', mots: 'journal log erreur bug probleme support aide depannage gel' }
+  };
+  // L'ouverture d'un panneau de réglages. `extra` est la bulle « i » qui suit le titre.
+  const panneau = (id, extra) => {
+    const p = SETTINGS_PANNEAUX[id] || { titre: id, mots: '' };
+    return `<div class="panel${p.classe ? ' ' + p.classe : ''}" id="${id}" data-mots="${h(p.mots)}"><h2>${h(p.titre)}${extra ? ' ' + extra : ''}</h2>`;
+  };
 
   // ---------- palette de recherche (Cmd/Ctrl+K) ----------
   //
@@ -4310,16 +4380,30 @@
       ['Paramètres', '#/parametres', v => { settingsTab = v; }, SETTINGS_TABS]
     ];
   }
+  // Les réglages, PANNEAU par panneau. La palette n'indexait que les onglets : taper « mot de
+  // passe » menait, au mieux, en haut d'un onglet de sept panneaux où il fallait chercher — et
+  // depuis la refonte des onglets, les six alias écrits à la main (« Paramètres → Mon entreprise »,
+  // « → Apparence »…) ne correspondaient plus à aucune entrée, donc ne rendaient plus rien du tout.
+  // Engendrés depuis `SETTINGS_PANNEAUX`, ils ne peuvent plus se périmer.
+  function reglagesDePalette() {
+    return Object.keys(SETTINGS_PANNEAUX).map(id => {
+      const p = SETTINGS_PANNEAUX[id];
+      const court = p.titre.split(' — ')[0];
+      return {
+        kind: 'Action', main: `Paramètres → ${court}`,
+        text: `parametres paramètres réglages ${p.titre} ${p.mots}`.toLowerCase(),
+        run: vers('#/parametres', () => { settingsTab = p.onglet; settingsFocus = id; })
+      };
+    });
+  }
   // Les mots qu'on tape et qui ne figurent dans aucun libellé. Sans eux, « maj », « backup »,
   // « démo » ou « mot de passe » ne rendent rien — et deux réponses vides suffisent à faire croire
   // que la recherche ne connaît pas l'application.
+  // Les six clés « Paramètres → … » ont disparu d'ici : elles nommaient les anciens onglets et se
+  // sont périmées le jour de la refonte, sans que rien ne le signale (le test ne vérifiait que la
+  // présence des MOTS dans ce bloc, pas qu'ils mènent quelque part). Les réglages sont désormais
+  // engendrés panneau par panneau — voir `reglagesDePalette`.
   const ALIAS = {
-    'Paramètres → Mises à jour': 'maj version mise à jour nouvelle version télécharger',
-    'Paramètres → Sécurité et données': 'sauvegarde backup copie externe chiffrer mot de passe verrou effacer exemple démo importer exporter dossier',
-    'Paramètres → Apparence': 'logo cachet signature couleur thème sombre police',
-    'Paramètres → Société': 'raison sociale matricule fiscal rib rc capital adresse',
-    'Paramètres → Cabinet comptable': 'appairage empreinte comptable expert',
-    'Paramètres → Licence': 'clé activation abonnement expiration',
     'Comptabilité → TVA à payer': 'tva déclaration collectée déductible crédit',
     'Comptabilité → Calendrier fiscal': 'échéance acompte déclaration date limite',
     'Comptabilité → Cabinet': 'paquet skanpack envoyer comptable mensuel',
@@ -4380,7 +4464,7 @@
     const docs = data.documents.map(d => { const t = C.computeTotals(d, company()); const cn = clientName(d.clientId); return { kind: C.TITLES[d.type], main: d.number || 'Brouillon', sub: `${cn}${d.subject ? ' — ' + d.subject : ''}`, amt: C.money(d.type === 'devis' ? t.totalTTC : t.netToPay, cur), text: `${d.number} ${cn} ${d.subject || ''} ${d.type}`.toLowerCase(), run: () => navigate('#/doc/' + d.id), ts: d.createdAt || 0 }; });
     const clients = data.clients.map(c => ({ kind: 'Client', main: c.name, sub: [c.contact, c.email, c.phone].filter(Boolean).join(' · '), text: `${c.name} ${c.contact || ''} ${c.email || ''} ${c.phone || ''} ${c.matricule || ''}`.toLowerCase(), run: () => navigate('#/client/' + c.id) }));
     const items = data.catalog.map(c => ({ kind: 'Prestation', main: c.label, sub: C.money(c.unitPrice, cur) + ' HT', text: `${c.label} ${c.description || ''}`.toLowerCase(), run: () => navigate('#/catalogue') }));
-    const all = [...actions, ...docs, ...clients, ...items, ...helps];
+    const all = [...actions, ...reglagesDePalette(), ...docs, ...clients, ...items, ...helps];
     let sel = 0, shown = [];
     const input = $('#pal-q'), res = $('#pal-res');
     const draw = () => {
@@ -4506,7 +4590,7 @@
         };
         if ($('#del-sup', root)) $('#del-sup', root).onclick = async () => {
           const n = data.purchases.filter(p => p.supplierId === s.id).length;
-          if (n) return toast(`Impossible : ${n} achat(s) sont liés à ce fournisseur. Un fournisseur qui a une histoire ne se supprime pas.`, true);
+          if (n) return toast(`Impossible : ${pl(n, 'achat')} ${n > 1 ? 'sont liés' : 'est lié'} à ce fournisseur. Un fournisseur qui a une histoire ne se supprime pas.`, true);
           if (!await confirmDialog(`Supprimer ${s.name} ?`)) return;
           forget('suppliers', s.id, s.name);
           data.suppliers = data.suppliers.filter(x => x.id !== s.id); save(true); close(); navigate('#/fournisseurs');
@@ -4601,7 +4685,7 @@
       <div class="page-head"><div><h1>${h(s.name)}</h1>${s.contact ? `<div class="small muted">${h(s.contact)}</div>` : ''}</div>
         <div class="actions">${backButton('#/fournisseurs')}<button class="btn" id="edit">Modifier</button><button class="btn btn-primary" id="buy">+ Enregistrer un achat</button></div></div>
       <div class="stats">
-        <div class="stat"><div class="lbl">Acheté HT ${info('sup.total')}</div><div class="val">${C.money(sum.ht, cur)}</div><div class="sub">${sum.count} pièce(s)</div></div>
+        <div class="stat"><div class="lbl">Acheté HT ${info('sup.total')}</div><div class="val">${C.money(sum.ht, cur)}</div><div class="sub">${pl(sum.count, 'pièce')}</div></div>
         <div class="stat"><div class="lbl">Reste à payer ${info('sup.due')}</div><div class="val ${sum.remaining > 0.0005 ? 'due' : ''}">${C.money(sum.remaining, cur)}</div><div class="sub">${sum.late > 0.0005 ? `dont ${C.money(sum.late, cur)} en retard` : 'rien en retard'}</div></div>
         <div class="stat"><div class="lbl">Délai accordé</div><div class="val">${s.paymentTermsDays === '' || s.paymentTermsDays == null ? '—' : s.paymentTermsDays + ' j'}</div><div class="sub">reporté sur chaque achat</div></div>
         <div class="stat"><div class="lbl">Relation</div><div class="val">${sum.first ? C.fmtDate(sum.first).slice(3) : '—'}</div><div class="sub">${sum.last ? 'dernier achat le ' + C.fmtDate(sum.last) : 'aucun achat'}</div></div>
@@ -4739,7 +4823,7 @@
       <h2 class="collapse-h" id="pay-h" role="button" tabindex="0" aria-expanded="${open}">
         <span class="chev">${open ? '▾' : '▸'}</span>À payer ${info('buy.payables')}<span class="count">${due.length}</span></h2>
       <div id="pay-body" ${open ? '' : 'hidden'}>
-        <p class="small muted">${C.money(total, cur)} dû au total${late.length ? ` · <span class="warn-text">${late.length} pièce(s) en retard</span>` : ''}${soon.length ? ` · ${soon.length} à régler sous 7 jours` : ''}.</p>
+        <p class="small muted">${C.money(total, cur)} dû au total${late.length ? ` · <span class="warn-text">${pl(late.length, 'pièce')} en retard</span>` : ''}${soon.length ? ` · ${soon.length} à régler sous 7 jours` : ''}.</p>
         <table class="list compact"><thead><tr><th>Fournisseur</th><th>Pièce</th><th>Échéance</th><th class="r">Reste dû</th><th></th></tr></thead><tbody>
           ${due.slice(0, 8).map(x => `<tr class="clickable ${x.late > 0 ? 'row-warn' : ''}" data-id="${h(x.id)}">
             <td>${h(supplierName(x.supplierId))}</td>
@@ -4748,7 +4832,7 @@
             <td class="r nw"><strong>${C.money(x.remaining, cur)}</strong></td>
             <td class="actions"><button class="btn btn-sm" data-payx="${h(x.id)}">Régler</button></td></tr>`).join('')}
         </tbody></table>
-        ${due.length > 8 ? `<p class="small muted mt">… et ${due.length - 8} autre(s). Filtre sur « à payer » ou « retard » pour tout voir.</p>` : ''}
+        ${due.length > 8 ? `<p class="small muted mt">… et ${pl(due.length - 8, 'autre')}. Filtre sur « à payer » ou « retard » pour tout voir.</p>` : ''}
       </div></div>`;
   }
   function bindPayables() {
@@ -5074,13 +5158,13 @@
         catch (e) { toast(e.message || 'Impossible de joindre la photo', true); return false; }
       };
       if (!st.hasKey) {
-        // « va dans Paramètres → Mises à jour → Lecture de factures » demandait de retenir trois
+        // « va dans Paramètres → Données et sécurité → Lecture de factures » demandait de retenir trois
         // niveaux et de les retrouver seul. Le second bouton y mène, sur le bon panneau.
         const go = await choiceDialog('La lecture automatique n\'est pas activée',
           `Rien ne peut être envoyé nulle part.\n\n« ${file.name} » peut quand même être jointe à cet achat comme justificatif, et tu saisis la facture à la main — c'est le fonctionnement normal, hors ligne.`,
           'Joindre la photo', 'Activer la lecture…');
         if (!go) return;
-        if (go === 'b') return allerParametres('maj', 'p-ocr');
+        if (go === 'b') return allerParametres('donnees', 'p-ocr');
         if (await attach()) { toast('Photo jointe'); render(true); }
         return;
       }
@@ -5332,7 +5416,7 @@
         };
         if ($('#del-proj', root)) $('#del-proj', root).onclick = async () => {
           const n = data.documents.filter(d => d.projectId === p.id).length + data.purchases.filter(x => x.projectId === p.id).length;
-          if (!await confirmDialog(`Supprimer « ${p.name} » ?${n ? ` ${n} pièce(s) y sont rattachées : elles ne seront pas supprimées, elles perdront simplement leur affaire.` : ''}`)) return;
+          if (!await confirmDialog(`Supprimer « ${p.name} » ?${n ? ` ${pl(n, 'pièce')} y ${n > 1 ? 'sont rattachées : elles ne seront pas supprimées, elles perdront' : 'est rattachée : elle ne sera pas supprimée, elle perdra'} simplement leur affaire.` : ''}`)) return;
           forget('projects', p.id, p.name);
           data.projects = data.projects.filter(x => x.id !== p.id);
           data.documents.forEach(d => { if (d.projectId === p.id) delete d.projectId; });
@@ -5408,7 +5492,7 @@
         <div class="filters">
           <select id="mg-dim"><option value="client" ${s.dim === 'client' ? 'selected' : ''}>Par client</option><option value="item" ${s.dim === 'item' ? 'selected' : ''}>Par prestation</option></select>
           ${info('mg.analysis')}
-          ${incomplete ? `<span class="small warn-text">${incomplete} ligne(s) sans coût connu : leur marge est surestimée.</span>` : '<span class="small muted">Tous les coûts sont connus.</span>'}
+          ${incomplete ? `<span class="small warn-text">${pl(incomplete, 'ligne')} sans coût connu : ${incomplete > 1 ? 'leur marge est surestimée' : 'sa marge est surestimée'}.</span>` : '<span class="small muted">Tous les coûts sont connus.</span>'}
         </div>
         <div class="stats">
           <div class="stat"><div class="lbl">Chiffre d'affaires ${info('stat.ca')}</div><div class="val">${C.money(totalRev, cur)}</div><div class="sub">année ${s.year}</div></div>
@@ -5525,8 +5609,8 @@
         <div class="actions">${backButton('#/marges')}<button class="btn" id="edit-p">Modifier</button>
           <button class="btn" id="p-devis">+ Devis</button><button class="btn btn-primary" id="p-achat">+ Achat</button></div></div>
       <div class="stats">
-        <div class="stat"><div class="lbl">Vendu HT ${info('mg.projectRevenue')}</div><div class="val">${C.money(m.revenue, cur)}</div><div class="sub">${m.salesCount} facture(s)${m.pending ? ` · ${C.money(m.pending, cur)} en devis` : ''}</div></div>
-        <div class="stat"><div class="lbl">Acheté HT</div><div class="val">${C.money(m.cost, cur)}</div><div class="sub">${m.buysCount} achat(s) rattaché(s)</div></div>
+        <div class="stat"><div class="lbl">Vendu HT ${info('mg.projectRevenue')}</div><div class="val">${C.money(m.revenue, cur)}</div><div class="sub">${pl(m.salesCount, 'facture')}${m.pending ? ` · ${C.money(m.pending, cur)} en devis` : ''}</div></div>
+        <div class="stat"><div class="lbl">Acheté HT</div><div class="val">${C.money(m.cost, cur)}</div><div class="sub">${pl(m.buysCount, 'achat')} rattaché${sPl(m.buysCount)}</div></div>
         <div class="stat"><div class="lbl">Marge ${info('mg.projectMargin')}</div><div class="val ${m.margin < 0 ? 'due' : 'ok'}">${C.money(m.margin, cur)}</div><div class="sub">${m.rate == null ? '' : pct(m.rate) + ' % du prix de vente'}</div></div>
         <div class="stat"><div class="lbl">En caisse ${info('mg.projectCash')}</div><div class="val ${m.cash < 0 ? 'due' : ''}">${C.money(m.cash, cur)}</div><div class="sub">${C.money(m.collected, cur)} encaissés − ${C.money(m.paid, cur)} payés</div></div>
       </div>
@@ -5540,10 +5624,19 @@
     $('#p-devis').onclick = () => navigate('#/doc/new/devis' + (p.clientId ? '/client/' + p.clientId : ''));
     $('#p-achat').onclick = () => navigate('#/achat/new');
     const sales = m.sales.concat(m.quotes).sort(byNumberDesc);
-    // Huit colonnes dans un panneau : sans `scroll-x`, la table déborde et recouvre le panneau suivant.
-    $('#p-sales').innerHTML = sales.length ? `<div class="scroll-x">${docTable(sales, { quotes: false, sort: affaireDocState.sort, onSort: true, page: affaireDocState })}</div>`
-      : '<div class="empty">Aucune vente rattachée. Ouvre un devis ou une facture et choisis cette affaire.</div>';
-    bindDocTable(() => render(), affaireDocState, '#p-sales');
+    const scols = docColumns({ quotes: false }).cols;
+    // `bindSort` passe la colonne cliquée à son rappel, et `() => render()` la JETAIT : les huit
+    // en-têtes de « Ventes rattachées » affichaient leur « ⇅ », acceptaient le clic, redessinaient
+    // la page — et ne triaient rien. Un tri qui ne trie pas ne se remarque pas : on croit que la
+    // liste était déjà dans cet ordre (défaut de la 7.17.0, resté ici).
+    const drawVentes = sortKey => {
+      if (sortKey) { affaireDocState.sort = toggleSort(affaireDocState.sort, sortKey, scols); affaireDocState.page = 1; }
+      // Huit colonnes dans un panneau : sans `scroll-x`, la table déborde et recouvre le panneau suivant.
+      $('#p-sales').innerHTML = sales.length ? `<div class="scroll-x">${docTable(sales, { quotes: false, sort: affaireDocState.sort, onSort: true, page: affaireDocState })}</div>`
+        : '<div class="empty">Aucune vente rattachée. Ouvre un devis ou une facture et choisis cette affaire.</div>';
+      bindDocTable(drawVentes, affaireDocState, '#p-sales');
+    };
+    drawVentes();
     const { cols } = purchaseColumns({ hideSupplier: false });
     $('#p-buys').innerHTML = m.buys.length ? `<div class="scroll-x"><table class="list compact"><thead>${sortHead(cols.map(c => ({ ...c, val: null })), null)}</thead><tbody>
         ${m.buys.map(b => `<tr class="clickable" data-bid="${h(b.id)}">${cols.map(c => `<td class="${c.r ? 'r nw' : ''}">${c.get(b)}</td>`).join('')}</tr>`).join('')}
@@ -5602,7 +5695,7 @@
         };
         if ($('#del-emp', root)) $('#del-emp', root).onclick = async () => {
           const n = data.payslips.filter(p => p.employeeId === e.id).length;
-          if (n) return toast(`${n} bulletin(s) existent pour ${e.name} : on ne supprime pas un salarié payé. Renseigne sa date de sortie.`, true);
+          if (n) return toast(`${pl(n, 'bulletin')} ${n > 1 ? 'existent' : 'existe'} pour ${e.name} : on ne supprime pas un salarié payé. Renseigne sa date de sortie.`, true);
           if (!await confirmDialog(`Supprimer ${e.name} ?`)) return;
           forget('employees', e.id, e.name);
           data.employees = data.employees.filter(x => x.id !== e.id);
@@ -5746,9 +5839,9 @@
           const paid = v.paid === '' ? C.leaveIsPaid(v.kind) : v.paid === '1';
           const bal = v.employeeId ? C.leaveBalance(data, v.employeeId, Number((v.from || C.today()).slice(0, 4))) : null;
           $('#lf-hint', root).innerHTML = `<span class="small ${days ? 'muted' : 'warn-text'}">`
-            + (days ? `<b>${pct(days)} jour(s) ouvrable(s)</b>, dimanches exclus. ` : 'Aucun jour ouvrable dans cette période — vérifie les dates. ')
+            + (days ? `<b>${pct(days)} jour${sPl(days)} ouvrable${sPl(days)}</b>, dimanches exclus. ` : 'Aucun jour ouvrable dans cette période — vérifie les dates. ')
             + (paid ? 'Payée : le salaire du mois n\'est pas réduit.' : 'Non payée : le brut sera réduit au prorata sur le bulletin du mois.')
-            + (bal && v.kind === 'conges' ? ` Solde de congés avant cette demande : <b>${pct(bal.remaining)} jour(s)</b>.` : '')
+            + (bal && v.kind === 'conges' ? ` Solde de congés avant cette demande : <b>${pct(bal.remaining)} jour${sPl(bal.remaining)}</b>.` : '')
             + '</span>';
         };
         $('#lf', root).oninput = $('#lf', root).onchange = hint; hint();
@@ -5837,7 +5930,7 @@
     const daily = last ? C.round3(last.c.gross / (Number(st.workedDays) || 26)) : C.round3(e.grossSalary / 26);
     let lines = [
       { label: 'Salaire du mois en cours', amount: 0 },
-      { label: `Indemnité de congés non pris (${pct(Math.max(0, bal.remaining))} jour(s))`, amount: C.round3(daily * Math.max(0, bal.remaining)) },
+      { label: `Indemnité de congés non pris (${pct(Math.max(0, bal.remaining))} jour${sPl(Math.max(0, bal.remaining))})`, amount: C.round3(daily * Math.max(0, bal.remaining)) },
       { label: 'Indemnité de préavis', amount: 0 },
       { label: 'Indemnité de fin de contrat', amount: 0 }
     ];
@@ -5953,7 +6046,7 @@
       const sum = C.payrollSummary(data, y);
       $('#p-body').innerHTML = `
         <div class="stats">
-          <div class="stat"><div class="lbl">Coût de la paie ${s.year} ${info('pay.employerCost')}</div><div class="val">${C.money(sum.cost, cur)}</div><div class="sub">${sum.count} bulletin(s), ${sum.employees} salarié(s)</div></div>
+          <div class="stat"><div class="lbl">Coût de la paie ${s.year} ${info('pay.employerCost')}</div><div class="val">${C.money(sum.cost, cur)}</div><div class="sub">${pl(sum.count, 'bulletin')}, ${pl(sum.employees, 'salarié')}</div></div>
           <div class="stat"><div class="lbl">Net versé</div><div class="val">${C.money(sum.net, cur)}</div><div class="sub">ce que touchent les salariés</div></div>
           <div class="stat"><div class="lbl">CNSS à reverser ${info('pay.cnssTotal')}</div><div class="val">${C.money(C.round3(sum.cnssEmployee + sum.cnssEmployer + sum.accident), cur)}</div><div class="sub">parts salarié et employeur</div></div>
           <div class="stat"><div class="lbl">Impôt retenu ${info('pay.irpp')}</div><div class="val">${C.money(C.round3(sum.irpp + sum.css), cur)}</div><div class="sub">à reverser au Trésor</div></div>
@@ -5961,7 +6054,7 @@
         <div class="panel"><h2>Bulletins du mois</h2>
           <div class="filters">
             <select id="p-month">${MONTHS_LONG.map((l, i) => `<option value="${i + 1}" ${m === i + 1 ? 'selected' : ''}>${l}</option>`).join('')}</select>
-            ${missing.length ? `<button class="btn btn-sm btn-primary" id="p-gen">Établir les ${missing.length} bulletin(s) manquant(s)</button>` : '<span class="small ok-text">Tous les bulletins du mois sont établis.</span>'}
+            ${missing.length ? `<button class="btn btn-sm btn-primary" id="p-gen">Établir les ${pl(missing.length, 'bulletin')} manquant${sPl(missing.length)}</button>` : '<span class="small ok-text">Tous les bulletins du mois sont établis.</span>'}
           </div>
           ${month.length ? `<div class="scroll-x"><table class="list compact"><thead><tr>
             <th>Salarié</th><th class="r">Brut</th><th class="r">CNSS</th><th class="r">IRPP</th><th class="r">Net à payer</th><th class="r">Coût employeur</th><th>Payé le</th><th></th></tr></thead><tbody>
@@ -5990,7 +6083,7 @@
       $$('#p-body [data-pdf]').forEach(b => b.onclick = () => exportPayslip(payslipById(b.dataset.pdf)));
       $$('#p-body [data-ed]').forEach(b => b.onclick = () => { const x = payslipById(b.dataset.ed); payslipForm(x, employeeById(x.employeeId), x.year, x.month, () => draw()); });
       if ($('#p-gen')) $('#p-gen').onclick = async () => {
-        if (!await confirmDialog(`Établir ${missing.length} bulletin(s) pour ${MONTHS_LONG[m - 1]} ${s.year} ?\n\nLe brut vient de chaque fiche, les absences non payées et les échéances d'avance sont reprises automatiquement. Tu pourras encore ajouter les primes, bulletin par bulletin. Rien n'est payé : c'est toi qui marques chaque bulletin comme réglé.`, 'Établir', false)) return;
+        if (!await confirmDialog(`Établir ${pl(missing.length, 'bulletin')} pour ${MONTHS_LONG[m - 1]} ${s.year} ?\n\nLe brut vient de chaque fiche, les absences non payées et les échéances d'avance sont reprises automatiquement. Tu pourras encore ajouter les primes, bulletin par bulletin. Rien n'est payé : c'est toi qui marques chaque bulletin comme réglé.`, 'Établir', false)) return;
         const st = C.payrollSettings(data);
         if (closedBlock(C.payslipDate({ year: y, month: m }), 'Ces bulletins')) return;
         missing.forEach(e => {
@@ -6000,7 +6093,7 @@
             computed: C.computePayslip(e, input, st), paidDate: '', accountId: '', method: e.method || 'virement',
             reference: '', issuedAt: C.today() });
         });
-        save(true); toast(`${missing.length} bulletin(s) établi(s)`); draw();
+        save(true); toast(`${pl(missing.length, 'bulletin')} établi${sPl(missing.length)}`); draw();
       };
     }
 
@@ -6024,7 +6117,7 @@
                 <td class="r nw"><strong>${C.money(c.employerCost, cur)}</strong></td>
                 <td class="r"><button class="btn btn-sm" data-ee="${h(e.id)}">Modifier</button></td></tr>`;
             }).join('')}
-            <tr class="total-row"><td colspan="4"><strong>${active} salarié(s) en poste</strong></td>
+            <tr class="total-row"><td colspan="4"><strong>${pl(active, 'salarié')} en poste</strong></td>
               <td class="r"><strong>${C.money(C.round3(C.activeEmployees(data).reduce((a, e) => a + (Number(e.grossSalary) || 0), 0)), cur)}</strong></td>
               <td></td>
               <td class="r"><strong>${C.money(C.round3(C.activeEmployees(data).reduce((a, e) => a + C.computePayslip(e, {}, st).employerCost, 0)), cur)}</strong></td>
@@ -6060,7 +6153,7 @@
             : '<div class="empty">Aucun salarié en poste.</div>'}
         </div>
         <div class="panel"><h2>Congés et absences de ${h(s.year)}</h2>
-          <div class="filters"><span class="small muted">${all.length} enregistrement(s)</span></div>
+          <div class="filters"><span class="small muted">${pl(all.length, 'enregistrement')}</span></div>
           ${all.length ? `<div class="scroll-x"><table class="list compact"><thead><tr>
             <th>Salarié</th><th>Nature</th><th>Du</th><th>Au</th><th class="r">Jours</th><th>Effet</th><th>Motif</th><th></th></tr></thead><tbody>
             ${all.map(l => { const e = employeeById(l.employeeId) || {};
@@ -6189,7 +6282,7 @@
               <td class="r nw">${C.money(r.base, cur)}</td><td class="r nw">${C.money(r.employee, cur)}</td>
               <td class="r nw">${C.money(r.employer, cur)}</td><td class="r nw">${C.money(r.accident, cur)}</td>
               <td class="r nw"><strong>${C.money(r.total, cur)}</strong></td></tr>`).join('')}
-            <tr class="total-row"><td colspan="4"><strong>${cn.employees} salarié(s)</strong></td>
+            <tr class="total-row"><td colspan="4"><strong>${pl(cn.employees, 'salarié')}</strong></td>
               <td class="r"><strong>${C.money(cn.base, cur)}</strong></td>
               <td class="r"><strong>${C.money(cn.employee, cur)}</strong></td>
               <td class="r"><strong>${C.money(cn.employer, cur)}</strong></td>
@@ -6235,7 +6328,7 @@
             <tr class="total-row"><td colspan="4"><strong>Total retenu</strong></td>
               <td class="r"><strong>${C.money(an.heldTotal, cur)}</strong></td><td></td></tr>
           </tbody></table></div>
-          ${an.heldMissing ? `<p class="small warn-text mt">${an.heldMissing} attestation(s) de retenue ne sont pas encore remises à tes fournisseurs. Sans elles, ils ne peuvent pas déduire ce que tu leur as retenu.</p>` : ''}`
+          ${an.heldMissing ? `<p class="small warn-text mt">${pl(an.heldMissing, 'attestation')} de retenue ${an.heldMissing > 1 ? 'ne sont pas encore remises' : "n'est pas encore remise"} à tes fournisseurs. Sans elles, ils ne peuvent pas déduire ce que tu leur as retenu.</p>` : ''}`
             : '<p class="small muted">Aucune retenue à la source opérée sur un fournisseur cette année.</p>'}
           <div class="inline mt">
             <button class="btn" id="an-csv">Exporter en CSV</button>
@@ -6265,7 +6358,7 @@
         await bridge.composeMail({
           to: acc, subject: `Déclaration CNSS ${C.quarterLabel(q)} ${y} — ${company().name}`,
           body: `Bonjour,\n\nCi-joint le détail de la déclaration CNSS du ${C.quarterLabel(q).toLowerCase()} ${y} :\n`
-            + `${cn.employees} salarié(s), assiette ${C.money(cn.base, cur)}, part salarié ${C.money(cn.employee, cur)}, `
+            + `${pl(cn.employees, 'salarié')}, assiette ${C.money(cn.base, cur)}, part salarié ${C.money(cn.employee, cur)}, `
             + `part employeur ${C.money(cn.employer, cur)}, accident du travail ${C.money(cn.accident, cur)}.\n`
             + `Total dû : ${C.money(cn.total, cur)}. Échéance : ${C.fmtDate(cn.dueDate)}.\n\nMerci de vérifier avant dépôt.\n`,
           attachments: att ? [att] : [], mode: 'auto'
@@ -6427,10 +6520,10 @@
         <div class="actions">${backButton('#/paie')}<button class="btn" id="edit-emp">Modifier</button>
           <button class="btn btn-primary" id="new-slip">+ Bulletin</button></div></div>
       <div class="stats">
-        <div class="stat"><div class="lbl">Salaire brut mensuel</div><div class="val">${C.money(e.grossSalary, cur)}</div><div class="sub">${e.headOfFamily ? 'chef de famille' : 'célibataire'}${Number(e.children) ? ` · ${e.children} enfant(s)` : ''}</div></div>
+        <div class="stat"><div class="lbl">Salaire brut mensuel</div><div class="val">${C.money(e.grossSalary, cur)}</div><div class="sub">${e.headOfFamily ? 'chef de famille' : 'célibataire'}${Number(e.children) ? ` · ${pl(e.children, 'enfant')}` : ''}</div></div>
         <div class="stat"><div class="lbl">Net estimé</div><div class="val">${C.money(c.net, cur)}</div><div class="sub">hors primes et retenues</div></div>
         <div class="stat"><div class="lbl">Coût employeur mensuel ${info('pay.employerCost')}</div><div class="val">${C.money(c.employerCost, cur)}</div><div class="sub">brut + charges patronales</div></div>
-        <div class="stat"><div class="lbl">Coût ${year}</div><div class="val">${C.money(cost, cur)}</div><div class="sub">${thisYear.length} bulletin(s)</div></div>
+        <div class="stat"><div class="lbl">Coût ${year}</div><div class="val">${C.money(cost, cur)}</div><div class="sub">${pl(thisYear.length, 'bulletin')}</div></div>
       </div>
       <div class="panel"><h2>Identité</h2>
         <div class="kv">
@@ -6448,12 +6541,12 @@
         return `<div class="split">
           <div class="panel"><h2>Congés ${year} ${info('hr.balance')}</h2>
             <div class="kv">
-              <div><span>Acquis</span><span>${pct(b.acquired)} jour(s) sur ${pct(b.perYear)} par an</span></div>
-              ${b.carry ? `<div><span>Reporté de ${Number(year) - 1}</span><span>${pct(b.carry)} jour(s)</span></div>` : ''}
-              <div><span>Pris</span><span>${pct(b.taken)} jour(s)</span></div>
-              <div><span><b>Solde</b></span><span class="${b.remaining < 0 ? 'warn-text' : ''}"><b>${pct(b.remaining)} jour(s)</b></span></div>
-              ${b.byKind.maladie ? `<div><span>Arrêt maladie</span><span>${pct(b.byKind.maladie)} jour(s)</span></div>` : ''}
-              ${b.byKind['sans-solde'] ? `<div><span>Sans solde</span><span>${pct(b.byKind['sans-solde'])} jour(s)</span></div>` : ''}
+              <div><span>Acquis</span><span>${pct(b.acquired)} jour${sPl(b.acquired)} sur ${pct(b.perYear)} par an</span></div>
+              ${b.carry ? `<div><span>Reporté de ${Number(year) - 1}</span><span>${pct(b.carry)} jour${sPl(b.carry)}</span></div>` : ''}
+              <div><span>Pris</span><span>${pct(b.taken)} jour${sPl(b.taken)}</span></div>
+              <div><span><b>Solde</b></span><span class="${b.remaining < 0 ? 'warn-text' : ''}"><b>${pct(b.remaining)} jour${sPl(b.remaining)}</b></span></div>
+              ${b.byKind.maladie ? `<div><span>Arrêt maladie</span><span>${pct(b.byKind.maladie)} jour${sPl(b.byKind.maladie)}</span></div>` : ''}
+              ${b.byKind['sans-solde'] ? `<div><span>Sans solde</span><span>${pct(b.byKind['sans-solde'])} jour${sPl(b.byKind['sans-solde'])}</span></div>` : ''}
             </div>
             <div class="inline mt"><button class="btn btn-sm" id="add-lv">+ Congé ou absence</button></div>
           </div>
@@ -6560,7 +6653,21 @@
     const cur = company().currency;
     const s = stockState;
     const items = C.trackedItems(data);
-    const alerts = C.stockAlerts(data);
+    // Les alertes se RECALCULENT à chaque dessin. Capturées une fois à l'entrée de la page, elles
+    // restaient celles d'avant : enregistrer un inventaire ou un mouvement redessine le corps de la
+    // page sans recharger la route, donc l'onglet continuait d'annoncer « 3 » et le panneau
+    // continuait de lister trois articles qu'on venait de réapprovisionner. Un compteur qui ment
+    // sur un écran qu'on vient d'utiliser fait douter de tous les autres.
+    let alerts = C.stockAlerts(data);
+    const relireAlertes = () => {
+      alerts = C.stockAlerts(data);
+      const onglet = $('#st-tabs button[data-tab="alertes"]');
+      if (!onglet) return;
+      const pastille = onglet.querySelector('.nav-count');
+      if (alerts.length && pastille) pastille.textContent = alerts.length;
+      else if (alerts.length) onglet.insertAdjacentHTML('beforeend', ` <span class="nav-count">${alerts.length}</span>`);
+      else if (pastille) pastille.remove();
+    };
 
     // Même défaut que sur Paie : le bouton vert de l'en-tête ne suivait pas l'onglet. Sur
     // « Numéros de série », il disait « + Mouvement » pendant que « + Entrée de numéros », le vrai
@@ -6597,7 +6704,7 @@
         && (!s.only || (s.only === 'alerte' ? (r.low || r.negative) : r.qty > 0)));
       $('#st-body').innerHTML = `
         <div class="stats">
-          <div class="stat"><div class="lbl">Valeur du stock ${info('stk.value')}</div><div class="val">${C.money(t.value, cur)}</div><div class="sub">${t.count} article(s) suivi(s)</div></div>
+          <div class="stat"><div class="lbl">Valeur du stock ${info('stk.value')}</div><div class="val">${C.money(t.value, cur)}</div><div class="sub">${pl(t.count, 'article')} suivi${sPl(t.count)}</div></div>
           <div class="stat" ${t.low ? 'data-stat="low" role="button" tabindex="0"' : ''}><div class="lbl">Sous le seuil ${info('stk.min')}</div><div class="val ${t.low ? 'due' : ''}">${t.low}</div><div class="sub">${t.low ? 'à recommander — voir lesquels' : 'à recommander'}</div></div>
           <div class="stat" ${t.negative ? 'data-stat="neg" role="button" tabindex="0"' : ''}><div class="lbl">Stocks négatifs ${info('stk.negative')}</div><div class="val ${t.negative ? 'due' : ''}">${t.negative}</div><div class="sub">${t.negative ? 'une entrée manque quelque part — voir lesquels' : 'rien d\'impossible'}</div></div>
           <div class="stat"><div class="lbl">Prix de vente du stock</div><div class="val">${C.money(C.round3(t.rows.reduce((a, r) => a + Math.max(0, r.qty) * r.unitPrice, 0)), cur)}</div><div class="sub">ce qu'il rapporterait vendu</div></div>
@@ -6650,7 +6757,7 @@
       $('#st-body').innerHTML = `
         <div class="panel"><h2>Mouvements de ${h(year)} ${info('stk.moves')}</h2>
           <div class="filters"><select id="st-year">${annees.map(y => `<option ${y === s.year ? 'selected' : ''}>${y}</option>`).join('')}</select>
-            <span class="small muted">${all.length} mouvement(s)</span></div>
+            <span class="small muted">${pl(all.length, 'mouvement')}</span></div>
           ${all.length ? `<div class="scroll-x"><table class="list compact"><thead><tr>
             <th>Date</th><th>Article</th><th>Origine</th><th>Référence</th><th class="r">Quantité</th><th class="r">Coût unitaire</th><th class="r">Stock après</th></tr></thead><tbody>
             ${paged.rows.map(m => `<tr class="${m.docId ? 'clickable' : ''}" ${m.docId ? `data-go="${h(m.source === 'achat' ? '#/achat/' : '#/doc/')}${h(m.docId)}"` : ''}>
@@ -6680,7 +6787,7 @@
           <p class="small muted mb">Une fois par an au minimum, on compte ce qu'il y a vraiment en rayon et on le compare à ce que dit l'application. Un écart n'est pas une faute : c'est de la casse non déclarée, une sortie oubliée ou une erreur de saisie. L'important est de le voir.</p>
           <div class="filters">
             <label class="small">Date du comptage ${dateFieldHtml('', 'countDate', s.countDate, {})}</label>
-            <span class="small muted">${counted.length} article(s) comptés sur ${rows.length}</span>
+            <span class="small muted">${pl(counted.length, 'article')} compté${sPl(counted.length)} sur ${rows.length}</span>
           </div>
           <div class="scroll-x"><table class="list compact"><thead><tr>
             <th>Article</th><th class="r">Stock théorique</th><th class="r">Compté</th><th class="r">Écart</th><th class="r">Valeur de l'écart</th></tr></thead><tbody>
@@ -6692,7 +6799,7 @@
               <td class="r nw">${r.gap == null || r.gap === 0 ? '<span class="muted">—</span>' : C.money(r.value, cur)}</td></tr>`).join('')}
           </tbody></table></div>
           <div class="inline mt">
-            <button class="btn btn-primary" id="inv-apply" ${gaps.length ? '' : 'disabled'}>Enregistrer ${gaps.length} écart(s)</button>
+            <button class="btn btn-primary" id="inv-apply" ${gaps.length ? '' : 'disabled'}>Enregistrer ${pl(gaps.length, 'écart')}</button>
             <button class="btn" id="inv-clear" ${counted.length ? '' : 'disabled'}>Effacer le comptage</button>
             <span class="small ${value < 0 ? 'warn-text' : 'muted'}">${gaps.length ? `Impact sur la valeur du stock : ${C.money(value, cur)}` : 'Aucun écart pour l\'instant.'}</span>
           </div>
@@ -6710,11 +6817,11 @@
       });
       $('#inv-clear').onclick = () => { s.counts = {}; drawInventory(); };
       $('#inv-apply').onclick = async () => {
-        if (!await confirmDialog(`Enregistrer ${gaps.length} mouvement(s) d'inventaire au ${C.fmtDate(s.countDate)} ? Le stock théorique sera aligné sur ce que tu as compté. Cette opération est tracée dans les mouvements et se corrige comme n'importe quel ajustement.`, 'Enregistrer')) return;
+        if (!await confirmDialog(`Enregistrer ${pl(gaps.length, 'mouvement')} d'inventaire au ${C.fmtDate(s.countDate)} ? Le stock théorique sera aligné sur ce que tu as compté. Cette opération est tracée dans les mouvements et se corrige comme n'importe quel ajustement.`, 'Enregistrer')) return;
         if (closedBlock(s.countDate, 'Cet inventaire')) return;
         gaps.forEach(r => data.stockAdjustments.push({ id: C.uid(), date: s.countDate, itemId: r.itemId, qty: r.gap,
           unitCost: '', source: 'inventaire', reference: '', note: `Inventaire du ${C.fmtDate(s.countDate)}` }));
-        s.counts = {}; save(true); toast(`${gaps.length} écart(s) enregistré(s)`); draw();
+        s.counts = {}; save(true); toast(`${pl(gaps.length, 'écart')} enregistré${sPl(gaps.length)}`); draw();
       };
     }
 
@@ -6749,12 +6856,12 @@
       const gaps = C.serialGaps(data);
       $('#st-body').innerHTML = `
         ${gaps.length ? `<div class="panel" style="border-left:3px solid var(--warning)"><h2>Les deux comptes ne disent pas la même chose ${info('ser.gap')}</h2>
-          <p class="small">${gaps.map(g => `<b>${h(g.label)}</b> : ${pct(g.qty)} en stock, ${g.serials} numéro(s) disponible(s)`).join(' · ')}. Un numéro n'a pas été saisi à l'entrée, ou pas attribué à la sortie.</p></div>` : ''}
+          <p class="small">${gaps.map(g => `<b>${h(g.label)}</b> : ${pct(g.qty)} en stock, ${pl(g.serials, 'numéro')} disponible${sPl(g.serials)}`).join(' · ')}. Un numéro n'a pas été saisi à l'entrée, ou pas attribué à la sortie.</p></div>` : ''}
         <div class="panel"><h2>Numéros de série ${info('ser.list')}</h2>
           ${serialized.length ? `<div class="filters">
             <input type="search" id="se-q" placeholder="Rechercher : numéro, article, client…" value="${h(s.ser.q)}">
             <select id="se-st"><option value="">Tous les états</option>${C.SERIAL_STATUSES.map(([v, l]) => `<option value="${v}" ${s.ser.status === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
-            <span class="small muted">${all.length} numéro(s)</span>
+            <span class="small muted">${pl(all.length, 'numéro')}</span>
           </div>
           ${all.length ? `<div class="scroll-x"><table class="list compact"><thead><tr>
             <th>Numéro</th><th>Article</th><th>État</th><th>Entré le</th><th>Client</th><th>Livré le</th><th>Garantie</th><th></th></tr></thead><tbody>
@@ -6799,6 +6906,7 @@
       if (!items.length) { $('#st-body').innerHTML = ''; return; }
       if (s.tab === 'series') return drawSerials();
       if (s.tab === 'mouvements') return drawMoves();
+      relireAlertes();
       if (s.tab === 'inventaire') return drawInventory();
       if (s.tab === 'alertes') return drawAlerts();
       drawState();
@@ -7035,8 +7143,8 @@
           const dbl = nums.filter(x => known.has(x.toLowerCase()));
           const item = data.catalog.find(c => c.id === v.itemId) || {};
           $('#sif-hint', root).innerHTML = `<span class="small ${dbl.length ? 'warn-text' : 'muted'}">`
-            + (nums.length ? `${nums.length} numéro(s) à enregistrer${item.warrantyMonths ? `, garantie de ${item.warrantyMonths} mois` : ', sans garantie'}.` : 'Colle ou saisis au moins un numéro.')
-            + (dbl.length ? ` ${dbl.length} déjà connu(s) et ignoré(s) : ${dbl.slice(0, 5).join(', ')}.` : '') + '</span>';
+            + (nums.length ? `${pl(nums.length, 'numéro')} à enregistrer${item.warrantyMonths ? `, garantie de ${item.warrantyMonths} mois` : ', sans garantie'}.` : 'Colle ou saisis au moins un numéro.')
+            + (dbl.length ? ` ${pl(dbl.length, 'numéro')} déjà connu${sPl(dbl.length)} et ignoré${sPl(dbl.length)} : ${dbl.slice(0, 5).join(', ')}.` : '') + '</span>';
         };
         $('#sif', root).oninput = $('#sif', root).onchange = hint; hint();
         $('#ok', root).onclick = () => {
@@ -7056,7 +7164,7 @@
             added++;
           });
           save(true); close();
-          toast(added ? `${added} numéro(s) enregistré(s)` : 'Tous ces numéros étaient déjà connus', !added);
+          toast(added ? `${pl(added, 'numéro')} enregistré${sPl(added)}` : 'Tous ces numéros étaient déjà connus', !added);
           if (done) done();
         };
       });
@@ -7078,14 +7186,14 @@
         const picked = chosen[item.id] || new Set(already.map(x => x.id));
         chosen[item.id] = picked;
         return `<div class="panel"><h2>${h(item.label)}</h2>
-          <p class="small muted mb">${pct(need)} unité(s) sur ce document.</p>
+          <p class="small muted mb">${pct(need)} unité${sPl(need)} sur ce document.</p>
           ${avail.length || already.length ? `<div class="scroll-x"><table class="list compact"><thead><tr><th></th><th>Numéro</th><th>Entré le</th><th>État</th></tr></thead><tbody>
             ${already.concat(avail).map(x => `<tr>
               <td><input type="checkbox" data-pick="${h(x.id)}" data-item="${h(item.id)}" ${picked.has(x.id) ? 'checked' : ''}></td>
               <td><strong>${h(x.serial)}</strong></td><td class="nw">${C.fmtDate(x.inDate)}</td>
               <td>${x.outDocId === doc.id ? '<span class="ok-text">déjà attribué à ce document</span>' : C.serialStatusLabel(x.status)}</td></tr>`).join('')}
           </tbody></table></div>
-          <p class="small ${picked.size === need ? 'muted' : 'warn-text'}">${picked.size} sélectionné(s) sur ${pct(need)} attendu(s).${item.warrantyMonths ? ` Garantie de ${item.warrantyMonths} mois à compter du ${C.fmtDate(doc.date)}.` : ' Aucune garantie définie sur cet article.'}</p>`
+          <p class="small ${picked.size === need ? 'muted' : 'warn-text'}">${pl(picked.size, 'sélectionné')} sur ${pct(need)} attendu${sPl(need)}.${item.warrantyMonths ? ` Garantie de ${item.warrantyMonths} mois à compter du ${C.fmtDate(doc.date)}.` : ' Aucune garantie définie sur cet article.'}</p>`
             : '<div class="empty">Aucune unité disponible en stock pour cet article. Saisis d\'abord les numéros entrés, depuis la page Stock.</div>'}
         </div>`;
       }).join('');
@@ -7116,7 +7224,7 @@
             const item = data.catalog.find(c => c.id === x.itemId);
             if (item && !x.warrantyMonths) x.warrantyMonths = Number(item.warrantyMonths) || 0;
           });
-          save(true); close(); toast(`${keep.size} numéro(s) attribué(s)`);
+          save(true); close(); toast(`${pl(keep.size, 'numéro')} attribué${sPl(keep.size)}`);
           if (done) done();
         };
       });
@@ -7240,7 +7348,7 @@
           const el = $('#amort-hint', root);
           if (!rows.length) { el.innerHTML = '<span class="small muted">Renseigne une valeur, une durée et une date de mise en service pour voir le plan d\'amortissement.</span>'; return; }
           const cur = company().currency;
-          el.innerHTML = `<span class="small muted">Plan sur ${rows.length} exercice(s) — ${rows.slice(0, 4).map(r => `<b>${r.year}</b> : ${C.money(r.annuity, cur)}`).join(' · ')}${rows.length > 4 ? ' · …' : ''}</span>`;
+          el.innerHTML = `<span class="small muted">Plan sur ${pl(rows.length, 'exercice')} — ${rows.slice(0, 4).map(r => `<b>${r.year}</b> : ${C.money(r.annuity, cur)}`).join(' · ')}${rows.length > 4 ? ' · …' : ''}</span>`;
         };
         $('select[name=category]', root).onchange = e => {
           if (!yearsTouched) $('input[name=years]', root).value = C.assetClassYears(e.target.value);
@@ -7350,7 +7458,7 @@
       const t = C.assetTotals(data, y);
       $('#im-body').innerHTML = `
         <div class="stats">
-          <div class="stat"><div class="lbl">Valeur d'acquisition ${info('immo.gross')}</div><div class="val">${C.money(t.gross, cur)}</div><div class="sub">${t.count} bien(s) à l'actif</div></div>
+          <div class="stat"><div class="lbl">Valeur d'acquisition ${info('immo.gross')}</div><div class="val">${C.money(t.gross, cur)}</div><div class="sub">${pl(t.count, 'bien')} à l'actif</div></div>
           <div class="stat"><div class="lbl">Dotation ${s.year} ${info('immo.annuity')}</div><div class="val">${C.money(t.annuity, cur)}</div><div class="sub">la charge de l'exercice</div></div>
           <div class="stat"><div class="lbl">Amortissement cumulé</div><div class="val">${C.money(t.cumulated, cur)}</div><div class="sub">depuis l'origine</div></div>
           <div class="stat"><div class="lbl">Valeur nette comptable ${info('immo.nbv')}</div><div class="val">${C.money(t.nbv, cur)}</div><div class="sub">ce qu'il reste à amortir</div></div>
@@ -7548,7 +7656,7 @@
         };
         if ($('#del-acc', root)) $('#del-acc', root).onclick = async () => {
           const n = C.cashMovements(data, company(), {}, a.id).length;
-          if (!await confirmDialog(`Supprimer « ${a.name} » ?${n ? ` ${n} mouvement(s) y sont rattachés : ils basculeront sur le compte par défaut.` : ''}`)) return;
+          if (!await confirmDialog(`Supprimer « ${a.name} » ?${n ? ` ${pl(n, 'mouvement')} y ${n > 1 ? 'sont rattachés : ils basculeront' : 'est rattaché : il basculera'} sur le compte par défaut.` : ''}`)) return;
           forget('accounts', a.id, a.name);
           data.accounts = data.accounts.filter(x => x.id !== a.id);
           if (data.accounts.length && !data.accounts.some(x => x.isDefault)) data.accounts[0].isDefault = true;
@@ -7626,7 +7734,7 @@
       const f = C.cashForecast(data, company(), 30, C.today());
       $('#t-body').innerHTML = `
         <div class="stats">
-          <div class="stat"><div class="lbl">Disponible aujourd'hui ${info('tre.total')}</div><div class="val ${pos.total < 0 ? 'due' : ''}">${C.money(pos.total, cur)}</div><div class="sub">${pos.accounts.length} compte(s)</div></div>
+          <div class="stat"><div class="lbl">Disponible aujourd'hui ${info('tre.total')}</div><div class="val ${pos.total < 0 ? 'due' : ''}">${C.money(pos.total, cur)}</div><div class="sub">${pl(pos.accounts.length, 'compte')}</div></div>
           <div class="stat"><div class="lbl">À encaisser ${info('dash.open')}</div><div class="val">${C.money(f.inflow, cur)}</div><div class="sub">sous 30 jours</div></div>
           <div class="stat"><div class="lbl">À décaisser ${info('buy.payables')}</div><div class="val">${C.money(-f.outflow, cur)}</div><div class="sub">sous 30 jours</div></div>
           <div class="stat"><div class="lbl">Solde projeté à 30 jours ${info('tre.projected')}</div><div class="val ${f.end < 0 ? 'due' : 'ok'}">${C.money(f.end, cur)}</div><div class="sub">${f.shortfall ? `<span class="warn-text">passage en négatif le ${C.fmtDate(f.shortfall.date)}</span>` : 'aucun trou prévu'}</div></div>
@@ -7634,7 +7742,7 @@
         ${f.shortfall ? `<div class="panel" style="border-left:3px solid var(--danger)">
           <h2 style="color:var(--danger)">Trou de trésorerie prévu le ${C.fmtDate(f.shortfall.date)} ${info('tre.shortfall')}</h2>
           <p class="small">Si tout se passe comme prévu, ton solde descendra à <strong>${C.money(f.shortfall.balance, cur)}</strong> après « ${h(f.shortfall.label)} ».</p>
-          <p class="small muted">Ce qui peut le combler : relancer ${f.late.clients.length} facture(s) client déjà échue(s), décaler un règlement fournisseur, ou prévenir ta banque. Un trou anticipé se négocie ; un trou constaté se subit.</p>
+          <p class="small muted">Ce qui peut le combler : relancer ${pl(f.late.clients.length, 'facture')} client déjà échue${sPl(f.late.clients.length)}, décaler un règlement fournisseur, ou prévenir ta banque. Un trou anticipé se négocie ; un trou constaté se subit.</p>
         </div>` : ''}
         <div class="panel"><h2>Comptes ${info('tre.accounts')}</h2>
           <table class="list compact"><thead><tr><th>Compte</th><th>Type</th><th class="r">Solde de départ</th><th class="r">Mouvements</th><th class="r">Solde</th><th class="r">Non pointé</th><th></th></tr></thead><tbody>
@@ -7713,7 +7821,7 @@
           <select id="t-acc"><option value="">Tous les comptes</option>${data.accounts.map(a => `<option value="${a.id}" ${s.account === a.id ? 'selected' : ''}>${h(a.name)}</option>`).join('')}</select>
           <select id="t-year">${annees.map(y => `<option ${y === s.year ? 'selected' : ''}>${y}</option>`).join('')}</select>
           ${info('tre.moves')}
-          <span class="small muted">${all.length} mouvement(s)</span>
+          <span class="small muted">${pl(all.length, 'mouvement')}</span>
         </div>
         <div class="stats">
           <div class="stat"><div class="lbl">Entrées</div><div class="val ok">${C.money(entrees, cur)}</div><div class="sub">encaissements et apports</div></div>
@@ -7788,14 +7896,14 @@
               : `<span class="warn-text"><strong>Écart de ${C.money(Math.abs(r.gap), cur)}.</strong> ${r.gap > 0 ? 'SkanFact compte plus que ta banque' : 'ta banque compte plus que SkanFact'} : il manque une pièce quelque part.</span>`}
           </div>
         </div>
-        <div class="panel"><h2>Pas encore pointés — ${pending.length} mouvement(s) ${info('tre.pending')}</h2>
+        <div class="panel"><h2>Pas encore pointés — ${pl(pending.length, 'mouvement')} ${info('tre.pending')}</h2>
           <p class="small muted mb">Coche ce que tu retrouves sur ton relevé. Ce qui reste décoché est soit en cours de traitement à la banque, soit une erreur de saisie.</p>
           ${pending.length ? `<table class="list compact"><thead><tr><th style="width:46px"></th><th>Date</th><th>Libellé</th><th>Référence</th><th class="r">Montant</th></tr></thead><tbody>
             ${pending.map(ligne).join('')}
           </tbody><tfoot><tr><td colspan="4"><strong>Total non pointé</strong></td><td class="r"><strong>${C.money(r.pendingAmount, cur)}</strong></td></tr></tfoot></table>`
             : '<div class="empty">Tout est pointé. Ton relevé et SkanFact sont alignés.</div>'}
         </div>
-        ${pointes.length ? `<div class="panel"><h2><button class="btn btn-ghost btn-sm" id="t-vus">${s.showPointed ? '▾' : '▸'}</button> Déjà pointés — ${pointes.length} mouvement(s)</h2>
+        ${pointes.length ? `<div class="panel"><h2><button class="btn btn-ghost btn-sm" id="t-vus">${s.showPointed ? '▾' : '▸'}</button> Déjà pointés — ${pl(pointes.length, 'mouvement')}</h2>
           <p class="small muted mb">Décoche si tu t'es trompé : le mouvement revient dans la liste du dessus et le solde pointé se recalcule.</p>
           ${s.showPointed ? `<table class="list compact"><thead><tr><th style="width:46px"></th><th>Date</th><th>Libellé</th><th>Référence</th><th class="r">Montant</th></tr></thead><tbody>
             ${pointes.map(ligne).join('')}
@@ -7928,7 +8036,7 @@
       $('#s-body').innerHTML = `
         <div class="stats">
           ${statCard('Chiffre d\'affaires HT', C.money(cur1.ht, cur), cur1.ht, prev.ht, `${p.label} · avoirs déduits`, 'stat.ca')}
-          ${statCard('Factures émises', String(cur1.invoices), cur1.invoices, prev.invoices, `${cur1.count - cur1.invoices} avoir(s) sur la période`, 'stat.count')}
+          ${statCard('Factures émises', String(cur1.invoices), cur1.invoices, prev.invoices, `${pl(cur1.count - cur1.invoices, 'avoir')} sur la période`, 'stat.count')}
           ${statCard('Panier moyen HT', C.money(cur1.avgTicket, cur), cur1.avgTicket, prev.avgTicket, 'par facture émise', 'stat.avg')}
           ${statCard('TVA collectée', C.money(cur1.vat, cur), cur1.vat, prev.vat, 'à reverser, avoirs déduits', 'stat.vat')}
         </div>
@@ -8098,7 +8206,7 @@
     clients.forEach((x, i) => rows.push({ section: 'Clients', label: `${i + 1}. ${x.name}`, value: m(x.ht) }));
     mvt.nouveaux.forEach(x => rows.push({ section: 'Nouveaux clients', label: x.name, value: `${C.fmtDate(x.since)} — ${m(x.ht)}` }));
     mvt.dormants.forEach(x => rows.push({ section: 'Clients endormis', label: x.name, value: `${C.fmtDate(x.last)} — ${x.days} jours` }));
-    payers.tous.forEach(x => rows.push({ section: 'Délai de paiement', label: x.name, value: `${x.delay} jours sur ${x.count} facture(s)` }));
+    payers.tous.forEach(x => rows.push({ section: 'Délai de paiement', label: x.name, value: `${x.delay} jours sur ${pl(x.count, 'facture')}` }));
     if (obj) {
       rows.push({ section: 'Objectif', label: 'Objectif annuel HT', value: m(obj.goal) });
       rows.push({ section: 'Objectif', label: 'Réalisé', value: `${m(obj.ht)} (${obj.pct} %)` });
@@ -8173,14 +8281,14 @@
       $('#c-body').innerHTML = `
         <div class="filters">
           <input type="search" id="cpt-q" placeholder="Rechercher : n°, client, objet, référence…" value="${h(comptaState.q)}">
-          ${q ? `<span class="small muted">${rows.length} sur ${allRows.length} document(s) · ${pays.length} sur ${allPays.length} paiement(s)</span>
+          ${q ? `<span class="small muted">${rows.length} sur ${pl(allRows.length, 'document')} · ${pays.length} sur ${pl(allPays.length, 'paiement')}</span>
             ${filterReset(true)}
             <span class="small warn-text">Les totaux ci-dessous ne portent que sur la sélection.</span>` : ''}
         </div>
         <div class="stats">
-          <div class="stat"><div class="lbl">CA HT — ${h(periodLabel())} ${info('dash.caMonth')}</div><div class="val">${C.money(sum.ht, cur)}</div><div class="sub">${sum.count} document(s), avoirs déduits</div></div>
+          <div class="stat"><div class="lbl">CA HT — ${h(periodLabel())} ${info('dash.caMonth')}</div><div class="val">${C.money(sum.ht, cur)}</div><div class="sub">${pl(sum.count, 'document')}, avoirs déduits</div></div>
           <div class="stat"><div class="lbl">TVA collectée ${info('compta.vat')}</div><div class="val">${C.money(sum.tva, cur)}</div><div class="sub">+ timbres ${C.money(sum.timbre, cur)}</div></div>
-          <div class="stat"><div class="lbl">Encaissé sur la période ${info('compta.payments')}</div><div class="val">${C.money(paidTotal, cur)}</div><div class="sub">${pays.length} paiement(s)</div></div>
+          <div class="stat"><div class="lbl">Encaissé sur la période ${info('compta.payments')}</div><div class="val">${C.money(paidTotal, cur)}</div><div class="sub">${pl(pays.length, 'paiement')}</div></div>
           <div class="stat" data-cstat="encaisser" role="button" tabindex="0" title="Voir les factures qui restent à encaisser"><div class="lbl">Reste à encaisser (total) ${info('dash.open')}</div><div class="val">${C.money(openAmount, cur)}</div><div class="sub">${pl(open.length, 'facture ouverte', 'factures ouvertes')}</div></div>
         </div>
         <div class="panel"><h2>TVA par taux — ${h(periodLabel())} ${info('compta.vat')}</h2>
@@ -8238,7 +8346,7 @@
         const tpl = { ...C.DEFAULT_EMAIL_TEMPLATES.comptable, ...((company().emailTemplates || {}).comptable || {}) };
         const vars = { objet: periodLabel(), numero: rows.length, montant: C.money(sum.ht, cur), societe: company().name, client: company().accountantName || '' };
         modal(`<h2>Envoyer la comptabilité au comptable</h2>
-          <p class="small muted">${rows.length} document(s) · ${C.money(sum.ht, cur)} HT · TVA ${C.money(sum.tva, cur)} — ${h(periodLabel())}</p>
+          <p class="small muted">${pl(rows.length, 'document')} · ${C.money(sum.ht, cur)} HT · TVA ${C.money(sum.tva, cur)} — ${h(periodLabel())}</p>
           <form id="cpf" class="grid-2">
             ${field('Email du comptable', 'to', company().accountantEmail || '', 'email', 'placeholder="comptable@cabinet.tn"')}
             <label class="check" style="align-self:end"><input type="checkbox" name="remember" checked> Retenir cette adresse</label>
@@ -8308,7 +8416,7 @@
             <span class="small warn-text">Les totaux ne portent que sur la sélection.</span>` : ''}
         </div>
         <div class="stats">
-          <div class="stat"><div class="lbl">Achats HT — ${h(label)} ${info('compta.buyJournal')}</div><div class="val">${C.money(sum.ht, cur)}</div><div class="sub">${sum.count} pièce(s)</div></div>
+          <div class="stat"><div class="lbl">Achats HT — ${h(label)} ${info('compta.buyJournal')}</div><div class="val">${C.money(sum.ht, cur)}</div><div class="sub">${pl(sum.count, 'pièce')}</div></div>
           <div class="stat"><div class="lbl">TVA déductible ${info('compta.deductible')}</div><div class="val">${C.money(sum.deductible, cur)}</div><div class="sub">${sum.deductible === sum.tva ? 'toute la TVA payée' : `sur ${C.money(sum.tva, cur)} payés`}</div></div>
           <div class="stat"><div class="lbl">Retenues opérées ${info('buy.withholding')}</div><div class="val">${C.money(sum.rs, cur)}</div><div class="sub">à reverser au fisc</div></div>
           <div class="stat"><div class="lbl">Total réglé ou dû ${info('compta.buyNet')}</div><div class="val">${C.money(sum.net, cur)}</div><div class="sub">net à payer, toutes pièces</div></div>
@@ -8392,8 +8500,8 @@
         ` : ''}
         <div class="panel"><h2>Résultat simplifié — ${h(periodLabel())} ${info('compta.result')}</h2>
           <div class="stats compact-stats">
-            <div class="stat"><div class="lbl">Produits (ventes HT)</div><div class="val">${C.money(res.produits, cur)}</div><div class="sub">${res.salesCount} pièce(s)</div></div>
-            <div class="stat"><div class="lbl">Charges HT</div><div class="val">${C.money(res.charges, cur)}</div><div class="sub">${res.buysCount} pièce(s) d'achat</div></div>
+            <div class="stat"><div class="lbl">Produits (ventes HT)</div><div class="val">${C.money(res.produits, cur)}</div><div class="sub">${pl(res.salesCount, 'pièce')}</div></div>
+            <div class="stat"><div class="lbl">Charges HT</div><div class="val">${C.money(res.charges, cur)}</div><div class="sub">${pl(res.buysCount, 'pièce')} d'achat</div></div>
             <div class="stat"><div class="lbl">Coût des marchandises vendues ${info('stk.cogs')}</div><div class="val">${C.money(res.cogs, cur)}</div><div class="sub">${res.cogs ? 'sorties de stock, au coût moyen' : 'aucune sortie de stock'}</div></div>
             <div class="stat"><div class="lbl">Coût de la paie ${info('pay.employerCost')}</div><div class="val">${C.money(res.payroll, cur)}</div><div class="sub">${res.payroll ? 'brut + charges patronales' : 'aucun bulletin sur la période'}</div></div>
             <div class="stat"><div class="lbl">Dotation aux amortissements ${info('immo.annuity')}</div><div class="val">${C.money(res.depreciation, cur)}</div><div class="sub">${res.depreciation ? 'une charge qui ne sort pas d\'argent' : 'aucun bien amorti sur la période'}</div></div>
@@ -8609,7 +8717,7 @@
       $$('[data-check]').forEach(b => b.onclick = () => CHECK_ACTIONS[b.dataset.check].run());
       if ($('#do-close')) $('#do-close').onclick = async () => {
         const warn = blocking.length
-          ? `\n\nPoint(s) à régler d'abord : ${blocking.map(c => c.label).join(', ')}.`
+          ? `\n\n${pl(blocking.length, 'point')} à régler d'abord : ${blocking.map(c => c.label).join(', ')}.`
           : '';
         if (!await confirmDialog(`Clôturer ${next.label} ?\n\nAprès ça, aucune pièce datée du ${C.fmtDate(next.from)} au ${C.fmtDate(next.to)} ne pourra plus être créée, modifiée ou supprimée. Tu pourras rouvrir si besoin, avec un motif.${warn}`, 'Clôturer', false)) return;
         const r = C.closePeriod(data, next.to, { at: Date.now(), by: deviceLabel() });
@@ -8736,7 +8844,7 @@
                <div id="cab-pw" ${cabinetState.seal ? '' : 'hidden'} class="mb">
                  <input type="password" id="cab-pwv" placeholder="Mot de passe convenu avec ton comptable" style="max-width:340px">
                  <div class="small muted">Transmets-le-lui par un autre canal que le fichier : par téléphone, pas dans le même mail.
-                   Mieux : demande-lui son fichier d'appairage et importe-le dans <a href="#" id="cab-gopair" class="warn-link">Paramètres → Cabinet comptable</a>.</div>
+                   Mieux : demande-lui son fichier d'appairage et importe-le dans <a href="#" id="cab-gopair" class="warn-link">Paramètres → Envois → Ton cabinet comptable</a>.</div>
                </div>`}
           <div class="inline">
             <button class="btn btn-primary" id="cab-build" ${moisVide ? 'disabled title="Ce mois ne contient aucune pièce."' : ''}>Fabriquer le paquet…</button>
@@ -8762,7 +8870,7 @@
       $('#cab-month').onchange = e => { cabinetState.month = e.target.value; draw(); };
       if ($('#cab-goclose')) $('#cab-goclose').onclick = e => { e.preventDefault(); comptaState.tab = 'clotures'; draw(); $$('#c-tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === 'clotures')); };
       if ($('#cab-seal')) $('#cab-seal').onchange = e => { cabinetState.seal = e.target.checked; $('#cab-pw').hidden = !e.target.checked; };
-      if ($('#cab-gopair')) $('#cab-gopair').onclick = e => { e.preventDefault(); allerParametres('cabinet', 'p-cabinet'); };
+      if ($('#cab-gopair')) $('#cab-gopair').onclick = e => { e.preventDefault(); allerParametres('envois', 'p-cabinet'); };
 
       if ($('#cab-vers-factures')) $('#cab-vers-factures').onclick = () => navigate('#/factures');
       // L'historique donnait l'empreinte du paquet et jamais son emplacement : six semaines plus
@@ -8811,7 +8919,7 @@
             path: r.path, missing: (r.absents || []).length
           }]);
           save(true);
-          const warn = (r.absents || []).length ? ` ${r.absents.length} fichier(s) n'ont pas pu être joints (voir le manifeste).` : '';
+          const warn = (r.absents || []).length ? ` ${pl(r.absents.length, 'fichier')} n'${r.absents.length > 1 ? 'ont' : 'a'} pas pu être joint${sPl(r.absents.length)} (voir le manifeste).` : '';
           toast(`Paquet créé : ${r.path.split(/[\\/]/).pop()}${warn}`);
           draw();
         } catch (err) {
@@ -8847,6 +8955,17 @@
     function drawFiscal() {
       const rules = C.fiscalDeadlines(data);
       const up = C.upcomingFiscal(data, C.today(), 120);
+      // Une échéance marquée déposée quitte « Ce qui arrive » sur-le-champ. Le « Annuler » du
+      // bandeau dure huit secondes ; passé ce délai, l'occurrence pointée par erreur n'était plus
+      // NULLE PART, et le seul recours restant était de désactiver la règle — donc de perdre aussi
+      // l'échéance suivante. C'est la règle de la 7.17.0 (« un verdict qui vit deux secondes n'est
+      // pas un verdict »), jamais portée ici : le panneau qui suit rend le geste relisible.
+      // L'identifiant est `règle@date` : on le redécoupe pour nommer la ligne.
+      const deposees = (data.fiscalFilings || []).slice().sort((a2, b2) => (b2.at || 0) - (a2.at || 0)).map(f => {
+        const [ruleId, date] = String(f.id).split('@');
+        const r = rules.find(x => x.id === ruleId);
+        return { id: f.id, at: f.at, date, label: r ? r.label : ruleId };
+      });
       $('#c-body').innerHTML = `
         <div class="panel"><h2>Ce qui arrive ${info('compta.fiscal')}</h2>
           ${up.length ? `<table class="list compact"><thead><tr><th>Échéance</th><th>Date</th><th class="r">Dans</th><th></th></tr></thead><tbody>
@@ -8856,6 +8975,14 @@
           </tbody></table>` : '<div class="empty">Aucune échéance activée. Active celles qui te concernent ci-dessous.</div>'}
           <p class="small muted mt"><em>À VÉRIFIER avec ton comptable :</em> les dates limites, la périodicité et les déclarations qui te concernent dépendent de ta forme juridique, de ton régime fiscal et de la présence de salariés. Ce calendrier est un pense-bête que tu règles toi-même, pas une source officielle.</p>
         </div>
+        ${deposees.length ? `<div class="panel"><h2>Déjà déposées</h2>
+          <p class="small muted mb">Ce que tu as marqué comme déposé. Le « Annuler » du bandeau ne dure que quelques
+          secondes : c'est ici qu'on revient sur une échéance pointée par erreur, un mois plus tard.</p>
+          <table class="list compact"><thead><tr><th>Déclaration</th><th>Échéance</th><th>Marquée le</th><th></th></tr></thead><tbody>
+            ${deposees.map(f => `<tr><td><strong>${h(f.label)}</strong></td><td class="nw">${h(f.date ? C.fmtDate(f.date) : '—')}</td>
+              <td class="nw small muted">${f.at ? h(new Date(f.at).toLocaleDateString('fr-FR')) : '—'}</td>
+              <td class="r"><button class="btn btn-sm" data-fundo="${h(f.id)}" data-flab="${h(f.label)}">Retirer « déposée »</button></td></tr>`).join('')}
+          </tbody></table></div>` : ''}
         <div class="panel"><h2>Les échéances et leur réglage</h2>
           <table class="list compact"><thead><tr><th>Déclaration</th><th>Périodicité</th><th style="width:110px">Jour limite</th><th style="width:90px">Active</th></tr></thead><tbody>
             ${rules.map(r => `<tr><td><strong>${h(r.label)}</strong>${r.note ? `<div class="small muted">${h(r.note)}</div>` : ''}</td>
@@ -8882,6 +9009,12 @@
           save(true); draw();
         });
       });
+      $$('[data-fundo]').forEach(b => b.onclick = () => {
+        const id = b.dataset.fundo;
+        data.fiscalFilings = (data.fiscalFilings || []).filter(f => f.id !== id);
+        save(true); draw();
+        toast(`${b.dataset.flab} n'est plus marquée déposée`);
+      });
       // Et chaque échéance mène à l'écran où on la prépare : la TVA du mois, les déclarations de paie.
       $$('[data-fvers]').forEach(b => b.onclick = () => FISCAL_VERS[b.dataset.fvers]());
       $$('[data-active]').forEach(c => c.onchange = () => { setRule(c.dataset.active, { active: c.checked }); draw(); });
@@ -8901,18 +9034,49 @@
   };
 
   // ---------- Paramètres ----------
+  //
+  // Refonte 7.30.0. Ce qui n'allait pas, mesuré par `npm run e2e:parametres` :
+  //
+  //   — huit onglets d'un déséquilibre de 1 à 12. « Licence » et « Cabinet comptable » pesaient un
+  //     cinquième d'écran chacun (une phrase, parfois une phrase disant qu'il n'y a rien à faire),
+  //     pendant que « Sécurité et données » en faisait deux, avec huit panneaux et dix-huit boutons.
+  //     Un onglet permanent pour une phrase apprend à ne plus lire les onglets ;
+  //   — « Sécurité et données » était devenu le fourre-tout : il portait aussi « Choisir les modules
+  //     affichés » et « Revoir l'assistant de démarrage », qui ne sont ni de la sécurité ni des
+  //     données ;
+  //   — la lecture de photo de facture vivait sous « Mises à jour », par accident d'histoire ;
+  //   — soixante réglages, et aucun moyen d'en chercher un.
+  //
+  // Cinq onglets, et une recherche. La recherche est ce qui rend le rangement pardonnable : quand on
+  // ne sait pas dans quelle famille un réglage a été classé, on tape son nom.
+
+  // La mécanique (index, recherche, sommaire, la porte unique vers un panneau) vit dans
+  // `src/renderer/reglages.js`, chargé par LES DEUX applications : le cabinet a exactement la même
+  // page à ranger, et recopier aurait garanti la divergence (règle du menu d'actions, 7.29.0).
+  // Ce qui reste ici est ce que le module ne peut pas savoir : les noms d'onglets et quoi faire
+  // quand la recherche ne trouve rien.
+
   routes.parametres = async () => {
     const c = company();
     const path = await bridge.dataPath();
     const TABS = SETTINGS_TABS;
     if (!TABS.some(t => t[0] === settingsTab)) settingsTab = 'societe';
-    $('#view').innerHTML = `<div class="page-head"><h1>Paramètres</h1></div>
+    const manques = C.companyGaps(c);
+    $('#view').innerHTML = `<div class="page-head"><h1>Paramètres</h1>
+        <div class="actions set-search">
+          <input type="search" id="set-q" placeholder="Chercher un réglage : timbre, sauvegarde…" autocomplete="off" spellcheck="false">
+        </div></div>
+      <div id="set-res" class="set-res" hidden></div>
+      <div id="set-corps">
       <div class="tabs" id="set-tabs" role="tablist">${TABS.map(([id, label]) => `<button role="tab" data-tab="${id}" class="${id === settingsTab ? 'active' : ''}">${label}</button>`).join('')}</div>
+      <div class="set-somm" id="set-somm"></div>
       <form id="pf">
         <section data-pane="societe">
-        <div class="panel" id="p-identite"><h2>Identité de l'entreprise</h2>
+        ${panneau('p-identite')}
           <p class="small muted mb">Ces informations s'impriment en haut de chaque devis et facture. Le matricule fiscal est obligatoire sur une facture.
           <button type="button" class="btn btn-sm btn-ghost" id="redo-setup-2">Revoir l'assistant de démarrage…</button></p>
+          ${manques.length ? `<div class="set-manque mb"><b>Il manque ${pl(manques.length, 'information')} :</b> ${h(manques.join(', '))}.
+            <div class="small mt">Ces informations s'impriment sur chaque document. Tant qu'elles manquent, SkanFact prévient avant chaque émission.</div></div>` : ''}
           <div class="grid-2">
           ${field(lbl('Raison sociale', 'co.name'), 'name', c.name)}
           ${field(lbl('Matricule fiscal', 'co.matricule'), 'matricule', c.matricule, 'text', 'placeholder="1234567X/A/M/000"')}
@@ -8925,7 +9089,21 @@
           ${field('Site web', 'website', c.website || '')}
           <label class="field span-2">${lbl('Slogan (sous le nom, sur les documents)', 'co.tagline')}<input type="text" name="tagline" value="${h(c.tagline || '')}" placeholder="Ce que fait ton entreprise, en quelques mots"></label>
         </div></div>
-        <div class="panel" id="p-banque"><h2>Coordonnées bancaires</h2>
+        <!-- Le régime fiscal vivait au milieu des « Règles de facturation », entre le délai de
+             paiement et la devise. Ce n'est pas une règle de document : c'est ce que ton entreprise
+             EST, et c'est lui qui décide si tes factures portent de la TVA (règle 7.22.0). Il vit
+             donc avec l'identité, juste sous elle. -->
+        ${panneau('p-regime')}
+          <p class="small muted mb">C'est le régime qui décide si tes factures portent de la TVA — pas ton métier. <em>À VÉRIFIER avec ton comptable.</em></p>
+          <div class="grid-2">
+          <label class="field">${lbl('Régime fiscal', 'co.taxRegime')}<select name="taxRegime">${C.REGIMES.map(r => `<option value="${r.id}" ${C.regimeOf(c).id === r.id ? 'selected' : ''}>${h(r.label)}</option>`).join('')}</select></label>
+          <label class="field">${lbl('TVA des nouvelles lignes', 'doc.defaultVat')}<select name="defaultVatRate" ${C.assujettiTVA(c) ? '' : 'disabled'}>${C.VAT_RATES.map(v => `<option value="${v}" ${C.defaultVat(c) === v ? 'selected' : ''}>${v} %</option>`).join('')}</select></label>
+        </div>
+        ${C.assujettiTVA(c)
+          ? '<p class="small muted mt">Tu es assujetti : tes documents portent une colonne TVA et un total de TVA, et la page Comptabilité calcule ce que tu dois déclarer.</p>'
+          : `<p class="small mt"><strong>Tu n'es pas assujetti à la TVA.</strong> Tes documents ne portent donc ni colonne TVA ni total de TVA : la mention « ${h(C.mentionTVA(c))} » s'imprime à la place. Le taux des nouvelles lignes est forcé à 0 % — c'est pour ça qu'il est grisé.</p>`}
+        <p class="small muted mt">Changer de régime ne réécrit <b>aucune</b> pièce déjà émise : une facture qui porte de la TVA la garde pour toujours.</p></div>
+        ${panneau('p-banque')}
           <p class="small muted mb">Le RIB s'affiche sur les factures, dans le bloc « Règlement ». C'est ce que ton client copie pour te payer : relis-le deux fois.</p>
           <div class="grid-2">
           ${field(lbl('Banque', 'pay.bank'), 'bank', c.bank)}
@@ -8935,60 +9113,25 @@
         </section>
 
         <section data-pane="documents" hidden>
-        <div class="panel" id="p-facturation"><h2>Règles de facturation</h2><div class="grid-3">
+        ${panneau('p-facturation')}<div class="grid-3">
           ${field(lbl('Timbre fiscal par facture', 'doc.stampFee'), 'stampFee', c.stampFee, 'number', 'step="0.001" min="0" class="num"')}
           ${field(lbl('Validité des devis (jours)', 'doc.quoteValidity'), 'quoteValidityDays', c.quoteValidityDays, 'number', 'min="0" class="num"')}
           ${field(lbl('Délai de paiement (jours)', 'doc.paymentDays'), 'paymentTermsDays', c.paymentTermsDays, 'number', 'min="0" class="num"')}
           <label class="field">${lbl('Retenue à la source par défaut', 'doc.withholdingDefault')}<select name="defaultWithholdingRate">${withholdingOptions(c.defaultWithholdingRate)}</select></label>
-          <label class="field">${lbl('Régime fiscal', 'co.taxRegime')}<select name="taxRegime">${C.REGIMES.map(r => `<option value="${r.id}" ${C.regimeOf(c).id === r.id ? 'selected' : ''}>${h(r.label)}</option>`).join('')}</select></label>
-          <label class="field">${lbl('TVA des nouvelles lignes', 'doc.defaultVat')}<select name="defaultVatRate" ${C.assujettiTVA(c) ? '' : 'disabled'}>${C.VAT_RATES.map(v => `<option value="${v}" ${C.defaultVat(c) === v ? 'selected' : ''}>${v} %</option>`).join('')}</select></label>
-          ${field(lbl('Devise', 'doc.currency'), 'currency', c.currency)}
+          <!-- La devise était le SEUL champ libre d'un réglage à liste fermée : l'éditeur de
+               document et la fiche client offrent les sept codes dans une liste depuis la 2.4.0,
+               et ici on tapait ce qu'on voulait. « Dinar », « TND », « dt » : decimalsFor ne
+               reconnaît que 'DT' et 'TND', donc tout le reste passait à deux décimales au lieu de
+               trois — sur des montants en dinars, et sur toutes les pièces à venir. -->
+          <label class="field">${lbl('Devise', 'doc.currency')}<select name="currency">${C.CURRENCIES.map(x => `<option value="${x}" ${C.normCurrency(c.currency) === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
           <label class="check" style="align-self:end"><input type="checkbox" name="openAfterExport" ${c.openAfterExport !== false ? 'checked' : ''}> Ouvrir le PDF après export ${info('doc.openAfterExport')}</label>
         </div>
-        ${C.assujettiTVA(c) ? '' : `<p class="small mt"><strong>Tu n'es pas assujetti à la TVA.</strong> Tes documents ne portent donc ni colonne TVA ni total de TVA : la mention « ${h(C.mentionTVA(c))} » s'imprime à la place. Le taux des nouvelles lignes est forcé à 0 % — c'est pour ça qu'il est grisé.</p>`}
-        <p class="small muted mt">Retenue à la source : calculée sur le TTC hors timbre, modifiable sur chaque facture et par client. Le régime, les taux et l'assiette sont <em>À VÉRIFIER avec ton comptable</em>.</p></div>
-        <div class="panel" id="p-objectifs"><h2>Objectifs et statistiques</h2>
-          <p class="small muted mb">Ces deux réglages ne servent qu'à la page Statistiques : ils ne s'impriment nulle part et ne changent aucun calcul de facture.</p>
-          <div class="grid-3">
-          ${field(lbl('Objectif de chiffre d\'affaires HT (par an)', 'stat.target'), 'revenueTarget', c.revenueTarget || 0, 'number', 'step="1" min="0" class="num"')}
-          ${field(lbl('Un client est « endormi » après (jours)', 'stat.dormant'), 'dormantDays', c.dormantDays || 180, 'number', 'min="1" class="num"')}
-        </div></div>
-        <div class="panel" id="p-textes"><h2>Textes imprimés sur les documents</h2><div class="grid-2">
-          <label class="field span-2">${lbl('Conditions des devis', 'doc.quoteTerms')}<textarea name="quoteTerms">${h(c.quoteTerms || '')}</textarea></label>
-          <label class="field span-2">${lbl('Pied de page des documents', 'doc.footer')}<textarea name="footer">${h(c.footer)}</textarea></label>
-          <label class="field span-2">${lbl('Conditions de paiement — documents en anglais', 'doc.en')}<textarea name="paymentTermsEn">${h(c.paymentTermsEn || '')}</textarea></label>
-          <label class="field span-2">Conditions des devis — documents en anglais<textarea name="quoteTermsEn">${h(c.quoteTermsEn || '')}</textarea></label>
-        </div></div>
-        </section>
-
-        <section data-pane="emails" hidden>
-        <div class="panel" id="p-envoi"><h2>Envoi</h2>
-          <div class="grid-2">
-            <label class="field">${lbl('Envoi des emails', 'mail.client')}<select name="mailClient"><option value="auto" ${c.mailClient !== 'mailto' ? 'selected' : ''}>Mail (Apple) avec le PDF joint — Mac</option><option value="mailto" ${c.mailClient === 'mailto' ? 'selected' : ''}>Autre messagerie (mailto, PDF à glisser)</option></select></label>
-          </div>
-        </div>
-        <div class="panel" id="p-comptable"><h2>Comptable</h2><div class="grid-2">
-          ${field(lbl('Email du comptable', 'compta.comptable'), 'accountantEmail', c.accountantEmail || '', 'email', 'placeholder="comptable@cabinet.tn"')}
-        </div><p class="small muted mt">Utilisé par « Envoyer au comptable » sur la page Comptabilité.</p></div>
-        <div class="panel" id="p-modeles"><h2>Modèles de messages ${info('mail.templates')}</h2>
-          <p class="small muted mt">Variables utilisables : {numero} {client} {objet} {montant} {echeance} {jours} {societe} {reference}. Les documents en anglais utilisent les modèles en anglais.</p>
-          ${[['fr', 'et', 'Modèles en français', C.DEFAULT_EMAIL_TEMPLATES, c.emailTemplates || {}], ['en', 'eten', 'Modèles en anglais (clients étrangers)', C.DEFAULT_EMAIL_TEMPLATES_EN, c.emailTemplatesEn || {}]].map(([lg, prefix, title, defs, cur2]) => `<details ${lg === 'fr' ? 'open' : ''}><summary>${title}</summary>
-          ${[['devis', lg === 'fr' ? 'Envoi d\'un devis' : 'Quote'], ['facture', lg === 'fr' ? 'Envoi d\'une facture' : 'Invoice'], ['avoir', lg === 'fr' ? 'Envoi d\'un avoir' : 'Credit note'], ['relance1', lg === 'fr' ? 'Rappel (≤ 15 jours de retard)' : 'Reminder (≤ 15 days)'], ['relance2', lg === 'fr' ? 'Relance (16 à 45 jours)' : 'Second reminder (16–45 days)'], ['relance3', lg === 'fr' ? 'Dernière relance (> 45 jours)' : 'Final reminder (> 45 days)'], ['relanceDevis', lg === 'fr' ? 'Relance d\'un devis sans réponse' : 'Quote follow-up'], ['comptable', lg === 'fr' ? 'Envoi au comptable' : 'To the accountant']].map(([k, label]) => {
-            const t = { ...defs[k], ...(cur2[k] || {}) };
-            return `<div class="section-head"><h2 class="small">${label}</h2></div><div class="grid-2"><label class="field span-2">Objet<input type="text" name="${prefix}_${k}_subject" value="${h(t.subject)}"></label><label class="field span-2">Message<textarea name="${prefix}_${k}_body" rows="4">${h(t.body)}</textarea></label></div>`; }).join('')}
-          </details>`).join('')}
-        </div>
-        </section>
-
-        <section data-pane="apparence" hidden>
-        <div class="panel" id="p-apparence"><h2>L'application</h2><div class="grid-3">
-          <label class="field">${lbl('Thème', 'ap.theme')}<select name="theme"><option value="light" ${c.theme !== 'dark' && c.theme !== 'auto' ? 'selected' : ''}>Clair</option><option value="dark" ${c.theme === 'dark' ? 'selected' : ''}>Sombre</option><option value="auto" ${c.theme === 'auto' ? 'selected' : ''}>Comme le système</option></select></label>
-          <label class="field">${lbl('Langue des documents par défaut', 'ap.defaultLang')}<select name="defaultLang"><option value="fr" ${c.defaultLang !== 'en' ? 'selected' : ''}>Français</option><option value="en" ${c.defaultLang === 'en' ? 'selected' : ''}>English</option></select></label>
-        </div><p class="small muted mt">Le thème sombre ne concerne que l'interface : les documents restent clairs. Le changement se voit tout de suite ; il n'est gardé qu'une fois enregistré.</p></div>
-        <!-- « Image de marque » vivait dans l'onglet Société, entre le matricule fiscal et le RIB.
-             Chercher où changer la couleur ou le logo dans un onglet qui parle d'identité juridique
-             n'a rien d'évident : ce sont des réglages d'apparence, ils vivent avec l'apparence. -->
-        <div class="panel" id="p-marque"><h2>Image de marque (sur tes documents)</h2><div class="grid-2">
+        <p class="small muted mt">Retenue à la source : calculée sur le TTC hors timbre, modifiable sur chaque facture et par client. Les taux et l'assiette sont <em>À VÉRIFIER avec ton comptable</em>. La TVA et le régime se règlent dans <b>Mon entreprise</b>.</p></div>
+        <!-- « Image de marque » a fait deux voyages : de l'onglet Société (où on la cherchait entre
+             le matricule fiscal et le RIB) vers Apparence en 7.11.0, puis ici. Le titre disait
+             depuis toujours ce qu'elle est — « sur tes documents » — et l'onglet Apparence, qui ne
+             portait plus que deux listes déroulantes, ne pesait qu'un demi-écran. -->
+        ${panneau('p-marque')}<div class="grid-2">
           <label class="field">${lbl('Couleur principale', 'co.colors')}<input type="color" name="primaryColor" value="${h(c.primaryColor || '#1b2430')}"></label>
           <label class="field">Couleur d'accent<input type="color" name="accentColor" value="${h(c.accentColor || '#0f9d8f')}"></label>
           <label class="field">${lbl('Logo', 'co.logo')}
@@ -9001,46 +9144,66 @@
           </label>
         </div>
         <p class="small muted mt">Ces deux couleurs habillent les devis et les factures, pas l'application. Pour les voir, ouvre un document : l'aperçu se met à jour.</p></div>
+        ${panneau('p-textes')}<div class="grid-2">
+          <label class="field span-2">${lbl('Conditions des devis', 'doc.quoteTerms')}<textarea name="quoteTerms">${h(c.quoteTerms || '')}</textarea></label>
+          <label class="field span-2">${lbl('Pied de page des documents', 'doc.footer')}<textarea name="footer">${h(c.footer)}</textarea></label>
+          <label class="field span-2">${lbl('Conditions de paiement — documents en anglais', 'doc.en')}<textarea name="paymentTermsEn">${h(c.paymentTermsEn || '')}</textarea></label>
+          <label class="field span-2">Conditions des devis — documents en anglais<textarea name="quoteTermsEn">${h(c.quoteTermsEn || '')}</textarea></label>
+        </div></div>
+        ${panneau('p-objectifs')}
+          <p class="small muted mb">Ces deux réglages ne servent qu'à la page Statistiques : ils ne s'impriment nulle part et ne changent aucun calcul de facture.</p>
+          <div class="grid-3">
+          ${field(lbl('Objectif de chiffre d\'affaires HT (par an)', 'stat.target'), 'revenueTarget', c.revenueTarget || 0, 'number', 'step="1" min="0" class="num"')}
+          ${field(lbl('Un client est « endormi » après (jours)', 'stat.dormant'), 'dormantDays', c.dormantDays || 180, 'number', 'min="1" class="num"')}
+        </div></div>
+        </section>
+
+        <section data-pane="envois" hidden>
+        ${panneau('p-envoi')}
+          <div class="grid-2">
+            <label class="field">${lbl('Envoi des emails', 'mail.client')}<select name="mailClient"><option value="auto" ${c.mailClient !== 'mailto' ? 'selected' : ''}>Mail (Apple) avec le PDF joint — Mac</option><option value="mailto" ${c.mailClient === 'mailto' ? 'selected' : ''}>Autre messagerie (mailto, PDF à glisser)</option></select></label>
+          </div>
+        </div>
+        ${panneau('p-comptable')}<div class="grid-2">
+          ${field(lbl('Email du comptable', 'compta.comptable'), 'accountantEmail', c.accountantEmail || '', 'email', 'placeholder="comptable@cabinet.tn"')}
+        </div><p class="small muted mt">Utilisé par « Envoyer au comptable » sur la page Comptabilité.</p></div>
+        ${panneau('p-modeles', info('mail.templates'))}
+          <p class="small muted mt">Variables utilisables : {numero} {client} {objet} {montant} {echeance} {jours} {societe} {reference}. Les documents en anglais utilisent les modèles en anglais.</p>
+          <!-- Les deux jeux sont REPLIÉS : trente-deux champs de texte à eux seuls, c'est-à-dire
+               deux écrans et demi pour un onglet qui en compte quatre. Un modèle de message se
+               modifie une fois par an ; on l'ouvre quand on vient pour ça. Le sommaire de l'onglet
+               et la recherche mènent ici directement, donc rien n'est perdu. -->
+          ${[['fr', 'et', 'Modèles en français', C.DEFAULT_EMAIL_TEMPLATES, c.emailTemplates || {}], ['en', 'eten', 'Modèles en anglais (clients étrangers)', C.DEFAULT_EMAIL_TEMPLATES_EN, c.emailTemplatesEn || {}]].map(([lg, prefix, title, defs, cur2]) => `<details><summary>${title} <span class="muted small">— 8 messages</span></summary>
+          ${[['devis', lg === 'fr' ? 'Envoi d\'un devis' : 'Quote'], ['facture', lg === 'fr' ? 'Envoi d\'une facture' : 'Invoice'], ['avoir', lg === 'fr' ? 'Envoi d\'un avoir' : 'Credit note'], ['relance1', lg === 'fr' ? 'Rappel (≤ 15 jours de retard)' : 'Reminder (≤ 15 days)'], ['relance2', lg === 'fr' ? 'Relance (16 à 45 jours)' : 'Second reminder (16–45 days)'], ['relance3', lg === 'fr' ? 'Dernière relance (> 45 jours)' : 'Final reminder (> 45 days)'], ['relanceDevis', lg === 'fr' ? 'Relance d\'un devis sans réponse' : 'Quote follow-up'], ['comptable', lg === 'fr' ? 'Envoi au comptable' : 'To the accountant']].map(([k, label]) => {
+            const t = { ...defs[k], ...(cur2[k] || {}) };
+            return `<div class="section-head"><h2 class="small">${label}</h2></div><div class="grid-2"><label class="field span-2">Objet<input type="text" name="${prefix}_${k}_subject" value="${h(t.subject)}"></label><label class="field span-2">Message<textarea name="${prefix}_${k}_body" rows="4">${h(t.body)}</textarea></label></div>`; }).join('')}
+          </details>`).join('')}
+        </div>
+        </section>
+
+        <!-- L'onglet « Apparence » ne pesait plus qu'un demi-écran une fois l'image de marque
+             partie avec les documents : deux listes déroulantes ne font pas un onglet. Il vit
+             désormais en tête de « L'application », avec ce qui parle du logiciel lui-même. -->
+        <section data-pane="app" hidden>
+        ${panneau('p-apparence')}<div class="grid-3">
+          <label class="field">${lbl('Thème', 'ap.theme')}<select name="theme"><option value="light" ${c.theme !== 'dark' && c.theme !== 'auto' ? 'selected' : ''}>Clair</option><option value="dark" ${c.theme === 'dark' ? 'selected' : ''}>Sombre</option><option value="auto" ${c.theme === 'auto' ? 'selected' : ''}>Comme le système</option></select></label>
+          <label class="field">${lbl('Langue des documents par défaut', 'ap.defaultLang')}<select name="defaultLang"><option value="fr" ${c.defaultLang !== 'en' ? 'selected' : ''}>Français</option><option value="en" ${c.defaultLang === 'en' ? 'selected' : ''}>English</option></select></label>
+        </div><p class="small muted mt">Le thème sombre ne concerne que l'interface : les documents restent clairs. Le changement se voit tout de suite ; il n'est gardé qu'une fois enregistré.</p></div>
         </section>
       </form>
 
-      <section data-pane="maj" hidden>
-        <div class="panel" id="p-maj"><h2>Mises à jour</h2><div id="update-panel"></div></div>
-        <div class="panel" id="p-ocr"><h2>Lecture de factures d'achat ${info('ocr.key')}</h2><div id="ocr-panel"></div></div>
-      </section>
-
-      <section data-pane="cabinet" hidden>
-        <div class="panel" id="p-cabinet"><h2>Ton cabinet comptable ${info('cab.appaire')}</h2>
+      <!-- Ce qui suit vit HORS du formulaire : ce sont des panneaux d'action, dont les boutons
+           n'ont pas l'attribut type=button et soumettraient donc le formulaire. Un même onglet peut
+           s'écrire en deux sections portant le même data-pane : elles se montrent ensemble, et les
+           panneaux voisins, masqués, ne laissent aucun trou entre elles. -->
+      <section data-pane="envois" hidden>
+        ${panneau('p-cabinet', info('cab.appaire'))}
           <div id="cab-pair"></div>
         </div>
       </section>
-      <section data-pane="licence" hidden>
-        <div class="panel" id="p-licence"><h2>Licence ${info('lic.etat')}</h2><div id="lic-panel"></div></div>
-      </section>
-      <section data-pane="donnees" hidden>
-      <div class="panel" id="p-dossiers"><h2>Dossiers — plusieurs entreprises sur cet ordinateur ${info('data.dossiers')}</h2>
-        <p class="small muted mb">Chaque dossier est une entreprise : ses clients, ses documents, ses achats, ses sauvegardes. Ils ne se mélangent jamais. Tu passes de l'un à l'autre en un clic, l'application se recharge.</p>
-        <div id="dossiers-list"></div>
-        <div class="inline mt"><button type="button" class="btn" id="dos-add">+ Nouveau dossier sur cet ordinateur</button>
-          <button type="button" class="btn" id="dos-share">↔ Partager ce dossier à deux…</button>
-          <button type="button" class="btn" id="dos-join">↓ Rejoindre un dossier déjà partagé…</button>${info('data.shared')}</div>
-        <p class="small muted mt">Le premier bouton partage <b>le dossier ouvert, avec tout ce qu'il contient</b> : il le pose dans iCloud, OneDrive ou sur une clé. Le second sert sur le <b>deuxième ordinateur</b>, pour ouvrir le dossier que le premier vient d'y poser.</p>
-      </div>
-      <div class="panel" id="p-poste"><h2>Ce poste ${info('data.device')}</h2>
-        <p class="small muted mb">Le nom de cet ordinateur. Il sert uniquement à dire qui a enregistré en dernier quand vous travaillez à deux sur un dossier partagé.</p>
-        <div class="inline"><input type="text" id="dev-name" value="" style="max-width:280px"><button type="button" class="btn" id="dev-save">Renommer</button></div>
-      </div>
-      <div class="panel" id="p-externe"><h2>Copie externe ${info('data.external')}</h2>
-        <p class="small muted">iCloud Drive, clé USB, disque réseau. À chaque enregistrement, le fichier de données et les sauvegardes y sont copiés. Si le Mac meurt, tout est ailleurs. <b>C'est le réglage le plus important de cette page.</b></p>
-        <div id="ext-status" class="small mt"></div>
-        <div class="inline mt"><button class="btn btn-primary" id="ext-choose">Choisir un dossier…</button><button class="btn btn-ghost" id="ext-remove" hidden>Retirer</button></div>
-      </div>
-      <div class="panel" id="p-motdepasse"><h2>Mot de passe ${info('sec.password')}</h2>
-        <p id="sec-status">${security.encrypted ? '🔒 Mot de passe activé : le fichier de données et ses sauvegardes sont chiffrés (AES-256). Verrouiller : menu Fichier ou Cmd/Ctrl+L.' : 'Le fichier de données est en clair sur ce disque. Tu peux le protéger par un mot de passe demandé à chaque ouverture.'}</p>
-        <div class="inline mt">${security.encrypted ? '<button class="btn" id="sec-change">Changer le mot de passe…</button><button class="btn" id="sec-lock">Verrouiller maintenant</button><button class="btn btn-danger" id="sec-remove">Retirer le mot de passe…</button>' : '<button class="btn btn-primary" id="sec-set">Activer un mot de passe…</button>'}</div>
-        <p class="small muted mt">Le mot de passe protège les fichiers sur le disque (ordinateur perdu ou volé). Il n'existe aucune récupération : sans lui, les données sont définitivement illisibles, <b>y compris pour toi</b>.</p>
-      </div>
-      <div class="panel" id="p-modules"><h2>Ce que l'application t'affiche</h2>
+
+      <section data-pane="app" hidden>
+      ${panneau('p-modules')}
         <p class="small muted mb">SkanFact sait faire beaucoup de choses. Tu choisis lesquelles apparaissent
         dans le menu de gauche — sans rien supprimer : ce qui est masqué reste atteignable par la
         recherche, et un module qui contient des données se réaffiche tout seul.</p>
@@ -9049,9 +9212,37 @@
           <button type="button" class="btn btn-ghost" id="redo-setup">Revoir l'assistant de démarrage…</button>
         </div>
       </div>
-      <div class="panel" id="p-sauvegardes"><h2>Sauvegardes ${info('data.backups')}</h2>
+      ${panneau('p-maj')}<div id="update-panel"></div></div>
+      ${panneau('p-licence', info('lic.etat'))}<div id="lic-panel"></div></div>
+      ${panneau('p-depannage')}
+        <p class="small muted mb">Quand quelque chose ne va pas, ces deux boutons valent mieux qu'une description :
+        le journal dit où l'application s'est arrêtée, et il ne contient ni nom de client, ni montant.</p>
+        <div class="inline">
+          <button type="button" class="btn btn-primary" id="set-support">Signaler un problème…</button>
+          <button type="button" class="btn" id="set-log">Ouvrir le journal technique</button>
+          <button type="button" class="btn" id="set-aide">Ouvrir l'aide</button>
+        </div>
+      </div>
+      </section>
+
+      <section data-pane="donnees" hidden>
+      ${panneau('p-dossiers', info('data.dossiers'))}
+        <p class="small muted mb">Chaque dossier est une entreprise : ses clients, ses documents, ses achats, ses sauvegardes. Ils ne se mélangent jamais. Tu passes de l'un à l'autre en un clic, l'application se recharge.</p>
+        <div id="dossiers-list"></div>
+        <div class="inline mt"><button type="button" class="btn" id="dos-add">+ Nouveau dossier sur cet ordinateur</button>
+          <button type="button" class="btn" id="dos-share">↔ Partager ce dossier à deux…</button>
+          <button type="button" class="btn" id="dos-join">↓ Rejoindre un dossier déjà partagé…</button>${info('data.shared')}</div>
+        <p class="small muted mt">Le premier bouton partage <b>le dossier ouvert, avec tout ce qu'il contient</b> : il le pose dans iCloud, OneDrive ou sur une clé. Le second sert sur le <b>deuxième ordinateur</b>, pour ouvrir le dossier que le premier vient d'y poser.</p>
+        <!-- « Ce poste » avait son propre panneau pour UN champ, qui ne sert qu'à une chose : dire
+             qui a enregistré en dernier sur un dossier partagé. Il vit donc sous les dossiers, là
+             où cette question se pose, au lieu de faire un titre pour une ligne. -->
+        <h3 class="mt">Le nom de cet ordinateur ${info('data.device')}</h3>
+        <p class="small muted mb">Il ne sert qu'à dire qui a enregistré en dernier quand vous travaillez à deux sur un dossier partagé.</p>
+        <div class="inline"><input type="text" id="dev-name" value="" style="max-width:280px"><button type="button" class="btn" id="dev-save">Renommer</button></div>
+      </div>
+      ${panneau('p-sauvegardes', info('data.backups'))}
         <p class="small muted">Fichier de données : <code>${h(path)}</code></p>
-        <p class="small">${data.documents.length} document(s), ${data.clients.length} client(s), ${data.catalog.length} prestation(s).</p>
+        <p class="small">${pl(data.documents.length, 'document')}, ${pl(data.clients.length, 'client')}, ${pl(data.catalog.length, 'prestation')}.</p>
         <p class="small muted">Chaque jour, l'état du matin est copié dans le dossier <code>backups</code> (30 jours conservés) ; une copie est aussi prise avant tout import, avant l'exemple et avant un effacement.</p>
         <div class="inline mt">
           <button class="btn" id="backup-now">Sauvegarder maintenant</button>
@@ -9067,12 +9258,27 @@
              on en a besoin est le pire jour pour apprendre un chemin. -->
         <div id="backup-list" class="mt"></div>
       </div>
+      ${panneau('p-externe', info('data.external'))}
+        <p class="small muted">iCloud Drive, clé USB, disque réseau. À chaque enregistrement, le fichier de données et les sauvegardes y sont copiés. Si le Mac meurt, tout est ailleurs. <b>C'est le réglage le plus important de cette page.</b></p>
+        <div id="ext-status" class="small mt"></div>
+        <div class="inline mt"><button class="btn btn-primary" id="ext-choose">Choisir un dossier…</button><button class="btn btn-ghost" id="ext-remove" hidden>Retirer</button></div>
+      </div>
+      ${panneau('p-motdepasse', info('sec.password'))}
+        <p id="sec-status">${security.encrypted ? '🔒 Mot de passe activé : le fichier de données et ses sauvegardes sont chiffrés (AES-256). Verrouiller : menu Fichier ou Cmd/Ctrl+L.' : 'Le fichier de données est en clair sur ce disque. Tu peux le protéger par un mot de passe demandé à chaque ouverture.'}</p>
+        <div class="inline mt">${security.encrypted ? '<button class="btn" id="sec-change">Changer le mot de passe…</button><button class="btn" id="sec-lock">Verrouiller maintenant</button><button class="btn btn-danger" id="sec-remove">Retirer le mot de passe…</button>' : '<button class="btn btn-primary" id="sec-set">Activer un mot de passe…</button>'}</div>
+        <p class="small muted mt">Le mot de passe protège les fichiers sur le disque (ordinateur perdu ou volé). Il n'existe aucune récupération : sans lui, les données sont définitivement illisibles, <b>y compris pour toi</b>.</p>
+      </div>
+      <!-- La lecture de photo était rangée sous « Mises à jour », par accident d'histoire : c'est
+           là qu'était le seul autre panneau qui parle à internet. Mais ce n'est pas un réglage du
+           logiciel — c'est la SEULE fonction qui fait sortir quelque chose de cet ordinateur, et
+           c'est à ce titre qu'on la cherche. Elle vit donc avec les données et la sécurité. -->
+      ${panneau('p-ocr', info('ocr.key'))}<div id="ocr-panel"></div></div>
       <!-- Charger l'exemple n'est PAS un geste dangereux : une sauvegarde est prise, la société est
            conservée, un bandeau permanent offre le retour, et l'article « Démarrer » le présente
            comme l'étape d'apprentissage. Il vivait pourtant dans l'encadré rouge, collé à « Tout
            effacer » — donc on hésitait à cliquer sur ce qu'on nous demandait de faire, puis on
            prenait le bouton écarlate d'à côté pour en sortir, et on perdait tout. -->
-      <div class="panel" id="p-exemple"><h2>Essayer sans risque ${info('data.demo')}</h2>
+      ${panneau('p-exemple', info('data.demo'))}
         <div class="dz-row">
           <div><b>Charger le jeu d'exemple</b>
             <div class="small muted">Remplace tes données par treize mois d'activité fictive, pour cliquer partout sans rien casser.
@@ -9080,7 +9286,7 @@
           <button class="btn" id="load-demo">Charger l'exemple</button>
         </div>
       </div>
-      <div class="panel danger-zone" id="p-danger"><h2>Zone sensible</h2>
+      ${panneau('p-danger')}
         <div class="dz-row">
           <div><b>Tout effacer</b> ${info('data.wipe')}
             <div class="small muted">Supprime clients, prestations, documents, contrats, modèles et textes. Les paramètres société restent. Une sauvegarde est prise avant.</div></div>
@@ -9088,6 +9294,7 @@
         </div>
       </div>
       </section>
+      </div>
 
       <div class="save-bar" id="save-bar" hidden>
         <span>Modifications non enregistrées</span>
@@ -9095,25 +9302,40 @@
         <button class="btn btn-primary" id="save">Enregistrer</button>
       </div>`;
 
-    // --- onglets
+    // --- onglets, sommaire et recherche
+    //
+    // Un onglet de huit panneaux fait deux écrans de haut : on descend en lisant les titres un par
+    // un pour savoir s'il contient ce qu'on cherche. Le sommaire les montre tous d'un coup ; la
+    // recherche répond quand on ne sait même pas dans quel onglet regarder. Les deux sont dans
+    // `reglages.js`, partagé avec l'app du cabinet, et ils lisent l'ÉCRAN : un panneau ajouté demain
+    // est trouvable le jour où il est écrit.
     const showTab = id => {
       settingsTab = id;
       $$('#set-tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === id));
       $$('[data-pane]').forEach(p => p.hidden = p.dataset.pane !== id);
+      reg.rafraichirSommaire(id);
       $('#view').scrollTop = 0;
     };
+    const reg = Reglages.installer({
+      corps: $('#set-corps'), champ: $('#set-q'), resultats: $('#set-res'), sommaire: $('#set-somm'),
+      nomOnglet: pane => (SETTINGS_TABS.find(t => t[0] === pane) || [pane, pane])[1],
+      ouvrirOnglet: pane => showTab(pane),
+      ongletCourant: () => settingsTab,
+      pluriel: pl,
+      rienTrouve: () => `<div class="empty"><p>Aucun réglage ne porte ces mots. Essaie un seul mot — ou regarde
+        dans l'Aide, qui explique à quoi sert chaque réglage.</p>
+        <button type="button" class="btn btn-primary" id="set-vers-aide">Ouvrir l'aide</button></div>`,
+      apresResultats: res => { if ($('#set-vers-aide', res)) $('#set-vers-aide', res).onclick = () => navigate('#/aide'); }
+    });
     $$('#set-tabs button').forEach(b => b.onclick = () => { settingsFocus = ''; showTab(b.dataset.tab); });
     showTab(settingsTab);
     // Un lien qui promet « le mot de passe » ou « la copie externe » atterrissait en haut d'une pile
-    // de six panneaux : on redescendait à la main en cherchant le titre. On amène le panneau visé.
+    // de six panneaux : on redescendait à la main en cherchant le titre. On amène le panneau visé —
+    // et par la même porte que le sommaire, donc l'onglet suit même si l'appelant s'est trompé.
     if (settingsFocus) {
-      const cible = $('#' + settingsFocus);
+      const vise = settingsFocus;
       settingsFocus = '';
-      if (cible) {
-        try { cible.scrollIntoView({ block: 'center' }); } catch (_) {}
-        cible.classList.add('flash');
-        setTimeout(() => cible.classList.remove('flash'), 1600);
-      }
+      reg.montrer(vise);
     }
 
     // --- barre « Enregistrer » : elle n'apparaît que s'il y a quelque chose à enregistrer
@@ -9135,6 +9357,7 @@
       data.company.revenueTarget = Math.max(0, Number(data.company.revenueTarget) || 0);
       data.company.dormantDays = Math.max(1, Number(data.company.dormantDays) || 180);
       data.company.stampFee = Math.max(0, Number(data.company.stampFee) || 0);
+      data.company.currency = C.normCurrency(data.company.currency);
       data.company.quoteValidityDays = Math.max(0, Number(data.company.quoteValidityDays) || 30);
       data.company.paymentTermsDays = Math.max(0, Number(data.company.paymentTermsDays) || 30);
       save(true); applyTheme(); $('#brand-company').textContent = data.company.name || 'Ton entreprise';
@@ -9202,9 +9425,18 @@
     drawCabinetPair();
     drawLicencePanel();
     drawUpdatePanel();
+    // Les vérifications silencieuses (toutes les quatre heures) n'envoient rien quand il n'y a rien
+    // à annoncer : sans cette relecture, la date affichée serait celle du démarrage, pour toujours.
+    bridge.updateVersion().then(v => { upd.app = v; drawUpdatePanel(); }).catch(() => {});
     drawOcrPanel();
     $('#go-modules').onclick = () => navigate('#/modules');
     $$('#redo-setup, #redo-setup-2').forEach(b => b.onclick = rejouerAssistant);
+    // « Signaler un problème » n'existait que dans l'Aide. C'est pourtant dans les Paramètres qu'on
+    // va quand quelque chose ne marche pas — et le journal, qui est ce qui sert vraiment à dépanner,
+    // n'était atteignable que depuis un message d'erreur de mise à jour.
+    $('#set-support').onclick = supportForm;
+    $('#set-log').onclick = () => bridge.openLog();
+    $('#set-aide').onclick = () => navigate('#/aide');
     $('#backup-now').onclick = async () => { const p = await bridge.createBackup(); toast(p ? 'Sauvegarde créée : ' + p.split(/[\\/]/).pop() : 'Rien à sauvegarder pour l\'instant'); drawExternal(); drawBackups(); };
 
     // La liste des sauvegardes, avec le bouton qui les remet. Chaque nom est traduit : « avant-demo »
@@ -9236,7 +9468,7 @@
           <td>${h(nommer(b.name))}<div class="small muted">${h(b.name)}</div></td>
           <td class="r"><button type="button" class="btn btn-sm" data-restore="${h(b.name)}">Restaurer…</button></td></tr>`).join('')}
         </tbody></table>
-        ${liste.length > vues.length ? `<p class="small muted mt">${liste.length - vues.length} sauvegarde(s) plus ancienne(s) dans le dossier.</p>` : ''}`;
+        ${liste.length > vues.length ? `<p class="small muted mt">${pl(liste.length - vues.length, 'sauvegarde')} plus ancienne${sPl(liste.length - vues.length)} dans le dossier.</p>` : ''}`;
       $$('[data-restore]', el).forEach(b => b.onclick = () => restaurer(b.dataset.restore));
     }
     // On REGARDE d'abord, et on dit ce qu'on va perdre. Sans ça, une restauration est un pari.
@@ -9244,7 +9476,7 @@
       const vu = await bridge.peekBackup(nom);
       if (!vu || !vu.ok) return toast('Sauvegarde illisible : ' + ((vu && vu.error) || 'erreur inconnue'), true);
       const ici = { documents: data.documents.length, clients: data.clients.length, catalog: data.catalog.length };
-      const dit = c => `${c.documents} document(s), ${c.clients} client(s), ${c.catalog} prestation(s)`;
+      const dit = c => `${pl(c.documents, 'document')}, ${pl(c.clients, 'client')}, ${pl(c.catalog, 'prestation')}`;
       const ok = await confirmDialog(
         `Revenir à la sauvegarde du ${new Date(vu.mtime).toLocaleString('fr-FR')} ?\n\n`
         + `Elle contient : ${dit(vu.compte)}${vu.societe ? ' — ' + vu.societe : ''}${vu.demo ? '\n⚠ C\'est le jeu d\'exemple, pas de vraies données.' : ''}\n`
@@ -9740,7 +9972,7 @@
         <textarea id="sup-what" rows="4" placeholder="Ex. : j'ai cliqué sur « Émettre » depuis un devis et l'application n'a plus répondu."></textarea></label>
       <div class="notes-md mt"><strong>Joint automatiquement</strong>
         <p class="small">${h(tech)}</p>
-        <p class="small">Le journal technique : ${info.lines || 0} ligne(s)${info.lines ? ' — dates, erreurs et piles d\'appels' : ' (aucune erreur enregistrée, bon signe)'}.</p>
+        <p class="small">Le journal technique : ${pl(info.lines || 0, 'ligne')}${info.lines ? ' — dates, erreurs et piles d\'appels' : ' (aucune erreur enregistrée, bon signe)'}.</p>
         <p class="small muted">Ce journal ne contient <strong>aucune donnée de ton entreprise</strong> : ni client, ni montant, ni document. Tu peux le lire avant d'envoyer.</p>
       </div>
       <div class="modal-actions">
@@ -9926,7 +10158,25 @@
     if (!el) return;
     el.hidden = !show;
     el.classList.toggle('warn', !!licence.locked);
-    if (show) el.textContent = licence.locked ? licence.label + ' — voir Paramètres → Licence' : licence.label;
+    if (show) el.textContent = licence.locked ? licence.label + ' — voir Paramètres → L\'application → Licence' : licence.label;
+  }
+
+  // Quand une vérification a eu lieu, écrit comme on le dirait. Une date seule (« 14/09/2026
+  // 09:12 ») oblige à la comparer mentalement à aujourd'hui ; ce qu'on veut savoir, c'est si c'est
+  // récent. Des JOURS DE CALENDRIER au-delà d'une heure, pas des tranches de 24 h (règle Cabinet).
+  function quandVerif(ms) {
+    if (!ms) return '';
+    const d = new Date(ms);
+    const p = x => String(x).padStart(2, '0');
+    const heure = `${p(d.getHours())}:${p(d.getMinutes())}`;
+    const mn = Math.floor((Date.now() - ms) / 60000);
+    if (mn < 1) return 'à l\'instant';
+    if (mn < 60) return `il y a ${pl(mn, 'minute')}`;
+    const jour = x => Date.UTC(x.getFullYear(), x.getMonth(), x.getDate());
+    const j = Math.round((jour(new Date()) - jour(d)) / 86400000);
+    if (j <= 0) return `aujourd'hui à ${heure}`;
+    if (j === 1) return `hier à ${heure}`;
+    return `le ${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} à ${heure}`;
   }
 
   function drawUpdatePanel() {
@@ -9934,12 +10184,18 @@
     const a = upd.app || {};
     const isMacUnsigned = a.platform === 'darwin' && !a.macSigned;
     let body = '';
-    const btnCheck = `<button class="btn" id="upd-check">Vérifier les mises à jour</button>`;
+    const btnCheck = `<button class="btn" id="upd-check">Vérifier maintenant</button>`;
     if (!a.packaged) body = `<p class="muted small">Mode développement (npm start) : la vérification des mises à jour n'est active que dans l'application installée.</p>${btnCheck}`;
     else if (upd.state === 'checking') body = `<p class="muted">Vérification en cours…</p>`;
     else if (upd.state === 'none') body = `<p>Tu as la dernière version. <span class="muted">(${h(a.version)})</span></p>${btnCheck}`;
-    else if (upd.state === 'available') body = `<p><strong>Version ${h(upd.version)} disponible</strong> — téléchargement en cours…</p>${notesHtml(upd.notes)}`;
-    else if (upd.state === 'downloading') body = `<p>Téléchargement de la version ${h(upd.version)}… ${upd.percent}%</p><div class="progress"><div style="width:${upd.percent}%"></div></div>`;
+    // Ces deux états n'offraient AUCUN bouton. Une coupure de réseau à 40 % laissait donc la barre
+    // figée pour de bon : « Vérifier » refuse d'agir pendant un téléchargement, et rien d'autre
+    // n'était proposé. Le moteur savait relancer (`update:download`) depuis la 1.7.0 — aucun écran
+    // ne l'appelait, c'est-à-dire qu'il n'existait pas (règle 7.3.0).
+    else if (upd.state === 'available') body = `<p><strong>Version ${h(upd.version)} disponible</strong> — téléchargement en cours…</p>${notesHtml(upd.notes)}
+      <div class="inline"><button class="btn btn-ghost btn-sm" id="upd-retry">Relancer le téléchargement</button></div>`;
+    else if (upd.state === 'downloading') body = `<p>Téléchargement de la version ${h(upd.version)}… ${upd.percent}%</p><div class="progress"><div style="width:${upd.percent}%"></div></div>
+      <div class="inline"><button class="btn btn-ghost btn-sm" id="upd-retry">Relancer le téléchargement</button></div>`;
     else if (upd.state === 'downloaded') body = `<p><strong>Version ${h(upd.version)} prête à installer.</strong> ${isMacUnsigned ? 'SkanFact se ferme, remplace l\'application dans le dossier Applications et se relance (une dizaine de secondes).' : 'L\'app se ferme, s\'installe et redémarre (quelques secondes).'}</p>
       ${notesHtml(upd.notes)}<button class="btn btn-primary" id="upd-install">Installer et redémarrer</button>`;
     else if (upd.state === 'unconfigured') body = `<p class="muted">Les mises à jour automatiques ne sont pas configurées (package.json → build.publish).</p>${btnCheck}`;
@@ -9951,8 +10207,19 @@
     else if (upd.state === 'error') body = `<p class="${upd.soft ? 'muted' : 'small'}"${upd.soft ? '' : ' style="color:var(--danger)"'}>${h(upd.message)}</p>
       ${upd.detail ? `<details class="tech"><summary>Détails techniques</summary><code>${h(upd.detail)}</code></details>` : ''}
       <div class="inline">${btnCheck}<button class="btn btn-ghost" id="upd-releases">Voir les versions</button>${upd.soft ? '' : `<button class="btn btn-ghost" id="upd-log">Ouvrir le journal</button>`}</div>`;
-    else if (!a.relay && (upd.state === 'token' || !a.hasToken)) body = `<p class="muted">Les mises à jour automatiques ne sont pas encore activées sur cet ordinateur : colle ton token GitHub ci-dessous et clique sur Enregistrer.</p>${btnCheck}`;
-    else body = btnCheck;
+    else if (!a.relay && a.private && (upd.state === 'token' || !a.hasToken)) body = `<p class="muted">Les mises à jour automatiques ne sont pas encore activées sur cet ordinateur : colle ton token GitHub ci-dessous et clique sur Enregistrer.</p>${btnCheck}`;
+    // L'état au repos — celui qu'on voit neuf fois sur dix en ouvrant la page. Il n'affichait qu'un
+    // bouton « Vérifier », c'est-à-dire rien : ni si l'application est à jour, ni depuis quand on
+    // le sait. On répond avec ce que la DERNIÈRE vérification a constaté, silencieuse comprise.
+    else if (a.lastResult === 'none') body = `<p>Tu as la dernière version. <span class="muted">(${h(a.version)})</span></p>${btnCheck}`;
+    else if (a.lastResult === 'error') body = `<p class="muted">La dernière vérification n'a pas abouti. SkanFact réessaiera tout seul ; tu peux aussi relancer maintenant.</p>
+      <div class="inline">${btnCheck}<button class="btn btn-ghost" id="upd-releases">Voir les versions</button></div>`;
+    else body = `<p class="muted">Aucune vérification n'a encore eu lieu sur cet ordinateur.</p>${btnCheck}`;
+    // Ce qui rend la phrase du dessus vérifiable : QUAND on l'a constaté, et à quel rythme c'est
+    // refait. Sans ces deux lignes, « tu as la dernière version » pouvait dater d'un mois — jusqu'à
+    // la 7.30.0, l'application vérifiait une seule fois, cinq secondes après l'ouverture.
+    const rythme = a.autoEvery ? Math.round(a.autoEvery / 3600000) : 0;
+    const pied = !a.packaged ? '' : `<p class="small muted mt upd-quand">Dernière vérification : <b>${h(quandVerif(a.lastCheck) || 'jamais encore')}</b>${rythme ? ` — SkanFact regarde tout seul toutes les ${rythme} heures et au retour sur l'application.` : ''}</p>`;
     // Quand le relais est en place, il n'y a plus rien à saisir : c'est lui qui détient l'accès au
     // dépôt. Montrer un champ « token » que personne n'a à remplir ne ferait qu'inquiéter.
     // Et si le relais a échoué, on le DIT et on remontre le champ : un écran qui affirme « rien à
@@ -9985,7 +10252,7 @@
       <p class="small muted">Le dépôt de SkanFact est <b>public</b> : les mises à jour arrivent sans rien présenter. Un jeton datant de l'époque où il était privé est encore enregistré sur cet ordinateur ; il ne sert plus à rien.</p>
       <div class="inline"><button class="btn btn-sm btn-ghost" id="upd-token-clear">Retirer ce jeton</button></div>
     </div>` : '');
-    el.innerHTML = `<div class="update-head"><div><div class="k-label">Version installée</div><div class="ver">${h(a.version || '…')}${a.prerelease ? ' <span class="beta-tag">bêta</span>' : ''}</div></div><button class="btn btn-sm btn-ghost" id="upd-changelog">Nouveautés</button></div>${body}${tokenBlock}${betaBlock(a)}`;
+    el.innerHTML = `<div class="update-head"><div><div class="k-label">Version installée</div><div class="ver">${h(a.version || '…')}${a.prerelease ? ' <span class="beta-tag">bêta</span>' : ''}</div></div><button class="btn btn-sm btn-ghost" id="upd-changelog">Nouveautés</button></div>${body}${pied}${tokenBlock}${betaBlock(a)}`;
     $('#upd-changelog').onclick = showChangelog;
     if ($('#upd-beta')) $('#upd-beta').onchange = e => setBeta(e.target.checked);
     if ($('#upd-token-save')) $('#upd-token-save').onclick = async () => {
@@ -9996,6 +10263,11 @@
     };
     if ($('#upd-token-clear')) $('#upd-token-clear').onclick = async () => { const r = await bridge.updateSetToken(''); upd.app.hasToken = r.hasToken; upd.state = 'idle'; drawUpdatePanel(); };
     if ($('#upd-check')) $('#upd-check').onclick = runCheck;
+    if ($('#upd-retry')) $('#upd-retry').onclick = async () => {
+      upd.percent = 0; drawUpdatePanel();
+      const r = await bridge.updateDownload();
+      if (r && r.state === 'error') { upd.state = 'error'; upd.message = r.message; upd.detail = r.detail || ''; upd.soft = !!r.soft; drawUpdatePanel(); }
+    };
     if ($('#upd-releases')) $('#upd-releases').onclick = () => bridge.updateOpenReleases();
     if ($('#upd-log')) $('#upd-log').onclick = () => bridge.openLog();
     if ($('#upd-install')) $('#upd-install').onclick = async () => {
@@ -10120,6 +10392,14 @@
         : { ...defauts };
       if (!Array.isArray(a.modules)) delete a.modules;      // rejeu : null ne doit pas passer pour un choix
       a.modulesTouche = Array.isArray(a.modules);           // un choix déjà enregistré ne se fait pas écraser
+      // Le régime, exactement pareil — et il ne l'était pas. `regimeTouche` n'est jamais enregistré
+      // (`applySetup` ne recopie que les champs de la société), donc il repartait à `undefined` au
+      // rejeu : rejouer l'assistant pour corriger son MÉTIER — le seul endroit où l'on puisse le
+      // faire — écrasait en silence le régime fiscal réglé à la main. Or un seul métier sur quinze
+      // en propose un ; pour les quatorze autres, `regimeSuggere` rend `''`, c'est-à-dire « réel ».
+      // Un forfaitaire qui re-cliquait son propre métier repartait donc au réel et se remettait à
+      // facturer 19 % de TVA — exactement la faute que la 7.22.0 avait été écrite pour empêcher.
+      a.regimeTouche = !!String(co.taxRegime || '').trim();
       let i = reprise ? Math.min(Math.max(Number(co.setupStep) || 0, 0), steps.length - 1) : 0;
       const root = document.createElement('div'); root.id = 'setup';
       document.body.appendChild(root);
@@ -10182,7 +10462,7 @@
           (${MOD}+K), et un module qui contient quelque chose revient tout seul.</p>`;
         }
         if (s.id === 'facturation') return `<form id="sf-form" class="grid-3">
-          ${field(lbl('Devise', 'doc.currency'), 'currency', a.currency, 'text')}
+          <label class="field">${lbl('Devise', 'doc.currency')}<select name="currency">${C.CURRENCIES.map(x => `<option value="${x}" ${C.normCurrency(a.currency) === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
           ${field(lbl('Timbre fiscal par facture', 'doc.stampFee'), 'stampFee', a.stampFee, 'number', 'step="0.001" min="0" class="num"')}
           <label class="field">${lbl('Retenue à la source par défaut', 'doc.withholdingDefault')}<select name="defaultWithholdingRate">${withholdingOptions(a.defaultWithholdingRate)}</select></label>
           ${field(lbl('Validité des devis (jours)', 'doc.quoteValidity'), 'quoteValidityDays', a.quoteValidityDays, 'number', 'min="0" class="num"')}
@@ -10198,7 +10478,7 @@
           <p>Choisis un dossier dans <b>iCloud Drive</b>, sur une <b>clé USB</b> ou un disque réseau : à chaque enregistrement, SkanFact y recopiera tout, sans que tu aies à y penser.</p>
           <div class="inline mt"><button type="button" class="btn btn-primary" id="sf-ext">Choisir un dossier…</button><span id="sf-ext-st" class="small muted">Aucun dossier choisi.</span></div>
           <p class="small muted mt" id="sf-ext-note" hidden></p>
-          <p class="small muted mt">Tu peux le faire plus tard dans Paramètres → Sécurité et données, mais l'expérience montre que « plus tard » n'arrive jamais.</p>`;
+          <p class="small muted mt">Tu peux le faire plus tard dans Paramètres → Données et sécurité, mais l'expérience montre que « plus tard » n'arrive jamais.</p>`;
         return '';
       };
 
@@ -10383,7 +10663,7 @@
   // « Exporter » et « Importer » vivaient dans le pied de la barre latérale, donc toujours visibles,
   // alors que « Paramètres » et « Aide » ne l'étaient jamais. Les deux boutons dont un débutant n'a
   // pas besoin occupaient la place des deux dont il a besoin. Ils n'ont pas disparu : ils étaient
-  // déjà en double dans Paramètres → Sécurité et données (#export-data / #import-data), à côté des
+  // déjà en double dans Paramètres → Données et sécurité (#export-data / #import-data), à côté des
   // sauvegardes, c'est-à-dire là où on les cherche.
 
   // ---------- chien de garde et messages du processus principal ----------
@@ -10447,12 +10727,12 @@
       const tag = $('#beta-tag'); if (tag) tag.hidden = !C.estBeta(v.version);
       if (v.lastUpdate) {
         if (v.lastUpdate.ok) toast('SkanFact mis à jour en version ' + v.version);
-        else modal(`<h2>Mise à jour non installée</h2><p>${h(v.lastUpdate.message || 'Erreur inconnue')}.</p><p class="small muted">Tu peux installer la nouvelle version à la main depuis la page des versions, ou réessayer depuis Paramètres → Mises à jour.</p>
+        else modal(`<h2>Mise à jour non installée</h2><p>${h(v.lastUpdate.message || 'Erreur inconnue')}.</p><p class="small muted">Tu peux installer la nouvelle version à la main depuis la page des versions, ou réessayer depuis Paramètres → L'application → Mises à jour.</p>
           <div class="modal-actions"><button class="btn" data-close>Fermer</button><button class="btn btn-primary" id="open-rel">Voir les versions</button></div>`, (root) => { $('#open-rel', root).onclick = () => bridge.updateOpenReleases(); });
       }
     });
-    $('#update-pill').onclick = () => allerParametres('maj', 'p-maj');
-    $('#lic-banner').onclick = () => allerParametres('licence', 'p-licence');
+    $('#update-pill').onclick = () => allerParametres('app', 'p-maj');
+    $('#lic-banner').onclick = () => allerParametres('app', 'p-licence');
     if (!location.hash) location.hash = '#/dashboard';
     render();
     if (loaded && loaded.corruptFile) {

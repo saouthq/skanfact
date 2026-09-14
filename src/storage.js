@@ -173,7 +173,13 @@ function createStorage(dir, opts) {
   // sauvegardes existantes (elles ne doivent jamais rester en clair à côté d'un fichier chiffré,
   // ni devenir illisibles quand on retire le mot de passe).
   function setPassword(data, password) {
-    const oldKey = state.key;
+    // L'état d'AVANT, pour pouvoir y revenir. `write` peut refuser — un autre poste a enregistré
+    // entre-temps sur un dossier partagé — et il refuse en RENDANT le conflit, pas en levant. Ce
+    // retour était jeté : la clé était déjà remplacée en mémoire, les sauvegardes se faisaient
+    // rechiffrer avec elle, et l'écran annonçait « Données chiffrées » alors que le fichier de
+    // données, lui, n'avait pas bougé. Au redémarrage, plus rien ne s'ouvrait avec le bon mot de
+    // passe : le fichier réclamait l'ancien, les sauvegardes le nouveau.
+    const avant = { key: state.key, salt: state.salt, encrypted: state.encrypted };
     if (password) {
       state.salt = crypto.randomBytes(16);
       state.key = deriveKey(password, state.salt);
@@ -181,8 +187,24 @@ function createStorage(dir, opts) {
     } else {
       state.key = null; state.salt = null; state.encrypted = false;
     }
-    write(data);
-    convertBackups(oldKey);
+    let r;
+    try { r = write(data); }
+    catch (e) { Object.assign(state, avant); throw e; }
+    if (r && r.conflict) {
+      Object.assign(state, avant);
+      return { ok: false, conflict: true, disk: r.disk };
+    }
+    convertBackups(avant.key);
+    return { ok: true };
+  }
+
+  // Rechiffrer (ou déchiffrer) une sauvegarde en place. Rend `true` si le fichier a changé.
+  function convertirUne(p, oldKey) {
+    let d = JSON.parse(fs.readFileSync(p, 'utf8'));
+    if (isEncrypted(d)) { if (!oldKey) return false; d = decryptWithKey(d, oldKey); }
+    const payload = state.key ? encryptWithKey(d, state.salt, state.key) : d;
+    fs.writeFileSync(p + '.tmp', JSON.stringify(payload, null, state.key ? 0 : 2), 'utf8');
+    fs.renameSync(p + '.tmp', p);
     return true;
   }
 
@@ -190,15 +212,34 @@ function createStorage(dir, opts) {
     let names = [];
     try { names = fs.readdirSync(backupDir).filter(f => f.endsWith('.json')); } catch { return; }
     names.forEach(n => {
-      const p = path.join(backupDir, n);
-      try {
-        let d = JSON.parse(fs.readFileSync(p, 'utf8'));
-        if (isEncrypted(d)) { if (!oldKey) return; d = decryptWithKey(d, oldKey); }
-        const payload = state.key ? encryptWithKey(d, state.salt, state.key) : d;
-        fs.writeFileSync(p + '.tmp', JSON.stringify(payload, null, state.key ? 0 : 2), 'utf8');
-        fs.renameSync(p + '.tmp', p);
-      } catch (e) { log('conversion sauvegarde ' + n, e); }
+      try { convertirUne(path.join(backupDir, n), oldKey); }
+      catch (e) { log('conversion sauvegarde ' + n, e); }
     });
+    // La copie externe AUSSI, et c'est le point qui manquait.
+    //
+    // « Changer le mot de passe rechiffre les sauvegardes » est une règle posée en 6.8.0 — mais
+    // elle ne valait que pour le dossier local. Sur la clé USB ou dans iCloud, `mirrorExternal` ne
+    // recopiait un fichier que s'il n'existait pas encore : les sauvegardes déjà copiées en CLAIR
+    // y restaient en clair pour toujours, à côté d'un fichier de données chiffré, pendant que
+    // l'écran annonçait « le fichier de données et ses sauvegardes sont chiffrés ». Quelqu'un qui
+    // active un mot de passe parce que son ordinateur voyage emporte donc trente jours de sa
+    // comptabilité en clair sur la clé qui voyage avec lui.
+    //
+    // On les convertit sur place, sans rien supprimer : une sauvegarde externe plus ancienne que la
+    // rotation locale de trente jours reste un filet, elle n'a pas à disparaître — elle a juste à
+    // ne pas rester lisible.
+    const ext = state.external.dir;
+    if (ext) {
+      try {
+        const dossier = path.join(ext, 'SkanFact', 'backups');
+        if (fs.existsSync(dossier)) {
+          fs.readdirSync(dossier).filter(f => f.endsWith('.json')).forEach(n => {
+            try { convertirUne(path.join(dossier, n), oldKey); }
+            catch (e) { log('conversion sauvegarde externe ' + n, e); }
+          });
+        }
+      } catch (e) { state.external.lastError = e.message; log('copie externe (conversion)', e); }
+    }
     mirrorExternal();
   }
 
@@ -360,7 +401,20 @@ function createStorage(dir, opts) {
       }
       let names = [];
       try { names = fs.readdirSync(backupDir).filter(f => f.endsWith('.json')); } catch {}
-      names.forEach(n => { const dst = path.join(target, 'backups', n); if (!fs.existsSync(dst)) fs.copyFileSync(path.join(backupDir, n), dst); });
+      // Recopier aussi ce qui a CHANGÉ, pas seulement ce qui manque. Un nom de sauvegarde porte sa
+      // date, donc son contenu ne bouge normalement jamais — sauf après un changement de mot de
+      // passe, qui rechiffre tout le dossier local. Avec le seul test « le fichier n'existe pas »,
+      // la copie externe gardait la version d'avant, en clair.
+      names.forEach(n => {
+        const src = path.join(backupDir, n), dst = path.join(target, 'backups', n);
+        try {
+          if (fs.existsSync(dst)) {
+            const a = fs.statSync(src), b = fs.statSync(dst);
+            if (a.size === b.size && Math.abs(a.mtimeMs - b.mtimeMs) < 2000) return;
+          }
+          fs.copyFileSync(src, dst);
+        } catch (e) { log('copie externe ' + n, e); }
+      });
       // Les pièces jointes ne tiennent pas dans le JSON : la copie externe est le seul filet qui les emporte.
       if (fs.existsSync(attachDir)) fs.cpSync(attachDir, path.join(target, 'pieces-jointes'), { recursive: true, force: false, errorOnExist: false });
       state.external.lastCopy = now().toISOString(); state.external.lastError = null;

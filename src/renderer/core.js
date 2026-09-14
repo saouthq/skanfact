@@ -650,6 +650,20 @@
   function round3(n) { return Math.round((Number(n) || 0) * 1000) / 1000; }
 
   const CURRENCIES = ['DT', 'EUR', 'USD', 'GBP', 'CHF', 'MAD', 'DZD'];
+  // La devise de l'entreprise se réglait dans un champ de TEXTE LIBRE, alors que l'éditeur de
+  // document et la fiche client n'offrent que ces sept codes depuis la 2.4.0. On pouvait donc y
+  // écrire « Dinar », « TND », « dt » ou n'importe quoi — et le nombre de décimales, lui, ne
+  // reconnaît que 'DT' et 'TND' : tout le reste passait à deux décimales sur des montants en
+  // dinars, silencieusement, sur toutes les pièces à venir. Le champ est devenu une liste ; cette
+  // fonction rattrape ce qui a déjà été enregistré, plutôt que de le remettre d'office à 'DT'.
+  function normCurrency(c) {
+    const v = String(c == null ? '' : c).trim().toUpperCase();
+    if (!v) return 'DT';
+    if (v === 'TND' || v === 'DINAR' || v === 'DTN' || v === 'TN') return 'DT';
+    if (v === '€' || v === 'EURO' || v === 'EUROS') return 'EUR';
+    if (v === '$' || v === 'DOLLAR') return 'USD';
+    return CURRENCIES.includes(v) ? v : 'DT';
+  }
   function decimalsFor(currency) { return !currency || currency === 'DT' || currency === 'TND' ? 3 : 2; }
   function money(n, currency, decimals, lang) {
     const v = round3(n);
@@ -721,6 +735,13 @@
   }
 
   function nl2br(s) { return escapeHtml(s).replace(/\n/g, '<br>'); }
+
+  // Le pluriel. Il vivait dans les DEUX renderers et manquait ici, alors que core.js écrit lui aussi
+  // des phrases qu'on lit à l'écran : les lignes de « À faire », la liste de ce qui manque au
+  // paquet du comptable, les bulletins. « 1 facture(s) en brouillon » paraît bâclé où qu'il soit
+  // écrit. `plur` sert aux pluriels irréguliers ; `sAccord` accorde ce qui SUIT le nom.
+  const plFr = (n, un, plur) => `${n} ${n > 1 ? (plur || un + 's') : un}`;
+  const sAccord = n => (Number(n) > 1 ? 's' : '');
 
   function statusLabel(s) { return STATUS_LABELS[s] || s; }
 
@@ -937,6 +958,9 @@
       clients: Array.isArray(d.clients) ? d.clients : [], catalog: Array.isArray(d.catalog) ? d.catalog : [],
       documents: Array.isArray(d.documents) ? d.documents : [], counters: d.counters || {}
     };
+    // La devise de l'entreprise a longtemps été un champ libre : « TND », « dinar » ou une faute de
+    // frappe s'y sont enregistrés, et le nombre de décimales en dépend. On la ramène dans la liste.
+    data.company.currency = normCurrency(data.company.currency);
     data.documents.forEach(doc => {
       if (!Array.isArray(doc.payments)) doc.payments = [];
       doc.withholdingRate = Number(doc.withholdingRate) || 0;
@@ -2036,7 +2060,7 @@
       ${emp.cnss ? `<div class="kv"><span>N° CNSS</span><span>${escapeHtml(emp.cnss)}</span></div>` : ''}
       ${emp.hireDate ? `<div class="kv"><span>Embauché le</span><span>${fmtDate(emp.hireDate)}</span></div>` : ''}
       <div class="kv"><span>Contrat</span><span>${escapeHtml(contractLabel(emp.contract || 'cdi'))}</span></div>
-      <div class="kv"><span>Situation</span><span>${emp.headOfFamily ? 'Chef de famille' : 'Célibataire'}${Number(emp.children) ? ` · ${emp.children} enfant(s) à charge` : ''}</span></div>
+      <div class="kv"><span>Situation</span><span>${emp.headOfFamily ? 'Chef de famille' : 'Célibataire'}${Number(emp.children) ? ` · ${plFr(emp.children, 'enfant')} à charge` : ''}</span></div>
     </div>
     <div class="box"><h2>Période</h2>
       <div class="kv"><span>Mois</span><span><b>${escapeHtml(label)}</b></span></div>
@@ -2052,7 +2076,7 @@
     <thead><tr><th>Désignation</th><th class="n">Base</th><th class="n">Taux</th><th class="n">Part salarié</th><th class="n">Part employeur</th></tr></thead>
     <tbody>
       ${row('Salaire de base', null, null, c.baseGross, null)}
-      ${c.absenceCut ? row(`Absence (${pct(c.absentDays)} jour(s))`, null, null, -c.absenceCut, null) : ''}
+      ${c.absenceCut ? row(`Absence (${pct(c.absentDays)} jour${sAccord(c.absentDays)})`, null, null, -c.absenceCut, null) : ''}
       ${c.bonuses.map(b => row(b.label + (b.taxable ? '' : ' (non imposable)'), null, null, b.amount, null)).join('')}
       <tr class="sec"><td>Salaire brut</td><td class="n"></td><td class="n"></td><td class="n">${fmt(c.gross)}</td><td class="n"></td></tr>
       ${row('CNSS', c.cnssBase, c.rates.cnssEmployee, -c.cnssEmployee, c.cnssEmployer)}
@@ -2251,7 +2275,7 @@
           ${(opts.lines || []).map(l => `<tr><td>${escapeHtml(l.label)}</td><td class="n">${fmt(l.amount)}</td></tr>`).join('')}
           <tr class="tot"><td>Net à percevoir</td><td class="n">${fmt(round3((opts.lines || []).reduce((a, l) => a + (Number(l.amount) || 0), 0)))} ${escapeHtml(cur)}</td></tr>
         </table>
-        <p class="small">Solde de congés non pris au départ : <b>${pctFr(bal.remaining)} jour(s)</b>${leavePay > 0 ? `, soit ${fmt(leavePay)} ${escapeHtml(cur)} sur la base du dernier salaire` : ''}.</p>
+        <p class="small">Solde de congés non pris au départ : <b>${pctFr(bal.remaining)} jour${sAccord(bal.remaining)}</b>${leavePay > 0 ? `, soit ${fmt(leavePay)} ${escapeHtml(cur)} sur la base du dernier salaire` : ''}.</p>
         <p>Le présent solde est établi en double exemplaire. <em>À VÉRIFIER : les indemnités de fin de contrat dépendent du motif de la rupture et de la convention collective applicable — faites relire ce document avant signature.</em></p>`
     }[kind] || '';
 
@@ -3271,15 +3295,15 @@
     const add = (id, level, label, detail, count) => { if (count) out.push({ id, level, label, detail, count }); };
 
     const drafts = (data.documents || []).filter(d => d.type === 'facture' && d.status === 'brouillon' && inRange(d.date));
-    add('brouillons', 'danger', `${drafts.length} facture(s) en brouillon dans la période`,
+    add('brouillons', 'danger', `${plFr(drafts.length, 'facture')} en brouillon dans la période`,
       'Un brouillon n\'a pas de numéro et n\'entre dans aucun journal. Émets-le ou change sa date avant de clôturer, sinon il restera invisible pour ton comptable.', drafts.length);
 
     const noProof = (data.purchases || []).filter(p => inRange(p.date) && !(p.attachments || []).length);
-    add('justificatifs', 'warn', `${noProof.length} achat(s) sans justificatif`,
+    add('justificatifs', 'warn', `${plFr(noProof.length, 'achat')} sans justificatif`,
       'Sans la pièce jointe, ton comptable ne peut pas récupérer la TVA de ces achats.', noProof.length);
 
     const unticked = cashMovements(data, company).filter(m => inRange(m.date) && !m.reconciled);
-    add('pointage', 'warn', `${unticked.length} mouvement(s) non pointé(s)`,
+    add('pointage', 'warn', `${plFr(unticked.length, 'mouvement')} non pointé${sAccord(unticked.length)}`,
       'Pointer les mouvements contre le relevé bancaire, c\'est ce qui prouve que la trésorerie est juste.', unticked.length);
 
     // Bulletins manquants : un salarié actif sans bulletin sur un mois travaillé
@@ -3288,15 +3312,15 @@
     while (m <= to.slice(0, 7) && months.length < 24) { months.push(m); m = addMonths(m + '-01', 1, 1).slice(0, 7); }
     const slipsMissing = months.reduce((s, mm) =>
       s + missingPayslips(data, Number(mm.slice(0, 4)), Number(mm.slice(5, 7))).length, 0);
-    add('bulletins', 'danger', `${slipsMissing} bulletin(s) de paie à établir`,
+    add('bulletins', 'danger', `${plFr(slipsMissing, 'bulletin')} de paie à établir`,
       'Un salarié payé sans bulletin, c\'est une charge qui manque au résultat et une déclaration sociale fausse.', slipsMissing);
 
     const negative = stockList(data).filter(s => s.qty < 0);
-    add('stock', 'warn', `${negative.length} article(s) en stock négatif`,
+    add('stock', 'warn', `${plFr(negative.length, 'article')} en stock négatif`,
       'Un stock négatif est une pièce d\'achat manquante, pas une erreur de comptage.', negative.length);
 
     const gaps = serialGaps(data);
-    add('series', 'warn', `${gaps.length} écart(s) entre quantités et numéros de série`,
+    add('series', 'warn', `${plFr(gaps.length, 'écart')} entre quantités et numéros de série`,
       'Les deux comptes devraient dire la même chose.', gaps.length);
 
     return out;
@@ -3413,7 +3437,7 @@
       && computeTotals(d, company).withholding > 0 && !d.withholdingCertificate);
     if (certs.length) out.push({
       id: 'attestations', level: 'warn', count: certs.length,
-      label: `${certs.length} attestation(s) de retenue à la source non remise(s)`,
+      label: `${plFr(certs.length, 'attestation')} de retenue à la source non remise${sAccord(certs.length)}`,
       detail: 'Sans elle, ton client ne peut pas justifier ce qu\'il t\'a retenu.'
     });
     return out;
@@ -4276,7 +4300,7 @@
     if (gaps.length) out.push({
       id: 'series-ecart', level: 'warn',
       label: `${gaps.length} article${gaps.length > 1 ? 's' : ''} dont les numéros de série ne collent pas au stock`,
-      detail: gaps.map(g => `${g.label} : ${g.qty} en stock, ${g.serials} numéro(s) disponible(s)`).join(' · ') + '. Un numéro n\'a pas été saisi à l\'entrée, ou pas attribué à la sortie.',
+      detail: gaps.map(g => `${g.label} : ${g.qty} en stock, ${plFr(g.serials, 'numéro')} disponible${sAccord(g.serials)}`).join(' · ') + '. Un numéro n\'a pas été saisi à l\'entrée, ou pas attribué à la sortie.',
       count: gaps.length, route: '#/stock', docs: []
     });
     // Lignes d'achat marquées « immobilisation » sans fiche : sans elles, aucune dotation n'est calculée
@@ -4548,7 +4572,7 @@
     relance2: { subject: 'Relance — facture {numero} en retard de {jours} jours', body: 'Bonjour,\n\nNotre facture {numero} d\'un montant de {montant}, échue le {echeance}, n\'a pas été réglée à ce jour ({jours} jours de retard).\nMerci de procéder au règlement dans les meilleurs délais ou de nous indiquer la date prévue.\n\nCordialement,\n{societe}' },
     relance3: { subject: 'Dernière relance — facture {numero}', body: 'Bonjour,\n\nMalgré nos précédents rappels, la facture {numero} ({montant}, échue le {echeance}) reste impayée après {jours} jours.\nSans règlement sous 8 jours, nous serons contraints d\'engager une procédure de recouvrement.\n\nCordialement,\n{societe}' },
     relanceDevis: { subject: 'Notre devis {numero} — {objet}', body: 'Bonjour,\n\nNous vous avons adressé le devis {numero} ({montant} TTC) concernant : {objet}.\nAvez-vous pu l\'examiner ? Nous restons disponibles pour en discuter ou l\'ajuster si besoin.\n\nCordialement,\n{societe}' },
-    comptable: { subject: 'Comptabilité {objet} — {societe}', body: 'Bonjour,\n\nVeuillez trouver ci-joint le journal des ventes de {objet} : {numero} document(s), {montant} de chiffre d\'affaires hors taxes.\n\nJe reste à votre disposition pour tout complément.\n\nCordialement,\n{societe}' },
+    comptable: { subject: 'Comptabilité {objet} — {societe}', body: 'Bonjour,\n\nVeuillez trouver ci-joint le journal des ventes de {objet} : {numero} documents, {montant} de chiffre d\'affaires hors taxes.\n\nJe reste à votre disposition pour tout complément.\n\nCordialement,\n{societe}' },
     proforma: { subject: 'Facture proforma {numero} — {societe}', body: 'Bonjour,\n\nVeuillez trouver ci-joint notre facture proforma {numero} d\'un montant de {montant}, concernant : {objet}.\nCe document est établi pour vos démarches : il n\'a pas de valeur comptable et sera suivi d\'une facture définitive.\n\nCordialement,\n{societe}' },
     commande: { subject: 'Bon de commande {numero} — {societe}', body: 'Bonjour,\n\nVeuillez trouver ci-joint le bon de commande {numero} ({montant} TTC) reprenant votre demande concernant : {objet}.\nMerci de nous le retourner daté et signé pour que nous lancions l\'exécution.\n\nCordialement,\n{societe}' },
     livraison: { subject: 'Bon de livraison {numero} — {societe}', body: 'Bonjour,\n\nVeuillez trouver ci-joint le bon de livraison {numero} concernant : {objet}.\nMerci de nous le retourner signé après réception.\n\nCordialement,\n{societe}' },
@@ -5181,7 +5205,7 @@
     depositLines, settlementLines, salesJournal, vatSummary, paymentsJournal, toCsv, migrateData,
     PERIODS, MONTHS_FR, MONTHS_SHORT, monthLabel, addMonths, nextRecurrenceDate, dueRecurrences, catchUpRecurrence, fillTemplate, buildRecurringInvoice,
     reminderLevel, REMINDER_LABELS, daysBetween, overdueInvoices, todoList, companyGaps, documentHistory, DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_TEMPLATES_EN, emailFor,
-    CURRENCIES, decimalsFor, toBase, rateOf, missingRate, monthKeys, monthlySeries, topClients, quoteStats, avgPaymentDelay, clientSummary, I18N,
+    CURRENCIES, normCurrency, decimalsFor, toBase, rateOf, missingRate, monthKeys, monthlySeries, topClients, quoteStats, avgPaymentDelay, clientSummary, I18N,
     EXTRA_TYPES, SALES_TYPES, CONVERSIONS, CONVERSION_LABELS, convertDoc, derivedDocs, DEFAULT_CLAUSES, CLAUSE_LABELS,
     PURCHASE_KINDS, LINE_DESTINATIONS, DEFAULT_EXPENSE_CATEGORIES, PURCHASE_STATUSES, expenseCategories,
     vatReturn, vatChain, DEFAULT_FISCAL_DEADLINES, fiscalDeadlines, nextDeadline, upcomingFiscal, fiscalFilingId, fiscalDone, simpleResult,

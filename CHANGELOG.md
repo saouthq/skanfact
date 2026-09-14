@@ -7,6 +7,103 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 7.30.0 — 14/09/2026
+
+**Les Paramètres, refaits dans les deux applications : cinq onglets au lieu de huit, un sommaire, une
+recherche — et des mises à jour qui vérifient toutes seules et disent depuis quand.**
+
+### Ce qui n'allait pas, mesuré
+
+`npm run e2e:parametres` a mesuré la page avant d'y toucher : huit onglets d'un déséquilibre de 1 à
+12. « Licence » et « Cabinet comptable » pesaient un cinquième d'écran chacun — une phrase, parfois
+une phrase disant qu'il n'y a rien à faire — pendant que « Sécurité et données » en faisait deux,
+avec huit panneaux et dix-huit boutons. Ce dernier était devenu le fourre-tout : il portait aussi
+« Choisir les modules affichés » et « Revoir l'assistant de démarrage », qui ne sont ni de la
+sécurité ni des données. La lecture de photo de facture, elle, vivait sous « Mises à jour ». Et
+soixante réglages, sans aucun moyen d'en chercher un.
+
+### Cinq onglets, un sommaire, une recherche
+
+- **Mon entreprise** : identité · régime fiscal et TVA · coordonnées bancaires.
+- **Documents** : règles de facturation · image de marque · textes imprimés · objectifs.
+- **Envois** : messagerie · ton comptable · modèles de messages · ton cabinet comptable.
+- **Données et sécurité** : dossiers · sauvegardes · copie externe · mot de passe · lecture de
+  factures · exemple · zone sensible.
+- **L'application** : apparence · modules affichés · mises à jour · licence · aide et dépannage.
+
+Le **sommaire** montre d'un coup ce que l'onglet ouvert contient et emmène au panneau. La
+**recherche** répond quand on ne sait même pas dans quel onglet regarder : elle lit les titres, les
+libellés de champs et jusqu'aux phrases d'explication, et dit toujours dans quel onglet le réglage
+se trouve. Les deux se déduisent de l'écran : un panneau ajouté demain est trouvable le jour où il
+est écrit. La mécanique vit dans `src/renderer/reglages.js`, chargée par **les deux applications**.
+
+L'app du cabinet garde sa page unique — deux écrans et demi, qu'un comptable ouvre deux fois — mais
+reçoit le même sommaire et la même recherche, et sa **boîte de réception** sort du panneau des
+sauvegardes : c'est la porte par laquelle les paquets arrivent, pas un filet.
+
+### Les mises à jour vérifient toutes seules, et disent depuis quand
+
+Jusqu'ici, SkanFact vérifiait **une fois**, cinq secondes après l'ouverture, et plus jamais : une
+correction publiée le mardi n'arrivait pas avant le lundi suivant chez quelqu'un qui ne quitte pas
+l'application. Elle regarde désormais **toutes les quatre heures** et au retour sur l'application,
+et l'écran affiche **quand la dernière vérification a eu lieu** — sans quoi « tu as la dernière
+version » pouvait dater d'un mois. L'état au repos ne montre plus un bouton nu : il répond avec ce
+que la dernière vérification a constaté.
+
+Et un téléchargement qui échoue ne fige plus l'écran : la panne était **avalée** (la vérification
+du démarrage est silencieuse), la barre de progression restait bloquée à 40 %, et aucun bouton
+n'était proposé. La panne se dit, et « Relancer le téléchargement » existe. Dans les deux
+applications.
+
+### Les huit défauts que l'audit a trouvés, corrigés
+
+- **Rejouer l'assistant écrasait le régime fiscal.** C'est le seul endroit où l'on puisse changer de
+  métier ; le drapeau qui protège un choix fait à la main n'était pas réamorçé au rejeu. Un
+  forfaitaire qui re-cliquait son propre métier repartait au réel et se remettait à facturer 19 %.
+- **La devise était un champ de texte libre** alors que toute l'application n'accepte que sept
+  codes. « TND », « dinar » ou une faute de frappe faisaient passer toutes les factures à deux
+  décimales au lieu de trois. Liste fermée, et ce qui a déjà été tapé se rattrape.
+- **Activer un mot de passe jetait la saisie en cours** des Paramètres, sans un mot.
+- **Activer un mot de passe laissait les sauvegardes en clair sur la clé USB**, pour toujours,
+  pendant que l'écran annonçait qu'elles étaient chiffrées. La copie externe se rechiffre.
+- **Un refus d'écriture était ignoré** : sur un dossier partagé, l'écran annonçait « Données
+  chiffrées » alors que rien n'avait été écrit, et le fichier réclamait ensuite l'ancien mot de
+  passe pendant que les sauvegardes réclamaient le nouveau.
+- **Cabinet : un jour de dépôt hors bornes était refusé en silence**, avec un « ✓ enregistré » vert
+  et la valeur refusée sous les yeux.
+- **Cmd+K ne trouvait plus un seul réglage** — régression de cette refonte, attrapée par l'audit :
+  les six alias nommaient les anciens onglets. Les entrées sont maintenant engendrées **panneau par
+  panneau** : « mot de passe » mène au panneau du mot de passe, pas en haut d'un onglet.
+- **Onze phrases envoyaient vers un onglet disparu.** Un test générique l'interdit désormais.
+
+### Trois écrans qui n'écoutaient pas
+
+- La fiche d'affaire affichait huit en-têtes triables sur « Ventes rattachées » : le clic était
+  accepté, et rien ne se triait.
+- Une échéance fiscale marquée déposée par erreur n'était plus **nulle part** passé les huit
+  secondes du bandeau « Annuler ». Un panneau « Déjà déposées » la rend.
+- La page Stock gardait ses alertes en mémoire : après un inventaire, l'onglet continuait
+  d'annoncer les articles qu'on venait de réapprovisionner.
+
+### Le thème sombre : tous les champs de saisie étaient illisibles
+
+Trouvé en regardant une capture de cette version, puis **mesuré** : en thème sombre, chaque
+`<input>` de l'application gardait son fond clair avec le texte clair du thème. Contraste **1,18** —
+du blanc sur du blanc. Les zones de texte et les listes déroulantes, elles, étaient correctes, ce
+qui rendait l'écran à moitié juste et donc difficile à mettre en cause. La cause : une règle de
+thème sombre qui PERDAIT en spécificité contre la règle commune des champs, sans que rien ne le
+signale. Le défaut existait depuis que le thème sombre existe (1.6.0).
+
+`npm run e2e:contraste` mesure désormais les champs autant que les boutons — 455 éléments par
+écran au lieu de 421.
+
+### Et le français
+
+Quatre-vingt-dix « 1 facture(s) » ont disparu des deux applications et de leur logique partagée —
+dans « À faire », dans le paquet du comptable, dans les Paramètres (« 51 document(s) »). La règle
+existait dans l'app du cabinet depuis sa 1.0.0 et n'avait été portée qu'à un seul écran. Un test
+interdit la forme.
+
 ## 7.29.0 — 14/09/2026
 
 **Le bouton s'appelle « Actions », il se referme quand on rappuie dessus, et chaque geste a son

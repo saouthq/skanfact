@@ -421,6 +421,42 @@ t('chiffrement : aller-retour, mauvais mot de passe, fichier verrouillé, sauveg
   assert.throws(() => s.readExternal(p, 'nope'));
 });
 
+// Le pire cas de cette fonction : celui qu'on ne voit pas, parce qu'il se passe sur la clé USB.
+t('mot de passe : la copie externe ne garde pas les sauvegardes en clair', () => {
+  const { isEncrypted } = require('../src/storage.js');
+  const ext = tmpDir();
+  const day = new Date('2026-05-10T08:00:00Z');
+  const s = createStorage(tmpDir(), { now: () => day });
+  s.setExternalDir(ext);
+  s.write({ ...core.DEFAULT_DATA, clients: [{ id: 'a', name: 'Client secret' }] });
+  s.write({ ...core.DEFAULT_DATA, clients: [{ id: 'a', name: 'Client secret 2' }] });  // sauvegarde du jour
+  const dossierExt = path.join(ext, 'SkanFact', 'backups');
+  const noms = fs.readdirSync(dossierExt).filter(f => f.endsWith('.json'));
+  assert.strictEqual(noms.length, 1, 'la sauvegarde doit être copiée dehors');
+  assert.ok(!isEncrypted(JSON.parse(fs.readFileSync(path.join(dossierExt, noms[0]), 'utf8'))),
+    'au départ, tout est en clair des deux côtés');
+
+  // On active un mot de passe. `mirrorExternal` ne recopiait un fichier que s'il n'existait PAS
+  // encore : la copie externe restait donc en clair pour toujours, à côté d'un fichier de données
+  // chiffré, pendant que l'écran annonçait « le fichier et ses sauvegardes sont chiffrés ».
+  s.setPassword(s.read(), 'motdepasse');
+  assert.ok(isEncrypted(JSON.parse(fs.readFileSync(s.file, 'utf8'))), 'le fichier local est chiffré');
+  assert.ok(isEncrypted(JSON.parse(fs.readFileSync(path.join(ext, 'SkanFact', 'skanfact-data.json'), 'utf8'))),
+    'le fichier externe est chiffré');
+  assert.ok(isEncrypted(JSON.parse(fs.readFileSync(path.join(dossierExt, noms[0]), 'utf8'))),
+    'une sauvegarde déjà copiée dehors est restée EN CLAIR après l\'activation du mot de passe');
+
+  // Et une sauvegarde externe qui n'a plus d'équivalent local (rotation de trente jours) se
+  // convertit aussi : sinon elle resterait lisible sur la clé pour toujours. On ne la SUPPRIME pas,
+  // c'est un filet — elle a juste à ne plus être lisible.
+  const orpheline = path.join(dossierExt, 'manuelle-2020-01-01_00h00m00.json');
+  fs.writeFileSync(orpheline, JSON.stringify({ ...core.DEFAULT_DATA, clients: [{ id: 'z', name: 'Vieux client' }] }));
+  s.setPassword(s.read(), 'autre-mot-de-passe');
+  assert.ok(fs.existsSync(orpheline), 'une sauvegarde externe ancienne ne se supprime pas');
+  assert.ok(isEncrypted(JSON.parse(fs.readFileSync(orpheline, 'utf8'))),
+    'une sauvegarde externe sans équivalent local est restée en clair');
+});
+
 t('copie externe : miroir du fichier et des sauvegardes, support absent signalé', () => {
   const ext = tmpDir();
   const s = createStorage(tmpDir());
@@ -1607,8 +1643,15 @@ t('stockage : le garde-fou ne bloque jamais un poste seul', () => {
   // fichier chiffré et verrouillé : on ne peut pas comparer, on ne bloque pas pour autant
   const s2 = createStorage(tmpDir(), { deviceId: 'x' });
   s2.write(core.DEFAULT_DATA);
-  s2.setPassword({ data: s2.read(), password: 'secret123' });
+  // La signature est `setPassword(data, password)`. Elle était appelée avec UN objet
+  // `{ data, password }` : le second argument valait `undefined`, donc ce test « fichier chiffré et
+  // verrouillé » écrivait en fait un fichier EN CLAIR contenant `{data, password}`. Il ne prouvait
+  // rien de ce qu'il annonce, et il aurait survécu à n'importe quelle régression du chiffrement.
+  assert.deepStrictEqual(s2.setPassword(s2.read(), 'secret123'), { ok: true });
+  assert.ok(s2.state.encrypted, 'le mot de passe n\'a pas été appliqué');
   assert.strictEqual(s2.write({ ...s2.read(), clients: [] }).ok, true);
+  s2.lock();
+  assert.throws(() => s2.write(core.DEFAULT_DATA), /verrouill/i, 'un fichier verrouillé doit refuser d\'être écrit');
 });
 
 // ---------- trésorerie (3.3.0) ----------
@@ -2744,7 +2787,7 @@ t('paquet : la page de garde dit le mois, l\'état et ce qui manque', () => {
   const html = core.packCoverHtml(plan, co, { version: '6.1.0', at: '12/09/2026' });
   assert.ok(html.includes('août 2026'));
   assert.ok(html.includes('PROVISOIRE'), 'un mois non clôturé est annoncé comme provisoire');
-  assert.ok(html.includes('facture(s) en brouillon'), 'ce qui manque figure sur la page de garde');
+  assert.ok(html.includes('1 facture en brouillon'), 'ce qui manque figure sur la page de garde, au bon nombre');
   assert.ok(!html.includes('<Test>'), 'le nom de société est échappé, pas injecté');
   assert.ok(html.includes('&lt;Test&gt;'));
   // un dossier complet le dit aussi
@@ -5377,6 +5420,32 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       'le glossaire doit couvrir tous les modules, pas seulement la vente');
   });
 
+  // La devise de l'entreprise se réglait dans un champ de TEXTE LIBRE, alors que l'éditeur et la
+  // fiche client n'offrent que sept codes depuis la 2.4.0. Le nombre de décimales ne reconnaît que
+  // 'DT' et 'TND' : « dinar », « TN » ou une faute de frappe passaient toutes les factures à deux
+  // décimales sur des montants en millimes, sans un mot.
+  t('la devise de l\'entreprise est une liste fermée, et ce qui a été tapé se rattrape', () => {
+    assert.strictEqual(core.normCurrency('TND'), 'DT');
+    assert.strictEqual(core.normCurrency(' dt '), 'DT');
+    assert.strictEqual(core.normCurrency('Dinar'), 'DT');
+    assert.strictEqual(core.normCurrency('€'), 'EUR');
+    assert.strictEqual(core.normCurrency('eur'), 'EUR');
+    assert.strictEqual(core.normCurrency(''), 'DT', 'une devise vide vaut le dinar, jamais la chaîne vide');
+    assert.strictEqual(core.normCurrency('Yen'), 'DT', 'une devise inconnue retombe sur le dinar');
+    core.CURRENCIES.forEach(c => assert.strictEqual(core.normCurrency(c), c, c + ' doit se conserver'));
+    // Les décimales suivent : trois pour le dinar, deux pour le reste. C'est tout l'enjeu.
+    assert.strictEqual(core.decimalsFor(core.normCurrency('TND')), 3);
+    assert.strictEqual(core.decimalsFor(core.normCurrency('Dinar')), 3);
+    // La migration rattrape l'existant, et l'écran ne laisse plus rien taper.
+    assert.strictEqual(core.migrateData({ company: { currency: 'TND' } }).company.currency, 'DT');
+    const app = lireApp();
+    const page = app.slice(app.indexOf('routes.parametres = async () =>'), app.indexOf('function drawCabinetPair'));
+    assert.ok(!/'currency', c\.currency/.test(page), 'la devise est encore un champ de texte libre dans les Paramètres');
+    assert.ok(/<select name="currency">\$\{C\.CURRENCIES\.map/.test(page), 'la devise n\'est pas une liste dans les Paramètres');
+    assert.ok(!/'currency', a\.currency, 'text'/.test(app), 'la devise est encore un champ libre dans l\'assistant');
+    assert.ok(/data\.company\.currency = C\.normCurrency\(/.test(page), 'la devise enregistrée n\'est pas normalisée');
+  });
+
   t('devise : le timbre vaut un DINAR, et un taux absent ne passe plus en silence', () => {
     const co = { ...core.DEFAULT_COMPANY, stampFee: 1, currency: 'DT' };
     const lignes = [{ label: 'Prestation', qty: 1, unitPrice: 1000, vatRate: 19 }];
@@ -5689,9 +5758,30 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.ok(/const TABS = CATALOG_TABS;/.test(code), 'le Catalogue doit dessiner ses onglets depuis CATALOG_TABS');
     assert.ok(/const TABS = SETTINGS_TABS;/.test(code), 'les Paramètres doivent dessiner leurs onglets depuis SETTINGS_TABS');
     // Les mots qu'on tape et qui ne sont dans aucun libellé.
-    ['maj', 'backup', 'mot de passe', 'logo', 'assistant'].forEach(mot =>
-      assert.ok(code.slice(code.indexOf('const ALIAS'), code.indexOf('function closePalette')).includes(mot),
+    //
+    // L'ANCIEN test se contentait de chercher ces mots dans le bloc ALIAS. Il ne pouvait donc pas
+    // échouer : la refonte des onglets a périmé les six clés « Paramètres → … » — plus aucune ne
+    // correspondait à une entrée réelle, donc « maj », « backup », « logo » ne rendaient plus rien —
+    // et il est resté vert. On exige maintenant que chaque mot atteigne une entrée EXISTANTE.
+    //
+    // Les réglages sont engendrés panneau par panneau depuis `SETTINGS_PANNEAUX` : on relit la
+    // table et on cherche dedans, comme le ferait la palette.
+    const bloc2 = code.slice(code.indexOf('const SETTINGS_PANNEAUX'), code.indexOf('const panneau ='));
+    assert.ok(bloc2.length > 500, 'la table des panneaux de réglages n\'a pas été trouvée');
+    const alias = code.slice(code.indexOf('const ALIAS'), code.indexOf('function closePalette'));
+    ['maj', 'backup', 'mot de passe', 'logo', 'appairage', 'activation', 'matricule', 'iban', 'ocr', 'demo']
+      .forEach(mot => assert.ok(bloc2.includes(mot) || alias.includes(mot),
         `« ${mot} » ne rend rien dans la recherche`));
+    // Toute clé d'ALIAS doit désigner une entrée que la palette fabrique VRAIMENT : une clé orpheline
+    // est un alias mort, et c'est exactement ce qui s'est passé.
+    const libelles = new Set();
+    (code.match(/const (COMPTA|PAIE|STOCK|MARGE|TRESO|IMMO|AUTRES|CATALOG|SETTINGS)_TABS = \[[\s\S]*?\];/g) || [])
+      .forEach(b => (b.match(/, *'((?:[^'\\]|\\.)*)'\]/g) || [])
+        .forEach(m => libelles.add(m.slice(3, -2).replace(/\\'/g, "'"))));
+    const orphelines = (alias.match(/^\s*'([^']+)':/gm) || []).map(m => m.trim().slice(1, -2))
+      .filter(k => k.includes(' → '))
+      .filter(k => !libelles.has(k.split(' → ')[1]));
+    assert.deepStrictEqual(orphelines, [], 'des alias de la palette nomment un onglet qui n\'existe plus');
 
     // Trois pages d'un même module affichaient au survol EXACTEMENT la même phrase : l'infobulle,
     // seul secours ajouté en 7.0.0, affirmait que Trésorerie, Marges et Statistiques font la même
@@ -5982,6 +6072,43 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.ok(!/: '<div class="empty">Rien à déclarer.<\/div>'/.test(code), 'la branche morte doit disparaître');
   });
 
+  // ---------- le pluriel, dans les QUATRE fichiers qui écrivent des phrases ----------
+  //
+  // La règle vit dans l'app cabinet depuis sa 1.0.0 : « un logiciel qui écrit "1 dossier(s)" paraît
+  // bâclé ». Elle avait été portée à l'app entreprise en 7.18.0 — pour UN écran. Il restait
+  // quatre-vingts « (s) » dans app.js et onze dans core.js, dont « 1 facture(s) en brouillon » dans
+  // « À faire », « 1 achat(s) sans justificatif » dans le paquet du comptable, et « 51 document(s) »
+  // dans les Paramètres. Le test interdit la forme, dans les deux applications et dans leur logique
+  // partagée : c'est la seule façon qu'elle ne revienne pas au prochain module.
+  //
+  // Ce qui reste permis : `foo(s)` est un APPEL dont l'argument s'appelle `s`. La liste est courte
+  // et le message dit quoi faire — l'allonger pour un vrai appel, corriger le texte sinon.
+  t('aucun écran n\'écrit « 1 facture(s) »', () => {
+    const APPELS = ['String', 'push', 'done', 'bodyFor', 'balance', 'nPoint', 'escapeHtml', 'nl2br',
+      'statusLabel', 'payslipDate', 'test', 'exec', 'indexOf', 'br', 'normNom', 'trim', 'esc', 'h'];
+    // On lit la source avec ses CHAÎNES : `codeSeulement` les vide, or c'est très exactement dedans
+    // que vivent les pluriels — première version de ce test, qui ne pouvait donc pas échouer, et je
+    // ne l'ai su qu'en réintroduisant le défaut. Seuls les commentaires partent, parce qu'ils citent
+    // la faute pour l'expliquer.
+    const sansCommentaires = src => src.replace(/\/\*[\s\S]*?\*\//g, '')
+      .split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+    ['src/renderer/app.js', 'src/renderer/core.js', 'src/cabinet/renderer/app.js', 'src/cabinet/cabcore.js']
+      .forEach(f => {
+        const code = sansCommentaires(fs.readFileSync(path.join(__dirname, '..', f), 'utf8'));
+        assert.ok(code.length > 1000, `le nettoyage des commentaires a mangé ${f}`);
+        const fautes = Array.from(new Set((code.match(/[A-Za-zÀ-ÿ_$][A-Za-zÀ-ÿ0-9_$]*\(s\)/g) || [])
+          .filter(m => !APPELS.includes(m.slice(0, -3)))));
+        assert.deepStrictEqual(fautes, [], `${f} écrit encore des pluriels en « (s) » : ${fautes.join(', ')}`);
+      });
+    // Et les deux outils qui les remplacent existent bien, des deux côtés.
+    const app = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
+    const core = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'core.js'), 'utf8');
+    assert.ok(/const pl = \(n, un, plur\)/.test(app) && /const sPl = n =>/.test(app),
+      'app.js n\'a pas de quoi accorder un pluriel');
+    assert.ok(/const plFr = \(n, un, plur\)/.test(core) && /const sAccord = n =>/.test(core),
+      'core.js n\'a pas de quoi accorder un pluriel');
+  });
+
   t('un même geste porte partout le même nom et le même habit', () => {
     const app = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
     const css = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'style.css'), 'utf8');
@@ -6084,8 +6211,12 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // 1. Un lien qui promet un réglage précis doit désigner un panneau QUI EXISTE, dans un onglet
     // qui existe : sinon on atterrit en haut d'une pile de six panneaux, exactement comme avant.
     const onglets = (app.match(/const SETTINGS_TABS = \[[\s\S]*?\];/) || [''])[0];
-    const idsPanneaux = new Set((page.match(/id="(p-[a-z]+)"/g) || []).map(m => m.slice(4, -1)));
-    assert.ok(idsPanneaux.size >= 15, 'les panneaux de Paramètres n\'ont pas d\'identifiant : ' + idsPanneaux.size);
+    const table = app.slice(app.indexOf('const SETTINGS_PANNEAUX'), app.indexOf('const panneau ='));
+    const decl = {};
+    (table.match(/'(p-[a-z]+)': \{ onglet: '([a-z]+)'/g) || [])
+      .forEach(m => { const x = m.match(/'(p-[a-z]+)': \{ onglet: '([a-z]+)'/); decl[x[1]] = x[2]; });
+    const idsPanneaux = new Set(Object.keys(decl));
+    assert.ok(idsPanneaux.size >= 20, 'les panneaux de Paramètres ne sont pas déclarés : ' + idsPanneaux.size);
     const liens = (app.match(/allerParametres\('([a-z]+)', *'([a-z-]+)'\)/g) || [])
       .map(m => m.match(/allerParametres\('([a-z]+)', *'([a-z-]+)'\)/).slice(1))
       .concat((app.match(/settingsFocus = '([a-z-]+)'/g) || []).map(m => ['', m.split("'")[1]]));
@@ -6093,9 +6224,67 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     liens.forEach(([tab, focus]) => {
       assert.ok(idsPanneaux.has(focus), `un lien vise le panneau « ${focus} », qui n'existe pas dans Paramètres`);
       if (tab) assert.ok(onglets.includes(`'${tab}'`), `un lien vise l'onglet « ${tab} », qui n'est pas dans SETTINGS_TABS`);
+      if (tab) assert.strictEqual(decl[focus], tab,
+        `un lien envoie le panneau « ${focus} » dans l'onglet « ${tab} », alors qu'il vit dans « ${decl[focus]} »`);
     });
-    assert.ok(/settingsFocus\)[\s\S]{0,400}?scrollIntoView/.test(page),
-      'le panneau visé n\'est pas amené à l\'écran');
+    // La table et la PAGE se confrontent : chaque panneau déclaré est posé une fois et une seule,
+    // et la page n'en pose aucun qui ne soit déclaré. Sans ça, un panneau ajouté à la main serait
+    // absent de la palette et de la recherche — c'est-à-dire introuvable, donc inexistant.
+    Object.keys(decl).forEach(id => {
+      const n = (page.match(new RegExp(`panneau\\('${id}'`, 'g')) || []).length;
+      assert.strictEqual(n, 1, `le panneau « ${id} » est déclaré mais posé ${n} fois dans la page`);
+      assert.ok(onglets.includes(`'${decl[id]}'`), `le panneau « ${id} » vit dans un onglet qui n'est pas dans SETTINGS_TABS`);
+    });
+    (page.match(/panneau\('(p-[a-z]+)'/g) || []).forEach(m => {
+      const id = m.slice(9, -1);
+      assert.ok(decl[id], `la page pose le panneau « ${id} », qui n'est pas déclaré dans SETTINGS_PANNEAUX`);
+    });
+    // Et la page n'écrit plus aucun panneau de réglages à la main : le titre, les mots-clés et
+    // l'entrée de palette viendraient alors de nulle part.
+    assert.ok(!/<div class="panel[^"]*" id="p-/.test(page), 'un panneau de réglages est écrit à la main');
+    // Chaque onglet déclaré porte au moins un panneau : un onglet vide se voit à l'écran.
+    (onglets.match(/\['([a-z]+)',/g) || []).map(m => m.slice(2, -2)).forEach(t2 =>
+      assert.ok(Object.values(decl).includes(t2), `l'onglet « ${t2} » ne contient aucun panneau`));
+
+    // 1 bis. Toute phrase qui dicte un chemin « Paramètres → X » doit nommer un onglet QUI EXISTE.
+    // La refonte en a périmé onze d'un coup, dans les deux `main.js` et les deux renderers : un
+    // refus qui envoie vers un onglet disparu est le pire des refus — on cherche, on ne trouve pas,
+    // et on conclut que le logiciel ment. Le contrôle est générique, il ne nomme aucun cas : sinon
+    // il ne couvrirait que le défaut du jour (le précédent n'interdisait qu'une seule chaîne).
+    const libellesOnglets = (onglets.match(/, *'((?:[^'\\]|\\.)*)'\]/g) || [])
+      .map(m => m.slice(3, -2).replace(/\\'/g, "'"));
+    assert.ok(libellesOnglets.length >= 4, 'les libellés d\'onglets n\'ont pas été relus');
+    ['src/renderer/app.js', 'src/main.js', 'src/cabinet/renderer/app.js', 'src/cabinet/main.js',
+      'src/renderer/guide.js', 'src/cabinet/renderer/cabguide.js'].forEach(f => {
+        const src = fs.readFileSync(path.join(__dirname, '..', f), 'utf8')
+          .replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+        const chemins = (src.match(/Paramètres → [^<.,:)»"`\n]+/g) || [])
+          .map(m => m.slice('Paramètres → '.length).replace(/\\'/g, "'").split(' → ')[0].trim())
+          .filter(x => x && !x.startsWith('$'));
+        const inconnus = Array.from(new Set(chemins.filter(x => !libellesOnglets.includes(x))));
+        assert.deepStrictEqual(inconnus, [], `${f} envoie vers un onglet de Paramètres qui n'existe pas : ${inconnus.join(' · ')}`);
+      });
+    // Trois chemins mènent à un panneau — le lien venu d'ailleurs (`settingsFocus`), le sommaire de
+    // l'onglet, un résultat de recherche — et ils passent tous par la MÊME fonction. C'est elle qui
+    // change d'onglet si besoin : sans ça, un lien qui se trompe d'onglet amènerait au bon panneau
+    // dans un écran masqué, c'est-à-dire nulle part.
+    // Sans les commentaires, mais AVEC les chaînes : `codeSeulement` les vide, or c'est précisément
+    // `classList.add('flash')` qu'on vérifie ici.
+    const mod = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'reglages.js'), 'utf8')
+      .split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+    assert.ok(mod.includes('function installer(opts)'), 'le nettoyage des commentaires a mangé reglages.js');
+    assert.ok(/function montrer\(pid\) \{[\s\S]{0,900}?scrollIntoView[\s\S]{0,200}?classList\.add\('flash'\)/.test(mod),
+      'le panneau visé n\'est pas amené à l\'écran ni désigné');
+    assert.ok(/function montrer\(pid\)[\s\S]{0,600}?sec\.dataset\.pane !== opts\.ongletCourant\(\)[\s\S]{0,120}?ouvrirOnglet/.test(mod),
+      'viser un panneau n\'ouvre pas l\'onglet qui le contient');
+    ['data-somm', 'data-go'].forEach(chemin =>
+      assert.ok(new RegExp(chemin).test(mod), `le chemin « ${chemin} » ne mène nulle part`));
+    assert.ok(/if \(settingsFocus\) \{[\s\S]{0,200}?reg\.montrer\(/.test(page),
+      'un lien venu d\'ailleurs n\'utilise pas la porte commune');
+    // La porte est UNE : le sommaire, la recherche et les liens l'appellent tous. Si l'app entreprise
+    // se remettait à faire son propre `scrollIntoView`, on aurait deux comportements pour un geste.
+    assert.ok(!/scrollIntoView/.test(page.slice(page.indexOf('const showTab'), page.indexOf('let setDirty'))),
+      'la page Paramètres refait à la main ce que la porte commune sait faire');
 
     // 2. Un champ `type=number` vidé rend la CHAÎNE VIDE. Tout réglage numérique de la fiche
     // société doit être borné dans applySettings : trois l'étaient, trois ne l'étaient pas, et
@@ -6127,12 +6316,37 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.ok(/discard: applyTheme/.test(page), 'un aperçu immédiat ne se défait pas quand on renonce');
     assert.ok(/typeof g\.discard === 'function'/.test(app), 'le garde-fou de navigation ignore le retour en arrière de l\'aperçu');
 
-    // 5. Les couleurs et le logo habillent les DOCUMENTS : ce sont des réglages d'apparence. Les
-    // chercher entre le matricule fiscal et le RIB n'a rien d'évident.
-    const apparence = page.slice(page.indexOf('data-pane="apparence"'), page.indexOf('</form>'));
-    assert.ok(apparence.includes('id="p-marque"'), 'le panneau « Image de marque » n\'est pas dans l\'onglet Apparence');
+    // 5. Les couleurs et le logo habillent les DOCUMENTS : c'est le titre du panneau lui-même qui
+    // le dit. Les chercher entre le matricule fiscal et le RIB n'a rien d'évident (défaut d'avant
+    // la 7.11.0), et l'onglet « Apparence » où ils avaient atterri ne portait plus qu'eux.
+    assert.strictEqual(decl['p-marque'], 'documents', 'le panneau « Image de marque » n\'est pas dans l\'onglet Documents');
     const societe = page.slice(page.indexOf('data-pane="societe"'), page.indexOf('data-pane="documents"'));
     assert.ok(!societe.includes('name="accentColor"'), 'les couleurs sont restées dans l\'onglet Société');
+
+    // 5 bis. Le panneau est posé dans la SECTION de l'onglet qu'il déclare. Un panneau posé au bon
+    // endroit dans la table et au mauvais endroit dans la page serait masqué avec son voisin, donc
+    // inatteignable — et le sommaire de son onglet ne le montrerait pas.
+    let pane = '';
+    page.split('\n').forEach(l => {
+      const m = l.match(/data-pane="([a-z]+)"/); if (m) pane = m[1];
+      const p = l.match(/panneau\('(p-[a-z]+)'/); if (p) assert.strictEqual(pane, decl[p[1]],
+        `le panneau « ${p[1]} » est posé dans l'onglet « ${pane} » alors qu'il se déclare dans « ${decl[p[1]]} »`);
+    });
+
+    // 5 ter. La recherche et le sommaire se construisent à partir de l'ÉCRAN. Une liste écrite à la
+    // main oublierait le premier panneau ajouté après elle — et personne ne s'en apercevrait, parce
+    // qu'un réglage introuvable ressemble à un réglage qui n'existe pas.
+    assert.ok(/function indexer\(corps\)[\s\S]{0,300}?\$\$\('\[data-pane\] \.panel', corps/.test(mod),
+      'l\'index de la recherche des réglages n\'est pas déduit de l\'écran');
+    assert.ok(/function rafraichirSommaire\(pane\)[\s\S]{0,400}?\$\$\(`\[data-pane="\$\{pane\}"\] \.panel`/.test(mod),
+      'le sommaire d\'un onglet n\'est pas déduit de ses panneaux');
+    // Et les deux applications le chargent vraiment : un module partagé oublié dans une balise
+    // `script` marche en développement et plante une fois l'app construite (défaut de la 7.26.0).
+    [['src/renderer/index.html', 'reglages.js'], ['src/cabinet/renderer/index.html', '../../renderer/reglages.js']]
+      .forEach(([f, src]) => assert.ok(fs.readFileSync(path.join(__dirname, '..', f), 'utf8').includes(`src="${src}"`),
+        `${f} ne charge pas reglages.js`));
+    assert.ok(fs.readFileSync(path.join(__dirname, '..', 'build', 'cabinet.config.js'), 'utf8').includes("'src/renderer/reglages.js'"),
+      'reglages.js n\'est pas embarqué dans la construction de l\'app cabinet');
 
     // 6. Un refus dit trois choses : ce qui est refusé, pourquoi, et le bouton qui débloque. Trois
     // refus renvoyaient en prose vers un chemin à retenir — dont un vers un onglet inexistant.
@@ -6141,7 +6355,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       'le verrouillage sans mot de passe refuse sans proposer de l\'activer');
     assert.ok(!/va dans Paramètres → Mises à jour → Lecture de factures/.test(app),
       'la lecture de photo renvoie encore à un chemin à retenir plutôt qu\'à un bouton');
-    assert.ok(/emailComptablePret/.test(app) && /allerParametres\('emails', 'p-comptable'\)/.test(app),
+    assert.ok(/emailComptablePret/.test(app) && /allerParametres\('envois', 'p-comptable'\)/.test(app),
       'l\'email du comptable manquant ne mène pas au champ');
   });
 
@@ -6477,7 +6691,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       'pointer un mouvement ne laisse aucun « Annuler » qui remette l\'état d\'avant');
     // Et le panneau qui rend la chose relisible un mois plus tard.
     assert.ok(/const pointes = r\.moves\.filter\(m => m\.reconciled\)/.test(app), 'les mouvements déjà pointés ne sont listés nulle part');
-    assert.ok(/Déjà pointés — \$\{pointes\.length\} mouvement\(s\)/.test(app), 'le panneau des pointés ne dit pas combien il en contient');
+    assert.ok(/Déjà pointés — \$\{pl\(pointes\.length, 'mouvement'\)\}/.test(app), 'le panneau des pointés ne dit pas combien il en contient');
     // La case doit porter son état : sans `checked`, le panneau des pointés afficherait des cases vides.
     assert.ok(/data-rec="\$\{h\(m\.id\)\}"[^\n]*\$\{m\.reconciled \? 'checked' : ''\}/.test(app),
       'la case d\'un mouvement pointé ne se montre pas cochée');
@@ -6512,6 +6726,14 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // « ⇅ » s'affichent, le clic est accepté, et la liste ne bouge pas.
     const mauvais = (app.match(/bindSort\([^,]+,\s*\(\)\s*=>/g) || []);
     assert.deepStrictEqual(mauvais, [], `un bindSort jette la colonne cliquée : ${mauvais.join(' · ')}`);
+    // `bindDocTable` passe SON premier argument à `bindSort` : le rappel y arrive donc avec la même
+    // contrainte, et la fiche d'affaire le violait — `bindDocTable(() => render(), …)` — sans que ce
+    // test puisse le voir, parce qu'il ne regardait que les appels DIRECTS. Les huit en-têtes de
+    // « Ventes rattachées » ont donc accepté le clic sans trier pendant quatre versions.
+    const mauvais2 = (app.match(/bindDocTable\(\s*\(\)\s*=>/g) || []);
+    assert.deepStrictEqual(mauvais2, [], `un bindDocTable jette la colonne cliquée : ${mauvais2.join(' · ')}`);
+    assert.ok(/const drawVentes = sortKey => \{\s*if \(sortKey\) \{ affaireDocState\.sort = toggleSort/.test(app),
+      'la fiche d\'affaire ne trie pas ses ventes rattachées');
     // Et les deux qui étaient fautifs portent bien leur toggleSort.
     assert.ok(/bindSort\(wrap\.closest\('\.panel'\), key => \{ s\.moves\.sort = toggleSort/.test(app), 'Trésorerie → Mouvements ne trie pas');
     assert.ok(/bindSort\(\$\('#sup-docs'\), key => \{ supplierBuyState\.sort = toggleSort/.test(app), 'la fiche fournisseur ne trie pas');
@@ -7604,6 +7826,16 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       'choisir un métier ne propose pas son régime');
     assert.ok(/a\.regimeTouche = true/.test(z),
       'un régime choisi à la main doit être retenu, sinon le métier suivant l\'écrase');
+    // Et AU REJEU, qui est le seul endroit où l'on puisse changer de métier. `regimeTouche` n'est
+    // jamais enregistré (`applySetup` ne recopie que les champs de la société) : sans ce
+    // réamorçage, il repartait à `undefined` et rejouer l'assistant pour corriger son métier
+    // écrasait le régime en silence. Le voisin immédiat, `modulesTouche`, le faisait déjà.
+    assert.ok(/a\.modulesTouche = Array\.isArray\(a\.modules\);[\s\S]{0,900}?a\.regimeTouche = !!String\(co\.taxRegime/.test(app),
+      'le rejeu de l\'assistant peut écraser un régime fiscal déjà enregistré');
+    // Le drapeau n'est pas enregistré : c'est ce qui rend le réamorçage indispensable. Si un jour
+    // il l'était, ce test doit tomber pour qu'on relise la règle plutôt que d'empiler les filets.
+    const ob = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'onboarding.js'), 'utf8');
+    assert.ok(!/regimeTouche/.test(ob), 'onboarding.js enregistre désormais regimeTouche : relire le réamorçage du rejeu');
   });
 
   t('une profession libérale facture une note d\'honoraires', () => {

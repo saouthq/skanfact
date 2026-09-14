@@ -54,17 +54,23 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   for (const { id, label } of ids) {
     await win.click(`#set-tabs button[data-tab="${id}"]`);
     await win.waitForTimeout(500);
+    // Un onglet peut s'écrire en DEUX sections depuis la 7.30.0 (ce qui vit dans le formulaire et
+    // ce qui vit dehors) : on additionne, sinon la mesure ne voit que la première moitié.
     const m = await win.evaluate(t => {
-      const pane = document.querySelector(`section[data-pane="${t}"]`);
+      const panes = [...document.querySelectorAll(`section[data-pane="${t}"]`)];
       const vue = document.querySelector('#view');
-      if (!pane) return { absent: true };
-      const champs = pane.querySelectorAll('input:not([type=hidden]), select, textarea').length;
-      const bulles = pane.querySelectorAll('button.i').length;
-      const panneaux = [...pane.querySelectorAll('.panel > h2')].map(h => h.textContent.replace(/\s+/g, ' ').trim());
-      const boutons = [...pane.querySelectorAll('button:not(.i)')].map(b => b.textContent.replace(/\s+/g, ' ').trim()).filter(Boolean);
-      return { champs, bulles, panneaux, boutons,
-        hauteur: Math.round(pane.getBoundingClientRect().height),
-        ecrans: Math.round(pane.getBoundingClientRect().height / vue.clientHeight * 10) / 10 };
+      if (!panes.length) return { absent: true };
+      const tous = sel => panes.flatMap(p => [...p.querySelectorAll(sel)]);
+      const hauteur = panes.reduce((s, p) => s + p.getBoundingClientRect().height, 0);
+      return {
+        champs: tous('input:not([type=hidden]), select, textarea').length,
+        bulles: tous('button.i').length,
+        panneaux: tous('.panel > h2').map(h => h.textContent.replace(/\s+/g, ' ').trim()),
+        boutons: tous('button:not(.i)').map(b => b.textContent.replace(/\s+/g, ' ').trim()).filter(Boolean),
+        sommaire: [...document.querySelectorAll('#set-somm .somm-chip')].map(b => b.textContent.trim()),
+        hauteur: Math.round(hauteur),
+        ecrans: Math.round(hauteur / vue.clientHeight * 10) / 10
+      };
     }, id);
     mesures.entreprise[id] = { label, ...m };
     await win.evaluate(() => { document.querySelector('#view').scrollTop = 0; });
@@ -78,13 +84,27 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
     return { classe: b.className, fixe: getComputedStyle(b).position, bas: Math.round(r.bottom), hauteurFenetre: window.innerHeight };
   });
   // Le panneau des mises à jour, tel qu'il s'ouvre.
-  await win.click('#set-tabs button[data-tab="maj"]');
+  await win.click('#set-tabs button[data-tab="app"]');
   await win.waitForTimeout(1200);
   mesures.entreprise.maj = await win.evaluate(() => {
-    const p = document.querySelector('section[data-pane="maj"]');
+    const p = document.querySelector('#p-maj');
     return { texte: p ? p.textContent.replace(/\s+/g, ' ').trim().slice(0, 700) : '(absent)' };
   });
   await win.screenshot({ path: path.join(dossier, 'ent-maj-detail.png') });
+
+  // La recherche : ce qu'elle trouve, et où elle dit que ça se trouve.
+  mesures.entreprise.recherche = {};
+  for (const mot of ['timbre', 'sauvegarde', 'beta', 'photo', 'rib', 'mot de passe']) {
+    await win.fill('#set-q', mot);
+    await win.waitForTimeout(250);
+    mesures.entreprise.recherche[mot] = await win.evaluate(() =>
+      [...document.querySelectorAll('.set-hit')].map(b => b.querySelector('.set-hit-ou').textContent.trim() + ' → ' + b.querySelector('.set-hit-t').textContent.trim()));
+  }
+  await win.fill('#set-q', 'sauvegarde');
+  await win.waitForTimeout(250);
+  await win.screenshot({ path: path.join(dossier, 'ent-recherche.png') });
+  await win.fill('#set-q', '');
+  await win.waitForTimeout(250);
   // Mode sombre, sur l'onglet le plus chargé.
   await win.evaluate(() => document.body.classList.add('dark'));
   await win.click('#set-tabs button[data-tab="societe"]');

@@ -1005,12 +1005,29 @@ let updater = null, updateInfo = null, downloaded = false, downloadedFile = null
 let updaterError = '', relayFailure = '';
 // Une erreur qu'on va peut-être démentir par un second essai ne s'affiche pas tout de suite.
 let silencerErreur = false;
+// Voir src/main.js : une panne PENDANT un téléchargement que l'utilisateur voit se dit toujours,
+// même si la vérification qui l'a déclenchée était silencieuse.
+let enTelechargement = false;
 const UPDATE_CFG = () => path.join(app.getPath('userData'), 'update-config.json');
 const UPDATE_RESULT = () => path.join(app.getPath('userData'), 'update-result.json');
 const readUpdateCfg = () => { try { return JSON.parse(fs.readFileSync(UPDATE_CFG(), 'utf8')); } catch { return {}; } };
 function writeUpdateCfg(cfg) {
   fs.mkdirSync(path.dirname(UPDATE_CFG()), { recursive: true });
   fs.writeFileSync(UPDATE_CFG(), JSON.stringify(cfg), { mode: 0o600 });
+}
+
+// Voir src/main.js : quand la dernière vérification a eu lieu, et ce qu'elle a répondu. Ici c'était
+// pire que dans l'app entreprise — l'écran affirmait « Les mises à jour arrivent toutes seules :
+// rien à configurer » alors qu'une seule vérification avait lieu, quatre secondes après l'ouverture,
+// et qu'un comptable n'éteint pas son poste de la semaine.
+const MAJ_INTERVALLE = 4 * 60 * 60 * 1000;      // quatre heures
+const MAJ_ETAT = () => path.join(app.getPath('userData'), 'update-state.json');
+const readMajEtat = () => { try { return JSON.parse(fs.readFileSync(MAJ_ETAT(), 'utf8')); } catch { return {}; } };
+function noterVerification(resultat, version) {
+  try {
+    fs.mkdirSync(path.dirname(MAJ_ETAT()), { recursive: true });
+    fs.writeFileSync(MAJ_ETAT(), JSON.stringify({ at: Date.now(), resultat, version: version || '' }));
+  } catch (e) { /* une date non écrite ne doit jamais empêcher une mise à jour */ }
 }
 const sendUpd = (s, payload) => { try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('update:event', { state: s, ...(payload || {}) }); } catch {} };
 
@@ -1087,11 +1104,11 @@ function getUpdater() {
     const ul = lvl => m => { try { fs.appendFileSync(ulog, `${new Date().toISOString()} ${lvl} ${m}\n`); } catch {} };
     autoUpdater.logger = { info: ul('info'), warn: ul('warn'), error: ul('error'), debug: ul('debug') };
     autoUpdater.on('checking-for-update', () => { if (!silentCheck) sendUpd('checking'); });
-    autoUpdater.on('update-available', info => { updateInfo = info; downloaded = false; downloadedFile = null; sendUpd('available', { version: info.version }); });
-    autoUpdater.on('update-not-available', () => { if (!silentCheck) sendUpd('none'); });
+    autoUpdater.on('update-available', info => { updateInfo = info; downloaded = false; downloadedFile = null; enTelechargement = autoUpdater.autoDownload; noterVerification('available', info.version); sendUpd('available', { version: info.version }); });
+    autoUpdater.on('update-not-available', () => { noterVerification('none'); if (!silentCheck) sendUpd('none'); });
     autoUpdater.on('download-progress', p => sendUpd('downloading', { percent: Math.round(p.percent), version: updateInfo && updateInfo.version }));
-    autoUpdater.on('update-downloaded', info => { downloaded = true; downloadedFile = info.downloadedFile || null; sendUpd('downloaded', { version: info.version }); });
-    autoUpdater.on('error', err => { if (!silentCheck && !silencerErreur) sendUpd('error', updateProblem(err)); });
+    autoUpdater.on('update-downloaded', info => { downloaded = true; enTelechargement = false; downloadedFile = info.downloadedFile || null; sendUpd('downloaded', { version: info.version }); });
+    autoUpdater.on('error', err => { noterVerification('error'); const pendant = enTelechargement; enTelechargement = false; if ((pendant || !silentCheck) && !silencerErreur) sendUpd('error', updateProblem(err)); });
     configureFeed(autoUpdater);
     updater = autoUpdater;
   } catch (e) {
@@ -1175,6 +1192,9 @@ ipcMain.handle('upd:version', () => ({
   // l'affiche pas en rouge pour autant, elle reste dans le journal. Même règle que la 7.24.0.
   relayFailure: GITHUB.private ? relayFailure : '',
   private: GITHUB.private,
+  lastCheck: readMajEtat().at || 0,
+  lastResult: readMajEtat().resultat || '',
+  autoEvery: MAJ_INTERVALLE,
   lastUpdate: takeLastUpdateResult()
 }));
 ipcMain.handle('upd:setToken', (_e, token) => {
@@ -1189,6 +1209,7 @@ ipcMain.handle('upd:download', () => {
   const u = getUpdater();
   if (!u || !updateInfo) return { state: 'error', message: 'Aucune mise à jour détectée.' };
   silentCheck = false;
+  enTelechargement = true;
   try { u.downloadUpdate(); return { state: 'ok' }; } catch (e) { return { state: 'error', ...updateProblem(e) }; }
 });
 ipcMain.handle('upd:install', () => {
@@ -1254,6 +1275,16 @@ if (!app.requestSingleInstanceLock()) {
     // Vérification silencieuse au démarrage : si une version est là, la pastille s'allume dans la
     // barre de gauche. Rien ne s'affiche s'il n'y a rien — on ne dérange pas pour dire « rien ».
     setTimeout(() => { checkForUpdates(true).catch(() => {}); }, 4000);
+    // Puis toutes les quatre heures, et au retour au premier plan si le minuteur a été suspendu
+    // (portable refermé). Voir src/main.js : une seule vérification au démarrage ne sert que ceux
+    // qui redémarrent l'application tous les jours.
+    if (app.isPackaged) {
+      setInterval(() => { checkForUpdates(true).catch(() => {}); }, MAJ_INTERVALLE);
+      app.on('browser-window-focus', () => {
+        const vu = readMajEtat().at || 0;
+        if (Date.now() - vu > MAJ_INTERVALLE) checkForUpdates(true).catch(() => {});
+      });
+    }
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
   }).catch(e => logError('démarrage', e));
   app.on('before-quit', cleanTemp);

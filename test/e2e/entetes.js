@@ -24,6 +24,10 @@ const PAGES = ['#/dashboard', '#/devis', '#/factures', '#/relances', '#/clients'
 // Un sélecteur de période, c'est ~200 px. À 280 on laisse de la marge pour un libellé long
 // (« 1ᵉʳ trimestre · janv.–mars ») ; au-delà, le contrôle est étiré, pas large.
 const LARGEUR_MAX = 300;
+// Un champ de RECHERCHE n'est pas un sélecteur : on y tape des mots, et 300 px coupent l'indice de
+// ce qu'on peut chercher au milieu d'un mot. Il a sa propre borne — assez large pour être utile,
+// assez étroite pour qu'un champ étiré d'un bord à l'autre reste un défaut.
+const LARGEUR_MAX_RECHERCHE = 400;
 // Une barre d'actions tient sur une rangée, deux au pire quand elle porte neuf commandes à 1280 px.
 // Trois rangées, c'est le défaut qu'on cherche.
 const HAUTEUR_MAX = 100;
@@ -60,7 +64,7 @@ const HAUTEUR_MAX = 100;
   let controles = 0; const fautes = [];
   for (const hash of PAGES) {
     await aller(hash);
-    const r = await win.evaluate(({ maxL, maxH }) => {
+    const r = await win.evaluate(({ maxL, maxR, maxH }) => {
       const head = document.querySelector('#view .page-head');
       if (!head) return { n: 0, larges: [], hauteur: 0 };
       const actions = head.querySelector('.actions');
@@ -69,12 +73,13 @@ const HAUTEUR_MAX = 100;
       const larges = ctrls.map(c => ({
         tag: c.tagName.toLowerCase(),
         id: c.id || c.name || '(sans nom)',
-        w: Math.round(c.getBoundingClientRect().width)
-      })).filter(x => x.w > maxL);
+        w: Math.round(c.getBoundingClientRect().width),
+        borne: c.type === 'search' ? maxR : maxL
+      })).filter(x => x.w > x.borne);
       return { n: ctrls.length, larges, hauteur: Math.round(actions.getBoundingClientRect().height) };
-    }, { maxL: LARGEUR_MAX, maxH: HAUTEUR_MAX });
+    }, { maxL: LARGEUR_MAX, maxR: LARGEUR_MAX_RECHERCHE, maxH: HAUTEUR_MAX });
     controles += r.n;
-    r.larges.forEach(x => fautes.push(`${hash} — ${x.tag} « ${x.id} » fait ${x.w} px : il est étiré, pas large`));
+    r.larges.forEach(x => fautes.push(`${hash} — ${x.tag} « ${x.id} » fait ${x.w} px (borne ${x.borne}) : il est étiré, pas large`));
     if (r.n && r.hauteur > HAUTEUR_MAX) {
       fautes.push(`${hash} — la barre d'actions fait ${r.hauteur} px de haut : ses contrôles s'empilent`);
     }

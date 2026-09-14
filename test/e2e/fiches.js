@@ -79,21 +79,38 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   j.etape('Le Catalogue ouvre la fiche de l\'article suivi');
   await aller('#/catalogue');
   await win.waitForSelector('#list-wrap');
-  const suivis = await win.evaluate(() => document.querySelectorAll('[data-fiche]').length);
+  // Le geste vit dans le MENU d'actions de la ligne depuis la 7.29.0 : `data-fiche` a disparu du
+  // code ce jour-là, et ce parcours ne l'avait pas été relancé depuis — il accusait le jeu d'exemple
+  // d'être vide. On ouvre le menu comme un utilisateur, sur la ligne d'un article suivi en stock.
+  const suivis = await win.evaluate(() => (window.__data.catalog || []).filter(c => c.tracked).length);
   if (!suivis) throw new Error('aucun article suivi dans le jeu d\'exemple : le test ne prouve rien');
-  // Et jamais sur un article NON suivi : sa fiche n'aurait rien à montrer.
-  const coherent = await win.evaluate(() => {
-    const d = window.__data;
-    const offerts = [...document.querySelectorAll('[data-fiche]')].map(b => b.dataset.fiche);
-    return offerts.every(id => (d.catalog.find(c => c.id === id) || {}).tracked);
+  // Les lignes du catalogue ne portent pas d'identifiant : on reconnaît la ligne à son LIBELLÉ,
+  // comme un utilisateur, et on lit son rang pour la cliquer pour de vrai.
+  const rang = await win.evaluate(() => {
+    const suivi = (window.__data.catalog || []).filter(c => c.tracked).map(c => c.label);
+    const trs = [...document.querySelectorAll('#list-wrap tbody tr')];
+    const i = trs.findIndex(tr => suivi.some(l => tr.textContent.includes(l)));
+    if (i >= 0) trs[i].scrollIntoView({ block: 'center' });
+    return i;
   });
-  if (!coherent) throw new Error('« Fiche stock » est offert sur un article qui n\'est pas suivi en stock');
-  await win.click('[data-fiche]');
+  if (rang < 0) throw new Error('aucune ligne d\'article suivi sur la page affichée');
+  await win.waitForTimeout(300);
+  const boutons = await win.$$('#list-wrap tbody tr .row-menu-btn');
+  await boutons[rang].click();
+  await win.waitForSelector('.row-menu', { timeout: 4000 });
+  // Et jamais sur un article NON suivi : sa fiche n'aurait rien à montrer.
+  const sansSuivi = await win.evaluate(() => {
+    const pas = (window.__data.catalog || []).filter(c => !c.tracked).map(c => c.label);
+    return [...document.querySelectorAll('#list-wrap tbody tr')].filter(tr => pas.some(l => tr.textContent.includes(l))).length;
+  });
+  const fiche = await win.$('.row-menu button:has-text("Voir la fiche stock")');
+  if (!fiche) throw new Error('le menu d\'un article suivi n\'offre pas sa fiche stock');
+  await fiche.click();
   await win.waitForFunction(() => location.hash.startsWith('#/article/'), { timeout: 4000 });
   // Le retour ramène au Catalogue, d'où l'on vient — pas au Stock.
   await win.click('#back');
   await win.waitForFunction(() => location.hash === '#/catalogue', { timeout: 4000 });
-  j.ok(`${suivis} article(s) suivi(s) — la fiche s'ouvre et le retour ramène au Catalogue`);
+  j.ok(`${suivis} article${suivis > 1 ? 's' : ''} suivi${suivis > 1 ? 's' : ''} — la fiche s'ouvre et le retour ramène au Catalogue (${sansSuivi} ligne(s) non suivie(s) sur la page)`);
 
   // ---------------------------------------------------- 3. le catalogue dans l'éditeur d'achat
   j.etape('L\'éditeur d\'achat propose le catalogue, au coût d\'achat');

@@ -79,6 +79,25 @@
     el.__t = setTimeout(() => { el.hidden = true; }, 2600);
   }
 
+  // Un refus MONTRE le champ. L'app entreprise a `refus()` depuis la 7.0.0 ; celle-ci n'en avait
+  // aucun équivalent — zéro occurrence — et un jour de dépôt hors bornes était écarté en silence
+  // par le processus principal pendant que l'écran affichait « ✓ enregistré » en vert et gardait la
+  // valeur refusée sous les yeux.
+  function refus(sel, message) {
+    toast(message, 'error');
+    const el = typeof sel === 'string' ? $(sel) : sel;
+    if (!el) return false;
+    try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (_) { }
+    try { el.focus({ preventScroll: true }); } catch (_) { }
+    const marque = el.closest('.field') || el;
+    marque.classList.add('champ-faute');
+    const nettoyer = () => marque.classList.remove('champ-faute');
+    marque.addEventListener('input', nettoyer, { once: true });
+    marque.addEventListener('change', nettoyer, { once: true });
+    setTimeout(nettoyer, 6000);
+    return false;
+  }
+
   // ---------- bulles « i » ----------
   function info(key) {
     if (!G.INFO[key]) return '';
@@ -293,6 +312,23 @@
   // « il y a 3 jours » : devant une colonne de dates, c'est ce qu'on cherche vraiment à savoir.
   // Des JOURS DE CALENDRIER, pas des tranches de 24 h. « 11/09/2026 (aujourd'hui) » affiché le 12 au
   // matin : la cellule se contredisait elle-même.
+  // Quand une vérification a eu lieu, écrit comme on le dirait. Une date seule oblige à la comparer
+  // mentalement à aujourd'hui ; ce qu'on veut savoir, c'est si c'est récent.
+  function quandVerif(ms) {
+    if (!ms) return '';
+    const d = new Date(ms);
+    const p = x => String(x).padStart(2, '0');
+    const heure = `${p(d.getHours())}:${p(d.getMinutes())}`;
+    const mn = Math.floor((Date.now() - ms) / 60000);
+    if (mn < 1) return 'à l\'instant';
+    if (mn < 60) return 'il y a ' + pl(mn, 'minute');
+    const jour = x => Date.UTC(x.getFullYear(), x.getMonth(), x.getDate());
+    const j = Math.round((jour(new Date()) - jour(d)) / 86400000);
+    if (j <= 0) return `aujourd'hui à ${heure}`;
+    if (j === 1) return `hier à ${heure}`;
+    return `le ${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} à ${heure}`;
+  }
+
   function ago(ms) {
     if (!ms) return '';
     const jour = d => Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
@@ -1792,8 +1828,21 @@
   function drawReglages(view) {
     const c = S.cabinet || {};
     view.innerHTML = `
-      <div class="page-head"><h1>Réglages</h1></div>
-      <div class="panel"><h2>Ton cabinet</h2>
+      <div class="page-head"><h1>Réglages</h1>
+        <div class="actions set-search">
+          <input type="search" id="set-q" placeholder="Chercher un réglage…" autocomplete="off" spellcheck="false">
+        </div></div>
+      <div id="set-res" class="set-res" hidden></div>
+      <!-- Pas d'onglets ici, et c'est mesuré : deux écrans et demi, sept panneaux, une page qu'un
+           comptable ouvre deux fois — à l'installation, et le jour où quelque chose casse. Des
+           onglets rangeraient surtout l'avertissement de la clé de secours derrière un clic, alors
+           que la règle 6.8.0 veut qu'il reste en rouge tant qu'elle n'est pas enregistrée. Le
+           sommaire et la recherche suffisent, et ils viennent de la même mécanique que l'app
+           entreprise (src/renderer/reglages.js). -->
+      <div id="set-corps">
+      <div class="set-somm" id="set-somm"></div>
+      <section data-pane="reglages">
+      <div class="panel" id="pan-cabinet" data-mots="cabinet nom email telephone jour relance tva cnss depot echeance"><h2>Ton cabinet</h2>
         <div class="grid-2">
           <label class="field span-2">${lbl('Nom du cabinet', 'cab.name')}<input type="text" id="c-name" value="${esc(c.name)}" placeholder="Cabinet Ben Salah"></label>
           <label class="field">${lbl('Email', 'cab.email')}<input type="email" id="c-email" value="${esc(c.email)}" placeholder="contact@cabinet.tn"></label>
@@ -1808,8 +1857,8 @@
         <div class="modal-actions"><span class="saved" id="c-saved" hidden></span><button class="btn btn-primary" id="c-save">Enregistrer</button></div>
       </div>
 
-      <div class="panel"><h2>Le fichier à remettre à tes clients ${info('cab.pairing')}</h2>
-        <p class="small">Chaque client doit importer ce fichier une fois, dans <strong>Paramètres → Cabinet comptable</strong> de son SkanFact.
+      <div class="panel" id="pan-appairage" data-mots="appairage fichier client empreinte cle publique chiffrer skanpair"><h2>Le fichier à remettre à tes clients ${info('cab.pairing')}</h2>
+        <p class="small">Chaque client doit importer ce fichier une fois, dans <strong>Paramètres → Envois → Ton cabinet comptable</strong> de son SkanFact.
         À partir de là, les paquets qu'il fabrique sont chiffrés <strong>pour toi seul</strong> : personne d'autre ne peut les ouvrir,
         même en interceptant le mail, et il n'a plus aucun mot de passe à te communiquer.</p>
         <div class="mt"><div class="muted small">${lbl('Empreinte de ton cabinet', 'cab.fingerprint')}</div>
@@ -1819,12 +1868,13 @@
         <div class="modal-actions"><button class="btn btn-primary" id="c-pair">Enregistrer le fichier d'appairage…</button></div>
       </div>
 
-      <div class="panel" id="pan-backup"><h2>Sauvegardes</h2><p class="muted small">Chargement…</p></div>
-      <div class="panel" id="pan-secu"><h2>Sécurité</h2><p class="muted small">Chargement…</p></div>
+      <div class="panel" id="pan-inbox" data-mots="boite reception dossier surveille paquets arrives import mail"><h2>Boîte de réception</h2><p class="muted small">Chargement…</p></div>
+      <div class="panel" id="pan-backup" data-mots="sauvegarde restaurer copie externe usb icloud filet perdu"><h2>Sauvegardes</h2><p class="muted small">Chargement…</p></div>
+      <div class="panel" id="pan-secu" data-mots="securite mot de passe cle de secours verrouiller chiffrement empreinte"><h2>Sécurité</h2><p class="muted small">Chargement…</p></div>
 
-      <div class="panel"><h2>Mises à jour</h2><div id="upd-panel"><p class="muted small">Chargement…</p></div></div>
+      <div class="panel" id="pan-maj" data-mots="mise a jour version telecharger installer jeton token maj"><h2>Mises à jour</h2><div id="upd-panel"><p class="muted small">Chargement…</p></div></div>
 
-      <div class="panel"><h2>Exemple</h2>
+      <div class="panel" id="pan-exemple" data-mots="exemple demo dossiers fictifs essayer decouvrir"><h2>Exemple</h2>
         ${(S.dossiers || []).some(d => d.demo)
           ? `<p>Cinq dossiers <strong>fictifs</strong> sont chargés : ils montrent les quatre situations que tu rencontreras.
              Ils disparaîtront d'eux-mêmes au premier vrai paquet importé.</p>
@@ -1834,14 +1884,37 @@
              <p class="small muted">C'est aussi ce qu'il faut montrer à un confrère à qui tu parles de SkanFact.
              L'exemple s'efface tout seul dès qu'un vrai paquet arrive : aucun risque de mélange.</p>
              <div class="modal-actions"><button class="btn btn-primary" id="r-demo-on">Charger l'exemple</button></div>`}
+      </div>
+      </section>
       </div>`;
     drawUpdatePanel();
     drawBackupPanels();
+    // Le sommaire et la recherche, partagés avec l'app entreprise. Ils lisent l'ÉCRAN : un panneau
+    // ajouté demain est trouvable le jour où il est écrit.
+    const reg = Reglages.installer({
+      corps: $('#set-corps'), champ: $('#set-q'), resultats: $('#set-res'), sommaire: $('#set-somm'),
+      nomOnglet: () => 'Réglages', pluriel: pl,
+      rienTrouve: () => `<div class="empty"><p>Aucun réglage ne porte ces mots. Essaie un seul mot —
+        ou regarde dans l'<a href="#/aide">aide</a>.</p></div>`
+    });
+    reg.rafraichirSommaire('reglages');
     if ($('#r-demo-on')) $('#r-demo-on').onclick = async () => {
       S = await api.demo(true); toast('Exemple chargé : ces cinq dossiers sont fictifs.'); location.hash = '#/dossiers';
     };
     if ($('#r-demo-off')) $('#r-demo-off').onclick = async () => { S = await api.demo(false); render(); toast('Exemple effacé.'); };
     $('#c-save').onclick = async () => {
+      // Les trois jours sont bornés côté processus principal, qui écarte SILENCIEUSEMENT ce qui
+      // sort des bornes et remet l'ancienne valeur. L'écran, lui, affichait « ✓ enregistré » en
+      // vert et gardait la valeur refusée sous les yeux : on repartait convaincu d'avoir réglé son
+      // calendrier. On refuse ici, on montre le champ, et on ne félicite plus personne à tort.
+      const bornes = [['#c-day', 1, 28, 'Le jour de relance'], ['#c-tvaday', 1, 31, 'Le jour de dépôt de la TVA'],
+        ['#c-cnssday', 1, 31, 'Le jour de dépôt CNSS']];
+      for (const [sel, min, max, quoi] of bornes) {
+        const v = Number($(sel).value);
+        if (!Number.isFinite(v) || v < min || v > max || v !== Math.round(v)) {
+          return refus(sel, `${quoi} doit être un jour du mois, entre ${min} et ${max}.`);
+        }
+      }
       try {
         S = await api.saveCabinet({
           name: $('#c-name').value.trim(), email: $('#c-email').value.trim(), phone: $('#c-phone').value.trim(),
@@ -1851,6 +1924,11 @@
           }
         });
         $('#brand-cab').textContent = S.cabinet.name || 'Cabinet';
+        // L'écran affiche ce qui a VRAIMENT été retenu : `migrate` peut encore corriger une valeur,
+        // et un champ qui montre autre chose que l'état enregistré est un mensonge de plus.
+        const d = K.deadlineSettings(S);
+        $('#c-day').value = Number((S.settings || {}).relanceDay) || 10;
+        $('#c-tvaday').value = d.tvaDay; $('#c-cnssday').value = d.cnssDay;
         flash($('#c-saved'));
       } catch (e) { toast(plainError(e), 'error'); }
     };
@@ -1870,8 +1948,8 @@
 
   // ---------- les filets : sauvegardes et sécurité ----------
   function drawBackupPanels() {
-    const b = $('#pan-backup'), s = $('#pan-secu');
-    if (!b || !s) return;
+    const b = $('#pan-backup'), s = $('#pan-secu'), inb = $('#pan-inbox');
+    if (!b || !s || !inb) return;
     const inf = backupInfo || { list: [], external: {}, packs: {}, dir: '' };
     const ext = inf.external || {};
     const list = inf.list || [];
@@ -1893,20 +1971,6 @@
         Les sauvegardes quotidiennes sont sur le même disque que tes données : elles ne te sauveront pas d'une panne, d'un vol ou d'un vol d'ordinateur.
         Choisis une clé USB, un disque externe ou un dossier iCloud Drive.</div>` : ''}
 
-      <h3 class="mt">${lbl('Boîte de réception', 'b.inbox')}</h3>
-      <p class="small">Le dossier où tu ranges les paquets reçus par mail. SkanFact regarde ce qui est arrivé et te le propose —
-      il n'importe jamais tout seul, et n'efface jamais rien.</p>
-      <div class="kv">
-        <div><span>Dossier surveillé</span><span>${inboxInfo && inboxInfo.dir
-          ? esc(inboxInfo.dir) + (inboxInfo.erreur ? ` <span class="err-inline">⚠ ${esc(inboxInfo.erreur)}</span>`
-            : ` <span class="muted small">${(inboxInfo.nouveaux || []).length ? pl(inboxInfo.nouveaux.length, 'paquet') + ' en attente' : 'rien de nouveau'}</span>`)
-          : '<span class="muted">aucun — tu importes les paquets un par un</span>'}</span></div>
-      </div>
-      <div class="modal-actions wrap">
-        <button class="btn" id="i-pick">${inboxInfo && inboxInfo.dir ? 'Changer de dossier…' : 'Choisir un dossier…'}</button>
-        ${inboxInfo && inboxInfo.dir ? '<button class="btn btn-ghost" id="i-off">Ne plus surveiller</button>' : ''}
-      </div>
-
       <h3 class="mt">Sauvegardes et copies</h3>
       <div class="modal-actions wrap">
         <button class="btn" id="b-now">Sauvegarder maintenant</button>
@@ -1926,6 +1990,23 @@
              celui où l'on vient rechercher ce qu'on a perdu. Il ressemble maintenant à un bouton. -->
         <td class="actions row-actions"><button class="btn btn-sm" data-restore="${i}">Restaurer cette sauvegarde…</button></td></tr>`).join('')}</tbody></table></div>` : ''}`;
 
+    // La boîte de réception vivait DANS le panneau des sauvegardes, sous un simple <h3>. Ce n'est
+    // pas un filet : c'est la porte par laquelle les paquets ARRIVENT, le geste le plus fréquent de
+    // l'application. Elle a son panneau, et il passe avant les filets.
+    inb.innerHTML = `<h2>${lbl('Boîte de réception', 'b.inbox')}</h2>
+      <p class="small">Le dossier où tu ranges les paquets reçus par mail. SkanFact regarde ce qui est arrivé et te le propose —
+      il n'importe jamais tout seul, et n'efface jamais rien.</p>
+      <div class="kv">
+        <div><span>Dossier surveillé</span><span>${inboxInfo && inboxInfo.dir
+          ? esc(inboxInfo.dir) + (inboxInfo.erreur ? ` <span class="err-inline">⚠ ${esc(inboxInfo.erreur)}</span>`
+            : ` <span class="muted small">${(inboxInfo.nouveaux || []).length ? pl(inboxInfo.nouveaux.length, 'paquet') + ' en attente' : 'rien de nouveau'}</span>`)
+          : '<span class="muted">aucun — tu importes les paquets un par un</span>'}</span></div>
+      </div>
+      <div class="modal-actions wrap">
+        <button class="btn" id="i-pick">${inboxInfo && inboxInfo.dir ? 'Changer de dossier…' : 'Choisir un dossier…'}</button>
+        ${inboxInfo && inboxInfo.dir ? '<button class="btn" id="i-off">Ne plus surveiller</button>' : ''}
+      </div>`;
+
     s.innerHTML = `<h2>Sécurité</h2>
       <p class="small">Le fichier de ce cabinet est chiffré avec ton mot de passe (AES-256). Il contient la clé qui ouvre les paquets de
       tes clients : si ce poste est perdu ou volé, personne ne peut les lire.</p>
@@ -1940,7 +2021,7 @@
         <button class="btn" id="s-rec-in">Restaurer une clé de secours…</button>
         <span class="grow"></span>
         <button class="btn" id="s-pw">${lbl('Changer le mot de passe…', 'b.password')}</button>
-        <button class="btn btn-ghost" id="s-lock">Verrouiller maintenant</button>
+        <button class="btn" id="s-lock">Verrouiller maintenant</button>
       </div>
 
       <p class="muted small mt">Tu changes d'ordinateur ? N'y crée <strong>jamais</strong> un cabinet neuf : il aurait une autre empreinte,
@@ -1949,16 +2030,16 @@
 
       <p class="muted small mt">À VÉRIFIER avec ton assureur ou ton Ordre : la conservation des pièces de tes clients sur ce poste
       relève des mêmes obligations que tes archives papier.</p>
-      <div class="modal-actions"><button class="btn btn-ghost btn-sm" id="s-support">Signaler un problème…</button></div>`;
+      <div class="modal-actions"><button class="btn" id="s-support">Signaler un problème…</button></div>`;
 
-    const ip = $('#i-pick', b);
+    const ip = $('#i-pick', inb);
     if (ip) ip.onclick = async () => {
       try {
         const r = await api.pickInbox();
         if (r) { inboxInfo = r; drawBackupPanels(); toast(r.nouveaux.length ? `${pl(r.nouveaux.length, 'paquet')} en attente dans ce dossier.` : 'Dossier surveillé.'); }
       } catch (e) { toast(plainError(e), 'error'); }
     };
-    const io = $('#i-off', b);
+    const io = $('#i-off', inb);
     if (io) io.onclick = async () => { inboxInfo = await api.clearInbox(); drawBackupPanels(); };
     $('#b-now').onclick = quickBackup;
     $('#b-open').onclick = () => api.openDataDir();
@@ -2247,7 +2328,7 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
           t: 'Le fichier à remettre à tes clients',
           html: () => `
             <p class="small">Dernière étape. Chaque client importe ce fichier <strong>une fois</strong> dans son SkanFact
-            (Paramètres → Cabinet comptable). À partir de là, les paquets qu'il fabrique sont chiffrés
+            (Paramètres → Envois → Ton cabinet comptable). À partir de là, les paquets qu'il fabrique sont chiffrés
             <strong>pour toi seul</strong>, et il n'a plus aucun mot de passe à te communiquer.</p>
             <div class="mt"><div class="muted small">${lbl('Empreinte de ton cabinet', 'cab.fingerprint')}</div>
               <div class="fingerprint">${esc(S.cabinet.fingerprint || '—')}</div></div>
@@ -2385,9 +2466,13 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
     if (!a.packaged) corps = `<p class="muted small">Mode développement : la vérification n'est active que dans l'application installée.</p>${btnCheck}`;
     else if (upd.state === 'checking') corps = '<p class="muted">Vérification en cours…</p>';
     else if (upd.state === 'none') corps = `<p>Tu as la dernière version.</p>${btnCheck}`;
-    else if (upd.state === 'available') corps = `<p><strong>Version ${esc(upd.version)} disponible</strong> — téléchargement en cours…</p>`;
+    // Ces deux états n'offraient aucun bouton : une coupure de réseau à 40 % figeait la barre pour
+    // de bon. Le moteur sait relancer depuis toujours, aucun écran ne l'appelait (règle 7.3.0).
+    else if (upd.state === 'available') corps = `<p><strong>Version ${esc(upd.version)} disponible</strong> — téléchargement en cours…</p>
+      <div class="inline"><button class="btn btn-ghost btn-sm" id="u-retry">Relancer le téléchargement</button></div>`;
     else if (upd.state === 'downloading') corps = `<p>Téléchargement de la version ${esc(upd.version)}… ${upd.percent} %</p>
-      <div class="progress"><div style="width:${upd.percent}%"></div></div>`;
+      <div class="progress"><div style="width:${upd.percent}%"></div></div>
+      <div class="inline"><button class="btn btn-ghost btn-sm" id="u-retry">Relancer le téléchargement</button></div>`;
     else if (upd.state === 'downloaded') corps = `<p><strong>Version ${esc(upd.version)} prête.</strong>
       ${macNonSigne ? 'L\'application se ferme, se remplace dans le dossier Applications et se relance (une dizaine de secondes).' : 'L\'application se ferme, s\'installe et redémarre.'}</p>
       <button class="btn btn-primary" id="u-install">Installer et redémarrer</button>`;
@@ -2395,7 +2480,11 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
       ${upd.detail ? `<details class="tech"><summary>Détails techniques</summary><code>${esc(upd.detail)}</code></details>` : ''}
       <div class="inline">${btnCheck}<button class="btn btn-ghost" id="u-rel">Voir les versions</button></div>`;
     else if (!a.relay && a.private && (upd.state === 'token' || !a.hasToken)) corps = `<p class="muted small">Les mises à jour ne sont pas encore activées sur cet ordinateur : colle le jeton d'accès ci-dessous.</p>${btnCheck}`;
-    else corps = btnCheck;
+    // L'état au repos : il n'affichait qu'un bouton, c'est-à-dire rien. On répond avec ce que la
+    // dernière vérification a constaté — silencieuse comprise, puisqu'elle ne dit rien par ailleurs.
+    else if (a.lastResult === 'none') corps = `<p>Tu as la dernière version.</p>${btnCheck}`;
+    else if (a.lastResult === 'error') corps = `<p class="muted">La dernière vérification n'a pas abouti. SkanFact réessaiera tout seul ; tu peux aussi relancer maintenant.</p>${btnCheck}`;
+    else corps = `<p class="muted">Aucune vérification n'a encore eu lieu sur cet ordinateur.</p>${btnCheck}`;
 
     // Avec le relais, il n'y a rien à saisir : c'est lui qui détient l'accès au dépôt. On ne montre
     // pas un champ que personne n'a à remplir.
@@ -2422,7 +2511,13 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
       <div class="inline"><button class="btn btn-sm btn-ghost" id="u-token-clear">Retirer ce jeton</button></div>
     </div>` : '<p class="small muted mt">Les mises à jour arrivent toutes seules : rien à configurer.</p>');
 
-    el.innerHTML = `<div class="update-head"><div><div class="k-label">Version installée</div><div class="ver">${esc(a.version || '…')}</div></div></div>${corps}${jeton}`;
+    // Ce qui rend la phrase du dessus vérifiable : QUAND on l'a constaté, et à quel rythme c'est
+    // refait. « Les mises à jour arrivent toutes seules » se disait sur une application qui ne
+    // vérifiait qu'une fois, quatre secondes après l'ouverture — et un comptable n'éteint pas son
+    // poste de la semaine.
+    const heures = a.autoEvery ? Math.round(a.autoEvery / 3600000) : 0;
+    const quand = !a.packaged ? '' : `<p class="small muted mt">Dernière vérification : <b>${esc(quandVerif(a.lastCheck) || 'jamais encore')}</b>${heures ? ` — SkanFact regarde tout seul toutes les ${heures} heures et au retour sur l'application.` : ''}</p>`;
+    el.innerHTML = `<div class="update-head"><div><div class="k-label">Version installée</div><div class="ver">${esc(a.version || '…')}</div></div></div>${corps}${quand}${jeton}`;
 
     const relire = async () => { upd.app = await api.updVersion(); drawUpdatePanel(); };
     const verifier = async () => {
@@ -2442,6 +2537,11 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
       drawUpdatePanel();
     };
     if ($('#u-check')) $('#u-check').onclick = verifier;
+    if ($('#u-retry')) $('#u-retry').onclick = async () => {
+      upd.percent = 0; drawUpdatePanel();
+      const r = await api.updDownload();
+      if (r && r.state === 'error') { upd.state = 'error'; upd.message = r.message || ''; upd.detail = r.detail || ''; upd.soft = !!r.soft; drawUpdatePanel(); }
+    };
     if ($('#u-rel')) $('#u-rel').onclick = () => api.updOpenReleases();
     if ($('#u-install')) $('#u-install').onclick = async () => {
       const b = $('#u-install'); b.disabled = true; b.textContent = 'Installation…';

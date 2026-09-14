@@ -41,8 +41,8 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
     await win.waitForTimeout(150);
     await win.evaluate(() => { location.hash = '#/parametres'; });
     await win.waitForSelector('#set-tabs');
-    await win.click('#set-tabs button[data-tab="maj"]');
-    await win.waitForFunction(() => { const p = document.querySelector('[data-pane="maj"]'); return p && !p.hidden; });
+    await win.click('#set-tabs button[data-tab="app"]');
+    await win.waitForFunction(() => { const p = document.querySelector('[data-pane="app"]'); return p && !p.hidden; });
     await win.waitForSelector('#upd-beta');
   };
 

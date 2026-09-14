@@ -86,10 +86,12 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   j.etape('Les Paramètres relisent le régime, grisent la TVA et annoncent la mention');
   await aller('#/parametres');
   await win.waitForSelector('#set-tabs');
-  await win.click('#set-tabs button[data-tab="documents"]');
-  await win.waitForFunction(() => { const p = document.querySelector('[data-pane="documents"]'); return p && !p.hidden; });
+  // Le régime a quitté « Règles de facturation » en 7.30.0 : ce n'est pas une règle de document,
+  // c'est ce que l'entreprise EST. Il vit sous son identité, dans « Mon entreprise ».
+  await win.click('#set-tabs button[data-tab="societe"]');
+  await win.waitForFunction(() => { const p = document.querySelector('[data-pane="societe"]'); return p && !p.hidden; });
   const etat = await win.evaluate(() => {
-    const p = document.querySelector('[data-pane="documents"]');
+    const p = document.querySelector('[data-pane="societe"]');
     const reg = p.querySelector('select[name=taxRegime]');
     const tva = p.querySelector('select[name=defaultVatRate]');
     return { regime: reg && reg.value, tvaGrisee: tva && tva.disabled, texte: p.textContent.replace(/\s+/g, ' ') };

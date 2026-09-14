@@ -120,7 +120,14 @@ async function launchCabinet() {
 
   await ew.evaluate(() => { location.hash = '#/parametres'; });
   await ew.waitForSelector('#set-tabs');
-  await ew.evaluate(() => { const b = [...document.querySelectorAll('#set-tabs button')].find(x => /données|sécurité/i.test(x.textContent)); if (b) b.click(); });
+  // On reconnaît l'onglet à ce qu'il CONTIENT, jamais à son libellé : les onglets des Paramètres
+  // ont été renommés et réorganisés en 7.30.0, et un test qui les nomme se périme à chaque refonte.
+  await ew.evaluate(() => {
+    const cible = document.querySelector('#p-exemple');
+    const sec = cible && cible.closest('[data-pane]');
+    const b = sec && [...document.querySelectorAll('#set-tabs button')].find(x => x.dataset.tab === sec.dataset.pane);
+    if (b) b.click();
+  });
   await ew.waitForTimeout(400);
   await ew.click('#load-demo'); await ew.waitForTimeout(400);
   const ok0 = await ew.$('#modal-root #ok'); if (ok0) await ok0.click();
@@ -131,7 +138,12 @@ async function launchCabinet() {
   await ent.evaluate(({ dialog }, f) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [f] }); }, pairFile);
   await ew.evaluate(() => { location.hash = '#/parametres'; });
   await ew.waitForSelector('#set-tabs');
-  await ew.evaluate(() => { const b = [...document.querySelectorAll('#set-tabs button')].find(x => /cabinet/i.test(x.textContent)); if (b) b.click(); });
+  await ew.evaluate(() => {
+    const cible = document.querySelector('#p-cabinet');
+    const sec = cible && cible.closest('[data-pane]');
+    const b = sec && [...document.querySelectorAll('#set-tabs button')].find(x => x.dataset.tab === sec.dataset.pane);
+    if (b) b.click();
+  });
   await ew.waitForSelector('#cab-import');
   await ew.click('#cab-import');
   await ew.waitForFunction(() => !!(window.__data.company.cabinet || {}).publicKey, null, { timeout: 15000 });

@@ -395,7 +395,9 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   await win.waitForSelector('#i-pick', { timeout: 8000 });
   await win.click('#i-pick');
   await attendre(1200);
-  const reglagesBoite = await win.textContent('#pan-backup');
+  // La boîte de réception a son PROPRE panneau depuis la 7.30.0 : ce n'est pas un filet, c'est la
+  // porte par laquelle les paquets arrivent.
+  const reglagesBoite = await win.textContent('#pan-inbox');
   if (!/2 paquets en attente/.test(reglagesBoite)) throw new Error('la boîte ne compte pas les paquets : ' + reglagesBoite.slice(0, 200));
   ok('dossier surveillé, 2 paquets vus (le .txt est ignoré)');
 

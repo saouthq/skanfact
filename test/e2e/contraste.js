@@ -62,6 +62,25 @@ const SONDE = () => {
     const hors = defilable ? 0 : Math.max(0, Math.round(r.right - document.documentElement.clientWidth), Math.round(-r.left));
     out.push({ texte: b.textContent.trim().slice(0, 40), id: b.id, cls: b.className, ratio: Math.round(ratio * 100) / 100, color: s.color, bg: s.backgroundColor, hors });
   });
+
+  // Les CHAMPS DE SAISIE, pour la même raison et par la même méthode (7.30.0).
+  //
+  // Le thème sombre laissait tous les `<input>` de l'application sur fond CLAIR avec le texte clair
+  // du thème : contraste mesuré 1,18, c'est-à-dire du blanc sur du blanc. `select` et `textarea`
+  // n'étaient pas touchés — dans une liste de sélecteurs, chacun porte sa propre spécificité — donc
+  // l'écran paraissait à moitié correct, ce qui est la pire façon d'être faux. Le défaut vivait là
+  // depuis que le thème existe, et ce test ne regardait que les boutons.
+  document.querySelectorAll('input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]):not([type=color]):not([type=hidden]), select, textarea').forEach(el => {
+    const r = el.getBoundingClientRect();
+    const s = getComputedStyle(el);
+    if (!r.width || !r.height || s.visibility === 'hidden' || s.display === 'none') return;
+    const t = rgb(s.color); if (t.length < 3) return;
+    const f = fondDe(el);
+    const a = lum(t), c = lum(f);
+    const ratio = (Math.max(a, c) + 0.05) / (Math.min(a, c) + 0.05);
+    out.push({ texte: 'champ ' + (el.name || el.id || el.tagName.toLowerCase()), id: el.id, cls: el.className,
+      ratio: Math.round(ratio * 100) / 100, color: s.color, bg: s.backgroundColor, hors: 0 });
+  });
   return out;
 };
 

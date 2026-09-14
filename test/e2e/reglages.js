@@ -65,7 +65,9 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   j.etape('Les deux boutons des Paramètres');
   await win.evaluate(() => { location.hash = '#/parametres'; });
   await win.waitForSelector('#set-tabs');
-  await win.click('#set-tabs button[data-tab="donnees"]');
+  // Les modules et l'assistant ne sont plus dans « Données et sécurité » — ils n'y étaient ni de
+  // la sécurité ni des données. Ils vivent dans « L'application » depuis la refonte 7.30.0.
+  await win.click('#set-tabs button[data-tab="app"]');
   await win.waitForSelector('#go-modules');
   if (!(await win.$('#redo-setup'))) throw new Error('« Revoir l\'assistant » manquant');
   await win.click('#go-modules');
@@ -76,7 +78,7 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   j.etape('L\'assistant se rejoue, prérempli');
   await win.evaluate(() => { location.hash = '#/parametres'; });
   await win.waitForSelector('#set-tabs');
-  await win.click('#set-tabs button[data-tab="donnees"]');
+  await win.click('#set-tabs button[data-tab="app"]');
   await win.waitForSelector('#redo-setup');
   await win.click('#redo-setup');
   await win.waitForSelector('#modal-root #ok');
@@ -131,7 +133,7 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   // panneaux — donc on ne l'essayait pas.
   await win.evaluate(() => { location.hash = '#/parametres'; });
   await win.waitForSelector('#set-tabs');
-  await win.click('#set-tabs button[data-tab=apparence]');
+  await win.click('#set-tabs button[data-tab=app]');
   await win.selectOption('#pf select[name=theme]', 'dark');
   if (!(await win.evaluate(() => document.body.classList.contains('dark')))) {
     throw new Error('le thème sombre ne se voit pas avant d\'être enregistré');
@@ -140,8 +142,12 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   j.ok('le thème se voit tout de suite, et reste à enregistrer');
 
   // Les couleurs et le logo vivaient dans l'onglet Société, entre le matricule fiscal et le RIB.
-  if (!(await win.isVisible('#p-marque'))) throw new Error('« Image de marque » n\'est pas dans l\'onglet Apparence');
-  j.ok('les couleurs et le logo sont rangés avec l\'apparence');
+  // Elles ont fait un second voyage en 7.30.0 : le titre du panneau dit « sur tes documents », et
+  // l'onglet Apparence, réduit à deux listes déroulantes, ne pesait plus un onglet.
+  await win.click('#set-tabs button[data-tab=documents]');
+  await win.waitForSelector('#p-marque');
+  if (!(await win.isVisible('#p-marque'))) throw new Error('« Image de marque » n\'est pas dans l\'onglet Documents');
+  j.ok('les couleurs et le logo sont rangés avec les documents'); 
 
   // « Annuler », collé à « Enregistrer », jetait sans un mot — et laissait l'aperçu en place.
   await win.click('#cancel-set');

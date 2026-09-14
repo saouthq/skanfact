@@ -21,6 +21,12 @@ L'utilisateur est débutant en gestion (première entreprise) : chaque champ por
   ligne garde au plus UN bouton visible, celui du geste pour lequel la page existe. Toute nouvelle
   liste passe par là, chaque action porte une phrase et une icône, et toute action qui change
   l'état d'une pièce demande d'abord — puis propose la suite.
+- **Les réglages passent par `src/renderer/reglages.js`**, chargé par LES DEUX applications :
+  sommaire de l'onglet, recherche, et UNE porte pour amener un panneau à l'écran. Un panneau de
+  Paramètres se déclare dans `SETTINGS_PANNEAUX` (onglet, titre, synonymes) et se pose par
+  `panneau(id)` : la table sert au titre, au `data-mots` de la recherche ET à l'entrée de palette
+  Cmd+K, donc les trois ne peuvent pas diverger. Un test vérifie que chaque panneau déclaré est posé
+  une fois et une seule, et qu'aucun n'échappe à la table.
 - **Le dépôt est PUBLIC depuis le 13/09/2026** (GitHub Actions y est gratuit) et redeviendra peut-être privé. La bascule est **une seule ligne** : `private` dans **`src/depot.js`**, que les deux applications lisent — le champ « jeton d'accès » revient alors tout seul dans leurs Paramètres. Ne jamais redéclarer ce drapeau ailleurs : il avait été écrit dans les deux `main.js`, et ils ont divergé. `npm run e2e:depot` bascule vraiment et vérifie l'écran.
 - **Aucun message d'erreur brut ne remonte à l'écran** : `updateProblem(err)` (dans les deux `main.js`) rend une phrase en français, range le texte d'origine dans `detail` (replié sous « Détails techniques »), et marque `soft` ce qui n'est pas une panne.
 - macOS : app non signée → `MAC_SIGNED = false` dans `src/main.js`. electron-updater télécharge le `.zip` (sha512 vérifié) et `src/mac-update.sh` remplace l'app dans Applications puis la relance. Ne pas prétendre que Squirrel.Mac fonctionne sans signature Apple.
@@ -1511,6 +1517,77 @@ Règles apprises, à ne pas recasser :
   n'avait pas été relancé. C'est le troisième e2e pourri par le même mécanisme (`.help-nav` en
   7.28.0, les écrans numérotés en 7.3.0). **Reconnaître chaque écran à ce qu'il contient, jamais à
   son rang — et relancer TOUS les parcours après une refonte.**
+
+## 7.30.0 — Les Paramètres, et ce qu'on ne peut pas trouver
+
+Audit des pages de réglages des deux applications, mesuré avant d'y toucher (`e2e:parametres`), puis
+un audit de code à six angles avec un contradicteur par constat : **huit constats graves retenus,
+trois réfutés**. Refonte livrée avec eux.
+
+Règles apprises, à ne pas recasser :
+
+- **Un onglet d'un demi-écran n'est pas un onglet, c'est un clic de plus.** Huit onglets d'un
+  déséquilibre de 1 à 12 : « Licence » et « Cabinet comptable » pesaient une phrase, « Sécurité et
+  données » deux écrans et dix-huit boutons. Cinq onglets, et le plus léger fait 0,8 écran.
+- **Ce qui rend un rangement pardonnable, c'est la recherche.** Quand on ne sait pas dans quelle
+  famille un réglage a été classé, on tape son nom. Elle lit les titres, les libellés ET la prose des
+  panneaux (« où je règle la copie iCloud ? » n'a pour réponse ni un titre ni un libellé : le mot
+  n'est que dans la phrase d'explication), et elle dit toujours DANS QUEL ONGLET c'est rangé.
+- **Le sommaire et la recherche se déduisent de l'ÉCRAN**, jamais d'une liste écrite à la main : un
+  panneau ajouté demain est trouvable le jour où il est écrit. Corollaire : la table qui porte les
+  synonymes porte AUSSI le titre et l'onglet, et pose le panneau elle-même (`panneau(id)`).
+- **Une refonte d'onglets périme tout ce qui les NOMME.** Six alias de la palette Cmd+K et onze
+  phrases de refus désignaient un onglet disparu — donc Cmd+K ne rendait plus un seul réglage, en
+  silence. Deux tests génériques l'interdisent : les entrées de palette sont engendrées panneau par
+  panneau, et toute chaîne « Paramètres → X » doit nommer un onglet qui existe.
+- **Une application qui vérifie ses mises à jour UNE fois au démarrage ne les vérifie pas.** SkanFact
+  est ouvert du lundi au vendredi sans être quitté : une correction publiée le mardi arrivait le
+  lundi suivant. Toutes les quatre heures, plus un rattrapage au retour au premier plan (un portable
+  refermé suspend les minuteurs). Et la date de la dernière vérification est AFFICHÉE : sans elle,
+  « tu as la dernière version » peut dater d'un mois, et rien ne permet de le savoir.
+- **Une panne pendant un téléchargement que l'utilisateur VOIT se dit toujours**, même si la
+  vérification qui l'a déclenché était silencieuse. Sinon la barre de progression se fige à 40 % pour
+  de bon — et les deux états concernés n'offraient aucun bouton, alors que `update:download` savait
+  relancer depuis la 1.7.0 (« un moteur sans écran n'existe pas », 7.3.0).
+- **Un réglage à liste fermée ne se saisit jamais en texte libre.** La devise de l'entreprise était
+  le seul champ libre de l'application ; « TND », « dinar » ou une faute de frappe faisaient passer
+  toutes les factures à deux décimales au lieu de trois, sans un mot. Et la migration rattrape ce
+  qui a déjà été tapé, au lieu de le remettre d'office à la valeur par défaut.
+- **Un drapeau « l'utilisateur y a touché » doit être RÉAMORCÉ partout où l'écran se rejoue.**
+  `regimeTouche` n'est pas enregistré : au rejeu de l'assistant — le seul endroit où l'on puisse
+  changer de métier — il repartait à `undefined` et le régime fiscal réglé à la main se faisait
+  écraser. Son voisin immédiat, `modulesTouche`, le faisait correctement depuis la 7.0.0.
+- **Tout geste des Paramètres qui finit par `render()` enregistre d'abord.** La règle datait de la
+  5.2.1 et n'avait été posée que sur le choix d'un logo : activer un mot de passe jetait vingt champs
+  remplis, sans un mot. `enregistrerEnCours()` passe par le garde-fou actif, donc vaut pour tout
+  écran qui en pose un.
+- **Un refus d'écriture se remonte, il ne se jette pas.** `setPassword` ignorait le retour de
+  `write()` : sur un dossier partagé, l'écran annonçait « Données chiffrées » pendant que le fichier
+  n'avait pas bougé — et au redémarrage il réclamait l'ANCIEN mot de passe pendant que les
+  sauvegardes réclamaient le nouveau.
+- **Rechiffrer les sauvegardes, c'est aussi celles de la clé USB.** `mirrorExternal` ne recopiait un
+  fichier que s'il n'existait PAS encore : trente jours de comptabilité restaient en clair sur le
+  support qui voyage, à côté d'un fichier chiffré, pendant que l'écran affirmait le contraire. On
+  compare taille et mtime, et on convertit sur place les sauvegardes externes sans équivalent local
+  — sans jamais les supprimer : c'est un filet, il a juste à ne plus être lisible.
+- **Une règle CSS correcte peut PERDRE en silence, et ça ne se voit qu'en mesurant.** Troisième fois
+  (après le `th.r` des colonnes en 7.23.0 et `.help-fil` en 7.27.0) : en thème sombre, chaque
+  `<input>` gardait son fond clair avec le texte clair du thème — contraste **1,18**, du blanc sur du
+  blanc, depuis que le thème existe. La règle commune des champs porte quatre `:not()`, la règle
+  sombre n'en portait aucun. `select` et `textarea` n'étaient pas touchés (dans une LISTE de
+  sélecteurs, chacun porte sa propre spécificité), donc l'écran paraissait à moitié correct — la
+  pire façon d'être faux. `e2e:contraste` mesure désormais les champs autant que les boutons.
+- **Un pluriel mal accordé se compte en dizaines.** Quatre-vingt-dix « 1 facture(s) » dans les deux
+  applications et leur logique partagée, alors que la règle existait dans l'app du cabinet depuis sa
+  1.0.0 et avait été « portée » à UN écran en 7.18.0. `pl`/`sPl` (app.js) et `plFr`/`sAccord`
+  (core.js), et un test qui interdit la forme partout.
+- **Un test qui lit du code doit lire ce qu'il prétend lire.** Ma première version du test de
+  pluriel passait par `codeSeulement`, qui VIDE les chaînes — c'est-à-dire l'endroit exact où vivent
+  les pluriels. Il ne pouvait pas échouer. Je ne l'ai su qu'en réintroduisant le défaut.
+- Piège d'e2e, la quatrième fois : **trois parcours visaient un onglet par son identifiant** et un
+  quatrième un `data-fiche` supprimé douze versions plus tôt (`e2e:fiches` accusait le jeu d'exemple
+  d'être vide). On reconnaît un écran à ce qu'il CONTIENT — `ouvrir l'onglet qui contient #p-cabinet`
+  — et on relance TOUS les parcours après une refonte, pas seulement celui qu'on vient d'écrire.
 
 ## Pistes pour la suite (non demandées)
 

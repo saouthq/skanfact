@@ -310,10 +310,10 @@
       id: 'demarrer', title: 'Démarrer : tes premiers pas', sub: 'Les sept étapes du panneau d\'accueil, expliquées',
       body: `
 <p>SkanFact fonctionne entièrement sur ton ordinateur. Rien n'est envoyé sur Internet, personne d'autre ne voit tes données. En contrepartie, <b>c'est toi qui es responsable de tes sauvegardes</b> : on y revient plus bas.</p>
-<p>Au tout premier démarrage, un assistant t'a demandé ta raison sociale, ton activité, ce dont tu as besoin et tes règles de facturation. <b>Il se rejoue</b>, prérempli avec tes réponses actuelles : le bouton « Revoir l'assistant de démarrage… » est en tête de <b>Paramètres → Société</b>, et la recherche (<kbd>⌘</kbd> <kbd>K</kbd>, ou <kbd>Ctrl</kbd> <kbd>K</kbd> sous Windows) le trouve en tapant « assistant ». Le rejouer ne touche aucune de tes pièces.</p>
+<p>Au tout premier démarrage, un assistant t'a demandé ta raison sociale, ton activité, ce dont tu as besoin et tes règles de facturation. <b>Il se rejoue</b>, prérempli avec tes réponses actuelles : le bouton « Revoir l'assistant de démarrage… » est en tête de <b>Paramètres → Mon entreprise</b>, et la recherche (<kbd>⌘</kbd> <kbd>K</kbd>, ou <kbd>Ctrl</kbd> <kbd>K</kbd> sous Windows) le trouve en tapant « assistant ». Le rejouer ne touche aucune de tes pièces.</p>
 <p>L'accueil affiche un panneau <b>« Tes premiers pas »</b> tant que tout n'est pas fait. Chaque ligne y porte son bouton, et son état est <b>déduit de tes données</b> — rien à cocher soi-même. Voici ces sept étapes, dans l'ordre, avec ce qu'il faut savoir pour chacune.</p>
 <h3>1. Compléter ta fiche société</h3>
-<p><b>Paramètres → Société</b>, au minimum : raison sociale, matricule fiscal, adresse, téléphone, email. Ces informations s'impriment en haut de chaque document — une facture sans matricule fiscal n'est pas conforme. Ajoute ton <b>RIB</b> dans le même écran, bloc <b>Coordonnées bancaires</b> : c'est ce que ton client copiera pour te virer l'argent, relis-le caractère par caractère. Et vérifie tes délais dans <b>Paramètres → Documents</b> : validité des devis et délai de paiement (30 jours est l'usage pour les deux) calculent les dates imprimées.</p>
+<p><b>Paramètres → Mon entreprise</b>, au minimum : raison sociale, matricule fiscal, adresse, téléphone, email. Ces informations s'impriment en haut de chaque document — une facture sans matricule fiscal n'est pas conforme. Ajoute ton <b>RIB</b> dans le même écran, bloc <b>Coordonnées bancaires</b> : c'est ce que ton client copiera pour te virer l'argent, relis-le caractère par caractère. Et vérifie tes délais dans <b>Paramètres → Documents</b> : validité des devis et délai de paiement (30 jours est l'usage pour les deux) calculent les dates imprimées.</p>
 <h3>2. Enregistrer ton premier client</h3>
 <p>Tu n'es pas obligé de commencer par là : le sélecteur de client, dans le devis, porte un bouton <b>« + Nouveau client »</b>. Le matricule fiscal du client est utile dès qu'il s'agit d'une entreprise ; une retenue à la source propre à ce client se règle sur sa fiche, une fois pour toutes.</p>
 <h3>3. Remplir ton catalogue</h3>
@@ -325,12 +325,12 @@
 <h3>6. Transformer un devis accepté en facture</h3>
 <p>Quand le client dit oui, passe le devis en « accepté » : le bouton <b>Facturer ce devis</b> devient le bouton vert de l'écran, et il existe aussi sur chaque ligne de la liste. La facture reprend tout, sans ressaisie. Voir <a href="#/aide/facture">La facture : réclamer ton argent</a>.</p>
 <h3>7. Mettre tes données à l'abri</h3>
-<p><b>Paramètres → Sécurité et données → Choisir un dossier</b>, puis un dossier dans iCloud Drive ou sur une clé USB. À chaque enregistrement, tout y est recopié. Fais-le maintenant, pas « plus tard » : c'est la seule étape dont l'oubli coûte tout. Le même écran liste tes sauvegardes et sait <b>revenir en arrière</b>.</p>
+<p><b>Paramètres → Données et sécurité → Choisir un dossier</b>, puis un dossier dans iCloud Drive ou sur une clé USB. À chaque enregistrement, tout y est recopié. Fais-le maintenant, pas « plus tard » : c'est la seule étape dont l'oubli coûte tout. Le même écran liste tes sauvegardes et sait <b>revenir en arrière</b>.</p>
 <h3>Explore avec l'exemple</h3>
 <p>Sur l'accueil, le bouton <b>Voir un exemple rempli</b> charge treize mois d'activité fictive. Clique partout, casse tout, ça n'a aucune importance : <b>tes données sont mises de côté avant</b>, et un bandeau orange reste affiché sur chaque page tant que l'exemple est chargé.</p>
 <p>Pour en sortir, ce même bandeau porte <b>Repartir de mes données</b> : il te rend exactement ce que tu avais. N'utilise pas « Tout effacer » pour ça — ce bouton-là efface pour de bon, il ne restaure rien.</p>
 <h3>Et si tu veux revoir les questions du départ</h3>
-<p>L'assistant se rejoue à tout moment : <b>Paramètres → Société → Revoir l'assistant de démarrage…</b>. Tes réponses actuelles y sont déjà inscrites, et aucune de tes pièces n'est touchée.</p>`
+<p>L'assistant se rejoue à tout moment : <b>Paramètres → Mon entreprise → Revoir l'assistant de démarrage…</b>. Tes réponses actuelles y sont déjà inscrites, et aucune de tes pièces n'est touchée.</p>`
     },
     {
       id: 'devis', title: 'Le devis : proposer un prix', sub: 'Comment il se prépare, s\'envoie et se transforme',
@@ -532,7 +532,7 @@
 <p>Chaque type a sa propre suite, qui repart à 001 en janvier : <b>PRO-2026-001</b>, <b>BC-2026-001</b>, <b>BL-2026-001</b>, <b>CTR-2026-001</b>. Le numéro est attribué au premier enregistrement. Contrairement à une facture, ces pièces restent modifiables ensuite : elles n'engagent rien fiscalement.</p>
 <h3>Les pièces jointes</h3>
 <p>Sur n'importe quel document — devis, facture, bon, contrat — un panneau <b>Pièces jointes</b> permet d'attacher des fichiers : le devis signé scanné, le bon de commande du client, un contrat rendu signé, la photo d'un chantier.</p>
-<p>Les fichiers sont <b>copiés</b> à côté de tes données : si tu déplaces ou supprimes l'original, la pièce reste attachée au document. Attention à un point : elles ne sont <b>pas</b> dans les sauvegardes quotidiennes, qui ne contiennent qu'un fichier texte. Elles sont en revanche dans la <b>copie externe</b> (Paramètres → Sécurité et données). Si tu joins des documents importants, configure cette copie.</p>`
+<p>Les fichiers sont <b>copiés</b> à côté de tes données : si tu déplaces ou supprimes l'original, la pièce reste attachée au document. Attention à un point : elles ne sont <b>pas</b> dans les sauvegardes quotidiennes, qui ne contiennent qu'un fichier texte. Elles sont en revanche dans la <b>copie externe</b> (Paramètres → Données et sécurité). Si tu joins des documents importants, configure cette copie.</p>`
     },
     {
       id: 'tresorerie', title: 'La trésorerie', sub: 'La seule question qui compte vraiment',
@@ -822,7 +822,7 @@
 <p>Note quand même que la facture d'un fournisseur porte son nom, son matricule et des montants : si un achat est confidentiel, saisis-le à la main.</p>
 <h3>Ce que ça coûte</h3>
 <p>Il faut une <b>clé d'API</b>, que tu crées toi-même sur <code>console.anthropic.com</code> et que tu recharges comme un compte prépayé. Chaque facture lue coûte quelques centimes. La clé est stockée sur cet ordinateur, dans un fichier séparé de tes données — elle n'entre jamais dans une sauvegarde ni dans un dossier partagé.</p>
-<p><b>Paramètres → Mises à jour → Lecture de factures</b> pour l'activer, la changer, ou l'effacer d'un clic.</p>
+<p><b>Paramètres → Données et sécurité → Lecture de factures d'achat</b> pour l'activer, la changer, ou l'effacer d'un clic.</p>
 <h3>L'application ne remplit jamais toute seule</h3>
 <p>C'est la règle qui ne bougera pas. Ce qui a été lu s'affiche dans une fenêtre de vérification :</p>
 <ul>
@@ -975,7 +975,7 @@
 <p>Les 30 premiers jours sont complets, sans rien à saisir. L'application te prévient une semaine avant la fin, dans la barre de gauche.</p>
 
 <h3>Demander ou renouveler</h3>
-<p><b>Paramètres → Licence → Demander une licence</b> prépare le message avec tout ce qu'il faut : ta raison sociale, ton matricule, et — si ton comptable t'a remis son fichier d'appairage — l'empreinte de son cabinet. <b>Un client envoyé par un cabinet qui utilise SkanFact Cabinet a droit à une remise.</b> Tu reçois une clé qui commence par <code>SKAN1.</code>, tu la colles, c'est fini.</p>
+<p><b>Paramètres → L'application → Licence → Demander une licence</b> prépare le message avec tout ce qu'il faut : ta raison sociale, ton matricule, et — si ton comptable t'a remis son fichier d'appairage — l'empreinte de son cabinet. <b>Un client envoyé par un cabinet qui utilise SkanFact Cabinet a droit à une remise.</b> Tu reçois une clé qui commence par <code>SKAN1.</code>, tu la colles, c'est fini.</p>
 <p>Si la clé est refusée, c'est presque toujours qu'elle a été copiée incomplètement : reprends-la depuis le <code>S</code> de <code>SKAN1.</code> jusqu'au tout dernier caractère, sans espace ni retour à la ligne oublié.</p>
 
 <h3>Changer d'ordinateur</h3>
@@ -984,8 +984,9 @@
     {
       id: 'donnees', title: 'Tes données : sauvegarder et protéger', sub: 'Le sujet le plus ennuyeux et le plus important',
       body: `
-<p>Tes données vivent dans un fichier unique sur ton ordinateur. Son chemin exact est affiché dans <b>Paramètres → Sécurité et données</b>.</p>
-<p class="small muted">Les Paramètres ont huit onglets : <b>Société</b> (ce qui s'imprime sur tes documents), <b>Documents</b> (délais, taxes, taux par défaut), <b>Emails</b> (les modèles de messages), <b>Apparence</b> (thème, logo, couleur), <b>Cabinet comptable</b> (l'appairage avec ton comptable), <b>Sécurité et données</b> (cette page), <b>Licence</b> et <b>Mises à jour</b>.</p>
+<p>Tes données vivent dans un fichier unique sur ton ordinateur. Son chemin exact est affiché dans <b>Paramètres → Données et sécurité</b>.</p>
+<p class="small muted">Les Paramètres ont cinq onglets : <b>Mon entreprise</b> (ce qui s'imprime en haut de tes documents, ton régime fiscal, ton RIB), <b>Documents</b> (délais, taxes, logo et couleurs, textes imprimés), <b>Envois</b> (messagerie, comptable, modèles de messages, appairage du cabinet), <b>Données et sécurité</b> (cette page : dossiers, sauvegardes, mot de passe) et <b>L'application</b> (thème, modules affichés, mises à jour, licence, dépannage).</p>
+<p class="small muted">Tu ne sais pas dans quel onglet un réglage a été rangé ? <b>Ne cherche pas : tape son nom</b> dans le champ de recherche, en haut à droite de la page des Paramètres. Il répond sur les soixante réglages, onglet par onglet, et t'emmène directement dessus.</p>
 <h3>Les trois filets de sécurité</h3>
 <ul>
   <li><b>La sauvegarde quotidienne</b> : chaque jour, l'état de tes données au premier enregistrement est copié dans un dossier <b>backups</b>. Trente jours sont conservés. Une fausse manipulation aujourd'hui se répare en revenant à hier.</li>
@@ -995,7 +996,7 @@
 <h3>Restaurer</h3>
 <p>Clique sur <b>Importer</b> et choisis un fichier du dossier backups (ils sont datés). Une sauvegarde de l'état actuel est prise avant, donc même une restauration ratée se rattrape.</p>
 <h3>Le mot de passe</h3>
-<p><b>Paramètres → Sécurité</b> chiffre le fichier et toutes ses sauvegardes. Il sera demandé à chaque ouverture. Utile si ton ordinateur voyage.</p>
+<p><b>Paramètres → Données et sécurité → Mot de passe</b> chiffre le fichier et toutes ses sauvegardes. Il sera demandé à chaque ouverture. Utile si ton ordinateur voyage.</p>
 <p>Un avertissement sérieux : <b>il n'existe aucune récupération</b>. Ni moi, ni personne ne peut relire tes données sans ce mot de passe. Note-le dans un gestionnaire de mots de passe ou sur un papier rangé ailleurs que dans le sac de l'ordinateur.</p>`
     },
     {
@@ -1026,13 +1027,13 @@
 <p>Deux cas différents, souvent confondus. Regarde lequel est le tien.</p>
 <h3>Cas 1 — une personne, deux entreprises</h3>
 <p>Quelqu'un gère deux sociétés sur le même ordinateur. Chacune a ses clients, sa numérotation, sa TVA : elles ne doivent <b>jamais</b> se mélanger.</p>
-<p>C'est le rôle des <b>dossiers</b> (Paramètres → Sécurité et données). Tu crées un dossier par entreprise et tu passes de l'un à l'autre en un clic. Rien de commun entre eux, pas même les paramètres.</p>
+<p>C'est le rôle des <b>dossiers</b> (Paramètres → Données et sécurité). Tu crées un dossier par entreprise et tu passes de l'un à l'autre en un clic. Rien de commun entre eux, pas même les paramètres.</p>
 <h3>Cas 2 — deux personnes, une entreprise</h3>
 <p>Deux ordinateurs travaillent sur la même société. Là, il faut un <b>dossier partagé</b> : un dossier posé dans iCloud Drive, OneDrive, un disque réseau ou une clé USB, que les deux postes ouvrent.</p>
 <h3>Comment on s'y prend, dans l'ordre</h3>
 <p><b>Tu as déjà saisi ton entreprise ?</b> Alors tu la partages telle quelle — il n'y a rien à ressaisir et rien à recréer.</p>
 <ol>
-  <li><b>Sur ton ordinateur</b>, ouvre l'entreprise à partager, puis Paramètres → Sécurité et données → <b>Partager ce dossier à deux…</b> (c'est aussi dans le menu en haut de la barre de gauche, sous le nom de l'entreprise). Choisis l'emplacement que vous voyez tous les deux. SkanFact y <b>copie</b> tout : la copie d'origine reste sur ton disque, au cas où.</li>
+  <li><b>Sur ton ordinateur</b>, ouvre l'entreprise à partager, puis Paramètres → Données et sécurité → <b>Partager ce dossier à deux…</b> (c'est aussi dans le menu en haut de la barre de gauche, sous le nom de l'entreprise). Choisis l'emplacement que vous voyez tous les deux. SkanFact y <b>copie</b> tout : la copie d'origine reste sur ton disque, au cas où.</li>
   <li><b>Sur le second ordinateur</b>, installe SkanFact, puis <b>Rejoindre un dossier déjà partagé…</b> et désigne le dossier que le premier vient d'y poser (son nom commence par « SkanFact- »). Rien n'est créé : il ouvre celui-là. Pas d'assistant de première utilisation, pas de nom d'entreprise à retaper.</li>
   <li>Attendez que la synchronisation soit finie (iCloud et OneDrive affichent une petite icône pendant l'envoi) avant d'ouvrir de l'autre côté.</li>
 </ol>
@@ -1055,7 +1056,7 @@
   <li><b>Ouvrez à tour de rôle</b> quand c'est possible. Fermez SkanFact quand vous avez fini : le fichier part se synchroniser tout de suite.</li>
   <li><b>Attendez la synchronisation</b> avant d'ouvrir de l'autre côté. iCloud et OneDrive mettent parfois une minute ; l'icône du dossier le montre.</li>
   <li><b>Une seule personne émet</b> les factures et les avoirs.</li>
-  <li><b>Donnez un nom clair à chaque poste</b> (Paramètres → Ce poste) : les messages diront « les modifications du PC du bureau ont été reprises » plutôt qu'un nom technique.</li>
+  <li><b>Donnez un nom clair à chaque poste</b> (Paramètres → Données et sécurité → Ce poste) : les messages diront « les modifications du PC du bureau ont été reprises » plutôt qu'un nom technique.</li>
   <li><b>Ne mettez pas le dossier partagé sur une clé USB</b> que vous débranchez à chaud. Un service de synchronisation fait le travail bien mieux.</li>
 </ul>
 <h3>Ce que SkanFact ne fait pas</h3>
@@ -1082,7 +1083,7 @@
   <li>Les mises à jour arrivent toutes seules, sans rien à configurer : SkanFact vérifie au démarrage, télécharge en arrière-plan et propose d'installer. <span class="small muted">(Il fallait autrefois coller un jeton d'accès : ce n'est plus le cas depuis que le dépôt est public.)</span></li>
 </ol>
 <h3>Les versions bêta</h3>
-<p>Il existe <b>deux canaux</b> de mise à jour. Le canal <b>normal</b> est celui de tout le monde : il ne propose que les versions terminées. Le canal <b>bêta</b>, à cocher dans Paramètres → Mises à jour, ajoute les versions d'essai — numérotées <code>7.26.0-beta.1</code> — qui servent à vérifier une nouveauté avant de la livrer aux autres.</p>
+<p>Il existe <b>deux canaux</b> de mise à jour. Le canal <b>normal</b> est celui de tout le monde : il ne propose que les versions terminées. Le canal <b>bêta</b>, à cocher dans Paramètres → L'application → Mises à jour, ajoute les versions d'essai — numérotées <code>7.26.0-beta.1</code> — qui servent à vérifier une nouveauté avant de la livrer aux autres.</p>
 <p>Une bêta peut contenir des défauts : c'est exactement ce à quoi elle sert. Elle s'installe par-dessus SkanFact et travaille sur les mêmes données, donc une sauvegarde <code>avant-beta</code> est prise au moment où tu coches la case, et le mot <b>bêta</b> reste affiché en haut à gauche tant que tu tournes dessus. Sur l'ordinateur qui tient la vraie comptabilité — le tien, celui de ta famille — laisse la case décochée.</p>
 <h3>Ce qu'il faut leur dire</h3>
 <p>Trois choses suffisent pour bien démarrer :</p>
@@ -1108,8 +1109,8 @@
 <h3>Avant d'appeler à l'aide</h3>
 <ul>
 <li><b>Note la version</b> (en bas de la barre de gauche) et ce que tu faisais exactement.</li>
-<li><b>Fais une sauvegarde</b> (Paramètres → Sécurité et données) : ça ne coûte rien et ça protège tout.</li>
-<li>Si l'application refuse de démarrer, tes données sont toujours là : le fichier et les sauvegardes vivent dans le dossier indiqué dans Paramètres → Sécurité et données.</li>
+<li><b>Fais une sauvegarde</b> (Paramètres → Données et sécurité) : ça ne coûte rien et ça protège tout.</li>
+<li>Si l'application refuse de démarrer, tes données sont toujours là : le fichier et les sauvegardes vivent dans le dossier indiqué dans Paramètres → Données et sécurité.</li>
 </ul>
 
 <h3>Ce qui n'est jamais perdu</h3>
@@ -1306,7 +1307,7 @@ rencontres. Si un mot affiché dans l'application manque ici, c'est un défaut :
     conges: { label: 'Ouvrir la paie', hash: '#/paie' },
     marges: { label: 'Voir mes marges', hash: '#/marges' },
     statistiques: { label: 'Voir mes statistiques', hash: '#/stats' },
-    donnees: { label: 'Sécurité et données', hash: '#/parametres' },
+    donnees: { label: 'Données et sécurité', hash: '#/parametres' },
     deux: { label: 'Ouvrir les Paramètres', hash: '#/parametres' },
     partager: { label: 'Ouvrir les Paramètres', hash: '#/parametres' },
     licence: { label: 'Voir ma licence', hash: '#/parametres' }

@@ -645,9 +645,25 @@ body.dark {
   --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 20px rgba(0,0,0,.25);
   color-scheme: dark;
 }
-body.dark input[type=text], body.dark input[type=number], body.dark input[type=date], body.dark input[type=email], body.dark input[type=color], body.dark select, body.dark textarea { background: #12161c; color: var(--text); border-color: var(--border); }
-body.dark input:focus, body.dark select:focus, body.dark textarea:focus { background: #0e1217; }
-body.dark input:disabled, body.dark select:disabled, body.dark textarea:disabled { background: #1f2630; color: #8c98a8; }
+/* Le thème sombre des CHAMPS, et la chaîne de `:not()` n'est pas décorative.
+   La règle commune (« input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]) »)
+   pèse quatre sélecteurs d'attribut ; `body.dark input[type=text]` n'en pesait que deux. Elle
+   PERDAIT donc, en silence : tous les champs de saisie de l'application gardaient leur fond clair
+   (#fbfcfd) avec le texte clair du thème sombre (#e6eaf0), soit un contraste mesuré de **1,18** —
+   du blanc sur du blanc. `select` et `textarea`, eux, n'étaient pas concernés : dans une LISTE de
+   sélecteurs, chaque membre porte sa propre spécificité, et celle de `textarea` seul est minuscule.
+   D'où un écran sombre où les zones de texte étaient lisibles et les champs d'une ligne, non.
+   Mesuré dans l'application (getComputedStyle + rapport de luminance), pas déduit du fichier :
+   c'est la troisième fois qu'une règle correcte perd contre une autre sans que rien ne le signale
+   (le `th.r` des colonnes en 7.23.0, `.help-fil` en 7.27.0). */
+body.dark input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]),
+body.dark select, body.dark textarea { background: #12161c; color: var(--text); border-color: var(--border); }
+body.dark input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]):focus,
+body.dark select:focus, body.dark textarea:focus { background: #0e1217; }
+body.dark input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]):disabled,
+body.dark select:disabled, body.dark textarea:disabled { background: #1f2630; color: #8c98a8; }
+/* Le texte d'invite doit rester lisible sans se confondre avec une valeur saisie. */
+body.dark input::placeholder, body.dark textarea::placeholder { color: #6f7c8c; }
 body.dark .btn { background: var(--ink-soft); color: var(--text); }
 body.dark .btn:hover { background: #2c3644; }
 body.dark .btn-primary { background: var(--primary); color: #0b1512; }
@@ -1194,3 +1210,36 @@ kbd { font: inherit; font-size: 12px; font-family: -apple-system, system-ui, san
 .lock-card input { text-align: center; font-size: 16px; margin: 16px 0 12px; }
 .lock-card .btn { width: 100%; justify-content: center; }
 .lock-err { color: var(--danger); font-size: 13px; margin-bottom: 10px; }
+
+/* ---------- Paramètres : le sommaire, la recherche, ce qui manque (7.30.0) ----------
+   Trois ajouts qui répondent au même défaut : soixante réglages rangés dans des onglets dont on ne
+   devine pas le contenu. Le sommaire montre ce que l'onglet ouvert contient, la recherche répond
+   quand on ne sait pas dans quel onglet regarder, et le bandeau « il manque » dit à l'endroit où
+   l'on remplit ce qui n'est pas rempli. */
+/* La règle générale `.page-head .actions input` plafonne à 280 px : à cette largeur, le seul
+   indice de ce qu'on peut taper était coupé au milieu d'un mot. */
+.set-search input[type=search] { min-width: 320px; max-width: 400px; }
+.set-somm { display: flex; flex-wrap: wrap; gap: 6px; margin: -8px 0 20px; }
+.somm-chip {
+  font: inherit; font-size: 12px; font-weight: 600; color: var(--muted);
+  background: var(--panel); border: 1px solid var(--border); border-radius: 999px;
+  padding: 5px 12px; cursor: pointer; transition: color .12s, border-color .12s, background .12s;
+}
+.somm-chip:hover { color: var(--primary); border-color: var(--primary); background: var(--primary-soft); }
+
+.set-hits { display: grid; gap: 8px; }
+.set-hit {
+  font: inherit; text-align: left; background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 12px 16px; cursor: pointer;
+  display: flex; flex-direction: column; gap: 3px; transition: border-color .12s;
+}
+.set-hit:hover { border-color: var(--primary); }
+.set-hit-ou { font-size: 10.5px; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; color: var(--muted); }
+.set-hit-t { font-size: 14px; font-weight: 650; }
+.set-hit-d { font-size: 12px; color: var(--muted); }
+.set-hit mark { background: var(--primary-soft); color: var(--primary); border-radius: 3px; padding: 0 1px; }
+
+/* « Il manque : matricule fiscal, RIB » — dit là où on le remplit, pas seulement dans « À faire ». */
+.set-manque { background: var(--warning-soft); color: var(--warning); border-radius: var(--radius); padding: 12px 16px; font-size: 13px; }
+.set-manque b { font-weight: 700; }
+.upd-quand { margin-top: 10px; }

@@ -176,10 +176,10 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
   });
   await step('paramètres + panneau mises à jour + sauvegarde', async () => {
     await win.evaluate(() => { location.hash = '#/parametres'; });
-    await setTab('maj');
+    await setTab('app');
     await win.waitForSelector('#update-panel .ver');
     const up = await win.textContent('#update-panel');
-    if (!(packaged ? up.includes('Vérifier les mises à jour') : up.includes('Mode développement'))) throw new Error('panneau maj: ' + up.slice(0, 120));
+    if (!(packaged ? up.includes('Vérifier maintenant') : up.includes('Mode développement'))) throw new Error('panneau maj: ' + up.slice(0, 120));
     if (packaged) { // dans l'app installée, la vérification manuelle doit répondre proprement (pas de token → message clair)
       await win.click('#upd-check');
       await win.waitForFunction(() => !document.querySelector('#update-panel').textContent.includes('Vérification en cours'), null, { timeout: 30000 });
@@ -193,7 +193,7 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     const b = fs.readdirSync(path.join(dossierDir(), 'backups')); if (!b.some(f => f.startsWith('manuelle-'))) throw new Error(b.join(','));
   });
   await step('nouveautés (changelog)', async () => {
-    await setTab('maj');
+    await setTab('app');
     await win.click('#upd-changelog');
     await win.waitForSelector('.changelog');
     if (!(await win.textContent('.changelog')).includes(VERSION)) throw new Error(`le changelog ne parle pas de la version ${VERSION}`);
@@ -214,7 +214,7 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
   });
   await step('thème sombre', async () => {
     await win.evaluate(() => { location.hash = '#/parametres'; });
-    await setTab('apparence');
+    await setTab('app');
     if (!(await win.isHidden('#save-bar'))) throw new Error('barre Enregistrer visible sans modification');
     await win.selectOption('#pf select[name=theme]', 'dark');
     await win.waitForSelector('#save-bar:not([hidden])');
@@ -1404,7 +1404,7 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
   });
   await step('lecture de factures : éteinte par défaut, rien ne sort', async () => {
     await win.evaluate(() => { location.hash = '#/parametres'; });
-    await setTab('maj');
+    await setTab('donnees');
     await win.waitForSelector('#ocr-panel .vat-box');
     const panel = await win.textContent('#ocr-panel');
     if (!/Désactiv/.test(panel)) throw new Error('la lecture devrait être désactivée par défaut : ' + panel.replace(/\s+/g, ' ').slice(0, 200));
@@ -1568,7 +1568,7 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
       set('from', y + '-03-30');
       set('to', y + '-04-02');
     });
-    await win.waitForFunction(() => /jour\(s\) ouvrable/.test(document.querySelector('#lf-hint').textContent));
+    await win.waitForFunction(() => /jours? ouvrable/.test(document.querySelector('#lf-hint').textContent));
     const n0 = await win.evaluate(() => window.__data.leaves.length);
     await win.click('#modal-root #ok');
     await win.waitForFunction(n => window.__data.leaves.length === n + 1, n0);

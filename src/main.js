@@ -87,8 +87,20 @@ function main() {
     try { createWindow(); }
     catch (e) { logError('ouverture de la fenêtre', e); }
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
-    // Vérification silencieuse des mises à jour 5 s après l'ouverture.
-    if (app.isPackaged) setTimeout(() => checkForUpdates(true), 5000);
+    // Vérification silencieuse des mises à jour 5 s après l'ouverture, PUIS toutes les quatre
+    // heures. Une seule vérification au démarrage ne sert que ceux qui redémarrent l'application
+    // tous les jours : SkanFact est ouvert du lundi au vendredi sans jamais être quitté, et une
+    // correction publiée le mardi n'arrivait donc pas avant le lundi suivant.
+    // Le retour au premier plan rattrape ce que le minuteur ne peut pas voir : un ordinateur
+    // portable qu'on referme suspend les minuteurs, et il les reprend là où ils en étaient.
+    if (app.isPackaged) {
+      setTimeout(() => checkForUpdates(true), 5000);
+      setInterval(() => checkForUpdates(true), MAJ_INTERVALLE);
+      app.on('browser-window-focus', () => {
+        const vu = readMajEtat().at || 0;
+        if (Date.now() - vu > MAJ_INTERVALLE) checkForUpdates(true);
+      });
+    }
   }).catch(e => logError('démarrage', e));
 
   app.on('window-all-closed', () => { if (!IS_MAC) app.quit(); });
@@ -696,8 +708,25 @@ ipcMain.handle('data:setPassword', (_e, { data, password, current }) => {
     const r = storage.unlock(current || '');
     if (!r.ok) return { ok: false, error: 'Mot de passe actuel incorrect.' };
   }
-  storage.setPassword(data, password || '');
-  return { ok: true, encrypted: storage.state.encrypted };
+  // On lit ce que `setPassword` répond, et on l'enveloppe : un refus d'écriture (un autre poste a
+  // enregistré entre-temps sur un dossier partagé) laissait l'écran annoncer « Données chiffrées »
+  // sur un fichier qui n'avait pas bougé. Et une exception laissait le bouton figé sur
+  // « Chiffrement… », sans un mot — il n'y avait aucun try/catch ici.
+  try {
+    const r = storage.setPassword(data, password || '');
+    if (r && r.ok === false) {
+      return {
+        ok: false, encrypted: storage.state.encrypted,
+        error: r.conflict
+          ? 'Un autre poste vient d\'enregistrer dans ce dossier partagé. Rien n\'a été changé : recharge la page, puis recommence.'
+          : 'Le mot de passe n\'a pas pu être appliqué. Rien n\'a été changé.'
+      };
+    }
+    return { ok: true, encrypted: storage.state.encrypted };
+  } catch (e) {
+    logError('mot de passe', e);
+    return { ok: false, encrypted: storage.state.encrypted, error: 'Le mot de passe n\'a pas pu être appliqué : ' + (e.message || 'erreur inconnue') };
+  }
 });
 
 // ---------- copie externe des sauvegardes ----------
@@ -910,7 +939,7 @@ function ocrRequest(key, model, payload) {
       res.setEncoding('utf8');
       res.on('data', c => { out += c; });
       res.on('end', () => {
-        if (res.statusCode === 401 || res.statusCode === 403) return reject(new Error('Clé refusée : vérifie-la dans Paramètres → Lecture de factures.'));
+        if (res.statusCode === 401 || res.statusCode === 403) return reject(new Error('Clé refusée : vérifie-la dans Paramètres → Données et sécurité → Lecture de factures.'));
         if (res.statusCode === 429) return reject(new Error('Trop de demandes d\'un coup. Réessaie dans une minute.'));
         if (res.statusCode >= 400) {
           let msg = '';
@@ -967,7 +996,7 @@ ipcMain.handle('ocr:pick', async () => {
 // La lecture elle-même. Appelée seulement quand l'utilisateur a saisi une clé ET cliqué « Lire ».
 ipcMain.handle('ocr:read', async (_e, { path: file } = {}) => {
   const cfg = readOcrCfg();
-  if (!cfg.key) throw new Error('Aucune clé n\'est enregistrée : rien n\'a été envoyé. Paramètres → Lecture de factures.');
+  if (!cfg.key) throw new Error('Aucune clé n\'est enregistrée : rien n\'a été envoyé. Paramètres → Données et sécurité → Lecture de factures.');
   if (!file || !fs.existsSync(file)) throw new Error('Fichier introuvable.');
   const type = OCR_TYPES[path.extname(file).toLowerCase()];
   if (!type) throw new Error('Format non reconnu.');
@@ -1261,11 +1290,37 @@ let updaterError = '';
 let relayFailure = '';
 // Une erreur qu'on va peut-être démentir par un second essai ne s'affiche pas tout de suite.
 let silencerErreur = false;
+// Un téléchargement est EN COURS. Sans ce drapeau, une coupure réseau à 40 % était avalée : la
+// vérification du démarrage est silencieuse (`silent = true`) et le téléchargement démarre tout
+// seul, donc l'erreur tombait dans le `if (!silent)` du gestionnaire — barre de progression figée,
+// pastille figée, panneau sans un seul bouton, et aucun moyen de relancer quoi que ce soit.
+// Une panne PENDANT un téléchargement que l'utilisateur voit se dit toujours.
+let enTelechargement = false;
 
 const UPDATE_CFG = () => path.join(app.getPath('userData'), 'update-config.json');
 const UPDATE_RESULT = () => path.join(app.getPath('userData'), 'update-result.json');
 function readUpdateCfg() { try { return JSON.parse(fs.readFileSync(UPDATE_CFG(), 'utf8')); } catch { return {}; } }
 function writeUpdateCfg(cfg) { fs.mkdirSync(path.dirname(UPDATE_CFG()), { recursive: true }); fs.writeFileSync(UPDATE_CFG(), JSON.stringify(cfg), { mode: 0o600 }); }
+
+// Quand la dernière vérification a eu lieu, et ce qu'elle a répondu.
+//
+// Jusqu'à la 7.30.0, l'application vérifiait UNE fois, cinq secondes après l'ouverture, et plus
+// jamais : quelqu'un qui ne quitte pas SkanFact de la semaine ne voyait rien arriver. Et rien, nulle
+// part, ne disait quand la dernière vérification avait eu lieu — donc « Tu as la dernière version »
+// pouvait dater d'un mois sans qu'on puisse le savoir. Un écran qui affirme sans dire QUAND il l'a
+// constaté n'est pas vérifiable ; on le range donc à côté de la phrase.
+//
+// Le résultat s'écrit là où on l'apprend (les événements d'electron-updater), jamais à l'endroit
+// d'où l'on part : `checkForUpdates` rend la main avant que la réponse n'arrive.
+const MAJ_INTERVALLE = 4 * 60 * 60 * 1000;      // quatre heures
+const MAJ_ETAT = () => path.join(app.getPath('userData'), 'update-state.json');
+function readMajEtat() { try { return JSON.parse(fs.readFileSync(MAJ_ETAT(), 'utf8')); } catch { return {}; } }
+function noterVerification(resultat, version) {
+  try {
+    fs.mkdirSync(path.dirname(MAJ_ETAT()), { recursive: true });
+    fs.writeFileSync(MAJ_ETAT(), JSON.stringify({ at: Date.now(), resultat, version: version || '' }));
+  } catch (e) { /* une date non écrite ne doit jamais empêcher une mise à jour */ }
+}
 
 // Deux chemins possibles, et c'est volontaire :
 //
@@ -1289,7 +1344,7 @@ function feedGithub(u) {
 // Le canal bêta (7.25.0). Deux canaux, un seul dépôt, une seule application :
 //
 //  - **latest** : ce que tout le monde reçoit. C'est le canal par défaut, et personne n'en sort
-//    sans l'avoir demandé — la case vit dans Paramètres → Mises à jour et arrive décochée.
+//    sans l'avoir demandé — la case vit dans Paramètres → L'application → Mises à jour et arrive décochée.
 //  - **beta** : les versions d'essai, numérotées `7.26.0-beta.1`. electron-builder leur fabrique
 //    `beta.yml` / `beta-mac.yml` ; une installation stable ne les regarde même pas.
 //
@@ -1360,11 +1415,14 @@ function getUpdater() {
     const ul = (lvl) => (m) => { try { fs.appendFileSync(ulog, `${new Date().toISOString()} ${lvl} ${m}\n`); } catch {} };
     autoUpdater.logger = { info: ul('info'), warn: ul('warn'), error: ul('error'), debug: ul('debug') };
     autoUpdater.on('checking-for-update', () => { if (!silent) sendUpdate('checking'); });
-    autoUpdater.on('update-available', (info) => { updateInfo = info; downloaded = false; downloadedFile = null; sendUpdate('available', { version: info.version, notes: notesToText(info.releaseNotes) }); });
-    autoUpdater.on('update-not-available', () => { if (!silent) sendUpdate('none'); });
+    autoUpdater.on('update-available', (info) => { updateInfo = info; downloaded = false; downloadedFile = null; enTelechargement = autoUpdater.autoDownload; noterVerification('available', info.version); sendUpdate('available', { version: info.version, notes: notesToText(info.releaseNotes) }); });
+    // La date se note même quand la vérification était silencieuse : c'est justement celle-là qu'on
+    // ne peut constater nulle part ailleurs, et c'est elle qui rend la phrase « tu as la dernière
+    // version » vérifiable le lendemain.
+    autoUpdater.on('update-not-available', () => { noterVerification('none'); if (!silent) sendUpdate('none'); });
     autoUpdater.on('download-progress', (p) => sendUpdate('downloading', { percent: Math.round(p.percent), version: updateInfo && updateInfo.version }));
-    autoUpdater.on('update-downloaded', (info) => { downloaded = true; downloadedFile = info.downloadedFile || null; sendUpdate('downloaded', { version: info.version, notes: notesToText(info.releaseNotes) }); });
-    autoUpdater.on('error', (err) => { if (!silent && !silencerErreur) sendUpdate('error', updateProblem(err)); });
+    autoUpdater.on('update-downloaded', (info) => { downloaded = true; enTelechargement = false; downloadedFile = info.downloadedFile || null; sendUpdate('downloaded', { version: info.version, notes: notesToText(info.releaseNotes) }); });
+    autoUpdater.on('error', (err) => { noterVerification('error'); const pendant = enTelechargement; enTelechargement = false; if ((pendant || !silent) && !silencerErreur) sendUpdate('error', updateProblem(err)); });
     configureFeed(autoUpdater);
     updater = autoUpdater;
   } catch (e) {
@@ -1420,7 +1478,7 @@ function updateProblem(err) {
   }
   if (/NO_PUBLISHED_VERSIONS|LATEST_VERSION_NOT_FOUND/.test(code)) return dit('Aucune version publiée pour l\'instant.', true);
   if (/402/.test(tout)) return dit('Une licence en cours de validité est nécessaire pour recevoir les mises à jour.');
-  if (/403/.test(tout) && relayBase()) return dit('Le service de mise à jour a refusé cette installation. Vérifie ta licence dans Paramètres → Licence.');
+  if (/403/.test(tout) && relayBase()) return dit('Le service de mise à jour a refusé cette installation. Vérifie ta licence dans Paramètres → L\'application → Licence.');
   if (/401|403|Bad credentials/i.test(tout)) return dit('Le jeton d\'accès a été refusé ou a expiré. Génères-en un nouveau et colle-le ci-dessous.');
   if (/404/.test(tout)) return dit(
     relayBase() ? 'Aucune version trouvée. Réessaie plus tard, ou installe la nouvelle version à la main.'
@@ -1513,6 +1571,12 @@ ipcMain.handle('update:version', () => ({
   // reste dessus jusqu'à ce que la stable suivante arrive. L'écran doit pouvoir le dire.
   beta: !!readUpdateCfg().beta,
   prerelease: canalDe(app.getVersion()) !== 'latest',
+  // Quand la dernière vérification a eu lieu, et ce qu'elle a répondu. Sans ces deux valeurs,
+  // l'écran par défaut ne savait rien dire d'autre qu'un bouton « Vérifier » : il ne pouvait ni
+  // annoncer que tout est à jour, ni dire depuis quand.
+  lastCheck: readMajEtat().at || 0,
+  lastResult: readMajEtat().resultat || '',
+  autoEvery: MAJ_INTERVALLE,
   lastUpdate: takeLastUpdateResult()
 }));
 
@@ -1543,6 +1607,7 @@ ipcMain.handle('update:download', async () => {
   const u = getUpdater();
   if (!u || !updateInfo) return { state: 'error', message: 'Aucune mise à jour détectée.' };
   silent = false;
+  enTelechargement = true;
   try { u.downloadUpdate(); return { state: 'ok' }; }
   catch (e) { return { state: 'error', ...updateProblem(e) }; }
 });
