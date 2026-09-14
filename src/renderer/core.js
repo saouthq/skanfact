@@ -447,6 +447,41 @@
     return { show: false, ton: '', texte: '' };
   }
 
+  // ---------- l'empreinte d'un cabinet (8.1.0) ----------
+  //
+  // Une empreinte est le condensé SHA-256 de la clé publique du cabinet, réduit à vingt caractères
+  // HEXADÉCIMAUX et groupé par quatre (`src/zip.js`, `keyFingerprint`) — assez court pour être dicté
+  // au téléphone. Et c'est exactement pour ça qu'elle se trompe : elle arrive chez l'éditeur recopiée
+  // d'un message, d'un appel ou d'une capture.
+  //
+  // Ce qu'on PEUT vérifier ici : la forme. Une empreinte mal recopiée ne désigne aucun cabinet, donc
+  // la preuve du parrainage ne vaut rien et la remise n'est rattachable à personne — et ça ne se voit
+  // jamais, parce que rien ne plante.
+  // Ce qu'on ne peut PAS vérifier : qu'elle appartienne à un vrai cabinet. Il faudrait sa clé
+  // publique, que l'éditeur n'a pas. L'écran doit le dire au lieu d'afficher un vert rassurant.
+  //
+  // La saisie est tolérante (minuscules, espaces, tirets absents ou en trop) mais la validation ne
+  // l'est pas : on retire les SÉPARATEURS, puis on exige vingt caractères hexadécimaux. Retirer tout
+  // ce qui n'est pas hexadécimal laisserait passer un « G » tapé à la place d'un « 6 » en décalant
+  // tout le reste — la faute deviendrait invisible au lieu d'être signalée.
+  function empreinteCabinet(txt) {
+    const brut = String(txt == null ? '' : txt).trim();
+    if (!brut) return { ok: false, valeur: '', raison: 'vide' };
+    const nu = brut.replace(/[\s.:_-]/g, '').toUpperCase();
+    if (!/^[0-9A-F]*$/.test(nu)) return { ok: false, valeur: brut, raison: 'caracteres' };
+    if (nu.length !== 20) return { ok: false, valeur: brut, raison: nu.length < 20 ? 'courte' : 'longue', longueur: nu.length };
+    return { ok: true, valeur: nu.match(/.{4}/g).join('-'), raison: '' };
+  }
+
+  // Les licences déjà émises qui portent cette empreinte : c'est la seule corroboration disponible
+  // hors ligne. Un cabinet qui a déjà parrainé quelqu'un est un cabinet dont l'empreinte a déjà été
+  // recopiée juste au moins une fois.
+  function licencesDuCabinet(licences, empreinte, sauf) {
+    const e = empreinteCabinet(empreinte);
+    if (!e.ok) return [];
+    return (licences || []).filter(l => l && l.id !== sauf && empreinteCabinet(l.cabinet).valeur === e.valeur);
+  }
+
   // ---------- tout effacer (7.0.0) ----------
   //
   // « Tout effacer » vidait sept listes sur trente, parce qu'elle était écrite à la main et qu'aucun
@@ -5554,7 +5589,7 @@
     amountToWords, intToWords, intToWordsEn, documentHtml, fitToPage, paginate, pageCount,
     MODULES, PAGES, moduleById, pageById, pageTitle, moduleCount, moduleCounts, modulesRevenus, moduleOn, moduleWhy, navPages,
     MODULES_PAR_ACTIVITE, modulesSuggeres, wipeData, rendreLesEmprunts, estDemo, firstSteps, liste, defaultVat, newLine,
-    canalDe, estBeta, pastilleLicence,
+    canalDe, estBeta, pastilleLicence, empreinteCabinet, licencesDuCabinet,
     LICENCE_PREAVIS, licenceEtat, licenceRows, licencesExpirant
   };
 });

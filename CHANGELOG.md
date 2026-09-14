@@ -7,6 +7,44 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 8.1.0 — 14/09/2026
+
+**Endormir son ordinateur ne coûte plus rien.** Quand le Mac ou le PC se met en veille, l'interface
+cesse de répondre — non parce qu'elle est bloquée, mais parce que **tout** est suspendu. Au réveil,
+le chien de garde voyait « l'application n'a plus répondu pendant 464 secondes », concluait au gel,
+et **rechargeait la page** : refermer son portable perdait le brouillon en cours, et affichait une
+fenêtre d'excuses pour une panne qui n'avait jamais eu lieu.
+
+Deux parades, et il faut les deux : l'application écoute maintenant la mise en veille du système, et
+elle mesure le temps **réellement** écoulé entre deux battements — un battement qui en a sauté vingt
+dit que l'ordinateur dormait, jamais que l'interface était bloquée. Corrigé dans les deux
+applications. *(La parade existait à moitié dans SkanFact Cabinet depuis la 6.8.1 et n'avait jamais
+été portée ici.)*
+
+**Proposer une amélioration.** À côté de « Signaler un problème », dans l'Aide et dans les
+Paramètres des deux applications. L'application savait recevoir ce qui ne marche pas et n'avait
+aucune porte pour ce qui manque. Deux questions : ce que tu aimerais faire, et comment tu fais
+aujourd'hui — c'est la seconde qui apprend le plus, parce qu'on propose toujours une solution et
+que la solution imaginée est rarement la meilleure. **Ni journal technique, ni donnée d'entreprise**
+ne partent avec : seule la version, pour pouvoir répondre que la chose existe déjà.
+
+**L'empreinte d'un cabinet se vérifie** (module Éditeur). Un bouton **Vérifier** à côté du champ :
+il contrôle la forme — vingt caractères, chiffres et lettres A à F — et dit si ce cabinet a déjà
+parrainé quelqu'un. Il ne prétend rien de plus : SkanFact ne peut pas prouver d'ici qu'un cabinet
+existe, il faudrait sa clé publique, et l'écran l'écrit au lieu d'afficher un vert rassurant. La
+saisie est tolérante (minuscules, espaces, tirets oubliés) ; ce qui est enregistré est toujours la
+même forme, donc deux saisies du même cabinet ne peuvent plus donner deux empreintes différentes.
+
+**Une prestation de licence se crée sans quitter la fenêtre.** Le formulaire d'émission proposait de
+choisir une prestation du catalogue mais pas d'en créer une : au premier jour, l'éditeur retapait
+donc son prix de mémoire, à chaque licence, dans un champ vide. L'entrée **« + Nouvelle prestation »**
+rejoint le « + Nouveau client » qui existait juste au-dessus ; une fois la prestation créée, le prix
+et la TVA viennent d'elle.
+
+Au passage : `mono` était posé sur l'empreinte du cabinet depuis la 6.2.0 et n'a **jamais** été
+défini dans la feuille de style. Elle s'affichait dans la police du texte, à l'endroit précis où une
+chasse fixe sert à distinguer un `0` d'un `O`.
+
 ## 8.0.1 — 14/09/2026
 
 **L'essai se voit sans ouvrir les Paramètres.** Jusqu'ici, la pastille de la barre de gauche

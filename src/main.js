@@ -1,5 +1,5 @@
 // Process principal Electron : fenêtre, menu, stockage local, export PDF, mises à jour.
-const { app, BrowserWindow, ipcMain, dialog, shell, Menu, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu, screen, powerMonitor } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -135,14 +135,38 @@ function readWindowState() {
 //
 // Le point à ne pas rater : le domaine Debugger doit être activé **avant** le gel. `Debugger.enable`
 // attend le fil principal ; demandé pendant le gel, il attendrait pour toujours.
-const WATCHDOG = { every: 3000, dead: 12000, enabled: true };
+const WATCHDOG = { every: 3000, dead: 12000, enabled: true, reveil: 8000 };
 // Le dernier gel constaté, pour le dire à l'utilisateur une fois l'interface revenue et pour le
 // joindre à un rapport de problème.
 let lastFreeze = null;
 function startWatchdog(win) {
   if (!WATCHDOG.enabled || !win || win.isDestroyed()) return;
   let lastPong = Date.now();
+  let lastTick = Date.now();     // le battement d'avant : sert à mesurer le temps RÉELLEMENT écoulé
+  let reveilAvant = 0;           // tant que l'heure n'a pas dépassé ce point, on ne juge personne
+  let dort = false;
   let reported = false;
+
+  // Un ordinateur qui dort n'est pas une application qui gèle (8.1.0). Pendant la veille, le
+  // renderer ne répond plus — parce que TOUT est suspendu, pas parce qu'il est bloqué. Au réveil,
+  // le chien de garde voyait « 464 secondes sans réponse », concluait au gel, et rechargeait la
+  // page : refermer son portable coûtait le brouillon en cours. Deux parades, et il faut les deux :
+  //
+  //   - `powerMonitor` dit la veille explicitement, c'est le signal le plus net ;
+  //   - le SAUT D'HORLOGE la rattrape quand cet événement n'arrive pas (hibernation, machine
+  //     virtuelle, certaines fermetures de capot) — et c'est celle qui se déclenche toute seule.
+  //
+  // Le saut d'horloge discrimine proprement : un gel du RENDERER n'empêche pas le minuteur du
+  // processus principal de battre toutes les trois secondes. Un battement qui en a sauté vingt dit
+  // donc que le processus entier était suspendu, jamais que l'interface était bloquée.
+  const repartir = (raison) => {
+    lastPong = Date.now(); lastTick = Date.now(); reveilAvant = Date.now() + WATCHDOG.reveil; reported = false;
+    logToFile('chien de garde', new Error('silence ignoré — ' + raison));
+  };
+  try {
+    powerMonitor.on('suspend', () => { dort = true; });
+    powerMonitor.on('resume', () => { dort = false; repartir('retour de veille'); });
+  } catch (e) { logToFile('chien de garde', e); }
 
   const attach = () => {
     try {
@@ -166,8 +190,15 @@ function startWatchdog(win) {
 
   const timer = setInterval(async () => {
     if (win.isDestroyed()) return clearInterval(timer);
+    const maintenant = Date.now();
+    const retard = maintenant - lastTick;   // le temps RÉELLEMENT écoulé depuis le battement d'avant
+    lastTick = maintenant;
     try { win.webContents.send('alive:ping'); } catch { return; }
-    const silence = Date.now() - lastPong;
+    // L'ordinateur a dormi, ou le processus a été gelé par le système : le silence qu'on mesure
+    // n'est pas celui de l'interface. On repart de zéro plutôt que d'accuser un innocent.
+    if (retard > WATCHDOG.every * 4) return repartir(`l'ordinateur s'est arrêté ${Math.round(retard / 1000)} s`);
+    if (dort || maintenant < reveilAvant) return;
+    const silence = maintenant - lastPong;
     if (silence < WATCHDOG.dead || reported) return;
     reported = true;                       // un seul rapport par gel, sinon le journal se remplit
     logToFile('gel détecté', new Error(`L'interface n'a pas répondu depuis ${Math.round(silence / 1000)} s`));
@@ -206,7 +237,7 @@ function startWatchdog(win) {
     // page est morte de toute façon, et une fenêtre de question qu'on ne peut pas lire dans une
     // application figée ne ferait qu'ajouter au blocage. On le DIT après coup, une fois vivant.
     lastFreeze = { at: new Date().toISOString(), silence: Math.round(silence / 1000), stack };
-    try { if (!win.isDestroyed()) { lastPong = Date.now(); win.webContents.reload(); } }
+    try { if (!win.isDestroyed()) { lastPong = Date.now(); lastTick = Date.now(); win.webContents.reload(); } }
     catch (e) { logToFile('chien de garde', e); }
   }, WATCHDOG.every);
 

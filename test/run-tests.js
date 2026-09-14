@@ -3072,6 +3072,29 @@ t('chien de garde : les quatre règles sans lesquelles il ferait plus de mal que
   // 4. Chaque commande au débogueur est bornée : le surveillant ne doit pas pouvoir geler.
   assert.ok(/Promise\.race/.test(wd), 'les commandes du débogueur doivent être bornées dans le temps');
 
+  // 5. (8.1.0) Un ordinateur qui DORT n'est pas une application qui gèle. Pendant la veille, le
+  //    renderer ne répond plus parce que tout est suspendu ; au réveil, le chien de garde voyait
+  //    « 464 secondes sans réponse » et rechargeait la page — refermer son portable coûtait le
+  //    brouillon en cours. Les DEUX parades sont exigées, et dans les deux applications :
+  //    `powerMonitor` donne le signal franc, le saut d'horloge le rattrape quand il n'arrive pas.
+  //    Le saut d'horloge discrimine proprement : un gel du renderer n'empêche pas le minuteur du
+  //    processus principal de battre, donc un battement qui en a sauté vingt dit la veille.
+  [['src', 'main.js'], ['src', 'cabinet', 'main.js']].forEach(chemin => {
+    const s2 = lireSource(...chemin);
+    const d = s2.indexOf('function startWatchdog');
+    const zone = s2.slice(d, s2.indexOf('\n}\n', d));
+    assert.ok(zone.length > 1000, chemin.join('/') + ' : tranche du chien de garde improbable (' + zone.length + ')');
+    assert.ok(/powerMonitor/.test(s2) && /powerMonitor\.on\('suspend'/.test(zone) && /powerMonitor\.on\('resume'/.test(zone),
+      chemin.join('/') + " : le chien de garde doit écouter la mise en veille (powerMonitor)");
+    // Le saut d'horloge : le temps RÉELLEMENT écoulé entre deux battements, comparé au pas voulu.
+    assert.ok(/lastTick/.test(zone) && /retard > WATCHDOG\.every \*/.test(zone),
+      chemin.join('/') + ' : le chien de garde doit mesurer le temps réellement écoulé entre deux battements');
+    // Et le silence ne se juge pas pendant la veille ni dans les secondes qui suivent le réveil :
+    // l'interface a le droit de mettre un instant à reparler.
+    assert.ok(/if \(dort \|\| maintenant < reveilAvant\) return;/.test(zone),
+      chemin.join('/') + ' : aucun verdict pendant la veille ni pendant le délai de réveil');
+  });
+
   // Et côté interface : le battement de cœur et l'annonce d'après-gel sont branchés AVANT la
   // séquence de démarrage, sinon l'assistant de première utilisation les ferait manquer.
   const app = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
@@ -5554,6 +5577,122 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.ok(zone.length > 200 && zone.length < 1200, 'tranche licenceBanner improbable (' + zone.length + ' caractères)');
     assert.ok(/C\.pastilleLicence\(licence\)/.test(zone), 'la pastille ne passe pas par la règle partagée');
     assert.ok(!/daysLeft/.test(zone), 'le renderer rejuge les jours au lieu de poser la décision : ' + zone);
+  });
+
+  // 8.1.0 — L'empreinte d'un cabinet arrive recopiée d'un message ou dictée au téléphone. Mal
+  // recopiée, elle ne désigne aucun cabinet : la preuve du parrainage ne vaut rien et la remise
+  // n'est rattachable à personne — et rien ne plante, donc rien ne le signale.
+  t('licence : une empreinte de cabinet se vérifie, et on ne prétend jamais plus que la forme', () => {
+    const e = core.empreinteCabinet;
+
+    // 1. La forme juste, sous toutes ses écritures : on tolère la saisie, pas le résultat.
+    const attendu = 'AB12-CD34-EF56-7890-ABCD';
+    ['AB12-CD34-EF56-7890-ABCD', 'ab12-cd34-ef56-7890-abcd', 'AB12CD34EF567890ABCD',
+     'AB12 CD34 EF56 7890 ABCD', '  ab12:cd34.ef56_7890-abcd  '].forEach(txt => {
+      const r = e(txt);
+      assert.strictEqual(r.ok, true, 'refusée à tort : ' + txt);
+      assert.strictEqual(r.valeur, attendu, 'forme canonique fausse pour « ' + txt + ' » : ' + r.valeur);
+    });
+
+    // 2. Ce qui doit tomber. Le « G » est le cas qui compte : retirer TOUT ce qui n'est pas
+    //    hexadécimal (au lieu des seuls séparateurs) l'aurait avalé en décalant le reste, et la
+    //    faute serait devenue invisible au lieu d'être nommée.
+    assert.strictEqual(e('AB12-CD34-EF56-7890-ABCG').raison, 'caracteres', 'un G n\'est pas hexadécimal');
+    assert.strictEqual(e('AB12-CD34-EF56-7890-ABC').raison, 'courte');
+    assert.strictEqual(e('AB12-CD34-EF56-7890-ABCDE').raison, 'longue');
+    assert.strictEqual(e('AB12-CD34-EF56-7890-ABC').longueur, 19, 'le refus doit dire COMBIEN il en manque');
+    ['', '   ', null, undefined].forEach(v => assert.strictEqual(e(v).raison, 'vide'));
+    assert.strictEqual(e('AB12-CD34-EF56-7890-ABCG').ok, false);
+
+    // 3. La corroboration : les licences déjà émises pour ce cabinet. C'est tout ce qu'on peut
+    //    prouver hors ligne — l'appartenance à un VRAI cabinet demanderait sa clé publique, que
+    //    l'éditeur n'a pas, et l'écran doit le dire au lieu d'afficher un vert rassurant.
+    const licences = [
+      { id: 'a', nom: 'Menuiserie Trabelsi', cabinet: 'AB12-CD34-EF56-7890-ABCD' },
+      { id: 'b', nom: 'Pharmacie El Menzah', cabinet: 'ab12cd34ef567890abcd' },   // même cabinet, autre écriture
+      { id: 'c', nom: 'Garage Sfax', cabinet: '1111-2222-3333-4444-5555' },
+      { id: 'd', nom: 'Sans parrain', cabinet: '' }
+    ];
+    const vues = core.licencesDuCabinet(licences, 'AB12 CD34 EF56 7890 ABCD');
+    assert.strictEqual(vues.length, 2, 'deux écritures du même cabinet doivent se reconnaître');
+    assert.deepStrictEqual(vues.map(v => v.id), ['a', 'b']);
+    // Un renouvellement ne se compte pas lui-même comme preuve de ce qu'il affirme.
+    assert.deepStrictEqual(core.licencesDuCabinet(licences, attendu, 'a').map(v => v.id), ['b']);
+    assert.strictEqual(core.licencesDuCabinet(licences, 'ZZZZ').length, 0, 'une empreinte invalide ne corrobore rien');
+    assert.strictEqual(core.licencesDuCabinet(null, attendu).length, 0);
+
+    // 4. L'écran : le bouton existe, il passe par la règle partagée, et il ne promet pas plus.
+    const app = lireApp();
+    const d = app.indexOf('const verifierEmpreinte =');
+    assert.ok(d > 0, 'le contrôle d\'empreinte n\'est pas branché dans le formulaire de licence');
+    const zone = app.slice(d, app.indexOf('champE().onblur', d));
+    assert.ok(zone.length > 400 && zone.length < 3000, 'tranche du contrôle improbable (' + zone.length + ')');
+    assert.ok(/C\.empreinteCabinet\(/.test(zone) && /C\.licencesDuCabinet\(/.test(zone), 'le contrôle doit passer par core.js');
+    // (l'apostrophe est ÉCHAPPÉE dans la source : on ancre sur ce qui la suit.)
+    assert.ok(/encore parrainé personne/.test(zone), 'un cabinet inconnu doit être annoncé comme tel, pas validé');
+    assert.ok(/id="lf-verif"/.test(app), 'le bouton « Vérifier » manque');
+  });
+
+  // 8.1.0 — L'éditeur qui vend ses deux offres n'a, au premier jour, AUCUNE prestation de licence
+  // dans son catalogue : il retapait son prix de mémoire dans un champ vide, à chaque émission.
+  t('licence : la prestation du catalogue se crée sans quitter la fenêtre', () => {
+    const app = lireApp();
+    // Trois formulaires portent un combo `itemId` (achat, bon de livraison, licence) : on ancre sur
+    // celui de la licence, le seul qui garde sa poignée pour se recharger après une création.
+    const d = app.indexOf("const ic = bindCombo($('[data-combo=itemId]'");
+    assert.ok(d > 0, 'le combo des prestations de la licence est introuvable');
+    const zone = app.slice(d, app.indexOf('const champE =', d));
+    assert.ok(zone.length > 300 && zone.length < 2500, 'tranche improbable (' + zone.length + ')');
+    // Les DEUX moitiés : `combo()` dessine l'entrée, `bindCombo` branche le geste. Une seule des
+    // deux et le bouton n'apparaît pas, ou apparaît sans rien faire.
+    assert.ok(/add: '\+ Nouvelle prestation'/.test(app), 'l\'entrée « + Nouvelle prestation » doit être déclarée dans le gabarit ET dans le branchement');
+    assert.strictEqual((app.match(/add: '\+ Nouvelle prestation'/g) || []).length, 2, 'il en faut une dans combo() et une dans bindCombo()');
+    assert.ok(/onAdd: \(\) => catalogForm\(/.test(zone), 'l\'ajout doit ouvrir la fiche du catalogue');
+    // catalogForm rappelle done(null) quand on SUPPRIME depuis sa fenêtre : sans garde, le
+    // formulaire de licence planterait sur it.id au moment le plus inattendu.
+    assert.ok(/if \(!it\) return;/.test(zone), 'le rappel du catalogue doit survivre à une suppression (done(null))');
+  });
+
+  // 8.1.0 — L'application savait recevoir ce qui ne marche pas et n'avait aucune porte pour ce qui
+  // manque. Les deux vivent côte à côte, dans les DEUX applications : un cabinet qui traite soixante
+  // dossiers voit en un mois ce que l'éditeur ne verrait pas en un an.
+  t('les deux applications savent recevoir une idée, pas seulement un problème', () => {
+    const app = lireApp();
+    // Entreprise : les deux entrées (l'Aide et les Paramètres), le gabarit ET le branchement.
+    ['aide-idee', 'set-idee'].forEach(id => {
+      assert.ok(new RegExp('id="' + id + '"').test(app), 'bouton ' + id + ' absent du gabarit');
+      assert.ok(new RegExp("\\$\\('#" + id + "'\\)\\.onclick = ideeForm").test(app), 'bouton ' + id + ' non branché');
+    });
+    const d = app.indexOf('async function ideeForm(');
+    assert.ok(d > 0, 'ideeForm manque');
+    const zone = app.slice(d, app.indexOf('\n  }\n', d));
+    assert.ok(zone.length > 800, 'tranche ideeForm improbable (' + zone.length + ')');
+    // Une idée n'a pas de pile d'appels : joindre le journal « au cas où » serait prendre des
+    // données sans raison. C'est la différence assumée avec le signalement de problème.
+    assert.ok(!/info\.log\b/.test(zone) && !/lines/.test(zone), 'une suggestion ne doit emporter ni journal ni compte de lignes');
+    assert.ok(/LICENCE_CONTACT/.test(zone), 'le message doit partir vers l\'adresse de contact');
+    assert.ok(/refus\('#idee-quoi'/.test(zone), 'un refus doit MONTRER le champ (règle 7.20.0)');
+
+    // Cabinet : même porte, même exigence.
+    const cab = lireSource('src', 'cabinet', 'renderer', 'app.js');
+    assert.ok(/id="s-idee"/.test(cab) && /idee\.onclick = ideeDialog/.test(cab), 'le cabinet doit offrir la même porte');
+    const dc = cab.indexOf('async function ideeDialog(');
+    assert.ok(dc > 0, 'ideeDialog manque dans l\'app cabinet');
+    const zc = cab.slice(dc, cab.indexOf('\n  }\n', dc));
+    assert.ok(zc.length > 800, 'tranche ideeDialog improbable (' + zc.length + ')');
+    assert.ok(!/inf\.dossiers/.test(zc) && !/inf\.paquets/.test(zc) && !/openLog/.test(zc),
+      'une suggestion ne doit rien emporter du portefeuille du cabinet');
+    assert.ok(/api\.mail\(/.test(zc), 'le cabinet doit préparer un message');
+
+    // La recherche des réglages doit y mener : quelqu'un qui cherche « suggestion » ne connaît pas
+    // le nom du panneau (règle 7.30.0 — la table porte les synonymes, le titre et l'onglet).
+    [app, cab].forEach((src, i) => {
+      const m = /'p(?:an)?-depannage|'pan-support'/.test(src);
+      assert.ok(m, 'panneau de dépannage introuvable (' + (i ? 'cabinet' : 'entreprise') + ')');
+      const ligne = src.split('\n').find(l => /'p-depannage'|'pan-support'/.test(l) && /mots:/.test(l));
+      assert.ok(ligne && /idee/.test(ligne) && /suggestion/.test(ligne),
+        'la recherche des réglages doit trouver « idée » et « suggestion » (' + (i ? 'cabinet' : 'entreprise') + ')');
+    });
   });
 
   t('canal bêta : décoché par défaut, et le canal se pose sur les deux chemins', () => {

@@ -6,7 +6,7 @@
 //
 // Depuis la 2.0.0, le stockage et les filets vivent dans cabstore.js (sauvegardes, copie externe,
 // clé de secours, rangement des paquets) : ce fichier ne fait plus que l'orchestration et l'IPC.
-const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu, powerMonitor } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -114,13 +114,20 @@ function rememberBounds() {
 //
 // Le point à ne pas rater : le domaine Debugger doit être activé **avant** le gel. `Debugger.enable`
 // attend le fil principal ; demandé pendant le gel, il attendrait pour toujours.
-const WATCHDOG = { every: 3000, dead: 12000, enabled: true };
+const WATCHDOG = { every: 3000, dead: 12000, enabled: true, reveil: 8000 };
 // Le dernier gel constaté, pour le dire à l'utilisateur une fois l'interface revenue et pour le
 // joindre à un rapport de problème.
 let lastFreeze = null;
 function startWatchdog(win) {
   if (!WATCHDOG.enabled || !win || win.isDestroyed()) return;
   let lastPong = Date.now();
+  // Un ordinateur qui dort n'est pas une application qui gèle (8.1.0). Le saut d'horloge ci-dessous
+  // l'attrapait déjà par ricochet — il avait été écrit pour le processus principal occupé — mais il
+  // ne laisse pas de délai à l'interface pour reparler au réveil. `powerMonitor` donne le signal
+  // franc ; les deux se complètent, et le saut d'horloge reste le filet quand l'événement n'arrive
+  // pas (hibernation, machine virtuelle, capot refermé).
+  let reveilAvant = 0;
+  let dort = false;
   let reported = false;
 
   const attach = () => {
@@ -144,6 +151,11 @@ function startWatchdog(win) {
   ipcMain.on('alive:pong', (e) => { if (!win.isDestroyed() && e.sender === win.webContents) { lastPong = Date.now(); reported = false; } });
 
   let lastTick = Date.now();
+  try {
+    powerMonitor.on('suspend', () => { dort = true; });
+    powerMonitor.on('resume', () => { dort = false; lastPong = Date.now(); lastTick = Date.now(); reveilAvant = Date.now() + WATCHDOG.reveil; reported = false; });
+  } catch (e) { logToFile('chien de garde', e); }
+
   const timer = setInterval(async () => {
     if (win.isDestroyed()) return clearInterval(timer);
     const maintenant = Date.now();
@@ -154,8 +166,12 @@ function startWatchdog(win) {
     // temps aucun battement ne part, et le silence qu'on mesure est le sien, pas celui de
     // l'interface. On repart de zéro plutôt que d'accuser un innocent — et de recharger une page
     // qui n'avait rien fait, sous les doigts du comptable.
-    if (retard > WATCHDOG.every * 2) lastPong = maintenant;
+    if (retard > WATCHDOG.every * 2) {
+      lastPong = maintenant; reveilAvant = maintenant + WATCHDOG.reveil;
+      if (retard > WATCHDOG.every * 4) logToFile('chien de garde', new Error(`silence ignoré — l'ordinateur s'est arrêté ${Math.round(retard / 1000)} s`));
+    }
     try { win.webContents.send('alive:ping'); } catch { return; }
+    if (dort || maintenant < reveilAvant) return;
     const silence = maintenant - lastPong;
     if (silence < WATCHDOG.dead || reported) return;
     reported = true;                       // un seul rapport par gel, sinon le journal se remplit

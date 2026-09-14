@@ -1921,6 +1921,70 @@ paie. On l'apprenait le trente-et-unième matin, verrouillé.
 - Prouvé dans les trois sens : la pastille redevenue muette fait tomber le test unitaire, le renderer
   qui rejuge les jours fait tomber le test de source, et le défaut réintroduit fait tomber l'e2e.
 
+### 8.1.0 — un ordinateur qui dort n'est pas une application qui gèle
+
+Skander, photo d'écran de son PC au réveil : « quand l'ordi ou le Mac se met en veille, ça m'affiche
+ça, ce qui n'est pas correct non ? » — **SkanFact s'était bloqué. L'application n'a plus répondu
+pendant 464 secondes.** Rien n'avait gelé : la machine dormait.
+
+- **Le chien de garde mesure un silence ; il doit d'abord se demander si le monde tournait.** Pendant
+  la veille, le renderer ne répond plus parce que TOUT est suspendu. Au réveil, `Date.now() - lastPong`
+  valait 464 s, le gel était déclaré, la page rechargée — et le brouillon en cours perdu, ce que la
+  fenêtre annonçait elle-même. Un filet qui punit quelqu'un pour avoir refermé son portable est un
+  piège (même famille que le module qui se rallumait tout seul, 7.12.0).
+- **Les DEUX parades, jamais une seule.** `powerMonitor` (`suspend`/`resume`) donne le signal franc,
+  mais il n'arrive pas partout (hibernation, machine virtuelle, certaines fermetures de capot) ; le
+  **saut d'horloge** — le temps réellement écoulé entre deux battements, comparé au pas voulu — est
+  celui qui se déclenche tout seul. Règle de la 6.7.2 : « un chemin de secours ne sert que s'il se
+  déclenche tout seul ».
+- **Le saut d'horloge discrimine proprement**, et c'est ce qui le rend légitime : un gel du RENDERER
+  n'empêche pas le minuteur du processus principal de battre toutes les trois secondes. Un battement
+  qui en a sauté vingt dit donc la veille, jamais l'interface bloquée.
+- **Et le réveil a droit à un délai** (`WATCHDOG.reveil`) : l'interface met un instant à reparler,
+  la juger dans la seconde reviendrait à recréer le défaut un cran plus loin.
+- **Le jumeau manquant, encore.** L'app Cabinet avait le saut d'horloge **depuis la 6.8.1** — écrit
+  pour son processus principal occupé, il attrapait la veille par ricochet. L'app entreprise ne l'a
+  jamais reçu. C'est très exactement pourquoi la capture vient du poste client et pas du cabinet.
+  *Une règle apprise d'un côté se vérifie de l'autre* (7.3.0) : celle-ci ne l'avait pas été.
+
+Livré en même temps, sur ses demandes :
+
+- **« Proposer une amélioration »**, à côté de « Signaler un problème », dans l'Aide et les Paramètres
+  des DEUX applications. L'application savait recevoir ce qui ne marche pas et n'avait aucune porte
+  pour ce qui manque, alors qu'elle est écrite par une seule personne. Elle n'emporte **ni journal ni
+  état du portefeuille** : une idée n'a pas de pile d'appels, et joindre le journal « au cas où »
+  serait prendre des données sans raison — c'est la différence assumée avec le signalement. Deux
+  questions, et l'ordre compte : ce qu'on aimerait faire, PUIS comment on s'en sort aujourd'hui. **La
+  seconde est celle qui apprend quelque chose** : on propose toujours une solution, et la solution
+  imaginée est rarement la meilleure.
+- **L'empreinte d'un cabinet se vérifie** (`core.empreinteCabinet`, `core.licencesDuCabinet`, purs et
+  testés). Ce qu'on peut prouver : la forme (vingt caractères hexadécimaux) et le fait que ce cabinet
+  ait déjà parrainé quelqu'un. Ce qu'on ne peut PAS : qu'il existe — il faudrait sa clé publique.
+  **L'écran le dit au lieu d'afficher un vert rassurant** : « 7 pièces vérifiées, intactes » est la
+  seule affirmation rigoureuse (Cabinet 1.0.0), et celle-ci suit la même règle. La normalisation
+  retire les **séparateurs** et exige vingt caractères hexadécimaux — retirer tout ce qui n'est pas
+  hexadécimal aurait avalé un « G » tapé pour un « 6 » en décalant le reste, rendant la faute
+  invisible au lieu de la nommer.
+- **« + Nouvelle prestation » dans le combo du catalogue** du formulaire d'émission. Le combo des
+  clients proposait « + Nouveau client » depuis toujours, celui du catalogue non — et l'éditeur, qui
+  n'a aucune prestation de licence au premier jour, retapait son prix de mémoire à chaque émission.
+  **Les DEUX moitiés sont nécessaires** : `combo()` dessine l'entrée, `bindCombo` branche le geste ;
+  une seule des deux et le bouton n'apparaît pas, ou apparaît sans rien faire. Et `catalogForm`
+  rappelle `done(null)` quand on SUPPRIME depuis sa fenêtre : sans la garde, le formulaire planterait.
+- **Une classe CSS utilisée et jamais définie ne se voit nulle part.** `class="mono"` était posé sur
+  l'empreinte du cabinet depuis la 6.2.0 ; `.mono` n'existait pas dans la feuille de style. Elle
+  s'affichait dans la police du texte, à l'endroit précis où la chasse fixe sert à distinguer un `0`
+  d'un `O`. Même famille que le `th.r` (7.23.0) et `.help-fil` (7.27.0) : le HTML est juste, c'est la
+  feuille de style qui décide.
+- Piège rencontré : l'étoile des champs obligatoires est posée par `.field.obligatoire > span:first-child::after`.
+  Un libellé écrit en **nœud texte nu** ne la reçoit pas. Et le `modal()` de l'app cabinet ne pose pas
+  la légende « * obligatoire » (mécanisme propre à l'app entreprise, 7.20.0) : plutôt qu'une
+  convention à moitié appliquée, l'obligation s'y écrit en toutes lettres.
+- Piège de test : `indexOf` sur `bindCombo($('[data-combo=itemId]'` attrapait le **premier** des
+  trois combos de ce nom et donnait une tranche de 268 000 caractères. Une tranche se prouve par sa
+  taille avant d'être jugée (7.21.0). Et une assertion sur du texte source doit tenir compte des
+  **apostrophes échappées** : `/n'a encore/` ne correspond pas à `n\'a encore`.
+
 - **`LICENCE_CONTACT` vaut `contact@skanfact.tn`** : la boîte Zimbra Starter du domaine `skanfact.tn`, commandé chez OVH le 14/09/2026 (une seule adresse personnalisée pour l'instant, d'où « contact » et pas « licences »). C'est l'adresse vers laquelle « Demander une licence » et « Signaler un problème » composent le mail. Elle doit exister avant la fin du premier essai (14/10/2026), sinon un client en fin d'essai écrit dans le vide.
 
 ## Pistes pour la suite (non demandées)

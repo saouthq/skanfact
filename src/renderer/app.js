@@ -4446,7 +4446,7 @@
     // `visible` : le panneau n'est posé que sur le poste de l'éditeur — et la palette Cmd+K, qui
     // engendre une entrée par panneau, doit le taire au même moment (sinon elle mène nulle part).
     'p-editeur': { onglet: 'app', titre: 'Éditeur de SkanFact — tes clés de signature', mots: 'editeur cle privee publique signature vendre licences emettre armer', visible: () => !!licence.editeur },
-    'p-depannage': { onglet: 'app', titre: 'Aide et dépannage', mots: 'journal log erreur bug probleme support aide depannage gel' }
+    'p-depannage': { onglet: 'app', titre: 'Aide et dépannage', mots: 'journal log erreur bug probleme support aide depannage gel idee suggestion amelioration proposer fonctionnalite demande manque' }
   };
   // L'ouverture d'un panneau de réglages. `extra` est la bulle « i » qui suit le titre.
   const panneau = (id, extra) => {
@@ -9330,10 +9330,12 @@
       ${panneau('p-licence', info('lic.etat'))}<div id="lic-panel"></div></div>
       ${licence.editeur ? `${panneau('p-editeur', info('lic.editeur'))}<div id="editeur-panel"></div></div>` : ''}
       ${panneau('p-depannage')}
-        <p class="small muted mb">Quand quelque chose ne va pas, ces deux boutons valent mieux qu'une description :
-        le journal dit où l'application s'est arrêtée, et il ne contient ni nom de client, ni montant.</p>
+        <p class="small muted mb">Quand quelque chose ne va pas, le journal vaut mieux qu'une description : il dit où
+        l'application s'est arrêtée, et il ne contient ni nom de client, ni montant. Et quand quelque chose manque,
+        dis-le : SkanFact est écrit par une seule personne, et c'est ce qui décide de la suite.</p>
         <div class="inline">
           <button type="button" class="btn btn-primary" id="set-support">Signaler un problème…</button>
+          <button type="button" class="btn" id="set-idee">Proposer une amélioration…</button>
           <button type="button" class="btn" id="set-log">Ouvrir le journal technique</button>
           <button type="button" class="btn" id="set-aide">Ouvrir l'aide</button>
         </div>
@@ -9553,6 +9555,7 @@
     // va quand quelque chose ne marche pas — et le journal, qui est ce qui sert vraiment à dépanner,
     // n'était atteignable que depuis un message d'erreur de mise à jour.
     $('#set-support').onclick = supportForm;
+    $('#set-idee').onclick = ideeForm;
     $('#set-log').onclick = () => bridge.openLog();
     $('#set-aide').onclick = () => navigate('#/aide');
     $('#backup-now').onclick = async () => { const p = await bridge.createBackup(); toast(p ? 'Sauvegarde créée : ' + p.split(/[\\/]/).pop() : 'Rien à sauvegarder pour l\'instant'); drawExternal(); drawBackups(); };
@@ -9971,7 +9974,7 @@
 
     $('#view').innerHTML = `
       <div class="page-head"><h1>Aide</h1>
-        <div class="actions">${backButton('#/dashboard', 'aide')}<button class="btn" id="aide-support">Signaler un problème</button><button class="btn" id="aide-changelog">Nouveautés de la version</button></div></div>
+        <div class="actions">${backButton('#/dashboard', 'aide')}<button class="btn" id="aide-support">Signaler un problème</button><button class="btn" id="aide-idee">Proposer une amélioration</button><button class="btn" id="aide-changelog">Nouveautés de la version</button></div></div>
       ${a ? '' : `<p class="lead">Comment marche SkanFact, et comment tenir la gestion d'une petite entreprise sans rien oublier. Cherche un mot, ou choisis un domaine. Partout ailleurs dans l'application, les petits <span class="i-demo">i</span> expliquent le champ juste à côté, et le <b>?</b> en haut de chaque page ouvre l'article de cette page.</p>`}
       <div class="help-search">
         <svg class="hs-loupe" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20.5 20.5l-4.2-4.2"/></svg>
@@ -10075,6 +10078,7 @@
     bindBack('#/dashboard', 'aide');
     $('#aide-changelog').onclick = showChangelog;
     $('#aide-support').onclick = supportForm;
+    $('#aide-idee').onclick = ideeForm;
   };
 
   // ---------- signaler un problème (6.6.0) ----------
@@ -10106,6 +10110,56 @@
             + `--- informations techniques ---\n${tech}\nDossier : ${info.logPath || ''}\n\n`
             + (info.log ? `--- journal (${info.lines} lignes) ---\n${String(info.log).slice(-6000)}\n` : '(journal vide)\n');
           await bridge.composeMail({ to: LICENCE_CONTACT, subject: `Problème SkanFact ${info.version || ''}`, body });
+          close(); toast('Message préparé — relis-le avant de l\'envoyer');
+        };
+      });
+  }
+
+  // ---------- proposer une amélioration (8.1.0) ----------
+  //
+  // Le pendant de « Signaler un problème », et il vit juste à côté volontairement : quelqu'un qui
+  // prend la peine d'ouvrir l'un est très exactement quelqu'un qui a quelque chose à dire sur
+  // l'autre. Jusqu'ici l'application savait recevoir ce qui ne marche pas, et n'avait aucune porte
+  // pour ce qui manque — alors que SkanFact est écrit par une seule personne, pour qui c'est la
+  // seule source d'idées qui existe.
+  //
+  // Il n'emporte NI journal NI pile d'appels, contrairement au signalement : une idée n'a pas de
+  // trace technique, et joindre le journal « au cas où » serait prendre des données sans raison.
+  //
+  // Les deux questions ne sont pas interchangeables. On demande d'abord ce que la personne aimerait
+  // faire, puis comment elle s'en sort aujourd'hui — et c'est la SECONDE qui apprend quelque chose.
+  // On propose toujours une solution, et la solution imaginée est rarement la meilleure ; ce qu'il
+  // faut connaître, c'est le besoin qui l'a fait naître. La première question seule ferait écrire
+  // « il faudrait un bouton X », sans jamais dire pourquoi.
+  async function ideeForm() {
+    let info = {};
+    try { info = await bridge.supportInfo(); } catch {}
+    const tech = `SkanFact ${info.version || '?'} · ${info.platform || '?'}`;
+    modal(`<h2>Proposer une amélioration</h2>
+      <p class="small">SkanFact est écrit par une seule personne, et ce sont les idées de ceux qui s'en servent tous les jours qui décident de la suite. Dis ce qui te manque — même si ça te paraît petit : c'est souvent le petit geste répété tous les lundis qui fait gagner le plus.</p>
+      <label class="field obligatoire"><span>Ce que tu aimerais faire</span>
+        <textarea id="idee-quoi" rows="3" placeholder="Ex. : envoyer la même relance à plusieurs clients d'un coup."></textarea></label>
+      <label class="field">Comment tu fais aujourd'hui
+        <textarea id="idee-auj" rows="3" placeholder="Ex. : je les ouvre un par un, ça me prend une demi-heure chaque lundi."></textarea></label>
+      <p class="small muted">Cette seconde question est celle qui sert le plus : elle dit le vrai problème, et pas seulement la solution imaginée.</p>
+      <div class="notes-md mt"><strong>Joint automatiquement</strong>
+        <p class="small">${h(tech)} — pour pouvoir te répondre si ce que tu demandes existe déjà dans une version plus récente.</p>
+        <p class="small muted">Rien d'autre : ni journal technique, ni donnée de ton entreprise.</p>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" data-close>Annuler</button>
+        <button class="btn btn-primary" id="idee-send">Préparer le message</button></div>`,
+      (root, close) => {
+        $('#idee-send', root).onclick = async () => {
+          const quoi = $('#idee-quoi', root).value.trim();
+          // Un refus MONTRE le champ (règle 7.20.0) : un message seul ferait relire toute la fenêtre.
+          if (!quoi) return refus('#idee-quoi', 'Dis en une phrase ce que tu aimerais faire.');
+          const auj = $('#idee-auj', root).value.trim();
+          const body = 'Bonjour,\n\nUne idée pour SkanFact.\n\n'
+            + `Ce que j'aimerais faire :\n${quoi}\n\n`
+            + `Comment je fais aujourd'hui :\n${auj || '(non précisé)'}\n\n`
+            + `--- version ---\n${tech}\n`;
+          await bridge.composeMail({ to: LICENCE_CONTACT, subject: `Idée pour SkanFact ${info.version || ''}`, body });
           close(); toast('Message préparé — relis-le avant de l\'envoyer');
         };
       });
@@ -10433,12 +10487,18 @@
         <label class="field">${lbl('Offre', 'lic.offre')}<select name="offre">${offres.map(o => `<option value="${h(o)}" ${l.offre === o ? 'selected' : ''}>${h(editeur.offres[o].label)}</option>`).join('')}</select></label>
         <label class="field">${lbl('Durée', 'lic.duree')}<select name="duree">${dur.map(d => `<option value="${h(d.id)}" ${l.duree === d.id ? 'selected' : ''}>${h(d.label)}${d.exp ? ` — jusqu'au ${C.fmtDate(d.exp)}` : ''}</option>`).join('')}</select></label>
         <div class="span-2" id="lf-date" hidden>${dateFieldHtml('Date de fin', 'expDate', l.expDate)}</div>
-        <div class="field span-2">${lbl('Prestation du catalogue', 'lic.prestation')}${combo({ name: 'itemId', value: l.itemId, items, placeholder: '— Facultatif : la ligne de la facture —', search: 'Rechercher une prestation…' })}</div>
+        <div class="field span-2">${lbl('Prestation du catalogue', 'lic.prestation')}${combo({ name: 'itemId', value: l.itemId, items, placeholder: '— Facultatif : la ligne de la facture —', search: 'Rechercher une prestation…', add: '+ Nouvelle prestation' })}</div>
         <label class="field obligatoire">${lbl(`Prix HT (${h(cur)})`, 'lic.prix')}<input type="number" name="prix" class="num" step="0.001" min="0" value="${h(l.prix)}"></label>
         <label class="field">TVA<select name="tva">${C.VAT_RATES.map(r => `<option value="${r}" ${Number(l.tva) === r ? 'selected' : ''}>${r} %</option>`).join('')}</select></label>
         <label class="check span-2"><input type="checkbox" name="parrain" ${l.parrain ? 'checked' : ''}> ${lbl('Client parrainé par un cabinet comptable', 'lic.parrain')}</label>
         <div class="grid-2 span-2" id="lf-parrain" ${l.parrain ? '' : 'hidden'}>
-          ${field('Empreinte du cabinet', 'empreinte', l.empreinte, 'text', 'placeholder="AB12-CD34-…" class="mono"')}
+          <div class="field">${lbl('Empreinte du cabinet', 'lic.empreinte')}
+            <div class="inline">
+              <input type="text" name="empreinte" value="${h(l.empreinte)}" placeholder="AB12-CD34-EF56-7890-ABCD" class="mono grow" autocapitalize="characters" spellcheck="false">
+              <button type="button" class="btn" id="lf-verif">Vérifier</button>
+            </div>
+            <p class="small" id="lf-verdict" hidden></p>
+          </div>
           ${field('Remise sur la facture (%)', 'remise', l.remise, 'number', 'min="0" max="100" class="num"')}
         </div>
         ${field('Note interne', 'note', l.note, 'text', 'placeholder="visible seulement ici"')}
@@ -10448,11 +10508,55 @@
         const form = $('#lf', root);
         const cc = bindCombo($('[data-combo=clientId]', root), { items: clientItems(), placeholder: '— Choisir un client —',
           onAdd: () => clientForm(null, c => { cc.setItems(clientItems()); cc.setValue(c.id); }) });
-        bindCombo($('[data-combo=itemId]', root), { items, placeholder: '— Facultatif : la ligne de la facture —',
+        // Le combo des clients propose « + Nouveau client » depuis toujours ; celui du catalogue, non
+        // — alors que l'éditeur qui vend ses deux offres n'a, au premier jour, AUCUNE prestation de
+        // licence dans son catalogue. Il retapait donc son prix à chaque émission, de mémoire, dans
+        // un champ vide : une faute de frappe y devient une facture fausse, et rien ne la rattrape.
+        // Une fois la prestation créée, le prix et la TVA viennent d'elle — c'est à ça qu'elle sert.
+        const ic = bindCombo($('[data-combo=itemId]', root), { items, placeholder: '— Facultatif : la ligne de la facture —',
+          add: '+ Nouvelle prestation',
+          onAdd: () => catalogForm(null, it => {
+            if (!it) return;   // « Supprimer » depuis la fenêtre du catalogue rappelle done(null).
+            const maj = data.catalog.slice().sort((a, b) => a.label.localeCompare(b.label, 'fr')).map(c => ({
+              v: c.id, label: c.label, sub: c.description || '', right: C.money(c.unitPrice, cur) + ' HT', text: `${c.label} ${c.description || ''}`
+            }));
+            ic.setItems(maj); ic.setValue(it.id);
+            $('input[name=prix]', root).value = it.unitPrice; $('select[name=tva]', root).value = String(it.vatRate);
+          }, { creation: true }),
           onPick: id => {
             const it = data.catalog.find(c => c.id === id); if (!it) return;
             $('input[name=prix]', root).value = it.unitPrice; $('select[name=tva]', root).value = String(it.vatRate);
           } });
+
+        // « Vérifier » dit ce qu'il peut prouver, et seulement ça. La forme est vérifiable hors ligne ;
+        // l'appartenance à un vrai cabinet ne l'est pas — il faudrait sa clé publique, que l'éditeur
+        // n'a pas. Afficher un vert rassurant sur une empreinte simplement bien formée serait un
+        // mensonge, et c'est justement le genre d'affirmation que cette application s'interdit.
+        const champE = () => $('#lf input[name=empreinte]', root);
+        const verdict = (texte, ton) => {
+          const p = $('#lf-verdict', root); if (!p) return;
+          p.hidden = false; p.textContent = texte;
+          p.className = 'small ' + (ton === 'ok' ? 'ok-text' : ton === 'ko' ? 'err-text' : 'muted');
+        };
+        const verifierEmpreinte = () => {
+          const e = C.empreinteCabinet(champE().value);
+          if (!e.ok) {
+            return verdict(e.raison === 'vide' ? 'Colle l\'empreinte que le comptable lit dans SkanFact Cabinet → Réglages.'
+              : e.raison === 'caracteres' ? 'Ce n\'est pas une empreinte : elle ne contient que des chiffres et les lettres A à F.'
+              : `Il manque quelque chose : une empreinte fait 20 caractères (cinq groupes de quatre), celle-ci en a ${e.longueur}.`, 'ko');
+          }
+          // On range la forme canonique dans le champ : c'est elle qui sera enregistrée, donc deux
+          // saisies du même cabinet ne peuvent pas donner deux empreintes différentes.
+          champE().value = e.valeur;
+          const vues = C.licencesDuCabinet(data.licences, e.valeur, prec && prec.id);
+          if (!vues.length) {
+            return verdict('Forme correcte. Ce cabinet n\'a encore parrainé personne : rien ici ne peut prouver qu\'il existe — fais relire l\'empreinte à voix haute par ton client.', 'neutre');
+          }
+          const noms = [...new Set(vues.map(v => v.nom).filter(Boolean))];
+          verdict(`Forme correcte, et ce cabinet est déjà connu : ${pl(vues.length, 'licence')} parrainée${vues.length > 1 ? 's' : ''}${noms.length ? ' (' + noms.slice(0, 3).join(', ') + (noms.length > 3 ? '…' : '') + ')' : ''}.`, 'ok');
+        };
+        $('#lf-verif', root).onclick = verifierEmpreinte;
+        champE().onblur = () => { if (champE().value.trim()) verifierEmpreinte(); };
         const majDate = () => { $('#lf-date', root).hidden = $('select[name=duree]', root).value !== 'date'; };
         $('select[name=duree]', root).onchange = majDate; majDate();
         $('input[name=parrain]', root).onchange = e => { $('#lf-parrain', root).hidden = !e.target.checked; };

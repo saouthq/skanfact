@@ -1895,7 +1895,7 @@
     'pan-backup': { onglet: 'donnees', titre: 'Sauvegardes', mots: 'sauvegarde restaurer copie externe usb icloud filet perdu' },
     'pan-secu': { onglet: 'donnees', titre: 'Sécurité', mots: 'securite mot de passe cle de secours verrouiller chiffrement empreinte' },
     'pan-maj': { onglet: 'app', titre: 'Mises à jour', mots: 'mise a jour version telecharger installer jeton token maj' },
-    'pan-support': { onglet: 'app', titre: 'Aide et dépannage', mots: 'probleme bug journal log support signaler panne aide' },
+    'pan-support': { onglet: 'app', titre: 'Aide et dépannage', mots: 'probleme bug journal log support signaler panne aide idee suggestion amelioration proposer fonctionnalite demande manque' },
     'pan-exemple': { onglet: 'app', titre: 'Exemple', mots: 'exemple demo dossiers fictifs essayer decouvrir' }
   };
   const panneauReg = (id, extra) => {
@@ -1966,7 +1966,10 @@
       ${panneauReg('pan-support')}
         <p class="small">Si quelque chose ne va pas, cette fenêtre rassemble ce qu'il faut pour le comprendre :
         la version, le système, et le journal de l'application. Rien n'en part tout seul.</p>
-        <div class="modal-actions"><button class="btn" id="s-support">Signaler un problème…</button></div>
+        <p class="small">Et s'il manque quelque chose, dites-le : SkanFact Cabinet est écrit par une seule personne,
+        et ce sont les cabinets qui s'en servent qui décident de la suite.</p>
+        <div class="modal-actions"><button class="btn" id="s-support">Signaler un problème…</button>
+        <button class="btn" id="s-idee">Proposer une amélioration…</button></div>
       </div>
 
       ${panneauReg('pan-exemple')}
@@ -2014,6 +2017,7 @@
       reg.montrer(vise);
     }
     const sup = $('#s-support'); if (sup) sup.onclick = supportDialog;
+    const idee = $('#s-idee'); if (idee) idee.onclick = ideeDialog;
     bindRecoveryBanner(view);
     if ($('#r-demo-on')) $('#r-demo-on').onclick = async () => {
       S = await api.demo(true); toast('Exemple chargé : ces cinq dossiers sont fictifs.'); location.hash = '#/dossiers';
@@ -2370,6 +2374,51 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
         $('#copy', layer).onclick = async () => {
           try { await navigator.clipboard.writeText($('#sup', layer).textContent); toast('Copié.'); }
           catch { toast('Copie impossible.', 'error'); }
+        };
+      }
+    );
+  }
+
+  // ---------- proposer une amélioration (8.1.0) ----------
+  //
+  // Le pendant de « Signaler un problème ». L'application savait recevoir ce qui ne marche pas et
+  // n'avait aucune porte pour ce qui manque — alors qu'un cabinet qui traite soixante dossiers voit
+  // en un mois ce que l'éditeur ne verrait pas en un an.
+  //
+  // Contrairement au signalement, elle n'emporte NI journal NI état du portefeuille : une idée n'a
+  // pas de trace technique, et joindre le nombre de dossiers « au cas où » serait prendre une
+  // information sur le cabinet sans raison. Seule la version part, pour pouvoir répondre que la
+  // chose existe déjà.
+  //
+  // Les deux questions ne sont pas interchangeables : on demande ce qu'on aimerait faire, PUIS
+  // comment on s'en sort aujourd'hui. C'est la seconde qui apprend quelque chose — on propose
+  // toujours une solution, et la solution imaginée est rarement la meilleure.
+  async function ideeDialog() {
+    let inf = {};
+    try { inf = await api.support(); } catch {}
+    const tech = `SkanFact Cabinet ${inf.version || '?'} · ${inf.platform || '?'}`;
+    modal(
+      `<h2>Proposer une amélioration</h2>
+       <p class="small">SkanFact Cabinet est écrit par une seule personne, et ce sont les cabinets qui s'en servent tous les jours qui décident de la suite. Dites ce qui vous manque — même si cela vous paraît petit.</p>
+       <label class="field">Ce que vous aimeriez faire
+         <textarea id="idee-quoi" rows="3" placeholder="Ex. : relancer d'un seul geste tous les clients qui n'ont pas envoyé août."></textarea></label>
+       <label class="field">Comment vous faites aujourd'hui
+         <textarea id="idee-auj" rows="3" placeholder="Ex. : j'ouvre chaque dossier et j'écris un mail à la main."></textarea></label>
+       <p class="small muted">Cette seconde question est celle qui sert le plus : elle dit le vrai problème, et pas seulement la solution imaginée.</p>
+       <p class="small muted">Joint automatiquement : ${esc(tech)}. Rien d'autre — ni journal, ni nom de dossier, ni chiffre de vos clients.</p>
+       <div class="modal-actions"><button class="btn" data-close>Annuler</button>
+       <button class="btn btn-primary" id="idee-send">Préparer le message</button></div>`,
+      (layer, close) => {
+        $('#idee-send', layer).onclick = async () => {
+          const quoi = $('#idee-quoi', layer).value.trim();
+          if (!quoi) return refus('#idee-quoi', 'Dites en une phrase ce que vous aimeriez faire.');
+          const auj = $('#idee-auj', layer).value.trim();
+          const body = 'Bonjour,\n\nUne idée pour SkanFact Cabinet.\n\n'
+            + `Ce que j'aimerais faire :\n${quoi}\n\n`
+            + `Comment je fais aujourd'hui :\n${auj || '(non précisé)'}\n\n`
+            + `--- version ---\n${tech}\n`;
+          await api.mail({ to: 'contact@skanfact.tn', subject: `Idée pour SkanFact Cabinet ${inf.version || ''}`, body });
+          close(); toast('Message préparé — relisez-le avant de l\'envoyer.');
         };
       }
     );
