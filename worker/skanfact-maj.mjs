@@ -38,6 +38,125 @@ export const CANAUX = {
 
 const EXTENSIONS = ['.yml', '.dmg', '.zip', '.exe', '.blockmap'];
 
+
+// ---------- le formulaire de contact du site ----------
+// Pourquoi ici plutôt qu'un service de formulaires : le site promet que rien ne part chez un
+// tiers. Un formulaire hébergé ailleurs ferait exactement le contraire, sur la page où l'on
+// demande à quelqu'un de nous faire confiance. Ce relais est déjà déployé, il ne stocke rien,
+// et il oublie le message aussitôt remis.
+//
+// Ce chemin n'a PAS de secret, et ne peut pas en avoir : le formulaire est public par nature,
+// et un secret écrit dans une page publique n'est pas un secret. Les protections sont donc
+// celles d'un formulaire public : une origine attendue, un piège à robots, des tailles bornées.
+
+export const ORIGINES = [
+  'https://saouthq.github.io',
+  'https://skanfact.tn',
+  'https://www.skanfact.tn'
+];
+
+// L'origine est-elle une des nôtres ? Sans cette porte, n'importe quelle page du web pourrait
+// poster dans notre boîte depuis le navigateur de ses visiteurs.
+export function origineAutorisee(origine, env) {
+  const sup = String(env && env.CONTACT_ORIGINES || '').split(',').map(x => x.trim()).filter(Boolean);
+  return ORIGINES.concat(sup).includes(String(origine || ''));
+}
+
+// Ce qu'on accepte de recevoir. Pur, donc testé sans réseau — et c'est ce qui décide.
+export function contactValide(c) {
+  const t = k => String((c && c[k]) || '').trim();
+  // Le piège : un champ que la feuille de style cache et qu'aucun humain ne voit. Un robot
+  // remplit tout ce qu'il trouve. On répond « reçu » sans rien envoyer : lui dire qu'il a été
+  // repéré lui apprend à contourner.
+  if (t('piege')) return { ok: false, muet: true };
+  if (!t('nom')) return { ok: false, erreur: 'Indiquez votre nom.' };
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(t('email'))) return { ok: false, erreur: 'Cette adresse ne permettra pas de vous répondre.' };
+  if (t('message').length < 10) return { ok: false, erreur: 'Dites-nous en un peu plus, pour qu\'on puisse répondre utilement.' };
+  // Des bornes, parce que tout ce qui vient du dehors est sans limite jusqu'à ce qu'on en pose une.
+  if (t('nom').length > 120 || t('societe').length > 160 || t('email').length > 160
+      || t('tel').length > 40 || t('message').length > 5000) {
+    return { ok: false, erreur: 'Message trop long : écrivez-nous directement à contact@skanfact.tn.' };
+  }
+  return { ok: true };
+}
+
+// Le message tel qu'il arrivera dans la boîte. Pur lui aussi : le corps d'un email est
+// exactement le genre de chose qu'on croit juste sans jamais l'avoir lu.
+export function contactCourriel(c) {
+  const t = k => String((c && c[k]) || '').trim();
+  const profil = t('profil') === 'un cabinet comptable' ? 'un cabinet comptable' : 'une entreprise';
+  return {
+    sujet: `SkanFact — ${profil === 'un cabinet comptable' ? 'cabinet' : 'entreprise'} · ${t('nom')}`,
+    repondreA: t('email'),
+    texte: [
+      `Je suis ${profil}.`,
+      '',
+      `Nom      : ${t('nom')}`,
+      `Société  : ${t('societe') || '—'}`,
+      `Email    : ${t('email')}`,
+      `Téléphone: ${t('tel') || '—'}`,
+      '',
+      t('message'),
+      '',
+      '— envoyé depuis le formulaire de skanfact'
+    ].join('\n')
+  };
+}
+
+// L'envoi. Séparé du reste pour que tout ce qui DÉCIDE reste testable sans réseau.
+async function remettre(courriel, env) {
+  if (!env.RESEND_KEY || !env.CONTACT_TO) return { ok: false, code: 503, config: true };
+  const r = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${env.RESEND_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      from: env.CONTACT_FROM || 'SkanFact <site@skanfact.tn>',
+      to: [env.CONTACT_TO],
+      reply_to: courriel.repondreA,     // répondre au visiteur, pas à soi-même
+      subject: courriel.sujet,
+      text: courriel.texte
+    })
+  });
+  return r.ok ? { ok: true } : { ok: false, code: 502 };
+}
+
+function entetesCors(origine) {
+  const h = new Headers();
+  h.set('Access-Control-Allow-Origin', origine);
+  h.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  h.set('Access-Control-Allow-Headers', 'Content-Type');
+  h.set('Access-Control-Max-Age', '86400');
+  h.set('Vary', 'Origin');
+  return h;
+}
+
+// Le chemin /contact, de bout en bout. Rend TOUJOURS du JSON : le site doit pouvoir distinguer
+// « refusé, voici pourquoi » de « pas configuré » — dans ce dernier cas il repasse au logiciel de
+// messagerie du visiteur plutôt que de perdre le message.
+export async function servirContact(request, env) {
+  const origine = request.headers.get('Origin') || '';
+  if (!origineAutorisee(origine, env)) return new Response('Introuvable.', { status: 404 });
+  if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: entetesCors(origine) });
+  if (request.method !== 'POST') return new Response('Méthode non autorisée.', { status: 405, headers: entetesCors(origine) });
+
+  const h = entetesCors(origine);
+  h.set('Content-Type', 'application/json; charset=utf-8');
+  const dit = (code, o) => new Response(JSON.stringify(o), { status: code, headers: h });
+
+  let corps = null;
+  try { corps = await request.json(); } catch { return dit(400, { ok: false, erreur: 'Message illisible.' }); }
+
+  const v = contactValide(corps);
+  // Au robot on répond comme à tout le monde, et on ne remet rien.
+  if (!v.ok && v.muet) return dit(200, { ok: true });
+  if (!v.ok) return dit(400, { ok: false, erreur: v.erreur });
+
+  const r = await remettre(contactCourriel(corps), env);
+  if (r.ok) return dit(200, { ok: true });
+  if (r.config) return dit(503, { ok: false, configurer: true, erreur: 'Le formulaire n\'est pas encore branché.' });
+  return dit(502, { ok: false, erreur: 'L\'envoi a échoué. Écrivez-nous à contact@skanfact.tn.' });
+}
+
 // ---------- décisions pures (testées sans réseau) ----------
 
 // « /app/latest-mac.yml » → { canal: 'app', fichier: 'latest-mac.yml' }. Tout le reste : null.
@@ -163,10 +282,13 @@ const typeDe = f => f.endsWith('.yml') ? 'text/yaml; charset=utf-8'
 
 export default {
   async fetch(request, env) {
+    const url = new URL(request.url);
+    // Le formulaire poste : il passe avant le filtre GET, qui le refuserait.
+    if (url.pathname === '/contact') return servirContact(request, env);
+
     if (request.method !== 'GET' && request.method !== 'HEAD') {
       return new Response('Méthode non autorisée.', { status: 405 });
     }
-    const url = new URL(request.url);
     const r = route(url.pathname);
     if (!r) return new Response('Introuvable.', { status: 404 });
     if (!fichierAutorise(r.canal, r.fichier)) return new Response('Introuvable.', { status: 404 });

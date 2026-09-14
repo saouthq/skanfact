@@ -115,3 +115,70 @@ version.
   mettre à jour). À faire le jour où tous tes clients en ont une.
 - ⚠️ Si le relais tombe, les mises à jour s'arrêtent — mais les applications continuent de
   fonctionner, et on peut toujours télécharger les fichiers à la main depuis GitHub.
+
+---
+
+# Le formulaire de contact du site (route `/contact`)
+
+Le même worker sert aussi le formulaire de **skanfact-site**. Rien de nouveau à héberger : une
+route de plus sur le service déjà déployé.
+
+## Pourquoi ici, et pas chez un service de formulaires
+
+Le site promet, sur chaque page, que rien ne part chez un tiers. Un formulaire hébergé ailleurs
+ferait exactement le contraire, sur la page même où l'on demande à quelqu'un de nous faire
+confiance. Ce relais ne stocke rien : il reçoit le message, le remet, et l'oublie.
+
+## Ce qu'il faut ajouter
+
+Trois variables dans **Workers → ton service → Settings → Variables** :
+
+| Nom | Type | Valeur |
+|---|---|---|
+| `RESEND_KEY` | **Secret** | la clé d'API [Resend](https://resend.com) (gratuit jusqu'à 3 000 messages par mois) |
+| `CONTACT_TO` | Variable | l'adresse qui reçoit, par exemple `contact@skanfact.tn` |
+| `CONTACT_FROM` | Variable | l'expéditeur, par exemple `SkanFact <site@skanfact.tn>` — le domaine doit être vérifié chez Resend |
+
+Une quatrième, facultative : `CONTACT_ORIGINES`, pour autoriser une adresse de plus (séparées par
+des virgules). `saouthq.github.io` et `skanfact.tn` sont déjà dans le code.
+
+## Et la ligne à remplir dans le site
+
+Dans **`assets/site.js`** du dépôt du site :
+
+```js
+var RELAIS_CONTACT = '';     // ← l'adresse du relais, suivie de /contact
+```
+
+Par exemple `https://skanfact-maj.toncompte.workers.dev/contact`.
+
+**Tant que cette ligne est vide, le formulaire fonctionne quand même** : il repasse par le logiciel
+de messagerie du visiteur, et le dit. Même chose si le relais répond mal ou trop lentement (douze
+secondes). **On ne perd jamais un message parce qu'un service est en panne** — c'est la règle du
+repli, apprise en 6.7.2 : un chemin de secours ne sert que s'il se déclenche tout seul.
+
+## Ce qui le protège
+
+Ce chemin **n'a pas de secret, et ne peut pas en avoir** : un formulaire public ne peut pas porter
+un secret, puisqu'il faudrait l'écrire dans une page publique. Ce qui le protège :
+
+- **l'origine** : seules `saouthq.github.io` et `skanfact.tn` peuvent poster. Sans cette porte,
+  n'importe quelle page du web posterait dans la boîte depuis le navigateur de ses visiteurs ;
+- **un piège à robots** : un champ que la feuille de style range hors de l'écran et qu'aucun humain
+  ne voit. Rempli, on répond « reçu » et **on n'envoie rien** — lui dire qu'il a été repéré lui
+  apprendrait à contourner ;
+- **des tailles bornées** : tout ce qui vient du dehors est sans limite jusqu'à ce qu'on en pose une.
+
+Ce qui décide (`origineAutorisee`, `contactValide`, `contactCourriel`) est pur et vérifié par
+`npm test`, sans réseau.
+
+## Vérifier
+
+```bash
+curl -i -X POST https://ton-relais.workers.dev/contact \
+  -H 'Origin: https://skanfact.tn' -H 'Content-Type: application/json' \
+  -d '{"nom":"Essai","email":"toi@exemple.tn","message":"Ceci est un essai du formulaire."}'
+```
+
+`{"ok":true}` et le message arrive. Sans l'en-tête `Origin`, tu dois recevoir **404** : c'est le
+bon résultat.

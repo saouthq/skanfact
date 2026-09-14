@@ -4760,6 +4760,51 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.strictEqual(W.fichierAutorise('cabinet', 'SkanFact-7.26.0-beta.1-mac-universal.zip'), false);
   });
 
+  // Le formulaire de contact (7.30.0). Ce chemin est le seul du relais qui n'a PAS de secret :
+  // un formulaire public ne peut pas en porter un. Ce qui le protège est donc ce qui suit, et
+  // c'est pour ça que ça se teste.
+  t('contact : seules nos origines peuvent poster dans notre boîte', () => {
+    assert.strictEqual(W.origineAutorisee('https://saouthq.github.io', {}), true);
+    assert.strictEqual(W.origineAutorisee('https://skanfact.tn', {}), true);
+    // Sans cette porte, n'importe quelle page du web posterait chez nous depuis le navigateur
+    // de ses visiteurs, et la boîte deviendrait inutilisable en une nuit.
+    ['https://skanfact.tn.evil.com', 'http://skanfact.tn', 'https://github.io', '', null]
+      .forEach(o => assert.strictEqual(W.origineAutorisee(o, {}), false, 'origine acceptée à tort : ' + o));
+    // Le jour du domaine, on en ajoute une sans toucher au code.
+    assert.strictEqual(W.origineAutorisee('https://essai.tn', { CONTACT_ORIGINES: 'https://essai.tn' }), true);
+  });
+
+  t('contact : ce qu’on refuse, et ce qu’on refuse EN SILENCE', () => {
+    const bon = { nom: 'Skander', email: 'a@b.tn', message: 'Bonjour, je voudrais une démonstration.' };
+    assert.strictEqual(W.contactValide(bon).ok, true);
+    // Un champ que personne ne voit et qu'un robot remplit : on répond « reçu » et on n'envoie
+    // rien. Lui dire qu'il a été repéré lui apprendrait à contourner.
+    const robot = W.contactValide({ ...bon, piege: 'http://spam' });
+    assert.strictEqual(robot.ok, false);
+    assert.strictEqual(robot.muet, true, 'le piège doit être MUET, sinon il s’use');
+    // Une adresse qui ne permet pas de répondre rend le message inutile pour les deux.
+    assert.strictEqual(W.contactValide({ ...bon, email: 'pas-un-email' }).ok, false);
+    assert.strictEqual(W.contactValide({ ...bon, nom: '   ' }).ok, false);
+    assert.strictEqual(W.contactValide({ ...bon, message: 'salut' }).ok, false, 'cinq lettres ne sont pas une demande');
+    // Tout ce qui vient du dehors est sans limite jusqu'à ce qu'on en pose une.
+    assert.strictEqual(W.contactValide({ ...bon, message: 'x'.repeat(5001) }).ok, false);
+    assert.strictEqual(W.contactValide({ ...bon, nom: 'x'.repeat(121) }).ok, false);
+  });
+
+  t('contact : le message arrive lisible, et on peut répondre au visiteur', () => {
+    const c = W.contactCourriel({ profil: 'un cabinet comptable', nom: 'Leïla Ben Salah',
+      societe: 'Cabinet BS', email: 'leila@cabinet.tn', tel: '+216 71 000 000', message: 'Deux clients.' });
+    assert.strictEqual(c.repondreA, 'leila@cabinet.tn', 'sans reply-to, on se répond à soi-même');
+    assert.ok(c.sujet.includes('cabinet') && c.sujet.includes('Leïla Ben Salah'), 'le sujet doit trier la boîte');
+    assert.ok(c.texte.includes('Deux clients.'), 'le message du visiteur doit y être');
+    assert.ok(c.texte.includes('Cabinet BS') && c.texte.includes('+216 71 000 000'));
+    // Un profil inventé ne doit pas se retrouver imprimé tel quel dans notre boîte.
+    assert.ok(W.contactCourriel({ profil: '<script>', nom: 'X', email: 'a@b.tn', message: 'y' })
+      .texte.startsWith('Je suis une entreprise.'));
+    // Les champs vides s'écrivent « — » : une ligne « Société : » vide se lit comme une panne.
+    assert.ok(W.contactCourriel({ nom: 'X', email: 'a@b.tn', message: 'y' }).texte.includes('Société  : —'));
+  });
+
   t('relais : le secret se compare à temps constant', () => {
     assert.strictEqual(W.memeSecret('abcdef', 'abcdef'), true);
     assert.strictEqual(W.memeSecret('abcdef', 'abcdeg'), false);
