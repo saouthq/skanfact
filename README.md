@@ -6,6 +6,29 @@ Logiciel de devis et factures pour une petite entreprise, pensé pour le context
 
 Pas d'e-facture (TTN / TEIF) : l'outil produit des PDF classiques.
 
+## Droits d'utilisation
+
+**SkanFact n'est pas un logiciel libre.** Le code source est visible ici, il n'est pas réutilisable.
+
+© 2026 Skander Ben Amor — **tous droits réservés**. Le dépôt est public pour que les utilisateurs
+puissent télécharger les installateurs, lire ce qui tourne sur leur ordinateur et signaler un
+problème. Aucune licence d'utilisation, de modification ou de redistribution n'est accordée : en
+l'absence de fichier `LICENSE`, le droit d'auteur s'applique par défaut, et l'absence de licence
+n'est **pas** un oubli.
+
+Concrètement, sans accord écrit du propriétaire :
+
+- ✅ tu peux **télécharger et installer** l'application depuis la page [Releases](https://github.com/saouthq/skanfact/releases), pour ton propre usage ;
+- ✅ tu peux **lire** le code, l'étudier, et ouvrir une issue ;
+- ❌ tu ne peux pas le **republier**, le revendre, ni en distribuer une version modifiée ;
+- ❌ tu ne peux pas le **réutiliser** dans un autre produit, commercial ou non.
+
+Pour un usage en entreprise ou un partenariat avec un cabinet comptable, passe par une issue — le
+modèle prévu est décrit dans `PLAN-CABINET.md`.
+
+À ne pas confondre avec les **clés de licence client** (section plus bas) : celles-ci gèrent
+l'activation de l'application chez un utilisateur, pas les droits sur le code source.
+
 ## Fonctionnalités
 
 - Assistant de première utilisation (société, secteur d'activité avec catalogue proposé, taxes et délais, RIB, dossier de sauvegarde)
@@ -181,7 +204,10 @@ Les paquets reçus sont rangés dans `userData/paquets/<client>/<année>/<mois>.
 
 Les deux applications partagent le **même numéro de version** (`package.json`) depuis la 6.6.0, ce qui permet de les publier dans la même release ; ce qui les sépare est le **canal** de mise à jour (`latest.yml` contre `cabinet.yml`).
 
-## Licence (6.4.0)
+## Clés de licence client (6.4.0)
+
+> Cette section concerne l'**activation de l'application chez un utilisateur**. Pour les droits sur
+> le code source, voir « Droits d'utilisation » en haut de ce fichier.
 
 La vérification est **hors ligne** : une clé signée Ed25519, vérifiée avec la clé publique embarquée. Tant que `build/licence-public.json` n'existe pas, **l'application est libre** et ne verrouille rien. Pour armer la licence :
 

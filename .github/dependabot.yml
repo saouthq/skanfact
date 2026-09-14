@@ -1,0 +1,57 @@
+# Surveillance des dépendances.
+#
+# Rythme MENSUEL, volontairement. SkanFact a un seul développeur : une pull request par semaine
+# finirait ignorée, et un flux d'alertes qu'on n'ouvre plus ne protège de rien. Une fois par mois,
+# le premier lundi, c'est une séance de maintenance qu'on peut réellement tenir.
+#
+# Ce qui justifie la surveillance ici : Electron est un navigateur complet embarqué dans une
+# application qui manipule des données comptables et fiscales, et une faille Chromium corrigée en
+# amont ne descend jusqu'aux utilisateurs que si l'on republie.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+      day: monday
+      time: "06:00"
+      timezone: Africa/Tunis
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps"
+    labels:
+      - dependances
+    groups:
+      # Trois paquets, trois rôles : les regrouper ferait une seule pull request illisible dont un
+      # seul morceau casse. On ne groupe donc que les mises à jour de correctif et mineures, celles
+      # qu'on relit d'un coup d'œil.
+      mineures:
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # Electron majeur se met à jour à la main : chaque saut change le moteur de rendu, et le
+      # document PDF doit être revérifié page par page (voir « fitToPage » dans CLAUDE.md).
+      - dependency-name: electron
+        update-types:
+          - version-update:semver-major
+      # electron-builder majeur touche la signature, NSIS et le format des paquets : à faire en
+      # dehors d'une publication, jamais dans la foulée.
+      - dependency-name: electron-builder
+        update-types:
+          - version-update:semver-major
+
+  # Les actions du workflow de publication. Elles vieillissent en silence : GitHub a déjà signalé
+  # que actions/checkout@v4, actions/cache@v4 et actions/setup-node@v4 visent Node 20, déprécié sur
+  # les runners. Sans surveillance, on l'apprend le jour où la publication s'arrête.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+      day: monday
+      time: "06:00"
+      timezone: Africa/Tunis
+    commit-message:
+      prefix: "ci"
+    labels:
+      - dependances
