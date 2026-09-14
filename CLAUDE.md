@@ -1857,10 +1857,7 @@ Règles apprises, à ne pas recasser :
   « la clé privée ne traverse jamais le pont » : la tranche ne voyait plus que deux lectures. Les
   lectures de `lirePrivee()` sont maintenant jugées sur TOUT main.js, et chacune doit vivre dans la
   section éditeur — prouvé en posant une lecture dans `licence:status`.
-- **`LICENCE_CONTACT` (`licences@skanfact.tn`) n'a pas été vérifié** : c'est l'adresse vers laquelle
-  « Demander une licence » compose le mail, et « Signaler un problème » aussi. Si la boîte n'existe
-  pas, un client en fin d'essai écrit dans le vide. À confirmer par Skander avant la fin du premier
-  essai (14/10/2026).
+- **`LICENCE_CONTACT` vaut `contact@skanfact.tn`** : la boîte Zimbra Starter du domaine `skanfact.tn`, commandé chez OVH le 14/09/2026 (une seule adresse personnalisée pour l'instant, d'où « contact » et pas « licences »). C'est l'adresse vers laquelle « Demander une licence » et « Signaler un problème » composent le mail. Elle doit exister avant la fin du premier essai (14/10/2026), sinon un client en fin d'essai écrit dans le vide.
 
 ## Pistes pour la suite (non demandées)
 

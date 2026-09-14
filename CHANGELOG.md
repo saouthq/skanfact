@@ -40,6 +40,8 @@ jours entiers — puis attend une clé de licence.
   le ramène à son état.
 - La porte « Tu édites SkanFact ? Créer mes clés » a disparu : elle n'existait que sur une
   application non armée.
+- Les demandes de licence et les signalements de problème partent vers **contact@skanfact.tn**,
+  l'adresse du domaine SkanFact.
 
 ### Sous le capot
 

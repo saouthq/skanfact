@@ -54,7 +54,7 @@
   let licenceMatriculeVu = null;   // le matricule pour lequel `licence` a été calculée (voir render)
   // À qui s'adresse une demande de licence. Une seule ligne à changer le jour où ce sera une adresse
   // de société plutôt qu'une adresse personnelle.
-  const LICENCE_CONTACT = 'licences@skanfact.tn';
+  const LICENCE_CONTACT = 'contact@skanfact.tn';   // la boîte Zimbra du domaine skanfact.tn (OVH, 14/09/2026) — une seule adresse pour l'instant
   let data = null;
   let saveTimer = null;
   const unlockedIds = new Set(); // factures émises déverrouillées « quand même » pour la session
