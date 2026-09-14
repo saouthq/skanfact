@@ -27,6 +27,29 @@ const ECRANS = [
   { nom: 'paie', route: 'paie', onglet: 'bulletins' },
 ];
 
+// Les RECADRAGES. Une capture de fenêtre entière réduite à 530 px sur un site ne se lit pas :
+// on devine une interface, on ne lit aucun chiffre. Ces vues-là ne montrent qu'un panneau, pris
+// sur une fenêtre plus étroite — le texte y reste lisible une fois posé dans une colonne de site.
+// Un panneau annoncé et introuvable fait ÉCHOUER le parcours : un recadrage silencieusement
+// sauté donnerait une image périmée sans que personne le sache.
+const DETAILS = [
+  { nom: 'd-todo', route: 'dashboard', titre: 'À faire', haut: 430 },
+  { nom: 'd-factures', route: 'factures', selecteur: '#view table.list', haut: 430 },
+  { nom: 'd-relances', route: 'relances', selecteur: '#view table.list', haut: 300 },
+  { nom: 'd-tresorerie', route: 'tresorerie', onglet: 'prevision', titre: 'Courbe du solde', haut: 400 },
+  { nom: 'd-tva', route: 'compta', onglet: 'tva', titre: 'Déclaration de TVA', haut: 400 },
+  { nom: 'd-manque', route: 'compta', onglet: 'cabinet', titre: 'Ce qui manque', haut: 330 },
+  { nom: 'd-marges', route: 'marges', titre: 'Affaires', haut: 330 },
+  { nom: 'd-stock', route: 'stock', titre: 'État du stock', haut: 420 },
+  { nom: 'd-paie', route: 'paie', onglet: 'bulletins', titre: 'Bulletins du mois', haut: 380 },
+  { nom: 'd-clients', route: 'clients', selecteur: '#view table.list', haut: 420 },
+];
+
+// La fenêtre des recadrages est plus étroite que celle des captures d'écran complètes : un panneau
+// de 870 px posé dans une colonne de 620 px reste lisible, un panneau de 1130 px ne l'est plus.
+const LARGE_ECRAN = { width: 1440, height: 900 };
+const LARGE_DETAIL = { width: 1180, height: 820 };
+
 const SANS_MARQUEURS = `
   .demo-banner { display: none !important; }
   .stamp { display: none !important; }
@@ -46,7 +69,7 @@ const SANS_MARQUEURS = `
   });
   const win = await app.firstWindow();
   surveiller(win, 'site', bac);
-  await win.setViewportSize({ width: 1440, height: 900 });
+  await win.setViewportSize(LARGE_ECRAN);
 
   // L'assistant, déroulé avec une société plausible : c'est son nom qui apparaîtra sur les documents
   // photographiés. On reconnaît chaque écran à ce qu'il contient, jamais à son rang.
@@ -111,6 +134,52 @@ const SANS_MARQUEURS = `
   await win.waitForTimeout(250);
   await win.screenshot({ path: path.join(sortie, 'editeur.png') });
   j.ok('éditeur');
+
+  // ------------------------------------------------------------- les recadrages
+  await win.setViewportSize(LARGE_DETAIL);
+  await win.waitForTimeout(250);
+
+  for (const d of DETAILS) {
+    await win.evaluate(r => { location.hash = '#/' + r; }, d.route);
+    await win.waitForSelector('#view h1');
+    if (d.onglet) {
+      const t = await win.$(`[data-tab="${d.onglet}"]`);
+      if (t && await t.isVisible().catch(() => false)) await t.click({ timeout: 1500 }).catch(() => {});
+    }
+    await win.waitForTimeout(400);
+    await win.addStyleTag({ content: SANS_MARQUEURS });
+
+    const trouve = await win.evaluate((d) => {
+      document.querySelectorAll('[data-cadre]').forEach(e => e.removeAttribute('data-cadre'));
+      let el = null;
+      if (d.selecteur) {
+        el = document.querySelector(d.selecteur);
+      } else {
+        el = Array.from(document.querySelectorAll('#view .panel')).find((p) => {
+          const t = p.querySelector('h2, h3, .panel-head');
+          return t && t.textContent.includes(d.titre);
+        });
+      }
+      if (!el) return false;
+      el.setAttribute('data-cadre', '1');
+      el.scrollIntoView({ block: 'start' });
+      return true;
+    }, d);
+    if (!trouve) throw new Error(`recadrage « ${d.nom} » : ${d.selecteur || d.titre} introuvable sur #/${d.route}`);
+
+    await win.waitForTimeout(250);
+    const boite = await (await win.$('[data-cadre]')).boundingBox();
+    if (!boite) throw new Error(`recadrage « ${d.nom} » : boîte introuvable`);
+    await win.screenshot({
+      path: path.join(sortie, d.nom + '.png'),
+      clip: {
+        x: Math.max(0, boite.x), y: Math.max(0, boite.y),
+        width: Math.min(boite.width, LARGE_DETAIL.width - Math.max(0, boite.x)),
+        height: Math.min(boite.height, d.haut, LARGE_DETAIL.height - Math.max(0, boite.y)),
+      },
+    });
+  }
+  j.ok(`${DETAILS.length} recadrages`);
 
   await app.close();
   if (bac.length) { console.error('\nERREURS JS :\n' + bac.join('\n')); process.exit(1); }
