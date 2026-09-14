@@ -1240,20 +1240,31 @@ rencontres. Si un mot affiché dans l'application manque ici, c'est un défaut :
   //
   // Chaque article appartient à un thème et un seul : un test le vérifie, et vérifie aussi qu'il
   // n'en manque aucun. Une liste écrite à la main dérive au premier article ajouté.
+  // `icon` : le dessin du thème (tracé SVG 24×24, même langage que les icônes de la barre latérale).
+  // La COULEUR, elle, ne vit pas ici mais dans style.css, sous `[data-theme="<id>"]` : une couleur
+  // écrite dans le JavaScript ne sait pas se retourner en mode sombre. Un test vérifie que chaque
+  // thème d'ici a bien sa règle là-bas — sinon un huitième thème naîtrait gris parmi sept colorés.
   const THEMES = [
     { id: 'commencer', label: 'Commencer', sub: 'Le vocabulaire, les premiers gestes, et par où prendre le sujet.',
+      icon: '<circle cx="12" cy="12" r="9"/><path d="M15.6 8.4l-2.1 5.1-5.1 2.1 2.1-5.1z"/>',
       articles: ['demarrer', 'gestion', 'vocabulaire', 'raccourcis'] },
     { id: 'vendre', label: 'Vendre et facturer', sub: 'Du devis à la facture, et tout ce qui se glisse entre les deux.',
+      icon: '<path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/><path d="M10 13h6M10 17h4"/>',
       articles: ['devis', 'facture', 'avoir', 'acompte', 'contrats', 'etranger', 'pieces'] },
     { id: 'encaisser', label: 'Encaisser', sub: 'Être payé, relancer sans se fâcher, et savoir ce qu\'il reste en caisse.',
+      icon: '<rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20"/><circle cx="17" cy="15" r="1.5"/>',
       articles: ['paiements', 'tresorerie'] },
     { id: 'acheter', label: 'Acheter, stocker, équiper', sub: 'L\'argent qui sort, ce qui dort sur l\'étagère, et ce que tu gardes.',
+      icon: '<path d="M3 8l9-4 9 4v8l-9 4-9-4z"/><path d="M3 8l9 4 9-4"/><path d="M12 12v8"/>',
       articles: ['achats', 'stock', 'series', 'immobilisations', 'lecture'] },
     { id: 'declarer', label: 'Déclarer et clôturer', sub: 'La TVA, le mois qu\'on ferme, et le dossier qu\'on envoie au comptable.',
+      icon: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h8M8 11h8M8 15h5"/>',
       articles: ['fiscal', 'compta', 'cloture', 'declarations', 'cabinet'] },
     { id: 'equipe', label: 'Ton équipe', sub: 'Payer quelqu\'un, et les papiers qui vont avec.',
+      icon: '<circle cx="9" cy="8" r="3.5"/><path d="M2 20c0-3.4 3.1-5.5 7-5.5s7 2.1 7 5.5"/><path d="M16.5 5a3.5 3.5 0 0 1 0 6.6"/><path d="M18 14.8c2.4.8 4 2.5 4 5.2"/>',
       articles: ['paie', 'conges'] },
     { id: 'piloter', label: 'Piloter et protéger', sub: 'Gagnes-tu de l\'argent, et que se passe-t-il si l\'ordinateur lâche.',
+      icon: '<path d="M3 17l5-5 4 3 8-8"/><path d="M15 7h5v5"/><path d="M3 21h18"/>',
       articles: ['marges', 'statistiques', 'donnees', 'deux', 'partager', 'licence', 'support'] }
   ];
 

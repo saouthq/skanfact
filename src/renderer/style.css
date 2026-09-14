@@ -234,13 +234,6 @@ body.dark .lock-banner .btn:not(.btn-primary):not(.btn-danger) { background: rgb
 .oblig-note { font-size: 12px; color: var(--muted); margin-right: auto; align-self: center; }
 .oblig-note b { color: var(--danger); }
 
-/* Recherche dans l'aide (7.0.0) : trente-deux titres en liste plate, sans moyen de taper le mot
-   sur lequel on vient de buter. */
-.help-nav #aide-q {
-  width: 100%; margin-bottom: 8px; padding: 8px 10px; border: 1px solid var(--border);
-  border-radius: 9px; font: inherit; font-size: 13px; background: var(--panel); color: var(--text);
-}
-.help-nav .help-count { padding: 0 2px 6px; }
 /* Le lien d'une bulle vers l'article qui développe. */
 #info-pop .ip-more { margin: 10px 0 0; padding-top: 8px; border-top: 1px solid var(--border); }
 #info-pop .ip-more a { color: var(--primary); font-weight: 600; text-decoration: none; }
@@ -938,49 +931,130 @@ td.line-tools .btn:hover:not(:disabled) { color: var(--text); }
 
 /* ---------- Aide ---------- */
 .lead { font-size: 15px; color: var(--muted); max-width: 760px; margin: -6px 0 20px; line-height: 1.55; }
-/* ---- l'Aide refondue (7.23.0) ----
-   On choisit un TERRITOIRE avant de choisir un titre : sept cartes plutôt que trente-deux lignes. */
-.help-search { max-width: 620px; margin: 0 0 18px; }
-.help-search input { width: 100%; }
-.help-search .help-count { padding: 6px 2px 0; }
-.help-themes { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
-.help-theme {
-  display: flex; flex-direction: column; gap: 6px; text-align: left; cursor: pointer;
-  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 18px 18px 16px; transition: border-color .12s, box-shadow .12s, transform .12s;
+/* ---- l'Aide (refonte 7.27.0, sur celle de 7.23.0) ----
+   Ce qui n'allait pas, mesuré sur captures :
+   — sept cartes grises identiques qui n'annonçaient que leur NOMBRE d'articles, et 400 px de vide
+     sous elles. Rien ne distinguait « Ton équipe » de « Encaisser » ;
+   — ouvrir un thème redessinait la liste ENTIÈRE des sept thèmes juste en dessous, le thème ouvert
+     compris, sans état actif ni moyen de refermer ;
+   — le fil d'Ariane s'empilait VERTICALEMENT au milieu de la page : `.help-fil` était un <nav>, et
+     la règle `nav { display:flex; flex-direction: column }` de la barre latérale l'emportait ;
+   — « article suivant » se posait à l'extrémité droite de la page, 250 px à côté de la colonne de
+     l'article qu'il prolonge.
+   Maintenant : un plan coloré où les trente-deux articles se voient d'un coup, et un article qui
+   tient dans une colonne, avec son sommaire à côté. */
+
+/* Les sept couleurs des thèmes. Elles vivent ICI et jamais dans guide.js : une couleur écrite dans
+   du JavaScript ne sait pas se retourner en mode sombre. Un test vérifie qu'aucun thème n'est
+   oublié — sinon un huitième naîtrait gris au milieu de sept colorés. */
+/* Le repli, posé sur `body` (spécificité 0,0,1) pour qu'une classe de thème le batte toujours,
+   quel que soit l'ordre des règles. Sans lui, un article sans thème rendrait `3px solid` avec une
+   couleur vide : la bordure disparaîtrait sans que rien ne le signale. */
+body { --th: var(--primary); --th-bg: var(--primary-soft); }
+.th-commencer { --th: #0c8478; --th-bg: #e4f4f2; }
+.th-vendre    { --th: #2a6fd6; --th-bg: #e8f0fc; }
+.th-encaisser { --th: #1c8f5a; --th-bg: #e3f6ec; }
+.th-acheter   { --th: #b4620f; --th-bg: #fdf0e1; }
+.th-declarer  { --th: #6b4ec9; --th-bg: #efeafc; }
+.th-equipe    { --th: #b83f7a; --th-bg: #fceaf2; }
+.th-piloter   { --th: #0e7c96; --th-bg: #e3f2f6; }
+body.dark .th-commencer { --th: #37c9b8; --th-bg: #11332f; }
+body.dark .th-vendre    { --th: #77aaf5; --th-bg: #182a42; }
+body.dark .th-encaisser { --th: #47cc8c; --th-bg: #133224; }
+body.dark .th-acheter   { --th: #e8a45c; --th-bg: #38291a; }
+body.dark .th-declarer  { --th: #a992f0; --th-bg: #272142; }
+body.dark .th-equipe    { --th: #ee85b6; --th-bg: #3a1f2e; }
+body.dark .th-piloter   { --th: #4dbcd6; --th-bg: #12303a; }
+
+/* La recherche est la porte d'entrée de l'aide : elle a la taille d'une porte. */
+.help-search { position: relative; max-width: 640px; margin: 0 0 20px; }
+.help-search .hs-loupe {
+  position: absolute; left: 14px; top: 50%; transform: translateY(-50%); width: 17px; height: 17px;
+  stroke: var(--muted); fill: none; stroke-width: 2; stroke-linecap: round; pointer-events: none;
 }
-.help-theme:hover { border-color: var(--primary); box-shadow: 0 6px 22px rgba(20, 40, 60, .07); transform: translateY(-1px); }
-.help-theme .ht-l { font-size: 15px; font-weight: 700; color: var(--text); }
-.help-theme .ht-s { font-size: 13px; color: var(--muted); line-height: 1.5; }
-.help-theme .ht-n { font-size: 11px; font-weight: 700; color: var(--primary); text-transform: uppercase; letter-spacing: .6px; margin-top: 2px; }
-.help-theme-open { margin-bottom: 16px; }
-.help-arts { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 8px; margin-top: 10px; }
+/* `#aide-q` et pas `.help-search input` : la règle générale des champs porte quatre `:not(…)`
+   (spécificité 0,4,1) et bat n'importe quelle classe. Sans l'identifiant, le `padding-left` n'est
+   jamais appliqué — la loupe se posait alors SUR la première lettre du texte. Même famille que le
+   `th.r` des colonnes en 7.23.0 : le HTML est juste, c'est la feuille de style qui tranche. */
+.help-search #aide-q { padding: 12px 14px 12px 41px; border-radius: 12px; }
+.help-search .help-count { padding: 8px 2px 0; }
+
+/* Le plan : sept pastilles colorées, qui mènent chacune à sa section. */
+.help-rail { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+.help-chip {
+  display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font: inherit;
+  font-size: 13px; font-weight: 600; color: var(--th); background: var(--th-bg);
+  border: 1px solid transparent; border-radius: 999px; padding: 7px 14px 7px 11px;
+}
+.help-chip:hover { border-color: var(--th); }
+.help-chip svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.help-chip .hc-n { opacity: .7; font-weight: 600; }
+
+/* Une section par thème, ses articles visibles : un plan montre le territoire, il ne le cache pas
+   derrière un clic qui ne promet qu'un nombre. */
+.help-secs { display: grid; gap: 16px; }
+.help-sec { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; scroll-margin-top: 10px; }
+.help-sec > header { display: flex; align-items: center; gap: 13px; padding: 15px 18px; background: var(--th-bg); }
+.help-sec .hs-ico { width: 38px; height: 38px; border-radius: 11px; background: var(--th); color: #fff; display: grid; place-items: center; flex-shrink: 0; }
+.help-sec .hs-ico svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+body.dark .help-sec .hs-ico { color: #0d1418; }
+.help-sec .hs-t { min-width: 0; flex: 1 1 auto; }
+.help-sec h2 { margin: 0; font-size: 15px; font-weight: 700; letter-spacing: -.1px; color: var(--text); text-transform: none; }
+.help-sec .hs-s { margin: 2px 0 0; font-size: 12.5px; color: var(--muted); line-height: 1.45; }
+.help-sec .hs-n { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: var(--th); white-space: nowrap; flex-shrink: 0; }
+/* Le repère posé par `pageFocus` : on vient d'arriver ici, et on le voit. */
+.help-sec.flash { box-shadow: 0 0 0 2px var(--th); }
+
+.help-arts { display: grid; grid-template-columns: repeat(auto-fill, minmax(248px, 1fr)); gap: 8px; padding: 14px 16px 16px; }
 .help-art {
   display: flex; flex-direction: column; gap: 2px; text-align: left; cursor: pointer;
-  background: transparent; border: 1px solid var(--border); border-radius: 10px; padding: 11px 13px;
+  background: transparent; border: 1px solid var(--border); border-left: 3px solid var(--th);
+  border-radius: 10px; padding: 10px 12px; transition: background .12s, border-color .12s;
 }
-.help-art:hover { background: var(--primary-soft); border-color: var(--primary); }
+.help-art:hover { background: var(--th-bg); border-color: var(--th); }
 .help-art .ht { font-size: 13.5px; font-weight: 650; color: var(--text); }
 .help-art .hs { font-size: 12px; color: var(--muted); line-height: 1.4; }
-/* Le fil d'Ariane : d'où vient cet article, et comment remonter d'un cran. */
-.help-fil { display: flex; align-items: center; gap: 6px; margin: 0 0 12px; color: var(--muted); flex-wrap: wrap; }
+.help-art .hth { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--th); margin-bottom: 1px; }
+.help-art mark { background: var(--th-bg); color: var(--text); font-weight: 650; border-radius: 3px; padding: 0 2px; }
+/* Les résultats de recherche réutilisent la grille d'articles, mais hors d'une section : c'est
+   elle qui leur donne leur panneau. */
+.help-res { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); }
+
+/* Le fil d'Ariane : d'où vient cet article, et comment remonter d'un cran. `flex-direction: row`
+   est écrit noir sur blanc — c'est un <div> maintenant, mais la valeur par défaut d'un flex ne se
+   devine pas quand une règle d'élément peut la renverser ailleurs. */
+.help-fil { display: flex; flex-direction: row; align-items: center; gap: 7px; margin: 0 0 14px; color: var(--muted); flex-wrap: wrap; font-size: 13px; }
 .help-fil button { background: none; border: 0; padding: 0; cursor: pointer; color: var(--primary); font-weight: 600; font-size: inherit; }
 .help-fil button:hover { text-decoration: underline; }
-/* Le geste : on lit une explication pour FAIRE quelque chose. */
-.help-geste { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 24px 0 4px; padding-top: 18px; border-top: 1px solid var(--border); }
-.help-suite { display: flex; justify-content: space-between; gap: 10px; margin-top: 14px; }
-.help-grid { display: grid; grid-template-columns: 264px 1fr; gap: 20px; align-items: start; }
-.help-nav { display: flex; flex-direction: column; gap: 2px; position: sticky; top: 0; }
-.help-nav button {
-  font: inherit; text-align: left; background: transparent; border: none; border-radius: 10px; padding: 9px 12px; cursor: pointer;
-  display: flex; flex-direction: column; gap: 2px; color: var(--text);
+.help-fil .sep { opacity: .5; }
+
+/* L'article et son sommaire, côte à côte. Les deux colonnes sont bornées : « article suivant »
+   vivait jusqu'ici à l'extrémité droite de la PAGE, très loin de la colonne qu'il prolonge. */
+.help-layout { display: grid; grid-template-columns: minmax(0, 800px) minmax(0, 238px); gap: 26px; align-items: start; }
+.help-layout.seul { grid-template-columns: minmax(0, 820px); }
+.help-col { min-width: 0; }
+.help-toc { position: sticky; top: 0; padding-top: 2px; }
+.help-toc .tt { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); padding: 0 0 8px 12px; }
+.help-toc ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; border-left: 2px solid var(--border); }
+.help-toc button {
+  font: inherit; font-size: 12.5px; text-align: left; background: none; border: 0;
+  box-shadow: -2px 0 0 transparent; color: var(--muted); cursor: pointer; padding: 6px 10px;
+  line-height: 1.35; border-radius: 0 8px 8px 0; width: 100%;
 }
-.help-nav button:hover { background: var(--ink-soft); }
-.help-nav button.active { background: var(--primary-soft); }
-.help-nav button.active .ht { color: var(--primary); }
-.help-nav .ht { font-size: 13px; font-weight: 600; }
-.help-nav .hs { font-size: 11px; color: var(--muted); line-height: 1.35; }
-.help-body { padding: 28px 32px 26px; max-width: 780px; }
+.help-toc button:hover { color: var(--th); background: var(--th-bg); box-shadow: -2px 0 0 var(--th); }
+@media (max-width: 1180px) {
+  .help-layout { grid-template-columns: minmax(0, 1fr); }
+  .help-toc { position: static; order: -1; margin-bottom: 12px; }
+  .help-toc ol { flex-direction: row; flex-wrap: wrap; gap: 6px; border-left: 0; }
+  .help-toc button { width: auto; background: var(--th-bg); color: var(--th); border-radius: 999px; padding: 5px 12px; box-shadow: none; }
+}
+/* Le geste : on lit une explication pour FAIRE quelque chose. */
+.help-geste { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 26px 0 2px; padding-top: 18px; border-top: 1px solid var(--border); }
+.help-suite { display: flex; justify-content: space-between; gap: 10px; margin-top: 14px; }
+.help-body { padding: 26px 30px 24px; border-top: 3px solid var(--th); }
+.help-kicker { display: flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .7px; color: var(--th); margin-bottom: 9px; }
+.help-kicker svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.help-body h3 { scroll-margin-top: 12px; }
 .help-body .help-h { font-size: 22px; font-weight: 700; letter-spacing: -.3px; color: var(--text); text-transform: none; margin: 0 0 4px; }
 .help-body .help-sub { color: var(--muted); margin: 0 0 22px; font-size: 14px; }
 .help-body h3 { font-size: 14px; font-weight: 700; margin: 22px 0 6px; color: var(--text); }

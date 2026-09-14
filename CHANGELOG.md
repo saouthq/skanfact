@@ -7,6 +7,46 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 7.27.0 — 14/09/2026
+
+**L'Aide : un plan coloré, un fil qui tient sur une ligne, et un sommaire.**
+
+La 7.23.0 avait remplacé la liste plate de trente-deux titres par sept cartes : on choisit un
+territoire avant de choisir un titre. Les captures ont montré ce que la relecture du code ne
+montrait pas.
+
+**Le fil d'Ariane s'affichait à la verticale, centré au milieu de l'écran**, en tête de chaque
+article, depuis la 7.23.0. `Aide` puis `Vendre et facturer` puis le titre, l'un sous l'autre, sur
+cinq lignes et cent pixels de haut. La cause : le fil était un `<nav>`, et la règle qui range la
+barre latérale en colonne — posée sur l'élément, pas sur une classe — l'emportait sur la sienne.
+Rien en console, aucun test de calcul ne pouvait le voir. Corrigé, et le test le **mesure**
+désormais dans l'application réelle.
+
+**« Article suivant » vivait à l'extrémité droite de la page**, deux cent cinquante pixels à côté de
+la colonne de l'article qu'il prolonge. Il est rentré dedans.
+
+**Ouvrir un thème redessinait la liste des sept thèmes juste en dessous**, celui qu'on venait
+d'ouvrir compris, sans état actif ni moyen de refermer. Il n'y a plus de duplication : l'accueil est
+un **plan**, avec une pastille colorée par domaine et **les trente-deux articles visibles d'un
+coup**, rangés par territoire. Une pastille descend à sa section et la marque. Un plan montre le
+territoire ; il ne le cache pas derrière un clic qui ne promet qu'un nombre.
+
+**Chaque domaine a sa couleur et son dessin** — en clair comme en sombre. Sept cartes grises
+identiques ne distinguaient pas « Ton équipe » d'« Encaisser ».
+
+**Les articles longs ont un sommaire.** Onze intertitres dans « Ta comptabilité mois par mois »,
+sept dans le glossaire et ses cinquante-neuf entrées : on faisait défiler à l'aveugle, sans même
+savoir ce que l'article contenait. Le sommaire se tient à côté du texte, et chaque entrée y mène.
+En dessous de quatre intertitres il n'y en a pas : un sommaire de deux lignes est du bruit.
+
+**La recherche classe ses résultats, et dit pourquoi ils sont là.** Taper « tva » rendait dix-sept
+articles sur trente-deux dans l'ordre où ils sont écrits : « Démarrer : tes premiers pas » arrivait
+premier, et l'article qui porte le mot dans son titre quatrième. Maintenant le titre d'abord, et
+chaque résultat montre son domaine et **l'extrait où le mot se trouve**, surligné.
+
+Et l'écran des mises à jour ne mentionne plus l'ancien jeton d'accès quand il ne sert plus à rien :
+ce n'était ni un réglage à faire ni une information utile.
+
 ## 7.26.1 — 14/09/2026
 
 **Le repli n'est pas un réglage, c'est un réflexe.**

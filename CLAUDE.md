@@ -365,7 +365,7 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:fiches` | **les fiches et les formulaires** : l'étoile des champs obligatoires et le refus qui montre, la fiche article depuis le Catalogue, le catalogue dans un achat, la ligne en immobilisation, les affaires et contrats du client |
 | `npm run e2e:compta` | **la comptabilité mène aux pièces** : les contrôles de clôture armés, les douze mois de TVA cliquables, l'échéance fiscale qu'on pointe et qu'on dépointe, le mouvement qui ouvre sa facture, la carte « Reste à encaisser » |
 | `npm run e2e:metier` | **le métier** : quinze activités sans taux deviné, le régime fiscal posé puis conservé au redessin, les Paramètres qui grisent la TVA et annoncent la mention, le RIB non réclamé à qui encaisse sur place |
-| `npm run e2e:aide` | **l'Aide** : l'accueil par thèmes, un thème qui s'ouvre, le fil d'Ariane, l'article suivant du même thème, le geste qui mène vraiment à sa page, la recherche, et « Comprendre cette page » |
+| `npm run e2e:aide` | **l'Aide, mesurée** : le plan (sept sections, trente-deux articles, sept couleurs), la pastille qui descend à sa section sans dupliquer le plan, le fil d'Ariane sur UNE ligne, « suivant » dans la colonne de l'article, le geste qui mène à sa page, la recherche classée et surlignée, et le sommaire d'un article long (absent d'un article court) |
 | `npm run e2e:colonnes` | **les colonnes alignées** : l'en-tête de chaque colonne de chaque tableau comparé à ses valeurs, sur 19 pages et tous leurs onglets (392 colonnes) |
 | `npm run e2e:entetes` | **les barres d'actions mesurées** : aucun contrôle d'en-tête étiré sur toute la largeur, aucune barre empilée sur trois rangées (21 pages) |
 | `npm run e2e:beta` | **le canal bêta** : la case décochée à l'installation, la question avant de cocher, le refus qui décoche vraiment, la sauvegarde « avant-beta » écrite sur le disque, et le retour en arrière sans question |
@@ -1295,6 +1295,64 @@ rien à configurer ». Deux phrases qui ne peuvent pas être vraies ensemble.
   techniques » ne s'affichait jamais dans le cas le plus courant.
 - Et l'écran **relit l'état de l'application** après une vérification : le repli a pu débrancher le
   relais entre-temps, et sans cette relecture la page continue d'annoncer « rien à configurer ».
+
+## 7.27.0 — L'Aide : ce que la capture montre et que la relecture ne montre pas
+
+Skander : « le ui n'est pas ouf ni le ux donc il faut l'améliorer et le layout est bizarre, fais-moi
+quelque chose d'intuitif, coloré aussi ». Il avait raison sur les trois points, et deux des défauts
+étaient là depuis la 7.23.0 sans que rien ne les signale.
+
+Règles apprises, à ne pas recasser :
+
+- **Une règle posée sur un ÉLÉMENT bat une classe qui ne déclare pas la même propriété.**
+  `nav { display: flex; flex-direction: column }` range la barre latérale ; `.help-fil` déclarait
+  `display: flex` et rien d'autre. Le fil d'Ariane — un `<nav>` — s'est donc affiché **à la
+  verticale, centré**, sur cinq lignes et cent pixels, en tête de chaque article pendant quatre
+  versions. Rien en console, rien dans les tests de calcul, et la relecture du HTML ne peut pas le
+  voir : c'est la même famille que le `th.r` des colonnes (7.23.0) et que `.setup-card` du cabinet
+  (6.8.0). Le fil est un `<div>`, il déclare `flex-direction: row` noir sur blanc, et
+  `npm run e2e:aide` **mesure** le nombre de lignes qu'il occupe.
+- **Deux colonnes de largeurs différentes ne se pilotent pas depuis la page.** `.help-suite`
+  (« article suivant ») était en `justify-content: space-between` sur toute la largeur du contenu,
+  pendant que l'article, lui, était borné à 780 px : le bouton finissait 250 px à droite de la
+  colonne qu'il prolonge. Ce qui appartient à une colonne vit DANS la colonne.
+- **`scrollIntoView` posé pendant le dessin d'une route est effacé une ligne plus loin.** `render()`
+  remet `#view.scrollTop` à zéro APRÈS avoir appelé la route. La pastille s'allumait, la section se
+  marquait en couleur, et la page ne bougeait pas d'un pixel — un bouton qui accepte le clic et n'en
+  fait rien (défaut de la 7.0.0). Le mécanisme qui marche existait déjà : `pageFocus` (7.18.0), qui
+  s'exécute après la remise à zéro et apporte le repère coloré avec lui. **Avant d'écrire un
+  deuxième mécanisme, chercher pourquoi le premier n'a pas servi.**
+- **Un plan montre le territoire ; il ne le cache pas derrière un clic qui ne promet qu'un nombre.**
+  Sept cartes grises annonçant « 7 ARTICLES » obligent à cliquer à l'aveugle pour savoir ce qu'il y
+  a dedans — et la 7.23.0 redessinait en plus la liste ENTIÈRE des sept thèmes sous le thème ouvert,
+  celui-ci compris. Les trente-deux articles sont désormais visibles d'un coup, rangés par domaine.
+- **La couleur d'un thème vit dans la feuille de style, jamais dans le JavaScript** : une couleur
+  écrite dans `guide.js` ne sait pas se retourner en mode sombre. Les deux tables (thèmes dans
+  guide.js, couleurs dans style.css) sont confrontées par un test — deux tables séparées divergent
+  toujours, et un huitième thème naîtrait gris au milieu de sept colorés.
+- **Une recherche qui rend la moitié du corpus doit CLASSER.** « tva » rendait dix-sept articles sur
+  trente-deux dans l'ordre où ils sont écrits dans le fichier : dix-sept titres non classés ne valent
+  pas mieux que les trente-deux qu'ils remplacent. Titre, puis sous-titre, puis corps — et chaque
+  résultat montre l'extrait où le mot se trouve, sinon il n'explique pas pourquoi il est là.
+- **Surligner, c'est découper puis échapper morceau par morceau.** Échapper après avoir posé les
+  `<mark>` les mangerait ; ne pas échapper laisserait passer le corps d'un article en HTML. Un test
+  exige que chaque morceau recollé passe par `h(`.
+- **La règle générale des champs porte quatre `:not(…)` : aucune classe ne la bat.** `.help-search
+  input { padding-left: 41px }` n'a jamais été appliqué, et la loupe se posait SUR la première
+  lettre du texte. C'est l'identifiant (`#aide-q`) qui tranche. Encore une fois : le HTML est juste,
+  c'est la feuille de style qui décide, et **ça ne se voit qu'en regardant**.
+- Piège de test rencontré, et qui a failli passer : `if (apres.scroll <= avant.scroll)` alors que
+  `avant` était un NOMBRE. `0 <= undefined` vaut `false` : l'assertion ne pouvait pas échouer. Trouvé
+  en réintroduisant le défaut qu'elle est censée attraper — jamais autrement.
+- Piège de test rencontré : rejouer l'ancien défaut ne suffit pas quand le correctif est double. Le
+  fil redevenu `<nav>` ne faisait plus tomber l'e2e, parce que `flex-direction: row` le protège
+  désormais ; il faut retirer LES DEUX pour retrouver le défaut d'origine — et c'est ce qui prouve
+  que la ceinture ET les bretelles servent.
+
+Le test qui compte est `npm run e2e:aide` : sept étapes qui **mesurent** le plan (sept sections,
+trente-deux articles, sept couleurs distinctes), la descente vers une section, la hauteur du fil
+d'Ariane, l'alignement des boutons suivant/précédent sur la colonne de l'article, le classement de
+la recherche, et le sommaire d'un article long — qui ne doit pas exister sur un article court.
 
 ## Pistes pour la suite (non demandées)
 

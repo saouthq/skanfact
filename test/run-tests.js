@@ -7205,6 +7205,85 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.ok(/\$\$\('\[data-geste\]'\)\.forEach\(b => b\.onclick/.test(app), 'le bouton du geste n\'est plus branché');
   });
 
+  // ---------- 7.27.0 : la mise en page de l'Aide ----------
+
+  // Une couleur qui n'existe pas ne se voit pas : le thème sort simplement en gris, au milieu de
+  // six autres colorés, et personne ne remarque qu'il manque quelque chose. La table des couleurs
+  // vit dans style.css (le mode sombre l'exige) et la table des thèmes dans guide.js : deux tables
+  // séparées divergent toujours — on les confronte.
+  t('l\'Aide : chaque thème a son dessin et sa couleur, en clair comme en sombre', () => {
+    const G = require('../src/renderer/guide.js');
+    const css = lireSource('src', 'renderer', 'style.css');
+    G.THEMES.forEach(th => {
+      assert.ok(th.icon && /<(path|circle|rect)\b/.test(th.icon), `le thème « ${th.label} » n'a pas de dessin`);
+      const clair = new RegExp(`(^|[^-\\w])\\.th-${th.id}\\b[^{]*\\{[^}]*--th:`, 'm');
+      const sombre = new RegExp(`body\\.dark\\s+\\.th-${th.id}\\b[^{]*\\{[^}]*--th:`, 'm');
+      assert.ok(clair.test(css), `le thème « ${th.label} » n'a pas de couleur dans style.css (.th-${th.id})`);
+      assert.ok(sombre.test(css), `le thème « ${th.label} » n'a pas de couleur en mode sombre (body.dark .th-${th.id})`);
+    });
+    // Et le repli, sans lequel un article sans thème perdrait sa bordure en silence.
+    assert.ok(/body \{ --th: var\(--primary\)/.test(css), 'aucune couleur de repli : un article sans thème n\'aurait pas de bordure');
+  });
+
+  // Le fil d'Ariane s'est affiché VERTICALEMENT, centré au milieu de la page, en tête de chaque
+  // article, de la 7.23.0 à la 7.26.1. Cause : c'était un `<nav>`, et `nav { display: flex;
+  // flex-direction: column }` — la règle de la barre latérale, posée sur l'ÉLÉMENT — battait
+  // `.help-fil` (une classe ne bat pas une déclaration plus précise du même poids sur la même
+  // propriété : ici `.help-fil` ne déclarait tout simplement pas `flex-direction`).
+  // Rien en console, aucun test de calcul : ça ne se voyait que sur une capture.
+  t('l\'Aide : le fil d\'Ariane ne peut pas retomber dans le piège du <nav>', () => {
+    const app = lireApp();
+    const css = lireSource('src', 'renderer', 'style.css');
+    assert.ok(/class="help-fil/.test(app), 'le fil d\'Ariane a disparu de l\'Aide');
+    assert.ok(!/<nav[^>]*help-fil/.test(app),
+      'le fil d\'Ariane est redevenu un <nav> : la règle de la barre latérale va l\'empiler verticalement');
+    // Et la direction est écrite noir sur blanc, pour que la prochaine règle d'élément ne décide
+    // pas à sa place.
+    const bloc = css.slice(css.indexOf('.help-fil {'), css.indexOf('.help-fil {') + 200);
+    assert.ok(/flex-direction: row/.test(bloc), '.help-fil ne déclare pas sa direction');
+  });
+
+  // Le surlignage des résultats de recherche pose des <mark> DANS du texte venu des articles.
+  // Échapper après coup mangerait les balises qu'on vient de poser ; ne pas échapper du tout
+  // laisserait passer le HTML. Chaque morceau se coupe puis s'échappe, un par un.
+  t('l\'Aide : ce qui est surligné dans les résultats reste échappé', () => {
+    const app = lireApp();
+    const i = app.indexOf('function aideSurligne(');
+    assert.ok(i > 0, 'aideSurligne introuvable');
+    const f = app.slice(i, app.indexOf('\n  }', i) + 4);
+    assert.ok(f.length > 300, 'découpage de aideSurligne raté');
+    const morceaux = [...f.matchAll(/(.{2})texte\.slice\(/g)].map(m => m[1]);
+    assert.ok(morceaux.length >= 3, `seulement ${morceaux.length} découpes : la fonction n'est plus celle-là`);
+    morceaux.forEach(avant => assert.strictEqual(avant, 'h(',
+      'un morceau de texte est recollé sans être échappé : le corps d\'un article passerait en HTML'));
+  });
+
+  // Un sommaire ne s'affiche que quand il y a quelque chose à résumer — mais il doit s'afficher là
+  // où il sert. Onze intertitres dans « Ta comptabilité mois par mois », sept dans le glossaire :
+  // sans lui on fait défiler à l'aveugle.
+  t('l\'Aide : les articles longs ont de quoi se résumer', () => {
+    const G = require('../src/renderer/guide.js');
+    const app = lireApp();
+    const m = /AIDE_SOMMAIRE_MIN = (\d+)/.exec(app);
+    assert.ok(m, 'le seuil du sommaire a disparu');
+    const seuil = Number(m[1]);
+    const titres = a => (a.body.match(/<h3>/g) || []).length;
+    // La règle, des deux côtés : un article qu'on ne voit pas d'un écran a son sommaire, et un
+    // article court n'en a pas (trois lignes de sommaire au-dessus de quinze lignes de texte, c'est
+    // du bruit). Les deux bornes sont larges : c'est le seuil qu'on teste, pas la longueur exacte
+    // des articles du jour.
+    G.ARTICLES.forEach(a => {
+      if (a.body.length >= 2800) assert.ok(titres(a) >= seuil,
+        `« ${a.title} » fait ${a.body.length} caractères et n'aurait pas de sommaire (${titres(a)} intertitres pour un seuil de ${seuil})`);
+      if (a.body.length <= 1600) assert.ok(titres(a) < seuil,
+        `« ${a.title} » ne fait que ${a.body.length} caractères et porterait un sommaire : c'est du bruit`);
+    });
+    // Les intertitres reçoivent un identifiant : sans lui, le sommaire ne mène nulle part.
+    assert.ok(/replace\(\/<h3>\/g, \(\) => `<h3 id="art-h-\$\{i\+\+\}">`\)/.test(app),
+      'les intertitres ne reçoivent plus d\'identifiant : les entrées du sommaire ne mènent nulle part');
+    assert.ok(/\$\$\('\[data-h\]'\)\.forEach\(b => b\.onclick/.test(app), 'les entrées du sommaire ne sont plus branchées');
+  });
+
   // ---------- 7.22.0 : le métier ----------
 
   t('l\'interface n\'appelle aucune fonction de core.js qui n\'existe pas', () => {

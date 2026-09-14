@@ -9282,43 +9282,113 @@
   // n'apparaît dans aucun titre.
   let aideQ = '';
   const sansBalises = s => String(s || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+  const aideMots = q => (q || '').toLowerCase().trim().split(/\s+/).filter(Boolean);
+
+  // La recherche CLASSE ses résultats (7.27.0). Taper « tva » rendait dix-sept articles sur
+  // trente-deux, dans l'ordre où ils sont écrits dans guide.js : « Démarrer : tes premiers pas »
+  // arrivait premier, et « TVA, timbre fiscal et retenue à la source » quatrième. Une liste non
+  // classée de dix-sept titres ne vaut pas mieux que la liste des trente-deux qu'elle remplace.
+  // Le titre d'abord, le sous-titre ensuite, le corps en dernier.
   function aideFiltre(arts, q) {
-    const mots = (q || '').toLowerCase().trim().split(/\s+/).filter(Boolean);
+    const mots = aideMots(q);
     if (!mots.length) return arts;
-    return arts.filter(a => {
-      const texte = `${a.title} ${a.sub} ${sansBalises(a.body)}`.toLowerCase();
-      return mots.every(m => texte.includes(m));
+    const notes = [];
+    arts.forEach((a, i) => {
+      const titre = a.title.toLowerCase(), sous = a.sub.toLowerCase();
+      const corps = sansBalises(a.body).toLowerCase();
+      if (!mots.every(m => titre.includes(m) || sous.includes(m) || corps.includes(m))) return;
+      const rang = mots.every(m => titre.includes(m)) ? 0
+        : mots.every(m => `${titre} ${sous}`.includes(m)) ? 1 : 2;
+      notes.push({ a, rang, i });
     });
+    return notes.sort((x, y) => x.rang - y.rang || x.i - y.i).map(x => x.a);
   }
-  const aideListe = arts => arts.length
-    ? arts.map(x => `<button data-art="${x.id}" class="${x.id === aideArticle ? 'active' : ''}"><span class="ht">${h(x.title)}</span><span class="hs">${h(x.sub)}</span></button>`).join('')
-    : '<p class="small muted" style="padding:10px 12px">Aucun article ne contient ces mots. Essaie un seul mot, ou consulte « Le vocabulaire ».</p>';
 
-  // ---------- l'Aide (refonte 7.23.0) ----------
+  // Surligner le mot cherché, sans jamais laisser passer de HTML : on découpe, on échappe chaque
+  // morceau, et on recolle avec des <mark>. Échapper APRÈS aurait mangé les balises qu'on vient de
+  // poser ; échapper AVANT décalerait toutes les positions (« l'» devient « &#39; »).
+  function aideSurligne(texte, mots) {
+    if (!mots.length) return h(texte);
+    const bas = texte.toLowerCase();
+    const coupes = [];
+    mots.forEach(m => { let k = bas.indexOf(m); while (k >= 0) { coupes.push([k, k + m.length]); k = bas.indexOf(m, k + m.length); } });
+    coupes.sort((x, y) => x[0] - y[0]);
+    let out = '', pos = 0;
+    coupes.forEach(([d, f]) => {
+      if (d < pos) return;                          // deux mots qui se chevauchent : on garde le premier
+      out += h(texte.slice(pos, d)) + '<mark>' + h(texte.slice(d, f)) + '</mark>';
+      pos = f;
+    });
+    return out + h(texte.slice(pos));
+  }
+
+  // L'extrait : le bout de phrase où le mot cherché se trouve vraiment. Sans lui, un résultat dont
+  // le mot n'est ni dans le titre ni dans le sous-titre ne dit pas pourquoi il est là.
+  function aideExtrait(a, q) {
+    const mots = aideMots(q);
+    // `sansBalises` remplace chaque balise par une espace : un titre collé à la phrase suivante
+    // donnerait « comptable . La TVA ». On recolle la ponctuation, sinon l'extrait a l'air cassé.
+    const texte = sansBalises(a.body).replace(/\s+([.,)])/g, '$1').trim();
+    const bas = texte.toLowerCase();
+    let i = -1;
+    mots.forEach(m => { const k = bas.indexOf(m); if (k >= 0 && (i < 0 || k < i)) i = k; });
+    if (i < 0) return '';
+    let d = Math.max(0, i - 55);
+    const f = Math.min(texte.length, i + 125);
+    if (d > 0) { const e = texte.indexOf(' ', d); if (e > 0 && e < i) d = e + 1; }
+    return aideSurligne((d > 0 ? '… ' : '') + texte.slice(d, f).trim() + (f < texte.length ? ' …' : ''), mots);
+  }
+
+  // ---------- l'Aide (refonte 7.23.0, mise en page revue en 7.27.0) ----------
   //
-  // Avant : trente-deux titres dans une liste plate, et un pavé de prose à droite. On choisissait un
-  // TITRE sans savoir dans quel territoire chercher, et l'article se terminait par un point — six
-  // liens vers l'application dans 99 Ko de texte, c'est-à-dire un cul-de-sac à chaque fois.
+  // 7.23.0 avait remplacé la liste plate par sept cartes : on choisit un TERRITOIRE avant de
+  // choisir un titre. La capture a montré ce que la relecture ne montrait pas :
   //
-  // Maintenant : un accueil par THÈMES, un article qui dit d'où il vient et où il mène, un GESTE au
-  // bout, et l'article suivant sous la main. La recherche, elle, traverse tout et court-circuite les
-  // thèmes — c'est son rôle.
-  const aideCarte = t => `<button class="help-theme" data-theme="${h(t.id)}">
-      <span class="ht-l">${h(t.label)}</span>
-      <span class="ht-s">${h(t.sub)}</span>
-      <span class="ht-n">${pl(t.articles.length, 'article')}</span>
-    </button>`;
+  //   — les sept cartes étaient identiques, grises, et n'annonçaient que leur NOMBRE d'articles.
+  //     Rien ne distinguait « Ton équipe » d'« Encaisser », et 400 px de vide restaient dessous ;
+  //   — ouvrir un thème redessinait la liste ENTIÈRE des sept thèmes juste en dessous, le thème
+  //     ouvert compris, sans état actif ni moyen de refermer ;
+  //   — le fil d'Ariane s'empilait verticalement au milieu de l'écran (voir plus bas) ;
+  //   — « article suivant » se posait à l'extrémité droite de la PAGE, 250 px à côté de la colonne
+  //     de l'article qu'il prolonge.
+  //
+  // Maintenant : une pastille colorée par thème qui mène à sa section, et les trente-deux articles
+  // visibles d'un coup, rangés et colorés. Un plan montre le territoire ; il ne le cache pas
+  // derrière un clic qui ne promet qu'un nombre.
+  const aideIcone = t => `<svg viewBox="0 0 24 24" aria-hidden="true">${t.icon}</svg>`;
 
-  const aideAccueil = () => `<div class="help-themes">${G.THEMES.map(aideCarte).join('')}</div>`;
+  const aideChip = t => `<button class="help-chip th-${h(t.id)}" data-theme="${h(t.id)}">${aideIcone(t)}${h(t.label)} <span class="hc-n">${t.articles.length}</span></button>`;
 
-  // Un thème déplié : ses articles, en clair, avec leur sous-titre.
-  const aideThemeOuvert = t => `<div class="panel help-theme-open">
-      <h2>${h(t.label)}</h2><p class="small muted">${h(t.sub)}</p>
+  const aideSection = t => `<section class="help-sec th-${h(t.id)}" id="sec-${h(t.id)}" data-sec="${h(t.id)}">
+      <header>
+        <span class="hs-ico">${aideIcone(t)}</span>
+        <div class="hs-t"><h2>${h(t.label)}</h2><p class="hs-s">${h(t.sub)}</p></div>
+        <span class="hs-n">${pl(t.articles.length, 'article')}</span>
+      </header>
       <div class="help-arts">${t.articles.map(id => {
         const a = G.ARTICLES.find(x => x.id === id);
-        return a ? `<button data-art="${h(a.id)}" class="help-art"><span class="ht">${h(a.title)}</span><span class="hs">${h(a.sub)}</span></button>` : '';
+        return a ? `<button class="help-art" data-art="${h(a.id)}"><span class="ht">${h(a.title)}</span><span class="hs">${h(a.sub)}</span></button>` : '';
       }).join('')}</div>
-    </div>`;
+    </section>`;
+
+  const aideAccueil = () => `<div class="help-rail">${G.THEMES.map(aideChip).join('')}</div>
+    <div class="help-secs">${G.THEMES.map(aideSection).join('')}</div>`;
+
+  // Le sommaire d'un article long. Onze intertitres dans « Ta comptabilité mois par mois », sept
+  // dans le glossaire et ses cinquante-neuf entrées : sans sommaire on fait défiler à l'aveugle, et
+  // on ne sait même pas ce que l'article contient avant de l'avoir lu en entier. En dessous de
+  // quatre intertitres il n'y a rien à résumer — un sommaire de deux lignes est du bruit.
+  const AIDE_SOMMAIRE_MIN = 4;
+  function aideCorps(a) {
+    const titres = [...a.body.matchAll(/<h3>([\s\S]*?)<\/h3>/g)].map(m => sansBalises(m[1]).trim());
+    let i = 0;
+    const corps = a.body.replace(/<h3>/g, () => `<h3 id="art-h-${i++}">`);
+    const sommaire = titres.length >= AIDE_SOMMAIRE_MIN
+      ? `<aside class="help-toc"><div class="tt">Dans cet article</div><ol>${titres
+        .map((t, k) => `<li><button data-h="art-h-${k}">${h(t)}</button></li>`).join('')}</ol></aside>`
+      : '';
+    return { corps, sommaire };
+  }
 
   routes.aide = (parts) => {
     const arts = G.ARTICLES;
@@ -9343,8 +9413,9 @@
     $('#view').innerHTML = `
       <div class="page-head"><h1>Aide</h1>
         <div class="actions">${backButton('#/dashboard', 'aide')}<button class="btn" id="aide-support">Signaler un problème</button><button class="btn" id="aide-changelog">Nouveautés de la version</button></div></div>
-      <p class="lead">Comment marche SkanFact, et comment tenir la gestion d'une petite entreprise sans rien oublier. Partout dans l'application, les petits <span class="i-demo">i</span> expliquent le champ juste à côté, et le <b>?</b> en haut de chaque page ouvre l'article de cette page.</p>
+      ${a ? '' : `<p class="lead">Comment marche SkanFact, et comment tenir la gestion d'une petite entreprise sans rien oublier. Cherche un mot, ou choisis un domaine. Partout ailleurs dans l'application, les petits <span class="i-demo">i</span> expliquent le champ juste à côté, et le <b>?</b> en haut de chaque page ouvre l'article de cette page.</p>`}
       <div class="help-search">
+        <svg class="hs-loupe" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20.5 20.5l-4.2-4.2"/></svg>
         <input type="search" id="aide-q" placeholder="Rechercher : un mot, une question… (« assiette », « relance », « timbre »)" autocomplete="off" spellcheck="false" value="${h(aideQ)}">
         <div class="help-count small muted" id="aide-n" hidden></div>
       </div>
@@ -9353,41 +9424,63 @@
 
     const vue = $('#aide-vue');
     if (a) {
+      const { corps, sommaire } = aideCorps(a);
+      // Le fil d'Ariane est un <div>, plus un <nav>. C'était un <nav> depuis la 7.23.0, et
+      // `nav { display: flex; flex-direction: column }` — la règle de la barre latérale, posée sur
+      // l'ÉLÉMENT — l'emportait sur `.help-fil`. Résultat : « Aide › Vendre et facturer › Le
+      // devis » s'empilait verticalement, centré au milieu de la page, en tête de CHAQUE article.
+      // Rien en console, rien dans les tests : ça ne se voit que sur une capture.
       vue.innerHTML = `
-        <nav class="help-fil small">
-          <button data-home="1">Aide</button> ›
-          ${theme ? `<button data-theme="${h(theme.id)}">${h(theme.label)}</button> › ` : ''}
+        <div class="help-fil small">
+          <button data-home="1">Aide</button><span class="sep">›</span>
+          ${theme ? `<button data-theme="${h(theme.id)}">${h(theme.label)}</button><span class="sep">›</span>` : ''}
           <span>${h(a.title)}</span>
-        </nav>
-        <article class="panel help-body">
-          <h2 class="help-h">${h(a.title)}</h2>
-          <p class="help-sub">${h(a.sub)}</p>
-          ${a.body}
-          ${geste ? `<div class="help-geste"><button class="btn btn-primary" data-geste="${h(geste.hash)}">${h(geste.label)}</button>
-            <span class="small muted">On lit une explication pour faire quelque chose.</span></div>` : ''}
-          <p class="small muted help-foot">Une question de fiscalité ou de comptabilité que cette aide ne tranche pas ? Elle est pour ton comptable : lui seul connaît ta situation et la réglementation en vigueur.</p>
-        </article>
-        <div class="help-suite">
-          ${precedent ? `<button class="btn btn-ghost" data-art="${h(precedent.id)}">← ${h(precedent.title)}</button>` : '<span></span>'}
-          ${suivant ? `<button class="btn" data-art="${h(suivant.id)}">${h(suivant.title)} →</button>` : '<span></span>'}
+        </div>
+        <div class="help-layout${sommaire ? '' : ' seul'}${theme ? ' th-' + h(theme.id) : ''}">
+          <div class="help-col">
+            <article class="panel help-body">
+              ${theme ? `<div class="help-kicker">${aideIcone(theme)}${h(theme.label)}</div>` : ''}
+              <h2 class="help-h">${h(a.title)}</h2>
+              <p class="help-sub">${h(a.sub)}</p>
+              ${corps}
+              ${geste ? `<div class="help-geste"><button class="btn btn-primary" data-geste="${h(geste.hash)}">${h(geste.label)}</button>
+                <span class="small muted">On lit une explication pour faire quelque chose.</span></div>` : ''}
+              <p class="small muted help-foot">Une question de fiscalité ou de comptabilité que cette aide ne tranche pas ? Elle est pour ton comptable : lui seul connaît ta situation et la réglementation en vigueur.</p>
+            </article>
+            <div class="help-suite">
+              ${precedent ? `<button class="btn btn-ghost" data-art="${h(precedent.id)}">← ${h(precedent.title)}</button>` : '<span></span>'}
+              ${suivant ? `<button class="btn" data-art="${h(suivant.id)}">${h(suivant.title)} →</button>` : '<span></span>'}
+            </div>
+          </div>
+          ${sommaire}
         </div>`;
     }
 
     // Un seul endroit pour brancher ce qui mène quelque part : la vue se redessine souvent (accueil,
-    // thème ouvert, article, résultats de recherche) et un branchement oublié fait un bouton mort.
+    // article, résultats de recherche) et un branchement oublié fait un bouton mort.
     const brancher = () => {
       $$('[data-art]').forEach(b => b.onclick = () => { aideQ = ''; navigate('#/aide/' + b.dataset.art); });
-      $$('[data-theme]').forEach(b => b.onclick = () => {
-        const t = G.THEMES.find(x => x.id === b.dataset.theme);
-        if (!t) return;
-        aideArticle = '';
-        $('#aide-vue').innerHTML = aideThemeOuvert(t) + aideAccueil();
-        brancher();
-      });
-      $$('[data-home]').forEach(b => b.onclick = () => { aideQ = ''; navigate('#/aide'); });
+      // Un thème n'ouvre plus un panneau par-dessus la liste : il EMMÈNE à sa section. `vers`
+      // redessine même quand le hash ne change pas (on peut déjà être sur `#/aide`), sans quoi le
+      // clic serait avalé en silence — le piège de la 7.15.0.
+      $$('[data-theme]').forEach(b => b.onclick = vers('#/aide', () => { aideQ = ''; pageFocus = 'sec-' + b.dataset.theme; }));
+      $$('[data-home]').forEach(b => b.onclick = vers('#/aide', () => { aideQ = ''; pageFocus = ''; }));
       $$('[data-geste]').forEach(b => b.onclick = () => navigate(b.dataset.geste));
+      // Le sommaire, lui, ne redessine rien : la page est déjà là, on descend dedans.
+      $$('[data-h]').forEach(b => b.onclick = () => {
+        const el = document.getElementById(b.dataset.h);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
     };
     brancher();
+
+    // Descendre à la section demandée : c'est `pageFocus` (7.18.0) qui le fait, et pas ce code-ci.
+    // Raison, apprise ici : `render()` remet `#view.scrollTop` à zéro APRÈS avoir appelé la route.
+    // Un défilement posé pendant le dessin est donc effacé une ligne plus loin — la pastille
+    // s'allumait, la section se marquait, et la page ne bougeait pas d'un pixel, c'est-à-dire le
+    // défaut de la 7.0.0 : un bouton qui accepte le clic et n'en fait rien. `pageFocus` s'exécute
+    // après la remise à zéro, et il apporte le repère coloré avec lui.
+    // Trouvé par `npm run e2e:aide`, qui MESURE la position de la section après le clic.
 
     const q = $('#aide-q');
     const chercher = () => {
@@ -9398,10 +9491,21 @@
       $('#aide-vue').hidden = !!mots;
       if (!mots) { brancher(); return; }
       const trouves = aideFiltre(arts, aideQ);
-      n.textContent = `${pl(trouves.length, 'article')} sur ${arts.length}`;
+      const surligne = aideMots(aideQ);
+      n.textContent = trouves.length
+        ? `${pl(trouves.length, 'article')} sur ${arts.length}, le plus proche en premier`
+        : `Aucun article sur ${arts.length}`;
       res.innerHTML = trouves.length
-        ? `<div class="panel"><div class="help-arts">${trouves.map(x => `<button data-art="${h(x.id)}" class="help-art"><span class="ht">${h(x.title)}</span><span class="hs">${h(x.sub)}</span></button>`).join('')}</div></div>`
-        : '<div class="empty">Aucun article ne contient ces mots. Essaie un seul mot, ou ouvre « Le vocabulaire ».</div>';
+        ? `<div class="help-arts help-res">${trouves.map(x => {
+          const t = G.themeOf(x.id);
+          const ex = aideExtrait(x, aideQ);
+          return `<button class="help-art${t ? ' th-' + h(t.id) : ''}" data-art="${h(x.id)}">
+              ${t ? `<span class="hth">${h(t.label)}</span>` : ''}
+              <span class="ht">${aideSurligne(x.title, surligne)}</span>
+              <span class="hs">${ex || aideSurligne(x.sub, surligne)}</span></button>`;
+        }).join('')}</div>`
+        : `<div class="empty"><p>Aucun article ne contient ces mots. Essaie un seul mot — ou ouvre le glossaire, qui définit les cinquante-neuf termes employés dans l'application.</p>
+            <button class="btn btn-primary" data-art="vocabulaire">Ouvrir « Le vocabulaire »</button></div>`;
       brancher();
     };
     q.oninput = chercher;
@@ -9657,7 +9761,10 @@
     // Remettre le dépôt en privé aurait alors donné un cul-de-sac : l'écran aurait écrit « colle
     // ton jeton ci-dessous » au-dessus de rien du tout.
     const tokenBlock = a.relay
-      ? `<p class="small muted mt">Les mises à jour arrivent toutes seules : rien à configurer sur cet ordinateur.${a.hasToken ? ' <span class="muted">(Un ancien jeton est encore enregistré ; il ne sert plus.)</span>' : ''}</p>`
+      // Un vieux jeton peut traîner sur le poste (le dépôt a été privé). Il ne sert plus à rien et
+      // il n'est plus lu : le dire ici n'apprend rien à personne et donne l'air d'un réglage à
+      // faire. On ne le mentionne QUE là où on peut le retirer — les deux autres branches.
+      ? `<p class="small muted mt">Les mises à jour arrivent toutes seules : rien à configurer sur cet ordinateur.</p>`
       : a.private ? relayNote + `<div class="token-box">
       <div class="k-label">Jeton d'accès au dépôt</div>
       <p class="small muted">SkanFact est distribué depuis un dépôt <b>privé</b> : un jeton de lecture est nécessaire pour recevoir les mises à jour. Il reste sur cet ordinateur et n'est envoyé à personne d'autre qu'à GitHub. ${info('upd.token')}</p>
