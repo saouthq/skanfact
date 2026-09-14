@@ -7,6 +7,71 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 7.23.0 — 14/09/2026
+
+**Les colonnes qui ne s'alignaient pas, les boutons empilés, un bouton mort — et l'Aide refondue.**
+
+### Les colonnes désalignées
+
+Signalé sur la page Stock : « En stock », « Seuil » et « À commander » étaient écrits **à gauche**
+au-dessus de chiffres écrits **à droite**. L'en-tête finissait quatre-vingts pixels à gauche de sa
+propre valeur, et on lisait la ligne de travers.
+
+La cause n'était pas dans le HTML — `<th class="r">` est écrit correctement, **153 fois**. Elle était
+dans la **spécificité CSS** : `table.list th` (une classe, deux éléments) l'emporte sur `th.r` (une
+classe, un élément), donc l'alignement à droite de l'en-tête n'était jamais appliqué. Les deux
+applications partagent cette feuille : **139 colonnes sur 338** étaient concernées.
+
+`npm run e2e:colonnes` **mesure** désormais, dans l'application réelle, l'alignement de chaque
+colonne de chaque tableau sur dix-neuf pages et tous leurs onglets — **392 colonnes**. Relire le HTML
+ne pouvait pas montrer ce défaut ; comparer deux règles CSS séparées de deux cents lignes, difficilement.
+
+### Les boutons empilés
+
+`flex-wrap: wrap`, posé en 7.18.0 pour éviter un débordement à 1280 px, a fabriqué pire : la cellule
+d'actions vaut `width: 1%`, donc le navigateur lui donne sa largeur **minimale** — et la largeur
+minimale d'un conteneur qui peut passer à la ligne, c'est celle d'**un seul bouton**. Les cinq boutons
+s'empilaient verticalement sur chaque ligne.
+
+Retour à une seule ligne, et le vrai fond du problème traité : **un bouton de moins**. L'icône
+« ⧉ » (dupliquer) quitte les lignes de documents — c'était le seul sans libellé, celui qui débordait,
+et celui qui était collé à « Refusé ✕ ». Dupliquer reste disponible depuis la pièce elle-même.
+`npm run e2e:contraste` : 499 boutons mesurés, aucun hors de l'écran.
+
+### Le bouton « Modifier » qui ne faisait rien
+
+Stock → Numéros de série : `serialForm` appelait `clientItems`, une fonction déclarée **localement**
+dans deux autres formulaires et absente ici. Le clic levait une `ReferenceError` pendant la
+construction de la fenêtre : la fenêtre ne s'ouvrait pas, le bouton paraissait simplement mort, et
+rien n'apparaissait dans la console. Une seule définition, au niveau du module.
+
+Et le contrôle qui manquait : le détecteur d'appels à des fonctions inexistantes existait depuis la
+6.8.0 — **pour l'app cabinet seulement**. L'application principale, celle qui a le plus de code, n'y
+était pas. Elle y est.
+
+### L'Aide, refondue
+
+Trente-deux articles, 99 Ko de texte, **six liens** vers l'application dans tout ça : ce n'était pas
+une aide, c'était un livre. Une liste plate de trente-deux titres, et un pavé de prose à droite.
+
+- **Un accueil par thèmes** : sept territoires — Commencer, Vendre et facturer, Encaisser, Acheter et
+  stocker, Déclarer et clôturer, Ton équipe, Piloter et protéger. On choisit un domaine avant de
+  choisir un titre. Un test vérifie que chaque article appartient à un thème **et un seul**.
+- **Chaque article finit par un geste**, pas par un point : « Voir mes devis », « Aller aux clôtures ».
+  Vingt-neuf articles sur trente-deux en ont un, et un test vérifie que chacun mène à une vraie page.
+  Les trois exceptions sont volontaires : on ne renvoie nulle part depuis un glossaire.
+- **Un fil d'Ariane** (Aide › Thème › Article) et l'**article suivant de son thème** sous la main :
+  on lit un domaine, on ne saute pas de la paie au stock.
+- La **recherche** traverse tout et court-circuite les thèmes — c'est son rôle.
+- La table page → article vivait **en double**, dans app.js et dans guide.js. Elle vit à côté des
+  articles qu'elle désigne : deux tables divergent toujours.
+
+Défaut trouvé par le parcours réel et corrigé : arriver sur un article alors qu'une recherche
+traînait en mémoire relançait le filtrage au dessin, et la page s'ouvrait **blanche** — le conteneur
+qui porte l'article repartait caché.
+
+292 tests, `npm run e2e:aide` et `npm run e2e:colonnes` en plus.
+
 ## 7.22.0 — 14/09/2026
 
 **Le métier : quinze activités, un régime fiscal, et la facture qui porte le bon nom.**

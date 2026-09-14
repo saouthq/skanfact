@@ -364,6 +364,8 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:fiches` | **les fiches et les formulaires** : l'étoile des champs obligatoires et le refus qui montre, la fiche article depuis le Catalogue, le catalogue dans un achat, la ligne en immobilisation, les affaires et contrats du client |
 | `npm run e2e:compta` | **la comptabilité mène aux pièces** : les contrôles de clôture armés, les douze mois de TVA cliquables, l'échéance fiscale qu'on pointe et qu'on dépointe, le mouvement qui ouvre sa facture, la carte « Reste à encaisser » |
 | `npm run e2e:metier` | **le métier** : quinze activités sans taux deviné, le régime fiscal posé puis conservé au redessin, les Paramètres qui grisent la TVA et annoncent la mention, le RIB non réclamé à qui encaisse sur place |
+| `npm run e2e:aide` | **l'Aide** : l'accueil par thèmes, un thème qui s'ouvre, le fil d'Ariane, l'article suivant du même thème, le geste qui mène vraiment à sa page, la recherche, et « Comprendre cette page » |
+| `npm run e2e:colonnes` | **les colonnes alignées** : l'en-tête de chaque colonne de chaque tableau comparé à ses valeurs, sur 19 pages et tous leurs onglets (392 colonnes) |
 
 Ils ont longtemps vécu dans un dossier de travail temporaire, effacé à chaque session : il fallait les réécrire de mémoire, et ils dérivaient (une assertion restée sur une version périmée, un écran neuf jamais parcouru). **Un test qu'on doit réécrire pour s'en servir n'est pas un test.** Le harnais (`test/e2e/harnais.js`) trouve Playwright où il est, lit la version dans `package.json` au lieu de l'écrire en dur, et range les captures dans `dist-e2e/` (ignoré par Git).
 
@@ -1112,6 +1114,41 @@ Règles apprises, à ne pas recasser :
 - Piège de test : vérifier le taux sous UN seul régime laisserait l'ancienne règle intacte. Le test
   prend le **même métier** sous les deux régimes — c'est la seule façon de prouver que le métier ne
   décide plus.
+
+## 7.23.0 — Ce qui se mesure, et l'Aide qu'on peut parcourir
+
+Quatre signalements de Skander sur captures d'écran, et une refonte. Règles apprises :
+
+- **Un `<th class="r">` correct ne garantit pas un en-tête aligné à droite.** `table.list th` (une
+  classe, deux éléments) l'emporte sur `th.r` (une classe, un élément) : l'alignement n'était jamais
+  appliqué, sur **139 colonnes de 338**, dans les deux applications. Relire le HTML ne pouvait pas le
+  montrer. `npm run e2e:colonnes` **mesure** l'alignement calculé de chaque en-tête contre celui de
+  ses cellules — c'est la méthode de la 6.8.0 (« mesurer dans l'application réelle »), appliquée aux
+  tableaux.
+- **`flex-wrap: wrap` dans une cellule en `width: 1%` empile tout.** La largeur minimale d'un
+  conteneur qui peut passer à la ligne, c'est celle d'un seul élément : les cinq boutons d'action se
+  sont donc empilés verticalement. Corriger un débordement par le passage à la ligne fabrique un
+  empilement ; le vrai remède est **un bouton de moins**. Celui qui part est le seul sans libellé.
+- **Un `if (x)` muet autour d'un geste transforme une erreur en bouton mort.** Et l'erreur, ici,
+  n'était même pas là : `serialForm` appelait `clientItems`, déclarée LOCALEMENT dans deux autres
+  formulaires. ReferenceError pendant la construction du gabarit, fenêtre qui ne s'ouvre pas, console
+  vide. Le détecteur d'appels inexistants existait depuis la 6.8.0 **pour le cabinet seulement** —
+  l'application principale, la plus grosse, n'y était pas. Une règle apprise d'un côté se vérifie de
+  l'autre (règle 7.3.0), et celle-ci ne l'avait jamais été.
+- **Mon propre test sautait une page en silence.** `colonnes.js` visait `#stk-tabs` là où
+  l'application écrit `#st-tabs`, avec un `.catch(() => {})` par-dessus : il annonçait « 338 colonnes
+  mesurées » sans avoir ouvert un seul onglet du Stock. Un sélecteur annoncé et introuvable doit faire
+  **tomber** le test. Après correction : 392 colonnes.
+- **Une aide n'est pas un livre.** Trente-deux titres dans une liste plate et 99 Ko de prose : on
+  choisit un TERRITOIRE avant de choisir un titre, et chaque article finit par un **geste** — six
+  liens vers l'application dans tout le corpus, c'était un cul-de-sac à chaque fois.
+- **Une table en double diverge toujours.** `PAGE_AIDE` vivait dans app.js et `PAR_PAGE` dans
+  guide.js. Elle vit désormais à côté des articles qu'elle désigne, et le test lit l'OBJET au lieu
+  d'une expression régulière sur du texte.
+- **Un état de recherche qui survit à la navigation peut cacher la page d'arrivée.** Arriver sur un
+  article alors qu'une recherche traînait relançait le filtrage au dessin : le conteneur qui PORTE
+  l'article repartait caché, et la page s'ouvrait blanche. Demander une chose précise efface le
+  filtre. Trouvé par l'e2e, invisible à la lecture.
 
 ## Pistes pour la suite (non demandées)
 

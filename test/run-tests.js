@@ -4304,6 +4304,7 @@ const GLOBAUX = new Set([
   'encodeURIComponent', 'decodeURIComponent', 'encodeURI', 'decodeURI',
   'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'requestAnimationFrame',
   'alert', 'confirm', 'prompt', 'fetch', 'structuredClone', 'queueMicrotask', 'require', 'async',
+  'matchMedia',   // window.matchMedia — le thème « auto » suit le réglage du système
   // Côté processus principal (Node). Seuls les noms qui commencent par une minuscule peuvent être
   // signalés par le détecteur — les constructeurs (Buffer, URL, TextEncoder…) ne le sont jamais.
   'setImmediate', 'clearImmediate', 'process', 'globalThis'
@@ -4352,10 +4353,19 @@ t('cabinet : aucun de ses fichiers n\'appelle une fonction qui n\'existe pas', (
   // attraper, déjà survenu une fois) dans un handler IPC ne se manifeste que le jour où un
   // comptable clique : « Impossible d'importer », sans autre explication, et personne ne peut le
   // reproduire avant d'avoir installé l'application.
+  // 7.22.1 : l'app ENTREPRISE manquait à cette liste — c'est-à-dire l'application principale, et
+  // celle qui a le plus de code. Elle y est entrée après ce défaut : `serialForm` appelait
+  // `clientItems`, une fonction déclarée LOCALEMENT dans deux autres formulaires et absente ici.
+  // « Modifier » sur un numéro de série levait une ReferenceError pendant la construction de la
+  // fenêtre : la fenêtre ne s'ouvrait pas, le bouton paraissait simplement mort, et rien
+  // n'apparaissait dans la console de l'utilisateur. Une règle apprise d'un côté se vérifie de
+  // l'autre (règle 7.3.0) — celle-ci ne l'avait jamais été.
   [
     'src/cabinet/renderer/app.js', 'src/cabinet/cabcore.js', 'src/cabinet/renderer/cabguide.js',
     'src/cabinet/cabstore.js', 'src/cabinet/main.js', 'src/cabinet/preload.js',
-    'src/main.js', 'src/preload.js'
+    'src/main.js', 'src/preload.js',
+    'src/renderer/app.js', 'src/renderer/core.js', 'src/renderer/guide.js',
+    'src/renderer/onboarding.js', 'src/renderer/demo.js', 'src/storage.js', 'src/zip.js', 'src/licence.js'
   ].forEach(f => {
     const src = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
     assert.deepStrictEqual(appelsNonDefinis(src), [], `${f} appelle une fonction qui n'existe pas`);
@@ -5324,10 +5334,13 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     const app = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
     const ids = new Set(guide.ARTICLES.map(a => a.id));
 
-    const bloc = app.slice(app.indexOf('const PAGE_AIDE = {'), app.indexOf('function poserLienAide'));
-    assert.ok(bloc.length > 200, 'PAGE_AIDE introuvable');
-    const paires = [...bloc.matchAll(/(\w+):\s*'([a-z-]+)'/g)].map(m => [m[1], m[2]]);
-    assert.ok(paires.length >= 20, `PAGE_AIDE ne couvre que ${paires.length} pages`);
+    // La table vit maintenant dans guide.js, à côté des articles qu'elle désigne (7.23.0) : elle
+    // était en double avec app.js, et deux tables divergent toujours. On lit donc l'OBJET plutôt
+    // qu'une expression régulière sur du texte — et on vérifie que l'interface s'en sert vraiment.
+    assert.ok(/const id = G\.PAR_PAGE\[route\];/.test(app), 'l\'interface ne lit plus la table de guide.js');
+    assert.ok(!app.includes('const PAGE_AIDE'), 'la table est revenue en double dans app.js');
+    const paires = Object.entries(guide.PAR_PAGE);
+    assert.ok(paires.length >= 20, `PAR_PAGE ne couvre que ${paires.length} pages`);
     paires.forEach(([page, art]) => assert.ok(ids.has(art),
       `la page « ${page} » renvoie à l'article « ${art} », qui n'existe pas`));
 
@@ -6868,6 +6881,51 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   });
 
   // ---------- 7.21.1 : l'installeur Windows ----------
+
+  // ---------- 7.23.0 : l'Aide ----------
+
+  t('l\'Aide range ses trente-deux articles en thèmes, sans en perdre ni en dupliquer', () => {
+    const G = require('../src/renderer/guide.js');
+    const ids = G.ARTICLES.map(a => a.id);
+    const classes = G.THEMES.flatMap(t => t.articles);
+    // Une liste écrite à la main dérive au premier article ajouté : on confronte les DEUX sens.
+    const orphelins = ids.filter(x => !classes.includes(x));
+    assert.deepStrictEqual(orphelins, [], `ces articles n'appartiennent à aucun thème : ${orphelins.join(', ')}`);
+    const fantomes = classes.filter(x => !ids.includes(x));
+    assert.deepStrictEqual(fantomes, [], `ces thèmes citent un article inexistant : ${fantomes.join(', ')}`);
+    const doublons = classes.filter((x, i) => classes.indexOf(x) !== i);
+    assert.deepStrictEqual(doublons, [], `ces articles sont dans deux thèmes : ${doublons.join(', ')}`);
+    assert.ok(G.THEMES.length >= 5 && G.THEMES.length <= 9, `${G.THEMES.length} thèmes : trop peu ou trop`);
+    G.THEMES.forEach(t => {
+      assert.ok(t.id && t.label && t.sub, `le thème « ${t.id} » est incomplet`);
+      assert.ok(t.articles.length, `le thème « ${t.label} » est vide`);
+    });
+    // Et `themeOf` retrouve bien le thème de chaque article — c'est lui qui dessine le fil d'Ariane.
+    ids.forEach(id => assert.ok(G.themeOf(id), `themeOf ne retrouve pas le thème de « ${id} »`));
+  });
+
+  t('chaque article de l\'Aide finit par un geste qui mène quelque part', () => {
+    const G = require('../src/renderer/guide.js');
+    const app = lireApp();
+    const ids = new Set(G.ARTICLES.map(a => a.id));
+    const routes = new Set(core.PAGES.map(p => p.hash || '#/' + p.id));
+    const gestes = Object.entries(G.GESTES);
+    assert.ok(gestes.length >= 25, `seulement ${gestes.length} gestes : la plupart des articles restent des culs-de-sac`);
+    gestes.forEach(([art, g]) => {
+      assert.ok(ids.has(art), `un geste est posé sur « ${art} », qui n'est pas un article`);
+      assert.ok(g.label && g.hash, `le geste de « ${art} » est incomplet`);
+      // Le vrai piège : un bouton qui mène à une adresse qui n'existe pas ne plante pas, il
+      // dépose sur le tableau de bord — et on croit s'être trompé de bouton.
+      assert.ok(routes.has(g.hash), `le geste de « ${art} » mène à « ${g.hash} », qui n'est pas une page`);
+    });
+    // Trois articles n'en ont volontairement pas : on ne renvoie nulle part depuis un glossaire.
+    const sans = [...ids].filter(id => !G.GESTES[id]);
+    assert.deepStrictEqual(sans.sort(), ['raccourcis', 'support', 'vocabulaire'],
+      `ces articles n'ont pas de geste : ${sans.join(', ')}`);
+    // Et l'interface les arme : une table sans appelant est une table morte (règle 7.2.0).
+    assert.ok(/data-geste="\$\{h\(geste\.hash\)\}"/.test(app), 'le bouton du geste n\'est plus dessiné');
+    assert.ok(/\$\$\('\[data-geste\]'\)\.forEach\(b => b\.onclick/.test(app), 'le bouton du geste n\'est plus branché');
+  });
 
   // ---------- 7.22.0 : le métier ----------
 

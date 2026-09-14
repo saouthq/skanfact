@@ -309,6 +309,15 @@ table.list tr:last-child td { border-bottom: none; }
 table.list tr.clickable { cursor: pointer; }
 table.list tr.clickable:hover td { background: #f7fbfa; }
 td.r, th.r { text-align: right; font-variant-numeric: tabular-nums; }
+/* Un piège de SPÉCIFICITÉ, vieux comme les tableaux de l'application. `table.list th` (une classe,
+   deux éléments) l'emporte sur `th.r` (une classe, un élément) : l'en-tête restait donc aligné à
+   GAUCHE au-dessus d'une colonne de chiffres alignés à DROITE. « En stock » finissait 80 px à
+   gauche de sa propre valeur, et on lisait la ligne de travers. 153 en-têtes étaient concernés,
+   dans les deux applications — elles partagent cette feuille.
+   On ne peut pas le voir en relisant `<th class="r">` : il faut MESURER dans l'application réelle,
+   ce que fait `npm run e2e:colonnes`. */
+table.list th.r, table.lines-edit th.r, table.mini th.r { text-align: right; }
+table.lines-edit th.c, table.list th.c, table.mini th.c { text-align: center; }
 .nw { white-space: nowrap; }
 td.actions { white-space: nowrap; text-align: right; }
 .empty { padding: 48px 24px; text-align: center; color: var(--muted); background: var(--panel); border: 1px dashed #d5dbe3; border-radius: var(--radius); }
@@ -649,7 +658,13 @@ td.row-actions { text-align: right; width: 1%; }
 /* Les boutons de ligne restent visibles, en retrait, et reprennent leur pleine opacité au survol.
    Cachés jusqu'au survol (audit), ils étaient introuvables sur les listes de documents et de clients
    alors qu'ils étaient toujours affichés partout ailleurs. */
-td.row-actions > span { display: inline-flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; opacity: .7; transition: opacity .12s; }
+/* `flex-wrap: wrap` (7.18.0) devait éviter un débordement à 1280 px. Il a fabriqué pire : la
+   cellule vaut `width: 1%`, donc le navigateur lui donne sa largeur MINIMALE — et la largeur
+   minimale d'un conteneur qui peut passer à la ligne, c'est celle d'un seul bouton. Les cinq
+   boutons se sont donc empilés verticalement sur chaque ligne, et les lignes ont triplé de hauteur.
+   En `nowrap`, la largeur minimale redevient la somme des boutons : une seule ligne, comme avant.
+   Le débordement, lui, se mesure — `npm run e2e:contraste` refuse tout bouton hors de l'écran. */
+td.row-actions > span { display: inline-flex; flex-wrap: nowrap; justify-content: flex-end; gap: 4px; opacity: .7; transition: opacity .12s; }
 tr:hover td.row-actions > span, tr:focus-within td.row-actions > span { opacity: 1; }
 th.row-actions-h { width: 1%; }
 .badge.expiré { background: var(--warning-soft); color: var(--warning); }
@@ -885,6 +900,37 @@ td.line-tools .btn:hover:not(:disabled) { color: var(--text); }
 
 /* ---------- Aide ---------- */
 .lead { font-size: 15px; color: var(--muted); max-width: 760px; margin: -6px 0 20px; line-height: 1.55; }
+/* ---- l'Aide refondue (7.23.0) ----
+   On choisit un TERRITOIRE avant de choisir un titre : sept cartes plutôt que trente-deux lignes. */
+.help-search { max-width: 620px; margin: 0 0 18px; }
+.help-search input { width: 100%; }
+.help-search .help-count { padding: 6px 2px 0; }
+.help-themes { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+.help-theme {
+  display: flex; flex-direction: column; gap: 6px; text-align: left; cursor: pointer;
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 18px 18px 16px; transition: border-color .12s, box-shadow .12s, transform .12s;
+}
+.help-theme:hover { border-color: var(--primary); box-shadow: 0 6px 22px rgba(20, 40, 60, .07); transform: translateY(-1px); }
+.help-theme .ht-l { font-size: 15px; font-weight: 700; color: var(--text); }
+.help-theme .ht-s { font-size: 13px; color: var(--muted); line-height: 1.5; }
+.help-theme .ht-n { font-size: 11px; font-weight: 700; color: var(--primary); text-transform: uppercase; letter-spacing: .6px; margin-top: 2px; }
+.help-theme-open { margin-bottom: 16px; }
+.help-arts { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 8px; margin-top: 10px; }
+.help-art {
+  display: flex; flex-direction: column; gap: 2px; text-align: left; cursor: pointer;
+  background: transparent; border: 1px solid var(--border); border-radius: 10px; padding: 11px 13px;
+}
+.help-art:hover { background: var(--primary-soft); border-color: var(--primary); }
+.help-art .ht { font-size: 13.5px; font-weight: 650; color: var(--text); }
+.help-art .hs { font-size: 12px; color: var(--muted); line-height: 1.4; }
+/* Le fil d'Ariane : d'où vient cet article, et comment remonter d'un cran. */
+.help-fil { display: flex; align-items: center; gap: 6px; margin: 0 0 12px; color: var(--muted); flex-wrap: wrap; }
+.help-fil button { background: none; border: 0; padding: 0; cursor: pointer; color: var(--primary); font-weight: 600; font-size: inherit; }
+.help-fil button:hover { text-decoration: underline; }
+/* Le geste : on lit une explication pour FAIRE quelque chose. */
+.help-geste { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 24px 0 4px; padding-top: 18px; border-top: 1px solid var(--border); }
+.help-suite { display: flex; justify-content: space-between; gap: 10px; margin-top: 14px; }
 .help-grid { display: grid; grid-template-columns: 264px 1fr; gap: 20px; align-items: start; }
 .help-nav { display: flex; flex-direction: column; gap: 2px; position: sticky; top: 0; }
 .help-nav button {

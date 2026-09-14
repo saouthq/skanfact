@@ -1227,5 +1227,86 @@ rencontres. Si un mot affiché dans l'application manque ici, c'est un défaut :
     }
   ];
 
-  return { INFO, ARTICLES };
+  // ---------- l'Aide, refondue (7.23.0) ----------
+  //
+  // Trente-deux titres dans une liste plate, et un pavé de prose à droite : ce n'était pas une
+  // aide, c'était un livre. Quelqu'un qui cherche « pourquoi ma TVA ne tombe pas juste » ne sait
+  // pas si la réponse est dans « Se faire payer », « Ta comptabilité mois par mois » ou « Tes
+  // achats et ta TVA déductible ». On choisit un TERRITOIRE avant de choisir un titre.
+  //
+  // Chaque article appartient à un thème et un seul : un test le vérifie, et vérifie aussi qu'il
+  // n'en manque aucun. Une liste écrite à la main dérive au premier article ajouté.
+  const THEMES = [
+    { id: 'commencer', label: 'Commencer', sub: 'Le vocabulaire, les premiers gestes, et par où prendre le sujet.',
+      articles: ['demarrer', 'gestion', 'vocabulaire', 'raccourcis'] },
+    { id: 'vendre', label: 'Vendre et facturer', sub: 'Du devis à la facture, et tout ce qui se glisse entre les deux.',
+      articles: ['devis', 'facture', 'avoir', 'acompte', 'contrats', 'etranger', 'pieces'] },
+    { id: 'encaisser', label: 'Encaisser', sub: 'Être payé, relancer sans se fâcher, et savoir ce qu\'il reste en caisse.',
+      articles: ['paiements', 'tresorerie'] },
+    { id: 'acheter', label: 'Acheter, stocker, équiper', sub: 'L\'argent qui sort, ce qui dort sur l\'étagère, et ce que tu gardes.',
+      articles: ['achats', 'stock', 'series', 'immobilisations', 'lecture'] },
+    { id: 'declarer', label: 'Déclarer et clôturer', sub: 'La TVA, le mois qu\'on ferme, et le dossier qu\'on envoie au comptable.',
+      articles: ['fiscal', 'compta', 'cloture', 'declarations', 'cabinet'] },
+    { id: 'equipe', label: 'Ton équipe', sub: 'Payer quelqu\'un, et les papiers qui vont avec.',
+      articles: ['paie', 'conges'] },
+    { id: 'piloter', label: 'Piloter et protéger', sub: 'Gagnes-tu de l\'argent, et que se passe-t-il si l\'ordinateur lâche.',
+      articles: ['marges', 'statistiques', 'donnees', 'deux', 'partager', 'licence', 'support'] }
+  ];
+
+  // Le geste qui suit la lecture. Six liens vers l'application dans 99 Ko de texte : chaque article
+  // finissait par un point, c'est-à-dire par un cul-de-sac. On lit une explication pour FAIRE
+  // quelque chose — le bouton est la moitié qui manquait.
+  // `hash` doit désigner une vraie route : un test le vérifie contre core.PAGES.
+  const GESTES = {
+    demarrer: { label: 'Ouvrir les Paramètres', hash: '#/parametres' },
+    gestion: { label: 'Aller à l\'accueil', hash: '#/dashboard' },
+    devis: { label: 'Voir mes devis', hash: '#/devis' },
+    facture: { label: 'Voir mes factures', hash: '#/factures' },
+    avoir: { label: 'Voir mes factures', hash: '#/factures' },
+    acompte: { label: 'Voir mes devis', hash: '#/devis' },
+    contrats: { label: 'Voir mes contrats', hash: '#/contrats' },
+    etranger: { label: 'Voir mes devis', hash: '#/devis' },
+    pieces: { label: 'Proforma, bons et contrats', hash: '#/autres' },
+    paiements: { label: 'Voir les relances', hash: '#/relances' },
+    tresorerie: { label: 'Ouvrir la trésorerie', hash: '#/tresorerie' },
+    achats: { label: 'Voir mes achats', hash: '#/achats' },
+    stock: { label: 'Ouvrir le stock', hash: '#/stock' },
+    series: { label: 'Voir les garanties', hash: '#/garanties' },
+    immobilisations: { label: 'Voir mes immobilisations', hash: '#/immos' },
+    lecture: { label: 'Saisir un achat', hash: '#/achats' },
+    fiscal: { label: 'Ouvrir la comptabilité', hash: '#/compta' },
+    compta: { label: 'Ouvrir la comptabilité', hash: '#/compta' },
+    cloture: { label: 'Aller aux clôtures', hash: '#/compta' },
+    declarations: { label: 'Ouvrir la paie', hash: '#/paie' },
+    cabinet: { label: 'Préparer le paquet du mois', hash: '#/compta' },
+    paie: { label: 'Ouvrir la paie', hash: '#/paie' },
+    conges: { label: 'Ouvrir la paie', hash: '#/paie' },
+    marges: { label: 'Voir mes marges', hash: '#/marges' },
+    statistiques: { label: 'Voir mes statistiques', hash: '#/stats' },
+    donnees: { label: 'Sécurité et données', hash: '#/parametres' },
+    deux: { label: 'Ouvrir les Paramètres', hash: '#/parametres' },
+    partager: { label: 'Ouvrir les Paramètres', hash: '#/parametres' },
+    licence: { label: 'Voir ma licence', hash: '#/parametres' }
+    // `vocabulaire`, `raccourcis` et `support` n'ont volontairement pas de geste : on ne renvoie
+    // nulle part depuis un glossaire, et « Signaler un problème » a déjà son propre bouton.
+  };
+
+  // L'aide s'ouvre LÀ OÙ L'ON EST. Le « ? » de chaque page ouvre l'article de cette page, au lieu
+  // de déposer quelqu'un en haut d'une liste de trente-deux titres. Un test vérifie que chaque
+  // page de l'application a son entrée et que chaque cible existe.
+  const PAR_PAGE = {
+    dashboard: 'demarrer', devis: 'devis', factures: 'facture', doc: 'facture',
+    relances: 'paiements', autres: 'pieces', contrats: 'contrats', contrat: 'contrats',
+    clients: 'gestion', client: 'gestion', catalogue: 'gestion',
+    achats: 'achats', achat: 'achats', fournisseurs: 'achats', fournisseur: 'achats',
+    tresorerie: 'tresorerie', marges: 'marges', affaire: 'marges',
+    paie: 'paie', salarie: 'conges', stock: 'stock', article: 'stock', garanties: 'series',
+    immos: 'immobilisations', immo: 'immobilisations', stats: 'statistiques',
+    compta: 'compta', parametres: 'donnees', modules: 'gestion'
+  };
+
+  // Le thème d'un article, et ses voisins : « article suivant » évite de repasser par la liste.
+  const themeOf = id => THEMES.find(t => t.articles.includes(id)) || null;
+
+  return { INFO, ARTICLES, THEMES, GESTES, PAR_PAGE, themeOf };
 });

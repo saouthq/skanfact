@@ -1248,18 +1248,10 @@
   // il fallait ouvrir l'Aide — depuis un bouton qui était hors de l'écran — et lire trente-deux
   // titres. Le lien se pose une seule fois, dans le routeur : dix-huit `page-head` à modifier à la
   // main, c'est dix-huit endroits qu'on oublie au prochain module ajouté.
-  const PAGE_AIDE = {
-    dashboard: 'demarrer', devis: 'devis', factures: 'facture', doc: 'facture',
-    relances: 'paiements', autres: 'pieces', contrats: 'contrats', contrat: 'contrats',
-    clients: 'gestion', client: 'gestion', catalogue: 'gestion',
-    achats: 'achats', achat: 'achats', fournisseurs: 'achats', fournisseur: 'achats',
-    tresorerie: 'tresorerie', marges: 'marges', affaire: 'marges',
-    paie: 'paie', salarie: 'conges', stock: 'stock', article: 'stock', garanties: 'series',
-    immos: 'immobilisations', immo: 'immobilisations', stats: 'statistiques',
-    compta: 'compta', parametres: 'donnees'
-  };
   function poserLienAide(route) {
-    const id = PAGE_AIDE[route];
+    // La table vit dans guide.js, à côté des articles qu'elle désigne : elle y était en
+    // double depuis la refonte, et deux tables divergent toujours.
+    const id = G.PAR_PAGE[route];
     if (!id || !G.ARTICLES.some(a => a.id === id)) return;
     const head = $('#view .page-head');
     if (!head || $('.page-help', head)) return;
@@ -1544,6 +1536,16 @@
   // que l'utilisateur regarde le plus souvent.
   const pl = (n, un, plur) => `${n} ${n > 1 ? (plur || un + 's') : un}`;
 
+  // La liste des clients pour un `combo()`. Elle vivait en DOUBLE, déclarée localement dans deux
+  // formulaires — et `serialForm` l'appelait sans en avoir : « Modifier » sur un numéro de série
+  // levait `clientItems is not defined` pendant la construction de la fenêtre. La fenêtre ne
+  // s'ouvrait pas, le bouton paraissait mort, et rien n'apparaissait dans la console de
+  // l'utilisateur. Une seule définition, au niveau du module : le cas ne peut plus se reproduire.
+  const clientItems = () => data.clients.slice().sort((a, b) => a.name.localeCompare(b.name, 'fr')).map(c => ({
+    v: c.id, label: c.name, sub: [c.contact, c.matricule ? 'MF ' + c.matricule : ''].filter(Boolean).join(' · '),
+    text: `${c.name} ${c.contact || ''} ${c.email || ''} ${c.phone || ''} ${c.matricule || ''}`
+  }));
+
   function docTable(list, opts) {
     opts = opts || {};
     const { cols, amountOf, restOf } = docColumns(opts);
@@ -1568,7 +1570,6 @@
           ${d.type === 'facture' && d.status !== 'brouillon' && d.status !== 'annulée' && (restOf(d) || 0) > 0.0005 ? `<button class="btn btn-sm" data-paye="${d.id}" title="Enregistrer un paiement">Paiement</button>` : ''}
           ${d.type === 'devis' && d.status === 'accepté' ? `<button class="btn btn-sm" data-facturer="${d.id}" title="Créer la facture de ce devis">Facturer</button>` : ''}
           ${d.type === 'devis' && ['envoyé', 'expiré'].includes(effStatus(d)) ? `<button class="btn btn-sm" data-accepte="${d.id}" title="Le client a dit oui">Accepté ✓</button><button class="btn btn-sm btn-ghost" data-refuse="${d.id}" title="Le client a dit non">Refusé ✕</button>` : ''}
-          ${d.type !== 'avoir' ? `<button class="btn btn-sm btn-ghost" data-dup="${d.id}" title="Dupliquer">⧉</button>` : ''}
         </span></td></tr>`).join('')}
     </tbody>${opts.noFoot ? '' : `<tfoot><tr>
       <td colspan="${Math.max(1, cols.length - (opts.quotes ? 1 : 2))}">${pl(sorted.length, 'document')} · ${C.money(totalHT, cur)} HT${mixed ? ` <span class="muted">(devises étrangères converties en ${h(cur)})</span>` : ''}</td>
@@ -1778,10 +1779,6 @@
       && (doc.lines || []).some(l => { const it = C.itemOfLine(l, data); return it && it.serialized; });
     const issuedDeposits = isQ && !isNew ? data.documents.filter(d => d.type === 'facture' && d.deposit && d.deposit.quoteId === doc.id && d.status !== 'brouillon') : [];
 
-    const clientItems = () => data.clients.slice().sort((a, b) => a.name.localeCompare(b.name, 'fr')).map(c => ({
-      v: c.id, label: c.name, sub: [c.contact, c.matricule ? 'MF ' + c.matricule : ''].filter(Boolean).join(' · '),
-      text: `${c.name} ${c.contact || ''} ${c.email || ''} ${c.phone || ''} ${c.matricule || ''}`
-    }));
     const invoiceItems = () => data.documents.filter(d => d.type === 'facture' && d.status !== 'brouillon' && d.number).sort(byNumberDesc).map(d => ({
       v: d.id, label: d.number, sub: clientName(d.clientId) + (d.subject ? ' — ' + d.subject : ''),
       right: C.money(C.computeTotals(d, company()).netToPay, docCur(d)),
@@ -3481,10 +3478,6 @@
     const r = deepCopy(rec);
     if (!r.lines || !r.lines.length) r.lines = [C.newLine(company())];
     const cur = company().currency;
-    const clientItems = () => data.clients.slice().sort((a, b) => a.name.localeCompare(b.name, 'fr')).map(c => ({
-      v: c.id, label: c.name, sub: [c.contact, c.matricule ? 'MF ' + c.matricule : ''].filter(Boolean).join(' · '),
-      text: `${c.name} ${c.contact || ''} ${c.email || ''} ${c.phone || ''} ${c.matricule || ''}`
-    }));
     modal(`<h2>${isNew ? 'Nouveau contrat récurrent' : 'Modifier le contrat'}</h2>
       <form id="rf" class="grid-3">
         <div class="field span-2">Client${combo({ name: 'clientId', value: r.clientId, items: clientItems(), placeholder: '— Choisir un client —', search: 'Rechercher : nom, contact, MF…', add: '+ Nouveau client' })}</div>
@@ -9300,44 +9293,121 @@
     ? arts.map(x => `<button data-art="${x.id}" class="${x.id === aideArticle ? 'active' : ''}"><span class="ht">${h(x.title)}</span><span class="hs">${h(x.sub)}</span></button>`).join('')
     : '<p class="small muted" style="padding:10px 12px">Aucun article ne contient ces mots. Essaie un seul mot, ou consulte « Le vocabulaire ».</p>';
 
+  // ---------- l'Aide (refonte 7.23.0) ----------
+  //
+  // Avant : trente-deux titres dans une liste plate, et un pavé de prose à droite. On choisissait un
+  // TITRE sans savoir dans quel territoire chercher, et l'article se terminait par un point — six
+  // liens vers l'application dans 99 Ko de texte, c'est-à-dire un cul-de-sac à chaque fois.
+  //
+  // Maintenant : un accueil par THÈMES, un article qui dit d'où il vient et où il mène, un GESTE au
+  // bout, et l'article suivant sous la main. La recherche, elle, traverse tout et court-circuite les
+  // thèmes — c'est son rôle.
+  const aideCarte = t => `<button class="help-theme" data-theme="${h(t.id)}">
+      <span class="ht-l">${h(t.label)}</span>
+      <span class="ht-s">${h(t.sub)}</span>
+      <span class="ht-n">${pl(t.articles.length, 'article')}</span>
+    </button>`;
+
+  const aideAccueil = () => `<div class="help-themes">${G.THEMES.map(aideCarte).join('')}</div>`;
+
+  // Un thème déplié : ses articles, en clair, avec leur sous-titre.
+  const aideThemeOuvert = t => `<div class="panel help-theme-open">
+      <h2>${h(t.label)}</h2><p class="small muted">${h(t.sub)}</p>
+      <div class="help-arts">${t.articles.map(id => {
+        const a = G.ARTICLES.find(x => x.id === id);
+        return a ? `<button data-art="${h(a.id)}" class="help-art"><span class="ht">${h(a.title)}</span><span class="hs">${h(a.sub)}</span></button>` : '';
+      }).join('')}</div>
+    </div>`;
+
   routes.aide = (parts) => {
     const arts = G.ARTICLES;
-    if (parts && parts[0]) aideArticle = parts[0];
-    if (!arts.some(a => a.id === aideArticle)) aideArticle = arts.length ? arts[0].id : '';
-    const a = arts.find(x => x.id === aideArticle) || { title: '', sub: '', body: '' };
+    const vise = parts && parts[0] ? parts[0] : '';
+    // `#/aide` seul ouvre l'ACCUEIL. Avant, il ouvrait d'office le premier article : on ne voyait
+    // jamais la carte du domaine, et on ne savait pas qu'il y en avait trente et un autres.
+    aideArticle = arts.some(x => x.id === vise) ? vise : '';
+    // Demander un article PRÉCIS efface la recherche en cours. Sans ça, arriver ici par
+    // « Comprendre cette page » alors qu'une recherche traînait en mémoire relançait le filtrage au
+    // dessin : `#aide-vue` — qui CONTIENT l'article — repartait caché, et la page s'ouvrait blanche.
+    // Trouvé par `npm run e2e:aide`, invisible à la lecture.
+    if (aideArticle) aideQ = '';
+    const a = aideArticle ? arts.find(x => x.id === aideArticle) : null;
+    const theme = a ? G.themeOf(a.id) : null;
+    const geste = a ? G.GESTES[a.id] : null;
+    // L'article suivant DANS SON THÈME : on lit un domaine, on ne saute pas de la paie au stock.
+    const voisins = theme ? theme.articles : [];
+    const iCourant = a ? voisins.indexOf(a.id) : -1;
+    const suivant = iCourant >= 0 && iCourant < voisins.length - 1 ? arts.find(x => x.id === voisins[iCourant + 1]) : null;
+    const precedent = iCourant > 0 ? arts.find(x => x.id === voisins[iCourant - 1]) : null;
+
     $('#view').innerHTML = `
       <div class="page-head"><h1>Aide</h1>
         <div class="actions">${backButton('#/dashboard', 'aide')}<button class="btn" id="aide-support">Signaler un problème</button><button class="btn" id="aide-changelog">Nouveautés de la version</button></div></div>
-      <p class="lead">Comment marche SkanFact, et comment tenir la gestion d'une petite entreprise sans rien oublier. Partout dans l'application, les petits <span class="i-demo">i</span> expliquent le champ juste à côté.</p>
-      <div class="help-grid">
-        <nav class="help-nav">
-          <input type="search" id="aide-q" placeholder="Rechercher : un mot, une question…" autocomplete="off" spellcheck="false" value="${h(aideQ)}">
-          <div class="help-count small muted" id="aide-n" hidden></div>
-          <div id="aide-liste">${aideListe(arts)}</div>
+      <p class="lead">Comment marche SkanFact, et comment tenir la gestion d'une petite entreprise sans rien oublier. Partout dans l'application, les petits <span class="i-demo">i</span> expliquent le champ juste à côté, et le <b>?</b> en haut de chaque page ouvre l'article de cette page.</p>
+      <div class="help-search">
+        <input type="search" id="aide-q" placeholder="Rechercher : un mot, une question… (« assiette », « relance », « timbre »)" autocomplete="off" spellcheck="false" value="${h(aideQ)}">
+        <div class="help-count small muted" id="aide-n" hidden></div>
+      </div>
+      <div id="aide-res" hidden></div>
+      <div id="aide-vue">${a ? '' : aideAccueil()}</div>`;
+
+    const vue = $('#aide-vue');
+    if (a) {
+      vue.innerHTML = `
+        <nav class="help-fil small">
+          <button data-home="1">Aide</button> ›
+          ${theme ? `<button data-theme="${h(theme.id)}">${h(theme.label)}</button> › ` : ''}
+          <span>${h(a.title)}</span>
         </nav>
         <article class="panel help-body">
           <h2 class="help-h">${h(a.title)}</h2>
           <p class="help-sub">${h(a.sub)}</p>
           ${a.body}
+          ${geste ? `<div class="help-geste"><button class="btn btn-primary" data-geste="${h(geste.hash)}">${h(geste.label)}</button>
+            <span class="small muted">On lit une explication pour faire quelque chose.</span></div>` : ''}
           <p class="small muted help-foot">Une question de fiscalité ou de comptabilité que cette aide ne tranche pas ? Elle est pour ton comptable : lui seul connaît ta situation et la réglementation en vigueur.</p>
         </article>
-      </div>`;
-    const brancherListe = () => $$('[data-art]').forEach(b => b.onclick = () => { aideArticle = b.dataset.art; navigate('#/aide/' + b.dataset.art); });
-    brancherListe();
-    const q = $('#aide-q');
-    q.oninput = () => {
-      aideQ = q.value;
-      const trouves = aideFiltre(arts, aideQ);
-      $('#aide-liste').innerHTML = aideListe(trouves);
-      const n = $('#aide-n');
-      n.hidden = !aideQ.trim();
-      n.textContent = `${trouves.length} article${trouves.length > 1 ? 's' : ''} sur ${arts.length}`;
-      brancherListe();
+        <div class="help-suite">
+          ${precedent ? `<button class="btn btn-ghost" data-art="${h(precedent.id)}">← ${h(precedent.title)}</button>` : '<span></span>'}
+          ${suivant ? `<button class="btn" data-art="${h(suivant.id)}">${h(suivant.title)} →</button>` : '<span></span>'}
+        </div>`;
+    }
+
+    // Un seul endroit pour brancher ce qui mène quelque part : la vue se redessine souvent (accueil,
+    // thème ouvert, article, résultats de recherche) et un branchement oublié fait un bouton mort.
+    const brancher = () => {
+      $$('[data-art]').forEach(b => b.onclick = () => { aideQ = ''; navigate('#/aide/' + b.dataset.art); });
+      $$('[data-theme]').forEach(b => b.onclick = () => {
+        const t = G.THEMES.find(x => x.id === b.dataset.theme);
+        if (!t) return;
+        aideArticle = '';
+        $('#aide-vue').innerHTML = aideThemeOuvert(t) + aideAccueil();
+        brancher();
+      });
+      $$('[data-home]').forEach(b => b.onclick = () => { aideQ = ''; navigate('#/aide'); });
+      $$('[data-geste]').forEach(b => b.onclick = () => navigate(b.dataset.geste));
     };
+    brancher();
+
+    const q = $('#aide-q');
+    const chercher = () => {
+      aideQ = q.value;
+      const mots = aideQ.trim();
+      const res = $('#aide-res'), n = $('#aide-n');
+      res.hidden = !mots; n.hidden = !mots;
+      $('#aide-vue').hidden = !!mots;
+      if (!mots) { brancher(); return; }
+      const trouves = aideFiltre(arts, aideQ);
+      n.textContent = `${pl(trouves.length, 'article')} sur ${arts.length}`;
+      res.innerHTML = trouves.length
+        ? `<div class="panel"><div class="help-arts">${trouves.map(x => `<button data-art="${h(x.id)}" class="help-art"><span class="ht">${h(x.title)}</span><span class="hs">${h(x.sub)}</span></button>`).join('')}</div></div>`
+        : '<div class="empty">Aucun article ne contient ces mots. Essaie un seul mot, ou ouvre « Le vocabulaire ».</div>';
+      brancher();
+    };
+    q.oninput = chercher;
     // Échap vide la recherche plutôt que de fermer quoi que ce soit : c'est le geste attendu dans un
     // champ de recherche, et il n'y a rien d'autre à fermer sur cette page.
-    q.onkeydown = e => { if (e.key === 'Escape' && q.value) { e.stopPropagation(); q.value = ''; q.oninput(); } };
-    if (aideQ) q.oninput();
+    q.onkeydown = e => { if (e.key === 'Escape' && q.value) { e.stopPropagation(); q.value = ''; chercher(); } };
+    if (aideQ) chercher();
     bindBack('#/dashboard', 'aide');
     $('#aide-changelog').onclick = showChangelog;
     $('#aide-support').onclick = supportForm;
