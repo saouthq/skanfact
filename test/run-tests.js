@@ -4805,6 +4805,33 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.ok(W.contactCourriel({ nom: 'X', email: 'a@b.tn', message: 'y' }).texte.includes('Société  : —'));
   });
 
+  // Le site a DEUX formulaires (nous écrire, demander une clé) et ils n'ont pas les mêmes
+  // champs. Le relais ne doit connaître ni les uns ni les autres : il valide un nom, une
+  // adresse et du texte. Sans ça, une demande de clé — qui n'a pas de champ « message » —
+  // serait refusée par un 400 que personne ne comprendrait.
+  t('contact : une demande de clé passe, sans champ « message »', () => {
+    const cle = {
+      genre: 'commande', nom: 'Skander Ben Amor', email: 'a@b.tn',
+      corps: 'L’offre : Indépendant — 390 DT HT/an\nRaison sociale : Atelier X\nMatricule fiscal : 1234567X/A/M/000'
+    };
+    assert.strictEqual(W.contactValide(cle).ok, true);
+    // L'ancien format continue de passer : un navigateur peut avoir gardé l'ancien script.
+    assert.strictEqual(W.contactValide({ nom: 'X', email: 'a@b.tn', message: 'Bonjour, une question.' }).ok, true);
+    // Et les bornes tiennent sur le NOUVEAU champ aussi, sinon on aurait déplacé le trou.
+    assert.strictEqual(W.contactValide({ ...cle, corps: 'trop' }).ok, false);
+    assert.strictEqual(W.contactValide({ ...cle, corps: 'x'.repeat(5001) }).ok, false);
+    assert.strictEqual(W.contactValide({ ...cle, piege: 'http://spam' }).muet, true);
+
+    // L'objet dit de quel formulaire vient le message : une demande de clé et une question ne
+    // se traitent pas le même jour.
+    const c = W.contactCourriel(cle);
+    assert.ok(c.sujet.includes('demande de clé'), c.sujet);
+    assert.ok(c.sujet.includes('Skander Ben Amor'));
+    assert.strictEqual(c.repondreA, 'a@b.tn');
+    assert.ok(c.texte.includes('Matricule fiscal : 1234567X/A/M/000'), 'le corps du site doit arriver tel quel');
+    assert.ok(!W.contactCourriel({ ...cle, genre: 'contact' }).sujet.includes('demande de clé'));
+  });
+
   t('relais : le secret se compare à temps constant', () => {
     assert.strictEqual(W.memeSecret('abcdef', 'abcdef'), true);
     assert.strictEqual(W.memeSecret('abcdef', 'abcdeg'), false);

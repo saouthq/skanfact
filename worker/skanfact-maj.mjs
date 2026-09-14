@@ -71,10 +71,17 @@ export function contactValide(c) {
   if (t('piege')) return { ok: false, muet: true };
   if (!t('nom')) return { ok: false, erreur: 'Indiquez votre nom.' };
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(t('email'))) return { ok: false, erreur: 'Cette adresse ne permettra pas de vous répondre.' };
-  if (t('message').length < 10) return { ok: false, erreur: 'Dites-nous en un peu plus, pour qu\'on puisse répondre utilement.' };
+  // Le site a DEUX formulaires — nous écrire, et demander une clé — et ils n'ont pas les mêmes
+  // champs. Plutôt que d'énumérer ici ceux de chacun (une liste que la prochaine page rendrait
+  // fausse en silence), le site assemble lui-même le corps du message avec les intitulés qu'il
+  // affiche, et le relais ne valide que ce dont il a besoin pour répondre : un nom, une adresse,
+  // et du texte. `message` reste accepté : un navigateur qui a gardé l'ancien script en cache
+  // continue de passer.
+  const texte = t('corps') || t('message');
+  if (texte.length < 10) return { ok: false, erreur: 'Dites-nous en un peu plus, pour qu\'on puisse répondre utilement.' };
   // Des bornes, parce que tout ce qui vient du dehors est sans limite jusqu'à ce qu'on en pose une.
   if (t('nom').length > 120 || t('societe').length > 160 || t('email').length > 160
-      || t('tel').length > 40 || t('message').length > 5000) {
+      || t('tel').length > 40 || texte.length > 5000) {
     return { ok: false, erreur: 'Message trop long : écrivez-nous directement à contact@skanfact.tn.' };
   }
   return { ok: true };
@@ -85,6 +92,15 @@ export function contactValide(c) {
 export function contactCourriel(c) {
   const t = k => String((c && c[k]) || '').trim();
   const profil = t('profil') === 'un cabinet comptable' ? 'un cabinet comptable' : 'une entreprise';
+  // Le corps assemblé par le site : on le remet tel quel. L'objet dit de quel formulaire il
+  // vient, parce qu'une demande de clé et une question ne se traitent pas le même jour.
+  if (t('corps')) {
+    return {
+      sujet: `SkanFact — ${t('genre') === 'commande' ? 'demande de clé' : 'message'} · ${t('nom')}`,
+      repondreA: t('email'),
+      texte: t('corps') + '\n\n— envoyé depuis le formulaire de skanfact'
+    };
+  }
   return {
     sujet: `SkanFact — ${profil === 'un cabinet comptable' ? 'cabinet' : 'entreprise'} · ${t('nom')}`,
     repondreA: t('email'),
