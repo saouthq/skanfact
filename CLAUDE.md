@@ -1012,6 +1012,61 @@ Règles apprises, à ne pas recasser :
   n'existe pas encore. On attend le sélecteur avant de le lire, sinon le message accuse un filtre
   qui n'a jamais été posé.
 
+## 7.21.1 → 7.21.3 — Windows, la plateforme que personne ne testait
+
+Skander a voulu installer l'app sur Windows et l'envoyer à ses amis. Trois défauts se sont
+enchaînés, tous invisibles depuis un Mac ou depuis Linux. **Le dépôt est passé public au passage**
+(GitHub Actions y est gratuit) : la publication normale a repris et la dernière release est enfin à
+jour — elle était restée à la 6.7.1 pendant quinze versions.
+
+Règles apprises, à ne pas recasser :
+
+- **Un fichier `.bat` en fins de ligne Unix ne marche pas.** `cmd.exe` lit un fichier batch octet
+  par octet : il se désynchronise sur le premier bloc `if ... ( ... )`, tombe en erreur de syntaxe,
+  et **la fenêtre se ferme sans un mot**. Symptôme à reconnaître : « j'appuie sur Entrée et ça se
+  ferme tout seul ». Le fichier passe par des étiquettes (`goto :label`) plutôt que des blocs
+  parenthésés, et aucun chemin ne ferme la fenêtre en silence.
+- **`.gitattributes` doit couvrir TOUT le code source, pas seulement les scripts.** La 7.21.1 avait
+  posé `eol=crlf` pour les `.bat` et `eol=lf` pour les `.command`/`.sh`, et s'était arrêtée là. Sur
+  Windows, git convertit donc les `.js` en CRLF au checkout (`core.autocrlf`, activé par défaut par
+  l'installeur Git for Windows) : le code marche toujours, mais **tout test qui relit la source
+  cesse de correspondre dès qu'une expression régulière contient un `\n` littéral**. La règle
+  générique `* text=auto eol=lf` va **en premier** — dans un `.gitattributes`, c'est le dernier
+  motif qui gagne, et les exceptions doivent pouvoir la contredire.
+- **Le mtime du système de fichiers n'est pas une date.** Sur Windows l'horloge système n'avance que
+  toutes les ~15 ms : des copies successives portent le **même** mtime, et tout tri « la plus
+  ancienne d'abord » devient arbitraire. Et une **copie** le réécrit — miroir externe, clé USB,
+  changement d'ordinateur. Quand le nom porte déjà la date écrite par l'application
+  (`AAAA-MM-JJ_HHhMMmSS`, zéro-rempli), c'est **lui** qui fait foi : son ordre alphabétique est
+  l'ordre du temps, sans calcul de date, donc sans question de fuseau horaire. Le mtime ne sert
+  qu'en second.
+- **Un départage alphabétique ressuscite un bug qu'on croyait mort.** Le tri des sauvegardes de
+  l'app entreprise départageait les mtime égaux par `localeCompare` : sur Windows, où ils sont
+  presque toujours égaux, « avant-import » repassait en tête et redevenait la première effacée —
+  très exactement le défaut de 6.8.1, intact, sur la seule plateforme non testée. Les filets ont
+  maintenant leur **propre réserve** des deux côtés.
+- **Reproduire la plateforme absente coûte moins cher qu'une publication par défaut.** Une copie du
+  dépôt entièrement convertie en CRLF, et `npm test` dessus : les défauts tombent tous d'un coup,
+  au lieu d'un par run de CI. Même méthode pour le mtime : on les impose **à l'envers** de l'ordre
+  réel, et le test échoue alors sur toutes les machines, pas seulement sur Windows.
+- **Deux `backupNow` dans la même seconde écrivent le MÊME fichier** (le nom porte l'heure à la
+  seconde près) : le second écrase le premier, le compte ne bouge pas, aucune purge ne se
+  déclenche — et le test passait avec le défaut réintroduit. Un test se prouve toujours en
+  réintroduisant son défaut ; celui-là a failli passer entre les mailles.
+- **Une panne de construction se nomme.** Le journal de l'installeur Windows ne portait qu'un mot :
+  `construction : echec`. La sortie de `npm run build:win` est désormais capturée dans
+  `construction.log`, versée dans le journal principal et **affichée à l'écran**. Piège : lire
+  `errorlevel` **avant** les `type` qui suivent — chacun le remet à zéro, et tout échec passerait
+  pour un succès.
+- **Le quota GitHub Actions d'un dépôt privé se reconnaît à ceci : les jobs meurent en cinq
+  secondes sans jamais démarrer.** Ce n'est pas une erreur de compilation, et les journaux sont
+  vides. Sur un dépôt **public**, Actions est gratuit et sans quota.
+- Dépannage gardé en mémoire, à ne refaire qu'en dernier recours : on peut construire l'installateur
+  Windows **depuis Linux** sans wine, en forçant le chemin `UninstallerReader` d'electron-builder
+  (réservé à macOS Catalina, mais purement JS) et en posant l'icône avec `resedit` plutôt que
+  `rcedit`. Vérifier alors qu'**aucune ressource PE n'est perdue**, en particulier celle qui porte
+  l'empreinte de `app.asar` — sans elle, l'application refuse de démarrer.
+
 ## Pistes pour la suite (non demandées)
 
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.
