@@ -11,6 +11,14 @@ L'utilisateur est débutant en gestion (première entreprise) : chaque champ por
 - **Chaque amélioration livrée = une nouvelle version** (semver) : correctif 1.0.x, fonctionnalité 1.x.0, gros changement x.0.0. Mettre à jour `package.json` (`version`) **et** ajouter une entrée datée dans `CHANGELOG.md` (c'est elle qui devient les notes de version dans l'app et sur GitHub). Toujours annoncer le numéro de version dans la réponse.
 - Lancer `npm test` avant tout commit (calculs, numérotation, montant en lettres, échappement HTML, stockage/sauvegardes). Pour un changement d'interface, lancer aussi l'app réelle (`xvfb-run` + Playwright `_electron`, voir README « Tests ») : elle attrape les erreurs JS du renderer.
 - Ne jamais commiter de token. Le jeton GitHub que l'utilisateur colle (quand le dépôt est privé) est stocké dans `userData/update-config.json`, jamais dans le code.
+- **Partager un dossier à deux se fait en DEUX gestes**, et ils vivent dans `src/main.js` :
+  `dossiers:share` copie le dossier OUVERT vers un emplacement commun (l'original reste, la bascule
+  n'a lieu qu'une fois la copie constatée), `dossiers:join` ouvre un dossier déjà posé sans rien
+  créer. Ne jamais revenir à « créer un dossier partagé vide » : c'est le défaut que la 7.28.0 a
+  corrigé.
+- **Les actions d'une ligne vivent dans un menu** (`rowMenuCell` / `bindRowMenus` dans app.js), pas
+  dans une rangée de boutons. Toute nouvelle liste passe par là, et toute action qui change l'état
+  d'une pièce demande d'abord — et propose la suite.
 - **Le dépôt est PUBLIC depuis le 13/09/2026** (GitHub Actions y est gratuit) et redeviendra peut-être privé. La bascule est **une seule ligne** : `private` dans **`src/depot.js`**, que les deux applications lisent — le champ « jeton d'accès » revient alors tout seul dans leurs Paramètres. Ne jamais redéclarer ce drapeau ailleurs : il avait été écrit dans les deux `main.js`, et ils ont divergé. `npm run e2e:depot` bascule vraiment et vérifie l'écran.
 - **Aucun message d'erreur brut ne remonte à l'écran** : `updateProblem(err)` (dans les deux `main.js`) rend une phrase en français, range le texte d'origine dans `detail` (replié sous « Détails techniques »), et marque `soft` ce qui n'est pas une panne.
 - macOS : app non signée → `MAC_SIGNED = false` dans `src/main.js`. electron-updater télécharge le `.zip` (sha512 vérifié) et `src/mac-update.sh` remplace l'app dans Applications puis la relance. Ne pas prétendre que Squirrel.Mac fonctionne sans signature Apple.
@@ -365,6 +373,8 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:fiches` | **les fiches et les formulaires** : l'étoile des champs obligatoires et le refus qui montre, la fiche article depuis le Catalogue, le catalogue dans un achat, la ligne en immobilisation, les affaires et contrats du client |
 | `npm run e2e:compta` | **la comptabilité mène aux pièces** : les contrôles de clôture armés, les douze mois de TVA cliquables, l'échéance fiscale qu'on pointe et qu'on dépointe, le mouvement qui ouvre sa facture, la carte « Reste à encaisser » |
 | `npm run e2e:metier` | **le métier** : quinze activités sans taux deviné, le régime fiscal posé puis conservé au redessin, les Paramètres qui grisent la TVA et annoncent la mention, le RIB non réclamé à qui encaisse sur place |
+| `npm run e2e:partage` | **partager une entreprise déjà saisie** : deux applications, deux profils, un emplacement commun — on partage, le second poste rejoint sans assistant, et ce que l'un enregistre l'autre le voit |
+| `npm run e2e:actions` | **une seule porte par ligne** : un menu d'actions écrites en toutes lettres sur six listes, qui ne vole pas le clic de la ligne, la question posée avant d'agir, et « Accepter et facturer » qui ouvre le brouillon |
 | `npm run e2e:aide` | **l'Aide, mesurée** : le plan (sept sections, trente-deux articles, sept couleurs), la pastille qui descend à sa section sans dupliquer le plan, le fil d'Ariane sur UNE ligne, « suivant » dans la colonne de l'article, le geste qui mène à sa page, la recherche classée et surlignée, et le sommaire d'un article long (absent d'un article court) |
 | `npm run e2e:colonnes` | **les colonnes alignées** : l'en-tête de chaque colonne de chaque tableau comparé à ses valeurs, sur 19 pages et tous leurs onglets (392 colonnes) |
 | `npm run e2e:entetes` | **les barres d'actions mesurées** : aucun contrôle d'en-tête étiré sur toute la largeur, aucune barre empilée sur trois rangées (21 pages) |
@@ -1353,6 +1363,84 @@ Le test qui compte est `npm run e2e:aide` : sept étapes qui **mesurent** le pla
 trente-deux articles, sept couleurs distinctes), la descente vers une section, la hauteur du fil
 d'Ariane, l'alignement des boutons suivant/précédent sur la colonne de l'article, le classement de
 la recherche, et le sommaire d'un article long — qui ne doit pas exister sur un article court.
+
+## 7.28.0 — Le partage qui partage vraiment, et une seule porte par ligne
+
+Trois demandes du propriétaire, et deux d'entre elles ont mis au jour des mécanismes qui ne
+servaient à personne.
+
+Règles apprises, à ne pas recasser :
+
+- **Une fonctionnalité qui n'a de sens qu'au premier jour n'a de sens pour personne.** « Dossier
+  partagé à deux… » demandait un NOM D'ENTREPRISE et fabriquait un dossier VIDE : quelqu'un qui
+  avait déjà saisi sa société, ses clients et ses factures — c'est-à-dire tout le monde, puisque
+  c'est ce qu'on fait avant de vouloir partager — tombait sur l'assistant de première utilisation.
+  Et il n'existait aucun moyen de REJOINDRE un dossier déjà posé. Le partage à deux, livré en
+  3.2.0, était donc inutilisable depuis trois ans. Même famille que « un moteur sans écran n'existe
+  pas » (7.3.0), vue de l'autre côté : ici l'écran existait, c'est le geste qui manquait.
+- **`currentDossier()` relit la configuration sur le DISQUE et rend un autre objet.** Modifier ce
+  qu'il renvoie puis écrire `cfg` réécrit l'ancienne valeur : les fichiers étaient copiés,
+  l'application se rechargeait… sur l'ancien emplacement, et rien n'arrivait jamais de l'autre
+  poste. Toute fonction qui rend un élément d'une structure relue doit être retrouvée DANS la
+  structure qu'on s'apprête à écrire. Trouvé par `npm run e2e:partage`, qui fait vraiment
+  l'aller-retour entre deux applications et deux profils.
+- **On copie, on ne déplace pas.** L'ancien emplacement reste intact et sert de filet — même règle
+  que la reprise de l'ancien format en 3.2.0 — et la bascule n'a lieu qu'une fois la copie
+  CONSTATÉE (le fichier de données est là, et de la même taille). Un dossier iCloud plein ou un
+  disque réseau qui se déconnecte en cours de route ouvrirait sinon un dossier à moitié écrit.
+- **Un garde-fou global qui énumère les surfaces cliquables se périme au prochain overlay.** Le
+  `mousedown` global de l'application refermait tout overlay ouvert sauf `.combo` et `.datefield`.
+  Le menu d'actions, écrit ce jour-là, n'était ni l'un ni l'autre : ses entrées acceptaient le clic,
+  le menu se refermait — donc le bouton quittait le document — et le `click` n'avait plus personne à
+  qui parler. Aucune erreur, aucune console, et le menu qui se ferme donne l'impression que quelque
+  chose s'est passé. C'est le défaut de la 7.0.0 en plus sournois. La liste vit maintenant dans
+  `SURFACES_OVERLAY`, à un seul endroit, et un test la confronte aux overlays existants.
+- **Le budget de boutons d'une ligne se règle en supprimant la rangée, pas en la serrant.** Cinq
+  boutons par ligne (7.18.0, 7.23.0) tombaient dans des pictogrammes muets — « ⧉ », « ⏱ » — dès
+  qu'ils étaient trop nombreux. Un menu occupe la largeur d'un bouton quoi qu'il contienne : chaque
+  action y porte une PHRASE et son explication. Un test interdit les libellés de moins de six
+  caractères, et exige qu'une ligne sans action perde son bouton (un menu vide est encore un bouton
+  mort).
+- **Un geste qui change l'état d'une pièce commerciale demande, annonce, et propose la suite.** Les
+  trois vont ensemble, et dans UNE seule fenêtre : deux boîtes à la file se cliquent sans être lues.
+  « Le client a accepté » rappelle le devis, le client et le montant, puis offre « Accepter et
+  facturer » — parce que ce qui vient après un devis accepté, c'est la facture. Le « Annuler » de
+  huit secondes (7.12.0) reste par-dessus : la question protège du geste, le retour protège de la
+  décision.
+- **Un menu ancré sur une ligne hors écran est inatteignable — et c'est voulu.** Il se ferme au
+  moindre défilement, comme chez un vrai utilisateur. Un e2e qui ouvre un menu par `evaluate` puis
+  demande à Playwright d'y cliquer fait défiler la page pour l'atteindre, referme le menu, et
+  accuse l'application. On repère la ligne par ce qu'elle AFFICHE (son badge de statut), puis on
+  clique pour de vrai.
+- **Un test e2e qu'on ne relance pas se périme sans rien dire.** `e2e:entreprise` visait encore
+  `.help-nav`, la colonne de gauche de l'aide supprimée par la refonte de la 7.23.0 : le test était
+  cassé depuis, et personne ne s'en était aperçu — il n'avait pas été relancé. Corollaire de la
+  règle 7.25.0 (« un e2e ne sert que si on le relance ») : **après une refonte, relancer TOUS les
+  parcours, pas seulement celui qu'on vient d'écrire.**
+- **Un drapeau envoyé au processus principal se remet à jour quand l'état DISPARAÎT, pas seulement
+  quand il se pose.** `leaveOk` et le routeur remettaient `guard` à `null` directement, sans
+  repasser par `clearGuard()` : `dirtyReported` restait donc à `true` pour le reste de la session.
+  Conséquence, invisible depuis trois versions : dès qu'on avait modifié quoi que ce soit, fermer la
+  fenêtre posait pour toujours la question « modifications non enregistrées », sur des données
+  pourtant enregistrées. Une application qui annonce une perte qui n'existe pas apprend à cliquer
+  sans lire. C'est `e2e:chiffres` qui l'a désigné — il restait bloqué pour toujours à la fermeture.
+- **Un test e2e qui reste bloqué est pire qu'un test qui échoue.** Il ne dit rien, on ne le relance
+  plus, et il cesse d'exister. Toute fermeture d'application dans un e2e passe désormais sous
+  `Promise.race` avec un délai et une phrase qui nomme la cause — même principe que les commandes
+  du chien de garde (6.5.0). Et le garde-fou de sortie est une boîte à TROIS choix
+  (`choiceDialog` : `#a`, `#b`, Annuler), pas un `confirmDialog` : viser `#ok` ne ferme rien.
+- **L'aide du cabinet suit celle du client.** Les classes viennent de la feuille PARTAGÉE
+  (`.help-…`, `.th-…`) : c'est le même langage visuel, et surtout pas un second jeu de règles dans
+  `cabinet.css` qui dériverait au premier ajustement (règle 6.8.0 sur les collisions de noms). Les
+  huit articles portent désormais un sous-titre, un dessin, une couleur et le geste qui suit la
+  lecture — `geste: null` sur « Ce que cette application ne fait pas », parce qu'on ne renvoie nulle
+  part depuis une liste de limites.
+
+Les tests qui comptent sont `npm run e2e:partage` (deux applications, deux profils, un emplacement
+commun : on partage, on rejoint, et ce que l'un enregistre l'autre le voit) et `npm run e2e:actions`
+(un seul bouton par ligne sur six listes, le menu qui ne vole pas le clic de la ligne, la question
+posée avant d'agir — et « Annuler » qui ne change vraiment rien — puis « Accepter et facturer » qui
+ouvre le brouillon).
 
 ## Pistes pour la suite (non demandées)
 

@@ -698,6 +698,34 @@ td.row-actions { text-align: right; width: 1%; }
 td.row-actions > span { display: inline-flex; flex-wrap: nowrap; justify-content: flex-end; gap: 4px; opacity: .7; transition: opacity .12s; }
 tr:hover td.row-actions > span, tr:focus-within td.row-actions > span { opacity: 1; }
 th.row-actions-h { width: 1%; }
+
+/* Le menu d'actions d'une ligne (7.28.0). Le bouton occupe la largeur d'un bouton quel que soit le
+   nombre d'actions : c'est ce qui met fin, définitivement, au budget de boutons d'une ligne. */
+.row-menu-btn {
+  background: none; border: 1px solid transparent; border-radius: 8px; padding: 3px 5px; cursor: pointer;
+  color: var(--muted); display: inline-grid; place-items: center; opacity: .75; transition: opacity .12s, background .12s;
+}
+.row-menu-btn svg { width: 18px; height: 18px; fill: currentColor; }
+tr:hover .row-menu-btn, tr:focus-within .row-menu-btn, .row-menu-btn[aria-expanded="true"] {
+  opacity: 1; background: var(--ink-soft); border-color: var(--border); color: var(--text);
+}
+/* Couche 70 : au-dessus de la page et de ses tableaux, SOUS les fenêtres modales (400) — une
+   question posée par une action doit rester devant le menu qui l'a déclenchée (règle 5.2.2). */
+.row-menu {
+  position: fixed; z-index: 70; min-width: 226px; max-width: 320px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 12px 36px rgba(20, 40, 60, .18); padding: 6px;
+  display: flex; flex-direction: column; gap: 1px;
+}
+.row-menu button {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 1px; width: 100%; text-align: left;
+  font: inherit; background: none; border: 0; border-radius: 8px; padding: 8px 10px; cursor: pointer; color: var(--text);
+}
+.row-menu button:hover, .row-menu button:focus-visible { background: var(--ink-soft); outline: none; }
+.row-menu button.danger .rm-l { color: var(--danger); }
+.row-menu .rm-l { font-size: 13.5px; font-weight: 600; }
+.row-menu .rm-h { font-size: 11.5px; color: var(--muted); line-height: 1.35; }
+.row-menu hr { border: 0; border-top: 1px solid var(--border); margin: 5px 4px; width: calc(100% - 8px); }
 .badge.expiré { background: var(--warning-soft); color: var(--warning); }
 /* statuts d'achat : libellés avec espace, donc classes dédiées */
 .badge.b-due { background: var(--info-soft); color: var(--info); }
@@ -1015,6 +1043,21 @@ body.dark .help-sec .hs-ico { color: #0d1418; }
 .help-art .ht { font-size: 13.5px; font-weight: 650; color: var(--text); }
 .help-art .hs { font-size: 12px; color: var(--muted); line-height: 1.4; }
 .help-art .hth { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--th); margin-bottom: 1px; }
+/* La pastille de l'article, utilisée par l'aide de l'app CABINET (qui n'a pas de thèmes : ce sont
+   ses articles eux-mêmes qui portent une couleur). Posée ici, dans la feuille partagée, parce que
+   c'est le même langage visuel — surtout pas un second jeu de règles dans cabinet.css, qui
+   dériverait au premier ajustement (règle 6.8.0). */
+.ha-ico {
+  display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 7px;
+  background: var(--th); color: #fff; margin-right: 8px; vertical-align: -4px; flex-shrink: 0;
+}
+.ha-ico svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+body.dark .ha-ico { color: #0d1418; }
+/* Huit articles au lieu de trente-deux : les cartes de l'aide du cabinet respirent davantage. */
+.help-arts:has(.help-art.grande) { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
+.help-art.grande { padding: 15px 16px 14px; gap: 4px; }
+.help-art.grande .ht { font-size: 14.5px; display: flex; align-items: center; }
+.help-art.grande .hs { font-size: 12.5px; }
 .help-art mark { background: var(--th-bg); color: var(--text); font-weight: 650; border-radius: 3px; padding: 0 2px; }
 /* Les résultats de recherche réutilisent la grille d'articles, mais hors d'une section : c'est
    elle qui leur donne leur panneau. */

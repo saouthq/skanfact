@@ -555,6 +555,103 @@ ipcMain.handle('dossiers:add', async (_e, { name, shared }) => {
   if (mainWindow) mainWindow.reload();
   return { ok: true, dossier: entry };
 });
+// Partager le dossier qu'on a SOUS LES YEUX (7.28.0).
+//
+// Il manquait les deux moitiés qui comptent. « Dossier partagé à deux… » demandait un nom
+// d'entreprise et fabriquait un dossier VIDE : quelqu'un qui venait de saisir sa société, ses
+// clients et ses factures, et qui voulait les partager avec son père, se retrouvait devant un
+// assistant de première utilisation. Et de l'autre côté, aucun moyen de REJOINDRE le dossier
+// existant : il fallait retomber par hasard sur le même chemin en retapant le même nom.
+//
+// Le pire défaut est celui qui punit quelqu'un qui a tout bien fait (règle 6.8.1).
+//
+// On COPIE, on ne déplace pas : l'ancien emplacement reste intact et sert de filet, exactement
+// comme la reprise de l'ancien format en 3.2.0. Tant que la copie n'est pas vérifiée, rien n'est
+// bascule.
+function nomDeDossier(nom) {
+  return 'SkanFact-' + String(nom || 'entreprise').replace(/[^A-Za-z0-9À-ÿ _-]/g, '').trim().replace(/\s+/g, '-') || 'SkanFact-entreprise';
+}
+// Le nom de l'entreprise écrit DANS le dossier. Sur un dossier chiffré il n'est pas lisible : on
+// ne devine pas, on le dit, et on retombe sur le nom du répertoire.
+function societeDe(dir) {
+  try {
+    const brut = fs.readFileSync(path.join(dir, 'skanfact-data.json'), 'utf8');
+    const j = JSON.parse(brut);
+    if (j && j['skanfact-encrypted'] === 1) return { chiffre: true, name: '' };
+    return { chiffre: false, name: String((j && j.company && j.company.name) || '').trim() };
+  } catch { return { chiffre: false, name: '' }; }
+}
+ipcMain.handle('dossiers:share', async () => {
+  const cfg = ensureDossiers();
+  // `currentDossier()` relit la configuration sur le disque et rend un AUTRE objet : modifier ce
+  // qu'il renvoie n'a aucun effet sur `cfg`, et `writeAppCfg(cfg)` réécrirait l'ancienne valeur.
+  // Les fichiers étaient bien copiés, l'application se rechargeait… sur l'ancien emplacement, et
+  // rien n'arrivait jamais de l'autre poste. Trouvé par `npm run e2e:partage`, qui fait vraiment
+  // l'aller-retour entre deux applications.
+  const ouvert = currentDossier();
+  const d = cfg.dossiers.find(x => x.id === ouvert.id) || cfg.dossiers[0];
+  if (d.shared) return { ok: false, error: 'Ce dossier est déjà posé dans un emplacement partagé.' };
+  const r = await dialog.showOpenDialog(mainWindow, {
+    title: 'Où poser le dossier partagé ? (iCloud Drive, OneDrive, disque réseau, clé USB)',
+    properties: ['openDirectory', 'createDirectory']
+  });
+  if (r.canceled || !r.filePaths.length) return { ok: false, cancelled: true };
+  const ancien = d.dir;
+  const dest = path.join(r.filePaths[0], nomDeDossier(d.name));
+  if (path.resolve(dest) === path.resolve(ancien)) return { ok: false, error: 'Ce dossier est déjà à cet endroit.' };
+  if (fs.existsSync(path.join(dest, 'skanfact-data.json')))
+    return { ok: false, error: 'Il y a déjà un dossier SkanFact à cet endroit. Pour l\'ouvrir, utilise « Rejoindre un dossier déjà partagé ».' };
+  try {
+    fs.mkdirSync(dest, { recursive: true });
+    fs.cpSync(ancien, dest, { recursive: true });
+    // On ne bascule qu'une fois la copie CONSTATÉE : un dossier iCloud plein, un disque réseau
+    // déconnecté en cours de route, et l'app ouvrirait un dossier à moitié écrit.
+    const a = path.join(ancien, 'skanfact-data.json'), b = path.join(dest, 'skanfact-data.json');
+    if (fs.existsSync(a) && (!fs.existsSync(b) || fs.statSync(b).size !== fs.statSync(a).size))
+      return { ok: false, error: 'La copie est incomplète : le dossier partagé n\'a pas tout reçu. Rien n\'a été changé ici.' };
+  } catch (e) { logError('partage du dossier', e); return { ok: false, error: e.message }; }
+  d.dir = dest; d.shared = true; writeAppCfg(cfg);
+  openStorage();
+  if (mainWindow) mainWindow.reload();
+  return { ok: true, dir: dest, ancien };
+});
+
+// Rejoindre un dossier qui existe DÉJÀ. On ne crée rien, on ne renomme rien : on l'ouvre.
+ipcMain.handle('dossiers:join', async () => {
+  const cfg = ensureDossiers();
+  const r = await dialog.showOpenDialog(mainWindow, {
+    title: 'Choisir le dossier SkanFact partagé (celui créé par l\'autre ordinateur)',
+    properties: ['openDirectory']
+  });
+  if (r.canceled || !r.filePaths.length) return { ok: false, cancelled: true };
+  let dir = r.filePaths[0];
+  // Tolérance : on accepte qu'on ait choisi le dossier PARENT (« iCloud Drive » au lieu de
+  // « iCloud Drive/SkanFact-Machin »), tant qu'il n'y a pas d'ambiguïté. C'est l'erreur qu'on fait
+  // la première fois, et refuser sèchement n'apprend rien.
+  if (!fs.existsSync(path.join(dir, 'skanfact-data.json'))) {
+    let dedans = [];
+    try {
+      dedans = fs.readdirSync(dir).filter(n => {
+        try { return fs.existsSync(path.join(dir, n, 'skanfact-data.json')); } catch { return false; }
+      });
+    } catch (e) { return { ok: false, error: 'Ce dossier ne peut pas être lu : ' + e.message }; }
+    if (dedans.length === 1) dir = path.join(dir, dedans[0]);
+    else if (dedans.length > 1) return { ok: false, error: `Il y a ${dedans.length} dossiers SkanFact ici. Ouvre celui de l'entreprise à rejoindre : ${dedans.slice(0, 3).join(', ')}${dedans.length > 3 ? '…' : ''}` };
+    else return { ok: false, error: 'Aucun dossier SkanFact ici. Choisis le dossier créé par l\'autre ordinateur — son nom commence par « SkanFact- » et il contient un fichier skanfact-data.json.' };
+  }
+  const deja = cfg.dossiers.find(x => path.resolve(x.dir) === path.resolve(dir));
+  if (deja) return { ok: false, error: `Ce dossier est déjà dans ta liste, sous le nom « ${deja.name} ».` };
+  const soc = societeDe(dir);
+  const entry = {
+    id: 'd' + Date.now().toString(36),
+    name: soc.name || path.basename(dir).replace(/^SkanFact-/, '').replace(/-/g, ' ') || 'Dossier partagé',
+    dir, shared: true
+  };
+  cfg.dossiers.push(entry); cfg.currentDossier = entry.id; writeAppCfg(cfg);
+  openStorage();
+  if (mainWindow) mainWindow.reload();
+  return { ok: true, dossier: entry, chiffre: soc.chiffre };
+});
 ipcMain.handle('dossiers:rename', (_e, { id, name }) => {
   const cfg = ensureDossiers();
   const d = cfg.dossiers.find(x => x.id === id); if (!d) return { ok: false };

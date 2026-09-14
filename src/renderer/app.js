@@ -746,7 +746,13 @@
     // Un aperçu immédiat (le thème) doit se défaire si on renonce : sinon l'application reste
     // habillée d'un réglage qu'on vient de refuser, et plus rien à l'écran ne le dit.
     else if (typeof g.discard === 'function') g.discard();
-    guard = null;
+    // `clearGuard()` et pas `guard = null` : c'est lui qui REDIT au processus principal qu'il n'y a
+    // plus rien en attente. Sans ça, `dirtyReported` restait à `true` pour le reste de la session —
+    // une fois qu'on avait modifié quoi que ce soit, fermer la fenêtre posait pour toujours la
+    // question « modifications non enregistrées », même après avoir tout enregistré. L'application
+    // annonçait une perte qui n'existait pas, et on apprend à cliquer « fermer » sans lire.
+    // Trouvé par `npm run e2e:chiffres`, qui restait bloqué à la fermeture — pour toujours.
+    clearGuard();
     return true;
   }
 
@@ -900,7 +906,8 @@
           <span class="dm-mark"></span><span class="dm-nom">${h(d.name)}</span>${d.shared ? '<span class="dm-tag">partagé</span>' : ''}</button>`).join('')}` : ''}
       <hr>
       <button type="button" id="dm-new" title="Créer un second dossier, pour une autre entreprise"><span class="dm-mark">+</span><span class="dm-nom">Nouvelle entreprise…</span></button>
-      <button type="button" id="dm-shared" title="Un dossier posé dans iCloud, OneDrive ou sur une clé, que deux ordinateurs ouvrent tour à tour"><span class="dm-mark">↔</span><span class="dm-nom">Dossier partagé…</span></button>
+      ${(r.dossiers || []).some(d => d.id === r.current && d.shared) ? '' : `<button type="button" id="dm-share" title="Poser CE dossier, avec tout ce qu'il contient, dans iCloud, OneDrive ou sur une clé"><span class="dm-mark">↔</span><span class="dm-nom">Partager cette entreprise…</span></button>`}
+      <button type="button" id="dm-join" title="Ouvrir un dossier déjà posé dans un emplacement partagé par l'autre ordinateur"><span class="dm-mark">↓</span><span class="dm-nom">Rejoindre un dossier partagé…</span></button>
       <button type="button" id="dm-manage" title="Renommer, retirer de la liste, voir où vivent les fichiers"><span class="dm-mark">⚙</span><span class="dm-nom">Gérer les dossiers…</span></button>`;
     m.hidden = false;
     bouton.setAttribute('aria-expanded', 'true');
@@ -921,8 +928,46 @@
         if (res && !res.ok && res.error) toast(res.error, true);
       });
     };
-    $('#dm-shared', m).onclick = () => { fermerDossiers(); allerParametres('donnees', 'p-dossiers'); };
+    if ($('#dm-share', m)) $('#dm-share', m).onclick = () => { fermerDossiers(); partagerDossier(); };
+    $('#dm-join', m).onclick = () => { fermerDossiers(); rejoindreDossier(); };
     $('#dm-manage', m).onclick = () => { fermerDossiers(); allerParametres('donnees', 'p-dossiers'); };
+  }
+
+  // ---------- partager le dossier ouvert, et rejoindre celui d'en face (7.28.0) ----------
+  //
+  // Ces deux gestes manquaient, et leur absence rendait le travail à deux inutilisable pour qui
+  // avait déjà commencé — c'est-à-dire pour tout le monde. « Dossier partagé à deux… » demandait un
+  // NOM D'ENTREPRISE et fabriquait un dossier VIDE : on venait de saisir sa société, ses clients et
+  // ses factures, on cliquait pour les partager avec son père, et on tombait sur l'assistant de
+  // première utilisation. Et de l'autre côté, aucun moyen de REJOINDRE le dossier déjà posé : il
+  // fallait retomber par hasard sur le même chemin en retapant exactement le même nom.
+  //
+  // Le pire défaut est celui qui punit quelqu'un qui a tout bien fait (règle 6.8.1).
+  async function partagerDossier() {
+    const ouvert = ((data.company && data.company.name) || '').trim() || 'ce dossier';
+    if (!await confirmDialog(
+      `SkanFact va poser « ${ouvert} » — avec ses documents, ses clients, ses achats, ses sauvegardes et ses pièces jointes — dans un emplacement que vous voyez tous les deux : iCloud Drive, OneDrive, un disque réseau ou une clé USB.\n\n` +
+      'Rien n\'est effacé : la copie qui est sur cet ordinateur reste en place, au cas où.\n\n' +
+      'Ensuite, sur l\'autre ordinateur, il faudra « Rejoindre un dossier déjà partagé » et désigner le même emplacement.\n\n' +
+      'À savoir : vous l\'ouvrez TOUR À TOUR. SkanFact fusionne si vous avez travaillé tous les deux et te dit ce qui a changé. La seule chose qui ne se répare pas toute seule : émettre des factures en même temps, chacun de son côté, peut sortir deux fois le même numéro. Mettez-vous d\'accord sur qui émet.',
+      'Choisir l\'emplacement partagé', false)) return;
+    const r = await bridge.shareDossier();
+    if (!r || r.cancelled) return;
+    if (!r.ok) return toast(r.error || 'Le partage n\'a pas abouti.', true);
+    // La fenêtre se recharge juste après : ce message n'a que le temps de passer. Le compte rendu
+    // qui dure est dans le panneau Dossiers, qui montre désormais le nouveau chemin.
+    toast('Partagé — le dossier vit maintenant dans ' + r.dir);
+  }
+  async function rejoindreDossier() {
+    if (!await confirmDialog(
+      'Sur l\'autre ordinateur, quelqu\'un a déjà posé le dossier dans iCloud Drive, OneDrive ou sur une clé.\n\n' +
+      'Désigne ce dossier-là : SkanFact l\'ouvre tel quel, sans rien créer ni renommer. Si l\'entreprise est protégée par un mot de passe, il te sera demandé à l\'ouverture.\n\n' +
+      'Si c\'est toi qui as le dossier et que tu veux le partager, c\'est l\'autre bouton : « Partager ce dossier à deux ».',
+      'Choisir le dossier à rejoindre', false)) return;
+    const r = await bridge.joinDossier();
+    if (!r || r.cancelled) return;
+    if (!r.ok) return toast(r.error || 'Ce dossier n\'a pas pu être rejoint.', true);
+    toast('Dossier rejoint : ' + (r.dossier && r.dossier.name));
   }
 
   function drawNav() {
@@ -1110,7 +1155,7 @@
     // menés. `block: 'nearest'` ne bouge rien quand l'entrée est déjà dans le champ.
     const courante = $('nav a.active');
     if (courante) { try { courante.scrollIntoView({ block: 'nearest' }); } catch (_) {} }
-    guard = null; previewRedraw = null; pleinEcranCourant = null;
+    clearGuard(); previewRedraw = null; pleinEcranCourant = null;
     // Le grand aperçu appartient au document qu'on quitte : le laisser ouvert par-dessus la page
     // suivante montrerait une pièce qui n'est plus celle qu'on regarde.
     const grand = $('#pv-full'); if (grand) grand.remove();
@@ -1547,6 +1592,71 @@
     text: `${c.name} ${c.contact || ''} ${c.email || ''} ${c.phone || ''} ${c.matricule || ''}`
   }));
 
+  // ---------- le menu d'actions d'une ligne (7.28.0) ----------
+  //
+  // Skander : « dans les listes je n'aime pas les boutons en fin de ligne, faut faire une liste où
+  // on choisit dedans, ou un truc plus pro. »
+  //
+  // Ce n'est pas qu'une question de goût. Le budget de boutons d'une ligne est réel (règle 7.18.0) :
+  // il y en avait jusqu'à cinq, ils se disputaient la place, ils tombaient dans des pictogrammes
+  // muets (« ⧉ », « ⏱ ») dès qu'ils étaient trop nombreux, et le dernier sortait de l'écran à
+  // 1280 px. Un menu, lui, tient toujours : il occupe la largeur d'un bouton quoi qu'il contienne,
+  // et chaque action y porte une PHRASE plus une explication, au lieu d'une abréviation.
+  //
+  // Couche 70 : au-dessus de la page, sous les fenêtres modales (400). Une question posée par une
+  // action doit rester devant le menu qui l'a déclenchée (règle 5.2.2).
+  const MENU_POINTS = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>';
+  const rowMenuCell = id => `<td class="row-actions"><button type="button" class="row-menu-btn" data-rowmenu="${h(id)}" aria-haspopup="menu" aria-expanded="false" aria-label="Actions" title="Actions">${MENU_POINTS}</button></td>`;
+
+  // `actionsDe(id)` rend les actions de CETTE ligne : { label, hint, danger, run } ou { sep: true }.
+  // Une ligne sans action perd son bouton : un menu vide est pire qu'un menu absent — c'est encore
+  // un bouton qui accepte le clic et n'en fait rien (règle 7.0.0).
+  function bindRowMenus(racine, actionsDe) {
+    $$('[data-rowmenu]', racine || document).forEach(b => {
+      const actions = (actionsDe(b.dataset.rowmenu) || []).filter(Boolean);
+      if (!actions.filter(a => !a.sep).length) { b.remove(); return; }
+      b.onclick = e => { e.stopPropagation(); ouvrirRowMenu(b, actions); };
+    });
+  }
+
+  function ouvrirRowMenu(bouton, actions) {
+    if (closeOverlay) closeOverlay();
+    const m = document.createElement('div');
+    m.className = 'row-menu';
+    m.setAttribute('role', 'menu');
+    m.innerHTML = actions.map((a, i) => a.sep ? '<hr>'
+      : `<button type="button" role="menuitem" data-i="${i}"${a.danger ? ' class="danger"' : ''}>
+          <span class="rm-l">${h(a.label)}</span>${a.hint ? `<span class="rm-h">${h(a.hint)}</span>` : ''}</button>`).join('');
+    document.body.appendChild(m);
+    // On mesure APRÈS avoir posé le menu : sa hauteur dépend de ce qu'il contient, et une ligne du
+    // bas de l'écran doit le voir s'ouvrir vers le haut plutôt que hors de la fenêtre.
+    const r = bouton.getBoundingClientRect();
+    const haut = m.offsetHeight, large = m.offsetWidth;
+    m.style.top = (r.bottom + 6 + haut <= window.innerHeight - 8 ? r.bottom + 6 : Math.max(8, r.top - 6 - haut)) + 'px';
+    m.style.left = Math.max(8, Math.min(window.innerWidth - large - 8, r.right - large)) + 'px';
+    bouton.setAttribute('aria-expanded', 'true');
+    const scroller = bouton.closest('main');
+    const close = () => {
+      m.remove(); bouton.setAttribute('aria-expanded', 'false');
+      document.removeEventListener('mousedown', dehors, true);
+      document.removeEventListener('keydown', clavier, true);
+      window.removeEventListener('resize', close);
+      if (scroller) scroller.removeEventListener('scroll', close);
+      if (closeOverlay === close) closeOverlay = null;
+    };
+    const dehors = e => { if (!m.contains(e.target) && !bouton.contains(e.target)) close(); };
+    const clavier = e => { if (e.key === 'Escape') { e.stopPropagation(); close(); bouton.focus(); } };
+    document.addEventListener('mousedown', dehors, true);
+    document.addEventListener('keydown', clavier, true);
+    window.addEventListener('resize', close);
+    if (scroller) scroller.addEventListener('scroll', close);
+    closeOverlay = close;
+    // On ferme AVANT d'exécuter : une action qui ouvre une fenêtre laisserait sinon le menu dessous,
+    // et une action qui redessine la page détacherait le menu sans jamais le retirer du document.
+    $$('button[data-i]', m).forEach(b => b.onclick = () => { const a = actions[Number(b.dataset.i)]; close(); a.run(); });
+    const premier = m.querySelector('button'); if (premier) premier.focus();
+  }
+
   function docTable(list, opts) {
     opts = opts || {};
     const { cols, amountOf, restOf } = docColumns(opts);
@@ -1565,13 +1675,7 @@
       </thead><tbody>
       ${paged.rows.map(d => `<tr class="clickable" data-id="${d.id}">
         ${cols.map(c => `<td class="${c.r ? 'r nw' : ''}${c.cls ? ' ' + c.cls : ''}">${c.get(d)}</td>`).join('')}
-        <td class="row-actions"><span>
-          <button class="btn btn-sm" data-pdf="${d.id}" title="Exporter en PDF">PDF</button>
-          ${d.number ? `<button class="btn btn-sm" data-mail="${d.id}" title="Envoyer par email">Email</button>` : ''}
-          ${d.type === 'facture' && d.status !== 'brouillon' && d.status !== 'annulée' && (restOf(d) || 0) > 0.0005 ? `<button class="btn btn-sm" data-paye="${d.id}" title="Enregistrer un paiement">Paiement</button>` : ''}
-          ${d.type === 'devis' && d.status === 'accepté' ? `<button class="btn btn-sm" data-facturer="${d.id}" title="Créer la facture de ce devis">Facturer</button>` : ''}
-          ${d.type === 'devis' && ['envoyé', 'expiré'].includes(effStatus(d)) ? `<button class="btn btn-sm" data-accepte="${d.id}" title="Le client a dit oui">Accepté ✓</button><button class="btn btn-sm btn-ghost" data-refuse="${d.id}" title="Le client a dit non">Refusé ✕</button>` : ''}
-        </span></td></tr>`).join('')}
+        ${rowMenuCell(d.id)}</tr>`).join('')}
     </tbody>${opts.noFoot ? '' : `<tfoot><tr>
       <td colspan="${Math.max(1, cols.length - (opts.quotes ? 1 : 2))}">${pl(sorted.length, 'document')} · ${C.money(totalHT, cur)} HT${mixed ? ` <span class="muted">(devises étrangères converties en ${h(cur)})</span>` : ''}</td>
       <td class="r">${C.money(totalAmount, cur)}</td>
@@ -1581,28 +1685,63 @@
   }
 
   function bindDocTable(redraw, state, anchor) {
+    const refaire = () => (redraw || render)();
     $$('tr.clickable[data-id]').forEach(tr => tr.onclick = e => { if (e.target.closest('button')) return; navigate('#/doc/' + tr.dataset.id); });
-    $$('button[data-pdf]').forEach(b => b.onclick = () => exportPdf(docById(b.dataset.pdf)));
-    $$('button[data-mail]').forEach(b => b.onclick = () => sendByEmail(docById(b.dataset.mail)));
-    $$('button[data-paye]').forEach(b => b.onclick = () => paymentForm(docById(b.dataset.paye), () => (redraw || render)()));
-    $$('button[data-dup]').forEach(b => b.onclick = () => duplicateDoc(docById(b.dataset.dup)));
-    // Facturer depuis la LISTE : c'est le geste qui rapporte de l'argent, et il n'existait qu'au
-    // fond d'un menu gris, à l'intérieur du devis. Le panneau « À faire » renvoyait sur cette liste
-    // en écrivant « ouvre le devis puis Facturer ▾ » — l'itinéraire au lieu du bouton.
-    $$('button[data-facturer]').forEach(b => b.onclick = () => facturerDevis(docById(b.dataset.facturer)));
-    // Le statut d'un devis se saisit à la main (contrairement à celui d'une facture, qui se déduit
-    // des paiements) : il n'y avait pourtant aucun moyen de répondre « le client a dit oui » depuis
-    // la liste. Il fallait ouvrir le devis, trouver le sélecteur, enregistrer. Et « Facturer »
-    // n'apparaissait que sur un devis déjà « accepté » — alors que l'éditeur, lui, l'accepte
-    // depuis un devis « envoyé » et passe le statut lui-même.
-    const repondre = (id, st) => {
+
+    // Répondre à un devis (7.28.0 : avec une question, et la suite).
+    //
+    // Skander : « quand j'appuie sur un devis accepté ou refusé, ça ne me demande pas de confirmer
+    // mon choix, ça ne me redirige pas si j'accepte, et ça ne m'indique pas. »
+    //
+    // Les trois manques sont vrais, et ils vont ensemble : un clic qui change l'état d'une pièce
+    // commerciale sans rien demander, sans rien dire, et sans proposer ce qui vient APRÈS. Or ce
+    // qui vient après un devis accepté, c'est la facture — c'est même tout l'intérêt de l'avoir
+    // accepté. La question et la suite tiennent dans UNE fenêtre : deux boîtes à la file se
+    // cliquent sans être lues.
+    const repondreAccepte = async id => {
       const d = docById(id); if (!d) return;
+      const quoi = `${d.number || 'Ce devis'} — ${clientName(d.clientId)} — ${C.money(C.computeTotals(d, company()).totalTTC, docCur(d))}`;
+      const suite = await choiceDialog('Le client a accepté ?', `${quoi}\n\nLe devis passera en « accepté ». Tu peux facturer tout de suite, ou plus tard : le bouton reste dans la liste.`,
+        'Accepter et facturer', 'Accepter seulement');
+      if (!suite) return;
       const avant = d.status;
-      d.status = st; save(true); (redraw || render)();
-      toastUndo(`${d.number || 'Devis'} marqué ${st}`, () => { const x = docById(id); if (x) { x.status = avant; save(true); (redraw || render)(); } });
+      d.status = 'accepté'; save(true);
+      if (suite === 'a') return facturerDevis(d);     // facturerDevis enregistre, annonce et ouvre le brouillon
+      refaire();
+      const dit = `${d.number || 'Devis'} accepté — « Facturer ce devis » t'attend dans le menu de la ligne`;
+      toastUndo(dit, () => { const x = docById(id); if (x) { x.status = avant; save(true); refaire(); } });
     };
-    $$('button[data-accepte]').forEach(b => b.onclick = () => repondre(b.dataset.accepte, 'accepté'));
-    $$('button[data-refuse]').forEach(b => b.onclick = () => repondre(b.dataset.refuse, 'refusé'));
+    const repondreRefuse = async id => {
+      const d = docById(id); if (!d) return;
+      const quoi = `${d.number || 'Ce devis'} — ${clientName(d.clientId)} — ${C.money(C.computeTotals(d, company()).totalTTC, docCur(d))}`;
+      if (!await confirmDialog(`${quoi}\n\nMarquer ce devis « refusé » ? Il sortira de tes relances et de ton taux de conversion. Tu pourras revenir dessus.`, 'Le client a refusé', false)) return;
+      const avant = d.status;
+      d.status = 'refusé'; save(true); refaire();
+      toastUndo(`${d.number || 'Devis'} marqué refusé`, () => { const x = docById(id); if (x) { x.status = avant; save(true); refaire(); } });
+    };
+
+    // Les actions d'une ligne, dans l'ordre où on en a besoin : ouvrir, puis ce qu'on envoie, puis
+    // ce qui change l'état de la pièce.
+    bindRowMenus(document, id => {
+      const d = docById(id); if (!d) return [];
+      const a = [{ label: 'Ouvrir', hint: 'Voir la pièce et la modifier', run: () => navigate('#/doc/' + id) },
+                 { label: 'Exporter en PDF', run: () => exportPdf(d) }];
+      if (d.number) a.push({ label: 'Envoyer par email', hint: 'Le PDF est joint au message', run: () => sendByEmail(d) });
+      // `restOf` vit dans `docColumns` : ici on repasse par `balance`, la même source.
+      const reste = d.type === 'facture' && d.status !== 'brouillon' ? balance(d).remaining : 0;
+      if (d.type === 'facture' && d.status !== 'annulée' && reste > 0.0005)
+        a.push({ sep: true }, { label: 'Enregistrer un paiement', hint: `Reste ${C.money(reste, docCur(d))}`, run: () => paymentForm(d, refaire) });
+      // Facturer depuis la LISTE : c'est le geste qui rapporte de l'argent, et il n'existait qu'au
+      // fond d'un menu gris, à l'intérieur du devis.
+      if (d.type === 'devis' && d.status === 'accepté')
+        a.push({ sep: true }, { label: 'Facturer ce devis', hint: 'Crée le brouillon de facture correspondant', run: () => facturerDevis(d) });
+      // Le statut d'un devis se saisit à la main (celui d'une facture se déduit des paiements).
+      if (d.type === 'devis' && ['envoyé', 'expiré'].includes(effStatus(d)))
+        a.push({ sep: true },
+          { label: 'Le client a accepté', hint: 'Et facturer dans la foulée, si tu veux', run: () => repondreAccepte(id) },
+          { label: 'Le client a refusé', run: () => repondreRefuse(id) });
+      return a;
+    });
     if (redraw) bindSort(document, redraw);
     if (redraw && state) bindPager(document, state, () => redraw(), anchor);
   }
@@ -2875,10 +3014,7 @@
           ${sortHead(cols, s.sort, '<th class="row-actions-h"></th>')}</thead><tbody>
         ${page.map(r => `<tr class="clickable" data-cid="${r.c.id}">
           ${cols.map(c => `<td class="${c.r ? 'r nw' : ''}">${c.get(r)}</td>`).join('')}
-          <td class="row-actions"><span>
-            <button class="btn btn-sm" data-devis="${r.c.id}" title="Nouveau devis pour ce client">+ Devis</button>
-            <button class="btn btn-sm" data-edit="${r.c.id}">Modifier</button>
-          </span></td></tr>`).join('')}
+          ${rowMenuCell(r.c.id)}</tr>`).join('')}
         </tbody><tfoot><tr>
           <td colspan="3"><strong>${rows.length} client(s)</strong>${filtered ? `<span class="muted"> sur ${all.length}</span>` : ''}</td>
           <td class="r"><strong>${rows.reduce((a, r) => a + r.sum.count, 0)}</strong></td>
@@ -2891,8 +3027,15 @@
       note.innerHTML = !filtered ? '' : `<span class="small muted">${rows.length} sur ${all.length}</span>${filterReset(true)}`;
       if ($('#reset-f')) $('#reset-f').onclick = () => { s.q = ''; s.f = ''; s.page = 1; routes.clients(); };
       $$('tr.clickable[data-cid]').forEach(tr => tr.onclick = e => { if (e.target.closest('button')) return; navigate('#/client/' + tr.dataset.cid); });
-      $$('[data-edit]').forEach(b => b.onclick = () => clientForm(clientById(b.dataset.edit), () => draw()));
-      $$('[data-devis]').forEach(b => b.onclick = () => navigate('#/doc/new/devis/client/' + b.dataset.devis));
+      bindRowMenus(document, id => {
+        const c = clientById(id); if (!c) return [];
+        return [
+          { label: 'Ouvrir la fiche', hint: 'Documents, affaires, contrats, matériel installé', run: () => navigate('#/client/' + id) },
+          { label: 'Nouveau devis', hint: `Pour ${c.name}`, run: () => navigate('#/doc/new/devis/client/' + id) },
+          { sep: true },
+          { label: 'Modifier le client', hint: 'Coordonnées, contact, matricule', run: () => clientForm(c, () => draw()) }
+        ];
+      });
       bindSort($('#list-wrap'), draw);
       bindPager($('#list-wrap'), s, () => draw(), '#list-wrap');
     };
@@ -3887,12 +4030,7 @@
         <td class="r">${C.money(x.remaining, docCur(x.doc))}</td>
         <td>${x.lastReminder ? `${C.fmtDate(x.lastReminder.date)} <span class="small muted">(${x.lastReminder.channel === 'tel' ? 'téléphone' : 'email'}, niveau ${x.lastReminder.level}, ${x.reminders.length} au total)</span>${x.lastReminder.note ? `<div class="small muted">« ${h(x.lastReminder.note)} »</div>` : ''}` : '<span class="muted">jamais</span>'}
           ${x.snoozed ? `<div class="small warn-link">reporté au ${C.fmtDate(x.remindAfter)}</div>` : ''}</td>
-        <td class="actions">
-          <button class="btn btn-sm btn-primary" data-rem="${x.doc.id}">Email</button>
-          <button class="btn btn-sm" data-tel="${x.doc.id}">Téléphone…</button>
-          <button class="btn btn-sm" data-pay="${x.doc.id}">Paiement reçu</button>
-          <button class="btn btn-sm btn-ghost" data-snooze="${x.doc.id}" title="Ne pas relancer avant une date">⏱</button>
-        </td></tr>`;
+        ${rowMenuCell(x.doc.id)}</tr>`;
       const relCols = [
         { key: 'number', label: 'Facture', asc: true, val: x => x.doc.number || '' },
         { key: 'client', label: 'Client', asc: true, val: x => clientName(x.doc.clientId).toLowerCase() },
@@ -3938,10 +4076,18 @@
       if ($('#reset-f')) $('#reset-f').onclick = () => { relState.q = ''; relState.page = 1; draw(); };
       bindSort($('#r-wrap'), key => { relState.sort = toggleSort(relState.sort, key, relCols); relState.page = 1; draw(); });
       bindPager($('#r-wrap'), relState, () => draw(), '#r-wrap');
-      $$('[data-rem]').forEach(b => b.onclick = () => sendReminder(find(b.dataset.rem)));
-      $$('[data-tel]').forEach(b => b.onclick = () => phoneReminderForm(find(b.dataset.tel), draw));
-      $$('[data-snooze]').forEach(b => b.onclick = () => snoozeForm(find(b.dataset.snooze), draw));
-      $$('[data-pay]').forEach(b => b.onclick = () => paymentForm(docById(b.dataset.pay), draw));
+      bindRowMenus(document, id => {
+        const x = find(id); if (!x) return [];
+        return [
+          { label: 'Ouvrir la facture', run: () => navigate('#/doc/' + id) },
+          { sep: true },
+          { label: 'Relancer par email', hint: `Ton de niveau ${x.level} — ${C.REMINDER_LABELS[x.level]}`, run: () => sendReminder(x) },
+          { label: 'Noter un appel téléphonique', hint: 'Ce que le client a répondu, et quand rappeler', run: () => phoneReminderForm(x, draw) },
+          { sep: true },
+          { label: 'Paiement reçu', hint: `Reste ${C.money(x.remaining, docCur(x.doc))}`, run: () => paymentForm(x.doc, draw) },
+          { label: x.snoozed ? 'Changer la date de report' : 'Ne pas relancer avant…', hint: 'La facture sort de la liste jusqu\'à cette date', run: () => snoozeForm(x, draw) }
+        ];
+      });
       $$('[data-qrem]').forEach(b => b.onclick = () => sendByEmail(docById(b.dataset.qrem), 'relanceDevis', null, () => {}));
       $$('tr.clickable[data-id]').forEach(tr => tr.onclick = () => navigate('#/doc/' + tr.dataset.id));
     };
@@ -4248,9 +4394,18 @@
   const brandBtn = $('#brand-btn');
   if (brandBtn) brandBtn.onclick = e => { e.stopPropagation(); ouvrirDossiers(); };
   document.addEventListener('click', e => { if (!e.target.closest('.brand-wrap')) fermerDossiers(); });
-  // Un clic ailleurs referme le calendrier ou la liste déroulante ouverte.
+  // Un clic ailleurs referme le calendrier, la liste déroulante ou le menu d'actions ouvert.
+  //
+  // Les surfaces énumérées ici sont celles qu'on a le droit de cliquer SANS que l'overlay se
+  // referme. Elles vivent en UN seul endroit : recopiées en trois conditions, il en manque une au
+  // premier overlay ajouté — et c'est exactement ce qui est arrivé au menu d'actions de la 7.28.0.
+  // Ses entrées acceptaient le clic et n'en faisaient rien : ce `mousedown` global refermait le
+  // menu, donc retirait le bouton du document, et le `click` n'avait plus personne à qui parler.
+  // Rien en console, aucune erreur — juste un bouton mort (le défaut de la 7.0.0, en plus sournois
+  // puisque le menu se fermait, ce qui donne l'impression que quelque chose s'est passé).
+  const SURFACES_OVERLAY = '.combo, .datefield, .row-menu';
   document.addEventListener('mousedown', e => {
-    if (closeOverlay && !e.target.closest('.combo') && !e.target.closest('.datefield')) closeOverlay();
+    if (closeOverlay && !e.target.closest(SURFACES_OVERLAY)) closeOverlay();
   });
 
   // ---------- Paramètres ----------
@@ -4352,10 +4507,7 @@
           ${sortHead(cols, s.sort, '<th class="row-actions-h"></th>')}</thead><tbody>
         ${page.map(r => `<tr class="clickable" data-sid="${r.s.id}">
           ${cols.map(c => `<td class="${c.r ? 'r nw' : ''}">${c.get(r)}</td>`).join('')}
-          <td class="row-actions"><span>
-            <button class="btn btn-sm" data-buy="${r.s.id}" title="Enregistrer un achat chez ce fournisseur">+ Achat</button>
-            <button class="btn btn-sm" data-edit="${r.s.id}">Modifier</button>
-          </span></td></tr>`).join('')}
+          ${rowMenuCell(r.s.id)}</tr>`).join('')}
         </tbody><tfoot><tr><td colspan="4">${rows.length} fournisseur${rows.length > 1 ? 's' : ''}</td>
           <td class="r">${C.money(totalHT, cur)}</td><td class="r">${totalDue > 0.0005 ? C.money(totalDue, cur) : '<span class="muted">—</span>'}</td><td></td><td></td></tr></tfoot>
         </table>${pagerBar(pg, { noun: 'fournisseur', grandTotal: all.length })}`
@@ -4365,8 +4517,15 @@
       note.innerHTML = !filtered ? '' : `<span class="small muted">${rows.length} sur ${all.length}</span>${filterReset(true)}`;
       if ($('#reset-f')) $('#reset-f').onclick = () => { s.q = ''; s.f = ''; s.page = 1; routes.fournisseurs(); };
       $$('tr.clickable[data-sid]').forEach(tr => tr.onclick = e => { if (e.target.closest('button')) return; navigate('#/fournisseur/' + tr.dataset.sid); });
-      $$('[data-edit]').forEach(b => b.onclick = () => supplierForm(supplierById(b.dataset.edit), () => draw()));
-      $$('[data-buy]').forEach(b => b.onclick = () => navigate('#/achat/new/' + b.dataset.buy));
+      bindRowMenus(document, id => {
+        const f = supplierById(id); if (!f) return [];
+        return [
+          { label: 'Ouvrir la fiche', hint: 'Ses achats, ce qui reste à payer', run: () => navigate('#/fournisseur/' + id) },
+          { label: 'Enregistrer un achat', hint: `Chez ${f.name}`, run: () => navigate('#/achat/new/' + id) },
+          { sep: true },
+          { label: 'Modifier le fournisseur', hint: 'Coordonnées, délai de paiement', run: () => supplierForm(f, () => draw()) }
+        ];
+      });
       bindSort($('#list-wrap'), draw);
       bindPager($('#list-wrap'), s, () => draw(), '#list-wrap');
     };
@@ -4485,8 +4644,7 @@
       const totRest = rows.reduce((a, p) => a + Math.max(0, restOf(p)), 0);
       $('#list-wrap').innerHTML = rows.length ? `<table class="list sortable"><thead>${sortHead(cols, s.sort, '<th class="row-actions-h"></th>')}</thead><tbody>
           ${page.map(p => `<tr class="clickable" data-id="${p.id}">${cols.map(c => `<td class="${c.r ? 'r nw' : ''}${c.cls ? ' ' + c.cls : ''}">${c.get(p)}</td>`).join('')}
-            <td class="row-actions"><span>${restOf(p) > 0.0005 ? `<button class="btn btn-sm" data-pay="${p.id}" title="Enregistrer un règlement">Régler</button>` : ''}
-            <button class="btn btn-sm btn-ghost" data-dup="${p.id}" title="Dupliquer">⧉</button></span></td></tr>`).join('')}
+            ${rowMenuCell(p.id)}</tr>`).join('')}
         </tbody><tfoot><tr><td colspan="${cols.length - 2}">${rows.length} pièce${rows.length > 1 ? 's' : ''} · ${C.money(totHT, cur)} HT</td>
           <td class="r">${C.money(totNet, cur)}</td><td class="r">${totRest > 0.0005 ? C.money(totRest, cur) : '<span class="muted">—</span>'}</td><td></td></tr></tfoot></table>${pagerBar(pg, { noun: 'pièce', grandTotal: all.length })}`
         : `<div class="empty">${filtered ? 'Aucune pièce ne correspond à ces filtres.' : 'Aucun achat enregistré. Saisis tes factures fournisseurs et tes dépenses ici : c\'est ce qui permettra de récupérer la TVA et de connaître ta marge réelle.'}</div>`;
@@ -4495,8 +4653,14 @@
       note.innerHTML = !filtered ? '' : `<span class="small muted">${rows.length} sur ${all.length}</span>${filterReset(true)}`;
       if ($('#reset-f')) $('#reset-f').onclick = () => { s.q = ''; s.st = ''; s.kind = ''; s.cat = ''; s.year = ''; s.page = 1; routes.achats(); };
       $$('#list-wrap tr.clickable').forEach(tr => tr.onclick = e => { if (e.target.closest('button')) return; navigate('#/achat/' + tr.dataset.id); });
-      $$('[data-pay]').forEach(b => b.onclick = () => supplierPaymentForm(purchaseById(b.dataset.pay), () => draw()));
-      $$('[data-dup]').forEach(b => b.onclick = () => duplicatePurchase(purchaseById(b.dataset.dup)));
+      bindRowMenus(document, id => {
+        const p = purchaseById(id); if (!p) return [];
+        const reste = restOf(p);
+        const a = [{ label: 'Ouvrir la pièce', hint: 'Lignes, TVA, justificatifs', run: () => navigate('#/achat/' + id) }];
+        if (reste > 0.0005) a.push({ label: 'Enregistrer un règlement', hint: `Reste ${C.money(reste, cur)}`, run: () => supplierPaymentForm(p, () => draw()) });
+        a.push({ sep: true }, { label: 'Dupliquer', hint: 'Même fournisseur, mêmes lignes, à la date du jour', run: () => duplicatePurchase(p) });
+        return a;
+      });
       bindSort($('#list-wrap'), draw);
       bindPager($('#list-wrap'), s, () => draw(), '#list-wrap');
     };
@@ -8815,7 +8979,9 @@
         <p class="small muted mb">Chaque dossier est une entreprise : ses clients, ses documents, ses achats, ses sauvegardes. Ils ne se mélangent jamais. Tu passes de l'un à l'autre en un clic, l'application se recharge.</p>
         <div id="dossiers-list"></div>
         <div class="inline mt"><button type="button" class="btn" id="dos-add">+ Nouveau dossier sur cet ordinateur</button>
-          <button type="button" class="btn" id="dos-shared">+ Dossier partagé à deux…</button>${info('data.shared')}</div>
+          <button type="button" class="btn" id="dos-share">↔ Partager ce dossier à deux…</button>
+          <button type="button" class="btn" id="dos-join">↓ Rejoindre un dossier déjà partagé…</button>${info('data.shared')}</div>
+        <p class="small muted mt">Le premier bouton partage <b>le dossier ouvert, avec tout ce qu'il contient</b> : il le pose dans iCloud, OneDrive ou sur une clé. Le second sert sur le <b>deuxième ordinateur</b>, pour ouvrir le dossier que le premier vient d'y poser.</p>
       </div>
       <div class="panel" id="p-poste"><h2>Ce poste ${info('data.device')}</h2>
         <p class="small muted mb">Le nom de cet ordinateur. Il sert uniquement à dire qui a enregistré en dernier quand vous travaillez à deux sur un dossier partagé.</p>
@@ -9064,6 +9230,17 @@
       const el = $('#ext-status'); if (!el) return;
       el.innerHTML = i.dir ? `Dossier : <code>${h(i.dir)}</code><br>${i.lastError ? `<span style="color:var(--danger)">Dernière copie impossible : ${h(i.lastError)}</span>` : (i.lastCopy ? `Dernière copie : ${h(new Date(i.lastCopy).toLocaleString('fr-FR'))}` : 'Copie à la prochaine sauvegarde.')}` : '<span class="muted">Aucun dossier de copie externe.</span>';
       $('#ext-remove').hidden = !i.dir;
+      // Un dossier PARTAGÉ ne reçoit pas de copie externe : il vit déjà hors de cet ordinateur, et
+      // la recopier reviendrait à dupliquer ce que les deux postes s'échangent. C'est le
+      // comportement depuis la 3.2.0, mais il n'était écrit nulle part — on le disait d'autant
+      // moins qu'on ne pouvait pas partager un dossier existant. Le silence est le vrai danger d'un
+      // dossier partagé (règle 3.2.0) : il vaut pour l'application autant que pour les données.
+      const liste = await bridge.listDossiers();
+      const ouvert = (liste.dossiers || []).find(d => d.id === liste.current);
+      if (ouvert && ouvert.shared) {
+        el.innerHTML = `<span class="muted">Ce dossier est <b>partagé</b> : il vit déjà hors de cet ordinateur (<code>${h(ouvert.dir)}</code>), et c'est cette copie-là que les deux postes ouvrent. La copie externe ne s'applique qu'aux dossiers rangés sur cet ordinateur.</span>`;
+        $('#ext-remove').hidden = true;
+      }
     };
     drawExternal();
 
@@ -9099,19 +9276,8 @@
       const r = await bridge.addDossier({ name: v, shared: false });
       if (!r.ok && r.error) toast(r.error, true);
     });
-    $('#dos-shared').onclick = async () => {
-      if (!await confirmDialog(
-        'Un dossier partagé vit dans iCloud Drive, OneDrive, un disque réseau ou une clé USB, et deux ordinateurs l\'ouvrent tour à tour.\n\n' +
-        'SkanFact ne laisse jamais l\'un écraser le travail de l\'autre : si vous avez modifié tous les deux, il fusionne et te dit ce qui a changé.\n\n' +
-        'Une seule chose ne se répare pas toute seule : si vous émettez des factures en même temps chacun de votre côté, vous pouvez sortir deux fois le même numéro. ' +
-        'Mettez-vous d\'accord sur qui émet, ou attendez que l\'autre ait fini.\n\n' +
-        'La suite de la fiche d\'aide « Travailler à deux » explique tout ça.',
-        'J\'ai compris, choisir le dossier', false)) return;
-      promptDialog('Dossier partagé', 'Nom de l\'entreprise partagée', '', async v => {
-        const r = await bridge.addDossier({ name: v, shared: true });
-        if (!r.ok && r.error) toast(r.error, true);
-      });
-    };
+    $('#dos-share').onclick = partagerDossier;
+    $('#dos-join').onclick = rejoindreDossier;
     $('#dev-save').onclick = async () => {
       const r = await bridge.renameDevice($('#dev-name').value);
       if (r && r.ok) toast('Ce poste s\'appelle maintenant « ' + r.name + ' »');

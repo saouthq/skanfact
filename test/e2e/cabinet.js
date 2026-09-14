@@ -420,9 +420,45 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   étape('Aide');
   await win.evaluate(() => { location.hash = '#/aide'; });
   await attendre(600);
-  const aide = await win.textContent('#view');
-  if (!/Ne rien perdre/.test(aide)) throw new Error('l\'article sur les filets manque');
-  ok('aide à jour, ' + (await win.$$('#view .panel')).length + ' articles');
+  // Depuis la 7.28.0 l'aide du cabinet est un PLAN : huit cartes colorées, une recherche, et un
+  // article qui s'ouvre avec son fil d'Ariane et son geste. Avant, c'était les huit articles
+  // dépliés à la suite sur cinq écrans de prose grise.
+  await win.waitForSelector('.help-art');
+  const G = require(path.join(root, 'src', 'cabinet', 'renderer', 'cabguide.js'));
+  const fiches = await win.evaluate(() => [...document.querySelectorAll('.help-art')].map(b => ({
+    id: b.dataset.art, titre: (b.querySelector('.ht') || {}).textContent.trim(),
+    sous: (b.querySelector('.hs') || {}).textContent.trim(),
+    couleur: getComputedStyle(b).getPropertyValue('--th').trim()
+  })));
+  if (fiches.length !== G.ARTICLES.length) throw new Error(`${fiches.length} fiches pour ${G.ARTICLES.length} articles`);
+  fiches.forEach(c => {
+    if (!c.sous) throw new Error(`l'article « ${c.titre} » n'annonce pas ce qu'il contient`);
+    if (!c.couleur) throw new Error(`l'article « ${c.titre} » n'a pas de couleur`);
+  });
+  // La recherche traverse le CORPS des articles : « empreinte » n'est dans aucun titre.
+  await win.fill('#aide-q', 'empreinte');
+  await attendre(350);
+  const trouves = await win.evaluate(() => [...document.querySelectorAll('#aide-res .help-art')].map(b => b.dataset.art));
+  if (!trouves.length) throw new Error('la recherche de l\'aide ne trouve rien');
+  await win.fill('#aide-q', '');
+  await attendre(300);
+  // Un article s'ouvre, dit d'où il vient, et mène quelque part.
+  await win.click('.help-art[data-art="filets"]');
+  await win.waitForSelector('.help-body');
+  const corps = await win.textContent('.help-body');
+  if (!/clé de secours/i.test(corps)) throw new Error('l\'article sur les filets manque');
+  const fil = await win.evaluate(() => {
+    const f = document.querySelector('.help-fil');
+    return { lignes: new Set([...f.children].map(x => Math.round(x.getBoundingClientRect().top))).size, h: Math.round(f.getBoundingClientRect().height) };
+  });
+  if (fil.lignes !== 1 || fil.h > 40) throw new Error(`le fil d'Ariane s'étale sur ${fil.lignes} ligne(s), ${fil.h}px`);
+  const geste = await win.$('.help-geste [data-geste]');
+  if (!geste) throw new Error('l\'article ne mène nulle part');
+  await geste.click();
+  await win.waitForFunction(() => location.hash === '#/reglages', null, { timeout: 4000 });
+  ok(`plan de ${fiches.length} cartes colorées, recherche (${trouves.length} sur « empreinte »), fil sur une ligne, geste qui mène aux Réglages`);
+  await win.evaluate(() => { location.hash = '#/aide'; });
+  await attendre(400);
   await shot('14-aide');
 
   // 12 — la fenêtre étroite ne déborde pas

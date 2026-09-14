@@ -5843,8 +5843,12 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.ok(/const devisFacturable = [\s\S]{0,160}accepté[\s\S]{0,40}envoyé/.test(code),
       'un devis que le client a accepté doit proposer « Facturer » en premier');
     assert.ok(/btn btn-primary" id="convert">Facturer ce devis/.test(code), 'et ce bouton doit être le bouton coloré');
-    assert.ok(/data-facturer="\$\{d\.id\}"/.test(code), 'la LISTE doit aussi porter le bouton, sans avoir à ouvrir le devis');
-    assert.ok(/\$\$\('button\[data-facturer\]'\)/.test(code), 'et il doit être branché');
+    // La LISTE offre le geste sans qu'on ait à ouvrir le devis. Depuis la 7.28.0 les actions d'une
+    // ligne vivent dans un menu et non plus dans une rangée de boutons : ce n'est donc plus un
+    // `data-facturer` qu'on cherche, mais l'entrée du menu — la RÈGLE n'a pas changé, sa forme si.
+    const menuDoc = code.slice(code.indexOf('bindRowMenus(document, id => {'), code.indexOf('function duplicateDoc'));
+    assert.ok(menuDoc.length > 400 && !menuDoc.includes('clientForm('), 'découpage du menu de ligne raté');
+    assert.ok(/label: 'Facturer ce devis'/.test(menuDoc), 'la LISTE doit aussi porter le geste, sans avoir à ouvrir le devis');
     // Les deux chemins passent par la MÊME fonction : recopiés, ils divergeraient au premier
     // changement — et c'est le geste qui crée une facture.
     // Les deux chemins passent par `facturerDevis` — on teste la RÈGLE (le gestionnaire l'appelle),
@@ -5852,7 +5856,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // est déjà facturé, donc une assertion recopiée mot pour mot tomberait sans rien prouver.
     assert.ok(/\$\('#convert'\)\.onclick = async \(\) => \{[\s\S]{0,700}?facturerDevis\(doc\);/.test(code),
       'le bouton de l\'éditeur doit passer par facturerDevis');
-    assert.ok(/facturerDevis\(docById\(b\.dataset\.facturer\)\)/.test(code), 'et celui de la liste aussi');
+    assert.ok(/run: \(\) => facturerDevis\(d\)/.test(menuDoc), 'et celui de la liste aussi');
     assert.ok(!/invoiceFromQuote\(doc, deepCopy\(doc\.lines\)/.test(code), 'plus aucune copie du geste à la main');
     // Et le détail de « À faire » ne décrit plus un itinéraire.
     const core2 = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'core.js'), 'utf8');
@@ -6653,15 +6657,28 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     const app = lireApp();
     // Le statut d'un devis se saisit à la main : il fallait pourtant ouvrir la pièce pour dire
     // « le client a dit oui ». Et « Facturer » n'apparaissait qu'après.
-    // Trois boutons de plus par ligne sortaient de l'écran à 1280 px (`npm run e2e:contraste` l'a
-    // mesuré) : un bouton hors champ n'existe pas. Les deux réponses remplacent donc « Facturer »
-    // tant que le devis n'a pas reçu la sienne — un clic sur « Accepté ✓ » le fait apparaître.
-    assert.ok(/data-accepte="\$\{d\.id\}"/.test(app) && /data-refuse="\$\{d\.id\}"/.test(app),
+    // Depuis la 7.28.0 les deux réponses vivent dans le menu de la ligne, avec une phrase entière
+    // au lieu d'un « Accepté ✓ ». On teste la RÈGLE — les réponses sont offertes depuis la liste,
+    // sur les devis en attente seulement, et chacune laisse un retour en arrière.
+    const menu = app.slice(app.indexOf('bindRowMenus(document, id => {'), app.indexOf('function duplicateDoc'));
+    assert.ok(menu.length > 400 && !menu.includes('clientForm('), 'découpage du menu de ligne raté');
+    assert.ok(/label: 'Le client a accepté'/.test(menu) && /label: 'Le client a refusé'/.test(menu),
       'rien ne permet de répondre à un devis depuis la liste');
-    assert.ok(/d\.type === 'devis' && \['envoyé', 'expiré'\]\.includes\(effStatus\(d\)\) \? `<button class="btn btn-sm" data-accepte=/.test(app),
-      'les réponses ne sont pas offertes sur les devis en attente');
-    assert.ok(/const repondre = \(id, st\) => \{[\s\S]{0,400}?toastUndo\(/.test(app),
-      'répondre à un devis ne laisse aucun retour en arrière');
+    assert.ok(/d\.type === 'devis' && \['envoyé', 'expiré'\]\.includes\(effStatus\(d\)\)[\s\S]{0,200}?Le client a accepté/.test(menu),
+      'les réponses ne sont pas offertes sur les devis en attente seulement');
+    // Confirmer AVANT (règle 7.28.0 : un clic qui change l'état d'une pièce commerciale se
+    // demande), annoncer APRÈS, et laisser défaire.
+    assert.ok(/const repondreAccepte = async id => \{[\s\S]{0,700}?choiceDialog\(/.test(app),
+      'accepter un devis ne pose aucune question');
+    assert.ok(/const repondreAccepte = async id => \{[\s\S]{0,1200}?toastUndo\(/.test(app),
+      'accepter un devis ne laisse aucun retour en arrière');
+    assert.ok(/const repondreRefuse = async id => \{[\s\S]{0,500}?confirmDialog\(/.test(app),
+      'refuser un devis ne pose aucune question');
+    assert.ok(/const repondreRefuse = async id => \{[\s\S]{0,900}?toastUndo\(/.test(app),
+      'refuser un devis ne laisse aucun retour en arrière');
+    // Et accepter propose LA SUITE : ce qui vient après un devis accepté, c'est la facture.
+    assert.ok(/'Accepter et facturer'/.test(app) && /if \(suite === 'a'\) return facturerDevis\(d\)/.test(app),
+      'accepter un devis ne propose pas de facturer dans la foulée');
   });
 
   // ---------- 7.19.0 : l'éditeur de document ----------
@@ -7203,6 +7220,75 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // Et l'interface les arme : une table sans appelant est une table morte (règle 7.2.0).
     assert.ok(/data-geste="\$\{h\(geste\.hash\)\}"/.test(app), 'le bouton du geste n\'est plus dessiné');
     assert.ok(/\$\$\('\[data-geste\]'\)\.forEach\(b => b\.onclick/.test(app), 'le bouton du geste n\'est plus branché');
+  });
+
+  // ---------- 7.28.0 : ce que le processus principal doit savoir ----------
+
+  // Le drapeau « il reste du travail non enregistré » vit dans le processus PRINCIPAL : c'est lui
+  // qui pose la question à la fermeture de la fenêtre. Le renderer doit donc le remettre à jour
+  // chaque fois que le garde-fou DISPARAÎT, pas seulement quand il se pose. `leaveOk` et le routeur
+  // remettaient `guard` à null directement : une fois qu'on avait modifié quoi que ce soit,
+  // `dirtyReported` restait à `true` pour le reste de la session, et fermer la fenêtre posait pour
+  // toujours la question « modifications non enregistrées » — sur des données pourtant enregistrées.
+  // Une application qui annonce une perte qui n'existe pas apprend à cliquer sans lire.
+  t('quitter une page prévient aussi le processus principal', () => {
+    const app = lireApp();
+    assert.ok(/function clearGuard\(g\) \{[^}]*reportDirty\(\)/.test(app),
+      'clearGuard ne redit plus au processus principal qu\'il n\'y a rien en attente');
+    assert.ok(/function reportDirty\(\) \{[\s\S]{0,260}?bridge\.setDirty\(d\)/.test(app),
+      'reportDirty ne traverse plus le pont');
+    // Et personne ne court-circuite `clearGuard` : la seule remise à zéro directe est la sienne,
+    // plus la déclaration de la variable.
+    const lignes = app.split('\n').filter(l => /(^|[^.\w])guard = null/.test(l) && !/^\s*\/\//.test(l));
+    assert.strictEqual(lignes.length, 2,
+      'un endroit remet `guard` à zéro sans le dire au processus principal :\n  ' + lignes.map(l => l.trim().slice(0, 80)).join('\n  '));
+  });
+
+  // ---------- 7.28.0 : le menu d'actions d'une ligne ----------
+
+  // Un overlay qui n'est pas dans la liste des surfaces cliquables est un overlay dont les entrées
+  // acceptent le clic sans rien faire : le `mousedown` global le referme, donc retire son bouton du
+  // document, et le `click` n'a plus personne à qui parler. Aucune erreur, aucune console — et le
+  // menu se ferme, ce qui donne l'impression que quelque chose s'est passé. C'est arrivé au menu
+  // d'actions le jour où il a été écrit.
+  t('le clic dans un menu ouvert ne le referme pas avant d\'avoir agi', () => {
+    const app = lireApp();
+    const m = /const SURFACES_OVERLAY = '([^']+)'/.exec(app);
+    assert.ok(m, 'la liste des surfaces d\'overlay a disparu : chaque garde-fou va la recopier');
+    const surfaces = m[1].split(',').map(x => x.trim());
+    // Les trois overlays de l'application, chacun reconnaissable à la classe qu'il pose.
+    ['.combo', '.datefield', '.row-menu'].forEach(c =>
+      assert.ok(surfaces.includes(c), `${c} n'est pas dans les surfaces d'overlay : ses clics le refermeront avant d'agir`));
+    // Et le garde-fou lit bien CETTE liste, au lieu d'énumérer ses propres conditions.
+    assert.ok(/if \(closeOverlay && !e\.target\.closest\(SURFACES_OVERLAY\)\) closeOverlay\(\);/.test(app),
+      'le garde-fou global n\'utilise pas la liste des surfaces');
+    assert.ok(!/!e\.target\.closest\('\.combo'\) && !e\.target\.closest\('\.datefield'\)/.test(app),
+      'les surfaces sont de nouveau recopiées à la main dans le garde-fou');
+  });
+
+  // Une ligne finit par UN bouton, et ce bouton ouvre des actions écrites en toutes lettres. Le
+  // budget de boutons d'une ligne est réel (7.18.0) : cinq boutons se disputaient la place et
+  // tombaient dans des pictogrammes muets dès qu'ils étaient trop nombreux.
+  t('les listes n\'alignent plus de boutons en fin de ligne', () => {
+    const app = lireApp();
+    // Plus aucune rangée de boutons dans une cellule d'actions.
+    const rangees = (app.match(/<td class="row-actions"><span>/g) || []).length;
+    assert.strictEqual(rangees, 0, `${rangees} liste(s) alignent encore des boutons en fin de ligne`);
+    // Les cinq listes passent par le même helper : recopié, il divergerait.
+    const cellules = (app.match(/\$\{rowMenuCell\(/g) || []).length;
+    assert.ok(cellules >= 5, `seulement ${cellules} liste(s) portent un menu d'actions`);
+    const branchements = (app.match(/bindRowMenus\(/g) || []).length;
+    // une définition + un appel par liste
+    assert.ok(branchements >= cellules + 1, `${cellules} menus posés pour ${branchements - 1} branchés : un menu n'est pas armé`);
+    // Et un menu vide n'existe pas : un bouton qui ouvre le néant est un bouton mort.
+    assert.ok(/if \(!actions\.filter\(a => !a\.sep\)\.length\) \{ b\.remove\(\); return; \}/.test(app),
+      'une ligne sans action garde son bouton : il ouvrira un menu vide');
+    // Chaque action porte une phrase, jamais un pictogramme.
+    // Seulement les actions de menu : un objet `{ label, …, run }`. D'autres tables de
+    // l'application portent un `label` (colonnes, axes de graphique) et n'ont rien à voir ici.
+    const labels = [...app.matchAll(/\{ label: '([^']+)'[\s\S]{0,220}?run:/g)].map(x => x[1]);
+    assert.ok(labels.length >= 18, `seulement ${labels.length} actions nommées`);
+    labels.forEach(l => assert.ok(l.length >= 6, `l'action « ${l} » est trop courte pour être comprise`));
   });
 
   // ---------- 7.27.0 : la mise en page de l'Aide ----------

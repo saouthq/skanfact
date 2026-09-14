@@ -74,9 +74,19 @@
   // Les articles de la rubrique Aide. Ils vivent ici plutôt que dans app.js pour se relire et se
   // corriger sans toucher au code — et parce qu'un texte faux dans l'aide coûte plus cher qu'un bug :
   // le comptable y croit.
+  //
+  // Depuis la 7.28.0, chaque article porte aussi de quoi se PRÉSENTER : un sous-titre (`s`), un
+  // dessin (`icon`), une couleur (`couleur` — une classe `th-…` définie dans la feuille partagée,
+  // parce qu'une couleur écrite ici ne saurait pas se retourner en mode sombre) et le geste qui
+  // suit la lecture (`geste`). L'aide du cabinet était une seule page où les huit articles se
+  // suivaient, dépliés, sans recherche et sans un seul lien vers l'application : on lisait un
+  // livre. `geste: null` est délibéré sur « Ce que cette application ne fait pas » — on ne renvoie
+  // nulle part depuis une liste de limites.
   const ARTICLES = [
     {
-      id: 'demarrer', t: 'En trois gestes', d: `
+      id: 'demarrer', t: 'En trois gestes',
+      s: 'Ce qu\'il faut faire une fois, et ce qui revient chaque mois', couleur: 'th-commencer', geste: { label: 'Voir mes dossiers', hash: '#/' },
+      icon: '<circle cx="12" cy="12" r="9"/><path d="M15.6 8.4l-2.1 5.1-5.1 2.1 2.1-5.1z"/>', d: `
       <ol class="small" style="line-height:1.9">
         <li><b>Une fois :</b> renseigne ton cabinet dans Réglages, enregistre le fichier d'appairage (<code>.skanpair</code>) et envoie-le à chacun de tes clients.</li>
         <li><b>Chaque mois :</b> ton client clôture son mois puis t'envoie un paquet (<code>.skanpack</code>). Tu le glisses sur la fenêtre, ou tu le double-cliques dans ton gestionnaire de fichiers.</li>
@@ -84,7 +94,9 @@
       </ol>
       <p class="small">Tes clients qui n'utilisent pas encore SkanFact ont leur place ici aussi : <b>Nouveau dossier client</b> les fait entrer dans ton portefeuille. Rien ne leur est réclamé tant qu'ils n'ont pas commencé.</p>` },
     {
-      id: 'paquet', t: 'Ce que contient un paquet', d: `
+      id: 'paquet', t: 'Ce que contient un paquet',
+      s: 'Ce que ton client t\'envoie, et ce que tu peux en affirmer', couleur: 'th-vendre', geste: { label: 'Voir mes dossiers', hash: '#/' },
+      icon: '<path d="M3 8l9-4 9 4v8l-9 4-9-4z"/><path d="M3 8l9 4 9-4"/><path d="M12 12v8"/>', d: `
       <p class="small">La page de garde (un PDF qui résume le mois et liste ce qui manque), les journaux au format CSV (ventes, achats, encaissements, règlements fournisseurs, trésorerie), les factures et avoirs en PDF, les bulletins de paie, et les justificatifs que ton client a joints à ses achats.</p>
       <p class="small"><b>Et surtout <code>journaux/ecritures.csv</code></b> : les pièces du mois déjà transformées en écritures en partie double, à importer dans ton logiciel au lieu de les ressaisir. Si les numéros de compte ne sont pas les tiens, donne-les à ton client une fois : il les saisit dans son SkanFact et tous ses envois suivants sont à ton format.</p>
       <p class="small">Un <b>manifeste</b> porte l'empreinte de chaque fichier. À l'import, SkanFact les recalcule toutes : c'est ce qui te permet d'affirmer que ce que tu as reçu est exactement ce qui a été envoyé.</p>
@@ -92,7 +104,9 @@
       <p class="small">Les paquets sont rangés sur ton disque par <b>client</b>, puis par <b>année</b>. Tu peux les retrouver dans ton gestionnaire de fichiers sans ouvrir l'application, et rendre à un client ses pièces en copiant un dossier.</p>
       <p class="small">Tu peux en déposer <b>vingt d'un coup</b> : l'application les range l'un après l'autre en te disant où elle en est, et tu peux arrêter en cours de route. L'arrêt attend la fin du paquet en cours — ce qui est rangé l'est pour de bon, le reste se redépose plus tard.</p>` },
     {
-      id: 'travail', t: 'Ce que tu fais des paquets reçus', d: `
+      id: 'travail', t: 'Ce que tu fais des paquets reçus',
+      s: 'Échéances et écritures : les deux pages qui s\'en nourrissent', couleur: 'th-declarer', geste: { label: 'Ouvrir l\'export d\'écritures', hash: '#/ecritures' },
+      icon: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h8M8 11h8M8 15h5"/>', d: `
       <p class="small">Deux pages vivent de ce que tes clients t'envoient :</p>
       <ul class="small" style="line-height:1.8">
         <li><b>Échéances</b> rattache chaque date de dépôt aux clients dont tu n'as <i>pas</i> les pièces. Un calendrier papier te donne la date ; celui-ci te donne la date <b>et</b> la liste de ceux qu'il faut relancer avant. Les jours proposés suivent l'usage tunisien et se règlent dans Réglages — <b>À VÉRIFIER</b>, ils dépendent de la forme juridique et du régime.</li>
@@ -100,11 +114,15 @@
       </ul>
       <p class="small">Si les numéros de compte proposés ne sont pas les tiens, donne-les une fois à ton client : il les saisit dans son SkanFact (Comptabilité → Écritures → Plan comptable) et tous ses envois suivants arrivent à ton format.</p>` },
     {
-      id: 'definitif', t: 'Définitif ou provisoire', d: `
+      id: 'definitif', t: 'Définitif ou provisoire',
+      s: 'Un mois clôturé ne bougera plus ; un mois provisoire, si', couleur: 'th-encaisser', geste: { label: 'Voir les échéances', hash: '#/echeances' },
+      icon: '<path d="M12 3l7 3v6c0 4.5-3 7.7-7 9-4-1.3-7-4.5-7-9V6z"/><path d="M9 12l2 2 4-4"/>', d: `
       <p class="small">Un paquet n'est <b>définitif</b> que si le client a clôturé son mois : après une clôture, il ne peut plus ni modifier ni supprimer une pièce de cette période sans rouvrir le mois, avec un motif écrit.</p>
       <p class="small">Un paquet <b>provisoire</b> se lit, mais ses chiffres peuvent encore bouger. Si tu reçois deux fois le même mois, SkanFact te le dit — et te prévient si le remplacé était définitif.</p>` },
     {
-      id: 'filets', t: 'Ne rien perdre', d: `
+      id: 'filets', t: 'Ne rien perdre',
+      s: 'Trois filets, et ce que chacun protège', couleur: 'th-piloter', geste: { label: 'Ouvrir les réglages', hash: '#/reglages' },
+      icon: '<path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4"/><path d="M8 20v-6h8v6"/>', d: `
       <p class="small">Trois filets, et ils ne font pas la même chose :</p>
       <ul class="small" style="line-height:1.8">
         <li><b>La sauvegarde quotidienne</b> te protège de <i>toi</i> : une suppression de trop, un import raté. Elle est automatique, trente jours.</li>
@@ -114,7 +132,9 @@
       <p class="small">Ton mot de passe, lui, ne se récupère pas. C'est voulu : c'est ce qui fait qu'un portable volé n'emporte pas soixante comptabilités. Note-le quelque part de sûr le jour où tu le choisis.</p>
       <p class="small">Et un quatrième filet, invisible celui-là : si l'application se bloque, elle s'en aperçoit toute seule, note dans son journal technique <b>où</b> le programme s'était arrêté, puis redémarre et te le dit. Tu reviens sur l'écran du mot de passe : c'est normal, rien n'est perdu. Si cela se reproduit, envoie le rapport par <em>Aide → Signaler un problème</em> — c'est ce qui permet de corriger.</p>` },
     {
-      id: 'demenager', t: 'Changer d\'ordinateur', d: `
+      id: 'demenager', t: 'Changer d\'ordinateur',
+      s: 'Reprendre ton cabinet ailleurs, avec la MÊME empreinte', couleur: 'th-acheter', geste: { label: 'Ouvrir les réglages', hash: '#/reglages' },
+      icon: '<path d="M3 7h11v9H3z"/><path d="M14 10h4l3 3v3h-7z"/><circle cx="7" cy="18" r="1.8"/><circle cx="17" cy="18" r="1.8"/>', d: `
       <p class="small">Ton cabinet, c'est <b>trois</b> choses : tes dossiers, tes paquets, et <b>la clé</b> qui les ouvre. La clé compte autant que le reste : c'est elle qui porte ton <b>empreinte</b>, celle que tes clients ont enregistrée dans leur SkanFact.</p>
       <p class="small"><b>Ce qu'il ne faut pas faire :</b> installer l'application sur le nouveau poste et créer un cabinet. Il aurait une clé neuve, donc une empreinte neuve — et tous les paquets que tes clients t'enverraient ensuite seraient refusés : « adressé à un autre cabinet ». Rien ne serait perdu, mais plus rien n'arriverait.</p>
       <p class="small"><b>Ce qu'il faut faire :</b> sur l'écran de mot de passe du nouveau poste, clique sur <b>« J'ai déjà un cabinet sur un autre ordinateur… »</b> avant tout le reste.</p>
@@ -126,12 +146,16 @@
       <p class="small">Dans tous les cas, le mot de passe demandé est celui de <b>l'autre</b> ordinateur : c'est lui qui chiffre le fichier, il n'a pas changé. Et vérifie l'empreinte affichée à la fin : si elle n'est pas celle que tes clients connaissent, tu as repris le mauvais fichier.</p>
       <p class="small">Deux choses ne suivent pas : le <b>dossier de copie</b> (il désignait un support branché sur l'autre poste — rechoisis-en un tout de suite) et la <b>boîte de réception</b>. L'ancien ordinateur, lui, garde tout : rien n'y est effacé ni déplacé.</p>` },
     {
-      id: 'limites', t: 'Ce que cette application ne fait pas', d: `
+      id: 'limites', t: 'Ce que cette application ne fait pas',
+      s: 'Ce qu\'elle ne fera pas — et pourquoi c\'est volontaire', couleur: 'th-equipe', geste: null,
+      icon: '<circle cx="12" cy="12" r="9"/><path d="M12 8h.01"/><path d="M11 12h1v4h1"/>', d: `
       <p class="small">Elle <b>ne modifie jamais</b> la comptabilité de tes clients et ne leur renvoie rien. Une correction se demande au client, qui la saisit chez lui : sinon deux versions des mêmes comptes coexistent, et plus personne ne sait laquelle fait foi.</p>
       <p class="small">Elle ne dépose aucune déclaration et ne se connecte à aucune administration. Elle ne facture pas tes honoraires. Elle n'envoie aucun mail toute seule : elle prépare le texte, ta messagerie l'envoie.</p>
       <p class="small">Elle ne gère pas encore plusieurs collaborateurs sur le même cabinet : un poste, un mot de passe, une personne.</p>` },
     {
-      id: 'maj', t: 'Les mises à jour', d: `
+      id: 'maj', t: 'Les mises à jour',
+      s: 'Comment elles arrivent, et où les déclencher', couleur: 'th-piloter', geste: { label: 'Ouvrir les réglages', hash: '#/reglages' },
+      icon: '<path d="M12 3v12"/><path d="M7.5 11L12 15.5 16.5 11"/><path d="M4 19h16"/>', d: `
       <p class="small">SkanFact Cabinet vérifie au démarrage s'il existe une version plus récente, la télécharge et te propose de l'installer : <b>Réglages → Mises à jour</b>. Sur Mac, l'application se ferme, se remplace toute seule et se relance — une dizaine de secondes.</p>
       <p class="small">L'application et celle de tes clients portent le <b>même numéro de version</b> : si un client dit « je suis en 6.8.0 » et que tu es en 6.8.0, vous parlez bien de la même chose.</p>` }
   ];

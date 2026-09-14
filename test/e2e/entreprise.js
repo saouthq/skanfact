@@ -242,12 +242,23 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     const subjects = await win.evaluate(() => Array.from(document.querySelectorAll('#list-wrap tbody tr')).map(tr => tr.textContent).join(' | '));
     if (!subjects.includes('Pharmacie Centrale El Menzah')) throw new Error(subjects.slice(0, 300));
   });
+  // Depuis la 7.28.0, les actions d'une ligne vivent dans un menu et non plus dans une rangée de
+  // boutons : on ouvre le menu de la ligne visée, puis on clique l'action par son libellé.
+  const actionLigne = async (ligne, libelle) => {
+    await win.click(`${ligne} [data-rowmenu]`);
+    await win.waitForSelector('.row-menu');
+    const i = await win.evaluate(l => [...document.querySelectorAll('.row-menu .rm-l')]
+      .findIndex(x => x.textContent.trim() === l), libelle);
+    if (i < 0) throw new Error(`le menu de « ${ligne} » ne propose pas « ${libelle} »`);
+    await win.click(`.row-menu button >> nth=${i}`);
+  };
+
   await step('relances : facture en retard listée, email de relance prérempli', async () => {
     await win.evaluate(() => { location.hash = '#/relances'; });
     await win.waitForSelector('#r-wrap table');
     const r = await win.textContent('#r-wrap'); if (!r.includes('à relancer') || !r.includes('Relance')) throw new Error(r.slice(0, 300));
     const n = await win.textContent('#nav-relances'); if (!/^\d+$/.test(n)) throw new Error('compteur nav: ' + n);
-    await win.click('[data-rem]');
+    await actionLigne('#r-wrap tbody tr:first-child', 'Relancer par email');
     // Depuis la 7.6.0, un envoi depuis le jeu d'exemple prévient d'abord : les adresses des clients
     // fictifs ressemblent à de vraies adresses. Elle prévient, elle n'interdit pas — « Continuer
     // quand même » laisse passer, et c'est ce qu'on vérifie ici.
@@ -298,9 +309,17 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     await app.evaluate(({ Menu }) => { const find = (items, label) => { for (const i of items) { if (i.label === label) return i; if (i.submenu) { const r = find(i.submenu.items, label); if (r) return r; } } }; find(Menu.getApplicationMenu().items, 'TVA, timbre et retenue à la source').click(); });
     await win.waitForSelector('.help-body');
     if (!(await win.textContent('.help-body')).includes('retenue à la source')) throw new Error('mauvais article');
-    const arts = (await win.$$('[data-art]')).length; if (arts < 10) throw new Error('articles : ' + arts);
+    // Depuis la 7.27.0 un article ne porte plus la liste des trente-deux : il porte ses voisins DE
+    // SON THÈME, et le fil d'Ariane remonte au plan. On vérifie le chemin réel.
+    const voisins = (await win.$$('.help-suite [data-art]')).length;
+    if (!voisins) throw new Error('aucun article voisin : il faudrait repasser par le plan à la main');
+    await win.click('.help-fil [data-home]');
+    await win.waitForSelector('.help-sec');
+    const arts = (await win.$$('[data-art]')).length; if (arts < 10) throw new Error('le plan ne liste que ' + arts + ' article(s)');
     await win.click('[data-art="gestion"]');
-    await win.waitForFunction(() => (document.querySelector('.help-h') || {}).textContent.includes('première entreprise'));
+    // `(el || {}).textContent` vaut `undefined` tant que l'article n'est pas dessiné, et
+    // `undefined.includes` lève : le test accusait l'application d'un défaut qu'elle n'a pas.
+    await win.waitForFunction(() => { const t = document.querySelector('.help-h'); return !!t && t.textContent.includes('première entreprise'); });
     if (!/SkanFact/.test(await win.title())) throw new Error('titre de fenêtre : ' + await win.title());
   });
   await step('unité : choisie dans une liste, « Autre… » pour une unité maison', async () => {
@@ -544,7 +563,10 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     // l'aide ramène à ce qu'on faisait, en sautant les articles déjà lus
     await win.evaluate(() => { location.hash = '#/aide'; });
     await win.waitForSelector('#back');
-    await win.click('.help-nav button:nth-child(3)');
+    // `.help-nav` était la colonne de gauche de l'aide, supprimée par la refonte de la 7.23.0 : ce
+    // clic ne visait plus rien. On ouvre un article depuis le plan, qui est le chemin réel.
+    await win.waitForSelector('.help-sec .help-art');
+    await win.click('.help-sec .help-art');
     await win.waitForFunction(() => location.hash.startsWith('#/aide/'));
     await win.waitForTimeout(300);
     // le retour de l'aide ne doit pas repasser par les articles déjà lus
@@ -597,8 +619,7 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     await win.waitForSelector('#list-wrap tbody tr');
     await win.selectOption('#st', 'retard');
     await win.waitForFunction(() => document.querySelector('#list-wrap').textContent.includes('retard'));
-    await win.evaluate(() => { const tr = document.querySelector('#list-wrap tr.clickable'); tr.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); });
-    await win.click('#list-wrap tr.clickable [data-paye]');
+    await actionLigne('#list-wrap tbody tr.clickable:first-child', 'Enregistrer un paiement');
     await win.waitForSelector('#pf2');
     // un montant supérieur au reste dû déclenche une confirmation par-dessus le formulaire
     await win.fill('#pf2 input[name=amount]', '999999');
@@ -639,7 +660,7 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     if (!r.includes('téléphone')) throw new Error('relance téléphonique absente de la démo');
     if (!r.includes('Devis sans réponse')) throw new Error('section devis absente');
     // noter une relance téléphonique sur la première facture
-    await win.click('[data-tel]');
+    await actionLigne('#r-wrap tbody tr:first-child', 'Noter un appel téléphonique');
     await win.waitForSelector('#tf');
     await win.fill('#tf input[name=note]', 'Rappelé, paiement annoncé lundi');
     await win.click('#modal-root #ok');

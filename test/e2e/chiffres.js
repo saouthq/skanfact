@@ -159,7 +159,25 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   await win.click('#modal-root [data-close]');
   j.ok('la question nomme la pièce, sa date et son montant');
 
-  await app.close();
+  // On quitte l'éditeur AVANT de fermer l'application. Sans ça, `app.close()` ne rend jamais la
+  // main : le garde-fou de fermeture de fenêtre ouvre une boîte SYSTÈME que personne ne vient
+  // refermer, et le processus principal reste bloqué dedans. Le test ne plantait pas — il restait
+  // en vie pour toujours, ce qui est pire : on ne le relance plus, donc il ne sert plus à rien.
+  //
+  // Le garde-fou est une boîte à TROIS choix (`choiceDialog`) : « Enregistrer et continuer » (#a),
+  // « Quitter sans enregistrer » (#b), Annuler. Ce n'est pas un `confirmDialog`, son bouton ne
+  // s'appelle donc pas `#ok`.
+  await win.evaluate(() => { location.hash = '#/dashboard'; });
+  const garde = await win.waitForSelector('#modal-root #b', { timeout: 3000 }).catch(() => null);
+  if (garde) await win.click('#modal-root #b');
+  await win.waitForFunction(() => location.hash === '#/dashboard', null, { timeout: 5000 });
+  await win.waitForTimeout(300);
+
+  // Et la fermeture est BORNÉE. Un test qui reste bloqué pour toujours est pire qu'un test qui
+  // échoue : il ne dit rien, on finit par ne plus le lancer, et il ne sert plus à rien. Même
+  // principe que les commandes du chien de garde, chacune sous `Promise.race` (règle 6.5.0).
+  await Promise.race([app.close(), new Promise((_, rej) => setTimeout(
+    () => rej(new Error('l\'application ne se ferme pas : une boîte SYSTÈME attend une réponse que personne ne peut donner — il reste un éditeur avec des modifications non enregistrées')), 20000))]);
   if (bac.length) { console.error('\nErreurs du renderer :\n' + bac.join('\n')); process.exit(2); }
   console.log(`\n${j.total()} étapes — les chiffres disent la vérité.`);
 })().catch(e => { console.error(e); process.exit(1); });

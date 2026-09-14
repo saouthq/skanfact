@@ -196,13 +196,23 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   // La liste est paginée et triée : on la filtre sur « envoyé » pour que la pièce visée soit à l'écran.
   await win.selectOption('#st', 'envoyé');
   await win.waitForTimeout(300);
-  await win.waitForSelector('[data-accepte]');
+  await win.waitForSelector('tbody [data-rowmenu]');
   const cible = await win.evaluate(() => {
-    const b = document.querySelector('[data-accepte]');
-    return { id: b.dataset.accepte, statut: window.__data.documents.find(x => x.id === b.dataset.accepte).status };
+    const b = document.querySelector('tbody [data-rowmenu]');
+    return { id: b.dataset.rowmenu, statut: window.__data.documents.find(x => x.id === b.dataset.rowmenu).status };
   });
   if (cible.statut !== 'envoyé') throw new Error(`le devis visé est « ${cible.statut} », pas « envoyé »`);
-  await win.evaluate(i => document.querySelector(`[data-accepte="${i}"]`).click(), cible.id);
+  // Depuis la 7.28.0 la réponse vit dans le menu de la ligne, et elle pose une question : c'est le
+  // geste demandé par le propriétaire — « ça ne me demande pas de confirmer mon choix ».
+  await win.click('tbody tr:first-child [data-rowmenu]');
+  await win.waitForSelector('.row-menu');
+  const iAccepte = await win.evaluate(() => [...document.querySelectorAll('.row-menu .rm-l')]
+    .findIndex(x => x.textContent.trim() === 'Le client a accepté'));
+  if (iAccepte < 0) throw new Error('le menu de la ligne ne propose pas de répondre au devis');
+  await win.click(`.row-menu button >> nth=${iAccepte}`);
+  await win.waitForSelector('.modal');
+  // « Accepter seulement » : on reste sur la liste, et le retour en arrière doit être offert.
+  await win.click('.modal .modal-actions button:nth-of-type(2)');
   await win.waitForSelector('#toast-undo', { timeout: 4000 });
   const apresClic = await win.evaluate(i => window.__data.documents.find(x => x.id === i).status, cible.id);
   if (apresClic !== 'accepté') throw new Error(`le devis est resté « ${apresClic} »`);

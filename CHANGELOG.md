@@ -7,6 +7,70 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 7.28.0 — 14/09/2026
+
+**Partager l'entreprise qu'on a déjà saisie. Une seule porte par ligne. Et l'aide du cabinet.**
+
+### Partager un dossier à deux — pour de vrai
+
+« Je viens de faire mon vrai dossier entreprise, je veux le partager avec mon père. Quand je fais
+*dossier partagé à deux*, ça me recrée une autre entreprise. »
+
+C'était exact, et pire que ça : le bouton fabriquait un dossier **vide**. On venait de saisir sa
+société, ses clients et ses factures, on cliquait pour les partager, et on tombait sur l'assistant
+de première utilisation. De l'autre côté, aucun moyen de **rejoindre** le dossier déjà posé : il
+fallait retomber par hasard sur le même chemin en retapant exactement le même nom. Le travail à deux
+n'était donc utilisable que par quelqu'un qui n'avait encore rien saisi — c'est-à-dire personne.
+
+Deux gestes, dans Paramètres → Sécurité et données et dans le menu du haut de la barre de gauche :
+
+- **Partager ce dossier à deux…** prend l'entreprise ouverte, avec ses documents, ses achats, ses
+  sauvegardes et ses pièces jointes, et la **copie** dans iCloud Drive, OneDrive, un disque réseau
+  ou une clé USB. La copie d'origine reste sur l'ordinateur, au cas où, et la bascule n'a lieu
+  qu'une fois la copie constatée.
+- **Rejoindre un dossier déjà partagé…** sert sur le second ordinateur : il ouvre ce dossier-là,
+  sans rien créer ni renommer. Pas d'assistant, pas de nom d'entreprise à retaper. Et si on désigne
+  le dossier parent par erreur — ce qu'on fait la première fois — l'application retrouve le bon
+  toute seule tant qu'il n'y a pas d'ambiguïté.
+
+L'article d'aide « Travailler à deux » décrit maintenant la marche à suivre, dans l'ordre.
+
+### Les listes : un menu, et une question avant d'agir
+
+« Dans les listes je n'aime pas les boutons en fin de ligne, faut faire une liste où on choisit
+dedans, un truc plus pro. Et il manque la confirmation : quand j'appuie sur un devis accepté ou
+refusé, ça ne me demande pas de confirmer, ça ne me redirige pas, et ça ne m'indique pas. »
+
+Chaque ligne de Devis, Factures, Clients, Fournisseurs, Achats et Relances finit désormais par
+**un seul bouton**, qui ouvre un menu d'actions **écrites en toutes lettres**, chacune avec son
+explication. Fini les rangées de cinq boutons qui se disputaient la place et tombaient dans des
+pictogrammes muets (« ⧉ », « ⏱ ») dès qu'ils étaient trop nombreux.
+
+Et répondre à un devis **demande, annonce, et propose la suite** :
+
+- *Le client a accepté* ouvre une fenêtre qui rappelle le devis, le client et le montant, avec deux
+  sorties : **Accepter et facturer** — qui crée le brouillon de facture et l'ouvre — ou *Accepter
+  seulement*. C'est la redirection qui manquait : ce qui vient après un devis accepté, c'est la
+  facture.
+- *Le client a refusé* demande confirmation, et dit ce que ça change.
+- Dans les deux cas, un « Annuler » reste sous la main pendant huit secondes.
+
+### Un défaut trouvé en chemin : la fenêtre qui réclamait toujours
+
+Une fois qu'on avait modifié quoi que ce soit dans la session, fermer la fenêtre posait **pour
+toujours** la question « des modifications ne sont pas enregistrées » — même après avoir tout
+enregistré, et même depuis l'accueil. L'écran avait bien lâché son garde-fou, mais il oubliait de le
+redire au processus principal, qui est celui qui pose la question. Une application qui annonce une
+perte qui n'existe pas apprend à cliquer sans lire.
+
+### L'aide de l'application du comptable
+
+Elle était restée une seule page où les huit articles se suivaient, dépliés, sur cinq écrans de
+prose grise — sans sous-titres, sans recherche, et sans un seul lien vers l'application. C'est
+pourtant le premier contact d'un comptable avec SkanFact. Elle a le même plan coloré que celle de
+l'app entreprise : huit cartes qui annoncent ce qu'elles contiennent, une recherche qui traverse le
+corps des articles, et un article qui dit d'où il vient et où il mène.
+
 ## 7.27.0 — 14/09/2026
 
 **L'Aide : un plan coloré, un fil qui tient sur une ligne, et un sommaire.**

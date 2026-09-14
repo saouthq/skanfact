@@ -876,7 +876,7 @@
     else if (route === 'echeances') drawEcheances(view);
     else if (route === 'relances') drawRelances(view);
     else if (route === 'reglages') drawReglages(view);
-    else if (route === 'aide') drawAide(view);
+    else if (route === 'aide') drawAide(view, arg);
     else drawDossiers(view);
   }
 
@@ -2453,12 +2453,107 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
     if (!upd.app) relire();
   }
 
-  // ---------- aide ----------
-  function drawAide(view) {
+  // ---------- aide (refondue en 7.28.0) ----------
+  //
+  // Avant : les huit articles dépliés l'un sous l'autre sur une seule page, sans sous-titres, sans
+  // recherche, sans un seul lien vers l'application. Cinq écrans de prose grise où l'on ne savait
+  // ni ce qu'il y avait, ni où l'on en était. C'est le premier contact d'un comptable avec
+  // SkanFact, et l'app entreprise venait d'être refaite : celle-ci ne pouvait pas rester ainsi.
+  //
+  // Maintenant : un plan de huit cartes colorées, une recherche qui traverse le corps des articles,
+  // et un article qui dit d'où il vient, ce qu'il contient et où il mène. Les classes sont celles
+  // de la feuille PARTAGÉE (`.help-…`, `.th-…`) : c'est le même langage visuel que chez le client,
+  // et surtout pas un second jeu de règles qui dériverait (règle 6.8.0 sur les collisions de noms).
+  let aideQ = '';
+  const sansBalises = x => String(x || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+  const aideIcone = a => `<svg viewBox="0 0 24 24" aria-hidden="true">${a.icon || ''}</svg>`;
+
+  function aideTrouves(q) {
+    const mots = q.toLowerCase().trim().split(/\s+/).filter(Boolean);
+    if (!mots.length) return G.ARTICLES;
+    const notes = [];
+    G.ARTICLES.forEach((a, i) => {
+      const titre = `${a.t} ${a.s || ''}`.toLowerCase();
+      const corps = sansBalises(a.d).toLowerCase();
+      if (!mots.every(m => titre.includes(m) || corps.includes(m))) return;
+      notes.push({ a, rang: mots.every(m => titre.includes(m)) ? 0 : 1, i });
+    });
+    return notes.sort((x, y) => x.rang - y.rang || x.i - y.i).map(x => x.a);
+  }
+
+  const aideCarte = a => `<button class="help-art grande ${esc(a.couleur || '')}" data-art="${esc(a.id)}">
+      <span class="ht"><span class="ha-ico">${aideIcone(a)}</span>${esc(a.t)}</span>
+      <span class="hs">${esc(a.s || '')}</span></button>`;
+
+  function drawAide(view, arg) {
+    const a = G.ARTICLES.find(x => x.id === arg) || null;
+    if (a) aideQ = '';
+    const i = a ? G.ARTICLES.indexOf(a) : -1;
+    const prec = i > 0 ? G.ARTICLES[i - 1] : null;
+    const suiv = i >= 0 && i < G.ARTICLES.length - 1 ? G.ARTICLES[i + 1] : null;
     view.innerHTML = `
       <div class="page-head"><h1>Comment ça marche</h1></div>
-      <p class="lead">Partout dans l'application, les petits <span class="i-demo">i</span> expliquent le champ juste à côté.</p>
-      ${G.ARTICLES.map(a => `<div class="panel"><h2>${esc(a.t)}</h2>${a.d}</div>`).join('')}`;
+      ${a ? '' : `<p class="lead">Ce que fait SkanFact Cabinet, ce qu'il ne fait pas, et ce qu'il faut avoir mis de côté pour ne rien perdre. Partout ailleurs dans l'application, les petits <span class="i-demo">i</span> expliquent le champ juste à côté.</p>`}
+      <div class="help-search">
+        <svg class="hs-loupe" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20.5 20.5l-4.2-4.2"/></svg>
+        <input type="search" id="aide-q" placeholder="Rechercher : un mot, une question… (« empreinte », « clé de secours »)" autocomplete="off" spellcheck="false" value="${esc(aideQ)}">
+        <div class="help-count small muted" id="aide-n" hidden></div>
+      </div>
+      <div id="aide-res" hidden></div>
+      <div id="aide-vue"></div>`;
+
+    const vue = $('#aide-vue');
+    if (a) {
+      vue.innerHTML = `
+        <div class="help-fil small"><button data-home="1">Aide</button><span class="sep">›</span><span>${esc(a.t)}</span></div>
+        <div class="help-layout seul ${esc(a.couleur || '')}">
+          <div class="help-col">
+            <article class="panel help-body">
+              <h2 class="help-h"><span class="ha-ico">${aideIcone(a)}</span>${esc(a.t)}</h2>
+              <p class="help-sub">${esc(a.s || '')}</p>
+              ${a.d}
+              ${a.geste ? `<div class="help-geste"><button class="btn btn-primary" data-geste="${esc(a.geste.hash)}">${esc(a.geste.label)}</button>
+                <span class="small muted">On lit une explication pour faire quelque chose.</span></div>` : ''}
+              <p class="small muted help-foot">Une question que cette aide ne tranche pas ? <b>Réglages → Signaler un problème</b> : le rapport ne contient aucune donnée de tes clients.</p>
+            </article>
+            <div class="help-suite">
+              ${prec ? `<button class="btn btn-ghost" data-art="${esc(prec.id)}">← ${esc(prec.t)}</button>` : '<span></span>'}
+              ${suiv ? `<button class="btn" data-art="${esc(suiv.id)}">${esc(suiv.t)} →</button>` : '<span></span>'}
+            </div>
+          </div>
+        </div>`;
+    } else {
+      vue.innerHTML = `<div class="help-arts help-res">${G.ARTICLES.map(aideCarte).join('')}</div>
+        <p class="small muted mt">Une question que cette aide ne tranche pas ? <b>Réglages → Signaler un problème</b> : le rapport dit où l'application s'est arrêtée, et ne contient aucune donnée de tes clients.</p>`;
+    }
+
+    const brancher = () => {
+      $$('[data-art]').forEach(b => b.onclick = () => { aideQ = ''; location.hash = '#/aide/' + b.dataset.art; });
+      $$('[data-home]').forEach(b => b.onclick = () => { aideQ = ''; location.hash = '#/aide'; });
+      $$('[data-geste]').forEach(b => b.onclick = () => { location.hash = b.dataset.geste; });
+    };
+    brancher();
+
+    const q = $('#aide-q');
+    const chercher = () => {
+      aideQ = q.value;
+      const mots = aideQ.trim();
+      const res = $('#aide-res'), n = $('#aide-n');
+      res.hidden = !mots; n.hidden = !mots;
+      $('#aide-vue').hidden = !!mots;
+      if (!mots) { brancher(); return; }
+      const trouves = aideTrouves(aideQ);
+      n.textContent = trouves.length
+        ? `${pl(trouves.length, 'article')} sur ${G.ARTICLES.length}, le plus proche en premier`
+        : `Aucun article sur ${G.ARTICLES.length}`;
+      res.innerHTML = trouves.length
+        ? `<div class="help-arts help-res">${trouves.map(aideCarte).join('')}</div>`
+        : '<div class="empty">Aucun article ne contient ces mots. Essaie un seul mot.</div>';
+      brancher();
+    };
+    q.oninput = chercher;
+    q.onkeydown = e => { if (e.key === 'Escape' && q.value) { e.stopPropagation(); q.value = ''; chercher(); } };
+    if (aideQ) chercher();
   }
 
   // ---------- chien de garde et messages du processus principal ----------
