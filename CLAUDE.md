@@ -366,6 +366,7 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:metier` | **le métier** : quinze activités sans taux deviné, le régime fiscal posé puis conservé au redessin, les Paramètres qui grisent la TVA et annoncent la mention, le RIB non réclamé à qui encaisse sur place |
 | `npm run e2e:aide` | **l'Aide** : l'accueil par thèmes, un thème qui s'ouvre, le fil d'Ariane, l'article suivant du même thème, le geste qui mène vraiment à sa page, la recherche, et « Comprendre cette page » |
 | `npm run e2e:colonnes` | **les colonnes alignées** : l'en-tête de chaque colonne de chaque tableau comparé à ses valeurs, sur 19 pages et tous leurs onglets (392 colonnes) |
+| `npm run e2e:entetes` | **les barres d'actions mesurées** : aucun contrôle d'en-tête étiré sur toute la largeur, aucune barre empilée sur trois rangées (21 pages) |
 
 Ils ont longtemps vécu dans un dossier de travail temporaire, effacé à chaque session : il fallait les réécrire de mémoire, et ils dérivaient (une assertion restée sur une version périmée, un écran neuf jamais parcouru). **Un test qu'on doit réécrire pour s'en servir n'est pas un test.** Le harnais (`test/e2e/harnais.js`) trouve Playwright où il est, lit la version dans `package.json` au lieu de l'écrire en dur, et range les captures dans `dist-e2e/` (ignoré par Git).
 
@@ -1149,6 +1150,13 @@ Quatre signalements de Skander sur captures d'écran, et une refonte. Règles ap
   article alors qu'une recherche traînait relançait le filtrage au dessin : le conteneur qui PORTE
   l'article repartait caché, et la page s'ouvrait blanche. Demander une chose précise efface le
   filtre. Trouvé par l'e2e, invisible à la lecture.
+- **Un `select` dans un conteneur flex réclame toute la ligne.** La règle générale des champs
+  (`select { width: 100% }`) s'applique aussi dans une barre d'actions : les trois sélecteurs de la
+  page Statistiques s'empilaient sur trois rangées, étirés d'un bord à l'autre. `.filters` avait son
+  `width: auto` depuis longtemps ; `.page-head .actions` ne l'avait jamais eu. Même famille que le
+  `th.r` des colonnes : le HTML est juste, c'est la feuille de style qui décide, et ça ne se voit
+  qu'en mesurant. `npm run e2e:entetes` mesure la largeur de chaque contrôle et la hauteur de chaque
+  barre — et il a trouvé une page de plus que ma lecture du code (`#/garanties`).
 
 ## Pistes pour la suite (non demandées)
 

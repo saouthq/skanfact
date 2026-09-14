@@ -7,6 +7,23 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 7.23.1 — 14/09/2026
+
+**Les sélecteurs de période étirés sur toute la largeur.**
+
+Signalé sur la page Statistiques : les trois sélecteurs — période, année, mois — s'empilaient sur
+**trois rangées**, étirés d'un bord à l'autre. L'en-tête occupait un tiers de l'écran.
+
+Rien de faux dans le HTML. C'est la règle générale des champs de formulaire, `select { width: 100% }`.
+Dans une barre d'actions — un conteneur **flex** — chaque `select` réclame donc la ligne entière, et
+le voisin passe en dessous. Les barres de filtres avaient leur `width: auto` depuis longtemps ; les
+barres d'actions ne l'avaient jamais eu.
+
+`npm run e2e:entetes` **mesure** désormais, sur les 21 pages, la largeur de chaque contrôle d'en-tête
+et la hauteur de chaque barre d'actions. Prouvé en retirant le correctif : neuf défauts reviennent, et
+la mesure trouve une **cinquième** page que la lecture du code avait manquée — `#/garanties`, dont le
+sélecteur faisait 356 px. C'est exactement la raison de mesurer plutôt que de relire.
+
 ## 7.23.0 — 14/09/2026
 
 **Les colonnes qui ne s'alignaient pas, les boutons empilés, un bouton mort — et l'Aide refondue.**

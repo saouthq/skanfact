@@ -242,6 +242,17 @@ main { flex: 1; overflow-y: auto; padding: 32px 36px 48px; }
    le bouton principal — était coupé, et toute la page avait une barre de défilement horizontale.
    Mesuré dans l'application (scrollWidth > clientWidth), pas déduit. */
 .page-head .actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+/* Un `select` hérite de `width: 100%` de la règle générale des champs de formulaire. Dans une barre
+   d'actions — qui est un conteneur FLEX — chacun réclame donc toute la ligne : les trois sélecteurs
+   de la page Statistiques s'empilaient sur trois rangées, étirés d'un bord à l'autre, et l'en-tête
+   occupait un tiers de l'écran. `.filters` avait déjà son `width: auto` depuis longtemps ; les
+   barres d'actions ne l'avaient jamais eu. Quatre pages étaient concernées : Marges,
+   Immobilisations, Statistiques et Comptabilité.
+   Le `max-width` empêche un libellé long (« 1ᵉʳ trimestre · janv.–mars ») de reprendre toute la place. */
+.page-head .actions select,
+.page-head .actions input:not([type=checkbox]):not([type=radio]) {
+  width: auto; max-width: 280px; background: var(--panel);
+}
 
 .panel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px 24px; margin-bottom: 18px; box-shadow: var(--shadow); }
 /* Un lien qui promet un réglage précis l'amène et le désigne : sans repère, on atterrit au milieu
