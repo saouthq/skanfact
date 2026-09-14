@@ -68,8 +68,12 @@ tokens** → **Fine-grained tokens** → **Generate new token**.
 
 - Repository access : **Only select repositories** → `saouthq/skanfact`
 - Permissions → Repository permissions → **Contents : Read-only**
-- Expiration : la plus longue possible (note la date : le jour où il expire, les mises à jour
-  s'arrêtent, et il faudra le remplacer dans Cloudflare)
+- Expiration : la plus longue possible, et **note la date**. Le jeton part dans l'en-tête
+  `Authorization` à **chaque** appel, dépôt public ou non : expiré, GitHub répond `401` et le
+  relais ne sert plus personne. Sur un dépôt **public**, les applications s'en sortent — elles
+  retombent d'elles-mêmes sur GitHub en direct (7.26.1) et continuent de se mettre à jour. Sur un
+  dépôt **privé**, rien ne rattrape : plus de relais, plus de mises à jour, pour tout le monde en
+  même temps. C'est la seule échéance du système.
 
 C'est le seul jeton qui existe, et il ne quitte jamais Cloudflare.
 
