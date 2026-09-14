@@ -32,6 +32,25 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   };
   const attendre = (ms = 350) => win.waitForTimeout(ms);
 
+  // Ouvre les Réglages SUR le panneau demandé. On reconnaît l'onglet à ce qu'il CONTIENT, jamais à
+  // son rang ni à son identifiant : un onglet renommé ou déplacé demain ne doit pas faire passer ce
+  // parcours « à côté » sans un mot (c'est arrivé trois fois dans ce projet).
+  const ouvrirReglages = async (panneau) => {
+    await win.evaluate(() => { location.hash = '#/reglages'; });
+    await win.waitForSelector('#set-tabs');
+    await attendre(400);
+    if (!panneau) return;
+    const onglet = await win.evaluate(id => {
+      const p = document.getElementById(id);
+      const sec = p && p.closest('[data-pane]');
+      return sec ? sec.dataset.pane : null;
+    }, panneau);
+    if (!onglet) throw new Error('panneau introuvable dans les Réglages : ' + panneau);
+    await win.click(`#set-tabs button[data-tab="${onglet}"]`);
+    await win.waitForSelector(`#${panneau}`, { state: 'visible', timeout: 8000 });
+    await attendre(250);
+  };
+
   // 1 — l'écran de verrouillage : étiquettes, bouton « Afficher », avertissement visible
   étape('Première ouverture');
   await win.waitForSelector('#lock-form');
@@ -103,8 +122,7 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
 
   // les réglages ont bien été enregistrés par l'assistant
   étape('Réglages du cabinet');
-  await win.evaluate(() => { location.hash = '#/reglages'; });
-  await attendre(600);
+  await ouvrirReglages('pan-cabinet');
   await win.waitForSelector('#c-name');
   if (await win.inputValue('#c-name') !== 'Cabinet Elyes Gharbi') throw new Error('l\'assistant n\'a pas enregistré le cabinet');
   if (await win.inputValue('#c-day') !== '12') throw new Error('le jour de relance de l\'assistant est perdu');
@@ -115,7 +133,8 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   ok('enregistré, sans message passager par-dessus le bouton');
   await shot('02-reglages');
 
-  // les panneaux de filets sont là
+  // les panneaux de filets sont là (onglet « Données et sécurité »)
+  await ouvrirReglages('pan-secu');
   for (const sel of ['#pan-backup', '#pan-secu']) {
     if (!await win.$(sel)) throw new Error('panneau manquant : ' + sel);
   }
@@ -168,8 +187,7 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
 
   // 4 — l'exemple, puis les listes
   étape('Jeu d\'exemple, tri, pagination, recherche');
-  await win.evaluate(() => { location.hash = '#/reglages'; });
-  await attendre(400);
+  await ouvrirReglages('pan-exemple');
   await win.click('#r-demo-on');
   await win.waitForTimeout(900);
   await win.evaluate(() => { location.hash = '#/dossiers'; });
@@ -279,8 +297,7 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
 
   // 9 — sauvegardes : en prendre une, la lire, restaurer
   étape('Sauvegardes et restauration');
-  await win.evaluate(() => { location.hash = '#/reglages'; });
-  await attendre(600);
+  await ouvrirReglages('pan-backup');
   await win.click('#b-now');
   await attendre(1200);
   const nbSauv = await win.evaluate(() => document.querySelectorAll('[data-restore]').length);
@@ -316,8 +333,8 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   if (apresSuppr !== avantSuppr - 1) throw new Error(`la suppression n'a pas eu lieu (${avantSuppr} → ${apresSuppr})`);
   ok(`dossier supprimé après confirmation écrite (${avantSuppr} → ${apresSuppr})`);
 
-  await win.evaluate(() => { location.hash = '#/reglages'; });
-  await attendre(800);
+  await ouvrirReglages('pan-backup');
+  await attendre(400);
   const nomSauv = await win.evaluate(() => {
     const lignes = [...document.querySelectorAll('[data-restore]')];
     const i = lignes.findIndex(b => /avant-suppression/i.test(b.closest('tr').textContent));
@@ -343,7 +360,7 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
 
   // 10 — changement de mot de passe (refus si l'ancien est faux, puis succès)
   étape('Changement de mot de passe');
-  await win.evaluate(() => { location.hash = '#/reglages'; });
+  await ouvrirReglages('pan-secu');
   await win.waitForSelector('#s-pw', { timeout: 8000 });
   await win.click('#s-pw');
   await win.waitForSelector('#p0');
@@ -391,7 +408,7 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   fs.writeFileSync(path.join(boite, 'menzah-2026-08.skanpack'), 'pas un vrai paquet non plus');
   fs.writeFileSync(path.join(boite, 'notes.txt'), 'un fichier qui ne nous regarde pas');
   await app.evaluate(({ dialog }, d) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [d] }); }, boite);
-  await win.evaluate(() => { location.hash = '#/reglages'; });
+  await ouvrirReglages('pan-inbox');
   await win.waitForSelector('#i-pick', { timeout: 8000 });
   await win.click('#i-pick');
   await attendre(1200);

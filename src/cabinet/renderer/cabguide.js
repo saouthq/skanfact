@@ -121,7 +121,7 @@
       <p class="small">Un paquet <b>provisoire</b> se lit, mais ses chiffres peuvent encore bouger. Si tu reçois deux fois le même mois, SkanFact te le dit — et te prévient si le remplacé était définitif.</p>` },
     {
       id: 'filets', t: 'Ne rien perdre',
-      s: 'Trois filets, et ce que chacun protège', couleur: 'th-piloter', geste: { label: 'Ouvrir les réglages', hash: '#/reglages' },
+      s: 'Trois filets, et ce que chacun protège', couleur: 'th-piloter', geste: { label: 'Ouvrir les sauvegardes', hash: '#/reglages', panneau: 'pan-backup' },
       icon: '<path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4"/><path d="M8 20v-6h8v6"/>', d: `
       <p class="small">Trois filets, et ils ne font pas la même chose :</p>
       <ul class="small" style="line-height:1.8">
@@ -133,14 +133,14 @@
       <p class="small">Et un quatrième filet, invisible celui-là : si l'application se bloque, elle s'en aperçoit toute seule, note dans son journal technique <b>où</b> le programme s'était arrêté, puis redémarre et te le dit. Tu reviens sur l'écran du mot de passe : c'est normal, rien n'est perdu. Si cela se reproduit, envoie le rapport par <em>Aide → Signaler un problème</em> — c'est ce qui permet de corriger.</p>` },
     {
       id: 'demenager', t: 'Changer d\'ordinateur',
-      s: 'Reprendre ton cabinet ailleurs, avec la MÊME empreinte', couleur: 'th-acheter', geste: { label: 'Ouvrir les réglages', hash: '#/reglages' },
+      s: 'Reprendre ton cabinet ailleurs, avec la MÊME empreinte', couleur: 'th-acheter', geste: { label: 'Ouvrir la sécurité', hash: '#/reglages', panneau: 'pan-secu' },
       icon: '<path d="M3 7h11v9H3z"/><path d="M14 10h4l3 3v3h-7z"/><circle cx="7" cy="18" r="1.8"/><circle cx="17" cy="18" r="1.8"/>', d: `
       <p class="small">Ton cabinet, c'est <b>trois</b> choses : tes dossiers, tes paquets, et <b>la clé</b> qui les ouvre. La clé compte autant que le reste : c'est elle qui porte ton <b>empreinte</b>, celle que tes clients ont enregistrée dans leur SkanFact.</p>
       <p class="small"><b>Ce qu'il ne faut pas faire :</b> installer l'application sur le nouveau poste et créer un cabinet. Il aurait une clé neuve, donc une empreinte neuve — et tous les paquets que tes clients t'enverraient ensuite seraient refusés : « adressé à un autre cabinet ». Rien ne serait perdu, mais plus rien n'arriverait.</p>
       <p class="small"><b>Ce qu'il faut faire :</b> sur l'écran de mot de passe du nouveau poste, clique sur <b>« J'ai déjà un cabinet sur un autre ordinateur… »</b> avant tout le reste.</p>
       <ul class="small" style="line-height:1.8">
-        <li><b>Si tu as ton dossier de copie</b> (la clé USB, le disque externe ou le dossier iCloud choisi dans Réglages) : désigne-le. Il contient <code>cabinet-data.json</code>, tes sauvegardes <b>et tes paquets</b>. Tout revient d'un coup.</li>
-        <li><b>Si tu n'as que le fichier</b> <code>cabinet-data.json</code> (ou une sauvegarde) : désigne-le. Tes dossiers et ta clé reviennent. Pour les pièces déjà reçues, recopie ensuite le dossier <code>paquets</code> dans le dossier de l'application (Réglages → « Ouvrir le dossier ») : SkanFact les retrouve tout seul à l'ouverture suivante.</li>
+        <li><b>Si tu as ton dossier de copie</b> (la clé USB, le disque externe ou le dossier iCloud choisi dans Réglages → Données et sécurité) : désigne-le. Il contient <code>cabinet-data.json</code>, tes sauvegardes <b>et tes paquets</b>. Tout revient d'un coup.</li>
+        <li><b>Si tu n'as que le fichier</b> <code>cabinet-data.json</code> (ou une sauvegarde) : désigne-le. Tes dossiers et ta clé reviennent. Pour les pièces déjà reçues, recopie ensuite le dossier <code>paquets</code> dans le dossier de l'application (Réglages → Données et sécurité → Sauvegardes, « Ouvrir le dossier ») : SkanFact les retrouve tout seul à l'ouverture suivante.</li>
         <li><b>Si tu n'as que ta clé de secours</b> (<code>.skanrecover</code>) : crée un cabinet ici, l'application te réclamera ce fichier aussitôt. Ton empreinte redevient la tienne et tes clients n'ont rien à refaire — mais tes dossiers et tes paquets, eux, ne reviennent pas.</li>
       </ul>
       <p class="small">Dans tous les cas, le mot de passe demandé est celui de <b>l'autre</b> ordinateur : c'est lui qui chiffre le fichier, il n'a pas changé. Et vérifie l'empreinte affichée à la fin : si elle n'est pas celle que tes clients connaissent, tu as repris le mauvais fichier.</p>
@@ -154,9 +154,9 @@
       <p class="small">Elle ne gère pas encore plusieurs collaborateurs sur le même cabinet : un poste, un mot de passe, une personne.</p>` },
     {
       id: 'maj', t: 'Les mises à jour',
-      s: 'Comment elles arrivent, et où les déclencher', couleur: 'th-piloter', geste: { label: 'Ouvrir les réglages', hash: '#/reglages' },
+      s: 'Comment elles arrivent, et où les déclencher', couleur: 'th-piloter', geste: { label: 'Ouvrir les mises à jour', hash: '#/reglages', panneau: 'pan-maj' },
       icon: '<path d="M12 3v12"/><path d="M7.5 11L12 15.5 16.5 11"/><path d="M4 19h16"/>', d: `
-      <p class="small">SkanFact Cabinet vérifie au démarrage s'il existe une version plus récente, la télécharge et te propose de l'installer : <b>Réglages → Mises à jour</b>. Sur Mac, l'application se ferme, se remplace toute seule et se relance — une dizaine de secondes.</p>
+      <p class="small">SkanFact Cabinet vérifie au démarrage s'il existe une version plus récente, la télécharge et te propose de l'installer : <b>Réglages → L'application → Mises à jour</b>. Sur Mac, l'application se ferme, se remplace toute seule et se relance — une dizaine de secondes.</p>
       <p class="small">L'application et celle de tes clients portent le <b>même numéro de version</b> : si un client dit « je suis en 6.8.0 » et que tu es en 6.8.0, vous parlez bien de la même chose.</p>` }
   ];
 

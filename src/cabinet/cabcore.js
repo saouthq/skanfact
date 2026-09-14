@@ -481,10 +481,26 @@
   }
 
   // Ce que le cabinet a sur le feu, tous dossiers confondus. C'est ce qu'il regarde en arrivant.
-  function cabinetTodo(state, todayIso) {
+  // `opts.cleSecours` : true si une clé de secours a déjà été enregistrée, false si on sait qu'il n'y
+  // en a aucune, absent si on ne sait pas encore (la date vit dans app-config.json, pas dans l'état
+  // chiffré, et elle arrive par une promesse). On ne réclame QUE sur un false franc : afficher
+  // l'alerte sur un « je ne sais pas encore » la ferait clignoter à chaque démarrage, et une alerte
+  // qui clignote ne se lit plus.
+  function cabinetTodo(state, todayIso, opts) {
     const rows = dossierList(state, todayIso);
     const out = [];
-    // Le jour de relance, en tête : c'est une échéance, pas un état.
+    // La clé de secours passe AVANT tout le reste. C'est le seul manque irréparable de cette
+    // application : une relance oubliée se rattrape le lendemain, un poste perdu sans clé rend
+    // illisibles POUR TOUJOURS tous les paquets déjà reçus, et oblige chaque client à refaire son
+    // appairage. Jusqu'ici l'avertissement ne vivait qu'au milieu de la page Réglages.
+    if (opts && opts.cleSecours === false) out.push({
+      id: 'cle-secours', level: 'danger',
+      label: 'Ta clé de secours n\'est enregistrée nulle part',
+      detail: 'Sans elle, si cet ordinateur est perdu ou volé, aucun paquet déjà reçu ne pourra plus être ouvert, '
+        + 'et tous tes clients devront refaire leur appairage. Trois minutes, une fois.',
+      count: 0, rows: []
+    });
+    // Le jour de relance : c'est une échéance, pas un état.
     const rel = relanceDue(state, todayIso);
     if (rel.due && rel.total) out.push({
       id: 'jour-de-relance', level: 'danger',

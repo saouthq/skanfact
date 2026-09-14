@@ -55,8 +55,12 @@ async function lancer() {
   ok(`${clientsAvant.length} clients · empreinte ${empreinteAvant}`);
 
   // une sauvegarde nommée, comme en prendrait un comptable prudent
+  // Les Réglages ont des onglets : on ouvre celui qui CONTIENT les sauvegardes, jamais un rang.
   await win.evaluate(() => { location.hash = '#/reglages'; });
-  await win.waitForSelector('#b-now');
+  await win.waitForSelector('#set-tabs');
+  await win.waitForTimeout(400);
+  await win.click(`#set-tabs button[data-tab="${await win.evaluate(() => document.getElementById('pan-backup').closest('[data-pane]').dataset.pane)}"]`);
+  await win.waitForSelector('#b-now', { state: 'visible', timeout: 8000 });
   await win.click('#b-now');
   await win.waitForTimeout(1500);
   const sauvegardes = fs.readdirSync(path.join(userData, 'sauvegardes')).filter(f => f.endsWith('.json'));
@@ -91,7 +95,15 @@ async function lancer() {
   await win.waitForTimeout(1800);
   if (await win.$('#setup')) throw new Error('un assistant de bienvenue s\'ouvre alors qu\'il faut restaurer');
   if (!/reglages/.test(await win.evaluate(() => location.hash))) throw new Error('on n\'est pas emmené là où sont les sauvegardes');
-  ok('emmené directement aux sauvegardes, sans assistant de bienvenue');
+  // Le hash ne suffit pas : depuis que la page a des onglets, on peut être sur la bonne page et sur
+  // le mauvais onglet — c'est-à-dire nulle part. On exige que le panneau soit VISIBLE.
+  const panneauVu = await win.evaluate(() => {
+    const p = document.getElementById('pan-backup');
+    const sec = p && p.closest('[data-pane]');
+    return !!(p && sec && !sec.hidden && p.getBoundingClientRect().height > 0);
+  });
+  if (!panneauVu) throw new Error('on arrive sur les Réglages, mais le panneau des sauvegardes est dans un onglet masqué');
+  ok('emmené directement aux sauvegardes — panneau ouvert, sans assistant de bienvenue');
 
   await win.waitForSelector('[data-restore="0"]', { timeout: 8000 });
   await win.click('[data-restore="0"]');

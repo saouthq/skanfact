@@ -87,6 +87,10 @@
     toast(message, 'error');
     const el = typeof sel === 'string' ? $(sel) : sel;
     if (!el) return false;
+    // Depuis que les Réglages ont des onglets, un champ refusé peut être dans un onglet masqué :
+    // on l'amène à l'écran d'abord, sinon le message accuse un champ que personne ne voit.
+    const sec = el.closest('[data-pane]');
+    if (sec && sec.hidden) { const b = $(`#set-tabs button[data-tab="${sec.dataset.pane}"]`); if (b) b.click(); }
     try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (_) { }
     try { el.focus({ preventScroll: true }); } catch (_) { }
     const marque = el.closest('.field') || el;
@@ -532,7 +536,7 @@
        <div class="kv mt"><div><span>On y trouve</span><span>${esc(trouve.join(' · ') || 'une sauvegarde')}</span></div></div>
        ${vu.packs ? '' : `<div class="warn-box mt">Aucun paquet là-dedans : tes dossiers et ta clé reviendront, pas les pièces déjà reçues.
          Si tu as le dossier <code>paquets</code> ailleurs, recopie-le ensuite dans le dossier de l'application
-         (Réglages → « Ouvrir le dossier ») : elles seront retrouvées à l'ouverture suivante.</div>`}
+         (Réglages → Données et sécurité → Sauvegardes, « Ouvrir le dossier ») : elles seront retrouvées à l'ouverture suivante.</div>`}
        <label class="field mt">Le mot de passe de ce cabinet<span class="pw-wrap">
          <input type="password" id="rp-pw" autocomplete="current-password"><button type="button" class="pw-eye" id="rp-eye">Afficher</button></span></label>
        <p class="muted small">Celui de l'autre ordinateur : c'est lui qui chiffre ce fichier, il n'a pas changé.</p>
@@ -616,11 +620,14 @@
     document.addEventListener('keydown', e => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); openPalette(); }
     });
-    $('#upd-pill').onclick = () => { location.hash = '#/reglages'; };
+    $('#upd-pill').onclick = () => versReglages('pan-maj');
     if (!location.hash) location.hash = '#/dossiers';
     render();
     refreshBackupInfo();
     refreshInbox(true);
+    // L'état de la clé de secours arrive par une promesse : sans ce redessin, le bandeau et la ligne
+    // « À faire » n'apparaîtraient qu'au prochain changement de page.
+    chargerRecovery(true);
     // Le comptable enregistre ses pièces jointes dans sa messagerie, puis revient ici : c'est le
     // moment exact où il faut regarder la boîte. Sans ça, il faudrait redémarrer l'application pour
     // voir arriver ce qu'on vient d'y déposer.
@@ -648,12 +655,10 @@
     // Un cabinet qui vient de perdre son fichier ne veut pas d'un assistant de bienvenue : il veut
     // ses données. On l'emmène directement là où elles sont.
     if (aRecuperer) {
-      location.hash = '#/reglages';
-      setTimeout(() => {
-        toast('Choisis la sauvegarde à restaurer.', 'error');
-        const p = $('#pan-backup');
-        if (p) p.scrollIntoView({ block: 'start' });
-      }, 600);
+      // Par la même porte que tout le reste : elle ouvre l'onglet AVANT d'amener le panneau. Un
+      // scrollIntoView écrit à la main ici ferait défiler vers un panneau resté masqué.
+      versReglages('pan-backup');
+      setTimeout(() => toast('Choisis la sauvegarde à restaurer.', 'error'), 600);
       return;
     }
     // « Je n'ai que ma clé de secours » : le cabinet qu'on vient de créer est neuf, il lui manque la
@@ -923,6 +928,31 @@
     else drawDossiers(view);
   }
 
+  // Chaque ligne de « À faire » mène QUELQUE PART, et pas toutes au même endroit. Les cinq lignes
+  // portaient le même lien en dur vers les Relances : « une échéance approche » y envoyait aussi,
+  // alors que sa page est Échéances. C'est le défaut des treize boutons morts de l'app entreprise
+  // (7.0.0), en plus discret — ici le bouton marche, il se trompe juste de page.
+  //
+  // Un test confronte les identifiants que `cabinetTodo` peut produire aux clés de cette table :
+  // une ligne ajoutée demain sans son action fait tomber le test, pas l'utilisateur.
+  const TODO_ACTIONS = {
+    'cle-secours': { texte: 'Enregistrer ma clé…', run: () => versReglages('pan-secu') },
+    'jour-de-relance': { texte: 'Voir', run: () => { location.hash = '#/relances'; } },
+    'echeance': { texte: 'Voir', run: () => { location.hash = '#/echeances'; } },
+    'manquants': { texte: 'Voir', run: () => { location.hash = '#/relances'; } },
+    'provisoires': { texte: 'Voir', run: () => { location.hash = '#/relances'; } },
+    'pieces': { texte: 'Voir', run: () => { location.hash = '#/dossiers'; } }
+  };
+  // Ouvrir les Réglages SUR un panneau : on pose l'onglet et la cible avant de naviguer, et on
+  // redessine quand on y est déjà (sinon aucun `hashchange` n'a lieu et le clic paraît inerte —
+  // piège 7.15.0).
+  function versReglages(panneau) {
+    const p = REG_PANNEAUX[panneau];
+    if (p) { reglagesTab = p.onglet; reglagesFocus = panneau; }
+    if (location.hash.startsWith('#/reglages')) render();
+    else location.hash = '#/reglages';
+  }
+
   function todoPanel(todo) {
     if (!todo.length) {
       const p = K.portfolio(S);
@@ -934,7 +964,14 @@
     return `<div class="panel todo"><h2>À faire</h2><ul>${todo.map(t => `
       <li class="lvl-${t.level}"><span class="td-dot"></span>
         <span class="td-txt"><strong>${esc(t.label)}</strong><span class="small muted">${esc(t.detail)}</span></span>
-        <a class="btn btn-ghost btn-sm" href="#/relances">Voir</a></li>`).join('')}</ul></div>`;
+        <button class="btn btn-ghost btn-sm nw" data-todo="${esc(t.id)}">${esc((TODO_ACTIONS[t.id] || {}).texte || 'Voir')}</button></li>`).join('')}</ul></div>`;
+  }
+  function bindTodo(root) {
+    $$('[data-todo]', root || document).forEach(b => b.onclick = () => {
+      const a = TODO_ACTIONS[b.dataset.todo];
+      // Un bouton qui avale le clic en silence fait douter de soi, puis du logiciel : on le dit.
+      if (a) a.run(); else toast('Cette ligne n\'a pas encore d\'écran à ouvrir.', 'error');
+    });
   }
 
   // Le portefeuille d'un coup d'œil. C'est ce qui manquait pour qu'un comptable voie autre chose
@@ -991,7 +1028,9 @@
       sort: listState.sort, desc: listState.desc
     });
     const demoCount = (S.dossiers || []).filter(d => d.demo).length;
-    const todo = K.cabinetTodo(S);
+    // `recoveryAt` vaut `undefined` tant que la réponse n'est pas revenue : on ne réclame que sur un
+    // non franc. La date ne vit pas dans l'état chiffré, elle ne peut donc pas venir de `S`.
+    const todo = K.cabinetTodo(S, null, { cleSecours: recoveryAt === undefined ? null : recoveryAt !== null });
     const p = K.portfolio(S);
 
     // Écran d'ouverture d'un cabinet qui vient d'installer l'application : il n'a rien reçu, et il
@@ -1000,6 +1039,7 @@
     if (!all.length) {
       view.innerHTML = `
         <div class="page-head"><h1>Dossiers</h1></div>
+        ${recoveryBanner()}
         <div class="panel"><h2>Premiers pas</h2>
           <p>Ici apparaîtront tes clients, un par ligne, avec le dernier mois reçu et ce qui manque.</p>
           <div class="inline mt">
@@ -1016,7 +1056,7 @@
         ${inboxBanner()}
         <div class="panel"><h2>Comment un paquet arrive jusqu'ici</h2>
           <ol class="small" style="line-height:1.9;margin:0;padding-left:20px">
-            <li>Tu remets à ton client le <strong>fichier d'appairage</strong> (Réglages → Enregistrer le fichier d'appairage).</li>
+            <li>Tu remets à ton client le <strong>fichier d'appairage</strong> (Réglages → Mon cabinet → Le fichier à remettre à tes clients).</li>
             <li>Il l'importe une fois dans son SkanFact, puis t'envoie son <strong>.skanpack</strong> chaque mois.</li>
             <li>Tu le <strong>glisses sur cette fenêtre</strong>, ou tu le double-cliques dans le Finder.</li>
           </ol>
@@ -1025,6 +1065,7 @@
       $('#new-d').onclick = () => newDossierForm();
       $('#demo-on').onclick = async () => { S = await api.demo(true); render(); toast('Exemple chargé : ces cinq dossiers sont fictifs.'); };
       bindInboxBanner(view);
+      bindRecoveryBanner(view);
       return;
     }
 
@@ -1100,9 +1141,17 @@
       render();
     };
     bindInboxBanner(view);
+    bindTodo(view);
     bindSort(view, render);
     bindPager(view, render);
     $$('tr[data-id]', view).forEach(tr => { tr.onclick = () => { location.hash = '#/dossier/' + encodeURIComponent(tr.dataset.id); }; });
+  }
+
+  // Le bouton du bandeau de la clé de secours. Il vit sur DEUX écrans (Dossiers et Réglages) : le
+  // brancher au même endroit que le bandeau évite qu'un des deux devienne un rectangle inerte.
+  function bindRecoveryBanner(root) {
+    const b = $('#rec-go', root || document);
+    if (b) b.onclick = () => exportRecovery();
   }
 
   // À soixante clients, le geste quotidien n'est pas d'importer UN paquet, c'est d'en importer douze.
@@ -1825,24 +1874,56 @@
   }
 
   // ---------- réglages ----------
+
+  // Les trois onglets, et les panneaux qui vivent dans chacun. Mêmes noms que l'app entreprise :
+  // un comptable qui ouvre le SkanFact d'un client doit retrouver le même rangement.
+  //
+  // Mesuré avant de découper (npm run e2e:parametres) : 0,74 écran pour le premier onglet, 1 pour le
+  // deuxième, 0,6 pour le troisième. Le troisième reste léger — c'est le prix de la symétrie avec
+  // l'autre application, et c'est pour ça que « Signaler un problème » a quitté Sécurité, où il
+  // n'avait rien à faire, pour rejoindre « Aide et dépannage ».
+  const REG_TABS = [['cabinet', 'Mon cabinet'], ['donnees', 'Données et sécurité'], ['app', 'L\'application']];
+
+  // Une seule table pour TROIS choses qui, écrites à trois endroits, divergent toujours : le titre du
+  // panneau, les mots que sa recherche connaît sans qu'ils soient à l'écran, et son entrée de palette
+  // Cmd+K. Même mécanique que SETTINGS_PANNEAUX côté entreprise, et pour la même raison : là-bas, six
+  // alias écrits à la main ont nommé des onglets disparus et la palette n'a plus rien rendu.
+  const REG_PANNEAUX = {
+    'pan-cabinet': { onglet: 'cabinet', titre: 'Ton cabinet', mots: 'cabinet nom email telephone jour relance tva cnss depot echeance' },
+    'pan-appairage': { onglet: 'cabinet', titre: 'Le fichier à remettre à tes clients', mots: 'appairage fichier client empreinte cle publique chiffrer skanpair' },
+    'pan-inbox': { onglet: 'donnees', titre: 'Boîte de réception', mots: 'boite reception dossier surveille paquets arrives import mail' },
+    'pan-backup': { onglet: 'donnees', titre: 'Sauvegardes', mots: 'sauvegarde restaurer copie externe usb icloud filet perdu' },
+    'pan-secu': { onglet: 'donnees', titre: 'Sécurité', mots: 'securite mot de passe cle de secours verrouiller chiffrement empreinte' },
+    'pan-maj': { onglet: 'app', titre: 'Mises à jour', mots: 'mise a jour version telecharger installer jeton token maj' },
+    'pan-support': { onglet: 'app', titre: 'Aide et dépannage', mots: 'probleme bug journal log support signaler panne aide' },
+    'pan-exemple': { onglet: 'app', titre: 'Exemple', mots: 'exemple demo dossiers fictifs essayer decouvrir' }
+  };
+  const panneauReg = (id, extra) => {
+    const p = REG_PANNEAUX[id] || { titre: id, mots: '' };
+    return `<div class="panel" id="${id}" data-mots="${esc(p.mots)}"><h2>${esc(p.titre)}${extra ? ' ' + extra : ''}</h2>`;
+  };
+  // L'onglet affiché, et le panneau qu'on veut amener à l'écran en arrivant. Les deux survivent à la
+  // navigation : c'est ce qui permet à « À faire → Enregistrer ma clé de secours » d'atterrir sur le
+  // bon panneau, dans le bon onglet, plutôt qu'en haut d'une page.
+  let reglagesTab = 'cabinet';
+  let reglagesFocus = '';
+
   function drawReglages(view) {
     const c = S.cabinet || {};
+    if (!REG_TABS.some(t => t[0] === reglagesTab)) reglagesTab = 'cabinet';
     view.innerHTML = `
       <div class="page-head"><h1>Réglages</h1>
         <div class="actions set-search">
           <input type="search" id="set-q" placeholder="Chercher un réglage…" autocomplete="off" spellcheck="false">
         </div></div>
       <div id="set-res" class="set-res" hidden></div>
-      <!-- Pas d'onglets ici, et c'est mesuré : deux écrans et demi, sept panneaux, une page qu'un
-           comptable ouvre deux fois — à l'installation, et le jour où quelque chose casse. Des
-           onglets rangeraient surtout l'avertissement de la clé de secours derrière un clic, alors
-           que la règle 6.8.0 veut qu'il reste en rouge tant qu'elle n'est pas enregistrée. Le
-           sommaire et la recherche suffisent, et ils viennent de la même mécanique que l'app
-           entreprise (src/renderer/reglages.js). -->
+      ${recoveryBanner()}
       <div id="set-corps">
+      <div class="tabs" id="set-tabs" role="tablist">${REG_TABS.map(([id, label]) =>
+        `<button role="tab" data-tab="${id}" class="${id === reglagesTab ? 'active' : ''}">${label}</button>`).join('')}</div>
       <div class="set-somm" id="set-somm"></div>
-      <section data-pane="reglages">
-      <div class="panel" id="pan-cabinet" data-mots="cabinet nom email telephone jour relance tva cnss depot echeance"><h2>Ton cabinet</h2>
+      <section data-pane="cabinet"${reglagesTab === 'cabinet' ? '' : ' hidden'}>
+      ${panneauReg('pan-cabinet')}
         <div class="grid-2">
           <label class="field span-2">${lbl('Nom du cabinet', 'cab.name')}<input type="text" id="c-name" value="${esc(c.name)}" placeholder="Cabinet Ben Salah"></label>
           <label class="field">${lbl('Email', 'cab.email')}<input type="email" id="c-email" value="${esc(c.email)}" placeholder="contact@cabinet.tn"></label>
@@ -1857,7 +1938,7 @@
         <div class="modal-actions"><span class="saved" id="c-saved" hidden></span><button class="btn btn-primary" id="c-save">Enregistrer</button></div>
       </div>
 
-      <div class="panel" id="pan-appairage" data-mots="appairage fichier client empreinte cle publique chiffrer skanpair"><h2>Le fichier à remettre à tes clients ${info('cab.pairing')}</h2>
+      ${panneauReg('pan-appairage', info('cab.pairing'))}
         <p class="small">Chaque client doit importer ce fichier une fois, dans <strong>Paramètres → Envois → Ton cabinet comptable</strong> de son SkanFact.
         À partir de là, les paquets qu'il fabrique sont chiffrés <strong>pour toi seul</strong> : personne d'autre ne peut les ouvrir,
         même en interceptant le mail, et il n'a plus aucun mot de passe à te communiquer.</p>
@@ -1868,13 +1949,27 @@
         <div class="modal-actions"><button class="btn btn-primary" id="c-pair">Enregistrer le fichier d'appairage…</button></div>
       </div>
 
-      <div class="panel" id="pan-inbox" data-mots="boite reception dossier surveille paquets arrives import mail"><h2>Boîte de réception</h2><p class="muted small">Chargement…</p></div>
-      <div class="panel" id="pan-backup" data-mots="sauvegarde restaurer copie externe usb icloud filet perdu"><h2>Sauvegardes</h2><p class="muted small">Chargement…</p></div>
-      <div class="panel" id="pan-secu" data-mots="securite mot de passe cle de secours verrouiller chiffrement empreinte"><h2>Sécurité</h2><p class="muted small">Chargement…</p></div>
+      </section>
 
-      <div class="panel" id="pan-maj" data-mots="mise a jour version telecharger installer jeton token maj"><h2>Mises à jour</h2><div id="upd-panel"><p class="muted small">Chargement…</p></div></div>
+      <!-- Les trois panneaux ci-dessous sont remplis APRÈS coup par drawBackupPanels(). Ils restent
+           donc dans le document quel que soit l'onglet affiché — un onglet dessiné paresseusement
+           les laisserait sur « Chargement… » pour toujours, sans une erreur dans aucune console. -->
+      <section data-pane="donnees"${reglagesTab === 'donnees' ? '' : ' hidden'}>
+      ${panneauReg('pan-inbox')}<p class="muted small">Chargement…</p></div>
+      ${panneauReg('pan-backup')}<p class="muted small">Chargement…</p></div>
+      ${panneauReg('pan-secu')}<p class="muted small">Chargement…</p></div>
+      </section>
 
-      <div class="panel" id="pan-exemple" data-mots="exemple demo dossiers fictifs essayer decouvrir"><h2>Exemple</h2>
+      <section data-pane="app"${reglagesTab === 'app' ? '' : ' hidden'}>
+      ${panneauReg('pan-maj')}<div id="upd-panel"><p class="muted small">Chargement…</p></div></div>
+
+      ${panneauReg('pan-support')}
+        <p class="small">Si quelque chose ne va pas, cette fenêtre rassemble ce qu'il faut pour le comprendre :
+        la version, le système, et le journal de l'application. Rien n'en part tout seul.</p>
+        <div class="modal-actions"><button class="btn" id="s-support">Signaler un problème…</button></div>
+      </div>
+
+      ${panneauReg('pan-exemple')}
         ${(S.dossiers || []).some(d => d.demo)
           ? `<p>Cinq dossiers <strong>fictifs</strong> sont chargés : ils montrent les quatre situations que tu rencontreras.
              Ils disparaîtront d'eux-mêmes au premier vrai paquet importé.</p>
@@ -1889,15 +1984,37 @@
       </div>`;
     drawUpdatePanel();
     drawBackupPanels();
-    // Le sommaire et la recherche, partagés avec l'app entreprise. Ils lisent l'ÉCRAN : un panneau
-    // ajouté demain est trouvable le jour où il est écrit.
+    // Les onglets, le sommaire et la recherche : la mécanique vient de src/renderer/reglages.js,
+    // partagée avec l'app entreprise, qui sait déjà basculer d'onglet — il suffit de lui dire
+    // comment. Les trois rappels vont ENSEMBLE : n'en donner que deux laisse `montrer()`
+    // silencieusement inerte, et on atterrit sur le bon panneau dans un onglet masqué.
+    const showTab = id => {
+      reglagesTab = id;
+      $$('#set-tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === id));
+      $$('[data-pane]').forEach(p => { p.hidden = p.dataset.pane !== id; });
+      reg.rafraichirSommaire(id);
+      $('#view').scrollTop = 0;
+    };
     const reg = Reglages.installer({
       corps: $('#set-corps'), champ: $('#set-q'), resultats: $('#set-res'), sommaire: $('#set-somm'),
-      nomOnglet: () => 'Réglages', pluriel: pl,
+      nomOnglet: pane => (REG_TABS.find(t => t[0] === pane) || [pane, pane])[1],
+      ouvrirOnglet: pane => showTab(pane),
+      ongletCourant: () => reglagesTab,
+      pluriel: pl,
       rienTrouve: () => `<div class="empty"><p>Aucun réglage ne porte ces mots. Essaie un seul mot —
         ou regarde dans l'<a href="#/aide">aide</a>.</p></div>`
     });
-    reg.rafraichirSommaire('reglages');
+    $$('#set-tabs button').forEach(b => b.onclick = () => { reglagesFocus = ''; showTab(b.dataset.tab); });
+    showTab(reglagesTab);
+    // Un lien qui promet « la clé de secours » ou « les sauvegardes » doit amener LE PANNEAU, pas le
+    // haut d'un onglet. Même porte que le sommaire et que la recherche : l'onglet suit tout seul.
+    if (reglagesFocus) {
+      const vise = reglagesFocus;
+      reglagesFocus = '';
+      reg.montrer(vise);
+    }
+    const sup = $('#s-support'); if (sup) sup.onclick = supportDialog;
+    bindRecoveryBanner(view);
     if ($('#r-demo-on')) $('#r-demo-on').onclick = async () => {
       S = await api.demo(true); toast('Exemple chargé : ces cinq dossiers sont fictifs.'); location.hash = '#/dossiers';
     };
@@ -2029,8 +2146,7 @@
       (« J'ai déjà un cabinet sur un autre ordinateur »). <a href="#/aide">Aide → Changer d'ordinateur</a>.</p>
 
       <p class="muted small mt">À VÉRIFIER avec ton assureur ou ton Ordre : la conservation des pièces de tes clients sur ce poste
-      relève des mêmes obligations que tes archives papier.</p>
-      <div class="modal-actions"><button class="btn" id="s-support">Signaler un problème…</button></div>`;
+      relève des mêmes obligations que tes archives papier.</p>`;
 
     const ip = $('#i-pick', inb);
     if (ip) ip.onclick = async () => {
@@ -2073,17 +2189,40 @@
       await api.lock();
       location.reload();
     };
-    $('#s-support').onclick = supportDialog;
   }
 
   function recoveryLine() {
-    const at = (backupInfo && backupInfo.recoveryExportedAt) || recoveryAt;
+    const at = recoveryAt;
     return at
       ? `<span class="ok-inline">✓ Clé de secours enregistrée le ${esc(fmtDay(at))}.</span> <span class="muted small">Vérifie qu'elle n'est pas sur ${CE_POSTE()}.</span>`
       : `<span class="err-inline">⚠ Tu n'as jamais enregistré de clé de secours.</span> <span class="muted small">C'est le filet le plus important : trois minutes maintenant, ou tout est perdu le jour où le disque lâche.</span>`;
   }
-  let recoveryAt = null;
-  api.recoveryStatus && api.recoveryStatus().then(r => { recoveryAt = r && r.exportedAt; }).catch(() => {});
+
+  // Le bandeau qui ne peut pas se cacher derrière un onglet. Les onglets rangent — mais ils rangent
+  // AUSSI ce qu'il ne faut jamais ranger : cet avertissement-ci ne vivait que dans le panneau
+  // Sécurité, à un écran et demi de défilement. Il est maintenant au-dessus de la barre d'onglets,
+  // et dans « À faire » sur la page d'accueil. Il disparaît le jour où la clé est enregistrée.
+  function recoveryBanner() {
+    if (recoveryAt !== null) return '';
+    return `<div class="banner danger"><span><strong>Tu n'as pas de clé de secours.</strong>
+      Si cet ordinateur est perdu, aucun paquet déjà reçu ne pourra plus être ouvert et tes clients devront tous
+      refaire leur appairage.</span>
+      <button class="btn btn-primary btn-sm nw" id="rec-go">Enregistrer ma clé…</button></div>`;
+  }
+  // `recoveryAt` vaut `undefined` tant qu'on ne sait pas (la date vit dans app-config.json et arrive
+  // par une promesse), `null` quand il n'y en a pas, un nombre sinon. La distinction compte : sur
+  // « je ne sais pas encore », on ne crie pas.
+  let recoveryAt;
+  function chargerRecovery(redessiner) {
+    if (!api.recoveryStatus) { recoveryAt = null; return Promise.resolve(); }
+    const avant = recoveryAt;
+    return api.recoveryStatus().then(r => {
+      recoveryAt = (r && r.exportedAt) || null;
+      // Un état lu une fois au démarrage se périme (règle 7.1.x) : on ne redessine que s'il a
+      // vraiment changé, pour ne pas effacer une saisie en cours.
+      if (redessiner && recoveryAt !== avant && !$('#modal-root').children.length && !$('#palette-root')) render();
+    }).catch(() => { recoveryAt = null; });
+  }
 
   async function doRestore(entry) {
     if (!entry) return;
@@ -2146,7 +2285,11 @@
             if (!r) return;
             close();
             recoveryAt = Date.now();
+            // Le bandeau et la ligne « À faire » vivent hors de ces trois panneaux : sans un
+            // redessin complet, l'application continuerait de reprocher à quelqu'un ce qu'il vient
+            // très exactement de faire (règle 7.17.0).
             drawBackupPanels();
+            if (location.hash.startsWith('#/reglages') || location.hash.startsWith('#/dossiers')) render();
             if (onDone) onDone();
             const show = await confirmDialog('Clé de secours enregistrée',
               `<p class="muted small">${esc(r.path)}</p><p>Copie-la maintenant sur une clé USB ou un disque que tu ranges ailleurs, et <strong>efface-la de ${CE_POSTE()}</strong>.</p>`,
@@ -2314,7 +2457,7 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
                 <div class="muted small">Un petit fichier protégé par son propre mot de passe, à ranger ailleurs que sur ${CE_POSTE()}.</div></div>
                 <button class="btn btn-primary" id="w-rec">Enregistrer la clé…</button><span class="ok-inline" id="w-rec-ok" hidden>✓ fait</span></div>
             </div>
-            <p class="muted small mt">Tu peux les faire plus tard (Réglages → Sécurité), mais « plus tard » est exactement le moment où l'on oublie.</p>`,
+            <p class="muted small mt">Tu peux les faire plus tard (Réglages → Données et sécurité → Sécurité), mais « plus tard » est exactement le moment où l'on oublie.</p>`,
           mount: () => {
             $('#w-ext', el).onclick = async () => {
               try { const r = await api.pickExternal(); if (r && r.dir) { $('#w-ext-ok', el).hidden = false; refreshBackupInfo(); } }
@@ -2416,7 +2559,14 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
       { kind: 'action', main: 'Relances', go: () => { location.hash = '#/relances'; } },
       { kind: 'action', main: 'Échéances', go: () => { location.hash = '#/echeances'; } },
       { kind: 'action', main: 'Écritures — exporter un mois', go: () => { location.hash = '#/ecritures'; } },
-      { kind: 'action', main: 'Réglages', go: () => { location.hash = '#/reglages'; } },
+      // Un réglage par PANNEAU, engendré depuis REG_PANNEAUX : taper « clé de secours » mène au
+      // panneau Sécurité, pas en haut d'une page. Une liste écrite à la main se périmerait au
+      // prochain découpage — c'est exactement ce qui est arrivé côté entreprise en 7.30.0.
+      ...Object.keys(REG_PANNEAUX).map(id => ({
+        kind: 'action', main: `Réglages → ${REG_PANNEAUX[id].titre}`,
+        text: ('reglages ' + REG_PANNEAUX[id].titre + ' ' + REG_PANNEAUX[id].mots).toLowerCase(),
+        go: () => versReglages(id)
+      })),
       { kind: 'action', main: 'Aide', go: () => { location.hash = '#/aide'; } }
     ];
 
@@ -2427,7 +2577,10 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
         sub: [r.matricule, r.missingCount ? pl(r.missingCount, 'mois', 'mois') + ' manquant' + (r.missingCount > 1 ? 's' : '') : ''].filter(Boolean).join(' · '),
         go: () => { location.hash = '#/dossier/' + encodeURIComponent(r.id); }
       }));
-      const acts = actions.filter(a => !q || a.main.toLowerCase().includes(q));
+      // On cherche aussi dans les synonymes : « backup », « token », « cle de secours » ne figurent
+      // dans aucun libellé, et deux réponses vides suffisent à faire croire que la palette ne
+      // connaît pas l'application.
+      const acts = actions.filter(a => !q || a.main.toLowerCase().includes(q) || (a.text || '').includes(q));
       items = rows.concat(acts);
       if (sel >= items.length) sel = Math.max(0, items.length - 1);
       $('#pal-res', root).innerHTML = items.length
@@ -2624,9 +2777,9 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
               <h2 class="help-h"><span class="ha-ico">${aideIcone(a)}</span>${esc(a.t)}</h2>
               <p class="help-sub">${esc(a.s || '')}</p>
               ${a.d}
-              ${a.geste ? `<div class="help-geste"><button class="btn btn-primary" data-geste="${esc(a.geste.hash)}">${esc(a.geste.label)}</button>
+              ${a.geste ? `<div class="help-geste"><button class="btn btn-primary" data-geste="${esc(a.geste.hash)}"${a.geste.panneau ? ` data-panneau="${esc(a.geste.panneau)}"` : ''}>${esc(a.geste.label)}</button>
                 <span class="small muted">On lit une explication pour faire quelque chose.</span></div>` : ''}
-              <p class="small muted help-foot">Une question que cette aide ne tranche pas ? <b>Réglages → Signaler un problème</b> : le rapport ne contient aucune donnée de tes clients.</p>
+              <p class="small muted help-foot">Une question que cette aide ne tranche pas ? <b>Réglages → L'application → Aide et dépannage</b> : le rapport ne contient aucune donnée de tes clients.</p>
             </article>
             <div class="help-suite">
               ${prec ? `<button class="btn btn-ghost" data-art="${esc(prec.id)}">← ${esc(prec.t)}</button>` : '<span></span>'}
@@ -2636,13 +2789,18 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
         </div>`;
     } else {
       vue.innerHTML = `<div class="help-arts help-res">${G.ARTICLES.map(aideCarte).join('')}</div>
-        <p class="small muted mt">Une question que cette aide ne tranche pas ? <b>Réglages → Signaler un problème</b> : le rapport dit où l'application s'est arrêtée, et ne contient aucune donnée de tes clients.</p>`;
+        <p class="small muted mt">Une question que cette aide ne tranche pas ? <b>Réglages → L'application → Aide et dépannage</b> : le rapport dit où l'application s'est arrêtée, et ne contient aucune donnée de tes clients.</p>`;
     }
 
     const brancher = () => {
       $$('[data-art]').forEach(b => b.onclick = () => { aideQ = ''; location.hash = '#/aide/' + b.dataset.art; });
       $$('[data-home]').forEach(b => b.onclick = () => { aideQ = ''; location.hash = '#/aide'; });
-      $$('[data-geste]').forEach(b => b.onclick = () => { location.hash = b.dataset.geste; });
+      // Un geste peut viser un PANNEAU des Réglages, pas seulement une page : depuis les onglets,
+      // « Ouvrir les réglages » en haut d'un onglet de trois panneaux n'apprend rien.
+      $$('[data-geste]').forEach(b => b.onclick = () => {
+        if (b.dataset.panneau) return versReglages(b.dataset.panneau);
+        location.hash = b.dataset.geste;
+      });
     };
     brancher();
 

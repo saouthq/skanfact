@@ -1647,6 +1647,61 @@ déborde, qu'aucun pied ne chevauche le contenu, qu'une page fabriquée fait une
 est numérotée. Il n'ouvre pas Electron (chromium suffit), donc il tourne sans `xvfb`. Prouvé en
 remettant le défaut : 111 cas sur 161 tombent.
 
+## 7.32.0 — Les Réglages du cabinet en onglets, et ce qu'un rangement ne doit jamais ranger
+
+Skander : « pour l'appli cabinet, créer des onglets c'est mieux non ? (dans la page paramètres) ».
+Mesuré avant de répondre (`npm run e2e:parametres`, étendu pour mesurer panneau par panneau) : 2,6
+écrans, sept panneaux de 0,20 à 0,49 écran chacun — toute la page du cabinet était plus petite qu'un
+seul onglet de l'app entreprise. Un découpage en trois donnait 0,74 / 1,05 / **0,46**, et le dernier
+tombait sous le demi-écran, c'est-à-dire exactement ce que la 7.30.0 venait de retirer de l'autre
+application. Livré quand même, sur décision du propriétaire, mais **rééquilibré** : 0,8 / 1 / 0,7.
+
+Règles apprises, à ne pas recasser :
+
+- **Un rangement range aussi ce qu'il ne faut pas ranger.** Le commentaire qui interdisait les
+  onglets dans ce fichier donnait une raison juste : l'avertissement « tu n'as jamais enregistré de
+  clé de secours » se serait retrouvé derrière un clic. Mettre des onglets obligeait donc à le
+  sortir d'abord — bandeau au-dessus de la barre d'onglets, ligne en tête de « À faire », et sur la
+  page Dossiers **y compris quand elle est vide** (cet écran-là sortait avant le panneau « À faire »,
+  et c'est le premier jour que l'alerte compte le plus).
+- **La question posée révèle souvent un défaut plus grave que la question.** Ici : l'alerte la plus
+  importante de l'application — sans clé de secours, un poste perdu rend illisibles POUR TOUJOURS
+  tous les paquets reçus — n'existait qu'à un seul endroit, au milieu d'une page de 2,6 écrans.
+- **Un onglet trop léger se corrige en déplaçant ce qui est mal rangé ailleurs**, pas en renonçant.
+  « Signaler un problème » vivait dans le panneau Sécurité, où il n'avait rien à faire : devenu le
+  panneau « Aide et dépannage », il fait passer le troisième onglet de 0,46 à 0,7 écran. Le
+  déséquilibre mesuré était le symptôme d'un mauvais rangement, pas d'un mauvais découpage.
+- **`reglages.js` savait déjà faire les onglets** : `installer()` accepte `nomOnglet` /
+  `ouvrirOnglet` / `ongletCourant`, et `montrer(pid)` ouvre l'onglet du panneau AVANT de le faire
+  défiler. L'app cabinet ne lui passait simplement rien. Les trois rappels vont **ensemble** : n'en
+  donner que deux laisse la bascule silencieusement inerte, et on atterrit sur le bon panneau dans un
+  onglet masqué — c'est-à-dire nulle part. Un test l'exige.
+- **Tous les panneaux restent dans le document, masqués — jamais dessinés paresseusement.**
+  `drawBackupPanels()` sort en silence si ses trois panneaux manquent : un onglet rendu à la demande
+  les laisserait sur « Chargement… » pour toujours, sans une erreur dans aucune console.
+- **Ce qui traverse un onglet doit l'ouvrir** : `refus()` sur un champ masqué, la pastille de mise à
+  jour, le chemin de récupération après perte du fichier, les gestes des articles d'aide, les entrées
+  de palette. Tous passent maintenant par `versReglages(panneau)`, qui pose l'onglet et la cible puis
+  redessine si l'on y est déjà (piège 7.15.0).
+- **Restaurer une clé de secours compte comme en avoir une.** Sans ça, le poste neuf reprochait sa
+  clé à quelqu'un qui venait de la restaurer depuis sa clé USB : « le pire défaut est celui qui punit
+  quelqu'un qui a tout bien fait » (6.8.1). La date retenue est celle du fichier (`creeLe`), pas
+  celle du geste.
+- **Le jumeau manquant, encore.** L'app entreprise a `TODO_ACTIONS` + un test de couverture depuis la
+  7.0.0 ; le cabinet n'avait ni l'un ni l'autre, et ses cinq lignes de « À faire » portaient le MÊME
+  lien en dur vers les Relances — « une échéance approche » y envoyait aussi, alors que sa page est
+  Échéances. Un bouton qui marche mais se trompe de page ne se remarque jamais. Une règle apprise
+  d'un côté se vérifie de l'autre, à la main (règle 7.3.0).
+- **Le contrôle « Paramètres → X nomme un onglet qui existe » n'avait pas de jumeau « Réglages → ».**
+  Une phrase de l'assistant nommait déjà « Réglages → Sécurité », un onglet qui n'a jamais existé.
+- Piège d'e2e, la cinquième fois : six endroits du parcours cabinet cliquaient un bouton désormais
+  dans un onglet masqué. La parade est toujours la même — `ouvrirReglages(panneau)` reconnaît
+  l'onglet à ce qu'il **contient** (`closest('[data-pane]')`), jamais à son rang ni à son
+  identifiant. Et l'assertion de `e2e:perte` qui ne testait que le hash exige maintenant que le
+  panneau soit **visible** : on peut être sur la bonne page et sur le mauvais onglet.
+- Piège de test rencontré : `new RegExp(\`panneauReg\\\\('${id}'\`)` dans `run-tests.js` casse le
+  fichier. Une concaténation de chaînes fait le même travail sans le risque.
+
 ## Pistes pour la suite (non demandées)
 
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.

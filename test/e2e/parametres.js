@@ -142,36 +142,43 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   await cw.evaluate(() => { location.hash = '#/reglages'; });
   await cw.waitForSelector('#c-name');
   await cw.waitForTimeout(800);
-  mesures.cabinet.page = await cw.evaluate(() => {
-    const v = document.querySelector('#view');
-    const champs = v.querySelectorAll('input:not([type=hidden]), select, textarea').length;
-    const bulles = v.querySelectorAll('button.i').length;
-    const titres = [...v.querySelectorAll('h2, h3')].map(h => h.textContent.replace(/\s+/g, ' ').trim());
-    const boutons = [...v.querySelectorAll('button:not(.i)')].map(b => b.textContent.replace(/\s+/g, ' ').trim()).filter(Boolean);
-    return { champs, bulles, titres, boutons,
-      hauteur: v.scrollHeight, ecrans: Math.round(v.scrollHeight / v.clientHeight * 10) / 10 };
-  });
-  // Panneau par panneau : c'est ce chiffre-là qui dit si un découpage en onglets serait équilibré
-  // ou s'il fabriquerait des onglets d'un demi-écran (règle 7.30.0 : ce n'est alors pas un onglet,
-  // c'est un clic de plus).
-  mesures.cabinet.panneaux = await cw.evaluate(() => {
-    const v = document.querySelector('#view');
-    return [...v.querySelectorAll('.panel')].map(p => ({
-      id: p.id,
-      titre: (p.querySelector('h2') || {}).textContent ? p.querySelector('h2').textContent.replace(/\s+/g, ' ').trim() : '',
-      onglet: (p.closest('section[data-pane]') || {}).dataset ? p.closest('section[data-pane]').dataset.pane : '',
-      champs: p.querySelectorAll('input:not([type=hidden]), select, textarea').length,
-      boutons: p.querySelectorAll('button:not(.i)').length,
-      hauteur: Math.round(p.getBoundingClientRect().height),
-      ecrans: Math.round(p.getBoundingClientRect().height / v.clientHeight * 100) / 100
-    }));
-  });
-  // Trois captures : le haut, le milieu, le bas — c'est une seule page qui défile.
-  for (const [nom, frac] of [['haut', 0], ['milieu', 0.5], ['bas', 1]]) {
-    await cw.evaluate(f => { const v = document.querySelector('#view'); v.scrollTop = (v.scrollHeight - v.clientHeight) * f; }, frac);
-    await cw.waitForTimeout(350);
-    await cw.screenshot({ path: path.join(dossier, `cab-reglages-${nom}.png`) });
+  // L'app cabinet a elle aussi des onglets depuis la 7.32.0 : on mesure comme l'app entreprise,
+  // onglet par onglet. Un panneau masqué mesure ZÉRO pixel — mesurer la page entière annoncerait
+  // donc des onglets parfaits sur un écran cassé.
+  await cw.waitForSelector('#set-tabs');
+  mesures.cabinet.onglets = await cw.evaluate(() =>
+    [...document.querySelectorAll('#set-tabs button')].map(b => ({ id: b.dataset.tab, label: b.textContent.trim() })));
+  for (const { id, label } of mesures.cabinet.onglets) {
+    await cw.click(`#set-tabs button[data-tab="${id}"]`);
+    await cw.waitForTimeout(450);
+    mesures.cabinet[id] = await cw.evaluate(t => {
+      const v = document.querySelector('#view');
+      const sec = document.querySelector(`section[data-pane="${t}"]`);
+      if (!sec || sec.hidden) return { absent: true };
+      const h = sec.getBoundingClientRect().height;
+      return {
+        champs: sec.querySelectorAll('input:not([type=hidden]), select, textarea').length,
+        bulles: sec.querySelectorAll('button.i').length,
+        boutons: [...sec.querySelectorAll('button:not(.i)')].map(b => b.textContent.replace(/\s+/g, ' ').trim()).filter(Boolean),
+        sommaire: [...document.querySelectorAll('#set-somm .somm-chip')].map(b => b.textContent.trim()),
+        panneaux: [...sec.querySelectorAll('.panel')].map(p => ({
+          id: p.id,
+          titre: (p.querySelector('h2') ? p.querySelector('h2').textContent : '').replace(/\s+/g, ' ').trim(),
+          ecrans: Math.round(p.getBoundingClientRect().height / v.clientHeight * 100) / 100
+        })),
+        hauteur: Math.round(h), ecrans: Math.round(h / v.clientHeight * 10) / 10
+      };
+    }, id);
+    mesures.cabinet[id].label = label;
+    await cw.evaluate(() => { document.querySelector('#view').scrollTop = 0; });
+    await cw.screenshot({ path: path.join(dossier, `cab-${id}.png`) });
   }
+  // Le bandeau de la clé de secours doit rester visible QUEL QUE SOIT l'onglet : c'est la
+  // contrepartie du rangement en onglets.
+  mesures.cabinet.bandeauCle = await cw.evaluate(() => {
+    const b = document.querySelector('.banner.danger');
+    return b ? { visible: b.getBoundingClientRect().height > 0, texte: b.textContent.replace(/\s+/g, ' ').trim().slice(0, 90) } : 'absent';
+  });
   mesures.cabinet.maj = await cw.evaluate(() => {
     const t = document.querySelector('#view').textContent;
     const i = t.indexOf('ise à jour');

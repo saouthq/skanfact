@@ -4557,6 +4557,98 @@ t('cabinet : un import de vingt paquets parle, s\'arrête, et son interface est 
   assert.ok(notice > 0 && notice < demarrage, 'l\'annonce d\'après-gel doit être branchée avant le démarrage');
 });
 
+t('cabinet : les Réglages en onglets, et rien qui échappe à la table', () => {
+  // Même garde-fou que côté entreprise, et pour la même raison : les trois usages d'un panneau (son
+  // titre, les mots que la recherche connaît, son entrée de palette Cmd+K) ne peuvent pas diverger
+  // s'ils viennent d'une seule table. Recopiés à la main, ils divergent toujours.
+  const app = lireSource('src', 'cabinet', 'renderer', 'app.js')
+    .replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+  assert.ok(app.includes('const REG_PANNEAUX'), 'le nettoyage des commentaires a mangé le code');
+
+  const table = app.slice(app.indexOf('const REG_PANNEAUX'), app.indexOf('const panneauReg'));
+  const decl = {};
+  (table.match(/'(pan-[a-z]+)': \{ onglet: '([a-z]+)'/g) || []).forEach(m => {
+    const [, id, onglet] = m.match(/'(pan-[a-z]+)': \{ onglet: '([a-z]+)'/);
+    decl[id] = onglet;
+  });
+  assert.ok(Object.keys(decl).length >= 7, 'la table des panneaux n\'a pas été relue');
+
+  // Chaque panneau déclaré est posé UNE fois et une seule, et aucun panneau n'est écrit à la main.
+  Object.keys(decl).forEach(id => {
+    const n = app.split('panneauReg(\'' + id + '\'').length - 1;
+    assert.strictEqual(n, 1, `le panneau ${id} est posé ${n} fois`);
+  });
+  assert.ok(!/<div class="panel[^"]*" id="pan-/.test(app), 'un panneau de réglages est écrit à la main');
+
+  // Chaque onglet déclaré porte au moins un panneau, et chaque panneau vise un onglet qui existe.
+  const onglets = app.slice(app.indexOf('const REG_TABS'), app.indexOf('const REG_PANNEAUX'));
+  const ids = (onglets.match(/\['([a-z]+)',/g) || []).map(m => m.slice(2, -2));
+  assert.ok(ids.length >= 2, 'les onglets n\'ont pas été relus');
+  ids.forEach(t2 => assert.ok(Object.values(decl).includes(t2), `l'onglet « ${t2} » ne contient aucun panneau`));
+  Object.keys(decl).forEach(id => assert.ok(ids.includes(decl[id]), `${id} vise l'onglet inexistant « ${decl[id]} »`));
+
+  // Toute phrase qui dicte un chemin « Réglages → X » doit nommer un onglet QUI EXISTE. Le jumeau
+  // « Paramètres → » existait déjà ; celui-ci manquait, et l'une des phrases nommait déjà
+  // « Réglages → Sécurité », un onglet qui n'a jamais existé.
+  const libelles = (onglets.match(/, *'((?:[^'\\]|\\.)*)'\]/g) || []).map(m => m.slice(3, -2).replace(/\\'/g, "'"));
+  assert.ok(libelles.length >= 2, 'les libellés d\'onglets n\'ont pas été relus');
+  ['src/cabinet/renderer/app.js', 'src/cabinet/main.js', 'src/cabinet/renderer/cabguide.js'].forEach(f => {
+    const src = lireSource(...f.split('/'))
+      .replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+    const chemins = (src.match(/Réglages → [^<.,:)»"`\n]+/g) || [])
+      .map(m => m.slice('Réglages → '.length).replace(/\\'/g, "'").split(' → ')[0].trim())
+      .filter(x => x && !x.startsWith('$'));
+    const inconnus = Array.from(new Set(chemins.filter(x => !libelles.includes(x))));
+    assert.deepStrictEqual(inconnus, [], `${f} envoie vers un onglet de Réglages qui n'existe pas : ${inconnus.join(' · ')}`);
+  });
+
+  // La porte partagée ne bascule d'onglet que si on lui donne les TROIS rappels : n'en passer que
+  // deux la laisse silencieusement inerte, et on atterrit sur le bon panneau dans un onglet masqué.
+  const inst = app.slice(app.indexOf('Reglages.installer({'), app.indexOf('Reglages.installer({') + 600);
+  ['nomOnglet:', 'ouvrirOnglet:', 'ongletCourant:'].forEach(k =>
+    assert.ok(inst.includes(k), `installer() du cabinet ne reçoit pas ${k}`));
+});
+
+t('cabinet : la clé de secours se réclame là où on la lit, pas seulement dans un panneau', () => {
+  const s = { cabinet: { name: 'C' }, dossiers: [], packs: [] };
+  // Sans information, on ne crie pas : la date arrive par une promesse, et une alerte qui clignote
+  // à chaque démarrage ne se lit plus.
+  assert.ok(!cab.cabinetTodo(s, '2026-09-14').some(x => x.id === 'cle-secours'), 'réclamée sans rien savoir');
+  assert.ok(!cab.cabinetTodo(s, '2026-09-14', { cleSecours: null }).some(x => x.id === 'cle-secours'), 'réclamée sur « je ne sais pas »');
+  assert.ok(!cab.cabinetTodo(s, '2026-09-14', { cleSecours: true }).some(x => x.id === 'cle-secours'), 'réclamée alors qu\'elle existe');
+  const avec = cab.cabinetTodo(s, '2026-09-14', { cleSecours: false });
+  assert.strictEqual(avec[0].id, 'cle-secours', 'le seul manque irréparable passe avant tout le reste');
+  assert.strictEqual(avec[0].level, 'danger');
+
+  // Le bandeau vit HORS du système d'onglets : c'est la contrepartie exigée pour pouvoir ranger
+  // cette page en onglets. Posé dans un panneau, il se cacherait derrière un clic.
+  const app = lireSource('src', 'cabinet', 'renderer', 'app.js');
+  const tete = app.slice(app.indexOf('function drawReglages'), app.indexOf('id="set-corps"'));
+  assert.ok(tete.includes('${recoveryBanner()}'), 'le bandeau de la clé doit être au-dessus des onglets');
+  assert.ok(app.includes('${recoveryBanner()}\n        <div class="panel"><h2>Premiers pas</h2>'),
+    'un cabinet sans aucun dossier ne verrait jamais l\'alerte — or c\'est le moment où elle compte le plus');
+});
+
+t('cabinet : chaque ligne de « À faire » mène quelque part', () => {
+  // Jumeau du test de l'app entreprise, qui n'existait pas ici : les cinq lignes portaient le MÊME
+  // lien en dur vers les Relances, donc « une échéance approche » y envoyait aussi, alors que sa
+  // page est Échéances. Un bouton qui marche mais se trompe de page ne se remarque jamais.
+  const core = lireSource('src', 'cabinet', 'cabcore.js');
+  const bloc = core.slice(core.indexOf('function cabinetTodo'), core.indexOf('function monthListLabel'));
+  assert.ok(bloc.length > 500 && bloc.includes('out.push'), 'la tranche de cabinetTodo est vide');
+  const produits = Array.from(new Set((bloc.match(/id: '([a-z-]+)'/g) || []).map(m => m.slice(5, -1))));
+  assert.ok(produits.length >= 5, 'les identifiants de cabinetTodo n\'ont pas été relus');
+
+  const app = lireSource('src', 'cabinet', 'renderer', 'app.js')
+    .replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+  const table = app.slice(app.indexOf('const TODO_ACTIONS'), app.indexOf('function versReglages'));
+  assert.ok(table.includes('run:'), 'la table des actions est vide');
+  produits.forEach(id => assert.ok(new RegExp(`'${id}':`).test(table), `« ${id} » n'a aucune action branchée`));
+  // Et le bouton est vraiment posé et branché : une table seule ne fait rien.
+  assert.ok(app.includes('data-todo="${esc(t.id)}"'), 'les lignes ne portent pas leur identifiant');
+  assert.ok(/function bindTodo/.test(app) && app.includes('bindTodo(view)'), 'bindTodo n\'est pas appelé');
+});
+
 t('cabinet : ses classes à lui ne doivent pas exister dans la feuille partagée', () => {
   // L'app cabinet charge style.css (partagée) PUIS cabinet.css. Une classe portant le même nom des
   // deux côtés prend en silence les règles de l'autre application. C'est arrivé : l'assistant du

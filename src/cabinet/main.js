@@ -949,6 +949,13 @@ ipcMain.handle('cab:importRecovery', async (_e, password) => {
   getStore().backupNow('avant-restauration-cle');
   state.cabinet = { ...state.cabinet, publicKey: keys.publicKey, privateKey: keys.privateKey };
   save();
+  // Restaurer une clé prouve qu'on en détient un fichier : on le note, sinon le poste neuf
+  // reprocherait sa clé à quelqu'un qui vient de la restaurer depuis sa clé USB — c'est-à-dire à
+  // quelqu'un qui a tout fait dans les règles (règle 6.8.1, « le pire défaut est celui qui punit
+  // quelqu'un qui a tout bien fait »). On garde la date du fichier restauré si elle est plus
+  // ancienne que maintenant : c'est celle de l'enregistrement, pas celle du geste d'aujourd'hui.
+  const creeLe = Date.parse((obj && obj.creeLe) || '');
+  writeAppCfg({ recoveryExportedAt: Number.isFinite(creeLe) ? creeLe : Date.now() });
   return { fingerprint: Z.keyFingerprint(keys.publicKey), name: keys.name || '' };
 });
 
@@ -1049,7 +1056,7 @@ function updateProblem(err) {
   if (/NO_PUBLISHED_VERSIONS|LATEST_VERSION_NOT_FOUND/.test(code)) return dit('Aucune version publiée pour l\'instant.', true);
   if (/401|403|Bad credentials/i.test(tout)) return dit('Le jeton d\'accès a été refusé ou a expiré. Demandes-en un nouveau.');
   if (/404/.test(tout)) return dit(GITHUB.private
-    ? 'Aucune version trouvée : le jeton d\'accès manque, ou il n\'a pas accès au dépôt (Réglages → Mises à jour).'
+    ? 'Aucune version trouvée : le jeton d\'accès manque, ou il n\'a pas accès au dépôt (Réglages → L\'application → Mises à jour).'
     : 'Aucune version trouvée pour l\'instant.', !GITHUB.private);
   if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|ECONNRESET|EAI_AGAIN|net::/i.test(tout)) return dit('Impossible de joindre le service de mise à jour. Vérifie ta connexion internet.');
   if (/sha512|checksum|integrity/i.test(tout)) return dit('Le fichier téléchargé est incomplet ou abîmé. Réessaie.');

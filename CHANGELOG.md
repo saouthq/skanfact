@@ -7,6 +7,51 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 7.32.0 — 14/09/2026
+
+**L'application du comptable range ses Réglages en trois onglets, comme la tienne — et l'alerte la
+plus importante de toute l'application sort enfin de sa cachette.**
+
+### Les onglets
+
+Mêmes noms que dans ton SkanFact, pour qu'un comptable qui ouvre l'application d'un client
+retrouve le même rangement : **Mon cabinet**, **Données et sécurité**, **L'application**.
+
+Mesuré avant et après (`npm run e2e:parametres`) : la page faisait 2,6 écrans d'un seul tenant ;
+les trois onglets font **0,8 · 1 · 0,7 écran**. Au passage, « Signaler un problème » a quitté le
+panneau Sécurité — il n'y avait rien à faire — pour un panneau **Aide et dépannage** à lui.
+
+Le sommaire et la recherche, qui existaient déjà, se limitent maintenant à l'onglet ouvert et disent
+dans quel onglet se trouve ce qu'on cherche. Cmd+K mène au **panneau** visé, pas en haut d'une page :
+taper « clé de secours » ouvre le bon onglet et amène le bon panneau.
+
+### Et la vraie trouvaille
+
+En regardant où mettre quoi, un défaut est apparu : **« ⚠ Tu n'as jamais enregistré de clé de
+secours » n'existait qu'à un seul endroit**, au milieu du panneau Sécurité, à un écran et demi de
+défilement. Ce n'était pas dans « À faire ». Or c'est le seul manque irréparable de cette
+application : sans cette clé, si le poste du comptable lâche, **aucun paquet déjà reçu ne peut plus
+jamais être ouvert**, et tous ses clients doivent refaire leur appairage.
+
+Des onglets l'auraient enterré encore plus profond. Donc :
+
+- un **bandeau rouge au-dessus des onglets**, qui ne peut se cacher derrière aucun clic, avec son
+  bouton — et il disparaît le jour où la clé est enregistrée ;
+- le même bandeau sur la page **Dossiers**, y compris quand il n'y a encore aucun client : c'est
+  justement le premier jour que l'alerte compte le plus, et cet écran-là n'affichait rien ;
+- une ligne **en tête de « À faire »**, avant tout le reste.
+
+### Trois autres défauts corrigés en chemin
+
+- **Chaque ligne de « À faire » mène maintenant à sa page.** Les cinq portaient le même lien en dur
+  vers les Relances : « une échéance approche » y envoyait aussi, alors que sa page est Échéances.
+- **Restaurer une clé de secours compte comme en avoir une.** Après un changement d'ordinateur,
+  l'application reprochait sa clé à quelqu'un qui venait très exactement de la restaurer depuis sa
+  clé USB.
+- Une phrase de l'assistant renvoyait à « Réglages → Sécurité », un onglet qui n'avait jamais
+  existé. Un test générique vérifie désormais que **chaque chemin « Réglages → … » nomme un onglet
+  réel**, dans les trois fichiers de l'application cabinet.
+
 ## 7.31.0 — 14/09/2026
 
 **Un devis long tient enfin la route : de vraies pages A4, chacune avec son pied de page numéroté,
