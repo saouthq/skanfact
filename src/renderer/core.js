@@ -413,6 +413,40 @@
   }
   function estBeta(version) { return canalDe(version) !== 'latest'; }
 
+  // ---------- la pastille de licence (8.0.1) ----------
+  //
+  // Jusqu'à la 8.0.1, la pastille de la barre de gauche n'apparaissait qu'à SEPT jours de la fin de
+  // l'essai. Pendant vingt-trois jours, une installation neuve n'affichait donc nulle part qu'elle
+  // était en essai — ni même que SkanFact se paie : l'assistant se passe, et le panneau Paramètres →
+  // L'application → Licence, personne ne l'ouvre sans raison. On l'apprenait le trente-et-unième
+  // jour, en étant bloqué. Un essai dont personne ne sait qu'il court n'est pas un essai, c'est une
+  // surprise — et c'est très exactement ce que tout le reste de l'application s'interdit.
+  //
+  // L'autre travers serait le nagware : un bandeau qui crie « 28 jours restants » tous les matins
+  // cesse d'être lu, et emmène avec lui les messages qui comptent. D'où TROIS tons, et pas deux :
+  //   calme  — l'essai court, on informe (gris discret, à côté du numéro de version) ;
+  //   attire — il reste sept jours d'essai, ou quatorze sur une licence payante : il faut agir ;
+  //   alerte — la création est bloquée.
+  //
+  // Pure et testée sans Electron : c'est la règle qui se teste, pas la forme du renderer.
+  function pastilleLicence(lic) {
+    const l = lic || {};
+    const j = l.daysLeft;
+    if (l.locked) return { show: true, ton: 'alerte', texte: (l.label || 'Licence requise') + ' — voir Paramètres → L\'application → Licence' };
+    if (l.state === 'essai' && j != null) {
+      const reste = `Essai — ${j} jour${j === 1 ? '' : 's'}`;
+      return j <= 7
+        ? { show: true, ton: 'attire', texte: reste + (j === 0 ? ' : dernier jour' : ' avant la fin') }
+        : { show: true, ton: 'calme', texte: reste };
+    }
+    // Une licence payante qui se termine se dit ici aussi : sans ça, un client verrouillé un matin
+    // n'aurait été prévenu nulle part ailleurs que dans un panneau qu'il n'ouvre jamais.
+    if (l.state === 'active' && j != null && j <= 14) {
+      return { show: true, ton: 'attire', texte: (l.label || '') + ' — pense à la renouveler' };
+    }
+    return { show: false, ton: '', texte: '' };
+  }
+
   // ---------- tout effacer (7.0.0) ----------
   //
   // « Tout effacer » vidait sept listes sur trente, parce qu'elle était écrite à la main et qu'aucun
@@ -5520,7 +5554,7 @@
     amountToWords, intToWords, intToWordsEn, documentHtml, fitToPage, paginate, pageCount,
     MODULES, PAGES, moduleById, pageById, pageTitle, moduleCount, moduleCounts, modulesRevenus, moduleOn, moduleWhy, navPages,
     MODULES_PAR_ACTIVITE, modulesSuggeres, wipeData, rendreLesEmprunts, estDemo, firstSteps, liste, defaultVat, newLine,
-    canalDe, estBeta,
+    canalDe, estBeta, pastilleLicence,
     LICENCE_PREAVIS, licenceEtat, licenceRows, licencesExpirant
   };
 });

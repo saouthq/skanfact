@@ -7,6 +7,32 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 8.0.1 — 14/09/2026
+
+**L'essai se voit sans ouvrir les Paramètres.** Jusqu'ici, la pastille de la barre de gauche
+n'apparaissait qu'à sept jours de la fin : pendant vingt-trois jours, une installation neuve
+n'affichait **nulle part** qu'elle était en période d'essai — ni même que SkanFact se paie. Quelqu'un
+qui passe l'assistant de première utilisation et n'ouvre jamais Paramètres → L'application → Licence
+l'apprenait le trente-et-unième matin, en se retrouvant bloqué. Un essai dont personne ne sait qu'il
+court n'est pas un essai, c'est une surprise.
+
+La pastille est donc là **dès le premier jour**, sous le menu, cliquable — et elle change de ton
+plutôt que de crier tous les matins :
+
+- **Essai — 27 jours** : gris discret, à peine plus marqué que le numéro de version.
+- **Essai — 5 jours avant la fin** : orange, parce qu'il faut agir. (C'était jusqu'ici la couleur
+  d'une bonne nouvelle.)
+- **Licence active jusqu'au … — pense à la renouveler** : orange, deux semaines avant l'échéance.
+- **Période d'essai terminée — voir Paramètres → L'application → Licence** : orange, avec la sortie.
+
+Rien ne s'affiche quand il n'y a rien à dire : une licence à vie, une application non armée, le poste
+de l'éditeur.
+
+Sous le capot, la décision (afficher ou non, quel ton, quelle phrase) est passée dans `core.js` :
+elle se teste sur de vraies valeurs, sans lancer l'application. L'assertion de `e2e:licence` qui
+exigeait l'ABSENCE de la pastille à trente jours a été **retournée**, pas supprimée — elle décrivait
+l'état du jour au lieu de la règle.
+
 ## 8.0.0 — 14/09/2026
 
 **La licence est armée.** À partir de cette version, SkanFact embarque la clé publique de son

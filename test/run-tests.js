@@ -3241,7 +3241,9 @@ t('8.0.0 : la clé embarquée est une vraie clé publique, l\'éditeur ne s\'ach
   // Une licence PAYANTE qui finit est annoncée dans la barre (pas seulement l'essai), l'état se
   // relit toutes les heures et au retour au premier plan, et le panneau ne prétend plus que la clé
   // ne part nulle part (elle est présentée au relais de mise à jour).
-  assert.ok(/licence\.state === 'active' && licence\.daysLeft <= 14/.test(appSrc), 'licenceBanner doit annoncer une licence active qui se termine');
+  // (8.0.1 : la décision a déménagé dans core.pastilleLicence, où elle se teste sur de vraies
+  // valeurs plutôt que sur la forme d'une ligne d'app.js. La règle, elle, ne bouge pas.)
+  assert.strictEqual(core.pastilleLicence({ state: 'active', daysLeft: 14, label: 'Licence active' }).show, true, 'une licence active qui se termine doit s\'annoncer dans la barre');
   assert.ok(/setInterval\(relireLicence, 60 \* 60 \* 1000\)/.test(appSrc) && /addEventListener\('focus', relireLicence\)/.test(appSrc), 'la licence doit se relire toutes les heures et au retour au premier plan');
   assert.ok(!/n'envoie jamais ta clé nulle part/.test(appSrc) && /présentée qu'au service de mise à jour/.test(appSrc), 'le panneau doit dire où la clé est présentée');
   assert.ok(/\(key \? 'Licence enregistrée : ' : 'Clé retirée — '\)/.test(appSrc), 'retirer la clé ne doit pas annoncer « Licence enregistrée »');
@@ -5493,6 +5495,65 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // l'application irait chercher `0-mac.yml`. On refuse de l'appeler autrement que « latest ».
     assert.strictEqual(core.canalDe('7.26.0-0'), 'latest');
     ['', null, undefined, 'dev', 'n\'importe quoi'].forEach(v => assert.strictEqual(core.canalDe(v), 'latest'));
+  });
+
+  // 8.0.1 — La pastille du pied de la barre est le SEUL endroit où quelqu'un qui passe l'assistant
+  // peut apprendre qu'il est en essai. Jusqu'ici elle n'apparaissait qu'à sept jours de la fin :
+  // pendant vingt-trois jours, rien nulle part — puis un verrou le trente-et-unième matin.
+  t('licence : l\'essai se voit pendant TOUT l\'essai, sans crier tous les matins', () => {
+    const p = l => core.pastilleLicence(l);
+
+    // 1. Le défaut d'origine : au premier jour comme au vingt-troisième, la pastille est là.
+    [30, 25, 8].forEach(j => {
+      const r = p({ state: 'essai', daysLeft: j, locked: false });
+      assert.strictEqual(r.show, true, `l'essai à ${j} jours doit se voir dans la barre`);
+      assert.strictEqual(r.ton, 'calme', `l'essai à ${j} jours ne doit pas crier`);
+      assert.ok(r.texte.includes(String(j)), 'la pastille doit dire combien de jours il reste : ' + r.texte);
+    });
+
+    // 2. La dernière semaine, elle change de ton : une information qui demande une action ne doit
+    // pas ressembler à une bonne nouvelle (règle posée avec la pastille elle-même).
+    [7, 3, 1, 0].forEach(j => {
+      const r = p({ state: 'essai', daysLeft: j, locked: false });
+      assert.strictEqual(r.show, true);
+      assert.strictEqual(r.ton, 'attire', `à ${j} jours de la fin, la pastille doit attirer l'œil`);
+    });
+    // Et le pluriel s'accorde — « 1 jours » sur l'écran d'un client, c'est du travail bâclé.
+    assert.ok(/\b1 jour\b/.test(p({ state: 'essai', daysLeft: 1 }).texte), 'pluriel : ' + p({ state: 'essai', daysLeft: 1 }).texte);
+    assert.ok(/\b2 jours\b/.test(p({ state: 'essai', daysLeft: 2 }).texte), 'pluriel : ' + p({ state: 'essai', daysLeft: 2 }).texte);
+
+    // 3. Verrouillé : la pastille dit où aller. C'est la seule sortie depuis la barre.
+    const bloque = p({ state: 'finessai', daysLeft: -1, locked: true, label: 'Période d\'essai terminée' });
+    assert.strictEqual(bloque.show, true);
+    assert.strictEqual(bloque.ton, 'alerte');
+    assert.ok(/Paramètres/.test(bloque.texte), 'un refus doit nommer le bouton qui débloque : ' + bloque.texte);
+
+    // 4. Une licence PAYANTE qui se termine se dit deux semaines avant, et pas plus tôt : quelqu'un
+    // qui a payé pour un an n'a pas à voir un rappel pendant onze mois.
+    assert.strictEqual(p({ state: 'active', daysLeft: 300, label: 'Licence active' }).show, false);
+    assert.strictEqual(p({ state: 'active', daysLeft: 15, label: 'Licence active' }).show, false);
+    const fin = p({ state: 'active', daysLeft: 14, label: 'Licence active' });
+    assert.strictEqual(fin.show, true);
+    assert.strictEqual(fin.ton, 'attire');
+    assert.ok(/renouveler/.test(fin.texte), 'la pastille doit dire quoi faire : ' + fin.texte);
+
+    // 5. Les états qui n'ont RIEN à dire ne disent rien. Une application non armée (`libre`) et le
+    // poste de l'éditeur (`editeur`) n'ont ni essai ni échéance : une pastille y serait un mensonge.
+    ['libre', 'editeur'].forEach(s => assert.strictEqual(p({ state: s, daysLeft: null }).show, false, s + ' ne doit porter aucune pastille'));
+    assert.strictEqual(p({ state: 'active', daysLeft: null, key: 'SKAN1.x' }).show, false, 'une licence à vie n\'a pas d\'échéance');
+    assert.strictEqual(p(null).show, false, 'un état absent ne doit rien afficher');
+
+    // 6. Le renderer ne fait que POSER ce que la règle a décidé : sans ça, la logique repartirait
+    // vivre dans app.js et ce test ne prouverait plus rien de ce qui s'affiche.
+    const app = lireSource('src', 'renderer', 'app.js');
+    const d = app.indexOf('function licenceBanner(');
+    assert.ok(d > 0, 'licenceBanner introuvable dans app.js');
+    const zone = app.slice(d, app.indexOf('\n  }', d));
+    // Une tranche se prouve par sa taille avant d'être jugée : un ancrage périmé donne une tranche
+    // vide, et toutes les assertions qui suivent passent alors sans rien regarder (piège 7.21.0).
+    assert.ok(zone.length > 200 && zone.length < 1200, 'tranche licenceBanner improbable (' + zone.length + ' caractères)');
+    assert.ok(/C\.pastilleLicence\(licence\)/.test(zone), 'la pastille ne passe pas par la règle partagée');
+    assert.ok(!/daysLeft/.test(zone), 'le renderer rejuge les jours au lieu de poser la décision : ' + zone);
   });
 
   t('canal bêta : décoché par défaut, et le canal se pose sur les deux chemins', () => {

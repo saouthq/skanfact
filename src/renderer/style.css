@@ -447,9 +447,16 @@ table.lines-edit select { padding-right: 4px; min-width: 70px; }
 /* ---------- mises à jour ---------- */
 .update-pill { font: inherit; font-size: 12px; font-weight: 600; color: var(--primary); background: var(--primary-soft); border: none; border-radius: 999px; padding: 7px 12px; cursor: pointer; margin-bottom: 8px; text-align: left; }
 .update-pill:hover { background: var(--primary-soft-2); }
-/* Licence : la même pastille, mais orange quand la création est bloquée — une information qui
-   demande une action ne doit pas ressembler à une bonne nouvelle. */
+/* Licence : la même pastille, mais orange quand il faut agir — fin d'essai, licence qui se termine,
+   création bloquée. Une information qui demande une action ne doit pas ressembler à une bonne
+   nouvelle. */
 .update-pill.warn { color: var(--warning); background: var(--warning-soft); }
+/* Et grise, à peine plus marquée que le numéro de version juste en dessous, pendant les trois
+   premières semaines de l'essai (8.0.1) : il faut que ça se voie sans ouvrir les Paramètres, et il
+   ne faut pas que ça crie tous les matins — un bandeau qu'on apprend à ignorer emmène avec lui
+   ceux qui comptent. */
+.update-pill.calme { color: var(--muted); background: var(--ink-soft); font-weight: 500; }
+.update-pill.calme:hover { background: var(--border); }
 .app-version { font-size: 11px; color: #b0b8c2; padding: 8px 12px 0; }
 #update-panel .update-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 12px; }
 .notes-md { background: var(--bg); border-radius: 10px; padding: 10px 14px; margin: 8px 0 12px; font-size: 13px; }

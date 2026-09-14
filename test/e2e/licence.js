@@ -329,11 +329,18 @@ const L = require('../../src/licence.js');
   await traverserAssistant(win2, 'Menuiserie Trabelsi SUARL', '1234567A/M/P/000');
   const reel = await win2.evaluate(async mf => ({
     st: await window.skanfact.licenceStatus(mf), ed: await window.skanfact.editeurStatus(),
-    nav: !!document.querySelector('nav a[data-route="licences"]'), banner: !!document.querySelector('#lic-banner') && !document.querySelector('#lic-banner').hidden
+    nav: !!document.querySelector('nav a[data-route="licences"]'),
+    banner: (() => { const b = document.querySelector('#lic-banner'); return b && !b.hidden ? { texte: b.textContent, calme: b.classList.contains('calme'), warn: b.classList.contains('warn') } : null; })()
   }), '1234567A/M/P/000');
   if (reel.st.state !== 'essai' || reel.st.locked || reel.st.daysLeft !== 30 || reel.st.editeur) throw new Error('avec la vraie clé embarquée, une installation neuve doit être en essai de 30 jours : ' + JSON.stringify(reel.st).slice(0, 200));
   if (reel.nav || reel.ed.actif || !reel.ed.armee) throw new Error('un client ne doit rien voir de l\'éditeur, et l\'application doit se savoir armée : ' + JSON.stringify({ nav: reel.nav, ed: reel.ed }).slice(0, 200));
-  if (reel.banner) throw new Error('à 30 jours d\'essai, aucun bandeau ne doit encore s\'afficher (il vient à 7 jours de la fin)');
+  // 8.0.1 — l'assertion disait l'inverse jusqu'ici (« à 30 jours, aucun bandeau ») : elle décrivait
+  // l'état du jour, pas la règle. Quelqu'un qui passe l'assistant et n'ouvre jamais les Paramètres
+  // n'apprenait NULLE PART qu'il est en essai, ni que SkanFact se paie — il l'apprenait le
+  // trente-et-unième matin, verrouillé. La pastille est là dès le premier jour, et calme.
+  if (!reel.banner) throw new Error('un client en essai doit le voir dans la barre sans ouvrir les Paramètres');
+  if (!/\b30 jours\b/.test(reel.banner.texte)) throw new Error('la pastille doit dire combien de jours il reste : ' + reel.banner.texte);
+  if (!reel.banner.calme || reel.banner.warn) throw new Error('à 30 jours, la pastille informe, elle n\'alarme pas : ' + JSON.stringify(reel.banner));
   await ouvrirParametres('p-licence', win2);
   const panneauClient = await win2.textContent('#lic-panel');
   if (!/Période d'essai/.test(panneauClient) || /non requise/.test(panneauClient)) throw new Error('le panneau Licence d\'un client doit annoncer l\'essai : ' + panneauClient.slice(0, 120));

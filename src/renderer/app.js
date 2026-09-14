@@ -10282,17 +10282,18 @@
     };
   }
 
-  // Un bandeau, et seulement quand il sert : essai qui se termine, licence PAYANTE qui se termine
-  // (deux semaines avant — sans lui, un client verrouillé un matin n'aurait été prévenu nulle part
-  // ailleurs que dans un panneau qu'il n'ouvre jamais), ou création bloquée.
+  // La pastille du pied de la barre. Ce qu'elle dit et le ton qu'elle prend se décident dans
+  // `core.pastilleLicence` (8.0.1) : la règle s'y teste sans Electron, et le renderer ne fait que
+  // la poser. Elle est là pendant TOUT l'essai — un essai invisible est une surprise au
+  // trente-et-unième jour — mais discrète tant qu'il reste du temps.
   function licenceBanner() {
     const el = $('#lic-banner');
-    const finit = licence.daysLeft != null && ((licence.state === 'essai' && licence.daysLeft <= 7) || (licence.state === 'active' && licence.daysLeft <= 14));
-    const show = licence.locked || finit;
     if (!el) return;
-    el.hidden = !show;
-    el.classList.toggle('warn', !!licence.locked);
-    if (show) el.textContent = licence.locked ? licence.label + ' — voir Paramètres → L\'application → Licence' : licence.label + (licence.state === 'active' ? ' — pense à la renouveler' : '');
+    const p = C.pastilleLicence(licence);
+    el.hidden = !p.show;
+    el.classList.toggle('warn', p.ton === 'alerte' || p.ton === 'attire');
+    el.classList.toggle('calme', p.ton === 'calme');
+    if (p.show) el.textContent = p.texte;
   }
 
   // ---------- l'éditeur de SkanFact (7.33.0) ----------

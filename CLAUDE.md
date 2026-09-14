@@ -1889,6 +1889,38 @@ Règles apprises, à ne pas recasser :
   - Constats laissés de côté sciemment : `todoList` n'a pas de ligne « ta licence se termine »
     (le bandeau suffit) ; la tranche du test de la clé privée a été resserrée en deux morceaux sans
     handler étranger, plutôt qu'élargie.
+### 8.0.1 — un essai qu'on ne voit pas est une surprise, pas un essai
+
+Skander, avant d'installer la 8.0.0 sur son PC Windows : « vu que j'avais déjà passé l'assistant,
+rien ne me dit qu'il y a un essai de 30 jours ; si je ne vais pas dans les Paramètres, ça devrait se
+voir dans le menu à gauche ou quelque part, pour ceux qui sautent l'assistant, non ? » Il avait
+raison : `licenceBanner` ne montrait la pastille qu'à **sept jours** de la fin. Pendant vingt-trois
+jours, une installation neuve n'annonçait nulle part qu'elle était en essai — ni que le logiciel se
+paie. On l'apprenait le trente-et-unième matin, verrouillé.
+
+- **Une échéance qui verrouille se voit depuis le premier jour, pas depuis le dernier.** C'est la
+  règle « aucun message brut ne remonte à l'écran » (7.26.0) vue de l'autre côté : ce qui ne se dit
+  nulle part est aussi grave que ce qui se dit mal. Et c'est la même famille que « un moteur sans
+  écran n'existe pas » (7.3.0) — ici l'essai existait, il n'avait simplement aucun écran.
+- **Trois tons, pas deux, parce que l'autre travers serait le nagware.** Un bandeau qui crie
+  « 28 jours restants » tous les matins cesse d'être lu, et emmène avec lui ceux qui comptent :
+  `calme` (gris, à peine plus marqué que le numéro de version) pendant l'essai, `attire` (orange) la
+  dernière semaine ou quatorze jours avant la fin d'une licence payante, `alerte` (orange, avec le
+  chemin) quand la création est bloquée. Un essai à cinq jours en vert d'eau ressemblait à une bonne
+  nouvelle.
+- **Rien ne s'affiche quand il n'y a rien à dire** : `libre`, `editeur`, une licence à vie. Une
+  pastille sur un état sans échéance serait un mensonge.
+- **La décision vit dans `core.pastilleLicence(licence)`**, pure et testée sur de vraies valeurs ;
+  le renderer ne fait que la poser. Un test relit `licenceBanner` et interdit qu'il rejuge
+  `daysLeft` lui-même : sans ça, la logique repartirait vivre dans app.js et le test de la règle ne
+  prouverait plus rien de ce qui s'affiche.
+- **L'assertion e2e qui gravait le défaut a été RETOURNÉE, pas supprimée.** `e2e:licence` exigeait
+  « à 30 jours d'essai, aucun bandeau ne doit encore s'afficher » : elle décrivait l'état du jour, pas
+  la règle — troisième occurrence du motif après `barre-laterale.js` (7.12.0) et le champ jeton
+  (7.26.0). **Quand une règle change, c'est le test qui se relit en premier.**
+- Prouvé dans les trois sens : la pastille redevenue muette fait tomber le test unitaire, le renderer
+  qui rejuge les jours fait tomber le test de source, et le défaut réintroduit fait tomber l'e2e.
+
 - **`LICENCE_CONTACT` vaut `contact@skanfact.tn`** : la boîte Zimbra Starter du domaine `skanfact.tn`, commandé chez OVH le 14/09/2026 (une seule adresse personnalisée pour l'instant, d'où « contact » et pas « licences »). C'est l'adresse vers laquelle « Demander une licence » et « Signaler un problème » composent le mail. Elle doit exister avant la fin du premier essai (14/10/2026), sinon un client en fin d'essai écrit dans le vide.
 
 ## Pistes pour la suite (non demandées)
