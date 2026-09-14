@@ -7,6 +7,36 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 8.3.0 — 14/09/2026
+
+**La retenue à la source : la liste propose, elle n'enferme pas.** Signalé par le frère de Skander,
+qui a essayé l'application : son client lui retient **1 %**, et la liste commençait à 1,5 %. Il n'y
+avait aucun moyen de saisir le bon taux — ni dans la liste, ni à côté.
+
+**Onze taux proposés** au lieu de six : 0,5 · 1 · 1,5 · 2,5 · 3 · 5 · 10 · 15 · 20 · 25 %, plus
+« Aucune ». Ce sont ceux qu'on rencontre le plus souvent en Tunisie ; le taux qui s'applique dépend
+de la nature de la prestation, du régime du client et de la loi de finances de l'année.
+*À VÉRIFIER avec ton comptable : SkanFact ne devine aucun taux, il applique celui que tu poses.*
+
+**Et surtout « Autre taux… »**, sur les six écrans qui proposent une retenue : le taux se tape à la
+main, il est vérifié (un nombre entre 0 et 100, la virgule acceptée), il rejoint la liste et **il y
+reste** — comme les unités de ligne depuis la 2.3.0. Une liste fermée finit toujours par enfermer
+quelqu'un ; la loi de finances ajoute et retire des taux, l'application non.
+
+**Un défaut silencieux corrigé au passage.** Trois écrans sur six — fiche client, fiche fournisseur,
+éditeur d'achat — lisaient la liste à la main. Un client réglé sur un taux qui n'y figurait pas
+n'avait donc **aucune option sélectionnée** : le navigateur retenait la première, « Par défaut », et
+le simple fait de rouvrir sa fiche pour corriger un numéro de téléphone **changeait le montant de
+ses factures**, sans un mot. Les six écrans passent désormais par la même porte.
+
+**Une page qui se dessine en deux temps ne perdait plus ses champs.** Les Paramètres attendent le
+chemin du fichier de données avant d'écrire leur écran : les branchements de fin de dessin
+travaillaient donc sur la page qu'on venait de quitter. Champs date et taux libres y restaient
+inertes, sans une erreur nulle part.
+
+Aucun calcul ne change : un taux hors liste donne exactement le même résultat qu'un taux listé, et
+les pièces déjà émises gardent le leur.
+
 ## 8.2.0 — 14/09/2026
 
 **Le cycle de vie d'une licence** — ce qui se passe après l'émission, et qui ne se voyait nulle part.

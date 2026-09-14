@@ -73,7 +73,7 @@ Le propriétaire veut un rendu « beau et épuré, couleurs claires ». Palette 
 
 ## Contexte fiscal (À VÉRIFIER avec le comptable)
 
-Celui de Skander : régime réel, assujetti TVA (son matricule est saisi dans l'app, pas dans le code). Timbre fiscal 1 DT par facture. Retenue à la source : taux usuels proposés (1,5 / 3 / 5 / 10 / 15 %), assiette = TTC hors timbre — À VÉRIFIER. Avoir sans timbre par défaut — À VÉRIFIER.
+Celui de Skander : régime réel, assujetti TVA (son matricule est saisi dans l'app, pas dans le code). Timbre fiscal 1 DT par facture. Retenue à la source : onze taux **proposés** depuis la 8.3.0 (0,5 / 1 / 1,5 / 2,5 / 3 / 5 / 10 / 15 / 20 / 25 %), plus « Autre taux… » qui accepte n'importe quel autre — la liste ne doit **jamais** redevenir fermée. Assiette = TTC hors timbre — À VÉRIFIER. Avoir sans timbre par défaut — À VÉRIFIER.
 
 ## Idées non demandées formellement
 
@@ -382,6 +382,7 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:editeur` | **l'éditeur de document** : le timbre dans la devise de la pièce, l'échéance qui suit la date, la quantité effacée, la fiche du client, l'acompte en dinars, la suppression qui nomme les liens, le bouton d'une facture soldée |
 | `npm run e2e:fiches` | **les fiches et les formulaires** : l'étoile des champs obligatoires et le refus qui montre, la fiche article depuis le Catalogue, le catalogue dans un achat, la ligne en immobilisation, les affaires et contrats du client |
 | `npm run e2e:compta` | **la comptabilité mène aux pièces** : les contrôles de clôture armés, les douze mois de TVA cliquables, l'échéance fiscale qu'on pointe et qu'on dépointe, le mouvement qui ouvre sa facture, la carte « Reste à encaisser » |
+| `npm run e2e:retenue` | **la retenue à la source** : les six écrans qui proposent un taux, « Autre taux… » branché partout, un taux libre qui recalcule vraiment, l'annulation qui ne laisse pas « __autre__ », et la fiche client qui garde un taux hors liste |
 | `npm run e2e:metier` | **le métier** : quinze activités sans taux deviné, le régime fiscal posé puis conservé au redessin, les Paramètres qui grisent la TVA et annoncent la mention, le RIB non réclamé à qui encaisse sur place |
 | `npm run e2e:partage` | **partager une entreprise déjà saisie** : deux applications, deux profils, un emplacement commun — on partage, le second poste rejoint sans assistant, et ce que l'un enregistre l'autre le voit |
 | `npm run e2e:actions` | **une seule porte par ligne** : un menu d'actions écrites en toutes lettres et illustrées sur huit listes, un bouton qui ouvre ET referme, qui ne vole pas le clic de la ligne, la question posée avant d'agir, et « Accepter et facturer » qui ouvre le brouillon |
@@ -2049,6 +2050,48 @@ reçoit quand même les corrections de bugs »).
   `s.index('\n  routes.', d)` rend −1 quand la route est la dernière du fichier.
 
 - **`LICENCE_CONTACT` vaut `contact@skanfact.tn`** : la boîte Zimbra Starter du domaine `skanfact.tn`, commandé chez OVH le 14/09/2026 (une seule adresse personnalisée pour l'instant, d'où « contact » et pas « licences »). C'est l'adresse vers laquelle « Demander une licence » et « Signaler un problème » composent le mail. Elle doit exister avant la fin du premier essai (14/10/2026), sinon un client en fin d'essai écrit dans le vide.
+
+### 8.3.0 — La liste propose, elle n'enferme pas
+
+Le frère de Skander a essayé l'application : « leur retenue est de 1 % alors que sur l'app ça
+commence à 1,5 ». C'est le premier retour d'un utilisateur qui n'est ni l'auteur ni le propriétaire,
+et il a tenu en une phrase.
+
+- **Une liste fermée finit toujours par enfermer quelqu'un.** Les taux proposés sont passés de six à
+  onze, mais l'ajout n'était pas le correctif : la **saisie libre** l'est. Un taux réglementaire
+  dépend de la prestation, du régime du client et de la loi de finances de l'année — trois choses
+  qu'une liste écrite en 2026 ne peut pas suivre. `« Autre taux… »` reprend le mécanisme des unités
+  de ligne (2.3.0) : le taux tapé rejoint la liste et **y reste** (`core.usedWithholdingRates`,
+  jumeau exact de `usedUnits`). C'est le pendant de la règle de la 5.0.0 — *aucun taux n'est écrit
+  en dur dans un calcul* — appliqué cette fois à ce qu'on PROPOSE, pas à ce qu'on calcule.
+- **Un select dont aucune option ne correspond retient la PREMIÈRE, en silence.** Trois écrans sur
+  six lisaient `C.WITHHOLDING_RATES` à la main. Un client réglé sur un taux hors liste n'avait donc
+  aucune option sélectionnée : rouvrir sa fiche pour corriger un téléphone et enregistrer le
+  ramenait à « Par défaut », c'est-à-dire **changeait le montant de ses factures**. Rien ne plante,
+  rien n'apparaît en console, et la fiche paraît normale. Les six écrans passent par une porte
+  unique (`withholdingSelect` / `bindWithholdingFields`, branchée par `modal()` et `render()` comme
+  `bindDateFields`), et un test compte les lectures de la liste : elle ne se lit qu'à un endroit.
+- **Une route ASYNCHRONE pose son écran après la fin de `render()`.** Les Paramètres attendent
+  `dataPath()` : les deux branchements de fin de dessin travaillaient donc sur la page qu'on venait
+  de quitter, et le taux libre y restait inerte — sans une erreur nulle part. `render()` retient ce
+  que la route renvoie et rebranche quand la promesse se résout. Les deux fonctions sont
+  idempotentes, c'est ce qui rend le rattrapage sûr. Défaut ancien : `bindDateFields` avait le même,
+  invisible faute de champ date dans les Paramètres.
+- **Une valeur transitoire ne doit jamais atteindre le gestionnaire du dessus.** L'éditeur de
+  document relit tout son formulaire à chaque frappe : choisir « Autre taux… » lui faisait écrire la
+  chaîne `__autre__` dans la pièce, que `Number(…) || 0` ramenait à **0 %** — une retenue effacée
+  pendant qu'une fenêtre demande justement laquelle mettre. On remet l'ancienne valeur **dans le même
+  tour d'événement**, avant que le `change` ne remonte ; le taux saisi est ensuite rendu par un
+  `change` **relancé**, jamais écrit à la main dans les données (chaque écran a déjà son chemin
+  d'enregistrement, le doubler ferait diverger les deux).
+- Piège d'e2e, deux fois dans la même heure : **l'éditeur de document travaille sur une `deepCopy`**
+  jusqu'à « Enregistrer » — lire la pièce rangée dans `window.__data` juste après un geste ne prouve
+  rien, il faut lire ce que l'ÉCRAN affiche (`#totals`) puis enregistrer. Et tout geste qui marque
+  l'éditeur « modifié » réveille le garde-fou à la navigation suivante : l'erreur tombe alors trente
+  secondes plus tard sur un sélecteur qui n'a rien à voir (7.19.0, re-rencontré).
+- Piège de test : `assert` d'un taux hors liste dans `usedWithholdingRates` restait vert avec le
+  garde-fou retiré, parce que `Number('') === 0` et que 0 est déjà dans la liste connue. Le seul cas
+  que la garde protège vraiment est le taux **négatif** — c'est lui qu'il faut tester.
 
 ## Pistes pour la suite (non demandées)
 

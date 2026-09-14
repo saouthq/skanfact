@@ -6320,6 +6320,88 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.ok(/data\.company\.currency = C\.normCurrency\(/.test(page), 'la devise enregistrée n\'est pas normalisée');
   });
 
+  // ---------- 8.3.0 : la retenue à la source n'enferme personne ----------
+  // Le frère de Skander a essayé l'application et son client lui retient 1 % : la liste commençait
+  // à 1,5 %. Il n'y avait AUCUN moyen de saisir le bon taux — pas de champ libre, et trois écrans
+  // sur six lisaient la liste à la main, donc un taux inconnu n'y était même pas conservé.
+  t('retenue à la source : la liste propose, elle n\'enferme pas', () => {
+    // Le taux réellement rencontré, et ceux qu'il a fallu ajouter avec lui.
+    [0, 0.5, 1, 1.5, 2.5, 3, 5, 10, 15, 20, 25].forEach(r =>
+      assert.ok(core.WITHHOLDING_RATES.includes(r), r + ' % doit être proposé'));
+    assert.ok(core.WITHHOLDING_RATES.includes(1), '1 % : le taux du client du premier testeur');
+    // La liste est triée : un menu déroulant dans le désordre se lit mal.
+    assert.deepStrictEqual(core.WITHHOLDING_RATES.slice().sort((a, b) => a - b), core.WITHHOLDING_RATES);
+
+    // Aucun calcul ne lit la liste : elle ne remplit qu'un menu. Un taux hors liste doit donner
+    // exactement le même résultat qu'un taux listé, sinon « Autre taux… » serait un piège.
+    const co = { ...core.DEFAULT_COMPANY, stampFee: 1, currency: 'DT' };
+    const doc = { type: 'facture', lines: [{ label: 'P', qty: 1, unitPrice: 1000, vatRate: 19 }], applyStamp: true, withholdingRate: 1 };
+    assert.strictEqual(core.computeTotals(doc, co).withholding, 11.9);          // 1 % de 1190, hors timbre
+    assert.strictEqual(core.computeTotals({ ...doc, withholdingRate: 0.75 }, co).withholding, 8.925);
+    assert.strictEqual(core.computeTotals({ ...doc, withholdingRate: 1 }, co).netToPay, 1179.1);   // 1191 − 11,9
+
+    // Un taux saisi une fois reste proposé partout ensuite — sans quoi il disparaîtrait du menu de
+    // la pièce suivante, et la fiche du client le remettrait en silence à « par défaut ».
+    const data = {
+      documents: [{ withholdingRate: 0.75 }, { withholdingRate: 3 }],
+      clients: [{ withholdingRate: '' }, { withholdingRate: 2 }],
+      suppliers: [{ withholdingRate: 7.5 }], purchases: [{ withholdingRate: 0 }],
+      recurring: [{ withholdingRate: 1.5 }], company: { defaultWithholdingRate: 0 }
+    };
+    assert.deepStrictEqual(core.usedWithholdingRates(data), [0.75, 2, 7.5]);   // trié, sans les connus
+    assert.deepStrictEqual(core.usedWithholdingRates(data, [4, 4, 3]), [0.75, 2, 4, 7.5]);  // pas de doublon
+    assert.deepStrictEqual(core.usedWithholdingRates(null), []);
+    // Ni zéro, ni vide, ni texte : ce ne sont pas des taux à proposer.
+    assert.deepStrictEqual(core.usedWithholdingRates({ clients: [{ withholdingRate: '' }, { withholdingRate: 0 }, { withholdingRate: 'x' }, { withholdingRate: -3 }] }), []);
+  });
+
+  t('retenue à la source : les six écrans passent par la même porte', () => {
+    const app = lireApp();
+    // Trois écrans lisaient C.WITHHOLDING_RATES à la main : un client réglé sur un taux absent de la
+    // liste n'avait aucune option sélectionnée, donc le navigateur retenait la PREMIÈRE — « Par
+    // défaut » — et rouvrir sa fiche changeait le montant de ses factures sans un mot. Le contrôle
+    // porte sur la FORME parce que la faute était exactement une forme.
+    const lectures = (app.match(/C\.WITHHOLDING_RATES/g) || []).length;
+    assert.strictEqual(lectures, 1, 'C.WITHHOLDING_RATES ne se lit que dans withholdingOptions');
+    const porte = app.slice(app.indexOf('function withholdingOptions('), app.indexOf('function withholdingOptions(') + 900);
+    assert.ok(porte.includes('C.WITHHOLDING_RATES'), 'la seule lecture doit être celle de la porte');
+
+    // Aucun écran ne pose son select à la main : sinon il n'aurait ni « Autre taux… », ni les
+    // réglages (`data-rs`) qui permettent de reconstruire la liste après une saisie libre.
+    const poses = (app.match(/<select name="(default)?[wW]ithholdingRate"/g) || []).length;
+    assert.strictEqual(poses, 0, 'aucun <select name=withholdingRate> écrit à la main');
+    assert.ok(/function withholdingSelect\(name, value, opts, attrs\)[\s\S]{0,200}<select name="\$\{name\}" data-rs=/.test(app),
+      'withholdingSelect doit être le seul à poser le select, avec ses réglages sur l\'élément');
+
+    // Les six écrans qui proposent un taux, nommés un par un : un écran ajouté demain qui oublierait
+    // la porte ne serait pas vu par ce compte-là, mais le serait par celui des `<select>` ci-dessus.
+    ['doc.withholdingRate', 'c.withholdingRate', 'r.withholdingRate', 's.withholdingRate',
+      'p.withholdingRate', 'a.defaultWithholdingRate', 'c.defaultWithholdingRate'].forEach(v =>
+      assert.ok(app.includes("withholdingSelect('" + (v.includes('default') ? 'defaultWithholdingRate' : 'withholdingRate') + "', " + v),
+        v + ' doit passer par withholdingSelect'));
+
+    // « Autre taux… » se branche comme les champs date : par `modal()` et par `render()`, donc
+    // valable pour tout écran présent et à venir. L'assistant vit hors de `#view` et se branche seul.
+    ['bindWithholdingFields(layer)', 'bindWithholdingFields(view)', 'bindWithholdingFields(root)'].forEach(c =>
+      assert.ok(app.includes(c), c + ' manque'));
+
+    // L'ancienne valeur est remise AVANT que l'événement ne remonte au gestionnaire de la page :
+    // sinon l'éditeur écrirait « __autre__ » dans la pièce et Number()||0 effacerait la retenue
+    // pendant que la fenêtre demande justement laquelle mettre.
+    // Une tranche se prouve par sa taille avant d'être jugée (7.21.0) : `bindWithholdingSelect`
+    // vient APRÈS `withholdingOptions` dans le fichier, et l'ordre inverse donnait une tranche vide.
+    const iBind = app.indexOf('function bindWithholdingSelect(');
+    const bind = app.slice(iBind, app.indexOf('function setGuard(', iBind));
+    assert.ok(iBind > 0 && bind.length > 400 && bind.length < 2500, 'tranche bindWithholdingSelect inattendue : ' + bind.length);
+    const iRestore = bind.indexOf('sel.value = avant');
+    const iPrompt = bind.indexOf('promptDialog(');
+    assert.ok(iRestore > 0 && iPrompt > 0 && iRestore < iPrompt,
+      'la valeur doit être remise AVANT d\'ouvrir la fenêtre de saisie');
+    assert.ok(/dispatchEvent\(new Event\('change', \{ bubbles: true \}\)\)/.test(bind),
+      'le taux saisi doit être rendu par un change relancé, pas écrit à la main dans les données');
+    assert.ok(/n < 0 \|\| n > 100/.test(bind), 'un taux saisi se valide (0 à 100)');
+  });
+
   t('devise : le timbre vaut un DINAR, et un taux absent ne passe plus en silence', () => {
     const co = { ...core.DEFAULT_COMPANY, stampFee: 1, currency: 'DT' };
     const lignes = [{ label: 'Prestation', qty: 1, unitPrice: 1000, vatRate: 19 }];
@@ -6527,9 +6609,13 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
 
     // La retenue à la source était le SEUL point de saisie libre de l'application : partout
     // ailleurs c'est une liste fermée. Et c'est le premier endroit où on la rencontre.
+    // 8.3.0 : la liste passe par `withholdingSelect`, la porte unique — et l'assistant la branche
+    // lui-même, parce qu'il vit hors de `#view` et que `render()` ne le voit pas.
     const bloc = code.slice(code.indexOf('function runSetup'), code.indexOf('async function rejouerAssistant'));
-    assert.ok(bloc.includes('withholdingOptions(a.defaultWithholdingRate)'),
+    assert.ok(bloc.includes("withholdingSelect('defaultWithholdingRate', a.defaultWithholdingRate)"),
       'la retenue à la source doit être une liste dans l\'assistant, comme dans Paramètres');
+    assert.ok(bloc.includes('bindWithholdingFields(root)'),
+      '« Autre taux… » doit être branché dans l\'assistant aussi');
     assert.ok(!/name="defaultWithholdingRate", a\.defaultWithholdingRate, 'number'/.test(bloc));
 
     // L'écran de sauvegarde écrivait « Copie activée vers : … » sans jamais lire `lastError` :

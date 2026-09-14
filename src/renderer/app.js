@@ -460,6 +460,7 @@
     layer.addEventListener('click', e => { if (e.target === layer) close(); });
     $$('[data-close]', layer).forEach(b => b.addEventListener('click', close));
     bindDateFields(layer);
+    bindWithholdingFields(layer);
     // « * obligatoire » se pose TOUT SEUL dès qu'un champ de la fenêtre porte la classe. Une légende
     // recopiée fenêtre par fenêtre se périme à la première qui gagne un champ obligatoire ; déduite,
     // elle ne peut pas manquer. (Même principe que `wipeData` déduit de `DEFAULT_DATA`, 7.0.0.)
@@ -753,10 +754,74 @@
   }
   // Numéro que recevrait le document à l'émission, sans consommer le compteur
   function peekNumber(type, date) { return C.nextNumber({ documents: data.documents, counters: { ...data.counters } }, type, date); }
-  function withholdingOptions(value) {
-    const rates = C.WITHHOLDING_RATES.slice(); const v = Number(value) || 0;
-    if (!rates.includes(v)) rates.push(v);
-    return rates.sort((a, b) => a - b).map(r => `<option value="${r}" ${r === v ? 'selected' : ''}>${r === 0 ? 'Aucune' : pct(r) + ' %'}</option>`).join('');
+  // ---------- retenue à la source ----------
+  // UNE seule porte pour les cinq écrans qui proposent un taux (document, fiche client, fiche
+  // fournisseur, achat, contrat récurrent, Paramètres). Trois d'entre eux lisaient C.WITHHOLDING_RATES
+  // à la main jusqu'à la 8.3.0 : un client réglé sur un taux absent de la liste n'avait aucune
+  // option sélectionnée, donc le navigateur retenait la PREMIÈRE — « Par défaut » — et le simple
+  // fait d'ouvrir sa fiche pour corriger un numéro de téléphone changeait le montant de ses
+  // factures, sans un mot. Un taux inconnu est désormais toujours gardé et proposé.
+  //
+  // opts.vide : libellé de l'option « pas de choix » (fiche client : « Par défaut (x %) »).
+  // opts.sansZero : pas d'option « Aucune » à 0 (fournisseur et achat ont déjà leur « Aucune »).
+  const RS_AUTRE = '__autre__';
+  // Le select entier, options ET réglages : les réglages voyagent sur l'élément (`data-rs`), donc
+  // `bindWithholdingFields` sait reconstruire la liste après une saisie libre sans que l'écran ait
+  // à le lui redire. Un écran qui pose son `<select name="withholdingRate">` à la main n'aurait ni
+  // « Autre taux… » branché ni les bons libellés : un test l'interdit.
+  function withholdingSelect(name, value, opts, attrs) {
+    const o = opts || {};
+    return `<select name="${name}" data-rs="${h(JSON.stringify(o))}" ${attrs || ''}>${withholdingOptions(value, o)}</select>`;
+  }
+  // Branche « Autre taux… » sur tous les sélecteurs d'une zone. Appelé par `modal()` (comme
+  // `bindDateFields`) et par `render()`, donc valable pour tout écran présent et à venir.
+  function bindWithholdingFields(root) {
+    $$('select[data-rs]', root || document).forEach(sel => {
+      if (sel.dataset.rsBound) return;
+      sel.dataset.rsBound = '1';
+      let o = {}; try { o = JSON.parse(sel.dataset.rs || '{}'); } catch (e) { o = {}; }
+      bindWithholdingSelect(sel, o);
+    });
+  }
+  function withholdingOptions(value, opts) {
+    const o = opts || {};
+    const vide = o.vide != null;
+    const brut = vide && (value === '' || value == null) ? '' : Number(value) || 0;
+    const rates = C.WITHHOLDING_RATES.concat(C.usedWithholdingRates(data, [brut === '' ? null : brut]));
+    const liste = rates.filter((r, i) => rates.indexOf(r) === i && (!o.sansZero || r !== 0)).sort((a, b) => a - b);
+    const opt = (v, l, sel) => `<option value="${v}" ${sel ? 'selected' : ''}>${l}</option>`;
+    return (vide ? opt('', o.vide, brut === '') : '')
+      + liste.map(r => opt(r, r === 0 ? 'Aucune' : pct(r) + ' %', brut !== '' && r === brut)).join('')
+      + opt(RS_AUTRE, 'Autre taux…', false);
+  }
+  // « Autre taux… » ouvre une saisie libre : personne ne doit rester bloqué parce qu'un taux manque
+  // à notre liste — la loi de finances en ajoute et en retire, l'application non.
+  //
+  // Deux précautions, et elles comptent toutes les deux :
+  //
+  // 1. On remet l'ancienne valeur AVANT d'ouvrir la fenêtre, dans le même tour d'événement. Le
+  //    `change` du select remonte ensuite au gestionnaire de la page (l'éditeur de document relit
+  //    tout le formulaire à chaque frappe) : sans ça il verrait passer « __autre__ », écrirait cette
+  //    chaîne dans la pièce, et `Number('__autre__') || 0` la ramènerait à 0 % — une retenue
+  //    effacée pendant qu'une fenêtre demande justement laquelle mettre.
+  // 2. Le taux saisi est rendu par un `change` relancé, jamais écrit à la main dans les données :
+  //    chaque écran a déjà son chemin d'enregistrement, et le doubler ferait diverger les deux.
+  function bindWithholdingSelect(sel, opts) {
+    const o = opts || {};
+    let avant = sel.value;
+    sel.addEventListener('change', () => {
+      if (sel.value !== RS_AUTRE) { avant = sel.value; return; }
+      sel.value = avant;                       // (1) — avant que l'événement ne remonte
+      promptDialog('Autre taux de retenue', 'Taux en pourcentage (ex : 1 ou 2,5). À VÉRIFIER avec ton comptable.',
+        '', v => {
+          const n = Number(String(v).replace(',', '.'));
+          if (!isFinite(n) || n < 0 || n > 100) return toast('Le taux doit être un nombre entre 0 et 100.', true);
+          const taux = Math.round(n * 1000) / 1000;
+          sel.innerHTML = withholdingOptions(taux, o);   // le taux rejoint la liste, sélectionné
+          sel.value = avant = String(taux);
+          sel.dispatchEvent(new Event('change', { bubbles: true }));   // (2)
+        }, 'text');
+    });
   }
 
   // ---------- garde-fou « modifications non enregistrées » ----------
@@ -1255,12 +1320,20 @@
     // suivante montrerait une pièce qui n'est plus celle qu'on regarde.
     const grand = $('#pv-full'); if (grand) grand.remove();
     pushHistory(currentHash);        // d'où l'on vient, pour le bouton retour de la page qui s'ouvre
-    (routes[name] || routes.dashboard)(parts.slice(1));
+    const dessine = (routes[name] || routes.dashboard)(parts.slice(1));
     poserLienAide(name);             // « Comprendre cette page → » : l'article qui explique cet écran
     bandeauDemo();                   // « ce ne sont pas tes données » — sur chaque page, en permanence
     bandeauModule(active);           // « cette page n'est pas dans ton menu » — et le bouton pour l'y mettre
     bandeauOffre(active);            // « ce module fait partie de l'offre Entreprise » — lecture libre, création fermée
     bindDateFields(view);            // champs date posés par la page qui vient d'être dessinée
+    bindWithholdingFields(view);     // « Autre taux… » des retenues à la source, même principe
+    // Une route ASYNCHRONE pose son écran après ce bloc : les Paramètres attendent `dataPath()`
+    // avant d'écrire leur HTML, donc les deux branchements ci-dessus travaillaient sur la page
+    // qu'on venait de quitter — un champ date ou un taux libre y restait inerte, sans une erreur
+    // nulle part. On rebranche quand elle a fini ; les deux fonctions sont idempotentes.
+    if (dessine && typeof dessine.then === 'function') {
+      dessine.then(() => { bindDateFields(view); bindWithholdingFields(view); }, () => {});
+    }
     view.scrollTop = scroll;
     currentHash = location.hash;
     updateNavCounts();
@@ -2120,7 +2193,7 @@
               <label class="field" id="rate-field" ${cur === company().currency ? 'hidden' : ''}><span class="fl"><span class="rate-lbl">Taux : 1 ${h(cur)} = ? ${h(company().currency)}</span> <span class="req">obligatoire</span> ${info('ed.rate')}</span><input type="number" name="exchangeRate" value="${h(doc.exchangeRate || '')}" step="0.0001" min="0" class="num" placeholder="ex. 3.4" ${ro}></label>
               ${statusCell}
               ${field(lbl('Remise globale (%)', 'ed.discount'), 'discountRate', doc.discountRate || 0, 'number', 'min="0" max="100" step="0.5" class="num" ' + ro)}
-              ${isInv || isAv || isProforma ? `<label class="field">${lbl('Retenue à la source', 'ed.withholding')}<select name="withholdingRate" ${ro}>${withholdingOptions(doc.withholdingRate)}</select></label>` : ''}
+              ${isInv || isAv || isProforma ? `<label class="field">${lbl('Retenue à la source', 'ed.withholding')}${withholdingSelect('withholdingRate', doc.withholdingRate, null, ro)}</label>` : ''}
               ${isInv || isAv || isProforma ? `<label class="check" style="align-self:end"><input type="checkbox" name="applyStamp" ${doc.applyStamp === true || (isInv && doc.applyStamp !== false) ? 'checked' : ''} ${ro}> Timbre fiscal (<span id="stamp-lbl">${C.money(timbreAffiche(), cur)}</span>) ${info(isProforma ? 'ed.stampProforma' : 'ed.applyStamp')}</label>` : ''}
               ${isDelivery ? `<label class="check" style="align-self:end"><input type="checkbox" name="hidePrices" ${doc.hidePrices !== false ? 'checked' : ''}> Masquer les prix sur le bon ${info('ed.hidePrices')}</label>` : ''}
             </form>
@@ -3047,7 +3120,7 @@
         <label class="field span-2 obligatoire">Nom / Raison sociale<input type="text" name="name" value="${h(c.name)}" required></label>
         ${field(lbl('Personne à contacter', 'cl.contact'), 'contact', c.contact || '', 'text', 'placeholder="Mme Leïla Mansour, directrice"')}
         ${field(lbl('Matricule fiscal / CIN', 'co.matricule'), 'matricule', c.matricule)}
-        <label class="field">${lbl('Retenue à la source appliquée par ce client', 'ed.withholding')}<select name="withholdingRate"><option value="" ${c.withholdingRate === '' || c.withholdingRate == null ? 'selected' : ''}>Par défaut (${pct(company().defaultWithholdingRate || 0)} %)</option>${C.WITHHOLDING_RATES.map(r => `<option value="${r}" ${String(c.withholdingRate) === String(r) ? 'selected' : ''}>${r === 0 ? 'Aucune' : pct(r) + ' %'}</option>`).join('')}</select></label>
+        <label class="field">${lbl('Retenue à la source appliquée par ce client', 'ed.withholding')}${withholdingSelect('withholdingRate', c.withholdingRate, { vide: `Par défaut (${pct(company().defaultWithholdingRate || 0)} %)` })}</label>
         ${field('Téléphone', 'phone', c.phone)}
         ${field('Email', 'email', c.email, 'email')}
         <label class="field">Langue des documents<select name="lang"><option value="" ${!c.lang ? 'selected' : ''}>Par défaut</option><option value="fr" ${c.lang === 'fr' ? 'selected' : ''}>Français</option><option value="en" ${c.lang === 'en' ? 'selected' : ''}>English</option></select></label>
@@ -3752,7 +3825,7 @@
         <label class="field span-2">Objet des factures <span class="muted">({mois} = mois facturé)</span><input type="text" name="subject" value="${h(r.subject)}" placeholder="Maintenance et supervision — {mois}"></label>
         ${field('Jour du mois', 'day', r.day || 1, 'number', 'min="1" max="31" class="num"')}
         ${dateFieldHtml('Prochaine facture', 'nextDate', r.nextDate || C.today(), { quick: true })}
-        <label class="field">Retenue à la source<select name="withholdingRate">${withholdingOptions(r.withholdingRate)}</select></label>
+        <label class="field">Retenue à la source${withholdingSelect('withholdingRate', r.withholdingRate)}</label>
         ${field('Remise (%)', 'discountRate', r.discountRate || 0, 'number', 'min="0" max="100" step="0.5" class="num"')}
         <label class="field span-3">Notes sur la facture<textarea name="notes" rows="2">${h(r.notes || '')}</textarea></label>
         <label class="check span-3"><input type="checkbox" name="active" ${r.active !== false ? 'checked' : ''}> Contrat actif (les factures sont proposées à la date prévue)</label>
@@ -4668,7 +4741,7 @@
         ${field('Téléphone', 'phone', s.phone || '')}
         ${field('Email', 'email', s.email || '', 'email')}
         ${field(lbl('Délai de paiement accordé (jours)', 'sup.terms'), 'paymentTermsDays', s.paymentTermsDays || '', 'number', 'min="0" class="num" placeholder="30"')}
-        <label class="field">${lbl('Retenue à la source à opérer', 'sup.withholding')}<select name="withholdingRate"><option value="" ${s.withholdingRate === '' || s.withholdingRate == null ? 'selected' : ''}>Aucune</option>${C.WITHHOLDING_RATES.filter(r => r).map(r => `<option value="${r}" ${String(s.withholdingRate) === String(r) ? 'selected' : ''}>${pct(r)} %</option>`).join('')}</select></label>
+        <label class="field">${lbl('Retenue à la source à opérer', 'sup.withholding')}${withholdingSelect('withholdingRate', s.withholdingRate, { vide: 'Aucune', sansZero: true })}</label>
         ${field(lbl('Banque', 'pay.bank'), 'bank', s.bank || '')}
         ${field('RIB du fournisseur', 'rib', s.rib || '')}
         <label class="field span-2">Adresse<textarea name="address">${h(s.address || '')}</textarea></label>
@@ -5065,7 +5138,7 @@
               <div class="field">${lbl('Affaire (optionnel)', 'buy.project')}
                 ${combo({ name: 'projectId', value: p.projectId || '', items: projectItems(''), placeholder: '— Aucune affaire —', search: 'Rechercher une affaire…', add: '+ Nouvelle affaire' })}
               </div>
-              <label class="field">${lbl('Retenue à la source opérée', 'buy.withholding')}<select name="withholdingRate"><option value="0" ${!Number(p.withholdingRate) ? 'selected' : ''}>Aucune</option>${C.WITHHOLDING_RATES.filter(r => r).map(r => `<option value="${r}" ${Number(p.withholdingRate) === r ? 'selected' : ''}>${pct(r)} %</option>`).join('')}</select></label>
+              <label class="field">${lbl('Retenue à la source opérée', 'buy.withholding')}${withholdingSelect('withholdingRate', p.withholdingRate)}</label>
               ${field(lbl('Timbre et frais', 'buy.fees'), 'fees', p.fees || 0, 'number', 'step="0.001" min="0" class="num"')}
             </form>
           </div>
@@ -9234,7 +9307,7 @@
           ${field(lbl('Timbre fiscal par facture', 'doc.stampFee'), 'stampFee', c.stampFee, 'number', 'step="0.001" min="0" class="num"')}
           ${field(lbl('Validité des devis (jours)', 'doc.quoteValidity'), 'quoteValidityDays', c.quoteValidityDays, 'number', 'min="0" class="num"')}
           ${field(lbl('Délai de paiement (jours)', 'doc.paymentDays'), 'paymentTermsDays', c.paymentTermsDays, 'number', 'min="0" class="num"')}
-          <label class="field">${lbl('Retenue à la source par défaut', 'doc.withholdingDefault')}<select name="defaultWithholdingRate">${withholdingOptions(c.defaultWithholdingRate)}</select></label>
+          <label class="field">${lbl('Retenue à la source par défaut', 'doc.withholdingDefault')}${withholdingSelect('defaultWithholdingRate', c.defaultWithholdingRate)}</label>
           <!-- La devise était le SEUL champ libre d'un réglage à liste fermée : l'éditeur de
                document et la fiche client offrent les sept codes dans une liste depuis la 2.4.0,
                et ici on tapait ce qu'on voulait. « Dinar », « TND », « dt » : decimalsFor ne
@@ -11234,7 +11307,7 @@
         if (s.id === 'facturation') return `<form id="sf-form" class="grid-3">
           <label class="field">${lbl('Devise', 'doc.currency')}<select name="currency">${C.CURRENCIES.map(x => `<option value="${x}" ${C.normCurrency(a.currency) === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
           ${field(lbl('Timbre fiscal par facture', 'doc.stampFee'), 'stampFee', a.stampFee, 'number', 'step="0.001" min="0" class="num"')}
-          <label class="field">${lbl('Retenue à la source par défaut', 'doc.withholdingDefault')}<select name="defaultWithholdingRate">${withholdingOptions(a.defaultWithholdingRate)}</select></label>
+          <label class="field">${lbl('Retenue à la source par défaut', 'doc.withholdingDefault')}${withholdingSelect('defaultWithholdingRate', a.defaultWithholdingRate)}</label>
           ${field(lbl('Validité des devis (jours)', 'doc.quoteValidity'), 'quoteValidityDays', a.quoteValidityDays, 'number', 'min="0" class="num"')}
           ${field(lbl('Délai de paiement (jours)', 'doc.paymentDays'), 'paymentTermsDays', a.paymentTermsDays, 'number', 'min="0" class="num"')}
         </form>
@@ -11270,6 +11343,10 @@
         </div>`;
         const form = $('#sf-form', root);
         if (form) { const f = $('input, textarea', form); if (f) f.focus(); }
+        // L'assistant vit hors de `#view` : sans ça, son taux de retenue serait le seul de
+        // l'application sans « Autre taux… » — « un champ de l'assistant doit être au moins aussi
+        // guidé que son jumeau dans les Paramètres, jamais moins » (7.3.0).
+        bindWithholdingFields(root);
         // Choisir un métier redessine l'écran : on relit d'abord TOUT ce que l'écran porte, sinon le
         // régime et la case « préremplir » repartent à leur valeur d'avant le clic — on ne jette
         // jamais ce que quelqu'un vient de saisir (règle 7.1.x, « Passer » ne jette rien).

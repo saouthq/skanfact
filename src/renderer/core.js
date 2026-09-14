@@ -6,8 +6,13 @@
 })(typeof self !== 'undefined' ? self : this, function () {
 
   const VAT_RATES = [0, 7, 13, 19];
-  // Taux de retenue à la source usuels en Tunisie (À VÉRIFIER avec le comptable selon la nature de la prestation).
-  const WITHHOLDING_RATES = [0, 1.5, 3, 5, 10, 15];
+  // Taux de retenue à la source rencontrés en Tunisie. Ce sont des PROPOSITIONS, jamais une règle :
+  // le taux applicable dépend de la nature de la prestation, du régime du client et de la loi de
+  // finances de l'année — À VÉRIFIER avec le comptable. La liste a commencé à 1,5 % et un vrai
+  // utilisateur s'est retrouvé bloqué parce que son client retient 1 % (8.3.0) : depuis, un taux
+  // absent de la liste se saisit librement (« Autre taux… ») et rejoint les propositions, comme
+  // pour les unités de ligne. Aucun calcul ne lit cette liste — elle ne remplit qu'un menu.
+  const WITHHOLDING_RATES = [0, 0.5, 1, 1.5, 2.5, 3, 5, 10, 15, 20, 25];
   const PAYMENT_METHODS = [['virement', 'Virement'], ['cheque', 'Chèque'], ['especes', 'Espèces'], ['traite', 'Traite'], ['carte', 'Carte'], ['autre', 'Autre']];
   const PREFIX = { devis: 'DEV', facture: 'FAC', avoir: 'AVO', proforma: 'PRO', commande: 'BC', livraison: 'BL', contrat: 'CTR' };
   const TITLES = { devis: 'Devis', facture: 'Facture', avoir: 'Avoir', proforma: 'Facture proforma', commande: 'Bon de commande', livraison: 'Bon de livraison', contrat: 'Contrat de prestation' };
@@ -5560,6 +5565,30 @@
     return out.sort((a, b) => a.localeCompare(b, 'fr'));
   }
 
+  // Taux de retenue à la source déjà employés et absents de la liste standard. Même principe que
+  // `usedUnits` : un taux saisi une fois reste proposé partout ensuite, sans rien avoir à régler.
+  // Sans ça, un taux libre saisi sur une facture disparaîtrait du menu de la suivante, et la fiche
+  // du client le remettrait en silence à « par défaut » — c'est-à-dire changerait le montant.
+  function usedWithholdingRates(data, extra) {
+    const known = new Set(WITHHOLDING_RATES);
+    const out = [];
+    const add = r => {
+      if (r === '' || r === null || r === undefined) return;
+      const n = Number(r);
+      if (!isFinite(n) || n <= 0 || known.has(n)) return;
+      known.add(n); out.push(n);
+    };
+    const d = data || {};
+    (d.documents || []).forEach(x => add(x.withholdingRate));
+    (d.clients || []).forEach(x => add(x.withholdingRate));
+    (d.suppliers || []).forEach(x => add(x.withholdingRate));
+    (d.purchases || []).forEach(x => add(x.withholdingRate));
+    (d.recurring || []).forEach(x => add(x.withholdingRate));
+    add(d.company && d.company.defaultWithholdingRate);
+    (extra || []).forEach(add);
+    return out.sort((a, b) => a - b);
+  }
+
   // ---------- dates saisies à la main ----------
   const pad2 = n => String(n).padStart(2, '0');
   function isRealDate(y, m, d) {
@@ -5640,7 +5669,7 @@
     VAT_RATES, WITHHOLDING_RATES, PAYMENT_METHODS, PREFIX, TITLES, DEFAULT_DATA, DEFAULT_COMPANY, ACTIVITIES, STATUSES, DISPLAY_STATUSES, STATUS_LABELS,
     REGIMES, regimeOf, regimeSuggere, assujettiTVA, mentionTVA, estLiberal, docLabel, ribAttendu,
     DOC_FILTRES, docFiltre,
-    pageInfo, compareValues, LINE_UNITS, usedUnits, parseDateInput, fmtDateInput, monthMatrix,
+    pageInfo, compareValues, LINE_UNITS, usedUnits, usedWithholdingRates, parseDateInput, fmtDateInput, monthMatrix,
     uid, round3, money, fmtDate, addDays, daysInMonth, today, escapeHtml, nl2br, statusLabel,
     CLOSURE_ACTIONS, closedUntil, isClosedDate, closedPeriodLabel, closableMonths, closureChecks, closePeriod, reopenPeriod, closureLog,
     PACK_FORMAT, packPeriod, packPlan, packChecklist, packFileName, packCoverHtml,
