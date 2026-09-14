@@ -7,6 +7,30 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 7.24.0 — 14/09/2026
+
+**L'écran des mises à jour disait trois choses fausses.**
+
+**Les notes de version s'affichaient en Markdown brut.** Le rendu ne traitait que les titres et les
+listes : tout le reste sortait tel quel, astérisques et accents graves compris — sur l'écran qu'on
+regarde au moment précis où l'on décide d'installer. Le gras, le `code` et l'italique sont désormais
+mis en forme, ainsi que les citations. On **échappe d'abord**, on remet la mise en forme ensuite :
+l'inverse laisserait passer du HTML venu d'un fichier qu'on ne contrôle pas entièrement. Un lien
+devient son seul texte — il n'y a rien à ouvrir depuis ce panneau.
+
+**« Le dépôt GitHub de SkanFact est privé : un token de lecture est nécessaire. »** C'était vrai
+jusqu'au 13 septembre. Le dépôt est **public** : les mises à jour arrivent sans rien présenter. Le
+champ de saisie disparaît, et il ne reste qu'un bouton **Retirer ce jeton** pour ceux qui en ont un
+d'avant — on ne laisse pas une valeur morte sur le poste de quelqu'un sans moyen de l'enlever.
+
+**« Relais injoignable (Invalid URL) », en rouge.** Sur un dépôt privé, une panne du relais était un
+vrai problème : sans lui, plus aucune mise à jour, d'où l'alerte (règle 6.7.2). Sur un dépôt public,
+le repli GitHub suffit tout seul : la panne n'empêche plus rien. Elle reste dans le journal, elle ne
+s'affiche plus.
+
+*À savoir : le « Cannot find latest-mac.yml » aperçu au même moment n'était pas un défaut — la
+publication était encore en cours d'envoi (13 fichiers sur 16) au moment de la vérification.*
+
 ## 7.23.1 — 14/09/2026
 
 **Les sélecteurs de période étirés sur toute la largeur.**

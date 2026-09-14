@@ -10,7 +10,11 @@ const { zipBuffer, sha256, sealBuffer, sealForCabinet, keyFingerprint } = requir
 // retire la section « build » du package.json empaqueté (l'app installée n'a plus build.publish).
 const APP_ID = 'tn.skancyber.skanfact';
 const PKG = require('../package.json');
-const GITHUB = { owner: 'saouthq', repo: 'skanfact', private: true }; // dépôt privé : token de lecture obligatoire
+// Le dépôt est PUBLIC depuis le 13/09/2026 : les releases se téléchargent sans rien présenter.
+// Tant que `private` valait `true`, l'application réclamait un jeton de lecture que plus personne
+// n'a besoin de fournir, et l'écran des mises à jour affirmait « Le dépôt GitHub de SkanFact est
+// privé » — une phrase devenue fausse, sur l'écran qu'on regarde au moment d'installer.
+const GITHUB = { owner: 'saouthq', repo: 'skanfact', private: false };
 const RELEASES_URL = `https://github.com/${GITHUB.owner}/${GITHUB.repo}/releases`;
 
 const IS_MAC = process.platform === 'darwin';
@@ -1299,7 +1303,13 @@ ipcMain.handle('update:version', () => ({
   hasToken: !!readUpdateCfg().token,
   // Un relais qui a échoué n'est PAS un relais : le champ jeton doit revenir, sinon l'utilisateur
   // n'a plus aucun moyen de se mettre à jour et l'écran lui dit qu'il n'a rien à faire.
-  relay: !!relayBase() && !relayFailure, relayFailure,
+  relay: !!relayBase() && !relayFailure,
+  // Un relais en panne n'est un PROBLÈME que si l'on ne peut pas s'en passer. Sur un dépôt privé,
+  // c'était le cas : sans lui, plus de mise à jour, d'où le message en rouge et le retour du champ
+  // jeton (règle 6.7.2). Sur un dépôt PUBLIC, le repli GitHub suffit tout seul : afficher
+  // « Relais injoignable » en rouge alarme pour une panne qui n'empêche rien. On le garde dans le
+  // journal (logToFile le fait déjà) et on ne le montre plus.
+  relayFailure: GITHUB.private ? relayFailure : '',
   lastUpdate: takeLastUpdateResult()
 }));
 

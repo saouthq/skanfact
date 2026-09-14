@@ -6882,6 +6882,47 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
 
   // ---------- 7.21.1 : l'installeur Windows ----------
 
+  // ---------- 7.24.0 : les mises à jour d'un dépôt public ----------
+
+  t('les notes de version s\'affichent mises en forme, pas en Markdown brut', () => {
+    const app = lireApp();
+    // `notesHtml` ne traitait que les titres et les listes : tout le reste sortait TEL QUEL, sur
+    // l'écran qu'on regarde au moment précis où l'on décide d'installer une mise à jour.
+    const zone = app.slice(app.indexOf('function inlineMd('), app.indexOf('function notesHtml('));
+    assert.ok(zone.length > 150, 'le découpage de inlineMd est faux');
+    // L'ordre compte : on ÉCHAPPE d'abord, on remet la mise en forme ensuite. L'inverse laisserait
+    // passer du HTML venu d'un fichier qu'on ne contrôle pas entièrement.
+    assert.ok(zone.indexOf('return h(texte)') < zone.indexOf('<strong>'),
+      'inlineMd remet la mise en forme AVANT d\'échapper : du HTML du CHANGELOG passerait tel quel');
+    ['<code>', '<strong>', '<em>'].forEach(t2 =>
+      assert.ok(zone.includes(t2), `inlineMd ne produit pas de ${t2}`));
+    // Et les trois usages passent par lui : un seul oubli et la ligne concernée reste en Markdown.
+    const nh = app.slice(app.indexOf('function notesHtml('), app.indexOf('function notesHtml(') + 900);
+    assert.ok(!/\$\{h\(l/.test(nh), 'notesHtml échappe encore sans mettre en forme : du Markdown brut resterait à l\'écran');
+    assert.strictEqual((nh.match(/inlineMd\(/g) || []).length, 4,
+      'les quatre sorties de notesHtml (liste, titre, citation, paragraphe) doivent passer par inlineMd');
+  });
+
+  t('le dépôt est public : plus aucun jeton n\'est réclamé', () => {
+    const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'main.js'), 'utf8');
+    const app = lireApp();
+    // Le dépôt est public depuis le 13/09/2026. Tant que `private` valait `true`, l'application
+    // réclamait un jeton de lecture dont plus personne n'a besoin — et l'écran des mises à jour
+    // affirmait « Le dépôt GitHub de SkanFact est privé », une phrase devenue fausse.
+    assert.ok(/const GITHUB = \{[^}]*private: false[^}]*\}/.test(main.replace(/\n/g, ' ')),
+      'le dépôt est de nouveau déclaré privé : le champ jeton et sa phrase reviendraient');
+    assert.ok(!app.includes('Le dépôt GitHub de SkanFact est privé'),
+      'l\'écran des mises à jour affirme encore que le dépôt est privé');
+    assert.ok(!/id="upd-token"/.test(app), 'le champ de saisie du jeton est revenu');
+    // Retirer un ancien jeton doit rester possible : on ne laisse pas une valeur morte sur le poste
+    // de quelqu'un sans bouton pour l'enlever (règle « ce qui se saisit doit pouvoir se corriger »).
+    assert.ok(/id="upd-token-clear"/.test(app), 'plus aucun moyen de retirer un jeton d\'avant');
+    // Et la panne du relais ne s'affiche plus en rouge : sur un dépôt public, le repli GitHub suffit
+    // tout seul, donc elle n'empêche rien. Elle reste dans le journal.
+    assert.ok(/relayFailure: GITHUB\.private \? relayFailure : ''/.test(main),
+      'une panne de relais est de nouveau montrée en rouge alors qu\'elle n\'empêche plus rien');
+  });
+
   // ---------- 7.23.0 : l'Aide ----------
 
   t('l\'Aide range ses trente-deux articles en thèmes, sans en perdre ni en dupliquer', () => {

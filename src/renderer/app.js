@@ -9528,15 +9528,32 @@
   }
 
   // Notes de version (markdown simple : titres et puces) → HTML sûr
+  // Les notes de version viennent du CHANGELOG, qui est du Markdown. Le rendu ne traitait que les
+  // titres et les listes : tout le reste s'affichait TEL QUEL, astérisques et accents graves
+  // compris. Sur un écran que l'utilisateur regarde au moment précis où il décide d'installer une
+  // mise à jour, ça donnait « **Les sélecteurs de période étirés** » et des `backticks` partout.
+  //
+  // On échappe D'ABORD, puis on remet la mise en forme : l'inverse laisserait passer du HTML venu
+  // d'un fichier qu'on ne contrôle pas entièrement. Un lien devient son seul texte — il n'y a rien
+  // à ouvrir depuis ce panneau, et un lien mort est pire qu'une phrase.
+  function inlineMd(texte) {
+    return h(texte)
+      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/(^|[\s(])\*([^*\s][^*]*)\*/g, '$1<em>$2</em>')
+      .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1');
+  }
+
   function notesHtml(md) {
     const lines = String(md || '').split('\n').map(l => l.trim()).filter(Boolean);
     if (!lines.length) return '';
     let out = '', inList = false;
     for (const l of lines) {
-      if (/^[-*] /.test(l)) { if (!inList) { out += '<ul>'; inList = true; } out += `<li>${h(l.slice(2))}</li>`; continue; }
+      if (/^[-*] /.test(l)) { if (!inList) { out += '<ul>'; inList = true; } out += `<li>${inlineMd(l.slice(2))}</li>`; continue; }
       if (inList) { out += '</ul>'; inList = false; }
-      if (/^#+ /.test(l)) out += `<h3>${h(l.replace(/^#+ /, ''))}</h3>`;
-      else out += `<p>${h(l)}</p>`;
+      if (/^#+ /.test(l)) out += `<h3>${inlineMd(l.replace(/^#+ /, ''))}</h3>`;
+      else if (/^> /.test(l)) out += `<blockquote>${inlineMd(l.slice(2))}</blockquote>`;
+      else out += `<p>${inlineMd(l)}</p>`;
     }
     if (inList) out += '</ul>';
     return `<div class="notes-md">${out}</div>`;
@@ -9622,11 +9639,15 @@
     const relayNote = a.relayFailure ? `<p class="small mt" style="color:var(--danger)">${h(a.relayFailure)}</p>` : '';
     const tokenBlock = a.relay
       ? `<p class="small muted mt">Les mises à jour arrivent toutes seules : rien à configurer sur cet ordinateur.${a.hasToken ? ' <span class="muted">(Un ancien token est encore enregistré ; il ne sert plus.)</span>' : ''}</p>`
-      : relayNote + `<div class="token-box">
-      <div class="k-label">Accès au dépôt privé</div>
-      <p class="small muted">Le dépôt GitHub de SkanFact est privé : un token de lecture est nécessaire pour vérifier les mises à jour. Il est enregistré uniquement sur cet ordinateur.</p>
-      <div class="inline"><input type="text" id="upd-token" placeholder="${a.hasToken ? 'Token enregistré ✓ — coller un nouveau pour remplacer' : 'github_pat_… ou ghp_…'}" autocomplete="off" spellcheck="false"><button class="btn btn-sm" id="upd-token-save">Enregistrer</button>${a.hasToken ? '<button class="btn btn-sm btn-ghost" id="upd-token-clear">Retirer</button>' : ''}</div>
-    </div>`;
+      // Le dépôt est PUBLIC depuis le 13/09/2026 : il n'y a plus de jeton à saisir. `update:version`
+      // ne renvoie donc plus l'état « token », et le champ ne s'affiche que s'il en reste un
+      // d'avant — pour pouvoir le retirer, pas pour en poser un nouveau. Un écran qui réclame un
+      // jeton dont personne n'a besoin fait douter de tout le reste.
+      : relayNote + (a.hasToken ? `<div class="token-box">
+      <div class="k-label">Ancien jeton d'accès</div>
+      <p class="small muted">Le dépôt de SkanFact est <b>public</b> : les mises à jour arrivent sans rien présenter. Un jeton datant de l'époque où il était privé est encore enregistré sur cet ordinateur ; il ne sert plus à rien.</p>
+      <div class="inline"><button class="btn btn-sm btn-ghost" id="upd-token-clear">Retirer ce jeton</button></div>
+    </div>` : '');
     el.innerHTML = `<div class="update-head"><div><div class="k-label">Version installée</div><div class="ver">${h(a.version || '…')}</div></div><button class="btn btn-sm btn-ghost" id="upd-changelog">Nouveautés</button></div>${body}${tokenBlock}`;
     $('#upd-changelog').onclick = showChangelog;
     if ($('#upd-token-save')) $('#upd-token-save').onclick = async () => {
