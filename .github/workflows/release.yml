@@ -66,7 +66,9 @@ jobs:
         shell: bash
         run: |
           V=$(node -p "require('./package.json').version")
-          if node -p "require('./package.json').version" | grep -q -- '-'; then PRE=true; else PRE=false; fi
+          # `case` plutôt que `grep` : pas de commande externe, donc rien qui puisse manquer ou se
+          # comporter autrement sur le poste Windows.
+          case "$V" in *-*) PRE=true ;; *) PRE=false ;; esac
           echo "version=$V" >> "$GITHUB_OUTPUT"
           echo "prerelease=$PRE" >> "$GITHUB_OUTPUT"
           echo "Version $V — préversion : $PRE"
