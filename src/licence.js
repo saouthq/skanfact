@@ -240,7 +240,7 @@ function licenceState(opts) {
   // collée (qui reprend le dessus) et AVANT l'essai (qui ne le concerne pas).
   if (opts.editeur) {
     return { state: 'editeur', locked: false, label: 'Poste de l\'éditeur — licence non requise',
-      detail: 'La clé privée qui signe les licences est sur cet ordinateur : il n\'a pas besoin de licence. Colle une clé ci-dessous pour voir exactement ce que voit un client ; retire-la pour revenir ici.',
+      detail: 'La clé privée qui signe les licences est sur cet ordinateur : il n\'a pas besoin de licence. Pour voir exactement ce que voit un client, colle ci-dessous une clé émise pour le matricule de cette société (ou sans matricule) ; retire-la pour revenir ici.',
       key: '', name: '', exp: '', daysLeft: null, offre: OFFRE_DEFAUT, offreLabel: '', reserves: [] };
   }
 
@@ -251,7 +251,7 @@ function licenceState(opts) {
       key: '', name: '', exp: trialEnd, daysLeft: left, offre: OFFRE_DEFAUT, offreLabel: '', reserves: [] };
   }
   return { state: 'finessai', locked: true, label: 'Période d\'essai terminée',
-    detail: 'Tes données restent lisibles, imprimables et exportables. La création de nouvelles pièces attend ta licence.',
+    detail: 'L\'essai de 30 jours de cet ordinateur est terminé — il compte par ordinateur, et chaque entreprise a besoin de sa propre clé, attachée à son matricule. Tes données restent lisibles, imprimables et exportables ; seule la création de nouvelles pièces attend ta licence.',
     key: '', name: '', exp: trialEnd, daysLeft: left, offre: OFFRE_DEFAUT, offreLabel: '', reserves: [] };
 }
 

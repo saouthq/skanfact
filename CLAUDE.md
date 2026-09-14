@@ -265,12 +265,12 @@ Règles apprises :
 
 ## 6.4.0 — La licence hors ligne
 
-`src/licence.js` (Node pur, testé) : `generateKeys`, `signLicence`, `parseKey`, `verifyKey`, `licenceState`, `requestMail`. `scripts/licence.js` fabrique les clés (privée en mode 600 dans `~/.skanfact/`, **jamais** dans le dépôt ; publique dans `build/licence-public.json`, à commiter). Dans main.js : `licence:status` / `licence:set` (refuse une clé invalide au lieu de la stocker) / `licence:requestMail`, `installedAt` dans `app-config.json`. Dans app.js : `licenceBlock(quoi)` — une seule porte, comme `closedBlock` — et l'onglet **Paramètres → Licence**.
+`src/licence.js` (Node pur, testé) : `generateKeys`, `signLicence`, `parseKey`, `verifyKey`, `licenceState`, `requestMail`. `scripts/licence.js` fabrique les clés (privée en mode 600 dans `~/.skanfact/`, **jamais** dans le dépôt ; publique à côté — depuis la 7.33.0 le keygen n'écrit plus dans `build/`, et depuis la 8.0.0 ce fichier est la clé de Skander, voir § 8.0.0). Dans main.js : `licence:status` / `licence:set` (refuse une clé invalide au lieu de la stocker) / `licence:requestMail`, `installedAt` dans `app-config.json`. Dans app.js : `licenceBlock(quoi)` — une seule porte, comme `closedBlock` — et l'onglet **Paramètres → Licence**.
 
 Règles apprises :
 - **Jamais de données en otage.** Une licence expirée ne bloque QUE la création de nouvelles pièces. Lire, imprimer, exporter, sauvegarder, envoyer le paquet au comptable : toujours. Un test relit `app.js` et vérifie qu'aucun `licenceBlock` n'est posé ailleurs que sur une création.
 - **Modifier une pièce existante reste possible** même bloqué : sinon une licence expirée empêcherait de corriger une faute de frappe.
-- **L'application est livrée désarmée.** Sans `build/licence-public.json`, l'état est `libre` et rien ne se verrouille — un test vérifie que le fichier n'est pas dans le dépôt. Armer la licence est une décision du propriétaire, pas l'effet de bord d'une mise à jour.
+- **L'application est livrée désarmée** *(vrai de la 6.4.0 à la 7.33.0 — retourné en 8.0.0, voir § 8.0.0 : le test exige désormais la PRÉSENCE du fichier)*. Sans `build/licence-public.json`, l'état est `libre` et rien ne se verrouille. Armer la licence est une décision du propriétaire, pas l'effet de bord d'une mise à jour.
 - Aucun appel réseau : la clé est vérifiée sur le poste. Une entreprise sans connexion ne doit pas perdre sa facturation, et l'app doit survivre à la disparition de son éditeur.
 - `plainError(e)` : une erreur venue du processus principal arrive habillée en « Error invoking remote method '…': Error: … ». On ne montre que la phrase écrite pour l'utilisateur.
 
@@ -1857,6 +1857,38 @@ Règles apprises, à ne pas recasser :
   « la clé privée ne traverse jamais le pont » : la tranche ne voyait plus que deux lectures. Les
   lectures de `lirePrivee()` sont maintenant jugées sur TOUT main.js, et chacune doit vivre dans la
   section éditeur — prouvé en posant une lecture dans `licence:status`.
+- **Ce que la relecture adversariale a trouvé avant la publication** (six angles, 22 constats ; les
+  contradicteurs ont été coupés pour épargner le quota — chaque constat retenu a été vérifié à la
+  main dans le code, corrigé, et prouvé en réintroduisant le défaut) :
+  - **Une clé publique ne se lit jamais dans un fichier qu'on ne signe pas.** `clePubliqueEditeur()`
+    croyait `licence-publique.json` dès qu'il portait un `publicKey` : recopier la clé de SkanFact
+    à côté d'un `.pem` quelconque donnait le passe-droit de l'éditeur. Elle est DÉDUITE de la
+    privée, toujours ; le fichier ne porte que la date, et se réécrit s'il ne correspond pas.
+    `e2e:licence` rejoue l'imposture (étape 9).
+  - **Un relais qui ne peut pas vérifier ne refuse pas.** Sans `LICENCE_PUBLIC_KEY`, le worker
+    répondait 403 à toute application qui présente une clé — c'est-à-dire à chaque client qui a
+    PAYÉ, dès qu'il collait sa clé. Il laisse passer (le secret suffit), et ne dit « mal réglé »
+    (503) que si `LICENCE_REQUISE=1`. Poser la clé publique sur Cloudflare reste à faire par
+    Skander, ce n'est plus bloquant.
+  - **Changer de flux, c'est aussi retirer les en-têtes de l'ancien** : `feedGithub` remet
+    `requestHeaders` à null, sinon le secret de l'application et la clé de licence partaient vers
+    GitHub après un repli.
+  - **Une phrase rassurante se vérifie contre le code** : « SkanFact n'envoie jamais ta clé nulle
+    part » était fausse depuis la 6.7.0 (elle est présentée au relais). La phrase dit maintenant où.
+  - **Un état lu une fois au démarrage se périme (7.1.x), encore** : l'essai ne se terminait jamais
+    tant que l'application restait ouverte. Relu toutes les heures et au retour au premier plan.
+  - **Une licence payante qui finit se dit dans la barre**, pas seulement dans un panneau que
+    personne n'ouvre : bandeau à quatorze jours.
+  - **« Retirer » doit retirer partout** : la clé héritée de la 6.4.0 (`userData/licence.json`)
+    ressuscitait au prochain appel ; et le message annonçait « Licence enregistrée ».
+  - **L'essai est compté par ORDINATEUR** (app-config.json) et la clé par DOSSIER : un second
+    dossier créé après la fin de l'essai s'ouvre verrouillé — c'est voulu, et le message le dit.
+    La date d'armement est doublée dans `<dossier>/licence.json` (la plus ancienne fait foi) :
+    effacer app-config.json en gardant ses données ne rejoue plus l'essai. Reculer l'horloge ou
+    réinstaller sans ses données le rejoue : accepté, l'application est en source ouverte.
+  - Constats laissés de côté sciemment : `todoList` n'a pas de ligne « ta licence se termine »
+    (le bandeau suffit) ; la tranche du test de la clé privée a été resserrée en deux morceaux sans
+    handler étranger, plutôt qu'élargie.
 - **`LICENCE_CONTACT` vaut `contact@skanfact.tn`** : la boîte Zimbra Starter du domaine `skanfact.tn`, commandé chez OVH le 14/09/2026 (une seule adresse personnalisée pour l'instant, d'où « contact » et pas « licences »). C'est l'adresse vers laquelle « Demander une licence » et « Signaler un problème » composent le mail. Elle doit exister avant la fin du premier essai (14/10/2026), sinon un client en fin d'essai écrit dans le vide.
 
 ## Pistes pour la suite (non demandées)

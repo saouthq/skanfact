@@ -42,6 +42,26 @@ jours entiers — puis attend une clé de licence.
   application non armée.
 - Les demandes de licence et les signalements de problème partent vers **contact@skanfact.tn**,
   l'adresse du domaine SkanFact.
+- Une licence payante qui se termine est annoncée dans la barre de gauche deux semaines avant, et
+  l'état de la licence se relit toutes les heures et au retour au premier plan : un essai qui finit
+  pendant que l'application est ouverte se voit sans la relancer.
+
+### Ce que la relecture adversariale a trouvé avant la publication
+
+- Le passe-droit de l'éditeur pouvait s'obtenir sans la clé privée, en copiant la clé publique de
+  SkanFact dans le fichier public à côté d'un `.pem` quelconque : la clé publique de l'éditeur est
+  désormais **déduite de la privée**, jamais lue dans un fichier.
+- Le relais de mise à jour refusait (403) toute application qui présente une vraie clé de licence
+  tant qu'il n'a pas la clé publique configurée — c'est-à-dire chaque client qui a **payé**, dès
+  la 8.0.0. Sans clé publique, le relais laisse passer ; avec, il vérifie.
+- Le repli vers GitHub gardait les en-têtes du relais (secret de l'application, clé de licence) :
+  ils sont retirés avant de changer de flux.
+- « SkanFact n'envoie jamais ta clé nulle part » était faux : elle est présentée au service de mise
+  à jour. La phrase le dit maintenant.
+- « Retirer la clé » ressuscitait une clé héritée de la 6.4.0 ; le message après le retrait
+  annonçait « Licence enregistrée ».
+- La date de début d'essai est doublée dans le dossier de l'entreprise : effacer le fichier de
+  réglages de l'ordinateur en gardant ses données ne rejoue plus l'essai.
 
 ### Sous le capot
 

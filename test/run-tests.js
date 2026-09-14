@@ -3156,7 +3156,7 @@ t('licence : les dates tiennent sous tous les fuseaux, et la demande porte le ca
   assert.ok(/parrainage/.test(m.body), 'et réclamer la remise de parrainage');
 });
 
-t('licence : le garde-fou ne barre que la création, et l\'app livrée ne se verrouille pas', () => {
+t('licence : le garde-fou ne barre que la création, et l\'app livrée embarque la clé qui l\'arme', () => {
   const src = lireApp();
   // Le garde-fou ne doit être posé que sur des créations, jamais sur un export ou une lecture.
   // Depuis la 7.33.0 il prend un second argument (le module fermé par l'offre) : la regex de 6.4.0
@@ -3211,17 +3211,50 @@ t('8.0.0 : la clé embarquée est une vraie clé publique, l\'éditeur ne s\'ach
   // VIGUEUR (un second éditeur, une clé recréée par erreur : rien), et il est passé à licenceState.
   const main = lireSource('src', 'main.js').replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
   assert.ok(/editeur: editeurDeLaCleEnVigueur\(\)/.test(main), 'licenceStatus doit passer editeurDeLaCleEnVigueur() à licenceState');
-  assert.ok(/mienne\.publicKey === publicKey\(\)/.test(main), 'editeurDeLaCleEnVigueur compare la clé publique de l\'éditeur à la clé EN VIGUEUR (pas seulement à la clé embarquée)');
+  const cpe = main.slice(main.indexOf('function clePubliqueEditeur('), main.indexOf('function editeurDeLaCleEnVigueur('));
+  const edv = main.slice(main.indexOf('function editeurDeLaCleEnVigueur('), main.indexOf('function ecrireLicence('));
+  assert.ok(cpe.length > 100 && edv.length > 50 && edv.length < 600, 'tranches clePubliqueEditeur / editeurDeLaCleEnVigueur introuvables');
+  // La publique de l'éditeur se DÉDUIT de la privée AVANT toute lecture du fichier public : un
+  // fichier licence-publique.json recopié avec la clé de SkanFact, à côté d'un .pem quelconque,
+  // donnait le passe-droit (relecture adversariale de la 8.0.0).
+  const deduction = cpe.indexOf('crypto.createPublicKey(crypto.createPrivateKey(lirePrivee()))');
+  assert.ok(deduction > 0 && (cpe.indexOf('lireJson(') < 0 || cpe.indexOf('lireJson(') > deduction), 'clePubliqueEditeur doit déduire la clé publique de la privée avant de lire le fichier');
+  assert.ok(!/return (fichier|lireJson)/.test(cpe), 'clePubliqueEditeur ne doit jamais rendre le contenu du fichier tel quel');
+  assert.ok(/clePubliqueEditeur\(\)/.test(edv) && /publicKey\(\)/.test(edv) && !/lireJson/.test(edv), 'editeurDeLaCleEnVigueur compare la clé DÉDUITE à la clé EN VIGUEUR');
+  // Le repli GitHub ne garde pas les en-têtes du relais (secret, clé de licence).
+  const fg = main.slice(main.indexOf('function feedGithub('), main.indexOf('function feedGithub(') + 400);
+  assert.ok(/u\.requestHeaders = null;[\s\S]*u\.setFeedURL/.test(fg), 'feedGithub doit retirer requestHeaders AVANT de changer de flux');
+  // « Retirer la clé » retire aussi la clé héritée de la 6.4.0.
+  assert.ok(/ecrireLicence\(''\);[^\n]*\n\s*try \{ fs\.unlinkSync\(LIC_ANCIEN\(\)\)/.test(main), 'licence:set(\'\') doit retirer la clé du dossier ET LIC_ANCIEN');
+  // L'essai ne se rejoue pas en effaçant app-config.json : la date d'armement est doublée dans le
+  // dossier de l'entreprise, la plus ancienne fait foi, et « Retirer la clé » la garde.
+  const arm = main.slice(main.indexOf('function armedAt('), main.indexOf('function licenceStatus('));
+  assert.ok(/lic\.armedAt < arme\) \{ arme = lic\.armedAt; cfg\.armedAt = arme; writeAppCfg\(cfg\); \}/.test(arm) && /JSON\.stringify\(\{ \.\.\.lic, armedAt: arme \}/.test(arm), 'armedAt doit être doublé dans <dossier>/licence.json, la plus ancienne date faisant foi');
+  const ecr = main.slice(main.indexOf('function ecrireLicence('), main.indexOf('function readLicence('));
+  assert.ok(/if \(L\.dateValide\(avant\.armedAt\)\) doc\.armedAt = avant\.armedAt;/.test(ecr), 'ecrireLicence doit conserver armedAt du dossier');
   // Le désarmement par l'environnement (SKANFACT_CLE_EMBARQUEE, pour e2e:licence) ne vaut qu'en
   // développement : une application installée lit toujours sa propre clé, quoi que dise l'environnement.
   assert.ok(/!app\.isPackaged && process\.env\.SKANFACT_CLE_EMBARQUEE !== undefined/.test(main), 'SKANFACT_CLE_EMBARQUEE doit être gardé par !app.isPackaged');
   // Le renderer connaît l'état : badge vert ; la porte « Créer mes clés » reste réservée à `libre`.
-  assert.ok(/\|\| st\.state === 'editeur' \? 'accepté'/.test(lireApp()), 'le panneau Licence doit afficher l\'état éditeur en vert');
+  const appSrc = lireApp();
+  assert.ok(/\|\| st\.state === 'editeur' \? 'accepté'/.test(appSrc), 'le panneau Licence doit afficher l\'état éditeur en vert');
+  // Une licence PAYANTE qui finit est annoncée dans la barre (pas seulement l'essai), l'état se
+  // relit toutes les heures et au retour au premier plan, et le panneau ne prétend plus que la clé
+  // ne part nulle part (elle est présentée au relais de mise à jour).
+  assert.ok(/licence\.state === 'active' && licence\.daysLeft <= 14/.test(appSrc), 'licenceBanner doit annoncer une licence active qui se termine');
+  assert.ok(/setInterval\(relireLicence, 60 \* 60 \* 1000\)/.test(appSrc) && /addEventListener\('focus', relireLicence\)/.test(appSrc), 'la licence doit se relire toutes les heures et au retour au premier plan');
+  assert.ok(!/n'envoie jamais ta clé nulle part/.test(appSrc) && /présentée qu'au service de mise à jour/.test(appSrc), 'le panneau doit dire où la clé est présentée');
+  assert.ok(/\(key \? 'Licence enregistrée : ' : 'Clé retirée — '\)/.test(appSrc), 'retirer la clé ne doit pas annoncer « Licence enregistrée »');
   // L'e2e ouvre l'application DÉSARMÉE (override) pour créer ses clés, PUIS la vraie, armée, où sa
   // propre clé d'essai est refusée : les deux moitiés, sinon l'armement n'est prouvé nulle part.
   const e2e = lireSource('test', 'e2e', 'licence.js');
   assert.ok(/SKANFACT_CLE_EMBARQUEE: /.test(e2e), 'e2e:licence doit désarmer l\'application par SKANFACT_CLE_EMBARQUEE');
-  assert.ok((e2e.match(/electron\.launch\(/g) || []).length >= 2 && /delete env2\.SKANFACT_CLE_EMBARQUEE/.test(e2e), 'e2e:licence doit aussi ouvrir l\'application ARMÉE avec la vraie clé');
+  // Le second lancement se juge sur son LITTÉRAL : un `env` construit sans l'override (le `delete`
+  // qui suit n'est qu'une ceinture, process.env ne porte jamais la variable).
+  const lancements = e2e.split('electron.launch(');
+  assert.ok(lancements.length >= 3, 'e2e:licence doit ouvrir au moins deux applications');
+  assert.ok(/const env2 = \{ \.\.\.process\.env, SKANFACT_DOSSIER_CLES: clesVides \};/.test(e2e) && /env: env2 \}/.test(lancements[2]), 'le second lancement doit être ARMÉ avec la vraie clé (sans SKANFACT_CLE_EMBARQUEE)');
+  assert.ok(/imposteur/.test(e2e) && /publicKey: embarquee\.publicKey/.test(e2e), 'e2e:licence doit rejouer le contournement « clé publique recopiée à côté d\'un .pem quelconque »');
 });
 
 t('offre Indépendant : chaque module réservé est fermé à la création, partout où l\'on crée', () => {
@@ -3367,7 +3400,12 @@ t('éditeur : la clé privée ne traverse jamais le pont, et l\'app livrée emba
   // contradicteur a montré qu'un `String(lirePrivee())` renvoyé passait un contrôle sur le seul « ) ».
   const lectures = [...main.matchAll(/.{0,40}lirePrivee\(\).{0,24}/g)].map(m => m[0]);
   assert.ok(lectures.length >= 3, 'main.js ne lit pas la clé privée ?');
-  assert.ok(lectures.every(ctx => section.includes(ctx)), 'une lecture de la clé privée vit hors de la section éditeur : …' + lectures.find(ctx => !section.includes(ctx)));
+  // Deux tranches serrées — clePubliqueEditeur/editeurDeLaCleEnVigueur, puis les handlers de
+  // l'éditeur — et rien entre les deux : une lecture posée dans data:export ou backups:* n'y entre pas.
+  const t1 = main.slice(a, main.indexOf('function ecrireLicence('));
+  const t2 = main.slice(main.indexOf("ipcMain.handle('editeur:keygen'"), c);
+  assert.ok(t1.length > 100 && t2.length > 100 && !/ipcMain\.handle\('(data|backups|dossiers|attach|ocr|pdf):/.test(t1 + t2), 'les tranches éditeur ne doivent contenir aucun handler étranger');
+  assert.ok(lectures.every(ctx => t1.includes(ctx) || t2.includes(ctx)), 'une lecture de la clé privée vit hors des tranches éditeur : …' + lectures.find(ctx => !t1.includes(ctx) && !t2.includes(ctx)));
   const AUTORISES = [/L\.signLicence\(payload, lirePrivee\(\)\)/, /crypto\.createPrivateKey\(lirePrivee\(\)\)/, /lirePrivee\(\)\.trim\(\) !== pem\.trim\(\)/];
   lectures.forEach(ctx => assert.ok(AUTORISES.some(re => re.test(ctx)),
     'la clé privée est lue pour autre chose que signer / déduire / comparer : …' + ctx.trim()));
@@ -5344,6 +5382,14 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.strictEqual((await W.autorise(H({ ...bon, 'x-skanfact-licence': 'SKAN1.aa.bb' }), env)).code, 403);
     const autre = lic.signLicence({ nom: 'X' }, lic.generateKeys().privateKey);
     assert.strictEqual((await W.autorise(H({ ...bon, 'x-skanfact-licence': autre }), env)).code, 403, 'licence signée par une autre clé');
+    // Un relais SANS clé publique ne peut pas juger : il laisse passer (8.0.0 — sinon chaque client
+    // qui a payé était refusé le jour où il collait sa clé). Sauf si la licence est exigée : alors
+    // c'est le relais qui est mal réglé, et il le dit (503, pas 403).
+    const sansCle = { APP_SECRET: env.APP_SECRET };
+    assert.strictEqual((await W.autorise(H({ ...bon, 'x-skanfact-licence': cle }), sansCle, 'app')).ok, true, 'sans clé publique, une licence présentée passe');
+    assert.strictEqual((await W.autorise(H({ ...bon, 'x-skanfact-licence': 'SKAN1.aa.bb' }), sansCle, 'app')).ok, true, 'sans clé publique, le relais ne juge rien');
+    assert.strictEqual((await W.autorise(H({ ...bon, 'x-skanfact-licence': cle }), { ...sansCle, LICENCE_REQUISE: '1' }, 'app')).code, 503);
+    assert.strictEqual((await W.autorise(H({ ...bon, 'x-skanfact-licence': cle }), { ...sansCle, LICENCE_REQUISE: '1' }, 'cabinet')).ok, true, 'le cabinet reste gratuit');
     // Une licence EXPIRÉE reçoit quand même les corrections : on ne prend pas les gens en otage.
     const perimee = lic.signLicence({ nom: 'Y', exp: '2020-01-01' }, k.privateKey);
     assert.strictEqual((await W.autorise(H({ ...bon, 'x-skanfact-licence': perimee }), env)).ok, true);

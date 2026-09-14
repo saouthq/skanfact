@@ -119,6 +119,14 @@ export async function autorise(headers, env, canal) {
     if (env.LICENCE_REQUISE === '1') return { ok: false, code: 402, message: 'Licence requise pour les mises à jour.' };
     return { ok: true, qui: 'sans licence' };
   }
+  // Un relais SANS clé publique ne peut pas juger : il laisse passer comme « sans licence » (le
+  // secret a déjà été contrôlé). Refuser ici couperait les mises à jour de chaque client qui a PAYÉ
+  // — c'est ce qui serait arrivé à la 8.0.0 : les clients ont de vraies clés, l'application les
+  // présente, et le relais de Skander n'avait pas encore LICENCE_PUBLIC_KEY.
+  if (!env.LICENCE_PUBLIC_KEY) {
+    if (env.LICENCE_REQUISE === '1' && canal !== 'cabinet') return { ok: false, code: 503, message: 'Relais non configuré (LICENCE_PUBLIC_KEY manque).' };
+    return { ok: true, qui: 'licence non vérifiée (relais sans clé publique)' };
+  }
   const v = await licenceValide(cle, env.LICENCE_PUBLIC_KEY);
   // Une licence inventée est un refus, toujours : c'est le seul cas où quelqu'un ment.
   if (!v.ok) return { ok: false, code: 403, message: 'Licence non reconnue (' + v.raison + ').' };

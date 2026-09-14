@@ -10250,7 +10250,7 @@
            ${st.key ? '<button type="button" class="btn btn-ghost" id="lic-clear">Retirer la clé</button>' : ''}
          </div>
          <p class="small muted mt"><strong>Tes données t'appartiennent, licence ou pas.</strong> Même expirée, tu peux tout lire, imprimer, exporter et envoyer à ton comptable. Seule la création de nouvelles pièces attend le renouvellement.</p>
-         <p class="small muted">La vérification se fait <strong>sur cet ordinateur</strong>, sans aucune connexion : SkanFact n'envoie jamais ta clé nulle part.</p>`;
+         <p class="small muted">La vérification se fait <strong>sur cet ordinateur</strong>, sans aucune connexion. Ta clé n'est présentée qu'au service de mise à jour de SkanFact, jamais à un tiers.</p>`;
     // La porte de l'éditeur — discrète exprès : elle ne concerne qu'une personne, et elle n'existe
     // que tant que l'application n'est PAS armée (`libre`). Une fois la clé publique embarquée, plus
     // aucun client ne la voit ; sur le poste de l'éditeur, le panneau « Éditeur » a pris le relais.
@@ -10266,7 +10266,7 @@
         enregistrerEnCours();
         licence = await bridge.licenceSet(key, company().matricule || '');
         drawLicencePanel(); licenceBanner(); redessinerBarre();
-        toast(licence.locked ? licence.label : 'Licence enregistrée : ' + licence.label);
+        toast(licence.locked ? licence.label : (key ? 'Licence enregistrée : ' : 'Clé retirée — ') + licence.label);
       } catch (e) { toast(plainError(e), true); }
     };
     if ($('#lic-devenir')) $('#lic-devenir').onclick = devenirEditeur;
@@ -10282,14 +10282,17 @@
     };
   }
 
-  // Un bandeau, et seulement quand il sert : essai qui se termine, ou création bloquée.
+  // Un bandeau, et seulement quand il sert : essai qui se termine, licence PAYANTE qui se termine
+  // (deux semaines avant — sans lui, un client verrouillé un matin n'aurait été prévenu nulle part
+  // ailleurs que dans un panneau qu'il n'ouvre jamais), ou création bloquée.
   function licenceBanner() {
     const el = $('#lic-banner');
-    const show = licence.locked || (licence.state === 'essai' && licence.daysLeft != null && licence.daysLeft <= 7);
+    const finit = licence.daysLeft != null && ((licence.state === 'essai' && licence.daysLeft <= 7) || (licence.state === 'active' && licence.daysLeft <= 14));
+    const show = licence.locked || finit;
     if (!el) return;
     el.hidden = !show;
     el.classList.toggle('warn', !!licence.locked);
-    if (show) el.textContent = licence.locked ? licence.label + ' — voir Paramètres → L\'application → Licence' : licence.label;
+    if (show) el.textContent = licence.locked ? licence.label + ' — voir Paramètres → L\'application → Licence' : licence.label + (licence.state === 'active' ? ' — pense à la renouveler' : '');
   }
 
   // ---------- l'éditeur de SkanFact (7.33.0) ----------
@@ -11168,6 +11171,12 @@
     // et avec le matricule de la société, parce qu'une clé est émise pour UNE entreprise. Elle dit
     // aussi si ce poste est celui de l'éditeur : la barre en dépend.
     await rafraichirLicence();
+    // …et se relit toutes les heures et au retour au premier plan : SkanFact reste ouvert des jours
+    // entiers, et un état lu une fois au démarrage se périme (7.1.x) — sans ça, un essai ne se
+    // terminait jamais tant que l'application n'était pas relancée.
+    const relireLicence = () => rafraichirLicence().then(() => { redessinerBarre(); if (location.hash === '#/parametres') drawLicencePanel(); });
+    setInterval(relireLicence, 60 * 60 * 1000);
+    window.addEventListener('focus', relireLicence);
     // La copie de sauvegarde externe ne vit pas dans les données : on la lit une fois ici pour que
     // « Tes premiers pas » sache si l'étape est faite. Un échec n'empêche rien : l'étape s'affiche
     // simplement comme à faire.

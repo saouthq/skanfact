@@ -351,10 +351,31 @@ const L = require('../../src/licence.js');
   await win2.waitForSelector('#new'); await win2.click('#new');
   await win2.waitForFunction(() => /^#\/doc\//.test(location.hash), null, { timeout: 8000 });
   j.ok('essai de 30 jours · ni page, ni panneau, ni porte de l\'éditeur · clé d\'essai refusée (« pas reconnue ») · un devis se crée');
+  await Promise.race([app2.close(), new Promise((_, rej) => setTimeout(() => rej(new Error('l\'application ne se ferme pas : un garde-fou de sortie attend une réponse')), 20000))]);
+
+  // ---------------------------------------------------- 9. le contournement qui ne marche pas
+  j.etape('Une AUTRE clé privée, avec la clé publique de SkanFact recopiée à côté : aucun passe-droit');
+  // Le scénario trouvé par la relecture adversariale : un .pem quelconque (ici celui de ce test) et,
+  // à côté, licence-publique.json recopié avec la clé EMBARQUÉE. Si l'application croyait le fichier,
+  // ce poste serait « éditeur » — ni essai ni verrou — sans jamais avoir signé quoi que ce soit.
+  fs.writeFileSync(path.join(cles, 'licence-publique.json'), JSON.stringify({ format: 1, publicKey: embarquee.publicKey, createdAt: '2026-09-14' }, null, 2));
+  const userData3 = fs.mkdtempSync(path.join(os.tmpdir(), 'skanfact-lic-imposteur-'));
+  const app3 = await electron.launch({ args: ['--no-sandbox', `--user-data-dir=${userData3}`, RACINE], executablePath: ELECTRON, env: { ...process.env, SKANFACT_DOSSIER_CLES: cles } });
+  const win3 = await app3.firstWindow(); surveiller(win3, 'imposteur', bac);
+  await traverserAssistant(win3, 'Imposteur SUARL', MF);
+  const imp = await win3.evaluate(async mf => ({ st: await window.skanfact.licenceStatus(mf), ed: await window.skanfact.editeurStatus() }), MF);
+  if (imp.st.state !== 'essai' || imp.st.locked) throw new Error('une autre clé privée ne doit donner aucun passe-droit : ' + JSON.stringify(imp.st).slice(0, 160));
+  if (!imp.ed.actif || !imp.ed.armee || imp.ed.correspond || imp.ed.publicKey !== pubJson.publicKey) throw new Error('l\'état éditeur doit être déduit de la clé PRIVÉE, pas du fichier : ' + JSON.stringify({ armee: imp.ed.armee, correspond: imp.ed.correspond }));
+  const refait = JSON.parse(fs.readFileSync(path.join(cles, 'licence-publique.json'), 'utf8'));
+  if (refait.publicKey !== pubJson.publicKey) throw new Error('le fichier public trafiqué doit être réécrit avec la clé déduite de la privée');
+  await ouvrirParametres('p-editeur', win3);
+  const pan3 = (await win3.textContent('#editeur-panel')).replace(/\s+/g, ' ');
+  if (!/AUTRE clé/.test(pan3)) throw new Error('le panneau Éditeur doit dire que SkanFact est armé avec une AUTRE clé : ' + pan3.slice(0, 160));
+  j.ok('essai, pas « éditeur » · fichier public réécrit depuis la clé privée · panneau « armée avec une AUTRE clé »');
 
   console.log('\nerreurs JS : ' + bac.length);
   bac.slice(0, 6).forEach(e => console.log('  - ' + e));
-  await Promise.race([app2.close(), new Promise((_, rej) => setTimeout(() => rej(new Error('l\'application ne se ferme pas : un garde-fou de sortie attend une réponse')), 20000))]);
+  await Promise.race([app3.close(), new Promise((_, rej) => setTimeout(() => rej(new Error('l\'application ne se ferme pas : un garde-fou de sortie attend une réponse')), 20000))]);
   if (bac.length) { console.error('>>> ÉCHEC'); process.exit(2); }
   console.log(`\n${j.total()} étapes — L'ÉDITEUR ET LES OFFRES : OK`);
 })().catch(e => { console.error('\n✕ ÉCHEC : ' + (e.stack || e.message)); process.exit(1); });

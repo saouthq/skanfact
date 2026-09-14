@@ -53,7 +53,7 @@ function keygen() {
   fs.writeFileSync(PUB_EDITEUR, pub, 'utf8');
   console.log(`\nClé privée  : ${PRIV}   (mode 600 — ne la commite jamais, ne l'envoie à personne)`);
   console.log(`Clé publique : ${PUB_EDITEUR}`);
-  console.log(`\nPour ARMER l'application de tout le monde, le jour venu : copie ce fichier public dans\n  ${PUB}\net commite-le. C'est ce jour-là que l'essai de 30 jours commence chez chacun.`);
+  console.log(`\nATTENTION : l'application de tout le monde est déjà armée avec la clé de\n  ${PUB}\n(8.0.0). Les licences signées par CETTE nouvelle clé n'y seront reconnues nulle part : elle ne sert\nqu'à des essais sur ce poste. Ne remplace jamais le fichier du dépôt.`);
   console.log(`\nSauvegarde la clé privée ailleurs que sur ce Mac (gestionnaire de mots de passe, disque\n`
     + `chiffré). Si tu la perds, tu ne peux plus émettre de licence pour les clients existants.\n`);
 }

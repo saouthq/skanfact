@@ -51,10 +51,11 @@ deux ou trois requêtes par poste et par version.
 | `LICENCE_PUBLIC_KEY` | Texte | le champ `publicKey` de `build/licence-public.json` |
 | `LICENCE_REQUISE` | Texte | `1` pour refuser les mises à jour à qui n'a pas de licence valide |
 
-Elles n'ont de sens qu'une fois la licence **armée** : `build/licence-public.json` n'existe pas tant
-que `node scripts/licence.js --keygen` n'a pas été lancé, et l'application est livrée désarmée
-exprès. Tant qu'il n'y a pas de clé publique ici, une licence présentée est **refusée** (« aucune
-clé publique configurée ») : mieux vaut donc ne rien mettre que mettre une des deux à moitié.
+La licence est **armée depuis la 8.0.0** : `build/licence-public.json` porte la clé de Skander, et
+les clients qui ont payé présentent leur clé au relais (`X-SkanFact-Licence`). Sans
+`LICENCE_PUBLIC_KEY`, le relais **ne juge pas** la licence et laisse passer (le secret suffit) — il
+ne refuse jamais quelqu'un qu'il ne peut pas vérifier. Avec, une clé inventée est refusée. Mettre la
+clé publique ici dès que possible, c'est ce qui rend `LICENCE_REQUISE = 1` possible un jour.
 
 Et `LICENCE_REQUISE = 1` ne concerne **que** l'application entreprise. L'application du cabinet est
 gratuite, elle n'a pas de licence et n'en aura jamais : son canal est exempté dans le code, sinon

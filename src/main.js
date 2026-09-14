@@ -497,15 +497,19 @@ function publicKey() { return clePublique().publicKey; }
 // déduit de la privée et on l'écrit, une fois pour toutes.
 function clePubliqueEditeur() {
   if (!editeurActif()) return null;
-  let pub = lireJson(CLE_PUBLIQUE_EDITEUR());
-  if (pub && pub.publicKey) return pub;
-  try {
-    const publicKey = crypto.createPublicKey(crypto.createPrivateKey(lirePrivee())).export({ type: 'spki', format: 'pem' });
-    pub = { format: L.FORMAT, publicKey, createdAt: L.today() };
-    fs.writeFileSync(CLE_PUBLIQUE_EDITEUR(), JSON.stringify(pub, null, 2) + '\n');
-    clePubliqueCache = null;
-    return pub;
-  } catch { return null; }
+  // TOUJOURS déduite de la privée, jamais lue dans le fichier : licence-publique.json n'a rien de
+  // secret, et quiconque y copierait la clé publique de SkanFact à côté d'un .pem quelconque
+  // obtiendrait le passe-droit de l'éditeur (trouvé par la relecture adversariale de la 8.0.0).
+  // Le fichier ne fait foi que pour la date ; s'il manque ou ne correspond pas, on le (ré)écrit.
+  let publicKey;
+  try { publicKey = crypto.createPublicKey(crypto.createPrivateKey(lirePrivee())).export({ type: 'spki', format: 'pem' }); }
+  catch { return null; }
+  const fichier = lireJson(CLE_PUBLIQUE_EDITEUR());
+  const pub = { format: L.FORMAT, publicKey, createdAt: (fichier && fichier.createdAt) || L.today() };
+  if (!fichier || fichier.publicKey !== publicKey) {
+    try { fs.writeFileSync(CLE_PUBLIQUE_EDITEUR(), JSON.stringify(pub, null, 2) + '\n'); clePubliqueCache = null; } catch {}
+  }
+  return pub;
 }
 // Celui qui signe n'achète pas : le poste dont la clé privée correspond à la clé publique EN VIGUEUR
 // (celle du paquet, ou la sienne tant que le paquet n'en porte pas) n'a ni essai ni verrou. Une
@@ -514,11 +518,16 @@ function clePubliqueEditeur() {
 // (c'est l'état « armée avec cette clé / avec une autre / en attente » du panneau).
 function editeurDeLaCleEnVigueur() {
   const mienne = clePubliqueEditeur();
-  return !!(mienne && mienne.publicKey && mienne.publicKey === publicKey());
+  return !!(mienne && publicKey() && String(mienne.publicKey).trim() === String(publicKey()).trim());
 }
 function ecrireLicence(key) {
   fs.mkdirSync(path.dirname(LIC_FILE()), { recursive: true });
-  fs.writeFileSync(LIC_FILE(), JSON.stringify({ key, savedAt: new Date().toISOString() }, null, 2));
+  // La date d'armement doublée dans le dossier (voir armedAt) survit à la clé qu'on pose ou retire.
+  const avant = lireJson(LIC_FILE()) || {};
+  const doc = key ? { key, savedAt: new Date().toISOString() } : {};
+  if (L.dateValide(avant.armedAt)) doc.armedAt = avant.armedAt;
+  if (!key && !doc.armedAt) { try { fs.unlinkSync(LIC_FILE()); } catch {} return; }
+  fs.writeFileSync(LIC_FILE(), JSON.stringify(doc, null, 2));
 }
 // La clé du dossier ouvert. Une clé rangée par la 6.4.0 au niveau de l'ordinateur est reprise pour
 // le dossier qu'elle concerne (même matricule, ou clé sans matricule) — et pour lui seul.
@@ -547,7 +556,16 @@ function armedAt() {
   if (!pub.publicKey) return '';
   const cfg = readAppCfg();
   if (!cfg.armedAt) { cfg.armedAt = L.today(); writeAppCfg(cfg); }
-  return cfg.armedAt > (pub.createdAt || '') ? cfg.armedAt : (pub.createdAt || cfg.armedAt);
+  // Doublée DANS le dossier de l'entreprise (<dossier>/licence.json) : effacer app-config.json en
+  // gardant ses données ne rejoue pas l'essai. La plus ancienne des deux dates fait foi, et chacune
+  // rattrape l'autre si elle manque.
+  let arme = cfg.armedAt;
+  try {
+    const lic = lireJson(LIC_FILE()) || {};
+    if (L.dateValide(lic.armedAt) && lic.armedAt < arme) { arme = lic.armedAt; cfg.armedAt = arme; writeAppCfg(cfg); }
+    if (lic.armedAt !== arme) { fs.mkdirSync(path.dirname(LIC_FILE()), { recursive: true }); fs.writeFileSync(LIC_FILE(), JSON.stringify({ ...lic, armedAt: arme }, null, 2)); }
+  } catch {}
+  return arme > (pub.createdAt || '') ? arme : (pub.createdAt || arme);
 }
 // Le matricule de la société vit dans les données du renderer : c'est lui qui le passe, et il
 // redemande l'état quand il change (chargement du dossier, fiche société enregistrée).
@@ -1163,7 +1181,13 @@ ipcMain.handle('editeur:status', (_e, opts) => editeurStatus((opts || {}).depuis
 ipcMain.handle('licence:set', (_e, key, opts) => {
   const k = String(key || '').trim();
   const matricule = (opts || {}).matricule || '';
-  if (!k) { try { fs.unlinkSync(LIC_FILE()); } catch {} return licenceStatus(matricule); }
+  if (!k) {
+    // La clé du dossier ET celle héritée de la 6.4.0 (userData) : sans la seconde, readLicence()
+    // la recopierait dans le dossier au prochain appel et « Retirer » ne retirerait rien.
+    ecrireLicence('');                         // garde la date d'armement du dossier, retire la clé
+    try { fs.unlinkSync(LIC_ANCIEN()); } catch {}
+    return licenceStatus(matricule);
+  }
   if (publicKey() && !L.verifyKey(k, publicKey())) {
     const err = new Error('Cette clé n\'est pas reconnue. Vérifie qu\'elle a été copiée en entier, de « SKAN1. » jusqu\'au dernier caractère.');
     err.code = 'LICENCE_INVALIDE';
@@ -1551,6 +1575,9 @@ function relaySecret() { return String(PKG.updateSecret || '').trim(); }
 
 function feedGithub(u) {
   const cfg = readUpdateCfg();
+  // Les en-têtes posés pour le relais (secret de l'application, clé de licence) ne doivent pas
+  // partir vers GitHub ni vers le CDN des fichiers : on les retire AVANT de changer de flux.
+  u.requestHeaders = null;
   u.setFeedURL({ provider: 'github', owner: GITHUB.owner, repo: GITHUB.repo, private: !!cfg.token, token: cfg.token || undefined });
 }
 
