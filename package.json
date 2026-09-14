@@ -47,7 +47,8 @@
     "e2e:beta": "node test/e2e/beta.js",
     "e2e:depot": "node test/e2e/depot.js",
     "e2e:partage": "node test/e2e/partage.js",
-    "e2e:actions": "node test/e2e/actions.js"
+    "e2e:actions": "node test/e2e/actions.js",
+    "e2e:parametres": "node test/e2e/parametres.js"
   },
   "devDependencies": {
     "electron": "^43.0.0",

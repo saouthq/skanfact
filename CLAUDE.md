@@ -362,6 +362,7 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:exemple` | **charger le jeu d'exemple et en revenir** : le bandeau, la restauration, et la fausse identité qui ne survit pas à l'effacement |
 | `npm run e2e:argent` | **où tombe l'argent** : deux comptes, un règlement en espèces qui va dans la caisse et pas à la banque, un paiement qu'on corrige, et le mois vide que le Cabinet ne déclare plus complet |
 | `npm run e2e:captures` | photographie les 20 pages, leurs onglets et quatre gestes, en vierge et en démo, à 1440 et 1280 |
+| `npm run e2e:parametres` | **les réglages, mesurés** : par onglet et pour les deux applications — combien de champs, combien de bulles, combien d'écrans de haut, quels panneaux, quels boutons (`dist-e2e/parametres/mesures.json`), plus une capture par onglet, en clair, en sombre et à 1280. Un instrument, pas un test : c'est lui qui dit qu'un onglet fait 0,2 écran et un autre 2,5 |
 | `npm run e2e:gel` | le chien de garde : l'interface est VRAIMENT gelée, et le journal nomme la fonction coupable |
 | `npm run e2e:contraste` | **aucun bouton illisible ni hors de l'écran** : contraste texte/fond et débordement de chaque bouton visible des 21 pages et de tous les éditeurs, en clair, en sombre, à 1440 et à 1280 |
 | `npm run e2e:apercu` | **voir ce qu'on fabrique** : le grand aperçu, son zoom, « Ajuster », Échap, et l'interrupteur qui reste en haut |
