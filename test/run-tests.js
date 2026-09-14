@@ -4561,16 +4561,34 @@ t('audit A4 : les sauvegardes se purgent par DATE, et les filets ont leur propre
   let t0 = Date.parse('2026-09-12T08:00:00Z');
   const s = CS.createCabStore(dir, { now: () => new Date(t0) });
   s.create('mot-de-passe-long', cabState());
-  for (let i = 0; i < 25; i++) { t0 += 60000; s.backupNow('manuelle'); }
+  const prises = [];
+  for (let i = 0; i < 25; i++) { t0 += 60000; prises.push(cpath.basename(s.backupNow('manuelle'))); }
   t0 += 60000;
   const filet = s.backupNow('avant-suppression-dossier');
   assert.ok(cfs.existsSync(filet), 'le filet pris à l\'instant doit encore exister');
   const noms = s.listBackups().map(b => b.name);
   assert.ok(noms.some(n => /avant-suppression/.test(n)), 'le filet ne doit pas être chassé par les sauvegardes volontaires');
-  assert.ok(noms.filter(n => /^manuelle/.test(n)).length <= 20, 'les volontaires, elles, se purgent');
-  // Et la plus ancienne des volontaires part avant la plus récente.
-  const manuelles = s.listBackups().filter(b => /^manuelle/.test(b.name)).sort((a, b) => a.mtime - b.mtime);
-  assert.ok(manuelles.length >= 2 && manuelles[0].mtime < manuelles[manuelles.length - 1].mtime);
+
+  // On vérifie NOM PAR NOM que ce sont les vingt dernières qui restent. Compter ne prouve rien :
+  // vingt sauvegardes prises au hasard sont aussi « vingt ».
+  const restantes = () => s.listBackups().map(b => b.name).filter(n => /^manuelle/.test(n)).sort();
+  assert.deepStrictEqual(restantes(), prises.slice(5).sort(),
+    'la purge doit garder les vingt DERNIÈRES prises, pas vingt quelconques');
+
+  // Le cas Windows, reproduit ici pour qu'il échoue sur TOUTES les machines. Là-bas l'horloge
+  // système n'avance que toutes les ~15 ms : vingt-six copies d'affilée portent le même mtime, et
+  // l'ordre du disque ne dit plus rien. Une copie fait pire — miroir externe, clé USB, changement
+  // d'ordinateur réécrivent les mtime dans l'ordre de la copie. On prend donc le cas extrême, les
+  // mtime à l'ENVERS de l'ordre réel : une purge qui s'y fierait effacerait la plus RÉCENTE.
+  // Sans ça, ce test passait sur Linux et échouait sur Windows, ce qui bloquait la publication.
+  s.listBackups().map(b => b.path).sort().forEach((p, i) => {
+    const faux = new Date(Date.parse('2026-01-01T00:00:00Z') - i * 60000);
+    cfs.utimesSync(p, faux, faux);
+  });
+  t0 += 60000;
+  const dernier = cpath.basename(s.backupNow('manuelle'));
+  assert.deepStrictEqual(restantes(), prises.slice(6).concat(dernier).sort(),
+    'avec des mtime trompeurs, la purge doit suivre la date écrite dans le NOM');
 });
 
 t('audit A1 : un mois piégé ne fait pas écrire hors du dossier de l\'application', () => {
@@ -5562,6 +5580,27 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       'le filet le plus récent a été purgé alors que vingt-cinq sauvegardes plus vieilles restaient : ' + restants.join(', '));
     // Et ce sont bien les plus vieilles qui sont parties.
     assert.ok(!restants.includes('manuelle-000.json'), 'la plus ancienne aurait dû partir');
+
+    // Le cas Windows. Là-bas l'horloge système n'avance que toutes les ~15 ms : des copies
+    // successives portent le MÊME mtime, et le tri retombait alors sur son départage — qui était
+    // ALPHABÉTIQUE. « avant-… » repassait donc en tête et redevenait la première effacée : le bug
+    // de 6.8.1 intact, sur la seule plateforme que personne ne testait. Depuis, les filets ont
+    // leur propre réserve, comme dans l'app cabinet.
+    fs.readdirSync(dossier).forEach(n => {
+      const q = new Date(2026, 8, 12);
+      fs.utimesSync(path.join(dossier, n), q, q);
+    });
+    // Deux étiquettes DIFFÉRENTES : le nom d'une sauvegarde porte l'heure à la seconde près, donc
+    // deux `backupNow('manuelle')` lancés dans la même seconde écrivent le MÊME fichier. Le second
+    // écrasait le premier, le compte ne bougeait pas, aucune purge ne se déclenchait — et ce test
+    // passait avec le défaut réintroduit. Un test qui ne peut pas échouer est pire que pas de test.
+    s.backupNow('manuelle-bis');
+    s.backupNow('manuelle-ter');
+    const apres = fs.readdirSync(dossier);
+    assert.ok(apres.includes('avant-effacement-2026-09-12.json'),
+      'à mtime égal, le filet redevenait la première effacée par ordre alphabétique : ' + apres.join(', '));
+    assert.ok(!apres.includes('manuelle-007.json'),
+      'c\'est la plus ancienne des VOLONTAIRES qui doit partir, pas le filet');
   });
 
   t('l\'exemple rend ce qu\'il a emprunté, et ne signe jamais rien', () => {

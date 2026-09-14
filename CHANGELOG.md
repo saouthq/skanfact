@@ -7,6 +7,41 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 7.21.3 — 14/09/2026
+
+**La purge des sauvegardes se fiait à l'horloge du disque, qui ment sur Windows.**
+
+Trouvé par la première publication depuis que le dépôt est public : `npm test` échouait sur la
+machine **Windows** et passait sur Linux. Le test n'était pas en cause — la purge l'était.
+
+Une purge se fait par date (règle de 6.8.1), et cette date était lue dans le **mtime du système de
+fichiers**. Il ment dans deux cas bien réels :
+
+- Sur **Windows**, l'horloge système n'avance que toutes les ~15 ms. Vingt-six sauvegardes copiées
+  d'affilée portent donc le **même** mtime : l'ordre « la plus ancienne d'abord » devient
+  arbitraire, et la purge efface n'importe laquelle.
+- Une **copie** réécrit les mtime — miroir externe, clé USB, changement d'ordinateur. Après un
+  déménagement, le scénario que 6.8.2 a précisément ouvert, ils ne disent plus rien du tout.
+
+Le nom d'une sauvegarde porte déjà la date que **l'application** a écrite, au format
+`AAAA-MM-JJ_HHhMMmSS`. Il est zéro-rempli : son ordre alphabétique **est** l'ordre du temps, sans
+aucun calcul de date, donc sans la moindre question de fuseau horaire. C'est lui qui fait foi
+désormais ; le mtime ne sert plus qu'en second, pour un fichier dont le nom ne porte pas de date.
+La liste des sauvegardes suit le même ordre : sur Windows elle s'affichait dans un ordre arbitraire,
+et le jour où l'on restaure est le pire jour pour choisir au hasard.
+
+**Et le bug de 6.8.1 était toujours vivant dans l'app entreprise, sur la seule plateforme que
+personne ne testait.** Le tri y départageait les mtime égaux par ordre **alphabétique** : sur
+Windows, où ils sont presque toujours égaux, « avant-import » repassait donc en tête et redevenait
+la première effacée — exactement le défaut que la correction était censée avoir supprimé. Les filets
+que l'application prend avant un geste risqué ont maintenant leur **propre réserve**, comme dans
+l'app cabinet depuis 6.8.1 : vingt sauvegardes volontaires ne peuvent plus les chasser.
+
+Les deux tests sont prouvés en réintroduisant leur défaut, et le cas Windows est reproduit sur
+toutes les machines (mtime imposés à l'envers de l'ordre réel). L'un d'eux ne prouvait d'ailleurs
+rien : ses deux `backupNow` tombaient dans la même seconde, écrivaient donc le même fichier, et
+aucune purge ne se déclenchait.
+
 ## 7.21.2 — 13/09/2026
 
 **L'installateur Windows tout prêt, et un échec de construction qui se nomme.**

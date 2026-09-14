@@ -30,6 +30,28 @@ function stamp(d) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}h${p(d.getMinutes())}m${p(d.getSeconds())}`;
 }
 
+// Le nom d'une sauvegarde porte la date que L'APPLICATION a écrite (stamp() ci-dessus), au format
+// AAAA-MM-JJ_HHhMMmSS. Il est zéro-rempli, donc son ordre alphabétique EST l'ordre du temps — sans
+// aucun calcul de date, donc sans la moindre question de fuseau horaire.
+//
+// On s'y fie AVANT le mtime du disque, qui ment dans deux cas bien réels :
+//   - Sur Windows, l'horloge système n'avance que toutes les ~15 ms. Vingt-six copies d'affilée
+//     portent donc le MÊME mtime : l'ordre « la plus ancienne d'abord » devient arbitraire, et la
+//     purge efface n'importe laquelle. C'est ce qui faisait échouer le test A4 sur Windows
+//     pendant qu'il passait sur Linux.
+//   - Une COPIE réécrit les mtime : miroir externe, clé USB, changement d'ordinateur. Après un
+//     déménagement — le scénario que 6.8.2 a précisément ouvert — ils ne disent plus rien du tout,
+//     et la purge peut effacer la plus récente en croyant prendre la plus ancienne.
+// Le mtime reste le second critère, pour un fichier dont le nom ne porte pas de date.
+const MARQUE = /(\d{4}-\d{2}-\d{2}(?:_\d{2}h\d{2}m\d{2})?)\.json$/;
+function marque(name) { const m = MARQUE.exec(name); return m ? m[1] : ''; }
+function plusAncienDabord(a, b) {
+  const ma = marque(a.name), mb = marque(b.name);
+  if (ma && mb && ma !== mb) return ma < mb ? -1 : 1;
+  if (a.mtime !== b.mtime) return a.mtime - b.mtime;
+  return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;       // dernier recours : stable
+}
+
 // Un nom de dossier lisible par un humain qui ouvre le Finder. Le comptable doit pouvoir retrouver
 // les pièces d'un client sans lancer l'application — et pouvoir les lui rendre en copiant un dossier.
 // Toutes les lettres, pas seulement l'alphabet latin : « مخبزة الياسمين » et « شركة الأمان »
@@ -250,10 +272,10 @@ function createCabStore(dir, opts) {
   const FILETS = /^avant-/;
   function dated(names) {
     return names.map(name => {
-      let m = 0;
-      try { m = fs.statSync(path.join(backupDir, name)).mtimeMs; } catch {}
-      return { name, m };
-    }).sort((a, b) => a.m - b.m);                              // le plus ancien d'abord
+      let mtime = 0;
+      try { mtime = fs.statSync(path.join(backupDir, name)).mtimeMs; } catch {}
+      return { name, mtime };
+    }).sort(plusAncienDabord);                                 // le plus ancien d'abord
   }
   function prune() {
     let names;
@@ -276,7 +298,10 @@ function createCabStore(dir, opts) {
       const p = path.join(backupDir, name);
       const s = fs.statSync(p);
       return { name, path: p, size: s.size, mtime: s.mtimeMs, daily: DAILY_RE.test(name) };
-    }).sort((a, b) => b.mtime - a.mtime);
+      // Même ordre que la purge, à l'envers : la plus récente en tête. Trier ici par mtime seul
+      // mettrait la liste des sauvegardes dans un ordre arbitraire sur Windows — et le jour où on
+      // restaure est le pire jour pour choisir au hasard.
+    }).sort((a, b) => plusAncienDabord(b, a));
   }
 
   // Lire une sauvegarde SANS rien écrire : on montre ce qu'elle contient avant de la restaurer.

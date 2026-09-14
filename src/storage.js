@@ -27,6 +27,26 @@ function stamp(d) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}h${p(d.getMinutes())}m${p(d.getSeconds())}`;
 }
 
+// Les filets : les sauvegardes que l'APPLICATION prend d'elle-même avant un geste risqué
+// (« avant-import », « avant-demo », « avant-effacement »). Elles ont leur propre réserve, sinon
+// vingt sauvegardes volontaires — Cmd+S, le réflexe universel — les chassent toutes.
+const FILETS = /^avant-/;
+
+// Jumeau de src/cabinet/cabstore.js : le nom porte la date que l'application a écrite (stamp()),
+// au format AAAA-MM-JJ_HHhMMmSS, zéro-rempli. Son ordre alphabétique EST l'ordre du temps, sans
+// aucun calcul de date, donc sans la moindre question de fuseau horaire. On s'y fie avant le mtime
+// du disque, qui ment dans deux cas réels : sur Windows l'horloge système n'avance que toutes les
+// ~15 ms (des copies successives portent le même mtime, et l'ordre devient arbitraire), et une
+// copie — miroir externe, clé USB, changement d'ordinateur — réécrit tous les mtime.
+const MARQUE = /(\d{4}-\d{2}-\d{2}(?:_\d{2}h\d{2}m\d{2})?)\.json$/;
+function marque(name) { const m = MARQUE.exec(name); return m ? m[1] : ''; }
+function plusAncienDabord(a, b) {
+  const ma = marque(a.name), mb = marque(b.name);
+  if (ma && mb && ma !== mb) return ma < mb ? -1 : 1;
+  if (a.mtime !== b.mtime) return a.mtime - b.mtime;
+  return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;       // dernier recours : stable
+}
+
 function isValidData(d) {
   if (!d || typeof d !== 'object' || Array.isArray(d)) return false;
   for (const k of ['clients', 'catalog', 'documents']) {
@@ -243,10 +263,24 @@ function createStorage(dir, opts) {
     // disparaissait donc à la seconde où il était pris, pendant que l'écran annonçait qu'une
     // sauvegarde est faite avant. Même défaut corrigé dans l'app cabinet en 6.8.1, jamais porté
     // ici. Une purge se fait par DATE, jamais par nom — la plus ancienne part, point.
-    const named = names.filter(f => !DAILY_RE.test(f))
-      .map(f => { let t = 0; try { t = fs.statSync(path.join(backupDir, f)).mtimeMs; } catch (_) {} return { f, t }; })
-      .sort((a, b) => a.t - b.t || a.f.localeCompare(b.f));
-    while (named.length > NAMED_KEEP) fs.unlinkSync(path.join(backupDir, named.shift().f));
+    //
+    // Et l'ordre alphabétique revenait par la porte de service : il servait de DÉPARTAGE quand
+    // deux mtime sont égaux. Sur Windows ils le sont presque toujours (l'horloge système n'avance
+    // que toutes les ~15 ms), donc « avant-… » repassait en tête et redevenait la première
+    // effacée — le bug de 6.8.1, intact, sur la seule plateforme où personne ne le testait.
+    // On ordonne donc par la date écrite dans le NOM, et le mtime ne sert plus qu'en second.
+    const dated = liste => liste
+      .map(f => { let mtime = 0; try { mtime = fs.statSync(path.join(backupDir, f)).mtimeMs; } catch (_) {} return { name: f, mtime }; })
+      .sort(plusAncienDabord);
+    const jeter = liste => { while (liste.length > 0) fs.unlinkSync(path.join(backupDir, liste.shift().name)); };
+    // Deux réserves séparées, comme dans l'app cabinet : les filets pris par l'application avant un
+    // geste risqué ne doivent jamais être chassés par des sauvegardes volontaires. Sans ça, vingt
+    // « manuelle » suffisaient à faire disparaître « avant-import » à la seconde où il naissait.
+    const restantes = names.filter(f => !DAILY_RE.test(f));
+    const filets = dated(restantes.filter(f => FILETS.test(f)));
+    jeter(filets.slice(0, Math.max(0, filets.length - NAMED_KEEP)));
+    const volontaires = dated(restantes.filter(f => !FILETS.test(f)));
+    jeter(volontaires.slice(0, Math.max(0, volontaires.length - NAMED_KEEP)));
   }
 
   function listBackups() {
@@ -256,7 +290,10 @@ function createStorage(dir, opts) {
       const p = path.join(backupDir, name);
       const st = fs.statSync(p);
       return { name, path: p, size: st.size, mtime: st.mtimeMs };
-    }).sort((a, b) => b.mtime - a.mtime);
+      // Même ordre que la purge, à l'envers : la plus récente en tête. Trier par mtime seul
+      // mettrait la liste dans un ordre arbitraire sur Windows — et le jour où l'on restaure est
+      // le pire jour pour choisir au hasard.
+    }).sort((a, b) => plusAncienDabord(b, a));
   }
 
   // Lit un fichier JSON externe (import) et vérifie sa structure sans rien écrire.
