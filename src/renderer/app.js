@@ -10430,7 +10430,7 @@
         <label class="field">${lbl('Durée', 'lic.duree')}<select name="duree">${dur.map(d => `<option value="${h(d.id)}" ${l.duree === d.id ? 'selected' : ''}>${h(d.label)}${d.exp ? ` — jusqu'au ${C.fmtDate(d.exp)}` : ''}</option>`).join('')}</select></label>
         <div class="span-2" id="lf-date" hidden>${dateFieldHtml('Date de fin', 'expDate', l.expDate)}</div>
         <div class="field span-2">${lbl('Prestation du catalogue', 'lic.prestation')}${combo({ name: 'itemId', value: l.itemId, items, placeholder: '— Facultatif : la ligne de la facture —', search: 'Rechercher une prestation…' })}</div>
-        <label class="field obligatoire">${lbl('Prix HT', 'lic.prix')}<input type="number" name="prix" class="num" step="0.001" min="0" value="${h(l.prix)}"></label>
+        <label class="field obligatoire">${lbl(`Prix HT (${h(cur)})`, 'lic.prix')}<input type="number" name="prix" class="num" step="0.001" min="0" value="${h(l.prix)}"></label>
         <label class="field">TVA<select name="tva">${C.VAT_RATES.map(r => `<option value="${r}" ${Number(l.tva) === r ? 'selected' : ''}>${r} %</option>`).join('')}</select></label>
         <label class="check span-2"><input type="checkbox" name="parrain" ${l.parrain ? 'checked' : ''}> ${lbl('Client parrainé par un cabinet comptable', 'lic.parrain')}</label>
         <div class="grid-2 span-2" id="lf-parrain" ${l.parrain ? '' : 'hidden'}>
@@ -10471,6 +10471,10 @@
           const it = v.itemId ? data.catalog.find(c => c.id === v.itemId) : null;
           const inv = newDocument('facture');
           applyClientDefaults(inv, client.id);
+          // Le prix a été saisi dans la devise de la SOCIÉTÉ (le champ le dit) : la facture reste
+          // dans cette devise, même pour un client réglé en euros — sinon 390 deviendrait 390 € sans
+          // taux de change. La langue du client, elle, est gardée.
+          inv.currency = company().currency; inv.exchangeRate = '';
           const label = it ? it.label : `Licence SkanFact ${offreLabelDe(r.offre)} — ${v.duree === 'date' ? 'jusqu\'au ' + C.fmtDate(r.exp) : dureeLabelDe(v.duree)}`;
           inv.lines = [{ label, description: `Licence n° ${r.id}${r.exp ? ', valable jusqu\'au ' + C.fmtDate(r.exp) : ', sans limite de durée'}`,
             qty: 1, unit: (it && it.unit) || '', unitPrice: Number(v.prix), unitCost: (it && it.unitCost) || '', vatRate: Number(v.tva), ...(it ? { itemId: it.id } : {}) }];

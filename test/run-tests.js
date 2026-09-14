@@ -3311,11 +3311,13 @@ t('éditeur : la clé privée ne traverse jamais le pont, et l\'app livrée emba
   // un fichier repris. Aucun `return` ne la contient.
   // Chaque occurrence est jugée sur ce qui la SUIT immédiatement : une regex gourmande jusqu'à la
   // fin de la ligne avalait une seconde lecture posée sur la même ligne (prouvé en l'y mettant).
-  const lectures = [...section.matchAll(/lirePrivee\(\)(.{0,12})/g)].map(m => m[1]);
+  // Et c'est le CONTEXTE ENTIER de chaque lecture qui est jugé, pas le caractère qui suit : le
+  // contradicteur a montré qu'un `String(lirePrivee())` renvoyé passait un contrôle sur le seul « ) ».
+  const lectures = [...section.matchAll(/.{0,40}lirePrivee\(\).{0,24}/g)].map(m => m[0]);
   assert.ok(lectures.length >= 3, 'la section éditeur ne lit pas la clé privée ?');
-  assert.ok(!/JSON\.stringify\([^)]*lirePrivee|privateKey: lirePrivee|pem: lirePrivee/.test(section), 'la clé privée ne se sérialise pas');
-  lectures.forEach(suite => assert.ok(/^\)/.test(suite) || /^\.trim\(\) !==/.test(suite),
-    'la clé privée est lue pour autre chose que signer / déduire / comparer : lirePrivee()' + suite));
+  const AUTORISES = [/L\.signLicence\(payload, lirePrivee\(\)\)/, /crypto\.createPrivateKey\(lirePrivee\(\)\)/, /lirePrivee\(\)\.trim\(\) !== pem\.trim\(\)/];
+  lectures.forEach(ctx => assert.ok(AUTORISES.some(re => re.test(ctx)),
+    'la clé privée est lue pour autre chose que signer / déduire / comparer : …' + ctx.trim()));
   assert.ok(/L\.signLicence\(payload, lirePrivee\(\)\)/.test(section), 'la signature se fait dans main.js, avec le fichier de clé privée');
   assert.ok(!/return \{[^}]*privateKey/.test(section) && !/privateKey:/.test(section.replace(/publicKey/g, '')), 'un handler renvoie la clé privée');
   // Une clé émise pour une AUTRE entreprise est refusée à l'enregistrement, en nommant les deux.

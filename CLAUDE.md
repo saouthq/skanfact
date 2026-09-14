@@ -1800,9 +1800,15 @@ Règles apprises, à ne pas recasser :
   marges, statistiques » sur un bandeau qui laisse les Statistiques ouvertes (`LIBELLES_OFFRE`), le
   mail qui annonçait une facture jointe quand rien ne l'était (`{facture}` conditionnel), une
   licence déjà renouvelée qu'on pouvait renouveler encore, `normMatricule` qui prenait le code TVA
-  (« /A ») pour la lettre-clé, et le 30 février accepté comme date de fin (`dateValide`). Le test
-  « ce que la relecture adversariale a trouvé » tient chacun. À refaire sur toute version qui touche
-  à de l'argent ou à une clé.
+  (« /A ») pour la lettre-clé, le 30 février accepté comme date de fin (`dateValide`), et le prix
+  saisi « 390 » qui devenait 390 € sur la facture d'un client réglé en euros (le champ nomme la
+  devise de la société, et la facture de licence reste dans cette devise). Le test « ce que la
+  relecture adversariale a trouvé » tient chacun. Les contradicteurs ont aussi jugé les TESTS :
+  un contrôle sur le seul caractère qui suit `lirePrivee()` laissait passer `String(lirePrivee())`
+  (le contexte entier est jugé désormais), une assertion e2e à précédence `||`/`&&` qui acceptait
+  n'importe quel identifiant, un « pas de cadenas sur Statistiques » vrai faute de lien (le métier
+  choisi n'affichait pas le module), et un refus testé par le pont au lieu de l'écran. À refaire sur
+  toute version qui touche à de l'argent ou à une clé.
 - Piège d'e2e : ce que « Copier la clé publique » met dans le presse-papiers est le fichier JSON
   entier (les retours à la ligne y sont échappés) — comparer les champs après `JSON.parse`, pas le
   texte. Et la clé privée de l'e2e vit dans `SKANFACT_DOSSIER_CLES` : jamais dans le vrai

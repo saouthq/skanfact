@@ -127,7 +127,9 @@ const L = require('../../src/licence.js');
   await win.waitForSelector('#modal-root [data-combo=clientId] .combo-it');
   await win.click('#modal-root [data-combo=clientId] .combo-it');
   await win.selectOption('#modal-root select[name=offre]', 'independant');
-  await win.selectOption('#modal-root select[name=duree]', '1a');
+  // Un mois : la licence finit dans 30 jours, donc elle est « à renouveler » DÈS son émission —
+  // c'est ce qui permet de voir, à l'étape 7, qu'un renouvellement la sort du compte.
+  await win.selectOption('#modal-root select[name=duree]', '1m');
   await win.fill('#modal-root input[name=prix]', '390');
   await win.selectOption('#modal-root select[name=tva]', '19');
   await win.click('#modal-root #ok');
@@ -146,7 +148,7 @@ const L = require('../../src/licence.js');
   if (!payload || payload.offre !== 'independant' || payload.nom !== 'Menuiserie Trabelsi SUARL' || payload.matricule !== '1234567A/M/P/000' || payload.id !== l1.id) {
     throw new Error('la clé émise ne se vérifie pas avec la clé publique, ou ne porte pas les bons champs : ' + JSON.stringify(payload));
   }
-  if (payload.exp !== L.addMonths(L.today(), 12)) throw new Error('« 1 an » doit finir le même jour l\'an prochain : ' + payload.exp);
+  if (payload.exp !== L.addMonths(L.today(), 1)) throw new Error('« 1 mois » doit finir le même jour le mois prochain : ' + payload.exp);
   if (!emise.inv || emise.inv.type !== 'facture' || emise.inv.status !== 'brouillon' || emise.inv.number) throw new Error('la facture doit être un BROUILLON sans numéro : ' + JSON.stringify(emise.inv));
   if (emise.inv.clientId !== l1.clientId || emise.inv.lines.length !== 1 || emise.inv.lines[0].unitPrice !== 390 || emise.inv.lines[0].vatRate !== 19 || emise.inv.licenceId !== l1.id) {
     throw new Error('la ligne de la facture ne porte pas la licence : ' + JSON.stringify(emise.inv.lines));
@@ -154,11 +156,22 @@ const L = require('../../src/licence.js');
   if (/PRIVATE KEY/.test(JSON.stringify(emise))) throw new Error('la clé privée est dans les données');
   j.ok(`clé ${l1.id} vérifiée avec la clé publique · facture brouillon 390 DT HT · offre Indépendant jusqu'au ${payload.exp}`);
 
-  // la page Licences la montre, et « À faire » ne la réclame pas encore (elle finit dans un an)
+  // la page Licences la montre « à renouveler », le pied la compte, la barre la signale, et
+  // « À faire » la réclame sur l'accueil
   await aller('#/licences');
   await win.waitForSelector('#lic-wrap table');
   const ligne = await win.textContent('#lic-wrap tbody tr');
-  if (!/Trabelsi/.test(ligne) || !/Indépendant/.test(ligne) || !/Brouillon/.test(ligne)) throw new Error('la ligne de la licence est incomplète : ' + ligne.replace(/\s+/g, ' '));
+  if (!/Trabelsi/.test(ligne) || !/Indépendant/.test(ligne) || !/Brouillon/.test(ligne) || !/À renouveler/.test(ligne)) throw new Error('la ligne de la licence est incomplète : ' + ligne.replace(/\s+/g, ' '));
+  const pied1 = (await win.textContent('#lic-wrap tfoot')).replace(/\s+/g, ' ');
+  if (!/1 à renouveler/.test(pied1)) throw new Error('le pied doit compter la licence à renouveler : ' + pied1);
+  const pastille1 = await win.evaluate(() => { const e = document.querySelector('#nav-licences'); return e && !e.hidden ? e.textContent : null; });
+  if (pastille1 !== '1') throw new Error('la barre doit signaler 1 licence à renouveler : ' + pastille1);
+  await aller('#/dashboard');
+  await win.waitForSelector('#view');
+  await win.waitForTimeout(300);
+  if (!await win.$('[data-todo="licences-expirent"]')) throw new Error('« À faire » ne réclame pas la licence qui expire dans 30 jours');
+  await aller('#/licences');
+  await win.waitForSelector('#lic-wrap table');
   await win.click('#lic-wrap .row-menu-btn');
   await win.waitForSelector('.row-menu');
   const actions = await win.$$eval('.row-menu [role=menuitem], .row-menu button', els => els.map(e => e.textContent.trim()).filter(Boolean));
@@ -180,12 +193,20 @@ const L = require('../../src/licence.js');
   if (st1.state !== 'active' || st1.offre !== 'independant' || !st1.reserves.includes('achats')) throw new Error('la clé collée devrait activer l\'offre Indépendant : ' + JSON.stringify(st1).slice(0, 200));
   const panneau = await win.textContent('#lic-panel');
   if (!/Indépendant/.test(panneau)) throw new Error('le panneau Licence ne nomme pas l\'offre');
+  // Le métier « informatique » n'affiche pas le module Pilotage : on affiche TOUT (aucun choix de
+  // modules enregistré = tout), sinon « pas de cadenas sur Statistiques » serait vrai faute de lien.
+  await win.evaluate(async () => { delete window.__data.company.modules; await window.skanfact.saveData(window.__data); });
+  await aller('#/dashboard');
+  await win.waitForSelector('nav a[data-route="stats"]', { timeout: 8000 });
   const cadenas = await win.evaluate(() => ({
     achats: !!document.querySelector('nav a[data-route="achats"] svg.nav-lock'),
+    tresorerie: !!document.querySelector('nav a[data-route="tresorerie"] svg.nav-lock'),
+    paie: !!document.querySelector('nav a[data-route="paie"] svg.nav-lock'),
+    statsLien: !!document.querySelector('nav a[data-route="stats"]'),
     stats: !!document.querySelector('nav a[data-route="stats"] svg.nav-lock'),
     devis: !!document.querySelector('nav a[data-route="devis"] svg.nav-lock')
   }));
-  if (!cadenas.achats || cadenas.stats || cadenas.devis) throw new Error('cadenas mal posés : ' + JSON.stringify(cadenas));
+  if (!cadenas.achats || !cadenas.tresorerie || !cadenas.paie || !cadenas.statsLien || cadenas.stats || cadenas.devis) throw new Error('cadenas mal posés : ' + JSON.stringify(cadenas));
   // Achats : le bandeau à l'entrée, et le refus à la création — sans rien masquer. La page reste,
   // la liste se lit ; c'est un NOUVEAU fournisseur qui est refusé, dans son propre formulaire.
   await aller('#/achats');
@@ -220,11 +241,17 @@ const L = require('../../src/licence.js');
   j.etape('Une clé émise pour un autre matricule est refusée, en nommant les deux');
   const autre = await win.evaluate(() => window.skanfact.licenceEmettre({ nom: 'Pharmacie El Menzah', matricule: '7654321B/A/M/000', offre: 'entreprise', duree: '1a' }));
   if (/PRIVATE KEY/.test(JSON.stringify(autre))) throw new Error('licenceEmettre rend la clé privée');
-  const refus = await win.evaluate(async ({ key, mf }) => { try { await window.skanfact.licenceSet(key, mf); return null; } catch (e) { return String(e.message || e); } }, { key: autre.key, mf: '1234567A/M/P/000' });
-  if (!refus || !/7654321B/.test(refus) || !/1234567A/.test(refus)) throw new Error('la clé d\'une autre entreprise devrait être refusée en nommant les deux matricules : ' + refus);
+  // Par l'ÉCRAN, comme le ferait le client : on colle, on enregistre, et c'est le bandeau qui refuse.
+  await ouvrirParametres('p-licence');
+  await win.fill('#lic-key', autre.key);
+  await win.click('#lic-save');
+  await win.waitForFunction(() => { const t = document.querySelector('#toast'); return t && !t.hidden && /7654321B/.test(t.textContent); }, null, { timeout: 8000 });
+  const refus = await win.textContent('#toast');
+  if (!/7654321B/.test(refus) || !/1234567A/.test(refus)) throw new Error('la clé d\'une autre entreprise devrait être refusée en nommant les deux matricules : ' + refus);
   const encore = await win.evaluate(mf => window.skanfact.licenceStatus(mf), '1234567A/M/P/000');
   if (encore.state !== 'active' || encore.offre !== 'independant') throw new Error('le refus a écrasé la licence en place');
-  j.ok('refusée : « ' + refus.slice(0, 90) + '… »');
+  if (!/Indépendant/.test(await win.textContent('#lic-panel'))) throw new Error('le panneau doit toujours montrer la licence en place');
+  j.ok('refusée à l\'écran : « ' + refus.replace(/\s+/g, ' ').slice(0, 90) + '… »');
 
   // ---------------------------------------------------- 6. renouveler
   j.etape('Renouveler : une seconde clé, une seconde facture, la première sort du compte');
@@ -245,17 +272,30 @@ const L = require('../../src/licence.js');
   await win.waitForTimeout(500);
   const apresRenouv = await win.evaluate(() => {
     const d = window.__data; const [a, b] = d.licences;
-    return { n: d.licences.length, remplaceePar: a.remplaceePar, exp2: b.exp, remplace: b.remplace, factures: d.documents.filter(x => x.type === 'facture').length, rows: window.SkanCore.licenceRows(d).map(r => r.id + ':' + r.etat + ':' + r.renouvelee) };
+    return { n: d.licences.length, idA: a.id, idB: b.id, remplaceePar: a.remplaceePar, exp2: b.exp, remplace: b.remplace,
+      factures: d.documents.filter(x => x.type === 'facture').length, expirant: window.SkanCore.licencesExpirant(d).length };
   });
-  if (apresRenouv.n !== 2 || apresRenouv.remplaceePar !== apresRenouv.rows[1].split(':')[0] && apresRenouv.remplaceePar !== apresRenouv.rows[0].split(':')[0]) throw new Error('la première licence ne pointe pas vers sa remplaçante : ' + JSON.stringify(apresRenouv));
+  if (apresRenouv.n !== 2) throw new Error('il devrait y avoir deux licences : ' + JSON.stringify(apresRenouv));
+  if (apresRenouv.remplaceePar !== apresRenouv.idB) throw new Error('la première licence doit pointer EXACTEMENT vers sa remplaçante : ' + JSON.stringify(apresRenouv));
   if (apresRenouv.exp2 !== '' || apresRenouv.remplace !== l1.id || apresRenouv.factures !== 2) throw new Error('renouvellement incomplet : ' + JSON.stringify(apresRenouv));
+  if (apresRenouv.expirant !== 0) throw new Error('la licence renouvelée doit sortir du compte des choses à faire');
   await aller('#/licences');
   const garde2 = await win.waitForSelector('#modal-root #b', { timeout: 3000 }).catch(() => null);
   if (garde2) await garde2.click();
   await win.waitForSelector('#lic-wrap table');
   const pied = (await win.textContent('#lic-wrap tfoot')).replace(/\s+/g, ' ');
-  if (!/2 licences/.test(pied)) throw new Error('le pied devrait compter 2 licences : ' + pied);
-  j.ok('deux licences, deux factures, « à vie » sur la seconde, la première marquée renouvelée');
+  if (!/2 licences/.test(pied) || /à renouveler/.test(pied)) throw new Error('le pied devrait compter 2 licences et plus rien à renouveler : ' + pied);
+  const pastille2 = await win.evaluate(() => { const e = document.querySelector('#nav-licences'); return e && !e.hidden ? e.textContent : null; });
+  if (pastille2 !== null) throw new Error('la pastille de la barre doit s\'éteindre après le renouvellement : ' + pastille2);
+  // Et la licence renouvelée ne se renouvelle pas une seconde fois : son menu ne l'offre plus.
+  const premiere = await win.$$eval('#lic-wrap tbody tr', trs => trs.findIndex(tr => /Renouvelée/.test(tr.textContent)));
+  if (premiere < 0) throw new Error('la première licence doit se lire « Renouvelée »');
+  await win.click(`#lic-wrap tbody tr:nth-child(${premiere + 1}) .row-menu-btn`);
+  await win.waitForSelector('.row-menu');
+  const actions2 = await win.$$eval('.row-menu [role=menuitem], .row-menu button', els => els.map(e => e.textContent.trim()).filter(Boolean));
+  if (actions2.some(a => /^Renouveler$/.test(a)) || !actions2.some(a => /^Renouveler la suivante/.test(a))) throw new Error('une licence renouvelée ne doit offrir que « Renouveler la suivante » : ' + actions2.join(' | '));
+  await win.keyboard.press('Escape');
+  j.ok('deux licences, deux factures, « à vie » sur la seconde, la première marquée renouvelée et sortie du compte');
 
   console.log('\nerreurs JS : ' + bac.length);
   bac.slice(0, 6).forEach(e => console.log('  - ' + e));
