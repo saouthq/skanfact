@@ -363,6 +363,7 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:editeur` | **l'éditeur de document** : le timbre dans la devise de la pièce, l'échéance qui suit la date, la quantité effacée, la fiche du client, l'acompte en dinars, la suppression qui nomme les liens, le bouton d'une facture soldée |
 | `npm run e2e:fiches` | **les fiches et les formulaires** : l'étoile des champs obligatoires et le refus qui montre, la fiche article depuis le Catalogue, le catalogue dans un achat, la ligne en immobilisation, les affaires et contrats du client |
 | `npm run e2e:compta` | **la comptabilité mène aux pièces** : les contrôles de clôture armés, les douze mois de TVA cliquables, l'échéance fiscale qu'on pointe et qu'on dépointe, le mouvement qui ouvre sa facture, la carte « Reste à encaisser » |
+| `npm run e2e:metier` | **le métier** : quinze activités sans taux deviné, le régime fiscal posé puis conservé au redessin, les Paramètres qui grisent la TVA et annoncent la mention, le RIB non réclamé à qui encaisse sur place |
 
 Ils ont longtemps vécu dans un dossier de travail temporaire, effacé à chaque session : il fallait les réécrire de mémoire, et ils dérivaient (une assertion restée sur une version périmée, un écran neuf jamais parcouru). **Un test qu'on doit réécrire pour s'en servir n'est pas un test.** Le harnais (`test/e2e/harnais.js`) trouve Playwright où il est, lit la version dans `package.json` au lieu de l'écrire en dur, et range les captures dans `dist-e2e/` (ignoré par Git).
 
@@ -1066,6 +1067,51 @@ Règles apprises, à ne pas recasser :
   (réservé à macOS Catalina, mais purement JS) et en posant l'icône avec `resedit` plutôt que
   `rcedit`. Vérifier alors qu'**aucune ressource PE n'est perdue**, en particulier celle qui porte
   l'empreinte de `app.asar` — sans elle, l'application refuse de démarrer.
+
+## 7.22.0 — Le métier décide de ce qu'on montre, le régime de ce qu'on facture
+
+Quinze activités au lieu de six, un **régime fiscal** demandé en clair, la **note d'honoraires** des
+professions libérales, et le **RIB conditionnel**. Travail prévu de longue date, livré en bloc.
+
+Règles apprises, à ne pas recasser :
+
+- **Ce qui décide de la TVA, c'est le RÉGIME de l'entreprise, pas son métier.** Chaque secteur
+  portait une colonne `vat` : un taux deviné à partir de l'activité, faux dans les deux sens — un
+  kinésithérapeute au réel facture de la TVA, un informaticien au forfaitaire n'en facture pas. La
+  colonne a disparu des métiers, et un test vérifie son **ABSENCE** : c'est ce qui empêche de la
+  réintroduire.
+- **Une facture sans TVA et sans mention n'est pas une facture allégée, c'est une facture
+  incomplète.** La mention légale prend la PLACE de la ligne de TVA, là où le lecteur la cherche.
+- **Une pièce qui PORTE de la TVA la garde pour toujours**, même après un changement de régime :
+  `showVat = assujettiTVA(company) || t.totalVAT > 0`. Sans la seconde moitié, changer de régime
+  réécrivait des factures déjà envoyées et déclarées — le PDF chez le client ferait foi contre nous
+  (règle 7.1.0, appliquée cette fois à l'affichage et pas seulement aux totaux).
+- **Le régime prime sur un réglage oublié.** `defaultVat` tranche sur le régime AVANT de lire
+  `defaultVatRate` : quelqu'un qui passe au forfaitaire garde parfois un « TVA des nouvelles
+  lignes : 19 % » dans ses réglages, et la première ligne tapée à la main remettrait de la TVA sur
+  une facture qui n'a pas le droit d'en porter.
+- **Une note d'honoraires n'est pas un type de pièce en plus.** Même préfixe `FAC-`, même
+  numérotation, même verrouillage, même valeur comptable : seul le TITRE change. Et il se **déduit**
+  du métier à l'affichage plutôt que d'être figé sur la pièce — ce n'est pas un montant, et changer
+  de métier ne doit pas laisser derrière soi des pièces à deux noms.
+- **On ne réclame pas ce dont l'utilisateur n'a pas besoin.** Le RIB n'est un manque que si on attend
+  un virement. Un avertissement qu'on ne peut pas satisfaire, on cesse de le lire — et on cesse de
+  lire les autres avec. Les DEUX écrans qui le disaient (`companyGaps` et `issueWarnings`) suivent la
+  même fonction : deux écrans qui disent la même chose ne peuvent pas se contredire (règle 6.8.1).
+- **Un métier absent de `MODULES_PAR_ACTIVITE` n'allume que le minimum.** Ajouter neuf métiers sans
+  leur ligne aurait fait découvrir Achats et Stock par hasard, six mois plus tard, à un garagiste.
+- **Une fonction d'un AUTRE module est une bombe silencieuse.** `C.pl(...)` — alors que `pl` est
+  locale à app.js — lève une TypeError pendant la construction du gabarit : l'écran reste blanc,
+  rien en console, et `node --check` ne voit rien. Seul l'e2e l'a attrapé. Le garde-fou existait
+  dans l'app cabinet depuis la 6.8.0 et n'avait jamais été porté : un test exige désormais que
+  **chaque `C.<nom>` d'app.js existe dans les exports de core.js**, et il se prouve en réintroduisant
+  la faute.
+- Piège de test que j'ai failli laisser passer : `assert.strictEqual(cols(forf), … ? cols(forf) : 0)`
+  compare une valeur à elle-même. Vert pour toujours. **Un test qui ne peut pas échouer est pire que
+  pas de test** — et celui-là était dans le lot que je venais d'écrire.
+- Piège de test : vérifier le taux sous UN seul régime laisserait l'ancienne règle intacte. Le test
+  prend le **même métier** sous les deux régimes — c'est la seule façon de prouver que le métier ne
+  décide plus.
 
 ## Pistes pour la suite (non demandées)
 

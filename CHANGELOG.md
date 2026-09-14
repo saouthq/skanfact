@@ -7,6 +7,62 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 7.22.0 — 14/09/2026
+
+**Le métier : quinze activités, un régime fiscal, et la facture qui porte le bon nom.**
+
+Six métiers proposés au premier démarrage, ça ne couvrait ni la restauration, ni le transport, ni les
+professions libérales — c'est-à-dire l'essentiel du tissu de petites entreprises. Ils sont **quinze**,
+plus « Autre activité » :
+
+> Informatique · Bâtiment · Conseil et formation · Commerce · Santé · Artisanat · **Restauration** ·
+> **Transport** · **Immobilier** · **Professions juridiques** · **Comptabilité** · **Architecture** ·
+> **Communication** · **Beauté** · **Automobile**
+
+Chacun arrive avec son catalogue de départ, et chacun allume les modules de son quotidien : un
+garagiste voit Achats et Stock, un architecte voit Affaires, un restaurateur voit la Paie. Un métier
+sans ligne dans cette table n'allumait que le strict minimum — les neuf nouveaux ont la leur.
+
+**Le régime fiscal remplace la colonne TVA des métiers.** Chaque secteur portait un taux de TVA
+deviné à partir de l'activité. C'était faux dans les deux sens — un kinésithérapeute au réel facture
+de la TVA, un informaticien au forfaitaire n'en facture pas — et l'erreur s'imprimait sur une pièce
+officielle, pas dans une console. La question est maintenant posée une fois, en clair : **Réel**,
+**Forfaitaire** ou **Exonéré**.
+
+Quand tu n'es pas assujetti :
+
+- la **colonne TVA disparaît** du document, en-tête et lignes ;
+- la **mention légale prend sa place** (« TVA non applicable — régime forfaitaire »). Une facture
+  sans TVA et sans mention n'est pas une facture allégée, c'est une facture incomplète ;
+- le taux des nouvelles lignes est **forcé à 0 %** et grisé dans les Paramètres — le régime prime sur
+  un réglage oublié.
+
+Et la garantie qui compte : **une facture qui porte de la TVA la garde pour toujours**, même si tu
+changes de régime ensuite. Une pièce émise ne se réécrit pas — le PDF chez le client ferait foi
+contre nous.
+
+**La note d'honoraires.** Pour une profession libérale — santé, juridique, comptabilité,
+architecture — une facture s'appelle une **note d'honoraires**, et c'est ce nom qui s'imprime. Même
+pièce, même préfixe `FAC-`, même numérotation, même valeur comptable : seul le titre change, parce
+que c'est celui que le client attend et sous lequel le comptable la classe. Le devis reste un devis,
+l'avoir un avoir.
+
+**Le RIB n'est plus réclamé à tout le monde.** Un restaurant, un salon ou un commerce encaissent sur
+place. Leur répéter à chaque facture qu'il manque un RIB, c'est un avertissement qu'ils ne peuvent
+pas satisfaire — et on cesse de lire les avertissements qu'on ne peut pas satisfaire. La fiche société
+et l'avertissement à l'émission suivent désormais la **même** règle : deux écrans qui disent la même
+chose ne peuvent pas se contredire.
+
+*Tout ce qui touche au régime, aux taux et aux mentions est **À VÉRIFIER avec ton comptable** : le
+régime dépend du chiffre d'affaires et de la forme juridique, et la mention exacte de l'article
+invoqué. L'application le dit à l'écran.*
+
+Nouveau garde-fou, né d'une faute commise en écrivant cette version : **l'interface n'appelle plus
+aucune fonction que `core.js` n'exporte pas.** Écrire `C.pl(...)` alors que `pl` est une fonction
+locale lève une erreur pendant la construction du gabarit — l'écran reste blanc, sans une ligne en
+console, et `node --check` ne voit rien. L'app cabinet avait ce contrôle depuis la 6.8.0 ; il n'avait
+jamais été porté ici. `npm run e2e:metier` refait les quatre gestes dans l'application réelle.
+
 ## 7.21.3 — 14/09/2026
 
 **La purge des sauvegardes se fiait à l'horloge du disque, qui ment sur Windows.**

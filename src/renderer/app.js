@@ -2379,7 +2379,11 @@
       const w = [];
       const co = company();
       if (!(co.name || '').trim() || !(co.matricule || '').trim()) w.push('Ta fiche société est incomplète (raison sociale ou matricule fiscal) : le document ne sera pas conforme. Paramètres → Société.');
-      if (isInv && !(co.rib || '').trim()) w.push('Aucun RIB n\'est renseigné : le client ne saura pas où virer le paiement.');
+      // Le RIB ne se réclame que si on attend un virement (7.22.0, même règle que `companyGaps`).
+      // Un restaurant ou un salon encaissent sur place : leur répéter à chaque facture qu'il manque
+      // un RIB, c'est un avertissement qu'ils ne peuvent pas satisfaire — et on cesse de lire les
+      // avertissements qu'on ne peut pas satisfaire.
+      if (isInv && C.ribAttendu(co) && !(co.rib || '').trim()) w.push('Aucun RIB n\'est renseigné : le client ne saura pas où virer le paiement.');
       const last = data.documents.filter(d => d.type === doc.type && d.id !== doc.id && d.number && d.status !== 'brouillon' && (d.date || '').slice(0, 4) === (doc.date || '').slice(0, 4)).sort(byNumberDesc)[0];
       if (last && last.date > doc.date) w.push(`La date (${C.fmtDate(doc.date)}) est antérieure à la dernière ${isInv ? 'facture' : 'pièce'} émise, ${last.number} du ${C.fmtDate(last.date)} : la numérotation ne serait plus chronologique.`);
       // Vendre ce qu'on n'a pas : la pièce reste émissible (une commande peut partir avant la livraison
@@ -8735,11 +8739,13 @@
           ${field(lbl('Validité des devis (jours)', 'doc.quoteValidity'), 'quoteValidityDays', c.quoteValidityDays, 'number', 'min="0" class="num"')}
           ${field(lbl('Délai de paiement (jours)', 'doc.paymentDays'), 'paymentTermsDays', c.paymentTermsDays, 'number', 'min="0" class="num"')}
           <label class="field">${lbl('Retenue à la source par défaut', 'doc.withholdingDefault')}<select name="defaultWithholdingRate">${withholdingOptions(c.defaultWithholdingRate)}</select></label>
-          <label class="field">${lbl('TVA des nouvelles lignes', 'doc.defaultVat')}<select name="defaultVatRate">${C.VAT_RATES.map(v => `<option value="${v}" ${C.defaultVat(c) === v ? 'selected' : ''}>${v} %</option>`).join('')}</select></label>
+          <label class="field">${lbl('Régime fiscal', 'co.taxRegime')}<select name="taxRegime">${C.REGIMES.map(r => `<option value="${r.id}" ${C.regimeOf(c).id === r.id ? 'selected' : ''}>${h(r.label)}</option>`).join('')}</select></label>
+          <label class="field">${lbl('TVA des nouvelles lignes', 'doc.defaultVat')}<select name="defaultVatRate" ${C.assujettiTVA(c) ? '' : 'disabled'}>${C.VAT_RATES.map(v => `<option value="${v}" ${C.defaultVat(c) === v ? 'selected' : ''}>${v} %</option>`).join('')}</select></label>
           ${field(lbl('Devise', 'doc.currency'), 'currency', c.currency)}
           <label class="check" style="align-self:end"><input type="checkbox" name="openAfterExport" ${c.openAfterExport !== false ? 'checked' : ''}> Ouvrir le PDF après export ${info('doc.openAfterExport')}</label>
         </div>
-        <p class="small muted mt">Retenue à la source : calculée sur le TTC hors timbre, modifiable sur chaque facture et par client. Les taux et l'assiette sont <em>À VÉRIFIER avec ton comptable</em>.</p></div>
+        ${C.assujettiTVA(c) ? '' : `<p class="small mt"><strong>Tu n'es pas assujetti à la TVA.</strong> Tes documents ne portent donc ni colonne TVA ni total de TVA : la mention « ${h(C.mentionTVA(c))} » s'imprime à la place. Le taux des nouvelles lignes est forcé à 0 % — c'est pour ça qu'il est grisé.</p>`}
+        <p class="small muted mt">Retenue à la source : calculée sur le TTC hors timbre, modifiable sur chaque facture et par client. Le régime, les taux et l'assiette sont <em>À VÉRIFIER avec ton comptable</em>.</p></div>
         <div class="panel" id="p-objectifs"><h2>Objectifs et statistiques</h2>
           <p class="small muted mb">Ces deux réglages ne servent qu'à la page Statistiques : ils ne s'impriment nulle part et ne changent aucun calcul de facture.</p>
           <div class="grid-3">
@@ -9646,13 +9652,23 @@
         </form>
         ${a.nomDuDossier ? '<p class="small muted">C\'est le nom du dossier que tu viens de créer. Corrige-le ici pour qu\'il s\'imprime exactement comme sur tes papiers, forme juridique comprise.</p>' : ''}
         <p class="small muted">Le matricule fiscal est obligatoire sur une facture en Tunisie. Si tu ne l'as pas encore, laisse vide et complète-le avant ta première facture.</p>`;
-        if (s.id === 'activite') return `<div class="act-grid">
+        if (s.id === 'activite') {
+          // Le métier ne porte plus de taux de TVA (7.22.0) : il annonçait « TVA 19 % » pour tout le
+          // monde et « TVA 0 % » pour la santé, deux affirmations fausses la moitié du temps. Ce qui
+          // décide, c'est le régime, et il se demande juste en dessous.
+          const reg = C.regimeOf({ taxRegime: a.taxRegime });
+          return `<div class="act-grid">
           ${C.ACTIVITIES.map(x => `<button type="button" class="act ${a.activity === x.id ? 'sel' : ''}" data-act="${x.id}">
             <span class="act-l">${h(x.label)}</span>
-            <span class="act-s">${x.catalog.length ? x.catalog.length + ' prestations proposées · TVA ' + x.vat + ' %' : 'catalogue vide'}</span></button>`).join('')}
+            <span class="act-s">${x.catalog.length ? pl(x.catalog.length, 'prestation proposée', 'prestations proposées') : 'catalogue vide'}${x.honoraires ? ' · note d\'honoraires' : ''}</span></button>`).join('')}
         </div>
         <label class="check mt"><input type="checkbox" id="sf-cat" ${a.fillCatalog ? 'checked' : ''}> Préremplir mon catalogue avec ces prestations (prix à ajuster ensuite)</label>
-        <p class="small muted mt">Le catalogue sert à insérer une prestation dans un devis en un clic, sans retaper le libellé ni le prix. Les taux de TVA proposés sont les plus courants — <em>à faire confirmer par ton comptable</em>.</p>`;
+        <p class="small muted mt">Le catalogue sert à insérer une prestation dans un devis en un clic, sans retaper le libellé ni le prix.</p>
+        <label class="field mt span-2">${lbl('Régime fiscal', 'co.taxRegime')}
+          <select id="sf-regime">${C.REGIMES.map(r => `<option value="${r.id}" ${reg.id === r.id ? 'selected' : ''}>${h(r.label)}</option>`).join('')}</select></label>
+        <p class="small muted" id="sf-regime-aide">${h(reg.aide)}</p>
+        <p class="small muted"><em>À VÉRIFIER avec ton comptable :</em> le régime dépend de ton chiffre d'affaires et de ta forme juridique. Dans le doute, garde « Réel » — c'est le cas le plus courant, et ça se change ensuite dans Paramètres.</p>`;
+        }
         // Tant que personne ne posait la question, `company.modules` restait à `null` et le menu
         // affichait ses dix-sept entrées dès le premier jour : Stock, Paie, Immobilisations et
         // Marges à quelqu'un qui n'a pas encore un seul client. Le tri existait, personne ne
@@ -9719,7 +9735,22 @@
         </div>`;
         const form = $('#sf-form', root);
         if (form) { const f = $('input, textarea', form); if (f) f.focus(); }
-        $$('[data-act]', root).forEach(b => b.onclick = () => { a.activity = b.dataset.act; a.fillCatalog = $('#sf-cat', root).checked; draw(); });
+        // Choisir un métier redessine l'écran : on relit d'abord TOUT ce que l'écran porte, sinon le
+        // régime et la case « préremplir » repartent à leur valeur d'avant le clic — on ne jette
+        // jamais ce que quelqu'un vient de saisir (règle 7.1.x, « Passer » ne jette rien).
+        const lireActivite = () => {
+          const cat = $('#sf-cat', root); if (cat) a.fillCatalog = cat.checked;
+          const reg = $('#sf-regime', root); if (reg) a.taxRegime = reg.value;
+        };
+        $$('[data-act]', root).forEach(b => b.onclick = () => { lireActivite(); a.activity = b.dataset.act; draw(); });
+        const selRegime = $('#sf-regime', root);
+        if (selRegime) selRegime.onchange = () => {
+          a.taxRegime = selRegime.value;
+          // On ne redessine pas tout l'écran pour trois lignes de texte : le métier choisi garderait
+          // son focus, mais la liste sauterait sous le doigt. Seule l'explication change.
+          const aide = $('#sf-regime-aide', root);
+          if (aide) aide.textContent = C.regimeOf({ taxRegime: a.taxRegime }).aide;
+        };
         if ($('#sf-cat', root)) $('#sf-cat', root).onchange = e => { a.fillCatalog = e.target.checked; };
         $$('[data-sfmod]', root).forEach(cb => cb.onchange = () => {
           const liste = Array.isArray(a.modules) ? a.modules.slice() : C.modulesSuggeres(a.activity);
@@ -9756,6 +9787,10 @@
         if ($('#sf-prev', root)) $('#sf-prev', root).onclick = () => { collect(); etape(i - 1); i--; draw(); };
         $('#sf-next', root).onclick = () => {
           collect();
+          // Le régime et la case « préremplir » ne vivent pas dans `#sf-form` : `collect()` ne les
+          // voit pas. On les relit ici, sinon un choix fait au clavier juste avant « Continuer »
+          // serait perdu — l'assistant doit écrire à chaque étape (règle 7.3.0).
+          lireActivite();
           if (steps[i].id === 'entreprise' && !String(a.name || '').trim()) return toast('La raison sociale est nécessaire : c\'est le nom qui apparaît sur tes documents.', true);
           // L'écran « Ton activité » se traversait sans rien cliquer, et la case « Préremplir mon
           // catalogue » était cochée d'office : on promettait un catalogue qui n'arrivait jamais,

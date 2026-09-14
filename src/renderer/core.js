@@ -47,6 +47,9 @@
     tagline: '',
     accountantEmail: '',
     activity: '',         // secteur choisi à la première utilisation (voir ACTIVITIES)
+    // Régime fiscal (7.22.0) : voir REGIMES. **Vide vaut « réel »**, donc assujetti à la TVA — une
+    // installation antérieure n'a pas ce réglage et ne doit rien voir changer sur ses documents.
+    taxRegime: '',
     primaryColor: '#1b2430',
     accentColor: '#0f9d8f',
     revenueTarget: 0,     // objectif de chiffre d'affaires HT pour l'année (0 = pas d'objectif)
@@ -62,12 +65,60 @@
     modules: null
   };
 
-  // Secteurs proposés au premier démarrage : ils préremplissent le catalogue, le taux de TVA
-  // habituel et le slogan. Rien n'est imposé, tout se modifie ensuite.
-  // vat : taux de TVA proposé pour les prestations du secteur — À VÉRIFIER avec le comptable.
+  // ---------- le régime fiscal (7.22.0) ----------
+  //
+  // Ce qui décide de la TVA, c'est le RÉGIME de l'entreprise, pas son métier. Jusqu'ici chaque
+  // secteur portait une colonne `vat` : un taux deviné à partir de l'activité. C'était faux dans les
+  // deux sens — un kinésithérapeute au réel facture de la TVA, un informaticien au forfaitaire n'en
+  // facture pas — et ça se voyait sur la pièce officielle, pas dans une console.
+  //
+  // La colonne a donc disparu des métiers, et la question est posée une fois, en clair.
+  // `tva: false` ne se contente pas de mettre les taux à zéro : la colonne TVA quitte le document,
+  // et la mention légale qui la remplace s'imprime à sa place — une facture sans TVA et sans mention
+  // n'est pas une facture allégée, c'est une facture incomplète.
+  //
+  // Les mentions sont celles de l'usage tunisien — **À VÉRIFIER avec ton comptable** : elles
+  // dépendent de la forme juridique et de l'article invoqué, et l'application le dit à l'écran.
+  const REGIMES = [
+    {
+      id: 'reel', label: 'Réel — assujetti à la TVA', court: 'Assujetti TVA', tva: true, mention: '',
+      aide: 'Tu factures la TVA à tes clients, tu la déclares chaque mois et tu déduis celle de tes achats. C\'est le régime le plus courant dès qu\'on dépasse les seuils.'
+    },
+    {
+      id: 'forfaitaire', label: 'Forfaitaire — non assujetti à la TVA', court: 'Forfaitaire', tva: false,
+      mention: 'TVA non applicable — régime forfaitaire',
+      aide: 'Tu ne factures pas de TVA et tu ne la déduis pas. Tes factures portent la mention « TVA non applicable » et ne montrent aucune colonne TVA.'
+    },
+    {
+      id: 'exonere', label: 'Exonéré de TVA', court: 'Exonéré', tva: false,
+      mention: 'TVA non applicable — activité exonérée',
+      aide: 'Ton activité est exonérée de TVA. Tu ne la factures pas, et la mention d\'exonération remplace la colonne TVA sur tes documents.'
+    }
+  ];
+
+  // Le régime d'une entreprise. **Vide vaut « réel »** : une installation qui existait avant la
+  // 7.22.0 n'a pas ce réglage, et elle ne doit rien voir changer sur ses documents.
+  function regimeOf(company) {
+    const id = ((company || {}).taxRegime || '').trim();
+    return REGIMES.find(r => r.id === id) || REGIMES[0];
+  }
+  // La seule question à poser au reste du code : cette entreprise facture-t-elle de la TVA ?
+  function assujettiTVA(company) { return regimeOf(company).tva !== false; }
+  // La mention qui REMPLACE la colonne TVA. Vide pour un assujetti : il a la colonne.
+  function mentionTVA(company) { return regimeOf(company).mention || ''; }
+
+  // Secteurs proposés au premier démarrage : ils préremplissent le catalogue et le slogan.
+  // Rien n'est imposé, tout se modifie ensuite.
+  //
+  // `honoraires: true` — profession libérale réglementée : sa facture s'appelle une **note
+  //   d'honoraires**. C'est le nom que le client attend et que le comptable classe ; le type de la
+  //   pièce, sa numérotation (FAC-) et sa valeur comptable ne changent pas d'un iota.
+  // `comptant: true`  — on est payé sur place, en espèces ou par carte. Le RIB n'est alors pas
+  //   réclamé comme un manque : on ne reproche pas à un restaurant de ne pas publier son RIB.
+  // Plus de colonne `vat` : voir REGIMES ci-dessus.
   const ACTIVITIES = [
     {
-      id: 'informatique', label: 'Informatique et cybersécurité', tagline: 'Cybersécurité · Infrastructure · Services informatiques', vat: 19,
+      id: 'informatique', label: 'Informatique et cybersécurité', tagline: 'Cybersécurité · Infrastructure · Services informatiques',
       catalog: [
         ['Audit de sécurité réseau', 'Cartographie, scan de vulnérabilités, rapport et plan d\'action', 1200, 'forfait'],
         ['Maintenance et supervision', 'Surveillance des équipements, mises à jour, intervention sous 24 h', 250, 'mois'],
@@ -77,7 +128,7 @@
       ]
     },
     {
-      id: 'batiment', label: 'Bâtiment et travaux', tagline: 'Construction · Rénovation · Second œuvre', vat: 19,
+      id: 'batiment', label: 'Bâtiment et travaux', tagline: 'Construction · Rénovation · Second œuvre',
       catalog: [
         ['Main-d\'œuvre', 'Heure de travail sur chantier', 25, 'h'],
         ['Déplacement et installation de chantier', '', 150, 'forfait'],
@@ -86,7 +137,7 @@
       ]
     },
     {
-      id: 'conseil', label: 'Conseil, formation et services', tagline: 'Conseil · Accompagnement · Formation', vat: 19,
+      id: 'conseil', label: 'Conseil, formation et services', tagline: 'Conseil · Accompagnement · Formation',
       catalog: [
         ['Journée de conseil', 'Intervention sur site ou à distance', 600, 'jour'],
         ['Formation', 'Session pour un groupe, support fourni', 150, 'h'],
@@ -95,7 +146,7 @@
       ]
     },
     {
-      id: 'commerce', label: 'Commerce et vente de produits', tagline: '', vat: 19,
+      id: 'commerce', label: 'Commerce et vente de produits', tagline: '', comptant: true,
       catalog: [
         ['Produit', 'Désignation du produit vendu', 0, 'u'],
         ['Livraison', 'Frais de livraison', 15, 'u'],
@@ -103,7 +154,7 @@
       ]
     },
     {
-      id: 'sante', label: 'Santé et paramédical', tagline: '', vat: 0,
+      id: 'sante', label: 'Santé et paramédical', tagline: '', honoraires: true, comptant: true,
       catalog: [
         ['Consultation', '', 50, 'séance'],
         ['Séance de suivi', '', 40, 'séance'],
@@ -111,15 +162,119 @@
       ]
     },
     {
-      id: 'artisanat', label: 'Artisanat et création', tagline: 'Fait main · Sur mesure', vat: 19,
+      id: 'artisanat', label: 'Artisanat et création', tagline: 'Fait main · Sur mesure',
       catalog: [
         ['Pièce sur mesure', 'Création personnalisée', 0, 'u'],
         ['Main-d\'œuvre', 'Heure de travail en atelier', 20, 'h'],
         ['Matières premières', '', 0, 'lot']
       ]
     },
-    { id: 'autre', label: 'Autre activité', tagline: '', vat: 19, catalog: [] }
+    {
+      id: 'restauration', label: 'Restauration, café et traiteur', tagline: 'Cuisine · Service · Traiteur', comptant: true,
+      catalog: [
+        ['Menu du jour', 'Entrée, plat, dessert', 18, 'couvert'],
+        ['Prestation traiteur', 'Sur devis, selon le nombre de convives', 35, 'couvert'],
+        ['Location de salle', 'Demi-journée, mise en place comprise', 400, 'forfait'],
+        ['Service et personnel', 'Serveur mis à disposition', 25, 'h']
+      ]
+    },
+    {
+      id: 'transport', label: 'Transport et logistique', tagline: 'Transport · Livraison · Stockage',
+      catalog: [
+        ['Course urbaine', 'Enlèvement et livraison dans le Grand Tunis', 25, 'course'],
+        ['Transport longue distance', 'Facturé au kilomètre parcouru', 1.2, 'km'],
+        ['Manutention', 'Chargement et déchargement', 20, 'h'],
+        ['Stockage', 'Entreposage en dépôt', 8, 'm²']
+      ]
+    },
+    {
+      id: 'immobilier', label: 'Immobilier et gestion locative', tagline: 'Transaction · Gestion · Syndic',
+      catalog: [
+        ['Commission de transaction', 'Pourcentage du prix de vente, selon mandat', 0, 'forfait'],
+        ['Gestion locative', 'Gestion mensuelle d\'un bien loué', 80, 'mois'],
+        ['État des lieux', 'Entrée ou sortie, avec rapport photographique', 120, 'u'],
+        ['Syndic de copropriété', 'Par lot et par mois', 15, 'mois']
+      ]
+    },
+    {
+      id: 'juridique', label: 'Professions juridiques', tagline: 'Conseil · Rédaction · Représentation', honoraires: true,
+      catalog: [
+        ['Consultation juridique', 'Rendez-vous au cabinet ou à distance', 150, 'h'],
+        ['Rédaction d\'acte', 'Contrat, statuts, bail', 500, 'forfait'],
+        ['Représentation en justice', 'Honoraires de plaidoirie, hors frais et débours', 0, 'forfait'],
+        ['Frais et débours', 'Avancés pour le compte du client, sur justificatifs', 0, 'lot']
+      ]
+    },
+    {
+      id: 'comptabilite', label: 'Comptabilité et expertise', tagline: 'Tenue · Fiscalité · Conseil', honoraires: true,
+      catalog: [
+        ['Tenue de comptabilité', 'Saisie, lettrage et déclarations mensuelles', 350, 'mois'],
+        ['Bilan annuel', 'États financiers et liasse fiscale', 1500, 'forfait'],
+        ['Établissement des bulletins de paie', 'Par bulletin et par mois', 15, 'bulletin'],
+        ['Assistance à contrôle fiscal', '', 200, 'h']
+      ]
+    },
+    {
+      id: 'architecture', label: 'Architecture et ingénierie', tagline: 'Conception · Études · Suivi de chantier', honoraires: true,
+      catalog: [
+        ['Esquisse et avant-projet', '', 2000, 'forfait'],
+        ['Dossier de permis de bâtir', 'Pièces graphiques et écrites', 3500, 'forfait'],
+        ['Suivi de chantier', 'Visite hebdomadaire et compte rendu', 500, 'mois'],
+        ['Métré et étude technique', '', 120, 'h']
+      ]
+    },
+    {
+      id: 'communication', label: 'Communication, design et audiovisuel', tagline: 'Identité · Web · Image',
+      catalog: [
+        ['Identité visuelle', 'Logo, charte graphique et déclinaisons', 1800, 'forfait'],
+        ['Site internet vitrine', 'Conception, intégration et mise en ligne', 3000, 'forfait'],
+        ['Journée de tournage ou de prise de vue', 'Matériel et opérateur compris', 700, 'jour'],
+        ['Gestion des réseaux sociaux', 'Publications et modération', 450, 'mois']
+      ]
+    },
+    {
+      id: 'beaute', label: 'Beauté et bien-être', tagline: 'Soins · Coiffure · Bien-être', comptant: true,
+      catalog: [
+        ['Coupe et coiffage', '', 35, 'séance'],
+        ['Soin du visage', '', 60, 'séance'],
+        ['Massage', 'Séance d\'une heure', 70, 'séance'],
+        ['Forfait mariée', 'Essai, coiffure et maquillage le jour J', 350, 'forfait']
+      ]
+    },
+    {
+      id: 'automobile', label: 'Automobile et mécanique', tagline: 'Entretien · Réparation · Carrosserie', comptant: true,
+      catalog: [
+        ['Main-d\'œuvre atelier', 'Heure de travail', 35, 'h'],
+        ['Vidange et filtres', 'Huile et filtres compris', 120, 'forfait'],
+        ['Diagnostic électronique', '', 60, 'u'],
+        ['Pièces détachées', 'Refacturation des pièces, sur justificatifs', 0, 'lot']
+      ]
+    },
+    { id: 'autre', label: 'Autre activité', tagline: '', catalog: [] }
   ];
+
+  // Une facture de profession libérale s'appelle une NOTE D'HONORAIRES. Ce n'est pas un type de
+  // pièce en plus : même préfixe, même numérotation, même valeur comptable, même verrouillage à
+  // l'émission. C'est le nom qu'attend le client et sous lequel le comptable la classe.
+  // Le libellé se DÉDUIT du métier à l'affichage, il n'est pas figé sur la pièce : ce n'est pas un
+  // montant, et changer de métier ne doit pas laisser derrière soi des pièces à deux noms.
+  function estLiberal(company) {
+    const a = ACTIVITIES.find(x => x.id === ((company || {}).activity || '').trim());
+    return !!(a && a.honoraires);
+  }
+  function docLabel(type, company, lang) {
+    if (type === 'facture' && estLiberal(company)) return lang === 'en' ? 'Fee note' : 'Note d\'honoraires';
+    return TITLES[type] || 'Document';
+  }
+
+  // Le RIB n'est réclamé que si on attend un virement. Un restaurant, un salon de coiffure ou un
+  // commerce sont payés sur place : leur reprocher un RIB manquant, c'est afficher « ta fiche est
+  // incomplète » à quelqu'un qui n'a rien à corriger — et les avertissements qu'on ne peut pas
+  // satisfaire, on cesse de les lire. Métier inconnu = on le réclame, comme avant.
+  function ribAttendu(company) {
+    const a = ACTIVITIES.find(x => x.id === ((company || {}).activity || '').trim());
+    return !(a && a.comptant);
+  }
 
   // ---------- les modules et la barre latérale (7.0.0) ----------
   //
@@ -273,6 +428,11 @@
   // métier déclaré. `''`, `null` ou `undefined` = 19 % ; `0` est une valeur légitime (exonération),
   // d'où le test explicite plutôt qu'un `||`.
   function defaultVat(company) {
+    // Une entreprise qui ne facture pas de TVA ne peut pas faire naître une ligne à 19 %. Le régime
+    // tranche AVANT le réglage : sinon un forfaitaire qui change de régime après coup garderait un
+    // « TVA des nouvelles lignes : 19 % » oublié dans ses réglages, et la première ligne tapée à la
+    // main remettrait de la TVA sur une facture qui n'a pas le droit d'en porter.
+    if (!assujettiTVA(company)) return 0;
     const v = (company || {}).defaultVatRate;
     if (v === '' || v === null || v === undefined) return 19;
     const n = Number(v);
@@ -352,6 +512,10 @@
 
   // Ce que l'assistant de première utilisation allume selon le métier déclaré. Rien n'est imposé :
   // l'écran « Qu'est-ce que tu fais ? » propose ces cases cochées, et l'utilisateur décoche.
+  // Un métier absent de cette table n'allume que les trois modules `toujours` : l'application reste
+  // utilisable, mais elle ne propose rien. Les neuf métiers ajoutés en 7.22.0 ont donc chacun leur
+  // ligne — sinon un garagiste ou un restaurateur découvrirait Achats et Stock par hasard, six mois
+  // plus tard, alors que ce sont les deux modules de son quotidien.
   const MODULES_PAR_ACTIVITE = {
     commerce: ['achats', 'stock', 'pilotage'],
     artisanat: ['achats', 'stock', 'pieces'],
@@ -359,6 +523,15 @@
     informatique: ['achats', 'pieces'],
     conseil: ['pieces'],
     sante: ['achats'],
+    restauration: ['achats', 'stock', 'paie'],          // matières premières, et du personnel
+    transport: ['achats', 'immos', 'pilotage'],         // les véhicules sont des immobilisations
+    immobilier: ['pieces', 'pilotage'],
+    juridique: ['pieces'],
+    comptabilite: ['pieces'],
+    architecture: ['pieces', 'pilotage'],               // le suivi se fait par affaire
+    communication: ['pieces', 'pilotage'],
+    beaute: ['achats', 'stock'],                        // produits revendus et consommables
+    automobile: ['achats', 'stock', 'pieces'],          // pièces détachées : du stock, et des devis
     autre: []
   };
   const modulesSuggeres = activity => ['ventes', 'fichiers', 'compta']
@@ -4181,7 +4354,9 @@
     const out = [];
     if (!(c.name || '').trim()) out.push('la raison sociale');
     if (!(c.matricule || '').trim()) out.push('le matricule fiscal');
-    if (!(c.rib || '').trim()) out.push('le RIB');
+    // Le RIB ne manque que si on attend un virement (7.22.0). Voir `ribAttendu` : un commerce, un
+    // restaurant ou un salon encaissent sur place.
+    if (ribAttendu(c) && !(c.rib || '').trim()) out.push('le RIB');
     return out;
   }
 
@@ -4509,7 +4684,10 @@
     // Le bon de livraison accompagne la marchandise : par défaut il ne porte aucun prix.
     const noPrices = isDelivery && doc.hidePrices !== false;
     const clauses = isContract ? { ...DEFAULT_CLAUSES, ...(doc.clauses || {}) } : null;
-    const title = L[doc.type] || 'Document';
+    // Le titre imprimé. Pour une profession libérale, « Facture » devient « Note d'honoraires » —
+    // même pièce, même numéro, même valeur comptable, le nom que le client attend.
+    const title = (doc.type === 'facture' && estLiberal(company))
+      ? docLabel('facture', company, lang) : (L[doc.type] || 'Document');
     const cl = client || {};
     const ink = company.primaryColor || '#1b2430';
     const accent = company.accentColor || '#0f9d8f';
@@ -4517,6 +4695,12 @@
     const stampKey = opts.stamp || ({ 'Payée': 'paid', 'Annulée': 'cancelled', 'Brouillon': 'draft' })[opts.stampText] || (opts.stampText ? 'custom' : (!isQuote && !isContract && doc.status === 'brouillon' ? 'draft' : null));
     const stampText = stampKey === 'custom' ? opts.stampText : (stampKey ? L[stampKey] : '');
     const multiVat = Object.keys(t.vatByRate).length > 1;
+    // La colonne TVA (7.22.0). Elle tombe quand l'entreprise n'est pas assujettie — mais JAMAIS
+    // quand la pièce en porte : une facture émise sous le régime réel garde sa colonne pour
+    // toujours, même si l'entreprise passe au forfaitaire l'année suivante. Une pièce émise ne se
+    // réécrit pas (règle 7.1.0), et le PDF chez le client ferait foi contre nous.
+    const showVat = assujettiTVA(company) || t.totalVAT > 0;
+    const mentionSansTva = showVat ? '' : mentionTVA(company);
     const pct = n => String(n).replace('.', lang === 'en' ? '.' : ',');
     const foreign = cur !== (company.currency || 'DT') && Number(doc.exchangeRate) > 0;
 
@@ -4533,7 +4717,7 @@
         </td>
         <td class="r num">${escapeHtml(String(l.qty).replace('.', lang === 'en' ? '.' : ','))}${l.unit ? `<span class="unit"> ${escapeHtml(l.unit)}</span>` : ''}</td>
         ${noPrices ? '' : `<td class="r num">${fmt(l.unitPrice)}</td>
-        <td class="r num dim">${l.vatRate}%</td>
+        ${showVat ? `<td class="r num dim">${l.vatRate}%</td>` : ''}
         <td class="r num strong">${fmt(l.ht)}</td>`}
       </tr>`).join('');
 
@@ -4571,7 +4755,12 @@
     if (foreign) metaItems.push([L.rate, `1 ${cur} = ${money(doc.exchangeRate, company.currency)}`]);
     const meta = metaItems.filter(Boolean).map(([k, v]) => `<div class="chip"><span class="ck">${escapeHtml(k)}</span><span class="cv">${escapeHtml(v)}</span></div>`).join('');
 
-    const vatRows = multiVat ? Object.keys(t.vatByRate).sort((a, b) => a - b).map(rate =>
+    // Sans TVA, la mention légale prend la PLACE de la ligne de TVA, là où le lecteur la cherche.
+    // Une facture sans TVA et sans mention n'est pas une facture allégée, c'est une facture
+    // incomplète — et c'est le client, ou son comptable, qui la refuse.
+    const vatRows = !showVat
+      ? (mentionSansTva ? `<tr><td colspan="2" class="dim">${escapeHtml(mentionSansTva)}</td></tr>` : '')
+      : multiVat ? Object.keys(t.vatByRate).sort((a, b) => a - b).map(rate =>
       `<tr><td>${L.vat} ${rate}% <span class="dim">${L.on} ${fmt(t.vatByRate[rate].base)}</span></td><td class="r num">${fmt(t.vatByRate[rate].vat)}</td></tr>`).join('')
       : `<tr><td>${L.vat}</td><td class="r num">${fmt(t.totalVAT)}</td></tr>`;
 
@@ -4745,7 +4934,7 @@
         <th>${L.designation}</th>
         <th class="r" style="width:16mm">${L.qty}</th>
         ${noPrices ? '' : `<th class="r" style="width:26mm">${L.unitPrice}</th>
-        <th class="r" style="width:12mm">${L.vat}</th><th class="r" style="width:28mm">${L.lineTotal}</th>`}
+        ${showVat ? `<th class="r" style="width:12mm">${L.vat}</th>` : ''}<th class="r" style="width:28mm">${L.lineTotal}</th>`}
       </tr></thead>
       <tbody>${linesHtml}</tbody>
     </table>
@@ -4944,6 +5133,7 @@
 
   return {
     VAT_RATES, WITHHOLDING_RATES, PAYMENT_METHODS, PREFIX, TITLES, DEFAULT_DATA, DEFAULT_COMPANY, ACTIVITIES, STATUSES, DISPLAY_STATUSES, STATUS_LABELS,
+    REGIMES, regimeOf, assujettiTVA, mentionTVA, estLiberal, docLabel, ribAttendu,
     DOC_FILTRES, docFiltre,
     pageInfo, compareValues, LINE_UNITS, usedUnits, parseDateInput, fmtDateInput, monthMatrix,
     uid, round3, money, fmtDate, addDays, daysInMonth, today, escapeHtml, nl2br, statusLabel,

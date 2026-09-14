@@ -683,10 +683,25 @@ t('première utilisation : assistant proposé, réponses appliquées, secteurs c
   assert.strictEqual(onboarding.applySetup(core.migrateData(null), { name: 'X', activity: 'batiment', fillCatalog: false }).catalog.length, 0);
   // chaque secteur est utilisable
   core.ACTIVITIES.forEach(a => {
-    assert.ok(a.id && a.label && core.VAT_RATES.includes(a.vat), a.id);
+    assert.ok(a.id && a.label, a.id);
+    assert.ok(Array.isArray(a.catalog), a.id);
+    // 7.22.0 : le métier ne porte PLUS de taux de TVA. Deviner la TVA à partir de l'activité se
+    // trompait dans les deux sens (un kiné au réel en facture, un informaticien au forfaitaire
+    // n'en facture pas) et l'erreur s'imprimait sur une pièce officielle. C'est le RÉGIME qui
+    // décide. On vérifie l'ABSENCE du champ : c'est ce qui empêche de le réintroduire.
+    assert.ok(!('vat' in a), `le métier « ${a.id} » porte encore un taux de TVA : c'est le régime qui décide`);
     a.catalog.forEach(([label, , price, unit]) => { assert.ok(label && unit, a.id); assert.ok(price >= 0); });
   });
   assert.ok(core.ACTIVITIES.some(a => a.id === 'autre' && !a.catalog.length));
+  // Quinze métiers, plus « Autre activité ». Six ne couvraient ni la restauration, ni le transport,
+  // ni les professions libérales — c'est-à-dire l'essentiel du tissu de petites entreprises.
+  const metiers = core.ACTIVITIES.filter(a => a.id !== 'autre');
+  assert.strictEqual(metiers.length, 15, `${metiers.length} métiers proposés au lieu de quinze`);
+  assert.strictEqual(new Set(core.ACTIVITIES.map(a => a.id)).size, core.ACTIVITIES.length, 'deux métiers portent le même identifiant');
+  // Les professions libérales facturent une note d'honoraires ; les métiers encaissés sur place
+  // ne se voient pas réclamer un RIB. Au moins un de chaque, sinon les deux règles sont mortes.
+  assert.ok(metiers.some(a => a.honoraires), 'aucune profession libérale : « note d\'honoraires » ne servirait jamais');
+  assert.ok(metiers.some(a => a.comptant), 'aucun métier encaissé sur place : le RIB conditionnel ne servirait jamais');
   assert.ok(onboarding.STEPS.length >= 5 && onboarding.STEPS.every(s => s.id && s.title && s.sub));
 });
 
@@ -5265,23 +5280,35 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.strictEqual(ligne.level, 'danger', 'des chiffres faux dans une déclaration, c\'est rouge');
   });
 
-  t('TVA : une ligne neuve suit le métier déclaré, pas 19 % en dur', () => {
+  t('TVA : une ligne neuve suit le RÉGIME déclaré, pas le métier ni 19 % en dur', () => {
     const OB = require('../src/renderer/onboarding.js');
     const app = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
 
-    // « Santé et paramédical » est exonéré dans ACTIVITIES depuis la 2.0.0. L'assistant s'en servait
-    // pour préremplir le catalogue à 0 %, et toute ligne tapée ensuite naissait à 19 % : le même
-    // document portait donc les deux taux, et celui de trop était celui qu'on ne doit pas facturer.
-    const sante = core.ACTIVITIES.find(a => a.id === 'sante');
-    assert.strictEqual(sante.vat, 0, 'le métier de référence du test doit rester exonéré');
-    const d = OB.applySetup({ company: { ...core.DEFAULT_COMPANY }, catalog: [] }, { name: 'Cabinet X', activity: 'sante', fillCatalog: true });
-    assert.strictEqual(d.company.defaultVatRate, 0, 'l\'assistant doit retenir le taux du métier');
-    assert.strictEqual(core.defaultVat(d.company), 0);
-    assert.strictEqual(core.newLine(d.company).vatRate, 0, 'une ligne neuve doit naître au taux du métier');
+    // Jusqu'à la 7.22.0, le taux se devinait à partir du MÉTIER (« Santé et paramédical » = exonéré).
+    // C'était faux dans les deux sens — un kinésithérapeute au réel facture de la TVA, un
+    // informaticien au forfaitaire n'en facture pas — et l'erreur s'imprimait sur une pièce
+    // officielle, pas dans une console. C'est le RÉGIME FISCAL qui décide, et il est demandé en clair.
+    const ouvrir = (regime) => OB.applySetup(
+      { company: { ...core.DEFAULT_COMPANY }, catalog: [] },
+      { name: 'Cabinet X', activity: 'sante', taxRegime: regime, fillCatalog: true });
 
-    // Un métier à 19 % reste à 19 %, et une valeur absente aussi : rien ne change pour l'existant.
-    const info = OB.applySetup({ company: { ...core.DEFAULT_COMPANY }, catalog: [] }, { name: 'Y', activity: 'informatique' });
-    assert.strictEqual(core.defaultVat(info.company), 19);
+    const forf = ouvrir('forfaitaire');
+    assert.strictEqual(forf.company.taxRegime, 'forfaitaire', 'le régime doit être enregistré');
+    assert.strictEqual(core.defaultVat(forf.company), 0, 'un non-assujetti ne peut pas faire naître une ligne à 19 %');
+    assert.strictEqual(core.newLine(forf.company).vatRate, 0);
+    assert.ok(forf.catalog.length && forf.catalog.every(x => x.vatRate === 0), 'le catalogue posé par l\'assistant suit le régime');
+
+    // LE MÊME MÉTIER au réel facture bien de la TVA. C'est la preuve que le métier ne décide plus :
+    // un test qui ne regarderait qu'un seul régime passerait avec l'ancienne règle intacte.
+    const reel = ouvrir('reel');
+    assert.strictEqual(core.defaultVat(reel.company), 19, 'le métier ne décide plus du taux — le régime, oui');
+    assert.ok(reel.catalog.every(x => x.vatRate === 19));
+
+    // Le régime prime sur un réglage oublié : quelqu'un qui passe au forfaitaire peut garder un
+    // « TVA des nouvelles lignes : 19 % » dans ses réglages. Aucune ligne ne doit en porter.
+    assert.strictEqual(core.defaultVat({ taxRegime: 'forfaitaire', defaultVatRate: 19 }), 0);
+
+    // Et rien ne change pour l'existant : sans régime enregistré, on est assujetti, comme avant.
     assert.strictEqual(core.defaultVat({}), 19, 'sans réglage, on reste sur le taux le plus courant');
     assert.strictEqual(core.defaultVat({ defaultVatRate: 42 }), 19, 'un taux qui n\'existe pas ne doit pas se retrouver sur une facture');
 
@@ -6841,6 +6868,96 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   });
 
   // ---------- 7.21.1 : l'installeur Windows ----------
+
+  // ---------- 7.22.0 : le métier ----------
+
+  t('l\'interface n\'appelle aucune fonction de core.js qui n\'existe pas', () => {
+    // Écrire `C.pl(...)` alors que `pl` est une fonction LOCALE d'app.js lève une TypeError pendant
+    // la construction du gabarit : l'écran reste blanc, sans une ligne dans la console de
+    // l'utilisateur, et `node --check` ne voit rien. C'est ce qui est arrivé à l'écran « Ton
+    // activité » en 7.22.0, et seul l'e2e l'a attrapé — trente secondes de parcours pour une faute
+    // qu'une seconde de lecture suffit à interdire.
+    //
+    // L'app cabinet a ce garde-fou depuis la 6.8.0 ; il n'avait jamais été porté ici. Une règle
+    // apprise d'un côté se vérifie de l'autre (règle 7.3.0).
+    const app = lireApp();
+    const exportes = new Set(Object.keys(core));
+    // On ne juge que les appels et les accès `C.<nom>` — jamais le texte d'une chaîne : on retire
+    // d'abord ce qui est entre guillemets simples ou doubles. Les gabarits sont gardés, parce que
+    // c'est très exactement dedans que vivait la faute.
+    const code = app.replace(/'(?:[^'\\\n]|\\.)*'/g, "''").replace(/"(?:[^"\\\n]|\\.)*"/g, '""');
+    const utilises = [...new Set((code.match(/\bC\.([A-Za-z_$][\w$]*)/g) || []).map(x => x.slice(2)))];
+    assert.ok(utilises.length > 80, `seulement ${utilises.length} usages de core lus : le découpage est faux`);
+    const fantomes = utilises.filter(n => !exportes.has(n));
+    assert.deepStrictEqual(fantomes, [],
+      `l'interface appelle ${fantomes.length} nom(s) que core.js n'exporte pas : ${fantomes.join(', ')}`);
+  });
+
+  t('le régime fiscal fait disparaître la colonne TVA, et la mention prend sa place', () => {
+    const doc = {
+      id: 'd1', type: 'facture', number: 'FAC-2026-001', date: '2026-09-14', dueDate: '2026-10-14',
+      clientId: 'c1', status: 'envoyée', lines: [{ label: 'Consultation', qty: 2, unitPrice: 50, vatRate: 0, unit: 'séance' }]
+    };
+    const cl = { id: 'c1', name: 'Client SARL' };
+    const base = { name: 'Cabinet X', matricule: '1234567A', activity: 'sante' };
+    const entetes = html => (html.match(/<th[^>]*>[^<]*<\/th>/g) || []).map(x => x.replace(/<[^>]*>/g, ''));
+
+    const reel = core.documentHtml(doc, cl, { ...base }, {});
+    assert.ok(entetes(reel).some(x => /TVA/.test(x)), 'un assujetti garde sa colonne TVA');
+    assert.ok(!/TVA non applicable/.test(reel), 'un assujetti ne porte aucune mention d\'exonération');
+
+    const forf = core.documentHtml(doc, cl, { ...base, taxRegime: 'forfaitaire' }, {});
+    assert.ok(!entetes(forf).some(x => /TVA/.test(x)), 'la colonne TVA doit disparaître pour un non-assujetti');
+    assert.ok(/TVA non applicable — régime forfaitaire/.test(forf), 'la mention légale doit remplacer la colonne');
+    // Le nombre de colonnes du corps doit suivre l'entête, sinon le tableau se décale d'une case.
+    const cols = h => { const tr = (h.match(/<tr>[\s\S]*?<\/tr>/g) || []).find(x => /class="lbl"/.test(x)); return (tr.match(/<td/g) || []).length; };
+    assert.ok(cols(reel) >= 4, `le découpage des colonnes est faux : ${cols(reel)} lue(s)`);
+    assert.strictEqual(cols(reel) - cols(forf), 1, 'le corps doit perdre exactement une colonne, comme l\'entête');
+    assert.strictEqual(entetes(reel).filter(Boolean).length - entetes(forf).filter(Boolean).length, 1,
+      'l\'entête et le corps doivent perdre la MÊME colonne, sinon le tableau se décale d\'une case');
+
+    // Et la garantie qui compte : une pièce QUI PORTE de la TVA la garde, même si l'entreprise
+    // change de régime ensuite. Une pièce émise ne se réécrit pas (règle 7.1.0) — le PDF chez le
+    // client ferait foi contre nous.
+    const avecTva = { ...doc, lines: [{ label: 'X', qty: 1, unitPrice: 100, vatRate: 19, unit: 'u' }] };
+    const apres = core.documentHtml(avecTva, cl, { ...base, taxRegime: 'forfaitaire' }, {});
+    assert.ok(entetes(apres).some(x => /TVA/.test(x)), 'une facture qui porte de la TVA garde sa colonne pour toujours');
+  });
+
+  t('une profession libérale facture une note d\'honoraires', () => {
+    const med = { name: 'X', activity: 'sante' };
+    const dev = { name: 'X', activity: 'informatique' };
+    assert.strictEqual(core.docLabel('facture', med), 'Note d\'honoraires');
+    assert.strictEqual(core.docLabel('facture', dev), 'Facture');
+    assert.strictEqual(core.docLabel('facture', med, 'en'), 'Fee note');
+    // Seule la FACTURE change de nom : un devis reste un devis, un avoir un avoir.
+    ['devis', 'avoir', 'proforma', 'livraison'].forEach(t2 =>
+      assert.strictEqual(core.docLabel(t2, med), core.TITLES[t2], `« ${t2} » ne doit pas changer de nom`));
+    // Et le titre imprimé suit.
+    const doc = { id: 'd', type: 'facture', number: 'FAC-2026-001', date: '2026-09-14', dueDate: '2026-10-14', clientId: 'c', status: 'envoyée', lines: [{ label: 'C', qty: 1, unitPrice: 50, vatRate: 0 }] };
+    assert.ok(/Note d.{0,8}honoraires/.test(core.documentHtml(doc, { id: 'c', name: 'Cl' }, { ...med, matricule: '1' }, {})),
+      'le document imprimé doit porter « Note d\'honoraires »');
+    // Le TYPE, lui, ne bouge pas : même préfixe, même numérotation, même valeur comptable.
+    assert.strictEqual(core.PREFIX.facture, 'FAC', 'la note d\'honoraires reste une facture : le préfixe ne change pas');
+  });
+
+  t('le RIB n\'est réclamé qu\'à qui attend un virement', () => {
+    const sansRib = a => ({ name: 'A', matricule: '1', activity: a });
+    assert.deepStrictEqual(core.companyGaps(sansRib('conseil')), ['le RIB'], 'un prestataire payé par virement doit le voir manquer');
+    assert.deepStrictEqual(core.companyGaps(sansRib('restauration')), [], 'un restaurant encaisse sur place');
+    assert.deepStrictEqual(core.companyGaps(sansRib('beaute')), []);
+    assert.deepStrictEqual(core.companyGaps(sansRib('')), ['le RIB'], 'métier inconnu : on le réclame, comme avant');
+    // Le RIB renseigné ne manque évidemment jamais.
+    assert.deepStrictEqual(core.companyGaps({ name: 'A', matricule: '1', activity: 'conseil', rib: 'TN59' }), []);
+    // Les deux autres manques ne bougent pas.
+    assert.ok(core.companyGaps({ activity: 'restauration' }).includes('la raison sociale'));
+    assert.ok(core.companyGaps({ activity: 'restauration' }).includes('le matricule fiscal'));
+    // Et l'avertissement à l'émission suit la MÊME règle : deux écrans qui disent la même chose ne
+    // peuvent pas se contredire (règle 6.8.1, un compteur et sa liste se calculent pareil).
+    const app = lireApp();
+    assert.ok(/C\.ribAttendu\(co\)[^;]*rib[^;]*\.trim\(\)/.test(app.replace(/\s+/g, ' ')),
+      'l\'avertissement d\'émission réclame encore le RIB à tout le monde');
+  });
 
   t('l\'installeur Windows a des fins de ligne Windows', () => {
     // `cmd.exe` lit un fichier batch OCTET PAR OCTET. Avec des fins de ligne Unix il se

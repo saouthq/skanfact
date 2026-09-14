@@ -34,7 +34,7 @@
     const a = answers || {};
     const o = opts || {};
     const co = data.company;
-    ['name', 'matricule', 'rc', 'capital', 'address', 'phone', 'email', 'website', 'bank', 'rib', 'activity'].forEach(k => {
+    ['name', 'matricule', 'rc', 'capital', 'address', 'phone', 'email', 'website', 'bank', 'rib', 'activity', 'taxRegime'].forEach(k => {
       if (a[k] != null) co[k] = String(a[k]).trim();
     });
     ['stampFee', 'quoteValidityDays', 'paymentTermsDays', 'defaultWithholdingRate'].forEach(k => {
@@ -43,17 +43,19 @@
     if (a.currency) co.currency = a.currency;
     const act = C.ACTIVITIES.find(x => x.id === a.activity);
     if (act && act.tagline && !co.tagline) co.tagline = act.tagline;
-    // Le taux de TVA du métier ne servait qu'à préremplir le catalogue : dès qu'on tapait une ligne
-    // à la main, elle naissait à 19 %. Un kinésithérapeute qui déclare « Santé et paramédical »
-    // (exonéré) obtenait donc un catalogue à 0 % et des lignes à 19 % — sur la même facture.
-    // On ne l'écrase pas s'il a déjà été réglé à la main (0 est une valeur légitime : exonération).
-    if (act && (co.defaultVatRate === '' || co.defaultVatRate == null)) co.defaultVatRate = act.vat;
+    // Le taux de TVA ne se devine plus à partir du MÉTIER (7.22.0) : c'est le RÉGIME FISCAL qui le
+    // décide, et il est désormais demandé en clair. Deviner à partir du métier se trompait dans les
+    // deux sens — un kinésithérapeute au réel facture de la TVA, un informaticien au forfaitaire
+    // n'en facture pas — et l'erreur s'imprimait sur une pièce officielle.
+    // `C.defaultVat` applique le régime : non assujetti = 0, quoi qu'il y ait dans les réglages.
+    const tauxTva = C.defaultVat(co);
+    if (co.defaultVatRate === '' || co.defaultVatRate == null) co.defaultVatRate = tauxTva;
     if (act && a.fillCatalog && !(data.catalog || []).length) {
       // `fromSetup` marque ce que l'assistant a posé. Sans lui, « Remplir ton catalogue » se cochait
       // tout seul dans « Tes premiers pas » : l'étape était réputée faite parce que l'assistant
       // l'avait faite, avec des prix à 0 que personne n'a encore ajustés.
       data.catalog = act.catalog.map(([label, description, unitPrice, unit]) => ({
-        id: C.uid(), label, description: description || '', unitPrice, vatRate: act.vat, unit: unit || 'u',
+        id: C.uid(), label, description: description || '', unitPrice, vatRate: tauxTva, unit: unit || 'u',
         fromSetup: true
       }));
     }
