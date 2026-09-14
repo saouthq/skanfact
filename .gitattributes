@@ -1,3 +1,14 @@
+# Tout le code source en fins de ligne UNIX, sur toutes les plateformes.
+#
+# Sans cette ligne, git convertit les fichiers texte en CRLF au checkout sur Windows
+# (core.autocrlf, activé par défaut par l'installeur Git for Windows). Le code fonctionne toujours
+# — mais les tests qui RELISENT la source cessent de correspondre dès qu'une expression régulière
+# contient un « \n » littéral. Résultat en 7.21.3 : `npm test` passait sur Linux et sur macOS, et
+# échouait sur la machine Windows de la publication, sur un test qui n'avait rien à se reprocher.
+# La règle doit rester EN PREMIER : dans un .gitattributes, c'est le dernier motif qui gagne, et
+# les exceptions ci-dessous doivent pouvoir la contredire.
+* text=auto eol=lf
+
 # Les fins de ligne, parce qu'un .bat en LF ne marche PAS sur Windows.
 #
 # cmd.exe lit un fichier batch octet par octet. Avec des fins de ligne Unix il
@@ -15,9 +26,11 @@
 *.sh        text eol=lf
 
 # Binaires : surtout PAS de normalisation de fins de ligne. Un seul octet 0x0D
-# converti dans un .exe ou une icone, et le fichier ne s'ouvre plus.
+# converti dans une icone ou un executable, et le fichier ne s'ouvre plus. La
+# regle « * text=auto » ci-dessus les DETECTE deja comme binaires ; on le dit
+# quand meme, parce qu'une icone ne doit pas dependre d'une detection.
 *.exe       binary
-*.001       binary
-*.002       binary
+*.png       binary
 *.ico       binary
 *.icns      binary
+*.skanpack  binary

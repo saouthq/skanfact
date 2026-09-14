@@ -16,9 +16,18 @@ async function ta(name, fn) { await fn(); n++; console.log('ok -', name); }
 // Un test qui lit du code doit lire du CODE : un appel cité dans un commentaire, ou un lien mis en
 // commentaire, satisfait un `includes` sans que le code fasse quoi que ce soit (6.8.0, 7.0.0). On
 // retire donc les commentaires — et on vérifie que le nettoyage n'a pas mangé le code au passage.
-function lireApp() {
+// Et il doit le lire en fins de ligne UNIX. Sur Windows, git convertit les fichiers texte en CRLF
+// au checkout (core.autocrlf, activé par défaut) : toute assertion qui contient un « \n » littéral
+// cesse alors de correspondre, et le test échoue sur la seule plateforme où personne ne regarde.
+// C'est ce qui bloquait la publication en 7.21.3. Un `.gitattributes` impose désormais le LF au
+// checkout ; on normalise quand même ici, pour une copie de travail clonée avant cette règle.
+function lireSource(...morceaux) {
   const fs2 = require('fs'), path2 = require('path');
-  const brut = fs2.readFileSync(path2.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
+  return fs2.readFileSync(path2.join(__dirname, '..', ...morceaux), 'utf8').replace(/\r\n/g, '\n');
+}
+
+function lireApp() {
+  const brut = lireSource('src', 'renderer', 'app.js');
   const net = brut.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
   assert.ok(net.includes('routes.dashboard') && net.length > brut.length * 0.6,
     'le nettoyage des commentaires a mangé le code : le test ne jugerait plus rien');

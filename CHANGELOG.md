@@ -42,6 +42,22 @@ toutes les machines (mtime imposés à l'envers de l'ordre réel). L'un d'eux ne
 rien : ses deux `backupNow` tombaient dans la même seconde, écrivaient donc le même fichier, et
 aucune purge ne se déclenchait.
 
+**Et derrière, un second défaut propre à Windows, de la même famille que celui de la 7.21.1.**
+Sur Windows, git convertit les fichiers texte en **CRLF** au checkout — `core.autocrlf`, activé par
+défaut par l'installeur Git for Windows. Le code marche toujours, mais les tests qui **relisent la
+source** cessent de correspondre dès qu'une expression régulière contient un `\n` littéral. La
+publication échouait donc sur un test qui n'avait rien à se reprocher, et seulement là.
+
+- `.gitattributes` impose maintenant le **LF à tout le code source**, sur toutes les plateformes.
+  La 7.21.1 avait posé la règle pour les `.bat`, les `.command` et les `.sh` ; elle manquait pour
+  les fichiers que l'application et les tests lisent vraiment.
+- Les tests lisent la source en fins de ligne Unix quoi qu'il arrive, pour une copie de travail
+  clonée avant cette règle.
+- Le cas est **reproduit ici** avant d'être corrigé : une copie du dépôt entièrement convertie en
+  CRLF, et `npm test` dessus. Il échouait au 262ᵉ test comme sur la machine de publication ; il
+  passe les 286 maintenant. C'est ce qui a évité de découvrir les défauts un par un, une
+  publication à la fois.
+
 ## 7.21.2 — 13/09/2026
 
 **L'installateur Windows tout prêt, et un échec de construction qui se nomme.**
