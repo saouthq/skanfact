@@ -53,6 +53,10 @@ const LARGE_DETAIL = { width: 1180, height: 820 };
 const SANS_MARQUEURS = `
   .demo-banner { display: none !important; }
   .stamp { display: none !important; }
+  /* Le message passager du chargement — « Jeu de démonstration chargé » — s'était cuit dans
+     la capture des factures et s'est retrouvé sur la page d'accueil du site. Un marqueur qui
+     ne dure que huit secondes à l'écran dure pour toujours sur une image. */
+  #toast { display: none !important; }
 `;
 
 (async () => {
