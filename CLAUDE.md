@@ -16,9 +16,11 @@ L'utilisateur est débutant en gestion (première entreprise) : chaque champ por
   n'a lieu qu'une fois la copie constatée), `dossiers:join` ouvre un dossier déjà posé sans rien
   créer. Ne jamais revenir à « créer un dossier partagé vide » : c'est le défaut que la 7.28.0 a
   corrigé.
-- **Les actions d'une ligne vivent dans un menu** (`rowMenuCell` / `bindRowMenus` dans app.js), pas
-  dans une rangée de boutons. Toute nouvelle liste passe par là, et toute action qui change l'état
-  d'une pièce demande d'abord — et propose la suite.
+- **Les actions d'une ligne vivent dans un menu** — `src/renderer/rowmenu.js`, chargé par LES DEUX
+  applications (`RowMenu.cellule` / `RowMenu.brancherMenus`) — pas dans une rangée de boutons. Une
+  ligne garde au plus UN bouton visible, celui du geste pour lequel la page existe. Toute nouvelle
+  liste passe par là, chaque action porte une phrase et une icône, et toute action qui change
+  l'état d'une pièce demande d'abord — puis propose la suite.
 - **Le dépôt est PUBLIC depuis le 13/09/2026** (GitHub Actions y est gratuit) et redeviendra peut-être privé. La bascule est **une seule ligne** : `private` dans **`src/depot.js`**, que les deux applications lisent — le champ « jeton d'accès » revient alors tout seul dans leurs Paramètres. Ne jamais redéclarer ce drapeau ailleurs : il avait été écrit dans les deux `main.js`, et ils ont divergé. `npm run e2e:depot` bascule vraiment et vérifie l'écran.
 - **Aucun message d'erreur brut ne remonte à l'écran** : `updateProblem(err)` (dans les deux `main.js`) rend une phrase en français, range le texte d'origine dans `detail` (replié sous « Détails techniques »), et marque `soft` ce qui n'est pas une panne.
 - macOS : app non signée → `MAC_SIGNED = false` dans `src/main.js`. electron-updater télécharge le `.zip` (sha512 vérifié) et `src/mac-update.sh` remplace l'app dans Applications puis la relance. Ne pas prétendre que Squirrel.Mac fonctionne sans signature Apple.
@@ -374,7 +376,7 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:compta` | **la comptabilité mène aux pièces** : les contrôles de clôture armés, les douze mois de TVA cliquables, l'échéance fiscale qu'on pointe et qu'on dépointe, le mouvement qui ouvre sa facture, la carte « Reste à encaisser » |
 | `npm run e2e:metier` | **le métier** : quinze activités sans taux deviné, le régime fiscal posé puis conservé au redessin, les Paramètres qui grisent la TVA et annoncent la mention, le RIB non réclamé à qui encaisse sur place |
 | `npm run e2e:partage` | **partager une entreprise déjà saisie** : deux applications, deux profils, un emplacement commun — on partage, le second poste rejoint sans assistant, et ce que l'un enregistre l'autre le voit |
-| `npm run e2e:actions` | **une seule porte par ligne** : un menu d'actions écrites en toutes lettres sur six listes, qui ne vole pas le clic de la ligne, la question posée avant d'agir, et « Accepter et facturer » qui ouvre le brouillon |
+| `npm run e2e:actions` | **une seule porte par ligne** : un menu d'actions écrites en toutes lettres et illustrées sur huit listes, un bouton qui ouvre ET referme, qui ne vole pas le clic de la ligne, la question posée avant d'agir, et « Accepter et facturer » qui ouvre le brouillon |
 | `npm run e2e:aide` | **l'Aide, mesurée** : le plan (sept sections, trente-deux articles, sept couleurs), la pastille qui descend à sa section sans dupliquer le plan, le fil d'Ariane sur UNE ligne, « suivant » dans la colonne de l'article, le geste qui mène à sa page, la recherche classée et surlignée, et le sommaire d'un article long (absent d'un article court) |
 | `npm run e2e:colonnes` | **les colonnes alignées** : l'en-tête de chaque colonne de chaque tableau comparé à ses valeurs, sur 19 pages et tous leurs onglets (392 colonnes) |
 | `npm run e2e:entetes` | **les barres d'actions mesurées** : aucun contrôle d'en-tête étiré sur toute la largeur, aucune barre empilée sur trois rangées (21 pages) |
@@ -1441,6 +1443,73 @@ commun : on partage, on rejoint, et ce que l'un enregistre l'autre le voit) et `
 (un seul bouton par ligne sur six listes, le menu qui ne vole pas le clic de la ligne, la question
 posée avant d'agir — et « Annuler » qui ne change vraiment rien — puis « Accepter et facturer » qui
 ouvre le brouillon).
+
+## 7.29.0 — Un bouton qui ne se referme pas n'est pas un interrupteur
+
+Skander, sur captures : « quand j'appuie sur les 3 points et que je rappuie dessus, ça ne la ferme
+pas mais la rouvre » ; « mets des icônes, c'est plus intuitif » ; « au lieu des 3 points renomme le
+bouton » ; « dans la capture 2 on voit les boutons qui sont collés » ; « dans immobilisations, voir
+la fiche me renvoie dans l'achat à modifier, est-ce le bon workflow ? ».
+
+Règles apprises, à ne pas recasser :
+
+- **Deux garde-fous qui visent la même chose se neutralisent.** Le `mousedown` global refermait le
+  menu ; le `click` qui suit, sur le même bouton, le rouvrait. Le menu clignotait et restait
+  ouvert. Il faut LES DEUX moitiés : le bouton entre dans `SURFACES_OVERLAY` (le garde-fou global
+  ne le touche plus) **et** `ouvrir()` referme quand on rappuie sur le bouton déjà ouvert
+  (`ouvertSur`). Le drapeau se remet à zéro **sous condition** (`if (ouvertSur === bouton)`) :
+  `close` peut être rappelé alors qu'un AUTRE menu a pris sa place.
+- **Un pictogramme n'est pas un libellé, mais une icône À CÔTÉ d'un libellé est un repère.** « ⋮ »
+  ne se lit que si on connaît la convention : le bouton porte le mot « Actions » et un chevron.
+  Dans le menu, chaque action porte son dessin en plus de sa phrase — jamais à la place.
+- **Une action UNIQUE ne se cache pas derrière un menu** : `bindRowMenus` transforme le bouton en
+  vrai bouton nommé qui exécute directement. Deux clics et une lecture pour un choix unique, c'est
+  ce qu'on reprochait aux rangées.
+- **Le menu vit dans `src/renderer/rowmenu.js`, chargé par LES DEUX applications.** L'app du
+  cabinet avait exactement le même défaut, en pire : cinq boutons fantômes par ligne d'historique,
+  dont un « ✕ » muet qui **efface un paquet reçu** — le geste le plus destructif était le seul sans
+  nom. Le recopier aurait garanti la divergence (règle 7.3.0 + « une table en double diverge
+  toujours »). Il ne connaît rien du métier : on lui passe des actions toutes faites et on lui
+  prête le registre d'overlay de l'hôte (`RowMenu.brancher`).
+  **Tout fichier partagé doit entrer dans les `files` de `build/cabinet.config.js`** — sinon l'app
+  démarre en développement et plante une fois construite, comme `src/depot.js` en 7.26.0. Un test
+  relit les balises de son HTML et l'exige.
+- **Une ligne garde AU PLUS UN bouton toujours visible** — le geste pour lequel la page existe
+  (« Écrire » sur les relances du cabinet) — et tout le reste passe par le menu. `RowMenu.cellule`
+  prend ce bouton en paramètre ; un test compte les boutons de chaque cellule `row-actions` dans
+  les deux applications et refuse tout libellé de moins de six caractères.
+- **Deux boutons voisins ne doivent pas dépendre d'une espace dans le gabarit.**
+  `${cond ? '<button…>' : ''}<button…>` les collait, et ça ne se voit qu'à l'écran (capture du
+  Catalogue). `td.actions .btn + .btn { margin-left }` le règle une fois pour toutes.
+- **Un libellé décrit l'écran d'ARRIVÉE.** « Voir l'achat » ouvrait l'éditeur : un achat n'a pas de
+  fiche en lecture seule, contrairement à une facture émise qui est verrouillée. Le bouton dit
+  maintenant « Ouvrir la facture d'achat », et « Créer la fiche » est devenu « Créer la fiche du
+  bien » (c'est celle de l'immobilisation, pas celle de l'achat).
+- Piège du gabarit, re-rencontré : **un commentaire HTML dans un `template literal` ne doit contenir
+  aucun backtick** — j'ai écrit `` `btn-ghost` `` dans un commentaire et fermé la chaîne.
+- **Un garde-fou posé chez l'APPELANT ne protège que cet appelant.** La question « ce devis a déjà
+  donné FAC-… » était sur le bouton de l'éditeur depuis la 7.16.0 ; le menu de ligne, écrit douze
+  versions plus tard, est reparti sans elle et refabriquait une facture ENTIÈRE en silence. Elle
+  vit maintenant dans `facturerDevis`, avec le geste. Corollaire : `piecesDuDevis(id)` est la seule
+  source (l'éditeur, le menu et le geste l'appellent) — et ses deux moitiés ne se lisent pas au même
+  endroit, une facture totale porte `fromQuoteId`, un acompte porte `deposit.quoteId`.
+- **Un overlay peut se fermer sur un événement qu'on n'a pas provoqué.** Le menu s'ouvrait et
+  disparaissait dans la milliseconde : le `scroll` qui avait amené le bouton à l'écran juste avant
+  le clic était livré à la frame SUIVANTE, après l'enregistrement du fermeur. On ne ferme donc que
+  si le conteneur a vraiment bougé (`Math.abs(scrollTop - depart) > 4`). Symptôme à reconnaître :
+  un menu qui « ne s'ouvre pas » alors que son gestionnaire s'exécute — le tracer avec un
+  `MutationObserver` dit s'il a été ajouté puis retiré, ce qu'aucun sélecteur ne montre.
+- **Ce qui s'ouvre par-dessus referme ce qui est en dessous.** `openPalette` ferme le menu de ligne
+  et le sélecteur d'entreprise (couche 70) avant de se dessiner (couche 60) : sinon ils flottent sur
+  son fond flouté et volent son premier Échap. L'app du cabinet avait ce garde-fou depuis la 6.8.0.
+- **`vers()` et non `navigate()` dans TOUTE table d'actions** qui pose un état avant de naviguer —
+  les entrées d'onglet de la palette étaient inertes depuis la page qu'elles visent (piège 7.15.0).
+- **`e2e:boucle` était cassé depuis la 7.22.0** — le parcours le plus important du projet, celui qui
+  prouve la chaîne entreprise → paquet → cabinet. Il traversait l'assistant en comptant les
+  « Suivant » ; l'écran du régime fiscal s'est inséré au milieu. Personne ne s'en était aperçu : il
+  n'avait pas été relancé. C'est le troisième e2e pourri par le même mécanisme (`.help-nav` en
+  7.28.0, les écrans numérotés en 7.3.0). **Reconnaître chaque écran à ce qu'il contient, jamais à
+  son rang — et relancer TOUS les parcours après une refonte.**
 
 ## Pistes pour la suite (non demandées)
 

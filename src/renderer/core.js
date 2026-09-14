@@ -2905,7 +2905,11 @@
         if (d >= t) {
           const inv = buildRecurringInvoice(r, d, company);
           const due = addDays(d, Number(company.paymentTermsDays) || 30);
-          if (due <= horizon) events.push({ date: due, amount: round3(computeTotals(inv, company).netToPay), kind: 'contrat',
+          // `toBase`, comme la branche des factures clients dix-neuf lignes plus haut : un contrat
+          // porte sa devise et `buildRecurringInvoice` la reporte sur chaque facture. Sans la
+          // conversion, un abonnement de 800 € entrait dans la prévision pour 800 DT — la courbe
+          // montrait un creux qui n'existe pas, sur la page faite pour savoir si l'on tiendra.
+          if (due <= horizon) events.push({ date: due, amount: round3(toBase(inv, computeTotals(inv, company).netToPay, company)), kind: 'contrat',
             label: fillTemplate(r.subject, { mois: monthLabel(d), annee: d.slice(0, 4) }), id: r.id });
         }
         d = nextRecurrenceDate(d, r.every, r.day);

@@ -7,6 +7,100 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 7.29.0 — 14/09/2026
+
+**Le bouton s'appelle « Actions », il se referme quand on rappuie dessus, et chaque geste a son
+dessin. Dans les deux applications.**
+
+### Le bouton qui ne se refermait pas
+
+« Quand j'appuie sur les trois points et que je rappuie dessus, ça ne la ferme pas, ça la rouvre. »
+
+C'était exact, et invisible autrement qu'en essayant : deux garde-fous se marchaient dessus. Celui
+de l'application refermait le menu au moment où le doigt touche le bouton, puis le clic — qui arrive
+juste après — le rouvrait. Le menu clignotait et restait ouvert. **Un bouton qui ne fait pas le
+contraire de ce qu'il vient de faire n'est pas un interrupteur.**
+
+Il ouvre, il referme, il rouvre. Et il se parcourt au clavier : les flèches passent d'une action à
+l'autre, Échap referme.
+
+### « ⋮ » devient « Actions »
+
+Trois points ne se lisent que si on connaît déjà la convention. Le bouton porte maintenant le mot,
+et le chevron qui annonce qu'il ouvre sur un choix.
+
+Chaque action du menu porte son **dessin** — le même trait que les icônes de la barre latérale.
+Elles accompagnent le libellé, elles ne le remplacent jamais : c'est le pictogramme SEUL qui avait
+rendu les anciennes rangées de boutons illisibles.
+
+Et **une action unique ne se cache plus derrière un menu** : le bouton la nomme et l'exécute.
+Ouvrir une liste pour un choix unique, c'est un clic et une lecture de plus pour rien.
+
+### Les listes qui étaient restées en arrière
+
+Le **Catalogue** alignait « Fiche stock » et « Modifier » collés l'un à l'autre — deux boutons que
+rien ne séparait, parce que le gabarit comptait sur une espace qui n'y était pas. La **Facturation
+récurrente** en alignait trois. Les deux passent au menu, avec les **Modèles de documents** et les
+**Textes prédéfinis**. Au passage, une prestation se **duplique** : une variante (« Audit 1 jour »,
+« Audit 2 jours ») se saisissait en recopiant sept champs à la main.
+
+### L'application du comptable avait le même défaut, en pire
+
+Chaque ligne de l'historique des paquets portait **cinq boutons fantômes**, dont un « ✕ » muet qui
+**efface un paquet reçu**. Le geste le plus destructif de l'application était le seul sans nom.
+
+Les deux applications partagent désormais le même menu (`src/renderer/rowmenu.js`), comme elles
+partagent déjà leur feuille de style. Le recopier aurait garanti la divergence : la table d'icônes
+de l'une aurait un jour un dessin que l'autre n'a pas. Sur la page Relances, « Écrire » reste le
+seul bouton visible — c'est le geste pour lequel cette page existe.
+
+### Deux libellés qui ne disaient pas la vérité
+
+Dans **Immobilisations → À immobiliser**, « Voir l'achat » promettait une consultation et ouvrait
+l'éditeur. Un achat n'a pas de fiche en lecture seule — contrairement à une facture émise, qui est
+verrouillée — donc le bouton doit le dire : « Ouvrir la facture d'achat ». Et « Créer la fiche »
+est devenu « Créer la fiche du bien », parce que c'est la fiche de l'immobilisation, pas celle de
+l'achat.
+
+### Ce qu'un audit a trouvé autour du menu
+
+**Une seconde facture entière, sans un mot.** Le menu d'une ligne proposait « Facturer ce devis » sur
+un devis **déjà facturé** — parce que facturer le fait passer en « accepté », donc la condition
+d'affichage restait vraie — et un second clic fabriquait une facture complète de plus. L'éditeur,
+lui, se gardait de ça depuis la 7.16.0 : la question était posée sur **son** bouton, pas dans le
+geste. Un garde-fou chez l'appelant ne protège que cet appelant. Il vit désormais dans le geste
+lui-même, et le menu propose ce qui vient ensuite : **« Voir FAC-… »**, avec « Refacturer la
+totalité… » en rouge, derrière la question qui nomme la facture qui existe déjà.
+
+**Une prévision de trésorerie qui inventait un creux.** Les factures clients étaient converties, les
+contrats récurrents non : un abonnement de 800 € entrait dans la courbe pour 800 DT. Sur la page
+faite pour savoir si l'on tiendra le mois, un creux inventé vaut un vrai creux manqué.
+
+**« Attestation reçue » cochait la case et quittait la page** : le clic sur le bouton traversait
+jusqu'à la ligne, qui ouvre la facture. On ne voyait jamais que c'était noté.
+
+**⌘K laissait les menus ouverts derrière elle.** La palette vit sous eux : un menu d'actions ou le
+sélecteur d'entreprise restait dessiné par-dessus son fond flouté, puis volait le premier Échap — on
+croyait fermer la palette, on fermait le menu, et le champ de recherche perdait le focus au passage.
+
+**Les entrées « Page → Onglet » de la palette étaient inertes depuis la page visée.** Choisir
+« Comptabilité → Clôtures » depuis la Comptabilité posait l'onglet et ne redessinait rien.
+
+### Un test qui dormait depuis sept versions
+
+`e2e:boucle` — le parcours qui prouve la chaîne entreprise → paquet → cabinet, le plus important du
+projet — était **cassé depuis la 7.22.0**. Il traversait l'assistant de première utilisation en
+comptant les « Suivant » ; l'écran du régime fiscal s'est inséré au milieu, et il attendait depuis
+un champ qui n'arrivait jamais. Personne ne s'en était aperçu : il n'avait pas été relancé. Il
+reconnaît maintenant chaque écran à ce qu'il contient. Et il restait un second blocage, celui-là
+depuis la **7.6.0** : fabriquer un paquet depuis le jeu d'exemple pose une question à trois sorties,
+et le test n'en connaissait qu'une. Il tourne de nouveau de bout en bout — **0 erreur**.
+
+Un défaut trouvé en le réparant : le menu d'une ligne s'ouvrait puis **disparaissait dans la
+milliseconde**, sur un événement de défilement en retard — celui qui avait amené le bouton à l'écran
+juste avant le clic. On croyait avoir mal cliqué. Le menu ne se ferme plus que si la page a
+vraiment bougé.
+
 ## 7.28.0 — 14/09/2026
 
 **Partager l'entreprise qu'on a déjà saisie. Une seule porte par ligne. Et l'aide du cabinet.**

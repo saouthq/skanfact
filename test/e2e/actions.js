@@ -64,7 +64,8 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   // -------------------------------------------------- 1. un seul bouton par ligne, partout
   j.etape('Chaque liste finit par UN bouton, qui ouvre des actions écrites en toutes lettres');
   const pages = [['#/devis', 'Devis'], ['#/factures', 'Factures'], ['#/clients', 'Clients'],
-                 ['#/fournisseurs', 'Fournisseurs'], ['#/achats', 'Achats'], ['#/relances', 'Relances']];
+                 ['#/fournisseurs', 'Fournisseurs'], ['#/achats', 'Achats'], ['#/relances', 'Relances'],
+                 ['#/catalogue', 'Catalogue'], ['#/contrats', 'Contrats']];
   const resume = [];
   for (const [hash, nom] of pages) {
     await aller(hash);
@@ -84,11 +85,34 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
       return Math.round(Math.max(0, r.right - document.documentElement.clientWidth, 8 - r.left, r.bottom - window.innerHeight));
     });
     if (hors > 0) throw new Error(`${nom} : le menu dépasse de ${hors}px`);
+    // Chaque entrée porte son dessin : sans lui, le menu est un mur de phrases qu'on lit au lieu
+    // de le parcourir du regard.
+    const sansIcone = await win.evaluate(() => [...document.querySelectorAll('.row-menu button[data-i]')]
+      .filter(b => !b.querySelector('svg.rm-i')).map(b => b.querySelector('.rm-l').textContent.trim()));
+    if (sansIcone.length) throw new Error(`${nom} : action(s) sans icône : ${sansIcone.join(', ')}`);
     await win.keyboard.press('Escape');
     await win.waitForFunction(() => !document.querySelector('.row-menu'), null, { timeout: 3000 });
     resume.push(`${nom} ${actions.length}`);
   }
-  j.ok(resume.join(' · ') + ' — Échap referme partout');
+  j.ok(resume.join(' · ') + ' — Échap referme partout, chaque action a son icône');
+
+  // -------------------------------------------------- 1 bis. le bouton est un INTERRUPTEUR
+  // Il fermait puis rouvrait : le `mousedown` global refermait le menu et le `click` le rouvrait
+  // dans la foulée. On appuyait pour fermer, ça clignotait, et le menu restait ouvert.
+  j.etape('Rappuyer sur le bouton referme le menu, au lieu de le rouvrir');
+  await aller('#/devis');
+  const btn = 'tbody tr:first-child [data-rowmenu]';
+  await win.click(btn); await win.waitForSelector('.row-menu');
+  await win.click(btn); await win.waitForTimeout(350);
+  if (await win.$('.row-menu')) throw new Error('le menu est toujours ouvert après un second clic sur son bouton');
+  // Et il se rouvre bien au troisième : fermer ne doit pas condamner le bouton.
+  await win.click(btn); await win.waitForSelector('.row-menu', { timeout: 3000 });
+  // Le libellé du bouton se lit, au lieu de trois points qu'il faut déjà connaître.
+  const mot = await win.evaluate(s => document.querySelector(s).textContent.trim(), btn);
+  if (!/actions/i.test(mot)) throw new Error(`le bouton de ligne ne se nomme pas : « ${mot} »`);
+  await win.keyboard.press('Escape');
+  await win.waitForFunction(() => !document.querySelector('.row-menu'));
+  j.ok(`« ${mot} » ouvre, referme, et rouvre`);
 
   // -------------------------------------------------- 2. le menu ne vole pas le clic de la ligne
   j.etape('Le bouton du menu ne déclenche pas l\'ouverture de la ligne');
@@ -161,12 +185,24 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   j.ok(`« Accepter et facturer » ouvre ${arrivee} — ${type}`);
 
   // -------------------------------------------------- 5. et le devis accepté propose Facturer
-  j.etape('Un devis déjà accepté propose « Facturer ce devis » dans son menu');
+  // On vient de le facturer : le geste SUIVANT est de voir la facture, pas d'en refaire une. Le
+  // menu proposait « Facturer ce devis » à l'identique — et un second clic fabriquait une facture
+  // entière de plus, sans un mot. Refacturer reste possible, en rouge et derrière une question.
+  j.etape('Un devis déjà facturé mène à SA facture, et ne la refait pas en silence');
   await aller('#/devis');
   const actionsAccepte = await menuDe(`tbody tr[data-id="${cible}"]`);
-  if (!actionsAccepte.includes('Facturer ce devis'))
-    throw new Error(`le menu d'un devis accepté ne propose pas de facturer : ${actionsAccepte.join(', ')}`);
-  await win.keyboard.press('Escape');
+  if (actionsAccepte.includes('Facturer ce devis'))
+    throw new Error(`le menu propose encore de facturer un devis déjà facturé : ${actionsAccepte.join(', ')}`);
+  if (!actionsAccepte.some(a => /^Voir /.test(a)))
+    throw new Error(`rien ne mène à la facture déjà établie : ${actionsAccepte.join(', ')}`);
+  // Et si on insiste, on est prévenu.
+  await cliquerAction('Refacturer la totalité…');
+  const prevenu = await win.$('.modal');
+  if (!prevenu) throw new Error('refacturer la totalité ne demande rien');
+  const texteRefac = await win.$eval('.modal', e => e.textContent);
+  if (!/déjà donné/.test(texteRefac)) throw new Error('la question ne nomme pas la facture qui existe déjà : ' + texteRefac.slice(0, 90));
+  await win.click('.modal [data-close]');
+  await win.waitForTimeout(400);
   j.ok(actionsAccepte.join(', '));
 
   await app.close();

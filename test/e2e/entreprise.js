@@ -289,7 +289,15 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     await win.click('#cat-tabs button[data-tab="modeles"]');
     await win.waitForSelector('#tpl-wrap table');
     if (!(await win.textContent('#tpl-wrap')).includes('Modèle E2E')) throw new Error('modèle absent');
-    const btn = (await win.$$('[data-use]')).pop(); await btn.click();
+    // Depuis la 7.29.0 « Nouveau devis » vit dans le menu d'actions de la ligne du modèle, pas sur
+    // un bouton `data-use` : on ouvre le menu du DERNIER modèle et on clique l'entrée.
+    const menus = await win.$$('#tpl-wrap [data-rowmenu]');
+    await menus[menus.length - 1].click();
+    await win.waitForSelector('.row-menu');
+    const iNeuf = await win.evaluate(() => [...document.querySelectorAll('.row-menu .rm-l')]
+      .findIndex(x => /^Nouveau /.test(x.textContent.trim())));
+    if (iNeuf < 0) throw new Error('le menu du modèle ne propose pas de créer un document');
+    await win.click(`.row-menu button >> nth=${iNeuf}`);
     await win.waitForSelector('#f-head');
     const first = await win.inputValue('#lines input[data-k=label]'); if (!first) throw new Error('lignes du modèle non appliquées');
     if (!(await win.$('#tpl-pick'))) throw new Error('sélecteur de modèle absent');
@@ -598,7 +606,13 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
   await step('facture d\'un contrat : le lien vers le contrat et la ligne d\'historique', async () => {
     await win.evaluate(() => { location.hash = '#/contrats'; });
     await win.waitForSelector('#c-wrap tr.clickable');
-    await win.click('#c-wrap [data-gen]');
+    // Le geste vit dans le menu d'actions de la ligne depuis la 7.29.0.
+    await win.click('#c-wrap [data-rowmenu] >> nth=0');
+    await win.waitForSelector('.row-menu');
+    const iG = await win.evaluate(() => [...document.querySelectorAll('.row-menu .rm-l')]
+      .findIndex(x => x.textContent.trim() === 'Générer maintenant'));
+    if (iG < 0) throw new Error('le menu du contrat ne propose pas « Générer maintenant »');
+    await win.click(`.row-menu button >> nth=${iG}`);
     // Depuis la 7.18.0, générer un contrat suspendu ou dont l'échéance n'est pas encore arrivée
     // pose d'abord la question : le geste avance le calendrier de facturation. Ici l'échéance a
     // déjà été consommée par l'étape « contrats », donc la question apparaît.
@@ -1134,8 +1148,14 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
   });
   await step('catalogue : coût de revient et marge en direct', async () => {
     await win.evaluate(() => { location.hash = '#/catalogue'; });
-    await win.waitForSelector('#list-wrap [data-edit]');
-    await win.click('#list-wrap [data-edit]');
+    // « Modifier la prestation » vit dans le menu d'actions de la ligne depuis la 7.29.0.
+    await win.waitForSelector('#list-wrap [data-rowmenu]');
+    await win.click('#list-wrap [data-rowmenu] >> nth=0');
+    await win.waitForSelector('.row-menu');
+    const iMod = await win.evaluate(() => [...document.querySelectorAll('.row-menu .rm-l')]
+      .findIndex(x => /^Modifier la prestation/.test(x.textContent.trim())));
+    if (iMod < 0) throw new Error('le menu du catalogue ne propose pas de modifier la prestation');
+    await win.click(`.row-menu button >> nth=${iMod}`);
     await win.waitForSelector('#kf input[name=unitCost]');
     await win.fill('#kf input[name=unitCost]', '10');
     await win.fill('#kf input[name=unitPrice]', '100');

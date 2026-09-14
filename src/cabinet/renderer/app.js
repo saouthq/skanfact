@@ -41,6 +41,13 @@
   // pas : le panneau des mises à jour plantait au moment précis où il devait annoncer une panne.
   const h = esc;
 
+  // Le menu d'actions d'une ligne vit dans `src/renderer/rowmenu.js`, chargé par les DEUX
+  // applications. Cette app-ci alignait cinq boutons fantômes par ligne, dont un « ✕ » muet qui
+  // supprime un paquet reçu : exactement le défaut corrigé côté entreprise en 7.28.0, et jamais
+  // porté ici. Une règle apprise d'un côté se vérifie de l'autre (règle 7.3.0).
+  const rowMenuCell = RowMenu.cellule;
+  const bindRowMenus = RowMenu.brancherMenus;
+
   // Une erreur venue du processus principal arrive habillée en « Error invoking remote method '…' ».
   // On ne montre que la phrase écrite pour l'utilisateur.
   // Windows est une cible de construction : l'application parlait pourtant de « ce Mac », du
@@ -1183,17 +1190,10 @@
           <td class="muted nw">${esc(fmtWhen(p.receivedAt))}</td>
           <td class="muted nw">${esc(p.generatedAt ? fmtWhen(Date.parse(p.generatedAt)) : '—')}</td>
           <td class="r muted nw">${esc(fmtBytes(p.bytes))}</td>
-          <td class="actions row-actions">${p.path
-            ? `<button class="btn btn-ghost btn-sm" data-open="${esc(p.month)}">Ouvrir</button>
-               <button class="btn btn-ghost btn-sm" data-acc="${esc(p.month)}" title="Prévenir le client que c'est bien arrivé">Accuser réception</button>
-               <button class="btn btn-ghost btn-sm" data-xtr="${esc(p.month)}">Extraire…</button>
-               <button class="btn btn-ghost btn-sm" data-rev="${esc(p.month)}">Fichier</button>
-               <button class="btn btn-ghost btn-sm danger" data-del="${esc(p.month)}" title="Supprimer ce paquet">✕</button>`
-            : '<span class="muted small">exemple</span>'}</td></tr>`).join('')}</tbody>
+          ${p.path ? rowMenuCell(p.month) : '<td class="row-actions"><span class="muted small">exemple</span></td>'}</tr>`).join('')}</tbody>
         <tfoot><tr><td class="nw"><strong>${pl(packs.length, 'mois', 'mois')}</strong></td><td></td>
           <td class="r nw"><strong>${esc(money(totalCA))}</strong></td><td colspan="7"></td></tr></tfoot></table></div>
-        <p class="muted small mt">« Extraire » écrit tout le contenu d'un paquet dans un dossier de ton choix ${info('p.extract')} — pour travailler dans ton logiciel, ou pour rendre ses pièces à un client.
-        La croix supprime un paquet arrivé par erreur ${info('p.delete')}.</p>`
+        <p class="muted small mt">Le bouton « Actions » de chaque ligne ouvre ce qu'on peut faire du mois : l'ouvrir, l'extraire dans un dossier de ton choix ${info('p.extract')} — pour travailler dans ton logiciel, ou pour rendre ses pièces à un client —, accuser réception, ou supprimer un paquet arrivé par erreur ${info('p.delete')}.</p>`
         : '<div class="empty">Aucun paquet reçu.</div>'}
       </div>
 
@@ -1223,26 +1223,30 @@
     const rel = $('#rel'); if (rel) rel.onclick = () => writeRelance(row);
     $('#note-rel').onclick = () => noteRelanceForm(row);
     $$('[data-m]', view).forEach(c => { c.onclick = () => openPack(dossier, c.dataset.m); });
-    $$('[data-open]', view).forEach(b => { b.onclick = () => openPack(dossier, b.dataset.open); });
-    $$('[data-xtr]', view).forEach(b => { b.onclick = () => extractPack(dossier, b.dataset.xtr); });
-    $$('[data-acc]', view).forEach(b => {
-      b.onclick = () => { const p = packs.find(x => x.month === b.dataset.acc); if (p) accuseReception(dossier, p); };
-    });
-    $$('[data-rev]', view).forEach(b => {
-      b.onclick = () => { const p = packs.find(x => x.month === b.dataset.rev); if (p) api.reveal(p.path); };
-    });
-    $$('[data-del]', view).forEach(b => {
-      b.onclick = async () => {
-        const p = packs.find(x => x.month === b.dataset.del);
-        if (!p) return;
-        const ok = await confirmDialog('Supprimer ce paquet ?',
-          `<p>Le paquet <strong>${esc(p.label)}</strong> de ${esc(dossier.name)} sera effacé de ton disque, et ce mois redeviendra « manquant » pour ce client.</p>
-           <p class="muted small">Une sauvegarde est prise juste avant. À réserver à un paquet arrivé par erreur.</p>
-           ${backupInfo && backupInfo.external && backupInfo.external.dir ? '<p class="muted small">La copie externe n\'est pas touchée : une sauvegarde qui efface ce que tu effaces n\'en est plus une. Va l\'y supprimer à la main si c\'est ce que tu veux.</p>' : ''}`, 'Supprimer', true);
-        if (!ok) return;
-        try { S = await api.deletePack(dossier.id, p.month); render(); toast('Paquet supprimé.'); refreshBackupInfo(); }
-        catch (e) { toast(plainError(e), 'error'); }
-      };
+    // Les cinq boutons fantômes de cette ligne — dont un « ✕ » muet qui EFFACE un paquet reçu —
+    // sont devenus un menu d'actions écrites en toutes lettres (7.29.0), comme dans l'app
+    // entreprise. Le geste destructif y porte enfin son nom, et vit tout en bas, après un trait.
+    const supprimerPaquet = async (p) => {
+      const ok = await confirmDialog('Supprimer ce paquet ?',
+        `<p>Le paquet <strong>${esc(p.label)}</strong> de ${esc(dossier.name)} sera effacé de ton disque, et ce mois redeviendra « manquant » pour ce client.</p>
+         <p class="muted small">Une sauvegarde est prise juste avant. À réserver à un paquet arrivé par erreur.</p>
+         ${backupInfo && backupInfo.external && backupInfo.external.dir ? '<p class="muted small">La copie externe n\'est pas touchée : une sauvegarde qui efface ce que tu effaces n\'en est plus une. Va l\'y supprimer à la main si c\'est ce que tu veux.</p>' : ''}`, 'Supprimer', true);
+      if (!ok) return;
+      try { S = await api.deletePack(dossier.id, p.month); render(); toast('Paquet supprimé.'); refreshBackupInfo(); }
+      catch (e) { toast(plainError(e), 'error'); }
+    };
+    bindRowMenus(view, mois => {
+      const p = packs.find(x => x.month === mois);
+      if (!p || !p.path) return [];
+      return [
+        { icon: 'loupe', label: 'Ouvrir le paquet', hint: 'Les pièces du mois, une par une', run: () => openPack(dossier, p.month) },
+        { icon: 'extraire', label: 'Extraire dans un dossier…', hint: 'Tout le contenu, pour ton logiciel ou pour le rendre au client', run: () => extractPack(dossier, p.month) },
+        { icon: 'dossier', label: 'Montrer le fichier reçu', hint: 'Dans l\'explorateur de fichiers', run: () => api.reveal(p.path) },
+        { sep: true },
+        { icon: 'email', label: 'Accuser réception', hint: 'Prévenir le client que c\'est bien arrivé', run: () => accuseReception(dossier, p) },
+        { sep: true },
+        { icon: 'supprimer', label: 'Supprimer ce paquet', hint: 'Le mois redeviendra manquant pour ce client', danger: true, run: () => supprimerPaquet(p) }
+      ];
     });
   }
 
@@ -1517,20 +1521,26 @@
             ? esc(K.missingLabel(r.missingMonths))
             : `<span class="muted">${pl(r.provisionalCount, 'mois', 'mois')} non clôturé${r.provisionalCount > 1 ? 's' : ''}</span>`}</td>
           <td class="muted nw">${r.lastRelanceAt ? esc(fmtDay(r.lastRelanceAt)) + ` <span class="small">(${esc(ago(r.lastRelanceAt))}, ${esc(labelOf(K.RELANCE_WAYS, r.lastRelanceVia) || r.lastRelanceVia)})</span>` : 'jamais'}</td>
-          <td class="actions row-actions"><button class="btn btn-ghost btn-sm" data-fiche="${esc(r.id)}">Le dossier</button>
-            ${r.phone ? `<button class="btn btn-ghost btn-sm" data-tel="${esc(r.id)}">Appeler</button>` : ''}
-            <button class="btn btn-primary btn-sm" data-rel="${esc(r.id)}">Écrire</button></td></tr>`).join('')}</tbody></table></div>`
+          ${rowMenuCell(r.id, `<button class="btn btn-primary btn-sm" data-rel="${esc(r.id)}">Écrire</button>`)}</tr>`).join('')}</tbody></table></div>`
         : `<div class="todo-ok">Personne à relancer : tous tes dossiers sont à jour.</div>`}`;
     const findRow = id => K.dossierList(S).find(x => x.id === id);
-    $$('[data-rel]', view).forEach(b => { b.onclick = () => { const r = findRow(b.dataset.rel); if (r) writeRelance(r); }; });
-    $$('[data-tel]', view).forEach(b => {
-      b.onclick = async () => {
-        const r = findRow(b.dataset.tel); if (!r) return;
-        try { await api.tel({ number: r.phone }); await recordRelance(r, 'tel'); render(); }
-        catch (e) { toast(plainError(e), 'error'); }
-      };
+    // « Écrire » reste le seul bouton visible de la ligne : c'est le geste pour lequel cette page
+    // existe, et l'enfouir dans un menu ajouterait un clic à ce qu'on vient y faire. Le reste — qui
+    // n'a pas à occuper une place permanente — vit dans le menu.
+    $$('[data-rel]', view).forEach(b => { b.onclick = e => { e.stopPropagation(); const r = findRow(b.dataset.rel); if (r) writeRelance(r); }; });
+    const appeler = async (r) => {
+      try { await api.tel({ number: r.phone }); await recordRelance(r, 'tel'); render(); }
+      catch (e) { toast(plainError(e), 'error'); }
+    };
+    bindRowMenus(view, id => {
+      const r = findRow(id); if (!r) return [];
+      return [
+        { icon: 'cloche', label: 'Écrire la relance', hint: 'Le message tout prêt, avec les mois qui manquent', run: () => writeRelance(r) },
+        r.phone ? { icon: 'telephone', label: 'Appeler le client', hint: `${r.phone} — l'appel est noté comme une relance`, run: () => appeler(r) } : null,
+        { sep: true },
+        { icon: 'dossier', label: 'Ouvrir le dossier', hint: 'Ses paquets, ses chiffres et son historique', run: () => { location.hash = '#/dossier/' + encodeURIComponent(r.id); } }
+      ];
     });
-    $$('[data-fiche]', view).forEach(b => { b.onclick = () => { location.hash = '#/dossier/' + encodeURIComponent(b.dataset.fiche); }; });
     const g = $('#group'); if (g) g.onclick = () => groupRelance(rows.slice());
   }
 
@@ -1912,7 +1922,9 @@
         <td>${esc(x.daily ? 'Quotidienne' : x.name.replace(/-\d{4}-\d{2}-\d{2}_.*$/, '').replace(/_/g, ' '))}</td>
         <td class="nw">${esc(fmtWhen(x.mtime))} <span class="muted small">${esc(ago(x.mtime))}</span></td>
         <td class="r muted nw">${esc(fmtBytes(x.size))}</td>
-        <td class="actions row-actions"><button class="btn btn-ghost btn-sm" data-restore="${i}">Restaurer…</button></td></tr>`).join('')}</tbody></table></div>` : ''}`;
+        <!-- Un bouton fantôme n'a ni bordure ni couleur, et c'est ici le bouton du pire jour :
+             celui où l'on vient rechercher ce qu'on a perdu. Il ressemble maintenant à un bouton. -->
+        <td class="actions row-actions"><button class="btn btn-sm" data-restore="${i}">Restaurer cette sauvegarde…</button></td></tr>`).join('')}</tbody></table></div>` : ''}`;
 
     s.innerHTML = `<h2>Sécurité</h2>
       <p class="small">Le fichier de ce cabinet est chiffré avec ton mot de passe (AES-256). Il contient la clé qui ouvre les paquets de

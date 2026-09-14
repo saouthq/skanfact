@@ -144,8 +144,14 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   });
   if (!contrat) throw new Error('le jeu d\'exemple n\'a aucun contrat récurrent');
   await aller('#/contrats');
-  await win.waitForSelector('[data-gen]');
-  await win.evaluate(i => { document.querySelector(`[data-gen="${i}"]`).click(); }, contrat.id);
+  // Le geste vit dans le menu d'actions de la ligne depuis la 7.29.0 : on l'ouvre pour de vrai et
+  // on clique l'entrée, plutôt que de viser un `data-gen` qui n'existe plus.
+  await win.click(`tr[data-rid="${contrat.id}"] [data-rowmenu]`);
+  await win.waitForSelector('.row-menu');
+  const iGen = await win.evaluate(() => [...document.querySelectorAll('.row-menu .rm-l')]
+    .findIndex(x => x.textContent.trim() === 'Générer maintenant'));
+  if (iGen < 0) throw new Error('le menu du contrat ne propose pas « Générer maintenant »');
+  await win.click(`.row-menu button >> nth=${iGen}`);
   const question = await win.waitForSelector('#modal-root #ok', { timeout: 4000 }).catch(() => null);
   if (!question) throw new Error('générer un contrat suspendu ne demande rien');
   const texte = await win.$eval('#modal-root', e => e.textContent);

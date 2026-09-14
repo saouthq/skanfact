@@ -39,6 +39,7 @@ module.exports = {
     'src/depot.js',                    // public ou privé : la même vérité que l'app entreprise
     'src/mac-update.sh',               // remplacement de l'app sur macOS non signé
     'src/renderer/style.css',          // la feuille partagée, chargée par son index.html
+    'src/renderer/rowmenu.js',         // le menu d'actions d'une ligne, partagé lui aussi
     'package.json',
     'CHANGELOG.md'
   ],

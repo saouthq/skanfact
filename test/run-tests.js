@@ -26,6 +26,17 @@ function lireSource(...morceaux) {
   return fs2.readFileSync(path2.join(__dirname, '..', ...morceaux), 'utf8').replace(/\r\n/g, '\n');
 }
 
+// Le menu d'actions d'une ligne vit dans son propre fichier depuis la 7.29.0, parce que les DEUX
+// applications s'en servent. Comme pour app.js, on juge le CODE : un commentaire qui cite la règle
+// qu'on cherche l'a déjà satisfaite deux fois dans l'histoire de ce projet (6.8.0, 7.25.0).
+function lireRowMenu() {
+  const brut = lireSource('src', 'renderer', 'rowmenu.js');
+  const net = brut.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+  assert.ok(net.includes('function brancherMenus') && net.includes('const ICO = {'),
+    'le nettoyage des commentaires a mangé le code du menu d\'actions');
+  return net;
+}
+
 function lireApp() {
   const brut = lireSource('src', 'renderer', 'app.js');
   const net = brut.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
@@ -3761,6 +3772,10 @@ t('audit H5 : l\'app gratuite du comptable n\'embarque pas le code de l\'app pay
   if (/require\('\.\.\/zip'\)/.test(lus)) besoins.push('src/zip.js');
   if (/mac-update\.sh/.test(lus)) besoins.push('src/mac-update.sh');
   if (/renderer\/style\.css/.test(lus)) besoins.push('src/renderer/style.css');
+  // Le menu d'actions partagé (7.29.0). Oublié ici, l'app du cabinet démarre en développement —
+  // où le fichier est là — et plante une fois CONSTRUITE, sur un `RowMenu is not defined` qui ne
+  // se voit qu'après installation. Exactement le piège de `src/depot.js` en 7.26.0.
+  if (/renderer\/rowmenu\.js/.test(lus)) besoins.push('src/renderer/rowmenu.js');
   besoins.forEach(f => assert.ok(motifs.includes(f), `l'app cabinet a besoin de ${f} et il n'est pas livré`));
   // Les fichiers de l'app entreprise qui ne doivent PAS partir.
   ['src/renderer/app.js', 'src/renderer/core.js', 'src/main.js', 'src/storage.js', 'src/licence.js']
@@ -4364,7 +4379,7 @@ t('cabinet : aucun de ses fichiers n\'appelle une fonction qui n\'existe pas', (
     'src/cabinet/renderer/app.js', 'src/cabinet/cabcore.js', 'src/cabinet/renderer/cabguide.js',
     'src/cabinet/cabstore.js', 'src/cabinet/main.js', 'src/cabinet/preload.js',
     'src/main.js', 'src/preload.js',
-    'src/renderer/app.js', 'src/renderer/core.js', 'src/renderer/guide.js',
+    'src/renderer/app.js', 'src/renderer/core.js', 'src/renderer/guide.js', 'src/renderer/rowmenu.js',
     'src/renderer/onboarding.js', 'src/renderer/demo.js', 'src/storage.js', 'src/zip.js', 'src/licence.js'
   ].forEach(f => {
     const src = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
@@ -5854,8 +5869,18 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // Les deux chemins passent par `facturerDevis` — on teste la RÈGLE (le gestionnaire l'appelle),
     // pas la forme exacte d'une ligne : depuis la 7.16.0 il pose d'abord une question quand le devis
     // est déjà facturé, donc une assertion recopiée mot pour mot tomberait sans rien prouver.
-    assert.ok(/\$\('#convert'\)\.onclick = async \(\) => \{[\s\S]{0,700}?facturerDevis\(doc\);/.test(code),
+    assert.ok(/\$\('#convert'\)\.onclick = [\s\S]{0,700}?facturerDevis\(doc\)/.test(code),
       'le bouton de l\'éditeur doit passer par facturerDevis');
+    // Et le garde-fou « ce devis a déjà donné … » vit DANS `facturerDevis`, pas chez ses appelants
+    // (7.29.0) : posé sur le bouton de l'éditeur en 7.16.0, il ne protégeait que ce bouton-là — le
+    // menu de ligne de la 7.28.0, écrit ailleurs, refabriquait une facture entière sans un mot.
+    const fd = code.slice(code.indexOf('async function facturerDevis(q) {'), code.indexOf('function invoiceFromQuote('));
+    assert.ok(fd.length > 200 && fd.includes('data.documents.push(inv)'), 'découpage de facturerDevis raté');
+    assert.ok(/piecesDuDevis\(q\.id\)[\s\S]{0,400}?await confirmDialog\(/.test(fd),
+      'facturerDevis ne demande rien sur un devis déjà facturé : un second clic crée une facture entière de plus');
+    // Et l'appelant ne recopie plus la condition : c'est ce qui a fait diverger les deux chemins.
+    assert.ok(!/dejaFacture\.length \|\| issuedDeposits\.length\) \{[\s\S]{0,200}?confirmDialog/.test(code),
+      'la question est de nouveau recopiée chez un appelant : le prochain chemin repartira sans elle');
     assert.ok(/run: \(\) => facturerDevis\(d\)/.test(menuDoc), 'et celui de la liste aussi');
     assert.ok(!/invoiceFromQuote\(doc, deepCopy\(doc\.lines\)/.test(code), 'plus aucune copie du geste à la main');
     // Et le détail de « À faire » ne décrit plus un itinéraire.
@@ -6163,7 +6188,9 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.ok(/toastUndo\('Attestation notée reçue/.test(bloc("$$('[data-cert]')", 600)),
       'noter une attestation reçue ne laisse aucun retour');
     // Suspendre / reprendre un contrat DÉPLACE la prochaine échéance : l'ancienne date est perdue.
-    ["$$('[data-toggle]')", "$('#c-toggle').onclick"].forEach(ancre => {
+    // Depuis la 7.29.0 le geste de la liste vit dans le menu d'actions et non plus sur un bouton
+    // `[data-toggle]` : c'est l'ancre qui change, pas la règle.
+    ["const basculer = (r) => {", "$('#c-toggle').onclick"].forEach(ancre => {
       const b = bloc(ancre, 900);
       assert.ok(/const avant = \{ active: r\.active, nextDate: r\.nextDate \}/.test(b) && /toastUndo\(msg, \(\) => \{ Object\.assign\(r, avant\)/.test(b),
         `reprendre un contrat déplace sa date sans retour possible (${ancre})`);
@@ -6427,8 +6454,11 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       'après un acompte, le bouton principal doit être la facture de solde');
     // Déjà facturé : on mène à la facture.
     assert.ok(/id="voir-facture">Voir \$\{h\(dejaFacture\[0\]\.number/.test(app), 'rien ne mène à la facture déjà établie');
-    // Refacturer reste possible — derrière une question qui nomme les pièces existantes.
-    assert.ok(/Refacturer la totalité/.test(app) && /dejaFacture\.length \|\| issuedDeposits\.length\) \{[\s\S]{0,400}?await confirmDialog\(/.test(app),
+    // Refacturer reste possible — derrière une question qui nomme les pièces existantes. Depuis la
+    // 7.29.0 cette question vit DANS `facturerDevis` : posée chez l'appelant, elle ne protégeait que
+    // cet appelant-là, et le menu de ligne de la 7.28.0 est reparti sans elle.
+    assert.ok(/Refacturer la totalité/.test(app), 'refacturer la totalité a disparu');
+    assert.ok(/async function facturerDevis\(q\) \{[\s\S]{0,600}?await confirmDialog\([\s\S]{0,400}?'Refacturer la totalité', true\)/.test(app),
       'refacturer la totalité ne demande rien');
   });
 
@@ -6833,12 +6863,15 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     const app = lireApp();
     // Le Catalogue AFFICHE une quantité en stock ; la fiche qui l'explique n'était atteignable que
     // depuis la page Stock.
-    assert.ok(/data-fiche="\$\{c\.id\}"/.test(app), 'aucun chemin du Catalogue vers la fiche de l\'article');
-    assert.ok(/\$\$\('\[data-fiche\]', wrap\)\.forEach\(b => b\.onclick = \(\) => navigate\('#\/article\/' \+ b\.dataset\.fiche\)\);/.test(app),
-      'le bouton « Fiche stock » n\'est pas branché');
+    // Depuis la 7.29.0 le geste vit dans le menu d'actions de la ligne : la RÈGLE est la même, sa
+    // forme a changé. On teste donc le chemin, pas le bouton.
+    const menu = app.slice(app.indexOf('menu: (c, redraw) =>'), app.indexOf('const tplCols'));
+    assert.ok(menu.length > 200 && menu.includes('catalogForm('), 'découpage du menu du Catalogue raté');
+    assert.ok(/run: \(\) => navigate\('#\/article\/' \+ c\.id\)/.test(menu),
+      'aucun chemin du Catalogue vers la fiche de l\'article');
     // Et seulement sur un article suivi : la fiche d'un article sans stock n'aurait rien à montrer.
-    assert.ok(/c\.tracked \? `<button class="btn btn-sm" data-fiche=/.test(app),
-      'le bouton est offert sur un article qui n\'est pas suivi en stock');
+    assert.ok(/c\.tracked \? \{[\s\S]{0,200}?navigate\('#\/article\/' \+ c\.id\)[\s\S]{0,20}?\} : null/.test(menu),
+      'la fiche stock est offerte sur un article qui n\'est pas suivi en stock');
   });
 
   t('l\'éditeur d\'achat propose le catalogue au lieu de le reprocher', () => {
@@ -7253,12 +7286,23 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   // d'actions le jour où il a été écrit.
   t('le clic dans un menu ouvert ne le referme pas avant d\'avoir agi', () => {
     const app = lireApp();
-    const m = /const SURFACES_OVERLAY = '([^']+)'/.exec(app);
+    const rm = lireRowMenu();
+    const m = /const SURFACES = '([^']+)'/.exec(rm);
     assert.ok(m, 'la liste des surfaces d\'overlay a disparu : chaque garde-fou va la recopier');
     const surfaces = m[1].split(',').map(x => x.trim());
-    // Les trois overlays de l'application, chacun reconnaissable à la classe qu'il pose.
-    ['.combo', '.datefield', '.row-menu'].forEach(c =>
+    // L'application LIT cette liste, elle n'en écrit pas une seconde.
+    assert.ok(/const SURFACES_OVERLAY = RowMenu\.SURFACES;/.test(app),
+      'l\'app entreprise s\'est refait sa propre liste de surfaces : les deux vont diverger');
+    // Les overlays de l'application, chacun reconnaissable à la classe qu'il pose — plus le BOUTON
+    // qui ouvre le menu : sans lui, un reclic dessus refermait le menu au `mousedown` et le `click`
+    // le rouvrait aussitôt. Le bouton n'était donc pas un interrupteur (7.29.0).
+    ['.combo', '.datefield', '.row-menu', '.row-menu-btn'].forEach(c =>
       assert.ok(surfaces.includes(c), `${c} n'est pas dans les surfaces d'overlay : ses clics le refermeront avant d'agir`));
+    // Et la seconde moitié du correctif : le menu se REFERME quand on rappuie sur son bouton.
+    assert.ok(/if \(ouvertSur === bouton\) \{ if \(dejaOuvert\) dejaOuvert\(\); return; \}/.test(rm),
+      'rappuyer sur le bouton d\'un menu ouvert le rouvre au lieu de le fermer');
+    assert.ok(/if \(ouvertSur === bouton\) ouvertSur = null;/.test(rm),
+      'la fermeture n\'oublie pas le bouton, ou l\'oublie même quand un autre menu a pris sa place');
     // Et le garde-fou lit bien CETTE liste, au lieu d'énumérer ses propres conditions.
     assert.ok(/if \(closeOverlay && !e\.target\.closest\(SURFACES_OVERLAY\)\) closeOverlay\(\);/.test(app),
       'le garde-fou global n\'utilise pas la liste des surfaces');
@@ -7271,24 +7315,134 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   // tombaient dans des pictogrammes muets dès qu'ils étaient trop nombreux.
   t('les listes n\'alignent plus de boutons en fin de ligne', () => {
     const app = lireApp();
-    // Plus aucune rangée de boutons dans une cellule d'actions.
-    const rangees = (app.match(/<td class="row-actions"><span>/g) || []).length;
-    assert.strictEqual(rangees, 0, `${rangees} liste(s) alignent encore des boutons en fin de ligne`);
-    // Les cinq listes passent par le même helper : recopié, il divergerait.
-    const cellules = (app.match(/\$\{rowMenuCell\(/g) || []).length;
-    assert.ok(cellules >= 5, `seulement ${cellules} liste(s) portent un menu d'actions`);
-    const branchements = (app.match(/bindRowMenus\(/g) || []).length;
-    // une définition + un appel par liste
-    assert.ok(branchements >= cellules + 1, `${cellules} menus posés pour ${branchements - 1} branchés : un menu n'est pas armé`);
+    const cab = lireSource('src', 'cabinet', 'renderer', 'app.js');
+    const rm = lireRowMenu();
+    // Plus aucune rangée de boutons dans une cellule d'actions, NI DANS L'UNE NI DANS L'AUTRE
+    // application : l'app du cabinet en alignait cinq par ligne, dont un « ✕ » muet qui supprime un
+    // paquet reçu, et cette règle ne lui avait jamais été appliquée (règle 7.3.0).
+    // La règle : une ligne garde AU PLUS UN bouton toujours visible — le geste pour lequel la page
+    // existe — et tout le reste passe par le menu. Et aucun de ces boutons ne se réduit à un
+    // pictogramme : « ✕ » et « ⧉ » sont ce que devient une rangée trop longue.
+    [['entreprise', app], ['cabinet', cab]].forEach(([quoi, src]) => {
+      [...src.matchAll(/<td class="[^"]*row-actions[^"]*">([\s\S]*?)<\/td>/g)].forEach(m => {
+        const boutons = [...m[1].matchAll(/<button[^>]*>([\s\S]*?)<\/button>/g)]
+          .map(b => b[1].replace(/<[^>]*>|\$\{[^}]*\}/g, '').trim());
+        assert.ok(boutons.length <= 1,
+          `app ${quoi} : une ligne aligne encore ${boutons.length} boutons (${boutons.join(', ')})`);
+        boutons.forEach(b => assert.ok(b.length >= 6,
+          `app ${quoi} : le bouton « ${b} » d'une ligne ne se lit pas — un pictogramme n'est pas un libellé`));
+      });
+    });
+    // Toutes les listes passent par le même helper — et il n'existe qu'en UN exemplaire, dans
+    // rowmenu.js : recopié dans la seconde application, il aurait divergé au premier ajustement.
+    const cellules = (app.match(/rowMenuCell\(/g) || []).length + (cab.match(/rowMenuCell\(/g) || []).length;
+    assert.ok(cellules >= 9, `seulement ${cellules} liste(s) portent un menu d'actions`);
+    const branchements = (app.match(/bindRowMenus\(/g) || []).length + (cab.match(/bindRowMenus\(/g) || []).length;
+    assert.ok(branchements >= cellules, `${cellules} menus posés pour ${branchements} branchés : un menu n'est pas armé`);
+    [['entreprise', app], ['cabinet', cab]].forEach(([quoi, src]) => {
+      assert.ok(/RowMenu\.cellule/.test(src) && /RowMenu\.brancherMenus/.test(src),
+        `app ${quoi} : elle ne passe pas par le menu partagé`);
+      assert.ok(!/const ICO = \{/.test(src), `app ${quoi} : elle s'est refait sa propre table d'icônes`);
+    });
     // Et un menu vide n'existe pas : un bouton qui ouvre le néant est un bouton mort.
-    assert.ok(/if \(!actions\.filter\(a => !a\.sep\)\.length\) \{ b\.remove\(\); return; \}/.test(app),
+    assert.ok(/if \(!reelles\.length\) \{ b\.remove\(\); return; \}/.test(rm),
       'une ligne sans action garde son bouton : il ouvrira un menu vide');
+    // Une SEULE action ne se cache pas derrière un menu : le bouton la nomme et l'exécute (7.29.0).
+    assert.ok(/if \(reelles\.length === 1\) \{[\s\S]{0,400}?a\.run\(\);/.test(rm),
+      'un choix unique s\'ouvre quand même en menu : un clic et une lecture de plus pour rien');
     // Chaque action porte une phrase, jamais un pictogramme.
-    // Seulement les actions de menu : un objet `{ label, …, run }`. D'autres tables de
+    // Seulement les actions de menu : un objet `{ icon, label, …, run }`. D'autres tables de
     // l'application portent un `label` (colonnes, axes de graphique) et n'ont rien à voir ici.
-    const labels = [...app.matchAll(/\{ label: '([^']+)'[\s\S]{0,220}?run:/g)].map(x => x[1]);
+    const labels = [...(app + cab).matchAll(/\{ (?:icon: '[a-zA-Z]+', )?label: '([^']+)'[\s\S]{0,240}?run:/g)].map(x => x[1]);
     assert.ok(labels.length >= 18, `seulement ${labels.length} actions nommées`);
     labels.forEach(l => assert.ok(l.length >= 6, `l'action « ${l} » est trop courte pour être comprise`));
+    // Et elle porte une icône (7.29.0) : une liste de phrases toutes semblables se parcourt à la
+    // lecture, une liste illustrée se parcourt du regard. Le gabarit du menu doit la poser.
+    const avecIcone = [...(app + cab).matchAll(/\{ icon: '([a-zA-Z]+)', label: ('[^']+'|`[^`]+`)/g)];
+    assert.ok(avecIcone.length >= 30, `seulement ${avecIcone.length} actions portent une icône`);
+    assert.ok(/\$\{ico\(a\.icon\)\}/.test(rm), 'le menu ne dessine pas l\'icône de ses actions');
+    // Une icône nommée par erreur ne plante pas : `ico()` rend un vide de la même largeur, et la
+    // ligne paraît simplement… sans icône. C'est exactement le genre de défaut qu'aucun écran ne
+    // signale — on confronte donc les noms employés à la table qui les définit.
+    const table = rm.slice(rm.indexOf('const ICO = {'), rm.indexOf('const ico = nom =>'));
+    assert.ok(table.length > 400, 'la table des icônes a disparu');
+    const connues = [...table.matchAll(/^\s{4}([a-zA-Z]+):/gm)].map(x => x[1]);
+    assert.ok(connues.length >= 15, `seulement ${connues.length} icônes définies`);
+    [...new Set(avecIcone.map(a => a[1]))].forEach(n =>
+      assert.ok(connues.includes(n), `l'icône « ${n} » n'existe pas dans la table : l'action sortira sans dessin`));
+    // Et chaque dessin est un vrai tracé, pas une chaîne vide oubliée.
+    assert.ok(!/^\s{4}[a-zA-Z]+: '',?$/m.test(table), 'une icône de la table est vide');
+  });
+
+  // Un menu qui s'ouvre et disparaît dans la milliseconde ne laisse aucune trace : on croit avoir
+  // mal cliqué. La cause était un `scroll` EN RETARD — celui qui a amené le bouton à l'écran juste
+  // avant le clic, livré à la frame suivante. Le menu doit se fermer quand la page bouge VRAIMENT,
+  // pas quand un événement en retard arrive à la même position.
+  t('le menu ne se referme pas sur un défilement qui n\'a pas eu lieu', () => {
+    const rm = lireRowMenu();
+    assert.ok(/const depart = scroller \? scroller\.scrollTop : 0;/.test(rm),
+      'la position de départ du défilement n\'est plus retenue');
+    assert.ok(/Math\.abs\(scroller\.scrollTop - depart\) > 4/.test(rm),
+      'le menu se referme au moindre événement de défilement, même sans mouvement');
+    // Et c'est bien CE filtre qui est branché, pas `close` en direct — sinon la mesure ne sert à rien.
+    assert.ok(/scroller\.addEventListener\('scroll', siDefile\)/.test(rm) && /removeEventListener\('scroll', siDefile\)/.test(rm),
+      'le filtre de défilement n\'est pas branché (ou pas débranché)');
+  });
+
+  // ---------- 7.29.0 : ce que l'audit a trouvé autour du menu ----------
+
+  t('la palette ne laisse aucun menu ouvert derrière elle, et ses onglets redessinent', () => {
+    const app = lireApp();
+    // Deux menus de page vivent en couche 70, la palette en 60 : ouverts, ils restaient dessinés
+    // par-dessus son fond flouté et volaient le premier Échap.
+    const ouvre = app.slice(app.indexOf('function openPalette() {'), app.indexOf('function openPalette() {') + 900);
+    assert.ok(ouvre.includes('root.innerHTML'), 'découpage d\'openPalette raté');
+    ['closeOverlay()', 'fermerDossiers()'].forEach(g =>
+      assert.ok(ouvre.includes(g), `la palette laisse un menu ouvert derrière elle (${g} manquant)`));
+    // Et viser la page où l'on est DÉJÀ ne produit aucun `hashchange` : il faut `vers()`, pas
+    // `navigate()` — sinon l'onglet est posé et l'écran ne bouge pas (piège de la 7.15.0).
+    assert.ok(/\[`\$\{page\} → \$\{label\}`, vers\(route, \(\) => poser\(id\)\)\]/.test(app),
+      'les entrées d\'onglet de la palette sont inertes depuis la page qu\'elles visent');
+    assert.ok(!/\[`\$\{page\} → \$\{label\}`, \(\) => \{ poser\(id\); navigate\(route\); \}\]/.test(app),
+      'la palette repose l\'onglet puis navigue : depuis la page visée, rien ne se redessine');
+  });
+
+  t('un bouton posé dans une ligne cliquable n\'emmène pas ailleurs', () => {
+    const app = lireApp();
+    // « Attestation reçue » cochait la case ET quittait la page : on ne voyait jamais que c'était
+    // noté. Toute liaison de ligne doit laisser passer les clics sur ses boutons.
+    const nues = app.match(/\$\$\('tr\.clickable\[data-id\]'\)\.forEach\(tr => tr\.onclick = \(\) =>/g) || [];
+    assert.strictEqual(nues.length, 0,
+      `${nues.length} liste(s) emmènent ailleurs quand on clique un bouton DANS la ligne`);
+    const gardees = app.match(/\$\$\('tr\.clickable\[data-id\]'\)\.forEach\(tr => tr\.onclick = e => \{ if \(e\.target\.closest\('button'\)\) return;/g) || [];
+    assert.ok(gardees.length >= 3, `seulement ${gardees.length} liaison(s) de ligne protègent leurs boutons`);
+  });
+
+  t('la prévision de trésorerie convertit AUSSI les contrats en devise', () => {
+    // `cashForecast` convertissait les factures clients et pas les contrats récurrents : un
+    // abonnement de 800 € entrait dans la courbe pour 800 DT. La page existe pour savoir si l'on
+    // tiendra le mois — un creux inventé y vaut un vrai creux manqué.
+    const base = {
+      ...core.DEFAULT_DATA, accounts: [{ id: 'a1', name: 'Banque', kind: 'banque', opening: 0 }],
+      documents: [], purchases: [], recurring: []
+    };
+    // Timbre à zéro : il est fixé EN DINARS (7.0.1), donc il ne se met pas à l'échelle du taux — il
+    // brouillerait la seule chose que ce test mesure, la conversion des LIGNES.
+    const co = { ...core.DEFAULT_COMPANY, currency: 'TND', paymentTermsDays: 30, stampFee: 0 };
+    const prochain = core.addDays(core.today(), 5);
+    const contrat = (cur, taux) => ({
+      id: 'r1', clientId: '', subject: 'Abonnement', active: true, every: 'month', day: 1,
+      nextDate: prochain, lines: [{ label: 'Abonnement', qty: 1, unitPrice: 1000, vatRate: 0 }],
+      currency: cur, exchangeRate: taux
+    });
+    const somme = (r) => (r.events || []).filter(e => e.kind === 'contrat').reduce((s, e) => s + e.amount, 0);
+    const enDinars = somme(core.cashForecast({ ...base, recurring: [contrat('TND', '')] }, co, 60));
+    const enEuros = somme(core.cashForecast({ ...base, recurring: [contrat('EUR', 3.4)] }, co, 60));
+    assert.ok(enDinars > 0, 'aucun contrat dans la prévision : le test ne juge rien');
+    // 1 000 € au taux 3,4 pèsent 3,4 fois plus qu'une facture de 1 000 DT. Le chiffre se calcule à
+    // partir de la RÈGLE, jamais en recopiant ce que le code renvoie (leçon de la 7.0.1).
+    assert.ok(Math.abs(enEuros - enDinars * 3.4) < 0.01,
+      `un contrat en euros pèse ${enEuros} au lieu de ${core.round3(enDinars * 3.4)} : la devise n'est pas convertie`);
   });
 
   // ---------- 7.27.0 : la mise en page de l'Aide ----------

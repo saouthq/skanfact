@@ -20,6 +20,19 @@ async function shot(win, name) {
   fs.mkdirSync(shots, { recursive: true });
   await win.screenshot({ path: path.join(shots, `${String(++shotN).padStart(2, '0')}-${name}.png`) });
 }
+// On clique le VRAI bouton du menu d'actions, repéré par son rang : un e2e qui rejoue le code
+// qu'il teste ne prouve rien, et les sélecteurs à pseudo-classes imbriquées ne passent pas partout.
+async function cliquerAction(win, libelle) {
+  const i = await win.evaluate(l => [...document.querySelectorAll('.row-menu .rm-l')]
+    .findIndex(x => x.textContent.trim() === l), libelle);
+  if (i < 0) {
+    const dispo = await win.evaluate(() => [...document.querySelectorAll('.row-menu .rm-l')].map(x => x.textContent.trim()));
+    throw new Error(`le menu ne propose pas « ${libelle} » — il offre : ${dispo.join(', ')}`);
+  }
+  await win.click(`.row-menu button >> nth=${i}`);
+  await win.waitForTimeout(500);
+}
+
 const errors = [];
 
 function watch(win, tag) {
@@ -90,15 +103,19 @@ async function launchCabinet() {
   const ew = await ent.firstWindow();
   watch(ew, 'ENT');
   await ew.waitForSelector('#setup');
-  await ew.click('#sf-next'); await ew.waitForSelector('#sf-form input[name=name]');
-  await ew.fill('#sf-form input[name=name]', 'Ébénisterie Test SUARL');
-  await ew.fill('#sf-form input[name=matricule]', '9876543Z/A/P/000');
-  await ew.fill('#sf-form textarea[name=address]', 'Rue des Oliviers\n2000 Tunis');
-  await ew.click('#sf-next'); await ew.waitForSelector('[data-act="batiment"]');
-  await ew.click('[data-act="batiment"]'); await ew.click('#sf-next');
-  await ew.waitForSelector('#sf-form input[name=paymentTermsDays]'); await ew.click('#sf-next');
-  await ew.waitForSelector('#sf-form input[name=rib]'); await ew.click('#sf-next');
-  await ew.waitForSelector('#sf-ext'); await ew.click('#sf-next');
+  // On reconnaît chaque écran de l'assistant à CE QU'IL CONTIENT, jamais à son numéro : compter les
+  // « Suivant » se périme à la version suivante. Ce test-ci comptait, et il était cassé depuis que
+  // la 7.22.0 a inséré l'écran du régime fiscal — personne ne s'en est aperçu parce qu'on ne l'avait
+  // pas relancé. C'est la règle de la 7.28.0, apprise sur `e2e:entreprise`, à appliquer partout.
+  for (let g = 0; g < 15 && await ew.$('#setup'); g++) {
+    if (await ew.$('#sf-form input[name=name]')) {
+      await ew.fill('#sf-form input[name=name]', 'Ébénisterie Test SUARL');
+      await ew.fill('#sf-form input[name=matricule]', '9876543Z/A/P/000');
+      await ew.fill('#sf-form textarea[name=address]', 'Rue des Oliviers\n2000 Tunis');
+    }
+    if (await ew.$('[data-act="batiment"]')) { await ew.click('[data-act="batiment"]'); await ew.waitForSelector('[data-act="batiment"].sel'); }
+    await ew.click('#sf-next'); await ew.waitForTimeout(150);
+  }
   await ew.waitForFunction(() => !document.querySelector('#setup'));
 
   await ew.evaluate(() => { location.hash = '#/parametres'; });
@@ -140,8 +157,20 @@ async function launchCabinet() {
 
   await ent.evaluate(({ dialog }, p) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: p }); }, packFile);
   await ew.click('#cab-build');
-  const conf = await ew.waitForSelector('#modal-root #ok', { timeout: 4000 }).catch(() => null);
-  if (conf) await conf.click();
+  // Fabriquer un paquet pose jusqu'à DEUX questions, et elles n'ont pas la même forme :
+  //   1. `demoBlock` (7.6.0) — trois sorties, « Continuer quand même » est `#b` ;
+  //   2. le mois non clôturé — deux sorties, « Fabriquer » est `#ok`.
+  // Ce test ne répondait qu'à `#ok` : depuis la 7.6.0 il restait planté devant la première, et son
+  // attente de trois minutes finissait par expirer. Personne ne l'a vu, parce qu'il n'avait pas
+  // été relancé — et c'est pourtant LE parcours qui prouve la chaîne entreprise → paquet → cabinet.
+  for (let q = 0; q < 3; q++) {
+    const modale = await ew.waitForSelector('#modal-root .modal', { timeout: 4000 }).catch(() => null);
+    if (!modale) break;
+    const b = await ew.$('#modal-root #b');
+    const ok = b || await ew.$('#modal-root #ok');
+    if (!ok) break;
+    await ok.click(); await ew.waitForTimeout(500);
+  }
   await ew.waitForFunction(() => (window.__data.packs || []).length > 0, null, { timeout: 180000 });
   const taille = fs.statSync(packFile).size;
   console.log(`7. paquet fabriqué : ${(taille / 1024).toFixed(0)} Ko`);
@@ -181,8 +210,11 @@ async function launchCabinet() {
   console.log(`11. mois du dossier : ${mois.join(' · ')}`);
 
   await shot(win, 'fiche-dossier');
-  // ouvrir le paquet et lister ce qu'il contient
-  await win.click('[data-open]');
+  // Les cinq boutons fantômes de la ligne d'un paquet sont devenus un menu d'actions (7.29.0) :
+  // on passe par le VRAI bouton et le VRAI menu, comme un comptable.
+  await win.click('[data-rowmenu] >> nth=0');
+  await win.waitForSelector('.row-menu');
+  await cliquerAction(win, 'Ouvrir le paquet');
   await win.waitForSelector('#modal-root tr[data-i]', { timeout: 20000 });
   await shot(win, 'contenu-paquet');
   const fichiers = await win.evaluate(() => [...document.querySelectorAll('#modal-root tr[data-i] td:first-child')].map(td => td.textContent));
@@ -216,15 +248,19 @@ async function launchCabinet() {
   await win.evaluate(() => { location.hash = '#/dossiers'; });
   await win.waitForTimeout(500);
   const ids = await win.evaluate(() => [...document.querySelectorAll('table.list tr[data-id]')].map(r => r.dataset.id));
-  let boutonAcc = null;
+  let trouve = false;
   for (const id of ids) {
     await win.evaluate(i => { location.hash = '#/dossier/' + encodeURIComponent(i); }, id);
     await win.waitForTimeout(500);
-    boutonAcc = await win.$('[data-acc]');
-    if (boutonAcc) break;
+    const b = await win.$('[data-rowmenu]');
+    if (!b) continue;
+    await b.click();
+    await win.waitForSelector('.row-menu');
+    const dispo = await win.evaluate(() => [...document.querySelectorAll('.row-menu .rm-l')].map(x => x.textContent.trim()));
+    if (dispo.includes('Accuser réception')) { await cliquerAction(win, 'Accuser réception'); trouve = true; break; }
+    await win.keyboard.press('Escape'); await win.waitForTimeout(200);
   }
-  if (!boutonAcc) throw new Error('aucun bouton « accuser réception » sur la fiche du client qui vient d\'envoyer');
-  await boutonAcc.click();
+  if (!trouve) throw new Error('aucune action « Accuser réception » sur la fiche du client qui vient d\'envoyer');
   await win.waitForSelector('#modal-root .modal-bg', { timeout: 8000 });
   const accBranche = await win.evaluate(() =>
     ['#no', '#copy', '#ok'].filter(id => {

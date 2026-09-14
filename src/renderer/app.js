@@ -1605,57 +1605,16 @@
   //
   // Couche 70 : au-dessus de la page, sous les fenêtres modales (400). Une question posée par une
   // action doit rester devant le menu qui l'a déclenchée (règle 5.2.2).
-  const MENU_POINTS = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>';
-  const rowMenuCell = id => `<td class="row-actions"><button type="button" class="row-menu-btn" data-rowmenu="${h(id)}" aria-haspopup="menu" aria-expanded="false" aria-label="Actions" title="Actions">${MENU_POINTS}</button></td>`;
-
-  // `actionsDe(id)` rend les actions de CETTE ligne : { label, hint, danger, run } ou { sep: true }.
-  // Une ligne sans action perd son bouton : un menu vide est pire qu'un menu absent — c'est encore
-  // un bouton qui accepte le clic et n'en fait rien (règle 7.0.0).
-  function bindRowMenus(racine, actionsDe) {
-    $$('[data-rowmenu]', racine || document).forEach(b => {
-      const actions = (actionsDe(b.dataset.rowmenu) || []).filter(Boolean);
-      if (!actions.filter(a => !a.sep).length) { b.remove(); return; }
-      b.onclick = e => { e.stopPropagation(); ouvrirRowMenu(b, actions); };
-    });
-  }
-
-  function ouvrirRowMenu(bouton, actions) {
-    if (closeOverlay) closeOverlay();
-    const m = document.createElement('div');
-    m.className = 'row-menu';
-    m.setAttribute('role', 'menu');
-    m.innerHTML = actions.map((a, i) => a.sep ? '<hr>'
-      : `<button type="button" role="menuitem" data-i="${i}"${a.danger ? ' class="danger"' : ''}>
-          <span class="rm-l">${h(a.label)}</span>${a.hint ? `<span class="rm-h">${h(a.hint)}</span>` : ''}</button>`).join('');
-    document.body.appendChild(m);
-    // On mesure APRÈS avoir posé le menu : sa hauteur dépend de ce qu'il contient, et une ligne du
-    // bas de l'écran doit le voir s'ouvrir vers le haut plutôt que hors de la fenêtre.
-    const r = bouton.getBoundingClientRect();
-    const haut = m.offsetHeight, large = m.offsetWidth;
-    m.style.top = (r.bottom + 6 + haut <= window.innerHeight - 8 ? r.bottom + 6 : Math.max(8, r.top - 6 - haut)) + 'px';
-    m.style.left = Math.max(8, Math.min(window.innerWidth - large - 8, r.right - large)) + 'px';
-    bouton.setAttribute('aria-expanded', 'true');
-    const scroller = bouton.closest('main');
-    const close = () => {
-      m.remove(); bouton.setAttribute('aria-expanded', 'false');
-      document.removeEventListener('mousedown', dehors, true);
-      document.removeEventListener('keydown', clavier, true);
-      window.removeEventListener('resize', close);
-      if (scroller) scroller.removeEventListener('scroll', close);
-      if (closeOverlay === close) closeOverlay = null;
-    };
-    const dehors = e => { if (!m.contains(e.target) && !bouton.contains(e.target)) close(); };
-    const clavier = e => { if (e.key === 'Escape') { e.stopPropagation(); close(); bouton.focus(); } };
-    document.addEventListener('mousedown', dehors, true);
-    document.addEventListener('keydown', clavier, true);
-    window.addEventListener('resize', close);
-    if (scroller) scroller.addEventListener('scroll', close);
-    closeOverlay = close;
-    // On ferme AVANT d'exécuter : une action qui ouvre une fenêtre laisserait sinon le menu dessous,
-    // et une action qui redessine la page détacherait le menu sans jamais le retirer du document.
-    $$('button[data-i]', m).forEach(b => b.onclick = () => { const a = actions[Number(b.dataset.i)]; close(); a.run(); });
-    const premier = m.querySelector('button'); if (premier) premier.focus();
-  }
+  // Le menu d'actions d'une ligne vit dans `src/renderer/rowmenu.js`, chargé par les DEUX
+  // applications : l'app du cabinet avait exactement le même défaut — cinq boutons fantômes par
+  // ligne, dont un « ✕ » muet qui supprime un paquet reçu — et recopier le menu aurait garanti la
+  // divergence (règle 7.3.0 : une règle apprise d'un côté se vérifie de l'autre).
+  //
+  // On lui prête notre registre d'overlay : c'est lui qui garantit qu'un calendrier, une liste
+  // déroulante et un menu de ligne ne restent jamais ouverts en même temps.
+  RowMenu.brancher({ lire: () => closeOverlay, poser: f => { closeOverlay = f; } });
+  const rowMenuCell = RowMenu.cellule;
+  const bindRowMenus = RowMenu.brancherMenus;
 
   function docTable(list, opts) {
     opts = opts || {};
@@ -1724,22 +1683,36 @@
     // ce qui change l'état de la pièce.
     bindRowMenus(document, id => {
       const d = docById(id); if (!d) return [];
-      const a = [{ label: 'Ouvrir', hint: 'Voir la pièce et la modifier', run: () => navigate('#/doc/' + id) },
-                 { label: 'Exporter en PDF', run: () => exportPdf(d) }];
-      if (d.number) a.push({ label: 'Envoyer par email', hint: 'Le PDF est joint au message', run: () => sendByEmail(d) });
+      const a = [{ icon: 'ouvrir', label: 'Ouvrir', hint: 'Voir la pièce et la modifier', run: () => navigate('#/doc/' + id) },
+                 { icon: 'pdf', label: 'Exporter en PDF', run: () => exportPdf(d) }];
+      if (d.number) a.push({ icon: 'email', label: 'Envoyer par email', hint: 'Le PDF est joint au message', run: () => sendByEmail(d) });
       // `restOf` vit dans `docColumns` : ici on repasse par `balance`, la même source.
       const reste = d.type === 'facture' && d.status !== 'brouillon' ? balance(d).remaining : 0;
       if (d.type === 'facture' && d.status !== 'annulée' && reste > 0.0005)
-        a.push({ sep: true }, { label: 'Enregistrer un paiement', hint: `Reste ${C.money(reste, docCur(d))}`, run: () => paymentForm(d, refaire) });
+        a.push({ sep: true }, { icon: 'argent', label: 'Enregistrer un paiement', hint: `Reste ${C.money(reste, docCur(d))}`, run: () => paymentForm(d, refaire) });
       // Facturer depuis la LISTE : c'est le geste qui rapporte de l'argent, et il n'existait qu'au
       // fond d'un menu gris, à l'intérieur du devis.
-      if (d.type === 'devis' && d.status === 'accepté')
-        a.push({ sep: true }, { label: 'Facturer ce devis', hint: 'Crée le brouillon de facture correspondant', run: () => facturerDevis(d) });
+      //
+      // Et on propose le geste SUIVANT, jamais le geste passé (règle 7.16.0) : sur un devis déjà
+      // facturé, ce qu'on veut c'est voir la facture. « Refacturer la totalité » existe — une
+      // commande annulée puis reprise, ça arrive — mais en rouge et derrière la question que
+      // `facturerDevis` pose désormais lui-même.
+      if (d.type === 'devis' && d.status === 'accepté') {
+        const { totales, acomptes } = piecesDuDevis(d.id);
+        if (totales.length || acomptes.length) {
+          const faite = totales[0] || acomptes[0];
+          a.push({ sep: true },
+            { icon: 'facture', label: `Voir ${faite.number || 'la facture'}`, hint: `Ce devis a déjà donné ${totales.concat(acomptes).map(x => x.number || 'un brouillon').join(', ')}`, run: () => navigate('#/doc/' + faite.id) },
+            { icon: 'copier', label: 'Refacturer la totalité…', hint: 'Une facture de plus, pour le montant entier du devis', danger: true, run: () => facturerDevis(d) });
+        } else {
+          a.push({ sep: true }, { icon: 'facture', label: 'Facturer ce devis', hint: 'Crée le brouillon de facture correspondant', run: () => facturerDevis(d) });
+        }
+      }
       // Le statut d'un devis se saisit à la main (celui d'une facture se déduit des paiements).
       if (d.type === 'devis' && ['envoyé', 'expiré'].includes(effStatus(d)))
         a.push({ sep: true },
-          { label: 'Le client a accepté', hint: 'Et facturer dans la foulée, si tu veux', run: () => repondreAccepte(id) },
-          { label: 'Le client a refusé', run: () => repondreRefuse(id) });
+          { icon: 'oui', label: 'Le client a accepté', hint: 'Et facturer dans la foulée, si tu veux', run: () => repondreAccepte(id) },
+          { icon: 'non', label: 'Le client a refusé', run: () => repondreRefuse(id) });
       return a;
     });
     if (redraw) bindSort(document, redraw);
@@ -1945,7 +1918,7 @@
     // « accepté » : la condition restait donc vraie après coup, et un second clic sur le bouton
     // coloré fabriquait une seconde facture complète. Avec un acompte émis c'était pire : le bouton
     // principal proposait 100 % du devis pendant que « Facture de solde » dormait dans le ▾.
-    const dejaFacture = isNew || !isQ ? [] : C.facturesDuDevis(data, doc.id).filter(d => !d.deposit);
+    const dejaFacture = isNew || !isQ ? [] : piecesDuDevis(doc.id).totales;
     const devisFacturable = !isNew && isQ && !dejaFacture.length && !issuedDeposits.length
       && (doc.status === 'accepté' || doc.status === 'envoyé');
     const autresChemins = `<button id="deposit">Facture d'acompte… ${info('ed.deposit')}</button>
@@ -2655,16 +2628,9 @@
     if ($('#dup')) $('#dup').onclick = () => { untouch(); duplicateDoc(doc); };
     // Refacturer la totalité d'un devis déjà facturé est légitime (une commande annulée puis
     // reprise) mais ce n'est jamais le geste ordinaire : on nomme d'abord ce qui existe déjà.
-    if ($('#convert')) $('#convert').onclick = async () => {
-      if (dejaFacture.length || issuedDeposits.length) {
-        const pieces = dejaFacture.concat(issuedDeposits).map(d => d.number || 'brouillon').join(', ');
-        if (!await confirmDialog(
-          `Ce devis a déjà donné ${pieces}.\n\nFacturer la totalité créerait une facture de plus, `
-          + 'pour le montant entier du devis. Si tu veux seulement le reste à payer, utilise « Facture de solde ».',
-          'Refacturer la totalité', true)) return;
-      }
-      facturerDevis(doc);
-    };
+    // La question « ce devis a déjà donné… » vit dans `facturerDevis` depuis la 7.29.0 : posée ici,
+    // elle ne protégeait que ce bouton-ci, et le menu de la liste passait à côté.
+    if ($('#convert')) $('#convert').onclick = () => facturerDevis(doc);
     if ($('#voir-facture')) $('#voir-facture').onclick = () => navigate('#/doc/' + dejaFacture[0].id);
     if ($('#deposit')) $('#deposit').onclick = () => {
       // Un acompte se négocie au téléphone en DINARS (« tu me mets 5 000 à la commande »), jamais en
@@ -2845,10 +2811,37 @@
     return (b / 1024 / 1024).toFixed(1).replace('.', ',') + ' Mo';
   }
 
+  // Ce qu'un devis a DÉJÀ produit. Une seule fonction, parce que TROIS endroits en ont besoin —
+  // l'éditeur, le menu de la ligne et `facturerDevis` — et que le quatrième la recopierait de
+  // travers : c'est exactement ce qui est arrivé au menu de ligne de la 7.28.0.
+  // Les deux moitiés ne se lisent pas au même endroit : une facture totale porte `fromQuoteId`,
+  // un acompte porte `deposit.quoteId`.
+  function piecesDuDevis(quoteId) {
+    const totales = C.facturesDuDevis(data, quoteId).filter(d => !d.deposit);
+    const acomptes = (data.documents || []).filter(d => d.type === 'facture' && d.deposit
+      && d.deposit.quoteId === quoteId && d.status !== 'brouillon');
+    return { totales, acomptes };
+  }
+
   // Le devis devient une facture. Une seule fonction pour les deux chemins — le bouton de l'éditeur
   // et celui de la liste — sinon ils divergeraient : c'est le geste qui rapporte de l'argent.
-  function facturerDevis(q) {
+  //
+  // Le garde-fou de la 7.16.0 vit DANS la fonction depuis la 7.29.0, plus chez ses appelants : il
+  // avait été posé sur le bouton de l'éditeur, et le menu de ligne — écrit ailleurs, quatorze
+  // versions plus tard — est reparti sans lui. Résultat : « Facturer ce devis » se representait sur
+  // un devis déjà facturé (`facturerDevis` le passe lui-même en « accepté », donc la condition
+  // d'affichage restait vraie) et un second clic fabriquait une facture ENTIÈRE de plus, sans un
+  // mot. Un garde-fou chez l'appelant ne protège que cet appelant.
+  async function facturerDevis(q) {
     if (!q) return;
+    const { totales, acomptes } = piecesDuDevis(q.id);
+    if (totales.length || acomptes.length) {
+      const pieces = totales.concat(acomptes).map(d => d.number || 'brouillon').join(', ');
+      if (!await confirmDialog(
+        `Ce devis a déjà donné ${pieces}.\n\nFacturer la totalité créerait une facture de plus, `
+        + 'pour le montant entier du devis. Si tu veux seulement le reste à payer, ouvre le devis et utilise « Facture de solde ».',
+        'Refacturer la totalité', true)) return;
+    }
     const inv = invoiceFromQuote(q, deepCopy(q.lines), q.discountRate);
     inv.fromQuoteId = q.id; inv.fromQuoteNumber = q.number;
     acceptQuote(q.id);
@@ -3030,10 +3023,10 @@
       bindRowMenus(document, id => {
         const c = clientById(id); if (!c) return [];
         return [
-          { label: 'Ouvrir la fiche', hint: 'Documents, affaires, contrats, matériel installé', run: () => navigate('#/client/' + id) },
-          { label: 'Nouveau devis', hint: `Pour ${c.name}`, run: () => navigate('#/doc/new/devis/client/' + id) },
+          { icon: 'client', label: 'Ouvrir la fiche', hint: 'Documents, affaires, contrats, matériel installé', run: () => navigate('#/client/' + id) },
+          { icon: 'nouveau', label: 'Nouveau devis', hint: `Pour ${c.name}`, run: () => navigate('#/doc/new/devis/client/' + id) },
           { sep: true },
-          { label: 'Modifier le client', hint: 'Coordonnées, contact, matricule', run: () => clientForm(c, () => draw()) }
+          { icon: 'modifier', label: 'Modifier le client', hint: 'Coordonnées, contact, matricule', run: () => clientForm(c, () => draw()) }
         ];
       });
       bindSort($('#list-wrap'), draw);
@@ -3174,12 +3167,18 @@
   };
 
   // ---------- Catalogue ----------
-  function catalogForm(item, done) {
+  // `opts.creation` : la fiche est préremplie à partir d'une autre (duplication) mais n'existe pas
+  // encore dans le catalogue. Sans ce drapeau, la copie s'ouvrirait en « Modifier » et
+  // `data.catalog.push` ne serait jamais appelé : on remplirait le formulaire, on enregistrerait,
+  // et rien n'apparaîtrait dans la liste.
+  function catalogForm(item, done, opts) {
+    opts = opts || {};
+    const neuf = !item || !!opts.creation;
     const it = item || { id: C.uid(), label: '', description: '', unit: '', unitPrice: 0, unitCost: 0, vatRate: C.defaultVat(company()),
       tracked: false, minStock: 0, location: '', initialQty: 0, initialCost: 0, initialDate: C.today(),
       serialized: false, warrantyMonths: 0 };
-    const already = item ? C.stockOf(data, it.id) : null;   // stock déjà constitué : on ne rejoue pas le départ
-    modal(`<h2>${item ? 'Modifier la prestation' : 'Nouvelle prestation'}</h2>
+    const already = neuf ? null : C.stockOf(data, it.id);   // stock déjà constitué : on ne rejoue pas le départ
+    modal(`<h2>${opts.titre || (neuf ? 'Nouvelle prestation' : 'Modifier la prestation')}</h2>
       <form id="kf" class="grid-2">
         <label class="field span-2 obligatoire">${lbl('Désignation', 'cat.catalog')}<input type="text" name="label" value="${h(it.label)}"></label>
         <label class="field span-2">Description<textarea name="description">${h(it.description || '')}</textarea></label>
@@ -3210,7 +3209,7 @@
         </div>
       </form>
       <div class="modal-actions">
-        ${item ? '<button class="btn btn-danger" id="del-cat" style="margin-right:auto">Supprimer</button>' : ''}
+        ${neuf ? '' : '<button class="btn btn-danger" id="del-cat" style="margin-right:auto">Supprimer</button>'}
         <button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
       (root, close) => {
         let unit = it.unit || '';
@@ -3261,7 +3260,7 @@
             serialized: !!v.tracked && !!v.serialized, warrantyMonths: Number(v.warrantyMonths) || 0,
             initialQty: Number(v.initialQty) || 0, initialCost: Number(v.initialCost) || 0,
             initialDate: it.initialDate || C.today() });
-          if (!item) data.catalog.push(it);
+          if (neuf) data.catalog.push(it);
           save(true); close(); if (done) done(it);
         };
       });
@@ -3341,6 +3340,18 @@
       });
   }
 
+  // Une variante d'une prestation existante (« Audit 1 jour » / « Audit 2 jours ») se saisissait en
+  // recopiant à la main sept champs — prix, coût, TVA, unité, seuil de stock. On ouvre la copie dans
+  // le formulaire au lieu de l'enregistrer tout de suite : deux lignes au même nom dans un catalogue
+  // sont indiscernables dans un devis, donc le nom se décide AVANT d'exister.
+  function duplicateCatalogItem(item, done) {
+    const copie = { ...deepCopy(item), id: C.uid(), label: item.label + ' (copie)' };
+    // Le stock ne se duplique pas : la quantité d'origine appartient à l'article d'origine, et la
+    // recopier inventerait de la marchandise que personne n'a achetée.
+    delete copie.initialQty; delete copie.initialCost;
+    catalogForm(copie, done, { creation: true, titre: 'Dupliquer la prestation' });
+  }
+
   routes.catalogue = () => {
     const cur = company().currency;
     // Un onglet = une liste avec sa recherche, son tri et sa pagination. Le catalogue d'un revendeur
@@ -3367,7 +3378,7 @@
         const foot = opts.foot ? opts.foot(kept, all) : '';
         $('.rows', wrap).innerHTML = kept.length
           ? `<table class="list sortable"><thead>${sortHead(cols, state.sort, '<th class="row-actions-h"></th>')}</thead><tbody>
-              ${page.map(r => `<tr>${cols.map(c => `<td class="${c.r ? 'r nw' : ''}">${c.get(r)}</td>`).join('')}<td class="actions">${opts.actions(r)}</td></tr>`).join('')}
+              ${page.map(r => `<tr>${cols.map(c => `<td class="${c.r ? 'r nw' : ''}">${c.get(r)}</td>`).join('')}${rowMenuCell(r.id)}</tr>`).join('')}
             </tbody>${foot ? `<tfoot>${foot}</tfoot>` : ''}</table>${pagerBar(pg, { noun: opts.noun, grandTotal: all.length })}`
           : `<div class="empty">${state.q ? 'Rien ne correspond à cette recherche.' : h(opts.empty)}</div>`;
         const note = $('.f-note', wrap);
@@ -3376,7 +3387,9 @@
         if ($('#reset-f', wrap)) $('#reset-f', wrap).onclick = () => { state.q = ''; state.page = 1; $('.q', wrap).value = ''; redraw(); };
         bindSort(wrap, redraw);
         bindPager($('.rows', wrap), state, () => redraw(), wrapSel);
-        opts.bind(wrap, redraw);
+        // `rows()` est relu ici plutôt que capturé : une action peut avoir modifié la liste entre
+        // le dessin et le clic, et une référence gardée désignerait alors un objet qui n'y est plus.
+        bindRowMenus(wrap, id => opts.menu(rows().find(r => r.id === id), redraw));
       };
       return redraw;
     };
@@ -3416,11 +3429,12 @@
       // Le Catalogue AFFICHE une quantité en stock et n'offrait aucun moyen d'aller voir d'où elle
       // vient : la fiche de l'article — mouvements, coût moyen, historique — n'était atteignable que
       // depuis la page Stock. Un chiffre qu'on lit doit s'ouvrir (7.15.0).
-      actions: c => `${c.tracked ? `<button class="btn btn-sm" data-fiche="${c.id}" title="Mouvements, coût moyen, historique">Fiche stock</button>` : ''}<button class="btn btn-sm" data-edit="${c.id}">Modifier</button>`,
-      bind: (wrap, redraw) => {
-        $$('[data-edit]', wrap).forEach(b => b.onclick = () => catalogForm(data.catalog.find(c => c.id === b.dataset.edit), redraw));
-        $$('[data-fiche]', wrap).forEach(b => b.onclick = () => navigate('#/article/' + b.dataset.fiche));
-      }
+      menu: (c, redraw) => c ? [
+        { icon: 'modifier', label: 'Modifier la prestation', hint: 'Prix, coût, TVA, unité, suivi en stock', run: () => catalogForm(c, redraw) },
+        c.tracked ? { icon: 'stock', label: 'Voir la fiche stock', hint: 'Mouvements, coût moyen, historique', run: () => navigate('#/article/' + c.id) } : null,
+        { sep: true },
+        { icon: 'copier', label: 'Dupliquer', hint: 'Même prestation, à renommer et à ajuster', run: () => duplicateCatalogItem(c, redraw) }
+      ] : []
     });
 
     const tplCols = [
@@ -3431,11 +3445,11 @@
     const drawTemplates = drawList('#tpl-wrap', catalogState.modeles, tplCols, () => data.templates.slice(), {
       noun: 'modèle', placeholder: 'Rechercher un modèle…', text: t => `${t.name} ${t.subject || ''}`,
       empty: 'Aucun modèle. Depuis un devis ou une facture : Plus ▾ → « Enregistrer comme modèle ».',
-      actions: t => `<button class="btn btn-sm btn-primary" data-use="${t.id}">Nouveau ${t.type === 'devis' ? 'devis' : 'facture'}</button> <button class="btn btn-sm" data-tedit="${t.id}">Modifier</button>`,
-      bind: (wrap, redraw) => {
-        $$('[data-use]', wrap).forEach(b => b.onclick = () => { const t = data.templates.find(x => x.id === b.dataset.use); navigate(`#/doc/new/${t.type}/tpl/${t.id}`); });
-        $$('[data-tedit]', wrap).forEach(b => b.onclick = () => templateForm(data.templates.find(x => x.id === b.dataset.tedit), redraw));
-      }
+      menu: (t, redraw) => t ? [
+        { icon: 'nouveau', label: `Nouveau ${t.type === 'devis' ? 'devis' : 'facture'}`, hint: 'Un brouillon prérempli avec ce modèle', run: () => navigate(`#/doc/new/${t.type}/tpl/${t.id}`) },
+        { sep: true },
+        { icon: 'modifier', label: 'Modifier le modèle', hint: 'Nom, objet, lignes, remise, notes', run: () => templateForm(t, redraw) }
+      ] : []
     });
 
     const snipCols = [
@@ -3445,10 +3459,7 @@
     const drawSnippets = drawList('#snip-wrap', catalogState.textes, snipCols, () => data.snippets.slice(), {
       noun: 'texte', placeholder: 'Rechercher un texte…', text: x => `${x.name} ${x.text || ''}`,
       empty: 'Aucun texte prédéfini. Conditions de garantie, modalités, mentions récurrentes… à insérer dans les notes d\'un document en un clic.',
-      actions: x => `<button class="btn btn-sm" data-sedit="${x.id}">Modifier</button>`,
-      bind: (wrap, redraw) => {
-        $$('[data-sedit]', wrap).forEach(b => b.onclick = () => snippetForm(data.snippets.find(x => x.id === b.dataset.sedit), redraw));
-      }
+      menu: (x, redraw) => x ? [{ icon: 'modifier', label: 'Modifier le texte', hint: 'Nom et contenu', run: () => snippetForm(x, redraw) }] : []
     });
     const TABS = CATALOG_TABS;
     if (!TABS.some(t => t[0] === catalogTab)) catalogTab = 'presta';
@@ -3901,7 +3912,7 @@
           ${filtered ? `<span class="f-note"><span class="small muted">${kept.length} sur ${all.length}</span>${filterReset(true)}</span>` : ''}`, all.length, filtered)}
         ${kept.length ? `<table class="list sortable"><thead>${sortHead(cols, s.sort, '<th class="row-actions-h"></th>')}</thead><tbody>
         ${page.map(r => `<tr class="clickable" data-rid="${r.id}">${cols.map(c => `<td class="${c.r ? 'r nw' : ''}">${c.get(r)}</td>`).join('')}
-          <td class="actions"><button class="btn btn-sm" data-gen="${r.id}">Générer maintenant</button> <button class="btn btn-sm" data-edit="${r.id}">Modifier</button> <button class="btn btn-sm" data-toggle="${r.id}">${r.active !== false ? 'Suspendre' : 'Reprendre'}</button></td></tr>`).join('')}
+          ${rowMenuCell(r.id)}</tr>`).join('')}
         </tbody><tfoot><tr>
           <td colspan="4"><strong>${pl(actifs.length, 'contrat actif', 'contrats actifs')}</strong>${filtered ? '<span class="muted"> dans cette sélection</span>' : ''}</td>
           <td class="r"><strong>${C.money(parMois, cur)}</strong><div class="small muted">par mois · ${C.money(parAn, cur)} par an</div></td>
@@ -3936,19 +3947,10 @@
           `Générer ${combien > 1 ? 'les brouillons' : 'le brouillon'}`)) return;
         const res = generateRecurring(); toast(`${pl(res.n, 'brouillon créé', 'brouillons créés')} — à émettre depuis Factures`); draw();
       };
-      // On mène à la fiche du contrat : c'est là qu'on voit le brouillon qui vient d'être créé.
-      // `vers()` redessine quand on y est déjà — l'annulation repasse par ici et le hash n'a pas
-      // changé, donc aucun `hashchange` ne viendrait rafraîchir la page (piège de la 7.15.0).
-      $$('[data-gen]').forEach(b => b.onclick = () => {
-        const r = data.recurring.find(x => x.id === b.dataset.gen);
-        genererContrat(r, vers('#/contrat/' + r.id));
-      });
-      $$('[data-edit]').forEach(b => b.onclick = () => recurrenceForm(data.recurring.find(x => x.id === b.dataset.edit), draw));
       // Reprendre un contrat suspendu DÉPLACE sa prochaine échéance, et l'ancienne date est perdue :
       // un clic de trop sur « Suspendre » puis « Reprendre » décale la facturation sans qu'on puisse
       // revenir à l'état d'avant. On garde donc de quoi le défaire.
-      $$('[data-toggle]').forEach(b => b.onclick = () => {
-        const r = data.recurring.find(x => x.id === b.dataset.toggle);
+      const basculer = (r) => {
         const avant = { active: r.active, nextDate: r.nextDate };
         r.active = r.active === false;
         let msg = r.active ? 'Contrat repris' : 'Contrat suspendu — plus aucun brouillon ne sera préparé';
@@ -3959,6 +3961,21 @@
         }
         save(true); draw();
         toastUndo(msg, () => { Object.assign(r, avant); save(true); draw(); });
+      };
+      bindRowMenus($('#c-wrap'), id => {
+        const r = data.recurring.find(x => x.id === id); if (!r) return [];
+        const suspendu = r.active === false;
+        return [
+          { icon: 'contrat', label: 'Ouvrir la fiche', hint: 'Ce qu\'il facturera, et ce qu\'il a déjà facturé', run: () => navigate('#/contrat/' + r.id) },
+          // On mène à la fiche du contrat : c'est là qu'on voit le brouillon qui vient d'être créé.
+          // `vers()` redessine quand on y est déjà — l'annulation repasse par ici et le hash n'a pas
+          // changé, donc aucun `hashchange` ne viendrait rafraîchir la page (piège de la 7.15.0).
+          { icon: 'facture', label: 'Générer maintenant', hint: suspendu ? 'Le contrat est suspendu : la question sera posée' : `Le brouillon de ${C.monthLabel(r.nextDate)}`, run: () => genererContrat(r, vers('#/contrat/' + r.id)) },
+          { sep: true },
+          { icon: 'modifier', label: 'Modifier le contrat', hint: 'Client, lignes, périodicité, prochaine échéance', run: () => recurrenceForm(r, draw) },
+          { icon: suspendu ? 'reprendre' : 'pause', label: suspendu ? 'Reprendre le contrat' : 'Suspendre le contrat',
+            hint: suspendu ? 'Les échéances passées ne seront pas rattrapées' : 'Plus aucun brouillon ne sera préparé', run: () => basculer(r) }
+        ];
       });
     };
     $('#view').innerHTML = `<div class="page-head"><h1>Facturation récurrente ${info('contrat.form')}</h1><div class="actions"><button class="btn btn-primary" id="new">+ Nouveau contrat</button></div></div><div id="c-wrap"></div>`;
@@ -4079,17 +4096,20 @@
       bindRowMenus(document, id => {
         const x = find(id); if (!x) return [];
         return [
-          { label: 'Ouvrir la facture', run: () => navigate('#/doc/' + id) },
+          { icon: 'ouvrir', label: 'Ouvrir la facture', run: () => navigate('#/doc/' + id) },
           { sep: true },
-          { label: 'Relancer par email', hint: `Ton de niveau ${x.level} — ${C.REMINDER_LABELS[x.level]}`, run: () => sendReminder(x) },
-          { label: 'Noter un appel téléphonique', hint: 'Ce que le client a répondu, et quand rappeler', run: () => phoneReminderForm(x, draw) },
+          { icon: 'cloche', label: 'Relancer par email', hint: `Ton de niveau ${x.level} — ${C.REMINDER_LABELS[x.level]}`, run: () => sendReminder(x) },
+          { icon: 'telephone', label: 'Noter un appel téléphonique', hint: 'Ce que le client a répondu, et quand rappeler', run: () => phoneReminderForm(x, draw) },
           { sep: true },
-          { label: 'Paiement reçu', hint: `Reste ${C.money(x.remaining, docCur(x.doc))}`, run: () => paymentForm(x.doc, draw) },
-          { label: x.snoozed ? 'Changer la date de report' : 'Ne pas relancer avant…', hint: 'La facture sort de la liste jusqu\'à cette date', run: () => snoozeForm(x, draw) }
+          { icon: 'argent', label: 'Paiement reçu', hint: `Reste ${C.money(x.remaining, docCur(x.doc))}`, run: () => paymentForm(x.doc, draw) },
+          { icon: 'horloge', label: x.snoozed ? 'Changer la date de report' : 'Ne pas relancer avant…', hint: 'La facture sort de la liste jusqu\'à cette date', run: () => snoozeForm(x, draw) }
         ];
       });
       $$('[data-qrem]').forEach(b => b.onclick = () => sendByEmail(docById(b.dataset.qrem), 'relanceDevis', null, () => {}));
-      $$('tr.clickable[data-id]').forEach(tr => tr.onclick = () => navigate('#/doc/' + tr.dataset.id));
+      // `if (e.target.closest('button')) return` comme les sept autres liaisons de ligne : sans lui,
+      // un bouton posé DANS la ligne agit ET fait quitter la page. « Attestation reçue » cochait la
+      // case puis emmenait sur la facture — on ne voyait jamais que c'était noté.
+      $$('tr.clickable[data-id]').forEach(tr => tr.onclick = e => { if (e.target.closest('button')) return; navigate('#/doc/' + tr.dataset.id); });
     };
     $('#view').innerHTML = `<div class="page-head"><h1>Relances ${info('rel.levels')}</h1></div><div id="r-wrap"></div>`;
     draw();
@@ -4315,6 +4335,14 @@
   function openPalette() {
     const root = $('#palette-root');
     if (!root.hidden) return closePalette();
+    // Aucun menu de page ne survit à l'ouverture de la palette. Les deux vivent en couche 70, la
+    // palette en 60 : un menu d'actions ou le sélecteur d'entreprise restait dessiné PAR-DESSUS son
+    // fond flouté, et volait ensuite le premier Échap — on croyait fermer la palette, on fermait le
+    // menu, et le champ de recherche perdait le focus au passage. L'app du cabinet avait ce
+    // garde-fou depuis la 6.8.0 ; celle-ci ne l'avait jamais eu (règle 7.3.0).
+    if (closeOverlay) closeOverlay();
+    fermerDossiers();
+    closeMenus();
     root.hidden = false;
     root.innerHTML = `<div class="palette"><input type="text" id="pal-q" placeholder="Rechercher un document, un client, une prestation, une action…" autocomplete="off" spellcheck="false"><div class="results" id="pal-res"></div><div class="hint">↑ ↓ pour naviguer · Entrée pour ouvrir · Échap pour fermer</div></div>`;
     const cur = company().currency;
@@ -4338,7 +4366,11 @@
       // ajouté demain devient trouvable le jour même, sans que personne y pense. Le libellé est
       // préfixé par la page — « Cabinet » tout seul ne dit pas où l'on va.
       .concat(ongletsDePalette().map(([page, route, poser, tabs]) => tabs.map(([id, label]) =>
-        [`${page} → ${label}`, () => { poser(id); navigate(route); }]
+        // `vers()` et non `navigate()` : le routeur réagit au `hashchange`, donc viser la page où
+        // l'on est DÉJÀ ne redessine rien — l'onglet était posé et l'écran ne bougeait pas. Depuis
+        // Comptabilité, choisir « Comptabilité → Clôtures » dans la palette ne faisait rien du tout
+        // (piège de la 7.15.0, jamais porté à la palette).
+        [`${page} → ${label}`, vers(route, () => poser(id))]
       )).flat())
       .map(([label, run]) => ({ kind: 'Action', main: label, text: label.toLowerCase(), run }))
       // Les mots qu'on tape vraiment, et qui ne sont dans aucun libellé : « maj », « backup »,
@@ -4403,7 +4435,12 @@
   // menu, donc retirait le bouton du document, et le `click` n'avait plus personne à qui parler.
   // Rien en console, aucune erreur — juste un bouton mort (le défaut de la 7.0.0, en plus sournois
   // puisque le menu se fermait, ce qui donne l'impression que quelque chose s'est passé).
-  const SURFACES_OVERLAY = '.combo, .datefield, .row-menu';
+  // La liste vit dans `rowmenu.js`, avec le menu qu'elle protège : recopiée ici, elle oublierait
+  // la prochaine surface au premier overlay ajouté — et c'est exactement ce qui est arrivé au menu
+  // d'actions de la 7.28.0. `.row-menu-btn` en fait partie, et c'est ce qui permet au bouton d'être
+  // un INTERRUPTEUR : sans lui, ce garde-fou fermait le menu au `mousedown` et le `click` le
+  // rouvrait dans la foulée.
+  const SURFACES_OVERLAY = RowMenu.SURFACES;
   document.addEventListener('mousedown', e => {
     if (closeOverlay && !e.target.closest(SURFACES_OVERLAY)) closeOverlay();
   });
@@ -4520,10 +4557,10 @@
       bindRowMenus(document, id => {
         const f = supplierById(id); if (!f) return [];
         return [
-          { label: 'Ouvrir la fiche', hint: 'Ses achats, ce qui reste à payer', run: () => navigate('#/fournisseur/' + id) },
-          { label: 'Enregistrer un achat', hint: `Chez ${f.name}`, run: () => navigate('#/achat/new/' + id) },
+          { icon: 'fournisseur', label: 'Ouvrir la fiche', hint: 'Ses achats, ce qui reste à payer', run: () => navigate('#/fournisseur/' + id) },
+          { icon: 'panier', label: 'Enregistrer un achat', hint: `Chez ${f.name}`, run: () => navigate('#/achat/new/' + id) },
           { sep: true },
-          { label: 'Modifier le fournisseur', hint: 'Coordonnées, délai de paiement', run: () => supplierForm(f, () => draw()) }
+          { icon: 'modifier', label: 'Modifier le fournisseur', hint: 'Coordonnées, délai de paiement', run: () => supplierForm(f, () => draw()) }
         ];
       });
       bindSort($('#list-wrap'), draw);
@@ -4656,9 +4693,9 @@
       bindRowMenus(document, id => {
         const p = purchaseById(id); if (!p) return [];
         const reste = restOf(p);
-        const a = [{ label: 'Ouvrir la pièce', hint: 'Lignes, TVA, justificatifs', run: () => navigate('#/achat/' + id) }];
-        if (reste > 0.0005) a.push({ label: 'Enregistrer un règlement', hint: `Reste ${C.money(reste, cur)}`, run: () => supplierPaymentForm(p, () => draw()) });
-        a.push({ sep: true }, { label: 'Dupliquer', hint: 'Même fournisseur, mêmes lignes, à la date du jour', run: () => duplicatePurchase(p) });
+        const a = [{ icon: 'ouvrir', label: 'Ouvrir la pièce', hint: 'Lignes, TVA, justificatifs', run: () => navigate('#/achat/' + id) }];
+        if (reste > 0.0005) a.push({ icon: 'argent', label: 'Enregistrer un règlement', hint: `Reste ${C.money(reste, cur)}`, run: () => supplierPaymentForm(p, () => draw()) });
+        a.push({ sep: true }, { icon: 'copier', label: 'Dupliquer', hint: 'Même fournisseur, mêmes lignes, à la date du jour', run: () => duplicatePurchase(p) });
         return a;
       });
       bindSort($('#list-wrap'), draw);
@@ -7353,8 +7390,11 @@
             ${waiting.map((w, i) => `<tr><td class="nw">${C.fmtDate(w.date)}</td>
               <td>${h(supplierName(w.supplierId))}${w.number ? `<div class="small muted">${h(w.number)}</div>` : ''}</td>
               <td>${h(w.label)}</td><td class="r nw">${C.money(w.amount, cur)}</td>
-              <td class="r"><button class="btn btn-sm btn-primary" data-mk="${i}">Créer la fiche</button>
-                <button class="btn btn-sm btn-ghost" data-open="${h(w.purchaseId)}">Voir l'achat</button></td></tr>`).join('')}
+              <td class="r"><button class="btn btn-sm btn-primary" data-mk="${i}" title="Nom, durée d'amortissement, date de mise en service">Créer la fiche du bien</button>
+                <!-- « Voir l'achat » promettait une consultation et ouvrait l'éditeur : un achat n'a
+                     pas de fiche en lecture seule (contrairement à une facture émise, qui est
+                     verrouillée), donc le libellé doit dire ce qu'on va trouver. -->
+                <button class="btn btn-sm" data-open="${h(w.purchaseId)}" title="La pièce d'origine, ses lignes et ses justificatifs — elle s'ouvre en modification">Ouvrir la facture d'achat</button></td></tr>`).join('')}
           </tbody></table></div>`
             : (data.purchases || []).length
               ? '<div class="empty">Rien en attente. Toutes les lignes d\'achat marquées « immobilisation » ont leur fiche.</div>'
@@ -8168,7 +8208,10 @@
             ${rsPending.map(d => { const t = C.computeTotals(d, company()); return `<tr class="clickable" data-id="${d.id}"><td><strong>${h(d.number)}</strong></td><td>${h(clientName(d.clientId))}</td><td>${C.fmtDate(d.date)}</td><td class="r">${C.money(t.withholding, cur)} <span class="muted small">(${pct(t.withholdingRate)} %)</span></td><td class="actions"><button class="btn btn-sm" data-cert="${d.id}">Attestation reçue</button></td></tr>`; }).join('')}
           </tbody></table>` : '<p class="small muted">Aucune attestation en attente.</p>'}
         </div>`;
-      $$('tr.clickable[data-id]').forEach(tr => tr.onclick = () => navigate('#/doc/' + tr.dataset.id));
+      // `if (e.target.closest('button')) return` comme les sept autres liaisons de ligne : sans lui,
+      // un bouton posé DANS la ligne agit ET fait quitter la page. « Attestation reçue » cochait la
+      // case puis emmenait sur la facture — on ne voyait jamais que c'était noté.
+      $$('tr.clickable[data-id]').forEach(tr => tr.onclick = e => { if (e.target.closest('button')) return; navigate('#/doc/' + tr.dataset.id); });
       // Chaque tableau a son propre tri et sa propre pagination : on limite la liaison à son panneau.
       const jPanel = $('#j-wrap') && $('#j-wrap').closest('.panel');
       const pPanel = $('#p-wrap') && $('#p-wrap').closest('.panel');
