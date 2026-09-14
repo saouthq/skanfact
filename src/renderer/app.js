@@ -10229,7 +10229,7 @@
     const el = $('#lic-panel'); if (!el) return;
     const st = licence || {};
     const saisie = $('#lic-key') ? $('#lic-key').value.trim() : '';
-    const cls = st.state === 'active' || st.state === 'libre' ? 'accepté' : st.state === 'essai' ? 'émis' : 'annulée';
+    const cls = st.state === 'active' || st.state === 'libre' || st.state === 'editeur' ? 'accepté' : st.state === 'essai' ? 'émis' : 'annulée';
     el.innerHTML = st.state === 'libre'
       ? `<p><span class="badge accepté">Licence non requise</span></p>
          <p class="small">Cette version de SkanFact n'exige aucune licence : tu peux l'utiliser et la partager telle quelle.</p>`

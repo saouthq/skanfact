@@ -449,11 +449,12 @@ const APP_CFG = () => path.join(app.getPath('userData'), 'app-config.json');
 function readAppCfg() { try { return JSON.parse(fs.readFileSync(APP_CFG(), 'utf8')); } catch { return {}; } }
 function writeAppCfg(cfg) { fs.mkdirSync(path.dirname(APP_CFG()), { recursive: true }); fs.writeFileSync(APP_CFG(), JSON.stringify(cfg, null, 2)); }
 
-// ---------- licence (6.4.0 — offres et éditeur en 7.33.0) ----------
-// La clé publique est embarquée dans le paquet (`build/licence-public.json`). Tant qu'elle n'existe
-// pas, l'application est libre : livrer un logiciel qui se verrouille tout seul serait un défaut.
+// ---------- licence (6.4.0 — offres et éditeur en 7.33.0 — armée en 8.0.0) ----------
+// La clé publique est embarquée dans le paquet (`build/licence-public.json`). Tant qu'elle n'existait
+// pas, l'application était libre : livrer un logiciel qui se verrouille tout seul serait un défaut.
 // Depuis la 7.33.0 le fichier est bien LIVRÉ (il figure dans les `files` d'electron-builder) : avant,
 // `build/` n'entrait pas dans le paquet, donc l'app installée restait libre quoi qu'on commite.
+// Depuis la 8.0.0 il EXISTE : c'est la clé de Skander, et chaque installation a trente jours.
 const L = require('./licence');
 const os = require('os');
 const crypto = require('crypto');
@@ -471,7 +472,13 @@ const LIC_ANCIEN = () => path.join(app.getPath('userData'), 'licence.json');
 const CLES_DIR = () => process.env.SKANFACT_DOSSIER_CLES || path.join(os.homedir(), '.skanfact');
 const CLE_PRIVEE = () => path.join(CLES_DIR(), 'licence-privee.pem');
 const CLE_PUBLIQUE_EDITEUR = () => path.join(CLES_DIR(), 'licence-publique.json');
-const CLE_EMBARQUEE = () => path.join(__dirname, '..', 'build', 'licence-public.json');
+// `SKANFACT_CLE_EMBARQUEE` : le chemin du fichier de clé publique à lire À LA PLACE de celui du
+// paquet — pour que `e2e:licence` ouvre une application DÉSARMÉE (chemin inexistant) et arme le poste
+// avec sa propre clé d'essai, maintenant que le dépôt embarque la vraie. Honoré en développement
+// seulement : une application installée lit toujours sa propre clé, quoi que dise l'environnement.
+const CLE_EMBARQUEE = () => (!app.isPackaged && process.env.SKANFACT_CLE_EMBARQUEE !== undefined)
+  ? process.env.SKANFACT_CLE_EMBARQUEE
+  : path.join(__dirname, '..', 'build', 'licence-public.json');
 const lireJson = p => { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return null; } };
 const editeurActif = () => fs.existsSync(CLE_PRIVEE());
 const lirePrivee = () => fs.readFileSync(CLE_PRIVEE(), 'utf8');
@@ -485,6 +492,30 @@ function clePublique() {
   return clePubliqueCache;
 }
 function publicKey() { return clePublique().publicKey; }
+// La clé publique de l'ÉDITEUR (le pendant de sa clé privée), ou null s'il n'y a pas de clé privée
+// ici. Des clés créées par l'outil en ligne de commande d'avant n'ont pas de fichier public : on le
+// déduit de la privée et on l'écrit, une fois pour toutes.
+function clePubliqueEditeur() {
+  if (!editeurActif()) return null;
+  let pub = lireJson(CLE_PUBLIQUE_EDITEUR());
+  if (pub && pub.publicKey) return pub;
+  try {
+    const publicKey = crypto.createPublicKey(crypto.createPrivateKey(lirePrivee())).export({ type: 'spki', format: 'pem' });
+    pub = { format: L.FORMAT, publicKey, createdAt: L.today() };
+    fs.writeFileSync(CLE_PUBLIQUE_EDITEUR(), JSON.stringify(pub, null, 2) + '\n');
+    clePubliqueCache = null;
+    return pub;
+  } catch { return null; }
+}
+// Celui qui signe n'achète pas : le poste dont la clé privée correspond à la clé publique EN VIGUEUR
+// (celle du paquet, ou la sienne tant que le paquet n'en porte pas) n'a ni essai ni verrou. Une
+// autre clé privée (un second éditeur, une clé recréée par erreur) ne donne aucun passe-droit.
+// À ne pas confondre avec `correspond` de editeurStatus(), qui compare à la clé EMBARQUÉE seulement
+// (c'est l'état « armée avec cette clé / avec une autre / en attente » du panneau).
+function editeurDeLaCleEnVigueur() {
+  const mienne = clePubliqueEditeur();
+  return !!(mienne && mienne.publicKey && mienne.publicKey === publicKey());
+}
 function ecrireLicence(key) {
   fs.mkdirSync(path.dirname(LIC_FILE()), { recursive: true });
   fs.writeFileSync(LIC_FILE(), JSON.stringify({ key, savedAt: new Date().toISOString() }, null, 2));
@@ -525,7 +556,7 @@ function licenceStatus(matricule) {
   const pub = clePublique();
   return {
     ...L.licenceState({ key: lic.key || '', publicKey: pub.publicKey, installedAt: installedAt(), armedAt: armedAt(),
-      matricule: matricule || '', today: L.today() }),
+      matricule: matricule || '', today: L.today(), editeur: editeurDeLaCleEnVigueur() }),
     editeur: editeurActif()
   };
 }
@@ -536,19 +567,7 @@ function licenceStatus(matricule) {
 function editeurStatus(depuis) {
   const depart = L.dateValide(depuis) && depuis > L.today() ? depuis : L.today();
   const actif = editeurActif();
-  let pub = null;
-  if (actif) {
-    pub = lireJson(CLE_PUBLIQUE_EDITEUR());
-    if (!pub || !pub.publicKey) {
-      // Clés créées par l'outil en ligne de commande d'avant : la publique se déduit de la privée.
-      try {
-        const publicKey = crypto.createPublicKey(crypto.createPrivateKey(lirePrivee())).export({ type: 'spki', format: 'pem' });
-        pub = { format: L.FORMAT, publicKey, createdAt: L.today() };
-        fs.writeFileSync(CLE_PUBLIQUE_EDITEUR(), JSON.stringify(pub, null, 2) + '\n');
-        clePubliqueCache = null;
-      } catch { pub = null; }
-    }
-  }
+  const pub = clePubliqueEditeur();
   const embarquee = lireJson(CLE_EMBARQUEE());
   return {
     actif, dossier: CLES_DIR(), chemin: CLE_PRIVEE(),

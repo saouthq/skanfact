@@ -11,6 +11,7 @@ L'utilisateur est débutant en gestion (première entreprise) : chaque champ por
 - **Chaque amélioration livrée = une nouvelle version** (semver) : correctif 1.0.x, fonctionnalité 1.x.0, gros changement x.0.0. Mettre à jour `package.json` (`version`) **et** ajouter une entrée datée dans `CHANGELOG.md` (c'est elle qui devient les notes de version dans l'app et sur GitHub). Toujours annoncer le numéro de version dans la réponse.
 - Lancer `npm test` avant tout commit (calculs, numérotation, montant en lettres, échappement HTML, stockage/sauvegardes). Pour un changement d'interface, lancer aussi l'app réelle (`xvfb-run` + Playwright `_electron`, voir README « Tests ») : elle attrape les erreurs JS du renderer.
 - Ne jamais commiter de token. Le jeton GitHub que l'utilisateur colle (quand le dépôt est privé) est stocké dans `userData/update-config.json`, jamais dans le code.
+- **La licence est ARMÉE depuis la 8.0.0** : `build/licence-public.json` est la clé publique de Skander (créée dans SkanFact le 14/09/2026). Ne jamais la supprimer, la régénérer ni la remplacer — une autre clé invaliderait toutes les licences déjà vendues, et son absence désarmerait tous les clients. La clé privée vit dans `~/.skanfact/` sur son Mac, jamais dans le dépôt. Un test exige la présence du fichier et qu'il soit une vraie clé Ed25519.
 - **Partager un dossier à deux se fait en DEUX gestes**, et ils vivent dans `src/main.js` :
   `dossiers:share` copie le dossier OUVERT vers un emplacement commun (l'original reste, la bascule
   n'a lieu qu'une fois la copie constatée), `dossiers:join` ouvre un dossier déjà posé sans rien
@@ -390,7 +391,7 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:beta` | **le canal bêta** : la case décochée à l'installation, la question avant de cocher, le refus qui décoche vraiment, la sauvegarde « avant-beta » écrite sur le disque, et le retour en arrière sans question |
 | `npm run e2e:depot` | **public ou privé** : `src/depot.js` est VRAIMENT basculé en privé, l'application ouverte, le champ jeton doit revenir — puis repartir au retour au public (le fichier est restauré quoi qu'il arrive) |
 | `npm run e2e:pages` | **les pages d'un document imprimé** : 161 documents (7 types × 6 variantes × 1 à 40 lignes) rendus dans chromium et imprimés en PDF — aucune ligne perdue, aucune page qui déborde, aucun pied par-dessus le contenu, une feuille par page et chacune numérotée. **Pas besoin de `xvfb`** : il n'ouvre pas Electron |
-| `npm run e2e:licence` | **l'éditeur et les offres** : sans clé rien n'apparaît ; « Créer mes clés » écrit la privée dans un dossier isolé (`SKANFACT_DOSSIER_CLES`) et arme le poste ; « Émettre » signe une clé vérifiable, crée un BROUILLON de facture et l'historique ; la clé Indépendant collée refuse un nouveau fournisseur, pose un cadenas sur Achats et laisse les Statistiques ; la clé d'un autre matricule est refusée en nommant les deux ; « Renouveler » ; et rien de ce qui traverse le pont ne contient la clé privée |
+| `npm run e2e:licence` | **l'éditeur et les offres, puis le client** : une première application DÉSARMÉE (`SKANFACT_CLE_EMBARQUEE` vers un chemin inexistant, développement seulement) — sans clé rien n'apparaît ; « Créer mes clés » écrit la privée dans un dossier isolé (`SKANFACT_DOSSIER_CLES`) et met le poste en état « éditeur » (ni essai ni verrou) ; « Émettre » signe une clé vérifiable, crée un BROUILLON de facture et l'historique ; la clé Indépendant collée refuse un nouveau fournisseur, pose un cadenas sur Achats et laisse les Statistiques ; la clé d'un autre matricule est refusée en nommant les deux ; « Renouveler » ; rien de ce qui traverse le pont ne contient la clé privée — PUIS une seconde application telle qu'un client l'installe (vraie clé embarquée, pas de clé privée) : essai de 30 jours, aucune trace de l'éditeur, plus de porte « Créer mes clés », et la clé signée par la clé d'essai du test REFUSÉE |
 
 Ils ont longtemps vécu dans un dossier de travail temporaire, effacé à chaque session : il fallait les réécrire de mémoire, et ils dérivaient (une assertion restée sur une version périmée, un écran neuf jamais parcouru). **Un test qu'on doit réécrire pour s'en servir n'est pas un test.** Le harnais (`test/e2e/harnais.js`) trouve Playwright où il est, lit la version dans `package.json` au lieu de l'écrire en dur, et range les captures dans `dist-e2e/` (ignoré par Git).
 
@@ -1814,6 +1815,52 @@ Règles apprises, à ne pas recasser :
   texte. Et la clé privée de l'e2e vit dans `SKANFACT_DOSSIER_CLES` : jamais dans le vrai
   `~/.skanfact`, qui appartient à l'éditeur — le harnais pose un dossier vide par défaut pour TOUS
   les parcours, sinon ils tourneraient armés sur le Mac de l'éditeur.
+
+## 8.0.0 — La licence est armée
+
+Skander a créé ses clés dans SkanFact (7.33.0) et collé la clé PUBLIQUE dans la conversation. Elle
+vit dans `build/licence-public.json` — **ne jamais la supprimer, la régénérer ni la remplacer** (voir
+« Règles de travail »). La clé privée est dans `~/.skanfact/licence-privee.pem` sur son Mac, avec
+une copie qu'il a mise à l'abri ; aucune session Claude ne l'a jamais vue et ne doit jamais la voir.
+
+Règles apprises, à ne pas recasser :
+
+- **Celui qui signe n'achète pas.** Armer l'application armait aussi le poste de l'éditeur : au
+  trente-et-unième jour, Skander aurait été verrouillé chez lui, avec une clé qu'il ne pouvait
+  s'émettre qu'en se déclarant client de lui-même (le formulaire exige un client). L'état `editeur`
+  (licence.js) n'a ni essai ni verrou ; il ne vaut que si la clé privée du poste **correspond à la
+  clé publique en vigueur** (`editeurDeLaCleEnVigueur()` dans main.js) — une autre clé privée (un
+  second éditeur, une clé recréée par erreur) ne donne aucun passe-droit. Une clé COLLÉE est jugée
+  avant et reprend le dessus : c'est ainsi qu'il voit exactement ce que voit un client, et « Retirer
+  la clé » le ramène à son état. Deux `correspond` existent et ne disent pas la même chose :
+  `editeurStatus().correspond` compare à la clé EMBARQUÉE (l'état du panneau : armée avec cette clé /
+  avec une autre / en attente), `editeurDeLaCleEnVigueur()` à la clé EN VIGUEUR (le passe-droit).
+- **Le test qui exigeait l'absence du fichier est retourné, pas supprimé** : il exige sa présence,
+  qu'il soit une vraie clé Ed25519 lisible, sans clé privée dedans, et qu'une licence signée par
+  n'importe quelle autre clé privée soit refusée avec lui. « On teste l'interrupteur, pas la
+  position dans laquelle il est » (7.26.0) — ici la position a changé, et le test avec elle.
+- **Le paquet a été OUVERT avant de dire que la clé est embarquée** : `electron-builder --linux dir`
+  puis `asar list` / `asar extract-file` sur `app.asar`. La 7.33.0 avait appris que `build/`
+  n'entrait pas dans le paquet ; un glob dans `build.files` ne se vérifie qu'en regardant dedans.
+- **Un test qui a besoin de l'application DÉSARMÉE ne déplace pas le fichier du dépôt** : il passe
+  par `SKANFACT_CLE_EMBARQUEE` (un chemin qui n'existe pas), honoré **en développement seulement**
+  (`!app.isPackaged`) — une application installée lit toujours sa propre clé, quoi que dise
+  l'environnement, et un test relit la garde. Tous les autres e2e tournent désormais armés, en essai,
+  comme chez un client : c'est l'état qu'il faut tester, pas un état qui n'existe plus.
+- **L'armement se prouve dans les DEUX sens** : `e2e:licence` ouvre une application désarmée pour
+  fabriquer des clés d'essai, PUIS une seconde telle qu'un client l'installe — essai de 30 jours,
+  aucune trace de l'éditeur, plus de porte « Créer mes clés », et la clé signée par la clé d'essai
+  REFUSÉE (« pas reconnue »). Sans la seconde moitié, rien ne prouverait que la clé embarquée est
+  celle de Skander et pas celle du test.
+- **Un test de source ancré sur une tranche se périme quand une fonction déménage.** Sortir la
+  déduction de la clé publique dans `clePubliqueEditeur()` (avant `editeurStatus`) a fait tomber
+  « la clé privée ne traverse jamais le pont » : la tranche ne voyait plus que deux lectures. Les
+  lectures de `lirePrivee()` sont maintenant jugées sur TOUT main.js, et chacune doit vivre dans la
+  section éditeur — prouvé en posant une lecture dans `licence:status`.
+- **`LICENCE_CONTACT` (`licences@skanfact.tn`) n'a pas été vérifié** : c'est l'adresse vers laquelle
+  « Demander une licence » compose le mail, et « Signaler un problème » aussi. Si la boîte n'existe
+  pas, un client en fin d'essai écrit dans le vide. À confirmer par Skander avant la fin du premier
+  essai (14/10/2026).
 
 ## Pistes pour la suite (non demandées)
 

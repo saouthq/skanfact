@@ -204,20 +204,22 @@ Les paquets reçus sont rangés dans `userData/paquets/<client>/<année>/<mois>.
 
 Les deux applications partagent le **même numéro de version** (`package.json`) depuis la 6.6.0, ce qui permet de les publier dans la même release ; ce qui les sépare est le **canal** de mise à jour (`latest.yml` contre `cabinet.yml`).
 
-## Clés de licence client (6.4.0)
+## Clés de licence client (6.4.0, armée en 8.0.0)
 
 > Cette section concerne l'**activation de l'application chez un utilisateur**. Pour les droits sur
 > le code source, voir « Droits d'utilisation » en haut de ce fichier.
 
-La vérification est **hors ligne** : une clé signée Ed25519, vérifiée avec la clé publique embarquée. Tant que `build/licence-public.json` n'existe pas, **l'application est libre** et ne verrouille rien. Pour armer la licence :
+La vérification est **hors ligne** : une clé signée Ed25519, vérifiée avec la clé publique embarquée dans `build/licence-public.json`. Depuis la **8.0.0** ce fichier porte la clé de l'éditeur : chaque installation a **30 jours d'essai** à partir du jour où elle voit cette clé (pas du premier lancement : une installation ancienne qui reçoit la 8.0.0 repart pour trente jours), puis attend une clé de licence — *Indépendant* ou *Entreprise*, l'offre voyage dans la clé, attachée au matricule fiscal.
+
+Les clés se fabriquent **depuis SkanFact** (Paramètres → L'application → Licence, puis la page Licences : émission, facture, historique, renouvellement), sur le poste qui détient la clé privée (`~/.skanfact/licence-privee.pem`, jamais commitée). Ce poste-là — et lui seul — est en état « éditeur » : ni essai, ni verrou. L'outil en ligne de commande reste disponible :
 
 ```bash
-node scripts/licence.js --keygen        # clé privée dans ~/.skanfact/ (jamais commitée),
-                                        # clé publique dans build/licence-public.json (à commiter)
+node scripts/licence.js --keygen        # clés dans ~/.skanfact/ (privée en 0600, publique à côté)
 node scripts/licence.js --nom "Client SUARL" --matricule 1234567A --mois 12
+node scripts/licence.js --verifier SKAN1.…   # vérifie une clé avec la clé embarquée
 ```
 
-Une licence expirée n'empêche que la **création** de nouvelles pièces : lecture, impression, export, sauvegardes et paquet mensuel restent disponibles.
+Une licence expirée n'empêche que la **création** de nouvelles pièces : lecture, impression, export, sauvegardes et paquet mensuel restent disponibles. Les tests qui ouvrent l'application tournent avec un dossier de clés vide (`SKANFACT_DOSSIER_CLES`), donc en essai, comme un client ; `e2e:licence` la désarme par `SKANFACT_CLE_EMBARQUEE` (développement seulement) pour créer ses propres clés d'essai.
 
 ## Limites connues
 

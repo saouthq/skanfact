@@ -10,7 +10,15 @@
 //      création, les Statistiques restent ouvertes, le menu porte un cadenas ;
 //   5. une clé émise pour un autre matricule est refusée en nommant les deux ;
 //   6. « Renouveler » fabrique une seconde clé et une seconde facture, la première sort du compte ;
-//   7. rien de ce qui passe le pont ne contient la clé privée.
+//   7. rien de ce qui passe le pont ne contient la clé privée ;
+//   8. (8.0.0) une SECONDE application, sans override et sans clé privée — c'est-à-dire l'application
+//      telle qu'un client l'installe — est armée avec la vraie clé embarquée : essai de 30 jours,
+//      aucune trace de l'éditeur, plus de porte « Créer mes clés », et la clé signée à l'étape 3 par
+//      la clé d'essai de ce test y est REFUSÉE.
+//
+// Depuis la 8.0.0 le dépôt embarque la vraie clé publique (build/licence-public.json). Pour créer ses
+// clés d'essai, ce parcours ouvre donc l'application DÉSARMÉE par `SKANFACT_CLE_EMBARQUEE` (un chemin
+// qui n'existe pas), honoré en développement seulement — l'étape 8 tourne sans lui.
 //
 //   xvfb-run -a node test/e2e/licence.js
 const { playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
@@ -25,34 +33,38 @@ const L = require('../../src/licence.js');
   const cles = fs.mkdtempSync(path.join(os.tmpdir(), 'skanfact-cles-'));
   const app = await electron.launch({
     args: ['--no-sandbox', `--user-data-dir=${userData}`, RACINE], executablePath: ELECTRON,
-    env: { ...process.env, SKANFACT_DOSSIER_CLES: cles }
+    env: { ...process.env, SKANFACT_DOSSIER_CLES: cles, SKANFACT_CLE_EMBARQUEE: path.join(cles, 'aucune-cle-embarquee.json') }
   });
   const win = await app.firstWindow(); surveiller(win, '', bac);
-  const aller = async hash => { await win.evaluate(x => { location.hash = x; }, hash); await win.waitForTimeout(350); };
+  const aller = async (hash, w = win) => { await w.evaluate(x => { location.hash = x; }, hash); await w.waitForTimeout(350); };
   // L'onglet des Paramètres se reconnaît à ce qu'il CONTIENT, jamais à son rang.
-  const ouvrirParametres = async (panneau) => {
-    await aller('#/parametres');
-    await win.waitForSelector('#set-tabs');
-    const onglet = await win.evaluate(id => { const p = document.getElementById(id); const s = p && p.closest('[data-pane]'); return s ? s.dataset.pane : null; }, panneau);
+  const ouvrirParametres = async (panneau, w = win) => {
+    await aller('#/parametres', w);
+    await w.waitForSelector('#set-tabs');
+    const onglet = await w.evaluate(id => { const p = document.getElementById(id); const s = p && p.closest('[data-pane]'); return s ? s.dataset.pane : null; }, panneau);
     if (!onglet) throw new Error('panneau introuvable dans les Paramètres : ' + panneau);
-    await win.click(`#set-tabs button[data-tab="${onglet}"]`);
-    await win.waitForSelector('#' + panneau, { state: 'visible', timeout: 8000 });
-    await win.waitForTimeout(250);
+    await w.click(`#set-tabs button[data-tab="${onglet}"]`);
+    await w.waitForSelector('#' + panneau, { state: 'visible', timeout: 8000 });
+    await w.waitForTimeout(250);
+  };
+  // L'assistant de première utilisation : chaque écran reconnu à ce qu'il contient, jamais à son rang.
+  const traverserAssistant = async (w, nom, mf) => {
+    await w.waitForSelector('#setup');
+    for (let g = 0; g < 15 && await w.$('#setup'); g++) {
+      if (await w.$('#sf-form input[name=name]')) {
+        await w.fill('#sf-form input[name=name]', nom);
+        await w.fill('#sf-form input[name=matricule]', mf);
+      }
+      if (await w.$('[data-act="informatique"]')) { await w.click('[data-act="informatique"]'); await w.waitForSelector('[data-act="informatique"].sel'); }
+      await w.click('#sf-next'); await w.waitForTimeout(120);
+    }
+    await w.waitForFunction(() => !document.querySelector('#setup'));
   };
   const MF = '3344556Z/A/P/000';
 
   // ---------------------------------------------------- 0. une entreprise, un client
   j.etape('Une entreprise et un client');
-  await win.waitForSelector('#setup');
-  for (let g = 0; g < 15 && await win.$('#setup'); g++) {
-    if (await win.$('#sf-form input[name=name]')) {
-      await win.fill('#sf-form input[name=name]', 'Atelier Licences SUARL');
-      await win.fill('#sf-form input[name=matricule]', MF);
-    }
-    if (await win.$('[data-act="informatique"]')) { await win.click('[data-act="informatique"]'); await win.waitForSelector('[data-act="informatique"].sel'); }
-    await win.click('#sf-next'); await win.waitForTimeout(120);
-  }
-  await win.waitForFunction(() => !document.querySelector('#setup'));
+  await traverserAssistant(win, 'Atelier Licences SUARL', MF);
   await aller('#/clients');
   await win.waitForSelector('#new'); await win.click('#new');
   await win.waitForSelector('#modal-root .modal');
@@ -107,12 +119,16 @@ const L = require('../../src/licence.js');
     ed: await window.skanfact.editeurStatus()
   }));
   if (!apres.nav) throw new Error('la page Licences n\'est pas apparue dans la barre après la création des clés');
-  if (apres.st.state !== 'essai' || !apres.st.editeur) throw new Error('le poste de l\'éditeur devrait être armé et en essai : ' + JSON.stringify(apres.st));
-  if (apres.st.daysLeft !== 30) throw new Error('l\'essai doit compter depuis l\'armement (aujourd\'hui) : ' + apres.st.daysLeft + ' jours');
-  if (!apres.ed.actif || apres.ed.armee || !Array.isArray(apres.ed.durees) || !apres.ed.offres.independant) throw new Error('état éditeur inattendu : ' + JSON.stringify(apres.ed).slice(0, 200));
+  // Celui qui signe n'achète pas (8.0.0) : le poste de l'éditeur n'est ni en essai, ni verrouillé.
+  if (apres.st.state !== 'editeur' || apres.st.locked || !apres.st.editeur) throw new Error('le poste de l\'éditeur devrait être en état « editeur », sans essai ni verrou : ' + JSON.stringify(apres.st));
+  // `armee`/`correspond` parlent de la clé EMBARQUÉE (absente ici, par l'override) : « en attente ».
+  if (!apres.ed.actif || apres.ed.armee || apres.ed.correspond || !Array.isArray(apres.ed.durees) || !apres.ed.offres.independant) throw new Error('état éditeur inattendu : ' + JSON.stringify(apres.ed).slice(0, 200));
   if (/PRIVATE KEY/.test(JSON.stringify(apres))) throw new Error('la clé privée traverse le pont');
   if (!await win.$('#p-editeur')) throw new Error('le panneau Éditeur n\'est pas posé après la création des clés');
-  j.ok(`clé privée dans ${cles} · publique copiée · poste armé, essai de 30 jours · panneau Éditeur posé`);
+  await ouvrirParametres('p-licence');
+  const panneauEd = await win.textContent('#lic-panel');
+  if (!/Poste de l'éditeur/.test(panneauEd) || await win.$('#lic-devenir')) throw new Error('le panneau Licence doit dire « Poste de l\'éditeur » et ne plus offrir « Créer mes clés » : ' + panneauEd.slice(0, 120));
+  j.ok(`clé privée dans ${cles} · publique copiée · poste éditeur (ni essai ni verrou) · panneau Éditeur posé`);
 
   // ---------------------------------------------------- 3. émettre une licence
   j.etape('Émettre une licence : clé signée, brouillon de facture, historique');
@@ -296,10 +312,49 @@ const L = require('../../src/licence.js');
   if (actions2.some(a => /^Renouveler$/.test(a)) || !actions2.some(a => /^Renouveler la suivante/.test(a))) throw new Error('une licence renouvelée ne doit offrir que « Renouveler la suivante » : ' + actions2.join(' | '));
   await win.keyboard.press('Escape');
   j.ok('deux licences, deux factures, « à vie » sur la seconde, la première marquée renouvelée et sortie du compte');
+  await Promise.race([app.close(), new Promise((_, rej) => setTimeout(() => rej(new Error('l\'application ne se ferme pas : un garde-fou de sortie attend une réponse')), 20000))]);
+
+  // ---------------------------------------------------- 8. l'application telle qu'un client l'installe
+  j.etape('La vraie clé embarquée (8.0.0) : un client est en essai, ne voit rien de l\'éditeur, et la clé d\'essai de ce test est refusée');
+  const embarquee = JSON.parse(fs.readFileSync(path.join(RACINE, 'build', 'licence-public.json'), 'utf8'));
+  if (!embarquee.publicKey || embarquee.publicKey === pubJson.publicKey) throw new Error('build/licence-public.json doit porter une clé, et pas celle de ce test');
+  if (L.verifyKey(l1.key, embarquee.publicKey)) throw new Error('la clé signée par la clé d\'essai ne doit pas se vérifier avec la clé embarquée');
+  const userData2 = fs.mkdtempSync(path.join(os.tmpdir(), 'skanfact-lic-client-'));
+  const clesVides = fs.mkdtempSync(path.join(os.tmpdir(), 'skanfact-cles-vides-'));
+  // Sans override : c'est build/licence-public.json qui arme, comme chez tout le monde.
+  const env2 = { ...process.env, SKANFACT_DOSSIER_CLES: clesVides };
+  delete env2.SKANFACT_CLE_EMBARQUEE;
+  const app2 = await electron.launch({ args: ['--no-sandbox', `--user-data-dir=${userData2}`, RACINE], executablePath: ELECTRON, env: env2 });
+  const win2 = await app2.firstWindow(); surveiller(win2, 'client', bac);
+  await traverserAssistant(win2, 'Menuiserie Trabelsi SUARL', '1234567A/M/P/000');
+  const reel = await win2.evaluate(async mf => ({
+    st: await window.skanfact.licenceStatus(mf), ed: await window.skanfact.editeurStatus(),
+    nav: !!document.querySelector('nav a[data-route="licences"]'), banner: !!document.querySelector('#lic-banner') && !document.querySelector('#lic-banner').hidden
+  }), '1234567A/M/P/000');
+  if (reel.st.state !== 'essai' || reel.st.locked || reel.st.daysLeft !== 30 || reel.st.editeur) throw new Error('avec la vraie clé embarquée, une installation neuve doit être en essai de 30 jours : ' + JSON.stringify(reel.st).slice(0, 200));
+  if (reel.nav || reel.ed.actif || !reel.ed.armee) throw new Error('un client ne doit rien voir de l\'éditeur, et l\'application doit se savoir armée : ' + JSON.stringify({ nav: reel.nav, ed: reel.ed }).slice(0, 200));
+  if (reel.banner) throw new Error('à 30 jours d\'essai, aucun bandeau ne doit encore s\'afficher (il vient à 7 jours de la fin)');
+  await ouvrirParametres('p-licence', win2);
+  const panneauClient = await win2.textContent('#lic-panel');
+  if (!/Période d'essai/.test(panneauClient) || /non requise/.test(panneauClient)) throw new Error('le panneau Licence d\'un client doit annoncer l\'essai : ' + panneauClient.slice(0, 120));
+  if (await win2.$('#lic-devenir')) throw new Error('la porte « Créer mes clés » ne doit plus exister sur une application armée');
+  if (await win2.$('#p-editeur')) throw new Error('le panneau Éditeur est posé chez un client');
+  // La clé émise à l'étape 3 (par la clé d'essai de ce test, pour ce même matricule) n'est pas
+  // signée par l'éditeur : refusée à l'écran, et rien n'est enregistré.
+  await win2.fill('#lic-key', l1.key);
+  await win2.click('#lic-save');
+  await win2.waitForFunction(() => { const t = document.querySelector('#toast'); return t && !t.hidden && /pas reconnue/.test(t.textContent); }, null, { timeout: 8000 });
+  const st2 = await win2.evaluate(mf => window.skanfact.licenceStatus(mf), '1234567A/M/P/000');
+  if (st2.state !== 'essai' || st2.key) throw new Error('une clé refusée ne doit pas être enregistrée : ' + JSON.stringify(st2).slice(0, 120));
+  // Et pendant l'essai, rien n'est fermé : un devis se crée.
+  await aller('#/devis', win2);
+  await win2.waitForSelector('#new'); await win2.click('#new');
+  await win2.waitForFunction(() => /^#\/doc\//.test(location.hash), null, { timeout: 8000 });
+  j.ok('essai de 30 jours · ni page, ni panneau, ni porte de l\'éditeur · clé d\'essai refusée (« pas reconnue ») · un devis se crée');
 
   console.log('\nerreurs JS : ' + bac.length);
   bac.slice(0, 6).forEach(e => console.log('  - ' + e));
-  await Promise.race([app.close(), new Promise((_, rej) => setTimeout(() => rej(new Error('l\'application ne se ferme pas : un garde-fou de sortie attend une réponse')), 20000))]);
+  await Promise.race([app2.close(), new Promise((_, rej) => setTimeout(() => rej(new Error('l\'application ne se ferme pas : un garde-fou de sortie attend une réponse')), 20000))]);
   if (bac.length) { console.error('>>> ÉCHEC'); process.exit(2); }
   console.log(`\n${j.total()} étapes — L'ÉDITEUR ET LES OFFRES : OK`);
 })().catch(e => { console.error('\n✕ ÉCHEC : ' + (e.stack || e.message)); process.exit(1); });

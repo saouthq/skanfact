@@ -8,10 +8,16 @@
 // 2. **Jamais de données en otage.** Une licence expirée n'empêche que la CRÉATION de nouvelles
 //    pièces. Lire, imprimer, exporter, sauvegarder, envoyer le paquet au comptable : toujours.
 //    C'est une limite commerciale, pas une prise d'otage.
-// 3. **Tant qu'aucune clé publique n'est configurée, l'application est libre.** C'est l'état livré :
-//    la machinerie est là, elle ne verrouille rien tant que le propriétaire ne l'a pas armée
-//    (`scripts/licence.js --keygen`, puis la clé publique dans `build/licence-public.json`).
-//    Un logiciel qui se verrouillerait tout seul à l'installation serait un défaut, pas une licence.
+// 3. **Tant qu'aucune clé publique n'est configurée, l'application est libre.** C'était l'état livré
+//    de la 6.4.0 à la 7.33.0 : la machinerie était là, elle ne verrouillait rien tant que le
+//    propriétaire ne l'avait pas armée. Depuis la **8.0.0**, `build/licence-public.json` porte la clé
+//    publique de l'éditeur (créée dans SkanFact le 14/09/2026) : chaque installation a 30 jours
+//    d'essai à partir du jour où elle voit cette clé, puis attend une clé de licence.
+// 4. **Celui qui signe n'achète pas.** Le poste où vit la clé PRIVÉE correspondant à la clé publique
+//    en vigueur est l'état `editeur` : jamais d'essai, jamais de verrou — sinon l'éditeur se serait
+//    retrouvé verrouillé chez lui au trente-et-unième jour, avec une clé qu'il ne peut s'émettre qu'en
+//    se déclarant client de lui-même. Une clé collée sur ce poste reprend le dessus : c'est ainsi
+//    qu'il voit exactement ce que voit un client.
 //
 // Testable sans Electron : c'est du Node pur.
 const crypto = require('crypto');
@@ -167,6 +173,9 @@ function verifyKey(key, publicKeyPem) {
 //   invalide  : clé illisible ou signature fausse
 //   autre     : clé authentique, mais émise pour une autre entreprise (matricule différent)
 //   finessai  : essai terminé sans licence
+//   editeur   : la clé privée qui signe les licences est sur ce poste, et c'est bien celle de la clé
+//               publique en vigueur (`opts.editeur`) — pas d'essai, pas de verrou ; une clé collée
+//               reprend le dessus (elle est jugée AVANT), pour voir ce que voit un client
 // `offre` et `reserves` : l'offre en cours et les modules dont la création lui est fermée. Pendant
 // l'essai, tout est ouvert (c'est la seule façon de savoir de quelle offre on a besoin) ; une fois
 // verrouillé, `reserves` ne sert plus — `locked` ferme déjà toute création.
@@ -225,6 +234,14 @@ function licenceState(opts) {
       detail: 'Tout reste lisible, imprimable et exportable. Seule la création de nouvelles pièces attend le renouvellement.',
       exp, daysLeft: left, reserves: []
     };
+  }
+
+  // Le poste de l'éditeur, sans clé collée : celui qui signe n'achète pas. Jugé APRÈS une clé
+  // collée (qui reprend le dessus) et AVANT l'essai (qui ne le concerne pas).
+  if (opts.editeur) {
+    return { state: 'editeur', locked: false, label: 'Poste de l\'éditeur — licence non requise',
+      detail: 'La clé privée qui signe les licences est sur cet ordinateur : il n\'a pas besoin de licence. Colle une clé ci-dessous pour voir exactement ce que voit un client ; retire-la pour revenir ici.',
+      key: '', name: '', exp: '', daysLeft: null, offre: OFFRE_DEFAUT, offreLabel: '', reserves: [] };
   }
 
   const left = daysBetween(t, trialEnd);

@@ -7,6 +7,53 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 8.0.0 — 14/09/2026
+
+**La licence est armée.** À partir de cette version, SkanFact embarque la clé publique de son
+éditeur : chaque installation dispose de **30 jours d'essai complets**, comptés à partir du jour où
+elle ouvre la 8.0.0 — pas du premier lancement, donc une installation ancienne repart pour trente
+jours entiers — puis attend une clé de licence.
+
+### Ce que ça change pour toi
+
+- **Pendant l'essai, rien ne change** : tout est ouvert, exactement comme avant. Une semaine avant la
+  fin, un bandeau te prévient dans la barre de gauche.
+- **Après l'essai, tes données restent à toi.** Tout ce qui existe reste lisible, imprimable et
+  exportable, le paquet du comptable part toujours, les sauvegardes continuent. Seule la **création
+  de nouvelles pièces** attend ta clé.
+- **Demander une clé** : Paramètres → L'application → Licence → « Demander une licence » prépare le
+  message avec ta raison sociale et ton matricule (et l'empreinte de ton cabinet s'il utilise
+  SkanFact Cabinet : elle donne droit à la remise de parrainage). Tu reçois une clé `SKAN1.…`, tu la
+  colles au même endroit, c'est tout — aucune connexion, aucun compte à créer.
+- **Deux offres**, portées par la clé : *Indépendant* (devis, factures, relances, contrats, TVA,
+  dossier du comptable) et *Entreprise* (tout, plus Achats, Stock, Immobilisations, Trésorerie et
+  marges, Paie, dossier partagé à deux). En Indépendant, les modules Entreprise restent lisibles ;
+  seule la création y attend l'offre du dessus.
+
+### Pour l'éditeur
+
+- **Celui qui signe n'achète pas.** Le poste qui détient la clé privée de signature — et seulement
+  si elle correspond à la clé embarquée — est en état « éditeur » : ni essai, ni verrou. Sans cette
+  règle, l'éditeur se serait retrouvé verrouillé chez lui le trente-et-unième jour, avec une clé
+  qu'il ne peut s'émettre qu'en se déclarant client de lui-même. Une clé collée sur ce poste
+  reprend le dessus : c'est ainsi qu'il voit exactement ce que voit un client, et « Retirer la clé »
+  le ramène à son état.
+- La porte « Tu édites SkanFact ? Créer mes clés » a disparu : elle n'existait que sur une
+  application non armée.
+
+### Sous le capot
+
+- Le paquet a été **ouvert et vérifié** : `build/licence-public.json` est bien dans `app.asar`
+  (avant la 7.33.0, `build/` n'entrait pas dans le paquet et l'application installée serait restée
+  libre quoi qu'on commite).
+- Le test qui exigeait l'ABSENCE de la clé publique est retourné : il exige désormais sa présence,
+  qu'elle soit une vraie clé Ed25519, et qu'une licence signée par n'importe quelle autre clé
+  privée soit refusée avec elle.
+- `npm run e2e:licence` ouvre désormais **deux** applications : la première désarmée
+  (`SKANFACT_CLE_EMBARQUEE`, honoré en développement seulement) pour créer ses propres clés
+  d'essai ; la seconde telle qu'un client l'installe — essai de 30 jours, aucune trace de
+  l'éditeur, et la clé signée par la clé d'essai du test **refusée**.
+
 ## 7.33.0 — 14/09/2026
 
 **SkanFact sait maintenant se vendre : deux offres portées par la clé de licence, et un module

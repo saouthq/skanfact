@@ -3169,9 +3169,59 @@ t('licence : le garde-fou ne barre que la création, et l\'app livrée ne se ver
   // Un appel qui ne suivrait ni l'une ni l'autre forme (troisième argument, variable) ne serait pas
   // vérifié : on compte aussi les appels bruts.
   assert.strictEqual((src.match(/licenceBlock\(/g) || []).length, calls.length + 1, 'un appel à licenceBlock échappe au contrôle (la définition mise à part)');
-  // Et la version livrée n'embarque pas de clé publique : elle ne peut donc verrouiller personne.
-  assert.ok(!fs.existsSync(path.join(__dirname, '..', 'build', 'licence-public.json')),
-    'build/licence-public.json est présent : la licence serait armée pour tout le monde — c\'est une décision du propriétaire, pas un effet de bord');
+  // Depuis la 8.0.0 la version livrée EMBARQUE la clé publique de l'éditeur : l'application est armée
+  // pour tout le monde. C'est une décision du propriétaire (clé créée dans SkanFact et collée le
+  // 14/09/2026) — ce test exigeait l'ABSENCE du fichier jusque-là, il a été retourné ce jour-là.
+  assert.ok(fs.existsSync(path.join(__dirname, '..', 'build', 'licence-public.json')),
+    'build/licence-public.json manque : la 8.0.0 est armée, une version sans clé désarmerait tous les clients');
+});
+
+t('8.0.0 : la clé embarquée est une vraie clé publique, l\'éditeur ne s\'achète pas de licence, et le désarmement ne vaut qu\'en développement', () => {
+  const crypto = require('crypto');
+  const pubPath = path.join(__dirname, '..', 'build', 'licence-public.json');
+  const pub = JSON.parse(fs.readFileSync(pubPath, 'utf8'));
+  assert.strictEqual(pub.format, lic.FORMAT);
+  assert.ok(/^\d{4}-\d{2}-\d{2}$/.test(pub.createdAt) && pub.createdAt <= lic.today(), 'createdAt doit être un jour passé ou présent (c\'est un point de départ d\'essai)');
+  assert.strictEqual(crypto.createPublicKey(pub.publicKey).asymmetricKeyType, 'ed25519', 'la clé embarquée doit être une clé publique Ed25519 lisible');
+  assert.ok(!/PRIVATE/.test(JSON.stringify(pub)) && !('privateKey' in pub), 'le fichier embarqué ne porte que la clé publique');
+  // Une licence signée par N'IMPORTE QUELLE autre clé privée est refusée avec elle : c'est ce qui
+  // fait qu'une clé d'essai fabriquée par un test — ou par un curieux — ne vaut rien chez un client.
+  const autre = lic.generateKeys();
+  assert.strictEqual(lic.verifyKey(lic.signLicence({ nom: 'X', offre: 'entreprise' }, autre.privateKey), pub.publicKey), null,
+    'une licence signée par une autre clé privée doit être refusée par la clé embarquée');
+  // Une installation qui découvre la clé aujourd'hui a trente jours, quelle que soit son ancienneté.
+  const S = o => lic.licenceState({ publicKey: pub.publicKey, ...o });
+  assert.strictEqual(S({ installedAt: '2025-01-01', armedAt: '2026-09-14', today: '2026-09-14' }).daysLeft, 30);
+  assert.strictEqual(S({ installedAt: '2025-01-01', armedAt: '2026-09-14', today: '2026-10-14' }).state, 'essai', 'le trentième jour est encore un essai');
+  assert.strictEqual(S({ installedAt: '2025-01-01', armedAt: '2026-09-14', today: '2026-10-15' }).state, 'finessai');
+  // Celui qui signe n'achète pas : le poste dont la clé privée correspond à la clé en vigueur n'a ni
+  // essai ni verrou, à n'importe quelle date.
+  const ed = S({ installedAt: '2025-01-01', armedAt: '2026-09-14', today: '2030-01-01', editeur: true });
+  assert.strictEqual(ed.state, 'editeur'); assert.strictEqual(ed.locked, false); assert.deepStrictEqual(ed.reserves, []);
+  // …mais une clé COLLÉE reprend le dessus : c'est ainsi qu'il voit exactement ce que voit un client.
+  const mine = lic.generateKeys();
+  const indep = lic.signLicence({ nom: 'Moi', offre: 'independant', exp: '2027-01-01' }, mine.privateKey);
+  const vu = lic.licenceState({ publicKey: mine.publicKey, key: indep, today: '2026-09-14', editeur: true });
+  assert.strictEqual(vu.state, 'active'); assert.ok(vu.reserves.includes('paie'), 'la clé collée l\'emporte sur le passe-droit de l\'éditeur');
+  assert.strictEqual(lic.licenceState({ publicKey: mine.publicKey, key: indep, today: '2028-01-01', editeur: true }).state, 'expiree',
+    'une clé collée expirée verrouille aussi le poste de l\'éditeur — il la retire pour revenir à son état');
+  // Sans clé publique du tout, `editeur` ne fabrique rien : l'état reste « libre ».
+  assert.strictEqual(lic.licenceState({ editeur: true }).state, 'libre');
+  // Dans main.js : le passe-droit ne vaut que si la clé privée du poste CORRESPOND à la clé EN
+  // VIGUEUR (un second éditeur, une clé recréée par erreur : rien), et il est passé à licenceState.
+  const main = lireSource('src', 'main.js').replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+  assert.ok(/editeur: editeurDeLaCleEnVigueur\(\)/.test(main), 'licenceStatus doit passer editeurDeLaCleEnVigueur() à licenceState');
+  assert.ok(/mienne\.publicKey === publicKey\(\)/.test(main), 'editeurDeLaCleEnVigueur compare la clé publique de l\'éditeur à la clé EN VIGUEUR (pas seulement à la clé embarquée)');
+  // Le désarmement par l'environnement (SKANFACT_CLE_EMBARQUEE, pour e2e:licence) ne vaut qu'en
+  // développement : une application installée lit toujours sa propre clé, quoi que dise l'environnement.
+  assert.ok(/!app\.isPackaged && process\.env\.SKANFACT_CLE_EMBARQUEE !== undefined/.test(main), 'SKANFACT_CLE_EMBARQUEE doit être gardé par !app.isPackaged');
+  // Le renderer connaît l'état : badge vert ; la porte « Créer mes clés » reste réservée à `libre`.
+  assert.ok(/\|\| st\.state === 'editeur' \? 'accepté'/.test(lireApp()), 'le panneau Licence doit afficher l\'état éditeur en vert');
+  // L'e2e ouvre l'application DÉSARMÉE (override) pour créer ses clés, PUIS la vraie, armée, où sa
+  // propre clé d'essai est refusée : les deux moitiés, sinon l'armement n'est prouvé nulle part.
+  const e2e = lireSource('test', 'e2e', 'licence.js');
+  assert.ok(/SKANFACT_CLE_EMBARQUEE: /.test(e2e), 'e2e:licence doit désarmer l\'application par SKANFACT_CLE_EMBARQUEE');
+  assert.ok((e2e.match(/electron\.launch\(/g) || []).length >= 2 && /delete env2\.SKANFACT_CLE_EMBARQUEE/.test(e2e), 'e2e:licence doit aussi ouvrir l\'application ARMÉE avec la vraie clé');
 });
 
 t('offre Indépendant : chaque module réservé est fermé à la création, partout où l\'on crée', () => {
@@ -3300,21 +3350,24 @@ t('licence : l\'offre voyage dans la clé, le matricule l\'attache, et l\'essai 
 
 t('éditeur : la clé privée ne traverse jamais le pont, et l\'app livrée embarque la clé publique', () => {
   const main = lireSource('src', 'main.js').replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
-  // La tranche part de `editeurStatus()` — c'est l'objet qui traverse le pont — et va jusqu'à la fin
-  // de `licence:emettre`, en passant par tous les handlers de l'éditeur.
-  const a = main.indexOf('function editeurStatus('), b = main.indexOf("ipcMain.handle('licence:emettre'");
+  // La tranche part de `clePubliqueEditeur()` — la première lecture de la clé privée (8.0.0 : elle
+  // sert aussi au passe-droit de l'éditeur) — passe par `editeurStatus()`, l'objet qui traverse le
+  // pont, et va jusqu'à la fin de `licence:emettre`, en passant par tous les handlers de l'éditeur.
+  const a = main.indexOf('function clePubliqueEditeur('), b = main.indexOf("ipcMain.handle('licence:emettre'");
   const c = main.indexOf('\n});', b);
   assert.ok(a > 0 && b > a && c > b, 'la section éditeur de main.js est introuvable');
   const section = main.slice(a, c);
-  assert.ok(/ipcMain\.handle\('editeur:keygen'/.test(section) && /ipcMain\.handle\('editeur:importer'/.test(section), 'la tranche ne couvre pas les handlers de l\'éditeur');
+  assert.ok(/function editeurStatus\(/.test(section) && /ipcMain\.handle\('editeur:keygen'/.test(section) && /ipcMain\.handle\('editeur:importer'/.test(section), 'la tranche ne couvre pas les handlers de l\'éditeur');
   // La clé privée n'est lue que pour signer, pour en déduire la publique, ou pour la comparer à
-  // un fichier repris. Aucun `return` ne la contient.
+  // un fichier repris. Aucun `return` ne la contient. Jugé sur TOUT main.js, pas seulement la
+  // tranche : une lecture posée ailleurs (un handler ajouté plus haut) ne doit pas échapper.
   // Chaque occurrence est jugée sur ce qui la SUIT immédiatement : une regex gourmande jusqu'à la
   // fin de la ligne avalait une seconde lecture posée sur la même ligne (prouvé en l'y mettant).
   // Et c'est le CONTEXTE ENTIER de chaque lecture qui est jugé, pas le caractère qui suit : le
   // contradicteur a montré qu'un `String(lirePrivee())` renvoyé passait un contrôle sur le seul « ) ».
-  const lectures = [...section.matchAll(/.{0,40}lirePrivee\(\).{0,24}/g)].map(m => m[0]);
-  assert.ok(lectures.length >= 3, 'la section éditeur ne lit pas la clé privée ?');
+  const lectures = [...main.matchAll(/.{0,40}lirePrivee\(\).{0,24}/g)].map(m => m[0]);
+  assert.ok(lectures.length >= 3, 'main.js ne lit pas la clé privée ?');
+  assert.ok(lectures.every(ctx => section.includes(ctx)), 'une lecture de la clé privée vit hors de la section éditeur : …' + lectures.find(ctx => !section.includes(ctx)));
   const AUTORISES = [/L\.signLicence\(payload, lirePrivee\(\)\)/, /crypto\.createPrivateKey\(lirePrivee\(\)\)/, /lirePrivee\(\)\.trim\(\) !== pem\.trim\(\)/];
   lectures.forEach(ctx => assert.ok(AUTORISES.some(re => re.test(ctx)),
     'la clé privée est lue pour autre chose que signer / déduire / comparer : …' + ctx.trim()));

@@ -4,8 +4,9 @@
 //   node scripts/licence.js --keygen
 //       Crée une paire de clés. La clé PRIVÉE est écrite dans ~/.skanfact/licence-privee.pem
 //       (hors du dépôt, et elle doit y rester : qui l'a peut émettre des licences).
-//       La clé PUBLIQUE est écrite dans build/licence-public.json — celle-là se commite,
-//       c'est elle que l'application embarque pour vérifier.
+//       La clé PUBLIQUE est écrite À CÔTÉ (~/.skanfact/licence-publique.json). Celle que
+//       l'application embarque pour vérifier est build/licence-public.json — depuis la 8.0.0 c'est
+//       la clé de Skander, et elle ne se remplace pas : un nouveau keygen ne sert qu'à un essai.
 //
 //   node scripts/licence.js --nom "Menuiserie Trabelsi SUARL" --matricule 1234567A/M/P/000 \
 //                           --offre independant --duree 1a [--cabinet AB12-CD34-...] [--note "parrainé"]
@@ -47,7 +48,8 @@ function keygen() {
   // La publique à côté de la privée : c'est elle que l'application lit sur le poste de l'éditeur.
   // Elle n'est PAS écrite dans le dépôt : armer l'application de tout le monde est une décision
   // (copier ce fichier dans build/licence-public.json et le commiter), jamais l'effet de bord d'un
-  // keygen — un test exige d'ailleurs l'absence du fichier tant que ce n'est pas décidé.
+  // keygen — décision prise le 14/09/2026 (8.0.0) : le fichier du dépôt est la clé de Skander, et
+  // un test exige qu'il reste là. Une clé créée ici après cette date n'arme que ce poste.
   fs.writeFileSync(PUB_EDITEUR, pub, 'utf8');
   console.log(`\nClé privée  : ${PRIV}   (mode 600 — ne la commite jamais, ne l'envoie à personne)`);
   console.log(`Clé publique : ${PUB_EDITEUR}`);
