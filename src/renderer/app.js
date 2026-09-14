@@ -2314,14 +2314,13 @@
       const html = C.documentHtml(doc, clientById(doc.clientId), company(), { preview: true, stampText: stampFor(doc), zoom: Math.max(0.3, Math.floor((pv.clientWidth - 2) / 794 * 100) / 100) });
       pv.onload = () => {
         try {
-          const compact = C.fitToPage(pv.contentDocument);   // même resserrement que le PDF
-          const pages = C.pageCount(pv.contentDocument);
+          const { pages, compact } = mettreEnPage(pv.contentDocument);   // même mise en page que le PDF
           const el = $('#pv-pages');
           if (el) {
             el.textContent = pages <= 1 ? (compact ? '1 page (resserrée)' : '1 page') : pages + ' pages';
             el.className = 'pv-pages' + (pages > 1 ? ' warn' : '');
             el.title = pages > 1
-              ? 'Le document ne tient pas sur une page. Raccourcis les descriptions ou les notes si tu veux le ramener à une seule.'
+              ? 'Le document fait ' + pages + ' pages. Chacune porte le pied de page, son numéro (« page 1 sur ' + pages + ' ») et l\'en-tête des colonnes. Raccourcis les descriptions ou les notes si tu veux le ramener à une seule.'
               : (compact ? 'Les marges ont été resserrées automatiquement pour tenir sur une page.' : 'Le document tient sur une page.');
           }
         } catch (_) { /* aperçu indisponible */ }
@@ -2357,8 +2356,7 @@
       const val = $('#pv-zoom-val'); if (val) val.textContent = pvZoom ? Math.round(z * 100) + ' %' : 'Ajusté (' + Math.round(z * 100) + ' %)';
       f.onload = () => {
         try {
-          const compact = C.fitToPage(f.contentDocument);
-          const pages = C.pageCount(f.contentDocument);
+          const { pages, compact } = mettreEnPage(f.contentDocument);
           const el = $('#pv-full-pages');
           if (el) { el.textContent = pages <= 1 ? (compact ? '1 page (resserrée)' : '1 page') : pages + ' pages'; el.className = 'pv-pages' + (pages > 1 ? ' warn' : ''); }
         } catch (_) { /* aperçu indisponible */ }
@@ -3584,6 +3582,16 @@
     return st === 'payée' ? 'Payée' : st === 'annulée' ? 'Annulée' : undefined;
   }
 
+  // La mise en page d'un aperçu, dans le même ordre que la fenêtre PDF de main.js : on resserre s'il
+  // le faut, PUIS on découpe en vraies pages. Le resserrement final se lit sur le document une fois
+  // `paginate` passé — c'est lui qui tranche, il peut retirer un resserrement qui ne gagnait rien.
+  function mettreEnPage(docu) {
+    C.fitToPage(docu);
+    const pages = C.paginate(docu);
+    const p1 = docu.querySelector('.page');
+    return { pages, compact: !!(p1 && p1.classList.contains('compact')) };
+  }
+
   // La porte de l'exemple. Elle ne s'applique qu'aux gestes qui SORTENT de l'ordinateur : envoyer un
   // email, écrire au comptable, fabriquer le paquet mensuel. Lire, imprimer, exporter restent libres
   // — c'est l'apprentissage même.
@@ -3844,8 +3852,7 @@
       if (!pv) return;
       pv.onload = () => {
         try {
-          const compact = C.fitToPage(pv.contentDocument);
-          const pages = C.pageCount(pv.contentDocument);
+          const { pages, compact } = mettreEnPage(pv.contentDocument);
           const el = $('#pv-pages');
           if (el) { el.textContent = pages <= 1 ? (compact ? '1 page (resserrée)' : '1 page') : pages + ' pages'; el.className = 'pv-pages' + (pages > 1 ? ' warn' : ''); }
         } catch (_) { /* aperçu indisponible */ }

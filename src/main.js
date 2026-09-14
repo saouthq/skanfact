@@ -1020,7 +1020,7 @@ ipcMain.handle('ocr:read', async (_e, { path: file } = {}) => {
 
 // ---------- PDF ----------
 
-const { fitToPage, canalDe } = require('./renderer/core.js');
+const { fitToPage, paginate, canalDe } = require('./renderer/core.js');
 
 // Rend un document HTML en PDF A4. Le HTML passe par un fichier temporaire : une URL data:
 // est limitée en taille (logo en base64).
@@ -1029,8 +1029,11 @@ async function renderPdf(html, win) {
   fs.writeFileSync(tmp, html, 'utf8');
   try {
     await win.loadFile(tmp);
-    // Même règle que l'aperçu : si le contenu déborde d'un peu, marges resserrées pour tenir sur une page.
+    // Même règle que l'aperçu : si le contenu déborde d'un peu, marges resserrées pour tenir sur une
+    // page ; puis découpage en vraies pages A4 (pied de page et numéro sur chacune). Les deux
+    // fonctions sont sérialisées : elles n'appellent rien d'autre dans core.js, exprès.
     try { await win.webContents.executeJavaScript('(' + fitToPage.toString() + ')(document)'); } catch (e) { logToFile('fitToPage', e); }
+    try { await win.webContents.executeJavaScript('(' + paginate.toString() + ')(document)'); } catch (e) { logToFile('paginate', e); }
     return await win.webContents.printToPDF({
       pageSize: 'A4',
       printBackground: true,

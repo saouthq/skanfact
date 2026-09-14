@@ -7,6 +7,51 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 7.31.0 — 14/09/2026
+
+**Un devis long tient enfin la route : de vraies pages A4, chacune avec son pied de page numéroté,
+son bandeau de rappel et ses en-têtes de colonnes — et un document de huit lignes qui ne part plus
+sur une deuxième page pour rien.**
+
+### Ce qui n'allait pas
+
+Sur ta capture, un devis de neuf lignes faisait deux pages : la première sans aucune mention légale,
+la seconde vide aux trois quarts. Et sur **toutes** les pièces de plus d'une page, le pied de page
+s'imprimait **par-dessus les cases de signature** — « Date, signature et cachet du client » barré
+d'un trait et du matricule fiscal.
+
+La cause : le document était **un seul long bloc** que le navigateur coupait où il pouvait. Le pied
+de page, posé à la fin de ce bloc, atterrissait donc à la fin du contenu — pas en bas d'une feuille.
+Mesuré pour de vrai (chromium + impression PDF) avant d'y toucher : le défaut était là depuis la
+première version, sur les sept types de documents, en français comme en anglais.
+
+### Ce qui change
+
+- **Une vraie page par feuille.** Le document est découpé en pages A4 avant l'impression. Chaque
+  feuille porte son pied de page complet — mentions légales, numéro du document, et **« page 2
+  sur 3 »**.
+- **Un bandeau de rappel** en tête des pages suivantes : le document et le client, pour qu'une
+  feuille lue seule reste identifiable.
+- **L'en-tête des colonnes revient** sur chaque page qui porte des lignes.
+- **Plus rien ne se coupe au mauvais endroit** : une ligne, un bloc de totaux, une case de
+  signature, une clause de contrat descendent entiers plutôt que d'être tranchés.
+- **Le resserrement ne sert plus à rien pour rien.** Jusqu'ici, dès qu'un document dépassait, les
+  marges se resserraient — même quand ça ne faisait gagner aucune page. Désormais on essaie deux
+  crans de resserrement et on ne garde que celui qui fait **vraiment** gagner une feuille. Effet
+  visible : un devis de **huit lignes tient maintenant sur une seule page** (il en prenait deux), et
+  un devis de douze lignes garde son interligne confortable au lieu d'être tassé pour rien.
+- **De longues notes ne cassent plus rien** : elles se répartissent sur plusieurs pages au lieu de
+  passer sous le pied de page.
+- **L'aperçu montre exactement ce que montrera le PDF** — même découpage, mêmes pages numérotées.
+
+### Le filet
+
+Si un document sort du cadre prévu, la mise en page est abandonnée et on rend la main au navigateur :
+mieux vaut l'ancien découpage qu'une ligne invisible sur une facture. Un nouveau test,
+`npm run e2e:pages`, imprime **161 documents** (sept types, six variantes, de 1 à 40 lignes) et
+vérifie sur chacun qu'aucune ligne n'a disparu, qu'aucune page ne déborde, qu'aucun pied ne
+chevauche le contenu et que chaque page fabriquée fait bien une feuille.
+
 ## 7.30.0 — 14/09/2026
 
 **Les Paramètres, refaits dans les deux applications : cinq onglets au lieu de huit, un sommaire, une

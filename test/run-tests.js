@@ -818,6 +818,58 @@ t('document : nombre de pages mesuré comme dans l\'aperçu', () => {
   assert.strictEqual(core.pageCount(fake(1000, 1120)), 1);
   assert.strictEqual(core.pageCount(fake(1500, 1120)), 2);
   assert.strictEqual(core.pageCount(null), 1);
+  // Depuis la 7.31.0 les pages sont de VRAIES pages : quand il y en a plusieurs, on les compte.
+  const pagine = n => ({ querySelectorAll: () => ({ length: n }), querySelector: () => null, createElement: () => ({ style: {}, offsetHeight: 1120, remove() {} }) });
+  assert.strictEqual(core.pageCount(pagine(3)), 3);
+  assert.strictEqual(core.pageCount(pagine(1)), 1);
+});
+
+t('document long : le gabarit porte de quoi se découper en vraies pages', () => {
+  const html = core.documentHtml(inv(), { name: 'C' }, CO);
+  // paginate clone le pied page par page et écrit le numéro dans son côté droit : sans cette classe,
+  // aucune page ne serait numérotée et le bandeau de continuation n'aurait rien à recopier.
+  assert.ok(html.includes('<div class="f-right">'), 'le pied doit porter .f-right');
+  // Sans cette règle, les pages fabriquées s'imprimeraient toutes sur la même feuille.
+  assert.ok(/\.page \+ \.page \{\s*break-before: page;/.test(html), 'il manque le saut de page entre deux pages');
+  ['.cont {', '.page.suite .inner', '.page.dense .hero'].forEach(s =>
+    assert.ok(html.includes(s), 'il manque ' + s));
+});
+
+t('document long : les notes se découpent ligne par ligne, et restent échappées', () => {
+  const html = core.documentHtml({ ...inv(), notes: 'Première ligne\n<img src=x onerror=alert(1)>' }, { name: 'C' }, CO);
+  // Une note d'un seul tenant est plus haute qu'une page : paginate renoncerait à toute la mise en
+  // page. Découpée, elle se répartit — mais chaque ligne doit rester échappée, une par une.
+  assert.ok(html.includes('<div class="n-l">Première ligne</div>'), 'les notes ne sont pas découpées');
+  assert.ok(!html.includes('<img src=x'), 'une note passe en HTML brut');
+  assert.ok(html.includes('&lt;img src=x'));
+});
+
+t('mise en page : fitToPage et paginate tournent SEULES (main.js les sérialise)', () => {
+  // main.js envoie ces deux fonctions telles quelles dans la fenêtre PDF. Un appel à une autre
+  // fonction de core.js y lèverait une ReferenceError, et le PDF sortirait sans mise en page — sans
+  // rien dans aucune console. C'est le défaut de la 6.8.0 (h/esc), transposé au processus principal.
+  const autres = Object.keys(core).filter(k => typeof core[k] === 'function' && k !== 'fitToPage' && k !== 'paginate' && k.length > 2);
+  [['fitToPage', core.fitToPage], ['paginate', core.paginate]].forEach(([nom, f]) => {
+    const code = f.toString().replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+    assert.ok(code.includes('querySelector'), nom + ' : le nettoyage a mangé le code');
+    autres.forEach(n => assert.ok(!new RegExp('(^|[^.\\w])' + n + '\\s*\\(').test(code),
+      nom + ' appelle ' + n + '() : elle ne peut plus être sérialisée'));
+  });
+  const m = lireSource('src', 'main.js');
+  assert.ok(/fitToPage\.toString\(\)/.test(m) && /paginate\.toString\(\)/.test(m),
+    'la fenêtre PDF doit exécuter les DEUX');
+});
+
+t('mise en page : une seule porte, pour que l\'aperçu ne puisse pas diverger du PDF', () => {
+  const app = lireApp();
+  const i = app.indexOf('function mettreEnPage(');
+  assert.ok(i > 0, 'mettreEnPage a disparu');
+  const bloc = app.slice(i, i + 400);
+  assert.ok(bloc.includes('C.fitToPage(') && bloc.includes('C.paginate('), 'mettreEnPage doit faire les deux');
+  // Un aperçu qui appellerait fitToPage tout seul montrerait l'ancienne mise en page : pied de page
+  // en travers des signatures, pas de numéro. Une seule porte, donc un seul appel.
+  assert.strictEqual((app.match(/C\.fitToPage\(/g) || []).length, 1, 'fitToPage ne s\'appelle que dans mettreEnPage');
+  assert.strictEqual((app.match(/C\.pageCount\(/g) || []).length, 0, 'le nombre de pages vient de paginate');
 });
 
 t('pagination : bornes, page hors limites, « Tout afficher »', () => {

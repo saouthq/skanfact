@@ -46,7 +46,7 @@ L'utilisateur est débutant en gestion (première entreprise) : chaque champ por
 - `src/renderer/core.js` : logique métier partagée navigateur/Node — calculs (TVA 0/7/13/19 %, remise, timbre fiscal 1 DT sur factures, retenue à la source sur TTC hors timbre, lignes `noDiscount` pour les déductions d'acompte), numérotation `DEV/FAC/AVO-AAAA-NNN` (facture et avoir numérotés à l'émission seulement), statut de facture **déduit** des paiements et avoirs (`effectiveStatus`, `invoiceBalance`), acompte/solde (`depositLines`, `settlementLines`), journal des ventes / TVA / encaissements / CSV, `migrateData` (version 2 : « payée » → paiement), montant en lettres, **template HTML du document** (`documentHtml`, tampon via `opts.stampText`).
 - `src/renderer/app.js` : interface (routeur hash, pages accueil/devis/factures/relances/contrats/clients/catalogue/comptabilité/paramètres, éditeur avec aperçu live et menu « Plus », verrouillage des documents émis, paiements, avoirs, envoi email, palette Cmd+K, modèles/textes, panneau mises à jour, actions du menu).
 - `src/renderer/demo.js` : jeu de démonstration (`buildDemoData(companyActuelle, today)`), dates relatives à aujourd'hui, testé par `npm test` (numérotation continue, aucun paiement futur, tous les statuts et niveaux de relance présents quelle que soit la date). Le chargement conserve la société et prend une sauvegarde `avant-demo`.
-- `core.fitToPage(document)` : exécuté dans l'aperçu (iframe) et dans la fenêtre PDF (main.js) ; ajoute la classe `compact` à `.page` si le contenu déborde de l'A4 (marges resserrées, même design). Vérifier le nombre de pages avec un script Playwright (`chromium` + `page.pdf`) après toute modification du template.
+- `core.fitToPage(document)` puis `core.paginate(document)` : exécutés dans l'aperçu (iframe) et dans la fenêtre PDF (main.js), **dans cet ordre et toujours les deux** (`mettreEnPage` dans app.js, `renderPdf` dans main.js). `fitToPage` repère le débordement ; `paginate` choisit le resserrement utile (`compact`, `dense`) et découpe le document en **une `.page` par feuille A4**, pied numéroté compris. Les deux sont **autonomes** : `main.js` les sérialise, elles ne peuvent appeler aucune autre fonction de core.js. Après toute modification du template, lancer `npm run e2e:pages` (161 documents imprimés et mesurés).
 - CSS : `[hidden] { display: none !important; }` est global — un `display:flex` de classe écrasait l'attribut `hidden` (menu « Plus », champ taux, bouton Retirer).
 - Données v6 : `recurring` (contrats : lignes, every, day, nextDate, lastIssued, active), `templates`, `snippets`, `suppliers`, `purchases`, `expenseCategories` ; par document : `payments`, `reminders`, `emails`, `withholdingCertificate`, `recurringId`, `attachments`, `fromDocId`/`fromDocType`/`fromDocNumber`, `clauses` (contrat), `hidePrices` (bon de livraison) ; par achat : `kind` (facture/depense), `supplierId`, `number` (celui du fournisseur), `date`, `dueDate`, `category`, `lines` (avec `destination` et `deductible`), `fees`, `withholdingRate`, `payments`, `attachments`.
 - Documents bilingues : `doc.lang` (fr/en) → dictionnaire `I18N` dans core.js, `amountToWords(amount, currency, lang)` ; `doc.currency` + `doc.exchangeRate` (1 devise = x DT), `toBase()` pour le journal et le tableau de bord ; `money(n, cur, decimals, lang)` (3 décimales pour le dinar, 2 sinon ; point décimal en anglais).
@@ -389,6 +389,7 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:entetes` | **les barres d'actions mesurées** : aucun contrôle d'en-tête étiré sur toute la largeur, aucune barre empilée sur trois rangées (21 pages) |
 | `npm run e2e:beta` | **le canal bêta** : la case décochée à l'installation, la question avant de cocher, le refus qui décoche vraiment, la sauvegarde « avant-beta » écrite sur le disque, et le retour en arrière sans question |
 | `npm run e2e:depot` | **public ou privé** : `src/depot.js` est VRAIMENT basculé en privé, l'application ouverte, le champ jeton doit revenir — puis repartir au retour au public (le fichier est restauré quoi qu'il arrive) |
+| `npm run e2e:pages` | **les pages d'un document imprimé** : 161 documents (7 types × 6 variantes × 1 à 40 lignes) rendus dans chromium et imprimés en PDF — aucune ligne perdue, aucune page qui déborde, aucun pied par-dessus le contenu, une feuille par page et chacune numérotée. **Pas besoin de `xvfb`** : il n'ouvre pas Electron |
 
 Ils ont longtemps vécu dans un dossier de travail temporaire, effacé à chaque session : il fallait les réécrire de mémoire, et ils dérivaient (une assertion restée sur une version périmée, un écran neuf jamais parcouru). **Un test qu'on doit réécrire pour s'en servir n'est pas un test.** Le harnais (`test/e2e/harnais.js`) trouve Playwright où il est, lit la version dans `package.json` au lieu de l'écrire en dur, et range les captures dans `dist-e2e/` (ignoré par Git).
 
@@ -1588,6 +1589,63 @@ Règles apprises, à ne pas recasser :
   quatrième un `data-fiche` supprimé douze versions plus tôt (`e2e:fiches` accusait le jeu d'exemple
   d'être vide). On reconnaît un écran à ce qu'il CONTIENT — `ouvrir l'onglet qui contient #p-cabinet`
   — et on relance TOUS les parcours après une refonte, pas seulement celui qu'on vient d'écrire.
+
+## 7.31.0 — Un document long est fait de PAGES
+
+Skander, sur capture : « quand le devis ou facture est longue avec plein de lignes l'affichage n'est
+pas très bien ». Mesuré avant d'y toucher (chromium + `page.pdf`, jamais déduit) : le document était
+**un seul long bloc** que le navigateur coupait où il pouvait, avec un pied de page posé en absolu à
+la fin de ce bloc. Conséquences, sur **toutes** les pièces de plus d'une page depuis la 1.0.0 :
+
+- le pied s'imprimait **par-dessus les cases de signature** (« Date, signature et cachet du client »
+  barré du matricule fiscal) ;
+- la **première page ne portait aucune mention légale** ;
+- aucun numéro de page nulle part ;
+- un devis de neuf lignes finissait sur une seconde page **vide aux trois quarts**.
+
+`paginate(d)` (core.js) fabrique désormais une `<div class="page">` par feuille : pied complet et
+numéroté sur chacune, bandeau `.cont` de rappel en tête des suivantes, en-tête de colonnes répété,
+blocs insécables descendus entiers. `mettreEnPage()` dans app.js et `renderPdf` dans main.js sont les
+deux seules portes, et elles font la même chose dans le même ordre.
+
+Règles apprises, à ne pas recasser :
+
+- **Un pied de page posé en absolu se colle à la fin du CONTENU, pas en bas d'une feuille.** C'est
+  vrai dès que le contenu dépasse une page — et ça ne se voit ni dans une console, ni dans un test de
+  calcul, ni en relisant le CSS. Il a fallu imprimer un vrai PDF et le regarder.
+- **Déléguer la découpe au navigateur ne perd jamais rien ; la faire soi-même, si.** `.page` porte
+  `overflow: hidden` : une erreur de mesure de trois millimètres masquerait une ligne de facture sans
+  un mot. D'où le filet : à la fin de la répartition, on vérifie que **chaque** page tient dans sa
+  feuille, et sinon on restaure le document d'origine et on rend la main au navigateur. Mieux vaut le
+  défaut d'hier qu'une ligne invisible.
+- **Le resserrement ne se justifie que s'il fait gagner une feuille.** `fitToPage` resserrait dès
+  qu'il y avait débordement — donc aussi sur un document qui ferait trois pages de toute façon : on
+  perdait le confort de lecture pour rien. On essaie les niveaux (rien, `compact`, `compact dense`) et
+  on garde le plus léger qui réduit le nombre de pages. Effet de bord heureux : un devis de **huit
+  lignes tient maintenant sur une page** au lieu de deux.
+- **Une fonction sérialisée par `main.js` ne peut appeler AUCUNE autre fonction de core.js.**
+  `renderPdf` envoie `fitToPage.toString()` et `paginate.toString()` dans la fenêtre PDF : un appel à
+  `money()` y lèverait une ReferenceError silencieuse et le PDF sortirait sans mise en page. Un test
+  compare le corps des deux fonctions à la liste des exports de core.js.
+- **Un bloc insécable plus haut qu'une page fait tout échouer.** De longues notes rendaient `.after`
+  (conditions + totaux) plus haut qu'une feuille, et plus rien ne tenait nulle part. Deux parades :
+  les notes sont découpées **ligne par ligne** (`.n-l`, chacune échappée séparément), et quand le bloc
+  de fin dépasse, sa colonne de gauche est **sortie** du bloc pour se répartir, la carte des totaux
+  restant à sa place.
+- **Une condition de garde porte sur la PAGE, jamais sur le conteneur.** Mon premier `repandre`
+  acceptait d'office le premier morceau de chaque conteneur neuf « puisqu'il est seul » — or le
+  conteneur était neuf sur une page déjà pleine. Un cas sur 161 débordait de 1 mm ; c'est la mesure
+  qui l'a dit, pas la relecture.
+- **Piège du gabarit, troisième fois : aucun backtick dans un commentaire d'un `template literal`.**
+  Deux commentaires CSS contenant un nom de fonction entre backticks ont cassé core.js.
+- **Un nom de fichier de capture écrit à l'avance finit par mentir** : `deux-pages.png` montrait une
+  page. Le nom porte maintenant le nombre de pages **mesuré**.
+
+Le test qui compte est `npm run e2e:pages` : il imprime **161 documents** (sept types, six variantes,
+de 1 à 40 lignes) et vérifie sur chacun qu'aucune ligne, clause ou note n'a disparu, qu'aucune page ne
+déborde, qu'aucun pied ne chevauche le contenu, qu'une page fabriquée fait une feuille et que chacune
+est numérotée. Il n'ouvre pas Electron (chromium suffit), donc il tourne sans `xvfb`. Prouvé en
+remettant le défaut : 111 cas sur 161 tombent.
 
 ## Pistes pour la suite (non demandées)
 

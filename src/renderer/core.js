@@ -4845,7 +4845,9 @@
   html, body { margin: 0; padding: 0; }
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif; color: ${ink}; font-size: 9.5pt; line-height: 1.42; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .page { width: 210mm; min-height: 296mm; padding: 0 0 12mm; position: relative; background: #fff; overflow: hidden; }
-  ${opts.preview ? 'html { zoom: ' + (opts.zoom || 0.5) + '; background: #e9edf1; } body { padding: 8mm 0; } .page { box-shadow: 0 4px 24px rgba(20,40,60,.12); margin: 0 auto; border-radius: 2mm; }' : ''}
+  /* une page par feuille : c'est paginate qui les fabrique, le navigateur ne coupe plus rien lui-même */
+  .page + .page { break-before: page; page-break-before: always; }
+  ${opts.preview ? 'html { zoom: ' + (opts.zoom || 0.5) + '; background: #e9edf1; } body { padding: 8mm 0; } .page { box-shadow: 0 4px 24px rgba(20,40,60,.12); margin: 0 auto; border-radius: 2mm; } .page + .page { margin-top: 8mm; }' : ''}
 
   .num { font-variant-numeric: tabular-nums; }
   .mono { font-family: "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; font-size: 9pt; letter-spacing: .4px; }
@@ -4910,7 +4912,10 @@
   .info .row span:first-child { color: #8b95a3; min-width: 16mm; }
   .info .terms { margin-top: 1.2mm; color: #6b7684; }
   .info + .info, .notes { margin-top: 5mm; }
-  .notes { font-size: 9pt; color: #4b5563; white-space: pre-line; line-height: 1.45; }
+  /* Les notes sont découpées ligne par ligne : c'est ce qui permet à paginate de les répartir sur
+     plusieurs pages quand elles sont longues, au lieu de renoncer à toute la mise en page. */
+  .notes { font-size: 9pt; color: #4b5563; line-height: 1.45; }
+  .notes .n-l { min-height: 1.45em; white-space: pre-line; }
 
   .sign { display: flex; justify-content: ${isQuote || isOrder || isDelivery || isContract ? 'space-between' : 'flex-end'}; gap: 12mm; margin-top: 5mm; }
   /* clauses d'un contrat : de la lecture, pas un tableau — deux colonnes tiennent l'A4 sans rétrécir le texte */
@@ -4926,6 +4931,14 @@
 
   .footer { position: absolute; left: 18mm; right: 18mm; bottom: 7mm; font-size: 7.6pt; color: #9aa3ae; display: flex; justify-content: space-between; gap: 6mm; border-top: .2mm solid #eceff3; padding-top: 2.5mm; }
   .footer .f-left { white-space: pre-line; }
+  .footer .f-right { white-space: nowrap; text-align: right; }
+
+  /* Pages suivantes : pas de bandeau d'en-tête (il appartient à la première), mais de quoi savoir de
+     quel document et de quel client il s'agit si la feuille est lue seule. */
+  .page.suite .inner { padding-top: 12mm; }
+  .cont { display: flex; justify-content: space-between; align-items: baseline; gap: 6mm; padding-bottom: 2.5mm; margin-bottom: 4mm; border-bottom: .2mm solid #eceff3; }
+  .cont .c-doc { font-size: 9.5pt; font-weight: 700; color: ${ink}; }
+  .cont .c-cl { font-size: 8.5pt; color: #8b95a3; text-align: right; }
 
   /* documents longs : pas de ligne coupée entre deux pages, en-tête du tableau répété */
   table.lines thead { display: table-header-group; }
@@ -4958,6 +4971,27 @@
      ne pas déborder sur le pied de page. Les autres gardent une hauteur fixe, qui ne coûte rien en place. */
   .page.t-contrat .sign .s { height: auto; min-height: 15mm; }
   .page.compact.t-contrat .sign .s { height: auto; min-height: 13mm; }
+
+  /* Second cran (dense) : il ne sert QUE s'il fait gagner une page entière — c'est paginate qui en
+     décide. Resserrer un document qui fera deux pages de toute façon ne gagne rien et se lit moins bien. */
+  .page.dense .hero { padding: 6mm 18mm 5mm; }
+  .page.dense .brand .addr { line-height: 1.25; margin-top: 1.4mm; }
+  .page.dense .chips { margin-top: 3mm; gap: 2.5mm; }
+  .page.dense .chip { padding: 1.5mm 3mm; }
+  .page.dense .inner { padding-top: 3mm; }
+  .page.dense .parties { gap: 8mm; }
+  .page.dense .party .addr, .page.dense .party .more { line-height: 1.3; }
+  .page.dense table.lines { margin-top: 2.5mm; }
+  .page.dense table.lines thead th { padding: 1.8mm 3mm; }
+  .page.dense table.lines tbody td { padding: 1.1mm 3mm; }
+  .page.dense table.lines .desc { font-size: 8.2pt; line-height: 1.3; margin-top: .3mm; }
+  .page.dense .after { margin-top: 1.5mm; }
+  .page.dense .card { padding: 2.5mm 4mm; }
+  .page.dense .words { margin-top: 1.4mm; }
+  .page.dense .info + .info, .page.dense .notes { margin-top: 2.4mm; }
+  .page.dense .sign { margin-top: 2.5mm; }
+  .page.dense .sign .s { height: 11mm; }
+  .page.dense.t-contrat .sign .s { height: auto; min-height: 11mm; }
 </style></head>
 <body><div class="page t-${escapeHtml(doc.type || 'devis')}">
   ${stampText ? `<div class="stamp${stampKey === 'draft' ? ' draft' : ''}">${escapeHtml(stampText)}</div>` : ''}
@@ -5023,7 +5057,7 @@
         </div>` : ''}` : ''}
         ${isOrder ? `<div class="info"><span class="k">${L.commande}</span><div class="terms">${L.orderNote}</div></div>` : ''}
         ${isDelivery ? `<div class="info"><span class="k">${L.livraison}</span><div class="terms">${L.deliveryNote}</div></div>` : ''}
-        ${doc.notes ? `<div class="notes">${nl2br(doc.notes)}</div>` : ''}
+        ${doc.notes ? `<div class="notes">${String(doc.notes).split('\n').map(l => `<div class="n-l">${escapeHtml(l)}</div>`).join('')}</div>` : ''}
       </div>
       ${noPrices ? '' : `<div class="card">
         <table class="totals">
@@ -5054,7 +5088,7 @@
 
   <div class="footer">
     <div class="f-left">${nl2br(legal)}</div>
-    <div>${title} ${escapeHtml(numberText)}</div>
+    <div class="f-right">${title} ${escapeHtml(numberText)}</div>
   </div>
 </div></body></html>`;
   }
@@ -5079,8 +5113,198 @@
     return overflow;
   }
 
-  // Nombre de pages A4 qu'occupera le document rendu (à exécuter dans le document, après fitToPage).
+  // Distribue le document sur de VRAIES pages A4 : une <div class="page"> par feuille, chacune avec son
+  // pied de page numéroté et, à partir de la deuxième, un bandeau qui rappelle le document et le client.
+  //
+  // Avant la 7.31.0 on laissait le navigateur découper un seul long bloc. Le pied de page, posé en
+  // absolu à la fin de ce bloc, s'imprimait alors PAR-DESSUS les cases de signature ; la première page
+  // n'en portait aucun (donc aucune mention légale) ; et un devis de neuf lignes finissait sur une
+  // seconde page vide aux trois quarts. Mesuré, pas déduit : chromium + page.pdf.
+  //
+  // À exécuter dans le document rendu (aperçu, fenêtre PDF). AUTONOME : main.js la sérialise pour
+  // l'exécuter dans la fenêtre PDF, elle ne peut donc appeler aucune autre fonction de ce fichier.
+  // Renvoie le nombre de pages. Au moindre pépin, le document d'origine est restauré et on rend la
+  // main au navigateur : on ne perd jamais une ligne d'une facture.
+  function paginate(d) {
+    const body = d && d.body;
+    const depart = d && d.querySelector && d.querySelector('.page');
+    if (!body || !depart || !depart.querySelector('.inner') || !depart.querySelector('.footer')) return 1;
+    if (body.getAttribute('data-sf-pages')) return Number(body.getAttribute('data-sf-pages')) || 1;
+    const secours = body.innerHTML;
+
+    const sonde = d.createElement('div');
+    sonde.style.cssText = 'position:absolute;visibility:hidden;top:0;left:0;width:1px;height:100mm';
+    body.appendChild(sonde);
+    const MM = sonde.offsetHeight / 100;
+    sonde.remove();
+    if (!(MM > 0)) return 1;
+    const HAUT = 296 * MM;
+
+    // Répartit le contenu de la page donnée sur autant de pages qu'il faut. Renvoie la liste des
+    // pages, ou null si l'une déborde malgré tout (auquel cas l'appelant restaure l'original).
+    function repartir(page) {
+      const inner = page.querySelector('.inner');
+      const footer = page.querySelector('.footer');
+      const hero = page.querySelector('.hero');
+      const stamp = page.querySelector('.stamp');
+      // La bande basse réservée sur CHAQUE page : le pied lui-même, plus l'air qui le sépare du contenu.
+      const UTILE = HAUT - (footer.offsetHeight + 10 * MM);
+      const pages = [];
+      const coquille = page.cloneNode(false);
+      const titre = footer.querySelector('.f-right');
+      const nomClient = page.querySelector('.party .pname');
+
+      const bandeau = () => {
+        const b = d.createElement('div');
+        b.className = 'cont';
+        const a = d.createElement('div'); a.className = 'c-doc'; a.textContent = titre ? titre.textContent : '';
+        const c = d.createElement('div'); c.className = 'c-cl'; c.textContent = nomClient ? nomClient.textContent : '';
+        b.appendChild(a); b.appendChild(c);
+        return b;
+      };
+      const nouvelle = suite => {
+        const p = coquille.cloneNode(false);
+        if (suite) p.classList.add('suite');
+        const zone = d.createElement('div');
+        zone.className = 'inner';
+        if (suite) zone.appendChild(bandeau());
+        p.appendChild(zone);
+        page.parentNode.insertBefore(p, page);
+        const o = { el: p, zone, base: zone.children.length };
+        pages.push(o);
+        return o;
+      };
+      const tient = c => c.zone.offsetTop + c.zone.offsetHeight <= UTILE;
+      // Vrai si la page portait déjà quelque chose avant le dernier élément posé : sans ce garde-fou,
+      // un bloc plus haut qu'une page entière fabriquerait des pages vides à l'infini.
+      const seul = c => c.zone.children.length <= c.base + 1;
+
+      let cur = nouvelle(false);
+      if (stamp) cur.el.insertBefore(stamp, cur.zone);
+      if (hero) cur.el.insertBefore(hero, cur.zone);
+
+      // Un bloc insécable : il descend entier plutôt que d'être coupé.
+      const poser = el => {
+        cur.zone.appendChild(el);
+        if (!tient(cur) && !seul(cur)) {
+          cur = nouvelle(true);
+          cur.zone.appendChild(el);
+        }
+      };
+      // Un bloc qu'on peut répartir morceau par morceau (les lignes d'un tableau, les clauses d'un
+      // contrat) : on remplit la page, puis on repart avec un conteneur identique — donc l'en-tête
+      // des colonnes se retrouve en tête de chaque page, là où on le cherche.
+      const repandre = (el, dedans) => {
+        const hote = dedans ? el.querySelector(dedans) : el;
+        const morceaux = Array.prototype.slice.call(hote.children);
+        const modele = el.cloneNode(true);
+        const creux = dedans ? modele.querySelector(dedans) : modele;
+        while (creux.firstChild) creux.removeChild(creux.firstChild);
+        let boite = modele.cloneNode(true);
+        let creux2 = dedans ? boite.querySelector(dedans) : boite;
+        const neuve = () => {
+          cur = nouvelle(true);
+          boite = modele.cloneNode(true);
+          creux2 = dedans ? boite.querySelector(dedans) : boite;
+          cur.zone.appendChild(boite);
+        };
+        cur.zone.appendChild(boite);
+        if (!tient(cur) && !seul(cur)) { boite.remove(); neuve(); }
+        for (let i = 0; i < morceaux.length; i++) {
+          creux2.appendChild(morceaux[i]);
+          if (tient(cur)) continue;
+          // Un morceau plus haut qu'une page entière : on le laisse déborder, le filet de sortie
+          // tranchera. Attention, la condition porte sur la PAGE et pas sur le conteneur : un premier
+          // morceau posé dans un conteneur neuf, sur une page déjà remplie, doit descendre.
+          if (creux2.children.length === 1 && seul(cur)) continue;
+          creux2.removeChild(morceaux[i]);
+          neuve();
+          creux2.appendChild(morceaux[i]);
+        }
+      };
+
+      // Le bloc de fin (conditions, notes, totaux) est insécable : de longues notes le rendent plus
+      // haut qu'une page, et plus rien ne tient nulle part. On sort alors la colonne de gauche du
+      // bloc — ses paragraphes se répartissent — et la carte des totaux reste à sa place, à droite.
+      const fin = inner.querySelector('.after');
+      if (fin && fin.offsetHeight > UTILE) {
+        const gauche = fin.firstElementChild;
+        if (gauche && !gauche.classList.contains('card')) {
+          while (gauche.firstElementChild) inner.insertBefore(gauche.firstElementChild, fin);
+          gauche.remove();
+          if (!fin.children.length) fin.remove();
+          else fin.insertBefore(d.createElement('div'), fin.firstChild);
+        }
+      }
+
+      const blocs = Array.prototype.slice.call(inner.children);
+      for (let i = 0; i < blocs.length; i++) {
+        const b = blocs[i];
+        if (b.tagName === 'TABLE' && b.classList.contains('lines')) repandre(b, 'tbody');
+        else if (b.classList.contains('clauses') || b.classList.contains('notes')) repandre(b, null);
+        else poser(b);
+        if (pages.length > 200) return null;
+      }
+      page.remove();
+      // Filet : `overflow: hidden` masquerait un débordement au lieu de le montrer. Si une page
+      // déborde malgré tout, on ne livre pas cette mise en page — mieux vaut le défaut d'hier qu'une
+      // ligne invisible sur une facture.
+      for (let i = 0; i < pages.length; i++) {
+        if (pages[i].zone.offsetTop + pages[i].zone.offsetHeight > HAUT) return null;
+      }
+      // Le pied revient sur chaque page, numéroté. Il est posé en absolu : l'ajouter maintenant ne
+      // change aucune mesure.
+      for (let i = 0; i < pages.length; i++) {
+        const f = footer.cloneNode(true);
+        const droite = f.querySelector('.f-right');
+        if (droite && pages.length > 1) droite.textContent = droite.textContent + ' — page ' + (i + 1) + ' sur ' + pages.length;
+        pages[i].el.appendChild(f);
+      }
+      return pages;
+    }
+
+    const essai = classes => {
+      body.innerHTML = secours;
+      const p = d.querySelector('.page');
+      p.classList.remove('compact', 'dense');
+      for (let i = 0; i < classes.length; i++) p.classList.add(classes[i]);
+      return repartir(p);
+    };
+
+    // On rend la main au navigateur : il découpe moins bien, mais il ne perd jamais rien. On renvoie
+    // le nombre de pages qu'il fera, pour que l'aperçu n'annonce pas « 1 page » sur un document long.
+    const abandon = () => {
+      body.innerHTML = secours;
+      const p = d.querySelector('.page');
+      return p ? Math.max(1, Math.ceil((p.offsetHeight - 2) / (297 * MM))) : 1;
+    };
+
+    try {
+      // On applique le resserrement le plus LÉGER qui fasse gagner une page. Resserrer un document qui
+      // fera deux pages de toute façon ne gagne rien et se lit moins bien (défaut de fitToPage seul).
+      const niveaux = [[], ['compact'], ['compact', 'dense']];
+      let meilleur = null;
+      for (let i = 0; i < niveaux.length; i++) {
+        const r = essai(niveaux[i]);
+        if (!r) return abandon();
+        if (!meilleur || r.length < meilleur.n) meilleur = { classes: niveaux[i], n: r.length };
+        if (meilleur.n === 1) break;
+      }
+      const final = essai(meilleur.classes);
+      if (!final) return abandon();
+      body.setAttribute('data-sf-pages', String(final.length));
+      return final.length;
+    } catch (e) {
+      return abandon();
+    }
+  }
+
+  // Nombre de pages A4 qu'occupera le document rendu (à exécuter dans le document, après paginate).
   function pageCount(d) {
+    if (d && d.querySelectorAll) {
+      const toutes = d.querySelectorAll('.page');
+      if (toutes.length > 1) return toutes.length;
+    }
     const page = d && d.querySelector && d.querySelector('.page');
     if (!page) return 1;
     const probe = d.createElement('div');
@@ -5229,7 +5453,7 @@
     mergeData, trackDeletion, MERGE_LISTS, LIST_LABELS, piecesLiees,
     purchaseTotals, purchaseBalance, purchaseStatus, achatDoublon, facturesDuDevis, payablesList, purchaseJournal, purchaseSummary, supplierSummary, withholdingsToIssue, supplierPayments,
     periodBounds, issuedIn, salesTotals, revenueByMonth, topItems, clientMovement, AGING_BUCKETS, agedReceivables, payerRanking, quoteFunnel, objectiveProgress,
-    amountToWords, intToWords, intToWordsEn, documentHtml, fitToPage, pageCount,
+    amountToWords, intToWords, intToWordsEn, documentHtml, fitToPage, paginate, pageCount,
     MODULES, PAGES, moduleById, pageById, pageTitle, moduleCount, moduleCounts, modulesRevenus, moduleOn, moduleWhy, navPages,
     MODULES_PAR_ACTIVITE, modulesSuggeres, wipeData, rendreLesEmprunts, estDemo, firstSteps, liste, defaultVat, newLine,
     canalDe, estBeta
