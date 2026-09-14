@@ -38,7 +38,7 @@ jobs:
       # pour chacune des deux applications. Le cache épargne ce téléchargement à chaque publication :
       # sur une machine macOS facturée dix fois le tarif normal, c'est la minute la plus rentable.
       - name: Cache Electron
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cache/electron
