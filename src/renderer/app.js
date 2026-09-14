@@ -30,6 +30,7 @@
     onAlivePing: () => {}, onFreezeNotice: () => {}, supportInfo: async () => ({ version: 'dev', platform: 'browser', log: '', lines: 0 }), openLog: async () => {},
     updateVersion: async () => ({ version: 'dev', packaged: false, platform: 'browser', macSigned: false }),
     updateCheck: async () => ({ state: 'dev' }), updateDownload: async () => ({ state: 'dev' }), updateInstall: async () => ({ state: 'dev' }), updateSetToken: async () => ({ hasToken: false }),
+    updateSetBeta: async () => ({ beta: false }),
     updateOpenReleases: async () => {},
     licenceStatus: async () => ({ state: 'libre', locked: false, label: 'Licence non requise', detail: '' }),
     licenceSet: async () => ({ state: 'libre', locked: false, label: 'Licence non requise', detail: '' }),
@@ -9648,8 +9649,9 @@
       <p class="small muted">Le dépôt de SkanFact est <b>public</b> : les mises à jour arrivent sans rien présenter. Un jeton datant de l'époque où il était privé est encore enregistré sur cet ordinateur ; il ne sert plus à rien.</p>
       <div class="inline"><button class="btn btn-sm btn-ghost" id="upd-token-clear">Retirer ce jeton</button></div>
     </div>` : '');
-    el.innerHTML = `<div class="update-head"><div><div class="k-label">Version installée</div><div class="ver">${h(a.version || '…')}</div></div><button class="btn btn-sm btn-ghost" id="upd-changelog">Nouveautés</button></div>${body}${tokenBlock}`;
+    el.innerHTML = `<div class="update-head"><div><div class="k-label">Version installée</div><div class="ver">${h(a.version || '…')}${a.prerelease ? ' <span class="beta-tag">bêta</span>' : ''}</div></div><button class="btn btn-sm btn-ghost" id="upd-changelog">Nouveautés</button></div>${body}${tokenBlock}${betaBlock(a)}`;
     $('#upd-changelog').onclick = showChangelog;
+    if ($('#upd-beta')) $('#upd-beta').onchange = e => setBeta(e.target.checked);
     if ($('#upd-token-save')) $('#upd-token-save').onclick = async () => {
       const t = $('#upd-token').value.trim(); if (!t) return toast('Colle un token d\'abord', true);
       if (!/^(github_pat_|ghp_|gho_|ghs_)[A-Za-z0-9_]+$/.test(t)) return toast('Ce n\'est pas un token GitHub : il commence par github_pat_ ou ghp_', true);
@@ -9664,6 +9666,55 @@
       const r = await bridge.updateInstall();
       if (r && r.state === 'error') { upd.state = 'error'; upd.message = r.message; drawUpdatePanel(); }
     };
+  }
+
+  // Le canal bêta (7.25.0).
+  //
+  // Ce que fait la case : elle choisit QUELLES versions cet ordinateur reçoit. Décochée — et elle
+  // l'est chez tout le monde tant que personne n'y touche — l'application ne voit que les versions
+  // stables et ignore les essais, y compris s'ils sont publiés le jour même.
+  //
+  // Pourquoi une question avant de la cocher : une bêta s'installe PAR-DESSUS l'application qui
+  // tient la vraie comptabilité, et une version d'essai a le droit d'avoir des défauts — c'est
+  // précisément à ça qu'elle sert. On prévient, on prend une sauvegarde nommée, on n'interdit pas.
+  // La case reste visible en mode développement : c'est un réglage de l'installation, pas un état
+  // du moment, et le seul endroit où on puisse la vérifier avant de publier quoi que ce soit.
+  function betaBlock(a) {
+    const etat = a.beta
+      ? (a.prerelease
+        ? '<p class="small muted mt">Tu es sur le canal bêta et tu tournes sur une version d\'essai. Les corrections arrivent ici en premier.</p>'
+        : '<p class="small muted mt">Tu es sur le canal bêta. Aucune version d\'essai n\'est plus récente que la tienne pour l\'instant.</p>')
+      : (a.prerelease
+        // On peut quitter le canal en tournant sur une bêta : on y reste jusqu'à ce que la stable
+        // suivante sorte. Le dire vaut mieux que laisser croire que la case n'a rien fait.
+        ? '<p class="small mt">Tu es revenu au canal normal, mais la version installée est une bêta. SkanFact la remplacera par la prochaine version stable.</p>'
+        : '');
+    return `<div class="beta-box">
+      <label class="check"><input type="checkbox" id="upd-beta" ${a.beta ? 'checked' : ''}> <b>Recevoir les versions bêta</b> ${info('upd.beta')}</label>
+      <p class="small muted">Les versions d'essai, avant tout le monde. Numérotées <code>7.26.0-beta.1</code>. À laisser décoché sur l'ordinateur qui sert à travailler.</p>
+      ${etat}
+    </div>`;
+  }
+
+  async function setBeta(on) {
+    const box = $('#upd-beta');
+    if (on) {
+      const ok = await confirmDialog(
+        'Les versions bêta sont des versions d\'essai : elles arrivent avant les autres et peuvent contenir des défauts.\n\n' +
+        'Elles s\'installent par-dessus SkanFact et travaillent sur les mêmes données. Une sauvegarde va être prise tout de suite, avant tout changement.\n\n' +
+        'Tu pourras revenir au canal normal à tout moment en décochant la case.',
+        'Recevoir les bêtas', false);
+      if (!ok) { if (box) box.checked = false; return; }
+      // Le filet, pris AVANT d'armer le canal : au moment où la bêta s'installera, l'utilisateur
+      // sera peut-être ailleurs, et c'est trop tard pour y penser.
+      try { await bridge.createBackup('avant-beta'); } catch (e) { /* pas de filet ≠ pas de canal */ }
+    }
+    const r = await bridge.updateSetBeta(!!on);
+    upd.app.beta = r.beta;
+    upd.state = 'idle';
+    drawUpdatePanel();
+    toast(r.beta ? 'Canal bêta activé — sauvegarde « avant-beta » prise' : 'Retour au canal normal');
+    runCheck();
   }
 
   async function runCheck() {
@@ -9833,10 +9884,19 @@
           const cat = $('#sf-cat', root); if (cat) a.fillCatalog = cat.checked;
           const reg = $('#sf-regime', root); if (reg) a.taxRegime = reg.value;
         };
-        $$('[data-act]', root).forEach(b => b.onclick = () => { lireActivite(); a.activity = b.dataset.act; draw(); });
+        $$('[data-act]', root).forEach(b => b.onclick = () => {
+          lireActivite();
+          a.activity = b.dataset.act;
+          // Le métier PROPOSE son régime tant que personne n'a touché à la liste (règle 3.5.0 : la
+          // famille d'un bien propose sa durée sans l'imposer). Sans ça, un kinésithérapeute qui
+          // vient de cliquer « Santé et paramédical » repart avec 19 % de TVA sur ses honoraires.
+          if (!a.regimeTouche) a.taxRegime = C.regimeSuggere(a.activity);
+          draw();
+        });
         const selRegime = $('#sf-regime', root);
         if (selRegime) selRegime.onchange = () => {
           a.taxRegime = selRegime.value;
+          a.regimeTouche = true;             // un choix fait à la main ne se fait plus écraser
           // On ne redessine pas tout l'écran pour trois lignes de texte : le métier choisi garderait
           // son focus, mais la liste sauterait sous le doigt. Seule l'explication change.
           const aide = $('#sf-regime-aide', root);
@@ -10039,6 +10099,9 @@
     }
     bridge.updateVersion().then(v => {
       upd.app = v; const el = $('#app-version'); if (el) el.textContent = 'v' + v.version;
+      // Le repère se pose sur la VERSION INSTALLÉE, jamais sur le canal choisi : ce qui compte,
+      // c'est ce qui tourne. Quelqu'un qui vient de décocher la case tourne encore sur une bêta.
+      const tag = $('#beta-tag'); if (tag) tag.hidden = !C.estBeta(v.version);
       if (v.lastUpdate) {
         if (v.lastUpdate.ok) toast('SkanFact mis à jour en version ' + v.version);
         else modal(`<h2>Mise à jour non installée</h2><p>${h(v.lastUpdate.message || 'Erreur inconnue')}.</p><p class="small muted">Tu peux installer la nouvelle version à la main depuis la page des versions, ou réessayer depuis Paramètres → Mises à jour.</p>

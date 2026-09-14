@@ -7,6 +7,48 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 7.25.0 — 14/09/2026
+
+**Le canal bêta : garder la version stable intacte pendant qu'on travaille sur la suivante.**
+
+Jusqu'ici, SkanFact n'avait qu'une seule version : celle qu'on publiait. Une nouveauté partait
+directement chez tout le monde, et le seul moyen de la vérifier d'abord était de construire
+l'application à la main. Il y a maintenant **deux canaux**, comme dans les grands logiciels.
+
+**Le canal normal** est celui de tout le monde, et personne n'en sort sans l'avoir demandé : la case
+arrive décochée et une mise à jour n'y touche pas. **Le canal bêta**, à cocher dans Paramètres →
+Mises à jour, ajoute les versions d'essai — numérotées `7.26.0-beta.1` — qui servent à vérifier une
+nouveauté avant de la livrer aux autres.
+
+Ce qui décide de tout, c'est le **numéro de version**, et rien d'autre : un numéro à suffixe est une
+préversion, un numéro sans suffixe n'en est pas une. Le workflow de publication marque la release
+« préversion » sur GitHub (donc `/releases/latest` continue de pointer sur la dernière stable),
+electron-builder écrit `beta.yml` au lieu de `latest.yml`, et le relais de mise à jour laisse passer
+ce fichier — pour l'application entreprise seulement. Aucune case à cocher au lancement du workflow,
+donc aucun moyen de les désaccorder.
+
+**Une bêta s'installe par-dessus l'application qui tient la vraie comptabilité.** Cocher la case pose
+donc une question, et prend une sauvegarde `avant-beta` **avant** d'armer le canal — au moment où la
+bêta s'installera, il sera trop tard pour y penser. Le mot **bêta** reste affiché en haut à gauche
+tant qu'on tourne sur une version d'essai : c'est la seule protection contre « je croyais être sur la
+stable ». Décocher ramène au canal normal ; si la version installée est une bêta, SkanFact la
+remplace par la prochaine stable — c'est la seule exception voulue à la règle « jamais de retour en
+arrière » de la 6.7.3.
+
+**L'app du comptable ne bouge pas.** Elle n'a aucune case à décocher et personne ne lui a rien
+demandé : une bêta de l'application entreprise ne construit plus SkanFact Cabinet du tout.
+
+**Et un défaut attrapé au passage : le métier avait cessé de proposer son régime.** En remplaçant le
+taux de TVA porté par chaque métier (7.22.0) par un régime fiscal choisi à l'écran suivant,
+l'application avait perdu ce que le métier savait depuis la 2.0.0 : « Santé et paramédical » est
+exonéré. Elle proposait donc 19 % de TVA à un kinésithérapeute qui venait de cliquer sur son propre
+métier. Le métier **propose** de nouveau son régime — et un régime choisi à la main ne se fait plus
+écraser en changeant de métier, comme la durée d'amortissement proposée par la famille d'un bien.
+*À VÉRIFIER avec ton comptable*, comme toute la fiscalité de l'application.
+
+Au passage, deux phrases périmées : l'aide affirmait encore qu'il faut « coller un token d'accès
+parce que le dépôt est privé ». Elle explique maintenant les deux canaux.
+
 ## 7.24.0 — 14/09/2026
 
 **L'écran des mises à jour disait trois choses fausses.**

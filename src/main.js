@@ -894,7 +894,7 @@ ipcMain.handle('ocr:read', async (_e, { path: file } = {}) => {
 
 // ---------- PDF ----------
 
-const { fitToPage } = require('./renderer/core.js');
+const { fitToPage, canalDe } = require('./renderer/core.js');
 
 // Rend un document HTML en PDF A4. Le HTML passe par un fichier temporaire : une URL data:
 // est limitée en taille (logo en base64).
@@ -1187,9 +1187,31 @@ function feedGithub(u) {
   u.setFeedURL({ provider: 'github', owner: GITHUB.owner, repo: GITHUB.repo, private: !!cfg.token, token: cfg.token || undefined });
 }
 
+// Le canal bêta (7.25.0). Deux canaux, un seul dépôt, une seule application :
+//
+//  - **latest** : ce que tout le monde reçoit. C'est le canal par défaut, et personne n'en sort
+//    sans l'avoir demandé — la case vit dans Paramètres → Mises à jour et arrive décochée.
+//  - **beta** : les versions d'essai, numérotées `7.26.0-beta.1`. electron-builder leur fabrique
+//    `beta.yml` / `beta-mac.yml` ; une installation stable ne les regarde même pas.
+//
+// `allowPrerelease` est indispensable côté GitHub : sans lui, le module utilise `/releases/latest`,
+// qui IGNORE les préversions par construction — la bêta serait publiée et jamais proposée.
+//
+// Et le retour en arrière, qui est le vrai piège. `u.channel = …` remet `allowDowngrade` à `true`
+// en effet de bord (règle 6.7.3 : c'est écrit dans la source du module, pas dans son README), donc
+// on le repositionne APRÈS, toujours. Une seule exception, et elle est voulue : quelqu'un qui
+// DÉCOCHE la case tourne sur une version plus récente que la dernière stable ; lui interdire de
+// reculer, c'est l'enfermer dans la bêta qu'il vient justement de quitter.
+function appliquerCanal(u) {
+  const beta = !!readUpdateCfg().beta;
+  u.channel = beta ? 'beta' : 'latest';
+  u.allowPrerelease = beta;
+  u.allowDowngrade = !beta && canalDe(app.getVersion()) !== 'latest';
+}
+
 function configureFeed(u) {
   const base = relayBase();
-  if (!base) return feedGithub(u);
+  if (!base) { feedGithub(u); return appliquerCanal(u); }
   try {
     // Une adresse invalide (chemin collé en trop, espace, texte au lieu d'une URL) doit être vue
     // ICI, pas au premier téléchargement : `new URL` est le seul contrôle qui la rejette vraiment.
@@ -1206,6 +1228,9 @@ function configureFeed(u) {
     logToFile('relais de mise à jour', e);
     feedGithub(u);
   }
+  // Le canal se pose APRÈS le flux, dans les deux chemins : `setFeedURL` ne le change pas, mais
+  // `u.channel` doit être le dernier mot (il prime sur le `channel` passé à setFeedURL).
+  appliquerCanal(u);
 }
 
 function notesToText(notes) {
@@ -1258,6 +1283,10 @@ function updatesConfigured() { return !!(GITHUB.owner && GITHUB.repo); }
 
 function friendlyError(err) {
   const m = String(err && err.message || err);
+  // Une bêta qui n'existe pas encore n'est pas une panne : c'est le cas normal entre deux essais.
+  // Sans cette phrase, l'écran répondait « Aucune version trouvée » en rouge et faisait croire que
+  // les mises à jour étaient cassées.
+  if (/404|CHANNEL_FILE_NOT_FOUND/.test(m) && readUpdateCfg().beta) return 'Aucune version bêta publiée pour l\'instant. Tu as la dernière version stable ; décoche la case pour revenir au canal normal.';
   if (/403/.test(m) && relayBase()) return 'Le service de mise à jour a refusé cette installation. Vérifie ta licence dans Paramètres → Licence.';
   if (/402/.test(m)) return 'Une licence en cours de validité est nécessaire pour recevoir les mises à jour.';
   if (/404/.test(m)) return relayBase()
@@ -1310,8 +1339,26 @@ ipcMain.handle('update:version', () => ({
   // « Relais injoignable » en rouge alarme pour une panne qui n'empêche rien. On le garde dans le
   // journal (logToFile le fait déjà) et on ne le montre plus.
   relayFailure: GITHUB.private ? relayFailure : '',
+  // Le canal choisi, et ce que la version installée EST réellement. Les deux, parce qu'ils peuvent
+  // se contredire une journée entière : on décoche la case un matin en tournant sur une bêta, et on
+  // reste dessus jusqu'à ce que la stable suivante arrive. L'écran doit pouvoir le dire.
+  beta: !!readUpdateCfg().beta,
+  prerelease: canalDe(app.getVersion()) !== 'latest',
   lastUpdate: takeLastUpdateResult()
 }));
+
+// Entrer dans le canal bêta ou en sortir. On reconfigure le flux tout de suite : sans ça, le
+// changement ne prendrait effet qu'au prochain démarrage, et « Vérifier les mises à jour » juste
+// après aurait répondu sur l'ancien canal — c'est-à-dire le contraire de ce qu'on vient de demander.
+ipcMain.handle('update:setBeta', (_e, on) => {
+  const cfg = readUpdateCfg();
+  if (on) cfg.beta = true; else delete cfg.beta;
+  writeUpdateCfg(cfg);
+  // Un canal déjà téléchargé n'a plus rien à voir avec celui qu'on vient de choisir.
+  updateInfo = null; downloaded = false; downloadedFile = null;
+  if (updater) configureFeed(updater);
+  return { beta: !!cfg.beta };
+});
 
 ipcMain.handle('update:setToken', (_e, token) => {
   const cfg = readUpdateCfg();

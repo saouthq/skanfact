@@ -367,6 +367,7 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:aide` | **l'Aide** : l'accueil par thèmes, un thème qui s'ouvre, le fil d'Ariane, l'article suivant du même thème, le geste qui mène vraiment à sa page, la recherche, et « Comprendre cette page » |
 | `npm run e2e:colonnes` | **les colonnes alignées** : l'en-tête de chaque colonne de chaque tableau comparé à ses valeurs, sur 19 pages et tous leurs onglets (392 colonnes) |
 | `npm run e2e:entetes` | **les barres d'actions mesurées** : aucun contrôle d'en-tête étiré sur toute la largeur, aucune barre empilée sur trois rangées (21 pages) |
+| `npm run e2e:beta` | **le canal bêta** : la case décochée à l'installation, la question avant de cocher, le refus qui décoche vraiment, la sauvegarde « avant-beta » écrite sur le disque, et le retour en arrière sans question |
 
 Ils ont longtemps vécu dans un dossier de travail temporaire, effacé à chaque session : il fallait les réécrire de mémoire, et ils dérivaient (une assertion restée sur une version périmée, un écran neuf jamais parcouru). **Un test qu'on doit réécrire pour s'en servir n'est pas un test.** Le harnais (`test/e2e/harnais.js`) trouve Playwright où il est, lit la version dans `package.json` au lieu de l'écrire en dur, et range les captures dans `dist-e2e/` (ignoré par Git).
 
@@ -1157,6 +1158,64 @@ Quatre signalements de Skander sur captures d'écran, et une refonte. Règles ap
   `th.r` des colonnes : le HTML est juste, c'est la feuille de style qui décide, et ça ne se voit
   qu'en mesurant. `npm run e2e:entetes` mesure la largeur de chaque contrôle et la hauteur de chaque
   barre — et il a trouvé une page de plus que ma lecture du code (`#/garanties`).
+
+## 7.25.0 — Le canal bêta (garder la stable pendant qu'on travaille)
+
+Demandé par Skander : « garder la main qui est stable et bosser sur la beta, et quand je confirme la
+beta alors on la publie, comme les grands logiciels ». Deux canaux, **une seule application**, un
+seul dépôt.
+
+**Le fonctionnement, de bout en bout.** `main` reste la branche stable, `beta` est la branche de
+travail. Une version d'essai se numérote `7.26.0-beta.1` (`npm run release preminor` puis
+`prerelease`), et **c'est le numéro qui décide de tout le reste** : le workflow Release marque la
+release « préversion » sur GitHub (donc `/releases/latest` pointe toujours sur la dernière stable),
+electron-builder écrit `beta.yml` / `beta-mac.yml` au lieu de `latest.yml`, le relais Cloudflare les
+laisse passer (`CANAUX.app.yml`), et `core.canalDe(version)` en déduit le canal côté application.
+Quand la bêta est confirmée, `npm run release minor` la transforme en `7.26.0` stable et `main`
+avance. Publier se fait depuis l'onglet Actions → Release → Run workflow, en choisissant la branche.
+
+Règles apprises, à ne pas recasser :
+
+- **Une seule source de vérité, et c'est le numéro de version.** Un drapeau posé à la construction,
+  une case au lancement du workflow, un réglage du dépôt : tout ça s'oublie et se désaccorde. Un
+  numéro de version, non — il est écrit dans le paquet, dans la release, dans l'écran des mises à
+  jour et dans le nom du fichier téléchargé. Les deux moitiés du système (electron-builder et
+  `canalDe`) lisent la même chose, il n'y a donc aucun moyen de les faire diverger.
+- **`allowPrerelease` est indispensable, et il ne se devine pas.** Sans lui, electron-updater
+  interroge `/releases/latest`, qui **ignore les préversions par construction** : la bêta serait
+  publiée et jamais proposée à personne, sans une erreur nulle part.
+- **`u.channel = …` remet `allowDowngrade` à `true`** (règle 6.7.3, re-rencontrée) : il se repose
+  APRÈS, toujours. La seule exception voulue : quelqu'un qui **décoche** la case tourne sur une
+  version plus récente que la dernière stable ; lui interdire de reculer, c'est l'enfermer dans la
+  bêta qu'il vient de quitter. D'où `allowDowngrade = !beta && canalDe(version) !== 'latest'`.
+- **Le test de cette règle lisait un COMMENTAIRE.** Le commentaire qui explique le piège nomme les
+  deux lignes côte à côte et satisfaisait l'assertion à lui seul — même faute qu'en 6.8.0 sur le
+  garde-fou du cabinet. On retire les commentaires avant de juger, et on vérifie que le nettoyage
+  n'a pas mangé le code. Trouvé en réintroduisant le défaut, jamais autrement.
+- **Une bêta s'installe par-dessus la vraie comptabilité.** On prévient, on prend la sauvegarde
+  `avant-beta` **avant** d'armer le canal (au moment de l'installation, il sera trop tard pour y
+  penser), on n'interdit pas. Et le repère « bêta » du menu suit la **version installée**, jamais le
+  canal choisi : ce qui compte, c'est ce qui tourne.
+- **Une bêta d'entreprise ne construit plus l'app cabinet du tout** : elle n'a aucune case à
+  décocher et personne ne lui a rien demandé. Publier une préversion sur `cabinet.yml` proposerait
+  une version d'essai à tous les comptables d'un coup.
+- **Le relais ne regarde plus 5 releases mais 20** : plusieurs préversions peuvent s'intercaler
+  entre deux stables, et une installation restée sur le canal normal ne trouverait plus `latest.yml`
+  dans la fenêtre.
+- **Une bêta qui n'existe pas encore n'est pas une panne**, c'est le cas normal entre deux essais :
+  le 404 du canal bêta a sa propre phrase, sinon l'écran répond « aucune version trouvée » en rouge
+  et fait croire que les mises à jour sont cassées.
+
+Le test qui compte est `npm run e2e:beta` : la case décochée à l'installation, la question, le refus
+qui décoche vraiment, la sauvegarde prise sur le disque, et le retour en arrière sans question.
+
+**Et un défaut de la 7.22.0 attrapé par un e2e que je n'avais pas relancé après l'avoir écrit :** en
+remplaçant le taux de TVA porté par le métier par un régime fiscal, on a perdu ce que le métier
+savait depuis la 2.0.0 — « Santé et paramédical » est exonéré. L'application proposait 19 % à un
+kinésithérapeute qui venait de cliquer sur son propre métier. `core.regimeSuggere(activité)` le
+**propose** de nouveau, `a.regimeTouche` empêche d'écraser un choix fait à la main (même motif que
+`modulesTouche` et que la durée proposée par la famille d'un bien). **Retirer un mécanisme
+n'autorise pas à perdre ce qu'il savait** — et un e2e ne sert que si on le relance.
 
 ## Pistes pour la suite (non demandées)
 

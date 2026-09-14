@@ -155,6 +155,19 @@ body.dark .demo-banner { background: #3a2f19; color: #f0c878; border-color: #554
 .demo-banner b { font-weight: 800; }
 .demo-banner .btn { background: #fff; color: #8a5a08; border-color: #e2c692; white-space: nowrap; }
 body.dark .demo-banner .btn { background: #4a3c20; color: #f5d9a0; border-color: #6a5430; }
+
+/* Le repère « bêta » (7.25.0). Discret mais permanent : il vit dans le nom de l'application, en
+   haut à gauche, et dans l'écran des mises à jour. Il ne doit pas crier — une bêta est un mode
+   normal du logiciel, pas une erreur — mais il ne doit jamais passer inaperçu non plus. */
+.beta-tag {
+  display: inline-block; vertical-align: middle;
+  font-size: 9px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+  padding: 1px 5px; border-radius: 4px; line-height: 1.5;
+  background: #ede0ff; color: #5b2ea6; border: 1px solid #d6bcf5;
+}
+body.dark .beta-tag { background: #35255a; color: #cdb0f5; border-color: #4c3878; }
+.beta-box { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.beta-box .small { margin: 4px 0 0 24px; }
 .mod-banner { align-items: center; }
 
 /* ---------- « Tes premiers pas » (7.0.0) ---------- */

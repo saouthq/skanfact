@@ -102,6 +102,18 @@
     const id = ((company || {}).taxRegime || '').trim();
     return REGIMES.find(r => r.id === id) || REGIMES[0];
   }
+  // Le régime que le métier rend probable. Il ne s'impose jamais : c'est l'assistant qui le
+  // présélectionne, et un choix fait à la main ne se fait plus écraser (même règle que la durée
+  // d'amortissement proposée par la famille d'un bien, 3.5.0).
+  //
+  // Pourquoi il existe : avant la 7.22.0, `ACTIVITIES` portait un taux de TVA, et « Santé et
+  // paramédical » valait 0 %. En remplaçant ce taux par un régime fiscal, cette connaissance-là a
+  // disparu — et l'application proposait 19 % à un kinésithérapeute qui venait de déclarer son
+  // métier à l'écran précédent. Retirer un mécanisme n'autorise pas à perdre ce qu'il savait.
+  function regimeSuggere(activityId) {
+    const a = ACTIVITIES.find(x => x.id === String(activityId || '').trim());
+    return (a && a.regime) || '';
+  }
   // La seule question à poser au reste du code : cette entreprise facture-t-elle de la TVA ?
   function assujettiTVA(company) { return regimeOf(company).tva !== false; }
   // La mention qui REMPLACE la colonne TVA. Vide pour un assujetti : il a la colonne.
@@ -154,7 +166,10 @@
       ]
     },
     {
-      id: 'sante', label: 'Santé et paramédical', tagline: '', honoraires: true, comptant: true,
+      // `regime` est une PROPOSITION, pas une règle : l'assistant la présélectionne et l'utilisateur
+      // reste libre d'en choisir une autre. Les actes médicaux et paramédicaux sont exonérés de TVA
+      // en Tunisie — À VÉRIFIER avec le comptable, comme tout le reste de la fiscalité ici.
+      id: 'sante', label: 'Santé et paramédical', tagline: '', honoraires: true, comptant: true, regime: 'exonere',
       catalog: [
         ['Consultation', '', 50, 'séance'],
         ['Séance de suivi', '', 40, 'séance'],
@@ -376,6 +391,22 @@
     { id: 'parametres', titre: 'Paramètres', module: null, pied: true },
     { id: 'aide', titre: 'Aide', module: null, pied: true }
   ];
+
+  // ---------- le canal de mise à jour (7.25.0) ----------
+  //
+  // Une version de test porte un suffixe : `7.26.0-beta.1`. C'est le NUMÉRO qui dit ce qu'elle est,
+  // rien d'autre — pas un drapeau posé à la construction, pas un réglage du dépôt, pas une case
+  // cochée quelque part. Un drapeau s'oublie ; un numéro de version, non : il est écrit dans le
+  // paquet, dans la release, dans l'écran des mises à jour et dans le nom du fichier téléchargé.
+  //
+  // electron-builder applique exactement la même règle : un numéro avec `-beta.1` produit
+  // `beta.yml` / `beta-mac.yml` au lieu de `latest.yml`. Les deux moitiés du système lisent donc la
+  // même source de vérité, et il n'y a aucun moyen de les désaccorder.
+  function canalDe(version) {
+    const m = /^\d+\.\d+\.\d+-([A-Za-z][A-Za-z0-9]*)/.exec(String(version || '').trim());
+    return m ? m[1].toLowerCase() : 'latest';
+  }
+  function estBeta(version) { return canalDe(version) !== 'latest'; }
 
   // ---------- tout effacer (7.0.0) ----------
   //
@@ -5133,7 +5164,7 @@
 
   return {
     VAT_RATES, WITHHOLDING_RATES, PAYMENT_METHODS, PREFIX, TITLES, DEFAULT_DATA, DEFAULT_COMPANY, ACTIVITIES, STATUSES, DISPLAY_STATUSES, STATUS_LABELS,
-    REGIMES, regimeOf, assujettiTVA, mentionTVA, estLiberal, docLabel, ribAttendu,
+    REGIMES, regimeOf, regimeSuggere, assujettiTVA, mentionTVA, estLiberal, docLabel, ribAttendu,
     DOC_FILTRES, docFiltre,
     pageInfo, compareValues, LINE_UNITS, usedUnits, parseDateInput, fmtDateInput, monthMatrix,
     uid, round3, money, fmtDate, addDays, daysInMonth, today, escapeHtml, nl2br, statusLabel,
@@ -5172,6 +5203,7 @@
     periodBounds, issuedIn, salesTotals, revenueByMonth, topItems, clientMovement, AGING_BUCKETS, agedReceivables, payerRanking, quoteFunnel, objectiveProgress,
     amountToWords, intToWords, intToWordsEn, documentHtml, fitToPage, pageCount,
     MODULES, PAGES, moduleById, pageById, pageTitle, moduleCount, moduleCounts, modulesRevenus, moduleOn, moduleWhy, navPages,
-    MODULES_PAR_ACTIVITE, modulesSuggeres, wipeData, rendreLesEmprunts, estDemo, firstSteps, liste, defaultVat, newLine
+    MODULES_PAR_ACTIVITE, modulesSuggeres, wipeData, rendreLesEmprunts, estDemo, firstSteps, liste, defaultVat, newLine,
+    canalDe, estBeta
   };
 });

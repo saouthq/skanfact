@@ -57,15 +57,33 @@ jobs:
       # Notes de version (section CHANGELOG.md de cette version) → latest.yml + page de la release
       - run: node scripts/release-notes.js
 
+      # Stable ou bêta ? C'est le NUMÉRO DE VERSION qui décide, rien d'autre : `7.26.0-beta.1` est
+      # une préversion, `7.26.0` n'en est pas une. Aucune case à cocher au lancement du workflow,
+      # donc aucun moyen de se tromper — et electron-builder lit exactement la même chose pour
+      # nommer `beta.yml` au lieu de `latest.yml`.
+      - name: Stable ou bêta
+        id: canal
+        shell: bash
+        run: |
+          V=$(node -p "require('./package.json').version")
+          if node -p "require('./package.json').version" | grep -q -- '-'; then PRE=true; else PRE=false; fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$PRE" >> "$GITHUB_OUTPUT"
+          echo "Version $V — préversion : $PRE"
+
       # UPDATE_BASE / UPDATE_SECRET : les réglages du relais de mise à jour, pris dans les secrets du
       # dépôt et posés dans le paquet. Non définis → les applications retombent sur GitHub + jeton
       # saisi à la main, comme avant. Rien de tout ça n'existe dans le code.
       # shell: bash est OBLIGATOIRE ici. Sur le poste Windows, le shell par défaut est PowerShell,
       # où « $UPDATE_BASE » n'est pas la variable d'environnement mais une variable PowerShell vide :
       # l'application Windows serait construite SANS le relais, sans que rien ne le signale.
+      # `releaseType=prerelease` marque la release « Pre-release » sur GitHub. C'est ce qui fait que
+      # `/releases/latest` continue de pointer sur la dernière STABLE : quelqu'un qui télécharge
+      # l'application à la main, ou une installation restée sur le canal normal, ne voit jamais la
+      # bêta. Sans ce drapeau, publier une préversion écraserait la version « officielle » du dépôt.
       - name: Build & publish
         shell: bash
-        run: npx electron-builder --publish always -c.extraMetadata.updateBase="$UPDATE_BASE" -c.extraMetadata.updateSecret="$UPDATE_SECRET"
+        run: npx electron-builder --publish always -c.publish.releaseType=${{ steps.canal.outputs.prerelease == 'true' && 'prerelease' || 'release' }} -c.extraMetadata.updateBase="$UPDATE_BASE" -c.extraMetadata.updateSecret="$UPDATE_SECRET"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           UPDATE_BASE: ${{ secrets.UPDATE_BASE }}
@@ -77,15 +95,21 @@ jobs:
         if: matrix.os == 'macos-latest'
         shell: bash
         run: |
-          V=$(node -p "require('./package.json').version")
-          gh release edit "v$V" --title "SkanFact $V" --notes-file build/release-notes.md
+          V="${{ steps.canal.outputs.version }}"
+          if [ "${{ steps.canal.outputs.prerelease }}" = "true" ]; then T="SkanFact $V (bêta)"; else T="SkanFact $V"; fi
+          gh release edit "v$V" --title "$T" --notes-file build/release-notes.md
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # SkanFact Cabinet : seconde application du dépôt, construite depuis le même code avec un
       # autre point d'entrée. Elle se publie elle-même dans la MÊME release (même version), sur son
       # propre canal de mise à jour : cabinet.yml / cabinet-mac.yml à côté de latest.yml.
+      #
+      # Une bêta ne concerne QUE l'application entreprise. La construire aussi côté cabinet
+      # remplacerait `cabinet.yml` par une préversion, et tous les comptables — qui n'ont rien
+      # demandé et n'ont aucune case à décocher — se verraient proposer une version d'essai.
       - name: Build & publish SkanFact Cabinet
+        if: steps.canal.outputs.prerelease != 'true'
         run: npx electron-builder -c build/cabinet.config.js --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

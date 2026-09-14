@@ -5,15 +5,27 @@
 //   npm run release            → patch  (1.0.0 → 1.0.1)  corrections
 //   npm run release minor      → minor  (1.0.1 → 1.1.0)  nouvelles fonctionnalités
 //   npm run release major      → major  (1.1.0 → 2.0.0)  gros changement
+//
+// Les versions d'essai (7.25.0 → 7.26.0-beta.1 → -beta.2) passent par `npm version prerelease`,
+// depuis la branche `beta`. C'est le suffixe du numéro qui fait tout le reste : le workflow marque
+// la release « préversion » et electron-builder écrit `beta.yml` au lieu de `latest.yml`.
+//
+//   npm run release preminor   → 7.25.0 → 7.26.0-beta.0   première bêta d'une nouveauté
+//   npm run release prerelease → 7.26.0-beta.0 → -beta.1   essai suivant
+//   npm run release minor      → 7.26.0-beta.1 → 7.26.0    on confirme, ça devient la stable
 
 const { execSync } = require('child_process');
 const pkg = require('../package.json');
 
 const type = process.argv[2] || 'patch';
-if (!['patch', 'minor', 'major'].includes(type)) {
-  console.error('Usage : npm run release [patch|minor|major]');
+if (!['patch', 'minor', 'major', 'prerelease', 'prepatch', 'preminor', 'premajor'].includes(type)) {
+  console.error('Usage : npm run release [patch|minor|major|preminor|prerelease]');
   process.exit(1);
 }
+// `npm version preminor` seul donnerait `7.26.0-0`, sans nom de canal : electron-builder en
+// déduirait le canal « 0 », et l'application chercherait `0-mac.yml`. Le nom du canal fait partie
+// du numéro, il n'est pas décoratif.
+const preid = type.startsWith('pre') ? ' --preid beta' : '';
 if (pkg.build.publish.owner === 'SKANDER_GITHUB') {
   console.error('Remplace d\'abord SKANDER_GITHUB par ton identifiant GitHub dans package.json (build.publish.owner et repository.url).');
   process.exit(1);
@@ -29,7 +41,7 @@ try {
 }
 
 run('npm test');
-run(`npm version ${type} -m "Version %s"`);
+run(`npm version ${type}${preid} -m "Version %s"`);
 run('git push --follow-tags');
 
 const v = require('../package.json').version;

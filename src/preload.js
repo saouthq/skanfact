@@ -69,6 +69,7 @@ contextBridge.exposeInMainWorld('skanfact', {
   updateDownload: () => ipcRenderer.invoke('update:download'),
   updateInstall: () => ipcRenderer.invoke('update:install'),
   updateSetToken: (t) => ipcRenderer.invoke('update:setToken', t),
+  updateSetBeta: (on) => ipcRenderer.invoke('update:setBeta', on),
   updateOpenReleases: () => ipcRenderer.invoke('update:openReleases'),
   onUpdateEvent: (cb) => { ipcRenderer.on('update:event', (_e, data) => cb(data)); }
 });

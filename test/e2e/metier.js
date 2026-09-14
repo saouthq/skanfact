@@ -45,9 +45,25 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   if (!honoraires.length) throw new Error('aucun métier ne s\'annonce en note d\'honoraires');
   j.ok(`${metiers.length - 1} métiers + « Autre » — ${honoraires.length} en note d'honoraires, aucun taux deviné`);
 
+  // -------------------------------------------------- 1 bis. le métier propose son régime (7.25.0)
+  // En remplaçant le taux de TVA porté par le métier par un régime fiscal, la 7.22.0 avait perdu ce
+  // que le métier savait : la santé est exonérée. L'application proposait 19 % de TVA à un
+  // kinésithérapeute qui venait de cliquer « Santé et paramédical ».
+  j.etape('Choisir « Santé » propose l\'exonération, sans l\'imposer');
+  if (!await win.$('#sf-regime')) throw new Error('l\'assistant ne demande pas le régime fiscal');
+  await win.click('[data-act="sante"]');
+  await win.waitForSelector('[data-act="sante"].sel');
+  const propose = await win.$eval('#sf-regime', e => e.value);
+  if (propose !== 'exonere') throw new Error(`« Santé et paramédical » propose « ${propose} » au lieu de l'exonération`);
+  // Et un métier ordinaire ne traîne pas la proposition du précédent.
+  await win.click('[data-act="batiment"]');
+  await win.waitForSelector('[data-act="batiment"].sel');
+  const apres = await win.$eval('#sf-regime', e => e.value);
+  if (apres === 'exonere') throw new Error('la proposition de la santé est restée collée à un autre métier');
+  j.ok('proposée pour la santé, retirée pour le bâtiment');
+
   // -------------------------------------------------- 2. le régime se demande et s'enregistre
   j.etape('Le régime fiscal se demande dans l\'assistant et survit au changement de métier');
-  if (!await win.$('#sf-regime')) throw new Error('l\'assistant ne demande pas le régime fiscal');
   await win.selectOption('#sf-regime', 'forfaitaire');
   const aideAvant = await win.$eval('#sf-regime-aide', e => e.textContent.trim());
   if (!/ne factures pas de TVA/i.test(aideAvant)) throw new Error(`l'explication ne suit pas le régime : « ${aideAvant} »`);

@@ -19,9 +19,13 @@
 // ---------- ce que chaque canal a le droit de demander ----------
 // Sans cette table, l'app du comptable pourrait réclamer le fichier de mise à jour de l'app
 // entreprise, et proposer à ses utilisateurs d'installer le mauvais logiciel.
+// `beta*.yml` appartient à l'app entreprise et à elle seule : c'est le canal des versions d'essai
+// (7.25.0). Sans cette ligne, une installation qui a coché « recevoir les bêtas » réclamerait
+// `beta-mac.yml`, le relais répondrait 404, et l'écran afficherait « aucune version trouvée » —
+// un canal muet, sans rien qui dise pourquoi.
 export const CANAUX = {
   app: {
-    yml: ['latest.yml', 'latest-mac.yml', 'latest-linux.yml'],
+    yml: ['latest.yml', 'latest-mac.yml', 'latest-linux.yml', 'beta.yml', 'beta-mac.yml', 'beta-linux.yml'],
     prefixe: 'SkanFact-',
     interdit: 'SkanFact-Cabinet-'
   },
@@ -136,9 +140,11 @@ async function github(url, env, accept) {
 
 async function trouveFichier(fichier, env) {
   const base = `https://api.github.com/repos/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/releases`;
-  // On regarde la dernière release, puis les quelques précédentes : une mise à jour peut demander
-  // un fichier d'une version un peu plus ancienne (delta, blockmap).
-  const r = await github(`${base}?per_page=5`, env);
+  // On regarde la dernière release, puis les précédentes : une mise à jour peut demander un fichier
+  // d'une version un peu plus ancienne (delta, blockmap). Vingt, et pas cinq : depuis le canal bêta
+  // (7.25.0), plusieurs préversions peuvent s'intercaler entre deux stables, et une installation
+  // restée sur le canal normal ne trouverait plus `latest.yml` dans la fenêtre.
+  const r = await github(`${base}?per_page=20`, env);
   if (!r.ok) return { erreur: `GitHub a répondu ${r.status}` };
   const releases = await r.json();
   for (const rel of releases) {

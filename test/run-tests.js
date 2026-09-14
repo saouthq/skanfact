@@ -4731,6 +4731,20 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       assert.strictEqual(W.fichierAutorise('app', f), false, 'fichier servi à tort : ' + f));
   });
 
+  // Le canal bêta (7.25.0). Sans ces trois fichiers dans la table, une installation qui a coché
+  // « recevoir les bêtas » demande `beta-mac.yml`, prend un 404, et l'écran répond « aucune version
+  // trouvée » : un canal parfaitement muet, sans rien qui dise pourquoi.
+  t('relais : le canal bêta appartient à l\'app entreprise, et à elle seule', () => {
+    ['beta.yml', 'beta-mac.yml', 'beta-linux.yml'].forEach(f => {
+      assert.strictEqual(W.fichierAutorise('app', f), true, 'bêta refusée à l\'app : ' + f);
+      // Une bêta d'entreprise servie au comptable lui proposerait d'installer l'autre logiciel.
+      assert.strictEqual(W.fichierAutorise('cabinet', f), false, 'bêta de l\'app servie au cabinet : ' + f);
+    });
+    assert.strictEqual(W.fichierAutorise('app', 'SkanFact-7.26.0-beta.1-mac-universal.zip'), true);
+    assert.strictEqual(W.fichierAutorise('app', 'SkanFact-7.26.0-beta.1-win-x64.exe'), true);
+    assert.strictEqual(W.fichierAutorise('cabinet', 'SkanFact-7.26.0-beta.1-mac-universal.zip'), false);
+  });
+
   t('relais : le secret se compare à temps constant', () => {
     assert.strictEqual(W.memeSecret('abcdef', 'abcdef'), true);
     assert.strictEqual(W.memeSecret('abcdef', 'abcdeg'), false);
@@ -4821,12 +4835,101 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       // défaut déjà corrigé. Piège d'electron-updater : affecter `channel` remet allowDowngrade à
       // true — c'est ce qui a fait proposer la 6.7.1 à une application en 6.7.2.
       assert.ok(/allowDowngrade = false/.test(src), nom + ' : le retour en arrière n\'est pas interdit');
-      const chan = src.indexOf('autoUpdater.channel =');
+      // La règle vaut pour TOUTE affectation de canal, quel que soit le nom de la variable qui
+      // porte l'objet : `autoUpdater.channel` dans l'app cabinet, `u.channel` dans l'app entreprise
+      // depuis que le canal bêta se pose dans `appliquerCanal(u)`. Chercher la seule forme
+      // `autoUpdater.channel` laissait passer la seconde sans un mot.
+      // On juge du CODE, pas des commentaires : le commentaire qui EXPLIQUE ce piège nomme les deux
+      // lignes côte à côte, et satisfaisait le test à lui tout seul — même faute qu'en 6.8.0, sur
+      // le garde-fou « l'app cabinet ne doit rien pouvoir écrire chez un client ».
+      const net = src.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+      assert.ok(net.includes('updaterError') && net.includes('relayBase') && net.length > src.length * 0.5,
+        nom + ' : le nettoyage des commentaires a mangé le code');
+      const chan = Math.max(net.indexOf('autoUpdater.channel ='), net.indexOf('u.channel ='));
       if (chan >= 0) {
-        assert.ok(src.indexOf('allowDowngrade = false') > chan,
-          nom + ' : allowDowngrade doit être remis APRÈS le canal, qui le rallume');
+        // Et la remise doit SUIVRE le canal de près, dans le même bloc. Chercher `allowDowngrade`
+        // n'importe où plus loin dans le fichier laisserait passer le défaut : il y a toujours un
+        // `allowDowngrade = false` posé bien avant, à l'initialisation du module.
+        assert.ok(/allowDowngrade/.test(net.slice(chan, chan + 300)),
+          nom + ' : allowDowngrade doit être reposé JUSTE APRÈS le canal, qui le rallume en effet de bord');
       }
     });
+  });
+
+  // ------------------------------------------------------------------
+  // Le canal bêta (7.25.0) : garder la version stable intacte pendant qu'on travaille sur la
+  // suivante. Tout tient à UNE source de vérité — le numéro de version — et à un réglage qui
+  // n'existe que si quelqu'un l'a demandé.
+  t('canal bêta : le numéro de version décide, et rien d\'autre', () => {
+    // Une stable est une stable.
+    ['7.25.0', '1.0.0', '10.2.33'].forEach(v => {
+      assert.strictEqual(core.canalDe(v), 'latest', v + ' pris pour une préversion');
+      assert.strictEqual(core.estBeta(v), false, v + ' pris pour une bêta');
+    });
+    // Une préversion porte le nom de son canal, et c'est ce nom qu'electron-builder met dans le
+    // fichier (`beta.yml`). Le lire autrement désaccorderait les deux moitiés du système.
+    assert.strictEqual(core.canalDe('7.26.0-beta.1'), 'beta');
+    assert.strictEqual(core.canalDe('7.26.0-BETA.2'), 'beta', 'la casse ne doit pas faire un autre canal');
+    assert.strictEqual(core.canalDe('8.0.0-alpha.1'), 'alpha');
+    assert.strictEqual(core.estBeta('7.26.0-beta.1'), true);
+    // `npm version preminor` sans --preid donne `7.26.0-0` : un canal « 0 » n'existe pas, et
+    // l'application irait chercher `0-mac.yml`. On refuse de l'appeler autrement que « latest ».
+    assert.strictEqual(core.canalDe('7.26.0-0'), 'latest');
+    ['', null, undefined, 'dev', 'n\'importe quoi'].forEach(v => assert.strictEqual(core.canalDe(v), 'latest'));
+  });
+
+  t('canal bêta : décoché par défaut, et le canal se pose sur les deux chemins', () => {
+    const src = lireSource('src', 'main.js');
+    // 1. Le réglage n'existe que si quelqu'un l'a posé : `readUpdateCfg().beta` est absent d'une
+    // installation neuve, donc faux. Une mise à jour ne met personne sur le canal d'essai.
+    assert.ok(/const beta = !!readUpdateCfg\(\)\.beta;/.test(src), 'le canal ne se lit pas dans les réglages');
+    assert.ok(/if \(on\) cfg\.beta = true; else delete cfg\.beta;/.test(src), 'décocher ne retire pas le réglage');
+    // 2. Sans `allowPrerelease`, le module interroge /releases/latest, qui IGNORE les préversions
+    // par construction : la bêta serait publiée et jamais proposée à personne.
+    assert.ok(/u\.allowPrerelease = beta;/.test(src), 'les préversions restent invisibles');
+    // 3. Le canal se pose sur les DEUX chemins de `configureFeed` : celui sans relais (retour
+    // anticipé) et celui avec. Un seul des deux, et la moitié des installations reste sur latest.
+    const cf = src.slice(src.indexOf('function configureFeed('), src.indexOf('function notesToText('));
+    assert.ok(cf.length > 200 && cf.includes('relayBase()'), 'découpage de configureFeed raté');
+    assert.strictEqual((cf.match(/appliquerCanal\(u\)/g) || []).length, 2,
+      'le canal doit être posé sur les deux chemins de configureFeed (avec et sans relais)');
+    // 4. Changer de canal reconfigure tout de suite : sinon « Vérifier les mises à jour » juste
+    // après aurait répondu sur l'ancien canal, c'est-à-dire le contraire de ce qu'on demande.
+    const sb = src.slice(src.indexOf("ipcMain.handle('update:setBeta'"));
+    assert.ok(/if \(updater\) configureFeed\(updater\)/.test(sb.slice(0, 900)), 'le changement de canal attend le prochain démarrage');
+    assert.ok(/updateInfo = null/.test(sb.slice(0, 900)), 'la version repérée sur l\'autre canal reste en mémoire');
+  });
+
+  t('canal bêta : l\'écran prévient, prend un filet, et se reconnaît', () => {
+    const app = lireApp();
+    // La case ne bascule pas en silence : une bêta s'installe par-dessus l'application qui tient
+    // la vraie comptabilité. On prévient, on sauvegarde, on n'interdit pas.
+    const sb = app.slice(app.indexOf('async function setBeta('), app.indexOf('async function runCheck('));
+    assert.ok(sb.length > 300, 'découpage de setBeta raté');
+    assert.ok(/await confirmDialog\(/.test(sb), 'la case bascule sans rien dire');
+    assert.ok(/createBackup\('avant-beta'\)/.test(sb), 'aucun filet avant d\'armer le canal');
+    assert.ok(sb.indexOf('createBackup') < sb.indexOf('updateSetBeta'),
+      'la sauvegarde doit être prise AVANT d\'armer le canal, pas après');
+    assert.ok(/if \(!ok\) \{ if \(box\) box\.checked = false; return; \}/.test(sb),
+      'refuser la question doit décocher la case, sinon elle ment');
+    // Et une version d'essai se reconnaît en permanence, sans ouvrir les Paramètres : c'est la
+    // seule protection contre « je croyais être sur la stable ».
+    assert.ok(/C\.estBeta\(v\.version\)/.test(app), 'le repère « bêta » ne suit pas la version installée');
+    const html = lireSource('src', 'renderer', 'index.html');
+    assert.ok(/id="beta-tag"[^>]*hidden/.test(html), 'le repère doit être caché tant qu\'on est sur une stable');
+  });
+
+  t('canal bêta : la publication est décidée par le numéro, pas par une case', () => {
+    const wf = lireSource('.github', 'workflows', 'release.yml');
+    // Une préversion se marque « Pre-release » : c'est ce qui laisse /releases/latest pointer sur
+    // la dernière STABLE. Sans ça, publier un essai écraserait la version officielle du dépôt.
+    assert.ok(/steps\.canal\.outputs\.prerelease == 'true' && 'prerelease' \|\| 'release'/.test(wf),
+      'le type de release ne suit pas le numéro de version');
+    // Et l'app du comptable ne bouge pas : elle n'a aucune case à décocher, personne ne lui a rien
+    // demandé, et sa mise à jour passe par le même fichier `cabinet.yml`.
+    const cab = wf.slice(wf.indexOf('Build & publish SkanFact Cabinet'));
+    assert.ok(/if: steps\.canal\.outputs\.prerelease != 'true'/.test(cab.slice(0, 400)),
+      'une bêta d\'entreprise publierait aussi une bêta du cabinet');
   });
 
   // ------------------------------------------------------------------
@@ -7021,6 +7124,33 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     const avecTva = { ...doc, lines: [{ label: 'X', qty: 1, unitPrice: 100, vatRate: 19, unit: 'u' }] };
     const apres = core.documentHtml(avecTva, cl, { ...base, taxRegime: 'forfaitaire' }, {});
     assert.ok(entetes(apres).some(x => /TVA/.test(x)), 'une facture qui porte de la TVA garde sa colonne pour toujours');
+  });
+
+  // La 7.22.0 a remplacé le taux de TVA porté par le métier (`ACTIVITIES[].vat`) par un régime
+  // fiscal choisi à l'écran suivant — et a perdu au passage ce que le métier savait : « Santé et
+  // paramédical » valait 0 %. L'application proposait donc 19 % de TVA à un kinésithérapeute qui
+  // venait de déclarer son métier à l'écran précédent. Retirer un mécanisme n'autorise pas à
+  // perdre ce qu'il savait.
+  t('le métier propose son régime fiscal, sans l\'imposer', () => {
+    assert.strictEqual(core.regimeSuggere('sante'), 'exonere', 'la santé doit proposer l\'exonération');
+    // Une proposition ne s'invente pas : les métiers ordinaires n'en portent aucune, et retombent
+    // sur « réel », le cas le plus courant.
+    ['informatique', 'batiment', 'conseil', 'commerce', ''].forEach(id =>
+      assert.strictEqual(core.regimeSuggere(id), '', 'régime proposé à tort pour ' + id));
+    assert.strictEqual(core.regimeSuggere('métier qui n\'existe pas'), '');
+    // Ce que ça change là où ça compte : le taux d'une ligne neuve.
+    assert.strictEqual(core.defaultVat({ activity: 'sante', taxRegime: core.regimeSuggere('sante') }), 0);
+    // Et une proposition n'est pas une règle : un choix explicite gagne toujours.
+    assert.strictEqual(core.defaultVat({ activity: 'sante', taxRegime: 'reel' }), 19);
+
+    // L'assistant l'applique — et cesse de l'appliquer dès qu'on a touché à la liste.
+    const app = lireApp();
+    const z = app.slice(app.indexOf("$$('[data-act]', root)"), app.indexOf("if ($('#sf-cat', root))"));
+    assert.ok(z.length > 200 && z.includes('a.activity = b.dataset.act'), 'découpage de l\'écran « métier » raté');
+    assert.ok(/if \(!a\.regimeTouche\) a\.taxRegime = C\.regimeSuggere\(a\.activity\);/.test(z),
+      'choisir un métier ne propose pas son régime');
+    assert.ok(/a\.regimeTouche = true/.test(z),
+      'un régime choisi à la main doit être retenu, sinon le métier suivant l\'écrase');
   });
 
   t('une profession libérale facture une note d\'honoraires', () => {
