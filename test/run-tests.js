@@ -8914,5 +8914,211 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     sautsTiennent('Installer SkanFact (Windows).bat', bat, 5);
   });
 
+  // ---------- le plan de contrôle (plateforme/skanfact-api.mjs) ----------
+  // Même méthode que le relais : les décisions sont pures, elles se testent sans réseau et sans
+  // base. Ce sont elles qui décident si la facturation de quelqu'un continue de fonctionner.
+  {
+    const P = await import('../plateforme/skanfact-api.mjs');
+
+    t('plateforme : elle ne sert que les chemins qu\'elle connaît', () => {
+      assert.deepStrictEqual(P.routeApi('/v1/licence/etat'), { v: 1, espace: 'licence', action: 'etat', id: null, sous: null });
+      assert.deepStrictEqual(P.routeApi('/v1/admin/licences'), { v: 1, espace: 'admin', action: 'licences', id: null, sous: null });
+      assert.deepStrictEqual(P.routeApi('/v1/admin/licences/lic_42/revoquer'),
+        { v: 1, espace: 'admin', action: 'licences', id: 'lic_42', sous: 'revoquer' });
+      // Tout ce qui sort du cadre est refusé avant même de regarder qui demande.
+      ['', '/', '/v1', '/v1/licence', '/licence/etat', '/v1/licence/autre', '/v1/inconnu/etat',
+       '/v1/licence/etat/x/y/z', '/v1/admin/licences/../../etc', '/v1/admin/licences/lic_42/effacer',
+       '/v1/admin/licences/' + 'a'.repeat(100) + '/revoquer'].forEach(p2 =>
+        assert.strictEqual(P.routeApi(p2), null, 'chemin accepté à tort : ' + p2));
+    });
+
+    // LA règle de compatibilité du chantier. Toutes les licences vendues depuis la 8.0.0 ont été
+    // signées par la clé maître et ne portent AUCUN `kid` : sans la première assertion, la mise en
+    // service les couperait toutes le même matin.
+    t('plateforme : une clé sans kid reste vérifiée par la clé maître', () => {
+      const cles = [{ kid: 'master', publicKey: 'PEM-M' }, { kid: 'srv-1', publicKey: 'PEM-S' }];
+      // `(… || {}).kid` et non `….kid` : sans ça, le défaut réintroduit fait tomber le test sur un
+      // TypeError au lieu de son propre message, et l'échec ne nomme plus la règle qu'il protège.
+      const kid = (x, l) => (P.choisirCle(x, l || cles) || {}).kid || null;
+      assert.strictEqual(kid(undefined), 'master', 'une licence d\'avant la 8.4.0 doit rester vérifiée par la maître');
+      assert.strictEqual(kid(''), 'master', 'une clé sans kid doit retomber sur la maître');
+      assert.strictEqual(kid(null), 'master', 'une clé sans kid doit retomber sur la maître');
+      assert.strictEqual(kid('srv-1'), 'srv-1');
+      // Un kid inconnu ne retombe JAMAIS sur la maître : ce serait accepter n'importe quoi.
+      assert.strictEqual(P.choisirCle('srv-9', cles), null);
+      // Et une clé retirée ne vérifie plus rien — c'est ainsi qu'on sort une clé compromise du jeu.
+      const apres = [{ kid: 'master', publicKey: 'PEM-M' }, { kid: 'srv-1', publicKey: 'PEM-S', retiree: true }];
+      assert.strictEqual(P.choisirCle('srv-1', apres), null, 'une clé retirée doit cesser de valoir');
+      assert.strictEqual(kid('', apres), 'master', 'retirer srv-1 ne touche pas la maître');
+      // Aucune clé publique configurée : on ne peut pas juger, on ne devine pas.
+      assert.strictEqual(P.choisirCle('', []), null);
+      assert.strictEqual(P.choisirCle('', null), null);
+    });
+
+    await ta('plateforme : la signature décide, et elle décide seule', async () => {
+      const maitre = lic.generateKeys();
+      const serveur = lic.generateKeys();
+      const cles = [{ kid: 'master', publicKey: maitre.publicKey }, { kid: 'srv-1', publicKey: serveur.publicKey }];
+
+      // Une clé d'aujourd'hui : signée par la maître, sans `kid`.
+      const ancienne = lic.signLicence({ nom: 'Menuiserie Trabelsi', matricule: '1234567A', exp: '2027-01-01' }, maitre.privateKey);
+      const vA = await P.verifierLicence(ancienne, cles);
+      assert.strictEqual(vA.ok, true, 'une clé émise avant la plateforme doit rester vérifiable');
+      assert.strictEqual(vA.kid, 'master');
+
+      // Une clé de demain : signée par le serveur, avec son `kid`.
+      const neuve = lic.signLicence({ nom: 'X', kid: 'srv-1', exp: '2027-01-01' }, serveur.privateKey);
+      const vN = await P.verifierLicence(neuve, cles);
+      assert.strictEqual(vN.ok, true);
+      assert.strictEqual(vN.kid, 'srv-1');
+
+      // Signée par le serveur mais présentée SANS kid : on la vérifie avec la maître, donc elle
+      // tombe. Une clé ment sur qui l'a signée, elle ne passe pas.
+      const menteuse = lic.signLicence({ nom: 'X', exp: '2027-01-01' }, serveur.privateKey);
+      assert.strictEqual((await P.verifierLicence(menteuse, cles)).ok, false);
+
+      // Signée par n'importe quelle autre clé privée : refusée.
+      const etrangere = lic.signLicence({ nom: 'X', kid: 'srv-1' }, lic.generateKeys().privateKey);
+      assert.strictEqual((await P.verifierLicence(etrangere, cles)).ok, false, 'une clé signée ailleurs ne doit jamais passer');
+
+      // Un corps modifié après signature : refusé (c'est tout l'intérêt de la signature).
+      const bricolee = ancienne.slice(0, 20) + 'A' + ancienne.slice(21);
+      assert.strictEqual((await P.verifierLicence(bricolee, cles)).ok, false);
+
+      ['', 'n\'importe quoi', 'SKAN1.', 'SKAN1.aa', 'SKAN1.aa.bb.cc'].forEach(async x =>
+        assert.strictEqual((await P.verifierLicence(x, cles)).ok, false, 'clé acceptée à tort : ' + x));
+    });
+
+    // Le cœur du système, et la règle qu'on ne doit jamais inverser : la base ne peut qu'AJOUTER
+    // une révocation. Une licence valide qu'elle ne connaît pas est active.
+    t('plateforme : ce que la base ignore reste actif', () => {
+      const bonne = { offre: 'entreprise', exp: '2027-01-01' };
+      const avie = { offre: 'entreprise' };
+
+      // Le cas qui compte le plus : signature bonne, aucune ligne en base. C'est l'état de TOUTES
+      // les licences émises depuis la 8.0.0 le jour de la mise en service.
+      assert.strictEqual(P.etatLicence({ contenu: bonne, ligne: null, aujourdhui: '2026-09-15' }), 'active');
+      assert.strictEqual(P.etatLicence({ contenu: avie, ligne: null, aujourdhui: '2099-01-01' }), 'active', 'une licence à vie n\'expire pas');
+
+      // Une révocation, elle, s'applique.
+      assert.strictEqual(P.etatLicence({ contenu: bonne, ligne: { revoquee_le: '2026-09-01' }, aujourdhui: '2026-09-15' }), 'revoquee');
+      // Révoquée ET expirée se dit « révoquée » : c'est la raison qui compte pour l'utilisateur.
+      assert.strictEqual(P.etatLicence({ contenu: { exp: '2020-01-01' }, ligne: { revoquee_le: '2026-09-01' }, aujourdhui: '2026-09-15' }), 'revoquee');
+      // Une ligne connue mais NON révoquée ne change rien.
+      assert.strictEqual(P.etatLicence({ contenu: bonne, ligne: { id: 'lic_1', revoquee_le: null }, aujourdhui: '2026-09-15' }), 'active');
+
+      assert.strictEqual(P.etatLicence({ contenu: { exp: '2026-09-14' }, ligne: null, aujourdhui: '2026-09-15' }), 'expiree');
+      assert.strictEqual(P.etatLicence({ contenu: { exp: '2026-09-15' }, ligne: null, aujourdhui: '2026-09-15' }), 'active', 'le dernier jour est encore à toi');
+
+      // Signature fausse : on ne sait pas de quoi on parle.
+      assert.strictEqual(P.etatLicence({ contenu: null, ligne: null, aujourdhui: '2026-09-15' }), 'inconnue');
+      // Sans date de référence, on ne déclare JAMAIS une licence expirée : une horloge absente ne
+      // doit pas verrouiller quelqu'un.
+      assert.strictEqual(P.etatLicence({ contenu: { exp: '2020-01-01' }, ligne: null }), 'active');
+    });
+
+    // Ce qui arrive de l'extérieur est validé avant de toucher au disque (6.8.1) — mais aucun champ
+    // cosmétique ne peut faire échouer l'appel : un nom d'ordinateur bizarre ne doit pas empêcher
+    // quelqu'un d'apprendre que sa licence est active.
+    t('plateforme : un champ douteux est mis de côté, jamais refusé', () => {
+      const bon = P.nettoyerActivation({
+        deviceId: 'a1b2c3d4-e5f6-4789-ab12-34567890abcd',
+        deviceNom: 'Le Mac de Skander', plateforme: 'darwin', version: '8.4.0'
+      });
+      assert.deepStrictEqual(bon, {
+        deviceId: 'a1b2c3d4-e5f6-4789-ab12-34567890abcd',
+        deviceNom: 'Le Mac de Skander', plateforme: 'darwin', version: '8.4.0'
+      });
+      assert.strictEqual(P.nettoyerActivation({ version: '8.4.0-beta.1' }).version, '8.4.0-beta.1');
+
+      // Tout le reste est neutralisé, et l'appel reste servable.
+      const sale = P.nettoyerActivation({
+        deviceId: '../../etc/passwd', deviceNom: 'x'.repeat(500) + ' \n',
+        plateforme: 'haiku', version: 'DROP TABLE licences'
+      });
+      assert.strictEqual(sale.deviceId, null, 'un identifiant de poste douteux ne va pas en base');
+      assert.strictEqual(sale.plateforme, null);
+      assert.strictEqual(sale.version, null);
+      assert.strictEqual(sale.deviceNom.length, 80, 'un nom trop long est coupé, pas rejeté');
+      assert.ok(!/[ \n]/.test(sale.deviceNom), 'ni caractère de contrôle');
+
+      // Un corps vide, absent ou aberrant ne plante pas.
+      [null, undefined, 'texte', 42, []].forEach(x => {
+        const r2 = P.nettoyerActivation(x);
+        assert.strictEqual(r2.deviceId, null, 'corps aberrant accepté : ' + JSON.stringify(x));
+      });
+    });
+
+    await ta('plateforme : la réponse est signée, datée, et liée à SA licence', async () => {
+      const rep = lic.generateKeys();
+      const empreinte = await P.empreinteCle('SKAN1.aaa.bbb');
+      assert.strictEqual(empreinte.length, 32, 'une empreinte de longueur fixe');
+      assert.strictEqual(await P.empreinteCle('SKAN1.aaa.bbb'), empreinte, 'la même clé donne la même empreinte');
+      assert.notStrictEqual(await P.empreinteCle('SKAN1.aaa.ccc'), empreinte);
+
+      const corps = P.corpsReponse({
+        sujet: empreinte, etat: 'revoquee', motif: 'rétractation',
+        contenu: { offre: 'entreprise', exp: '2027-01-01', postes: 3 }, emisLe: '2026-09-15T10:00:00.000Z'
+      });
+      // Sans `sujet`, la réponse « révoquée » du client A se rejouerait chez le client B ; sans
+      // `emisLe`, une vieille réponse « active » annulerait une révocation.
+      assert.strictEqual(corps.sujet, empreinte);
+      assert.strictEqual(corps.emisLe, '2026-09-15T10:00:00.000Z');
+      assert.strictEqual(corps.etat, 'revoquee');
+      assert.strictEqual(corps.motif, 'rétractation');
+      assert.strictEqual(corps.offre, 'entreprise');
+      assert.strictEqual(corps.postes, 3);
+
+      const signe = await P.signerReponse(corps, rep.privateKey);
+      const verifie = async (c, sig) => {
+        const der = Buffer.from(String(rep.publicKey).replace(/-----[^-]+-----/g, '').replace(/\s+/g, ''), 'base64');
+        const k = await globalThis.crypto.subtle.importKey('spki', der, { name: 'Ed25519' }, false, ['verify']);
+        return globalThis.crypto.subtle.verify({ name: 'Ed25519' }, k,
+          Buffer.from(String(sig).replace(/-/g, '+').replace(/_/g, '/'), 'base64'),
+          new TextEncoder().encode(JSON.stringify(c)));
+      };
+      assert.strictEqual(await verifie(signe.corps, signe.signature), true, 'la réponse doit se vérifier avec la clé publique');
+      // Un seul champ changé et la signature ne tient plus : c'est ce qui empêche quelqu'un placé
+      // entre les deux de répondre « révoquée » à la place du serveur.
+      assert.strictEqual(await verifie({ ...signe.corps, etat: 'active' }, signe.signature), false);
+      assert.strictEqual(await verifie({ ...signe.corps, sujet: 'autre' }, signe.signature), false);
+    });
+
+    // Mal réglée, la plateforme le DIT au lieu de refuser. Refuser couperait chaque client qui a
+    // payé — c'est exactement ce qui est arrivé au relais en 8.0.0, la leçon est déjà écrite.
+    t('plateforme : mal réglée, elle le dit — elle ne refuse pas', () => {
+      assert.deepStrictEqual(P.lireCles({}), []);
+      assert.deepStrictEqual(P.lireCles({ LICENCE_PUBLIC_KEYS: '   ' }), []);
+      assert.deepStrictEqual(P.lireCles({ LICENCE_PUBLIC_KEYS: 'pas du json' }), [], 'un réglage illisible ne doit pas planter');
+      // Les deux formes acceptées : un tableau, ou l'objet { cles: [...] } du fichier embarqué.
+      const j = '[{"kid":"master","publicKey":"PEM"},{"kid":"srv-1","publicKey":"PEM2"}]';
+      assert.strictEqual(P.lireCles({ LICENCE_PUBLIC_KEYS: j }).length, 2);
+      assert.strictEqual(P.lireCles({ LICENCE_PUBLIC_KEYS: '{"cles":' + j + '}' }).length, 2);
+      // Une entrée incomplète est écartée plutôt que de faire tomber les autres.
+      assert.strictEqual(P.lireCles({ LICENCE_PUBLIC_KEYS: '[{"kid":"master"},{"kid":"srv-1","publicKey":"PEM2"}]' }).length, 1);
+      // Le secret se compare à temps constant, comme au relais.
+      assert.strictEqual(P.memeSecret('abcdef', 'abcdef'), true);
+      assert.strictEqual(P.memeSecret('abcdef', 'abcdeg'), false);
+      assert.strictEqual(P.memeSecret('', ''), false, 'un secret vide n\'ouvre rien');
+    });
+
+    // Le schéma est la seule chose qu'on ne peut pas corriger après coup sans migration : deux
+    // règles y sont vérifiées à la lecture.
+    t('plateforme : le schéma ne porte pas de statut écrit à la main', () => {
+      const sql = fs.readFileSync(path.join(__dirname, '..', 'plateforme', 'schema.sql'), 'utf8');
+      const code = sql.replace(/--[^\n]*/g, '');
+      // Un statut de licence se DÉDUIT (active / expirée / révoquée / remplacée), comme celui d'une
+      // facture depuis la 1.4.0. Une colonne écrite à la main finirait par mentir.
+      assert.ok(!/\bstatut\b/i.test(code), 'aucune colonne « statut » : il se déduit');
+      // Le client est une entité, la licence en est une autre : sans ce lien, rien ne relie deux
+      // achats de la même personne.
+      assert.ok(/client_id\s+TEXT\s+NOT NULL\s+REFERENCES clients\(id\)/.test(code), 'les licences doivent pendre à un client');
+      // On ne range jamais un jeton, seulement son empreinte : une base lue par un tiers ne doit
+      // donner accès à rien.
+      const jetons = code.slice(code.indexOf('CREATE TABLE IF NOT EXISTS jetons'));
+      assert.ok(/empreinte/.test(jetons) && !/\bjeton\s+TEXT/.test(jetons), 'le jeton lui-même ne doit pas être stocké');
+    });
+  }
+
   console.log(`\n${n} tests OK`);
 })().catch(e => { console.error(e); process.exit(1); });

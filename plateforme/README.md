@@ -1,0 +1,148 @@
+# Le plan de contrôle — mode d'emploi
+
+Tout se fait depuis le site de Cloudflare, **sans terminal**. Même principe que `worker/README.md`,
+qui porte déjà le relais de mise à jour : c'est le même compte, tu n'as rien de nouveau à créer.
+
+> **Rien de ce qui suit n'est urgent.** Tant que ce worker n'est pas déployé, les applications
+> fonctionnent exactement comme aujourd'hui. Elles ne lui parlent qu'à partir de la 8.4.0, et même
+> alors, son absence ne bloque rien (voir « Ce qui se passe si tu ne fais rien » plus bas).
+
+---
+
+## Ce que ce worker fait
+
+Une application cliente lui présente sa clé de licence et son ordinateur. Il enregistre
+l'activation et répond ce qu'il sait de cette licence : **active**, **révoquée** ou **expirée**.
+
+Il ne voit passer aucune donnée d'entreprise — pas un client, pas une facture, pas un montant.
+Seulement la clé (qui porte le nom et le matricule de l'acheteur, c'est le contrat de vente),
+l'identifiant de l'ordinateur, son nom, la plateforme et le numéro de version.
+
+---
+
+## 1. Créer la base
+
+Dans le tableau de bord Cloudflare : **Storage & Databases → D1 → Create database**.
+
+- Nom : `skanfact`
+
+Une fois créée, onglet **Console**, colle le contenu de `plateforme/schema.sql` et exécute.
+C'est gratuit jusqu'à 5 Go et 5 millions de lectures par jour — très loin devant ce dont tu as
+besoin.
+
+## 2. Créer le worker
+
+**Workers & Pages → Create → Worker**.
+
+- Nom : `skanfact-api`
+
+Colle le contenu de `plateforme/skanfact-api.mjs`, puis **Deploy**.
+
+Tu obtiens une adresse en `https://skanfact-api.<ton-compte>.workers.dev`. **Elle suffit** — le
+domaine `skanfact.tn` viendra se poser dessus plus tard, sans rien changer d'autre.
+
+## 3. Brancher la base sur le worker
+
+Dans le worker : **Settings → Bindings → Add → D1 database**.
+
+| Variable | Base |
+|---|---|
+| `DB` | `skanfact` |
+
+Le nom `DB` compte : c'est celui que le code attend.
+
+## 4. Poser les réglages
+
+Toujours dans **Settings → Variables and Secrets**. Les trois se posent en **Secret**, pas en
+variable de texte : un secret ne se relit plus une fois écrit, même par toi.
+
+| Nom | Ce que c'est |
+|---|---|
+| `APP_SECRET` | **le même** que celui du relais de mise à jour. C'est ce que l'application présente pour prouver qu'elle est bien SkanFact. |
+| `LICENCE_PUBLIC_KEYS` | les clés publiques qui vérifient les licences (voir plus bas) |
+| `REPONSE_PRIVATE_KEY` | la clé privée qui **signe les réponses** du serveur |
+
+### `LICENCE_PUBLIC_KEYS`
+
+Un tableau JSON. Au début, une seule entrée — ta clé maître, celle de la 8.0.0 :
+
+```json
+[{"kid":"master","publicKey":"-----BEGIN PUBLIC KEY-----\nMCowBQYDK2Vw...\n-----END PUBLIC KEY-----\n"}]
+```
+
+C'est exactement le contenu de `build/licence-public.json` du dépôt, mis dans ce format.
+
+> ⚠️ **`\n` et pas de vrais retours à la ligne.** Un JSON sur plusieurs lignes est refusé, et le
+> worker répondra « mal réglé » (503) au lieu de tomber en panne — mais il ne vérifiera rien.
+
+### `REPONSE_PRIVATE_KEY`
+
+Une clé Ed25519 **différente de celle des licences**. Elle ne signe que les réponses du serveur, et
+sa compromission ne permettrait jamais de fabriquer une licence.
+
+Tant qu'elle n'est pas posée, le worker répond quand même — **sans signature**. L'application
+ignore alors toute réponse qui RESTREINT (c'est sa garantie) et continue de fonctionner
+normalement. Rien ne casse : simplement, une révocation ne s'applique pas encore.
+
+## 5. Vérifier que ça répond
+
+Onglet **Logs** du worker, puis dans un navigateur (ou avec le testeur HTTP de Cloudflare) :
+
+```
+POST https://skanfact-api.<ton-compte>.workers.dev/v1/licence/etat
+En-tête : X-SkanFact-App: <ton APP_SECRET>
+Corps   : {"cle":"SKAN1.…une vraie clé…","deviceId":"essai-0001-0002-0003"}
+```
+
+Ce que tu dois voir :
+
+| Réponse | Ce que ça veut dire |
+|---|---|
+| `{"etat":"active",…}` | ✅ tout marche |
+| `403 Accès refusé` | le `APP_SECRET` ne correspond pas (attention aux espaces en fin de copier-coller — c'était la panne de la 6.7.2) |
+| `503 Plateforme mal réglée` | `LICENCE_PUBLIC_KEYS` est absent ou illisible |
+| `{"etat":"inconnue"}` | la clé ne se vérifie avec aucune clé publique configurée |
+
+Et dans la table `activations` de la base, une ligne doit être apparue.
+
+---
+
+## Ce qui se passe si tu ne fais rien
+
+Rien ne casse, jamais. C'est écrit dans le code et tenu par des tests :
+
+- **Worker pas déployé** → l'application n'a personne à qui parler, elle fonctionne.
+- **Base pas branchée** → le worker répond « active » à toute licence bien signée.
+- **Réglages absents** → il le DIT (503) au lieu de refuser (403). Refuser couperait chaque client
+  qui a payé, et c'est précisément ce qui est arrivé au relais en 8.0.0.
+- **Tu arrêtes de payer Cloudflare, ou tu disparais** → les applications installées continuent de
+  fonctionner, indéfiniment. La clé signée se suffit à elle-même.
+
+---
+
+## Les deux choses à ne jamais faire
+
+1. **Ne jamais mettre la clé privée des LICENCES sur ce serveur.** Elle vit hors ligne, sur ta clé
+   USB. C'est `REPONSE_PRIVATE_KEY` qui va ici, et elle ne sait rien faire d'autre que signer des
+   réponses. Voir `PLAN-PLATEFORME.md` § 4.
+2. **Ne jamais retirer `master` de `LICENCE_PUBLIC_KEYS`.** Toutes les licences vendues depuis la
+   8.0.0 ont été signées par elle et ne portent aucun `kid` : la retirer les invaliderait toutes,
+   d'un coup, le même matin.
+
+---
+
+## Les tests
+
+Les décisions du worker sont pures et testées par `npm test`, sans réseau et sans base — même
+méthode que le relais. Les six règles qu'elles tiennent :
+
+| Ce qui est prouvé | Pourquoi ça compte |
+|---|---|
+| une clé sans `kid` reste vérifiée par la maître | sinon la mise en service coupe toutes les licences déjà vendues |
+| une clé retirée cesse de valoir | c'est ainsi qu'on sort une clé compromise du jeu |
+| ce que la base ignore reste **actif** | la signature est la source de vérité, la base ne fait qu'ajouter une révocation |
+| un champ douteux est mis de côté, jamais refusé | un nom d'ordinateur bizarre ne doit pas empêcher quelqu'un d'apprendre que sa licence est active |
+| la réponse est signée, datée et liée à SA licence | sinon on répond « révoquée » à la place du serveur, ou on rejoue une vieille réponse |
+| le schéma ne porte aucun statut écrit à la main | un statut se déduit ; écrit à la main, il finit par mentir |
+
+Chacune a été prouvée en réintroduisant son défaut et en vérifiant que le test tombe.
