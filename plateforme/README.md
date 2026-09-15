@@ -180,7 +180,7 @@ le paquet à la construction, jamais dans le code.
 
 | Secret du dépôt | Valeur |
 |---|---|
-| `PLATEFORME_BASE` | `https://skanfact-api.<ton-compte>.workers.dev` (sans barre à la fin) |
+| `PLATEFORME_BASE` | `https://api.skanfact.tn` — le domaine personnalisé du worker, jamais l'adresse `workers.dev` : elle est gravée dans chaque paquet installé (voir `DNS-skanfact-tn.md`) |
 | `PLATEFORME_SECRET` | le même `APP_SECRET` que ci-dessus |
 
 Settings → Secrets and variables → Actions → New repository secret, exactement comme `UPDATE_BASE`.

@@ -86,7 +86,31 @@ et un jeton de vérification Google ne donne aucun droit. Aucun secret ne doit j
 Revenir en arrière = remettre la ligne « Avant » dans OVH → skanfact.tn → Serveurs DNS. La zone
 OVH n'est jamais supprimée, elle répond de nouveau dès que les serveurs de noms la désignent.
 
-## La bascule, dans l'ordre
+## Le résultat — bascule faite le 15/09/2026, vérifiée
+
+| Vérification | Résultat |
+|---|---|
+| `dnschecker.org` MX | `mx1/mx2/mx3.mail.ovh.net` sur tous les résolveurs, Google compris |
+| `dnschecker.org` A | les quatre `185.199.10x.153` partout |
+| `https://skanfact.tn` | le site, en HTTPS (Safari n'affiche plus de cadenas, c'est normal) |
+| GitHub Pages « Enforce HTTPS » | coché |
+| Resend `send.skanfact.tn` | toujours **Verified** après la bascule |
+| `contact@skanfact.tn` | créée dans **MX Plan** (« Emails »), pas dans Zimbra — Zimbra n'a aucun domaine rattaché, donc le courrier va bien au MX Plan. Sortie prouvée (arrivé dans Gmail, en spam : domaine neuf, ça s'arrange à l'usage) |
+| `api.skanfact.tn` | domaine personnalisé du worker `skanfact-api`, `104.21.64.100` / `172.67.181.21`, console affichée |
+
+Deux choses apprises en le faisant :
+
+- **Le scan d'import de Cloudflare a manqué quatre lignes sur vingt-neuf** : les trois de Resend (un
+  sélecteur DKIM ne se devine pas) et le SRV `_autodiscover._tcp`. Sans l'inventaire ci-dessus, on
+  ne l'aurait su qu'au premier client qui n'arrive pas à configurer Outlook.
+- **Un nom demandé AVANT sa création reste « inexistant » dans le cache du Mac** pendant plusieurs
+  minutes, alors que le monde entier le voit déjà. Le test qui tranche est `dnschecker.org`, ou un
+  téléphone en 4G — jamais le navigateur qui vient d'échouer.
+
+Zimbra Starter (2 comptes, payé) reste inutilisé pour l'instant : passer `contact@` dessus est une
+migration d'une demi-heure, à faire un jour calme, jamais en même temps qu'autre chose.
+
+## La bascule, dans l'ordre (ce qui a été suivi)
 
 1. **Ajouter `skanfact.tn` dans Cloudflare** (plan *Free*). Cloudflare scanne la zone OVH et importe
    ce qu'il trouve — c'est le chemin le plus sûr, il interroge les serveurs qui font autorité.
