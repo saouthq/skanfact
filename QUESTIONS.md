@@ -15,6 +15,12 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
 - ***À VALIDER JURIDIQUEMENT*** *: une affirmation de droit ou de déontologie, qui attend un juriste
   ou l'Ordre. On ne la transforme jamais en règle du logiciel avant la réponse.*
 
+*La règle d'usage, puisqu'une relecture a trouvé le mélange confus : une marque se pose sur ce qui
+est une DÉCISION ou un PLAN (un choix, un prix, une version, une règle). Une description de ce qui
+existe (« une facture en euros ? oui ») ou une définition n'en porte pas — elle se vérifie dans
+l'application, pas dans ce document. Une réponse sans marque n'est donc pas un oubli : c'est un
+fait.*
+
 ---
 
 ## Sommaire
@@ -22,8 +28,9 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
 1. [Le projet en dix questions](#1-le-projet-en-dix-questions)
 2. [Les mots du projet](#2-les-mots-du-projet)
 3. [Le but et le positionnement](#3-le-but-et-le-positionnement) — *dont [où on en est
-   vraiment](#où-on-en-est-vraiment-au-15092026) : zéro client payant, et la question qui décide de
-   tout l'ordre du travail*
+   vraiment](#où-on-en-est-vraiment-au-15092026) (zéro client payant, les chiffres du marché
+   sourcés) et [les jalons de décision](#les-jalons-de-décision) (ce qui doit être vrai chaque
+   trimestre pour continuer à construire)*
 4. [L'application entreprise, SkanFact](#4-lapplication-entreprise-skanfact)
 5. [L'application du comptable, SkanFact Cabinet](#5-lapplication-du-comptable-skanfact-cabinet)
 6. [Le pont entre les deux](#6-le-pont-entre-les-deux)
@@ -157,10 +164,12 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
 - **Clôture** : verrouiller une période. Côté entreprise, on clôture un **mois** (plus rien ne
   bouge dans ce mois, le paquet devient définitif). Côté cabinet, on clôture un **exercice**
   (l'année) après les écritures d'inventaire.
-- **Écritures d'inventaire** : celles de fin d'année qui ajustent la réalité : dotations aux
-  amortissements, provisions (une perte probable), charges constatées d'avance (un loyer payé en
-  décembre pour janvier), factures non parvenues (une charge de décembre facturée en janvier),
-  produits constatés d'avance, factures à établir.
+- **Écritures d'inventaire** : celles de fin d'année qui ajustent la réalité — **notamment** les
+  dotations aux amortissements, les provisions (une perte probable), les charges constatées d'avance
+  (un loyer payé en décembre pour janvier), les factures non parvenues (une charge de décembre
+  facturée en janvier), les produits constatés d'avance, les factures à établir, la variation des
+  stocks, les écarts de conversion sur les dettes et créances en devise. La liste n'est pas
+  exhaustive : c'est le comptable qui sait lesquelles s'appliquent à un dossier.
 - **À-nouveau** : l'écriture du 1er janvier qui reporte les soldes de l'année passée (la banque, les
   dettes, les créances) et met le résultat de l'année dans un compte de réserve ou de report.
 - **Amortissement** : étaler le coût d'un bien (un ordinateur, une voiture) sur plusieurs années. La
@@ -287,6 +296,64 @@ produit vendu.*
   le problème, la solution, pour qui, combien, pourquoi nous. Un cabinet, un client ou un associé
   lira cette page-là ; personne ne lira celui-ci. **À construire (une heure), avant la première
   démonstration.**
+- **Le marché, en chiffres sourcés (cherchés le 15/09/2026).** L'INS compte **836 808 entreprises
+  privées en 2024**, dont **87 % sans aucun salarié** (729 240) — il reste donc de l'ordre de
+  **107 000 entreprises avec au moins un salarié**, et c'est dans ce sous-ensemble que vivent nos
+  clients (une entreprise au réel, avec une paie, un comptable, des factures à émettre). Source :
+  répertoire national des entreprises, 14ᵉ édition, `ins.tn`. Le nombre d'experts-comptables
+  inscrits à l'Ordre n'est **pas publié** comme un total : l'OECT tient un annuaire alphabétique en
+  ligne (`oect.org.tn/les-membres`), qu'il faut compter page par page — **À toi, une demi-heure**,
+  ou une question au comptable pilote qui le sait de mémoire. Ce que ces deux chiffres disent déjà :
+  le plafond du § 7 (dix cabinets, cent clients entreprise) représente **un millième** du marché
+  adressable. Le problème n'est pas la taille du marché, c'est d'y entrer.
+- **Ce que coûte l'entretien de l'app entreprise pendant que le Cabinet se construit.** Une
+  relecture a demandé un chiffre, et il faut d'abord dire une chose que ce document n'écrivait
+  nulle part : **le code et les démarches ne se disputent pas le même temps.** Le code est écrit
+  par Claude ; les démarches (marque, certificats, Ordre, INPDP, ventes, démonstrations) sont
+  faites par Skander. Une semaine de démarches ne retarde pas une version, et une version ne
+  retarde pas une démarche. Ce qui est en concurrence, c'est le temps de Skander entre *ses*
+  démarches et *sa* relecture des versions. Pour l'entretien proprement dit, l'ordre de grandeur :
+  une mise à jour d'Electron tous les trois à six mois (un à deux jours, e2e compris) ; la loi de
+  finances (un à deux jours par an, plus la séance avec le comptable) ; les correctifs signalés
+  par les clients — inconnus tant qu'il n'y a pas de clients, et c'est le seul poste qui grossit
+  avec eux. **Estimation honnête : un à trois jours par mois avec quelques clients**, davantage
+  au-delà de cinquante. Si ce chiffre dépasse cinq jours par mois, c'est que les clients sont là,
+  et le plan du § 16 a le droit de ralentir : ce serait une bonne nouvelle.
+
+### Les jalons de décision
+
+*Ajouté le 15/09/2026. Une relecture a fait remarquer que le § 16 planifie neuf versions sans
+qu'aucune ne soit conditionnée à un premier client, et que la question « combien de temps sans
+revenus » n'avait pas de suite. Voici la suite. Les dates sont des propositions ; les seuils sont
+à toi.*
+
+- **Le principe.** On ne s'arrête pas de construire parce qu'on n'a pas vendu — la 9.1.0 et la 9.2.0
+  sont ce qu'on montre pour vendre, et un pilote qui n'a rien à essayer ne s'engage pas. Mais on ne
+  construit pas non plus neuf versions dans le vide. Chaque trimestre pose une question à laquelle
+  la réponse est un chiffre, et un chiffre qui manque change l'ordre du travail, pas seulement
+  l'humeur.
+- **Fin 2026 (après 9.1.x et 9.2.0).** Ce qui doit être vrai : les six démarches du § 20 faites ;
+  le pilote engagé par écrit et sur deux dossiers réels ; **au moins trois licences entreprise
+  vendues** hors famille ; la question à l'Ordre posée. Si les trois licences manquent : la 9.3.0
+  attend, et le trimestre suivant est un trimestre de démonstrations, pas de code — dix
+  démonstrations en personne, comptées.
+- **Mi-2027 (après 9.3.0 et 9.4.0).** Ce qui doit être vrai : **dix licences entreprise** ; le
+  pilote qui tient ses dossiers dans le Cabinet sans revenir à son ancien logiciel ; une réponse de
+  l'Ordre, ou à défaut celle du juriste. Si le pilote est revenu à son ancien logiciel : on arrête
+  le Cabinet à la 9.4.0 et on demande pourquoi, avant d'écrire une ligne de la 9.5.0. Si l'Ordre a
+  dit non : plan B de prix (§ 17), sans toucher au code.
+- **Fin 2027 (après 9.6.0).** Ce qui doit être vrai : un **second cabinet** qui a commencé, même sur
+  un dossier ; **vingt-cinq licences entreprise** ; un chiffre d'affaires qui couvre au moins les
+  coûts fixes (domaine, certificats, abonnements). Si le second cabinet n'existe pas : le Cabinet
+  reste un produit pour un seul cabinet, et 9.7.0 → 10.0.0 ne se justifient plus — on livre ce que
+  le pilote demande, et rien d'autre.
+- **Ce qui déclenche l'arrêt, à n'importe quel moment.** Si à un jalon **aucune** licence n'a été
+  vendue depuis le jalon précédent, le trimestre suivant ne contient pas de version nouvelle. Cette
+  règle vaut pour n'importe quelle raison — le prix, le produit, le temps de Skander, le marché — et
+  c'est exprès : la cause se cherche pendant le trimestre de vente, pas avant.
+- **Où ça se lit.** Trois nombres par mois, à la main (§ 9 : démonstrations, essais démarrés,
+  licences vendues), dans un fichier à côté de celui-ci. Le jalon se juge sur ces trois nombres,
+  jamais sur l'impression que « ça avance ». **À toi : les seuils. Décidé : qu'il y en ait.**
 
 ### Le positionnement
 
@@ -682,7 +749,14 @@ produit vendu.*
   9.2.0 est précisément la version qui **écrit** le format du livre. Mesurer après, c'est mesurer
   une fois qu'on ne peut plus changer d'avis sans tout réécrire — et un test de charge qui arrive
   trop tard ne sert qu'à nommer le problème qu'on a déjà.
-- **Que mesure exactement ce test ?** Trois choses, sur un livre de cinquante mille écritures :
+- **Que mesure exactement ce test, et à partir de quand il échoue ?** Sans seuil, un test de charge
+  ne peut pas échouer, donc il ne prouve rien — la relecture qui l'a dit a raison. Les seuils, fixés
+  AVANT de mesurer : **ouverture d'un dossier < 1 s ; enregistrement d'une écriture en saisie au
+  kilomètre < 100 ms** (c'est celui qui décide : il se paie à chaque ligne tapée, et au-delà la
+  frappe se sent) **; balance consolidée de soixante dossiers < 5 s ; recherche globale < 3 s** —
+  sur un portable ordinaire, pas sur la machine de développement. Un seul seuil dépassé et on change
+  le modèle (index à côté des livres, § 5) avant d'écrire la 9.2.0. **Décidé.** Trois choses, sur un
+  livre de cinquante mille écritures :
   le temps d'ouverture d'un dossier ; le temps d'un enregistrement en saisie au kilomètre (c'est
   celui qui décide, parce qu'il se paie à chaque ligne tapée) ; et le temps des trois lectures
   transverses qu'un cabinet fait vraiment — une balance consolidée de soixante dossiers, une
@@ -715,8 +789,16 @@ produit vendu.*
 - **Le moteur est-il refait ?** Non. Les fonctions qui calculent le journal, le grand livre, la
   balance, le lettrage, les états existent dans l'app entreprise. Elles sortent dans un fichier
   partagé (`src/renderer/compta.js`) que les deux applications chargent ; l'app entreprise continue
-  de les appeler comme avant. Un test vérifie que le Cabinet, nourri des douze paquets de l'exemple,
-  donne **la même balance au millime** que l'app entreprise. **Décidé, 9.1.0.**
+  de les appeler comme avant. Un test vérifie que le Cabinet, nourri des douze paquets de l'exemple
+  — **qui n'existent pas encore comme fichiers**, il faut le dire : le jeu d'exemple de l'app
+  entreprise (`demo.js`, vingt-quatre mois datés par rapport à aujourd'hui, tous les taux de TVA,
+  avoir total et partiel, retenue, timbre, facture en devise, acompte et solde, paie, immobilisation
+  cédée) est fabriqué à la volée, et le test de parité le passera dans `packPlan` mois par mois
+  pour produire les paquets **au moment du test**, jamais des fichiers versionnés dans le dépôt
+  (datés relativement, ils seraient périmés le lendemain). Le Cabinet, lui, n'a aujourd'hui qu'un
+  jeu d'exemple sans paquets ouvrables ; leur fabrication réelle est la tâche restée en attente
+  depuis la 8.7.0, reprise en 10.0.0 — donne **la même balance au millime** que l'app entreprise.
+  **Décidé, 9.1.0.**
 - **Ce que le moteur ne sait pas encore faire ?** Le brouillard et la validation, la
   contre-passation, l'extourne, les guides d'écritures et les abonnements, l'import de relevé
   bancaire et le rapprochement automatique, le lettrage manuel, la balance âgée, les provisions et
@@ -811,6 +893,15 @@ produit vendu.*
   premier paquet ; un paquet signé par une autre clé est refusé en nommant le dossier, et un paquet
   **non signé** (venu d'une version d'avant) est accepté avec la mention « origine non prouvée »,
   jamais silencieusement.
+- **Et cette tolérance dure combien de temps ?** Pas indéfiniment, sinon elle est le trou qu'on
+  vient de fermer, déplacé d'un cran : un client resté deux ans sur une vieille version serait
+  usurpable pendant deux ans. La règle, ajoutée le 15/09/2026 après relecture : **dès qu'un dossier
+  a reçu UN paquet signé, tout paquet non signé de ce dossier est refusé** — le client a mis à jour,
+  il ne redescend pas. C'est le principe « confiance au premier usage » des clés SSH : la tolérance
+  ne vaut que pour les dossiers qui n'ont jamais signé, et elle s'éteint d'elle-même, dossier par
+  dossier, sans date à décider. Un client qui revient sur une version ancienne (réinstallation
+  d'une vieille sauvegarde) verra un refus qui nomme la cause et le geste : mettre à jour.
+  **Décidé.**
 - **Pourquoi ne pas l'avoir fait dès la 6.1.0 ?** Parce que le danger identifié à l'époque était la
   confidentialité (un paquet qui traîne dans une boîte mail), pas l'imposture. Le chiffrement répond
   au premier, pas au second. C'est la même erreur de cadrage que « la corruption n'est pas
@@ -867,9 +958,11 @@ produit vendu.*
   sur la table — 150 dossiers facturables à 48 DT font 7 200 DT) ou trop haut (personne ne le
   prend), et on ne saura de quel côté il tombe qu'après avoir vu un vrai gros cabinet. Une grille
   dégressive n'a pas ce défaut : elle est juste à toutes les tailles et elle se lit sans
-  explication. **Recommandé : des paliers jusqu'à 20 DT, pas d'illimité. À toi, et la décision peut
-  attendre le premier cabinet de plus de cent dossiers** — c'est un problème qu'on aura de la chance
-  d'avoir.
+  explication. **Décidé (tranché le 15/09/2026) : la STRUCTURE est « des paliers dégressifs, pas
+  d'illimité »**, parce qu'une question laissée ouverte oblige la console à porter les deux
+  modèles, et qu'on ne construit pas deux fois pour un cas qui n'arrivera peut-être jamais. **Les
+  NOMBRES — le prix de chaque palier, jusqu'où ils descendent — restent à toi**, et peuvent attendre
+  le premier cabinet de plus de cent dossiers : c'est un problème qu'on aura de la chance d'avoir.
 - **Pourquoi par dossier et pas par poste ou par utilisateur ?** Parce qu'un cabinet grandit par
   dossiers, pas par sièges ; et parce que les concurrents vendent des sièges. « Postes et
   collaborateurs illimités » est un argument de vente immédiat. **Décidé.**
@@ -901,6 +994,20 @@ produit vendu.*
   quelqu'un d'autre. Douze mois, c'est un exercice entier — le temps de convaincre, ou de constater
   que ce client-là est redevenu un dossier ordinaire. Et ce délai est **affiché** sur le dossier :
   « gratuit jusqu'au 14/10/2027, sans renouvellement il comptera ensuite ».
+- **La grâce s'applique-t-elle après un simple essai ?** **Non — et c'est un trou que la règle
+  ci-dessus laissait ouvert**, trouvé en relisant une objection extérieure. Un essai de 30 jours
+  compte comme « sur SkanFact » ; avec douze mois de grâce derrière, un client qui n'a jamais rien
+  payé aurait rendu son dossier gratuit treize mois. **La grâce ne suit qu'une licence PAYÉE
+  expirée.** Après un essai non converti, le dossier compte dès la fin de l'essai. **Décidé.**
+- **Et après les douze mois, un tarif réduit plutôt que le plein ?** Proposé par une relecture (« le
+  cabinet n'est pas responsable du choix de son client »). **Refusé, avec la raison.** Au bout de
+  douze mois, ce dossier n'est plus « un ancien client SkanFact » : c'est un dossier hors SkanFact
+  comme les cinquante-sept autres, et lui faire un prix à vie créerait une catégorie que le cabinet
+  aurait intérêt à fabriquer — un client mis sur SkanFact un an puis laissé expirer coûterait moins
+  cher, pour toujours, qu'un client jamais inscrit. Ce qui absorbe déjà le cas de bonne foi : les
+  trois dossiers gratuits, les paliers dégressifs, et la règle « un dossier sans écriture validée
+  depuis douze mois ne compte pas ». Quant à « cacher » un dossier : archiver bloque la validation
+  d'écritures, donc on ne cache pas un dossier sur lequel on travaille.
 - **Le cabinet qui perd un client au profit d'un confrère paie-t-il pour autant ?** Non : un dossier
   sans écriture validée depuis douze mois ne compte pas, quoi qu'il arrive. Les deux règles se
   recoupent exprès — on préfère compter un dossier de moins que d'en facturer un de trop.
@@ -1032,7 +1139,11 @@ produit vendu.*
   la clé publique embarquée : si elle est bonne, la fiche est authentique. Personne ne peut fabriquer
   une clé sans la clé privée. Aucun serveur n'est nécessaire. **Livré.**
 - **Qu'est-ce qui est dans la fiche signée ?** Le matricule (la clé est attachée à une entreprise),
-  le nom, l'offre (Indépendant ou Entreprise), la date de fin (ou « à vie »), la date d'émission,
+  le nom, l'offre (Indépendant ou Entreprise), la date de fin (ou « à vie » — ce qui veut dire, très
+  exactement, **aucune date de fin dans la clé** : elle reste valide tant que l'application sait la
+  vérifier, c'est-à-dire tant que la clé publique qui l'a signée est embarquée ; ce n'est ni « la
+  vie du client » ni une date lointaine écrite en dur, et rien ne peut l'éteindre sinon une
+  révocation signée), la date d'émission,
   l'empreinte du cabinet parrain s'il y en a un, l'identifiant de la clé de signature (`kid`), un
   identifiant de licence (`sub`), et demain les options (`options: ['compta']`) et, pour un cabinet,
   le type et le quota. Un champ qu'une vieille version ne connaît pas est ignoré. L'ordre des champs
@@ -1135,9 +1246,16 @@ produit vendu.*
   changements de base sont toujours **additifs** (on ajoute une colonne, on n'en retire jamais), et
   le README de la plateforme dit quoi coller quand. **Décidé.**
 - **La base de la plateforme est-elle sauvegardée ?** Cloudflare la conserve, mais aucun export
-  automatique n'existe. À prévoir : un export régulier de la base (un bouton dans la console ou une
-  tâche planifiée), parce que c'est la seule donnée du projet qui n'est pas sur un poste de Skander.
-  **À construire (avec la licence du Cabinet).**
+  automatique n'existe. C'est la seule donnée du projet qui n'est pas sur un poste de Skander, et
+  ce document la remettait « avec la licence du Cabinet », c'est-à-dire trop tard : une relecture a
+  eu raison de le dire. Ce qu'on perdrait si Cloudflare perdait la base — les clients gardent leurs
+  clés signées, mais on ne peut plus révoquer, ni voir qui a activé quoi, ni renouveler sans
+  ressaisir. **Décidé : une route `GET /v1/admin/export`, protégée par le secret d'administration,
+  qui rend les six tables en un JSON ; SkanFact l'appelle depuis le panneau Éditeur (« Sauvegarder la
+  console… ») et range le fichier à côté des clés, dans `~/.skanfact/`, daté ; et « À faire » le
+  réclame s'il a plus de trente jours. À construire AVANT la première vente — une heure de travail
+  côté worker, une côté application.** Une tâche planifiée viendrait après, quand il y aura de quoi
+  planifier.
 
 ---
 
@@ -1856,10 +1974,28 @@ qui manque, mesuré dans le dépôt le 15/09/2026, et ce qu'on en fait.*
   adversariale est réservée à l'argent, aux clés et aux chiffres comptables. Ce qu'on fait : chaque
   version reçoit au moins une relecture indépendante de son changement avant la bêta (un relecteur,
   pas trois), et les sensibles gardent la relecture complète. **Décidé.**
+  **Qui est ce relecteur ?** Il faut le dire, parce qu'une relecture a remarqué que la règle ne le
+  disait pas — et qu'une règle sans acteur n'existe pas. C'est **une autre session de Claude, ou une
+  autre IA**, à qui l'on donne le changement sans son histoire et la consigne de le réfuter ; les
+  trois relectures extérieures de ce document sont exactement ce mécanisme, et elles ont trouvé une
+  faille de sécurité et une erreur de conception que l'auteur n'avait pas vues. **La limite, assumée
+  :** ce n'est pas l'indépendance d'un humain qui connaît le métier — la même famille de modèles a
+  des angles morts communs, et aucune IA ne remplace le comptable pilote sur un chiffre fiscal. Ce
+  qu'on en attend est donc précis : les fautes de cohérence, les cas non traités, les tests qui ne
+  peuvent pas échouer — pas la vérité métier, qui vient du pilote, ni la vérité de droit, qui vient
+  du juriste. Un relecteur humain payé n'est pas prévu ; le jour où le chiffre d'affaires le
+  permet, c'est la première embauche qui aurait du sens.
 - **14 — Du temps réservé à l'entretien.** Une équipe senior garde environ un cinquième de son
   temps pour la dette et l'outillage, sinon ils ne sont jamais faits. Règle : **une version sur
   quatre est une version d'entretien** (Electron, lint, découpage d'un fichier, docs, dette), sans
-  nouveauté, publiée dans un lot comme les autres. **Décidé.**
+  nouveauté, publiée dans un lot comme les autres. **Décidé.** Et pour que ce ne soit pas un vœu
+  pieux (une relecture a constaté qu'aucune version du § 16 n'était marquée « entretien ») : **la
+  9.1.0 en est une pour moitié** (l'outillage passe avant les livres), puis **9.3.1** après la
+  saisie, **9.5.1** après le fiscal, et **9.8.1** après le multi-poste sont des versions
+  d'entretien, écrites dans le § 16, avec un contenu (Electron, conversion des 93 déclarations CSS,
+  découpage d'un gros fichier, dette listée au point 15). Elles ne sautent pas parce qu'on est
+  pressé : c'est précisément quand on est pressé qu'on les saute, et c'est pour ça qu'elles sont
+  écrites d'avance.
 - **15 — La dette technique connue, au 15/09/2026.** Ce qu'on sait devoir rembourser, et quand :
   pas d'intégration continue, pas de lint, pas de garde-fou d'erreur global, journal non borné
   (9.1.0) ; le canal `cabinet-beta` et les constructions d'essai (9.1.0) ; `app.js` et `core.js`
@@ -1923,6 +2059,19 @@ qui manque, mesuré dans le dépôt le 15/09/2026, et ce qu'on en fait.*
   non pas sur le principe mais sur la taille — un programme de certification avec un cabinet, un
   forum avec trois utilisateurs et une prime aux chercheurs avec zéro client coûtent du temps et ne
   rendent rien. À reposer au-dessus de cent clients, pas avant.
+- **Ce que la quatrième relecture (sur la v4) a apporté, et ce qu'elle a pris pour des faits.**
+  C'est la meilleure des quatre : elle a reconnu ce qui avait été corrigé avant de critiquer, et
+  presque tout ce qu'elle a demandé est entré — les jalons de décision (§ 3), les seuils du test de
+  charge (§ 5), la fin de la tolérance aux paquets non signés (§ 6), la grâce réservée aux licences
+  payées (§ 7), l'export de la base avant la première vente (§ 8), le relecteur nommé et les
+  versions d'entretien numérotées (§ 15, § 16), le `.skanclose` chez un client pas à jour (§ 16),
+  le pli scellé et la libération en lot décrits (§ 17), la liste des contrôles hors équilibre
+  (§ 19). Ce qu'elle avait faux, pour la calibration : le document « fait plus de 3 000 lignes »
+  (2 536) ; « le doc dit : à six mois, on vend à dix clients » — c'est un scénario conditionnel du
+  § 3 (« *si* l'horizon est de six mois, *alors*… »), pas une promesse ; et « la plateforme tourne
+  déjà et collecte des données » — elle est construite et testée, pas en production (la clé de
+  réponse est encore `null`, § 8), ce qui ne change rien à l'obligation INPDP mais change son
+  urgence. Et un refus, un seul : le tarif réduit à vie après la grâce (§ 7).
 - **Ce que la troisième relecture a proposé et qui reste ouvert, pas refusé.** **Une offre gratuite
   limitée** (dix factures par mois) pour attirer les indépendants : le mécanisme existe déjà
   presque — une licence porte son offre, et `licenceBlock` est la porte unique ; il faudrait
@@ -1962,6 +2111,29 @@ plus sévère que sa critique : **compter le double est prudent, et l'ordre comp
 vitesse.** Ce qui protège ici n'est pas une date, c'est la règle « une version à la fois, finie,
 publiée, utilisée avant la suivante » — la seule qui garantisse qu'un arrêt à n'importe quel moment
 laisse quelque chose d'utilisable plutôt qu'un chantier.
+
+### Étape 0 — Ce qui n'est pas du code, et qui passe avant (une semaine de travail, plus des attentes)
+
+*Ajouté le 15/09/2026. Une relecture a trouvé incohérent que six démarches soient déclarées
+« bloquantes pour la vente » et absentes du plan des versions. Elle avait raison sur la forme ; sur
+le fond, ces démarches sont faites par Skander pendant que le code est écrit par Claude — elles ne
+retardent aucune version, et aucune version ne les retarde. Les mettre ici sert à une chose : qu'on
+ne puisse pas lire ce plan sans les voir.*
+
+| Démarche | Travail réel | Attente | Ce que ça débloque |
+|---|---|---|---|
+| Déposer la marque à l'INNORPI | un jour | quelques semaines | tout — un nom qu'on ne peut pas perdre |
+| Certificat Apple (signature + notarisation) | une demi-journée | immédiat | la première installation Mac sans avertissement |
+| Certificat Windows (OV ou EV, § 9) | un jour, plus le support matériel | une à deux semaines | la première installation Windows chez un cabinet |
+| Déclaration INPDP | deux jours | quelques semaines | la mise en production de la plateforme |
+| Conditions de vente, premier jet par Skander puis relecture juridique | deux jours | selon le juriste | la page Tarifs, la première facture |
+| La lettre à l'Ordre (trois phrases suffisent : ce qu'on offre, à qui, contre quoi) | une heure | des mois, peut-être | la publication du prix Cabinet, pas le développement |
+| Séance de validation fiscale avec le comptable | une demi-journée | un rendez-vous | la 9.1.1 entière |
+| Le bouton de téléchargement du Cabinet (404) et la page unique | un jour | aucune | la première démonstration |
+
+Total : **une semaine de travail réel**, moins que la 9.1.0. Ce qui est long, ce sont les attentes —
+et c'est exactement pourquoi tout se lance maintenant, en parallèle, plutôt qu'au moment où l'on en
+a besoin. **À toi, dans cet ordre.**
 
 ### 9.1.0 — Les livres du dossier (quelques jours, n'attend personne)
 
@@ -2086,6 +2258,15 @@ version, ce qui est la meilleure façon de ne jamais les faire (§ 11).*
   lecture ouverte, dossier archivé qui ne compte plus, licence client dans un paquet qui rend le
   dossier gratuit, paquet ancien qui le dit ; test « ce qui remonte au serveur » étendu.
 
+### 9.3.1 — Entretien (quelques jours)
+
+- **Contenu.** La mise à jour d'Electron du semestre ; la conversion des 93 déclarations CSS
+  physiques en logiques (§ 3) ; le premier découpage de `app.js` par route (§ 15) ; la dette listée
+  au § 15 point 15 qui n'a pas encore été remboursée ; les retours de la bêta 9.3.0 qui ne sont pas
+  des nouveautés. **Aucune fonction nouvelle, par règle.**
+- **Preuve.** Tous les e2e relancés — c'est la seule version où on les relance TOUS sans exception,
+  parce que c'est celle où le moteur de rendu change.
+
 ### 9.4.0 — La banque (deux semaines)
 
 - **Cabinet.** Import du relevé bancaire (CSV des banques tunisiennes — BIAT, Attijari, STB, UIB,
@@ -2123,6 +2304,12 @@ version, ce qui est la meilleure façon de ne jamais les faire (§ 11).*
 - **Preuve.** Test : la déclaration d'un mois de l'exemple, case par case, contre un calcul à la
   main ; e2e : pointer déclaré puis payé, et le défaire.
 
+### 9.5.1 — Entretien (quelques jours)
+
+- **Contenu.** Comme la 9.3.1 : Electron si une version est sortie, dette, découpage suivant
+  (`core.js` → `compta.js` fini, `run-tests.js` découpé par domaine), retours de bêta hors
+  nouveautés. **Aucune fonction nouvelle.**
+
 ### 9.6.0 — La clôture d'exercice (deux à trois semaines)
 
 - **Cabinet.** Écritures d'inventaire guidées (dotations, provisions, CCA, FNP, PCA, FAE,
@@ -2142,6 +2329,18 @@ version, ce qui est la meilleure façon de ne jamais les faire (§ 11).*
 - **Entreprise.** Réception du `.skanclose` : à-nouveaux officiels, exercice verrouillé, liste des
   écritures du comptable en lecture. Le module Comptabilité optionnel affiche alors les vrais
   chiffres, pas les siens.
+- **Et si le client n'a pas la version qui lit le `.skanclose` ?** Le cas que ce document ne traitait
+  pas (relecture du 15/09/2026). **Le cabinet clôture quand même** : sa clôture est SON acte, elle ne
+  peut pas dépendre de l'ordinateur d'un client. Le fichier est produit, rangé avec le dossier, et
+  **renvoyé automatiquement avec la première question ou relance suivante** tant qu'il n'a pas été
+  importé — le Cabinet sait qu'il ne l'a pas été parce que le paquet suivant du client ne porte pas
+  la date de clôture dans son manifeste. Côté client, une version trop ancienne dit « ton comptable a
+  clôturé 2026 : mets à jour SkanFact pour recevoir les chiffres officiels » (le même mécanisme que
+  « Cabinet trop ancien », dans l'autre sens). Et le `.skanclose` porte aussi une **version PDF**
+  lisible par n'importe qui — la balance d'ouverture et la liste des écritures d'inventaire — pour
+  que le client ait ses chiffres même s'il ne met jamais à jour. Ce qui reste bloqué sans import :
+  seulement la clôture de l'exercice **suivant** côté client, puisqu'elle partirait de faux
+  à-nouveaux. **Décidé.**
 - **Dépend de.** La présentation exacte des états (NCT 01) et des notes.
 - **Preuve.** Test : actif = passif, résultat identique des deux côtés, à-nouveau égal aux soldes
   du 31/12 ; e2e : une clôture refusée puis acceptée, la réouverture impossible ; **e2e du flux
@@ -2164,6 +2363,12 @@ version, ce qui est la meilleure façon de ne jamais les faire (§ 11).*
   verrouillage automatique ; tableau de production (par dossier et par mois : qui, depuis quand) ;
   « À faire » par collaborateur.
 - **Preuve.** e2e à deux postes (comme `e2e:partage`) ; test de fusion des livres.
+
+### 9.8.1 — Entretien (quelques jours)
+
+- **Contenu.** Comme les précédentes. C'est aussi celle où l'on relit `CLAUDE.md` en entier pour
+  retirer ce qui n'est plus vrai — un document de mémoire qui grossit sans jamais maigrir finit par
+  mentir par omission.
 
 ### 9.9.0 — La révision et les questions (deux semaines)
 
@@ -2208,8 +2413,13 @@ n'est pas obligatoire) ; l'interface en arabe ; un autre pays.
 - **A-t-il seulement dit oui ?** Ce document parlait de « ton comptable, le cabinet pilote » comme
   d'un fait acquis, et une relecture extérieure a eu raison de demander où était son accord. Il a
   regardé l'application et il a dit ce qui manquait — ce n'est pas la même chose que s'engager à
-  l'utiliser sur de vrais dossiers pendant six mois. **À toi, avant la 9.2.0 : une conversation
-  explicite, et par écrit, même deux lignes de mail.** Ce qu'on lui demande : essayer sur deux ou
+  l'utiliser sur de vrais dossiers pendant six mois. **À toi, en deux temps : la question orale
+  MAINTENANT, avant d'écrire une ligne de la 9.1.0** (« si je te montre tes livres lus dans les
+  paquets d'ici quelques semaines, tu essaies sur deux dossiers ? » — une réponse de dix secondes,
+  qui coûte un appel), **puis l'engagement écrit après avoir vu la 9.1.0, avant la 9.2.0** : on ne
+  demande pas à quelqu'un de s'engager sur un écran qu'il n'a pas vu, et la 9.1.0 est courte
+  précisément pour ça. Une relecture voulait l'écrit avant la 9.1.0 ; c'est demander l'engagement
+  avant la démonstration. Ce qu'on lui demande : essayer sur deux ou
   trois dossiers réels, répondre aux questions de conception, dire quand c'est faux. Ce qu'on lui
   donne : gratuit à vie pour son cabinet, son avis dans le produit, et son nom s'il le veut.
 - **Et s'il s'arrête en cours de route** (il change d'avis, il part à la retraite, il tombe malade) ?
@@ -2234,16 +2444,37 @@ n'est pas obligatoire) ; l'interface en arabe ; un autre pays.
   de fonctionner, c'est acquis. Mais **personne d'autre ne peut émettre une licence** : la clé privée
   maître est sur son Mac et dans sa copie personnelle, et le secret d'administration de la console
   aussi. Un client dont l'essai finit pendant cette absence ne peut pas acheter ; un client qui
-  renouvelle ne peut pas être servi. **À construire (avant les dix premiers clients) : un pli scellé
-  — la clé privée, le secret d'administration et la marche à suivre, chez une personne de confiance
-  ou chez un notaire, avec la consigne de ne l'ouvrir que dans ce cas.** Ce n'est pas un mécanisme
-  technique, et c'est justement pour ça que personne n'y pense.
+  renouvelle ne peut pas être servi. **À construire (avant les dix premiers clients) : un pli
+  scellé.** Et puisqu'une relecture a demandé « qui, où, comment » — voici le mécanisme, décidé ;
+  seul le « qui » reste à toi. **Ce qu'il contient** : la clé privée maître, la clé `srv-1`, le
+  secret d'administration, l'accès au dépôt, et une page de marche à suivre écrite pour quelqu'un
+  qui ne connaît pas le projet (« ouvrir SkanFact, panneau Éditeur, émettre ; ou la console »).
+  **Comment il est protégé** : le tout scellé par le mécanisme qui existe déjà pour la clé de
+  secours du Cabinet (`makeRecovery` : un fichier chiffré par un mot de passe, AES-256-GCM +
+  scrypt), sur **deux supports** (une clé USB et une impression papier du fichier en base64,
+  parce qu'une clé USB meurt en dix ans et le papier non), **chez deux personnes différentes** : le
+  fichier chez l'une, le mot de passe chez l'autre — aucune des deux ne peut agir seule, et
+  aucune ne peut perdre les deux. **Quand on l'ouvre** : sur une consigne écrite, remise avec le pli
+  (absence de plus de trois mois sans nouvelles, incapacité, décès), et l'ouverture se dit aux
+  clients par un mot dans la lettre d'information suivante. **Qui** : deux personnes qui ne vivent
+  pas sous le même toit — **à toi**. Et le pli se **rejoue** une fois par an : on vérifie qu'il
+  s'ouvre encore, comme on vérifie une sauvegarde. Ce n'est pas un mécanisme technique, et c'est
+  justement pour ça que personne n'y pense.
 - **Skander arrête, définitivement.** Chaque client garde un logiciel qui marche, ses données et ses
   fichiers : c'est la promesse tenue depuis la 6.4.0, et elle est réelle. Ce qu'il faut préparer en
   plus tient en deux gestes : **la dernière version publiée ne doit jamais dépendre d'un service à
   payer** (c'est déjà vrai : sans relais, les applications retombent sur GitHub ; sans plateforme,
   rien ne se verrouille), et **une licence « à vie » doit pouvoir être émise en lot** pour les
-  clients en cours si l'aventure s'arrête. Ce second point n'existe pas et coûte une demi-journée.
+  clients en cours si l'aventure s'arrête. Ce second point n'existe pas et coûte une demi-journée
+  — et une relecture a demandé comment, donc voici : **un bouton dans le panneau Éditeur, « Libérer
+  tous les clients… »**, qui lit la liste des licences actives (la base de la console si elle
+  répond, sinon `data.licences` du poste), signe pour chaque matricule une clé **sans date de fin**
+  avec la clé maître, l'envoie par le gabarit de mail habituel (Resend si réglé, sinon un fichier
+  par client à envoyer à la main), et écrit une ligne d'historique par clé. Il demande une
+  confirmation qui nomme le nombre de clients, et il est **irréversible par construction** — une
+  clé livrée ne se reprend pas (8.2.0), et c'est ici une qualité. Il vit derrière le passe-droit
+  éditeur, donc n'existe sur aucun autre poste. **À construire, avec le pli scellé, avant les dix
+  premiers clients** : le pli sert à ce que quelqu'un puisse appuyer sur ce bouton.
 - **Claude devient indisponible** (fin du service, quota épuisé, coût). Le code reste du JavaScript
   ordinaire, sans bundler ni framework, avec 384 vérifications et une quarantaine de parcours qui
   ouvrent vraiment les applications, et des plans qui expliquent chaque décision. Un développeur
@@ -2426,7 +2657,16 @@ n'est pas obligatoire) ; l'interface en arabe ; un autre pays.
     son livre à lui, avec la trace de l'origine et de la modification. Il ne touche jamais aux
     données du client.
 30. Une écriture équilibrée n'est pas une écriture correcte : chaque calcul comptable a un contrôle
-    qui ne passe pas par l'équilibre.
+    qui ne passe pas par l'équilibre. **La liste, au 15/09/2026, chacun tenu par un test de
+    `npm test`** (une relecture a demandé qu'elle soit écrite) : le reste ouvert du lettrage égale
+    le solde du 411 ; la banque du grand livre égale la banque de la Trésorerie, au millime, sur
+    chaque compte ; la trésorerie du bilan égale `cashPosition` ; le résultat du bilan égale celui
+    de l'état de résultat ; l'à-nouveau égale les soldes réels du 31 décembre (et jamais les
+    à-nouveaux précédents) ; les ventes n'ouvrent pas l'année, la banque si, le résultat porte le
+    net ; le 4366 garde exactement le report que `vatChain` reporte ; le 28 d'un bien cédé est
+    repris en entier ; sur un mois, on amortit un mois. Et à venir avec le Cabinet : la parité de
+    balance entre les deux applications, dans les deux sens. Un contrôle qui n'est pas dans cette
+    liste et pas dans un test n'existe pas.
 31. Rien de sensible ne dépend d'un secret embarqué dans l'application. Ce qui décide de l'argent ou
     d'un droit se vérifie par une signature.
 32. Une correspondance automatique (rapprochement, lettrage) ne se valide jamais toute seule si elle
@@ -2455,6 +2695,24 @@ n'est pas obligatoire) ; l'interface en arabe ; un autre pays.
 41. **Les démarches passent avant le code quand elles bloquent la vente.** Marque, signature,
     INPDP, conditions de vente : aucune ligne de code neuve ne rapporte un dinar tant qu'elles ne
     sont pas faites.
+42. **Un jalon est un chiffre, pas une impression.** Chaque trimestre pose une question dont la
+    réponse est un nombre (démonstrations, essais, licences), et un nombre qui manque change l'ordre
+    du travail : le trimestre suivant vend, il ne construit pas.
+43. **Une tolérance de transition s'éteint d'elle-même.** Un dossier qui a reçu un paquet signé
+    n'accepte plus jamais de paquet non signé — confiance au premier usage, sans date à décider.
+44. **La grâce ne suit qu'une licence payée.** Un essai non converti compte dès sa fin ; sinon
+    « avoir essayé » deviendrait moins cher que « ne jamais avoir essayé ».
+45. **Un test de charge a ses seuils écrits avant la mesure**, sinon il ne peut pas échouer et ne
+    prouve rien.
+46. **Une règle sans acteur n'existe pas.** Le relecteur de chaque version est nommé (une autre
+    session d'IA, avec sa limite assumée) ; les versions d'entretien sont numérotées dans le plan,
+    pas promises « une sur quatre ».
+47. **Ce qui ne vit que sur Cloudflare se sauvegarde chez Skander**, avant la première vente : un
+    export de la base réclamé par « À faire » s'il a plus de trente jours.
+48. **Un acte du cabinet ne dépend jamais de l'ordinateur d'un client.** Le cabinet clôture même si
+    le client n'est pas à jour ; le fichier attend, et porte un PDF lisible par tous.
+49. **Un secret de continuité se coupe en deux** : le fichier chez une personne, le mot de passe
+    chez une autre, sur deux supports, rejoué une fois par an.
 
 ---
 

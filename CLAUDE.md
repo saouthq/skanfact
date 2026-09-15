@@ -2515,6 +2515,28 @@ fait bouger, et qui ne doit pas se reperdre :
   calendrier que le document ne donne nulle part plus des chiffres de marché sans source. **Un audit
   qui invente une qualité peut inventer un défaut** : chaque constat se relit dans le code avant
   d'être retenu.
+- **Quatrième relecture (sur la v4), la meilleure des quatre** — elle a reconnu ce qui était corrigé
+  avant de critiquer. Retenu : des **jalons de décision** trimestriels (un jalon est un chiffre —
+  démonstrations, essais, licences — et un chiffre qui manque fait du trimestre suivant un
+  trimestre de vente, pas de code) ; les **seuils du test de charge** écrits avant la mesure
+  (ouverture < 1 s, écriture < 100 ms, balance de 60 dossiers < 5 s, recherche < 3 s) ; **un dossier
+  qui a reçu un paquet signé n'accepte plus jamais de paquet non signé** (confiance au premier
+  usage, la tolérance s'éteint d'elle-même) ; **la grâce de douze mois ne suit qu'une licence
+  PAYÉE** — après un essai non converti le dossier compte dès sa fin, sinon « avoir essayé »
+  deviendrait moins cher que « jamais essayé » (trou de ma règle de la veille) ; l'**export de la
+  base de la console** avant la première vente (`GET /v1/admin/export`, rangé dans `~/.skanfact/`,
+  réclamé par « À faire » à 30 jours) ; le relecteur de chaque version **nommé** (une autre session
+  d'IA, limite assumée) ; les versions d'entretien **numérotées** (9.3.1, 9.5.1, 9.8.1) ; le
+  `.skanclose` quand le client n'est pas à jour (**le cabinet clôture quand même**, le fichier
+  attend et porte un PDF) ; le **pli scellé** décrit (fichier chez l'un, mot de passe chez l'autre,
+  deux supports, rejoué chaque année) et « Libérer tous les clients… » (clés à vie en lot, derrière
+  le passe-droit éditeur). Refusé : un tarif réduit à vie après la grâce (créerait une catégorie que
+  le cabinet aurait intérêt à fabriquer). Faux dans cet audit : « plus de 3 000 lignes » (2 536),
+  « à six mois on vend à dix clients » lu comme une promesse (c'est un scénario conditionnel), « la
+  plateforme collecte déjà » (elle n'est pas en production).
+- **Chiffres de marché, enfin sourcés** : INS 2024, 836 808 entreprises privées dont 87 % sans
+  salarié → ~107 000 avec au moins un salarié, notre sous-ensemble. Le nombre d'inscrits à l'OECT
+  n'est pas publié comme total (annuaire alphabétique à compter).
 - **Les questions que le document ne posait pas**, et qui sont les plus importantes : combien
   d'utilisateurs aujourd'hui (trois, aucun payant), combien de temps Skander peut tenir sans revenus
   (c'est cette réponse qui décide de l'ordre du travail), ce qui se passe s'il est absent six mois
