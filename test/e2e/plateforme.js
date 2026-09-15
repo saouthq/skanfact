@@ -31,7 +31,9 @@ const L = require('../../src/licence.js');
   // ---------- les clés : celles de l'éditeur imaginaire de ce test, jamais les vraies ----------
   const master = L.generateKeys();          // signe les licences (le rôle de la clé de Skander)
   const reponse = L.generateKeys();         // signe les réponses du serveur
+  const srv = L.generateKeys();             // signe les ventes courantes depuis la console (P 0.2)
   const SECRET = 'secret-de-test-' + 'x'.repeat(20);
+  const ADMIN = 'admin-de-test-' + 'y'.repeat(20);
 
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'skanfact-plateforme-'));
   const clesVides = fs.mkdtempSync(path.join(os.tmpdir(), 'skanfact-cles-vides-'));
@@ -39,7 +41,8 @@ const L = require('../../src/licence.js');
   const fichierCles = path.join(tmp, 'licences-publiques.json');
   fs.writeFileSync(fichierCles, JSON.stringify({
     format: 2,
-    cles: [{ kid: 'master', publicKey: master.publicKey, depuis: '2026-09-14' }],
+    cles: [{ kid: 'master', publicKey: master.publicKey, depuis: '2026-09-14' },
+           { kid: 'srv-1', publicKey: srv.publicKey, depuis: '2026-09-15' }],
     reponse: { publicKey: reponse.publicKey, depuis: '2026-09-15' }
   }, null, 2));
 
@@ -52,6 +55,8 @@ const L = require('../../src/licence.js');
         bind(...args) {
           return {
             async first() {
+              // Le client que la console vend (étape 3 ter) ; et la révocation, quand on la pose.
+              if (/FROM clients/.test(sql)) return { id: 'cli_1', nom: 'Atelier Plateforme SUARL', matricule: MF, email: null };
               return etatServeur.revoquee ? { id: 'lic_1', revoquee_le: '2026-10-01', revoquee_motif: 'rétractation' } : null;
             },
             async run() {
@@ -65,8 +70,8 @@ const L = require('../../src/licence.js');
       };
     }
   };
-  const env = { DB, APP_SECRET: SECRET, REPONSE_PRIVATE_KEY: reponse.privateKey,
-    LICENCE_PUBLIC_KEYS: JSON.stringify({ cles: [{ kid: 'master', publicKey: master.publicKey }] }) };
+  const env = { DB, APP_SECRET: SECRET, ADMIN_SECRET: ADMIN, REPONSE_PRIVATE_KEY: reponse.privateKey, SRV_PRIVATE_KEY: srv.privateKey,
+    LICENCE_PUBLIC_KEYS: JSON.stringify({ cles: [{ kid: 'master', publicKey: master.publicKey }, { kid: 'srv-1', publicKey: srv.publicKey }] }) };
 
   const serveur = http.createServer(async (req, res) => {
     const morceaux = [];
@@ -255,6 +260,26 @@ const L = require('../../src/licence.js');
     txt = await relireEtat();
     if (!/Licence active/.test(txt)) throw new Error('la révocation n\'a pas été levée : ' + txt.slice(0, 200));
     j.ok('le serveur reprend sa révocation, et l\'application rouvre');
+
+    // ------------------------------------------------ 3 ter. une clé vendue DEPUIS LA CONSOLE
+    j.etape('Une clé émise par la console (srv-1) est acceptée par l\'application, et se révoque pareil');
+    const emis = await fetch(BASE + '/v1/admin/licences', {
+      method: 'POST', headers: { 'X-SkanFact-Admin': ADMIN, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientId: 'cli_1', offre: 'independant', duree: '1a', prix: 390 })
+    }).then(r => r.json());
+    if (!emis.cle) throw new Error('la console n\'a pas émis de clé : ' + JSON.stringify(emis));
+    if ((L.parseKey(emis.cle).payload || {}).kid !== 'srv-1') throw new Error('la clé de la console doit nommer srv-1');
+    await collerLaCle(emis.cle);
+    txt = (await win.textContent('#p-licence')).replace(/\s+/g, ' ');
+    if (!/Licence active/.test(txt)) throw new Error('la clé signée par le serveur a été refusée : ' + txt.slice(0, 200));
+    if (!/Indépendant/.test(txt)) throw new Error('l\'offre écrite dans la clé n\'est pas celle affichée');
+    j.ok('signée par srv-1, reconnue par la version qui embarque cette clé, offre Indépendant appliquée');
+    etatServeur.revoquee = true;
+    await collerLaCle(emis.cle);
+    txt = await relireEtat();
+    if (!/révoquée/i.test(txt)) throw new Error('la révocation n\'atteint pas une clé vendue par la console : ' + txt.slice(0, 200));
+    j.ok('et une révocation la ferme comme n\'importe quelle autre');
+    etatServeur.revoquee = false;
 
     // ------------------------------------------------ 4. signature abîmée → ignorée
     j.etape('La même révocation, signature abîmée : ignorée');

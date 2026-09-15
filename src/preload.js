@@ -66,6 +66,8 @@ contextBridge.exposeInMainWorld('skanfact', {
   editeurCopierPublique: () => ipcRenderer.invoke('editeur:copierPublique'),
   cleReponseCreer: () => ipcRenderer.invoke('editeur:cleReponseCreer'),
   cleReponseCopier: (quoi) => ipcRenderer.invoke('editeur:cleReponseCopier', quoi),
+  cleServeurCreer: () => ipcRenderer.invoke('editeur:cleServeurCreer'),
+  cleServeurCopier: (quoi) => ipcRenderer.invoke('editeur:cleServeurCopier', quoi),
   onPackProgress: (cb) => { ipcRenderer.on('pack:progress', (_e, d) => cb(d)); },
   changelog: () => ipcRenderer.invoke('app:changelog'),
   // Battement de cœur du chien de garde (6.6.0) : le processus principal demande « tu es là ? »,

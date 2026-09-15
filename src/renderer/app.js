@@ -41,6 +41,8 @@
     editeurExporter: async () => ({ canceled: true }), editeurCopierPublique: async () => ({ ok: false }),
     cleReponseCreer: async () => ({ actif: false, offres: {}, durees: [], reponse: {} }),
     cleReponseCopier: async () => ({ ok: false }),
+    cleServeurCreer: async () => ({ actif: false, offres: {}, durees: [], reponse: {}, serveur: {} }),
+    cleServeurCopier: async () => ({ ok: false }),
     onUpdateEvent: () => {}
   };
 
@@ -10527,12 +10529,62 @@
         <button type="button" class="btn" id="ed-exp">Enregistrer une copie de la clé privée…</button>
       </div>
       <p class="small muted mt"><strong>Sans copie de la clé privée, un disque qui lâche rend impossible tout renouvellement chez tes clients.</strong> Une copie dans ton gestionnaire de mots de passe ou sur une clé USB à part suffit.</p>
-      ${blocCleReponse(editeur.reponse || {})}`;
+      ${blocCleReponse(editeur.reponse || {})}
+      ${blocCleServeur(editeur.serveur || {})}`;
     $('#ed-lic').onclick = () => navigate('#/licences');
     $('#ed-emettre').onclick = () => licenceForm(null, null);
     $('#ed-pub').onclick = copierClePublique;
     $('#ed-exp').onclick = abriterClePrivee;
     brancherCleReponse();
+    brancherCleServeur();
+  }
+
+  // ---------- la clé du serveur (8.5.0, P 0.2) ----------
+  //
+  // La console (api.skanfact.tn) signe les ventes courantes avec une clé de SECOND rang, « srv-1 ».
+  // Elle se fabrique ici, sur cet ordinateur, comme la clé de réponse : sa moitié privée va dans le
+  // réglage SRV_PRIVATE_KEY du service, sa moitié publique dans la version suivante de SkanFact (et
+  // dans LICENCE_PUBLIC_KEYS du service, pour qu'il reconnaisse ses propres clés).
+  //
+  // Tant que la publique n'est pas embarquée, une clé émise par la console est REFUSÉE par les
+  // clients (« pas reconnue ») : le panneau le dit, sinon on vendrait des clés qui n'ouvrent rien.
+  function blocCleServeur(srv) {
+    const etat = !srv.existe ? 'absente' : (!srv.embarquee ? 'attente' : (srv.correspond ? 'ok' : 'autre'));
+    const badge = { absente: '<span class="badge émis">Pas encore créée</span>',
+      attente: '<span class="badge émis">Créée — en attente d\'embarquement</span>',
+      ok: '<span class="badge accepté">La console peut vendre</span>',
+      autre: '<span class="badge annulée">L\'application embarque une AUTRE clé « srv-1 »</span>' }[etat];
+    const dit = {
+      absente: 'Sans cette clé, la console ne peut pas émettre de licence : chaque vente passe par ce poste. Créer la clé ici la garde sur cet ordinateur — elle ne doit jamais passer par ailleurs. C\'est une clé de second rang : si le service est compromis un jour, on la retire sans toucher à ta clé maître ni aux licences qu\'elle a signées.',
+      attente: 'La clé existe sur cet ordinateur. Il reste trois gestes : coller la <strong>privée</strong> dans le réglage <code>SRV_PRIVATE_KEY</code> du service, la <strong>publique</strong> dans <code>LICENCE_PUBLIC_KEYS</code> du service (sous le kid <code>srv-1</code>), et cette même publique dans la version suivante de SkanFact. Tant que la version n\'est pas publiée, une clé émise par la console est refusée par les clients.',
+      ok: 'L\'application publiée embarque cette clé sous le kid <code>srv-1</code> : les clés émises depuis la console sont reconnues chez les clients.',
+      autre: 'SkanFact embarque une autre clé « srv-1 » que celle de cet ordinateur : les clés signées par le service avec celle-ci seraient refusées partout. Reprends la bonne clé privée, ou fais embarquer celle-ci dans la prochaine version.'
+    }[etat];
+    return `<p class="mt"><strong>Plan de contrôle — clé du serveur (${h(srv.kid || 'srv-1')})</strong> ${badge}</p>
+      <p class="small">${dit}</p>
+      <div class="inline mt">
+        ${srv.existe
+          ? `<button type="button" class="btn" id="ed-srv-priv">Copier la clé privée (pour le service)</button>
+             <button type="button" class="btn" id="ed-srv-pub">Copier la clé publique (pour la version et le service)</button>`
+          : '<button type="button" class="btn btn-primary" id="ed-srv-creer">Créer la clé du serveur</button>'}
+      </div>`;
+  }
+  function brancherCleServeur() {
+    if ($('#ed-srv-creer')) $('#ed-srv-creer').onclick = async () => {
+      if (!await confirmDialog('Créer la clé du serveur (srv-1) ?\n\n'
+        + 'Elle est écrite sur cet ordinateur, à côté de ta clé maître. Tu colleras ensuite sa moitié privée dans les réglages du service, et sa moitié publique dans la version suivante de SkanFact.',
+        'Créer la clé', false)) return;
+      try { editeur = await bridge.cleServeurCreer(); drawEditeurPanel(); toast('Clé du serveur créée'); }
+      catch (e) { toast(plainError(e), true); }
+    };
+    if ($('#ed-srv-priv')) $('#ed-srv-priv').onclick = async () => {
+      try { await bridge.cleServeurCopier('privee'); toast('Clé PRIVÉE copiée — colle-la dans le réglage SRV_PRIVATE_KEY du service, puis vide ton presse-papiers'); }
+      catch (e) { toast(plainError(e), true); }
+    };
+    if ($('#ed-srv-pub')) $('#ed-srv-pub').onclick = async () => {
+      try { await bridge.cleServeurCopier('publique'); toast('Clé publique copiée — colle-la dans la conversation qui prépare la prochaine version'); }
+      catch (e) { toast(plainError(e), true); }
+    };
   }
 
   // ---------- la clé de réponse du plan de contrôle (8.4.0) ----------

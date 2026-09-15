@@ -393,8 +393,9 @@ façon la plus courante de ne jamais vendre.
 |---|---|---|
 | ~~**P 0.1**~~ ✅ | base D1, `POST /v1/licence/etat`, console en lecture seule | on **voit** les activations. Rien ne bloque, rien ne dépend du serveur. |
 | ~~**8.4.0**~~ ✅ | clés multiples (`kid`), activation, état, révocation appliquée, bandeau | l'application parle à la plateforme et respecte une révocation |
-| **P 0.2** | émission depuis la console (clé serveur), révocation, ventes, envoi du mail | une vente complète sans ouvrir SkanFact |
-| **8.5.0** | le pont comptable, migration de `data.licences` | les factures se fabriquent toutes seules |
+| ~~**P 0.2**~~ ✅ | émission depuis la console (clé serveur), révocation, ventes, envoi du mail | une vente complète sans ouvrir SkanFact |
+| ~~**8.5.0**~~ ✅ | la clé du serveur se fabrique dans SkanFact ; l'application accepte une clé `srv-1` | le jour de la mise en prod : `srv-1` et la clé de réponse embarquées ensemble |
+| **8.6.0** | le pont comptable, migration de `data.licences` | les factures se fabriquent toutes seules |
 | **P 1.0** | console complète, statistiques, journal | on pilote |
 
 Une semaine de travail environ, **0 DT par mois** d'infrastructure. Après ça la structure ne bouge

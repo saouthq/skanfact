@@ -50,7 +50,12 @@ CREATE TABLE IF NOT EXISTS licences (
   remplace_id       TEXT REFERENCES licences(id),
   remplacee_motif   TEXT,                 -- renouvellement / offre / matricule (8.2.0)
   revoquee_le       TEXT,
-  revoquee_motif    TEXT
+  revoquee_motif    TEXT,
+  -- P 0.2 : le contenu EXACT qui a été signé (le JSON, à l'octet près). On ne range jamais la clé
+  -- elle-même : Ed25519 est déterministe, donc signer de nouveau ce contenu avec la même clé privée
+  -- redonne la même clé, à l'identique — et sans la clé privée, ce contenu ne vaut rien.
+  charge            TEXT,
+  envoyee_le        TEXT                  -- la clé est partie par mail (NULL = jamais envoyée)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_licences_empreinte ON licences(empreinte);
 CREATE INDEX IF NOT EXISTS idx_licences_client ON licences(client_id);

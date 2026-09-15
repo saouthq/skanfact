@@ -512,6 +512,13 @@ const CLE_PUBLIQUE_EDITEUR = () => path.join(CLES_DIR(), 'licence-publique.json'
 // Si celle-ci fuitait, on en publierait une nouvelle sans réémettre une seule licence vendue.
 const REPONSE_PRIVEE = () => path.join(CLES_DIR(), 'reponse-privee.pem');
 const REPONSE_PUBLIQUE = () => path.join(CLES_DIR(), 'reponse-publique.json');
+// La clé du SERVEUR (8.5.0, P 0.2) : celle qui signe les ventes courantes depuis la console, sous le
+// `kid` « srv-1 ». Fabriquée ici, sur le poste de l'éditeur — jamais sur le serveur, jamais dans une
+// conversation. Sa privée part dans un réglage Cloudflare, sa publique dans la version suivante.
+// Une clé de SECOND rang : si le serveur est compromis, on la retire sans toucher à la maître.
+const SRV_KID = 'srv-1';
+const SRV_PRIVEE = () => path.join(CLES_DIR(), 'serveur-privee.pem');
+const SRV_PUBLIQUE = () => path.join(CLES_DIR(), 'serveur-publique.json');
 // `SKANFACT_CLE_EMBARQUEE` : le chemin du fichier de clé publique à lire À LA PLACE de celui du
 // paquet — pour que `e2e:licence` ouvre une application DÉSARMÉE (chemin inexistant) et arme le poste
 // avec sa propre clé d'essai, maintenant que le dépôt embarque la vraie. Honoré en développement
@@ -688,6 +695,21 @@ function editeurStatus(depuis) {
         embarquee: !!embarquee,
         correspond: !!(mienne && embarquee && String(mienne.publicKey).trim() === String(embarquee).trim()),
         base: plateformeBase()
+      };
+    })(),
+    // La clé du serveur (8.5.0) : existe-t-elle ici, et la version embarque-t-elle sa publique
+    // sous « srv-1 » ? Tant que non, une clé signée par la console est refusée par les clients
+    // (« pas reconnue ») — et le panneau le dit plutôt que de laisser croire qu'on peut vendre.
+    serveur: (() => {
+      const mienne = lireJson(SRV_PUBLIQUE());
+      const embarquee = L.choisirCle(SRV_KID, clePublique().cles);
+      return {
+        kid: SRV_KID,
+        existe: fs.existsSync(SRV_PRIVEE()),
+        publicKey: (mienne && mienne.publicKey) || '',
+        depuis: (mienne && mienne.depuis) || '',
+        embarquee: !!embarquee,
+        correspond: !!(mienne && embarquee && String(mienne.publicKey).trim() === String(embarquee.publicKey).trim())
       };
     })()
   };
@@ -1527,6 +1549,33 @@ ipcMain.handle('editeur:cleReponseCopier', (_e, quoi) => {
   const privee = String(quoi || '') === 'privee';
   const chemin = privee ? REPONSE_PRIVEE() : REPONSE_PUBLIQUE();
   if (!fs.existsSync(chemin)) { const err = new Error('Aucune clé de réponse sur cet ordinateur.'); err.code = 'PAS_DE_CLE'; throw err; }
+  require('electron').clipboard.writeText(fs.readFileSync(chemin, 'utf8'));
+  return { ok: true, privee };
+});
+// La clé du SERVEUR (8.5.0) : même geste, même discipline que la clé de réponse. Sa moitié privée
+// va dans le réglage `SRV_PRIVATE_KEY` du worker ; sa moitié publique dans
+// `build/licences-publiques.json` sous le kid « srv-1 » ET dans `LICENCE_PUBLIC_KEYS` du worker.
+// Tant que la publique n'est pas embarquée dans une version publiée, une clé émise depuis la
+// console est refusée par les clients — c'est le panneau qui le dit.
+ipcMain.handle('editeur:cleServeurCreer', () => {
+  if (fs.existsSync(SRV_PRIVEE())) {
+    const err = new Error(`Il existe déjà une clé de serveur sur cet ordinateur (${SRV_PRIVEE()}). En créer une nouvelle ferait refuser toutes les clés émises par la console jusqu'à la prochaine version publiée.`);
+    err.code = 'CLE_EXISTANTE';
+    throw err;
+  }
+  const { publicKey: pubPem, privateKey } = L.generateKeys();
+  fs.mkdirSync(CLES_DIR(), { recursive: true });
+  fs.writeFileSync(SRV_PRIVEE(), privateKey, { mode: 0o600 });
+  fs.writeFileSync(SRV_PUBLIQUE(), JSON.stringify({ kid: SRV_KID, publicKey: pubPem, depuis: L.today() }, null, 2) + '\n');
+  clePubliqueCache = null;
+  return editeurStatus();
+});
+// La privée ne traverse pas le pont : de main.js au presse-papiers, et l'écran n'en reçoit que la
+// confirmation — même règle que `editeur:cleReponseCopier`.
+ipcMain.handle('editeur:cleServeurCopier', (_e, quoi) => {
+  const privee = String(quoi || '') === 'privee';
+  const chemin = privee ? SRV_PRIVEE() : SRV_PUBLIQUE();
+  if (!fs.existsSync(chemin)) { const err = new Error('Aucune clé de serveur sur cet ordinateur.'); err.code = 'PAS_DE_CLE'; throw err; }
   require('electron').clipboard.writeText(fs.readFileSync(chemin, 'utf8'));
   return { ok: true, privee };
 });

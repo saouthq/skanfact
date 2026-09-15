@@ -2164,6 +2164,53 @@ octet retouché (ignorée), la même rejouée trois mois plus tard (ignorée), l
 change, aucun message rouge), et une installation neuve qui n'a jamais vu le réseau. Les deux
 altérations sont posées dans le **transport** : c'est là qu'un attaquant se place.
 
+### 8.5.0 — P 0.2 : la console vend
+
+Le worker (`plateforme/skanfact-api.mjs`) émet, révoque, renouvelle, change d'offre, marque payée
+et envoie la clé par mail (Resend, `send.skanfact.tn`) ; l'application gagne « Créer la clé du
+serveur » (`srv-1`) dans le panneau Éditeur. `test/d1-sqlite.js` pose une base D1 sur le SQLite de
+Node : les handlers se testent contre le VRAI schéma dans `npm test`, et `e2e:console` fait tourner
+le vrai worker dans un vrai navigateur. La 8.5.0 n'embarque PAS encore la publique `srv-1` : elle
+viendra avec la clé de réponse, le jour de la mise en production (les deux gestes se font ensemble).
+
+Règles apprises, à ne pas recasser :
+
+- **La clé maître ne va jamais sur le serveur.** `srv-1` est une clé de SECOND rang, fabriquée sur
+  le poste de l'éditeur comme les autres (7.33.0, 8.4.0), retirable sans toucher aux licences
+  signées par la maître. Le worker VÉRIFIE au premier appel que `SRV_PRIVATE_KEY` et la publique
+  `srv-1` de `LICENCE_PUBLIC_KEYS` vont ensemble (`cleServeur`) : une privée collée à côté de la
+  mauvaise publique produirait des clés refusées partout, et rien ne le dirait avant le premier
+  client. La console affiche « émission impossible » avec la raison, et grise le bouton.
+- **On ne range jamais la clé en base, seulement son CONTENU signé** (`licences.charge`). Ed25519
+  est déterministe : le même JSON signé par la même privée redonne la même clé à l'octet près.
+  « Voir la clé » et « Renvoyer par mail » la refabriquent, et vérifient que l'empreinte obtenue est
+  celle que la base suit — sinon une révocation viserait une empreinte que personne ne présente.
+- **L'ordre des champs de la charge est celui que l'application écrit** (`chargeLicence`, un test
+  fixe la liste) : un champ déplacé change la signature. Format 2 ajoute `kid` et `sub` ;
+  l'application ignore ce qu'elle ne connaît pas et n'a pas eu besoin de changer.
+- **Une licence remplacée n'est pas une active de plus** : renouveler ou changer d'offre signe une
+  clé neuve (`remplace_id`, motif), et la carte « licences actives » les exclut. Trois clés dont deux
+  remplacées = une licence active. Le statut se déduit : révoquée, sinon expirée, sinon remplacée,
+  sinon active.
+- **Marquer payée envoie la clé dans la seconde** (§ 12 du plan), une fois (`envoyee_le`), et
+  seulement si le client a une adresse et si Resend est réglé — sinon l'écran dit pourquoi et la
+  clé se copie. Le mail porte la MÊME phrase d'activation que le gabarit de l'application, et un
+  test la compare. Resend est la SEULE requête sortante du worker ; un test compte les `fetch(`.
+- **La révocation dit sa limite en orange** dans le formulaire même : une clé livrée ne se reprend
+  pas, l'application ne l'applique qu'à sa prochaine connexion et si sa version embarque la clé de
+  réponse. Un motif est obligatoire. Renouveler une révoquée ou une déjà remplacée est refusé (409).
+- **Les tests ne rejouent plus le worker, ils le font tourner.** `e2e:console` imitait ses
+  réponses avec des lignes écrites à la main : une requête SQL fausse y restait invisible jusqu'à
+  Cloudflare. Avec `baseD1()` le SQL s'exécute pour de vrai sur `schema-a-coller.sql` — celui qu'on
+  demande à Skander de coller. Le seul faux est Resend, et on vérifie ce qu'on lui aurait envoyé.
+- Piège attrapé par l'e2e, invisible autrement : après un formulaire validé avec succès, la page
+  réactivait un bouton que `fermerForm()` venait de retirer — TypeError dans une promesse, aucune
+  console chez l'utilisateur. On relit l'élément au moment d'y toucher (règle 7.17.0, côté console).
+- Piège de test : `contains(@class, "card")` en XPath attrape le conteneur `.cards`, premier dans
+  l'ordre du document — et cliquer un conteneur ne fait rien. Trouvé par le délai d'attente.
+- Piège de test : une tranche de source bornée sur un voisin NOMMÉ se casse quand on insère un
+  handler entre les deux. On borne sur « le `ipcMain.handle(` suivant, quel qu'il soit ».
+
 ## Pistes pour la suite (non demandées)
 
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.

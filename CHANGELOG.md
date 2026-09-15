@@ -7,6 +7,34 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 8.5.0 — 15/09/2026
+
+**La console vend (P 0.2).** Sur `api.skanfact.tn`, l'éditeur crée un client, émet une licence,
+la renouvelle, change son offre, la révoque, marque la vente payée et envoie la clé par mail — une
+vente complète sans ouvrir SkanFact. Chaque geste est écrit dans un journal qui ne s'efface jamais.
+
+**Une clé de second rang signe les ventes.** La console ne voit jamais la clé maître : elle signe
+avec `srv-1`, une clé fabriquée sur l'ordinateur de l'éditeur (Paramètres → L'application →
+Éditeur → « Créer la clé du serveur »), dont la moitié privée va dans un réglage du service et la
+moitié publique dans la version suivante de SkanFact. Si le service est compromis un jour, on retire
+`srv-1` sans toucher à la maître ni aux licences qu'elle a signées. Le panneau Éditeur dit à chaque
+instant si la version publiée embarque cette clé — tant que non, une clé émise par la console est
+refusée par les clients, et il le dit plutôt que de laisser croire qu'on peut vendre.
+
+**Côté application, rien ne change pour un client** : une clé signée par `srv-1` se vérifie comme
+les autres, par la clé que son contenu nomme, jamais par la maître en repli. Cette version
+n'embarque pas encore la clé publique `srv-1` : elle viendra avec la clé de réponse, le jour de la
+mise en production.
+
+**Ce que « Révoquer » fait vraiment**, écrit en orange dans la console : la licence sort des actives
+avec son motif, et l'application du client ferme la création à sa prochaine connexion. Hors ligne,
+la clé continue jusqu'à sa date de fin. Une clé livrée ne se reprend pas.
+
+Deux parcours le prouvent : `npm run e2e:console` fait tourner le vrai worker sur une vraie base
+SQLite dans un vrai navigateur (le client, la clé vérifiée par `src/licence.js`, la vente payée, le
+mail avec la clé dedans, le renouvellement, la révocation), et `npm run e2e:plateforme` colle une
+clé émise par la console dans l'application réelle.
+
 ## 8.4.1 — 15/09/2026
 
 **L'application connaît enfin l'adresse de la plateforme.** La 8.4.0 savait s'annoncer, mais elle a

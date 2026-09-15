@@ -3460,10 +3460,20 @@ t('8.4.0 : le plan de contrôle ne peut ni faire attendre l\'application, ni emp
 
   // La clé de réponse se fabrique sur le poste de l'éditeur, et sa moitié privée ne traverse pas le
   // pont : main.js la met au presse-papiers, l'écran n'en reçoit que la confirmation.
-  const cop = main.slice(main.indexOf("ipcMain.handle('editeur:cleReponseCopier'"), main.indexOf("ipcMain.handle('licence:emettre'"));
-  assert.ok(cop.length > 200 && cop.length < 1200, 'tranche editeur:cleReponseCopier introuvable : ' + cop.length);
-  assert.ok(/clipboard\.writeText\(fs\.readFileSync\(chemin, 'utf8'\)\)/.test(cop) && !/texte:|return .*readFileSync/.test(cop),
-    'la clé privée de réponse ne doit pas traverser le pont');
+  // Tranche bornée sur le handler SUIVANT, quel qu'il soit : la 8.5.0 a posé les handlers de la clé
+  // du serveur entre celui-ci et `licence:emettre`, et une borne nommée s'est retrouvée fausse.
+  const handler = nom => {
+    const a = main.indexOf("ipcMain.handle('" + nom + "'");
+    assert.ok(a > 0, 'handler introuvable : ' + nom);
+    const b = main.indexOf('ipcMain.handle(', a + 1);
+    return main.slice(a, b > a ? b : undefined);
+  };
+  ['editeur:cleReponseCopier', 'editeur:cleServeurCopier'].forEach(nom => {
+    const cop = handler(nom);
+    assert.ok(cop.length > 200 && cop.length < 1200, 'tranche ' + nom + ' inattendue : ' + cop.length);
+    assert.ok(/clipboard\.writeText\(fs\.readFileSync\(chemin, 'utf8'\)\)/.test(cop) && !/texte:|return .*readFileSync/.test(cop),
+      'la clé privée ne doit pas traverser le pont (' + nom + ')');
+  });
 
   // L'e2e qui prouve tout ça existe, et il parle au VRAI worker.
   const e2e = lireSource('test', 'e2e', 'plateforme.js');
@@ -3472,6 +3482,50 @@ t('8.4.0 : le plan de contrôle ne peut ni faire attendre l\'application, ni emp
   ['signature', 'rejeu'].forEach(a => assert.ok(e2e.includes(`alteration === '${a}'`), 'e2e:plateforme doit rejouer l\'attaque « ' + a + ' »'));
   const pkg = JSON.parse(lireSource('package.json'));
   assert.strictEqual(pkg.scripts['e2e:plateforme'], 'node test/e2e/plateforme.js');
+});
+
+// 8.5.0 (P 0.2) : la clé du SERVEUR — celle qui signe les ventes depuis la console — se fabrique
+// sur le poste de l'éditeur, comme la clé de réponse en 8.4.0 et les clés de licence en 7.33.0. Le
+// serveur ne voit jamais la maître ; il reçoit une clé de second rang qu'on peut retirer.
+t('8.5.0 : la clé du serveur se fabrique sur le poste de l\'éditeur, se dit à l\'écran, et son schéma est en place', () => {
+  const main = lireSource('src', 'main.js').replace(/\/\/[^\n]*/g, '');
+  assert.ok(/const SRV_KID = 'srv-1';/.test(main), 'le kid de la clé du serveur est srv-1, celui que PLAN-PLATEFORME.md nomme');
+  const creer = main.slice(main.indexOf("ipcMain.handle('editeur:cleServeurCreer'"), main.indexOf("ipcMain.handle('editeur:cleServeurCopier'"));
+  assert.ok(creer.length > 300 && creer.length < 1500, 'tranche editeur:cleServeurCreer inattendue : ' + creer.length);
+  assert.ok(/fs\.existsSync\(SRV_PRIVEE\(\)\)[\s\S]{0,500}CLE_EXISTANTE/.test(creer), 'une clé existante n\'est jamais écrasée : la recréer ferait refuser toutes les clés de la console');
+  assert.ok(/writeFileSync\(SRV_PRIVEE\(\), privateKey, \{ mode: 0o600 \}\)/.test(creer), 'la privée est écrite en 0600');
+  assert.ok(/kid: SRV_KID/.test(creer), 'le fichier public porte son kid');
+  assert.ok(/clePubliqueCache = null/.test(creer), 'le cache des clés se vide');
+  // L'état de l'éditeur dit si la version EMBARQUE cette clé sous srv-1 : tant que non, une clé
+  // vendue par la console est refusée par les clients, et le panneau doit le dire.
+  const st = main.slice(main.indexOf('function editeurStatus('), main.indexOf('function plateformeBase('));
+  assert.ok(/serveur: \(\(\) => \{[\s\S]{0,600}L\.choisirCle\(SRV_KID, clePublique\(\)\.cles\)/.test(st), 'editeurStatus doit chercher srv-1 parmi les clés embarquées');
+  const pre = lireSource('src', 'preload.js');
+  ['cleServeurCreer', 'cleServeurCopier'].forEach(f => assert.ok(pre.includes(f + ':'), 'pont sans ' + f));
+  const app = lireApp();
+  assert.ok(/function blocCleServeur\(/.test(app) && /function brancherCleServeur\(/.test(app), 'le bloc de la clé du serveur manque dans app.js');
+  const panneau = app.slice(app.indexOf('function drawEditeurPanel('), app.indexOf('function blocCleServeur('));
+  assert.ok(/blocCleServeur\(editeur\.serveur \|\| \{\}\)/.test(panneau) && /brancherCleServeur\(\);/.test(panneau), 'le panneau Éditeur doit poser ET brancher le bloc');
+  const bloc = app.slice(app.indexOf('function blocCleServeur('), app.indexOf('function brancherCleServeur('));
+  ['absente', 'attente', 'ok', 'autre'].forEach(e => assert.ok(new RegExp('\\b' + e + ': ').test(bloc), 'état manquant : ' + e));
+  assert.ok(/refusée par les clients/.test(bloc), 'l\'état « en attente » doit dire qu\'une clé de la console est REFUSÉE tant que la version n\'est pas publiée');
+  ['ed-srv-creer', 'ed-srv-priv', 'ed-srv-pub'].forEach(id => assert.ok(app.includes("$('#" + id + "').onclick"), 'bouton sans gestionnaire : #' + id));
+  assert.ok(/cleServeurCreer: async \(\) =>/.test(app) && /cleServeurCopier: async \(\) =>/.test(app), 'les doublures navigateur manquent');
+  // Le schéma : le contenu signé (jamais la clé) et la date d'envoi.
+  const sql = lireSource('plateforme', 'schema.sql').replace(/--[^\n]*/g, '');
+  const licences = sql.slice(sql.indexOf('CREATE TABLE IF NOT EXISTS licences'), sql.indexOf('CREATE TABLE IF NOT EXISTS activations'));
+  assert.ok(/\bcharge\s+TEXT/.test(licences) && /\benvoyee_le\s+TEXT/.test(licences), 'les colonnes charge et envoyee_le manquent');
+  assert.ok(!/\bcle\s+TEXT/.test(licences), 'la clé elle-même ne se range jamais : seulement son contenu');
+  // Le mode d'emploi nomme les réglages, et la migration pour une base déjà créée.
+  const readme = lireSource('plateforme', 'README.md');
+  ['SRV_PRIVATE_KEY', 'RESEND_API_KEY', 'ALTER TABLE licences ADD COLUMN charge TEXT', 'ALTER TABLE licences ADD COLUMN envoyee_le TEXT'].forEach(m =>
+    assert.ok(readme.includes(m), 'plateforme/README.md doit nommer : ' + m));
+  // Les parcours : la console contre une VRAIE base, et l'application contre une clé de la console.
+  const e2eC = lireSource('test', 'e2e', 'console.js');
+  assert.ok(/require\('\.\.\/d1-sqlite'\)/.test(e2eC) && /P\.default\.fetch\(/.test(e2eC), 'e2e:console doit faire tourner le vrai worker sur une vraie base');
+  assert.ok(/L\.verifyKey\(cle, cles\)/.test(e2eC), 'e2e:console doit vérifier la clé émise avec src/licence.js');
+  const e2eP = lireSource('test', 'e2e', 'plateforme.js');
+  assert.ok(/\/v1\/admin\/licences/.test(e2eP) && /kid !== 'srv-1'/.test(e2eP), 'e2e:plateforme doit coller une clé émise par la console dans l\'application');
 });
 
 t('offre Indépendant : chaque module réservé est fermé à la création, partout où l\'on crée', () => {
@@ -9349,7 +9403,16 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       const i = src.indexOf('const CONSOLE_HTML = ');
       assert.ok(i > 0, 'le gabarit de la console est introuvable');
       const page = src.slice(i + 'const CONSOLE_HTML = '.length);
-      assert.ok(page.length > 3000 && page.length < 20000, 'tranche de la console inattendue : ' + page.length);
+      // 11 Ko en lecture seule (P 0.1), 36 Ko avec la vente (P 0.2) : la borne haute garde une
+      // marge, elle ne fixe pas une taille.
+      assert.ok(page.length > 3000 && page.length < 80000, 'tranche de la console inattendue : ' + page.length);
+      // Les boutons de LIGNE n'ont pas d'identifiant : ils portent un `data-act`, et un seul
+      // gestionnaire les retrouve. Chaque action posée dans une ligne doit avoir sa branche.
+      // L'attribut est construit (`'data-act="' + act + '"'`) : on lit les appels `b('voir', …)`
+      // qui posent chaque bouton, pas un attribut littéral qui n'existe pas dans la source.
+      const acts = [...new Set([...page.matchAll(/\bb\('([a-z-]+)', '/g)].map(m => m[1]))];
+      assert.ok(acts.length >= 5, 'trop peu d\'actions de ligne lues : ' + acts.join(', '));
+      acts.forEach(a => assert.ok(page.includes("act === '" + a + "'"), 'action de ligne sans branche : ' + a));
 
       // Un backtick ou un ${ dans ce gabarit referme le template literal et casse le fichier. Le
       // projet s'est fait piéger trois fois (7.20.0, 7.29.0, 7.31.0) — ici le test le garde.
@@ -9365,7 +9428,9 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       // Et aucun bouton mort : chaque identifiant de bouton posé dans le HTML doit être branché
       // dans le script de la page. C'est le défaut de la 7.0.0 — treize boutons « Voir » qui
       // avalaient le clic en silence.
-      const ids = [...dedans.matchAll(/<button[^>]*\bid="([^"]+)"/g)].map(m => m[1]);
+      // `\sid=` et non `\bid=` : `data-id="…"` contient aussi « id= » à une frontière de mot, et les
+      // boutons de ligne en portent un — construit, jamais littéral.
+      const ids = [...dedans.matchAll(/<button[^>]*\sid="([^"]+)"/g)].map(m => m[1]);
       assert.ok(ids.length >= 3, 'trop peu de boutons lus : le découpage est faux');
       ids.forEach(id => assert.ok(
         dedans.includes('$(\'' + id + '\').onclick'),
@@ -9448,6 +9513,232 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
 
       // Un seul octet retouché dans le transport, et la réponse ne restreint plus rien.
       assert.strictEqual(licSrc.verifierReponse({ ...recue, motif: 'autre chose' }, rep.publicKey, { sujet }).ok, false);
+    });
+
+    // ---------- P 0.2 : vendre depuis la console ----------
+    t('P 0.2 : les chemins de la vente existent, et rien d\'autre', () => {
+      const r = p2 => P.routeApi(p2);
+      assert.deepStrictEqual(r('/v1/admin/etat'), { v: 1, espace: 'admin', action: 'etat', id: null, sous: null });
+      assert.deepStrictEqual(r('/v1/admin/evenements'), { v: 1, espace: 'admin', action: 'evenements', id: null, sous: null });
+      assert.deepStrictEqual(r('/v1/admin/licences/3f9a2c1e'), { v: 1, espace: 'admin', action: 'licences', id: '3f9a2c1e', sous: null });
+      ['revoquer', 'renouveler', 'changer-offre', 'envoyer'].forEach(s =>
+        assert.strictEqual(r('/v1/admin/licences/3f9a2c1e/' + s).sous, s, 'sous-action manquante : ' + s));
+      ['payee', 'facturee'].forEach(s => assert.strictEqual(r('/v1/admin/ventes/v_1/' + s).sous, s));
+      // Le routeur juge la FORME (espace, action, sous-action connus) ; c'est le handler qui rend
+      // 404 sur une combinaison qui n'a pas de sens (« /etat/x »). Deux étages, deux tests.
+      ['/v1/admin/licences/3f9a2c1e/effacer', '/v1/admin/jetons', '/v1/admin/licences/../x', '/v2/admin/clients/x/y/z'].forEach(p2 =>
+        assert.strictEqual(r(p2), null, 'chemin accepté à tort : ' + p2));
+    });
+
+    // Deux copies des mêmes règles de dates, dans deux runtimes : la seule façon de savoir qu'elles
+    // disent la même chose est de les faire calculer les mêmes cas. Une licence qui ne finit pas le
+    // jour que la facture annonce, c'est un client qui appelle.
+    t('P 0.2 : les dates du serveur sont celles de l\'application', () => {
+      const cas = ['2026-01-31', '2026-02-28', '2024-02-29', '2026-09-15', '2026-12-31', '2027-03-31'];
+      cas.forEach(d => [1, 3, 6, 12, 24].forEach(m =>
+        assert.strictEqual(P.addMonths(d, m), lic.addMonths(d, m), 'addMonths(' + d + ', ' + m + ')')));
+      assert.strictEqual(P.addMonths('2026-01-31', 1), '2026-02-28', 'un mois du calendrier, pas 30,44 jours');
+      cas.forEach(d => lic.DUREES.forEach(du =>
+        assert.strictEqual(P.expirationPour(d, du.id, '2030-06-01'), lic.expirationPour(d, du.id, '2030-06-01'), 'expirationPour(' + d + ', ' + du.id + ')')));
+      assert.strictEqual(P.expirationPour('2026-09-15', 'vie'), '', 'à vie = pas de date');
+      assert.strictEqual(P.expirationPour('2026-09-15', 'date', '2026-09-15'), null, 'une date libre doit être dans le futur');
+      assert.strictEqual(P.expirationPour('2026-09-15', 'date', '2027-02-30'), null, 'un jour qui n\'existe pas est refusé');
+      assert.strictEqual(P.expirationPour('2026-09-15', 'jamais-vu'), null, 'une durée inconnue est refusée');
+      assert.deepStrictEqual(P.DUREES.map(d => d.id), lic.DUREES.map(d => d.id), 'les mêmes durées des deux côtés');
+      assert.deepStrictEqual(Object.keys(P.OFFRES), Object.keys(lic.OFFRES), 'les mêmes offres des deux côtés');
+      // Le prorata d'un changement d'offre : la même règle que core.prorataOffre.
+      const pr = P.prorataOffre({ debut: '2026-01-01', fin: '2027-01-01', prixNouveau: 690, prixAncien: 390, aujourdhui: '2026-07-02' });
+      assert.strictEqual(pr.total, 365); assert.strictEqual(pr.jours, 183);
+      assert.strictEqual(pr.montant, Math.round(300 * 183 / 365 * 1000) / 1000);
+      const vie = P.prorataOffre({ fin: '', prixNouveau: 690, prixAncien: 390 });
+      assert.strictEqual(vie.jours, null, 'une licence à vie n\'a pas de prorata : on le DIT');
+      assert.strictEqual(P.prorataOffre({ fin: '2027-01-01', prixNouveau: 390, prixAncien: 690, aujourdhui: '2026-07-02' }).montant, 0, 'une descente ne rembourse rien toute seule');
+    });
+
+    // LE test de P 0.2 : ce que la console SIGNE, l'application l'ACCEPTE — et elle ne l'accepte
+    // que par la clé que la charge nomme. Deux runtimes, deux formats de clé, un seul verdict.
+    await ta('P 0.2 : ce que la console signe, l\'application l\'accepte — et seulement par srv-1', async () => {
+      const master = lic.generateKeys(), srv = lic.generateKeys(), autre = lic.generateKeys();
+      const charge = P.chargeLicence({ kid: 'srv-1', id: '3f9a2c1e', sub: 'cli_1', nom: 'Menuiserie Trabelsi', matricule: '1234567A/M/P/000', offre: 'independant', exp: '2027-09-15', cabinet: '', emisLe: '2026-09-15' });
+      assert.strictEqual(charge.format, 2);
+      assert.deepStrictEqual(Object.keys(charge), ['format', 'kid', 'id', 'sub', 'nom', 'matricule', 'offre', 'exp', 'cabinet', 'note', 'emisLe'],
+        'l\'ordre des champs est celui que l\'application écrit — un champ déplacé change la signature');
+      const cle = await P.signerLicence(charge, srv.privateKey);
+      assert.ok(cle.startsWith('SKAN1.'), 'le même conteneur que src/licence.js');
+      // Déterministe : c'est ce qui permet de ne jamais ranger la clé en base, seulement son contenu.
+      assert.strictEqual(await P.signerLicence(JSON.stringify(charge), srv.privateKey), cle, 'Ed25519 doit redonner la même clé');
+      const cles = [{ kid: 'master', publicKey: master.publicKey }, { kid: 'srv-1', publicKey: srv.publicKey }];
+      const lu = lic.verifyKey(cle, cles);
+      assert.ok(lu && lu.kid === 'srv-1' && lu.nom === 'Menuiserie Trabelsi' && lu.offre === 'independant', 'l\'application doit vérifier une clé signée par srv-1');
+      assert.strictEqual(lic.licenceState({ key: cle, cles, matricule: '1234567A', today: '2026-09-15', installedAt: '2026-09-15' }).state, 'active');
+      assert.strictEqual(lic.licenceState({ key: cle, cles, matricule: '1234567A', today: '2026-09-15', installedAt: '2026-09-15' }).offre, 'independant');
+      assert.strictEqual(lic.licenceState({ key: cle, cles, matricule: '7654321B', today: '2026-09-15' }).state, 'autre', 'attachée à SON matricule');
+      // Sans srv-1 dans la version installée : refusée, et JAMAIS vérifiée par la maître en repli.
+      assert.strictEqual(lic.verifyKey(cle, [{ kid: 'master', publicKey: master.publicKey }]), null, 'une clé srv-1 ne doit pas être vérifiée par master');
+      assert.strictEqual(lic.licenceState({ key: cle, cles: [{ kid: 'master', publicKey: master.publicKey }], matricule: '1234567A', today: '2026-09-15' }).state, 'invalide');
+      // Signée par une autre clé privée sous le même kid : refusée des deux côtés.
+      const fausse = await P.signerLicence(charge, autre.privateKey);
+      assert.strictEqual(lic.verifyKey(fausse, cles), null);
+      assert.strictEqual((await P.verifierLicence(fausse, cles)).ok, false);
+      assert.strictEqual((await P.verifierLicence(cle, cles)).kid, 'srv-1', 'et le serveur reconnaît ses propres clés');
+      // La même empreinte des deux côtés : c'est elle que la révocation vise.
+      assert.strictEqual(await P.empreinteCle(cle), lic.empreinteCle(cle));
+    });
+
+    t('P 0.2 : ce qui arrive de la console est validé, et chaque refus se lit', () => {
+      const c = P.nettoyerClient({ nom: '  Menuiserie Trabelsi ', matricule: '1234567a/m/p/000', email: 'Contact@Trabelsi.TN', tel: ' 20 000 000 ' });
+      assert.strictEqual(c.ok, true);
+      assert.strictEqual(c.client.matricule, '1234567A/M/P/000', 'le matricule est mis en majuscules');
+      assert.strictEqual(c.client.email, 'contact@trabelsi.tn', 'l\'adresse est mise en minuscules');
+      assert.strictEqual(c.client.adresse, null, 'un champ absent devient null, jamais ""');
+      assert.ok(!P.nettoyerClient({ nom: 'X' }).ok && /obligatoire/.test(P.nettoyerClient({}).erreur), 'un nom manquant se dit');
+      assert.ok(/e-mail/.test(P.nettoyerClient({ nom: 'Trabelsi', email: 'pas une adresse' }).erreur), 'une adresse fausse se dit');
+      [null, 'texte', 42].forEach(x => assert.strictEqual(P.nettoyerClient(x).ok, false));
+
+      const e = P.nettoyerEmission({ offre: 'independant', duree: '1a', prix: '390', remise: 20, cabinet: 'ABCD-EF01-2345-6789-abcd', payeeLe: '2026-09-15', moyen: 'virement' }, '2026-09-15');
+      assert.strictEqual(e.ok, true);
+      assert.strictEqual(e.e.exp, '2027-09-15');
+      assert.strictEqual(e.e.montant, 312, 'le montant de la vente est le prix moins la remise');
+      assert.strictEqual(e.e.cabinet, 'abcdef0123456789abcd', 'l\'empreinte du cabinet est normalisée comme dans l\'application');
+      assert.strictEqual(e.e.devise, 'TND');
+      assert.ok(/offre/.test(P.nettoyerEmission({ offre: 'premium', duree: '1a', prix: 1 }, '2026-09-15').erreur), 'une offre inconnue se dit');
+      assert.ok(/durée|date/.test(P.nettoyerEmission({ offre: 'entreprise', duree: '9a', prix: 1 }, '2026-09-15').erreur));
+      assert.ok(/prix/.test(P.nettoyerEmission({ offre: 'entreprise', duree: '1a', prix: 'gratuit' }, '2026-09-15').erreur));
+      assert.ok(/remise/.test(P.nettoyerEmission({ offre: 'entreprise', duree: '1a', prix: 1, remise: 120 }, '2026-09-15').erreur));
+      assert.ok(/cabinet/.test(P.nettoyerEmission({ offre: 'entreprise', duree: '1a', prix: 1, cabinet: 'abcd' }, '2026-09-15').erreur), 'une empreinte tronquée se dit — un G tapé pour un 6 ne doit pas passer en silence');
+      assert.ok(/paiement/.test(P.nettoyerEmission({ offre: 'entreprise', duree: '1a', prix: 1, payeeLe: 'hier' }, '2026-09-15').erreur));
+      assert.strictEqual(P.nettoyerEmission({ offre: 'entreprise', duree: 'vie', prix: 0 }, '2026-09-15').e.exp, '', 'un prix nul est permis (une licence offerte)');
+      // Les tarifs ne servent qu'à préremplir, et se règlent sans toucher au code.
+      assert.deepStrictEqual(P.tarifs({}), { independant: 390, entreprise: 690, remiseParrainage: 20, devise: 'TND' });
+      assert.strictEqual(P.tarifs({ PRIX_ENTREPRISE: '750' }).entreprise, 750);
+      assert.strictEqual(P.tarifs({ PRIX_ENTREPRISE: 'cher' }).entreprise, 690, 'un réglage illisible retombe sur le défaut');
+    });
+
+    // Une privée collée à côté d'une publique qui n'est pas la sienne produirait des clés que
+    // l'application refuse — et rien, nulle part, ne le dirait avant le premier client.
+    await ta('P 0.2 : la clé du serveur se vérifie AVANT de signer', async () => {
+      const srv = lic.generateKeys(), autre = lic.generateKeys();
+      const cles = JSON.stringify([{ kid: 'master', publicKey: autre.publicKey }, { kid: 'srv-1', publicKey: srv.publicKey }]);
+      assert.strictEqual((await P.cleServeur({ LICENCE_PUBLIC_KEYS: cles })).ok, false, 'sans privée : rien à signer');
+      assert.ok(/SRV_PRIVATE_KEY/.test((await P.cleServeur({ LICENCE_PUBLIC_KEYS: cles })).raison));
+      const sansPub = await P.cleServeur({ SRV_PRIVATE_KEY: srv.privateKey, LICENCE_PUBLIC_KEYS: '[{"kid":"master","publicKey":"' + autre.publicKey.replace(/\n/g, '\\n') + '"}]' });
+      assert.ok(!sansPub.ok && /srv-1/.test(sansPub.raison), 'la publique srv-1 doit être dans LICENCE_PUBLIC_KEYS');
+      const mauvaise = await P.cleServeur({ SRV_PRIVATE_KEY: autre.privateKey, LICENCE_PUBLIC_KEYS: cles });
+      assert.ok(!mauvaise.ok && /ne correspond pas/.test(mauvaise.raison), 'une privée qui n\'est pas celle de la publique est refusée');
+      const bonne = await P.cleServeur({ SRV_PRIVATE_KEY: srv.privateKey, LICENCE_PUBLIC_KEYS: cles });
+      assert.strictEqual(bonne.ok, true); assert.strictEqual(bonne.kid, 'srv-1');
+      const retiree = await P.cleServeur({ SRV_PRIVATE_KEY: srv.privateKey, LICENCE_PUBLIC_KEYS: JSON.stringify([{ kid: 'srv-1', publicKey: srv.publicKey, retiree: true }]) });
+      assert.strictEqual(retiree.ok, false, 'une clé retirée ne signe plus');
+      const e = await P.etatPlateforme({ SRV_PRIVATE_KEY: srv.privateKey, LICENCE_PUBLIC_KEYS: cles });
+      assert.strictEqual(e.emission.ok, true);
+      assert.strictEqual(e.mail.ok, false, 'sans RESEND_API_KEY, l\'écran doit dire que le mail n\'est pas configuré');
+    });
+
+    // Un client qui reçoit sa clé depuis la console ou depuis SkanFact lit les mêmes phrases.
+    t('P 0.2 : le mail porte la clé, et le même chemin d\'activation que l\'application', () => {
+      const m = P.mailLicence({ offre: 'independant', exp: '2027-09-15', cle: 'SKAN1.aaa.bbb', signature: 'Skander' });
+      assert.strictEqual(m.sujet, 'Votre licence SkanFact — Indépendant');
+      assert.ok(m.texte.includes('SKAN1.aaa.bbb') && m.texte.includes('15/09/2027') && m.texte.endsWith('Skander'));
+      assert.ok(P.mailLicence({ offre: 'entreprise', exp: '', cle: 'x' }).texte.includes('sans limite de durée'));
+      const gabarit = core.DEFAULT_EMAIL_TEMPLATES.licence.body;
+      const chemin = gabarit.match(/Pour l'activer : [^\n]+/)[0];
+      assert.ok(m.texte.includes(chemin), 'la phrase d\'activation doit être celle du gabarit de l\'application :\n' + chemin);
+      // Le mail est la SEULE requête sortante du worker : rien d'autre ne doit pouvoir partir.
+      const src = fs.readFileSync(path.join(__dirname, '..', 'plateforme', 'skanfact-api.mjs'), 'utf8');
+      // Les commentaires sont retirés avant de juger — mais pas le « // » d'une adresse : une
+      // première version de ce test effaçait `//api.resend.com/…` et ne trouvait plus rien.
+      const code = src.slice(0, src.indexOf('const CONSOLE_HTML')).replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+      const urls = [...code.matchAll(/https?:\/\/[^\s'"`)]+/g)].map(m2 => m2[0]);
+      assert.deepStrictEqual([...new Set(urls)], [P.MAIL_API], 'une adresse sortante inattendue dans le worker : ' + urls.join(', '));
+      // `await fetch(` : l'appel SORTANT — pas `async fetch(request, env)`, qui est le point d'entrée.
+      assert.strictEqual((code.match(/await fetch\(/g) || []).length, 1, 'un seul appel réseau sortant');
+    });
+
+    // Une vente complète contre une VRAIE base (SQLite, vrai schéma) et le vrai worker : le client,
+    // la clé, la vente, le mail, la révocation, et ce que l'application reçoit ensuite.
+    await ta('P 0.2 : une vente complète, contre une vraie base — et la révocation arrive à l\'application', async () => {
+      const { baseD1 } = require('./d1-sqlite');
+      const srv = lic.generateKeys(), master = lic.generateKeys(), rep = lic.generateKeys();
+      const ADMIN = 'X'.repeat(30), APP = 'app-secret-xxxxxxxxxxxx';
+      const mails = [];
+      const vraiFetch = globalThis.fetch;
+      globalThis.fetch = async (url, o) => { mails.push({ url: String(url), corps: JSON.parse(o.body), auth: o.headers.Authorization }); return new Response(JSON.stringify({ id: 'm_1' }), { status: 200 }); };
+      const db = baseD1();
+      const env = { DB: db, ADMIN_SECRET: ADMIN, APP_SECRET: APP, SRV_PRIVATE_KEY: srv.privateKey, RESEND_API_KEY: 're_test', REPONSE_PRIVATE_KEY: rep.privateKey,
+        LICENCE_PUBLIC_KEYS: JSON.stringify([{ kid: 'master', publicKey: master.publicKey }, { kid: 'srv-1', publicKey: srv.publicKey }]) };
+      const cles = [{ kid: 'master', publicKey: master.publicKey }, { kid: 'srv-1', publicKey: srv.publicKey }];
+      const call = async (m, p2, corps, h) => {
+        const r = await P.default.fetch(new Request('https://x' + p2, { method: m, headers: { 'x-skanfact-admin': ADMIN, ...(h || {}) }, body: corps ? JSON.stringify(corps) : undefined }), env);
+        return { status: r.status, j: await r.json() };
+      };
+      try {
+        // La console est ouverte, mais rien n'est fait sans client.
+        assert.strictEqual((await call('POST', '/v1/admin/licences', { clientId: 'nulle-part', offre: 'entreprise', duree: '1a', prix: 690 })).status, 400);
+        const c = await call('POST', '/v1/admin/clients', { nom: 'Menuiserie Trabelsi', matricule: '1234567A/M/P/000', email: 'contact@trabelsi.tn' });
+        assert.strictEqual(c.status, 201);
+        const e = await call('POST', '/v1/admin/licences', { clientId: c.j.client.id, offre: 'independant', duree: '1a', prix: 390, remise: 20 });
+        assert.strictEqual(e.status, 201, JSON.stringify(e.j));
+        const cle = e.j.cle;
+        assert.ok(lic.verifyKey(cle, cles), 'la clé émise se vérifie côté application');
+        assert.strictEqual(e.j.vente.montant_ht, 312);
+        assert.strictEqual(e.j.mail.envoye, false, 'pas payée : la clé ne part pas encore');
+        assert.strictEqual(db.lire('SELECT charge FROM licences')[0].charge, JSON.stringify(P.chargeLicence(JSON.parse(db.lire('SELECT charge FROM licences')[0].charge))), 'la base range le contenu exact, jamais la clé');
+        assert.ok(!db.lire('SELECT charge FROM licences')[0].charge.includes('SKAN1.'), 'jamais la clé elle-même');
+        // La clé se refabrique à l'identique.
+        const g = await call('GET', '/v1/admin/licences/' + e.j.licence.id);
+        assert.strictEqual(g.j.cle, cle, '« Voir la clé » doit redonner exactement la clé émise');
+        // Marquer payée → le mail part, avec la clé, à l'adresse du client, et une seule fois.
+        const p2 = await call('POST', '/v1/admin/ventes/' + e.j.vente.id + '/payee', { moyen: 'virement' });
+        assert.strictEqual(p2.status, 200); assert.strictEqual(p2.j.mail.envoye, true);
+        assert.strictEqual(mails.length, 1); assert.strictEqual(mails[0].url, P.MAIL_API);
+        assert.deepStrictEqual(mails[0].corps.to, ['contact@trabelsi.tn']);
+        assert.ok(mails[0].corps.text.includes(cle)); assert.strictEqual(mails[0].auth, 'Bearer re_test');
+        assert.strictEqual((await call('POST', '/v1/admin/ventes/' + e.j.vente.id + '/payee', {})).status, 409, 'payer deux fois est refusé');
+        assert.ok(db.lire('SELECT envoyee_le FROM licences')[0].envoyee_le, 'la licence sait qu\'elle est partie');
+        // L'application se présente : active, réponse signée.
+        const et = await call('POST', '/v1/licence/etat', { cle, deviceId: 'a1b2c3d4-e5f6-4789-ab12-34567890abcd', deviceNom: 'PC', plateforme: 'win32', version: '8.5.0' }, { 'x-skanfact-app': APP });
+        assert.strictEqual(et.j.etat, 'active');
+        assert.strictEqual(lic.verifierReponse(et.j, rep.publicKey, { sujet: lic.empreinteCle(cle) }).ok, true);
+        assert.strictEqual(db.lire('SELECT licence_id FROM activations')[0].licence_id, e.j.licence.id, 'l\'activation est rattachée à la licence de la base');
+        // Révoquer : motif obligatoire, puis l'application reçoit « révoquée » signé.
+        assert.strictEqual((await call('POST', '/v1/admin/licences/' + e.j.licence.id + '/revoquer', { motif: '' })).status, 400);
+        const rv = await call('POST', '/v1/admin/licences/' + e.j.licence.id + '/revoquer', { motif: 'rétractation' });
+        assert.strictEqual(rv.status, 200); assert.ok(/prochaine connexion/.test(rv.j.note), 'la limite est dite');
+        assert.strictEqual((await call('POST', '/v1/admin/licences/' + e.j.licence.id + '/revoquer', { motif: 'encore' })).status, 409);
+        const et2 = await call('POST', '/v1/licence/etat', { cle, deviceId: 'a1b2c3d4-e5f6-4789-ab12-34567890abcd' }, { 'x-skanfact-app': APP });
+        const v = lic.verifierReponse(et2.j, rep.publicKey, { sujet: lic.empreinteCle(cle) });
+        assert.strictEqual(v.ok, true); assert.strictEqual(v.etat, 'revoquee'); assert.strictEqual(v.motif, 'rétractation');
+        assert.strictEqual(lic.licenceState({ key: cle, cles, matricule: '1234567A', today: lic.today(), serveur: v }).state, 'revoquee');
+        // Une révoquée ne se renouvelle pas ; une neuve, si — depuis sa fin, remise à zéro.
+        assert.strictEqual((await call('POST', '/v1/admin/licences/' + e.j.licence.id + '/renouveler', { duree: '1a', prix: 390 })).status, 409);
+        const e2 = await call('POST', '/v1/admin/licences', { clientId: c.j.client.id, offre: 'entreprise', duree: '1a', prix: 690, payeeLe: '2026-09-15', moyen: 'espèces' });
+        assert.strictEqual(e2.j.mail.envoye, true, 'déjà payée : la clé part tout de suite');
+        const rn = await call('POST', '/v1/admin/licences/' + e2.j.licence.id + '/renouveler', { duree: '1a', prix: 690 });
+        assert.strictEqual(rn.status, 201, JSON.stringify(rn.j));
+        assert.strictEqual(rn.j.licence.debut, e2.j.licence.fin, 'le renouvellement part de la fin de la licence en cours');
+        assert.strictEqual(rn.j.licence.remplace_id, e2.j.licence.id);
+        assert.strictEqual((await call('POST', '/v1/admin/licences/' + e2.j.licence.id + '/renouveler', { duree: '1a', prix: 690 })).status, 409, 'une licence déjà remplacée ne se renouvelle pas deux fois');
+        const co = await call('POST', '/v1/admin/licences/' + rn.j.licence.id + '/changer-offre', { offre: 'independant', prix: 0 });
+        assert.strictEqual(co.status, 201); assert.strictEqual(co.j.licence.fin, rn.j.licence.fin, 'changer d\'offre ne bouge pas la date de fin');
+        assert.strictEqual((await call('POST', '/v1/admin/licences/' + co.j.licence.id + '/changer-offre', { offre: 'independant', prix: 0 })).status, 409, 'même offre : rien à changer');
+        // Les cartes : une remplacée n'est pas une active de plus.
+        const st = await call('GET', '/v1/admin/stats');
+        assert.strictEqual(st.j.licencesActives, 1, 'trois clés dont deux remplacées = une licence active (reçu : ' + st.j.licencesActives + ')');
+        assert.strictEqual(st.j.licencesRevoquees, 1); assert.strictEqual(st.j.clients, 1);
+        const li = await call('GET', '/v1/admin/licences');
+        assert.strictEqual(li.j.lignes.filter(l => l.remplacee_par).length, 2);
+        // Le numéro de facture rendu par SkanFact (le pont comptable).
+        assert.strictEqual((await call('POST', '/v1/admin/ventes/' + e.j.vente.id + '/facturee', { numero: 'FAC-2026-012' })).j.facture_skanfact, 'FAC-2026-012');
+        const ev = await call('GET', '/v1/admin/evenements');
+        ['client.cree', 'licence.emise', 'vente.payee', 'mail.envoye', 'licence.revoquee', 'licence.renouvellement', 'licence.offre', 'vente.facturee'].forEach(q =>
+          assert.ok(ev.j.lignes.some(l => l.quoi === q), 'le journal doit porter « ' + q + ' »'));
+        // Sans clé serveur : la console le dit, et ne signe rien.
+        const sans = await P.default.fetch(new Request('https://x/v1/admin/licences', { method: 'POST', headers: { 'x-skanfact-admin': ADMIN }, body: JSON.stringify({ clientId: c.j.client.id, offre: 'entreprise', duree: '1a', prix: 690 }) }), { ...env, SRV_PRIVATE_KEY: '' });
+        assert.strictEqual(sans.status, 503);
+        assert.ok(/SRV_PRIVATE_KEY/.test((await sans.json()).erreur));
+        // Le secret d'administration protège TOUTES les écritures.
+        assert.strictEqual((await P.default.fetch(new Request('https://x/v1/admin/clients', { method: 'POST', body: '{"nom":"Intrus"}' }), env)).status, 403);
+      } finally { globalThis.fetch = vraiFetch; db.fermer(); }
     });
 
     // Le fichier à coller dans la console D1. Il est ENGENDRÉ : une seconde copie tenue à la main

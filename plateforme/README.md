@@ -136,6 +136,77 @@ blanc plutôt que de laisser croire que ça marche déjà.
 > et `reponse-publique.json` dans `~/.skanfact/`, recréer la paire depuis SkanFact, remplacer le
 > secret Cloudflare. **Ne jamais embarquer une clé publique dont la privée a été vue.**
 
+## 4 bis. Vendre depuis la console (P 0.2)
+
+Depuis P 0.2 la console **émet**, **révoque**, **renouvelle**, **change d'offre**, marque une vente
+**payée** et envoie la clé **par mail**. Une vente complète sans ouvrir SkanFact. Pour ça, trois
+réglages de plus dans **Settings → Variables and Secrets** du worker :
+
+| Nom | Type | Ce que c'est |
+|---|---|---|
+| `SRV_PRIVATE_KEY` | Secret | la clé privée **du serveur** (`srv-1`), qui signe les ventes courantes. **Jamais ta clé maître** : elle reste sur ton Mac. |
+| `RESEND_API_KEY` | Secret | la clé d'API Resend, pour envoyer depuis `send.skanfact.tn`. Sans elle la console fonctionne, et dit que la clé se copie et s'envoie à la main. |
+| `MAIL_FROM` | Variable, facultatif | l'expéditeur, `SkanFact <licences@send.skanfact.tn>` par défaut. `MAIL_REPLY_TO` (`contact@skanfact.tn`) et `MAIL_SIGNATURE` (`SkanFact`) se règlent pareil. |
+| `PRIX_INDEPENDANT`, `PRIX_ENTREPRISE`, `REMISE_PARRAINAGE` | Variable, facultatif | ce que le formulaire propose (390, 690, 20 %). Modifiable à chaque émission : ce sont des préremplissages, pas des décisions. |
+
+### La clé du serveur, `srv-1`
+
+Même geste que la clé de réponse, même raison : une clé privée dont l'application dépend se fabrique
+sur **ton** ordinateur, jamais dans une conversation ni sur un serveur. Dans SkanFact :
+Paramètres → L'application → Éditeur → **« Créer la clé du serveur »**. Elle est écrite dans
+`~/.skanfact/serveur-privee.pem` (et sa publique à côté), et trois gestes suivent :
+
+1. **« Copier la clé privée (pour le service) »** → à coller dans `SRV_PRIVATE_KEY`. Vide ton
+   presse-papiers ensuite.
+2. **« Copier la clé publique »** → à ajouter dans `LICENCE_PUBLIC_KEYS` du worker, comme seconde
+   entrée : `[{"kid":"master",…},{"kid":"srv-1","publicKey":"-----BEGIN PUBLIC KEY-----\n…"}]`.
+   Le worker VÉRIFIE au premier appel que la privée et cette publique vont ensemble ; sinon la
+   console affiche « émission impossible » et pourquoi, au lieu de signer des clés que personne
+   n'accepterait.
+3. La même publique → dans la conversation qui prépare la version suivante : elle va dans
+   `build/licences-publiques.json` sous le `kid` `srv-1`. **Tant que cette version n'est pas
+   publiée, une clé émise par la console est refusée par les clients** (« pas reconnue »). Le
+   panneau Éditeur le dit ; c'est le seul délai à respecter.
+
+Pourquoi une clé à part : si ce serveur est compromis un jour, on retire `srv-1` de la version
+suivante et on continue à vendre avec la maître — **sans invalider une seule licence** signée par
+elle (PLAN-PLATEFORME.md § 4).
+
+### Si la base a été créée avant P 0.2
+
+Deux colonnes de plus sur `licences`. Dans D1 → Console, une ligne à la fois :
+
+```
+ALTER TABLE licences ADD COLUMN charge TEXT;
+ALTER TABLE licences ADD COLUMN envoyee_le TEXT;
+```
+
+(Une base créée avec le `schema-a-coller.sql` d'aujourd'hui les a déjà : ces deux lignes répondent
+alors « duplicate column », et c'est normal.)
+
+`charge` porte le **contenu exact** qui a été signé — jamais la clé. Ed25519 est déterministe : le
+même contenu signé par la même clé privée redonne la même clé, à l'octet près. C'est ce qui permet
+à « Voir la clé » et à « Renvoyer par mail » de la refabriquer sans qu'une base lue par un tiers ne
+donne accès à rien.
+
+### La vente, dans l'ordre
+
+1. **Nouveau client…** — le nom et le matricule vont DANS la clé ; l'e-mail sert à l'envoyer.
+2. **Émettre une licence…** — client, offre, durée, prix (préposé, modifiable), parrainage, et
+   « déjà payée » si l'argent est là. Trois choses dans le même geste : la clé signée, la vente, la
+   ligne de journal. La clé s'affiche, elle se copie.
+3. **Ventes → Marquer payée** — la clé part par mail **dans la seconde**, si le client a une
+   adresse et si `RESEND_API_KEY` est posé. Sinon l'écran dit pourquoi, et « Voir la clé » la donne.
+4. Plus tard : **Renouveler** (part de la fin de la licence en cours, remise à zéro), **Changer
+   d'offre** (la fin ne bouge pas, prorata proposé), **Révoquer** (motif obligatoire), **Renvoyer par
+   mail**, **N° de facture** (le pont comptable, § 11 du plan).
+
+**Ce que « Révoquer » fait vraiment, et que la console écrit en orange :** la licence sort des
+actives avec son motif, et l'application du client ferme la création de nouvelles pièces **à sa
+prochaine connexion, si sa version embarque la clé de réponse**. Hors ligne, la clé continue jusqu'à
+sa date de fin. Une clé livrée ne se reprend pas — c'est le prix de la promesse inverse, celle qui
+fait la valeur du produit. Le remboursement passe par un avoir dans SkanFact.
+
 ## 5. Vérifier que ça répond
 
 Onglet **Logs** du worker, puis dans un navigateur (ou avec le testeur HTTP de Cloudflare) :
@@ -172,10 +243,10 @@ Le secret reste dans **cet onglet de navigateur** et disparaît quand tu le ferm
 partagé, c'est la différence entre « il faut le retaper » et « la console de l'éditeur est restée
 ouverte toute la nuit ».
 
-> **Elle est en lecture seule pour l'instant**, et elle le dit en haut de l'écran. Émettre une
-> licence, révoquer et facturer arrivent à l'étape suivante. Aucun bouton n'est affiché pour ces
-> gestes : un bouton qui ne fait rien est pire qu'un bouton absent — la règle vient de la 7.0.0, où
-> treize boutons « Voir » avalaient le clic en silence.
+> Depuis P 0.2 elle **vend** (§ 4 bis). L'en-tête dit ce qu'elle peut faire : « émission prête
+> (srv-1) », ou « émission impossible » avec la raison — et le bouton « Émettre » est alors grisé
+> avec cette raison en info-bulle. Un bouton qui ne fait rien est pire qu'un bouton absent (7.0.0),
+> et un bouton absent sans explication n'est guère mieux.
 
 ---
 

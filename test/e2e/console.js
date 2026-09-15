@@ -1,80 +1,69 @@
-// La console de l'éditeur, ouverte pour de vrai dans un navigateur.
+// La console de l'éditeur, ouverte pour de vrai dans un navigateur — et depuis P 0.2, une VENTE
+// complète : le client, la clé, la vente payée, le mail, le renouvellement, la révocation.
 //
 // Pourquoi ce parcours existe : le projet a appris huit fois qu'un écran ne se juge pas à la
 // lecture. Un bouton parfaitement visible peut être inerte (5.2.2, 7.0.0), une classe CSS peut
 // perdre en silence (7.23.0, 7.27.0, 7.30.0), et une fonction jamais appelée ne se voit nulle part
 // avant l'exécution (6.8.0). Les tests de `npm test` lisent la source ; celui-ci CLIQUE.
 //
-// Il n'a besoin ni de Cloudflare ni de D1 : un petit serveur Node sert la page du worker et imite
-// ses réponses. Ce qu'on teste, c'est la page — pas le nuage.
+// Le serveur n'est PAS une imitation : c'est `plateforme/skanfact-api.mjs`, le fichier déployé sur
+// Cloudflare, posé derrière un `http.createServer` avec une vraie base SQLite sur le vrai schéma
+// (test/d1-sqlite.js). La première version de ce parcours imitait les réponses avec des lignes
+// écrites à la main : une requête SQL fausse y restait invisible jusqu'à Cloudflare. Le seul faux
+// ici est Resend — on ne va pas envoyer un mail à chaque test — et on VÉRIFIE ce qu'on lui aurait
+// envoyé : le destinataire, et la clé dans le corps.
 //
 //   npm run e2e:console
 
 const http = require('http');
 const path = require('path');
 const { playwright, ouvrirChromium } = require('./harnais');
+const L = require('../../src/licence.js');
+const { baseD1 } = require('../d1-sqlite');
 
 const MODULE = path.join(__dirname, '..', '..', 'plateforme', 'skanfact-api.mjs');
 const SECRET = 'un-secret-d-administration-bien-assez-long';
 
-// Ce que la fausse base répond. Trois situations qui doivent se distinguer à l'œil : une licence
-// active, une révoquée, et une installation en essai qui n'a aucune licence.
-const DONNEES = {
-  stats: { clients: 2, licencesActives: 1, licencesExpirees: 0, licencesRevoquees: 1, essaisEnCours: 3, postes: 4, incertain: false },
-  licences: { lignes: [
-    { id: 'lic_1', client: 'Menuiserie Trabelsi', matricule: '1234567A', offre: 'entreprise', kid: 'master',
-      empreinte: 'abcdef0123456789abcdef0123456789', postes: 3, debut: '2026-09-01', fin: '2027-09-01',
-      emise_le: '2026-09-01T09:00:00Z', revoquee_le: null, revoquee_motif: null },
-    { id: 'lic_2', client: 'Café des Oliviers', matricule: '7654321B', offre: 'independant', kid: 'srv-1',
-      empreinte: '99887766554433221100aabbccddeeff', postes: null, debut: '2026-08-01', fin: null,
-      emise_le: '2026-08-01T09:00:00Z', revoquee_le: '2026-09-10', revoquee_motif: 'rétractation' }
-  ] },
-  activations: { lignes: [
-    { client: 'Menuiserie Trabelsi', empreinte: 'abcdef0123456789abcdef0123456789', device_id: 'aaaa-bbbb-cccc-dddd',
-      device_nom: 'Le PC de l\'atelier', plateforme: 'win32', version: '8.4.0',
-      premiere_fois: '2026-09-01T09:00:00Z', derniere_fois: new Date().toISOString() },
-    { client: null, empreinte: 'ESSAI', device_id: 'eeee-ffff-0000-1111', device_nom: 'MacBook de Sami',
-      plateforme: 'darwin', version: '8.4.0',
-      premiere_fois: '2026-09-05T09:00:00Z', derniere_fois: new Date(Date.now() - 2 * 86400000).toISOString() }
-  ] },
-  clients: { lignes: [
-    { id: 'cli_1', nom: 'Menuiserie Trabelsi', matricule: '1234567A', email: 'contact@trabelsi.tn', tel: '+216 20 000 000', cree_le: '2026-09-01T09:00:00Z' }
-  ] },
-  ventes: { lignes: [] }
-};
-
 async function servir() {
-  const mod = await import('file://' + MODULE);
-  // On sert EXACTEMENT la page que le worker sert : on la lui demande, on ne la recopie pas.
-  // Recopier le gabarit ferait un test qui rejoue le code qu'il teste (règle 6.8.1).
-  const rep = await mod.default.fetch(new Request('https://exemple/'), {});
-  const page = await rep.text();
+  const P = await import('file://' + MODULE);
+  const master = L.generateKeys();
+  const srv = L.generateKeys();
+  const mails = [];
+  // Resend, et lui seul, est intercepté. Tout autre appel sortant du worker serait une faute — et
+  // il passerait par le vrai réseau, donc échouerait bruyamment.
+  const vraiFetch = globalThis.fetch;
+  globalThis.fetch = async (url, o) => {
+    if (String(url) === P.MAIL_API) { mails.push(JSON.parse(o.body)); return new Response(JSON.stringify({ id: 'm_' + mails.length }), { status: 200 }); }
+    return vraiFetch(url, o);
+  };
+  const env = {
+    DB: baseD1(), ADMIN_SECRET: SECRET, APP_SECRET: 'secret-de-test-' + 'x'.repeat(20),
+    SRV_PRIVATE_KEY: srv.privateKey, RESEND_API_KEY: 're_test',
+    LICENCE_PUBLIC_KEYS: JSON.stringify([{ kid: 'master', publicKey: master.publicKey }, { kid: 'srv-1', publicKey: srv.publicKey }])
+  };
+  const cles = [{ kid: 'master', publicKey: master.publicKey }, { kid: 'srv-1', publicKey: srv.publicKey }];
 
-  const srv = http.createServer((req, res) => {
-    const u = new URL(req.url, 'http://x');
-    if (u.pathname === '/' || u.pathname === '/console') {
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      return res.end(page);
-    }
-    // Le worker répond 204 à l'icône ; on fait pareil, sinon le navigateur poserait une erreur
-    // rouge que ce parcours compterait comme une faute (et il a raison de les compter toutes).
-    if (u.pathname === '/favicon.ico') { res.writeHead(204); return res.end(); }
-    const m = u.pathname.match(/^\/v1\/admin\/(\w+)$/);
-    const envoyer = (code, obj) => {
-      res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' });
-      res.end(JSON.stringify(obj));
-    };
-    if (!m) return envoyer(404, { erreur: 'Introuvable.' });
-    if (req.headers['x-skanfact-admin'] !== SECRET) return envoyer(403, { erreur: 'Accès refusé.' });
-    if (!DONNEES[m[1]]) return envoyer(404, { erreur: 'Introuvable.' });
-    envoyer(200, DONNEES[m[1]]);
+  const srvHttp = http.createServer((req, res) => {
+    const morceaux = [];
+    req.on('data', c => morceaux.push(c));
+    req.on('end', async () => {
+      let rep;
+      try {
+        rep = await P.default.fetch(new Request('https://api.exemple.tn' + req.url, {
+          method: req.method, headers: req.headers, body: morceaux.length ? Buffer.concat(morceaux) : undefined
+        }), env);
+      } catch (e) { res.writeHead(500); return res.end(String(e && e.message)); }
+      const texte = await rep.text();
+      res.writeHead(rep.status, { 'Content-Type': rep.headers.get('Content-Type') || 'application/json' });
+      res.end(texte);
+    });
   });
-  await new Promise(r => srv.listen(0, '127.0.0.1', r));
-  return { srv, base: 'http://127.0.0.1:' + srv.address().port };
+  await new Promise(r => srvHttp.listen(0, '127.0.0.1', r));
+  return { srv: srvHttp, base: 'http://127.0.0.1:' + srvHttp.address().port, mails, cles, db: env.DB, restaurer: () => { globalThis.fetch = vraiFetch; } };
 }
 
 (async () => {
-  const { srv, base } = await servir();
+  const { srv, base, mails, cles, db, restaurer } = await servir();
   const nav = await ouvrirChromium(playwright());
   const ctx = await nav.newContext();
   const page = await ctx.newPage();
@@ -84,9 +73,8 @@ async function servir() {
   // vide chez l'utilisateur (7.20.0, 7.22.0, 7.23.0).
   //
   // Mais on ne compte PAS les réponses refusées par le serveur : l'étape 2 en provoque une exprès,
-  // et la page la traite — elle affiche « Accès refusé. ». Les confondre rendrait ce filet
-  // inutilisable, et un filet qu'on désarme pour qu'il se taise ne protège plus de rien. Les vraies
-  // exceptions (`pageerror`), elles, sont TOUJOURS fatales.
+  // et la page la traite — elle affiche « Accès refusé. ». Les vraies exceptions (`pageerror`),
+  // elles, sont TOUJOURS fatales.
   const fautes = [];
   const attendues = [];
   page.on('pageerror', e => fautes.push('exception : ' + (e && e.message)));
@@ -97,6 +85,30 @@ async function servir() {
 
   const etape = n => console.log('\n' + n);
   const doit = (c, quoi) => { if (!c) throw new Error('ÉCHEC — ' + quoi); console.log('  ✓ ' + quoi); };
+  const onglet = async nom => {
+    await page.click('#tabs button[data-t="' + nom + '"]');
+    await page.waitForFunction(n => {
+      const b = document.querySelector('#tabs button[data-t="' + n + '"]');
+      return b && b.getAttribute('aria-selected') === 'true';
+    }, nom);
+    await page.waitForSelector('#table .wrap');
+  };
+  const lignes = () => page.$$eval('#table tbody tr', ls => ls.map(l => l.textContent.replace(/\s+/g, ' ')));
+  // Un bouton de ligne, repéré par ce qu'il DIT et par la ligne qui porte ce texte.
+  const boutonDeLigne = async (texteLigne, libelle) => {
+    const b = await page.$('xpath=//tbody/tr[contains(., "' + texteLigne + '")]//button[normalize-space()="' + libelle + '"]');
+    if (!b) throw new Error('bouton « ' + libelle + ' » introuvable sur la ligne « ' + texteLigne + ' »');
+    await b.click();
+  };
+  const valider = async () => {
+    await page.click('#f-ok');
+    // Le formulaire disparaît (succès) ou son message s'allume (refus) : une fois fermé, `#f-msg`
+    // n'existe plus, d'où la garde — la première version lisait `.hidden` sur null.
+    await page.waitForFunction(() => { const f = document.getElementById('form'), m = document.getElementById('f-msg'); return f.hidden || (m && !m.hidden); });
+    const msg = await page.evaluate(() => { const m = document.getElementById('f-msg'); return m && !m.hidden ? m.textContent : ''; });
+    if (msg) throw new Error('le formulaire a refusé : ' + msg);
+  };
+  const info = () => page.evaluate(() => { const i = document.getElementById('info'); return i.hidden ? '' : i.textContent; });
 
   try {
     etape('1. La console s\'ouvre sur un verrou, pas sur des données');
@@ -114,63 +126,159 @@ async function servir() {
     doit(msg.length > 0, 'un message explique le refus : « ' + msg + ' »');
     doit(await page.isHidden('#app'), 'et rien ne s\'ouvre');
 
-    etape('3. Le bon secret ouvre la console');
+    etape('3. Le bon secret ouvre la console, et elle dit ce qu\'elle PEUT faire');
     await page.fill('#sec', SECRET);
     await page.press('#sec', 'Enter');   // le clavier, pas seulement le bouton
     await page.waitForSelector('#app:not([hidden])');
     doit(await page.isHidden('#lock'), 'le verrou disparaît');
+    await page.waitForFunction(() => /émission prête/.test(document.getElementById('etat-pill').textContent));
+    doit(true, 'l\'en-tête annonce « ' + (await page.textContent('#etat-pill')) + ' »');
+    doit(!(await page.isDisabled('#emettre')), 'le bouton « Émettre » est actif');
 
-    etape('4. Les chiffres sont là, et ils sont ceux de la base');
+    etape('4. Une base vide : chaque écran dit quoi faire, et les cartes sont à zéro');
+    await page.waitForFunction(() => document.querySelectorAll('#cards .card').length >= 6);
+    const zeros = await page.$$eval('#cards .card b', els => els.map(e => e.textContent.trim()));
+    doit(zeros.every(z => z === '0'), 'six cartes à zéro (' + zeros.join(' ') + ')');
+    await page.waitForSelector('#table .wrap .vide');
+    const vide = (await page.textContent('#table .wrap .vide')).trim();
+    doit(vide.length > 20 && !/chargement/i.test(vide), 'l\'écran vide porte une phrase : « ' + vide + ' »');
+
+    etape('5. Un client se crée depuis le formulaire');
+    await page.click('#nouveau-client');
+    await page.waitForSelector('#form:not([hidden]) [name=nom]');
+    await page.click('#f-ok');   // vide → refus qui se lit, sans rien créer
+    await page.waitForSelector('#f-msg:not([hidden])');
+    doit(/obligatoire/.test(await page.textContent('#f-msg')), 'un nom vide est refusé avec une phrase');
+    await page.fill('#form [name=nom]', 'Menuiserie Trabelsi SUARL');
+    await page.fill('#form [name=matricule]', '1234567A/M/P/000');
+    await page.fill('#form [name=email]', 'contact@trabelsi.tn');
+    await valider();
+    await page.waitForFunction(() => /Client créé/.test((document.getElementById('info') || {}).textContent || ''));
+    doit(db.lire('SELECT nom FROM clients').length === 1, 'le client est dans la base');
+    await page.waitForSelector('#table tbody tr');
+    doit((await lignes()).some(l => /Trabelsi/.test(l) && /1234567A/.test(l)), 'et dans l\'onglet Clients');
+
+    etape('6. Émettre : la clé, la vente, le journal — et la clé se lit à l\'écran');
+    await page.click('#emettre');
+    await page.waitForSelector('#form:not([hidden]) [name=clientId]');
+    await page.selectOption('#form [name=offre]', 'independant');
+    const prixPropose = await page.inputValue('#form [name=prix]');
+    doit(prixPropose === '390', 'le prix proposé suit l\'offre choisie (' + prixPropose + ')');
+    await page.check('#form [name=parrain]');
+    await valider();
+    await page.waitForSelector('#resultat:not([hidden]) #cle');
+    const cle = (await page.textContent('#resultat #cle')).trim();
+    doit(/^SKAN1\./.test(cle), 'la clé est affichée : ' + cle.slice(0, 24) + '…');
+    const charge = L.verifyKey(cle, cles);
+    doit(!!charge && charge.kid === 'srv-1', 'elle est signée par srv-1 et l\'application la VÉRIFIE (src/licence.js)');
+    doit(charge.nom === 'Menuiserie Trabelsi SUARL' && charge.matricule === '1234567A/M/P/000' && charge.offre === 'independant',
+      'elle porte le nom, le matricule et l\'offre');
+    doit(L.licenceState({ key: cle, cles, matricule: '1234567A', today: L.today(), installedAt: L.today() }).state === 'active',
+      'et un dossier portant ce matricule la verrait « active »');
+    doit(L.licenceState({ key: cle, cles, matricule: '7654321B', today: L.today(), installedAt: L.today() }).state === 'autre',
+      'mais pas un autre matricule');
+    const v = db.lire('SELECT montant_ht, payee_le FROM ventes')[0];
+    doit(v && Math.abs(v.montant_ht - 312) < 0.001 && !v.payee_le, 'la vente existe : 312 HT (390 − 20 %), à encaisser');
+    doit(/Pas envoyée par mail/.test(await page.textContent('#resultat')), 'et l\'écran dit que la clé n\'est pas partie (vente non payée)');
+    await page.click('#cle-fermer');
+
+    etape('7. Le tableau des licences : active, jamais envoyée, et ses gestes');
+    await onglet('licences');
+    await page.waitForSelector('#table tbody tr');
+    let ls = await lignes();
+    doit(ls.some(l => /Trabelsi/.test(l) && /active/.test(l) && /jamais/.test(l)), 'la ligne dit « active » et « jamais » envoyée');
+    await boutonDeLigne('Trabelsi', 'Voir la clé');
+    await page.waitForSelector('#resultat:not([hidden]) #cle');
+    doit((await page.textContent('#resultat #cle')).trim() === cle, '« Voir la clé » refabrique EXACTEMENT la même clé (Ed25519 déterministe)');
+    await page.click('#cle-fermer');
+
+    etape('8. Marquer la vente payée : la clé part par mail dans la seconde');
+    await onglet('ventes');
+    await page.waitForSelector('#table tbody tr');
+    doit((await lignes()).some(l => /à encaisser/.test(l)), 'la vente se dit « à encaisser »');
+    await boutonDeLigne('Trabelsi', 'Marquer payée');
+    await page.waitForSelector('#form:not([hidden]) [name=moyen]');
+    await page.fill('#form [name=moyen]', 'virement');
+    await valider();
+    await page.waitForFunction(() => /Vente payée/.test((document.getElementById('info') || {}).textContent || ''));
+    doit(/Clé envoyée à contact@trabelsi\.tn/.test(await info()), 'l\'écran dit à qui la clé est partie');
+    doit(mails.length === 1 && mails[0].to[0] === 'contact@trabelsi.tn', 'un mail, au bon destinataire');
+    doit(mails[0].text.includes(cle), 'et la clé est dans le corps du mail');
+    doit(/Paramètres → L'application → Licence/.test(mails[0].text), 'avec le chemin d\'activation, le même que dans SkanFact');
+    doit(/send\.skanfact\.tn/.test(mails[0].from), 'expédié depuis send.skanfact.tn (la ligne DKIM de Resend)');
+    await page.waitForSelector('#table tbody tr');
+    doit((await lignes()).some(l => /payée le/.test(l) && /virement/.test(l)), 'la vente se dit « payée le … » avec son moyen');
+
+    etape('9. Renouveler : une nouvelle clé, l\'ancienne se dit « remplacée »');
+    await onglet('licences');
+    await page.waitForSelector('#table tbody tr');
+    await boutonDeLigne('Trabelsi', 'Renouveler');
+    await page.waitForSelector('#form:not([hidden]) [name=duree]');
+    const why = await page.textContent('#form .why');
+    doit(/part du/.test(why), 'le formulaire rappelle d\'où part la nouvelle période');
+    await valider();
+    await page.waitForSelector('#resultat:not([hidden]) #cle');
+    const cle2 = (await page.textContent('#resultat #cle')).trim();
+    doit(cle2 !== cle && !!L.verifyKey(cle2, cles), 'une seconde clé, différente, et vérifiable');
+    const fins = db.lire('SELECT debut, fin, remplace_id FROM licences ORDER BY emise_le');
+    doit(fins[1].debut === fins[0].fin && fins[1].remplace_id != null, 'elle part de la fin de la première (' + fins[0].fin + ')');
+    await page.click('#cle-fermer');
+    await page.waitForSelector('#table tbody tr');
+    ls = await lignes();
+    doit(ls.filter(l => /Trabelsi/.test(l)).length === 2, 'deux lignes pour ce client');
+    doit(ls.some(l => /remplacée/.test(l)), 'et l\'ancienne se dit « remplacée »');
+    await page.waitForFunction(() => document.querySelectorAll('#cards .card').length >= 6);
+    const actives = await page.$$eval('#cards .card', els => { const c = els.find(e => /licence/.test(e.querySelector('span').textContent)); return c ? c.querySelector('b').textContent.trim() : ''; });
+    doit(actives === '1', 'la carte compte UNE licence active, pas deux');
+
+    etape('10. Révoquer : un motif obligatoire, et la limite dite en toutes lettres');
+    const nouvelle = fins[1];
+    await page.$eval('xpath=//tbody/tr[contains(., "active")]//button[normalize-space()="Révoquer"]', b => b.click());
+    await page.waitForSelector('#form:not([hidden]) [name=motif]');
+    doit(/ne se reprend pas/.test(await page.textContent('#form .why')), 'le formulaire dit qu\'une clé livrée ne se reprend pas');
+    await page.click('#f-ok');
+    await page.waitForSelector('#f-msg:not([hidden])');
+    doit(/motif/i.test(await page.textContent('#f-msg')), 'sans motif, refus');
+    await page.fill('#form [name=motif]', 'rétractation');
+    await valider();
+    await page.waitForFunction(() => /révoquée/.test((document.getElementById('info') || {}).textContent || ''));
+    await page.waitForSelector('#table tbody tr');
+    ls = await lignes();
+    doit(ls.some(l => /révoquée — rétractation/.test(l)), 'la ligne dit « révoquée — rétractation »');
+    const rev = db.lire('SELECT id, revoquee_le, revoquee_motif FROM licences WHERE revoquee_le IS NOT NULL');
+    doit(rev.length === 1 && rev[0].revoquee_motif === 'rétractation' && rev[0].id !== nouvelle.remplace_id,
+      'et la base porte la date et le motif, sur la licence en cours (pas sur la remplacée)');
+
+    etape('11. Les chiffres s\'ouvrent, et s\'accordent');
     await page.waitForFunction(() => document.querySelectorAll('#cards .card').length >= 6);
     const cartes = await page.$$eval('#cards .card', els => els.map(e => ({
       n: e.querySelector('b').textContent.trim(), l: e.querySelector('span').textContent.trim()
     })));
     const carte = mot => cartes.find(c => c.l.includes(mot));
-    doit(carte('essai') && carte('essai').n === '3', 'trois essais en cours annoncés');
     doit(carte('révoqu') && carte('révoqu').n === '1', 'une licence révoquée annoncée');
-    doit(carte('licence') && carte('licence').n === '1', 'une licence active annoncée');
+    doit(carte('client') && carte('client').n === '1', 'un client');
     doit(!cartes.some(c => /\(s\)/.test(c.l)), 'aucun « (s) » d\'accord bâclé');
-
-    // Le libellé s'ACCORDE avec son chiffre. Vérifier l'absence de « (s) » ne suffisait pas : la
-    // console affichait « 0 essais en cours » (zéro prend le singulier en français) et aurait
-    // affiché « 1 licences actives ». Trouvé sur une capture, pas par un test — d'où celui-ci.
     const pluriel = t => /s$|x$/.test(t.trim().split(' ')[0]);
     cartes.forEach(c => {
       const n = Number(c.n);
-      doit(pluriel(c.l) === (n >= 2),
-        n + ' → « ' + c.l + ' » ' + (n >= 2 ? 'doit être au pluriel' : 'doit être au singulier'));
+      doit(pluriel(c.l) === (n >= 2), n + ' → « ' + c.l + ' » ' + (n >= 2 ? 'doit être au pluriel' : 'doit être au singulier'));
     });
+    // Par la classe EXACTE : « contains(@class, "card") » attrapait le conteneur `.cards`, premier
+    // dans l'ordre du document, dont le texte contient aussi « client » — et cliquer un conteneur
+    // ne fait rien. Trouvé par le délai d'attente, pas par une erreur.
+    await page.$$eval('#cards .card', els => { const c = els.find(e => /^client/.test(e.querySelector('span').textContent.trim())); c.click(); });
+    await page.waitForFunction(() => { const b = document.querySelector('#tabs button[data-t="clients"]'); return b && b.getAttribute('aria-selected') === 'true'; });
+    doit(true, 'cliquer la carte « client » ouvre l\'onglet Clients (un chiffre affiché s\'ouvre)');
 
-    etape('5. Le tableau des licences distingue active et révoquée');
-    await page.waitForSelector('#table table tbody tr');
-    const etats = await page.$$eval('#table tbody tr', ls => ls.map(l => l.textContent));
-    doit(etats.some(x => x.includes('Menuiserie Trabelsi') && x.includes('active')), 'la licence active se lit');
-    doit(etats.some(x => x.includes('révoquée') && x.includes('rétractation')), 'la révoquée porte son motif');
-    doit(etats.some(x => x.includes('à vie')), 'une licence sans fin se dit « à vie », pas « — »');
-    doit(etats.some(x => x.includes('illimité')), 'des postes non limités se disent « illimité »');
-
-    etape('6. Chaque onglet répond, et l\'essai se reconnaît');
-    for (const nom of ['Activations', 'Clients', 'Ventes', 'Licences']) {
-      await page.click('#tabs button[data-t="' + nom.toLowerCase() + '"]');
-      await page.waitForFunction(n => {
-        const b = document.querySelector('#tabs button[data-t="' + n + '"]');
-        return b && b.getAttribute('aria-selected') === 'true';
-      }, nom.toLowerCase());
-      await page.waitForSelector('#table .wrap');
-      doit(true, 'l\'onglet ' + nom + ' s\'affiche');
-    }
-    await page.click('#tabs button[data-t="activations"]');
+    etape('12. Le journal garde tout, dans l\'ordre');
+    await onglet('evenements');
     await page.waitForSelector('#table tbody tr');
-    const act = await page.$$eval('#table tbody tr', ls => ls.map(l => l.textContent));
-    doit(act.some(x => x.includes('en essai')), 'une installation sans licence se dit « en essai »');
-    doit(act.some(x => /aujourd’hui|aujourd'hui/.test(x)), 'une activation du jour se dit « aujourd\'hui »');
-    doit(act.some(x => x.includes('il y a 2 jours')), 'et une plus ancienne se date en clair');
+    const j = (await lignes()).join('\n');
+    ['client.cree', 'licence.emise', 'vente.payee', 'mail.envoye', 'licence.renouvellement', 'licence.revoquee'].forEach(q =>
+      doit(j.includes(q), 'le journal porte « ' + q + ' »'));
 
-    etape('7. Les six cartes remplissent leurs rangées, à toutes les largeurs');
-    // Six cartes ne se rangent proprement qu'en 6, 3, 2 ou 1 colonnes. Une grille automatique en
-    // choisit 4 ou 5 aux largeurs intermédiaires et laisse des orphelines — invisible en plein
-    // écran, visible dès qu'on réduit la fenêtre. Ça se MESURE, ça ne se relit pas (7.23.0).
-    await page.click('#tabs button[data-t="licences"]');
+    etape('13. Les six cartes remplissent leurs rangées, à toutes les largeurs');
+    await onglet('licences');
     for (const w of [1500, 1100, 900, 600, 400]) {
       await page.setViewportSize({ width: w, height: 900 });
       const rangs = await page.$$eval('#cards .card', els => {
@@ -182,15 +290,7 @@ async function servir() {
     }
     await page.setViewportSize({ width: 1280, height: 900 });
 
-    etape('8. Un écran vide explique, au lieu de ne rien dire');
-    await page.click('#tabs button[data-t="ventes"]');
-    // `.wrap .vide` et non `.vide` : « Chargement… » porte sa propre classe, sinon le test
-    // l'attraperait au vol et passerait sans jamais voir l'écran vide.
-    await page.waitForSelector('#table .wrap .vide');
-    const vide = (await page.textContent('#table .wrap .vide')).trim();
-    doit(vide.length > 20 && !/chargement/i.test(vide), 'l\'écran vide porte une phrase : « ' + vide + ' »');
-
-    etape('9. Fermer la session referme vraiment');
+    etape('14. Fermer la session referme vraiment');
     await page.click('#out');
     await page.waitForSelector('#lock:not([hidden])');
     doit(await page.isHidden('#app'), 'les données disparaissent');
@@ -199,15 +299,15 @@ async function servir() {
     await page.waitForSelector('#lock', { state: 'visible' });
     doit(await page.isHidden('#app'), 'et recharger ne rouvre pas la console');
 
-    etape('10. Aucune exception, et le refus de l\'étape 2 a bien eu lieu');
+    etape('15. Aucune exception, et le refus de l\'étape 2 a bien eu lieu');
     doit(fautes.length === 0, 'aucune exception JavaScript (' + (fautes[0] || 'rien') + ')');
-    // L'inverse compte autant : si le serveur n'avait rien refusé, l'étape 2 aurait passé pour une
-    // mauvaise raison — le message d'erreur peut venir de la page sans que le secret soit vérifié.
     doit(attendues.length > 0, 'le serveur a réellement refusé le mauvais secret (' + attendues.length + ' refus)');
 
-    console.log('\n10 étapes — la console tient.');
+    console.log('\n15 étapes — la console vend : le client, la clé, la vente, le mail, le renouvellement, la révocation.');
   } finally {
     await nav.close();
     srv.close();
+    restaurer();
+    db.fermer();
   }
 })().catch(e => { console.error('\n' + e.message); process.exit(1); });
