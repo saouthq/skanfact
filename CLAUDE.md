@@ -232,7 +232,7 @@ Le test `couches : une question passe au-dessus de tout` lit `style.css` et `app
 
 ## Cabinet 1.0.0 — la seconde application
 
-`src/cabinet/` : une **autre application Electron dans le même dépôt**, construite par `build/cabinet.config.js` (`appId` `tn.skancyber.skanfact.cabinet`, `extraMetadata.main` → `src/cabinet/main.js`, sortie `dist-cabinet/`, `publish: null`). Sa version vit dans `cabinetVersion` de package.json, indépendante de celle de l'app entreprise ; le workflow Release la construit après l'app principale et attache ses installeurs à la même release (`gh release upload`). Elle n'a **pas** de mise à jour automatique (pas de `latest.yml` : deux flux electron-updater dans une même release s'écraseraient) — assumé en 1.0.0.
+`src/cabinet/` : une **autre application Electron dans le même dépôt**, construite par `build/cabinet.config.js` (`appId` `tn.skancyber.skanfact.cabinet`, `extraMetadata.main` → `src/cabinet/main.js`, sortie `dist-cabinet/`, `publish: null`). *(Vrai en 1.0.0 : sa version vivait dans `cabinetVersion` de package.json, sans mise à jour automatique. **Depuis la 6.6.0 les deux applications portent le MÊME numéro** — `build/cabinet.config.js` lit `pkg.version`, `cabinetVersion` n'existe plus — et le Cabinet se met à jour par son canal `cabinet`.)* Le workflow Release la construit après l'app principale et attache ses installeurs à la même release (`gh release upload`).
 
 - `src/cabinet/cabcore.js` : logique pure, testée sans Electron — `migrate`, `dossierKey` (**matricule d'abord**, nom en repli), `packSummary`, `filePack`, `dossierMonths`/`dossierRow`/`dossierList`, `cabinetTodo`, `monthListLabel`/`missingLabel`/`relanceMail`, `pairingFile`, `demoDossiers`.
 - `src/cabinet/main.js` : état chiffré (`cabinet-data.json`, scrypt + AES-256-GCM, mot de passe **obligatoire**), `safeState()` (la clé privée ne traverse jamais le pont), IPC `cab:status|unlock|state|saveCabinet|saveDossier|demo|exportPairing|importPack|listPack|openInPack|mail|reveal`, `ingest()` qui **recalcule chaque empreinte du manifeste**.
@@ -2543,6 +2543,16 @@ fait bouger, et qui ne doit pas se reperdre :
   (**personne d'autre ne peut émettre une licence** : clé privée et secret d'administration en un
   seul endroit → un pli scellé à poser avant les dix premiers clients), et qui répond d'une erreur
   de calcul chez un client sans comptable.
+
+### Le plan d'exécution — `PLAN-DEVELOPPEMENT.md` (15/09/2026)
+
+Le document qui **orchestre** sans redire : l'état des lieux vérifié dans le dépôt, les **jalons de
+décision** (J0 15/10/2026 → J4, un jalon est un chiffre, la règle d'arrêt), les onze phases avec
+durées « construction » et « réaliste » (× 2), le chemin critique et ses cinq goulots, les tâches
+non-code chiffrées, le tableau de bord des 26 premières semaines (S1 = 14/09/2026, deux colonnes
+Skander / Claude), les décisions de la semaine, le hors-périmètre, et « ce que je n'ai pas pu
+vérifier ». Il se réécrit en S26 sur les faits. Quand il contredit `DIRECTION.md`, `DIRECTION.md`
+fait foi ; le contenu de chaque version reste dans `QUESTIONS.md` § 16.
 
 ## Pistes pour la suite (non demandées)
 
