@@ -7914,6 +7914,7 @@
         <label class="field span-2">Libellé<input type="text" name="label" value="${h(m.label || '')}" placeholder="Salaires de septembre"></label>
         ${field('Référence', 'reference', m.reference || '', 'text', 'placeholder="N° de chèque, référence du virement…"')}
         <label class="field">Mode<select name="method">${C.PAYMENT_METHODS.map(([v, l]) => `<option value="${v}" ${m.method === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+        <label class="field span-2">${lbl('Contrepartie comptable', 'tre.compte')}<select name="compte">${C.COMPTES_CONTREPARTIE.map(([v, l]) => `<option value="${v}" ${String(m.compte || '') === v ? 'selected' : ''}>${v ? v + ' — ' : ''}${l}</option>`).join('')}${m.compte && !C.COMPTES_CONTREPARTIE.some(([v]) => v === String(m.compte)) ? `<option value="${h(m.compte)}" selected>${h(m.compte)} — ${h(C.accountLabel(data, m.compte))}</option>` : ''}</select></label>
       </form>
       <div class="modal-actions">
         ${mv ? '<button class="btn btn-danger" id="del-mv" style="margin-right:auto">Supprimer</button>' : ''}
@@ -7926,7 +7927,7 @@
           if (!mv && licenceBlock('Créer un mouvement de trésorerie', 'pilotage')) return;
           if (v.date > C.today() && !await confirmDialog(`La date (${C.fmtDate(v.date)}) est dans le futur. Un mouvement de trésorerie se saisit quand il a eu lieu. Enregistrer quand même ?`, 'Enregistrer')) return;
           if (closedBlock([mv && mv.date, v.date], 'Ce mouvement')) return;
-          Object.assign(m, v, { amount: Math.abs(Number(v.amount)) });
+          Object.assign(m, v, { amount: Math.abs(Number(v.amount)), compte: String(v.compte || '').trim() });
           if (!mv) data.movements.push(m);
           save(true); close(); if (done) done(m);
         };
@@ -8771,26 +8772,34 @@
     // ---------- Écritures comptables (Cabinet 1.1.0) ----------
     // Ce que le comptable retape aujourd'hui pièce par pièce. Ici, c'est un fichier.
     function drawEntries() {
+      figerAuxiliaires();
       const cur = company().currency;
       const p = period();
-      const entries = C.journalEntries(data, company(), p, {});
+      // 8.9.0 : le livre-journal — chaque pièce porte un numéro continu dans l'exercice.
+      const entries = C.livreJournal(data, company(), p, {});
       const bal = C.entriesBalance(entries);
       const byAcc = C.entriesByAccount(entries);
+      const exo = p.from.slice(0, 4);
+      const central = C.journalCentralisateur(data, company(), exo, {});
+      const ods = (data.ecrituresOD || []).filter(o => C.inPeriod(o.date, p.from, p.to)).sort((x, y) => (y.date || '').localeCompare(x.date || ''));
+      const clos = C.closedUntil(data);
       const cols = [
+        { key: 'numero', label: 'N°', r: true, info: 'ecr.numero', val: e => e.numero },
         { key: 'date', label: 'Date', val: e => e.date },
         { key: 'journal', label: 'Journal', val: e => e.journal },
         { key: 'piece', label: 'Pièce', val: e => e.piece },
         { key: 'account', label: 'Compte', val: e => e.account },
         { key: 'label', label: 'Libellé', val: e => e.label },
         { key: 'debit', label: 'Débit', r: true, info: 'ecr.quoi', val: e => e.debit },
-        { key: 'credit', label: 'Crédit', r: true, info: 'ecr.quoi', val: e => e.credit }
+        { key: 'credit', label: 'Crédit', r: true, info: 'ecr.quoi', val: e => e.credit },
+        { key: 'lettre', label: 'Let.', info: 'bal.lettrage', val: e => e.lettre || '' }
       ];
       const sorted = applySort(entries, cols, ecrState.sort);
       const { rows, pg } = paginate(sorted, ecrState);
 
       $('#c-body').innerHTML = `
-        <div class="panel"><h2>Écritures — ${h(periodLabel())} ${info('ecr.quoi')}</h2>
-          <p class="small">Les pièces de la période transformées en écritures comptables, en partie double, prêtes à importer dans le logiciel de ton comptable. Il n'a plus rien à retaper.</p>
+        <div class="panel"><h2>Livre-journal — ${h(periodLabel())} ${info('ecr.quoi')}</h2>
+          <p class="small">Les pièces de la période transformées en écritures comptables, en partie double, prêtes à importer dans le logiciel de ton comptable. Il n'a plus rien à retaper. Chaque pièce porte son numéro dans l'exercice ${h(exo)} ${info('ecr.numero')}${clos ? ` — les mois clôturés (jusqu'au ${C.fmtDate(clos)}) ne bougent plus, leurs numéros non plus` : ' — clôture les mois envoyés pour que leurs numéros ne bougent plus'}.</p>
           <div class="pay-grid">
             <div><div class="k-label">Lignes</div><div class="v">${bal.lines}</div></div>
             <div><div class="k-label">Pièces</div><div class="v">${bal.pieces}</div></div>
@@ -8804,10 +8813,29 @@
             : `<div class="banner"><span>${bal.off.length} pièce${bal.off.length > 1 ? 's' : ''} ne tombe${bal.off.length > 1 ? 'nt' : ''} pas juste — signale-le avant d'envoyer.</span></div>`}
           <p class="small muted"><em>À VÉRIFIER avec ton comptable :</em> les numéros de compte ci-dessous sont ceux du plan comptable tunisien tel qu'il est couramment utilisé, mais chaque cabinet a ses habitudes. Ils se modifient dans « Plan de comptes », et l'export suit.</p>
           <div class="inline mt">
+            <button class="btn btn-primary" id="ecr-od">Saisir une opération diverse…</button>
             <button class="btn" id="ecr-csv" ${bal.lines ? '' : 'disabled'}>Exporter en CSV</button>
             <button class="btn" id="ecr-mail" ${bal.lines ? '' : 'disabled'}>Envoyer au comptable</button>
             <button class="btn btn-ghost" id="ecr-plan">Plan de comptes…</button>
           </div>
+        </div>
+
+        <div class="panel" id="ecr-ods"><h2>Opérations diverses saisies à la main ${info('ecr.od')}</h2>
+          ${ods.length ? `<div class="scroll-x"><table class="list compact"><thead><tr><th>Date</th><th>Pièce</th><th>Libellé</th><th class="r">Montant</th><th>Comptes</th><th></th></tr></thead><tbody>
+            ${ods.map(o => { const v = C.odValide(o); return `<tr data-od="${h(o.id)}">
+              <td class="nw">${C.fmtDate(o.date)}</td><td class="nw"><strong>${h(o.piece)}</strong></td><td>${h(o.label)}</td>
+              <td class="r nw">${C.money(v.debit)}</td>
+              <td class="small muted">${h((o.lignes || []).map(l => l.compte).join(', '))}</td>
+              ${rowMenuCell(o.id)}</tr>`; }).join('')}
+          </tbody></table></div>`
+            : `<div class="empty">Aucune opération diverse sur cette période. Ce qui n'a ni facture, ni achat, ni règlement — un loyer sans facture, une régularisation, une charge avancée par le gérant — se saisit ici, en partie double.</div>`}
+        </div>
+
+        <div class="panel"><h2>Journal centralisateur — exercice ${h(exo)} ${info('ecr.central')}</h2>
+          ${central.pieces ? `<div class="scroll-x"><table class="list compact" id="ecr-central"><thead><tr><th>Mois</th>${central.journaux.map(j => `<th class="r" colspan="2" title="${h(j.label)}">${h(j.code)} <span class="muted small">D / C</span></th>`).join('')}<th class="r">Débit</th><th class="r">Crédit</th><th class="r">Pièces</th></tr></thead><tbody>
+            ${central.mois.map(m => `<tr class="${m.pieces ? '' : 'muted'}"><td class="nw">${h(m.label)}</td>${central.journaux.map(j => `<td class="r nw">${m.par[j.code].debit ? C.money(m.par[j.code].debit) : '—'}</td><td class="r nw">${m.par[j.code].credit ? C.money(m.par[j.code].credit) : '—'}</td>`).join('')}<td class="r nw">${m.debit ? C.money(m.debit) : '—'}</td><td class="r nw">${m.credit ? C.money(m.credit) : '—'}</td><td class="r">${m.pieces || '—'}</td></tr>`).join('')}
+          </tbody><tfoot><tr class="total-row"><td>Total</td>${central.journaux.map(j => `<td class="r nw"><strong>${C.money(central.totaux[j.code].debit)}</strong></td><td class="r nw"><strong>${C.money(central.totaux[j.code].credit)}</strong></td>`).join('')}<td class="r nw"><strong>${C.money(central.debit)}</strong></td><td class="r nw"><strong>${C.money(central.credit)}</strong></td><td class="r"><strong>${central.pieces}</strong></td></tr></tfoot></table></div>
+          <div class="inline mt"><button class="btn" id="ecr-central-csv">Exporter le centralisateur</button></div>` : '<div class="empty">Aucune écriture sur cet exercice.</div>'}
         </div>
 
         <div class="panel"><h2>Par compte</h2>
@@ -8831,12 +8859,14 @@
           ${entries.length ? `<div class="scroll-x"><table class="list compact" id="ecr-t">
             <thead>${sortHead(cols, ecrState.sort)}</thead>
             <tbody>${rows.map(e => `<tr>
+              <td class="r nw muted">${e.numero}</td>
               <td class="nw">${C.fmtDate(e.date)}</td><td>${h(e.journal)}</td><td class="nw">${h(e.piece)}</td>
               <td class="nw"><strong>${h(e.account)}</strong></td><td>${h(e.label)}</td>
               <td class="r nw">${e.debit ? C.money(e.debit) : '<span class="muted">—</span>'}</td>
-              <td class="r nw">${e.credit ? C.money(e.credit) : '<span class="muted">—</span>'}</td></tr>`).join('')}</tbody>
-            <tfoot><tr class="total-row"><td colspan="5">Total de la sélection</td>
-              <td class="r nw"><strong>${C.money(bal.debit)}</strong></td><td class="r nw"><strong>${C.money(bal.credit)}</strong></td></tr></tfoot>
+              <td class="r nw">${e.credit ? C.money(e.credit) : '<span class="muted">—</span>'}</td>
+              <td class="nw small muted">${h(e.lettre || '')}</td></tr>`).join('')}</tbody>
+            <tfoot><tr class="total-row"><td colspan="6">Total de la sélection</td>
+              <td class="r nw"><strong>${C.money(bal.debit)}</strong></td><td class="r nw"><strong>${C.money(bal.credit)}</strong></td><td></td></tr></tfoot>
           </table></div>${pagerBar(pg, { noun: 'écriture' })}`
             : '<div class="empty">Aucune pièce sur cette période.</div>'}
         </div>`;
@@ -8846,6 +8876,10 @@
       const tag = comptaState.month ? `${comptaState.year}-${comptaState.month}` : comptaState.year;
       $('#ecr-csv').onclick = async () => {
         const f = await bridge.saveText(`ecritures-${tag}.csv`, C.toCsv(sorted, C.entryCsvColumns()));
+        if (f) toast('Exporté : ' + f.split(/[\\/]/).pop());
+      };
+      if ($('#ecr-central-csv')) $('#ecr-central-csv').onclick = async () => {
+        const f = await bridge.saveText(`centralisateur-${exo}.csv`, C.toCsv(C.centralisateurRows(central), C.centralisateurCsvColumns(central.journaux)));
         if (f) toast('Exporté : ' + f.split(/[\\/]/).pop());
       };
       $('#ecr-mail').onclick = async () => {
@@ -8859,6 +8893,89 @@
         toast(r && r.state === 'mail' ? 'Message préparé dans Mail' : 'Message préparé');
       };
       $('#ecr-plan').onclick = () => chartForm(drawEntries);
+      $('#ecr-od').onclick = () => odForm(null, drawEntries);
+      bindRowMenus($('#ecr-ods'), id => {
+        const o = (data.ecrituresOD || []).find(x => x.id === id); if (!o) return [];
+        return [
+          { icon: 'modifier', label: 'Modifier l\'opération', hint: 'Date, libellé, lignes', run: () => odForm(o, drawEntries) },
+          { sep: true },
+          { icon: 'supprimer', label: 'Supprimer l\'opération', hint: 'Elle disparaît des écritures', danger: true, run: async () => {
+            if (closedBlock(o.date, 'Cette opération diverse')) return;
+            if (!await confirmDialog(`Supprimer l'opération ${o.piece} — ${o.label} ?`, 'Supprimer', true)) return;
+            forget('ecrituresOD', o.id, o.label || '');
+            data.ecrituresOD = data.ecrituresOD.filter(x => x.id !== o.id); save(true); drawEntries();
+          } }
+        ];
+      });
+    }
+
+    // L'opération diverse (8.9.0) : la seule écriture que l'utilisateur ÉCRIT lui-même. Elle
+    // n'entre qu'équilibrée — la fenêtre montre l'écart pendant la saisie et refuse tant qu'il
+    // reste. Le numéro de pièce est pris à l'enregistrement, jamais avant (règle 6.0.0).
+    function odForm(od, done) {
+      const o = od ? deepCopy(od) : { id: C.uid(), date: C.today(), piece: '', journal: 'OD', label: '', lignes: [{ compte: '', label: '', debit: 0, credit: 0 }, { compte: '', label: '', debit: 0, credit: 0 }] };
+      if (!Array.isArray(o.lignes) || !o.lignes.length) o.lignes = [{ compte: '', label: '', debit: 0, credit: 0 }, { compte: '', label: '', debit: 0, credit: 0 }];
+      const proposes = C.comptesProposes(data, company());
+      const ligneHtml = (l, i) => `<tr data-i="${i}">
+        <td style="width:120px"><input type="text" class="od-compte mono" list="od-comptes" value="${h(l.compte || '')}" placeholder="616" inputmode="numeric"></td>
+        <td class="small muted od-lib">${h(C.accountLabel(data, l.compte || ''))}</td>
+        <td><input type="text" class="od-label" value="${h(l.label || '')}" placeholder="Libellé de la ligne (facultatif)"></td>
+        <td style="width:110px"><input type="number" class="od-debit num" step="0.001" min="0" value="${l.debit ? l.debit : ''}"></td>
+        <td style="width:110px"><input type="number" class="od-credit num" step="0.001" min="0" value="${l.credit ? l.credit : ''}"></td>
+        <td><button type="button" class="btn btn-ghost od-del" title="Retirer la ligne" aria-label="Retirer la ligne">✕</button></td></tr>`;
+      modal(`<h2>${od ? 'Modifier l\'opération diverse' : 'Opération diverse'} ${info('ecr.od')}</h2>
+        <p class="small muted">Ce qui n'a ni facture, ni achat, ni règlement : un loyer sans facture, une charge avancée par le gérant, une régularisation. Autant au débit qu'au crédit, sinon rien ne s'enregistre. <em>À VÉRIFIER avec ton comptable</em> pour le choix des comptes.</p>
+        <form id="odf" class="grid-2">
+          ${dateFieldHtml('Date', 'date', o.date, {})}
+          <label class="field">Pièce<input type="text" name="piece" value="${h(o.piece || '')}" placeholder="${od ? '' : 'attribuée à l\'enregistrement'}" ${od ? '' : 'disabled'}></label>
+          <label class="field span-2 obligatoire">Libellé<input type="text" name="label" value="${h(o.label || '')}" placeholder="Assurance annuelle du local, avancée par le gérant"></label>
+        </form>
+        <datalist id="od-comptes">${proposes.map(c => `<option value="${h(c.compte)}">${h(c.compte)} — ${h(c.label)}</option>`).join('')}</datalist>
+        <div class="scroll-x mt"><table class="list compact" id="od-lignes"><thead><tr><th>Compte</th><th>Intitulé</th><th>Libellé</th><th class="r">Débit</th><th class="r">Crédit</th><th></th></tr></thead>
+          <tbody>${o.lignes.map(ligneHtml).join('')}</tbody>
+          <tfoot><tr class="total-row"><td colspan="3"><button type="button" class="btn btn-ghost" id="od-add">+ Ajouter une ligne</button></td><td class="r nw" id="od-td">—</td><td class="r nw" id="od-tc">—</td><td></td></tr></tfoot></table></div>
+        <div id="od-ecart" class="small mt"></div>
+        <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="od-ok">Enregistrer</button></div>`,
+        (layer, close) => {
+          const lire = () => {
+            const v = formValues($('#odf', layer));
+            const lignes = $$('#od-lignes tbody tr', layer).map(tr => ({
+              compte: $('.od-compte', tr).value.trim(), label: $('.od-label', tr).value.trim(),
+              debit: Number($('.od-debit', tr).value) || 0, credit: Number($('.od-credit', tr).value) || 0
+            }));
+            return { ...o, date: v.date, label: v.label, piece: od ? String(v.piece || '').trim() || o.piece : o.piece, lignes };
+          };
+          const recalc = () => {
+            const v = C.odValide(lire());
+            $('#od-td', layer).textContent = C.money(v.debit); $('#od-tc', layer).textContent = C.money(v.credit);
+            const ecart = C.round3(v.debit - v.credit);
+            $('#od-ecart', layer).innerHTML = ecart ? `<span class="due">Écart de ${C.money(Math.abs(ecart))} : l'écriture ne tombe pas juste.</span>` : (v.debit ? '<span class="ok">Débit = crédit : l\'écriture tombe juste.</span>' : '');
+            $$('#od-lignes tbody tr', layer).forEach(tr => { $('.od-lib', tr).textContent = C.accountLabel(data, $('.od-compte', tr).value.trim()); });
+          };
+          const brancher = () => {
+            $$('#od-lignes tbody tr', layer).forEach(tr => {
+              $$('input', tr).forEach(inp => { inp.oninput = recalc; });
+              $('.od-del', tr).onclick = () => { if ($$('#od-lignes tbody tr', layer).length <= 2) return toast('Une écriture garde au moins deux lignes.', true); tr.remove(); recalc(); };
+            });
+          };
+          brancher(); recalc();
+          $('#od-add', layer).onclick = () => {
+            const tb = $('#od-lignes tbody', layer);
+            tb.insertAdjacentHTML('beforeend', ligneHtml({ compte: '', label: '', debit: 0, credit: 0 }, tb.children.length));
+            brancher(); $('#od-lignes tbody tr:last-child .od-compte', layer).focus();
+          };
+          $('#od-ok', layer).onclick = () => {
+            const n = lire();
+            const v = C.odValide(n);
+            if (!v.ok) { if (!n.label.trim()) return refus('#odf input[name=label]', v.erreurs[0]); return toast(v.erreurs[0], true); }
+            if (!od && licenceBlock('Créer une opération diverse')) return;
+            if (closedBlock([od && od.date, n.date], 'Cette opération diverse')) return;
+            if (!od) n.piece = C.odPiece(data, n.date);
+            n.lignes = v.lignes;
+            if (od) Object.assign(od, n); else data.ecrituresOD.push(n);
+            save(true); close(); toast(`${n.piece} enregistrée`); if (done) done(n);
+          };
+        });
     }
 
     // Les six colonnes d'une balance, partagées par la générale et les auxiliaires : ouverture,
@@ -8908,16 +9025,17 @@
           : gl.comptes.map(c => `
         <div class="panel gl-compte" data-compte="${h(c.account)}"><h2><span class="mono">${h(c.account)}</span> ${h(c.label)}</h2>
           <div class="scroll-x"><table class="list compact gl-t">
-            <thead><tr><th>Date</th><th>Journal</th><th>Pièce</th><th>Libellé</th><th class="r">Débit</th><th class="r">Crédit</th><th class="r">Solde ${info('gl.solde')}</th></tr></thead>
+            <thead><tr><th>Date</th><th>Journal</th><th>Pièce</th><th>Libellé</th>${c.lignes.some(e => e.role) ? '<th>Let.</th>' : ''}<th class="r">Débit</th><th class="r">Crédit</th><th class="r">Solde ${info('gl.solde')}</th></tr></thead>
             <tbody>
-              <tr class="gl-ouv"><td class="nw muted">—</td><td></td><td></td><td class="muted">Solde d'ouverture</td><td></td><td></td><td class="r nw">${C.money(c.ouverture)}</td></tr>
+              <tr class="gl-ouv"><td class="nw muted">—</td><td></td><td></td><td class="muted">Solde d'ouverture</td>${c.lignes.some(e => e.role) ? '<td></td>' : ''}<td></td><td></td><td class="r nw">${C.money(c.ouverture)}</td></tr>
               ${c.lignes.map(e => `<tr>
                 <td class="nw">${C.fmtDate(e.date)}</td><td>${h(e.journal)}</td><td class="nw">${h(e.piece)}</td><td>${h(e.label)}</td>
+                ${c.lignes.some(x => x.role) ? `<td class="nw small muted">${h(e.lettre || '')}</td>` : ''}
                 <td class="r nw">${e.debit ? C.money(e.debit) : '<span class="muted">—</span>'}</td>
                 <td class="r nw">${e.credit ? C.money(e.credit) : '<span class="muted">—</span>'}</td>
                 <td class="r nw gl-solde">${C.money(e.solde)}</td></tr>`).join('')}
             </tbody>
-            <tfoot><tr class="total-row"><td colspan="4">Total du compte</td>
+            <tfoot><tr class="total-row"><td colspan="${c.lignes.some(e => e.role) ? 5 : 4}">Total du compte</td>
               <td class="r nw"><strong>${C.money(c.debit)}</strong></td><td class="r nw"><strong>${C.money(c.credit)}</strong></td>
               <td class="r nw"><strong>${C.money(c.solde)}</strong></td></tr></tfoot>
           </table></div>
@@ -8940,7 +9058,7 @@
       const p = period();
       const vue = balState.vue;
       const tag = comptaState.month ? `${comptaState.year}-${comptaState.month}` : comptaState.year;
-      const VUES = [['generale', 'Générale'], ['clients', 'Auxiliaire clients'], ['fournisseurs', 'Auxiliaire fournisseurs']];
+      const VUES = [['generale', 'Générale'], ['clients', 'Auxiliaire clients'], ['fournisseurs', 'Auxiliaire fournisseurs'], ['lettrage', 'Lettrage']];
       const sel = `<div class="tabs mt" id="bal-vues" role="tablist">${VUES.map(([id, label]) => `<button role="tab" data-vue="${id}" class="${id === vue ? 'active' : ''}">${label}</button>`).join('')}</div>`;
       let corps, csvRows = [], csvCols = [], nomCsv = '';
       if (vue === 'generale') {
@@ -8960,6 +9078,24 @@
             <thead><tr><th>Compte</th><th>Intitulé</th>${BAL_HEAD}</tr></thead>
             <tbody>${b.rows.map(r => `<tr class="bal-c${h(r.classe)}"><td class="nw"><strong>${h(r.account)}</strong></td><td>${h(r.label)}</td>${balCells(r)}</tr>`).join('')}</tbody>
             <tfoot>${balFoot(b.totals)}</tfoot></table></div>` : ''}`;
+      } else if (vue === 'lettrage') {
+        // 8.9.0 : le lettrage est une LECTURE, pas une saisie — les règlements sont déjà rattachés à
+        // leurs pièces. Ce qui est soldé porte sa lettre ; ce qui reste ouvert est listé, tiers par tiers.
+        const lc = C.lettrage(data, company(), 'clients', C.today());
+        const lf = C.lettrage(data, company(), 'fournisseurs', C.today());
+        const bloc = (l, qui) => `
+          <h3 class="mt">${qui === 'clients' ? 'Clients' : 'Fournisseurs'} — ${pl(l.lettrees, 'pièce')} lettrée${l.lettrees > 1 ? 's' : ''}, ${pl(l.ouverts, 'pièce')} ouverte${l.ouverts > 1 ? 's' : ''}, reste ${C.money(l.reste, cur)}</h3>
+          ${l.ouverts ? `<div class="scroll-x"><table class="list compact" id="let-${qui}"><thead><tr><th>Compte</th><th>${qui === 'clients' ? 'Client' : 'Fournisseur'}</th><th>Pièce</th><th>Date</th><th>Échéance</th><th class="r">Montant</th><th class="r">Réglé</th><th class="r">Reste</th></tr></thead><tbody>
+            ${l.rows.flatMap(r => r.ouverts.map(o => `<tr class="${o.retard ? 'b-late' : ''}" data-go="${h(qui === 'clients' ? '#/doc/' + o.id : '#/achat/' + o.id)}" style="cursor:pointer">
+              <td class="nw"><strong>${h(r.account)}</strong></td><td>${h(r.tiers)}</td><td class="nw">${h(o.piece)}</td><td class="nw">${C.fmtDate(o.date)}</td>
+              <td class="nw ${o.retard ? 'due' : ''}">${o.echeance ? C.fmtDate(o.echeance) : '—'}</td>
+              <td class="r nw">${C.money(o.montant)}</td><td class="r nw">${o.regle ? C.money(o.regle) : '—'}</td><td class="r nw"><strong>${C.money(o.reste)}</strong></td></tr>`)).join('')}
+          </tbody><tfoot><tr class="total-row"><td colspan="7">Reste à lettrer</td><td class="r nw"><strong>${C.money(l.reste)}</strong></td></tr></tfoot></table></div>`
+            : `<div class="todo-ok">Tout est lettré : aucune pièce ${qui === 'clients' ? 'client' : 'fournisseur'} ouverte.</div>`}`;
+        csvRows = lc.rows.flatMap(r => r.ouverts.map(o => ({ role: 'client', account: r.account, tiers: r.tiers, ...o }))).concat(lf.rows.flatMap(r => r.ouverts.map(o => ({ role: 'fournisseur', account: r.account, tiers: r.tiers, ...o }))));
+        csvCols = [{ key: 'role', label: 'Rôle' }, { key: 'account', label: 'Compte' }, { key: 'tiers', label: 'Tiers' }, { key: 'piece', label: 'Pièce' }, { key: 'date', label: 'Date', type: 'date' }, { key: 'echeance', label: 'Échéance' }, { key: 'montant', label: 'Montant', type: 'money' }, { key: 'regle', label: 'Réglé', type: 'money' }, { key: 'reste', label: 'Reste', type: 'money' }];
+        nomCsv = `lettrage-${C.today()}.csv`;
+        corps = `<p class="small">Une facture soldée et ses règlements portent la même lettre — son numéro — dans le livre-journal et le grand livre. Ici, ce qui reste <b>ouvert</b> à ce jour, tiers par tiers : c'est la liste que ton comptable te demande avant de clôturer. ${info('bal.lettrage')}</p>${bloc(lc, 'clients')}${bloc(lf, 'fournisseurs')}`;
       } else {
         const b = C.balanceAuxiliaire(data, company(), p, vue, {});
         csvRows = b.rows; csvCols = C.balanceAuxCsvColumns(); nomCsv = `balance-${vue}-${tag}.csv`;
@@ -8984,6 +9120,7 @@
         </div>
         <div class="panel">${corps}</div>`;
       $$('#bal-vues button').forEach(b => b.onclick = () => { balState.vue = b.dataset.vue; drawBalance(); });
+      $$('#c-body tr[data-go]').forEach(tr => { tr.onclick = () => navigate(tr.dataset.go); });
       $('#bal-csv').onclick = async () => {
         const f = await bridge.saveText(nomCsv, C.toCsv(csvRows, csvCols));
         if (f) toast('Exporté : ' + f.split(/[\\/]/).pop());

@@ -4118,7 +4118,7 @@ t('écritures : le paquet mensuel les emporte, équilibrées', () => {
   // Un CSV sans entête est illisible par le logiciel du comptable : la première ligne doit nommer
   // les colonnes (le défaut est passé inaperçu parce que rien ne plante — le fichier est juste vide).
   const head = file.text.split('\r\n')[0].replace('﻿', '');
-  assert.strictEqual(head, 'Date;Journal;Pièce;Compte;Tiers;Libellé;Débit;Crédit;Devise', head);
+  assert.strictEqual(head, 'N°;Date;Journal;Pièce;Compte;Tiers;Libellé;Débit;Crédit;Lettrage;Devise', head);
   assert.ok(/;\d+,\d{3};/.test(file.text.split('\r\n')[1]), 'les montants doivent être écrits à la française');
   assert.ok(plan.balance && plan.balance.balanced, 'le plan doit annoncer l\'équilibre');
   // La page de garde le dit au comptable, avec le mot « à adapter » : les comptes sont une proposition.
@@ -4240,8 +4240,9 @@ t('8.8.0 : un sous-compte par tiers, figé sur la fiche, et une balance auxiliai
 
 t('8.8.0 : le plan comptable tunisien nomme un compte par son plus long préfixe', () => {
   const data = core.migrateData({ company: core.DEFAULT_COMPANY });
-  assert.strictEqual(core.accountLabel(data, '627'), 'Services bancaires');
-  assert.strictEqual(core.accountLabel(data, '6270'), 'Services bancaires', 'un sous-compte hérite du plus long préfixe');
+  assert.strictEqual(core.accountLabel(data, '626'), 'Frais postaux et télécommunications');
+  assert.strictEqual(core.accountLabel(data, '6260'), 'Frais postaux et télécommunications', 'un sous-compte hérite du plus long préfixe');
+  assert.strictEqual(core.accountLabel(data, '627'), 'Frais bancaires', 'un compte qui a un rôle porte le nom du rôle (8.9.0)');
   assert.strictEqual(core.accountLabel(data, '4367'), 'TVA collectée');
   assert.strictEqual(core.accountLabel(data, '411'), 'Clients', 'le rôle réglé passe avant le plan');
   assert.strictEqual(core.accountLabel(data, '99'), 'Compte hors plan');
@@ -4278,6 +4279,181 @@ t('8.8.0 : la balance part dans le paquet, et les exports ont une entête', () =
   assert.ok(/C\.balanceGenerale\(data, company\(\), p, \{\}\)/.test(app) && /C\.balanceAuxiliaire\(data, company\(\), p, vue, \{\}\)/.test(app));
   assert.ok(/data\.auxiliaires = !!\$\('input\[name=auxiliaires\]', layer\)\.checked;\s*if \(data\.auxiliaires\) C\.numeroterAuxiliaires\(data\);/.test(app), 'activer les sous-comptes fige les codes');
   assert.ok(core.DEFAULT_DATA.auxiliaires === false, 'le réglage vit dans les données, donc « Tout effacer » le remet à zéro');
+});
+
+// ---------- le livre-journal (8.9.0) ----------
+t('8.9.0 : les pièces portent un numéro continu dans l\'exercice, sans trou, et le centralisateur totalise le journal', () => {
+  const demo = require('../src/renderer/demo.js');
+  const company = { ...core.DEFAULT_COMPANY, name: 'Test SUARL', matricule: '1234567A' };
+  const data = core.migrateData(demo.buildDemoData(company, '2026-09-12'));
+  const an = core.livreJournal(data, data.company, { from: '2026-01-01', to: '2026-12-31' }, {});
+  const nums = [...new Set(an.map(e => e.numero))].sort((a, b) => a - b);
+  assert.ok(nums.length > 50, 'l\'exemple doit produire des dizaines de pièces : ' + nums.length);
+  nums.forEach((n, i) => assert.strictEqual(n, i + 1, `trou ou doublon dans la numérotation : ${nums.slice(Math.max(0, i - 2), i + 3)}`));
+  // Une pièce = un numéro, quelle que soit sa ligne ; et les numéros suivent les dates.
+  const parPiece = {};
+  an.forEach(e => { const k = `${e.journal}|${e.piece}|${e.date}`; if (parPiece[k] && parPiece[k] !== e.numero) assert.fail(`${k} porte deux numéros`); parPiece[k] = e.numero; });
+  for (let i = 1; i < an.length; i++) assert.ok(an[i].numero >= an[i - 1].numero || an[i].date < an[i - 1].date, 'les numéros doivent suivre l\'ordre des dates');
+  // Un mois seul reprend les numéros de l'exercice, pas une numérotation à lui.
+  const mai = core.livreJournal(data, data.company, core.packPeriod(2026, 5), {});
+  assert.ok(mai.every(e => an.some(x => x.numero === e.numero && x.piece === e.piece)), 'mai porte les numéros de l\'exercice');
+  assert.ok(Math.min(...mai.map(e => e.numero)) > 1, 'et ne repart pas de 1');
+  // Le centralisateur : la somme des journaux est la somme des écritures, mois par mois.
+  const c = core.journalCentralisateur(data, data.company, 2026, {});
+  assert.strictEqual(c.debit, core.round3(an.reduce((s, e) => s + e.debit, 0)));
+  assert.strictEqual(c.credit, c.debit, 'le centralisateur tombe juste');
+  c.mois.forEach(m => {
+    const somme = core.round3(c.journaux.reduce((s, j) => s + m.par[j.code].debit, 0));
+    assert.strictEqual(somme, m.debit, `${m.label} : les journaux ne font pas le total du mois`);
+    assert.strictEqual(m.debit, m.credit, `${m.label} : déséquilibré`);
+  });
+  assert.strictEqual(c.pieces, nums.length, 'autant de pièces au centralisateur qu\'au livre-journal');
+  assert.ok(c.journaux.some(j => j.code === 'OD') && c.journaux.some(j => j.code === 'BQ'));
+  // L'export du centralisateur a une entête qui nomme chaque journal.
+  const csv = core.toCsv(core.centralisateurRows(c), core.centralisateurCsvColumns(c.journaux));
+  assert.ok(/^﻿?Mois;VT débit;VT crédit;/.test(csv.split('\r\n')[0]), csv.split('\r\n')[0]);
+});
+
+t('8.9.0 : ce qui touche l\'argent est dans le journal — mouvements libres, salaires réglés, soldes de départ, déclaration du mois', () => {
+  const company = { ...core.DEFAULT_COMPANY, name: 'T', matricule: '1A', stampFee: 1 };
+  const data = core.migrateData({
+    company,
+    accounts: [{ id: 'bq', name: 'Banque', kind: 'banque', opening: 5000, openingDate: '2026-01-01', isDefault: true },
+               { id: 'ca', name: 'Caisse', kind: 'caisse', opening: 200, openingDate: '2026-01-01' }],
+    movements: [
+      { id: 'm1', date: '2026-05-05', kind: 'banque', amount: 18, label: 'Frais de tenue de compte', accountId: 'bq' },
+      { id: 'm2', date: '2026-05-06', kind: 'apport', amount: 3000, label: 'Apport du gérant', accountId: 'bq' },
+      { id: 'm3', date: '2026-05-07', kind: 'autre-sortie', amount: 45, label: 'Fournitures', accountId: 'ca' },
+      { id: 'm4', date: '2026-05-28', kind: 'impot', amount: 190, label: 'TVA d\'avril', accountId: 'bq', compte: '4365' }
+    ],
+    employees: [{ id: 'e1', name: 'Salarié Un', grossSalary: 1000 }],
+    payslips: [{ id: 's1', employeeId: 'e1', year: 2026, month: 4, computed: { gross: 1000, net: 850, cnssEmployee: 91.8, cnssEmployer: 165.7, accident: 4, irpp: 50, css: 8.2, otherDeductions: 0 }, paidDate: '2026-05-03', accountId: 'bq' }],
+    clients: [{ id: 'c1', name: 'Client Un' }],
+    documents: [{ id: 'd1', type: 'facture', number: 'FAC-2026-001', date: '2026-04-10', status: 'envoyée', clientId: 'c1',
+      lines: [{ label: 'Prestation', qty: 1, unitPrice: 1000, vatRate: 19 }], payments: [{ id: 'p1', date: '2026-05-02', amount: 1191, method: 'especes', accountId: 'ca' }] }],
+    vatCarryIn: { '2026': 40 }
+  });
+  const acc = core.chartAccounts(data);
+  const mai = core.journalEntries(data, data.company, core.packPeriod(2026, 5), { todayIso: '2026-09-12' });
+  const at = (source, account) => mai.filter(e => e.source === source && e.account === account);
+  // Les frais bancaires : débit 627, crédit banque, journal BQ.
+  assert.strictEqual(at('mouvement', acc.fraisBancaires)[0].debit, 18);
+  assert.strictEqual(at('mouvement', acc.banque).filter(e => e.credit === 18)[0].journal, 'BQ');
+  // L'apport : débit banque, crédit compte courant d'associé.
+  assert.strictEqual(at('mouvement', acc.associes)[0].credit, 3000);
+  // Une sortie de CAISSE va au journal de caisse, sur le compte d'attente.
+  const four = at('mouvement', acc.attente)[0];
+  assert.strictEqual(four.debit, 45);
+  assert.strictEqual(mai.find(e => e.source === 'mouvement' && e.credit === 45).account, acc.caisse);
+  assert.strictEqual(four.journal, 'CA');
+  // Un mouvement qui porte sa contrepartie l'emporte sur la nature.
+  assert.strictEqual(at('mouvement', acc.tvaAPayer)[0].debit, 190, 'la TVA payée en « impôt » va au 4365, pas au 434');
+  assert.ok(!at('mouvement', acc.impots).length);
+  // Le bulletin réglé : débit personnel, crédit banque.
+  assert.strictEqual(at('salaire', acc.personnel)[0].debit, 850);
+  // L'encaissement affecté à la CAISSE y va, quel que soit le mode — même règle que la Trésorerie.
+  assert.strictEqual(at('encaissement', acc.caisse)[0].debit, 1191);
+  assert.strictEqual(at('encaissement', acc.caisse)[0].journal, 'CA');
+  // Les soldes de départ : journal AN, contrepartie report à nouveau, plus le crédit de TVA saisi.
+  const jan = core.journalEntries(data, data.company, core.packPeriod(2026, 1), { todayIso: '2026-09-12' });
+  assert.strictEqual(jan.filter(e => e.source === 'ouverture' && e.account === acc.banque)[0].debit, 5000);
+  assert.strictEqual(jan.filter(e => e.source === 'ouverture' && e.account === acc.caisse)[0].debit, 200);
+  assert.strictEqual(jan.filter(e => e.source === 'ouverture' && e.account === acc.tvaDeductible)[0].debit, 40, 'le crédit de TVA saisi à la main entre au 4366');
+  assert.strictEqual(core.round3(jan.filter(e => e.source === 'ouverture' && e.account === acc.reportANouveau).reduce((s, e) => s + e.credit, 0)), 5240);
+  assert.ok(jan.filter(e => e.source === 'ouverture').every(e => e.journal === 'AN'));
+  // La déclaration d'avril : collectée 190 débitée, la déductible imputée (le report de 40), le net à payer.
+  const avril = core.journalEntries(data, data.company, core.packPeriod(2026, 4), { todayIso: '2026-09-12' });
+  const decl = avril.filter(e => e.source === 'declaration');
+  assert.ok(decl.length, 'la déclaration du mois écoulé produit une écriture');
+  assert.strictEqual(decl.find(e => e.account === acc.tvaCollectee).debit, 190);
+  assert.strictEqual(decl.find(e => e.account === acc.tvaDeductible).credit, 40, 'le report est imputé');
+  assert.strictEqual(decl.find(e => e.account === acc.timbre).debit, 1);
+  assert.strictEqual(decl.find(e => e.account === acc.tvaAPayer).credit, 151, 'net à payer = TVA due + timbre');
+  assert.ok(decl.every(e => e.date === '2026-04-30' && e.piece === 'TVA-2026-04' && e.journal === 'OD'));
+  // Le mois en cours n'a pas encore de déclaration : elle ne se passe qu'à la fin d'un mois écoulé.
+  const sept = core.journalEntries(data, data.company, core.packPeriod(2026, 9), { todayIso: '2026-09-12' });
+  assert.ok(!sept.some(e => e.source === 'declaration'), 'pas de déclaration pour le mois en cours');
+  // Et le tout tombe juste : le 4367 est soldé à la fin d'avril, le 4365 à la fin de mai.
+  const bal = core.balanceGenerale(data, data.company, { from: '2026-01-01', to: '2026-05-31' }, { todayIso: '2026-09-12' });
+  assert.ok(bal.equilibree);
+  assert.strictEqual((bal.rows.find(r => r.account === acc.tvaCollectee) || { solde: 0 }).solde, 0, 'la TVA collectée est soldée par la déclaration');
+  assert.strictEqual(bal.rows.find(r => r.account === acc.tvaAPayer).solde, core.round3(-151 + 190), 'le paiement de 190 solde… et dépasse le 4365 de 39 (l\'exemple paie trop) — le compte le dit');
+  // La banque du grand livre = la banque de la Trésorerie, au millime.
+  assert.strictEqual(bal.rows.find(r => r.account === acc.banque).solde, core.accountBalance(data, data.company, 'bq', '2026-05-31').balance);
+  assert.strictEqual(bal.rows.find(r => r.account === acc.caisse).solde, core.accountBalance(data, data.company, 'ca', '2026-05-31').balance);
+});
+
+t('8.9.0 : une opération diverse n\'entre qu\'équilibrée, porte un numéro continu, et se lit dans le journal', () => {
+  const company = { ...core.DEFAULT_COMPANY, name: 'T', matricule: '1A' };
+  const data = core.migrateData({ company });
+  const bonne = { date: '2026-05-15', label: 'Assurance avancée par le gérant', lignes: [{ compte: '616', debit: 840 }, { compte: '4421', credit: 840 }] };
+  assert.ok(core.odValide(bonne).ok);
+  const refus = (od, motif) => { const v = core.odValide(od); assert.ok(!v.ok && v.erreurs.some(e => motif.test(e)), `devrait refuser (${motif}) : ${JSON.stringify(v.erreurs)}`); };
+  refus({ ...bonne, lignes: [{ compte: '616', debit: 840 }, { compte: '4421', credit: 800 }] }, /ne tombe pas juste/);
+  refus({ ...bonne, lignes: [{ compte: '616', debit: 840 }] }, /au moins deux lignes/);
+  refus({ ...bonne, lignes: [{ compte: '616', debit: 840, credit: 840 }, { compte: '4421', credit: 0, debit: 0 }] }, /débit OU au crédit/);
+  refus({ ...bonne, lignes: [{ compte: 'abc', debit: 840 }, { compte: '4421', credit: 840 }] }, /doit être un numéro/);
+  refus({ ...bonne, lignes: [{ compte: '616', debit: -840 }, { compte: '4421', credit: -840 }] }, /négatif/);
+  refus({ ...bonne, label: '' }, /libellé/i);
+  refus({ ...bonne, date: '' }, /date/i);
+  // Une ligne vide est ignorée, pas refusée : la fenêtre en propose toujours une de plus.
+  assert.ok(core.odValide({ ...bonne, lignes: bonne.lignes.concat([{ compte: '', debit: 0, credit: 0 }]) }).ok);
+  // Le numéro : OD-2026-001, puis 002, jamais réutilisé même après suppression.
+  const p1 = core.odPiece(data, '2026-05-15');
+  data.ecrituresOD.push({ id: 'o1', ...bonne, piece: p1 });
+  const p2 = core.odPiece(data, '2026-06-01');
+  assert.strictEqual(p1, 'OD-2026-001'); assert.strictEqual(p2, 'OD-2026-002');
+  data.ecrituresOD.push({ id: 'o2', ...bonne, date: '2026-06-01', piece: p2 });
+  data.ecrituresOD = data.ecrituresOD.filter(o => o.id !== 'o2');
+  assert.strictEqual(core.odPiece(data, '2026-06-02'), 'OD-2026-003', 'un numéro supprimé ne revient pas');
+  assert.strictEqual(core.odPiece(data, '2027-01-02'), 'OD-2027-001', 'la numérotation repart à chaque exercice');
+  // Dans le journal : deux lignes, journal OD, source od, équilibrées.
+  const e = core.journalEntries(data, data.company, core.packPeriod(2026, 5), {});
+  const od = e.filter(x => x.source === 'od');
+  assert.strictEqual(od.length, 2);
+  assert.strictEqual(od.find(x => x.account === '616').debit, 840);
+  assert.strictEqual(od.find(x => x.account === '4421').credit, 840);
+  assert.ok(od.every(x => x.journal === 'OD' && x.piece === 'OD-2026-001'));
+  assert.ok(core.entriesBalance(e).balanced);
+  // Elle compte pour la clôture (un mois qui n'a qu'une OD se clôture) et se fusionne entre postes.
+  assert.ok(core.closableMonths(data, '2026-09-12').some(m => m.month === '2026-05'));
+  assert.ok(core.MERGE_LISTS.includes('ecrituresOD') && Array.isArray(core.DEFAULT_DATA.ecrituresOD));
+  // Les comptes proposés à la saisie : ceux déjà mouvementés d'abord, marqués, puis le plan.
+  const prop = core.comptesProposes(data, data.company);
+  assert.ok(prop[0].utilise && prop.some(c => !c.utilise && c.compte === '627'));
+});
+
+t('8.9.0 : le lettrage se lit — une facture soldée porte sa lettre, ce qui reste ouvert est listé tiers par tiers', () => {
+  const demo = require('../src/renderer/demo.js');
+  const company = { ...core.DEFAULT_COMPANY, name: 'Test SUARL', matricule: '1234567A' };
+  const data = core.migrateData(demo.buildDemoData(company, '2026-09-12'));
+  const acc = core.chartAccounts(data);
+  const e = core.journalEntries(data, data.company, { from: '2025-01-01', to: '2026-12-31' }, {});
+  const soldee = data.documents.find(d => d.type === 'facture' && d.status !== 'brouillon' && d.status !== 'annulée' && core.invoiceBalance(d, data, data.company).remaining <= 0.0005 && (d.payments || []).length);
+  const ouverte = data.documents.find(d => d.type === 'facture' && d.status !== 'brouillon' && d.status !== 'annulée' && core.invoiceBalance(d, data, data.company).remaining > 0.0005);
+  assert.ok(soldee && ouverte, 'l\'exemple a une facture soldée et une ouverte');
+  const lignesSoldee = e.filter(x => x.docId === soldee.id && x.account.startsWith(acc.clients));
+  assert.ok(lignesSoldee.length >= 2 && lignesSoldee.every(x => x.lettre === soldee.number), 'la facture ET ses règlements portent la lettre');
+  assert.ok(e.filter(x => x.docId === ouverte.id).every(x => !x.lettre), 'une facture ouverte n\'a pas de lettre');
+  // Le lettrage : le reste ouvert des clients est le solde du compte Clients.
+  const l = core.lettrage(data, data.company, 'clients', '2026-09-12');
+  const bal = core.balanceGenerale(data, data.company, { from: '2025-01-01', to: '2026-12-31' }, {});
+  assert.strictEqual(l.reste, bal.rows.find(r => r.account === acc.clients).solde, 'le reste à lettrer est le solde du compte Clients');
+  assert.ok(l.ouverts > 0 && l.lettrees > 0);
+  assert.ok(l.rows.every(r => r.reste === core.round3(r.ouverts.reduce((s, o) => s + o.reste, 0))));
+  assert.ok(l.rows.some(r => r.ouverts.some(o => o.retard)), 'les retards de l\'exemple sont marqués');
+  const lf = core.lettrage(data, data.company, 'fournisseurs', '2026-09-12');
+  assert.strictEqual(lf.reste, core.round3(-bal.rows.find(r => r.account === acc.fournisseurs).solde), 'le reste fournisseurs est le solde créditeur du 401');
+  // Et l'écran : le livre-journal numéroté, l'OD, le centralisateur, le lettrage et la contrepartie d'un mouvement.
+  const app = lireApp();
+  assert.ok(/C\.livreJournal\(data, company\(\), p, \{\}\)/.test(app), 'la page Écritures lit le livre-journal numéroté');
+  assert.ok(/function odForm\(od, done\)/.test(app) && /const v = C\.odValide\(n\);\s*if \(!v\.ok\)/.test(app), 'la fenêtre d\'OD refuse par odValide');
+  assert.ok(/if \(!od\) n\.piece = C\.odPiece\(data, n\.date\);/.test(app), 'le numéro de pièce est pris à l\'enregistrement');
+  assert.ok(app.indexOf("licenceBlock('Créer une opération diverse')") < app.indexOf("if (!od) n.piece = C.odPiece("), 'le garde-fou passe avant le numéro');
+  assert.ok(/closedBlock\(\[od && od\.date, n\.date\], 'Cette opération diverse'\)/.test(app), 'l\'ancienne date ET la nouvelle sont testées');
+  assert.ok(/C\.journalCentralisateur\(data, company\(\), exo, \{\}\)/.test(app));
+  assert.ok(/C\.lettrage\(data, company\(\), 'clients', C\.today\(\)\)/.test(app));
+  assert.ok(/name="compte"/.test(app) && /C\.COMPTES_CONTREPARTIE\.map/.test(app), 'le mouvement libre choisit sa contrepartie');
 });
 
 // ---------- SkanFact Cabinet (src/cabinet/cabcore.js) ----------

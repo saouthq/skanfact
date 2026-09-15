@@ -460,6 +460,28 @@
     d.movements.push(mv('impot', 4, 25, 2400, 'Acompte provisionnel'));
     d.movements.push(mv('apport', 13, 3, 5000, 'Apport en compte courant'));
     d.movements.push(mv('autre-sortie', 2, 14, 120, 'Fournitures diverses', accCash));
+    // 8.9.0 : la déclaration mensuelle se PAIE. Chaque mois écoulé, le net de TVA (timbres et retenues
+    // opérées compris) sort de la banque le 28 du mois suivant, sur le compte « TVA à payer » — c'est
+    // ce que montre un mouvement libre qui porte sa contrepartie. Sans ces paiements, le 4365 de
+    // l'exemple grossirait pour toujours, et le premier comptable à qui on le montre demanderait
+    // pourquoi la société ne paie jamais sa TVA.
+    const annees = [...new Set(d.documents.map(x => (x.date || '').slice(0, 4)).filter(Boolean))].sort();
+    annees.forEach(y => C.vatChain(d, d.company, y).forEach(m => {
+      const net = C.round3(m.toPay + m.stamps + m.withheldOnBuys);
+      const [yy, mm] = m.month.split('-').map(Number);
+      const echeance = C.addMonths(`${m.month}-01`, 1, 28);
+      if (net <= 0 || echeance >= T) return;
+      d.movements.push({ id: C.uid(), date: echeance, kind: 'impot', amount: net, label: `TVA, timbres et retenues de ${C.MONTHS_FR[mm - 1]} ${yy}`,
+        accountId: accBank.id, method: 'virement', reference: `TVA ${m.month}`, compte: '4365' });
+    }));
+    // 8.9.0 : une opération diverse saisie à la main — ce que le comptable demande en premier.
+    // La prime d'assurance du local, avancée par le gérant : une charge qui n'a ni facture
+    // fournisseur enregistrée ni sortie de banque, donc invisible sans OD.
+    d.ecrituresOD = [];
+    d.ecrituresOD.push({ id: C.uid(), date: mo(3, 15), piece: C.odPiece(d, mo(3, 15)), journal: 'OD',
+      label: 'Assurance annuelle du local, avancée par le gérant',
+      lignes: [{ compte: '616', label: 'Prime d\'assurance multirisque', debit: 840, credit: 0 },
+               { compte: '4421', label: 'Avance du gérant en compte courant', debit: 0, credit: 840 }] });
     // Quelques encaissements déjà pointés sur le relevé, pour que le rapprochement ait du sens
     d.documents.forEach((doc, i) => (doc.payments || []).forEach(p => { if (i % 3 === 0) p.reconciled = true; }));
 

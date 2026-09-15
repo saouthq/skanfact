@@ -140,6 +140,68 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   if (tous < apres.length) throw new Error('« Tous les comptes » en montre moins qu\'avant');
   j.ok(`${apres.filter(c => /^411\d{3}$/.test(c)).length} sous-comptes clients au grand livre, ${tous} comptes en tout`);
 
+  // -------------------------------------------------- 8. le livre-journal (8.9.0)
+  j.etape('Le livre-journal : un numéro continu par pièce, le centralisateur, et l\'OD de l\'exemple');
+  await onglet('ecritures');
+  await win.waitForSelector('#ecr-t');
+  const lj = await win.evaluate(() => ({
+    nums: [...document.querySelectorAll('#ecr-t tbody tr td:first-child')].map(td => Number(td.textContent)),
+    central: document.querySelectorAll('#ecr-central tbody tr').length,
+    ods: [...document.querySelectorAll('#ecr-ods tbody tr')].map(tr => tr.children[1].textContent),
+    journaux: [...document.querySelectorAll('#ecr-central thead th')].map(th => th.textContent.trim().split(' ')[0])
+  }));
+  if (!lj.nums.length || lj.nums.some(n => !(n > 0))) throw new Error(`les écritures ne portent pas de numéro : ${lj.nums.slice(0, 5)}`);
+  if (lj.central !== 12) throw new Error(`le centralisateur devrait avoir douze mois, il en a ${lj.central}`);
+  if (!lj.journaux.includes('OD') || !lj.journaux.includes('BQ')) throw new Error(`journaux du centralisateur : ${lj.journaux.join(', ')}`);
+  if (!lj.ods.some(p => /^OD-\d{4}-001$/.test(p))) throw new Error(`l'OD de l'exemple manque : ${lj.ods.join(', ')}`);
+  j.ok(`numéros ${Math.min(...lj.nums)}…${Math.max(...lj.nums)}, centralisateur ${lj.journaux.filter(x => /^[A-Z]+$/.test(x)).join('/')}, OD ${lj.ods.join(', ')}`);
+
+  // -------------------------------------------------- 9. saisir une OD
+  j.etape('Une opération diverse déséquilibrée est refusée, puis enregistrée une fois juste');
+  await win.click('#ecr-od');
+  await win.waitForSelector('#modal-root #odf');
+  await win.fill('#modal-root input[name=label]', 'Loyer du local, réglé par le gérant');
+  const lignes = await win.$$('#modal-root #od-lignes tbody tr');
+  await lignes[0].$eval('.od-compte', el => { el.value = '613'; el.dispatchEvent(new Event('input', { bubbles: true })); });
+  await lignes[0].$eval('.od-debit', el => { el.value = '1200'; el.dispatchEvent(new Event('input', { bubbles: true })); });
+  await lignes[1].$eval('.od-compte', el => { el.value = '4421'; el.dispatchEvent(new Event('input', { bubbles: true })); });
+  await lignes[1].$eval('.od-credit', el => { el.value = '1000'; el.dispatchEvent(new Event('input', { bubbles: true })); });
+  const ecart = await win.$eval('#modal-root #od-ecart', e => e.textContent);
+  if (!/Écart de 200/.test(ecart)) throw new Error(`l'écart n'est pas annoncé pendant la saisie : « ${ecart} »`);
+  const intitule = await win.$eval('#modal-root #od-lignes tbody tr .od-lib', e => e.textContent);
+  if (!/Locations/.test(intitule)) throw new Error(`le compte 613 n'est pas nommé pendant la saisie : « ${intitule} »`);
+  await win.click('#modal-root #od-ok');
+  await win.waitForTimeout(300);
+  if (!await win.$('#modal-root #odf')) throw new Error('une OD déséquilibrée a été enregistrée');
+  const avantOD = await win.evaluate(() => window.__data.ecrituresOD.length);
+  await lignes[1].$eval('.od-credit', el => { el.value = '1200'; el.dispatchEvent(new Event('input', { bubbles: true })); });
+  const juste = await win.$eval('#modal-root #od-ecart', e => e.textContent);
+  if (!/tombe juste/.test(juste)) throw new Error(`l'équilibre n'est pas annoncé : « ${juste} »`);
+  await win.click('#modal-root #od-ok');
+  await win.waitForFunction(() => !document.querySelector('#modal-root #odf'));
+  await win.waitForTimeout(300);
+  const apresOD = await win.evaluate(() => ({ n: window.__data.ecrituresOD.length, derniere: window.__data.ecrituresOD[window.__data.ecrituresOD.length - 1],
+    affichees: [...document.querySelectorAll('#ecr-ods tbody tr')].map(tr => tr.children[1].textContent),
+    compte613: [...document.querySelectorAll('#ecr-t tbody tr')].some(tr => tr.children[4].textContent === '613') }));
+  if (apresOD.n !== avantOD + 1) throw new Error('l\'OD équilibrée n\'a pas été enregistrée');
+  if (!/^OD-\d{4}-002$/.test(apresOD.derniere.piece)) throw new Error(`numéro de pièce inattendu : ${apresOD.derniere.piece}`);
+  if (!apresOD.affichees.includes(apresOD.derniere.piece)) throw new Error('l\'OD enregistrée n\'apparaît pas dans la liste');
+  j.ok(`${apresOD.derniere.piece} enregistrée, 1 200 au 613 / 4421${apresOD.compte613 ? ', visible dans le détail' : ''}`);
+
+  // -------------------------------------------------- 10. le lettrage
+  j.etape('Le lettrage liste ce qui reste ouvert, et une ligne ouvre sa pièce');
+  await onglet('balance');
+  await win.waitForSelector('#bal-vues');
+  await win.click('#bal-vues button[data-vue=lettrage]');
+  await win.waitForSelector('#let-clients');
+  const let1 = await win.evaluate(() => ({ lignes: document.querySelectorAll('#let-clients tbody tr').length, go: (document.querySelector('#let-clients tbody tr[data-go]') || {}).dataset && document.querySelector('#let-clients tbody tr[data-go]').dataset.go,
+    retard: document.querySelectorAll('#let-clients tbody tr.b-late').length }));
+  if (!let1.lignes) throw new Error('aucune pièce client ouverte dans le lettrage de l\'exemple');
+  if (!let1.retard) throw new Error('les retards de l\'exemple ne sont pas marqués');
+  await win.click('#let-clients tbody tr[data-go]');
+  await win.waitForFunction(g => location.hash === g, let1.go, { timeout: 4000 });
+  j.ok(`${let1.lignes} pièces ouvertes (${let1.retard} en retard) — la première ouvre ${let1.go}`);
+
   await Promise.race([app.close(), new Promise((_, rej) => setTimeout(() => rej(new Error('l\'application ne se ferme pas : un garde-fou est resté armé')), 8000))]);
   if (bac.length) { console.error('\nErreurs du renderer :\n' + bac.join('\n')); process.exit(2); }
   console.log(`\n${j.total()} étapes — le grand livre et la balance tiennent debout.`);

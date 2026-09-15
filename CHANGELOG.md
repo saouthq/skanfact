@@ -7,6 +7,47 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 8.9.0 — 15/09/2026
+
+**Le livre-journal.** Le second terme du comptable : « l'écriture comptable dans le journal ».
+L'onglet Écritures devient un vrai livre-journal, et tout ce qui touche l'argent y est.
+
+- **Un numéro continu par pièce** dans l'exercice (1, 2, 3… sans trou), le même sur chaque ligne
+  de la pièce, dans l'export CSV et dans le paquet du cabinet. Les numéros suivent les dates ; un
+  mois clôturé ne bouge plus, ses numéros non plus — la page le dit.
+- **Les opérations diverses se saisissent à la main** : « Saisir une opération diverse… » ouvre une
+  fenêtre à deux lignes ou plus (compte, libellé, débit ou crédit), qui nomme chaque compte pendant
+  la frappe, annonce l'écart, et **refuse tant que débit ≠ crédit**. Le numéro OD-2026-001 est pris à
+  l'enregistrement, jamais réutilisé. Elles se modifient et se suppriment depuis leur liste, comptent
+  pour la clôture, et voyagent entre deux postes.
+- **Les mouvements libres de la Trésorerie produisent leurs écritures** : frais bancaires (627),
+  apport ou retrait (compte courant d'associé), échéance d'emprunt (16), salaires (personnel), impôts
+  (434), et ce que personne ne sait ranger au **compte d'attente 471**, pour que le comptable
+  ventile. Chaque mouvement peut porter sa **contrepartie** précise (la TVA du mois réglée en
+  « impôt » va au 4365 TVA à payer). Le journal est celui du compte : une sortie de caisse va au
+  journal de caisse, quel que soit son mode.
+- **Le paiement des bulletins** (personnel → banque), **les soldes de départ** des comptes de
+  trésorerie (journal AN, contrepartie « report à nouveau ») et **le crédit de TVA saisi à la main**
+  entrent dans le journal : la banque du grand livre dit désormais le même chiffre que la page
+  Trésorerie, au millime.
+- **La déclaration mensuelle passe en écriture** à la fin de chaque mois écoulé : la TVA collectée
+  est soldée contre la déductible (report compris), le net à payer — timbres et retenues opérées
+  avec lui, c'est le même formulaire — va au **4365 TVA à payer**, qu'un mouvement « impôt » solde le
+  mois suivant. Un crédit reste au débit du 4366, comme dans le tableau mois par mois.
+- **Le journal centralisateur** : mois par mois, journal par journal, les totaux au débit et au
+  crédit et le nombre de pièces, pour l'exercice. Exportable.
+- **Le lettrage** (onglet Balance → Lettrage) : une facture soldée et ses règlements portent la
+  même lettre — son numéro — dans le livre-journal et le grand livre ; ce qui reste ouvert est listé
+  tiers par tiers, avec son reste, en rouge quand c'est en retard, et chaque ligne ouvre sa pièce.
+  Le total des restes clients est le solde du compte Clients.
+- **Corrigé au passage** : une facture entièrement couverte par un avoir ne produisait plus
+  d'écriture, alors que son avoir en produisait — le client finissait créditeur d'un montant jamais
+  facturé. Trouvé par le lettrage, invisible avant.
+- Le jeu d'exemple paie sa TVA chaque mois et porte une opération diverse.
+
+*À VÉRIFIER avec le comptable :* les comptes de contrepartie proposés (434, 4421, 16, 471, 12) et
+le fait de passer la déclaration mensuelle en une écriture au dernier jour du mois.
+
 ## 8.8.0 — 15/09/2026
 
 **Le grand livre et la balance.** Le comptable de Skander a regardé l'application et nommé ce qui

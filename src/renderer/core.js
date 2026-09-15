@@ -676,6 +676,7 @@
     accounts: [],            // comptes de trésorerie : banque, caisse… (v4)
     movements: [],           // mouvements libres : salaires, impôts, apports — ce qui n'a ni facture ni achat
     auxiliaires: false,      // comptes auxiliaires par tiers (411001, 401001…) dans les écritures (8.8.0)
+    ecrituresOD: [],         // opérations diverses saisies à la main : { id, date, piece, label, lignes:[{compte,label,debit,credit}] } (8.9.0)
     licences: [],            // licences SkanFact ÉMISES par l'éditeur depuis ce dossier (7.33.0) — vide chez un client
     pontImporte: '',         // jour où l'historique des licences est parti vers la console (8.7.0) — vide chez un client
     deleted: [],             // pièces supprimées, pour qu'elles ne reviennent pas d'un autre poste (v4)
@@ -1010,7 +1011,7 @@
       (d.payments || []).forEach(p => {
         if (!inPeriod(p.date, period.from, period.to)) return;
         const m = PAYMENT_METHODS.find(x => x[0] === p.method);
-        rows.push({ id: p.id, date: p.date, number: d.number, client: clientName(d.clientId), clientId: d.clientId || '', amount: toBase(d, p.amount, company), method: m ? m[1] : (p.method || ''), reference: p.reference || '', note: p.note || '', docId: d.id, currency: d.currency || company.currency });
+        rows.push({ id: p.id, date: p.date, number: d.number, client: clientName(d.clientId), clientId: d.clientId || '', amount: toBase(d, p.amount, company), method: m ? m[1] : (p.method || ''), reference: p.reference || '', note: p.note || '', docId: d.id, currency: d.currency || company.currency, accountId: p.accountId || '' });
       });
     });
     return rows.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
@@ -1087,6 +1088,7 @@
     if (!Array.isArray(data.closureLog)) data.closureLog = [];
     if (!Array.isArray(data.packs)) data.packs = [];   // 6.1.0 : historique des envois au cabinet
     if (!Array.isArray(data.licences)) data.licences = [];   // 7.33.0 : licences émises par l'éditeur
+    if (!Array.isArray(data.ecrituresOD)) data.ecrituresOD = [];   // 8.9.0 : opérations diverses
     data.catalog.forEach(c => {
       c.tracked = c.tracked === true;
       c.minStock = Number(c.minStock) || 0;
@@ -1389,7 +1391,7 @@
       const m = PAYMENT_METHODS.find(k => k[0] === x.method);
       out.push({
         id: x.id, purchaseId: p.id, date: x.date, number: p.number || '', supplier: name(p.supplierId), supplierId: p.supplierId || '',
-        amount: round3(Number(x.amount) || 0), method: m ? m[1] : (x.method || ''), reference: x.reference || '', note: x.note || ''
+        amount: round3(Number(x.amount) || 0), method: m ? m[1] : (x.method || ''), reference: x.reference || '', note: x.note || '', accountId: x.accountId || ''
       });
     }));
     return out.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
@@ -3073,11 +3075,11 @@
   // l'autre version pour qu'elle reste consultable. Rien n'est détruit sans trace.
 
   // Les listes du fichier qui se fusionnent pièce par pièce, grâce à leur identifiant.
-  const MERGE_LISTS = ['clients', 'catalog', 'documents', 'recurring', 'templates', 'snippets', 'suppliers', 'purchases', 'accounts', 'movements', 'projects', 'assets', 'stockAdjustments', 'serials', 'employees', 'payslips', 'leaves', 'advances', 'socialFilings', 'fiscalFilings', 'packs', 'licences'];
+  const MERGE_LISTS = ['clients', 'catalog', 'documents', 'recurring', 'templates', 'snippets', 'suppliers', 'purchases', 'accounts', 'movements', 'projects', 'assets', 'stockAdjustments', 'serials', 'employees', 'payslips', 'leaves', 'advances', 'socialFilings', 'fiscalFilings', 'packs', 'licences', 'ecrituresOD'];
   const LIST_LABELS = {
     clients: 'client', catalog: 'prestation', documents: 'document', recurring: 'contrat récurrent',
     templates: 'modèle', snippets: 'texte', suppliers: 'fournisseur', purchases: 'achat',
-    accounts: 'compte', movements: 'mouvement', projects: 'affaire', assets: 'immobilisation', stockAdjustments: 'mouvement de stock', serials: 'numéro de série', employees: 'salarié', payslips: 'bulletin de paie', leaves: 'congé', advances: 'avance sur salaire', socialFilings: 'déclaration sociale', fiscalFilings: 'échéance fiscale déposée', packs: 'envoi au cabinet', licences: 'licence émise'
+    accounts: 'compte', movements: 'mouvement', projects: 'affaire', assets: 'immobilisation', stockAdjustments: 'mouvement de stock', serials: 'numéro de série', employees: 'salarié', payslips: 'bulletin de paie', leaves: 'congé', advances: 'avance sur salaire', socialFilings: 'déclaration sociale', fiscalFilings: 'échéance fiscale déposée', packs: 'envoi au cabinet', licences: 'licence émise', ecrituresOD: 'opération diverse'
   };
 
   function sameJson(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
@@ -3353,7 +3355,8 @@
       const dates = [
         ...(data.documents || []).map(d => d.date),
         ...(data.purchases || []).map(p => p.date),
-        ...(data.movements || []).map(m => m.date)
+        ...(data.movements || []).map(m => m.date),
+        ...(data.ecrituresOD || []).map(o => o.date)
       ].filter(Boolean).sort();
       if (!dates.length) return [];
       first = dates[0].slice(0, 7);
@@ -3749,7 +3752,15 @@
     personnel: '425',            // Personnel — rémunérations dues
     cnss: '4531',                // CNSS (part salariale + part patronale)
     irpp: '4321',                // IRPP et contribution sociale retenus à la source
-    resultat: '13'               // Résultat de l'exercice — reçoit les exercices passés à l'ouverture (8.8.0)
+    resultat: '13',              // Résultat de l'exercice — reçoit les exercices passés à l'ouverture (8.8.0)
+    // 8.9.0 — les contreparties des mouvements libres et de la déclaration mensuelle
+    tvaAPayer: '4365',           // TVA à payer : le net de la déclaration du mois, timbres et retenues opérées compris
+    fraisBancaires: '627',       // Services bancaires
+    impots: '434',               // État — acomptes provisionnels et impôts réglés sans autre précision
+    associes: '4421',            // Associés — comptes courants : apports, retraits, dividendes
+    emprunts: '16',              // Emprunts : déblocage et échéances (capital)
+    attente: '471',              // Compte d'attente : ce que le comptable ventilera
+    reportANouveau: '12'         // Résultats reportés : contrepartie des soldes de départ saisis à la main
   };
   const ACCOUNT_LABELS = {
     clients: 'Clients', fournisseurs: 'Fournisseurs', ventes: 'Ventes',
@@ -3759,8 +3770,27 @@
     fraisAccessoires: 'Frais accessoires d\'achat', banque: 'Banque', caisse: 'Caisse',
     salairesBruts: 'Salaires bruts', chargesPatronales: 'Charges patronales',
     personnel: 'Personnel — net à payer', cnss: 'CNSS', irpp: 'IRPP retenu',
-    resultat: 'Résultat des exercices passés'
+    resultat: 'Résultat des exercices passés',
+    tvaAPayer: 'TVA à payer', fraisBancaires: 'Frais bancaires', impots: 'Impôts et acomptes réglés',
+    associes: 'Compte courant des associés', emprunts: 'Emprunts', attente: 'Compte d\'attente (à ventiler)',
+    reportANouveau: 'Report à nouveau (soldes de départ)'
   };
+  // Un mouvement libre de trésorerie (3.3.0) porte une NATURE ; la 8.9.0 lui donne sa contrepartie.
+  // La nature décide par défaut ; un mouvement peut porter son propre `compte` (la TVA du mois
+  // réglée en « impôt » va au 4365, pas au 434). Ce que personne ne sait ranger va au compte
+  // d'attente : c'est le comptable qui ventile, et c'est écrit.
+  const MOVE_ACCOUNTS = {
+    salaire: 'personnel', impot: 'impots', banque: 'fraisBancaires', retrait: 'associes', emprunt: 'emprunts',
+    'autre-sortie': 'attente', apport: 'associes', pret: 'emprunts', 'autre-entree': 'attente'
+  };
+  // Les contreparties qu'un mouvement peut choisir à la main, pour ne pas taper un numéro de compte.
+  const COMPTES_CONTREPARTIE = [
+    ['', 'Selon la nature du mouvement'], ['4365', 'TVA à payer (déclaration du mois)'], ['4531', 'CNSS'],
+    ['4321', 'IRPP retenu sur les salaires'], ['4352', 'Retenue à la source opérée'], ['434', 'Acompte provisionnel'],
+    ['431', 'Impôt sur les sociétés'], ['4331', 'TCL'], ['4335', 'TFP et FOPROLOS'], ['627', 'Frais bancaires'],
+    ['651', 'Intérêts d\'emprunt'], ['16', 'Emprunt (capital)'], ['4421', 'Compte courant d\'associé'],
+    ['471', 'À ventiler par le comptable']
+  ];
   // Le plan comptable tunisien (Système comptable des entreprises, 1996), classe par classe. Il ne
   // sert qu'à NOMMER un compte à l'écran et dans les exports : le compte 6270 s'appelle « Services
   // bancaires » sans qu'on ait à le déclarer. Un compte s'y retrouve par son plus long préfixe.
@@ -3868,8 +3898,9 @@
   }
   // Les journaux : le comptable range ses écritures par nature d'opération.
   const ENTRY_JOURNALS = [
-    ['VT', 'Ventes'], ['AC', 'Achats'], ['BQ', 'Banque'], ['CA', 'Caisse'], ['PAIE', 'Paie'], ['OD', 'Opérations diverses']
+    ['VT', 'Ventes'], ['AC', 'Achats'], ['BQ', 'Banque'], ['CA', 'Caisse'], ['PAIE', 'Paie'], ['OD', 'Opérations diverses'], ['AN', 'À-nouveaux']
   ];
+  const journalLabel = code => (ENTRY_JOURNALS.find(j => j[0] === code) || [code, code])[1];
 
   function chartAccounts(data) {
     return { ...DEFAULT_ACCOUNTS, ...((data && data.chartAccounts) || {}) };
@@ -3877,6 +3908,17 @@
 
   // Le compte de trésorerie d'un règlement : espèces → caisse, tout le reste → banque.
   const cashAccountFor = (method, acc) => (method === 'espèces' || method === 'especes' || method === 'Espèces') ? acc.caisse : acc.banque;
+  // Depuis la 8.9.0 le compte de trésorerie DÉCIDE : un règlement affecté à la caisse va au journal
+  // de caisse quel que soit son mode. Sans compte affecté, on retombe sur le mode de paiement.
+  // La règle est CELLE de la Trésorerie (`cashMovements`) : le compte affecté, sinon le compte par
+  // défaut — le même argent ne peut pas être à la banque sur une page et en caisse sur l'autre.
+  // Sans aucun compte de trésorerie, le mode de paiement décide.
+  function journalDeCompte(data, acc, accountId, method) {
+    const comptes = (data && data.accounts) || [];
+    const compte = (accountId && comptes.find(a => a.id === accountId)) || comptes.find(a => a.isDefault) || comptes[0];
+    const caisse = compte ? compte.kind === 'caisse' : cashAccountFor(method, acc) === acc.caisse;
+    return caisse ? { journal: 'CA', compte: acc.caisse } : { journal: 'BQ', compte: acc.banque };
+  }
 
   // Une pièce = un ensemble d'écritures qui s'équilibrent. On la construit avec ce petit aide :
   // il arrondit, ignore les montants nuls, et refuse de rendre un déséquilibre sans le signaler.
@@ -3927,12 +3969,24 @@
     const codesF = aux ? codesAuxiliaires(data.suppliers) : {};
     const cptClient = id => (aux && id && codesC[id]) ? acc.clients + codesC[id] : acc.clients;
     const cptFourn = id => (aux && id && codesF[id]) ? acc.fournisseurs + codesF[id] : acc.fournisseurs;
+    // Lettrage (8.9.0) : une facture soldée et ses règlements portent la même lettre — son numéro.
+    // Rien à saisir : les paiements sont déjà rattachés à leur pièce, la lettre en découle.
+    const lettreVente = doc => (doc && doc.type === 'facture' && doc.status !== 'annulée' && invoiceBalance(doc, data, company).remaining <= 0.0005) ? doc.number : '';
+    const docsById = {}; (data.documents || []).forEach(d => { docsById[d.id] = d; });
+    const lettreDoc = id => { const d = docsById[id]; if (!d) return ''; if (d.type === 'avoir') return d.creditOf ? lettreVente(docsById[d.creditOf]) : ''; return lettreVente(d); };
+    const lettreAchat = p => (p && purchaseBalance(p, company).remaining <= 0.0005 && (p.payments || []).length) ? (p.number || p.id) : '';
+    const achatsById = {}; (data.purchases || []).forEach(p => { achatsById[p.id] = p; });
 
     // --- ventes : factures et avoirs émis
     if (want('ventes')) {
       salesJournal(data, company, period).forEach(r => {
-        if (r.status === 'annulée') return;             // une facture annulée n'a jamais existé comptablement
-        const e = entrySet({ date: r.date, journal: 'VT', piece: r.number, tiers: r.client, tiersId: r.clientId || '', source: 'vente', docId: r.id, currency: cur });
+        // Une facture ANNULÉE (statut enregistré) n'a jamais existé comptablement : `salesJournal`
+        // met déjà tous ses montants à zéro, et `entrySet` ignore les lignes nulles. Le test portait
+        // avant la 8.9.0 sur le statut EFFECTIF — or une facture entièrement couverte par un avoir
+        // s'affiche « annulée » elle aussi : sa facture sautait, son avoir restait, et le client
+        // finissait créditeur d'un montant qu'on ne lui avait jamais facturé. C'est le lettrage
+        // (reste ouvert ≠ solde du 411) qui l'a attrapé.
+        const e = entrySet({ date: r.date, journal: 'VT', piece: r.number, tiers: r.client, tiersId: r.clientId || '', source: 'vente', docId: r.id, currency: cur, lettre: lettreDoc(r.id) });
         const label = `${r.typeLabel} ${r.number}${r.client ? ' — ' + r.client : ''}`;
         // Ce que le client devra réellement payer (le net après retenue) reste au compte client ;
         // la retenue devient une créance sur l'État. À VÉRIFIER : certains cabinets la constatent
@@ -3958,7 +4012,7 @@
           const t = purchaseTotals(p, company);
           const sup = ((data.suppliers || []).find(s => s.id === p.supplierId) || {}).name || '';
           const num = p.number || '(sans numéro)';
-          const e = entrySet({ date: p.date, journal: 'AC', piece: num, tiers: sup, tiersId: p.supplierId || '', source: 'achat', docId: p.id, currency: cur });
+          const e = entrySet({ date: p.date, journal: 'AC', piece: num, tiers: sup, tiersId: p.supplierId || '', source: 'achat', docId: p.id, currency: cur, lettre: lettreAchat(p) });
           const label = `${p.kind === 'depense' ? 'Dépense' : 'Achat'} ${num}${sup ? ' — ' + sup : ''}`;
           const dest = { charge: acc.charges, stock: acc.achatsStock, immobilisation: acc.immobilisations };
           Object.keys(t.byDestination).forEach(k => {
@@ -3978,9 +4032,10 @@
     // --- encaissements clients
     if (want('encaissements')) {
       paymentsJournal(data, company, period).forEach(r => {
-        const e = entrySet({ date: r.date, journal: r.method === 'Espèces' ? 'CA' : 'BQ', piece: r.number || '', tiers: r.client, tiersId: r.clientId || '', source: 'encaissement', docId: r.docId, currency: cur });
+        const j = journalDeCompte(data, acc, r.accountId, r.method);
+        const e = entrySet({ date: r.date, journal: j.journal, piece: r.number || '', tiers: r.client, tiersId: r.clientId || '', source: 'encaissement', docId: r.docId, currency: cur, lettre: lettreDoc(r.docId) });
         const label = `Règlement ${r.number || ''}${r.client ? ' — ' + r.client : ''}${r.reference ? ' (' + r.reference + ')' : ''}`;
-        e.debit(r.method === 'Espèces' ? acc.caisse : acc.banque, label, r.amount);
+        e.debit(j.compte, label, r.amount);
         e.credit(cptClient(r.clientId), label, r.amount, { role: 'clients' });
         out.push(...e.done());
       });
@@ -3989,10 +4044,55 @@
     // --- règlements fournisseurs
     if (want('reglements')) {
       supplierPayments(data, company, period).forEach(r => {
-        const e = entrySet({ date: r.date, journal: r.method === 'Espèces' ? 'CA' : 'BQ', piece: r.number || '', tiers: r.supplier, tiersId: r.supplierId || '', source: 'règlement', docId: r.purchaseId, currency: cur });
+        const j = journalDeCompte(data, acc, r.accountId, r.method);
+        const e = entrySet({ date: r.date, journal: j.journal, piece: r.number || '', tiers: r.supplier, tiersId: r.supplierId || '', source: 'règlement', docId: r.purchaseId, currency: cur, lettre: lettreAchat(achatsById[r.purchaseId]) });
         const label = `Règlement fournisseur ${r.number || ''}${r.supplier ? ' — ' + r.supplier : ''}`;
         e.debit(cptFourn(r.supplierId), label, r.amount, { role: 'fournisseurs' });
-        e.credit(r.method === 'Espèces' ? acc.caisse : acc.banque, label, r.amount);
+        e.credit(j.compte, label, r.amount);
+        out.push(...e.done());
+      });
+    }
+
+    // --- 8.9.0 : les soldes de départ des comptes de trésorerie. Sans eux, la banque du grand livre
+    // ne dirait jamais le même chiffre que la page Trésorerie. La contrepartie va au report à
+    // nouveau — c'est au comptable de dire ce que ce solde représentait (capital, résultats passés).
+    if (want('ouverture')) {
+      (data.accounts || []).forEach(a => {
+        const montant = round3(Number(a.opening) || 0);
+        if (!montant || !a.openingDate || !inPeriod(a.openingDate, period && period.from, period && period.to)) return;
+        const e = entrySet({ date: a.openingDate, journal: 'AN', piece: 'OUVERTURE', tiers: '', tiersId: '', source: 'ouverture', docId: a.id, currency: cur });
+        const compte = a.kind === 'caisse' ? acc.caisse : acc.banque;
+        e.debit(compte, `Solde de départ — ${a.name || 'compte'}`, montant);
+        e.credit(acc.reportANouveau, `Solde de départ — ${a.name || 'compte'}`, montant);
+        out.push(...e.done());
+      });
+      // Le crédit de TVA saisi à la main pour une année (3.1.0) : la déclaration de janvier le
+      // reprend, donc le compte 4366 doit le porter, sinon il finirait créditeur de ce montant.
+      Object.keys(data.vatCarryIn || {}).forEach(y => {
+        const montant = round3(Number(data.vatCarryIn[y]) || 0);
+        const d = `${y}-01-01`;
+        if (!montant || !/^\d{4}$/.test(y) || !inPeriod(d, period && period.from, period && period.to)) return;
+        const e = entrySet({ date: d, journal: 'AN', piece: `OUVERTURE-TVA-${y}`, tiers: '', tiersId: '', source: 'ouverture', docId: 'tva-' + y, currency: cur });
+        e.debit(acc.tvaDeductible, `Crédit de TVA reporté de ${Number(y) - 1}`, montant);
+        e.credit(acc.reportANouveau, `Crédit de TVA reporté de ${Number(y) - 1}`, montant);
+        out.push(...e.done());
+      });
+    }
+
+    // --- 8.9.0 : les mouvements libres de trésorerie. Un salaire réglé, un impôt payé, un apport,
+    // des frais bancaires : ils sortaient de la banque sur la page Trésorerie et n'existaient dans
+    // aucune écriture — la banque du grand livre était fausse de ce montant-là.
+    if (want('tresorerie')) {
+      (data.movements || []).forEach(m => {
+        const montant = round3(Math.abs(Number(m.amount) || 0));
+        if (!montant || !inPeriod(m.date, period && period.from, period && period.to)) return;
+        const j = journalDeCompte(data, acc, m.accountId, m.method);
+        const nature = (MOVE_KINDS.find(k => k[0] === m.kind) || [null, 'Mouvement'])[1];
+        const contrepartie = String(m.compte || '').trim() || acc[MOVE_ACCOUNTS[m.kind] || 'attente'];
+        const e = entrySet({ date: m.date, journal: j.journal, piece: m.reference || nature, tiers: '', tiersId: '', source: 'mouvement', docId: m.id, currency: cur });
+        const label = m.label || nature;
+        if (moveSign(m.kind) > 0) { e.debit(j.compte, label, montant); e.credit(contrepartie, label, montant); }
+        else { e.debit(contrepartie, label, montant); e.credit(j.compte, label, montant); }
         out.push(...e.done());
       });
     }
@@ -4014,6 +4114,63 @@
           // Les retenues diverses (remboursement d'avance) restent dues à l'entreprise : elles
           // diminuent le net versé. À VÉRIFIER : compte d'avance au personnel si le cabinet en tient un.
           e.credit(acc.personnel, label, round3(c.net + c.otherDeductions));
+          out.push(...e.done());
+        });
+      // 8.9.0 : le bulletin RÉGLÉ. La dette envers le salarié s'éteint, l'argent sort — c'est le
+      // mouvement que la Trésorerie montrait depuis la 5.0.0 sans qu'aucune écriture ne le porte.
+      (data.payslips || [])
+        .filter(s => s.paidDate && inPeriod(s.paidDate, period && period.from, period && period.to))
+        .forEach(s => {
+          const emp = (data.employees || []).find(x => x.id === s.employeeId) || {};
+          const net = round3(((s.computed || {}).net) || 0);
+          if (!net) return;
+          const j = journalDeCompte(data, acc, s.accountId, s.method);
+          const e = entrySet({ date: s.paidDate, journal: j.journal, piece: `PAIE-${s.year}-${String(s.month).padStart(2, '0')}`, tiers: emp.name || '', tiersId: '', source: 'salaire', docId: s.id, currency: cur });
+          const label = `Paiement salaire ${emp.name || ''} ${MONTHS_FR[Number(s.month) - 1] || ''} ${s.year}`;
+          e.debit(acc.personnel, label, net);
+          e.credit(j.compte, label, net);
+          out.push(...e.done());
+        });
+    }
+
+    // --- 8.9.0 : la déclaration mensuelle. À la fin de chaque mois écoulé, la TVA collectée se
+    // solde contre la déductible (report compris), et le net à payer — timbres et retenues opérées
+    // avec lui, c'est le même formulaire — va au 4365. Un crédit reste au débit du 4366 : c'est lui
+    // que la déclaration suivante reprend, exactement comme `vatChain`.
+    if (want('declarations')) {
+      const t = opts.todayIso || today();
+      const annees = new Set();
+      const noter = d => { if (d && /^\d{4}/.test(d)) annees.add(d.slice(0, 4)); };
+      (data.documents || []).forEach(d => noter(d.date)); (data.purchases || []).forEach(p => noter(p.date));
+      [...annees].sort().forEach(y => {
+        vatChain(data, company, y).forEach(m => {
+          const dernier = `${m.month}-${pad2(daysInMonth(Number(y), Number(m.month.slice(5, 7))))}`;
+          if (dernier >= t || !inPeriod(dernier, period && period.from, period && period.to)) return;
+          if (!m.collected && !m.stamps && !m.withheldOnBuys) return;
+          const e = entrySet({ date: dernier, journal: 'OD', piece: `TVA-${m.month}`, tiers: '', tiersId: '', source: 'declaration', docId: 'tva-' + m.month, currency: cur });
+          const label = `Déclaration mensuelle ${m.label} ${y}`;
+          e.debit(acc.tvaCollectee, `TVA collectée — ${label}`, m.collected);
+          e.debit(acc.timbre, `Timbres fiscaux — ${label}`, m.stamps);
+          e.debit(acc.rsOperee, `Retenues à la source opérées — ${label}`, m.withheldOnBuys);
+          e.credit(acc.tvaDeductible, `TVA déductible imputée — ${label}`, round3(m.collected - m.toPay));
+          e.credit(acc.tvaAPayer, `Net à payer — ${label}`, round3(m.toPay + m.stamps + m.withheldOnBuys));
+          out.push(...e.done());
+        });
+      });
+    }
+
+    // --- 8.9.0 : les opérations diverses saisies à la main. Le comptable les demandait en
+    // premier ; elles sont enregistrées telles quelles, après avoir été refusées si elles ne
+    // tombaient pas juste (`odValide`).
+    if (want('od')) {
+      (data.ecrituresOD || [])
+        .filter(od => inPeriod(od.date, period && period.from, period && period.to))
+        .forEach(od => {
+          const e = entrySet({ date: od.date, journal: od.journal || 'OD', piece: od.piece || '', tiers: '', tiersId: '', source: 'od', docId: od.id, currency: cur });
+          (od.lignes || []).forEach(l => {
+            if (Number(l.debit) > 0) e.debit(l.compte, l.label || od.label || '', Number(l.debit), { tiers: l.tiers || '' });
+            if (Number(l.credit) > 0) e.credit(l.compte, l.label || od.label || '', Number(l.credit), { tiers: l.tiers || '' });
+          });
           out.push(...e.done());
         });
     }
@@ -4053,12 +4210,150 @@
   }
 
   const entryCsvColumns = () => ([
+    { key: 'numero', label: 'N°' },
     { key: 'date', label: 'Date', type: 'date' }, { key: 'journal', label: 'Journal' },
     { key: 'piece', label: 'Pièce' }, { key: 'account', label: 'Compte' }, { key: 'tiers', label: 'Tiers' },
     { key: 'label', label: 'Libellé' },
     { key: 'debit', label: 'Débit', type: 'money' }, { key: 'credit', label: 'Crédit', type: 'money' },
-    { key: 'currency', label: 'Devise' }
+    { key: 'lettre', label: 'Lettrage' }, { key: 'currency', label: 'Devise' }
   ]);
+
+  // ---------- le livre-journal (8.9.0) ----------
+  //
+  // « Écriture comptable dans le journal », le second terme du comptable : chaque pièce porte un
+  // numéro CONTINU dans l'exercice, et rien ne peut manquer entre deux numéros. Les écritures étant
+  // déduites des pièces, le numéro l'est aussi : une pièce datée en arrière dans un mois OUVERT
+  // décale les suivantes — c'est exactement pour ça qu'on clôture (6.0.0) : sur un mois clos, plus
+  // rien ne bouge, donc plus aucun numéro. La règle est écrite à l'écran.
+  function numerosDuJournal(data, company, year, opts) {
+    const y = String(year).slice(0, 4);
+    const tout = journalEntries(data, company, { from: `${y}-01-01`, to: `${y}-12-31` }, opts);
+    const nums = {};
+    let n = 0;
+    tout.forEach(e => { const k = `${e.journal}|${e.piece}|${e.date}`; if (!nums[k]) nums[k] = ++n; });
+    return { nums, dernier: n };
+  }
+  const cleDePiece = e => `${e.journal}|${e.piece}|${e.date}`;
+  // Les écritures de la période, numérotées dans l'exercice de son premier jour.
+  function livreJournal(data, company, period, opts) {
+    const y = String((period && period.from) || today()).slice(0, 4);
+    const { nums } = numerosDuJournal(data, company, y, opts);
+    return journalEntries(data, company, period, opts).map(e => ({ ...e, numero: nums[cleDePiece(e)] || 0, exercice: y }));
+  }
+
+  // Le journal centralisateur : mois par mois, journal par journal, le total débit et crédit.
+  // C'est le récapitulatif que le livre-journal coté et paraphé reprend.
+  function journalCentralisateur(data, company, year, opts) {
+    const y = String(year).slice(0, 4);
+    const tout = journalEntries(data, company, { from: `${y}-01-01`, to: `${y}-12-31` }, opts);
+    const codes = ENTRY_JOURNALS.map(j => j[0]).filter(c => tout.some(e => e.journal === c));
+    tout.forEach(e => { if (e.journal && !codes.includes(e.journal)) codes.push(e.journal); });
+    const mois = [];
+    for (let m = 1; m <= 12; m++) {
+      const mm = `${y}-${pad2(m)}`;
+      const du = tout.filter(e => (e.date || '').slice(0, 7) === mm);
+      const par = {};
+      const pieces = new Set();
+      codes.forEach(c => { par[c] = { debit: 0, credit: 0, pieces: 0 }; });
+      const vues = {};
+      du.forEach(e => {
+        const p = par[e.journal]; p.debit = round3(p.debit + e.debit); p.credit = round3(p.credit + e.credit);
+        const k = cleDePiece(e); if (!vues[k]) { vues[k] = true; p.pieces++; pieces.add(k); }
+      });
+      mois.push({ month: mm, label: MONTHS_FR[m - 1], par, debit: round3(du.reduce((s, e) => s + e.debit, 0)), credit: round3(du.reduce((s, e) => s + e.credit, 0)), pieces: pieces.size });
+    }
+    const totaux = {};
+    codes.forEach(c => { totaux[c] = { debit: round3(mois.reduce((s, m) => s + m.par[c].debit, 0)), credit: round3(mois.reduce((s, m) => s + m.par[c].credit, 0)), pieces: mois.reduce((s, m) => s + m.par[c].pieces, 0) }; });
+    return {
+      year: y, journaux: codes.map(c => ({ code: c, label: journalLabel(c) })), mois, totaux,
+      debit: round3(mois.reduce((s, m) => s + m.debit, 0)), credit: round3(mois.reduce((s, m) => s + m.credit, 0)),
+      pieces: mois.reduce((s, m) => s + m.pieces, 0)
+    };
+  }
+
+  // ---- les opérations diverses saisies à la main ----
+  // Une OD est la seule écriture que l'utilisateur ÉCRIT. Elle n'entre qu'équilibrée : c'est la
+  // règle de la partie double, et un logiciel qui accepterait un déséquilibre livrerait une
+  // comptabilité fausse au comptable.
+  function odValide(od) {
+    const erreurs = [];
+    const lignes = (od && Array.isArray(od.lignes) ? od.lignes : []).filter(l => l && (String(l.compte || '').trim() || Number(l.debit) || Number(l.credit)));
+    if (!od || !/^\d{4}-\d{2}-\d{2}$/.test(String(od.date || ''))) erreurs.push('La date manque.');
+    if (!String((od && od.label) || '').trim()) erreurs.push('Le libellé manque : c\'est lui qui dira au comptable de quoi il s\'agit.');
+    if (lignes.length < 2) erreurs.push('Une écriture a au moins deux lignes : un compte au débit, un compte au crédit.');
+    lignes.forEach((l, i) => {
+      const compte = String(l.compte || '').trim();
+      if (!/^\d{1,12}$/.test(compte)) erreurs.push(`Ligne ${i + 1} : le compte doit être un numéro.`);
+      const d = Number(l.debit) || 0, c = Number(l.credit) || 0;
+      if (d < 0 || c < 0) erreurs.push(`Ligne ${i + 1} : un montant négatif change de colonne, il ne garde pas son signe.`);
+      if (d && c) erreurs.push(`Ligne ${i + 1} : une ligne va au débit OU au crédit, pas les deux.`);
+      if (!d && !c) erreurs.push(`Ligne ${i + 1} : aucun montant.`);
+    });
+    const debit = round3(lignes.reduce((s, l) => s + (Number(l.debit) || 0), 0));
+    const credit = round3(lignes.reduce((s, l) => s + (Number(l.credit) || 0), 0));
+    if (lignes.length >= 2 && round3(debit - credit) !== 0) erreurs.push(`Débit ${debit.toFixed(3)} ≠ crédit ${credit.toFixed(3)} : l'écriture ne tombe pas juste.`);
+    return { ok: !erreurs.length, erreurs, debit, credit, lignes };
+  }
+  // Le numéro de pièce d'une OD : OD-AAAA-NNN, continu dans l'année, jamais réutilisé.
+  function odPiece(data, dateIso) {
+    const y = String(dateIso || today()).slice(0, 4);
+    const key = `od-${y}`;
+    const existants = (data.ecrituresOD || []).map(o => String(o.piece || '')).filter(p => p.startsWith(`OD-${y}-`)).map(p => parseInt(p.split('-')[2], 10) || 0);
+    const seq = Math.max(existants.length ? Math.max(...existants) : 0, Number((data.counters || {})[key]) || 0) + 1;
+    if (!data.counters) data.counters = {};
+    data.counters[key] = seq;
+    return `OD-${y}-${String(seq).padStart(3, '0')}`;
+  }
+  // Les comptes qu'on propose à la saisie d'une OD : ceux déjà mouvementés, puis le plan.
+  function comptesProposes(data, company) {
+    const vus = {};
+    journalEntries(data, company, { from: '', to: '' }, {}).forEach(e => { if (e.account && !vus[e.account]) vus[e.account] = accountLabel(data, e.account, e.role ? e.tiers : ''); });
+    const out = Object.keys(vus).sort().map(n => ({ compte: n, label: vus[n], utilise: true }));
+    PLAN_COMPTABLE.forEach(([n, l]) => { if (n.length >= 2 && !vus[n]) out.push({ compte: n, label: l, utilise: false }); });
+    return out;
+  }
+
+  // ---- le lettrage ----
+  // Rapprocher chaque règlement de sa facture, tiers par tiers. Les paiements sont déjà rattachés
+  // aux pièces : le lettrage n'est pas une saisie, c'est une LECTURE — ce qui est soldé porte sa
+  // lettre, ce qui reste ouvert est listé avec son reste.
+  function lettrage(data, company, role, todayIso) {
+    const t = todayIso || today();
+    const clients = role !== 'fournisseurs';
+    const liste = clients ? (data.clients || []) : (data.suppliers || []);
+    const nom = id => (liste.find(x => x.id === id) || {}).name || '';
+    const acc = chartAccounts(data);
+    const codes = auxiliairesActifs(data) ? codesAuxiliaires(liste) : {};
+    const base = clients ? acc.clients : acc.fournisseurs;
+    const by = {};
+    const tiersDe = id => (by[id] = by[id] || { tiersId: id, tiers: nom(id) || '(sans tiers)', account: id && codes[id] ? base + codes[id] : base, lettrees: 0, ouverts: [], reste: 0 });
+    if (clients) {
+      (data.documents || []).filter(d => d.type === 'facture' && d.status !== 'brouillon' && d.status !== 'annulée' && d.number).forEach(d => {
+        const b = invoiceBalance(d, data, company);
+        const r = tiersDe(d.clientId || '');
+        if (b.remaining <= 0.0005) { r.lettrees++; return; }
+        const montant = round3(toBase(d, b.totals.netToPay, company)), reste = round3(toBase(d, b.remaining, company));
+        r.ouverts.push({ id: d.id, piece: d.number, date: d.date, echeance: d.dueDate || '', montant, regle: round3(montant - reste), reste, retard: !!(d.dueDate && d.dueDate < t) });
+        r.reste = round3(r.reste + reste);
+      });
+    } else {
+      (data.purchases || []).forEach(p => {
+        const b = purchaseBalance(p, company);
+        const r = tiersDe(p.supplierId || '');
+        if (b.remaining <= 0.0005) { if ((p.payments || []).length) r.lettrees++; return; }
+        r.ouverts.push({ id: p.id, piece: p.number || '(sans numéro)', date: p.date, echeance: p.dueDate || '', montant: b.totals.netToPay, regle: b.paid, reste: b.remaining, retard: !!(p.dueDate && p.dueDate < t) });
+        r.reste = round3(r.reste + b.remaining);
+      });
+    }
+    const rows = Object.keys(by).map(k => by[k]).filter(r => r.lettrees || r.ouverts.length)
+      .map(r => ({ ...r, ouverts: r.ouverts.sort((a, b) => (a.date || '').localeCompare(b.date || '')) }))
+      .sort((a, b) => b.reste - a.reste || a.tiers.localeCompare(b.tiers));
+    return { role: clients ? 'clients' : 'fournisseurs', rows, reste: round3(rows.reduce((s, r) => s + r.reste, 0)), ouverts: rows.reduce((s, r) => s + r.ouverts.length, 0), lettrees: rows.reduce((s, r) => s + r.lettrees, 0) };
+  }
+  const centralisateurCsvColumns = journaux => ([{ key: 'label', label: 'Mois' }]
+    .concat(journaux.flatMap(j => [{ key: `${j.code}_d`, label: `${j.code} débit`, type: 'money' }, { key: `${j.code}_c`, label: `${j.code} crédit`, type: 'money' }]))
+    .concat([{ key: 'debit', label: 'Total débit', type: 'money' }, { key: 'credit', label: 'Total crédit', type: 'money' }, { key: 'pieces', label: 'Pièces' }]));
+  const centralisateurRows = c => c.mois.map(m => { const o = { label: m.label, debit: m.debit, credit: m.credit, pieces: m.pieces }; c.journaux.forEach(j => { o[`${j.code}_d`] = m.par[j.code].debit; o[`${j.code}_c`] = m.par[j.code].credit; }); return o; });
 
   // ---------- le grand livre et la balance (8.8.0) ----------
   //
@@ -6011,8 +6306,10 @@
     uid, round3, money, fmtDate, addDays, daysInMonth, today, escapeHtml, nl2br, statusLabel,
     CLOSURE_ACTIONS, closedUntil, isClosedDate, closedPeriodLabel, closableMonths, closureChecks, closePeriod, reopenPeriod, closureLog,
     PACK_FORMAT, packPeriod, packPlan, packChecklist, packFileName, packCoverHtml,
-    DEFAULT_ACCOUNTS, ACCOUNT_LABELS, ENTRY_JOURNALS, chartAccounts, journalEntries,
-    entriesBalance, entriesByAccount, entryCsvColumns,
+    DEFAULT_ACCOUNTS, ACCOUNT_LABELS, ENTRY_JOURNALS, journalLabel, chartAccounts, journalEntries,
+    entriesBalance, entriesByAccount, entryCsvColumns, MOVE_ACCOUNTS, COMPTES_CONTREPARTIE, journalDeCompte,
+    numerosDuJournal, livreJournal, journalCentralisateur, centralisateurCsvColumns, centralisateurRows, inPeriod,
+    odValide, odPiece, comptesProposes, lettrage,
     PLAN_COMPTABLE, accountLabel, classeDe, compteDeGestion, auxiliairesActifs, codesAuxiliaires, numeroterAuxiliaires,
     debutExercice, soldesOuverture, balanceGenerale, grandLivre, grandLivreRows, balanceAuxiliaire,
     balanceCsvColumns, balanceAuxCsvColumns, grandLivreCsvColumns,

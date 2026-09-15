@@ -393,7 +393,7 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:depot` | **public ou privé** : `src/depot.js` est VRAIMENT basculé en privé, l'application ouverte, le champ jeton doit revenir — puis repartir au retour au public (le fichier est restauré quoi qu'il arrive) |
 | `npm run e2e:pages` | **les pages d'un document imprimé** : 161 documents (7 types × 6 variantes × 1 à 40 lignes) rendus dans chromium et imprimés en PDF — aucune ligne perdue, aucune page qui déborde, aucun pied par-dessus le contenu, une feuille par page et chacune numérotée. **Pas besoin de `xvfb`** : il n'ouvre pas Electron |
 | `npm run e2e:pont` | **le pont comptable** : le vrai worker sur SQLite et l'application en état éditeur — un secret faux refusé, le bon gardé en 0600 hors des données, deux ventes de la console tirées en deux brouillons (client retrouvé par matricule ou créé), le menu d'une licence de la console sans « Renouveler », le numéro rendu à l'émission et lu dans la base, la console éteinte dite en français |
-| `npm run e2e:livres` | **le grand livre et la balance** : chaque compte avec son solde progressif qui finit sur le total, le sélecteur de compte, la balance dont les six totaux tombent juste, l'auxiliaire clients, la case « un sous-compte par tiers » qui donne 411001… et les fige sur les fiches |
+| `npm run e2e:livres` | **les livres comptables** : chaque compte du grand livre avec son solde progressif qui finit sur le total, le sélecteur de compte, la balance dont les six totaux tombent juste, l'auxiliaire clients, la case « un sous-compte par tiers » qui donne 411001… et les fige sur les fiches, le livre-journal numéroté et son centralisateur, une OD refusée puis enregistrée, le lettrage qui ouvre sa pièce |
 | `npm run e2e:justificatif` | **le justificatif se joint avant toute saisie** : sélecteur de fichier remplacé dans le processus principal, une photo jointe sur un achat VIDE, enregistrée avec la pièce, retrouvée sur le disque et dans la liste (📎), un second fichier sur la pièce rangée, une pièce abandonnée qui ne laisse pas de copie, la lecture d'une photo qui redessine sans perdre la pièce, et le même geste sur un devis neuf |
 | `npm run e2e:licence` | **l'éditeur et les offres, puis le client** : une première application DÉSARMÉE (`SKANFACT_CLE_EMBARQUEE` vers un chemin inexistant, développement seulement) — sans clé rien n'apparaît ; « Créer mes clés » écrit la privée dans un dossier isolé (`SKANFACT_DOSSIER_CLES`) et met le poste en état « éditeur » (ni essai ni verrou) ; « Émettre » signe une clé vérifiable, crée un BROUILLON de facture et l'historique ; la clé Indépendant collée refuse un nouveau fournisseur, pose un cadenas sur Achats et laisse les Statistiques ; la clé d'un autre matricule est refusée en nommant les deux ; « Renouveler » ; rien de ce qui traverse le pont ne contient la clé privée — PUIS une seconde application telle qu'un client l'installe (vraie clé embarquée, pas de clé privée) : essai de 30 jours, aucune trace de l'éditeur, plus de porte « Créer mes clés », et la clé signée par la clé d'essai du test REFUSÉE |
 
@@ -2346,6 +2346,47 @@ Le test qui compte est `npm run e2e:livres` : le grand livre de l'année (20 com
 progressif finit sur le total du compte, aucun « Compte hors plan »), le sélecteur qui ne garde que
 411, la balance équilibrée avec ses six totaux, l'auxiliaire clients sur le collectif, la case du
 plan de comptes qui donne 411001…411008 et les fige sur les fiches, et le grand livre qui suit.
+
+### 8.9.0 — Le livre-journal
+
+Le second terme du comptable. `livreJournal` numérote les pièces de l'exercice (`numerosDuJournal`),
+`journalCentralisateur` les totalise mois par journal, `odValide`/`odPiece` tiennent la saisie des
+OD (`data.ecrituresOD`), `lettrage` lit ce qui reste ouvert, et `journalEntries` gagne cinq
+sources : `ouverture` (soldes de départ, crédit de TVA saisi), `tresorerie` (mouvements libres),
+le paiement des bulletins, `declarations` (la TVA du mois au dernier jour) et `od`.
+
+- **Le même argent ne peut pas être à la banque sur une page et en caisse sur l'autre.**
+  `journalDeCompte` suit LA règle de `cashMovements` : le compte affecté, sinon le compte par
+  défaut, et le mode de paiement seulement s'il n'existe aucun compte. La première version jugeait
+  sur le mode (« Espèces » → caisse) : la banque du grand livre et celle de la Trésorerie
+  différaient de 361,95 sur l'exemple. Le test exige l'égalité au millime, sur les deux comptes.
+- **Une écriture DÉDUITE peut cacher une écriture MANQUANTE.** `journalEntries` sautait les ventes
+  dont le statut EFFECTIF est « annulée » — or une facture entièrement couverte par un avoir
+  s'affiche ainsi : sa facture sautait, son avoir restait, le client finissait créditeur de 405,6
+  sur l'exemple. Personne ne l'avait vu en 6.3.0 : la balance tombait juste (une écriture
+  équilibrée en moins reste équilibrée). C'est le **lettrage** qui l'a attrapé — « le reste ouvert
+  doit être le solde du 411 » est un contrôle que l'équilibre ne remplace pas.
+- **Une OD n'entre qu'équilibrée**, et le refus se fait dans `odValide` (pur, sept motifs testés),
+  pas dans la fenêtre : la fenêtre montre l'écart pendant la frappe et appelle la même fonction. Le
+  numéro de pièce est pris à l'enregistrement, après `licenceBlock` et `closedBlock` (règle 6.0.0 :
+  un refus après `odPiece` trouerait la numérotation).
+- **Le numéro dans le journal est déduit, donc mobile sur un mois ouvert** : une pièce datée en
+  arrière décale les suivantes. Ce n'est pas un défaut à corriger, c'est la raison d'être de la
+  clôture, et la page le dit. Un mois seul reprend les numéros de l'exercice, jamais les siens.
+- **La déclaration mensuelle s'écrit avec les chiffres de `vatChain`**, pas avec les soldes du
+  grand livre : le crédit imputé vaut `collected − toPay`, donc le 4366 garde exactement le report
+  que la chaîne reporte. Le crédit de TVA saisi à la main pour une année entre au 4366 par une
+  écriture AN, sinon la première déclaration le créditerait d'un montant qu'il n'a jamais reçu.
+- **Un mouvement porte sa contrepartie (`m.compte`) ou la nature décide (`MOVE_ACCOUNTS`)** ; ce
+  qu'on ne sait pas ranger va au 471, et c'est écrit dans la bulle : c'est ce que fait un cabinet.
+- Le compte 627 est devenu un RÔLE (`fraisBancaires`) : le test du plan qui l'utilisait pour prouver
+  le préfixe a basculé sur 626. Un compte qui gagne un rôle porte le nom du rôle.
+- L'exemple paie sa TVA chaque mois (`compte: '4365'`) et porte une OD : sans ça, le 4365 grossissait
+  pour toujours et le premier comptable demandait pourquoi la société ne paie jamais sa TVA.
+
+`npm run e2e:livres` gagne trois étapes : le livre-journal numéroté et son centralisateur, une OD
+refusée à 200 d'écart puis enregistrée OD-2026-002 (le compte 613 nommé « Locations » pendant la
+frappe), et le lettrage dont une ligne ouvre sa facture.
 
 ## Pistes pour la suite (non demandées)
 
