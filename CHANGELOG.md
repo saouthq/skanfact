@@ -7,6 +7,27 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 8.5.1 — 15/09/2026
+
+**Le justificatif se joint AVANT toute saisie.** Signalé par le père de Skander, sur sa première
+facture d'achat : « Depuis une photo » exigeait un fournisseur et une ligne avant d'accepter la
+photo, posait chaque fois la question « la lecture n'est pas activée, joindre quand même ? », puis
+enregistrait la pièce et **repartait sur une page d'achat vide** — et la photo n'apparaissait nulle
+part ensuite. Cinq défauts sur un seul bouton.
+
+- **« Joindre un justificatif… »** est le bouton de la barre d'un achat, dès la première seconde,
+  sans fournisseur ni ligne ni question. Le fichier (photo, PDF, scan) est copié tout de suite et
+  se lit dans le panneau « Pièces jointes » ; il part avec l'enregistrement. Quitter la pièce sans
+  l'enregistrer retire les copies — jamais l'original.
+- **« Lire une photo… »** (la lecture automatique, 4.2.0) n'apparaît que si tu l'as activée dans
+  les Paramètres. Sans clé, il n'avait rien à proposer que l'autre bouton ne fasse déjà.
+- **Ce qu'on vient de lire ou de joindre n'est plus perdu** : l'écran se redessine avec la pièce en
+  cours, au lieu de repartir d'une pièce vide.
+- **Même règle sur un devis, une facture, un bon** : « + Joindre un fichier… » est là sur une pièce
+  neuve, plus de « enregistre d'abord ».
+- **Un trombone 📎** dans la liste des achats dit quelles pièces ont leur justificatif — et lesquelles
+  n'en ont pas, ce qui est la question du comptable.
+
 ## 8.5.0 — 15/09/2026
 
 **La console vend (P 0.2).** Sur `api.skanfact.tn`, l'éditeur crée un client, émet une licence,

@@ -1426,13 +1426,17 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     });
     if (!ok) throw new Error('la normalisation de la lecture est incohérente');
   });
-  await step('achat : « Depuis une photo » propose de joindre, sans rien envoyer', async () => {
+  await step('achat : « Joindre un justificatif » est là avant toute saisie, et « Lire une photo » n\'apparaît pas sans clé', async () => {
     await win.evaluate(() => { location.hash = '#/achat/new'; });
-    await win.waitForSelector('#photo');
-    // Le sélecteur de fichier est natif : on vérifie seulement que le bouton existe et que le chemin
-    // sans clé est bien celui qui n'envoie rien.
+    await win.waitForSelector('#attach-top');
     const st = await win.evaluate(() => window.skanfact.ocrStatus());
     if (st.hasKey) throw new Error('clé inattendue');
+    await win.waitForTimeout(300);
+    if (!(await win.isHidden('#photo'))) throw new Error('sans clé de lecture, le bouton « Lire une photo » doit rester caché : il ne ferait que poser une question');
+    // Le sélecteur de fichier est natif : on vérifie que le panneau offre le geste sur une pièce
+    // NEUVE, sans fournisseur ni ligne, et sans « enregistre d'abord ».
+    await win.waitForSelector('#attachments #add-att');
+    if (await win.$('#att-save-first')) throw new Error('une pièce neuve ne doit plus exiger d\'enregistrer avant de joindre');
   });
   await step('paie : bulletins, barèmes paramétrables, coût employeur', async () => {
     await win.evaluate(() => { location.hash = '#/paie'; });

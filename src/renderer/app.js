@@ -2218,19 +2218,10 @@
             <form id="f-clauses">${C.CLAUSE_LABELS.map(([k, label]) =>
               `<label class="field mb">${h(label)}<textarea name="${k}" rows="2" ${ro}>${h((doc.clauses || {})[k] || '')}</textarea></label>`).join('')}
             <button type="button" class="btn btn-sm" id="reset-clauses">Revenir aux textes proposés</button></form></div>` : ''}
-          <!-- Le panneau existe MÊME sur une pièce neuve (7.1.2). Il n'apparaissait qu'après
-               l'enregistrement : quelqu'un qui saisissait sa première facture avec la photo du
-               justificatif ouverte à côté ne trouvait aucun endroit où l'accrocher, et en concluait
-               que l'application ne sait pas faire. Une pièce jointe a besoin d'un identifiant, donc
-               d'un enregistrement : le panneau le dit, et propose de l'enregistrer tout de suite. -->
-          <div class="panel"><h2>Pièces jointes ${info('ed.attachments')}</h2>
-            ${isNew
-              ? `<p class="small muted">Bon de commande du client, photo d'un justificatif, plan, contrat signé :
-                 tout ce qui doit rester avec cette pièce. Les pièces jointes s'attachent à un document enregistré —
-                 <b>enregistre d'abord</b>, le panneau s'ouvre ensuite.</p>
-                 <button type="button" class="btn btn-sm mt" id="att-save-first">Enregistrer maintenant pour joindre un fichier</button>`
-              : '<div id="attachments"></div>'}
-          </div>
+          <!-- Une pièce jointe se joint AVANT l'enregistrement (8.5.1) : la pièce neuve a déjà son
+               identifiant. La liste vit dans la pièce en cours jusqu'à l'enregistrement, et part
+               avec lui. (Aucun backtick dans ce commentaire : il vit dans un template literal.) -->
+          <div class="panel"><h2>Pièces jointes ${info('ed.attachments')}</h2><div id="attachments"></div></div>
           ${isNew ? '' : `<div class="panel"><h2>Historique ${info('ed.history')}</h2><div id="doc-history"></div></div>`}
           <div class="panel"><h2>Notes (affichées sur le document) ${info('ed.notes')}</h2>
             ${!locked && data.snippets.length ? `<div class="catalog-pick"><div id="snip-pick">${combo({ items: [], placeholder: 'Insérer un texte prédéfini…', search: 'Rechercher un texte…' })}</div></div>` : ''}
@@ -2279,7 +2270,10 @@
     if (!locked) setGuard({
       dirty: () => dirty,
       what: isQ ? 'ce devis' : isInv ? 'cette facture' : isAv ? 'cet avoir' : 'ce ' + (C.TITLES[doc.type] || 'document').toLowerCase(),
-      save: () => { const ok = persist(); if (ok) untouch(); return ok; }
+      save: () => { const ok = persist(); if (ok) untouch(); return ok; },
+      // Quitter une pièce NEUVE sans l'enregistrer : les fichiers copiés pour elle n'appartiennent à
+      // personne, on les retire (8.5.1). L'original de l'utilisateur ne bouge jamais.
+      discard: () => { if (isNew) (doc.attachments || []).forEach(a => { try { bridge.removeAttachment(doc.id, a.file); } catch (_) {} }); }
     });
 
     // --- lignes
@@ -2926,32 +2920,37 @@
     // --- pièces jointes : copiées à côté du fichier de données, jamais dans le JSON
     function drawAttachments() {
       const el = $('#attachments'); if (!el) return;
-      const s2 = docById(doc.id); if (!s2) return;
-      const list = s2.attachments || [];
+      // Pièce neuve : la liste vit dans `doc` et part avec l'enregistrement. Pièce rangée : dans la
+      // pièce rangée, et `doc` la suit — l'écran et les données disent la même chose.
+      const s2 = isNew ? null : docById(doc.id);
+      const cible = s2 || doc;
+      const list = cible.attachments || [];
       el.innerHTML = `
         ${list.length ? `<table class="list compact"><thead><tr><th>Fichier</th><th>Ajouté le</th><th class="r">Taille</th><th></th></tr></thead><tbody>
           ${list.map(a => `<tr><td><a href="#" data-open="${h(a.file)}">${h(a.name)}</a></td><td class="nw">${C.fmtDate(a.date)}</td><td class="r nw">${fileSize(a.size)}</td>
             <td class="actions"><button class="btn btn-ghost btn-sm" data-reveal="${h(a.file)}" title="Montrer dans le dossier">Dossier</button><button class="btn btn-ghost btn-sm" data-rmatt="${h(a.file)}" title="Retirer">✕</button></td></tr>`).join('')}
         </tbody></table>` : '<p class="small muted">Aucune pièce jointe. Le devis signé scanné, le bon de commande du client, une photo du chantier : tout ce qui justifie ce document a sa place ici.</p>'}
         <div class="inline mt"><button class="btn btn-sm" id="add-att">+ Joindre un fichier…</button>
-        <span class="small muted">Les fichiers sont copiés à côté de tes données. Ils ne sont pas dans les sauvegardes quotidiennes (qui ne contiennent qu'un fichier texte) mais le sont dans la copie externe.</span></div>`;
+        <span class="small muted">${isNew && list.length ? 'Joint à cette pièce : il sera enregistré avec elle. ' : ''}Les fichiers sont copiés à côté de tes données. Ils ne sont pas dans les sauvegardes quotidiennes (qui ne contiennent qu'un fichier texte) mais le sont dans la copie externe.</span></div>`;
       $('#add-att').onclick = async () => {
         try {
           const added = await bridge.addAttachments(doc.id);
           if (!added.length) return;
-          s2.attachments = (s2.attachments || []).concat(added);
-          save(true); drawAttachments(); drawHistory();
+          doc.attachments = (doc.attachments || []).concat(added);
+          if (s2) { s2.attachments = (s2.attachments || []).concat(added); save(true); } else touch();
+          drawAttachments(); drawHistory();
           toast(added.length > 1 ? `${added.length} pièces jointes ajoutées` : 'Pièce jointe ajoutée');
-        } catch (e) { toast(e.message.replace(/^.*Error: /, ''), true); }
+        } catch (e) { toast(plainError(e), true); }
       };
       $$('[data-open]', el).forEach(a => a.onclick = e => { e.preventDefault(); bridge.openAttachment(doc.id, a.dataset.open); });
       $$('[data-reveal]', el).forEach(b => b.onclick = () => bridge.revealAttachment(doc.id, b.dataset.reveal));
       $$('[data-rmatt]', el).forEach(b => b.onclick = async () => {
-        const a = (s2.attachments || []).find(x => x.file === b.dataset.rmatt);
+        const a = list.find(x => x.file === b.dataset.rmatt);
         if (!await confirmDialog(`Retirer « ${a ? a.name : 'cette pièce'} » ? Le fichier copié sera supprimé, ton fichier d'origine ne bouge pas.`)) return;
         await bridge.removeAttachment(doc.id, b.dataset.rmatt);
-        s2.attachments = (s2.attachments || []).filter(x => x.file !== b.dataset.rmatt);
-        save(true); drawAttachments(); drawHistory();
+        doc.attachments = (doc.attachments || []).filter(x => x.file !== b.dataset.rmatt);
+        if (s2) { s2.attachments = (s2.attachments || []).filter(x => x.file !== b.dataset.rmatt); save(true); } else touch();
+        drawAttachments(); drawHistory();
       });
     }
 
@@ -2970,13 +2969,6 @@
     drawPayments();
     drawHistory();
     drawAttachments();
-    // Sur une pièce neuve, le panneau propose d'enregistrer pour pouvoir joindre : le geste suivant
-    // est alors à portée, au lieu d'être à deviner.
-    if ($('#att-save-first')) $('#att-save-first').onclick = () => {
-      if (!persist()) return;
-      toast('Enregistré — tu peux joindre tes fichiers');
-      if (isNew) navigate('#/doc/' + doc.id); else render(true);
-    };
   };
 
   // Taille de fichier lisible : « 1,4 Mo » vaut mieux que 1468006.
@@ -4905,7 +4897,11 @@
     const restOf = p => C.purchaseBalance(p, company()).remaining;
     const cols = [
       { key: 'date', label: 'Date', cls: 'nw', val: p => p.date || '', get: p => C.fmtDate(p.date) },
-      { key: 'number', label: 'N° fournisseur', cls: 'nw', asc: true, val: p => (p.number || '').toLowerCase(), get: p => p.number ? `<strong>${h(p.number)}</strong>` : '<span class="muted">sans numéro</span>' }
+      // Le trombone : on voit d'un coup d'œil quelles pièces ont leur justificatif — et lesquelles
+      // n'en ont pas, ce qui est la question du comptable.
+      { key: 'number', label: 'N° fournisseur', cls: 'nw', asc: true, val: p => (p.number || '').toLowerCase(),
+        get: p => (p.number ? `<strong>${h(p.number)}</strong>` : '<span class="muted">sans numéro</span>')
+          + ((p.attachments || []).length ? ` <span class="att-mark" title="${pl((p.attachments || []).length, 'justificatif')} joint${(p.attachments || []).length > 1 ? 's' : ''}">📎</span>` : '') }
     ];
     if (!opts.hideSupplier) cols.push({ key: 'supplier', label: 'Fournisseur', asc: true, val: p => supplierName(p.supplierId).toLowerCase(), get: p => `${h(supplierName(p.supplierId))}${p.subject ? `<div class="small muted">${h(p.subject)}</div>` : ''}` });
     else cols.push({ key: 'subject', label: 'Objet', asc: true, val: p => (p.subject || '').toLowerCase(), get: p => h(p.subject || '') || '<span class="muted">—</span>' });
@@ -5027,6 +5023,16 @@
     $$('[data-payx]').forEach(b => b.onclick = () => supplierPaymentForm(purchaseById(b.dataset.payx), () => render()));
   }
 
+  // L'achat en cours de saisie, quand l'éditeur doit se redessiner SANS le perdre (8.5.1). La lecture
+  // d'une photo remplit `p` puis redessine ; sans ce relais, `render()` repartait de la pièce
+  // enregistrée — ou d'une pièce neuve et vide — et jetait ce qu'on venait de lire et de joindre.
+  // Consommé une fois, et seulement pour la page qui l'a posé.
+  let achatReprise = null;
+  // Le crochet de démonstration de la lecture OCR : un seul abonnement, qui délègue à la page
+  // d'achat ouverte (voir routes.achat).
+  let ocrDemoHandler = null;
+  document.addEventListener('skanfact:ocr-demo', () => { if (ocrDemoHandler) ocrDemoHandler(); });
+
   function newPurchase(kind, supplierId) {
     const date = C.today();
     const sup = supplierId ? supplierById(supplierId) : null;
@@ -5089,8 +5095,10 @@
   // dans cette route. L'y écrire lève une ReferenceError au moment de construire le gabarit, et
   // c'est TOUTE la page qui reste blanche — sans rien dans la console de l'utilisateur.
   routes.achat = (parts) => {
-    let p, isNew = false;
-    if (parts[0] === 'new') {
+    let p, isNew = false, repris = false;
+    if (achatReprise && achatReprise.hash === location.hash) {
+      p = achatReprise.p; isNew = achatReprise.isNew; repris = true; achatReprise = null;
+    } else if (parts[0] === 'new') {
       const sup = parts[1] && parts[1] !== '-' ? parts[1] : '';
       p = newPurchase(parts[2] || (parts[1] === 'depense' ? 'depense' : 'facture'), supplierById(sup) ? sup : '');
       isNew = true;
@@ -5117,7 +5125,8 @@
         <div class="actions">
           ${backButton('#/achats')}
           ${!isNew && C.purchaseBalance(stored, company()).remaining > 0.0005 ? '<button class="btn" id="pay">Enregistrer un règlement</button>' : ''}
-          <button class="btn" id="photo">Depuis une photo… ${info('ocr.photo')}</button>
+          <button class="btn" id="attach-top">Joindre un justificatif… ${info('ed.attachments')}</button>
+          <button class="btn" id="photo" hidden>Lire une photo… ${info('ocr.photo')}</button>
           <button class="btn btn-primary" id="save">Enregistrer</button>
           ${isNew ? '' : `<div class="more"><button class="btn" id="more-btn">Plus ▾</button><div class="more-list" id="more-list" hidden>
             <button id="dup">Dupliquer</button>
@@ -5157,19 +5166,11 @@
             <div id="b-stock-hint" hidden></div>
           </div>
           ${isNew ? '' : `<div class="panel"><h2>Règlements ${info('buy.payments')}</h2><div id="b-pay"></div></div>`}
-          <!-- Le panneau existe MÊME sur une pièce neuve (7.1.2). Il n'apparaissait qu'après
-               l'enregistrement : quelqu'un qui saisissait sa première facture avec la photo du
-               justificatif ouverte à côté ne trouvait aucun endroit où l'accrocher, et en concluait
-               que l'application ne sait pas faire. Une pièce jointe a besoin d'un identifiant, donc
-               d'un enregistrement : le panneau le dit, et propose de l'enregistrer tout de suite. -->
-          <div class="panel"><h2>Pièces jointes ${info('ed.attachments')}</h2>
-            ${isNew
-              ? `<p class="small muted">Bon de commande du client, photo d'un justificatif, plan, contrat signé :
-                 tout ce qui doit rester avec cette pièce. Les pièces jointes s'attachent à un document enregistré —
-                 <b>enregistre d'abord</b>, le panneau s'ouvre ensuite.</p>
-                 <button type="button" class="btn btn-sm mt" id="att-save-first">Enregistrer maintenant pour joindre un fichier</button>`
-              : '<div id="attachments"></div>'}
-          </div>
+          <!-- Le justificatif se joint AVANT toute saisie (8.5.1) : une pièce neuve a déjà son
+               identifiant, donc son dossier de pièces jointes. Exiger d'enregistrer d'abord — et donc
+               de choisir un fournisseur et d'écrire une ligne — pour pouvoir accrocher la photo qu'on
+               a sous les yeux, c'est le contraire de l'ordre dans lequel on travaille. -->
+          <div class="panel"><h2>Pièces jointes ${info('ed.attachments')}</h2><div id="attachments"></div></div>
           <div class="panel"><h2>Notes internes</h2>
             <textarea id="b-notes" placeholder="Ce qu'il faut se rappeler sur cet achat">${h(p.notes || '')}</textarea>
           </div>
@@ -5180,7 +5181,11 @@
     let dirty = false;
     const touch = () => { if (dirty) return; dirty = true; const el = $('#dirty-dot'); if (el) el.hidden = false; reportDirty(); };
     const untouch = () => { dirty = false; const el = $('#dirty-dot'); if (el) el.hidden = true; reportDirty(); };
-    setGuard({ dirty: () => dirty, what: isDep ? 'cette dépense' : 'cette facture d\'achat', save: async () => { if (!validate() || !await doublonOk()) return false; const ok = persist(); if (ok) untouch(); return ok; } });
+    setGuard({ dirty: () => dirty, what: isDep ? 'cette dépense' : 'cette facture d\'achat',
+      save: async () => { if (!validate() || !await doublonOk()) return false; const ok = persist(); if (ok) untouch(); return ok; },
+      // Quitter une pièce NEUVE sans l'enregistrer : les fichiers déjà copiés pour elle n'appartiennent
+      // à personne, on les retire. L'original de l'utilisateur, lui, ne bouge jamais.
+      discard: () => { if (isNew) (p.attachments || []).forEach(a => { try { bridge.removeAttachment(p.id, a.file); } catch (_) {} }); } });
 
     // --- lignes
     const body = $('#b-lines');
@@ -5319,52 +5324,71 @@
     $('#b-notes').oninput = e => { p.notes = e.target.value; touch(); };
     // Crochet de démonstration : ouvrir la fenêtre de vérification sur une lecture simulée, sans aucun
     // appel réseau. Sert aux captures d'écran et à l'audit ; inoffensif, il ne fait qu'afficher.
-    document.addEventListener('skanfact:ocr-demo', () => {
+    // Depuis la 8.5.1 il passe par le VRAI chemin de validation (`appliquerLecture`) : c'est ce qui
+    // permet à `e2e:justificatif` de prouver que la page se redessine sans perdre la pièce. Sans
+    // chemin de fichier, la photo ne se joint pas et l'écran le dit — le reste est identique.
+    // UN SEUL abonnement, au niveau du module : la version d'avant en ajoutait un à chaque
+    // affichage de la page (`once` ne retire qu'après avoir tiré), et cinq passages par l'éditeur
+    // ouvraient cinq fenêtres d'un coup. Trouvé par l'e2e, jamais par la lecture.
+    ocrDemoHandler = () => {
       if (!window.__ocrDemo) return;
-      ocrReviewForm(window.__ocrDemo, { name: 'facture-fournisseur.jpg', size: 420000, path: '' }, () => {});
-    }, { once: true });
+      const fichier = { name: 'facture-fournisseur.jpg', size: 420000, path: '' };
+      ocrReviewForm(window.__ocrDemo, fichier, values => appliquerLecture(values, fichier));
+    };
+
+    // --- joindre un justificatif (photo, PDF, scan) — AVANT toute saisie (8.5.1)
+    // Une pièce jointe n'a besoin que d'un identifiant, et une pièce neuve en a déjà un. Le fichier
+    // est copié tout de suite ; la liste vit dans `p` et part avec l'enregistrement. Ni fournisseur,
+    // ni ligne, ni question : le geste pour lequel le bouton existe, et rien d'autre.
+    const joindre = async (fichiers) => {
+      const ajoutes = fichiers.filter(Boolean);
+      if (!ajoutes.length) return false;
+      p.attachments = (p.attachments || []).concat(ajoutes);
+      if (!isNew) { const s2 = purchaseById(p.id); if (s2) { s2.attachments = (s2.attachments || []).concat(ajoutes); save(true); } }
+      else touch();
+      drawBuyAttachments();
+      toast(ajoutes.length > 1 ? `${ajoutes.length} justificatifs joints` : 'Justificatif joint');
+      return true;
+    };
+    $('#attach-top').onclick = async () => {
+      try { await joindre(await bridge.addAttachments(p.id)); }
+      catch (e) { toast(plainError(e), true); }
+    };
 
     // --- lecture d'une photo de facture (4.2.0)
-    // Le chemin sans clé est le chemin par défaut : on joint la photo et on saisit à la main. La lecture
-    // n'est proposée que si l'utilisateur a lui-même activé la fonction dans les Paramètres.
+    // Le bouton n'apparaît que si l'utilisateur a lui-même activé la lecture dans les Paramètres :
+    // sans clé, il n'a rien à proposer que « Joindre un justificatif » ne fasse déjà — et la question
+    // « la lecture n'est pas activée, joindre quand même ? » à chaque photo était un piège (8.5.1).
+    bridge.ocrStatus().then(st => { if (st && st.hasKey && $('#photo')) $('#photo').hidden = false; }, () => {});
+    const joindreFichier = async (file) => {
+      try { return await joindre([await bridge.attachPath(p.id, file.path)]); }
+      catch (e) { toast(e.message || 'Impossible de joindre la photo', true); return false; }
+    };
+    // Ce que la relecture a validé entre dans la pièce EN COURS, puis la page se redessine avec
+    // elle : `render()` repartirait de la pièce enregistrée (ou d'une pièce neuve et vide) et
+    // jetterait tout. La reprise relaie `p` à la page qui se redessine.
+    const appliquerLecture = async (values, file) => {
+      Object.assign(p, values.head);
+      p.lines = values.lines;
+      const jointe = await joindreFichier(file);
+      achatReprise = { hash: location.hash, p, isNew };
+      render(true);
+      toast(jointe ? 'Facture pré-remplie et photo jointe — vérifie avant d\'enregistrer' : 'Facture pré-remplie — vérifie avant d\'enregistrer');
+    };
     $('#photo').onclick = async () => {
       let file;
       try { file = await bridge.ocrPick(); } catch (e) { return toast(e.message || 'Fichier illisible', true); }
       if (!file) return;
-      let st = { hasKey: false };
-      try { st = await bridge.ocrStatus(); } catch (_) {}
-      const attach = async () => {
-        if (isNew) { if (!persist()) return false; }
-        try { const a = await bridge.attachPath(p.id, file.path); p.attachments = (p.attachments || []).concat([a]); save(true); return true; }
-        catch (e) { toast(e.message || 'Impossible de joindre la photo', true); return false; }
-      };
-      if (!st.hasKey) {
-        // « va dans Paramètres → Données et sécurité → Lecture de factures » demandait de retenir trois
-        // niveaux et de les retrouver seul. Le second bouton y mène, sur le bon panneau.
-        const go = await choiceDialog('La lecture automatique n\'est pas activée',
-          `Rien ne peut être envoyé nulle part.\n\n« ${file.name} » peut quand même être jointe à cet achat comme justificatif, et tu saisis la facture à la main — c'est le fonctionnement normal, hors ligne.`,
-          'Joindre la photo', 'Activer la lecture…');
-        if (!go) return;
-        if (go === 'b') return allerParametres('donnees', 'p-ocr');
-        if (await attach()) { toast('Photo jointe'); render(true); }
-        return;
-      }
       if (!await confirmDialog(`Envoyer « ${file.name} » (${(file.size / 1024).toFixed(0)} Ko) au service de lecture ?\n\nL'image part sur internet. Rien d'autre n'est envoyé. Le résultat te sera proposé : tu le valides ou tu le corriges avant qu'il n'entre dans tes données.`, 'Lire la facture', false)) return;
       toast('Lecture en cours…');
       let read;
       try { read = await bridge.ocrRead(file.path); }
       catch (e) {
         const retry = await confirmDialog(`La lecture a échoué.\n\n${e.message || 'Erreur inconnue.'}\n\nTu peux joindre la photo et saisir la facture à la main.`, 'Joindre la photo', false);
-        if (retry && await attach()) { toast('Photo jointe'); render(true); }
+        if (retry) await joindreFichier(file);
         return;
       }
-      ocrReviewForm(read, file, async (values) => {
-        Object.assign(p, values.head);
-        p.lines = values.lines;
-        touch();
-        if (await attach()) toast('Facture pré-remplie et photo jointe — vérifie avant d\'enregistrer');
-        render(true);
-      });
+      ocrReviewForm(read, file, values => appliquerLecture(values, file));
     };
 
 
@@ -5400,31 +5424,33 @@
     }
 
     // --- pièces jointes (même mécanisme que sur un document de vente)
+    // Sur une pièce neuve la liste vit dans `p` (elle part avec l'enregistrement) ; sur une pièce
+    // enregistrée, dans la pièce rangée — et `p` la suit, pour que l'écran et les données disent la
+    // même chose.
     function drawBuyAttachments() {
       const el = $('#attachments'); if (!el) return;
-      const s2 = purchaseById(p.id); if (!s2) return;
-      const list = s2.attachments || [];
+      const s2 = isNew ? null : purchaseById(p.id);
+      const cible = s2 || p;
+      const list = cible.attachments || [];
       el.innerHTML = `
         ${list.length ? `<table class="list compact"><thead><tr><th>Fichier</th><th>Ajouté le</th><th class="r">Taille</th><th></th></tr></thead><tbody>
           ${list.map(a => `<tr><td><a href="#" data-open="${h(a.file)}">${h(a.name)}</a></td><td class="nw">${C.fmtDate(a.date)}</td><td class="r nw">${fileSize(a.size)}</td>
             <td class="actions"><button class="btn btn-ghost btn-sm" data-reveal="${h(a.file)}">Dossier</button><button class="btn btn-ghost btn-sm" data-rmatt="${h(a.file)}">✕</button></td></tr>`).join('')}
         </tbody></table>` : '<p class="small muted">Aucun justificatif. Photographie ou scanne la facture du fournisseur : sans justificatif, ni la charge ni la TVA ne sont récupérables.</p>'}
-        <div class="inline mt"><button class="btn btn-sm" id="add-att">+ Joindre le justificatif…</button></div>`;
+        <div class="inline mt"><button class="btn btn-sm" id="add-att">+ Joindre le justificatif…</button>
+        ${isNew && list.length ? '<span class="small muted">Joint à cette pièce : il sera enregistré avec elle.</span>' : ''}</div>`;
       $('#add-att').onclick = async () => {
-        try {
-          const added = await bridge.addAttachments(p.id);
-          if (!added.length) return;
-          s2.attachments = (s2.attachments || []).concat(added);
-          save(true); drawBuyAttachments(); toast('Justificatif joint');
-        } catch (e) { toast(e.message.replace(/^.*Error: /, ''), true); }
+        try { await joindre(await bridge.addAttachments(p.id)); }
+        catch (e) { toast(plainError(e), true); }
       };
       $$('[data-open]', el).forEach(a => a.onclick = e => { e.preventDefault(); bridge.openAttachment(p.id, a.dataset.open); });
       $$('[data-reveal]', el).forEach(b => b.onclick = () => bridge.revealAttachment(p.id, b.dataset.reveal));
       $$('[data-rmatt]', el).forEach(b => b.onclick = async () => {
         if (!await confirmDialog('Retirer ce justificatif ? Le fichier copié sera supprimé, ton original ne bouge pas.')) return;
         await bridge.removeAttachment(p.id, b.dataset.rmatt);
-        s2.attachments = (s2.attachments || []).filter(x => x.file !== b.dataset.rmatt);
-        save(true); drawBuyAttachments();
+        p.attachments = (p.attachments || []).filter(x => x.file !== b.dataset.rmatt);
+        if (s2) { s2.attachments = (s2.attachments || []).filter(x => x.file !== b.dataset.rmatt); save(true); } else touch();
+        drawBuyAttachments();
       });
     }
 
@@ -5483,11 +5509,8 @@
     drawLines();
     drawPayments();
     drawBuyAttachments();
-    if ($('#att-save-first')) $('#att-save-first').onclick = () => {
-      if (!persist()) return;
-      toast('Enregistré — tu peux joindre ton justificatif');
-      navigate('#/achat/' + p.id);
-    };
+    // Une page redessinée avec la pièce en cours (lecture d'une photo) est, par construction, modifiée.
+    if (repris) touch();
   };
 
   // ---------- Autres documents : proforma, bon de commande, bon de livraison, contrat ----------

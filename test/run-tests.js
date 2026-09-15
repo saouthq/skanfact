@@ -3528,6 +3528,46 @@ t('8.5.0 : la clé du serveur se fabrique sur le poste de l\'éditeur, se dit à
   assert.ok(/\/v1\/admin\/licences/.test(e2eP) && /kid !== 'srv-1'/.test(e2eP), 'e2e:plateforme doit coller une clé émise par la console dans l\'application');
 });
 
+// 8.5.1 : le justificatif se joint AVANT toute saisie. Cinq défauts sur un seul bouton, signalés par
+// le père de Skander sur sa première facture d'achat — voir CHANGELOG.
+t('8.5.1 : le justificatif se joint avant toute saisie, sans question, et ce qu\'on a lu n\'est pas perdu', () => {
+  const app = lireApp();
+  assert.ok(!app.includes('att-save-first'), 'plus aucun « enregistre d\'abord » pour joindre un fichier');
+  const achat = app.slice(app.indexOf('routes.achat = '), app.indexOf('const AUTRES_TABS'));
+  assert.ok(achat.length > 5000 && achat.length < 40000, 'tranche routes.achat inattendue : ' + achat.length);
+  // Le bouton de la barre est « Joindre », branché, et il ne demande NI enregistrement NI fournisseur.
+  assert.ok(/id="attach-top">Joindre un justificatif/.test(achat) && /\$\('#attach-top'\)\.onclick/.test(achat), 'le bouton « Joindre un justificatif » manque ou n\'est pas branché');
+  const joindre = achat.slice(achat.indexOf('const joindre = async'), achat.indexOf("$('#attach-top').onclick"));
+  assert.ok(joindre.length > 200 && !/persist\(\)|validate\(\)/.test(joindre), 'joindre ne doit ni enregistrer ni valider la pièce');
+  assert.ok(/if \(!isNew\) \{ const s2 = purchaseById\(p\.id\); if \(s2\) \{ s2\.attachments = /.test(joindre), 'sur une pièce rangée, la pièce rangée reçoit aussi le fichier — sinon l\'écran et les données divergent');
+  // « Lire une photo » est caché tant qu'aucune clé n'est activée : plus de question à chaque photo.
+  assert.ok(/id="photo" hidden>Lire une photo/.test(achat), 'le bouton de lecture doit être caché par défaut');
+  assert.ok(/bridge\.ocrStatus\(\)\.then\(st => \{ if \(st && st\.hasKey && \$\('#photo'\)\) \$\('#photo'\)\.hidden = false; \}/.test(achat), 'il ne se montre que si une clé est activée');
+  assert.ok(!/La lecture automatique n\\'est pas activée/.test(achat), 'la question « joindre quand même ? » a disparu');
+  // La pièce en cours survit au redessin après une lecture.
+  assert.ok(/achatReprise = \{ hash: location\.hash, p, isNew \};\s*render\(true\);/.test(achat), 'après une lecture, la page se redessine AVEC la pièce en cours');
+  assert.ok(/if \(achatReprise && achatReprise\.hash === location\.hash\)/.test(achat) && /if \(repris\) touch\(\);/.test(achat), 'la reprise est consommée par la route, et marque la pièce modifiée');
+  // Le panneau lit la pièce NEUVE dans `p`, et la pièce rangée dans les données.
+  assert.ok(/const s2 = isNew \? null : purchaseById\(p\.id\);\s*const cible = s2 \|\| p;/.test(achat), 'drawBuyAttachments doit lire `p` sur une pièce neuve');
+  assert.ok(/discard: \(\) => \{ if \(isNew\) \(p\.attachments \|\| \[\]\)\.forEach/.test(achat), 'quitter sans enregistrer retire les copies faites pour la pièce neuve');
+  // Le même correctif dans l'éditeur de document (une règle apprise d'un côté se vérifie de l'autre).
+  const doc = app.slice(app.indexOf('function drawAttachments()'), app.indexOf('function drawHistory()'));
+  assert.ok(/const s2 = isNew \? null : docById\(doc\.id\);\s*const cible = s2 \|\| doc;/.test(doc), 'drawAttachments doit lire `doc` sur une pièce neuve');
+  assert.ok(/doc\.attachments = \(doc\.attachments \|\| \[\]\)\.concat\(added\);/.test(doc), 'la pièce en cours reçoit le fichier');
+  // Le trombone dans la liste des achats.
+  const cols = app.slice(app.indexOf('function purchaseColumns('), app.indexOf('const buyState'));
+  assert.ok(/📎/.test(cols) && /\(p\.attachments \|\| \[\]\)\.length/.test(cols), 'la liste des achats doit montrer quelles pièces ont un justificatif');
+  // La bulle du bouton de lecture ne promet plus « joindre sans clé » : c'est l'autre bouton qui le fait.
+  const guide = lireSource('src', 'renderer', 'guide.js');
+  assert.ok(/'ocr\.photo': \{ t: 'Lire une photo'/.test(guide) && /Joindre un justificatif/.test(guide.slice(guide.indexOf("'ocr.photo'"), guide.indexOf("'ocr.photo'") + 900)), 'la bulle « ocr.photo » doit renvoyer vers « Joindre un justificatif »');
+  // Le parcours qui rejoue le bug existe.
+  const e2e = lireSource('test', 'e2e', 'justificatif.js');
+  ['showOpenDialog', '#attach-top', '#add-att', 'skanfact:ocr-demo', 'Quitter sans enregistrer', '📎'].forEach(m =>
+    assert.ok(e2e.includes(m), 'e2e:justificatif doit couvrir : ' + m));
+  const pkg = JSON.parse(lireSource('package.json'));
+  assert.strictEqual(pkg.scripts['e2e:justificatif'], 'node test/e2e/justificatif.js');
+});
+
 t('offre Indépendant : chaque module réservé est fermé à la création, partout où l\'on crée', () => {
   const src = lireApp();
   const calls = [...src.matchAll(/licenceBlock\('([^']+)'(?:, '([a-z]+)')?\)/g)];

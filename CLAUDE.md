@@ -392,6 +392,7 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:beta` | **le canal bêta** : la case décochée à l'installation, la question avant de cocher, le refus qui décoche vraiment, la sauvegarde « avant-beta » écrite sur le disque, et le retour en arrière sans question |
 | `npm run e2e:depot` | **public ou privé** : `src/depot.js` est VRAIMENT basculé en privé, l'application ouverte, le champ jeton doit revenir — puis repartir au retour au public (le fichier est restauré quoi qu'il arrive) |
 | `npm run e2e:pages` | **les pages d'un document imprimé** : 161 documents (7 types × 6 variantes × 1 à 40 lignes) rendus dans chromium et imprimés en PDF — aucune ligne perdue, aucune page qui déborde, aucun pied par-dessus le contenu, une feuille par page et chacune numérotée. **Pas besoin de `xvfb`** : il n'ouvre pas Electron |
+| `npm run e2e:justificatif` | **le justificatif se joint avant toute saisie** : sélecteur de fichier remplacé dans le processus principal, une photo jointe sur un achat VIDE, enregistrée avec la pièce, retrouvée sur le disque et dans la liste (📎), un second fichier sur la pièce rangée, une pièce abandonnée qui ne laisse pas de copie, la lecture d'une photo qui redessine sans perdre la pièce, et le même geste sur un devis neuf |
 | `npm run e2e:licence` | **l'éditeur et les offres, puis le client** : une première application DÉSARMÉE (`SKANFACT_CLE_EMBARQUEE` vers un chemin inexistant, développement seulement) — sans clé rien n'apparaît ; « Créer mes clés » écrit la privée dans un dossier isolé (`SKANFACT_DOSSIER_CLES`) et met le poste en état « éditeur » (ni essai ni verrou) ; « Émettre » signe une clé vérifiable, crée un BROUILLON de facture et l'historique ; la clé Indépendant collée refuse un nouveau fournisseur, pose un cadenas sur Achats et laisse les Statistiques ; la clé d'un autre matricule est refusée en nommant les deux ; « Renouveler » ; rien de ce qui traverse le pont ne contient la clé privée — PUIS une seconde application telle qu'un client l'installe (vraie clé embarquée, pas de clé privée) : essai de 30 jours, aucune trace de l'éditeur, plus de porte « Créer mes clés », et la clé signée par la clé d'essai du test REFUSÉE |
 
 Ils ont longtemps vécu dans un dossier de travail temporaire, effacé à chaque session : il fallait les réécrire de mémoire, et ils dérivaient (une assertion restée sur une version périmée, un écran neuf jamais parcouru). **Un test qu'on doit réécrire pour s'en servir n'est pas un test.** Le harnais (`test/e2e/harnais.js`) trouve Playwright où il est, lit la version dans `package.json` au lieu de l'écrire en dur, et range les captures dans `dist-e2e/` (ignoré par Git).
@@ -2210,6 +2211,37 @@ Règles apprises, à ne pas recasser :
   l'ordre du document — et cliquer un conteneur ne fait rien. Trouvé par le délai d'attente.
 - Piège de test : une tranche de source bornée sur un voisin NOMMÉ se casse quand on insère un
   handler entre les deux. On borne sur « le `ipcMain.handle(` suivant, quel qu'il soit ».
+
+### 8.5.1 — Le justificatif se joint avant toute saisie
+
+Le père de Skander, première facture d'achat : « Depuis une photo » exigeait un fournisseur et une
+ligne, posait « la lecture n'est pas activée, joindre quand même ? », enregistrait, **repartait sur
+une page vide**, et la photo n'apparaissait nulle part. Cinq défauts sur un bouton, et aucun ne se
+voyait dans un test : ils vivaient dans l'ORDRE des gestes.
+
+- **Une pièce jointe n'a besoin que d'un identifiant, et une pièce neuve en a un.** Exiger
+  d'enregistrer (donc de valider) pour accrocher la photo qu'on a sous les yeux, c'est le contraire
+  de l'ordre dans lequel on travaille : la photo vient EN PREMIER, la saisie se fait en la
+  regardant. La liste vit dans la pièce en cours (`p.attachments`, `doc.attachments`) et part avec
+  l'enregistrement ; quitter sans enregistrer retire les copies (`discard` du garde-fou), jamais
+  l'original.
+- **Deux gestes, deux boutons.** « Joindre un justificatif… » (toujours là, hors ligne, sans
+  question) et « Lire une photo… » (caché tant qu'aucune clé n'est activée). Un bouton qui n'a rien
+  à proposer que l'autre ne fasse déjà, et qui pose une question pour le dire, est un piège.
+- **`render(true)` après avoir rempli `p` jetait `p`.** La route repartait de la pièce rangée, ou
+  d'une pièce neuve et vide. `achatReprise` relaie la pièce en cours à la page qui se redessine,
+  pour CE hash et une fois. Le défaut existait aussi sur une pièce enregistrée : la lecture d'une
+  photo y perdait tout autant.
+- **`p.attachments = …` sur une pièce rangée ne suffisait pas** : `p` est une copie, et `save()`
+  écrivait les données sans elle. L'écran disait « photo jointe », les données ne la portaient pas.
+  On écrit dans les deux, et le panneau lit la même source que `save()`.
+- Un correctif d'un éditeur se cherche dans l'autre (7.3.0) : l'éditeur de document avait le même
+  « enregistre d'abord », retiré pareil. Et la liste des achats porte un trombone : ce que le
+  comptable demande, c'est quelles pièces N'ONT PAS de justificatif.
+- Le parcours qui compte est `npm run e2e:justificatif` : le sélecteur de fichier natif est remplacé
+  dans le processus principal (`dialog.showOpenDialog`), un vrai fichier est copié, enregistré,
+  retrouvé sur le disque et dans la liste ; une pièce abandonnée ne laisse pas de copie ; et la
+  lecture d'une photo (via le crochet `skanfact:ocr-demo`) redessine la page SANS perdre la pièce.
 
 ## Pistes pour la suite (non demandées)
 

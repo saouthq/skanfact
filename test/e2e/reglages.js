@@ -123,10 +123,12 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   await win.click('#modal-root [data-close]');
   j.ok('la case des numéros de série est visible, et elle entraîne le suivi en stock');
 
-  // Le panneau « Pièces jointes » existe même sur une pièce neuve.
+  // Le panneau « Pièces jointes » existe même sur une pièce neuve — et on y joint AVANT
+  // d'enregistrer (8.5.1) : plus de « enregistre d'abord ».
   await win.evaluate(() => { location.hash = '#/doc/new/facture'; });
-  await win.waitForSelector('#att-save-first');
-  j.ok('« Pièces jointes » existe sur une pièce neuve, avec le geste qui débloque');
+  await win.waitForSelector('#attachments #add-att');
+  if (await win.$('#att-save-first')) throw new Error('une pièce neuve ne doit plus exiger d\'enregistrer avant de joindre');
+  j.ok('« Pièces jointes » existe sur une pièce neuve, et « Joindre » y est déjà');
 
   j.etape('Les Paramètres : on voit, on trouve, et rien ne se jette sans un mot');
   // Le thème se voyait seulement après avoir trouvé « Enregistrer » tout en bas d'une page de six
