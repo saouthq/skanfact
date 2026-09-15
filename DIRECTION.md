@@ -334,6 +334,9 @@ hors SkanFact, donc la première chose qu'on peut vendre. Avant, il n'y a rien �
 
 ---
 
+> Toutes les questions du projet, avec leur réponse et leur marque (Décidé / À toi / À VÉRIFIER),
+> sont dans **`QUESTIONS.md`**. Celles qui restent ouvertes sont reprises ci-dessous.
+
 ## 8. Les questions ouvertes
 
 **À Skander**
