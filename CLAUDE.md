@@ -2439,7 +2439,9 @@ que le relevé égale le solde pointé, et la TFP/FOPROLOS dans les barèmes et 
 « zéro ressaisie » entre une PME qui gère dans SkanFact sans connaître la comptabilité et son
 comptable qui reçoit ses écritures déjà écrites avec les pièces ; l'app entreprise **s'arrête à la
 gestion** (plus aucun écran comptable n'y est ajouté ; ceux de 8.8.0 → 9.0.0 deviennent un module
-désactivé par défaut — masquer, pas supprimer : le moteur écrit le paquet) ; le Cabinet devient **le
+`compta` désactivé par défaut ET **payant** — option `compta` portée par la clé de licence, porte
+unique `optionBlock`, Écritures et le paquet restent libres — masquer, pas supprimer : le moteur
+écrit le paquet ; décidé le 15/09/2026) ; le Cabinet devient **le
 logiciel de comptabilité du cabinet**, complet, avec ou sans SkanFact chez le client ; le paquet reste
 le pont dans les deux sens (licence et signature du client dans le manifeste, questions du cabinet
 affichées sur la pièce) ; le Cabinet est **gratuit pour les dossiers sur SkanFact et trois dossiers

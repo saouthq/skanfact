@@ -46,8 +46,10 @@ l'Ordre, un juriste ou le marché doit répondre).*
   jamais demandé ; les écritures se déduisent de ses pièces. **Décidé.**
 - **Que deviennent le grand livre, la balance, les états financiers qu'on y a mis (8.8.0 → 9.0.0) ?**
   Le moteur reste : c'est lui qui écrit les écritures du paquet. Les écrans deviennent un module
-  « Comptabilité » désactivé par défaut, activable dans les Paramètres. **À toi** — ma recommandation
-  est de masquer, pas de supprimer : supprimer casserait le pont et jetterait trente tests.
+  « Comptabilité » désactivé par défaut **et payant** : l'option pour la petite entreprise sans
+  comptable qui tient elle-même ses livres. Elle voyage dans la clé de licence, se vend depuis la
+  console, est incluse dans l'essai, et ne touche jamais à Écritures ni au paquet. **Décidé le
+  15/09/2026.** Son prix reste **à toi** (proposition : 190 DT HT/an).
 - **L'onglet Écritures reste visible ?** Oui : c'est le seul endroit où le client voit ce qui part
   chez son comptable, et où il comprendra une question reçue. **Décidé.**
 - **Et l'onglet TVA à payer, si c'est le comptable qui déclare ?** Il reste : c'est une estimation pour

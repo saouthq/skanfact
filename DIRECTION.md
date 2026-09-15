@@ -36,9 +36,11 @@ prime sur les autres plans** (`PLAN-CABINET.md`, `PLAN-PLATEFORME.md`, `PLAN-COM
    chiffre affirmé qu'un test ne prouve, aucun message brut à l'écran, une seule source de vérité par
    règle. Ces principes valent pour les deux applications.
 
-**Reste à confirmer par Skander** (§ 8, question 1) : ce qu'on fait des écrans comptables ajoutés à
-l'app entreprise en 8.8.0 → 9.0.0. Recommandation : **les masquer par défaut, pas les supprimer**
-(voir § 5, point L).
+8. **Les écrans comptables de l'app entreprise (8.8.0 → 9.0.0) sont masqués, pas supprimés, et
+   deviennent un module PAYANT** — l'option « Comptabilité » pour la petite entreprise qui n'a pas de
+   comptable et tient elle-même ses livres. Le moteur reste (il écrit le paquet), l'onglet Écritures
+   reste libre (le client doit voir ce qui part chez son comptable), le paquet part toujours
+   gratuitement. **Décidé le 15/09/2026** (voir § 5, point L).
 
 ---
 
@@ -130,9 +132,12 @@ le même bouton. Aucune donnée d'entreprise ni de cabinet ne remonte au serveur
   en 8.8.0 → 9.0.0 (grand livre, balance, livre-journal avec OD, états financiers) reste dans le code
   — le **moteur** est indispensable : c'est lui qui écrit les écritures du paquet et la balance que le
   cabinet vérifie — mais les **écrans** sortent du chemin du chef d'entreprise : module
-  « Comptabilité » **désactivé par défaut**, activable dans Paramètres → Modules pour l'indépendant
-  qui tient lui-même ses livres ou pour le comptable qui ouvre le SkanFact d'un client (§ 8,
-  question 1 pour confirmer).
+  « Comptabilité » **désactivé par défaut** et **payant** — l'option pour la petite entreprise sans
+  comptable qui tient elle-même ses livres (décidé, § 1 point 8). L'option voyage dans la clé de
+  licence comme l'offre (`options: ['compta']`), se vend depuis la console et le module Éditeur, et
+  s'active en un clic dans Paramètres → Modules quand la clé la porte. Prix : **à toi** (proposition :
+  190 DT HT/an, cochable sur l'une ou l'autre offre, jamais une troisième offre — trois prix se
+  lisent, quatre non).
 - **L'onglet Écritures reste visible** : c'est la seule façon pour le client de voir ce qui part
   chez son comptable, et de comprendre une question qu'il reçoit.
 - **Le paquet gagne deux choses** : la **licence** du client (pour que le cabinet sache que le
@@ -283,13 +288,27 @@ sujet, pas par ordre ; l'ordre est au § 7.*
 - Rien de nouveau : même release, même workflow. Mais **chaque version du Cabinet est une publication
   des quatre installateurs** : on regroupe, on publie une fois par lot de versions.
 
-**L. L'app entreprise : masquer, pas supprimer**
-- Supprimer les écrans de 8.8.0 → 9.0.0 ferait perdre : le moteur (indispensable au paquet), les
+**L. L'app entreprise : masquer, pas supprimer — et vendre l'option (décidé)**
+- Supprimer les écrans de 8.8.0 → 9.0.0 aurait fait perdre : le moteur (indispensable au paquet), les
   tests qui le tiennent (une trentaine), les e2e (`e2e:livres`), et la possibilité pour un
-  indépendant sans comptable de voir sa balance. Les masquer coûte une entrée dans `MODULES`
-  (mécanisme de la 7.0.0), un test qui exige « désactivé par défaut », et la relecture de
-  `e2e:entreprise` (règle : quand une règle change, le test se relit en premier). **Recommandation :
-  masquer.** Si Skander préfère supprimer, ce sont les écrans seuls qui partent, jamais le moteur.
+  indépendant sans comptable de voir sa balance. Décision : **masquer et vendre**.
+- **Le module** : une entrée `compta` dans `MODULES` (mécanisme de la 7.0.0), désactivée par défaut,
+  qui porte Grand livre, Balance, États financiers et la saisie d'OD. **Écritures reste hors du
+  module et libre** : c'est ce qui part au comptable. Un test exige « désactivé par défaut » et
+  `e2e:entreprise` se relit (quand une règle change, le test se relit en premier).
+- **L'option payante** : la clé de licence gagne `options` (comme elle porte `offre`), et
+  `OFFRES`/`licenceState` (`src/licence.js`) rendent `options`. Une clé sans le champ n'a pas
+  l'option. La console et le module Éditeur savent la vendre, la facturer et la renouveler avec la
+  licence (une seule clé, une seule facture). L'essai de 30 jours **inclut** l'option : on ne vend
+  pas ce qu'on n'a pas laissé essayer.
+- **La porte** : une seule, `optionBlock('compta')`, posée sur l'entrée du module — la page
+  s'affiche avec son cadenas et le chemin (« activer l'option »), jamais un écran blanc. Elle ne
+  touche ni à Écritures, ni au paquet, ni à l'export CSV des écritures, ni à la clôture mensuelle :
+  **jamais de données en otage**, et le comptable reçoit tout, option ou pas. Un test relit app.js
+  et interdit toute autre pose.
+- **Chez qui l'option est inutile** : une entreprise dont le cabinet est sur SkanFact Cabinet n'en
+  a pas besoin (le cabinet tient les livres). L'écran le dit, plutôt que de vendre deux fois la même
+  chose à deux personnes.
 
 ---
 
@@ -340,7 +359,8 @@ hors SkanFact, donc la première chose qu'on peut vendre. Avant, il n'y a rien �
 ## 8. Les questions ouvertes
 
 **À Skander**
-1. **Masquer ou supprimer** les écrans comptables de l'app entreprise (recommandation : masquer, § 5.L).
+1. ~~Masquer ou supprimer~~ **Tranché le 15/09/2026 : masquer, et vendre l'option « Comptabilité »**
+   (§ 1 point 8, § 5.L). Reste son **prix** (proposition 190 DT HT/an).
 2. Le **nom** du produit cabinet reste « SkanFact Cabinet » ?
 3. Les **prix** du § 3 (72 DT par dossier hors SkanFact, 3 gratuits, paliers) : à confronter aux prix
    du marché tunisien avant la page Tarifs.
