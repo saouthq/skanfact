@@ -76,6 +76,16 @@ et un jeton de vérification Google ne donne aucun droit. Aucun secret ne doit j
 
 ---
 
+## Les serveurs de noms — avant et après
+
+| | Serveurs de noms |
+|---|---|
+| **Avant** (OVH, jusqu'au 15/09/2026) | `dns1.tn.ovh.net` · `ns1.tn.ovh.net` |
+| **Après** (Cloudflare, attribués le 15/09/2026) | `damian.ns.cloudflare.com` · `laylah.ns.cloudflare.com` |
+
+Revenir en arrière = remettre la ligne « Avant » dans OVH → skanfact.tn → Serveurs DNS. La zone
+OVH n'est jamais supprimée, elle répond de nouveau dès que les serveurs de noms la désignent.
+
 ## La bascule, dans l'ordre
 
 1. **Ajouter `skanfact.tn` dans Cloudflare** (plan *Free*). Cloudflare scanne la zone OVH et importe
