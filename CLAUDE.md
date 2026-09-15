@@ -2554,6 +2554,22 @@ Skander / Claude), les décisions de la semaine, le hors-périmètre, et « ce q
 vérifier ». Il se réécrit en S26 sur les faits. Quand il contredit `DIRECTION.md`, `DIRECTION.md`
 fait foi ; le contenu de chaque version reste dans `QUESTIONS.md` § 16.
 
+### L'inventaire des versions — `VERSIONS-A-VENIR.md` (15/09/2026)
+
+La liste de **tout ce qui reste à faire**, version par version, de la 9.1.0 à la 10.0.0 : un tableau
+récapitulatif (version → titre → nombre de fonctionnalités → niveau de spec → durée construction et
+réaliste), puis une section par version avec ses fonctionnalités numérotées `F-<version>-<nn>`,
+citables dans un commit. **171 fonctionnalités** sur les treize versions, **179** avec les deux
+versions d'entretien (9.5.1 et 9.8.1), ≈ 104 jours de construction et ≈ 228 jours réalistes. Trois
+niveaux de spec : *Complète* (9.1.0, 9.1.1, 9.2.0 — écrites dans le cahier), *Cadrée* (un écran
+réservé dans la Partie 15 avec son tableau Décidé / À décider), *Esquisse* (10.0.0). Chaque section
+dit aussi ce qui n'y est **pas**, ce qui la prouve, ce qui reste à décider et **qui** tranche
+(comptable, Skander, mesure). Une dernière partie liste ce qui viendra **au-delà de la 10.0.0**, sans
+numéro, avec le déclencheur de chacun. Ce document n'est ni une spécification (`CAHIER-DES-CHARGES.md`)
+ni un calendrier (`PLAN-DEVELOPPEMENT.md`) : c'est un inventaire, et il se relit à chaque version
+publiée. À noter : il emploie les numéros `9.3.5` et `9.3.6` demandés par Skander là où les autres
+documents disent `9.3.x` / `P 0.3` et `9.3.1` — la correspondance est écrite dans son en-tête.
+
 ### Le cahier des charges — `CAHIER-DES-CHARGES.md` (15/09/2026)
 
 Le complément technique de `PLAN-DEVELOPPEMENT.md`, écrit en lisant le code au commit `d7bfc54` :
