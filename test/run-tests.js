@@ -9102,6 +9102,102 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       assert.strictEqual(P.memeSecret('', ''), false, 'un secret vide n\'ouvre rien');
     });
 
+    // La console : un seul secret, long et tiré au hasard. Un secret COURT est refusé à la
+    // configuration (503 « mal réglée »), pas à l'usage : mieux vaut un écran qui le dit qu'une
+    // console qu'on croit fermée et qui s'ouvre en devinant « skanfact ».
+    t('plateforme : la console refuse un secret trop court, et le DIT', () => {
+      const H = o => new Headers(o);
+      const bon = 'X'.repeat(40);
+      assert.strictEqual(P.autoriseAdmin(H({}), {}).code, 503, 'sans secret configuré : mal réglée');
+      assert.strictEqual(P.autoriseAdmin(H({ 'x-skanfact-admin': 'skanfact' }), { ADMIN_SECRET: 'skanfact' }).code, 503,
+        'un secret court doit être refusé À LA CONFIGURATION, même s\'il est correctement présenté');
+      assert.ok(P.autoriseAdmin(H({}), { ADMIN_SECRET: 'skanfact' }).message.includes(String(P.ADMIN_MIN)),
+        'le message doit dire combien de caractères il faut');
+      assert.strictEqual(P.autoriseAdmin(H({}), { ADMIN_SECRET: bon }).code, 403, 'rien présenté : refusé');
+      assert.strictEqual(P.autoriseAdmin(H({ 'x-skanfact-admin': 'au hasard' }), { ADMIN_SECRET: bon }).code, 403);
+      assert.strictEqual(P.autoriseAdmin(H({ 'x-skanfact-admin': bon }), { ADMIN_SECRET: bon }).ok, true);
+      // Un secret entouré d'espaces (copier-coller) doit quand même ouvrir : c'était la panne de
+      // la 6.7.2, et elle a coûté une version entière à diagnostiquer.
+      assert.strictEqual(P.autoriseAdmin(H({ 'x-skanfact-admin': bon }), { ADMIN_SECRET: ' ' + bon + ' ' }).ok, true);
+    });
+
+    // Un logiciel qui écrit « 1 licence(s) » paraît bâclé — et c'est le premier écran que l'éditeur
+    // regarde tous les matins. La règle vient de l'app du cabinet (1.0.0).
+    t('plateforme : les chiffres de la console s\'accordent', () => {
+      assert.strictEqual(P.pl(0, 'jour'), '0 jour');
+      assert.strictEqual(P.pl(1, 'licence'), '1 licence');
+      assert.strictEqual(P.pl(2, 'licence'), '2 licences');
+      assert.strictEqual(P.pl(3, 'mois', 'mois'), '3 mois', 'un mot invariable ne prend pas de s');
+
+      const n = '2026-09-15T12:00:00Z';
+      assert.strictEqual(P.depuisQuand('2026-09-15T08:00:00Z', n), 'aujourd\'hui');
+      assert.strictEqual(P.depuisQuand('2026-09-14T08:00:00Z', n), 'hier');
+      assert.strictEqual(P.depuisQuand('2026-09-10T12:00:00Z', n), 'il y a 5 jours');
+      assert.strictEqual(P.depuisQuand('2026-06-15T12:00:00Z', n), 'il y a 3 mois');
+      assert.strictEqual(P.depuisQuand('2024-09-15T12:00:00Z', n), 'il y a 2 ans');
+      assert.strictEqual(P.depuisQuand('', n), '', 'une date absente ne fabrique pas de phrase');
+      assert.strictEqual(P.depuisQuand('n\'importe quoi', n), '');
+
+      // Les compteurs se recopient sans jamais inventer ; ce qu'on ne sait pas se dit.
+      const r2 = P.resumeStats({ clients: '3', licencesActives: 2, essaisEnCours: 7 });
+      assert.strictEqual(r2.clients, 3);
+      assert.strictEqual(r2.licencesRevoquees, 0);
+      assert.strictEqual(r2.incertain, false);
+      assert.strictEqual(P.resumeStats({}).incertain, true, 'une base muette ne doit pas passer pour un vivier vide');
+    });
+
+    // La console est une page servie telle quelle par le worker. Trois règles du projet s'y
+    // appliquent, et chacune a déjà coûté une version.
+    t('plateforme : la console n\'a ni bouton mort ni requête vers l\'extérieur', () => {
+      const src = fs.readFileSync(path.join(__dirname, '..', 'plateforme', 'skanfact-api.mjs'), 'utf8');
+      const i = src.indexOf('const CONSOLE_HTML = ');
+      assert.ok(i > 0, 'le gabarit de la console est introuvable');
+      const page = src.slice(i + 'const CONSOLE_HTML = '.length);
+      assert.ok(page.length > 3000 && page.length < 20000, 'tranche de la console inattendue : ' + page.length);
+
+      // Un backtick ou un ${ dans ce gabarit referme le template literal et casse le fichier. Le
+      // projet s'est fait piéger trois fois (7.20.0, 7.29.0, 7.31.0) — ici le test le garde.
+      const dedans = page.slice(1, page.lastIndexOf('`'));
+      assert.ok(!dedans.includes('`'), 'aucun backtick dans le gabarit de la console');
+      assert.ok(!/\$\{/.test(dedans), 'aucun ${ dans le gabarit de la console');
+
+      // Aucune requête vers l'extérieur : pas de bibliothèque, pas de police distante, rien qui
+      // fasse sortir le secret d'administration de la page.
+      assert.ok(!/<script[^>]+src=/i.test(dedans), 'aucun script externe dans la console');
+      assert.ok(!/https?:\/\//.test(dedans), 'la console ne doit appeler aucune adresse extérieure');
+
+      // Et aucun bouton mort : chaque identifiant de bouton posé dans le HTML doit être branché
+      // dans le script de la page. C'est le défaut de la 7.0.0 — treize boutons « Voir » qui
+      // avalaient le clic en silence.
+      const ids = [...dedans.matchAll(/<button[^>]*\bid="([^"]+)"/g)].map(m => m[1]);
+      assert.ok(ids.length >= 3, 'trop peu de boutons lus : le découpage est faux');
+      ids.forEach(id => assert.ok(
+        dedans.includes('$(\'' + id + '\').onclick'),
+        'bouton sans gestionnaire : #' + id));
+
+      // Le secret vit dans sessionStorage, jamais localStorage : il doit disparaître à la
+      // fermeture du navigateur.
+      assert.ok(dedans.includes('sessionStorage'), 'le secret doit vivre dans sessionStorage');
+      assert.ok(!dedans.includes('localStorage'), 'le secret de la console ne survit pas au navigateur');
+    });
+
+    // Une installation en ESSAI n'a pas de clé. Si elle ne s'annonçait pas, aucun essai ne serait
+    // visible — et « combien d'essais convertissent » est la question qui a motivé la plateforme.
+    t('plateforme : un essai s\'annonce sans clé, et la sentinelle est distincte', () => {
+      assert.strictEqual(P.ESSAI, 'ESSAI');
+      const src = fs.readFileSync(path.join(__dirname, '..', 'plateforme', 'skanfact-api.mjs'), 'utf8');
+      const code = src.replace(/\/\/[^\n]*/g, '');
+      // Sans clé : on note l'activation et on répond « essai ». On ne lui dit rien d'autre — c'est
+      // SON application qui compte ses trente jours, pas le serveur.
+      assert.ok(/if \(!cle\) \{[\s\S]{0,260}noterActivation\(env, ESSAI/.test(code),
+        'une application sans clé doit être enregistrée comme essai');
+      assert.ok(/etat: 'essai'/.test(code), 'et recevoir « essai » en réponse');
+      // Les essais ne se comptent que s'ils ont été vus récemment : un essai abandonné il y a six
+      // mois n'est pas un essai en cours, et le compter ferait croire à un vivier qui n'existe pas.
+      assert.ok(/derniere_fois >= \?'[\s\S]{0,40}ESSAI, recent/.test(code),
+        'les essais en cours se comptent sur une fenêtre récente');
+    });
+
     // Le schéma est la seule chose qu'on ne peut pas corriger après coup sans migration : deux
     // règles y sont vérifiées à la lecture.
     t('plateforme : le schéma ne porte pas de statut écrit à la main', () => {

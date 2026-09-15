@@ -61,6 +61,17 @@ variable de texte : un secret ne se relit plus une fois écrit, même par toi.
 | `APP_SECRET` | **le même** que celui du relais de mise à jour. C'est ce que l'application présente pour prouver qu'elle est bien SkanFact. |
 | `LICENCE_PUBLIC_KEYS` | les clés publiques qui vérifient les licences (voir plus bas) |
 | `REPONSE_PRIVATE_KEY` | la clé privée qui **signe les réponses** du serveur |
+| `ADMIN_SECRET` | **ton** mot de passe pour ouvrir la console |
+
+### `ADMIN_SECRET`
+
+Au moins **24 caractères**, tirés au hasard — pas une phrase que tu inventes. Un secret plus court
+est refusé à la configuration : la console affiche « mal réglée » au lieu de s'ouvrir. C'est
+volontaire, parce qu'une console qu'on croit fermée et qui s'ouvre en devinant « skanfact » est pire
+qu'une console sans mot de passe : on ne s'en méfie pas.
+
+Range-le dans ton gestionnaire de mots de passe. Il n'y a aucun moyen de le retrouver — Cloudflare
+ne le montre plus une fois posé ; en cas de perte, tu en poses un nouveau, c'est tout.
 
 ### `LICENCE_PUBLIC_KEYS`
 
@@ -105,6 +116,26 @@ Ce que tu dois voir :
 
 Et dans la table `activations` de la base, une ligne doit être apparue.
 
+## 6. Ouvrir la console
+
+Va simplement sur `https://skanfact-api.<ton-compte>.workers.dev/` dans un navigateur.
+
+**Elle est servie par le worker lui-même** : rien d'autre à déployer, aucune seconde adresse à
+retenir, aucun réglage de domaine croisé. Colle ton `ADMIN_SECRET` et tu es dedans.
+
+Ce que tu y vois : les essais en cours, les licences actives, expirées et révoquées, les
+ordinateurs qui se sont annoncés, les clients et les ventes. Quatre onglets, et des chiffres qui
+viennent tous de la base — aucun n'est estimé.
+
+Le secret reste dans **cet onglet de navigateur** et disparaît quand tu le fermes. Sur un poste
+partagé, c'est la différence entre « il faut le retaper » et « la console de l'éditeur est restée
+ouverte toute la nuit ».
+
+> **Elle est en lecture seule pour l'instant**, et elle le dit en haut de l'écran. Émettre une
+> licence, révoquer et facturer arrivent à l'étape suivante. Aucun bouton n'est affiché pour ces
+> gestes : un bouton qui ne fait rien est pire qu'un bouton absent — la règle vient de la 7.0.0, où
+> treize boutons « Voir » avalaient le clic en silence.
+
 ---
 
 ## Ce qui se passe si tu ne fais rien
@@ -144,5 +175,12 @@ méthode que le relais. Les six règles qu'elles tiennent :
 | un champ douteux est mis de côté, jamais refusé | un nom d'ordinateur bizarre ne doit pas empêcher quelqu'un d'apprendre que sa licence est active |
 | la réponse est signée, datée et liée à SA licence | sinon on répond « révoquée » à la place du serveur, ou on rejoue une vieille réponse |
 | le schéma ne porte aucun statut écrit à la main | un statut se déduit ; écrit à la main, il finit par mentir |
+| la console refuse un secret trop court, et le dit | une console qu'on croit fermée est pire qu'une console sans mot de passe |
+| la console n'a ni bouton mort ni requête vers l'extérieur | le défaut de la 7.0.0, et le secret ne doit sortir nulle part |
+| les chiffres s'accordent (« 1 licence », jamais « 1 licence(s) ») | c'est le premier écran que l'éditeur regarde tous les matins |
 
 Chacune a été prouvée en réintroduisant son défaut et en vérifiant que le test tombe.
+
+Et la console s'ouvre **pour de vrai** dans un navigateur : `npm run e2e:console` (neuf étapes, un
+faux serveur imite le worker — aucun Cloudflare nécessaire). C'est lui qui attrape ce qu'aucune
+lecture de code ne montre : un bouton inerte, une exception dans un gabarit, un écran blanc.

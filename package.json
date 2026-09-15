@@ -51,6 +51,7 @@
     "e2e:actions": "node test/e2e/actions.js",
     "e2e:parametres": "node test/e2e/parametres.js",
     "e2e:pages": "node test/e2e/pages.js",
+    "e2e:console": "node test/e2e/console.js",
     "e2e:licence": "node test/e2e/licence.js"
   },
   "devDependencies": {

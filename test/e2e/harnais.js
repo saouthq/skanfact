@@ -71,4 +71,31 @@ function dossierCaptures(nom) {
   return d;
 }
 
-module.exports = { playwright, RACINE, ELECTRON, VERSION, journal, surveiller, dossierCaptures };
+// Playwright installé dans le projet peut ne pas avoir SON chromium (image préchargée, version
+// décalée) : il réclame alors `npx playwright install` alors qu'un navigateur parfaitement utilisable
+// est déjà là, sous un autre numéro. On essaie le chemin normal, puis les navigateurs présents.
+//
+// Cette fonction vivait DANS pages.js. Elle est remontée ici le jour où un second parcours en a eu
+// besoin : un mécanisme recopié diverge toujours (règle 7.29.0), et celui-ci est exactement le genre
+// qu'on ne corrige qu'à un seul endroit sur deux.
+async function ouvrirChromium(pw) {
+  try { return await pw.chromium.launch({ args: ['--no-sandbox'] }); } catch (e) {
+    const racines = [process.env.PLAYWRIGHT_BROWSERS_PATH, '/opt/pw-browsers'].filter(Boolean);
+    for (const r of racines) {
+      let noms = [];
+      try { noms = fs.readdirSync(r); } catch { continue; }
+      for (const n of noms.filter(x => /^chromium(-\d+)?$/.test(x)).sort().reverse()) {
+        for (const rel of ['chrome-linux/chrome', 'chrome-mac/Chromium.app/Contents/MacOS/Chromium']) {
+          const p = path.join(r, n, rel);
+          if (fs.existsSync(p)) {
+            try { return await pw.chromium.launch({ executablePath: p, args: ['--no-sandbox'] }); } catch { /* suivant */ }
+          }
+        }
+      }
+    }
+    console.error('\nChromium est introuvable pour Playwright :\n  npx playwright install chromium\n');
+    throw e;
+  }
+}
+
+module.exports = { playwright, RACINE, ELECTRON, VERSION, journal, surveiller, dossierCaptures, ouvrirChromium };

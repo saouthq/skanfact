@@ -13,30 +13,10 @@
 //   npm run e2e:pages          (pas besoin de xvfb : chromium tourne sans écran)
 const path = require('path');
 const fs = require('fs');
-const { playwright, RACINE, journal, dossierCaptures } = require('./harnais');
+// `ouvrirChromium` vivait ici ; elle est remontée dans le harnais le jour où la console en a eu
+// besoin (un mécanisme recopié diverge toujours — règle 7.29.0).
+const { playwright, RACINE, journal, dossierCaptures, ouvrirChromium } = require('./harnais');
 const C = require(path.join(RACINE, 'src', 'renderer', 'core.js'));
-
-// Playwright installé dans le projet peut ne pas avoir SON chromium (image préchargée, version
-// décalée). On essaie le chemin normal, puis les navigateurs déjà présents sur la machine.
-async function ouvrirChromium(pw) {
-  try { return await pw.chromium.launch({ args: ['--no-sandbox'] }); } catch (e) {
-    const racines = [process.env.PLAYWRIGHT_BROWSERS_PATH, '/opt/pw-browsers'].filter(Boolean);
-    for (const r of racines) {
-      let noms = [];
-      try { noms = fs.readdirSync(r); } catch { continue; }
-      for (const n of noms.filter(x => /^chromium(-\d+)?$/.test(x)).sort().reverse()) {
-        for (const rel of ['chrome-linux/chrome', 'chrome-mac/Chromium.app/Contents/MacOS/Chromium']) {
-          const p = path.join(r, n, rel);
-          if (fs.existsSync(p)) {
-            try { return await pw.chromium.launch({ executablePath: p, args: ['--no-sandbox'] }); } catch { /* suivant */ }
-          }
-        }
-      }
-    }
-    console.error('\nChromium est introuvable pour Playwright :\n  npx playwright install chromium\n');
-    throw e;
-  }
-}
 
 const COMPANY = {
   name: 'Atelier des Mesures SUARL', matricule: '1234567X/A/M/000',
