@@ -3469,11 +3469,17 @@ t('8.4.0 : le plan de contrôle ne peut ni faire attendre l\'application, ni emp
     return main.slice(a, b > a ? b : undefined);
   };
   ['editeur:cleReponseCopier', 'editeur:cleServeurCopier'].forEach(nom => {
-    const cop = handler(nom);
-    assert.ok(cop.length > 200 && cop.length < 1200, 'tranche ' + nom + ' inattendue : ' + cop.length);
+    const cop = handler(nom).replace(/\/\/[^\n]*/g, '');
+    assert.ok(cop.length > 200 && cop.length < 1400, 'tranche ' + nom + ' inattendue : ' + cop.length);
     assert.ok(/clipboard\.writeText\(fs\.readFileSync\(chemin, 'utf8'\)\)/.test(cop) && !/texte:|return .*readFileSync/.test(cop),
       'la clé privée ne doit pas traverser le pont (' + nom + ')');
   });
+  // La valeur COMPLÈTE de LICENCE_PUBLIC_KEYS s'assemble dans l'application, jamais à la main : la
+  // clé seule collée dans ce réglage laissait le service sans aucune clé (15/09/2026).
+  const srvCop = handler('editeur:cleServeurCopier');
+  assert.ok(/=== 'service'/.test(srvCop) && /clePublique\(\)\.cles\.filter\(c => c\.kid !== SRV_KID\)/.test(srvCop) && /JSON\.stringify\(cles\)/.test(srvCop),
+    'le service reçoit la liste des clés embarquées plus srv-1, sur une ligne');
+  assert.ok(lireApp().includes("$('#ed-srv-service').onclick") && /cleServeurCopier\('service'\)/.test(lireApp()), 'le bouton « Copier LICENCE_PUBLIC_KEYS » manque ou n\'est pas branché');
 
   // L'e2e qui prouve tout ça existe, et il parle au VRAI worker.
   const e2e = lireSource('test', 'e2e', 'plateforme.js');

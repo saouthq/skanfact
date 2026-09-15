@@ -1576,6 +1576,17 @@ ipcMain.handle('editeur:cleServeurCopier', (_e, quoi) => {
   const privee = String(quoi || '') === 'privee';
   const chemin = privee ? SRV_PRIVEE() : SRV_PUBLIQUE();
   if (!fs.existsSync(chemin)) { const err = new Error('Aucune clé de serveur sur cet ordinateur.'); err.code = 'PAS_DE_CLE'; throw err; }
+  // « service » : la valeur COMPLÈTE de LICENCE_PUBLIC_KEYS, prête à coller — toutes les clés que
+  // l'application embarque, plus celle-ci. Le 15/09/2026, Skander a collé la clé seule dans le
+  // réglage, comme l'écran l'y invitait : le service ne trouvait plus AUCUNE clé, ni srv-1 pour
+  // émettre, ni la maître pour vérifier. Une liste s'assemble ici, jamais à la main.
+  if (String(quoi || '') === 'service') {
+    const mienne = lireJson(SRV_PUBLIQUE()) || {};
+    const cles = clePublique().cles.filter(c => c.kid !== SRV_KID).map(c => ({ kid: c.kid, publicKey: c.publicKey }));
+    cles.push({ kid: SRV_KID, publicKey: String(mienne.publicKey || '') });
+    require('electron').clipboard.writeText(JSON.stringify(cles));
+    return { ok: true, privee: false, service: true, nombre: cles.length };
+  }
   require('electron').clipboard.writeText(fs.readFileSync(chemin, 'utf8'));
   return { ok: true, privee };
 });

@@ -22,6 +22,10 @@ la date de départ reste celle de la clé la plus ancienne.
 La clé de réponse du serveur, elle, n'est toujours pas embarquée (voir 8.4.1) : une révocation
 prononcée depuis la console ne s'applique pas encore chez le client.
 
+**Un bouton de plus dans le panneau Éditeur : « Copier LICENCE_PUBLIC_KEYS (pour le service) ».**
+Il donne la liste complète des clés, prête à coller dans le réglage du service. Coller la clé
+`srv-1` seule — ce que l'ancien libellé laissait croire — laissait le service sans aucune clé.
+
 ## 8.5.1 — 15/09/2026
 
 **Le justificatif se joint AVANT toute saisie.** Signalé par le père de Skander, sur sa première

@@ -10579,7 +10579,7 @@
       autre: '<span class="badge annulée">L\'application embarque une AUTRE clé « srv-1 »</span>' }[etat];
     const dit = {
       absente: 'Sans cette clé, la console ne peut pas émettre de licence : chaque vente passe par ce poste. Créer la clé ici la garde sur cet ordinateur — elle ne doit jamais passer par ailleurs. C\'est une clé de second rang : si le service est compromis un jour, on la retire sans toucher à ta clé maître ni aux licences qu\'elle a signées.',
-      attente: 'La clé existe sur cet ordinateur. Il reste trois gestes : coller la <strong>privée</strong> dans le réglage <code>SRV_PRIVATE_KEY</code> du service, la <strong>publique</strong> dans <code>LICENCE_PUBLIC_KEYS</code> du service (sous le kid <code>srv-1</code>), et cette même publique dans la version suivante de SkanFact. Tant que la version n\'est pas publiée, une clé émise par la console est refusée par les clients.',
+      attente: 'La clé existe sur cet ordinateur. Il reste trois gestes : coller la <strong>privée</strong> dans le réglage <code>SRV_PRIVATE_KEY</code> du service, coller la <strong>liste complète</strong> (bouton « Copier LICENCE_PUBLIC_KEYS ») dans le réglage <code>LICENCE_PUBLIC_KEYS</code> du service — jamais la clé seule —, et la publique dans la version suivante de SkanFact. Tant que la version n\'est pas publiée, une clé émise par la console est refusée par les clients.',
       ok: 'L\'application publiée embarque cette clé sous le kid <code>srv-1</code> : les clés émises depuis la console sont reconnues chez les clients.',
       autre: 'SkanFact embarque une autre clé « srv-1 » que celle de cet ordinateur : les clés signées par le service avec celle-ci seraient refusées partout. Reprends la bonne clé privée, ou fais embarquer celle-ci dans la prochaine version.'
     }[etat];
@@ -10588,7 +10588,8 @@
       <div class="inline mt">
         ${srv.existe
           ? `<button type="button" class="btn" id="ed-srv-priv">Copier la clé privée (pour le service)</button>
-             <button type="button" class="btn" id="ed-srv-pub">Copier la clé publique (pour la version et le service)</button>`
+             <button type="button" class="btn" id="ed-srv-service">Copier LICENCE_PUBLIC_KEYS (pour le service)</button>
+             <button type="button" class="btn" id="ed-srv-pub">Copier la clé publique (pour la version)</button>`
           : '<button type="button" class="btn btn-primary" id="ed-srv-creer">Créer la clé du serveur</button>'}
       </div>`;
   }
@@ -10606,6 +10607,12 @@
     };
     if ($('#ed-srv-pub')) $('#ed-srv-pub').onclick = async () => {
       try { await bridge.cleServeurCopier('publique'); toast('Clé publique copiée — colle-la dans la conversation qui prépare la prochaine version'); }
+      catch (e) { toast(plainError(e), true); }
+    };
+    // La liste complète, assemblée par l'application : coller la clé seule dans ce réglage laissait
+    // le service sans aucune clé (15/09/2026).
+    if ($('#ed-srv-service')) $('#ed-srv-service').onclick = async () => {
+      try { const r = await bridge.cleServeurCopier('service'); toast(`Valeur copiée (${pl(r.nombre, 'clé')}) — colle-la telle quelle dans le réglage LICENCE_PUBLIC_KEYS du service, du [ au ]`); }
       catch (e) { toast(plainError(e), true); }
     };
   }
