@@ -30,11 +30,13 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
 10. [La technique du projet](#10-la-technique-du-projet)
 11. [Les données, la sécurité, la loi](#11-les-données-la-sécurité-la-loi)
 12. [La construction : comment on travaille](#12-la-construction--comment-on-travaille)
-13. [Les versions à venir, une par une](#13-les-versions-à-venir-une-par-une)
-14. [Les risques, et ce qui les couvre](#14-les-risques-et-ce-qui-les-couvre)
-15. [Quand je suis perdu : où trouver quoi](#15-quand-je-suis-perdu--où-trouver-quoi)
-16. [Les décisions à ne pas rediscuter](#16-les-décisions-à-ne-pas-rediscuter)
-17. [Ce qui reste à décider](#17-ce-qui-reste-à-décider)
+13. [La bêta : comment on s'en sert](#13-la-bêta--comment-on-sen-sert)
+14. [Entretenir l'application quand il y a beaucoup d'utilisateurs](#14-entretenir-lapplication-quand-il-y-a-beaucoup-dutilisateurs)
+15. [Les versions à venir, une par une](#15-les-versions-à-venir-une-par-une)
+16. [Les risques, et ce qui les couvre](#16-les-risques-et-ce-qui-les-couvre)
+17. [Quand je suis perdu : où trouver quoi](#17-quand-je-suis-perdu--où-trouver-quoi)
+18. [Les décisions à ne pas rediscuter](#18-les-décisions-à-ne-pas-rediscuter)
+19. [Ce qui reste à décider](#19-ce-qui-reste-à-décider)
 
 ---
 
@@ -67,7 +69,7 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
   comptable l'ouvre dans son application, et tout est là.
 - **Où en est-on ?** L'application entreprise est complète (version 9.0.0, quinze modules). Le
   Cabinet reçoit les paquets, vérifie, relance, exporte, mais **ne tient pas encore de
-  comptabilité** : c'est le chantier qui commence (versions 9.1.0 à 10.0.0, § 13).
+  comptabilité** : c'est le chantier qui commence (versions 9.1.0 à 10.0.0, § 15).
 - **Qu'est-ce qui rend SkanFact différent ?** Aucun logiciel de comptabilité ne reçoit les écritures
   de ses clients déjà écrites, avec les pièces, vérifiées, hors ligne, et ne permet de poser une
   question au client **sur la ligne** concernée. Les concurrents ont soit la comptabilité (Sage,
@@ -433,7 +435,7 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
 - **Elle deviendra quoi ?** Le **logiciel de comptabilité du cabinet**, complet : plan de comptes,
   saisie d'écritures, brouillard et validation, banque et rapprochement, lettrage, TVA et
   déclarations mensuelles, immobilisations, inventaire, clôture d'exercice, états financiers,
-  liasse, révision, collaborateurs. **Décidé, version par version (§ 13).**
+  liasse, révision, collaborateurs. **Décidé, version par version (§ 15).**
 - **Le comptable doit-il avoir ses clients sur SkanFact ?** Non. Un dossier hors SkanFact est un
   dossier ordinaire : tout arrive par la saisie, le relevé bancaire, l'import d'un autre logiciel.
   Un cabinet de soixante clients dont deux sur SkanFact doit pouvoir tout tenir. **Décidé.**
@@ -520,7 +522,7 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
   contre-passation, l'extourne, les guides d'écritures et les abonnements, l'import de relevé
   bancaire et le rapprochement automatique, le lettrage manuel, la balance âgée, les provisions et
   régularisations, la clôture d'exercice définitive, l'amortissement dégressif, la liasse. C'est le
-  contenu des versions 9.3.0 à 10.0.0 (§ 13).
+  contenu des versions 9.3.0 à 10.0.0 (§ 15).
 - **La numérotation des écritures ?** Continue par journal et par exercice, sans trou, attribuée
   **à la validation** (une écriture en brouillard n'a pas de numéro définitif). Un numéro n'est
   jamais réutilisé. **Décidé.**
@@ -720,7 +722,7 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
   donne une clé neuve **sans facture** : la licence est déjà payée. **Livré.**
 - **Et la licence du Cabinet ?** Le même mécanisme. Le sujet de la licence est l'**empreinte de la
   clé du cabinet** (qui existe déjà), la fiche porte `type: cabinet` et le quota de dossiers hors
-  SkanFact. Vérifiée hors ligne. **Décidé, à construire après la saisie (§ 13).**
+  SkanFact. Vérifiée hors ligne. **Décidé, à construire après la saisie (§ 15).**
 - **L'essai de 30 jours ?** Compté par ordinateur, depuis le jour où l'application a vu pour la
   première fois la clé publique (donc depuis la mise à jour qui l'a embarquée, pas depuis
   l'installation). Un second dossier créé après la fin de l'essai s'ouvre verrouillé : c'est voulu.
@@ -1072,7 +1074,7 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
   moteur partagé, le test de parité, et le module Comptabilité masqué côté entreprise. Elle
   n'attend personne, et c'est ce qu'il faut montrer au comptable pour obtenir les réponses au
   reste. **Décidé.**
-- **Dans quel ordre ensuite ?** Le § 13 détaille chaque version. En résumé : 9.2.0 le livre par
+- **Dans quel ordre ensuite ?** Le § 15 détaille chaque version. En résumé : 9.2.0 le livre par
   dossier → 9.3.0 la saisie → la licence du Cabinet → 9.4.0 la banque → 9.5.0 le fiscal mensuel →
   9.6.0 la clôture d'exercice → 9.7.0 immobilisations et stocks → 9.8.0 collaborateurs → 9.9.0
   révision et questions → 10.0.0 liasse et exemple complet. **Décidé.**
@@ -1118,12 +1120,167 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
 - **Comment on gagne d'autres cabinets ?** Par les clients : chaque paquet envoyé à un comptable sans
   Cabinet est un ZIP lisible qui lui dit que le Cabinet est gratuit pour ce dossier. Et par le
   pilote, s'il en parle à ses confrères.
-- **Et la bêta ?** Le canal bêta existe pour l'app entreprise ; le pilote pourra recevoir les
-  versions du Cabinet en avance. À adapter : aujourd'hui une bêta ne construit pas le Cabinet.
+- **Et la bêta ?** Chaque lot passe par une bêta chez quelques personnes réelles avant la stable.
+  Le § 13 dit comment. Et le § 14 dit comment on entretient l'application quand elle est chez
+  beaucoup de monde.
 
 ---
 
-## 13. Les versions à venir, une par une
+## 13. La bêta : comment on s'en sert
+
+- **C'est quoi, une bêta ?** Une version d'essai, numérotée `9.1.0-beta.1`, publiée **avant** la
+  version stable, que seuls reçoivent ceux qui ont coché « Recevoir les versions bêta ». Elle sert
+  à faire tourner une nouveauté chez quelques personnes réelles avant de la donner à tout le monde.
+  **Livré côté entreprise (7.25.0).**
+- **Comment ça marche, techniquement ?** Le numéro décide de tout : le workflow marque la release
+  « préversion » sur GitHub (la page « dernière version » continue de pointer sur la stable), les
+  fichiers de mise à jour s'appellent `beta.yml` au lieu de `latest.yml`, le relais les sert, et
+  seule une application qui a coché la case les demande. Une application sans la case ne voit
+  jamais une bêta. Une application ne revient jamais en arrière toute seule ; décocher la case
+  ramène à la stable **suivante**. Une bêta se travaille sur la branche `beta` du dépôt ; quand
+  elle est confirmée, la même version devient stable sur `main`.
+- **Le Cabinet a-t-il une bêta ?** Non, pas encore : une préversion ne construit pas le Cabinet, et
+  il n'a qu'un canal (`cabinet`). Or tout le chantier est côté Cabinet. À construire **avant la
+  première bêta de la 9.1.0** : un canal `cabinet-beta` (fichier `cabinet-beta.yml`), la case dans
+  ses Réglages avec la même question et la même sauvegarde « avant-beta », le relais qui sert ce
+  canal et lui seul, le workflow qui construit le Cabinet en préversion. Un test vérifie qu'un
+  canal ne peut pas réclamer les fichiers d'un autre. **À construire, en premier.**
+- **Qui est dans la bêta ?** Skander (Mac et PC), sa famille si elle veut, et le comptable pilote.
+  Jamais un client payant qui ne l'a pas demandé : la case est décochée à l'installation, une
+  question est posée avant de la cocher, et un test le vérifie. **Décidé.**
+- **Le pilote travaille sur une bêta avec un vrai dossier, n'est-ce pas risqué ?** C'est le pacte
+  du pilote, et il est encadré : sauvegarde « avant-beta » prise automatiquement, copie externe
+  réglée, tous les tests verts avant toute bêta, et une bêta qui touche aux écritures le dit en
+  première ligne de ses notes. Un client ordinaire, lui, laisse la case décochée sur l'ordinateur
+  qui sert à travailler, comme l'application le lui écrit.
+- **Le cycle d'une version, avec la bêta ?** (1) Claude construit sur la branche `beta`, tous les
+  tests verts. (2) Publication de `9.1.0-beta.1` (workflow Release sur la branche `beta`). (3) Les
+  bêta-testeurs la reçoivent dans les quatre heures ; la sauvegarde « avant-beta » est prise avant
+  la bascule. (4) Ils travaillent avec pendant **au moins une semaine réelle** (deux pour une version
+  qui touche aux écritures, à l'argent ou aux clés). (5) Les retours arrivent par « Signaler un
+  problème », « Proposer une amélioration », ou de vive voix. (6) Chaque correction donne une
+  `beta.2`, `beta.3`. (7) Quand le pilote et Skander disent oui, la même version devient `9.1.0`
+  stable, publiée depuis `main` : tout le monde la reçoit. (8) La bêta suivante ne commence pas
+  avant que la stable soit sortie. **Décidé.**
+- **Qui dit que la bêta est bonne, et sur quel critère ?** Skander, après le pilote. Le critère :
+  aucun défaut grave ouvert, tous les retours traités (corrigés, planifiés ou refusés avec un
+  motif), les tests verts, et la version **utilisée** sur un vrai dossier pendant la durée — pas
+  seulement regardée. **Décidé.**
+- **Peut-on revenir en arrière depuis une bêta ?** Si la bêta n'a pas changé le format des données :
+  oui, décocher la case, la stable suivante remplace. Si elle l'a changé (une migration) : non,
+  l'ancienne version ne lirait plus le fichier. C'est pour ça qu'une sauvegarde « avant-beta » est
+  prise avant, et qu'on la restaure sur la stable si besoin. Règle : une bêta qui migre les données
+  le dit dans ses notes, en première ligne. **Décidé.**
+- **Combien de bêtas en même temps ?** Une seule. Un lot de nouveautés = une bêta = une stable.
+  Un correctif urgent pendant une bêta sort en stable (x.y.z) sur `main`, et la bêta le reprend.
+- **Que fait-on des retours de bêta ?** Chaque retour devient soit une correction dans la bêta
+  suivante, soit une ligne dans le plan avec sa version, soit un « non » motivé. Rien ne se perd,
+  rien n'est promis sans version. Skander tient la liste ; Claude la traite.
+- **La bêta remplace-t-elle les tests ?** Non. Elle passe **après** tous les tests verts. Elle
+  attrape ce que les tests ne voient pas : l'ergonomie, le métier réel, le fuseau horaire, Windows,
+  ce qu'un comptable fait vraiment de ses journées.
+- **Une bêta de la plateforme ?** La console et le worker n'ont pas de bêta : ils se testent sur une
+  base locale avec le vrai code (les e2e `console`, `plateforme`, `pont`), puis Skander colle le
+  nouveau code dans Cloudflare. Un changement de base est toujours additif, donc un ancien worker
+  et une nouvelle base cohabitent le temps de coller.
+
+---
+
+## 14. Entretenir l'application quand il y a beaucoup d'utilisateurs
+
+- **Le principe.** Ne jamais casser ce qui marche chez quelqu'un. Ça tient par cinq choses : des
+  garanties de compatibilité, un rythme de publication, un chemin d'urgence, la bêta avant la
+  stable, et l'absence de tout mécanisme qui pourrait toucher tous les postes d'un coup. **Décidé.**
+- **Les garanties de compatibilité, ce qui ne casse jamais.** (1) Les **données** : chaque version
+  lit tout ce que les précédentes ont écrit ; une migration ajoute, ne retire jamais un champ ; une
+  sauvegarde est prise avant. (2) Le **paquet** : un Cabinet récent lit tous les paquets anciens ;
+  un Cabinet ancien reconnaît un paquet trop récent et le dit. (3) La **clé de licence** : une clé
+  émise reste valide jusqu'à sa date quoi qu'on publie ; un champ inconnu est ignoré ; l'ordre des
+  champs ne change jamais. (4) Les **réglages du poste** (relais, plateforme) : facultatifs, avec
+  repli. (5) Une **pièce émise** ne change jamais de montant après une mise à jour (copie figée).
+  Chacune a un test, et casser l'une d'elles est un défaut grave. **Décidé.**
+- **Le rythme.** Une stable toutes les deux à quatre semaines, par lot, précédée d'une bêta. Un
+  correctif (x.y.z) dès qu'un défaut grave est confirmé, sans attendre le lot. Jamais deux
+  publications le même jour sauf urgence : chaque publication coûte des minutes de construction et
+  une mise à jour chez tout le monde, on ne publie pas pour une virgule. **Décidé.**
+- **La gravité d'un défaut, et ce qu'elle déclenche.** *Grave* : un chiffre faux, une donnée perdue,
+  une application qui ne démarre plus, un paquet illisible, une clé refusée à tort → correctif sous
+  48 heures, et un mail aux utilisateurs touchés. *Moyen* : une fonction qui ne répond pas, un écran
+  faux sans conséquence sur les chiffres → le prochain lot. *Petit* : libellé, esthétique → quand ça
+  arrange. **Décidé.**
+- **Le chemin d'urgence.** Reproduire avec le journal reçu ; corriger sur `main` ; `npm test`, les
+  e2e touchés et les parcours de base ; publier x.y.z ; vérifier la release ; mail aux touchés ;
+  écrire la règle apprise dans `CLAUDE.md` pour que ça n'arrive plus. Jamais de retour en arrière,
+  jamais de retrait d'une version publiée. **Décidé.**
+- **La liste de contrôle avant chaque publication.** Toujours : `npm test`, puis les e2e
+  `entreprise`, `cabinet`, `boucle`, `refus`, `perte`, `livres`, `licence`, `plateforme`, `pages`.
+  Selon ce qui a été touché : les autres. Un lot qui touche à l'argent, à une clé ou à un chiffre
+  comptable passe en plus par une relecture adversariale. Puis le numéro, le CHANGELOG, l'aide et
+  les bulles, la migration testée sur le jeu d'exemple **et sur des fichiers de données anciens
+  conservés** (un par version majeure, anonymisé : à constituer, **À construire**). **Décidé.**
+- **Comment on sait ce qui tourne chez les gens ?** Aucune télémétrie. La seule mesure : les
+  activations sur la plateforme (version, système, poste), qui disent combien de postes sont sur
+  quelle version. Les retours arrivent par les deux boutons. On ne saura jamais quelle fonction est
+  utilisée : c'est le prix de « rien ne remonte », et il est assumé. **Décidé.**
+- **Et les utilisateurs qui ne mettent pas à jour ?** Ils gardent une version qui marche. Seule la
+  dernière est suivie ; un correctif ne sort que dans une nouvelle version. Un paquet d'une vieille
+  version reste lisible. Le jour où une version est vraiment nécessaire (une loi, un format),
+  l'application le dit dans son bandeau, sans forcer. **Jamais de mise à jour forcée, jamais de
+  coupure à distance.** **Décidé.**
+- **Comment on communique avec les utilisateurs ?** Les notes de version dans l'application (bouton
+  « Nouveautés ») et sur GitHub, écrites pour un utilisateur, pas pour un développeur. Un mail aux
+  clients pour une version importante ou un défaut grave (la liste des clients est dans la
+  console). Pas de lettre d'information tant qu'il y a moins de cinquante clients. **À toi.**
+- **Le support quand ils sont cent.** L'aide intégrée répond d'abord (chaque écran a sa bulle,
+  chaque question sa recherche). Les mails arrivent sur `contact@` avec le journal ; Skander trie
+  (grave, moyen, petit) et transmet. Une question posée trois fois devient un paragraphe d'aide.
+  Pas d'engagement de délai ; l'ordre est : grave d'abord. Si ça dépasse ce qu'une personne peut
+  lire, une boîte partagée et une deuxième personne, pas un outil de tickets. **À toi.**
+- **La loi de finances, chaque janvier.** Les taux sont des réglages : un utilisateur peut les
+  changer sans mise à jour. On publie quand même une version en janvier avec les nouveaux défauts et
+  une ligne « À VÉRIFIER avec ton comptable », après relecture par le comptable pilote. Le
+  calendrier fiscal et les barèmes de paie ont chacun leur écran. **Décidé.**
+- **L'entretien technique sans nouveauté.** Electron embarque un navigateur : une mise à jour
+  d'Electron tous les trois à six mois pour ses correctifs de sécurité, avec tous les e2e relancés,
+  publiée dans un lot. Les dépendances se comptent sur les doigts d'une main (Electron,
+  electron-builder), c'est voulu : moins de dépendances, moins de surprises. **Décidé.**
+- **Retirer une fonction ?** On ne retire jamais une fonction qui porte des données ; on la masque
+  (module) ou on la met en pause (comme la lecture de photo). Ce qui a été saisi reste lisible et
+  exportable. **Décidé.**
+- **La plateforme sous charge.** Une application n'appelle le serveur qu'à l'activation et à la
+  vérification de mise à jour : quelques requêtes par poste et par jour. L'offre gratuite de
+  Cloudflare (de l'ordre de cent mille requêtes par jour) tient donc des milliers de postes ;
+  au-delà, l'offre payante coûte quelques dollars par mois. **À VÉRIFIER : les limites exactes le
+  jour où on approche.** Un export régulier de la base est à mettre en place.
+- **Si Skander est absent (vacances, maladie) ?** Les applications continuent, la console attend,
+  les mails attendent. Le seul point sensible : un client dont la licence expire pendant l'absence
+  est bloqué à la création. Parades : le renouvellement réclamé trente jours avant, un jour le
+  paiement en ligne qui émet la clé sans personne, et une personne de confiance qui a accès au
+  secret de la console et sait « marquer payée ». **À toi.**
+- **Un cabinet de soixante dossiers sur dix ans : les performances ?** Un fichier par dossier,
+  chargé à l'ouverture du dossier seulement. Avant la 9.3.0, un e2e de charge (un dossier de
+  cinquante mille écritures) mesure ; on n'optimise qu'après avoir mesuré. **À construire.**
+- **Si beaucoup de cabinets arrivent ?** Chaque cabinet est indépendant : rien ne se partage entre
+  eux, aucun serveur ne les relie. Le seul point commun est la plateforme (licences) et le relais.
+  L'échelle ne change rien au produit, seulement au support et à la vente.
+- **Comment on évite de casser en changeant le code ?** Une seule porte par garde-fou, une seule
+  source de vérité par règle, un test par règle, un test qui se prouve en réintroduisant le défaut,
+  les commentaires retirés avant de juger, et `CLAUDE.md` qui porte toutes les règles apprises pour
+  qu'une session suivante ne refasse pas une erreur passée. C'est ce qui a tenu plus de deux cents
+  versions sans perte de données connue. **Décidé.**
+- **Tester sur des données réelles ?** Jamais sur les données d'un client. Sur le jeu d'exemple, et
+  sur des fichiers que des utilisateurs donnent volontairement, anonymisés. **Décidé.**
+- **Un poste client compromis (virus, vol) ?** Rien de central n'est atteint : aucune clé privée de
+  l'éditeur n'est sur un poste client. Le pire est la perte de ses propres données, couverte par les
+  sauvegardes et le chiffrement. Chez le cabinet : chiffré, mot de passe, verrouillage (automatique
+  en 9.8.0).
+- **Quand faut-il une version majeure (x.0.0) ?** Quand la forme des données change de manière
+  qu'une ancienne version ne pourrait pas lire, ou qu'une habitude change pour tout le monde. Elle
+  passe toujours par une bêta plus longue et un mail aux clients. **Décidé.**
+
+---
+
+## 15. Les versions à venir, une par une
 
 *Pour chaque version : ce qu'elle contient, ce qu'elle exclut, ce dont elle dépend, comment on la
 prouve. Les deux applications sortent ensemble sous le même numéro. Les durées sont des ordres de
@@ -1146,6 +1303,8 @@ grandeur de construction, hors attente des réponses.*
 - **Partagé.** `compta.js` extrait de `core.js` (grand livre, balance, journal, centralisateur,
   lettrage, états, à-nouveaux, plan comptable, libellés de comptes), rechargé par les deux
   applications, `core.js` inchangé pour ses appelants.
+- **Publication.** Le canal `cabinet-beta` (§ 13) est construit en premier, pour que la 9.1.0
+  puisse partir en bêta chez le pilote avant d'être stable.
 - **Exclu.** Aucune saisie, aucun livre propre au dossier, aucune modification des paquets.
 - **Preuve.** Test de parité (même balance au millime) ; e2e `cabinet-livres` (les quatre onglets
   sur un vrai paquet, le mois manquant annoncé) ; e2e `boucle` relancé ; test « module désactivé
@@ -1292,14 +1451,14 @@ n'est pas obligatoire) ; l'interface en arabe ; un autre pays.
 
 ---
 
-## 14. Les risques, et ce qui les couvre
+## 16. Les risques, et ce qui les couvre
 
 - **Le comptable ne joue pas le jeu du pilote.** On reste sur le pont amélioré (les livres lus dans
   les paquets, 9.1.0) et on ne construit pas la tenue complète sans cabinet. Un logiciel « au
   niveau des meilleurs » construit sans personne qui l'utilise tous les jours serait un beau
   logiciel que personne n'ouvre. **Décidé.**
 - **On s'éparpille.** Une version à la fois, finie, testée, publiée, utilisée avant la suivante.
-  Ce qui n'est pas décrit dans le § 13 n'entre pas dans la version. **Décidé.**
+  Ce qui n'est pas décrit dans le § 15 n'entre pas dans la version. **Décidé.**
 - **La loi de finances change les taux.** Aucun taux n'est écrit en dur, tout est paramétrable, et
   l'application porte « À VÉRIFIER » partout où un chiffre relève du comptable. **Décidé.**
 - **Sage sort la même chose.** Notre différence est de structure, pas de fonctions : le pont avec le
@@ -1324,7 +1483,7 @@ n'est pas obligatoire) ; l'interface en arabe ; un autre pays.
 
 ---
 
-## 15. Quand je suis perdu : où trouver quoi
+## 17. Quand je suis perdu : où trouver quoi
 
 ### Les documents
 
@@ -1406,7 +1565,7 @@ n'est pas obligatoire) ; l'interface en arabe ; un autre pays.
 
 ---
 
-## 16. Les décisions à ne pas rediscuter
+## 18. Les décisions à ne pas rediscuter
 
 1. Deux applications, un dépôt, un moteur partagé, le même numéro de version.
 2. Hors ligne pour toujours ; le serveur ne fait que gérer les licences et, un jour, transporter.
@@ -1427,10 +1586,16 @@ n'est pas obligatoire) ; l'interface en arabe ; un autre pays.
 14. Un test se prouve en réintroduisant le défaut ; quand une règle change, le test se relit.
 15. Electron et JavaScript pur, fichiers JSON, pas de bibliothèque tierce dans l'application.
 16. Le comptable de Skander est le pilote ; sans pilote, pas de tenue complète.
+17. Chaque lot passe par une bêta avant la stable ; une seule bêta à la fois ; jamais une bêta chez
+    qui ne l'a pas demandée.
+18. Jamais de mise à jour forcée, jamais de coupure à distance, jamais de retrait d'une version
+    publiée : un défaut se corrige par une version par-dessus.
+19. Une version ne casse jamais ce qu'une précédente a écrit : données, paquets, clés, réglages,
+    pièces émises.
 
 ---
 
-## 17. Ce qui reste à décider
+## 19. Ce qui reste à décider
 
 **À Skander**
 1. Le **prix de l'option Comptabilité** de l'app entreprise (proposition : 190 DT HT par an).
@@ -1445,19 +1610,26 @@ n'est pas obligatoire) ; l'interface en arabe ; un autre pays.
 7. Les gestes qui n'attendent que toi : la clé Resend sur Cloudflare, le DNS du Mac, la clé de
    réponse à la mise en production, les certificats de signature le jour où ça vend, l'export
    régulier de la base de la plateforme.
+8. L'entretien à l'échelle (§ 14) : qui reçoit les mails de support avec toi quand ils seront trop
+   nombreux, quelle personne de confiance peut « marquer payée » en ton absence, et à partir de
+   combien de clients on écrit une lettre d'information.
 
-**Au comptable pilote** (le détail par version est au § 13)
-8. Quel logiciel il veut remplacer, et sur quels trois écrans il jugera que c'est fait.
-9. Son plan de comptes, ses journaux, sa façon de saisir, ses relevés, sa déclaration, ses états, sa
-   révision, la liasse — chacun au moment où la version qui en dépend commence.
-10. Ses réponses aux choix marqués « À VÉRIFIER » dans l'application (TVA en une écriture au dernier
+**Au comptable pilote** (le détail par version est au § 15)
+9. Quel logiciel il veut remplacer, et sur quels trois écrans il jugera que c'est fait.
+10. Son plan de comptes, ses journaux, sa façon de saisir, ses relevés, sa déclaration, ses états,
+    sa révision, la liasse — chacun au moment où la version qui en dépend commence.
+11. Ses réponses aux choix marqués « À VÉRIFIER » dans l'application (TVA en une écriture au dernier
     jour du mois, compte 13 pour le résultat, contreparties par défaut, TFP à 2 % ou 1 %, assiette
     de la retenue, avoir sans timbre), et ce qu'il fait d'un mois provisoire.
+12. Son accord pour travailler sur des versions bêta avec un vrai dossier, dans les conditions du
+    § 13.
 
 **À l'Ordre, au juriste, à l'administration (À VÉRIFIER)**
-11. La gratuité conditionnelle du Cabinet est-elle une rémunération indirecte du cabinet ?
-12. Ce qu'exige la loi tunisienne d'un logiciel de tenue (irréversibilité, conservation, restitution).
-13. L'INPDP pour la plateforme (empreintes et contacts).
-14. Le taux de TVA sur les licences logicielles, et le calendrier de l'e-facture.
-15. Quelle solution de paiement en ligne accepte une SUARL, à quel coût, avec quel délai de
+13. La gratuité conditionnelle du Cabinet est-elle une rémunération indirecte du cabinet ?
+14. Ce qu'exige la loi tunisienne d'un logiciel de tenue (irréversibilité, conservation, restitution).
+15. L'INPDP pour la plateforme (empreintes et contacts).
+16. Le taux de TVA sur les licences logicielles, et le calendrier de l'e-facture.
+17. Quelle solution de paiement en ligne accepte une SUARL, à quel coût, avec quel délai de
     versement.
+18. Les limites exactes de l'offre gratuite de Cloudflare, le jour où l'on approche des milliers de
+    postes.
