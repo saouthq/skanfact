@@ -4727,10 +4727,14 @@
     pays: { sort: null, page: 1 },         // encaissements
     buys: { sort: null, page: 1 }          // journal des achats
   };
-  const COMPTA_TABS = [['ventes', 'Ventes'], ['achats', 'Achats'], ['tva', 'TVA à payer'], ['ecritures', 'Écritures'], ['calendrier', 'Calendrier fiscal'], ['clotures', 'Clôtures'], ['cabinet', 'Cabinet']];
+  const COMPTA_TABS = [['ventes', 'Ventes'], ['achats', 'Achats'], ['tva', 'TVA à payer'], ['ecritures', 'Écritures'], ['grandlivre', 'Grand livre'], ['balance', 'Balance'], ['calendrier', 'Calendrier fiscal'], ['clotures', 'Clôtures'], ['cabinet', 'Cabinet']];
   // État propre à l'onglet Écritures : sa pagination et son tri ne doivent pas se mélanger à ceux
   // des journaux de la même page.
   const ecrState = { page: 1, sort: null };
+  // Grand livre (8.8.0) : le compte regardé — vide = tous, sinon un numéro ou un préfixe (« 4 »).
+  const glState = { compte: '', page: 1 };
+  // Balance (8.8.0) : générale, ou auxiliaire clients / fournisseurs.
+  const balState = { vue: 'generale' };
 
   // ---------- Fournisseurs ----------
   const supplierById = id => data.suppliers.find(s => s.id === id);
@@ -8472,6 +8476,8 @@
       if (comptaState.tab === 'achats') return drawBuyJournal(period(), periodLabel());
       if (comptaState.tab === 'tva') return drawVat();
       if (comptaState.tab === 'ecritures') return drawEntries();
+      if (comptaState.tab === 'grandlivre') return drawGrandLivre();
+      if (comptaState.tab === 'balance') return drawBalance();
       if (comptaState.tab === 'calendrier') return drawFiscal();
       if (comptaState.tab === 'clotures') return drawClosures();
       if (comptaState.tab === 'cabinet') return drawCabinet();
@@ -8769,7 +8775,6 @@
       const p = period();
       const entries = C.journalEntries(data, company(), p, {});
       const bal = C.entriesBalance(entries);
-      const acc = C.chartAccounts(data);
       const byAcc = C.entriesByAccount(entries);
       const cols = [
         { key: 'date', label: 'Date', val: e => e.date },
@@ -8807,11 +8812,11 @@
 
         <div class="panel"><h2>Par compte</h2>
           ${byAcc.length ? `<div class="scroll-x"><table class="list compact"><thead><tr><th>Compte</th><th>Intitulé</th><th class="r">Débit</th><th class="r">Crédit</th><th class="r">Solde</th></tr></thead><tbody>
-            ${byAcc.map(a => { const key = Object.keys(acc).find(k => acc[k] === a.account); return `<tr>
+            ${byAcc.map(a => `<tr>
               <td class="nw"><strong>${h(a.account)}</strong></td>
-              <td class="muted">${h(key ? C.ACCOUNT_LABELS[key] : 'Compte hors plan')}</td>
+              <td class="muted">${h(C.accountLabel(data, a.account, (entries.find(e => e.account === a.account && e.role) || {}).tiers))}</td>
               <td class="r nw">${C.money(a.debit)}</td><td class="r nw">${C.money(a.credit)}</td>
-              <td class="r nw">${C.money(a.solde)}</td></tr>`; }).join('')}
+              <td class="r nw">${C.money(a.solde)}</td></tr>`).join('')}
           </tbody></table></div>` : '<div class="empty">—</div>'}
           <!-- « Retenue à la source opérée » et « subie » s'affichent l'une SOUS l'autre, avec des
                numéros de compte voisins, et rien dans toute l'application ne les distinguait : deux
@@ -8856,6 +8861,136 @@
       $('#ecr-plan').onclick = () => chartForm(drawEntries);
     }
 
+    // Les six colonnes d'une balance, partagées par la générale et les auxiliaires : ouverture,
+    // mouvements, soldes — chaque montant dans SA colonne, débit ou crédit, jamais un signe.
+    const BAL_HEAD = `<th class="r">Ouverture D</th><th class="r">Ouverture C</th><th class="r">Débit</th><th class="r">Crédit</th><th class="r">Solde D</th><th class="r">Solde C</th>`;
+    const balCells = r => ['ouvertureD', 'ouvertureC', 'debit', 'credit', 'soldeD', 'soldeC']
+      .map(k => `<td class="r nw">${r[k] ? C.money(r[k]) : '<span class="muted">—</span>'}</td>`).join('');
+    const balFoot = t => `<tr class="total-row"><td colspan="2">Totaux</td>${['ouvertureD', 'ouvertureC', 'debit', 'credit', 'soldeD', 'soldeC'].map(k => `<td class="r nw"><strong>${C.money(t[k])}</strong></td>`).join('')}</tr>`;
+
+    // Les comptes auxiliaires s'écrivent sur les fiches (compteAux) la première fois qu'on en a
+    // besoin : un code figé ne change plus, quoi qu'il arrive à la liste.
+    function figerAuxiliaires() {
+      if (!C.auxiliairesActifs(data)) return;
+      if (C.numeroterAuxiliaires(data)) save();
+    }
+
+    // Le grand livre (8.8.0) : « mouvement de compte », le premier terme du comptable. Un compte,
+    // ses lignes une à une, le solde qui avance — et le solde d'ouverture en tête, déduit de tout
+    // ce qui précède la période.
+    function drawGrandLivre() {
+      figerAuxiliaires();
+      const cur = company().currency;
+      const p = period();
+      const tout = C.grandLivre(data, company(), p, {});
+      const choix = tout.comptes.map(c => ({ v: c.account, label: `${c.account} — ${c.label}` }));
+      if (glState.compte && !tout.comptes.some(c => c.account.startsWith(glState.compte))) glState.compte = '';
+      const gl = glState.compte ? C.grandLivre(data, company(), p, { compte: glState.compte }) : tout;
+      const lignes = gl.lignes;
+      $('#c-body').innerHTML = `
+        <div class="panel"><h2>Grand livre — ${h(periodLabel())} ${info('gl.quoi')}</h2>
+          <p class="small">Chaque compte, mouvement par mouvement, avec le solde qui avance. Le solde d'ouverture reprend tout ce qui précède la période ; les charges et les produits repartent de zéro au 1er janvier. ${info('gl.solde')}</p>
+          <div class="inline mt" style="align-items:center;gap:10px;flex-wrap:wrap">
+            <label class="field" style="min-width:320px;margin:0"><span>Compte</span>
+              ${combo({ name: 'glCompte', value: glState.compte, items: [{ v: '', label: 'Tous les comptes' }, ...choix], placeholder: 'Un compte, ou un début de numéro…' })}</label>
+            <button class="btn" id="gl-csv" ${lignes ? '' : 'disabled'}>Exporter en CSV</button>
+            <button class="btn btn-ghost" id="gl-plan">Plan de comptes…</button>
+          </div>
+          <div class="pay-grid mt">
+            <div><div class="k-label">Comptes</div><div class="v">${gl.comptes.length}</div></div>
+            <div><div class="k-label">Lignes</div><div class="v">${lignes}</div></div>
+            <div><div class="k-label">Total débit</div><div class="v">${C.money(gl.debit, cur)}</div></div>
+            <div><div class="k-label">Total crédit</div><div class="v">${C.money(gl.credit, cur)}</div></div>
+          </div>
+        </div>
+        ${!tout.comptes.length
+          ? '<div class="panel"><div class="empty">Aucune écriture sur cette période, et aucun solde reporté. Choisis un autre mois en haut à droite.</div></div>'
+          : gl.comptes.map(c => `
+        <div class="panel gl-compte" data-compte="${h(c.account)}"><h2><span class="mono">${h(c.account)}</span> ${h(c.label)}</h2>
+          <div class="scroll-x"><table class="list compact gl-t">
+            <thead><tr><th>Date</th><th>Journal</th><th>Pièce</th><th>Libellé</th><th class="r">Débit</th><th class="r">Crédit</th><th class="r">Solde ${info('gl.solde')}</th></tr></thead>
+            <tbody>
+              <tr class="gl-ouv"><td class="nw muted">—</td><td></td><td></td><td class="muted">Solde d'ouverture</td><td></td><td></td><td class="r nw">${C.money(c.ouverture)}</td></tr>
+              ${c.lignes.map(e => `<tr>
+                <td class="nw">${C.fmtDate(e.date)}</td><td>${h(e.journal)}</td><td class="nw">${h(e.piece)}</td><td>${h(e.label)}</td>
+                <td class="r nw">${e.debit ? C.money(e.debit) : '<span class="muted">—</span>'}</td>
+                <td class="r nw">${e.credit ? C.money(e.credit) : '<span class="muted">—</span>'}</td>
+                <td class="r nw gl-solde">${C.money(e.solde)}</td></tr>`).join('')}
+            </tbody>
+            <tfoot><tr class="total-row"><td colspan="4">Total du compte</td>
+              <td class="r nw"><strong>${C.money(c.debit)}</strong></td><td class="r nw"><strong>${C.money(c.credit)}</strong></td>
+              <td class="r nw"><strong>${C.money(c.solde)}</strong></td></tr></tfoot>
+          </table></div>
+        </div>`).join('')}`;
+      bindCombo($('[data-combo=glCompte]'), { items: [{ v: '', label: 'Tous les comptes' }, ...choix], onPick: v => { glState.compte = v || ''; drawGrandLivre(); } });
+      const tag = comptaState.month ? `${comptaState.year}-${comptaState.month}` : comptaState.year;
+      $('#gl-csv').onclick = async () => {
+        const f = await bridge.saveText(`grand-livre-${tag}${glState.compte ? '-' + glState.compte : ''}.csv`, C.toCsv(C.grandLivreRows(gl), C.grandLivreCsvColumns()));
+        if (f) toast('Exporté : ' + f.split(/[\\/]/).pop());
+      };
+      $('#gl-plan').onclick = () => chartForm(drawGrandLivre);
+    }
+
+    // La balance (8.8.0) : tous les comptes sur une page, et des totaux qui doivent tomber juste.
+    // C'est le premier document qu'un cabinet tire pour contrôler un dossier. Les auxiliaires
+    // (clients, fournisseurs) disent qui doit quoi, tiers par tiers.
+    function drawBalance() {
+      figerAuxiliaires();
+      const cur = company().currency;
+      const p = period();
+      const vue = balState.vue;
+      const tag = comptaState.month ? `${comptaState.year}-${comptaState.month}` : comptaState.year;
+      const VUES = [['generale', 'Générale'], ['clients', 'Auxiliaire clients'], ['fournisseurs', 'Auxiliaire fournisseurs']];
+      const sel = `<div class="tabs mt" id="bal-vues" role="tablist">${VUES.map(([id, label]) => `<button role="tab" data-vue="${id}" class="${id === vue ? 'active' : ''}">${label}</button>`).join('')}</div>`;
+      let corps, csvRows = [], csvCols = [], nomCsv = '';
+      if (vue === 'generale') {
+        const b = C.balanceGenerale(data, company(), p, {});
+        csvRows = b.rows; csvCols = C.balanceCsvColumns(); nomCsv = `balance-${tag}.csv`;
+        corps = `
+          <div class="pay-grid">
+            <div><div class="k-label">Comptes</div><div class="v">${b.rows.length}</div></div>
+            <div><div class="k-label">Mouvements débit</div><div class="v">${C.money(b.totals.debit, cur)}</div></div>
+            <div><div class="k-label">Mouvements crédit</div><div class="v">${C.money(b.totals.credit, cur)}</div></div>
+            <div><div class="k-label">Soldes débiteurs = créditeurs</div><div class="v ${b.equilibree ? 'ok' : 'due'}">${C.money(b.totals.soldeD, cur)}</div></div>
+          </div>
+          ${!b.rows.length ? '<div class="banner info"><span>Aucun compte mouvementé sur cette période, et aucun solde reporté.</span></div>'
+            : b.equilibree ? '<div class="todo-ok" id="bal-ok">La balance tombe juste : ouverture, mouvements et soldes ont chacun le même total au débit et au crédit.</div>'
+            : '<div class="banner" id="bal-ko"><span>La balance ne tombe pas juste — signale-le avant d\'envoyer quoi que ce soit.</span></div>'}
+          ${b.rows.length ? `<div class="scroll-x mt"><table class="list compact" id="bal-t">
+            <thead><tr><th>Compte</th><th>Intitulé</th>${BAL_HEAD}</tr></thead>
+            <tbody>${b.rows.map(r => `<tr class="bal-c${h(r.classe)}"><td class="nw"><strong>${h(r.account)}</strong></td><td>${h(r.label)}</td>${balCells(r)}</tr>`).join('')}</tbody>
+            <tfoot>${balFoot(b.totals)}</tfoot></table></div>` : ''}`;
+      } else {
+        const b = C.balanceAuxiliaire(data, company(), p, vue, {});
+        csvRows = b.rows; csvCols = C.balanceAuxCsvColumns(); nomCsv = `balance-${vue}-${tag}.csv`;
+        const qui = vue === 'clients' ? 'client' : 'fournisseur';
+        corps = `
+          <p class="small">Un ${qui} par ligne : ce qu'il ${vue === 'clients' ? 'devait' : 'était dû'} à l'ouverture, ce qui a été ${vue === 'clients' ? 'facturé et encaissé' : 'acheté et réglé'} sur la période, et ce qui reste. ${info('bal.aux')}
+            ${C.auxiliairesActifs(data) ? '' : '<br><span class="muted">Les tiers partagent encore le compte collectif ; « Plan de comptes… » active un sous-compte par tiers (411001, 401001…), comme les cabinets les tiennent.</span>'}</p>
+          ${!b.rows.length ? `<div class="empty">Aucun ${qui} mouvementé sur cette période.</div>`
+            : `<div class="scroll-x"><table class="list compact" id="bal-aux">
+            <thead><tr><th>Compte</th><th>${vue === 'clients' ? 'Client' : 'Fournisseur'}</th>${BAL_HEAD}</tr></thead>
+            <tbody>${b.rows.map(r => `<tr><td class="nw"><strong>${h(r.account)}</strong></td><td>${h(r.tiers)}</td>${balCells(r)}</tr>`).join('')}</tbody>
+            <tfoot>${balFoot(b.totals)}</tfoot></table></div>`}`;
+      }
+      $('#c-body').innerHTML = `
+        <div class="panel"><h2>Balance — ${h(periodLabel())} ${info('bal.quoi')}</h2>
+          <p class="small">Tous les comptes sur une page : le solde à l'ouverture de la période, les mouvements, le solde à la fin. <em>À VÉRIFIER avec ton comptable :</em> les numéros de compte sont ceux du plan réglé dans SkanFact.</p>
+          ${sel}
+          <div class="inline mt">
+            <button class="btn" id="bal-csv">Exporter en CSV</button>
+            <button class="btn btn-ghost" id="bal-plan">Plan de comptes…</button>
+          </div>
+        </div>
+        <div class="panel">${corps}</div>`;
+      $$('#bal-vues button').forEach(b => b.onclick = () => { balState.vue = b.dataset.vue; drawBalance(); });
+      $('#bal-csv').onclick = async () => {
+        const f = await bridge.saveText(nomCsv, C.toCsv(csvRows, csvCols));
+        if (f) toast('Exporté : ' + f.split(/[\\/]/).pop());
+      };
+      $('#bal-plan').onclick = () => chartForm(drawBalance);
+    }
+
     // Le plan de comptes. Aucun numéro n'est certain : le comptable a le dernier mot, donc tout
     // se modifie, et « Revenir aux comptes proposés » ramène la proposition de départ.
     function chartForm(done) {
@@ -8866,7 +9001,15 @@
         <form id="chf"><table class="list compact"><tbody>
           ${keys.map(k => `<tr><td>${h(C.ACCOUNT_LABELS[k] || k)}</td>
             <td style="width:140px"><input type="text" name="${h(k)}" value="${h(acc[k])}" placeholder="${h(C.DEFAULT_ACCOUNTS[k])}"></td></tr>`).join('')}
-        </tbody></table></form>
+        </tbody></table>
+        <label class="check mt"><input type="checkbox" name="auxiliaires" ${C.auxiliairesActifs(data) ? 'checked' : ''}> Un sous-compte par client et par fournisseur (411001, 401001…) ${info('plan.aux')}</label>
+        </form>
+        <details class="mt"><summary class="small">Le plan comptable tunisien, pour nommer les comptes (${C.PLAN_COMPTABLE.length} intitulés)</summary>
+          <div style="max-height:260px;overflow:auto"><table class="list compact"><tbody>
+            ${C.PLAN_COMPTABLE.map(([n, l]) => `<tr><td class="nw ${n.length === 1 ? '' : 'muted'}" style="padding-left:${4 + (n.length - 1) * 10}px"><strong>${h(n)}</strong></td><td>${h(l)}</td></tr>`).join('')}
+          </tbody></table></div>
+          <p class="small muted">Nomenclature du Système comptable des entreprises (1996). Elle sert à écrire l'intitulé d'un compte à l'écran et dans les exports ; elle n'impose rien. <em>À VÉRIFIER.</em></p>
+        </details>
         <div class="modal-actions"><button class="btn btn-ghost" id="ch-reset">Revenir aux comptes proposés</button>
           <button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ch-ok">Enregistrer</button></div>`,
         (layer, close) => {
@@ -8885,6 +9028,10 @@
             const out = {};
             keys.forEach(k => { const val = String(v[k] || '').trim(); if (val && val !== C.DEFAULT_ACCOUNTS[k]) out[k] = val; });
             if (Object.keys(out).length) data.chartAccounts = out; else delete data.chartAccounts;
+            // Les sous-comptes par tiers : on fige les codes dès qu'on les active, pour que le
+            // 411004 d'aujourd'hui soit encore le même client dans six mois.
+            data.auxiliaires = !!$('input[name=auxiliaires]', layer).checked;
+            if (data.auxiliaires) C.numeroterAuxiliaires(data);
             save(); close(); toast('Plan de comptes enregistré'); if (done) done();
           };
         });

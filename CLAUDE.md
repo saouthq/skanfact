@@ -393,6 +393,7 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:depot` | **public ou privé** : `src/depot.js` est VRAIMENT basculé en privé, l'application ouverte, le champ jeton doit revenir — puis repartir au retour au public (le fichier est restauré quoi qu'il arrive) |
 | `npm run e2e:pages` | **les pages d'un document imprimé** : 161 documents (7 types × 6 variantes × 1 à 40 lignes) rendus dans chromium et imprimés en PDF — aucune ligne perdue, aucune page qui déborde, aucun pied par-dessus le contenu, une feuille par page et chacune numérotée. **Pas besoin de `xvfb`** : il n'ouvre pas Electron |
 | `npm run e2e:pont` | **le pont comptable** : le vrai worker sur SQLite et l'application en état éditeur — un secret faux refusé, le bon gardé en 0600 hors des données, deux ventes de la console tirées en deux brouillons (client retrouvé par matricule ou créé), le menu d'une licence de la console sans « Renouveler », le numéro rendu à l'émission et lu dans la base, la console éteinte dite en français |
+| `npm run e2e:livres` | **le grand livre et la balance** : chaque compte avec son solde progressif qui finit sur le total, le sélecteur de compte, la balance dont les six totaux tombent juste, l'auxiliaire clients, la case « un sous-compte par tiers » qui donne 411001… et les fige sur les fiches |
 | `npm run e2e:justificatif` | **le justificatif se joint avant toute saisie** : sélecteur de fichier remplacé dans le processus principal, une photo jointe sur un achat VIDE, enregistrée avec la pièce, retrouvée sur le disque et dans la liste (📎), un second fichier sur la pièce rangée, une pièce abandonnée qui ne laisse pas de copie, la lecture d'une photo qui redessine sans perdre la pièce, et le même geste sur un devis neuf |
 | `npm run e2e:licence` | **l'éditeur et les offres, puis le client** : une première application DÉSARMÉE (`SKANFACT_CLE_EMBARQUEE` vers un chemin inexistant, développement seulement) — sans clé rien n'apparaît ; « Créer mes clés » écrit la privée dans un dossier isolé (`SKANFACT_DOSSIER_CLES`) et met le poste en état « éditeur » (ni essai ni verrou) ; « Émettre » signe une clé vérifiable, crée un BROUILLON de facture et l'historique ; la clé Indépendant collée refuse un nouveau fournisseur, pose un cadenas sur Achats et laisse les Statistiques ; la clé d'un autre matricule est refusée en nommant les deux ; « Renouveler » ; rien de ce qui traverse le pont ne contient la clé privée — PUIS une seconde application telle qu'un client l'installe (vraie clé embarquée, pas de clé privée) : essai de 30 jours, aucune trace de l'éditeur, plus de porte « Créer mes clés », et la clé signée par la clé d'essai du test REFUSÉE |
 
@@ -2305,6 +2306,46 @@ Le test qui compte est `npm run e2e:pont` : le vrai worker sur SQLite, l'applica
 deux ventes tirées en deux brouillons (Trabelsi retrouvé sous une autre graphie du matricule, El
 Amen créée), le menu d'une licence de la console sans « Renouveler », le numéro rendu à l'émission et
 lu dans la base, puis la console éteinte qui se dit en français.
+
+### 8.8.0 — Le grand livre et la balance
+
+Le comptable de Skander a regardé l'application : « il manque encore beaucoup de choses
+comptables », et deux termes retenus — **mouvement de compte** et **écriture comptable dans le
+journal**. Le plan en trois versions : 8.8.0 grand livre + balance, 8.9.0 livre-journal (numérotation
+continue, OD à la main, mouvements libres et déclarations en écritures, centralisateur, lettrage),
+9.0.0 l'exercice (amortissements, à-nouveaux, résultat, rapprochement par relevé, TFP/FOPROLOS).
+
+- **Tout se DÉDUIT des écritures de `journalEntries`, rien ne se saisit.** `soldesOuverture` calcule
+  ce que chaque compte portait la veille de la période : les classes 1 à 5 traversent les années,
+  les classes 6 et 7 repartent au 1er janvier et leur passé va au compte `resultat` (13). C'est une
+  écriture d'à-nouveau déduite ; la 9.0.0 la rendra explicite (journal AN) SANS la compter deux fois
+  — le jour venu, l'implicite doit disparaître au profit de l'explicite, pas s'y ajouter.
+- **La balance ne garantit qu'une chose : ses trois paires de totaux tombent juste** (ouverture,
+  mouvements, soldes). Un test le vérifie sur les 24 mois du jeu d'exemple et confronte le grand
+  livre à la balance compte par compte (même ouverture, même solde, et le solde progressif qui
+  finit sur le total). Une balance dont les ventes reportaient 2025 sur 2026 tomberait juste aussi :
+  d'où le test séparé « les ventes n'ouvrent pas l'année, la banque si, le résultat porte le net ».
+- **Un compte auxiliaire est FIGÉ sur la fiche** (`compteAux`), jamais déduit de la position dans la
+  liste au moment de l'affichage : supprimer un client ne renumérote personne. `codesAuxiliaires`
+  reste pur (le paquet du cabinet ne modifie rien) et donne le même code que celui qui sera écrit ;
+  `numeroterAuxiliaires` l'écrit, à l'activation de la case et à chaque dessin des livres.
+- **Les écritures portent `tiersId` et `role`** (`clients` / `fournisseurs`) : c'est ce qui fait la
+  balance auxiliaire sans sous-comptes, et ce qui fera le lettrage. `salesJournal`,
+  `paymentsJournal` et `supplierPayments` rendent l'identifiant du tiers, pas seulement son nom.
+- **Le plan comptable (`PLAN_COMPTABLE`) ne sert qu'à NOMMER** (`accountLabel`, plus long
+  préfixe) ; les rôles de `DEFAULT_ACCOUNTS` passent avant, et un sous-compte de tiers porte le nom
+  du tiers. Le compte d'immobilisations proposé est passé de 24 à 22 : dans le SCE, 24 est « à
+  statut juridique particulier ». Un compte réglé à la main (`data.chartAccounts`) n'est pas touché.
+- Piège : le détecteur d'appels inexistants ne voit pas une fonction déclarée par `let a, b;` puis
+  affectée dans une branche — `csv()` est passé pour un appel à une fonction absente. On déclare des
+  données (`csvRows`, `csvCols`), pas une fonction à trous.
+- Piège : `bindCombo` prend `onPick`, pas `onChange` ; `.tabs.sub` et `.scroll-y` n'existent pas
+  dans la feuille de style — un nom de classe inventé ne se voit nulle part.
+
+Le test qui compte est `npm run e2e:livres` : le grand livre de l'année (20 comptes, chaque solde
+progressif finit sur le total du compte, aucun « Compte hors plan »), le sélecteur qui ne garde que
+411, la balance équilibrée avec ses six totaux, l'auxiliaire clients sur le collectif, la case du
+plan de comptes qui donne 411001…411008 et les fige sur les fiches, et le grand livre qui suit.
 
 ## Pistes pour la suite (non demandées)
 

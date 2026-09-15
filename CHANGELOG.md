@@ -7,6 +7,40 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 8.8.0 — 15/09/2026
+
+**Le grand livre et la balance.** Le comptable de Skander a regardé l'application et nommé ce qui
+manquait : le « mouvement de compte » et les écritures dans le journal. Cette version apporte les
+deux documents qu'un cabinet tire en premier pour contrôler un dossier ; la 8.9.0 apportera le
+livre-journal.
+
+- **Comptabilité → Grand livre** : chaque compte (Clients, Banque, Ventes, TVA collectée…), ses
+  mouvements un par un dans l'ordre, et le **solde qui avance** ligne après ligne. En tête, le
+  **solde d'ouverture** reprend tout ce qui précède la période — depuis toujours pour les comptes de
+  bilan, depuis le 1er janvier pour les charges et les produits, dont le passé est reporté au compte
+  de résultat, comme le ferait une écriture d'à-nouveau. Un sélecteur choisit un compte ou un début
+  de numéro (« 4 » donne tous les tiers) ; l'export CSV suit ce qui est affiché.
+- **Comptabilité → Balance** : tous les comptes sur une page — ouverture, mouvements, soldes,
+  chaque montant dans sa colonne (débiteur ou créditeur, jamais un signe) — et **des totaux qui
+  tombent juste**, vérifiés sur les vingt-quatre mois du jeu d'exemple. Deux autres vues :
+  la **balance auxiliaire clients** et la **balance auxiliaire fournisseurs**, un tiers par ligne,
+  avec ce qu'il devait à l'ouverture, ce qui a été facturé et réglé, et ce qui reste.
+- **Un sous-compte par tiers** (411001, 411002…, 401001…), activé d'une case dans « Plan de
+  comptes… ». Le code est **figé sur la fiche** du client ou du fournisseur la première fois qu'il
+  est calculé : supprimer un tiers ne renumérote jamais les autres. Décocher revient au compte
+  collectif sans rien perdre.
+- **Le plan comptable tunisien** (Système comptable des entreprises, 1996, plus de cent
+  intitulés) nomme désormais tout compte à l'écran et dans les exports, par son plus long préfixe :
+  un 627 s'appelle « Services bancaires » sans qu'on ait à le déclarer. Consultable dans « Plan de
+  comptes… ». Le compte d'immobilisations proposé passe de 24 à **22** (corporelles) : le 24 du SCE
+  est « à statut juridique particulier ». Un compte réglé à la main ne change pas.
+- **La balance du mois part dans le paquet du cabinet** (`journaux/balance.csv`).
+- Les écritures portent désormais le tiers et son rôle (client, fournisseur) : c'est ce qui rend
+  possibles les balances auxiliaires, et demain le lettrage.
+
+*À VÉRIFIER avec le comptable :* les numéros de compte restent une proposition, et le compte de
+résultat qui reçoit les exercices passés (13) peut être le 12 chez certains cabinets.
+
 ## 8.7.0 — 15/09/2026
 
 **Le pont comptable : la console vend, SkanFact facture.** Depuis la 8.5.0, une vente se fait

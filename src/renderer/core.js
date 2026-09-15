@@ -675,6 +675,7 @@
     fixedCategories: [],     // catégories de charges considérées comme fixes (vide = valeurs par défaut)
     accounts: [],            // comptes de trésorerie : banque, caisse… (v4)
     movements: [],           // mouvements libres : salaires, impôts, apports — ce qui n'a ni facture ni achat
+    auxiliaires: false,      // comptes auxiliaires par tiers (411001, 401001…) dans les écritures (8.8.0)
     licences: [],            // licences SkanFact ÉMISES par l'éditeur depuis ce dossier (7.33.0) — vide chez un client
     pontImporte: '',         // jour où l'historique des licences est parti vers la console (8.7.0) — vide chez un client
     deleted: [],             // pièces supprimées, pour qu'elles ne reviennent pas d'un autre poste (v4)
@@ -981,7 +982,7 @@
       const vatByRate = {};
       VAT_RATES.forEach(r => { const v = t.vatByRate[r]; vatByRate[r] = { base: round3((v ? v.base : 0) * sign), vat: round3((v ? v.vat : 0) * sign) }; });
       return {
-        id: d.id, date: d.date, number: d.number, type: d.type, typeLabel: TITLES[d.type], client: clientName(d.clientId), subject: d.subject || '',
+        id: d.id, date: d.date, number: d.number, type: d.type, typeLabel: TITLES[d.type], client: clientName(d.clientId), clientId: d.clientId || '', subject: d.subject || '',
         ht: round3(t.netHT * sign), vatByRate, tva: round3(t.totalVAT * sign), timbre: round3(t.stamp * sign), ttc: round3(t.totalTTC * sign),
         rs: round3(t.withholding * sign), net: round3(t.netToPay * sign), status, statusLabel: statusLabel(status),
         paid: bal ? round3(bal.paid * rate) : 0, remaining: bal ? round3(bal.remaining * rate) : 0, currency: d.currency || company.currency, rate,
@@ -1009,7 +1010,7 @@
       (d.payments || []).forEach(p => {
         if (!inPeriod(p.date, period.from, period.to)) return;
         const m = PAYMENT_METHODS.find(x => x[0] === p.method);
-        rows.push({ id: p.id, date: p.date, number: d.number, client: clientName(d.clientId), amount: toBase(d, p.amount, company), method: m ? m[1] : (p.method || ''), reference: p.reference || '', note: p.note || '', docId: d.id, currency: d.currency || company.currency });
+        rows.push({ id: p.id, date: p.date, number: d.number, client: clientName(d.clientId), clientId: d.clientId || '', amount: toBase(d, p.amount, company), method: m ? m[1] : (p.method || ''), reference: p.reference || '', note: p.note || '', docId: d.id, currency: d.currency || company.currency });
       });
     });
     return rows.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
@@ -1387,7 +1388,7 @@
       if (!inPeriod(x.date, period && period.from, period && period.to)) return;
       const m = PAYMENT_METHODS.find(k => k[0] === x.method);
       out.push({
-        id: x.id, purchaseId: p.id, date: x.date, number: p.number || '', supplier: name(p.supplierId),
+        id: x.id, purchaseId: p.id, date: x.date, number: p.number || '', supplier: name(p.supplierId), supplierId: p.supplierId || '',
         amount: round3(Number(x.amount) || 0), method: m ? m[1] : (x.method || ''), reference: x.reference || '', note: x.note || ''
       });
     }));
@@ -3552,6 +3553,10 @@
     const ecritures = journalEntries(data, company, period, {});
     const balance = entriesBalance(ecritures);
     add({ path: 'journaux/ecritures.csv', kind: 'text', label: 'Écritures comptables (partie double)', text: toCsv(ecritures, entryCsvColumns()), rows: ecritures.length });
+    // 1 ter. La balance du mois (8.8.0) : ouverture, mouvements, soldes — le premier document que le
+    // cabinet tire pour contrôler un dossier, et le seul qui dise d'un coup d'œil où en sont les tiers.
+    const bal = balanceGenerale(data, company, period, {});
+    add({ path: 'journaux/balance.csv', kind: 'text', label: 'Balance générale', text: toCsv(bal.rows, balanceCsvColumns()), rows: bal.rows.length });
 
     // 2. La TVA du mois, avec son report : un mois isolé sans le crédit reporté donne un chiffre faux.
     const vat = vatReturn(data, company, period, (data.vatCarryIn || {})[period.month.slice(0, 4)] || 0);
@@ -3735,7 +3740,7 @@
     rsOperee: '4352',            // Retenue à la source opérée sur un fournisseur (dette envers l'État)
     achatsStock: '607',          // Achats de marchandises destinées à la revente
     charges: '606',              // Achats consommés (fournitures, services)
-    immobilisations: '24',       // Immobilisations — le compte exact dépend du bien
+    immobilisations: '22',       // Immobilisations corporelles — le compte exact dépend du bien (8.8.0 : 22, le 24 du SCE est « à statut juridique particulier »)
     fraisAccessoires: '608',     // Frais accessoires d'achat (transport, douane)
     banque: '532',               // Banques
     caisse: '54',                // Caisse
@@ -3743,7 +3748,8 @@
     chargesPatronales: '645',    // Charges sociales patronales
     personnel: '425',            // Personnel — rémunérations dues
     cnss: '4531',                // CNSS (part salariale + part patronale)
-    irpp: '4321'                 // IRPP et contribution sociale retenus à la source
+    irpp: '4321',                // IRPP et contribution sociale retenus à la source
+    resultat: '13'               // Résultat de l'exercice — reçoit les exercices passés à l'ouverture (8.8.0)
   };
   const ACCOUNT_LABELS = {
     clients: 'Clients', fournisseurs: 'Fournisseurs', ventes: 'Ventes',
@@ -3752,8 +3758,114 @@
     achatsStock: 'Achats de marchandises', charges: 'Charges', immobilisations: 'Immobilisations',
     fraisAccessoires: 'Frais accessoires d\'achat', banque: 'Banque', caisse: 'Caisse',
     salairesBruts: 'Salaires bruts', chargesPatronales: 'Charges patronales',
-    personnel: 'Personnel — net à payer', cnss: 'CNSS', irpp: 'IRPP retenu'
+    personnel: 'Personnel — net à payer', cnss: 'CNSS', irpp: 'IRPP retenu',
+    resultat: 'Résultat des exercices passés'
   };
+  // Le plan comptable tunisien (Système comptable des entreprises, 1996), classe par classe. Il ne
+  // sert qu'à NOMMER un compte à l'écran et dans les exports : le compte 6270 s'appelle « Services
+  // bancaires » sans qu'on ait à le déclarer. Un compte s'y retrouve par son plus long préfixe.
+  // À VÉRIFIER avec le comptable : les intitulés suivent la nomenclature, chaque cabinet a les siens.
+  const PLAN_COMPTABLE = [
+    ['1', 'Capitaux propres et passifs non courants'],
+    ['10', 'Capital'], ['101', 'Capital social'], ['11', 'Réserves'], ['12', 'Résultats reportés'],
+    ['13', 'Résultat de l\'exercice'], ['131', 'Résultat bénéficiaire'], ['135', 'Résultat déficitaire'],
+    ['14', 'Autres capitaux propres'], ['15', 'Provisions pour risques et charges'],
+    ['16', 'Emprunts et dettes assimilées'], ['17', 'Dettes rattachées à des participations'], ['18', 'Comptes de liaison'],
+    ['2', 'Actifs non courants'],
+    ['21', 'Immobilisations incorporelles'], ['213', 'Logiciels'], ['22', 'Immobilisations corporelles'],
+    ['221', 'Terrains'], ['222', 'Constructions'], ['223', 'Installations techniques et matériel'],
+    ['224', 'Matériel de transport'], ['228', 'Autres immobilisations corporelles'], ['2282', 'Matériel de bureau'],
+    ['2283', 'Matériel informatique'], ['2284', 'Mobilier'], ['23', 'Immobilisations en cours'],
+    ['24', 'Immobilisations à statut juridique particulier'], ['25', 'Participations'],
+    ['26', 'Autres immobilisations financières'], ['27', 'Autres actifs non courants'],
+    ['28', 'Amortissements des immobilisations'], ['281', 'Amortissements des immobilisations incorporelles'],
+    ['282', 'Amortissements des immobilisations corporelles'], ['29', 'Provisions pour dépréciation des immobilisations'],
+    ['3', 'Stocks'],
+    ['31', 'Matières premières'], ['32', 'Autres approvisionnements'], ['33', 'En-cours de production'],
+    ['34', 'Produits intermédiaires'], ['35', 'Produits finis'], ['37', 'Marchandises'], ['39', 'Provisions pour dépréciation des stocks'],
+    ['4', 'Tiers'],
+    ['40', 'Fournisseurs et comptes rattachés'], ['401', 'Fournisseurs d\'exploitation'], ['403', 'Fournisseurs — effets à payer'],
+    ['404', 'Fournisseurs d\'immobilisations'], ['408', 'Fournisseurs — factures non parvenues'], ['409', 'Fournisseurs débiteurs (avances)'],
+    ['41', 'Clients et comptes rattachés'], ['411', 'Clients'], ['413', 'Clients — effets à recevoir'], ['416', 'Clients douteux'],
+    ['418', 'Clients — produits à recevoir'], ['419', 'Clients créditeurs (avances reçues)'],
+    ['42', 'Personnel et comptes rattachés'], ['421', 'Personnel — rémunérations dues'], ['425', 'Personnel — rémunérations dues'],
+    ['4251', 'Personnel — avances et acomptes'], ['427', 'Personnel — oppositions'], ['428', 'Personnel — charges à payer'],
+    ['43', 'État et collectivités publiques'], ['431', 'État — impôt sur les bénéfices'], ['432', 'État — impôts et taxes retenus à la source'],
+    ['4321', 'Retenues à la source sur salaires (IRPP)'], ['433', 'État — autres impôts et taxes'], ['4331', 'Taxe sur les établissements (TCL)'],
+    ['4335', 'TFP et FOPROLOS'], ['434', 'État — acomptes provisionnels'], ['435', 'État — retenues à la source'],
+    ['4352', 'Retenue à la source opérée (à reverser)'], ['4358', 'Retenue à la source subie (à imputer)'],
+    ['436', 'État — taxes sur le chiffre d\'affaires'], ['4364', 'Crédit de TVA à reporter'], ['4365', 'TVA à payer'],
+    ['4366', 'TVA déductible'], ['4367', 'TVA collectée'], ['4368', 'Timbre fiscal'], ['437', 'État — obligations cautionnées'],
+    ['44', 'Sociétés du groupe et associés'], ['442', 'Associés — comptes courants'], ['4421', 'Apports en compte courant'],
+    ['446', 'Associés — dividendes à payer'],
+    ['45', 'Organismes sociaux'], ['453', 'CNSS'], ['4531', 'CNSS — cotisations à payer'],
+    ['46', 'Débiteurs et créditeurs divers'], ['47', 'Comptes transitoires ou d\'attente'], ['471', 'Compte d\'attente'],
+    ['48', 'Comptes de régularisation'], ['49', 'Provisions pour dépréciation des comptes de tiers'],
+    ['5', 'Comptes financiers'],
+    ['50', 'Placements courants'], ['53', 'Banques et établissements financiers'], ['532', 'Banques'],
+    ['54', 'Caisse'], ['58', 'Virements internes'], ['59', 'Provisions pour dépréciation des comptes financiers'],
+    ['6', 'Charges'],
+    ['60', 'Achats'], ['601', 'Achats de matières premières'], ['602', 'Achats d\'approvisionnements'],
+    ['603', 'Variation des stocks'], ['606', 'Achats non stockés (fournitures, services)'], ['607', 'Achats de marchandises'],
+    ['608', 'Frais accessoires d\'achat'],
+    ['61', 'Services extérieurs'], ['611', 'Sous-traitance'], ['613', 'Locations'], ['615', 'Entretien et réparations'],
+    ['616', 'Assurances'], ['618', 'Divers services extérieurs'],
+    ['62', 'Autres services extérieurs'], ['621', 'Personnel extérieur'], ['622', 'Honoraires'], ['623', 'Publicité'],
+    ['624', 'Transports'], ['625', 'Déplacements et réceptions'], ['626', 'Frais postaux et télécommunications'],
+    ['627', 'Services bancaires'], ['628', 'Divers'],
+    ['63', 'Charges diverses ordinaires'], ['64', 'Charges de personnel'], ['640', 'Salaires et traitements'],
+    ['641', 'Rémunérations du personnel'], ['645', 'Charges sociales'], ['647', 'Charges sociales légales'],
+    ['65', 'Charges financières'], ['651', 'Intérêts des emprunts'], ['66', 'Impôts, taxes et versements assimilés'],
+    ['661', 'Impôts et taxes sur rémunérations (TFP, FOPROLOS)'], ['665', 'Autres impôts et taxes (TCL…)'],
+    ['67', 'Pertes extraordinaires'], ['675', 'Valeur comptable des immobilisations cédées'],
+    ['68', 'Dotations aux amortissements et provisions'], ['681', 'Dotations aux amortissements'], ['69', 'Impôt sur les bénéfices'],
+    ['7', 'Produits'],
+    ['70', 'Ventes'], ['701', 'Ventes de produits finis'], ['706', 'Prestations de services'], ['707', 'Ventes de marchandises'],
+    ['708', 'Produits des activités annexes'], ['71', 'Production stockée'], ['72', 'Production immobilisée'],
+    ['73', 'Produits divers ordinaires'], ['74', 'Subventions d\'exploitation'], ['75', 'Produits financiers'],
+    ['77', 'Gains extraordinaires'], ['775', 'Produits des cessions d\'immobilisations'], ['78', 'Reprises sur amortissements et provisions'],
+    ['79', 'Transferts de charges']
+  ];
+  // L'intitulé d'un numéro de compte : d'abord le rôle que l'entreprise lui a donné (plan de comptes
+  // réglé), sinon le plan tunisien par le plus long préfixe, sinon « Compte hors plan ». Un compte
+  // auxiliaire (411 + code) porte le nom de son tiers, passé en `tiers`.
+  function accountLabel(data, account, tiers) {
+    const n = String(account || '');
+    if (!n) return '';
+    const acc = chartAccounts(data);
+    const role = Object.keys(acc).find(k => acc[k] === n);
+    if (role) return ACCOUNT_LABELS[role] || role;
+    if (auxiliairesActifs(data) && tiers && (n.startsWith(acc.clients) || n.startsWith(acc.fournisseurs)) && n.length > Math.max(acc.clients.length, acc.fournisseurs.length)) return tiers;
+    let best = null;
+    PLAN_COMPTABLE.forEach(([p, l]) => { if (n.startsWith(p) && (!best || p.length > best[0].length)) best = [p, l]; });
+    return best ? best[1] : 'Compte hors plan';
+  }
+  const classeDe = account => String(account || '').charAt(0);
+  // Les classes 6 et 7 se remettent à zéro à chaque exercice ; les classes 1 à 5 traversent les années.
+  const compteDeGestion = account => classeDe(account) === '6' || classeDe(account) === '7';
+
+  // ---- comptes auxiliaires (8.8.0) : un sous-compte par client et par fournisseur ----
+  // 411001, 411002… : c'est ainsi que tous les cabinets tiennent leurs tiers, et c'est ce qui rend
+  // possible une balance auxiliaire et un lettrage. Le code d'un tiers est FIGÉ sur sa fiche
+  // (`compteAux`) la première fois qu'il est calculé : supprimer un client ne renumérote jamais les
+  // autres, sinon le 411004 du comptable désignerait quelqu'un d'autre le mois suivant.
+  const auxiliairesActifs = data => !!(data && data.auxiliaires);
+  function codesAuxiliaires(liste) {
+    const out = {};
+    let max = 0;
+    (liste || []).forEach(t => { if (t && t.id && t.compteAux) { out[t.id] = String(t.compteAux); max = Math.max(max, Number(t.compteAux) || 0); } });
+    (liste || []).forEach(t => { if (t && t.id && !out[t.id]) { max += 1; out[t.id] = String(max).padStart(3, '0'); } });
+    return out;
+  }
+  // Écrit les codes calculés sur les fiches qui n'en ont pas encore. Renvoie le nombre de fiches touchées.
+  function numeroterAuxiliaires(data) {
+    let n = 0;
+    ['clients', 'suppliers'].forEach(k => {
+      const codes = codesAuxiliaires(data[k]);
+      (data[k] || []).forEach(t => { if (t && t.id && !t.compteAux && codes[t.id]) { t.compteAux = codes[t.id]; n++; } });
+    });
+    return n;
+  }
   // Les journaux : le comptable range ses écritures par nature d'opération.
   const ENTRY_JOURNALS = [
     ['VT', 'Ventes'], ['AC', 'Achats'], ['BQ', 'Banque'], ['CA', 'Caisse'], ['PAIE', 'Paie'], ['OD', 'Opérations diverses']
@@ -3808,17 +3920,24 @@
     const want = s => !opts.sections || opts.sections.indexOf(s) >= 0;
     const out = [];
     const cur = (company && company.currency) || 'DT';
+    // Comptes auxiliaires (8.8.0) : 411 + code du client, 401 + code du fournisseur, quand
+    // l'entreprise l'a demandé. Les codes viennent des fiches (figés), sinon de l'ordre de la liste.
+    const aux = auxiliairesActifs(data);
+    const codesC = aux ? codesAuxiliaires(data.clients) : {};
+    const codesF = aux ? codesAuxiliaires(data.suppliers) : {};
+    const cptClient = id => (aux && id && codesC[id]) ? acc.clients + codesC[id] : acc.clients;
+    const cptFourn = id => (aux && id && codesF[id]) ? acc.fournisseurs + codesF[id] : acc.fournisseurs;
 
     // --- ventes : factures et avoirs émis
     if (want('ventes')) {
       salesJournal(data, company, period).forEach(r => {
         if (r.status === 'annulée') return;             // une facture annulée n'a jamais existé comptablement
-        const e = entrySet({ date: r.date, journal: 'VT', piece: r.number, tiers: r.client, source: 'vente', docId: r.id, currency: cur });
+        const e = entrySet({ date: r.date, journal: 'VT', piece: r.number, tiers: r.client, tiersId: r.clientId || '', source: 'vente', docId: r.id, currency: cur });
         const label = `${r.typeLabel} ${r.number}${r.client ? ' — ' + r.client : ''}`;
         // Ce que le client devra réellement payer (le net après retenue) reste au compte client ;
         // la retenue devient une créance sur l'État. À VÉRIFIER : certains cabinets la constatent
         // seulement au paiement.
-        e.debit(acc.clients, label, r.net);
+        e.debit(cptClient(r.clientId), label, r.net, { role: 'clients' });
         if (r.rs) e.debit(acc.rsSubie, `Retenue à la source ${r.number}`, r.rs);
         VAT_RATES.forEach(rate => {
           const v = r.vatByRate[rate];
@@ -3839,7 +3958,7 @@
           const t = purchaseTotals(p, company);
           const sup = ((data.suppliers || []).find(s => s.id === p.supplierId) || {}).name || '';
           const num = p.number || '(sans numéro)';
-          const e = entrySet({ date: p.date, journal: 'AC', piece: num, tiers: sup, source: 'achat', docId: p.id, currency: cur });
+          const e = entrySet({ date: p.date, journal: 'AC', piece: num, tiers: sup, tiersId: p.supplierId || '', source: 'achat', docId: p.id, currency: cur });
           const label = `${p.kind === 'depense' ? 'Dépense' : 'Achat'} ${num}${sup ? ' — ' + sup : ''}`;
           const dest = { charge: acc.charges, stock: acc.achatsStock, immobilisation: acc.immobilisations };
           Object.keys(t.byDestination).forEach(k => {
@@ -3851,7 +3970,7 @@
           const nonDeductible = round3(t.totalVAT - t.deductibleVAT);
           if (nonDeductible) e.debit(acc.charges, `TVA non déductible ${num}`, nonDeductible);
           if (t.withholding) e.credit(acc.rsOperee, `Retenue à la source opérée ${num}`, t.withholding);
-          e.credit(acc.fournisseurs, label, t.netToPay);
+          e.credit(cptFourn(p.supplierId), label, t.netToPay, { role: 'fournisseurs' });
           out.push(...e.done());
         });
     }
@@ -3859,10 +3978,10 @@
     // --- encaissements clients
     if (want('encaissements')) {
       paymentsJournal(data, company, period).forEach(r => {
-        const e = entrySet({ date: r.date, journal: r.method === 'Espèces' ? 'CA' : 'BQ', piece: r.number || '', tiers: r.client, source: 'encaissement', docId: r.docId, currency: cur });
+        const e = entrySet({ date: r.date, journal: r.method === 'Espèces' ? 'CA' : 'BQ', piece: r.number || '', tiers: r.client, tiersId: r.clientId || '', source: 'encaissement', docId: r.docId, currency: cur });
         const label = `Règlement ${r.number || ''}${r.client ? ' — ' + r.client : ''}${r.reference ? ' (' + r.reference + ')' : ''}`;
         e.debit(r.method === 'Espèces' ? acc.caisse : acc.banque, label, r.amount);
-        e.credit(acc.clients, label, r.amount);
+        e.credit(cptClient(r.clientId), label, r.amount, { role: 'clients' });
         out.push(...e.done());
       });
     }
@@ -3870,9 +3989,9 @@
     // --- règlements fournisseurs
     if (want('reglements')) {
       supplierPayments(data, company, period).forEach(r => {
-        const e = entrySet({ date: r.date, journal: r.method === 'Espèces' ? 'CA' : 'BQ', piece: r.number || '', tiers: r.supplier, source: 'règlement', docId: r.purchaseId, currency: cur });
+        const e = entrySet({ date: r.date, journal: r.method === 'Espèces' ? 'CA' : 'BQ', piece: r.number || '', tiers: r.supplier, tiersId: r.supplierId || '', source: 'règlement', docId: r.purchaseId, currency: cur });
         const label = `Règlement fournisseur ${r.number || ''}${r.supplier ? ' — ' + r.supplier : ''}`;
-        e.debit(acc.fournisseurs, label, r.amount);
+        e.debit(cptFourn(r.supplierId), label, r.amount, { role: 'fournisseurs' });
         e.credit(r.method === 'Espèces' ? acc.caisse : acc.banque, label, r.amount);
         out.push(...e.done());
       });
@@ -3939,6 +4058,167 @@
     { key: 'label', label: 'Libellé' },
     { key: 'debit', label: 'Débit', type: 'money' }, { key: 'credit', label: 'Crédit', type: 'money' },
     { key: 'currency', label: 'Devise' }
+  ]);
+
+  // ---------- le grand livre et la balance (8.8.0) ----------
+  //
+  // Les deux documents qu'un cabinet tire en premier pour contrôler un dossier — et les deux termes
+  // que le comptable de Skander a nommés : « mouvement de compte » (le grand livre : chaque compte,
+  // ses lignes une à une, le solde qui avance) et la balance (tous les comptes, ouverture,
+  // mouvements, soldes, et des totaux qui doivent tomber juste).
+  //
+  // Le SOLDE D'OUVERTURE d'une période est ce que le compte portait la veille du premier jour :
+  // - les classes 1 à 5 (bilan) traversent les exercices : tout ce qui précède compte ;
+  // - les classes 6 et 7 (gestion) repartent de zéro au 1er janvier : ce qui précède l'exercice ne
+  //   compte pas dans le compte lui-même, mais son solde net (produits − charges des exercices
+  //   passés) est porté au compte de résultat — sinon la balance d'ouverture ne tomberait pas juste.
+  // C'est exactement ce que fait une écriture d'à-nouveau ; elle est ici DÉDUITE, pas saisie.
+  function debutExercice(iso) { return `${String(iso || today()).slice(0, 4)}-01-01`; }
+
+  // Les soldes de tous les comptes la veille de `period.from` : { compte → solde signé (D > 0) }.
+  function soldesOuverture(data, company, period, opts) {
+    const from = period && period.from;
+    if (!from) return {};
+    const acc = chartAccounts(data);
+    const exo = debutExercice(from);
+    const avant = journalEntries(data, company, { from: '', to: addDays(from, -1) }, opts);
+    const out = {};
+    const add = (k, v) => { out[k] = round3((out[k] || 0) + v); };
+    avant.forEach(e => {
+      const v = round3(e.debit - e.credit);
+      if (compteDeGestion(e.account) && e.date < exo) add(acc.resultat, v);
+      else add(e.account, v);
+    });
+    Object.keys(out).forEach(k => { if (!out[k]) delete out[k]; });
+    return out;
+  }
+
+  // La balance générale : une ligne par compte — solde d'ouverture, mouvements de la période,
+  // solde de clôture — chacun rangé dans SA colonne (débiteur ou créditeur, jamais un signe).
+  // `equilibree` est vrai quand les trois paires de totaux tombent juste : c'est le contrôle que le
+  // comptable fait en premier, et la seule affirmation que cette page garantit.
+  function balanceGenerale(data, company, period, opts) {
+    const entries = journalEntries(data, company, period, opts);
+    const ouv = soldesOuverture(data, company, period, opts);
+    const by = {};
+    const row = k => (by[k] = by[k] || { account: k, ouverture: 0, debit: 0, credit: 0, lignes: 0, tiers: '' });
+    Object.keys(ouv).forEach(k => { row(k).ouverture = ouv[k]; });
+    entries.forEach(e => {
+      const r = row(e.account);
+      r.debit = round3(r.debit + e.debit); r.credit = round3(r.credit + e.credit); r.lignes++;
+      if (e.role && e.tiers && !r.tiers) r.tiers = e.tiers;
+    });
+    const rows = Object.keys(by).sort().map(k => {
+      const r = by[k];
+      const solde = round3(r.ouverture + r.debit - r.credit);
+      return {
+        ...r, label: accountLabel(data, k, r.tiers), classe: classeDe(k),
+        ouvertureD: r.ouverture > 0 ? r.ouverture : 0, ouvertureC: r.ouverture < 0 ? round3(-r.ouverture) : 0,
+        solde, soldeD: solde > 0 ? solde : 0, soldeC: solde < 0 ? round3(-solde) : 0
+      };
+    });
+    const sum = f => round3(rows.reduce((s, r) => s + f(r), 0));
+    const totals = {
+      ouvertureD: sum(r => r.ouvertureD), ouvertureC: sum(r => r.ouvertureC),
+      debit: sum(r => r.debit), credit: sum(r => r.credit),
+      soldeD: sum(r => r.soldeD), soldeC: sum(r => r.soldeC)
+    };
+    const equilibree = round3(totals.ouvertureD - totals.ouvertureC) === 0
+      && round3(totals.debit - totals.credit) === 0 && round3(totals.soldeD - totals.soldeC) === 0;
+    return { rows, totals, equilibree, period };
+  }
+
+  // Le grand livre : pour chaque compte, ses mouvements un par un et le solde qui avance.
+  // `opts.compte` limite à un compte (ou à un préfixe : « 4 » donne tous les tiers).
+  function grandLivre(data, company, period, opts) {
+    opts = opts || {};
+    const filtre = String(opts.compte || '');
+    const entries = journalEntries(data, company, period, opts);
+    const ouv = soldesOuverture(data, company, period, opts);
+    const comptes = {};
+    const get = k => (comptes[k] = comptes[k] || { account: k, ouverture: ouv[k] || 0, lignes: [], debit: 0, credit: 0, tiers: '' });
+    Object.keys(ouv).forEach(k => { if (!filtre || k.startsWith(filtre)) get(k); });
+    entries.forEach(e => {
+      if (filtre && !e.account.startsWith(filtre)) return;
+      const c = get(e.account);
+      c.lignes.push(e);
+      if (e.role && e.tiers && !c.tiers) c.tiers = e.tiers;
+    });
+    const out = Object.keys(comptes).sort().map(k => {
+      const c = comptes[k];
+      let solde = c.ouverture;
+      c.lignes.sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.journal || '').localeCompare(b.journal || '') || (a.piece || '').localeCompare(b.piece || '', undefined, { numeric: true }));
+      c.lignes = c.lignes.map(e => { solde = round3(solde + e.debit - e.credit); c.debit = round3(c.debit + e.debit); c.credit = round3(c.credit + e.credit); return { ...e, solde }; });
+      return { ...c, label: accountLabel(data, k, c.tiers), classe: classeDe(k), solde };
+    });
+    return {
+      comptes: out,
+      debit: round3(out.reduce((s, c) => s + c.debit, 0)),
+      credit: round3(out.reduce((s, c) => s + c.credit, 0)),
+      lignes: out.reduce((s, c) => s + c.lignes.length, 0),
+      period
+    };
+  }
+
+  // La balance auxiliaire : un client ou un fournisseur par ligne, avec ce qu'il devait à
+  // l'ouverture, ce qui a été facturé et réglé, et ce qui reste. Elle se lit sans comptes
+  // auxiliaires (les lignes portent leur tiers), mais c'est avec eux que le cabinet la reconnaît.
+  function balanceAuxiliaire(data, company, period, role, opts) {
+    const liste = role === 'fournisseurs' ? (data.suppliers || []) : (data.clients || []);
+    const nom = id => (liste.find(t => t.id === id) || {}).name || '';
+    const acc = chartAccounts(data);
+    const base = role === 'fournisseurs' ? acc.fournisseurs : acc.clients;
+    const codes = auxiliairesActifs(data) ? codesAuxiliaires(liste) : {};
+    const cle = e => e.tiersId || ('~' + (e.tiers || ''));
+    const by = {};
+    const row = e => {
+      const k = cle(e);
+      return by[k] = by[k] || { tiersId: e.tiersId || '', tiers: e.tiers || nom(e.tiersId) || '(sans tiers)', account: e.tiersId && codes[e.tiersId] ? base + codes[e.tiersId] : base, ouverture: 0, debit: 0, credit: 0, lignes: 0 };
+    };
+    journalEntries(data, company, { from: '', to: addDays(period.from, -1) }, opts).forEach(e => {
+      if (e.role !== role) return;
+      const r = row(e); r.ouverture = round3(r.ouverture + e.debit - e.credit);
+    });
+    journalEntries(data, company, period, opts).forEach(e => {
+      if (e.role !== role) return;
+      const r = row(e); r.debit = round3(r.debit + e.debit); r.credit = round3(r.credit + e.credit); r.lignes++;
+    });
+    const rows = Object.keys(by).map(k => by[k]).map(r => {
+      const solde = round3(r.ouverture + r.debit - r.credit);
+      return { ...r, solde, ouvertureD: r.ouverture > 0 ? r.ouverture : 0, ouvertureC: r.ouverture < 0 ? round3(-r.ouverture) : 0, soldeD: solde > 0 ? solde : 0, soldeC: solde < 0 ? round3(-solde) : 0 };
+    }).filter(r => r.ouverture || r.debit || r.credit).sort((a, b) => a.account.localeCompare(b.account) || a.tiers.localeCompare(b.tiers));
+    const sum = f => round3(rows.reduce((s, r) => s + f(r), 0));
+    return {
+      role, rows,
+      totals: { ouvertureD: sum(r => r.ouvertureD), ouvertureC: sum(r => r.ouvertureC), debit: sum(r => r.debit), credit: sum(r => r.credit), soldeD: sum(r => r.soldeD), soldeC: sum(r => r.soldeC) }
+    };
+  }
+
+  const balanceCsvColumns = () => ([
+    { key: 'account', label: 'Compte' }, { key: 'label', label: 'Intitulé' },
+    { key: 'ouvertureD', label: 'Ouverture débit', type: 'money' }, { key: 'ouvertureC', label: 'Ouverture crédit', type: 'money' },
+    { key: 'debit', label: 'Mouvements débit', type: 'money' }, { key: 'credit', label: 'Mouvements crédit', type: 'money' },
+    { key: 'soldeD', label: 'Solde débiteur', type: 'money' }, { key: 'soldeC', label: 'Solde créditeur', type: 'money' }
+  ]);
+  const balanceAuxCsvColumns = () => ([
+    { key: 'account', label: 'Compte' }, { key: 'tiers', label: 'Tiers' },
+    { key: 'ouvertureD', label: 'Ouverture débit', type: 'money' }, { key: 'ouvertureC', label: 'Ouverture crédit', type: 'money' },
+    { key: 'debit', label: 'Mouvements débit', type: 'money' }, { key: 'credit', label: 'Mouvements crédit', type: 'money' },
+    { key: 'soldeD', label: 'Solde débiteur', type: 'money' }, { key: 'soldeC', label: 'Solde créditeur', type: 'money' }
+  ]);
+  // Le grand livre à plat : une ligne par mouvement, précédée du compte et suivie du solde progressif.
+  function grandLivreRows(gl) {
+    const out = [];
+    gl.comptes.forEach(c => {
+      out.push({ account: c.account, label: c.label, date: '', journal: '', piece: '', libelle: 'Solde d\'ouverture', debit: 0, credit: 0, solde: c.ouverture });
+      c.lignes.forEach(e => out.push({ account: c.account, label: c.label, date: e.date, journal: e.journal, piece: e.piece, libelle: e.label, debit: e.debit, credit: e.credit, solde: e.solde }));
+    });
+    return out;
+  }
+  const grandLivreCsvColumns = () => ([
+    { key: 'account', label: 'Compte' }, { key: 'label', label: 'Intitulé' }, { key: 'date', label: 'Date', type: 'date' },
+    { key: 'journal', label: 'Journal' }, { key: 'piece', label: 'Pièce' }, { key: 'libelle', label: 'Libellé' },
+    { key: 'debit', label: 'Débit', type: 'money' }, { key: 'credit', label: 'Crédit', type: 'money' }, { key: 'solde', label: 'Solde', type: 'money' }
   ]);
 
   // ---------- conversions entre documents (2.6.0) ----------
@@ -5733,6 +6013,9 @@
     PACK_FORMAT, packPeriod, packPlan, packChecklist, packFileName, packCoverHtml,
     DEFAULT_ACCOUNTS, ACCOUNT_LABELS, ENTRY_JOURNALS, chartAccounts, journalEntries,
     entriesBalance, entriesByAccount, entryCsvColumns,
+    PLAN_COMPTABLE, accountLabel, classeDe, compteDeGestion, auxiliairesActifs, codesAuxiliaires, numeroterAuxiliaires,
+    debutExercice, soldesOuverture, balanceGenerale, grandLivre, grandLivreRows, balanceAuxiliaire,
+    balanceCsvColumns, balanceAuxCsvColumns, grandLivreCsvColumns,
     salesCsvColumns, buyCsvColumns, payCsvColumns, supplierPayCsvColumns, cashCsvColumns,
     nextNumber, isLocked, isIssued, computeTotals, creditsFor, invoiceBalance, effectiveStatus,
     depositLines, settlementLines, salesJournal, vatSummary, paymentsJournal, toCsv, migrateData,

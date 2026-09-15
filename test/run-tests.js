@@ -4126,6 +4126,160 @@ t('écritures : le paquet mensuel les emporte, équilibrées', () => {
   assert.ok(/Écritures comptables/.test(cover) && /adapter au plan du cabinet/.test(cover));
 });
 
+// ---------- le grand livre et la balance (8.8.0) ----------
+// Les deux documents qu'un cabinet tire en premier. La balance ne garantit qu'une chose, et c'est
+// la seule qui compte : ses trois paires de totaux tombent juste, sur chaque mois comme sur l'année.
+t('8.8.0 : la balance tombe juste sur chaque mois de l\'exemple, et le grand livre la retrouve compte par compte', () => {
+  const demo = require('../src/renderer/demo.js');
+  const company = { ...core.DEFAULT_COMPANY, name: 'Test SUARL', matricule: '1234567A' };
+  const data = core.migrateData(demo.buildDemoData(company, '2026-09-12'));
+  let comptes = 0;
+  for (const year of [2025, 2026]) {
+    for (let m = 1; m <= 12; m++) {
+      const p = core.packPeriod(year, m);
+      const b = core.balanceGenerale(data, data.company, p, {});
+      assert.ok(b.equilibree, `${year}-${m} : la balance ne tombe pas juste ${JSON.stringify(b.totals)}`);
+      // Chaque montant est dans SA colonne : jamais un solde débiteur ET créditeur, jamais un négatif.
+      b.rows.forEach(r => {
+        assert.ok(!(r.soldeD && r.soldeC) && !(r.ouvertureD && r.ouvertureC), `${r.account} : un solde des deux côtés`);
+        assert.ok(r.soldeD >= 0 && r.soldeC >= 0 && r.debit >= 0 && r.credit >= 0, `${r.account} : un montant négatif`);
+        assert.strictEqual(core.round3(r.ouverture + r.debit - r.credit), r.solde, `${r.account} : ouverture + débit − crédit ≠ solde`);
+      });
+      // Le grand livre dit la même chose, compte par compte : sa dernière ligne est le solde de la balance.
+      const gl = core.grandLivre(data, data.company, p, {});
+      assert.strictEqual(gl.comptes.length, b.rows.length, `${year}-${m} : pas le même nombre de comptes`);
+      gl.comptes.forEach(c => {
+        const r = b.rows.find(x => x.account === c.account);
+        assert.ok(r, `${c.account} manque à la balance`);
+        assert.strictEqual(c.ouverture, r.ouverture, `${c.account} : ouverture différente`);
+        assert.strictEqual(c.solde, r.solde, `${c.account} : solde différent`);
+        const last = c.lignes[c.lignes.length - 1];
+        assert.strictEqual(last ? last.solde : c.ouverture, c.solde, `${c.account} : le solde progressif ne finit pas sur le solde du compte`);
+        let s = c.ouverture;
+        c.lignes.forEach(l => { s = core.round3(s + l.debit - l.credit); assert.strictEqual(l.solde, s, `${c.account} : le solde n'avance pas ligne à ligne`); });
+      });
+      comptes += b.rows.length;
+    }
+  }
+  assert.ok(comptes > 100, 'l\'exemple doit remplir la balance');
+  // L'année entière tombe juste aussi, et son ouverture est celle de janvier.
+  const an = core.balanceGenerale(data, data.company, { from: '2026-01-01', to: '2026-12-31' }, {});
+  const jan = core.balanceGenerale(data, data.company, core.packPeriod(2026, 1), {});
+  assert.ok(an.equilibree);
+  assert.deepStrictEqual(an.totals.ouvertureD, jan.totals.ouvertureD);
+});
+
+t('8.8.0 : les charges et les produits repartent de zéro au 1er janvier, et le passé se retrouve au résultat', () => {
+  const demo = require('../src/renderer/demo.js');
+  const company = { ...core.DEFAULT_COMPANY, name: 'Test SUARL', matricule: '1234567A' };
+  const data = core.migrateData(demo.buildDemoData(company, '2026-09-12'));
+  const acc = core.chartAccounts(data);
+  const b25 = core.balanceGenerale(data, data.company, { from: '2025-01-01', to: '2025-12-31' }, {});
+  const ventes25 = b25.rows.find(r => r.account === acc.ventes);
+  assert.ok(ventes25 && ventes25.credit > 0, 'l\'exemple vend en 2025');
+  const jan26 = core.balanceGenerale(data, data.company, core.packPeriod(2026, 1), {});
+  const ventesJan = jan26.rows.find(r => r.account === acc.ventes);
+  // Un compte de produits ne reporte rien d'une année sur l'autre…
+  assert.strictEqual(ventesJan ? ventesJan.ouverture : 0, 0, 'les ventes de 2025 ne doivent pas ouvrir 2026');
+  // …mais un compte de bilan, si : la banque reprend exactement son solde du 31 décembre.
+  const bq25 = b25.rows.find(r => r.account === acc.banque), bqJan = jan26.rows.find(r => r.account === acc.banque);
+  assert.strictEqual(bqJan.ouverture, bq25.solde, 'la banque doit rouvrir sur son solde de clôture');
+  // Et le résultat des exercices passés porte le net des classes 6 et 7 de 2025 — sinon la balance
+  // d'ouverture ne tomberait pas juste.
+  const res = jan26.rows.find(r => r.account === acc.resultat);
+  const net25 = core.round3(b25.rows.filter(r => core.compteDeGestion(r.account)).reduce((s, r) => s + r.solde, 0));
+  assert.ok(res, 'le compte de résultat doit apparaître à l\'ouverture');
+  assert.strictEqual(res.ouverture, net25, 'le résultat reporté doit valoir le net des charges et produits passés');
+  assert.ok(jan26.equilibree);
+  // En juin, les ventes ouvrent sur janvier–mai : le solde d'ouverture est bien un cumul d'exercice.
+  const juin = core.grandLivre(data, data.company, core.packPeriod(2026, 6), { compte: acc.ventes });
+  const janMai = core.balanceGenerale(data, data.company, { from: '2026-01-01', to: '2026-05-31' }, {}).rows.find(r => r.account === acc.ventes);
+  assert.strictEqual(juin.comptes[0].ouverture, janMai.solde);
+});
+
+t('8.8.0 : un sous-compte par tiers, figé sur la fiche, et une balance auxiliaire qui retrouve le collectif', () => {
+  const demo = require('../src/renderer/demo.js');
+  const company = { ...core.DEFAULT_COMPANY, name: 'Test SUARL', matricule: '1234567A' };
+  const data = core.migrateData(demo.buildDemoData(company, '2026-09-12'));
+  const acc = core.chartAccounts(data);
+  const p = core.packPeriod(2026, 5);
+  // Sans sous-comptes : tout le monde sur 411, et la balance auxiliaire se lit quand même.
+  const auxAvant = core.balanceAuxiliaire(data, data.company, p, 'clients', {});
+  assert.ok(auxAvant.rows.length > 1 && auxAvant.rows.every(r => r.account === acc.clients));
+  const gen = core.balanceGenerale(data, data.company, p, {}).rows.find(r => r.account === acc.clients);
+  assert.strictEqual(core.round3(auxAvant.totals.soldeD - auxAvant.totals.soldeC), gen.solde, 'le total des clients doit être le compte Clients');
+  assert.strictEqual(auxAvant.totals.debit, gen.debit);
+
+  // Avec : 411001, 411002… — et la balance générale tombe toujours juste.
+  data.auxiliaires = true;
+  assert.ok(core.numeroterAuxiliaires(data) > 0, 'les codes s\'écrivent sur les fiches');
+  assert.strictEqual(core.numeroterAuxiliaires(data), 0, 'et une seconde fois ne change rien');
+  const e = core.journalEntries(data, data.company, p, {});
+  assert.ok(e.some(x => /^411\d{3}$/.test(x.account) && x.role === 'clients'), 'les écritures portent le sous-compte');
+  assert.ok(!e.some(x => x.account === acc.clients), 'plus personne sur le collectif');
+  const b = core.balanceGenerale(data, data.company, p, {});
+  assert.ok(b.equilibree);
+  const sousComptes = b.rows.filter(r => r.account.startsWith(acc.clients));
+  assert.strictEqual(core.round3(sousComptes.reduce((s, r) => s + r.solde, 0)), gen.solde, 'la somme des sous-comptes est le collectif');
+  assert.ok(sousComptes.every(r => r.label && r.label !== 'Clients' && r.label !== 'Compte hors plan'), 'un sous-compte porte le nom de son client');
+  const aux = core.balanceAuxiliaire(data, data.company, p, 'clients', {});
+  assert.ok(aux.rows.every(r => /^411\d{3}$/.test(r.account)));
+
+  // Un code est figé : supprimer un client ne renumérote pas les autres, et un nouveau prend la suite.
+  const codes = {}; data.clients.forEach(c => { codes[c.id] = c.compteAux; });
+  const max = Math.max(...data.clients.map(c => Number(c.compteAux)));
+  data.clients.splice(0, 1);
+  data.clients.push({ id: 'neuf', name: 'Nouveau client' });
+  core.numeroterAuxiliaires(data);
+  data.clients.forEach(c => { if (c.id !== 'neuf') assert.strictEqual(c.compteAux, codes[c.id], `${c.name} a changé de code`); });
+  assert.strictEqual(data.clients.find(c => c.id === 'neuf').compteAux, String(max + 1).padStart(3, '0'));
+  // Même déduits sans être écrits, les codes sont les mêmes (le paquet du cabinet ne modifie rien).
+  data.clients.push({ id: 'neuf2', name: 'Encore un' });
+  assert.strictEqual(core.codesAuxiliaires(data.clients).neuf2, String(max + 2).padStart(3, '0'));
+});
+
+t('8.8.0 : le plan comptable tunisien nomme un compte par son plus long préfixe', () => {
+  const data = core.migrateData({ company: core.DEFAULT_COMPANY });
+  assert.strictEqual(core.accountLabel(data, '627'), 'Services bancaires');
+  assert.strictEqual(core.accountLabel(data, '6270'), 'Services bancaires', 'un sous-compte hérite du plus long préfixe');
+  assert.strictEqual(core.accountLabel(data, '4367'), 'TVA collectée');
+  assert.strictEqual(core.accountLabel(data, '411'), 'Clients', 'le rôle réglé passe avant le plan');
+  assert.strictEqual(core.accountLabel(data, '99'), 'Compte hors plan');
+  assert.strictEqual(core.accountLabel(data, ''), '');
+  data.chartAccounts = { ventes: '7061' };
+  assert.strictEqual(core.accountLabel(data, '7061'), 'Ventes', 'un compte réglé garde son rôle');
+  assert.strictEqual(core.accountLabel(data, '706'), 'Prestations de services', 'et l\'ancien numéro redevient un compte du plan');
+  assert.ok(core.PLAN_COMPTABLE.length >= 100 && ['1', '2', '3', '4', '5', '6', '7'].every(c => core.PLAN_COMPTABLE.some(([n]) => n === c)), 'les sept classes');
+  assert.ok(core.compteDeGestion('706') && core.compteDeGestion('6270') && !core.compteDeGestion('411') && !core.compteDeGestion('532'));
+  // Le compte d'immobilisations proposé est le 22 du SCE (corporelles), plus le 24 (« statut juridique particulier »).
+  assert.strictEqual(core.DEFAULT_ACCOUNTS.immobilisations, '22');
+});
+
+t('8.8.0 : la balance part dans le paquet, et les exports ont une entête', () => {
+  const demo = require('../src/renderer/demo.js');
+  const company = { ...core.DEFAULT_COMPANY, name: 'T', matricule: '1A' };
+  const data = core.migrateData(demo.buildDemoData(company, '2026-09-12'));
+  const plan = core.packPlan(data, data.company, core.packPeriod(2026, 5), {});
+  const file = plan.entries.find(e => e.path === 'journaux/balance.csv');
+  assert.ok(file && file.text.split('\n').length > 5, 'le paquet doit contenir la balance');
+  assert.strictEqual(file.text.split('\r\n')[0].replace('﻿', ''), 'Compte;Intitulé;Ouverture débit;Ouverture crédit;Mouvements débit;Mouvements crédit;Solde débiteur;Solde créditeur');
+  const gl = core.grandLivre(data, data.company, core.packPeriod(2026, 5), { compte: '411' });
+  const csv = core.toCsv(core.grandLivreRows(gl), core.grandLivreCsvColumns());
+  assert.strictEqual(csv.split('\r\n')[0].replace('﻿', ''), 'Compte;Intitulé;Date;Journal;Pièce;Libellé;Débit;Crédit;Solde');
+  assert.ok(/Solde d'ouverture/.test(csv.split('\r\n')[1]), 'le grand livre à plat commence par l\'ouverture du compte');
+  // Le grand livre limité à un préfixe ne prend que ce préfixe.
+  const tiers = core.grandLivre(data, data.company, core.packPeriod(2026, 5), { compte: '4' });
+  assert.ok(tiers.comptes.length > 1 && tiers.comptes.every(c => c.account.startsWith('4')));
+  // Et l'écran : deux onglets de plus, branchés sur le cœur, et le plan de comptes qui fige les sous-comptes.
+  const app = lireApp();
+  assert.ok(/\['grandlivre', 'Grand livre'\], \['balance', 'Balance'\]/.test(app), 'les deux onglets');
+  assert.ok(/if \(comptaState\.tab === 'grandlivre'\) return drawGrandLivre\(\);/.test(app) && /if \(comptaState\.tab === 'balance'\) return drawBalance\(\);/.test(app));
+  assert.ok(/C\.grandLivre\(data, company\(\), p, \{ compte: glState\.compte \}\)/.test(app), 'le grand livre vient du cœur');
+  assert.ok(/C\.balanceGenerale\(data, company\(\), p, \{\}\)/.test(app) && /C\.balanceAuxiliaire\(data, company\(\), p, vue, \{\}\)/.test(app));
+  assert.ok(/data\.auxiliaires = !!\$\('input\[name=auxiliaires\]', layer\)\.checked;\s*if \(data\.auxiliaires\) C\.numeroterAuxiliaires\(data\);/.test(app), 'activer les sous-comptes fige les codes');
+  assert.ok(core.DEFAULT_DATA.auxiliaires === false, 'le réglage vit dans les données, donc « Tout effacer » le remet à zéro');
+});
+
 // ---------- SkanFact Cabinet (src/cabinet/cabcore.js) ----------
 // La seconde application du dépôt. Sa logique est pure : elle se teste sans Electron, comme core.js.
 const cab = require('../src/cabinet/cabcore.js');
