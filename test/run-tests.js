@@ -11,7 +11,11 @@ function t(name, fn) {
   n++; console.log('ok -', name);
 }
 // Version asynchrone, à attendre explicitement : `await ta('…', async () => { … })`.
-async function ta(name, fn) { await fn(); n++; console.log('ok -', name); }
+// `ta` sans `await` est le MÊME défaut que `t` avec une fonction asynchrone, une couche plus loin :
+// le test part détaché, son « ok » s'affiche après le total, et une assertion qui tombe ne fait plus
+// échouer la commande. `enCours` le rattrape — il vaut encore 1 au moment du résumé.
+let enCours = 0;
+async function ta(name, fn) { enCours++; await fn(); n++; enCours--; console.log('ok -', name); }
 
 // Un test qui lit du code doit lire du CODE : un appel cité dans un commentaire, ou un lien mis en
 // commentaire, satisfait un `includes` sans que le code fasse quoi que ce soit (6.8.0, 7.0.0). On
@@ -3243,7 +3247,10 @@ t('8.0.0 : la clé embarquée est une vraie clé publique, l\'éditeur ne s\'ach
   const deduction = cpe.indexOf('crypto.createPublicKey(crypto.createPrivateKey(lirePrivee()))');
   assert.ok(deduction > 0 && (cpe.indexOf('lireJson(') < 0 || cpe.indexOf('lireJson(') > deduction), 'clePubliqueEditeur doit déduire la clé publique de la privée avant de lire le fichier');
   assert.ok(!/return (fichier|lireJson)/.test(cpe), 'clePubliqueEditeur ne doit jamais rendre le contenu du fichier tel quel');
-  assert.ok(/clePubliqueEditeur\(\)/.test(edv) && /publicKey\(\)/.test(edv) && !/lireJson/.test(edv), 'editeurDeLaCleEnVigueur compare la clé DÉDUITE à la clé EN VIGUEUR');
+  // (8.4.0 : les clés en vigueur sont plusieurs — `clePublique().cles`. La règle ne bouge pas :
+  // la clé de l'éditeur est DÉDUITE de sa privée, et comparée à ce qui est en vigueur ; ce fichier
+  // ne lit jamais un fichier public pour en tirer un passe-droit.)
+  assert.ok(/clePubliqueEditeur\(\)/.test(edv) && /clePublique\(\)\.cles/.test(edv) && !/lireJson/.test(edv), 'editeurDeLaCleEnVigueur compare la clé DÉDUITE aux clés EN VIGUEUR');
   // Le repli GitHub ne garde pas les en-têtes du relais (secret, clé de licence).
   const fg = main.slice(main.indexOf('function feedGithub('), main.indexOf('function feedGithub(') + 400);
   assert.ok(/u\.requestHeaders = null;[\s\S]*u\.setFeedURL/.test(fg), 'feedGithub doit retirer requestHeaders AVANT de changer de flux');
@@ -3280,6 +3287,191 @@ t('8.0.0 : la clé embarquée est une vraie clé publique, l\'éditeur ne s\'ach
   assert.ok(lancements.length >= 3, 'e2e:licence doit ouvrir au moins deux applications');
   assert.ok(/const env2 = \{ \.\.\.process\.env, SKANFACT_DOSSIER_CLES: clesVides \};/.test(e2e) && /env: env2 \}/.test(lancements[2]), 'le second lancement doit être ARMÉ avec la vraie clé (sans SKANFACT_CLE_EMBARQUEE)');
   assert.ok(/imposteur/.test(e2e) && /publicKey: embarquee\.publicKey/.test(e2e), 'e2e:licence doit rejouer le contournement « clé publique recopiée à côté d\'un .pem quelconque »');
+});
+
+// ---------- 8.4.0 : plusieurs clés de signature, et la réponse du plan de contrôle ----------
+t('8.4.0 : une licence sans kid reste vérifiée par la clé maître — sinon tout ce qui est vendu tombe', () => {
+  const master = lic.generateKeys(), srv = lic.generateKeys();
+  const cles = { cles: [{ kid: 'master', publicKey: master.publicKey, depuis: '2026-09-14' },
+                        { kid: 'srv-1', publicKey: srv.publicKey, depuis: '2026-10-01' }] };
+  // Une clé émise depuis la 8.0.0 : aucun `kid` dans la charge signée. C'est le cas de TOUTES les
+  // licences déjà vendues, et la première assertion du lot est celle qui les protège.
+  const ancienne = lic.signLicence({ nom: 'Trabelsi', matricule: '1234567A', exp: '2027-09-14' }, master.privateKey);
+  assert.ok(!lic.parseKey(ancienne).payload.kid, 'la clé d\'essai ne doit justement porter aucun kid');
+  assert.strictEqual((lic.verifyKey(ancienne, cles) || {}).nom, 'Trabelsi', 'une clé sans kid doit se vérifier avec master');
+  // Une chaîne PEM continue de marcher : c'est ce que passent tous les appelants d'avant la 8.4.0.
+  assert.strictEqual((lic.verifyKey(ancienne, master.publicKey) || {}).nom, 'Trabelsi');
+  // …et le fichier de la 8.0.0 tel quel, qui est encore sur le disque de tous les clients.
+  assert.strictEqual((lic.verifyKey(ancienne, { format: 1, publicKey: master.publicKey, createdAt: '2026-09-14' }) || {}).nom, 'Trabelsi');
+
+  // `kid` désigne UNE clé, jamais « essaie-les toutes » : c'est ce qui permet d'en retirer une.
+  const neuve = lic.signLicence({ kid: 'srv-1', nom: 'Ben Amor', matricule: '7654321B' }, srv.privateKey);
+  assert.strictEqual((lic.verifyKey(neuve, cles) || {}).nom, 'Ben Amor');
+  // Signée par srv-1 mais SANS kid : master est désignée, et master ne l'a pas signée.
+  assert.strictEqual(lic.verifyKey(lic.signLicence({ nom: 'Pirate' }, srv.privateKey), cles), null,
+    'une clé sans kid ne doit jamais être vérifiée par une autre que master');
+  // Une clé retirée ne vérifie plus rien : c'est la sortie de secours après une fuite.
+  assert.strictEqual(lic.verifyKey(neuve, { cles: [cles.cles[0], { ...cles.cles[1], retiree: true }] }), null,
+    'une clé retirée doit cesser de vérifier ce qu\'elle a signé');
+  // Un kid inconnu (une application plus ancienne que la clé) : refusé, jamais deviné.
+  assert.strictEqual(lic.verifyKey(lic.signLicence({ kid: 'srv-9', nom: 'X' }, srv.privateKey), cles), null);
+  // Sans aucune clé, l'application est LIBRE — elle ne se verrouille pas toute seule.
+  assert.strictEqual(lic.licenceState({ cles: { cles: [] }, today: '2030-01-01' }).state, 'libre');
+
+  // Le fichier embarqué : la clé master EST celle de la 8.0.0, au caractère près.
+  const v8 = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'build', 'licence-public.json'), 'utf8'));
+  const v84 = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'build', 'licences-publiques.json'), 'utf8'));
+  const m = lic.choisirCle('', v84);
+  assert.ok(m && m.kid === 'master', 'build/licences-publiques.json doit porter une clé « master »');
+  assert.strictEqual(m.publicKey, v8.publicKey,
+    'la clé master a changé : toutes les licences déjà vendues seraient invalidées d\'un coup');
+  // Et le paquet doit l'emporter. La 7.33.0 a appris que `build/` n'entrait pas dans le paquet ;
+  // ici le piège est plus discret — l'ancien glob `build/licence-public*.json` ne couvre PAS
+  // `licences-publiques.json`, et l'application installée serait restée sur l'ancien fichier.
+  const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
+  const couvert = f => (pkg.build.files || []).some(p => new RegExp('^' +
+    String(p).replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*/g, ' ').replace(/\*/g, '[^/]*').replace(/ /g, '.*') + '$').test(f));
+  assert.ok(couvert('build/licences-publiques.json'), 'build/licences-publiques.json n\'entre pas dans le paquet');
+  assert.ok(couvert('build/licence-public.json'), 'l\'ancien fichier doit rester embarqué le temps de la transition');
+});
+
+t('8.4.0 : la réponse du plan de contrôle est signée, datée et adressée — sinon elle ne restreint rien', () => {
+  const crypto = require('crypto');
+  const master = lic.generateKeys(), rep = lic.generateKeys(), autre = lic.generateKeys();
+  const cle = lic.signLicence({ nom: 'Trabelsi', matricule: '1234567A', exp: '2030-01-01' }, master.privateKey);
+  const sujet = lic.empreinteCle(cle);
+  const maintenant = '2026-10-01T10:00:00.000Z';
+  const signer = (corps, prive) => {
+    const c = lic.corpsReponse(corps);
+    const sig = crypto.sign(null, Buffer.from(JSON.stringify(c), 'utf8'), crypto.createPrivateKey(prive));
+    return { ...c, signature: sig.toString('base64url') };
+  };
+  const V = r => lic.verifierReponse(r, rep.publicKey, { sujet, maintenant });
+  const bonne = signer({ sujet, etat: 'revoquee', motif: 'rétractation', emisLe: maintenant }, rep.privateKey);
+  assert.strictEqual(V(bonne).ok, true, 'une réponse signée, datée et adressée doit être acceptée');
+  assert.strictEqual(V(bonne).etat, 'revoquee');
+
+  // Chaque refus répond à une attaque précise, et « ignorée » est toujours le cas sûr.
+  assert.strictEqual(V({ ...bonne, signature: null }).ok, false, 'une réponse non signée ne doit jamais restreindre');
+  assert.strictEqual(V({ ...bonne, etat: 'active' }).ok, false, 'un champ retouché doit casser la signature');
+  assert.strictEqual(V(signer({ sujet: lic.empreinteCle('SKAN1.uneautre'), etat: 'revoquee', emisLe: maintenant }, rep.privateKey)).ok, false,
+    'la réponse destinée à une autre licence ne doit pas s\'appliquer ici');
+  assert.strictEqual(V(signer({ sujet, etat: 'revoquee', emisLe: '2026-06-01T00:00:00.000Z' }, rep.privateKey)).ok, false,
+    'une réponse rejouée (trop vieille) doit être ignorée');
+  assert.strictEqual(V(signer({ sujet, etat: 'revoquee', emisLe: '2026-12-01T00:00:00.000Z' }, rep.privateKey)).ok, false,
+    'une réponse datée dans le futur doit être ignorée');
+  assert.strictEqual(V(signer({ sujet, etat: 'revoquee', emisLe: maintenant }, autre.privateKey)).ok, false,
+    'une réponse signée par une autre clé que celle du serveur doit être ignorée');
+  assert.strictEqual(V({ ...bonne, v: 2 }).ok, false, 'une version de réponse inconnue ne se rejuge pas à la v1');
+  assert.strictEqual(V({ ...bonne, emisLe: 'pas une date' }).ok, false);
+  assert.strictEqual(lic.verifierReponse(bonne, '', { sujet, maintenant }).ok, false,
+    'sans clé de réponse embarquée, on ignore tout : le serveur ne peut alors rien restreindre');
+  assert.strictEqual(lic.verifierReponse(bonne, rep.publicKey, { maintenant }).ok, false,
+    'une réponse sans sujet à comparer ne doit rien restreindre');
+});
+
+t('8.4.0 : une révocation reçue ferme la création, jamais la lecture — et seulement la clé qu\'elle vise', () => {
+  const k = lic.generateKeys();
+  const cle = lic.signLicence({ nom: 'Trabelsi', matricule: '1234567A', exp: '2030-01-01' }, k.privateKey);
+  const finie = lic.signLicence({ nom: 'Trabelsi', matricule: '1234567A', exp: '2026-01-01' }, k.privateKey);
+  const S = (key, serveur) => lic.licenceState({ publicKey: k.publicKey, key, matricule: '1234567A',
+    today: '2026-10-01', installedAt: '2026-09-01', serveur });
+  const rev = { etat: 'revoquee', motif: 'rétractation', emisLe: '2026-10-01T10:00:00.000Z', sujet: lic.empreinteCle(cle) };
+
+  assert.strictEqual(S(cle, null).state, 'active');
+  const st = S(cle, rev);
+  assert.strictEqual(st.state, 'revoquee');
+  assert.strictEqual(st.locked, true, 'une licence révoquée doit fermer la création');
+  assert.ok(/lisible, imprimable et exportable/.test(st.detail), 'jamais de données en otage : le message doit le dire');
+  assert.ok(st.detail.includes('rétractation'), 'le message doit donner le motif');
+  assert.ok(st.detail.includes(lic.CONTACT), 'le message doit dire où écrire si c\'est une erreur');
+
+  // Une révocation gardée sur le disque ne doit pas mordre la clé SUIVANTE : sans ce garde-fou,
+  // coller une clé neuve après un remboursement laisserait l'application verrouillée.
+  assert.strictEqual(S(cle, { ...rev, sujet: lic.empreinteCle(finie) }).state, 'active',
+    'une révocation qui vise une autre clé ne doit pas s\'appliquer');
+  assert.strictEqual(S(cle, { ...rev, sujet: '' }).state, 'active');
+  assert.strictEqual(S(cle, { ...rev, etat: 'active' }).state, 'active');
+
+  // Le serveur ne peut RIEN accorder : la clé signée reste la source de vérité pour fonctionner.
+  assert.strictEqual(S(finie, { etat: 'active', sujet: lic.empreinteCle(finie), emisLe: '2026-10-01T10:00:00.000Z' }).state, 'expiree',
+    'le serveur ne doit jamais pouvoir prolonger une licence finie');
+  // Révoquée ET expirée se dit « révoquée » : c'est la raison qui compte pour celui qui la lit, et
+  // c'est le même ordre que `etatLicence` côté serveur — deux verdicts qui diffèrent seraient pires.
+  assert.strictEqual(S(finie, { ...rev, sujet: lic.empreinteCle(finie) }).state, 'revoquee');
+
+  // La barre le dit (8.0.1) : une révocation qu'on ne découvre qu'en ouvrant les Paramètres est une
+  // surprise, pas une information.
+  assert.strictEqual(core.pastilleLicence(st).ton, 'alerte');
+  // L'adresse de contact ne vit pas en double sans contrôle : app.js et licence.js disent la même.
+  assert.ok(lireApp().includes('LICENCE_CONTACT = \'' + lic.CONTACT + '\''),
+    'l\'adresse de contact diverge entre app.js et licence.js');
+});
+
+t('8.4.0 : le plan de contrôle ne peut ni faire attendre l\'application, ni emporter autre chose que la licence', () => {
+  const main = lireSource('src', 'main.js');
+  const zone = main.slice(main.indexOf('// ---------- le plan de contrôle (8.4.0)'), main.indexOf('// ---------- dossiers :'));
+  assert.ok(zone.length > 2000 && zone.includes('function annoncerPlateforme'), 'tranche du plan de contrôle introuvable : ' + zone.length);
+
+  // Ce qui part, et RIEN d'autre (§ 9 de PLAN-PLATEFORME.md). Le corps de la requête est écrit en
+  // toutes lettres : un jour quelqu'un voudra « juste ajouter le nom de la société pour s'y
+  // retrouver », et c'est exactement ce que ce test doit rendre impossible sans y penser.
+  const corps = zone.match(/postPlateforme\(\{([^}]*)\}\)/);
+  assert.ok(corps, 'l\'appel à postPlateforme est introuvable');
+  const champs = corps[1].split(',').map(x => x.split(':')[0].trim()).filter(Boolean).sort();
+  assert.deepStrictEqual(champs, ['cle', 'deviceId', 'deviceNom', 'plateforme', 'version'],
+    'le plan de contrôle ne doit emporter que la clé, le poste, la plateforme et la version : ' + champs.join(', '));
+
+  // L'adresse et le secret se nettoient AVANT usage : une espace invisible en fin de secret avait
+  // cassé les mises à jour en 6.7.2, et rien ne l'avait montré.
+  assert.ok(/function plateformeBase\(\)[\s\S]*?\.trim\(\)/.test(zone) && /function plateformeSecret\(\)[\s\S]*?\.trim\(\)/.test(zone),
+    'l\'adresse et le secret du plan de contrôle doivent être trim()');
+  // …et l'environnement ne redirige qu'en développement : une application installée ne se laisse
+  // pas envoyer ailleurs par une variable posée sur la machine (même garde que SKANFACT_CLE_EMBARQUEE).
+  ['SKANFACT_PLATEFORME_BASE', 'SKANFACT_PLATEFORME_SECRET'].forEach(v =>
+    assert.ok(new RegExp('!app\\.isPackaged && process\\.env\\.' + v + ' !== undefined').test(zone),
+      v + ' doit être gardé par !app.isPackaged'));
+  // Et la clé de licence ne voyage jamais en clair sur le réseau une fois l'application installée.
+  assert.ok(/url\.protocol !== 'https:' && app\.isPackaged/.test(zone), 'le plan de contrôle doit exiger https hors développement');
+
+  // Une panne du plan de contrôle n'est pas une panne de l'application : elle va au journal, jamais
+  // à l'écran, et `annoncerPlateforme` rend toujours la main.
+  assert.ok(/catch \(e\) \{[\s\S]{0,400}logToFile\('plan de contrôle', e\)/.test(zone), 'une panne du plan de contrôle doit aller dans le journal');
+  assert.ok(!/send\(|dialog\.show/.test(zone), 'le plan de contrôle ne doit rien afficher : il n\'y a rien que l\'utilisateur puisse faire');
+  // Jamais dans le chemin de démarrage : `demarrerPlateforme` arme des minuteurs, il n'attend rien.
+  assert.ok(/setTimeout\(\(\) => \{ annoncerPlateforme\(\); \}, PLATEFORME_DEBUT\)/.test(zone) && !/await annoncerPlateforme/.test(main),
+    'l\'annonce ne doit jamais être attendue : elle ne fait pas partie du démarrage');
+
+  // Le verdict reçu est passé à licenceState, et il survit à la clé qu'on pose ou retire — sans
+  // quoi « Retirer la clé » puis « Enregistrer » lèverait une révocation en deux clics.
+  assert.ok(/serveur: verdictServeur\(lic\)/.test(main), 'licenceStatus doit passer le verdict du serveur à licenceState');
+  const ecr = main.slice(main.indexOf('function ecrireLicence('), main.indexOf('function readLicence('));
+  assert.ok(/if \(avant\.serveur\) doc\.serveur = avant\.serveur;/.test(ecr), 'ecrireLicence doit conserver le verdict du serveur');
+  assert.ok(/!key && !doc\.armedAt && !doc\.serveur/.test(ecr), 'retirer la clé ne doit pas effacer le fichier qui porte le verdict');
+  // Poser comme LEVER une révocation passe par la même vérification : c'est ce qui empêche
+  // quelqu'un capable de couper le réseau de figer une révocation pour toujours.
+  // Ancré sur l'ORDRE, pas sur la proximité : un commentaire ajouté entre deux lignes ne doit pas
+  // faire tomber un test qui décrit une règle (piège rencontré en l'écrivant).
+  const iVerif = zone.indexOf('L.verifierReponse(');
+  const iRefus = zone.indexOf('if (!v.ok) return', iVerif);
+  const iEcrit = zone.indexOf('ecrireVerdict(', iRefus);
+  assert.ok(iVerif > 0 && iRefus > iVerif && iEcrit > iRefus,
+    'le verdict ne s\'écrit qu\'après vérification — poser comme lever une révocation exige la même preuve');
+
+  // La clé de réponse se fabrique sur le poste de l'éditeur, et sa moitié privée ne traverse pas le
+  // pont : main.js la met au presse-papiers, l'écran n'en reçoit que la confirmation.
+  const cop = main.slice(main.indexOf("ipcMain.handle('editeur:cleReponseCopier'"), main.indexOf("ipcMain.handle('licence:emettre'"));
+  assert.ok(cop.length > 200 && cop.length < 1200, 'tranche editeur:cleReponseCopier introuvable : ' + cop.length);
+  assert.ok(/clipboard\.writeText\(fs\.readFileSync\(chemin, 'utf8'\)\)/.test(cop) && !/texte:|return .*readFileSync/.test(cop),
+    'la clé privée de réponse ne doit pas traverser le pont');
+
+  // L'e2e qui prouve tout ça existe, et il parle au VRAI worker.
+  const e2e = lireSource('test', 'e2e', 'plateforme.js');
+  assert.ok(/import\('\.\.\/\.\.\/plateforme\/skanfact-api\.mjs'\)/.test(e2e) && /P\.default\.fetch\(/.test(e2e),
+    'e2e:plateforme doit servir le vrai worker, pas une imitation qui finirait par en diverger');
+  ['signature', 'rejeu'].forEach(a => assert.ok(e2e.includes(`alteration === '${a}'`), 'e2e:plateforme doit rejouer l\'attaque « ' + a + ' »'));
+  const pkg = JSON.parse(lireSource('package.json'));
+  assert.strictEqual(pkg.scripts['e2e:plateforme'], 'node test/e2e/plateforme.js');
 });
 
 t('offre Indépendant : chaque module réservé est fermé à la création, partout où l\'on crée', () => {
@@ -3447,9 +3639,13 @@ t('éditeur : la clé privée ne traverse jamais le pont, et l\'app livrée emba
   assert.ok(/armedAt: armedAt\(\)/.test(main) && /matricule: matricule \|\| ''/.test(main), 'licenceStatus doit passer armedAt et le matricule');
   // Et le paquet EMBARQUE la clé publique : `build/` n'était pas dans les fichiers d'electron-builder,
   // donc l'app installée restait libre quoi qu'on commite. Un glob : son absence ne casse rien.
+  // (8.4.0 : la vérification a déménagé dans « une licence sans kid reste vérifiée par la clé
+  // maître », où le motif est vraiment ÉVALUÉ contre les deux noms de fichier au lieu d'être
+  // comparé à son orthographe du jour — c'est ce qui a permis d'attraper que le motif d'ici ne
+  // couvrait pas `licences-publiques.json`. On garde seulement l'exigence du glob.)
   const pkg = JSON.parse(lireSource('package.json'));
-  assert.ok(pkg.build.files.some(f => /^build\/licence-public\*?\.json$/.test(f)), 'build/licence-public.json doit figurer dans build.files');
-  assert.ok(pkg.build.files.some(f => f.includes('*')), 'le motif doit être un glob : un fichier absent ferait échouer la construction');
+  assert.ok(pkg.build.files.some(f => f.startsWith('build/licence') && f.includes('*')),
+    'la clé publique doit entrer dans le paquet par un GLOB : un nom exact absent ferait échouer la construction');
 });
 
 t('éditeur : le renderer relit la licence avec le matricule, et la page Licences n\'existe que chez lui', () => {
@@ -9215,6 +9411,45 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       assert.ok(/empreinte/.test(jetons) && !/\bjeton\s+TEXT/.test(jetons), 'le jeton lui-même ne doit pas être stocké');
     });
 
+    // LE test du chantier : ce que le serveur SIGNE, l'application le VÉRIFIE. Les deux moitiés
+    // vivent dans deux fichiers, deux runtimes (WebCrypto côté worker, node:crypto côté
+    // application) et deux formats de clé — il suffit d'un champ nommé autrement, d'un `null` écrit
+    // `''` ou d'un ordre de clés différent pour que la signature paraisse fausse sur une réponse
+    // parfaitement valide. Aucune relecture ne le montre : il faut les faire se parler.
+    await ta('8.4.0 : ce que le serveur signe, l\'application le vérifie — et l\'empreinte désigne la même licence', async () => {
+      const licSrc = require('../src/licence.js');
+      const master = licSrc.generateKeys(), rep = licSrc.generateKeys();
+      const cle = licSrc.signLicence({ nom: 'Trabelsi', matricule: '1234567A', offre: 'independant', exp: '2030-01-01' }, master.privateKey);
+
+      // L'empreinte : le fil qui relie une réponse à SA licence. Calculée de deux façons, elle doit
+      // donner la même chose — sinon toute réponse serait rejetée comme « destinée à une autre ».
+      const sujet = await P.empreinteCle(cle);
+      assert.strictEqual(sujet, licSrc.empreinteCle(cle), 'les deux empreintes divergent : plus aucune réponse ne s\'appliquerait');
+
+      // Et la vérification de la licence elle-même, des deux côtés, avec la règle du kid.
+      const cles = [{ kid: 'master', publicKey: master.publicKey }];
+      assert.strictEqual((await P.verifierLicence(cle, cles)).ok, true, 'le serveur doit vérifier une clé sans kid avec master');
+
+      const emisLe = new Date(Date.now() - 3600000).toISOString();
+      const etat = P.etatLicence({ contenu: (await P.verifierLicence(cle, cles)).contenu, ligne: { revoquee_le: '2026-10-01', revoquee_motif: 'rétractation' }, aujourdhui: '2026-10-02' });
+      assert.strictEqual(etat, 'revoquee');
+      const signe = await P.signerReponse(P.corpsReponse({ sujet, etat, contenu: { offre: 'independant', exp: '2030-01-01' }, motif: 'rétractation', emisLe }), rep.privateKey);
+      const recue = { ...signe.corps, signature: signe.signature };
+
+      const v = licSrc.verifierReponse(recue, rep.publicKey, { sujet });
+      assert.strictEqual(v.ok, true, 'l\'application doit accepter la réponse que le serveur vient de signer : ' + v.raison);
+      assert.strictEqual(v.etat, 'revoquee');
+      assert.strictEqual(v.motif, 'rétractation');
+      // …et elle ferme bien la création, en laissant tout le reste ouvert.
+      const st = licSrc.licenceState({ publicKey: master.publicKey, key: cle, matricule: '1234567A',
+        today: '2026-10-02', serveur: { etat: v.etat, motif: v.motif, emisLe: v.emisLe, sujet: v.sujet } });
+      assert.strictEqual(st.state, 'revoquee');
+      assert.strictEqual(st.locked, true);
+
+      // Un seul octet retouché dans le transport, et la réponse ne restreint plus rien.
+      assert.strictEqual(licSrc.verifierReponse({ ...recue, motif: 'autre chose' }, rep.publicKey, { sujet }).ok, false);
+    });
+
     // Le fichier à coller dans la console D1. Il est ENGENDRÉ : une seconde copie tenue à la main
     // diverge toujours (7.29.0), et celle-ci porte le schéma d'une base qu'on ne peut pas corriger
     // après coup sans migration.
@@ -9256,5 +9491,6 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     });
   }
 
+  if (enCours) throw new Error(`${enCours} test(s) asynchrone(s) lancé(s) sans « await ta(…) » : ils ne peuvent plus échouer`);
   console.log(`\n${n} tests OK`);
 })().catch(e => { console.error(e); process.exit(1); });

@@ -1,0 +1,11 @@
+{
+  "format": 2,
+  "cles": [
+    {
+      "kid": "master",
+      "publicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAkjirc4Q8eB1iPKEzzV3jmV1zkgCocwuFtGh16P8o980=\n-----END PUBLIC KEY-----\n",
+      "depuis": "2026-09-14"
+    }
+  ],
+  "reponse": null
+}

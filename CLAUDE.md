@@ -11,7 +11,7 @@ L'utilisateur est débutant en gestion (première entreprise) : chaque champ por
 - **Chaque amélioration livrée = une nouvelle version** (semver) : correctif 1.0.x, fonctionnalité 1.x.0, gros changement x.0.0. Mettre à jour `package.json` (`version`) **et** ajouter une entrée datée dans `CHANGELOG.md` (c'est elle qui devient les notes de version dans l'app et sur GitHub). Toujours annoncer le numéro de version dans la réponse.
 - Lancer `npm test` avant tout commit (calculs, numérotation, montant en lettres, échappement HTML, stockage/sauvegardes). Pour un changement d'interface, lancer aussi l'app réelle (`xvfb-run` + Playwright `_electron`, voir README « Tests ») : elle attrape les erreurs JS du renderer.
 - Ne jamais commiter de token. Le jeton GitHub que l'utilisateur colle (quand le dépôt est privé) est stocké dans `userData/update-config.json`, jamais dans le code.
-- **La licence est ARMÉE depuis la 8.0.0** : `build/licence-public.json` est la clé publique de Skander (créée dans SkanFact le 14/09/2026). Ne jamais la supprimer, la régénérer ni la remplacer — une autre clé invaliderait toutes les licences déjà vendues, et son absence désarmerait tous les clients. La clé privée vit dans `~/.skanfact/` sur son Mac, jamais dans le dépôt. Un test exige la présence du fichier et qu'il soit une vraie clé Ed25519.
+- **La licence est ARMÉE depuis la 8.0.0** : la clé publique de Skander (créée dans SkanFact le 14/09/2026) vit dans `build/licences-publiques.json` sous le `kid` **`master`**, et `build/licence-public.json` la porte encore à l'identique (repli des versions d'avant la 8.4.0). Ne jamais la supprimer, la régénérer ni la remplacer — une autre clé invaliderait toutes les licences déjà vendues, et son absence désarmerait tous les clients. **Une licence sans `kid` se vérifie avec `master`** : toutes celles vendues depuis la 8.0.0 sont dans ce cas. La clé privée vit dans `~/.skanfact/` sur son Mac, jamais dans le dépôt. Des tests exigent la présence du fichier, que ce soit une vraie clé Ed25519, que `master` soit identique au caractère près à celle de la 8.0.0, et que le glob d'electron-builder embarque bien les deux fichiers.
 - **Partager un dossier à deux se fait en DEUX gestes**, et ils vivent dans `src/main.js` :
   `dossiers:share` copie le dossier OUVERT vers un emplacement commun (l'original reste, la bascule
   n'a lieu qu'une fois la copie constatée), `dossiers:join` ouvre un dossier déjà posé sans rien
@@ -2092,6 +2092,77 @@ et il a tenu en une phrase.
 - Piège de test : `assert` d'un taux hors liste dans `usedWithholdingRates` restait vert avec le
   garde-fou retiré, parce que `Number('') === 0` et que 0 est déjà dans la liste connue. Le seul cas
   que la garde protège vraiment est le taux **négatif** — c'est lui qu'il faut tester.
+
+### 8.4.0 — Le plan de contrôle : plusieurs clés, l'activation, la révocation appliquée
+
+La seule version du chantier qui touche une licence **déjà vendue**. Trois choses, et une règle qui
+passe avant les trois : *tout est facultatif*. Sans adresse configurée, sans réseau, sans réponse,
+sans clé de réponse embarquée, l'application fonctionne exactement comme avant, **sans un mot à
+l'écran**. C'est la règle 1 du § 8 de `PLAN-PLATEFORME.md`.
+
+Règles apprises, à ne pas recasser :
+
+- **Une licence sans `kid` se vérifie avec `master`, et avec elle seule.** C'est le point de
+  compatibilité le plus dangereux du projet : toutes les clés vendues depuis la 8.0.0 sont dans ce
+  cas, et sans cette ligne la mise à jour les aurait invalidées d'un coup, le même matin. La règle
+  vit **des deux côtés** — `choisirCle` dans `src/licence.js` et dans
+  `plateforme/skanfact-api.mjs` — parce que le serveur et l'application doivent rendre le même
+  verdict. On n'essaie **jamais** toutes les clés à la suite : `kid` en désigne une, et c'est ce qui
+  permet de RETIRER une clé compromise au lieu de la laisser valider éternellement.
+- **La date qui sert de plancher à l'essai est celle de la PLUS ANCIENNE clé.** Prendre la plus
+  récente aurait rouvert trente jours d'essai à tous les clients le jour où la clé du serveur est
+  ajoutée — un défaut qui ne coûte rien à écrire et se paie en chiffre d'affaires, sans que rien ne
+  le signale.
+- **Le serveur ne peut qu'ajouter une restriction déjà prévue, jamais accorder un droit.** Une
+  licence expirée le reste quoi que réponde le serveur ; une révocation le ferme. La clé signée
+  reste la source de vérité pour fonctionner, et c'est ce qui fait que l'application survit à la
+  disparition de son éditeur.
+- **Une réponse ne restreint rien tant qu'elle n'est pas signée, datée ET adressée.** Chacun des
+  trois répond à une attaque précise : sans la **signature**, n'importe quel intermédiaire (un wifi
+  d'hôtel, un pare-feu) répond « révoquée » à un client qui a payé ; sans le **sujet** (l'empreinte
+  de la licence), la réponse destinée au client A se rejoue chez B ; sans la **date**, on rejoue une
+  vieille réponse pour ressusciter une révocation annulée. `ok: false` est le cas par défaut partout
+  dans `verifierReponse` : une réponse qu'on ne peut pas juger est ignorée, jamais transformée en
+  refus.
+- **Poser et LEVER une révocation exigent la même preuve.** Sans cette symétrie, quelqu'un capable
+  de couper le réseau figerait une révocation pour toujours, et l'éditeur n'aurait aucun moyen de la
+  reprendre après un remboursement annulé.
+- **Le verdict survit à la clé qu'on pose ou retire.** `ecrireLicence` le conserve comme il
+  conserve `armedAt` : sinon « Retirer la clé » puis « Enregistrer » lèverait une révocation en deux
+  clics. Il ne s'applique qu'à la clé qu'il VISE (`sujet`), donc le garder ne pénalise jamais une
+  clé neuve.
+- **Ce qui remonte est écrit en toutes lettres, et un test compte les champs.** La clé, le
+  `deviceId`, le nom du poste, la plateforme, la version. Rien d'autre — jamais un client, une
+  facture, un montant, un chemin de dossier. Un jour quelqu'un voudra « juste ajouter le nom de la
+  société pour s'y retrouver » : c'est ce test qui doit l'arrêter.
+- **Un essai s'annonce aussi**, sans clé. Sinon aucun essai ne serait visible nulle part, et un
+  éditeur qui ne voit pas ses essais ne sait pas s'il a des clients qui arrivent.
+- **La clé de réponse se fabrique sur le poste de l'éditeur**, comme les clés de licence en 7.33.0 :
+  une clé privée dont l'application dépend n'a rien à faire dans un canal qu'on ne maîtrise pas. Sa
+  moitié privée va dans un réglage Cloudflare, sa moitié publique dans
+  `build/licences-publiques.json`. Elle ne traverse pas le pont : main.js la met au presse-papiers,
+  l'écran n'en reçoit que la confirmation.
+- **Créer un CLIENT n'est pas un geste que la licence ferme** — seule une *pièce* l'est. Découvert
+  en écrivant l'e2e : sa première version cliquait « Nouveau client » et concluait que la révocation
+  ne bloquait rien.
+- **Un glob qui a l'air de couvrir ne couvre pas forcément.** `build/licence-public*.json` ne
+  correspond PAS à `licences-publiques.json`, et l'application installée serait restée sur l'ancien
+  fichier sans que rien ne plante. Le test d'avant comparait le motif à son orthographe du jour ;
+  celui d'aujourd'hui l'ÉVALUE contre les deux noms de fichier — c'est ce qui l'a attrapé.
+- **`ta()` sans `await` est le même défaut que `t()` avec une fonction asynchrone**, une couche plus
+  loin : le test part détaché, son « ok » s'affiche après le total, et une assertion qui tombe ne
+  fait plus échouer la commande. J'y suis tombé en écrivant le premier test de ce lot. Le harnais
+  compte désormais les `ta` en cours et refuse de conclure s'il en reste.
+- Piège de test rencontré : une assertion ancrée sur la PROXIMITÉ de deux lignes tombe dès qu'on
+  ajoute un commentaire entre elles. On ancre sur l'ORDRE (`indexOf` successifs).
+
+Le test qui compte est `npm run e2e:plateforme` : il pose **le vrai worker** — le fichier déployé
+sur Cloudflare, pas une imitation — derrière un serveur local, et lance l'application réelle en
+face. Huit étapes : une clé sans `kid` acceptée, l'activation vue par la plateforme, une révocation
+signée qui ferme la création et laisse lecture et export ouverts, la même levée, la même avec un
+octet retouché (ignorée), la même rejouée trois mois plus tard (ignorée), le serveur éteint (rien ne
+change, aucun message rouge), et une installation neuve qui n'a jamais vu le réseau. Les deux
+altérations sont posées dans le **transport** : c'est là qu'un attaquant se place.
 
 ## Pistes pour la suite (non demandées)
 

@@ -150,6 +150,9 @@ Règles, chacune tenue par un test :
 1. **La clé `master` est celle de la 8.0.0, au caractère près.** Ne jamais la supprimer, la
    régénérer ni la remplacer : une autre clé invaliderait toutes les licences déjà vendues. Le
    fichier actuel est **conservé tel quel** dans le dépôt le temps de la transition.
+   *(Livré en 8.4.0. Le fichier porte aussi la clé publique qui vérifie les RÉPONSES du serveur,
+   champ `reponse` — elle n'a rien à voir avec les licences, et sa compromission ne permettrait
+   jamais d'en fabriquer une.)*
 2. **Une clé sans `kid` se vérifie avec `master`.** Toutes les licences émises entre la 8.0.0 et
    aujourd'hui n'ont pas de `kid` : sans cette règle, la mise à jour les invaliderait toutes. C'est le
    point de compatibilité le plus dangereux du chantier.
@@ -388,8 +391,8 @@ façon la plus courante de ne jamais vendre.
 
 | Étape | Quoi | Ce qui marche à la fin |
 |---|---|---|
-| **P 0.1** | base D1, `POST /v1/licence/etat`, console en lecture seule | on **voit** les activations. Rien ne bloque, rien ne dépend du serveur. |
-| **8.4.0** | clés multiples (`kid`), activation, état, révocation appliquée, bandeau | l'application parle à la plateforme et respecte une révocation |
+| ~~**P 0.1**~~ ✅ | base D1, `POST /v1/licence/etat`, console en lecture seule | on **voit** les activations. Rien ne bloque, rien ne dépend du serveur. |
+| ~~**8.4.0**~~ ✅ | clés multiples (`kid`), activation, état, révocation appliquée, bandeau | l'application parle à la plateforme et respecte une révocation |
 | **P 0.2** | émission depuis la console (clé serveur), révocation, ventes, envoi du mail | une vente complète sans ouvrir SkanFact |
 | **8.5.0** | le pont comptable, migration de `data.licences` | les factures se fabriquent toutes seules |
 | **P 1.0** | console complète, statistiques, journal | on pilote |

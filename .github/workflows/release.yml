@@ -76,6 +76,8 @@ jobs:
       # UPDATE_BASE / UPDATE_SECRET : les réglages du relais de mise à jour, pris dans les secrets du
       # dépôt et posés dans le paquet. Non définis → les applications retombent sur GitHub + jeton
       # saisi à la main, comme avant. Rien de tout ça n'existe dans le code.
+      # PLATEFORME_BASE / PLATEFORME_SECRET : même mécanisme pour le plan de contrôle (8.4.0). Non
+      # définis → l'application ne parle à aucun serveur, et absolument rien n'en dépend.
       # shell: bash est OBLIGATOIRE ici. Sur le poste Windows, le shell par défaut est PowerShell,
       # où « $UPDATE_BASE » n'est pas la variable d'environnement mais une variable PowerShell vide :
       # l'application Windows serait construite SANS le relais, sans que rien ne le signale.
@@ -85,11 +87,13 @@ jobs:
       # bêta. Sans ce drapeau, publier une préversion écraserait la version « officielle » du dépôt.
       - name: Build & publish
         shell: bash
-        run: npx electron-builder --publish always -c.publish.releaseType=${{ steps.canal.outputs.prerelease == 'true' && 'prerelease' || 'release' }} -c.extraMetadata.updateBase="$UPDATE_BASE" -c.extraMetadata.updateSecret="$UPDATE_SECRET"
+        run: npx electron-builder --publish always -c.publish.releaseType=${{ steps.canal.outputs.prerelease == 'true' && 'prerelease' || 'release' }} -c.extraMetadata.updateBase="$UPDATE_BASE" -c.extraMetadata.updateSecret="$UPDATE_SECRET" -c.extraMetadata.plateformeBase="$PLATEFORME_BASE" -c.extraMetadata.plateformeSecret="$PLATEFORME_SECRET"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           UPDATE_BASE: ${{ secrets.UPDATE_BASE }}
           UPDATE_SECRET: ${{ secrets.UPDATE_SECRET }}
+          PLATEFORME_BASE: ${{ secrets.PLATEFORME_BASE }}
+          PLATEFORME_SECRET: ${{ secrets.PLATEFORME_SECRET }}
           # Pas de signature Apple pour l'instant : on désactive la notarisation.
           CSC_IDENTITY_AUTO_DISCOVERY: false
 

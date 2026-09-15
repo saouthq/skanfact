@@ -101,6 +101,10 @@ function main() {
         if (Date.now() - vu > MAJ_INTERVALLE) checkForUpdates(true);
       });
     }
+    // Le plan de contrôle (8.4.0). Hors du `isPackaged` ci-dessus : il ne parle qu'à l'adresse
+    // qu'on lui donne, et `e2e:plateforme` a besoin de le voir fonctionner en développement contre
+    // un faux serveur. Sans adresse configurée, la fonction ne fait rien du tout.
+    try { demarrerPlateforme(); } catch (e) { logError('plan de contrôle', e); }
   }).catch(e => logError('démarrage', e));
 
   app.on('window-all-closed', () => { if (!IS_MAC) app.quit(); });
@@ -503,26 +507,57 @@ const LIC_ANCIEN = () => path.join(app.getPath('userData'), 'licence.json');
 const CLES_DIR = () => process.env.SKANFACT_DOSSIER_CLES || path.join(os.homedir(), '.skanfact');
 const CLE_PRIVEE = () => path.join(CLES_DIR(), 'licence-privee.pem');
 const CLE_PUBLIQUE_EDITEUR = () => path.join(CLES_DIR(), 'licence-publique.json');
+// Les clés qui signent les RÉPONSES du plan de contrôle (8.4.0), à côté des précédentes. Deux
+// paires distinctes : celle-ci sert à chaque requête, l'autre ne sort que pour émettre une licence.
+// Si celle-ci fuitait, on en publierait une nouvelle sans réémettre une seule licence vendue.
+const REPONSE_PRIVEE = () => path.join(CLES_DIR(), 'reponse-privee.pem');
+const REPONSE_PUBLIQUE = () => path.join(CLES_DIR(), 'reponse-publique.json');
 // `SKANFACT_CLE_EMBARQUEE` : le chemin du fichier de clé publique à lire À LA PLACE de celui du
 // paquet — pour que `e2e:licence` ouvre une application DÉSARMÉE (chemin inexistant) et arme le poste
 // avec sa propre clé d'essai, maintenant que le dépôt embarque la vraie. Honoré en développement
 // seulement : une application installée lit toujours sa propre clé, quoi que dise l'environnement.
-const CLE_EMBARQUEE = () => (!app.isPackaged && process.env.SKANFACT_CLE_EMBARQUEE !== undefined)
-  ? process.env.SKANFACT_CLE_EMBARQUEE
-  : path.join(__dirname, '..', 'build', 'licence-public.json');
+// Depuis la 8.4.0 l'application connaît PLUSIEURS clés de signature (`build/licences-publiques.json`,
+// voir licence.js) : la maître de Skander, et celle du serveur qui signera les ventes courantes.
+// L'ancien fichier de la 8.0.0 reste lu en repli — il est encore seul sur le disque de tous les
+// clients qui n'ont pas installé cette version, et un jour où l'autre il disparaîtra du dépôt.
+const CLES_EMBARQUEES = () => (!app.isPackaged && process.env.SKANFACT_CLE_EMBARQUEE !== undefined)
+  ? [process.env.SKANFACT_CLE_EMBARQUEE]
+  : [path.join(__dirname, '..', 'build', 'licences-publiques.json'),
+     path.join(__dirname, '..', 'build', 'licence-public.json')];
+const CLE_EMBARQUEE = () => CLES_EMBARQUEES()[0];
 const lireJson = p => { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return null; } };
 const editeurActif = () => fs.existsSync(CLE_PRIVEE());
 const lirePrivee = () => fs.readFileSync(CLE_PRIVEE(), 'utf8');
-// `{ publicKey, createdAt }` : la date du fichier est le point de départ de l'essai (voir licence.js).
-// Le cache se remet à `null` quand l'éditeur crée ou reprend ses clés pendant la session.
+// `{ cles, createdAt, reponse }`. Le cache se remet à `null` quand l'éditeur crée ou reprend ses
+// clés pendant la session.
 let clePubliqueCache = null;
 function clePublique() {
   if (clePubliqueCache !== null) return clePubliqueCache;
-  const lire = p => { const j = lireJson(p); return j && j.publicKey ? { publicKey: j.publicKey, createdAt: j.createdAt || '' } : null; };
-  clePubliqueCache = lire(CLE_EMBARQUEE()) || lire(CLE_PUBLIQUE_EDITEUR()) || { publicKey: '', createdAt: '' };
+  const fichiers = CLES_EMBARQUEES().concat([CLE_PUBLIQUE_EDITEUR()]);
+  let trouve = null;
+  for (const p of fichiers) {
+    const j = lireJson(p);
+    const cles = L.lireCles(j);
+    if (cles.length) { trouve = { j, cles }; break; }
+  }
+  if (!trouve) { clePubliqueCache = { cles: [], createdAt: '', reponse: '' }; return clePubliqueCache; }
+  // La date qui sert de plancher à l'essai est celle de la PLUS ANCIENNE clé, jamais de la plus
+  // récente : ajouter la clé du serveur (« depuis 2026-10-01 ») ne doit pas rouvrir trente jours
+  // d'essai à tout le monde le jour de la mise à jour.
+  const dates = trouve.cles.map(c => c.depuis).filter(Boolean).sort();
+  clePubliqueCache = {
+    cles: trouve.cles,
+    createdAt: dates[0] || trouve.j.createdAt || '',
+    // La clé qui vérifie les RÉPONSES du plan de contrôle. Absente tant que Skander ne l'a pas
+    // créée : sans elle, aucune réponse ne peut restreindre quoi que ce soit — et c'est le bon
+    // défaut, celui qui laisse passer.
+    reponse: (trouve.j && trouve.j.reponse && trouve.j.reponse.publicKey) || ''
+  };
   return clePubliqueCache;
 }
-function publicKey() { return clePublique().publicKey; }
+// La clé maître, pour les appelants qui n'en veulent qu'une (le repli d'une licence rangée par la
+// 6.4.0, et l'état de l'éditeur).
+function publicKey() { return (L.choisirCle('', clePublique().cles) || {}).publicKey || ''; }
 // La clé publique de l'ÉDITEUR (le pendant de sa clé privée), ou null s'il n'y a pas de clé privée
 // ici. Des clés créées par l'outil en ligne de commande d'avant n'ont pas de fichier public : on le
 // déduit de la privée et on l'écrit, une fois pour toutes.
@@ -549,7 +584,11 @@ function clePubliqueEditeur() {
 // (c'est l'état « armée avec cette clé / avec une autre / en attente » du panneau).
 function editeurDeLaCleEnVigueur() {
   const mienne = clePubliqueEditeur();
-  return !!(mienne && publicKey() && String(mienne.publicKey).trim() === String(publicKey()).trim());
+  if (!mienne) return false;
+  // Depuis la 8.4.0 il y a plusieurs clés en vigueur : correspondre à N'IMPORTE LAQUELLE suffit.
+  // Ce n'est pas un relâchement — chacune de ces clés signe des licences que l'application accepte,
+  // donc en tenir la privée, c'est déjà pouvoir s'en émettre une.
+  return clePublique().cles.some(c => String(c.publicKey).trim() === String(mienne.publicKey).trim());
 }
 function ecrireLicence(key) {
   fs.mkdirSync(path.dirname(LIC_FILE()), { recursive: true });
@@ -557,7 +596,11 @@ function ecrireLicence(key) {
   const avant = lireJson(LIC_FILE()) || {};
   const doc = key ? { key, savedAt: new Date().toISOString() } : {};
   if (L.dateValide(avant.armedAt)) doc.armedAt = avant.armedAt;
-  if (!key && !doc.armedAt) { try { fs.unlinkSync(LIC_FILE()); } catch {} return; }
+  // Le verdict du plan de contrôle (8.4.0) survit lui aussi à la clé qu'on pose ou retire : sans
+  // ça, « Retirer la clé » puis « Enregistrer » lèverait une révocation en deux clics. Il ne
+  // s'applique qu'à la clé qu'il VISE (`sujet`), donc le garder ne pénalise jamais une clé neuve.
+  if (avant.serveur) doc.serveur = avant.serveur;
+  if (!key && !doc.armedAt && !doc.serveur) { try { fs.unlinkSync(LIC_FILE()); } catch {} return; }
   fs.writeFileSync(LIC_FILE(), JSON.stringify(doc, null, 2));
 }
 // La clé du dossier ouvert. Une clé rangée par la 6.4.0 au niveau de l'ordinateur est reprise pour
@@ -567,7 +610,8 @@ function readLicence(matricule) {
   if (mien && mien.key) return mien;
   const ancien = lireJson(LIC_ANCIEN());
   if (ancien && ancien.key) {
-    const p = publicKey() ? L.verifyKey(ancien.key, publicKey()) : ((L.parseKey(ancien.key) || {}).payload || null);
+    const cles = clePublique().cles;
+    const p = cles.length ? L.verifyKey(ancien.key, cles) : ((L.parseKey(ancien.key) || {}).payload || null);
     if (p && L.memeMatricule(p.matricule, matricule || '')) { try { ecrireLicence(ancien.key); } catch {} return ancien; }
   }
   return {};
@@ -584,7 +628,7 @@ function installedAt() {
 // peut arriver sur ce poste des semaines après le keygen, et l'essai doit compter à partir de LÀ.
 function armedAt() {
   const pub = clePublique();
-  if (!pub.publicKey) return '';
+  if (!pub.cles.length) return '';
   const cfg = readAppCfg();
   if (!cfg.armedAt) { cfg.armedAt = L.today(); writeAppCfg(cfg); }
   // Doublée DANS le dossier de l'entreprise (<dossier>/licence.json) : effacer app-config.json en
@@ -604,8 +648,9 @@ function licenceStatus(matricule) {
   const lic = readLicence(matricule);
   const pub = clePublique();
   return {
-    ...L.licenceState({ key: lic.key || '', publicKey: pub.publicKey, installedAt: installedAt(), armedAt: armedAt(),
-      matricule: matricule || '', today: L.today(), editeur: editeurDeLaCleEnVigueur() }),
+    ...L.licenceState({ key: lic.key || '', cles: pub.cles, installedAt: installedAt(), armedAt: armedAt(),
+      matricule: matricule || '', today: L.today(), editeur: editeurDeLaCleEnVigueur(),
+      serveur: verdictServeur(lic) }),
     editeur: editeurActif()
   };
 }
@@ -617,7 +662,9 @@ function editeurStatus(depuis) {
   const depart = L.dateValide(depuis) && depuis > L.today() ? depuis : L.today();
   const actif = editeurActif();
   const pub = clePubliqueEditeur();
-  const embarquee = lireJson(CLE_EMBARQUEE());
+  // La clé MAÎTRE du paquet : c'est elle que l'éditeur compare à la sienne. Les autres clés en
+  // vigueur (celle du serveur) ne sont pas les siennes et ne doivent pas lui faire croire le contraire.
+  const embarquee = L.choisirCle('', lireJson(CLE_EMBARQUEE()) || lireJson(CLES_EMBARQUEES()[1] || '')) || null;
   return {
     actif, dossier: CLES_DIR(), chemin: CLE_PRIVEE(),
     publicKey: pub ? pub.publicKey : '', createdAt: pub ? pub.createdAt || '' : '',
@@ -627,8 +674,143 @@ function editeurStatus(depuis) {
     correspond: !!(pub && embarquee && embarquee.publicKey === pub.publicKey),
     // Les durées portent la date de fin qu'elles donneraient à partir de `depart` : l'écran l'affiche
     // sans avoir à recalculer un mois du calendrier de son côté (une seule règle, dans licence.js).
-    depart, offres: L.OFFRES, durees: L.DUREES.map(d => ({ ...d, exp: L.expirationPour(depart, d.id) }))
+    depart, offres: L.OFFRES, durees: L.DUREES.map(d => ({ ...d, exp: L.expirationPour(depart, d.id) })),
+    // La clé de réponse du plan de contrôle : existe-t-elle sur ce poste, et celle que
+    // l'application EMBARQUE est-elle bien la sienne ? Tant que non, le serveur peut répondre ce
+    // qu'il veut, aucune réponse ne restreindra quoi que ce soit.
+    reponse: (() => {
+      const mienne = lireJson(REPONSE_PUBLIQUE());
+      const embarquee = clePublique().reponse;
+      return {
+        existe: fs.existsSync(REPONSE_PRIVEE()),
+        publicKey: (mienne && mienne.publicKey) || '',
+        depuis: (mienne && mienne.depuis) || '',
+        embarquee: !!embarquee,
+        correspond: !!(mienne && embarquee && String(mienne.publicKey).trim() === String(embarquee).trim()),
+        base: plateformeBase()
+      };
+    })()
   };
+}
+
+// ---------- le plan de contrôle (8.4.0) ----------
+//
+// L'application annonce son installation à la plateforme et demande ce qu'elle sait de sa clé.
+// **Tout ici est facultatif.** Pas d'adresse configurée, pas de réseau, pas de réponse, une réponse
+// qu'on ne peut pas vérifier, un compte Cloudflare fermé, un éditeur disparu : l'application
+// fonctionne exactement comme avant, sans un mot à l'écran. C'est la règle 1 du § 8 de
+// PLAN-PLATEFORME.md, et c'est ce qui fait qu'une entreprise tunisienne ne perd pas sa facturation
+// parce qu'un service hébergé à l'autre bout du monde a hoqueté.
+//
+// Ce qui part : la clé de licence (déjà présentée au relais de mise à jour depuis la 6.7.0), le
+// `deviceId` (un UUID tiré au hasard, sans rapport avec la machine), le nom donné au poste, la
+// plateforme et le numéro de version. **Rien d'autre, jamais** : aucun client, aucune facture,
+// aucun montant, aucun chemin de dossier (§ 9).
+//
+// Ce qui peut en revenir : une révocation, et elle seule. Le serveur ne peut jamais ACCORDER un
+// droit que la clé signée ne porte pas — il ne peut qu'ajouter une restriction déjà prévue.
+const PLATEFORME_DEBUT = 20 * 1000;   // vingt secondes après l'ouverture : jamais pendant le démarrage
+
+// L'adresse et le secret arrivent par `extraMetadata` à la construction, comme ceux du relais
+// (6.7.0) — jamais dans Git. Les variables d'environnement ne servent qu'aux tests, et seulement en
+// développement : une application installée ne se laisse pas rediriger par son environnement.
+// Et tout se `trim()` avant usage : c'est une espace invisible en fin de secret qui avait cassé les
+// mises à jour en 6.7.2.
+function plateformeBase() {
+  const brut = (!app.isPackaged && process.env.SKANFACT_PLATEFORME_BASE !== undefined)
+    ? process.env.SKANFACT_PLATEFORME_BASE : (PKG.plateformeBase || '');
+  return String(brut).trim().replace(/\/+$/, '');
+}
+function plateformeSecret() {
+  const brut = (!app.isPackaged && process.env.SKANFACT_PLATEFORME_SECRET !== undefined)
+    ? process.env.SKANFACT_PLATEFORME_SECRET : (PKG.plateformeSecret || '');
+  return String(brut).trim();
+}
+
+// Le verdict gardé sur le poste, tel qu'il a été VÉRIFIÉ au moment où il est arrivé. Il est gardé
+// parce que sans ça il suffirait de se débrancher pour annuler une révocation (§ 8, règle 5).
+function verdictServeur(lic) {
+  const s = lic && lic.serveur;
+  if (!s || typeof s !== 'object') return null;
+  return { etat: String(s.etat || ''), motif: String(s.motif || ''), emisLe: String(s.emisLe || ''), sujet: String(s.sujet || '') };
+}
+function ecrireVerdict(verdict) {
+  try {
+    const doc = lireJson(LIC_FILE()) || {};
+    if (verdict) doc.serveur = verdict; else delete doc.serveur;
+    fs.mkdirSync(path.dirname(LIC_FILE()), { recursive: true });
+    fs.writeFileSync(LIC_FILE(), JSON.stringify(doc, null, 2));
+  } catch { /* un verdict non écrit laisse l'application dans l'état d'avant : c'est le bon défaut */ }
+}
+
+function postPlateforme(corps) {
+  return new Promise((resolve, reject) => {
+    let url;
+    try { url = new URL(plateformeBase() + '/v1/licence/etat'); }
+    catch (e) { return reject(new Error('adresse du plan de contrôle invalide : ' + (e && e.message))); }
+    // En clair, seulement en développement (le faux serveur de `e2e:plateforme`). Une application
+    // installée exige https : la clé de licence voyage dans ce corps de requête.
+    if (url.protocol !== 'https:' && app.isPackaged) return reject(new Error('le plan de contrôle exige https'));
+    const donnees = Buffer.from(JSON.stringify(corps), 'utf8');
+    const req = require(url.protocol === 'http:' ? 'http' : 'https').request(url, {
+      method: 'POST',
+      timeout: 8000,
+      headers: { 'Content-Type': 'application/json', 'Content-Length': donnees.length, 'X-SkanFact-App': plateformeSecret() }
+    }, res => {
+      let txt = '';
+      res.setEncoding('utf8');
+      res.on('data', c => { txt += c; if (txt.length > 32 * 1024) req.destroy(new Error('réponse démesurée')); });
+      res.on('end', () => {
+        if (res.statusCode !== 200) return reject(new Error('HTTP ' + res.statusCode));
+        try { resolve(JSON.parse(txt)); } catch { reject(new Error('réponse illisible')); }
+      });
+    });
+    req.on('timeout', () => req.destroy(new Error('délai dépassé')));
+    req.on('error', reject);
+    req.end(donnees);
+  });
+}
+
+// Renvoie toujours, ne jette jamais : c'est un appel de confort, pas une étape du démarrage.
+async function annoncerPlateforme() {
+  if (!plateformeBase() || !plateformeSecret()) return { fait: false, raison: 'plan de contrôle non configuré' };
+  const dev = deviceIdentity();
+  const cle = String(readLicence().key || '').trim();
+  let rep;
+  try {
+    rep = await postPlateforme({ cle, deviceId: dev.id, deviceNom: dev.name, plateforme: process.platform, version: app.getVersion() });
+  } catch (e) {
+    // Une panne du plan de contrôle n'est pas une panne de l'application. On l'écrit dans le
+    // journal — c'est ce qui permet de dépanner à distance (6.7.2) — et rien à l'écran : il n'y a
+    // rien que l'utilisateur puisse faire, et un rouge sur une situation normale apprend à ignorer
+    // les rouges.
+    logToFile('plan de contrôle', e);
+    return { fait: false, raison: String((e && e.message) || e) };
+  }
+  // Une installation en essai s'annonce et n'attend rien en retour : c'est SON application qui
+  // compte ses trente jours. Sans cet appel, aucun essai ne serait jamais visible — et un éditeur
+  // qui ne voit pas ses essais ne sait pas s'il a des clients qui arrivent.
+  if (!cle) return { fait: true, etat: 'essai' };
+
+  const v = L.verifierReponse(rep, clePublique().reponse, { sujet: L.empreinteCle(cle) });
+  if (!v.ok) return { fait: true, etat: '', raison: v.raison };
+  // Le verdict vérifié remplace le précédent, dans les DEUX sens. Lever une révocation (un
+  // remboursement annulé, une erreur de l'éditeur) exige exactement la même preuve que d'en poser
+  // une : sans cette symétrie, quelqu'un capable de couper le réseau pourrait figer une révocation
+  // pour toujours, et l'éditeur n'aurait aucun moyen de la reprendre.
+  ecrireVerdict(v.etat === 'revoquee' ? { etat: 'revoquee', motif: v.motif, emisLe: v.emisLe, sujet: v.sujet } : null);
+  return { fait: true, etat: v.etat };
+}
+
+let plateformeArmee = false;
+function demarrerPlateforme() {
+  if (plateformeArmee || !plateformeBase()) return;
+  plateformeArmee = true;
+  // Même cadence que la vérification de mise à jour, et pour la même raison : SkanFact reste
+  // ouvert toute la semaine. Un seul appel au démarrage ne servirait que ceux qui le relancent
+  // tous les jours.
+  setTimeout(() => { annoncerPlateforme(); }, PLATEFORME_DEBUT);
+  setInterval(() => { annoncerPlateforme(); }, MAJ_INTERVALLE);
 }
 
 // ---------- dossiers : plusieurs entreprises sur le même ordinateur ----------
@@ -1219,18 +1401,23 @@ ipcMain.handle('licence:set', (_e, key, opts) => {
     try { fs.unlinkSync(LIC_ANCIEN()); } catch {}
     return licenceStatus(matricule);
   }
-  if (publicKey() && !L.verifyKey(k, publicKey())) {
+  const cles = clePublique().cles;
+  if (cles.length && !L.verifyKey(k, cles)) {
     const err = new Error('Cette clé n\'est pas reconnue. Vérifie qu\'elle a été copiée en entier, de « SKAN1. » jusqu\'au dernier caractère.');
     err.code = 'LICENCE_INVALIDE';
     throw err;
   }
-  const essai = L.licenceState({ key: k, publicKey: publicKey(), matricule, today: L.today() });
+  const essai = L.licenceState({ key: k, cles, matricule, today: L.today() });
   if (essai.state === 'autre') {
     const err = new Error(essai.detail);
     err.code = 'LICENCE_AUTRE_ENTREPRISE';
     throw err;
   }
   ecrireLicence(k);
+  // La clé vient d'être collée : on l'annonce tout de suite plutôt que d'attendre vingt secondes.
+  // C'est ce qui fait qu'une vente apparaît dans la console pendant que le client est encore au
+  // téléphone. Détaché exprès — l'enregistrement de la clé ne doit dépendre d'aucun réseau.
+  annoncerPlateforme().catch(() => {});
   return licenceStatus(matricule);
 });
 
@@ -1306,6 +1493,42 @@ ipcMain.handle('editeur:copierPublique', () => {
   const txt = fs.readFileSync(CLE_PUBLIQUE_EDITEUR(), 'utf8');
   require('electron').clipboard.writeText(txt);
   return { ok: true, texte: txt };
+});
+
+// ---------- la clé de réponse du plan de contrôle (8.4.0) ----------
+// Le serveur SIGNE ses réponses, l'application les vérifie : c'est ce qui empêche un intermédiaire
+// de répondre « révoquée » à un client honnête. Il faut donc une paire de clés de plus, et elle se
+// fabrique ICI, sur l'ordinateur de l'éditeur — jamais ailleurs, et surtout jamais dans une
+// conversation. Le même geste qu'en 7.33.0 pour les clés de licence, et pour la même raison :
+// une clé privée dont dépend l'application n'a rien à faire dans un canal qu'on ne maîtrise pas.
+//
+// Ensuite, deux moitiés qui partent à deux endroits :
+//   - la PRIVÉE se colle dans les réglages du worker Cloudflare (secret `REPONSE_PRIVATE_KEY`) ;
+//   - la PUBLIQUE se colle dans `build/licences-publiques.json`, et se publie avec l'application.
+// Tant que la publique n'est pas embarquée, aucune réponse ne peut restreindre quoi que ce soit :
+// la mise en place est donc sans danger, et l'ordre des deux gestes n'a pas d'importance.
+ipcMain.handle('editeur:cleReponseCreer', () => {
+  if (fs.existsSync(REPONSE_PRIVEE())) {
+    const err = new Error(`Il existe déjà une clé de réponse sur cet ordinateur (${REPONSE_PRIVEE()}). En créer une nouvelle ferait ignorer toutes les réponses du serveur jusqu'à la prochaine version publiée.`);
+    err.code = 'CLE_EXISTANTE';
+    throw err;
+  }
+  const { publicKey: pubPem, privateKey } = L.generateKeys();
+  fs.mkdirSync(CLES_DIR(), { recursive: true });
+  fs.writeFileSync(REPONSE_PRIVEE(), privateKey, { mode: 0o600 });
+  fs.writeFileSync(REPONSE_PUBLIQUE(), JSON.stringify({ publicKey: pubPem, depuis: L.today() }, null, 2) + '\n');
+  clePubliqueCache = null;
+  return editeurStatus();
+});
+// La privée ne traverse pas le pont : elle va de main.js au presse-papiers, et l'écran n'en reçoit
+// que la confirmation. Elle est de toute façon destinée à un formulaire de Cloudflare, pas à une
+// fenêtre de SkanFact.
+ipcMain.handle('editeur:cleReponseCopier', (_e, quoi) => {
+  const privee = String(quoi || '') === 'privee';
+  const chemin = privee ? REPONSE_PRIVEE() : REPONSE_PUBLIQUE();
+  if (!fs.existsSync(chemin)) { const err = new Error('Aucune clé de réponse sur cet ordinateur.'); err.code = 'PAS_DE_CLE'; throw err; }
+  require('electron').clipboard.writeText(fs.readFileSync(chemin, 'utf8'));
+  return { ok: true, privee };
 });
 // Émettre une licence : l'écran envoie les champs, le processus principal vérifie et signe.
 ipcMain.handle('licence:emettre', (_e, p) => {

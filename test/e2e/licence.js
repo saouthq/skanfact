@@ -4,6 +4,9 @@
 //   1. sans clé de signature, il n'y a ni page Licences, ni panneau Éditeur — un client ne voit rien ;
 //   2. « Créer mes clés » écrit la clé privée dans le dossier de clés (isolé ici), la clé publique se
 //      copie, et l'application du poste est ARMÉE avec cette clé : l'essai commence ;
+//   2 bis. (8.4.0) « Créer la clé de réponse » fabrique la paire qui signe les réponses du plan de
+//      contrôle : deux moitiés, deux destinations, et le panneau DIT qu'elle n'est pas encore
+//      embarquée — sans quoi on croirait la révocation en service alors qu'elle ne l'est pas ;
 //   3. « Émettre une licence » signe une clé (vérifiable avec la clé publique), crée un BROUILLON de
 //      facture avec la bonne ligne, et l'inscrit dans l'historique ;
 //   4. la clé collée dans Paramètres → Licence active l'offre Indépendant : l'Achat refuse la
@@ -129,6 +132,40 @@ const L = require('../../src/licence.js');
   const panneauEd = await win.textContent('#lic-panel');
   if (!/Poste de l'éditeur/.test(panneauEd) || await win.$('#lic-devenir')) throw new Error('le panneau Licence doit dire « Poste de l\'éditeur » et ne plus offrir « Créer mes clés » : ' + panneauEd.slice(0, 120));
   j.ok(`clé privée dans ${cles} · publique copiée · poste éditeur (ni essai ni verrou) · panneau Éditeur posé`);
+
+  // ---------------------------------------------------- 2 bis. la clé de réponse du plan de contrôle
+  // Un écran ne se juge pas à la lecture : on clique vraiment le bouton, et on regarde ce qui
+  // change. Sans cette clé, le serveur ne peut rien prouver et l'application ignore ses réponses —
+  // le panneau doit le DIRE au lieu de laisser croire que la révocation fonctionne déjà.
+  j.etape('La clé de réponse du plan de contrôle se crée depuis le panneau Éditeur');
+  await ouvrirParametres('p-editeur');
+  let bloc = (await win.textContent('#editeur-panel')).replace(/\s+/g, ' ');
+  if (!/Pas encore créée/.test(bloc)) throw new Error('le panneau ne dit pas que la clé de réponse manque : ' + bloc.slice(-200));
+  if (!/l'application les ignore toutes/.test(bloc)) throw new Error('le panneau ne dit pas que les réponses sont ignorées sans cette clé');
+  if (!await win.$('#ed-rep-creer')) throw new Error('le bouton « Créer la clé de réponse » manque');
+  await win.click('#ed-rep-creer');
+  await win.waitForSelector('#modal-root .modal');
+  const libelle = (await win.textContent('#modal-root #ok')).trim();
+  if (libelle.length > 30) throw new Error('le bouton de confirmation porte un paragraphe au lieu d\'un libellé : ' + libelle);
+  await win.click('#modal-root #ok');
+  await win.waitForFunction(() => !document.querySelector('#modal-root .modal'));
+  await win.waitForTimeout(400);
+  bloc = (await win.textContent('#editeur-panel')).replace(/\s+/g, ' ');
+  if (!/en attente d'embarquement/i.test(bloc)) throw new Error('le panneau ne passe pas en « en attente d\'embarquement » : ' + bloc.slice(-250));
+  for (const b of ['#ed-rep-priv', '#ed-rep-pub']) if (!await win.$(b)) throw new Error('bouton manquant après création : ' + b);
+  if (await win.$('#ed-rep-creer')) throw new Error('le bouton de création reste offert alors que la clé existe');
+  const fichiers = fs.readdirSync(cles).sort();
+  if (!fichiers.includes('reponse-privee.pem') || !fichiers.includes('reponse-publique.json')) {
+    throw new Error('les fichiers de la clé de réponse ne sont pas écrits : ' + fichiers.join(', '));
+  }
+  const pubRep = JSON.parse(fs.readFileSync(path.join(cles, 'reponse-publique.json'), 'utf8'));
+  if (!/BEGIN PUBLIC KEY/.test(pubRep.publicKey || '')) throw new Error('la clé publique de réponse n\'est pas une clé publique');
+  if (/PRIVATE KEY/.test(JSON.stringify(pubRep))) throw new Error('la clé privée de réponse est dans le fichier public');
+  // La privée ne traverse pas le pont : main.js la met au presse-papiers, l'écran n'en reçoit que
+  // la confirmation.
+  const retour = await win.evaluate(() => window.skanfact.cleReponseCopier('privee'));
+  if (/PRIVATE KEY/.test(JSON.stringify(retour))) throw new Error('la clé privée de réponse traverse le pont');
+  j.ok('créée sur le poste · deux moitiés, deux destinations · le panneau dit qu\'elle n\'est pas encore embarquée · rien de privé sur le pont');
 
   // ---------------------------------------------------- 3. émettre une licence
   j.etape('Émettre une licence : clé signée, brouillon de facture, historique');

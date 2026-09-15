@@ -116,6 +116,19 @@ Tant qu'elle n'est pas posée, le worker répond quand même — **sans signatur
 ignore alors toute réponse qui RESTREINT (c'est sa garantie) et continue de fonctionner
 normalement. Rien ne casse : simplement, une révocation ne s'applique pas encore.
 
+**Où la fabriquer :** dans SkanFact, sur ton Mac — jamais ailleurs, et surtout pas dans une
+conversation. Paramètres → L'application → Éditeur → **« Créer la clé de réponse »**. Elle est
+écrite à côté de ta clé de signature, dans `~/.skanfact/`, et deux boutons apparaissent :
+
+- **« Copier la clé privée (pour le service) »** → c'est elle qui se colle ici, dans
+  `REPONSE_PRIVATE_KEY`. Vide ton presse-papiers ensuite.
+- **« Copier la clé publique (pour la version) »** → celle-là se colle dans la conversation qui
+  prépare la version suivante : elle va dans `build/licences-publiques.json`, champ `reponse`.
+
+Les deux gestes peuvent se faire dans n'importe quel ordre, et tant que la publique n'est pas
+publiée avec une version, **aucune révocation ne mord**. Le panneau de l'éditeur l'écrit noir sur
+blanc plutôt que de laisser croire que ça marche déjà.
+
 ## 5. Vérifier que ça répond
 
 Onglet **Logs** du worker, puis dans un navigateur (ou avec le testeur HTTP de Cloudflare) :
@@ -159,10 +172,29 @@ ouverte toute la nuit ».
 
 ---
 
+## Côté application : les deux secrets du dépôt (8.4.0)
+
+L'application ne parle au plan de contrôle que si la version publiée porte son adresse et son
+secret. Même mécanisme que le relais de mise à jour : deux **secrets du dépôt GitHub**, posés dans
+le paquet à la construction, jamais dans le code.
+
+| Secret du dépôt | Valeur |
+|---|---|
+| `PLATEFORME_BASE` | `https://skanfact-api.<ton-compte>.workers.dev` (sans barre à la fin) |
+| `PLATEFORME_SECRET` | le même `APP_SECRET` que ci-dessus |
+
+Settings → Secrets and variables → Actions → New repository secret, exactement comme `UPDATE_BASE`.
+Non définis, l'application ne contacte aucun serveur et **rien** n'en dépend — c'est l'état par
+défaut, et c'est un état parfaitement valable.
+
+---
+
 ## Ce qui se passe si tu ne fais rien
 
 Rien ne casse, jamais. C'est écrit dans le code et tenu par des tests :
 
+- **Secrets du dépôt absents** → l'application ne contacte personne, aucune activation n'est
+  visible, et tout fonctionne.
 - **Worker pas déployé** → l'application n'a personne à qui parler, elle fonctionne.
 - **Base pas branchée** → le worker répond « active » à toute licence bien signée.
 - **Réglages absents** → il le DIT (503) au lieu de refuser (403). Refuser couperait chaque client
@@ -205,3 +237,10 @@ Chacune a été prouvée en réintroduisant son défaut et en vérifiant que le 
 Et la console s'ouvre **pour de vrai** dans un navigateur : `npm run e2e:console` (neuf étapes, un
 faux serveur imite le worker — aucun Cloudflare nécessaire). C'est lui qui attrape ce qu'aucune
 lecture de code ne montre : un bouton inerte, une exception dans un gabarit, un écran blanc.
+
+Depuis la 8.4.0, `npm run e2e:plateforme` fait mieux : il pose **ce worker-ci**, tel quel, derrière
+un serveur local et lance **l'application réelle** en face. Huit étapes — une clé sans `kid`, une
+révocation signée qui ferme la création et laisse la lecture ouverte, la même avec un octet
+retouché, la même rejouée trois mois plus tard, le serveur éteint, une installation qui n'a jamais
+vu le réseau. Une imitation écrite à côté du vrai finirait par en diverger, et c'est très exactement
+la divergence qu'on cherche à attraper.

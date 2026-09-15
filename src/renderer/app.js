@@ -39,6 +39,8 @@
     editeurStatus: async () => ({ actif: false, offres: {}, durees: [] }),
     editeurKeygen: async () => ({ actif: false }), editeurImporter: async () => ({ canceled: true }),
     editeurExporter: async () => ({ canceled: true }), editeurCopierPublique: async () => ({ ok: false }),
+    cleReponseCreer: async () => ({ actif: false, offres: {}, durees: [], reponse: {} }),
+    cleReponseCopier: async () => ({ ok: false }),
     onUpdateEvent: () => {}
   };
 
@@ -10524,11 +10526,68 @@
         <button type="button" class="btn" id="ed-pub">Copier la clé publique</button>
         <button type="button" class="btn" id="ed-exp">Enregistrer une copie de la clé privée…</button>
       </div>
-      <p class="small muted mt"><strong>Sans copie de la clé privée, un disque qui lâche rend impossible tout renouvellement chez tes clients.</strong> Une copie dans ton gestionnaire de mots de passe ou sur une clé USB à part suffit.</p>`;
+      <p class="small muted mt"><strong>Sans copie de la clé privée, un disque qui lâche rend impossible tout renouvellement chez tes clients.</strong> Une copie dans ton gestionnaire de mots de passe ou sur une clé USB à part suffit.</p>
+      ${blocCleReponse(editeur.reponse || {})}`;
     $('#ed-lic').onclick = () => navigate('#/licences');
     $('#ed-emettre').onclick = () => licenceForm(null, null);
     $('#ed-pub').onclick = copierClePublique;
     $('#ed-exp').onclick = abriterClePrivee;
+    brancherCleReponse();
+  }
+
+  // ---------- la clé de réponse du plan de contrôle (8.4.0) ----------
+  //
+  // Le serveur signe ses réponses, l'application vérifie cette signature : c'est ce qui empêche
+  // n'importe quel intermédiaire de répondre « révoquée » à un client qui a payé. Il faut donc une
+  // seconde paire de clés, et elle se fabrique sur CET ordinateur — jamais ailleurs.
+  //
+  // Tant que la moitié publique n'est pas embarquée dans une version publiée, aucune réponse du
+  // serveur ne restreint quoi que ce soit. Le panneau le dit en toutes lettres : c'est ce qui rend
+  // la mise en place sans danger, et ce qui évite de croire que la révocation fonctionne alors
+  // qu'elle ne fonctionne pas encore.
+  function blocCleReponse(r) {
+    const etat = !r.existe ? 'absente' : (!r.embarquee ? 'attente' : (r.correspond ? 'ok' : 'autre'));
+    const badge = { absente: '<span class="badge émis">Pas encore créée</span>',
+      attente: '<span class="badge émis">Créée — en attente d\'embarquement</span>',
+      ok: '<span class="badge accepté">Réponses du serveur vérifiables</span>',
+      autre: '<span class="badge annulée">L\'application embarque une AUTRE clé de réponse</span>' }[etat];
+    const dit = {
+      absente: 'Sans cette clé, le serveur ne peut pas prouver que ses réponses viennent bien de lui : l\'application les ignore toutes, et une licence révoquée continue de fonctionner. Créer la clé ici la garde sur cet ordinateur — elle ne doit jamais passer par ailleurs.',
+      attente: 'La clé existe sur cet ordinateur. Il reste deux gestes : coller la <strong>privée</strong> dans le réglage <code>REPONSE_PRIVATE_KEY</code> du service, et la <strong>publique</strong> dans la version suivante de SkanFact. Tant que la publique n\'est pas publiée, aucune révocation ne mord.',
+      ok: 'L\'application publiée embarque cette clé : une révocation prononcée depuis la console est appliquée chez le client à sa prochaine connexion.',
+      autre: 'SkanFact embarque une autre clé de réponse que celle de cet ordinateur : les réponses signées ici seraient ignorées partout. Reprends la bonne clé privée, ou fais embarquer celle-ci dans la prochaine version.'
+    }[etat];
+    return `<p class="mt"><strong>Plan de contrôle — clé de réponse</strong> ${badge}</p>
+      <p class="small">${dit}</p>
+      ${r.base ? `<p class="small muted">Service : <code>${h(r.base)}</code></p>`
+        : '<p class="small muted">Aucune adresse de plan de contrôle n\'est configurée dans cette version : l\'application ne parle à aucun serveur, et rien ne dépend de lui.</p>'}
+      <div class="inline mt">
+        ${r.existe
+          ? `<button type="button" class="btn" id="ed-rep-priv">Copier la clé privée (pour le service)</button>
+             <button type="button" class="btn" id="ed-rep-pub">Copier la clé publique (pour la version)</button>`
+          : '<button type="button" class="btn btn-primary" id="ed-rep-creer">Créer la clé de réponse</button>'}
+      </div>`;
+  }
+  function brancherCleReponse() {
+    if ($('#ed-rep-creer')) $('#ed-rep-creer').onclick = async () => {
+      // Le second argument de confirmDialog est le LIBELLÉ du bouton, pas un détail : y glisser un
+      // paragraphe donnerait un bouton de trois lignes. Tout ce qui s'explique va dans le message.
+      if (!await confirmDialog('Créer la clé de réponse du plan de contrôle ?\n\n'
+        + 'Elle est écrite sur cet ordinateur, à côté de ta clé de signature. Tu colleras ensuite sa moitié privée dans les réglages du service, et sa moitié publique dans la version suivante de SkanFact.',
+        'Créer la clé', false)) return;
+      try { editeur = await bridge.cleReponseCreer(); drawEditeurPanel(); toast('Clé de réponse créée'); }
+      catch (e) { toast(plainError(e), true); }
+    };
+    // La clé privée ne traverse pas le pont : main.js la met au presse-papiers, l'écran n'en reçoit
+    // que la confirmation.
+    if ($('#ed-rep-priv')) $('#ed-rep-priv').onclick = async () => {
+      try { await bridge.cleReponseCopier('privee'); toast('Clé PRIVÉE copiée — colle-la dans le réglage REPONSE_PRIVATE_KEY du service, puis vide ton presse-papiers'); }
+      catch (e) { toast(plainError(e), true); }
+    };
+    if ($('#ed-rep-pub')) $('#ed-rep-pub').onclick = async () => {
+      try { await bridge.cleReponseCopier('publique'); toast('Clé publique copiée — colle-la dans la conversation qui prépare la prochaine version'); }
+      catch (e) { toast(plainError(e), true); }
+    };
   }
 
   // Émettre une licence — ou la renouveler (`prec` : la licence qu'on remplace). Un seul geste fait

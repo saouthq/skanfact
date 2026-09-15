@@ -7,6 +7,50 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 8.4.0 — 15/09/2026
+
+**L'application parle au plan de contrôle — et continue de fonctionner sans lui.** C'est l'étape la
+plus délicate du chantier, parce que c'est la seule qui touche une licence déjà vendue. Trois
+nouveautés, et une règle qui passe avant les trois : *tout ce qui suit est facultatif*. Pas de
+réseau, pas de serveur, un compte fermé, un éditeur disparu — SkanFact fonctionne exactement comme
+avant, sans un mot à l'écran.
+
+**Plusieurs clés de signature.** `build/licences-publiques.json` remplace `build/licence-public.json`
+et porte une liste : la clé maître de l'éditeur (celle de la 8.0.0, au caractère près) et, demain,
+celle du serveur qui signera les ventes courantes. Chacune a un identifiant, et la licence dit
+laquelle l'a signée. Le jour où une clé doit être retirée, on la retire — sans invalider les
+licences des autres.
+**La règle qui protège tout ce qui est déjà vendu :** une licence qui ne nomme aucune clé est
+vérifiée par la clé maître. Toutes celles émises depuis la 8.0.0 sont dans ce cas ; sans cette
+ligne, la mise à jour les aurait invalidées d'un coup, le même matin.
+
+**L'installation s'annonce.** Une fois par démarrage puis toutes les quatre heures, l'application
+dit à la plateforme : cette clé, cet ordinateur (un identifiant tiré au hasard, déjà présent depuis
+la 3.2.0), ce système, cette version. **Rien d'autre, jamais** : aucun client, aucune facture,
+aucun montant, aucun chemin de dossier. Un essai s'annonce aussi, sans clé — sinon un essai ne
+serait visible nulle part.
+
+**Une révocation devient applicable**, et elle ne l'est que sur preuve. La réponse du serveur doit
+être **signée** par lui, **datée** et **adressée à cette licence-là** : sans la signature, n'importe
+quel intermédiaire répondrait « révoquée » à un client qui a payé ; sans le destinataire, la réponse
+d'un client se rejouerait chez un autre ; sans la date, on rejouerait une vieille réponse pour
+ressusciter une révocation annulée. Une réponse qu'on ne peut pas vérifier est simplement ignorée.
+Et une révocation ne ferme, comme toujours, que la **création** de nouvelles pièces : lire,
+imprimer, exporter, envoyer le paquet au comptable restent libres, aujourd'hui comme dans dix ans.
+Le serveur ne peut jamais accorder un droit que la clé ne porte pas — il ne peut qu'ajouter une
+restriction déjà prévue.
+
+**Pour l'éditeur :** un bouton « Créer la clé de réponse » dans Paramètres → L'application →
+Éditeur, qui fabrique cette paire de clés sur son ordinateur. Tant que sa moitié publique n'est pas
+publiée avec une version, aucune réponse du serveur ne restreint quoi que ce soit : la mise en place
+est sans danger, et le panneau le dit en toutes lettres plutôt que de laisser croire que la
+révocation fonctionne déjà.
+
+Le parcours `npm run e2e:plateforme` fait tourner **le vrai worker** — le fichier déployé sur
+Cloudflare, pas une imitation — face à l'application réelle : une clé sans identifiant de clé, une
+révocation signée qui ferme la création, la même avec un octet retouché, la même rejouée trois mois
+plus tard, le serveur éteint, et une installation neuve qui n'a jamais vu le réseau.
+
 ## 8.3.0 — 14/09/2026
 
 **La retenue à la source : la liste propose, elle n'enferme pas.** Signalé par le frère de Skander,

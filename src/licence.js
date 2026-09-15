@@ -25,6 +25,10 @@ const crypto = require('crypto');
 const FORMAT = 1;
 const TRIAL_DAYS = 30;
 const PREFIX = 'SKAN1.';
+// L'adresse à laquelle un client écrit quand quelque chose ne va pas avec sa licence. Elle vit aussi
+// dans app.js (`LICENCE_CONTACT`), parce qu'un renderer ne peut pas charger ce module ; un test
+// confronte les deux — deux adresses qui divergent, c'est un client qui écrit dans le vide.
+const CONTACT = 'contact@skanfact.tn';
 
 // ---------- les offres (7.33.0) ----------
 // Ce que la page Tarifs du site promet, et rien d'autre. L'offre voyage DANS la clé signée : un client
@@ -123,6 +127,55 @@ function memeMatricule(a, b) {
 const b64u = buf => Buffer.from(buf).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const unb64u = s => Buffer.from(String(s).replace(/-/g, '+').replace(/_/g, '/'), 'base64');
 
+// ---------- les clés publiques que l'application connaît (8.4.0) ----------
+// Jusqu'à la 8.3.0 il n'y en avait qu'une : celle de Skander, dans `build/licence-public.json`.
+// La plateforme en ajoute une seconde — celle qui vit sur le serveur et signe les ventes courantes —
+// et il en viendra d'autres le jour où l'une sera remplacée. Le mécanisme est celui des autorités de
+// certification : chaque clé porte un identifiant (`kid`), et la licence dit laquelle l'a signée.
+//
+// `lireCles` accepte les trois formes qui existent VRAIMENT, parce que les trois sont déjà sur des
+// disques quelque part :
+//   - une chaîne PEM                      (l'appelant d'avant la 8.4.0)
+//   - `{ format, publicKey, createdAt }`  (le fichier de la 8.0.0, et celui de l'éditeur)
+//   - `{ cles: [{ kid, publicKey, depuis, retiree? }] }`  (build/licences-publiques.json)
+// Une clé sans `kid` devient `master` : c'est la clé historique, et c'est elle que désigne une
+// licence qui n'en nomme aucune.
+function lireCles(source) {
+  if (!source) return [];
+  if (typeof source === 'string') {
+    const s = source.trim();
+    if (!s) return [];
+    if (s.startsWith('-----')) return [{ kid: 'master', publicKey: s, depuis: '' }];
+    try { return lireCles(JSON.parse(s)); } catch { return []; }
+  }
+  const liste = Array.isArray(source) ? source
+    : (Array.isArray(source.cles) ? source.cles : (source.publicKey ? [source] : []));
+  return liste
+    .filter(c => c && c.publicKey && !c.retiree)
+    .map(c => ({ kid: String(c.kid || 'master'), publicKey: String(c.publicKey), depuis: String(c.depuis || c.createdAt || '') }));
+}
+
+// LA règle de compatibilité la plus dangereuse du chantier, et son jumeau côté serveur
+// (`plateforme/skanfact-api.mjs`). Toutes les licences émises depuis la 8.0.0 ont été signées par la
+// clé maître et ne portent AUCUN `kid` : sans la première ligne, la mise à jour les invaliderait
+// toutes d'un coup, et chaque client payant lirait « clé non reconnue » le même matin.
+//
+// On ne tente JAMAIS toutes les clés à la suite : `kid` désigne une clé et une seule. C'est ce qui
+// permet de RETIRER une clé compromise — elle ne vérifie plus rien — au lieu de la laisser valider
+// éternellement les licences qu'elle a signées.
+function choisirCle(kid, cles) {
+  const liste = lireCles(cles);
+  const k = String(kid || '').trim();
+  if (!k) return liste.find(c => c.kid === 'master') || null;
+  return liste.find(c => c.kid === k) || null;
+}
+
+// L'empreinte d'une clé de licence : la même que celle du serveur (`empreinteCle` du worker), sinon
+// une réponse ne pourrait pas être rattachée à SA licence. SHA-256 du texte de la clé, 32 hexa.
+function empreinteCle(cle) {
+  return crypto.createHash('sha256').update(String(cle || '').trim(), 'utf8').digest('hex').slice(0, 32);
+}
+
 // ---------- fabrication (côté Skander, jamais dans l'application) ----------
 function generateKeys() {
   const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
@@ -155,14 +208,84 @@ function parseKey(key) {
 
 // Renvoie le contenu de la licence, ou null. Aucune exception : une clé mal collée est un cas
 // ordinaire, pas une erreur de programmation.
-function verifyKey(key, publicKeyPem) {
-  if (!publicKeyPem) return null;
+// `cles` est ce que `lireCles` accepte — une chaîne PEM continue de marcher, c'est ce que tous les
+// appelants d'avant la 8.4.0 passent.
+function verifyKey(key, cles) {
+  const pub = choisirCle(((parseKey(key) || {}).payload || {}).kid, cles);
+  if (!pub) return null;
   const p = parseKey(key);
   if (!p) return null;
   try {
-    if (!crypto.verify(null, p.json, crypto.createPublicKey(publicKeyPem), p.sig)) return null;
+    if (!crypto.verify(null, p.json, crypto.createPublicKey(pub.publicKey), p.sig)) return null;
   } catch { return null; }
   return p.payload;
+}
+
+// ---------- la réponse du plan de contrôle (8.4.0) ----------
+// Depuis la 8.4.0 l'application demande à la plateforme ce qu'elle sait de sa clé. La réponse ne
+// peut faire qu'UNE chose : ajouter une restriction déjà prévue (une révocation). Elle n'accorde
+// jamais un droit que la clé signée ne porte pas — le serveur ne peut pas transformer un Indépendant
+// en Entreprise, ni prolonger une licence finie. C'est la règle 4 du § 8 de PLAN-PLATEFORME.md, et
+// c'est elle qui fait que la disparition du serveur ne casse rien.
+//
+// Trois garde-fous, chacun contre une attaque précise :
+//   - **signée** : sans ça, quiconque se place entre le client et le serveur (un wifi d'hôtel, un
+//     pare-feu d'entreprise) répond « révoquée » et bloque un client honnête ;
+//   - **liée au sujet** : sans ça, la réponse « révoquée » destinée au client A se rejoue chez B ;
+//   - **datée** : sans ça, on rejoue une vieille réponse pour ressusciter une révocation annulée.
+const REPONSE_V = 1;
+const REPONSE_JOURS_MAX = 45;   // au-delà, on ne l'accepte plus : c'est un rejeu, pas une nouvelle
+const REPONSE_JOURS_AVANCE = 1; // tolérance d'horloge, dans l'autre sens
+
+// Le corps exactement tel que le serveur l'a signé (`corpsReponse` du worker). On le RECONSTRUIT
+// champ par champ au lieu de re-sérialiser ce qui est arrivé : un champ ajouté par un proxy, un
+// ordre de clés différent, et la signature paraîtrait fausse sur une réponse parfaitement valide.
+function corpsReponse(rep) {
+  const r = rep || {};
+  return {
+    v: REPONSE_V,
+    sujet: String(r.sujet || ''),
+    etat: String(r.etat || 'inconnue'),
+    offre: r.offre == null ? null : r.offre,
+    exp: r.exp == null ? null : r.exp,
+    postes: Number.isFinite(r.postes) ? r.postes : null,
+    motif: r.motif == null ? null : r.motif,
+    emisLe: String(r.emisLe || '')
+  };
+}
+
+// L'âge de la réponse en jours (négatif = datée dans le futur), ou null si la date est illisible.
+function ageReponse(emisLe, maintenant) {
+  const t = Date.parse(String(emisLe || ''));
+  const n = maintenant ? Date.parse(String(maintenant)) : Date.now();
+  if (isNaN(t) || isNaN(n)) return null;
+  return (n - t) / 86400000;
+}
+
+// Renvoie `{ ok, raison, etat, motif, emisLe }`. Le résultat ne sert qu'à RESTREINDRE : une réponse
+// qu'on ne peut pas vérifier est simplement ignorée, jamais transformée en refus. `ok: false` est
+// donc le cas sûr, et c'est pour ça qu'il est le cas par défaut partout ici.
+function verifierReponse(rep, reponsePublicKeyPem, opts) {
+  const o = opts || {};
+  const non = raison => ({ ok: false, raison, etat: '', motif: '', emisLe: '', sujet: '' });
+  const r = rep && typeof rep === 'object' ? rep : null;
+  if (!r) return non('réponse vide');
+  if (!reponsePublicKeyPem) return non('aucune clé de réponse embarquée');
+  if (Number(r.v) !== REPONSE_V) return non('version de réponse inconnue');
+  if (!r.signature) return non('réponse non signée');
+  const sujet = String(o.sujet || '');
+  if (!sujet || String(r.sujet || '') !== sujet) return non('réponse destinée à une autre licence');
+  const age = ageReponse(r.emisLe, o.maintenant);
+  if (age === null) return non('date de réponse illisible');
+  if (age > REPONSE_JOURS_MAX) return non('réponse trop ancienne');
+  if (age < -REPONSE_JOURS_AVANCE) return non('réponse datée dans le futur');
+  try {
+    const json = Buffer.from(JSON.stringify(corpsReponse(r)), 'utf8');
+    if (!crypto.verify(null, json, crypto.createPublicKey(reponsePublicKeyPem), unb64u(r.signature))) {
+      return non('signature de réponse fausse');
+    }
+  } catch { return non('signature de réponse illisible'); }
+  return { ok: true, raison: '', etat: String(r.etat || ''), motif: String(r.motif || ''), emisLe: String(r.emisLe || ''), sujet };
 }
 
 // L'état de la licence, tel que l'application le montre et l'applique.
@@ -172,6 +295,7 @@ function verifyKey(key, publicKeyPem) {
 //   expiree   : licence dépassée → seule la création de nouvelles pièces attend
 //   invalide  : clé illisible ou signature fausse
 //   autre     : clé authentique, mais émise pour une autre entreprise (matricule différent)
+//   revoquee  : la plateforme a dit, preuve à l'appui, que cette clé est révoquée (8.4.0)
 //   finessai  : essai terminé sans licence
 //   editeur   : la clé privée qui signe les licences est sur ce poste, et c'est bien celle de la clé
 //               publique en vigueur (`opts.editeur`) — pas d'essai, pas de verrou ; une clé collée
@@ -182,9 +306,11 @@ function verifyKey(key, publicKeyPem) {
 function licenceState(opts) {
   opts = opts || {};
   const t = opts.today || today();
-  const pub = opts.publicKey || '';
+  // `cles` depuis la 8.4.0 ; `publicKey` continue de marcher, c'est ce que passent les appelants
+  // d'avant — et c'est le fichier de la 8.0.0 chez tous ceux qui ne se sont pas encore mis à jour.
+  const pub = opts.cles || opts.publicKey || '';
   const jours = n => `${n} jour${n === 1 ? '' : 's'}`;
-  if (!pub) {
+  if (!lireCles(pub).length) {
     return { state: 'libre', locked: false, label: 'Licence non requise',
       detail: 'Cette version n\'exige pas de licence.', key: '', name: '', exp: '', daysLeft: null,
       offre: OFFRE_DEFAUT, offreLabel: '', reserves: [] };
@@ -217,6 +343,22 @@ function licenceState(opts) {
         detail: `Cette clé a été émise pour ${payload.nom || 'une autre société'} (matricule ${payload.matricule}), `
           + `pas pour le matricule ${opts.matricule} de cette entreprise. Demande une licence à ton nom.`,
         exp: String(payload.exp || ''), daysLeft: null, reserves: []
+      };
+    }
+    // La révocation reçue de la plateforme, si elle concerne bien CETTE clé. Elle est jugée avant
+    // l'expiration : une licence révoquée ET expirée se dit « révoquée », parce que c'est la raison
+    // qui compte pour celui qui la lit — même ordre que `etatLicence` côté serveur.
+    // Elle ne mord qu'après avoir été reçue : quelqu'un qui reste hors ligne pour toujours n'est
+    // jamais coupé, et c'est assumé (§ 8, règle 5).
+    const srv = opts.serveur || null;
+    if (srv && srv.etat === 'revoquee' && srv.sujet && srv.sujet === empreinteCle(opts.key)) {
+      return {
+        ...commun, state: 'revoquee', locked: true, label: 'Licence révoquée',
+        detail: 'Cette clé a été révoquée par l\'éditeur'
+          + (srv.motif ? ` (${srv.motif})` : '')
+          + '. Tout reste lisible, imprimable et exportable ; seule la création de nouvelles pièces attend.'
+          + ' Si c\'est une erreur, écris à ' + CONTACT + '.',
+        exp: String(payload.exp || ''), daysLeft: null, reserves: [], revoqueeLe: srv.emisLe || ''
       };
     }
     const exp = String(payload.exp || '');
@@ -276,5 +418,6 @@ function requestMail(company, state, deviceName) {
   };
 }
 
-module.exports = { FORMAT, TRIAL_DAYS, PREFIX, OFFRES, OFFRE_DEFAUT, DUREES, generateKeys, signLicence, parseKey, verifyKey,
-  licenceState, licenceId, offreDe, expirationPour, dateValide, memeMatricule, normMatricule, requestMail, today, addDays, addMonths, daysBetween };
+module.exports = { FORMAT, TRIAL_DAYS, PREFIX, CONTACT, OFFRES, OFFRE_DEFAUT, DUREES, generateKeys, signLicence, parseKey, verifyKey,
+  licenceState, licenceId, offreDe, expirationPour, dateValide, memeMatricule, normMatricule, requestMail, today, addDays, addMonths, daysBetween,
+  lireCles, choisirCle, empreinteCle, corpsReponse, verifierReponse, ageReponse, REPONSE_V, REPONSE_JOURS_MAX };
