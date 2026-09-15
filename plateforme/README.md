@@ -129,6 +129,13 @@ Les deux gestes peuvent se faire dans n'importe quel ordre, et tant que la publi
 publiée avec une version, **aucune révocation ne mord**. Le panneau de l'éditeur l'écrit noir sur
 blanc plutôt que de laisser croire que ça marche déjà.
 
+> **La clé de réponse créée le 15/09/2026 est BRÛLÉE.** Sa moitié privée a transité par une
+> conversation Claude ; elle est posée dans `REPONSE_PRIVATE_KEY` sur Cloudflare mais aucune version
+> n'embarque sa moitié publique, donc elle ne sert à rien et ne peut nuire à rien. Avant de poser
+> une clé publique de réponse dans `build/licences-publiques.json` : supprimer `reponse-privee.pem`
+> et `reponse-publique.json` dans `~/.skanfact/`, recréer la paire depuis SkanFact, remplacer le
+> secret Cloudflare. **Ne jamais embarquer une clé publique dont la privée a été vue.**
+
 ## 5. Vérifier que ça répond
 
 Onglet **Logs** du worker, puis dans un navigateur (ou avec le testeur HTTP de Cloudflare) :
