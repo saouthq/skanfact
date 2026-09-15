@@ -2435,15 +2435,21 @@ que le relevé égale le solde pointé, et la TFP/FOPROLOS dans les barèmes et 
 
 ## Le plan comptable du Cabinet (15/09/2026) — `PLAN-COMPTABLE.md`
 
-Le comptable de Skander a regardé **SkanFact Cabinet**, pas l'app entreprise : les livres construits
-en 8.8.0 → 9.0.0 n'y apparaissent nulle part, le Cabinet reçoit les fichiers sans les montrer. Quatre
-versions prévues : **9.1.0** les livres du dossier (livre-journal, grand livre, balance, lettrage lus
-dans les `ecritures.csv` des paquets, via un module pur partagé `src/renderer/livres.js` dont la balance
-doit égaler celle de `core.js` au millime), **9.2.0** les pièces derrière les chiffres (clic → PDF du
-paquet, TVA du mois, états sur exercice complet), **9.3.0** le travail du cabinet (états d'un mois côté
-cabinet, plan de comptes du cabinet, questions au client), **9.4.0** le jeu d'exemple avec de vrais
-paquets. Règle qui ne bouge pas : le Cabinet lit, montre, exporte et demande ; il **n'écrit jamais**
-chez le client. Lire le plan avant de commencer une version 9.x du Cabinet.
+Le comptable de Skander a regardé **SkanFact Cabinet**, pas l'app entreprise, et il veut **un vrai
+logiciel de comptabilité côté cabinet**, complet, au niveau de Sage/EBP/Pennylane — pas un pont. Le
+plan (`PLAN-COMPTABLE.md`) confronte dix domaines (socle, saisie, imports, banque, tiers, éditions,
+clôture, fiscal tunisien, cabinet, technique) à ce que le moteur de l'app entreprise sait déjà faire
+et à ce que le Cabinet n'a pas, puis découpe en dix versions : **9.1.0** livres lus dans les paquets,
+**9.2.0** le livre propre à chaque dossier (plan SCE complet, import du paquet EN écritures, reprise
+d'ouverture), **9.3.0** la saisie au kilomètre avec brouillard/validation, **9.4.0** banque et
+rapprochement automatique, **9.5.0** déclaration mensuelle tunisienne, **9.6.0** clôture d'exercice et
+états SCE, **9.7.0** immobilisations dégressif et stocks, **9.8.0** collaborateurs, multi-poste, piste
+d'audit, **9.9.0** révision et questions au client, **10.0.0** liasse et jeu d'exemple complet.
+Décisions d'architecture : chaque dossier porte SON livre (les écritures venues d'un paquet portent leur
+source et ne se modifient pas ici), le moteur d'écritures sort de `core.js` vers un module pur partagé
+`src/renderer/compta.js` que `core.js` réexporte, brouillard puis validation irréversible. Règle qui ne
+bouge pas : le Cabinet **n'écrit jamais** chez le client. Les questions à poser au comptable avant
+chaque version sont listées dans le plan. Le lire avant de commencer une version 9.x du Cabinet.
 
 ## Pistes pour la suite (non demandées)
 

@@ -186,10 +186,11 @@ Les 30 constats qui font perdre une pièce, afficher un chiffre faux, ou se voir
 
 > **Deux défauts trouvés pendant la 6.8.2, et corrigés :** en posant le garde-fou « ne jette pas la saisie », un remplacement de texte trop gourmand a armé la mauvaise fenêtre — l'accusé de réception s'ouvrait **avec aucun bouton branché**, sans rien en console. Et la fenêtre d'avancement de l'import pouvait se **rouvrir pour toujours** sur un dernier message arrivé en retard, par-dessus le compte rendu. Les deux sont désormais couverts par un test.
 
-> **15/09/2026 — le comptable a vu l'application, et il manque les livres.** Le plan des versions
-> suivantes du Cabinet (livres du dossier, pièces derrière les chiffres, travail du cabinet,
-> démonstration avec de vrais paquets) est dans **`PLAN-COMPTABLE.md`**. Il reprend de la liste
-> ci-dessous B7, B10, E1, E2 et F1. Le lire avant de commencer une version 9.x du Cabinet.
+> **15/09/2026 — le comptable a vu l'application et veut un vrai logiciel de comptabilité de
+> cabinet, pas un pont.** Le plan des versions 9.1.0 → 10.0.0 du Cabinet (livres, livre propre à
+> chaque dossier, saisie, banque, fiscal mensuel, clôture, immobilisations, collaborateurs,
+> révision, liasse) est dans **`PLAN-COMPTABLE.md`**. Il absorbe de la liste ci-dessous A10, B7,
+> B10, E1, E2, F1 et les collaborateurs. Le lire avant de commencer une version 9.x du Cabinet.
 
 ### 6.9.0 — Cabinet 2.1 : la confiance et le travail du cabinet
 

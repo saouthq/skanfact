@@ -1,211 +1,250 @@
-# Le plan comptable — ce que le comptable doit voir dans SkanFact Cabinet
+# Le plan comptable — SkanFact Cabinet devient un vrai logiciel de comptabilité
 
-*Écrit le 15/09/2026, après la visite du comptable de Skander. Il a ouvert **SkanFact Cabinet**, pas
-l'application entreprise, et il a dit qu'il manquait « beaucoup de choses comptables ». Il a retenu
-deux termes : le **mouvement de compte** et l'**écriture comptable dans le journal**.*
-
-*Les versions 8.8.0, 8.9.0 et 9.0.0 ont construit tout cela… dans l'application entreprise. Le
-Cabinet, lui, n'a pas bougé : il reçoit les fichiers, il ne les montre pas. Ce plan corrige ça.*
+*Écrit le 15/09/2026. Le comptable de Skander a regardé **SkanFact Cabinet** et a dit qu'il manquait
+« beaucoup de choses comptables ». Puis il a précisé ce qu'il veut : pas un pont qui reçoit des
+fichiers, mais **une vraie application de comptabilité côté cabinet**, complète, au niveau des
+meilleurs logiciels du marché. Ce plan dit ce que « complet » veut dire, ce qu'on a déjà, ce qui
+manque, et dans quel ordre le construire.*
 
 ---
 
 ## En une page
 
-- **Le comptable juge l'outil à ce qu'il voit en ouvrant un dossier.** Aujourd'hui il voit : une fiche
-  client, des cases « reçu / manquant », un graphique de chiffre d'affaires, une liste de paquets et
-  un bouton « Exporter les écritures » qui écrit un CSV sur le disque. **Aucun livre à l'écran.**
-  Pour lui, c'est un classeur de fichiers, pas un logiciel comptable.
-- **La matière est déjà là.** Chaque paquet mensuel contient les écritures en partie double (avec
-  numéro, journal, pièce, compte, tiers, lettrage depuis la 9.0.0), la balance du mois, les cinq
-  journaux auxiliaires, la TVA du mois, les factures en PDF, les justificatifs d'achat, les bulletins.
-  Il ne manque **que les écrans**.
-- **Quatre versions, dans cet ordre** : d'abord les livres (ce qu'il a demandé), puis les pièces derrière
-  chaque chiffre, puis son travail à lui (états d'un mois, plan de comptes du cabinet, questions au
-  client), et enfin la démonstration qui montre tout ça rempli au premier lancement.
-- **Une règle ne bouge pas** : l'application cabinet **ne modifie jamais** les données d'un client et
-  ne lui renvoie rien (Cabinet 1.0.0). Elle lit, elle montre, elle exporte, elle pose des questions.
-  Elle ne saisit pas d'écriture chez le client.
-- **Une garantie à tenir** : le Cabinet doit afficher **exactement le même chiffre** que l'application
-  entreprise pour le même mois. Un test comparera la balance calculée côté cabinet, depuis le CSV du
-  paquet, à celle que l'app entreprise a calculée en le fabriquant.
+- **Ce qui change.** Jusqu'ici le Cabinet était un *récepteur* : il reçoit les paquets, vérifie,
+  relance, exporte un CSV vers le logiciel du comptable. Désormais **le Cabinet EST le logiciel du
+  comptable** : chaque dossier client y a sa comptabilité complète, tenue par le cabinet, dont le
+  paquet SkanFact n'est qu'une source d'écritures parmi d'autres (saisie à la main, relevé bancaire,
+  factures d'un client qui n'a pas SkanFact).
+- **Ce qui ne change pas.** Le cabinet tient **ses** livres, dans **ses** données. Il n'écrit jamais
+  dans le SkanFact du client, et ne lui renvoie rien qui modifie sa facturation. La règle de la
+  Cabinet 1.0.0 tient : ce sont deux comptabilités qui se parlent, pas une seule partagée.
+- **La bonne nouvelle.** Le moteur existe déjà, dans l'app entreprise : plan comptable SCE, journal en
+  partie double, numérotation, grand livre, balance, lettrage, OD, à-nouveaux, amortissements,
+  cessions, TVA mensuelle chaînée, retenues à la source, états financiers, rapprochement, clôture avec
+  motif de réouverture, paie avec CNSS/IRPP/TFP/FOPROLOS (versions 3.x → 9.0.0, ~70 fonctions pures
+  et testées dans `core.js`). **Rien de ça n'est dans le Cabinet.** Le travail, c'est de le partager,
+  puis d'ajouter ce que le moteur d'une entreprise n'a jamais eu besoin de savoir faire : saisir au
+  kilomètre, importer un relevé, valider un brouillard, réviser, superviser soixante dossiers.
+- **La mesure honnête.** C'est un produit à part entière, de la taille de l'app entreprise. Ce plan
+  le découpe en **dix versions**, chacune utilisable et démontrable seule, la première en quelques
+  jours, l'ensemble en plusieurs mois. Et plusieurs versions **exigent des réponses du comptable**
+  (plan de comptes, formats, liasse) : elles sont marquées.
 
 ---
 
-## Ce que le comptable a vu, et ce qu'il attendait
+## La référence : ce que font les meilleurs
 
-| Ce qu'il cherche | Ce que le Cabinet montre aujourd'hui | Ce qui manque |
+Les logiciels de production comptable auxquels un cabinet compare (À VÉRIFIER lesquels sont
+réellement utilisés par le comptable et ses confrères en Tunisie) : **Sage 100 Comptabilité** (le plus
+répandu dans les cabinets francophones), **EBP** et **Ciel** (petits cabinets), **Odoo Comptabilité**
+(intégré, en ligne), **Pennylane** (le modèle récent : collaboration cabinet ↔ client, flux
+bancaires, pièces attachées à chaque ligne), **QuickBooks / Xero** (anglo-saxons, moins pertinents
+pour la fiscalité tunisienne), et des éditeurs tunisiens locaux (À VÉRIFIER : noms, parts de marché).
+
+Ce qu'ils ont **tous**, et qu'un comptable considère comme acquis, se range en dix domaines. Le
+tableau ci-dessous les confronte à ce que SkanFact a aujourd'hui — **côté entreprise** (le moteur,
+réutilisable) et **côté Cabinet** (l'écran du comptable, presque vide).
+
+| Domaine | Ce que les meilleurs font | Moteur (app entreprise) | Cabinet aujourd'hui | Manque |
+|---|---|---|---|---|
+| **A. Socle** | Plan comptable complet et modifiable par dossier, plan de référence du cabinet, exercices (plusieurs ouverts), journaux paramétrables, devises, sections analytiques | Plan SCE ~110 comptes (nommage), rôles modifiables, 7 journaux fixes, devises sur pièces | Rien | Plan complet (classes 1-9, tous niveaux), exercices explicites, journaux libres, analytique |
+| **B. Saisie** | Saisie au kilomètre avec clavier, guides d'écritures, abonnements, brouillard puis **validation** (une écriture validée ne se modifie plus : contre-passation), contrôle d'équilibre, pièces jointes par écriture, recherche | OD à la main équilibrées, pièces numérotées, clôture par période | Rien | Tout l'écran de saisie, le brouillard/validation, les guides, les abonnements, l'extourne |
+| **C. Imports** | Relevés bancaires (CSV, OFX, MT940, flux directs), factures par OCR, écritures d'un autre logiciel, reprise de balance d'ouverture | Paquet SkanFact (écritures + pièces), lecture de photo (en pause) | Paquet SkanFact (fichiers, pas écritures) | Relevé bancaire, import d'écritures tiers, reprise d'un dossier existant (balance d'ouverture) |
+| **D. Banque** | Rapprochement par relevé, lettrage automatique (montant, date, libellé), pointage, état de rapprochement, suspens | Pointage, état de rapprochement, solde relevé saisi | Rien | Import du relevé, rapprochement automatique, gestion des suspens |
+| **E. Tiers** | Lettrage manuel et automatique, délettrage, échéancier, balance âgée clients/fournisseurs, relances | Lettrage déduit, balance auxiliaire, âge des impayés, relances (côté client) | Relances de paquets | Lettrage à la main, délettrage, balance âgée, échéancier côté cabinet |
+| **F. Éditions** | Journaux, centralisateur, grand livre, balances (générale, auxiliaire, âgée, N/N-1), états financiers **au format légal**, SIG, ratios, tableaux de bord, tout en PDF/Excel, toute période | Tout sauf N/N-1, SIG, ratios ; états « déduits, pas la liasse » | Rien | Écrans + impressions + comparatifs + SIG/ratios, états conformes NCT 01 (À VÉRIFIER) |
+| **G. Clôture** | Contrôles, écritures d'inventaire (dotations, provisions, CCA, FNP, PCA, régularisations), clôture d'exercice irréversible, à-nouveaux, réouverture tracée, verrouillage par période | Clôture mensuelle avec motif, dotations, à-nouveaux automatiques, cessions | Rien | Provisions, régularisations (CCA/FNP/PCA/FAE), clôture d'exercice définitive, suivi des écritures d'inventaire |
+| **H. Fiscal tunisien** | Déclaration mensuelle (TVA, RS, TFP, FOPROLOS, TCL, timbre), acomptes provisionnels, IS/IRPP annuel, déclaration employeur, **liasse fiscale**, télédéclaration | TVA chaînée, RS, TFP/FOPROLOS, CNSS, déclaration employeur, échéances réglables | Échéances (dates) | Déclaration mensuelle complète, acomptes, IS, liasse, préparation de la télédéclaration (À VÉRIFIER : portail, formats) |
+| **I. Cabinet** | Portefeuille, collaborateurs et droits, suivi de production par dossier et par mois, révision (dossier de travail, feuilles maîtresses par cycle, points en suspens, notes de revue), supervision, lettre de mission, honoraires | — | Portefeuille, relances, échéances, sauvegardes, clé de secours | Collaborateurs, production, révision, supervision |
+| **J. Technique** | Multi-utilisateur, piste d'audit (qui a fait quoi, quand), verrouillage, performance sur des milliers d'écritures × dizaines de dossiers, sauvegardes, import/export standards | Partage à deux avec fusion, journal des clôtures | Chiffrement, sauvegardes, clé de secours, chien de garde | Multi-poste (A10), piste d'audit, volume |
+
+Ce que Pennylane a montré, et que personne d'autre n'a bien : **la collaboration cabinet ↔ client**,
+avec les pièces attachées à chaque ligne et les questions posées au client depuis la ligne. C'est
+précisément ce que le paquet SkanFact rend possible et que les logiciels classiques n'ont pas.
+**C'est l'avantage à garder** : le Cabinet ne doit pas seulement rattraper Sage, il doit garder ce
+que Sage n'a pas.
+
+---
+
+## Le choix d'architecture (à décider avant d'écrire une ligne)
+
+**Chaque dossier du Cabinet porte une comptabilité complète — la sienne.** Concrètement, un dossier
+gagne un `livre` : exercices, plan de comptes, journaux, écritures (chacune avec sa source :
+`skanfact` pour ce qui vient d'un paquet, `saisie`, `banque`, `inventaire`, `an`), lettrages,
+immobilisations, déclarations. Ce livre vit dans `cabinet-data.json` (chiffré, sauvegardé, comme
+tout le reste) — ou, dès qu'un cabinet a soixante dossiers sur dix ans, dans **un fichier par
+dossier** : c'est la seule décision de stockage à prendre tôt, parce qu'elle ne se reprend pas.
+
+**Le moteur est partagé, pas recopié.** Les fonctions de `core.js` qui ne parlent que d'écritures
+(grand livre, balance, lettrage, centralisateur, états, à-nouveaux, amortissements) passent dans
+un module pur commun aux deux applications, `src/renderer/compta.js`, que `core.js` réexporte pour
+que l'app entreprise ne change pas. Un test compare, sur le jeu d'exemple, la balance de l'app
+entreprise à celle que le Cabinet calcule après avoir importé les douze paquets : **au millime**.
+
+**Un paquet SkanFact s'importe en écritures, jamais en fichiers seulement.** Les lignes venues d'un
+paquet sont marquées de leur source et de leur pièce (le PDF est joint) ; elles ne se modifient pas
+dans le Cabinet (la correction se fait chez le client, qui renvoie un mois révisé — le mécanisme
+`-r2` existe déjà). Le cabinet **ajoute** à côté : ses OD, sa banque, ses écritures d'inventaire.
+
+**Le brouillard et la validation deviennent la règle.** Tout ce qui est saisi est en brouillard ;
+validé, ça ne se modifie plus, ça se contre-passe. C'est l'obligation légale d'un logiciel de tenue
+(irréversibilité des écritures validées) et c'est ce qu'un comptable vérifie en premier. Les écritures
+d'un paquet **définitif** (mois clôturé chez le client) arrivent validées ; celles d'un paquet
+provisoire arrivent en brouillard.
+
+---
+
+## Les dix versions, dans l'ordre
+
+*Chaque version est utilisable seule, démontrable, et livrée avec son test e2e. Les numéros suivent
+le dépôt (les deux applications partagent la version depuis la 6.6.0). « ⚠ comptable » signale ce
+qui exige une réponse du comptable avant de commencer.*
+
+### 9.1.0 — Les livres du dossier *(lire ce qui arrive)*
+
+La fiche d'un dossier gagne un bloc **Comptabilité** : livre-journal (filtre par journal, recherche,
+centralisateur), grand livre (compte par compte, solde progressif), balance (générale, auxiliaire,
+six totaux, équilibre), lettrage (ce qui reste ouvert). Tout est lu dans les `ecritures.csv` des
+paquets de la période. Un mois manquant ou provisoire se dit sur chaque onglet. Le module partagé
+`compta.js` naît ici, et le test « même balance que l'app entreprise » avec lui.
+*C'est la réponse directe aux deux termes du comptable : mouvement de compte, écriture au journal.*
+
+### 9.2.0 — Le livre du dossier *(le Cabinet tient ses propres écritures)*
+
+Le dossier gagne son `livre` : exercices, plan de comptes (le SCE complet, classes 1 à 9, à tous les
+niveaux, modifiable), journaux. **Importer un paquet crée des écritures** (source `skanfact`, pièce
+jointe, validées si définitif), au lieu de seulement ranger un fichier. Reprise d'un dossier existant
+par **balance d'ouverture** saisie ou importée (CSV/Excel) : c'est ainsi qu'on récupère un client qui
+vient d'un autre cabinet. Les livres de la 9.1.0 lisent désormais le livre, plus les CSV.
+⚠ comptable : son plan de comptes de référence, ses codes de journaux.
+
+### 9.3.0 — La saisie *(l'écran où un comptable passe ses journées)*
+
+Saisie au kilomètre : un journal, une date, une pièce, des lignes compte/libellé/débit/crédit, tout au
+clavier (Tab, Entrée, raccourcis pour recopier la ligne du dessus, solder l'écriture, dupliquer).
+Recherche de compte par numéro ou par nom pendant la frappe. **Guides d'écritures** (modèles : loyer,
+salaires, achat avec TVA…) et **abonnements** (le loyer de chaque mois, généré). Brouillard puis
+**validation** ; contre-passation d'une écriture validée ; extourne au 1er du mois suivant. Pièce
+jointe glissée sur l'écriture. Recherche dans tout le journal.
+*Test : mille écritures saisies au clavier dans l'app réelle, sans une souris.*
+
+### 9.4.0 — La banque *(le relevé, le rapprochement, le lettrage automatique)*
+
+Import du relevé bancaire (CSV des banques tunisiennes, OFX, MT940 — ⚠ comptable : lesquels ses
+clients reçoivent), **rapprochement automatique** (montant + date ± n jours + libellé), proposition
+d'écriture pour chaque ligne non rapprochée (guide selon le libellé : « STEG » → 606), suspens, état
+de rapprochement, lettrage automatique des tiers (par montant et par référence), lettrage et
+délettrage à la main, échéancier et **balance âgée** clients/fournisseurs.
+
+### 9.5.0 — Le fiscal mensuel tunisien *(la déclaration prête)*
+
+La **déclaration mensuelle** complète depuis les écritures : TVA (collectée par taux, déductible,
+crédit reporté), retenues à la source par nature, TFP, FOPROLOS, TCL, droit de timbre, avec le
+récapitulatif au format de la déclaration (⚠ comptable : le modèle officiel du mois, ses cases) et
+l'écriture de déclaration générée. Les **acomptes provisionnels**. Le calendrier fiscal de chaque
+dossier selon son régime, avec « déclaré » et « payé » pointés par le cabinet. Préparation de la
+télédéclaration : le fichier ou les chiffres à reporter, jamais l'envoi à la place du cabinet
+(À VÉRIFIER : ce que le portail accepte).
+
+### 9.6.0 — La clôture d'exercice *(l'inventaire, les états, l'à-nouveau)*
+
+Écritures d'inventaire guidées : dotations (déjà calculées), **provisions**, charges constatées
+d'avance, factures non parvenues, produits constatés d'avance, factures à établir, régularisations,
+avec leur extourne automatique à l'ouverture. Contrôles de clôture (comptes d'attente non soldés,
+brouillard restant, TVA non déclarée, balance des tiers). **Clôture d'exercice définitive**
+(irréversible, tracée), à-nouveaux générés, exercice suivant ouvert pendant que le précédent se
+termine. États financiers **au format SCE** : bilan, état de résultat, état des flux de trésorerie,
+notes (⚠ comptable : la présentation exacte, NCT 01), comparatif N/N-1, SIG, ratios.
+
+### 9.7.0 — Les immobilisations et les stocks côté cabinet
+
+Fiches d'immobilisations tenues par le cabinet (pour les clients sans SkanFact), linéaire et
+**dégressif** (le moteur ne connaît que le linéaire), tableau des amortissements de l'exercice,
+cessions, mises au rebut, subventions d'investissement. Inventaire de stock de fin d'exercice saisi
+et sa variation en écriture. Ce que le paquet SkanFact apporte (biens et dotations du client) entre
+dans les mêmes fiches sans ressaisie.
+
+### 9.8.0 — Le cabinet à plusieurs *(collaborateurs, production, supervision)*
+
+**Collaborateurs** avec droits par dossier (saisie, validation, supervision) — la question posée
+depuis le premier audit (« qui voit quels dossiers »), qui ne se répond qu'avec un cabinet réel.
+**Deux postes sur le même cabinet** sans s'écraser (A10 : la leçon de la 3.2.0, jamais portée).
+**Piste d'audit** : chaque écriture validée, modifiée, contre-passée porte qui et quand. Tableau de
+**production** : par dossier et par mois, reçu → saisi → révisé → déclaré, avec qui s'en occupe et
+depuis combien de temps. « À faire » par collaborateur.
+
+### 9.9.0 — La révision *(le dossier de travail)*
+
+Dossier de révision par exercice : **feuilles maîtresses** par cycle (trésorerie, ventes-clients,
+achats-fournisseurs, immobilisations, personnel, fiscal, capitaux), chaque compte revu et signé,
+**points en suspens** avec réponse attendue du client, notes de revue du superviseur, questionnaire
+de fin d'exercice, et les **questions au client** envoyées d'un geste depuis la ligne concernée
+(l'avantage SkanFact : le client voit la question en face de sa pièce et répond depuis son
+application). ⚠ comptable : sa méthode de révision, ses cycles.
+
+### 10.0.0 — La liasse et l'annuel *(l'exercice se dépose)*
+
+**Liasse fiscale** tunisienne (⚠ comptable : les tableaux exacts de l'année en cours), déclaration
+annuelle d'IS ou d'IRPP, déclaration d'employeur, états financiers signés, **et le jeu d'exemple qui
+montre tout ça rempli** au premier lancement, sur de vrais dossiers d'exemple (dont un avec un mois
+manquant et un client sans SkanFact). Ce qui reste hors de l'application tant que rien ne l'exige :
+la télédéclaration à la place du cabinet, la paie de cabinet (le moteur de paie existe côté
+entreprise et se partagera le jour où un cabinet le demande), la facturation des honoraires (le
+comptable a déjà un outil, et SkanFact entreprise sait le faire).
+
+---
+
+## Ce qu'il faut demander au comptable, et quand
+
+| Avant | Question | Pourquoi c'est bloquant |
 |---|---|---|
-| Le **journal** : chaque pièce, numérotée, avec ses lignes D/C | Rien à l'écran. Un export CSV sur le disque. | La page Livre-journal |
-| Le **mouvement d'un compte** : ce qui est passé sur le 411, sur la banque, avec le solde | Rien. | Le Grand livre |
-| La **balance** : est-ce que ça tombe juste, compte par compte | Rien (le fichier `balance.csv` est dans le paquet, jamais lu). | La Balance |
-| Ce que **chaque client doit** encore, ce qu'on doit à chaque fournisseur | Rien. | Le lettrage / l'échéancier |
-| La **TVA du mois** : collectée, déductible, crédit, à payer | Une seule case « TVA à décaisser » dans la liste des paquets. | Le détail (`tva.json` est dans le paquet) |
-| **La pièce** derrière une écriture : la facture, le justificatif | « Ouvrir le paquet » ouvre une liste de fichiers, sans lien avec les chiffres. | Le clic depuis le livre vers le PDF |
-| Le **résultat** de l'exercice, le bilan | Rien. | Les états, sur les mois reçus |
-| **Où il en est** de son travail sur ce client | Trois états, tous côté client (reçu / provisoire / manquant). | *saisi → déclaré* côté cabinet (F1 du plan Cabinet) |
-| **Ses** numéros de compte | Une phrase : « donne-les une fois à ton client ». | Une table de correspondance côté cabinet |
-| Ce qu'il doit **demander au client** (pièce manquante, compte d'attente non soldé) | La liste « Signalé » du manifeste, en un chiffre. | Une page de questions, envoyable |
+| 9.2.0 | **Son plan de comptes** (fichier) et ses codes de journaux | Le plan de référence du cabinet est la base de tout : mal posé, chaque dossier diverge |
+| 9.2.0 | **Quel logiciel il utilise aujourd'hui**, et comment il en sort une balance | La reprise d'un dossier existant se fait depuis ce fichier-là |
+| 9.3.0 | **Comment il saisit** (touches, ordre des champs, ce qui l'agace dans son logiciel actuel) | Un écran de saisie se juge en dix minutes ; le construire sans le regarder faire, c'est le rater |
+| 9.4.0 | **Les relevés** que ses clients reçoivent (banques, formats) | Un importeur par format : on ne devine pas un format |
+| 9.5.0 | **Le modèle de la déclaration mensuelle** et ses cases, les taux de TCL/timbre en vigueur, ses réponses aux « À VÉRIFIER » de 8.9.0/9.0.0 (TVA au dernier jour, 13 vs 12, contreparties, TFP 1 %/2 %) | L'application ne doit rien affirmer qu'il n'a pas validé |
+| 9.6.0 | **La présentation des états financiers** (NCT 01) et des notes | « Déduits de la balance » ne suffit plus si le Cabinet produit les états officiels |
+| 9.9.0 | **Sa méthode de révision** (cycles, feuilles, ce que le superviseur regarde) | Un dossier de travail imposé par un logiciel ne sert à personne |
+| 10.0.0 | **La liasse** de l'année et ce que le portail accepte | Change chaque loi de finances |
+
+Et une question à poser tout de suite, avant la 9.1.0 : **quel logiciel il veut remplacer, et par
+quoi il jugera que SkanFact Cabinet le remplace.** Trois écrans, pas dix : ce qu'il ouvre le matin,
+ce qu'il fait le plus souvent, ce qu'il rend au client.
 
 ---
 
-## Ce que chaque paquet contient déjà (rien à changer côté entreprise)
+## Ce qu'on garde, ce qu'on ne fait pas
 
-`journaux/ecritures.csv` — N° ; Date ; Journal ; Pièce ; Compte ; Tiers ; Libellé ; Débit ; Crédit ;
-Lettrage ; Devise. `journaux/balance.csv` — la balance du mois. `journaux/ventes.csv`, `achats.csv`,
-`encaissements.csv`, `reglements-fournisseurs.csv`, `tresorerie.csv`. `journaux/tva.json` — la
-déclaration du mois. `ventes/*.pdf`, `achats/<n°>/*`, `paie/*.pdf`, `social/cnss-T*.json`.
-`manifeste.json` — chaque fichier avec son empreinte, plus `chiffres` (CA, TVA) et `absents`.
-
-Deux précisions qui décident de la conception :
-
-- **Un paquet ne contient que son mois.** Le grand livre d'un compte sur l'année, c'est la
-  concaténation de douze paquets. L'à-nouveau est dans le paquet de janvier (pièce `AN-AAAA`, 9.0.0)
-  et les soldes de départ des comptes dans une pièce `OUVERTURE` (8.9.0). **Un mois manquant fausse
-  tous les soldes qui suivent** : chaque livre doit le dire en tête, pas le cacher.
-- **Un paquet d'avant la 8.8.0 n'a ni N°, ni Tiers, ni Lettrage** (colonnes absentes du CSV). Les
-  colonnes sont lues par NOM (règle 6.8.0) : ces écrans affichent « — » et une phrase, jamais des zéros.
+- **On garde le paquet et l'appairage** : ce sont eux qui font que les écritures arrivent avec leurs
+  pièces, vérifiées, sans ressaisie — l'avantage qu'aucun concurrent n'a. Le Cabinet lit les paquets,
+  et n'écrit jamais chez le client.
+- **On garde le hors-ligne** : un cabinet doit pouvoir travailler sans réseau, et survivre à
+  l'éditeur. Pas de serveur pour tenir les livres ; le serveur (7.0.0 du plan Cabinet) ne fera jamais
+  que transporter.
+- **On ne fait pas** la télédéclaration à la place du cabinet, la paie de cabinet avant qu'un
+  cabinet la demande, la facturation des honoraires, la gestion du temps, la GED de cabinet. Chacun
+  est un produit à part, et chacun ferait de SkanFact Cabinet un second logiciel de quelque chose.
+- **On ne promet rien qu'un test ne prouve.** Chaque version porte un e2e dans l'application réelle,
+  et la balance calculée par le Cabinet est comparée à celle de l'app entreprise à chaque version.
 
 ---
 
-## Les versions
+## Le calendrier, en ordre de grandeur
 
-*Les deux applications partagent le même numéro depuis la 6.6.0. Les numéros ci-dessous sont ceux
-du dépôt ; côté cabinet, le CHANGELOG le dit en clair : « Cabinet ».*
+| Version | Ce qu'elle apporte | Dépend du comptable | Ordre de grandeur |
+|---|---|---|---|
+| 9.1.0 | Les livres lus dans les paquets | non | jours |
+| 9.2.0 | Le livre du dossier, plan complet, reprise d'ouverture | plan, logiciel actuel | une à deux semaines |
+| 9.3.0 | La saisie, brouillard/validation, guides, abonnements | le regarder saisir | deux semaines |
+| 9.4.0 | Banque, rapprochement, lettrage automatique, balance âgée | formats de relevés | deux semaines |
+| 9.5.0 | Déclaration mensuelle, acomptes, calendrier pointé | modèle de déclaration | une à deux semaines |
+| 9.6.0 | Inventaire, clôture d'exercice, états SCE, N/N-1, SIG | présentation NCT 01 | deux à trois semaines |
+| 9.7.0 | Immobilisations (dégressif), stocks | non | une semaine |
+| 9.8.0 | Collaborateurs, multi-poste, piste d'audit, production | non | deux semaines |
+| 9.9.0 | Révision, points en suspens, questions au client | méthode de révision | deux semaines |
+| 10.0.0 | Liasse, annuel, jeu d'exemple complet | liasse de l'année | deux semaines |
 
-### 9.1.0 — Les livres du dossier *(la réponse au comptable)*
-
-Dans la fiche d'un dossier, un bloc **« Comptabilité »** avec un sélecteur de période (un mois, un
-exercice, du… au…) et quatre onglets. Tout est calculé à partir des `ecritures.csv` des paquets de la
-période, rien n'est ressaisi.
-
-- **Livre-journal.** Chaque pièce numérotée, filtrable par journal (VT, AC, BQ, CA, PAIE, OD, AN),
-  recherche sur le libellé, le tiers et le numéro de pièce. En dessous, le **centralisateur** : un
-  total débit/crédit par mois et par journal. Export CSV de ce qu'on regarde (le bouton nomme ce qu'il
-  exporte, règle 7.17.0).
-- **Grand livre.** Un sélecteur de compte (recherche par numéro ou par nom), et pour le compte
-  choisi : ouverture, chaque ligne avec son solde progressif, total. « Tous les comptes » donne la
-  suite complète, un compte après l'autre, comme sur papier. Le nom d'un compte vient du plan (le
-  cabinet aura le sien en 9.3.0), et un sous-compte de tiers porte le nom du tiers.
-- **Balance.** Générale (ouverture, mouvements, soldes, six totaux, « équilibrée » en vert ou l'écart
-  en rouge) et auxiliaire clients / fournisseurs. Un test la compare au `balance.csv` que l'app
-  entreprise a mis dans le paquet : **les deux applications doivent dire la même chose au millime.**
-- **Lettrage.** Ce qui reste ouvert, tiers par tiers : factures non réglées, avoirs non imputés,
-  achats non payés, avec l'âge. C'est la première question d'un comptable à son client.
-- **Le mois manquant se dit sur chaque onglet** : « mars 2026 n'a pas été reçu : les soldes après
-  février sont incomplets », avec le bouton « Relancer ». Et le mois **provisoire** aussi.
-- **Un paquet ancien se dit** : « fabriqué par SkanFact 8.7.0 : pas de numérotation ni de tiers ».
-
-Comment c'est construit, pour que ça ne diverge pas de l'app entreprise :
-
-- Un module **pur et partagé**, `src/renderer/livres.js`, chargé par LES DEUX applications (comme
-  `rowmenu.js` et `reglages.js`), qui prend des **lignes d'écriture** (date, journal, pièce, compte,
-  tiers, libellé, débit, crédit, lettrage, n°) et rend le journal, le centralisateur, le grand livre,
-  la balance et le lettrage. L'app entreprise continue de passer par `core.js` ; le test qui compte
-  vérifie que `livres.js` nourri du CSV du paquet rend la **même balance** que `core.balanceGenerale`
-  sur le jeu d'exemple, sur les 24 mois.
-- Côté cabinet, `main.js` lit `ecritures.csv` dans chaque paquet de la période (il sait déjà le faire
-  pour l'export) et rend les lignes ; le renderer calcule et affiche. Les lignes lues sont gardées en
-  mémoire pour la session, jamais écrites dans `cabinet-data.json` (un paquet reçu avant cette
-  version doit s'afficher pareil qu'un paquet reçu après).
-- Aucun paquet n'est modifié, aucun fichier n'est écrit : c'est de la lecture.
-
-Ce que le comptable doit pouvoir dire après cette version : *« je vois le journal, je vois le
-mouvement de n'importe quel compte, je vois que la balance tombe juste, et je sais ce que chaque
-client doit encore. »*
-
-### 9.2.0 — Les pièces derrière les chiffres
-
-- **Un clic sur une écriture ouvre sa pièce.** La pièce `FAC-2026-012` est dans `ventes/FAC-2026-012.pdf`,
-  un achat dans `achats/<numéro>/`, un bulletin dans `paie/`. Le manifeste fait le lien. Une pièce
-  que le client n'a **pas pu joindre** (`absents`) se dit en orange à côté de la ligne — c'est la
-  constatation E1 du plan Cabinet, jamais livrée.
-- **La TVA du mois, lisible** : collectée, déductible, crédit reporté, à payer, timbres, retenues —
-  lue dans `tva.json`, dans une carte de la fiche du dossier, mois par mois. Et le crédit de TVA
-  reporté ne s'affiche plus « 0,000 DT » quand il n'y a rien à déclarer (B7).
-- **Le résultat et le bilan sur les mois reçus** : le même calcul que « États financiers » côté
-  entreprise, avec la même phrase « déduits de la balance, pas la liasse » — et l'avertissement si
-  un mois manque. Réservé à un exercice complet reçu ; sur un exercice troué, on montre le résultat
-  de la période et rien d'autre.
-- **L'empreinte du manifeste** affichée sur le paquet (E2) : c'est ce que le client lit dans son
-  SkanFact, et c'est le seul rituel qui prouve que le fichier est bien celui qu'il a envoyé.
-- Impression : le grand livre d'un compte et la balance s'impriment (la fiche s'imprime déjà).
-
-### 9.3.0 — Le travail du cabinet
-
-- **L'état d'un mois côté cabinet** (F1) : *reçu → saisi dans mon logiciel → déclaré → payé*. Trois
-  cases à cocher par mois, avec la date. « À faire » les compte. Ce sont les seules données que le
-  cabinet écrit sur un dossier, et elles sont les siennes : elles ne repartent jamais chez le client.
-- **Le plan de comptes du cabinet** : une table de correspondance (compte SkanFact → compte du
-  cabinet, avec le libellé du cabinet), appliquée aux livres ET à l'export. Aujourd'hui la seule
-  réponse est « donne tes numéros à ton client » : ça marche pour un client, pas pour soixante.
-  À VÉRIFIER avec le comptable : quel logiciel il utilise et quel format il importe (voir plus bas).
-- **L'export au format de son logiciel**. Le CSV actuel est un format neutre ; s'il faut un format
-  précis (colonnes, séparateur, encodage, dates), il se règle une fois dans les Réglages et sert à
-  tous les dossiers.
-- **Les questions au client** : une page qui rassemble ce que les livres ont fait apparaître — une
-  pièce absente, un compte d'attente (471) non soldé, une facture ouverte depuis plus de 90 jours, un
-  mois provisoire — et qui se transforme en un mail au client d'un geste, comme la relance. Le
-  cabinet ne corrige pas : il demande, et le client corrige chez lui.
-
-### 9.4.0 — La démonstration qui montre tout
-
-- **Le jeu d'exemple livre de vrais paquets `.skanpack`** (tâche n° 67, et B10 du plan Cabinet) :
-  fabriqués depuis le jeu d'exemple de l'app entreprise, posés dans un dossier « exemple » à part,
-  effacés au premier vrai paquet. Sans ça, tout ce qui précède est **vide** pendant la démonstration
-  — et la démonstration est le moment où un comptable décide.
-- Les livres, la TVA, le lettrage, les questions au client : tout doit être rempli au premier
-  lancement, sur trois ou quatre dossiers d'exemple, dont un avec un mois manquant et un avec un
-  paquet provisoire, pour que les avertissements se voient aussi.
-
----
-
-## Ce que le comptable verra en ouvrant un dossier, à la fin
-
-1. En haut : la fiche, le régime, la période de TVA, les honoraires.
-2. Une ligne de **douze cases** : reçu / provisoire / manquant, et pour le cabinet saisi / déclaré / payé.
-3. La **TVA du mois** en cartes, et le **chiffre d'affaires** en barres.
-4. Le bloc **Comptabilité** : Livre-journal · Grand livre · Balance · Lettrage — sur le mois, sur
-   l'exercice, ou du… au…, avec l'avertissement si un mois manque, et un clic qui ouvre la pièce.
-5. Les **questions au client**, prêtes à partir.
-6. Les paquets reçus, avec leur empreinte et leurs pièces vérifiées, comme aujourd'hui.
-
----
-
-## Ce qu'il faut lui demander (À VÉRIFIER, avant la 9.3.0)
-
-- **Quel logiciel de production** il utilise (Sage, Ciel, un logiciel tunisien ?) et **quel format**
-  il importe : colonnes, séparateur, encodage, format de date, longueur des comptes.
-- **Son plan de comptes** : est-ce qu'il veut des sous-comptes par tiers (411001…) ou le collectif
-  avec le nom du tiers ? Est-ce qu'il code les journaux comme nous (VT, AC, BQ, CA, OD, AN, PAIE) ?
-- **La TVA en une écriture au dernier jour du mois**, le 13 pour le résultat et non le 12, les
-  contreparties par défaut (434, 4421, 16, 471), la TFP à 2 % (1 % pour l'industrie) : ce sont les
-  choix faits en 8.9.0 et 9.0.0, signalés « À VÉRIFIER » dans l'app entreprise. Il faut sa réponse.
-- **Ce qu'il fait d'un mois provisoire** : il attend, ou il saisit et corrige ensuite ?
-- **Ce qu'il veut voir en premier** en ouvrant un dossier : la balance ? le lettrage ? la TVA ?
-  C'est ce qui décidera de l'ordre des onglets.
-
----
-
-## Ce qu'on ne fait pas
-
-- **Pas de saisie d'écriture dans le Cabinet.** Le cabinet qui veut passer une OD chez le client la
-  demande au client, ou la saisit dans son propre logiciel. Un Cabinet qui écrirait chez le client
-  casserait la règle qui fait la valeur du produit (les données appartiennent au client, le cabinet
-  ne peut rien y changer sans qu'il le sache).
-- **Pas de serveur** : les livres se lisent dans les paquets reçus, hors ligne, comme tout le reste.
-- **Pas de liasse fiscale ni de bilan officiel** : les états sont déduits de la balance et le disent.
-  La liasse se fait dans le logiciel du cabinet, avec ce qu'il a importé.
-
----
-
-## L'ordre, et ce que chaque version doit prouver
-
-| Version | Ce qu'elle prouve | Le test qui compte |
-|---|---|---|
-| **9.1.0** | Le comptable voit le journal, le mouvement d'un compte, la balance juste, ce qui reste dû | `e2e:cabinet-livres` : les quatre onglets sur un vrai paquet ; le test unitaire « même balance que l'app entreprise » |
-| **9.2.0** | Chaque chiffre mène à sa pièce ; la TVA du mois se lit | `e2e:boucle` étendu : la pièce s'ouvre depuis le journal |
-| **9.3.0** | Le cabinet avance son travail sans toucher au client | `e2e:cabinet` étendu : états d'un mois, correspondance de comptes dans l'export, questions envoyées |
-| **9.4.0** | Tout est rempli à la première ouverture | `e2e:cabinet` : le jeu d'exemple ouvre un paquet réel et affiche des livres non vides |
-
-La 9.1.0 peut partir tout de suite : elle ne demande aucune réponse du comptable, seulement de lire
-ce qui est déjà dans les paquets.
+Les durées sont celles du travail de construction et de test ; elles ne comptent ni l'attente des
+réponses, ni les allers-retours avec le comptable, qui sont la vraie horloge. **La 9.1.0 peut partir
+maintenant** : elle n'attend personne, et c'est elle qu'il faut lui montrer pour obtenir les
+réponses aux questions suivantes.
