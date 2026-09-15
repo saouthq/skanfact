@@ -7,6 +7,20 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 8.4.1 — 15/09/2026
+
+**L'application connaît enfin l'adresse de la plateforme.** La 8.4.0 savait s'annoncer, mais elle a
+été construite avant que l'adresse `https://api.skanfact.tn` et le secret de l'application soient
+posés dans le dépôt : elle ne parlait donc à personne. Cette version est la même, reconstruite avec
+les deux — l'essai et l'activation d'une installation deviennent visibles dans la console de
+l'éditeur.
+
+**Ce qui ne change pas :** la clé de réponse du serveur n'est **pas** embarquée. La paire créée le
+15/09 a été écartée avant d'avoir servi (sa moitié privée a transité par un canal qui n'est pas le
+sien) et sera recréée le jour de la mise en production. Tant qu'aucune clé de réponse n'est publiée,
+aucune réponse du serveur ne restreint quoi que ce soit — l'application le dit dans le panneau
+Éditeur, et une révocation reste inapplicable. Rien à faire côté client.
+
 ## 8.4.0 — 15/09/2026
 
 **L'application parle au plan de contrôle — et continue de fonctionner sans lui.** C'est l'étape la
