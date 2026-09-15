@@ -2535,6 +2535,7 @@ n'est pas obligatoire) ; l'interface en arabe ; un autre pays.
 |---|---|
 | Les décisions, le modèle économique, l'ordre des versions | `DIRECTION.md` |
 | **Quoi faire cette semaine**, les jalons, le chemin critique, les 26 premières semaines | `PLAN-DEVELOPPEMENT.md` |
+| Le schéma exact d'un fichier, la signature d'une fonction, un format, un test à écrire, une migration | `CAHIER-DES-CHARGES.md` |
 | Ce que le Cabinet doit devenir, version par version, et les dix domaines comparés aux concurrents | `PLAN-COMPTABLE.md` |
 | L'histoire du Cabinet, ses audits, ses règles apprises | `PLAN-CABINET.md` |
 | La plateforme, les clés, l'API, la console, comment la déployer | `PLAN-PLATEFORME.md`, `plateforme/README.md` |

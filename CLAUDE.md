@@ -2554,6 +2554,22 @@ Skander / Claude), les décisions de la semaine, le hors-périmètre, et « ce q
 vérifier ». Il se réécrit en S26 sur les faits. Quand il contredit `DIRECTION.md`, `DIRECTION.md`
 fait foi ; le contenu de chaque version reste dans `QUESTIONS.md` § 16.
 
+### Le cahier des charges — `CAHIER-DES-CHARGES.md` (15/09/2026)
+
+Le complément technique de `PLAN-DEVELOPPEMENT.md`, écrit en lisant le code au commit `d7bfc54` :
+identifiants citables (`SPEC-DATA-nnn`, `SPEC-FUNC-nnn`, `SPEC-UI-*`, `SPEC-FMT-nnn`, `ERR-*`,
+`TEST-<version>-nnn`, `MIG-<version>-nnn`), les schémas de tous les fichiers de données (dont
+**`livre.json`**, cible de la 9.2.0, figé : un fichier par dossier et par exercice, numéro attribué à
+la validation, validée jamais modifiée), la forme d'une ligne d'écriture (le contrat entre les deux
+applications), les fonctions qui touchent aux chiffres avec leur ordre d'opérations, les formats du
+pont (**`signature.json` signe les octets exacts de `manifeste.json`** — aucune canonicalisation),
+les routes et le schéma D1, la CI et le lint à créer, le dictionnaire des messages, les tests et
+les migrations des trois prochaines versions. Deux choses apprises en l'écrivant : **un module
+`compta` existe déjà** (`toujours: true`, c'est la page à dix onglets) — l'option payante porte donc
+sur des onglets (`compta.livres`, sous-module), jamais sur un second module du même nom ; et
+`moduleOn` prend `(data, id)`, pas la société. Le document se relit à chaque version : ses parties
+« par version » ne couvrent que 9.1.0, 9.1.1 et 9.2.0, exprès.
+
 ## Pistes pour la suite (non demandées)
 
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.
