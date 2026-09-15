@@ -2433,6 +2433,18 @@ son état ; Paie → Barèmes gagne deux taux.
 des deux côtés, l'à-nouveau dans le grand livre de janvier, l'état de rapprochement à écart nul dès
 que le relevé égale le solde pointé, et la TFP/FOPROLOS dans les barèmes et le coût d'un brut de 1 000.
 
+## Le plan comptable du Cabinet (15/09/2026) — `PLAN-COMPTABLE.md`
+
+Le comptable de Skander a regardé **SkanFact Cabinet**, pas l'app entreprise : les livres construits
+en 8.8.0 → 9.0.0 n'y apparaissent nulle part, le Cabinet reçoit les fichiers sans les montrer. Quatre
+versions prévues : **9.1.0** les livres du dossier (livre-journal, grand livre, balance, lettrage lus
+dans les `ecritures.csv` des paquets, via un module pur partagé `src/renderer/livres.js` dont la balance
+doit égaler celle de `core.js` au millime), **9.2.0** les pièces derrière les chiffres (clic → PDF du
+paquet, TVA du mois, états sur exercice complet), **9.3.0** le travail du cabinet (états d'un mois côté
+cabinet, plan de comptes du cabinet, questions au client), **9.4.0** le jeu d'exemple avec de vrais
+paquets. Règle qui ne bouge pas : le Cabinet lit, montre, exporte et demande ; il **n'écrit jamais**
+chez le client. Lire le plan avant de commencer une version 9.x du Cabinet.
+
 ## Pistes pour la suite (non demandées)
 
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.
