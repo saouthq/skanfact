@@ -1,4 +1,4 @@
-// Le grand livre et la balance (8.8.0).
+// Les livres comptables (8.8.0 → 9.0.0) : grand livre, balance, livre-journal, OD, lettrage, états financiers.
 //
 // Les deux documents qu'un cabinet tire en premier, dans l'application réelle : le grand livre
 // (un compte, ses mouvements, le solde qui avance), la balance (tous les comptes, des totaux qui

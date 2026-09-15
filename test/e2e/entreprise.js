@@ -886,11 +886,12 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     const t = await win.textContent('.todo');
     if (!t.includes('fournisseur')) throw new Error('rien sur les fournisseurs dans À faire : ' + t.slice(0, 300));
   });
-  await step('comptabilité : les quatre onglets, la TVA réelle et le calendrier', async () => {
+  await step('comptabilité : les dix onglets, la TVA réelle et le calendrier', async () => {
     await win.evaluate(() => { location.hash = '#/compta'; });
     await win.waitForSelector('#c-tabs');
     const tabs = await win.evaluate(() => Array.from(document.querySelectorAll('#c-tabs button')).map(b => b.textContent.trim()));
-    if (tabs.join(',') !== 'Ventes,Achats,TVA à payer,Écritures,Calendrier fiscal,Clôtures,Cabinet') throw new Error('onglets : ' + tabs.join(','));
+    // 8.8.0 → 9.0.0 : Grand livre, Balance et États financiers se sont ajoutés entre Écritures et le calendrier.
+    if (tabs.join(',') !== 'Ventes,Achats,TVA à payer,Écritures,Grand livre,Balance,États financiers,Calendrier fiscal,Clôtures,Cabinet') throw new Error('onglets : ' + tabs.join(','));
     // onglet Écritures : équilibre annoncé, plan de comptes modifiable
     await win.click('#c-tabs button[data-tab=ecritures]');
     await win.waitForSelector('#ecr-csv');
@@ -899,7 +900,8 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     await win.click('#ecr-plan'); await win.waitForSelector('#chf');
     await win.fill('#chf input[name=clients]', '4111'); await win.click('#ch-ok');
     await win.waitForTimeout(400);
-    const chg = await win.evaluate(() => [...document.querySelectorAll('#ecr-t tbody tr td:nth-child(4)')].map(e => e.textContent.trim()));
+    // 8.9.0 : la colonne N° s'est mise en tête, le compte est la cinquième colonne.
+    const chg = await win.evaluate(() => [...document.querySelectorAll('#ecr-t tbody tr td:nth-child(5)')].map(e => e.textContent.trim()));
     if (!chg.includes('4111') || chg.includes('411')) throw new Error('plan de comptes non appliqué : ' + chg.slice(0, 5).join(','));
     await win.click('#ecr-plan'); await win.waitForSelector('#chf'); await win.click('#ch-reset');
     // Depuis la 7.12.0, jeter les comptes que le cabinet a dictés demande d'abord.
