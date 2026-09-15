@@ -167,6 +167,7 @@ Paramètres → L'application → Éditeur → **« Créer la clé du serveur »
    `build/licences-publiques.json` sous le `kid` `srv-1`. **Tant que cette version n'est pas
    publiée, une clé émise par la console est refusée par les clients** (« pas reconnue »). Le
    panneau Éditeur le dit ; c'est le seul délai à respecter.
+   *(Fait le 15/09/2026 : la publique `srv-1` est embarquée depuis la 8.6.0.)*
 
 Pourquoi une clé à part : si ce serveur est compromis un jour, on retire `srv-1` de la version
 suivante et on continue à vendre avec la maître — **sans invalider une seule licence** signée par

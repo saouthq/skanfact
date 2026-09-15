@@ -5,6 +5,11 @@
       "kid": "master",
       "publicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAkjirc4Q8eB1iPKEzzV3jmV1zkgCocwuFtGh16P8o980=\n-----END PUBLIC KEY-----\n",
       "depuis": "2026-09-14"
+    },
+    {
+      "kid": "srv-1",
+      "publicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAXgVH6Z6oYnx7grTlI9cENNijMdc2tgvkbzoPiffgrg4=\n-----END PUBLIC KEY-----\n",
+      "depuis": "2026-09-15"
     }
   ],
   "reponse": null

@@ -7,6 +7,21 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 8.6.0 — 15/09/2026
+
+**L'application reconnaît la clé du serveur.** `build/licences-publiques.json` porte désormais deux
+clés de signature : la clé maître de Skander (8.0.0, inchangée au caractère près) et `srv-1`, la clé
+de second rang créée dans SkanFact le 15/09/2026, avec laquelle la console (`api.skanfact.tn`)
+signe les ventes courantes. Une clé émise depuis la console est donc reconnue par cette version et
+les suivantes ; une version plus ancienne la refuse (« pas reconnue ») jusqu'à sa mise à jour.
+
+Rien ne change pour une licence déjà collée : elle continue d'être vérifiée par la clé que son
+contenu nomme, et une licence sans nom de clé par la maître. L'essai de 30 jours ne se rejoue pas :
+la date de départ reste celle de la clé la plus ancienne.
+
+La clé de réponse du serveur, elle, n'est toujours pas embarquée (voir 8.4.1) : une révocation
+prononcée depuis la console ne s'applique pas encore chez le client.
+
 ## 8.5.1 — 15/09/2026
 
 **Le justificatif se joint AVANT toute saisie.** Signalé par le père de Skander, sur sa première
