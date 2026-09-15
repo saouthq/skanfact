@@ -228,7 +228,7 @@ Le test `couches : une question passe au-dessus de tout` lit `style.css` et `app
 
 ## Le plan Cabinet (12/09/2026) — `PLAN-CABINET.md`
 
-Skander veut vendre SkanFact aux entreprises **en passant par les cabinets comptables** : cabinet gratuit (app **SkanFact Cabinet**, même dépôt, second installeur), entreprise payante, remise pour le client parrainé, jamais de commission au comptable (déontologie À VÉRIFIER). Pas de serveur en v1 : les deux apps s'échangent un **paquet mensuel chiffré** (`.skanpack`). Le plan complet, les versions dans l'ordre (6.0.0 clôture → 6.1.0 paquet → 6.2.0 appairage → Cabinet 1.0.0 → Cabinet 1.1.0 export d'écritures → 6.3.0 licence/mises à jour publiques → 6.4.0 signature → 6.5.0 filets → 7.0.0 serveur seulement si un cabinet dit oui) et l'inventaire (achats, décisions, questions au comptable, vérifications légales) sont dans **`PLAN-CABINET.md`**. Le lire avant de commencer une version 6.x. Règles fixées : l'app cabinet **ne modifie jamais** les données du client ; un paquet n'est **définitif** que si le mois est clôturé ; l'empreinte du cabinet est **à la fois** la clé de chiffrement et la preuve du parrainage ; à l'expiration d'une licence, **jamais de données en otage**.
+*(Direction du 15/09/2026, `DIRECTION.md` : le Cabinet n'est plus gratuit sans condition — gratuit pour les dossiers sur SkanFact et trois dossiers hors SkanFact, payant au-delà — et il devient le logiciel de comptabilité du cabinet. Ce qui suit reste vrai pour le reste.)* Skander veut vendre SkanFact aux entreprises **en passant par les cabinets comptables** : cabinet gratuit (app **SkanFact Cabinet**, même dépôt, second installeur), entreprise payante, remise pour le client parrainé, jamais de commission au comptable (déontologie À VÉRIFIER). Pas de serveur en v1 : les deux apps s'échangent un **paquet mensuel chiffré** (`.skanpack`). Le plan complet, les versions dans l'ordre (6.0.0 clôture → 6.1.0 paquet → 6.2.0 appairage → Cabinet 1.0.0 → Cabinet 1.1.0 export d'écritures → 6.3.0 licence/mises à jour publiques → 6.4.0 signature → 6.5.0 filets → 7.0.0 serveur seulement si un cabinet dit oui) et l'inventaire (achats, décisions, questions au comptable, vérifications légales) sont dans **`PLAN-CABINET.md`**. Le lire avant de commencer une version 6.x. Règles fixées : l'app cabinet **ne modifie jamais** les données du client ; un paquet n'est **définitif** que si le mois est clôturé ; l'empreinte du cabinet est **à la fois** la clé de chiffrement et la preuve du parrainage ; à l'expiration d'une licence, **jamais de données en otage**.
 
 ## Cabinet 1.0.0 — la seconde application
 
@@ -2433,7 +2433,21 @@ son état ; Paie → Barèmes gagne deux taux.
 des deux côtés, l'à-nouveau dans le grand livre de janvier, l'état de rapprochement à écart nul dès
 que le relevé égale le solde pointé, et la TFP/FOPROLOS dans les barèmes et le coût d'un brut de 1 000.
 
-## Le plan comptable du Cabinet (15/09/2026) — `PLAN-COMPTABLE.md`
+## La direction du projet (15/09/2026) — `DIRECTION.md`, puis `PLAN-COMPTABLE.md`
+
+**`DIRECTION.md` prime sur tous les autres plans.** Décisions prises avec Skander : l'objectif est
+« zéro ressaisie » entre une PME qui gère dans SkanFact sans connaître la comptabilité et son
+comptable qui reçoit ses écritures déjà écrites avec les pièces ; l'app entreprise **s'arrête à la
+gestion** (plus aucun écran comptable n'y est ajouté ; ceux de 8.8.0 → 9.0.0 deviennent un module
+désactivé par défaut — masquer, pas supprimer : le moteur écrit le paquet) ; le Cabinet devient **le
+logiciel de comptabilité du cabinet**, complet, avec ou sans SkanFact chez le client ; le paquet reste
+le pont dans les deux sens (licence et signature du client dans le manifeste, questions du cabinet
+affichées sur la pièce) ; le Cabinet est **gratuit pour les dossiers sur SkanFact et trois dossiers
+hors SkanFact, payant par dossier au-delà** (postes illimités, on vend des dossiers) ; le comptable de
+Skander est le cabinet pilote. Les aspects techniques à traiter (licence du cabinet portée par son
+empreinte, comptage des dossiers hors SkanFact, `compta.js` partagé avec test de parité des balances,
+un fichier par dossier, piste d'audit, multi-poste, questions dans les deux sens, INPDP, Ordre) sont
+listés au § 5 de `DIRECTION.md`, l'ordre au § 7, les questions ouvertes au § 8.
 
 Le comptable de Skander a regardé **SkanFact Cabinet**, pas l'app entreprise, et il veut **un vrai
 logiciel de comptabilité côté cabinet**, complet, au niveau de Sage/EBP/Pennylane — pas un pont. Le

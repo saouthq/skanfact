@@ -425,6 +425,16 @@ Même exigence que le reste du projet : **tout correctif se prouve en réintrodu
 
 ---
 
+## 15 bis. Ce que la direction du 15/09/2026 ajoute (`DIRECTION.md`)
+
+Le Cabinet devient un logiciel de tenue payant pour les dossiers hors SkanFact. Pour la plateforme,
+ça veut dire : une **offre Cabinet** (clé `type: 'cabinet'`, `dossiersHors: N`, sujet = l'empreinte
+du cabinet), une table `cabinets` et la vue « les dossiers de ce cabinet » dans la console, l'émission
+et la facturation par palier, et la **licence du client dans le manifeste du paquet** pour que le
+Cabinet sache, hors ligne, quel dossier est sur SkanFact. Le détail est au § 5.A et § 5.B de
+`DIRECTION.md` ; l'ordre est au § 7 (après la saisie, étape 4). La question n° 5 ci-dessous est
+tranchée : **on ne vend pas des postes, on vend des dossiers** — postes illimités.
+
 ## 16. Questions ouvertes
 
 1. **INPDP** — déclaration du registre clients (§ 9). **À VÉRIFIER avant la première vente.**

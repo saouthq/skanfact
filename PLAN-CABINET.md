@@ -2,12 +2,19 @@
 
 *Vendre SkanFact aux entreprises en passant par les cabinets comptables. Rédigé le 12/09/2026 à partir de la discussion avec Skander, réécrit le soir même après **deux audits** de l'application du cabinet et la livraison de la 6.8.1. Les points marqués « À VÉRIFIER » relèvent d'un comptable, d'un juriste ou de l'Ordre.*
 
+> **Direction du 15/09/2026 — ce plan est dépassé sur deux points, et `DIRECTION.md` fait foi.**
+> (1) SkanFact Cabinet n'est plus un récepteur qui exporte vers le logiciel du comptable : c'est
+> **le logiciel de comptabilité du cabinet**, complet, avec ou sans SkanFact chez le client
+> (`PLAN-COMPTABLE.md` pour les versions). (2) Le cabinet **paie pour ses dossiers hors SkanFact**
+> (3 gratuits), et reste gratuit pour tout dossier dont l'entreprise a une licence. Ce qui suit reste
+> vrai pour l'histoire, les audits et les règles apprises ; les phrases contredites sont marquées.
+
 > **Pour aller droit au but** : où on en est → *Où on en est*. Ce qu'il reste à corriger et dans quel ordre → **Les versions à venir**. Ce qui attend une décision de Skander → *Ce qui ne dépend pas de nous*.
 
 ## En une page
 
 - **Le cabinet est le canal de vente.** Un cabinet gère des dizaines de dossiers ; s'il adopte SkanFact, il l'impose à ses clients parce que c'est lui qui subit leur désordre.
-- **Le cabinet ne paie jamais.** Il reçoit gratuitement **SkanFact Cabinet**, une application qui lui rend service même si un seul de ses clients utilise SkanFact — et qui, depuis la 6.8.0, lui sert de **tableau de bord de tout son portefeuille**, y compris les clients qui n'ont pas SkanFact.
+- ~~**Le cabinet ne paie jamais.**~~ *Dépassé le 15/09/2026* : le Cabinet est gratuit pour les dossiers sur SkanFact et pour trois dossiers hors SkanFact, payant au-delà (`DIRECTION.md`, § 3). Il reste une application qui rend service même si un seul de ses clients utilise SkanFact, et sert depuis la 6.8.0 de **tableau de bord de tout le portefeuille**.
 - **L'entreprise paie** une licence annuelle. Un client amené par un cabinet a une **remise** ; le cabinet ne touche **pas d'argent** (question déontologique — À VÉRIFIER auprès de l'Ordre).
 - **Pas de serveur en première version.** Les deux applications s'échangent un **fichier chiffré**, le paquet mensuel. Aucun coût récurrent, aucune donnée hébergée, rien à sécuriser la nuit.
 - **On ne construit le portail en ligne que si un cabinet a dit oui.** Tout ce qui précède se fait en semaines, se montre à deux cabinets, et n'est jamais jeté : le jour où le serveur existe, seul le transport change.
@@ -16,9 +23,9 @@
 
 | | **SkanFact** (entreprise) | **SkanFact Cabinet** (cabinet) |
 |---|---|---|
-| Qui l'installe | L'entreprise, payante | Le comptable, gratuit |
-| Ce qu'il fait | Crée les pièces, tient stock, paie, trésorerie | **Lit**, contrôle, relance, exporte vers son logiciel |
-| Ce qui sort | Le **paquet mensuel** chiffré | L'export d'écritures ; les relances ; les accusés de réception |
+| Qui l'installe | L'entreprise, payante | Le comptable — gratuit pour ses dossiers SkanFact, payant au-delà de trois dossiers hors SkanFact *(direction du 15/09/2026)* |
+| Ce qu'il fait | Crée les pièces, tient stock, paie, trésorerie | **Tient la comptabilité** de chaque dossier *(direction du 15/09/2026 ; avant : lit, contrôle, relance, exporte vers son logiciel)* |
+| Ce qui sort | Le **paquet mensuel** chiffré | Les questions au client ; les déclarations et états ; les relances ; les accusés de réception |
 | Code | Un seul dépôt. Même `core.js`, mêmes calculs, mêmes listes, même chiffrement | Même dépôt, second point d'entrée, second installeur, second `appId` |
 | Règle absolue | — | **Ne modifie jamais les données du client.** Deux vérités = conflits (leçon de la 3.2.0) |
 

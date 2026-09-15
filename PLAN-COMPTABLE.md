@@ -8,6 +8,10 @@ manque, et dans quel ordre le construire.*
 
 ---
 
+> **La direction, les décisions et le modèle économique sont dans `DIRECTION.md`** (15/09/2026).
+> Ce plan ne porte que les versions du Cabinet et ce qu'elles doivent prouver. La licence du Cabinet
+> (§ 5.A de la direction) s'insère après la 9.3.0.
+
 ## En une page
 
 - **Ce qui change.** Jusqu'ici le Cabinet était un *récepteur* : il reçoit les paquets, vérifie,

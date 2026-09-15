@@ -185,7 +185,7 @@ test/run-tests.js
 
 ### SkanFact Cabinet
 
-Une seconde application, gratuite, destinée aux cabinets comptables : elle **reçoit** les paquets mensuels des entreprises, vérifie leur intégrité, montre qui n'a pas envoyé son mois et prépare les relances. Elle ne modifie jamais les données d'un client et ne lui renvoie rien.
+Une seconde application, destinée aux cabinets comptables : elle **reçoit** les paquets mensuels des entreprises, vérifie leur intégrité, montre qui n'a pas envoyé son mois et prépare les relances — et elle devient, version après version (`PLAN-COMPTABLE.md`), le **logiciel de comptabilité du cabinet** : les écritures des clients y arrivent déjà écrites avec leurs pièces, et le cabinet tient là ses dossiers, y compris ceux dont l'entreprise n'utilise pas SkanFact. Gratuite pour les dossiers sur SkanFact, payante au-delà de trois dossiers hors SkanFact (`DIRECTION.md`). Elle ne modifie jamais les données d'un client.
 
 ```bash
 npm run start:cabinet        # lancer l'app cabinet en développement

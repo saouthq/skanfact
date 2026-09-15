@@ -13,6 +13,14 @@ d'un numéro.*
 
 Taille indicative : **S** = quelques heures, **M** = une journée, **L** = plusieurs jours, **XL** = la plus grosse brique du logiciel.
 
+> **Direction du 15/09/2026 (`DIRECTION.md`) : l'app entreprise s'arrête à la GESTION.** Ce plan est
+> intégralement livré ; ce qui a été ajouté ensuite en comptabilité (8.8.0 → 9.0.0 : grand livre,
+> balance, livre-journal, états financiers) est le dernier écran comptable de ce côté — le moteur
+> reste, les écrans deviennent un module optionnel. La comptabilité se construit désormais dans
+> **SkanFact Cabinet** (`PLAN-COMPTABLE.md`). Ici ne s'ajoutent plus que la gestion, les
+> corrections et ce que le pont avec le cabinet exige (licence et signature dans le paquet, réception
+> des questions du cabinet).
+
 ---
 
 ## Où on en est — **plan intégralement livré le 11/09/2026**
