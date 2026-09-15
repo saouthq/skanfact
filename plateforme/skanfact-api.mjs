@@ -482,7 +482,14 @@ const CONSOLE_HTML = `<!doctype html>
   .tabs button{font:inherit;font-size:14px;padding:7px 14px;border-radius:999px;cursor:pointer;
        border:1px solid var(--line);background:var(--surface);color:var(--ink2)}
   .tabs button[aria-selected=true]{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
-  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:24px}
+  /* Six cartes ne se rangent proprement qu'en 6, 3, 2 ou 1 colonnes. En laissant faire
+     auto-fit, une largeur intermédiaire en choisit 4 ou 5 et laisse une ou deux orphelines
+     sur la seconde ligne. On énumère donc les seuls découpages qui REMPLISSENT chaque rangée.
+     (Aucun backtick dans ce commentaire : il vit dans un template literal.) */
+  .cards{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:14px;margin-bottom:24px}
+  @media (max-width:1180px){.cards{grid-template-columns:repeat(3,minmax(0,1fr))}}
+  @media (max-width:700px){.cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  @media (max-width:430px){.cards{grid-template-columns:1fr}}
   .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
   .card b{display:block;font-size:28px;font-weight:700;letter-spacing:-.02em;
           font-variant-numeric:tabular-nums;line-height:1.1}
@@ -599,13 +606,16 @@ const CONSOLE_HTML = `<!doctype html>
   $('refresh').onclick = function () { dessiner(); };
 
   // --- les chiffres ---
+  // Chaque carte porte SES deux formes : le libellé s'accorde avec son chiffre. Écrit en dur au
+  // pluriel, il donnait « 0 essais en cours » (zéro prend le singulier en français) et aurait donné
+  // « 1 licences actives ». C'est le premier écran que l'éditeur regarde tous les matins.
   var CARTES = [
-    { k: 'essaisEnCours', l: 'essais en cours', c: 'ess' },
-    { k: 'licencesActives', l: 'licences actives', c: 'act' },
-    { k: 'licencesExpirees', l: 'expirées', c: '' },
-    { k: 'licencesRevoquees', l: 'révoquées', c: 'rev' },
-    { k: 'postes', l: 'ordinateurs vus', c: '' },
-    { k: 'clients', l: 'clients', c: '' }
+    { k: 'essaisEnCours', s: 'essai en cours', p: 'essais en cours', c: 'ess' },
+    { k: 'licencesActives', s: 'licence active', p: 'licences actives', c: 'act' },
+    { k: 'licencesExpirees', s: 'expirée', p: 'expirées', c: '' },
+    { k: 'licencesRevoquees', s: 'révoquée', p: 'révoquées', c: 'rev' },
+    { k: 'postes', s: 'ordinateur vu', p: 'ordinateurs vus', c: '' },
+    { k: 'clients', s: 'client', p: 'clients', c: '' }
   ];
 
   var COLONNES = {
@@ -664,7 +674,8 @@ const CONSOLE_HTML = `<!doctype html>
 
     api('stats').then(function (s) {
       $('cards').innerHTML = CARTES.map(function (c) {
-        return '<div class="card ' + c.c + '"><b>' + (Number(s[c.k]) || 0) + '</b><span>' + c.l + '</span></div>';
+        var n = Number(s[c.k]) || 0;
+        return '<div class="card ' + c.c + '"><b>' + n + '</b><span>' + (n >= 2 ? c.p : c.s) + '</span></div>';
       }).join('');
     }, montrerErreur);
 

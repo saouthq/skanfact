@@ -125,10 +125,21 @@ async function servir() {
     const cartes = await page.$$eval('#cards .card', els => els.map(e => ({
       n: e.querySelector('b').textContent.trim(), l: e.querySelector('span').textContent.trim()
     })));
-    const essais = cartes.find(c => c.l.includes('essais'));
-    doit(essais && essais.n === '3', 'trois essais en cours annoncés');
-    doit(cartes.find(c => c.l.includes('révoquées')).n === '1', 'une licence révoquée annoncée');
+    const carte = mot => cartes.find(c => c.l.includes(mot));
+    doit(carte('essai') && carte('essai').n === '3', 'trois essais en cours annoncés');
+    doit(carte('révoqu') && carte('révoqu').n === '1', 'une licence révoquée annoncée');
+    doit(carte('licence') && carte('licence').n === '1', 'une licence active annoncée');
     doit(!cartes.some(c => /\(s\)/.test(c.l)), 'aucun « (s) » d\'accord bâclé');
+
+    // Le libellé s'ACCORDE avec son chiffre. Vérifier l'absence de « (s) » ne suffisait pas : la
+    // console affichait « 0 essais en cours » (zéro prend le singulier en français) et aurait
+    // affiché « 1 licences actives ». Trouvé sur une capture, pas par un test — d'où celui-ci.
+    const pluriel = t => /s$|x$/.test(t.trim().split(' ')[0]);
+    cartes.forEach(c => {
+      const n = Number(c.n);
+      doit(pluriel(c.l) === (n >= 2),
+        n + ' → « ' + c.l + ' » ' + (n >= 2 ? 'doit être au pluriel' : 'doit être au singulier'));
+    });
 
     etape('5. Le tableau des licences distingue active et révoquée');
     await page.waitForSelector('#table table tbody tr');
@@ -155,7 +166,23 @@ async function servir() {
     doit(act.some(x => /aujourd’hui|aujourd'hui/.test(x)), 'une activation du jour se dit « aujourd\'hui »');
     doit(act.some(x => x.includes('il y a 2 jours')), 'et une plus ancienne se date en clair');
 
-    etape('7. Un écran vide explique, au lieu de ne rien dire');
+    etape('7. Les six cartes remplissent leurs rangées, à toutes les largeurs');
+    // Six cartes ne se rangent proprement qu'en 6, 3, 2 ou 1 colonnes. Une grille automatique en
+    // choisit 4 ou 5 aux largeurs intermédiaires et laisse des orphelines — invisible en plein
+    // écran, visible dès qu'on réduit la fenêtre. Ça se MESURE, ça ne se relit pas (7.23.0).
+    await page.click('#tabs button[data-t="licences"]');
+    for (const w of [1500, 1100, 900, 600, 400]) {
+      await page.setViewportSize({ width: w, height: 900 });
+      const rangs = await page.$$eval('#cards .card', els => {
+        const y = [...new Set(els.map(e => Math.round(e.getBoundingClientRect().top)))].sort((a, b) => a - b);
+        return y.map(t => els.filter(e => Math.round(e.getBoundingClientRect().top) === t).length);
+      });
+      const orphelines = rangs.length > 1 && rangs[rangs.length - 1] < rangs[0];
+      doit(!orphelines, w + ' px → rangées de ' + rangs.join(' + ') + ' : aucune orpheline');
+    }
+    await page.setViewportSize({ width: 1280, height: 900 });
+
+    etape('8. Un écran vide explique, au lieu de ne rien dire');
     await page.click('#tabs button[data-t="ventes"]');
     // `.wrap .vide` et non `.vide` : « Chargement… » porte sa propre classe, sinon le test
     // l'attraperait au vol et passerait sans jamais voir l'écran vide.
@@ -163,7 +190,7 @@ async function servir() {
     const vide = (await page.textContent('#table .wrap .vide')).trim();
     doit(vide.length > 20 && !/chargement/i.test(vide), 'l\'écran vide porte une phrase : « ' + vide + ' »');
 
-    etape('8. Fermer la session referme vraiment');
+    etape('9. Fermer la session referme vraiment');
     await page.click('#out');
     await page.waitForSelector('#lock:not([hidden])');
     doit(await page.isHidden('#app'), 'les données disparaissent');
@@ -172,13 +199,13 @@ async function servir() {
     await page.waitForSelector('#lock', { state: 'visible' });
     doit(await page.isHidden('#app'), 'et recharger ne rouvre pas la console');
 
-    etape('9. Aucune exception, et le refus de l\'étape 2 a bien eu lieu');
+    etape('10. Aucune exception, et le refus de l\'étape 2 a bien eu lieu');
     doit(fautes.length === 0, 'aucune exception JavaScript (' + (fautes[0] || 'rien') + ')');
     // L'inverse compte autant : si le serveur n'avait rien refusé, l'étape 2 aurait passé pour une
     // mauvaise raison — le message d'erreur peut venir de la page sans que le secret soit vérifié.
     doit(attendues.length > 0, 'le serveur a réellement refusé le mauvais secret (' + attendues.length + ' refus)');
 
-    console.log('\n9 étapes — la console tient.');
+    console.log('\n10 étapes — la console tient.');
   } finally {
     await nav.close();
     srv.close();
