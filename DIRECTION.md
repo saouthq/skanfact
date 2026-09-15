@@ -241,12 +241,18 @@ sujet, pas par ordre ; l'ordre est au § 7.*
 **F. Le pont dans les deux sens**
 - **Les questions au client** : un fichier `.skanask` (chiffré pour le client ? Le client n'a pas
   de clé aujourd'hui — l'appairage est à sens unique. Deux options : le client génère une clé à
-  l'appairage, ou les questions partent en clair par mail avec l'identifiant de la pièce. La seconde
-  suffit pour commencer ; À décider avant la 9.9.0).
+  l'appairage — **c'est cette voie qui est décidée**, les questions ne partent jamais en clair : une
+  question porte un nom de client, un montant exact, un doute sur un compte, c'est du secret
+  professionnel. La clé du client existe dès la 9.2.0, puisque c'est la même que celle de la
+  signature du paquet. Voir `QUESTIONS.md` § 6.)
 - **Côté entreprise** : recevoir le fichier, afficher chaque question **sur la pièce**, répondre,
   joindre ce qui manque, et renvoyer un mois révisé (`-r2` existe déjà côté cabinet).
 - **La signature du paquet** (C1) et l'épinglage de la clé du client au dossier : c'est ce qui rend
-  la licence du manifeste et la mention d'essai fiables.
+  la licence du manifeste et la mention d'essai fiables. **Remontée en 9.2.0 le 15/09/2026** (elle
+  était ici, avec la révision) : sans elle, quiconque tient le fichier d'appairage — que le cabinet
+  donne à tous ses clients — peut fabriquer un paquet au nom d'une autre entreprise. Chiffrer dit
+  « seul le cabinet peut lire » ; seule une signature dit « ça vient bien de lui ». Voir
+  `QUESTIONS.md` § 6.
 
 **G. Le fiscal et le légal**
 - **Irréversibilité des écritures validées**, numérotation continue, conservation dix ans, et la
@@ -336,8 +342,10 @@ remplacées). Le site et l'aide suivent les versions.
 | Étape | Quoi | Dépend de |
 |---|---|---|
 | 0 | Ce document ; les plans corrigés ; la décision « masquer ou supprimer » ; les questions au comptable et à l'Ordre posées | Skander |
+| 0 bis | **Ce qui bloque la vente et n'est pas du développement** : le dépôt de la marque à l'INNORPI, les certificats de signature de code (requalifiés « avant la première vente », pas « le jour où ça vend » : un expert-comptable ne clique pas sur « Exécuter quand même »), la déclaration INPDP, les conditions de vente relues, le bouton de téléchargement du Cabinet qui mène à un 404, et la page unique qu'un prospect lira. Aucune ligne de code neuve ne rapporte un dinar tant que ces six choses ne sont pas faites (`QUESTIONS.md` § 9 et § 20) | Skander |
 | 1 | **9.1.0** — d'abord l'outillage (`QUESTIONS.md` § 15) : le canal `cabinet-beta` (le Cabinet n'a pas de bêta aujourd'hui), le workflow « Construire un essai » (des applications d'essai installables à côté des vraies, sans mise à jour, sur des données à part), l'intégration continue Linux + Windows, le lint, le garde-fou d'erreur global, le journal borné, l'index thématique de `CLAUDE.md` ; puis les livres lus dans les paquets (livre-journal, grand livre, balance, lettrage) ; `compta.js` extrait ; test de parité ; côté entreprise, le module Comptabilité masqué par défaut et l'option `compta` dans la clé. Bêta chez le pilote, puis stable (`QUESTIONS.md` § 13 et § 14 pour la bêta et l'entretien) | rien |
-| 2 | **9.2.0** — le livre propre à chaque dossier, un fichier par dossier, plan SCE complet, import du paquet EN écritures, reprise par balance d'ouverture | le plan de comptes du comptable, son logiciel actuel |
+| 1 bis | **9.1.1** — les quatre corrections fiscales de l'app entreprise, en une version minuscule : exonération de timbre sur la fiche client, TFP proposée par métier, seuil de retenue à la source réglable (par défaut 0, pas une valeur inventée), et le contrôle d'une heure sur l'e-facture (`QUESTIONS.md` § 11 et § 16) | une séance de validation avec le comptable, qui tranche les quatre en une fois |
+| 2 | **9.2.0** — le livre propre à chaque dossier, un fichier par dossier, plan SCE complet, import du paquet EN écritures, reprise par balance d'ouverture, **et la signature du paquet par le client** (remontée de la 9.9.0) | le plan de comptes du comptable, son logiciel actuel ; le test de charge du format, qui passe AVANT |
 | 3 | **9.3.0** — la saisie, brouillard/validation, guides, abonnements, piste d'audit | le regarder saisir |
 | 4 | **P 0.3 + 9.3.x** — la licence du Cabinet : clé, quota, comptage, garde-fou, écran, console, licence dans le manifeste, `e2e:cabinet-licence` | l'Ordre (avant de vendre, pas avant de construire) |
 | 5 | **9.4.0** — banque, rapprochement, lettrage automatique, balance âgée | les formats de relevés |
@@ -345,7 +353,7 @@ remplacées). Le site et l'aide suivent les versions.
 | 7 | **9.6.0** — inventaire, clôture d'exercice, états SCE, N/N-1 | la présentation NCT 01 |
 | 8 | **9.7.0** — immobilisations dégressif, stocks | rien |
 | 9 | **9.8.0** — collaborateurs, multi-poste (A10), verrouillage | rien |
-| 10 | **9.9.0** — révision, questions au client dans les deux sens, signature du paquet | la méthode de révision ; le choix du transport des questions |
+| 10 | **9.9.0** — révision, questions au client dans les deux sens | la méthode de révision |
 | 11 | **10.0.0** — liasse, annuel, jeu d'exemple complet ; site et aide à jour | la liasse de l'année |
 
 La licence du Cabinet arrive **après la saisie** parce que c'est la saisie qui crée le premier dossier

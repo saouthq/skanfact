@@ -2467,6 +2467,61 @@ source et ne se modifient pas ici), le moteur d'écritures sort de `core.js` ver
 bouge pas : le Cabinet **n'écrit jamais** chez le client. Les questions à poser au comptable avant
 chaque version sont listées dans le plan. Le lire avant de commencer une version 9.x du Cabinet.
 
+### Ce que trois relectures extérieures ont changé au plan (15/09/2026) — `QUESTIONS.md`
+
+`QUESTIONS.md` (~2 100 lignes, 20 sections) répond à tout ce que le projet pose comme questions ;
+c'est le document de référence quand on est perdu. Trois IA extérieures l'ont relu. Ce qu'elles ont
+fait bouger, et qui ne doit pas se reperdre :
+
+- **Un paquet n'est pas signé, et ça se voit nulle part.** `sealForCabinet` ne demande que la clé
+  **publique** du cabinet — celle du fichier d'appairage, que le cabinet donne à TOUS ses clients.
+  Quiconque le tient peut fabriquer un paquet au nom d'une autre entreprise. Chiffrer dit « seul le
+  cabinet peut lire » ; **seule une signature dit « ça vient bien de lui »**. La signature du
+  manifeste par le client remonte de la **9.9.0 à la 9.2.0** : la ranger avec la révision laissait le
+  trou ouvert pendant toute la période où le pilote utilise vraiment le Cabinet. Un paquet non signé
+  est accepté avec « origine non prouvée », jamais en silence.
+- **On mesure avant d'écrire un format, jamais après.** Le test de charge du Cabinet (50 000
+  écritures) était annoncé « avant la 9.3.0 » à deux endroits et « avant de décider » à un troisième.
+  Il passe **avant la 9.2.0**, qui est la version qui écrit le format. Il mesure aussi les trois
+  lectures qui ouvrent **soixante fichiers** (balance consolidée, recherche globale, tableau de
+  production) : le découpage par exercice règle l'écriture, pas la lecture d'ensemble.
+- **La valeur par défaut d'une règle qu'on ne connaît pas est celle qui ne fait rien.** Deux
+  relectures ont proposé « seuil de retenue à la source réglable, par défaut 1 000 DT ». Refusé :
+  ce serait écrire en dur une règle de droit que personne n'a confirmée, et changer en silence des
+  factures justes. Défaut **0** et « À VÉRIFIER » — même principe que « aucun taux en dur » (5.0.0).
+- **Un filet se réclame au moment où il protège encore.** La clé de secours du Cabinet est criée en
+  rouge, mais rien n'empêche d'importer soixante paquets avant de l'exporter. Elle est demandée
+  **au premier import** (9.1.0).
+- **Ce qu'un client ne contrôle pas ne lui est jamais facturé.** Un cabinet ne paie pas parce que son
+  client a oublié de renouveler : **douze mois** de grâce (c'était 60 jours), affichés sur le dossier.
+- **Les démarches passent avant le code quand elles bloquent la vente.** La signature de code est
+  requalifiée de « le jour où ça vend » à **« avant la première vente »** : un expert-comptable ne
+  clique pas sur « Exécuter quand même ». Avec le dépôt de la marque, l'INPDP, les conditions de
+  vente, le 404 du téléchargement Cabinet et la page unique : six choses, zéro ligne de code.
+- **Tout CSS neuf s'écrit en propriétés logiques** (`padding-inline-start`, `text-align: end`).
+  Mesuré : 93 déclarations physiques dans tout le projet, zéro logique. Deux heures aujourd'hui, un
+  chantier dans deux ans — c'est ce qui garde la porte de l'arabe ouverte sans rien promettre.
+- **Refusé, avec les raisons, pour ne pas le rediscuter** : remplacer l'impression PDF par une
+  bibliothèque (le reproche « le CSS d'impression est instable entre les OS » est faux ici —
+  Electron embarque SON Chromium, c'est la raison du choix, et `e2e:pages` imprime 161 documents) ;
+  lier l'essai à l'adresse MAC (donnée personnelle, change avec la carte réseau, se falsifie en une
+  commande) ; le partage de clé à seuil (Shamir) ; « choisir un seul produit » (le trait d'union
+  EST le produit — mais les deux n'avancent jamais en même temps : l'app entreprise est finie et
+  passe en entretien).
+- **Méthode, la même que pour les deux premières relectures : vérifier avant d'intégrer.** Sur les
+  trois audits, chacun portait des affirmations fausses données comme des faits — cinq dans le
+  premier (accident du travail, FOPROLOS, TFP en dur, exonération de timbre, anti-rejeu : tous déjà
+  dans le code), un « PostgreSQL local » inexistant dans le deuxième, et dans le troisième un
+  calendrier que le document ne donne nulle part plus des chiffres de marché sans source. **Un audit
+  qui invente une qualité peut inventer un défaut** : chaque constat se relit dans le code avant
+  d'être retenu.
+- **Les questions que le document ne posait pas**, et qui sont les plus importantes : combien
+  d'utilisateurs aujourd'hui (trois, aucun payant), combien de temps Skander peut tenir sans revenus
+  (c'est cette réponse qui décide de l'ordre du travail), ce qui se passe s'il est absent six mois
+  (**personne d'autre ne peut émettre une licence** : clé privée et secret d'administration en un
+  seul endroit → un pli scellé à poser avant les dix premiers clients), et qui répond d'une erreur
+  de calcul chez un client sans comptable.
+
 ## Pistes pour la suite (non demandées)
 
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.

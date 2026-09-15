@@ -21,7 +21,9 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
 
 1. [Le projet en dix questions](#1-le-projet-en-dix-questions)
 2. [Les mots du projet](#2-les-mots-du-projet)
-3. [Le but et le positionnement](#3-le-but-et-le-positionnement)
+3. [Le but et le positionnement](#3-le-but-et-le-positionnement) — *dont [où on en est
+   vraiment](#où-on-en-est-vraiment-au-15092026) : zéro client payant, et la question qui décide de
+   tout l'ordre du travail*
 4. [L'application entreprise, SkanFact](#4-lapplication-entreprise-skanfact)
 5. [L'application du comptable, SkanFact Cabinet](#5-lapplication-du-comptable-skanfact-cabinet)
 6. [Le pont entre les deux](#6-le-pont-entre-les-deux)
@@ -99,22 +101,34 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
   celle qu'on facture aux clients ; la TVA **déductible** est celle qu'on a payée aux fournisseurs ;
   on déclare et on paie la différence chaque mois. Le **crédit de TVA** est ce qui reste quand la
   déductible dépasse la collectée : il se reporte au mois suivant.
-- **Timbre fiscal** : 1 dinar ajouté sur chaque facture (règle tunisienne). Son montant est réglable,
+- **Timbre fiscal** : 1 dinar ajouté sur chaque facture (usage tunisien courant, pas une règle que
+  je peux énoncer). Son montant est réglable,
   il se fige sur la pièce à l'émission, et il se décoche par document. **Deux points restent
   À VÉRIFIER** : les cas d'exonération, et ce qu'on met sur une facture en devise (aujourd'hui
   l'application convertit le dinar dans la devise de la facture — c'est cohérent avec le total,
   mais la règle fiscale exacte n'a jamais été confirmée).
 - **Retenue à la source (RS)** : une partie du montant d'une facture que le client garde et verse
-  directement à l'État à la place du fournisseur (0,5 %, 1 %, 1,5 %, jusqu'à 25 % selon la nature).
-  Le fournisseur reçoit une **attestation de retenue** qui lui sert de justificatif.
+  directement à l'État à la place du fournisseur. Le fournisseur reçoit une **attestation de
+  retenue** qui lui sert de justificatif. **Le taux dépend de la NATURE de l'opération** (honoraires,
+  loyers, commissions, marchés…), pas du client ni du fournisseur : l'application en propose onze
+  depuis la 8.3.0 et accepte n'importe quel autre, parce qu'une liste fermée finit toujours par
+  enfermer quelqu'un — c'est le frère de Skander qui l'a montré en une phrase (« leur retenue est de
+  1 % alors que sur l'app ça commence à 1,5 »). **À VÉRIFIER avec le comptable : la correspondance
+  exacte entre nature d'opération et taux**, et les deux points ouverts du § 11 (le seuil en dessous
+  duquel elle ne s'applique pas, et l'assiette).
 - **Régime fiscal** : réel (on facture la TVA), forfaitaire ou exonéré (on ne la facture pas, avec
   une mention légale à la place). C'est le régime qui décide de la TVA, pas le métier. La liste des
   régimes est **ouverte** : si un cas réel ne rentre dans aucun des trois — par exemple une
   entreprise au réel non assujettie —, on ajoute une entrée à la liste avec sa mention, sans rien
   restructurer. **À VÉRIFIER avec le comptable : la liste des trois couvre-t-elle ses clients ?**
-- **CNSS** : la caisse de sécurité sociale. Part salarié 9,18 %, part employeur 16,57 % (À VÉRIFIER
-  chaque année). **IRPP** : l'impôt sur le revenu, retenu sur le salaire par barème progressif.
-  **TFP** et **FOPROLOS** : deux taxes patronales sur les salaires (2 % et 1 %, À VÉRIFIER).
+- **CNSS** : la caisse de sécurité sociale. Part salarié 9,18 %, part employeur 16,57 % — ce sont les
+  taux du **régime général**, et il en existe d'autres (agriculture, régimes particuliers) que
+  l'application ne propose pas : elle les accepte, puisque tout est réglable, mais elle ne les
+  suggère pas. **À VÉRIFIER chaque année, et à VÉRIFIER une fois : les clients du cabinet pilote
+  sont-ils tous au régime général ?** **IRPP** : l'impôt sur le revenu, retenu sur le salaire par
+  barème progressif. **TFP** et **FOPROLOS** : deux taxes patronales sur les salaires (2 % et 1 % par
+  défaut) — la TFP serait à 1 % pour l'industrie manufacturière, et l'application ne le propose pas
+  encore alors qu'elle connaît le métier (§ 11, corrigé en 9.1.1). **À VÉRIFIER.**
 - **Écriture comptable** : la traduction d'une pièce en lignes « débit / crédit » sur des comptes.
   Une facture de 1 190 DT TTC donne : débit 411 (client) 1 190 ; crédit 70 (ventes) 1 000 ; crédit
   4367 (TVA collectée) 190. Le total des débits est toujours égal au total des crédits : c'est la
@@ -245,6 +259,37 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
 
 ## 3. Le but et le positionnement
 
+### Où on en est vraiment, au 15/09/2026
+
+*Cette sous-section manquait, et c'est une relecture extérieure qui a posé les questions. Elle
+change la lecture de tout le reste du document : ce qui suit décrit un produit construit, pas un
+produit vendu.*
+
+- **Combien de personnes utilisent SkanFact aujourd'hui ?** Trois, et aucune ne paie : Skander, son
+  père (qui gère deux sociétés), son frère — c'est lui qui a trouvé le défaut de la retenue à la
+  source en une phrase, le premier retour d'un utilisateur qui n'est ni l'auteur ni le propriétaire.
+  **Zéro client payant, zéro licence vendue à un tiers, zéro cabinet équipé.** Il faut le lire avec
+  les quinze modules livrés : le produit existe, le marché n'a pas encore répondu.
+- **Combien de vraies factures sont passées par SkanFact ?** **À toi de le dire** — je ne peux pas le
+  savoir depuis le code, et c'est le seul chiffre qui dise si le produit est éprouvé. Une centaine
+  de vraies factures émises et envoyées à de vrais clients vaut plus que n'importe quel test.
+- **Quel est le chiffre d'affaires du produit ?** Zéro. Toutes les projections du § 7 (« dix cabinets
+  comme celui-là : cent mille dinars par an ») sont des calculs, pas des observations.
+- **Combien de temps peux-tu tenir sans revenus de SkanFact ?** **À toi, et c'est la question la plus
+  importante de ce document.** Elle ne demande pas un chiffre à écrire ici ; elle demande de savoir,
+  pour toi, si l'horizon est de six mois ou de trois ans. La réponse change tout l'ordre du travail :
+  à six mois, on signe le code, on vend l'app entreprise à dix clients et le Cabinet attend ; à trois
+  ans, le plan du § 16 tient tel quel. Aucune autre décision de ce document ne mérite d'être prise
+  avant celle-là.
+- **Est-ce que ce document sert à lever de l'argent ou à convaincre un client ?** Non, et il ne
+  faudrait pas essayer : c'est une référence interne de deux mille lignes, faite pour qu'on s'y
+  retrouve dans six mois. **Ce qui manque à côté — et qui n'existe pas — c'est une page unique** :
+  le problème, la solution, pour qui, combien, pourquoi nous. Un cabinet, un client ou un associé
+  lira cette page-là ; personne ne lira celui-ci. **À construire (une heure), avant la première
+  démonstration.**
+
+### Le positionnement
+
 - **On répond à quelle demande ?** À deux demandes qui se rejoignent. Le chef d'une petite
   entreprise veut facturer correctement, savoir où est son argent, payer ses salariés et ses impôts,
   sans rien connaître à la comptabilité. Son comptable veut recevoir des pièces complètes, à
@@ -272,6 +317,24 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
   clients arrivent déjà écrites avec leurs pièces, vérifiées, hors ligne, et où une question posée
   sur une ligne arrive chez le client en face de sa pièce. C'est l'avantage à garder quoi qu'il
   arrive.
+- **Une personne seule peut-elle vraiment tenir deux produits ?** C'est la critique principale de la
+  troisième relecture extérieure : « choisissez UN produit, l'autre devient un satellite minimal ».
+  Elle a raison sur les ressources et tort sur la conclusion, et il faut savoir pourquoi, parce que
+  la question reviendra. **Le conseil détruit la seule chose qui nous distingue.** Un logiciel de
+  cabinet sans l'app entreprise, c'est Sage en moins complet ; une app de facturation sans le
+  Cabinet, c'est un logiciel de facturation de plus. Ce qui n'existe nulle part est précisément
+  **le trait d'union**, et on ne peut pas garder un trait d'union en coupant une des deux extrémités.
+  Ce qui est vrai dans la critique, et qu'on retient : **les deux produits n'avancent jamais en même
+  temps.** L'app entreprise est finie (15 modules) et passe en entretien ; tout le travail neuf va
+  au Cabinet. Ce n'est pas deux chantiers, c'en est un — le second — pendant que le premier ne bouge
+  plus que pour des correctifs. Si un jour il faut vraiment en abandonner un, ce sera une décision
+  prise sur un chiffre (celui du § 3, « combien de temps sans revenus »), pas sur un principe.
+- **Et si on ne devait en vendre qu'un, lequel d'abord ?** L'app entreprise, sans hésiter : elle est
+  finie, elle se vend seule, son prix est décidé, et chaque client vendu est un dossier de moins à
+  facturer à un cabinet plus tard. Le Cabinet a besoin d'un pilote, d'une réponse de l'Ordre et de
+  neuf versions ; l'app entreprise a besoin d'une signature de code et d'un client. C'est l'ordre
+  que suggère le bon sens, et c'est aussi celui que la 9.1.1 (les corrections fiscales) et la
+  signature de code mettent en place sans rien coûter au reste.
 - **Qui sont les concurrents ?** Côté cabinet : Sage 100 Comptabilité (le plus répandu dans les
   cabinets francophones), EBP, Ciel, et des éditeurs tunisiens (À VÉRIFIER lesquels le comptable
   connaît). Côté entreprise : Excel et Word d'abord, puis quelques logiciels de facturation locaux.
@@ -283,8 +346,40 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
 - **On vise au-delà de la Tunisie ?** Non. La fiscalité tunisienne est au cœur, l'interface est en
   français, les documents existent aussi en anglais pour les clients étrangers. Un autre pays
   serait un autre produit. **Décidé, pas avant d'avoir des cabinets tunisiens.**
+- **Le marché tunisien est-il assez grand ?** Question posée par la troisième relecture extérieure,
+  qui avance « quelques centaines à mille cabinets, cinquante à cent mille PME formelles » — des
+  chiffres **sans source, donnés comme des faits** ; je ne peux ni les confirmer ni les infirmer, et
+  ils méritent d'être vérifiés avant de servir à décider quoi que ce soit (l'Ordre publie le nombre
+  de ses inscrits, l'INS publie le nombre d'entreprises). Ce qui est sûr : le plafond du § 7 (« dix
+  cabinets, cent mille dinars ») est un **plafond de départ**, pas un plancher, et il suffit très
+  largement à valider le modèle avant d'envisager quoi que ce soit d'autre. **À VÉRIFIER : les
+  chiffres réels du marché, une heure de recherche.**
+- **Et le Maghreb, l'Afrique de l'Ouest francophone ?** C'est la proposition d'agrandissement la plus
+  sérieuse qu'on nous ait faite, et elle est juste sur un point : les concepts (TVA, retenue,
+  lettrage, liasse, plan de comptes) se ressemblent, seuls les référentiels changent — et
+  l'application est déjà construite pour ça, puisque **aucun taux n'est écrit en dur**. Ce qui
+  changerait vraiment n'est pas le code : c'est un référentiel comptable de plus à connaître, des
+  déclarations à comprendre, un pilote par pays, un support dans un fuseau différent. **Rien avant
+  dix cabinets tunisiens** — le jour où le modèle est prouvé chez nous, cette porte est ouverte, et
+  c'est une raison de plus de ne jamais écrire un taux en dur. **À toi, plus tard.**
 - **Et en arabe ?** Les noms, adresses et libellés en arabe fonctionnent partout (identité, recherche,
-  tri). Une interface en arabe est possible plus tard ; personne ne l'a demandée. **À toi, plus tard.**
+  tri) — c'est déjà réglé depuis la 6.8.1, où deux raisons sociales arabes tombaient dans le même
+  dossier. Une **interface** en arabe est une autre affaire : personne ne l'a demandée, mais personne
+  n'a encore rien acheté non plus, donc « personne ne l'a demandée » ne prouve rien. **À toi, plus
+  tard** — avec une réserve ci-dessous qui, elle, ne peut pas attendre.
+- **Faut-il préparer l'écriture de droite à gauche maintenant ?** Oui, et c'est presque gratuit si on
+  le fait tout de suite. Une interface arabe n'est pas une traduction : c'est une inversion de tout
+  ce qui a un côté (marges, alignements, bordures, chevrons, colonnes de tableau). Ce qui bloque est
+  le CSS écrit en **propriétés physiques** (`padding-left`, `text-align: right`) au lieu de
+  **propriétés logiques** (`padding-inline-start`, `text-align: end`), qui se retournent toutes
+  seules. J'ai compté : **93 déclarations physiques** dans tout le projet (65 dans la feuille
+  partagée, 10 dans celle du Cabinet, 18 dans le modèle du document imprimé) et **zéro** logique.
+  C'est peu — deux à trois heures de conversion mécanique aujourd'hui, un chantier dans deux ans.
+  **Décidé : à partir de maintenant, tout CSS neuf s'écrit en propriétés logiques**, et la conversion
+  des 93 existantes entre dans la prochaine version d'entretien. La dette cesse de grossir
+  immédiatement ; le jour où quelqu'un demande l'arabe, il restera la traduction et les essais, pas
+  la mise en page. Ce n'est pas une promesse de livrer l'arabe — c'est le refus d'en fermer la porte
+  pour rien.
 - **Le logiciel survit-il à son éditeur ?** Oui, c'est voulu : la licence se vérifie sur le poste,
   les données sont sur le poste, le paquet est un ZIP ordinaire, le code est public. Si SkanFact
   disparaît demain, chaque client garde un logiciel qui fonctionne et des fichiers qu'il peut ouvrir.
@@ -360,13 +455,26 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
 - **Une application sur téléphone ?** Pas maintenant. C'est la seule raison pour laquelle la lecture
   de photo de facture (prendre une facture en photo pour préremplir la saisie) est en pause : sans
   téléphone, personne ne photographie. **À toi, plus tard.**
+- **Mais le mobile n'est-il pas indispensable pour de petits entrepreneurs ?** La troisième relecture
+  extérieure le soutient et propose React Native ou Flutter. C'est probablement vrai du besoin, et
+  ce n'est pas faisable comme elle le décrit. Il faut voir ce que ça engage réellement : une app
+  mobile n'est pas une vue de plus sur les mêmes données, **c'est un troisième produit** — un autre
+  langage, deux magasins d'applications avec leurs validations et leurs comptes payants, un cycle de
+  publication différent, et surtout un **serveur**, puisque les données vivent sur l'ordinateur et
+  qu'un téléphone n'y accède pas. C'est-à-dire exactement la chose que le produit refuse (§ 3,
+  « pourquoi pas comme Pennylane »). **Ce qui est réaliste et qui reste ouvert**, le jour où le
+  besoin se confirme : une application mobile **étroite** — photographier une facture d'achat,
+  regarder l'encours, encaisser — qui parle à l'ordinateur et à lui seul, sur le réseau local ou par
+  un fichier, sans jamais devenir le lieu où vivent les données. C'est un vrai chantier, il vient
+  après le Cabinet, et il ne se décide pas avant d'avoir entendu un client le demander. **À toi.**
 - **L'e-facture (TTN / El Fatoora) ?** Le jour où elle devient obligatoire pour les clients de
   SkanFact, c'est l'app entreprise qui émettra, et le cabinet qui vérifiera. Rien avant.
   **À VÉRIFIER : le calendrier et le périmètre en Tunisie.**
 - **Ce qui va encore changer côté entreprise ?** Peu de choses, et toutes au service du pont : le
   module Comptabilité masqué et l'option dans la clé (9.1.0) ; la licence et la mention d'essai dans
   le manifeste du paquet (9.2.0) ; la réception des questions du cabinet, affichées sur la pièce, et
-  la signature du paquet (9.9.0). Le reste, c'est de l'entretien et les retours des utilisateurs.
+  la signature du paquet (9.2.0, remontée de la 9.9.0). Le reste, c'est de l'entretien et les
+  retours des utilisateurs.
   **Décidé.**
 
 ### Comment elle marche, techniquement
@@ -442,6 +550,23 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
   sauvegardes quotidiennes et nommées ; copie externe qui emporte les paquets ; **clé de secours**
   exportable, réclamée en rouge tant qu'elle n'est pas enregistrée ; changement d'ordinateur guidé
   (la même empreinte à l'arrivée) ; verrouillage manuel. **Livré.**
+- **Le rouge suffit-il pour la clé de secours ?** Non, et c'est un trou que la troisième relecture
+  extérieure a désigné. Un cabinet peut installer l'application, importer soixante paquets, et
+  **ensuite seulement** exporter sa clé — entre les deux, une panne de disque rend illisible pour
+  toujours tout ce qu'il a reçu, pendant qu'un bandeau rouge décrit exactement ce qui va se passer.
+  Vérifié dans le code : rien ne s'interpose entre l'installation et le premier import. Ce qui
+  manque n'est pas le nombre de clés, c'est le **moment**. **Décidé (9.1.0) : le premier import de
+  paquet demande la clé de secours avant d'importer** — pas un rappel, une étape, avec « pas
+  maintenant » possible une fois et une seule. C'est le seul instant où l'on est certain que le
+  cabinet est devant l'écran et qu'il n'a encore rien à perdre.
+- **Et plusieurs clés de secours, ou un partage à seuil (Shamir) ?** Refusé, avec la raison. Trois
+  parts sur cinq chez un associé, un notaire, un coffre : c'est plus solide sur le papier et
+  ingérable en pratique pour un cabinet de trois personnes, qui perdra les parts avant de perdre le
+  disque — et chaque mécanisme qu'on ajoute est un mécanisme de plus à comprendre le jour où tout va
+  mal. Ce qui est retenu à la place est plus bête et plus efficace : la clé est réclamée **avant**
+  le premier paquet, l'écran dit où ne PAS la ranger (« vérifie qu'elle n'est pas sur cet
+  ordinateur »), et la copie externe l'emporte. Si un cabinet pilote demande un jour le partage à
+  seuil, on le rediscutera avec son cas réel.
 - **Que fait-elle d'un paquet suspect ?** Un fichier qui n'est pas un paquet, un paquet adressé à un
   autre cabinet, un paquet protégé par mot de passe, un fichier glissé dans le paquet après coup, un
   paquet tronqué : chaque cas donne une phrase en français, et un fichier non annoncé par le
@@ -550,8 +675,22 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
   Mac (Intel et Apple Silicon dans un seul fichier) et elle rompt la règle « aucune bibliothèque
   tierce dans l'application », qui est ce qui rend ce projet reprenable par une personne seule. **On
   mesure avant de décider quoi que ce soit d'autre** : un test de charge (un dossier de cinquante
-  mille écritures, chronométré) passe avant la 9.3.0, et s'il montre que ça ne tient pas, on
-  rediscute avec des chiffres. **Décidé, avec mesure avant la 9.3.0.**
+  mille écritures, chronométré) passe **avant la 9.2.0**, et s'il montre que ça ne tient pas, on
+  rediscute avec des chiffres. **Décidé, avec mesure avant la 9.2.0 — corrigé le 15/09/2026.** Ce
+  document disait « avant la 9.3.0 » à deux endroits et « avant de décider quoi que ce soit
+  d'autre » à un troisième : c'est contradictoire, et la troisième relecture extérieure l'a vu. La
+  9.2.0 est précisément la version qui **écrit** le format du livre. Mesurer après, c'est mesurer
+  une fois qu'on ne peut plus changer d'avis sans tout réécrire — et un test de charge qui arrive
+  trop tard ne sert qu'à nommer le problème qu'on a déjà.
+- **Que mesure exactement ce test ?** Trois choses, sur un livre de cinquante mille écritures :
+  le temps d'ouverture d'un dossier ; le temps d'un enregistrement en saisie au kilomètre (c'est
+  celui qui décide, parce qu'il se paie à chaque ligne tapée) ; et le temps des trois lectures
+  transverses qu'un cabinet fait vraiment — une balance consolidée de soixante dossiers, une
+  recherche globale (« où est passée cette facture ? »), un tableau de production. Ces trois-là
+  ouvrent **soixante fichiers**, et c'est le point que le découpage par exercice ne règle pas : il
+  règle l'écriture, pas la lecture d'ensemble. La parade prévue si la mesure est mauvaise est un
+  **index** (par compte, par tiers, par date, par montant) tenu à côté des livres et reconstructible
+  à partir d'eux — un index qui se perd se refabrique, un livre qui se perd est perdu.
 - **Que contient un livre ?** Les **exercices** (début, fin, clos ou non, par qui, quand) ; le
   **plan de comptes** du dossier (numéro, libellé, nature) ; les **journaux** ; les **écritures**,
   chacune avec sa date, son journal, sa pièce, son numéro, son libellé, ses lignes (compte, tiers,
@@ -654,9 +793,28 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
   fichier de questions (`.skanask`) est scellé pour lui seul, avec le mécanisme du paquet, qui
   existe depuis la 6.2.0. Le même aller-retour sert au flux de clôture (`.skanclose`, 9.6.0) : une
   seule clé du client, deux usages.
-- **Comment le cabinet sait que le paquet vient bien de ce client ?** Aujourd'hui : il est chiffré
-  pour lui et porte le matricule. Demain : signé par le client, dont la clé est épinglée au dossier
-  (9.9.0). **Décidé.**
+- **Comment le cabinet sait que le paquet vient bien de ce client ?** Aujourd'hui : **il ne le sait
+  pas.** Il sait seulement que le paquet a été scellé pour lui, et il croit le matricule écrit
+  dedans. Ce n'est pas une preuve, et c'est une faiblesse réelle : le scellement se fait avec la
+  clé **publique** du cabinet, celle qui vit dans le fichier d'appairage que le cabinet donne à
+  **tous** ses clients. Quiconque tient ce fichier — un client du même cabinet, quelqu'un à qui il
+  a été transféré — peut fabriquer un paquet au nom d'une autre entreprise et l'envoyer. Le cabinet
+  l'ouvrira, verra des écritures d'apparence normale, et n'aura aucun moyen de dire qu'elles ne
+  viennent pas de son client. Vérifié dans le code : `sealForCabinet` (`src/zip.js`) ne demande que
+  la clé publique, et aucune signature ne figure nulle part dans le manifeste.
+  **Décidé — corrigé le 15/09/2026 après une troisième relecture extérieure : la signature passe de
+  la 9.9.0 à la 9.2.0.** Elle était rangée avec la révision, huit versions plus loin, c'est-à-dire
+  après toute la période où le Cabinet est réellement utilisé par le pilote. Tout le nécessaire
+  existe déjà : le client a sa paire de clés (créée à l'appairage pour recevoir les questions
+  chiffrées), Ed25519 est dans `src/licence.js` depuis la 6.4.0, et le manifeste s'écrit en dernier
+  — c'est exactement ce qu'on signe. Le cabinet **épingle** la clé publique du client au dossier au
+  premier paquet ; un paquet signé par une autre clé est refusé en nommant le dossier, et un paquet
+  **non signé** (venu d'une version d'avant) est accepté avec la mention « origine non prouvée »,
+  jamais silencieusement.
+- **Pourquoi ne pas l'avoir fait dès la 6.1.0 ?** Parce que le danger identifié à l'époque était la
+  confidentialité (un paquet qui traîne dans une boîte mail), pas l'imposture. Le chiffrement répond
+  au premier, pas au second. C'est la même erreur de cadrage que « la corruption n'est pas
+  l'argument, la vitesse l'est » : on avait la bonne parade pour la mauvaise menace.
 - **Peut-on rejouer un vieux paquet pour fausser les chiffres du cabinet ?** Non : un paquet dont la
   date de fabrication est **antérieure** à celui déjà reçu pour ce mois est refusé, avec sa phrase.
   C'est ce qui empêche un mois définitif de redevenir provisoire quand on rattrape une boîte mail en
@@ -681,8 +839,9 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
   **Décidé.**
 - **Qu'est-ce qui va changer dans le paquet ?** Deux choses : la **licence** du client dans le
   manifeste (pour que le cabinet sache, hors ligne, que ce dossier est sur SkanFact et donc gratuit)
-  et la mention d'essai (9.2.0) ; la **signature** du client (9.9.0). Le numéro de format monte, les
-  paquets anciens restent lisibles.
+  et la mention d'essai ; et la **signature** du client — les deux en 9.2.0, la signature ayant été
+  remontée de la 9.9.0 le 15/09/2026. Le numéro de format monte, les paquets anciens restent
+  lisibles (et se disent « origine non prouvée » plutôt que d'être refusés).
 
 ---
 
@@ -702,7 +861,15 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
 - **Combien par dossier ?** Proposition : **72 DT HT par dossier et par an** (6 DT par mois),
   dégressif par paliers (60 DT au-delà de 20 dossiers, 48 DT au-delà de 50). **À toi, après avoir
   regardé les prix pratiqués en Tunisie (À VÉRIFIER).**
-- **Un très gros cabinet (200 dossiers) ?** Un palier « illimité » à prix plafonné. **À toi.**
+- **Un très gros cabinet (200 dossiers) ?** La troisième relecture extérieure recommande de **ne pas
+  proposer d'illimité** et de continuer les paliers dégressifs jusqu'à ~20 DT le dossier. L'argument
+  tient : un plafond n'a que deux positions possibles, trop bas (on laisse des milliers de dinars
+  sur la table — 150 dossiers facturables à 48 DT font 7 200 DT) ou trop haut (personne ne le
+  prend), et on ne saura de quel côté il tombe qu'après avoir vu un vrai gros cabinet. Une grille
+  dégressive n'a pas ce défaut : elle est juste à toutes les tailles et elle se lit sans
+  explication. **Recommandé : des paliers jusqu'à 20 DT, pas d'illimité. À toi, et la décision peut
+  attendre le premier cabinet de plus de cent dossiers** — c'est un problème qu'on aura de la chance
+  d'avoir.
 - **Pourquoi par dossier et pas par poste ou par utilisateur ?** Parce qu'un cabinet grandit par
   dossiers, pas par sièges ; et parce que les concurrents vendent des sièges. « Postes et
   collaborateurs illimités » est un argument de vente immédiat. **Décidé.**
@@ -720,9 +887,23 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
   validée dans les douze derniers mois, **sans licence client valide**. Un dossier archivé ne compte
   jamais : ses livres restent lisibles pour toujours. **Décidé.**
 - **Qu'est-ce qu'un dossier « sur SkanFact » ?** Un dossier dont le dernier paquet a moins de treize
-  mois et porte une licence valide (ou un essai de moins de 30 jours). Une licence expirée depuis
-  plus de 60 jours fait retomber le dossier en « hors SkanFact », et le cabinet le voit venir 30
-  jours avant : c'est lui qui rappelle son client, l'intérêt est le sien. **Décidé.**
+  mois et porte une licence valide (ou un essai de moins de 30 jours). Le cabinet voit venir
+  l'expiration 30 jours avant : c'est lui qui rappelle son client, l'intérêt est le sien.
+  **Décidé.**
+- **Et si le client ne renouvelle pas ?** **Le dossier reste gratuit douze mois de plus.**
+  **Décidé — corrigé le 15/09/2026 après une troisième relecture extérieure ; ce document disait
+  60 jours, et c'était une faute de conception.** Le raisonnement qu'elle a cassé était : « le
+  cabinet le voit venir, l'intérêt est le sien ». C'est vrai de l'intérêt, c'est faux du **pouvoir** :
+  le cabinet peut rappeler son client, il ne peut pas le forcer à payer. À 60 jours, un client qui
+  oublie, qui a un trou de trésorerie ou qui arrête son activité fait **arriver une facture chez son
+  comptable**, qui n'a rien demandé et n'a rien pu faire. On aurait fabriqué la seule chose qu'on ne
+  peut pas se permettre avec un prescripteur : le sentiment d'être puni pour le comportement de
+  quelqu'un d'autre. Douze mois, c'est un exercice entier — le temps de convaincre, ou de constater
+  que ce client-là est redevenu un dossier ordinaire. Et ce délai est **affiché** sur le dossier :
+  « gratuit jusqu'au 14/10/2027, sans renouvellement il comptera ensuite ».
+- **Le cabinet qui perd un client au profit d'un confrère paie-t-il pour autant ?** Non : un dossier
+  sans écriture validée depuis douze mois ne compte pas, quoi qu'il arrive. Les deux règles se
+  recoupent exprès — on préfère compter un dossier de moins que d'en facturer un de trop.
 - **Et un paquet fabriqué par une ancienne version, sans licence dedans ?** Le dossier compte comme
   hors SkanFact **et l'écran le dit** (« demande à ton client de mettre à jour SkanFact et de
   renvoyer le mois »), jamais en silence.
@@ -744,8 +925,25 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
 
 ### L'argent
 
-- **Le cabinet gagne quoi à amener un client ?** 72 DT de moins par an sur sa facture, et un client
-  qui lui envoie des pièces propres. Jamais d'argent versé au cabinet. **Décidé.**
+- **Le cabinet gagne quoi à amener un client ?** Il faut distinguer deux cas, et ce document les
+  confondait sous un « 72 DT de moins par an » qui n'est vrai que dans l'un des deux (relevé par la
+  troisième relecture extérieure). **Un client qu'il a déjà** et qu'il fait passer sur SkanFact : ce
+  dossier sortait de sa poche, il n'en sort plus — 72 DT réels, chaque année, et c'est le cas
+  courant, puisqu'un cabinet qui découvre SkanFact a par construction soixante dossiers hors
+  SkanFact. **Un client nouveau** qu'il amène : ce dossier n'était facturé nulle part, donc il ne
+  fait baisser aucune facture ; son gain est ailleurs — des pièces propres, des écritures déjà
+  écrites, et un client qui lui coûte moins d'heures. Dans les deux cas : **jamais d'argent versé au
+  cabinet.** **Décidé, reformulé le 15/09/2026.**
+- **Et un cabinet dont TOUS les dossiers sont sur SkanFact ?** Il ne paie rien, donc il n'a plus rien
+  à économiser : la remise ne peut plus rien pour lui. C'est voulu, et c'est même l'objectif — le
+  meilleur client du modèle est celui qui n'a plus de facture. Ce qui le retient alors n'est plus le
+  prix, c'est le produit. Si ce n'est pas suffisant, le modèle est faux et aucune remise ne le
+  sauvera.
+- **La remise de −20 % au client parrainé, elle, porte sur quoi ?** Sur la **première année de la
+  licence du client**, pas sur la facture du cabinet — ce sont deux remises distinctes, sur deux
+  factures distinctes, et les nommer pareil a déjà créé une confusion dans ce document. Coût total
+  d'une conversion pour l'éditeur : 78 ou 138 DT chez le client, plus 72 DT chez le cabinet.
+  **Décidé.**
 - **Est-ce que l'Ordre l'accepte ?** Je n'en sais rien, et je ne peux pas le dire à sa place.
   L'argument qu'on lui présentera : aucun argent ne circule vers le cabinet, il paie simplement
   moins un outil qu'il aurait payé de toute façon. Tant que l'Ordre n'a pas répondu, cette phrase
@@ -791,6 +989,29 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
 - **Le site vend-il ?** Il présente les deux produits et donne le contact. La vente se fait par mail
   et console : un clic, pas zéro. L'inscription en autonomie viendra après les premières ventes.
   **Décidé.**
+- **Comment les dix premiers clients nous trouvent-ils ?** Ils ne nous trouvent pas : **on va les
+  chercher**, un par un. La troisième relecture extérieure a raison de dire que ce document n'avait
+  pas de plan d'acquisition — il avait trois phrases (« par les clients », « le pilote s'il en
+  parle », « le jeu d'exemple ») qui décrivent une propagation, pas une démarche. Ce qui est réaliste
+  pour une personne seule, dans l'ordre : **le cercle proche d'abord** (le père, le frère, leurs
+  fournisseurs et leurs clients — ce sont de vraies entreprises, pas des faveurs) ; **le cabinet
+  pilote ensuite**, qui parle à ses confrères mieux que n'importe quelle publicité ; puis **la
+  démonstration en personne**, une heure chez le client, qui est la seule chose qui convertisse
+  quand on est inconnu. Le reste — référencement, réseaux sociaux, chambres de commerce — vient
+  après, quand il y a des clients à citer : un site bien référencé qui ne montre aucun client ne
+  vend rien.
+- **Et comment on saura si ça marche ?** En comptant trois choses, à la main, dans un tableur :
+  combien de démonstrations faites, combien d'essais démarrés (la plateforme les voit), combien de
+  licences vendues. Trois nombres par mois. Si les démonstrations se transforment mal, le problème
+  est le produit ou le prix ; s'il n'y a pas de démonstrations, le problème est qu'on ne va pas
+  chercher les gens. **À toi** — c'est un geste de dix minutes par mois, et c'est le seul moyen de
+  ne pas confondre « le produit avance » avec « le projet avance ».
+- **Que faut-il pour pouvoir vendre, exactement ?** La liste est courte et elle est entièrement à ta
+  main : le **dépôt de la marque**, la **signature de code** (§ 9), les **conditions de vente** et la
+  **déclaration INPDP** (§ 11), le **bouton de téléchargement du Cabinet** qui mène aujourd'hui à un
+  404, la validation fiscale avec le comptable (qui débloque la 9.1.1), et la **page unique** du § 3.
+  Aucune de ces six choses n'est du développement, et aucune ligne de code neuve ne rapportera un
+  dinar tant qu'elles ne sont pas faites.
 - **Il faut des conditions générales de vente ?** Oui : ce qu'achète le client (un droit d'usage
   d'un an, par matricule), ce qui se passe à l'expiration (jamais de données en otage), le
   remboursement, le support (par mail, sans engagement de délai), la responsabilité (l'application
@@ -929,6 +1150,31 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
   l'application n'est pas signée (Mac : clic droit → Ouvrir ; Windows : « Informations
   complémentaires → Exécuter quand même »). Puis l'assistant pose ses questions : métier, régime
   fiscal, société, modules. Dix minutes. **Livré.**
+- **Cet avertissement est-il acceptable pour vendre ?** Non, et c'est le point sur lequel la
+  troisième relecture extérieure a le plus raison. Ce document classait la signature de code dans
+  « le jour où ça vend » : c'est l'ordre inverse du vrai. **Un expert-comptable ne clique pas sur
+  « Exécuter quand même » sur le poste de son cabinet** — et il a raison de ne pas le faire, c'est
+  exactement le réflexe qu'on lui a appris. Ce n'est donc pas une gêne au premier lancement, c'est
+  un mur devant la première vente, et le seul de la liste qu'on ne peut pas franchir avec du travail.
+  **Décidé — requalifié le 15/09/2026 : la signature passe de « le jour où ça vend » à « avant la
+  première vente ».** C'est la dépense la plus rentable du projet : elle ne rend l'application
+  meilleure en rien, et sans elle rien ne se vend.
+- **Qu'est-ce que ça coûte, exactement ?** Côté Apple : le programme développeur, de l'ordre de
+  99 $/an, qui donne la signature **et** la notarisation — et qui supprime l'avertissement
+  entièrement. Côté Windows, c'est plus nuancé qu'il n'y paraît et le chiffre seul induit en erreur :
+  un certificat **OV** (le moins cher) est signé mais ne supprime pas tout de suite l'écran
+  SmartScreen, qui se lève avec la réputation, c'est-à-dire après un certain nombre de
+  téléchargements — donc précisément pas pour les premiers clients. Un certificat **EV** lève
+  SmartScreen immédiatement, coûte nettement plus cher, et depuis 2023 sa clé doit vivre sur un
+  support matériel ou dans un HSM, ce qui complique la signature depuis GitHub Actions. **À VÉRIFIER :
+  les prix du jour, les fournisseurs qui livrent en Tunisie, et si la signature EV est faisable
+  depuis le workflow ou s'il faut signer sur le Mac.** L'ordre de grandeur à retenir pour décider :
+  quelques centaines d'euros par an, à comparer à une seule licence Entreprise vendue.
+- **Et si le budget ne suit pas tout de suite ?** Alors on signe **Mac d'abord** (c'est le moins cher,
+  c'est le poste de Skander, et c'est là que l'avertissement disparaît complètement pour 99 $), et on
+  accompagne le téléchargement Windows d'une page qui explique l'écran SmartScreen avec une capture,
+  plutôt que de laisser le client le découvrir seul. Ce n'est pas une solution, c'est un pansement
+  daté : il tient le temps de vendre les premières licences, pas au-delà.
 - **Quels systèmes sont supportés ?** macOS (Intel et Apple Silicon, un seul installateur
   universel) et Windows 10/11 64 bits. Pas de Linux, pas de téléphone, pas de navigateur.
 - **Comment un cabinet installe SkanFact Cabinet ?** Même téléchargement (le bouton du site reste à
@@ -1168,6 +1414,14 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
   devrait **avertir** quand une facture est sous le seuil et porte quand même une retenue.
   **À VÉRIFIER avec le comptable**, puis un seuil réglable et un avertissement à l'émission, dans la
   même version que les autres corrections fiscales.
+- **Le seuil par défaut vaudra donc 1 000 DT ?** Non, et c'est important : il vaudra **0, c'est-à-dire
+  aucun seuil**, jusqu'à ce que le comptable donne le chiffre. Deux relectures extérieures ont
+  recommandé « seuil réglable, par défaut 1 000 DT TTC » ; les suivre écrirait dans le code une règle
+  de droit que personne n'a confirmée, et qui deviendrait fausse à la loi de finances suivante — c'est
+  exactement ce que la règle du projet interdit depuis la 5.0.0 (« aucun taux n'est écrit en dur dans
+  un calcul »). Un défaut à 0 ne change le comportement de personne et n'affirme rien ; un défaut à
+  1 000 changerait en silence le montant de factures déjà justes. La bonne valeur par défaut d'une
+  règle qu'on ne connaît pas est celle qui ne fait rien.
 - **Un client exonéré de timbre fiscal (exportateur total, secteur public) ?** Le timbre se décoche
   par document (`applyStamp`), mais il n'existe pas de drapeau « ce client est exonéré » sur la fiche
   client : il faut donc y penser à chaque facture. **À construire (petit)** : une case sur la fiche
@@ -1177,6 +1431,15 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
   déjà le métier de l'entreprise. C'est exactement la règle de la 7.25.0 (« un réglage global qui a
   une bonne valeur par défaut par métier doit la prendre, sans l'imposer une fois le champ
   touché »), qui n'a pas été appliquée ici. **À construire (petit).**
+- **Ces corrections fiscales, elles sortent quand ?** Elles étaient dispersées dans ce document sans
+  version, ce qui est la meilleure façon de ne jamais les faire. **Décidé : elles forment un lot
+  unique, la 9.1.1, publiée juste après l'outillage de la 9.1.0 et avant toute vente.** Le lot :
+  l'exonération de timbre sur la fiche client, la TFP proposée par métier, le seuil de retenue
+  réglable avec son avertissement, et le contrôle d'une heure sur l'e-facture ci-dessous. Chacune
+  vaut entre une heure et un jour, aucune ne dépend du Cabinet, et toutes les quatre touchent des
+  chiffres qui partent chez un tiers — l'administration, un client, un comptable. Elles passent donc
+  **avant** le confort, et elles attendent une seule chose : la séance de validation avec le
+  comptable, qui les tranche toutes les quatre en une fois.
 - **Et la facture électronique tunisienne (TTN / El Fatoora), si elle devient obligatoire ?**
   On ne construit pas l'export maintenant (décision). Mais un contrôle gratuit vaut d'être fait une
   fois : **vérifier que le modèle de données porte déjà tout ce qu'un format officiel exigerait**
@@ -1437,6 +1700,15 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
   (grave, moyen, petit) et transmet. Une question posée trois fois devient un paragraphe d'aide.
   Pas d'engagement de délai ; l'ordre est : grave d'abord. Si ça dépasse ce qu'une personne peut
   lire, une boîte partagée et une deuxième personne, pas un outil de tickets. **À toi.**
+- **Et à cinq cents ?** Là, « pas d'outil de tickets » devient une erreur, et la troisième relecture
+  extérieure a eu raison de le dire. Ce document énonçait la règle sans son seuil, donc elle se
+  lisait comme un principe alors que c'est une observation valable jusqu'à une certaine taille. Ce
+  qu'une boîte mail partagée ne sait pas faire : dire ce qui est resté sans réponse, retrouver ce
+  qu'on a répondu à quelqu'un il y a six mois, et montrer que la même question revient vingt fois —
+  or c'est précisément cette dernière qui dit quel paragraphe d'aide écrire. **Décidé : au-delà de
+  deux cents clients, un outil de support** (quelques dizaines de dinars par mois, ce qui est
+  dérisoire à cette taille). Avant deux cents, la boîte partagée suffit et un outil serait une
+  discipline de plus à tenir pour rien.
 - **La loi de finances, chaque janvier.** Les taux sont des réglages : un utilisateur peut les
   changer sans mise à jour. On publie quand même une version en janvier avec les nouveaux défauts et
   une ligne « À VÉRIFIER avec ton comptable », après relecture par le comptable pilote. Le
@@ -1459,7 +1731,7 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
   paiement en ligne qui émet la clé sans personne, et une personne de confiance qui a accès au
   secret de la console et sait « marquer payée ». **À toi.**
 - **Un cabinet de soixante dossiers sur dix ans : les performances ?** Un fichier par dossier,
-  chargé à l'ouverture du dossier seulement. Avant la 9.3.0, un e2e de charge (un dossier de
+  chargé à l'ouverture du dossier seulement. Avant la 9.2.0, un e2e de charge (un dossier de
   cinquante mille écritures) mesure ; on n'optimise qu'après avoir mesuré. **À construire.**
 - **Si beaucoup de cabinets arrivent ?** Chaque cabinet est indépendant : rien ne se partage entre
   eux, aucun serveur ne les relie. Le seul point commun est la plateforme (licences) et le relais.
@@ -1601,7 +1873,7 @@ qui manque, mesuré dans le dépôt le 15/09/2026, et ce qu'on en fait.*
   15/09/2026 : pas de seuil de retenue à la source, pas d'exonération de timbre par client, le taux
   de TFP non proposé par le métier, la clé de secours non imprimable, le contrôle « notre modèle
   porte-t-il ce qu'un format officiel exigerait ? » jamais fait (tous petits, dans une version de
-  corrections fiscales) ; le test de charge du Cabinet (avant 9.3.0). Cette liste vit dans les
+  corrections fiscales) ; le test de charge du Cabinet (avant 9.2.0). Cette liste vit dans les
   Issues GitHub dès que le point 7 est accepté ; en attendant, ici.
 - **Le projet respecte-t-il « toutes les recommandations » ?** Non, et aucun projet ne le fait :
   ce n'est pas un état, c'est un écart qu'on mesure. Sur l'échelle usuelle de maturité
@@ -1629,6 +1901,41 @@ qui manque, mesuré dans le dépôt le 15/09/2026, et ce qu'on en fait.*
   encore ; retenu : le contrôle d'une heure « notre modèle porte-t-il déjà ce qu'il faudrait ? »
   (§ 11). **Héberger les installateurs ailleurs que sur les releases GitHub** : inutile, le quota
   concerne la construction, pas l'hébergement, et la construction locale est déjà le secours.
+- **Ce que la troisième relecture a proposé, et qu'on a refusé (15/09/2026).** **Remplacer
+  l'impression PDF par une bibliothèque (PDFKit, jsPDF)** : refusé, et la raison avancée était
+  fausse. Le reproche était que « le CSS d'impression est notoirement instable entre les versions
+  d'Electron, les OS et les imprimantes » — c'est vrai d'un site web dans le navigateur du visiteur,
+  et faux ici : Electron **embarque son propre Chromium**, donc le même moteur de rendu tourne à
+  l'identique sur un Mac de 2019 et un Windows 11, et rien ne passe par une imprimante (on écrit un
+  fichier). C'est précisément ce que `e2e:pages` prouve sur 161 documents imprimés et mesurés, et
+  refaire tout le modèle avec une bibliothèque en perdrait la mise en page automatique.
+  **Retenu en revanche, deux sous-points justes** : le rendu d'un texte arabe dans le PDF (la
+  liaison des lettres et le sens d'écriture) n'a jamais été essayé, et la résolution d'un logo
+  importé non plus — deux vérifications à faire le jour où l'arabe ou un vrai logo arrivent.
+  **Lier l'essai de 30 jours à l'adresse MAC** : refusé, c'est une donnée personnelle qu'on n'a
+  aucune raison de collecter, elle change avec la carte réseau (donc un client honnête se retrouve
+  bloqué en changeant de wifi) et elle se falsifie en une commande — tous les défauts, aucun
+  bénéfice. La position ne bouge pas (§ 8) : l'essai est une incitation, pas une serrure, et une
+  application en source ouverte ne peut pas prétendre le contraire. **Ce qui change quand même** :
+  la plateforme **voit** les essais qui se rejouent sur le même poste, et c'est une information
+  commerciale utile (« ce prospect essaie depuis quatre mois, appelle-le ») plutôt qu'un blocage.
+  **Un programme de certification, un forum d'entraide, un bug bounty** : refusés pour l'instant,
+  non pas sur le principe mais sur la taille — un programme de certification avec un cabinet, un
+  forum avec trois utilisateurs et une prime aux chercheurs avec zéro client coûtent du temps et ne
+  rendent rien. À reposer au-dessus de cent clients, pas avant.
+- **Ce que la troisième relecture a proposé et qui reste ouvert, pas refusé.** **Une offre gratuite
+  limitée** (dix factures par mois) pour attirer les indépendants : le mécanisme existe déjà
+  presque — une licence porte son offre, et `licenceBlock` est la porte unique ; il faudrait
+  seulement une offre « Découverte » et un compteur. Le vrai coût n'est pas technique, c'est le
+  **support de gens qui ne paient pas**, et c'est une décision de modèle. **À toi.** **Une
+  synchronisation cloud facultative** (les données restent locales, une copie chiffrée sur un
+  serveur) : différent de la synchronisation temps réel refusée en 3.2.0, et ça ouvrirait les
+  entreprises à plusieurs sites. Ce que ça coûte : un service à tenir, et surtout la **garde des
+  données comptables de tiers**, avec ce que ça implique de responsabilité et de déclaration. **À
+  toi, après les premiers clients.** **Un programme de partenaires** (des cabinets ou des
+  consultants qui revendent, avec une commission) : sérieux et peu cher, mais il bute sur la même
+  question de déontologie que la gratuité conditionnelle, et se pose donc dans la même
+  conversation. **À VALIDER JURIDIQUEMENT.**
 - **Ce qui ne manque pas, et qu'on ne fera pas.** Un bundler ou un framework (React) : le code lu
   est le code qui tourne, c'est une force pour un projet tenu par une personne et une IA. Une base
   de données : les fichiers JSON suffisent à la taille visée et se sauvegardent en copiant. Une
@@ -1642,6 +1949,19 @@ qui manque, mesuré dans le dépôt le 15/09/2026, et ce qu'on en fait.*
 *Pour chaque version : ce qu'elle contient, ce qu'elle exclut, ce dont elle dépend, comment on la
 prouve. Les deux applications sortent ensemble sous le même numéro. Les durées sont des ordres de
 grandeur de construction, hors attente des réponses.*
+
+**Ce que ces durées ne disent pas, et qu'il faut lire avant de les additionner.** Mises bout à bout,
+elles font environ **seize à dix-neuf semaines** — quatre mois pour aller de la 9.1.0 à la 10.0.0.
+C'est le temps de **construction pure**, et ce serait vrai si rien d'autre n'existait. Or il y a le
+support des clients qu'on espère avoir, les correctifs qu'ils provoqueront, les allers-retours avec
+le cabinet pilote (qui ne répond pas dans la journée), la validation fiscale, les démarches (marque,
+INPDP, signature de code), la vente elle-même — et le travail de Skander chez SKANCYBER, qui n'est
+pas ce projet. Une relecture extérieure a reproché à ce plan un tempo irréaliste ; elle citait un
+calendrier que le document ne donne nulle part, mais son fond est juste, et la vraie réponse est
+plus sévère que sa critique : **compter le double est prudent, et l'ordre compte plus que la
+vitesse.** Ce qui protège ici n'est pas une date, c'est la règle « une version à la fois, finie,
+publiée, utilisée avant la suivante » — la seule qui garantisse qu'un arrêt à n'importe quel moment
+laisse quelque chose d'utilisable plutôt qu'un chantier.
 
 ### 9.1.0 — Les livres du dossier (quelques jours, n'attend personne)
 
@@ -1665,11 +1985,39 @@ grandeur de construction, hors attente des réponses.*
   Windows) ; le lint ; le garde-fou d'erreur global des deux écrans ; le journal borné ; l'index
   thématique de `CLAUDE.md`. Pour que la 9.1.0 puisse être essayée par Skander à côté de sa vraie
   application, puis partir en bêta chez le pilote, puis en stable.
+- **Deux filets, ajoutés le 15/09/2026 après la troisième relecture extérieure.** (1) **La clé de
+  secours est réclamée au premier import de paquet**, comme une étape et non comme un rappel :
+  aujourd'hui un cabinet peut recevoir soixante paquets avant d'y penser, et une panne de disque
+  entre les deux les rend illisibles pour toujours (§ 5). (2) **Le test de charge du Cabinet** —
+  cinquante mille écritures, l'ouverture d'un dossier, un enregistrement en saisie au kilomètre, et
+  les trois lectures qui ouvrent soixante fichiers — passe **ici**, parce que c'est la 9.2.0 qui
+  écrit le format et qu'après il sera trop tard pour en changer.
 - **Exclu.** Aucune saisie, aucun livre propre au dossier, aucune modification des paquets.
 - **Preuve.** Test de parité (même balance au millime) ; e2e `cabinet-livres` (les quatre onglets
   sur un vrai paquet, le mois manquant annoncé) ; e2e `boucle` relancé ; test « module désactivé
   par défaut » et `e2e:entreprise` relu ; test « `optionBlock` n'est posé que sur l'entrée du
-  module ».
+  module » ; e2e : le premier import demande la clé de secours, et « pas maintenant » ne se propose
+  qu'une fois.
+
+### 9.1.1 — Les quatre corrections fiscales (un à deux jours, après la séance avec le comptable)
+
+*Version à part, et volontairement minuscule : ces quatre points touchent des chiffres qui partent
+chez un tiers — l'administration, un client, un comptable — et ils traînaient dans ce document sans
+version, ce qui est la meilleure façon de ne jamais les faire (§ 11).*
+
+- **Entreprise.** Une case « exonéré de timbre fiscal » sur la fiche client, qui décoche le timbre
+  par défaut sur ses documents. La **TFP proposée par métier** (règle de la 7.25.0 : proposer sans
+  imposer, et ne plus écraser une fois le champ touché). Un **seuil de retenue à la source**
+  réglable — **par défaut 0, c'est-à-dire aucun seuil**, tant que le comptable n'a pas donné le
+  chiffre — avec un avertissement à l'émission quand une facture est dessous et porte quand même
+  une retenue. Et le contrôle d'une heure sur l'e-facture : notre modèle porte-t-il déjà ce qu'un
+  format officiel exigerait ?
+- **Dépend de.** Une seule chose : la séance de validation avec le comptable (§ 20, point 0e), qui
+  tranche les quatre en une fois.
+- **Exclu.** Tout le reste. Cette version ne contient rien d'autre, exprès.
+- **Preuve.** Un test par règle, chacun prouvé en réintroduisant le défaut ; le test du seuil
+  s'écrit sur un taux **négatif**, parce que `Number('') === 0` rend l'assertion évidente inutile
+  (leçon de la 8.3.0).
 
 ### 9.2.0 — Le livre du dossier (une à deux semaines)
 
@@ -1685,11 +2033,22 @@ grandeur de construction, hors attente des réponses.*
   emportent les livres (e2e `perte` et `demenagement` rejoués).
 - **Entreprise.** Le manifeste du paquet porte la licence du client et la mention d'essai ; le
   numéro de format du paquet monte ; l'app dit si le Cabinet du destinataire est trop ancien.
+- **La signature du paquet, remontée de la 9.9.0 (15/09/2026).** Le client **signe le manifeste**
+  avec sa clé privée — celle qu'il crée déjà à l'appairage pour recevoir les questions chiffrées —
+  et le cabinet **épingle** sa clé publique au dossier au premier paquet. Un paquet signé par une
+  autre clé est refusé en nommant le dossier ; un paquet non signé (ancienne version) est accepté
+  avec la mention « origine non prouvée », jamais en silence. Jusqu'ici, n'importe qui tenant le
+  fichier d'appairage — que le cabinet donne à tous ses clients — pouvait fabriquer un paquet au nom
+  d'une autre entreprise (§ 6). La ranger avec la révision, huit versions plus loin, revenait à
+  laisser le trou ouvert pendant toute la période où le pilote utilise vraiment le Cabinet.
 - **Dépend de.** Le plan de comptes du comptable, son logiciel actuel (pour le format de la balance
   d'ouverture).
 - **Exclu.** La saisie à la main (sauf la balance d'ouverture), la banque.
 - **Preuve.** Parité maintenue ; e2e : reprise d'un dossier par balance, import de douze paquets,
-  mois renvoyé ; e2e `refus` avec un paquet au nouveau format sur un Cabinet ancien.
+  mois renvoyé ; e2e `refus` avec un paquet au nouveau format sur un Cabinet ancien, **plus deux cas
+  d'imposture** : un paquet scellé pour le bon cabinet mais signé par une autre clé (refusé en
+  nommant le dossier), et un paquet non signé (accepté, marqué « origine non prouvée »). Le test de
+  charge de la 9.1.0 est rejoué sur le format réellement écrit.
 
 ### 9.3.0 — La saisie (deux semaines)
 
@@ -1811,13 +2170,14 @@ grandeur de construction, hors attente des réponses.*
 - **Cabinet.** Dossier de révision par exercice (feuilles maîtresses par cycle, comptes revus et
   signés, points en suspens, notes de revue, questionnaire de fin d'exercice) ; **questions au
   client** envoyées depuis la ligne (pièce absente, 471 non soldé, facture ouverte, mois provisoire)
-  ; signature du paquet par le client et épinglage de sa clé.
+  . *(La signature du paquet et l'épinglage de la clé ne sont plus ici : ils sont remontés en 9.2.0
+  le 15/09/2026 — voir § 6.)*
 - **Entreprise.** Réception des questions, affichage sur la pièce, réponse, pièce jointe, mois
-  révisé renvoyé ; signature du paquet.
-- **Dépend de.** La méthode de révision du comptable ; le choix du transport des questions.
+  révisé renvoyé.
+- **Dépend de.** La méthode de révision du comptable. Le transport des questions est décidé
+  (chiffré, § 6) et sa clé existe depuis la 9.2.0, puisque c'est la même que celle de la signature.
 - **Preuve.** e2e `boucle` étendu : une question part, arrive sur la pièce, la réponse revient dans
-  un mois révisé, le paquet signé est accepté et un paquet non signé d'un client épinglé est
-  signalé.
+  un mois révisé.
 
 ### 10.0.0 — La liasse et l'annuel (deux semaines)
 
@@ -1845,6 +2205,20 @@ n'est pas obligatoire) ; l'interface en arabe ; un autre pays.
   les paquets, 9.1.0) et on ne construit pas la tenue complète sans cabinet. Un logiciel « au
   niveau des meilleurs » construit sans personne qui l'utilise tous les jours serait un beau
   logiciel que personne n'ouvre. **Décidé.**
+- **A-t-il seulement dit oui ?** Ce document parlait de « ton comptable, le cabinet pilote » comme
+  d'un fait acquis, et une relecture extérieure a eu raison de demander où était son accord. Il a
+  regardé l'application et il a dit ce qui manquait — ce n'est pas la même chose que s'engager à
+  l'utiliser sur de vrais dossiers pendant six mois. **À toi, avant la 9.2.0 : une conversation
+  explicite, et par écrit, même deux lignes de mail.** Ce qu'on lui demande : essayer sur deux ou
+  trois dossiers réels, répondre aux questions de conception, dire quand c'est faux. Ce qu'on lui
+  donne : gratuit à vie pour son cabinet, son avis dans le produit, et son nom s'il le veut.
+- **Et s'il s'arrête en cours de route** (il change d'avis, il part à la retraite, il tombe malade) ?
+  C'est un point de défaillance unique, et il l'est doublement : sans lui, on perd le pilote **et**
+  la source des réponses fiscales. Deux parades. **Un second cabinet, même informel** — quelqu'un à
+  qui montrer une version tous les deux mois, sans engagement : ça vaut surtout pour éviter de
+  construire pour une seule personne. Et **les questions au comptable se posent par écrit et se
+  rangent dans le dépôt** avec leurs réponses : si le pilote disparaît, ce qu'il a déjà tranché
+  reste. **À toi.**
 - **On s'éparpille.** Une version à la fois, finie, testée, publiée, utilisée avant la suivante.
   Ce qui n'est pas décrit dans le § 16 n'entre pas dans la version. **Décidé.**
 - **La loi de finances change les taux.** Aucun taux n'est écrit en dur, tout est paramétrable, et
@@ -1852,7 +2226,55 @@ n'est pas obligatoire) ; l'interface en arabe ; un autre pays.
 - **Sage sort la même chose.** Notre différence est de structure, pas de fonctions : le pont avec le
   client, le hors-ligne, pas de sièges, le prix.
 - **Skander est seul.** Le dépôt porte les plans, les règles apprises et les tests : un développeur
-  qui arrive peut reprendre. Et la clé maître est sauvegardée.
+  qui arrive peut reprendre. Et la clé maître est sauvegardée. Mais « reprendre » veut dire quoi,
+  exactement ? Voir les trois questions de continuité ci-dessous : elles manquaient, une relecture
+  extérieure les a posées, et ce sont les plus importantes du document.
+- **Skander est absent six mois (maladie, accident, autre chose).** C'est la question que ce document
+  ne posait pas, et elle a une mauvaise réponse aujourd'hui. Les applications installées continuent
+  de fonctionner, c'est acquis. Mais **personne d'autre ne peut émettre une licence** : la clé privée
+  maître est sur son Mac et dans sa copie personnelle, et le secret d'administration de la console
+  aussi. Un client dont l'essai finit pendant cette absence ne peut pas acheter ; un client qui
+  renouvelle ne peut pas être servi. **À construire (avant les dix premiers clients) : un pli scellé
+  — la clé privée, le secret d'administration et la marche à suivre, chez une personne de confiance
+  ou chez un notaire, avec la consigne de ne l'ouvrir que dans ce cas.** Ce n'est pas un mécanisme
+  technique, et c'est justement pour ça que personne n'y pense.
+- **Skander arrête, définitivement.** Chaque client garde un logiciel qui marche, ses données et ses
+  fichiers : c'est la promesse tenue depuis la 6.4.0, et elle est réelle. Ce qu'il faut préparer en
+  plus tient en deux gestes : **la dernière version publiée ne doit jamais dépendre d'un service à
+  payer** (c'est déjà vrai : sans relais, les applications retombent sur GitHub ; sans plateforme,
+  rien ne se verrouille), et **une licence « à vie » doit pouvoir être émise en lot** pour les
+  clients en cours si l'aventure s'arrête. Ce second point n'existe pas et coûte une demi-journée.
+- **Claude devient indisponible** (fin du service, quota épuisé, coût). Le code reste du JavaScript
+  ordinaire, sans bundler ni framework, avec 384 vérifications et une quarantaine de parcours qui
+  ouvrent vraiment les applications, et des plans qui expliquent chaque décision. Un développeur
+  humain peut donc reprendre. Il faut être honnête sur ce qu'il en coûterait : le **rythme**
+  s'effondrerait, et une grande partie de ce qui tient ce projet debout est la mémoire écrite dans
+  `CLAUDE.md` — c'est elle qu'il faudrait relire, pas le code. C'est une raison de plus de la tenir à
+  jour à chaque version, ce qui est déjà la règle.
+- **Un service gratuit cesse de l'être** (GitHub Actions, Cloudflare, Resend, OVH). Aucun n'est dans
+  le chemin critique d'un client qui travaille : ils servent à publier, à mettre à jour, à envoyer un
+  mail et à porter un nom de domaine. Chacun a un remplaçant et une porte de sortie — l'installateur
+  local pour la publication, le repli GitHub pour les mises à jour, l'envoi manuel pour les clés, un
+  autre registraire pour le domaine. Ce qu'il faut surveiller n'est pas la panne, c'est le **coût qui
+  monte** sans qu'on le regarde : un point une fois par an suffit.
+- **L'INNORPI refuse la marque, ou quelqu'un la dépose avant.** Alors il faut renommer le produit —
+  les deux applications, le site, le domaine, les mails, les fichiers d'installation, et prévenir les
+  clients. C'est quelques centaines de dinars de dépôt aujourd'hui contre des semaines de travail et
+  une perte de crédibilité plus tard. Les trois relectures extérieures ont toutes mis ce point dans
+  leurs recommandations les plus rentables, et elles ont raison : **c'est la chose la moins chère et
+  la plus urgente de toute la liste.** Rien ne dépend de personne d'autre pour la faire.
+- **L'Ordre refuse la gratuité conditionnelle.** Le logiciel ne change pas — c'est le **prix** qui
+  serait à refaire, pas le produit, et c'est pourquoi on ne suspend pas le développement en attendant
+  (voir § 20). Plan B déjà identifié : le cabinet paie un forfait annuel simple, sans condition, et
+  c'est le **client** qui reçoit la remise quand son cabinet est équipé. Le levier change de côté, le
+  modèle tient. **À VALIDER JURIDIQUEMENT.**
+- **Un client attaque SkanFact pour une erreur de calcul.** Il n'y a pas de réponse purement
+  technique à cette question : « l'application calcule et propose, le comptable valide » décrit la
+  bonne pratique, pas la responsabilité juridique, et elle ne protège de rien si le client n'a pas de
+  comptable. Ce qui protège vraiment est ailleurs et n'existe pas encore : des **conditions de vente**
+  qui disent le périmètre et limitent la responsabilité, une assurance professionnelle, et le fait —
+  vérifiable — que l'application n'a jamais prétendu remplacer un comptable. **À VALIDER
+  JURIDIQUEMENT, avant la première vente.**
 - **Un chiffre faux chez un comptable.** Le risque le plus grave : il ruine la confiance en une fois.
   D'où le test de parité, les contrôles (balance équilibrée, lettrage égal au solde du compte
   client), et la règle « on ne montre que ce qu'on peut prouver » (« 7 pièces vérifiées, intactes »
@@ -1866,8 +2288,11 @@ n'est pas obligatoire) ; l'interface en arabe ; un autre pays.
 - **La plateforme tombe ou est piratée.** Les applications continuent (tout y est facultatif) ; la
   base ne contient ni données comptables ni montants ; les clés privées y sont retirables ; un
   export régulier de la base est à mettre en place.
-- **Un cabinet reçoit un paquet frauduleux.** Chiffré pour lui, empreintes vérifiées, fichiers non
-  annoncés signalés, et demain signé par le client.
+- **Un cabinet reçoit un paquet frauduleux.** Aujourd'hui, la parade est incomplète et il faut le
+  dire : chiffré pour lui, empreintes vérifiées, fichiers non annoncés signalés — mais **rien ne
+  prouve l'expéditeur**, puisque le scellement n'utilise qu'une clé publique que le cabinet
+  distribue à tous ses clients. C'est le trou que la troisième relecture extérieure a trouvé, et il
+  se ferme en 9.2.0 par la signature du client (voir § 6), pas en 9.9.0 comme prévu jusqu'ici.
 
 ---
 
@@ -2008,12 +2433,53 @@ n'est pas obligatoire) ; l'interface en arabe ; un autre pays.
     est ambiguë.
 33. On ne dit pas le droit. Une affirmation juridique porte la marque « À VALIDER JURIDIQUEMENT » et
     attend un juriste.
+34. **Un paquet est signé par le client** et sa clé est épinglée au dossier du cabinet (9.2.0).
+    Chiffrer dit « seul le cabinet peut lire » ; seule une signature dit « ça vient bien de lui ».
+    Un paquet non signé est accepté avec la mention « origine non prouvée », jamais en silence.
+35. **On mesure avant d'écrire un format de données**, jamais après. Un test de charge qui arrive
+    après la version qui fixe le format ne sert qu'à nommer un problème qu'on ne peut plus corriger.
+36. **La valeur par défaut d'une règle qu'on ne connaît pas est celle qui ne fait rien.** Un seuil
+    inconnu vaut 0, pas une valeur plausible : une valeur plausible écrite en dur est une règle de
+    droit inventée, et elle change en silence des chiffres qui étaient justes.
+37. **Un filet se réclame au moment où il protège encore**, pas après. La clé de secours du cabinet
+    est demandée avant le premier paquet importé, pas rappelée en rouge une fois qu'il y en a
+    soixante.
+38. **Ce qu'un client ne contrôle pas ne lui est jamais facturé.** Un cabinet ne paie pas parce que
+    son client a oublié de renouveler : douze mois de grâce, affichés sur le dossier.
+39. **Tout CSS neuf s'écrit en propriétés logiques** (`padding-inline-start`, `text-align: end`).
+    Coût nul aujourd'hui, chantier dans deux ans, et c'est ce qui garde la porte de l'arabe ouverte.
+40. **Personne d'autre ne peut émettre une licence si Skander est absent** : la clé privée et le
+    secret d'administration vivent en un seul endroit. Un pli scellé chez une personne de confiance
+    est à poser avant les dix premiers clients — ce n'est pas un problème technique, c'est pour ça
+    qu'on l'oublie.
+41. **Les démarches passent avant le code quand elles bloquent la vente.** Marque, signature,
+    INPDP, conditions de vente : aucune ligne de code neuve ne rapporte un dinar tant qu'elles ne
+    sont pas faites.
 
 ---
 
 ## 20. Ce qui reste à décider
 
-**À Skander**
+**À Skander — les six qui bloquent la vente** *(ajoutées le 15/09/2026 ; aucune n'est du
+développement, et aucune ligne de code neuve ne rapportera un dinar tant qu'elles ne sont pas
+faites — voir § 9)*
+
+0a. **Déposer la marque « SkanFact » à l'INNORPI.** Quelques centaines de dinars, et les trois
+   relectures extérieures l'ont toutes mise en tête de leurs recommandations. C'est la seule qui ne
+   dépend de personne d'autre, et celle dont le retard coûte le plus cher (renommer les deux
+   applications, le site, le domaine, les mails, prévenir les clients).
+0b. **Les certificats de signature de code**, requalifiés de « le jour où ça vend » à « avant la
+   première vente » : un expert-comptable ne clique pas sur « Exécuter quand même » (§ 9).
+0c. **La déclaration INPDP** pour la plateforme, et les **conditions de vente** relues par un
+   juriste — les deux avant la première vente, pas après.
+0d. **Poser la question à l'Ordre** (point 13), maintenant, parce que la réponse met des mois : elle
+   ne bloque pas le développement, seulement la publication d'un prix.
+0e. **La séance de validation fiscale avec le comptable**, qui débloque la 9.1.1 d'un coup (seuil de
+   retenue, exonération de timbre, TFP par métier, e-facture).
+0f. **Réparer le bouton de téléchargement du Cabinet** sur le site (il mène à un 404), et écrire la
+   **page unique** du § 3 — celle qu'un prospect lira, contrairement à ce document.
+
+**À Skander — le reste**
 1. Le **prix de l'option Comptabilité** de l'app entreprise (proposition : 190 DT HT par an).
 2. Le **nom** du produit cabinet : « SkanFact Cabinet », ou un nom qui dit « comptabilité ».
 3. Les **prix** du Cabinet (72 DT par dossier hors SkanFact, 3 gratuits, paliers, palier illimité),
@@ -2049,6 +2515,18 @@ n'est pas obligatoire) ; l'interface en arabe ; un autre pays.
 
 **À l'Ordre, au juriste, à l'administration (À VÉRIFIER)**
 13. La gratuité conditionnelle du Cabinet est-elle une rémunération indirecte du cabinet ?
+    **Ce que ça bloque, et ce que ça ne bloque pas.** La troisième relecture extérieure recommande de
+    « ne construire **rien** du Cabinet avant la réponse de l'Ordre ». C'est excessif, et suivre ce
+    conseil coûterait des mois pour rien : la question porte sur une **grille de prix**, pas sur le
+    logiciel. Un grand livre, une balance, un rapprochement bancaire et une déclaration de TVA sont
+    les mêmes que l'Ordre dise oui ou non ; seul change **qui paie quoi**, et le plan B est déjà
+    écrit (§ 17 : le cabinet paie un forfait simple, la remise passe côté client). **Décidé : le
+    développement du Cabinet ne s'arrête pas ; c'est la PUBLICATION D'UN PRIX et la première vente à
+    un cabinet qui attendent la réponse.** Rien n'est écrit sur la page Tarifs du Cabinet d'ici là,
+    et le pilote travaille gratuitement — ce qui est vrai dans les deux scénarios. La seule chose à
+    faire tout de suite est de **poser la question**, parce que la réponse peut mettre des mois à
+    venir et qu'elle ne viendra jamais si on ne la pose pas : l'Ordre d'abord, et un juriste
+    spécialisé en déontologie comptable en parallèle, sans attendre l'un pour l'autre.
 14. Ce qu'exige la loi tunisienne d'un logiciel de tenue (irréversibilité, conservation, restitution).
 15. L'INPDP pour la plateforme (empreintes et contacts).
 16. Le taux de TVA sur les licences logicielles, et le calendrier de l'e-facture.

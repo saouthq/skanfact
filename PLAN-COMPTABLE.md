@@ -123,6 +123,12 @@ niveaux, modifiable), journaux. **Importer un paquet crée des écritures** (sou
 jointe, validées si définitif), au lieu de seulement ranger un fichier. Reprise d'un dossier existant
 par **balance d'ouverture** saisie ou importée (CSV/Excel) : c'est ainsi qu'on récupère un client qui
 vient d'un autre cabinet. Les livres de la 9.1.0 lisent désormais le livre, plus les CSV.
+**Le paquet est signé par le client** et sa clé publique est épinglée au dossier au premier paquet
+(remonté de la 9.9.0 le 15/09/2026) : le scellement ne prouve que le destinataire, pas l'expéditeur,
+et le fichier d'appairage qui permet de sceller est entre les mains de tous les clients du cabinet.
+Un paquet signé par une autre clé est refusé en nommant le dossier ; un paquet non signé (ancienne
+version) porte la mention « origine non prouvée ». **Le test de charge du format** (cinquante mille
+écritures) passe AVANT cette version, pas après : c'est elle qui fixe le format.
 ⚠ comptable : son plan de comptes de référence, ses codes de journaux.
 
 ### 9.3.0 — La saisie *(l'écran où un comptable passe ses journées)*
@@ -167,7 +173,7 @@ notes (⚠ comptable : la présentation exacte, NCT 01), comparatif N/N-1, SIG, 
 15/09/2026) : les écritures d'inventaire du cabinet n'existent pas chez le client, donc à la
 clôture ses à-nouveaux de l'exercice suivant seraient faux **pour toujours**, avec un écart qui
 grandit chaque année. Le cabinet produit donc un fichier `.skanclose`, chiffré pour le client (qui
-a désormais sa propre clé, voir 9.9.0 et `QUESTIONS.md` § 6) : à-nouveaux officiels, liste des
+a désormais sa propre clé depuis la 9.2.0, voir `QUESTIONS.md` § 6) : à-nouveaux officiels, liste des
 écritures d'inventaire, date de clôture. Côté entreprise, l'import les pose, verrouille l'exercice
 clos et affiche ce que le comptable a ajouté. Le test qui compte est le **jumeau du test de parité,
 dans l'autre sens** : après la clôture et l'import, le bilan des deux applications est identique au
