@@ -2586,6 +2586,17 @@ de doublon après restauration (`max(pièces, compteur) + 1`), et « garder la s
 le manifeste » est impossible avec Ed25519 (l'empreinte de `signature.json` sert à la bonne phrase
 et à la vérification sans clé, pas à ça).
 
+**v1.1 (même jour, trois précisions de Skander)** : les trois listes de `livre.json` sont montrées
+dans **un seul** exemple complet, à leur place (à la racine du livre, plates entre elles, chacune
+imbrique ses enfants, le lien va vers l'écriture par `ecritureId` et jamais l'inverse) — la v1 les
+spécifiait à part pendant que l'exemple les montrait vides et que la table disait « hors de ce
+document » ; la Partie 15 est réécrite **écran par écran** (22 écrans réservés `SPEC-UI-CAB-010` →
+`081`, chacun avec son tableau Décidé / À décider et qui tranche : comptable, Skander, mesure) ;
+la Partie 20 ne garde que les quatre **scénarios de reprise** (SCN-001 → 004) — un runbook dit ce
+que l'opérateur fait, un cahier ce que le logiciel doit faire — et les deux runbooks de la
+plateforme (mise en production, retrait de `srv-1`) vivent dans `PLAN-PLATEFORME.md` § 18, les
+quatre autres là où ils étaient déjà (`CLAUDE.md`, `worker/README.md`, `QUESTIONS.md` § 18).
+
 ## Pistes pour la suite (non demandées)
 
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.

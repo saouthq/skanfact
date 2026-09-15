@@ -1,16 +1,19 @@
 # CAHIER-DES-CHARGES.md — la spécification technique de SkanFact
 
-**Version 1 — 15/09/2026.** Lue sur le dépôt `saouthq/skanfact` au commit **`d7bfc54`** (v0) puis
-**`6ebe904`** (v1 ; aucun fichier de code n'a changé entre les deux). Points de la relecture
-extérieure **retenus** dans cette version : 1 (les trois listes de `livre.json` spécifiées), 2
-(Partie 15, intentions 9.3.0 → 10.0.0), 3 (catalogue porté à 60 fiches), 4 (contrat IPC, Parties
-4.5 et 5.5), 5 et 19 (JSON exacts de la plateforme), 6 (ordre de vérification de la signature, avec
-la correction de son motif), 7 (`.skanrecover` complet), 8 (Partie 17, sécurité — dont un vrai
-trou : l'injection CSV), 9 (Partie 18, limites), 10 (Partie 19, cas limites), 11 (Partie 20,
-runbooks), 12 (Partie 16, séquences), 13 (Partie 21), 14 (renvoi + correspondance des e2e), 15
-(CSS, existant nommé + `cab-` décidé), 16 (raisons des interdictions), 17 (mode démo), 18
-(idempotence, un défaut réel), 20 (Partie 22). Ce qui a été **refusé ou corrigé** est dans le
-« Journal des versions », en fin de document.
+**Version 1.1 — 15/09/2026.** Lue sur le dépôt `saouthq/skanfact` au commit **`d7bfc54`** (v0),
+**`6ebe904`** (v1) puis **`790633b`** (v1.1 ; aucun fichier de code n'a changé entre les trois).
+Points de la relecture extérieure **retenus** : 1 (les trois listes de `livre.json` spécifiées —
+v1.1 : un seul exemple complet qui montre la hiérarchie), 2 (Partie 15, intentions 9.3.0 → 10.0.0 —
+v1.1 : un tableau Décidé / À décider **par écran**), 3 (catalogue porté à 60 fiches), 4 (contrat
+IPC, Parties 4.5 et 5.5), 5 et 19 (JSON exacts de la plateforme), 6 (ordre de vérification de la
+signature, avec la correction de son motif), 7 (`.skanrecover` complet), 8 (Partie 17, sécurité —
+dont un vrai trou : l'injection CSV), 9 (Partie 18, limites), 10 (Partie 19, cas limites), 11
+(Partie 20 — v1.1 : réduite aux **scénarios de reprise** que l'application doit offrir ; les six
+runbooks d'exploitation sont partis là où ils vivaient déjà, voir le Journal), 12 (Partie 16,
+séquences), 13 (Partie 21), 14 (renvoi + correspondance des e2e), 15 (CSS, existant nommé + `cab-`
+décidé), 16 (raisons des interdictions), 17 (mode démo), 18 (idempotence, un défaut réel), 20
+(Partie 22). Ce qui a été **refusé ou corrigé** est dans le « Journal des versions », en fin de
+document.
 
 *Écrit le 15/09/2026 sur le dépôt `saouthq/skanfact` au commit **`d7bfc54`** (version 9.0.0 des deux
 applications). Tout ce qui est marqué **Livré** a été lu dans le code à ce commit ; tout ce qui est
@@ -352,9 +355,42 @@ ultérieur est facultatif à la lecture.
     ]
   }],
   "lettrages": [{ "lettre": "AB", "compte": "411001", "ecritures": ["e_01J8ZK…", "e_01J9AA…"], "le": "2026-09-02", "par": "import" }],
-  "releves": [],
-  "immobilisations": [],
-  "declarations": [],
+  "releves": [{
+    "id": "r_01J9…", "compte": "532", "banque": "BIAT", "du": "2026-03-01", "au": "2026-03-31",
+    "soldeDebut": 12500.000, "soldeFin": 14210.500, "fichier": "releve-mars.csv", "empreinte": "<sha256>",
+    "importeLe": 1789800000000, "par": "skander",
+    "lignes": [
+      { "id": "rl_01J9…", "date": "2026-03-04", "libelle": "VIR CLIENT TEST FAC-2026-031", "montant": 1191.000,
+        "reference": "",
+        "rapprochement": { "niveau": "certain", "ecritureId": "e_01J8ZK…", "ligne": 0, "le": "2026-04-02", "par": "auto" },
+        "ecritureId": null }
+    ]
+  }],
+  "immobilisations": [{
+    "id": "i_01J9…", "libelle": "Serveur Dell", "compte": "2241", "compteAmort": "2841", "compteDotation": "681",
+    "dateAcquisition": "2026-02-10", "dateMiseEnService": "2026-02-15", "valeur": 4800.000, "tva": 912.000,
+    "methode": "lineaire", "duree": 3, "tauxDegressif": null, "prorata": "jours360",
+    "origine": { "source": "skanfact", "docId": "ach_…", "mois": "2026-02" },
+    "plan": [ { "annee": 2026, "dotation": 1413.333, "cumul": 1413.333, "vnc": 3386.667, "ecritureId": "e_…" } ],
+    "cession": null, "creeLe": 1789800000000, "par": "import"
+  }],
+  "declarations": [{
+    "id": "d_01J9…", "type": "mensuelle", "periode": "2026-03", "prepareeLe": 1789800000000, "par": "skander",
+    "cases": {
+      "tvaCollectee":  { "montant": 2280.000, "ecritures": ["e_…", "e_…"] },
+      "tvaDeductible": { "montant": 310.000,  "ecritures": ["e_…"] },
+      "creditReporte": { "montant": 0,        "ecritures": [] },
+      "netAPayer":     { "montant": 1970.000, "ecritures": [] },
+      "retenues":      { "montant": 15.000,   "ecritures": ["e_…"] },
+      "tfp":           { "montant": null,     "ecritures": [] },
+      "foprolos":      { "montant": null,     "ecritures": [] },
+      "tcl":           { "montant": null,     "ecritures": [] },
+      "timbre":        { "montant": 6.000,    "ecritures": ["e_…"] }
+    },
+    "controles": [ { "id": "4366-report", "ok": true, "detail": "" } ],
+    "deposee": { "le": "2026-04-15", "par": "skander", "reference": "" },
+    "ecritureId": "e_…"
+  }],
   "ouverture": { "date": null, "source": null, "lignes": [] },
   "audit": [{ "quand": 1789800000000, "qui": "import", "quoi": "import-paquet", "detail": "2026-08 (définitif), 37 écritures" }]
 }
@@ -374,7 +410,7 @@ ultérieur est facultatif à la lecture.
 | `ecritures[].source` | `'skanfact'|'saisie'|'banque'|'inventaire'|'an'|'import'|'od'` | `skanfact` porte `mois` et `docId` ; modifiable en brouillard avec trace (`CLAUDE.md`, direction 15/09) |
 | `ecritures[].lignes[]` | `{ compte, tiersId?, libelle, debit: number ≥ 0, credit: number ≥ 0, lettre: string }` | `debit === 0 \|\| credit === 0` (jamais les deux) ; **un montant négatif change de colonne** |
 | `lettrages[]` | `{ lettre, compte, ecritures: string[], le, par }` | la somme débit − crédit des lignes lettrées **= 0** au millime |
-| `releves[]`, `immobilisations[]`, `declarations[]` | Array | `[]` en 9.2.0 ; formats écrits en 9.4.0 / 9.7.0 / 9.5.0 (Cible, hors de ce document) |
+| `releves[]`, `immobilisations[]`, `declarations[]` | Array | `[]` tant que 9.4.0 / 9.7.0 / 9.5.0 ne les remplissent pas ; leur **forme est figée ici** (exemple ci-dessus, invariants ci-dessous) — la v0 les disait « hors de ce document », la v1 les a spécifiées, la v1.1 corrige cette ligne restée fausse |
 | `ouverture` | `{ date, source: 'balance'|'skanfact'|null, lignes: [{ compte, debit, credit }] }` | la balance d'ouverture de reprise, transformée en une écriture AN `piece: "OUVERTURE"` |
 | `audit[]` | `{ quand: number, qui: string, quoi: string, detail?: string }` | **jamais purgé** |
 
@@ -394,19 +430,22 @@ qu'un relevé « par ligne » ne se transforme pas en relevé « par compte » u
 soixante clients). Ce que les trois ont en commun : un `id`, une trace (`creeLe`, `par`), et un
 lien vers les écritures qu'ils ont produites (`ecritureId`), jamais l'inverse.
 
+**La hiérarchie, en une phrase (v1.1)** : les trois listes sont **à la racine du livre**, sœurs de
+`ecritures[]` et **plates entre elles** (aucun relevé dans une immobilisation, aucune déclaration
+dans un relevé) ; chacune **imbrique ses propres enfants** — un relevé porte ses `lignes[]`, et
+chaque ligne son `rapprochement` ; une immobilisation porte son `plan[]` (une entrée par année) et
+sa `cession` ; une déclaration porte ses `cases{}` (objet à clés ouvertes), ses `controles[]` et sa
+`deposee` ; et **aucune écriture n'est jamais imbriquée dedans** : le lien va de l'objet vers
+l'écriture par `ecritureId`, jamais l'inverse (une écriture ne sait pas qu'un relevé l'a produite —
+c'est ce qui permet de supprimer un relevé mal importé sans toucher au journal). L'exemple complet
+en tête de SPEC-DATA-005 montre un objet de chaque, à sa place.
+
 `releves[]` — un relevé bancaire importé (9.4.0) ; **un objet par fichier importé**, les lignes
 dedans (pas une liste plate de lignes : le comptable pense « le relevé de mars »).
 
-```json
-{ "id": "r_01J9…", "compte": "532", "banque": "BIAT", "du": "2026-03-01", "au": "2026-03-31",
-  "soldeDebut": 12500.000, "soldeFin": 14210.500, "fichier": "releve-mars.csv", "empreinte": "<sha256>",
-  "importeLe": 1789800000000, "par": "skander",
-  "lignes": [
-    { "id": "rl_01J9…", "date": "2026-03-04", "libelle": "VIR CLIENT TEST FAC-2026-031", "montant": 1191.000,
-      "reference": "", "rapprochement": { "niveau": "certain", "ecritureId": "e_01J8ZK…", "ligne": 0, "le": "2026-04-02", "par": "auto" },
-      "ecritureId": null }
-  ] }
-```
+Objet : voir `releves[0]` dans l'exemple complet ci-dessus (`id`, `compte`, `banque`, `du`, `au`,
+`soldeDebut`, `soldeFin`, `fichier`, `empreinte`, `importeLe`, `par`, `lignes[]` avec `id`, `date`,
+`libelle`, `montant`, `reference`, `rapprochement{ niveau, ecritureId, ligne, le, par }`, `ecritureId`).
 
 Invariants : `montant` signé (crédit bancaire > 0, débit < 0 — c'est le seul endroit du livre où un
 montant porte un signe, parce que c'est ainsi que la banque l'écrit) ; `rapprochement.niveau` ∈
@@ -418,14 +457,10 @@ bancaires, virement inconnu → 471) ; `empreinte` empêche d'importer deux fois
 `immobilisations[]` — une fiche de bien côté cabinet (9.7.0), même modèle que côté entreprise
 (`data.assets`, 3.5.0) pour que `compta.js` partage le calcul.
 
-```json
-{ "id": "i_01J9…", "libelle": "Serveur Dell", "compte": "2241", "compteAmort": "2841", "compteDotation": "681",
-  "dateAcquisition": "2026-02-10", "dateMiseEnService": "2026-02-15", "valeur": 4800.000, "tva": 912.000,
-  "methode": "lineaire", "duree": 3, "tauxDegressif": null, "prorata": "jours360",
-  "origine": { "source": "skanfact", "docId": "ach_…", "mois": "2026-02" },
-  "plan": [ { "annee": 2026, "dotation": 1413.333, "cumul": 1413.333, "vnc": 3386.667, "ecritureId": "e_…" } ],
-  "cession": null, "creeLe": 1789800000000, "par": "import" }
-```
+Objet : voir `immobilisations[0]` dans l'exemple complet ci-dessus (`id`, `libelle`, `compte`,
+`compteAmort`, `compteDotation`, `dateAcquisition`, `dateMiseEnService`, `valeur`, `tva`, `methode`,
+`duree`, `tauxDegressif`, `prorata`, `origine{ source, docId, mois }`, `plan[]{ annee, dotation,
+cumul, vnc, ecritureId }`, `cession`, `creeLe`, `par`).
 
 Invariants : `plan` est **recalculé** depuis les champs, jamais saisi (la dernière annuité absorbe
 les arrondis ; `vnc` finit à 0) ; `methode` ∈ `lineaire | degressif` ; `tauxDegressif` **réglable,
@@ -436,21 +471,10 @@ d'inventaire porte `ecritureId`, et l'écriture porte `source: 'inventaire'`.
 `declarations[]` — une déclaration préparée (9.5.0), **un objet par déclaration par période**,
 chaque case tracée jusqu'aux écritures qui la font.
 
-```json
-{ "id": "d_01J9…", "type": "mensuelle", "periode": "2026-03", "preparéeLe": 1789800000000, "par": "skander",
-  "cases": {
-    "tvaCollectee": { "montant": 2280.000, "ecritures": ["e_…", "e_…"] },
-    "tvaDeductible": { "montant": 310.000, "ecritures": ["e_…"] },
-    "creditReporte": { "montant": 0, "ecritures": [] },
-    "netAPayer": { "montant": 1970.000, "ecritures": [] },
-    "retenues": { "montant": 15.000, "ecritures": ["e_…"] },
-    "tfp": { "montant": null, "ecritures": [] }, "foprolos": { "montant": null, "ecritures": [] },
-    "tcl": { "montant": null, "ecritures": [] }, "timbre": { "montant": 6.000, "ecritures": ["e_…"] }
-  },
-  "controles": [ { "id": "4366-report", "ok": true, "detail": "" } ],
-  "deposee": { "le": "2026-04-15", "par": "skander", "reference": "" },
-  "ecritureId": "e_…" }
-```
+Objet : voir `declarations[0]` dans l'exemple complet ci-dessus (`id`, `type`, `periode`,
+`prepareeLe` — sans accent : la v1 écrivait `preparéeLe`, une clé JSON ne porte jamais d'accent —,
+`par`, `cases{ <case>: { montant, ecritures[] } }`, `controles[]{ id, ok, detail }`,
+`deposee{ le, par, reference }`, `ecritureId`).
 
 Invariants : une case dont la règle n'est pas connue vaut **`null`, jamais 0** (règle 36) ; la
 clé de `cases` est une liste **ouverte** (une case de plus n'est pas un changement de format) ;
@@ -2134,26 +2158,278 @@ le point 1 (les sous-vues de l'onglet Écritures), résolu par un `sed` sur `rou
 
 ---
 
-## Partie 15 — Intentions 9.3.0 → 10.0.0 (v1, point 2)
+## Partie 15 — Intentions 9.3.0 → 10.0.0, écran par écran (v1, point 2 ; v1.1 : Décidé / À décider par écran)
 
-Ce ne sont **pas des spécifications** : chaque version se spécifie à son tour, après les réponses du
-comptable qu'elle exige (`PLAN-COMPTABLE.md`). Ce qui est écrit ici est ce qui est **décidé** (ne se
-rediscute pas), ce qui est **ouvert**, et la question qui bloque. Le relecteur de chaque version est
-nommé dans `QUESTIONS.md` § 3.
+Ce ne sont **pas des spécifications** : chaque version se spécifie à son tour, après les réponses
+du comptable qu'elle exige (`PLAN-COMPTABLE.md`, `QUESTIONS.md` § 16). Ce qui rend une intention
+utile, c'est de savoir **écran par écran** ce qui est déjà tranché (et ne se rediscute pas) et ce
+qui reste à décider — avec qui le décide. Les identifiants `SPEC-UI-CAB-0nn` (dizaine = version)
+et `SPEC-UI-ENT-1nn` sont **réservés** ici et se remplissent le jour où la version s'écrit. Une
+version d'entretien n'a pas d'écran : une ligne suffit. Le relecteur de chaque version est nommé
+dans `QUESTIONS.md` § 3.
 
-| Version | Intention (une phrase) | Décidé | Ouvert | Question qui bloque |
-|---|---|---|---|---|
-| **9.3.0** — la saisie | Le comptable saisit au kilomètre dans un **brouillard**, puis valide : une écriture validée ne se modifie plus (contre-passation). | `livre.json` (SPEC-DATA-005) ; numéro pris à la validation ; `odValide` (7 motifs) réutilisé tel quel ; guides de saisie (journal + compte + contrepartie par défaut) ; raccourcis clavier (Entrée = ligne suivante, Tab = équilibre automatique de la dernière ligne). | La lettre du journal par défaut (AC/VT/BQ/CA/OD) ; la saisie « en mode tableur » (une grille) contre « en mode pièce ». | « Quel est ton journal de banque : un par compte, ou un seul ? » |
-| **9.3.1** — entretien | Découper `test/run-tests.js` par domaine ; les codes `ERR-*` posés sur chaque `throw`. | Aucun changement fonctionnel. | — | — |
-| **9.4.0** — la banque | Importer un **relevé** (CSV/OFX, colonnes par nom) et rapprocher **automatiquement** ce qui correspond (montant + date ± 3 j + libellé), le reste à la main. | `releves[]` (SPEC-DATA-005) ; `etatRapprochement` (9.0.0) reste la source du solde ; jamais une écriture créée depuis le relevé sans clic (la banque ne fait pas foi contre la pièce). | Le format OFX (peu de banques tunisiennes l'exportent) ; l'écriture « proposée » depuis une ligne non rapprochée. | « Quelles banques, et quel format d'export chacune donne-t-elle ? » |
-| **9.5.0** — la déclaration mensuelle | Produire la déclaration tunisienne du mois (TVA, retenues, TCL, FODEC…) **depuis la balance**, avec les chiffres que le comptable recopie sur le portail. | `vatChain` (3.1.0) reste le moteur TVA ; `declarations[]` ; « Marquer déposée » est un pense-bête (5.2.0) ; aucun dépôt en ligne. | Le **périmètre exact** (14.3, point 4) ; TCL assiette et taux ; le formulaire de référence. | « Montre-moi ta déclaration d'un client type, ligne par ligne. » |
-| **9.5.1** — entretien | Les taux et bases de 9.5.0 confrontés à la première vraie déclaration. | — | — | — |
-| **9.6.0** — la clôture d'exercice | Clôturer un exercice côté cabinet : écritures d'inventaire, résultat, à-nouveaux, **états SCE** ; le `.skanclose` rendu au client (SPEC-FMT-007) même quand le client n'est pas à jour. | `etatsFinanciers` (9.0.0) comme base ; le cabinet clôture **quand même** (`QUESTIONS.md`) ; un exercice clôturé ne rouvre qu'avec motif (6.0.0). | La liasse simplifiée contre la liasse complète ; les provisions (écritures d'inventaire saisies, pas une liste à part — Journal des versions, point 1). | « Tu clôtures quels exercices en simplifié, lesquels en complet ? » |
-| **9.7.0** — immobilisations et stocks | Dégressif et dérogatoire ; inventaire permanent ou intermittent ; `immobilisations[]` du livre. | `assetSchedule` (3.5.0) reste ; la dernière annuité absorbe l'arrondi ; jamais une fiche créée d'office. | Les coefficients dégressifs tunisiens (À VÉRIFIER, Partie 21). | « Quels biens en dégressif chez tes clients ? » |
-| **9.8.0** — collaborateurs | Plusieurs postes sur un cabinet : verrou par livre (`ERR-CAB-022`), **piste d'audit** (qui, quand, quoi — déjà `audit[]` en 9.2.0), rôles (saisie / validation / lecture). | Un fichier par dossier par exercice, jamais une base partagée ; la révision d'un poste ne s'écrase pas (règle 3.2.0 côté entreprise). | Le partage par dossier réseau contre un service (7.0.0 du plan plateforme, seulement si un cabinet dit oui). | « Combien de collaborateurs, et travaillent-ils sur les mêmes dossiers le même jour ? » |
-| **9.8.1** — entretien | Les mesures du test de charge (SPEC-OUT-006) rejouées à 3 postes. | — | — | — |
-| **9.9.0** — la révision | Le cabinet pose des **questions au client** (`.skanask`, SPEC-FMT-006) affichées sur la pièce dans SkanFact ; le client répond dans le paquet suivant. | Le pont reste le paquet ; jamais une écriture du cabinet chez le client ; une question sans réponse au bout de deux paquets remonte dans « À faire » des deux côtés. | Le format de la réponse (texte, pièce jointe, correction proposée). | « Quelles sont les cinq questions que tu poses le plus souvent ? » |
-| **10.0.0** — la liasse | La liasse fiscale (NCT 01) et un **jeu d'exemple complet** du Cabinet (de vrais paquets ouvrables, tâche #67). | Déduite de la balance comme 9.0.0 ; « pas la liasse » disparaît de l'écran. | Tout : c'est la version qui exige le pilote. | « Ta liasse 2026 d'un client, anonymisée. » |
+Lecture des tableaux : la colonne « Décidé » cite la règle et l'endroit où elle a été prise ; la
+colonne « À décider » nomme **qui** tranche — *comptable* (une question à lui poser, listée dans
+`PLAN-COMPTABLE.md` « Ce qu'il faut demander »), *Skander* (une décision de produit), *mesure* (on
+regarde ou on mesure avant de choisir).
+
+### 9.3.0 — la saisie
+
+*Le comptable saisit au kilomètre dans un **brouillard**, puis valide : une écriture validée ne se
+modifie plus (contre-passation).* Question qui bloque : « Quel est ton journal de banque : un par
+compte, ou un seul ? » — et **regarder le comptable saisir** dans son logiciel actuel avant d'écrire
+une touche.
+
+**SPEC-UI-CAB-010 — la grille de saisie**
+
+| Décidé | À décider |
+|---|---|
+| Tout au clavier : journal, date, pièce, puis lignes compte / tiers / libellé / débit / crédit ; la souris n'est jamais obligatoire (`QUESTIONS.md` § 16) | Les touches exactes (recopier la ligne du dessus, dupliquer, solder) : *mesure* — reprendre celles de son logiciel actuel plutôt qu'en imposer |
+| Recherche de compte **par numéro ou par nom pendant la frappe** (`combo`, 2.3.0), sur le `plan[]` du livre | Mode « grille » (une ligne de tableau par ligne d'écriture) contre mode « pièce » (un formulaire par écriture) : *mesure* |
+| Tab sur la dernière ligne **solde automatiquement** ; Entrée = ligne suivante ; valider depuis le dernier champ enchaîne sur la pièce suivante | Le journal proposé à l'ouverture (le dernier utilisé ? celui du mois ?) : *Skander* |
+| Contrôle d'équilibre **en direct**, par `compta.ecritureValide` (l'`odValide` de 8.9.0 généralisé, sept motifs) ; une écriture déséquilibrée n'entre pas | La saisie de la date : jour seul dans le mois courant, ou date complète : *mesure* |
+| L'écriture entre en `statut: 'brouillard'`, `numero: null` (SPEC-DATA-005) ; un seul auteur en 9.3.0 : le poste (`auteur`) | — |
+| Pièce jointe glissée sur l'écriture → `pieceJointe`, rangée avec le dossier (jamais un chemin absolu) | — |
+
+**SPEC-UI-CAB-011 — brouillard, validation, contre-passation**
+
+| Décidé | À décider |
+|---|---|
+| « Valider » attribue `numero` (continu, par ordre de validation, jamais par date — invariant 3 de SPEC-DATA-005) ; **irréversible** ; `audit[]` reçoit qui / quand | Validation pièce par pièce, ou **par journal et par mois** en un geste : *comptable* (son habitude) |
+| Une validée n'a ni « Modifier » ni « Supprimer » (SPEC-UI-CAB-005) ; seulement « Contre-passer » (miroir, `contrepasseDe`) et « Extourner » (miroir au 1er du mois suivant, `extourneDe`) | La date de la contre-passation : le jour du geste, ou la date de l'écriture d'origine : *comptable* |
+| Un brouillard se modifie, se supprime, se cherche ; la pastille « brouillard » et l'italique le distinguent partout | Qui a le droit de valider : reporté à 9.8.0 (rôles) — en 9.3.0, le poste |
+| Un mois **clôturé côté client** (paquet définitif) n'empêche pas une écriture du cabinet : ce sont deux clôtures (`DIRECTION.md`) | — |
+
+**SPEC-UI-CAB-012 — guides d'écritures et abonnements**
+
+| Décidé | À décider |
+|---|---|
+| Un **guide** = un journal + des lignes avec comptes et contrepartie, montants vides ou fixes ; il **préremplit**, il n'écrit pas | Le jeu de guides livré (loyer, salaires, achat avec TVA, STEG, honoraires…) : *comptable* |
+| Un **abonnement** = un guide + une périodicité (mensuelle) ; il génère **en brouillard**, jamais une validée d'office | Les guides sont-ils **par cabinet** (partagés entre dossiers) avec surcharge par dossier, ou par dossier seulement : *Skander* — proposé : par cabinet, surcharge par dossier |
+| **Ni l'un ni l'autre dans `livre.json`** (format figé) : les guides dans `cabinet-data.json` au niveau du cabinet, les abonnements sur le dossier (`dossiers[].abonnements`, fac.) | — |
+
+**SPEC-UI-CAB-013 — recherche dans le journal, table de correspondance des comptes**
+
+| Décidé | À décider |
+|---|---|
+| Recherche sur pièce, tiers, libellé et montant, à travers tous les journaux de l'exercice ; résultat = une liste d'écritures dont chaque ligne s'ouvre | — |
+| La **correspondance des comptes** (compte SkanFact → compte du cabinet) s'applique **à l'import et à l'export**, jamais en réécrivant une validée (SPEC-DATA-005, invariant 4) | Correspondance par cabinet, par dossier, ou les deux (cabinet + exceptions par dossier) : *Skander* — proposé : les deux |
+| Un compte SkanFact sans correspondance entre au plan avec `source: 'import'` et « Compte hors plan » (invariant 2), jamais un refus silencieux | — |
+
+### 9.3.x / P 0.3 — la licence du Cabinet
+
+*Le Cabinet devient payant au-delà de trois dossiers hors SkanFact (`DIRECTION.md`).* Question qui
+bloque : l'avis de l'Ordre (avant de vendre, pas avant de construire) et les prix.
+
+**SPEC-UI-CAB-015 — Réglages → Licence du cabinet**
+
+| Décidé | À décider |
+|---|---|
+| Une clé de type `cabinet`, sujet = l'**empreinte** du cabinet, quota `dossiersHors: N`, vérifiée hors ligne par `licence.js` et `build/licences-publiques.json` (qui entrent dans la construction du Cabinet, `build/cabinet.config.js`) | Le prix par dossier et les paliers : *Skander* (page Tarifs du site) |
+| Ce qui est **compté** : les dossiers hors SkanFact actifs ; les trois premiers gratuits ; un dossier archivé ou sans écriture validée depuis douze mois **ne compte pas** ; la grâce de **douze mois** ne suit qu'une licence client **payée** (`QUESTIONS.md` § 3) | Le délai avant qu'un dossier désarchivé recompte (immédiat ? au mois suivant ?) : *Skander* |
+| La porte unique est sur la **validation** (`licenceBlock` jumeau) : lire, importer, exporter, relancer restent libres — jamais de données en otage | — |
+| Le bandeau à trois tons (`core.pastilleLicence`, 8.0.1), « À faire », « Demander une licence » : les mêmes mécanismes, pas des copies | — |
+| Ce qui remonte au serveur : l'empreinte, le nombre de dossiers comptés, la version — jamais un nom de client (test « ce qui remonte », étendu) | — |
+
+**SPEC-UI-CON-007 — la console, offre Cabinet**
+
+| Décidé | À décider |
+|---|---|
+| Table `cabinets`, lien cabinet ↔ clients parrainés (`PLAN-PLATEFORME.md` § 15 bis) ; émettre, marquer payée, renouveler, **monter le quota au prorata** (`prorataOffre`, 8.2.0), révoquer | La vue « les dossiers de ce cabinet » : déduite des licences clients parrainées, ou déclarée par le cabinet : *Skander* |
+| Postes illimités : on vend des dossiers (`DIRECTION.md`, tranché) | — |
+| L'app entreprise (module Éditeur) tire et facture une vente de type cabinet comme les autres (8.7.0) | — |
+
+### 9.3.1 — entretien
+
+Pas d'écran. Electron du semestre, les 93 déclarations CSS physiques converties en logiques, le
+premier découpage de `app.js` par route, `run-tests.js` par domaine, les codes `ERR-*` posés sur
+chaque `throw`. **Aucune fonction nouvelle, par règle.** Tous les e2e relancés, sans exception.
+
+### 9.4.0 — la banque
+
+*Importer un **relevé** et rapprocher automatiquement ce qui correspond ; le reste à la main.*
+Question qui bloque : « Quelles banques, et quel format d'export chacune donne-t-elle ? » (un
+importeur par format, chacun testé sur un fichier réel anonymisé).
+
+**SPEC-UI-CAB-020 — importer un relevé**
+
+| Décidé | À décider |
+|---|---|
+| Colonnes associées **par nom, jamais par position** (règle 6.8.0) ; un objet `releves[]` **par fichier** (SPEC-DATA-005) | OFX et MT940 : seulement si une banque des clients les exporte : *comptable* |
+| Refus si `soldeDebut + Σ montant ≠ soldeFin` (`ERR-CAB-040`, l'écart nommé) ; `empreinte` interdit d'importer deux fois le même fichier | L'assistant « CSV inconnu » (colonne → champ, mémorisé par banque) : *Skander* — proposé : oui, sinon chaque nouvelle banque est une version |
+| Le compte bancaire du relevé est choisi **avant** l'import (532 ou un sous-compte), jamais deviné | — |
+
+**SPEC-UI-CAB-021 — le rapprochement**
+
+| Décidé | À décider |
+|---|---|
+| Quatre niveaux : `certain`, `probable`, `a-confirmer`, `aucun` ; **seul `certain` se pose d'office** et reste défaisable ; une ambiguïté montre tous les candidats et n'est jamais `certain` par `auto` (`QUESTIONS.md` § 16, décidé) | Le « ± n jours » (3 ?) : réglable par dossier ; la valeur par défaut : *comptable* |
+| Critères : montant, date ± n jours, libellé ; `etatRapprochement` (9.0.0) reste la source du solde ; **jamais une écriture créée depuis le relevé sans clic** — la banque ne fait pas foi contre la pièce | L'écriture **proposée** depuis une ligne non rapprochée (guide selon le libellé, « STEG » → 606) : la table libellé → compte est par cabinet ; son contenu initial : *comptable* |
+| Rapprochement (532 contre la banque) et lettrage (tiers contre règlement) sont **deux écrans, deux modèles, deux tests** — jamais confondus | Les lignes non rapprochées en fin de mois : un compte d'attente 471 par ligne, ou une liste « suspens » sans écriture : *comptable* |
+
+**SPEC-UI-CAB-022 — lettrage automatique, échéancier, balance âgée**
+
+| Décidé | À décider |
+|---|---|
+| Lettrage auto sur montant + référence, `par: 'auto'` ; délettrage à la main ; « reste ouvert = solde du 411 » est le contrôle (8.9.0) | Le lettrage **partiel** (une facture, deux règlements) : une lettre pour l'ensemble, ou lettre seulement à somme nulle : *comptable* |
+| La balance âgée reprend `AGING_BUCKETS` (2.5.0) — une seule définition des tranches | Les tranches d'âge que le cabinet utilise (30/60/90 ? 90/180/360 ?) : *comptable* |
+| L'échéancier lit les `lignes[]` de tiers non lettrées, jamais une liste à part | — |
+
+### 9.5.0 — la déclaration mensuelle
+
+*Produire la déclaration tunisienne du mois **depuis la balance**, avec les chiffres que le
+comptable recopie sur le portail.* Question qui bloque : « Montre-moi ta déclaration d'un client
+type, ligne par ligne. »
+
+**SPEC-UI-CAB-030 — la déclaration du mois**
+
+| Décidé | À décider |
+|---|---|
+| Déduite des écritures, `vatChain` (3.1.0) reste le moteur TVA ; un objet `declarations[]` par période ; **chaque case tracée** aux écritures qui la font (SPEC-DATA-005) | Le **périmètre exact des cases** (le formulaire officiel, ligne par ligne) : *comptable* (14.3, point 4) |
+| Une case dont la règle n'est pas connue vaut **`null`, jamais 0** (règle 36) ; les clés de `cases` sont une liste ouverte | TCL : assiette et taux : *comptable* ; acomptes provisionnels : calcul et cases : *comptable* |
+| L'écriture de déclaration au dernier jour du mois (4367 / 4366 → 4365), les chiffres de `vatChain` (8.9.0) | Ce que le portail accepte (un fichier ? des chiffres à recopier ?) : *comptable* — l'application **ne dépose jamais** (5.2.0), décidé |
+| `deposee` est un pense-bête, dé-pointable (droit à l'erreur, 7.12.0) | — |
+
+**SPEC-UI-CAB-031 — le calendrier fiscal du dossier et l'état du mois**
+
+| Décidé | À décider |
+|---|---|
+| L'état d'un mois côté cabinet : **reçu → saisi → déclaré → payé** ; « déclaré » et « payé » pointés et dé-pointables | Les régimes à distinguer (réel, forfaitaire, autres) et les échéances de chacun : *comptable* |
+| Aucune date ne fait foi : échéances réglables, « À VÉRIFIER » sur la page, un réglage aberrant retombe sur l'usage (6.8.0) | « Payé » génère-t-il l'écriture de règlement (4365 → 532), ou vient-elle de la banque (9.4.0) ? **Un seul des deux**, jamais les deux (règle 5.0.0, « compté deux fois ») : *Skander* — proposé : la banque quand le dossier a un relevé, l'écriture sinon |
+| « À faire » ne remonte une échéance que si des pièces manquent (6.8.0) | — |
+
+### 9.5.1 — entretien
+
+Pas d'écran. Les taux et bases de 9.5.0 confrontés à la première vraie déclaration ; `core.js` →
+`compta.js` fini ; retours de bêta hors nouveautés.
+
+### 9.6.0 — la clôture d'exercice
+
+*Clôturer un exercice côté cabinet : inventaire, résultat, à-nouveaux, états SCE, et le
+`.skanclose` rendu au client, même quand le client n'est pas à jour.* Question qui bloque : « Tu
+clôtures quels exercices en simplifié, lesquels en complet ? »
+
+**SPEC-UI-CAB-040 — les écritures d'inventaire guidées**
+
+| Décidé | À décider |
+|---|---|
+| Dotations (calculées depuis `immobilisations[].plan`), provisions, CCA / PCA, FNP / FAE, régularisations : toutes des **écritures ordinaires** `source: 'inventaire'`, datées du dernier jour de l'exercice — **pas une liste à part** (Journal v1, point 1) | La liste des guides d'inventaire livrés et leurs comptes (provision → 15x / 68x par nature) : *comptable* |
+| Extourne **automatique** au 1er jour de l'exercice suivant pour ce qui s'extourne (CCA, PCA, FNP, FAE), `extourneDe` posé | — |
+| Une dotation passée en écriture porte `ecritureId` sur l'année du `plan[]` (SPEC-DATA-005) | — |
+
+**SPEC-UI-CAB-041 — contrôles et clôture définitive**
+
+| Décidé | À décider |
+|---|---|
+| Les contrôles **ne bloquent jamais** (règle 6.0.0) : comptes d'attente (471) non soldés, brouillard restant, TVA non déclarée, balance des tiers | Un brouillard restant à la clôture : validé d'office, listé, ou reporté à l'exercice suivant : *comptable* |
+| La clôture est **irréversible** côté livre (`exercice.clos`, `closLe`, `closPar`) ; une réouverture exige un motif (`reouvertures[]`) | L'ordre entre clôture définitive et états signés : *comptable* (proposé : états d'abord, clôture ensuite) |
+| Les à-nouveaux = **une** pièce AN de l'exercice suivant, calculée sur les écritures réelles seules (règle 9.0.0) ; l'exercice suivant s'ouvre pendant que le précédent se termine | — |
+
+**SPEC-UI-CAB-042 — états financiers SCE et impression**
+
+| Décidé | À décider |
+|---|---|
+| Déduits de la balance, `etatsFinanciers` (9.0.0) comme base ; **actif = passif**, résultat identique des deux côtés, comparatif N / N-1 ; PDF par `paginate` (7.31.0) | La présentation exacte (NCT 01), les notes, les SIG et ratios retenus : *comptable* |
+| — | Simplifié contre complet, **par dossier** : *comptable* |
+
+**SPEC-UI-CAB-043 (Cabinet) et SPEC-UI-ENT-100 (entreprise) — le `.skanclose`** (SPEC-FMT-007)
+
+| Décidé | À décider |
+|---|---|
+| Produit **à la clôture**, chiffré pour le client (sa clé de 9.2.0) ; porte les à-nouveaux officiels, la liste des écritures d'inventaire, la date de clôture, **et un PDF** lisible par n'importe qui (`QUESTIONS.md` § 16, décidé) | Le format exact (SPEC-FMT-007, réservé) : *Skander*, en 9.6.0 |
+| **Le cabinet clôture quand même** si le client n'est pas à jour : le fichier attend avec le dossier et repart avec la relance suivante tant que le manifeste du paquet suivant ne porte pas la date de clôture | Côté entreprise, si le client a déjà saisi des écritures dans l'exercice clos (module `compta.livres`) : refus, ou archivage avec le motif : *Skander* — proposé : archivage, jamais une perte silencieuse |
+| Côté entreprise : l'import pose les à-nouveaux, **verrouille l'exercice** (comme une clôture mensuelle, sur l'année), affiche les écritures du comptable **en lecture** ; une version trop ancienne dit « mets à jour SkanFact » ; sans import, seule la clôture de l'exercice **suivant** est bloquée | — |
+| Preuve : le bilan des deux applications identique **au millime** après clôture et import — le jumeau du test de parité | — |
+
+### 9.7.0 — immobilisations et stocks
+
+*Dégressif et dérogatoire ; inventaire de fin d'exercice ; `immobilisations[]` du livre.* Question
+qui bloque : « Quels biens en dégressif chez tes clients ? »
+
+**SPEC-UI-CAB-050 — les fiches d'immobilisations du cabinet**
+
+| Décidé | À décider |
+|---|---|
+| `immobilisations[]` (SPEC-DATA-005), **même modèle** que `data.assets` (3.5.0) pour que `compta.js` partage le calcul (parité testée sur les biens venus d'un paquet) | Les coefficients dégressifs tunisiens (Partie 21, À VÉRIFIER) : *comptable* |
+| Linéaire et dégressif ; `tauxDegressif` **réglable, jamais un coefficient en dur** ; la dernière annuité absorbe l'arrondi ; cession et mise au rebut | Les subventions d'investissement (compte, reprise au résultat) : *comptable* |
+| Ce qui vient d'un paquet entre dans les mêmes fiches **sans ressaisie** ; **jamais une fiche créée d'office** (3.5.0 : la durée est une décision) | L'amortissement dérogatoire (deux plans sur une fiche) : *comptable* — s'il n'est pas demandé, il n'existe pas |
+
+**SPEC-UI-CAB-051 — l'inventaire de stock de fin d'exercice**
+
+| Décidé | À décider |
+|---|---|
+| Saisi (quantité × coût) au dernier jour ; la **variation** devient une écriture d'inventaire (603 / 37) ; inventaire intermittent par défaut | Permanent pour les dossiers SkanFact (le paquet porterait les mouvements de stock de 4.0.0) : *Skander* — après un cabinet qui le demande, pas avant |
+| Coût moyen pondéré, comme `runningStock` (4.0.0) — une seule méthode dans le moteur | FIFO si un dossier l'exige : *comptable* — sinon non |
+
+### 9.8.0 — collaborateurs
+
+*Plusieurs postes sur un cabinet : verrou par livre, piste d'audit, rôles.* Question qui bloque :
+« Combien de collaborateurs, et travaillent-ils sur les mêmes dossiers le même jour ? »
+
+**SPEC-UI-CAB-060 — collaborateurs et droits**
+
+| Décidé | À décider |
+|---|---|
+| Identité **locale** (pas de compte serveur) ; droits **par dossier** : saisie, validation, supervision ; `audit[].qui` porte l'identité ; postes illimités (on vend des dossiers) | Un mot de passe par collaborateur, ou le mot de passe du cabinet + une identité déclarée (la confiance interne d'un cabinet) : *Skander*, après la question au comptable |
+| — | Qui crée et retire un collaborateur (le seul rôle « supervision » ?) : *comptable* |
+
+**SPEC-UI-CAB-061 — deux postes sur un dossier**
+
+| Décidé | À décider |
+|---|---|
+| Verrou `livre-<AAAA>.lock` (§ 5.2, `ERR-CAB-022`) ; révision et fusion comme 3.2.0 ; **une validée ne se fusionne jamais** — elle existe ou pas ; un brouillard de chaque poste est conservé ; un conflit est expliqué, jamais silencieux | Partage par dossier réseau (fichier) contre un service de transport (7.0.0 du plan plateforme) : **seulement si un cabinet le demande** — décidé ; lequel il demandera : *mesure* |
+| Un fichier par dossier par exercice, jamais une base partagée (`PLAN-COMPTABLE.md`, architecture) | L'expiration d'un verrou orphelin (poste éteint sans fermer) : *Skander* — proposé : à l'ouverture, « verrou de <poste> depuis <durée> — le reprendre ? » |
+
+**SPEC-UI-CAB-062 — tableau de production et « À faire » par collaborateur**
+
+| Décidé | À décider |
+|---|---|
+| Par dossier × mois : reçu → saisi → révisé → déclaré, **qui** et **depuis quand** ; « À faire » filtré par collaborateur ; les deux lus dans `audit[]` et les états de mois, jamais dans une liste tenue à la main | Les étapes exactes (celles du cabinet, pas les nôtres) et le seuil d'un « retard interne » : *comptable* |
+
+### 9.8.1 — entretien
+
+Pas d'écran. Les mesures du test de charge (SPEC-OUT-006) rejouées à trois postes ; `CLAUDE.md`
+relu en entier pour retirer ce qui n'est plus vrai.
+
+### 9.9.0 — la révision
+
+*Le cabinet pose des **questions au client**, affichées sur la pièce dans SkanFact ; le client
+répond dans le paquet suivant.* Question qui bloque : « Quelles sont les cinq questions que tu
+poses le plus souvent ? »
+
+**SPEC-UI-CAB-070 — le dossier de révision**
+
+| Décidé | À décider |
+|---|---|
+| Par exercice : feuilles maîtresses **par cycle** (trésorerie, ventes-clients, achats-fournisseurs, immobilisations, personnel, fiscal, capitaux), compte revu et signé (qui, quand), points en suspens, notes de revue, questionnaire de fin d'exercice | Les cycles et la méthode de révision du comptable (les siens, pas les nôtres) ; le questionnaire type : *comptable* |
+| Rangé dans `cabinet-data.json` (dossier), **pas dans le livre** — c'est la relation, pas la comptabilité (SPEC-DATA-005) | — |
+
+**SPEC-UI-CAB-071 (Cabinet) et SPEC-UI-ENT-101 (entreprise) — les questions au client** (SPEC-FMT-006)
+
+| Décidé | À décider |
+|---|---|
+| `.skanask` chiffré avec la clé du client (9.2.0 : la même que la signature) ; une question **naît depuis la ligne** (pièce absente, 471 non soldé, facture ouverte, mois provisoire) ; affichée **sur la pièce** dans SkanFact ; la réponse revient dans le paquet suivant | Le format de la réponse : texte seul, pièce jointe, ou **correction proposée** (le client modifie sa pièce et le mois révisé repart) : *Skander*, après les cinq questions du comptable |
+| Sans réponse au bout de deux paquets → « À faire » **des deux côtés** ; le pont reste le paquet ; **jamais une écriture du cabinet chez le client** | Les modèles de questions livrés : *comptable* (ses cinq plus fréquentes) |
+
+### 10.0.0 — la liasse
+
+*La liasse fiscale et un **jeu d'exemple complet** du Cabinet.* Question qui bloque : « Ta liasse
+2026 d'un client, anonymisée. » — c'est la version qui **exige le pilote**.
+
+**SPEC-UI-CAB-080 — liasse et déclarations annuelles**
+
+| Décidé | À décider |
+|---|---|
+| Déduite de la balance comme 9.0.0 ; « pas la liasse NCT 01 » disparaît de l'écran ; IS ou IRPP selon le dossier ; déclaration d'employeur sur le moteur de 5.2.0 (`employerAnnual`) ; états signés en PDF | **Tout le reste** : les tableaux de l'année, ce que le portail accepte : *comptable* — rien ne s'écrit avant la liasse réelle |
+
+**SPEC-UI-CAB-081 — le jeu d'exemple complet**
+
+| Décidé | À décider |
+|---|---|
+| De **vrais paquets** `.skanpack` ouvrables (tâche #67), des dossiers d'exemple dont un mois manquant et un client hors SkanFact ; **tout est rempli au premier lancement** ; l'exemple s'efface au premier vrai paquet (Cabinet 1.0.0) | L'exemple, désormais fait de vrais paquets, entre-t-il dans l'export d'écritures (la règle 6.8.0 l'excluait parce qu'il n'avait pas de fichiers) : *Skander* — proposé : oui, avec le bandeau « exemple » sur le fichier |
+
+Hors application, même version : page Tarifs complète, téléchargement du Cabinet, conditions de
+vente, manuel de tenue dans l'aide — `PLAN-DEVELOPPEMENT.md`, tâches non-code.
 
 ---
 
@@ -2368,62 +2644,61 @@ Comportement **attendu** ; Livré = déjà tenu par le code ou un test cité, Ci
 
 ---
 
-## Partie 20 — Dix runbooks (v1, point 11)
+## Partie 20 — Scénarios de reprise (v1, point 11 ; v1.1 : les runbooks d'exploitation sont partis)
 
-Chacun : **déclencheur → étapes → vérification → ce qu'on ne fait jamais**. Les commandes sont
-celles du dépôt ; Skander ne tape rien, c'est Claude qui exécute, sauf mention « sur le Mac de
-Skander ».
+**Ce qu'un cahier des charges peut porter, et ce qu'il ne peut pas.** Un runbook dit ce que
+l'*opérateur* fait ; un cahier dit ce que le *logiciel* doit faire. Des dix runbooks de la v1, six
+étaient de l'exploitation pure et vivaient déjà ailleurs — les garder ici faisait une troisième
+copie, et une table en double diverge toujours. Ils ne sont pas perdus :
 
-1. **Publier une version stable.** Déclencheur : une amélioration livrée. Étapes : bump
-   `package.json` + entrée `CHANGELOG.md` datée → `npm test` → commit → push `main` → Actions →
-   Release → Run workflow sur `main`. Vérification : run vert **et** la release porte `.dmg`, `.zip`,
-   `.exe`, `latest.yml`, `latest-mac.yml`, `SkanFact-Cabinet-*` et `cabinet*.yml`. Jamais : six
-   versions dans la matinée (quota, 6.7.2) ; un tag poussé depuis une session Claude (bloqué par le
-   proxy : `workflow_dispatch`).
-2. **Publier une bêta.** Branche `beta`, version `X.Y.0-beta.n` ; même workflow, la release sort
-   « préversion », `beta.yml` seulement, **pas** d'app cabinet (7.25.0). Vérification : `/releases/latest`
-   pointe toujours sur la stable. Jamais : une bêta du cabinet (`cabinet-beta` n'existe pas avant
-   SPEC-OUT-001).
-3. **Mettre la plateforme en production.** Déclencheur : la première vente. Étapes (sur le Mac de
-   Skander) : Paramètres → Éditeur → « Créer la clé de réponse » → la **privée** (`BEGIN PRIVATE KEY`)
-   dans le réglage Cloudflare `REPONSE_PRIVATE_KEY` **et nulle part ailleurs** ; la **publique** collée
-   dans la conversation → `build/licences-publiques.json` → `reponse` ; `SRV_PRIVATE_KEY` (déjà) ;
-   `LICENCE_PUBLIC_KEYS` = le contenu du fichier ; `ADMIN_SECRET` ≥ `ADMIN_MIN` ; `RESEND_API_KEY`,
-   `MAIL_FROM` ; coller `schema-a-coller.sql` dans D1 ; `GET /v1/admin/etat` → `emission.ok`,
-   `mail.ok`, `reponse: true`. Puis publier la version qui embarque `reponse`. Vérification :
-   `e2e:plateforme` contre l'adresse réelle (variable d'environnement). Jamais : embarquer une
-   publique dont la privée a été **vue** (la clé du 15/09/2026 est brûlée) ; poser `LICENCE_REQUISE=1`
-   avant que tous les clients aient une clé.
-4. **Retirer `srv-1` (compromission).** `retiree: true` sur l'entrée, **jamais** l'effacer ; créer
-   `srv-2` (même geste que 8.5.0) ; `SRV_PRIVATE_KEY` remplacée ; **réémettre** chaque licence signée
-   par `srv-1` (`GET /v1/admin/licences` → `kid = 'srv-1'` → renouveler) et renvoyer les clés ;
-   publier. Vérification : une clé `srv-1` refusée par `verifyKey` de la nouvelle version, une clé
-   `srv-2` acceptée, une clé sans `kid` toujours acceptée (`master`). Jamais : toucher à `master`.
-5. **Un client a perdu sa clé de licence.** Console → Licences → la sienne → « Voir la clé »
-   (refabriquée depuis `charge`) ou « Renvoyer par mail ». Si la licence est **maître** (émise dans
-   SkanFact avant la console) : `cleRaison` le dit → la clé est dans `data.licences` du poste de
-   Skander (page Licences → copier). Jamais : en émettre une seconde (deux actives pour un client).
-6. **Un cabinet a perdu son poste.** Voir 16.5. Avec base ou copie externe : `cab:pickRecover` +
-   `cab:adopt` ; avec la seule clé de secours : cabinet neuf + `cab:importRecovery`. Vérification :
-   l'empreinte affichée est celle dictée aux clients. Jamais : lui créer une clé neuve (tous ses
-   clients seraient à réappairer).
-7. **Un client change de clé de signature (9.2.0).** Ses paquets tombent en `ERR-CAB-030` → appeler
-   le client → lui faire lire l'empreinte de `cle-client.json` (Paramètres → Cabinet) → « Accepter la
-   nouvelle clé » avec cette empreinte → `audit` « changement de clé ». Jamais : automatique.
-8. **Repasser le dépôt en privé.** Une ligne : `private: true` dans `src/depot.js` ; vérifier que le
-   `GITHUB_TOKEN` du worker a **Contents: Read-only** sur le dépôt (`worker/README.md`) ; publier.
-   Vérification : `npm run e2e:depot` ; « Vérifier les mises à jour » depuis une installation. Jamais :
-   redéclarer le drapeau ailleurs (ils ont divergé en 7.26.0).
-9. **Restaurer une sauvegarde de l'entreprise.** Paramètres → Données et sécurité → Sauvegardes →
-   choisir la date → l'écran dit **ce qu'on va perdre** (pièces et clients de la sauvegarde contre
-   ceux d'aujourd'hui) → l'état actuel est mis de côté (`avant-restauration`) → restaurer.
-   Vérification : `nextNumber` ne produit pas de doublon (max des pièces). Jamais : « Importer et
-   choisis un fichier du dossier caché » (le chemin de la 7.3.0, disparu).
-10. **Quota GitHub Actions épuisé (dépôt privé) ou CI en panne.** Symptôme : les jobs meurent en
-    cinq secondes, journaux vides. Sur le Mac de Skander : `Installer SkanFact.command` construit les
-    deux applications avec le relais, gratuitement ; sur Windows, `Installer SkanFact (Windows).bat`
-    (fins de ligne CRLF, `construction.log`). Vérification : la version dans « À propos » ; l'app
-    propose bien la mise à jour suivante. Jamais : payer le quota pour rattraper un mauvais rythme.
+| Runbook de la v1 | Où il vit |
+|---|---|
+| 1. Publier une version stable | `CLAUDE.md` « Publier une version » ; `QUESTIONS.md` § 18 « Que faire si… » |
+| 2. Publier une bêta | `CLAUDE.md` § 7.25.0 |
+| 3. Mettre la plateforme en production | **`PLAN-PLATEFORME.md` § 18** (déplacé tel quel en v1.1), avec `plateforme/README.md` pour chaque réglage |
+| 4. Retirer `srv-1` (compromission) | **`PLAN-PLATEFORME.md` § 18** (déplacé tel quel en v1.1) |
+| 8. Repasser le dépôt en privé | `CLAUDE.md` § 7.26.0 ; `worker/README.md` ; `QUESTIONS.md` § 18 |
+| 10. Quota GitHub Actions épuisé, CI en panne | `CLAUDE.md` § 7.21.1 → 7.21.3 et 6.7.2 |
+
+Les quatre qui restent sont des **scénarios** : une situation qui arrive à un utilisateur, et ce que
+l'application **doit offrir** pour qu'il s'en sorte — avec les identifiants qui le spécifient et le
+test qui le prouve. C'est ça, du cahier des charges.
+
+**SCN-001 — Un client a perdu sa clé de licence** (Livré)
+
+| | |
+|---|---|
+| Déclencheur | un client écrit « je n'ai plus ma clé » |
+| Ce que l'application offre | Console → Licences → la sienne → « Voir la clé » (refabriquée depuis `charge`, SPEC-API-005 : Ed25519 est déterministe) ou « Renvoyer par mail » (`envoyer` ; un 502 rend quand même la clé) ; si la licence est **maître** (émise dans SkanFact avant la console), `cleRaison` le dit et la clé est dans `data.licences` du poste de Skander (page Licences → copier) |
+| Ce qu'elle ne fait jamais | en émettre une seconde (deux actives pour un client, « À faire » en réclamerait le paiement) |
+| Preuve | `e2e:console` (voir la clé, renvoyer), `e2e:pont` (licence maître : menu sans « Renouveler ») |
+
+**SCN-002 — Un cabinet a perdu son poste** (Livré)
+
+| | |
+|---|---|
+| Déclencheur | ordinateur volé, disque mort, poste remplacé |
+| Ce que l'application offre | deux portes, **selon ce qu'il lui reste** (§ 16.5) : avec la base ou une copie externe → `cab:pickRecover` + `cab:adopt` (la clé y est déjà) ; avec la seule clé de secours → cabinet neuf + `cab:importRecovery` (SPEC-FMT-003) ; dans les deux cas **la même empreinte** s'affiche à l'arrivée — c'est la seule vérification qui compte ; les chemins enregistrés sont recollés sur le poste (6.8.1) |
+| Ce qu'elle ne fait jamais | créer une clé neuve « pour repartir » (tous ses clients seraient à réappairer) ; proposer un assistant de bienvenue quand des sauvegardes existent (6.8.0) |
+| Preuve | `e2e:demenagement`, `e2e:perte` ; TEST-9.2.0-021 (les livres reviennent aussi) |
+
+**SCN-003 — Un client change de clé de signature** (Cible 9.2.0)
+
+| | |
+|---|---|
+| Déclencheur | le client a changé d'ordinateur ou réinstallé : ses paquets arrivent signés par une autre clé |
+| Ce que l'application offre | refus `ERR-CAB-030` qui nomme le client et les deux empreintes ; bouton « Accepter la nouvelle clé… » qui demande l'empreinte **lue de vive voix** (celle de `cle-client.json`, Paramètres → Cabinet côté client) et la compare ; `audit` « changement de clé » (§ 5.3, SPEC-UI-CAB-006) |
+| Ce qu'elle ne fait jamais | accepter la clé automatiquement ; accepter un paquet **non signé** après un paquet signé (`ERR-CAB-031`, confiance au premier usage) |
+| Preuve | TEST-9.2.0-014, TEST-9.2.0-019, TEST-SEC-004 |
+
+**SCN-004 — Restaurer une sauvegarde de l'entreprise** (Livré)
+
+| | |
+|---|---|
+| Déclencheur | une saisie massive à défaire, un fichier abîmé, un « Tout effacer » regretté |
+| Ce que l'application offre | Paramètres → Données et sécurité → Sauvegardes → choisir la date → `backups:peek` dit **ce qu'on va perdre** (pièces et clients de la sauvegarde contre ceux d'aujourd'hui) → l'état actuel est mis de côté (`avant-restauration`) → `backups:restore`, qui refuse un conflit (« Le fichier a changé entre-temps ») ; après restauration, `nextNumber` (SPEC-FUNC-006) prend le max des pièces : **aucun doublon** |
+| Ce qu'elle ne fait jamais | le chemin « Importer et choisis un fichier du dossier caché » (disparu en 7.3.0) ; purger les filets par ordre alphabétique (7.21.x : `avant-*` a sa propre réserve) |
+| Preuve | `e2e:exemple` (la restauration), tests `storage` de `npm test` |
 
 ---
 
@@ -2458,8 +2733,9 @@ Skander ».
   écrirait divergerait de la feuille au premier ajustement.
 - **Le texte des bulles et des articles d'aide** : `guide.js` / `cabguide.js` en sont la source, et
   un test exige que chaque clé posée existe. Ici, seulement l'obligation d'en avoir.
-- **Les versions 9.3.0 → 10.0.0 au-delà de leur intention** (Partie 15) : chacune se spécifie après
-  les réponses du comptable ; une spécification écrite avant serait une spéculation numérotée.
+- **Les versions 9.3.0 → 10.0.0 au-delà de leur intention** (Partie 15, écran par écran : ce qui
+  est décidé et ce qui reste à décider) : chacune se spécifie après les réponses du comptable ; une
+  spécification écrite avant serait une spéculation numérotée.
 - **La table `cabinets` de la plateforme (P 0.3)** et la licence du Cabinet par empreinte : décidées
   dans `DIRECTION.md` § 5, à spécifier avec la 9.3.x.
 - **L'ordre des entrées de menu, des onglets, des colonnes** : décidé écran par écran, mesuré par
@@ -2563,3 +2839,44 @@ tests, 5 migrations.
 - Le module `compta` **existe déjà** (`MODULES`, `toujours: true`) : une spécification qui en créait
   un second — c'était la mienne, en cours d'écriture de la v0 — aurait dédoublé les onglets ; d'où
   le sous-module `compta.livres` sur les onglets.
+
+### v1.1 — 15/09/2026 (trois précisions de Skander sur la v1, lu sur `790633b` ; aucun fichier de code n'a changé)
+
+**Précision 1 (point 1) — d'accord.** La v1 avait spécifié les trois listes chacune de son côté,
+avec trois JSON séparés, pendant que l'exemple complet de `livre.json` les montrait **vides** et que
+la ligne de la table disait encore « hors de ce document » (une phrase de la v0 restée en place :
+la v1 se contredisait à trois paragraphes d'écart). La forme n'était donc pas figée, parce qu'elle
+n'était pas visible en un seul endroit. Corrigé : un seul exemple complet avec un objet de chaque
+liste **à sa place**, un paragraphe qui dit la hiérarchie en une phrase (à la racine du livre,
+plates entre elles, chacune imbrique ses enfants, aucune écriture imbriquée — le lien va vers
+l'écriture par `ecritureId`, jamais l'inverse), la ligne de la table corrigée, et les trois JSON
+séparés retirés (deux copies divergent). Au passage : la clé `preparéeLe` portait un accent — une
+clé JSON n'en porte jamais ; `prepareeLe`.
+
+**Précision 2 (point 11) — nuancé, et Skander a raison sur le fond.** Un runbook dit ce que
+l'opérateur fait ; un cahier dit ce que le logiciel doit faire. Des dix runbooks, six étaient de
+l'exploitation (publier, bêta, mise en production, retirer `srv-1`, dépôt privé, quota Actions) et
+vivaient **déjà** dans `CLAUDE.md`, `worker/README.md` et `QUESTIONS.md` § 18 : les garder ici
+était une troisième copie. Les deux qui concernent la plateforme (mise en production, retrait de
+`srv-1`) sont **déplacés tels quels** dans `PLAN-PLATEFORME.md` § 18 — c'est le document qui parle
+des clés et de l'ordre de livraison, et `plateforme/README.md` détaille chaque réglage ; les quatre
+autres n'avaient pas à être recopiés, la Partie 20 dit où ils sont. Les quatre runbooks qui
+décrivaient une situation d'utilisateur (clé perdue, poste perdu, clé de signature changée,
+restauration) **restent**, réécrits en **scénarios de reprise** (SCN-001 → 004) : déclencheur, ce
+que l'application doit offrir, ce qu'elle ne fait jamais, la preuve — avec les SPEC, ERR et TEST
+qu'ils exercent. Ça, c'est du cahier des charges. Pourquoi pas tout dans `PLAN-PLATEFORME.md` :
+publier une version ou construire sur le Mac quand le quota manque n'a rien à voir avec la
+plateforme, et ce document-là est un plan, pas un manuel d'exploitation.
+
+**Précision 3 (point 2) — d'accord.** La v1 donnait un tableau **par version** (décidé / ouvert /
+question qui bloque) : « 9.3.0 — la saisie » y tenait sur une ligne alors qu'elle cache quatre
+écrans qui n'en sont pas au même point. La Partie 15 est réécrite **écran par écran** : vingt-deux
+écrans réservés (`SPEC-UI-CAB-010` → `081`, `SPEC-UI-CON-007`, `SPEC-UI-ENT-100` et `101`), chacun
+avec son tableau Décidé / À décider, la colonne « À décider » nommant **qui** tranche (comptable,
+Skander, mesure) et, quand j'ai un avis, ce que je propose. La version 9.3.x / P 0.3 (licence du
+Cabinet), absente de la v1, y est. Les versions d'entretien restent une ligne : elles n'ont pas
+d'écran.
+
+**Trouvé en relisant pour ces trois précisions, hors cahier** : `QUESTIONS.md` § 16 (9.3.x)
+écrivait encore « la grâce de 60 jours », alors que § 3 et § 18 disent douze mois après une licence
+payée depuis la relecture du 15/09 — corrigé dans `QUESTIONS.md` (une phrase).

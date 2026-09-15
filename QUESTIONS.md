@@ -2246,7 +2246,7 @@ version, ce qui est la meilleure façon de ne jamais les faire (§ 11).*
 - **Cabinet.** La clé de licence de type cabinet (sujet = empreinte, quota), vérifiée hors ligne
   avec les clés publiques embarquées (le fichier des clés et `licence.js` entrent dans la
   construction du Cabinet). Le comptage (dossiers actifs hors SkanFact, les trois gratuits, la
-  grâce de 60 jours, l'expiration client vue 30 jours avant). La porte unique sur la validation.
+  grâce de douze mois après une licence payée — pas 60 jours, corrigé le 15/09/2026, § 3 —, l'expiration client vue 30 jours avant). La porte unique sur la validation.
   Réglages → Licence (coller, état, ce qui est compté, la liste des dossiers hors SkanFact), le
   bandeau à trois tons, « À faire », « Demander une licence ».
 - **Plateforme.** Une table `cabinets`, le lien cabinet ↔ clients, l'offre Cabinet dans la console

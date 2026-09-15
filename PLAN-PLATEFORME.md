@@ -464,3 +464,35 @@ tranchée : **on ne vend pas des postes, on vend des dossiers** — postes illim
 - Un clic pour vendre, pas zéro (§ 12).
 - Aucune donnée d'entreprise ne remonte, jamais (§ 9).
 - Le logiciel fonctionne sans le serveur, pour toujours (§ 8).
+
+---
+
+## 18. Runbooks de la plateforme (déplacés de `CAHIER-DES-CHARGES.md` v1.1, 15/09/2026)
+
+Deux procédures d'exploitation, écrites dans la v1 du cahier des charges et déplacées ici parce
+qu'un cahier dit ce que le logiciel doit faire, pas ce que l'opérateur tape. Chaque réglage nommé
+est détaillé dans `plateforme/README.md`. Format : **déclencheur → étapes → vérification → ce qu'on
+ne fait jamais**. Skander ne tape rien, c'est Claude qui exécute, sauf mention « sur le Mac de
+Skander ».
+
+**R1 — Mettre la plateforme en production.** Déclencheur : la première vente. Étapes (sur le Mac
+de Skander) : Paramètres → Éditeur → « Créer la clé de réponse » → la **privée** (`BEGIN PRIVATE
+KEY`) dans le réglage Cloudflare `REPONSE_PRIVATE_KEY` **et nulle part ailleurs** ; la **publique**
+collée dans la conversation → `build/licences-publiques.json` → `reponse` ; `SRV_PRIVATE_KEY`
+(déjà en place) ; `LICENCE_PUBLIC_KEYS` = le contenu du fichier ; `ADMIN_SECRET` ≥ `ADMIN_MIN`
+(24) ; `RESEND_API_KEY`, `MAIL_FROM` ; coller `schema-a-coller.sql` dans D1 ; `GET /v1/admin/etat`
+→ `emission.ok`, `mail.ok`, `reponse: true`. Puis publier la version qui embarque `reponse`.
+Vérification : `e2e:plateforme` contre l'adresse réelle (variable d'environnement). Jamais :
+embarquer une publique dont la privée a été **vue** (la clé de réponse du 15/09/2026 est brûlée,
+`reponse` reste `null` jusqu'à ce geste) ; poser `LICENCE_REQUISE=1` avant que tous les clients
+aient une clé.
+
+**R2 — Retirer `srv-1` (compromission).** Déclencheur : la privée `SRV_PRIVATE_KEY` a été vue ou
+copiée hors de Cloudflare. Étapes : `retiree: true` sur l'entrée `srv-1` de
+`build/licences-publiques.json`, **jamais** l'effacer ; créer `srv-2` (même geste que 8.5.0,
+Paramètres → Éditeur → « Créer la clé du serveur ») ; `SRV_PRIVATE_KEY` remplacée sur Cloudflare ;
+**réémettre** chaque licence signée par `srv-1` (`GET /v1/admin/licences` → `kid = 'srv-1'` →
+renouveler) et renvoyer les clés ; publier. Vérification : une clé `srv-1` refusée par `verifyKey`
+de la nouvelle version, une clé `srv-2` acceptée, une clé **sans `kid`** toujours acceptée
+(`master`). Jamais : toucher à `master` — une autre clé maître invaliderait toutes les licences
+vendues depuis la 8.0.0.
