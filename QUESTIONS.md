@@ -32,11 +32,12 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
 12. [La construction : comment on travaille](#12-la-construction--comment-on-travaille)
 13. [La bêta : comment on s'en sert](#13-la-bêta--comment-on-sen-sert)
 14. [Entretenir l'application quand il y a beaucoup d'utilisateurs](#14-entretenir-lapplication-quand-il-y-a-beaucoup-dutilisateurs)
-15. [Les versions à venir, une par une](#15-les-versions-à-venir-une-par-une)
-16. [Les risques, et ce qui les couvre](#16-les-risques-et-ce-qui-les-couvre)
-17. [Quand je suis perdu : où trouver quoi](#17-quand-je-suis-perdu--où-trouver-quoi)
-18. [Les décisions à ne pas rediscuter](#18-les-décisions-à-ne-pas-rediscuter)
-19. [Ce qui reste à décider](#19-ce-qui-reste-à-décider)
+15. [Ce que font les développeurs seniors, et ce qui nous manque encore](#15-ce-que-font-les-développeurs-seniors-et-ce-qui-nous-manque-encore)
+16. [Les versions à venir, une par une](#16-les-versions-à-venir-une-par-une)
+17. [Les risques, et ce qui les couvre](#17-les-risques-et-ce-qui-les-couvre)
+18. [Quand je suis perdu : où trouver quoi](#18-quand-je-suis-perdu--où-trouver-quoi)
+19. [Les décisions à ne pas rediscuter](#19-les-décisions-à-ne-pas-rediscuter)
+20. [Ce qui reste à décider](#20-ce-qui-reste-à-décider)
 
 ---
 
@@ -69,7 +70,7 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
   comptable l'ouvre dans son application, et tout est là.
 - **Où en est-on ?** L'application entreprise est complète (version 9.0.0, quinze modules). Le
   Cabinet reçoit les paquets, vérifie, relance, exporte, mais **ne tient pas encore de
-  comptabilité** : c'est le chantier qui commence (versions 9.1.0 à 10.0.0, § 15).
+  comptabilité** : c'est le chantier qui commence (versions 9.1.0 à 10.0.0, § 16).
 - **Qu'est-ce qui rend SkanFact différent ?** Aucun logiciel de comptabilité ne reçoit les écritures
   de ses clients déjà écrites, avec les pièces, vérifiées, hors ligne, et ne permet de poser une
   question au client **sur la ligne** concernée. Les concurrents ont soit la comptabilité (Sage,
@@ -435,7 +436,7 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
 - **Elle deviendra quoi ?** Le **logiciel de comptabilité du cabinet**, complet : plan de comptes,
   saisie d'écritures, brouillard et validation, banque et rapprochement, lettrage, TVA et
   déclarations mensuelles, immobilisations, inventaire, clôture d'exercice, états financiers,
-  liasse, révision, collaborateurs. **Décidé, version par version (§ 15).**
+  liasse, révision, collaborateurs. **Décidé, version par version (§ 16).**
 - **Le comptable doit-il avoir ses clients sur SkanFact ?** Non. Un dossier hors SkanFact est un
   dossier ordinaire : tout arrive par la saisie, le relevé bancaire, l'import d'un autre logiciel.
   Un cabinet de soixante clients dont deux sur SkanFact doit pouvoir tout tenir. **Décidé.**
@@ -522,7 +523,7 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
   contre-passation, l'extourne, les guides d'écritures et les abonnements, l'import de relevé
   bancaire et le rapprochement automatique, le lettrage manuel, la balance âgée, les provisions et
   régularisations, la clôture d'exercice définitive, l'amortissement dégressif, la liasse. C'est le
-  contenu des versions 9.3.0 à 10.0.0 (§ 15).
+  contenu des versions 9.3.0 à 10.0.0 (§ 16).
 - **La numérotation des écritures ?** Continue par journal et par exercice, sans trou, attribuée
   **à la validation** (une écriture en brouillard n'a pas de numéro définitif). Un numéro n'est
   jamais réutilisé. **Décidé.**
@@ -722,7 +723,7 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
   donne une clé neuve **sans facture** : la licence est déjà payée. **Livré.**
 - **Et la licence du Cabinet ?** Le même mécanisme. Le sujet de la licence est l'**empreinte de la
   clé du cabinet** (qui existe déjà), la fiche porte `type: cabinet` et le quota de dossiers hors
-  SkanFact. Vérifiée hors ligne. **Décidé, à construire après la saisie (§ 15).**
+  SkanFact. Vérifiée hors ligne. **Décidé, à construire après la saisie (§ 16).**
 - **L'essai de 30 jours ?** Compté par ordinateur, depuis le jour où l'application a vu pour la
   première fois la clé publique (donc depuis la mise à jour qui l'a embarquée, pas depuis
   l'installation). Un second dossier créé après la fin de l'essai s'ouvre verrouillé : c'est voulu.
@@ -1074,7 +1075,7 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
   moteur partagé, le test de parité, et le module Comptabilité masqué côté entreprise. Elle
   n'attend personne, et c'est ce qu'il faut montrer au comptable pour obtenir les réponses au
   reste. **Décidé.**
-- **Dans quel ordre ensuite ?** Le § 15 détaille chaque version. En résumé : 9.2.0 le livre par
+- **Dans quel ordre ensuite ?** Le § 16 détaille chaque version. En résumé : 9.2.0 le livre par
   dossier → 9.3.0 la saisie → la licence du Cabinet → 9.4.0 la banque → 9.5.0 le fiscal mensuel →
   9.6.0 la clôture d'exercice → 9.7.0 immobilisations et stocks → 9.8.0 collaborateurs → 9.9.0
   révision et questions → 10.0.0 liasse et exemple complet. **Décidé.**
@@ -1335,7 +1336,123 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
 
 ---
 
-## 15. Les versions à venir, une par une
+## 15. Ce que font les développeurs seniors, et ce qui nous manque encore
+
+*Réponse honnête à « qu'est-ce qui manque encore ? ». Le projet a déjà beaucoup de ce qu'une équipe
+mûre pratique : des tests à trois niveaux, des versions numérotées avec leur journal, des écritures
+atomiques, des migrations avec sauvegarde, des post-mortems (les « règles apprises » de
+`CLAUDE.md`), des relectures adversariales, une chaîne essai → bêta → stable. Ce qui suit est ce
+qui manque, mesuré dans le dépôt le 15/09/2026, et ce qu'on en fait.*
+
+- **Comment une équipe senior tient-elle un logiciel de cette taille ?** Par des habitudes plus que
+  par du talent. Dix, en général : (1) rien n'entre dans la branche principale sans que les tests
+  aient tourné **automatiquement** ; (2) une relecture par quelqu'un d'autre que l'auteur ; (3) des
+  outils qui lisent le code à la place des humains (analyse statique) ; (4) une chaîne
+  essai → bêta → stable ; (5) une observation du logiciel chez les utilisateurs (journaux, rapports
+  d'erreur) ; (6) une dette technique écrite et remboursée par petites tranches ; (7) les décisions
+  d'architecture consignées ; (8) un registre des retours et des défauts ; (9) du code découpé en
+  morceaux qu'une personne peut tenir en tête ; (10) un post-mortem après chaque incident. Sur ces
+  dix, le projet en a cinq pleinement (4, 6 en partie, 7, 10, et 2 pour les versions sensibles),
+  trois à moitié (5, 8, 9), et deux pas du tout (1, 3).
+- **1 — L'intégration continue.** Aujourd'hui les tests tournent quand Claude les lance ; rien
+  n'empêche un commit avec un test rouge d'atteindre `main`. Le seul workflow du dépôt est la
+  publication. Ce qu'on fait : un second workflow qui lance `npm test` (et le lint ci-dessous) **à
+  chaque push et à chaque fusion**, sur Linux **et sur Windows** (la classe de défauts qu'on a
+  trouvée trop tard en 7.21.x), gratuit sur un dépôt public ; et la branche `main` **protégée** sur
+  GitHub (interdiction de fusionner si les tests sont rouges, interdiction de réécrire l'historique
+  : un réglage, **à toi**). **À construire (9.1.0).**
+- **2 — L'analyse statique (le lint).** Trois fois au moins, un écran est resté blanc parce qu'une
+  fonction appelée n'existait pas ou qu'une variable venait d'une autre page ; un test maison
+  l'attrape depuis, mais après coup. Un linter (ESLint, dépendance de développement seulement, aucun
+  effet sur l'application) le voit à la frappe : `no-undef`, `no-unused-vars`, `no-redeclare`,
+  `eqeqeq`, et l'interdiction des formes déjà bannies par les tests de source. Lancé dans `npm test`
+  et dans la CI. **À construire (9.1.0).** Plus tard, optionnel : des annotations de types (JSDoc
+  vérifié) sur `core.js`, qui attraperaient un argument oublié comme la société en troisième
+  position de `invoiceBalance`.
+- **3 — Le garde-fou d'erreur global.** Aucun des deux écrans ne capte une exception non attrapée
+  (ni `window.onerror`, ni `unhandledrejection`) : une erreur imprévue donne un écran blanc ou un
+  bouton mort, sans un mot, et rien dans le journal. Ce qu'on fait : un gestionnaire global dans
+  chaque application qui écrit l'erreur dans `main.log` par le pont, affiche une phrase en français
+  avec « Signaler un problème », et laisse l'application utilisable. C'est ce qui transforme un
+  « ça ne marche pas » en un rapport exploitable. **À construire (9.1.0).**
+- **4 — Le journal technique borné.** `main.log` grossit sans limite : il n'est jamais tourné ni
+  tronqué. Chez un utilisateur de deux ans, il pèsera des mégaoctets et sera inutilisable dans un
+  signalement. Ce qu'on fait : rotation à quelques mégaoctets (le fichier courant et un précédent),
+  dans les deux applications. **À construire (9.1.0).**
+- **5 — La taille des fichiers.** `app.js` fait 12 300 lignes, `core.js` 6 500, le fichier des
+  tests 10 500. Aucune personne ne tient ça en tête ; un développeur qui arrive met des jours à
+  s'y repérer, et un test de source qui découpe le fichier en tranches se casse à chaque
+  déménagement. Une équipe senior découpe par domaine (ventes, achats, comptabilité, paie,
+  licences, réglages), chaque fichier chargé par la page (sans bundler, comme `rowmenu.js` et
+  `reglages.js` le sont déjà). Le faire d'un coup serait le plus gros risque de régression du
+  projet : on le fait **par occasion** — chaque version déplace dans son fichier les routes qu'elle
+  touche, avec ses tests, et **aucun fichier ne dépasse plus sa taille du jour** ; le code neuf va
+  dans un fichier neuf. Le moteur d'écritures (`compta.js`, 9.1.0) est le premier pas. **Décidé.**
+- **6 — Les règles écrites, mais dans l'ordre où elles ont été apprises.** `CLAUDE.md` fait 2 474
+  lignes et 68 sections, rangées par version : c'est un excellent journal de post-mortems et une
+  mauvaise référence. Chercher « comment on calcule une date » oblige à lire la 5.2.3. Une équipe
+  senior tient des fiches de décision par sujet. Ce qu'on fait : un **index thématique** en tête de
+  `CLAUDE.md` (dates, tests, CSS, licence, paquet, cabinet, pièges e2e, publication…) qui renvoie
+  aux sections, sans réécrire le journal. **À construire (9.1.0).**
+- **7 — Le registre des retours et de la dette.** Aujourd'hui les retours vivent dans la
+  conversation et les plans, et la liste de la bêta « chez Skander ». Une équipe senior a un suivi
+  des défauts. Ce qu'on fait : les **Issues GitHub** du dépôt (tu les crées depuis le navigateur,
+  sans commande ; elles suivent le dépôt s'il redevient privé), avec quatre étiquettes : grave,
+  moyen, petit, dette. Claude les lit et les ferme avec la version qui les règle. La dette
+  technique connue y est posée dès maintenant (la liste ci-dessous). **À toi (accepter le
+  principe), puis Décidé.**
+- **8 — La convention de nommage.** Les champs de données sont en anglais (`payments`,
+  `purchases`, `dueDate`), le code métier récent est en français (`odValide`, `livreJournal`) : deux
+  langues dans le même fichier, parce que le projet a grandi plus vite que sa convention. Renommer
+  les champs existants est exclu (ils sont écrits dans les fichiers de tous les clients). Règle :
+  **les champs de données gardent leur nom pour toujours ; le code neuf est en français ; une
+  fonction nouvelle ne mélange pas les deux dans son propre nom.** **Décidé.**
+- **9 — Les tests sur Mac et Windows.** Les parcours e2e ne tournent que sur Linux ; les défauts
+  propres à Windows ont été trouvés par Skander, pas par un test. Une machine Mac coûte dix fois
+  une Linux ; une machine Windows est gratuite sur un dépôt public. Ce qu'on fait : `npm test` sur
+  Windows dans la CI (point 1) ; les e2e restent sur Linux ; les constructions d'essai (§ 13)
+  donnent à Skander la vérification réelle sur Mac et sur PC. **À construire (9.1.0).**
+- **10 — Observer sans télémétrie.** Une équipe senior a un rapport d'erreurs automatique
+  (Sentry ou équivalent) ; on s'y refuse par principe (« rien ne remonte »). Ce qui en tient lieu :
+  le garde-fou d'erreur (point 3) qui remplit le journal, le bouton « Signaler un problème » qui
+  l'envoie en un clic, et les activations de la plateforme qui disent quelle version tourne où.
+  C'est moins, et c'est assumé. **Décidé.**
+- **11 — La revue de sécurité périodique.** Les réglages d'Electron sont ceux qu'il faut
+  (isolation du contexte, pas d'accès Node depuis l'écran, bac à sable). Ce qui manque : un
+  `npm audit` dans la CI, et une relecture de la liste de sécurité d'Electron à chaque montée de
+  version majeure d'Electron. **À construire (dans la CI).**
+- **12 — La reproductibilité de la construction.** Le fichier de verrouillage des dépendances
+  existe et la publication utilise Node 22. Mais l'installeur local installe « le Node du moment »
+  par Homebrew : deux constructions peuvent différer. Ce qu'on fait : la version de Node inscrite
+  dans `package.json` (`engines`) et vérifiée par l'installeur. **À construire (petit).**
+- **13 — Une relecture pour chaque version, pas seulement les sensibles.** La relecture
+  adversariale est réservée à l'argent, aux clés et aux chiffres comptables. Ce qu'on fait : chaque
+  version reçoit au moins une relecture indépendante de son changement avant la bêta (un relecteur,
+  pas trois), et les sensibles gardent la relecture complète. **Décidé.**
+- **14 — Du temps réservé à l'entretien.** Une équipe senior garde environ un cinquième de son
+  temps pour la dette et l'outillage, sinon ils ne sont jamais faits. Règle : **une version sur
+  quatre est une version d'entretien** (Electron, lint, découpage d'un fichier, docs, dette), sans
+  nouveauté, publiée dans un lot comme les autres. **Décidé.**
+- **15 — La dette technique connue, au 15/09/2026.** Ce qu'on sait devoir rembourser, et quand :
+  pas d'intégration continue, pas de lint, pas de garde-fou d'erreur global, journal non borné
+  (9.1.0) ; le canal `cabinet-beta` et les constructions d'essai (9.1.0) ; `app.js` et `core.js`
+  trop gros (par occasion, à partir de 9.1.0) ; `CLAUDE.md` sans index thématique (9.1.0) ; les
+  tests dans un seul fichier de 10 500 lignes (à découper par thème, version d'entretien) ; les
+  données du Cabinet dans un seul fichier (9.2.0) ; pas de fichiers de données anciens pour tester
+  les migrations (9.2.0) ; le jeu d'exemple du Cabinet sans vrais paquets (10.0.0) ; pas d'export
+  de la base de la plateforme (avec la licence du Cabinet) ; la lecture de photo en pause (le jour
+  d'une application mobile) ; les applications non signées (le jour où ça vend) ; la version de
+  Node non verrouillée pour l'installeur (petit). Cette liste vit dans les Issues GitHub dès que le
+  point 7 est accepté ; en attendant, ici.
+- **Ce qui ne manque pas, et qu'on ne fera pas.** Un bundler ou un framework (React) : le code lu
+  est le code qui tourne, c'est une force pour un projet tenu par une personne et une IA. Une base
+  de données : les fichiers JSON suffisent à la taille visée et se sauvegardent en copiant. Une
+  télémétrie. Un outil de tickets payant. Une couverture de tests chiffrée : on préfère « chaque
+  règle a son test, et chaque test se prouve ».
+
+---
+
+## 16. Les versions à venir, une par une
 
 *Pour chaque version : ce qu'elle contient, ce qu'elle exclut, ce dont elle dépend, comment on la
 prouve. Les deux applications sortent ensemble sous le même numéro. Les durées sont des ordres de
@@ -1358,9 +1475,11 @@ grandeur de construction, hors attente des réponses.*
 - **Partagé.** `compta.js` extrait de `core.js` (grand livre, balance, journal, centralisateur,
   lettrage, états, à-nouveaux, plan comptable, libellés de comptes), rechargé par les deux
   applications, `core.js` inchangé pour ses appelants.
-- **Publication.** Construits en premier, avant le reste de la version : le canal `cabinet-beta`
-  et le workflow « Construire un essai » (§ 13), pour que la 9.1.0 puisse être essayée par Skander
-  à côté de sa vraie application, puis partir en bêta chez le pilote, puis en stable.
+- **Outillage, construit en premier** (§ 13 et § 15) : le canal `cabinet-beta` ; le workflow
+  « Construire un essai » ; l'intégration continue (`npm test` et lint à chaque push, Linux et
+  Windows) ; le lint ; le garde-fou d'erreur global des deux écrans ; le journal borné ; l'index
+  thématique de `CLAUDE.md`. Pour que la 9.1.0 puisse être essayée par Skander à côté de sa vraie
+  application, puis partir en bêta chez le pilote, puis en stable.
 - **Exclu.** Aucune saisie, aucun livre propre au dossier, aucune modification des paquets.
 - **Preuve.** Test de parité (même balance au millime) ; e2e `cabinet-livres` (les quatre onglets
   sur un vrai paquet, le mois manquant annoncé) ; e2e `boucle` relancé ; test « module désactivé
@@ -1507,14 +1626,14 @@ n'est pas obligatoire) ; l'interface en arabe ; un autre pays.
 
 ---
 
-## 16. Les risques, et ce qui les couvre
+## 17. Les risques, et ce qui les couvre
 
 - **Le comptable ne joue pas le jeu du pilote.** On reste sur le pont amélioré (les livres lus dans
   les paquets, 9.1.0) et on ne construit pas la tenue complète sans cabinet. Un logiciel « au
   niveau des meilleurs » construit sans personne qui l'utilise tous les jours serait un beau
   logiciel que personne n'ouvre. **Décidé.**
 - **On s'éparpille.** Une version à la fois, finie, testée, publiée, utilisée avant la suivante.
-  Ce qui n'est pas décrit dans le § 15 n'entre pas dans la version. **Décidé.**
+  Ce qui n'est pas décrit dans le § 16 n'entre pas dans la version. **Décidé.**
 - **La loi de finances change les taux.** Aucun taux n'est écrit en dur, tout est paramétrable, et
   l'application porte « À VÉRIFIER » partout où un chiffre relève du comptable. **Décidé.**
 - **Sage sort la même chose.** Notre différence est de structure, pas de fonctions : le pont avec le
@@ -1539,7 +1658,7 @@ n'est pas obligatoire) ; l'interface en arabe ; un autre pays.
 
 ---
 
-## 17. Quand je suis perdu : où trouver quoi
+## 18. Quand je suis perdu : où trouver quoi
 
 ### Les documents
 
@@ -1621,7 +1740,7 @@ n'est pas obligatoire) ; l'interface en arabe ; un autre pays.
 
 ---
 
-## 18. Les décisions à ne pas rediscuter
+## 19. Les décisions à ne pas rediscuter
 
 1. Deux applications, un dépôt, un moteur partagé, le même numéro de version.
 2. Hors ligne pour toujours ; le serveur ne fait que gérer les licences et, un jour, transporter.
@@ -1651,10 +1770,16 @@ n'est pas obligatoire) ; l'interface en arabe ; un autre pays.
 20. On ne développe ni ne teste jamais sur de vraies données : le mode développement, les tests et
     les constructions d'essai travaillent dans des dossiers à part. Une version passe par l'essai,
     la bêta, puis la stable.
+21. Aucun fichier de code ne dépasse plus sa taille du 15/09/2026 ; le code neuf va dans un fichier
+    neuf ; le découpage se fait par occasion, jamais d'un coup.
+22. Les champs de données gardent leur nom pour toujours ; le code neuf est en français.
+23. Une version sur quatre est une version d'entretien, sans nouveauté.
+24. Chaque version reçoit une relecture indépendante avant la bêta ; les versions qui touchent à
+    l'argent, aux clés ou aux chiffres comptables reçoivent la relecture adversariale complète.
 
 ---
 
-## 19. Ce qui reste à décider
+## 20. Ce qui reste à décider
 
 **À Skander**
 1. Le **prix de l'option Comptabilité** de l'app entreprise (proposition : 190 DT HT par an).
@@ -1672,8 +1797,11 @@ n'est pas obligatoire) ; l'interface en arabe ; un autre pays.
 8. L'entretien à l'échelle (§ 14) : qui reçoit les mails de support avec toi quand ils seront trop
    nombreux, quelle personne de confiance peut « marquer payée » en ton absence, et à partir de
    combien de clients on écrit une lettre d'information.
+8 bis. L'outillage d'équipe (§ 15) : accepter que les retours et la dette vivent dans les Issues
+   GitHub du dépôt, et **protéger la branche `main`** (Settings → Branches : tests obligatoires,
+   pas de réécriture de l'historique) — deux réglages depuis le navigateur.
 
-**Au comptable pilote** (le détail par version est au § 15)
+**Au comptable pilote** (le détail par version est au § 16)
 9. Quel logiciel il veut remplacer, et sur quels trois écrans il jugera que c'est fait.
 10. Son plan de comptes, ses journaux, sa façon de saisir, ses relevés, sa déclaration, ses états,
     sa révision, la liasse — chacun au moment où la version qui en dépend commence.
