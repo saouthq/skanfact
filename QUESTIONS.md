@@ -447,6 +447,13 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
 - **Qui a raison si le livre du cabinet et le SkanFact du client diffèrent ?** Le livre du cabinet :
   c'est lui qui est déclaré. L'écart reste visible des deux côtés jusqu'à ce que le client renvoie
   un mois révisé.
+- **Et les écritures que le cabinet passe tout seul (provisions, régularisations, amortissements de
+  fin d'année) ?** Le client ne les voit pas : son livre à lui ne connaît que ses pièces. Tant que
+  ça ne dure qu'un exercice, c'est sans conséquence. Mais **à la clôture, l'écart devient
+  permanent** : les à-nouveaux de l'année suivante chez le client seraient faux, et l'écart
+  grandirait chaque année. D'où le **flux retour de clôture** (§ 16, version 9.6.0) : le cabinet
+  renvoie les à-nouveaux officiels et la liste de ses écritures d'inventaire, le client les importe
+  et verrouille son exercice. **Décidé.**
 - **Que se passe-t-il quand un client renvoie un mois déjà reçu ?** Si les écritures de ce mois ne
   sont pas encore validées dans le Cabinet, elles sont remplacées et l'application le dit. Si elles
   sont validées (mois déjà déclaré), le Cabinet montre l'écart ligne par ligne et le comptable
@@ -495,12 +502,24 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
 
 ### Comment ça marchera, techniquement
 
-- **Où vivront les livres ?** Un fichier par dossier (`dossiers/<client>/livre.json`), chiffré avec
-  la même clé que le reste, à côté des paquets. Soixante dossiers sur dix ans ne tiennent pas dans un
-  seul fichier relu à chaque enregistrement : c'est la décision de stockage à prendre avant la
-  9.2.0, parce qu'elle ne se reprend pas. Les sauvegardes, la copie externe et la clé de secours
-  emporteront ces fichiers ; l'index (`cabinet-data.json`) garde le portefeuille et les relances.
-  **Décidé.**
+- **Où vivront les livres ?** Un fichier **par dossier et par exercice**
+  (`dossiers/<client>/livre-2026.json`), chiffré avec la même clé que le reste, à côté des paquets.
+  Soixante dossiers sur dix ans ne tiennent pas dans un seul fichier relu à chaque enregistrement :
+  c'est la décision de stockage à prendre avant la 9.2.0, parce qu'elle ne se reprend pas. Les
+  sauvegardes, la copie externe et la clé de secours emportent ces fichiers ; l'index
+  (`cabinet-data.json`) garde le portefeuille et les relances. **Décidé.**
+- **Pourquoi pas une vraie base de données (SQLite) ?** Trois raisons, dans l'ordre. La corruption
+  n'est **pas** l'argument : l'écriture atomique remplace le fichier entier (on écrit à côté, puis on
+  renomme), ce qui donne la même garantie tout-ou-rien qu'une transaction, sur la totalité des
+  données au lieu d'une ligne. Le vrai sujet est la **vitesse**, et le découpage par exercice le
+  règle : un exercice d'un dossier moyen pèse quelques centaines de kilooctets, réécrits en quelques
+  millisecondes, même en saisie au kilomètre. Enfin, SQLite est une **dépendance native** : elle doit
+  être recompilée pour chaque système et chaque processeur, elle casse la construction universelle
+  Mac (Intel et Apple Silicon dans un seul fichier) et elle rompt la règle « aucune bibliothèque
+  tierce dans l'application », qui est ce qui rend ce projet reprenable par une personne seule. **On
+  mesure avant de décider quoi que ce soit d'autre** : un test de charge (un dossier de cinquante
+  mille écritures, chronométré) passe avant la 9.3.0, et s'il montre que ça ne tient pas, on
+  rediscute avec des chiffres. **Décidé, avec mesure avant la 9.3.0.**
 - **Que contient un livre ?** Les **exercices** (début, fin, clos ou non, par qui, quand) ; le
   **plan de comptes** du dossier (numéro, libellé, nature) ; les **journaux** ; les **écritures**,
   chacune avec sa date, son journal, sa pièce, son numéro, son libellé, ses lignes (compte, tiers,
@@ -514,6 +533,14 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
   vers la pièce (le PDF est dans le paquet). Ces écritures ne se modifient pas dans le Cabinet.
   Elles arrivent validées si le mois est clôturé chez le client, en brouillard sinon. Les paquets
   déjà reçus avant cette version sont relus une fois pour remplir les livres. **À construire (9.2.0).**
+- **Et si le même paquet est importé deux fois ?** **L'import d'un mois REMPLACE les écritures de ce
+  mois pour ce dossier ; il n'ajoute jamais.** Sans cette règle, un client qui renvoie mars
+  doublerait toutes ses écritures de mars, la balance tomberait quand même juste (deux écritures
+  équilibrées valent une), et personne ne verrait rien avant que le chiffre d'affaires soit doublé.
+  La même règle vaut déjà pour les paquets eux-mêmes depuis la Cabinet 1.0.0 ; elle se porte aux
+  écritures. Les écritures déjà **validées** d'un mois ne sont pas remplacées : c'est l'écart qui
+  s'affiche, et le comptable décide (voir ci-dessus). Un test importe deux fois le même paquet et
+  compte les lignes. **Décidé, 9.2.0.**
 - **Le moteur est-il refait ?** Non. Les fonctions qui calculent le journal, le grand livre, la
   balance, le lettrage, les états existent dans l'app entreprise. Elles sortent dans un fichier
   partagé (`src/renderer/compta.js`) que les deux applications chargent ; l'app entreprise continue
@@ -564,13 +591,24 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
 - **Et dans l'autre sens ?** Les questions du cabinet (pièce absente, compte d'attente non soldé,
   facture ouverte depuis 90 jours) partent vers le client, qui les voit **sur la pièce concernée**,
   répond, joint ce qui manque, et renvoie un mois révisé (9.9.0). Le transport : un fichier de
-  questions envoyé par mail au début, le serveur un jour. **Décidé dans le principe ; le transport
-  exact reste à choisir avant la 9.9.0** (À toi, le moment venu : le client n'a pas de clé de
-  chiffrement aujourd'hui, donc soit il en génère une à l'appairage, soit les questions partent en
-  clair — recommandation : en clair, une question n'est pas une pièce).
+  questions envoyé par mail au début, le serveur un jour. **Décidé : les questions sont CHIFFRÉES,
+  comme les paquets.** Ma première recommandation était de les envoyer en clair, au motif qu'une
+  question n'est pas une pièce comptable. C'est faux : une question porte le nom d'un client, un
+  montant exact, un doute sur un compte bancaire — c'est du secret professionnel, et l'envoyer en
+  clair romprait la promesse du produit. À l'appairage, le client génère donc **sa propre paire de
+  clés** et rend sa clé publique au cabinet (le fichier d'appairage devient un aller-retour) ; le
+  fichier de questions (`.skanask`) est scellé pour lui seul, avec le mécanisme du paquet, qui
+  existe depuis la 6.2.0. Le même aller-retour sert au flux de clôture (`.skanclose`, 9.6.0) : une
+  seule clé du client, deux usages.
 - **Comment le cabinet sait que le paquet vient bien de ce client ?** Aujourd'hui : il est chiffré
   pour lui et porte le matricule. Demain : signé par le client, dont la clé est épinglée au dossier
   (9.9.0). **Décidé.**
+- **Peut-on rejouer un vieux paquet pour fausser les chiffres du cabinet ?** Non : un paquet dont la
+  date de fabrication est **antérieure** à celui déjà reçu pour ce mois est refusé, avec sa phrase.
+  C'est ce qui empêche un mois définitif de redevenir provisoire quand on rattrape une boîte mail en
+  retard, et c'est aussi la protection contre le rejeu. Ce qui manque encore, et qui vient en 9.9.0 :
+  la signature du client, sans laquelle quelqu'un qui connaît la clé publique du cabinet pourrait
+  fabriquer un paquet de toutes pièces. **Livré pour l'anti-rejeu, à construire pour la signature.**
 - **Comment le client sait que le cabinet est le bon ?** L'**appairage** : le cabinet donne un
   fichier `.skanpair` (sa clé publique, rien de secret) et dicte son empreinte au téléphone. Le
   client importe le fichier et compare l'empreinte. Un fichier d'imposteur ne passe pas. **Livré.**
@@ -642,6 +680,13 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
   peut plus recevoir d'écriture validée. S'il le désarchive, il compte à nouveau. On ne construit
   pas de police au-delà : un cabinet qui veut tricher trichera, et ce n'est pas un client qu'on
   cherche.
+- **Et si le comptage se trompe au détriment d'un cabinet honnête ?** C'est le risque le plus grave
+  de ce mécanisme : un fichier abîmé, une licence client mal lue, et un cabinet qui a payé se
+  retrouve bloqué un matin de déclaration. Deux garde-fous. **Le doute profite toujours au
+  cabinet** : une licence client qu'on ne peut pas juger compte comme valide, un dossier dont on ne
+  sait rien ne compte pas. Et **un blocage nomme toujours les dossiers comptés**, un par un, avec le
+  bouton pour en archiver un : jamais un refus sans la liste qui l'explique ni le geste qui le lève.
+  **Décidé.**
 
 ### L'argent
 
@@ -1043,6 +1088,28 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
   numéro continu, date, TVA par taux, timbre, retenue à la source, mention légale pour le régime
   forfaitaire, montant en lettres. Trois points restent marqués « À VÉRIFIER » dans l'application
   elle-même : l'assiette de la retenue (TTC hors timbre), l'avoir sans timbre, et la liste des taux.
+- **Y a-t-il un seuil en dessous duquel la retenue à la source ne s'applique pas ?** Probablement
+  oui en Tunisie (de l'ordre de 1 000 DT TTC pour certaines opérations), et l'application n'en tient
+  compte nulle part : elle applique le taux qu'on lui donne, quel que soit le montant. Ça ne fausse
+  rien tout seul — c'est l'utilisateur qui choisit le taux, pièce par pièce — mais l'application
+  devrait **avertir** quand une facture est sous le seuil et porte quand même une retenue.
+  **À VÉRIFIER avec le comptable**, puis un seuil réglable et un avertissement à l'émission, dans la
+  même version que les autres corrections fiscales.
+- **Un client exonéré de timbre fiscal (exportateur total, secteur public) ?** Le timbre se décoche
+  par document (`applyStamp`), mais il n'existe pas de drapeau « ce client est exonéré » sur la fiche
+  client : il faut donc y penser à chaque facture. **À construire (petit)** : une case sur la fiche
+  client qui décoche le timbre par défaut sur ses documents.
+- **Le taux de TFP est-il proposé selon le métier ?** Non : il vaut 2 % par défaut pour tout le
+  monde, alors que l'industrie manufacturière est à 1 % (À VÉRIFIER) et que l'application connaît
+  déjà le métier de l'entreprise. C'est exactement la règle de la 7.25.0 (« un réglage global qui a
+  une bonne valeur par défaut par métier doit la prendre, sans l'imposer une fois le champ
+  touché »), qui n'a pas été appliquée ici. **À construire (petit).**
+- **Et la facture électronique tunisienne (TTN / El Fatoora), si elle devient obligatoire ?**
+  On ne construit pas l'export maintenant (décision). Mais un contrôle gratuit vaut d'être fait une
+  fois : **vérifier que le modèle de données porte déjà tout ce qu'un format officiel exigerait**
+  (matricule complet, codes TVA, lignes détaillées, unités, références). S'il manque un champ, mieux
+  vaut l'ajouter maintenant que migrer des milliers de factures le jour de l'obligation. **À faire
+  une fois, en une heure.**
 - **La signature Apple et Windows ?** Pas encore (certificats payants). **À toi, le jour où ça vend.**
 - **Une mise à jour peut-elle casser des données ?** Chaque version migre les données et prend une
   sauvegarde avant. Les paquets et fichiers anciens restent lisibles pour toujours. **Décidé.**
@@ -1442,8 +1509,12 @@ qui manque, mesuré dans le dépôt le 15/09/2026, et ce qu'on en fait.*
   les migrations (9.2.0) ; le jeu d'exemple du Cabinet sans vrais paquets (10.0.0) ; pas d'export
   de la base de la plateforme (avec la licence du Cabinet) ; la lecture de photo en pause (le jour
   d'une application mobile) ; les applications non signées (le jour où ça vend) ; la version de
-  Node non verrouillée pour l'installeur (petit). Cette liste vit dans les Issues GitHub dès que le
-  point 7 est accepté ; en attendant, ici.
+  Node non verrouillée pour l'installeur (petit). Et, venus de la relecture extérieure du
+  15/09/2026 : pas de seuil de retenue à la source, pas d'exonération de timbre par client, le taux
+  de TFP non proposé par le métier, la clé de secours non imprimable, le contrôle « notre modèle
+  porte-t-il ce qu'un format officiel exigerait ? » jamais fait (tous petits, dans une version de
+  corrections fiscales) ; le test de charge du Cabinet (avant 9.3.0). Cette liste vit dans les
+  Issues GitHub dès que le point 7 est accepté ; en attendant, ici.
 - **Le projet respecte-t-il « toutes les recommandations » ?** Non, et aucun projet ne le fait :
   ce n'est pas un état, c'est un écart qu'on mesure. Sur l'échelle usuelle de maturité
   (improvisé → répétable → défini → mesuré → optimisé), au 15/09/2026 : *architecture* défini ;
@@ -1458,6 +1529,18 @@ qui manque, mesuré dans le dépôt le 15/09/2026, et ce qu'on en fait.*
   test se prouve en réintroduisant le défaut », les relecteurs indépendants, et le pilote. Après
   l'outillage de la 9.1.0, tout passe à « défini » ou « mesuré » sauf le juridique, qui ne dépend
   pas du code. Cette auto-évaluation se refait à chaque version d'entretien.
+- **Ce que des relectures extérieures ont proposé, et qu'on a refusé (15/09/2026).** Pour ne pas
+  rediscuter les mêmes idées à chaque relecture. **SQLite pour le Cabinet** : refusé, l'argument de
+  la corruption ne tient pas (l'écriture atomique est plus forte), le vrai sujet est la vitesse et
+  le découpage par exercice le règle, et une dépendance native casserait la construction universelle
+  Mac (§ 5). **Une phrase mnémonique de 24 mots** pour la clé de secours : refusé, un comptable qui
+  recopie 24 mots et se trompe d'un est bloqué pour toujours, alors qu'un fichier scellé par mot de
+  passe se copie sans erreur ; **retenu en revanche** : rendre la clé de secours imprimable en PDF,
+  pour qu'elle survive sur papier (**à construire, petit**). **Structurer les factures au format
+  officiel TTN dès maintenant** : refusé, c'est du travail pour une obligation qui n'existe pas
+  encore ; retenu : le contrôle d'une heure « notre modèle porte-t-il déjà ce qu'il faudrait ? »
+  (§ 11). **Héberger les installateurs ailleurs que sur les releases GitHub** : inutile, le quota
+  concerne la construction, pas l'hébergement, et la construction locale est déjà le secours.
 - **Ce qui ne manque pas, et qu'on ne fera pas.** Un bundler ou un framework (React) : le code lu
   est le code qui tourne, c'est une force pour un projet tenu par une personne et une IA. Une base
   de données : les fichiers JSON suffisent à la taille visée et se sauvegardent en copiant. Une
@@ -1524,7 +1607,10 @@ grandeur de construction, hors attente des réponses.*
 
 - **Cabinet.** L'écran de saisie au kilomètre, tout au clavier : journal, date, pièce, lignes
   compte/tiers/libellé/débit/crédit ; recherche de compte par numéro ou nom pendant la frappe ;
-  raccourcis (recopier la ligne, solder, dupliquer) ; contrôle d'équilibre ; pièce jointe glissée.
+  raccourcis (recopier la ligne du dessus, **solder automatiquement la dernière ligne**, dupliquer,
+  valider et enchaîner sur la pièce suivante depuis le dernier champ) ; contrôle d'équilibre ; pièce
+  jointe glissée. Les touches exactes se décident **en regardant le comptable saisir dans son
+  logiciel actuel** : reprendre les siennes vaut mieux que lui en imposer d'autres.
   **Brouillard puis validation** (numéro attribué à la validation, irréversible, contre-passation,
   extourne au 1er du mois suivant). Guides d'écritures et abonnements. Recherche dans le journal.
   **Piste d'audit** (qui, quand, quoi). Table de correspondance des comptes du cabinet appliquée aux
@@ -1555,8 +1641,9 @@ grandeur de construction, hors attente des réponses.*
 
 ### 9.4.0 — La banque (deux semaines)
 
-- **Cabinet.** Import du relevé bancaire (CSV des banques tunisiennes, OFX, MT940 — les formats
-  que le comptable rencontre), rapprochement automatique (montant, date à ± n jours, libellé),
+- **Cabinet.** Import du relevé bancaire (CSV des banques tunisiennes — BIAT, Attijari, STB, UIB,
+  BH et les autres que ses clients utilisent —, OFX, MT940), rapprochement automatique (montant,
+  date à ± n jours, libellé),
   proposition d'écriture pour chaque ligne non rapprochée (guide selon le libellé), suspens, état
   de rapprochement, lettrage automatique des tiers (montant, référence), lettrage et délettrage à
   la main, échéancier, balance âgée clients et fournisseurs.
@@ -1586,9 +1673,22 @@ grandeur de construction, hors attente des réponses.*
   générés ; exercice suivant ouvert pendant que le précédent se termine ; états financiers au
   format SCE (bilan, état de résultat, flux de trésorerie, notes), comparatif N/N-1, SIG, ratios ;
   impression et PDF.
+- **Le flux retour de clôture (`.skanclose`).** À la clôture d'un exercice, le Cabinet produit un
+  fichier pour le client, chiffré pour lui, qui porte : les **à-nouveaux officiels** (les soldes
+  d'ouverture de l'exercice suivant), la liste des **écritures d'inventaire** passées par le
+  cabinet (dotations, provisions, régularisations) avec leur libellé, et la **date de clôture**.
+  Côté entreprise, l'import pose ces à-nouveaux, verrouille l'exercice clos (comme une clôture
+  mensuelle, mais sur l'année) et affiche ce que le comptable a ajouté. Sans ça, le bilan du client
+  et celui du cabinet divergent **pour toujours**, et l'écart grandit chaque année : c'est le
+  défaut le plus grave que le pont pouvait avoir. **Décidé, 9.6.0.**
+- **Entreprise.** Réception du `.skanclose` : à-nouveaux officiels, exercice verrouillé, liste des
+  écritures du comptable en lecture. Le module Comptabilité optionnel affiche alors les vrais
+  chiffres, pas les siens.
 - **Dépend de.** La présentation exacte des états (NCT 01) et des notes.
 - **Preuve.** Test : actif = passif, résultat identique des deux côtés, à-nouveau égal aux soldes
-  du 31/12 ; e2e : une clôture refusée puis acceptée, la réouverture impossible.
+  du 31/12 ; e2e : une clôture refusée puis acceptée, la réouverture impossible ; **e2e du flux
+  retour : le cabinet clôture, le client importe, le bilan des deux applications est identique au
+  millime** — le jumeau du test de parité, dans l'autre sens.
 
 ### 9.7.0 — Immobilisations et stocks (une semaine)
 
@@ -1790,6 +1890,12 @@ n'est pas obligatoire) ; l'interface en arabe ; un autre pays.
 23. Une version sur quatre est une version d'entretien, sans nouveauté.
 24. Chaque version reçoit une relecture indépendante avant la bêta ; les versions qui touchent à
     l'argent, aux clés ou aux chiffres comptables reçoivent la relecture adversariale complète.
+25. Tout ce qui circule entre le client et le cabinet est chiffré : le paquet, les questions, la
+    clôture. Aucune exception au motif que « ce n'est pas une pièce comptable ».
+26. L'import d'un mois remplace les écritures de ce mois ; il n'ajoute jamais. Ce qui est validé
+    n'est pas remplacé : l'écart s'affiche et le comptable décide.
+27. À la clôture d'un exercice, le cabinet renvoie les à-nouveaux officiels au client. Les deux
+    bilans doivent être identiques au millime, dans les deux sens.
 
 ---
 
@@ -1822,6 +1928,10 @@ n'est pas obligatoire) ; l'interface en arabe ; un autre pays.
 11. Ses réponses aux choix marqués « À VÉRIFIER » dans l'application (TVA en une écriture au dernier
     jour du mois, compte 13 pour le résultat, contreparties par défaut, TFP à 2 % ou 1 %, assiette
     de la retenue, avoir sans timbre), et ce qu'il fait d'un mois provisoire.
+11 bis. Trois questions fiscales précises, venues de la relecture du 15/09/2026 : **le seuil en
+    dessous duquel la retenue à la source ne s'applique pas** (de l'ordre de 1 000 DT ?) ; **le taux
+    d'accident du travail** applicable aux activités de nos clients (l'application propose 0,4 %) ;
+    et **les cas d'exonération du timbre fiscal** (exportateur total, secteur public).
 12. Son accord pour travailler sur des versions bêta avec un vrai dossier, dans les conditions du
     § 13.
 

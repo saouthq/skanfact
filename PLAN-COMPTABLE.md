@@ -153,7 +153,7 @@ dossier selon son régime, avec « déclaré » et « payé » pointés par le c
 télédéclaration : le fichier ou les chiffres à reporter, jamais l'envoi à la place du cabinet
 (À VÉRIFIER : ce que le portail accepte).
 
-### 9.6.0 — La clôture d'exercice *(l'inventaire, les états, l'à-nouveau)*
+### 9.6.0 — La clôture d'exercice *(l'inventaire, les états, l'à-nouveau, le RETOUR au client)*
 
 Écritures d'inventaire guidées : dotations (déjà calculées), **provisions**, charges constatées
 d'avance, factures non parvenues, produits constatés d'avance, factures à établir, régularisations,
@@ -162,6 +162,16 @@ brouillard restant, TVA non déclarée, balance des tiers). **Clôture d'exercic
 (irréversible, tracée), à-nouveaux générés, exercice suivant ouvert pendant que le précédent se
 termine. États financiers **au format SCE** : bilan, état de résultat, état des flux de trésorerie,
 notes (⚠ comptable : la présentation exacte, NCT 01), comparatif N/N-1, SIG, ratios.
+
+**Et le flux RETOUR, sans lequel tout le reste diverge** (trouvé par une relecture extérieure le
+15/09/2026) : les écritures d'inventaire du cabinet n'existent pas chez le client, donc à la
+clôture ses à-nouveaux de l'exercice suivant seraient faux **pour toujours**, avec un écart qui
+grandit chaque année. Le cabinet produit donc un fichier `.skanclose`, chiffré pour le client (qui
+a désormais sa propre clé, voir 9.9.0 et `QUESTIONS.md` § 6) : à-nouveaux officiels, liste des
+écritures d'inventaire, date de clôture. Côté entreprise, l'import les pose, verrouille l'exercice
+clos et affiche ce que le comptable a ajouté. Le test qui compte est le **jumeau du test de parité,
+dans l'autre sens** : après la clôture et l'import, le bilan des deux applications est identique au
+millime.
 
 ### 9.7.0 — Les immobilisations et les stocks côté cabinet
 
