@@ -1,5 +1,17 @@
 # CAHIER-DES-CHARGES.md — la spécification technique de SkanFact
 
+**Version 1 — 15/09/2026.** Lue sur le dépôt `saouthq/skanfact` au commit **`d7bfc54`** (v0) puis
+**`6ebe904`** (v1 ; aucun fichier de code n'a changé entre les deux). Points de la relecture
+extérieure **retenus** dans cette version : 1 (les trois listes de `livre.json` spécifiées), 2
+(Partie 15, intentions 9.3.0 → 10.0.0), 3 (catalogue porté à 60 fiches), 4 (contrat IPC, Parties
+4.5 et 5.5), 5 et 19 (JSON exacts de la plateforme), 6 (ordre de vérification de la signature, avec
+la correction de son motif), 7 (`.skanrecover` complet), 8 (Partie 17, sécurité — dont un vrai
+trou : l'injection CSV), 9 (Partie 18, limites), 10 (Partie 19, cas limites), 11 (Partie 20,
+runbooks), 12 (Partie 16, séquences), 13 (Partie 21), 14 (renvoi + correspondance des e2e), 15
+(CSS, existant nommé + `cab-` décidé), 16 (raisons des interdictions), 17 (mode démo), 18
+(idempotence, un défaut réel), 20 (Partie 22). Ce qui a été **refusé ou corrigé** est dans le
+« Journal des versions », en fin de document.
+
 *Écrit le 15/09/2026 sur le dépôt `saouthq/skanfact` au commit **`d7bfc54`** (version 9.0.0 des deux
 applications). Tout ce qui est marqué **Livré** a été lu dans le code à ce commit ; tout ce qui est
 marqué **Cible** est une spécification à implémenter, écrite pour être exécutée sans question. Ce
@@ -216,6 +228,22 @@ envoyeeConsoleLe?, payeeConsoleLe?, venteConsoleId? }`.
 }
 ```
 
+**Le mode démo (`data.demo === true`)** — ce qu'il change, et rien d'autre (Livré, 7.0.0 → 7.6.0) :
+un bandeau permanent sur chaque page ; **13 appels à `demoBlock`** dans `app.js` posés sur les
+gestes qui sortent de l'ordinateur (envoi d'un mail, du paquet au cabinet, d'une relance, d'une
+attestation, de la déclaration…) — `demoBlock` **prévient et propose deux issues** (« Repartir de
+mes données » / « Continuer quand même »), il n'interdit jamais ; l'export PDF reste libre mais le
+document porte le tampon « EXEMPLE » (`stampFor`, une seule fonction pour les quatre chemins) ;
+l'identité empruntée est notée champ par champ (`company.demoFields`) et rendue par
+`rendreLesEmprunts` à la sortie comme par « Tout effacer » (`wipeData`, déduit de `DEFAULT_DATA`) ;
+le chargement prend la sauvegarde `avant-demo` et prévient si une période est clôturée
+(`closedWipeOk`). **Ce qu'il ne change pas** : la licence (l'essai compte, une clé collée reste
+jugée — la démo n'est pas un passe-droit), la numérotation (les pièces d'exemple consomment les
+compteurs, d'où « Tout effacer » qui les remet à zéro), le paquet (il se fabrique, il porte
+`entreprise` = l'identité empruntée, et `demoBlock` prévient avant l'envoi). Un paquet reçu par un
+cabinet depuis une démo n'est pas distinguable d'un vrai — **Cible 9.2.0** : `manifest.demo: true`
+et le Cabinet le range comme « exemple », jamais dans un dossier réel.
+
 **Règles de validation** : `storage.isValidData(obj)` (`src/storage.js` l. 50 : un objet non
 tableau ; `clients`, `catalog`, `documents` absents ou tableaux ; `company` absent ou objet non
 nul) ; un fichier illisible est **mis de côté,
@@ -324,7 +352,9 @@ ultérieur est facultatif à la lecture.
     ]
   }],
   "lettrages": [{ "lettre": "AB", "compte": "411001", "ecritures": ["e_01J8ZK…", "e_01J9AA…"], "le": "2026-09-02", "par": "import" }],
-  "releves": [], "immobilisations": [], "declarations": [],
+  "releves": [],
+  "immobilisations": [],
+  "declarations": [],
   "ouverture": { "date": null, "source": null, "lignes": [] },
   "audit": [{ "quand": 1789800000000, "qui": "import", "quoi": "import-paquet", "detail": "2026-08 (définitif), 37 écritures" }]
 }
@@ -357,6 +387,81 @@ ultérieur est facultatif à la lecture.
 4. Une `validee` importée d'un paquet **remplacée par un mois renvoyé** n'est pas modifiée : l'écart
    est calculé et affiché (`QUESTIONS.md` § 16, 9.2.0).
 5. `lettrages` : chaque `lettre` cohérente (règle ci-dessus) et chaque id d'écriture existant.
+
+**Les trois listes dont la FORME est figée dès la 9.2.0** (Cible ; leurs champs restent
+extensibles — tout ajout est facultatif à la lecture — mais leur forme, elle, ne bouge plus, parce
+qu'un relevé « par ligne » ne se transforme pas en relevé « par compte » une fois écrit chez
+soixante clients). Ce que les trois ont en commun : un `id`, une trace (`creeLe`, `par`), et un
+lien vers les écritures qu'ils ont produites (`ecritureId`), jamais l'inverse.
+
+`releves[]` — un relevé bancaire importé (9.4.0) ; **un objet par fichier importé**, les lignes
+dedans (pas une liste plate de lignes : le comptable pense « le relevé de mars »).
+
+```json
+{ "id": "r_01J9…", "compte": "532", "banque": "BIAT", "du": "2026-03-01", "au": "2026-03-31",
+  "soldeDebut": 12500.000, "soldeFin": 14210.500, "fichier": "releve-mars.csv", "empreinte": "<sha256>",
+  "importeLe": 1789800000000, "par": "skander",
+  "lignes": [
+    { "id": "rl_01J9…", "date": "2026-03-04", "libelle": "VIR CLIENT TEST FAC-2026-031", "montant": 1191.000,
+      "reference": "", "rapprochement": { "niveau": "certain", "ecritureId": "e_01J8ZK…", "ligne": 0, "le": "2026-04-02", "par": "auto" },
+      "ecritureId": null }
+  ] }
+```
+
+Invariants : `montant` signé (crédit bancaire > 0, débit < 0 — c'est le seul endroit du livre où un
+montant porte un signe, parce que c'est ainsi que la banque l'écrit) ; `rapprochement.niveau` ∈
+`certain | probable | a-confirmer | aucun` et **jamais `certain` posé par `auto` sur une ambiguïté**
+(règle 32) ; `soldeDebut + Σ montant = soldeFin` à 0,001 près, sinon l'import est refusé avec
+l'écart (`ERR-CAB-040`) ; `ecritureId` non nul quand la ligne a **généré** une écriture (frais
+bancaires, virement inconnu → 471) ; `empreinte` empêche d'importer deux fois le même fichier.
+
+`immobilisations[]` — une fiche de bien côté cabinet (9.7.0), même modèle que côté entreprise
+(`data.assets`, 3.5.0) pour que `compta.js` partage le calcul.
+
+```json
+{ "id": "i_01J9…", "libelle": "Serveur Dell", "compte": "2241", "compteAmort": "2841", "compteDotation": "681",
+  "dateAcquisition": "2026-02-10", "dateMiseEnService": "2026-02-15", "valeur": 4800.000, "tva": 912.000,
+  "methode": "lineaire", "duree": 3, "tauxDegressif": null, "prorata": "jours360",
+  "origine": { "source": "skanfact", "docId": "ach_…", "mois": "2026-02" },
+  "plan": [ { "annee": 2026, "dotation": 1413.333, "cumul": 1413.333, "vnc": 3386.667, "ecritureId": "e_…" } ],
+  "cession": null, "creeLe": 1789800000000, "par": "import" }
+```
+
+Invariants : `plan` est **recalculé** depuis les champs, jamais saisi (la dernière annuité absorbe
+les arrondis ; `vnc` finit à 0) ; `methode` ∈ `lineaire | degressif` ; `tauxDegressif` **réglable,
+jamais un coefficient en dur** (À VÉRIFIER avec le comptable : les coefficients tunisiens) ;
+`cession` = `null` ou `{ date, prix, ecritureId, resultat }` ; une dotation passée en écriture
+d'inventaire porte `ecritureId`, et l'écriture porte `source: 'inventaire'`.
+
+`declarations[]` — une déclaration préparée (9.5.0), **un objet par déclaration par période**,
+chaque case tracée jusqu'aux écritures qui la font.
+
+```json
+{ "id": "d_01J9…", "type": "mensuelle", "periode": "2026-03", "preparéeLe": 1789800000000, "par": "skander",
+  "cases": {
+    "tvaCollectee": { "montant": 2280.000, "ecritures": ["e_…", "e_…"] },
+    "tvaDeductible": { "montant": 310.000, "ecritures": ["e_…"] },
+    "creditReporte": { "montant": 0, "ecritures": [] },
+    "netAPayer": { "montant": 1970.000, "ecritures": [] },
+    "retenues": { "montant": 15.000, "ecritures": ["e_…"] },
+    "tfp": { "montant": null, "ecritures": [] }, "foprolos": { "montant": null, "ecritures": [] },
+    "tcl": { "montant": null, "ecritures": [] }, "timbre": { "montant": 6.000, "ecritures": ["e_…"] }
+  },
+  "controles": [ { "id": "4366-report", "ok": true, "detail": "" } ],
+  "deposee": { "le": "2026-04-15", "par": "skander", "reference": "" },
+  "ecritureId": "e_…" }
+```
+
+Invariants : une case dont la règle n'est pas connue vaut **`null`, jamais 0** (règle 36) ; la
+clé de `cases` est une liste **ouverte** (une case de plus n'est pas un changement de format) ;
+`deposee` est un pense-bête, jamais un dépôt (règle 5.2.0) ; `ecritureId` = l'écriture de
+déclaration au dernier jour du mois (4367/4366 → 4365), avec les chiffres de `vatChain`.
+
+**Ce qui n'est PAS une liste du livre, et pourquoi** : les provisions, charges constatées d'avance,
+factures non parvenues sont des **écritures d'inventaire** (`source: 'inventaire'`), pas des objets
+à part — les en faire une liste doublerait la vérité. Les budgets sont hors périmètre (Partie 22).
+Les questions au client (9.9.0) vivent dans `cabinet-data.json` (dossier), pas dans le livre : elles
+concernent la relation, pas la comptabilité.
 
 **Migration depuis « pas de livre »** (MIG-9.2.0-001) : voir Partie 12. **Fichier absent** : le
 dossier n'a pas de livre pour cet exercice → écran vide avec le bouton « Reprendre ce dossier… »
@@ -437,11 +542,55 @@ l'empreinte est **recalculée** (`keyFingerprint` = SHA-256 de la clé, cinq gro
 fichier refusé si elle diffère (`ERR-ENT-030`). Rien de secret dedans. **Cible 9.2.0** : le retour
 `.skanpair` du client (`kind: 'client'`, `publicKey` Ed25519, `matricule`) pour l'épinglage.
 
-### SPEC-FMT-003 — `.skanrecover` (Livré)
+### SPEC-FMT-003 — `.skanrecover` (Livré, complété en v1 — point 7)
 
-`{ "<RECOVER_MARK>": 1, "format": 1, "cabinet": "<nom>", "creeLe": "<ISO>", "avertissement": "…",
-"coffre": <enveloppe AES-256-GCM + scrypt de { publicKey, privateKey, name, email }> }`
-(`cabstore.makeRecovery`). Restaurer pose `recoveryExportedAt = creeLe`.
+Le seul fichier dont la perte est **irréversible** pour un cabinet : sans lui et sans le poste, aucun
+paquet déjà reçu ne s'ouvrira plus jamais. `src/cabinet/cabstore.js` (`makeRecovery`,
+`readRecovery`), `src/cabinet/main.js` (`cab:exportRecovery`, `cab:importRecovery`,
+`cab:recoveryStatus`).
+
+```json
+{ "skanfactCabinetRecovery": 1,          // RECOVER_MARK — ce qui fait reconnaître le fichier
+  "format": 1,
+  "cabinet": "Cabinet Ben Salah",         // nom en clair : identifier le fichier sans le déchiffrer
+  "creeLe": "2026-09-15T09:12:00.000Z",
+  "avertissement": "Ce fichier contient la clé qui ouvre les paquets de tes clients. Garde-le hors de ton ordinateur (coffre, clé USB rangée ailleurs). Sans lui et sans ton poste, aucun paquet déjà reçu ne pourra plus être ouvert.",
+  "coffre": { "skanfactCabinet": 1, "kdf": "scrypt", "salt": "<b64 16 octets>", "iv": "<b64 12>",
+              "tag": "<b64 16>", "data": "<b64 AES-256-GCM>" } }
+```
+
+- **Ce qui est dans le coffre** : `{ publicKey, privateKey, name, email }` — la paire X25519 du
+  cabinet (PEM), rien d'autre (ni dossiers, ni paquets, ni mot de passe de l'application).
+- **Comment il est scellé** : mot de passe **choisi pour l'occasion** (≥ 8 caractères, distinct de
+  celui de l'application : le fichier a vocation à quitter le poste) → `scrypt(N = 2¹⁵, r = 8, p = 1,
+  maxmem 64 Mo)` sur un sel de 16 octets → clé de 32 octets → AES-256-GCM. **Produire le fichier
+  exige de retaper le mot de passe du cabinet** (`current`), sinon n'importe qui devant un poste
+  déverrouillé repartirait avec la clé de tous les clients.
+- **Écriture** : `JSON.stringify(…, null, 2)`, mode `0600`, nom proposé
+  `<slug(nom)>-cle-de-secours.skanrecover` dans Documents ; `app-config.json` reçoit
+  `recoveryExportedAt = Date.now()`. Tant que ce champ est vide, l'application le dit **en rouge**
+  (bandeau, « À faire », page Dossiers même vide) et, Cible 9.1.0, **le réclame au premier import**.
+- **Restauration** (`cab:importRecovery(password)`) : sélecteur de fichier → `JSON.parse` →
+  `readRecovery` : marqueur absent ou `coffre` absent → « Ce fichier n'est pas une clé de secours
+  SkanFact. » ; mot de passe faux → l'étiquette GCM ne vérifie pas → « Mot de passe de la clé de
+  secours incorrect. » (c'est l'**intégrité** : un octet modifié donne la même phrase, jamais une clé
+  corrompue chargée en silence) ; clés vides → « Cette clé de secours est vide. ». Puis sauvegarde
+  `avant-restauration-cle`, `state.cabinet.{publicKey, privateKey}` remplacés, `save()`, et
+  `recoveryExportedAt = creeLe du fichier` (« restaurer une clé compte comme en avoir une », 7.32.0).
+  Retour `{ fingerprint, name }` — l'écran affiche l'empreinte pour qu'on la compare à celle qu'on
+  avait dictée aux clients : **même empreinte = les paquets s'ouvrent, autre empreinte = ce n'est pas
+  le bon fichier**.
+- **Deux scénarios distincts, deux portes** : *poste perdu, base perdue* → `cab:pickRecover` +
+  `cab:adopt` reprennent un `cabinet-data.json` ou une copie externe entière (la clé y est déjà) ;
+  *poste neuf, seulement la clé de secours* → `cab:importRecovery` sur un cabinet fraîchement créé
+  (les dossiers reviennent au fil des paquets renvoyés). `e2e:demenagement` prouve le premier,
+  `e2e:perte` le second.
+- **Conservation recommandée** (écrite dans l'aide) : deux supports hors du poste (clé USB au coffre
+  + impression du JSON — 1,5 Ko, il tient sur une page), le mot de passe **ailleurs** que le fichier
+  (le « pli scellé » de `QUESTIONS.md` § 12), et un nouvel export à chaque changement de clé.
+- **Ce que le format ne fait pas** : pas de rotation (une clé, un fichier ; un nouveau fichier
+  remplace l'ancien), pas de partage à seuil (refusé, `QUESTIONS.md`), pas de dérivation depuis le
+  mot de passe de l'application (deux secrets distincts, à dessein).
 
 ### SPEC-FMT-004 — l'enveloppe scellée (Livré)
 
@@ -621,6 +770,204 @@ pour le dinar, 2 sinon, point décimal en anglais.
 
 **SPEC-FUNC-023 `defaultVat(company): number`** (l. 540) — le régime tranche **avant**
 `defaultVatRate` ; `0` est légitime.
+
+### 3.1 ter — le catalogue complété (v1, 37 fiches)
+
+Même structure que SPEC-FUNC-001. Tout est **Livré** sauf mention ; les numéros de ligne sont ceux
+du commit `d7bfc54`. Quand le test qui couvre n'a pas été relu, sa catégorie est donnée.
+
+**SPEC-FUNC-024 `computePayslip(employee, input, settings): Calcul`** — l. 1953. Entrée :
+`employee` (fiche, `contract`, `gross`…), `input` (`payslipInputFor` : absences, primes, avances),
+`settings` = `payrollSettings(data)` (**jamais `DEFAULT_PAYROLL` directement**, sauf défaut).
+Sortie l. 1995 : `{ baseGross, absenceCut, absentDays, workedDays, bonuses, taxableBonus, freeBonus,
+gross, cnssBase, cnssEmployee, afterCnss, pro, family, children, annualTaxable, irppYear, irpp, css,
+deductions, otherDeductions, net, cnssEmployer, accident, tfp, foprolos, employerCharges,
+employerCost, rates: { … copie des taux utilisés } }` — c'est cette copie qui est **gelée** dans
+`slip.computed`. Il n'existe **ni `cnssBase()` ni `netAPayer()`** : ce sont les champs `cnssBase`
+et `net` de ce retour. Erreurs : aucune ; un taux absent vaut 0. Pièges : le brut imposable est
+mensuel, l'IRPP est annualisé (`irppYear / 12`) ; `employerCost` est ce qui entre dans le résultat
+(jamais `net` ni `gross`). Tests : « bulletin : … » (3), « paie : … » (2), e2e `livres` (TFP).
+
+**SPEC-FUNC-025 `irppAnnual(base: number, brackets: Array<{ upTo, rate }>): number`** — l. 1935.
+Tranche par tranche sur la part qui traverse ; `round3`. Piège : taxer la tranche entière dès
+qu'on y entre surestime de 6 % (5.0.0). Test : « bulletin : barème progressif ».
+
+**SPEC-FUNC-026 `employerChargesOf(c: Calcul): number`** — exporté (liste `return { … }`) ; défini
+par affectation, pas par `function` (À VÉRIFIER : `grep -n "employerChargesOf =" core.js`). Somme
+`cnssEmployer + accident + (c.tfp || 0) + (c.foprolos || 0)` lue sur la **copie figée** ; un
+bulletin d'avant la 9.0.0 n'a pas `tfp` et n'en gagne pas. Un test interdit à l'interface de
+refaire cette addition à la main.
+
+**SPEC-FUNC-027 `assetSchedule(asset): Array<{ year, annuity, cumulated, nbv }>`** — l. 2759.
+Linéaire sur `asset.amount`, `asset.years`, `asset.date`, prorata base 360 (`days360`) ; **la
+dernière annuité absorbe les arrondis**, `nbv` finit à 0 exactement. Année de cession : **pleine**
+(c'est `assetYear` qui la réduit). Erreurs : `amount` non numérique → 0 partout.
+
+**SPEC-FUNC-028 `assetYear(asset, year): { annuity, cumulated, nbv, out }`** — l. 2788. `out:
+true` l'année de la cession, avec l'annuité **partielle** jusqu'au jour de sortie. Le journal
+prend celle-ci pour cette année-là et `assetSchedule` pour les autres (test « le 28 du bien cédé
+est repris en entier »).
+
+**SPEC-FUNC-029 `assetCumulated(asset, dateIso): number`** (l. 2804) et **`assetNBV(asset,
+dateIso): number`** (l. 2817) — cumul plafonné à la valeur, `nbv = amount − cumul`. Piège :
+`cappedCumulated` existe pour le cas de la cession.
+
+**SPEC-FUNC-030 `disposalResult(asset): { date, price, nbv, result, reason } | null`** — l. 2823.
+`result = price − nbv` au jour de la cession ; **le prix n'est jamais inventé** (règle 9.0.0 : il
+vient d'un mouvement 775 ou d'une facture, pas du 471).
+
+**SPEC-FUNC-031 `depreciationFor(data, period): number`** — l. 2892. Différence de cumuls entre
+`period.from − 1 j` et `period.to`, **sauf** année civile complète : reprend le chiffre du tableau
+au millime. Piège historique : « −1 612 % du CA » (douze mois d'amortissement sur un mois de
+ventes). Test : « sur un mois on amortit un mois ».
+
+**SPEC-FUNC-032 `packChecklist(data, company, period): Array<{ id, level, label, count }>`** —
+l. 3530 : `closureChecks` + les manques propres au paquet. Chaque `id` a une action dans
+`CHECK_ACTIONS` (app.js) — test de couverture. Sur un mois **vide**, la liste est vide et l'écran
+ne dit pas « complet » (7.3.0).
+
+**SPEC-FUNC-033 `packCoverHtml(plan, company, opts): string`** — l. 3662, la page de garde (HTML
+→ PDF par `pack:build`). `opts.version`, `opts.at`. Piège : `plan.manifest.poste` s'affiche
+échappé.
+
+**SPEC-FUNC-034 `packFileName(company, period, definitive): string`** — l. 3515, voir 6.1.
+
+**SPEC-FUNC-035 `mergeData(mine, theirs): { data, report }`** — l. 3111. Les deux côtés passent
+par `migrateData` ; fusion par `id` sur `MERGE_LISTS` ; le `syncWrittenAt` le plus récent tranche ;
+la version écartée va dans `conflictArchive` ; compteurs au **max** ; `report.doublons` liste les
+numéros émis deux fois (cas insoluble, parade organisationnelle). Piège : `deleted` doit être
+consulté sinon une pièce supprimée revient. Tests : « fusion : … » (5).
+
+**SPEC-FUNC-036 `trackDeletion(data, kind, id, label): data`** — l. 3170. Ajoute `{ kind, id,
+label, at }` à `data.deleted` ; sans `id` ne fait rien. Toute suppression d'une liste fusionnable
+passe par là.
+
+**SPEC-FUNC-037 `etatRapprochement(data, company, accountId, toIso): { … }`** — l. 4467, à
+partir de `reconciliation` : solde comptable, solde pointé, écarts en suspens, `ecart` = 0 quand le
+relevé égale le solde pointé (e2e `livres`). Pièce d'un mouvement : `m.pointe` vit **sur le
+paiement d'origine** (3.3.0).
+
+**SPEC-FUNC-038 `etatsFinanciers(data, company, year, toIso, opts): { bilan, resultat,
+tresorerie, dotationEnAttente, … }`** — l. 4487. Il n'existe **ni `bilanDepuisBalance` ni
+`resultatDepuisBalance`** : c'est cette fonction qui rend les deux, déduits de `balanceGenerale`
+par classe et sens du solde. Garanties testées : actif = passif ; résultat identique des deux
+côtés ; trésorerie = `cashPosition`. `dotationEnAttente` : sur l'exercice en cours, la dotation
+n'est pas encore au bilan et l'écran le dit. **Pas la liasse NCT 01.**
+
+**SPEC-FUNC-039 `vatChain(data, company, year, upToMonth): Array<Déclaration>`** — l. 3220 :
+`vatReturn` mois par mois, `carryIn` = `carryOut` du mois précédent, le premier prenant
+`data.vatCarryIn[year]`. **Une déclaration isolée est fausse** (le report). Test : « TVA : la
+chaîne… ».
+
+**SPEC-FUNC-040 `vatSummary(rows): { ht, tva, ttc, byRate }`** — l. 995, sur des lignes de
+`salesJournal` converties en devise de base.
+
+**SPEC-FUNC-041 `purchaseBalance(purchase, company): { totals, paid, remaining }`** (l. 1332),
+**`purchaseStatus(purchase, company, todayIso): 'à payer'|'partiel'|'en retard'|'payé'`**
+(l. 1362 — **contient une espace** : classe CSS par `buyBadge`, jamais `class="badge ${status}"`),
+**`achatDoublon(data, achat): Achat|null`** (l. 1354 : même fournisseur + même numéro + autre id ;
+`null` pour une dépense, qui n'a pas de numéro qui fasse foi ; on **prévient sans refuser**).
+
+**SPEC-FUNC-042 `licenceState(opts): État`** (`src/licence.js` l. 306) — `opts.cles |
+publicKey`, `key`, `matricule`, `installedAt`, `armedAt`, `today`, `serveur` (verdict). Neuf
+états (SPEC-DATA-008). Retour : `{ state, locked, label, detail, key, name, exp, daysLeft, offre,
+offreLabel, reserves, … }`. Règles : l'essai part du **plus tardif** de `installedAt`, `armedAt`,
+`createdAt` de la clé, contre la **plus ancienne** clé embarquée ; une clé sans `kid` → `master` ;
+un matricule vide ne compte pas ; le verdict serveur ne peut que **restreindre**. Tests :
+« licence : … » (11), « 8.4.0 : … » (5).
+
+**SPEC-FUNC-043 `pastilleLicence(lic): { show, ton: 'calme'|'attire'|'alerte'|'', texte }`** —
+l. 437. Décide seule ; `licenceBanner` (app.js) ne rejuge jamais `daysLeft` (test de source
+8.0.1). Rien à dire → `show: false` (`libre`, `editeur`, à vie).
+
+**SPEC-FUNC-044 `licenceSuivi(lic, data, company): { … }`** (l. 5034) et **`licencesAFaire(data,
+company, todayIso): { jamaisEnvoyees, nonFacturees, impayees, expirant }`** (l. 5055). La
+société est **passée**, avec repli sur `data.company` (piège 8.2.0). `origine: 'console'` n'est
+jamais réclamée en envoi ; `envoyeeConsoleLe` compte comme un envoi.
+
+**SPEC-FUNC-045 `moduleOn(data, id): boolean`** (l. 579) et **`moduleWhy(data, id): 'coeur'|
+'choisi'|'masque'|'tout'`** (l. 591 ; **Cible** : + `'option'`). `toujours` → toujours vrai ;
+`modules` non tableau → tout ; sinon `includes`. **Cible** SPEC-FUNC-101 : l'exception
+`compta.livres`.
+
+**SPEC-FUNC-046 `optionBlock(what, option): boolean`** — **Cible 9.1.0**, `app.js`, jumeau de
+`licenceBlock` (l. 271) : lit `licence.options` (état mis en cache par `licence:status`), pose
+SPEC-UI-ENT-002, rend `true` si refusé. Test de source : posé sur les onglets de l'option, nulle
+part ailleurs.
+
+**SPEC-FUNC-047 `issueWarnings(): Array<string>`** — **`app.js` l. 2664**, pas `core.js`. Lit
+`company()` et le brouillon : société incomplète (`companyGaps`), RIB absent si un virement est
+attendu (`ribAttendu`), date antérieure à la dernière pièce émise, taux de change manquant, stock
+insuffisant ; **Cible 9.1.1** : sous le seuil de retenue. **Avertit, ne bloque jamais** (l'utilisateur
+choisit « Émettre quand même »).
+
+**SPEC-FUNC-048 `todoList(data, company, todayIso, opts): Array<{ id, level, label, detail,
+action, … }>`** — l. 5141 : 22 sortes de lignes, **triées par urgence** (on teste la règle, pas
+un ordre en dur) ; chaque `id` a une entrée dans `TODO_ACTIONS` (test de couverture — treize
+boutons morts en 7.0.0). Le trou de trésorerie passe en tête.
+
+**SPEC-FUNC-049 `companyGaps(company): Array<{ id, label }>`** — l. 5437 : ce qui manque à la
+fiche pour émettre (nom, matricule, adresse ; le RIB seulement si `ribAttendu`). Les deux écrans
+qui le disent (`companyGaps`, `issueWarnings`) suivent la même fonction.
+
+**SPEC-FUNC-050 `firstSteps(data, company, opts): { etapes, faits, total, fini, demarrage }`** —
+l. 5479 : l'état de chaque étape est **déduit des données** ; ce que l'assistant a posé
+(`fromSetup`) ne coche pas « Remplir ton catalogue ».
+
+**SPEC-FUNC-051 `migrateData(d): Data`** — l. 1035 : part d'une copie de `DEFAULT_DATA`, y pose
+`d`, convertit (voir MIG-hist), écrit `version = 6`. **Idempotente** (test). Ne supprime jamais un
+champ inconnu (un fichier écrit par une version plus récente garde ses données).
+
+**SPEC-FUNC-052 `isValidData(d): boolean`** — `storage.js` l. 50, voir SPEC-DATA-001.
+
+**SPEC-FUNC-053 `lettrage(data, company, role, todayIso): { role, rows, reste, ouverts }`** —
+l. 4428 ; `rows[]` par tiers `{ tiersId, tiers, ouverts: [pièces], reste }`. Contrôle : `reste`
+= solde du 411/401 (c'est ce qui a attrapé la facture annulée sautée, 8.9.0).
+
+**SPEC-FUNC-054 `journalDeCompte(data, acc, accountId, method): { journal: 'BQ'|'CA', compte
+}`** — le compte affecté, sinon le compte par défaut, sinon le **mode** (`especes` → caisse)
+seulement s'il n'existe aucun compte. La banque du grand livre = celle de la Trésorerie.
+
+**SPEC-FUNC-055 `codesAuxiliaires(liste): Object<id, code>`** (pur, l. 3906) et
+**`numeroterAuxiliaires(data): number`** — le code est **figé sur la fiche** (`compteAux`),
+jamais déduit de la position au moment de l'affichage.
+
+**SPEC-FUNC-056 `closureChecks(data, company, from, to)`**, **`closePeriod(data, iso, opts): {
+ok, until }`**, **`reopenPeriod(data, iso, opts)`** — les contrôles **ne bloquent jamais** ; une
+réouverture exige `opts.motif` (journal `closureLog`).
+
+**SPEC-FUNC-057 `packPeriod(year, month): { month, from, to, label }`** — l. 3470-.
+
+**SPEC-FUNC-058 `odPiece(data, dateIso): 'OD-AAAA-NNN'`** (l. 4406) — pris **à
+l'enregistrement**, après `licenceBlock` et `closedBlock` (un refus après trouerait la suite).
+
+**SPEC-FUNC-059 `defaultVat(company): number`** (l. 540) — régime avant réglage ; **`0` est
+légitime**, `VAT_RATES.includes(n) ? n : 19`.
+
+**SPEC-FUNC-060 `missingRate(doc, company): boolean`** (l. 763+) — `!(Number(doc.exchangeRate) >
+0)` ; `rateOf` replie sur 1 **pour ne rien faire planter**, et `missingRate` existe pour que
+l'application le dise (la saisie refuse, « À faire » en rouge).
+
+**Les fonctions cibles de `compta.js` (9.1.0)** — SPEC-FUNC-100 les liste ; chacune a une fiche
+courte ici :
+- `ecritureValide(ecriture, plan?)` → `{ ok, motif }` ; sept motifs (Σd ≠ Σc, une ligne, compte
+  vide, d et c sur une ligne, montant négatif, date absente, journal vide) ; test TEST-9.1.0-001.
+- `entreesDepuisCsv(texte)` → `Array<Ligne>` ; par **nom** de colonne, BOM toléré, `1234,567` et
+  `1234.567`, guillemets doublés, `;` ou tabulation ; une ligne sans compte est ignorée **et
+  comptée** (`ignorees`). Test TEST-9.1.0-002.
+- `balanceDepuisLignes(entries, ouverture?)` → `{ rows, totaux, ok }` ; `ouverture` =
+  `Object<compte, { debit, credit }>` ou absent (alors 0, et l'écran le dit). TEST-9.1.0-004.
+- `grandLivreDepuisLignes(entries, compte, ouverture?)` → `{ compte, libelle, ouverture, lignes:
+  [{ …ligne, solde }], total }`. TEST-9.1.0-005.
+- `journalDepuisLignes(entries)` → `{ pieces: [{ numero, date, journal, piece, lignes, debit,
+  credit }] }` numérotées `1..n` par (date, piece). TEST-9.1.0-006.
+- `centralisateurDepuisLignes(entries)` → `Array<{ mois, journal, debit, credit, pieces }>`.
+- `lettrageDepuisLignes(entries, compteOuRole, todayIso)` → même forme que SPEC-FUNC-053.
+  TEST-9.1.0-007.
+- **`livreVide`, `isValidLivre`, `ajouterEcriture`, `validerEcriture`, `contrepasser`,
+  `importerPaquet`, `lettrer`, `delettrer`, `balanceOuverture`** (9.2.0) : SPEC-FUNC-103. Il
+  n'existe pas de `migrateLivre` : la « migration » est `livreVide` + `importerPaquet` rejoué
+  (MIG-9.2.0-001).
 
 ### 3.1 bis — les autres exports, par famille (une ligne chacune, tous Livrés)
 
@@ -840,6 +1187,60 @@ touché.
 
 ---
 
+### 4.5 Contrat IPC — entreprise (Livré, `src/preload.js` 92 lignes, `src/main.js`)
+
+Le pont est **le** contrat de sécurité : `contextIsolation: true, nodeIntegration: false, sandbox:
+true`. Le renderer ne voit que `window.skanfact.<méthode>` ; chaque méthode appelle **un** canal.
+Règles : un canal neuf = une méthode dans `preload.js` + `ipcMain.handle` + une entrée ici + un
+test si le canal écrit ; jamais `ipcRenderer` exposé brut ; jamais un chemin de fichier choisi par
+le renderer sans passer par `dialog` ou par un identifiant (`docId`, `file`) résolu côté main
+(`storage.attachmentPath`). Les erreurs traversent le pont comme `Error` habillé (« Error invoking
+remote method … ») : `plainError(e)` (app.js) ne montre que la phrase écrite. **Cible 9.1.0** :
+`support:erreur` (SPEC-OUT-004).
+
+| Méthode (`window.skanfact.`) | Canal | Arguments | Retour | Erreurs / notes |
+|---|---|---|---|---|
+| `loadData()` | `data:load` | — | `{ data: Data\|null, locked: boolean, encrypted: boolean, corruptFile: string }` | `locked` → écran de mot de passe ; `corruptFile` = chemin du fichier mis de côté |
+| `saveData(data, force)` | `data:save` | `{ data, force }` | `storage.write` → `{ ok: true }` \| `{ ok: false, conflict: true, disk }` | le conflit **ne s'écrit pas** ; `save()` fusionne puis réécrit `force` |
+| `dataPath()` | `data:path` | — | `string` | |
+| `unlock(password)` / `lock()` | `data:unlock` / `data:lock` | `string` / — | `{ ok, data? }` \| `{ ok:false, error:'Mot de passe incorrect.' }` / `true` (recharge) | |
+| `securityInfo()` | `data:security` | — | `{ encrypted }` | |
+| `setPassword({ data, password, current })` | `data:setPassword` | | `{ ok, encrypted }` \| `{ ok:false, error }` | **remonte un refus d'écriture** (7.30.0) ; rechiffre les sauvegardes, y compris externes |
+| `listDossiers()` | `dossiers:list` | — | `{ dossiers: [{ id, name, dir, shared }], current, device: { deviceId, deviceName } }` | |
+| `switchDossier(id)` / `renameDossier({ id, name })` / `forgetDossier(id)` | `dossiers:*` | | `{ ok }` \| `{ ok:false, error }` | jamais le dernier dossier |
+| `addDossier({ name, shared })` / `shareDossier()` / `joinDossier()` | `dossiers:add/share/join` | | `{ ok, cancelled? , error? }` | **share** copie le dossier OUVERT, bascule après copie constatée ; **join** ne crée rien (7.28.0) |
+| `renameDevice(name)` | `device:rename` | `string` | `{ ok, name }` | |
+| `exportData(data)` / `importData(opts)` | `data:export` / `data:import` | | chemin / `{ data }` \| `{ needPassword: true }` | import : sauvegarde `avant-import` d'abord |
+| `externalBackupInfo()` / `setExternalBackup(dir)` / `chooseExternalBackup()` | `backups:*` | | `externalInfo()` = `{ dir, ok, last, … }` (À VÉRIFIER les champs, `main.js` `externalInfo`) | |
+| `openBackups()` / `createBackup(label)` / `listBackups()` | `backups:open/create/list` | | chemin / `Array<{ name, date, size }>` | purge par **date**, filets en réserve |
+| `peekBackup(name)` / `restoreBackup(name)` | `backups:peek/restore` | `string` | `{ ok, …résumé }` / `{ ok, data }` \| `{ ok:false, error }` | restore refuse un conflit (« Le fichier a changé entre-temps ») |
+| `pickLogo(title)` | `logo:pick` | | data URL | |
+| `addAttachments(docId)` / `attachPath(docId, path)` / `openAttachment` / `revealAttachment` / `removeAttachment` | `attach:*` | `{ docId, file }` | liste / booléen | le chemin réel est résolu côté main |
+| `ocrStatus/ocrSetKey/ocrPick/ocrRead` | `ocr:*` | | | **en pause** (`OCR_EN_PAUSE`) ; `ocr:read` refuse sans clé |
+| `exportPdf(html, suggestedName)` / `exportPdfMany(files, folderName)` / `exportPdfSilent(html, name)` | `pdf:*` | | chemin / dossier / fichier | `renderPdf` : `fitToPage` puis `paginate`, toujours les deux |
+| `saveText(suggestedName, content)` / `saveTextSilent(name, content)` | `file:saveText/saveSilent` | | chemin | |
+| `composeMail({ to, subject, body, attachment, attachments, mode })` | `mail:compose` | | `{ state: 'mail'\|'mailto' }` | AppleScript sur macOS, sinon `mailto:` + PDF montré |
+| `buildPack({ plan, coverHtml, password, cabinetKey, suggestedName })` | `pack:build` | | `{ path, octets, fichiers, chiffre, pourCabinet, absents, empreinte }` | `pack:progress` `{ done, total, label }` pendant ; le renderer décide (`packPlan`), main exécute |
+| `onPackProgress(cb)` | `pack:progress` (événement) | | | |
+| `importCabinet()` | `cabinet:import` | — | `{ name, email, publicKey, fingerprint, pairedAt }` | `ERR-ENT-030` ; l'empreinte est **recalculée** |
+| `licenceStatus(matricule)` | `licence:status` | `{ matricule }` | `{ …licenceState, matricule, today, editeur, … }` | relu au chargement du dossier et après la fiche société |
+| `licenceSet(key, matricule)` | `licence:set` | `key, { matricule }` | `licenceStatus(matricule)` | refuse une clé invalide ou d'un autre matricule **sans l'écrire** ; « Retirer » retire partout |
+| `licenceMail(company, device)` | `licence:requestMail` | | `{ to, subject, body }` | vers `contact@skanfact.tn` |
+| `licenceEmettre(payload)` | `licence:emettre` | `{ nom, matricule, offre, exp, cabinet, note }` | `{ key, ...payload }` | **éditeur seulement** ; signe dans main ; la privée ne traverse jamais |
+| `editeurStatus(depuis)` | `editeur:status` | | `{ editeur, publique, chemin, armee, correspond, durees, … }` | `correspond` = à la clé EMBARQUÉE (l'état du panneau) |
+| `editeurKeygen/Importer/Exporter/CopierPublique` | `editeur:*` | | `editeurStatus()` / `{ canceled }` / `{ ok, path, publique, autreCle }` / `{ ok, texte }` | keygen n'écrit plus dans `build/` |
+| `cleReponseCreer/Copier(quoi)` , `cleServeurCreer/Copier(quoi)` | `editeur:cleReponse*`, `editeur:cleServeur*` | | `editeurStatus()` / `{ ok, privee }` | la privée va au **presse-papiers**, pas au renderer (`privee: true` = « c'est la privée qui a été copiée ») |
+| `pontStatus()` / `pontSetSecret(secret)` / `pontRequete(chemin, corps)` | `pont:*` | | `{ editeur, base, configure }` / `{ configure, etat }` / le JSON de la console | `PONT_CHEMIN` seul, jamais `..` ; un secret refusé rend sa place à l'ancien |
+| `changelog()` | `app:changelog` | — | texte | |
+| `onAlivePing(cb)` / `onFreezeNotice(cb)` | `alive:ping` → `alive:pong`, `freeze:notice` | | | posés **avant** la séquence de démarrage |
+| `supportInfo()` / `openLog()` | `support:info` / `support:openLog` | — | `{ version, electron, chrome, platform, packaged, logPath, log (40 Ko max), lines, lastFreeze }` | |
+| `onMenuAction(cb)` | `menu:action` (événement) | `name` | | |
+| `updateVersion()` | `update:version` | — | `{ version, packaged, platform, macSigned, hasToken, relay, beta, canal, lastCheck, … }` | `relay` faux quand le relais a échoué |
+| `updateCheck()` / `updateDownload()` / `updateInstall()` | `update:*` | | `{ state, message?, detail?, soft? }` | `updateProblem(err)` : jamais une phrase brute |
+| `updateSetToken(t)` / `updateSetBeta(on)` / `updateOpenReleases()` | `update:*` | | `{ hasToken }` / `{ beta }` | `setBeta` : sauvegarde `avant-beta` **avant** d'armer |
+| `onUpdateEvent(cb)` | `update:event` | | `{ state, … }` | |
+| `setTitle(title)` / `setDirty(dirty)` | `window:title` / `window:dirty` (**send**, pas invoke) | | — | `dirty` doit être remis à `false` par `clearGuard()` (7.28.0) |
+
 ## Partie 5 — Application Cabinet
 
 ### 5.1 Écrans
@@ -917,10 +1318,19 @@ antérieure à la 9.2.0 ») / refus `ERR-CAB-030` en rouge avec le dossier nomm�
   vérifier la signature.
 - **Vérification (Cabinet, `ingest`)** : lire `manifeste.json` en octets, lire `signature.json` ;
   (1) absent → `signature: 'absente'`, accepté avec « origine non prouvée » **sauf si le dossier a
-  `clePublique`** → refus `ERR-CAB-031` ; (2) présent : `crypto.verify(null, octets, cle, sig)` faux
-  → refus `ERR-CAB-032` ; (3) vrai et dossier sans `clePublique` → **épingler** (`clePublique = cle`,
-  `cleEpingleeLe`, `cleEmpreinte`, `audit`) ; (4) vrai et `cleEmpreinte` différente → refus
-  `ERR-CAB-030` en nommant le dossier et les deux empreintes.
+  `clePublique`** → refus `ERR-CAB-031` ; (2) présent : **d'abord** `sha256(octets) ===
+  signature.manifeste`, faux → refus `ERR-CAB-032` avec la variante « le manifeste a été modifié » ;
+  **puis** `crypto.verify(null, octets, cle, sig)` faux → refus `ERR-CAB-032` (v1, point 6) ;
+  (3) vrai et dossier sans `clePublique` → **épingler** (`clePublique = cle`, `cleEpingleeLe`,
+  `cleEmpreinte`, `audit`) ; (4) vrai et `cleEmpreinte` différente → refus `ERR-CAB-030` en nommant
+  le dossier et les deux empreintes. **L'ordre 2 est fixé, et son motif n'est pas celui que la
+  relecture avançait** : une signature Ed25519 porte sur les octets, donc un manifeste modifié fait
+  échouer `verify` de toute façon — l'attaque « je garde la signature et je change le manifeste »
+  est impossible, avec ou sans l'empreinte. L'empreinte sert à autre chose : (a) donner au comptable
+  la **bonne phrase** (« modifié après l'envoi » plutôt que « signature inconnue »), (b) vérifier un
+  vieux paquet **sans** la clé (un `sha256sum manifeste.json` suffit), (c) comparer deux
+  `signature.json` d'un même mois reçu deux fois sans rien déchiffrer. TEST-9.2.0-023 vérifie
+  l'ordre en retournant un octet du manifeste : la phrase attendue est celle de (a).
 - **Où est la clé publique du client** : `cabinet-data.json` → `dossiers[].clePublique`
   (SPEC-DATA-004b). Elle est **aussi** dans chaque `signature.json`, ce qui permet de vérifier un
   vieux paquet hors de l'application.
@@ -945,6 +1355,44 @@ antérieure à la 9.2.0 ») / refus `ERR-CAB-030` en rouge avec le dossier nomm�
   externe qui **emportent** `livre-*.json` (e2e `perte` et `demenagement` rejoués).
 
 ---
+
+### 5.5 Contrat IPC — Cabinet (Livré, `src/cabinet/preload.js` 92 lignes, `src/cabinet/main.js`)
+
+Règle absolue : **aucun handler ne rend `state` brut** — toujours `safeState()` (sans
+`privateKey`) ; un test relit chaque handler. Le préchargement n'expose ni `data:save` ni
+`pack:build` : le Cabinet **ne peut pas** écrire chez un client. Un import est une **boucle
+interruptible** (`cab:importCancel`, `setImmediate` entre deux unités, `import:progress`).
+
+| Méthode (`window.cabinet.`) | Canal | Arguments | Retour | Erreurs / notes |
+|---|---|---|---|---|
+| `status()` | `cab:status` | — | `{ exists, unlocked, version, corruptFile, backups }` | `exists` faux + `backups > 0` → écran de récupération, pas l'assistant |
+| `unlock(password)` | `cab:unlock` | `string` | `{ created: true, state }` \| `{ created: false, state, reorganized }` | crée le cabinet si absent (nouveau sel) |
+| `lock()` / `state()` | `cab:lock` / `cab:state` | | `true` / `safeState()` \| `null` | |
+| `pickRecover(mode)` / `adopt(path, password)` | `cab:pickRecover` / `cab:adopt` | | `{ path, kind, base, backups, packs, bytes }` / `{ … }` | changement d'ordinateur : la **même empreinte** à l'arrivée |
+| `saveCabinet(patch)` / `saveDossier(id, patch)` / `newDossier(fields)` | `cab:save*`, `cab:newDossier` | | `safeState()` / `{ state, moved, id }` / `{ state, id }` | `ERR-CAB-008` ; corriger le matricule corrige l'`id` tant qu'aucun paquet n'est arrivé |
+| `importDossiers(text)` | `cab:importDossiers` | texte collé | `{ added, ignorés, state }` | une ligne = un client ; `;` ou tabulation |
+| `deleteDossier(id)` / `deletePack(id, month)` | `cab:delete*` | | `safeState()` | sauvegarde `avant-suppression` d'abord ; suppression **et récupération** e2e |
+| `noteRelance(id, months, via, note)` | `cab:noteRelance` | | `safeState()` | |
+| `demo(on)` | `cab:demo` | boolean | `safeState()` | s'efface au premier vrai paquet |
+| `exportPairing()` | `cab:exportPairing` | — | `{ path, fingerprint }` | SPEC-FMT-002 |
+| `importPack(opts)` | `cab:importPack` | `{ paths?, password? }` (À VÉRIFIER les clés exactes de `opts`) | compte rendu `{ … }` par `import:progress` puis final | `ingest()` : recalcule chaque empreinte ; sept refus lisibles (Partie 10) ; **Cible 9.1.0** : demande la clé de secours d'abord (SPEC-UI-CAB-002) |
+| `cancelImport()` | `cab:importCancel` (**send**) | — | — | agit **entre** deux unités |
+| `listPack(packPath, password)` / `openInPack(packPath, name, password)` / `extractPack(packPath, password, label)` | `cab:*Pack` | | `Array<{ name, size, … }>` / `{ path, opened, reason? }` / `{ dir, files }` | `opened: false` sur un `.command` : jamais ouvert sous un nom choisi par l'expéditeur |
+| `inbox()` / `pickInbox()` / `clearInbox()` / `inboxIgnore(paths)` | `cab:inbox*` | | `{ dir, nouveaux: [path], erreur? }` | « Dossier introuvable (support débranché ?) » n'est pas une panne |
+| `ecrituresPlan(opts)` / `exportEcritures(opts)` | `cab:ecrituresPlan/exportEcritures` | `{ dossiers?, mois? }` | plan pur / `{ path, lignes, dossiers, vides, illisibles, mois }` | colonnes par **nom** ; un paquet illisible n'arrête rien |
+| **`livres(dossierId, periode)`** | `cab:livres` | | `{ lignes, moisPresents, moisAbsents, paquetsIllisibles, anciens }` | **Cible 9.1.0**, SPEC-UI-CAB-001 |
+| **`livre(dossierId, annee)` / `livreEcrire(dossierId, annee, op)`** | `cab:livre` / `cab:livreEcrire` | `op` = `{ type: 'ajouter'\|'valider'\|'contrepasser'\|'lettrer'\|'delettrer'\|'reprendre'\|'importerPlan'\|'importerBalance', … }` | `livre` / `{ livre, resultat }` | **Cible 9.2.0** : une seule porte d'écriture, atomique, `audit`, verrou `livre-<AAAA>.lock` |
+| `backups()` / `backupNow(label)` / `peekBackup(path, password)` / `restore(path, password)` | `cab:backup*`, `cab:peekBackup`, `cab:restore` | | `{ list, … }` / `{ path, list }` / résumé / `safeState()` | `peek` réessaie avec le sel de la sauvegarde ; `restore` dit d'abord ce qu'on perd |
+| `pickExternal()` / `clearExternal()` / `mirrorNow()` | `cab:*External`, `cab:mirrorNow` | | `{ dir, ok, last, … }` | la copie emporte **aussi les paquets** |
+| `changePassword(current, next)` | `cab:changePassword` | | `{ ok: true }` \| throw | l'ancien est **revérifié en relisant le fichier** ; les sauvegardes sont rechiffrées |
+| `exportRecovery(password, current)` / `importRecovery(password)` / `recoveryStatus()` | `cab:*Recovery` | | `{ path }` / `{ fingerprint, name }` / `{ exportedAt }` | SPEC-FMT-003 ; restaurer compte comme avoir exporté |
+| `exportCsv(rows, name)` | `cab:exportCsv` | | `{ path }` | |
+| `mail({ to, subject, body })` / `tel({ number, whatsapp, text })` | `cab:mail` / `cab:tel` | | `true` | |
+| `reveal(p)` / `support()` / `openLog()` / `openDataDir()` | `cab:*` | | | |
+| `updVersion/Check/Download/Install/SetToken/OpenReleases` | `upd:*` | | comme l'entreprise | canal `cabinet` ; **Cible** `cabinet-beta` |
+| `pathForFile(file)` | (local, `webUtils.getPathForFile`) | `File` | chemin | glisser-déposer |
+| `takePending()` | `cab:takePending` | — | `Array<path>` | fichiers ouverts avant que la fenêtre soit prête (`file:open`) |
+| `onUpdateEvent`, `onMenuAction`, `onImportProgress`, `onAlivePing`, `onFreezeNotice`, `onFileOpen` | événements | | | un `import:progress` en retard ne rouvre pas la fenêtre (drapeau « en cours », 6.8.1) |
 
 ## Partie 6 — Le pont
 
@@ -1000,24 +1448,152 @@ Le routage est `routeApi(pathname)` : `/v<n>/<espace>/<action>[/<id>[/<sous>]]` 
 { licence: ['etat'], admin: ['etat', 'stats', 'clients', 'licences', 'activations', 'ventes',
 'evenements', 'importer'] }`, `SOUS_ACTIONS = ['revoquer', 'renouveler', 'changer-offre', 'envoyer',
 'payee', 'facturee']`, `SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/`. Tout le reste → 404. `/` et
-`/console` servent la console (HTML inline). Les entrées/sorties exactes sont dans les handlers ;
-ce tableau en donne le contrat — À VÉRIFIER champ par champ dans le fichier avant de coder un client.
+`/console` servent la console (HTML inline). Ce tableau donne le contrat ; **les JSON exacts, lus
+dans les handlers (lignes 579 à 1 016), sont en 7.1 bis** — v1, point 5/19 de la relecture. Trois cellules
+de la v0 étaient fausses et sont corrigées ici (voir le Journal des versions).
 
 | ID | Méthode | Chemin | Auth | Entrée | Sortie | Erreurs |
 |---|---|---|---|---|---|---|
-| SPEC-API-001 | POST | `/v1/licence/etat` | en-tête secret d'application (`APP_SECRET`) | `{ cle?, deviceId, deviceNom, plateforme, version }` — **et rien d'autre** (un test compte les champs) | `{ etat: 'active'|'revoquee'|'inconnue'|'essai', reponse?: <signée : sujet, etat, date, sig> }` | 403 secret faux ; 503 `LICENCE_PUBLIC_KEYS` absent **seulement si `LICENCE_REQUISE=1`** ; sinon laisse passer |
-| SPEC-API-002 | GET | `/v1/admin/etat` | `ADMIN_SECRET` (≥ `ADMIN_MIN` car.) | — | `{ ok, cleServeur: { ok, kid, raison? }, resend: boolean, … }` | 403 ; 503 console non configurée |
+| SPEC-API-001 | POST | `/v1/licence/etat` | en-tête secret d'application (`APP_SECRET`) | `{ cle?, deviceId, deviceNom, plateforme, version }` — **et rien d'autre** (un test compte les champs) | `{ v: 1, sujet, etat, offre, exp, postes, motif, emisLe, signature: string|null }` — **plat**, pas d'objet `reponse` (corrigé en v1) | 403 secret faux ; 503 `LICENCE_PUBLIC_KEYS` absent **seulement si `LICENCE_REQUISE=1`** ; sinon laisse passer |
+| SPEC-API-002 | GET | `/v1/admin/etat` | `ADMIN_SECRET` (≥ `ADMIN_MIN` car.) | — | `{ base, emission: { ok, kid, raison }, mail: { ok, expediteur } \| { ok: false, raison }, reponse: boolean, tarifs, offres, durees }` (corrigé en v1) | 403 ; 503 console non configurée |
 | SPEC-API-003 | GET | `/v1/admin/stats` | admin | — | cartes (licences actives = non remplacées, non révoquées, non expirées ; essais ; activations) | 403 |
 | SPEC-API-004 | GET/POST | `/v1/admin/clients[/<id>]` | admin | POST `{ nom, matricule?, email?, tel?, adresse?, notes? }` | liste / client | 400 (`nettoyer*` refuse avec sa raison), 403, 404 |
-| SPEC-API-005 | GET/POST | `/v1/admin/licences[/<id>[/revoquer|renouveler|changer-offre|envoyer]]` | admin | POST émission `{ clientId, offre, duree|exp, prix, devise, remise?, cabinet? }` ; `revoquer { motif }` (obligatoire) ; `renouveler { … }` ; `changer-offre { offre, prixNouveau }` ; `envoyer` | licence `{ id, kid, empreinte, offre, debut, fin, statut (déduit : révoquée > expirée > remplacée > active), charge, cle (refabriquée, jamais stockée) }` | 400 ; 403 ; 404 ; **409** renouveler une révoquée/remplacée ; 503 clé serveur incohérente |
+| SPEC-API-005 | GET/POST | `/v1/admin/licences[/<id>[/revoquer|renouveler|changer-offre|envoyer]]` | admin | POST émission `{ clientId, offre, duree, dateLibre?, prix, devise?, remise?, cabinet?, payeeLe?, moyen? }` (`nettoyerEmission`) ; `revoquer { motif }` (obligatoire) ; `renouveler { … }` ; `changer-offre { offre, prixNouveau }` ; `envoyer` | licence `{ id, kid, empreinte, offre, debut, fin, statut (déduit : révoquée > expirée > remplacée > active), charge, cle (refabriquée, jamais stockée) }` | 400 ; 403 ; 404 ; **409** renouveler une révoquée/remplacée ; 503 clé serveur incohérente |
 | SPEC-API-006 | GET | `/v1/admin/activations` | admin | — | `[{ empreinte (ou 'ESSAI'), device_id, device_nom, plateforme, version, premiere_fois, derniere_fois }]` | 403 |
 | SPEC-API-007 | GET/POST | `/v1/admin/ventes[?non_facturees=1][/<id>/payee|facturee]` | admin | `payee { moyen?, date? }` → envoie la clé si Resend réglé et adresse présente (une fois, `envoyee_le`) ; `facturee { numero }` | ventes avec `cle` refabriquée quand non facturées | 400, 403, 404 |
 | SPEC-API-008 | GET | `/v1/admin/evenements` | admin | — | journal `{ quand, quoi, client_id, licence_id, detail, par_qui }` | 403 |
-| SPEC-API-009 | POST | `/v1/admin/importer` | admin | `{ licences: [18 champs de `chargeHistorique`] }` | `{ importees, dejaLa, refusees: [{ id, raison }] }` — **refuse** une vente incomplète, ne la met pas à null | 400, 403 |
+| SPEC-API-009 | POST | `/v1/admin/importer` | admin | `{ licences: [18 champs de `chargeHistorique`] }` | `{ importees, dejaLa, ignorees: [{ id, raison }] }` (le champ s'appelle **`ignorees`**, pas `refusees` — corrigé en v1) — **refuse** une vente incomplète, ne la met pas à null | 403 ; 503 sans clé publique |
 | **SPEC-API-011** | GET | `/v1/admin/export` | admin | — | **Cible Phase 0** : `{ format: 1, exporteLe, tables: { clients: [...], licences: [...], activations: [...], ventes: [...], jetons: [...], evenements: [...] } }` — toutes les lignes, `charge` incluse, **jamais** une clé privée (il n'y en a pas en base) | 403 |
 
 Seule requête sortante du worker : Resend (un test compte les `fetch(`). Toute réponse restrictive
 est **signée, datée, adressée** (`sujet` = `empreinteCle` = SHA-256 tronqué à 32 hex de la clé).
+
+### 7.1 bis — les JSON exacts de chaque route (v1, lus dans `skanfact-api.mjs`)
+
+Tout ce qui suit est **Livré** et copié des handlers ; un client de la plateforme peut se coder
+là-dessus sans ouvrir le worker. Toute erreur a la forme `{ erreur: '<phrase en français>' }` avec
+le statut indiqué. Les listes sont bornées à **500 lignes** (`LIMIT 500`, Partie 18). Les dates
+`*_le` sont des instants ISO (`2026-09-15T10:22:41.000Z`) sauf `debut`, `fin`, `payee_le`,
+`revoquee_le` qui sont des jours `AAAA-MM-JJ`.
+
+**Enveloppe commune** — en-têtes : `Content-Type: application/json; charset=utf-8`,
+`Cache-Control: no-store`. Méthode autre que GET/POST → 405 `Méthode non autorisée.` ; espace
+`admin` sans `ADMIN_SECRET` réglé → 503 ; secret faux → 403 `Accès refusé.` ; base absente
+(`env.DB`) → 503 `La base n'est pas branchée sur ce worker (réglage « DB »).` ; route inconnue →
+404 `Introuvable.` (un `id` malformé ne passe pas `SEGMENT` et tombe ici).
+
+**SPEC-API-001 — `POST /v1/licence/etat`** (en-tête secret d'application).
+
+```json
+// entrée (nettoyerActivation : tout champ inconnu est ignoré, un test compte les cinq)
+{ "cle": "SKAN1.…",          // fac. : absent = installation en essai
+  "deviceId": "…",           // DEVICE : sans lui, l'activation n'est pas notée
+  "deviceNom": "MacBook de Sami", "plateforme": "darwin|win32|linux", "version": "9.0.0" }
+// sortie sans clé (essai) — jamais signée, jamais restrictive
+{ "v": 1, "etat": "essai", "emisLe": "<ISO>", "signature": null }
+// sortie avec clé (corpsReponse, puis signerReponse si REPONSE_PRIVATE_KEY)
+{ "v": 1, "sujet": "<empreinteCle : sha256 tronqué à 32 hex>",
+  "etat": "active|revoquee|expiree|inconnue", "offre": "independant|entreprise|null",
+  "exp": "AAAA-MM-JJ|null", "postes": null, "motif": "<revoquee_motif>|null",
+  "emisLe": "<ISO>", "signature": "<base64url Ed25519 des octets JSON.stringify du corps>|null" }
+// 503 { erreur: "Plateforme mal réglée (aucune clé publique)." } si LICENCE_PUBLIC_KEYS est vide
+```
+
+Règle tenue par `verifierReponse` côté application (SPEC-FUNC-016) : sans `signature`, sans
+`sujet` égal à l'empreinte de la clé présentée, ou avec un `emisLe` plus ancien que le verdict déjà
+rangé, la réponse est **ignorée** — jamais transformée en refus.
+
+**SPEC-API-002 — `GET /v1/admin/etat`** → `etatPlateforme(env)` :
+
+```json
+{ "base": true, "emission": { "ok": true, "kid": "srv-1", "raison": "" },
+  "mail": { "ok": true, "expediteur": "SkanFact <licences@send.skanfact.tn>" },   // ou { ok:false, raison }
+  "reponse": false,                     // REPONSE_PRIVATE_KEY posée ?
+  "tarifs": { "independant": 390, "entreprise": 690, "remiseParrainage": 20, "devise": "TND" },  // tarifs(env), PRIX_* du worker
+  "offres": { "independant": { "label": "Indépendant" }, "entreprise": { "label": "Entreprise" } },
+  "durees": [ { "id": "1m", "label": "1 mois", "mois": 1 }, … "1a", "2a", { "id": "vie", "mois": null }, { "id": "date", "mois": null } ] }
+```
+
+**SPEC-API-003 — `GET /v1/admin/stats`** → `resumeStats` :
+`{ clients, licencesActives, licencesExpirees, licencesRevoquees, essaisEnCours, postes, incertain }`
+— `incertain: true` quand aucun essai ni aucun poste n'a jamais parlé au serveur (« ce qu'on ne peut
+pas savoir se dit »). `licencesActives` = non révoquées, non expirées, **non remplacées**
+(`NOT EXISTS (… remplace_id = l.id)`) ; `essaisEnCours` = activations `ESSAI` vues dans les
+30 derniers jours.
+
+**SPEC-API-004 — clients.** `GET /v1/admin/clients` → `{ lignes: [{ id, nom, matricule, email, tel,
+adresse, notes, cree_le }] }`. `POST /v1/admin/clients` avec `{ nom, matricule?, email?, tel?,
+adresse?, notes? }` → **201** `{ client: { id: 'cli_…', nom, matricule, email, tel, adresse, notes,
+cree_le } }` ; 400 `{ erreur }` de `nettoyerClient` (« Le nom du client est obligatoire (deux
+caractères au moins). », « L'adresse e-mail n'a pas la forme attendue : … ») ; 500 « La base a refusé
+l'écriture du client. ».
+
+**SPEC-API-005 — licences.**
+
+```json
+// GET /v1/admin/licences  → { lignes: [Licence] } ; GET /v1/admin/licences/<id> → { licence: Licence, cle, cleRaison }
+// Licence (SEL_LICENCE) :
+{ "id", "client_id", "kid", "empreinte", "offre", "postes", "debut", "fin", "prix", "devise", "remise",
+  "cabinet_empreinte", "emise_le", "remplace_id", "remplacee_motif", "revoquee_le", "revoquee_motif",
+  "envoyee_le", "resignable": 0|1, "client", "matricule", "email", "remplacee_par": "<id>|null",
+  "activations": <nombre> }
+// cle = "SKAN1.…" refabriquée, ou "" avec cleRaison (licence signée par la clé maître : pas refabricable ici)
+
+// POST /v1/admin/licences  (émettre)
+{ "clientId": "cli_…", "offre": "independant|entreprise", "duree": "1m|3m|6m|1a|2a|vie|date",
+  "dateLibre": "AAAA-MM-JJ",   // si duree = date
+  "prix": 390, "devise": "TND", "remise": 20, "cabinet": "a1b2-c3d4-…", "payeeLe": "AAAA-MM-JJ", "moyen": "virement" }
+// → 201
+{ "licence": { "id", "client", "matricule", "email", "kid", "empreinte", "offre", "debut", "fin", "prix", "remise",
+               "devise", "emise_le", "remplace_id": null, "remplacee_motif": null },
+  "cle": "SKAN1.…",
+  "vente": { "id": "v_…", "montant_ht": 312, "devise": "TND", "payee_le": null },
+  "mail": { "envoye": false, "raison": "la vente n'est pas encore payée" } }
+// 400 : client absent (« Choisis un client existant (crée-le d'abord). ») ou nettoyerEmission (offre, durée, prix, remise, cabinet, date)
+// 503 : « Émission impossible : <raison de cleServeur> » ; 500 : « La signature a échoué : … » / « La base a refusé l'écriture de la licence. »
+
+// POST /v1/admin/licences/<id>/revoquer   { "motif": "≥ 3 caractères" }
+// → { "ok": true, "licence": { …Licence, revoquee_le, revoquee_motif }, "note": "La révocation sera appliquée chez le client à sa prochaine connexion, … Hors ligne, la clé continue jusqu'à sa date de fin." }
+// 400 motif absent ; 409 « Cette licence est déjà révoquée (…) » ; 404
+
+// POST /v1/admin/licences/<id>/renouveler   { "duree", "dateLibre?", "prix", "devise?", "remise?", "payeeLe?", "moyen?" }
+//   → même 201 que l'émission ; l'offre et le cabinet sont ceux de la licence remplacée, debut = max(fin, aujourd'hui),
+//     remplace_id = <id>, remplacee_motif = "renouvellement"
+// POST /v1/admin/licences/<id>/changer-offre   { "offre", "prix", "devise?", "payeeLe?", "moyen?" }
+//   → même 201 ; fin inchangée (duree = date | vie), remise 0, remplacee_motif = "offre"
+// 409 : « Une licence révoquée ne se renouvelle pas : émets-en une nouvelle. » / « Cette licence a déjà été remplacée par <id>. »
+//       / « Cette licence est déjà en offre <label>. » / « Le client de cette licence est introuvable. » ; 400 « Choisis la nouvelle offre. »
+
+// POST /v1/admin/licences/<id>/envoyer   (corps vide)
+// → { "ok": true, "envoyee_le": "<ISO>", "a": "<email>" } ; 409 { erreur: cleRaison } ; 502 { "erreur": "Mail non envoyé : <raison>", "cle": "SKAN1.…" }
+```
+
+**SPEC-API-006 — `GET /v1/admin/activations`** → `{ lignes: [{ empreinte ('ESSAI' pour un essai),
+device_id, device_nom, plateforme, version, premiere_fois, derniere_fois, client: '<nom>|null' }] }`.
+
+**SPEC-API-007 — ventes.** `GET /v1/admin/ventes[?non_facturees=1]` → `{ lignes: [{ id,
+client_id, licence_id, montant_ht, tva, devise, payee_le, moyen, facture_skanfact, importee_le,
+client, matricule, email, offre, fin, debut, kid, emise_le, prix, remise, cabinet_empreinte,
+envoyee_le, revoquee_le, empreinte, resignable, cle? }] }` — `cle` n'est ajouté **que** avec
+`non_facturees=1` (le pont comptable, § 11 du plan plateforme). `POST …/ventes/<id>/payee` avec
+`{ date?, moyen? }` → `{ ok: true, payee_le, mail: { envoye, raison?, a? } }` ; 400 date illisible ;
+409 « Cette vente est déjà marquée payée le … ». `POST …/ventes/<id>/facturee` avec `{ numero }` →
+`{ ok: true, facture_skanfact }` ; 400 « Le numéro de facture manque. ».
+
+**SPEC-API-008 — `GET /v1/admin/evenements`** → `{ lignes: [{ id, quand, quoi, client_id,
+licence_id, detail, par_qui: 'console', client }] }`. Valeurs de `quoi` écrites par le code :
+`licence.emise`, `licence.renouvellement`, `licence.offre`, `licence.revoquee`, `licence.importee`,
+`vente.payee`, `vente.facturee`, `mail.envoye`, `mail.echec`.
+
+**SPEC-API-009 — `POST /v1/admin/importer`** avec `{ licences: [ChargeHistorique × ≤ 500] }`
+(les 18 champs de `core.chargeHistorique`, Partie 3) → `{ importees, dejaLa, ignorees: [{ id,
+raison }] }`. Raisons émises : celles de `nettoyerImport` (« identifiant manquant ou douteux », « clé
+absente », « date d'émission illisible », « date de fin illisible », …), « clé non vérifiable :
+<raison> », « la base a refusé l'écriture ». Le client est retrouvé par matricule puis par nom,
+sinon créé (`Client importé`) ; les remplacements sont reliés en **second passage** ; rejouer
+l'envoi ne réécrit rien (`dejaLa`). 503 sans clé publique.
+
+**SPEC-API-011 — `GET /v1/admin/export`** (Cible Phase 0, inchangé depuis la v0).
 
 ### 7.2 Base D1 (`plateforme/schema-a-coller.sql`, Livré)
 
@@ -1272,6 +1848,8 @@ et le geste qui débloque.
 | `ci : ci.yml existe, lance lint et test sur ubuntu et windows` | source | TEST-9.1.0-023 | YAML lu | retirer une matrice |
 | `lint : npm run lint passe` | CI | TEST-9.1.0-024 | — | — |
 
+| `émission : deux clics sur Émettre ne consomment qu'un numéro` | e2e `editeur` | TEST-9.1.0-025 | `data-busy` + `isIssued` ; un seul `FAC-AAAA-NNN`, un seul toast | retirer le garde |
+
 ### 11.3 Tests à écrire — 9.1.1
 
 | Test | Type | Identifiant | Ce qu'il vérifie | Défaut réintroduit |
@@ -1285,6 +1863,7 @@ et le geste qui débloque.
 | `TFP : le champ touché n'est plus écrasé` | e2e `metier` | TEST-9.1.1-007 | motif `regimeTouche` | — |
 | `guide : les clés client.stampExempt, company.withholdingThreshold existent` | source | TEST-9.1.1-008 | test de couverture existant, étendu | — |
 | `e-facture : docs/e-facture-controle.md existe et liste chaque champ avec oui/non` | source | TEST-9.1.1-009 | — | — |
+| `csv : une cellule texte qui commence par = + - @ tabulation ou retour est préfixée d'une apostrophe` | calcul | TEST-9.1.1-010 | `toCsv` (core) et `toCsvLine` (cabcore) : `=1+1` → `'=1+1` ; une colonne `money`/`date` n'est **jamais** touchée (`-12,500` reste un montant) ; le nom d'un client « -Alpha » passe par la parade | retirer le préfixe |
 
 ### 11.4 Tests à écrire — 9.2.0
 
@@ -1312,8 +1891,67 @@ et le geste qui débloque.
 | `cabinet (e2e) : reprise par balance, import de douze paquets, mois renvoyé avec écart, valider, contre-passer` | e2e | TEST-9.2.0-020 | — | — |
 | `perte, demenagement (e2e) : les livres reviennent` | e2e | TEST-9.2.0-021 | — | — |
 | `charge : rejoué sur le format réel` | script | TEST-9.2.0-022 | — | — |
+| `signature : un manifeste retouché d'un octet donne « modifié après l'envoi », pas « signature inconnue »` | e2e `refus` | TEST-9.2.0-023 | l'empreinte est comparée AVANT `verify` ; la phrase est la variante (a) de 5.3 | inverser les deux étapes |
 
 ---
+
+### 11.5 Correspondance fichier → script, et ce que chaque parcours prouve (v1, point 14)
+
+Le tableau « ce que chaque e2e prouve » existe déjà dans `CLAUDE.md` (§ « Les tests qui ouvrent
+vraiment l'application ») et n'est **pas recopié** ici — deux tables divergent toujours. Ce qui lui
+manquait, et que voici : la correspondance entre le nom du script et le fichier, lue dans
+`package.json` (41 scripts, 41 fichiers + `harnais.js` = 42). Les durées ne sont **pas** données :
+elles dépendent de la machine, aucune n'a été mesurée sur Windows, et un chiffre inventé serait pris
+pour une mesure (14.3, point 3).
+
+| Script | Fichier | Ouvre Electron ? | Applications |
+|---|---|---|---|
+| `e2e:cabinet` | `cabinet.js` | oui | cabinet |
+| `e2e:boucle` | `boucle-complete.js` | oui, **deux** | entreprise → cabinet |
+| `e2e:entreprise` | `entreprise.js` | oui | entreprise |
+| `e2e:refus` | `cabinet-refus.js` | oui | cabinet |
+| `e2e:gel` | `chien-de-garde.js` | oui | entreprise |
+| `e2e:perte` | `cabinet-perte.js` | oui | cabinet |
+| `e2e:couches` | `cabinet-couches.js` | oui | cabinet |
+| `e2e:demenagement` | `cabinet-demenagement.js` | oui, deux postes | cabinet |
+| `e2e:barre` | `barre-laterale.js` | oui | entreprise |
+| `e2e:captures` | `captures.js` | oui | entreprise |
+| `e2e:exemple` | `exemple.js` | oui | entreprise |
+| `e2e:reglages` | `reglages.js` | oui | entreprise (absent du tableau de `CLAUDE.md`) |
+| `e2e:argent` | `argent.js` | oui | entreprise + cabinet |
+| `e2e:contraste` | `contraste.js` | oui | entreprise |
+| `e2e:erreur` | `erreur.js` | oui | entreprise |
+| `e2e:apercu` | `apercu.js` | oui | entreprise |
+| `e2e:entreprises` | `entreprises.js` | oui | entreprise |
+| `e2e:cliquable` | `cliquable.js` | oui | entreprise |
+| `e2e:chiffres` | `chiffres.js` | oui | entreprise |
+| `e2e:repondre` | `repondre.js` | oui | entreprise |
+| `e2e:accueil` | `accueil.js` | oui | entreprise |
+| `e2e:editeur` | `editeur.js` | oui | entreprise |
+| `e2e:fiches` | `fiches.js` | oui | entreprise |
+| `e2e:compta` | `compta.js` | oui | entreprise |
+| `e2e:metier` | `metier.js` | oui | entreprise |
+| `e2e:retenue` | `retenue.js` | oui | entreprise |
+| `e2e:colonnes` | `colonnes.js` | oui | entreprise + cabinet |
+| `e2e:aide` | `aide.js` | oui | entreprise |
+| `e2e:entetes` | `entetes.js` | oui | entreprise |
+| `e2e:beta` | `beta.js` | oui | entreprise |
+| `e2e:depot` | `depot.js` | oui (bascule `src/depot.js`, restauré en `finally`) | entreprise |
+| `e2e:partage` | `partage.js` | oui, deux profils | entreprise |
+| `e2e:actions` | `actions.js` | oui | entreprise + cabinet |
+| `e2e:parametres` | `parametres.js` | oui (instrument, pas un test) | entreprise + cabinet |
+| `e2e:pages` | `pages.js` | **non** (chromium seul) — le seul en CI | entreprise |
+| `e2e:console` | `console.js` | non (vrai worker + navigateur) | plateforme |
+| `e2e:licence` | `licence.js` | oui, deux (désarmée puis armée) | entreprise |
+| `e2e:plateforme` | `plateforme.js` | oui + vrai worker | entreprise + plateforme |
+| `e2e:justificatif` | `justificatif.js` | oui | entreprise |
+| `e2e:pont` | `pont.js` | oui + vrai worker | entreprise + plateforme |
+| `e2e:livres` | `livres.js` | oui | entreprise |
+
+Tous se lancent sous `xvfb-run -a` sur une machine sans écran, **un seul à la fois** (deux `xvfb-run`
+simultanés se disputent le serveur X, 7.16.0), et exigent `npm i -D playwright` (pas une dépendance
+du projet). `SKANFACT_DOSSIER_CLES` est posé vide par le harnais pour **tous** les parcours : aucun ne
+tourne jamais armé avec la clé de l'éditeur.
 
 ## Partie 12 — Migrations
 
@@ -1367,6 +2005,42 @@ et le geste qui débloque.
 - **Toute nouveauté** vient avec sa bulle `guide.js`/`cabguide.js` (test de couverture), une entrée
   `CHANGELOG.md` datée, le bump `package.json`, et — si elle change une habitude — un paragraphe
   d'aide.
+- **Nommage CSS (v1, point 15)** — ce qui existe est nommé, pas réinventé : classes en kebab-case,
+  courtes, sans préfixe dans `style.css` (`.btn`, `.btn-primary`, `.badge`, `.modal-bg`, `.page-head`,
+  `.scroll-x`, `.help-fil`, `.th-…`) ; **préfixe `wiz-`** pour l'assistant du cabinet (renommé en
+  6.8.0 après la collision `.setup-card`), il reste ; états par attribut (`[hidden]`, `data-busy`,
+  `data-tab`, `data-act`) plutôt que par classe `.is-…` ; couleurs par variables CSS (`--accent`…),
+  jamais un hex dans un gabarit ; les couleurs de thème vivent dans la feuille (7.27.0), jamais dans
+  un `.js`. **Décision pour le neuf du Cabinet** : toute classe créée dans `cabinet.css` porte le
+  préfixe **`cab-`** (`.cab-livre`, `.cab-brouillard`) — c'est ce qui rend le test « aucune classe du
+  cabinet ne porte un nom déjà pris dans `style.css` » trivialement vrai au lieu de le prouver
+  classe par classe. L'existant (`wiz-*`, `.cab-…` déjà présents) **ne se renomme pas**.
+- **Pourquoi chaque interdiction (v1, point 16)**, une ligne chacune : `var` (portée de fonction :
+  une variable « fuit » hors de son bloc, 7.20.0 a vu une ReferenceError d'une autre route) ;
+  `==` (coercition : `'' == 0`, et `Number('') === 0` a déjà fait passer une assertion vide, 8.3.0) ;
+  `eval`/`new Function` (du code venu d'une donnée : un paquet, un CSV — c'est une porte) ;
+  `innerHTML +=` (re-sérialise tout le sous-arbre : les gestionnaires posés sont perdus, et la couche
+  du dessous d'une fenêtre modale avec eux, 2.4.0) ; `required` en modale (rien ne soumet, l'attribut
+  est inerte depuis toujours, 7.20.0) ; `bindSort(root, () =>` (le rappel jette la colonne, six
+  en-têtes ne triaient pas, 7.17.0) ; `navigate()` dans une table d'actions (aucun `hashchange` sur
+  la page courante, les entrées sont inertes depuis la page qu'elles visent, 7.15.0 / 7.29.0) ; une
+  liste de statuts comparée à une chaîne (« Émis » rendait 2 avoirs au lieu de 27 pièces, 7.15.0) ;
+  un nombre fiscal en dur (faux en silence à la loi de finances suivante, 5.0.0) ;
+  `Date.now()`/`Math.random()` dans un test de source (un test non reproductible ne prouve rien) ;
+  un toast comme premier message (2,6 s, pas cliquable, 7.0.0) ; un `catch {}` muet sur une erreur
+  utilisateur (« Module de mise à jour indisponible » a condamné le dépannage à distance, 6.7.2).
+- **Idempotence des gestes qui écrivent (v1, point 18 — un défaut réel)** : `issue()` dans app.js
+  n'a **aucun** garde contre le double-clic. `$('#issue').onclick` est `async` (il attend
+  `confirmDialog`), et deux clics avant la réponse ouvrent deux dialogues ; deux « Émettre » à la
+  suite passent `nextNumber` deux fois sur le même `doc` (le second trouve `doc.number` posé et ne
+  renumérote pas — mais `persist()` et le toast partent deux fois, et `annoncerFacturesConsole` avec
+  eux). Règle, **Cible 9.1.0** : tout bouton dont le gestionnaire écrit pose `data-busy` sur lui-même
+  avant le premier `await` et le retire dans un `finally` ; un gestionnaire qui trouve `data-busy`
+  déjà posé **retourne sans rien faire** ; `issue()` revérifie `isIssued(doc)` (numéro posé **et**
+  statut émis) après la question et avant `nextNumber`. Les gestes de liste (`RowMenu`) et les
+  formulaires modaux (`b.disabled = true` est déjà posé dans dix fenêtres, pattern à généraliser)
+  suivent la même règle. TEST-9.1.0-025 (e2e `editeur`) clique deux fois « Émettre » en 50 ms et
+  exige **un** numéro consommé, **un** toast, **une** écriture.
 
 ---
 
@@ -1408,7 +2082,7 @@ Compte;Libellé;Débit;Crédit
 ### 14.2 Arborescence du dépôt (commit `d7bfc54`)
 
 ```
-.github/workflows/release.yml      build/{icon*.png, icon.icns, icon.ico, cabinet.config.js, licences-publiques.json, licence-public.json}
+.github/workflows/release.yml      build/{icon.png, icon-cabinet.png, cabinet.config.js, licences-publiques.json, licence-public.json, release-notes.md, skanpack.{icns,ico,png}, skanrecover.{icns,ico,png}}
 src/{main.js, preload.js, storage.js, zip.js, licence.js, depot.js, mac-update.sh}
 src/renderer/{index.html, core.js, app.js, demo.js, guide.js, onboarding.js, rowmenu.js, reglages.js, style.css}
 src/cabinet/{main.js, cabcore.js, cabstore.js, preload.js, renderer/{index.html, app.js, cabguide.js, cabinet.css}}
@@ -1420,7 +2094,9 @@ Installer SkanFact.command · Installer SkanFact (Windows).bat · package.json �
 ```
 
 `src/cabinet/` contient exactement `main.js, cabcore.js, cabstore.js, preload.js, renderer/`
-(vérifié). À VÉRIFIER : les fichiers de `build/` non listés par mon extraction.
+(vérifié). `build/` vérifié en v1 (`ls build`) : `icon.icns`/`icon.ico` n'y sont **pas** commités —
+ils sont fabriqués par `node scripts/icones.js` (6.8.1) ; seules les icônes de **fichiers**
+(`skanpack.*`, `skanrecover.*`) le sont.
 
 ### 14.3 Ce que je n'ai pas pu vérifier
 
@@ -1433,8 +2109,8 @@ preload du Cabinet.)*
 1. **Les identifiants des sous-vues de l'onglet Écritures** (livre-journal, OD, lettrage, 8.9.0) :
    mon extraction n'a pas trouvé de constante nommée ; `sed -n '8484,8700p' src/renderer/app.js`
    avant d'écrire `sousVues` de SPEC-FUNC-101.
-2. **Les entrées/sorties exactes de chaque route** de la plateforme (je donne le contrat, pas le
-   JSON champ par champ) → lire les handlers de `skanfact-api.mjs` entre les lignes 600 et 1 000.
+2. ~~Les entrées/sorties exactes de chaque route~~ — **fait en v1** (7.1 bis, handlers lus lignes
+   579 à 1 016) ; trois cellules de la v0 étaient fausses, corrigées.
 3. **La durée de `npm test`** (≈ 30 s est une observation sur cette machine) et sur Windows.
 4. **La TCL** et le périmètre exact de la déclaration mensuelle : rien dans le code ; c'est le
    comptable qui répond (Phase 5).
@@ -1446,9 +2122,444 @@ preload du Cabinet.)*
    une mesure ; le premier run les confrontera à la réalité.
 8. **Que Playwright 1.63 et Electron 43 se parlent sur la CI GitHub** (`e2e:pages` n'ouvre pas
    Electron, c'est pour ça qu'il est le seul en CI) — à confirmer au premier run.
-9. **Les fichiers de `build/`** non listés par mon extraction → `ls build`.
+9. ~~Les fichiers de `build/`~~ — **fait en v1** : `cabinet.config.js`, `icon-cabinet.png`, `icon.png`,
+   `licence-public.json`, `licences-publiques.json`, `release-notes.md`, et les icônes de fichiers
+   `skanpack.{icns,ico,png}`, `skanrecover.{icns,ico,png}` (l'arborescence 14.2 est complétée).
 
 *Réponse à la question du document — « un développeur peut-il coder la 9.1.0 sans poser une seule
 question ? » : oui pour SPEC-FUNC-100/101, SPEC-UI-ENT-001/002/003, SPEC-UI-CAB-001/002, SPEC-OUT-001
 à 006 et les 24 tests de la Partie 11.2, à deux réserves près qu'il rencontrera en lisant le code :
 le point 1 (les sous-vues de l'onglet Écritures), résolu par un `sed` sur `routes.compta`.*
+
+
+---
+
+## Partie 15 — Intentions 9.3.0 → 10.0.0 (v1, point 2)
+
+Ce ne sont **pas des spécifications** : chaque version se spécifie à son tour, après les réponses du
+comptable qu'elle exige (`PLAN-COMPTABLE.md`). Ce qui est écrit ici est ce qui est **décidé** (ne se
+rediscute pas), ce qui est **ouvert**, et la question qui bloque. Le relecteur de chaque version est
+nommé dans `QUESTIONS.md` § 3.
+
+| Version | Intention (une phrase) | Décidé | Ouvert | Question qui bloque |
+|---|---|---|---|---|
+| **9.3.0** — la saisie | Le comptable saisit au kilomètre dans un **brouillard**, puis valide : une écriture validée ne se modifie plus (contre-passation). | `livre.json` (SPEC-DATA-005) ; numéro pris à la validation ; `odValide` (7 motifs) réutilisé tel quel ; guides de saisie (journal + compte + contrepartie par défaut) ; raccourcis clavier (Entrée = ligne suivante, Tab = équilibre automatique de la dernière ligne). | La lettre du journal par défaut (AC/VT/BQ/CA/OD) ; la saisie « en mode tableur » (une grille) contre « en mode pièce ». | « Quel est ton journal de banque : un par compte, ou un seul ? » |
+| **9.3.1** — entretien | Découper `test/run-tests.js` par domaine ; les codes `ERR-*` posés sur chaque `throw`. | Aucun changement fonctionnel. | — | — |
+| **9.4.0** — la banque | Importer un **relevé** (CSV/OFX, colonnes par nom) et rapprocher **automatiquement** ce qui correspond (montant + date ± 3 j + libellé), le reste à la main. | `releves[]` (SPEC-DATA-005) ; `etatRapprochement` (9.0.0) reste la source du solde ; jamais une écriture créée depuis le relevé sans clic (la banque ne fait pas foi contre la pièce). | Le format OFX (peu de banques tunisiennes l'exportent) ; l'écriture « proposée » depuis une ligne non rapprochée. | « Quelles banques, et quel format d'export chacune donne-t-elle ? » |
+| **9.5.0** — la déclaration mensuelle | Produire la déclaration tunisienne du mois (TVA, retenues, TCL, FODEC…) **depuis la balance**, avec les chiffres que le comptable recopie sur le portail. | `vatChain` (3.1.0) reste le moteur TVA ; `declarations[]` ; « Marquer déposée » est un pense-bête (5.2.0) ; aucun dépôt en ligne. | Le **périmètre exact** (14.3, point 4) ; TCL assiette et taux ; le formulaire de référence. | « Montre-moi ta déclaration d'un client type, ligne par ligne. » |
+| **9.5.1** — entretien | Les taux et bases de 9.5.0 confrontés à la première vraie déclaration. | — | — | — |
+| **9.6.0** — la clôture d'exercice | Clôturer un exercice côté cabinet : écritures d'inventaire, résultat, à-nouveaux, **états SCE** ; le `.skanclose` rendu au client (SPEC-FMT-007) même quand le client n'est pas à jour. | `etatsFinanciers` (9.0.0) comme base ; le cabinet clôture **quand même** (`QUESTIONS.md`) ; un exercice clôturé ne rouvre qu'avec motif (6.0.0). | La liasse simplifiée contre la liasse complète ; les provisions (écritures d'inventaire saisies, pas une liste à part — Journal des versions, point 1). | « Tu clôtures quels exercices en simplifié, lesquels en complet ? » |
+| **9.7.0** — immobilisations et stocks | Dégressif et dérogatoire ; inventaire permanent ou intermittent ; `immobilisations[]` du livre. | `assetSchedule` (3.5.0) reste ; la dernière annuité absorbe l'arrondi ; jamais une fiche créée d'office. | Les coefficients dégressifs tunisiens (À VÉRIFIER, Partie 21). | « Quels biens en dégressif chez tes clients ? » |
+| **9.8.0** — collaborateurs | Plusieurs postes sur un cabinet : verrou par livre (`ERR-CAB-022`), **piste d'audit** (qui, quand, quoi — déjà `audit[]` en 9.2.0), rôles (saisie / validation / lecture). | Un fichier par dossier par exercice, jamais une base partagée ; la révision d'un poste ne s'écrase pas (règle 3.2.0 côté entreprise). | Le partage par dossier réseau contre un service (7.0.0 du plan plateforme, seulement si un cabinet dit oui). | « Combien de collaborateurs, et travaillent-ils sur les mêmes dossiers le même jour ? » |
+| **9.8.1** — entretien | Les mesures du test de charge (SPEC-OUT-006) rejouées à 3 postes. | — | — | — |
+| **9.9.0** — la révision | Le cabinet pose des **questions au client** (`.skanask`, SPEC-FMT-006) affichées sur la pièce dans SkanFact ; le client répond dans le paquet suivant. | Le pont reste le paquet ; jamais une écriture du cabinet chez le client ; une question sans réponse au bout de deux paquets remonte dans « À faire » des deux côtés. | Le format de la réponse (texte, pièce jointe, correction proposée). | « Quelles sont les cinq questions que tu poses le plus souvent ? » |
+| **10.0.0** — la liasse | La liasse fiscale (NCT 01) et un **jeu d'exemple complet** du Cabinet (de vrais paquets ouvrables, tâche #67). | Déduite de la balance comme 9.0.0 ; « pas la liasse » disparaît de l'écran. | Tout : c'est la version qui exige le pilote. | « Ta liasse 2026 d'un client, anonymisée. » |
+
+---
+
+## Partie 16 — Cinq séquences (v1, point 12)
+
+Notation : `A → B : message` ; `[…]` = condition ; `Livré` / `Cible` par ligne. Les acteurs sont
+l'**Entreprise** (app SkanFact), le **Cabinet** (app SkanFact Cabinet), la **Console** (worker
+`plateforme/skanfact-api.mjs` + D1), le **Relais** (worker de mise à jour), **Resend**, **GitHub**.
+
+### 16.1 Vendre une licence depuis la console (Livré)
+
+```
+Skander   → Console  : POST /v1/admin/clients { nom, matricule, email }          201 { client }
+Skander   → Console  : POST /v1/admin/licences { clientId, offre, duree, prix }   → cleServeur() vérifie SRV_PRIVATE_KEY ↔ srv-1
+Console   → D1       : INSERT licences (charge = JSON signé, JAMAIS la clé) ; INSERT ventes ; INSERT evenements
+Console   → Skander  : 201 { licence, cle: "SKAN1.…", vente, mail: { envoye:false, raison:"la vente n'est pas encore payée" } }
+Client    → Skander  : paie (hors système)
+Skander   → Console  : POST /v1/admin/ventes/<id>/payee { moyen }
+Console   → Resend   : POST /emails { from: send.skanfact.tn, to: client, text: gabarit + clé }   [RESEND_API_KEY ∧ email]
+Console   → D1       : UPDATE licences SET envoyee_le ; INSERT evenements 'mail.envoye' | 'mail.echec'
+Console   → Skander  : { ok, payee_le, mail: { envoye:true, a } }
+Client    → Entreprise : colle la clé (Paramètres → Licence) → licence:set → verifyKey(kid ∨ master) → matricule comparé
+Entreprise → Console : POST /v1/licence/etat { cle, deviceId, deviceNom, plateforme, version }   [au démarrage, puis toutes les heures]
+Console   → D1       : UPSERT activations (empreinte, device_id)
+Console   → Entreprise : { v:1, sujet, etat:'active', …, signature|null }
+Entreprise → Console : GET /v1/admin/ventes?non_facturees=1  (poste ÉDITEUR seulement, secret PONT_ADMIN)  → brouillon FAC
+Entreprise → Console : POST /v1/admin/ventes/<id>/facturee { numero }           [à l'émission ; réessayé depuis la page Licences]
+```
+
+### 16.2 Le paquet mensuel, avec la signature (Livré jusqu'à « sceller » ; signature Cible 9.2.0)
+
+```
+Cabinet    → fichier  : cab:exportPairing → <cabinet>.skanpair { name, email, publicKey, fingerprint }
+Comptable  → Client   : le fichier + l'EMPREINTE dictée au téléphone
+Entreprise → Entreprise : cabinet:import → recalcule keyFingerprint(publicKey), refuse si ≠ annoncée   (ERR-ENT-030)
+Entreprise (renderer) : packPlan(data, company, periode)  → la liste exacte des fichiers, montrée AVANT
+Entreprise → main.js  : pack:build(plan)  → PDF, CSV, empreintes, manifeste.json ÉCRIT EN DERNIER
+                        [9.2.0] signature.json = sign(cle-client.json.privateKey, octets de manifeste.json), écrit après
+                        zip → sealForCabinet(publicKey du cabinet)  ∨  sealBuffer(mot de passe)  ∨  rien
+Entreprise → Client   : <slug>-<AAAA-MM>[-provisoire].skanpack  (mail ou Finder)
+Client     → Comptable: le fichier
+Cabinet    → Cabinet  : cab:importPack → ingest : cabinetHeader.destinataire == mon empreinte ? → openWithCabinetKey
+                        verifierManifeste (format ≤ PACK_FORMAT, mois AAAA-MM, entreprise nommée)
+                        [9.2.0] signature.json : absent → 'absente' (refus ERR-CAB-031 si clé épinglée) ;
+                                sha256(manifeste) ≠ annoncé → ERR-CAB-032 (a) ; verify faux → ERR-CAB-032 ; clé ≠ épinglée → ERR-CAB-030
+                        checkIntegrity(manifest, sha256 de chaque entrée) → { checked, bad, intrus }
+                        dossierKey(manifest) = matricule ∨ nom normalisé → filePack (mois reçu deux fois = information)
+Cabinet    → disque   : storePack (client/année/mois) ; cabinet-data.json ; sauvegarde 'avant-import' au premier de la journée
+Cabinet    → écran    : « 7 pièces vérifiées, intactes » (la seule affirmation rigoureuse) ; chiffres du manifeste (CA, TVA)
+```
+
+### 16.3 La révocation appliquée (Livré, 8.4.0 — sans effet tant que `reponse: null`)
+
+```
+Skander    → Console   : POST /v1/admin/licences/<id>/revoquer { motif }   → 400 sans motif ; 409 si déjà
+Console    → D1        : UPDATE licences SET revoquee_le, revoquee_motif ; INSERT evenements
+Console    → Skander   : { ok, licence, note: "…une clé livrée ne se reprend pas…" }   ← la limite est dans la réponse
+… le client travaille hors ligne : RIEN ne change chez lui …
+Entreprise → Console   : POST /v1/licence/etat { cle, … }                  [prochaine heure / retour au premier plan]
+Console    → Entreprise: { v:1, sujet: empreinte(cle), etat:'revoquee', motif, emisLe, signature }   [signée ssi REPONSE_PRIVATE_KEY]
+Entreprise → licence.js: verifierReponse : signature vérifiée avec `reponse` de licences-publiques.json (null aujourd'hui → ignorée)
+                         ∧ sujet == empreinte de MA clé  ∧ emisLe > verdict rangé   → sinon IGNORÉE (jamais un refus)
+Entreprise → <dossier>/licence.json : verdict { etat, motif, emisLe, sujet }   (survit à « Retirer la clé »)
+Entreprise → écran     : licenceState = 'revoquee' → licenceBlock ferme la CRÉATION ; lecture, PDF, export, paquet : ouverts
+Skander    → Console   : (levée) même route, même preuve → { etat:'active' } signé, daté après → le verdict tombe
+```
+
+### 16.4 Partager un dossier à deux, et le conflit d'écriture (Livré, 3.2.0 + 7.28.0)
+
+```
+Poste A → main.js : dossiers:share(emplacement)  → COPIE <userData>/dossiers/<id>/ vers l'emplacement commun
+                    bascule SEULEMENT si skanfact-data.json y est, de la même taille ; l'original reste
+Poste B → main.js : dossiers:join(emplacement)   → ouvre sans rien créer (jamais « créer un dossier partagé vide »)
+Poste A → storage : write(data) → syncRevision+1, syncDevice=A, syncWrittenAt ; écriture atomique
+Poste B → storage : write(data) → relit le disque : syncRevision du disque ≠ celle lue au chargement
+                    → { ok:false, conflict:true, disk }  SANS RIEN ÉCRIRE
+Poste B (renderer) : save() → mergeData(mienne, disk) : fusion par identifiant, le dernier écrit tranche,
+                     version écartée → conflictArchive, compteurs au max, doublons de numéro SIGNALÉS,
+                     trackDeletion (data.deleted) sinon une pièce supprimée reviendrait
+Poste B → storage : write(fusion, { force:true })  → puis l'écran EXPLIQUE ce qui s'est passé
+Cas insoluble     : deux factures ÉMISES hors ligne sous le même numéro → signalé, pas résolu (parade : « une seule personne émet »)
+```
+
+### 16.5 Restaurer un cabinet sur un poste neuf (Livré, `e2e:demenagement` + `e2e:perte`)
+
+```
+Poste neuf → cab:status  : base absente, sauvegardes absentes → assistant ; OU sauvegardes présentes → « base absente », jamais l'assistant
+Comptable  → cab:pickRecover('fichier'|'dossier') → inspectSource : { kind, base, backups, packs, bytes } montré AVANT le mot de passe
+Comptable  → cab:adopt({ path, password })       → adoptSource valide TOUT (enveloppe, mot de passe, structure) avant le disque
+                                                   peek réessaie avec le SEL de la sauvegarde (chaque création tire un sel neuf)
+main.js    → state = migrate(r.state) ; reorganize(state) recolle les chemins de paquets sur CE poste (jamais sur la clé USB)
+main.js    → écran : { state: safeState(), reorganized }  → même EMPREINTE qu'avant : les paquets s'ouvrent
+— variante sans base, avec la clé de secours seule —
+Comptable  → cab:importRecovery(password)  → readRecovery : GCM valide ou « Mot de passe … incorrect »
+main.js    → backupNow('avant-restauration-cle') ; state.cabinet.{publicKey, privateKey} ; recoveryExportedAt = creeLe
+Comptable  → chaque client : « renvoie-moi tes mois » → les dossiers reviennent au fil des paquets
+```
+
+---
+
+## Partie 17 — Sécurité (v1, point 8)
+
+### 17.1 Modèle de menace, en une table
+
+| Qui | Veut | Par où | Ce qui l'arrête (Livré) | Trou (Cible) |
+|---|---|---|---|---|
+| Un client malveillant ou compromis | faire lire au cabinet un paquet au nom d'un autre client | le `.skanpair` est distribué à tous les clients, `sealForCabinet` ne demande que la clé **publique** | rien : chiffrer ≠ signer | **9.2.0 signature.json + épinglage** (5.3) |
+| Le même | écrire hors du dossier du cabinet | nom d'entrée ZIP `../../…`, mois `../..` | `verifierManifeste` (mois `AAAA-MM`), `openInPack`/extraction : segments `..` retirés + `path.resolve().startsWith` | — |
+| Le même | faire exécuter un programme au comptable | un fichier `facture.pdf.command` dans le paquet, ouvert par `shell.openPath` | le nom du fichier extrait est **choisi par nous** (`cab:openInPack`, 6.8.1), pas par l'expéditeur | — |
+| Le même | faire calculer une formule au comptable | une cellule CSV `=HYPERLINK(…)` ou `=cmd\|…` dans un libellé de facture, ouverte dans Excel/LibreOffice | **rien** : `toCsv` (core l.1021) et `toCsvLine` (cabcore l.803) n'échappent que `; " \n \r` | **9.1.1 — TEST-9.1.1-010** : toute cellule **texte** commençant par `=`, `+`, `-`, `@`, tabulation ou retour chariot est préfixée d'une apostrophe `'` ; les colonnes `money` et `date` ne sont jamais touchées (un montant négatif reste `-12,500`) ; s'applique aux quatre exports (journaux, écritures, portefeuille du cabinet, `mergeEcritures`) |
+| Un intermédiaire réseau | dire « révoquée » à un client qui a payé | réponse de `/v1/licence/etat` | signature Ed25519 + `sujet` + `emisLe` (8.4.0) ; sans les trois : ignorée | `reponse: null` aujourd'hui = **aucune** révocation ne s'applique (c'est voulu jusqu'à la mise en production) |
+| Le même | rejouer une vieille réponse | idem | `emisLe` plus ancien que le verdict rangé → ignorée | — |
+| Un curieux avec l'installeur | lire les secrets embarqués | `extraMetadata` (`updateSecret`, `plateformeSecret`) | **assumé** : « tout ce qu'une application peut télécharger sans secret, un inconnu le peut aussi » (6.7.0) ; le jeton GitHub est sur le worker, jamais dans l'app | — |
+| Quelqu'un devant un poste déverrouillé | repartir avec la clé du cabinet | export de la clé de secours | `cab:exportRecovery` **redemande le mot de passe du cabinet** | — |
+| Le même | changer le mot de passe sans le connaître | `setPassword` | l'ancien est **revérifié en relisant le fichier** (6.8.0) | — |
+| Un client | falsifier son essai | reculer l'horloge, effacer `app-config.json` | `armedAt` doublé dans `<dossier>/licence.json`, la plus ancienne date fait foi ; reculer l'horloge **marche** — accepté, source ouverte (8.0.0) | — |
+| Un client | utiliser une clé d'une autre entreprise | coller la clé | `licence:set` compare les matricules (7 chiffres + lettre) et **refuse en nommant les deux** | un matricule vide des deux côtés ne compte pas (voulu) |
+| Un attaquant du site | injecter du HTML dans l'interface | nom de client, libellé, note, manifeste reçu | `h()` / `esc()` sur **toute** interpolation (test de source) ; la console inline utilise `esc` | — |
+| Un attaquant de la console | deviner l'`ADMIN_SECRET` | force brute | `ADMIN_MIN` caractères minimum ; **pas de limitation de débit** | Cible P 0.3 : `jetons` (table existante) + compteur d'échecs par IP dans KV — À VÉRIFIER que Cloudflare KV est disponible sur le plan gratuit |
+| Une session Claude ou un contributeur | commiter un secret | Git | règle « jamais un token », clé privée hors dépôt, `.pem` jamais collé ; `SKANFACT_CLE_EMBARQUEE` honoré **en développement seulement** | — |
+
+### 17.2 Les entrées externes, et le filtre de chacune
+
+| Entrée | Filtre (Livré) | Fichier |
+|---|---|---|
+| `.skanpack` reçu | `isSealedForCabinet`/`isSealed` → déchiffrement (GCM = intégrité) → `zipRead` (CRC) → `verifierManifeste` → `checkIntegrity` | `src/cabinet/main.js` 576–655 |
+| `.skanpair` | recalcul de l'empreinte, refus si ≠ annoncée | `src/main.js` `cabinet:import` |
+| `.skanrecover` | marqueur + GCM | `cabstore.readRecovery` |
+| Clé `SKAN1.…` collée | `parseKey` (3 segments, base64url), `verifyKey` (kid → clé, sinon `master`), matricule | `src/licence.js` |
+| Réponse `/v1/licence/etat` | `verifierReponse` (signature, sujet, date) | `src/licence.js` |
+| Fichier YAML de mise à jour | electron-updater : sha512 du binaire, `allowDowngrade = false` | `src/main.js` |
+| CSV importé (plan, balance, relevé — Cible) | colonnes **par nom**, `parseCsv` (vrai lecteur : `;` dans un libellé), équilibre vérifié avant écriture | `cabcore.parseCsv` |
+| Corps JSON de la console | `nettoyerClient`, `nettoyerEmission`, `nettoyerImport`, `nettoyerActivation` : **refus avec raison**, jamais `null` silencieux ; `SEGMENT` sur chaque id d'URL | `skanfact-api.mjs` 183–440 |
+| Chemin de fichier venu de l'écran | `attach:addPath`, `ocr:pick` : dialogues natifs seulement, jamais un chemin tapé | `src/main.js` |
+| `PONT_CHEMIN` (pont comptable) | seuls les chemins `/v1/admin/…`, jamais `..` | `src/main.js` |
+
+### 17.3 Tests de sécurité à écrire (Cible, en plus de ceux qui existent)
+
+| Test | Type | Identifiant | Ce qu'il vérifie |
+|---|---|---|---|
+| `csv : injection de formule neutralisée, montants intacts` | calcul | TEST-SEC-001 (= TEST-9.1.1-010) | voir 11.3 |
+| `zip : une entrée « ../x » n'écrit jamais hors du dossier` | Node | TEST-SEC-002 | `zipBuffer` avec un nom hostile → extraction → `fs.existsSync` hors cible faux (9.1.0 ; **prouvé en retirant le filtre**) |
+| `manifeste : un mois « ../.. » est refusé avant tout écrit` | Node | TEST-SEC-003 | `verifierManifeste` lève ; aucun `storePack` appelé |
+| `signature : garder la signature et changer le manifeste échoue` | Node | TEST-SEC-004 | 9.2.0 ; les deux variantes de `ERR-CAB-032` |
+| `réponse : non signée, mal adressée, rejouée → ignorées` | Node | TEST-SEC-005 | existe déjà en partie dans `e2e:plateforme` (étapes 5–6) ; à doubler en test pur sur `verifierReponse` |
+| `console : 100 secrets faux à la suite → 429 au onzième` | worker sur SQLite | TEST-SEC-006 | P 0.3 (limitation de débit) — **pas avant** |
+| `gabarits : aucune interpolation sans h()/esc()` | source | (existe) | test de source des deux renderers, déjà dans `npm test` |
+
+---
+
+## Partie 18 — Limites, écrites comme des décisions (v1, point 9)
+
+| Limite | Valeur | Pourquoi c'est une décision et pas un oubli | Ce qui la lèverait |
+|---|---|---|---|
+| Multi-utilisateur | **à tour de rôle**, jamais simultané (3.2.0) | le danger du partage est le silence ; une fusion par identifiant avec archive vaut mieux qu'un verrou réseau qu'on contourne | 9.8.0 : verrou par livre côté cabinet ; un serveur seulement si un cabinet dit oui |
+| Données sur un serveur | **aucune** — la plateforme ne connaît que clés, postes, ventes | « jamais de données en otage » ; l'app survit à son éditeur | rien ne le lèvera |
+| Révocation | **à la prochaine connexion**, et seulement si la version embarque `reponse` | vérification hors ligne = pas de kill switch, c'est le prix de la promesse inverse | rien ; c'est écrit en orange dans la console |
+| Listes de la console | `LIMIT 500` partout | une console d'un seul éditeur ; au-delà de 500 licences, c'est un autre logiciel | pagination P 0.3 si le jalon des 200 licences est atteint |
+| Import d'historique | ≤ 500 licences par appel | idem | — |
+| Taille d'un paquet | **aucune limite** ; 50 Mo de photos = 22 s d'ingestion sur 20 paquets | `setImmediate` entre deux unités + arrêt possible ENTRE deux (6.8.1) | 9.1.0 : avancement par fichier |
+| Un dossier = un fichier par exercice | `livre.json` par `AAAA` | 50 000 écritures ouvertes en < 1 s, mesurées AVANT d'écrire le format (SPEC-OUT-006) | jamais une base ; SQLite refusé (décision 1.0) |
+| Signature de code | **aucune** avant la première vente | certificats payants ; requalifié « avant la première vente » (`QUESTIONS.md`) | l'achat, tâche non-code de Phase 0 |
+| e-facture TTN | **non** | pas demandée ; `docs/e-facture-controle.md` (9.1.1) recense ce qu'il faudrait | le jour où elle devient obligatoire pour la cible |
+| Adresses mail | une seule (`contact@skanfact.tn`) | Zimbra Starter, une adresse | un second compte OVH |
+| Windows `0600` | non garanti (`cle-client.json`, `plateforme-admin.json`) | les modes POSIX n'existent pas ; la garantie est **hors des données et hors du paquet** | ACL Windows via `icacls` — À VÉRIFIER, jamais essayé |
+| Devises | 1 taux par pièce, saisi à la main, **obligatoire** (7.0.1) | aucun appel réseau ; un taux du jour deviendrait un service | — |
+| Langues des documents | fr, en | l'arabe demande les propriétés logiques (adoptées pour le neuf) et une traduction — pas promis | un client qui le demande |
+| Lecture de photo | **en pause** (`OCR_EN_PAUSE`) | pas d'app téléphone ; la seule fonction qui sort du poste | une app téléphone |
+| Plan de comptes | proposé, **jamais une vérité** | chaque cabinet a le sien ; « À VÉRIFIER » sur la page | — |
+| Nombre de postes par licence | `postes: null` — **illimité** | on vend des dossiers, pas des postes (`DIRECTION.md`) | — |
+
+---
+
+## Partie 19 — Cas limites (v1, point 10)
+
+Comportement **attendu** ; Livré = déjà tenu par le code ou un test cité, Cible = à tenir.
+
+| Cas | Comportement attendu | État |
+|---|---|---|
+| 31 janvier + 1 mois (licence) | 28 (ou 29) février : `addMonths` calendaire, jamais 30,44 jours | Livré (7.33.0) |
+| 30 février saisi comme fin de licence | refusé (`dateValide`) | Livré |
+| Minuit à Tunis = 23 h la veille en UTC | toute arithmétique en UTC pur ; `today()` seul en local ; test sur 5 fuseaux | Livré (5.2.3) |
+| Absence à cheval sur deux mois | répartie (`leaveDaysInMonth`) | Livré |
+| Matricule vide des deux côtés (clé/société) | ne compte pas ; la clé s'enregistre | Livré (7.33.0) |
+| Deux clients du cabinet portant le même nom, sans matricule | même `dossierKey` → même dossier ; c'est **pourquoi** le matricule est demandé, et l'écran prévient à la création (`ERR-CAB-008`) | Livré |
+| Raison sociale en arabe | `\p{L}\p{N}` avec `u` : jamais une clé vide (6.8.1) | Livré |
+| Mois reçu deux fois | remplacé, dit ; « était définitif » dit en plus | Livré |
+| Paquet d'un `format` futur | refus `ERR-CAB-004`, rien rangé | Livré |
+| Paquet avec fichier absent | envoyé quand même, `absents` dans le manifeste ; côté cabinet, absent ≠ vérifié | Livré |
+| Fichier ajouté au ZIP après coup | `intrus`, compté, jamais « intact » | Livré |
+| Licence sans `kid` | vérifiée avec `master`, elle seule | Livré (8.4.0) |
+| `kid` inconnu | refus « pas reconnue » — on n'essaie jamais toutes les clés | Livré |
+| Réponse plateforme non signée (`reponse: null`) | ignorée pour tout ce qui restreint | Livré |
+| Réponse rejouée 3 mois plus tard | ignorée (`emisLe`) | Livré (`e2e:plateforme`) |
+| Serveur éteint | rien ne change, aucun rouge | Livré |
+| Double clic sur « Émettre » | un numéro, un toast, une écriture | **Cible 9.1.0** (TEST-9.1.0-025) |
+| Disque plein pendant `write()` | l'écriture atomique lève (`renameSync` échoue), `persist()` renvoie `false`, l'écran dit « non enregistré » ; **le message n'est pas traduit** : seul le téléchargement de mise à jour connaît `ENOSPC` (`updateProblem`) | **Cible 9.1.0** : `ERR-ENT-060` « Il n'y a plus de place sur le disque : rien n'a été enregistré. Libère de l'espace, puis Enregistrer. » dans `plainError` |
+| Deux imports de paquets lancés à la suite dans le cabinet | le second attend le premier ; un seul `import:progress` | **Cible 9.1.0** : drapeau `importEnCours` dans `src/cabinet/main.js` (aujourd'hui : rien ne l'empêche, et les deux écrivent `cabinet-data.json` tour à tour — l'écriture atomique évite la corruption, pas le double compte) |
+| Restauration d'une sauvegarde plus ancienne que le dernier numéro émis | `nextNumber` = max(pièces, compteur) + 1 : **aucun doublon** | Livré (relu en v1 : la relecture le donnait pour un trou) |
+| Changement de régime fiscal après des factures avec TVA | les pièces gardent leur TVA (`showVat = assujetti ∨ totalVAT > 0`) | Livré (7.22.0) |
+| Timbre sur une facture en euros | converti dans la devise de la pièce, figé à l'émission | Livré (7.0.1, 7.1.0) |
+| Facture entièrement couverte par un avoir | statut « annulée » **mais** l'écriture de vente existe (c'est l'avoir qui la neutralise) | Livré (8.9.0 : trouvé par le lettrage) |
+| Bien cédé en cours d'année | annuité partielle dans le journal, plan d'origine sur la fiche, et l'écran le dit | Livré (3.5.0, 9.0.0) |
+| Barème de paie modifié après un bulletin remis | le bulletin garde `slip.computed` | Livré (5.0.0) |
+| Horloge de la machine reculée | l'essai se rejoue — accepté, source ouverte | Livré (décision) |
+| Veille de l'ordinateur | pas un gel : `powerMonitor` + saut d'horloge | Livré (8.1.0) |
+| Dossier iCloud pas encore synchronisé au démarrage | le fichier est absent → « fichier illisible mis de côté » ne se déclenche **pas** (absent ≠ illisible) ; l'app ouvre vide → **Cible 9.1.0** : si `app-config.json` connaît un dossier partagé et que le fichier manque, dire « ton dossier partagé n'est pas encore arrivé » au lieu d'ouvrir vide | Cible |
+| `livre.json` verrouillé par un poste éteint | `ERR-CAB-022` avec « forcer » | Cible 9.2.0 |
+| Balance d'ouverture importée déséquilibrée | refus `ERR-CAB-023` avec l'écart | Cible 9.2.0 |
+| Écriture validée qu'on veut corriger | contre-passation, jamais modification (`ERR-CAB-025`) | Cible 9.2.0 |
+| Un cabinet dont le client a changé d'ordinateur (clé de signature neuve) | `ERR-CAB-030` + « accepter la nouvelle clé » après dictée de l'empreinte | Cible 9.2.0 |
+
+---
+
+## Partie 20 — Dix runbooks (v1, point 11)
+
+Chacun : **déclencheur → étapes → vérification → ce qu'on ne fait jamais**. Les commandes sont
+celles du dépôt ; Skander ne tape rien, c'est Claude qui exécute, sauf mention « sur le Mac de
+Skander ».
+
+1. **Publier une version stable.** Déclencheur : une amélioration livrée. Étapes : bump
+   `package.json` + entrée `CHANGELOG.md` datée → `npm test` → commit → push `main` → Actions →
+   Release → Run workflow sur `main`. Vérification : run vert **et** la release porte `.dmg`, `.zip`,
+   `.exe`, `latest.yml`, `latest-mac.yml`, `SkanFact-Cabinet-*` et `cabinet*.yml`. Jamais : six
+   versions dans la matinée (quota, 6.7.2) ; un tag poussé depuis une session Claude (bloqué par le
+   proxy : `workflow_dispatch`).
+2. **Publier une bêta.** Branche `beta`, version `X.Y.0-beta.n` ; même workflow, la release sort
+   « préversion », `beta.yml` seulement, **pas** d'app cabinet (7.25.0). Vérification : `/releases/latest`
+   pointe toujours sur la stable. Jamais : une bêta du cabinet (`cabinet-beta` n'existe pas avant
+   SPEC-OUT-001).
+3. **Mettre la plateforme en production.** Déclencheur : la première vente. Étapes (sur le Mac de
+   Skander) : Paramètres → Éditeur → « Créer la clé de réponse » → la **privée** (`BEGIN PRIVATE KEY`)
+   dans le réglage Cloudflare `REPONSE_PRIVATE_KEY` **et nulle part ailleurs** ; la **publique** collée
+   dans la conversation → `build/licences-publiques.json` → `reponse` ; `SRV_PRIVATE_KEY` (déjà) ;
+   `LICENCE_PUBLIC_KEYS` = le contenu du fichier ; `ADMIN_SECRET` ≥ `ADMIN_MIN` ; `RESEND_API_KEY`,
+   `MAIL_FROM` ; coller `schema-a-coller.sql` dans D1 ; `GET /v1/admin/etat` → `emission.ok`,
+   `mail.ok`, `reponse: true`. Puis publier la version qui embarque `reponse`. Vérification :
+   `e2e:plateforme` contre l'adresse réelle (variable d'environnement). Jamais : embarquer une
+   publique dont la privée a été **vue** (la clé du 15/09/2026 est brûlée) ; poser `LICENCE_REQUISE=1`
+   avant que tous les clients aient une clé.
+4. **Retirer `srv-1` (compromission).** `retiree: true` sur l'entrée, **jamais** l'effacer ; créer
+   `srv-2` (même geste que 8.5.0) ; `SRV_PRIVATE_KEY` remplacée ; **réémettre** chaque licence signée
+   par `srv-1` (`GET /v1/admin/licences` → `kid = 'srv-1'` → renouveler) et renvoyer les clés ;
+   publier. Vérification : une clé `srv-1` refusée par `verifyKey` de la nouvelle version, une clé
+   `srv-2` acceptée, une clé sans `kid` toujours acceptée (`master`). Jamais : toucher à `master`.
+5. **Un client a perdu sa clé de licence.** Console → Licences → la sienne → « Voir la clé »
+   (refabriquée depuis `charge`) ou « Renvoyer par mail ». Si la licence est **maître** (émise dans
+   SkanFact avant la console) : `cleRaison` le dit → la clé est dans `data.licences` du poste de
+   Skander (page Licences → copier). Jamais : en émettre une seconde (deux actives pour un client).
+6. **Un cabinet a perdu son poste.** Voir 16.5. Avec base ou copie externe : `cab:pickRecover` +
+   `cab:adopt` ; avec la seule clé de secours : cabinet neuf + `cab:importRecovery`. Vérification :
+   l'empreinte affichée est celle dictée aux clients. Jamais : lui créer une clé neuve (tous ses
+   clients seraient à réappairer).
+7. **Un client change de clé de signature (9.2.0).** Ses paquets tombent en `ERR-CAB-030` → appeler
+   le client → lui faire lire l'empreinte de `cle-client.json` (Paramètres → Cabinet) → « Accepter la
+   nouvelle clé » avec cette empreinte → `audit` « changement de clé ». Jamais : automatique.
+8. **Repasser le dépôt en privé.** Une ligne : `private: true` dans `src/depot.js` ; vérifier que le
+   `GITHUB_TOKEN` du worker a **Contents: Read-only** sur le dépôt (`worker/README.md`) ; publier.
+   Vérification : `npm run e2e:depot` ; « Vérifier les mises à jour » depuis une installation. Jamais :
+   redéclarer le drapeau ailleurs (ils ont divergé en 7.26.0).
+9. **Restaurer une sauvegarde de l'entreprise.** Paramètres → Données et sécurité → Sauvegardes →
+   choisir la date → l'écran dit **ce qu'on va perdre** (pièces et clients de la sauvegarde contre
+   ceux d'aujourd'hui) → l'état actuel est mis de côté (`avant-restauration`) → restaurer.
+   Vérification : `nextNumber` ne produit pas de doublon (max des pièces). Jamais : « Importer et
+   choisis un fichier du dossier caché » (le chemin de la 7.3.0, disparu).
+10. **Quota GitHub Actions épuisé (dépôt privé) ou CI en panne.** Symptôme : les jobs meurent en
+    cinq secondes, journaux vides. Sur le Mac de Skander : `Installer SkanFact.command` construit les
+    deux applications avec le relais, gratuitement ; sur Windows, `Installer SkanFact (Windows).bat`
+    (fins de ligne CRLF, `construction.log`). Vérification : la version dans « À propos » ; l'app
+    propose bien la mise à jour suivante. Jamais : payer le quota pour rattraper un mauvais rythme.
+
+---
+
+## Partie 21 — Ce qui reste « À VÉRIFIER », en une table (v1, point 13)
+
+| Sujet | Où c'est dans le code | Valeur en attendant (celle qui ne fait rien) | Qui répond | Quand |
+|---|---|---|---|---|
+| Assiette de la retenue à la source (TTC hors timbre) | `computeTotals` | l'assiette actuelle, écrite sur la page | le comptable | avant 9.1.1 |
+| Seuil de retenue à la source | `seuilRetenue` (Cible 9.1.1) | **0** (ne prévient jamais) | le comptable | 9.1.1 |
+| Avoir sans timbre par défaut | `computeTotals` (`stampFee` sur avoir) | sans timbre | le comptable | 9.1.1 |
+| Taux CNSS 9,18 / 16,57, accident, solidarité, barème IRPP, TFP 2 % / 1 %, FOPROLOS 1 % | `DEFAULT_PAYROLL` | valeurs proposées, **toutes modifiables**, bulletin figé (`slip.computed`) | le comptable | avant le premier bulletin d'un client |
+| Métiers à TFP réduite | `ACTIVITIES` (colonne absente) | `null` — jamais écrite sans réponse (TEST-9.1.1-006) | le comptable | 9.1.1 |
+| Numéros de comptes (411, 4367, 22 et non 24…) | `DEFAULT_ACCOUNTS`, `PLAN_COMPTABLE` | proposés, modifiables, « À VÉRIFIER » sur la page | chaque cabinet | 9.2.0 (import du plan) |
+| Échéances fiscales (dates, forme juridique) | `DEFAULT_FISCAL_DEADLINES` | réglables, « À VÉRIFIER » sur la page | le comptable | 9.5.0 |
+| Périmètre de la déclaration mensuelle, TCL | rien | — | le comptable | 9.5.0 |
+| Coefficients d'amortissement dégressif | rien | linéaire seul | le comptable | 9.7.0 |
+| Facture électronique (obligation, périmètre) | `docs/e-facture-controle.md` (Cible) | non | le comptable + TTN | quand elle devient obligatoire |
+| Déontologie : remise au client parrainé, jamais de commission au cabinet | `DIRECTION.md` | remise 20 %, commission 0 | l'Ordre (OECT) | avant la première vente à un cabinet |
+| INPDP (données personnelles : matricules, salaires) | — | rien n'est collecté hors du poste, sauf activation (5 champs) | Skander + un conseil | Phase 0 |
+| Mode `0600` sur Windows | `cle-client.json`, `plateforme-admin.json` | hors des données et du paquet | un test sur Windows | 9.2.0 |
+| Playwright 1.63 ↔ Electron 43 sur la CI | `ci.yml` (Cible) | `e2e:pages` seul en CI | premier run | 9.1.0 |
+| Durée de `npm test` sur Windows | — | ≈ 30 s sur Linux | premier run | 9.1.0 |
+| Cloudflare KV sur le plan gratuit (limitation de débit) | — | pas de limitation | Skander | P 0.3 |
+| Format d'export des banques tunisiennes | — | CSV colonnes par nom | le comptable | 9.4.0 |
+
+---
+
+## Partie 22 — Ce que ce document ne spécifie pas, volontairement (v1, point 20)
+
+- **Le pixel** : marges, tailles de police, couleurs exactes — ils vivent dans `style.css`, et
+  `e2e:contraste`, `e2e:colonnes`, `e2e:entetes`, `e2e:barre` les **mesurent** ; un cahier qui les
+  écrirait divergerait de la feuille au premier ajustement.
+- **Le texte des bulles et des articles d'aide** : `guide.js` / `cabguide.js` en sont la source, et
+  un test exige que chaque clé posée existe. Ici, seulement l'obligation d'en avoir.
+- **Les versions 9.3.0 → 10.0.0 au-delà de leur intention** (Partie 15) : chacune se spécifie après
+  les réponses du comptable ; une spécification écrite avant serait une spéculation numérotée.
+- **La table `cabinets` de la plateforme (P 0.3)** et la licence du Cabinet par empreinte : décidées
+  dans `DIRECTION.md` § 5, à spécifier avec la 9.3.x.
+- **L'ordre des entrées de menu, des onglets, des colonnes** : décidé écran par écran, mesuré par
+  `e2e:captures` ; pas une règle.
+- **L'arabe, le TEIF, la signature de code, l'app téléphone** : hors périmètre (Partie 18), et
+  seules les portes sont gardées ouvertes (propriétés logiques, `docs/e-facture-controle.md`).
+- **Le contenu des mails** (licence, relance) : `DEFAULT_EMAIL_TEMPLATES` et `relanceMail` en sont
+  la source ; un test compare la phrase d'activation entre l'app et la console.
+- **La stratégie commerciale, les prix, les jalons** : `DIRECTION.md`, `QUESTIONS.md` § 3,
+  `PLAN-DEVELOPPEMENT.md`.
+- **Ce qu'un développeur doit lire avant de coder** : `CLAUDE.md` (les règles apprises, une par
+  version) — ce document ne les recopie pas, il les cite par numéro de version.
+
+---
+
+## Journal des versions
+
+### v0 — 15/09/2026, commit `6ebe904` (lu sur `d7bfc54`)
+
+Première version : 1 454 lignes, Parties 0 à 14, 23 fiches de fonctions + 4 Cibles, 24 + 9 + 22
+tests, 5 migrations.
+
+### v1 — 15/09/2026 (lu sur `6ebe904` ; aucun fichier de code n'a changé)
+
+**Ce qui a changé** (points de la relecture extérieure retenus) :
+
+- Point 1 — les trois listes `releves[]`, `immobilisations[]`, `declarations[]` de `livre.json`
+  spécifiées avec JSON et invariants (SPEC-DATA-005).
+- Point 2 — Partie 15, les intentions 9.3.0 → 10.0.0 (décidé / ouvert / question qui bloque).
+- Point 3 — 37 fiches de fonctions de plus (SPEC-FUNC-024 → 060, § 3.1 ter) : le catalogue passe de
+  23 à 60.
+- Point 4 — les contrats IPC des deux applications (§ 4.5 et § 5.5), chaque canal avec son entrée,
+  sa sortie et ce qu'il refuse.
+- Points 5 et 19 — les JSON exacts de chaque route de la plateforme (§ 7.1 bis), lus dans les
+  handlers.
+- Point 6 — l'ordre empreinte-puis-signature fixé dans § 5.3, avec son **vrai** motif et
+  TEST-9.2.0-023.
+- Point 7 — SPEC-FMT-003 (`.skanrecover`) complet : format, scellement, restauration, intégrité,
+  conservation, ce que le format ne fait pas.
+- Point 8 — Partie 17, sécurité : modèle de menace, entrées externes et leurs filtres, six tests.
+  **Un vrai trou trouvé** : l'injection de formule CSV (parade en 9.1.1, TEST-9.1.1-010).
+- Point 9 — Partie 18, les limites écrites comme des décisions.
+- Point 10 — Partie 19, trente-quatre cas limites avec le comportement attendu et l'état.
+- Point 11 — Partie 20, dix runbooks.
+- Point 12 — Partie 16, cinq séquences.
+- Point 13 — Partie 21, la table « À VÉRIFIER » consolidée (sujet, code, valeur en attendant, qui,
+  quand).
+- Point 14 — § 11.5, la correspondance script → fichier des 41 e2e (renvoi à `CLAUDE.md` pour ce que
+  chacun prouve).
+- Point 15 — Partie 13, le nommage CSS existant nommé, et `cab-` décidé pour le neuf du Cabinet.
+- Point 16 — Partie 13, une raison par interdiction, avec la version qui l'a apprise.
+- Point 17 — SPEC-DATA-001, le mode démo (`data.demo`, `demoFields`, bandeau, `demoBlock`, tampon
+  « EXEMPLE », sortie avec restitution de l'identité empruntée).
+- Point 18 — Partie 13, l'idempotence des gestes qui écrivent : **un défaut réel** (`issue()` sans
+  garde de double-clic), règle `data-busy` + `isIssued`, TEST-9.1.0-025.
+- Point 20 — Partie 22, ce que le document ne spécifie pas.
+
+**Trois erreurs de la v0, corrigées** (trouvées en lisant les handlers pour le point 5) :
+
+- SPEC-API-001 : la sortie est **plate** (`{ v, sujet, etat, offre, exp, postes, motif, emisLe,
+  signature }`), pas `{ etat, reponse? }`.
+- SPEC-API-002 : la sortie est `{ base, emission, mail, reponse, tarifs, offres, durees }`, pas
+  `{ ok, cleServeur, resend }`.
+- SPEC-API-009 : le champ s'appelle `ignorees`, pas `refusees`.
+
+**Ce qui a été refusé, ou retenu autrement, et pourquoi** :
+
+- Point 1, « les formulaires en dur pour `releves`, `immobilisations`, `declarations` » : **nuancé**.
+  Les trois listes sont spécifiées (retenu), mais leurs champs restent **extensibles à la lecture**
+  (règle du projet : tout ajout facultatif à la lecture), et les **provisions** ne sont pas une
+  quatrième liste : ce sont des écritures d'inventaire ordinaires, saisies dans le brouillard (9.3.0)
+  et datées du 31/12 (9.6.0) — une liste à part les compterait deux fois, exactement le défaut que
+  l'à-nouveau explicite de 9.0.0 a dû éviter.
+- Point 6, « sans l'empreinte, un attaquant garde la signature et change le manifeste » : **refusé
+  comme motif**, l'étape est gardée pour un autre. Ed25519 signe les octets ; un manifeste modifié
+  fait échouer `verify` quoi qu'il arrive. L'empreinte apporte la bonne phrase, la vérification sans
+  clé et la comparaison de deux envois — c'est ce que § 5.3 dit maintenant.
+- Point 14, « un tableau des e2e avec la durée de chacun » : **retenu sans les durées**. Le tableau
+  de ce que chacun prouve existe dans `CLAUDE.md` et n'est pas recopié (deux tables divergent) ;
+  la correspondance script → fichier manquait et a été ajoutée ; les durées n'ont jamais été
+  mesurées sur Windows, et un chiffre inventé serait pris pour une mesure.
+- Point 15, « une convention CSS avec préfixes partout » : **retenu pour le neuf seulement**.
+  L'existant (kebab-case sans préfixe dans `style.css`, `wiz-*` dans le cabinet) ne se renomme pas —
+  un renommage de 90 classes pour une règle ne corrige aucun défaut et casse `e2e:contraste`,
+  `e2e:colonnes` et quatorze sélecteurs de tests.
+- Point 18, « `nextNumber` produit un doublon après une restauration » : **refusé comme défaut**,
+  la règle est retenue pour un autre cas. `nextNumber` prend `max(numéro des pièces, compteur) + 1`
+  (core.js l. 836) : une restauration ne peut pas faire de doublon. Le défaut réel est le
+  double-clic sur « Émettre », et c'est lui que la règle d'idempotence traite.
+
+**Ce que la relecture n'a pas vu**, et qui compte davantage que plusieurs de ses vingt points :
+
+- Un paquet mensuel **n'est pas signé** (chiffrer ≠ signer) — corrigé dans `QUESTIONS.md` par la
+  troisième relecture, spécifié en § 5.3 ; le relecteur a discuté l'ordre des étapes d'une
+  vérification sans remarquer que c'est la seule protection contre un client qui se fait passer
+  pour un autre.
+- L'**injection CSV**, absente de ses vingt points, est le seul trou de sécurité exploitable
+  aujourd'hui sans aucune clé.
+- Le disque plein n'a **aucune phrase** ailleurs que dans les mises à jour (Partie 19).
+- Deux imports de paquets peuvent tourner **en même temps** dans le cabinet (Partie 19).
+- Le module `compta` **existe déjà** (`MODULES`, `toujours: true`) : une spécification qui en créait
+  un second — c'était la mienne, en cours d'écriture de la v0 — aurait dédoublé les onglets ; d'où
+  le sous-module `compta.livres` sur les onglets.

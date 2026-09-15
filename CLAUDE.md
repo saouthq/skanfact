@@ -2570,6 +2570,22 @@ sur des onglets (`compta.livres`, sous-module), jamais sur un second module du m
 `moduleOn` prend `(data, id)`, pas la société. Le document se relit à chaque version : ses parties
 « par version » ne couvrent que 9.1.0, 9.1.1 et 9.2.0, exprès.
 
+**v1 (15/09/2026, relecture extérieure à vingt points)** : avis donné point par point AVANT de
+corriger, puis ajouts sans rien défaire — le catalogue passe à 60 fiches, les contrats IPC des deux
+applications, les JSON exacts de chaque route (lus dans les handlers : trois cellules de la v0
+étaient fausses, dont `ignorees`/`refusees`), `.skanrecover` complet, et huit parties nouvelles
+(intentions 9.3.0 → 10.0.0, cinq séquences, sécurité, limites, cas limites, dix runbooks, table
+« À VÉRIFIER », ce qui n'est pas spécifié). Le « Journal des versions » en fin de document dit ce
+qui a été refusé et pourquoi. Ce que la relecture n'a **pas** vu, et qui comptait plus : le paquet
+mensuel n'est pas signé (chiffrer ≠ signer, 9.2.0), l'**injection de formule CSV** (`toCsv` et
+`toCsvLine` n'échappent que `; " \n \r` — parade 9.1.1, cellule texte commençant par `= + - @`
+préfixée d'une apostrophe, colonnes montant/date jamais touchées), le double-clic sur « Émettre »
+sans garde (`data-busy` + `isIssued`, 9.1.0), le disque plein sans phrase hors des mises à jour, et
+deux imports de paquets simultanés dans le Cabinet. Refusés avec raison : `nextNumber` ne fait pas
+de doublon après restauration (`max(pièces, compteur) + 1`), et « garder la signature en changeant
+le manifeste » est impossible avec Ed25519 (l'empreinte de `signature.json` sert à la bonne phrase
+et à la vérification sans clé, pas à ça).
+
 ## Pistes pour la suite (non demandées)
 
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.
