@@ -4727,7 +4727,7 @@
     pays: { sort: null, page: 1 },         // encaissements
     buys: { sort: null, page: 1 }          // journal des achats
   };
-  const COMPTA_TABS = [['ventes', 'Ventes'], ['achats', 'Achats'], ['tva', 'TVA à payer'], ['ecritures', 'Écritures'], ['grandlivre', 'Grand livre'], ['balance', 'Balance'], ['calendrier', 'Calendrier fiscal'], ['clotures', 'Clôtures'], ['cabinet', 'Cabinet']];
+  const COMPTA_TABS = [['ventes', 'Ventes'], ['achats', 'Achats'], ['tva', 'TVA à payer'], ['ecritures', 'Écritures'], ['grandlivre', 'Grand livre'], ['balance', 'Balance'], ['etats', 'États financiers'], ['calendrier', 'Calendrier fiscal'], ['clotures', 'Clôtures'], ['cabinet', 'Cabinet']];
   // État propre à l'onglet Écritures : sa pagination et son tri ne doivent pas se mélanger à ceux
   // des journaux de la même page.
   const ecrState = { page: 1, sort: null };
@@ -5994,7 +5994,8 @@
               ${c.css ? `<div class="vat-line minus"><span>− Contribution sociale de solidarité</span><span class="num">${C.money(c.css, cur)}</span></div>` : ''}
               ${c.otherDeductions ? `<div class="vat-line minus"><span>− Autres retenues</span><span class="num">${C.money(c.otherDeductions, cur)}</span></div>` : ''}
               <div class="vat-line total ok"><span>Net à payer</span><span class="num">${C.money(c.net, cur)}</span></div>
-              <div class="vat-line"><span>Charges patronales ${info('pay.employerCost')}</span><span class="num">${C.money(C.round3(c.cnssEmployer + c.accident), cur)}</span></div>
+              <div class="vat-line"><span>Charges patronales ${info('pay.employerCost')}</span><span class="num">${C.money(C.employerChargesOf(c), cur)}</span></div>
+              ${c.tfp || c.foprolos ? `<div class="vat-line sub-line"><span class="muted">dont TFP ${C.money(c.tfp, cur)} et FOPROLOS ${C.money(c.foprolos, cur)} ${info('pay.tfp')}</span><span class="num muted"></span></div>` : ''}
               <div class="vat-line"><span><b>Coût pour l'entreprise</b></span><span class="num"><b>${C.money(c.employerCost, cur)}</b></span></div>
             </div>
             <p class="small muted mt">Barème appliqué : CNSS ${pct(c.rates.cnssEmployee)} % salarié / ${pct(c.rates.cnssEmployer)} % employeur, IRPP progressif sur ${C.money(c.annualTaxable, cur)} imposables à l'année. <em>À VÉRIFIER avec ton comptable</em> — ces taux se règlent dans l'onglet Barèmes.</p>`;
@@ -6623,7 +6624,10 @@
               ${num('cnssEmployee', 'CNSS part salarié (%)', 'pay.cnssEmployee')}
               ${num('cnssEmployer', 'CNSS part employeur (%)', 'pay.cnssEmployerRate')}
               ${num('accidentRate', 'Accident du travail (%)', 'pay.accident')}
+              ${num('tfpRate', 'Taxe de formation professionnelle — TFP (%)', 'pay.tfp')}
+              ${num('foprolosRate', 'FOPROLOS (%)', 'pay.foprolos')}
             </div>
+            <p class="small muted mt">La TFP et le FOPROLOS sont des taxes patronales sur la masse salariale, déclarées chaque mois avec la TVA (9.0.0). <em>À VÉRIFIER avec ton comptable : 1 % de TFP pour les industries manufacturières, 2 % ailleurs.</em></p>
           </div>
           <div class="panel"><h2>Impôt sur le revenu</h2>
             <div class="grid-3">
@@ -6682,7 +6686,7 @@
       const readRates = () => {
         const v = formValues($('#rf'));
         const out = {};
-        ['cnssEmployee', 'cnssEmployer', 'accidentRate', 'solidarity', 'proRate', 'proCap', 'headOfFamily', 'perChild', 'maxChildren', 'leaveDaysPerYear', 'workedDays']
+        ['cnssEmployee', 'cnssEmployer', 'accidentRate', 'tfpRate', 'foprolosRate', 'solidarity', 'proRate', 'proCap', 'headOfFamily', 'perChild', 'maxChildren', 'leaveDaysPerYear', 'workedDays']
           .forEach(k => { out[k] = Number(v[k]) || 0; });
         return out;
       };
@@ -8135,6 +8139,20 @@
               : `<span class="warn-text"><strong>Écart de ${C.money(Math.abs(r.gap), cur)}.</strong> ${r.gap > 0 ? 'SkanFact compte plus que ta banque' : 'ta banque compte plus que SkanFact'} : il manque une pièce quelque part.</span>`}
           </div>
         </div>
+        <div class="panel"><h2>État de rapprochement ${info('tre.etat')}</h2>
+          ${(() => { const et = C.etatRapprochement(data, company(), accId, C.today()); return et.statement == null
+            ? '<p class="small muted">Saisis le solde de ton relevé ci-dessus : l\'état de rapprochement se remplit tout seul.</p>'
+            : `<div class="scroll-x"><table class="list compact" id="t-etat"><tbody>
+                <tr><td>Solde du relevé bancaire</td><td class="r nw">${C.money(et.statement, cur)}</td></tr>
+                <tr><td>+ Encaissements enregistrés, pas encore crédités par la banque (${pl(et.entrees.length, 'mouvement')})</td><td class="r nw">${C.money(et.totalEntrees, cur)}</td></tr>
+                <tr><td>− Paiements enregistrés, pas encore débités par la banque (${pl(et.sorties.length, 'mouvement')})</td><td class="r nw">${C.money(et.totalSorties, cur)}</td></tr>
+                <tr class="total-row"><td>= Solde que SkanFact devrait porter</td><td class="r nw"><strong>${C.money(et.theorique, cur)}</strong></td></tr>
+                <tr><td>Solde de SkanFact</td><td class="r nw">${C.money(et.balance, cur)}</td></tr>
+                <tr class="${Math.abs(et.ecart) < 0.0005 ? 'ok' : 'due'}"><td><strong>Écart</strong></td><td class="r nw"><strong id="t-ecart">${C.money(et.ecart, cur)}</strong></td></tr>
+              </tbody></table></div>
+              <p class="small muted mt">${Math.abs(et.ecart) < 0.0005 ? 'Aucun écart : chaque mouvement de la banque est dans SkanFact, et réciproquement. C\'est l\'état que ton comptable joint au dossier.' : 'Un écart est une pièce qui manque d\'un côté : un prélèvement non saisi, un chèque compté deux fois, un montant mal recopié. Pointe les mouvements ci-dessous jusqu\'à ce qu\'il tombe à zéro.'}</p>
+              <div class="inline mt"><button class="btn" id="t-etat-csv">Exporter l'état</button></div>`; })()}
+        </div>
         <div class="panel"><h2>Pas encore pointés — ${pl(pending.length, 'mouvement')} ${info('tre.pending')}</h2>
           <p class="small muted mb">Coche ce que tu retrouves sur ton relevé. Ce qui reste décoché est soit en cours de traitement à la banque, soit une erreur de saisie.</p>
           ${pending.length ? `<table class="list compact"><thead><tr><th style="width:46px"></th><th>Date</th><th>Libellé</th><th>Référence</th><th class="r">Montant</th></tr></thead><tbody>
@@ -8150,6 +8168,15 @@
         </div>` : ''}`;
       if ($('#t-vus')) $('#t-vus').onclick = () => { s.showPointed = !s.showPointed; draw(); };
       $('#t-acc2').onchange = e => { s.account = e.target.value; draw(); };
+      if ($('#t-etat-csv')) $('#t-etat-csv').onclick = async () => {
+        const et = C.etatRapprochement(data, company(), accId, C.today());
+        const rows = [{ poste: 'Solde du relevé bancaire', montant: et.statement }]
+          .concat(et.entrees.map(m => ({ poste: `+ ${C.fmtDate(m.date)} ${m.label} (${m.party || ''}) — non crédité`, montant: m.amount })))
+          .concat(et.sorties.map(m => ({ poste: `− ${C.fmtDate(m.date)} ${m.label} (${m.party || ''}) — non débité`, montant: -m.amount })))
+          .concat([{ poste: 'Solde que SkanFact devrait porter', montant: et.theorique }, { poste: 'Solde de SkanFact', montant: et.balance }, { poste: 'Écart', montant: et.ecart }]);
+        const f = await bridge.saveText(`rapprochement-${C.today()}.csv`, C.toCsv(rows, [{ key: 'poste', label: 'Poste' }, { key: 'montant', label: 'Montant', type: 'money' }]));
+        if (f) toast('Exporté : ' + f.split(/[\\/]/).pop());
+      };
       $('#stmt').onchange = e => {
         const acc = data.accounts.find(a => a.id === accId);
         acc.statementBalance = e.target.value === '' ? '' : Number(e.target.value);
@@ -8479,6 +8506,7 @@
       if (comptaState.tab === 'ecritures') return drawEntries();
       if (comptaState.tab === 'grandlivre') return drawGrandLivre();
       if (comptaState.tab === 'balance') return drawBalance();
+      if (comptaState.tab === 'etats') return drawEtats();
       if (comptaState.tab === 'calendrier') return drawFiscal();
       if (comptaState.tab === 'clotures') return drawClosures();
       if (comptaState.tab === 'cabinet') return drawCabinet();
@@ -9126,6 +9154,54 @@
         if (f) toast('Exporté : ' + f.split(/[\\/]/).pop());
       };
       $('#bal-plan').onclick = () => chartForm(drawBalance);
+    }
+
+    // Les états financiers (9.0.0) : le bilan et l'état de résultat déduits de la balance de
+    // l'exercice. Une présentation d'ensemble, pas la liasse — c'est le cabinet qui l'établit, et
+    // c'est écrit. Ce qui est garanti : actif = passif, et le résultat des deux états est le même.
+    function drawEtats() {
+      figerAuxiliaires();
+      const cur = company().currency;
+      const p = period();
+      const y = p.from.slice(0, 4);
+      const t = C.today();
+      // Sur l'année en cours, l'arrêté est à aujourd'hui ; sur un mois choisi, à la fin du mois.
+      const to = comptaState.month ? (p.to > t ? t : p.to) : (y === t.slice(0, 4) ? t : `${y}-12-31`);
+      const e = C.etatsFinanciers(data, company(), y, to, {});
+      const tab = (g) => g.lignes.length ? `<table class="list compact"><tbody>${g.lignes.map(l => `<tr><td class="nw"><strong>${h(l.account)}</strong></td><td>${h(l.label)}</td><td class="r nw">${C.money(l.montant)}</td></tr>`).join('')}
+        <tr class="total-row"><td colspan="2">${h(g.titre)}</td><td class="r nw"><strong>${C.money(g.total)}</strong></td></tr></tbody></table>` : `<p class="small muted">${h(g.titre)} : —</p>`;
+      $('#c-body').innerHTML = `
+        <div class="panel"><h2>États financiers — exercice ${h(y)}, arrêtés au ${C.fmtDate(to)} ${info('etats.quoi')}</h2>
+          <p class="small">Le bilan et l'état de résultat, déduits de la balance de l'exercice. Une présentation d'ensemble pour savoir où tu en es : <em>ce n'est pas la liasse fiscale, c'est ton comptable qui l'établit, à partir de ces chiffres.</em> <em>À VÉRIFIER avec lui.</em></p>
+          <div class="pay-grid">
+            <div><div class="k-label">Total actif</div><div class="v">${C.money(e.totalActif, cur)}</div></div>
+            <div><div class="k-label">Total passif</div><div class="v ${e.equilibre ? 'ok' : 'due'}">${C.money(e.totalPassif, cur)}</div></div>
+            <div><div class="k-label">Résultat de l'exercice</div><div class="v ${e.resultat >= 0 ? 'ok' : 'due'}" id="et-resultat">${C.money(e.resultat, cur)}</div></div>
+            <div><div class="k-label">Produits − charges</div><div class="v">${C.money(e.produits.total, cur)} − ${C.money(e.charges.total, cur)}</div></div>
+          </div>
+          ${e.equilibre ? '<div class="todo-ok" id="et-ok">Actif = passif : le bilan tient debout.</div>' : '<div class="banner" id="et-ko"><span>Le bilan ne tombe pas juste — signale-le avant d\'envoyer quoi que ce soit.</span></div>'}
+          ${e.dotationEnAttente ? `<p class="small muted mt">La dotation aux amortissements de l'exercice en cours (${C.money(e.dotationEnAttente, cur)} à ce jour) ne s'écrit qu'au 31 décembre : le résultat ci-dessus ne la compte pas encore, le <a href="#/compta" data-onglet="tva">résultat simplifié</a> si.</p>` : ''}
+          <div class="inline mt"><button class="btn" id="et-csv">Exporter en CSV</button><button class="btn btn-ghost" id="et-plan">Plan de comptes…</button></div>
+        </div>
+        <div class="split">
+          <div class="panel"><h2>Bilan — actif ${info('etats.bilan')}</h2>${e.actif.map(tab).join('')}
+            <p class="mt"><strong>Total actif : ${C.money(e.totalActif, cur)}</strong></p></div>
+          <div class="panel"><h2>Bilan — passif</h2>${e.passif.map(tab).join('')}
+            <table class="list compact"><tbody><tr class="total-row"><td colspan="2">Résultat de l'exercice</td><td class="r nw"><strong>${C.money(e.resultat)}</strong></td></tr></tbody></table>
+            <p class="mt"><strong>Total passif : ${C.money(e.totalPassif, cur)}</strong></p></div>
+        </div>
+        <div class="split">
+          <div class="panel"><h2>État de résultat — produits ${info('etats.resultat')}</h2>${tab(e.produits)}</div>
+          <div class="panel"><h2>État de résultat — charges</h2>${tab(e.charges)}
+            <p class="mt"><strong>Résultat : ${C.money(e.resultat, cur)}</strong> ${e.resultat >= 0 ? '(bénéfice)' : '(perte)'}</p></div>
+        </div>`;
+      $('#et-csv').onclick = async () => {
+        const f = await bridge.saveText(`etats-financiers-${y}.csv`, C.toCsv(C.etatsCsvRows(e), C.etatsCsvColumns()));
+        if (f) toast('Exporté : ' + f.split(/[\\/]/).pop());
+      };
+      $('#et-plan').onclick = () => chartForm(drawEtats);
+      const lien = $('#c-body a[data-onglet]');
+      if (lien) lien.onclick = ev => { ev.preventDefault(); comptaState.tab = lien.dataset.onglet; draw(); $$('#c-tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === lien.dataset.onglet)); };
     }
 
     // Le plan de comptes. Aucun numéro n'est certain : le comptable a le dernier mot, donc tout

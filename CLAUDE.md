@@ -393,7 +393,7 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:depot` | **public ou privé** : `src/depot.js` est VRAIMENT basculé en privé, l'application ouverte, le champ jeton doit revenir — puis repartir au retour au public (le fichier est restauré quoi qu'il arrive) |
 | `npm run e2e:pages` | **les pages d'un document imprimé** : 161 documents (7 types × 6 variantes × 1 à 40 lignes) rendus dans chromium et imprimés en PDF — aucune ligne perdue, aucune page qui déborde, aucun pied par-dessus le contenu, une feuille par page et chacune numérotée. **Pas besoin de `xvfb`** : il n'ouvre pas Electron |
 | `npm run e2e:pont` | **le pont comptable** : le vrai worker sur SQLite et l'application en état éditeur — un secret faux refusé, le bon gardé en 0600 hors des données, deux ventes de la console tirées en deux brouillons (client retrouvé par matricule ou créé), le menu d'une licence de la console sans « Renouveler », le numéro rendu à l'émission et lu dans la base, la console éteinte dite en français |
-| `npm run e2e:livres` | **les livres comptables** : chaque compte du grand livre avec son solde progressif qui finit sur le total, le sélecteur de compte, la balance dont les six totaux tombent juste, l'auxiliaire clients, la case « un sous-compte par tiers » qui donne 411001… et les fige sur les fiches, le livre-journal numéroté et son centralisateur, une OD refusée puis enregistrée, le lettrage qui ouvre sa pièce |
+| `npm run e2e:livres` | **les livres comptables** : chaque compte du grand livre avec son solde progressif qui finit sur le total, le sélecteur de compte, la balance dont les six totaux tombent juste, l'auxiliaire clients, la case « un sous-compte par tiers » qui donne 411001… et les fige sur les fiches, le livre-journal numéroté et son centralisateur, une OD refusée puis enregistrée, le lettrage qui ouvre sa pièce, les états financiers équilibrés, l'à-nouveau de janvier, l'état de rapprochement à écart nul, la TFP dans les barèmes |
 | `npm run e2e:justificatif` | **le justificatif se joint avant toute saisie** : sélecteur de fichier remplacé dans le processus principal, une photo jointe sur un achat VIDE, enregistrée avec la pièce, retrouvée sur le disque et dans la liste (📎), un second fichier sur la pièce rangée, une pièce abandonnée qui ne laisse pas de copie, la lecture d'une photo qui redessine sans perdre la pièce, et le même geste sur un devis neuf |
 | `npm run e2e:licence` | **l'éditeur et les offres, puis le client** : une première application DÉSARMÉE (`SKANFACT_CLE_EMBARQUEE` vers un chemin inexistant, développement seulement) — sans clé rien n'apparaît ; « Créer mes clés » écrit la privée dans un dossier isolé (`SKANFACT_DOSSIER_CLES`) et met le poste en état « éditeur » (ni essai ni verrou) ; « Émettre » signe une clé vérifiable, crée un BROUILLON de facture et l'historique ; la clé Indépendant collée refuse un nouveau fournisseur, pose un cadenas sur Achats et laisse les Statistiques ; la clé d'un autre matricule est refusée en nommant les deux ; « Renouveler » ; rien de ce qui traverse le pont ne contient la clé privée — PUIS une seconde application telle qu'un client l'installe (vraie clé embarquée, pas de clé privée) : essai de 30 jours, aucune trace de l'éditeur, plus de porte « Créer mes clés », et la clé signée par la clé d'essai du test REFUSÉE |
 
@@ -2387,6 +2387,51 @@ le paiement des bulletins, `declarations` (la TVA du mois au dernier jour) et `o
 `npm run e2e:livres` gagne trois étapes : le livre-journal numéroté et son centralisateur, une OD
 refusée à 200 d'écart puis enregistrée OD-2026-002 (le compte 613 nommé « Locations » pendant la
 frappe), et le lettrage dont une ligne ouvre sa facture.
+
+### 9.0.0 — L'exercice
+
+Le troisième volet : les à-nouveaux (`anouveaux` dans `journalEntries`), les amortissements et les
+cessions en écritures (`amortissements`), les états financiers (`etatsFinanciers`), l'état de
+rapprochement (`etatRapprochement`), la TFP et le FOPROLOS dans la paie (`tfpRate`, `foprolosRate`,
+`employerChargesOf`). Onglet **Comptabilité → États financiers** ; Trésorerie → Rapprochement gagne
+son état ; Paie → Barèmes gagne deux taux.
+
+- **L'à-nouveau se calcule sur les écritures RÉELLES seules**, jamais sur les à-nouveaux
+  précédents. Le solde d'un compte de bilan persiste dans les écritures réelles ; le net des
+  comptes de gestion de tout le passé va au résultat (13). Recalculer AN(2026) à partir de
+  [réelles + AN(2025)] compterait le passé deux fois — d'où `SECTIONS_ECRITURES` sans `anouveaux`
+  dans l'appel récursif, et le test qui compare la banque de l'AN au solde réel du 31/12.
+- **L'ouverture d'une période se lit depuis le début de son exercice, à-nouveau compris, et jamais
+  plus loin.** `soldesOuverture` remontait avant à toute l'histoire (8.8.0, à-nouveau implicite) :
+  avec la pièce AN explicite, ce serait le double. Au 1er janvier, l'ouverture est donc 0 et la
+  pièce AN apparaît comme mouvement — c'est ainsi qu'un grand livre se présente. Le test de 8.8.0
+  qui exigeait « la banque rouvre en ouverture » a été RETOURNÉ (« l'ouverture de janvier est 0, la
+  pièce AN porte la banque ») : quand une règle change, c'est le test qui se relit en premier.
+- **Une dotation est une écriture d'inventaire : au 31 décembre, jamais avant.** Sur l'exercice en
+  cours, le bilan ne la compte pas encore et l'écran le dit (`dotationEnAttente`), pendant que le
+  résultat simplifié de l'onglet TVA la compte (`depreciationFor`). Deux chiffres différents sur
+  deux onglets doivent s'expliquer l'un l'autre, sinon l'un des deux paraît faux.
+- **Un bien saisi à la main entre à sa valeur brute contre le report à nouveau** (comme le solde de
+  départ d'un compte, 8.9.0) : sans ça, le 28 s'amortit sur un 22 qui n'existe pas, et l'actif du
+  bilan est négatif. Un bien lié à un achat (`purchaseId`) est déjà entré par l'achat.
+- **Le prix d'une cession n'est jamais inventé** : la sortie d'actif (28 / 675 / 22) s'écrit, le
+  prix arrive par un mouvement avec la contrepartie 775 ou par une facture. Écrire le prix d'office
+  au 471 laisserait un compte d'attente que personne ne solde.
+- **Les états financiers sont déduits de la balance, pas de la liasse** : rubriques par classe et
+  par sens du solde (classe 4 débitrice à l'actif, créditrice au passif ; 28/29 en moins de l'actif).
+  Ce qui est garanti et testé : actif = passif, résultat du bilan = résultat de l'état de résultat,
+  trésorerie du bilan = `cashPosition`. La page écrit « pas la liasse NCT 01 ».
+- **Une charge patronale ajoutée se lit sur la COPIE figée du bulletin** (`employerChargesOf`,
+  `c.tfp || 0`) : un bulletin d'avant la 9.0.0 n'en gagne pas après coup, dans le journal non plus.
+  L'interface n'additionne plus jamais `cnssEmployer + accident` à la main — un test l'interdit,
+  parce que c'est exactement l'addition qui aurait oublié la TFP à trois endroits.
+- Piège : `assetYear` rend l'annuité partielle l'année de la cession ; `assetSchedule` rend l'année
+  pleine. Le journal prend la première pour cette année-là et la seconde pour les autres, et un test
+  vérifie que le 28 du bien cédé est repris en entier.
+
+`npm run e2e:livres` gagne quatre étapes : les états financiers équilibrés avec le même résultat
+des deux côtés, l'à-nouveau dans le grand livre de janvier, l'état de rapprochement à écart nul dès
+que le relevé égale le solde pointé, et la TFP/FOPROLOS dans les barèmes et le coût d'un brut de 1 000.
 
 ## Pistes pour la suite (non demandées)
 

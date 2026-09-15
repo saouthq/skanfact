@@ -2472,7 +2472,12 @@ t('bulletin : brut, CNSS, IRPP, net et coût employeur', () => {
   assert.strictEqual(p.annualTaxable, core.round3(2000 * 12 - p.cnssEmployee * 12 - 2000 - 500));
   assert.strictEqual(p.irpp, core.round3(core.irppAnnual(p.annualTaxable, s.brackets) / 12));
   assert.strictEqual(p.net, core.round3(p.gross - p.cnssEmployee - p.irpp - p.css));
-  assert.strictEqual(p.employerCost, core.round3(p.gross + p.cnssEmployer + p.accident));
+  // 9.0.0 : la TFP et le FOPROLOS sont des charges patronales, dans le coût, jamais dans le net.
+  assert.strictEqual(p.tfp, core.round3(2000 * s.tfpRate / 100));
+  assert.strictEqual(p.foprolos, core.round3(2000 * s.foprolosRate / 100));
+  assert.strictEqual(p.employerCharges, core.round3(p.cnssEmployer + p.accident + p.tfp + p.foprolos));
+  assert.strictEqual(p.employerCost, core.round3(p.gross + p.employerCharges));
+  assert.strictEqual(core.employerChargesOf({ cnssEmployer: 100, accident: 2 }), 102, 'un bulletin d\'avant la 9.0.0 ne gagne ni TFP ni FOPROLOS');
   assert.ok(p.employerCost > p.gross, 'le coût employeur dépasse toujours le brut');
   // le net est bien inférieur au brut, et le brut au coût
   assert.ok(p.net < p.gross && p.gross < p.employerCost);
@@ -4179,18 +4184,28 @@ t('8.8.0 : les charges et les produits repartent de zéro au 1er janvier, et le 
   assert.ok(ventes25 && ventes25.credit > 0, 'l\'exemple vend en 2025');
   const jan26 = core.balanceGenerale(data, data.company, core.packPeriod(2026, 1), {});
   const ventesJan = jan26.rows.find(r => r.account === acc.ventes);
-  // Un compte de produits ne reporte rien d'une année sur l'autre…
+  // Un compte de produits ne reporte rien d'une année sur l'autre : ni en ouverture, ni par à-nouveau.
   assert.strictEqual(ventesJan ? ventesJan.ouverture : 0, 0, 'les ventes de 2025 ne doivent pas ouvrir 2026');
-  // …mais un compte de bilan, si : la banque reprend exactement son solde du 31 décembre.
-  const bq25 = b25.rows.find(r => r.account === acc.banque), bqJan = jan26.rows.find(r => r.account === acc.banque);
-  assert.strictEqual(bqJan.ouverture, bq25.solde, 'la banque doit rouvrir sur son solde de clôture');
-  // Et le résultat des exercices passés porte le net des classes 6 et 7 de 2025 — sinon la balance
-  // d'ouverture ne tomberait pas juste.
-  const res = jan26.rows.find(r => r.account === acc.resultat);
-  const net25 = core.round3(b25.rows.filter(r => core.compteDeGestion(r.account)).reduce((s, r) => s + r.solde, 0));
-  assert.ok(res, 'le compte de résultat doit apparaître à l\'ouverture');
-  assert.strictEqual(res.ouverture, net25, 'le résultat reporté doit valoir le net des charges et produits passés');
+  const an = core.journalEntries(data, data.company, core.packPeriod(2026, 1), {}).filter(e => e.source === 'anouveau');
+  assert.ok(an.length && an.every(e => e.piece === 'AN-2026' && e.journal === 'AN' && e.date === '2026-01-01'), 'la pièce d\'à-nouveau ouvre janvier (9.0.0)');
+  assert.ok(!an.some(e => core.compteDeGestion(e.account)), 'aucun compte de charge ou de produit dans les à-nouveaux');
+  // …mais un compte de bilan, si : la banque reprend exactement son solde du 31 décembre — PAR la
+  // pièce d'à-nouveau (9.0.0), qui est une écriture comme une autre et non plus un solde implicite.
+  const bq25 = b25.rows.find(r => r.account === acc.banque);
+  assert.strictEqual(jan26.totals.ouvertureD, 0, 'au 1er janvier, rien n\'est reporté en silence : tout passe par la pièce AN');
+  assert.strictEqual(an.find(e => e.account === acc.banque).debit, bq25.solde, 'la banque rouvre sur son solde de clôture');
+  // Et le résultat des exercices passés porte le net des classes 6 et 7 de 2025 — sinon la pièce
+  // d'à-nouveau ne tomberait pas juste.
+  // Le net de TOUT ce qui précède (2024 a des dotations, 2025 ses ventes), sur les écritures réelles.
+  const reelles = core.journalEntries(data, data.company, { from: '', to: '2025-12-31' }, { sections: core.SECTIONS_ECRITURES.filter(x => x !== 'anouveaux') });
+  const net25 = core.round3(reelles.filter(e => core.compteDeGestion(e.account)).reduce((s, e) => s + e.debit - e.credit, 0));
+  const res = an.find(e => e.account === acc.resultat);
+  assert.ok(res, 'le compte de résultat doit apparaître dans les à-nouveaux');
+  assert.strictEqual(core.round3(res.debit - res.credit), net25, 'le résultat reporté doit valoir le net des charges et produits passés');
   assert.ok(jan26.equilibree);
+  // Février ouvre sur janvier, à-nouveau compris : la banque y porte son solde du 31/12 plus janvier.
+  const fev = core.balanceGenerale(data, data.company, core.packPeriod(2026, 2), {});
+  assert.strictEqual(fev.rows.find(r => r.account === acc.banque).ouverture, jan26.rows.find(r => r.account === acc.banque).solde);
   // En juin, les ventes ouvrent sur janvier–mai : le solde d'ouverture est bien un cumul d'exercice.
   const juin = core.grandLivre(data, data.company, core.packPeriod(2026, 6), { compte: acc.ventes });
   const janMai = core.balanceGenerale(data, data.company, { from: '2026-01-01', to: '2026-05-31' }, {}).rows.find(r => r.account === acc.ventes);
@@ -4454,6 +4469,158 @@ t('8.9.0 : le lettrage se lit — une facture soldée porte sa lettre, ce qui re
   assert.ok(/C\.journalCentralisateur\(data, company\(\), exo, \{\}\)/.test(app));
   assert.ok(/C\.lettrage\(data, company\(\), 'clients', C\.today\(\)\)/.test(app));
   assert.ok(/name="compte"/.test(app) && /C\.COMPTES_CONTREPARTIE\.map/.test(app), 'le mouvement libre choisit sa contrepartie');
+});
+
+// ---------- l'exercice (9.0.0) ----------
+t('9.0.0 : les amortissements s\'écrivent au 31 décembre, une cession sort le bien, et un bien saisi à la main entre à sa valeur', () => {
+  const company = { ...core.DEFAULT_COMPANY, name: 'T', matricule: '1A' };
+  const data = core.migrateData({
+    company,
+    assets: [
+      { id: 'a1', label: 'Serveur', category: 'informatique', date: '2024-07-01', amount: 3000, residual: 0, years: 3, purchaseId: '', lineIndex: null },
+      { id: 'a2', label: 'Camion', category: 'transport', date: '2024-01-01', amount: 20000, residual: 0, years: 5, purchaseId: '', lineIndex: null,
+        disposal: { date: '2026-04-01', amount: 9000, reason: 'Revendu' } }
+    ]
+  });
+  const acc = core.chartAccounts(data);
+  const o = { todayIso: '2026-09-12' };
+  const tout = core.journalEntries(data, data.company, { from: '', to: '2026-12-31' }, o);
+  const de = src => tout.filter(e => e.source === src);
+  // Entrée à la main : la valeur brute entre contre le report à nouveau, à la date du bien.
+  assert.strictEqual(de('immobilisation').filter(e => e.account === acc.immobilisations).reduce((s, e) => s + e.debit, 0), 23000);
+  // Dotations : une pièce AMORT par exercice écoulé, au 31 décembre, 681 / 28. 2026 pas encore (31/12 à venir).
+  const dot = de('amortissement');
+  assert.deepStrictEqual([...new Set(dot.map(e => e.date))].sort(), ['2024-12-31', '2025-12-31', '2026-04-01'], 'les dotations de 2024 et 2025, plus celle du camion jusqu\'à sa sortie');
+  assert.strictEqual(dot.filter(e => e.docId === 'a1' && e.date === '2025-12-31' && e.account === acc.dotations)[0].debit, 1000, 'une année pleine de serveur = 1 000');
+  assert.strictEqual(dot.filter(e => e.docId === 'a1' && e.date === '2024-12-31' && e.account === acc.amortissements)[0].credit, 500, 'prorata : six mois');
+  assert.ok(!dot.some(e => e.date === '2026-12-31'), 'la dotation de l\'exercice en cours ne s\'écrit pas avant le 31 décembre');
+  // Cession : amortissements repris, VNC en charge, valeur brute sortie — équilibrée.
+  const ces = de('cession');
+  assert.ok(ces.length === 3 && ces.every(e => e.date === '2026-04-01' && e.docId === 'a2'));
+  const cumul = core.assetCumulated(data.assets[1], '2026-04-01');
+  assert.strictEqual(ces.find(e => e.account === acc.amortissements).debit, cumul);
+  assert.strictEqual(ces.find(e => e.account === acc.vncCedee).debit, core.round3(20000 - cumul));
+  assert.strictEqual(ces.find(e => e.account === acc.immobilisations).credit, 20000);
+  assert.ok(core.entriesBalance(tout).balanced);
+  // Après la cession, le camion ne porte plus rien : le 28 du camion est soldé.
+  const camion28 = tout.filter(e => e.docId === 'a2' && e.account === acc.amortissements).reduce((s, e) => s + e.credit - e.debit, 0);
+  assert.strictEqual(core.round3(camion28), 0, 'l\'amortissement cumulé du bien cédé est repris en entier');
+  // Le prix de cession, lui, n'est pas inventé : il arrive par un mouvement avec la contrepartie 775.
+  assert.ok(!tout.some(e => e.account === acc.produitsCession), 'le prix de cession n\'est pas écrit d\'office');
+  assert.ok(core.COMPTES_CONTREPARTIE.some(([v]) => v === '775'));
+});
+
+t('9.0.0 : les à-nouveaux rouvrent chaque exercice, une fois, et la balance de toute l\'histoire tombe juste', () => {
+  const demo = require('../src/renderer/demo.js');
+  const company = { ...core.DEFAULT_COMPANY, name: 'Test SUARL', matricule: '1234567A' };
+  const data = core.migrateData(demo.buildDemoData(company, '2026-09-12'));
+  const acc = core.chartAccounts(data);
+  const tout = core.journalEntries(data, data.company, { from: '', to: '2026-12-31' }, {});
+  const an = tout.filter(e => e.source === 'anouveau');
+  const pieces = [...new Set(an.map(e => e.piece))].sort();
+  // Le premier exercice de l'exemple est celui de son plus ancien bien (saisi à la main) : pas
+  // d'à-nouveau pour lui, un par exercice ensuite.
+  const premiere = Math.min(...data.assets.map(a => Number(a.date.slice(0, 4))));
+  const attendues = []; for (let y = premiere + 1; y <= 2026; y++) attendues.push(`AN-${y}`);
+  assert.deepStrictEqual(pieces, attendues, 'une pièce par exercice qui en suit un autre, jamais pour le premier');
+  assert.ok(core.entriesBalance(an).balanced, 'chaque pièce d\'à-nouveau tombe juste');
+  // L'à-nouveau de 2026 rouvre la banque sur son solde réel de fin 2025 : toutes les écritures
+  // réelles jusqu'au 31/12/2025, jamais l'à-nouveau de 2025 en plus (sinon le passé compte deux fois).
+  const reelles = core.journalEntries(data, data.company, { from: '', to: '2025-12-31' }, { sections: core.SECTIONS_ECRITURES.filter(x => x !== 'anouveaux') });
+  const bq = core.round3(reelles.filter(e => e.account === acc.banque).reduce((s, e) => s + e.debit - e.credit, 0));
+  assert.strictEqual(an.find(e => e.piece === 'AN-2026' && e.account === acc.banque).debit, bq);
+  assert.strictEqual(bq, core.accountBalance(data, data.company, data.accounts[0].id, '2025-12-31').balance, 'et c\'est le solde de la Trésorerie au 31/12');
+  // Sur toute l'histoire, la balance tombe juste, et les comptes de gestion de 2024 ont bien été
+  // remis à zéro : le 681 sur l'exercice 2026 ne porte que 2026 (rien : la dotation attend le 31/12).
+  const b = core.balanceGenerale(data, data.company, { from: '2026-01-01', to: '2026-12-31' }, {});
+  assert.ok(b.equilibree);
+  // La seule dotation de l'exercice en cours est celle du bien CÉDÉ, au jour de sa sortie.
+  const dot26 = core.journalEntries(data, data.company, { from: '2026-01-01', to: '2026-12-31' }, {}).filter(e => e.source === 'amortissement');
+  const cede = data.assets.find(a => a.disposal && a.disposal.date);
+  assert.ok(dot26.length && dot26.every(e => e.docId === cede.id && e.date === cede.disposal.date), 'avant le 31 décembre, seule la dotation d\'un bien cédé s\'écrit, au jour de la cession');
+  // Chaque mois de 2024 à 2026 tombe juste (2024 n'a que des immobilisations dans l'exemple).
+  for (const y of [2024, 2025, 2026]) for (let m = 1; m <= 12; m++) {
+    const bm = core.balanceGenerale(data, data.company, core.packPeriod(y, m), {});
+    assert.ok(bm.equilibree, `${y}-${m}`);
+  }
+  // Une section demandée seule n'entraîne pas les autres : les à-nouveaux ne se calculent pas
+  // quand on n'exporte que les ventes.
+  assert.ok(!core.journalEntries(data, data.company, core.packPeriod(2026, 1), { sections: ['ventes'] }).some(e => e.source === 'anouveau'));
+});
+
+t('9.0.0 : le bilan tient debout (actif = passif) et son résultat est celui de l\'état de résultat', () => {
+  const demo = require('../src/renderer/demo.js');
+  const company = { ...core.DEFAULT_COMPANY, name: 'Test SUARL', matricule: '1234567A' };
+  const data = core.migrateData(demo.buildDemoData(company, '2026-09-12'));
+  const acc = core.chartAccounts(data);
+  for (const [y, to] of [['2025', ''], ['2026', '2026-09-12'], ['2026', '2026-05-31']]) {
+    const e = core.etatsFinanciers(data, data.company, y, to, {});
+    assert.ok(e.equilibre, `${y} ${to} : actif ${e.totalActif} ≠ passif ${e.totalPassif}`);
+    assert.strictEqual(e.resultat, core.round3(e.produits.total - e.charges.total));
+    assert.ok(e.actif.every(g => g.lignes.every(l => !core.compteDeGestion(l.account))), 'le bilan ne contient aucun compte de gestion');
+    assert.ok(e.produits.lignes.every(l => l.account.startsWith('7')) && e.charges.lignes.every(l => l.account.startsWith('6')));
+  }
+  const e26 = core.etatsFinanciers(data, data.company, '2026', '2026-09-12', {});
+  // Les amortissements cumulés viennent en moins de l'actif, jamais au passif.
+  const amort = e26.actif.find(g => /Amortissements/.test(g.titre));
+  assert.ok(amort && amort.total < 0 && amort.lignes.some(l => l.account === acc.amortissements));
+  // La trésorerie du bilan est celle de la page Trésorerie.
+  const treso = e26.actif.find(g => g.titre === 'Trésorerie').total;
+  assert.strictEqual(treso, core.cashPosition(data, data.company, '2026-09-12').total);
+  // Et la dotation de l'exercice en cours est annoncée comme en attente, pas comptée deux fois :
+  // celle du bien cédé est déjà dans les charges (au jour de la sortie), le reste attend le 31/12.
+  const deja = e26.charges.lignes.filter(l => l.account === acc.dotations).reduce((s, l) => s + l.montant, 0);
+  assert.ok(e26.dotationEnAttente > 0 && deja > 0);
+  assert.strictEqual(core.round3(e26.dotationEnAttente + deja), core.depreciationFor(data, { from: '2026-01-01', to: '2026-09-12' }), 'en attente + déjà écrite = la dotation de la période');
+  const e25 = core.etatsFinanciers(data, data.company, '2025', '', {});
+  assert.strictEqual(e25.dotationEnAttente, 0, 'un exercice clos n\'a rien en attente');
+  assert.ok(e25.charges.lignes.some(l => l.account === acc.dotations), 'la dotation 2025 est dans les charges de 2025');
+  // L'export a une entête, et la ligne du résultat.
+  const csv = core.toCsv(core.etatsCsvRows(e26), core.etatsCsvColumns());
+  assert.strictEqual(csv.split('\r\n')[0].replace('﻿', ''), 'État;Rubrique;Compte;Intitulé;Montant');
+  assert.ok(/Résultat de l'exercice/.test(csv));
+});
+
+t('9.0.0 : l\'état de rapprochement part du relevé et retombe sur SkanFact, et la paie porte TFP et FOPROLOS dans le journal', () => {
+  const company = { ...core.DEFAULT_COMPANY, name: 'T', matricule: '1A' };
+  const data = core.migrateData({
+    company,
+    accounts: [{ id: 'bq', name: 'Banque', kind: 'banque', opening: 1000, openingDate: '2026-01-01', isDefault: true, statementBalance: 1300 }],
+    movements: [
+      { id: 'm1', date: '2026-05-05', kind: 'apport', amount: 500, label: 'Apport', accountId: 'bq', reconciled: true },
+      { id: 'm2', date: '2026-05-06', kind: 'banque', amount: 200, label: 'Frais', accountId: 'bq', reconciled: false },
+      { id: 'm3', date: '2026-05-07', kind: 'apport', amount: 50, label: 'Remise', accountId: 'bq', reconciled: false }
+    ],
+    employees: [{ id: 'e1', name: 'Salarié Un', grossSalary: 1000 }],
+    payslips: [{ id: 's1', employeeId: 'e1', year: 2026, month: 5 }]
+  });
+  const r = core.etatRapprochement(data, data.company, 'bq', '2026-09-12');
+  // Solde SkanFact = 1000 + 500 − 200 + 50 = 1350. Relevé 1300 (l'apport pointé y est, pas le reste).
+  assert.strictEqual(r.balance, 1350);
+  assert.strictEqual(r.totalEntrees, 50); assert.strictEqual(r.totalSorties, 200);
+  assert.strictEqual(r.theorique, core.round3(1300 + 50 - 200), 'relevé + non crédités − non débités');
+  assert.strictEqual(r.ecart, 200, 'il manque 200 : le relevé devrait dire 1 500 pour que tout colle');
+  assert.ok(r.entrees.length === 1 && r.sorties.length === 1);
+  const acc = core.chartAccounts(data);
+  const e = core.journalEntries(data, data.company, core.packPeriod(2026, 5), { todayIso: '2026-09-12' });
+  const s = core.payrollSettings(data);
+  const taxes = core.round3(1000 * (s.tfpRate + s.foprolosRate) / 100);
+  assert.strictEqual(e.find(x => x.source === 'bulletin' && x.account === acc.taxesSalaires).debit, taxes, 'TFP + FOPROLOS en charge');
+  assert.strictEqual(e.find(x => x.source === 'bulletin' && x.account === acc.tfpFoprolos).credit, taxes, 'et en dette envers l\'État');
+  assert.ok(core.entriesBalance(e).balanced);
+  // Un bulletin figé avant la 9.0.0 n'en produit pas.
+  data.payslips[0].computed = { gross: 1000, net: 850, cnssEmployee: 91.8, cnssEmployer: 165.7, accident: 4, irpp: 50, css: 8.2, otherDeductions: 0 };
+  const e2 = core.journalEntries(data, data.company, core.packPeriod(2026, 5), { todayIso: '2026-09-12' });
+  assert.ok(!e2.some(x => x.account === acc.taxesSalaires), 'un bulletin d\'avant ne gagne pas de taxes après coup');
+  assert.ok(core.entriesBalance(e2).balanced);
+  // L'écran : les deux taux dans les barèmes, l'onglet États, l'état de rapprochement branché sur le cœur.
+  const app = lireApp();
+  assert.ok(/num\('tfpRate',/.test(app) && /num\('foprolosRate',/.test(app), 'les deux taux se règlent dans les Barèmes');
+  assert.ok(/'cnssEmployee', 'cnssEmployer', 'accidentRate', 'tfpRate', 'foprolosRate'/.test(app), 'et se lisent à l\'enregistrement');
+  assert.ok(/\['etats', 'États financiers'\]/.test(app) && /if \(comptaState\.tab === 'etats'\) return drawEtats\(\);/.test(app));
+  assert.ok(/C\.etatsFinanciers\(data, company\(\), y, to, \{\}\)/.test(app) && /C\.etatRapprochement\(data, company\(\), accId, C\.today\(\)\)/.test(app));
+  assert.ok(/C\.employerChargesOf\(c\)/.test(app), 'les charges patronales affichées viennent du cœur, avec la TFP');
+  assert.ok(!/c\.cnssEmployer \+ c\.accident\)/.test(app), 'plus aucune addition à la main des charges patronales dans l\'interface');
 });
 
 // ---------- SkanFact Cabinet (src/cabinet/cabcore.js) ----------

@@ -202,6 +202,59 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   await win.waitForFunction(g => location.hash === g, let1.go, { timeout: 4000 });
   j.ok(`${let1.lignes} pièces ouvertes (${let1.retard} en retard) — la première ouvre ${let1.go}`);
 
+  // -------------------------------------------------- 11. les états financiers (9.0.0)
+  j.etape('Les états financiers : actif = passif, et le résultat des deux états est le même');
+  await aller('#/compta');
+  await win.waitForSelector('#c-tabs');
+  await onglet('etats');
+  await win.waitForSelector('#et-resultat');
+  const et = await win.evaluate(() => ({
+    ok: !!document.querySelector('#et-ok'), resultat: document.querySelector('#et-resultat').textContent,
+    resultatBas: [...document.querySelectorAll('#c-body .panel p strong')].map(s => s.textContent).find(t => /^Résultat/.test(t)) || '',
+    groupes: [...document.querySelectorAll('#c-body .total-row td:first-child')].map(td => td.textContent)
+  }));
+  if (!et.ok) throw new Error('le bilan de l\'exemple ne se dit pas équilibré');
+  if (!et.resultatBas.includes(et.resultat.trim())) throw new Error(`le résultat du bilan (${et.resultat}) n'est pas celui de l'état de résultat (${et.resultatBas})`);
+  if (!et.groupes.some(g => /Trésorerie/.test(g)) || !et.groupes.some(g => /Produits/.test(g))) throw new Error(`rubriques inattendues : ${et.groupes.join(' | ')}`);
+  j.ok(`bilan équilibré, résultat ${et.resultat.trim()} des deux côtés — ${et.groupes.length} rubriques`);
+
+  // -------------------------------------------------- 12. l'à-nouveau dans le grand livre
+  j.etape('Le grand livre de janvier ouvre par la pièce d\'à-nouveau');
+  await win.selectOption('#c-month', '01');
+  await win.waitForTimeout(300);
+  await onglet('grandlivre');
+  await win.waitForSelector('.gl-compte');
+  const an = await win.evaluate(() => [...document.querySelectorAll('.gl-compte tbody tr')].filter(tr => tr.children[1].textContent === 'AN').length);
+  if (!an) throw new Error('aucune ligne AN en janvier');
+  j.ok(`${an} lignes d'à-nouveau en janvier`);
+
+  // -------------------------------------------------- 13. l'état de rapprochement (9.0.0)
+  j.etape('L\'état de rapprochement se remplit dès que le solde du relevé est saisi');
+  await aller('#/tresorerie');
+  await win.waitForSelector('#t-tabs');
+  await win.click('#t-tabs button[data-tab=rapprochement]');
+  await win.waitForSelector('#stmt');
+  const solde = await win.evaluate(() => window.SkanCore.reconciliation(window.__data, window.__data.company, document.querySelector('#t-acc2').value, window.SkanCore.today()).pointed);
+  await win.fill('#stmt', String(solde));
+  await win.dispatchEvent('#stmt', 'change');
+  await win.waitForSelector('#t-etat');
+  const ecartReco = await win.$eval('#t-ecart', e => e.textContent);
+  if (!/^0[,.]000/.test(ecartReco.trim())) throw new Error(`le relevé égal au solde pointé devrait donner un écart nul, il donne ${ecartReco}`);
+  j.ok(`relevé saisi à ${solde} : écart ${ecartReco.trim()}`);
+
+  // -------------------------------------------------- 14. la TFP dans les barèmes
+  j.etape('Les barèmes proposent la TFP et le FOPROLOS, et un bulletin les compte dans le coût');
+  await aller('#/paie');
+  await win.waitForSelector('#p-tabs');
+  await win.click('#p-tabs button[data-tab=baremes]');
+  await win.waitForSelector('#rf input[name=tfpRate]');
+  const taux = await win.evaluate(() => ({ tfp: document.querySelector('#rf input[name=tfpRate]').value, fop: document.querySelector('#rf input[name=foprolosRate]').value,
+    demo: [...document.querySelectorAll('#rf-demo tbody tr')].map(tr => tr.children[4].textContent) }));
+  if (!(Number(taux.tfp) > 0) || !(Number(taux.fop) > 0)) throw new Error(`taux TFP/FOPROLOS absents : ${JSON.stringify(taux)}`);
+  const coutMille = nombre(taux.demo[0]);
+  if (!(coutMille > 1190)) throw new Error(`le coût employeur d'un brut de 1 000 devrait dépasser 1 190 avec TFP et FOPROLOS, il vaut ${taux.demo[0]}`);
+  j.ok(`TFP ${taux.tfp} %, FOPROLOS ${taux.fop} % — 1 000 brut coûte ${taux.demo[0]}`);
+
   await Promise.race([app.close(), new Promise((_, rej) => setTimeout(() => rej(new Error('l\'application ne se ferme pas : un garde-fou est resté armé')), 8000))]);
   if (bac.length) { console.error('\nErreurs du renderer :\n' + bac.join('\n')); process.exit(2); }
   console.log(`\n${j.total()} étapes — le grand livre et la balance tiennent debout.`);

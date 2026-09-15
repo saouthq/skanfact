@@ -7,6 +7,41 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 9.0.0 — 15/09/2026
+
+**L'exercice.** Après le grand livre (8.8.0) et le livre-journal (8.9.0), la comptabilité se lit
+en entier, du 1er janvier au 31 décembre : c'est ce qui manquait pour qu'un cabinet retrouve dans
+SkanFact ce qu'il attend d'une comptabilité tenue.
+
+- **Les à-nouveaux** : au 1er janvier de chaque exercice, une pièce AN rouvre chaque compte de
+  bilan avec son solde de la veille et porte le net des charges et produits de tout ce qui précède
+  au compte de résultat des exercices antérieurs. Déduite des écritures, jamais saisie ; c'est elle
+  qui remet les charges et les produits à zéro. Le grand livre de janvier ouvre par elle.
+- **Les amortissements passent en écriture** : la dotation de chaque bien s'écrit au 31 décembre
+  (681 / 28) — jamais avant, c'est une écriture d'inventaire ; un bien saisi à la main (acheté avant
+  SkanFact) entre à sa valeur brute ; une **cession** sort le bien de l'actif (amortissements repris,
+  valeur nette comptable en charge, valeur brute soldée). Le prix de cession arrive par un mouvement
+  « autre entrée » avec la contrepartie **775**, ou par une facture.
+- **Les états financiers** (Comptabilité → États financiers) : un **bilan** (actifs non courants
+  bruts et amortissements, stocks, créances, trésorerie face aux capitaux, dettes, résultat) et un
+  **état de résultat** (produits − charges), déduits de la balance de l'exercice, arrêtés à
+  aujourd'hui ou à la fin du mois choisi. Actif = passif par construction, le résultat des deux
+  états est le même, et la dotation de l'exercice en cours encore en attente est annoncée. Une
+  présentation d'ensemble, pas la liasse NCT 01 : le cabinet l'établit à partir de ces chiffres.
+- **L'état de rapprochement bancaire** (Trésorerie → Rapprochement) : la présentation classique —
+  solde du relevé, plus les encaissements que la banque n'a pas encore crédités, moins les
+  paiements qu'elle n'a pas encore débités, égale le solde de SkanFact, et l'écart s'il en reste.
+  Exportable, c'est l'état que le comptable joint au dossier.
+- **TFP et FOPROLOS dans la paie** : deux taxes patronales sur la masse salariale (2 % et 1 %,
+  réglables dans Paie → Barèmes, comme tout taux), sur le bulletin, dans le coût employeur et dans
+  le journal (661 / 4335). Un bulletin établi avant cette version n'en gagne pas après coup : il
+  garde la copie de son calcul.
+
+*À VÉRIFIER avec le comptable :* le taux de TFP applicable (1 % pour les industries
+manufacturières), le compte d'imputation des immobilisations (22 par défaut, à détailler par
+famille chez certains cabinets), et la présentation des états, qui suit ici la balance et non la
+liasse.
+
 ## 8.9.0 — 15/09/2026
 
 **Le livre-journal.** Le second terme du comptable : « l'écriture comptable dans le journal ».

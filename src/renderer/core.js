@@ -1899,6 +1899,8 @@
     cnssEmployee: 9.18,        // part salarié
     cnssEmployer: 16.57,       // part employeur
     accidentRate: 0.4,         // accident du travail : dépend de l'activité
+    tfpRate: 2,                // taxe de formation professionnelle : 2 % (1 % pour les industries manufacturières) — 9.0.0
+    foprolosRate: 1,           // FOPROLOS (logement social) : 1 % de la masse salariale — 9.0.0
     solidarity: 1,             // contribution sociale de solidarité, en points sur la base imposable
     proRate: 10,               // frais professionnels : % du salaire imposable…
     proCap: 2000,              // …plafonnés à ce montant par an
@@ -1983,7 +1985,12 @@
     const net = round3(gross - cnssEmployee - irpp - css - otherDeductions);
     const cnssEmployer = round3(cnssBase * (Number(s.cnssEmployer) || 0) / 100);
     const accident = round3(cnssBase * (Number(s.accidentRate) || 0) / 100);
-    const employerCost = round3(gross + cnssEmployer + accident);
+    // 9.0.0 : la TFP et le FOPROLOS sont des taxes patronales sur la masse salariale, déclarées
+    // chaque mois avec la TVA. Elles entrent dans le coût employeur, jamais dans le net.
+    const tfp = round3(cnssBase * (Number(s.tfpRate) || 0) / 100);
+    const foprolos = round3(cnssBase * (Number(s.foprolosRate) || 0) / 100);
+    const employerCharges = round3(cnssEmployer + accident + tfp + foprolos);
+    const employerCost = round3(gross + employerCharges);
 
     return {
       baseGross, absenceCut, absentDays: absent, workedDays,
@@ -1991,13 +1998,17 @@
       cnssBase, cnssEmployee, afterCnss, pro, family, children,
       annualTaxable, irppYear, irpp, css,
       deductions, otherDeductions, net,
-      cnssEmployer, accident, employerCost,
+      cnssEmployer, accident, tfp, foprolos, employerCharges, employerCost,
       rates: {
         cnssEmployee: Number(s.cnssEmployee) || 0, cnssEmployer: Number(s.cnssEmployer) || 0,
-        accidentRate: Number(s.accidentRate) || 0, solidarity: Number(s.solidarity) || 0
+        accidentRate: Number(s.accidentRate) || 0, solidarity: Number(s.solidarity) || 0,
+        tfpRate: Number(s.tfpRate) || 0, foprolosRate: Number(s.foprolosRate) || 0
       }
     };
   }
+  // Les charges patronales d'un bulletin, telles qu'il les a FIGÉES (5.0.0) : un bulletin d'avant la
+  // 9.0.0 n'a ni TFP ni FOPROLOS, et ne doit pas en gagner après coup.
+  const employerChargesOf = c => round3((Number(c.cnssEmployer) || 0) + (Number(c.accident) || 0) + (Number(c.tfp) || 0) + (Number(c.foprolos) || 0));
 
   const activeEmployees = (data, dateIso) => {
     const t = dateIso || today();
@@ -2041,6 +2052,7 @@
       gross: sum(r => r.c.gross), net: sum(r => r.c.net),
       cnssEmployee: sum(r => r.c.cnssEmployee), cnssEmployer: sum(r => r.c.cnssEmployer),
       irpp: sum(r => r.c.irpp), css: sum(r => r.c.css), accident: sum(r => r.c.accident),
+      tfp: sum(r => r.c.tfp), foprolos: sum(r => r.c.foprolos),
       cost: sum(r => r.c.employerCost),
       unpaid: rows.filter(r => !r.paidDate).length,
       rows
@@ -2166,12 +2178,14 @@
       <tr class="sec"><td>Salaire brut</td><td class="n"></td><td class="n"></td><td class="n">${fmt(c.gross)}</td><td class="n"></td></tr>
       ${row('CNSS', c.cnssBase, c.rates.cnssEmployee, -c.cnssEmployee, c.cnssEmployer)}
       ${c.accident ? row('Accident du travail', c.cnssBase, c.rates.accidentRate, null, c.accident) : ''}
+      ${c.tfp ? row('Taxe de formation professionnelle (TFP)', c.cnssBase, c.rates.tfpRate, null, c.tfp) : ''}
+      ${c.foprolos ? row('FOPROLOS', c.cnssBase, c.rates.foprolosRate, null, c.foprolos) : ''}
       ${row('Impôt sur le revenu (IRPP)', round3(c.annualTaxable / 12), null, -c.irpp, null)}
       ${c.css ? row('Contribution sociale de solidarité', round3(c.annualTaxable / 12), c.rates.solidarity, -c.css, null) : ''}
       ${c.deductions.map(d => row(d.label, null, null, -d.amount, null)).join('')}
       <tr class="tot"><td>Total des retenues</td><td class="n"></td><td class="n"></td>
         <td class="n">${fmt(round3(c.cnssEmployee + c.irpp + c.css + c.otherDeductions))}</td>
-        <td class="n">${fmt(round3(c.cnssEmployer + c.accident))}</td></tr>
+        <td class="n">${fmt(employerChargesOf(c))}</td></tr>
     </tbody>
   </table>
 
@@ -2186,7 +2200,7 @@
     </div>
     <div class="box"><h2>Coût pour l'employeur</h2>
       <div class="kv"><span>Salaire brut</span><span>${fmt(c.gross)}</span></div>
-      <div class="kv"><span>Charges patronales</span><span>${fmt(round3(c.cnssEmployer + c.accident))}</span></div>
+      <div class="kv"><span>Charges patronales</span><span>${fmt(employerChargesOf(c))}</span></div>
       <div class="kv"><span>Coût total du mois</span><span><b>${fmt(c.employerCost)}</b></span></div>
     </div>
   </div>
@@ -3760,7 +3774,14 @@
     associes: '4421',            // Associés — comptes courants : apports, retraits, dividendes
     emprunts: '16',              // Emprunts : déblocage et échéances (capital)
     attente: '471',              // Compte d'attente : ce que le comptable ventilera
-    reportANouveau: '12'         // Résultats reportés : contrepartie des soldes de départ saisis à la main
+    reportANouveau: '12',        // Résultats reportés : contrepartie des soldes de départ saisis à la main
+    // 9.0.0 — l'exercice : amortissements, cessions, taxes sur salaires
+    dotations: '681',            // Dotations aux amortissements
+    amortissements: '28',        // Amortissements des immobilisations (cumul)
+    vncCedee: '675',             // Valeur comptable des immobilisations cédées
+    produitsCession: '775',      // Produits des cessions d'immobilisations
+    taxesSalaires: '661',        // TFP et FOPROLOS : impôts et taxes sur rémunérations (charge)
+    tfpFoprolos: '4335'          // TFP et FOPROLOS à payer (dette envers l'État)
   };
   const ACCOUNT_LABELS = {
     clients: 'Clients', fournisseurs: 'Fournisseurs', ventes: 'Ventes',
@@ -3773,7 +3794,9 @@
     resultat: 'Résultat des exercices passés',
     tvaAPayer: 'TVA à payer', fraisBancaires: 'Frais bancaires', impots: 'Impôts et acomptes réglés',
     associes: 'Compte courant des associés', emprunts: 'Emprunts', attente: 'Compte d\'attente (à ventiler)',
-    reportANouveau: 'Report à nouveau (soldes de départ)'
+    reportANouveau: 'Report à nouveau (soldes de départ)',
+    dotations: 'Dotations aux amortissements', amortissements: 'Amortissements cumulés', vncCedee: 'Valeur comptable des immobilisations cédées',
+    produitsCession: 'Produits des cessions d\'immobilisations', taxesSalaires: 'TFP et FOPROLOS (charge)', tfpFoprolos: 'TFP et FOPROLOS à payer'
   };
   // Un mouvement libre de trésorerie (3.3.0) porte une NATURE ; la 8.9.0 lui donne sa contrepartie.
   // La nature décide par défaut ; un mouvement peut porter son propre `compte` (la TVA du mois
@@ -3789,7 +3812,7 @@
     ['4321', 'IRPP retenu sur les salaires'], ['4352', 'Retenue à la source opérée'], ['434', 'Acompte provisionnel'],
     ['431', 'Impôt sur les sociétés'], ['4331', 'TCL'], ['4335', 'TFP et FOPROLOS'], ['627', 'Frais bancaires'],
     ['651', 'Intérêts d\'emprunt'], ['16', 'Emprunt (capital)'], ['4421', 'Compte courant d\'associé'],
-    ['471', 'À ventiler par le comptable']
+    ['775', 'Prix de cession d\'une immobilisation'], ['471', 'À ventiler par le comptable']
   ];
   // Le plan comptable tunisien (Système comptable des entreprises, 1996), classe par classe. Il ne
   // sert qu'à NOMMER un compte à l'écran et dans les exports : le compte 6270 s'appelle « Services
@@ -4109,6 +4132,10 @@
           const label = `Salaire ${emp.name || ''} ${MONTHS_FR[Number(s.month) - 1] || ''} ${s.year}`;
           e.debit(acc.salairesBruts, label, c.gross);
           e.debit(acc.chargesPatronales, `Charges patronales — ${emp.name || ''}`, round3(c.cnssEmployer + c.accident));
+          // 9.0.0 : TFP et FOPROLOS, une charge (661) et une dette envers l'État (4335) — sur la
+          // copie figée du bulletin : un bulletin d'avant n'en porte pas, et n'en gagne pas.
+          e.debit(acc.taxesSalaires, `TFP et FOPROLOS — ${emp.name || ''}`, round3((c.tfp || 0) + (c.foprolos || 0)));
+          e.credit(acc.tfpFoprolos, `TFP et FOPROLOS à payer — ${emp.name || ''}`, round3((c.tfp || 0) + (c.foprolos || 0)));
           e.credit(acc.cnss, `CNSS — ${emp.name || ''}`, round3(c.cnssEmployee + c.cnssEmployer + c.accident));
           e.credit(acc.irpp, `IRPP et contribution sociale — ${emp.name || ''}`, round3(c.irpp + c.css));
           // Les retenues diverses (remboursement d'avance) restent dues à l'entreprise : elles
@@ -4175,10 +4202,91 @@
         });
     }
 
+    // --- 9.0.0 : les immobilisations. La dotation de chaque exercice s'écrit au 31 décembre (ou au
+    // jour de la sortie), jamais avant : c'est une écriture d'inventaire. Un bien saisi à la main
+    // (acheté avant SkanFact) entre à sa valeur brute contre le report à nouveau, sinon le 28
+    // s'amortirait sur un 22 qui n'existe pas. Une cession sort le bien : l'amortissement cumulé
+    // et la valeur nette comptable s'annulent contre la valeur brute ; le PRIX, lui, arrive par la
+    // facture ou par un mouvement « autre entrée » avec la contrepartie 775.
+    if (want('amortissements')) {
+      const t = opts.todayIso || today();
+      (data.assets || []).forEach(a => {
+        const brut = round3(Number(a.amount) || 0);
+        if (!brut || !a.date) return;
+        if (!a.purchaseId && inPeriod(a.date, period && period.from, period && period.to)) {
+          const e = entrySet({ date: a.date, journal: 'OD', piece: 'IMMO', tiers: '', tiersId: '', source: 'immobilisation', docId: a.id, currency: cur });
+          e.debit(acc.immobilisations, `Entrée — ${a.label || 'immobilisation'} (saisie à la main)`, brut);
+          e.credit(acc.reportANouveau, `Entrée — ${a.label || 'immobilisation'} (saisie à la main)`, brut);
+          out.push(...e.done());
+        }
+        const dis = a.disposal && a.disposal.date ? a.disposal.date : '';
+        assetSchedule(a).forEach(r => {
+          if (dis && Number(dis.slice(0, 4)) < r.year) return;
+          const d = dis && Number(dis.slice(0, 4)) === r.year ? dis : `${r.year}-12-31`;
+          const annuity = dis && Number(dis.slice(0, 4)) === r.year ? assetYear(a, r.year).annuity : r.annuity;
+          if (!annuity || d >= t || !inPeriod(d, period && period.from, period && period.to)) return;
+          const e = entrySet({ date: d, journal: 'OD', piece: `AMORT-${r.year}`, tiers: '', tiersId: '', source: 'amortissement', docId: a.id, currency: cur });
+          e.debit(acc.dotations, `Dotation ${r.year} — ${a.label || ''}`, annuity);
+          e.credit(acc.amortissements, `Amortissement ${r.year} — ${a.label || ''}`, annuity);
+          out.push(...e.done());
+        });
+        if (dis && dis < t && inPeriod(dis, period && period.from, period && period.to)) {
+          const cumul = assetCumulated(a, dis);
+          const e = entrySet({ date: dis, journal: 'OD', piece: 'CESSION', tiers: '', tiersId: '', source: 'cession', docId: a.id, currency: cur });
+          e.debit(acc.amortissements, `Sortie — ${a.label || ''} : amortissements repris`, cumul);
+          e.debit(acc.vncCedee, `Sortie — ${a.label || ''} : valeur nette comptable`, round3(brut - cumul));
+          e.credit(acc.immobilisations, `Sortie — ${a.label || ''} : valeur brute`, brut);
+          out.push(...e.done());
+        }
+      });
+    }
+
+    // --- 9.0.0 : les à-nouveaux. Au 1er janvier de chaque exercice, une pièce AN rouvre chaque
+    // compte de bilan avec son solde de la veille, et porte au compte de résultat le net des
+    // charges et produits de TOUT ce qui précède — c'est ainsi que les classes 6 et 7 repartent de
+    // zéro. Elle se calcule sur les écritures réelles seules (jamais sur les AN précédentes) : le
+    // solde d'un compte de bilan persiste, celui des comptes de gestion se cumule au résultat.
+    if (want('anouveaux')) {
+      const dates = [];
+      const noter = d => { if (d && /^\d{4}-\d{2}-\d{2}/.test(d)) dates.push(d.slice(0, 10)); };
+      (data.documents || []).forEach(d => noter(d.date)); (data.purchases || []).forEach(p => noter(p.date));
+      (data.movements || []).forEach(m => noter(m.date)); (data.accounts || []).forEach(a => noter(a.openingDate));
+      (data.assets || []).forEach(a => noter(a.date)); (data.payslips || []).forEach(s => noter(payslipDate(s)));
+      (data.ecrituresOD || []).forEach(o => noter(o.date));
+      if (dates.length) {
+        const premiere = Number(dates.sort()[0].slice(0, 4));
+        const derniere = Number(String((period && period.to) || (opts.todayIso || today())).slice(0, 4));
+        const sansAN = SECTIONS_ECRITURES.filter(s => s !== 'anouveaux');
+        for (let y = premiere + 1; y <= derniere; y++) {
+          const d = `${y}-01-01`;
+          if (!inPeriod(d, period && period.from, period && period.to)) continue;
+          const reelles = journalEntries(data, company, { from: '', to: `${y - 1}-12-31` }, { ...opts, sections: sansAN });
+          const soldes = {};
+          let net = 0;
+          reelles.forEach(e => {
+            const v = round3(e.debit - e.credit);
+            if (compteDeGestion(e.account)) net = round3(net + v);
+            else soldes[e.account] = round3((soldes[e.account] || 0) + v);
+          });
+          const e = entrySet({ date: d, journal: 'AN', piece: `AN-${y}`, tiers: '', tiersId: '', source: 'anouveau', docId: 'an-' + y, currency: cur });
+          Object.keys(soldes).sort().forEach(k => {
+            if (!soldes[k]) return;
+            const label = `À-nouveau ${y} — ${accountLabel(data, k)}`;
+            if (soldes[k] > 0) e.debit(k, label, soldes[k]); else e.credit(k, label, -soldes[k]);
+          });
+          // Un net positif = les charges dépassent les produits : une perte, au débit du résultat.
+          if (net > 0) e.debit(acc.resultat, `Résultat des exercices antérieurs (perte)`, net);
+          else if (net < 0) e.credit(acc.resultat, `Résultat des exercices antérieurs (bénéfice)`, -net);
+          out.push(...e.done());
+        }
+      }
+    }
+
     return out.sort((a, b) => (a.date || '').localeCompare(b.date || '')
       || (a.journal || '').localeCompare(b.journal || '')
       || (a.piece || '').localeCompare(b.piece || '', undefined, { numeric: true }));
   }
+  const SECTIONS_ECRITURES = ['ventes', 'achats', 'encaissements', 'reglements', 'ouverture', 'tresorerie', 'paie', 'declarations', 'od', 'amortissements', 'anouveaux'];
 
   // Le contrôle qu'un comptable fait en premier : est-ce que ça tombe juste ? Pièce par pièce, et
   // en tout. Une pièce déséquilibrée serait refusée à l'import de son logiciel.
@@ -4350,6 +4458,80 @@
       .sort((a, b) => b.reste - a.reste || a.tiers.localeCompare(b.tiers));
     return { role: clients ? 'clients' : 'fournisseurs', rows, reste: round3(rows.reduce((s, r) => s + r.reste, 0)), ouverts: rows.reduce((s, r) => s + r.ouverts.length, 0), lettrees: rows.reduce((s, r) => s + r.lettrees, 0) };
   }
+  // ---------- l'exercice (9.0.0) ----------
+
+  // L'état de rapprochement bancaire, tel qu'on le présente : on part du solde du RELEVÉ, on ajoute
+  // ce que SkanFact a encaissé et que la banque n'a pas encore crédité, on retire ce que SkanFact a
+  // payé et que la banque n'a pas encore débité — et l'on doit retomber sur le solde comptable.
+  // L'écart, s'il en reste un, est une pièce qui manque d'un côté.
+  function etatRapprochement(data, company, accountId, toIso) {
+    const r = reconciliation(data, company, accountId, toIso);
+    if (!r) return null;
+    const pending = r.moves.filter(m => !m.reconciled);
+    const entrees = pending.filter(m => m.amount > 0);
+    const sorties = pending.filter(m => m.amount < 0);
+    const totalEntrees = round3(entrees.reduce((s, m) => s + m.amount, 0));
+    const totalSorties = round3(-sorties.reduce((s, m) => s + m.amount, 0));
+    const theorique = r.statement == null ? null : round3(r.statement + totalEntrees - totalSorties);
+    return {
+      ...r, entrees, sorties, totalEntrees, totalSorties, theorique,
+      ecart: theorique == null ? null : round3(r.balance - theorique),
+      date: toIso || today()
+    };
+  }
+
+  // Les états financiers simplifiés : bilan et état de résultat, déduits de la balance de
+  // l'exercice. Une présentation d'ensemble (actifs non courants nets, stocks, créances,
+  // trésorerie ; capitaux, dettes), PAS la liasse NCT 01 — c'est le cabinet qui l'établit. Ce qui est
+  // garanti : actif = passif, et le résultat du bilan est celui de l'état de résultat.
+  function etatsFinanciers(data, company, year, toIso, opts) {
+    const y = String(year).slice(0, 4);
+    const to = toIso && toIso.slice(0, 4) === y ? toIso : `${y}-12-31`;
+    const b = balanceGenerale(data, company, { from: `${y}-01-01`, to }, opts);
+    const rows = b.rows.filter(r => r.solde);
+    const acc = chartAccounts(data);
+    const est = (r, pref) => r.account.startsWith(pref);
+    const amort = r => est(r, '28') || est(r, '29') || est(r, '39') || est(r, '49') || est(r, '59') || r.account === acc.amortissements;
+    const ligne = r => ({ account: r.account, label: r.label, montant: r.solde });
+    const groupe = (titre, pred, signe) => {
+      const l = rows.filter(pred).map(r => ({ account: r.account, label: r.label, montant: round3(signe * r.solde) }));
+      return { titre, lignes: l, total: round3(l.reduce((s, x) => s + x.montant, 0)) };
+    };
+    const actif = [
+      groupe('Actifs non courants (valeur brute)', r => r.classe === '2' && !amort(r), 1),
+      groupe('Amortissements et provisions', r => r.classe === '2' && amort(r), 1),
+      groupe('Stocks', r => r.classe === '3', 1),
+      groupe('Clients et autres créances', r => r.classe === '4' && r.solde > 0, 1),
+      groupe('Trésorerie', r => r.classe === '5' && r.solde > 0, 1)
+    ];
+    const passif = [
+      groupe('Capitaux propres et résultats reportés', r => r.classe === '1', -1),
+      groupe('Fournisseurs et autres dettes', r => r.classe === '4' && r.solde < 0, -1),
+      groupe('Concours bancaires', r => r.classe === '5' && r.solde < 0, -1)
+    ];
+    const produits = groupe('Produits', r => r.classe === '7', -1);
+    const charges = groupe('Charges', r => r.classe === '6', 1);
+    const resultat = round3(produits.total - charges.total);
+    const totalActif = round3(actif.reduce((s, g) => s + g.total, 0));
+    const totalPassif = round3(passif.reduce((s, g) => s + g.total, 0) + resultat);
+    return {
+      year: y, to, actif, passif, produits, charges, resultat, totalActif, totalPassif,
+      equilibre: round3(totalActif - totalPassif) === 0,
+      // Ce que la dotation de l'exercice en cours attend : elle ne s'écrit qu'au 31 décembre — sauf
+      // celle d'un bien cédé, déjà passée au jour de la sortie, qu'on ne compte donc pas deux fois.
+      dotationEnAttente: to < `${y}-12-31` ? round3(Math.max(0, depreciationFor(data, { from: `${y}-01-01`, to }) - charges.lignes.filter(l => l.account === acc.dotations).reduce((s, l) => s + l.montant, 0))) : 0,
+      lignes: rows.map(ligne)
+    };
+  }
+  const etatsCsvRows = e => [].concat(
+    ...e.actif.map(g => g.lignes.map(l => ({ etat: 'Bilan — actif', groupe: g.titre, account: l.account, label: l.label, montant: l.montant }))),
+    ...e.passif.map(g => g.lignes.map(l => ({ etat: 'Bilan — passif', groupe: g.titre, account: l.account, label: l.label, montant: l.montant }))),
+    [{ etat: 'Bilan — passif', groupe: 'Résultat de l\'exercice', account: '', label: 'Résultat de l\'exercice', montant: e.resultat }],
+    e.produits.lignes.map(l => ({ etat: 'État de résultat', groupe: 'Produits', account: l.account, label: l.label, montant: l.montant })),
+    e.charges.lignes.map(l => ({ etat: 'État de résultat', groupe: 'Charges', account: l.account, label: l.label, montant: l.montant }))
+  );
+  const etatsCsvColumns = () => ([{ key: 'etat', label: 'État' }, { key: 'groupe', label: 'Rubrique' }, { key: 'account', label: 'Compte' }, { key: 'label', label: 'Intitulé' }, { key: 'montant', label: 'Montant', type: 'money' }]);
+
   const centralisateurCsvColumns = journaux => ([{ key: 'label', label: 'Mois' }]
     .concat(journaux.flatMap(j => [{ key: `${j.code}_d`, label: `${j.code} débit`, type: 'money' }, { key: `${j.code}_c`, label: `${j.code} crédit`, type: 'money' }]))
     .concat([{ key: 'debit', label: 'Total débit', type: 'money' }, { key: 'credit', label: 'Total crédit', type: 'money' }, { key: 'pieces', label: 'Pièces' }]));
@@ -4371,19 +4553,17 @@
   function debutExercice(iso) { return `${String(iso || today()).slice(0, 4)}-01-01`; }
 
   // Les soldes de tous les comptes la veille de `period.from` : { compte → solde signé (D > 0) }.
+  // Depuis la 9.0.0 la pièce d'à-nouveau du 1er janvier porte elle-même le passé (comptes de bilan
+  // rouverts, résultat des exercices antérieurs) : l'ouverture d'une période se lit donc depuis le
+  // début de son exercice, à-nouveau compris — jamais plus loin, sinon le passé compterait deux fois.
   function soldesOuverture(data, company, period, opts) {
     const from = period && period.from;
     if (!from) return {};
-    const acc = chartAccounts(data);
     const exo = debutExercice(from);
-    const avant = journalEntries(data, company, { from: '', to: addDays(from, -1) }, opts);
+    if (from <= exo) return {};
+    const avant = journalEntries(data, company, { from: exo, to: addDays(from, -1) }, opts);
     const out = {};
-    const add = (k, v) => { out[k] = round3((out[k] || 0) + v); };
-    avant.forEach(e => {
-      const v = round3(e.debit - e.credit);
-      if (compteDeGestion(e.account) && e.date < exo) add(acc.resultat, v);
-      else add(e.account, v);
-    });
+    avant.forEach(e => { out[e.account] = round3((out[e.account] || 0) + e.debit - e.credit); });
     Object.keys(out).forEach(k => { if (!out[k]) delete out[k]; });
     return out;
   }
@@ -6309,7 +6489,8 @@
     DEFAULT_ACCOUNTS, ACCOUNT_LABELS, ENTRY_JOURNALS, journalLabel, chartAccounts, journalEntries,
     entriesBalance, entriesByAccount, entryCsvColumns, MOVE_ACCOUNTS, COMPTES_CONTREPARTIE, journalDeCompte,
     numerosDuJournal, livreJournal, journalCentralisateur, centralisateurCsvColumns, centralisateurRows, inPeriod,
-    odValide, odPiece, comptesProposes, lettrage,
+    odValide, odPiece, comptesProposes, lettrage, SECTIONS_ECRITURES,
+    etatRapprochement, etatsFinanciers, etatsCsvRows, etatsCsvColumns, employerChargesOf,
     PLAN_COMPTABLE, accountLabel, classeDe, compteDeGestion, auxiliairesActifs, codesAuxiliaires, numeroterAuxiliaires,
     debutExercice, soldesOuverture, balanceGenerale, grandLivre, grandLivreRows, balanceAuxiliaire,
     balanceCsvColumns, balanceAuxCsvColumns, grandLivreCsvColumns,
