@@ -11,8 +11,9 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
 - ***Livré*** *: ça existe déjà dans l'application, on peut le voir.*
 - ***À construire*** *: décidé, décrit, pas encore écrit.*
 - ***À toi*** *: une décision qui appartient à Skander, avec ma recommandation.*
-- ***À VÉRIFIER*** *: un comptable, l'Ordre, un juriste ou le marché doit répondre avant que ce
-  soit sûr.*
+- ***À VÉRIFIER*** *: un comptable ou le marché doit répondre avant que ce soit sûr.*
+- ***À VALIDER JURIDIQUEMENT*** *: une affirmation de droit ou de déontologie, qui attend un juriste
+  ou l'Ordre. On ne la transforme jamais en règle du logiciel avant la réponse.*
 
 ---
 
@@ -98,12 +99,19 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
   celle qu'on facture aux clients ; la TVA **déductible** est celle qu'on a payée aux fournisseurs ;
   on déclare et on paie la différence chaque mois. Le **crédit de TVA** est ce qui reste quand la
   déductible dépasse la collectée : il se reporte au mois suivant.
-- **Timbre fiscal** : 1 dinar ajouté sur chaque facture (règle tunisienne).
+- **Timbre fiscal** : 1 dinar ajouté sur chaque facture (règle tunisienne). Son montant est réglable,
+  il se fige sur la pièce à l'émission, et il se décoche par document. **Deux points restent
+  À VÉRIFIER** : les cas d'exonération, et ce qu'on met sur une facture en devise (aujourd'hui
+  l'application convertit le dinar dans la devise de la facture — c'est cohérent avec le total,
+  mais la règle fiscale exacte n'a jamais été confirmée).
 - **Retenue à la source (RS)** : une partie du montant d'une facture que le client garde et verse
   directement à l'État à la place du fournisseur (0,5 %, 1 %, 1,5 %, jusqu'à 25 % selon la nature).
   Le fournisseur reçoit une **attestation de retenue** qui lui sert de justificatif.
-- **Régime fiscal** : réel (on facture la TVA) ou forfaitaire (on ne la facture pas, avec une
-  mention légale à la place). C'est le régime qui décide de la TVA, pas le métier.
+- **Régime fiscal** : réel (on facture la TVA), forfaitaire ou exonéré (on ne la facture pas, avec
+  une mention légale à la place). C'est le régime qui décide de la TVA, pas le métier. La liste des
+  régimes est **ouverte** : si un cas réel ne rentre dans aucun des trois — par exemple une
+  entreprise au réel non assujettie —, on ajoute une entrée à la liste avec sa mention, sans rien
+  restructurer. **À VÉRIFIER avec le comptable : la liste des trois couvre-t-elle ses clients ?**
 - **CNSS** : la caisse de sécurité sociale. Part salarié 9,18 %, part employeur 16,57 % (À VÉRIFIER
   chaque année). **IRPP** : l'impôt sur le revenu, retenu sur le salaire par barème progressif.
   **TFP** et **FOPROLOS** : deux taxes patronales sur les salaires (2 % et 1 %, À VÉRIFIER).
@@ -242,8 +250,16 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
   sans rien connaître à la comptabilité. Son comptable veut recevoir des pièces complètes, à
   l'heure, et ne plus ressaisir. **Décidé.**
 - **En une phrase, c'est quoi SkanFact ?** Une PME gère et facture dans SkanFact sans rien savoir de
-  la comptabilité ; son comptable reçoit chaque mois sa comptabilité déjà écrite avec les pièces, la
-  vérifie, la complète et la dépose depuis SkanFact Cabinet, sans jamais ressaisir. **Décidé.**
+  la comptabilité ; son comptable reçoit chaque mois **les pièces et les écritures qui s'en
+  déduisent**, les contrôle, les corrige, les complète et tient son livre depuis SkanFact Cabinet,
+  sans jamais ressaisir. **Décidé.**
+- **Attention au mot « comptabilité ».** SkanFact Entreprise ne « fait pas la comptabilité » : il
+  produit des **écritures sources** — des propositions déduites des pièces, justes dans la plupart
+  des cas, à contrôler dans tous. La comptabilité officielle est celle que le cabinet tient,
+  valide, régularise, clôture et déclare. Toute la chaîne, dans l'ordre : *pièces chez le client →
+  écritures sources → paquet mensuel → contrôle et correction au cabinet → livre officiel →
+  opérations diverses, banque, inventaire → états et déclarations*. Le dire autrement serait
+  surpromettre, et un comptable le verrait en cinq minutes. **Décidé.**
 - **Comment on saura qu'on a réussi ?** Trois signes, dans l'ordre : zéro ressaisie entre les deux ;
   le comptable pilote ouvre le Cabinet tous les jours sur un vrai dossier ; puis un nombre de
   cabinets et de dossiers qui grandit. Aucun de ces signes n'est technique.
@@ -325,8 +341,11 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
   pour la trésorerie du client (« je vais devoir sortir 1 200 DT le 28 »). La déclaration officielle
   est celle du cabinet, et l'écran le dira.
 - **Une entreprise sans comptable du tout ?** Elle active l'option Comptabilité et voit ses livres.
-  Mais l'application ne prétend pas faire la liasse fiscale à sa place : en Tunisie, une entreprise
-  a un comptable, et l'application le dit.
+  Mais l'application ne prétend pas faire la liasse fiscale à sa place, et elle écrit qu'un
+  professionnel doit valider. Selon la forme juridique, le régime et la taille, les obligations
+  diffèrent : l'application dit **« ton cabinet »** ou **« ton responsable comptable »**, elle
+  n'affirme jamais qu'un comptable est obligatoire. **À VALIDER JURIDIQUEMENT si on veut l'écrire
+  autrement.**
 - **Une entreprise dont le comptable n'utilise pas SkanFact Cabinet ?** Elle envoie quand même son
   paquet : c'est un ZIP ordinaire avec des CSV lisibles dans Excel et les PDF des pièces. Le
   comptable les importe dans son logiciel. Et le paquet lui dit que SkanFact Cabinet est gratuit
@@ -461,9 +480,18 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
   écrasé.
 - **Une écriture validée peut-elle être modifiée ?** Non, jamais. Elle se contre-passe. C'est la
   règle légale d'un logiciel de tenue. **Décidé.**
-- **Une écriture venue d'un paquet peut-elle être modifiée dans le Cabinet ?** Non plus, même en
-  brouillard : elle appartient au client. Le cabinet ajoute ses propres écritures à côté (OD,
-  banque, inventaire), ou demande une correction. **Décidé.**
+- **Une écriture venue d'un paquet peut-elle être modifiée dans le Cabinet ?** **Oui, tant qu'elle
+  est en brouillard, et c'est essentiel.** Une écriture qui arrive du client est une **proposition**,
+  pas une vérité : le client a pu imputer une charge au mauvais compte, oublier de ventiler, mettre
+  une TVA qui n'a pas lieu d'être. Le comptable la ré-impute, la scinde, la corrige dans **son**
+  livre, puis la valide — c'est son métier, et le lui interdire rendrait le logiciel inutilisable.
+  Ce qu'il ne peut pas faire, c'est toucher aux **données du client** : sa facture reste ce qu'elle
+  est, et le paquet reçu n'est jamais réécrit. Chaque écriture garde donc **deux traces** : d'où
+  elle vient (le paquet de mars du dossier X, telle pièce) et ce que le cabinet en a fait (modifiée
+  le tant, par qui, valeur d'origine conservée). Quand il corrige une imputation qui se répétera, il
+  a intérêt à le dire au client par une question (9.9.0) : sinon il la corrigera tous les mois.
+  **Décidé — corrigé le 15/09/2026 après une relecture extérieure ; la version précédente de ce
+  document disait le contraire, et elle avait tort.**
 - **Combien de dossiers, d'exercices ?** Sans limite : un fichier par dossier, plusieurs exercices
   ouverts en même temps (on termine décembre pendant qu'on saisit janvier).
 - **Plusieurs collaborateurs, plusieurs postes ?** Oui (version 9.8.0) : chaque collaborateur a des
@@ -493,9 +521,13 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
   même livre. Le pont reste le paquet.
 - **Le client voit-il ce que le cabinet a fait (bilan, déclarations) ?** Par PDF envoyé par mail,
   comme aujourd'hui. Un retour par le pont viendra avec les questions (9.9.0).
-- **Qui clôture ?** Deux clôtures, deux sens. Le client clôture son **mois** (il verrouille sa
-  saisie, le paquet devient définitif). Le cabinet clôture l'**exercice** dans son livre
-  (irréversible, tracé).
+- **Qui clôture ?** Deux gestes, et **un seul est une clôture comptable**. Côté client, c'est un
+  **verrouillage de la période transmise** : il fige ce qu'il a saisi pour que le paquet soit
+  définitif, et il peut rouvrir avec un motif. Côté cabinet, c'est la **clôture d'exercice** :
+  irréversible, tracée, elle arrête le livre officiel. Le vocabulaire compte : appeler « clôture
+  comptable » le geste du client laisserait croire que sa comptabilité est arrêtée alors qu'elle
+  n'est pas encore tenue. **Décidé — vocabulaire corrigé le 15/09/2026 ; les écrans suivront dans
+  la version qui touche à la clôture.**
 - **Un mois provisoire, il en fait quoi ?** Il le voit marqué provisoire, peut le saisir en
   brouillard, et ne le valide pas avant le paquet définitif. Le comptable pilote dira s'il préfère
   attendre ou saisir puis corriger. **À VÉRIFIER avec lui.**
@@ -554,10 +586,32 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
 - **La numérotation des écritures ?** Continue par journal et par exercice, sans trou, attribuée
   **à la validation** (une écriture en brouillard n'a pas de numéro définitif). Un numéro n'est
   jamais réutilisé. **Décidé.**
+- **Trois numéros différents, à ne jamais confondre.** Le **numéro de facture** (`FAC-2026-012`) est
+  commercial et légal : il vit chez le client, il est attribué à l'émission, il est continu par type
+  et par année. Le **numéro de pièce** identifie le justificatif dans le journal (souvent le numéro
+  de facture, mais pas toujours : une opération diverse a le sien, `OD-2026-002`). Le **numéro
+  d'écriture** est l'ordre dans le journal du cabinet, par journal et par exercice, attribué à la
+  validation. Les trois coexistent sur la même ligne et ne se remplacent pas : les mélanger rendrait
+  impossible de retrouver une pièce à partir d'un livre, et c'est la première chose qu'un contrôle
+  demande. **Décidé.**
+- **Et si on restaure une sauvegarde ?** C'est le seul cas où un numéro peut être rejoué : la
+  sauvegarde d'hier ne connaît pas la facture émise ce matin, et la prochaine émission reprendrait
+  son numéro. L'application doit donc, **après toute restauration**, comparer ses compteurs à la
+  plus haute pièce trouvée dans les données et les remonter si besoin, puis le dire. Même règle
+  après une fusion de deux postes (elle existe déjà : les compteurs sont pris au maximum).
+  **À construire (petit, avec les corrections).**
 - **Le plan de comptes ?** Chaque dossier a le sien, initialisé depuis le plan de référence du
   cabinet (le SCE complet, modifiable). Les comptes venus d'un paquet SkanFact sont ceux du client ;
   une table de correspondance du cabinet les traduit dans ses numéros si besoin (9.3.0). **À
   construire.**
+- **Un compte, c'est juste un numéro et un libellé ?** Non, et c'est une erreur à ne pas faire :
+  côté Cabinet, un compte porte aussi sa **classe**, son **type** (bilan ou gestion), s'il est
+  **lettrable**, s'il est **collectif** (411, qui ne reçoit pas d'écriture directe) ou
+  **auxiliaire** (411001, rattaché à un tiers), s'il est **actif** (on peut encore l'utiliser) et
+  son **comportement TVA** s'il en a un. Sans ces attributs, on ne peut ni interdire une écriture
+  directe sur un collectif, ni proposer le lettrage au bon endroit, ni sortir une balance auxiliaire
+  correcte, ni empêcher qu'un compte abandonné resserve par erreur. Côté entreprise, le modèle plus
+  simple d'aujourd'hui suffit : le client ne saisit pas d'écriture. **Décidé, 9.2.0.**
 
 ---
 
@@ -692,9 +746,11 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
 
 - **Le cabinet gagne quoi à amener un client ?** 72 DT de moins par an sur sa facture, et un client
   qui lui envoie des pièces propres. Jamais d'argent versé au cabinet. **Décidé.**
-- **Est-ce que l'Ordre l'accepte ?** Notre lecture : oui, aucun argent ne circule vers le cabinet,
-  il paie simplement moins un outil qu'il aurait payé de toute façon. **À VÉRIFIER avant de publier
-  la page Tarifs.**
+- **Est-ce que l'Ordre l'accepte ?** Je n'en sais rien, et je ne peux pas le dire à sa place.
+  L'argument qu'on lui présentera : aucun argent ne circule vers le cabinet, il paie simplement
+  moins un outil qu'il aurait payé de toute façon. Tant que l'Ordre n'a pas répondu, cette phrase
+  est un argument, pas une garantie, et rien n'est publié sur la page Tarifs. **À VALIDER
+  JURIDIQUEMENT, avant la première vente à un cabinet.**
 - **Le pilote paie ?** Non pendant le pilotage : quota gratuit sur ses dossiers de test. **À toi.**
 - **Comment on encaisse ?** Par virement ou carte, hors application. Tu marques « payée » dans la
   console, et la clé part par mail dans la seconde (si Resend est réglé) ou se copie à la main. Le
@@ -1077,6 +1133,16 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
   la licence (empreinte, poste, version) vers la plateforme ; et, si l'utilisateur l'active un jour,
   la lecture d'une photo de facture (en pause). Les mails partent de la messagerie de
   l'utilisateur, pas de nous. **Décidé.**
+- **Les secrets « gravés » dans l'application sont-ils vraiment secrets ?** Non, et c'est assumé
+  depuis la 6.7.0 : **tout ce qu'une application peut télécharger sans secret, quelqu'un qui ouvre le
+  paquet le peut aussi.** Un secret embarqué arrête les curieux, pas un attaquant. La question qui
+  compte est donc : que protège-t-il ? Deux choses sans gravité — l'accès aux fichiers de mise à
+  jour (publics de toute façon tant que le dépôt l'est) et une route de **lecture** de la plateforme
+  (« cette licence est-elle révoquée ? »). Ce qui serait grave n'est jamais embarqué : le **secret
+  d'administration** de la console vit dans un fichier du Mac de Skander, et les **clés privées de
+  signature** ne quittent ni son poste ni Cloudflare. Règle : **rien de sensible ne doit jamais
+  dépendre d'un secret embarqué**, et ce qui décide de l'argent ou d'un droit se vérifie par une
+  signature, pas par la connaissance d'un mot de passe. **Décidé.**
 - **L'INPDP ?** Les applications tournent sur le poste : le responsable du traitement est
   l'utilisateur (l'entreprise ou le cabinet). La plateforme, elle, détient des empreintes et des
   contacts de clients et de cabinets : à déclarer. **À VÉRIFIER avant la première vente.**
@@ -1088,6 +1154,13 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
   numéro continu, date, TVA par taux, timbre, retenue à la source, mention légale pour le régime
   forfaitaire, montant en lettres. Trois points restent marqués « À VÉRIFIER » dans l'application
   elle-même : l'assiette de la retenue (TTC hors timbre), l'avoir sans timbre, et la liste des taux.
+- **La retenue à la source, c'est juste un pourcentage ?** Aujourd'hui oui, et c'est un peu court.
+  Le taux, le montant, le net à payer, l'attestation et le report dans la déclaration d'employeur
+  existent ; ce qui manque, c'est la **nature de l'opération** (honoraires, loyers, marchés,
+  commissions…). Or c'est elle qui justifie le taux et qui **classe les lignes de la déclaration
+  d'employeur** : sans elle, le comptable reclasse à la main chaque année. Une liste ouverte de
+  natures, comme la liste des taux depuis la 8.3.0 (jamais fermée), chacune proposant son taux
+  habituel sans l'imposer. **À construire**, avec les autres corrections fiscales.
 - **Y a-t-il un seuil en dessous duquel la retenue à la source ne s'applique pas ?** Probablement
   oui en Tunisie (de l'ordre de 1 000 DT TTC pour certaines opérations), et l'application n'en tient
   compte nulle part : elle applique le taux qu'on lui donne, quel que soit le montant. Ça ne fausse
@@ -1124,11 +1197,16 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
   ligne, et le champ « jeton d'accès » revient alors tout seul dans les Paramètres. Le jour de la
   bascule, une seule chose à vérifier : que le jeton du relais ait le droit de lire les releases.
   **Décidé.**
-- **Le code est public : quelqu'un peut-il le copier et le vendre ?** Il n'y a pas de licence
-  d'utilisation du code écrite (le dépôt dit « UNLICENSED », c'est-à-dire tous droits réservés).
-  Copier le code serait illégal, mais rien ne l'empêche techniquement. La vraie protection est
-  ailleurs : la clé, le service, les mises à jour, le pont. **À toi : ajouter une licence de code
-  explicite si tu veux clarifier (À VÉRIFIER avec un juriste).**
+- **Le code est public : quelqu'un peut-il le copier et le vendre ?** Le dépôt ne porte pas de
+  licence d'utilisation explicite (il dit « UNLICENSED »). Je ne dis pas le droit : ce que je peux
+  affirmer, c'est que **rien ne l'empêche techniquement** et que la vraie protection est ailleurs —
+  la clé, le service, les mises à jour, le pont avec le cabinet. **À VALIDER JURIDIQUEMENT**, et
+  **à toi** : ajouter une licence de code explicite si tu veux clarifier.
+- **Ce qui a été public le reste-t-il si le dépôt redevient privé ?** Oui. Tout ce qui a été publié
+  a pu être copié, y compris l'historique. C'est sans conséquence ici — aucun secret n'a jamais été
+  commité, par règle — mais ça se vérifie au lieu de se supposer : **un balayage de l'historique à
+  la recherche de secrets est à faire une fois**, avant la bascule en privé (GitHub le propose dans
+  l'onglet Security du dépôt). **À construire (petit).**
 
 ---
 
@@ -1391,6 +1469,16 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
   les commentaires retirés avant de juger, et `CLAUDE.md` qui porte toutes les règles apprises pour
   qu'une session suivante ne refasse pas une erreur passée. C'est ce qui a tenu plus de deux cents
   versions sans perte de données connue. **Décidé.**
+- **Comment sait-on qu'une écriture automatique est juste ?** Pas parce qu'elle est équilibrée.
+  **Une écriture équilibrée n'est pas une écriture correcte** : elle doit aussi correspondre à sa
+  pièce, au bon compte, au bon tiers, à la bonne période, au bon taux de TVA, à la bonne retenue.
+  On en a la preuve dans le projet : jusqu'à la 8.9.0, une facture entièrement couverte par un avoir
+  ne produisait aucune écriture pendant que son avoir en produisait une — la balance tombait juste,
+  et le compte du client était faux de 405 dinars. C'est le **lettrage** qui l'a révélé, pas
+  l'équilibre. D'où la règle : chaque calcul comptable a un contrôle qui ne passe **pas** par
+  l'équilibre (le reste ouvert égale le solde du compte client, la trésorerie du bilan égale celle
+  de la page Trésorerie, le résultat du bilan égale celui de l'état de résultat, l'à-nouveau égale
+  les soldes du 31 décembre). **Décidé.**
 - **Tester sur des données réelles ?** Jamais sur les données d'un client. Sur le jeu d'exemple, et
   sur des fichiers que des utilisateurs donnent volontairement, anonymisés. **Décidé.**
 - **Un poste client compromis (virus, vol) ?** Rien de central n'est atteint : aucune clé privée de
@@ -1647,6 +1735,17 @@ grandeur de construction, hors attente des réponses.*
   proposition d'écriture pour chaque ligne non rapprochée (guide selon le libellé), suspens, état
   de rapprochement, lettrage automatique des tiers (montant, référence), lettrage et délettrage à
   la main, échéancier, balance âgée clients et fournisseurs.
+- **Deux choses distinctes, jamais mélangées.** Le **rapprochement bancaire** confronte le relevé de
+  la banque aux écritures du compte 532 : il répond à « la banque et mon livre disent-ils la même
+  chose ? ». Le **lettrage** rapproche une facture et son règlement sur le compte d'un tiers : il
+  répond à « ce client me doit-il encore quelque chose ? ». Les confondre donnerait un état de
+  rapprochement faux et un échéancier faux. Deux écrans, deux modèles, deux tests.
+- **Une correspondance automatique ne se valide jamais toute seule.** Chaque proposition porte son
+  **niveau de confiance** : certaine (même montant, même jour, même référence), probable (montant
+  et date proches), ambiguë (plusieurs candidats), à contrôler. Seule la première se pose d'office,
+  et elle reste défaisable ; les autres attendent un clic humain, et l'ambiguë montre tous les
+  candidats. Un rapprochement automatique silencieux qui se trompe, c'est un compte faux que
+  personne ne rouvre. **Décidé.**
 - **Dépend de.** Les relevés réels de ses clients (un importeur par format).
 - **Preuve.** e2e : un relevé importé, rapproché à 90 % automatiquement, le reste à la main, l'état
   de rapprochement à écart nul ; tests unitaires sur chaque format de relevé avec un fichier réel
@@ -1896,6 +1995,19 @@ n'est pas obligatoire) ; l'interface en arabe ; un autre pays.
     n'est pas remplacé : l'écart s'affiche et le comptable décide.
 27. À la clôture d'un exercice, le cabinet renvoie les à-nouveaux officiels au client. Les deux
     bilans doivent être identiques au millime, dans les deux sens.
+28. SkanFact Entreprise produit des **écritures sources**, pas une comptabilité. Le livre officiel
+    est celui du cabinet. On ne dit jamais au client que sa comptabilité est faite.
+29. Le cabinet peut corriger une écriture venue d'un paquet **tant qu'elle est en brouillard**, dans
+    son livre à lui, avec la trace de l'origine et de la modification. Il ne touche jamais aux
+    données du client.
+30. Une écriture équilibrée n'est pas une écriture correcte : chaque calcul comptable a un contrôle
+    qui ne passe pas par l'équilibre.
+31. Rien de sensible ne dépend d'un secret embarqué dans l'application. Ce qui décide de l'argent ou
+    d'un droit se vérifie par une signature.
+32. Une correspondance automatique (rapprochement, lettrage) ne se valide jamais toute seule si elle
+    est ambiguë.
+33. On ne dit pas le droit. Une affirmation juridique porte la marque « À VALIDER JURIDIQUEMENT » et
+    attend un juriste.
 
 ---
 
