@@ -41,6 +41,9 @@
     editeurExporter: async () => ({ canceled: true }), editeurCopierPublique: async () => ({ ok: false }),
     cleReponseCreer: async () => ({ actif: false, offres: {}, durees: [], reponse: {} }),
     cleReponseCopier: async () => ({ ok: false }),
+    pontStatus: async () => ({ editeur: false, base: '', configure: false }),
+    pontSetSecret: async () => ({ configure: false }),
+    pontRequete: async () => { throw new Error('Le pont comptable n\'existe que dans l\'application installée.'); },
     cleServeurCreer: async () => ({ actif: false, offres: {}, durees: [], reponse: {}, serveur: {} }),
     cleServeurCopier: async () => ({ ok: false }),
     onUpdateEvent: () => {}
@@ -55,6 +58,9 @@
   // l'éditeur de SkanFact, jamais une donnée du dossier.
   let licence = { state: 'libre', locked: false, label: '', detail: '', offre: 'entreprise', reserves: [], editeur: false };
   let editeur = null;   // l'état complet de l'éditeur (clés, offres, durées), lu quand `licence.editeur` est vrai
+  // Le pont comptable (8.7.0) : la console vend, SkanFact facture. `configure` = un secret
+  // d'administration est posé sur ce poste ; sans lui, rien de ce qui suit n'est affiché.
+  let pont = { editeur: false, base: '', configure: false };
   let licenceMatriculeVu = null;   // le matricule pour lequel `licence` a été calculée (voir render)
   // À qui s'adresse une demande de licence. Une seule ligne à changer le jour où ce sera une adresse
   // de société plutôt qu'une adresse personnelle.
@@ -2732,6 +2738,9 @@
       unlockedIds.delete(doc.id);
       persist();
       toast(`${C.TITLES[doc.type]} ${doc.number} émis${isInv ? 'e' : ''}`);
+      // Une facture tirée d'une vente de la console lui rend son numéro dès l'émission (8.7.0) ;
+      // en cas d'échec, la page Licences réessaiera — jamais un message rouge ici.
+      if (doc.venteConsoleId) annoncerFacturesConsole().catch(() => {});
       return true;
     }
     bindBack(backTo);
@@ -4510,7 +4519,7 @@
     'p-sauvegardes': { onglet: 'donnees', titre: 'Sauvegardes', mots: 'sauvegarde restaurer restauration perdu recuperer export import fichier donnees backup' },
     'p-externe': { onglet: 'donnees', titre: 'Copie externe', mots: 'copie externe icloud onedrive usb disque reseau miroir abri' },
     'p-motdepasse': { onglet: 'donnees', titre: 'Mot de passe', mots: 'mot de passe chiffrement verrouiller securite aes protection vol' },
-    'p-ocr': { onglet: 'donnees', titre: 'Lecture de factures d\'achat — ce qui sort de cet ordinateur', mots: 'photo scanner ocr lecture facture achat intelligence artificielle cle api internet confidentialite' },
+    'p-ocr': { onglet: 'donnees', titre: 'Lecture de factures d\'achat — ce qui sort de cet ordinateur', mots: 'photo scanner ocr lecture facture achat intelligence artificielle cle api internet confidentialite', visible: () => !OCR_EN_PAUSE },
     'p-exemple': { onglet: 'donnees', titre: 'Essayer sans risque', mots: 'exemple demo essayer decouvrir jeu donnees fictives' },
     'p-danger': { onglet: 'donnees', titre: 'Zone sensible', classe: 'danger-zone', mots: 'effacer supprimer tout remise a zero vider' },
     'p-apparence': { onglet: 'app', titre: 'Apparence', mots: 'theme sombre clair systeme langue anglais francais apparence' },
@@ -5023,6 +5032,13 @@
     $$('[data-payx]').forEach(b => b.onclick = () => supplierPaymentForm(purchaseById(b.dataset.payx), () => render()));
   }
 
+  // La lecture d'une photo de facture (4.2.0) est EN PAUSE depuis la 8.7.0, à la demande du
+  // propriétaire : sans application SkanFact sur téléphone, photographier une facture pour la faire
+  // lire n'a pas d'usage réel, et le réglage faisait chercher une clé d'API à des gens qui n'en ont
+  // pas besoin. Le code reste entier ; ce drapeau retire le bouton de l'éditeur d'achat, le geste du
+  // panneau des Paramètres et son entrée de palette. Le remettre à false rallume tout.
+  const OCR_EN_PAUSE = true;
+
   // L'achat en cours de saisie, quand l'éditeur doit se redessiner SANS le perdre (8.5.1). La lecture
   // d'une photo remplit `p` puis redessine ; sans ce relais, `render()` repartait de la pièce
   // enregistrée — ou d'une pièce neuve et vide — et jetait ce qu'on venait de lire et de joindre.
@@ -5359,7 +5375,8 @@
     // Le bouton n'apparaît que si l'utilisateur a lui-même activé la lecture dans les Paramètres :
     // sans clé, il n'a rien à proposer que « Joindre un justificatif » ne fasse déjà — et la question
     // « la lecture n'est pas activée, joindre quand même ? » à chaque photo était un piège (8.5.1).
-    bridge.ocrStatus().then(st => { if (st && st.hasKey && $('#photo')) $('#photo').hidden = false; }, () => {});
+    // En PAUSE depuis la 8.7.0 (voir OCR_EN_PAUSE) : jamais montré, quoi que dise le réglage.
+    if (!OCR_EN_PAUSE) bridge.ocrStatus().then(st => { if (st && st.hasKey && $('#photo')) $('#photo').hidden = false; }, () => {});
     const joindreFichier = async (file) => {
       try { return await joindre([await bridge.attachPath(p.id, file.path)]); }
       catch (e) { toast(e.message || 'Impossible de joindre la photo', true); return false; }
@@ -9494,7 +9511,7 @@
            là qu'était le seul autre panneau qui parle à internet. Mais ce n'est pas un réglage du
            logiciel — c'est la SEULE fonction qui fait sortir quelque chose de cet ordinateur, et
            c'est à ce titre qu'on la cherche. Elle vit donc avec les données et la sécurité. -->
-      ${panneau('p-ocr', info('ocr.key'))}<div id="ocr-panel"></div></div>
+      ${OCR_EN_PAUSE ? '' : panneau('p-ocr', info('ocr.key')) + '<div id="ocr-panel"></div></div>'}
       <!-- Charger l'exemple n'est PAS un geste dangereux : une sauvegarde est prise, la société est
            conservée, un bandeau permanent offre le retour, et l'article « Démarrer » le présente
            comme l'étape d'apprentissage. Il vivait pourtant dans l'encadré rouge, collé à « Tout
@@ -10287,6 +10304,13 @@
   // Sans clé, aucune requête ne part de l'ordinateur. Le panneau le dit avant de proposer quoi que ce soit.
   async function drawOcrPanel() {
     if (!$('#ocr-panel')) return;
+    // En pause (8.7.0) : le panneau reste là pour DIRE où la fonction est passée — un réglage qui
+    // disparaît sans un mot fait chercher — mais il n'offre plus rien à activer.
+    if (OCR_EN_PAUSE) {
+      $('#ocr-panel').innerHTML = `<p class="small mb"><span class="badge émis">En pause</span> La lecture automatique d'une photo de facture est mise en pause : tant qu'il n'existe pas d'application SkanFact sur téléphone, photographier une facture pour la faire lire n'a pas de vrai usage. Le code reste prêt pour le jour où elle existera.</p>
+        <p class="small muted">Ce qui marche, hors ligne et sans rien envoyer : <b>« Joindre un justificatif… »</b> sur un achat, avant même de le saisir. <b>Aucune donnée ne quitte cet ordinateur.</b></p>`;
+      return;
+    }
     let st = { hasKey: false, model: '' };
     try { st = await bridge.ocrStatus(); } catch (_) {}
     // On REDEMANDE l'élément après l'attente : entre la question au processus principal et sa
@@ -10471,6 +10495,7 @@
       const st = await bridge.licenceStatus(mf);
       if (st) { licence = st; licenceMatriculeVu = mf; }
       editeur = licence.editeur ? await bridge.editeurStatus().catch(() => null) : null;
+      pont = licence.editeur ? (await bridge.pontStatus().catch(() => null)) || { editeur: true, base: '', configure: false } : { editeur: false, base: '', configure: false };
     } catch (_) {}
     licenceBanner();
   }
@@ -10553,13 +10578,174 @@
       </div>
       <p class="small muted mt"><strong>Sans copie de la clé privée, un disque qui lâche rend impossible tout renouvellement chez tes clients.</strong> Une copie dans ton gestionnaire de mots de passe ou sur une clé USB à part suffit.</p>
       ${blocCleReponse(editeur.reponse || {})}
-      ${blocCleServeur(editeur.serveur || {})}`;
+      ${blocCleServeur(editeur.serveur || {})}
+      ${blocPont(pont)}`;
     $('#ed-lic').onclick = () => navigate('#/licences');
     $('#ed-emettre').onclick = () => licenceForm(null, null);
     $('#ed-pub').onclick = copierClePublique;
     $('#ed-exp').onclick = abriterClePrivee;
     brancherCleReponse();
     brancherCleServeur();
+    brancherPont();
+  }
+
+  // ---------- le pont comptable (8.7.0, § 11 du plan) ----------
+  //
+  // La console vend (clé, vente, mail) ; la comptabilité, elle, est ici. SkanFact TIRE les ventes
+  // non facturées, fabrique un BROUILLON de facture par vente (jamais un numéro : il se prend à
+  // l'émission, comme partout), et rend le numéro à la console une fois la facture émise. Le secret
+  // d'administration vit à côté des clés de signature, jamais dans les données.
+  function blocPont(p) {
+    if (!p.base) {
+      return `<p class="mt"><strong>Pont comptable — la console vend, SkanFact facture</strong> <span class="badge">Pas de plan de contrôle dans cette version</span></p>
+        <p class="small">Cette version de SkanFact n'a pas d'adresse de console : le pont n'a rien à quoi se brancher.</p>`;
+    }
+    return `<p class="mt"><strong>Pont comptable — la console vend, SkanFact facture</strong> ${p.configure ? '<span class="badge accepté">Branché</span>' : '<span class="badge émis">Pas encore branché</span>'}</p>
+      <p class="small">${p.configure
+        ? `Le secret d'administration de la console est enregistré sur cet ordinateur. La page Licences montre les ventes de la console qui n'ont pas encore de facture, et rend à la console le numéro de chaque facture émise ici.`
+        : `Colle ici le <strong>secret d'administration</strong> de la console (le réglage <code>ADMIN_SECRET</code> du service). Il est enregistré à côté de tes clés de signature, jamais dans tes données ni dans une sauvegarde — et il est essayé tout de suite.`}</p>
+      <div class="inline mt">
+        <input type="password" id="ed-pont-secret" placeholder="${p.configure ? 'Nouveau secret (laisser vide pour garder l\'actuel)' : 'Secret d\'administration de la console'}" autocomplete="off" style="min-width:320px">
+        <button type="button" class="btn ${p.configure ? '' : 'btn-primary'}" id="ed-pont-save">${p.configure ? 'Remplacer le secret' : 'Brancher la console'}</button>
+        ${p.configure ? '<button type="button" class="btn" id="ed-pont-retirer">Débrancher</button>' : ''}
+      </div>
+      ${p.configure ? `<div class="inline mt">
+        <button type="button" class="btn" id="ed-pont-ventes">Voir les ventes à facturer</button>
+        ${C.chargeHistorique(data, company()).length && !data.pontImporte ? '<button type="button" class="btn" id="ed-pont-import">Envoyer l\'historique à la console…</button>' : ''}
+      </div>
+      ${data.pontImporte ? `<p class="small muted mt">Historique envoyé à la console le ${C.fmtDate(data.pontImporte)}.</p>` : ''}` : ''}`;
+  }
+  function brancherPont() {
+    const champ = $('#ed-pont-secret');
+    if ($('#ed-pont-save')) $('#ed-pont-save').onclick = async () => {
+      const secret = (champ && champ.value || '').trim();
+      if (!secret) return refus('#ed-pont-secret', 'Colle le secret d\'administration de la console.');
+      const b = $('#ed-pont-save'); b.disabled = true;
+      try {
+        const r = await bridge.pontSetSecret(secret);
+        pont = { ...pont, configure: !!r.configure };
+        const e = r.etat || {};
+        toast(`Console branchée${e.emission ? ' — ' + e.emission : ''}`);
+        drawEditeurPanel();
+      } catch (e) { b.disabled = false; toast(plainError(e), true); }
+    };
+    if ($('#ed-pont-retirer')) $('#ed-pont-retirer').onclick = async () => {
+      if (!await confirmDialog('Débrancher la console ? Le secret est effacé de cet ordinateur. Les brouillons déjà créés restent, et rien n\'est touché sur la console.', 'Débrancher', false)) return;
+      try { await bridge.pontSetSecret(''); pont = { ...pont, configure: false }; drawEditeurPanel(); toast('Console débranchée'); }
+      catch (e) { toast(plainError(e), true); }
+    };
+    if ($('#ed-pont-ventes')) $('#ed-pont-ventes').onclick = () => navigate('#/licences');
+    if ($('#ed-pont-import')) $('#ed-pont-import').onclick = envoyerHistoriqueConsole;
+  }
+
+  // L'historique des licences émises DANS SkanFact part UNE fois vers la console, pour qu'elle
+  // connaisse tous les clients. Ce qui part est listé avant d'être envoyé (règle du paquet : on
+  // voit ce qui partira), et la console dit ce qu'elle a pris, ce qu'elle avait déjà, ce qu'elle
+  // a refusé — jamais un « ok » muet.
+  async function envoyerHistoriqueConsole() {
+    const charge = C.chargeHistorique(data, company());
+    if (!charge.length) return toast('Aucune licence émise ici à envoyer.');
+    const ok = await confirmDialog(`Envoyer ${pl(charge.length, 'licence')} à la console ?\n\nPour chacune : la clé, le client (nom, matricule, email), l'offre, les dates, le prix et le numéro de facture s'il existe. Rien d'autre — pas tes autres clients, pas tes autres factures.\n\nUne licence déjà connue de la console est laissée telle quelle.`, 'Envoyer', false);
+    if (!ok) return;
+    try {
+      const r = await bridge.pontRequete('importer', { licences: charge });
+      data.pontImporte = C.today(); save(true);
+      const refus = (r.ignorees || []).length ? `\n\nRefusées (${r.ignorees.length}) : ${r.ignorees.slice(0, 5).map(x => `${x.id} — ${x.raison}`).join(' ; ')}${r.ignorees.length > 5 ? '…' : ''}` : '';
+      await confirmDialog(`Historique envoyé.\n\n${pl(r.importees || 0, 'licence importée')}, ${r.dejaLa || 0} déjà connue${(r.dejaLa || 0) > 1 ? 's' : ''}.${refus}`, 'Fermer', false);
+      drawEditeurPanel();
+    } catch (e) { toast(plainError(e), true); }
+  }
+
+  // Rendre à la console le numéro des factures émises ici. Silencieux : un échec réseau ne doit
+  // pas interrompre ce que l'utilisateur faisait ; la prochaine ouverture de la page réessaiera.
+  async function annoncerFacturesConsole() {
+    if (!pont.configure) return 0;
+    let n = 0;
+    for (const d of C.facturesAAnnoncer(data)) {
+      try {
+        await bridge.pontRequete(`ventes/${d.venteConsoleId}/facturee`, { numero: d.number });
+        d.factureeAnnoncee = C.today(); n++;
+      } catch (_) { break; }
+    }
+    if (n) save(true);
+    return n;
+  }
+
+  // Le bloc « Ventes de la console » de la page Licences.
+  async function drawVentesConsole() {
+    const el = $('#lic-console'); if (!el || !pont.configure) return;
+    el.hidden = false;
+    el.innerHTML = '<h2>Ventes de la console</h2><p class="muted small">Lecture des ventes…</p>';
+    const annoncees = await annoncerFacturesConsole();
+    let lignes;
+    try { lignes = ((await bridge.pontRequete('ventes?non_facturees=1')) || {}).lignes || []; }
+    catch (e) {
+      const el2 = $('#lic-console'); if (!el2) return;
+      el2.innerHTML = `<h2>Ventes de la console</h2><p class="small" style="color:var(--danger)">${h(plainError(e))}</p>`;
+      return;
+    }
+    const el2 = $('#lic-console'); if (!el2) return;
+    // Une vente déjà tirée (le brouillon existe ici, pas encore émis) ne se propose pas deux fois.
+    const dejaLa = new Set(data.documents.filter(d => d.venteConsoleId).map(d => d.venteConsoleId));
+    const nouvelles = lignes.filter(v => !dejaLa.has(v.id));
+    const enAttente = lignes.filter(v => dejaLa.has(v.id));
+    const cur = x => C.money(Number(x.montant_ht) || 0, x.devise || 'TND');
+    el2.innerHTML = `<h2>Ventes de la console ${info('lic.console')}</h2>
+      ${nouvelles.length ? `<p class="small">${pl(nouvelles.length, 'vente')} sans facture. Un clic crée un <strong>brouillon</strong> par vente ; le numéro se prend à l'émission, et il est rendu à la console.</p>
+        <div class="scroll-x"><table class="list"><thead><tr><th>Client</th><th>Offre</th><th>Fin</th><th class="r">Montant HT</th><th>Payée</th></tr></thead><tbody>
+        ${nouvelles.map(v => `<tr><td><strong>${h(v.client || '')}</strong>${v.matricule ? `<div class="small muted">MF ${h(v.matricule)}</div>` : ''}${C.clientPourVente(data.clients, v) ? '' : '<div class="small muted">nouveau client — sa fiche sera créée</div>'}</td>
+          <td>${h(offreLabelDe(v.offre))}</td><td>${v.fin ? C.fmtDate(v.fin) : '<span class="muted">À vie</span>'}</td><td class="r nw">${cur(v)}</td>
+          <td>${v.payee_le ? `<span class="ok-text">${C.fmtDate(v.payee_le)}${v.moyen ? ' · ' + h(v.moyen) : ''}</span>` : '<span class="muted">pas encore</span>'}</td></tr>`).join('')}
+        </tbody></table></div>
+        <div class="inline mt"><button class="btn btn-primary" id="lic-console-brouillons">Créer ${nouvelles.length > 1 ? 'les ' + nouvelles.length + ' brouillons' : 'le brouillon'} de facture</button></div>`
+        : `<p class="small muted">Aucune vente en attente de facture${enAttente.length ? '' : ' : la console et ta comptabilité sont d\'accord'}.</p>`}
+      ${enAttente.length ? `<p class="small muted mt">${pl(enAttente.length, 'brouillon')} déjà créé${enAttente.length > 1 ? 's' : ''} depuis la console, à émettre : ${enAttente.map(v => { const d = data.documents.find(x => x.venteConsoleId === v.id); return d ? `<a href="#/doc/${h(d.id)}">${h(v.client || d.id)}</a>` : ''; }).filter(Boolean).join(', ')}.</p>` : ''}
+      ${annoncees ? `<p class="small muted">${pl(annoncees, 'numéro de facture rendu', 'numéros de facture rendus')} à la console.</p>` : ''}`;
+    if ($('#lic-console-brouillons')) $('#lic-console-brouillons').onclick = () => creerBrouillonsConsole(nouvelles);
+  }
+
+  // Un brouillon par vente. Le client est retrouvé par matricule puis par nom, créé sinon ; la ligne
+  // porte le montant HT vendu par la console, la TVA du régime de la société, la remise de
+  // parrainage ; et la licence entre dans l'historique local avec `origine: 'console'` — elle se
+  // lit et s'envoie ici, mais ne se renouvelle ni ne se révoque ici : c'est la console qui l'a
+  // signée, c'est elle qui la reprend.
+  async function creerBrouillonsConsole(ventes) {
+    if (await demoBlock('Créer des factures depuis la console')) return;
+    if (licenceBlock('Créer une facture de licence')) return;
+    let crees = 0, clientsCrees = 0;
+    ventes.forEach(v => {
+      if (data.documents.some(d => d.venteConsoleId === v.id)) return;
+      let client = C.clientPourVente(data.clients, v);
+      if (!client) {
+        client = { id: C.uid(), name: v.client || 'Client de la console', contact: '', matricule: v.matricule || '', address: '', phone: '', email: v.email || '', notes: '', withholdingRate: '' };
+        data.clients.push(client); clientsCrees++;
+      } else if (!client.email && v.email) client.email = v.email;
+      const inv = newDocument('facture');
+      applyClientDefaults(inv, client.id);
+      // La console vend dans SA devise (le tarif) : la facture la garde. Mais elle écrit le dinar
+      // « TND » quand SkanFact écrit « DT » — sans `normCurrency`, le brouillon réclamait un taux de
+      // change entre le dinar et lui-même (trouvé par l'e2e). Une vraie devise étrangère, elle,
+      // laisse le taux à saisir, et « À faire » le réclame comme pour toute pièce.
+      inv.currency = C.normCurrency(v.devise || company().currency); inv.exchangeRate = '';
+      const fin = v.fin ? 'jusqu\'au ' + C.fmtDate(v.fin) : 'sans limite de durée';
+      inv.lines = [{ label: `Licence SkanFact ${offreLabelDe(v.offre)} — ${fin}`, description: `Licence n° ${v.licence_id}, ${fin}`,
+        qty: 1, unit: '', unitPrice: Number(v.montant_ht) || 0, unitCost: '', vatRate: v.tva !== null && v.tva !== undefined && v.tva !== '' ? Number(v.tva) : C.defaultVat(company()) }];
+      Object.assign(inv, { clientId: client.id, subject: `Licence SkanFact ${offreLabelDe(v.offre)}`,
+        discountRate: Math.min(100, Math.max(0, Number(v.remise) || 0)), withholdingRate: clientWithholding(client.id),
+        licenceId: v.licence_id, venteConsoleId: v.id });
+      data.documents.push(inv);
+      if (v.licence_id && !data.licences.some(l => l.id === v.licence_id)) {
+        data.licences.push({ id: v.licence_id, clientId: client.id, nom: client.name, matricule: v.matricule || '', offre: v.offre || 'entreprise',
+          exp: v.fin || '', key: v.cle || '', emisLe: (v.emise_le || '').slice(0, 10), cabinet: v.cabinet_empreinte || '', note: '', invoiceId: inv.id, itemId: '',
+          prix: Number(v.montant_ht) || 0, tva: inv.lines[0].vatRate, emails: [], remplace: '', origine: 'console',
+          envoyeeConsoleLe: (v.envoyee_le || '').slice(0, 10), payeeConsoleLe: v.payee_le || '', revoqueeLe: v.revoquee_le || '' });
+      }
+      crees++;
+    });
+    save(true);
+    redessinerBarre();
+    toast(`${pl(crees, 'brouillon créé', 'brouillons créés')}${clientsCrees ? ' · ' + pl(clientsCrees, 'fiche client créée', 'fiches client créées') : ''}`);
+    routes.licences();
   }
 
   // ---------- la clé du serveur (8.5.0, P 0.2) ----------
@@ -11113,6 +11299,15 @@
         const inv = r.invoiceId ? docById(r.invoiceId) : null;
         const suite = r.remplaceePar ? data.licences.find(x => x.id === r.remplaceePar) : null;
         const revoquee = !!r.revoqueeLe;
+        // Une licence vendue par la console se lit et s'envoie ici ; renouveler, changer l'offre,
+        // corriger, révoquer se font DANS la console, qui l'a signée (8.7.0). Offrir ces gestes ici
+        // fabriquerait une seconde clé que la console ne connaîtrait pas.
+        const console_ = r.origine === 'console';
+        if (console_) return [
+          { icon: 'contrat', label: 'Voir la clé', hint: 'Vendue par la console — renouvellement et révocation s\'y font aussi', run: () => montrerCle(r) },
+          { icon: 'copier', label: 'Copier la clé', hint: 'Dans le presse-papiers, pour la coller où tu veux', run: () => copierTexte(r.key, 'Clé de licence copiée') },
+          inv ? { icon: 'facture', label: 'Ouvrir la facture', hint: inv.number || 'Encore en brouillon', run: () => navigate('#/doc/' + inv.id) } : null
+        ];
         return [
           { icon: 'contrat', label: 'Voir la clé', hint: 'La clé, son offre, sa date de fin — et de quoi l\'envoyer', run: () => montrerCle(r) },
           { icon: 'copier', label: 'Copier la clé', hint: 'Dans le presse-papiers, pour la coller où tu veux', run: () => copierTexte(r.key, 'Clé de licence copiée') },
@@ -11138,8 +11333,10 @@
       ${filtersBar(`<input type="text" id="q" placeholder="Rechercher : client, matricule, n° de licence…" value="${h(s.q)}">
         <select id="st">${FILTRES.map(([v, l]) => `<option value="${v}" ${s.st === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
         ${info('list.sort')}<span class="f-note" id="lic-note" hidden></span>`, all.length, !!(s.q || s.st))}
+      <div class="panel" id="lic-console" hidden></div>
       <div id="lic-wrap"></div>`;
     if ($('#lic-new')) $('#lic-new').onclick = () => licenceForm(null, draw);
+    if (peut && pont.configure) drawVentesConsole();
     if ($('#q')) $('#q').oninput = e => { s.q = e.target.value.toLowerCase(); s.page = 1; draw(); };
     if ($('#st')) $('#st').onchange = e => { s.st = e.target.value; s.page = 1; draw(); };
     draw();

@@ -392,6 +392,7 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:beta` | **le canal bêta** : la case décochée à l'installation, la question avant de cocher, le refus qui décoche vraiment, la sauvegarde « avant-beta » écrite sur le disque, et le retour en arrière sans question |
 | `npm run e2e:depot` | **public ou privé** : `src/depot.js` est VRAIMENT basculé en privé, l'application ouverte, le champ jeton doit revenir — puis repartir au retour au public (le fichier est restauré quoi qu'il arrive) |
 | `npm run e2e:pages` | **les pages d'un document imprimé** : 161 documents (7 types × 6 variantes × 1 à 40 lignes) rendus dans chromium et imprimés en PDF — aucune ligne perdue, aucune page qui déborde, aucun pied par-dessus le contenu, une feuille par page et chacune numérotée. **Pas besoin de `xvfb`** : il n'ouvre pas Electron |
+| `npm run e2e:pont` | **le pont comptable** : le vrai worker sur SQLite et l'application en état éditeur — un secret faux refusé, le bon gardé en 0600 hors des données, deux ventes de la console tirées en deux brouillons (client retrouvé par matricule ou créé), le menu d'une licence de la console sans « Renouveler », le numéro rendu à l'émission et lu dans la base, la console éteinte dite en français |
 | `npm run e2e:justificatif` | **le justificatif se joint avant toute saisie** : sélecteur de fichier remplacé dans le processus principal, une photo jointe sur un achat VIDE, enregistrée avec la pièce, retrouvée sur le disque et dans la liste (📎), un second fichier sur la pièce rangée, une pièce abandonnée qui ne laisse pas de copie, la lecture d'une photo qui redessine sans perdre la pièce, et le même geste sur un devis neuf |
 | `npm run e2e:licence` | **l'éditeur et les offres, puis le client** : une première application DÉSARMÉE (`SKANFACT_CLE_EMBARQUEE` vers un chemin inexistant, développement seulement) — sans clé rien n'apparaît ; « Créer mes clés » écrit la privée dans un dossier isolé (`SKANFACT_DOSSIER_CLES`) et met le poste en état « éditeur » (ni essai ni verrou) ; « Émettre » signe une clé vérifiable, crée un BROUILLON de facture et l'historique ; la clé Indépendant collée refuse un nouveau fournisseur, pose un cadenas sur Achats et laisse les Statistiques ; la clé d'un autre matricule est refusée en nommant les deux ; « Renouveler » ; rien de ce qui traverse le pont ne contient la clé privée — PUIS une seconde application telle qu'un client l'installe (vraie clé embarquée, pas de clé privée) : essai de 30 jours, aucune trace de l'éditeur, plus de porte « Créer mes clés », et la clé signée par la clé d'essai du test REFUSÉE |
 
@@ -2242,6 +2243,68 @@ voyait dans un test : ils vivaient dans l'ORDRE des gestes.
   dans le processus principal (`dialog.showOpenDialog`), un vrai fichier est copié, enregistré,
   retrouvé sur le disque et dans la liste ; une pièce abandonnée ne laisse pas de copie ; et la
   lecture d'une photo (via le crochet `skanfact:ocr-demo`) redessine la page SANS perdre la pièce.
+
+### 8.7.0 — Le pont comptable, et la lecture de photo en pause
+
+Skander : « et continue la suite go avec la 8.7 » — puis « enlève la fonction photo ou mets-la en
+pause, vu qu'on n'a pas encore l'app sur téléphone ça sert à rien ». Le § 11 de `PLAN-PLATEFORME.md`,
+livré : la console vend, SkanFact facture.
+
+- **SkanFact TIRE, jamais la console ne pousse.** Un serveur ne peut pas écrire dans un logiciel de
+  bureau éteint. `GET /v1/admin/ventes?non_facturees=1` rend chaque vente AVEC sa clé (refabriquée
+  par `cleDeLicence`, jamais rangée en base) ; `POST /v1/admin/ventes/:id/facturee` reçoit le
+  numéro à l'émission ; `POST /v1/admin/importer` reçoit UNE fois l'historique de `data.licences`.
+- **Le secret d'administration vit à côté des clés** (`~/.skanfact/plateforme-admin.json`, 0600,
+  `PONT_ADMIN` dans main.js), jamais dans les données ni dans un dossier partagé — un dossier
+  partagé sur iCloud emporterait sinon le droit d'émettre des licences. Il est **essayé au moment où
+  on le pose** (`pont:setSecret` appelle `etat`), et **refusé, il rend sa place à l'ancien** : la
+  première version le laissait écrit après un refus, et `pont:status` disait « branché » sur un
+  secret faux. C'est l'e2e qui l'a vu.
+- **`pontRequete` n'accepte que les chemins de l'espace d'administration** (`PONT_CHEMIN`, jamais
+  `..`), exige le poste de l'éditeur, envoie le secret en en-tête, et **traduit** : 403 → « refuse ce
+  secret », échec réseau → « La console ne répond pas » (le `socket hang up` va dans `main.log`,
+  règle 7.26.0).
+- **Un brouillon, jamais un numéro** (`creerBrouillonsConsole` : `newDocument('facture')`, jamais
+  `nextNumber`), derrière les DEUX garde-fous de création (`demoBlock`, `licenceBlock`). Le client est
+  retrouvé par `core.clientPourVente` (les sept chiffres du matricule d'abord, le nom ensuite —
+  jamais créé par le cœur, créer est une décision de l'appelant), la TVA par `defaultVat` (le régime,
+  pas un 19 en dur), le montant HT est celui de la console tel quel. Une vente déjà tirée
+  (`venteConsoleId` présent) ne fait pas deux brouillons.
+- **Le numéro est rendu à l'émission** (`issue()` → `annoncerFacturesConsole`) et **réessayé** à
+  chaque ouverture de la page Licences (`core.facturesAAnnoncer`) : un échec s'arrête sans crier
+  (`catch { break }`), il n'est jamais rouge — la console éteinte n'est pas une panne de SkanFact.
+- **Une licence vendue par la console porte `origine: 'console'`** : elle se lit, se copie, sa
+  facture s'ouvre ; renouveler, changer l'offre, corriger, révoquer se font DANS la console qui l'a
+  signée (le menu de ligne les retire). `licencesAFaire` ne réclame pas son envoi : la console
+  l'envoie au paiement, la réclamer ici ferait envoyer deux fois. `envoyeeConsoleLe` compte comme un
+  envoi dans `licenceSuivi`.
+- **L'historique part UNE fois et nommé champ par champ** : `core.chargeHistorique` est pur, exclut
+  ce qui vient de la console, et un test fixe la liste exacte des dix-huit champs — un jour quelqu'un
+  voudra « juste ajouter » le client entier. La facture ne part qu'ÉMISE (numéro, net HT remise
+  déduite, jour du dernier paiement) ; `data.pontImporte` retient le jour (dans `DEFAULT_DATA`, donc
+  remis à zéro par « Tout effacer »). Côté worker, `nettoyerImport` REFUSE avec sa raison au lieu de
+  mettre à null : ici on importe des ventes, une vente à moitié importée est pire qu'absente. Le
+  client y est retrouvé par matricule puis par nom, les remplacements reliés en second passage
+  (l'ordre d'arrivée ne garantit rien), et rejouer l'envoi ne réécrit rien (`dejaLa`).
+- **La lecture de photo est en PAUSE, pas supprimée** : `OCR_EN_PAUSE = true` dans app.js. Le panneau
+  `p-ocr` n'est plus POSÉ dans les Paramètres (donc ni sommaire, ni recherche — les deux se déduisent
+  de l'écran) et sort de Cmd+K (`visible`), `#photo` ne se montre jamais, et l'article d'aide le dit
+  en tête. Le code de 4.2.0 reste tel quel pour le jour où une application sur téléphone existera.
+  Piège : `visible` dans `SETTINGS_PANNEAUX` ne filtre QUE la palette ; un panneau qu'on veut faire
+  disparaître ne se pose pas — c'est `e2e:entreprise` qui l'a montré, le panneau était encore là.
+- Piège de test : la tranche du handler `editeur:cleServeurCopier` était bornée sur le
+  `ipcMain.handle(` SUIVANT — la section du pont, ouverte par un titre et deux fonctions, s'y est
+  glissée. La borne est maintenant la première des deux : handler suivant OU titre de section.
+- Piège d'e2e : sans clé Resend, la console n'envoie aucun mail, donc `envoyee_le` reste vide — mon
+  assertion « la vente payée a été envoyée » décrivait un service de mail qui n'était pas là. Le
+  miroir doit dire ce que la console a FAIT, pas ce qu'elle aurait dû faire.
+
+Le test qui compte est `npm run e2e:pont` : le vrai worker sur SQLite, l'application réelle en état
+éditeur (clé privée d'essai dans `SKANFACT_DOSSIER_CLES`, publique embarquée par
+`SKANFACT_CLE_EMBARQUEE`), un secret faux refusé et un bon secret gardé en 0600 hors des données,
+deux ventes tirées en deux brouillons (Trabelsi retrouvé sous une autre graphie du matricule, El
+Amen créée), le menu d'une licence de la console sans « Renouveler », le numéro rendu à l'émission et
+lu dans la base, puis la console éteinte qui se dit en français.
 
 ## Pistes pour la suite (non demandées)
 

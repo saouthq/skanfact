@@ -7,6 +7,42 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 8.7.0 — 15/09/2026
+
+**Le pont comptable : la console vend, SkanFact facture.** Depuis la 8.5.0, une vente se fait
+entière sur `api.skanfact.tn` — la clé, la vente, le mail — mais la comptabilité, elle, est dans
+SkanFact. Le pont relie les deux, dans un seul sens : SkanFact **tire** les ventes de la console (un
+serveur ne peut pas écrire dans un logiciel de bureau éteint), jamais l'inverse.
+
+- **Brancher la console** : Paramètres → L'application → Éditeur → « Pont comptable ». On colle le
+  secret d'administration de la console ; il est essayé tout de suite, refusé s'il est faux, et
+  gardé à côté des clés de signature — jamais dans les données, jamais dans une sauvegarde, jamais
+  dans un dossier partagé.
+- **La page Licences** montre les ventes de la console qui n'ont pas encore de facture. Un clic crée
+  un **brouillon** de facture par vente : le client est retrouvé par son matricule (quelle que soit
+  la graphie) ou par son nom, créé sinon ; la ligne porte le montant HT vendu, la TVA du régime de
+  la société, la remise de parrainage. Pas de numéro avant l'émission, comme pour toute facture — et
+  une vente déjà tirée ne fait jamais deux brouillons.
+- **À l'émission, le numéro est rendu à la console**, qui le note dans son journal ; la vente sort
+  de la liste. Si la console ne répond pas à ce moment-là, la prochaine ouverture de la page
+  Licences réessaie, sans un mot rouge.
+- **Une licence vendue par la console** entre dans l'historique local (elle se lit, se copie, sa
+  facture s'ouvre), mais ne se renouvelle ni ne se révoque ici : c'est la console qui l'a signée,
+  c'est elle qui la reprend. « À faire » ne réclame pas non plus son envoi — la console l'envoie au
+  paiement.
+- **L'historique part une fois** : « Envoyer l'historique à la console… » transmet les licences
+  émises dans SkanFact avant que la console sache vendre (clé, client, offre, dates, prix, numéro de
+  facture — rien d'autre), après avoir dit ce qui partira. La console dit ce qu'elle a pris, ce
+  qu'elle avait déjà, ce qu'elle a refusé et pourquoi.
+- Côté service : `POST /v1/admin/importer`, `GET /v1/admin/ventes?non_facturees=1` (chaque vente
+  arrive avec sa clé), et le journal note `vente.facturee`. À déployer avec cette version.
+
+**La lecture de photo de facture est en pause.** Sans application SkanFact sur téléphone pour
+prendre la photo, elle n'avait pas de vrai usage. Le réglage disparaît des Paramètres, le bouton
+« Lire une photo » ne s'affiche plus, et aucune image ne part de l'ordinateur. Joindre une photo ou
+un PDF comme justificatif d'un achat (8.5.1) reste là, hors ligne. Le code reste prêt pour le jour
+où elle reviendra.
+
 ## 8.6.0 — 15/09/2026
 
 **L'application reconnaît la clé du serveur.** `build/licences-publiques.json` porte désormais deux

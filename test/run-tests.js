@@ -3465,8 +3465,10 @@ t('8.4.0 : le plan de contrôle ne peut ni faire attendre l\'application, ni emp
   const handler = nom => {
     const a = main.indexOf("ipcMain.handle('" + nom + "'");
     assert.ok(a > 0, 'handler introuvable : ' + nom);
-    const b = main.indexOf('ipcMain.handle(', a + 1);
-    return main.slice(a, b > a ? b : undefined);
+    // …ou sur la SECTION suivante (8.7.0 : le pont comptable s'ouvre par un titre de section, sans
+    // handler avant deux fonctions) — la première des deux bornes qui vient.
+    const bornes = [main.indexOf('ipcMain.handle(', a + 1), main.indexOf('\n// ----------', a + 1)].filter(x => x > a);
+    return main.slice(a, bornes.length ? Math.min(...bornes) : undefined);
   };
   ['editeur:cleReponseCopier', 'editeur:cleServeurCopier'].forEach(nom => {
     const cop = handler(nom).replace(/\/\/[^\n]*/g, '');
@@ -3532,6 +3534,127 @@ t('8.5.0 : la clé du serveur se fabrique sur le poste de l\'éditeur, se dit à
   assert.ok(/L\.verifyKey\(cle, cles\)/.test(e2eC), 'e2e:console doit vérifier la clé émise avec src/licence.js');
   const e2eP = lireSource('test', 'e2e', 'plateforme.js');
   assert.ok(/\/v1\/admin\/licences/.test(e2eP) && /kid !== 'srv-1'/.test(e2eP), 'e2e:plateforme doit coller une clé émise par la console dans l\'application');
+});
+
+// 8.7.0 — le pont comptable, côté application : ce qui est pur se teste sur des données.
+t('8.7.0 : le client d\'une vente se retrouve par les chiffres du matricule, puis par le nom — jamais créé ici', () => {
+  const clients = [
+    { id: 'c1', name: 'Menuiserie Trabelsi SUARL', matricule: 'MF 1234567A' },
+    { id: 'c2', name: 'Atelier Jasmin', matricule: '' },
+    { id: 'c3', name: 'Doublon Matricule', matricule: '1234567/B/M/000' }
+  ];
+  assert.strictEqual(core.clientPourVente(clients, { client: 'Trabelsi', matricule: '1234567A/M/P/000' }).id, 'c1', 'les sept chiffres suffisent, quelle que soit la graphie');
+  assert.strictEqual(core.clientPourVente(clients, { client: 'atelier jasmin ', matricule: '' }).id, 'c2', 'sans matricule, le nom (casse et espaces ignorées)');
+  assert.strictEqual(core.clientPourVente(clients, { client: 'Inconnu', matricule: '9999999Z' }), null, 'inconnu : null, jamais une fiche inventée');
+  assert.strictEqual(core.clientPourVente([], { client: 'X' }), null);
+  assert.strictEqual(core.clientPourVente(clients, null), null);
+});
+
+t('8.7.0 : l\'historique envoyé à la console est nommé champ par champ, et n\'emporte jamais ce qui en vient', () => {
+  const company = { ...core.DEFAULT_COMPANY, name: 'Éditeur', currency: 'TND', stampFee: 1, vatRegime: 'reel' };
+  const data = core.migrateData({ ...core.DEFAULT_DATA, company,
+    clients: [{ id: 'c1', name: 'Menuiserie Trabelsi', matricule: '1234567A', email: 'contact@trabelsi.tn' }],
+    documents: [
+      { id: 'd1', type: 'facture', number: 'FAC-2026-004', date: '2026-03-01', status: 'envoyée', clientId: 'c1', currency: 'TND', discountRate: 20, applyStamp: true, stampFee: 1,
+        lines: [{ label: 'Licence', qty: 1, unitPrice: 690, vatRate: 19 }], payments: [] },
+      { id: 'd2', type: 'facture', number: '', date: '2026-09-01', status: 'brouillon', clientId: 'c1', currency: 'TND', lines: [{ label: 'Licence', qty: 1, unitPrice: 390, vatRate: 19 }], payments: [] }
+    ],
+    licences: [
+      { id: 'LIC-1', clientId: 'c1', nom: 'Menuiserie Trabelsi', matricule: '1234567A', offre: 'entreprise', exp: '2027-03-01', key: 'SKAN1.aaa', emisLe: '2026-03-01', prix: 690, invoiceId: 'd1', emails: [{ date: '2026-03-02', to: 'contact@trabelsi.tn' }], remplaceePar: 'LIC-2' },
+      { id: 'LIC-2', clientId: 'c1', nom: 'Menuiserie Trabelsi', matricule: '1234567A', offre: 'independant', exp: '2028-03-01', key: 'SKAN1.bbb', emisLe: '2026-09-01', prix: 390, invoiceId: 'd2', emails: [], motif: 'renouvellement' },
+      { id: 'LIC-3', clientId: 'c1', nom: 'Autre', offre: 'entreprise', key: 'SKAN1.ccc', emisLe: '2026-09-10', origine: 'console', invoiceId: '', emails: [] }
+    ] });
+  // Le paiement solde la facture au millime : c'est `netToPay` qui fait foi, calculé, pas recopié.
+  data.documents[0].payments.push({ id: 'p1', date: '2026-03-05', amount: core.computeTotals(data.documents[0], company).netToPay });
+  const ch = core.chargeHistorique(data, company);
+  assert.deepStrictEqual(ch.map(x => x.id), ['LIC-1', 'LIC-2'], 'une licence venue de la console ne repart pas vers elle');
+  // Les champs, tous nommés : un jour quelqu'un voudra « juste ajouter » un client entier ou une
+  // facture entière. C'est ce test qui doit l'arrêter.
+  assert.deepStrictEqual(Object.keys(ch[0]).sort(), ['cabinet', 'cle', 'devise', 'email', 'emisLe', 'envoyeeLe', 'exp', 'facture', 'id', 'matricule', 'motif', 'nom', 'offre', 'prix', 'remise', 'remplaceePar', 'revoqueeLe', 'revoqueeMotif']);
+  assert.strictEqual(ch[0].cle, 'SKAN1.aaa'); assert.strictEqual(ch[0].email, 'contact@trabelsi.tn'); assert.strictEqual(ch[0].remise, 20);
+  assert.strictEqual(ch[0].envoyeeLe, '2026-03-02'); assert.strictEqual(ch[0].remplaceePar, 'LIC-2');
+  // La facture ÉMISE part avec son numéro, son net HT (remise déduite : 690 − 20 % = 552) et le
+  // jour du dernier paiement ; un brouillon ne part pas — il n'a pas de numéro à donner.
+  assert.deepStrictEqual(ch[0].facture, { numero: 'FAC-2026-004', montant: 552, payeeLe: '2026-03-05' });
+  assert.strictEqual(ch[1].facture, null);
+  assert.ok(!JSON.stringify(ch).includes('"amount"') && !JSON.stringify(ch).includes('"lines"'), 'ni paiement détaillé ni lignes : rien d\'autre ne passe');
+  // Ce qu'il reste à annoncer, et ce qu'il n'y a pas à réclamer.
+  data.documents.push({ id: 'd3', type: 'facture', number: 'FAC-2026-031', venteConsoleId: 'v_1', lines: [], payments: [] },
+    { id: 'd4', type: 'facture', number: '', venteConsoleId: 'v_2', lines: [], payments: [] },
+    { id: 'd5', type: 'facture', number: 'FAC-2026-032', venteConsoleId: 'v_3', factureeAnnoncee: '2026-09-15', lines: [], payments: [] });
+  assert.deepStrictEqual(core.facturesAAnnoncer(data).map(d => d.id), ['d3'], 'émise et pas encore annoncée, et seulement elle');
+  const af = core.licencesAFaire(data, company, '2026-09-15');
+  assert.ok(!af.jamaisEnvoyees.some(l => l.id === 'LIC-3'), 'l\'envoi d\'une clé vendue par la console est l\'affaire de la console');
+  assert.ok(af.jamaisEnvoyees.some(l => l.id === 'LIC-2'), 'une clé émise ici et jamais envoyée est toujours réclamée');
+  const s = core.licenceSuivi({ ...data.licences[2], envoyeeConsoleLe: '2026-09-11' }, data, company);
+  assert.strictEqual(s.envoyee, true); assert.strictEqual(s.envoyeeLe, '2026-09-11');
+  assert.strictEqual(core.DEFAULT_DATA.pontImporte, '', 'le drapeau d\'envoi est dans DEFAULT_DATA : « Tout effacer » le remet à zéro');
+});
+
+t('8.7.0 : le pont comptable — le secret reste sur le poste, la console est tirée, jamais poussée, et le brouillon n\'a pas de numéro', () => {
+  const main = lireSource('src', 'main.js').replace(/^\s*\/\/[^\n]*/gm, '');
+  const pont = main.slice(main.indexOf('const PONT_ADMIN = '), main.indexOf("ipcMain.handle('licence:emettre'"));
+  assert.ok(pont.length > 1500 && pont.length < 6000, 'tranche du pont inattendue : ' + pont.length);
+  // Le secret : dans le dossier des clés, en 0600, jamais dans les données ; au moins 24 caractères ; essayé tout de suite.
+  assert.ok(/path\.join\(CLES_DIR\(\), 'plateforme-admin\.json'\)/.test(pont) && /mode: 0o600/.test(pont), 'le secret vit à côté des clés, en 0600');
+  assert.ok(/const PONT_MIN = 24/.test(pont) && /s\.length < PONT_MIN/.test(pont), 'un secret trop court est refusé');
+  assert.ok(/try \{ etat = await pontRequete\('etat'\); \}/.test(pont) && /fs\.writeFileSync\(PONT_ADMIN\(\), ancien, \{ mode: 0o600 \}\)/.test(pont), 'le secret est essayé au moment où on le pose — et, refusé, il rend sa place à l\'ancien');
+  assert.ok(!/répond pas : ' \+/.test(pont) && /logToFile\('pont ' \+ c, e\)/.test(pont), 'un échec réseau se dit sans le message brut, qui va dans le journal');
+  assert.ok(/if \(!s\) \{ try \{ fs\.unlinkSync\(PONT_ADMIN\(\)\); \} catch \{\} return \{ configure: false \}; \}/.test(pont), 'vide, il s\'efface');
+  // Seul l'éditeur, seuls les chemins d'administration, jamais un chemin composé depuis l'écran.
+  ['pontRequete', "'pont:setSecret'"].forEach(f => assert.ok(new RegExp(f.replace(/[.'()]/g, '\\$&') + '[\\s\\S]{0,120}if \\(!editeurActif\\(\\)\\)').test(pont), f + ' doit exiger le poste de l\'éditeur'));
+  assert.ok(/'\/v1\/admin\/' \+ c/.test(pont) && /c\.includes\('\.\.'\)/.test(pont), 'les chemins sont bornés à /v1/admin/ et refusent « .. »');
+  const re = new RegExp(pont.match(/const PONT_CHEMIN = \/(.*)\/;/)[1]);
+  ['ventes?non_facturees=1', 'ventes/v_abc12/facturee', 'importer', 'etat'].forEach(c => assert.ok(re.test(c), 'chemin légitime refusé : ' + c));
+  ['../licence/etat', 'ventes/x/y/z', 'a b', 'ventes?x=<script>'].forEach(c => assert.ok(!re.test(c), 'chemin douteux accepté : ' + c));
+  assert.ok(/'X-SkanFact-Admin': secret/.test(pont), 'le secret voyage en en-tête, jamais dans l\'URL');
+  assert.ok(/r\.status === 403/.test(pont) && /refuse ce secret/.test(pont), 'un 403 se dit en français');
+  // Le pont, côté préchargement et doublures.
+  const pre = lireSource('src', 'preload.js');
+  ['pontStatus', 'pontSetSecret', 'pontRequete'].forEach(f => assert.ok(pre.includes(f + ':'), 'pont sans ' + f));
+  const app = lireApp();
+  ['pontStatus', 'pontSetSecret', 'pontRequete'].forEach(f => assert.ok(new RegExp(f + ': async \\(').test(app), 'doublure navigateur manquante : ' + f));
+  // Le brouillon : `newDocument`, jamais `nextNumber` ; le garde-fou de licence ; le client retrouvé
+  // par le cœur ; la licence miroir marquée `origine: 'console'`.
+  const creer = app.slice(app.indexOf('async function creerBrouillonsConsole('), app.indexOf('routes.licences();', app.indexOf('async function creerBrouillonsConsole(')));
+  assert.ok(creer.length > 800 && creer.length < 5000, 'tranche creerBrouillonsConsole inattendue : ' + creer.length);
+  assert.ok(/newDocument\('facture'\)/.test(creer) && !/nextNumber/.test(creer), 'un brouillon, jamais un numéro');
+  assert.ok(/licenceBlock\('Créer une facture de licence'\)/.test(creer) && /await demoBlock\(/.test(creer), 'les deux garde-fous de création');
+  assert.ok(/C\.clientPourVente\(data\.clients, v\)/.test(creer), 'le client est retrouvé par le cœur, pas par une comparaison locale');
+  assert.ok(/origine: 'console'/.test(creer) && /venteConsoleId: v\.id/.test(creer) && /licenceId: v\.licence_id/.test(creer), 'la facture et la licence miroir se relient à la vente');
+  assert.ok(/C\.defaultVat\(company\(\)\)/.test(creer), 'la TVA suit le régime, pas un 19 en dur');
+  assert.ok(/inv\.currency = C\.normCurrency\(v\.devise/.test(creer), 'la devise de la console (« TND ») devient celle de SkanFact (« DT ») — sinon le brouillon réclame un taux de change entre le dinar et lui-même');
+  assert.ok(/data\.documents\.some\(d => d\.venteConsoleId === v\.id\)\) return;/.test(creer), 'une vente déjà tirée ne fait pas deux brouillons');
+  // Le numéro est rendu dès l'émission, et réessayé depuis la page Licences — sans rouge.
+  const issue = app.slice(app.indexOf('function issue() {'), app.indexOf('bindBack(backTo);', app.indexOf('function issue() {')));
+  assert.ok(/if \(doc\.venteConsoleId\) annoncerFacturesConsole\(\)\.catch\(\(\) => \{\}\);/.test(issue), 'l\'émission rend le numéro à la console');
+  const ann = app.slice(app.indexOf('async function annoncerFacturesConsole('), app.indexOf('async function drawVentesConsole('));
+  assert.ok(/C\.facturesAAnnoncer\(data\)/.test(ann) && /d\.factureeAnnoncee = C\.today\(\)/.test(ann) && /catch \(_\) \{ break; \}/.test(ann), 'chaque facture émise est annoncée une fois, et un échec arrête sans crier');
+  // Une licence vendue par la console ne se renouvelle ni ne se révoque ici.
+  const menu = app.slice(app.indexOf("const console_ = r.origine === 'console';"), app.indexOf("{ icon: 'contrat', label: 'Voir la clé', hint: 'La clé, son offre"));
+  assert.ok(menu.length > 100 && menu.length < 1200 && !/Renouveler|Révoquer|Changer l'offre|Corriger/.test(menu), 'le menu d\'une licence de la console : voir, copier, ouvrir la facture — rien d\'autre');
+  // La page Licences ne tire la console que branchée, et la vue « À faire » sait que la console envoie.
+  assert.ok(/if \(peut && pont\.configure\) drawVentesConsole\(\);/.test(app), 'la page Licences tire les ventes seulement quand le pont est branché');
+  assert.ok(/pont = licence\.editeur \? \(await bridge\.pontStatus\(\)/.test(app), 'l\'état du pont se relit avec celui de la licence');
+  // L'historique part UNE fois, après avoir été annoncé, et le jour est retenu.
+  const hist = app.slice(app.indexOf('async function envoyerHistoriqueConsole('), app.indexOf('async function annoncerFacturesConsole('));
+  assert.ok(/C\.chargeHistorique\(data, company\(\)\)/.test(hist) && /await confirmDialog\(/.test(hist) && /data\.pontImporte = C\.today\(\)/.test(hist), 'l\'historique est listé, confirmé, puis marqué envoyé');
+  assert.ok(/!data\.pontImporte \? '<button[^']*id="ed-pont-import"/.test(app), 'le bouton d\'envoi disparaît une fois l\'historique parti');
+  // La bulle existe.
+  assert.ok(/info\('lic\.console'\)/.test(app) && lireSource('src', 'renderer', 'guide.js').includes("'lic.console':"), 'la bulle du bloc console');
+});
+
+// 8.7.0 — la lecture de photo est en PAUSE : pas d'application sur téléphone pour la nourrir. Le
+// code reste (il reviendra), mais rien ne le montre et rien ne le déclenche.
+t('8.7.0 : la lecture de photo est en pause — aucun écran ne la montre, aucun bouton ne la déclenche', () => {
+  const app = lireApp();
+  assert.ok(/const OCR_EN_PAUSE = true;/.test(app), 'le drapeau de pause est posé');
+  assert.ok(/'p-ocr': \{[^\n]*visible: \(\) => !OCR_EN_PAUSE/.test(app), 'le panneau des Paramètres est retiré de Cmd+K');
+  assert.ok(/OCR_EN_PAUSE \? '' : panneau\('p-ocr'/.test(app), 'le panneau n\'est plus POSÉ dans les Paramètres — donc ni sommaire, ni recherche');
+  assert.ok(/if \(!OCR_EN_PAUSE\) bridge\.ocrStatus\(\)\.then\(st => \{ if \(st && st\.hasKey && \$\('#photo'\)\) \$\('#photo'\)\.hidden = false; \}/.test(app), 'le bouton « Lire une photo » ne se montre jamais en pause');
+  const panneau = app.slice(app.indexOf('function drawOcrPanel('), app.indexOf('function ocrKeyForm('));
+  assert.ok(/if \(OCR_EN_PAUSE\) \{/.test(panneau) && /en pause/i.test(panneau), 'le panneau, s\'il est atteint, dit que la fonction est en pause');
+  assert.ok(/Depuis la 8\.7\.0, cette fonction est en pause/.test(lireSource('src', 'renderer', 'guide.js')), 'l\'article d\'aide le dit en tête');
 });
 
 // 8.5.1 : le justificatif se joint AVANT toute saisie. Cinq défauts sur un seul bouton, signalés par
@@ -9785,6 +9908,70 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
         // Le secret d'administration protège TOUTES les écritures.
         assert.strictEqual((await P.default.fetch(new Request('https://x/v1/admin/clients', { method: 'POST', body: '{"nom":"Intrus"}' }), env)).status, 403);
       } finally { globalThis.fetch = vraiFetch; db.fermer(); }
+    });
+
+    // 8.7.0 — le pont comptable, côté serveur : l'historique de SkanFact entre UNE fois, les
+    // ventes sans facture ressortent avec leur clé, et le numéro rendu fait sortir la vente.
+    await ta('8.7.0 : l\'historique entre une fois, les ventes sans facture sortent avec leur clé, et le numéro rendu clôt la vente', async () => {
+      const { baseD1 } = require('./d1-sqlite');
+      const srv = lic.generateKeys(), master = lic.generateKeys();
+      const ADMIN = 'X'.repeat(30);
+      const db = baseD1();
+      const env = { DB: db, ADMIN_SECRET: ADMIN, APP_SECRET: 'app-secret-xxxxxxxxxxxx', SRV_PRIVATE_KEY: srv.privateKey,
+        LICENCE_PUBLIC_KEYS: JSON.stringify([{ kid: 'master', publicKey: master.publicKey }, { kid: 'srv-1', publicKey: srv.publicKey }]) };
+      const call = async (m, p2, corps) => {
+        const r = await P.default.fetch(new Request('https://x' + p2, { method: m, headers: { 'x-skanfact-admin': ADMIN }, body: corps ? JSON.stringify(corps) : undefined }), env);
+        return { status: r.status, j: await r.json() };
+      };
+      try {
+        // Deux licences émises dans SkanFact (clé maître, sans kid — comme toutes celles d'avant
+        // la 8.4.0), la seconde remplaçant la première ; plus une clé invalide, refusée avec sa raison.
+        const k1 = lic.signLicence({ nom: 'Menuiserie Trabelsi', matricule: '1234567A', exp: '2027-03-01' }, master.privateKey);
+        const k2 = lic.signLicence({ nom: 'Menuiserie Trabelsi', matricule: '1234567A', exp: '2028-03-01', offre: 'independant' }, master.privateKey);
+        const charge = [
+          { id: 'LIC-0001', cle: k1, nom: 'Menuiserie Trabelsi', matricule: '1234567A/M/P/000', email: 'contact@trabelsi.tn', offre: 'entreprise', exp: '2027-03-01', emisLe: '2026-03-01',
+            prix: 690, devise: 'TND', remise: 0, remplaceePar: 'LIC-0002', facture: { numero: 'FAC-2026-004', montant: 690, payeeLe: '2026-03-05' } },
+          { id: 'LIC-0002', cle: k2, nom: 'Menuiserie Trabelsi', matricule: '1234567A', offre: 'independant', exp: '2028-03-01', emisLe: '2026-09-01', prix: 390, motif: 'renouvellement', envoyeeLe: '2026-09-02' },
+          { id: 'LIC-0003', cle: 'SKAN1.pas-une-cle', nom: 'X', offre: 'entreprise', emisLe: '2026-09-01' }
+        ];
+        const i1 = await call('POST', '/v1/admin/importer', { licences: charge });
+        assert.strictEqual(i1.status, 200, JSON.stringify(i1.j));
+        assert.strictEqual(i1.j.importees, 2); assert.strictEqual(i1.j.dejaLa, 0);
+        assert.deepStrictEqual(i1.j.ignorees.map(x => x.id), ['LIC-0003']);
+        assert.ok(/clé non vérifiable/.test(i1.j.ignorees[0].raison), 'le refus dit pourquoi : ' + i1.j.ignorees[0].raison);
+        // UN client (même matricule sous deux graphies), deux licences reliées, une vente facturée.
+        assert.strictEqual(db.lire('SELECT COUNT(*) AS n FROM clients')[0].n, 1, 'le client n\'est créé qu\'une fois');
+        assert.strictEqual(db.lire("SELECT remplace_id FROM licences WHERE id = 'LIC-0002'")[0].remplace_id, 'LIC-0001', 'qui remplace qui');
+        assert.strictEqual(db.lire("SELECT kid FROM licences WHERE id = 'LIC-0001'")[0].kid, 'master', 'une clé sans kid est rangée sous master');
+        assert.strictEqual(db.lire("SELECT charge FROM licences WHERE id = 'LIC-0001'")[0].charge, null, 'une clé importée ne se refabrique pas : pas de charge');
+        const v0 = db.lire('SELECT * FROM ventes');
+        assert.strictEqual(v0.length, 1); assert.strictEqual(v0[0].facture_skanfact, 'FAC-2026-004'); assert.strictEqual(v0[0].payee_le, '2026-03-05');
+        assert.ok(db.lire("SELECT envoyee_le FROM licences WHERE id = 'LIC-0002'")[0].envoyee_le, 'l\'envoi déjà fait est retenu');
+        // Rejouer l'envoi ne réécrit rien.
+        const i2 = await call('POST', '/v1/admin/importer', { licences: charge });
+        assert.strictEqual(i2.j.importees, 0); assert.strictEqual(i2.j.dejaLa, 2);
+        assert.strictEqual(db.lire('SELECT COUNT(*) AS n FROM licences')[0].n, 2);
+        // Une vente de la CONSOLE, non facturée : elle ressort avec sa clé, refabriquée à l'identique.
+        const cid = db.lire('SELECT id FROM clients')[0].id;
+        const e = await call('POST', '/v1/admin/licences', { clientId: cid, offre: 'entreprise', duree: '1a', prix: 690 });
+        assert.strictEqual(e.status, 201, JSON.stringify(e.j));
+        const nf = await call('GET', '/v1/admin/ventes?non_facturees=1');
+        assert.strictEqual(nf.status, 200);
+        assert.strictEqual(nf.j.lignes.length, 1, 'seule la vente sans facture ressort');
+        assert.strictEqual(nf.j.lignes[0].cle, e.j.cle, 'la clé accompagne la vente');
+        assert.strictEqual(nf.j.lignes[0].matricule, '1234567A/M/P/000');
+        assert.strictEqual(nf.j.lignes[0].montant_ht, 690);
+        assert.strictEqual((await call('GET', '/v1/admin/ventes')).j.lignes.length, 2, 'sans le drapeau, toutes les ventes — et sans clé');
+        assert.strictEqual((await call('GET', '/v1/admin/ventes')).j.lignes[0].cle, undefined);
+        // SkanFact rend le numéro : la vente sort de la liste, le journal le note, un numéro vide est refusé.
+        assert.strictEqual((await call('POST', '/v1/admin/ventes/' + e.j.vente.id + '/facturee', { numero: '' })).status, 400);
+        const f = await call('POST', '/v1/admin/ventes/' + e.j.vente.id + '/facturee', { numero: 'FAC-2026-031' });
+        assert.strictEqual(f.status, 200); assert.strictEqual(f.j.facture_skanfact, 'FAC-2026-031');
+        assert.strictEqual((await call('GET', '/v1/admin/ventes?non_facturees=1')).j.lignes.length, 0);
+        assert.ok(db.lire("SELECT quoi FROM evenements WHERE quoi = 'vente.facturee'").length === 1);
+        // Un import vide ou informe ne casse rien.
+        assert.strictEqual((await call('POST', '/v1/admin/importer', { licences: 'x' })).j.importees, 0);
+      } finally { db.fermer(); }
     });
 
     // Le fichier à coller dans la console D1. Il est ENGENDRÉ : une seconde copie tenue à la main

@@ -396,7 +396,7 @@ façon la plus courante de ne jamais vendre.
 | ~~**P 0.2**~~ ✅ | émission depuis la console (clé serveur), révocation, ventes, envoi du mail | une vente complète sans ouvrir SkanFact |
 | ~~**8.5.0**~~ ✅ | la clé du serveur se fabrique dans SkanFact ; l'application accepte une clé `srv-1` | une clé de la console se vérifie, si la version embarque `srv-1` |
 | ~~**8.6.0**~~ ✅ | la publique `srv-1` (créée le 15/09/2026) embarquée | une clé émise depuis la console est reconnue chez les clients à jour |
-| **8.7.0** | le pont comptable, migration de `data.licences` | les factures se fabriquent toutes seules |
+| ~~**8.7.0**~~ ✅ | le pont comptable, migration de `data.licences` | les factures se fabriquent toutes seules |
 | *mise en prod* | la clé de réponse recréée et embarquée | la révocation s'applique chez le client |
 | **P 1.0** | console complète, statistiques, journal | on pilote |
 

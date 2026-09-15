@@ -765,32 +765,44 @@ function ecrireVerdict(verdict) {
   } catch { /* un verdict non écrit laisse l'application dans l'état d'avant : c'est le bon défaut */ }
 }
 
-function postPlateforme(corps) {
+// Une requête vers la plateforme. `opts.entetes` porte le secret de l'appelant (celui de
+// l'application, ou celui de l'administrateur pour le pont comptable) ; le corps est du JSON.
+// Résout `{ status, corps }` — c'est l'appelant qui juge le code, parce qu'un 400 du pont porte une
+// phrase à montrer alors qu'un 403 de l'annonce doit rester muet.
+function requetePlateforme(chemin, opts) {
+  const o = opts || {};
   return new Promise((resolve, reject) => {
     let url;
-    try { url = new URL(plateformeBase() + '/v1/licence/etat'); }
+    try { url = new URL(plateformeBase() + chemin); }
     catch (e) { return reject(new Error('adresse du plan de contrôle invalide : ' + (e && e.message))); }
     // En clair, seulement en développement (le faux serveur de `e2e:plateforme`). Une application
     // installée exige https : la clé de licence voyage dans ce corps de requête.
     if (url.protocol !== 'https:' && app.isPackaged) return reject(new Error('le plan de contrôle exige https'));
-    const donnees = Buffer.from(JSON.stringify(corps), 'utf8');
+    const donnees = o.corps === undefined ? null : Buffer.from(JSON.stringify(o.corps), 'utf8');
     const req = require(url.protocol === 'http:' ? 'http' : 'https').request(url, {
-      method: 'POST',
-      timeout: 8000,
-      headers: { 'Content-Type': 'application/json', 'Content-Length': donnees.length, 'X-SkanFact-App': plateformeSecret() }
+      method: o.method || (donnees ? 'POST' : 'GET'),
+      timeout: o.timeout || 8000,
+      headers: { ...(donnees ? { 'Content-Type': 'application/json', 'Content-Length': donnees.length } : {}), ...(o.entetes || {}) }
     }, res => {
       let txt = '';
       res.setEncoding('utf8');
-      res.on('data', c => { txt += c; if (txt.length > 32 * 1024) req.destroy(new Error('réponse démesurée')); });
+      res.on('data', c => { txt += c; if (txt.length > (o.max || 32 * 1024)) req.destroy(new Error('réponse démesurée')); });
       res.on('end', () => {
-        if (res.statusCode !== 200) return reject(new Error('HTTP ' + res.statusCode));
-        try { resolve(JSON.parse(txt)); } catch { reject(new Error('réponse illisible')); }
+        let corps = null;
+        try { corps = JSON.parse(txt); } catch { corps = null; }
+        resolve({ status: res.statusCode, corps });
       });
     });
     req.on('timeout', () => req.destroy(new Error('délai dépassé')));
     req.on('error', reject);
-    req.end(donnees);
+    req.end(donnees || undefined);
   });
+}
+async function postPlateforme(corps) {
+  const r = await requetePlateforme('/v1/licence/etat', { corps, entetes: { 'X-SkanFact-App': plateformeSecret() } });
+  if (r.status !== 200) throw new Error('HTTP ' + r.status);
+  if (!r.corps) throw new Error('réponse illisible');
+  return r.corps;
 }
 
 // Renvoie toujours, ne jette jamais : c'est un appel de confort, pas une étape du démarrage.
@@ -1590,6 +1602,60 @@ ipcMain.handle('editeur:cleServeurCopier', (_e, quoi) => {
   require('electron').clipboard.writeText(fs.readFileSync(chemin, 'utf8'));
   return { ok: true, privee };
 });
+// ---------- le pont comptable (8.7.0, § 11 du plan) ----------
+//
+// SkanFact TIRE les ventes de la console (un serveur ne peut pas écrire dans un logiciel de bureau
+// éteint), fabrique un brouillon de facture par vente, et rend le numéro une fois la facture émise.
+// Le secret d'administration de la console vit sur le poste de l'éditeur, à côté de ses clés
+// (`~/.skanfact/plateforme-admin.json`, mode 0600) : jamais dans les données, jamais dans une
+// sauvegarde, jamais dans un dossier partagé. Sans lui, rien ici ne répond — et rien n'en dépend.
+const PONT_ADMIN = () => path.join(CLES_DIR(), 'plateforme-admin.json');
+const pontSecret = () => String(((lireJson(PONT_ADMIN()) || {}).secret) || '').trim();
+const PONT_MIN = 24;
+// Seuls les chemins de l'espace d'administration, jamais un chemin composé depuis l'écran.
+const PONT_CHEMIN = /^[A-Za-z0-9_-]+(\/[A-Za-z0-9_-]+){0,2}(\?[A-Za-z0-9_=&-]*)?$/;
+async function pontRequete(chemin, corps) {
+  if (!editeurActif()) { const err = new Error('Le pont comptable ne s\'utilise que sur le poste de l\'éditeur.'); err.code = 'PAS_EDITEUR'; throw err; }
+  if (!plateformeBase()) { const err = new Error('Aucune adresse de plan de contrôle dans cette version.'); err.code = 'PAS_DE_BASE'; throw err; }
+  const secret = pontSecret();
+  if (!secret) { const err = new Error('Colle d\'abord le secret d\'administration de la console (Paramètres → L\'application → Éditeur).'); err.code = 'PAS_DE_SECRET'; throw err; }
+  const c = String(chemin || '');
+  if (!PONT_CHEMIN.test(c) || c.includes('..')) { const err = new Error('Chemin refusé.'); err.code = 'CHEMIN'; throw err; }
+  let r;
+  try { r = await requetePlateforme('/v1/admin/' + c, { corps, entetes: { 'X-SkanFact-Admin': secret }, timeout: 15000, max: 4 * 1024 * 1024 }); }
+  catch (e) {
+    // Aucun message brut à l'écran (7.26.0) : « socket hang up » va dans le journal, pas sous les yeux.
+    logToFile('pont ' + c, e);
+    const err = new Error('La console ne répond pas. Vérifie ta connexion, ou réessaie dans un instant.'); err.code = 'RESEAU'; throw err;
+  }
+  if (r.status === 403) { const err = new Error('La console refuse ce secret d\'administration : vérifie-le dans Paramètres → L\'application → Éditeur.'); err.code = 'REFUSE'; throw err; }
+  if (r.status >= 400) { const err = new Error((r.corps && r.corps.erreur) || ('La console a répondu ' + r.status + '.')); err.code = 'HTTP_' + r.status; throw err; }
+  return r.corps;
+}
+ipcMain.handle('pont:status', () => ({ editeur: editeurActif(), base: plateformeBase(), configure: !!pontSecret() }));
+// Enregistrer le secret, puis l'ESSAYER tout de suite : un secret enregistré sans être vérifié se
+// découvre faux le jour où l'on en a besoin. Vide, il s'efface.
+ipcMain.handle('pont:setSecret', async (_e, secret) => {
+  if (!editeurActif()) { const err = new Error('Le pont comptable ne s\'utilise que sur le poste de l\'éditeur.'); err.code = 'PAS_EDITEUR'; throw err; }
+  const s = String(secret || '').trim();
+  if (!s) { try { fs.unlinkSync(PONT_ADMIN()); } catch {} return { configure: false }; }
+  if (s.length < PONT_MIN) { const err = new Error(`Le secret d'administration fait au moins ${PONT_MIN} caractères : celui-ci en a ${s.length}.`); err.code = 'SECRET_COURT'; throw err; }
+  fs.mkdirSync(CLES_DIR(), { recursive: true });
+  // L'ancien secret est gardé sous la main : si le nouveau est refusé, il reprend sa place — un
+  // secret faux ne doit pas remplacer un secret qui marchait, ni rester écrit après un refus.
+  const ancien = fs.existsSync(PONT_ADMIN()) ? fs.readFileSync(PONT_ADMIN(), 'utf8') : null;
+  fs.writeFileSync(PONT_ADMIN(), JSON.stringify({ secret: s }, null, 2), { mode: 0o600 });
+  let etat;
+  try { etat = await pontRequete('etat'); }
+  catch (e) {
+    if (ancien === null) { try { fs.unlinkSync(PONT_ADMIN()); } catch {} }
+    else fs.writeFileSync(PONT_ADMIN(), ancien, { mode: 0o600 });
+    throw e;
+  }
+  return { configure: true, etat };
+});
+ipcMain.handle('pont:requete', (_e, chemin, corps) => pontRequete(chemin, corps));
+
 // Émettre une licence : l'écran envoie les champs, le processus principal vérifie et signe.
 ipcMain.handle('licence:emettre', (_e, p) => {
   if (!editeurActif()) { const err = new Error('Aucune clé privée sur cet ordinateur : crée tes clés dans Paramètres → L\'application → Licence.'); err.code = 'PAS_EDITEUR'; throw err; }

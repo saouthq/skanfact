@@ -1402,13 +1402,19 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
     });
     if (!coherent) throw new Error('une garantie déjà expirée est annoncée comme à venir');
   });
-  await step('lecture de factures : éteinte par défaut, rien ne sort', async () => {
+  // Depuis la 8.7.0 la lecture est en PAUSE : le panneau ne se pose plus dans les Paramètres (ni
+  // sommaire, ni recherche, ni Cmd+K), et le service refuse toujours de lire sans clé.
+  await step('lecture de factures : en pause — aucun panneau, et rien ne sort', async () => {
     await win.evaluate(() => { location.hash = '#/parametres'; });
     await setTab('donnees');
-    await win.waitForSelector('#ocr-panel .vat-box');
-    const panel = await win.textContent('#ocr-panel');
-    if (!/Désactiv/.test(panel)) throw new Error('la lecture devrait être désactivée par défaut : ' + panel.replace(/\s+/g, ' ').slice(0, 200));
-    if (!/rien/.test(panel)) throw new Error('le panneau ne dit pas que rien ne sort');
+    await win.waitForSelector('#set-tabs');
+    await win.waitForTimeout(400);
+    const pose = await win.evaluate(() => ({
+      panneau: !!document.querySelector('#p-ocr') || !!document.querySelector('#ocr-panel'),
+      sommaire: [...document.querySelectorAll('[data-somm]')].some(el => /lecture de factures/i.test(el.textContent || ''))
+    }));
+    if (pose.panneau) throw new Error('le panneau de lecture de photo ne doit plus être posé pendant la pause');
+    if (pose.sommaire) throw new Error('le sommaire des Paramètres propose encore la lecture de factures');
     // le service refuse de lire tant qu'aucune clé n'est enregistrée : c'est la garantie, pas un détail
     const refus = await win.evaluate(async () => {
       try { await window.skanfact.ocrRead('/tmp/inexistant.jpg'); return ''; }

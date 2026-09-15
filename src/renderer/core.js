@@ -676,6 +676,7 @@
     accounts: [],            // comptes de trésorerie : banque, caisse… (v4)
     movements: [],           // mouvements libres : salaires, impôts, apports — ce qui n'a ni facture ni achat
     licences: [],            // licences SkanFact ÉMISES par l'éditeur depuis ce dossier (7.33.0) — vide chez un client
+    pontImporte: '',         // jour où l'historique des licences est parti vers la console (8.7.0) — vide chez un client
     deleted: [],             // pièces supprimées, pour qu'elles ne reviennent pas d'un autre poste (v4)
     conflictArchive: [],     // versions écartées lors d'une fusion : rien n'est détruit sans trace
     closedUntil: '',         // dernier jour clôturé : rien de daté avant ne bouge plus (6.0.0)
@@ -4282,8 +4283,12 @@
     const emise = !!(inv && inv.number);
     const st = inv && emise ? effectiveStatus(inv, data, co) : '';
     const reste = inv && emise ? invoiceBalance(inv, data, co).remaining : 0;
+    // Une licence vendue par la CONSOLE (8.7.0, `origine: 'console'`) a été envoyée par elle, et
+    // c'est elle qui le sait : la date arrive avec la vente, et compte comme un envoi.
+    const envoyeeConsole = (lic && lic.origine === 'console' && lic.envoyeeConsoleLe) || '';
     return {
-      envoyee: envois.length > 0, envoyeeLe: envois.length ? envois[envois.length - 1].date : '',
+      envoyee: envois.length > 0 || !!envoyeeConsole,
+      envoyeeLe: envois.length ? envois[envois.length - 1].date : envoyeeConsole,
       envois: envois.length,
       facture: inv || null, brouillon: !!(inv && !emise), facturee: emise,
       statutFacture: st, reste, payee: emise && reste <= 0
@@ -4295,7 +4300,9 @@
   function licencesAFaire(data, company, todayIso) {
     const t = todayIso || today();
     const vivantes = (data.licences || []).filter(l => l && !l.revoqueeLe && !l.remplaceePar);
-    const jamaisEnvoyees = vivantes.filter(l => !licenceSuivi(l, data, company).envoyee);
+    // L'envoi d'une clé vendue par la console est l'affaire de la console (elle l'envoie au
+    // paiement) : la réclamer ici ferait envoyer deux fois, ou avant que le client ait payé.
+    const jamaisEnvoyees = vivantes.filter(l => l.origine !== 'console' && !licenceSuivi(l, data, company).envoyee);
     const nonFacturees = vivantes.filter(l => { const s = licenceSuivi(l, data, company); return !s.facturee; });
     const impayees = vivantes.filter(l => { const s = licenceSuivi(l, data, company); return s.facturee && !s.payee; });
     return { jamaisEnvoyees, nonFacturees, impayees, expirant: licencesExpirant(data, t) };
@@ -4314,6 +4321,57 @@
         envoyee: suivi.envoyee, envoyeeLe: suivi.envoyeeLe, facturee: suivi.facturee, payee: suivi.payee, resteDu: suivi.reste };
     }).sort((a, b) => (ordre[a.etat] - ordre[b.etat]) || ((a.exp || '9999').localeCompare(b.exp || '9999')) || (a.nom || '').localeCompare(b.nom || ''));
   }
+  // ---------- le pont comptable (8.7.0) ----------
+  //
+  // La console (api.skanfact.tn) vend ; SkanFact facture. Trois choses pures ici, testées sans
+  // Electron : retrouver le client d'une vente, la liste exacte de ce que l'historique envoie UNE
+  // fois à la console, et les factures dont le numéro est à rendre.
+
+  // Le client d'une vente de la console : par les sept chiffres du matricule d'abord (un matricule
+  // s'écrit de dix façons — « MF 1234567A », « 1234567/A/M/000 »), par le nom ensuite, jamais créé
+  // ici : créer est une décision de l'appelant.
+  const chiffresMatricule = s => { const m = String(s || '').toUpperCase().match(/\d{7}/); return m ? m[0] : ''; };
+  function clientPourVente(clients, vente) {
+    const liste = clients || [];
+    const ch = chiffresMatricule(vente && vente.matricule);
+    if (ch) { const c = liste.find(x => chiffresMatricule(x.matricule) === ch); if (c) return c; }
+    const nom = String((vente && vente.client) || '').trim().toLowerCase();
+    if (nom) { const c = liste.find(x => String(x.name || '').trim().toLowerCase() === nom); if (c) return c; }
+    return null;
+  }
+
+  // Ce que l'historique envoie à la console au premier branchement : les licences émises DANS
+  // SkanFact (jamais celles qui en viennent — elle les connaît déjà). Chaque champ est nommé :
+  // un test compte ce qui part, et rien d'autre ne doit s'y glisser.
+  function chargeHistorique(data, company) {
+    const co = company || data.company || {};
+    return (data.licences || []).filter(l => l && l.key && l.origine !== 'console').map(l => {
+      const inv = l.invoiceId ? (data.documents || []).find(d => d.id === l.invoiceId) : null;
+      const client = l.clientId ? (data.clients || []).find(c => c.id === l.clientId) : null;
+      const suivi = licenceSuivi(l, data, co);
+      let facture = null;
+      if (inv && inv.number) {
+        facture = { numero: inv.number, montant: round3(computeTotals(inv, co).netHT), payeeLe: suivi.payee ? derniereDatePaiement(inv) : '' };
+      }
+      return {
+        id: l.id, cle: l.key, nom: l.nom || (client ? client.name : ''), matricule: l.matricule || (client ? client.matricule : '') || '',
+        email: (client && client.email) || '', offre: l.offre || 'entreprise', exp: l.exp || '', emisLe: l.emisLe || '',
+        cabinet: l.cabinet || '', prix: Number(l.prix) || 0, devise: (inv && inv.currency) || co.currency || 'TND',
+        remise: inv ? Number(inv.discountRate) || 0 : 0, motif: l.motif || '', remplaceePar: l.remplaceePar || '',
+        revoqueeLe: l.revoqueeLe || '', revoqueeMotif: l.revoqueeMotif || '', envoyeeLe: suivi.envoyeeLe || '', facture
+      };
+    });
+  }
+  function derniereDatePaiement(inv) {
+    const dates = (inv.payments || []).map(p => p.date).filter(Boolean).sort();
+    return dates.length ? dates[dates.length - 1] : '';
+  }
+
+  // Les factures issues d'une vente de la console, émises, dont le numéro n'a pas encore été rendu.
+  function facturesAAnnoncer(data) {
+    return (data.documents || []).filter(d => d && d.type === 'facture' && d.venteConsoleId && d.number && !d.factureeAnnoncee);
+  }
+
   // Les licences qui finissent dans les trente jours et qu'on n'a pas encore renouvelées.
   function licencesExpirant(data, todayIso) {
     return licenceRows(data, todayIso).filter(l => l.etat === 'bientot' && !l.renouvelee && !l.revoqueeLe);
@@ -5709,6 +5767,7 @@
     MODULES_PAR_ACTIVITE, modulesSuggeres, wipeData, rendreLesEmprunts, estDemo, firstSteps, liste, defaultVat, newLine,
     canalDe, estBeta, pastilleLicence, empreinteCabinet, licencesDuCabinet,
     LICENCE_MOTIFS, prorataOffre, licenceSuivi, licencesAFaire,
-    LICENCE_PREAVIS, licenceEtat, licenceRows, licencesExpirant
+    LICENCE_PREAVIS, licenceEtat, licenceRows, licencesExpirant,
+    clientPourVente, chargeHistorique, facturesAAnnoncer
   };
 });

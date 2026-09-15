@@ -43,7 +43,7 @@
 // d'une réponse doit changer, /v2/ naîtra à côté pendant que /v1/ continuera de répondre.
 const ACTIONS = {
   licence: ['etat'],
-  admin: ['etat', 'stats', 'clients', 'licences', 'activations', 'ventes', 'evenements']
+  admin: ['etat', 'stats', 'clients', 'licences', 'activations', 'ventes', 'evenements', 'importer']
 };
 const SOUS_ACTIONS = ['revoquer', 'renouveler', 'changer-offre', 'envoyer', 'payee', 'facturee'];
 const SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
@@ -421,6 +421,39 @@ export function nettoyerEmission(corps, depuis) {
   };
 }
 
+// Une licence de l'historique de SkanFact, telle que l'application l'envoie au premier branchement.
+// Ce qui ne passe pas est REFUSÉ avec sa raison (pas mis à null) : ici on importe des ventes, et
+// une vente à moitié importée serait pire qu'une vente absente.
+export function nettoyerImport(l) {
+  const c = l && typeof l === 'object' ? l : {};
+  const id = String(c.id || '').trim();
+  if (!/^[A-Za-z0-9_-]{4,40}$/.test(id)) return { ok: false, erreur: 'identifiant manquant ou douteux' };
+  const cle = String(c.cle || '').trim();
+  if (!cle.startsWith('SKAN1.')) return { ok: false, erreur: 'clé absente' };
+  const offre = OFFRES[c.offre] ? String(c.offre) : 'entreprise';
+  const emisLe = dateValide(c.emisLe) ? c.emisLe : null;
+  if (!emisLe) return { ok: false, erreur: 'date d\'émission illisible' };
+  const exp = c.exp ? String(c.exp) : '';
+  if (exp && !dateValide(exp)) return { ok: false, erreur: 'date de fin illisible' };
+  const prix = Number(c.prix); const remise = Number(c.remise) || 0;
+  const facture = c.facture && typeof c.facture === 'object' && (c.facture.numero || Number.isFinite(Number(c.facture.montant)))
+    ? { numero: texteNet(c.facture.numero, 40), montant: Number(c.facture.montant) || 0, payeeLe: dateValide(c.facture.payeeLe) ? c.facture.payeeLe : '' }
+    : null;
+  const cabinet = String(c.cabinet || '').toLowerCase().replace(/[\s:.-]/g, '');
+  return {
+    ok: true,
+    l: {
+      id, cle, offre, emisLe, exp,
+      nom: texteNet(c.nom, 120) || '', matricule: (texteNet(c.matricule, 30) || '').toUpperCase() || '', email: texteNet(c.email, 200),
+      prix: Number.isFinite(prix) && prix >= 0 ? prix : null, devise: String(c.devise || 'TND').toUpperCase().slice(0, 3) || 'TND',
+      remise: remise >= 0 && remise <= 100 ? remise : 0, cabinet: CABINET.test(cabinet) ? cabinet : '',
+      motif: ['renouvellement', 'offre', 'matricule'].includes(c.motif) ? c.motif : '',
+      revoqueeLe: dateValide(c.revoqueeLe) ? c.revoqueeLe : '', revoqueeMotif: texteNet(c.revoqueeMotif, 200) || '',
+      envoyeeLe: dateValide(c.envoyeeLe) ? c.envoyeeLe : '', facture
+    }
+  };
+}
+
 // ---------- la clé : ce que le serveur signe ----------
 // Le contenu d'une licence, dans l'ORDRE où l'application le lit (src/licence.js, `signLicence` et
 // `licence:emettre` dans main.js). `format: 2` porte les champs de PLAN-PLATEFORME.md § 5 : `kid`
@@ -680,11 +713,24 @@ async function repondreAdmin(r, request, env) {
         ' ORDER BY a.derniere_fois DESC LIMIT 500') });
     }
     if (r.action === 'ventes') {
-      return json({ lignes: await tous(
+      // `?non_facturees=1` : le pont comptable (§ 11). SkanFact TIRE les ventes qui n'ont pas encore
+      // de facture, et reçoit avec chacune la clé (refabriquée) pour tenir son miroir local — un
+      // serveur ne peut pas écrire dans un logiciel de bureau éteint, c'est lui qui vient chercher.
+      const nonFacturees = new URL(request.url).searchParams.get('non_facturees') === '1';
+      const lignes = await tous(
         'SELECT v.id, v.client_id, v.licence_id, v.montant_ht, v.tva, v.devise, v.payee_le, v.moyen, v.facture_skanfact, v.importee_le,' +
-        ' c.nom AS client, c.email, l.offre, l.fin, l.envoyee_le, l.revoquee_le' +
+        ' c.nom AS client, c.matricule, c.email, l.offre, l.fin, l.debut, l.kid, l.emise_le, l.prix, l.remise, l.cabinet_empreinte, l.envoyee_le, l.revoquee_le,' +
+        ' l.empreinte, l.charge IS NOT NULL AS resignable' +
         ' FROM ventes v LEFT JOIN clients c ON c.id = v.client_id LEFT JOIN licences l ON l.id = v.licence_id' +
-        ' ORDER BY COALESCE(v.payee_le, \'\') ASC, v.rowid DESC LIMIT 500') });
+        (nonFacturees ? ' WHERE v.facture_skanfact IS NULL' : '') +
+        ' ORDER BY COALESCE(v.payee_le, \'\') ASC, v.rowid DESC LIMIT 500');
+      if (nonFacturees) {
+        for (const v of lignes) {
+          const cle = v.licence_id ? await cleDeLicence(env, { id: v.licence_id, kid: v.kid, empreinte: v.empreinte, resignable: v.resignable }) : { cle: '' };
+          v.cle = cle.cle || '';
+        }
+      }
+      return json({ lignes });
     }
     if (r.action === 'evenements') {
       return json({ lignes: await tous(
@@ -773,6 +819,53 @@ async function repondreAdmin(r, request, env) {
       return json({ ok: true, envoyee_le: maintenant, a: l.email });
     }
     return json({ erreur: 'Introuvable.' }, 404);
+  }
+
+  // L'historique de SkanFact, envoyé UNE fois au premier branchement (§ 11) : les licences émises
+  // sur le poste de l'éditeur avant que la console sache vendre. Rien n'est réécrit — une
+  // empreinte déjà connue est laissée telle quelle — et chaque refus est nommé, jamais muet.
+  if (r.action === 'importer' && !r.id) {
+    const liste = Array.isArray(corps && corps.licences) ? corps.licences.slice(0, 500) : [];
+    const cles = lireCles(env);
+    if (!cles.length) return json({ erreur: 'Plateforme mal réglée (aucune clé publique).' }, 503);
+    const bilan = { importees: 0, dejaLa: 0, ignorees: [] };
+    const ids = new Map();   // id SkanFact → id en base, pour relier les remplacements
+    for (const l of liste) {
+      const n = nettoyerImport(l);
+      if (!n.ok) { bilan.ignorees.push({ id: String((l && l.id) || '?'), raison: n.erreur }); continue; }
+      const v = await verifierLicence(n.l.cle, cles);
+      if (!v.ok) { bilan.ignorees.push({ id: n.l.id, raison: 'clé non vérifiable : ' + v.raison }); continue; }
+      const empreinte = await empreinteCle(n.l.cle);
+      const deja = await un('SELECT id FROM licences WHERE empreinte = ? OR id = ?', empreinte, n.l.id);
+      if (deja) { bilan.dejaLa++; ids.set(n.l.id, deja.id); continue; }
+      // Le client : par matricule d'abord (unique), par nom ensuite ; créé sinon.
+      let client = n.l.matricule ? await un('SELECT id FROM clients WHERE matricule = ?', n.l.matricule) : null;
+      if (!client && n.l.nom) client = await un('SELECT id FROM clients WHERE nom = ?', n.l.nom);
+      if (!client) {
+        const cid = 'cli_' + idCourt();
+        await executer('INSERT INTO clients (id, nom, matricule, email, cree_le) VALUES (?, ?, ?, ?, ?)', cid, n.l.nom || 'Client importé', n.l.matricule || null, n.l.email || null, maintenant);
+        client = { id: cid };
+      }
+      const ok = await executer(
+        'INSERT INTO licences (id, client_id, kid, empreinte, offre, postes, debut, fin, prix, devise, remise, cabinet_empreinte,' +
+        ' emise_le, remplacee_motif, revoquee_le, revoquee_motif, envoyee_le, charge) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        n.l.id, client.id, v.kid, empreinte, n.l.offre, null, n.l.emisLe, n.l.exp || null, n.l.prix, n.l.devise, n.l.remise, n.l.cabinet || null,
+        n.l.emisLe + 'T00:00:00.000Z', n.l.motif || null, n.l.revoqueeLe || null, n.l.revoqueeMotif || null, n.l.envoyeeLe ? n.l.envoyeeLe + 'T00:00:00.000Z' : null, null);
+      if (!ok) { bilan.ignorees.push({ id: n.l.id, raison: 'la base a refusé l\'écriture' }); continue; }
+      ids.set(n.l.id, n.l.id);
+      if (n.l.facture) {
+        await executer('INSERT INTO ventes (id, client_id, licence_id, montant_ht, tva, devise, payee_le, moyen, facture_skanfact, importee_le) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          'v_' + idCourt(), client.id, n.l.id, n.l.facture.montant, null, n.l.devise, n.l.facture.payeeLe || null, null, n.l.facture.numero || null, maintenant);
+      }
+      await journaliser(env, 'licence.importee', { client_id: client.id, licence_id: n.l.id, detail: OFFRES[n.l.offre].label + ' — émise dans SkanFact le ' + n.l.emisLe });
+      bilan.importees++;
+    }
+    // Second passage : qui remplace qui. L'ordre d'arrivée ne garantit rien.
+    for (const l of liste) {
+      const de = ids.get(String((l && l.id) || '')), vers = l && l.remplaceePar ? ids.get(String(l.remplaceePar)) : null;
+      if (de && vers) await executer('UPDATE licences SET remplace_id = ? WHERE id = ? AND remplace_id IS NULL', de, vers);
+    }
+    return json(bilan);
   }
 
   if (r.action === 'ventes' && r.id && r.sous) {
