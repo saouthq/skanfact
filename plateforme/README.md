@@ -26,9 +26,30 @@ Dans le tableau de bord Cloudflare : **Storage & Databases → D1 → Create dat
 
 - Nom : `skanfact`
 
-Une fois créée, onglet **Console**, colle le contenu de `plateforme/schema.sql` et exécute.
+Une fois créée, onglet **Console**.
+
+> ⚠️ **Colle le TEXTE des instructions, pas le nom d'un fichier.** Taper `plateforme/schema.sql`
+> dans ce champ donne `near "plateforme": syntax error` — la console attend du SQL, elle ne sait
+> pas ouvrir un fichier de ton dépôt.
+
+Le fichier à utiliser est **`plateforme/schema-a-coller.sql`**, et pas `schema.sql` : il porte les
+mêmes instructions **sans aucun commentaire, une par ligne**. La raison est un piège réel — le champ
+de la console D1 est sur **une seule ligne**. Un texte multiligne collé dedans voit ses retours à la
+ligne écrasés, et le premier `--` met alors en commentaire **tout le reste** : tu croirais avoir
+créé six tables, tu en aurais créé une, et **aucune erreur ne s'afficherait**.
+
+Essaie d'abord de tout coller d'un coup. Si la console refuse, colle les **12 lignes une par une** :
+chacune est une instruction complète et se termine par `;`.
+
+Pour vérifier, tape `/tables` : tu dois voir `clients`, `licences`, `activations`, `ventes`,
+`jetons`, `evenements`.
+
 C'est gratuit jusqu'à 5 Go et 5 millions de lectures par jour — très loin devant ce dont tu as
 besoin.
+
+*(`schema.sql` reste la source commentée, celle qui explique pourquoi chaque table est faite ainsi.
+`schema-a-coller.sql` en est engendré par `node scripts/plateforme-sql.js`, qui l'exécute dans un
+vrai SQLite avant de l'écrire ; un test vérifie que les deux ne divergent pas.)*
 
 ## 2. Créer le worker
 

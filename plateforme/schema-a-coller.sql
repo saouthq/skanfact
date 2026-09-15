@@ -1,0 +1,12 @@
+CREATE TABLE IF NOT EXISTS clients ( id TEXT PRIMARY KEY, nom TEXT NOT NULL, matricule TEXT, email TEXT, tel TEXT, adresse TEXT, notes TEXT, cree_le TEXT NOT NULL );
+CREATE INDEX IF NOT EXISTS idx_clients_matricule ON clients(matricule);
+CREATE TABLE IF NOT EXISTS licences ( id TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES clients(id), kid TEXT NOT NULL, empreinte TEXT NOT NULL, offre TEXT NOT NULL, postes INTEGER, debut TEXT NOT NULL, fin TEXT, prix REAL, devise TEXT, remise REAL, cabinet_empreinte TEXT, emise_le TEXT NOT NULL, remplace_id TEXT REFERENCES licences(id), remplacee_motif TEXT, revoquee_le TEXT, revoquee_motif TEXT );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_licences_empreinte ON licences(empreinte);
+CREATE INDEX IF NOT EXISTS idx_licences_client ON licences(client_id);
+CREATE TABLE IF NOT EXISTS activations ( id TEXT PRIMARY KEY, licence_id TEXT REFERENCES licences(id), empreinte TEXT NOT NULL, device_id TEXT NOT NULL, device_nom TEXT, plateforme TEXT, version TEXT, premiere_fois TEXT NOT NULL, derniere_fois TEXT NOT NULL );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_activ_unique ON activations(empreinte, device_id);
+CREATE TABLE IF NOT EXISTS ventes ( id TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES clients(id), licence_id TEXT REFERENCES licences(id), montant_ht REAL NOT NULL, tva REAL, devise TEXT NOT NULL, payee_le TEXT, moyen TEXT, facture_skanfact TEXT, importee_le TEXT );
+CREATE INDEX IF NOT EXISTS idx_ventes_afacturer ON ventes(facture_skanfact);
+CREATE TABLE IF NOT EXISTS jetons ( id TEXT PRIMARY KEY, nom TEXT NOT NULL, empreinte TEXT NOT NULL UNIQUE, cree_le TEXT NOT NULL, dernier_usage TEXT, revoque_le TEXT );
+CREATE TABLE IF NOT EXISTS evenements ( id INTEGER PRIMARY KEY AUTOINCREMENT, quand TEXT NOT NULL, quoi TEXT NOT NULL, client_id TEXT, licence_id TEXT, detail TEXT, par_qui TEXT );
+CREATE INDEX IF NOT EXISTS idx_evt_quand ON evenements(quand);

@@ -9214,6 +9214,46 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       const jetons = code.slice(code.indexOf('CREATE TABLE IF NOT EXISTS jetons'));
       assert.ok(/empreinte/.test(jetons) && !/\bjeton\s+TEXT/.test(jetons), 'le jeton lui-même ne doit pas être stocké');
     });
+
+    // Le fichier à coller dans la console D1. Il est ENGENDRÉ : une seconde copie tenue à la main
+    // diverge toujours (7.29.0), et celle-ci porte le schéma d'une base qu'on ne peut pas corriger
+    // après coup sans migration.
+    t('plateforme : le schéma à coller suit sa source, et ne peut pas être tronqué', () => {
+      const gen = require(path.join(__dirname, '..', 'scripts', 'plateforme-sql.js'));
+      const source = fs.readFileSync(gen.SOURCE, 'utf8');
+      const fichier = fs.readFileSync(gen.SORTIE, 'utf8');
+      assert.strictEqual(fichier, gen.aColler(source),
+        'plateforme/schema-a-coller.sql a dérivé de schema.sql — relancer : node scripts/plateforme-sql.js');
+
+      // La console D1 est un champ d'UNE SEULE LIGNE : coller un texte multiligne écrase les
+      // retours à la ligne, et le premier « -- » met en commentaire TOUT le reste. On croit avoir
+      // créé six tables, on en a créé une, et rien ne s'affiche. C'est l'échec silencieux le plus
+      // coûteux possible ici.
+      assert.ok(!fichier.includes('--'), 'aucun commentaire dans le fichier à coller');
+      // D1 refuse les PRAGMA dans une requête : une ligne qu'on ne peut pas exécuter n'a rien à
+      // faire dans un fichier qu'on demande à quelqu'un de coller.
+      assert.ok(!/PRAGMA/i.test(fichier), 'aucun PRAGMA : D1 les refuse');
+      // On retire les commentaires AVANT de juger la source — sinon le commentaire qui explique
+      // « pas de PRAGMA ici » fait tomber le test à lui tout seul (6.8.0, re-rencontré). Et on
+      // vérifie que le nettoyage n'a pas mangé le code au passage.
+      const sourceCode = source.replace(/--[^\n]*/g, '');
+      assert.ok(sourceCode.includes('CREATE TABLE'), 'le nettoyage des commentaires a mangé le code');
+      assert.ok(!/PRAGMA/i.test(sourceCode), 'et la source non plus, sinon la prochaine génération le remet');
+
+      // Une instruction par ligne, chacune complète : c'est ce qui permet de les coller une à une
+      // quand la console refuse le paquet entier.
+      const lignes = fichier.trim().split('\n');
+      assert.ok(lignes.length >= 10, 'trop peu d\'instructions : ' + lignes.length);
+      lignes.forEach((l, i) => {
+        assert.ok(l.endsWith(';'), 'instruction ' + (i + 1) + ' non terminée');
+        assert.ok(!l.includes('\n') && l.trim() === l, 'instruction ' + (i + 1) + ' mal recollée');
+        assert.ok(/^CREATE (TABLE|UNIQUE INDEX|INDEX)/.test(l), 'instruction inattendue : ' + l.slice(0, 40));
+      });
+      // Les six tables du schéma doivent toutes y être : une table oubliée ne se verrait qu'au
+      // premier enregistrement, des semaines plus tard.
+      ['clients', 'licences', 'activations', 'ventes', 'jetons', 'evenements'].forEach(tbl =>
+        assert.ok(fichier.includes('CREATE TABLE IF NOT EXISTS ' + tbl + ' '), 'table absente du fichier à coller : ' + tbl));
+    });
   }
 
   console.log(`\n${n} tests OK`);

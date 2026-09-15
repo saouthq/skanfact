@@ -15,7 +15,9 @@
 -- Les dates sont des jours du calendrier (AAAA-MM-JJ), jamais des instants, sauf les colonnes
 -- nommées `_le` qui portent un horodatage ISO complet. Règle 5.2.3.
 
-PRAGMA foreign_keys = ON;
+-- Pas de PRAGMA ici : D1 les refuse dans une requête (« not authorized »), et les clés étrangères
+-- y sont de toute façon actives. Une ligne qu'on ne peut pas exécuter n'a rien à faire dans un
+-- fichier qu'on demande à quelqu'un de coller.
 
 -- ---------- les clients ----------
 CREATE TABLE IF NOT EXISTS clients (
