@@ -1444,6 +1444,20 @@ qui manque, mesuré dans le dépôt le 15/09/2026, et ce qu'on en fait.*
   d'une application mobile) ; les applications non signées (le jour où ça vend) ; la version de
   Node non verrouillée pour l'installeur (petit). Cette liste vit dans les Issues GitHub dès que le
   point 7 est accepté ; en attendant, ici.
+- **Le projet respecte-t-il « toutes les recommandations » ?** Non, et aucun projet ne le fait :
+  ce n'est pas un état, c'est un écart qu'on mesure. Sur l'échelle usuelle de maturité
+  (improvisé → répétable → défini → mesuré → optimisé), au 15/09/2026 : *architecture* défini ;
+  *tests* mesuré ; *qualité du code* répétable (aucun outil ne le lit) ; *sécurité* défini ;
+  *fiabilité* défini (sans garde-fou d'erreur global) ; *publication* mesuré (sans intégration
+  continue) ; *documentation* optimisée en volume, définie en organisation ; *méthode* défini ;
+  *ergonomie* mesuré (l'accessibilité jamais regardée) ; *performance* improvisé ; *observation*
+  improvisé par choix ; *juridique* improvisé. Par rapport à un projet ordinaire de cette taille :
+  nettement au-dessus sur les tests, la documentation, les données et l'ergonomie ; nettement en
+  dessous sur l'outillage automatique (intégration continue, lint). Le biais à connaître : le
+  même auteur écrit le code et les tests, donc il partage ses angles morts avec eux — d'où « un
+  test se prouve en réintroduisant le défaut », les relecteurs indépendants, et le pilote. Après
+  l'outillage de la 9.1.0, tout passe à « défini » ou « mesuré » sauf le juridique, qui ne dépend
+  pas du code. Cette auto-évaluation se refait à chaque version d'entretien.
 - **Ce qui ne manque pas, et qu'on ne fera pas.** Un bundler ou un framework (React) : le code lu
   est le code qui tourne, c'est une force pour un projet tenu par une personne et une IA. Une base
   de données : les fichiers JSON suffisent à la taille visée et se sauvegardent en copiant. Une
