@@ -110,7 +110,10 @@ La fiche d'un dossier gagne un bloc **Comptabilité** : livre-journal (filtre pa
 centralisateur), grand livre (compte par compte, solde progressif), balance (générale, auxiliaire,
 six totaux, équilibre), lettrage (ce qui reste ouvert). Tout est lu dans les `ecritures.csv` des
 paquets de la période. Un mois manquant ou provisoire se dit sur chaque onglet. Le module partagé
-`compta.js` naît ici, et le test « même balance que l'app entreprise » avec lui.
+`compta.js` naît ici, et le test « même balance que l'app entreprise » avec lui. Côté entreprise, la
+même version pose le module Comptabilité masqué par défaut et l'option `compta` dans la clé de
+licence (décision du 15/09/2026, `DIRECTION.md` § 5.L). Le détail de chaque version — contenu,
+exclusions, dépendances, preuve — est au § 13 de `QUESTIONS.md`.
 *C'est la réponse directe aux deux termes du comptable : mouvement de compte, écriture au journal.*
 
 ### 9.2.0 — Le livre du dossier *(le Cabinet tient ses propres écritures)*
