@@ -1128,6 +1128,61 @@ question ne surgisse pendant le développement sans avoir sa réponse ici.*
 
 ## 13. La bêta : comment on s'en sert
 
+### Avant la bêta : le mode développement
+
+- **Où Claude développe-t-il ?** Dans son propre environnement (une machine Linux avec un écran
+  virtuel), sur une branche de travail (`claude/…`), jamais directement sur `main`. Il lance
+  l'application avec `npm start` (et `npm run start:cabinet` pour le Cabinet) : en mode
+  développement, l'application écrit dans un dossier de données **à part** (« SkanFact (essais) »,
+  « SkanFact Cabinet (essais) »), jamais dans les vraies données. C'est un accident de la 6.7.3 qui
+  a imposé cette séparation. **Livré.**
+- **Qu'est-ce que le mode développement change d'autre ?** Les clés : une application en
+  développement peut lire une clé publique d'essai à la place de la vraie (`SKANFACT_CLE_EMBARQUEE`)
+  et signer avec une clé privée d'essai dans un dossier isolé (`SKANFACT_DOSSIER_CLES`), pour jouer
+  l'éditeur et le client sans toucher aux vraies clés. La plateforme : une adresse locale
+  (`SKANFACT_PLATEFORME_BASE`) où tourne le vrai worker sur une base SQLite. Les outils de
+  développement (menu Affichage) s'ouvrent, et le chien de garde se détache pendant qu'ils sont
+  ouverts. **Une application installée ignore toutes ces variables** : elle lit toujours sa propre
+  clé, et un test relit cette garde. **Livré.**
+- **Que vérifie Claude avant de proposer une bêta ?** Dans l'ordre : `npm test` ; les tests de
+  source ; les e2e concernés, puis tous les parcours si une refonte a eu lieu ; les captures
+  d'écran de toutes les pages (`npm run e2e:captures` photographie les vingt pages en état vierge
+  et en état exemple, aux deux largeurs) qu'il regarde une par une et peut t'envoyer ; et, pour
+  tout ce qui touche à l'argent, aux clés ou aux chiffres comptables, une relecture adversariale.
+  Rien ne part en bêta avec un test rouge. **Décidé.**
+- **Comment teste-t-on la plateforme sans toucher à la vraie ?** Le vrai code du worker tourne sur
+  une base SQLite locale dans les tests (`e2e:console`, `e2e:plateforme`, `e2e:pont`) ; on ne
+  teste jamais contre `api.skanfact.tn`. Un défaut de la vraie base se reproduit sur une copie.
+  **Livré.**
+- **Comment teste-t-on une migration de données ?** Sur le jeu d'exemple (24 mois, tous les cas),
+  et demain sur des fichiers anciens conservés, un par version majeure (§ 14). Jamais sur les
+  données d'un client. Toi, tu peux tester une migration sur une **copie** de tes vraies données :
+  Paramètres → Sécurité et données → Exporter, puis Importer dans une version d'essai (ci-dessous).
+- **Et toi, comment essayer une version avant la bêta, sans taper de commande ?** Aujourd'hui, deux
+  moyens, et aucun n'est bon : les captures d'écran que Claude t'envoie (tu regardes, tu ne
+  cliques pas), et `Installer SkanFact.command`, qui construit depuis les sources mais **remplace**
+  l'application installée et travaille sur tes vraies données — c'est un secours en cas de panne
+  de publication, pas un banc d'essai. **À construire, avec le canal `cabinet-beta`, avant la
+  9.1.0** : une **version d'essai à côté**. Un workflow « Construire un essai » sur GitHub (onglet
+  Actions, un clic, gratuit sur un dépôt public) fabrique « SkanFact Essais » et « SkanFact Cabinet
+  Essais » pour Mac et Windows : un autre nom, une autre icône, un dossier de données à part,
+  **sans mise à jour automatique**, téléchargeables depuis la page du run et installables **à côté**
+  de la vraie application. Tu y charges le jeu d'exemple ou une copie exportée de tes données, tu
+  cliques partout, et tu ne risques rien. C'est ce qui te permet de dire « c'est bon pour la bêta »
+  avant qu'un pilote la reçoive.
+- **Essai, bêta, stable : la différence en une ligne.** L'**essai** est une construction à part,
+  sur des données à part, sans mise à jour, pour regarder et cliquer sans risque. La **bêta** est la
+  vraie application, sur les vraies données, chez ceux qui l'ont demandée. La **stable** est pour
+  tout le monde. Une version passe par les trois, dans cet ordre. **Décidé.**
+- **La routine de Claude pour une version, du début à la fin.** (1) Décrire la version ici et dans
+  le plan (contenu, exclusions, dépendances, preuve). (2) Construire sur une branche, tests verts
+  à chaque étape. (3) Captures envoyées à Skander, corrections. (4) Construction d'essai pour
+  Skander (et le pilote s'il veut), retours, corrections. (5) Bêta (§ ci-dessous). (6) Stable.
+  (7) Règles apprises écrites dans `CLAUDE.md`, ce document mis à jour si une question a surgi.
+  **Décidé.**
+
+### La bêta
+
 - **C'est quoi, une bêta ?** Une version d'essai, numérotée `9.1.0-beta.1`, publiée **avant** la
   version stable, que seuls reçoivent ceux qui ont coché « Recevoir les versions bêta ». Elle sert
   à faire tourner une nouveauté chez quelques personnes réelles avant de la donner à tout le monde.
@@ -1303,8 +1358,9 @@ grandeur de construction, hors attente des réponses.*
 - **Partagé.** `compta.js` extrait de `core.js` (grand livre, balance, journal, centralisateur,
   lettrage, états, à-nouveaux, plan comptable, libellés de comptes), rechargé par les deux
   applications, `core.js` inchangé pour ses appelants.
-- **Publication.** Le canal `cabinet-beta` (§ 13) est construit en premier, pour que la 9.1.0
-  puisse partir en bêta chez le pilote avant d'être stable.
+- **Publication.** Construits en premier, avant le reste de la version : le canal `cabinet-beta`
+  et le workflow « Construire un essai » (§ 13), pour que la 9.1.0 puisse être essayée par Skander
+  à côté de sa vraie application, puis partir en bêta chez le pilote, puis en stable.
 - **Exclu.** Aucune saisie, aucun livre propre au dossier, aucune modification des paquets.
 - **Preuve.** Test de parité (même balance au millime) ; e2e `cabinet-livres` (les quatre onglets
   sur un vrai paquet, le mois manquant annoncé) ; e2e `boucle` relancé ; test « module désactivé
@@ -1592,6 +1648,9 @@ n'est pas obligatoire) ; l'interface en arabe ; un autre pays.
     publiée : un défaut se corrige par une version par-dessus.
 19. Une version ne casse jamais ce qu'une précédente a écrit : données, paquets, clés, réglages,
     pièces émises.
+20. On ne développe ni ne teste jamais sur de vraies données : le mode développement, les tests et
+    les constructions d'essai travaillent dans des dossiers à part. Une version passe par l'essai,
+    la bêta, puis la stable.
 
 ---
 

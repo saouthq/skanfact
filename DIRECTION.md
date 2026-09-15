@@ -336,7 +336,7 @@ remplacées). Le site et l'aide suivent les versions.
 | Étape | Quoi | Dépend de |
 |---|---|---|
 | 0 | Ce document ; les plans corrigés ; la décision « masquer ou supprimer » ; les questions au comptable et à l'Ordre posées | Skander |
-| 1 | **9.1.0** — d'abord le canal `cabinet-beta` (le Cabinet n'a pas de bêta aujourd'hui) ; puis les livres lus dans les paquets (livre-journal, grand livre, balance, lettrage) ; `compta.js` extrait ; test de parité ; côté entreprise, le module Comptabilité masqué par défaut et l'option `compta` dans la clé. Bêta chez le pilote, puis stable (`QUESTIONS.md` § 13 et § 14 pour la bêta et l'entretien) | rien |
+| 1 | **9.1.0** — d'abord le canal `cabinet-beta` (le Cabinet n'a pas de bêta aujourd'hui) et le workflow « Construire un essai » (des applications d'essai installables à côté des vraies, sans mise à jour, sur des données à part) ; puis les livres lus dans les paquets (livre-journal, grand livre, balance, lettrage) ; `compta.js` extrait ; test de parité ; côté entreprise, le module Comptabilité masqué par défaut et l'option `compta` dans la clé. Bêta chez le pilote, puis stable (`QUESTIONS.md` § 13 et § 14 pour la bêta et l'entretien) | rien |
 | 2 | **9.2.0** — le livre propre à chaque dossier, un fichier par dossier, plan SCE complet, import du paquet EN écritures, reprise par balance d'ouverture | le plan de comptes du comptable, son logiciel actuel |
 | 3 | **9.3.0** — la saisie, brouillard/validation, guides, abonnements, piste d'audit | le regarder saisir |
 | 4 | **P 0.3 + 9.3.x** — la licence du Cabinet : clé, quota, comptage, garde-fou, écran, console, licence dans le manifeste, `e2e:cabinet-licence` | l'Ordre (avant de vendre, pas avant de construire) |
