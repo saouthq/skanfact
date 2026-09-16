@@ -7,6 +7,61 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 9.2.0 — 16/09/2026
+
+**Le livre du dossier, et le paquet signé.** Côté cabinet, chaque dossier a
+désormais SON livre comptable : les écritures qu'on y valide, celles qu'on y
+saisit, les lettrages. Et le paquet mensuel est enfin **signé** par le client qui
+l'envoie.
+
+### Le paquet est signé — le trou que trois relectures extérieures ont pointé
+
+Jusqu'ici, un paquet était **chiffré** mais pas **signé**, et ce n'est pas la même
+chose. Le chiffrement dit « seul mon comptable peut lire ceci ». Il ne dit pas
+« ça vient bien de moi » — et comme il n'utilise que la clé *publique* du cabinet,
+celle que ton comptable donne à tous ses clients, n'importe qui la tenant pouvait
+lui envoyer un paquet à ton nom. Il l'aurait importé sans un mot.
+
+- SkanFact crée maintenant une paire de clés **au premier envoi**, dans le dossier
+  de ton entreprise (jamais dans tes données, donc jamais dans un export ni dans
+  le paquet), et signe le manifeste de chaque paquet avec elle.
+- Le cabinet vérifie, puis **épingle** ta clé au premier paquet signé. Tout ce qui
+  suivra lui sera comparé : un paquet signé par une autre clé est refusé en
+  nommant les deux empreintes, et la reprise passe par l'empreinte dite de vive
+  voix — jamais par une acceptation automatique.
+- Un paquet d'une version antérieure reste accepté, marqué « origine non
+  prouvée ». La tolérance s'éteint d'elle-même client par client, dès qu'un
+  premier paquet signé arrive.
+
+### Le livre du cabinet
+
+- **Un fichier par dossier et par exercice**, chiffré, avec son entête lisible :
+  un livre retrouvé sur une clé USB dit de quel client et de quelle année il parle
+  avant qu'on cherche son mot de passe. Il part **toujours** avec la copie externe
+  — un paquet perdu se redemande au client, un livre perdu non.
+- **Créer le livre à partir des paquets reçus**, en un bouton. Rejouer ne double
+  rien : un mois renvoyé remplace ses brouillards et **ne touche jamais une
+  écriture validée** — l'écart est calculé et affiché, et c'est le comptable qui
+  tranche.
+- **Reprendre un dossier** venu d'un autre cabinet : exercice, plan de comptes,
+  balance d'ouverture (saisie ou importée d'un CSV), avec l'écart d'équilibre en
+  direct pendant la saisie et un refus net si elle ne tombe pas juste.
+- **Valider** une écriture lui donne son numéro, définitivement. Une écriture
+  validée ne se modifie plus : on la **contre-passe**, à la date du jour où l'on
+  corrige. C'est ce qui fait qu'un livre relu dans deux ans dit la vérité de ce
+  qui a été fait.
+- **Le brouillard se voit** (italique, fond estompé, pastille à la place du
+  numéro) et n'entre dans aucune balance tant qu'on ne le demande pas.
+- **Le lettrage** relie une facture et son règlement, et refuse de solder ce qui
+  ne se solde pas : un lettrage qui laisse un reste affirme qu'une facture est
+  payée alors qu'il reste quelque chose.
+- Chaque geste laisse une trace dans la piste d'audit du livre, qui n'est jamais
+  purgée, et un livre ouvert sur un autre ordinateur ne s'écrase pas.
+
+Le format du livre suit la mesure du test de charge de la 9.1.0 : corps binaire,
+pas base64. Rien de tout cela ne change quoi que ce soit dans SkanFact côté
+entreprise, sauf la signature du paquet — qui se fait toute seule.
+
 ## 9.1.1 — 16/09/2026
 
 **Les corrections fiscales.** Quatre chiffres qui partent chez un tiers — l'administration, un
