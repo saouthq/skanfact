@@ -97,7 +97,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 **L'outillage (9.1.0)**
 
 `npm test` (les tests purs) · `npm run lint` (ESLint, zéro erreur exigée) · `npm run charge` (le test
-de charge du livre) · `npm run e2e:<nom>` (41 parcours, tableau au § « Les tests qui ouvrent vraiment
+de charge du livre) · `npm run e2e:<nom>` (42 parcours, tableau au § « Les tests qui ouvrent vraiment
 l'application ») · CI GitHub sur Linux et Windows à chaque poussée · « Construire un essai » pour
 faire tester une version sans la publier.
 
@@ -473,6 +473,7 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:exemple` | **charger le jeu d'exemple et en revenir** : le bandeau, la restauration, et la fausse identité qui ne survit pas à l'effacement |
 | `npm run e2e:argent` | **où tombe l'argent** : deux comptes, un règlement en espèces qui va dans la caisse et pas à la banque, un paiement qu'on corrige, et le mois vide que le Cabinet ne déclare plus complet |
 | `npm run e2e:captures` | photographie les 20 pages, leurs onglets et quatre gestes, en vierge et en démo, à 1440 et 1280 |
+| `npm run e2e:captures-site` | **les images destinées au site** : dix écrans et onze recadrages, sur le jeu d'exemple, marqueurs du test masqués (bandeau « exemple », tampon EXEMPLE, message passager, numéro de version, pastille d'essai) — ils n'existent que parce que la machine est une installation neuve, et les montrer donnerait une image fausse du produit. Son jumeau `node test/e2e/sequence-site.js` (sans entrée npm) filme le parcours devis → facture → PDF en dix images légendées |
 | `npm run e2e:parametres` | **les réglages, mesurés** : par onglet et pour les deux applications — combien de champs, combien de bulles, combien d'écrans de haut, quels panneaux, quels boutons (`dist-e2e/parametres/mesures.json`), plus une capture par onglet, en clair, en sombre et à 1280. Un instrument, pas un test : c'est lui qui dit qu'un onglet fait 0,2 écran et un autre 2,5 |
 | `npm run e2e:gel` | le chien de garde : l'interface est VRAIMENT gelée, et le journal nomme la fonction coupable |
 | `npm run e2e:contraste` | **aucun bouton illisible ni hors de l'écran** : contraste texte/fond et débordement de chaque bouton visible des 21 pages et de tous les éditeurs, en clair, en sombre, à 1440 et à 1280 |
