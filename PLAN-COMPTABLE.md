@@ -124,7 +124,7 @@ jointe, validées si définitif), au lieu de seulement ranger un fichier. Repris
 par **balance d'ouverture** saisie ou importée (CSV/Excel) : c'est ainsi qu'on récupère un client qui
 vient d'un autre cabinet. Les livres de la 9.1.0 lisent désormais le livre, plus les CSV.
 **Le paquet est signé par le client** et sa clé publique est épinglée au dossier au premier paquet
-(remonté de la 9.9.0 le 15/09/2026) : le scellement ne prouve que le destinataire, pas l'expéditeur,
+(remonté de la 9.10.0 le 15/09/2026) : le scellement ne prouve que le destinataire, pas l'expéditeur,
 et le fichier d'appairage qui permet de sceller est entre les mains de tous les clients du cabinet.
 Un paquet signé par une autre clé est refusé en nommant le dossier ; un paquet non signé (ancienne
 version) porte la mention « origine non prouvée ». **Le test de charge du format** (cinquante mille
@@ -141,7 +141,7 @@ salaires, achat avec TVA…) et **abonnements** (le loyer de chaque mois, géné
 jointe glissée sur l'écriture. Recherche dans tout le journal.
 *Test : mille écritures saisies au clavier dans l'app réelle, sans une souris.*
 
-### 9.4.0 — La banque *(le relevé, le rapprochement, le lettrage automatique)*
+### 9.5.0 — La banque *(le relevé, le rapprochement, le lettrage automatique)*
 
 Import du relevé bancaire (CSV des banques tunisiennes, OFX, MT940 — ⚠ comptable : lesquels ses
 clients reçoivent), **rapprochement automatique** (montant + date ± n jours + libellé), proposition
@@ -149,7 +149,7 @@ d'écriture pour chaque ligne non rapprochée (guide selon le libellé : « STEG
 de rapprochement, lettrage automatique des tiers (par montant et par référence), lettrage et
 délettrage à la main, échéancier et **balance âgée** clients/fournisseurs.
 
-### 9.5.0 — Le fiscal mensuel tunisien *(la déclaration prête)*
+### 9.6.0 — Le fiscal mensuel tunisien *(la déclaration prête)*
 
 La **déclaration mensuelle** complète depuis les écritures : TVA (collectée par taux, déductible,
 crédit reporté), retenues à la source par nature, TFP, FOPROLOS, TCL, droit de timbre, avec le
@@ -159,7 +159,7 @@ dossier selon son régime, avec « déclaré » et « payé » pointés par le c
 télédéclaration : le fichier ou les chiffres à reporter, jamais l'envoi à la place du cabinet
 (À VÉRIFIER : ce que le portail accepte).
 
-### 9.6.0 — La clôture d'exercice *(l'inventaire, les états, l'à-nouveau, le RETOUR au client)*
+### 9.7.0 — La clôture d'exercice *(l'inventaire, les états, l'à-nouveau, le RETOUR au client)*
 
 Écritures d'inventaire guidées : dotations (déjà calculées), **provisions**, charges constatées
 d'avance, factures non parvenues, produits constatés d'avance, factures à établir, régularisations,
@@ -179,7 +179,7 @@ clos et affiche ce que le comptable a ajouté. Le test qui compte est le **jumea
 dans l'autre sens** : après la clôture et l'import, le bilan des deux applications est identique au
 millime.
 
-### 9.7.0 — Les immobilisations et les stocks côté cabinet
+### 9.8.0 — Les immobilisations et les stocks côté cabinet
 
 Fiches d'immobilisations tenues par le cabinet (pour les clients sans SkanFact), linéaire et
 **dégressif** (le moteur ne connaît que le linéaire), tableau des amortissements de l'exercice,
@@ -187,7 +187,7 @@ cessions, mises au rebut, subventions d'investissement. Inventaire de stock de f
 et sa variation en écriture. Ce que le paquet SkanFact apporte (biens et dotations du client) entre
 dans les mêmes fiches sans ressaisie.
 
-### 9.8.0 — Le cabinet à plusieurs *(collaborateurs, production, supervision)*
+### 9.9.0 — Le cabinet à plusieurs *(collaborateurs, production, supervision)*
 
 **Collaborateurs** avec droits par dossier (saisie, validation, supervision) — la question posée
 depuis le premier audit (« qui voit quels dossiers »), qui ne se répond qu'avec un cabinet réel.
@@ -196,7 +196,7 @@ depuis le premier audit (« qui voit quels dossiers »), qui ne se répond qu'av
 **production** : par dossier et par mois, reçu → saisi → révisé → déclaré, avec qui s'en occupe et
 depuis combien de temps. « À faire » par collaborateur.
 
-### 9.9.0 — La révision *(le dossier de travail)*
+### 9.10.0 — La révision *(le dossier de travail)*
 
 Dossier de révision par exercice : **feuilles maîtresses** par cycle (trésorerie, ventes-clients,
 achats-fournisseurs, immobilisations, personnel, fiscal, capitaux), chaque compte revu et signé,
@@ -224,10 +224,10 @@ comptable a déjà un outil, et SkanFact entreprise sait le faire).
 | 9.2.0 | **Son plan de comptes** (fichier) et ses codes de journaux | Le plan de référence du cabinet est la base de tout : mal posé, chaque dossier diverge |
 | 9.2.0 | **Quel logiciel il utilise aujourd'hui**, et comment il en sort une balance | La reprise d'un dossier existant se fait depuis ce fichier-là |
 | 9.3.0 | **Comment il saisit** (touches, ordre des champs, ce qui l'agace dans son logiciel actuel) | Un écran de saisie se juge en dix minutes ; le construire sans le regarder faire, c'est le rater |
-| 9.4.0 | **Les relevés** que ses clients reçoivent (banques, formats) | Un importeur par format : on ne devine pas un format |
-| 9.5.0 | **Le modèle de la déclaration mensuelle** et ses cases, les taux de TCL/timbre en vigueur, ses réponses aux « À VÉRIFIER » de 8.9.0/9.0.0 (TVA au dernier jour, 13 vs 12, contreparties, TFP 1 %/2 %) | L'application ne doit rien affirmer qu'il n'a pas validé |
-| 9.6.0 | **La présentation des états financiers** (NCT 01) et des notes | « Déduits de la balance » ne suffit plus si le Cabinet produit les états officiels |
-| 9.9.0 | **Sa méthode de révision** (cycles, feuilles, ce que le superviseur regarde) | Un dossier de travail imposé par un logiciel ne sert à personne |
+| 9.5.0 | **Les relevés** que ses clients reçoivent (banques, formats) | Un importeur par format : on ne devine pas un format |
+| 9.6.0 | **Le modèle de la déclaration mensuelle** et ses cases, les taux de TCL/timbre en vigueur, ses réponses aux « À VÉRIFIER » de 8.9.0/9.0.0 (TVA au dernier jour, 13 vs 12, contreparties, TFP 1 %/2 %) | L'application ne doit rien affirmer qu'il n'a pas validé |
+| 9.7.0 | **La présentation des états financiers** (NCT 01) et des notes | « Déduits de la balance » ne suffit plus si le Cabinet produit les états officiels |
+| 9.10.0 | **Sa méthode de révision** (cycles, feuilles, ce que le superviseur regarde) | Un dossier de travail imposé par un logiciel ne sert à personne |
 | 10.0.0 | **La liasse** de l'année et ce que le portail accepte | Change chaque loi de finances |
 
 Et une question à poser tout de suite, avant la 9.1.0 : **quel logiciel il veut remplacer, et par
@@ -259,12 +259,12 @@ ce qu'il fait le plus souvent, ce qu'il rend au client.
 | 9.1.0 | Les livres lus dans les paquets | non | jours |
 | 9.2.0 | Le livre du dossier, plan complet, reprise d'ouverture | plan, logiciel actuel | une à deux semaines |
 | 9.3.0 | La saisie, brouillard/validation, guides, abonnements | le regarder saisir | deux semaines |
-| 9.4.0 | Banque, rapprochement, lettrage automatique, balance âgée | formats de relevés | deux semaines |
-| 9.5.0 | Déclaration mensuelle, acomptes, calendrier pointé | modèle de déclaration | une à deux semaines |
-| 9.6.0 | Inventaire, clôture d'exercice, états SCE, N/N-1, SIG | présentation NCT 01 | deux à trois semaines |
-| 9.7.0 | Immobilisations (dégressif), stocks | non | une semaine |
-| 9.8.0 | Collaborateurs, multi-poste, piste d'audit, production | non | deux semaines |
-| 9.9.0 | Révision, points en suspens, questions au client | méthode de révision | deux semaines |
+| 9.5.0 | Banque, rapprochement, lettrage automatique, balance âgée | formats de relevés | deux semaines |
+| 9.6.0 | Déclaration mensuelle, acomptes, calendrier pointé | modèle de déclaration | une à deux semaines |
+| 9.7.0 | Inventaire, clôture d'exercice, états SCE, N/N-1, SIG | présentation NCT 01 | deux à trois semaines |
+| 9.8.0 | Immobilisations (dégressif), stocks | non | une semaine |
+| 9.9.0 | Collaborateurs, multi-poste, piste d'audit, production | non | deux semaines |
+| 9.10.0 | Révision, points en suspens, questions au client | méthode de révision | deux semaines |
 | 10.0.0 | Liasse, annuel, jeu d'exemple complet | liasse de l'année | deux semaines |
 
 Les durées sont celles du travail de construction et de test ; elles ne comptent ni l'attente des

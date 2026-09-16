@@ -337,15 +337,15 @@ revenus » n'avait pas de suite. Voici la suite. Les dates sont des propositions
   vendues** hors famille ; la question à l'Ordre posée. Si les trois licences manquent : la 9.3.0
   attend, et le trimestre suivant est un trimestre de démonstrations, pas de code — dix
   démonstrations en personne, comptées.
-- **Mi-2027 (après 9.3.0 et 9.4.0).** Ce qui doit être vrai : **dix licences entreprise** ; le
+- **Mi-2027 (après 9.3.0 et 9.5.0).** Ce qui doit être vrai : **dix licences entreprise** ; le
   pilote qui tient ses dossiers dans le Cabinet sans revenir à son ancien logiciel ; une réponse de
   l'Ordre, ou à défaut celle du juriste. Si le pilote est revenu à son ancien logiciel : on arrête
-  le Cabinet à la 9.4.0 et on demande pourquoi, avant d'écrire une ligne de la 9.5.0. Si l'Ordre a
+  le Cabinet à la 9.5.0 et on demande pourquoi, avant d'écrire une ligne de la 9.5.0. Si l'Ordre a
   dit non : plan B de prix (§ 17), sans toucher au code.
-- **Fin 2027 (après 9.6.0).** Ce qui doit être vrai : un **second cabinet** qui a commencé, même sur
+- **Fin 2027 (après 9.7.0).** Ce qui doit être vrai : un **second cabinet** qui a commencé, même sur
   un dossier ; **vingt-cinq licences entreprise** ; un chiffre d'affaires qui couvre au moins les
   coûts fixes (domaine, certificats, abonnements). Si le second cabinet n'existe pas : le Cabinet
-  reste un produit pour un seul cabinet, et 9.7.0 → 10.0.0 ne se justifient plus — on livre ce que
+  reste un produit pour un seul cabinet, et 9.8.0 → 10.0.0 ne se justifient plus — on livre ce que
   le pilote demande, et rien d'autre.
 - **Ce qui déclenche l'arrêt, à n'importe quel moment.** Si à un jalon **aucune** licence n'a été
   vendue depuis le jalon précédent, le trimestre suivant ne contient pas de version nouvelle. Cette
@@ -540,7 +540,7 @@ revenus » n'avait pas de suite. Voici la suite. Les dates sont des propositions
 - **Ce qui va encore changer côté entreprise ?** Peu de choses, et toutes au service du pont : le
   module Comptabilité masqué et l'option dans la clé (9.1.0) ; la licence et la mention d'essai dans
   le manifeste du paquet (9.2.0) ; la réception des questions du cabinet, affichées sur la pièce, et
-  la signature du paquet (9.2.0, remontée de la 9.9.0). Le reste, c'est de l'entretien et les
+  la signature du paquet (9.2.0, remontée de la 9.10.0). Le reste, c'est de l'entretien et les
   retours des utilisateurs.
   **Décidé.**
 
@@ -662,7 +662,7 @@ revenus » n'avait pas de suite. Voici la suite. Les dates sont des propositions
   fin d'année) ?** Le client ne les voit pas : son livre à lui ne connaît que ses pièces. Tant que
   ça ne dure qu'un exercice, c'est sans conséquence. Mais **à la clôture, l'écart devient
   permanent** : les à-nouveaux de l'année suivante chez le client seraient faux, et l'écart
-  grandirait chaque année. D'où le **flux retour de clôture** (§ 16, version 9.6.0) : le cabinet
+  grandirait chaque année. D'où le **flux retour de clôture** (§ 16, version 9.7.0) : le cabinet
   renvoie les à-nouveaux officiels et la liste de ses écritures d'inventaire, le client les importe
   et verrouille son exercice. **Décidé.**
 - **Que se passe-t-il quand un client renvoie un mois déjà reçu ?** Si les écritures de ce mois ne
@@ -681,17 +681,17 @@ revenus » n'avait pas de suite. Voici la suite. Les dates sont des propositions
   est, et le paquet reçu n'est jamais réécrit. Chaque écriture garde donc **deux traces** : d'où
   elle vient (le paquet de mars du dossier X, telle pièce) et ce que le cabinet en a fait (modifiée
   le tant, par qui, valeur d'origine conservée). Quand il corrige une imputation qui se répétera, il
-  a intérêt à le dire au client par une question (9.9.0) : sinon il la corrigera tous les mois.
+  a intérêt à le dire au client par une question (9.10.0) : sinon il la corrigera tous les mois.
   **Décidé — corrigé le 15/09/2026 après une relecture extérieure ; la version précédente de ce
   document disait le contraire, et elle avait tort.**
 - **Combien de dossiers, d'exercices ?** Sans limite : un fichier par dossier, plusieurs exercices
   ouverts en même temps (on termine décembre pendant qu'on saisit janvier).
-- **Plusieurs collaborateurs, plusieurs postes ?** Oui (version 9.8.0) : chaque collaborateur a des
+- **Plusieurs collaborateurs, plusieurs postes ?** Oui (version 9.9.0) : chaque collaborateur a des
   droits par dossier (saisie, validation, supervision), deux postes du cabinet peuvent travailler sur
   le même dossier sans s'écraser, et chaque écriture garde qui l'a faite et quand (la piste
   d'audit). Postes illimités. **Décidé.**
 - **Il remplace Sage ?** C'est l'objectif, atteint version par version. Jusqu'à la clôture
-  d'exercice (9.6.0) le cabinet pourra continuer d'exporter vers son logiciel pour ce qui manque
+  d'exercice (9.7.0) le cabinet pourra continuer d'exporter vers son logiciel pour ce qui manque
   encore.
 - **Comment il reprend ses soixante dossiers existants ?** Par une balance d'ouverture importée
   (CSV ou Excel sorti de son logiciel actuel) et un plan de comptes importé (9.2.0). C'est le geste
@@ -712,7 +712,7 @@ revenus » n'avait pas de suite. Voici la suite. Les dates sont des propositions
   aujourd'hui, par un dossier partagé. Mais ce n'est pas la voie : ce serait deux personnes dans le
   même livre. Le pont reste le paquet.
 - **Le client voit-il ce que le cabinet a fait (bilan, déclarations) ?** Par PDF envoyé par mail,
-  comme aujourd'hui. Un retour par le pont viendra avec les questions (9.9.0).
+  comme aujourd'hui. Un retour par le pont viendra avec les questions (9.10.0).
 - **Qui clôture ?** Deux gestes, et **un seul est une clôture comptable**. Côté client, c'est un
   **verrouillage de la période transmise** : il fige ce qu'il a saisi pour que le paquet soit
   définitif, et il peut rouvrir avec un motif. Côté cabinet, c'est la **clôture d'exercice** :
@@ -865,7 +865,7 @@ revenus » n'avait pas de suite. Voici la suite. Les dates sont des propositions
   Cabinet affichera ces manques à côté des écritures (9.2.0).
 - **Et dans l'autre sens ?** Les questions du cabinet (pièce absente, compte d'attente non soldé,
   facture ouverte depuis 90 jours) partent vers le client, qui les voit **sur la pièce concernée**,
-  répond, joint ce qui manque, et renvoie un mois révisé (9.9.0). Le transport : un fichier de
+  répond, joint ce qui manque, et renvoie un mois révisé (9.10.0). Le transport : un fichier de
   questions envoyé par mail au début, le serveur un jour. **Décidé : les questions sont CHIFFRÉES,
   comme les paquets.** Ma première recommandation était de les envoyer en clair, au motif qu'une
   question n'est pas une pièce comptable. C'est faux : une question porte le nom d'un client, un
@@ -873,7 +873,7 @@ revenus » n'avait pas de suite. Voici la suite. Les dates sont des propositions
   clair romprait la promesse du produit. À l'appairage, le client génère donc **sa propre paire de
   clés** et rend sa clé publique au cabinet (le fichier d'appairage devient un aller-retour) ; le
   fichier de questions (`.skanask`) est scellé pour lui seul, avec le mécanisme du paquet, qui
-  existe depuis la 6.2.0. Le même aller-retour sert au flux de clôture (`.skanclose`, 9.6.0) : une
+  existe depuis la 6.2.0. Le même aller-retour sert au flux de clôture (`.skanclose`, 9.7.0) : une
   seule clé du client, deux usages.
 - **Comment le cabinet sait que le paquet vient bien de ce client ?** Aujourd'hui : **il ne le sait
   pas.** Il sait seulement que le paquet a été scellé pour lui, et il croit le matricule écrit
@@ -885,7 +885,7 @@ revenus » n'avait pas de suite. Voici la suite. Les dates sont des propositions
   viennent pas de son client. Vérifié dans le code : `sealForCabinet` (`src/zip.js`) ne demande que
   la clé publique, et aucune signature ne figure nulle part dans le manifeste.
   **Décidé — corrigé le 15/09/2026 après une troisième relecture extérieure : la signature passe de
-  la 9.9.0 à la 9.2.0.** Elle était rangée avec la révision, huit versions plus loin, c'est-à-dire
+  la 9.10.0 à la 9.2.0.** Elle était rangée avec la révision, huit versions plus loin, c'est-à-dire
   après toute la période où le Cabinet est réellement utilisé par le pilote. Tout le nécessaire
   existe déjà : le client a sa paire de clés (créée à l'appairage pour recevoir les questions
   chiffrées), Ed25519 est dans `src/licence.js` depuis la 6.4.0, et le manifeste s'écrit en dernier
@@ -909,7 +909,7 @@ revenus » n'avait pas de suite. Voici la suite. Les dates sont des propositions
 - **Peut-on rejouer un vieux paquet pour fausser les chiffres du cabinet ?** Non : un paquet dont la
   date de fabrication est **antérieure** à celui déjà reçu pour ce mois est refusé, avec sa phrase.
   C'est ce qui empêche un mois définitif de redevenir provisoire quand on rattrape une boîte mail en
-  retard, et c'est aussi la protection contre le rejeu. Ce qui manque encore, et qui vient en 9.9.0 :
+  retard, et c'est aussi la protection contre le rejeu. Ce qui manque encore, et qui vient en 9.10.0 :
   la signature du client, sans laquelle quelqu'un qui connaît la clé publique du cabinet pourrait
   fabriquer un paquet de toutes pièces. **Livré pour l'anti-rejeu, à construire pour la signature.**
 - **Comment le client sait que le cabinet est le bon ?** L'**appairage** : le cabinet donne un
@@ -931,7 +931,7 @@ revenus » n'avait pas de suite. Voici la suite. Les dates sont des propositions
 - **Qu'est-ce qui va changer dans le paquet ?** Deux choses : la **licence** du client dans le
   manifeste (pour que le cabinet sache, hors ligne, que ce dossier est sur SkanFact et donc gratuit)
   et la mention d'essai ; et la **signature** du client — les deux en 9.2.0, la signature ayant été
-  remontée de la 9.9.0 le 15/09/2026. Le numéro de format monte, les paquets anciens restent
+  remontée de la 9.10.0 le 15/09/2026. Le numéro de format monte, les paquets anciens restent
   lisibles (et se disent « origine non prouvée » plutôt que d'être refusés).
 
 ---
@@ -1602,8 +1602,8 @@ revenus » n'avait pas de suite. Voici la suite. Les dates sont des propositions
   n'attend personne, et c'est ce qu'il faut montrer au comptable pour obtenir les réponses au
   reste. **Décidé.**
 - **Dans quel ordre ensuite ?** Le § 16 détaille chaque version. En résumé : 9.2.0 le livre par
-  dossier → 9.3.0 la saisie → la licence du Cabinet → 9.4.0 la banque → 9.5.0 le fiscal mensuel →
-  9.6.0 la clôture d'exercice → 9.7.0 immobilisations et stocks → 9.8.0 collaborateurs → 9.9.0
+  dossier → 9.3.0 la saisie → la licence du Cabinet → 9.5.0 la banque → 9.6.0 le fiscal mensuel →
+  9.7.0 la clôture d'exercice → 9.8.0 immobilisations et stocks → 9.9.0 collaborateurs → 9.10.0
   révision et questions → 10.0.0 liasse et exemple complet. **Décidé.**
 - **Pourquoi la licence du Cabinet arrive après la saisie ?** Parce que c'est la saisie qui crée le
   premier dossier hors SkanFact, donc la première chose qu'on peut vendre. Avant, il n'y a rien à
@@ -1617,8 +1617,8 @@ revenus » n'avait pas de suite. Voici la suite. Les dates sont des propositions
   comptable. Chaque version est finie, testée, publiée et utilisée avant la suivante. Rien n'est
   commencé avant que la précédente soit sur le bureau du pilote.
 - **Qu'est-ce qui exige le comptable ?** Son plan de comptes et son logiciel actuel (9.2.0), le
-  regarder saisir (9.3.0), les relevés de ses clients (9.4.0), le modèle de déclaration mensuelle
-  (9.5.0), la présentation des états financiers (9.6.0), sa méthode de révision (9.9.0), la liasse
+  regarder saisir (9.3.0), les relevés de ses clients (9.5.0), le modèle de déclaration mensuelle
+  (9.6.0), la présentation des états financiers (9.7.0), sa méthode de révision (9.10.0), la liasse
   (10.0.0). Et un vrai dossier dès la 9.1.0. Et une question à lui poser tout de suite : **quel
   logiciel il veut remplacer, et sur quels trois écrans il jugera que c'est fait.**
 - **Qu'est-ce qui exige Skander ?** Le nom du produit cabinet ; les prix ; l'Ordre ; l'INPDP ; les
@@ -1874,7 +1874,7 @@ revenus » n'avait pas de suite. Voici la suite. Les dates sont des propositions
 - **Un poste client compromis (virus, vol) ?** Rien de central n'est atteint : aucune clé privée de
   l'éditeur n'est sur un poste client. Le pire est la perte de ses propres données, couverte par les
   sauvegardes et le chiffrement. Chez le cabinet : chiffré, mot de passe, verrouillage (automatique
-  en 9.8.0).
+  en 9.9.0).
 - **Quand faut-il une version majeure (x.0.0) ?** Quand la forme des données change de manière
   qu'une ancienne version ne pourrait pas lire, ou qu'une habitude change pour tout le monde. Elle
   passe toujours par une bêta plus longue et un mail aux clients. **Décidé.**
@@ -1990,8 +1990,8 @@ qui manque, mesuré dans le dépôt le 15/09/2026, et ce qu'on en fait.*
   quatre est une version d'entretien** (Electron, lint, découpage d'un fichier, docs, dette), sans
   nouveauté, publiée dans un lot comme les autres. **Décidé.** Et pour que ce ne soit pas un vœu
   pieux (une relecture a constaté qu'aucune version du § 16 n'était marquée « entretien ») : **la
-  9.1.0 en est une pour moitié** (l'outillage passe avant les livres), puis **9.3.1** après la
-  saisie, **9.5.1** après le fiscal, et **9.8.1** après le multi-poste sont des versions
+  9.1.0 en est une pour moitié** (l'outillage passe avant les livres), puis **9.4.1** après la
+  saisie, **9.6.1** après le fiscal, et **9.9.1** après le multi-poste sont des versions
   d'entretien, écrites dans le § 16, avec un contenu (Electron, conversion des 93 déclarations CSS,
   découpage d'un gros fichier, dette listée au point 15). Elles ne sautent pas parce qu'on est
   pressé : c'est précisément quand on est pressé qu'on les saute, et c'est pour ça qu'elles sont
@@ -2205,7 +2205,7 @@ version, ce qui est la meilleure façon de ne jamais les faire (§ 11).*
   emportent les livres (e2e `perte` et `demenagement` rejoués).
 - **Entreprise.** Le manifeste du paquet porte la licence du client et la mention d'essai ; le
   numéro de format du paquet monte ; l'app dit si le Cabinet du destinataire est trop ancien.
-- **La signature du paquet, remontée de la 9.9.0 (15/09/2026).** Le client **signe le manifeste**
+- **La signature du paquet, remontée de la 9.10.0 (15/09/2026).** Le client **signe le manifeste**
   avec sa clé privée — celle qu'il crée déjà à l'appairage pour recevoir les questions chiffrées —
   et le cabinet **épingle** sa clé publique au dossier au premier paquet. Un paquet signé par une
   autre clé est refusé en nommant le dossier ; un paquet non signé (ancienne version) est accepté
@@ -2241,7 +2241,7 @@ version, ce qui est la meilleure façon de ne jamais les faire (§ 11).*
   modification ; une contre-passation ; l'extourne ; test de source « aucune écriture validée ne se
   modifie ailleurs que par contre-passation ».
 
-### 9.3.x et P 0.3 — La licence du Cabinet (une semaine)
+### 9.4.0 et P 0.3 — La licence du Cabinet (une semaine)
 
 - **Cabinet.** La clé de licence de type cabinet (sujet = empreinte, quota), vérifiée hors ligne
   avec les clés publiques embarquées (le fichier des clés et `licence.js` entrent dans la
@@ -2258,7 +2258,7 @@ version, ce qui est la meilleure façon de ne jamais les faire (§ 11).*
   lecture ouverte, dossier archivé qui ne compte plus, licence client dans un paquet qui rend le
   dossier gratuit, paquet ancien qui le dit ; test « ce qui remonte au serveur » étendu.
 
-### 9.3.1 — Entretien (quelques jours)
+### 9.4.1 — Entretien (quelques jours)
 
 - **Contenu.** La mise à jour d'Electron du semestre ; la conversion des 93 déclarations CSS
   physiques en logiques (§ 3) ; le premier découpage de `app.js` par route (§ 15) ; la dette listée
@@ -2267,7 +2267,7 @@ version, ce qui est la meilleure façon de ne jamais les faire (§ 11).*
 - **Preuve.** Tous les e2e relancés — c'est la seule version où on les relance TOUS sans exception,
   parce que c'est celle où le moteur de rendu change.
 
-### 9.4.0 — La banque (deux semaines)
+### 9.5.0 — La banque (deux semaines)
 
 - **Cabinet.** Import du relevé bancaire (CSV des banques tunisiennes — BIAT, Attijari, STB, UIB,
   BH et les autres que ses clients utilisent —, OFX, MT940), rapprochement automatique (montant,
@@ -2291,7 +2291,7 @@ version, ce qui est la meilleure façon de ne jamais les faire (§ 11).*
   de rapprochement à écart nul ; tests unitaires sur chaque format de relevé avec un fichier réel
   anonymisé.
 
-### 9.5.0 — Le fiscal mensuel tunisien (une à deux semaines)
+### 9.6.0 — Le fiscal mensuel tunisien (une à deux semaines)
 
 - **Cabinet.** La déclaration mensuelle complète depuis les écritures (TVA par taux, retenues par
   nature, TFP, FOPROLOS, TCL, timbre), au format du formulaire officiel, avec l'écriture de
@@ -2304,13 +2304,13 @@ version, ce qui est la meilleure façon de ne jamais les faire (§ 11).*
 - **Preuve.** Test : la déclaration d'un mois de l'exemple, case par case, contre un calcul à la
   main ; e2e : pointer déclaré puis payé, et le défaire.
 
-### 9.5.1 — Entretien (quelques jours)
+### 9.6.1 — Entretien (quelques jours)
 
-- **Contenu.** Comme la 9.3.1 : Electron si une version est sortie, dette, découpage suivant
+- **Contenu.** Comme la 9.4.1 : Electron si une version est sortie, dette, découpage suivant
   (`core.js` → `compta.js` fini, `run-tests.js` découpé par domaine), retours de bêta hors
   nouveautés. **Aucune fonction nouvelle.**
 
-### 9.6.0 — La clôture d'exercice (deux à trois semaines)
+### 9.7.0 — La clôture d'exercice (deux à trois semaines)
 
 - **Cabinet.** Écritures d'inventaire guidées (dotations, provisions, CCA, FNP, PCA, FAE,
   régularisations) avec extourne automatique ; contrôles de clôture (comptes d'attente, brouillard
@@ -2347,7 +2347,7 @@ version, ce qui est la meilleure façon de ne jamais les faire (§ 11).*
   retour : le cabinet clôture, le client importe, le bilan des deux applications est identique au
   millime** — le jumeau du test de parité, dans l'autre sens.
 
-### 9.7.0 — Immobilisations et stocks (une semaine)
+### 9.8.0 — Immobilisations et stocks (une semaine)
 
 - **Cabinet.** Fiches d'immobilisations tenues par le cabinet (linéaire et dégressif, tableau de
   l'exercice, cessions, mises au rebut, subventions), inventaire de stock de fin d'exercice et sa
@@ -2355,7 +2355,7 @@ version, ce qui est la meilleure façon de ne jamais les faire (§ 11).*
 - **Preuve.** Test du dégressif contre un calcul à la main ; parité avec l'app entreprise sur les
   biens venus d'un paquet.
 
-### 9.8.0 — Le cabinet à plusieurs (deux semaines)
+### 9.9.0 — Le cabinet à plusieurs (deux semaines)
 
 - **Cabinet.** Collaborateurs (identité locale, droits par dossier : saisie, validation,
   supervision) ; deux postes sur le même dossier sans s'écraser (révision et fusion, comme le
@@ -2364,13 +2364,13 @@ version, ce qui est la meilleure façon de ne jamais les faire (§ 11).*
   « À faire » par collaborateur.
 - **Preuve.** e2e à deux postes (comme `e2e:partage`) ; test de fusion des livres.
 
-### 9.8.1 — Entretien (quelques jours)
+### 9.9.1 — Entretien (quelques jours)
 
 - **Contenu.** Comme les précédentes. C'est aussi celle où l'on relit `CLAUDE.md` en entier pour
   retirer ce qui n'est plus vrai — un document de mémoire qui grossit sans jamais maigrir finit par
   mentir par omission.
 
-### 9.9.0 — La révision et les questions (deux semaines)
+### 9.10.0 — La révision et les questions (deux semaines)
 
 - **Cabinet.** Dossier de révision par exercice (feuilles maîtresses par cycle, comptes revus et
   signés, points en suspens, notes de revue, questionnaire de fin d'exercice) ; **questions au
@@ -2523,7 +2523,7 @@ n'est pas obligatoire) ; l'interface en arabe ; un autre pays.
   dire : chiffré pour lui, empreintes vérifiées, fichiers non annoncés signalés — mais **rien ne
   prouve l'expéditeur**, puisque le scellement n'utilise qu'une clé publique que le cabinet
   distribue à tous ses clients. C'est le trou que la troisième relecture extérieure a trouvé, et il
-  se ferme en 9.2.0 par la signature du client (voir § 6), pas en 9.9.0 comme prévu jusqu'ici.
+  se ferme en 9.2.0 par la signature du client (voir § 6), pas en 9.10.0 comme prévu jusqu'ici.
 
 ---
 

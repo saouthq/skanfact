@@ -2457,10 +2457,10 @@ plan (`PLAN-COMPTABLE.md`) confronte dix domaines (socle, saisie, imports, banqu
 clôture, fiscal tunisien, cabinet, technique) à ce que le moteur de l'app entreprise sait déjà faire
 et à ce que le Cabinet n'a pas, puis découpe en dix versions : **9.1.0** livres lus dans les paquets,
 **9.2.0** le livre propre à chaque dossier (plan SCE complet, import du paquet EN écritures, reprise
-d'ouverture), **9.3.0** la saisie au kilomètre avec brouillard/validation, **9.4.0** banque et
-rapprochement automatique, **9.5.0** déclaration mensuelle tunisienne, **9.6.0** clôture d'exercice et
-états SCE, **9.7.0** immobilisations dégressif et stocks, **9.8.0** collaborateurs, multi-poste, piste
-d'audit, **9.9.0** révision et questions au client, **10.0.0** liasse et jeu d'exemple complet.
+d'ouverture), **9.3.0** la saisie au kilomètre avec brouillard/validation, **9.5.0** banque et
+rapprochement automatique, **9.6.0** déclaration mensuelle tunisienne, **9.7.0** clôture d'exercice et
+états SCE, **9.8.0** immobilisations dégressif et stocks, **9.9.0** collaborateurs, multi-poste, piste
+d'audit, **9.10.0** révision et questions au client, **10.0.0** liasse et jeu d'exemple complet.
 Décisions d'architecture : chaque dossier porte SON livre (les écritures venues d'un paquet portent leur
 source et ne se modifient pas ici), le moteur d'écritures sort de `core.js` vers un module pur partagé
 `src/renderer/compta.js` que `core.js` réexporte, brouillard puis validation irréversible. Règle qui ne
@@ -2477,7 +2477,7 @@ fait bouger, et qui ne doit pas se reperdre :
   **publique** du cabinet — celle du fichier d'appairage, que le cabinet donne à TOUS ses clients.
   Quiconque le tient peut fabriquer un paquet au nom d'une autre entreprise. Chiffrer dit « seul le
   cabinet peut lire » ; **seule une signature dit « ça vient bien de lui »**. La signature du
-  manifeste par le client remonte de la **9.9.0 à la 9.2.0** : la ranger avec la révision laissait le
+  manifeste par le client remonte de la **9.10.0 à la 9.2.0** : la ranger avec la révision laissait le
   trou ouvert pendant toute la période où le pilote utilise vraiment le Cabinet. Un paquet non signé
   est accepté avec « origine non prouvée », jamais en silence.
 - **On mesure avant d'écrire un format, jamais après.** Le test de charge du Cabinet (50 000
@@ -2526,7 +2526,7 @@ fait bouger, et qui ne doit pas se reperdre :
   deviendrait moins cher que « jamais essayé » (trou de ma règle de la veille) ; l'**export de la
   base de la console** avant la première vente (`GET /v1/admin/export`, rangé dans `~/.skanfact/`,
   réclamé par « À faire » à 30 jours) ; le relecteur de chaque version **nommé** (une autre session
-  d'IA, limite assumée) ; les versions d'entretien **numérotées** (9.3.1, 9.5.1, 9.8.1) ; le
+  d'IA, limite assumée) ; les versions d'entretien **numérotées** (9.4.1, 9.6.1, 9.9.1) ; le
   `.skanclose` quand le client n'est pas à jour (**le cabinet clôture quand même**, le fichier
   attend et porte un PDF) ; le **pli scellé** décrit (fichier chez l'un, mot de passe chez l'autre,
   deux supports, rejoué chaque année) et « Libérer tous les clients… » (clés à vie en lot, derrière
@@ -2559,16 +2559,32 @@ fait foi ; le contenu de chaque version reste dans `QUESTIONS.md` § 16.
 La liste de **tout ce qui reste à faire**, version par version, de la 9.1.0 à la 10.0.0 : un tableau
 récapitulatif (version → titre → nombre de fonctionnalités → niveau de spec → durée construction et
 réaliste), puis une section par version avec ses fonctionnalités numérotées `F-<version>-<nn>`,
-citables dans un commit. **171 fonctionnalités** sur les treize versions, **179** avec les deux
-versions d'entretien (9.5.1 et 9.8.1), ≈ 104 jours de construction et ≈ 228 jours réalistes. Trois
-niveaux de spec : *Complète* (9.1.0, 9.1.1, 9.2.0 — écrites dans le cahier), *Cadrée* (un écran
-réservé dans la Partie 15 avec son tableau Décidé / À décider), *Esquisse* (10.0.0). Chaque section
-dit aussi ce qui n'y est **pas**, ce qui la prouve, ce qui reste à décider et **qui** tranche
-(comptable, Skander, mesure). Une dernière partie liste ce qui viendra **au-delà de la 10.0.0**, sans
-numéro, avec le déclencheur de chacun. Ce document n'est ni une spécification (`CAHIER-DES-CHARGES.md`)
-ni un calendrier (`PLAN-DEVELOPPEMENT.md`) : c'est un inventaire, et il se relit à chaque version
-publiée. À noter : il emploie les numéros `9.3.5` et `9.3.6` demandés par Skander là où les autres
-documents disent `9.3.x` / `P 0.3` et `9.3.1` — la correspondance est écrite dans son en-tête.
+citables dans un commit. **171 fonctionnalités** sur les treize versions principales, **179** avec
+les trois versions d'entretien, ≈ 104 jours de construction et ≈ 228 jours réalistes. **Trois
+niveaux de spec, définis une seule fois dans ce document** et cités par le cahier : *Complète*
+(9.1.0, 9.1.1, 9.2.0 — écrites dans le cahier, 58 fonctionnalités, 34 %), *Intention* (un écran
+réservé dans la Partie 15 du cahier avec son tableau Décidé / À décider, 102, 60 %), *Esquisse*
+(10.0.0 seule, 11, 6 %). Chaque section dit aussi ce qui n'y est **pas**, ce qui la prouve, ce qui
+la **bloque**, ce qui reste à décider et **qui** tranche (comptable, Skander, mesure). Une dernière
+partie liste ce qui viendra **au-delà de la 10.0.0**, sans numéro, avec le déclencheur de chacun. Ce
+document n'est ni une spécification (`CAHIER-DES-CHARGES.md`) ni un calendrier
+(`PLAN-DEVELOPPEMENT.md`) : c'est un inventaire, et il se relit à chaque version publiée.
+
+**v2 (16/09/2026) — la renumérotation, appliquée à tout le dépôt.** La règle du projet veut que le
+troisième chiffre soit réservé aux correctifs : la licence du Cabinet ajoute des fonctionnalités,
+elle est donc **9.4.0** (et non 9.3.x / P 0.3), l'entretien qui la suit **9.4.1**, et tout ce qui
+suivait décale d'un cran — banque **9.5.0**, déclaration **9.6.0**, clôture **9.7.0**,
+immobilisations **9.8.0**, collaborateurs **9.9.0**, révision **9.10.0**, entretiens **9.6.1** et
+**9.9.1** ; la 10.0.0 ne bouge pas. **281 occurrences dans sept documents**, en une seule passe
+simultanée avec un garde-fou sur les versions livrées et stables — renuméroter un seul document
+aurait fabriqué la divergence que le projet combat depuis la 6.8.0. Les identifiants
+`SPEC-UI-CAB-0nn` n'ont **pas** été renumérotés (un identifiant qu'on renumérote ne sert plus à
+rien) : leur dizaine groupe les écrans d'une version, elle ne nomme plus son numéro, et la Partie 15
+du cahier le dit. **Le défaut d'ordre trouvé au passage, et pas encore tranché** : la 9.7.0
+(clôture) passe les dotations depuis `immobilisations[]`, que la 9.8.0 écrit — sans conséquence pour
+un dossier sur SkanFact (les dotations arrivent dans le paquet), bloquant pour un dossier **hors
+SkanFact**, qui est justement le dossier payant. Deux issues au choix de Skander : échanger les deux
+versions, ou garder l'ordre et écrire la limite sur la page.
 
 ### Le cahier des charges — `CAHIER-DES-CHARGES.md` (15/09/2026)
 

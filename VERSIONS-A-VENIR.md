@@ -1,8 +1,12 @@
 # VERSIONS-A-VENIR.md — tout ce qui reste à faire, de la 9.1.0 à la 10.0.0
 
+## Version 2 — 16/09/2026
+
 **Ce que c'est** : la liste complète des fonctionnalités à venir, version par version, pour voir d'un
 coup d'œil ce qui reste — écrite le 15/09/2026 en lisant `CAHIER-DES-CHARGES.md` (v1.1),
-`PLAN-DEVELOPPEMENT.md`, `QUESTIONS.md` § 16 et `PLAN-COMPTABLE.md`, au commit `137daad`.
+`PLAN-DEVELOPPEMENT.md`, `QUESTIONS.md` § 16 et `PLAN-COMPTABLE.md` au commit **`137daad`**, puis
+corrigée le 16/09/2026 au commit **`d5ed703`** (v2 : cinq corrections d'une relecture extérieure,
+dont la **renumérotation** des versions ; le Journal en fin de document dit tout ce qui a changé).
 **Ce que ce n'est pas** : ni une spécification (les schémas, les signatures et les formats sont dans
 `CAHIER-DES-CHARGES.md`), ni un calendrier (les jalons, le chemin critique et les 26 semaines sont
 dans `PLAN-DEVELOPPEMENT.md`), ni un engagement de date — c'est un inventaire.
@@ -14,6 +18,21 @@ En cas de contradiction, `DIRECTION.md` fait foi, puis `CAHIER-DES-CHARGES.md`, 
 
 ---
 
+## Où on en est (16/09/2026)
+
+- **SkanFact Entreprise 9.0.0** : neuf modules et vingt et une pages livrés — ventes, achats,
+  trésorerie, stock, immobilisations, paie, marges, statistiques, comptabilité. **Passe en
+  entretien** : plus aucun écran neuf n'y est ajouté (`DIRECTION.md`).
+- **SkanFact Cabinet 9.0.0** : reçoit les paquets, recalcule leurs empreintes, relance, suit les
+  échéances et exporte les écritures en CSV. **Ne tient pas encore de comptabilité.**
+- **Plateforme** : écrite, testée contre le vrai schéma D1 sur SQLite, **pas en production** — la
+  clé de réponse est `null` et la révocation ne s'applique donc chez personne.
+- **Clients payants : zéro.** Trois utilisateurs, tous de la famille : Skander, son père, son frère.
+- **Prochaine version : 9.1.0** — l'outillage, puis les livres lus dans les paquets.
+- **Ce qui décide de la suite** : J0 le 15/10/2026, et c'est une démarche, pas du code.
+
+---
+
 ## Tableau récapitulatif
 
 | Version | Titre | Nb fonctionnalités | Niveau spec | Durée |
@@ -21,41 +40,62 @@ En cas de contradiction, `DIRECTION.md` fait foi, puis `CAHIER-DES-CHARGES.md`, 
 | **9.1.0** | Outillage, livres lus, option Comptabilité | 25 | Complète | 8 j · 16 j |
 | **9.1.1** | Les corrections fiscales | 7 | Complète | 2 j · 4 j |
 | **9.2.0** | Le livre du dossier, et le paquet signé | 26 | Complète | 8 j · 20 j |
-| **9.3.0** | La saisie | 14 | Cadrée | 10 j · 20 j |
-| **9.3.5** | La licence du Cabinet | 12 | Cadrée | 5 j · 10 j |
-| **9.3.6** | Entretien | 7 | Cadrée | 3 j · 6 j |
-| **9.4.0** | La banque | 12 | Cadrée | 10 j · 20 j |
-| **9.5.0** | La déclaration mensuelle | 14 | Cadrée | 8 j · 20 j |
-| *9.5.1* | *Entretien (hors des 13 demandées)* | *4* | *Cadrée* | *3 j · 6 j* |
-| **9.6.0** | La clôture d'exercice | 15 | Cadrée | 13 j · 30 j |
-| **9.7.0** | Immobilisations et stocks | 10 | Cadrée | 5 j · 10 j |
-| **9.8.0** | Le cabinet à plusieurs | 8 | Cadrée | 10 j · 20 j |
-| *9.8.1* | *Entretien (hors des 13 demandées)* | *4* | *Cadrée* | *3 j · 6 j* |
-| **9.9.0** | La révision et les questions | 10 | Cadrée | 10 j · 20 j |
+| **9.3.0** | La saisie | 14 | Intention | 10 j · 20 j |
+| **9.4.0** | La licence du Cabinet | 12 | Intention | 5 j · 10 j |
+| **9.4.1** | Entretien | 7 | Intention | 3 j · 6 j |
+| **9.5.0** | La banque | 12 | Intention | 10 j · 20 j |
+| **9.6.0** | La déclaration mensuelle | 14 | Intention | 8 j · 20 j |
+| *9.6.1* | *Entretien (hors des 13 demandées)* | *4* | *Intention* | *3 j · 6 j* |
+| **9.7.0** | La clôture d'exercice | 15 | Intention | 13 j · 30 j |
+| **9.8.0** | Immobilisations et stocks | 10 | Intention | 5 j · 10 j |
+| **9.9.0** | Le cabinet à plusieurs | 8 | Intention | 10 j · 20 j |
+| *9.9.1* | *Entretien (hors des 13 demandées)* | *4* | *Intention* | *3 j · 6 j* |
+| **9.10.0** | La révision et les questions | 10 | Intention | 10 j · 20 j |
 | **10.0.0** | La liasse et l'annuel | 11 | Esquisse | 10 j · 20 j |
 
-**Total : 171 fonctionnalités à venir** sur les treize versions demandées, **179** avec les deux
-versions d'entretien que la liste n'inclut pas.
+**Total : 171 fonctionnalités à venir** sur les treize versions principales, **179** avec les trois
+versions d'entretien (9.4.1 est comptée dans les treize, 9.6.1 et 9.9.1 ne le sont pas).
 
-**Les trois niveaux de spec.** *Complète* = écrite dans `CAHIER-DES-CHARGES.md` avec ses schémas,
-ses écrans, ses tests et ses migrations : exécutable sans question. *Cadrée* = la Partie 15 du
-cahier lui donne un écran réservé (`SPEC-UI-CAB-0nn`) avec son tableau « Décidé / À décider » : on
-sait ce qui ne se rediscute pas et qui tranche le reste. *Esquisse* = l'intention et la dépendance
-sont connues, presque tout le contenu attend un document réel du comptable.
+**Répartition par niveau de spec** — c'est le chiffre qui dit quelle part du projet est prête à être
+codée aujourd'hui. Sur les **171** des treize versions principales ; les trois versions d'entretien
+(8 fonctionnalités de plus) sont toutes au niveau *Intention*.
+
+| Niveau | Fonctionnalités | Part |
+|---|---|---|
+| **Complète** — prête à coder, sans une question | 58 | 34 % |
+| **Intention** — à spécifier au moment de la version | 102 | 60 % |
+| **Esquisse** — à documenter avant de spécifier | 11 | 6 % |
+
+Les deux tiers restants demanderont des allers-retours avec le comptable : ce ne sont pas des jours
+de code en attente, ce sont des **réponses** en attente. C'est aussi pourquoi les durées de la
+colonne « réaliste » valent le double de celles de la construction.
+
+**Les trois niveaux de spec**, définis une seule fois — `CAHIER-DES-CHARGES.md` Partie 15 emploie le
+même vocabulaire et renvoie ici. *Complète* = écrite dans le cahier avec ses schémas, ses écrans,
+ses tests et ses migrations : exécutable sans question. *Intention* = la Partie 15 du cahier lui
+donne un écran réservé (`SPEC-UI-CAB-0nn`) avec son tableau « Décidé / À décider » : on sait ce qui
+ne se rediscute pas, et **qui** tranche le reste. *Esquisse* = l'intention et la dépendance sont
+connues, presque tout le contenu attend un document réel du comptable — la 10.0.0 est la seule dans
+ce cas, et le cahier écrit « Tout : c'est la version qui exige le pilote ».
 
 **Les deux durées** : construction · réaliste. La seconde est le double de la première, et c'est
 `QUESTIONS.md` § 16 qui le dit — elle absorbe les retours du pilote, les correctifs, les relances
 d'e2e et le temps de relecture. Mises bout à bout : **≈ 104 jours de construction, ≈ 228 jours
 réalistes**, soit onze mois de travail effectif étalés sur dix-huit à vingt-et-un mois d'attentes.
-C'est cohérent avec J4 au 30/06/2028.
+C'est cohérent avec J4 au 30/06/2028. Quand `PLAN-DEVELOPPEMENT.md` donne une fourchette (« 5 à
+10 j »), le tableau ci-dessus en prend le **milieu** et la section de la version garde la fourchette
+entière : c'est la section qui fait foi.
 
-**Une remarque sur deux numéros.** `9.3.5` et `9.3.6` sont tes numéros ; les autres documents
-appellent ces versions `9.3.x` / `P 0.3` (licence du Cabinet) et `9.3.1` (entretien). Un numéro qui
-ne bouge que le troisième chiffre est réservé aux correctifs par la règle du projet
-(`CLAUDE.md`, « Chaque amélioration livrée = une nouvelle version ») : la licence du Cabinet ajoute
-des fonctionnalités, donc elle devrait être `9.4.0`, et tout ce qui suit décalerait d'un cran. Je
-garde tes numéros dans ce document et je le signale une fois ; c'est ta décision, elle ne change
-rien au contenu.
+**Les numéros sont ceux de la règle du projet** (`CLAUDE.md`, « Chaque amélioration livrée = une
+nouvelle version ») : le troisième chiffre est réservé aux correctifs, donc une version qui ajoute
+des fonctionnalités bouge le deuxième. La v1 employait `9.3.5` et `9.3.6` pour la licence du Cabinet
+et l'entretien qui la suit ; la v2 les a renumérotées en **9.4.0** et **9.4.1**, et tout ce qui
+suivait a décalé d'un cran — la banque devient 9.5.0, la révision 9.10.0, et la 10.0.0 ne bouge pas.
+**La renumérotation a été appliquée aux six autres documents en même temps** (281 occurrences) :
+`QUESTIONS.md`, `CAHIER-DES-CHARGES.md`, `PLAN-DEVELOPPEMENT.md`, `PLAN-COMPTABLE.md`, `CLAUDE.md`
+et `DIRECTION.md` disent donc exactement la même chose que celui-ci. Les identifiants
+`SPEC-UI-CAB-0nn`, eux, **n'ont pas bougé** : ils sont déjà cités dans le cahier, et un identifiant
+qu'on renumérote ne sert plus à rien.
 
 **Ce que la liste ne contient pas, volontairement** : les tâches qui ne sont pas du code et qui
 bloquent la vente (marque, certificats, INPDP, conditions de vente, lettre à l'Ordre, page unique,
@@ -73,6 +113,7 @@ pli scellé) — elles sont l'**Étape 0** de `QUESTIONS.md` § 16 et la **Phase
 |---|---|
 | **Durée** | construction 8 j (outillage 4, livres 3, `compta.js` 1) · réaliste 16 j |
 | **Dépend de** | rien — « n'attend personne », c'est la seule version dans ce cas |
+| **Bloque** | **9.2.0** — le livre a besoin de `compta.js`, et le test de charge décide de son format — donc **toute la chaîne derrière**. Ne bloque pas la 9.1.1 |
 | **Niveau de spec** | Complète : `CAHIER-DES-CHARGES.md` § 3.3, § 4.1, § 4.2, § 5.4, Partie 9, § 11.2, Partie 12 |
 | **Jalon** | le test de charge décide du format de la 9.2.0 ; **J0** doit être atteint avant d'entrer en 9.2.0 |
 
@@ -126,6 +167,7 @@ et a dit par écrit ce qui manque.
 |---|---|
 | **Durée** | construction 2 j · réaliste 4 j |
 | **Dépend de** | **une seule chose** : la séance de validation fiscale avec le comptable, qui tranche les quatre en une fois |
+| **Bloque** | **rien** — la seule version du chantier dans ce cas. Ce qui ne veut pas dire qu'elle peut attendre : ses quatre chiffres partent chez un tiers (l'administration, un client, un comptable) |
 | **Niveau de spec** | Complète : SPEC-FUNC-102, SPEC-UI-ENT-004 → 006, § 11.3, MIG-9.1.1-001 |
 | **Jalon** | aucun ; version volontairement minuscule, publiée seule |
 
@@ -159,6 +201,7 @@ timbre, métiers qui portent une TFP, périmètre e-facture. Tous *comptable*, t
 |---|---|
 | **Durée** | construction 5 à 10 j · réaliste 20 j |
 | **Dépend de** | le test de charge réussi (ou le modèle changé) ; **le plan de comptes du comptable** et le format de balance de son logiciel actuel ; **J0** atteint ; l'engagement écrit du pilote |
+| **Bloque** | **9.3.0** (la saisie écrit dans le livre) et **9.10.0** (les questions au client voyagent avec la clé créée ici), donc **toute la chaîne derrière** |
 | **Niveau de spec** | Complète : SPEC-DATA-005 (la plus importante du cahier), SPEC-DATA-004b, SPEC-FMT-005/008/009, SPEC-UI-CAB-003 → 006, SPEC-FUNC-103, § 11.4, MIG-9.2.0-001 → 004 |
 | **Jalon** | **J1** (31/12/2026) : trois licences, le pilote par écrit |
 
@@ -213,8 +256,9 @@ modifiable, c'est fait pour.
 |---|---|
 | **Durée** | construction 10 j · réaliste 20 j |
 | **Dépend de** | **J1** atteint, et le pilote **regardé en train de saisir** dans son logiciel actuel — une heure chez lui, c'est la dépendance qui décide de l'écran |
-| **Niveau de spec** | Cadrée : `CAHIER-DES-CHARGES.md` Partie 15, SPEC-UI-CAB-010 → 013 |
-| **Jalon** | le pilote continue-t-il dans le Cabinet ? Si non, on n'écrit pas la 9.4.0 avant de savoir pourquoi |
+| **Bloque** | **9.5.0** et **9.7.0** — les deux exigent que le pilote travaille vraiment dans le Cabinet. C'est une dépendance d'usage, pas de code |
+| **Niveau de spec** | Intention : `CAHIER-DES-CHARGES.md` Partie 15, SPEC-UI-CAB-010 → 013 |
+| **Jalon** | le pilote continue-t-il dans le Cabinet ? Si non, on n'écrit pas la 9.5.0 avant de savoir pourquoi |
 
 | Id | Fonctionnalité | Côté | Spec |
 |---|---|---|---|
@@ -250,7 +294,7 @@ surcharge par dossier).
 
 ---
 
-## 9.3.5 — La licence du Cabinet
+## 9.4.0 — La licence du Cabinet
 
 > *Le Cabinet devient payant au-delà de trois dossiers hors SkanFact — on vend des dossiers, jamais
 > des postes.*
@@ -259,23 +303,24 @@ surcharge par dossier).
 |---|---|
 | **Durée** | construction 5 j · réaliste 10 j |
 | **Dépend de** | la question à l'Ordre **posée** (pas répondue : on construit, on ne vend pas) ; les prix |
-| **Niveau de spec** | Cadrée : Partie 15, SPEC-UI-CAB-015, SPEC-UI-CON-007 ; `DIRECTION.md` § 5.A et 5.B |
+| **Bloque** | **la vente du Cabinet**, et rien dans le code. C'est la seule version du chantier qui peut glisser sans arrêter une ligne du reste |
+| **Niveau de spec** | Intention : Partie 15, SPEC-UI-CAB-015, SPEC-UI-CON-007 ; `DIRECTION.md` § 5.A et 5.B |
 | **Jalon** | aucun ; touche à l'argent, donc **relecture adversariale complète obligatoire** |
 
 | Id | Fonctionnalité | Côté | Spec |
 |---|---|---|---|
-| F-9.3.5-01 | Clé de licence de type `cabinet` : sujet = l'**empreinte** du cabinet, quota `dossiersHors` | Plateforme | SPEC-UI-CAB-015 |
-| F-9.3.5-02 | `licence.js` et les clés publiques entrent dans la construction du Cabinet ; vérification **hors ligne** | Cabinet | SPEC-UI-CAB-015 |
-| F-9.3.5-03 | Comptage des dossiers hors SkanFact, les **trois premiers gratuits** | Cabinet | `DIRECTION.md` § 5 |
-| F-9.3.5-04 | Un dossier archivé, ou sans écriture validée depuis douze mois, **ne compte pas** | Cabinet | `QUESTIONS.md` § 3 |
-| F-9.3.5-05 | **Grâce de douze mois** quand un client ne renouvelle pas — mais seulement après une licence **payée** | Cabinet | `QUESTIONS.md` § 3, règle 44 |
-| F-9.3.5-06 | La porte unique posée sur la **validation** : lire, importer, exporter et relancer restent libres | Cabinet | SPEC-UI-CAB-015 |
-| F-9.3.5-07 | Réglages → Licence : coller la clé, l'état, **ce qui est compté**, la liste nommée des dossiers comptés | Cabinet | SPEC-UI-CAB-015 |
-| F-9.3.5-08 | Bandeau à trois tons, ligne « À faire », « Demander une licence » — les mêmes mécanismes que l'entreprise, pas des copies | Cabinet | SPEC-UI-CAB-015 |
-| F-9.3.5-09 | Ce qui remonte au serveur : l'empreinte, le nombre de dossiers comptés, la version. **Jamais un nom de client** | Cabinet | § 17, test « ce qui remonte » |
-| F-9.3.5-10 | Table `cabinets` et lien cabinet ↔ clients parrainés | Plateforme | SPEC-UI-CON-007 |
-| F-9.3.5-11 | Console : émettre, marquer payée, renouveler, **monter le quota au prorata**, révoquer une licence Cabinet | Plateforme | SPEC-UI-CON-007 |
-| F-9.3.5-12 | Le module Éditeur tire et facture une vente de type cabinet comme les autres | Entreprise | SPEC-UI-CON-007 |
+| F-9.4.0-01 | Clé de licence de type `cabinet` : sujet = l'**empreinte** du cabinet, quota `dossiersHors` | Plateforme | SPEC-UI-CAB-015 |
+| F-9.4.0-02 | `licence.js` et les clés publiques entrent dans la construction du Cabinet ; vérification **hors ligne** | Cabinet | SPEC-UI-CAB-015 |
+| F-9.4.0-03 | Comptage des dossiers hors SkanFact, les **trois premiers gratuits** | Cabinet | `DIRECTION.md` § 5 |
+| F-9.4.0-04 | Un dossier archivé, ou sans écriture validée depuis douze mois, **ne compte pas** | Cabinet | `QUESTIONS.md` § 3 |
+| F-9.4.0-05 | **Grâce de douze mois** quand un client ne renouvelle pas — mais seulement après une licence **payée** | Cabinet | `QUESTIONS.md` § 3, règle 44 |
+| F-9.4.0-06 | La porte unique posée sur la **validation** : lire, importer, exporter et relancer restent libres | Cabinet | SPEC-UI-CAB-015 |
+| F-9.4.0-07 | Réglages → Licence : coller la clé, l'état, **ce qui est compté**, la liste nommée des dossiers comptés | Cabinet | SPEC-UI-CAB-015 |
+| F-9.4.0-08 | Bandeau à trois tons, ligne « À faire », « Demander une licence » — les mêmes mécanismes que l'entreprise, pas des copies | Cabinet | SPEC-UI-CAB-015 |
+| F-9.4.0-09 | Ce qui remonte au serveur : l'empreinte, le nombre de dossiers comptés, la version. **Jamais un nom de client** | Cabinet | § 17, test « ce qui remonte » |
+| F-9.4.0-10 | Table `cabinets` et lien cabinet ↔ clients parrainés | Plateforme | SPEC-UI-CON-007 |
+| F-9.4.0-11 | Console : émettre, marquer payée, renouveler, **monter le quota au prorata**, révoquer une licence Cabinet | Plateforme | SPEC-UI-CON-007 |
+| F-9.4.0-12 | Le module Éditeur tire et facture une vente de type cabinet comme les autres | Entreprise | SPEC-UI-CON-007 |
 
 **Ce qui n'y est pas** : la vente elle-même — l'Ordre n'a pas répondu, et publier le prix Cabinet
 attend sa réponse. Le code, lui, n'attend pas.
@@ -291,7 +336,7 @@ dossier désarchivé recompte (*toi*) ; la vue « les dossiers de ce cabinet »,
 
 ---
 
-## 9.3.6 — Entretien
+## 9.4.1 — Entretien
 
 > *Aucune fonction nouvelle, par règle. C'est la version où l'on rembourse.*
 
@@ -299,18 +344,19 @@ dossier désarchivé recompte (*toi*) ; la vue « les dossiers de ce cabinet »,
 |---|---|
 | **Durée** | construction 3 j · réaliste 6 j |
 | **Dépend de** | rien ; elle suit la bêta de la 9.3.0 |
-| **Niveau de spec** | Cadrée : Partie 15 ; `QUESTIONS.md` § 15 pour la liste de dette |
+| **Bloque** | **rien** |
+| **Niveau de spec** | Intention : Partie 15 ; `QUESTIONS.md` § 15 pour la liste de dette |
 | **Jalon** | aucun |
 
 | Id | Fonctionnalité | Côté | Spec |
 |---|---|---|---|
-| F-9.3.6-01 | Mise à jour d'Electron du semestre | Partagé | — |
-| F-9.3.6-02 | Les **93 déclarations CSS physiques** converties en propriétés logiques — ce qui garde la porte de l'arabe ouverte sans rien promettre | Partagé | `QUESTIONS.md` § 3 |
-| F-9.3.6-03 | Premier découpage de `app.js` par route | Entreprise | `QUESTIONS.md` § 15 |
-| F-9.3.6-04 | `test/run-tests.js` découpé par domaine | Partagé | Partie 15 |
-| F-9.3.6-05 | Les codes `ERR-*` posés sur chaque `throw` | Partagé | Partie 10 |
-| F-9.3.6-06 | La dette listée au § 15 de `QUESTIONS.md` qui n'a pas encore été remboursée | Partagé | — |
-| F-9.3.6-07 | Les retours de la bêta 9.3.0 **qui ne sont pas des nouveautés** | Partagé | — |
+| F-9.4.1-01 | Mise à jour d'Electron du semestre | Partagé | — |
+| F-9.4.1-02 | Les **93 déclarations CSS physiques** converties en propriétés logiques — ce qui garde la porte de l'arabe ouverte sans rien promettre | Partagé | `QUESTIONS.md` § 3 |
+| F-9.4.1-03 | Premier découpage de `app.js` par route | Entreprise | `QUESTIONS.md` § 15 |
+| F-9.4.1-04 | `test/run-tests.js` découpé par domaine | Partagé | Partie 15 |
+| F-9.4.1-05 | Les codes `ERR-*` posés sur chaque `throw` | Partagé | Partie 10 |
+| F-9.4.1-06 | La dette listée au § 15 de `QUESTIONS.md` qui n'a pas encore été remboursée | Partagé | — |
+| F-9.4.1-07 | Les retours de la bêta 9.3.0 **qui ne sont pas des nouveautés** | Partagé | — |
 
 **Ce qui n'y est pas** : toute fonction nouvelle. Si une idée arrive pendant, elle va à la 9.4.0.
 
@@ -319,7 +365,7 @@ relance tous, parce que c'est celle où le moteur de rendu change.
 
 ---
 
-## 9.4.0 — La banque
+## 9.5.0 — La banque
 
 > *Le relevé importé, rapproché automatiquement quand c'est certain, proposé quand ça ne l'est
 > pas — et jamais validé tout seul sur une ambiguïté.*
@@ -328,23 +374,24 @@ relance tous, parce que c'est celle où le moteur de rendu change.
 |---|---|
 | **Durée** | construction 10 j · réaliste 20 j |
 | **Dépend de** | **les formats de relevés** des banques des clients du pilote — un fichier réel de chaque, anonymisé ; la 9.3.0 utilisée |
-| **Niveau de spec** | Cadrée : Partie 15, SPEC-UI-CAB-020 → 022 ; `releves[]` **figé** dans SPEC-DATA-005 |
+| **Bloque** | **9.7.0**, faiblement : les contrôles de clôture lisent les suspens bancaires. Rien d'autre |
+| **Niveau de spec** | Intention : Partie 15, SPEC-UI-CAB-020 → 022 ; `releves[]` **figé** dans SPEC-DATA-005 |
 | **Jalon** | **J2** (30/06/2027) : dix licences, le pilote qui ne revient pas en arrière |
 
 | Id | Fonctionnalité | Côté | Spec |
 |---|---|---|---|
-| F-9.4.0-01 | Lecteurs de relevés CSV des banques tunisiennes, colonnes associées **par nom, jamais par position** | Cabinet | SPEC-UI-CAB-020 |
-| F-9.4.0-02 | OFX et MT940, **seulement** si une banque des clients les exporte vraiment | Cabinet | SPEC-UI-CAB-020 |
-| F-9.4.0-03 | Assistant « CSV inconnu » : associer colonne → champ une fois, mémorisé par banque | Cabinet | SPEC-UI-CAB-020 |
-| F-9.4.0-04 | `releves[]` : un objet par fichier importé, les lignes dedans — le comptable pense « le relevé de mars » | Cabinet | SPEC-DATA-005 |
-| F-9.4.0-05 | Refus si `soldeDebut + Σ montants ≠ soldeFin`, avec l'écart nommé | Cabinet | ERR-CAB-040 |
-| F-9.4.0-06 | Empreinte du fichier : on n'importe jamais deux fois le même relevé | Cabinet | SPEC-DATA-005 |
-| F-9.4.0-07 | **Rapprochement automatique à quatre niveaux** : certain, probable, à confirmer, aucun — seul « certain » se pose d'office, et il reste défaisable | Cabinet | SPEC-UI-CAB-021 |
-| F-9.4.0-08 | Une ambiguïté montre **tous** les candidats et n'est jamais « certain » | Cabinet | SPEC-UI-CAB-021, règle 32 |
-| F-9.4.0-09 | Écriture **proposée** depuis une ligne non rapprochée, selon le libellé — jamais créée sans clic | Cabinet | SPEC-UI-CAB-021 |
-| F-9.4.0-10 | État de rapprochement et suspens ; `etatRapprochement` (9.0.0) reste la source du solde | Cabinet | SPEC-UI-CAB-021 |
-| F-9.4.0-11 | **Lettrage automatique** des tiers par montant et référence, délettrage à la main | Cabinet | SPEC-UI-CAB-022 |
-| F-9.4.0-12 | Échéancier et **balance âgée** clients et fournisseurs, sur les tranches de 2.5.0 | Cabinet | SPEC-UI-CAB-022 |
+| F-9.5.0-01 | Lecteurs de relevés CSV des banques tunisiennes, colonnes associées **par nom, jamais par position** | Cabinet | SPEC-UI-CAB-020 |
+| F-9.5.0-02 | OFX et MT940, **seulement** si une banque des clients les exporte vraiment | Cabinet | SPEC-UI-CAB-020 |
+| F-9.5.0-03 | Assistant « CSV inconnu » : associer colonne → champ une fois, mémorisé par banque | Cabinet | SPEC-UI-CAB-020 |
+| F-9.5.0-04 | `releves[]` : un objet par fichier importé, les lignes dedans — le comptable pense « le relevé de mars » | Cabinet | SPEC-DATA-005 |
+| F-9.5.0-05 | Refus si `soldeDebut + Σ montants ≠ soldeFin`, avec l'écart nommé | Cabinet | ERR-CAB-040 |
+| F-9.5.0-06 | Empreinte du fichier : on n'importe jamais deux fois le même relevé | Cabinet | SPEC-DATA-005 |
+| F-9.5.0-07 | **Rapprochement automatique à quatre niveaux** : certain, probable, à confirmer, aucun — seul « certain » se pose d'office, et il reste défaisable | Cabinet | SPEC-UI-CAB-021 |
+| F-9.5.0-08 | Une ambiguïté montre **tous** les candidats et n'est jamais « certain » | Cabinet | SPEC-UI-CAB-021, règle 32 |
+| F-9.5.0-09 | Écriture **proposée** depuis une ligne non rapprochée, selon le libellé — jamais créée sans clic | Cabinet | SPEC-UI-CAB-021 |
+| F-9.5.0-10 | État de rapprochement et suspens ; `etatRapprochement` (9.0.0) reste la source du solde | Cabinet | SPEC-UI-CAB-021 |
+| F-9.5.0-11 | **Lettrage automatique** des tiers par montant et référence, délettrage à la main | Cabinet | SPEC-UI-CAB-022 |
+| F-9.5.0-12 | Échéancier et **balance âgée** clients et fournisseurs, sur les tranches de 2.5.0 | Cabinet | SPEC-UI-CAB-022 |
 
 **Ce qui n'y est pas** : la confusion entre rapprochement et lettrage. Le rapprochement confronte le
 relevé au compte 532 (« la banque et mon livre disent-ils la même chose ? ») ; le lettrage rapproche
@@ -363,7 +410,7 @@ suspens (*comptable*) ; le lettrage partiel (*comptable*) ; les tranches d'âge 
 
 ---
 
-## 9.5.0 — La déclaration mensuelle
+## 9.6.0 — La déclaration mensuelle
 
 > *La déclaration tunisienne du mois produite depuis la balance, avec les chiffres que le comptable
 > recopie sur le portail — et rien de plus.*
@@ -372,25 +419,26 @@ suspens (*comptable*) ; le lettrage partiel (*comptable*) ; les tranches d'âge 
 |---|---|
 | **Durée** | construction 5 à 10 j · réaliste 20 j |
 | **Dépend de** | **le modèle de déclaration** que le pilote dépose réellement, un exemplaire rempli |
-| **Niveau de spec** | Cadrée : Partie 15, SPEC-UI-CAB-030 et 031 ; `declarations[]` **figé** dans SPEC-DATA-005 |
+| **Bloque** | **9.7.0**, faiblement : « TVA non déclarée » est l'un des contrôles avant clôture. Rien d'autre |
+| **Niveau de spec** | Intention : Partie 15, SPEC-UI-CAB-030 et 031 ; `declarations[]` **figé** dans SPEC-DATA-005 |
 | **Jalon** | le pilote dépose-t-il depuis le Cabinet ? |
 
 | Id | Fonctionnalité | Côté | Spec |
 |---|---|---|---|
-| F-9.5.0-01 | Une déclaration par dossier et par période, déduite des écritures | Cabinet | SPEC-UI-CAB-030 |
-| F-9.5.0-02 | TVA collectée **par taux**, déductible, crédit reporté — `vatChain` reste le moteur | Cabinet | SPEC-UI-CAB-030 |
-| F-9.5.0-03 | Retenues à la source **par nature** | Cabinet | SPEC-UI-CAB-030 |
-| F-9.5.0-04 | TFP et FOPROLOS | Cabinet | SPEC-UI-CAB-030 |
-| F-9.5.0-05 | TCL | Cabinet | Partie 21, À VÉRIFIER |
-| F-9.5.0-06 | Droit de timbre | Cabinet | SPEC-UI-CAB-030 |
-| F-9.5.0-07 | **Chaque case tracée** jusqu'aux écritures qui la font — on clique, on voit d'où vient le chiffre | Cabinet | SPEC-DATA-005 |
-| F-9.5.0-08 | Une case dont la règle n'est pas connue vaut **`null`, jamais 0** | Cabinet | règle 36 |
-| F-9.5.0-09 | Contrôles avant dépôt : le 4366 égale le report de `vatChain`, comptes d'attente, brouillard restant | Cabinet | SPEC-UI-CAB-030 |
-| F-9.5.0-10 | L'**écriture de déclaration** générée au dernier jour du mois (4367 / 4366 → 4365) | Cabinet | SPEC-UI-CAB-030 |
-| F-9.5.0-11 | Les **acomptes provisionnels** | Cabinet | `PLAN-COMPTABLE.md` |
-| F-9.5.0-12 | Calendrier fiscal par dossier **selon son régime**, aucune date ne faisant foi | Cabinet | SPEC-UI-CAB-031 |
-| F-9.5.0-13 | L'état d'un mois : **reçu → saisi → déclaré → payé**, pointé et dé-pointable | Cabinet | SPEC-UI-CAB-031 |
-| F-9.5.0-14 | Préparation de la télédéclaration : le fichier ou les chiffres à reporter | Cabinet | SPEC-UI-CAB-030 |
+| F-9.6.0-01 | Une déclaration par dossier et par période, déduite des écritures | Cabinet | SPEC-UI-CAB-030 |
+| F-9.6.0-02 | TVA collectée **par taux**, déductible, crédit reporté — `vatChain` reste le moteur | Cabinet | SPEC-UI-CAB-030 |
+| F-9.6.0-03 | Retenues à la source **par nature** | Cabinet | SPEC-UI-CAB-030 |
+| F-9.6.0-04 | TFP et FOPROLOS | Cabinet | SPEC-UI-CAB-030 |
+| F-9.6.0-05 | TCL | Cabinet | Partie 21, À VÉRIFIER |
+| F-9.6.0-06 | Droit de timbre | Cabinet | SPEC-UI-CAB-030 |
+| F-9.6.0-07 | **Chaque case tracée** jusqu'aux écritures qui la font — on clique, on voit d'où vient le chiffre | Cabinet | SPEC-DATA-005 |
+| F-9.6.0-08 | Une case dont la règle n'est pas connue vaut **`null`, jamais 0** | Cabinet | règle 36 |
+| F-9.6.0-09 | Contrôles avant dépôt : le 4366 égale le report de `vatChain`, comptes d'attente, brouillard restant | Cabinet | SPEC-UI-CAB-030 |
+| F-9.6.0-10 | L'**écriture de déclaration** générée au dernier jour du mois (4367 / 4366 → 4365) | Cabinet | SPEC-UI-CAB-030 |
+| F-9.6.0-11 | Les **acomptes provisionnels** | Cabinet | `PLAN-COMPTABLE.md` |
+| F-9.6.0-12 | Calendrier fiscal par dossier **selon son régime**, aucune date ne faisant foi | Cabinet | SPEC-UI-CAB-031 |
+| F-9.6.0-13 | L'état d'un mois : **reçu → saisi → déclaré → payé**, pointé et dé-pointable | Cabinet | SPEC-UI-CAB-031 |
+| F-9.6.0-14 | Préparation de la télédéclaration : le fichier ou les chiffres à reporter | Cabinet | SPEC-UI-CAB-030 |
 
 **Ce qui n'y est pas** : le dépôt à la place du cabinet. « Marquer déposée » est un pense-bête, pas
 un accusé de réception — une application qui déposerait à la place de quelqu'un se tromperait un
@@ -407,23 +455,25 @@ des deux, jamais les deux (*toi* — je propose la banque quand le dossier a un 
 
 ---
 
-## 9.5.1 — Entretien *(hors des treize demandées)*
+## 9.6.1 — Entretien *(hors des treize demandées)*
 
 | | |
 |---|---|
 | **Durée** | construction 3 j · réaliste 6 j |
-| **Niveau de spec** | Cadrée : Partie 15 |
+| **Dépend de** | rien |
+| **Bloque** | **rien** |
+| **Niveau de spec** | Intention : Partie 15 |
 
 | Id | Fonctionnalité | Côté | Spec |
 |---|---|---|---|
-| F-9.5.1-01 | Les taux et bases de la 9.5.0 confrontés à la **première vraie déclaration** | Cabinet | — |
-| F-9.5.1-02 | `core.js` → `compta.js` **fini** : le moteur d'écritures entièrement dans le module partagé | Partagé | SPEC-FUNC-100 |
-| F-9.5.1-03 | Electron, si une version est sortie | Partagé | — |
-| F-9.5.1-04 | Les retours de bêta qui ne sont pas des nouveautés | Partagé | — |
+| F-9.6.1-01 | Les taux et bases de la 9.6.0 confrontés à la **première vraie déclaration** | Cabinet | — |
+| F-9.6.1-02 | `core.js` → `compta.js` **fini** : le moteur d'écritures entièrement dans le module partagé | Partagé | SPEC-FUNC-100 |
+| F-9.6.1-03 | Electron, si une version est sortie | Partagé | — |
+| F-9.6.1-04 | Les retours de bêta qui ne sont pas des nouveautés | Partagé | — |
 
 ---
 
-## 9.6.0 — La clôture d'exercice
+## 9.7.0 — La clôture d'exercice
 
 > *L'inventaire, les états, l'à-nouveau — et le flux retour vers le client, sans lequel les deux
 > bilans divergent pour toujours.*
@@ -432,26 +482,27 @@ des deux, jamais les deux (*toi* — je propose la banque quand le dossier a un 
 |---|---|
 | **Durée** | construction 10 à 15 j · réaliste 30 j |
 | **Dépend de** | la présentation exacte des états (NCT 01) et des notes ; **un exercice complet du pilote** dans le Cabinet |
-| **Niveau de spec** | Cadrée : Partie 15, SPEC-UI-CAB-040 → 043, SPEC-UI-ENT-100 ; SPEC-FMT-007 réservé |
+| **Bloque** | **10.0.0** — la liasse part d'un exercice clos |
+| **Niveau de spec** | Intention : Partie 15, SPEC-UI-CAB-040 → 043, SPEC-UI-ENT-100 ; SPEC-FMT-007 réservé |
 | **Jalon** | **J3** (31/12/2027) : un second cabinet a commencé, vingt-cinq licences |
 
 | Id | Fonctionnalité | Côté | Spec |
 |---|---|---|---|
-| F-9.6.0-01 | Écritures d'inventaire **guidées** : dotations, provisions, charges et produits constatés d'avance, factures non parvenues et à établir, régularisations | Cabinet | SPEC-UI-CAB-040 |
-| F-9.6.0-02 | **Extourne automatique** au 1er jour de l'exercice suivant pour ce qui s'extourne | Cabinet | SPEC-UI-CAB-040 |
-| F-9.6.0-03 | Contrôles de clôture — comptes d'attente, brouillard restant, TVA non déclarée, balance des tiers — qui **ne bloquent jamais** | Cabinet | SPEC-UI-CAB-041, règle 6.0.0 |
-| F-9.6.0-04 | Clôture d'exercice **définitive et tracée** ; une réouverture exige un motif | Cabinet | SPEC-UI-CAB-041 |
-| F-9.6.0-05 | À-nouveaux **explicites**, calculés sur les écritures réelles seules — jamais comptés deux fois | Cabinet | SPEC-UI-CAB-041, règle 9.0.0 |
-| F-9.6.0-06 | L'exercice suivant s'ouvre **pendant** que le précédent se termine | Cabinet | SPEC-UI-CAB-041 |
-| F-9.6.0-07 | États financiers au format SCE : bilan, état de résultat, flux de trésorerie, notes | Cabinet | SPEC-UI-CAB-042 |
-| F-9.6.0-08 | Comparatif N / N-1, soldes intermédiaires de gestion, ratios | Cabinet | SPEC-UI-CAB-042 |
-| F-9.6.0-09 | Impression et PDF des états, par le moteur de pagination de la 7.31.0 | Cabinet | SPEC-UI-CAB-042 |
-| F-9.6.0-10 | **`.skanclose`** produit à la clôture, chiffré pour le client : à-nouveaux officiels, écritures d'inventaire, date de clôture | Cabinet | SPEC-FMT-007 |
-| F-9.6.0-11 | Un **PDF** lisible par n'importe qui dans le `.skanclose`, pour le client qui ne met jamais à jour | Cabinet | SPEC-UI-CAB-043 |
-| F-9.6.0-12 | **Le cabinet clôture quand même** si le client n'est pas à jour : le fichier attend et repart avec la relance suivante | Cabinet | SPEC-UI-CAB-043, règle 48 |
-| F-9.6.0-13 | L'entreprise importe le `.skanclose` : les à-nouveaux officiels sont posés | Entreprise | SPEC-UI-ENT-100 |
-| F-9.6.0-14 | L'exercice clos est **verrouillé** chez le client, et les écritures du comptable s'y lisent | Entreprise | SPEC-UI-ENT-100 |
-| F-9.6.0-15 | Une version trop ancienne dit « ton comptable a clôturé : mets à jour SkanFact » | Entreprise | SPEC-UI-ENT-100 |
+| F-9.7.0-01 | Écritures d'inventaire **guidées** : dotations, provisions, charges et produits constatés d'avance, factures non parvenues et à établir, régularisations | Cabinet | SPEC-UI-CAB-040 |
+| F-9.7.0-02 | **Extourne automatique** au 1er jour de l'exercice suivant pour ce qui s'extourne | Cabinet | SPEC-UI-CAB-040 |
+| F-9.7.0-03 | Contrôles de clôture — comptes d'attente, brouillard restant, TVA non déclarée, balance des tiers — qui **ne bloquent jamais** | Cabinet | SPEC-UI-CAB-041, règle 6.0.0 |
+| F-9.7.0-04 | Clôture d'exercice **définitive et tracée** ; une réouverture exige un motif | Cabinet | SPEC-UI-CAB-041 |
+| F-9.7.0-05 | À-nouveaux **explicites**, calculés sur les écritures réelles seules — jamais comptés deux fois | Cabinet | SPEC-UI-CAB-041, règle 9.0.0 |
+| F-9.7.0-06 | L'exercice suivant s'ouvre **pendant** que le précédent se termine | Cabinet | SPEC-UI-CAB-041 |
+| F-9.7.0-07 | États financiers au format SCE : bilan, état de résultat, flux de trésorerie, notes | Cabinet | SPEC-UI-CAB-042 |
+| F-9.7.0-08 | Comparatif N / N-1, soldes intermédiaires de gestion, ratios | Cabinet | SPEC-UI-CAB-042 |
+| F-9.7.0-09 | Impression et PDF des états, par le moteur de pagination de la 7.31.0 | Cabinet | SPEC-UI-CAB-042 |
+| F-9.7.0-10 | **`.skanclose`** produit à la clôture, chiffré pour le client : à-nouveaux officiels, écritures d'inventaire, date de clôture | Cabinet | SPEC-FMT-007 |
+| F-9.7.0-11 | Un **PDF** lisible par n'importe qui dans le `.skanclose`, pour le client qui ne met jamais à jour | Cabinet | SPEC-UI-CAB-043 |
+| F-9.7.0-12 | **Le cabinet clôture quand même** si le client n'est pas à jour : le fichier attend et repart avec la relance suivante | Cabinet | SPEC-UI-CAB-043, règle 48 |
+| F-9.7.0-13 | L'entreprise importe le `.skanclose` : les à-nouveaux officiels sont posés | Entreprise | SPEC-UI-ENT-100 |
+| F-9.7.0-14 | L'exercice clos est **verrouillé** chez le client, et les écritures du comptable s'y lisent | Entreprise | SPEC-UI-ENT-100 |
+| F-9.7.0-15 | Une version trop ancienne dit « ton comptable a clôturé : mets à jour SkanFact » | Entreprise | SPEC-UI-ENT-100 |
 
 **Ce qui n'y est pas** : **la liasse**. Cette version produit des états **déduits de la balance**, et
 la page l'écrit. Confondre les deux ferait promettre ce que la 10.0.0 seule livre.
@@ -463,13 +514,13 @@ au millime** — le jumeau du test de parité, dans l'autre sens.
 
 **Ce qui reste à décider** : la présentation exacte NCT 01, les notes, les SIG et ratios retenus
 (*comptable*) ; simplifié contre complet, par dossier (*comptable*) ; le brouillard restant à la
-clôture (*comptable*) ; le format exact du `.skanclose` (*toi*, en 9.6.0) ; et côté client, ce
+clôture (*comptable*) ; le format exact du `.skanclose` (*toi*, en 9.7.0) ; et côté client, ce
 qu'on fait de ses propres écritures dans un exercice que le cabinet vient de clore (*toi* — je
 propose l'archivage, jamais une perte silencieuse).
 
 ---
 
-## 9.7.0 — Immobilisations et stocks
+## 9.8.0 — Immobilisations et stocks
 
 > *Le dégressif, la sortie, les stocks valorisés — côté cabinet, pour les dossiers qui n'ont pas
 > SkanFact.*
@@ -478,21 +529,22 @@ propose l'archivage, jamais une perte silencieuse).
 |---|---|
 | **Durée** | construction 5 j · réaliste 10 j |
 | **Dépend de** | rien de nouveau : le linéaire, la cession et le coût moyen pondéré existent depuis 3.5.0 et 4.0.0 |
-| **Niveau de spec** | Cadrée : Partie 15, SPEC-UI-CAB-050 et 051 ; `immobilisations[]` **figé** dans SPEC-DATA-005 |
+| **Bloque** | **rien** dans l'ordre actuel — mais voir « Ce que la relecture n'a pas vu » : la 9.7.0 lit `immobilisations[]`, que **cette** version écrit |
+| **Niveau de spec** | Intention : Partie 15, SPEC-UI-CAB-050 et 051 ; `immobilisations[]` **figé** dans SPEC-DATA-005 |
 | **Jalon** | aucun : phase courte, elle enchaîne |
 
 | Id | Fonctionnalité | Côté | Spec |
 |---|---|---|---|
-| F-9.7.0-01 | Fiches d'immobilisations tenues par le cabinet, **même modèle** que côté entreprise | Cabinet | SPEC-DATA-005 |
-| F-9.7.0-02 | Amortissement **dégressif**, taux réglable — jamais un coefficient en dur | Cabinet | SPEC-UI-CAB-050 |
-| F-9.7.0-03 | Amortissement **dérogatoire** (deux plans sur une fiche) | Cabinet | SPEC-UI-CAB-050 |
-| F-9.7.0-04 | Tableau d'amortissement de l'exercice et VNC par dossier | Cabinet | SPEC-UI-CAB-050 |
-| F-9.7.0-05 | Cessions et **mises au rebut** | Cabinet | SPEC-UI-CAB-050 |
-| F-9.7.0-06 | Subventions d'investissement | Cabinet | SPEC-UI-CAB-050 |
-| F-9.7.0-07 | Ce qui vient d'un paquet entre dans les mêmes fiches **sans ressaisie** ; jamais une fiche créée d'office | Cabinet | SPEC-UI-CAB-050 |
-| F-9.7.0-08 | Les dotations passées en écritures d'inventaire portent leur `ecritureId` sur l'année du plan | Cabinet | SPEC-DATA-005 |
-| F-9.7.0-09 | **Inventaire de stock** de fin d'exercice saisi (quantité × coût) | Cabinet | SPEC-UI-CAB-051 |
-| F-9.7.0-10 | La **variation de stock** devient une écriture d'inventaire (603 / 37) | Cabinet | SPEC-UI-CAB-051 |
+| F-9.8.0-01 | Fiches d'immobilisations tenues par le cabinet, **même modèle** que côté entreprise | Cabinet | SPEC-DATA-005 |
+| F-9.8.0-02 | Amortissement **dégressif**, taux réglable — jamais un coefficient en dur | Cabinet | SPEC-UI-CAB-050 |
+| F-9.8.0-03 | Amortissement **dérogatoire** (deux plans sur une fiche) | Cabinet | SPEC-UI-CAB-050 |
+| F-9.8.0-04 | Tableau d'amortissement de l'exercice et VNC par dossier | Cabinet | SPEC-UI-CAB-050 |
+| F-9.8.0-05 | Cessions et **mises au rebut** | Cabinet | SPEC-UI-CAB-050 |
+| F-9.8.0-06 | Subventions d'investissement | Cabinet | SPEC-UI-CAB-050 |
+| F-9.8.0-07 | Ce qui vient d'un paquet entre dans les mêmes fiches **sans ressaisie** ; jamais une fiche créée d'office | Cabinet | SPEC-UI-CAB-050 |
+| F-9.8.0-08 | Les dotations passées en écritures d'inventaire portent leur `ecritureId` sur l'année du plan | Cabinet | SPEC-DATA-005 |
+| F-9.8.0-09 | **Inventaire de stock** de fin d'exercice saisi (quantité × coût) | Cabinet | SPEC-UI-CAB-051 |
+| F-9.8.0-10 | La **variation de stock** devient une écriture d'inventaire (603 / 37) | Cabinet | SPEC-UI-CAB-051 |
 
 **Ce qui n'y est pas** : l'inventaire permanent côté cabinet — il attend qu'un cabinet le demande.
 
@@ -508,7 +560,7 @@ subventions (*comptable*) ; le dérogatoire — **s'il n'est pas demandé, il n'
 
 ---
 
-## 9.8.0 — Le cabinet à plusieurs
+## 9.9.0 — Le cabinet à plusieurs
 
 > *Plusieurs collaborateurs sur un cabinet, sans que l'un efface le travail de l'autre en silence.*
 
@@ -516,19 +568,20 @@ subventions (*comptable*) ; le dérogatoire — **s'il n'est pas demandé, il n'
 |---|---|
 | **Durée** | construction 10 j · réaliste 20 j |
 | **Dépend de** | **un cabinet de plus d'une personne** qui l'utilise — sinon on construit du multi-poste pour un poste. C'est la version qui attend le plus J3 |
-| **Niveau de spec** | Cadrée : Partie 15, SPEC-UI-CAB-060 → 062 |
+| **Bloque** | **rien** |
+| **Niveau de spec** | Intention : Partie 15, SPEC-UI-CAB-060 → 062 |
 | **Jalon** | le second cabinet utilise-t-il le multi-poste ? |
 
 | Id | Fonctionnalité | Côté | Spec |
 |---|---|---|---|
-| F-9.8.0-01 | Collaborateurs : une identité **locale**, pas de compte serveur | Cabinet | SPEC-UI-CAB-060 |
-| F-9.8.0-02 | Droits **par dossier** : saisie, validation, supervision | Cabinet | SPEC-UI-CAB-060 |
-| F-9.8.0-03 | Deux postes sur le même dossier sans s'écraser : révision et fusion, comme le partage de 3.2.0 | Cabinet | SPEC-UI-CAB-061 |
-| F-9.8.0-04 | **Une écriture validée ne se fusionne jamais** : elle existe ou pas ; un conflit sur un brouillard est **montré** | Cabinet | SPEC-UI-CAB-061 |
-| F-9.8.0-05 | Verrouillage automatique d'un dossier ouvert ailleurs, et reprise d'un verrou orphelin | Cabinet | ERR-CAB-022 |
-| F-9.8.0-06 | La piste d'audit porte **qui**, sur chaque geste | Cabinet | SPEC-DATA-005 |
-| F-9.8.0-07 | Tableau de **production** : par dossier et par mois, reçu → saisi → révisé → déclaré, qui et depuis quand | Cabinet | SPEC-UI-CAB-062 |
-| F-9.8.0-08 | « À faire » **par collaborateur** | Cabinet | SPEC-UI-CAB-062 |
+| F-9.9.0-01 | Collaborateurs : une identité **locale**, pas de compte serveur | Cabinet | SPEC-UI-CAB-060 |
+| F-9.9.0-02 | Droits **par dossier** : saisie, validation, supervision | Cabinet | SPEC-UI-CAB-060 |
+| F-9.9.0-03 | Deux postes sur le même dossier sans s'écraser : révision et fusion, comme le partage de 3.2.0 | Cabinet | SPEC-UI-CAB-061 |
+| F-9.9.0-04 | **Une écriture validée ne se fusionne jamais** : elle existe ou pas ; un conflit sur un brouillard est **montré** | Cabinet | SPEC-UI-CAB-061 |
+| F-9.9.0-05 | Verrouillage automatique d'un dossier ouvert ailleurs, et reprise d'un verrou orphelin | Cabinet | ERR-CAB-022 |
+| F-9.9.0-06 | La piste d'audit porte **qui**, sur chaque geste | Cabinet | SPEC-DATA-005 |
+| F-9.9.0-07 | Tableau de **production** : par dossier et par mois, reçu → saisi → révisé → déclaré, qui et depuis quand | Cabinet | SPEC-UI-CAB-062 |
+| F-9.9.0-08 | « À faire » **par collaborateur** | Cabinet | SPEC-UI-CAB-062 |
 
 **Ce qui n'y est pas** : un serveur. Un fichier par dossier et par exercice, jamais une base
 partagée — et le service de transport seulement si un cabinet le demande.
@@ -546,23 +599,25 @@ le même jour ? »
 
 ---
 
-## 9.8.1 — Entretien *(hors des treize demandées)*
+## 9.9.1 — Entretien *(hors des treize demandées)*
 
 | | |
 |---|---|
 | **Durée** | construction 3 j · réaliste 6 j |
-| **Niveau de spec** | Cadrée : Partie 15 |
+| **Dépend de** | rien |
+| **Bloque** | **rien** |
+| **Niveau de spec** | Intention : Partie 15 |
 
 | Id | Fonctionnalité | Côté | Spec |
 |---|---|---|---|
-| F-9.8.1-01 | Les mesures du test de charge **rejouées à trois postes** | Cabinet | SPEC-OUT-006 |
-| F-9.8.1-02 | `CLAUDE.md` relu **en entier** pour retirer ce qui n'est plus vrai — un document de mémoire qui grossit sans jamais maigrir finit par mentir par omission | Partagé | — |
-| F-9.8.1-03 | Electron, dette, découpage suivant | Partagé | — |
-| F-9.8.1-04 | Les retours de bêta qui ne sont pas des nouveautés | Partagé | — |
+| F-9.9.1-01 | Les mesures du test de charge **rejouées à trois postes** | Cabinet | SPEC-OUT-006 |
+| F-9.9.1-02 | `CLAUDE.md` relu **en entier** pour retirer ce qui n'est plus vrai — un document de mémoire qui grossit sans jamais maigrir finit par mentir par omission | Partagé | — |
+| F-9.9.1-03 | Electron, dette, découpage suivant | Partagé | — |
+| F-9.9.1-04 | Les retours de bêta qui ne sont pas des nouveautés | Partagé | — |
 
 ---
 
-## 9.9.0 — La révision et les questions
+## 9.10.0 — La révision et les questions
 
 > *Le dossier de travail du comptable, et les questions qui arrivent en face de la pièce chez le
 > client — l'avantage que personne d'autre n'a.*
@@ -571,21 +626,22 @@ le même jour ? »
 |---|---|
 | **Durée** | construction 10 j · réaliste 20 j |
 | **Dépend de** | la méthode de révision du pilote. La clé du client existe depuis la 9.2.0 : c'est celle de la signature |
-| **Niveau de spec** | Cadrée : Partie 15, SPEC-UI-CAB-070 et 071, SPEC-UI-ENT-101 ; SPEC-FMT-006 réservé |
+| **Bloque** | **rien** |
+| **Niveau de spec** | Intention : Partie 15, SPEC-UI-CAB-070 et 071, SPEC-UI-ENT-101 ; SPEC-FMT-006 réservé |
 | **Jalon** | enchaîne sur la 10.0.0 |
 
 | Id | Fonctionnalité | Côté | Spec |
 |---|---|---|---|
-| F-9.9.0-01 | Dossier de révision **par exercice** | Cabinet | SPEC-UI-CAB-070 |
-| F-9.9.0-02 | **Feuilles maîtresses par cycle** : trésorerie, ventes-clients, achats-fournisseurs, immobilisations, personnel, fiscal, capitaux | Cabinet | SPEC-UI-CAB-070 |
-| F-9.9.0-03 | Chaque compte **revu et signé** : qui, quand | Cabinet | SPEC-UI-CAB-070 |
-| F-9.9.0-04 | Points en suspens, avec la réponse attendue du client | Cabinet | SPEC-UI-CAB-070 |
-| F-9.9.0-05 | Notes de revue du superviseur | Cabinet | SPEC-UI-CAB-070 |
-| F-9.9.0-06 | Questionnaire de fin d'exercice | Cabinet | SPEC-UI-CAB-070 |
-| F-9.9.0-07 | **Une question naît depuis la ligne** — pièce absente, 471 non soldé, facture ouverte, mois provisoire — et part scellée pour le client | Cabinet | SPEC-FMT-006 |
-| F-9.9.0-08 | La question s'affiche **sur la pièce** dans SkanFact | Entreprise | SPEC-UI-ENT-101 |
-| F-9.9.0-09 | Le client répond : texte, pièce jointe, et renvoie le mois révisé | Entreprise | SPEC-UI-ENT-101 |
-| F-9.9.0-10 | Une question sans réponse au bout de deux paquets remonte dans « À faire » **des deux côtés** | Partagé | SPEC-UI-CAB-071 |
+| F-9.10.0-01 | Dossier de révision **par exercice** | Cabinet | SPEC-UI-CAB-070 |
+| F-9.10.0-02 | **Feuilles maîtresses par cycle** : trésorerie, ventes-clients, achats-fournisseurs, immobilisations, personnel, fiscal, capitaux | Cabinet | SPEC-UI-CAB-070 |
+| F-9.10.0-03 | Chaque compte **revu et signé** : qui, quand | Cabinet | SPEC-UI-CAB-070 |
+| F-9.10.0-04 | Points en suspens, avec la réponse attendue du client | Cabinet | SPEC-UI-CAB-070 |
+| F-9.10.0-05 | Notes de revue du superviseur | Cabinet | SPEC-UI-CAB-070 |
+| F-9.10.0-06 | Questionnaire de fin d'exercice | Cabinet | SPEC-UI-CAB-070 |
+| F-9.10.0-07 | **Une question naît depuis la ligne** — pièce absente, 471 non soldé, facture ouverte, mois provisoire — et part scellée pour le client | Cabinet | SPEC-FMT-006 |
+| F-9.10.0-08 | La question s'affiche **sur la pièce** dans SkanFact | Entreprise | SPEC-UI-ENT-101 |
+| F-9.10.0-09 | Le client répond : texte, pièce jointe, et renvoie le mois révisé | Entreprise | SPEC-UI-ENT-101 |
+| F-9.10.0-10 | Une question sans réponse au bout de deux paquets remonte dans « À faire » **des deux côtés** | Partagé | SPEC-UI-CAB-071 |
 
 **Ce qui n'y est pas** : une écriture du cabinet chez le client. Jamais. Le pont reste le paquet.
 
@@ -610,6 +666,7 @@ méthode.
 |---|---|
 | **Durée** | construction 10 j · réaliste 20 j |
 | **Dépend de** | la liasse de l'année remplie par le pilote ; **au moins trois cabinets**, sinon cette version n'a pas de lecteur |
+| **Bloque** | **rien** — c'est la fin de la chaîne |
 | **Niveau de spec** | Esquisse : Partie 15, SPEC-UI-CAB-080 et 081 — « tout le reste » attend un document réel |
 | **Jalon** | **J4** (30/06/2028). Après : entretien, et la question du § 3 reposée |
 
@@ -652,7 +709,7 @@ encore. Chaque ligne est déjà décidée comme « hors périmètre jusqu'à » 
 | Candidat | Ce qui le déclencherait | Pourquoi il n'est pas planifié |
 |---|---|---|
 | **E-facture TEIF / El Fatoora** | l'obligation légale pour les assujettis TVA, ou le premier client qui la subit | le contrôle de 9.1.1 dit déjà si notre modèle porte les champs ; construire l'export avant l'obligation, c'est viser un format qui bougera |
-| **Interface en arabe** | une demande réelle, pas une hypothèse | la porte est gardée ouverte par les propriétés logiques de la 9.3.6 ; le reste est un chantier de plusieurs semaines |
+| **Interface en arabe** | une demande réelle, pas une hypothèse | la porte est gardée ouverte par les propriétés logiques de la 9.4.1 ; le reste est un chantier de plusieurs semaines |
 | **Lecture de photo de facture** (en pause depuis la 8.7.0) | une application sur téléphone | le code de la 4.2.0 est intact et attend ; sans téléphone, il ne sert à personne |
 | **Application sur téléphone** | le besoin qui rendrait la photo utile : saisir une dépense sur le terrain | un second produit, pas une version |
 | **Serveur de transport des paquets** | un cabinet qui le demande — c'est écrit noir sur blanc dans `PLAN-PLATEFORME.md` § 7.0.0 | le paquet marche, et un serveur qui transporte des comptabilités change le niveau de responsabilité |
@@ -682,4 +739,116 @@ expert-comptable ne clique pas sur « Exécuter quand même ».
   C'est la seule règle d'arrêt du projet, et elle vaut plus que cette liste entière.
 
 *Ce document se relit à chaque version publiée : la version livrée quitte la liste, et celle qui
-suit passe de « Cadrée » à « Complète » le jour où le cahier la spécifie.*
+suit passe d'« Intention » à « Complète » le jour où le cahier la spécifie.*
+
+---
+
+## Ce que la relecture n'a pas vu
+
+Quatre choses trouvées en appliquant ses cinq corrections. Les deux premières sont des conséquences
+de la correction 1 ; la troisième est un défaut d'ordre dans le plan lui-même, et c'est la plus
+importante ; la quatrième est une incohérence de la v1.
+
+**1. La renumérotation ne pouvait pas rester dans ce document.** La relecture demandait de renommer
+« toutes les occurrences dans le document ». Ces numéros vivent dans **six autres documents** :
+`QUESTIONS.md` (45 occurrences), `CAHIER-DES-CHARGES.md` (38), `PLAN-DEVELOPPEMENT.md` (36),
+`PLAN-COMPTABLE.md` (17), `CLAUDE.md` (14) et `DIRECTION.md` (11). Renuméroter ici seulement aurait
+fabriqué très exactement le défaut que le projet combat depuis la 6.8.0 — *une table en double
+diverge toujours* — et il aurait été découvert par quelqu'un qui cherche « la 9.4.0 » dans deux
+documents et trouve deux versions différentes. La renumérotation a donc été appliquée **partout, en
+une seule passe simultanée** (281 occurrences), avec un garde-fou qui vérifie qu'aucune version
+livrée ni aucune version stable (`9.0.0`, `9.1.0`, `9.1.1`, `9.2.0`, `9.3.0`, `10.0.0`) n'a bougé.
+
+**2. Les identifiants d'écran ne suivent plus leur version, et c'est voulu.** La Partie 15 du cahier
+attribue les `SPEC-UI-CAB-0nn` par dizaines, une dizaine par version : `010` → `013` pour la saisie,
+`020` → `022` pour la banque, et ainsi de suite. Après le décalage, la banque est la 9.5.0 mais
+garde ses identifiants en `02n`. **Les renuméroter aurait été pire** : un identifiant est fait pour
+être cité dans un commit et une revue, et un identifiant qui bouge ne sert plus à rien. La phrase du
+cahier qui annonçait la convention « dizaine = version » a été corrigée pour dire la vérité : la
+dizaine groupe les écrans d'une version, elle ne nomme pas son numéro.
+
+**3. La clôture d'exercice lit une liste que la version suivante écrit.** C'est un défaut d'ordre,
+pas de rédaction, et il est dans le plan depuis `PLAN-COMPTABLE.md`. La **9.7.0** (clôture) passe les
+dotations en écritures d'inventaire, et le cahier précise qu'elles sont « calculées depuis
+`immobilisations[].plan` » (SPEC-UI-CAB-040). Or `immobilisations[]` n'est rempli qu'en **9.8.0**
+(SPEC-UI-CAB-050). Pour un dossier **sur SkanFact**, ce n'est pas bloquant : les dotations arrivent
+déjà calculées dans le paquet, depuis la 9.0.0 de l'app entreprise. Pour un dossier **hors
+SkanFact** — c'est-à-dire la majorité du portefeuille d'un cabinet, et la raison d'être du produit
+payant — le cabinet n'a nulle part où tenir les biens, donc **il ne peut pas clôturer** cet exercice
+correctement avant la 9.8.0. Deux issues, et c'est une décision de Skander :
+
+- **Échanger les deux versions** (immobilisations avant clôture). C'est la solution propre. Elle
+  coûte une seconde renumérotation de deux numéros dans sept documents, ce que je ne fais pas de ma
+  propre initiative après en avoir déjà fait une.
+- **Garder l'ordre et écrire la limite** : la 9.7.0 clôture les dossiers sur SkanFact, et la
+  clôture d'un dossier hors SkanFact attend la 9.8.0. C'est tenable, mais il faut que la page le
+  dise, sinon un comptable clôture un dossier sans ses dotations et ne s'en aperçoit qu'au bilan.
+
+Tant que ce n'est pas tranché, la ligne « Bloque » de la 9.8.0 porte le renvoi vers ce paragraphe.
+
+**4. Le tableau récapitulatif et les sections ne donnaient pas les mêmes durées.** Trois versions
+ont une fourchette dans `PLAN-DEVELOPPEMENT.md` (« 5 à 10 j », « 10 à 15 j ») ; la v1 en prenait le
+milieu dans le tableau et gardait la fourchette dans la section, sans le dire. Un lecteur qui
+compare les deux croit à une erreur. C'est écrit sous le tableau maintenant, et **c'est la section
+qui fait foi**.
+
+---
+
+## Journal des versions
+
+### v1 — 15/09/2026, commit `d5ed703` (lu sur `137daad`)
+
+Première version : le tableau récapitulatif, treize sections de version plus deux d'entretien, 179
+fonctionnalités identifiées `F-<version>-<nn>`, la partie « Au-delà de la 10.0.0 » et « Comment lire
+ce document ».
+
+### v2 — 16/09/2026 (cinq corrections d'une relecture extérieure ; aucun fichier de code n'a changé)
+
+**Ce qui a changé** :
+
+- **Correction 1 — la numérotation est tranchée.** La règle du projet s'applique : la licence du
+  Cabinet ajoute des fonctionnalités, donc elle devient **9.4.0** et tout ce qui suivait décale d'un
+  cran (banque 9.5.0, déclaration 9.6.0, clôture 9.7.0, immobilisations 9.8.0, collaborateurs 9.9.0,
+  révision 9.10.0 ; la 10.0.0 ne bouge pas). Les versions d'entretien suivent : 9.4.1, 9.6.1, 9.9.1.
+  **Appliquée aux sept documents** (281 occurrences), pas seulement ici — voir « Ce que la relecture
+  n'a pas vu », point 1. Le paragraphe « Une remarque sur deux numéros » a disparu : il n'avait plus
+  d'objet.
+- **Correction 2 — un seul vocabulaire.** « Cadrée » devient **« Intention »**, le mot qu'emploie
+  déjà la Partie 15 du cahier. « Esquisse » reste, pour la 10.0.0 seule, parce que la différence est
+  réelle : sa colonne « Décidé » est quasi vide et le cahier écrit « Tout : c'est la version qui
+  exige le pilote ». Les trois niveaux sont définis **une seule fois**, ici, et le cahier renvoie à
+  cette définition au lieu d'en porter une seconde.
+- **Correction 3 — la répartition par niveau**, sous le tableau : 58 fonctionnalités prêtes à coder
+  (34 %), 102 à spécifier au moment de la version (60 %), 11 à documenter avant de spécifier (6 %).
+  C'est le chiffre qui manquait le plus : il dit que les deux tiers du projet attendent des
+  **réponses**, pas des jours de code.
+- **Correction 4 — une ligne « Bloque »** dans les quinze tableaux d'en-tête. Elle permet de
+  reconstituer le chemin critique sans ouvrir `PLAN-DEVELOPPEMENT.md`, et elle a montré deux choses
+  que personne n'avait écrites : la **9.4.0** (licence du Cabinet) ne bloque que la *vente*, pas une
+  ligne de code, et les trois versions d'entretien ne bloquent rien — ce sont les seules qui peuvent
+  glisser sans arrêter la chaîne.
+- **Correction 5 — « Où on en est »**, six lignes en tête. Un chiffre a été corrigé au passage :
+  l'app entreprise porte **neuf** modules (`MODULES` dans `core.js`) et vingt et une pages, pas
+  quinze modules — « quinze » venait d'une phrase de la 7.0.0 qui comptait les chantiers livrés, pas
+  les modules de la barre latérale.
+
+**Ce qui a été refusé, ou retenu autrement** :
+
+- **Correction 1, le périmètre** : *retenue, mais élargie*. Faire la renumérotation dans ce document
+  seul était la consigne ; je l'ai appliquée aux sept documents, parce que l'inverse aurait laissé
+  six documents se contredire (point 1 ci-dessus). C'est le seul écart à la consigne, et il va dans
+  le sens de son intention.
+- **Correction 2, fondre « Esquisse » dans « Intention »** : *refusé*. La relecture laissait le
+  choix. Les deux niveaux ne disent pas la même chose — une version « Intention » a un écran réservé
+  avec ce qui est déjà tranché, une version « Esquisse » n'a que son intention et sa dépendance. Les
+  confondre ferait croire que la 10.0.0 est aussi avancée que la 9.5.0, alors qu'elle attend une
+  liasse fiscale réelle que personne n'a encore ouverte.
+- **Correction 4, « tout ce qui suit »** : *retenue autrement*. L'exemple proposé écrivait « 9.1.1
+  (attend le test de charge) » pour la 9.1.0 ; c'est faux, la 9.1.1 n'attend que la séance avec le
+  comptable et ne dépend pas de la 9.1.0. Chaque ligne « Bloque » nomme donc les dépendances
+  **réelles**, et distingue celles qui sont techniques de celles qui sont d'usage (« le pilote doit
+  avoir travaillé dans le Cabinet »).
+
+**Ce qui n'a pas été touché**, comme demandé : la structure par version, les tableaux de
+fonctionnalités (hors renommage des identifiants), « Au-delà de la 10.0.0 » et « Comment lire ce
+document ».

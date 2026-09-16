@@ -345,16 +345,16 @@ remplacées). Le site et l'aide suivent les versions.
 | 0 bis | **Ce qui bloque la vente et n'est pas du développement** : le dépôt de la marque à l'INNORPI, les certificats de signature de code (requalifiés « avant la première vente », pas « le jour où ça vend » : un expert-comptable ne clique pas sur « Exécuter quand même »), la déclaration INPDP, les conditions de vente relues, le bouton de téléchargement du Cabinet qui mène à un 404, et la page unique qu'un prospect lira. Aucune ligne de code neuve ne rapporte un dinar tant que ces six choses ne sont pas faites (`QUESTIONS.md` § 9 et § 20) | Skander |
 | 1 | **9.1.0** — d'abord l'outillage (`QUESTIONS.md` § 15) : le canal `cabinet-beta` (le Cabinet n'a pas de bêta aujourd'hui), le workflow « Construire un essai » (des applications d'essai installables à côté des vraies, sans mise à jour, sur des données à part), l'intégration continue Linux + Windows, le lint, le garde-fou d'erreur global, le journal borné, l'index thématique de `CLAUDE.md` ; puis les livres lus dans les paquets (livre-journal, grand livre, balance, lettrage) ; `compta.js` extrait ; test de parité ; côté entreprise, le module Comptabilité masqué par défaut et l'option `compta` dans la clé. Bêta chez le pilote, puis stable (`QUESTIONS.md` § 13 et § 14 pour la bêta et l'entretien) | rien |
 | 1 bis | **9.1.1** — les quatre corrections fiscales de l'app entreprise, en une version minuscule : exonération de timbre sur la fiche client, TFP proposée par métier, seuil de retenue à la source réglable (par défaut 0, pas une valeur inventée), et le contrôle d'une heure sur l'e-facture (`QUESTIONS.md` § 11 et § 16) | une séance de validation avec le comptable, qui tranche les quatre en une fois |
-| 2 | **9.2.0** — le livre propre à chaque dossier, un fichier par dossier, plan SCE complet, import du paquet EN écritures, reprise par balance d'ouverture, **et la signature du paquet par le client** (remontée de la 9.9.0) | le plan de comptes du comptable, son logiciel actuel ; le test de charge du format, qui passe AVANT |
+| 2 | **9.2.0** — le livre propre à chaque dossier, un fichier par dossier, plan SCE complet, import du paquet EN écritures, reprise par balance d'ouverture, **et la signature du paquet par le client** (remontée de la 9.10.0) | le plan de comptes du comptable, son logiciel actuel ; le test de charge du format, qui passe AVANT |
 | 3 | **9.3.0** — la saisie, brouillard/validation, guides, abonnements, piste d'audit | le regarder saisir |
-| 3 bis | **9.3.1** — entretien, sans nouveauté (Electron, les 93 déclarations CSS en logiques, premier découpage d'`app.js`, dette) ; puis **9.5.1** et **9.8.1** aux mêmes conditions — la règle « une version sur quatre » est numérotée dans `QUESTIONS.md` § 16, pas promise | rien |
-| 4 | **P 0.3 + 9.3.x** — la licence du Cabinet : clé, quota, comptage, garde-fou, écran, console, licence dans le manifeste, `e2e:cabinet-licence` | l'Ordre (avant de vendre, pas avant de construire) |
-| 5 | **9.4.0** — banque, rapprochement, lettrage automatique, balance âgée | les formats de relevés |
-| 6 | **9.5.0** — la déclaration mensuelle tunisienne | le modèle de déclaration |
-| 7 | **9.6.0** — inventaire, clôture d'exercice, états SCE, N/N-1 | la présentation NCT 01 |
-| 8 | **9.7.0** — immobilisations dégressif, stocks | rien |
-| 9 | **9.8.0** — collaborateurs, multi-poste (A10), verrouillage | rien |
-| 10 | **9.9.0** — révision, questions au client dans les deux sens | la méthode de révision |
+| 3 bis | **9.4.1** — entretien, sans nouveauté (Electron, les 93 déclarations CSS en logiques, premier découpage d'`app.js`, dette) ; puis **9.6.1** et **9.9.1** aux mêmes conditions — la règle « une version sur quatre » est numérotée dans `QUESTIONS.md` § 16, pas promise | rien |
+| 4 | **P 0.3 + 9.4.0** — la licence du Cabinet : clé, quota, comptage, garde-fou, écran, console, licence dans le manifeste, `e2e:cabinet-licence` | l'Ordre (avant de vendre, pas avant de construire) |
+| 5 | **9.5.0** — banque, rapprochement, lettrage automatique, balance âgée | les formats de relevés |
+| 6 | **9.6.0** — la déclaration mensuelle tunisienne | le modèle de déclaration |
+| 7 | **9.7.0** — inventaire, clôture d'exercice, états SCE, N/N-1 | la présentation NCT 01 |
+| 8 | **9.8.0** — immobilisations dégressif, stocks | rien |
+| 9 | **9.9.0** — collaborateurs, multi-poste (A10), verrouillage | rien |
+| 10 | **9.10.0** — révision, questions au client dans les deux sens | la méthode de révision |
 | 11 | **10.0.0** — liasse, annuel, jeu d'exemple complet ; site et aide à jour | la liasse de l'année |
 
 La licence du Cabinet arrive **après la saisie** parce que c'est la saisie qui crée le premier dossier

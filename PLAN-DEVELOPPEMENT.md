@@ -82,9 +82,9 @@ démarrés (la plateforme les voit une fois en production), licences vendues.*
 |---|---|---|---|
 | **J0** | 15/10/2026 | La marque déposée, le certificat Apple acheté, `contact@skanfact.tn` qui répond (le premier essai finit le 14/10), la question posée à l'Ordre, la question orale au pilote posée. | Rien de codé ne rapporte un dinar : la 9.2.0 ne commence pas tant que J0 n'est pas atteint, même si la 9.1.0 est finie. |
 | **J1** | 31/12/2026 | Les six démarches de la Partie D faites (attentes comprises ou en cours) ; le pilote engagé **par écrit** sur deux dossiers réels ; **≥ 3 licences Entreprise vendues** hors famille ; 9.1.x et 9.2.0 publiées en stable. | Les trois licences manquent → la 9.3.0 attend ; le trimestre suivant est un trimestre de **démonstrations** (dix, comptées), pas de code. |
-| **J2** | 30/06/2027 | **≥ 10 licences Entreprise** ; le pilote tient ses dossiers dans le Cabinet **sans revenir à son ancien logiciel** ; une réponse de l'Ordre ou, à défaut, celle d'un juriste ; 9.3.0 → 9.4.0 publiées. | Le pilote est revenu à son ancien logiciel → on **arrête le Cabinet à la 9.4.0** et on demande pourquoi avant d'écrire la 9.5.0. L'Ordre a dit non → plan B de prix (`QUESTIONS.md` § 17), le code ne change pas. |
-| **J3** | 31/12/2027 | Un **second cabinet** qui a commencé, même sur un dossier ; **≥ 25 licences Entreprise** ; un chiffre d'affaires qui couvre les coûts fixes ; 9.5.0 → 9.6.0 publiées. | Pas de second cabinet → le Cabinet reste un produit pour un seul cabinet : 9.7.0 → 10.0.0 ne se justifient plus, on livre ce que le pilote demande et rien d'autre. |
-| **J4** | 30/06/2028 | 9.7.0 → 10.0.0 publiées ; ≥ 3 cabinets ; ≥ 50 licences. | On tient l'existant et on repose la question du § 3 : « combien de temps sans revenus ». |
+| **J2** | 30/06/2027 | **≥ 10 licences Entreprise** ; le pilote tient ses dossiers dans le Cabinet **sans revenir à son ancien logiciel** ; une réponse de l'Ordre ou, à défaut, celle d'un juriste ; 9.3.0 → 9.5.0 publiées. | Le pilote est revenu à son ancien logiciel → on **arrête le Cabinet à la 9.5.0** et on demande pourquoi avant d'écrire la 9.5.0. L'Ordre a dit non → plan B de prix (`QUESTIONS.md` § 17), le code ne change pas. |
+| **J3** | 31/12/2027 | Un **second cabinet** qui a commencé, même sur un dossier ; **≥ 25 licences Entreprise** ; un chiffre d'affaires qui couvre les coûts fixes ; 9.6.0 → 9.7.0 publiées. | Pas de second cabinet → le Cabinet reste un produit pour un seul cabinet : 9.8.0 → 10.0.0 ne se justifient plus, on livre ce que le pilote demande et rien d'autre. |
+| **J4** | 30/06/2028 | 9.8.0 → 10.0.0 publiées ; ≥ 3 cabinets ; ≥ 50 licences. | On tient l'existant et on repose la question du § 3 : « combien de temps sans revenus ». |
 
 **La règle d'arrêt, valable à tout jalon** : si **aucune** licence n'a été vendue depuis le jalon
 précédent, le trimestre suivant ne contient **pas de version nouvelle** — quelle que soit la raison.
@@ -132,7 +132,7 @@ correctifs, les relances d'e2e et le temps de relecture de Skander).*
 | Champ | Contenu |
 |---|---|
 | **Objectif** | Que chaque dossier du Cabinet ait **son livre** (exercices, plan SCE complet, journaux), que l'import d'un paquet crée des **écritures**, qu'un dossier venu d'ailleurs se reprenne par balance d'ouverture — et que **le paquet soit signé par le client**. |
-| **Versions concernées** | **9.2.0** (`QUESTIONS.md` § 16 ; signature remontée de la 9.9.0 le 15/09/2026, § 6). |
+| **Versions concernées** | **9.2.0** (`QUESTIONS.md` § 16 ; signature remontée de la 9.10.0 le 15/09/2026, § 6). |
 | **Durée estimée** | Construction : 5 à 10 j. **Réaliste : 20 j.** |
 | **Dépendances** | Le test de charge de la Phase 1 réussi (ou le modèle changé) ; **le plan de comptes du comptable et son logiciel actuel** (format de la balance d'ouverture) ; **J0** atteint ; l'engagement écrit du pilote (il a vu la 9.1.0). |
 | **Propriétaire** | Claude (code), le pilote (plan de comptes, un export de balance de son logiciel), Skander (bêta). |
@@ -146,11 +146,11 @@ correctifs, les relances d'e2e et le temps de relecture de Skander).*
 | Champ | Contenu |
 |---|---|
 | **Objectif** | Que le comptable **travaille dans le Cabinet** (saisie au kilomètre, brouillard/validation, guides, abonnements, piste d'audit), et que le Cabinet sache **compter ses dossiers** et porter sa licence. Puis une version d'entretien. |
-| **Versions concernées** | **9.3.0**, **9.3.x + P 0.3** (licence du Cabinet), **9.3.1** (entretien). |
-| **Durée estimée** | Construction : 9.3.0 ≈ 10 j, licence ≈ 5 j, 9.3.1 ≈ 3 j. **Réaliste : 36 j.** |
+| **Versions concernées** | **9.3.0**, **9.4.0 + P 0.3** (licence du Cabinet), **9.4.1** (entretien). |
+| **Durée estimée** | Construction : 9.3.0 ≈ 10 j, licence ≈ 5 j, 9.4.1 ≈ 3 j. **Réaliste : 36 j.** |
 | **Dépendances** | **J1** atteint ; le pilote **regardé en train de saisir** dans son logiciel actuel (une heure chez lui — c'est la dépendance qui décide de l'écran) ; pour la licence : la question à l'Ordre **posée** (pas répondue : on construit, on ne vend pas). |
 | **Propriétaire** | Claude (code), Skander (observe le pilote, prend des notes ; bêta), le pilote. |
-| **Livrables** | ☐ Saisie au kilomètre tout au clavier, recherche de compte pendant la frappe, guides, abonnements · ☐ Brouillard puis validation **irréversible**, contre-passation, extourne · ☐ Piste d'audit (qui, quoi, quand) · ☐ Licence du Cabinet : clé portée par l'empreinte, quota, comptage (actif + écriture validée < 12 mois + sans licence client valide ; grâce de 12 mois **après une licence payée seulement**, règle 44), garde-fou qui nomme les dossiers comptés, écran, console, `e2e:cabinet-licence` · ☐ **9.3.1** : Electron du semestre, les 93 déclarations CSS physiques converties en logiques, premier découpage de `app.js` par route, dette du § 15, retours de bêta hors nouveautés, **tous** les e2e relancés. |
+| **Livrables** | ☐ Saisie au kilomètre tout au clavier, recherche de compte pendant la frappe, guides, abonnements · ☐ Brouillard puis validation **irréversible**, contre-passation, extourne · ☐ Piste d'audit (qui, quoi, quand) · ☐ Licence du Cabinet : clé portée par l'empreinte, quota, comptage (actif + écriture validée < 12 mois + sans licence client valide ; grâce de 12 mois **après une licence payée seulement**, règle 44), garde-fou qui nomme les dossiers comptés, écran, console, `e2e:cabinet-licence` · ☐ **9.4.1** : Electron du semestre, les 93 déclarations CSS physiques converties en logiques, premier découpage de `app.js` par route, dette du § 15, retours de bêta hors nouveautés, **tous** les e2e relancés. |
 | **Critères d'acceptation** | e2e : mille écritures saisies au clavier sans souris ; une validée refusée à la modification ; le compteur de dossiers juste sur un portefeuille de démonstration à quatre situations (SkanFact valide, essai, grâce, hors) ; le doute profite au cabinet (licence illisible = valide) ; le pilote a saisi **une journée réelle** dans le Cabinet et n'a pas rouvert son ancien logiciel pour la finir. |
 | **Risques** | La saisie est l'écran où un comptable passe ses journées : un écran « correct » qu'il trouve lent est un échec. Parade : mesurer la frappe (< 100 ms) et le regarder faire **avant** d'écrire. La licence du Cabinet touche à l'argent : relecture adversariale complète obligatoire (règle 24). |
 | **Jalon de sortie** | Décision : le pilote continue-t-il dans le Cabinet ? Si non, on n'écrit pas la Phase 4 avant de savoir pourquoi. |
@@ -160,7 +160,7 @@ correctifs, les relances d'e2e et le temps de relecture de Skander).*
 | Champ | Contenu |
 |---|---|
 | **Objectif** | Import de relevés, rapprochement automatique avec **niveaux de confiance**, lettrage automatique, balance âgée. |
-| **Versions concernées** | **9.4.0**. |
+| **Versions concernées** | **9.5.0**. |
 | **Durée estimée** | Construction : 10 j. **Réaliste : 20 j.** |
 | **Dépendances** | **Les formats de relevés** des banques des clients du pilote (un fichier réel de chaque banque, anonymisé) ; la Phase 3 utilisée. |
 | **Propriétaire** | Claude, le pilote (les fichiers de relevé). |
@@ -174,11 +174,11 @@ correctifs, les relances d'e2e et le temps de relecture de Skander).*
 | Champ | Contenu |
 |---|---|
 | **Objectif** | La déclaration mensuelle tunisienne préparée depuis le livre du dossier (TVA, retenues, TFP/FOPROLOS, TCL — **À VÉRIFIER le périmètre exact avec le pilote**), avec les contrôles avant dépôt. Puis entretien. |
-| **Versions concernées** | **9.5.0**, **9.5.1** (entretien). |
+| **Versions concernées** | **9.6.0**, **9.6.1** (entretien). |
 | **Durée estimée** | Construction : 5 à 10 j + 3 j. **Réaliste : 26 j.** |
 | **Dépendances** | **Le modèle de déclaration** que le pilote dépose réellement (un exemplaire rempli). |
 | **Propriétaire** | Claude, le pilote. |
-| **Livrables** | ☐ Déclaration mensuelle par dossier, chaque case tracée jusqu'aux écritures qui la font · ☐ Contrôles avant dépôt (4366 = report de `vatChain`, comptes d'attente, brouillard restant) · ☐ « Marquer déposée » = pense-bête, jamais un dépôt (règle 5.2.0) · ☐ 9.5.1 : `core.js` → `compta.js` fini, `run-tests.js` découpé par domaine, Electron si sortie. |
+| **Livrables** | ☐ Déclaration mensuelle par dossier, chaque case tracée jusqu'aux écritures qui la font · ☐ Contrôles avant dépôt (4366 = report de `vatChain`, comptes d'attente, brouillard restant) · ☐ « Marquer déposée » = pense-bête, jamais un dépôt (règle 5.2.0) · ☐ 9.6.1 : `core.js` → `compta.js` fini, `run-tests.js` découpé par domaine, Electron si sortie. |
 | **Critères d'acceptation** | La déclaration d'un mois réel du pilote, calculée par le Cabinet, **égale celle qu'il a déposée** — ou l'écart est expliqué ligne par ligne. |
 | **Risques** | Une case de déclaration dont on ne connaît pas la règle : on la laisse **vide avec « À VÉRIFIER »**, jamais une valeur plausible (règle 36). |
 | **Jalon de sortie** | Le pilote dépose-t-il depuis le Cabinet ? |
@@ -188,7 +188,7 @@ correctifs, les relances d'e2e et le temps de relecture de Skander).*
 | Champ | Contenu |
 |---|---|
 | **Objectif** | Écritures d'inventaire guidées, contrôles, clôture définitive, à-nouveaux, états financiers SCE, N/N-1 — et **le flux retour `.skanclose`** vers le client. |
-| **Versions concernées** | **9.6.0**. |
+| **Versions concernées** | **9.7.0**. |
 | **Durée estimée** | Construction : 10 à 15 j. **Réaliste : 30 j.** |
 | **Dépendances** | La présentation exacte des états (NCT 01) et des notes ; **un exercice complet du pilote dans le Cabinet** (donc la Phase 3 utilisée depuis au moins un exercice, ou une reprise). |
 | **Propriétaire** | Claude, le pilote. |
@@ -202,7 +202,7 @@ correctifs, les relances d'e2e et le temps de relecture de Skander).*
 | Champ | Contenu |
 |---|---|
 | **Objectif** | Amortissement dégressif, sortie, stocks valorisés, côté cabinet. |
-| **Versions concernées** | **9.7.0**. |
+| **Versions concernées** | **9.8.0**. |
 | **Durée estimée** | Construction : 5 j. **Réaliste : 10 j.** |
 | **Dépendances** | Rien de nouveau : le moteur linéaire, la cession et le coût moyen pondéré existent déjà côté entreprise (3.5.0, 4.0.0). |
 | **Propriétaire** | Claude. |
@@ -216,7 +216,7 @@ correctifs, les relances d'e2e et le temps de relecture de Skander).*
 | Champ | Contenu |
 |---|---|
 | **Objectif** | Collaborateurs, droits, multi-poste sans écrasement, verrouillage, tableau de production. Puis entretien. |
-| **Versions concernées** | **9.8.0**, **9.8.1** (entretien, relecture complète de `CLAUDE.md`). |
+| **Versions concernées** | **9.9.0**, **9.9.1** (entretien, relecture complète de `CLAUDE.md`). |
 | **Durée estimée** | Construction : 10 j + 3 j. **Réaliste : 26 j.** |
 | **Dépendances** | **Un cabinet de plus d'une personne** qui l'utilise — sinon on construit du multi-poste pour un poste. C'est la Phase qui attend le plus J3. |
 | **Propriétaire** | Claude, le pilote (ou le second cabinet). |
@@ -230,7 +230,7 @@ correctifs, les relances d'e2e et le temps de relecture de Skander).*
 | Champ | Contenu |
 |---|---|
 | **Objectif** | Dossier de révision par exercice, points en suspens, **questions au client chiffrées (`.skanask`)** affichées sur la pièce, réponse, mois révisé. |
-| **Versions concernées** | **9.9.0**. |
+| **Versions concernées** | **9.10.0**. |
 | **Durée estimée** | Construction : 10 j. **Réaliste : 20 j.** |
 | **Dépendances** | La méthode de révision du pilote (cycles, feuilles). La clé du client existe depuis la 9.2.0 (c'est celle de la signature). |
 | **Propriétaire** | Claude, le pilote. |
@@ -275,12 +275,12 @@ Test de charge (Phase 1) ──► format du livre ──► 9.2.0 (sinon : ré�
 Séance fiscale avec le comptable (½ jour) ──► 9.1.1 entière (quatre corrections)
 
 Lettre à l'Ordre (1 heure, réponse : des mois) ──► PRIX public du Cabinet ──► vente Cabinet
-        (ne bloque PAS le développement : 9.2.0 → 9.6.0 se construisent pendant l'attente)
+        (ne bloque PAS le développement : 9.2.0 → 9.7.0 se construisent pendant l'attente)
 
 Signature du paquet (9.2.0) ──► un manifeste auquel on peut croire ──► licence et essai
-        dans le manifeste fiables ──► comptage des dossiers (9.3.x) ──► facturation du Cabinet
+        dans le manifeste fiables ──► comptage des dossiers (9.4.0) ──► facturation du Cabinet
 
-Second cabinet (J3) ──► 9.8.0 (multi-poste) a un utilisateur ──► 9.9.0, 10.0.0 ont un lecteur
+Second cabinet (J3) ──► 9.9.0 (multi-poste) a un utilisateur ──► 9.10.0, 10.0.0 ont un lecteur
 
 Trois nombres par mois (Skander, 10 min) ──► chaque jalon est jugeable ──► la règle d'arrêt existe
 ```
@@ -350,15 +350,15 @@ J1 avec les chiffres réels.*
 | S17 | 04–10/01 | 3 | Loi de finances 2027 : demander au comptable ce qui change (taux, barèmes). Compter les trois nombres. | 9.3.0 : brouillard, validation irréversible, contre-passation, extourne. Version de janvier de l'app entreprise avec les nouveaux défauts (règle § 14). | Une validée refusée à la modification ; les barèmes 2027 en bêta. | Une loi de finances tardive : les taux sont des réglages, l'utilisateur les change sans attendre. |
 | S18 | 11–17/01 | 3 | Démonstrations. Relancer l'Ordre. | 9.3.0 : guides d'écritures, abonnements, piste d'audit. | Un guide « loyer » qui génère chaque mois. | Aucun. |
 | S19 | 18–24/01 | 3 | Bêta 9.3.0 chez le pilote : **une journée réelle de saisie**. | Retours de bêta. Relecture. | Le pilote a saisi une journée sans rouvrir son ancien logiciel — ou on sait pourquoi il l'a rouvert. | C'est **le** critère de la Phase 3 : s'il rouvre l'ancien, la Phase 4 attend. |
-| S20 | 25–31/01 | 3 | Publier 9.3.0 stable. | Licence du Cabinet (P 0.3 + 9.3.x) : clé par empreinte, comptage, grâce après licence payée seulement, garde-fou qui nomme les dossiers. | Le compteur juste sur un portefeuille à quatre situations. | Touche à l'argent : relecture adversariale complète (règle 24) avant toute bêta. |
+| S20 | 25–31/01 | 3 | Publier 9.3.0 stable. | Licence du Cabinet (P 0.3 + 9.4.0) : clé par empreinte, comptage, grâce après licence payée seulement, garde-fou qui nomme les dossiers. | Le compteur juste sur un portefeuille à quatre situations. | Touche à l'argent : relecture adversariale complète (règle 24) avant toute bêta. |
 | S21 | 01–07/02 | 3 | Si l'Ordre a répondu : fixer le prix Cabinet (ou plan B). Sinon : le prix reste absent de la page Tarifs. | Licence du Cabinet : écran, console, `e2e:cabinet-licence`. Relecture adversariale. | Le Cabinet sait dire « tu as N dossiers hors SkanFact, dont 3 gratuits ». | Sans réponse de l'Ordre, on construit et on **ne vend pas** au cabinet : c'est prévu. |
-| S22 | 08–14/02 | 3 | Compter les trois nombres. Démonstrations. | **9.3.1 — entretien** : Electron du semestre, 93 déclarations CSS en logiques, premier découpage d'`app.js`, dette du § 15. **Tous** les e2e relancés. | Tous les e2e verts après la mise à jour d'Electron. | C'est la seule semaine où on relance tout : si un e2e tombe, on ne la saute pas, on la prolonge. |
-| S23 | 15–21/02 | 3 → 4 | Demander au pilote **un relevé réel** de chaque banque de ses clients (anonymisé). | Publier 9.3.x + 9.3.1 stable. Début 9.4.0 : lecteurs de relevés par nom de colonne. | Un relevé réel lu, colonnes reconnues et non reconnues **dites**. | Les formats bancaires : rien n'est écrit avant d'avoir vu le fichier. |
-| S24 | 22–28/02 | 4 | Démonstrations. Relance des essais. | 9.4.0 : rapprochement automatique, quatre niveaux de confiance, jamais validé seul si ambigu. | Un relevé de trois mois rapproché, avec ses « à confirmer » ouverts. | Aucun. |
-| S25 | 01–07/03 | 4 | Compter les trois nombres. | 9.4.0 : lettrage automatique, balance âgée. | Le lettrage automatique = le solde du 411 (règle 30). | Aucun. |
-| S26 | 08–14/03 | 4 | Bêta 9.4.0 chez le pilote sur ses relevés. **Réécrire ce tableau** pour S27–S52 avec les chiffres réels. | Retours de bêta. Ce document mis à jour : ce qui a tenu, ce qui a glissé, pourquoi. | Le plan des 26 semaines suivantes, écrit sur les faits. | Aucun : c'est la fin de ce que ce plan sait dire. |
+| S22 | 08–14/02 | 3 | Compter les trois nombres. Démonstrations. | **9.4.1 — entretien** : Electron du semestre, 93 déclarations CSS en logiques, premier découpage d'`app.js`, dette du § 15. **Tous** les e2e relancés. | Tous les e2e verts après la mise à jour d'Electron. | C'est la seule semaine où on relance tout : si un e2e tombe, on ne la saute pas, on la prolonge. |
+| S23 | 15–21/02 | 3 → 4 | Demander au pilote **un relevé réel** de chaque banque de ses clients (anonymisé). | Publier 9.4.0 + 9.4.1 stable. Début 9.5.0 : lecteurs de relevés par nom de colonne. | Un relevé réel lu, colonnes reconnues et non reconnues **dites**. | Les formats bancaires : rien n'est écrit avant d'avoir vu le fichier. |
+| S24 | 22–28/02 | 4 | Démonstrations. Relance des essais. | 9.5.0 : rapprochement automatique, quatre niveaux de confiance, jamais validé seul si ambigu. | Un relevé de trois mois rapproché, avec ses « à confirmer » ouverts. | Aucun. |
+| S25 | 01–07/03 | 4 | Compter les trois nombres. | 9.5.0 : lettrage automatique, balance âgée. | Le lettrage automatique = le solde du 411 (règle 30). | Aucun. |
+| S26 | 08–14/03 | 4 | Bêta 9.5.0 chez le pilote sur ses relevés. **Réécrire ce tableau** pour S27–S52 avec les chiffres réels. | Retours de bêta. Ce document mis à jour : ce qui a tenu, ce qui a glissé, pourquoi. | Le plan des 26 semaines suivantes, écrit sur les faits. | Aucun : c'est la fin de ce que ce plan sait dire. |
 
-*Lecture honnête de ce tableau : il place la 9.4.0 en bêta à S26, là où le § 16 en construction pure
+*Lecture honnête de ce tableau : il place la 9.5.0 en bêta à S26, là où le § 16 en construction pure
 la mettait quatre à six semaines plus tôt. C'est le « compter le double ». Et il suppose J1 atteint ;
 sinon S16 → S26 est un tableau de démonstrations, et la 9.3.0 glisse d'un trimestre entier.*
 
