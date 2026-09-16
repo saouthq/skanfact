@@ -82,6 +82,17 @@ const ecrire = (nom, buf) => { const p = path.join(dir, nom); fs.writeFileSync(p
     const t = (await win.textContent('#modal-root .imp-list')).replace(/\s+/g, ' ').trim();
     await win.click('#modal-root #ok');
     await win.waitForTimeout(300);
+    // Depuis la 9.1.0, le PREMIER import réussi demande la clé de secours — c'est le moment où
+    // elle protège encore, et c'est voulu. Elle reste donc ouverte par-dessus, et le clic suivant
+    // tombait dans le vide. On la reconnaît à ce qu'elle CONTIENT, jamais à son rang, et on prend
+    // « Pas maintenant » : ce parcours teste les refus d'import, pas les filets.
+    for (let i = 0; i < 3 && await win.$('#modal-root .modal'); i++) {
+      const texte = await win.textContent('#modal-root .modal');
+      const bouton = /clé de secours/i.test(texte) ? '#modal-root #no' : '#modal-root #ok';
+      if (!(await win.$(bouton))) break;
+      await win.click(bouton);
+      await win.waitForTimeout(250);
+    }
     return t;
   };
 

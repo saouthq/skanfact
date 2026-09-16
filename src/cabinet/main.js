@@ -1098,7 +1098,11 @@ ipcMain.handle('cab:relireLesPaquets', (_e, { dossierId, annee } = {}) => {
     .forEach(p => {
       const r = lireEcritures(p);
       if (!r.csv) { bilan.illisibles.push({ mois: p.month, motif: r.motif || 'illisible' }); return; }
-      const lignes = KC.entreesDepuisCsv(K.parseCsv(r.csv));
+      // `entreesDepuisCsv` prend le TEXTE du CSV, pas des lignes déjà découpées : c'est elle qui
+      // déduit le séparateur de l'entête. Lui passer un tableau le transformait en chaîne sans
+      // entête reconnaissable, et le mois entrait avec zéro écriture — sans erreur, ni ici ni à
+      // l'écran. C'est l'e2e qui l'a vu (« 0 écriture ajoutée » sur un paquet qui en a douze).
+      const lignes = KC.entreesDepuisCsv(r.csv);
       if (!lignes.entete) { bilan.illisibles.push({ mois: p.month, motif: 'le CSV d\'écritures n\'a pas d\'entête reconnue' }); return; }
       const ecr = KC.piecesDepuisLignes(lignes);
       const res = KC.importerPaquet(livre, p.month, ecr, !!p.definitive, 'import', Date.now());

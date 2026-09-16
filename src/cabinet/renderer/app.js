@@ -239,6 +239,19 @@
     });
   }
 
+  // Un compte rendu qu'on ferme, sans question. Il porte souvent plusieurs lignes et des chiffres
+  // qu'on relit : `pre-wrap` garde les retours et l'alignement, là où un `<p>` collerait tout.
+  function infoDialog(title, body, okLabel) {
+    return new Promise(resolve => {
+      modal(
+        `<h2>${esc(title)}</h2><div style="white-space:pre-wrap">${esc(body)}</div>
+         <div class="modal-actions"><button class="btn btn-primary" id="ok">${esc(okLabel || 'Fermer')}</button></div>`,
+        (layer, close) => { $('#ok', layer).onclick = () => { close(); resolve(true); }; },
+        () => resolve(true)
+      );
+    });
+  }
+
   // Une confirmation dangereuse où il faut RECOPIER un mot. Réservée à ce qui ne se défait pas :
   // supprimer un dossier, c'est effacer les pièces d'un client.
   function confirmTyped(title, body, word, okLabel) {
@@ -1367,16 +1380,30 @@
       const relire = () => drawLivres(view, dossier);
       const mode = $('#lv-mode', view);
       mode.onchange = () => { livresState.mode = mode.value; render(); };
-      const an = $('#lv-annee', view); if (an) an.onchange = () => { livresState.annee = an.value; relire(); };
+      // Changer d'exercice change de LIVRE : sans cette relecture, on regarderait 2025 dans le
+      // livre de 2026 sans que rien ne le dise.
+      const an = $('#lv-annee', view); if (an) an.onchange = () => {
+        livresState.annee = an.value;
+        chargerLeLivre(dossier).then(apres, apres);
+      };
       const mo = $('#lv-mois', view); if (mo) mo.onchange = () => { livresState.mois = mo.value; relire(); };
       const du = $('#lv-du', view); if (du) du.onchange = () => { livresState.du = du.value; relire(); };
       const au = $('#lv-au', view); if (au) au.onchange = () => { livresState.au = au.value; relire(); };
-      if (livresState.data) relire();
-      else chargerLivres(dossier).then(() => {
-        // La page a pu changer pendant la lecture des paquets : on redemande l'élément APRÈS
-        // l'attente, jamais avant (règle 7.6.0). Sinon on écrit dans un élément détaché.
+      // La page a pu changer pendant la lecture : on redemande l'élément APRÈS l'attente, jamais
+      // avant (règle 7.6.0). Sinon on écrit dans un élément détaché.
+      const apres = () => {
         if (livresState.dossierId === dossier.id && $('#c-livres')) drawLivres(document, dossier);
-      });
+      };
+      // Le livre se relit quand le COUPLE (dossier, exercice) change — pas à chaque affichage de
+      // la page. Relire à chaque fois redessinait `#c-livres` de façon asynchrone pendant qu'un
+      // menu de ligne était ouvert ailleurs sur la page, et le clic suivant tombait dans le vide :
+      // le piège des poignées détachées (7.0.0), fabriqué ici par excès de prudence.
+      // Les trois gestes qui changent le livre (relire, valider, contre-passer) reposent `s.livre`
+      // eux-mêmes, donc l'écran reste juste sans cette relecture-là.
+      const cle = dossier.id + '|' + (livresState.annee || '');
+      if (livresState.data && livresState.livreCle === cle) relire();
+      else if (livresState.data) { livresState.livreCle = cle; chargerLeLivre(dossier).then(apres, apres); }
+      else chargerLivres(dossier).then(apres, apres);
     }
     // Les cinq boutons fantômes de cette ligne — dont un « ✕ » muet qui EFFACE un paquet reçu —
     // sont devenus un menu d'actions écrites en toutes lettres (7.29.0), comme dans l'app
@@ -1418,7 +1445,14 @@
   // sur les 24 mois du jeu d'exemple. Deux calculs séparés auraient fini par diverger, et personne
   // n'aurait su lequel croire.
   const KC = window.SkanCompta;
-  const livresState = { dossierId: '', mode: 'exercice', annee: '', mois: '', du: '', au: '', onglet: 'journal', compte: '', journal: '', q: '', aux: false, data: null };
+  const livresState = {
+    dossierId: '', mode: 'exercice', annee: '', mois: '', du: '', au: '',
+    onglet: 'journal', compte: '', journal: '', q: '', aux: false, data: null,
+    // 9.2.0 : le livre du dossier, quand il existe. Deux sources possibles, et l'écran DIT
+    // laquelle il montre — une balance lue dans les paquets et une balance tenue par le cabinet
+    // ne disent pas la même chose, et les confondre serait exactement le genre de chiffre qui ment.
+    livre: null, livreEtat: '', brouillard: false
+  };
 
   function moisLabelCourt(m) { return K.monthLabel(m); }
 
@@ -1442,7 +1476,25 @@
         const m = brut.tousLesMois;
         s.annee = m.length ? m[m.length - 1].slice(0, 4) : String(new Date().getFullYear());
       }
+      await chargerLeLivre(dossier);
     } catch (e) { s.data = { erreur: plainError(e) }; }
+  }
+
+  // Le livre de l'exercice choisi (9.2.0). Absent, ce n'en est pas une : c'est un dossier qu'on
+  // n'a pas encore repris, et l'écran doit le DIRE avec les deux gestes qui le règlent — jamais
+  // créer un livre en silence.
+  async function chargerLeLivre(dossier) {
+    const s = livresState;
+    s.livre = null; s.livreEtat = '';
+    const annee = s.annee || String(new Date().getFullYear());
+    s.livreCle = dossier.id + '|' + annee;
+    try {
+      const r = await api.livre(dossier.id, annee);
+      if (r.livre) { s.livre = r.livre; s.livreEtat = 'ouvert'; return; }
+      if (r.versionInconnue) { s.livreEtat = 'version-inconnue'; return; }
+      if (r.illisible) { s.livreEtat = 'illisible'; s.livreMotif = r.motif || ''; return; }
+      s.livreEtat = 'absent';
+    } catch (e) { s.livreEtat = 'erreur'; s.livreMotif = plainError(e); }
   }
 
   // Les lignes de la période, analysées par compta.js. On garde la provenance (le mois et le
@@ -1450,6 +1502,21 @@
   function lignesDeLaPeriode() {
     const s = livresState;
     if (!s.data || s.data.erreur) return { lignes: [], illisibles: [], anciens: [], manquants: [], pris: [] };
+    // Le LIVRE fait foi dès qu'il existe : c'est lui que le comptable tient, avec ses validations,
+    // ses saisies et ses lettrages. Les paquets ne sont plus que la matière première.
+    if (s.livre) {
+      const { du, au } = bornesLivres(s.data.tousLesMois || []);
+      const jour = m => (m && m.length === 7 ? m : '');
+      return {
+        source: 'livre',
+        lignes: KC.lignesDuLivre(s.livre, {
+          brouillard: s.brouillard,
+          du: jour(du) ? jour(du) + '-01' : '',
+          au: jour(au) ? jour(au) + '-31' : ''
+        }),
+        illisibles: [], anciens: [], manquants: [], pris: []
+      };
+    }
     const { du, au } = bornesLivres(s.data.tousLesMois || []);
     const pris = (s.data.paquets || []).filter(p => (!du || p.month >= du) && (!au || p.month <= au));
     const lignes = [];
@@ -1477,6 +1544,154 @@
     return { lignes, illisibles, anciens, manquants, pris };
   }
 
+  // ---------------------------------------------------------------- reprendre / relire (9.2.0)
+
+  // Créer le livre à partir de ce qui a déjà été reçu. Rejouer ne double RIEN : chaque mois
+  // remplace ses brouillards et laisse les validées intactes — c'est la même fonction que l'import
+  // d'un paquet neuf, donc le geste est sûr à répéter, et c'est ce qui le rend utilisable.
+  async function relireLesPaquets(root, dossier) {
+    const s = livresState;
+    try {
+      const r = await api.relireLesPaquets(dossier.id, s.annee);
+      s.livre = r.livre; s.livreEtat = r.livre ? 'ouvert' : s.livreEtat;
+      const lignes = [
+        `${pl(r.mois, 'mois', 'mois')} relu${r.mois > 1 ? 's' : ''}.`,
+        `${pl(r.ajoutees, 'écriture ajoutée', 'écritures ajoutées')}${r.validees ? `, dont ${pl(r.validees, 'validée', 'validées')} (mois définitifs)` : ' (en brouillard)'}.`,
+        r.remplacees ? `${pl(r.remplacees, 'écriture remplacée', 'écritures remplacées')} par une version renvoyée.` : '',
+        // Les écarts ne s'appliquent JAMAIS seuls : on les montre, le comptable tranche.
+        r.ecarts.length ? `${pl(r.ecarts.length, 'écriture validée diffère', 'écritures validées diffèrent')} du mois renvoyé — elles n'ont pas été touchées :\n` +
+          r.ecarts.slice(0, 8).map(e => `  • ${esc(e.piece || e.id)} (${moisLabelCourt(e.mois)}) : ${e.avant.toFixed(3)} → ${e.apres.toFixed(3)}`).join('\n') : '',
+        r.illisibles.length ? `${pl(r.illisibles.length, 'mois', 'mois')} illisible${r.illisibles.length > 1 ? 's' : ''} : ${r.illisibles.map(x => moisLabelCourt(x.mois)).join(', ')}.` : ''
+      ].filter(Boolean);
+      await infoDialog(`Le livre de ${s.annee}`, lignes.join('\n\n'));
+      drawLivres(root, dossier);
+    } catch (e) { await infoDialog('Impossible de relire les paquets', plainError(e)); }
+  }
+
+  // Reprendre un dossier venu d'ailleurs : exercice, plan, balance d'ouverture. L'écart s'affiche
+  // EN DIRECT pendant la saisie — découvrir à l'enregistrement qu'il manque 3 000 DT sur vingt
+  // lignes, c'est recommencer ; le voir descendre à zéro pendant qu'on tape, c'est travailler.
+  function repriseForm(root, dossier) {
+    const s = livresState;
+    const annee = s.annee || String(new Date().getFullYear());
+    let lignes = [{ compte: '', libelle: '', debit: '', credit: '' }];
+    const ligneHtml = (l, i) => `<tr>
+      <td><input name="c${i}" value="${esc(l.compte)}" class="num" style="width:7em" placeholder="411"></td>
+      <td><input name="l${i}" value="${esc(l.libelle)}" placeholder="Clients"></td>
+      <td><input name="d${i}" value="${esc(l.debit)}" class="num" inputmode="decimal" style="width:8em"></td>
+      <td><input name="k${i}" value="${esc(l.credit)}" class="num" inputmode="decimal" style="width:8em"></td>
+      <td class="actions"><button type="button" class="btn btn-sm" data-sup="${i}">Retirer</button></td></tr>`;
+    modal(`<h2>Reprendre ${esc(dossier.name)}</h2>
+      <p class="small muted">Pour un client qui tenait sa comptabilité ailleurs. Tu poses son exercice et ce que
+      ses comptes portaient au premier jour ; tout ce qui suivra s'appuiera dessus.
+      <b>La balance d'ouverture doit s'équilibrer</b> — une reprise fausse fausse l'exercice entier, et on ne
+      s'en aperçoit qu'au bilan.</p>
+      <form id="rf" class="grid-2">
+        <label class="field">Exercice<input name="annee" value="${esc(annee)}" class="num"></label>
+        <label class="field">Du<input type="date" name="du" value="${esc(annee)}-01-01"></label>
+        <label class="field">Au<input type="date" name="au" value="${esc(annee)}-12-31"></label>
+      </form>
+      <h3 class="sub-h">Balance d'ouverture</h3>
+      <div class="scroll-x"><table class="list compact"><thead><tr><th>Compte</th><th>Libellé</th><th class="r">Débit</th><th class="r">Crédit</th><th></th></tr></thead>
+        <tbody id="rf-lignes">${lignes.map(ligneHtml).join('')}</tbody></table></div>
+      <div class="modal-actions" style="justify-content:flex-start">
+        <button type="button" class="btn btn-sm" id="rf-add">Ajouter une ligne</button>
+        <button type="button" class="btn btn-sm" id="rf-csv">Importer un CSV…</button>
+        <span id="rf-ecart" class="small"></span>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" data-close>Annuler</button>
+        <button class="btn btn-primary" id="ok">Créer le livre</button></div>`,
+      (rootModal, close) => {
+        const corps = $('#rf-lignes', rootModal);
+        const lire = () => {
+          const out = [];
+          $$('tr', corps).forEach((tr, i) => {
+            const v = n => (($(`input[name=${n}${i}]`, tr) || {}).value || '').trim();
+            out.push({ compte: v('c'), libelle: v('l'), debit: KC.nombreDepuisCsv(v('d')), credit: KC.nombreDepuisCsv(v('k')) });
+          });
+          return out.filter(l => l.compte || l.debit || l.credit);
+        };
+        const majEcart = () => {
+          const L = lire();
+          const d = KC.round3(L.reduce((a, x) => a + x.debit, 0));
+          const c = KC.round3(L.reduce((a, x) => a + x.credit, 0));
+          const e = KC.round3(d - c);
+          const lbl = $('#rf-ecart', rootModal);
+          lbl.textContent = L.length
+            ? (e === 0 ? `Équilibrée : ${d.toFixed(3)} de chaque côté.` : `Écart : ${e.toFixed(3)} (débit ${d.toFixed(3)} / crédit ${c.toFixed(3)}).`)
+            : '';
+          // `.ok-inline` / `.err-inline` existent déjà dans la feuille : inventer deux noms de
+          // classe de plus, c'est se retrouver avec du texte sans style et rien qui le dise —
+          // le défaut `.mono` de la 8.1.0.
+          lbl.className = 'small ' + (L.length && e === 0 ? 'ok-inline' : 'err-inline');
+        };
+        const redessine = () => {
+          corps.innerHTML = lignes.map(ligneHtml).join('');
+          $$('[data-sup]', corps).forEach(b => { b.onclick = () => { lignes.splice(Number(b.dataset.sup), 1); if (!lignes.length) lignes = [{ compte: '', libelle: '', debit: '', credit: '' }]; redessine(); }; });
+          corps.oninput = majEcart;
+          majEcart();
+        };
+        redessine();
+        $('#rf-add', rootModal).onclick = () => { lignes = lire().concat([{ compte: '', libelle: '', debit: '', credit: '' }]); redessine(); };
+        $('#rf-csv', rootModal).onclick = async () => {
+          try {
+            const r = await api.importerBalance({ dossierId: dossier.id, annee: $('input[name=annee]', rootModal).value });
+            if (r.annule) return;
+            lignes = r.lignes.map(l => ({ compte: l.compte, libelle: l.libelle, debit: l.debit || '', credit: l.credit || '' }));
+            redessine();
+            if (r.ignorees.length) await infoDialog('Lignes ignorées', r.ignorees.map(x => `Ligne ${x.ligne} : ${x.motif}`).join('\n'));
+          } catch (e) { await infoDialog('Import impossible', plainError(e)); }
+        };
+        $('#ok', rootModal).onclick = async () => {
+          const f = $('#rf', rootModal);
+          const v = { annee: $('input[name=annee]', f).value.trim(), du: $('input[name=du]', f).value, au: $('input[name=au]', f).value };
+          if (!/^\d{4}$/.test(v.annee)) return infoDialog('Exercice', 'Une année s\'écrit sur quatre chiffres.');
+          try {
+            const r = await api.reprendre({ dossierId: dossier.id, annee: Number(v.annee), du: v.du, au: v.au, ouverture: lire(), source: 'balance' });
+            s.annee = v.annee; s.livre = r.livre; s.livreEtat = 'ouvert';
+            close();
+            drawLivres(root, dossier);
+            toast(`Livre de ${v.annee} créé`);
+          } catch (e) { await infoDialog('Reprise impossible', plainError(e)); }
+        };
+      });
+  }
+
+  // Les deux gestes du comptable sur une écriture. Chacun DEMANDE d'abord et dit ce qu'il fait —
+  // valider est irréversible (le numéro est pris pour toujours), contre-passer laisse une trace
+  // dans le journal que personne ne pourra effacer.
+  async function validerEcriture(root, dossier, e) {
+    const ok = await confirmDialog('Valider cette écriture ?',
+      `<p><b>${esc(e.journal)} ${esc(e.piece)}</b> — ${esc(e.libelle || '')}</p>
+       <p class="small muted">Elle prendra son numéro dans le livre-journal et <b>ne pourra plus être modifiée</b> :
+       on corrige une écriture validée en la contre-passant, jamais en la réécrivant. C'est ce qui fait qu'un
+       livre relu dans deux ans dit la vérité de ce qui a été fait.</p>`, 'Valider');
+    if (!ok) return;
+    try {
+      const r = await api.valider(dossier.id, livresState.annee, e.id);
+      livresState.livre = r.livre;
+      drawLivres(root, dossier);
+      toast(`Validée sous le n° ${r.numero}`);
+    } catch (err) { await infoDialog('Validation refusée', plainError(err)); }
+  }
+
+  async function contrepasserEcriture(root, dossier, e) {
+    const jour = new Date().toISOString().slice(0, 10);
+    const ok = await confirmDialog('Contre-passer cette écriture ?',
+      `<p><b>n° ${esc(String(e.numero))} — ${esc(e.journal)} ${esc(e.piece)}</b></p>
+       <p class="small muted">Une écriture miroir sera enregistrée <b>à la date d'aujourd'hui</b> (${esc(fmtJour(jour))}),
+       pas à celle de l'écriture d'origine : corriger aujourd'hui une écriture d'un mois déjà déclaré
+       changerait ce mois-là sans que personne le voie. Les deux resteront dans le journal.</p>`, 'Contre-passer');
+    if (!ok) return;
+    try {
+      const r = await api.contrepasser(dossier.id, livresState.annee, e.id, jour);
+      livresState.livre = r.livre;
+      drawLivres(root, dossier);
+      toast(`Contre-passée sous le n° ${r.numero}`);
+    } catch (err) { await infoDialog('Contre-passation impossible', plainError(err)); }
+  }
+
   function drawLivres(root, dossier) {
     const s = livresState;
     const el = $('#c-livres', root);
@@ -1491,8 +1706,28 @@
       return;
     }
 
-    const { lignes, illisibles, anciens, manquants } = lignesDeLaPeriode();
+    // Le dossier n'a pas encore de livre pour cet exercice : deux gestes, nommés, et rien d'écrit
+    // en silence. « Reprendre » pour un client venu d'un autre cabinet, « Relire les paquets » pour
+    // un client déjà sur SkanFact — c'est le cas de loin le plus courant, donc c'est le bouton vert.
+    const sansLivre = s.livreEtat === 'absent'
+      ? `<div class="info-box mb"><b>Ce dossier n'a pas encore de livre pour ${esc(s.annee)}.</b>
+          Tant qu'il n'en a pas, les tableaux ci-dessous sont lus directement dans les paquets reçus : tu vois ce que
+          ton client a déclaré, sans pouvoir y ajouter une écriture ni valider quoi que ce soit.</div>
+        <div class="modal-actions mb">
+          <button class="btn btn-primary" id="lv-relire">Créer le livre à partir des paquets reçus…</button>
+          <button class="btn" id="lv-reprendre">Reprendre ce dossier (balance d'ouverture)…</button>
+        </div>`
+      : s.livreEtat === 'illisible' || s.livreEtat === 'version-inconnue' || s.livreEtat === 'erreur'
+        ? `<div class="warn-box mb"><b>Le livre de ${esc(s.annee)} n'a pas pu être ouvert.</b> ${esc(s.livreMotif || '')}
+           Les tableaux ci-dessous sont lus dans les paquets reçus. Tes sauvegardes sont dans les Réglages.</div>`
+        : '';
+
+    const { lignes, illisibles, anciens, manquants, source } = lignesDeLaPeriode();
     const avert = [];
+    if (source === 'livre') {
+      const br = s.livre.ecritures.filter(e => e.statut === 'brouillard').length;
+      if (br && !s.brouillard) avert.push(`${pl(br, 'écriture')} en brouillard ${br > 1 ? 'ne sont' : 'n\'est'} pas comptée${br > 1 ? 's' : ''} ici : un brouillard n'est pas encore de la comptabilité. Coche « Voir le brouillard » pour ${br > 1 ? 'les' : 'l\''}afficher.`);
+    }
     if (manquants.length) avert.push(`Il manque ${manquants.length > 3
       ? pl(manquants.length, 'mois', 'mois') + ' sur cette période'
       : manquants.map(moisLabelCourt).join(' et ')} : ces livres sont incomplets.`);
@@ -1506,7 +1741,17 @@
           : s.onglet === 'balance' ? vueBalance(lignes)
             : vueLettrage(lignes);
 
-    el.innerHTML = `${avert.length ? `<div class="warn-box mb">${avert.map(a => `<div>${esc(a)}</div>`).join('')}</div>` : ''}
+    // D'OÙ viennent ces chiffres. Deux sources, et l'écran le dit en toutes lettres : une balance
+    // lue dans les paquets du client et une balance tenue par le cabinet ne disent pas la même
+    // chose dès la première saisie, et rien ne permettrait de savoir laquelle on regarde.
+    const bandeau = source === 'livre'
+      ? `<div class="ok-box mb"><b>Le livre de ${esc(s.annee)}</b> — ${pl((s.livre.ecritures || []).filter(e => e.statut === 'validee').length, 'écriture validée', 'écritures validées')}${
+          (s.livre.ecritures || []).some(e => e.statut === 'brouillard') ? ', ' + pl(s.livre.ecritures.filter(e => e.statut === 'brouillard').length, 'en brouillard', 'en brouillard') : ''}.
+          <label class="check" style="margin-inline-start:12px"><input type="checkbox" id="lv-brouillard" ${s.brouillard ? 'checked' : ''}> Voir le brouillard</label>
+          <button class="btn btn-sm" id="lv-relire2" style="margin-inline-start:12px">Relire les paquets reçus</button></div>`
+      : '';
+
+    el.innerHTML = `${sansLivre}${bandeau}${avert.length ? `<div class="warn-box mb">${avert.map(a => `<div>${esc(a)}</div>`).join('')}</div>` : ''}
       <div class="tabs" id="c-tabs">
         <button data-tab="journal" class="${s.onglet === 'journal' ? 'on' : ''}">Livre-journal</button>
         <button data-tab="grand-livre" class="${s.onglet === 'grand-livre' ? 'on' : ''}">Grand livre</button>
@@ -1515,6 +1760,10 @@
       </div>${corps}`;
 
     $$('#c-tabs button', el).forEach(b => { b.onclick = () => { s.onglet = b.dataset.tab; drawLivres(root, dossier); }; });
+    const cb = $('#lv-brouillard', el);
+    if (cb) cb.onchange = () => { s.brouillard = cb.checked; drawLivres(root, dossier); };
+    [$('#lv-relire', el), $('#lv-relire2', el)].forEach(b => { if (b) b.onclick = () => relireLesPaquets(root, dossier); });
+    const rp = $('#lv-reprendre', el); if (rp) rp.onclick = () => repriseForm(root, dossier);
     brancherVue(el, root, dossier, lignes);
   }
 
@@ -1537,15 +1786,15 @@
       <div class="scroll-x"><table class="list compact"><thead><tr>
         <th class="r nw">N°</th><th class="nw">Date</th><th>Journal</th><th class="nw">Pièce</th><th class="nw">Compte</th>
         <th>Tiers</th><th>Libellé</th><th class="r nw">Débit</th><th class="r nw">Crédit</th><th></th></tr></thead>
-      <tbody>${plates.map(e => `<tr data-piece="${esc(e.piece)}" data-mois="${esc(e.mois || '')}">
-        <td class="r muted">${e.premiere ? e.numero : ''}</td>
+      <tbody>${plates.map(e => `<tr data-piece="${esc(e.piece)}" data-mois="${esc(e.mois || '')}" class="${e.statut === 'brouillard' ? 'br-ligne' : e.statut === 'contrepassee' ? 'cp-ligne' : ''}">
+        <td class="r muted">${e.premiere ? (e.statut === 'brouillard' ? '<span class="badge">brouillard</span>' : e.numero || '') : ''}</td>
         <td class="nw">${e.premiere ? esc(fmtJour(e.date)) : ''}</td>
         <td>${e.premiere ? esc(e.journal) : ''}</td>
         <td class="nw">${e.premiere ? esc(e.piece) : ''}</td>
         <td class="nw">${esc(e.account)}</td><td>${esc(e.tiers)}</td><td>${esc(e.label)}</td>
         <td class="r nw">${e.debit ? esc(money(e.debit, e.currency)) : ''}</td>
         <td class="r nw">${e.credit ? esc(money(e.credit, e.currency)) : ''}</td>
-        ${e.premiere ? rowMenuCell(e.piece + '|' + (e.mois || '')) : '<td class="row-actions"></td>'}</tr>`).join('')}</tbody>
+        ${e.premiere ? rowMenuCell(e.ecritureId ? 'E:' + e.ecritureId : e.piece + '|' + (e.mois || '')) : '<td class="row-actions"></td>'}</tr>`).join('')}</tbody>
       <tfoot><tr><td colspan="7"><strong>Total de la sélection</strong></td>
         <td class="r nw"><strong>${esc(money(lj.debit))}</strong></td>
         <td class="r nw"><strong>${esc(money(lj.credit))}</strong></td><td></td></tr></tfoot></table></div>
@@ -1651,6 +1900,28 @@
     const x = $('#lv-csv', el); if (x) x.onclick = () => exporterLivre(lignes);
     // « Ouvrir la pièce dans le paquet » : seulement si on sait DANS QUEL paquet elle vit.
     bindRowMenus(el, cle => {
+      // Sur le LIVRE, la clé désigne l'écriture : c'est elle qui se valide et se contre-passe.
+      // Une validée n'offre JAMAIS « Modifier » ni « Supprimer » — elle se contre-passe, et c'est
+      // toute la différence entre une comptabilité et un tableur.
+      if (String(cle).startsWith('E:') && s.livre) {
+        const id = String(cle).slice(2);
+        const e = s.livre.ecritures.find(x => x.id === id);
+        if (!e) return [];
+        const actions = [];
+        if (e.statut === 'brouillard') {
+          actions.push({ icon: 'check', label: 'Valider cette écriture', hint: 'Elle prend son numéro et ne se modifiera plus',
+            run: () => validerEcriture(root, dossier, e) });
+        }
+        if (e.statut === 'validee') {
+          actions.push({ icon: 'contrat', label: 'Contre-passer cette écriture', hint: 'Une écriture miroir, à la date du jour',
+            run: () => contrepasserEcriture(root, dossier, e) });
+        }
+        if (e.mois && (s.data.paquets || []).some(z => z.month === e.mois && z.path)) {
+          actions.push({ icon: 'loupe', label: 'Ouvrir la pièce dans le paquet', hint: `${e.piece} · ${moisLabelCourt(e.mois)}`,
+            run: () => openPack(dossier, e.mois) });
+        }
+        return actions;
+      }
       const [piece, mois] = String(cle).split('|');
       const p = (s.data.paquets || []).find(z => z.month === mois);
       if (!p || !p.path) return [];

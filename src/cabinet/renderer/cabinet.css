@@ -204,3 +204,12 @@ body.dark .badge.b-hors { background: #2a3440; color: #9aa7b4; }
 .reprise-row > div:first-child { flex: 1; min-width: 0; }
 .reprise-row .btn { flex-shrink: 0; }
 @media (max-width: 760px) { .reprise-row { flex-wrap: wrap; } }
+
+/* Une écriture en BROUILLARD se distingue à l'œil, sans qu'on ait à lire une colonne (9.2.0).
+   L'italique et le fond estompé disent « pas encore de la comptabilité » ; la pastille dans la
+   colonne du numéro dit pourquoi elle n'en a pas. Une ligne contre-passée est barrée : elle reste
+   dans le journal — on ne l'efface jamais — mais elle ne compte plus.
+   Classes utilisées ET définies : une classe posée dans le HTML et absente de la feuille ne se voit
+   nulle part, et rien ne le signale (le défaut `.mono` de la 8.1.0). */
+tr.br-ligne td { font-style: italic; background: var(--info-soft); }
+tr.cp-ligne td { text-decoration: line-through; color: var(--muted); }
