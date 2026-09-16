@@ -84,6 +84,10 @@
        de style : ce sont les mêmes classes `.row-menu…`, pas un second jeu qui dériverait. -->
   <script src="../../renderer/rowmenu.js"></script>
   <script src="../../renderer/reglages.js"></script>
+  <!-- Le moteur comptable, le même que celui de l'application entreprise (9.1.0). C'est lui qui
+       fait que la balance du cabinet est celle du client, au millime : deux calculs séparés
+       auraient fini par diverger, et personne n'aurait su lequel croire. -->
+  <script src="../../renderer/compta.js"></script>
   <script src="../cabcore.js"></script>
   <script src="cabguide.js"></script>
   <script src="app.js"></script>

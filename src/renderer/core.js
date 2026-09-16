@@ -1,9 +1,14 @@
 // Logique métier partagée (calculs, numérotation, montants en lettres, template PDF, journal des ventes).
 // Fonctionne dans le navigateur (window.SkanCore) et dans Node (module.exports) pour les tests.
+//
+// Depuis la 9.1.0, tout ce qui travaille sur des LIGNES d'écriture (et non sur `data`) vit dans
+// `compta.js`, partagé avec l'application du cabinet : core.js le charge et en réexporte ce que ses
+// appelants connaissaient déjà. Dans le navigateur, `compta.js` se charge donc AVANT core.js — un
+// test relit les deux `index.html` et l'exige.
 (function (root, factory) {
-  if (typeof module === 'object' && module.exports) module.exports = factory();
-  else root.SkanCore = factory();
-})(typeof self !== 'undefined' ? self : this, function () {
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('./compta'));
+  else root.SkanCore = factory(root.SkanCompta);
+})(typeof self !== 'undefined' ? self : this, function (Compta) {
 
   const VAT_RATES = [0, 7, 13, 19];
   // Taux de retenue à la source rencontrés en Tunisie. Ce sont des PROPOSITIONS, jamais une règle :
@@ -4290,32 +4295,11 @@
 
   // Le contrôle qu'un comptable fait en premier : est-ce que ça tombe juste ? Pièce par pièce, et
   // en tout. Une pièce déséquilibrée serait refusée à l'import de son logiciel.
-  function entriesBalance(entries) {
-    const byPiece = {};
-    entries.forEach(e => {
-      const k = `${e.journal}|${e.piece}|${e.date}`;
-      byPiece[k] = byPiece[k] || { key: k, journal: e.journal, piece: e.piece, date: e.date, debit: 0, credit: 0 };
-      byPiece[k].debit = round3(byPiece[k].debit + e.debit);
-      byPiece[k].credit = round3(byPiece[k].credit + e.credit);
-    });
-    const pieces = Object.keys(byPiece).map(k => byPiece[k]);
-    const off = pieces.filter(p => round3(p.debit - p.credit) !== 0);
-    const debit = round3(entries.reduce((s, e) => s + e.debit, 0));
-    const credit = round3(entries.reduce((s, e) => s + e.credit, 0));
-    return { debit, credit, balanced: round3(debit - credit) === 0 && !off.length, pieces: pieces.length, off, lines: entries.length };
-  }
-
-  // La balance par compte : ce que le comptable regarde pour voir si un compte a été oublié.
-  function entriesByAccount(entries) {
-    const by = {};
-    entries.forEach(e => {
-      by[e.account] = by[e.account] || { account: e.account, debit: 0, credit: 0, lines: 0 };
-      by[e.account].debit = round3(by[e.account].debit + e.debit);
-      by[e.account].credit = round3(by[e.account].credit + e.credit);
-      by[e.account].lines++;
-    });
-    return Object.keys(by).sort().map(k => ({ ...by[k], solde: round3(by[k].debit - by[k].credit) }));
-  }
+  // L'équilibre d'un jeu d'écritures, et la balance par compte. Les deux vivent dans `compta.js`
+  // depuis la 9.1.0 : elles ne prennent que des LIGNES, donc elles servent aussi au cabinet, qui
+  // n'a pas de `data`. Réexportées ici à l'identique — aucun appelant n'a changé.
+  const entriesBalance = Compta.entriesBalance;
+  const entriesByAccount = Compta.entriesByAccount;
 
   const entryCsvColumns = () => ([
     { key: 'numero', label: 'N°' },

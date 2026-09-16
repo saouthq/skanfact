@@ -10512,6 +10512,239 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     });
   }
 
+
+  // ---------------------------------------------------------------- compta.js (9.1.0)
+  //
+  // Le module partagé par les deux applications. Ce qu'il faut prouver n'est pas qu'il calcule
+  // quelque chose — c'est qu'il calcule LA MÊME CHOSE que core.js sur la même matière. Sans ça, le
+  // comptable et son client auraient deux balances et aucun moyen de savoir laquelle croire.
+
+  t('9.1.0 : compta.js ne dépend de rien, et son arrondi est celui de core.js au caractère près', () => {
+    const src = lireSource('src', 'renderer', 'compta.js');
+    const net = src.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+    assert.ok(net.includes('function balanceDepuisLignes') && net.includes('function lettrageDepuisLignes'),
+      'le nettoyage des commentaires a mangé le code');
+    // Un appel à core.js rendrait le module inutilisable par le cabinet, qui ne le charge pas —
+    // et rien ne le dirait avant que l'écran reste blanc chez le comptable.
+    assert.ok(!/require\(|SkanCore/.test(net), 'compta.js ne doit dépendre ni de core.js ni d\'un require');
+
+    // Deux arrondis qui divergent d'un millime, c'est une balance qui ne tombe plus juste et
+    // personne qui sait pourquoi. On compare les deux corps, pas leur comportement.
+    const corps = s => (s.match(/function round3\(n\) \{[^\n]*\}/) || [''])[0];
+    const a = corps(src), b = corps(lireSource('src', 'renderer', 'core.js'));
+    assert.ok(a && a === b, `round3 diverge :\n  compta : ${a}\n  core   : ${b}`);
+  });
+
+  t('9.1.0 : compta.js est chargé AVANT core.js, dans les deux applications, et embarqué par le cabinet', () => {
+    // Trois branchements obligatoires pour un fichier partagé (règle 7.29.0) : l'index de chaque
+    // application, dans le bon ORDRE, et les `files` du paquet cabinet — sans quoi l'app du
+    // comptable démarre en développement et plante une fois construite (7.26.0).
+    const ent = lireSource('src', 'renderer', 'index.html');
+    assert.ok(ent.indexOf('compta.js') > 0 && ent.indexOf('compta.js') < ent.indexOf('src="core.js"'),
+      'compta.js doit se charger avant core.js dans l\'app entreprise');
+    const cab = lireSource('src', 'cabinet', 'renderer', 'index.html');
+    assert.ok(cab.includes('renderer/compta.js'), 'l\'app cabinet ne charge pas compta.js');
+    assert.ok(cab.indexOf('renderer/compta.js') < cab.indexOf('cabcore.js'),
+      'compta.js doit se charger avant cabcore.js');
+    assert.ok(lireSource('build', 'cabinet.config.js').includes("'src/renderer/compta.js'"),
+      'compta.js absent des files de build/cabinet.config.js : l\'app cabinet plantera une fois construite');
+    // Et core.js le réexporte : aucun appelant n'a eu à changer.
+    assert.ok(lireSource('src', 'renderer', 'core.js').includes('Compta.entriesBalance'),
+      'core.js doit réexporter entriesBalance depuis compta.js');
+  });
+
+  // TEST-9.1.0-001
+  t('9.1.0 : une écriture n\'entre qu\'équilibrée, et le refus dit LEQUEL des sept motifs', () => {
+    const K = require('../src/renderer/compta.js');
+    const bonne = { date: '2026-03-10', journal: 'VE', lignes: [{ compte: '411', debit: 119 }, { compte: '707', credit: 100 }, { compte: '4367', credit: 19 }] };
+    assert.ok(K.ecritureValide(bonne).ok);
+    assert.strictEqual(K.ecritureValide(bonne).motif, '');
+
+    const cas = [
+      [{ ...bonne, lignes: [{ compte: '411', debit: 119 }, { compte: '707', credit: 100 }] }, /ne tombe pas juste/],
+      [{ ...bonne, lignes: [{ compte: '411', debit: 119 }] }, /au moins deux lignes/],
+      [{ ...bonne, lignes: [{ compte: '', debit: 1 }, { compte: '707', credit: 1 }] }, /compte manque/],
+      [{ ...bonne, lignes: [{ compte: '411', debit: 1, credit: 1 }, { compte: '707', credit: 1 }] }, /débit OU au crédit/],
+      [{ ...bonne, lignes: [{ compte: '411', debit: -1 }, { compte: '707', credit: -1 }] }, /négatif change de colonne/],
+      [{ ...bonne, date: '' }, /date manque/],
+      [{ ...bonne, journal: '' }, /journal manque/]
+    ];
+    cas.forEach(([od, rx], i) => {
+      const v = K.ecritureValide(od);
+      assert.ok(!v.ok, `cas ${i + 1} : accepté alors qu'il ne devrait pas`);
+      assert.ok(v.motifs.some(m => rx.test(m)), `cas ${i + 1} : motif attendu ${rx} — reçu ${JSON.stringify(v.motifs)}`);
+    });
+    // Le premier motif est celui qu'on montre : sept phrases devant une seule faute, c'est
+    // demander à l'utilisateur de les trier lui-même.
+    assert.strictEqual(K.ecritureValide(cas[5][0]).motif, K.ecritureValide(cas[5][0]).motifs[0]);
+    // Un compte hors plan se SIGNALE, il ne fait jamais refuser : chaque cabinet a le sien (6.3.0).
+    const hors = K.ecritureValide(bonne, ['411', '707']);
+    assert.ok(!hors.ok && /n'est pas dans le plan/.test(hors.motif) && /à vérifier/.test(hors.motif));
+  });
+
+  // TEST-9.1.0-002
+  t('9.1.0 : le CSV d\'écritures se lit par NOM de colonne, dans les trois écritures de montant', () => {
+    const K = require('../src/renderer/compta.js');
+    // L'ordre des colonnes est volontairement mélangé, et le BOM posé en tête comme le fait un
+    // tableur : associer par position mettrait des montants dans « Tiers » sans rien casser (6.8.0).
+    const csv = '﻿Crédit;Compte;Date;Libellé;Débit;Journal;Pièce;Tiers\n'
+      + '0;411;2026-03-10;"Facture FAC-2026-001; solde";1234,567;VE;FAC-2026-001;Trabelsi\n'
+      + '1.234,567;707;2026-03-10;Vente;0;VE;FAC-2026-001;\n'
+      + '0;;2026-03-10;ligne sans compte;99;VE;X;\n';
+    const l = K.entreesDepuisCsv(csv);
+    assert.strictEqual(l.length, 2);
+    assert.strictEqual(l.ignorees, 1, 'une ligne sans compte s\'ignore ET se compte');
+    assert.strictEqual(l[0].account, '411');
+    assert.strictEqual(l[0].debit, 1234.567);
+    assert.strictEqual(l[0].label, 'Facture FAC-2026-001; solde', 'le point-virgule entre guillemets appartient au libellé');
+    assert.strictEqual(l[0].tiers, 'Trabelsi');
+    assert.strictEqual(l[1].credit, 1234.567, '« 1.234,567 » : c\'est le séparateur le plus à droite qui décide');
+    // Les trois écritures du même nombre, et rien d'autre.
+    assert.strictEqual(K.nombreDepuisCsv('1,234.567'), 1234.567);
+    assert.strictEqual(K.nombreDepuisCsv('1 234,567'), 1234.567);
+    assert.strictEqual(K.nombreDepuisCsv(''), 0);
+    // Une tabulation à la place du point-virgule : un tableur anglophone, et le refuser
+    // n'apprendrait rien à personne.
+    const tab = K.entreesDepuisCsv('Compte\tDébit\tCrédit\n411\t10\t0\n707\t0\t10\n');
+    assert.strictEqual(tab.length, 2);
+    assert.strictEqual(tab[0].debit, 10);
+    // Sans colonne « Compte », ce n'est pas un fichier d'écritures : on le DIT, au lieu de rendre
+    // deux cents lignes vides. Un import qui réussit sur rien est pire qu'un import qui refuse.
+    const rien = K.entreesDepuisCsv('Nom;Prénom\nDupont;Jean\n');
+    assert.strictEqual(rien.entete, false);
+    assert.strictEqual(rien.length, 0);
+  });
+
+  // TEST-9.1.0-004, 005, 006 — et le test qui compte : la PARITÉ.
+  t('9.1.0 : la balance du cabinet est celle de l\'entreprise, au millime, sur les 24 mois de l\'exemple', () => {
+    const K = require('../src/renderer/compta.js');
+    const demo = require('../src/renderer/demo.js');
+    const company = { ...core.DEFAULT_COMPANY, name: 'Parité SUARL', matricule: '1234567A' };
+    const data = core.migrateData(demo.buildDemoData(company, '2026-09-12'));
+    let mois = 0;
+    for (const year of [2025, 2026]) {
+      for (let m = 1; m <= 12; m++) {
+        const p = core.packPeriod(year, m);
+        // Côté entreprise : les pièces. Côté cabinet : les mêmes écritures, passées par le CSV du
+        // paquet — c'est exactement le chemin que suit un paquet réel.
+        const ref = core.balanceGenerale(data, data.company, p, {});
+        const entries = core.journalEntries(data, data.company, p, {});
+        const ouverture = core.soldesOuverture(data, data.company, p, {});
+        const csv = core.toCsv(entries, core.entryCsvColumns());
+        const relues = K.entreesDepuisCsv(csv);
+        assert.strictEqual(relues.length, entries.length, `${year}-${m} : ${entries.length - relues.length} ligne(s) perdue(s) par le CSV`);
+
+        const bal = K.balanceDepuisLignes(relues, ouverture);
+        assert.strictEqual(bal.ok, ref.equilibree, `${year}-${m} : les deux ne disent pas la même chose sur l'équilibre`);
+        assert.strictEqual(bal.rows.length, ref.rows.length, `${year}-${m} : ${bal.rows.length} comptes contre ${ref.rows.length}`);
+        ['ouvertureD', 'ouvertureC', 'debit', 'credit', 'soldeD', 'soldeC'].forEach(k =>
+          assert.strictEqual(bal.totaux[k], ref.totals[k], `${year}-${m} : total ${k} — cabinet ${bal.totaux[k]} ≠ entreprise ${ref.totals[k]}`));
+        bal.rows.forEach((r, i) => {
+          const o = ref.rows[i];
+          assert.strictEqual(r.account, o.account, `${year}-${m} : comptes dans un ordre différent`);
+          ['ouvertureD', 'ouvertureC', 'debit', 'credit', 'soldeD', 'soldeC'].forEach(k =>
+            assert.strictEqual(r[k], o[k], `${year}-${m} compte ${r.account} : ${k} — cabinet ${r[k]} ≠ entreprise ${o[k]}`));
+        });
+
+        // Le grand livre : chaque solde progressif finit sur le solde de la balance. C'est cette
+        // égalité qui fait qu'un grand livre se lit.
+        const gl = K.grandLivreDepuisLignes(relues, '', ouverture);
+        gl.comptes.forEach(c => {
+          const b = bal.rows.find(r => r.account === c.account);
+          assert.strictEqual(c.solde, round3(b.soldeD - b.soldeC), `${year}-${m} compte ${c.account} : le grand livre ne finit pas sur la balance`);
+          if (c.lignes.length) assert.strictEqual(c.lignes[c.lignes.length - 1].solde, c.solde, `${year}-${m} compte ${c.account} : la dernière ligne n'est pas le solde`);
+        });
+        mois++;
+      }
+    }
+    assert.strictEqual(mois, 24);
+    function round3(n) { return Math.round((Number(n) || 0) * 1000) / 1000; }
+  });
+
+  // TEST-9.1.0-006
+  t('9.1.0 : le livre-journal numérote 1..n par (date, pièce), et le centralisateur totalise le même', () => {
+    const K = require('../src/renderer/compta.js');
+    const demo = require('../src/renderer/demo.js');
+    const company = { ...core.DEFAULT_COMPANY, name: 'Journal SUARL', matricule: '1234567A' };
+    const data = core.migrateData(demo.buildDemoData(company, '2026-09-12'));
+    const p = { from: '2026-01-01', to: '2026-12-31' };
+    const entries = core.journalEntries(data, data.company, p, {});
+    const relues = K.entreesDepuisCsv(core.toCsv(entries, core.entryCsvColumns()));
+    const lj = K.journalDepuisLignes(relues);
+
+    assert.ok(lj.pieces.length > 20, 'trop peu de pièces sur une année de l\'exemple');
+    // Numérotation continue, sans trou : c'est la seule chose qu'un livre-journal doit garantir.
+    lj.pieces.forEach((pc, i) => assert.strictEqual(pc.numero, i + 1, `trou de numérotation en ${i + 1}`));
+    // Et dans l'ordre des dates : une pièce de mars ne peut pas porter un numéro d'avant janvier.
+    for (let i = 1; i < lj.pieces.length; i++) {
+      assert.ok(lj.pieces[i].date >= lj.pieces[i - 1].date, `pièce ${i + 1} datée avant la précédente`);
+    }
+    assert.strictEqual(lj.off.length, 0, `${lj.off.length} pièce(s) déséquilibrée(s) : ${JSON.stringify(lj.off.slice(0, 2))}`);
+    assert.strictEqual(lj.debit, lj.credit);
+    // Le même comparé à core.js, qui le calcule depuis les pièces.
+    assert.strictEqual(lj.debit, core.entriesBalance(entries).debit);
+
+    const cz = K.centralisateurDepuisLignes(relues);
+    const somme = f => Math.round(cz.reduce((s, r) => s + f(r), 0) * 1000) / 1000;
+    assert.strictEqual(somme(r => r.debit), lj.debit, 'le centralisateur ne totalise pas le journal');
+    assert.strictEqual(somme(r => r.credit), lj.credit);
+    assert.strictEqual(cz.reduce((s, r) => s + r.pieces, 0), lj.pieces.length, 'le centralisateur ne compte pas les mêmes pièces');
+    cz.forEach(r => assert.ok(/^\d{4}-\d{2}$/.test(r.mois) && r.journal, 'un mois ou un journal vide dans le centralisateur'));
+  });
+
+  // TEST-9.1.0-007
+  t('9.1.0 : le lettrage — ce qui reste ouvert EST le solde du compte', () => {
+    const K = require('../src/renderer/compta.js');
+    const demo = require('../src/renderer/demo.js');
+    const company = { ...core.DEFAULT_COMPANY, name: 'Lettrage SUARL', matricule: '1234567A' };
+    const data = core.migrateData(demo.buildDemoData(company, '2026-09-12'));
+    const p = { from: '2025-01-01', to: '2026-12-31' };
+    const entries = core.journalEntries(data, data.company, p, {});
+    const relues = K.entreesDepuisCsv(core.toCsv(entries, core.entryCsvColumns()));
+    const acc = core.chartAccounts(data);
+
+    const l = K.lettrageDepuisLignes(relues, acc.clients, '2026-09-12');
+    assert.ok(l.rows.length, 'aucun tiers dans le lettrage clients');
+    // LE contrôle. Il ne se remplace par aucun équilibre : c'est lui qui a trouvé, en 8.9.0, une
+    // facture couverte par un avoir dont l'écriture sautait pendant que celle de l'avoir restait.
+    assert.ok(l.concorde, `le reste ouvert (${l.resteOuvert}) n'est pas le solde du compte (${l.soldeCompte}) — écart ${l.ecart}`);
+    // Et il concorde avec la balance du même compte, qui vient de l'autre chemin.
+    const bal = K.balanceDepuisLignes(relues);
+    const client = bal.rows.filter(r => r.account.startsWith(acc.clients));
+    const solde = Math.round(client.reduce((s, r) => s + r.soldeD - r.soldeC, 0) * 1000) / 1000;
+    assert.strictEqual(l.resteOuvert, solde, 'le lettrage et la balance ne voient pas le même compte client');
+
+    // Une pièce lettrée sort des ouverts sans disparaître du compte : elle est réglée, la montrer
+    // noierait ce qui reste vraiment à réclamer.
+    const lignes = [
+      { account: '411', tiers: 'A', piece: 'F1', date: '2026-01-05', debit: 100, credit: 0, lettre: 'AA' },
+      { account: '411', tiers: 'A', piece: 'R1', date: '2026-01-20', debit: 0, credit: 100, lettre: 'AA' },
+      { account: '411', tiers: 'B', piece: 'F2', date: '2026-02-05', debit: 60, credit: 0, lettre: '', echeance: '2026-03-05' }
+    ];
+    const l2 = K.lettrageDepuisLignes(lignes, '411', '2026-09-12');
+    assert.strictEqual(l2.ouverts, 1);
+    assert.strictEqual(l2.resteOuvert, 60);
+    assert.strictEqual(l2.soldeCompte, 60);
+    assert.ok(l2.concorde);
+    // DEUX pièces lettrées, pas une : la lettre « AA » relie une facture ET son règlement, et
+    // c'est en pièces qu'un comptable compte ce qui est soldé.
+    assert.strictEqual(l2.rows.find(r => r.tiers === 'A').lettrees, 2);
+    assert.strictEqual(l2.rows.find(r => r.tiers === 'B').ouverts[0].retard, true, 'une échéance dépassée doit se voir');
+    assert.strictEqual(l2.lettragesFaux.length, 0);
+
+    // Un lettrage FAUX — 100 de facture lettrés contre 60 de règlement — se nomme, avec sa lettre
+    // et son écart. Sans ça il n'apparaîtrait que dans « le reste ouvert n'est pas le solde », une
+    // phrase vraie qui n'apprend rien.
+    const faux = K.lettrageDepuisLignes([
+      { account: '411', tiers: 'C', piece: 'F3', date: '2026-01-05', debit: 100, credit: 0, lettre: 'BB' },
+      { account: '411', tiers: 'C', piece: 'R3', date: '2026-01-20', debit: 0, credit: 60, lettre: 'BB' }
+    ], '411', '2026-09-12');
+    assert.strictEqual(faux.lettragesFaux.length, 1);
+    assert.strictEqual(faux.lettragesFaux[0].lettre, 'BB');
+    assert.strictEqual(faux.lettragesFaux[0].ecart, 40);
+    assert.strictEqual(faux.soldeCompte, 40, 'l\'argent reste sur le compte, quoi qu\'en dise le lettrage');
+  });
+
   if (enCours) throw new Error(`${enCours} test(s) asynchrone(s) lancé(s) sans « await ta(…) » : ils ne peuvent plus échouer`);
   console.log(`\n${n} tests OK`);
 })().catch(e => { console.error(e); process.exit(1); });

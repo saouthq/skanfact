@@ -41,6 +41,7 @@ module.exports = {
     'src/renderer/style.css',          // la feuille partagée, chargée par son index.html
     'src/renderer/rowmenu.js',         // le menu d'actions d'une ligne, partagé lui aussi
     'src/renderer/reglages.js',        // le sommaire et la recherche des réglages, partagés aussi
+    'src/renderer/compta.js',          // le moteur comptable : la balance du cabinet est celle du client
     'package.json',
     'CHANGELOG.md'
   ],
