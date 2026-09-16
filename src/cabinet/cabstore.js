@@ -17,6 +17,9 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+// Le moteur comptable partagé (9.1.0) : `cabstore` ne juge pas un livre lui-même, il demande à
+// `compta.js` s'il en est un. Deux jugements séparés divergeraient au premier champ ajouté.
+const KC = require('../renderer/compta.js');
 
 const MARK = 'skanfactCabinet';
 const RECOVER_MARK = 'skanfactCabinetRecovery';
@@ -486,6 +489,181 @@ function createCabStore(dir, opts) {
   // chemin sans le contrôler laissait `mois = '../../../../tmp/piege'` écrire hors du dossier de
   // l'application, par-dessus le paquet archivé d'un autre client.
   const moisSain = m => (/^\d{4}-(0[1-9]|1[0-2])$/.test(String(m || '')) ? String(m) : 'inconnu');
+  // ================================================================ LE LIVRE (9.2.0)
+  //
+  // Un fichier par dossier ET par exercice : `livres/<dossier>/livre-<AAAA>.json`. Chiffré avec la
+  // MÊME clé dérivée que `cabinet-data.json` — la clé se dérive une fois au déverrouillage et reste
+  // en mémoire ; la redériver par fichier coûterait 6,8 s sur soixante dossiers (mesuré).
+  //
+  // **Le corps est BINAIRE, pas base64**, et c'est la mesure qui l'a décidé, avant d'écrire une
+  // ligne de 9.2.0 (`npm run charge`, SPEC-OUT-006). Sur 50 000 lignes, valider une écriture réécrit
+  // le fichier entier : 141 ms en base64 pour un seuil de 100, 57 ms en binaire. base64 ajoute 33 %
+  // d'octets et 59 % du temps d'écriture, pour rien. C'est la règle de la 6.1.0 (« le corps est
+  // binaire ») qui n'avait jamais été portée ici parce qu'elle ne coûtait rien sur un petit fichier.
+  //
+  // La forme est celle du paquet mensuel : **l'entête reste en CLAIR sur une ligne**, puis les
+  // octets. Sans entête lisible, un livre mal rangé serait impossible à identifier sans la clé —
+  // et un comptable qui retrouve un fichier sur une clé USB doit pouvoir savoir de quel client et
+  // de quelle année il parle avant de chercher son mot de passe.
+  //
+  // `cabinet-data.json` ne change PAS : il est petit, et migrer son enveloppe serait un risque pour
+  // zéro gain.
+  const livreRoot = path.join(dir, 'livres');
+  const LIVRE_MARK = 'skanfact-livre';
+
+  function livreDir(dossier, collisions) {
+    const dest = path.join(livreRoot, folderName(dossier, collisions));
+    if (!path.resolve(dest).startsWith(path.resolve(livreRoot) + path.sep)) {
+      throw new Error('Chemin de livre refusé : il sortirait du dossier de l\'application.');
+    }
+    return dest;
+  }
+  const anneeSaine = a => (/^\d{4}$/.test(String(a)) ? String(a) : null);
+  function livrePath(dossier, annee, collisions) {
+    const a = anneeSaine(annee);
+    if (!a) throw new Error('Exercice invalide : une année s\'écrit sur quatre chiffres.');
+    return path.join(livreDir(dossier, collisions), `livre-${a}.json`);
+  }
+
+  function sealLivreBuffer(obj, salt, key, entete) {
+    const iv = crypto.randomBytes(12);
+    const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+    const body = Buffer.concat([cipher.update(Buffer.from(JSON.stringify(obj), 'utf8')), cipher.final()]);
+    const head = Buffer.from(JSON.stringify({
+      [LIVRE_MARK]: 1, kdf: 'scrypt', salt: salt.toString('base64'),
+      iv: iv.toString('base64'), tag: cipher.getAuthTag().toString('base64'),
+      ...(entete || {})
+    }) + '\n', 'utf8');
+    return Buffer.concat([head, body]);
+  }
+
+  // Relire : l'entête jusqu'au premier saut de ligne, le reste en octets. On ne charge pas le
+  // fichier en chaîne UTF-8 — des octets chiffrés ne sont pas du texte, et les décoder puis les
+  // réencoder les abîmerait en silence.
+  function openLivreBuffer(buf, key) {
+    const nl = buf.indexOf(0x0a);
+    if (nl < 0) throw new Error('Ce fichier n\'est pas un livre SkanFact.');
+    let head;
+    try { head = JSON.parse(buf.slice(0, nl).toString('utf8')); } catch { head = null; }
+    if (!head || head[LIVRE_MARK] !== 1) throw new Error('Ce fichier n\'est pas un livre SkanFact.');
+    const d = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(head.iv, 'base64'));
+    d.setAuthTag(Buffer.from(head.tag, 'base64'));
+    return { entete: head, livre: JSON.parse(Buffer.concat([d.update(buf.slice(nl + 1)), d.final()]).toString('utf8')) };
+  }
+  // L'entête seule, sans la clé : c'est elle qui rend un fichier mal rangé identifiable.
+  function enteteLivre(fichier) {
+    try {
+      const fd = fs.openSync(fichier, 'r');
+      const b = Buffer.alloc(1024);
+      const n = fs.readSync(fd, b, 0, 1024, 0);
+      fs.closeSync(fd);
+      const nl = b.slice(0, n).indexOf(0x0a);
+      if (nl < 0) return null;
+      const h = JSON.parse(b.slice(0, nl).toString('utf8'));
+      return h && h[LIVRE_MARK] === 1 ? h : null;
+    } catch { return null; }
+  }
+
+  // ---------- le verrou ----------
+  //
+  // Un livre ouvert en écriture sur un autre poste ne s'écrase pas. Le verrou est **consultatif** et
+  // il PÉRIME : un poste qui plante laisserait sinon un dossier verrouillé pour toujours, et c'est
+  // pire que le risque qu'il évite (il n'y a qu'un poste en 9.2.0 ; la vraie fusion vient en 9.9.0).
+  const LOCK_MS = 24 * 3600 * 1000;
+  const lockPath = (dossier, annee, collisions) => livrePath(dossier, annee, collisions).replace(/\.json$/, '.lock');
+  function lireVerrou(dossier, annee, collisions) {
+    try {
+      const o = JSON.parse(fs.readFileSync(lockPath(dossier, annee, collisions), 'utf8'));
+      if (!o || !o.depuis) return null;
+      return (now().getTime() - Number(o.depuis)) > LOCK_MS ? null : o;
+    } catch { return null; }
+  }
+  function poserVerrou(dossier, annee, moi, collisions) {
+    const v = lireVerrou(dossier, annee, collisions);
+    if (v && v.deviceId && moi && v.deviceId !== moi.deviceId) return { ok: false, verrou: v };
+    const f = lockPath(dossier, annee, collisions);
+    fs.mkdirSync(path.dirname(f), { recursive: true });
+    fs.writeFileSync(f, JSON.stringify({ deviceId: (moi && moi.deviceId) || '', deviceName: (moi && moi.deviceName) || '', depuis: now().getTime() }), 'utf8');
+    return { ok: true };
+  }
+  function leverVerrou(dossier, annee, collisions) {
+    try { fs.unlinkSync(lockPath(dossier, annee, collisions)); } catch { /* déjà parti */ }
+  }
+
+  // ---------- lire et écrire ----------
+  //
+  // Un livre illisible n'est JAMAIS écrasé : mis de côté sous son nom horodaté, exactement comme
+  // `cabinet-data.json`. C'est la règle qui a sauvé l'app entreprise, et un livre porte la
+  // comptabilité d'une année entière — il n'y a rien de plus cher dans cette application.
+  function lireLivre(dossier, annee, collisions) {
+    if (!st.key) throw new Error('Aucun cabinet ouvert.');
+    const f = livrePath(dossier, annee, collisions);
+    let buf;
+    try { buf = fs.readFileSync(f); }
+    catch (e) { if (e.code === 'ENOENT') return { absent: true }; throw e; }
+    let r;
+    try { r = openLivreBuffer(buf, st.key); }
+    catch (e) { return { illisible: true, motif: e.message, fichier: f }; }
+    if (KC.livreVersionInconnue(r.livre)) {
+      return { versionInconnue: true, format: r.livre.format, fichier: f };
+    }
+    if (!KC.isValidLivre(r.livre)) {
+      const aside = f.replace(/\.json$/, `.illisible-${stamp(now())}.json`);
+      try { fs.renameSync(f, aside); } catch { /* on garde le fichier tel quel */ }
+      return { illisible: true, motif: 'Ce fichier n\'a pas la forme d\'un livre.', misDeCote: aside };
+    }
+    return { livre: r.livre, entete: r.entete, fichier: f };
+  }
+
+  function ecrireLivre(dossier, livre, collisions) {
+    if (!st.key) throw new Error('Aucun cabinet ouvert.');
+    if (!KC.isValidLivre(livre)) throw new Error('Livre invalide : enregistrement refusé.');
+    const f = livrePath(dossier, livre.exercice.annee, collisions);
+    fs.mkdirSync(path.dirname(f), { recursive: true });
+    // L'entête en clair : de qui, de quand, combien. Pas un chiffre de plus — elle n'est pas
+    // chiffrée, et le nombre d'écritures d'un client n'est pas un secret, son contenu si.
+    const buf = sealLivreBuffer(livre, st.salt, st.key, {
+      dossier: livre.dossier, nom: dossier.name || '', exercice: livre.exercice.annee,
+      ecritures: livre.ecritures.length, ecritLe: stamp(now())
+    });
+    // La version PRÉCÉDENTE est gardée, une génération, avant d'écrire la nouvelle. Ce n'est pas la
+    // sauvegarde — c'est la copie externe qui l'est — mais c'est ce qui rattrape l'accident réel :
+    // un import qui remplace un mois de travers, une reprise relancée par erreur. Une génération et
+    // pas trente : trente livres de 50 000 lignes par dossier feraient 2,9 Go pour un cabinet de
+    // soixante clients, et une sauvegarde qui remplit le disque n'est plus une sauvegarde.
+    //
+    // La sauvegarde QUOTIDIENNE, elle, ne les emporte pas : elle est un seul JSON par jour, et le
+    // dire vaut mieux que le laisser croire — c'est l'écran qui doit rappeler la copie externe.
+    try { if (fs.existsSync(f)) fs.copyFileSync(f, f.replace(/\.json$/, '.precedent.json')); } catch { /* le filet manque, l'écriture passe quand même */ }
+    const tmp = f + '.tmp';
+    fs.writeFileSync(tmp, buf);
+    fs.renameSync(tmp, f);
+    majIndexLivres(dossier, livre, collisions);
+    return { ok: true, fichier: f };
+  }
+
+  // Un index léger par dossier : les exercices et leur état. Sans lui, afficher « ce client a 2024,
+  // 2025 et 2026, dont 2024 clos » demanderait d'ouvrir et de déchiffrer trois livres entiers —
+  // soixante dossiers, cent quatre-vingts fichiers, pour dessiner une liste.
+  function indexPath(dossier, collisions) { return path.join(livreDir(dossier, collisions), 'livre-index.json'); }
+  function lireIndexLivres(dossier, collisions) {
+    try { const o = JSON.parse(fs.readFileSync(indexPath(dossier, collisions), 'utf8')); return Array.isArray(o.exercices) ? o : { format: 1, exercices: [] }; }
+    catch { return { format: 1, exercices: [] }; }
+  }
+  function majIndexLivres(dossier, livre, collisions) {
+    const idx = lireIndexLivres(dossier, collisions);
+    const e = {
+      annee: livre.exercice.annee, du: livre.exercice.du, au: livre.exercice.au,
+      clos: !!livre.exercice.clos,
+      ecritures: livre.ecritures.length,
+      brouillards: livre.ecritures.filter(x => x.statut === 'brouillard').length,
+      majLe: stamp(now())
+    };
+    idx.exercices = idx.exercices.filter(x => x.annee !== e.annee).concat([e]).sort((a, b) => a.annee - b.annee);
+    try { fs.writeFileSync(indexPath(dossier, collisions), JSON.stringify(idx), 'utf8'); } catch { /* l'index se reconstruit */ }
+    return idx;
+  }
+
   function packPathFor(dossier, month, collisions) {
     const m = moisSain(month);
     const year = m === 'inconnu' ? 'sans-date' : m.slice(0, 4);
@@ -679,6 +857,11 @@ function createCabStore(dir, opts) {
       try { names = fs.readdirSync(backupDir).filter(f => f.endsWith('.json')); } catch {}
       names.forEach(n => copierSiDifferent(path.join(backupDir, n), path.join(target, 'sauvegardes', n)));
       if (avecPaquets && fs.existsSync(packRoot)) copierArbre(packRoot, path.join(target, 'paquets'));
+      // Les LIVRES partent toujours, avec ou sans les paquets (9.2.0). Un paquet perdu se redemande
+      // au client ; un livre perdu, non — il porte le travail du comptable, saisies, validations et
+      // lettrages compris, et personne d'autre ne l'a. C'est le fichier le plus cher de
+      // l'application, et il pèse moins que les photos de justificatifs d'un seul mois.
+      if (fs.existsSync(livreRoot)) copierArbre(livreRoot, path.join(target, 'livres'));
       st.external.lastCopy = now().toISOString();
       st.external.lastError = null;
       return true;
@@ -695,6 +878,9 @@ function createCabStore(dir, opts) {
     snapshotDaily, backupNow, listBackups, peek, restore,
     inspectSource, adoptSource,
     packPathFor, storePack, removePack, removeDossierFiles, reorganize, packStats, folderName, folderIndex,
+    // Le livre (9.2.0)
+    livreDir, livrePath, lireLivre, ecrireLivre, enteteLivre, lireIndexLivres,
+    lireVerrou, poserVerrou, leverVerrou,
     setExternalDir, mirrorExternal
   };
 }

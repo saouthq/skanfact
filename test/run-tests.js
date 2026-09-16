@@ -11538,6 +11538,146 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.ok(KL.balanceOuverture(l, b.lignes, '2026-01-01', 'balance', 'moi', 1).ok);
   });
 
+  t('9.2.0 : le livre s\'écrit en BINAIRE, entête en clair, et un illisible n\'est jamais écrasé', () => {
+    const S = require('../src/cabinet/cabstore.js');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'skan-livre-'));
+    try {
+      const st = S.createCabStore(dir, {});
+      st.create('un-mot-de-passe', { cabinet: { name: 'Cabinet Essai' }, dossiers: [] });
+      const d = { id: 'MAT:1234567A', name: 'Client Test', matricule: '1234567A' };
+      const l = KL.livreVide('MAT:1234567A', 2026);
+      KL.ajouterEcriture(l, { date: '2026-01-04', journal: 'VT', piece: 'F1', lignes: [{ compte: '411', debit: 100 }, { compte: '706', credit: 100 }] }, 'moi', 1);
+      assert.ok(st.ecrireLivre(d, l).ok);
+
+      const f = st.livrePath(d, 2026);
+      const buf = fs.readFileSync(f);
+      const nl = buf.indexOf(0x0a);
+      const tete = JSON.parse(buf.slice(0, nl).toString('utf8'));
+      // L'entête reste LISIBLE : un livre retrouvé sur une clé USB doit dire de quel client et de
+      // quelle année il parle avant qu'on cherche son mot de passe.
+      assert.strictEqual(tete['skanfact-livre'], 1);
+      assert.strictEqual(tete.dossier, 'MAT:1234567A');
+      assert.strictEqual(tete.exercice, 2026);
+      assert.strictEqual(tete.nom, 'Client Test');
+      // Et le corps est BINAIRE, pas base64 — c'est la mesure du 16/09 qui l'a décidé (59 % du
+      // temps d'écriture). Un corps base64 n'utiliserait que 64 caractères imprimables.
+      const corps = buf.slice(nl + 1);
+      assert.ok(corps.length > 0);
+      assert.ok(corps.some(b => b > 127 || b < 9), 'le corps doit être binaire, pas base64');
+      // Rien du contenu ne fuit dans l'entête : le nombre d'écritures n'est pas un secret, leur
+      // contenu si.
+      assert.ok(!buf.slice(0, nl).includes(Buffer.from('706')), 'aucun compte ne doit figurer en clair');
+
+      const r = st.lireLivre(d, 2026);
+      assert.strictEqual(r.livre.ecritures.length, 1);
+      assert.strictEqual(r.livre.dossier, 'MAT:1234567A');
+      // L'entête se lit SANS la clé.
+      const h = st.enteteLivre(f);
+      assert.strictEqual(h.exercice, 2026);
+      // Absent : on le DIT, on ne fabrique pas un livre en silence.
+      assert.deepStrictEqual(st.lireLivre(d, 2025), { absent: true });
+      // L'index évite d'ouvrir soixante fichiers pour dessiner une liste.
+      const idx = st.lireIndexLivres(d);
+      assert.strictEqual(idx.exercices.length, 1);
+      assert.strictEqual(idx.exercices[0].brouillards, 1);
+
+      // Une version SUPÉRIEURE n'est ni lue ni réécrite : elle porterait ce qu'on ne sait pas garder.
+      const futur = { ...l, format: 9 };
+      fs.writeFileSync(f, Buffer.concat([
+        Buffer.from(JSON.stringify({ 'skanfact-livre': 1, kdf: 'scrypt', salt: 'x', iv: 'y', tag: 'z' }) + '\n'),
+        Buffer.from('x')
+      ]));
+      assert.ok(st.lireLivre(d, 2026).illisible, 'un fichier abîmé se dit illisible, il ne plante pas');
+      // Et il est mis de côté, jamais écrasé : c'est la règle qui a sauvé l'app entreprise.
+      st.ecrireLivre(d, l);
+
+      // Le cas qui compte vraiment, et qu'un fichier simplement brouillé NE couvre pas : un fichier
+      // qui se DÉCHIFFRE correctement mais n'est pas un livre. Le déchiffrement ne dit rien de la
+      // forme, et c'est là qu'un contrôle manquant laisserait l'application travailler sur un objet
+      // qui n'a ni écritures ni exercice. On le fabrique avec la clé de la session, comme le fait
+      // `npm run charge` — pas en imitant le format, en l'écrivant vraiment.
+      const nodeCrypto = require('crypto');
+      const iv = nodeCrypto.randomBytes(12);
+      const ci = nodeCrypto.createCipheriv('aes-256-gcm', st.state.key, iv);
+      const corpsFaux = Buffer.concat([ci.update(Buffer.from(JSON.stringify({ pas: 'un livre' }))), ci.final()]);
+      fs.writeFileSync(f, Buffer.concat([
+        Buffer.from(JSON.stringify({ 'skanfact-livre': 1, kdf: 'scrypt', salt: st.state.salt.toString('base64'), iv: iv.toString('base64'), tag: ci.getAuthTag().toString('base64') }) + '\n'),
+        corpsFaux
+      ]));
+      const faux = st.lireLivre(d, 2026);
+      assert.ok(faux.illisible, 'un fichier qui se déchiffre mais n\'est pas un livre doit être refusé');
+      assert.ok(faux.misDeCote && fs.existsSync(faux.misDeCote), 'il est mis de côté, jamais écrasé');
+      // Et le fichier mis de côté porte bien ce qu'on a trouvé : on ne l'a pas perdu en route.
+      assert.ok(fs.readFileSync(faux.misDeCote).length > 0);
+
+      // Une génération précédente est gardée à chaque écriture.
+      assert.ok(fs.existsSync(f.replace(/\.json$/, '.precedent.json')), 'la version précédente doit survivre à une écriture');
+      // La version inconnue se reconnaît sur l'objet, avant toute écriture.
+      assert.ok(KL.livreVersionInconnue(futur));
+
+      // Un nom de dossier ne peut pas faire sortir du dossier de l'application : `slug` retire tout
+      // ce qui n'est ni lettre ni chiffre AVANT de fabriquer le chemin, donc `../../../etc` devient
+      // « etc ». Le contrôle de chemin qui suit est la ceinture par-dessus les bretelles — on
+      // vérifie ce qui est vrai (le fichier reste dedans), pas une exception qui ne peut pas venir.
+      const piege = st.livrePath({ id: 'x', name: '../../../etc/passwd' }, 2026);
+      assert.ok(path.resolve(piege).startsWith(path.resolve(dir) + path.sep), piege);
+      assert.ok(!piege.includes('..'));
+      // L'année, elle, sert telle quelle dans le nom du fichier : elle est donc contrôlée.
+      assert.throws(() => st.livrePath(d, '../2026'), /Exercice invalide/);
+      assert.throws(() => st.livrePath(d, '20'), /Exercice invalide/);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  t('9.2.0 : un livre ouvert ailleurs ne s\'écrase pas — et le verrou périme', () => {
+    const S = require('../src/cabinet/cabstore.js');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'skan-verrou-'));
+    try {
+      let jour = new Date('2026-05-01T09:00:00Z');
+      const st = S.createCabStore(dir, { now: () => jour });
+      st.create('mdp', { cabinet: { name: 'C' }, dossiers: [] });
+      const d = { id: 'MAT:1', name: 'Client', matricule: '1' };
+      const moi = { deviceId: 'poste-A', deviceName: 'Mac de Skander' };
+      const autre = { deviceId: 'poste-B', deviceName: 'PC du bureau' };
+
+      assert.strictEqual(st.lireVerrou(d, 2026), null);
+      assert.strictEqual(st.poserVerrou(d, 2026, moi).ok, true);
+      // Le même poste repasse : ce n'est pas un conflit, c'est la même personne.
+      assert.strictEqual(st.poserVerrou(d, 2026, moi).ok, true);
+      // Un autre poste est refusé, et on lui DIT lequel — « verrouillé » sans nom ne sert à rien.
+      const ko = st.poserVerrou(d, 2026, autre);
+      assert.strictEqual(ko.ok, false);
+      assert.strictEqual(ko.verrou.deviceName, 'Mac de Skander');
+
+      // Et il PÉRIME à 24 h : un poste qui plante laisserait sinon un dossier verrouillé pour
+      // toujours, ce qui est pire que le risque qu'il évite.
+      jour = new Date('2026-05-02T10:00:00Z');
+      assert.strictEqual(st.lireVerrou(d, 2026), null, 'un verrou de plus de 24 h ne compte plus');
+      assert.strictEqual(st.poserVerrou(d, 2026, autre).ok, true);
+      st.leverVerrou(d, 2026);
+      assert.strictEqual(st.lireVerrou(d, 2026), null);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  t('9.2.0 : la copie externe emporte les livres, toujours', () => {
+    const S = require('../src/cabinet/cabstore.js');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'skan-mir-'));
+    const ext = fs.mkdtempSync(path.join(os.tmpdir(), 'skan-usb-'));
+    try {
+      const st = S.createCabStore(dir, { externalDir: ext });
+      st.create('mdp', { cabinet: { name: 'C' }, dossiers: [] });
+      const d = { id: 'MAT:1', name: 'Client', matricule: '1' };
+      const l = KL.livreVide('MAT:1', 2026);
+      KL.ajouterEcriture(l, { date: '2026-01-04', journal: 'VT', piece: 'F1', lignes: [{ compte: '411', debit: 100 }, { compte: '706', credit: 100 }] }, 'moi', 1);
+      st.ecrireLivre(d, l);
+      // Sans les paquets : un paquet perdu se redemande au client, un livre perdu non — il porte
+      // le travail du comptable, et personne d'autre ne l'a.
+      assert.strictEqual(st.mirrorExternal(), true);
+      const copie = path.join(ext, 'SkanFact Cabinet', 'livres', 'Client', 'livre-2026.json');
+      assert.ok(fs.existsSync(copie), 'le livre doit partir avec la copie externe');
+      assert.strictEqual(fs.readFileSync(copie).length, fs.readFileSync(st.livrePath(d, 2026)).length);
+    } finally { [dir, ext].forEach(x => fs.rmSync(x, { recursive: true, force: true })); }
+  });
+
   if (enCours) throw new Error(`${enCours} test(s) asynchrone(s) lancé(s) sans « await ta(…) » : ils ne peuvent plus échouer`);
   console.log(`\n${n} tests OK`);
 })().catch(e => { console.error(e); process.exit(1); });
