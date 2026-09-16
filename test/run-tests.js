@@ -5884,7 +5884,14 @@ t('cabinet : aucun de ses fichiers n\'appelle une fonction qui n\'existe pas', (
 
 t('cabinet : un import de vingt paquets parle, s\'arrête, et son interface est surveillée', () => {
   const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'cabinet', 'main.js'), 'utf8');
-  const pre = fs.readFileSync(path.join(__dirname, '..', 'src', 'cabinet', 'preload.js'), 'utf8');
+  // Les commentaires partent AVANT de juger : ce contrôle-ci est le jumeau de celui de la 6.8.0,
+  // et il n'avait jamais reçu son nettoyage. Un commentaire qui explique la règle en CITANT les deux
+  // appels interdits le faisait échouer sur du code parfaitement correct — un test trop étroit
+  // accuse du code juste, ce qui est pire que pas de test. Une règle apprise d'un côté se vérifie
+  // de l'autre, à la main (7.3.0) : celle-ci ne l'avait pas été.
+  const preBrut = fs.readFileSync(path.join(__dirname, '..', 'src', 'cabinet', 'preload.js'), 'utf8');
+  const pre = preBrut.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  assert.ok(pre.includes('contextBridge.exposeInMainWorld'), 'le nettoyage des commentaires a mangé le préchargement');
   const app = fs.readFileSync(path.join(__dirname, '..', 'src', 'cabinet', 'renderer', 'app.js'), 'utf8');
 
   // ---- la boucle d'import rend la main ----

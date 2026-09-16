@@ -46,6 +46,19 @@ contextBridge.exposeInMainWorld('cabinet', {
   // rend le CSV brut ; c'est le renderer qui l'analyse, par `compta.js` — le même moteur que
   // l'application du client, c'est ce qui fait que les deux balances tombent pareil.
   livres: (dossierId, du, au) => ipcRenderer.invoke('cab:livres', { dossierId, du, au }),
+  // Le livre du dossier (9.2.0). Rien ici n'écrit chez le CLIENT : tout ce qui suit touche le
+  // livre que le CABINET tient pour lui, dans ses propres fichiers. C'est la différence qui
+  // justifie que ces portes existent alors que `data:save` et `pack:build` restent interdits.
+  livre: (dossierId, annee) => ipcRenderer.invoke('cab:livre', { dossierId, annee }),
+  livreIndex: (dossierId) => ipcRenderer.invoke('cab:livreIndex', { dossierId }),
+  reprendre: (o) => ipcRenderer.invoke('cab:reprendre', o || {}),
+  importerPlan: (o) => ipcRenderer.invoke('cab:importerPlan', o || {}),
+  importerBalance: (o) => ipcRenderer.invoke('cab:importerBalance', o || {}),
+  valider: (dossierId, annee, id) => ipcRenderer.invoke('cab:valider', { dossierId, annee, id }),
+  contrepasser: (dossierId, annee, id, date) => ipcRenderer.invoke('cab:contrepasser', { dossierId, annee, id, date }),
+  saisir: (dossierId, annee, ecriture) => ipcRenderer.invoke('cab:saisir', { dossierId, annee, ecriture }),
+  lettrer: (o) => ipcRenderer.invoke('cab:lettrer', o || {}),
+  relireLesPaquets: (dossierId, annee) => ipcRenderer.invoke('cab:relireLesPaquets', { dossierId, annee }),
   exportEcritures: (opts) => ipcRenderer.invoke('cab:exportEcritures', opts),
 
   // filets : sauvegardes, copie externe, clé de secours

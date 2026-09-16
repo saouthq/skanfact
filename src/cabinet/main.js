@@ -933,6 +933,183 @@ ipcMain.handle('cab:livres', (_e, { dossierId, du, au } = {}) => {
   };
 });
 
+// ================================================================ LE LIVRE (9.2.0)
+//
+// **UNE seule porte d'écriture** : `ecrireLeLivre`. Tout geste qui touche au livre passe par elle,
+// et elle fait trois choses dans le même mouvement — poser le verrou, écrire, tracer. Deux portes,
+// c'est la garantie qu'un jour l'une d'elles oubliera l'audit, et un livre comptable sans piste
+// d'audit ne vaut rien devant un contrôle.
+//
+// Le moteur, lui, est PUR (`compta.js`) : ce fichier ne calcule rien, il ouvre, applique, referme.
+const KC = require('../renderer/compta.js');
+
+function dossierDe(dossierId) {
+  const d = (state.dossiers || []).find(x => x.id === dossierId);
+  if (!d) throw new Error('Ce dossier n\'existe plus.');
+  return d;
+}
+const indexDossiers = () => getStore().folderIndex(state.dossiers);
+const moiPoste = () => ({ deviceId: readAppCfg().deviceId || '', deviceName: readAppCfg().deviceName || '' });
+
+// Ouvrir un livre, ou dire pourquoi on ne peut pas. JAMAIS d'écriture ici : un livre créé en
+// silence à la première consultation ferait croire à un dossier repris qui ne l'est pas.
+function ouvrirLivre(dossierId, annee) {
+  const d = dossierDe(dossierId);
+  const r = getStore().lireLivre(d, annee, indexDossiers());
+  return { dossier: { id: d.id, name: d.name, matricule: d.matricule || '' }, ...r };
+}
+
+function ecrireLeLivre(dossierId, livre, quoi, detail) {
+  const d = dossierDe(dossierId);
+  const idx = indexDossiers();
+  const v = getStore().poserVerrou(d, livre.exercice.annee, moiPoste(), idx);
+  if (!v.ok) {
+    const e = new Error(`Ce livre est ouvert sur un autre ordinateur (${v.verrou.deviceName || 'poste inconnu'}). Ferme-le là-bas, ou attends : le verrou tombe tout seul au bout de 24 h.`);
+    e.code = 'ERR-CAB-022';
+    throw e;
+  }
+  if (quoi) livre.audit.push({ quand: Date.now(), qui: moiPoste().deviceName || 'cabinet', quoi, detail: detail || '' });
+  const r = getStore().ecrireLivre(d, livre, idx);
+  return r;
+}
+
+ipcMain.handle('cab:livre', (_e, { dossierId, annee } = {}) => {
+  requireOpen();
+  return ouvrirLivre(dossierId, annee);
+});
+
+// La liste des exercices d'un dossier, lue dans l'INDEX : sans lui, dessiner un sélecteur d'année
+// demanderait d'ouvrir et de déchiffrer chaque livre.
+ipcMain.handle('cab:livreIndex', (_e, { dossierId } = {}) => {
+  requireOpen();
+  return getStore().lireIndexLivres(dossierDe(dossierId), indexDossiers());
+});
+
+// Reprendre un dossier : exercice + plan + balance d'ouverture, en UN geste. Refusé si un livre
+// existe déjà pour cette année — on ne remplace pas un exercice commencé sans le dire.
+ipcMain.handle('cab:reprendre', (_e, { dossierId, annee, du, au, plan, ouverture, source } = {}) => {
+  requireOpen();
+  const existant = ouvrirLivre(dossierId, annee);
+  if (existant.livre) {
+    const e = new Error(`Ce dossier a déjà un livre pour ${annee}. Ouvre-le plutôt que de le reprendre à zéro : une reprise effacerait son point de départ.`);
+    e.code = 'ERR-CAB-024';
+    throw e;
+  }
+  if (existant.illisible || existant.versionInconnue) throw new Error(existant.motif || 'Le livre de cet exercice n\'est pas lisible.');
+  const livre = KC.livreVide(dossierId, annee, { du, au, plan: Array.isArray(plan) ? plan : [] });
+  if (Array.isArray(ouverture) && ouverture.length) {
+    const r = KC.balanceOuverture(livre, ouverture, du || `${annee}-01-01`, source || 'balance', moiPoste().deviceName || 'cabinet', Date.now());
+    if (!r.ok) { const e = new Error(r.motif); e.code = 'ERR-CAB-023'; e.ecart = r.ecart; throw e; }
+  }
+  ecrireLeLivre(dossierId, livre, 'reprise', `exercice ${annee}`);
+  return ouvrirLivre(dossierId, annee);
+});
+
+// Les deux imports CSV. Le fichier est lu ici, l'analyse est PURE (`compta.js`) : c'est elle qui
+// associe les colonnes par nom et nomme chaque ligne ignorée.
+function lireCsvFichier(chemin) {
+  const brut = fs.readFileSync(chemin, 'utf8').replace(/^﻿/, '');
+  return K.parseCsv(brut);
+}
+
+ipcMain.handle('cab:importerPlan', async (_e, { dossierId, annee, chemin } = {}) => {
+  requireOpen();
+  const f = chemin || (await dialog.showOpenDialog({ title: 'Importer un plan de comptes', filters: [{ name: 'CSV', extensions: ['csv', 'txt'] }], properties: ['openFile'] })).filePaths[0];
+  if (!f) return { annule: true };
+  const r = KC.planDepuisCsv(lireCsvFichier(f));
+  if (r.motif) throw new Error(r.motif);
+  const o = ouvrirLivre(dossierId, annee);
+  if (!o.livre) throw new Error('Ce dossier n\'a pas encore de livre pour cet exercice.');
+  // Un compte déjà présent n'est PAS écrasé : le comptable a pu le renommer, et un import ne
+  // défait pas ce qu'il a décidé. On ajoute ce qui manque, on dit ce qu'on a laissé.
+  let ajoutes = 0, deja = 0;
+  r.comptes.forEach(c => {
+    if (o.livre.plan.some(x => x.compte === c.compte)) { deja++; return; }
+    o.livre.plan.push({ ...c, source: 'import' });
+    ajoutes++;
+  });
+  ecrireLeLivre(dossierId, o.livre, 'import-plan', `${ajoutes} compte(s) ajouté(s), ${deja} déjà là, ${r.ignorees.length} ignorée(s)`);
+  return { ajoutes, deja, ignorees: r.ignorees, fichier: f };
+});
+
+ipcMain.handle('cab:importerBalance', async (_e, { dossierId, annee, chemin } = {}) => {
+  requireOpen();
+  const f = chemin || (await dialog.showOpenDialog({ title: 'Importer une balance d\'ouverture', filters: [{ name: 'CSV', extensions: ['csv', 'txt'] }], properties: ['openFile'] })).filePaths[0];
+  if (!f) return { annule: true };
+  const r = KC.balanceDepuisCsv(lireCsvFichier(f));
+  if (r.motif) throw new Error(r.motif);
+  return { lignes: r.lignes, ignorees: r.ignorees, fichier: f };
+});
+
+// Les trois gestes du comptable sur une écriture. Chacun rend le livre relu : l'écran ne devine
+// jamais ce que l'écriture est devenue, il le lit.
+ipcMain.handle('cab:valider', (_e, { dossierId, annee, id } = {}) => {
+  requireOpen();
+  const o = ouvrirLivre(dossierId, annee);
+  if (!o.livre) throw new Error('Ce dossier n\'a pas de livre pour cet exercice.');
+  const r = KC.validerEcriture(o.livre, id, moiPoste().deviceName || 'cabinet', Date.now());
+  if (!r.ok) { const e = new Error(r.motif); e.motifs = r.motifs; throw e; }
+  ecrireLeLivre(dossierId, o.livre, null);
+  return { ok: true, numero: r.ecriture.numero, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+ipcMain.handle('cab:contrepasser', (_e, { dossierId, annee, id, date } = {}) => {
+  requireOpen();
+  const o = ouvrirLivre(dossierId, annee);
+  if (!o.livre) throw new Error('Ce dossier n\'a pas de livre pour cet exercice.');
+  const r = KC.contrepasser(o.livre, id, moiPoste().deviceName || 'cabinet', date, Date.now());
+  if (!r.ok) throw new Error(r.motif);
+  ecrireLeLivre(dossierId, o.livre, null);
+  return { ok: true, numero: r.ecriture.numero, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+ipcMain.handle('cab:saisir', (_e, { dossierId, annee, ecriture } = {}) => {
+  requireOpen();
+  const o = ouvrirLivre(dossierId, annee);
+  if (!o.livre) throw new Error('Ce dossier n\'a pas de livre pour cet exercice.');
+  const e = KC.ajouterEcriture(o.livre, ecriture, moiPoste().deviceName || 'cabinet', Date.now());
+  ecrireLeLivre(dossierId, o.livre, 'saisie', `${e.journal} ${e.piece}`);
+  return { ok: true, id: e.id, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+ipcMain.handle('cab:lettrer', (_e, { dossierId, annee, compte, ids, lettre, delettrer, date } = {}) => {
+  requireOpen();
+  const o = ouvrirLivre(dossierId, annee);
+  if (!o.livre) throw new Error('Ce dossier n\'a pas de livre pour cet exercice.');
+  const r = delettrer
+    ? KC.delettrer(o.livre, lettre, moiPoste().deviceName || 'cabinet', Date.now())
+    : KC.lettrer(o.livre, compte, ids, lettre, moiPoste().deviceName || 'cabinet', date);
+  if (!r.ok) { const e = new Error(r.motif); e.ecart = r.ecart; throw e; }
+  ecrireLeLivre(dossierId, o.livre, delettrer ? null : 'lettrage', r.lettre || lettre);
+  return { ok: true, lettre: r.lettre, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+// Relire les paquets déjà reçus DANS le livre. C'est la migration (MIG-9.2.0-001) et le rattrapage
+// quotidien : on rejoue chaque mois par ordre chronologique, et rejouer ne double rien — un mois
+// déjà importé remplace ses brouillards et laisse les validées intactes.
+ipcMain.handle('cab:relireLesPaquets', (_e, { dossierId, annee } = {}) => {
+  requireOpen();
+  const d = dossierDe(dossierId);
+  const o = ouvrirLivre(dossierId, annee);
+  const livre = o.livre || KC.livreVide(dossierId, annee);
+  const bilan = { mois: 0, ajoutees: 0, remplacees: 0, validees: 0, ecarts: [], illisibles: [] };
+  (d.packs || []).filter(p => p.path && String(p.month).slice(0, 4) === String(annee))
+    .sort((a, b) => (a.month < b.month ? -1 : 1))
+    .forEach(p => {
+      const r = lireEcritures(p);
+      if (!r.csv) { bilan.illisibles.push({ mois: p.month, motif: r.motif || 'illisible' }); return; }
+      const lignes = KC.entreesDepuisCsv(K.parseCsv(r.csv));
+      if (!lignes.entete) { bilan.illisibles.push({ mois: p.month, motif: 'le CSV d\'écritures n\'a pas d\'entête reconnue' }); return; }
+      const ecr = KC.piecesDepuisLignes(lignes);
+      const res = KC.importerPaquet(livre, p.month, ecr, !!p.definitive, 'import', Date.now());
+      bilan.mois++;
+      bilan.ajoutees += res.ajoutees; bilan.remplacees += res.remplacees; bilan.validees += res.validees;
+      res.ecarts.forEach(x => bilan.ecarts.push({ mois: p.month, ...x }));
+    });
+  ecrireLeLivre(dossierId, livre, 'relecture-paquets', `${bilan.mois} mois, ${bilan.ajoutees} ajoutée(s), ${bilan.ecarts.length} écart(s)`);
+  return { ...bilan, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
 ipcMain.handle('cab:exportEcritures', async (_e, opts) => {
   requireOpen();
   const plan = K.ecrituresPlan(state, opts);

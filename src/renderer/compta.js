@@ -822,6 +822,35 @@
       })));
   }
 
+  // Regrouper des LIGNES plates (celles du CSV d'un paquet) en ÉCRITURES. Le CSV du paquet est une
+  // liste de lignes ; le livre, lui, raisonne en pièces — c'est la pièce qui s'équilibre, qui porte
+  // un numéro et qui se contre-passe. La clé est celle de `cleDePiece` : journal, pièce, date.
+  //
+  // Ce que cette fonction NE fait pas : juger. Une pièce déséquilibrée passe telle quelle et se
+  // fera refuser à la validation, avec son motif. La rejeter ici la ferait disparaître du livre
+  // sans que personne sache qu'elle existait — le contraire de ce qu'un comptable veut.
+  function piecesDepuisLignes(lignes) {
+    const par = new Map();
+    (lignes || []).forEach(l => {
+      const cle = cleDePiece(l);
+      if (!par.has(cle)) {
+        par.set(cle, {
+          date: l.date || '', journal: l.journal || '', piece: l.piece || '',
+          libelle: l.label || '', lignes: []
+        });
+      }
+      const e = par.get(cle);
+      if (!e.libelle && l.label) e.libelle = l.label;
+      e.lignes.push({
+        compte: txt(l.account), tiersId: l.tiersId || null,
+        libelle: l.label || l.tiers || '',
+        debit: round3(num(l.debit)), credit: round3(num(l.credit)),
+        lettre: l.lettre || ''
+      });
+    });
+    return Array.from(par.values());
+  }
+
   // ---------------------------------------------------------------- les deux imports CSV
   //
   // Par NOM de colonne, jamais par position (règle 6.8.0) : un plan exporté d'un autre logiciel n'a
@@ -905,7 +934,7 @@
     // Le livre (9.2.0)
     LIVRE_FORMAT, STATUTS_ECRITURE, NATURES_COMPTE, SOURCES_ECRITURE, JOURNAUX_PAR_DEFAUT,
     natureDeCompte, livreVide, isValidLivre, livreVersionInconnue, assurerCompte,
-    ajouterEcriture, validerEcriture, contrepasser, importerPaquet,
+    ajouterEcriture, validerEcriture, contrepasser, importerPaquet, piecesDepuisLignes,
     lettrer, delettrer, prochaineLettre, balanceOuverture, lignesDuLivre,
     planDepuisCsv, balanceDepuisCsv
   };
