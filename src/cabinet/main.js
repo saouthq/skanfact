@@ -654,17 +654,56 @@ function ingest(file, password) {
   const month = (manifest.periode || {}).mois || 'inconnu';
   const known = state.dossiers.find(d => d.id === key);
   const fiche = known || { id: key, name: (manifest.entreprise || {}).nom || '(sans nom)', matricule: (manifest.entreprise || {}).matricule || '' };
+
+  // ---------- l'ORIGINE du paquet (9.2.0) ----------
+  //
+  // Chiffrer n'est pas signer. `sealForCabinet` ne demande que la clé PUBLIQUE du cabinet — celle
+  // que le comptable donne à tous ses clients — donc quiconque la tenait pouvait fabriquer un
+  // paquet parfaitement chiffré au nom d'une autre entreprise. La signature du client règle ça.
+  //
+  // On vérifie AVANT de ranger quoi que ce soit : un paquet refusé ne doit rien laisser sur le
+  // disque, et surtout pas dans le dossier d'un client dont il usurpe le nom.
+  //
+  // L'ordre est fixé : le sha256 du manifeste D'ABORD, la signature ensuite. Ce n'est pas une
+  // question de sécurité — Ed25519 porte sur les octets, donc un manifeste modifié fait échouer
+  // `verify` de toute façon — c'est une question de PHRASE : « modifié après l'envoi » et
+  // « signature inconnue » ne demandent pas le même coup de téléphone.
+  const sEntry = entries.find(e => e.name === 'signature.json');
+  let sig = null;
+  if (sEntry) {
+    try { sig = Z.verifyManifest(mBuf, JSON.parse(sEntry.data().toString('utf8'))); }
+    catch { sig = { ok: false, motif: 'illisible', texte: 'La signature de ce paquet est illisible.' }; }
+  }
+  const origine = K.verdictOrigine(fiche, sig);
+  if (!origine.ok) { const e = new Error(origine.texte); e.code = origine.code; e.origine = origine; throw e; }
   const dest = getStore().storePack(file, fiche, month, state.dossiers.concat(known ? [] : [fiche]));
 
   const res = K.filePack(state, manifest, {
     receivedAt: Date.now(), digest: Z.sha256(mBuf), bytes: fs.statSync(file).size,
     path: dest, sealed,
+    // Rangé AVEC le paquet, pas seulement affiché : un verdict qui vit deux secondes n'est pas un
+    // verdict (règle 6.8.1). Six mois plus tard, on doit pouvoir dire de quel paquet l'origine
+    // était prouvée et de quel autre elle ne l'était pas.
+    origine: { etat: origine.etat, empreinte: origine.empreinte || null, at: Date.now() },
     integrity: { checked, bad, intrus, at: Date.now() }
   });
+  // L'ÉPINGLAGE : le premier paquet signé fixe la clé de ce client, et tout ce qui suit lui est
+  // comparé. C'est la confiance au premier usage — la tolérance « origine non prouvée » s'éteint
+  // alors d'elle-même pour ce client, sans date butoir imposée à tout le portefeuille.
+  if (origine.epingler) {
+    const d = state.dossiers.find(x => x.id === key);
+    if (d) {
+      d.clePublique = origine.epingler;
+      d.cleEmpreinte = origine.empreinte;
+      d.cleEpingleeLe = new Date().toISOString();
+      d.audit = (d.audit || []).concat([{ quand: Date.now(), quoi: 'cle-epinglee', detail: origine.empreinte }]);
+      getStore().write(state);
+    }
+  }
   // Un mois qui vient d'arriver doit apparaître dans les livres tout de suite. Sans cette ligne,
   // il n'apparaîtrait qu'au redémarrage et le comptable croirait l'import raté.
   viderCacheLivres(key);
-  return { ...res, integrity: { checked, bad, intrus } };
+  return { ...res, integrity: { checked, bad, intrus }, origine };
 }
 
 // Ouvrir un fichier contenu dans un paquet : on l'extrait dans un dossier temporaire, en lecture.

@@ -89,6 +89,14 @@
         at: r.at || null, months: Array.isArray(r.months) ? r.months : [],
         via: r.via || 'email', note: r.note || ''
       })) : [],
+      // La clé publique ÉPINGLÉE de ce client (9.2.0) et la trace de son épinglage. Ces quatre
+      // champs DOIVENT figurer ici : un champ absent de cette liste est un champ que `migrate`
+      // jette au prochain chargement, en silence — c'est le défaut de `matricule` trouvé en 6.8.0,
+      // et ici il désarmerait la vérification d'origine sans que rien ne le dise.
+      clePublique: d.clePublique || '',
+      cleEmpreinte: d.cleEmpreinte || '',
+      cleEpingleeLe: d.cleEpingleeLe || null,
+      audit: Array.isArray(d.audit) ? d.audit : [],
       packs: Array.isArray(d.packs) ? d.packs : []
     };
   }
@@ -821,6 +829,53 @@
   // colonne qui décide, et un texte qui ressemble à un nombre — un téléphone — doit être protégé.
   const estNombreCsv = cellule => /^[-+]?[\d\s]*[.,]?\d+$/.test(cellule);
 
+  // ---------------------------------------------------------------- l'origine d'un paquet (9.2.0)
+  //
+  // La DÉCISION, pure et testable : que fait-on d'un paquet selon ce que sa signature vaut et ce
+  // que le dossier sait déjà ? `main.js` se contente de vérifier la signature (crypto) et
+  // d'appliquer ce verdict — la règle, elle, vit ici, où elle se prouve sans Electron.
+  //
+  // Les quatre cas, et pourquoi chacun est ce qu'il est :
+  //
+  //   1. **Pas de signature, dossier sans clé épinglée** → accepté, « origine non prouvée ». C'est
+  //      le paquet d'un client encore en 9.1.x : le refuser couperait tous les clients d'un coup le
+  //      jour de la mise à jour du cabinet. On le dit en gris, on ne crie pas.
+  //   2. **Pas de signature, dossier AVEC clé épinglée** → REFUSÉ. Confiance au premier usage : une
+  //      fois qu'un client a signé, ne plus signer est soit une régression, soit quelqu'un d'autre.
+  //      La tolérance du cas 1 s'éteint donc d'elle-même, client par client, sans date butoir.
+  //   3. **Signature valable, dossier sans clé** → on ÉPINGLE. C'est le premier paquet signé : sa
+  //      clé devient celle de ce client, et tout ce qui suivra sera comparé à elle.
+  //   4. **Signature valable, mais une AUTRE clé** → refusé en nommant les deux empreintes. Un
+  //      client qui réinstalle sans son dossier change de clé : c'est légitime, et c'est justement
+  //      pour ça que la reprise passe par un geste humain (l'empreinte dictée au téléphone), jamais
+  //      par une acceptation automatique — sinon la vérification ne vérifierait plus rien.
+  function verdictOrigine(dossier, signature) {
+    const epinglee = (dossier && dossier.cleEmpreinte) || '';
+    const s = signature || null;
+    if (!s) {
+      return epinglee
+        ? { ok: false, etat: 'signature-manquante', code: 'ERR-CAB-031',
+            texte: 'Ce paquet n\'est pas signé, alors que les précédents de ce client l\'étaient. Demande-lui de mettre SkanFact à jour — ou, s\'il a réinstallé l\'application, accepte sa nouvelle clé après l\'avoir vérifiée avec lui.' }
+        : { ok: true, etat: 'non-prouvee', epingler: null,
+            texte: 'Origine non prouvée : ce paquet vient d\'une version de SkanFact antérieure à la 9.2.0.' };
+    }
+    if (!s.ok) {
+      return { ok: false, etat: s.motif || 'signature-fausse',
+        code: s.motif === 'manifeste-modifie' ? 'ERR-CAB-032' : 'ERR-CAB-032',
+        texte: s.texte || 'La signature de ce paquet n\'est pas valable.' };
+    }
+    if (!epinglee) {
+      return { ok: true, etat: 'epinglee', epingler: s.cle, empreinte: s.empreinte,
+        texte: `Signature enregistrée pour ce client : ${s.empreinte}. Les prochains paquets seront comparés à elle.` };
+    }
+    if (epinglee !== s.empreinte) {
+      return { ok: false, etat: 'autre-cle', code: 'ERR-CAB-030',
+        attendue: epinglee, recue: s.empreinte,
+        texte: `Ce paquet est signé par une autre clé que celle de ce dossier.\nAttendue : ${epinglee}\nReçue : ${s.empreinte}\nSi ton client a réinstallé SkanFact, vérifie cette empreinte avec lui de vive voix avant d'accepter sa nouvelle clé.` };
+    }
+    return { ok: true, etat: 'signe', empreinte: s.empreinte, epingler: null, texte: `Signé par le client (${s.empreinte}).` };
+  }
+
   function toCsvLine(cells) {
     return cells.map(v => {
       let t = String(v == null ? '' : v);
@@ -906,7 +961,7 @@
     monthLabel, monthListLabel, missingLabel, addMonth, monthsBetween, today, de,
     migrate, migrateDossier, dossierKey, packSummary, filePack, demoDossiers, checkIntegrity,
     newDossier, parseDossierLines, noteRelance, portfolio, relanceDue, relanceRows, accuseMail,
-    parseCsv, csvDangereux, toCsvLine, mergeEcritures, ecrituresPlan,
+    parseCsv, verdictOrigine, csvDangereux, toCsvLine, mergeEcritures, ecrituresPlan,
     DEFAULT_DEADLINES, deadlineSettings, echeances, dayOf,
     dossierMonths, dossierRow, dossierList, cabinetTodo, relanceMail, pairingFile
   };

@@ -4,7 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
 const { createStorage } = require('./storage');
-const { zipBuffer, sha256, sealBuffer, sealForCabinet, keyFingerprint } = require('./zip');
+const { zipBuffer, sha256, sealBuffer, sealForCabinet, keyFingerprint, generateClientKeys, signManifest } = require('./zip');
 
 // Identifiants de l'app. Ne PAS les lire dans package.json au démarrage : electron-builder
 // retire la section « build » du package.json empaqueté (l'app installée n'a plus build.publish).
@@ -553,6 +553,31 @@ const crypto = require('crypto');
 // exactement ce qu'on veut pour « trois postes ».
 const LIC_FILE = () => path.join(currentDossier().dir, 'licence.json');
 const LIC_ANCIEN = () => path.join(app.getPath('userData'), 'licence.json');
+// La paire de clés qui SIGNE les paquets envoyés au comptable (9.2.0). Elle vit dans le dossier de
+// l'entreprise, pour la même raison que la licence : un ordinateur ouvre plusieurs entreprises, et
+// c'est l'ENTREPRISE qui signe, pas le poste. Un dossier partagé emporte donc sa clé, et les deux
+// personnes qui travaillent dessus signent avec la même — ce qui est exactement ce que le cabinet
+// doit voir : un dossier, une clé.
+//
+// Elle est HORS de `skanfact-data.json`, donc hors du paquet et hors des exports : une clé privée
+// qui voyagerait dans une sauvegarde qu'on envoie par mail ne serait plus une clé privée.
+const CLE_CLIENT = () => path.join(currentDossier().dir, 'cle-client.json');
+function cleClient() {
+  const f = CLE_CLIENT();
+  try {
+    const j = JSON.parse(fs.readFileSync(f, 'utf8'));
+    if (j && j.publicKey && j.privateKey) return j;
+  } catch { /* pas encore de clé, ou fichier abîmé : on en refait une */ }
+  // Créée au premier envoi, jamais avant : une clé qu'on fabrique à l'installation pour tout le
+  // monde est une clé que 90 % des installations n'utiliseront jamais.
+  const k = generateClientKeys();
+  const j = { format: 1, publicKey: k.publicKey, privateKey: k.privateKey, creeLe: new Date().toISOString() };
+  try {
+    fs.mkdirSync(path.dirname(f), { recursive: true });
+    fs.writeFileSync(f, JSON.stringify(j, null, 2), { encoding: 'utf8', mode: 0o600 });
+  } catch (e) { logToFile('cle-client', e); }
+  return j;
+}
 // Les clés de l'ÉDITEUR : la privée signe les licences ; la publique du même jeu arme son propre
 // poste, donc il voit exactement ce que verront ses clients. Hors du dépôt, hors des données, hors
 // des sauvegardes. `SKANFACT_DOSSIER_CLES` ne sert qu'aux tests : ils posent une clé d'essai dans un
@@ -1810,6 +1835,22 @@ ipcMain.handle('pack:build', async (_e, { plan, coverHtml, password, cabinetKey,
     files.unshift({ name: 'manifeste.json', data: manifestBuf });
     step('Manifeste');
 
+    // La SIGNATURE (9.2.0), écrite après le manifeste et portant ses octets exacts. Chiffrer dit
+    // « seul le cabinet peut lire » ; signer dit « ça vient bien de son client ». Sans elle,
+    // quiconque tenait la clé publique du cabinet — que le comptable donne à tous ses clients —
+    // pouvait lui envoyer un paquet au nom d'une autre entreprise.
+    let signature = null;
+    try {
+      const k = cleClient();
+      signature = signManifest(manifestBuf, k.privateKey, k.publicKey);
+      files.push({ name: 'signature.json', data: Buffer.from(JSON.stringify(signature, null, 2), 'utf8') });
+    } catch (e) {
+      // Un paquet non signé reste un paquet : le cabinet le dira « origine non prouvée » plutôt que
+      // de le refuser (sauf s'il a déjà épinglé la clé de ce client). Échouer ici priverait
+      // quelqu'un de son envoi mensuel pour une clé qu'on n'a pas su écrire.
+      logToFile('signature du paquet', e);
+    }
+
     const zip = zipBuffer(files, { date: new Date() });
     // Trois niveaux, dans cet ordre de préférence : chiffré pour le cabinet appairé (rien à
     // transmettre), à défaut un mot de passe, à défaut rien du tout.
@@ -1827,7 +1868,8 @@ ipcMain.handle('pack:build', async (_e, { plan, coverHtml, password, cabinetKey,
     return {
       path: filePath, octets: out.length, fichiers: files.length,
       chiffre: !!(password || cabinetKey), pourCabinet: cabinetKey ? keyFingerprint(cabinetKey) : null,
-      absents: missing, empreinte: sha256(manifestBuf)
+      absents: missing, empreinte: sha256(manifestBuf),
+      signe: !!signature, empreinteCle: signature ? signature.empreinte : null
     };
   } finally {
     win.destroy();

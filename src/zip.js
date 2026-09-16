@@ -264,6 +264,64 @@ function keyFingerprint(publicKeyB64) {
   return (hex.slice(0, 20).match(/.{4}/g) || []).join('-');
 }
 
+// ---------- la SIGNATURE du paquet (9.2.0) ----------
+//
+// Le trou que trois relectures extérieures ont pointé, et le plus grave du projet : **chiffrer n'est
+// pas signer**. `sealForCabinet` ne demande que la clé PUBLIQUE du cabinet — celle du fichier
+// d'appairage, que le comptable donne à TOUS ses clients. Quiconque la tient pouvait donc fabriquer
+// un paquet parfaitement chiffré au nom d'une autre entreprise, et le cabinet l'importait sans un
+// mot. Chiffrer dit « seul le cabinet peut lire » ; seule une signature dit « ça vient bien de lui ».
+//
+// La paire du CLIENT est Ed25519 (signature), pas X25519 (échange de clés) : ce sont deux courbes
+// pour deux métiers, et Node refuse de signer avec la seconde.
+function generateClientKeys() {
+  const kp = crypto.generateKeyPairSync('ed25519');
+  return {
+    publicKey: kp.publicKey.export({ type: 'spki', format: 'der' }).toString('base64'),
+    privateKey: kp.privateKey.export({ type: 'pkcs8', format: 'der' }).toString('base64')
+  };
+}
+
+// Ce qui est signé : les OCTETS EXACTS de `manifeste.json` tels qu'ils partent dans le ZIP. Aucune
+// canonicalisation, aucun RFC 8785 : on ne re-sérialise jamais, on signe le fichier. Re-sérialiser
+// pour signer, c'est signer autre chose que ce qu'on envoie — et c'est l'écart entre les deux qui
+// fait les failles de signature.
+//
+// `manifeste` porte en plus le sha256 des mêmes octets. Il ne rend PAS l'attaque « je garde la
+// signature et je change le manifeste » impossible — Ed25519 porte sur les octets, donc `verify`
+// échoue de toute façon. Il sert à trois choses concrètes : donner au comptable la BONNE phrase
+// (« modifié après l'envoi » plutôt que « signature inconnue »), vérifier un vieux paquet SANS la
+// clé (un `sha256sum` suffit), et comparer deux `signature.json` d'un même mois reçu deux fois sans
+// rien déchiffrer.
+function signManifest(manifestBuf, privateKeyB64, publicKeyB64) {
+  const sig = crypto.sign(null, Buffer.from(manifestBuf), privateKeyFrom(privateKeyB64));
+  return {
+    format: 1, alg: 'ed25519',
+    cle: String(publicKeyB64 || ''),
+    empreinte: keyFingerprint(publicKeyB64),
+    manifeste: sha256(Buffer.from(manifestBuf)),
+    sig: sig.toString('base64url')
+  };
+}
+
+// Vérifier. Les motifs sont séparés EXPRÈS : « le manifeste a été modifié après l'envoi » et
+// « cette signature n'est pas celle de ton client » ne demandent pas le même coup de téléphone.
+function verifyManifest(manifestBuf, signature) {
+  const s = signature || {};
+  if (!s || s.format !== 1 || s.alg !== 'ed25519' || !s.cle || !s.sig) {
+    return { ok: false, motif: 'illisible', texte: 'La signature de ce paquet n\'a pas une forme reconnue.' };
+  }
+  const buf = Buffer.from(manifestBuf);
+  if (sha256(buf) !== String(s.manifeste || '')) {
+    return { ok: false, motif: 'manifeste-modifie', texte: 'Le manifeste de ce paquet a été modifié après sa signature.' };
+  }
+  let ok = false;
+  try { ok = crypto.verify(null, buf, publicKeyFrom(s.cle), Buffer.from(String(s.sig), 'base64url')); }
+  catch { ok = false; }
+  if (!ok) return { ok: false, motif: 'signature-fausse', texte: 'La signature de ce paquet ne correspond pas à la clé qu\'il présente.' };
+  return { ok: true, cle: s.cle, empreinte: keyFingerprint(s.cle) };
+}
+
 function publicKeyFrom(b64) {
   return crypto.createPublicKey({ key: Buffer.from(b64, 'base64'), type: 'spki', format: 'der' });
 }
@@ -321,5 +379,7 @@ function openWithCabinetKey(buf, cabinetPrivateKeyB64) {
 module.exports = {
   zipBuffer, zipRead, crc32, sha256, dosDateTime,
   sealBuffer, openBuffer, sealHeader, isSealed,
-  generateCabinetKeys, keyFingerprint, sealForCabinet, openWithCabinetKey, cabinetHeader, isSealedForCabinet
+  generateCabinetKeys, keyFingerprint, sealForCabinet, openWithCabinetKey, cabinetHeader, isSealedForCabinet,
+  // La signature du paquet par le client (9.2.0)
+  generateClientKeys, signManifest, verifyManifest
 };

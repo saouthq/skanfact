@@ -11678,6 +11678,157 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     } finally { [dir, ext].forEach(x => fs.rmSync(x, { recursive: true, force: true })); }
   });
 
+  // ---------------------------------------------------------------- 9.2.0 — le paquet SIGNÉ
+
+  t('9.2.0 : chiffrer n\'est pas signer — la signature porte les OCTETS du manifeste', () => {
+    const Z = require('../src/zip.js');
+    const k = Z.generateClientKeys();
+    // Ed25519 pour signer, pas X25519 : deux courbes pour deux métiers, et Node refuse la seconde.
+    assert.ok(k.publicKey && k.privateKey && k.publicKey !== k.privateKey);
+    const manifeste = { entreprise: { nom: 'Alpha', matricule: '1234567A' }, periode: { mois: '2026-03' }, fichiers: [] };
+    const buf = Buffer.from(JSON.stringify(manifeste, null, 2), 'utf8');
+    const sig = Z.signManifest(buf, k.privateKey, k.publicKey);
+    assert.strictEqual(sig.format, 1);
+    assert.strictEqual(sig.alg, 'ed25519');
+    assert.strictEqual(sig.manifeste, Z.sha256(buf));
+    assert.strictEqual(sig.empreinte, Z.keyFingerprint(k.publicKey));
+    // La clé PRIVÉE ne figure jamais dans la signature — c'est la faute qui ne se rattrape pas.
+    assert.ok(!JSON.stringify(sig).includes(k.privateKey));
+
+    assert.strictEqual(Z.verifyManifest(buf, sig).ok, true);
+    assert.strictEqual(Z.verifyManifest(buf, sig).empreinte, sig.empreinte);
+
+    // UN octet du manifeste retourné : la phrase attendue est « modifié », pas « signature
+    // inconnue ». C'est la raison d'être du sha256 — Ed25519 ferait échouer `verify` de toute
+    // façon, mais le comptable n'aurait pas la bonne phrase pour son coup de téléphone.
+    const abime = Buffer.from(buf);
+    abime[20] = abime[20] === 65 ? 66 : 65;
+    const r = Z.verifyManifest(abime, sig);
+    assert.strictEqual(r.ok, false);
+    assert.strictEqual(r.motif, 'manifeste-modifie');
+    assert.ok(/modifié après sa signature/.test(r.texte), r.texte);
+
+    // Une signature d'une AUTRE clé sur le même manifeste : elle est valable, mais pas la sienne.
+    const k2 = Z.generateClientKeys();
+    const sig2 = Z.signManifest(buf, k2.privateKey, k2.publicKey);
+    assert.strictEqual(Z.verifyManifest(buf, sig2).ok, true);
+    assert.notStrictEqual(sig2.empreinte, sig.empreinte);
+    // Une signature bricolée ne passe pas.
+    assert.strictEqual(Z.verifyManifest(buf, { ...sig, sig: Buffer.alloc(64).toString('base64url') }).motif, 'signature-fausse');
+    assert.strictEqual(Z.verifyManifest(buf, { ...sig, alg: 'rsa' }).motif, 'illisible');
+    assert.strictEqual(Z.verifyManifest(buf, null).motif, 'illisible');
+    // Et la clé remplacée par une autre, signature d'origine gardée : c'est l'attaque évidente.
+    assert.strictEqual(Z.verifyManifest(buf, { ...sig, cle: k2.publicKey }).motif, 'signature-fausse');
+  });
+
+  t('9.2.0 : les quatre cas d\'origine, et la tolérance qui s\'éteint d\'elle-même', () => {
+    const vide = { id: 'MF:1' };
+    const epingle = { id: 'MF:1', cleEmpreinte: 'AAAA-BBBB-CCCC-DDDD-EEEE' };
+    const bonne = { ok: true, cle: 'K', empreinte: 'AAAA-BBBB-CCCC-DDDD-EEEE' };
+    const autre = { ok: true, cle: 'K2', empreinte: 'ZZZZ-1111-2222-3333-4444' };
+
+    // 1. Un paquet d'un client encore en 9.1.x passe, en gris. Le refuser couperait tous les
+    // clients d'un coup le jour où le cabinet se met à jour.
+    const c1 = cab.verdictOrigine(vide, null);
+    assert.strictEqual(c1.ok, true);
+    assert.strictEqual(c1.etat, 'non-prouvee');
+    assert.strictEqual(c1.epingler, null);
+    assert.ok(/antérieure à la 9.2.0/.test(c1.texte));
+
+    // 2. Une fois qu'un client a signé, ne plus signer est refusé : la tolérance du cas 1 s'éteint
+    // CLIENT PAR CLIENT, sans date butoir imposée à tout le portefeuille. C'est la confiance au
+    // premier usage, et c'est ce qui fait qu'elle ne reste pas ouverte pour toujours.
+    const c2 = cab.verdictOrigine(epingle, null);
+    assert.strictEqual(c2.ok, false);
+    assert.strictEqual(c2.code, 'ERR-CAB-031');
+    assert.ok(/mettre SkanFact à jour/.test(c2.texte));
+
+    // 3. Premier paquet signé : on épingle.
+    const c3 = cab.verdictOrigine(vide, bonne);
+    assert.strictEqual(c3.ok, true);
+    assert.strictEqual(c3.etat, 'epinglee');
+    assert.strictEqual(c3.epingler, 'K');
+
+    // 4. Une autre clé : refusé, en NOMMANT les deux empreintes — « refusé » sans les deux
+    // empreintes n'apprend rien à quelqu'un qui doit appeler son client.
+    const c4 = cab.verdictOrigine(epingle, autre);
+    assert.strictEqual(c4.ok, false);
+    assert.strictEqual(c4.code, 'ERR-CAB-030');
+    assert.ok(c4.texte.includes('AAAA-BBBB-CCCC-DDDD-EEEE') && c4.texte.includes('ZZZZ-1111-2222-3333-4444'));
+    assert.ok(/de vive voix/.test(c4.texte), 'la reprise d\'une clé passe par un geste humain');
+
+    // 5. La même clé : rien à faire, et on ne ré-épingle pas.
+    const c5 = cab.verdictOrigine(epingle, bonne);
+    assert.strictEqual(c5.ok, true);
+    assert.strictEqual(c5.etat, 'signe');
+    assert.strictEqual(c5.epingler, null);
+
+    // Une signature fausse ne devient jamais un épinglage, même sur un dossier vierge — sinon
+    // n'importe quel paquet fixerait la clé du client dès le premier envoi.
+    const ko = cab.verdictOrigine(vide, { ok: false, motif: 'signature-fausse', texte: 'x' });
+    assert.strictEqual(ko.ok, false);
+    assert.ok(!ko.epingler);
+  });
+
+  t('9.2.0 : la clé épinglée survit au chargement — un champ oublié la jetterait en silence', () => {
+    // Le défaut de `matricule` en 6.8.0, appliqué à un champ de sécurité : absent de
+    // `migrateDossier`, il disparaît au prochain démarrage et la vérification d'origine se
+    // désarme toute seule, sans qu'aucun écran ne le dise.
+    const m = cab.migrate({ dossiers: [{
+      id: 'MF:1', name: 'Alpha',
+      clePublique: 'UNE-CLE', cleEmpreinte: 'AAAA-BBBB-CCCC-DDDD-EEEE',
+      cleEpingleeLe: '2026-03-01T10:00:00.000Z',
+      audit: [{ quand: 1, quoi: 'cle-epinglee', detail: 'AAAA' }]
+    }] });
+    const d = m.dossiers[0];
+    assert.strictEqual(d.clePublique, 'UNE-CLE');
+    assert.strictEqual(d.cleEmpreinte, 'AAAA-BBBB-CCCC-DDDD-EEEE');
+    assert.strictEqual(d.cleEpingleeLe, '2026-03-01T10:00:00.000Z');
+    assert.strictEqual(d.audit.length, 1);
+    // Et un dossier d'avant la 9.2.0 n'en a pas : il ne doit pas en inventer.
+    const vieux = cab.migrate({ dossiers: [{ id: 'MF:2', name: 'Beta' }] }).dossiers[0];
+    assert.strictEqual(vieux.cleEmpreinte, '');
+    assert.deepStrictEqual(vieux.audit, []);
+  });
+
+  t('9.2.0 : l\'entreprise signe son paquet, et sa clé privée ne sort jamais du dossier', () => {
+    const main = lireSource('src', 'main.js');
+    // La clé vit DANS le dossier de l'entreprise, comme la licence : un ordinateur ouvre plusieurs
+    // entreprises, et c'est l'ENTREPRISE qui signe, pas le poste.
+    assert.ok(/const CLE_CLIENT = \(\) => path\.join\(currentDossier\(\)\.dir, 'cle-client\.json'\)/.test(main),
+      'la clé du client doit vivre dans le dossier de l\'entreprise');
+    // Hors de `skanfact-data.json` : une clé privée qui voyagerait dans un export ou dans le paquet
+    // ne serait plus une clé privée. Elle n'est donc écrite que par `cleClient`.
+    assert.strictEqual((main.match(/privateKey: k\.privateKey/g) || []).length, 1);
+    assert.ok(/mode: 0o600/.test(main.slice(main.indexOf('function cleClient'), main.indexOf('function cleClient') + 1200)),
+      'le fichier de clé doit être en 0600');
+    // Le paquet porte `signature.json`, écrit APRÈS le manifeste et sur ses octets EXACTS.
+    const zone = main.slice(main.indexOf('const manifestBuf = Buffer.from'), main.indexOf('const zip = zipBuffer'));
+    assert.ok(zone.length > 200 && zone.length < 3000, `tranche du manifeste suspecte : ${zone.length}`);
+    assert.ok(/signManifest\(manifestBuf, k\.privateKey, k\.publicKey\)/.test(zone),
+      'on signe les octets du manifeste, jamais un objet re-sérialisé');
+    assert.ok(/name: 'signature\.json'/.test(zone));
+    // Un échec de signature ne fait PAS échouer l'envoi : priver quelqu'un de son paquet mensuel
+    // pour une clé qu'on n'a pas su écrire serait pire que le paquet non signé.
+    assert.ok(/catch \(e\) \{[\s\S]{0,400}?logToFile\('signature du paquet'/.test(zone),
+      'un échec de signature doit se journaliser, pas interrompre l\'envoi');
+
+    // Côté cabinet : la vérification passe AVANT que le paquet soit rangé. Un paquet refusé ne doit
+    // rien laisser sur le disque, et surtout pas dans le dossier d'un client dont il usurpe le nom.
+    const cm = lireSource('src', 'cabinet', 'main.js');
+    const iV = cm.indexOf('const origine = K.verdictOrigine(');
+    const iS = cm.indexOf('const dest = getStore().storePack(');
+    assert.ok(iV > 0 && iS > 0 && iV < iS, 'on vérifie l\'origine AVANT de ranger le paquet');
+    // Et le verdict est RANGÉ avec le paquet : un verdict qui vit deux secondes n'est pas un
+    // verdict (règle 6.8.1).
+    assert.ok(/origine: \{ etat: origine\.etat/.test(cm));
+    // L'ordre des deux contrôles est fixé : le sha256 d'abord, pour la bonne phrase.
+    const zc = lireSource('src', 'zip.js');
+    const vz = zc.slice(zc.indexOf('function verifyManifest'), zc.indexOf('function publicKeyFrom'));
+    assert.ok(vz.indexOf('manifeste-modifie') < vz.indexOf('signature-fausse'),
+      'le sha256 du manifeste se contrôle AVANT la signature : les deux phrases ne demandent pas le même coup de téléphone');
+  });
+
   if (enCours) throw new Error(`${enCours} test(s) asynchrone(s) lancé(s) sans « await ta(…) » : ils ne peuvent plus échouer`);
   console.log(`\n${n} tests OK`);
 })().catch(e => { console.error(e); process.exit(1); });
