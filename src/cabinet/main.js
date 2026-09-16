@@ -46,9 +46,18 @@ function writeAppCfg(patch) {
 
 // Écrire dans le journal, sans rien montrer. Le chien de garde s'en sert : devant une application
 // figée, une fenêtre d'erreur ne sert à personne, et `logError` en ouvre une.
+// Le journal technique, BORNÉ depuis la 9.1.0 (SPEC-OUT-004) — même règle et même code que dans
+// l'application entreprise : UNE rotation à 2 Mo, deux fichiers au maximum. Une règle apprise d'un
+// côté se pose de l'autre (règle 7.3.0), et celle-ci compte double ici : le processus principal du
+// cabinet travaille longtemps (vingt paquets à importer), donc il écrit davantage.
+const LOG_MAX = 2 * 1024 * 1024;
+function logPath() { return path.join(app.getPath('userData'), 'main.log'); }
 function logToFile(where, err) {
-  const msg = `${new Date().toISOString()} [${where}] ${err && err.stack || err}\n`;
-  try { fs.appendFileSync(path.join(app.getPath('userData'), 'main.log'), msg); } catch {}
+  try {
+    const f = logPath();
+    try { if (fs.statSync(f).size > LOG_MAX) fs.renameSync(f, f + '.1'); } catch {}
+    fs.appendFileSync(f, `${new Date().toISOString()} [${where}] ${err && err.stack || err}\n`);
+  } catch {}
 }
 
 function logError(where, err) {
@@ -59,7 +68,9 @@ function logError(where, err) {
 function getStore() {
   if (!store) {
     store = CS.createCabStore(app.getPath('userData'), {
-      log: (w, e) => { try { fs.appendFileSync(path.join(app.getPath('userData'), 'main.log'), `${new Date().toISOString()} [${w}] ${e && e.stack || e}\n`); } catch {} },
+      // Par `logToFile`, et pas en écrivant directement : sinon la sauvegarde contourne la
+      // rotation, et c'est elle qui écrit le plus.
+      log: logToFile,
       externalDir: readAppCfg().externalBackupDir || null
     });
   }
@@ -990,6 +1001,27 @@ ipcMain.handle('cab:exportCsv', async (_e, { rows, name } = {}) => {
   // BOM : sans lui, Excel en français lit « Société » comme « SociÃ©tÃ© ».
   fs.writeFileSync(filePath, '﻿' + String(rows || ''), 'utf8');
   return { path: filePath };
+});
+
+// Une erreur du renderer arrive ici (9.1.0, SPEC-OUT-004). Même mécanisme que dans l'application
+// entreprise, et pour la même raison : sur le poste d'un comptable, une exception d'interface
+// n'existe pas — c'est ainsi que `h(a.relayFailure)` a plané des versions entières en 6.8.0, et
+// qu'il faisait justement planter le panneau AU MOMENT où il devait annoncer une panne.
+// Jamais de fenêtre, jamais de rechargement, et vingt par minute au maximum.
+let erreursRenderer = { debut: 0, n: 0, tues: 0 };
+ipcMain.handle('support:erreur', (_e, info) => {
+  try {
+    const maintenant = Date.now();
+    if (maintenant - erreursRenderer.debut > 60000) {
+      if (erreursRenderer.tues) logToFile('renderer', `… ${erreursRenderer.tues} erreur(s) identique(s) non journalisée(s) (limite d'une minute)`);
+      erreursRenderer = { debut: maintenant, n: 0, tues: 0 };
+    }
+    if (erreursRenderer.n >= 20) { erreursRenderer.tues++; return false; }
+    erreursRenderer.n++;
+    const i = info || {};
+    logToFile('renderer', `${i.message || '(sans message)'} — ${i.source || '?'}:${i.ligne || '?'}\n${i.pile || '(sans pile)'}`);
+    return true;
+  } catch { return false; }
 });
 
 ipcMain.handle('cab:support', () => ({

@@ -27,7 +27,7 @@
     exportPdfMany: async () => null, saveText: async () => null, exportPdfSilent: async () => null, saveTextSilent: async () => null, composeMail: async () => ({ state: 'mailto' }),
     openPath: async () => {}, showInFolder: async () => {}, setDirty: () => {},
     changelog: async () => '', onMenuAction: () => {}, setTitle: () => {},
-    onAlivePing: () => {}, onFreezeNotice: () => {}, supportInfo: async () => ({ version: 'dev', platform: 'browser', log: '', lines: 0 }), openLog: async () => {},
+    onAlivePing: () => {}, onFreezeNotice: () => {}, supportInfo: async () => ({ version: 'dev', platform: 'browser', log: '', lines: 0 }), openLog: async () => {}, supportErreur: async () => false,
     updateVersion: async () => ({ version: 'dev', packaged: false, platform: 'browser', macSigned: false }),
     updateCheck: async () => ({ state: 'dev' }), updateDownload: async () => ({ state: 'dev' }), updateInstall: async () => ({ state: 'dev' }), updateSetToken: async () => ({ hasToken: false }),
     updateSetBeta: async () => ({ beta: false }),
@@ -12210,6 +12210,38 @@
   // pas besoin occupaient la place des deux dont il a besoin. Ils n'ont pas disparu : ils étaient
   // déjà en double dans Paramètres → Données et sécurité (#export-data / #import-data), à côté des
   // sauvegardes, c'est-à-dire là où on les cherche.
+
+  // ---------- le garde-fou d'erreur (9.1.0, SPEC-OUT-004) ----------
+  //
+  // Posé ICI, avant tout le reste : une exception levée pendant la séquence de démarrage est la
+  // plus grave de toutes — l'écran reste blanc — et c'est précisément celle qu'un garde-fou
+  // installé plus bas ne verrait pas.
+  //
+  // Ce que ce dépôt a payé pour l'écrire : `h(a.relayFailure)` (6.8.0), une variable d'une autre
+  // route (7.20.0), `C.pl(...)` alors que `pl` est locale (7.22.0), `clientItems` déclarée dans un
+  // autre formulaire (7.23.0), `null.onclick` après une attente (7.6.0). Cinq fois le même scénario :
+  // un écran blanc, un bouton mort ou une fenêtre qui ne s'ouvre pas, et RIEN nulle part — parce que
+  // sur le poste d'un utilisateur, la console du navigateur n'existe pas.
+  //
+  // Il n'affiche rien et ne recharge rien. Il écrit, et « Aide → Signaler un problème » emporte le
+  // journal. Une erreur d'interface n'est pas toujours visible pour l'utilisateur : lui coller une
+  // fenêtre le ferait douter d'un travail qui s'est peut-être bien passé, et une application qui
+  // annonce une panne qui n'en est pas une apprend à cliquer sans lire (7.28.0).
+  const noterErreur = (info) => { try { bridge.supportErreur(info); } catch {} };
+  window.addEventListener('error', e => noterErreur({
+    message: (e && e.message) || '(sans message)', source: (e && e.filename) || '',
+    ligne: (e && e.lineno) || 0, pile: (e && e.error && e.error.stack) || ''
+  }));
+  // Une promesse rejetée et jamais rattrapée ne passe PAS par `error` : c'est un événement à part,
+  // et c'est celui d'une fonction asynchrone qui échoue — le cas le plus courant ici, puisque tout
+  // ce qui traverse le pont l'est.
+  window.addEventListener('unhandledrejection', e => {
+    const r = e && e.reason;
+    noterErreur({
+      message: 'promesse rejetée : ' + ((r && r.message) || String(r || '(sans raison)')),
+      source: '', ligne: 0, pile: (r && r.stack) || ''
+    });
+  });
 
   // ---------- chien de garde et messages du processus principal ----------
   // Abonnés AVANT la séquence de démarrage : l'assistant de première utilisation la met en attente,

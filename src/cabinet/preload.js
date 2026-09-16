@@ -65,6 +65,8 @@ contextBridge.exposeInMainWorld('cabinet', {
 
   // dépannage
   support: () => ipcRenderer.invoke('cab:support'),
+  // Une exception de l'interface part au journal (9.1.0), comme dans l'app entreprise.
+  supportErreur: (info) => ipcRenderer.invoke('support:erreur', info),
   openLog: () => ipcRenderer.invoke('cab:openLog'),
   openDataDir: () => ipcRenderer.invoke('cab:openDataDir'),
 

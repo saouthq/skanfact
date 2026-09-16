@@ -10756,6 +10756,130 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.strictEqual(faux.soldeCompte, 40, 'l\'argent reste sur le compte, quoi qu\'en dise le lettrage');
   });
 
+
+  // ---------------------------------------------------------------- outillage (9.1.0)
+
+  t('9.1.0 : une erreur de l\'interface part au journal, sans fenêtre et sans rechargement', () => {
+    // SPEC-OUT-004. On juge la STRUCTURE, jamais la mention : un commentaire qui cite la règle
+    // qu'on cherche l'a déjà satisfaite deux fois dans l'histoire de ce dépôt (6.8.0, 7.25.0).
+    [['src', 'renderer', 'app.js'], ['src', 'cabinet', 'renderer', 'app.js']].forEach(chemin => {
+      const brut = lireSource(...chemin);
+      const net = brut.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+      assert.ok(net.length > brut.length * 0.5, chemin.join('/') + ' : le nettoyage a mangé le code');
+      const qui = chemin.join('/');
+
+      // Les deux écouteurs, et les DEUX : une promesse rejetée ne passe pas par `error`, et c'est
+      // le cas le plus courant ici puisque tout ce qui traverse le pont est asynchrone.
+      assert.ok(/addEventListener\('error',/.test(net), qui + ' : pas de garde-fou sur « error »');
+      assert.ok(/addEventListener\('unhandledrejection',/.test(net), qui + ' : pas de garde-fou sur « unhandledrejection »');
+
+      // Posé AVANT la séquence de démarrage. Une exception levée pendant cette séquence laisse
+      // l'écran blanc — et c'est très exactement celle qu'un garde-fou installé plus bas ne
+      // verrait pas. Le chien de garde a la même règle depuis la 6.5.0, et c'est le seul repère
+      // fiable : il est le premier abonnement de la fin du fichier.
+      const iGarde = net.indexOf("addEventListener('error',");
+      const iChien = net.search(/\b(bridge|api)\.onAlivePing\(\)/);
+      assert.ok(iChien > 0 && iGarde > 0 && iGarde < iChien,
+        qui + ' : le garde-fou doit être posé AVANT le chien de garde et la séquence de démarrage');
+
+      // Et il n'affiche rien. On regarde le corps des deux écouteurs, pas le fichier entier — la
+      // zone part de la fonction qui les sert, déclarée juste au-dessus.
+      const iNote = net.lastIndexOf('noterErreur', iGarde);
+      const corps = net.slice(iNote > 0 ? iNote : iGarde, iChien);
+      assert.ok(!/\bmodal\(|\balert\(|location\.reload\(/.test(corps),
+        qui + ' : le garde-fou ne doit ni ouvrir de fenêtre ni recharger la page');
+      assert.ok(/supportErreur\(/.test(corps), qui + ' : le garde-fou doit passer par supportErreur');
+      // Les deux écouteurs passent bien par elle, et pas seulement l'un des deux.
+      assert.strictEqual((corps.match(/noterErreur\(\{/g) || []).length, 2,
+        qui + ' : les DEUX écouteurs doivent journaliser');
+    });
+
+    // Côté processus principal : le handler existe dans les deux, il journalise, et il se TAIT
+    // au-delà de vingt par minute — un renderer en boucle ne doit pas remplir le disque.
+    [['src', 'main.js'], ['src', 'cabinet', 'main.js']].forEach(chemin => {
+      const net = lireSource(...chemin).replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+      const qui = chemin.join('/');
+      assert.ok(net.includes("ipcMain.handle('support:erreur'"), qui + ' : pas de handler support:erreur');
+      const i = net.indexOf("ipcMain.handle('support:erreur'");
+      const corps = net.slice(i, i + 1200);
+      assert.ok(/logToFile\(/.test(corps), qui + ' : support:erreur n\'écrit pas au journal');
+      assert.ok(/>=\s*20/.test(corps), qui + ' : pas de plafond de vingt erreurs par minute');
+      assert.ok(!/showErrorBox|showMessageBox|reload\(/.test(corps),
+        qui + ' : support:erreur ne doit ni ouvrir de fenêtre ni recharger');
+    });
+  });
+
+  t('9.1.0 : le journal tourne à 2 Mo, une fois, et rien n\'écrit à côté de lui', () => {
+    [['src', 'main.js'], ['src', 'cabinet', 'main.js']].forEach(chemin => {
+      const net = lireSource(...chemin).replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+      const qui = chemin.join('/');
+      const i = net.indexOf('function logToFile');
+      assert.ok(i > 0, qui + ' : logToFile introuvable');
+      const corps = net.slice(i, net.indexOf('\n}', i));
+      assert.ok(/statSync/.test(corps) && /renameSync/.test(corps), qui + ' : logToFile ne tourne pas');
+      assert.ok(/LOG_MAX/.test(corps), qui + ' : la borne doit être nommée, pas écrite en dur dans la condition');
+      assert.ok(/2 \* 1024 \* 1024/.test(net), qui + ' : LOG_MAX doit valoir 2 Mo');
+      // UNE rotation, pas deux : deux fichiers au maximum, donc 4 Mo au pire. Une rotation
+      // numérotée à cinq donnerait 10 Mo pour une information que personne ne lit jamais.
+      assert.ok(!/\.2'|\.3'|log\.\$\{/.test(corps), qui + ' : une seule rotation, vers .1');
+
+      // Et surtout : personne n'écrit dans main.log en contournant logToFile. C'est le défaut que
+      // la rotation aurait sinon : la sauvegarde du cabinet appendait directement, donc la seule
+      // écriture volumineuse de l'application échappait à la borne.
+      const ailleurs = net.split('\n')
+        .filter(l => /appendFileSync/.test(l) && /main\.log/.test(l))
+        .filter(l => !/^\s*fs\.appendFileSync\(f,/.test(l));
+      assert.strictEqual(ailleurs.length, 0,
+        qui + ' : une écriture dans main.log contourne logToFile — ' + ailleurs.join(' | '));
+    });
+  });
+
+  t('9.1.0 : le lint existe, il est branché, et il tient les deux fautes de date de la 5.2.3', () => {
+    const cfg = lireSource('eslint.config.js');
+    const pkg = JSON.parse(lireSource('package.json'));
+    assert.strictEqual(pkg.scripts.lint, 'eslint .', 'le script « lint » doit exister : sans lui la CI ne lance rien');
+    assert.ok(pkg.devDependencies.eslint, 'eslint doit être une devDependency');
+    assert.ok(pkg.engines && pkg.engines.node, 'engines.node doit fixer la version, comme la CI');
+
+    // Les trois fautes qui ont gelé l'application entière chez l'utilisateur (5.2.3). Le lint est
+    // le seul garde-fou qui les voit AVANT l'exécution : `node --check` ne dit rien, et la machine
+    // de test, en UTC, ne les reproduit jamais.
+    ['getDay', 'setDate', "NewExpression[callee.name='Date'][arguments.length>1]"].forEach(f =>
+      assert.ok(cfg.includes(f), 'la règle de date doit couvrir ' + f));
+    // Les DEUX, et surtout pas l'une OU l'autre : un « || » ici rendrait l'assertion incapable de
+    // tomber sur la sévérité, puisque le branchement suffirait à la satisfaire. C'est le piège de
+    // précédence de la 7.33.0, et je viens d'y retomber en écrivant ce test.
+    assert.ok(/DATES = \['error',/.test(cfg), 'les règles de date doivent être des ERREURS, pas des avertissements');
+    assert.ok(/'no-restricted-syntax':\s*DATES/.test(cfg), 'les règles de date doivent être branchées sur les deux périmètres');
+
+    // Aucune règle de style : un lint qui crie sur mille lignes de formatage cesse d'être lu, et
+    // emmène avec lui les dix erreurs qui comptaient.
+    ['semi', 'quotes', 'indent', 'comma-dangle', 'max-len'].forEach(r =>
+      assert.ok(!new RegExp("'" + r + "'\\s*:").test(cfg), 'règle de style interdite dans le lint : ' + r));
+
+    // La CI lance les deux, sur les deux systèmes. Windows est la plateforme que personne ne
+    // testait avant la 7.21.x, et trois défauts s'y étaient enchaînés.
+    const ci = lireSource('.github', 'workflows', 'ci.yml');
+    assert.ok(ci.includes('npm run lint') && ci.includes('npm test'), 'la CI doit lancer le lint ET les tests');
+    assert.ok(ci.includes('windows-latest') && ci.includes('ubuntu-latest'), 'la CI doit tourner sur les deux systèmes');
+    assert.ok(/fail-fast:\s*false/.test(ci), 'fail-fast: false — savoir si un test tombe des deux côtés ou d\'un seul désigne la cause');
+  });
+
+  t('9.1.0 : « Construire un essai » ne peut ni publier ni se mettre à jour ni écraser la vraie app', () => {
+    const y = lireSource('.github', 'workflows', 'essai.yml');
+    assert.ok(/workflow_dispatch:/.test(y), 'essai.yml ne doit partir qu\'à la main');
+    assert.ok(!/on:\s*\n\s*push:/.test(y), 'essai.yml ne doit pas se déclencher sur une poussée');
+    // Les trois précautions, et les trois comptent.
+    assert.ok(/--publish never/.test(y), 'un essai ne doit apparaître dans aucune release');
+    assert.ok(/appId="tn\.skancyber\.skanfact\.essai"/.test(y) && /appId="tn\.skancyber\.skanfact\.cabinet\.essai"/.test(y),
+      'appId suffixé : sinon l\'essai EST la vraie application pour le système, et la remplace');
+    assert.ok(/productName="SkanFact \(essai\)"/.test(y), 'productName suffixé : sinon l\'essai travaille sur les vraies factures');
+    // Le plus facile à oublier, parce qu'il ne se voit qu'après coup : une application d'essai qui
+    // se met à jour redevient la version publiée au premier redémarrage.
+    assert.ok((y.match(/updateBase=""/g) || []).length >= 2 && (y.match(/updateSecret=""/g) || []).length >= 2,
+      'updateBase et updateSecret doivent être VIDES dans les deux constructions');
+  });
+
   if (enCours) throw new Error(`${enCours} test(s) asynchrone(s) lancé(s) sans « await ta(…) » : ils ne peuvent plus échouer`);
   console.log(`\n${n} tests OK`);
 })().catch(e => { console.error(e); process.exit(1); });

@@ -2875,6 +2875,32 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
     if (aideQ) chercher();
   }
 
+  // ---------- le garde-fou d'erreur (9.1.0, SPEC-OUT-004) ----------
+  //
+  // Même garde-fou que dans l'application entreprise, et posé au même endroit : AVANT la séquence
+  // de démarrage, parce qu'une exception levée pendant cette séquence laisse l'écran blanc et ne
+  // serait vue par aucun garde-fou installé plus bas.
+  //
+  // Ici, c'est un défaut de CETTE application qui l'a motivé : `h(a.relayFailure)` — copié de
+  // l'app entreprise, où la fonction d'échappement s'appelle `h` et non `esc` — faisait planter le
+  // panneau des mises à jour AU MOMENT PRÉCIS où il devait annoncer une panne (6.8.0). Rien en
+  // console, rien nulle part, et un comptable devant un panneau muet.
+  //
+  // Il n'affiche rien et ne recharge rien : c'est au chien de garde de décider ça, lui seul sait
+  // si l'interface répond encore.
+  const noterErreur = (info) => { try { api.supportErreur(info); } catch {} };
+  window.addEventListener('error', e => noterErreur({
+    message: (e && e.message) || '(sans message)', source: (e && e.filename) || '',
+    ligne: (e && e.lineno) || 0, pile: (e && e.error && e.error.stack) || ''
+  }));
+  window.addEventListener('unhandledrejection', e => {
+    const r = e && e.reason;
+    noterErreur({
+      message: 'promesse rejetée : ' + ((r && r.message) || String(r || '(sans raison)')),
+      source: '', ligne: 0, pile: (r && r.stack) || ''
+    });
+  });
+
   // ---------- chien de garde et messages du processus principal ----------
   // Abonnés AVANT la séquence de démarrage : l'écran de verrouillage la met en attente, et un
   // message reçu pendant ce temps serait perdu pour toujours (règle apprise en 6.5.0).

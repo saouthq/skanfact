@@ -44,13 +44,31 @@ if (!app.requestSingleInstanceLock()) {
 // Le jour du calendrier de l'utilisateur (pas le jour UTC, qui le soir est déjà demain à l'est).
 function localDay() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
 
+// Le journal technique, BORNÉ depuis la 9.1.0 (SPEC-OUT-004).
+//
+// Il a toujours grossi sans limite. Tant que seul le processus principal y écrivait, ça restait
+// quelques kilo-octets par an. Le garde-fou d'erreur du renderer change l'échelle : une boucle qui
+// lève à chaque tour peut écrire des mégaoctets par minute, et remplir le disque de quelqu'un est
+// une panne bien pire que celle qu'on cherchait à tracer.
+//
+// UNE rotation, pas deux : `main.log` dépasse 2 Mo → il devient `main.log.1` (l'ancien `.1` est
+// écrasé) et on repart à vide. Deux fichiers au maximum, donc 4 Mo au pire, et on garde toujours
+// l'historique récent — c'est lui qui sert à dépanner (règle 6.7.2). Une rotation numérotée à
+// cinq fichiers donnerait 10 Mo pour une information que personne ne lit jamais.
+const LOG_MAX = 2 * 1024 * 1024;
+function logPath() { return path.join(app.getPath('userData'), 'main.log'); }
 function logToFile(where, err) {
-  try { fs.appendFileSync(path.join(app.getPath('userData'), 'main.log'), `${new Date().toISOString()} [${where}] ${err && err.stack || err}\n`); } catch {}
+  try {
+    const f = logPath();
+    // On regarde AVANT d'écrire : après, la ligne qui a fait déborder serait la première du
+    // fichier neuf, et c'est précisément celle qu'on veut lire à la suite des autres.
+    try { if (fs.statSync(f).size > LOG_MAX) fs.renameSync(f, f + '.1'); } catch {}
+    fs.appendFileSync(f, `${new Date().toISOString()} [${where}] ${err && err.stack || err}\n`);
+  } catch {}
 }
 function logError(where, err) {
-  const msg = `${new Date().toISOString()} [${where}] ${err && err.stack || err}\n`;
-  try { fs.appendFileSync(path.join(app.getPath('userData'), 'main.log'), msg); } catch {}
-  try { dialog.showErrorBox('SkanFact — erreur', `${where}\n\n${err && err.message || err}\n\nDétail dans : ${path.join(app.getPath('userData'), 'main.log')}`); } catch {}
+  logToFile(where, err);
+  try { dialog.showErrorBox('SkanFact — erreur', `${where}\n\n${err && err.message || err}\n\nDétail dans : ${logPath()}`); } catch {}
 }
 
 // En mode développement (`npm start`), on travaille dans un dossier de données SÉPARÉ.
@@ -268,7 +286,42 @@ ipcMain.handle('support:info', () => {
     lastFreeze: lastFreeze ? { at: lastFreeze.at, silence: lastFreeze.silence } : null
   };
 });
-ipcMain.handle('support:openLog', () => shell.showItemInFolder(path.join(app.getPath('userData'), 'main.log')));
+ipcMain.handle('support:openLog', () => shell.showItemInFolder(logPath()));
+
+// Une erreur du renderer arrive ici (9.1.0, SPEC-OUT-004).
+//
+// Jusqu'ici, une exception dans l'interface finissait dans une console que personne n'ouvre : sur
+// le poste d'un client, elle n'existait tout simplement pas. Cinq défauts de ce dépôt ont vécu des
+// versions entières pour cette seule raison — une fonction appelée et jamais définie (6.8.0), une
+// variable d'une autre route (7.20.0), `C.pl(...)` alors que `pl` est locale (7.22.0),
+// `clientItems` déclarée dans un autre formulaire (7.23.0), `null.onclick` après une attente
+// (7.6.0). Chacune laissait un écran blanc, un bouton mort ou une fenêtre qui ne s'ouvre pas, et
+// AUCUNE trace. Maintenant il y en a une, et « Signaler un problème » l'emporte.
+//
+// Trois choses qu'on ne fait pas, et qui sont le cœur de la règle :
+//   - jamais de fenêtre. Une erreur d'interface n'est pas forcément visible pour l'utilisateur ;
+//     lui coller une boîte de dialogue le fait douter d'un travail qui s'est peut-être bien passé.
+//   - jamais de rechargement. C'est au chien de garde de décider ça, lui seul sait si l'interface
+//     répond encore.
+//   - on cesse d'écrire au-delà de vingt par minute. Une boucle qui lève à chaque tour de rendu
+//     remplirait le disque, et les vingt premières disent déjà tout ce qu'il y a à savoir.
+let erreursRenderer = { debut: 0, n: 0, tues: 0 };
+ipcMain.handle('support:erreur', (_e, info) => {
+  try {
+    const maintenant = Date.now();
+    if (maintenant - erreursRenderer.debut > 60000) {
+      // Une minute écoulée : on repart, en disant combien on a tues — sans cette ligne, le journal
+      // laisserait croire que l'application s'est calmée alors qu'elle brûlait.
+      if (erreursRenderer.tues) logToFile('renderer', `… ${erreursRenderer.tues} erreur(s) identique(s) non journalisée(s) (limite d'une minute)`);
+      erreursRenderer = { debut: maintenant, n: 0, tues: 0 };
+    }
+    if (erreursRenderer.n >= 20) { erreursRenderer.tues++; return false; }
+    erreursRenderer.n++;
+    const i = info || {};
+    logToFile('renderer', `${i.message || '(sans message)'} — ${i.source || '?'}:${i.ligne || '?'}\n${i.pile || '(sans pile)'}`);
+    return true;
+  } catch { return false; }
+});
 
 function createWindow() {
   const st = readWindowState() || {};
