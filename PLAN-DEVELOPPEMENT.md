@@ -16,7 +16,7 @@ semaine de démarches ne retarde aucune version, et une version ne retarde aucun
 
 ### Ce qui est livré (vérifié dans `CHANGELOG.md` et `package.json`)
 
-- **SkanFact Entreprise 9.0.0** (15/09/2026) : quinze modules — ventes, achats, trésorerie, marges,
+- **SkanFact Entreprise 9.0.0** (15/09/2026) : neuf modules et vingt et une pages — ventes, achats, trésorerie, marges,
   immobilisations, stock, séries et garanties, paie, congés et avances, déclarations sociales,
   clôture de période, paquet mensuel, appairage du cabinet, licence, pont comptable — plus les écrans
   comptables de 8.8.0 → 9.0.0 (grand livre, balance, livre-journal, OD, lettrage, à-nouveaux, états
@@ -83,8 +83,8 @@ démarrés (la plateforme les voit une fois en production), licences vendues.*
 | **J0** | 15/10/2026 | La marque déposée, le certificat Apple acheté, `contact@skanfact.tn` qui répond (le premier essai finit le 14/10), la question posée à l'Ordre, la question orale au pilote posée. | Rien de codé ne rapporte un dinar : la 9.2.0 ne commence pas tant que J0 n'est pas atteint, même si la 9.1.0 est finie. |
 | **J1** | 31/12/2026 | Les six démarches de la Partie D faites (attentes comprises ou en cours) ; le pilote engagé **par écrit** sur deux dossiers réels ; **≥ 3 licences Entreprise vendues** hors famille ; 9.1.x et 9.2.0 publiées en stable. | Les trois licences manquent → la 9.3.0 attend ; le trimestre suivant est un trimestre de **démonstrations** (dix, comptées), pas de code. |
 | **J2** | 30/06/2027 | **≥ 10 licences Entreprise** ; le pilote tient ses dossiers dans le Cabinet **sans revenir à son ancien logiciel** ; une réponse de l'Ordre ou, à défaut, celle d'un juriste ; 9.3.0 → 9.5.0 publiées. | Le pilote est revenu à son ancien logiciel → on **arrête le Cabinet à la 9.5.0** et on demande pourquoi avant d'écrire la 9.5.0. L'Ordre a dit non → plan B de prix (`QUESTIONS.md` § 17), le code ne change pas. |
-| **J3** | 31/12/2027 | Un **second cabinet** qui a commencé, même sur un dossier ; **≥ 25 licences Entreprise** ; un chiffre d'affaires qui couvre les coûts fixes ; 9.6.0 → 9.7.0 publiées. | Pas de second cabinet → le Cabinet reste un produit pour un seul cabinet : 9.8.0 → 10.0.0 ne se justifient plus, on livre ce que le pilote demande et rien d'autre. |
-| **J4** | 30/06/2028 | 9.8.0 → 10.0.0 publiées ; ≥ 3 cabinets ; ≥ 50 licences. | On tient l'existant et on repose la question du § 3 : « combien de temps sans revenus ». |
+| **J3** | 31/12/2027 | Un **second cabinet** qui a commencé, même sur un dossier ; **≥ 25 licences Entreprise** ; un chiffre d'affaires qui couvre les coûts fixes ; 9.6.0 → 9.8.0 publiées. | Pas de second cabinet → le Cabinet reste un produit pour un seul cabinet : 9.7.0 → 10.0.0 ne se justifient plus, on livre ce que le pilote demande et rien d'autre. |
+| **J4** | 30/06/2028 | 9.7.0 → 10.0.0 publiées ; ≥ 3 cabinets ; ≥ 50 licences. | On tient l'existant et on repose la question du § 3 : « combien de temps sans revenus ». |
 
 **La règle d'arrêt, valable à tout jalon** : si **aucune** licence n'a été vendue depuis le jalon
 précédent, le trimestre suivant ne contient **pas de version nouvelle** — quelle que soit la raison.
@@ -183,12 +183,26 @@ correctifs, les relances d'e2e et le temps de relecture de Skander).*
 | **Risques** | Une case de déclaration dont on ne connaît pas la règle : on la laisse **vide avec « À VÉRIFIER »**, jamais une valeur plausible (règle 36). |
 | **Jalon de sortie** | Le pilote dépose-t-il depuis le Cabinet ? |
 
-### Phase 6 — La clôture d'exercice
+### Phase 6 — Immobilisations et stocks
+
+| Champ | Contenu |
+|---|---|
+| **Objectif** | Amortissement dégressif, sortie, stocks valorisés, côté cabinet. |
+| **Versions concernées** | **9.7.0**. |
+| **Durée estimée** | Construction : 5 j. **Réaliste : 10 j.** |
+| **Dépendances** | Rien de nouveau : le moteur linéaire, la cession et le coût moyen pondéré existent déjà côté entreprise (3.5.0, 4.0.0). |
+| **Propriétaire** | Claude. |
+| **Livrables** | ☐ Dégressif (taux **réglables**, aucun coefficient en dur) · ☐ Tableau d'amortissement et VNC par dossier · ☐ Stocks et variation de stocks en inventaire. |
+| **Critères d'acceptation** | La dernière annuité absorbe les arrondis (règle 3.5.0) ; le 28 d'un bien cédé repris en entier ; sur un mois on amortit un mois. |
+| **Risques** | Faible : c'est du portage d'un moteur testé. Le risque est de le **recopier** au lieu de le partager par `compta.js`. |
+| **Jalon de sortie** | Aucun : phase courte, elle enchaîne sur la clôture — qui a besoin de ses fiches de biens. |
+
+### Phase 7 — La clôture d'exercice
 
 | Champ | Contenu |
 |---|---|
 | **Objectif** | Écritures d'inventaire guidées, contrôles, clôture définitive, à-nouveaux, états financiers SCE, N/N-1 — et **le flux retour `.skanclose`** vers le client. |
-| **Versions concernées** | **9.7.0**. |
+| **Versions concernées** | **9.8.0**. |
 | **Durée estimée** | Construction : 10 à 15 j. **Réaliste : 30 j.** |
 | **Dépendances** | La présentation exacte des états (NCT 01) et des notes ; **un exercice complet du pilote dans le Cabinet** (donc la Phase 3 utilisée depuis au moins un exercice, ou une reprise). |
 | **Propriétaire** | Claude, le pilote. |
@@ -196,20 +210,6 @@ correctifs, les relances d'e2e et le temps de relecture de Skander).*
 | **Critères d'acceptation** | Actif = passif, résultat identique des deux côtés, à-nouveau = soldes du 31/12 ; **e2e du flux retour : le cabinet clôture, le client importe, les deux bilans sont identiques au millime** ; une clôture refusée puis acceptée, la réouverture impossible sans motif. |
 | **Risques** | La liasse n'est pas la clôture : cette phase produit des états **déduits de la balance**, pas la liasse NCT 01 — la page l'écrit. Confondre les deux ferait promettre ce que la 10.0.0 seule livre. |
 | **Jalon de sortie** | **J3** (31/12/2027) : un second cabinet a commencé, vingt-cinq licences. Sans second cabinet, les Phases 7 à 10 ne se justifient plus. |
-
-### Phase 7 — Immobilisations et stocks
-
-| Champ | Contenu |
-|---|---|
-| **Objectif** | Amortissement dégressif, sortie, stocks valorisés, côté cabinet. |
-| **Versions concernées** | **9.8.0**. |
-| **Durée estimée** | Construction : 5 j. **Réaliste : 10 j.** |
-| **Dépendances** | Rien de nouveau : le moteur linéaire, la cession et le coût moyen pondéré existent déjà côté entreprise (3.5.0, 4.0.0). |
-| **Propriétaire** | Claude. |
-| **Livrables** | ☐ Dégressif (taux **réglables**, aucun coefficient en dur) · ☐ Tableau d'amortissement et VNC par dossier · ☐ Stocks et variation de stocks en inventaire. |
-| **Critères d'acceptation** | La dernière annuité absorbe les arrondis (règle 3.5.0) ; le 28 d'un bien cédé repris en entier ; sur un mois on amortit un mois. |
-| **Risques** | Faible : c'est du portage d'un moteur testé. Le risque est de le **recopier** au lieu de le partager par `compta.js`. |
-| **Jalon de sortie** | Aucun : phase courte, enchaîne sur la 8. |
 
 ### Phase 8 — Le cabinet à plusieurs
 
@@ -275,7 +275,7 @@ Test de charge (Phase 1) ──► format du livre ──► 9.2.0 (sinon : ré�
 Séance fiscale avec le comptable (½ jour) ──► 9.1.1 entière (quatre corrections)
 
 Lettre à l'Ordre (1 heure, réponse : des mois) ──► PRIX public du Cabinet ──► vente Cabinet
-        (ne bloque PAS le développement : 9.2.0 → 9.7.0 se construisent pendant l'attente)
+        (ne bloque PAS le développement : 9.2.0 → 9.8.0 se construisent pendant l'attente)
 
 Signature du paquet (9.2.0) ──► un manifeste auquel on peut croire ──► licence et essai
         dans le manifeste fiables ──► comptage des dossiers (9.4.0) ──► facturation du Cabinet

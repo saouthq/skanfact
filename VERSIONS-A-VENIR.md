@@ -46,8 +46,8 @@ En cas de contradiction, `DIRECTION.md` fait foi, puis `CAHIER-DES-CHARGES.md`, 
 | **9.5.0** | La banque | 12 | Intention | 10 j · 20 j |
 | **9.6.0** | La déclaration mensuelle | 14 | Intention | 8 j · 20 j |
 | *9.6.1* | *Entretien (hors des 13 demandées)* | *4* | *Intention* | *3 j · 6 j* |
-| **9.7.0** | La clôture d'exercice | 15 | Intention | 13 j · 30 j |
-| **9.8.0** | Immobilisations et stocks | 10 | Intention | 5 j · 10 j |
+| **9.7.0** | Immobilisations et stocks | 10 | Intention | 5 j · 10 j |
+| **9.8.0** | La clôture d'exercice | 15 | Intention | 13 j · 30 j |
 | **9.9.0** | Le cabinet à plusieurs | 8 | Intention | 10 j · 20 j |
 | *9.9.1* | *Entretien (hors des 13 demandées)* | *4* | *Intention* | *3 j · 6 j* |
 | **9.10.0** | La révision et les questions | 10 | Intention | 10 j · 20 j |
@@ -256,7 +256,7 @@ modifiable, c'est fait pour.
 |---|---|
 | **Durée** | construction 10 j · réaliste 20 j |
 | **Dépend de** | **J1** atteint, et le pilote **regardé en train de saisir** dans son logiciel actuel — une heure chez lui, c'est la dépendance qui décide de l'écran |
-| **Bloque** | **9.5.0** et **9.7.0** — les deux exigent que le pilote travaille vraiment dans le Cabinet. C'est une dépendance d'usage, pas de code |
+| **Bloque** | **9.5.0** et **9.8.0** — les deux exigent que le pilote travaille vraiment dans le Cabinet. C'est une dépendance d'usage, pas de code |
 | **Niveau de spec** | Intention : `CAHIER-DES-CHARGES.md` Partie 15, SPEC-UI-CAB-010 → 013 |
 | **Jalon** | le pilote continue-t-il dans le Cabinet ? Si non, on n'écrit pas la 9.5.0 avant de savoir pourquoi |
 
@@ -374,7 +374,7 @@ relance tous, parce que c'est celle où le moteur de rendu change.
 |---|---|
 | **Durée** | construction 10 j · réaliste 20 j |
 | **Dépend de** | **les formats de relevés** des banques des clients du pilote — un fichier réel de chaque, anonymisé ; la 9.3.0 utilisée |
-| **Bloque** | **9.7.0**, faiblement : les contrôles de clôture lisent les suspens bancaires. Rien d'autre |
+| **Bloque** | **9.8.0**, faiblement : les contrôles de clôture lisent les suspens bancaires. Rien d'autre |
 | **Niveau de spec** | Intention : Partie 15, SPEC-UI-CAB-020 → 022 ; `releves[]` **figé** dans SPEC-DATA-005 |
 | **Jalon** | **J2** (30/06/2027) : dix licences, le pilote qui ne revient pas en arrière |
 
@@ -419,7 +419,7 @@ suspens (*comptable*) ; le lettrage partiel (*comptable*) ; les tranches d'âge 
 |---|---|
 | **Durée** | construction 5 à 10 j · réaliste 20 j |
 | **Dépend de** | **le modèle de déclaration** que le pilote dépose réellement, un exemplaire rempli |
-| **Bloque** | **9.7.0**, faiblement : « TVA non déclarée » est l'un des contrôles avant clôture. Rien d'autre |
+| **Bloque** | **9.8.0**, faiblement : « TVA non déclarée » est l'un des contrôles avant clôture. Rien d'autre |
 | **Niveau de spec** | Intention : Partie 15, SPEC-UI-CAB-030 et 031 ; `declarations[]` **figé** dans SPEC-DATA-005 |
 | **Jalon** | le pilote dépose-t-il depuis le Cabinet ? |
 
@@ -473,54 +473,7 @@ des deux, jamais les deux (*toi* — je propose la banque quand le dossier a un 
 
 ---
 
-## 9.7.0 — La clôture d'exercice
-
-> *L'inventaire, les états, l'à-nouveau — et le flux retour vers le client, sans lequel les deux
-> bilans divergent pour toujours.*
-
-| | |
-|---|---|
-| **Durée** | construction 10 à 15 j · réaliste 30 j |
-| **Dépend de** | la présentation exacte des états (NCT 01) et des notes ; **un exercice complet du pilote** dans le Cabinet |
-| **Bloque** | **10.0.0** — la liasse part d'un exercice clos |
-| **Niveau de spec** | Intention : Partie 15, SPEC-UI-CAB-040 → 043, SPEC-UI-ENT-100 ; SPEC-FMT-007 réservé |
-| **Jalon** | **J3** (31/12/2027) : un second cabinet a commencé, vingt-cinq licences |
-
-| Id | Fonctionnalité | Côté | Spec |
-|---|---|---|---|
-| F-9.7.0-01 | Écritures d'inventaire **guidées** : dotations, provisions, charges et produits constatés d'avance, factures non parvenues et à établir, régularisations | Cabinet | SPEC-UI-CAB-040 |
-| F-9.7.0-02 | **Extourne automatique** au 1er jour de l'exercice suivant pour ce qui s'extourne | Cabinet | SPEC-UI-CAB-040 |
-| F-9.7.0-03 | Contrôles de clôture — comptes d'attente, brouillard restant, TVA non déclarée, balance des tiers — qui **ne bloquent jamais** | Cabinet | SPEC-UI-CAB-041, règle 6.0.0 |
-| F-9.7.0-04 | Clôture d'exercice **définitive et tracée** ; une réouverture exige un motif | Cabinet | SPEC-UI-CAB-041 |
-| F-9.7.0-05 | À-nouveaux **explicites**, calculés sur les écritures réelles seules — jamais comptés deux fois | Cabinet | SPEC-UI-CAB-041, règle 9.0.0 |
-| F-9.7.0-06 | L'exercice suivant s'ouvre **pendant** que le précédent se termine | Cabinet | SPEC-UI-CAB-041 |
-| F-9.7.0-07 | États financiers au format SCE : bilan, état de résultat, flux de trésorerie, notes | Cabinet | SPEC-UI-CAB-042 |
-| F-9.7.0-08 | Comparatif N / N-1, soldes intermédiaires de gestion, ratios | Cabinet | SPEC-UI-CAB-042 |
-| F-9.7.0-09 | Impression et PDF des états, par le moteur de pagination de la 7.31.0 | Cabinet | SPEC-UI-CAB-042 |
-| F-9.7.0-10 | **`.skanclose`** produit à la clôture, chiffré pour le client : à-nouveaux officiels, écritures d'inventaire, date de clôture | Cabinet | SPEC-FMT-007 |
-| F-9.7.0-11 | Un **PDF** lisible par n'importe qui dans le `.skanclose`, pour le client qui ne met jamais à jour | Cabinet | SPEC-UI-CAB-043 |
-| F-9.7.0-12 | **Le cabinet clôture quand même** si le client n'est pas à jour : le fichier attend et repart avec la relance suivante | Cabinet | SPEC-UI-CAB-043, règle 48 |
-| F-9.7.0-13 | L'entreprise importe le `.skanclose` : les à-nouveaux officiels sont posés | Entreprise | SPEC-UI-ENT-100 |
-| F-9.7.0-14 | L'exercice clos est **verrouillé** chez le client, et les écritures du comptable s'y lisent | Entreprise | SPEC-UI-ENT-100 |
-| F-9.7.0-15 | Une version trop ancienne dit « ton comptable a clôturé : mets à jour SkanFact » | Entreprise | SPEC-UI-ENT-100 |
-
-**Ce qui n'y est pas** : **la liasse**. Cette version produit des états **déduits de la balance**, et
-la page l'écrit. Confondre les deux ferait promettre ce que la 10.0.0 seule livre.
-
-**Ce qui la prouve** : actif = passif, résultat identique des deux côtés, à-nouveau égal aux soldes
-du 31/12 ; une clôture refusée puis acceptée ; la réouverture impossible sans motif. Et surtout
-**l'e2e du flux retour** : le cabinet clôture, le client importe, **les deux bilans sont identiques
-au millime** — le jumeau du test de parité, dans l'autre sens.
-
-**Ce qui reste à décider** : la présentation exacte NCT 01, les notes, les SIG et ratios retenus
-(*comptable*) ; simplifié contre complet, par dossier (*comptable*) ; le brouillard restant à la
-clôture (*comptable*) ; le format exact du `.skanclose` (*toi*, en 9.7.0) ; et côté client, ce
-qu'on fait de ses propres écritures dans un exercice que le cabinet vient de clore (*toi* — je
-propose l'archivage, jamais une perte silencieuse).
-
----
-
-## 9.8.0 — Immobilisations et stocks
+## 9.7.0 — Immobilisations et stocks
 
 > *Le dégressif, la sortie, les stocks valorisés — côté cabinet, pour les dossiers qui n'ont pas
 > SkanFact.*
@@ -529,22 +482,22 @@ propose l'archivage, jamais une perte silencieuse).
 |---|---|
 | **Durée** | construction 5 j · réaliste 10 j |
 | **Dépend de** | rien de nouveau : le linéaire, la cession et le coût moyen pondéré existent depuis 3.5.0 et 4.0.0 |
-| **Bloque** | **rien** dans l'ordre actuel — mais voir « Ce que la relecture n'a pas vu » : la 9.7.0 lit `immobilisations[]`, que **cette** version écrit |
+| **Bloque** | **9.8.0** — la clôture calcule ses dotations depuis `immobilisations[]`, que cette version est la première à remplir. C'est la raison de l'échange des deux numéros (Journal, v3) |
 | **Niveau de spec** | Intention : Partie 15, SPEC-UI-CAB-050 et 051 ; `immobilisations[]` **figé** dans SPEC-DATA-005 |
 | **Jalon** | aucun : phase courte, elle enchaîne |
 
 | Id | Fonctionnalité | Côté | Spec |
 |---|---|---|---|
-| F-9.8.0-01 | Fiches d'immobilisations tenues par le cabinet, **même modèle** que côté entreprise | Cabinet | SPEC-DATA-005 |
-| F-9.8.0-02 | Amortissement **dégressif**, taux réglable — jamais un coefficient en dur | Cabinet | SPEC-UI-CAB-050 |
-| F-9.8.0-03 | Amortissement **dérogatoire** (deux plans sur une fiche) | Cabinet | SPEC-UI-CAB-050 |
-| F-9.8.0-04 | Tableau d'amortissement de l'exercice et VNC par dossier | Cabinet | SPEC-UI-CAB-050 |
-| F-9.8.0-05 | Cessions et **mises au rebut** | Cabinet | SPEC-UI-CAB-050 |
-| F-9.8.0-06 | Subventions d'investissement | Cabinet | SPEC-UI-CAB-050 |
-| F-9.8.0-07 | Ce qui vient d'un paquet entre dans les mêmes fiches **sans ressaisie** ; jamais une fiche créée d'office | Cabinet | SPEC-UI-CAB-050 |
-| F-9.8.0-08 | Les dotations passées en écritures d'inventaire portent leur `ecritureId` sur l'année du plan | Cabinet | SPEC-DATA-005 |
-| F-9.8.0-09 | **Inventaire de stock** de fin d'exercice saisi (quantité × coût) | Cabinet | SPEC-UI-CAB-051 |
-| F-9.8.0-10 | La **variation de stock** devient une écriture d'inventaire (603 / 37) | Cabinet | SPEC-UI-CAB-051 |
+| F-9.7.0-01 | Fiches d'immobilisations tenues par le cabinet, **même modèle** que côté entreprise | Cabinet | SPEC-DATA-005 |
+| F-9.7.0-02 | Amortissement **dégressif**, taux réglable — jamais un coefficient en dur | Cabinet | SPEC-UI-CAB-050 |
+| F-9.7.0-03 | Amortissement **dérogatoire** (deux plans sur une fiche) | Cabinet | SPEC-UI-CAB-050 |
+| F-9.7.0-04 | Tableau d'amortissement de l'exercice et VNC par dossier | Cabinet | SPEC-UI-CAB-050 |
+| F-9.7.0-05 | Cessions et **mises au rebut** | Cabinet | SPEC-UI-CAB-050 |
+| F-9.7.0-06 | Subventions d'investissement | Cabinet | SPEC-UI-CAB-050 |
+| F-9.7.0-07 | Ce qui vient d'un paquet entre dans les mêmes fiches **sans ressaisie** ; jamais une fiche créée d'office | Cabinet | SPEC-UI-CAB-050 |
+| F-9.7.0-08 | Les dotations passées en écritures d'inventaire portent leur `ecritureId` sur l'année du plan | Cabinet | SPEC-DATA-005 |
+| F-9.7.0-09 | **Inventaire de stock** de fin d'exercice saisi (quantité × coût) | Cabinet | SPEC-UI-CAB-051 |
+| F-9.7.0-10 | La **variation de stock** devient une écriture d'inventaire (603 / 37) | Cabinet | SPEC-UI-CAB-051 |
 
 **Ce qui n'y est pas** : l'inventaire permanent côté cabinet — il attend qu'un cabinet le demande.
 
@@ -557,6 +510,53 @@ subventions (*comptable*) ; le dérogatoire — **s'il n'est pas demandé, il n'
 (*comptable*) ; FIFO si un dossier l'exige (*comptable*, sinon non).
 
 **Le risque de cette version** : recopier le moteur au lieu de le partager par `compta.js`.
+
+---
+
+## 9.8.0 — La clôture d'exercice
+
+> *L'inventaire, les états, l'à-nouveau — et le flux retour vers le client, sans lequel les deux
+> bilans divergent pour toujours.*
+
+| | |
+|---|---|
+| **Durée** | construction 10 à 15 j · réaliste 30 j |
+| **Dépend de** | **la 9.7.0** (sans fiches de biens, pas de dotations pour un dossier hors SkanFact) ; la présentation exacte des états (NCT 01) et des notes ; **un exercice complet du pilote** dans le Cabinet |
+| **Bloque** | **10.0.0** — la liasse part d'un exercice clos |
+| **Niveau de spec** | Intention : Partie 15, SPEC-UI-CAB-040 → 043, SPEC-UI-ENT-100 ; SPEC-FMT-007 réservé |
+| **Jalon** | **J3** (31/12/2027) : un second cabinet a commencé, vingt-cinq licences |
+
+| Id | Fonctionnalité | Côté | Spec |
+|---|---|---|---|
+| F-9.8.0-01 | Écritures d'inventaire **guidées** : dotations, provisions, charges et produits constatés d'avance, factures non parvenues et à établir, régularisations | Cabinet | SPEC-UI-CAB-040 |
+| F-9.8.0-02 | **Extourne automatique** au 1er jour de l'exercice suivant pour ce qui s'extourne | Cabinet | SPEC-UI-CAB-040 |
+| F-9.8.0-03 | Contrôles de clôture — comptes d'attente, brouillard restant, TVA non déclarée, balance des tiers — qui **ne bloquent jamais** | Cabinet | SPEC-UI-CAB-041, règle 6.0.0 |
+| F-9.8.0-04 | Clôture d'exercice **définitive et tracée** ; une réouverture exige un motif | Cabinet | SPEC-UI-CAB-041 |
+| F-9.8.0-05 | À-nouveaux **explicites**, calculés sur les écritures réelles seules — jamais comptés deux fois | Cabinet | SPEC-UI-CAB-041, règle 9.0.0 |
+| F-9.8.0-06 | L'exercice suivant s'ouvre **pendant** que le précédent se termine | Cabinet | SPEC-UI-CAB-041 |
+| F-9.8.0-07 | États financiers au format SCE : bilan, état de résultat, flux de trésorerie, notes | Cabinet | SPEC-UI-CAB-042 |
+| F-9.8.0-08 | Comparatif N / N-1, soldes intermédiaires de gestion, ratios | Cabinet | SPEC-UI-CAB-042 |
+| F-9.8.0-09 | Impression et PDF des états, par le moteur de pagination de la 7.31.0 | Cabinet | SPEC-UI-CAB-042 |
+| F-9.8.0-10 | **`.skanclose`** produit à la clôture, chiffré pour le client : à-nouveaux officiels, écritures d'inventaire, date de clôture | Cabinet | SPEC-FMT-007 |
+| F-9.8.0-11 | Un **PDF** lisible par n'importe qui dans le `.skanclose`, pour le client qui ne met jamais à jour | Cabinet | SPEC-UI-CAB-043 |
+| F-9.8.0-12 | **Le cabinet clôture quand même** si le client n'est pas à jour : le fichier attend et repart avec la relance suivante | Cabinet | SPEC-UI-CAB-043, règle 48 |
+| F-9.8.0-13 | L'entreprise importe le `.skanclose` : les à-nouveaux officiels sont posés | Entreprise | SPEC-UI-ENT-100 |
+| F-9.8.0-14 | L'exercice clos est **verrouillé** chez le client, et les écritures du comptable s'y lisent | Entreprise | SPEC-UI-ENT-100 |
+| F-9.8.0-15 | Une version trop ancienne dit « ton comptable a clôturé : mets à jour SkanFact » | Entreprise | SPEC-UI-ENT-100 |
+
+**Ce qui n'y est pas** : **la liasse**. Cette version produit des états **déduits de la balance**, et
+la page l'écrit. Confondre les deux ferait promettre ce que la 10.0.0 seule livre.
+
+**Ce qui la prouve** : actif = passif, résultat identique des deux côtés, à-nouveau égal aux soldes
+du 31/12 ; une clôture refusée puis acceptée ; la réouverture impossible sans motif. Et surtout
+**l'e2e du flux retour** : le cabinet clôture, le client importe, **les deux bilans sont identiques
+au millime** — le jumeau du test de parité, dans l'autre sens.
+
+**Ce qui reste à décider** : la présentation exacte NCT 01, les notes, les SIG et ratios retenus
+(*comptable*) ; simplifié contre complet, par dossier (*comptable*) ; le brouillard restant à la
+clôture (*comptable*) ; le format exact du `.skanclose` (*toi*, en 9.8.0) ; et côté client, ce
+qu'on fait de ses propres écritures dans un exercice que le cabinet vient de clore (*toi* — je
+propose l'archivage, jamais une perte silencieuse).
 
 ---
 
@@ -767,24 +767,19 @@ garde ses identifiants en `02n`. **Les renuméroter aurait été pire** : un ide
 cahier qui annonçait la convention « dizaine = version » a été corrigée pour dire la vérité : la
 dizaine groupe les écrans d'une version, elle ne nomme pas son numéro.
 
-**3. La clôture d'exercice lit une liste que la version suivante écrit.** C'est un défaut d'ordre,
-pas de rédaction, et il est dans le plan depuis `PLAN-COMPTABLE.md`. La **9.7.0** (clôture) passe les
+**3. La clôture d'exercice lisait une liste que la version suivante écrit — tranché en v3.** C'était
+un défaut d'ordre, pas de rédaction, et il venait de `PLAN-COMPTABLE.md`. La clôture passe les
 dotations en écritures d'inventaire, et le cahier précise qu'elles sont « calculées depuis
-`immobilisations[].plan` » (SPEC-UI-CAB-040). Or `immobilisations[]` n'est rempli qu'en **9.8.0**
-(SPEC-UI-CAB-050). Pour un dossier **sur SkanFact**, ce n'est pas bloquant : les dotations arrivent
-déjà calculées dans le paquet, depuis la 9.0.0 de l'app entreprise. Pour un dossier **hors
-SkanFact** — c'est-à-dire la majorité du portefeuille d'un cabinet, et la raison d'être du produit
-payant — le cabinet n'a nulle part où tenir les biens, donc **il ne peut pas clôturer** cet exercice
-correctement avant la 9.8.0. Deux issues, et c'est une décision de Skander :
-
-- **Échanger les deux versions** (immobilisations avant clôture). C'est la solution propre. Elle
-  coûte une seconde renumérotation de deux numéros dans sept documents, ce que je ne fais pas de ma
-  propre initiative après en avoir déjà fait une.
-- **Garder l'ordre et écrire la limite** : la 9.7.0 clôture les dossiers sur SkanFact, et la
-  clôture d'un dossier hors SkanFact attend la 9.8.0. C'est tenable, mais il faut que la page le
-  dise, sinon un comptable clôture un dossier sans ses dotations et ne s'en aperçoit qu'au bilan.
-
-Tant que ce n'est pas tranché, la ligne « Bloque » de la 9.8.0 porte le renvoi vers ce paragraphe.
+`immobilisations[].plan` » (SPEC-UI-CAB-040) ; or `immobilisations[]` n'était rempli que par la
+version **suivante** (SPEC-UI-CAB-050). Pour un dossier **sur SkanFact**, sans conséquence : les
+dotations arrivent déjà calculées dans le paquet depuis la 9.0.0 de l'app entreprise. Pour un dossier
+**hors SkanFact** — c'est-à-dire la majorité du portefeuille d'un cabinet, et la raison d'être du
+produit payant — le cabinet n'avait nulle part où tenir les biens, donc il ne pouvait pas clôturer
+cet exercice correctement. **Les deux versions ont été échangées** : les immobilisations passent en
+**9.7.0**, la clôture en **9.8.0**. Aucune dépendance en sens inverse — les immobilisations n'ont
+besoin de rien de la clôture — et la version courte (5 j) passe avant la longue (13 j), ce qui est
+aussi meilleur pour le rythme de livraison. L'échange a été appliqué aux sept documents en même
+temps, comme la renumérotation de la v2.
 
 **4. Le tableau récapitulatif et les sections ne donnaient pas les mêmes durées.** Trois versions
 ont une fourchette dans `PLAN-DEVELOPPEMENT.md` (« 5 à 10 j », « 10 à 15 j ») ; la v1 en prenait le
@@ -808,7 +803,7 @@ ce document ».
 
 - **Correction 1 — la numérotation est tranchée.** La règle du projet s'applique : la licence du
   Cabinet ajoute des fonctionnalités, donc elle devient **9.4.0** et tout ce qui suivait décale d'un
-  cran (banque 9.5.0, déclaration 9.6.0, clôture 9.7.0, immobilisations 9.8.0, collaborateurs 9.9.0,
+  cran (banque 9.5.0, déclaration 9.6.0, clôture 9.8.0, immobilisations 9.7.0, collaborateurs 9.9.0,
   révision 9.10.0 ; la 10.0.0 ne bouge pas). Les versions d'entretien suivent : 9.4.1, 9.6.1, 9.9.1.
   **Appliquée aux sept documents** (281 occurrences), pas seulement ici — voir « Ce que la relecture
   n'a pas vu », point 1. Le paragraphe « Une remarque sur deux numéros » a disparu : il n'avait plus
@@ -852,3 +847,56 @@ ce document ».
 **Ce qui n'a pas été touché**, comme demandé : la structure par version, les tableaux de
 fonctionnalités (hors renommage des identifiants), « Au-delà de la 10.0.0 » et « Comment lire ce
 document ».
+
+### v3 — 16/09/2026 (un audit extérieur de l'ensemble documentaire ; aucun fichier de code n'a changé)
+
+**Ce qui a changé** :
+
+- **L'ordre clôture / immobilisations est TRANCHÉ**, et c'était le seul point de fond ouvert depuis
+  la v2. Les immobilisations passent en **9.7.0**, la clôture d'exercice en **9.8.0** : la clôture
+  calcule ses dotations depuis `immobilisations[]`, que la version des immobilisations est la
+  première à remplir, et sans elle un dossier **hors SkanFact** — le dossier payant — ne peut pas
+  être clôturé avec ses amortissements. Échange appliqué aux **sept documents** en une passe (83
+  numéros, plus les blocs de sections et les deux phases de `PLAN-DEVELOPPEMENT.md`), avec les mêmes
+  garde-fous que la renumérotation de la v2.
+- **Le compte des modules** : « quinze modules » décrivait l'application d'aujourd'hui dans
+  `PLAN-DEVELOPPEMENT.md` et `QUESTIONS.md` alors que `MODULES` en contient neuf. Corrigé là où la
+  phrase parle du présent ; **laissé tel quel** dans `CLAUDE.md` § 7.0.0, `PLAN-UX.md` et
+  `CHANGELOG.md`, où « quinze » raconte les quinze chantiers livrés en six semaines — réécrire une
+  phrase historique pour la faire coller au décompte du jour serait falsifier un journal.
+- **`ROADMAP.md` s'appelait « Plan des versions à venir »**, exactement ce qu'est ce document-ci. Son
+  titre dit maintenant qu'il est une archive et où se trouve ce qui reste à faire. Son bandeau de
+  direction, lui, était déjà juste : il disait déjà que la comptabilité se construit dans le Cabinet.
+- **`QUESTIONS.md` § 16 renvoie ici pour les durées**, et dit pourquoi les deux chiffres diffèrent
+  (une fourchette contre son milieu).
+
+**Ce qui a été refusé, et pourquoi** :
+
+- **« Découper `PLAN-CABINET.md` en archive + parties vivantes »** : *refusé*. L'audit lui reproche
+  quatre phrases dépassées. Deux sont **déjà corrigées dans le document** — « le cabinet ne paie
+  jamais » est barré depuis le 15/09 avec le renvoi vers `DIRECTION.md`. Les deux autres ne sont pas
+  fausses : « pas de serveur en première version » parle du **transport des paquets**, pas de la
+  plateforme de licences, et cette phrase est toujours vraie (le paquet reste un fichier). Un
+  découpage coûterait une demi-journée pour corriger deux phrases qui n'ont pas besoin de l'être.
+- **« `PLAN-PLATEFORME.md` § 15 bis dit que la licence du Cabinet s'insère après la 9.3.0 »** :
+  *le document ne dit pas ça*. Il écrit « l'ordre est au § 7 (après la saisie, étape 4) », sans
+  numéro de version — c'est précisément pourquoi la renumérotation de la v2 ne l'a pas touché.
+- **« Écrire `PLAN-VENTE.md` »** : *refusé maintenant, pas sur le principe*. Un plan de vente qui
+  dit combien de prospects par semaine et quelles objections attendre, écrit sans avoir parlé à un
+  seul cabinet, serait de la spéculation numérotée — exactement ce que ce document s'interdit pour
+  les versions. Il s'écrit **après** les trois appels de prix, pas avant. La règle du projet est la
+  même depuis le seuil de retenue à la source : *la valeur par défaut d'une règle qu'on ne connaît
+  pas est celle qui ne fait rien.*
+
+**Ce que l'audit a inventé**, et qui doit être dit parce que c'est la cinquième relecture extérieure
+à le faire : **« 18 000 lignes de documentation »**. Le dépôt en compte **15 181**, README compris.
+Ses chiffres par document sont faux dans les deux sens — `CAHIER-DES-CHARGES.md` annoncé à 4 500
+lignes en fait 2 918, `PLAN-CABINET.md` annoncé à 400 en fait 319 — et `README.md` n'est pas compté.
+Le chiffre gonflé sert son argument, qui est par ailleurs juste : il n'avait pas besoin d'être gonflé.
+
+**Ce que l'audit a vu, et qui ne se corrige pas dans un fichier** : zéro client payant, le comptable
+pilote jamais sollicité formellement, les six démarches bloquantes non faites, la plateforme pas en
+production. Ces quatre faits sont déjà écrits dans `QUESTIONS.md` § 3 et § 20 et dans la Phase 0 de
+`PLAN-DEVELOPPEMENT.md` — ils y sont depuis le 15/09. Les réécrire une sixième fois ne les fera pas
+avancer d'un jour. **Le seul document que cette session ajoute est `PAGE-UNIQUE.md`**, parce que la
+Phase 0 le confie explicitement à Claude et qu'il ne l'avait pas écrit.

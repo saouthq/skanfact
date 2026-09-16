@@ -78,7 +78,7 @@ fait.*
 - **Comment les deux logiciels se parlent ?** Par un **paquet mensuel** : un fichier chiffré que
   l'entreprise fabrique en un clic et envoie à son comptable par mail, WhatsApp ou clé USB. Le
   comptable l'ouvre dans son application, et tout est là.
-- **Où en est-on ?** L'application entreprise est complète (version 9.0.0, quinze modules). Le
+- **Où en est-on ?** L'application entreprise est complète (version 9.0.0, neuf modules et vingt et une pages). Le
   Cabinet reçoit les paquets, vérifie, relance, exporte, mais **ne tient pas encore de
   comptabilité** : c'est le chantier qui commence (versions 9.1.0 à 10.0.0, § 16).
 - **Qu'est-ce qui rend SkanFact différent ?** Aucun logiciel de comptabilité ne reçoit les écritures
@@ -278,7 +278,7 @@ produit vendu.*
   père (qui gère deux sociétés), son frère — c'est lui qui a trouvé le défaut de la retenue à la
   source en une phrase, le premier retour d'un utilisateur qui n'est ni l'auteur ni le propriétaire.
   **Zéro client payant, zéro licence vendue à un tiers, zéro cabinet équipé.** Il faut le lire avec
-  les quinze modules livrés : le produit existe, le marché n'a pas encore répondu.
+  tout ce qui est livré : le produit existe, le marché n'a pas encore répondu.
 - **Combien de vraies factures sont passées par SkanFact ?** **À toi de le dire** — je ne peux pas le
   savoir depuis le code, et c'est le seul chiffre qui dise si le produit est éprouvé. Une centaine
   de vraies factures émises et envoyées à de vrais clients vaut plus que n'importe quel test.
@@ -342,10 +342,10 @@ revenus » n'avait pas de suite. Voici la suite. Les dates sont des propositions
   l'Ordre, ou à défaut celle du juriste. Si le pilote est revenu à son ancien logiciel : on arrête
   le Cabinet à la 9.5.0 et on demande pourquoi, avant d'écrire une ligne de la 9.5.0. Si l'Ordre a
   dit non : plan B de prix (§ 17), sans toucher au code.
-- **Fin 2027 (après 9.7.0).** Ce qui doit être vrai : un **second cabinet** qui a commencé, même sur
+- **Fin 2027 (après 9.8.0).** Ce qui doit être vrai : un **second cabinet** qui a commencé, même sur
   un dossier ; **vingt-cinq licences entreprise** ; un chiffre d'affaires qui couvre au moins les
   coûts fixes (domaine, certificats, abonnements). Si le second cabinet n'existe pas : le Cabinet
-  reste un produit pour un seul cabinet, et 9.8.0 → 10.0.0 ne se justifient plus — on livre ce que
+  reste un produit pour un seul cabinet, et 9.7.0 → 10.0.0 ne se justifient plus — on livre ce que
   le pilote demande, et rien d'autre.
 - **Ce qui déclenche l'arrêt, à n'importe quel moment.** Si à un jalon **aucune** licence n'a été
   vendue depuis le jalon précédent, le trimestre suivant ne contient pas de version nouvelle. Cette
@@ -662,7 +662,7 @@ revenus » n'avait pas de suite. Voici la suite. Les dates sont des propositions
   fin d'année) ?** Le client ne les voit pas : son livre à lui ne connaît que ses pièces. Tant que
   ça ne dure qu'un exercice, c'est sans conséquence. Mais **à la clôture, l'écart devient
   permanent** : les à-nouveaux de l'année suivante chez le client seraient faux, et l'écart
-  grandirait chaque année. D'où le **flux retour de clôture** (§ 16, version 9.7.0) : le cabinet
+  grandirait chaque année. D'où le **flux retour de clôture** (§ 16, version 9.8.0) : le cabinet
   renvoie les à-nouveaux officiels et la liste de ses écritures d'inventaire, le client les importe
   et verrouille son exercice. **Décidé.**
 - **Que se passe-t-il quand un client renvoie un mois déjà reçu ?** Si les écritures de ce mois ne
@@ -691,7 +691,7 @@ revenus » n'avait pas de suite. Voici la suite. Les dates sont des propositions
   le même dossier sans s'écraser, et chaque écriture garde qui l'a faite et quand (la piste
   d'audit). Postes illimités. **Décidé.**
 - **Il remplace Sage ?** C'est l'objectif, atteint version par version. Jusqu'à la clôture
-  d'exercice (9.7.0) le cabinet pourra continuer d'exporter vers son logiciel pour ce qui manque
+  d'exercice (9.8.0) le cabinet pourra continuer d'exporter vers son logiciel pour ce qui manque
   encore.
 - **Comment il reprend ses soixante dossiers existants ?** Par une balance d'ouverture importée
   (CSV ou Excel sorti de son logiciel actuel) et un plan de comptes importé (9.2.0). C'est le geste
@@ -873,7 +873,7 @@ revenus » n'avait pas de suite. Voici la suite. Les dates sont des propositions
   clair romprait la promesse du produit. À l'appairage, le client génère donc **sa propre paire de
   clés** et rend sa clé publique au cabinet (le fichier d'appairage devient un aller-retour) ; le
   fichier de questions (`.skanask`) est scellé pour lui seul, avec le mécanisme du paquet, qui
-  existe depuis la 6.2.0. Le même aller-retour sert au flux de clôture (`.skanclose`, 9.7.0) : une
+  existe depuis la 6.2.0. Le même aller-retour sert au flux de clôture (`.skanclose`, 9.8.0) : une
   seule clé du client, deux usages.
 - **Comment le cabinet sait que le paquet vient bien de ce client ?** Aujourd'hui : **il ne le sait
   pas.** Il sait seulement que le paquet a été scellé pour lui, et il croit le matricule écrit
@@ -1603,7 +1603,7 @@ revenus » n'avait pas de suite. Voici la suite. Les dates sont des propositions
   reste. **Décidé.**
 - **Dans quel ordre ensuite ?** Le § 16 détaille chaque version. En résumé : 9.2.0 le livre par
   dossier → 9.3.0 la saisie → la licence du Cabinet → 9.5.0 la banque → 9.6.0 le fiscal mensuel →
-  9.7.0 la clôture d'exercice → 9.8.0 immobilisations et stocks → 9.9.0 collaborateurs → 9.10.0
+  9.7.0 immobilisations et stocks → 9.8.0 la clôture d'exercice → 9.9.0 collaborateurs → 9.10.0
   révision et questions → 10.0.0 liasse et exemple complet. **Décidé.**
 - **Pourquoi la licence du Cabinet arrive après la saisie ?** Parce que c'est la saisie qui crée le
   premier dossier hors SkanFact, donc la première chose qu'on peut vendre. Avant, il n'y a rien à
@@ -1618,7 +1618,7 @@ revenus » n'avait pas de suite. Voici la suite. Les dates sont des propositions
   commencé avant que la précédente soit sur le bureau du pilote.
 - **Qu'est-ce qui exige le comptable ?** Son plan de comptes et son logiciel actuel (9.2.0), le
   regarder saisir (9.3.0), les relevés de ses clients (9.5.0), le modèle de déclaration mensuelle
-  (9.6.0), la présentation des états financiers (9.7.0), sa méthode de révision (9.10.0), la liasse
+  (9.6.0), la présentation des états financiers (9.8.0), sa méthode de révision (9.10.0), la liasse
   (10.0.0). Et un vrai dossier dès la 9.1.0. Et une question à lui poser tout de suite : **quel
   logiciel il veut remplacer, et sur quels trois écrans il jugera que c'est fait.**
 - **Qu'est-ce qui exige Skander ?** Le nom du produit cabinet ; les prix ; l'Ordre ; l'INPDP ; les
@@ -2099,6 +2099,11 @@ qui manque, mesuré dans le dépôt le 15/09/2026, et ce qu'on en fait.*
 prouve. Les deux applications sortent ensemble sous le même numéro. Les durées sont des ordres de
 grandeur de construction, hors attente des réponses.*
 
+> **Le tableau consolidé des durées et le compte des fonctionnalités vivent dans
+> `VERSIONS-A-VENIR.md`, et c'est lui qui fait foi.** Ici on décrit le CONTENU d'une version ; là-bas
+> on compte ce qu'elle porte, ce qu'elle bloque et ce qui reste à spécifier. Quand les deux donnent
+> une durée différente, c'est que celle-ci est une fourchette et celle-là son milieu.*
+
 **Ce que ces durées ne disent pas, et qu'il faut lire avant de les additionner.** Mises bout à bout,
 elles font environ **seize à dix-neuf semaines** — quatre mois pour aller de la 9.1.0 à la 10.0.0.
 C'est le temps de **construction pure**, et ce serait vrai si rien d'autre n'existait. Or il y a le
@@ -2310,7 +2315,15 @@ version, ce qui est la meilleure façon de ne jamais les faire (§ 11).*
   (`core.js` → `compta.js` fini, `run-tests.js` découpé par domaine), retours de bêta hors
   nouveautés. **Aucune fonction nouvelle.**
 
-### 9.7.0 — La clôture d'exercice (deux à trois semaines)
+### 9.7.0 — Immobilisations et stocks (une semaine)
+
+- **Cabinet.** Fiches d'immobilisations tenues par le cabinet (linéaire et dégressif, tableau de
+  l'exercice, cessions, mises au rebut, subventions), inventaire de stock de fin d'exercice et sa
+  variation en écriture ; ce qui vient d'un paquet entre dans les mêmes fiches sans ressaisie.
+- **Preuve.** Test du dégressif contre un calcul à la main ; parité avec l'app entreprise sur les
+  biens venus d'un paquet.
+
+### 9.8.0 — La clôture d'exercice (deux à trois semaines)
 
 - **Cabinet.** Écritures d'inventaire guidées (dotations, provisions, CCA, FNP, PCA, FAE,
   régularisations) avec extourne automatique ; contrôles de clôture (comptes d'attente, brouillard
@@ -2346,14 +2359,6 @@ version, ce qui est la meilleure façon de ne jamais les faire (§ 11).*
   du 31/12 ; e2e : une clôture refusée puis acceptée, la réouverture impossible ; **e2e du flux
   retour : le cabinet clôture, le client importe, le bilan des deux applications est identique au
   millime** — le jumeau du test de parité, dans l'autre sens.
-
-### 9.8.0 — Immobilisations et stocks (une semaine)
-
-- **Cabinet.** Fiches d'immobilisations tenues par le cabinet (linéaire et dégressif, tableau de
-  l'exercice, cessions, mises au rebut, subventions), inventaire de stock de fin d'exercice et sa
-  variation en écriture ; ce qui vient d'un paquet entre dans les mêmes fiches sans ressaisie.
-- **Preuve.** Test du dégressif contre un calcul à la main ; parité avec l'app entreprise sur les
-  biens venus d'un paquet.
 
 ### 9.9.0 — Le cabinet à plusieurs (deux semaines)
 

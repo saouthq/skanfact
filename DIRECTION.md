@@ -351,8 +351,8 @@ remplacées). Le site et l'aide suivent les versions.
 | 4 | **P 0.3 + 9.4.0** — la licence du Cabinet : clé, quota, comptage, garde-fou, écran, console, licence dans le manifeste, `e2e:cabinet-licence` | l'Ordre (avant de vendre, pas avant de construire) |
 | 5 | **9.5.0** — banque, rapprochement, lettrage automatique, balance âgée | les formats de relevés |
 | 6 | **9.6.0** — la déclaration mensuelle tunisienne | le modèle de déclaration |
-| 7 | **9.7.0** — inventaire, clôture d'exercice, états SCE, N/N-1 | la présentation NCT 01 |
-| 8 | **9.8.0** — immobilisations dégressif, stocks | rien |
+| 7 | **9.7.0** — immobilisations dégressif, stocks | rien |
+| 8 | **9.8.0** — inventaire, clôture d'exercice, états SCE, N/N-1 | la présentation NCT 01 |
 | 9 | **9.9.0** — collaborateurs, multi-poste (A10), verrouillage | rien |
 | 10 | **9.10.0** — révision, questions au client dans les deux sens | la méthode de révision |
 | 11 | **10.0.0** — liasse, annuel, jeu d'exemple complet ; site et aide à jour | la liasse de l'année |

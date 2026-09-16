@@ -1,4 +1,11 @@
-# Plan des versions à venir
+# ROADMAP — archive : le plan des versions 2.4.0 → 5.2.0, intégralement livré
+
+> **Ce document est une ARCHIVE. Il n'est plus mis à jour.** Ce qui reste à faire vit dans
+> **`VERSIONS-A-VENIR.md`** (l'inventaire, version par version) et **`PLAN-DEVELOPPEMENT.md`** (le
+> pilotage). On garde celui-ci pour une seule raison : il dit ce qui a été promis le 11/09/2026 et
+> ce qui a réellement été livré — c'est la trace qui permet de juger si les estimations valaient
+> quelque chose. Son titre disait « Plan des versions à venir », le même que l'autre document : on
+> ne pouvait pas savoir lequel ouvrir.
 
 Établi le 11/09/2026, après la 2.3.0. **Rien n'est commencé tant que Skander n'a pas donné son feu vert.**
 

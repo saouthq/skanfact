@@ -2458,8 +2458,8 @@ clôture, fiscal tunisien, cabinet, technique) à ce que le moteur de l'app entr
 et à ce que le Cabinet n'a pas, puis découpe en dix versions : **9.1.0** livres lus dans les paquets,
 **9.2.0** le livre propre à chaque dossier (plan SCE complet, import du paquet EN écritures, reprise
 d'ouverture), **9.3.0** la saisie au kilomètre avec brouillard/validation, **9.5.0** banque et
-rapprochement automatique, **9.6.0** déclaration mensuelle tunisienne, **9.7.0** clôture d'exercice et
-états SCE, **9.8.0** immobilisations dégressif et stocks, **9.9.0** collaborateurs, multi-poste, piste
+rapprochement automatique, **9.6.0** déclaration mensuelle tunisienne, **9.7.0** immobilisations
+dégressif et stocks, **9.8.0** clôture d'exercice et états SCE, **9.9.0** collaborateurs, multi-poste, piste
 d'audit, **9.10.0** révision et questions au client, **10.0.0** liasse et jeu d'exemple complet.
 Décisions d'architecture : chaque dossier porte SON livre (les écritures venues d'un paquet portent leur
 source et ne se modifient pas ici), le moteur d'écritures sort de `core.js` vers un module pur partagé
@@ -2573,18 +2573,30 @@ document n'est ni une spécification (`CAHIER-DES-CHARGES.md`) ni un calendrier
 **v2 (16/09/2026) — la renumérotation, appliquée à tout le dépôt.** La règle du projet veut que le
 troisième chiffre soit réservé aux correctifs : la licence du Cabinet ajoute des fonctionnalités,
 elle est donc **9.4.0** (et non 9.3.x / P 0.3), l'entretien qui la suit **9.4.1**, et tout ce qui
-suivait décale d'un cran — banque **9.5.0**, déclaration **9.6.0**, clôture **9.7.0**,
-immobilisations **9.8.0**, collaborateurs **9.9.0**, révision **9.10.0**, entretiens **9.6.1** et
+suivait décale d'un cran — banque **9.5.0**, déclaration **9.6.0**, immobilisations **9.7.0**,
+clôture **9.8.0**, collaborateurs **9.9.0**, révision **9.10.0**, entretiens **9.6.1** et
 **9.9.1** ; la 10.0.0 ne bouge pas. **281 occurrences dans sept documents**, en une seule passe
 simultanée avec un garde-fou sur les versions livrées et stables — renuméroter un seul document
 aurait fabriqué la divergence que le projet combat depuis la 6.8.0. Les identifiants
 `SPEC-UI-CAB-0nn` n'ont **pas** été renumérotés (un identifiant qu'on renumérote ne sert plus à
 rien) : leur dizaine groupe les écrans d'une version, elle ne nomme plus son numéro, et la Partie 15
-du cahier le dit. **Le défaut d'ordre trouvé au passage, et pas encore tranché** : la 9.7.0
-(clôture) passe les dotations depuis `immobilisations[]`, que la 9.8.0 écrit — sans conséquence pour
-un dossier sur SkanFact (les dotations arrivent dans le paquet), bloquant pour un dossier **hors
-SkanFact**, qui est justement le dossier payant. Deux issues au choix de Skander : échanger les deux
-versions, ou garder l'ordre et écrire la limite sur la page.
+du cahier le dit.
+
+**v3 (16/09/2026) — l'ordre clôture / immobilisations, tranché.** La clôture calcule ses dotations
+depuis `immobilisations[]`, que la version des immobilisations est la première à remplir : sans
+elle, un dossier **hors SkanFact** — le dossier payant — ne peut pas être clôturé avec ses
+amortissements. Les deux versions sont **échangées** : immobilisations en **9.7.0**, clôture en
+**9.8.0**. Aucune dépendance en sens inverse, et la version courte passe avant la longue. 83 numéros
+dans sept documents, plus les blocs de sections et les phases 6 et 7 de `PLAN-DEVELOPPEMENT.md`.
+Corrigé au passage : « quinze modules » là où la phrase décrit l'application d'aujourd'hui (elle en
+porte **neuf**) — mais **pas** dans les phrases historiques de ce fichier, de `PLAN-UX.md` et du
+`CHANGELOG.md`, où « quinze » compte les chantiers de la 7.0.0 ; `ROADMAP.md` s'appelle désormais
+une archive, parce que son titre était « Plan des versions à venir », le même que l'autre document ;
+`QUESTIONS.md` § 16 renvoie à `VERSIONS-A-VENIR.md` pour les durées. **Refusé** : découper
+`PLAN-CABINET.md` (deux des quatre phrases reprochées sont déjà barrées, les deux autres sont
+vraies — « pas de serveur » parle du transport des paquets, pas des licences) et écrire un plan de
+vente avant d'avoir appelé un seul cabinet. **`PAGE-UNIQUE.md` est écrit** : c'est la seule tâche
+documentaire que la Phase 0 confie à Claude, et elle ne l'était pas.
 
 ### Le cahier des charges — `CAHIER-DES-CHARGES.md` (15/09/2026)
 

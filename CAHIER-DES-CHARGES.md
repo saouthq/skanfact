@@ -71,7 +71,7 @@ migrations. En cas de contradiction avec `DIRECTION.md`, `DIRECTION.md` fait foi
 | `.skanpair` | le fichier d'appairage cabinet → client | JSON en clair | non | non (rien de secret ; l'empreinte se dicte) | SPEC-FMT-002 |
 | `.skanrecover` | la clé de secours du cabinet | JSON, coffre AES-256-GCM | oui, par mot de passe distinct | non | SPEC-FMT-003 |
 | `.skanask` | une question cabinet → client (9.10.0) | JSON scellé | oui, pour le client (X25519) | oui, par le cabinet | SPEC-FMT-006 (Cible) |
-| `.skanclose` | la clôture d'exercice cabinet → client (9.7.0) | ZIP scellé (JSON + PDF) | oui, pour le client | oui, par le cabinet | SPEC-FMT-007 (Cible) |
+| `.skanclose` | la clôture d'exercice cabinet → client (9.8.0) | ZIP scellé (JSON + PDF) | oui, pour le client | oui, par le cabinet | SPEC-FMT-007 (Cible) |
 | `SKAN1.…` | une clé de licence (chaîne, pas un fichier) | `SKAN1.<json b64url>.<sig b64url>` | non | oui, Ed25519 | SPEC-DATA-008 |
 
 ### Dossiers
@@ -410,7 +410,7 @@ ultérieur est facultatif à la lecture.
 | `ecritures[].source` | `'skanfact'|'saisie'|'banque'|'inventaire'|'an'|'import'|'od'` | `skanfact` porte `mois` et `docId` ; modifiable en brouillard avec trace (`CLAUDE.md`, direction 15/09) |
 | `ecritures[].lignes[]` | `{ compte, tiersId?, libelle, debit: number ≥ 0, credit: number ≥ 0, lettre: string }` | `debit === 0 \|\| credit === 0` (jamais les deux) ; **un montant négatif change de colonne** |
 | `lettrages[]` | `{ lettre, compte, ecritures: string[], le, par }` | la somme débit − crédit des lignes lettrées **= 0** au millime |
-| `releves[]`, `immobilisations[]`, `declarations[]` | Array | `[]` tant que 9.5.0 / 9.8.0 / 9.6.0 ne les remplissent pas ; leur **forme est figée ici** (exemple ci-dessus, invariants ci-dessous) — la v0 les disait « hors de ce document », la v1 les a spécifiées, la v1.1 corrige cette ligne restée fausse |
+| `releves[]`, `immobilisations[]`, `declarations[]` | Array | `[]` tant que 9.5.0 / 9.7.0 / 9.6.0 ne les remplissent pas ; leur **forme est figée ici** (exemple ci-dessus, invariants ci-dessous) — la v0 les disait « hors de ce document », la v1 les a spécifiées, la v1.1 corrige cette ligne restée fausse |
 | `ouverture` | `{ date, source: 'balance'|'skanfact'|null, lignes: [{ compte, debit, credit }] }` | la balance d'ouverture de reprise, transformée en une écriture AN `piece: "OUVERTURE"` |
 | `audit[]` | `{ quand: number, qui: string, quoi: string, detail?: string }` | **jamais purgé** |
 
@@ -454,7 +454,7 @@ montant porte un signe, parce que c'est ainsi que la banque l'écrit) ; `rapproc
 l'écart (`ERR-CAB-040`) ; `ecritureId` non nul quand la ligne a **généré** une écriture (frais
 bancaires, virement inconnu → 471) ; `empreinte` empêche d'importer deux fois le même fichier.
 
-`immobilisations[]` — une fiche de bien côté cabinet (9.8.0), même modèle que côté entreprise
+`immobilisations[]` — une fiche de bien côté cabinet (9.7.0), même modèle que côté entreprise
 (`data.assets`, 3.5.0) pour que `compta.js` partage le calcul.
 
 Objet : voir `immobilisations[0]` dans l'exemple complet ci-dessus (`id`, `libelle`, `compte`,
@@ -624,7 +624,7 @@ AES-256-GCM, `sealBuffer`) et `SKANPACKX1\n<JSON>\n<corps>` (cabinet : X25519 é
 `destinataire` = empreinte du cabinet) **et l'entête en clair** `{ entreprise, matricule, periode,
 definitif, format }` — un paquet mal rangé reste identifiable sans clé.
 
-### SPEC-FMT-006 — `.skanask` (Cible 9.10.0) et SPEC-FMT-007 — `.skanclose` (Cible 9.7.0)
+### SPEC-FMT-006 — `.skanask` (Cible 9.10.0) et SPEC-FMT-007 — `.skanclose` (Cible 9.8.0)
 
 Spécifications cibles, à figer au moment de la version. Ce qui est décidé : les deux sont scellés
 **pour le client** par `sealForCabinet` avec la clé publique du client (celle de SPEC-DATA-004b), et
@@ -632,7 +632,7 @@ signés par le cabinet. `.skanask` = JSON `{ format: 1, dossier, questions: [{ i
 ligneId?, texte, poseeLe }] }`. `.skanclose` = ZIP scellé contenant `cloture.json` `{ format: 1,
 exercice, closLe, anouveaux: [{ compte, debit, credit }], inventaire: [Écriture] }` et
 `cloture.pdf` lisible par tous. L'app entreprise verrouille l'exercice à l'import et refuse une
-clôture suivante tant que le précédent `.skanclose` n'est pas importé (`QUESTIONS.md` § 16, 9.7.0).
+clôture suivante tant que le précédent `.skanclose` n'est pas importé (`QUESTIONS.md` § 16, 9.8.0).
 
 ---
 
@@ -2314,7 +2314,27 @@ type, ligne par ligne. »
 Pas d'écran. Les taux et bases de 9.6.0 confrontés à la première vraie déclaration ; `core.js` →
 `compta.js` fini ; retours de bêta hors nouveautés.
 
-### 9.7.0 — la clôture d'exercice
+### 9.7.0 — immobilisations et stocks
+
+*Dégressif et dérogatoire ; inventaire de fin d'exercice ; `immobilisations[]` du livre.* Question
+qui bloque : « Quels biens en dégressif chez tes clients ? »
+
+**SPEC-UI-CAB-050 — les fiches d'immobilisations du cabinet**
+
+| Décidé | À décider |
+|---|---|
+| `immobilisations[]` (SPEC-DATA-005), **même modèle** que `data.assets` (3.5.0) pour que `compta.js` partage le calcul (parité testée sur les biens venus d'un paquet) | Les coefficients dégressifs tunisiens (Partie 21, À VÉRIFIER) : *comptable* |
+| Linéaire et dégressif ; `tauxDegressif` **réglable, jamais un coefficient en dur** ; la dernière annuité absorbe l'arrondi ; cession et mise au rebut | Les subventions d'investissement (compte, reprise au résultat) : *comptable* |
+| Ce qui vient d'un paquet entre dans les mêmes fiches **sans ressaisie** ; **jamais une fiche créée d'office** (3.5.0 : la durée est une décision) | L'amortissement dérogatoire (deux plans sur une fiche) : *comptable* — s'il n'est pas demandé, il n'existe pas |
+
+**SPEC-UI-CAB-051 — l'inventaire de stock de fin d'exercice**
+
+| Décidé | À décider |
+|---|---|
+| Saisi (quantité × coût) au dernier jour ; la **variation** devient une écriture d'inventaire (603 / 37) ; inventaire intermittent par défaut | Permanent pour les dossiers SkanFact (le paquet porterait les mouvements de stock de 4.0.0) : *Skander* — après un cabinet qui le demande, pas avant |
+| Coût moyen pondéré, comme `runningStock` (4.0.0) — une seule méthode dans le moteur | FIFO si un dossier l'exige : *comptable* — sinon non |
+
+### 9.8.0 — la clôture d'exercice
 
 *Clôturer un exercice côté cabinet : inventaire, résultat, à-nouveaux, états SCE, et le
 `.skanclose` rendu au client, même quand le client n'est pas à jour.* Question qui bloque : « Tu
@@ -2347,30 +2367,10 @@ clôtures quels exercices en simplifié, lesquels en complet ? »
 
 | Décidé | À décider |
 |---|---|
-| Produit **à la clôture**, chiffré pour le client (sa clé de 9.2.0) ; porte les à-nouveaux officiels, la liste des écritures d'inventaire, la date de clôture, **et un PDF** lisible par n'importe qui (`QUESTIONS.md` § 16, décidé) | Le format exact (SPEC-FMT-007, réservé) : *Skander*, en 9.7.0 |
+| Produit **à la clôture**, chiffré pour le client (sa clé de 9.2.0) ; porte les à-nouveaux officiels, la liste des écritures d'inventaire, la date de clôture, **et un PDF** lisible par n'importe qui (`QUESTIONS.md` § 16, décidé) | Le format exact (SPEC-FMT-007, réservé) : *Skander*, en 9.8.0 |
 | **Le cabinet clôture quand même** si le client n'est pas à jour : le fichier attend avec le dossier et repart avec la relance suivante tant que le manifeste du paquet suivant ne porte pas la date de clôture | Côté entreprise, si le client a déjà saisi des écritures dans l'exercice clos (module `compta.livres`) : refus, ou archivage avec le motif : *Skander* — proposé : archivage, jamais une perte silencieuse |
 | Côté entreprise : l'import pose les à-nouveaux, **verrouille l'exercice** (comme une clôture mensuelle, sur l'année), affiche les écritures du comptable **en lecture** ; une version trop ancienne dit « mets à jour SkanFact » ; sans import, seule la clôture de l'exercice **suivant** est bloquée | — |
 | Preuve : le bilan des deux applications identique **au millime** après clôture et import — le jumeau du test de parité | — |
-
-### 9.8.0 — immobilisations et stocks
-
-*Dégressif et dérogatoire ; inventaire de fin d'exercice ; `immobilisations[]` du livre.* Question
-qui bloque : « Quels biens en dégressif chez tes clients ? »
-
-**SPEC-UI-CAB-050 — les fiches d'immobilisations du cabinet**
-
-| Décidé | À décider |
-|---|---|
-| `immobilisations[]` (SPEC-DATA-005), **même modèle** que `data.assets` (3.5.0) pour que `compta.js` partage le calcul (parité testée sur les biens venus d'un paquet) | Les coefficients dégressifs tunisiens (Partie 21, À VÉRIFIER) : *comptable* |
-| Linéaire et dégressif ; `tauxDegressif` **réglable, jamais un coefficient en dur** ; la dernière annuité absorbe l'arrondi ; cession et mise au rebut | Les subventions d'investissement (compte, reprise au résultat) : *comptable* |
-| Ce qui vient d'un paquet entre dans les mêmes fiches **sans ressaisie** ; **jamais une fiche créée d'office** (3.5.0 : la durée est une décision) | L'amortissement dérogatoire (deux plans sur une fiche) : *comptable* — s'il n'est pas demandé, il n'existe pas |
-
-**SPEC-UI-CAB-051 — l'inventaire de stock de fin d'exercice**
-
-| Décidé | À décider |
-|---|---|
-| Saisi (quantité × coût) au dernier jour ; la **variation** devient une écriture d'inventaire (603 / 37) ; inventaire intermittent par défaut | Permanent pour les dossiers SkanFact (le paquet porterait les mouvements de stock de 4.0.0) : *Skander* — après un cabinet qui le demande, pas avant |
-| Coût moyen pondéré, comme `runningStock` (4.0.0) — une seule méthode dans le moteur | FIFO si un dossier l'exige : *comptable* — sinon non |
 
 ### 9.9.0 — collaborateurs
 
@@ -2725,7 +2725,7 @@ test qui le prouve. C'est ça, du cahier des charges.
 | Numéros de comptes (411, 4367, 22 et non 24…) | `DEFAULT_ACCOUNTS`, `PLAN_COMPTABLE` | proposés, modifiables, « À VÉRIFIER » sur la page | chaque cabinet | 9.2.0 (import du plan) |
 | Échéances fiscales (dates, forme juridique) | `DEFAULT_FISCAL_DEADLINES` | réglables, « À VÉRIFIER » sur la page | le comptable | 9.6.0 |
 | Périmètre de la déclaration mensuelle, TCL | rien | — | le comptable | 9.6.0 |
-| Coefficients d'amortissement dégressif | rien | linéaire seul | le comptable | 9.8.0 |
+| Coefficients d'amortissement dégressif | rien | linéaire seul | le comptable | 9.7.0 |
 | Facture électronique (obligation, périmètre) | `docs/e-facture-controle.md` (Cible) | non | le comptable + TTN | quand elle devient obligatoire |
 | Déontologie : remise au client parrainé, jamais de commission au cabinet | `DIRECTION.md` | remise 20 %, commission 0 | l'Ordre (OECT) | avant la première vente à un cabinet |
 | INPDP (données personnelles : matricules, salaires) | — | rien n'est collecté hors du poste, sauf activation (5 champs) | Skander + un conseil | Phase 0 |
@@ -2818,7 +2818,7 @@ tests, 5 migrations.
   Les trois listes sont spécifiées (retenu), mais leurs champs restent **extensibles à la lecture**
   (règle du projet : tout ajout facultatif à la lecture), et les **provisions** ne sont pas une
   quatrième liste : ce sont des écritures d'inventaire ordinaires, saisies dans le brouillard (9.3.0)
-  et datées du 31/12 (9.7.0) — une liste à part les compterait deux fois, exactement le défaut que
+  et datées du 31/12 (9.8.0) — une liste à part les compterait deux fois, exactement le défaut que
   l'à-nouveau explicite de 9.0.0 a dû éviter.
 - Point 6, « sans l'empreinte, un attaquant garde la signature et change le manifeste » : **refusé
   comme motif**, l'étape est gardée pour un autre. Ed25519 signe les octets ; un manifeste modifié
@@ -2896,8 +2896,8 @@ payée depuis la relecture du 15/09 — corrigé dans `QUESTIONS.md` (une phrase
 
 La règle du projet réserve le troisième chiffre aux correctifs. La licence du Cabinet ajoute des
 fonctionnalités : elle passe de `9.3.x` / `P 0.3` à **9.4.0**, l'entretien de `9.3.1` à **9.4.1**,
-et tout ce qui suivait décale d'un cran (banque **9.5.0**, déclaration **9.6.0**, clôture **9.7.0**,
-immobilisations **9.8.0**, collaborateurs **9.9.0**, révision **9.10.0**, entretiens **9.6.1** et
+et tout ce qui suivait décale d'un cran (banque **9.5.0**, déclaration **9.6.0**, immobilisations
+**9.7.0**, clôture **9.8.0**, collaborateurs **9.9.0**, révision **9.10.0**, entretiens **9.6.1** et
 **9.9.1**). La 10.0.0 ne bouge pas. Appliquée **en une seule passe simultanée aux sept documents**
 qui portent ces numéros (281 occurrences), avec un garde-fou vérifiant qu'aucune version livrée ni
 stable n'a bougé : renuméroter un document seul aurait fabriqué la divergence que le projet combat
@@ -2909,8 +2909,8 @@ renumérotés** (un identifiant qu'on renumérote ne sert plus à rien), donc le
 *Intention*, *Esquisse*) sont désormais définis **une seule fois**, dans `VERSIONS-A-VENIR.md`, que
 cette partie cite au lieu d'en porter une seconde définition.
 
-**Un défaut d'ordre trouvé au passage, non tranché** : SPEC-UI-CAB-040 (clôture, 9.7.0) calcule les
-dotations depuis `immobilisations[].plan`, que SPEC-UI-CAB-050 (9.8.0) est la première à remplir.
+**Un défaut d'ordre trouvé au passage, non tranché** : SPEC-UI-CAB-040 (clôture, 9.8.0) calcule les
+dotations depuis `immobilisations[].plan`, que SPEC-UI-CAB-050 (9.7.0) est la première à remplir.
 Sans conséquence pour un dossier sur SkanFact — les dotations arrivent déjà calculées dans le
 paquet depuis la 9.0.0 — mais un dossier **hors SkanFact** ne peut alors pas être clôturé avec ses
 amortissements, et c'est le dossier payant. Soit on échange les deux versions, soit on garde l'ordre

@@ -159,7 +159,15 @@ dossier selon son régime, avec « déclaré » et « payé » pointés par le c
 télédéclaration : le fichier ou les chiffres à reporter, jamais l'envoi à la place du cabinet
 (À VÉRIFIER : ce que le portail accepte).
 
-### 9.7.0 — La clôture d'exercice *(l'inventaire, les états, l'à-nouveau, le RETOUR au client)*
+### 9.7.0 — Les immobilisations et les stocks côté cabinet
+
+Fiches d'immobilisations tenues par le cabinet (pour les clients sans SkanFact), linéaire et
+**dégressif** (le moteur ne connaît que le linéaire), tableau des amortissements de l'exercice,
+cessions, mises au rebut, subventions d'investissement. Inventaire de stock de fin d'exercice saisi
+et sa variation en écriture. Ce que le paquet SkanFact apporte (biens et dotations du client) entre
+dans les mêmes fiches sans ressaisie.
+
+### 9.8.0 — La clôture d'exercice *(l'inventaire, les états, l'à-nouveau, le RETOUR au client)*
 
 Écritures d'inventaire guidées : dotations (déjà calculées), **provisions**, charges constatées
 d'avance, factures non parvenues, produits constatés d'avance, factures à établir, régularisations,
@@ -178,14 +186,6 @@ a désormais sa propre clé depuis la 9.2.0, voir `QUESTIONS.md` § 6) : à-nouv
 clos et affiche ce que le comptable a ajouté. Le test qui compte est le **jumeau du test de parité,
 dans l'autre sens** : après la clôture et l'import, le bilan des deux applications est identique au
 millime.
-
-### 9.8.0 — Les immobilisations et les stocks côté cabinet
-
-Fiches d'immobilisations tenues par le cabinet (pour les clients sans SkanFact), linéaire et
-**dégressif** (le moteur ne connaît que le linéaire), tableau des amortissements de l'exercice,
-cessions, mises au rebut, subventions d'investissement. Inventaire de stock de fin d'exercice saisi
-et sa variation en écriture. Ce que le paquet SkanFact apporte (biens et dotations du client) entre
-dans les mêmes fiches sans ressaisie.
 
 ### 9.9.0 — Le cabinet à plusieurs *(collaborateurs, production, supervision)*
 
@@ -226,7 +226,7 @@ comptable a déjà un outil, et SkanFact entreprise sait le faire).
 | 9.3.0 | **Comment il saisit** (touches, ordre des champs, ce qui l'agace dans son logiciel actuel) | Un écran de saisie se juge en dix minutes ; le construire sans le regarder faire, c'est le rater |
 | 9.5.0 | **Les relevés** que ses clients reçoivent (banques, formats) | Un importeur par format : on ne devine pas un format |
 | 9.6.0 | **Le modèle de la déclaration mensuelle** et ses cases, les taux de TCL/timbre en vigueur, ses réponses aux « À VÉRIFIER » de 8.9.0/9.0.0 (TVA au dernier jour, 13 vs 12, contreparties, TFP 1 %/2 %) | L'application ne doit rien affirmer qu'il n'a pas validé |
-| 9.7.0 | **La présentation des états financiers** (NCT 01) et des notes | « Déduits de la balance » ne suffit plus si le Cabinet produit les états officiels |
+| 9.8.0 | **La présentation des états financiers** (NCT 01) et des notes | « Déduits de la balance » ne suffit plus si le Cabinet produit les états officiels |
 | 9.10.0 | **Sa méthode de révision** (cycles, feuilles, ce que le superviseur regarde) | Un dossier de travail imposé par un logiciel ne sert à personne |
 | 10.0.0 | **La liasse** de l'année et ce que le portail accepte | Change chaque loi de finances |
 
@@ -261,8 +261,8 @@ ce qu'il fait le plus souvent, ce qu'il rend au client.
 | 9.3.0 | La saisie, brouillard/validation, guides, abonnements | le regarder saisir | deux semaines |
 | 9.5.0 | Banque, rapprochement, lettrage automatique, balance âgée | formats de relevés | deux semaines |
 | 9.6.0 | Déclaration mensuelle, acomptes, calendrier pointé | modèle de déclaration | une à deux semaines |
-| 9.7.0 | Inventaire, clôture d'exercice, états SCE, N/N-1, SIG | présentation NCT 01 | deux à trois semaines |
-| 9.8.0 | Immobilisations (dégressif), stocks | non | une semaine |
+| 9.8.0 | Inventaire, clôture d'exercice, états SCE, N/N-1, SIG | présentation NCT 01 | deux à trois semaines |
+| 9.7.0 | Immobilisations (dégressif), stocks | non | une semaine |
 | 9.9.0 | Collaborateurs, multi-poste, piste d'audit, production | non | deux semaines |
 | 9.10.0 | Révision, points en suspens, questions au client | méthode de révision | deux semaines |
 | 10.0.0 | Liasse, annuel, jeu d'exemple complet | liasse de l'année | deux semaines |
