@@ -7,6 +7,53 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 9.1.0 — 16/09/2026
+
+**L'outillage, et le moteur comptable partagé par les deux applications.** Une version sans nouvel
+écran pour toi : c'est le socle sur lequel la comptabilité du cabinet va s'écrire, plus les filets
+qui manquaient à un logiciel qu'on vend.
+
+- **Le moteur comptable est sorti dans son propre fichier** (`src/renderer/compta.js`), chargé par
+  SkanFact **et** par SkanFact Cabinet. La règle qui décide de ce qui y va : une fonction qui prend
+  tes données reste dans le cœur, une fonction qui prend des **lignes d'écriture** vit là. C'est ce
+  qui permet au cabinet de calculer ta balance à partir de ce que ton paquet contient. Un test
+  vérifie que les deux balances — la tienne et la sienne — sont identiques **au millime**, sur les
+  24 mois du jeu d'exemple. Sans lui, ton comptable et toi auriez deux chiffres et aucun moyen de
+  savoir lequel croire.
+- **Le cabinet lit tes livres** : grand livre, balance, livre-journal, centralisateur et lettrage,
+  calculés sur les paquets déjà reçus, sans rien te demander. Un mois illisible ou un paquet d'avant
+  la 6.3.0 est **nommé** au lieu d'être compté à zéro, et la clé de secours est réclamée au premier
+  import — pas après soixante.
+- **Les trois onglets de comptable de la page Comptabilité** (grand livre, balance, états financiers)
+  sont désormais une **option**, décochée par défaut : SkanFact s'arrête à ta gestion, ces écrans-là
+  sont ceux de ton comptable. Rien n'est supprimé — le moteur écrit toujours ton paquet — et
+  Écritures, TVA, clôtures et l'envoi au comptable restent là pour tout le monde. La case se coche
+  et se décoche, toujours, depuis « Tous les modules ».
+- **« Émettre » ne peut plus donner deux numéros.** Deux clics rapides consommaient deux numéros et
+  trouaient la numérotation de tes factures.
+- **Un journal technique borné** : il ne grossit plus sans fin, et une erreur de l'interface y laisse
+  enfin une trace (au maximum vingt par minute, et le journal dit combien il a tues).
+- **Une bulle d'aide en écrasait une autre depuis huit versions** : en cliquant « Offre » dans tes
+  Paramètres, tu lisais depuis la 8.2.0 une explication écrite pour autre chose.
+- Pour le développement : un **lint** qui refuse les trois fautes de date qui ont fait geler
+  l'application en 5.1.0, une **vérification automatique** à chaque poussée sur Linux et Windows, et
+  un bouton « construire un essai » pour te faire tester une version sans la publier.
+
+**Test de charge du livre comptable** (`npm run charge`, Node 22 · x64 · 4 cœurs), la mesure qui
+décide du format que la 9.2.0 écrira — mesurer avant d'écrire un format, jamais après :
+
+| Ce qu'on mesure | Mesuré | Seuil |
+|---|---|---|
+| Ouvrir un livre de 50 000 lignes | **119 ms** | 1 000 ms |
+| Valider une écriture (médiane sur 20) | **141 ms** | 100 ms |
+| Balance de 60 dossiers (345 001 lignes, 97 Mo) | **906 ms** | 5 000 ms |
+| Recherche d'une pièce dans tout le portefeuille | **737 ms** | 3 000 ms |
+
+Une seule mesure dépasse son seuil : l'écriture. Trois leviers ont été mesurés plutôt que devinés —
+corps binaire au lieu de base64 (**57 ms**, 59 % de gagné), découpage par mois (9,8 ms), les deux
+(5,0 ms). Le moins cher qui suffit est le premier, et il ne change ni la forme du livre ni aucun
+appelant : la 9.2.0 écrira un corps binaire. Décision consignée dans le cahier des charges.
+
 ## 9.0.0 — 15/09/2026
 
 **L'exercice.** Après le grand livre (8.8.0) et le livre-journal (8.9.0), la comptabilité se lit
