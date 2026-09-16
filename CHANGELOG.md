@@ -7,6 +7,25 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 9.2.1 — 16/09/2026
+
+**La désignation cherche dans le catalogue.** Sur un achat en destination « stock », SkanFact
+te disait qu'une ligne « memoire 16go » ne correspond à aucun article suivi — et te laissait
+chercher à la main comment l'article s'écrit exactement. L'article existait ; il n'y avait rien
+à retaper, il y avait à choisir.
+
+- **Tape le début du nom, le catalogue se propose.** Dans l'éditeur d'achat comme dans celui
+  des devis et factures. La recherche ignore les accents et les espaces : « memoire 16go »
+  trouve « Mémoire 16 Go ». Choisir remplit le prix, la TVA, l'unité, et rattache la ligne à
+  l'article — même si tu retouches le libellé ensuite, le stock suit.
+- **L'article qui n'existe pas se crée depuis la liste**, prérempli avec ce que tu as tapé, et
+  déjà coché « suivi en stock » quand la ligne est en destination stock.
+- **L'avertissement débloque au lieu de reprocher** : chaque ligne fautive porte « Choisir
+  l'article… », qui te ramène au champ et ouvre les propositions.
+
+Un article suivi choisi dans un achat passe la ligne en « stock » tout seul. Rien ne change
+sur tes pièces déjà enregistrées.
+
 ## 9.2.0 — 16/09/2026
 
 **Le livre du dossier, et le paquet signé.** Côté cabinet, chaque dossier a

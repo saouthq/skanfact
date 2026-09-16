@@ -70,7 +70,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Règle | Où |
 |---|---|
 | Une ligne garde **au plus UN** bouton visible ; le reste passe par `rowmenu.js` | 7.29.0 |
-| Un refus dit **trois** choses : ce qui est refusé, pourquoi, et le bouton qui débloque | 7.0.0 |
+| Un refus dit **trois** choses : ce qui est refusé, pourquoi, et le bouton qui débloque | 7.0.0, 9.2.1 |
 | Une saisie refusée se **MONTRE** : on amène le champ à l'écran (`refus()`) | 7.0.0, 7.20.0 |
 | Ce qui **détruit** demande ; ce qui **se répare** laisse un « Annuler » (`toastUndo`) | 7.12.0 |
 | Un écran qui **NOMME** un ensemble doit pouvoir l'ouvrir | 7.15.0, 7.17.0, 7.21.0 |
@@ -2943,6 +2943,36 @@ Autres règles apprises :
   `src/cabinet/main.js` avec `src/main.js` (même nom de fichier) ; et `npm test | tail -2 && git
   commit` masque le code de sortie du test — un commit est parti avec un test rouge. **Un test qu'on
   lit au lieu de le laisser décider ne protège de rien.**
+
+### 9.2.1 — La désignation cherche dans le catalogue
+
+Skander, sur un achat en destination « stock » : « au lieu de me dire cette phrase et que je cherche
+manuellement comment ça s'écrit exactement, proposer une recherche directement dans le nom, comme
+ça on n'a pas à réécrire mais plutôt sélectionner ». L'article existait ; l'éditeur reprochait sans
+offrir — le défaut de la 7.20.0, un cran plus loin : le sélecteur de catalogue AJOUTAIT une ligne,
+il ne réparait pas celle qu'on venait de taper.
+
+- **`suggererCatalogue(input, o)`** (app.js) : un champ texte qui reste libre, et une liste qui
+  n'apparaît que pendant la frappe. Ce n'est pas `combo()` — un combo porte une valeur, ici la
+  valeur EST le texte. Choisir pose l'article sur la ligne existante (`poserArticle`) et la rattache
+  par `itemId` : c'est lui que lit `itemOfLine`, quelle que soit l'orthographe retouchée ensuite.
+- **La recherche ignore les accents ET les espaces** (`sansAccents`, comparaison « serrée ») : sans
+  ça, « memoire 16go » ne trouvait pas « Mémoire 16 Go » — le cas exact qui a fait écrire la liste.
+- **Les DEUX éditeurs** la branchent : le stock entre par l'achat et sort par la vente, par la même
+  règle, et le coût qui fait la marge se lit sur l'article. Un document verrouillé ne propose rien.
+- **L'avertissement porte le bouton qui débloque** (`data-orph` → `_ouvrirSuggestions`), et il juge
+  la ligne SAISIE (`p.lines[i]`, qui porte `itemId`), pas la ligne calculée : une ligne rattachée
+  puis retouchée ne doit pas être accusée.
+- **Créer depuis la liste** passe par `catalogForm(articleNeuf({ label, tracked }))` : l'article
+  vierge vit en un endroit, sinon un champ ajouté demain manquerait aux créations à la volée.
+- `.sugg-host` entre dans `RowMenu.SURFACES` : le champ ET sa liste, sinon replacer le curseur dans
+  le champ refermait la liste (piège 7.28.0).
+- Piège d'outil : un `̀` écrit dans un fichier peut arriver en **caractère réel** — un intervalle
+  `[̀-ͯ]` que personne ne peut relire, et qu'un éditeur qui normalise mangerait. Vérifier les octets
+  après coup, et garder l'échappement.
+
+`e2e:fiches` gagne l'étape : tapé sans accent, l'article se propose et se choisit ; une désignation
+inconnue en stock porte le bouton, qui ouvre la liste, qui crée la fiche préremplie et suivie.
 
 ## Pistes pour la suite (non demandées)
 

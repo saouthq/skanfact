@@ -146,6 +146,77 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   if (article.tracked && ligne.destination !== 'stock') throw new Error(`un article suivi arrive en destination « ${ligne.destination} »`);
   j.ok(`« ${ligne.label} » à ${ligne.prix} (coût d'achat), destination « ${ligne.destination} »`);
 
+  // ---------------------------------------------------- 3 bis. la désignation cherche dans le catalogue (9.2.1)
+  // Skander : l'éditeur lui reprochait qu'une ligne « memoire 16go » ne correspond à aucun article
+  // suivi, et le laissait chercher à la main l'orthographe exacte. On tape donc SANS accent et on
+  // attend que le catalogue se propose ; puis on met une désignation qui n'existe pas, et
+  // l'avertissement doit porter le bouton qui débloque — jusqu'à la création de l'article.
+  j.etape('La désignation propose le catalogue, et « aucun article suivi » débloque');
+  const cible = await win.evaluate(deja => {
+    const suivis = (window.__data.catalog || []).filter(x => x.tracked);
+    const c = suivis.find(x => x.label !== deja) || suivis[0];
+    return c ? { label: c.label, cost: Number(c.unitCost) || Number(c.unitPrice) || 0 } : null;
+  }, article.label);
+  if (!cible) throw new Error('aucun article suivi à chercher');
+  await win.click('#add-line');
+  await win.waitForTimeout(200);
+  const tape = cible.label.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().slice(0, 6);
+  const champs = await win.$$('#b-lines input[data-k=label]');
+  await champs[champs.length - 1].type(tape, { delay: 25 });
+  await win.waitForSelector('.sugg-pop:not([hidden]) .sugg-it', { timeout: 4000 });
+  const proposee = win.locator('.sugg-pop:not([hidden]) .sugg-it', { hasText: cible.label }).first();
+  if (!await proposee.count()) throw new Error(`« ${tape} » tapé sans accent ne propose pas « ${cible.label} »`);
+  await proposee.click();
+  await win.waitForTimeout(350);
+  const rattachee = await win.evaluate(() => {
+    const trs = [...document.querySelectorAll('#b-lines tr')]; const tr = trs[trs.length - 1];
+    return { label: tr.querySelector('[data-k=label]').value, prix: Number(tr.querySelector('[data-k=unitPrice]').value),
+      destination: tr.querySelector('[data-k=destination]').value,
+      curseurQte: document.activeElement === tr.querySelector('[data-k=qty]'),
+      listeFermee: !document.querySelector('.sugg-pop:not([hidden])') };
+  });
+  if (rattachee.label !== cible.label) throw new Error(`choisir a écrit « ${rattachee.label} » au lieu de « ${cible.label} »`);
+  if (Math.abs(rattachee.prix - cible.cost) > 0.001) throw new Error(`choisir reprend ${rattachee.prix} au lieu du coût ${cible.cost}`);
+  if (rattachee.destination !== 'stock') throw new Error(`un article suivi choisi laisse la ligne en « ${rattachee.destination} »`);
+  if (!rattachee.curseurQte) throw new Error('après le choix, le curseur ne passe pas à la quantité');
+  if (!rattachee.listeFermee) throw new Error('la liste reste ouverte après le choix');
+  j.ok(`« ${tape} » → « ${cible.label} » à ${cible.cost}, en stock, curseur sur la quantité`);
+
+  // Une désignation qui n'existe pas, en destination stock : le refus porte le bouton, le bouton
+  // ouvre la liste, la liste propose de créer, la fiche arrive préremplie ET cochée « suivi ».
+  await win.click('#add-line');
+  await win.waitForTimeout(200);
+  const champs2 = await win.$$('#b-lines input[data-k=label]');
+  await champs2[champs2.length - 1].type('zzz inexistant', { delay: 15 });
+  await win.keyboard.press('Escape');
+  await win.evaluate(() => {
+    const trs = [...document.querySelectorAll('#b-lines tr')]; const sel = trs[trs.length - 1].querySelector('[data-k=destination]');
+    sel.value = 'stock'; sel.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await win.waitForTimeout(350);
+  const alerte = await win.evaluate(() => { const b = document.querySelector('#b-stock-hint'); return { visible: !!b && !b.hidden, bouton: !!(b && b.querySelector('[data-orph]')) }; });
+  if (!alerte.visible) throw new Error('une ligne « stock » sans article ne dit plus rien');
+  if (!alerte.bouton) throw new Error('l\'avertissement ne porte pas « Choisir l\'article… » : il reproche sans débloquer');
+  await win.click('#b-stock-hint [data-orph]');
+  await win.waitForSelector('.sugg-pop:not([hidden]) .sugg-add', { timeout: 4000 });
+  const auChamp = await win.evaluate(() => !!document.activeElement && document.activeElement.dataset.k === 'label');
+  if (!auChamp) throw new Error('« Choisir l\'article… » n\'amène pas le curseur dans la désignation');
+  await win.click('.sugg-pop:not([hidden]) .sugg-add');
+  await win.waitForSelector('#modal-root #kf', { timeout: 4000 });
+  const fiche2 = await win.evaluate(() => ({ label: document.querySelector('#kf input[name=label]').value, suivi: document.querySelector('#kf input[name=tracked]').checked }));
+  if (fiche2.label !== 'zzz inexistant') throw new Error(`la fiche arrive avec « ${fiche2.label} » au lieu de la désignation tapée`);
+  if (!fiche2.suivi) throw new Error('l\'article créé depuis une ligne « stock » n\'est pas coché « suivi en stock »');
+  await win.click('#modal-root #ok');
+  await win.waitForTimeout(450);
+  const apres = await win.evaluate(() => {
+    const b = document.querySelector('#b-stock-hint');
+    return { encoreAccusee: !!b && !b.hidden && !!b.querySelector('[data-orph]'),
+      auCatalogue: (window.__data.catalog || []).some(c => c.label === 'zzz inexistant' && c.tracked) };
+  });
+  if (!apres.auCatalogue) throw new Error('l\'article créé depuis la liste n\'est pas au catalogue');
+  if (apres.encoreAccusee) throw new Error('la ligne reste accusée alors que son article vient d\'être créé');
+  j.ok('« zzz inexistant » : bouton dans l\'avertissement → liste → « Créer » → fiche préremplie et suivie → ligne rattachée');
+
   // ---------------------------------------------------- 4. la ligne en immobilisation le dit
   j.etape('Une ligne en immobilisation dit qu\'elle n\'est déduite nulle part');
   await win.evaluate(() => {

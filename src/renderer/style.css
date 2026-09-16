@@ -836,6 +836,22 @@ body.dark th.sortable-h:hover { background: #1f2731; }
   border-top: 1px solid var(--border); width: 100%; text-align: left; padding: 9px 10px; margin-top: 5px; cursor: pointer;
 }
 .combo-add:hover { background: var(--primary-soft); border-radius: 0 0 8px 8px; }
+/* La désignation qui cherche dans le catalogue (9.2.1) : le même langage que la liste déroulante,
+   posé sous un champ texte libre. La cellule porte la position, la liste flotte en dessous. */
+.sugg-host { position: relative; }
+.sugg-pop {
+  position: absolute; z-index: 60; inset-inline-start: 0; top: calc(100% + 4px);
+  min-width: 320px; max-width: 540px; max-height: 300px; overflow-y: auto;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 16px 44px rgba(20,40,60,.18); padding: 7px;
+}
+.sugg-it { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+.sugg-it.sel, .sugg-it:hover { background: var(--primary-soft); }
+.sugg-add {
+  font: inherit; font-size: 12.5px; font-weight: 600; color: var(--primary); background: none; border: 0;
+  border-top: 1px solid var(--border); width: 100%; text-align: start; padding: 9px 10px; margin-top: 5px; cursor: pointer;
+}
+.sugg-add:hover { background: var(--primary-soft); border-radius: 0 0 8px 8px; }
 body.dark .combo-btn { background: var(--panel); }
 body.dark .combo-btn[aria-expanded="true"] { background: #1b222c; }
 body.dark .combo.ro .combo-btn { background: #1f2731; }

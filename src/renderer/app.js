@@ -645,6 +645,71 @@
     return el;
   }
 
+  // ---------- la désignation qui cherche dans le catalogue (9.2.1) ----------
+  // Skander, sur un achat en destination « stock » : l'éditeur lui reprochait qu'une ligne
+  // « memoire 16go » ne correspond à aucun article suivi du catalogue — et le laissait chercher à la
+  // main comment l'article s'écrit exactement. L'article existait ; il n'y avait rien à retaper, il
+  // y avait à CHOISIR. Un refus qui dit ce qui ne va pas sans offrir le geste qui débloque (7.0.0).
+  //
+  // Le champ reste un champ texte libre : la liste n'est qu'une aide qui apparaît pendant qu'on tape.
+  // Choisir rattache la ligne à l'article par `itemId` — c'est lui qui fait le lien avec le stock
+  // (`itemOfLine`), quelle que soit l'orthographe qu'on retouche ensuite. Et l'article qui n'existe
+  // pas se crée depuis la liste, prérempli : on ne reproche pas ce qu'on n'a pas offert (7.20.0).
+  //
+  // Ce n'est PAS `combo()` : un combo remplace un <select> et porte une valeur ; ici la valeur est le
+  // texte du champ, et la liste doit se taire dès qu'on ne tape plus rien.
+  // La recherche ignore les accents et les espaces : « memoire 16go » doit trouver « Mémoire 16 Go »,
+  // sinon la liste ne sert à rien dans le cas exact qui l'a fait écrire.
+  const sansAccents = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  function suggererCatalogue(input, o) {
+    if (!input || input._sugg) return;
+    input._sugg = true;
+    const host = input.parentElement;
+    host.classList.add('sugg-host');
+    const pop = document.createElement('div');
+    pop.className = 'sugg-pop'; pop.hidden = true;
+    host.appendChild(pop);
+    let sel = 0, shown = [], query = '';
+    const close = () => { pop.hidden = true; if (closeOverlay === close) closeOverlay = null; };
+    const correspond = (c, words) => {
+      const hay = sansAccents(`${c.label || ''} ${c.description || ''}`), serre = hay.replace(/\s+/g, '');
+      return words.every(w => hay.includes(w) || serre.includes(w.replace(/\s+/g, '')));
+    };
+    const draw = () => {
+      query = input.value.trim();
+      const words = sansAccents(query).split(/\s+/).filter(Boolean);
+      shown = words.length ? (o.items() || []).filter(c => correspond(c, words)).slice(0, 8) : [];
+      const exact = shown.some(c => sansAccents(c.label).trim() === sansAccents(query));
+      const creer = !!o.onCreate && query.length >= 2 && !exact;
+      if (!shown.length && !creer) { close(); return; }
+      sel = Math.max(0, Math.min(sel, shown.length - 1));
+      pop.innerHTML = shown.map((c, i) => `<div class="sugg-it${i === sel ? ' sel' : ''}" data-i="${i}" role="option" aria-selected="${i === sel}">
+          <span class="ci-main">${h(c.label)}${c.tracked ? '<span class="ci-sub">suivi en stock</span>' : c.description ? `<span class="ci-sub">${h(c.description)}</span>` : ''}</span>
+          ${o.right ? `<span class="ci-right">${h(o.right(c))}</span>` : ''}</div>`).join('')
+        + (creer ? `<button type="button" class="sugg-add">+ Créer « ${h(query)} » au catalogue</button>` : '');
+      // `mousedown` + preventDefault, comme les combos : le champ garde le focus, et le choix part
+      // AVANT que le garde-fou global ne referme quoi que ce soit.
+      $$('.sugg-it', pop).forEach(d => d.onmousedown = e => { e.preventDefault(); pick(shown[Number(d.dataset.i)]); });
+      const add = $('.sugg-add', pop);
+      if (add) add.onmousedown = e => { e.preventDefault(); close(); o.onCreate(query); };
+      if (pop.hidden) { if (closeOverlay) closeOverlay(); pop.hidden = false; closeOverlay = close; }
+    };
+    const pick = c => { if (!c) return; close(); o.onPick(c); };
+    input.addEventListener('input', () => { sel = 0; draw(); });
+    input.addEventListener('keydown', e => {
+      if (e.key === 'ArrowDown') { e.preventDefault(); if (pop.hidden) sel = 0; else sel = Math.min(sel + 1, shown.length - 1); draw(); }
+      else if (pop.hidden) return;
+      else if (e.key === 'ArrowUp') { e.preventDefault(); sel = Math.max(sel - 1, 0); draw(); }
+      // stopPropagation : dans une fenêtre modale, Entrée validerait aussi le bouton principal.
+      else if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); if (shown.length) pick(shown[sel]); }
+      else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
+      else if (e.key === 'Tab') close();
+    });
+    // L'avertissement « ne correspond à aucun article » ramène ICI et ouvre la liste : on choisit,
+    // on ne retape pas.
+    input._ouvrirSuggestions = () => { input.focus(); sel = 0; draw(); };
+  }
+
   // ---------- champ date avec calendrier ----------
   // Saisie libre tolérante (12/03/2026, 12-3-26, 12032026, 12/03, 12) et calendrier cliquable.
   // La valeur ISO vit dans un <input type="hidden"> : le reste de l'app ne voit aucune différence.
@@ -2324,6 +2389,16 @@
     const linesBody = $('#lines');
     const openDesc = new Set();   // lignes dont la description est dépliée
     doc.lines.forEach((l, i) => { if (l.description) openDesc.add(i); });
+    // Ce que « choisir un article » pose sur une ligne EXISTANTE : la même chose que le sélecteur du
+    // catalogue, sauf la quantité déjà saisie, qu'on ne jette pas. Le curseur passe à la quantité.
+    const poserArticle = (i, it) => {
+      const l = doc.lines[i]; if (!l) return;
+      Object.assign(l, { label: it.label, description: it.description || '', unit: it.unit || '',
+        unitPrice: it.unitPrice, unitCost: it.unitCost || '', vatRate: it.vatRate, itemId: it.id });
+      if (it.description) openDesc.add(i);
+      touch(); drawLines();
+      const q = $(`tr[data-i="${i}"] input[data-k=qty]`, linesBody); if (q) { q.focus(); q.select(); }
+    };
     function drawLines() {
       const n = doc.lines.length;
       // Unités déjà employées ailleurs dans les données, plus celles du document en cours :
@@ -2363,6 +2438,19 @@
           touch(); refreshTotals();
         };
       });
+      // La désignation propose le catalogue pendant la frappe (9.2.1). Ici aussi, et pas seulement
+      // dans l'achat : le stock SORT par la même règle qu'il entre (`itemOfLine`), et le coût qui
+      // fait la marge se lit sur l'article. Une ligne tapée à la main à un caractère près ne sortait
+      // rien du stock et n'avait pas de coût — sans un mot.
+      if (!locked) $$('input[data-k=label]', linesBody).forEach(el => suggererCatalogue(el, {
+        items: () => data.catalog,
+        right: c => C.money(c.unitPrice, cur) + ' HT',
+        onPick: c => poserArticle(Number(el.closest('tr').dataset.i), c),
+        onCreate: q => {
+          const i = Number(el.closest('tr').dataset.i);
+          catalogForm(articleNeuf({ label: q }), it => { if (it) poserArticle(i, it); }, { creation: true, titre: 'Nouvelle prestation' });
+        }
+      }));
       $$('select[data-k=unit]', linesBody).forEach(sel => {
         const i = Number(sel.closest('tr').dataset.i);
         bindUnitSelect(sel, () => doc.lines[i].unit, u => { doc.lines[i].unit = u; touch(); refreshTotals(); });
@@ -3431,12 +3519,17 @@
   // encore dans le catalogue. Sans ce drapeau, la copie s'ouvrirait en « Modifier » et
   // `data.catalog.push` ne serait jamais appelé : on remplirait le formulaire, on enregistrerait,
   // et rien n'apparaîtrait dans la liste.
+  // Un article vierge, en UN endroit : la fiche du catalogue et les créations « à la volée » depuis
+  // une ligne (9.2.1) partent du même modèle, sinon un champ ajouté demain manquerait à l'un des deux.
+  function articleNeuf(extra) {
+    return Object.assign({ id: C.uid(), label: '', description: '', unit: '', unitPrice: 0, unitCost: 0, vatRate: C.defaultVat(company()),
+      tracked: false, minStock: 0, location: '', initialQty: 0, initialCost: 0, initialDate: C.today(),
+      serialized: false, warrantyMonths: 0 }, extra || {});
+  }
   function catalogForm(item, done, opts) {
     opts = opts || {};
     const neuf = !item || !!opts.creation;
-    const it = item || { id: C.uid(), label: '', description: '', unit: '', unitPrice: 0, unitCost: 0, vatRate: C.defaultVat(company()),
-      tracked: false, minStock: 0, location: '', initialQty: 0, initialCost: 0, initialDate: C.today(),
-      serialized: false, warrantyMonths: 0 };
+    const it = item || articleNeuf();
     const already = neuf ? null : C.stockOf(data, it.id);   // stock déjà constitué : on ne rejoue pas le départ
     modal(`<h2>${opts.titre || (neuf ? 'Nouvelle prestation' : 'Modifier la prestation')}</h2>
       <form id="kf" class="grid-2">
@@ -5298,6 +5391,17 @@
 
     // --- lignes
     const body = $('#b-lines');
+    // Ce que « choisir un article » pose sur une ligne EXISTANTE (9.2.1) : la même chose que le
+    // sélecteur du catalogue, sauf la quantité déjà saisie. Un article suivi passe la ligne en
+    // « stock » — c'est ce qu'on venait chercher.
+    const poserArticle = (i, it) => {
+      const l = p.lines[i]; if (!l) return;
+      Object.assign(l, { label: it.label, itemId: it.id, unit: it.unit || '',
+        unitPrice: Number(it.unitCost) || Number(it.unitPrice) || 0, vatRate: Number(it.vatRate) || 0 });
+      if (it.tracked) l.destination = 'stock';
+      touch(); drawLines();
+      const q = $(`tr[data-i="${i}"] input[data-k=qty]`, body); if (q) { q.focus(); q.select(); }
+    };
     function drawLines() {
       const n = p.lines.length;
       body.innerHTML = p.lines.map((l, i) => `<tr data-i="${i}">
@@ -5319,6 +5423,20 @@
           touch(); refresh();
         };
       });
+      // La désignation propose le catalogue pendant la frappe (9.2.1) : voir `suggererCatalogue`.
+      // L'article créé depuis la liste part en « suivi en stock » si la ligne est déjà en destination
+      // stock — c'est pour ça qu'on la créait.
+      $$('input[data-k=label]', body).forEach(el => suggererCatalogue(el, {
+        items: () => data.catalog,
+        right: c => C.money(Number(c.unitCost) || Number(c.unitPrice) || 0, cur) + ' HT',
+        onPick: c => poserArticle(Number(el.closest('tr').dataset.i), c),
+        onCreate: q => {
+          const i = Number(el.closest('tr').dataset.i);
+          const l = p.lines[i] || {};
+          catalogForm(articleNeuf({ label: q, tracked: l.destination === 'stock', unitCost: Number(l.unitPrice) || 0, vatRate: Number(l.vatRate) || 0 }),
+            it => { if (it) poserArticle(i, it); }, { creation: true, titre: 'Nouvel article' });
+        }
+      }));
       $$('[data-dup]', body).forEach(b => b.onclick = () => { const i = Number(b.dataset.dup); p.lines.splice(i + 1, 0, deepCopy(p.lines[i])); touch(); drawLines(); });
       // Le « ✕ » de la dernière ligne était éteint et muet ici, alors que le même bouton marche dans
       // l'éditeur de vente : on y remet simplement une ligne vide. Un bouton qui ne répond pas fait
@@ -5365,8 +5483,10 @@
       </table>`;
       // Une ligne « stock » dont le libellé ne retrouve aucun article suivi n'entrera dans aucun stock :
       // sans ce rappel, l'entrée disparaît en silence et le stock finit par passer en négatif.
-      const orphelines = t.lines.filter(l => l.destination === 'stock' && (Number(l.qty) || 0) > 0)
-        .filter(l => { const it = C.itemOfLine(l, data); return !it || !it.tracked; });
+      // On juge la ligne SAISIE (`p.lines[i]`), qui porte `itemId` : une ligne rattachée à l'article
+      // puis retouchée dans son libellé reste rattachée, et ne doit pas être accusée.
+      const orphelines = t.lines.map((l, i) => ({ l, i })).filter(({ l }) => l.destination === 'stock' && (Number(l.qty) || 0) > 0)
+        .filter(({ i }) => { const it = C.itemOfLine(p.lines[i] || {}, data); return !it || !it.tracked; });
       // Choisir « Immobilisation » ne disait rien — or la ligne n'est déduite NULLE PART tant que la
       // fiche du bien n'existe pas : ni en charge (ce n'en est pas une), ni en amortissement (il n'y
       // a pas encore de durée). Elle dormait dans un compteur de barre latérale que personne ne
@@ -5375,12 +5495,20 @@
       const box = $('#b-stock-hint');
       if (box) {
         const morceaux = [];
-        if (orphelines.length) morceaux.push(`<span class="small warn-text">${pl(orphelines.length, 'ligne')} en destination « stock » ${orphelines.length > 1 ? 'ne correspondent' : 'ne correspond'} à aucun article suivi du catalogue : ${orphelines.map(l => h(l.label || 'sans désignation')).join(', ')}. ${orphelines.length > 1 ? 'Elles n\'entreront' : 'Elle n\'entrera'} dans aucun stock. ${info('stk.orphan')}</span>`);
+        // Le refus dit ce qui est refusé, pourquoi, ET le bouton qui débloque (7.0.0) : chaque ligne
+        // fautive porte « Choisir l'article… », qui ramène au champ et ouvre les propositions.
+        if (orphelines.length) morceaux.push(`<span class="small warn-text">${pl(orphelines.length, 'ligne')} en destination « stock » ${orphelines.length > 1 ? 'ne correspondent' : 'ne correspond'} à aucun article suivi du catalogue : ${orphelines.map(({ l, i }) => `« ${h(l.label || 'sans désignation')} » <button type="button" class="btn btn-sm" data-orph="${i}">Choisir l'article…</button>`).join(', ')}. ${orphelines.length > 1 ? 'Elles n\'entreront' : 'Elle n\'entrera'} dans aucun stock. ${info('stk.orphan')}</span>`);
         if (immos.length) morceaux.push(`<div class="small warn-text mt">${pl(immos.length, 'ligne')} en immobilisation : l'amortissement ne commencera qu'une fois la fiche du bien créée (famille, durée, date de mise en service). En attendant, ${immos.length > 1 ? 'ces montants ne sont déduits' : 'ce montant n\'est déduit'} nulle part. ${info('immo.attente')}
           <button class="btn btn-sm mt" id="b-immo" type="button">Voir les biens à créer</button></div>`);
         box.hidden = !morceaux.length;
         box.innerHTML = morceaux.join('');
         if ($('#b-immo')) $('#b-immo').onclick = () => { immoState.tab = 'attente'; navigate('#/immos'); };
+        $$('[data-orph]', box).forEach(b => b.onclick = () => {
+          const inp = $(`tr[data-i="${b.dataset.orph}"] input[data-k=label]`, body);
+          if (!inp || !inp._ouvrirSuggestions) return;
+          inp.scrollIntoView({ block: 'center' });
+          inp._ouvrirSuggestions();
+        });
       }
     }
 

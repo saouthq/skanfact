@@ -9536,7 +9536,9 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // Les overlays de l'application, chacun reconnaissable à la classe qu'il pose — plus le BOUTON
     // qui ouvre le menu : sans lui, un reclic dessus refermait le menu au `mousedown` et le `click`
     // le rouvrait aussitôt. Le bouton n'était donc pas un interrupteur (7.29.0).
-    ['.combo', '.datefield', '.row-menu', '.row-menu-btn'].forEach(c =>
+    // `.sugg-host` (9.2.1) : la cellule d'une désignation qui propose le catalogue — le champ et sa
+    // liste ensemble, sinon replacer le curseur dans le champ referme la liste.
+    ['.combo', '.datefield', '.row-menu', '.row-menu-btn', '.sugg-host'].forEach(c =>
       assert.ok(surfaces.includes(c), `${c} n'est pas dans les surfaces d'overlay : ses clics le refermeront avant d'agir`));
     // Et la seconde moitié du correctif : le menu se REFERME quand on rappuie sur son bouton.
     assert.ok(/if \(ouvertSur === bouton\) \{ if \(dejaOuvert\) dejaOuvert\(\); return; \}/.test(rm),
@@ -11916,6 +11918,57 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     const vz = zc.slice(zc.indexOf('function verifyManifest'), zc.indexOf('function publicKeyFrom'));
     assert.ok(vz.indexOf('manifeste-modifie') < vz.indexOf('signature-fausse'),
       'le sha256 du manifeste se contrôle AVANT la signature : les deux phrases ne demandent pas le même coup de téléphone');
+  });
+
+  // 9.2.1 — Skander, sur un achat en destination « stock » : « au lieu de me dire cette phrase et
+  // que je cherche manuellement comment ça s'écrit exactement, proposer une recherche directement
+  // dans le nom ». Un refus qui dit ce qui ne va pas sans offrir le geste qui débloque (7.0.0).
+  t('9.2.1 : la désignation propose le catalogue dans les DEUX éditeurs, et « aucun article suivi » porte le bouton qui débloque', () => {
+    const app = lireApp();
+    const css = fs.readFileSync(path.join(__dirname, '../src/renderer/style.css'), 'utf8');
+    const guide = fs.readFileSync(path.join(__dirname, '../src/renderer/guide.js'), 'utf8');
+    const zone = (de, a) => {
+      const i = app.indexOf(de); assert.ok(i > 0, 'ancre introuvable : ' + de);
+      const j = app.indexOf(a, i); assert.ok(j > i, 'borne introuvable : ' + a);
+      const z = app.slice(i, j); assert.ok(z.length > 500 && z.length < 40000, `tranche suspecte (${z.length}) entre ${de} et ${a}`);
+      return z;
+    };
+    // Le composant, et sa recherche qui ne devine ni les accents ni les espaces : « memoire 16go »
+    // doit trouver « Mémoire 16 Go », sinon la liste ne sert à rien dans le cas qui l'a fait écrire.
+    assert.ok(/function suggererCatalogue\(input, o\)/.test(app), 'suggererCatalogue a disparu');
+    assert.ok(/normalize\('NFD'\)\.replace\(\/\[\\u0300-\\u036f\]\/g, ''\)\.toLowerCase\(\)/.test(app), 'la recherche ne retire plus les accents');
+    assert.ok(/serre\.includes\(w\.replace\(\/\\s\+\/g, ''\)\)/.test(app), 'la recherche ne tolère plus les espaces en plus ou en moins');
+    // Choisir est un `mousedown` + preventDefault, comme les combos : le champ garde le focus et le
+    // choix part AVANT que le garde-fou global ne referme la liste.
+    assert.ok(/d\.onmousedown = e => \{ e\.preventDefault\(\); pick\(shown\[Number\(d\.dataset\.i\)\]\); \}/.test(app), 'le choix ne se fait plus au mousedown : le garde-fou global fermera la liste avant');
+    assert.ok(/input\._ouvrirSuggestions = \(\) => \{ input\.focus\(\); sel = 0; draw\(\); \}/.test(app), 'l\'avertissement n\'a plus de porte pour rouvrir la liste');
+    // Les DEUX éditeurs branchent le composant sur la désignation : le stock ENTRE par l'achat et
+    // SORT par la vente, par la même règle (`itemOfLine`). Un seul des deux serait la faute 7.3.0.
+    const achat = zone("const body = $('#b-lines');", 'function refresh() {');
+    const doc = zone('const openDesc = new Set();', "if ($('#cat-pick')) bindCombo(");
+    assert.ok(!achat.includes('linesBody') && !doc.includes('#b-lines'), 'les tranches se chevauchent : le test jugerait un éditeur pour l\'autre');
+    [['achat', achat], ['document', doc]].forEach(([nom, z]) => {
+      assert.ok(z.includes('suggererCatalogue(el, {'), `l'éditeur de ${nom} ne propose plus le catalogue sur la désignation`);
+      assert.ok(z.includes('onPick: c => poserArticle(Number(el.closest(\'tr\').dataset.i), c)'), `${nom} : choisir ne pose plus l'article sur la ligne EXISTANTE`);
+      assert.ok(z.includes('catalogForm(articleNeuf({ label: q'), `${nom} : la liste ne propose plus de créer l'article, prérempli`);
+      assert.ok(/itemId: it\.id/.test(z), `${nom} : choisir ne rattache plus la ligne par itemId — l'orthographe redeviendrait la règle`);
+    });
+    // Créé depuis une ligne « stock », l'article part coché « suivi » : c'est pour ça qu'on le créait.
+    assert.ok(achat.includes("tracked: l.destination === 'stock'"), 'l\'article créé depuis une ligne stock n\'est plus suivi en stock');
+    // Un document verrouillé ne propose rien : on ne retouche pas une pièce émise.
+    assert.ok(/if \(!locked\) \$\$\('input\[data-k=label\]', linesBody\)\.forEach\(el => suggererCatalogue\(/.test(doc), 'l\'éditeur de document propose le catalogue même sur une pièce verrouillée');
+    // L'avertissement : jugé sur la ligne SAISIE (qui porte itemId), et chaque ligne fautive porte
+    // « Choisir l'article… » qui ramène au champ et ouvre la liste.
+    const alerte = zone('function refresh() {', "const head = $('#b-head');");
+    assert.ok(alerte.includes('C.itemOfLine(p.lines[i] || {}, data)'), 'l\'avertissement juge la ligne calculée, pas la ligne saisie : une ligne rattachée puis retouchée serait accusée');
+    assert.ok(alerte.includes('data-orph="${i}">Choisir l\'article…</button>'), 'l\'avertissement reproche sans offrir le bouton qui débloque');
+    assert.ok(/\$\$\('\[data-orph\]', box\)\.forEach\(b => b\.onclick[\s\S]{0,400}inp\._ouvrirSuggestions\(\);/.test(alerte), 'le bouton de l\'avertissement n\'ouvre pas la liste');
+    // La feuille de style : une classe utilisée et jamais définie ne se voit nulle part (8.1.0).
+    assert.ok(/\.sugg-host \{ position: relative; \}/.test(css) && /\.sugg-pop \{/.test(css) && /\.sugg-it\.sel/.test(css) && /\.sugg-add \{/.test(css), 'les classes de la liste ne sont pas toutes définies');
+    // Et la bulle dit la nouvelle règle : on choisit, on ne recopie pas.
+    const bulle = /'stk\.orphan': \{ t: '[^']*', d: '((?:[^'\\]|\\.)*)'/.exec(guide);
+    assert.ok(bulle, 'la bulle stk.orphan a disparu');
+    assert.ok(!/recopie son libellé exactement/.test(bulle[1]) && /choisir suffit/.test(bulle[1]), 'la bulle demande encore de recopier l\'orthographe exacte');
   });
 
   t('aucun fichier source ne traîne à la racine du dépôt', () => {
