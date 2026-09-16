@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'">
+  <title>SkanFact Cabinet</title>
+  <link rel="stylesheet" href="../../renderer/style.css">
+  <link rel="stylesheet" href="cabinet.css">
+</head>
+<body>
+  <div id="app" hidden>
+    <aside class="sidebar">
+      <div class="brand">
+        <!-- La marque du cabinet est la sienne : ardoise et dossier, comme son icône. Les deux
+             applications portaient la même pastille « SF » vert d'eau, et une fois ouvertes on ne
+             savait plus laquelle on regardait. -->
+        <div class="brand-mark cab" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+        </div>
+        <div>
+          <div class="brand-name">SkanFact <span class="brand-tag">Cabinet</span></div>
+          <div class="brand-sub" id="brand-cab">—</div>
+        </div>
+      </div>
+      <nav>
+        <a href="#/dossiers" data-route="dossiers" class="solo"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Dossiers</a>
+        <a href="#/relances" data-route="relances"><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>Relances<span class="nav-count" id="nav-relances" hidden></span></a>
+        <a href="#/echeances" data-route="echeances"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Échéances</a>
+        <a href="#/ecritures" data-route="ecritures"><svg viewBox="0 0 24 24"><path d="M4 5a2 2 0 0 1 2-2h9l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M14 3v5h5"/><path d="M8 13h8M8 17h5"/></svg>Écritures</a>
+        <a href="#/reglages" data-route="reglages"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Réglages</a>
+        <a href="#/aide" data-route="aide"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.2 9.2a2.9 2.9 0 0 1 5.6 1c0 1.9-2.8 2.4-2.8 4"/><path d="M12 17.5v.01"/></svg>Aide</a>
+      </nav>
+      <div class="sidebar-foot">
+        <button class="update-pill" id="upd-pill" hidden></button>
+        <div class="app-version" id="app-version"></div>
+      </div>
+    </aside>
+    <main id="view"></main>
+  </div>
+
+  <div id="lock-screen">
+    <form class="lock-card" id="lock-form">
+      <div class="brand-mark cab" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+      </div>
+      <h2 id="lock-title">SkanFact Cabinet</h2>
+      <p class="muted small" style="margin:0">L'application du comptable</p>
+      <p class="muted small" id="lock-sub">Chargement…</p>
+      <!-- Des champs sans étiquette font deviner. Un mot de passe qu'on ne peut pas relire fait
+           taper trois fois. -->
+      <label class="field lock-field">Mot de passe
+        <span class="pw-wrap">
+          <input type="password" id="lock-pw" autocomplete="current-password" placeholder="••••••••">
+          <button type="button" class="pw-eye" id="lock-eye" aria-label="Afficher le mot de passe">Afficher</button>
+        </span>
+      </label>
+      <span class="muted small" id="lock-strength"></span>
+      <label class="field lock-field" id="lock-pw2-wrap" hidden>Confirme le mot de passe
+        <input type="password" id="lock-pw2" autocomplete="new-password" placeholder="••••••••">
+      </label>
+      <div class="lock-err" id="lock-err" hidden></div>
+      <button class="btn btn-primary" id="lock-go" type="submit">Ouvrir</button>
+      <p class="muted small lock-note" id="lock-note"></p>
+      <!-- Changer d'ordinateur n'avait aucun chemin : l'application disait « Bienvenue » et fabriquait
+           une clé NEUVE à quelqu'un qui avait tout gardé. Le bouton est ici, sur le seul écran où il
+           sert, et AVANT que la moindre clé existe. `type="button"` : il est dans un formulaire. -->
+      <button class="btn btn-ghost btn-sm" id="lock-move" type="button">J'ai déjà un cabinet sur un autre ordinateur…</button>
+    </form>
+  </div>
+
+  <!-- Le voile qui apparaît quand on fait glisser un paquet sur la fenêtre. -->
+  <div id="drop-veil" hidden>
+    <div class="drop-card">
+      <svg viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/></svg>
+      <div class="drop-title">Lâche ici les paquets reçus</div>
+      <div class="drop-sub">Les fichiers <code>.skanpack</code> que tes clients t'envoient chaque mois</div>
+    </div>
+  </div>
+
+  <div id="modal-root"></div>
+  <div id="toast"></div>
+
+  <!-- Le menu d'actions d'une ligne, partagé avec l'application entreprise. Elle a la même feuille
+       de style : ce sont les mêmes classes `.row-menu…`, pas un second jeu qui dériverait. -->
+  <script src="../../renderer/rowmenu.js"></script>
+  <script src="../../renderer/reglages.js"></script>
+  <!-- Le moteur comptable, le même que celui de l'application entreprise (9.1.0). C'est lui qui
+       fait que la balance du cabinet est celle du client, au millime : deux calculs séparés
+       auraient fini par diverger, et personne n'aurait su lequel croire. -->
+  <script src="../../renderer/compta.js"></script>
+  <script src="../cabcore.js"></script>
+  <script src="cabguide.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

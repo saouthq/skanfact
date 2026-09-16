@@ -62,6 +62,29 @@ Le format du livre suit la mesure du test de charge de la 9.1.0 : corps binaire,
 pas base64. Rien de tout cela ne change quoi que ce soit dans SkanFact côté
 entreprise, sauf la signature du paquet — qui se fait toute seule.
 
+### Aussi dans cette mise à jour : la 9.1.0 et la 9.1.1
+
+Elles n'ont jamais été publiées séparément. Si tu viens de la 9.0.0, tu reçois
+donc aussi :
+
+- **Une formule cachée dans un export CSV ne s'exécute plus** (9.1.1). Un tableur
+  exécute une cellule qui commence par `=`, `+`, `-` ou `@` : le libellé d'une
+  ligne de facture partait tel quel dans le journal envoyé au comptable. Les
+  quatre exports des deux applications sont protégés, et aucun montant ne bouge.
+- **« Émettre » ne peut plus donner deux numéros** (9.1.0) : deux clics rapides
+  en consommaient deux et trouaient la numérotation de tes factures.
+- **Les trois onglets de comptable de la page Comptabilité** (grand livre,
+  balance, états financiers) deviennent une option, décochée par défaut — SkanFact
+  s'arrête à ta gestion. Rien n'est supprimé : Écritures, TVA, clôtures et l'envoi
+  au comptable restent là, et la case se recoche dans « Tous les modules ».
+- **« Exonéré de timbre fiscal » sur la fiche client**, et un **seuil de retenue à
+  la source** réglable, à 0 (donc muet) tant que ton comptable ne t'a pas donné le
+  chiffre (9.1.1). Tes factures déjà émises ne bougent pas.
+- **Une bulle d'aide en écrasait une autre depuis huit versions** : en cliquant
+  « Offre » dans tes Paramètres, tu lisais une explication écrite pour autre chose.
+- **Un journal technique borné**, qui ne grossit plus sans fin, et une erreur de
+  l'interface qui y laisse enfin une trace.
+
 ## 9.1.1 — 16/09/2026
 
 **Les corrections fiscales.** Quatre chiffres qui partent chez un tiers — l'administration, un
