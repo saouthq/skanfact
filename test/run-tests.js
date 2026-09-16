@@ -11836,6 +11836,28 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       'le sha256 du manifeste se contrôle AVANT la signature : les deux phrases ne demandent pas le même coup de téléphone');
   });
 
+  t('aucun fichier source ne traîne à la racine du dépôt', () => {
+    // Trouvé en préparant la publication de la 9.2.0, et jamais par un test : DIX-SEPT copies de
+    // `src/**` s'étaient posées à la racine — un agent de vérification avait aplati les chemins pour
+    // éprouver les motifs d'empaquetage, et un `git add -A` les a toutes emportées dans un commit.
+    //
+    // Rien n'aurait planté : `build.files` ne prend que `src/**`, donc le paquet livré était juste.
+    // C'est ce qui rend la chose sournoise — un dépôt public avec dix-sept fichiers en double, un
+    // `core.js` à la racine à côté du vrai, et le jour où quelqu'un ouvre le mauvais, il corrige un
+    // fichier que rien ne lit.
+    //
+    // La règle : à la racine, seuls des fichiers de CONFIGURATION et des scripts d'installation.
+    // Tout ce qui s'exécute dans l'application vit dans `src/`, `test/`, `scripts/`, `worker/` ou
+    // `plateforme/`.
+    const RACINE_PERMISE = new Set(['eslint.config.js']);
+    const aLaRacine = fs.readdirSync(path.join(__dirname, '..'))
+      .filter(f => /\.(js|mjs|html|css)$/.test(f))
+      .filter(f => !RACINE_PERMISE.has(f));
+    assert.deepStrictEqual(aLaRacine, [],
+      'des fichiers de code traînent à la racine : ' + aLaRacine.join(', ')
+      + ' — s\'ils sont des copies de src/, supprime-les ; sinon, range-les.');
+  });
+
   if (enCours) throw new Error(`${enCours} test(s) asynchrone(s) lancé(s) sans « await ta(…) » : ils ne peuvent plus échouer`);
   console.log(`\n${n} tests OK`);
 })().catch(e => { console.error(e); process.exit(1); });
