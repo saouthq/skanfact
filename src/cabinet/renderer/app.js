@@ -1909,7 +1909,7 @@
         if (!e) return [];
         const actions = [];
         if (e.statut === 'brouillard') {
-          actions.push({ icon: 'check', label: 'Valider cette écriture', hint: 'Elle prend son numéro et ne se modifiera plus',
+          actions.push({ icon: 'oui', label: 'Valider cette écriture', hint: 'Elle prend son numéro et ne se modifiera plus',
             run: () => validerEcriture(root, dossier, e) });
         }
         if (e.statut === 'validee') {
