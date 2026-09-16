@@ -350,7 +350,23 @@
       compte: d => (d.accounts || []).length + (d.movements || []).length + (d.projects || []).length },
     { id: 'compta', label: 'Comptabilité', toujours: true,
       quoi: 'Ce que tu donnes à ton comptable : journaux, TVA, écritures, clôtures, paquet mensuel.',
-      pages: ['compta'] }
+      pages: ['compta'],
+      // Les écrans de 8.8.0 → 9.0.0 (grand livre, balance, états financiers, livre-journal, OD,
+      // lettrage) sont un SOUS-MODULE, pas un second module : `compta` existe depuis longtemps et
+      // porte les journaux, la TVA, les clôtures et le paquet du comptable — tout ce qu'une PME
+      // doit pouvoir faire sans rien payer de plus.
+      //
+      // Décision du 15/09/2026 (`DIRECTION.md`) : l'app entreprise s'arrête à la gestion, et cette
+      // comptabilité-là devient une OPTION payante, masquée par défaut. Masquer, pas supprimer :
+      // le moteur continue d'écrire le paquet du comptable, qui reste libre.
+      sousModules: [{
+        id: 'compta.livres',
+        label: 'Grand livre, balance, états financiers',
+        option: 'compta',
+        defaut: false,
+        onglets: ['grandlivre', 'balance', 'etats'],
+        quoi: 'Grand livre, balance, livre-journal, états financiers. Option payante, incluse dans l\'essai. Tes écritures, ta TVA, tes clôtures et le paquet de ton comptable restent disponibles sans elle.'
+      }] }
   ];
 
   // Les pages, dans l'ordre de la barre latérale. `titre` sert à la fois au lien, au titre de la
@@ -590,6 +606,30 @@
     if (!Array.isArray(choisis)) return true;
     return choisis.includes(id);
   }
+
+  // Un SOUS-module est-il allumé ? Contrairement à un module, il est **décoché par défaut** : on ne
+  // fait pas apparaître une option payante chez quelqu'un qui ne l'a pas demandée. `null` (aucun
+  // choix enregistré) vaut donc `defaut`, pas « tout ».
+  //
+  // Et il ne juge QUE l'affichage : c'est `optionBlock`, côté interface, qui parle de la licence.
+  // Mélanger les deux ferait disparaître la case le jour où l'option manque — c'est-à-dire un
+  // réglage qui se retire la possibilité de revenir en arrière (le piège de la 7.12.0).
+  function sousModuleOn(data, id) {
+    const sm = sousModuleById(id);
+    if (!sm) return false;
+    const choisis = ((data || {}).company || {}).modules;
+    if (!Array.isArray(choisis)) return !!sm.defaut;
+    return choisis.includes(id);
+  }
+  function sousModuleById(id) {
+    for (const m of MODULES) for (const sm of (m.sousModules || [])) if (sm.id === id) return sm;
+    return null;
+  }
+  const sousModules = () => MODULES.flatMap(m => (m.sousModules || []).map(sm => ({ ...sm, module: m.id })));
+  // Le nom d'une option, tel qu'il s'écrit à l'écran et sur une facture de licence. Il vit ICI, à
+  // côté du sous-module qui la porte, et pas dans `licence.js` : le renderer ne charge pas
+  // `licence.js`, et une seconde table ailleurs finirait par dire autre chose.
+  const OPTION_LABELS = { compta: 'Comptabilité' };
 
   // Pourquoi ce module est visible — ou ne l'est pas : 'coeur', 'choisi', 'tout' (aucun choix
   // enregistré) ou 'masque'.
@@ -6509,6 +6549,7 @@
     periodBounds, issuedIn, salesTotals, revenueByMonth, topItems, clientMovement, AGING_BUCKETS, agedReceivables, payerRanking, quoteFunnel, objectiveProgress,
     amountToWords, intToWords, intToWordsEn, documentHtml, fitToPage, paginate, pageCount,
     MODULES, PAGES, moduleById, pageById, pageTitle, moduleCount, moduleCounts, modulesRevenus, moduleOn, moduleWhy, navPages,
+    sousModuleOn, sousModuleById, sousModules, OPTION_LABELS,
     MODULES_PAR_ACTIVITE, modulesSuggeres, wipeData, rendreLesEmprunts, estDemo, firstSteps, liste, defaultVat, newLine,
     canalDe, estBeta, pastilleLicence, empreinteCabinet, licencesDuCabinet,
     LICENCE_MOTIFS, prorataOffre, licenceSuivi, licencesAFaire,

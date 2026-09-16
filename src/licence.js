@@ -303,6 +303,22 @@ function verifierReponse(rep, reponsePublicKeyPem, opts) {
 // `offre` et `reserves` : l'offre en cours et les modules dont la création lui est fermée. Pendant
 // l'essai, tout est ouvert (c'est la seule façon de savoir de quelle offre on a besoin) ; une fois
 // verrouillé, `reserves` ne sert plus — `locked` ferme déjà toute création.
+// Les options portées par la clé (9.1.0). Elles voyagent DANS la charge signée, comme l'offre :
+// personne ne peut en ajouter une à distance, et c'est ce qui rend la vérification hors ligne.
+//
+// En cas de DOUTE, on ouvre : une clé d'avant la 9.1.0 n'a pas de champ `options`, et refuser
+// l'option à tous les clients déjà servis serait leur retirer quelque chose qu'ils n'ont pas
+// demandé à perdre. C'est la même règle que pour une offre inconnue (7.33.0).
+// Les options qui existent. Une seule pour l'instant : la comptabilité (grand livre, balance,
+// états financiers), décidée payante le 15/09/2026 (`DIRECTION.md`).
+const TOUTES_OPTIONS = ['compta'];
+const OPTION_LABELS = { compta: 'Comptabilité' };
+
+function optionsDe(payload) {
+  const o = payload && payload.options;
+  return Array.isArray(o) ? o.filter(x => typeof x === 'string' && x) : [];
+}
+
 function licenceState(opts) {
   opts = opts || {};
   const t = opts.today || today();
@@ -313,7 +329,7 @@ function licenceState(opts) {
   if (!lireCles(pub).length) {
     return { state: 'libre', locked: false, label: 'Licence non requise',
       detail: 'Cette version n\'exige pas de licence.', key: '', name: '', exp: '', daysLeft: null,
-      offre: OFFRE_DEFAUT, offreLabel: '', reserves: [] };
+      offre: OFFRE_DEFAUT, offreLabel: '', reserves: [], options: TOUTES_OPTIONS.slice() };
   }
   // L'essai compte à partir du jour où la licence a été ARMÉE (la date du fichier de clé publique)
   // quand celui-ci est postérieur à l'installation : la date d'installation est enregistrée depuis
@@ -328,21 +344,22 @@ function licenceState(opts) {
   if (opts.key && !payload) {
     return { state: 'invalide', locked: true, label: 'Licence non reconnue',
       detail: 'Cette clé n\'est pas lisible ou n\'a pas été émise pour SkanFact. Vérifie qu\'elle a été collée en entier.',
-      key: opts.key, name: '', exp: '', daysLeft: null, offre: OFFRE_DEFAUT, offreLabel: '', reserves: [] };
+      key: opts.key, name: '', exp: '', daysLeft: null, offre: OFFRE_DEFAUT, offreLabel: '', reserves: [], options: [] };
   }
 
   if (payload) {
     const offre = offreDe(payload);
     const commun = {
       key: opts.key, name: payload.nom || '', matricule: payload.matricule || '',
-      cabinet: payload.cabinet || '', payload, offre, offreLabel: OFFRES[offre].label
+      cabinet: payload.cabinet || '', payload, offre, offreLabel: OFFRES[offre].label,
+      options: optionsDe(payload)
     };
     if (!memeMatricule(payload.matricule, opts.matricule)) {
       return {
         ...commun, state: 'autre', locked: true, label: 'Licence d\'une autre entreprise',
         detail: `Cette clé a été émise pour ${payload.nom || 'une autre société'} (matricule ${payload.matricule}), `
           + `pas pour le matricule ${opts.matricule} de cette entreprise. Demande une licence à ton nom.`,
-        exp: String(payload.exp || ''), daysLeft: null, reserves: []
+        exp: String(payload.exp || ''), daysLeft: null, reserves: [], options: []
       };
     }
     // La révocation reçue de la plateforme, si elle concerne bien CETTE clé. Elle est jugée avant
@@ -358,7 +375,7 @@ function licenceState(opts) {
           + (srv.motif ? ` (${srv.motif})` : '')
           + '. Tout reste lisible, imprimable et exportable ; seule la création de nouvelles pièces attend.'
           + ' Si c\'est une erreur, écris à ' + CONTACT + '.',
-        exp: String(payload.exp || ''), daysLeft: null, reserves: [], revoqueeLe: srv.emisLe || ''
+        exp: String(payload.exp || ''), daysLeft: null, reserves: [], options: [], revoqueeLe: srv.emisLe || ''
       };
     }
     const exp = String(payload.exp || '');
@@ -374,7 +391,7 @@ function licenceState(opts) {
     return {
       ...commun, state: 'expiree', locked: true, label: `Licence expirée le ${exp}`,
       detail: 'Tout reste lisible, imprimable et exportable. Seule la création de nouvelles pièces attend le renouvellement.',
-      exp, daysLeft: left, reserves: []
+      exp, daysLeft: left, reserves: [], options: []
     };
   }
 
@@ -383,18 +400,18 @@ function licenceState(opts) {
   if (opts.editeur) {
     return { state: 'editeur', locked: false, label: 'Poste de l\'éditeur — licence non requise',
       detail: 'La clé privée qui signe les licences est sur cet ordinateur : il n\'a pas besoin de licence. Pour voir exactement ce que voit un client, colle ci-dessous une clé émise pour le matricule de cette société (ou sans matricule) ; retire-la pour revenir ici.',
-      key: '', name: '', exp: '', daysLeft: null, offre: OFFRE_DEFAUT, offreLabel: '', reserves: [] };
+      key: '', name: '', exp: '', daysLeft: null, offre: OFFRE_DEFAUT, offreLabel: '', reserves: [], options: TOUTES_OPTIONS.slice() };
   }
 
   const left = daysBetween(t, trialEnd);
   if (left >= 0) {
     return { state: 'essai', locked: false, label: `Période d'essai — ${jours(left)} restant${left === 1 ? '' : 's'}`,
       detail: 'Tout est disponible pendant l\'essai. Demande ta licence avant la fin pour ne pas être interrompu.',
-      key: '', name: '', exp: trialEnd, daysLeft: left, offre: OFFRE_DEFAUT, offreLabel: '', reserves: [] };
+      key: '', name: '', exp: trialEnd, daysLeft: left, offre: OFFRE_DEFAUT, offreLabel: '', reserves: [], options: TOUTES_OPTIONS.slice() };
   }
   return { state: 'finessai', locked: true, label: 'Période d\'essai terminée',
     detail: 'L\'essai de 30 jours de cet ordinateur est terminé — il compte par ordinateur, et chaque entreprise a besoin de sa propre clé, attachée à son matricule. Tes données restent lisibles, imprimables et exportables ; seule la création de nouvelles pièces attend ta licence.',
-    key: '', name: '', exp: trialEnd, daysLeft: left, offre: OFFRE_DEFAUT, offreLabel: '', reserves: [] };
+    key: '', name: '', exp: trialEnd, daysLeft: left, offre: OFFRE_DEFAUT, offreLabel: '', reserves: [], options: [] };
 }
 
 // Un identifiant court pour retrouver une licence dans l'historique de l'éditeur : il voyage dans la
@@ -418,6 +435,6 @@ function requestMail(company, state, deviceName) {
   };
 }
 
-module.exports = { FORMAT, TRIAL_DAYS, PREFIX, CONTACT, OFFRES, OFFRE_DEFAUT, DUREES, generateKeys, signLicence, parseKey, verifyKey,
+module.exports = { FORMAT, TRIAL_DAYS, PREFIX, CONTACT, OFFRES, OFFRE_DEFAUT, DUREES, TOUTES_OPTIONS, OPTION_LABELS, optionsDe, generateKeys, signLicence, parseKey, verifyKey,
   licenceState, licenceId, offreDe, expirationPour, dateValide, memeMatricule, normMatricule, requestMail, today, addDays, addMonths, daysBetween,
   lireCles, choisirCle, empreinteCle, corpsReponse, verifierReponse, ageReponse, REPONSE_V, REPONSE_JOURS_MAX };

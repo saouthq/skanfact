@@ -10984,6 +10984,114 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     });
   });
 
+
+  // ---------------------------------------------------------------- l'option Comptabilité (9.1.0)
+
+  t('9.1.0 : l\'option voyage dans la clé signée, et le doute profite au client', () => {
+    const L = require('../src/licence.js');
+    const { publicKey, privateKey } = L.generateKeys();
+    const cles = JSON.stringify({ cles: [{ kid: 'master', publicKey }] });
+    const base = { nom: 'Test SUARL', matricule: '1234567A', exp: '2030-01-01' };
+    const etat = (payload) => L.licenceState({ cles, key: L.signLicence(payload, privateKey), matricule: '1234567A', today: '2026-09-16' });
+
+    // Une clé QUI PORTE l'option l'ouvre.
+    assert.deepStrictEqual(etat({ ...base, options: ['compta'] }).options, ['compta']);
+    // Une clé sans option ne l'a pas. C'est le cas normal d'une licence vendue sans elle.
+    assert.deepStrictEqual(etat(base).options, []);
+    // Une clé d'AVANT la 9.1.0 n'a pas de champ `options` du tout : même chose, et surtout pas une
+    // erreur. Les valeurs qui ne sont pas des chaînes sont ignorées plutôt que de faire planter.
+    assert.deepStrictEqual(etat({ ...base, options: ['compta', 42, null, ''] }).options, ['compta']);
+    assert.deepStrictEqual(etat({ ...base, options: 'compta' }).options, []);
+
+    // L'essai inclut tout : c'est ce qui permet d'essayer l'option avant de l'acheter.
+    const essai = L.licenceState({ cles, matricule: '1234567A', installedAt: '2026-09-10', today: '2026-09-16' });
+    assert.strictEqual(essai.state, 'essai');
+    assert.deepStrictEqual(essai.options, L.TOUTES_OPTIONS);
+    // La FIN d'essai ne l'inclut pas : sinon l'option serait gratuite pour qui laisse filer l'essai.
+    const fin = L.licenceState({ cles, matricule: '1234567A', installedAt: '2026-01-01', today: '2026-09-16' });
+    assert.strictEqual(fin.state, 'finessai');
+    assert.deepStrictEqual(fin.options, []);
+    // Le poste de l'éditeur a tout : celui qui signe n'achète pas (8.0.0).
+    assert.deepStrictEqual(L.licenceState({ cles, editeur: true, matricule: '1234567A', today: '2026-09-16' }).options, L.TOUTES_OPTIONS);
+    // Une application désarmée n'a rien à vendre : tout est ouvert.
+    assert.deepStrictEqual(L.licenceState({ cles: '', today: '2026-09-16' }).options, L.TOUTES_OPTIONS);
+    // Une licence expirée ou révoquée perd l'option comme elle perd le reste.
+    assert.deepStrictEqual(etat({ ...base, options: ['compta'], exp: '2020-01-01' }).options, []);
+  });
+
+  t('9.1.0 : le sous-module est décoché par défaut, et ne masque rien de ce qui existe', () => {
+    // Une option payante ne s'allume pas toute seule chez quelqu'un qui ne l'a pas demandée : à
+    // l'inverse d'un module, `null` (aucun choix enregistré) vaut le DÉFAUT, pas « tout ».
+    const sm = core.sousModules();
+    assert.strictEqual(sm.length, 1, 'un seul sous-module en 9.1.0');
+    assert.strictEqual(sm[0].id, 'compta.livres');
+    assert.strictEqual(sm[0].option, 'compta');
+    assert.strictEqual(sm[0].defaut, false, 'une option payante est décochée par défaut');
+    assert.strictEqual(core.sousModuleOn({ company: {} }, 'compta.livres'), false);
+    assert.strictEqual(core.sousModuleOn({ company: { modules: null } }, 'compta.livres'), false);
+    assert.strictEqual(core.sousModuleOn({ company: { modules: ['ventes'] } }, 'compta.livres'), false);
+    assert.strictEqual(core.sousModuleOn({ company: { modules: ['ventes', 'compta.livres'] } }, 'compta.livres'), true);
+    assert.strictEqual(core.sousModuleOn({ company: {} }, 'inconnu'), false);
+
+    // Le module parent reste TOUJOURS affiché : les journaux, la TVA, les clôtures et le paquet du
+    // comptable n'ont jamais été payants et ne doivent pas le devenir.
+    const compta = core.moduleById('compta');
+    assert.strictEqual(compta.toujours, true, 'la page Comptabilité reste le cœur du métier');
+    assert.strictEqual(core.moduleOn({ company: { modules: [] } }, 'compta'), true);
+    assert.strictEqual(core.OPTION_LABELS.compta, 'Comptabilité');
+  });
+
+  t('9.1.0 : optionBlock est LA porte, posée au changement d\'onglet et nulle part ailleurs', () => {
+    const app = lireApp();
+    assert.ok(app.includes('function optionBlock('), 'optionBlock doit exister');
+
+    // Trois onglets, et seulement trois. La liste est nommée une fois : recopiée à chaque écran,
+    // le septième naîtrait sans son garde-fou.
+    const m = app.match(/const ONGLETS_OPTION = \[([^\]]*)\]/);
+    assert.ok(m, 'ONGLETS_OPTION doit être une liste nommée');
+    const onglets = m[1].split(',').map(x => x.trim().replace(/'/g, '')).filter(Boolean);
+    assert.deepStrictEqual(onglets.slice().sort(), ['balance', 'etats', 'grandlivre']);
+    // Ce qui ne doit JAMAIS y entrer : tout ce qu'une PME envoie à son comptable.
+    ['ventes', 'achats', 'tva', 'ecritures', 'calendrier', 'clotures', 'cabinet'].forEach(o =>
+      assert.ok(!onglets.includes(o), `« ${o} » ne peut pas devenir payant : c'est ce qu'on donne au comptable`));
+
+    // Un seul appel, et il est dans le gestionnaire d'onglet. Un `optionBlock` posé dans une
+    // fonction de dessin serait recopié, et les captures d'écran ne le montreraient pas.
+    const appels = (app.match(/\boptionBlock\(/g) || []).length;
+    assert.strictEqual(appels, 2, `optionBlock doit être défini une fois et appelé une fois — trouvé ${appels} occurrences`);
+    const i = app.indexOf("$$('#c-tabs button[data-tab]').forEach(b => b.onclick");
+    assert.ok(i > 0 && app.slice(i, i + 700).includes('optionBlock('), 'la porte vit dans le gestionnaire d\'onglet');
+
+    // Et elle ne prend rien en otage : la fenêtre dit ce qui reste disponible.
+    const j = app.indexOf('function optionBlock(');
+    const corps = app.slice(j, app.indexOf('\n  function licenceBlock', j));
+    assert.ok(/paquet de ton comptable restent disponibles/.test(corps), 'la fenêtre doit dire ce qui reste ouvert');
+    assert.ok(/go-opt/.test(corps), 'elle doit mener à la licence');
+  });
+
+  t('9.1.0 : « Émettre » ne peut pas donner deux numéros', () => {
+    // F-9.1.0-25. Le geste est asynchrone (`await confirmDialog`) : deux clics rapides donnaient
+    // DEUX passages dans `issue()`, donc deux `nextNumber` — la pièce prenait un numéro, puis le
+    // suivant, et le premier restait en trou. Trouvé en relisant le cahier, jamais par un test.
+    const app = lireApp();
+    const i = app.indexOf('    function issue() {');
+    assert.ok(i > 0, 'issue() introuvable');
+    const entete = app.slice(i, i + 200);
+    // Les DEUX moitiés : l'état (après un rechargement) et le drapeau (pendant le geste).
+    assert.ok(/emissionEnCours/.test(entete), 'issue() doit refuser pendant le geste');
+    assert.ok(/isIssued\(\)/.test(entete), 'issue() doit refuser une pièce déjà émise');
+    assert.ok(app.includes('const isIssued = () =>'), 'isIssued doit exister');
+
+    // Et le bouton le DIT : `data-busy` + `disabled`. Un bouton qui refuse en silence fait
+    // recliquer, ce qui est exactement le geste qu'on cherche à empêcher.
+    const j = app.indexOf("if ($('#issue')) $('#issue').onclick");
+    const geste = app.slice(j, j + 1400);
+    assert.ok(/dataset\.busy/.test(geste) && /disabled = true/.test(geste), 'le bouton doit se désactiver visiblement');
+    assert.ok(/finally/.test(geste), 'il doit se réactiver quoi qu\'il arrive : un bouton mort après une annulation est pire');
+    // La poignée se relit APRÈS l'attente : la page a pu se redessiner (règle 7.6.0).
+    assert.ok(/const encore = \$\('#issue'\)/.test(geste), 'le bouton se relit après l\'attente');
+  });
+
   if (enCours) throw new Error(`${enCours} test(s) asynchrone(s) lancé(s) sans « await ta(…) » : ils ne peuvent plus échouer`);
   console.log(`\n${n} tests OK`);
 })().catch(e => { console.error(e); process.exit(1); });

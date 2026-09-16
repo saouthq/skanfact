@@ -268,6 +268,31 @@
   // Trésorerie et marges, Paie, dossier partagé — fait partie de l'offre Entreprise. Même règle :
   // ce qui existe déjà dans ces modules reste lisible, imprimable et exportable ; on n'y crée plus.
   // `module` est l'identifiant du module (voir core.MODULES, et 'partage' pour le dossier à deux).
+  // ---------- l'option Comptabilité (9.1.0, SPEC-UI-ENT-002) ----------
+  //
+  // LA porte unique, comme `closedBlock` (6.0.0) et `licenceBlock` (6.4.0). Elle vit au CHANGEMENT
+  // D'ONGLET et nulle part ailleurs : un garde-fou posé dans chaque fonction de dessin serait
+  // recopié six fois, et le septième écran naîtrait sans lui.
+  //
+  // Elle ne prend jamais rien en otage. La page Comptabilité reste ouverte en entier — journaux,
+  // TVA, calendrier fiscal, clôtures, paquet du comptable : tout ce qu'une PME doit pouvoir faire.
+  // Seuls le grand livre, la balance et les états financiers sont l'option, parce que ce sont des
+  // écrans de comptable, pas de gestionnaire (décision du 15/09/2026, `DIRECTION.md`).
+  //
+  // `true` = c'est refusé. L'appelant ne dessine pas.
+  function optionBlock(option, quoi) {
+    if ((licence.options || []).includes(option)) return false;
+    modal(`<h2>Option ${h(C.OPTION_LABELS[option] || 'Comptabilité')}</h2>
+      <p>${h(quoi)} fait partie de l'option <strong>Comptabilité</strong>, qui n'est pas dans ta licence.</p>
+      <ul class="small">
+        <li><strong>Tes écritures, ta TVA, tes clôtures et le paquet de ton comptable restent disponibles.</strong> Rien de ce que tu envoies à ton comptable ne dépend de cette option.</li>
+        <li>Ce sont des écrans de comptable : grand livre, balance, états financiers.</li>
+      </ul>
+      <div class="modal-actions"><button class="btn" data-close>Fermer</button><button class="btn btn-primary" id="go-opt">Voir ma licence</button></div>`,
+      (root, close) => { $('#go-opt', root).onclick = () => { close(); allerParametres('app', 'p-licence'); }; });
+    return true;
+  }
+
   function licenceBlock(what, module) {
     if (licence.locked) {
       modal(`<h2>${h(licence.label)}</h2>
@@ -2724,7 +2749,22 @@
       untouch();
       return true;
     }
+    // Le garde-fou de double-clic (9.1.0, F-9.1.0-25). Trouvé en relisant le cahier des charges,
+    // jamais par un test : entre le clic sur « Émettre » et le redessin, la fenêtre de confirmation
+    // est asynchrone (`await confirmDialog`). Deux clics rapides sur le bouton — ou un clic pendant
+    // que le PDF s'exporte — donnaient DEUX passages dans `issue()`, donc deux appels à
+    // `nextNumber` : la pièce prenait un numéro, puis le suivant, et le premier restait en trou.
+    //
+    // Deux moitiés, et les deux comptent : `isIssued` refuse une pièce déjà émise (l'état fait foi,
+    // même après un rechargement), `emissionEnCours` refuse pendant le geste (l'état n'a pas encore
+    // changé). L'une sans l'autre laisse passer un des deux cas.
+    let emissionEnCours = false;
+    const isIssued = () => {
+      const d = docById(doc.id) || doc;
+      return !!(d.number && d.status && d.status !== 'brouillon');
+    };
     function issue() {
+      if (emissionEnCours || isIssued()) return false;
       if (!validate()) return false;
       // Avant `nextNumber` : le compteur est écrit même quand l'enregistrement échoue ensuite. Un
       // garde-fou posé après aurait troué la numérotation à chaque tentative refusée.
@@ -2746,11 +2786,23 @@
     bindBack(backTo);
     if ($('#save')) $('#save').onclick = () => { if (persist()) { toast(isQ || isExtra ? 'Enregistré : ' + doc.number : 'Brouillon enregistré'); unlockedIds.delete(doc.id); if (isNew) navigate('#/doc/' + doc.id); else render(true); } };
     if ($('#issue')) $('#issue').onclick = async () => {
-      if (!validate()) return;
-      const n = doc.number || peekNumber(doc.type, doc.date);
-      const warn = issueWarnings();
-      if (!await confirmDialog(`Émettre ${isInv ? 'la facture' : 'l\'avoir'} ${n} ? Le numéro devient définitif et le document ne sera plus modifiable. Pour corriger après coup, il faudra faire un avoir.${warn.length ? '\n\n⚠ ' + warn.join('\n⚠ ') : ''}`, warn.length ? 'Émettre quand même' : 'Émettre', false)) return;
-      if (issue()) { if (isNew) navigate('#/doc/' + doc.id); else render(); }
+      // `data-busy` sur le bouton : il se désactive VISIBLEMENT pendant le geste. Un bouton qui
+      // refuse en silence fait recliquer (règle 7.0.0) ; celui-ci dit qu'il travaille.
+      const b = $('#issue');
+      if (b.dataset.busy || isIssued()) return;
+      b.dataset.busy = '1'; b.disabled = true;
+      try {
+        if (!validate()) return;
+        const n = doc.number || peekNumber(doc.type, doc.date);
+        const warn = issueWarnings();
+        if (!await confirmDialog(`Émettre ${isInv ? 'la facture' : 'l\'avoir'} ${n} ? Le numéro devient définitif et le document ne sera plus modifiable. Pour corriger après coup, il faudra faire un avoir.${warn.length ? '\n\n⚠ ' + warn.join('\n⚠ ') : ''}`, warn.length ? 'Émettre quand même' : 'Émettre', false)) return;
+        if (issue()) { if (isNew) navigate('#/doc/' + doc.id); else render(); }
+      } finally {
+        // On relit le bouton : la page a pu se redessiner pendant l'attente, et la poignée d'avant
+        // désigne alors un élément détaché (règle 7.6.0).
+        const encore = $('#issue');
+        if (encore) { delete encore.dataset.busy; encore.disabled = false; }
+      }
     };
     if ($('#serials')) $('#serials').onclick = () => serialAssignForm(docById(doc.id) || doc, () => render(true));
     if ($('#bill-btn')) $('#bill-btn').onclick = e => { e.stopPropagation(); const l = $('#bill-list'); const open = l.hidden; closeMenus(); l.hidden = !open; };
@@ -4727,6 +4779,12 @@
     pays: { sort: null, page: 1 },         // encaissements
     buys: { sort: null, page: 1 }          // journal des achats
   };
+  // Les onglets de l'option Comptabilité (9.1.0). Trois, et seulement trois : ce sont des écrans de
+  // COMPTABLE. Les journaux, la TVA, le calendrier fiscal, les clôtures et le paquet du comptable
+  // n'en font pas partie et ne doivent jamais y entrer — c'est tout ce qu'une PME doit pouvoir faire
+  // sans rien payer de plus, et c'est ce qui rend l'option acceptable.
+  const ONGLETS_OPTION = ['grandlivre', 'balance', 'etats'];
+  const ONGLET_QUOI = { grandlivre: 'Le grand livre', balance: 'La balance', etats: 'Les états financiers' };
   const COMPTA_TABS = [['ventes', 'Ventes'], ['achats', 'Achats'], ['tva', 'TVA à payer'], ['ecritures', 'Écritures'], ['grandlivre', 'Grand livre'], ['balance', 'Balance'], ['etats', 'États financiers'], ['calendrier', 'Calendrier fiscal'], ['clotures', 'Clôtures'], ['cabinet', 'Cabinet']];
   // État propre à l'onglet Écritures : sa pagination et son tri ne doivent pas se mélanger à ceux
   // des journaux de la même page.
@@ -8496,10 +8554,14 @@
           <select id="c-year">${years.map(y => `<option ${y === comptaState.year ? 'selected' : ''}>${y}</option>`).join('')}</select>
           <select id="c-month"><option value="">Toute l'année</option>${MONTHS.map((m, i) => { const v = String(i + 1).padStart(2, '0'); return `<option value="${v}" ${v === comptaState.month ? 'selected' : ''}>${m}</option>`; }).join('')}</select>
         </div></div>
-      <div class="tabs" id="c-tabs" role="tablist">${COMPTA_TABS.map(([id, label]) =>
-        `<button role="tab" data-tab="${id}" class="${id === comptaState.tab ? 'active' : ''}">${label}</button>`).join('')}</div>
+      <div class="tabs" id="c-tabs" role="tablist">${COMPTA_TABS.filter(([id]) => !ONGLETS_OPTION.includes(id) || C.sousModuleOn(data, 'compta.livres')).map(([id, label]) =>
+        `<button role="tab" data-tab="${id}" class="${id === comptaState.tab ? 'active' : ''}${ONGLETS_OPTION.includes(id) ? ' opt' : ''}">${label}${ONGLETS_OPTION.includes(id) && !(licence.options || []).includes('compta') ? ' 🔒' : ''}</button>`).join('')}
+        ${!C.sousModuleOn(data, 'compta.livres') ? `<button class="btn btn-sm btn-ghost" id="c-plus" title="Grand livre, balance, états financiers">+ Comptabilité complète</button>` : ''}</div>
       <div id="c-body"></div>`;
     const draw = () => {
+      // Un onglet masqué ne peut pas rester l'onglet courant : la page s'ouvrirait sur du vide,
+      // sans onglet allumé, et on croirait s'être trompé de page.
+      if (ONGLETS_OPTION.includes(comptaState.tab) && !C.sousModuleOn(data, 'compta.livres')) comptaState.tab = 'ventes';
       $('#c-period').hidden = ['calendrier', 'clotures', 'cabinet'].includes(comptaState.tab);
       if (comptaState.tab === 'achats') return drawBuyJournal(period(), periodLabel());
       if (comptaState.tab === 'tva') return drawVat();
@@ -9619,7 +9681,15 @@
     const resetPages = () => { comptaState.journal.page = 1; comptaState.pays.page = 1; comptaState.buys.page = 1; };
     $('#c-year').onchange = e => { comptaState.year = e.target.value; resetPages(); draw(); };
     $('#c-month').onchange = e => { comptaState.month = e.target.value; resetPages(); draw(); };
-    $$('#c-tabs button').forEach(b => b.onclick = () => {
+    // La porte mène à LA CASE, pas à la page qui mène à la page qui la contient. Les Paramètres
+    // n'en portent qu'un bouton (« Choisir les modules affichés… ») : y envoyer ferait deux clics
+    // de plus pour trouver une ligne au milieu de dix-neuf. `pageFocus` amène la ligne à l'écran et
+    // la marque une seconde et demie — c'est la règle « un raccourci vise un PANNEAU » (7.18.0).
+    if ($('#c-plus')) $('#c-plus').onclick = vers('#/modules', () => { pageFocus = 'sm-compta-livres'; });
+    $$('#c-tabs button[data-tab]').forEach(b => b.onclick = () => {
+      // LA porte de l'option, ici et nulle part ailleurs (SPEC-UI-ENT-002). Le cadenas se voit
+      // AVANT le clic : un onglet qui refuse sans le dire d'abord, on croit s'être trompé.
+      if (ONGLETS_OPTION.includes(b.dataset.tab) && optionBlock('compta', ONGLET_QUOI[b.dataset.tab] || 'Cet écran')) return;
       comptaState.tab = b.dataset.tab;
       $$('#c-tabs button').forEach(x => x.classList.toggle('active', x === b));
       resetPages(); draw();
@@ -10262,7 +10332,23 @@
             <div class="small muted mt-s"><b>Pages :</b> ${h(pages)} · ${h(note)}</div>
           </div>
           <div class="mod-go">${on && pages ? `<button class="btn btn-sm" data-open="${h(m.id)}">Ouvrir</button>` : ''}</div>
-        </div>`;
+        </div>${(m.sousModules || []).map(sm => {
+          // Une option payante est **décochée par défaut** : on ne fait pas apparaître chez
+          // quelqu'un un écran qu'il n'a pas demandé et qui se paie. Et la case reste ACTIVE même
+          // si l'option manque à la licence — un réglage qui se retire la possibilité de revenir
+          // en arrière est le piège de la 7.12.0. C'est `optionBlock` qui parle de la licence,
+          // au moment où on ouvre l'onglet, pas cette case.
+          const smOn = C.sousModuleOn(data, sm.id);
+          const aOption = (licence.options || []).includes(sm.option);
+          return `<div class="mod-row mod-sub${smOn ? ' on' : ''}" id="sm-${h(sm.id.replace(/\./g, '-'))}">
+            <label class="mod-check"><input type="checkbox" data-sousmod="${h(sm.id)}" ${smOn ? 'checked' : ''}></label>
+            <div class="mod-txt">
+              <div class="mod-t">${h(sm.label)} <span class="badge">${aOption ? 'option incluse' : 'option payante'}</span></div>
+              <div class="small muted">${h(sm.quoi)}</div>
+              ${aOption ? '' : '<div class="small muted mt-s">Cette option n\'est pas dans ta licence : les trois onglets s\'affichent avec un cadenas et disent quoi faire.</div>'}
+            </div><div class="mod-go"></div>
+          </div>`;
+        }).join('')}`;
       }).join('');
       $('#mod-list').innerHTML = lignes;
       $$('[data-mod]').forEach(cb => cb.onchange = async () => {
@@ -10294,6 +10380,22 @@
         const encore = $(`[data-mod="${id}"]`);
         if (encore) encore.focus();
         toast(cb.checked ? 'Affiché dans le menu' : 'Retiré du menu — rien n\'est supprimé, et la case reste là pour revenir en arrière');
+      });
+      $$('[data-sousmod]').forEach(cb => cb.onchange = () => {
+        const id = cb.dataset.sousmod;
+        // `null` (aucun choix enregistré) devient la liste de tous les modules VISIBLES plus le
+        // sous-module : sans le « plus », cocher l'option masquerait d'un coup tout le reste du
+        // menu. C'est la règle « on ne masque jamais ce que quelqu'un a saisi » (7.0.0).
+        const liste = Array.isArray(company().modules) ? company().modules.slice() : C.MODULES.map(m => m.id);
+        const i = liste.indexOf(id);
+        if (cb.checked && i < 0) liste.push(id);
+        if (!cb.checked && i >= 0) liste.splice(i, 1);
+        company().modules = liste;
+        save();
+        dessine();
+        const encore = $(`[data-sousmod="${id}"]`);
+        if (encore) encore.focus();
+        toast(cb.checked ? 'Affiché dans la page Comptabilité' : 'Retiré — rien n\'est supprimé, et la case reste là');
       });
       $$('[data-open]').forEach(b => b.onclick = () => {
         const p = C.PAGES.find(x => x.module === b.dataset.open && !x.horsMenu);
