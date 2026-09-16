@@ -87,6 +87,10 @@
   <div id="modal-root"></div>
   <div id="toast"></div>
 
+  <!-- Le moteur comptable, partagé avec l'application du cabinet (9.1.0). Il se charge AVANT
+       core.js, qui en réexporte `entriesBalance` et `entriesByAccount` : l'inverse laisserait
+       `root.SkanCompta` indéfini au moment où core.js le lit, sans rien afficher en console. -->
+  <script src="compta.js"></script>
   <script src="core.js"></script>
   <script src="demo.js"></script>
   <script src="guide.js"></script>

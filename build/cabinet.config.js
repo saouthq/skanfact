@@ -41,6 +41,7 @@ module.exports = {
     'src/renderer/style.css',          // la feuille partagée, chargée par son index.html
     'src/renderer/rowmenu.js',         // le menu d'actions d'une ligne, partagé lui aussi
     'src/renderer/reglages.js',        // le sommaire et la recherche des réglages, partagés aussi
+    'src/renderer/compta.js',          // le moteur comptable : la balance du cabinet est celle du client
     'package.json',
     'CHANGELOG.md'
   ],
@@ -95,7 +96,13 @@ module.exports = {
     owner: 'saouthq',
     repo: 'skanfact',
     releaseType: 'release',
-    channel: 'cabinet'          // → cabinet.yml / cabinet-mac.yml, à côté de latest.yml
+    // Le canal se DÉDUIT du numéro de version, comme pour l'app entreprise depuis la 7.25.0 : une
+    // seule source de vérité, écrite dans le paquet, dans la release, dans l'écran des mises à jour
+    // et dans le nom du fichier téléchargé. Un drapeau posé à la construction ou une case au
+    // lancement du workflow s'oublient et se désaccordent ; un numéro de version, non.
+    //   9.2.0        → cabinet.yml        (tous les cabinets)
+    //   9.2.0-beta.1 → cabinet-beta.yml   (seulement ceux qui ont coché la case)
+    channel: /-/.test(pkg.version) ? 'cabinet-beta' : 'cabinet'
   },
   artifactName: 'SkanFact-Cabinet-${version}-${os}-${arch}.${ext}'
 };

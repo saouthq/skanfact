@@ -38,6 +38,45 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   const ok = await win.waitForSelector('#modal-root #ok', { timeout: 3000 }).catch(() => null);
   if (ok) await ok.click();
   await win.waitForSelector('.demo-banner');
+
+  // L'option Comptabilité (9.1.0). Les trois onglets — grand livre, balance, états financiers —
+  // sont MASQUÉS par défaut : ce sont des écrans de comptable, et l'app entreprise s'arrête à la
+  // gestion (DIRECTION.md, 15/09/2026). On vérifie qu'ils le sont, puis on coche la case comme le
+  // ferait quelqu'un qui veut les voir. Contourner le réglage par `evaluate` prouverait que le
+  // reste du test marche, pas que l'option existe.
+  await aller('#/compta');
+  await win.waitForSelector('#c-tabs');
+  const avant = await win.evaluate(() => ({
+    onglets: [...document.querySelectorAll('#c-tabs button[data-tab]')].map(b => b.dataset.tab),
+    porte: !!document.querySelector('#c-plus')
+  }));
+  ['grandlivre', 'balance', 'etats'].forEach(o => {
+    if (avant.onglets.includes(o)) throw new Error(`l'onglet « ${o} » doit être masqué par défaut : c'est l'option payante`);
+  });
+  ['ventes', 'achats', 'tva', 'ecritures', 'clotures', 'cabinet'].forEach(o => {
+    if (!avant.onglets.includes(o)) throw new Error(`l'onglet « ${o} » ne doit JAMAIS être masqué : c'est ce qu'on donne au comptable`);
+  });
+  if (!avant.porte) throw new Error('un écran qui masque quelque chose doit dire où le retrouver');
+  j.etape('L\'option Comptabilité est masquée par défaut, et dit où la trouver');
+  console.log(`  ✓ ${avant.onglets.length} onglets visibles, les trois de l'option absents, « + Comptabilité complète » présent`);
+
+  // On coche la case, par le vrai écran.
+  await win.click('#c-plus');
+  await win.waitForSelector('[data-sousmod="compta.livres"]');
+  // La porte doit amener à la LIGNE, pas en haut d'une page de dix-neuf modules : `pageFocus` la
+  // marque une seconde et demie. Sans ça on arrive au bon endroit sans savoir lequel c'est.
+  const vise = await win.evaluate(() => {
+    const r = document.querySelector('#sm-compta-livres');
+    return r ? { case: !!r.querySelector('[data-sousmod="compta.livres"]'), marquee: r.classList.contains('flash') } : null;
+  });
+  if (!vise) throw new Error('la porte n\'a pas de cible : #sm-compta-livres n\'existe pas');
+  if (!vise.case) throw new Error('la ligne visée ne porte pas la case de l\'option');
+  if (!vise.marquee) throw new Error('la ligne visée n\'est pas marquée : on arrive au bon endroit sans savoir lequel');
+  await win.click('[data-sousmod="compta.livres"]');
+  await win.waitForTimeout(300);
+  await aller('#/compta');
+  await win.waitForSelector('#c-tabs button[data-tab=grandlivre]');
+  console.log('  ✓ la porte mène à la case elle-même, cochée : les trois onglets sont là');
   j.ok('prêt');
 
   // -------------------------------------------------- 1. le grand livre, tous comptes

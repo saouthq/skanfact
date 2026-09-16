@@ -4,7 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
 const { createStorage } = require('./storage');
-const { zipBuffer, sha256, sealBuffer, sealForCabinet, keyFingerprint } = require('./zip');
+const { zipBuffer, sha256, sealBuffer, sealForCabinet, keyFingerprint, generateClientKeys, signManifest } = require('./zip');
 
 // Identifiants de l'app. Ne PAS les lire dans package.json au démarrage : electron-builder
 // retire la section « build » du package.json empaqueté (l'app installée n'a plus build.publish).
@@ -44,13 +44,31 @@ if (!app.requestSingleInstanceLock()) {
 // Le jour du calendrier de l'utilisateur (pas le jour UTC, qui le soir est déjà demain à l'est).
 function localDay() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
 
+// Le journal technique, BORNÉ depuis la 9.1.0 (SPEC-OUT-004).
+//
+// Il a toujours grossi sans limite. Tant que seul le processus principal y écrivait, ça restait
+// quelques kilo-octets par an. Le garde-fou d'erreur du renderer change l'échelle : une boucle qui
+// lève à chaque tour peut écrire des mégaoctets par minute, et remplir le disque de quelqu'un est
+// une panne bien pire que celle qu'on cherchait à tracer.
+//
+// UNE rotation, pas deux : `main.log` dépasse 2 Mo → il devient `main.log.1` (l'ancien `.1` est
+// écrasé) et on repart à vide. Deux fichiers au maximum, donc 4 Mo au pire, et on garde toujours
+// l'historique récent — c'est lui qui sert à dépanner (règle 6.7.2). Une rotation numérotée à
+// cinq fichiers donnerait 10 Mo pour une information que personne ne lit jamais.
+const LOG_MAX = 2 * 1024 * 1024;
+function logPath() { return path.join(app.getPath('userData'), 'main.log'); }
 function logToFile(where, err) {
-  try { fs.appendFileSync(path.join(app.getPath('userData'), 'main.log'), `${new Date().toISOString()} [${where}] ${err && err.stack || err}\n`); } catch {}
+  try {
+    const f = logPath();
+    // On regarde AVANT d'écrire : après, la ligne qui a fait déborder serait la première du
+    // fichier neuf, et c'est précisément celle qu'on veut lire à la suite des autres.
+    try { if (fs.statSync(f).size > LOG_MAX) fs.renameSync(f, f + '.1'); } catch {}
+    fs.appendFileSync(f, `${new Date().toISOString()} [${where}] ${err && err.stack || err}\n`);
+  } catch {}
 }
 function logError(where, err) {
-  const msg = `${new Date().toISOString()} [${where}] ${err && err.stack || err}\n`;
-  try { fs.appendFileSync(path.join(app.getPath('userData'), 'main.log'), msg); } catch {}
-  try { dialog.showErrorBox('SkanFact — erreur', `${where}\n\n${err && err.message || err}\n\nDétail dans : ${path.join(app.getPath('userData'), 'main.log')}`); } catch {}
+  logToFile(where, err);
+  try { dialog.showErrorBox('SkanFact — erreur', `${where}\n\n${err && err.message || err}\n\nDétail dans : ${logPath()}`); } catch {}
 }
 
 // En mode développement (`npm start`), on travaille dans un dossier de données SÉPARÉ.
@@ -268,7 +286,42 @@ ipcMain.handle('support:info', () => {
     lastFreeze: lastFreeze ? { at: lastFreeze.at, silence: lastFreeze.silence } : null
   };
 });
-ipcMain.handle('support:openLog', () => shell.showItemInFolder(path.join(app.getPath('userData'), 'main.log')));
+ipcMain.handle('support:openLog', () => shell.showItemInFolder(logPath()));
+
+// Une erreur du renderer arrive ici (9.1.0, SPEC-OUT-004).
+//
+// Jusqu'ici, une exception dans l'interface finissait dans une console que personne n'ouvre : sur
+// le poste d'un client, elle n'existait tout simplement pas. Cinq défauts de ce dépôt ont vécu des
+// versions entières pour cette seule raison — une fonction appelée et jamais définie (6.8.0), une
+// variable d'une autre route (7.20.0), `C.pl(...)` alors que `pl` est locale (7.22.0),
+// `clientItems` déclarée dans un autre formulaire (7.23.0), `null.onclick` après une attente
+// (7.6.0). Chacune laissait un écran blanc, un bouton mort ou une fenêtre qui ne s'ouvre pas, et
+// AUCUNE trace. Maintenant il y en a une, et « Signaler un problème » l'emporte.
+//
+// Trois choses qu'on ne fait pas, et qui sont le cœur de la règle :
+//   - jamais de fenêtre. Une erreur d'interface n'est pas forcément visible pour l'utilisateur ;
+//     lui coller une boîte de dialogue le fait douter d'un travail qui s'est peut-être bien passé.
+//   - jamais de rechargement. C'est au chien de garde de décider ça, lui seul sait si l'interface
+//     répond encore.
+//   - on cesse d'écrire au-delà de vingt par minute. Une boucle qui lève à chaque tour de rendu
+//     remplirait le disque, et les vingt premières disent déjà tout ce qu'il y a à savoir.
+let erreursRenderer = { debut: 0, n: 0, tues: 0 };
+ipcMain.handle('support:erreur', (_e, info) => {
+  try {
+    const maintenant = Date.now();
+    if (maintenant - erreursRenderer.debut > 60000) {
+      // Une minute écoulée : on repart, en disant combien on a tues — sans cette ligne, le journal
+      // laisserait croire que l'application s'est calmée alors qu'elle brûlait.
+      if (erreursRenderer.tues) logToFile('renderer', `… ${erreursRenderer.tues} erreur(s) identique(s) non journalisée(s) (limite d'une minute)`);
+      erreursRenderer = { debut: maintenant, n: 0, tues: 0 };
+    }
+    if (erreursRenderer.n >= 20) { erreursRenderer.tues++; return false; }
+    erreursRenderer.n++;
+    const i = info || {};
+    logToFile('renderer', `${i.message || '(sans message)'} — ${i.source || '?'}:${i.ligne || '?'}\n${i.pile || '(sans pile)'}`);
+    return true;
+  } catch { return false; }
+});
 
 function createWindow() {
   const st = readWindowState() || {};
@@ -500,6 +553,31 @@ const crypto = require('crypto');
 // exactement ce qu'on veut pour « trois postes ».
 const LIC_FILE = () => path.join(currentDossier().dir, 'licence.json');
 const LIC_ANCIEN = () => path.join(app.getPath('userData'), 'licence.json');
+// La paire de clés qui SIGNE les paquets envoyés au comptable (9.2.0). Elle vit dans le dossier de
+// l'entreprise, pour la même raison que la licence : un ordinateur ouvre plusieurs entreprises, et
+// c'est l'ENTREPRISE qui signe, pas le poste. Un dossier partagé emporte donc sa clé, et les deux
+// personnes qui travaillent dessus signent avec la même — ce qui est exactement ce que le cabinet
+// doit voir : un dossier, une clé.
+//
+// Elle est HORS de `skanfact-data.json`, donc hors du paquet et hors des exports : une clé privée
+// qui voyagerait dans une sauvegarde qu'on envoie par mail ne serait plus une clé privée.
+const CLE_CLIENT = () => path.join(currentDossier().dir, 'cle-client.json');
+function cleClient() {
+  const f = CLE_CLIENT();
+  try {
+    const j = JSON.parse(fs.readFileSync(f, 'utf8'));
+    if (j && j.publicKey && j.privateKey) return j;
+  } catch { /* pas encore de clé, ou fichier abîmé : on en refait une */ }
+  // Créée au premier envoi, jamais avant : une clé qu'on fabrique à l'installation pour tout le
+  // monde est une clé que 90 % des installations n'utiliseront jamais.
+  const k = generateClientKeys();
+  const j = { format: 1, publicKey: k.publicKey, privateKey: k.privateKey, creeLe: new Date().toISOString() };
+  try {
+    fs.mkdirSync(path.dirname(f), { recursive: true });
+    fs.writeFileSync(f, JSON.stringify(j, null, 2), { encoding: 'utf8', mode: 0o600 });
+  } catch (e) { logToFile('cle-client', e); }
+  return j;
+}
 // Les clés de l'ÉDITEUR : la privée signe les licences ; la publique du même jeu arme son propre
 // poste, donc il voit exactement ce que verront ses clients. Hors du dépôt, hors des données, hors
 // des sauvegardes. `SKANFACT_DOSSIER_CLES` ne sert qu'aux tests : ils posent une clé d'essai dans un
@@ -1757,6 +1835,22 @@ ipcMain.handle('pack:build', async (_e, { plan, coverHtml, password, cabinetKey,
     files.unshift({ name: 'manifeste.json', data: manifestBuf });
     step('Manifeste');
 
+    // La SIGNATURE (9.2.0), écrite après le manifeste et portant ses octets exacts. Chiffrer dit
+    // « seul le cabinet peut lire » ; signer dit « ça vient bien de son client ». Sans elle,
+    // quiconque tenait la clé publique du cabinet — que le comptable donne à tous ses clients —
+    // pouvait lui envoyer un paquet au nom d'une autre entreprise.
+    let signature = null;
+    try {
+      const k = cleClient();
+      signature = signManifest(manifestBuf, k.privateKey, k.publicKey);
+      files.push({ name: 'signature.json', data: Buffer.from(JSON.stringify(signature, null, 2), 'utf8') });
+    } catch (e) {
+      // Un paquet non signé reste un paquet : le cabinet le dira « origine non prouvée » plutôt que
+      // de le refuser (sauf s'il a déjà épinglé la clé de ce client). Échouer ici priverait
+      // quelqu'un de son envoi mensuel pour une clé qu'on n'a pas su écrire.
+      logToFile('signature du paquet', e);
+    }
+
     const zip = zipBuffer(files, { date: new Date() });
     // Trois niveaux, dans cet ordre de préférence : chiffré pour le cabinet appairé (rien à
     // transmettre), à défaut un mot de passe, à défaut rien du tout.
@@ -1774,7 +1868,8 @@ ipcMain.handle('pack:build', async (_e, { plan, coverHtml, password, cabinetKey,
     return {
       path: filePath, octets: out.length, fichiers: files.length,
       chiffre: !!(password || cabinetKey), pourCabinet: cabinetKey ? keyFingerprint(cabinetKey) : null,
-      absents: missing, empreinte: sha256(manifestBuf)
+      absents: missing, empreinte: sha256(manifestBuf),
+      signe: !!signature, empreinteCle: signature ? signature.empreinte : null
     };
   } finally {
     win.destroy();

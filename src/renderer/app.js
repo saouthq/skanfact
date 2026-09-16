@@ -27,7 +27,7 @@
     exportPdfMany: async () => null, saveText: async () => null, exportPdfSilent: async () => null, saveTextSilent: async () => null, composeMail: async () => ({ state: 'mailto' }),
     openPath: async () => {}, showInFolder: async () => {}, setDirty: () => {},
     changelog: async () => '', onMenuAction: () => {}, setTitle: () => {},
-    onAlivePing: () => {}, onFreezeNotice: () => {}, supportInfo: async () => ({ version: 'dev', platform: 'browser', log: '', lines: 0 }), openLog: async () => {},
+    onAlivePing: () => {}, onFreezeNotice: () => {}, supportInfo: async () => ({ version: 'dev', platform: 'browser', log: '', lines: 0 }), openLog: async () => {}, supportErreur: async () => false,
     updateVersion: async () => ({ version: 'dev', packaged: false, platform: 'browser', macSigned: false }),
     updateCheck: async () => ({ state: 'dev' }), updateDownload: async () => ({ state: 'dev' }), updateInstall: async () => ({ state: 'dev' }), updateSetToken: async () => ({ hasToken: false }),
     updateSetBeta: async () => ({ beta: false }),
@@ -268,6 +268,31 @@
   // Trésorerie et marges, Paie, dossier partagé — fait partie de l'offre Entreprise. Même règle :
   // ce qui existe déjà dans ces modules reste lisible, imprimable et exportable ; on n'y crée plus.
   // `module` est l'identifiant du module (voir core.MODULES, et 'partage' pour le dossier à deux).
+  // ---------- l'option Comptabilité (9.1.0, SPEC-UI-ENT-002) ----------
+  //
+  // LA porte unique, comme `closedBlock` (6.0.0) et `licenceBlock` (6.4.0). Elle vit au CHANGEMENT
+  // D'ONGLET et nulle part ailleurs : un garde-fou posé dans chaque fonction de dessin serait
+  // recopié six fois, et le septième écran naîtrait sans lui.
+  //
+  // Elle ne prend jamais rien en otage. La page Comptabilité reste ouverte en entier — journaux,
+  // TVA, calendrier fiscal, clôtures, paquet du comptable : tout ce qu'une PME doit pouvoir faire.
+  // Seuls le grand livre, la balance et les états financiers sont l'option, parce que ce sont des
+  // écrans de comptable, pas de gestionnaire (décision du 15/09/2026, `DIRECTION.md`).
+  //
+  // `true` = c'est refusé. L'appelant ne dessine pas.
+  function optionBlock(option, quoi) {
+    if ((licence.options || []).includes(option)) return false;
+    modal(`<h2>Option ${h(C.OPTION_LABELS[option] || 'Comptabilité')}</h2>
+      <p>${h(quoi)} fait partie de l'option <strong>Comptabilité</strong>, qui n'est pas dans ta licence.</p>
+      <ul class="small">
+        <li><strong>Tes écritures, ta TVA, tes clôtures et le paquet de ton comptable restent disponibles.</strong> Rien de ce que tu envoies à ton comptable ne dépend de cette option.</li>
+        <li>Ce sont des écrans de comptable : grand livre, balance, états financiers.</li>
+      </ul>
+      <div class="modal-actions"><button class="btn" data-close>Fermer</button><button class="btn btn-primary" id="go-opt">Voir ma licence</button></div>`,
+      (root, close) => { $('#go-opt', root).onclick = () => { close(); allerParametres('app', 'p-licence'); }; });
+    return true;
+  }
+
   function licenceBlock(what, module) {
     if (licence.locked) {
       modal(`<h2>${h(licence.label)}</h2>
@@ -2013,10 +2038,23 @@
     if (type === 'livraison') d.hidePrices = true;
     return d;
   }
+  // Ce qui se COPIE du client à la création de la pièce, et qui n'est plus jamais relu ensuite.
+  // C'est la même règle que le timbre gelé à l'émission (7.1.1), un cran plus tôt : une facture
+  // émise à un client qu'on déclare exonéré six mois plus tard ne doit pas changer de total. Si
+  // `computeTotals` allait lire le client, chaque pièce déjà partie chez lui se réécrirait.
   function applyClientDefaults(doc, clientId) {
     const c = clientById(clientId); if (!c) return;
     if (c.lang) doc.lang = c.lang;
     if (c.currency) doc.currency = c.currency;
+    // L'exonération de timbre (9.1.1) : on décoche la case du document, sans la verrouiller. Le
+    // timbre reste réglable pièce par pièce — l'exonération est un défaut, pas un interdit, et
+    // c'est le comptable qui tranche les cas (À VÉRIFIER).
+    //
+    // Dans les DEUX sens, et seulement sur une facture. Poser `false` sans jamais reposer `true`
+    // laisserait un brouillon dont on change le client — d'un exonéré vers un client ordinaire —
+    // sans timbre, en silence. Sur un avoir ou une proforma, `applyStamp === true` veut dire « en
+    // mettre un » : le reposer ajouterait un timbre là où il n'y en a jamais.
+    if (doc.type === 'facture') doc.applyStamp = !c.stampExempt;
   }
 
   function clientWithholding(clientId) {
@@ -2407,6 +2445,12 @@
         // nouveau client : on reprend son taux de retenue à la source, sa langue et sa devise
         if (!isQ) { doc.withholdingRate = clientWithholding(doc.clientId); const sel = $('select[name=withholdingRate]', head); if (sel) sel.innerHTML = withholdingOptions(doc.withholdingRate); }
         applyClientDefaults(doc, doc.clientId);
+        // La case du timbre suit le nouveau client (9.1.1). Sans cette ligne, `doc.applyStamp`
+        // serait juste et l'écran faux — et le prochain `formValues(head)` relirait la case restée
+        // en arrière et écraserait la donnée. Un champ qu'on change dans les données et pas dans le
+        // DOM se fait annuler à la frappe suivante, sans un mot.
+        const caseTimbre = $('input[name=applyStamp]', head);
+        if (caseTimbre) caseTimbre.checked = doc.applyStamp !== false;
         $('select[name=lang]', head).value = doc.lang || 'fr'; $('select[name=currency]', head).value = docCur(doc);
         cur = docCur(doc); setRateLabel();
         // les affaires proposées suivent le client : celles d'un autre client n'ont rien à faire ici
@@ -2684,6 +2728,17 @@
       (doc.lines || []).filter(l => (l.label || '').trim() && !l.noDiscount
         && (!(Number(l.qty) > 0) || !(Number(l.unitPrice) > 0)))
         .forEach(l => w.push(`La ligne « ${l.label} » est à 0 : ${!(Number(l.qty) > 0) ? 'quantité' : 'prix unitaire'} manquant. Si c'est une prestation offerte, ignore cet avertissement.`));
+      // Une retenue sur une facture sous le seuil (9.1.1). On AVERTIT, on ne refuse pas et on ne
+      // retire jamais la retenue soi-même : le seuil dépend de la nature de l'opération autant que
+      // du montant, et c'est le comptable qui tranche. Sans seuil réglé (0), rien ne s'affiche
+      // jamais — SkanFact n'invente pas le chiffre qu'on ne lui a pas donné.
+      const seuil = C.seuilRetenue(co);
+      if (seuil > 0 && isInv) {
+        const t = C.computeTotals(doc, co);
+        if (t.withholdingRate > 0 && t.totalTTC < seuil) {
+          w.push(`Cette facture (${C.money(t.totalTTC, docCur(doc))}) est sous le seuil de retenue (${C.money(seuil, co.currency)}) et porte une retenue de ${pct(t.withholdingRate)} %. Vérifie avec ton comptable.`);
+        }
+      }
       return w;
     }
     // L'avertissement « ta fiche société est incomplète » n'existait que sur `#issue`, c'est-à-dire
@@ -2724,7 +2779,22 @@
       untouch();
       return true;
     }
+    // Le garde-fou de double-clic (9.1.0, F-9.1.0-25). Trouvé en relisant le cahier des charges,
+    // jamais par un test : entre le clic sur « Émettre » et le redessin, la fenêtre de confirmation
+    // est asynchrone (`await confirmDialog`). Deux clics rapides sur le bouton — ou un clic pendant
+    // que le PDF s'exporte — donnaient DEUX passages dans `issue()`, donc deux appels à
+    // `nextNumber` : la pièce prenait un numéro, puis le suivant, et le premier restait en trou.
+    //
+    // Deux moitiés, et les deux comptent : `isIssued` refuse une pièce déjà émise (l'état fait foi,
+    // même après un rechargement), `emissionEnCours` refuse pendant le geste (l'état n'a pas encore
+    // changé). L'une sans l'autre laisse passer un des deux cas.
+    let emissionEnCours = false;
+    const isIssued = () => {
+      const d = docById(doc.id) || doc;
+      return !!(d.number && d.status && d.status !== 'brouillon');
+    };
     function issue() {
+      if (emissionEnCours || isIssued()) return false;
       if (!validate()) return false;
       // Avant `nextNumber` : le compteur est écrit même quand l'enregistrement échoue ensuite. Un
       // garde-fou posé après aurait troué la numérotation à chaque tentative refusée.
@@ -2746,11 +2816,23 @@
     bindBack(backTo);
     if ($('#save')) $('#save').onclick = () => { if (persist()) { toast(isQ || isExtra ? 'Enregistré : ' + doc.number : 'Brouillon enregistré'); unlockedIds.delete(doc.id); if (isNew) navigate('#/doc/' + doc.id); else render(true); } };
     if ($('#issue')) $('#issue').onclick = async () => {
-      if (!validate()) return;
-      const n = doc.number || peekNumber(doc.type, doc.date);
-      const warn = issueWarnings();
-      if (!await confirmDialog(`Émettre ${isInv ? 'la facture' : 'l\'avoir'} ${n} ? Le numéro devient définitif et le document ne sera plus modifiable. Pour corriger après coup, il faudra faire un avoir.${warn.length ? '\n\n⚠ ' + warn.join('\n⚠ ') : ''}`, warn.length ? 'Émettre quand même' : 'Émettre', false)) return;
-      if (issue()) { if (isNew) navigate('#/doc/' + doc.id); else render(); }
+      // `data-busy` sur le bouton : il se désactive VISIBLEMENT pendant le geste. Un bouton qui
+      // refuse en silence fait recliquer (règle 7.0.0) ; celui-ci dit qu'il travaille.
+      const b = $('#issue');
+      if (b.dataset.busy || isIssued()) return;
+      b.dataset.busy = '1'; b.disabled = true;
+      try {
+        if (!validate()) return;
+        const n = doc.number || peekNumber(doc.type, doc.date);
+        const warn = issueWarnings();
+        if (!await confirmDialog(`Émettre ${isInv ? 'la facture' : 'l\'avoir'} ${n} ? Le numéro devient définitif et le document ne sera plus modifiable. Pour corriger après coup, il faudra faire un avoir.${warn.length ? '\n\n⚠ ' + warn.join('\n⚠ ') : ''}`, warn.length ? 'Émettre quand même' : 'Émettre', false)) return;
+        if (issue()) { if (isNew) navigate('#/doc/' + doc.id); else render(); }
+      } finally {
+        // On relit le bouton : la page a pu se redessiner pendant l'attente, et la poignée d'avant
+        // désigne alors un élément détaché (règle 7.6.0).
+        const encore = $('#issue');
+        if (encore) { delete encore.dataset.busy; encore.disabled = false; }
+      }
     };
     if ($('#serials')) $('#serials').onclick = () => serialAssignForm(docById(doc.id) || doc, () => render(true));
     if ($('#bill-btn')) $('#bill-btn').onclick = e => { e.stopPropagation(); const l = $('#bill-list'); const open = l.hidden; closeMenus(); l.hidden = !open; };
@@ -3126,6 +3208,7 @@
         ${field(lbl('Personne à contacter', 'cl.contact'), 'contact', c.contact || '', 'text', 'placeholder="Mme Leïla Mansour, directrice"')}
         ${field(lbl('Matricule fiscal / CIN', 'co.matricule'), 'matricule', c.matricule)}
         <label class="field">${lbl('Retenue à la source appliquée par ce client', 'ed.withholding')}${withholdingSelect('withholdingRate', c.withholdingRate, { vide: `Par défaut (${pct(company().defaultWithholdingRate || 0)} %)` })}</label>
+        <label class="check"><input type="checkbox" name="stampExempt" ${c.stampExempt ? 'checked' : ''}> Exonéré de timbre fiscal ${info('client.stampExempt')}</label>
         ${field('Téléphone', 'phone', c.phone)}
         ${field('Email', 'email', c.email, 'email')}
         <label class="field">Langue des documents<select name="lang"><option value="" ${!c.lang ? 'selected' : ''}>Par défaut</option><option value="fr" ${c.lang === 'fr' ? 'selected' : ''}>Français</option><option value="en" ${c.lang === 'en' ? 'selected' : ''}>English</option></select></label>
@@ -4727,6 +4810,12 @@
     pays: { sort: null, page: 1 },         // encaissements
     buys: { sort: null, page: 1 }          // journal des achats
   };
+  // Les onglets de l'option Comptabilité (9.1.0). Trois, et seulement trois : ce sont des écrans de
+  // COMPTABLE. Les journaux, la TVA, le calendrier fiscal, les clôtures et le paquet du comptable
+  // n'en font pas partie et ne doivent jamais y entrer — c'est tout ce qu'une PME doit pouvoir faire
+  // sans rien payer de plus, et c'est ce qui rend l'option acceptable.
+  const ONGLETS_OPTION = ['grandlivre', 'balance', 'etats'];
+  const ONGLET_QUOI = { grandlivre: 'Le grand livre', balance: 'La balance', etats: 'Les états financiers' };
   const COMPTA_TABS = [['ventes', 'Ventes'], ['achats', 'Achats'], ['tva', 'TVA à payer'], ['ecritures', 'Écritures'], ['grandlivre', 'Grand livre'], ['balance', 'Balance'], ['etats', 'États financiers'], ['calendrier', 'Calendrier fiscal'], ['clotures', 'Clôtures'], ['cabinet', 'Cabinet']];
   // État propre à l'onglet Écritures : sa pagination et son tri ne doivent pas se mélanger à ceux
   // des journaux de la même page.
@@ -6612,6 +6701,10 @@
 
     function drawRates() {
       const st = C.payrollSettings(data);
+      // La TFP proposée par le métier (9.1.1). La ligne n'apparaît QUE si le métier en porte une :
+      // écrire « Proposé : — » à côté d'un champ serait un bruit permanent pour quatorze métiers
+      // sur quinze. Aujourd'hui aucun n'en porte, tant que le comptable n'a pas tranché.
+      const tfpPropose = C.tfpSuggere(company().activity);
       const num = (k, lab, key, suffix) => `<label class="field">${lbl(lab, key)}<input type="number" name="${k}" value="${st[k]}" step="0.01" min="0" class="num">${suffix ? `<span class="small muted">${suffix}</span>` : ''}</label>`;
       $('#p-body').innerHTML = `
         <div class="panel" style="border-left:3px solid var(--warning)"><h2>Ces chiffres sont à toi ${info('pay.rates')}</h2>
@@ -6624,7 +6717,7 @@
               ${num('cnssEmployee', 'CNSS part salarié (%)', 'pay.cnssEmployee')}
               ${num('cnssEmployer', 'CNSS part employeur (%)', 'pay.cnssEmployerRate')}
               ${num('accidentRate', 'Accident du travail (%)', 'pay.accident')}
-              ${num('tfpRate', 'Taxe de formation professionnelle — TFP (%)', 'pay.tfp')}
+              ${num('tfpRate', 'Taxe de formation professionnelle — TFP (%)', 'pay.tfp')}${tfpPropose !== null ? `<div class="small muted" style="grid-column:auto;margin-top:-8px">Proposé pour ton métier : ${pct(tfpPropose)} % <em>(À VÉRIFIER)</em></div>` : ''}
               ${num('foprolosRate', 'FOPROLOS (%)', 'pay.foprolos')}
             </div>
             <p class="small muted mt">La TFP et le FOPROLOS sont des taxes patronales sur la masse salariale, déclarées chaque mois avec la TVA (9.0.0). <em>À VÉRIFIER avec ton comptable : 1 % de TFP pour les industries manufacturières, 2 % ailleurs.</em></p>
@@ -6701,7 +6794,11 @@
       $('#rf-save').onclick = () => {
         const b = brackets.filter(x => x.upTo == null || Number(x.upTo) > 0);
         if (!b.some(x => x.upTo == null)) b.push({ upTo: null, rate: b.length ? b[b.length - 1].rate : 0 });
-        data.payrollSettings = { ...readRates(), brackets: b };
+        // `tfpTouche` (9.1.1) : enregistrer ces barèmes, c'est avoir décidé. Sans ce drapeau, la
+        // proposition du métier reviendrait écraser le taux le jour où quelqu'un change d'activité
+        // dans l'assistant — le défaut exact de `regimeTouche` en 7.30.0, qui n'était pas enregistré
+        // et repartait à `undefined` au rejeu.
+        data.payrollSettings = { ...readRates(), brackets: b, tfpTouche: true };
         save(true); toast('Barèmes enregistrés — les bulletins déjà établis ne changent pas'); draw();
       };
       $('#rf-reset').onclick = async () => {
@@ -8496,10 +8593,14 @@
           <select id="c-year">${years.map(y => `<option ${y === comptaState.year ? 'selected' : ''}>${y}</option>`).join('')}</select>
           <select id="c-month"><option value="">Toute l'année</option>${MONTHS.map((m, i) => { const v = String(i + 1).padStart(2, '0'); return `<option value="${v}" ${v === comptaState.month ? 'selected' : ''}>${m}</option>`; }).join('')}</select>
         </div></div>
-      <div class="tabs" id="c-tabs" role="tablist">${COMPTA_TABS.map(([id, label]) =>
-        `<button role="tab" data-tab="${id}" class="${id === comptaState.tab ? 'active' : ''}">${label}</button>`).join('')}</div>
+      <div class="tabs" id="c-tabs" role="tablist">${COMPTA_TABS.filter(([id]) => !ONGLETS_OPTION.includes(id) || C.sousModuleOn(data, 'compta.livres')).map(([id, label]) =>
+        `<button role="tab" data-tab="${id}" class="${id === comptaState.tab ? 'active' : ''}${ONGLETS_OPTION.includes(id) ? ' opt' : ''}">${label}${ONGLETS_OPTION.includes(id) && !(licence.options || []).includes('compta') ? ' 🔒' : ''}</button>`).join('')}
+        ${!C.sousModuleOn(data, 'compta.livres') ? `<button class="btn btn-sm btn-ghost" id="c-plus" title="Grand livre, balance, états financiers">+ Comptabilité complète</button>` : ''}</div>
       <div id="c-body"></div>`;
     const draw = () => {
+      // Un onglet masqué ne peut pas rester l'onglet courant : la page s'ouvrirait sur du vide,
+      // sans onglet allumé, et on croirait s'être trompé de page.
+      if (ONGLETS_OPTION.includes(comptaState.tab) && !C.sousModuleOn(data, 'compta.livres')) comptaState.tab = 'ventes';
       $('#c-period').hidden = ['calendrier', 'clotures', 'cabinet'].includes(comptaState.tab);
       if (comptaState.tab === 'achats') return drawBuyJournal(period(), periodLabel());
       if (comptaState.tab === 'tva') return drawVat();
@@ -9619,7 +9720,15 @@
     const resetPages = () => { comptaState.journal.page = 1; comptaState.pays.page = 1; comptaState.buys.page = 1; };
     $('#c-year').onchange = e => { comptaState.year = e.target.value; resetPages(); draw(); };
     $('#c-month').onchange = e => { comptaState.month = e.target.value; resetPages(); draw(); };
-    $$('#c-tabs button').forEach(b => b.onclick = () => {
+    // La porte mène à LA CASE, pas à la page qui mène à la page qui la contient. Les Paramètres
+    // n'en portent qu'un bouton (« Choisir les modules affichés… ») : y envoyer ferait deux clics
+    // de plus pour trouver une ligne au milieu de dix-neuf. `pageFocus` amène la ligne à l'écran et
+    // la marque une seconde et demie — c'est la règle « un raccourci vise un PANNEAU » (7.18.0).
+    if ($('#c-plus')) $('#c-plus').onclick = vers('#/modules', () => { pageFocus = 'sm-compta-livres'; });
+    $$('#c-tabs button[data-tab]').forEach(b => b.onclick = () => {
+      // LA porte de l'option, ici et nulle part ailleurs (SPEC-UI-ENT-002). Le cadenas se voit
+      // AVANT le clic : un onglet qui refuse sans le dire d'abord, on croit s'être trompé.
+      if (ONGLETS_OPTION.includes(b.dataset.tab) && optionBlock('compta', ONGLET_QUOI[b.dataset.tab] || 'Cet écran')) return;
       comptaState.tab = b.dataset.tab;
       $$('#c-tabs button').forEach(x => x.classList.toggle('active', x === b));
       resetPages(); draw();
@@ -9712,6 +9821,7 @@
           ${field(lbl('Validité des devis (jours)', 'doc.quoteValidity'), 'quoteValidityDays', c.quoteValidityDays, 'number', 'min="0" class="num"')}
           ${field(lbl('Délai de paiement (jours)', 'doc.paymentDays'), 'paymentTermsDays', c.paymentTermsDays, 'number', 'min="0" class="num"')}
           <label class="field">${lbl('Retenue à la source par défaut', 'doc.withholdingDefault')}${withholdingSelect('defaultWithholdingRate', c.defaultWithholdingRate)}</label>
+          ${field(lbl('Seuil de retenue à la source', 'doc.withholdingThreshold'), 'withholdingThreshold', c.withholdingThreshold, 'number', 'step="0.001" min="0" class="num" placeholder="0 = aucun seuil"')}
           <!-- La devise était le SEUL champ libre d'un réglage à liste fermée : l'éditeur de
                document et la fiche client offrent les sept codes dans une liste depuis la 2.4.0,
                et ici on tapait ce qu'on voulait. « Dinar », « TND », « dt » : decimalsFor ne
@@ -9959,6 +10069,9 @@
       data.company.currency = C.normCurrency(data.company.currency);
       data.company.quoteValidityDays = Math.max(0, Number(data.company.quoteValidityDays) || 30);
       data.company.paymentTermsDays = Math.max(0, Number(data.company.paymentTermsDays) || 30);
+      // Le seuil de retenue (9.1.1). Un seuil négatif n'a pas de sens et un seuil vidé veut dire
+      // « aucun » : les deux retombent sur 0, la valeur qui ne fait rien.
+      data.company.withholdingThreshold = Math.max(0, Number(data.company.withholdingThreshold) || 0);
       save(true); applyTheme(); $('#brand-company').textContent = data.company.name || 'Ton entreprise';
       accorderNomDossier();     // le dossier porte le nom de la société, pas « Mon entreprise »
       // La licence est attachée au matricule fiscal : une fiche société modifiée se revérifie.
@@ -10262,7 +10375,23 @@
             <div class="small muted mt-s"><b>Pages :</b> ${h(pages)} · ${h(note)}</div>
           </div>
           <div class="mod-go">${on && pages ? `<button class="btn btn-sm" data-open="${h(m.id)}">Ouvrir</button>` : ''}</div>
-        </div>`;
+        </div>${(m.sousModules || []).map(sm => {
+          // Une option payante est **décochée par défaut** : on ne fait pas apparaître chez
+          // quelqu'un un écran qu'il n'a pas demandé et qui se paie. Et la case reste ACTIVE même
+          // si l'option manque à la licence — un réglage qui se retire la possibilité de revenir
+          // en arrière est le piège de la 7.12.0. C'est `optionBlock` qui parle de la licence,
+          // au moment où on ouvre l'onglet, pas cette case.
+          const smOn = C.sousModuleOn(data, sm.id);
+          const aOption = (licence.options || []).includes(sm.option);
+          return `<div class="mod-row mod-sub${smOn ? ' on' : ''}" id="sm-${h(sm.id.replace(/\./g, '-'))}">
+            <label class="mod-check"><input type="checkbox" data-sousmod="${h(sm.id)}" ${smOn ? 'checked' : ''}></label>
+            <div class="mod-txt">
+              <div class="mod-t">${h(sm.label)} <span class="badge">${aOption ? 'option incluse' : 'option payante'}</span></div>
+              <div class="small muted">${h(sm.quoi)}</div>
+              ${aOption ? '' : '<div class="small muted mt-s">Cette option n\'est pas dans ta licence : les trois onglets s\'affichent avec un cadenas et disent quoi faire.</div>'}
+            </div><div class="mod-go"></div>
+          </div>`;
+        }).join('')}`;
       }).join('');
       $('#mod-list').innerHTML = lignes;
       $$('[data-mod]').forEach(cb => cb.onchange = async () => {
@@ -10294,6 +10423,22 @@
         const encore = $(`[data-mod="${id}"]`);
         if (encore) encore.focus();
         toast(cb.checked ? 'Affiché dans le menu' : 'Retiré du menu — rien n\'est supprimé, et la case reste là pour revenir en arrière');
+      });
+      $$('[data-sousmod]').forEach(cb => cb.onchange = () => {
+        const id = cb.dataset.sousmod;
+        // `null` (aucun choix enregistré) devient la liste de tous les modules VISIBLES plus le
+        // sous-module : sans le « plus », cocher l'option masquerait d'un coup tout le reste du
+        // menu. C'est la règle « on ne masque jamais ce que quelqu'un a saisi » (7.0.0).
+        const liste = Array.isArray(company().modules) ? company().modules.slice() : C.MODULES.map(m => m.id);
+        const i = liste.indexOf(id);
+        if (cb.checked && i < 0) liste.push(id);
+        if (!cb.checked && i >= 0) liste.splice(i, 1);
+        company().modules = liste;
+        save();
+        dessine();
+        const encore = $(`[data-sousmod="${id}"]`);
+        if (encore) encore.focus();
+        toast(cb.checked ? 'Affiché dans la page Comptabilité' : 'Retiré — rien n\'est supprimé, et la case reste là');
       });
       $$('[data-open]').forEach(b => b.onclick = () => {
         const p = C.PAGES.find(x => x.module === b.dataset.open && !x.horsMenu);
@@ -11483,7 +11628,7 @@
     modal(`<h2>Changer l'offre</h2>
       <p class="small">${h(lic.nom)} est en <strong>${h(offreLabelDe(lic.offre))}</strong>${lic.exp ? ` jusqu'au <strong>${C.fmtDate(lic.exp)}</strong>` : ' sans limite de durée'}. La date de fin ne change pas : seule la différence de prix est facturée.</p>
       <form id="cof" class="grid-2">
-        <label class="field"><span>Nouvelle offre</span><select name="offre">${offres.map(o => `<option value="${h(o)}">${h(editeur.offres[o].label)}</option>`).join('')}</select></label>
+        <label class="field">${lbl('Nouvelle offre', 'lic.chgoffre')}<select name="offre">${offres.map(o => `<option value="${h(o)}">${h(editeur.offres[o].label)}</option>`).join('')}</select></label>
         <label class="field obligatoire"><span>Prix plein de la nouvelle offre (${h(cur)} HT)</span><input type="number" id="co-prix" name="prix" class="num" step="0.001" min="0" placeholder="690"></label>
       </form>
       <div class="notes-md mt"><p class="small" id="co-calc">Indique le prix plein de la nouvelle offre pour voir la différence.</p>
@@ -12210,6 +12355,38 @@
   // pas besoin occupaient la place des deux dont il a besoin. Ils n'ont pas disparu : ils étaient
   // déjà en double dans Paramètres → Données et sécurité (#export-data / #import-data), à côté des
   // sauvegardes, c'est-à-dire là où on les cherche.
+
+  // ---------- le garde-fou d'erreur (9.1.0, SPEC-OUT-004) ----------
+  //
+  // Posé ICI, avant tout le reste : une exception levée pendant la séquence de démarrage est la
+  // plus grave de toutes — l'écran reste blanc — et c'est précisément celle qu'un garde-fou
+  // installé plus bas ne verrait pas.
+  //
+  // Ce que ce dépôt a payé pour l'écrire : `h(a.relayFailure)` (6.8.0), une variable d'une autre
+  // route (7.20.0), `C.pl(...)` alors que `pl` est locale (7.22.0), `clientItems` déclarée dans un
+  // autre formulaire (7.23.0), `null.onclick` après une attente (7.6.0). Cinq fois le même scénario :
+  // un écran blanc, un bouton mort ou une fenêtre qui ne s'ouvre pas, et RIEN nulle part — parce que
+  // sur le poste d'un utilisateur, la console du navigateur n'existe pas.
+  //
+  // Il n'affiche rien et ne recharge rien. Il écrit, et « Aide → Signaler un problème » emporte le
+  // journal. Une erreur d'interface n'est pas toujours visible pour l'utilisateur : lui coller une
+  // fenêtre le ferait douter d'un travail qui s'est peut-être bien passé, et une application qui
+  // annonce une panne qui n'en est pas une apprend à cliquer sans lire (7.28.0).
+  const noterErreur = (info) => { try { bridge.supportErreur(info); } catch {} };
+  window.addEventListener('error', e => noterErreur({
+    message: (e && e.message) || '(sans message)', source: (e && e.filename) || '',
+    ligne: (e && e.lineno) || 0, pile: (e && e.error && e.error.stack) || ''
+  }));
+  // Une promesse rejetée et jamais rattrapée ne passe PAS par `error` : c'est un événement à part,
+  // et c'est celui d'une fonction asynchrone qui échoue — le cas le plus courant ici, puisque tout
+  // ce qui traverse le pont l'est.
+  window.addEventListener('unhandledrejection', e => {
+    const r = e && e.reason;
+    noterErreur({
+      message: 'promesse rejetée : ' + ((r && r.message) || String(r || '(sans raison)')),
+      source: '', ligne: 0, pile: (r && r.stack) || ''
+    });
+  });
 
   // ---------- chien de garde et messages du processus principal ----------
   // Abonnés AVANT la séquence de démarrage : l'assistant de première utilisation la met en attente,

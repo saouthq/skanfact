@@ -1,0 +1,71 @@
+# L'intégration continue (9.1.0, SPEC-OUT-002).
+#
+# Pourquoi elle arrive maintenant, après 391 tests et 42 parcours. Jusqu'ici, tout tournait sur UNE
+# machine : celle de la session qui écrivait le code. Ça a suffi tant que le dépôt n'avait qu'un
+# auteur — mais ça a coûté la 7.21.x, où trois défauts Windows se sont enchaînés sans que rien ne
+# les voie : un `.bat` en fins de ligne Unix qui fermait la fenêtre sans un mot, des `.js` convertis
+# en CRLF au checkout qui faisaient mentir tout test relisant la source, et un mtime que Windows
+# n'avance que toutes les quinze millisecondes. Chacun ne se voyait QUE sur Windows, et la seule
+# façon de les voir était d'y aller.
+#
+# D'où la matrice à deux systèmes, et `fail-fast: false` : quand un test tombe, on veut savoir s'il
+# tombe des deux côtés ou d'un seul — c'est cette différence qui désigne la cause (règle 5.2.3 :
+# « un bug que la machine de test ne reproduit jamais → chercher ce qui diffère dans
+# l'environnement »). Arrêter la matrice au premier échec effacerait justement l'information utile.
+#
+# Ce qui n'est PAS ici, et volontairement : les parcours Electron. Ils demandent `xvfb`, durent des
+# minutes chacun, et quarante-deux d'entre eux à chaque poussée videraient le quota en une matinée
+# (leçon de la 6.7.2 : six publications ont consommé le quota gratuit d'un mois). Ils restent un
+# geste avant publication, listé dans CLAUDE.md. Le seul e2e retenu est `e2e:pages` : il n'ouvre pas
+# Electron du tout — chromium lui suffit — et il imprime 161 documents, c'est-à-dire qu'il garde
+# la seule chose qu'un client voit vraiment.
+
+name: CI
+
+on:
+  push:
+    branches: [main, beta]
+  pull_request:
+
+# Une poussée qui en suit une autre sur la même branche annule la précédente : le résultat de
+# l'avant-dernier commit n'intéresse personne, et les minutes se paient.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # `npm ci` et non `npm install` : il installe EXACTEMENT le lockfile. Une version mineure
+      # qui glisse sous les pieds de la CI transforme un échec de code en échec de dépendance,
+      # et on cherche des heures du mauvais côté.
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Tests
+        run: npm test
+
+      # Les 161 documents imprimés dans un vrai chromium. Sur Linux seulement : le rendu d'un PDF
+      # ne dépend pas du système hôte ici, parce qu'Electron embarque SON chromium — c'est
+      # exactement la raison pour laquelle ce projet imprime avec `printToPDF` plutôt qu'avec une
+      # bibliothèque. Le refaire sur Windows paierait deux fois la même mesure.
+      - name: Les pages d'un document imprimé
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          npm i --no-save playwright
+          npm run e2e:pages

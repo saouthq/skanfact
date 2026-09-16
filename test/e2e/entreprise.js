@@ -889,9 +889,15 @@ const dataFileOf = () => path.join(dossierDir(), 'skanfact-data.json');
   await step('comptabilité : les dix onglets, la TVA réelle et le calendrier', async () => {
     await win.evaluate(() => { location.hash = '#/compta'; });
     await win.waitForSelector('#c-tabs');
-    const tabs = await win.evaluate(() => Array.from(document.querySelectorAll('#c-tabs button')).map(b => b.textContent.trim()));
-    // 8.8.0 → 9.0.0 : Grand livre, Balance et États financiers se sont ajoutés entre Écritures et le calendrier.
-    if (tabs.join(',') !== 'Ventes,Achats,TVA à payer,Écritures,Grand livre,Balance,États financiers,Calendrier fiscal,Clôtures,Cabinet') throw new Error('onglets : ' + tabs.join(','));
+    const tabs = await win.evaluate(() => Array.from(document.querySelectorAll('#c-tabs button[data-tab]')).map(b => b.textContent.trim()));
+    // 8.8.0 → 9.0.0 : Grand livre, Balance et États financiers se sont ajoutés entre Écritures et le
+    // calendrier. **9.1.0 : ils sont MASQUÉS par défaut** — ce sont les écrans du comptable, et
+    // l'app entreprise s'arrête à la gestion (DIRECTION.md). L'assertion a donc été retournée :
+    // elle décrivait l'état du jour, pas la règle. Ce qui est garanti à tout le monde, c'est que les
+    // sept autres ne se masquent jamais, et que la porte de l'option dit où les retrouver.
+    // Le sélecteur porte `[data-tab]` : `#c-plus` est un bouton du même conteneur, pas un onglet.
+    if (tabs.join(',') !== 'Ventes,Achats,TVA à payer,Écritures,Calendrier fiscal,Clôtures,Cabinet') throw new Error('onglets : ' + tabs.join(','));
+    if (!(await win.$('#c-plus'))) throw new Error('un écran qui masque quelque chose doit dire où le retrouver');
     // onglet Écritures : équilibre annoncé, plan de comptes modifiable
     await win.click('#c-tabs button[data-tab=ecritures]');
     await win.waitForSelector('#ecr-csv');

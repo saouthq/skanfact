@@ -208,6 +208,23 @@ async function launchCabinet() {
   console.log(`9. rapport d'import : ${rapportImport.slice(0, 190)}`);
   await win.click('#modal-root #ok');
 
+  // La clé de secours est réclamée au PREMIER import (9.1.0) : c'est la seconde où le cabinet a
+  // quelque chose à perdre. Elle n'est jamais bloquante — « Plus tard » existe, l'import est fait.
+  // On la reconnaît à ce qu'elle CONTIENT, jamais à son rang (règle 7.29.0).
+  await win.waitForTimeout(400);
+  const demandeCle = await win.evaluate(() => {
+    const m = document.querySelector('#modal-root .modal-bg');
+    return m && /clé de secours/i.test(m.textContent) ? m.textContent.replace(/\s+/g, ' ').trim().slice(0, 120) : '';
+  });
+  if (demandeCle) {
+    const plusTard = (await win.textContent('#modal-root #no')).trim();
+    if (plusTard === 'Annuler') throw new Error('« Annuler » n\'annule rien ici : l\'import est déjà fait — le bouton doit dire « Plus tard »');
+    await win.click('#modal-root #no');
+    console.log(`9 bis. clé de secours réclamée au premier import, « ${plusTard} » disponible`);
+  } else {
+    throw new Error('la clé de secours n\'a pas été réclamée au premier import');
+  }
+
   await win.waitForSelector('table.list tr[data-id]');
   const ligne = await win.evaluate(() => {
     const tr = document.querySelector('table.list tr[data-id]');
@@ -222,9 +239,78 @@ async function launchCabinet() {
   console.log(`11. mois du dossier : ${mois.join(' · ')}`);
 
   await shot(win, 'fiche-dossier');
+
+  // ---- Les livres du dossier (9.1.0) : le cabinet LIT une comptabilité dans le paquet reçu.
+  // C'est la démonstration de la version : le comptable ouvre la fiche de son client et voit un
+  // livre-journal, un grand livre, une balance et un lettrage — sans ouvrir un seul CSV.
+  await win.waitForSelector('#c-compta');
+  await win.waitForSelector('#c-tabs button[data-tab=journal]', { timeout: 20000 });
+  const journal = await win.evaluate(() => {
+    const t = document.querySelector('#c-livres table.list');
+    if (!t) return null;
+    const pied = [...t.querySelectorAll('tfoot td')].map(td => td.textContent.trim());
+    return { lignes: t.querySelectorAll('tbody tr').length, pied, entetes: [...t.querySelectorAll('thead th')].map(th => th.textContent.trim()) };
+  });
+  if (!journal || !journal.lignes) throw new Error('le livre-journal du dossier est vide');
+  // Débit = crédit sur le total de la sélection entière : c'est la seule chose que ce livre affirme.
+  const [dJ, cJ] = journal.pied.slice(-3, -1);
+  if (dJ !== cJ) throw new Error(`le livre-journal ne tombe pas juste : ${dJ} ≠ ${cJ}`);
+  console.log(`12 bis. livre-journal : ${journal.lignes} lignes, débit = crédit = ${dJ}`);
+  await shot(win, 'livres-journal');
+
+  // La balance, et son verdict écrit en toutes lettres.
+  await win.click('#c-tabs button[data-tab=balance]');
+  await win.waitForSelector('#lv-verdict');
+  const bal = await win.evaluate(() => {
+    const v = document.querySelector('#lv-verdict');
+    const t = document.querySelector('#c-livres table.list');
+    return { verdict: v ? v.textContent.trim() : '', comptes: t ? t.querySelectorAll('tbody tr').length : 0,
+      pied: t ? [...t.querySelectorAll('tfoot td')].map(x => x.textContent.trim()) : [] };
+  });
+  if (!/Équilibrée/.test(bal.verdict)) throw new Error('la balance du cabinet n\'est pas équilibrée : ' + bal.verdict);
+  console.log(`12 ter. balance : ${bal.comptes} comptes · ${bal.verdict}`);
+  await shot(win, 'livres-balance');
+
+  // Le grand livre et le lettrage s'ouvrent, et disent ce qu'ils savent — y compris ce qu'ils ne
+  // savent PAS : il n'y a pas d'à-nouveau dans un livre lu mois par mois, et l'écran l'écrit.
+  await win.click('#c-tabs button[data-tab=grand-livre]');
+  await win.waitForSelector('#c-livres .panel h2');
+  const gl = await win.evaluate(() => ({
+    comptes: document.querySelectorAll('#c-livres .panel').length,
+    ouverture: /ouverture inconnue/i.test(document.querySelector('#c-livres').textContent)
+  }));
+  if (!gl.comptes) throw new Error('le grand livre est vide');
+  if (!gl.ouverture) throw new Error('le grand livre doit DIRE qu\'il n\'a pas d\'à-nouveau');
+  await win.click('#c-tabs button[data-tab=lettrage]');
+  await win.waitForSelector('#lv-verdict');
+  const let1 = (await win.textContent('#lv-verdict')).trim();
+  // Un écart de lettrage est ATTENDU sur un livre lu mois par mois, sans à-nouveau : un règlement
+  // reçu ce mois-ci pour une facture d'un mois précédent n'a pas sa facture en face. L'écran doit
+  // l'EXPLIQUER, pas le crier — du orange sur une situation normale apprend à ignorer l'orange.
+  const tonLettrage = await win.evaluate(() => (document.querySelector('#lv-verdict') || {}).className || '');
+  if (/warn-box/.test(tonLettrage)) throw new Error('un écart normal ne se dit pas en avertissement : ' + let1);
+  if (!/ok-box|info-box/.test(tonLettrage)) throw new Error('le verdict du lettrage n\'a pas de ton : ' + tonLettrage);
+  if (/info-box/.test(tonLettrage) && !/mois par mois/.test(let1)) throw new Error('l\'écart doit être EXPLIQUÉ, pas seulement affiché');
+  console.log(`12 quater. grand livre : ${gl.comptes} comptes, ouverture annoncée inconnue · lettrage : ${let1.slice(0, 80)}`);
+  await shot(win, 'livres-lettrage');
+  await win.click('#c-tabs button[data-tab=journal]');
+
   // Les cinq boutons fantômes de la ligne d'un paquet sont devenus un menu d'actions (7.29.0) :
   // on passe par le VRAI bouton et le VRAI menu, comme un comptable.
-  await win.click('[data-rowmenu] >> nth=0');
+  // On vise le menu de la ligne d'un PAQUET, pas « le premier menu de la page » : depuis la 9.1.0
+  // le bloc Comptabilité s'insère avant, et ses lignes portent leur propre menu. Cinquième fois
+  // que `nth=0` se périme sur un écran qui gagne un tableau — on ancre sur ce que la page CONTIENT.
+  const menuPaquet = await win.evaluate(() => {
+    const panneaux = [...document.querySelectorAll('.panel')];
+    const p = panneaux.find(x => /Paquets reçus/.test(x.querySelector('h2') ? x.querySelector('h2').textContent : ''));
+    if (!p) return '';
+    const b = p.querySelector('[data-rowmenu]');
+    if (!b) return '';
+    b.id = 'e2e-menu-paquet';
+    return b.id;
+  });
+  if (!menuPaquet) throw new Error('aucun menu d\'actions dans le panneau « Paquets reçus »');
+  await win.click('#e2e-menu-paquet');
   await win.waitForSelector('.row-menu');
   await cliquerAction(win, 'Ouvrir le paquet');
   await win.waitForSelector('#modal-root tr[data-i]', { timeout: 20000 });
@@ -296,6 +382,119 @@ async function launchCabinet() {
   await win.waitForTimeout(400);
   await win.keyboard.press('Escape');
   await win.waitForTimeout(300);
+
+  // ---------- 13 ter. LA SIGNATURE, et le LIVRE (9.2.0) ----------
+  //
+  // Les deux nouveautés de la 9.2.0, dans l'application réelle et par les vrais écrans. C'est le
+  // seul endroit qui prouve que la chaîne tient de bout en bout : l'entreprise a signé, le cabinet
+  // a vérifié et épinglé, et le livre se crée à partir de ce qui a été reçu.
+  // On lit par le VRAI pont, pas par une globale posée pour le test : une variable de débogage en
+  // production est du code qui ne sert qu'ici, et un test qui rejoue le code qu'il teste ne prouve
+  // rien (6.8.1).
+  const dossierSigne = await win.evaluate(async () => {
+    const st = await window.cabinet.state();
+    const x = (st.dossiers || []).find(y => !y.demo) || (st.dossiers || [])[0] || {};
+    return { id: x.id || '', empreinte: x.cleEmpreinte || '', epingleLe: x.cleEpingleeLe || '', paquets: (x.packs || []).length };
+  });
+  if (!dossierSigne.empreinte) throw new Error('le cabinet n\'a pas épinglé la clé du client : le paquet n\'était pas signé, ou la vérification ne s\'est pas faite');
+  if (!/^[0-9A-F]{4}(-[0-9A-F]{4}){4}$/.test(dossierSigne.empreinte)) throw new Error('empreinte de clé mal formée : ' + dossierSigne.empreinte);
+  if (!dossierSigne.epingleLe) throw new Error('l\'épinglage doit être daté');
+  console.log(`13 ter. signature : le cabinet a épinglé la clé du client — ${dossierSigne.empreinte}`);
+
+  // Le livre n'existe pas encore : l'écran doit le DIRE et offrir les deux gestes, jamais créer
+  // un livre en silence.
+  await win.evaluate(() => { location.hash = '#/dossiers'; });
+  await win.waitForTimeout(300);
+  await win.evaluate(id => { location.hash = '#/dossier/' + id; }, dossierSigne.id);
+  await win.waitForSelector('#c-livres #c-tabs', { timeout: 15000 });
+  const avantLivre = await win.evaluate(() => ({
+    relire: !!document.querySelector('#lv-relire'),
+    reprendre: !!document.querySelector('#lv-reprendre'),
+    dit: /n'a pas encore de livre/.test(document.querySelector('#c-livres').textContent)
+  }));
+  if (!avantLivre.dit) throw new Error('un dossier sans livre doit le dire');
+  if (!avantLivre.relire || !avantLivre.reprendre) throw new Error('les deux gestes doivent être là : relire les paquets, ou reprendre le dossier');
+  await shot(win, 'livre-absent');
+
+  // « Créer le livre à partir des paquets reçus » : le geste que fera tout cabinet dont le client
+  // est déjà sur SkanFact.
+  await win.click('#lv-relire');
+  await win.waitForSelector('#modal-root .modal', { timeout: 20000 });
+  const rapportLivre = (await win.textContent('#modal-root .modal')).replace(/\s+/g, ' ');
+  if (!/écriture/.test(rapportLivre)) throw new Error('le compte rendu ne dit pas ce qui est entré : ' + rapportLivre.slice(0, 120));
+  await win.click('#modal-root #ok');
+  await win.waitForTimeout(500);
+  const livre = await win.evaluate(() => {
+    const t = document.querySelector('#c-livres').textContent;
+    return {
+      bandeau: /Le livre de/.test(t),
+      brouillard: !!document.querySelector('#lv-brouillard'),
+      lignesBr: document.querySelectorAll('#c-livres tr.br-ligne').length
+    };
+  });
+  if (!livre.bandeau) throw new Error('l\'écran doit dire qu\'il montre désormais LE LIVRE, pas les paquets');
+  if (!livre.brouillard) throw new Error('la case « Voir le brouillard » manque');
+  console.log(`13 quater. le livre est créé à partir des paquets reçus — ${rapportLivre.slice(0, 90)}`);
+  await shot(win, 'livre-cree');
+
+  // Le mois reçu était PROVISOIRE : ses écritures entrent donc en brouillard, et un brouillard
+  // n'entre dans aucune balance tant qu'on ne le demande pas.
+  const brAvant = await win.evaluate(() => {
+    const cb = document.querySelector('#lv-brouillard');
+    return { coche: cb.checked, lignes: document.querySelectorAll('#c-livres tbody tr').length };
+  });
+  await win.click('#lv-brouillard');
+  await win.waitForTimeout(400);
+  const brApres = await win.evaluate(() => document.querySelectorAll('#c-livres tbody tr').length);
+  if (brAvant.coche) throw new Error('le brouillard ne doit pas être affiché par défaut');
+  if (brApres <= brAvant.lignes) throw new Error(`cocher « Voir le brouillard » doit montrer PLUS de lignes (${brAvant.lignes} → ${brApres})`);
+  const nbBr = await win.evaluate(() => document.querySelectorAll('#c-livres tr.br-ligne').length);
+  if (!nbBr) throw new Error('une écriture en brouillard doit se distinguer à l\'œil (classe .br-ligne)');
+  console.log(`13 quinquies. brouillard : ${brAvant.lignes} ligne(s) sans, ${brApres} avec — ${nbBr} marquée(s)`);
+  await shot(win, 'livre-brouillard');
+
+  // Valider une écriture, par le VRAI menu de ligne. Elle prend son numéro et ne se modifie plus.
+  await win.evaluate(() => {
+    const tr = document.querySelector('#c-livres tr.br-ligne');
+    tr.scrollIntoView({ block: 'center' });
+  });
+  await win.click('#c-livres tr.br-ligne [data-rowmenu]');
+  await win.waitForSelector('.row-menu', { timeout: 5000 });
+  const actions = await win.evaluate(() => [...document.querySelectorAll('.row-menu button')].map(b => b.textContent.trim()));
+  if (!actions.some(a => /Valider/.test(a))) throw new Error('le menu d\'une écriture en brouillard doit offrir « Valider » : ' + actions.join(' · '));
+  if (actions.some(a => /Supprimer/.test(a))) throw new Error('une écriture ne se supprime JAMAIS depuis une liste');
+  await shot(win, 'livre-menu');
+  await win.evaluate(() => {
+    [...document.querySelectorAll('.row-menu button')].find(b => /Valider/.test(b.textContent)).click();
+  });
+  await win.waitForSelector('#modal-root #ok', { timeout: 5000 });
+  const question = (await win.textContent('#modal-root .modal')).replace(/\s+/g, ' ');
+  if (!/contre-passant|contre-passer/i.test(question)) throw new Error('la question doit dire comment on corrige après : ' + question.slice(0, 120));
+  await win.click('#modal-root #ok');
+  await win.waitForTimeout(600);
+  // L'ANNÉE est celle que l'écran affiche, jamais l'année courante : le paquet de ce parcours est
+  // de 2025, et lire le livre de 2026 aurait rendu un livre vide — une assertion qui échoue sur du
+  // code juste (piège de la période écrite en dur, 7.17.0).
+  const anneeLivre = await win.evaluate(() => {
+    const m = (document.querySelector('#c-livres') || {}).textContent || '';
+    return (m.match(/Le livre de (\d{4})/) || [])[1] || ((document.querySelector('#lv-annee') || {}).value || '');
+  });
+  if (!/^\d{4}$/.test(anneeLivre)) throw new Error('impossible de savoir quel exercice l\'écran montre : ' + anneeLivre);
+  const apresValidation = await win.evaluate(async ([id, annee]) => {
+    const r = await window.cabinet.livre(id, annee);
+    const l = r.livre || { ecritures: [] };
+    return {
+      validees: l.ecritures.filter(e => e.statut === 'validee').length,
+      numeros: l.ecritures.filter(e => e.numero).map(e => e.numero).sort((a, b) => a - b)
+    };
+  }, [dossierSigne.id, anneeLivre]);
+  // Le numéro naît à la validation, et la suite est 1..n sans trou : c'est l'invariant du livre.
+  if (!apresValidation.validees) throw new Error('la validation n\'a rien validé');
+  apresValidation.numeros.forEach((n, i) => {
+    if (n !== i + 1) throw new Error(`la numérotation a un trou : ${apresValidation.numeros.join(',')}`);
+  });
+  console.log(`13 sexies. validation : ${apresValidation.validees} validée(s), n° ${apresValidation.numeros.join(',')}`);
+  await shot(win, 'livre-validee');
 
   // ---------- 14. les écritures regroupées, sur le VRAI paquet ----------
   const csvFile = path.join(tmp, 'ecritures.csv');

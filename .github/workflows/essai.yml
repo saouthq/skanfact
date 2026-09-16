@@ -1,0 +1,127 @@
+# Construire un essai (9.1.0, SPEC-OUT-005).
+#
+# Le besoin : faire tester une version à quelqu'un — le cabinet pilote, le frère de Skander, un
+# client curieux — SANS publier, SANS toucher à la release, et surtout sans que la personne perde
+# l'application qu'elle utilise vraiment. Jusqu'ici, la seule façon d'essayer du code était de
+# publier une version, c'est-à-dire de la proposer à tout le monde en même temps.
+#
+# Trois précautions, et les trois comptent :
+#
+#  1. `productName` suffixé, `appId` suffixé. Deux applications qui portent le même `appId` sont la
+#     MÊME application pour le système : installer l'essai remplacerait la vraie. Et le nom décide
+#     du dossier de données (`userData`), donc l'essai travaille sur SES données — jamais sur les
+#     vraies factures de la personne. C'est l'accident de la 6.7.3, en pire : là-bas `npm start`
+#     écrivait dans le dossier de production parce que macOS ignore la casse.
+#  2. `--publish never`, et rien de plus. Un essai ne doit apparaître dans aucune release, sur
+#     aucun canal.
+#  3. `updateBase` et `updateSecret` VIDES. Une application d'essai qui se mettrait à jour toute
+#     seule se transformerait en version publiée au premier redémarrage, et la personne ne testerait
+#     plus ce qu'on lui a demandé de tester. C'est le point le plus facile à oublier, parce qu'il
+#     ne se voit qu'après coup.
+#
+# Coût : une exécution macOS est facturée dix fois une Linux, et ce workflow en lance une. À
+# déclencher pour une bêta que quelqu'un attend, pas pour un correctif (leçon de la 6.7.2 : six
+# publications en une matinée ont consommé le quota gratuit du mois).
+#
+# Onglet Actions → Construire un essai → Run workflow.
+
+name: Construire un essai
+
+on:
+  workflow_dispatch:
+    inputs:
+      branche:
+        description: 'Branche à construire (main, beta, ou une branche de travail)'
+        required: true
+        default: 'beta'
+      cabinet:
+        description: 'Construire aussi SkanFact Cabinet'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: essai
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branche }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Cache Electron
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/electron
+            ~/.cache/electron-builder
+            ~/Library/Caches/electron
+            ~/Library/Caches/electron-builder
+            ~\AppData\Local\electron\Cache
+            ~\AppData\Local\electron-builder\Cache
+          key: electron-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: electron-${{ runner.os }}-
+
+      - run: npm ci --no-fund --no-audit
+
+      # Un essai qui ne passe pas les tests n'est pas un essai, c'est une perte de temps pour la
+      # personne à qui on le donne.
+      - run: npm test
+
+      - name: SkanFact (essai)
+        shell: bash
+        run: |
+          V=$(node -p "require('./package.json').version")
+          echo "Essai de la $V depuis ${{ inputs.branche }}"
+          npx electron-builder --publish never \
+            -c.extraMetadata.productName="SkanFact (essai)" \
+            -c.productName="SkanFact (essai)" \
+            -c.appId="tn.skancyber.skanfact.essai" \
+            -c.extraMetadata.updateBase="" \
+            -c.extraMetadata.updateSecret=""
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: SkanFact Cabinet (essai)
+        if: ${{ inputs.cabinet }}
+        shell: bash
+        run: |
+          npx electron-builder -c build/cabinet.config.js --publish never \
+            -c.extraMetadata.productName="SkanFact Cabinet (essai)" \
+            -c.productName="SkanFact Cabinet (essai)" \
+            -c.appId="tn.skancyber.skanfact.cabinet.essai" \
+            -c.extraMetadata.updateBase="" \
+            -c.extraMetadata.updateSecret=""
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      # Quatorze jours : un essai n'a pas vocation à durer, et une version d'essai qui traîne
+      # trois mois finit par être confondue avec la vraie.
+      - name: Attacher les installeurs au run
+        uses: actions/upload-artifact@v4
+        with:
+          name: skanfact-essai-${{ runner.os }}
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            dist/*.dmg
+            dist/*.zip
+            dist/*.exe
+            dist-cabinet/*.dmg
+            dist-cabinet/*.zip
+            dist-cabinet/*.exe

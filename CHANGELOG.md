@@ -7,6 +7,162 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 9.2.0 — 16/09/2026
+
+**Le livre du dossier, et le paquet signé.** Côté cabinet, chaque dossier a
+désormais SON livre comptable : les écritures qu'on y valide, celles qu'on y
+saisit, les lettrages. Et le paquet mensuel est enfin **signé** par le client qui
+l'envoie.
+
+### Le paquet est signé — le trou que trois relectures extérieures ont pointé
+
+Jusqu'ici, un paquet était **chiffré** mais pas **signé**, et ce n'est pas la même
+chose. Le chiffrement dit « seul mon comptable peut lire ceci ». Il ne dit pas
+« ça vient bien de moi » — et comme il n'utilise que la clé *publique* du cabinet,
+celle que ton comptable donne à tous ses clients, n'importe qui la tenant pouvait
+lui envoyer un paquet à ton nom. Il l'aurait importé sans un mot.
+
+- SkanFact crée maintenant une paire de clés **au premier envoi**, dans le dossier
+  de ton entreprise (jamais dans tes données, donc jamais dans un export ni dans
+  le paquet), et signe le manifeste de chaque paquet avec elle.
+- Le cabinet vérifie, puis **épingle** ta clé au premier paquet signé. Tout ce qui
+  suivra lui sera comparé : un paquet signé par une autre clé est refusé en
+  nommant les deux empreintes, et la reprise passe par l'empreinte dite de vive
+  voix — jamais par une acceptation automatique.
+- Un paquet d'une version antérieure reste accepté, marqué « origine non
+  prouvée ». La tolérance s'éteint d'elle-même client par client, dès qu'un
+  premier paquet signé arrive.
+
+### Le livre du cabinet
+
+- **Un fichier par dossier et par exercice**, chiffré, avec son entête lisible :
+  un livre retrouvé sur une clé USB dit de quel client et de quelle année il parle
+  avant qu'on cherche son mot de passe. Il part **toujours** avec la copie externe
+  — un paquet perdu se redemande au client, un livre perdu non.
+- **Créer le livre à partir des paquets reçus**, en un bouton. Rejouer ne double
+  rien : un mois renvoyé remplace ses brouillards et **ne touche jamais une
+  écriture validée** — l'écart est calculé et affiché, et c'est le comptable qui
+  tranche.
+- **Reprendre un dossier** venu d'un autre cabinet : exercice, plan de comptes,
+  balance d'ouverture (saisie ou importée d'un CSV), avec l'écart d'équilibre en
+  direct pendant la saisie et un refus net si elle ne tombe pas juste.
+- **Valider** une écriture lui donne son numéro, définitivement. Une écriture
+  validée ne se modifie plus : on la **contre-passe**, à la date du jour où l'on
+  corrige. C'est ce qui fait qu'un livre relu dans deux ans dit la vérité de ce
+  qui a été fait.
+- **Le brouillard se voit** (italique, fond estompé, pastille à la place du
+  numéro) et n'entre dans aucune balance tant qu'on ne le demande pas.
+- **Le lettrage** relie une facture et son règlement, et refuse de solder ce qui
+  ne se solde pas : un lettrage qui laisse un reste affirme qu'une facture est
+  payée alors qu'il reste quelque chose.
+- Chaque geste laisse une trace dans la piste d'audit du livre, qui n'est jamais
+  purgée, et un livre ouvert sur un autre ordinateur ne s'écrase pas.
+
+Le format du livre suit la mesure du test de charge de la 9.1.0 : corps binaire,
+pas base64. Rien de tout cela ne change quoi que ce soit dans SkanFact côté
+entreprise, sauf la signature du paquet — qui se fait toute seule.
+
+### Aussi dans cette mise à jour : la 9.1.0 et la 9.1.1
+
+Elles n'ont jamais été publiées séparément. Si tu viens de la 9.0.0, tu reçois
+donc aussi :
+
+- **Une formule cachée dans un export CSV ne s'exécute plus** (9.1.1). Un tableur
+  exécute une cellule qui commence par `=`, `+`, `-` ou `@` : le libellé d'une
+  ligne de facture partait tel quel dans le journal envoyé au comptable. Les
+  quatre exports des deux applications sont protégés, et aucun montant ne bouge.
+- **« Émettre » ne peut plus donner deux numéros** (9.1.0) : deux clics rapides
+  en consommaient deux et trouaient la numérotation de tes factures.
+- **Les trois onglets de comptable de la page Comptabilité** (grand livre,
+  balance, états financiers) deviennent une option, décochée par défaut — SkanFact
+  s'arrête à ta gestion. Rien n'est supprimé : Écritures, TVA, clôtures et l'envoi
+  au comptable restent là, et la case se recoche dans « Tous les modules ».
+- **« Exonéré de timbre fiscal » sur la fiche client**, et un **seuil de retenue à
+  la source** réglable, à 0 (donc muet) tant que ton comptable ne t'a pas donné le
+  chiffre (9.1.1). Tes factures déjà émises ne bougent pas.
+- **Une bulle d'aide en écrasait une autre depuis huit versions** : en cliquant
+  « Offre » dans tes Paramètres, tu lisais une explication écrite pour autre chose.
+- **Un journal technique borné**, qui ne grossit plus sans fin, et une erreur de
+  l'interface qui y laisse enfin une trace.
+
+## 9.1.1 — 16/09/2026
+
+**Les corrections fiscales.** Quatre chiffres qui partent chez un tiers — l'administration, un
+client, ton comptable — et qui traînaient sans version. La règle qui les tient tous : **la valeur
+par défaut d'une règle qu'on ne connaît pas est celle qui ne fait rien.** Rien ici n'invente un
+chiffre à ta place, et chaque nouveauté porte son « À VÉRIFIER ».
+
+- **Une formule cachée dans un export CSV ne s'exécute plus.** Un tableur ne lit pas un CSV comme
+  un fichier de données : une cellule qui commence par `=`, `+`, `-` ou `@` est une **formule**,
+  qu'il exécute à l'ouverture. Le libellé d'une ligne de facture partait tel quel dans le journal
+  que tu envoies à ton comptable — il suffisait d'y écrire la bonne chose pour faire partir le
+  contenu de sa balance vers une adresse choisie par celui qui a tapé le libellé, sans que rien ne
+  plante. Les **quatre** exports des deux applications passent maintenant par la même parade, et
+  aucun montant ne bouge : `-12,500` reste un montant.
+- **« Exonéré de timbre fiscal » sur la fiche client.** Le timbre est décoché d'office sur ses
+  nouvelles factures, et se remet pièce par pièce. Les factures **déjà émises ne bougent pas** :
+  leur timbre est gelé à l'émission, et le calcul ne relit jamais la fiche du client.
+- **Un seuil de retenue à la source**, dans Paramètres → Documents, **à 0 par défaut** — donc
+  aucun seuil, et aucun message, tant que ton comptable ne t'a pas donné le chiffre. Réglé, il
+  **prévient** quand une facture sous le seuil porte quand même une retenue : il ne refuse jamais
+  et ne retire jamais la retenue tout seul.
+- **La TFP proposée par métier** dans Paie → Barèmes, quand le métier en porte une. Aucun n'en
+  porte aujourd'hui : c'est une règle de droit, et elle attend la réponse du comptable plutôt
+  qu'un chiffre écrit dans le code. Une fois tes barèmes enregistrés, la proposition ne revient
+  jamais écraser ton taux.
+- **Le contrôle e-facture** (`docs/e-facture-controle.md`) : champ par champ, ce que notre modèle
+  porte déjà de ce qu'un format officiel exigerait. Il ne construit rien — il répond à la seule
+  question qui compte aujourd'hui : *le jour où l'obligation tombe, est-ce une semaine ou trois
+  mois ?* Réponse : les chiffres sont là, les identités sont incomplètes mais rattrapables, la
+  signature et l'acheminement sont entièrement à faire.
+
+## 9.1.0 — 16/09/2026
+
+**L'outillage, et le moteur comptable partagé par les deux applications.** Une version sans nouvel
+écran pour toi : c'est le socle sur lequel la comptabilité du cabinet va s'écrire, plus les filets
+qui manquaient à un logiciel qu'on vend.
+
+- **Le moteur comptable est sorti dans son propre fichier** (`src/renderer/compta.js`), chargé par
+  SkanFact **et** par SkanFact Cabinet. La règle qui décide de ce qui y va : une fonction qui prend
+  tes données reste dans le cœur, une fonction qui prend des **lignes d'écriture** vit là. C'est ce
+  qui permet au cabinet de calculer ta balance à partir de ce que ton paquet contient. Un test
+  vérifie que les deux balances — la tienne et la sienne — sont identiques **au millime**, sur les
+  24 mois du jeu d'exemple. Sans lui, ton comptable et toi auriez deux chiffres et aucun moyen de
+  savoir lequel croire.
+- **Le cabinet lit tes livres** : grand livre, balance, livre-journal, centralisateur et lettrage,
+  calculés sur les paquets déjà reçus, sans rien te demander. Un mois illisible ou un paquet d'avant
+  la 6.3.0 est **nommé** au lieu d'être compté à zéro, et la clé de secours est réclamée au premier
+  import — pas après soixante.
+- **Les trois onglets de comptable de la page Comptabilité** (grand livre, balance, états financiers)
+  sont désormais une **option**, décochée par défaut : SkanFact s'arrête à ta gestion, ces écrans-là
+  sont ceux de ton comptable. Rien n'est supprimé — le moteur écrit toujours ton paquet — et
+  Écritures, TVA, clôtures et l'envoi au comptable restent là pour tout le monde. La case se coche
+  et se décoche, toujours, depuis « Tous les modules ».
+- **« Émettre » ne peut plus donner deux numéros.** Deux clics rapides consommaient deux numéros et
+  trouaient la numérotation de tes factures.
+- **Un journal technique borné** : il ne grossit plus sans fin, et une erreur de l'interface y laisse
+  enfin une trace (au maximum vingt par minute, et le journal dit combien il a tues).
+- **Une bulle d'aide en écrasait une autre depuis huit versions** : en cliquant « Offre » dans tes
+  Paramètres, tu lisais depuis la 8.2.0 une explication écrite pour autre chose.
+- Pour le développement : un **lint** qui refuse les trois fautes de date qui ont fait geler
+  l'application en 5.1.0, une **vérification automatique** à chaque poussée sur Linux et Windows, et
+  un bouton « construire un essai » pour te faire tester une version sans la publier.
+
+**Test de charge du livre comptable** (`npm run charge`, Node 22 · x64 · 4 cœurs), la mesure qui
+décide du format que la 9.2.0 écrira — mesurer avant d'écrire un format, jamais après :
+
+| Ce qu'on mesure | Mesuré | Seuil |
+|---|---|---|
+| Ouvrir un livre de 50 000 lignes | **119 ms** | 1 000 ms |
+| Valider une écriture (médiane sur 20) | **141 ms** | 100 ms |
+| Balance de 60 dossiers (345 001 lignes, 97 Mo) | **906 ms** | 5 000 ms |
+| Recherche d'une pièce dans tout le portefeuille | **737 ms** | 3 000 ms |
+
+Une seule mesure dépasse son seuil : l'écriture. Trois leviers ont été mesurés plutôt que devinés —
+corps binaire au lieu de base64 (**57 ms**, 59 % de gagné), découpage par mois (9,8 ms), les deux
+(5,0 ms). Le moins cher qui suffit est le premier, et il ne change ni la forme du livre ni aucun
+appelant : la 9.2.0 écrira un corps binaire. Décision consignée dans le cahier des charges.
+
 ## 9.0.0 — 15/09/2026
 
 **L'exercice.** Après le grand livre (8.8.0) et le livre-journal (8.9.0), la comptabilité se lit

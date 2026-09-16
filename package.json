@@ -1,7 +1,7 @@
 {
   "name": "skanfact",
   "productName": "SkanFact",
-  "version": "9.0.0",
+  "version": "9.2.0",
   "description": "Devis et factures pour les petites entreprises",
   "main": "src/main.js",
   "author": "Skander Ben Amor",
@@ -10,6 +10,8 @@
   "scripts": {
     "start": "electron .",
     "test": "node test/run-tests.js",
+    "lint": "eslint .",
+    "charge": "node test/charge-livre.js",
     "start:cabinet": "electron src/cabinet/main.js",
     "build:mac": "electron-builder --mac",
     "build:win": "electron-builder --win",
@@ -58,9 +60,13 @@
     "e2e:pont": "node test/e2e/pont.js",
     "e2e:livres": "node test/e2e/livres.js"
   },
+  "engines": {
+    "node": ">=22"
+  },
   "devDependencies": {
     "electron": "^43.0.0",
     "electron-builder": "^25.0.0",
+    "eslint": "^10.10.0",
     "playwright": "^1.63.0"
   },
   "build": {

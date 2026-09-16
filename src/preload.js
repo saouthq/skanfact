@@ -78,6 +78,9 @@ contextBridge.exposeInMainWorld('skanfact', {
   onAlivePing: (cb) => { ipcRenderer.on('alive:ping', () => { ipcRenderer.send('alive:pong'); if (cb) cb(); }); },
   onFreezeNotice: (cb) => { ipcRenderer.on('freeze:notice', (_e, d) => cb(d)); },
   supportInfo: () => ipcRenderer.invoke('support:info'),
+  // Une exception de l'interface part au journal (9.1.0). `send` et non `invoke` côté renderer ?
+  // Non : `invoke` permet de savoir si elle a été retenue, et le garde-fou n'attend pas la réponse.
+  supportErreur: (info) => ipcRenderer.invoke('support:erreur', info),
   openLog: () => ipcRenderer.invoke('support:openLog'),
   onMenuAction: (cb) => { ipcRenderer.on('menu:action', (_e, name) => cb(name)); },
   // mises à jour
