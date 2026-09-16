@@ -4943,6 +4943,11 @@ t('cabinet : la clé privée ne traverse jamais le pont vers l\'interface', () =
     dossiers: [{ id: 'MF:1', name: 'Client', packs: [] }], settings: { relanceDay: 10 }
   };
   // Le corps référence `state` et `Z.keyFingerprint` : on les fournit, et rien d'autre.
+  // `new Function` est délibéré ici, et c'est la seule façon d'y arriver : on veut EXÉCUTER le
+  // vrai corps de `safeState()` tel qu'il est écrit dans main.js, pour prouver que la clé privée
+  // n'en sort pas. Le réécrire dans le test ne prouverait rien (« un e2e ne doit jamais rejouer
+  // le code qu'il teste », 6.8.1).
+  // eslint-disable-next-line no-new-func
   const faireSafeState = new Function('state', 'Z', corps + '; return safeState();');
   const sorti = faireSafeState(faux, { keyFingerprint: k => 'EMPREINTE-DE-' + k });
   const texte = JSON.stringify(sorti);
@@ -7699,11 +7704,16 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     noms.forEach((nom, i) => {
       const f = path.join(dossier, nom + '.json');
       fs.writeFileSync(f, JSON.stringify({ ...core.DEFAULT_DATA, company: { ...core.DEFAULT_COMPANY, name: nom } }));
+      // `new Date(y, m, d)` est délibéré ici : un mtime est un INSTANT du système de fichiers,
+      // pas un jour de calendrier — la règle UTC de la 5.2.3 ne le concerne pas. Et c'est tout
+      // l'objet de ce test : montrer que le mtime ne décide de rien, c'est le NOM qui fait foi.
+      // eslint-disable-next-line no-restricted-syntax
       fs.utimesSync(f, new Date(2020, 0, 1 + i), new Date(2020, 0, 1 + i));   // les plus vieilles
     });
     // Le filet, pris à l'instant : le plus RÉCENT de tous, et le premier par ordre alphabétique.
     const filet = path.join(dossier, 'avant-effacement-2026-09-12.json');
     fs.writeFileSync(filet, JSON.stringify({ ...core.DEFAULT_DATA, company: { ...core.DEFAULT_COMPANY, name: 'FILET' } }));
+    // eslint-disable-next-line no-restricted-syntax
     fs.utimesSync(filet, new Date(2026, 8, 12), new Date(2026, 8, 12));
 
     s.backupNow('manuelle');            // déclenche la purge
@@ -7720,6 +7730,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // de 6.8.1 intact, sur la seule plateforme que personne ne testait. Depuis, les filets ont
     // leur propre réserve, comme dans l'app cabinet.
     fs.readdirSync(dossier).forEach(n => {
+      // eslint-disable-next-line no-restricted-syntax
       const q = new Date(2026, 8, 12);
       fs.utimesSync(path.join(dossier, n), q, q);
     });

@@ -11483,7 +11483,7 @@
     modal(`<h2>Changer l'offre</h2>
       <p class="small">${h(lic.nom)} est en <strong>${h(offreLabelDe(lic.offre))}</strong>${lic.exp ? ` jusqu'au <strong>${C.fmtDate(lic.exp)}</strong>` : ' sans limite de durée'}. La date de fin ne change pas : seule la différence de prix est facturée.</p>
       <form id="cof" class="grid-2">
-        <label class="field"><span>Nouvelle offre</span><select name="offre">${offres.map(o => `<option value="${h(o)}">${h(editeur.offres[o].label)}</option>`).join('')}</select></label>
+        <label class="field">${lbl('Nouvelle offre', 'lic.chgoffre')}<select name="offre">${offres.map(o => `<option value="${h(o)}">${h(editeur.offres[o].label)}</option>`).join('')}</select></label>
         <label class="field obligatoire"><span>Prix plein de la nouvelle offre (${h(cur)} HT)</span><input type="number" id="co-prix" name="prix" class="num" step="0.001" min="0" placeholder="690"></label>
       </form>
       <div class="notes-md mt"><p class="small" id="co-calc">Indique le prix plein de la nouvelle offre pour voir la différence.</p>
