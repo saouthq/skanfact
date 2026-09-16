@@ -64,8 +64,17 @@ jobs:
       # ne dépend pas du système hôte ici, parce qu'Electron embarque SON chromium — c'est
       # exactement la raison pour laquelle ce projet imprime avec `printToPDF` plutôt qu'avec une
       # bibliothèque. Le refaire sur Windows paierait deux fois la même mesure.
+      #
+      # `npm i playwright` installe la BIBLIOTHÈQUE, pas le navigateur : les deux se téléchargent
+      # séparément, et sans la seconde ligne le parcours meurt en deux secondes sur
+      # « Executable doesn't exist ». Le défaut n'a pas pu se voir avant la première exécution de
+      # cette CI : les machines où j'écris portent une image préchargée (`PLAYWRIGHT_BROWSERS_PATH`,
+      # `/opt/pw-browsers`) que le repli du harnais trouve tout seul, et un coureur GitHub n'a ni
+      # l'un ni l'autre. C'est exactement le symptôme de la 5.2.3 — un défaut que la machine de test
+      # ne reproduit jamais — et c'est la raison d'être de cette CI.
       - name: Les pages d'un document imprimé
         if: matrix.os == 'ubuntu-latest'
         run: |
           npm i --no-save playwright
+          npx playwright install --with-deps chromium
           npm run e2e:pages
