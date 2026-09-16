@@ -11971,6 +11971,86 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.ok(!/recopie son libellé exactement/.test(bulle[1]) && /choisir suffit/.test(bulle[1]), 'la bulle demande encore de recopier l\'orthographe exacte');
   });
 
+  // 9.2.2 — le jeu d'exemple du Cabinet livre de VRAIS paquets. Skander, devant son vrai dossier :
+  // « ton jeu d'exemple ne montre pas le vrai écran avec l'exercice ouvert ». Les journaux sont
+  // pré-calculés par un script avec le moteur de l'app entreprise (que le Cabinet n'embarque pas),
+  // et recalés sur le mois courant au chargement.
+  t('9.2.2 : les journaux de l\'exemple suivent leur source, et chaque mois est une comptabilité équilibrée', () => {
+    const fichier = path.join(__dirname, '../src/cabinet/exemple-paquets.json');
+    const commis = JSON.parse(fs.readFileSync(fichier, 'utf8'));
+    const { fabriquer, MOIS } = require('../scripts/exemple-cabinet.js');
+    assert.strictEqual(commis.mois.length, MOIS, `l'exemple doit porter ${MOIS} mois`);
+    // Le fichier commité EST ce que le script produit : sinon quelqu'un a retouché l'un sans l'autre.
+    assert.deepStrictEqual(commis, fabriquer(),
+      'src/cabinet/exemple-paquets.json ne suit plus scripts/exemple-cabinet.js — relance `node scripts/exemple-cabinet.js`');
+    const K = require('../src/renderer/compta.js');
+    commis.mois.forEach(m => {
+      const e = m.fichiers.find(f => f.chemin === 'journaux/ecritures.csv');
+      assert.ok(e, m.mois + ' : pas d\'écritures');
+      const rows = K.entreesDepuisCsv(e.texte);
+      assert.ok(rows.length >= 20, m.mois + ' : trop peu d\'écritures pour ressembler à un exercice (' + rows.length + ')');
+      const b = K.entriesBalance(rows);
+      assert.strictEqual(b.debit, b.credit, m.mois + ' : débit ≠ crédit');
+      assert.ok(m.manifest.chiffres && typeof m.manifest.chiffres.ca === 'number', m.mois + ' : le manifeste ne porte pas de chiffres');
+      assert.ok(!('entreprise' in m.manifest) && !('fichiers' in m.manifest) && !('genereLe' in m.manifest),
+        'le gabarit ne porte ni entreprise, ni empreintes, ni date : c\'est le Cabinet qui les pose');
+      // Aucun identifiant tiré au hasard : c'est ce qui rend le fichier identique d'une passe à l'autre.
+      m.fichiers.forEach(f => assert.ok(!/"employeeId": "[a-z0-9]{10,}"/.test(f.texte), f.chemin + ' porte un identifiant aléatoire'));
+    });
+    // Et le Cabinet n'a toujours pas le moteur : le script vit dans scripts/, pas dans src/cabinet/.
+    const cfg = require('../build/cabinet.config.js');
+    assert.ok(!cfg.files.some(f => /scripts/.test(String(f))), 'le script de fabrication n\'a rien à faire dans l\'app du comptable');
+  });
+
+  t('9.2.2 : un paquet d\'exemple se recale sur le mois courant sans changer un montant', () => {
+    const cab = require('../src/cabinet/cabcore.js');
+    const gabarit = {
+      mois: '2026-08',
+      manifest: { format: 1, app: 'SkanFact', periode: { mois: '2026-08' }, definitif: false, chiffres: { ca: 3750, devise: 'TND' }, compte: { ventes: 4 }, manques: [] },
+      fichiers: [
+        { chemin: 'journaux/ecritures.csv', texte: 'N°;Date;Pièce;Libellé\n;31/08/2026;FAC-2026-022;Facture FAC-2026-022 — échéance 30/09/2026\n;05/08/2026;PAIE-2026-07;Salaire juillet 2026\n;12/08/2026;LOC-2026-09;Loyer' },
+        { chemin: 'journaux/tva.json', texte: '{"period":{"month":"2026-08","from":"2026-08-01","to":"2026-08-31","label":"août 2026"},"toPay":12.5}' }
+      ]
+    };
+    const cible = { mois: '2027-02', entreprise: { nom: 'Menuiserie Trabelsi SUARL', matricule: '1122334A/M/P/000', devise: 'TND' },
+      definitif: true, genereLe: '2027-03-06T08:15:00.000Z', versionApp: '9.2.2', manques: [{ id: 'justif', niveau: 'warn', quoi: 'achats sans justificatif', combien: 6 }] };
+    const r = cab.rebaserPaquet(gabarit, cible);
+    const ecr = r.fichiers[0].texte, tva = JSON.parse(r.fichiers[1].texte);
+    // Six mois plus tard, de l'an passé : chaque date glisse, le jour se borne, l'année des pièces suit.
+    assert.ok(ecr.includes(';28/02/2027;FAC-2027-022;'), '31 août → 28 février, et FAC-2026 → FAC-2027 : ' + ecr);
+    // Le jour se GARDE (30/09 → 30/03) ; il ne recule que s'il n'existe pas dans le mois d'arrivée.
+    assert.ok(ecr.includes('échéance 30/03/2027'), 'une date hors du mois glisse du même nombre de mois, jour gardé (30/09 → 30/03) : ' + ecr);
+    assert.ok(ecr.includes(';05/02/2027;PAIE-2027-01;Salaire janvier 2027'), 'le mois en lettres et le mois d\'une pièce suivent : ' + ecr);
+    assert.ok(ecr.includes('LOC-2027-03'), 'un numéro de pièce en forme de mois glisse comme un mois : ' + ecr);
+    assert.deepStrictEqual(tva.period, { month: '2027-02', from: '2027-02-01', to: '2027-02-28', label: 'février 2027' });
+    assert.strictEqual(tva.toPay, 12.5, 'un montant ne bouge jamais');
+    // Le manifeste : l'entreprise et le scénario de la cible, les chiffres du gabarit.
+    assert.deepStrictEqual(r.manifest.periode, { mois: '2027-02', du: '2027-02-01', au: '2027-02-28', libelle: 'février 2027' });
+    assert.strictEqual(r.manifest.definitif, true);
+    assert.strictEqual(r.manifest.cloturéJusquAu, '2027-02-28', 'un mois définitif est clôturé jusqu\'à son dernier jour');
+    assert.deepStrictEqual(r.manifest.entreprise, cible.entreprise);
+    assert.deepStrictEqual(r.manifest.chiffres, gabarit.manifest.chiffres, 'les chiffres sont ceux des écritures, pas du scénario');
+    assert.deepStrictEqual(r.manifest.manques, cible.manques);
+    assert.deepStrictEqual(r.manifest.fichiers, [], 'les empreintes sont posées par main.js, avec Node');
+    // Un mois provisoire n'est clôturé jusqu'à rien.
+    assert.strictEqual(cab.rebaserPaquet(gabarit, { ...cible, definitif: false }).manifest.cloturéJusquAu, null);
+    // Et le gabarit n'est pas modifié : il sert à cinq dossiers de suite.
+    assert.ok(gabarit.fichiers[0].texte.includes('31/08/2026'), 'le gabarit a été recalé sur place');
+    // Le Cabinet passe ces paquets par la VRAIE porte, scellés pour sa propre clé, et retire leurs
+    // fichiers avec les dossiers d'exemple — un paquet d'exemple qui traîne dans un vrai portefeuille
+    // serait une pièce comptable qui n'existe pas.
+    const main = lireSource('src', 'cabinet', 'main.js');
+    const charge = main.slice(main.indexOf('function chargerExemple()'), main.indexOf("ipcMain.handle('cab:demo'"));
+    assert.ok(charge.length > 800 && charge.length < 6000, 'tranche chargerExemple suspecte : ' + charge.length);
+    assert.ok(/const res = ingest\(file\);/.test(charge), 'l\'exemple ne passe plus par ingest()');
+    assert.ok(/Z\.sealForCabinet\(zip, state\.cabinet\.publicKey/.test(charge), 'les paquets d\'exemple ne sont plus scellés pour la clé du cabinet');
+    assert.ok(/empreinte: Z\.sha256\(f\.data\)/.test(charge), 'le manifeste d\'exemple ne porte plus les empreintes');
+    const retire = main.slice(main.indexOf('function retirerExemple()'), main.indexOf('function chargerExemple()'));
+    assert.ok(/removeDossierFiles\(d, state\.dossiers\)/.test(retire), 'retirer l\'exemple laisse ses fichiers sur le disque');
+    assert.ok(/if \(demoOut\) retirerExemple\(\);/.test(main), 'le premier vrai paquet ne retire plus les fichiers de l\'exemple');
+    assert.ok(!/concat\(K\.demoDossiers\(\)\.map\(K\.migrateDossier\)\)/.test(main), 'l\'exemple pose encore des dossiers sans fichier');
+  });
+
   t('aucun fichier source ne traîne à la racine du dépôt', () => {
     // Trouvé en préparant la publication de la 9.2.0, et jamais par un test : DIX-SEPT copies de
     // `src/**` s'étaient posées à la racine — un agent de vérification avait aplati les chemins pour

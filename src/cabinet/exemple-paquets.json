@@ -1,0 +1,718 @@
+{
+ "reference": "2026-09-16",
+ "source": "scripts/exemple-cabinet.js",
+ "mois": [
+  {
+   "offset": 1,
+   "mois": "2026-08",
+   "manifest": {
+    "format": 1,
+    "app": "SkanFact",
+    "periode": {
+     "mois": "2026-08",
+     "du": "2026-08-01",
+     "au": "2026-08-31",
+     "libelle": "août 2026"
+    },
+    "definitif": false,
+    "cloturéJusquAu": null,
+    "manques": [
+     {
+      "id": "justificatifs",
+      "niveau": "warn",
+      "quoi": "3 achats sans justificatif",
+      "combien": 3
+     },
+     {
+      "id": "pointage",
+      "niveau": "warn",
+      "quoi": "8 mouvements non pointés",
+      "combien": 8
+     },
+     {
+      "id": "attestations",
+      "niveau": "warn",
+      "quoi": "3 attestations de retenue à la source non remises",
+      "combien": 3
+     }
+    ],
+    "chiffres": {
+     "ca": 3750,
+     "tvaCollectee": 676.5,
+     "tvaDeductible": 549.1,
+     "tvaADecaisser": 127.4,
+     "creditTva": 0,
+     "encaisse": 21745.383,
+     "devise": "DT"
+    },
+    "compte": {
+     "ventes": 4,
+     "achats": 3,
+     "encaissements": 2,
+     "pieces": 4,
+     "justificatifs": 0,
+     "bulletins": 2
+    }
+   },
+   "fichiers": [
+    {
+     "chemin": "journaux/ventes.csv",
+     "texte": "﻿Date;Numéro;Type;Client;Objet;Total HT;Base 0%;Base 7%;Base 13%;Base 19%;TVA 0%;TVA 7%;TVA 13%;TVA 19%;Total TVA;Timbre;TTC;Retenue source;Net à payer;Statut;Payé;Reste\r\n01/08/2026;FAC-2026-022;Facture;Clinique Les Jasmins;Maintenance et supervision — août 2026;340,000;0,000;0,000;0,000;340,000;0,000;0,000;0,000;64,600;64,600;1,000;405,600;6,069;399,531;en retard;0,000;399,531\r\n09/08/2026;FAC-2026-023;Facture;Pharmacie Centrale El Menzah;Antivirus et poste d'accueil;500,000;0,000;0,000;0,000;500,000;0,000;0,000;0,000;95,000;95,000;1,000;596,000;0,000;596,000;en retard;0,000;596,000\r\n15/08/2026;FAC-2026-024;Facture;École Internationale Les Lauriers;Hébergement et sauvegarde — août 2026 à octobre 2026;810,000;0,000;0,000;0,000;810,000;0,000;0,000;0,000;153,900;153,900;1,000;964,900;14,458;950,442;payée;950,442;0,000\r\n27/08/2026;FAC-2026-025;Facture;Cabinet Ben Salah Avocats;Mise en conformité protection des données;2100,000;0,000;300,000;0,000;1800,000;0,000;21,000;0,000;342,000;363,000;1,000;2464,000;36,945;2427,055;partiellement payée;1213,528;1213,527\r\n"
+    },
+    {
+     "chemin": "journaux/achats.csv",
+     "texte": "﻿Date;N° fournisseur;Fournisseur;Nature;Catégorie;Objet;HT;TVA;TVA déductible;Timbre et frais;TTC;Retenue opérée;Net à payer;Statut\r\n05/08/2026;LOC-2026-09;Agence Immobilière Le Lac;Facture d'achat;Loyer et charges locatives;Loyer du bureau;1100,000;209,000;209,000;0,000;1309,000;0,000;1309,000;partiel\r\n20/08/2026;STEG-884512;STEG;Facture d'achat;Électricité, eau, gaz;Électricité juillet-août;340,000;64,600;64,600;0,000;404,600;0,000;404,600;payée\r\n29/08/2026;FA-2026-1402;Tunisie Matériel Informatique;Facture d'achat;Petit équipement;Imprimante multifonction du bureau;1450,000;275,500;275,500;1,000;1726,500;0,000;1726,500;retard\r\n"
+    },
+    {
+     "chemin": "journaux/encaissements.csv",
+     "texte": "﻿Date;Facture;Client;Montant;Mode;Référence;Note\r\n23/08/2026;FAC-2026-021;École Internationale Les Lauriers;20794,941;Virement;VIR 202608-23;\r\n25/08/2026;FAC-2026-024;École Internationale Les Lauriers;950,442;Virement;VIR 202608-25;\r\n"
+    },
+    {
+     "chemin": "journaux/reglements-fournisseurs.csv",
+     "texte": "﻿Date;Pièce fournisseur;Fournisseur;Montant;Mode;Référence;Note\r\n12/08/2026;LOC-2026-09;Agence Immobilière Le Lac;500,000;Virement;VIR 202608-12;\r\n15/08/2026;FA-2026-1187;Tunisie Matériel Informatique;13567,000;Virement;VIR 202608-15;\r\n28/08/2026;STEG-884512;STEG;404,600;Espèces;;\r\n"
+    },
+    {
+     "chemin": "journaux/tresorerie.csv",
+     "texte": "﻿Date;Libellé;Nature;Compte;Entrée;Sortie;Référence;Pointé\r\n01/08/2026;Salaire juillet 2026;;;0,000;0,000;;false\r\n01/08/2026;Salaire juillet 2026;;;0,000;0,000;;false\r\n05/08/2026;Frais de tenue de compte;;;0,000;0,000;;false\r\n12/08/2026;Règlement LOC-2026-09;;;0,000;0,000;VIR 202608-12;false\r\n15/08/2026;Règlement FA-2026-1187;;;0,000;0,000;VIR 202608-15;false\r\n23/08/2026;Encaissement FAC-2026-021;;;0,000;0,000;VIR 202608-23;true\r\n25/08/2026;Encaissement FAC-2026-024;;;0,000;0,000;VIR 202608-25;false\r\n28/08/2026;Règlement STEG-884512;;;0,000;0,000;;false\r\n28/08/2026;TVA, timbres et retenues de juillet 2026;;;0,000;0,000;TVA 2026-07;false\r\n"
+    },
+    {
+     "chemin": "journaux/ecritures.csv",
+     "texte": "﻿N°;Date;Journal;Pièce;Compte;Tiers;Libellé;Débit;Crédit;Lettrage;Devise\r\n;01/08/2026;BQ;PAIE-2026-07;425;Ahmed Ben Salah;Paiement salaire Ahmed Ben Salah juillet 2026;1703,731;0,000;;DT\r\n;01/08/2026;BQ;PAIE-2026-07;532;Ahmed Ben Salah;Paiement salaire Ahmed Ben Salah juillet 2026;0,000;1703,731;;DT\r\n;01/08/2026;BQ;PAIE-2026-07;425;Ines Gharbi;Paiement salaire Ines Gharbi juillet 2026;508,355;0,000;;DT\r\n;01/08/2026;BQ;PAIE-2026-07;532;Ines Gharbi;Paiement salaire Ines Gharbi juillet 2026;0,000;508,355;;DT\r\n;01/08/2026;VT;FAC-2026-022;411;Clinique Les Jasmins;Facture FAC-2026-022 — Clinique Les Jasmins;399,531;0,000;;DT\r\n;01/08/2026;VT;FAC-2026-022;4358;Clinique Les Jasmins;Retenue à la source FAC-2026-022;6,069;0,000;;DT\r\n;01/08/2026;VT;FAC-2026-022;706;Clinique Les Jasmins;Facture FAC-2026-022 — Clinique Les Jasmins (HT 19 %);0,000;340,000;;DT\r\n;01/08/2026;VT;FAC-2026-022;4367;Clinique Les Jasmins;TVA 19 % — FAC-2026-022;0,000;64,600;;DT\r\n;01/08/2026;VT;FAC-2026-022;4368;Clinique Les Jasmins;Timbre fiscal FAC-2026-022;0,000;1,000;;DT\r\n;05/08/2026;AC;LOC-2026-09;606;Agence Immobilière Le Lac;Achat LOC-2026-09 — Agence Immobilière Le Lac (charge);1100,000;0,000;;DT\r\n;05/08/2026;AC;LOC-2026-09;4366;Agence Immobilière Le Lac;TVA déductible LOC-2026-09;209,000;0,000;;DT\r\n;05/08/2026;AC;LOC-2026-09;401;Agence Immobilière Le Lac;Achat LOC-2026-09 — Agence Immobilière Le Lac;0,000;1309,000;;DT\r\n;05/08/2026;BQ;Frais bancaires;627;;Frais de tenue de compte;18,000;0,000;;DT\r\n;05/08/2026;BQ;Frais bancaires;532;;Frais de tenue de compte;0,000;18,000;;DT\r\n;09/08/2026;VT;FAC-2026-023;411;Pharmacie Centrale El Menzah;Facture FAC-2026-023 — Pharmacie Centrale El Menzah;596,000;0,000;;DT\r\n;09/08/2026;VT;FAC-2026-023;706;Pharmacie Centrale El Menzah;Facture FAC-2026-023 — Pharmacie Centrale El Menzah (HT 19 %);0,000;500,000;;DT\r\n;09/08/2026;VT;FAC-2026-023;4367;Pharmacie Centrale El Menzah;TVA 19 % — FAC-2026-023;0,000;95,000;;DT\r\n;09/08/2026;VT;FAC-2026-023;4368;Pharmacie Centrale El Menzah;Timbre fiscal FAC-2026-023;0,000;1,000;;DT\r\n;12/08/2026;BQ;LOC-2026-09;401;Agence Immobilière Le Lac;Règlement fournisseur LOC-2026-09 — Agence Immobilière Le Lac;500,000;0,000;;DT\r\n;12/08/2026;BQ;LOC-2026-09;532;Agence Immobilière Le Lac;Règlement fournisseur LOC-2026-09 — Agence Immobilière Le Lac;0,000;500,000;;DT\r\n;15/08/2026;BQ;FA-2026-1187;401;Tunisie Matériel Informatique;Règlement fournisseur FA-2026-1187 — Tunisie Matériel Informatique;13567,000;0,000;FA-2026-1187;DT\r\n;15/08/2026;BQ;FA-2026-1187;532;Tunisie Matériel Informatique;Règlement fournisseur FA-2026-1187 — Tunisie Matériel Informatique;0,000;13567,000;FA-2026-1187;DT\r\n;15/08/2026;VT;FAC-2026-024;411;École Internationale Les Lauriers;Facture FAC-2026-024 — École Internationale Les Lauriers;950,442;0,000;FAC-2026-024;DT\r\n;15/08/2026;VT;FAC-2026-024;4358;École Internationale Les Lauriers;Retenue à la source FAC-2026-024;14,458;0,000;FAC-2026-024;DT\r\n;15/08/2026;VT;FAC-2026-024;706;École Internationale Les Lauriers;Facture FAC-2026-024 — École Internationale Les Lauriers (HT 19 %);0,000;810,000;FAC-2026-024;DT\r\n;15/08/2026;VT;FAC-2026-024;4367;École Internationale Les Lauriers;TVA 19 % — FAC-2026-024;0,000;153,900;FAC-2026-024;DT\r\n;15/08/2026;VT;FAC-2026-024;4368;École Internationale Les Lauriers;Timbre fiscal FAC-2026-024;0,000;1,000;FAC-2026-024;DT\r\n;20/08/2026;AC;STEG-884512;606;STEG;Achat STEG-884512 — STEG (charge);340,000;0,000;STEG-884512;DT\r\n;20/08/2026;AC;STEG-884512;4366;STEG;TVA déductible STEG-884512;64,600;0,000;STEG-884512;DT\r\n;20/08/2026;AC;STEG-884512;401;STEG;Achat STEG-884512 — STEG;0,000;404,600;STEG-884512;DT\r\n;23/08/2026;BQ;FAC-2026-021;532;École Internationale Les Lauriers;Règlement FAC-2026-021 — École Internationale Les Lauriers (VIR 202608-23);20794,941;0,000;FAC-2026-021;DT\r\n;23/08/2026;BQ;FAC-2026-021;411;École Internationale Les Lauriers;Règlement FAC-2026-021 — École Internationale Les Lauriers (VIR 202608-23);0,000;20794,941;FAC-2026-021;DT\r\n;25/08/2026;BQ;FAC-2026-024;532;École Internationale Les Lauriers;Règlement FAC-2026-024 — École Internationale Les Lauriers (VIR 202608-25);950,442;0,000;FAC-2026-024;DT\r\n;25/08/2026;BQ;FAC-2026-024;411;École Internationale Les Lauriers;Règlement FAC-2026-024 — École Internationale Les Lauriers (VIR 202608-25);0,000;950,442;FAC-2026-024;DT\r\n;27/08/2026;VT;FAC-2026-025;411;Cabinet Ben Salah Avocats;Facture FAC-2026-025 — Cabinet Ben Salah Avocats;2427,055;0,000;;DT\r\n;27/08/2026;VT;FAC-2026-025;4358;Cabinet Ben Salah Avocats;Retenue à la source FAC-2026-025;36,945;0,000;;DT\r\n;27/08/2026;VT;FAC-2026-025;706;Cabinet Ben Salah Avocats;Facture FAC-2026-025 — Cabinet Ben Salah Avocats (HT 7 %);0,000;300,000;;DT\r\n;27/08/2026;VT;FAC-2026-025;4367;Cabinet Ben Salah Avocats;TVA 7 % — FAC-2026-025;0,000;21,000;;DT\r\n;27/08/2026;VT;FAC-2026-025;706;Cabinet Ben Salah Avocats;Facture FAC-2026-025 — Cabinet Ben Salah Avocats (HT 19 %);0,000;1800,000;;DT\r\n;27/08/2026;VT;FAC-2026-025;4367;Cabinet Ben Salah Avocats;TVA 19 % — FAC-2026-025;0,000;342,000;;DT\r\n;27/08/2026;VT;FAC-2026-025;4368;Cabinet Ben Salah Avocats;Timbre fiscal FAC-2026-025;0,000;1,000;;DT\r\n;28/08/2026;BQ;STEG-884512;401;STEG;Règlement fournisseur STEG-884512 — STEG;404,600;0,000;STEG-884512;DT\r\n;28/08/2026;BQ;STEG-884512;532;STEG;Règlement fournisseur STEG-884512 — STEG;0,000;404,600;STEG-884512;DT\r\n;28/08/2026;BQ;TVA 2026-07;4365;;TVA, timbres et retenues de juillet 2026;1218,050;0,000;;DT\r\n;28/08/2026;BQ;TVA 2026-07;532;;TVA, timbres et retenues de juillet 2026;0,000;1218,050;;DT\r\n;29/08/2026;AC;FA-2026-1402;22;Tunisie Matériel Informatique;Achat FA-2026-1402 — Tunisie Matériel Informatique (immobilisation);1450,000;0,000;;DT\r\n;29/08/2026;AC;FA-2026-1402;608;Tunisie Matériel Informatique;Frais accessoires FA-2026-1402;1,000;0,000;;DT\r\n;29/08/2026;AC;FA-2026-1402;4366;Tunisie Matériel Informatique;TVA déductible FA-2026-1402;275,500;0,000;;DT\r\n;29/08/2026;AC;FA-2026-1402;401;Tunisie Matériel Informatique;Achat FA-2026-1402 — Tunisie Matériel Informatique;0,000;1726,500;;DT\r\n;31/08/2026;OD;TVA-2026-08;4367;;TVA collectée — Déclaration mensuelle août 2026;676,500;0,000;;DT\r\n;31/08/2026;OD;TVA-2026-08;4368;;Timbres fiscaux — Déclaration mensuelle août 2026;4,000;0,000;;DT\r\n;31/08/2026;OD;TVA-2026-08;4366;;TVA déductible imputée — Déclaration mensuelle août 2026;0,000;549,100;;DT\r\n;31/08/2026;OD;TVA-2026-08;4365;;Net à payer — Déclaration mensuelle août 2026;0,000;131,400;;DT\r\n;31/08/2026;PAIE;PAIE-2026-08;640;Ahmed Ben Salah;Salaire Ahmed Ben Salah août 2026;1850,000;0,000;;DT\r\n;31/08/2026;PAIE;PAIE-2026-08;645;Ahmed Ben Salah;Charges patronales — Ahmed Ben Salah;313,945;0,000;;DT\r\n;31/08/2026;PAIE;PAIE-2026-08;661;Ahmed Ben Salah;TFP et FOPROLOS — Ahmed Ben Salah;55,500;0,000;;DT\r\n;31/08/2026;PAIE;PAIE-2026-08;4335;Ahmed Ben Salah;TFP et FOPROLOS à payer — Ahmed Ben Salah;0,000;55,500;;DT\r\n;31/08/2026;PAIE;PAIE-2026-08;4531;Ahmed Ben Salah;CNSS — Ahmed Ben Salah;0,000;483,775;;DT\r\n;31/08/2026;PAIE;PAIE-2026-08;4321;Ahmed Ben Salah;IRPP et contribution sociale — Ahmed Ben Salah;0,000;236,844;;DT\r\n;31/08/2026;PAIE;PAIE-2026-08;425;Ahmed Ben Salah;Salaire Ahmed Ben Salah août 2026;0,000;1443,326;;DT\r\n;31/08/2026;PAIE;PAIE-2026-08;640;Ines Gharbi;Salaire Ines Gharbi août 2026;900,000;0,000;;DT\r\n;31/08/2026;PAIE;PAIE-2026-08;645;Ines Gharbi;Charges patronales — Ines Gharbi;152,730;0,000;;DT\r\n;31/08/2026;PAIE;PAIE-2026-08;661;Ines Gharbi;TFP et FOPROLOS — Ines Gharbi;27,000;0,000;;DT\r\n;31/08/2026;PAIE;PAIE-2026-08;4335;Ines Gharbi;TFP et FOPROLOS à payer — Ines Gharbi;0,000;27,000;;DT\r\n;31/08/2026;PAIE;PAIE-2026-08;4531;Ines Gharbi;CNSS — Ines Gharbi;0,000;235,350;;DT\r\n;31/08/2026;PAIE;PAIE-2026-08;4321;Ines Gharbi;IRPP et contribution sociale — Ines Gharbi;0,000;55,202;;DT\r\n;31/08/2026;PAIE;PAIE-2026-08;425;Ines Gharbi;Salaire Ines Gharbi août 2026;0,000;762,178;;DT\r\n"
+    },
+    {
+     "chemin": "journaux/balance.csv",
+     "texte": "﻿Compte;Intitulé;Ouverture débit;Ouverture crédit;Mouvements débit;Mouvements crédit;Solde débiteur;Solde créditeur\r\n12;Report à nouveau (soldes de départ);0,000;65800,000;0,000;0,000;0,000;65800,000\r\n13;Résultat des exercices passés;13664,833;0,000;0,000;0,000;13664,833;0,000\r\n22;Immobilisations;47000,000;0,000;1450,000;0,000;48450,000;0,000\r\n28;Amortissements cumulés;0,000;12945,333;0,000;0,000;0,000;12945,333\r\n401;Fournisseurs;0,000;14876,000;14471,600;3440,100;0,000;3844,500\r\n411;Clients;23331,191;0,000;4373,028;21745,383;5958,836;0,000\r\n425;Personnel — net à payer;0,000;2612,086;2212,086;2205,504;0,000;2605,504\r\n4321;IRPP retenu;0,000;1142,549;0,000;292,046;0,000;1434,595\r\n4335;TFP et FOPROLOS à payer;0,000;283,846;0,000;82,500;0,000;366,346\r\n434;Impôts et acomptes réglés;2400,000;0,000;0,000;0,000;2400,000;0,000\r\n4358;Retenue à la source subie;532,270;0,000;57,472;0,000;589,742;0,000\r\n4365;TVA à payer;0,000;1218,050;1218,050;131,400;0,000;131,400\r\n4366;TVA déductible;0,000;0,000;549,100;549,100;0,000;0,000\r\n4367;TVA collectée;0,000;0,000;676,500;676,500;0,000;0,000\r\n4368;Timbre fiscal;0,000;0,000;4,000;4,000;0,000;0,000\r\n4421;Compte courant des associés;0,000;5840,000;0,000;0,000;0,000;5840,000\r\n4531;CNSS;0,000;2474,192;0,000;719,125;0,000;3193,317\r\n471;Compte d'attente (à ventiler);120,000;0,000;0,000;0,000;120,000;0,000\r\n532;Banque;31586,756;0,000;21745,383;17919,736;35412,403;0,000\r\n54;Caisse;280,000;0,000;0,000;0,000;280,000;0,000\r\n606;Charges;1100,000;0,000;1440,000;0,000;2540,000;0,000\r\n607;Achats de marchandises;11400,000;0,000;0,000;0,000;11400,000;0,000\r\n608;Frais accessoires d'achat;2,000;0,000;1,000;0,000;3,000;0,000\r\n616;Assurances;840,000;0,000;0,000;0,000;840,000;0,000\r\n627;Frais bancaires;126,000;0,000;18,000;0,000;144,000;0,000\r\n640;Salaires bruts;9461,538;0,000;2750,000;0,000;12211,538;0,000\r\n645;Charges patronales;1605,622;0,000;466,675;0,000;2072,297;0,000\r\n661;TFP et FOPROLOS (charge);283,846;0,000;82,500;0,000;366,346;0,000\r\n675;Valeur comptable des immobilisations cédées;1937,500;0,000;0,000;0,000;1937,500;0,000\r\n681;Dotations aux amortissements;1062,500;0,000;0,000;0,000;1062,500;0,000\r\n706;Ventes;0,000;39542,000;0,000;3750,000;0,000;43292,000\r\n"
+    },
+    {
+     "chemin": "journaux/tva.json",
+     "texte": "{\n  \"period\": {\n    \"month\": \"2026-08\",\n    \"from\": \"2026-08-01\",\n    \"to\": \"2026-08-31\",\n    \"label\": \"août 2026\"\n  },\n  \"byRate\": {\n    \"0\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"7\": {\n      \"collected\": 21,\n      \"deductible\": 0\n    },\n    \"13\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"19\": {\n      \"collected\": 655.5,\n      \"deductible\": 549.1\n    }\n  },\n  \"collected\": 676.5,\n  \"deductible\": 549.1,\n  \"carryIn\": 0,\n  \"toPay\": 127.4,\n  \"carryOut\": 0,\n  \"stamps\": 4,\n  \"withheldBySale\": 57.472,\n  \"withheldOnBuys\": 0,\n  \"salesCount\": 4,\n  \"buysCount\": 3,\n  \"salesHT\": 3750,\n  \"buysHT\": 2890\n}"
+    }
+   ],
+   "lignes": {
+    "journaux/ventes.csv": 4,
+    "journaux/achats.csv": 3,
+    "journaux/encaissements.csv": 2,
+    "journaux/reglements-fournisseurs.csv": 3,
+    "journaux/tresorerie.csv": 9,
+    "journaux/ecritures.csv": 67,
+    "journaux/balance.csv": 31
+   }
+  },
+  {
+   "offset": 2,
+   "mois": "2026-07",
+   "manifest": {
+    "format": 1,
+    "app": "SkanFact",
+    "periode": {
+     "mois": "2026-07",
+     "du": "2026-07-01",
+     "au": "2026-07-31",
+     "libelle": "juillet 2026"
+    },
+    "definitif": false,
+    "cloturéJusquAu": null,
+    "manques": [
+     {
+      "id": "justificatifs",
+      "niveau": "warn",
+      "quoi": "2 achats sans justificatif",
+      "combien": 2
+     },
+     {
+      "id": "pointage",
+      "niveau": "warn",
+      "quoi": "8 mouvements non pointés",
+      "combien": 8
+     },
+     {
+      "id": "attestations",
+      "niveau": "warn",
+      "quoi": "1 attestation de retenue à la source non remise",
+      "combien": 1
+     }
+    ],
+    "chiffres": {
+     "ca": 22580,
+     "tvaCollectee": 3590.05,
+     "tvaDeductible": 2375,
+     "tvaADecaisser": 1215.05,
+     "creditTva": 0,
+     "encaisse": 12914.832,
+     "devise": "DT"
+    },
+    "compte": {
+     "ventes": 4,
+     "achats": 2,
+     "encaissements": 5,
+     "pieces": 4,
+     "justificatifs": 0,
+     "bulletins": 2
+    }
+   },
+   "fichiers": [
+    {
+     "chemin": "journaux/ventes.csv",
+     "texte": "﻿Date;Numéro;Type;Client;Objet;Total HT;Base 0%;Base 7%;Base 13%;Base 19%;TVA 0%;TVA 7%;TVA 13%;TVA 19%;Total TVA;Timbre;TTC;Retenue source;Net à payer;Statut;Payé;Reste\r\n01/07/2026;FAC-2026-018;Facture;Clinique Les Jasmins;Maintenance et supervision — juillet 2026;340,000;0,000;0,000;0,000;340,000;0,000;0,000;0,000;64,600;64,600;1,000;405,600;6,069;399,531;payée;399,531;0,000\r\n09/07/2026;FAC-2026-019;Facture;Nova Digital Ltd;Web application penetration test;3685,000;3685,000;0,000;0,000;0,000;0,000;0,000;0,000;0,000;0,000;0,000;3685,000;0,000;3685,000;payée;3685,000;0,000\r\n23/07/2026;FAC-2026-020;Facture;Restaurant Dar El Jeld;Supervision et sauvegarde — juillet 2026;815,000;0,000;0,000;0,000;815,000;0,000;0,000;0,000;154,850;154,850;1,000;970,850;0,000;970,850;en retard;0,000;970,850\r\n28/07/2026;FAC-2026-021;Facture;École Internationale Les Lauriers;Équipement de la salle informatique;17740,000;0,000;0,000;0,000;17740,000;0,000;0,000;0,000;3370,600;3370,600;1,000;21111,600;316,659;20794,941;payée;20794,941;0,000\r\n"
+    },
+    {
+     "chemin": "journaux/achats.csv",
+     "texte": "﻿Date;N° fournisseur;Fournisseur;Nature;Catégorie;Objet;HT;TVA;TVA déductible;Timbre et frais;TTC;Retenue opérée;Net à payer;Statut\r\n05/07/2026;LOC-2026-08;Agence Immobilière Le Lac;Facture d'achat;Loyer et charges locatives;Loyer du bureau;1100,000;209,000;209,000;0,000;1309,000;0,000;1309,000;retard\r\n18/07/2026;FA-2026-1187;Tunisie Matériel Informatique;Facture d'achat;Achats de marchandises;Postes de travail pour l'École Les Lauriers;11400,000;2166,000;2166,000;1,000;13567,000;0,000;13567,000;payée\r\n"
+    },
+    {
+     "chemin": "journaux/encaissements.csv",
+     "texte": "﻿Date;Facture;Client;Montant;Mode;Référence;Note\r\n05/07/2026;FAC-2026-013;Lemon Beach Hammamet;3247,201;Traite;Traite à 30 jours;\r\n09/07/2026;FAC-2026-015;Restaurant Dar El Jeld;405,600;Chèque;CHQ 0045902;\r\n11/07/2026;FAC-2026-016;Pharmacie Centrale El Menzah;5177,500;Virement;VIR 202607-11;\r\n28/07/2026;FAC-2026-018;Clinique Les Jasmins;399,531;Virement;VIR 202607-28;\r\n31/07/2026;FAC-2026-019;Nova Digital Ltd;3685,000;Virement;SWIFT NOVA-2211;\r\n"
+    },
+    {
+     "chemin": "journaux/reglements-fournisseurs.csv",
+     "texte": "﻿Date;Pièce fournisseur;Fournisseur;Montant;Mode;Référence;Note\r\n"
+    },
+    {
+     "chemin": "journaux/tresorerie.csv",
+     "texte": "﻿Date;Libellé;Nature;Compte;Entrée;Sortie;Référence;Pointé\r\n02/07/2026;Salaire juin 2026;;;0,000;0,000;;false\r\n02/07/2026;Salaire juin 2026;;;0,000;0,000;;false\r\n05/07/2026;Encaissement FAC-2026-013;;;0,000;0,000;Traite à 30 jours;true\r\n05/07/2026;Frais de tenue de compte;;;0,000;0,000;;false\r\n09/07/2026;Encaissement FAC-2026-015;;;0,000;0,000;CHQ 0045902;false\r\n11/07/2026;Encaissement FAC-2026-016;;;0,000;0,000;VIR 202607-11;false\r\n14/07/2026;Fournitures diverses;;;0,000;0,000;;false\r\n28/07/2026;Encaissement FAC-2026-018;;;0,000;0,000;VIR 202607-28;false\r\n28/07/2026;TVA, timbres et retenues de juin 2026;;;0,000;0,000;TVA 2026-06;false\r\n31/07/2026;Encaissement FAC-2026-019;;;0,000;0,000;SWIFT NOVA-2211;true\r\n"
+    },
+    {
+     "chemin": "journaux/ecritures.csv",
+     "texte": "﻿N°;Date;Journal;Pièce;Compte;Tiers;Libellé;Débit;Crédit;Lettrage;Devise\r\n;01/07/2026;VT;FAC-2026-018;411;Clinique Les Jasmins;Facture FAC-2026-018 — Clinique Les Jasmins;399,531;0,000;FAC-2026-018;DT\r\n;01/07/2026;VT;FAC-2026-018;4358;Clinique Les Jasmins;Retenue à la source FAC-2026-018;6,069;0,000;FAC-2026-018;DT\r\n;01/07/2026;VT;FAC-2026-018;706;Clinique Les Jasmins;Facture FAC-2026-018 — Clinique Les Jasmins (HT 19 %);0,000;340,000;FAC-2026-018;DT\r\n;01/07/2026;VT;FAC-2026-018;4367;Clinique Les Jasmins;TVA 19 % — FAC-2026-018;0,000;64,600;FAC-2026-018;DT\r\n;01/07/2026;VT;FAC-2026-018;4368;Clinique Les Jasmins;Timbre fiscal FAC-2026-018;0,000;1,000;FAC-2026-018;DT\r\n;02/07/2026;BQ;PAIE-2026-06;425;Ahmed Ben Salah;Paiement salaire Ahmed Ben Salah juin 2026;1443,326;0,000;;DT\r\n;02/07/2026;BQ;PAIE-2026-06;532;Ahmed Ben Salah;Paiement salaire Ahmed Ben Salah juin 2026;0,000;1443,326;;DT\r\n;02/07/2026;BQ;PAIE-2026-06;425;Ines Gharbi;Paiement salaire Ines Gharbi juin 2026;508,355;0,000;;DT\r\n;02/07/2026;BQ;PAIE-2026-06;532;Ines Gharbi;Paiement salaire Ines Gharbi juin 2026;0,000;508,355;;DT\r\n;05/07/2026;AC;LOC-2026-08;606;Agence Immobilière Le Lac;Achat LOC-2026-08 — Agence Immobilière Le Lac (charge);1100,000;0,000;;DT\r\n;05/07/2026;AC;LOC-2026-08;4366;Agence Immobilière Le Lac;TVA déductible LOC-2026-08;209,000;0,000;;DT\r\n;05/07/2026;AC;LOC-2026-08;401;Agence Immobilière Le Lac;Achat LOC-2026-08 — Agence Immobilière Le Lac;0,000;1309,000;;DT\r\n;05/07/2026;BQ;FAC-2026-013;532;Lemon Beach Hammamet;Règlement FAC-2026-013 — Lemon Beach Hammamet (Traite à 30 jours);3247,201;0,000;FAC-2026-013;DT\r\n;05/07/2026;BQ;FAC-2026-013;411;Lemon Beach Hammamet;Règlement FAC-2026-013 — Lemon Beach Hammamet (Traite à 30 jours);0,000;3247,201;FAC-2026-013;DT\r\n;05/07/2026;BQ;Frais bancaires;627;;Frais de tenue de compte;18,000;0,000;;DT\r\n;05/07/2026;BQ;Frais bancaires;532;;Frais de tenue de compte;0,000;18,000;;DT\r\n;09/07/2026;BQ;FAC-2026-015;532;Restaurant Dar El Jeld;Règlement FAC-2026-015 — Restaurant Dar El Jeld (CHQ 0045902);405,600;0,000;FAC-2026-015;DT\r\n;09/07/2026;BQ;FAC-2026-015;411;Restaurant Dar El Jeld;Règlement FAC-2026-015 — Restaurant Dar El Jeld (CHQ 0045902);0,000;405,600;FAC-2026-015;DT\r\n;09/07/2026;VT;FAC-2026-019;411;Nova Digital Ltd;Facture FAC-2026-019 — Nova Digital Ltd;3685,000;0,000;FAC-2026-019;DT\r\n;09/07/2026;VT;FAC-2026-019;706;Nova Digital Ltd;Facture FAC-2026-019 — Nova Digital Ltd (HT 0 %);0,000;3685,000;FAC-2026-019;DT\r\n;11/07/2026;BQ;FAC-2026-016;532;Pharmacie Centrale El Menzah;Règlement FAC-2026-016 — Pharmacie Centrale El Menzah (VIR 202607-11);5177,500;0,000;FAC-2026-016;DT\r\n;11/07/2026;BQ;FAC-2026-016;411;Pharmacie Centrale El Menzah;Règlement FAC-2026-016 — Pharmacie Centrale El Menzah (VIR 202607-11);0,000;5177,500;FAC-2026-016;DT\r\n;14/07/2026;CA;Autre sortie;471;;Fournitures diverses;120,000;0,000;;DT\r\n;14/07/2026;CA;Autre sortie;54;;Fournitures diverses;0,000;120,000;;DT\r\n;18/07/2026;AC;FA-2026-1187;607;Tunisie Matériel Informatique;Achat FA-2026-1187 — Tunisie Matériel Informatique (stock);11400,000;0,000;FA-2026-1187;DT\r\n;18/07/2026;AC;FA-2026-1187;608;Tunisie Matériel Informatique;Frais accessoires FA-2026-1187;1,000;0,000;FA-2026-1187;DT\r\n;18/07/2026;AC;FA-2026-1187;4366;Tunisie Matériel Informatique;TVA déductible FA-2026-1187;2166,000;0,000;FA-2026-1187;DT\r\n;18/07/2026;AC;FA-2026-1187;401;Tunisie Matériel Informatique;Achat FA-2026-1187 — Tunisie Matériel Informatique;0,000;13567,000;FA-2026-1187;DT\r\n;23/07/2026;VT;FAC-2026-020;411;Restaurant Dar El Jeld;Facture FAC-2026-020 — Restaurant Dar El Jeld;970,850;0,000;;DT\r\n;23/07/2026;VT;FAC-2026-020;706;Restaurant Dar El Jeld;Facture FAC-2026-020 — Restaurant Dar El Jeld (HT 19 %);0,000;815,000;;DT\r\n;23/07/2026;VT;FAC-2026-020;4367;Restaurant Dar El Jeld;TVA 19 % — FAC-2026-020;0,000;154,850;;DT\r\n;23/07/2026;VT;FAC-2026-020;4368;Restaurant Dar El Jeld;Timbre fiscal FAC-2026-020;0,000;1,000;;DT\r\n;28/07/2026;BQ;FAC-2026-018;532;Clinique Les Jasmins;Règlement FAC-2026-018 — Clinique Les Jasmins (VIR 202607-28);399,531;0,000;FAC-2026-018;DT\r\n;28/07/2026;BQ;FAC-2026-018;411;Clinique Les Jasmins;Règlement FAC-2026-018 — Clinique Les Jasmins (VIR 202607-28);0,000;399,531;FAC-2026-018;DT\r\n;28/07/2026;BQ;TVA 2026-06;4365;;TVA, timbres et retenues de juin 2026;1164,100;0,000;;DT\r\n;28/07/2026;BQ;TVA 2026-06;532;;TVA, timbres et retenues de juin 2026;0,000;1164,100;;DT\r\n;28/07/2026;VT;FAC-2026-021;411;École Internationale Les Lauriers;Facture FAC-2026-021 — École Internationale Les Lauriers;20794,941;0,000;FAC-2026-021;DT\r\n;28/07/2026;VT;FAC-2026-021;4358;École Internationale Les Lauriers;Retenue à la source FAC-2026-021;316,659;0,000;FAC-2026-021;DT\r\n;28/07/2026;VT;FAC-2026-021;706;École Internationale Les Lauriers;Facture FAC-2026-021 — École Internationale Les Lauriers (HT 19 %);0,000;17740,000;FAC-2026-021;DT\r\n;28/07/2026;VT;FAC-2026-021;4367;École Internationale Les Lauriers;TVA 19 % — FAC-2026-021;0,000;3370,600;FAC-2026-021;DT\r\n;28/07/2026;VT;FAC-2026-021;4368;École Internationale Les Lauriers;Timbre fiscal FAC-2026-021;0,000;1,000;FAC-2026-021;DT\r\n;31/07/2026;BQ;FAC-2026-019;532;Nova Digital Ltd;Règlement FAC-2026-019 — Nova Digital Ltd (SWIFT NOVA-2211);3685,000;0,000;FAC-2026-019;DT\r\n;31/07/2026;BQ;FAC-2026-019;411;Nova Digital Ltd;Règlement FAC-2026-019 — Nova Digital Ltd (SWIFT NOVA-2211);0,000;3685,000;FAC-2026-019;DT\r\n;31/07/2026;OD;TVA-2026-07;4367;;TVA collectée — Déclaration mensuelle juillet 2026;3590,050;0,000;;DT\r\n;31/07/2026;OD;TVA-2026-07;4368;;Timbres fiscaux — Déclaration mensuelle juillet 2026;3,000;0,000;;DT\r\n;31/07/2026;OD;TVA-2026-07;4366;;TVA déductible imputée — Déclaration mensuelle juillet 2026;0,000;2375,000;;DT\r\n;31/07/2026;OD;TVA-2026-07;4365;;Net à payer — Déclaration mensuelle juillet 2026;0,000;1218,050;;DT\r\n;31/07/2026;PAIE;PAIE-2026-07;640;Ahmed Ben Salah;Salaire Ahmed Ben Salah juillet 2026;2250,000;0,000;;DT\r\n;31/07/2026;PAIE;PAIE-2026-07;645;Ahmed Ben Salah;Charges patronales — Ahmed Ben Salah;381,825;0,000;;DT\r\n;31/07/2026;PAIE;PAIE-2026-07;661;Ahmed Ben Salah;TFP et FOPROLOS — Ahmed Ben Salah;67,500;0,000;;DT\r\n;31/07/2026;PAIE;PAIE-2026-07;4335;Ahmed Ben Salah;TFP et FOPROLOS à payer — Ahmed Ben Salah;0,000;67,500;;DT\r\n;31/07/2026;PAIE;PAIE-2026-07;4531;Ahmed Ben Salah;CNSS — Ahmed Ben Salah;0,000;588,375;;DT\r\n;31/07/2026;PAIE;PAIE-2026-07;4321;Ahmed Ben Salah;IRPP et contribution sociale — Ahmed Ben Salah;0,000;339,719;;DT\r\n;31/07/2026;PAIE;PAIE-2026-07;425;Ahmed Ben Salah;Salaire Ahmed Ben Salah juillet 2026;0,000;1703,731;;DT\r\n;31/07/2026;PAIE;PAIE-2026-07;640;Ines Gharbi;Salaire Ines Gharbi juillet 2026;830,769;0,000;;DT\r\n;31/07/2026;PAIE;PAIE-2026-07;645;Ines Gharbi;Charges patronales — Ines Gharbi;140,981;0,000;;DT\r\n;31/07/2026;PAIE;PAIE-2026-07;661;Ines Gharbi;TFP et FOPROLOS — Ines Gharbi;24,923;0,000;;DT\r\n;31/07/2026;PAIE;PAIE-2026-07;4335;Ines Gharbi;TFP et FOPROLOS à payer — Ines Gharbi;0,000;24,923;;DT\r\n;31/07/2026;PAIE;PAIE-2026-07;4531;Ines Gharbi;CNSS — Ines Gharbi;0,000;217,246;;DT\r\n;31/07/2026;PAIE;PAIE-2026-07;4321;Ines Gharbi;IRPP et contribution sociale — Ines Gharbi;0,000;46,149;;DT\r\n;31/07/2026;PAIE;PAIE-2026-07;425;Ines Gharbi;Salaire Ines Gharbi juillet 2026;0,000;708,355;;DT\r\n"
+    },
+    {
+     "chemin": "journaux/balance.csv",
+     "texte": "﻿Compte;Intitulé;Ouverture débit;Ouverture crédit;Mouvements débit;Mouvements crédit;Solde débiteur;Solde créditeur\r\n12;Report à nouveau (soldes de départ);0,000;65800,000;0,000;0,000;0,000;65800,000\r\n13;Résultat des exercices passés;13664,833;0,000;0,000;0,000;13664,833;0,000\r\n22;Immobilisations;47000,000;0,000;0,000;0,000;47000,000;0,000\r\n28;Amortissements cumulés;0,000;12945,333;0,000;0,000;0,000;12945,333\r\n401;Fournisseurs;0,000;0,000;0,000;14876,000;0,000;14876,000\r\n411;Clients;10395,701;0,000;25850,322;12914,832;23331,191;0,000\r\n425;Personnel — net à payer;0,000;2151,681;1951,681;2412,086;0,000;2612,086\r\n4321;IRPP retenu;0,000;756,681;0,000;385,868;0,000;1142,549\r\n4335;TFP et FOPROLOS à payer;0,000;191,423;0,000;92,423;0,000;283,846\r\n434;Impôts et acomptes réglés;2400,000;0,000;0,000;0,000;2400,000;0,000\r\n4358;Retenue à la source subie;209,542;0,000;322,728;0,000;532,270;0,000\r\n4365;TVA à payer;0,000;1164,100;1164,100;1218,050;0,000;1218,050\r\n4366;TVA déductible;0,000;0,000;2375,000;2375,000;0,000;0,000\r\n4367;TVA collectée;0,000;0,000;3590,050;3590,050;0,000;0,000\r\n4368;Timbre fiscal;0,000;0,000;3,000;3,000;0,000;0,000\r\n4421;Compte courant des associés;0,000;5840,000;0,000;0,000;0,000;5840,000\r\n4531;CNSS;0,000;1668,571;0,000;805,621;0,000;2474,192\r\n471;Compte d'attente (à ventiler);0,000;0,000;120,000;0,000;120,000;0,000\r\n532;Banque;21805,705;0,000;12914,832;3133,781;31586,756;0,000\r\n54;Caisse;400,000;0,000;0,000;120,000;280,000;0,000\r\n606;Charges;0,000;0,000;1100,000;0,000;1100,000;0,000\r\n607;Achats de marchandises;0,000;0,000;11400,000;0,000;11400,000;0,000\r\n608;Frais accessoires d'achat;1,000;0,000;1,000;0,000;2,000;0,000\r\n616;Assurances;840,000;0,000;0,000;0,000;840,000;0,000\r\n627;Frais bancaires;108,000;0,000;18,000;0,000;126,000;0,000\r\n640;Salaires bruts;6380,769;0,000;3080,769;0,000;9461,538;0,000\r\n645;Charges patronales;1082,816;0,000;522,806;0,000;1605,622;0,000\r\n661;TFP et FOPROLOS (charge);191,423;0,000;92,423;0,000;283,846;0,000\r\n675;Valeur comptable des immobilisations cédées;1937,500;0,000;0,000;0,000;1937,500;0,000\r\n681;Dotations aux amortissements;1062,500;0,000;0,000;0,000;1062,500;0,000\r\n706;Ventes;0,000;16962,000;0,000;22580,000;0,000;39542,000\r\n"
+    },
+    {
+     "chemin": "journaux/tva.json",
+     "texte": "{\n  \"period\": {\n    \"month\": \"2026-07\",\n    \"from\": \"2026-07-01\",\n    \"to\": \"2026-07-31\",\n    \"label\": \"juillet 2026\"\n  },\n  \"byRate\": {\n    \"0\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"7\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"13\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"19\": {\n      \"collected\": 3590.05,\n      \"deductible\": 2375\n    }\n  },\n  \"collected\": 3590.05,\n  \"deductible\": 2375,\n  \"carryIn\": 0,\n  \"toPay\": 1215.05,\n  \"carryOut\": 0,\n  \"stamps\": 3,\n  \"withheldBySale\": 322.728,\n  \"withheldOnBuys\": 0,\n  \"salesCount\": 4,\n  \"buysCount\": 2,\n  \"salesHT\": 22580,\n  \"buysHT\": 12500\n}"
+    }
+   ],
+   "lignes": {
+    "journaux/ventes.csv": 4,
+    "journaux/achats.csv": 2,
+    "journaux/encaissements.csv": 5,
+    "journaux/reglements-fournisseurs.csv": 0,
+    "journaux/tresorerie.csv": 10,
+    "journaux/ecritures.csv": 61,
+    "journaux/balance.csv": 31
+   }
+  },
+  {
+   "offset": 3,
+   "mois": "2026-06",
+   "manifest": {
+    "format": 1,
+    "app": "SkanFact",
+    "periode": {
+     "mois": "2026-06",
+     "du": "2026-06-01",
+     "au": "2026-06-30",
+     "libelle": "juin 2026"
+    },
+    "definitif": false,
+    "cloturéJusquAu": null,
+    "manques": [
+     {
+      "id": "pointage",
+      "niveau": "warn",
+      "quoi": "4 mouvements non pointés",
+      "combien": 4
+     },
+     {
+      "id": "attestations",
+      "niveau": "warn",
+      "quoi": "1 attestation de retenue à la source non remise",
+      "combien": 1
+     }
+    ],
+    "chiffres": {
+     "ca": 6390,
+     "tvaCollectee": 1160.1,
+     "tvaDeductible": 0,
+     "tvaADecaisser": 1160.1,
+     "creditTva": 0,
+     "encaisse": 399.531,
+     "devise": "DT"
+    },
+    "compte": {
+     "ventes": 5,
+     "achats": 0,
+     "encaissements": 1,
+     "pieces": 5,
+     "justificatifs": 0,
+     "bulletins": 2
+    }
+   },
+   "fichiers": [
+    {
+     "chemin": "journaux/ventes.csv",
+     "texte": "﻿Date;Numéro;Type;Client;Objet;Total HT;Base 0%;Base 7%;Base 13%;Base 19%;TVA 0%;TVA 7%;TVA 13%;TVA 19%;Total TVA;Timbre;TTC;Retenue source;Net à payer;Statut;Payé;Reste\r\n01/06/2026;FAC-2026-014;Facture;Clinique Les Jasmins;Maintenance et supervision — juin 2026;340,000;0,000;0,000;0,000;340,000;0,000;0,000;0,000;64,600;64,600;1,000;405,600;6,069;399,531;payée;399,531;0,000\r\n05/06/2026;FAC-2026-015;Facture;Restaurant Dar El Jeld;Supervision et sauvegarde — juin 2026;340,000;0,000;0,000;0,000;340,000;0,000;0,000;0,000;64,600;64,600;1,000;405,600;0,000;405,600;payée;405,600;0,000\r\n11/06/2026;FAC-2026-016;Facture;Pharmacie Centrale El Menzah;Sauvegarde et maintenance annuelle;4440,000;0,000;0,000;0,000;4440,000;0,000;0,000;0,000;843,600;843,600;1,000;5284,600;0,000;5284,600;payée;5177,500;0,000\r\n20/06/2026;AVO-2026-002;Avoir;Pharmacie Centrale El Menzah;Avoir sur facture FAC-2026-016;-90,000;0,000;0,000;0,000;-90,000;0,000;0,000;0,000;-17,100;-17,100;0,000;-107,100;0,000;-107,100;émis;0,000;0,000\r\n26/06/2026;FAC-2026-017;Facture;Lemon Beach Hammamet;Installation pare-feu et sensibilisation;1360,000;0,000;450,000;0,000;910,000;0,000;31,500;0,000;172,900;204,400;1,000;1565,400;0,000;1565,400;en retard;0,000;1565,400\r\n"
+    },
+    {
+     "chemin": "journaux/achats.csv",
+     "texte": "﻿Date;N° fournisseur;Fournisseur;Nature;Catégorie;Objet;HT;TVA;TVA déductible;Timbre et frais;TTC;Retenue opérée;Net à payer;Statut\r\n"
+    },
+    {
+     "chemin": "journaux/encaissements.csv",
+     "texte": "﻿Date;Facture;Client;Montant;Mode;Référence;Note\r\n25/06/2026;FAC-2026-014;Clinique Les Jasmins;399,531;Virement;VIR 202606-25;\r\n"
+    },
+    {
+     "chemin": "journaux/reglements-fournisseurs.csv",
+     "texte": "﻿Date;Pièce fournisseur;Fournisseur;Montant;Mode;Référence;Note\r\n"
+    },
+    {
+     "chemin": "journaux/tresorerie.csv",
+     "texte": "﻿Date;Libellé;Nature;Compte;Entrée;Sortie;Référence;Pointé\r\n01/06/2026;Salaire mai 2026;;;0,000;0,000;;false\r\n05/06/2026;Frais de tenue de compte;;;0,000;0,000;;false\r\n25/06/2026;Encaissement FAC-2026-014;;;0,000;0,000;VIR 202606-25;false\r\n28/06/2026;TVA, timbres et retenues de mai 2026;;;0,000;0,000;TVA 2026-05;false\r\n"
+    },
+    {
+     "chemin": "journaux/ecritures.csv",
+     "texte": "﻿N°;Date;Journal;Pièce;Compte;Tiers;Libellé;Débit;Crédit;Lettrage;Devise\r\n;01/06/2026;BQ;PAIE-2026-05;425;Ahmed Ben Salah;Paiement salaire Ahmed Ben Salah mai 2026;1443,326;0,000;;DT\r\n;01/06/2026;BQ;PAIE-2026-05;532;Ahmed Ben Salah;Paiement salaire Ahmed Ben Salah mai 2026;0,000;1443,326;;DT\r\n;01/06/2026;VT;FAC-2026-014;411;Clinique Les Jasmins;Facture FAC-2026-014 — Clinique Les Jasmins;399,531;0,000;FAC-2026-014;DT\r\n;01/06/2026;VT;FAC-2026-014;4358;Clinique Les Jasmins;Retenue à la source FAC-2026-014;6,069;0,000;FAC-2026-014;DT\r\n;01/06/2026;VT;FAC-2026-014;706;Clinique Les Jasmins;Facture FAC-2026-014 — Clinique Les Jasmins (HT 19 %);0,000;340,000;FAC-2026-014;DT\r\n;01/06/2026;VT;FAC-2026-014;4367;Clinique Les Jasmins;TVA 19 % — FAC-2026-014;0,000;64,600;FAC-2026-014;DT\r\n;01/06/2026;VT;FAC-2026-014;4368;Clinique Les Jasmins;Timbre fiscal FAC-2026-014;0,000;1,000;FAC-2026-014;DT\r\n;05/06/2026;BQ;Frais bancaires;627;;Frais de tenue de compte;18,000;0,000;;DT\r\n;05/06/2026;BQ;Frais bancaires;532;;Frais de tenue de compte;0,000;18,000;;DT\r\n;05/06/2026;VT;FAC-2026-015;411;Restaurant Dar El Jeld;Facture FAC-2026-015 — Restaurant Dar El Jeld;405,600;0,000;FAC-2026-015;DT\r\n;05/06/2026;VT;FAC-2026-015;706;Restaurant Dar El Jeld;Facture FAC-2026-015 — Restaurant Dar El Jeld (HT 19 %);0,000;340,000;FAC-2026-015;DT\r\n;05/06/2026;VT;FAC-2026-015;4367;Restaurant Dar El Jeld;TVA 19 % — FAC-2026-015;0,000;64,600;FAC-2026-015;DT\r\n;05/06/2026;VT;FAC-2026-015;4368;Restaurant Dar El Jeld;Timbre fiscal FAC-2026-015;0,000;1,000;FAC-2026-015;DT\r\n;11/06/2026;VT;FAC-2026-016;411;Pharmacie Centrale El Menzah;Facture FAC-2026-016 — Pharmacie Centrale El Menzah;5284,600;0,000;FAC-2026-016;DT\r\n;11/06/2026;VT;FAC-2026-016;706;Pharmacie Centrale El Menzah;Facture FAC-2026-016 — Pharmacie Centrale El Menzah (HT 19 %);0,000;4440,000;FAC-2026-016;DT\r\n;11/06/2026;VT;FAC-2026-016;4367;Pharmacie Centrale El Menzah;TVA 19 % — FAC-2026-016;0,000;843,600;FAC-2026-016;DT\r\n;11/06/2026;VT;FAC-2026-016;4368;Pharmacie Centrale El Menzah;Timbre fiscal FAC-2026-016;0,000;1,000;FAC-2026-016;DT\r\n;15/06/2026;OD;OD-2026-001;616;;Prime d'assurance multirisque;840,000;0,000;;DT\r\n;15/06/2026;OD;OD-2026-001;4421;;Avance du gérant en compte courant;0,000;840,000;;DT\r\n;20/06/2026;OD;AMORT-2026;681;;Dotation 2026 — Serveur de sauvegarde;1062,500;0,000;;DT\r\n;20/06/2026;OD;AMORT-2026;28;;Amortissement 2026 — Serveur de sauvegarde;0,000;1062,500;;DT\r\n;20/06/2026;OD;CESSION;28;;Sortie — Serveur de sauvegarde : amortissements repris;7062,500;0,000;;DT\r\n;20/06/2026;OD;CESSION;675;;Sortie — Serveur de sauvegarde : valeur nette comptable;1937,500;0,000;;DT\r\n;20/06/2026;OD;CESSION;22;;Sortie — Serveur de sauvegarde : valeur brute;0,000;9000,000;;DT\r\n;20/06/2026;VT;AVO-2026-002;411;Pharmacie Centrale El Menzah;Avoir AVO-2026-002 — Pharmacie Centrale El Menzah;0,000;107,100;FAC-2026-016;DT\r\n;20/06/2026;VT;AVO-2026-002;706;Pharmacie Centrale El Menzah;Avoir AVO-2026-002 — Pharmacie Centrale El Menzah (HT 19 %);90,000;0,000;FAC-2026-016;DT\r\n;20/06/2026;VT;AVO-2026-002;4367;Pharmacie Centrale El Menzah;TVA 19 % — AVO-2026-002;17,100;0,000;FAC-2026-016;DT\r\n;25/06/2026;BQ;FAC-2026-014;532;Clinique Les Jasmins;Règlement FAC-2026-014 — Clinique Les Jasmins (VIR 202606-25);399,531;0,000;FAC-2026-014;DT\r\n;25/06/2026;BQ;FAC-2026-014;411;Clinique Les Jasmins;Règlement FAC-2026-014 — Clinique Les Jasmins (VIR 202606-25);0,000;399,531;FAC-2026-014;DT\r\n;26/06/2026;VT;FAC-2026-017;411;Lemon Beach Hammamet;Facture FAC-2026-017 — Lemon Beach Hammamet;1565,400;0,000;;DT\r\n;26/06/2026;VT;FAC-2026-017;706;Lemon Beach Hammamet;Facture FAC-2026-017 — Lemon Beach Hammamet (HT 7 %);0,000;450,000;;DT\r\n;26/06/2026;VT;FAC-2026-017;4367;Lemon Beach Hammamet;TVA 7 % — FAC-2026-017;0,000;31,500;;DT\r\n;26/06/2026;VT;FAC-2026-017;706;Lemon Beach Hammamet;Facture FAC-2026-017 — Lemon Beach Hammamet (HT 19 %);0,000;910,000;;DT\r\n;26/06/2026;VT;FAC-2026-017;4367;Lemon Beach Hammamet;TVA 19 % — FAC-2026-017;0,000;172,900;;DT\r\n;26/06/2026;VT;FAC-2026-017;4368;Lemon Beach Hammamet;Timbre fiscal FAC-2026-017;0,000;1,000;;DT\r\n;28/06/2026;BQ;TVA 2026-05;4365;;TVA, timbres et retenues de mai 2026;805,401;0,000;;DT\r\n;28/06/2026;BQ;TVA 2026-05;532;;TVA, timbres et retenues de mai 2026;0,000;805,401;;DT\r\n;30/06/2026;OD;TVA-2026-06;4367;;TVA collectée — Déclaration mensuelle juin 2026;1160,100;0,000;;DT\r\n;30/06/2026;OD;TVA-2026-06;4368;;Timbres fiscaux — Déclaration mensuelle juin 2026;4,000;0,000;;DT\r\n;30/06/2026;OD;TVA-2026-06;4365;;Net à payer — Déclaration mensuelle juin 2026;0,000;1164,100;;DT\r\n;30/06/2026;PAIE;PAIE-2026-06;640;Ahmed Ben Salah;Salaire Ahmed Ben Salah juin 2026;1850,000;0,000;;DT\r\n;30/06/2026;PAIE;PAIE-2026-06;645;Ahmed Ben Salah;Charges patronales — Ahmed Ben Salah;313,945;0,000;;DT\r\n;30/06/2026;PAIE;PAIE-2026-06;661;Ahmed Ben Salah;TFP et FOPROLOS — Ahmed Ben Salah;55,500;0,000;;DT\r\n;30/06/2026;PAIE;PAIE-2026-06;4335;Ahmed Ben Salah;TFP et FOPROLOS à payer — Ahmed Ben Salah;0,000;55,500;;DT\r\n;30/06/2026;PAIE;PAIE-2026-06;4531;Ahmed Ben Salah;CNSS — Ahmed Ben Salah;0,000;483,775;;DT\r\n;30/06/2026;PAIE;PAIE-2026-06;4321;Ahmed Ben Salah;IRPP et contribution sociale — Ahmed Ben Salah;0,000;236,844;;DT\r\n;30/06/2026;PAIE;PAIE-2026-06;425;Ahmed Ben Salah;Salaire Ahmed Ben Salah juin 2026;0,000;1443,326;;DT\r\n;30/06/2026;PAIE;PAIE-2026-06;640;Ines Gharbi;Salaire Ines Gharbi juin 2026;830,769;0,000;;DT\r\n;30/06/2026;PAIE;PAIE-2026-06;645;Ines Gharbi;Charges patronales — Ines Gharbi;140,981;0,000;;DT\r\n;30/06/2026;PAIE;PAIE-2026-06;661;Ines Gharbi;TFP et FOPROLOS — Ines Gharbi;24,923;0,000;;DT\r\n;30/06/2026;PAIE;PAIE-2026-06;4335;Ines Gharbi;TFP et FOPROLOS à payer — Ines Gharbi;0,000;24,923;;DT\r\n;30/06/2026;PAIE;PAIE-2026-06;4531;Ines Gharbi;CNSS — Ines Gharbi;0,000;217,246;;DT\r\n;30/06/2026;PAIE;PAIE-2026-06;4321;Ines Gharbi;IRPP et contribution sociale — Ines Gharbi;0,000;46,149;;DT\r\n;30/06/2026;PAIE;PAIE-2026-06;425;Ines Gharbi;Salaire Ines Gharbi juin 2026;0,000;708,355;;DT\r\n"
+    },
+    {
+     "chemin": "journaux/balance.csv",
+     "texte": "﻿Compte;Intitulé;Ouverture débit;Ouverture crédit;Mouvements débit;Mouvements crédit;Solde débiteur;Solde créditeur\r\n12;Report à nouveau (soldes de départ);0,000;65800,000;0,000;0,000;0,000;65800,000\r\n13;Résultat des exercices passés;13664,833;0,000;0,000;0,000;13664,833;0,000\r\n22;Immobilisations;56000,000;0,000;0,000;9000,000;47000,000;0,000\r\n28;Amortissements cumulés;0,000;18945,333;7062,500;1062,500;0,000;12945,333\r\n411;Clients;3247,201;0,000;7655,131;506,631;10395,701;0,000\r\n425;Personnel — net à payer;0,000;1443,326;1443,326;2151,681;0,000;2151,681\r\n4321;IRPP retenu;0,000;473,688;0,000;282,993;0,000;756,681\r\n4335;TFP et FOPROLOS à payer;0,000;111,000;0,000;80,423;0,000;191,423\r\n434;Impôts et acomptes réglés;2400,000;0,000;0,000;0,000;2400,000;0,000\r\n4358;Retenue à la source subie;203,473;0,000;6,069;0,000;209,542;0,000\r\n4365;TVA à payer;0,000;805,401;805,401;1164,100;0,000;1164,100\r\n4367;TVA collectée;0,000;0,000;1177,200;1177,200;0,000;0,000\r\n4368;Timbre fiscal;0,000;0,000;4,000;4,000;0,000;0,000\r\n4421;Compte courant des associés;0,000;5000,000;0,000;840,000;0,000;5840,000\r\n4531;CNSS;0,000;967,550;0,000;701,021;0,000;1668,571\r\n532;Banque;23672,901;0,000;399,531;2266,727;21805,705;0,000\r\n54;Caisse;400,000;0,000;0,000;0,000;400,000;0,000\r\n608;Frais accessoires d'achat;1,000;0,000;0,000;0,000;1,000;0,000\r\n616;Assurances;0,000;0,000;840,000;0,000;840,000;0,000\r\n627;Frais bancaires;90,000;0,000;18,000;0,000;108,000;0,000\r\n640;Salaires bruts;3700,000;0,000;2680,769;0,000;6380,769;0,000\r\n645;Charges patronales;627,890;0,000;454,926;0,000;1082,816;0,000\r\n661;TFP et FOPROLOS (charge);111,000;0,000;80,423;0,000;191,423;0,000\r\n675;Valeur comptable des immobilisations cédées;0,000;0,000;1937,500;0,000;1937,500;0,000\r\n681;Dotations aux amortissements;0,000;0,000;1062,500;0,000;1062,500;0,000\r\n706;Ventes;0,000;10572,000;90,000;6480,000;0,000;16962,000\r\n"
+    },
+    {
+     "chemin": "journaux/tva.json",
+     "texte": "{\n  \"period\": {\n    \"month\": \"2026-06\",\n    \"from\": \"2026-06-01\",\n    \"to\": \"2026-06-30\",\n    \"label\": \"juin 2026\"\n  },\n  \"byRate\": {\n    \"0\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"7\": {\n      \"collected\": 31.5,\n      \"deductible\": 0\n    },\n    \"13\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"19\": {\n      \"collected\": 1128.6,\n      \"deductible\": 0\n    }\n  },\n  \"collected\": 1160.1,\n  \"deductible\": 0,\n  \"carryIn\": 0,\n  \"toPay\": 1160.1,\n  \"carryOut\": 0,\n  \"stamps\": 4,\n  \"withheldBySale\": 6.069,\n  \"withheldOnBuys\": 0,\n  \"salesCount\": 5,\n  \"buysCount\": 0,\n  \"salesHT\": 6390,\n  \"buysHT\": 0\n}"
+    },
+    {
+     "chemin": "social/cnss-T2.json",
+     "texte": "{\n  \"year\": 2026,\n  \"quarter\": 2,\n  \"label\": \"2e trimestre\",\n  \"months\": [\n    4,\n    5,\n    6\n  ],\n  \"dueDate\": \"2026-07-15\",\n  \"employees\": 2,\n  \"slips\": 4,\n  \"base\": 6380.769,\n  \"employee\": 585.755,\n  \"employer\": 1057.293,\n  \"accident\": 25.523,\n  \"total\": 1668.571,\n  \"rows\": [\n    {\n      \"employeeId\": \"salarie-1\",\n      \"name\": \"Ahmed Ben Salah\",\n      \"cnss\": \"112233-44\",\n      \"months\": 3,\n      \"days\": 78,\n      \"base\": 5550,\n      \"employee\": 509.49,\n      \"employer\": 919.635,\n      \"accident\": 22.2,\n      \"total\": 1451.325\n    },\n    {\n      \"employeeId\": \"salarie-2\",\n      \"name\": \"Ines Gharbi\",\n      \"cnss\": \"556677-88\",\n      \"months\": 1,\n      \"days\": 24,\n      \"base\": 830.769,\n      \"employee\": 76.265,\n      \"employer\": 137.658,\n      \"accident\": 3.323,\n      \"total\": 217.246\n    }\n  ]\n}"
+    }
+   ],
+   "lignes": {
+    "journaux/ventes.csv": 5,
+    "journaux/achats.csv": 0,
+    "journaux/encaissements.csv": 1,
+    "journaux/reglements-fournisseurs.csv": 0,
+    "journaux/tresorerie.csv": 4,
+    "journaux/ecritures.csv": 54,
+    "journaux/balance.csv": 26
+   }
+  },
+  {
+   "offset": 4,
+   "mois": "2026-05",
+   "manifest": {
+    "format": 1,
+    "app": "SkanFact",
+    "periode": {
+     "mois": "2026-05",
+     "du": "2026-05-01",
+     "au": "2026-05-31",
+     "libelle": "mai 2026"
+    },
+    "definitif": false,
+    "cloturéJusquAu": null,
+    "manques": [
+     {
+      "id": "pointage",
+      "niveau": "warn",
+      "quoi": "7 mouvements non pointés",
+      "combien": 7
+     }
+    ],
+    "chiffres": {
+     "ca": 4217.9,
+     "tvaCollectee": 801.401,
+     "tvaDeductible": 0,
+     "tvaADecaisser": 801.401,
+     "creditTva": 0,
+     "encaisse": 5003.133,
+     "devise": "DT"
+    },
+    "compte": {
+     "ventes": 6,
+     "achats": 0,
+     "encaissements": 4,
+     "pieces": 6,
+     "justificatifs": 0,
+     "bulletins": 1
+    }
+   },
+   "fichiers": [
+    {
+     "chemin": "journaux/ventes.csv",
+     "texte": "﻿Date;Numéro;Type;Client;Objet;Total HT;Base 0%;Base 7%;Base 13%;Base 19%;TVA 0%;TVA 7%;TVA 13%;TVA 19%;Total TVA;Timbre;TTC;Retenue source;Net à payer;Statut;Payé;Reste\r\n01/05/2026;FAC-2026-009;Facture;Clinique Les Jasmins;Maintenance et supervision — mai 2026;340,000;0,000;0,000;0,000;340,000;0,000;0,000;0,000;64,600;64,600;1,000;405,600;6,069;399,531;payée;399,531;0,000\r\n05/05/2026;FAC-2026-010;Facture;Restaurant Dar El Jeld;Supervision et sauvegarde — mai 2026;340,000;0,000;0,000;0,000;340,000;0,000;0,000;0,000;64,600;64,600;1,000;405,600;0,000;405,600;payée;405,600;0,000\r\n05/05/2026;FAC-2026-011;Facture;Restaurant Dar El Jeld;Supervision et sauvegarde — mai 2026;340,000;0,000;0,000;0,000;340,000;0,000;0,000;0,000;64,600;64,600;1,000;405,600;0,000;405,600;annulée;0,000;0,000\r\n06/05/2026;AVO-2026-001;Avoir;Restaurant Dar El Jeld;Avoir sur facture FAC-2026-011;-340,000;0,000;0,000;0,000;-340,000;0,000;0,000;0,000;-64,600;-64,600;-1,000;-405,600;0,000;-405,600;émis;0,000;0,000\r\n15/05/2026;FAC-2026-012;Facture;École Internationale Les Lauriers;Hébergement et sauvegarde — mai 2026 à juillet 2026;810,000;0,000;0,000;0,000;810,000;0,000;0,000;0,000;153,900;153,900;1,000;964,900;14,458;950,442;payée;950,442;0,000\r\n25/05/2026;FAC-2026-013;Facture;Lemon Beach Hammamet;Solde — Refonte du réseau Wi-Fi de l'hôtel;2727,900;0,000;0,000;0,000;2727,900;0,000;0,000;0,000;518,301;518,301;1,000;3247,201;0,000;3247,201;payée;3247,201;0,000\r\n"
+    },
+    {
+     "chemin": "journaux/achats.csv",
+     "texte": "﻿Date;N° fournisseur;Fournisseur;Nature;Catégorie;Objet;HT;TVA;TVA déductible;Timbre et frais;TTC;Retenue opérée;Net à payer;Statut\r\n"
+    },
+    {
+     "chemin": "journaux/encaissements.csv",
+     "texte": "﻿Date;Facture;Client;Montant;Mode;Référence;Note\r\n07/05/2026;FAC-2026-008;Cabinet Ben Salah Avocats;3247,560;Chèque;CHQ 1120034;\r\n25/05/2026;FAC-2026-010;Restaurant Dar El Jeld;405,600;Chèque;CHQ 0045871;\r\n27/05/2026;FAC-2026-012;École Internationale Les Lauriers;950,442;Virement;VIR 202605-27;\r\n31/05/2026;FAC-2026-009;Clinique Les Jasmins;399,531;Virement;VIR 202605-31;\r\n"
+    },
+    {
+     "chemin": "journaux/reglements-fournisseurs.csv",
+     "texte": "﻿Date;Pièce fournisseur;Fournisseur;Montant;Mode;Référence;Note\r\n"
+    },
+    {
+     "chemin": "journaux/tresorerie.csv",
+     "texte": "﻿Date;Libellé;Nature;Compte;Entrée;Sortie;Référence;Pointé\r\n02/05/2026;Salaire avril 2026;;;0,000;0,000;;false\r\n05/05/2026;Frais de tenue de compte;;;0,000;0,000;;false\r\n07/05/2026;Encaissement FAC-2026-008;;;0,000;0,000;CHQ 1120034;true\r\n25/05/2026;Acompte provisionnel;;;0,000;0,000;;false\r\n25/05/2026;Encaissement FAC-2026-010;;;0,000;0,000;CHQ 0045871;false\r\n27/05/2026;Encaissement FAC-2026-012;;;0,000;0,000;VIR 202605-27;false\r\n28/05/2026;TVA, timbres et retenues de avril 2026;;;0,000;0,000;TVA 2026-04;false\r\n31/05/2026;Encaissement FAC-2026-009;;;0,000;0,000;VIR 202605-31;false\r\n"
+    },
+    {
+     "chemin": "journaux/ecritures.csv",
+     "texte": "﻿N°;Date;Journal;Pièce;Compte;Tiers;Libellé;Débit;Crédit;Lettrage;Devise\r\n;01/05/2026;VT;FAC-2026-009;411;Clinique Les Jasmins;Facture FAC-2026-009 — Clinique Les Jasmins;399,531;0,000;FAC-2026-009;DT\r\n;01/05/2026;VT;FAC-2026-009;4358;Clinique Les Jasmins;Retenue à la source FAC-2026-009;6,069;0,000;FAC-2026-009;DT\r\n;01/05/2026;VT;FAC-2026-009;706;Clinique Les Jasmins;Facture FAC-2026-009 — Clinique Les Jasmins (HT 19 %);0,000;340,000;FAC-2026-009;DT\r\n;01/05/2026;VT;FAC-2026-009;4367;Clinique Les Jasmins;TVA 19 % — FAC-2026-009;0,000;64,600;FAC-2026-009;DT\r\n;01/05/2026;VT;FAC-2026-009;4368;Clinique Les Jasmins;Timbre fiscal FAC-2026-009;0,000;1,000;FAC-2026-009;DT\r\n;02/05/2026;BQ;PAIE-2026-04;425;Ahmed Ben Salah;Paiement salaire Ahmed Ben Salah avril 2026;1443,326;0,000;;DT\r\n;02/05/2026;BQ;PAIE-2026-04;532;Ahmed Ben Salah;Paiement salaire Ahmed Ben Salah avril 2026;0,000;1443,326;;DT\r\n;05/05/2026;BQ;Frais bancaires;627;;Frais de tenue de compte;18,000;0,000;;DT\r\n;05/05/2026;BQ;Frais bancaires;532;;Frais de tenue de compte;0,000;18,000;;DT\r\n;05/05/2026;VT;FAC-2026-010;411;Restaurant Dar El Jeld;Facture FAC-2026-010 — Restaurant Dar El Jeld;405,600;0,000;FAC-2026-010;DT\r\n;05/05/2026;VT;FAC-2026-010;706;Restaurant Dar El Jeld;Facture FAC-2026-010 — Restaurant Dar El Jeld (HT 19 %);0,000;340,000;FAC-2026-010;DT\r\n;05/05/2026;VT;FAC-2026-010;4367;Restaurant Dar El Jeld;TVA 19 % — FAC-2026-010;0,000;64,600;FAC-2026-010;DT\r\n;05/05/2026;VT;FAC-2026-010;4368;Restaurant Dar El Jeld;Timbre fiscal FAC-2026-010;0,000;1,000;FAC-2026-010;DT\r\n;05/05/2026;VT;FAC-2026-011;411;Restaurant Dar El Jeld;Facture FAC-2026-011 — Restaurant Dar El Jeld;405,600;0,000;FAC-2026-011;DT\r\n;05/05/2026;VT;FAC-2026-011;706;Restaurant Dar El Jeld;Facture FAC-2026-011 — Restaurant Dar El Jeld (HT 19 %);0,000;340,000;FAC-2026-011;DT\r\n;05/05/2026;VT;FAC-2026-011;4367;Restaurant Dar El Jeld;TVA 19 % — FAC-2026-011;0,000;64,600;FAC-2026-011;DT\r\n;05/05/2026;VT;FAC-2026-011;4368;Restaurant Dar El Jeld;Timbre fiscal FAC-2026-011;0,000;1,000;FAC-2026-011;DT\r\n;06/05/2026;VT;AVO-2026-001;411;Restaurant Dar El Jeld;Avoir AVO-2026-001 — Restaurant Dar El Jeld;0,000;405,600;FAC-2026-011;DT\r\n;06/05/2026;VT;AVO-2026-001;706;Restaurant Dar El Jeld;Avoir AVO-2026-001 — Restaurant Dar El Jeld (HT 19 %);340,000;0,000;FAC-2026-011;DT\r\n;06/05/2026;VT;AVO-2026-001;4367;Restaurant Dar El Jeld;TVA 19 % — AVO-2026-001;64,600;0,000;FAC-2026-011;DT\r\n;06/05/2026;VT;AVO-2026-001;4368;Restaurant Dar El Jeld;Timbre fiscal AVO-2026-001;1,000;0,000;FAC-2026-011;DT\r\n;07/05/2026;BQ;FAC-2026-008;532;Cabinet Ben Salah Avocats;Règlement FAC-2026-008 — Cabinet Ben Salah Avocats (CHQ 1120034);3247,560;0,000;FAC-2026-008;DT\r\n;07/05/2026;BQ;FAC-2026-008;411;Cabinet Ben Salah Avocats;Règlement FAC-2026-008 — Cabinet Ben Salah Avocats (CHQ 1120034);0,000;3247,560;FAC-2026-008;DT\r\n;15/05/2026;VT;FAC-2026-012;411;École Internationale Les Lauriers;Facture FAC-2026-012 — École Internationale Les Lauriers;950,442;0,000;FAC-2026-012;DT\r\n;15/05/2026;VT;FAC-2026-012;4358;École Internationale Les Lauriers;Retenue à la source FAC-2026-012;14,458;0,000;FAC-2026-012;DT\r\n;15/05/2026;VT;FAC-2026-012;706;École Internationale Les Lauriers;Facture FAC-2026-012 — École Internationale Les Lauriers (HT 19 %);0,000;810,000;FAC-2026-012;DT\r\n;15/05/2026;VT;FAC-2026-012;4367;École Internationale Les Lauriers;TVA 19 % — FAC-2026-012;0,000;153,900;FAC-2026-012;DT\r\n;15/05/2026;VT;FAC-2026-012;4368;École Internationale Les Lauriers;Timbre fiscal FAC-2026-012;0,000;1,000;FAC-2026-012;DT\r\n;25/05/2026;BQ;FAC-2026-010;532;Restaurant Dar El Jeld;Règlement FAC-2026-010 — Restaurant Dar El Jeld (CHQ 0045871);405,600;0,000;FAC-2026-010;DT\r\n;25/05/2026;BQ;FAC-2026-010;411;Restaurant Dar El Jeld;Règlement FAC-2026-010 — Restaurant Dar El Jeld (CHQ 0045871);0,000;405,600;FAC-2026-010;DT\r\n;25/05/2026;BQ;Impôts et taxes;434;;Acompte provisionnel;2400,000;0,000;;DT\r\n;25/05/2026;BQ;Impôts et taxes;532;;Acompte provisionnel;0,000;2400,000;;DT\r\n;25/05/2026;VT;FAC-2026-013;411;Lemon Beach Hammamet;Facture FAC-2026-013 — Lemon Beach Hammamet;3247,201;0,000;FAC-2026-013;DT\r\n;25/05/2026;VT;FAC-2026-013;706;Lemon Beach Hammamet;Facture FAC-2026-013 — Lemon Beach Hammamet (HT 19 %);0,000;2727,900;FAC-2026-013;DT\r\n;25/05/2026;VT;FAC-2026-013;4367;Lemon Beach Hammamet;TVA 19 % — FAC-2026-013;0,000;518,301;FAC-2026-013;DT\r\n;25/05/2026;VT;FAC-2026-013;4368;Lemon Beach Hammamet;Timbre fiscal FAC-2026-013;0,000;1,000;FAC-2026-013;DT\r\n;27/05/2026;BQ;FAC-2026-012;532;École Internationale Les Lauriers;Règlement FAC-2026-012 — École Internationale Les Lauriers (VIR 202605-27);950,442;0,000;FAC-2026-012;DT\r\n;27/05/2026;BQ;FAC-2026-012;411;École Internationale Les Lauriers;Règlement FAC-2026-012 — École Internationale Les Lauriers (VIR 202605-27);0,000;950,442;FAC-2026-012;DT\r\n;28/05/2026;BQ;TVA 2026-04;4365;;TVA, timbres et retenues de avril 2026;562,600;0,000;;DT\r\n;28/05/2026;BQ;TVA 2026-04;532;;TVA, timbres et retenues de avril 2026;0,000;562,600;;DT\r\n;31/05/2026;BQ;FAC-2026-009;532;Clinique Les Jasmins;Règlement FAC-2026-009 — Clinique Les Jasmins (VIR 202605-31);399,531;0,000;FAC-2026-009;DT\r\n;31/05/2026;BQ;FAC-2026-009;411;Clinique Les Jasmins;Règlement FAC-2026-009 — Clinique Les Jasmins (VIR 202605-31);0,000;399,531;FAC-2026-009;DT\r\n;31/05/2026;OD;TVA-2026-05;4367;;TVA collectée — Déclaration mensuelle mai 2026;801,401;0,000;;DT\r\n;31/05/2026;OD;TVA-2026-05;4368;;Timbres fiscaux — Déclaration mensuelle mai 2026;4,000;0,000;;DT\r\n;31/05/2026;OD;TVA-2026-05;4365;;Net à payer — Déclaration mensuelle mai 2026;0,000;805,401;;DT\r\n;31/05/2026;PAIE;PAIE-2026-05;640;Ahmed Ben Salah;Salaire Ahmed Ben Salah mai 2026;1850,000;0,000;;DT\r\n;31/05/2026;PAIE;PAIE-2026-05;645;Ahmed Ben Salah;Charges patronales — Ahmed Ben Salah;313,945;0,000;;DT\r\n;31/05/2026;PAIE;PAIE-2026-05;661;Ahmed Ben Salah;TFP et FOPROLOS — Ahmed Ben Salah;55,500;0,000;;DT\r\n;31/05/2026;PAIE;PAIE-2026-05;4335;Ahmed Ben Salah;TFP et FOPROLOS à payer — Ahmed Ben Salah;0,000;55,500;;DT\r\n;31/05/2026;PAIE;PAIE-2026-05;4531;Ahmed Ben Salah;CNSS — Ahmed Ben Salah;0,000;483,775;;DT\r\n;31/05/2026;PAIE;PAIE-2026-05;4321;Ahmed Ben Salah;IRPP et contribution sociale — Ahmed Ben Salah;0,000;236,844;;DT\r\n;31/05/2026;PAIE;PAIE-2026-05;425;Ahmed Ben Salah;Salaire Ahmed Ben Salah mai 2026;0,000;1443,326;;DT\r\n"
+    },
+    {
+     "chemin": "journaux/balance.csv",
+     "texte": "﻿Compte;Intitulé;Ouverture débit;Ouverture crédit;Mouvements débit;Mouvements crédit;Solde débiteur;Solde créditeur\r\n12;Report à nouveau (soldes de départ);0,000;65800,000;0,000;0,000;0,000;65800,000\r\n13;Résultat des exercices passés;13664,833;0,000;0,000;0,000;13664,833;0,000\r\n22;Immobilisations;56000,000;0,000;0,000;0,000;56000,000;0,000\r\n28;Amortissements cumulés;0,000;18945,333;0,000;0,000;0,000;18945,333\r\n411;Clients;3247,560;0,000;5408,374;5408,733;3247,201;0,000\r\n425;Personnel — net à payer;0,000;1443,326;1443,326;1443,326;0,000;1443,326\r\n4321;IRPP retenu;0,000;236,844;0,000;236,844;0,000;473,688\r\n4335;TFP et FOPROLOS à payer;0,000;55,500;0,000;55,500;0,000;111,000\r\n434;Impôts et acomptes réglés;0,000;0,000;2400,000;0,000;2400,000;0,000\r\n4358;Retenue à la source subie;182,946;0,000;20,527;0,000;203,473;0,000\r\n4365;TVA à payer;0,000;562,600;562,600;805,401;0,000;805,401\r\n4367;TVA collectée;0,000;0,000;866,001;866,001;0,000;0,000\r\n4368;Timbre fiscal;0,000;0,000;5,000;5,000;0,000;0,000\r\n4421;Compte courant des associés;0,000;5000,000;0,000;0,000;0,000;5000,000\r\n4531;CNSS;0,000;483,775;0,000;483,775;0,000;967,550\r\n532;Banque;23093,694;0,000;5003,133;4423,926;23672,901;0,000\r\n54;Caisse;400,000;0,000;0,000;0,000;400,000;0,000\r\n608;Frais accessoires d'achat;1,000;0,000;0,000;0,000;1,000;0,000\r\n627;Frais bancaires;72,000;0,000;18,000;0,000;90,000;0,000\r\n640;Salaires bruts;1850,000;0,000;1850,000;0,000;3700,000;0,000\r\n645;Charges patronales;313,945;0,000;313,945;0,000;627,890;0,000\r\n661;TFP et FOPROLOS (charge);55,500;0,000;55,500;0,000;111,000;0,000\r\n706;Ventes;0,000;6354,100;340,000;4557,900;0,000;10572,000\r\n"
+    },
+    {
+     "chemin": "journaux/tva.json",
+     "texte": "{\n  \"period\": {\n    \"month\": \"2026-05\",\n    \"from\": \"2026-05-01\",\n    \"to\": \"2026-05-31\",\n    \"label\": \"mai 2026\"\n  },\n  \"byRate\": {\n    \"0\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"7\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"13\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"19\": {\n      \"collected\": 801.401,\n      \"deductible\": 0\n    }\n  },\n  \"collected\": 801.401,\n  \"deductible\": 0,\n  \"carryIn\": 0,\n  \"toPay\": 801.401,\n  \"carryOut\": 0,\n  \"stamps\": 4,\n  \"withheldBySale\": 20.527,\n  \"withheldOnBuys\": 0,\n  \"salesCount\": 6,\n  \"buysCount\": 0,\n  \"salesHT\": 4217.9,\n  \"buysHT\": 0\n}"
+    }
+   ],
+   "lignes": {
+    "journaux/ventes.csv": 6,
+    "journaux/achats.csv": 0,
+    "journaux/encaissements.csv": 4,
+    "journaux/reglements-fournisseurs.csv": 0,
+    "journaux/tresorerie.csv": 8,
+    "journaux/ecritures.csv": 52,
+    "journaux/balance.csv": 23
+   }
+  },
+  {
+   "offset": 5,
+   "mois": "2026-04",
+   "manifest": {
+    "format": 1,
+    "app": "SkanFact",
+    "periode": {
+     "mois": "2026-04",
+     "du": "2026-04-01",
+     "au": "2026-04-30",
+     "libelle": "avril 2026"
+    },
+    "definitif": false,
+    "cloturéJusquAu": null,
+    "manques": [
+     {
+      "id": "pointage",
+      "niveau": "warn",
+      "quoi": "4 mouvements non pointés",
+      "combien": 4
+     }
+    ],
+    "chiffres": {
+     "ca": 3140,
+     "tvaCollectee": 560.6,
+     "tvaDeductible": 0,
+     "tvaADecaisser": 560.6,
+     "creditTva": 0,
+     "encaisse": 799.062,
+     "devise": "DT"
+    },
+    "compte": {
+     "ventes": 2,
+     "achats": 0,
+     "encaissements": 2,
+     "pieces": 2,
+     "justificatifs": 0,
+     "bulletins": 1
+    }
+   },
+   "fichiers": [
+    {
+     "chemin": "journaux/ventes.csv",
+     "texte": "﻿Date;Numéro;Type;Client;Objet;Total HT;Base 0%;Base 7%;Base 13%;Base 19%;TVA 0%;TVA 7%;TVA 13%;TVA 19%;Total TVA;Timbre;TTC;Retenue source;Net à payer;Statut;Payé;Reste\r\n01/04/2026;FAC-2026-007;Facture;Clinique Les Jasmins;Maintenance et supervision — avril 2026;340,000;0,000;0,000;0,000;340,000;0,000;0,000;0,000;64,600;64,600;1,000;405,600;6,069;399,531;payée;399,531;0,000\r\n06/04/2026;FAC-2026-008;Facture;Cabinet Ben Salah Avocats;Test d'intrusion du portail clients;2800,000;0,000;300,000;0,000;2500,000;0,000;21,000;0,000;475,000;496,000;1,000;3297,000;49,440;3247,560;payée;3247,560;0,000\r\n"
+    },
+    {
+     "chemin": "journaux/achats.csv",
+     "texte": "﻿Date;N° fournisseur;Fournisseur;Nature;Catégorie;Objet;HT;TVA;TVA déductible;Timbre et frais;TTC;Retenue opérée;Net à payer;Statut\r\n"
+    },
+    {
+     "chemin": "journaux/encaissements.csv",
+     "texte": "﻿Date;Facture;Client;Montant;Mode;Référence;Note\r\n06/04/2026;FAC-2026-005;Clinique Les Jasmins;399,531;Virement;VIR 202604-06;\r\n23/04/2026;FAC-2026-007;Clinique Les Jasmins;399,531;Virement;VIR 202604-23;\r\n"
+    },
+    {
+     "chemin": "journaux/reglements-fournisseurs.csv",
+     "texte": "﻿Date;Pièce fournisseur;Fournisseur;Montant;Mode;Référence;Note\r\n"
+    },
+    {
+     "chemin": "journaux/tresorerie.csv",
+     "texte": "﻿Date;Libellé;Nature;Compte;Entrée;Sortie;Référence;Pointé\r\n05/04/2026;Frais de tenue de compte;;;0,000;0,000;;false\r\n06/04/2026;Encaissement FAC-2026-005;;;0,000;0,000;VIR 202604-06;false\r\n23/04/2026;Encaissement FAC-2026-007;;;0,000;0,000;VIR 202604-23;false\r\n28/04/2026;TVA, timbres et retenues de mars 2026;;;0,000;0,000;TVA 2026-03;false\r\n"
+    },
+    {
+     "chemin": "journaux/ecritures.csv",
+     "texte": "﻿N°;Date;Journal;Pièce;Compte;Tiers;Libellé;Débit;Crédit;Lettrage;Devise\r\n;01/04/2026;VT;FAC-2026-007;411;Clinique Les Jasmins;Facture FAC-2026-007 — Clinique Les Jasmins;399,531;0,000;FAC-2026-007;DT\r\n;01/04/2026;VT;FAC-2026-007;4358;Clinique Les Jasmins;Retenue à la source FAC-2026-007;6,069;0,000;FAC-2026-007;DT\r\n;01/04/2026;VT;FAC-2026-007;706;Clinique Les Jasmins;Facture FAC-2026-007 — Clinique Les Jasmins (HT 19 %);0,000;340,000;FAC-2026-007;DT\r\n;01/04/2026;VT;FAC-2026-007;4367;Clinique Les Jasmins;TVA 19 % — FAC-2026-007;0,000;64,600;FAC-2026-007;DT\r\n;01/04/2026;VT;FAC-2026-007;4368;Clinique Les Jasmins;Timbre fiscal FAC-2026-007;0,000;1,000;FAC-2026-007;DT\r\n;05/04/2026;BQ;Frais bancaires;627;;Frais de tenue de compte;18,000;0,000;;DT\r\n;05/04/2026;BQ;Frais bancaires;532;;Frais de tenue de compte;0,000;18,000;;DT\r\n;06/04/2026;BQ;FAC-2026-005;532;Clinique Les Jasmins;Règlement FAC-2026-005 — Clinique Les Jasmins (VIR 202604-06);399,531;0,000;FAC-2026-005;DT\r\n;06/04/2026;BQ;FAC-2026-005;411;Clinique Les Jasmins;Règlement FAC-2026-005 — Clinique Les Jasmins (VIR 202604-06);0,000;399,531;FAC-2026-005;DT\r\n;06/04/2026;VT;FAC-2026-008;411;Cabinet Ben Salah Avocats;Facture FAC-2026-008 — Cabinet Ben Salah Avocats;3247,560;0,000;FAC-2026-008;DT\r\n;06/04/2026;VT;FAC-2026-008;4358;Cabinet Ben Salah Avocats;Retenue à la source FAC-2026-008;49,440;0,000;FAC-2026-008;DT\r\n;06/04/2026;VT;FAC-2026-008;706;Cabinet Ben Salah Avocats;Facture FAC-2026-008 — Cabinet Ben Salah Avocats (HT 7 %);0,000;300,000;FAC-2026-008;DT\r\n;06/04/2026;VT;FAC-2026-008;4367;Cabinet Ben Salah Avocats;TVA 7 % — FAC-2026-008;0,000;21,000;FAC-2026-008;DT\r\n;06/04/2026;VT;FAC-2026-008;706;Cabinet Ben Salah Avocats;Facture FAC-2026-008 — Cabinet Ben Salah Avocats (HT 19 %);0,000;2500,000;FAC-2026-008;DT\r\n;06/04/2026;VT;FAC-2026-008;4367;Cabinet Ben Salah Avocats;TVA 19 % — FAC-2026-008;0,000;475,000;FAC-2026-008;DT\r\n;06/04/2026;VT;FAC-2026-008;4368;Cabinet Ben Salah Avocats;Timbre fiscal FAC-2026-008;0,000;1,000;FAC-2026-008;DT\r\n;23/04/2026;BQ;FAC-2026-007;532;Clinique Les Jasmins;Règlement FAC-2026-007 — Clinique Les Jasmins (VIR 202604-23);399,531;0,000;FAC-2026-007;DT\r\n;23/04/2026;BQ;FAC-2026-007;411;Clinique Les Jasmins;Règlement FAC-2026-007 — Clinique Les Jasmins (VIR 202604-23);0,000;399,531;FAC-2026-007;DT\r\n;28/04/2026;BQ;TVA 2026-03;4365;;TVA, timbres et retenues de mars 2026;54,079;0,000;;DT\r\n;28/04/2026;BQ;TVA 2026-03;532;;TVA, timbres et retenues de mars 2026;0,000;54,079;;DT\r\n;30/04/2026;OD;TVA-2026-04;4367;;TVA collectée — Déclaration mensuelle avril 2026;560,600;0,000;;DT\r\n;30/04/2026;OD;TVA-2026-04;4368;;Timbres fiscaux — Déclaration mensuelle avril 2026;2,000;0,000;;DT\r\n;30/04/2026;OD;TVA-2026-04;4365;;Net à payer — Déclaration mensuelle avril 2026;0,000;562,600;;DT\r\n;30/04/2026;PAIE;PAIE-2026-04;640;Ahmed Ben Salah;Salaire Ahmed Ben Salah avril 2026;1850,000;0,000;;DT\r\n;30/04/2026;PAIE;PAIE-2026-04;645;Ahmed Ben Salah;Charges patronales — Ahmed Ben Salah;313,945;0,000;;DT\r\n;30/04/2026;PAIE;PAIE-2026-04;661;Ahmed Ben Salah;TFP et FOPROLOS — Ahmed Ben Salah;55,500;0,000;;DT\r\n;30/04/2026;PAIE;PAIE-2026-04;4335;Ahmed Ben Salah;TFP et FOPROLOS à payer — Ahmed Ben Salah;0,000;55,500;;DT\r\n;30/04/2026;PAIE;PAIE-2026-04;4531;Ahmed Ben Salah;CNSS — Ahmed Ben Salah;0,000;483,775;;DT\r\n;30/04/2026;PAIE;PAIE-2026-04;4321;Ahmed Ben Salah;IRPP et contribution sociale — Ahmed Ben Salah;0,000;236,844;;DT\r\n;30/04/2026;PAIE;PAIE-2026-04;425;Ahmed Ben Salah;Salaire Ahmed Ben Salah avril 2026;0,000;1443,326;;DT\r\n"
+    },
+    {
+     "chemin": "journaux/balance.csv",
+     "texte": "﻿Compte;Intitulé;Ouverture débit;Ouverture crédit;Mouvements débit;Mouvements crédit;Solde débiteur;Solde créditeur\r\n12;Report à nouveau (soldes de départ);0,000;65800,000;0,000;0,000;0,000;65800,000\r\n13;Résultat des exercices passés;13664,833;0,000;0,000;0,000;13664,833;0,000\r\n22;Immobilisations;56000,000;0,000;0,000;0,000;56000,000;0,000\r\n28;Amortissements cumulés;0,000;18945,333;0,000;0,000;0,000;18945,333\r\n411;Clients;399,531;0,000;3647,091;799,062;3247,560;0,000\r\n425;Personnel — net à payer;0,000;0,000;0,000;1443,326;0,000;1443,326\r\n4321;IRPP retenu;0,000;0,000;0,000;236,844;0,000;236,844\r\n4335;TFP et FOPROLOS à payer;0,000;0,000;0,000;55,500;0,000;55,500\r\n4358;Retenue à la source subie;127,437;0,000;55,509;0,000;182,946;0,000\r\n4365;TVA à payer;0,000;54,079;54,079;562,600;0,000;562,600\r\n4367;TVA collectée;0,000;0,000;560,600;560,600;0,000;0,000\r\n4368;Timbre fiscal;0,000;0,000;2,000;2,000;0,000;0,000\r\n4421;Compte courant des associés;0,000;5000,000;0,000;0,000;0,000;5000,000\r\n4531;CNSS;0,000;0,000;0,000;483,775;0,000;483,775\r\n532;Banque;22366,711;0,000;799,062;72,079;23093,694;0,000\r\n54;Caisse;400,000;0,000;0,000;0,000;400,000;0,000\r\n608;Frais accessoires d'achat;1,000;0,000;0,000;0,000;1,000;0,000\r\n627;Frais bancaires;54,000;0,000;18,000;0,000;72,000;0,000\r\n640;Salaires bruts;0,000;0,000;1850,000;0,000;1850,000;0,000\r\n645;Charges patronales;0,000;0,000;313,945;0,000;313,945;0,000\r\n661;TFP et FOPROLOS (charge);0,000;0,000;55,500;0,000;55,500;0,000\r\n706;Ventes;0,000;3214,100;0,000;3140,000;0,000;6354,100\r\n"
+    },
+    {
+     "chemin": "journaux/tva.json",
+     "texte": "{\n  \"period\": {\n    \"month\": \"2026-04\",\n    \"from\": \"2026-04-01\",\n    \"to\": \"2026-04-30\",\n    \"label\": \"avril 2026\"\n  },\n  \"byRate\": {\n    \"0\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"7\": {\n      \"collected\": 21,\n      \"deductible\": 0\n    },\n    \"13\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"19\": {\n      \"collected\": 539.6,\n      \"deductible\": 0\n    }\n  },\n  \"collected\": 560.6,\n  \"deductible\": 0,\n  \"carryIn\": 0,\n  \"toPay\": 560.6,\n  \"carryOut\": 0,\n  \"stamps\": 2,\n  \"withheldBySale\": 55.509,\n  \"withheldOnBuys\": 0,\n  \"salesCount\": 2,\n  \"buysCount\": 0,\n  \"salesHT\": 3140,\n  \"buysHT\": 0\n}"
+    }
+   ],
+   "lignes": {
+    "journaux/ventes.csv": 2,
+    "journaux/achats.csv": 0,
+    "journaux/encaissements.csv": 2,
+    "journaux/reglements-fournisseurs.csv": 0,
+    "journaux/tresorerie.csv": 4,
+    "journaux/ecritures.csv": 30,
+    "journaux/balance.csv": 22
+   }
+  },
+  {
+   "offset": 6,
+   "mois": "2026-03",
+   "manifest": {
+    "format": 1,
+    "app": "SkanFact",
+    "periode": {
+     "mois": "2026-03",
+     "du": "2026-03-01",
+     "au": "2026-03-31",
+     "libelle": "mars 2026"
+    },
+    "definitif": false,
+    "cloturéJusquAu": null,
+    "manques": [
+     {
+      "id": "pointage",
+      "niveau": "warn",
+      "quoi": "4 mouvements non pointés",
+      "combien": 4
+     }
+    ],
+    "chiffres": {
+     "ca": 1509.1,
+     "tvaCollectee": 286.729,
+     "tvaDeductible": 0,
+     "tvaADecaisser": 286.729,
+     "creditTva": 0,
+     "encaisse": 2342.671,
+     "devise": "DT"
+    },
+    "compte": {
+     "ventes": 2,
+     "achats": 0,
+     "encaissements": 2,
+     "pieces": 2,
+     "justificatifs": 0,
+     "bulletins": 0
+    }
+   },
+   "fichiers": [
+    {
+     "chemin": "journaux/ventes.csv",
+     "texte": "﻿Date;Numéro;Type;Client;Objet;Total HT;Base 0%;Base 7%;Base 13%;Base 19%;TVA 0%;TVA 7%;TVA 13%;TVA 19%;Total TVA;Timbre;TTC;Retenue source;Net à payer;Statut;Payé;Reste\r\n01/03/2026;FAC-2026-005;Facture;Clinique Les Jasmins;Maintenance et supervision — mars 2026;340,000;0,000;0,000;0,000;340,000;0,000;0,000;0,000;64,600;64,600;1,000;405,600;6,069;399,531;payée;399,531;0,000\r\n16/03/2026;FAC-2026-006;Facture;Lemon Beach Hammamet;Acompte 30 % — Refonte du réseau Wi-Fi de l'hôtel;1169,100;0,000;0,000;0,000;1169,100;0,000;0,000;0,000;222,129;222,129;1,000;1392,229;0,000;1392,229;payée;1392,229;0,000\r\n"
+    },
+    {
+     "chemin": "journaux/achats.csv",
+     "texte": "﻿Date;N° fournisseur;Fournisseur;Nature;Catégorie;Objet;HT;TVA;TVA déductible;Timbre et frais;TTC;Retenue opérée;Net à payer;Statut\r\n"
+    },
+    {
+     "chemin": "journaux/encaissements.csv",
+     "texte": "﻿Date;Facture;Client;Montant;Mode;Référence;Note\r\n07/03/2026;FAC-2026-003;École Internationale Les Lauriers;950,442;Virement;VIR 202603-07;\r\n28/03/2026;FAC-2026-006;Lemon Beach Hammamet;1392,229;Virement;VIR 202603-28;\r\n"
+    },
+    {
+     "chemin": "journaux/reglements-fournisseurs.csv",
+     "texte": "﻿Date;Pièce fournisseur;Fournisseur;Montant;Mode;Référence;Note\r\n"
+    },
+    {
+     "chemin": "journaux/tresorerie.csv",
+     "texte": "﻿Date;Libellé;Nature;Compte;Entrée;Sortie;Référence;Pointé\r\n05/03/2026;Frais de tenue de compte;;;0,000;0,000;;false\r\n07/03/2026;Encaissement FAC-2026-003;;;0,000;0,000;VIR 202603-07;false\r\n28/03/2026;Encaissement FAC-2026-006;;;0,000;0,000;VIR 202603-28;false\r\n28/03/2026;TVA, timbres et retenues de février 2026;;;0,000;0,000;TVA 2026-02;false\r\n"
+    },
+    {
+     "chemin": "journaux/ecritures.csv",
+     "texte": "﻿N°;Date;Journal;Pièce;Compte;Tiers;Libellé;Débit;Crédit;Lettrage;Devise\r\n;01/03/2026;VT;FAC-2026-005;411;Clinique Les Jasmins;Facture FAC-2026-005 — Clinique Les Jasmins;399,531;0,000;FAC-2026-005;DT\r\n;01/03/2026;VT;FAC-2026-005;4358;Clinique Les Jasmins;Retenue à la source FAC-2026-005;6,069;0,000;FAC-2026-005;DT\r\n;01/03/2026;VT;FAC-2026-005;706;Clinique Les Jasmins;Facture FAC-2026-005 — Clinique Les Jasmins (HT 19 %);0,000;340,000;FAC-2026-005;DT\r\n;01/03/2026;VT;FAC-2026-005;4367;Clinique Les Jasmins;TVA 19 % — FAC-2026-005;0,000;64,600;FAC-2026-005;DT\r\n;01/03/2026;VT;FAC-2026-005;4368;Clinique Les Jasmins;Timbre fiscal FAC-2026-005;0,000;1,000;FAC-2026-005;DT\r\n;05/03/2026;BQ;Frais bancaires;627;;Frais de tenue de compte;18,000;0,000;;DT\r\n;05/03/2026;BQ;Frais bancaires;532;;Frais de tenue de compte;0,000;18,000;;DT\r\n;07/03/2026;BQ;FAC-2026-003;532;École Internationale Les Lauriers;Règlement FAC-2026-003 — École Internationale Les Lauriers (VIR 202603-07);950,442;0,000;FAC-2026-003;DT\r\n;07/03/2026;BQ;FAC-2026-003;411;École Internationale Les Lauriers;Règlement FAC-2026-003 — École Internationale Les Lauriers (VIR 202603-07);0,000;950,442;FAC-2026-003;DT\r\n;16/03/2026;VT;FAC-2026-006;411;Lemon Beach Hammamet;Facture FAC-2026-006 — Lemon Beach Hammamet;1392,229;0,000;FAC-2026-006;DT\r\n;16/03/2026;VT;FAC-2026-006;706;Lemon Beach Hammamet;Facture FAC-2026-006 — Lemon Beach Hammamet (HT 19 %);0,000;1169,100;FAC-2026-006;DT\r\n;16/03/2026;VT;FAC-2026-006;4367;Lemon Beach Hammamet;TVA 19 % — FAC-2026-006;0,000;222,129;FAC-2026-006;DT\r\n;16/03/2026;VT;FAC-2026-006;4368;Lemon Beach Hammamet;Timbre fiscal FAC-2026-006;0,000;1,000;FAC-2026-006;DT\r\n;28/03/2026;BQ;FAC-2026-006;532;Lemon Beach Hammamet;Règlement FAC-2026-006 — Lemon Beach Hammamet (VIR 202603-28);1392,229;0,000;FAC-2026-006;DT\r\n;28/03/2026;BQ;FAC-2026-006;411;Lemon Beach Hammamet;Règlement FAC-2026-006 — Lemon Beach Hammamet (VIR 202603-28);0,000;1392,229;FAC-2026-006;DT\r\n;28/03/2026;BQ;TVA 2026-02;4365;;TVA, timbres et retenues de février 2026;3,000;0,000;;DT\r\n;28/03/2026;BQ;TVA 2026-02;532;;TVA, timbres et retenues de février 2026;0,000;3,000;;DT\r\n;31/03/2026;OD;TVA-2026-03;4367;;TVA collectée — Déclaration mensuelle mars 2026;286,729;0,000;;DT\r\n;31/03/2026;OD;TVA-2026-03;4368;;Timbres fiscaux — Déclaration mensuelle mars 2026;2,000;0,000;;DT\r\n;31/03/2026;OD;TVA-2026-03;4366;;TVA déductible imputée — Déclaration mensuelle mars 2026;0,000;234,650;;DT\r\n;31/03/2026;OD;TVA-2026-03;4365;;Net à payer — Déclaration mensuelle mars 2026;0,000;54,079;;DT\r\n"
+    },
+    {
+     "chemin": "journaux/balance.csv",
+     "texte": "﻿Compte;Intitulé;Ouverture débit;Ouverture crédit;Mouvements débit;Mouvements crédit;Solde débiteur;Solde créditeur\r\n12;Report à nouveau (soldes de départ);0,000;65800,000;0,000;0,000;0,000;65800,000\r\n13;Résultat des exercices passés;13664,833;0,000;0,000;0,000;13664,833;0,000\r\n22;Immobilisations;56000,000;0,000;0,000;0,000;56000,000;0,000\r\n28;Amortissements cumulés;0,000;18945,333;0,000;0,000;0,000;18945,333\r\n411;Clients;950,442;0,000;1791,760;2342,671;399,531;0,000\r\n4358;Retenue à la source subie;121,368;0,000;6,069;0,000;127,437;0,000\r\n4365;TVA à payer;0,000;3,000;3,000;54,079;0,000;54,079\r\n4366;TVA déductible;234,650;0,000;0,000;234,650;0,000;0,000\r\n4367;TVA collectée;0,000;0,000;286,729;286,729;0,000;0,000\r\n4368;Timbre fiscal;0,000;0,000;2,000;2,000;0,000;0,000\r\n4421;Compte courant des associés;0,000;5000,000;0,000;0,000;0,000;5000,000\r\n532;Banque;20045,040;0,000;2342,671;21,000;22366,711;0,000\r\n54;Caisse;400,000;0,000;0,000;0,000;400,000;0,000\r\n608;Frais accessoires d'achat;1,000;0,000;0,000;0,000;1,000;0,000\r\n627;Frais bancaires;36,000;0,000;18,000;0,000;54,000;0,000\r\n706;Ventes;0,000;1705,000;0,000;1509,100;0,000;3214,100\r\n"
+    },
+    {
+     "chemin": "journaux/tva.json",
+     "texte": "{\n  \"period\": {\n    \"month\": \"2026-03\",\n    \"from\": \"2026-03-01\",\n    \"to\": \"2026-03-31\",\n    \"label\": \"mars 2026\"\n  },\n  \"byRate\": {\n    \"0\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"7\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"13\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"19\": {\n      \"collected\": 286.729,\n      \"deductible\": 0\n    }\n  },\n  \"collected\": 286.729,\n  \"deductible\": 0,\n  \"carryIn\": 0,\n  \"toPay\": 286.729,\n  \"carryOut\": 0,\n  \"stamps\": 2,\n  \"withheldBySale\": 6.069,\n  \"withheldOnBuys\": 0,\n  \"salesCount\": 2,\n  \"buysCount\": 0,\n  \"salesHT\": 1509.1,\n  \"buysHT\": 0\n}"
+    }
+   ],
+   "lignes": {
+    "journaux/ventes.csv": 2,
+    "journaux/achats.csv": 0,
+    "journaux/encaissements.csv": 2,
+    "journaux/reglements-fournisseurs.csv": 0,
+    "journaux/tresorerie.csv": 4,
+    "journaux/ecritures.csv": 21,
+    "journaux/balance.csv": 16
+   }
+  },
+  {
+   "offset": 7,
+   "mois": "2026-02",
+   "manifest": {
+    "format": 1,
+    "app": "SkanFact",
+    "periode": {
+     "mois": "2026-02",
+     "du": "2026-02-01",
+     "au": "2026-02-28",
+     "libelle": "février 2026"
+    },
+    "definitif": false,
+    "cloturéJusquAu": null,
+    "manques": [
+     {
+      "id": "justificatifs",
+      "niveau": "warn",
+      "quoi": "1 achat sans justificatif",
+      "combien": 1
+     },
+     {
+      "id": "pointage",
+      "niveau": "warn",
+      "quoi": "4 mouvements non pointés",
+      "combien": 4
+     }
+    ],
+    "chiffres": {
+     "ca": 1365,
+     "tvaCollectee": 259.35,
+     "tvaDeductible": 494,
+     "tvaADecaisser": 0,
+     "creditTva": 234.65,
+     "encaisse": 656.381,
+     "devise": "DT"
+    },
+    "compte": {
+     "ventes": 3,
+     "achats": 1,
+     "encaissements": 2,
+     "pieces": 3,
+     "justificatifs": 0,
+     "bulletins": 0
+    }
+   },
+   "fichiers": [
+    {
+     "chemin": "journaux/ventes.csv",
+     "texte": "﻿Date;Numéro;Type;Client;Objet;Total HT;Base 0%;Base 7%;Base 13%;Base 19%;TVA 0%;TVA 7%;TVA 13%;TVA 19%;Total TVA;Timbre;TTC;Retenue source;Net à payer;Statut;Payé;Reste\r\n01/02/2026;FAC-2026-002;Facture;Clinique Les Jasmins;Maintenance et supervision — février 2026;340,000;0,000;0,000;0,000;340,000;0,000;0,000;0,000;64,600;64,600;1,000;405,600;6,069;399,531;payée;399,531;0,000\r\n15/02/2026;FAC-2026-003;Facture;École Internationale Les Lauriers;Hébergement et sauvegarde — février 2026 à avril 2026;810,000;0,000;0,000;0,000;810,000;0,000;0,000;0,000;153,900;153,900;1,000;964,900;14,458;950,442;payée;950,442;0,000\r\n22/02/2026;FAC-2026-004;Facture;Mohamed Trabelsi;Installation et sécurisation d'un poste;215,000;0,000;0,000;0,000;215,000;0,000;0,000;0,000;40,850;40,850;1,000;256,850;0,000;256,850;payée;256,850;0,000\r\n"
+    },
+    {
+     "chemin": "journaux/achats.csv",
+     "texte": "﻿Date;N° fournisseur;Fournisseur;Nature;Catégorie;Objet;HT;TVA;TVA déductible;Timbre et frais;TTC;Retenue opérée;Net à payer;Statut\r\n09/02/2026;FA-2026-0940;Tunisie Matériel Informatique;Facture d'achat;Petit équipement;Ordinateur portable de l'entreprise;2600,000;494,000;494,000;1,000;3095,000;0,000;3095,000;payée\r\n"
+    },
+    {
+     "chemin": "journaux/encaissements.csv",
+     "texte": "﻿Date;Facture;Client;Montant;Mode;Référence;Note\r\n18/02/2026;FAC-2026-002;Clinique Les Jasmins;399,531;Virement;VIR 202602-18;\r\n25/02/2026;FAC-2026-004;Mohamed Trabelsi;256,850;Espèces;;\r\n"
+    },
+    {
+     "chemin": "journaux/reglements-fournisseurs.csv",
+     "texte": "﻿Date;Pièce fournisseur;Fournisseur;Montant;Mode;Référence;Note\r\n21/02/2026;FA-2026-0940;Tunisie Matériel Informatique;3095,000;Chèque;CHQ 4451;\r\n"
+    },
+    {
+     "chemin": "journaux/tresorerie.csv",
+     "texte": "﻿Date;Libellé;Nature;Compte;Entrée;Sortie;Référence;Pointé\r\n05/02/2026;Frais de tenue de compte;;;0,000;0,000;;false\r\n18/02/2026;Encaissement FAC-2026-002;;;0,000;0,000;VIR 202602-18;false\r\n21/02/2026;Règlement FA-2026-0940;;;0,000;0,000;CHQ 4451;false\r\n25/02/2026;Encaissement FAC-2026-004;;;0,000;0,000;;true\r\n28/02/2026;TVA, timbres et retenues de janvier 2026;;;0,000;0,000;TVA 2026-01;false\r\n"
+    },
+    {
+     "chemin": "journaux/ecritures.csv",
+     "texte": "﻿N°;Date;Journal;Pièce;Compte;Tiers;Libellé;Débit;Crédit;Lettrage;Devise\r\n;01/02/2026;VT;FAC-2026-002;411;Clinique Les Jasmins;Facture FAC-2026-002 — Clinique Les Jasmins;399,531;0,000;FAC-2026-002;DT\r\n;01/02/2026;VT;FAC-2026-002;4358;Clinique Les Jasmins;Retenue à la source FAC-2026-002;6,069;0,000;FAC-2026-002;DT\r\n;01/02/2026;VT;FAC-2026-002;706;Clinique Les Jasmins;Facture FAC-2026-002 — Clinique Les Jasmins (HT 19 %);0,000;340,000;FAC-2026-002;DT\r\n;01/02/2026;VT;FAC-2026-002;4367;Clinique Les Jasmins;TVA 19 % — FAC-2026-002;0,000;64,600;FAC-2026-002;DT\r\n;01/02/2026;VT;FAC-2026-002;4368;Clinique Les Jasmins;Timbre fiscal FAC-2026-002;0,000;1,000;FAC-2026-002;DT\r\n;05/02/2026;BQ;Frais bancaires;627;;Frais de tenue de compte;18,000;0,000;;DT\r\n;05/02/2026;BQ;Frais bancaires;532;;Frais de tenue de compte;0,000;18,000;;DT\r\n;09/02/2026;AC;FA-2026-0940;22;Tunisie Matériel Informatique;Achat FA-2026-0940 — Tunisie Matériel Informatique (immobilisation);2600,000;0,000;FA-2026-0940;DT\r\n;09/02/2026;AC;FA-2026-0940;608;Tunisie Matériel Informatique;Frais accessoires FA-2026-0940;1,000;0,000;FA-2026-0940;DT\r\n;09/02/2026;AC;FA-2026-0940;4366;Tunisie Matériel Informatique;TVA déductible FA-2026-0940;494,000;0,000;FA-2026-0940;DT\r\n;09/02/2026;AC;FA-2026-0940;401;Tunisie Matériel Informatique;Achat FA-2026-0940 — Tunisie Matériel Informatique;0,000;3095,000;FA-2026-0940;DT\r\n;15/02/2026;VT;FAC-2026-003;411;École Internationale Les Lauriers;Facture FAC-2026-003 — École Internationale Les Lauriers;950,442;0,000;FAC-2026-003;DT\r\n;15/02/2026;VT;FAC-2026-003;4358;École Internationale Les Lauriers;Retenue à la source FAC-2026-003;14,458;0,000;FAC-2026-003;DT\r\n;15/02/2026;VT;FAC-2026-003;706;École Internationale Les Lauriers;Facture FAC-2026-003 — École Internationale Les Lauriers (HT 19 %);0,000;810,000;FAC-2026-003;DT\r\n;15/02/2026;VT;FAC-2026-003;4367;École Internationale Les Lauriers;TVA 19 % — FAC-2026-003;0,000;153,900;FAC-2026-003;DT\r\n;15/02/2026;VT;FAC-2026-003;4368;École Internationale Les Lauriers;Timbre fiscal FAC-2026-003;0,000;1,000;FAC-2026-003;DT\r\n;18/02/2026;BQ;FAC-2026-002;532;Clinique Les Jasmins;Règlement FAC-2026-002 — Clinique Les Jasmins (VIR 202602-18);399,531;0,000;FAC-2026-002;DT\r\n;18/02/2026;BQ;FAC-2026-002;411;Clinique Les Jasmins;Règlement FAC-2026-002 — Clinique Les Jasmins (VIR 202602-18);0,000;399,531;FAC-2026-002;DT\r\n;21/02/2026;BQ;FA-2026-0940;401;Tunisie Matériel Informatique;Règlement fournisseur FA-2026-0940 — Tunisie Matériel Informatique;3095,000;0,000;FA-2026-0940;DT\r\n;21/02/2026;BQ;FA-2026-0940;532;Tunisie Matériel Informatique;Règlement fournisseur FA-2026-0940 — Tunisie Matériel Informatique;0,000;3095,000;FA-2026-0940;DT\r\n;22/02/2026;VT;FAC-2026-004;411;Mohamed Trabelsi;Facture FAC-2026-004 — Mohamed Trabelsi;256,850;0,000;FAC-2026-004;DT\r\n;22/02/2026;VT;FAC-2026-004;706;Mohamed Trabelsi;Facture FAC-2026-004 — Mohamed Trabelsi (HT 19 %);0,000;215,000;FAC-2026-004;DT\r\n;22/02/2026;VT;FAC-2026-004;4367;Mohamed Trabelsi;TVA 19 % — FAC-2026-004;0,000;40,850;FAC-2026-004;DT\r\n;22/02/2026;VT;FAC-2026-004;4368;Mohamed Trabelsi;Timbre fiscal FAC-2026-004;0,000;1,000;FAC-2026-004;DT\r\n;25/02/2026;BQ;FAC-2026-004;532;Mohamed Trabelsi;Règlement FAC-2026-004 — Mohamed Trabelsi;256,850;0,000;FAC-2026-004;DT\r\n;25/02/2026;BQ;FAC-2026-004;411;Mohamed Trabelsi;Règlement FAC-2026-004 — Mohamed Trabelsi;0,000;256,850;FAC-2026-004;DT\r\n;28/02/2026;BQ;TVA 2026-01;4365;;TVA, timbres et retenues de janvier 2026;65,600;0,000;;DT\r\n;28/02/2026;BQ;TVA 2026-01;532;;TVA, timbres et retenues de janvier 2026;0,000;65,600;;DT\r\n;28/02/2026;OD;TVA-2026-02;4367;;TVA collectée — Déclaration mensuelle février 2026;259,350;0,000;;DT\r\n;28/02/2026;OD;TVA-2026-02;4368;;Timbres fiscaux — Déclaration mensuelle février 2026;3,000;0,000;;DT\r\n;28/02/2026;OD;TVA-2026-02;4366;;TVA déductible imputée — Déclaration mensuelle février 2026;0,000;259,350;;DT\r\n;28/02/2026;OD;TVA-2026-02;4365;;Net à payer — Déclaration mensuelle février 2026;0,000;3,000;;DT\r\n"
+    },
+    {
+     "chemin": "journaux/balance.csv",
+     "texte": "﻿Compte;Intitulé;Ouverture débit;Ouverture crédit;Mouvements débit;Mouvements crédit;Solde débiteur;Solde créditeur\r\n12;Report à nouveau (soldes de départ);0,000;65800,000;0,000;0,000;0,000;65800,000\r\n13;Résultat des exercices passés;13664,833;0,000;0,000;0,000;13664,833;0,000\r\n22;Immobilisations;53400,000;0,000;2600,000;0,000;56000,000;0,000\r\n28;Amortissements cumulés;0,000;18945,333;0,000;0,000;0,000;18945,333\r\n401;Fournisseurs;0,000;0,000;3095,000;3095,000;0,000;0,000\r\n411;Clients;0,000;0,000;1606,823;656,381;950,442;0,000\r\n4358;Retenue à la source subie;100,841;0,000;20,527;0,000;121,368;0,000\r\n4365;TVA à payer;0,000;65,600;65,600;3,000;0,000;3,000\r\n4366;TVA déductible;0,000;0,000;494,000;259,350;234,650;0,000\r\n4367;TVA collectée;0,000;0,000;259,350;259,350;0,000;0,000\r\n4368;Timbre fiscal;0,000;0,000;3,000;3,000;0,000;0,000\r\n4421;Compte courant des associés;0,000;5000,000;0,000;0,000;0,000;5000,000\r\n532;Banque;22567,259;0,000;656,381;3178,600;20045,040;0,000\r\n54;Caisse;400,000;0,000;0,000;0,000;400,000;0,000\r\n608;Frais accessoires d'achat;0,000;0,000;1,000;0,000;1,000;0,000\r\n627;Frais bancaires;18,000;0,000;18,000;0,000;36,000;0,000\r\n706;Ventes;0,000;340,000;0,000;1365,000;0,000;1705,000\r\n"
+    },
+    {
+     "chemin": "journaux/tva.json",
+     "texte": "{\n  \"period\": {\n    \"month\": \"2026-02\",\n    \"from\": \"2026-02-01\",\n    \"to\": \"2026-02-28\",\n    \"label\": \"février 2026\"\n  },\n  \"byRate\": {\n    \"0\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"7\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"13\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"19\": {\n      \"collected\": 259.35,\n      \"deductible\": 494\n    }\n  },\n  \"collected\": 259.35,\n  \"deductible\": 494,\n  \"carryIn\": 0,\n  \"toPay\": 0,\n  \"carryOut\": 234.65,\n  \"stamps\": 3,\n  \"withheldBySale\": 20.527,\n  \"withheldOnBuys\": 0,\n  \"salesCount\": 3,\n  \"buysCount\": 1,\n  \"salesHT\": 1365,\n  \"buysHT\": 2600\n}"
+    }
+   ],
+   "lignes": {
+    "journaux/ventes.csv": 3,
+    "journaux/achats.csv": 1,
+    "journaux/encaissements.csv": 2,
+    "journaux/reglements-fournisseurs.csv": 1,
+    "journaux/tresorerie.csv": 5,
+    "journaux/ecritures.csv": 32,
+    "journaux/balance.csv": 17
+   }
+  },
+  {
+   "offset": 8,
+   "mois": "2026-01",
+   "manifest": {
+    "format": 1,
+    "app": "SkanFact",
+    "periode": {
+     "mois": "2026-01",
+     "du": "2026-01-01",
+     "au": "2026-01-31",
+     "libelle": "janvier 2026"
+    },
+    "definitif": false,
+    "cloturéJusquAu": null,
+    "manques": [
+     {
+      "id": "pointage",
+      "niveau": "warn",
+      "quoi": "3 mouvements non pointés",
+      "combien": 3
+     }
+    ],
+    "chiffres": {
+     "ca": 340,
+     "tvaCollectee": 64.6,
+     "tvaDeductible": 0,
+     "tvaADecaisser": 64.6,
+     "creditTva": 0,
+     "encaisse": 399.531,
+     "devise": "DT"
+    },
+    "compte": {
+     "ventes": 1,
+     "achats": 0,
+     "encaissements": 1,
+     "pieces": 1,
+     "justificatifs": 0,
+     "bulletins": 0
+    }
+   },
+   "fichiers": [
+    {
+     "chemin": "journaux/ventes.csv",
+     "texte": "﻿Date;Numéro;Type;Client;Objet;Total HT;Base 0%;Base 7%;Base 13%;Base 19%;TVA 0%;TVA 7%;TVA 13%;TVA 19%;Total TVA;Timbre;TTC;Retenue source;Net à payer;Statut;Payé;Reste\r\n01/01/2026;FAC-2026-001;Facture;Clinique Les Jasmins;Maintenance et supervision — janvier 2026;340,000;0,000;0,000;0,000;340,000;0,000;0,000;0,000;64,600;64,600;1,000;405,600;6,069;399,531;payée;399,531;0,000\r\n"
+    },
+    {
+     "chemin": "journaux/achats.csv",
+     "texte": "﻿Date;N° fournisseur;Fournisseur;Nature;Catégorie;Objet;HT;TVA;TVA déductible;Timbre et frais;TTC;Retenue opérée;Net à payer;Statut\r\n"
+    },
+    {
+     "chemin": "journaux/encaissements.csv",
+     "texte": "﻿Date;Facture;Client;Montant;Mode;Référence;Note\r\n29/01/2026;FAC-2026-001;Clinique Les Jasmins;399,531;Virement;VIR 202601-29;\r\n"
+    },
+    {
+     "chemin": "journaux/reglements-fournisseurs.csv",
+     "texte": "﻿Date;Pièce fournisseur;Fournisseur;Montant;Mode;Référence;Note\r\n"
+    },
+    {
+     "chemin": "journaux/tresorerie.csv",
+     "texte": "﻿Date;Libellé;Nature;Compte;Entrée;Sortie;Référence;Pointé\r\n05/01/2026;Frais de tenue de compte;;;0,000;0,000;;false\r\n28/01/2026;TVA, timbres et retenues de décembre 2025;;;0,000;0,000;TVA 2025-12;false\r\n29/01/2026;Encaissement FAC-2026-001;;;0,000;0,000;VIR 202601-29;false\r\n"
+    },
+    {
+     "chemin": "journaux/ecritures.csv",
+     "texte": "﻿N°;Date;Journal;Pièce;Compte;Tiers;Libellé;Débit;Crédit;Lettrage;Devise\r\n;01/01/2026;AN;AN-2026;12;;À-nouveau 2026 — Report à nouveau (soldes de départ);0,000;65800,000;;DT\r\n;01/01/2026;AN;AN-2026;22;;À-nouveau 2026 — Immobilisations;53400,000;0,000;;DT\r\n;01/01/2026;AN;AN-2026;28;;À-nouveau 2026 — Amortissements cumulés;0,000;18945,333;;DT\r\n;01/01/2026;AN;AN-2026;4358;;À-nouveau 2026 — Retenue à la source subie;94,772;0,000;;DT\r\n;01/01/2026;AN;AN-2026;4365;;À-nouveau 2026 — TVA à payer;0,000;65,600;;DT\r\n;01/01/2026;AN;AN-2026;4421;;À-nouveau 2026 — Compte courant des associés;0,000;5000,000;;DT\r\n;01/01/2026;AN;AN-2026;532;;À-nouveau 2026 — Banque;22251,328;0,000;;DT\r\n;01/01/2026;AN;AN-2026;54;;À-nouveau 2026 — Caisse;400,000;0,000;;DT\r\n;01/01/2026;AN;AN-2026;13;;Résultat des exercices antérieurs (perte);13664,833;0,000;;DT\r\n;01/01/2026;VT;FAC-2026-001;411;Clinique Les Jasmins;Facture FAC-2026-001 — Clinique Les Jasmins;399,531;0,000;FAC-2026-001;DT\r\n;01/01/2026;VT;FAC-2026-001;4358;Clinique Les Jasmins;Retenue à la source FAC-2026-001;6,069;0,000;FAC-2026-001;DT\r\n;01/01/2026;VT;FAC-2026-001;706;Clinique Les Jasmins;Facture FAC-2026-001 — Clinique Les Jasmins (HT 19 %);0,000;340,000;FAC-2026-001;DT\r\n;01/01/2026;VT;FAC-2026-001;4367;Clinique Les Jasmins;TVA 19 % — FAC-2026-001;0,000;64,600;FAC-2026-001;DT\r\n;01/01/2026;VT;FAC-2026-001;4368;Clinique Les Jasmins;Timbre fiscal FAC-2026-001;0,000;1,000;FAC-2026-001;DT\r\n;05/01/2026;BQ;Frais bancaires;627;;Frais de tenue de compte;18,000;0,000;;DT\r\n;05/01/2026;BQ;Frais bancaires;532;;Frais de tenue de compte;0,000;18,000;;DT\r\n;28/01/2026;BQ;TVA 2025-12;4365;;TVA, timbres et retenues de décembre 2025;65,600;0,000;;DT\r\n;28/01/2026;BQ;TVA 2025-12;532;;TVA, timbres et retenues de décembre 2025;0,000;65,600;;DT\r\n;29/01/2026;BQ;FAC-2026-001;532;Clinique Les Jasmins;Règlement FAC-2026-001 — Clinique Les Jasmins (VIR 202601-29);399,531;0,000;FAC-2026-001;DT\r\n;29/01/2026;BQ;FAC-2026-001;411;Clinique Les Jasmins;Règlement FAC-2026-001 — Clinique Les Jasmins (VIR 202601-29);0,000;399,531;FAC-2026-001;DT\r\n;31/01/2026;OD;TVA-2026-01;4367;;TVA collectée — Déclaration mensuelle janvier 2026;64,600;0,000;;DT\r\n;31/01/2026;OD;TVA-2026-01;4368;;Timbres fiscaux — Déclaration mensuelle janvier 2026;1,000;0,000;;DT\r\n;31/01/2026;OD;TVA-2026-01;4365;;Net à payer — Déclaration mensuelle janvier 2026;0,000;65,600;;DT\r\n"
+    },
+    {
+     "chemin": "journaux/balance.csv",
+     "texte": "﻿Compte;Intitulé;Ouverture débit;Ouverture crédit;Mouvements débit;Mouvements crédit;Solde débiteur;Solde créditeur\r\n12;Report à nouveau (soldes de départ);0,000;0,000;0,000;65800,000;0,000;65800,000\r\n13;Résultat des exercices passés;0,000;0,000;13664,833;0,000;13664,833;0,000\r\n22;Immobilisations;0,000;0,000;53400,000;0,000;53400,000;0,000\r\n28;Amortissements cumulés;0,000;0,000;0,000;18945,333;0,000;18945,333\r\n411;Clients;0,000;0,000;399,531;399,531;0,000;0,000\r\n4358;Retenue à la source subie;0,000;0,000;100,841;0,000;100,841;0,000\r\n4365;TVA à payer;0,000;0,000;65,600;131,200;0,000;65,600\r\n4367;TVA collectée;0,000;0,000;64,600;64,600;0,000;0,000\r\n4368;Timbre fiscal;0,000;0,000;1,000;1,000;0,000;0,000\r\n4421;Compte courant des associés;0,000;0,000;0,000;5000,000;0,000;5000,000\r\n532;Banque;0,000;0,000;22650,859;83,600;22567,259;0,000\r\n54;Caisse;0,000;0,000;400,000;0,000;400,000;0,000\r\n627;Frais bancaires;0,000;0,000;18,000;0,000;18,000;0,000\r\n706;Ventes;0,000;0,000;0,000;340,000;0,000;340,000\r\n"
+    },
+    {
+     "chemin": "journaux/tva.json",
+     "texte": "{\n  \"period\": {\n    \"month\": \"2026-01\",\n    \"from\": \"2026-01-01\",\n    \"to\": \"2026-01-31\",\n    \"label\": \"janvier 2026\"\n  },\n  \"byRate\": {\n    \"0\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"7\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"13\": {\n      \"collected\": 0,\n      \"deductible\": 0\n    },\n    \"19\": {\n      \"collected\": 64.6,\n      \"deductible\": 0\n    }\n  },\n  \"collected\": 64.6,\n  \"deductible\": 0,\n  \"carryIn\": 0,\n  \"toPay\": 64.6,\n  \"carryOut\": 0,\n  \"stamps\": 1,\n  \"withheldBySale\": 6.069,\n  \"withheldOnBuys\": 0,\n  \"salesCount\": 1,\n  \"buysCount\": 0,\n  \"salesHT\": 340,\n  \"buysHT\": 0\n}"
+    }
+   ],
+   "lignes": {
+    "journaux/ventes.csv": 1,
+    "journaux/achats.csv": 0,
+    "journaux/encaissements.csv": 1,
+    "journaux/reglements-fournisseurs.csv": 0,
+    "journaux/tresorerie.csv": 3,
+    "journaux/ecritures.csv": 23,
+    "journaux/balance.csv": 14
+   }
+  }
+ ]
+}

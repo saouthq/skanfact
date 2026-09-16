@@ -496,11 +496,73 @@ ipcMain.handle('cab:noteRelance', (_e, { id, months, via, note } = {}) => {
 // Un jeu d'exemple, pour qu'un comptable qui découvre l'application voie à quoi elle ressemble
 // pleine. Il disparaît au premier vrai paquet importé (voir `cab:importPack`) : on ne mélange jamais
 // des dossiers fictifs avec les comptabilités réelles de ses clients.
+// ---------- l'exemple : de VRAIS paquets (9.2.2) ----------
+//
+// Jusqu'ici l'exemple posait cinq dossiers avec des chiffres inventés et AUCUN fichier : la page
+// d'un dossier affichait « aucun paquet ne contient d'écritures » — sur l'écran qui doit justement
+// montrer un exercice ouvert. Skander, devant son vrai dossier : « ton jeu d'exemple ne montre pas
+// le vrai écran ». Et rien de ce que l'exemple montrait n'avait traversé la vraie porte.
+//
+// Le Cabinet n'embarque pas le moteur de l'app entreprise (exprès). Les journaux de huit mois du jeu
+// de démonstration sont donc PRÉ-CALCULÉS par `scripts/exemple-cabinet.js` et livrés en JSON ;
+// ici on en fait de vrais `.skanpack` — recalés sur le mois courant, manifeste avec empreintes,
+// scellés pour la clé de CE cabinet — et on les passe par `ingest()`, exactement comme un paquet
+// reçu par mail. `demoDossiers()` ne porte plus que le SCÉNARIO (qui, quels mois, définitif ou
+// provisoire, ce qui manque) ; les chiffres viennent des écritures.
+const GABARITS_EXEMPLE = require('./exemple-paquets.json');
+const moisEntre = (a, b) => { const [ya, ma] = a.split('-').map(Number), [yb, mb] = b.split('-').map(Number); return (ya - yb) * 12 + (ma - mb); };
+
+function retirerExemple() {
+  const demos = state.dossiers.filter(d => d.demo);
+  // Leurs fichiers partent avec eux : un paquet d'exemple qui traîne dans le rangement d'un vrai
+  // portefeuille serait une pièce comptable qui n'existe pas.
+  demos.forEach(d => { getStore().removeDossierFiles(d, state.dossiers); viderCacheLivres(d.id); });
+  state.dossiers = state.dossiers.filter(d => !d.demo);
+}
+
+function chargerExemple() {
+  retirerExemple();
+  const scenario = K.demoDossiers();
+  const gabarits = GABARITS_EXEMPLE.mois;
+  const aujourdhui = K.today().slice(0, 7);
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'skanfact-exemple-'));
+  try {
+    scenario.forEach((d, rang) => {
+      (d.packs || []).slice().sort((a, b) => (a.month < b.month ? -1 : 1)).forEach(p => {
+        // Le gabarit se choisit par l'ancienneté du mois, décalé d'un cran par dossier : deux
+        // clients ne montrent pas le même chiffre d'affaires pour le même mois.
+        const k = Math.max(1, moisEntre(aujourdhui, p.month));
+        const g = gabarits[(k - 1 + rang) % gabarits.length];
+        const r = K.rebaserPaquet(g, {
+          mois: p.month, entreprise: { nom: d.name, matricule: d.matricule, devise: 'TND' },
+          definitif: p.definitive, genereLe: p.generatedAt, versionApp: VERSION,
+          manques: (p.missing || []).map(m => ({ id: m.id, niveau: m.level, quoi: m.label, combien: m.count }))
+        });
+        const files = r.fichiers.map(f => ({ name: f.chemin, data: Buffer.from(f.texte, 'utf8') }));
+        // Le manifeste s'écrit EN DERNIER, avec l'empreinte de chaque fichier — comme `pack:build`.
+        const manifest = { ...r.manifest, fichiers: files.map(f => ({ chemin: f.name, octets: f.data.length, empreinte: Z.sha256(f.data) })) };
+        files.unshift({ name: 'manifeste.json', data: Buffer.from(JSON.stringify(manifest, null, 2), 'utf8') });
+        const zip = Z.zipBuffer(files, { date: new Date(p.generatedAt) });
+        const out = Z.sealForCabinet(zip, state.cabinet.publicKey, {
+          entreprise: d.name, matricule: d.matricule, periode: p.month, definitif: !!p.definitive, format: manifest.format
+        });
+        const file = path.join(tmp, `${CS.slug(d.name)}-${p.month}.skanpack`);
+        fs.writeFileSync(file, out);
+        const res = ingest(file);
+        // La date de réception est celle du scénario, pas celle du clic : « août, reçu le 06/09 ».
+        const rangé = (res.dossier.packs || []).find(x => x.month === p.month);
+        if (rangé) rangé.receivedAt = p.receivedAt;
+        Object.assign(res.dossier, { demo: true, email: d.email || '', note: d.note || '' });
+      });
+    });
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
 ipcMain.handle('cab:demo', (_e, on) => {
   requireOpen();
-  state.dossiers = on
-    ? state.dossiers.filter(d => !d.demo).concat(K.demoDossiers().map(K.migrateDossier))
-    : state.dossiers.filter(d => !d.demo);
+  if (on) chargerExemple(); else retirerExemple();
   return save();
 });
 
@@ -573,7 +635,7 @@ ipcMain.handle('cab:importPack', async (_e, opts) => {
   // Un vrai paquet est arrivé : les dossiers d'exemple s'effacent d'eux-mêmes. Les laisser
   // reviendrait à afficher des retards imaginaires à côté des vrais.
   const demoOut = results.some(r => !r.error) && state.dossiers.some(d => d.demo);
-  if (demoOut) state.dossiers = state.dossiers.filter(d => !d.demo);
+  if (demoOut) retirerExemple();
   save();
   // Un paquet venu de la boîte de réception et rangé ne doit plus être proposé.
   markSeen(results.filter(r => !r.error).map(r => r.file));

@@ -673,6 +673,64 @@
     ];
   }
 
+  // ---------- l'exemple : recaler un paquet pré-calculé sur le mois courant (9.2.2) ----------
+  //
+  // Les journaux de l'exemple sont calculés une fois pour toutes par `scripts/exemple-cabinet.js`
+  // (avec le moteur de l'app entreprise, que le Cabinet n'embarque pas) pour une date de référence
+  // FIXE. Ici on les recale sur le mois demandé : chaque date glisse du même nombre de mois, le jour
+  // est borné au mois d'arrivée (le 31 août ne devient pas un 31 février), et l'année des numéros
+  // de pièce suit (« FAC-2026-022 » devient « FAC-2027-022 » quand le mois passe l'an). Les montants
+  // ne bougent pas : les chiffres du manifeste restent ceux des écritures, au millime.
+  //
+  // Pure : les empreintes des fichiers, qui ont besoin de Node, sont posées par main.js.
+  function rebaserPaquet(gabarit, cible) {
+    const [ys, ms] = String(gabarit.mois).split('-').map(Number);
+    const [yc, mc] = String(cible.mois).split('-').map(Number);
+    const delta = (yc * 12 + mc) - (ys * 12 + ms);
+    const dernierJour = (y, m) => new Date(Date.UTC(y, m, 0)).getUTCDate();
+    const glisser = (y, m) => { const t = y * 12 + (m - 1) + delta; return [Math.floor(t / 12), (t % 12) + 1]; };
+    const jourBorne = (j, y2, m2) => pad2(Math.min(Number(j), dernierJour(y2, m2)));
+    const recaler = texte => String(texte)
+      // AAAA-MM-JJ (les JSON) : la date glisse, le jour se borne.
+      .replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, (_, y, m, j) => {
+        const [y2, m2] = glisser(Number(y), Number(m));
+        return `${y2}-${pad2(m2)}-${jourBorne(j, y2, m2)}`;
+      })
+      // JJ/MM/AAAA (les CSV, tels que l'app entreprise les écrit) : même règle.
+      .replace(/\b(\d{2})\/(\d{2})\/(\d{4})\b/g, (_, j, m, y) => {
+        const [y2, m2] = glisser(Number(y), Number(m));
+        return `${jourBorne(j, y2, m2)}/${pad2(m2)}/${y2}`;
+      })
+      // « juillet 2026 » dans un libellé (salaire, TVA du mois) : le nom du mois suit, sinon un
+      // paquet de juin dirait « salaire juillet ».
+      .replace(/\b(janvier|février|mars|avril|mai|juin|juillet|août|septembre|octobre|novembre|décembre) (\d{4})\b/gi, (_, nom, y) => {
+        const i = MONTHS_FR.findIndex(x => x.toLowerCase() === nom.toLowerCase());
+        if (i < 0) return `${nom} ${y}`;
+        const [y2, m2] = glisser(Number(y), i + 1);
+        const nom2 = MONTHS_FR[m2 - 1];
+        return `${nom === nom.toLowerCase() ? nom2.toLowerCase() : nom2} ${y2}`;
+      })
+      // AAAA-MM seul (le mois d'un loyer, la période de la TVA) : le mois glisse.
+      .replace(/\b(\d{4})-(\d{2})\b(?!-\d)/g, (_, y, m) => { const [y2, m2] = glisser(Number(y), Number(m)); return `${y2}-${pad2(m2)}`; })
+      // Les numéros de pièce : l'année suit celle du mois d'arrivée.
+      .replace(/\b([A-Z]{2,5})-(\d{4})-(\d{3,4})\b/g, (_, p, y, n) => `${p}-${Number(y) + (yc - ys)}-${n}`);
+    const au = `${cible.mois}-${pad2(dernierJour(yc, mc))}`;
+    const manifest = {
+      ...gabarit.manifest,
+      entreprise: { ...(cible.entreprise || {}) },
+      periode: { mois: cible.mois, du: `${cible.mois}-01`, au, libelle: monthLabel(cible.mois) },
+      definitif: !!cible.definitif,
+      cloturéJusquAu: cible.definitif ? au : null,
+      genereLe: cible.genereLe || null,
+      versionApp: cible.versionApp || '',
+      poste: 'poste-exemple',
+      manques: (cible.manques || []).map(m => ({ id: m.id, niveau: m.niveau, quoi: m.quoi, combien: m.combien })),
+      absents: [],
+      fichiers: []
+    };
+    return { manifest, fichiers: (gabarit.fichiers || []).map(f => ({ chemin: f.chemin, texte: recaler(f.texte) })) };
+  }
+
   // ---------- le calendrier des échéances ----------
   //
   // La vie d'un comptable, ce sont des dates. Mais une liste de dates, il en a déjà une. Ce que
@@ -959,7 +1017,7 @@
   return {
     FORMAT, MONTHS_FR, DEFAULT_STATE, DEFAULT_SETTINGS, TVA_PERIODS, REGIMES, RELANCE_WAYS, SORTS,
     monthLabel, monthListLabel, missingLabel, addMonth, monthsBetween, today, de,
-    migrate, migrateDossier, dossierKey, packSummary, filePack, demoDossiers, checkIntegrity,
+    migrate, migrateDossier, dossierKey, packSummary, filePack, demoDossiers, rebaserPaquet, checkIntegrity,
     newDossier, parseDossierLines, noteRelance, portfolio, relanceDue, relanceRows, accuseMail,
     parseCsv, verdictOrigine, csvDangereux, toCsvLine, mergeEcritures, ecrituresPlan,
     DEFAULT_DEADLINES, deadlineSettings, echeances, dayOf,

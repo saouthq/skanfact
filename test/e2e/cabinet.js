@@ -395,8 +395,10 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   await win.evaluate(() => { location.hash = '#/ecritures'; });
   await attendre(700);
   const ecr = await win.textContent('#view');
-  // Le jeu d'exemple n'a pas de fichier de paquet : la page doit le dire proprement, pas planter.
-  if (!/Rien à regrouper|La période/.test(ecr)) throw new Error('la page Écritures n\'affiche rien de compréhensible');
+  // Depuis la 9.2.2 le jeu d'exemple livre de VRAIS paquets : la page a donc quelque chose à
+  // regrouper, et ne doit plus répondre « Rien à regrouper » sur l'exemple.
+  if (!/La période/.test(ecr)) throw new Error('la page Écritures n\'affiche rien de compréhensible');
+  if (/Rien à regrouper/.test(ecr)) throw new Error('la page Écritures ne trouve aucun paquet alors que l\'exemple en livre de vrais');
   ok('page Écritures : ' + ecr.replace(/\s+/g, ' ').slice(0, 70));
   await shot('17-ecritures');
 
