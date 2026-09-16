@@ -800,9 +800,31 @@
     return rows.filter(r => r.length > 1 || (r[0] || '').trim() !== '');
   }
 
+  // La parade à l'injection de formule CSV (9.1.1). Corps IDENTIQUE à celui de
+  // `src/renderer/compta.js` — un test l'exige, comme pour `round3` : ce fichier ne charge pas
+  // compta.js (il est requis par `main.js`, par le renderer et par les tests, sans dépendance), et
+  // deux parades qui divergent, c'est celle qu'on a oubliée qui laisse passer.
+  //
+  // Ici c'est plus grave qu'ailleurs : les cellules viennent des paquets de SOIXANTE clients
+  // différents, recollées dans un seul fichier que le comptable ouvre dans son tableur.
+  function csvDangereux(cellule) {
+    return /^[=+\-@\t\r]/.test(cellule);
+  }
+
+  // Ici, et ici seulement, l'exception numérique. Le cabinet n'a pas de types de colonnes : ses
+  // cellules arrivent DÉJÀ MISES EN FORME, lues dans les CSV des paquets de ses clients. Un
+  // `-12,500` y est un montant et il n'existe aucun autre moyen de le savoir ; sans cette ligne,
+  // chaque montant négatif du fichier fusionné partirait préfixé d'une apostrophe et le comptable
+  // ne pourrait plus additionner une seule colonne.
+  //
+  // Elle n'a pas sa place dans `csvDangereux` : là où les types existent (`core.toCsv`), c'est la
+  // colonne qui décide, et un texte qui ressemble à un nombre — un téléphone — doit être protégé.
+  const estNombreCsv = cellule => /^[-+]?[\d\s]*[.,]?\d+$/.test(cellule);
+
   function toCsvLine(cells) {
     return cells.map(v => {
-      const t = String(v == null ? '' : v);
+      let t = String(v == null ? '' : v);
+      if (csvDangereux(t) && !estNombreCsv(t)) t = '\'' + t;
       return /[;"\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
     }).join(';');
   }
@@ -884,7 +906,7 @@
     monthLabel, monthListLabel, missingLabel, addMonth, monthsBetween, today, de,
     migrate, migrateDossier, dossierKey, packSummary, filePack, demoDossiers, checkIntegrity,
     newDossier, parseDossierLines, noteRelance, portfolio, relanceDue, relanceRows, accuseMail,
-    parseCsv, toCsvLine, mergeEcritures, ecrituresPlan,
+    parseCsv, csvDangereux, toCsvLine, mergeEcritures, ecrituresPlan,
     DEFAULT_DEADLINES, deadlineSettings, echeances, dayOf,
     dossierMonths, dossierRow, dossierList, cabinetTodo, relanceMail, pairingFile
   };

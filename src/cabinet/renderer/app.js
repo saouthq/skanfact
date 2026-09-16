@@ -386,14 +386,14 @@
   }
   const paginate = rows => rows.slice((listState.page - 1) * listState.size, listState.page * listState.size);
 
+  // Une seule porte : `K.toCsvLine`. Cet écran avait sa propre version, qui n'échappait que
+  // `" ; \n` — donc sans la parade à l'injection de formule (9.1.1), et sans qu'on puisse le voir
+  // en relisant l'autre. Un export du portefeuille porte les noms et les matricules de soixante
+  // clients : c'est exactement du texte venu de l'extérieur.
+  // Point-virgule : c'est le séparateur qu'attend Excel dans une configuration française.
   function toCsv(cols, rows) {
-    const q = v => {
-      const s = String(v == null ? '' : v);
-      return /[";\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-    };
-    // Point-virgule : c'est le séparateur qu'attend Excel dans une configuration française.
-    return [cols.map(c => q(c.label)).join(';')]
-      .concat(rows.map(r => cols.map(c => q(c.get(r))).join(';'))).join('\r\n');
+    return [K.toCsvLine(cols.map(c => c.label))]
+      .concat(rows.map(r => K.toCsvLine(cols.map(c => c.get(r))))).join('\r\n');
   }
 
   // ---------- ouverture ----------

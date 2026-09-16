@@ -124,6 +124,18 @@
     const a = ACTIVITIES.find(x => x.id === String(activityId || '').trim());
     return (a && a.regime) || '';
   }
+  // La TFP PROPOSÉE pour un métier (9.1.1). Elle rend `null` pour tous, et c'est voulu : la colonne
+  // `tfp` d'ACTIVITIES est vide tant que le comptable n'a pas dit quels métiers relèvent du taux
+  // réduit des industries manufacturières. Un chiffre écrit ici sans lui serait une règle de droit
+  // gravée dans le code — et il partirait sur les bulletins de quelqu'un.
+  //
+  // Un test exige que RIEN n'y figure : si on ajoute un `tfp:` sans retirer sa garde, il tombe.
+  // C'est ce qui empêche d'inventer ce chiffre en passant.
+  function tfpSuggere(activityId) {
+    const a = ACTIVITIES.find(x => x.id === String(activityId || '').trim());
+    const n = a && a.tfp;
+    return typeof n === 'number' && Number.isFinite(n) ? n : null;
+  }
   // La seule question à poser au reste du code : cette entreprise facture-t-elle de la TVA ?
   function assujettiTVA(company) { return regimeOf(company).tva !== false; }
   // La mention qui REMPLACE la colonne TVA. Vide pour un assujetti : il a la colonne.
@@ -569,6 +581,19 @@
     const n = Number(v);
     return VAT_RATES.includes(n) ? n : 19;
   }
+  // Le seuil en dessous duquel une retenue à la source mérite une question (9.1.1). Il vaut **0**
+  // tant que personne ne l'a réglé, et 0 veut dire « aucun seuil » : la valeur par défaut d'une
+  // règle qu'on ne connaît pas est celle qui ne fait rien. Écrire 1 000 DT ici — le chiffre que
+  // deux relectures extérieures proposaient — reviendrait à graver dans le code une règle de droit
+  // que personne n'a confirmée, et à faire crier l'application sur des factures justes.
+  //
+  // Un seuil NÉGATIF est ignoré : c'est le seul cas que la garde protège vraiment, parce que
+  // `Number('') === 0` rend l'assertion évidente inutile (leçon de la 8.3.0).
+  function seuilRetenue(company) {
+    const n = Number((company || {}).withholdingThreshold);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  }
+
   // Une ligne de document neuve, avec le bon taux. Il y avait huit `vatRate: 19` écrits à la main.
   const newLine = (company, extra) => ({ label: '', description: '', qty: 1, unit: '', unitPrice: 0, vatRate: defaultVat(company), ...(extra || {}) });
 
@@ -1063,12 +1088,18 @@
   }
 
   // CSV lisible par Excel en français : séparateur « ; », virgule décimale, BOM UTF-8.
+  //
+  // Les colonnes `money` et `date` sortent par leur propre branche et ne passent jamais par la
+  // parade à l'injection de formule (9.1.1) : ce sont des chiffres que NOUS fabriquons, et un
+  // montant négatif doit rester `-12,500`. Tout le reste est du texte venu de quelqu'un — un
+  // libellé de ligne, un nom de client, un téléphone, une note — et c'est là qu'elle sert.
   function toCsv(rows, columns) {
     const cell = (v, type) => {
       if (type === 'money') return round3(v).toFixed(3).replace('.', ',');
       if (type === 'date') return fmtDate(v);
-      const s = String(v == null ? '' : v);
-      return /[;"\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+      let texte = String(v == null ? '' : v);
+      if (Compta.csvDangereux(texte)) texte = '\'' + texte;
+      return /[;"\n\r]/.test(texte) ? '"' + texte.replace(/"/g, '""') + '"' : texte;
     };
     const head = columns.map(c => cell(c.label)).join(';');
     const body = rows.map(r => columns.map(c => cell(typeof c.get === 'function' ? c.get(r) : r[c.key], c.type)).join(';'));
@@ -1970,10 +2001,19 @@
 
   function payrollSettings(data) {
     const s = (data && data.payrollSettings) || {};
-    return {
+    const r = {
       ...DEFAULT_PAYROLL, ...s,
       brackets: Array.isArray(s.brackets) && s.brackets.length ? s.brackets : DEFAULT_PAYROLL.brackets
     };
+    // La TFP du métier, PROPOSÉE (9.1.1) : seulement tant que personne n'a réglé le taux à la main
+    // — ni en le saisissant (`tfpRate` présent), ni en touchant le champ (`tfpTouche`). C'est le
+    // motif de `regimeTouche` (7.25.0) et de la durée proposée par la famille d'un bien : proposer
+    // ne veut rien dire si la proposition écrase ensuite ce qu'on a décidé.
+    if (s.tfpRate === undefined && !s.tfpTouche) {
+      const p = tfpSuggere(((data && data.company) || {}).activity);
+      if (p !== null) r.tfpRate = p;
+    }
+    return r;
   }
 
   // Impôt annuel sur un revenu imposable, barème progressif par tranches.
@@ -6504,7 +6544,7 @@
 
   return {
     VAT_RATES, WITHHOLDING_RATES, PAYMENT_METHODS, PREFIX, TITLES, DEFAULT_DATA, DEFAULT_COMPANY, ACTIVITIES, STATUSES, DISPLAY_STATUSES, STATUS_LABELS,
-    REGIMES, regimeOf, regimeSuggere, assujettiTVA, mentionTVA, estLiberal, docLabel, ribAttendu,
+    REGIMES, regimeOf, regimeSuggere, tfpSuggere, assujettiTVA, mentionTVA, estLiberal, docLabel, ribAttendu,
     DOC_FILTRES, docFiltre,
     pageInfo, compareValues, LINE_UNITS, usedUnits, usedWithholdingRates, parseDateInput, fmtDateInput, monthMatrix,
     uid, round3, money, fmtDate, addDays, daysInMonth, today, escapeHtml, nl2br, statusLabel,
@@ -6550,7 +6590,7 @@
     amountToWords, intToWords, intToWordsEn, documentHtml, fitToPage, paginate, pageCount,
     MODULES, PAGES, moduleById, pageById, pageTitle, moduleCount, moduleCounts, modulesRevenus, moduleOn, moduleWhy, navPages,
     sousModuleOn, sousModuleById, sousModules, OPTION_LABELS,
-    MODULES_PAR_ACTIVITE, modulesSuggeres, wipeData, rendreLesEmprunts, estDemo, firstSteps, liste, defaultVat, newLine,
+    MODULES_PAR_ACTIVITE, modulesSuggeres, wipeData, rendreLesEmprunts, estDemo, firstSteps, liste, defaultVat, seuilRetenue, newLine,
     canalDe, estBeta, pastilleLicence, empreinteCabinet, licencesDuCabinet,
     LICENCE_MOTIFS, prorataOffre, licenceSuivi, licencesAFaire,
     LICENCE_PREAVIS, licenceEtat, licenceRows, licencesExpirant,

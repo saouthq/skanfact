@@ -7,6 +7,37 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 9.1.1 — 16/09/2026
+
+**Les corrections fiscales.** Quatre chiffres qui partent chez un tiers — l'administration, un
+client, ton comptable — et qui traînaient sans version. La règle qui les tient tous : **la valeur
+par défaut d'une règle qu'on ne connaît pas est celle qui ne fait rien.** Rien ici n'invente un
+chiffre à ta place, et chaque nouveauté porte son « À VÉRIFIER ».
+
+- **Une formule cachée dans un export CSV ne s'exécute plus.** Un tableur ne lit pas un CSV comme
+  un fichier de données : une cellule qui commence par `=`, `+`, `-` ou `@` est une **formule**,
+  qu'il exécute à l'ouverture. Le libellé d'une ligne de facture partait tel quel dans le journal
+  que tu envoies à ton comptable — il suffisait d'y écrire la bonne chose pour faire partir le
+  contenu de sa balance vers une adresse choisie par celui qui a tapé le libellé, sans que rien ne
+  plante. Les **quatre** exports des deux applications passent maintenant par la même parade, et
+  aucun montant ne bouge : `-12,500` reste un montant.
+- **« Exonéré de timbre fiscal » sur la fiche client.** Le timbre est décoché d'office sur ses
+  nouvelles factures, et se remet pièce par pièce. Les factures **déjà émises ne bougent pas** :
+  leur timbre est gelé à l'émission, et le calcul ne relit jamais la fiche du client.
+- **Un seuil de retenue à la source**, dans Paramètres → Documents, **à 0 par défaut** — donc
+  aucun seuil, et aucun message, tant que ton comptable ne t'a pas donné le chiffre. Réglé, il
+  **prévient** quand une facture sous le seuil porte quand même une retenue : il ne refuse jamais
+  et ne retire jamais la retenue tout seul.
+- **La TFP proposée par métier** dans Paie → Barèmes, quand le métier en porte une. Aucun n'en
+  porte aujourd'hui : c'est une règle de droit, et elle attend la réponse du comptable plutôt
+  qu'un chiffre écrit dans le code. Une fois tes barèmes enregistrés, la proposition ne revient
+  jamais écraser ton taux.
+- **Le contrôle e-facture** (`docs/e-facture-controle.md`) : champ par champ, ce que notre modèle
+  porte déjà de ce qu'un format officiel exigerait. Il ne construit rien — il répond à la seule
+  question qui compte aujourd'hui : *le jour où l'obligation tombe, est-ce une semaine ou trois
+  mois ?* Réponse : les chiffres sont là, les identités sont incomplètes mais rattrapables, la
+  signature et l'acheminement sont entièrement à faire.
+
 ## 9.1.0 — 16/09/2026
 
 **L'outillage, et le moteur comptable partagé par les deux applications.** Une version sans nouvel
