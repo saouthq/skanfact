@@ -221,11 +221,14 @@
 
   // Une promesse posée par une boîte de dialogue DOIT toujours se résoudre : Échap et le clic à côté
   // valent « Annuler ». Une promesse en suspens bloque son appelant pour toujours, sans erreur.
-  function confirmDialog(title, body, okLabel, danger) {
+  // `cancelLabel` : « Annuler » est juste pour un geste qu'on renonce à faire, et FAUX pour une
+  // question posée après coup — « tu viens d'importer, mets ta clé à l'abri » n'annule rien, elle
+  // se remet à plus tard. Un bouton qui nomme mal ce qu'il fait se clique sans être lu.
+  function confirmDialog(title, body, okLabel, danger, cancelLabel) {
     return new Promise(resolve => {
       modal(
         `<h2>${esc(title)}</h2><div>${body}</div>
-         <div class="modal-actions"><button class="btn" id="no">Annuler</button>
+         <div class="modal-actions"><button class="btn" id="no">${esc(cancelLabel || 'Annuler')}</button>
          <button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" id="ok">${esc(okLabel || 'Continuer')}</button></div>`,
         (layer, close) => {
           $('#no', layer).onclick = () => { close(); resolve(false); };
@@ -810,8 +813,26 @@
         } catch (e) { toast(plainError(e), 'error'); }
       }
     }
-    showImportReport(r.results, r.demoRemoved, r.restants || 0);
+    const rapportLu = showImportReport(r.results, r.demoRemoved, r.restants || 0);
     render();
+    // La clé de secours, réclamée AU PREMIER IMPORT (9.1.0). Elle était criée en rouge sur la page
+    // Réglages depuis la 6.8.0, mais rien n'empêchait d'importer soixante paquets avant de
+    // l'exporter — et sans elle, un poste perdu rend illisible POUR TOUJOURS tout ce qui a été
+    // reçu. **Un filet se réclame au moment où il protège encore**, c'est-à-dire à la seconde où
+    // il y a quelque chose à perdre : le premier paquet rangé sur ce poste.
+    //
+    // Une seule fois, et jamais bloquant : « Plus tard » existe, l'import est déjà fait. Une
+    // question à chaque import ne se lirait plus au troisième (règle du droit à l'erreur, 7.12.0).
+    if (recoveryAt === null && r.results.some(x => !x.error) && !cleReclameeCetteSession) {
+      cleReclameeCetteSession = true;
+      await rapportLu;                 // on ne parle pas par-dessus le rapport qu'il est en train de lire
+      const ok = await confirmDialog('Mets ta clé de secours à l\'abri',
+        '<p>Tu viens de ranger ton premier paquet. À partir de maintenant, <strong>tu as quelque chose à perdre</strong>.</p>' +
+        '<p class="small">Les paquets de tes clients sont chiffrés avec la clé de ce cabinet. Si cet ordinateur tombe en panne ou est volé et que tu n\'as pas sa clé ailleurs, <strong>tout ce que tu as reçu devient illisible pour toujours</strong> — les sauvegardes comprises.</p>' +
+        '<p class="small">La clé de secours est un petit fichier. Mets-le sur une clé USB ou dans un coffre, pas à côté de l\'ordinateur.</p>',
+        'Exporter ma clé de secours', false, 'Plus tard');
+      if (ok) exportRecovery(() => chargerRecovery(true));
+    }
     refreshBackupInfo();
     refreshInbox(true);
     // (La boîte de réception est déjà surveillée depuis start() : y reposer un écouteur ici en
@@ -848,7 +869,13 @@
             <div class="imp-sub">${bits.map(esc).join(' · ')}</div></li>`;
   }
 
+  // Rend une promesse résolue à la FERMETURE du rapport. Sans elle, une question posée juste après
+  // s'empile PAR-DESSUS lui : le comptable voit une fenêtre qui en cache une autre, et ne lit ni
+  // l'une ni l'autre. C'est le défaut de la 5.2.2 (l'ordre des couches) vu à l'envers — ici les
+  // deux fenêtres sont légitimes, c'est leur ENCHAÎNEMENT qui manquait.
   function showImportReport(results, demoRemoved, restants) {
+    let fini;
+    const attendue = new Promise(res => { fini = res; });
     const ok = results.filter(x => !x.error).length;
     const ko = results.length - ok;
     // Un import arrêté n'est pas un import raté : ce qui est rangé l'est pour de bon, et le reste
@@ -868,10 +895,10 @@
          ${aPrevenir.length ? `<button class="btn" id="acc-all">Prévenir ${aPrevenir.length > 1 ? 'les clients' : 'le client'}…</button>` : ''}
          <span class="grow"></span><button class="btn btn-primary" id="ok">Fermer</button></div>`,
       (layer, close) => {
-        $('#ok', layer).onclick = close;
+        $('#ok', layer).onclick = () => { close(); fini(); };
         const a = $('#acc-all', layer);
         if (a) a.onclick = () => {
-          close();
+          close(); fini();
           const file = aPrevenir.slice();
           const suivant = () => {
             const x = file.shift();
@@ -881,8 +908,12 @@
           };
           suivant();
         };
-      }
+      },
+      // Échap et le clic à côté ferment aussi : une promesse posée par une fenêtre doit TOUJOURS
+      // se résoudre, sinon la question suivante n'arrive jamais et rien ne le dit (règle 5.2.2).
+      () => fini()
     );
+    return attendue;
   }
 
   async function quickBackup() {
@@ -1256,6 +1287,21 @@
       ${packs.some(p => p.integrity && (p.integrity.intrus || []).length)
         ? `<div class="warn-box mb"><strong>Au moins un paquet de ce client contient un fichier que son manifeste n'annonce pas ${info('p.intrus')}</strong>
            Personne ne l'a vérifié et il ne compte pas dans les pièces intactes. Ouvre-le seulement si tu sais d'où il vient.</div>` : ''}
+      ${packs.length ? `<div class="panel" id="c-compta"><h2>Comptabilité ${info('lv.compta')}</h2>
+        <div class="filters">
+          <select id="lv-mode">
+            <option value="exercice" ${livresState.mode === 'exercice' ? 'selected' : ''}>L'exercice</option>
+            <option value="mois" ${livresState.mode === 'mois' ? 'selected' : ''}>Un mois</option>
+            <option value="intervalle" ${livresState.mode === 'intervalle' ? 'selected' : ''}>Du… au…</option>
+          </select>
+          <select id="lv-annee" ${livresState.mode === 'exercice' ? '' : 'hidden'}>${years.map(y => `<option value="${esc(y)}" ${livresState.annee === y ? 'selected' : ''}>${esc(y)}</option>`).join('')}</select>
+          <select id="lv-mois" ${livresState.mode === 'mois' ? '' : 'hidden'}>${months.map(m => `<option value="${esc(m.month)}" ${livresState.mois === m.month ? 'selected' : ''}>${esc(K.monthLabel(m.month))}</option>`).join('')}</select>
+          <input type="month" id="lv-du" ${livresState.mode === 'intervalle' ? '' : 'hidden'} value="${esc(livresState.du)}">
+          <input type="month" id="lv-au" ${livresState.mode === 'intervalle' ? '' : 'hidden'} value="${esc(livresState.au)}">
+        </div>
+        <div id="c-livres"><div class="empty">Lecture des paquets…</div></div>
+      </div>` : ''}
+
       <div class="panel"><h2>Paquets reçus ${info('p.integrity')}</h2>
       ${packs.length ? `<div class="scroll-x"><table class="list compact">
         <thead><tr><th class="nw">Mois</th><th>État</th><th class="r nw">Chiffre d'affaires</th><th class="r nw">TVA à décaisser</th>
@@ -1308,6 +1354,30 @@
     const rel = $('#rel'); if (rel) rel.onclick = () => writeRelance(row);
     $('#note-rel').onclick = () => noteRelanceForm(row);
     $$('[data-m]', view).forEach(c => { c.onclick = () => openPack(dossier, c.dataset.m); });
+
+    // Les livres du dossier (9.1.0). L'état de la période est propre au dossier : passer d'un
+    // client à l'autre en gardant « mars 2026 » afficherait un livre vide sans raison visible
+    // (même garde-fou que `ficheYear`, plus haut).
+    if ($('#c-compta', view)) {
+      if (livresState.dossierId !== dossier.id) {
+        livresState.dossierId = dossier.id; livresState.data = null;
+        livresState.annee = ''; livresState.mois = ''; livresState.du = ''; livresState.au = '';
+        livresState.onglet = 'journal'; livresState.compte = ''; livresState.journal = ''; livresState.q = ''; livresState.aux = false;
+      }
+      const relire = () => drawLivres(view, dossier);
+      const mode = $('#lv-mode', view);
+      mode.onchange = () => { livresState.mode = mode.value; render(); };
+      const an = $('#lv-annee', view); if (an) an.onchange = () => { livresState.annee = an.value; relire(); };
+      const mo = $('#lv-mois', view); if (mo) mo.onchange = () => { livresState.mois = mo.value; relire(); };
+      const du = $('#lv-du', view); if (du) du.onchange = () => { livresState.du = du.value; relire(); };
+      const au = $('#lv-au', view); if (au) au.onchange = () => { livresState.au = au.value; relire(); };
+      if (livresState.data) relire();
+      else chargerLivres(dossier).then(() => {
+        // La page a pu changer pendant la lecture des paquets : on redemande l'élément APRÈS
+        // l'attente, jamais avant (règle 7.6.0). Sinon on écrit dans un élément détaché.
+        if (livresState.dossierId === dossier.id && $('#c-livres')) drawLivres(document, dossier);
+      });
+    }
     // Les cinq boutons fantômes de cette ligne — dont un « ✕ » muet qui EFFACE un paquet reçu —
     // sont devenus un menu d'actions écrites en toutes lettres (7.29.0), comme dans l'app
     // entreprise. Le geste destructif y porte enfin son nom, et vit tout en bas, après un trait.
@@ -1336,6 +1406,282 @@
   }
 
   const labelOf = (list, id) => { const x = (list || []).find(o => o.id === id); return x ? x.label : ''; };
+
+
+  // ---------------------------------------------------------------- les livres du dossier (9.1.0)
+  //
+  // SPEC-UI-CAB-001. Le Cabinet LIT une comptabilité dans les paquets reçus : livre-journal, grand
+  // livre, balance, lettrage. Il n'écrit rien et ne tient pas encore de livre à lui (9.2.0).
+  //
+  // Tout passe par `SkanCompta`, le MÊME moteur que l'application du client. C'est ce qui fait que
+  // la balance du comptable est celle de son client, au millime — et un test de parité le prouve
+  // sur les 24 mois du jeu d'exemple. Deux calculs séparés auraient fini par diverger, et personne
+  // n'aurait su lequel croire.
+  const KC = window.SkanCompta;
+  const livresState = { dossierId: '', mode: 'exercice', annee: '', mois: '', du: '', au: '', onglet: 'journal', compte: '', journal: '', q: '', aux: false, data: null };
+
+  function moisLabelCourt(m) { return K.monthLabel(m); }
+
+  // Ce qui borne la période. Trois modes, et le défaut est l'exercice du dernier paquet reçu :
+  // c'est celui sur lequel le comptable travaille.
+  function bornesLivres(mois) {
+    const s = livresState;
+    if (s.mode === 'mois' && s.mois) return { du: s.mois, au: s.mois };
+    if (s.mode === 'intervalle') return { du: s.du || '', au: s.au || '' };
+    const y = s.annee || (mois.length ? mois[mois.length - 1].slice(0, 4) : String(new Date().getFullYear()));
+    return { du: y + '-01', au: y + '-12' };
+  }
+
+  async function chargerLivres(dossier) {
+    const s = livresState;
+    try {
+      const brut = await api.livres(dossier.id, '', '');           // tout, une fois : le cache est côté main
+      s.dossierId = dossier.id;
+      s.data = brut;
+      if (!s.annee) {
+        const m = brut.tousLesMois;
+        s.annee = m.length ? m[m.length - 1].slice(0, 4) : String(new Date().getFullYear());
+      }
+    } catch (e) { s.data = { erreur: plainError(e) }; }
+  }
+
+  // Les lignes de la période, analysées par compta.js. On garde la provenance (le mois et le
+  // chemin du paquet) sur chaque ligne : c'est elle qui permet d'ouvrir la pièce dans son paquet.
+  function lignesDeLaPeriode() {
+    const s = livresState;
+    if (!s.data || s.data.erreur) return { lignes: [], illisibles: [], anciens: [], manquants: [], pris: [] };
+    const { du, au } = bornesLivres(s.data.tousLesMois || []);
+    const pris = (s.data.paquets || []).filter(p => (!du || p.month >= du) && (!au || p.month <= au));
+    const lignes = [];
+    const illisibles = [], anciens = [];
+    pris.forEach(p => {
+      if (p.motif) { illisibles.push({ month: p.month, motif: p.motif }); return; }
+      const l = KC.entreesDepuisCsv(p.csv);
+      if (!l.entete) { illisibles.push({ month: p.month, motif: 'fichier d\'écritures illisible' }); return; }
+      // Un paquet d'avant la 8.8.0 n'a ni numéro ni tiers : on l'accepte et on le DIT, plutôt que
+      // d'afficher des colonnes vides sans explication.
+      if (l.colonnes.numero == null || l.colonnes.tiers == null) anciens.push(p.month);
+      l.forEach(e => lignes.push({ ...e, mois: p.month, path: p.path }));
+    });
+    // Les mois ABSENTS de la période sont nommés en tête : un livre incomplet qui ne le dit pas
+    // est un livre faux (règle « avant d'écrire une phrase rassurante, vérifier l'univers »).
+    const manquants = [];
+    if (du && au && du.length === 7 && au.length === 7) {
+      const vus = new Set(pris.map(p => p.month));
+      let m = du;
+      for (let garde = 0; garde < 120 && m <= au; garde++) {
+        if (!vus.has(m)) manquants.push(m);
+        m = K.addMonth(m, 1);
+      }
+    }
+    return { lignes, illisibles, anciens, manquants, pris };
+  }
+
+  function drawLivres(root, dossier) {
+    const s = livresState;
+    const el = $('#c-livres', root);
+    if (!el) return;
+    if (!s.data) { el.innerHTML = '<div class="empty">Lecture des paquets…</div>'; return; }
+    if (s.data.erreur) { el.innerHTML = `<div class="warn-box">${esc(s.data.erreur)}</div>`; return; }
+    if (s.data.aucunPaquet) {
+      el.innerHTML = `<div class="empty"><p>Aucun paquet reçu ne contient d'écritures.</p>
+        <p class="muted small">Les paquets d'avant la 6.3.0 n'en ont pas : demande à ton client de renvoyer le mois.</p>
+        <div class="modal-actions"><button class="btn btn-primary" id="lv-ecrire">Écrire au client</button></div></div>`;
+      const b = $('#lv-ecrire', el); if (b) b.onclick = () => writeRelance(K.dossierRow(dossier));
+      return;
+    }
+
+    const { lignes, illisibles, anciens, manquants } = lignesDeLaPeriode();
+    const avert = [];
+    if (manquants.length) avert.push(`Il manque ${manquants.length > 3
+      ? pl(manquants.length, 'mois', 'mois') + ' sur cette période'
+      : manquants.map(moisLabelCourt).join(' et ')} : ces livres sont incomplets.`);
+    if (anciens.length) avert.push(`${anciens.length > 1 ? 'Des paquets viennent' : 'Un paquet vient'} d'une version d'avant la 8.8.0 : pas de numéro ni de tiers (${anciens.map(moisLabelCourt).join(', ')}).`);
+    illisibles.forEach(i => avert.push(`${moisLabelCourt(i.month)} : ${i.motif}.`));
+
+    const corps = !lignes.length
+      ? `<div class="empty">Aucune écriture sur cette période.</div>`
+      : s.onglet === 'journal' ? vueJournal(lignes)
+        : s.onglet === 'grand-livre' ? vueGrandLivre(lignes)
+          : s.onglet === 'balance' ? vueBalance(lignes)
+            : vueLettrage(lignes);
+
+    el.innerHTML = `${avert.length ? `<div class="warn-box mb">${avert.map(a => `<div>${esc(a)}</div>`).join('')}</div>` : ''}
+      <div class="tabs" id="c-tabs">
+        <button data-tab="journal" class="${s.onglet === 'journal' ? 'on' : ''}">Livre-journal</button>
+        <button data-tab="grand-livre" class="${s.onglet === 'grand-livre' ? 'on' : ''}">Grand livre</button>
+        <button data-tab="balance" class="${s.onglet === 'balance' ? 'on' : ''}">Balance</button>
+        <button data-tab="lettrage" class="${s.onglet === 'lettrage' ? 'on' : ''}">Lettrage</button>
+      </div>${corps}`;
+
+    $$('#c-tabs button', el).forEach(b => { b.onclick = () => { s.onglet = b.dataset.tab; drawLivres(root, dossier); }; });
+    brancherVue(el, root, dossier, lignes);
+  }
+
+  // Le livre-journal : une pièce par (date, journal, numéro), numérotée 1..n. Le filtre de journal
+  // et la recherche portent sur la SÉLECTION ENTIÈRE — c'est elle que le pied totalise, jamais ce
+  // qui est affiché (règle des listes depuis la 2.2.0, côté entreprise).
+  function vueJournal(lignes) {
+    const s = livresState;
+    const journaux = [...new Set(lignes.map(l => l.journal).filter(Boolean))].sort();
+    const q = s.q.trim().toLowerCase();
+    const gardees = lignes.filter(l => (!s.journal || l.journal === s.journal)
+      && (!q || `${l.piece} ${l.tiers} ${l.label} ${l.account}`.toLowerCase().includes(q)));
+    const lj = KC.journalDepuisLignes(gardees);
+    const cz = KC.centralisateurDepuisLignes(gardees);
+    const plates = [];
+    lj.pieces.forEach(p => p.lignes.forEach((e, i) => plates.push({ ...e, numero: p.numero, premiere: i === 0 })));
+    return `${barreLivres(`<select id="lv-journal"><option value="">Tous les journaux</option>${journaux.map(j => `<option value="${esc(j)}" ${s.journal === j ? 'selected' : ''}>${esc(j)}</option>`).join('')}</select>
+      <input type="search" id="lv-q" placeholder="Pièce, tiers, libellé…" value="${esc(s.q)}">`, 'Exporter le livre-journal')}
+      <div class="muted small mb">${pl(lj.pieces.length, 'pièce')} · ${pl(gardees.length, 'ligne')}${lj.off.length ? ` · <span class="err-inline">${pl(lj.off.length, 'pièce')} déséquilibrée${lj.off.length > 1 ? 's' : ''}</span>` : ''}</div>
+      <div class="scroll-x"><table class="list compact"><thead><tr>
+        <th class="r nw">N°</th><th class="nw">Date</th><th>Journal</th><th class="nw">Pièce</th><th class="nw">Compte</th>
+        <th>Tiers</th><th>Libellé</th><th class="r nw">Débit</th><th class="r nw">Crédit</th><th></th></tr></thead>
+      <tbody>${plates.map(e => `<tr data-piece="${esc(e.piece)}" data-mois="${esc(e.mois || '')}">
+        <td class="r muted">${e.premiere ? e.numero : ''}</td>
+        <td class="nw">${e.premiere ? esc(fmtJour(e.date)) : ''}</td>
+        <td>${e.premiere ? esc(e.journal) : ''}</td>
+        <td class="nw">${e.premiere ? esc(e.piece) : ''}</td>
+        <td class="nw">${esc(e.account)}</td><td>${esc(e.tiers)}</td><td>${esc(e.label)}</td>
+        <td class="r nw">${e.debit ? esc(money(e.debit, e.currency)) : ''}</td>
+        <td class="r nw">${e.credit ? esc(money(e.credit, e.currency)) : ''}</td>
+        ${e.premiere ? rowMenuCell(e.piece + '|' + (e.mois || '')) : '<td class="row-actions"></td>'}</tr>`).join('')}</tbody>
+      <tfoot><tr><td colspan="7"><strong>Total de la sélection</strong></td>
+        <td class="r nw"><strong>${esc(money(lj.debit))}</strong></td>
+        <td class="r nw"><strong>${esc(money(lj.credit))}</strong></td><td></td></tr></tfoot></table></div>
+      <details class="mt"><summary>Centralisateur : mois par mois, journal par journal</summary>
+        <table class="list compact mt"><thead><tr><th class="nw">Mois</th><th>Journal</th><th class="r">Pièces</th><th class="r nw">Débit</th><th class="r nw">Crédit</th></tr></thead>
+        <tbody>${cz.map(r => `<tr><td class="nw">${esc(moisLabelCourt(r.mois))}</td><td>${esc(r.journal)}</td>
+          <td class="r">${r.pieces}</td><td class="r nw">${esc(money(r.debit))}</td><td class="r nw">${esc(money(r.credit))}</td></tr>`).join('')}</tbody></table>
+      </details>`;
+  }
+
+  function vueGrandLivre(lignes) {
+    const s = livresState;
+    const gl = KC.grandLivreDepuisLignes(lignes, s.compte, null, (c, t) => t || '');
+    const comptes = [...new Set(lignes.map(l => l.account))].sort();
+    return `${barreLivres(`<select id="lv-compte"><option value="">Tous les comptes</option>${comptes.map(c => `<option value="${esc(c)}" ${s.compte === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>`, 'Exporter le grand livre')}
+      <div class="muted small mb">Ouverture inconnue : ce livre est lu dans les paquets, sans à-nouveau ${info('lv.ouverture')}</div>
+      ${gl.comptes.map(c => `<div class="panel mt"><h2>${esc(c.account)}${c.label ? ' — ' + esc(c.label) : ''}</h2>
+        <div class="scroll-x"><table class="list compact"><thead><tr><th class="nw">Date</th><th class="nw">Pièce</th><th>Libellé</th>
+          <th class="r nw">Débit</th><th class="r nw">Crédit</th><th class="r nw">Solde</th></tr></thead>
+        <tbody>${c.lignes.map(e => `<tr><td class="nw">${esc(fmtJour(e.date))}</td><td class="nw">${esc(e.piece)}</td><td>${esc(e.label)}</td>
+          <td class="r nw">${e.debit ? esc(money(e.debit)) : ''}</td><td class="r nw">${e.credit ? esc(money(e.credit)) : ''}</td>
+          <td class="r nw">${esc(money(e.solde))}</td></tr>`).join('')}</tbody>
+        <tfoot><tr><td colspan="3"><strong>${pl(c.lignes.length, 'mouvement')}</strong></td>
+          <td class="r nw"><strong>${esc(money(c.debit))}</strong></td><td class="r nw"><strong>${esc(money(c.credit))}</strong></td>
+          <td class="r nw"><strong>${esc(money(c.solde))}</strong></td></tr></tfoot></table></div></div>`).join('')}`;
+  }
+
+  function vueBalance(lignes) {
+    const s = livresState;
+    // L'auxiliaire regroupe par TIERS, pas par compte : c'est ce qu'un comptable appelle une
+    // balance auxiliaire, et les lignes portent leur tiers depuis la 8.8.0.
+    const b = s.aux ? balanceAux(lignes) : KC.balanceDepuisLignes(lignes, null, (c, t) => t || '');
+    const ecart = Math.round((b.totaux.soldeD - b.totaux.soldeC) * 1000) / 1000;
+    return `${barreLivres(`<button class="btn btn-sm ${s.aux ? '' : 'btn-ghost'}" id="lv-aux">${s.aux ? 'Balance générale' : 'Balance auxiliaire'}</button>`, 'Exporter la balance')}
+      <div class="${b.ok ? 'ok-box' : 'warn-box'} mb" id="lv-verdict">${b.ok ? 'Équilibrée : débit = crédit sur les trois paires de totaux.'
+        : `Écart de ${esc(money(Math.abs(ecart)))} entre les soldes débiteurs et créditeurs.`}</div>
+      <div class="scroll-x"><table class="list compact"><thead><tr>
+        <th class="nw">${s.aux ? 'Tiers' : 'Compte'}</th><th>${s.aux ? 'Compte' : 'Intitulé'}</th>
+        <th class="r nw">Mouvements débit</th><th class="r nw">Mouvements crédit</th>
+        <th class="r nw">Solde débiteur</th><th class="r nw">Solde créditeur</th></tr></thead>
+      <tbody>${b.rows.map(r => `<tr><td class="nw">${esc(s.aux ? r.tiers : r.account)}</td><td>${esc(s.aux ? r.account : (r.label || ''))}</td>
+        <td class="r nw">${esc(money(r.debit))}</td><td class="r nw">${esc(money(r.credit))}</td>
+        <td class="r nw">${r.soldeD ? esc(money(r.soldeD)) : ''}</td><td class="r nw">${r.soldeC ? esc(money(r.soldeC)) : ''}</td></tr>`).join('')}</tbody>
+      <tfoot><tr><td colspan="2"><strong>${pl(b.rows.length, s.aux ? 'tiers' : 'compte', s.aux ? 'tiers' : 'comptes')}</strong></td>
+        <td class="r nw"><strong>${esc(money(b.totaux.debit))}</strong></td><td class="r nw"><strong>${esc(money(b.totaux.credit))}</strong></td>
+        <td class="r nw"><strong>${esc(money(b.totaux.soldeD))}</strong></td><td class="r nw"><strong>${esc(money(b.totaux.soldeC))}</strong></td></tr></tfoot></table></div>`;
+  }
+
+  // La balance auxiliaire : par tiers. Elle se construit sur les mêmes lignes, en remplaçant la
+  // clé de regroupement — on ne réécrit pas le calcul, on change ce qu'on regroupe.
+  function balanceAux(lignes) {
+    const avecTiers = lignes.filter(l => l.tiers).map(l => ({ ...l, account: l.tiers, tiers: l.account }));
+    const b = KC.balanceDepuisLignes(avecTiers, null, (c, t) => t || '');
+    return { ...b, rows: b.rows.map(r => ({ ...r, tiers: r.account, account: r.tiers || '' })) };
+  }
+
+  function vueLettrage(lignes) {
+    const s = livresState;
+    // Le compte par défaut est le COLLECTIF CLIENTS, pas « toute la classe 4 » : les comptes de TVA
+    // y vivent aussi, et lettrer de la TVA n'a aucun sens. Ma première version prenait « 4 » et
+    // annonçait un écart qui ne voulait rien dire.
+    const prefixe = s.compte || '411';
+    const l = KC.lettrageDepuisLignes(lignes, prefixe, K.today());
+    const comptes = [...new Set(lignes.map(x => x.account).filter(a => /^4/.test(a)))].sort();
+    // **Le contrôle « reste ouvert = solde du compte » ne vaut que sur un livre COMPLET.** Ici on
+    // lit des paquets mois par mois, sans à-nouveau : un règlement reçu en mars pour une facture de
+    // février n'a pas sa facture en face, et l'écart est NORMAL. Le crier en rouge apprendrait au
+    // comptable à ignorer le rouge — c'est exactement ce que ce projet s'interdit. On explique.
+    const verdict = l.concorde
+      ? `<div class="ok-box mb" id="lv-verdict">Ce qui reste ouvert est bien le solde du compte : ${esc(money(l.resteOuvert))}.</div>`
+      : `<div class="info-box mb" id="lv-verdict">Reste ouvert ${esc(money(l.resteOuvert))}, solde du compte ${esc(money(l.soldeCompte))} — écart de ${esc(money(Math.abs(l.ecart)))}.
+         <div class="small">C'est <strong>attendu</strong> sur un livre lu mois par mois : un règlement reçu ce mois-ci pour une facture d'un mois précédent n'a pas sa facture en face. Le contrôle ne vaut que sur un livre complet, avec ses à-nouveaux.</div></div>`;
+    return `${barreLivres(`<select id="lv-compte"><option value="">Clients (411)</option>${comptes.map(c => `<option value="${esc(c)}" ${s.compte === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>`, 'Exporter le lettrage')}
+      ${verdict}
+      ${l.lettragesFaux.length ? `<div class="warn-box mb">${l.lettragesFaux.map(f =>
+        `<div>Lettrage « ${esc(f.lettre) }» de ${esc(f.tiers)} : les pièces ne se soldent pas entre elles (écart ${esc(money(Math.abs(f.ecart)))}).</div>`).join('')}</div>` : ''}
+      ${l.rows.map(r => `<div class="panel mt"><h2>${esc(r.tiers)} <span class="muted small">${esc(r.account)} · reste ${esc(money(r.reste))}</span></h2>
+        ${r.ouverts.length ? `<div class="scroll-x"><table class="list compact"><thead><tr><th class="nw">Pièce</th><th class="nw">Date</th>
+          <th class="r nw">Débit</th><th class="r nw">Crédit</th><th class="r nw">Reste</th><th></th></tr></thead>
+        <tbody>${r.ouverts.map(o => `<tr data-piece="${esc(o.piece)}" data-mois="">
+          <td class="nw">${esc(o.piece)}${o.retard ? ' <span class="badge b-late">en retard</span>' : ''}</td>
+          <td class="nw">${esc(fmtJour(o.date))}</td>
+          <td class="r nw">${o.debit ? esc(money(o.debit)) : ''}</td><td class="r nw">${o.credit ? esc(money(o.credit)) : ''}</td>
+          <td class="r nw">${esc(money(o.reste))}</td><td class="row-actions"></td></tr>`).join('')}</tbody></table></div>`
+        : `<div class="muted small">Tout est lettré : ${pl(r.lettrees, 'pièce')} soldée${r.lettrees > 1 ? 's' : ''}.</div>`}</div>`).join('')}`;
+  }
+
+  const barreLivres = (controles, libelleExport) => `<div class="filters">${controles}
+    <button class="btn btn-sm btn-ghost" id="lv-csv">${esc(libelleExport)}</button></div>`;
+
+  const fmtJour = iso => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
+    return m ? `${m[3]}/${m[2]}/${m[1]}` : String(iso || '');
+  };
+
+  function brancherVue(el, root, dossier, lignes) {
+    const s = livresState;
+    const redraw = () => drawLivres(root, dossier);
+    const j = $('#lv-journal', el); if (j) j.onchange = () => { s.journal = j.value; redraw(); };
+    const q = $('#lv-q', el); if (q) q.oninput = () => { s.q = q.value; redraw(); };
+    const c = $('#lv-compte', el); if (c) c.onchange = () => { s.compte = c.value; redraw(); };
+    const a = $('#lv-aux', el); if (a) a.onclick = () => { s.aux = !s.aux; redraw(); };
+    const x = $('#lv-csv', el); if (x) x.onclick = () => exporterLivre(lignes);
+    // « Ouvrir la pièce dans le paquet » : seulement si on sait DANS QUEL paquet elle vit.
+    bindRowMenus(el, cle => {
+      const [piece, mois] = String(cle).split('|');
+      const p = (s.data.paquets || []).find(z => z.month === mois);
+      if (!p || !p.path) return [];
+      return [{ icon: 'loupe', label: 'Ouvrir la pièce dans le paquet', hint: `${piece} · ${moisLabelCourt(mois)}`,
+        run: () => openPack(dossier, mois) }];
+    });
+  }
+
+  async function exporterLivre(lignes) {
+    const s = livresState;
+    const cols = s.onglet === 'balance'
+      ? [['account', 'Compte'], ['label', 'Intitulé'], ['debit', 'Mouvements débit'], ['credit', 'Mouvements crédit'], ['soldeD', 'Solde débiteur'], ['soldeC', 'Solde créditeur']]
+      : [['numero', 'N°'], ['date', 'Date'], ['journal', 'Journal'], ['piece', 'Pièce'], ['account', 'Compte'], ['tiers', 'Tiers'], ['label', 'Libellé'], ['debit', 'Débit'], ['credit', 'Crédit'], ['lettre', 'Lettrage']];
+    const rows = s.onglet === 'balance'
+      ? (s.aux ? balanceAux(lignes) : KC.balanceDepuisLignes(lignes, null, (c, t) => t || '')).rows
+      : KC.journalDepuisLignes(lignes).pieces.flatMap(p => p.lignes.map(e => ({ ...e, numero: p.numero })));
+    // `K.toCsvLine` échappe comme le reste du Cabinet : un libellé de facture contient un
+    // point-virgule un jour sur dix, et un montant s'écrit à la virgule décimale.
+    const cell = v => (typeof v === 'number' ? String(v).replace('.', ',') : String(v == null ? '' : v));
+    const csv = [K.toCsvLine(cols.map(c => c[1]))]
+      .concat(rows.map(r => K.toCsvLine(cols.map(c => cell(r[c[0]])))))
+      .join('\r\n') + '\r\n';
+    const nom = s.onglet === 'balance' ? 'balance' : s.onglet === 'grand-livre' ? 'grand-livre'
+      : s.onglet === 'lettrage' ? 'lettrage' : 'livre-journal';
+    try {
+      // Le même chemin d'export que le reste de l'application : `cab:exportCsv` pose le BOM et la
+      // fenêtre d'enregistrement. En écrire un second aurait fini par diverger sur l'un des deux.
+      const r = await api.exportCsv(csv, `${nom}-${s.data.dossier.matricule || s.data.dossier.name}`);
+      if (r) toast('Fichier enregistré.');
+    } catch (e) { toast(plainError(e), 'error'); }
+  }
 
   // Le chiffre d'affaires mois par mois, en barres. Une fiche client qui ne montre que des cases
   // « reçu / pas reçu » ne dit rien du client lui-même : c'est 60 % de blanc et aucune information
@@ -2217,6 +2563,9 @@
   // par une promesse), `null` quand il n'y en a pas, un nombre sinon. La distinction compte : sur
   // « je ne sais pas encore », on ne crie pas.
   let recoveryAt;
+  // Une seule demande par session : l'import est déjà fait quand on la pose, et redemander à chaque
+  // fois ferait cliquer « Plus tard » sans lire.
+  let cleReclameeCetteSession = false;
   function chargerRecovery(redessiner) {
     if (!api.recoveryStatus) { recoveryAt = null; return Promise.resolve(); }
     const avant = recoveryAt;

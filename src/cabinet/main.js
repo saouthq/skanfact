@@ -481,6 +481,7 @@ ipcMain.handle('cab:deletePack', (_e, { id, month } = {}) => {
   getStore().backupNow('avant-suppression-paquet');
   if (p.path) getStore().removePack(p.path);
   d.packs = d.packs.filter(x => x.month !== month);
+  viderCacheLivres(id);        // le mois supprimé ne doit plus apparaître dans les livres
   return save();
 });
 
@@ -660,6 +661,9 @@ function ingest(file, password) {
     path: dest, sealed,
     integrity: { checked, bad, intrus, at: Date.now() }
   });
+  // Un mois qui vient d'arriver doit apparaître dans les livres tout de suite. Sans cette ligne,
+  // il n'apparaîtrait qu'au redémarrage et le comptable croirait l'import raté.
+  viderCacheLivres(key);
   return { ...res, integrity: { checked, bad, intrus } };
 }
 
@@ -827,6 +831,69 @@ ipcMain.handle('cab:ecrituresPlan', (_e, opts) => {
   return K.ecrituresPlan(state, opts);
 });
 
+// Lire `journaux/ecritures.csv` d'UN paquet. Une seule fonction pour les deux usages — l'export
+// groupé et les livres du dossier — parce que deux lectures séparées finiraient par ne plus
+// accepter les mêmes paquets, et personne ne saurait pourquoi un mois apparaît d'un côté et pas
+// de l'autre (règle « une table en double diverge toujours »).
+//
+// Elle ne LÈVE jamais : un paquet illisible ne doit pas emporter les onze autres. Elle rend son
+// motif, en français, et l'appelant le montre (même règle que `absents` dans le manifeste, 6.1.0).
+function lireEcritures(p) {
+  try {
+    let buf = fs.readFileSync(p.path);
+    if (Z.isSealedForCabinet(buf)) buf = Z.openWithCabinetKey(buf, state.cabinet.privateKey);
+    else if (Z.isSealed(buf)) return { motif: 'protégé par un mot de passe' };
+    const e = Z.zipRead(buf).find(x => x.name === 'journaux/ecritures.csv');
+    if (!e) return { motif: 'paquet sans écritures (version trop ancienne)' };
+    return { csv: e.data().toString('utf8') };
+  } catch (err) {
+    return { motif: String((err && err.message) || err) };
+  }
+}
+
+// ---------- les livres d'un dossier (9.1.0) ----------
+//
+// Le Cabinet LIT une comptabilité dans les paquets reçus. Il n'écrit rien, ne modifie rien chez le
+// client, et ne tient pas encore de livre à lui (c'est la 9.2.0).
+//
+// Le cache : les CSV d'un dossier sont relus une fois par session. Douze paquets scellés, c'est
+// douze déchiffrements AES ; les relire à chaque changement d'onglet rendrait l'écran poussif sans
+// aucune raison. Il s'invalide à l'import — sinon un mois reçu n'apparaîtrait qu'au redémarrage,
+// et le comptable croirait l'import raté.
+const cacheLivres = new Map();
+function viderCacheLivres(dossierId) {
+  if (dossierId) cacheLivres.delete(dossierId); else cacheLivres.clear();
+}
+
+ipcMain.handle('cab:livres', (_e, { dossierId, du, au } = {}) => {
+  requireOpen();
+  const d = (state.dossiers || []).find(x => x.id === dossierId);
+  if (!d) throw new Error('Ce dossier n\'existe plus.');
+
+  let cache = cacheLivres.get(dossierId);
+  if (!cache) {
+    cache = { paquets: [] };
+    (d.packs || []).filter(p => p.path).sort((a, b) => (a.month < b.month ? -1 : 1)).forEach(p => {
+      const r = lireEcritures(p);
+      cache.paquets.push({ month: p.month, definitive: !!p.definitive, path: p.path, motif: r.motif || '', csv: r.csv || '' });
+    });
+    cacheLivres.set(dossierId, cache);
+  }
+
+  // La période : bornes de mois. Sans borne, tout ce qui a été reçu.
+  const dans = p => (!du || p.month >= du) && (!au || p.month <= au);
+  const pris = cache.paquets.filter(dans);
+  return {
+    dossier: { id: d.id, name: d.name, matricule: d.matricule || '' },
+    // Les mois du paquet, avec leur CSV brut : c'est le RENDERER qui l'analyse, par `compta.js`,
+    // exactement comme l'app entreprise. Le processus principal ne fait que déchiffrer et lire.
+    paquets: pris.map(p => ({ month: p.month, definitive: p.definitive, path: p.path, motif: p.motif, csv: p.csv })),
+    // Tous les mois connus du dossier, pour le sélecteur de période — y compris hors bornes.
+    tousLesMois: cache.paquets.map(p => p.month),
+    aucunPaquet: !cache.paquets.length
+  };
+});
+
 ipcMain.handle('cab:exportEcritures', async (_e, opts) => {
   requireOpen();
   const plan = K.ecrituresPlan(state, opts);
@@ -834,21 +901,10 @@ ipcMain.handle('cab:exportEcritures', async (_e, opts) => {
   const sources = [];
   const illisibles = [];
   for (const p of plan.packs) {
-    try {
-      let buf = fs.readFileSync(p.path);
-      if (Z.isSealedForCabinet(buf)) buf = Z.openWithCabinetKey(buf, state.cabinet.privateKey);
-      else if (Z.isSealed(buf)) {
-        // Un paquet scellé par mot de passe ne s'ouvre pas tout seul : on le dit plutôt que de
-        // livrer un fichier incomplet sans prévenir.
-        illisibles.push(`${p.name} (${p.month}) : protégé par un mot de passe`);
-        continue;
-      }
-      const e = Z.zipRead(buf).find(x => x.name === 'journaux/ecritures.csv');
-      if (!e) { illisibles.push(`${p.name} (${p.month}) : paquet sans écritures (version trop ancienne)`); continue; }
-      sources.push({ name: p.name, matricule: p.matricule, month: p.month, csv: e.data().toString('utf8') });
-    } catch (err) {
-      illisibles.push(`${p.name} (${p.month}) : ${err.message || err}`);
-    }
+    // La MÊME lecture que celle des livres du dossier : un paquet accepté ici l'est là-bas.
+    const r = lireEcritures(p);
+    if (r.motif) { illisibles.push(`${p.name} (${p.month}) : ${r.motif}`); continue; }
+    sources.push({ name: p.name, matricule: p.matricule, month: p.month, csv: r.csv });
   }
   if (!sources.length) {
     const e = new Error('Aucune écriture lisible sur cette période.' + (illisibles.length ? '\n' + illisibles.join('\n') : ''));

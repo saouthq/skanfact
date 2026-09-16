@@ -208,6 +208,23 @@ async function launchCabinet() {
   console.log(`9. rapport d'import : ${rapportImport.slice(0, 190)}`);
   await win.click('#modal-root #ok');
 
+  // La clé de secours est réclamée au PREMIER import (9.1.0) : c'est la seconde où le cabinet a
+  // quelque chose à perdre. Elle n'est jamais bloquante — « Plus tard » existe, l'import est fait.
+  // On la reconnaît à ce qu'elle CONTIENT, jamais à son rang (règle 7.29.0).
+  await win.waitForTimeout(400);
+  const demandeCle = await win.evaluate(() => {
+    const m = document.querySelector('#modal-root .modal-bg');
+    return m && /clé de secours/i.test(m.textContent) ? m.textContent.replace(/\s+/g, ' ').trim().slice(0, 120) : '';
+  });
+  if (demandeCle) {
+    const plusTard = (await win.textContent('#modal-root #no')).trim();
+    if (plusTard === 'Annuler') throw new Error('« Annuler » n\'annule rien ici : l\'import est déjà fait — le bouton doit dire « Plus tard »');
+    await win.click('#modal-root #no');
+    console.log(`9 bis. clé de secours réclamée au premier import, « ${plusTard} » disponible`);
+  } else {
+    throw new Error('la clé de secours n\'a pas été réclamée au premier import');
+  }
+
   await win.waitForSelector('table.list tr[data-id]');
   const ligne = await win.evaluate(() => {
     const tr = document.querySelector('table.list tr[data-id]');
@@ -222,9 +239,78 @@ async function launchCabinet() {
   console.log(`11. mois du dossier : ${mois.join(' · ')}`);
 
   await shot(win, 'fiche-dossier');
+
+  // ---- Les livres du dossier (9.1.0) : le cabinet LIT une comptabilité dans le paquet reçu.
+  // C'est la démonstration de la version : le comptable ouvre la fiche de son client et voit un
+  // livre-journal, un grand livre, une balance et un lettrage — sans ouvrir un seul CSV.
+  await win.waitForSelector('#c-compta');
+  await win.waitForSelector('#c-tabs button[data-tab=journal]', { timeout: 20000 });
+  const journal = await win.evaluate(() => {
+    const t = document.querySelector('#c-livres table.list');
+    if (!t) return null;
+    const pied = [...t.querySelectorAll('tfoot td')].map(td => td.textContent.trim());
+    return { lignes: t.querySelectorAll('tbody tr').length, pied, entetes: [...t.querySelectorAll('thead th')].map(th => th.textContent.trim()) };
+  });
+  if (!journal || !journal.lignes) throw new Error('le livre-journal du dossier est vide');
+  // Débit = crédit sur le total de la sélection entière : c'est la seule chose que ce livre affirme.
+  const [dJ, cJ] = journal.pied.slice(-3, -1);
+  if (dJ !== cJ) throw new Error(`le livre-journal ne tombe pas juste : ${dJ} ≠ ${cJ}`);
+  console.log(`12 bis. livre-journal : ${journal.lignes} lignes, débit = crédit = ${dJ}`);
+  await shot(win, 'livres-journal');
+
+  // La balance, et son verdict écrit en toutes lettres.
+  await win.click('#c-tabs button[data-tab=balance]');
+  await win.waitForSelector('#lv-verdict');
+  const bal = await win.evaluate(() => {
+    const v = document.querySelector('#lv-verdict');
+    const t = document.querySelector('#c-livres table.list');
+    return { verdict: v ? v.textContent.trim() : '', comptes: t ? t.querySelectorAll('tbody tr').length : 0,
+      pied: t ? [...t.querySelectorAll('tfoot td')].map(x => x.textContent.trim()) : [] };
+  });
+  if (!/Équilibrée/.test(bal.verdict)) throw new Error('la balance du cabinet n\'est pas équilibrée : ' + bal.verdict);
+  console.log(`12 ter. balance : ${bal.comptes} comptes · ${bal.verdict}`);
+  await shot(win, 'livres-balance');
+
+  // Le grand livre et le lettrage s'ouvrent, et disent ce qu'ils savent — y compris ce qu'ils ne
+  // savent PAS : il n'y a pas d'à-nouveau dans un livre lu mois par mois, et l'écran l'écrit.
+  await win.click('#c-tabs button[data-tab=grand-livre]');
+  await win.waitForSelector('#c-livres .panel h2');
+  const gl = await win.evaluate(() => ({
+    comptes: document.querySelectorAll('#c-livres .panel').length,
+    ouverture: /ouverture inconnue/i.test(document.querySelector('#c-livres').textContent)
+  }));
+  if (!gl.comptes) throw new Error('le grand livre est vide');
+  if (!gl.ouverture) throw new Error('le grand livre doit DIRE qu\'il n\'a pas d\'à-nouveau');
+  await win.click('#c-tabs button[data-tab=lettrage]');
+  await win.waitForSelector('#lv-verdict');
+  const let1 = (await win.textContent('#lv-verdict')).trim();
+  // Un écart de lettrage est ATTENDU sur un livre lu mois par mois, sans à-nouveau : un règlement
+  // reçu ce mois-ci pour une facture d'un mois précédent n'a pas sa facture en face. L'écran doit
+  // l'EXPLIQUER, pas le crier — du orange sur une situation normale apprend à ignorer l'orange.
+  const tonLettrage = await win.evaluate(() => (document.querySelector('#lv-verdict') || {}).className || '');
+  if (/warn-box/.test(tonLettrage)) throw new Error('un écart normal ne se dit pas en avertissement : ' + let1);
+  if (!/ok-box|info-box/.test(tonLettrage)) throw new Error('le verdict du lettrage n\'a pas de ton : ' + tonLettrage);
+  if (/info-box/.test(tonLettrage) && !/mois par mois/.test(let1)) throw new Error('l\'écart doit être EXPLIQUÉ, pas seulement affiché');
+  console.log(`12 quater. grand livre : ${gl.comptes} comptes, ouverture annoncée inconnue · lettrage : ${let1.slice(0, 80)}`);
+  await shot(win, 'livres-lettrage');
+  await win.click('#c-tabs button[data-tab=journal]');
+
   // Les cinq boutons fantômes de la ligne d'un paquet sont devenus un menu d'actions (7.29.0) :
   // on passe par le VRAI bouton et le VRAI menu, comme un comptable.
-  await win.click('[data-rowmenu] >> nth=0');
+  // On vise le menu de la ligne d'un PAQUET, pas « le premier menu de la page » : depuis la 9.1.0
+  // le bloc Comptabilité s'insère avant, et ses lignes portent leur propre menu. Cinquième fois
+  // que `nth=0` se périme sur un écran qui gagne un tableau — on ancre sur ce que la page CONTIENT.
+  const menuPaquet = await win.evaluate(() => {
+    const panneaux = [...document.querySelectorAll('.panel')];
+    const p = panneaux.find(x => /Paquets reçus/.test(x.querySelector('h2') ? x.querySelector('h2').textContent : ''));
+    if (!p) return '';
+    const b = p.querySelector('[data-rowmenu]');
+    if (!b) return '';
+    b.id = 'e2e-menu-paquet';
+    return b.id;
+  });
+  if (!menuPaquet) throw new Error('aucun menu d\'actions dans le panneau « Paquets reçus »');
+  await win.click('#e2e-menu-paquet');
   await win.waitForSelector('.row-menu');
   await cliquerAction(win, 'Ouvrir le paquet');
   await win.waitForSelector('#modal-root tr[data-i]', { timeout: 20000 });

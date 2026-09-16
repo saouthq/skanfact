@@ -42,6 +42,10 @@ contextBridge.exposeInMainWorld('cabinet', {
   clearInbox: () => ipcRenderer.invoke('cab:clearInbox'),
   inboxIgnore: (paths) => ipcRenderer.invoke('cab:inboxIgnore', paths),
   ecrituresPlan: (opts) => ipcRenderer.invoke('cab:ecrituresPlan', opts),
+  // Les écritures d'un dossier, lues dans ses paquets (9.1.0). Le processus principal déchiffre et
+  // rend le CSV brut ; c'est le renderer qui l'analyse, par `compta.js` — le même moteur que
+  // l'application du client, c'est ce qui fait que les deux balances tombent pareil.
+  livres: (dossierId, du, au) => ipcRenderer.invoke('cab:livres', { dossierId, du, au }),
   exportEcritures: (opts) => ipcRenderer.invoke('cab:exportEcritures', opts),
 
   // filets : sauvegardes, copie externe, clé de secours

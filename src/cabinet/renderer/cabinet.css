@@ -75,6 +75,20 @@
   background: var(--warning-soft); border-left: 3px solid var(--warning); border-radius: 8px;
   padding: 11px 14px; font-size: 13px; line-height: 1.55;
 }
+/* Les deux soeurs de `.warn-box`, posées en 9.1.0 — elles étaient UTILISÉES sans être définies,
+   et une classe qui n'existe pas dans la feuille ne se voit nulle part : le verdict de la balance
+   s'affichait en texte nu au milieu de la page (même défaut que `.mono` en 8.1.0).
+   `ok-box` : ce qu'on peut affirmer. `info-box` : ce qu'on explique — un écart ATTENDU n'est pas un
+   avertissement, et du orange sur une situation normale apprend à ignorer l'orange (8.0.1).
+   Les couleurs viennent des variables, donc le thème sombre suit tout seul. */
+.ok-box {
+  background: var(--success-soft); border-inline-start: 3px solid var(--success); border-radius: 8px;
+  padding: 11px 14px; font-size: 13px; line-height: 1.55;
+}
+.info-box {
+  background: var(--info-soft); border-inline-start: 3px solid var(--info); border-radius: 8px;
+  padding: 11px 14px; font-size: 13px; line-height: 1.55;
+}
 .err-inline { color: var(--danger); font-weight: 600; }
 .ok-inline { color: var(--success); font-weight: 600; }
 
