@@ -10931,6 +10931,59 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       'updateBase et updateSecret doivent être VIDES dans les deux constructions');
   });
 
+
+  t('9.1.0 : l\'index de CLAUDE.md ne renvoie nulle part où il n\'y a rien', () => {
+    // Un index qui pointe vers une section disparue est exactement le défaut que ce projet combat
+    // depuis la 7.3.0 : « une phrase affichée que rien ne tient est un bug ». Ici c'est pire, parce
+    // que c'est MOI qui le lis à chaque session, et qu'un renvoi mort me ferait chercher pour rien.
+    const md = lireSource('CLAUDE.md');
+    const i = md.indexOf('## Index thématique');
+    const j = md.indexOf('## Règles de travail');
+    assert.ok(i > 0 && j > i, 'l\'index doit exister et précéder les règles de travail');
+    const index = md.slice(i, j);
+
+    // Toutes les versions citées dans l'index — sous la forme « 7.16.0 », « Cabinet 1.0.0 »,
+    // « 9.1.0 » — doivent nommer un titre de section qui existe dans le fichier.
+    // Une section, ici, c'est un titre `##`/`###` OU une puce en gras `- **5.0.0** (…)` : les
+    // versions d'avant la 6.0.0 vivent dans la grande liste de l'audit, pas dans un titre à elles.
+    // Ma première version ne regardait que les titres et déclarait morts cinq renvois parfaitement
+    // valides — un test trop étroit accuse du code juste, ce qui est pire que pas de test.
+    const titres = md.split('\n').filter(l => /^#{2,3} /.test(l) || /^- \*\*[\d.]+(?:\.x)?\*\*/.test(l)).join('\n');
+    const citees = new Set();
+    // On ne lit QUE les tables : la prose cite des intervalles (« 9.1.0 → 10.0.0 ») qui ne
+    // désignent aucune section.
+    // Dans la colonne « Où », le POINTEUR est ce qui précède le tiret cadratin : « 7.0.1 — la
+    // description ». Une version citée dans la description (« le bug depuis la 1.6.0 ») est du
+    // texte, pas une cible — la confondre ferait échouer le test sur un index parfaitement juste.
+    index.split('\n').filter(l => l.startsWith('|')).forEach(ligne => {
+      const cellules = ligne.split('|').slice(1, -1);
+      const ou = cellules[cellules.length - 1] || '';
+      ou.split(';').forEach(part => {
+        const pointeur = part.split('—')[0];
+        (pointeur.match(/(?:Cabinet )?\d+\.\d+\.(?:\d+|x)/g) || []).forEach(v => citees.add(v));
+      });
+    });
+    assert.ok(citees.size > 20, 'un index qui cite moins de vingt sections ne sert à rien : ' + citees.size);
+    const mortes = [...citees].filter(v => !titres.includes(v));
+    assert.deepStrictEqual(mortes, [], 'l\'index renvoie vers des sections qui n\'existent pas : ' + mortes.join(', '));
+
+    // Et les commandes qu'il annonce existent dans package.json : c'est la moitié de l'index que
+    // quelqu'un tape vraiment.
+    const pkg = JSON.parse(lireSource('package.json'));
+    ['test', 'lint', 'charge'].forEach(c =>
+      assert.ok(pkg.scripts[c], 'l\'index annonce « npm run ' + c + ' » : le script n\'existe pas'));
+    const e2e = Object.keys(pkg.scripts).filter(k => k.startsWith('e2e:')).length;
+    const annonce = Number((index.match(/(\d+) parcours/) || [])[1]);
+    assert.strictEqual(annonce, e2e, `l'index annonce ${annonce} parcours e2e, il y en a ${e2e}`);
+
+    // Les documents cités existent tous sur le disque : un plan renommé laisserait un renvoi mort.
+    (index.match(/`[A-Z][A-Z-]+\.md`/g) || []).forEach(d => {
+      const nom = d.replace(/`/g, '');
+      assert.ok(require('fs').existsSync(require('path').join(__dirname, '..', nom)),
+        'l\'index cite un document qui n\'existe pas : ' + nom);
+    });
+  });
+
   if (enCours) throw new Error(`${enCours} test(s) asynchrone(s) lancé(s) sans « await ta(…) » : ils ne peuvent plus échouer`);
   console.log(`\n${n} tests OK`);
 })().catch(e => { console.error(e); process.exit(1); });

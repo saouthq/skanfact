@@ -6,6 +6,102 @@ Application desktop Electron (JS pur, sans bundler) de devis et factures pour un
 
 L'utilisateur est débutant en gestion (première entreprise) : chaque champ porte une bulle « i » (`src/renderer/guide.js`) et la rubrique Aide explique la facturation, la fiscalité et la routine comptable. Toute nouveauté doit venir avec sa bulle et, si elle change une habitude, un paragraphe dans l'article concerné. Un test vérifie que chaque clé posée dans l'interface existe dans `guide.js`.
 
+## Index thématique
+
+*Ce fichier est rangé par VERSION, dans l'ordre où les choses sont arrivées : c'est ce qui permet de
+comprendre pourquoi une règle existe. Mais quand on cherche « la règle sur les dates » ou « celle
+sur les tests qui lisent du code », l'ordre chronologique n'aide pas. Voici l'entrée par thème.
+Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut réel qui l'a fait
+écrire, parce qu'une règle sans son défaut ne se retient pas.*
+
+**Ce qui se casse en silence, et qu'aucune console ne montre**
+
+| Symptôme | Où c'est expliqué |
+|---|---|
+| Un bouton visible et **inerte** (les clics atterrissent ailleurs) | 5.2.2 — l'ordre des couches ; 7.28.0 — le garde-fou global qui vole le clic |
+| Un bouton qui **accepte le clic et ne fait rien** | 7.0.0 — les treize « Voir » sans action ; 7.17.0 — les écrans qui ne répondent pas |
+| L'application **gèle** sans erreur (Cmd+Q sans effet, défilement qui marche encore) | 5.2.3 — boucle infinie de date ; 6.5.0 — le chien de garde ; 8.1.0 — la veille n'est pas un gel |
+| Un **écran blanc**, une fenêtre qui ne s'ouvre pas, rien en console | 7.20.0, 7.22.0, 7.23.0 — une fonction ou une variable d'un autre module ; 9.1.0 — le garde-fou d'erreur et le lint |
+| Un **texte illisible** (blanc sur blanc), un en-tête mal aligné, un fil vertical | 7.12.0, 7.23.0, 7.27.0, 7.30.0 — le HTML est juste, c'est la feuille de style qui décide : **mesurer** |
+| Un bouton **hors de l'écran**, une barre empilée sur trois rangées | 7.13.0, 7.23.0 — `e2e:contraste` et `e2e:entetes` mesurent le bouton, jamais la page |
+
+**Les chiffres**
+
+| Règle | Où |
+|---|---|
+| Une date est un **jour de calendrier**, jamais un instant : arithmétique en UTC pur | 5.2.3 (et le lint l'interdit depuis la 9.1.0) |
+| **Aucun taux n'est écrit en dur** dans un calcul | 5.0.0 — la paie ; 8.3.0 — la liste propose, elle n'enferme pas |
+| Tout ce qui **additionne** plusieurs pièces se convertit dans la devise de base | 7.0.1 — le timbre en euros ; 7.16.0 — les cartes de l'accueil |
+| Une pièce émise garde une **copie** de ce qui a servi à la calculer | 7.1.x — le timbre ; 5.0.0 — `slip.computed` ; 9.0.0 — les charges patronales |
+| Un compteur et la liste qu'il annonce se calculent avec la **même fonction** | 6.8.1 — le bandeau des relances ; 7.15.0 — « Reste à encaisser » |
+| Un montant **négatif change de colonne**, il ne garde pas son signe | 6.3.0 — les écritures comptables |
+| Un **agrégat** porte une devise, une unité, et une période nommée | 7.0.1, 7.16.0, 3.1.0 |
+
+**Les tests**
+
+| Règle | Où |
+|---|---|
+| **Tout test se prouve en réintroduisant son défaut.** Sinon on ne sait pas ce qu'on a écrit | 7.2.0, 7.22.0, 7.25.0, 7.27.0 — six tests qui ne pouvaient pas échouer |
+| Un test qui lit du code doit lire du **CODE** : commentaires et chaînes retirés d'abord | 6.8.0, 7.25.0 — un commentaire satisfaisait l'assertion |
+| Une assertion sur un montant se **calcule à la main**, jamais en recopiant la sortie | 7.0.1 — l'assertion qui gravait le bug depuis la 1.6.0 |
+| Un test écrit contre l'état du jour **décrit cet état**, pas la règle | 7.12.0, 7.26.0, 8.0.1, 8.2.0, 9.1.0 — cinq assertions retournées |
+| Une **tranche** de source se prouve par sa taille et par ce qu'elle ne contient PAS | 7.20.0, 7.21.0, 8.2.0 |
+| Un e2e **se périme** : reconnaître un écran à ce qu'il CONTIENT, jamais à son rang | 7.3.0, 7.28.0, 7.29.0, 7.30.0 — cinq parcours pourris sans un mot |
+| Un e2e qui reste **bloqué** est pire qu'un e2e qui échoue | 7.28.0 — `Promise.race` sur toute fermeture |
+| `ta()` sans `await`, `t()` avec une fonction asynchrone : « ok » sans rien vérifier | 6.7.0, 8.4.0 |
+
+**Les deux applications**
+
+| Règle | Où |
+|---|---|
+| Une règle apprise d'un côté **se vérifie de l'autre**, à la main | 7.3.0 (purge des sauvegardes), 7.18.0 (`pl`), 7.32.0 (« À faire »), 8.1.0 (le saut d'horloge) |
+| Un fichier partagé a **trois** branchements : les deux `index.html`, dans l'ordre, et les `files` du Cabinet | 7.26.0 (`depot.js`), 7.29.0 (`rowmenu.js`), 9.1.0 (`compta.js`) |
+| Le Cabinet **n'écrit jamais** chez un client et ne lui renvoie rien | Cabinet 1.0.0 |
+| Une classe du Cabinet ne peut pas porter un nom déjà pris dans la feuille partagée | 6.8.0 — `.setup-card` |
+| Un drapeau qui vit **en double** diverge, toujours | 7.26.0 — `src/depot.js` |
+
+**L'interface**
+
+| Règle | Où |
+|---|---|
+| Une ligne garde **au plus UN** bouton visible ; le reste passe par `rowmenu.js` | 7.29.0 |
+| Un refus dit **trois** choses : ce qui est refusé, pourquoi, et le bouton qui débloque | 7.0.0 |
+| Une saisie refusée se **MONTRE** : on amène le champ à l'écran (`refus()`) | 7.0.0, 7.20.0 |
+| Ce qui **détruit** demande ; ce qui **se répare** laisse un « Annuler » (`toastUndo`) | 7.12.0 |
+| Un écran qui **NOMME** un ensemble doit pouvoir l'ouvrir | 7.15.0, 7.17.0, 7.21.0 |
+| L'endroit qui **affiche** un état est celui où on s'attend à le changer | 7.14.0 |
+| Un **moteur sans écran n'existe pas** ; une fonction jamais appelée est invisible | 7.2.0, 7.3.0, 7.19.0 |
+| Une **phrase affichée** que rien ne tient est un bug, pas une imprécision | 7.3.0, 7.6.0, 8.0.0 |
+| `navigate()` vers la page courante ne redessine **rien** : `vers()` | 7.15.0, 7.29.0 |
+| Un état lu une fois au démarrage **se périme** | 7.1.x, 8.0.0 |
+
+**Ce qu'on ne fait jamais**
+
+| | Où |
+|---|---|
+| Jamais de **données en otage** : une licence expirée ne bloque que la création | 6.4.0 |
+| Jamais de **message brut** à l'écran : `updateProblem(err)` | 7.26.0 |
+| Jamais **prétendre** ce qu'on ne peut pas prouver (« 7 pièces vérifiées, intactes ») | Cabinet 1.0.0, 8.1.0, 8.2.0 |
+| Jamais de **retour en arrière** de version, sauf sortie du canal d'essai | 6.7.3, 7.25.0, 9.1.0 |
+| Jamais **toucher à la clé publique** de `build/licences-publiques.json` | Règles de travail, 8.0.0 |
+| Jamais de **token** commité | Règles de travail, 6.7.0 |
+
+**L'outillage (9.1.0)**
+
+`npm test` (les tests purs) · `npm run lint` (ESLint, zéro erreur exigée) · `npm run charge` (le test
+de charge du livre) · `npm run e2e:<nom>` (41 parcours, tableau au § « Les tests qui ouvrent vraiment
+l'application ») · CI GitHub sur Linux et Windows à chaque poussée · « Construire un essai » pour
+faire tester une version sans la publier.
+
+**Les documents du dépôt**, et lequel fait foi :
+`DIRECTION.md` (prime sur tous) → `CAHIER-DES-CHARGES.md` (les spécifications citables) →
+`VERSIONS-A-VENIR.md` (tout ce qui reste à faire, 9.1.0 → 10.0.0) → `PLAN-DEVELOPPEMENT.md` (le
+calendrier et les jalons). `QUESTIONS.md` répond à tout le reste — c'est le document à ouvrir quand
+on est perdu. `PLAN-CABINET.md`, `PLAN-COMPTABLE.md`, `PLAN-PLATEFORME.md`, `PLAN-UX.md` pour un
+chantier précis ; `ROADMAP.md` est une **archive**.
+
+---
+
 ## Règles de travail
 
 - **Chaque amélioration livrée = une nouvelle version** (semver) : correctif 1.0.x, fonctionnalité 1.x.0, gros changement x.0.0. Mettre à jour `package.json` (`version`) **et** ajouter une entrée datée dans `CHANGELOG.md` (c'est elle qui devient les notes de version dans l'app et sur GitHub). Toujours annoncer le numéro de version dans la réponse.
@@ -2640,6 +2736,86 @@ la Partie 20 ne garde que les quatre **scénarios de reprise** (SCN-001 → 004)
 que l'opérateur fait, un cahier ce que le logiciel doit faire — et les deux runbooks de la
 plateforme (mise en production, retrait de `srv-1`) vivent dans `PLAN-PLATEFORME.md` § 18, les
 quatre autres là où ils étaient déjà (`CLAUDE.md`, `worker/README.md`, `QUESTIONS.md` § 18).
+
+### 9.1.0 — L'outillage, et `compta.js` partagé par les deux applications
+
+Le socle que la 9.2.0 attend, et l'outillage d'un logiciel qu'on vend. **`src/renderer/compta.js`**
+(SPEC-FUNC-100) : douze fonctions pures, aucune dépendance — pas même core.js. La règle qui décide
+du découpage et qui ne doit pas bouger : **une fonction qui prend `data` reste dans core.js ; une
+fonction qui prend des LIGNES vit dans compta.js.** C'est ce qui rend le module utile au Cabinet,
+qui n'a pas de `data` mais des lignes lues dans les paquets. `round3` y est redéfini à l'identique
+plutôt qu'importé, et un test compare les deux corps caractère par caractère. Le test qui compte est
+celui de **parité** : la balance calculée par le cabinet sur les écritures relues dans le CSV du
+paquet est identique, au millime, à celle que l'entreprise calcule sur ses pièces, sur les 24 mois
+du jeu d'exemple. Sans lui, le comptable et son client auraient deux balances et aucun moyen de
+savoir laquelle croire.
+
+Règles apprises, à ne pas recasser :
+
+- **Le lint attrape en deux secondes ce qui a coûté des sessions entières.** `eslint.config.js`,
+  format plat, zéro règle de style — un lint qui crie sur mille lignes de formatage cesse d'être lu,
+  et emmène avec lui les dix erreurs qui comptaient. Ce qu'il tient : `no-undef` (la variable d'une
+  autre route, 7.20.0 ; la fonction d'un autre module, 7.22.0), `no-dupe-keys`, et surtout les
+  **trois fautes de date de la 5.2.3** — `new Date(y, m, d)`, `getDay()`, `setDate()` — en ERREUR,
+  avec le renvoi à CLAUDE.md dans le message. Il a trouvé deux choses le jour même : une clé d'aide
+  en double qui en écrasait une autre depuis huit versions, et `C.canalDe` appelé dans
+  `src/cabinet/main.js`, qui ne charge pas core.js.
+- **Deux bulles ne peuvent pas porter la même clé.** `lic.offre` était déclarée deux fois dans
+  `guide.js` : un objet littéral ne s'en plaint pas, la seconde écrase la première **en silence**,
+  et le test qui exige que chaque clé posée dans l'interface existe passait — la clé existait, seul
+  son texte n'était plus le bon. Un client qui cliquait « Offre » dans ses Paramètres lisait depuis
+  la 8.2.0 une explication de facturation au prorata écrite pour l'éditeur.
+- **Une exception de l'interface laisse une trace.** `error` ET `unhandledrejection` — les deux, car
+  une promesse rejetée ne passe pas par `error` et c'est le cas le plus courant ici. Posés **avant**
+  la séquence de démarrage, comme le chien de garde (6.5.0) : une exception levée pendant cette
+  séquence laisse l'écran blanc, et c'est justement celle qu'un garde-fou installé plus bas ne
+  verrait pas. Il n'affiche **rien** et ne recharge **rien** : une erreur d'interface n'est pas
+  toujours visible pour l'utilisateur, et une application qui annonce une panne qui n'en est pas une
+  apprend à cliquer sans lire.
+- **Un journal se borne AVANT d'ouvrir un robinet dessus.** `main.log` grossissait sans limite ; le
+  garde-fou ci-dessus change l'échelle. Vingt erreurs par minute au maximum (les tuées sont comptées
+  et **dites**, sinon le journal laisse croire que l'application s'est calmée alors qu'elle brûlait)
+  et UNE rotation à 2 Mo. Au passage, la sauvegarde du cabinet appendait **directement** dans
+  `main.log` : la seule écriture volumineuse de l'application aurait échappé à la borne qu'on venait
+  de poser. Un test interdit désormais toute écriture qui contourne `logToFile`.
+- **On mesure avant d'écrire un format, jamais après.** `npm run charge` (SPEC-OUT-006) fabrique
+  50 000 lignes, un portefeuille de 60 dossiers (345 001 lignes, 97 Mo), et mesure le VRAI chemin —
+  chiffré, comme le sera `livre.json`. Verdict : ouverture 159 ms (seuil 1 000), balance 1 291 ms
+  (seuil 5 000), recherche 1 040 ms (seuil 3 000), **écriture 147 ms pour un seuil de 100**. Le
+  script ne se contente pas de le dire, il **mesure chaque levier** : j'aurais parié sur le découpage
+  par mois, c'est le **corps binaire au lieu de base64** qui pèse le plus lourd pour le moins de
+  travail (79 ms, 46 % de gagné, et il ne change ni la forme du livre ni aucun appelant). C'est la
+  leçon de la 6.1.0 jamais portée à `cabstore`, parce qu'elle ne coûtait rien sur un petit fichier
+  d'état. Décision consignée dans SPEC-DATA-005 : la 9.2.0 écrira un corps binaire.
+- **Un banc d'essai dont les données mentent fait mentir le verdict**, et c'est le pire cas : il a
+  l'air de fonctionner. Mon générateur était un LCG (`g * 1103515245 + 12345`) avec `graine % max` :
+  les bits de POIDS FAIBLE d'un LCG ont une période très courte, donc `% 12` ne rendait que **six
+  mois sur douze** (l'un d'eux à 18 écritures sur 16 667) et `% 300` que 90 tiers sur 300. Mulberry32
+  à la place — et le script **vérifie son propre jeu** avant de mesurer quoi que ce soit.
+- **Une CI existe pour la plateforme que personne ne teste.** Linux ET Windows, `fail-fast: false`
+  délibérément : quand un test tombe, savoir s'il tombe des deux côtés ou d'un seul est
+  l'information qui désigne la cause (règle 5.2.3). C'est la 7.21.x qui la motive. Pas d'e2e
+  Electron : quarante-deux parcours sous `xvfb` à chaque poussée videraient le quota en une matinée
+  (6.7.2). Seul `e2e:pages` y est, parce qu'il n'ouvre pas Electron.
+- **Une application d'essai ne doit ni publier, ni se mettre à jour, ni écraser la vraie.**
+  `essai.yml` : `productName` et `appId` suffixés (sinon l'essai EST la vraie application pour le
+  système — l'accident de la 6.7.3), `--publish never`, et surtout **`updateBase` vide** : le plus
+  facile à oublier, parce qu'il ne se voit qu'après coup — une application d'essai qui se met à jour
+  redevient la version publiée au premier redémarrage, et la personne ne teste plus rien.
+- **L'index de CLAUDE.md est tenu par un test.** Ce fichier est rangé par version ; l'index le range
+  par thème. Un renvoi mort y serait exactement le défaut que le projet combat (« une phrase
+  affichée que rien ne tient est un bug », 7.3.0) — en pire, puisque c'est moi qui le lis à chaque
+  session. Le test vérifie que chaque version citée nomme une section qui existe, que les commandes
+  annoncées existent dans `package.json`, que le nombre de parcours e2e est le bon, et que chaque
+  document cité est sur le disque. Il a trouvé cinq renvois morts à sa première passe — dont deux
+  étaient une faute du test lui-même, trop étroit : **un test trop étroit accuse du code juste, ce
+  qui est pire que pas de test.**
+- **Trois assertions retournées** (« quand une règle change, c'est le test qui se relit en
+  premier ») : le canal du Cabinet écrit en dur, `allowDowngrade = false` au caractère près — que
+  l'app entreprise ne passait que par accident, grâce à une seconde ligne ailleurs — et la borne du
+  journal. Et une faiblesse trouvée dans mon propre test : un `||` le rendait incapable de tomber
+  sur la sévérité des règles de date, puisque le branchement suffisait à le satisfaire (le piège de
+  précédence de la 7.33.0, deux fois).
 
 ## Pistes pour la suite (non demandées)
 
