@@ -36,6 +36,9 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un compteur et la liste qu'il annonce se calculent avec la **même fonction** | 6.8.1 — le bandeau des relances ; 7.15.0 — « Reste à encaisser » |
 | Un montant **négatif change de colonne**, il ne garde pas son signe | 6.3.0 — les écritures comptables |
 | Un **agrégat** porte une devise, une unité, et une période nommée | 7.0.1, 7.16.0, 3.1.0 |
+| La valeur par défaut d'une **règle qu'on ne connaît pas** est celle qui ne fait rien | 9.1.1 — le seuil de retenue à 0, la TFP qu'aucun métier ne porte |
+| Une écriture **validée** ne se modifie jamais : elle se contre-passe, à la date du jour | 9.2.0 |
+| Un **numéro** naît à la validation, et le contrôle passe AVANT l'attribution | 9.2.0 ; 6.0.0 — `nextNumber` |
 
 **Les tests**
 
@@ -49,6 +52,8 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un e2e **se périme** : reconnaître un écran à ce qu'il CONTIENT, jamais à son rang | 7.3.0, 7.28.0, 7.29.0, 7.30.0 — cinq parcours pourris sans un mot |
 | Un e2e qui reste **bloqué** est pire qu'un e2e qui échoue | 7.28.0 — `Promise.race` sur toute fermeture |
 | `ta()` sans `await`, `t()` avec une fonction asynchrone : « ok » sans rien vérifier | 6.7.0, 8.4.0 |
+| Un test **trop étroit** accuse du code juste — aussi grave qu'un test trop large | 9.1.0, 9.2.0 — le jumeau du contrôle du pont, sans son nettoyage |
+| `npm test \| tail` **masque le code de sortie** : un commit part avec un test rouge | 9.2.0 |
 
 **Les deux applications**
 
@@ -85,6 +90,9 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Jamais de **retour en arrière** de version, sauf sortie du canal d'essai | 6.7.3, 7.25.0, 9.1.0 |
 | Jamais **toucher à la clé publique** de `build/licences-publiques.json` | Règles de travail, 8.0.0 |
 | Jamais de **token** commité | Règles de travail, 6.7.0 |
+| Jamais **chiffrer en croyant signer** : seule une signature dit d'où ça vient | 9.2.0 |
+| Jamais une **cellule CSV** exécutée par un tableur (`=` `+` `-` `@`) | 9.1.1 |
+| Jamais **écraser le travail du cabinet** avec un mois que le client renvoie | 9.2.0 |
 
 **L'outillage (9.1.0)**
 
@@ -2816,6 +2824,124 @@ Règles apprises, à ne pas recasser :
   journal. Et une faiblesse trouvée dans mon propre test : un `||` le rendait incapable de tomber
   sur la sévérité des règles de date, puisque le branchement suffisait à le satisfaire (le piège de
   précédence de la 7.33.0, deux fois).
+
+### 9.1.1 — Les corrections fiscales
+
+Quatre chiffres qui partent chez un tiers, et qui traînaient sans version. La règle qui les tient
+tous : **la valeur par défaut d'une règle qu'on ne connaît pas est celle qui ne fait rien.**
+
+- **L'injection de formule CSV**, le vrai trou, trouvé en relisant le cahier et pas par un test. Un
+  tableur EXÉCUTE une cellule qui commence par `=`, `+`, `-` ou `@`, et le libellé d'une ligne de
+  facture partait tel quel dans le journal envoyé au comptable. `compta.csvDangereux` est
+  **stricte** et ne devine pas ce qui « ressemble à un nombre » : c'est l'APPELANT qui sait.
+  `core.toCsv` a des types (les colonnes `money`/`date` ne la voient jamais, `-12,500` reste un
+  montant) ; `cabcore.toCsvLine` n'en a pas, d'où `estNombreCsv` **là et là seulement**. Le
+  quatrième export — le portefeuille du cabinet — avait sa propre version sans parade : une seule
+  porte désormais. Deux corps identiques dans deux fichiers, un test l'exige (motif `round3`).
+- **Le timbre par client** (`client.stampExempt`) se COPIE à la création (`applyClientDefaults`),
+  **dans les deux sens** et seulement sur une facture : poser `false` sans jamais reposer `true`
+  laisserait un brouillon dont on change le client sans timbre, en silence. Et la case du DOM se
+  met à jour avec la donnée — sinon le prochain `formValues` relit la case restée en arrière et
+  écrase ce qu'on vient de calculer. `computeTotals` ne relit JAMAIS le client : une pièce émise ne
+  bouge plus (règle 7.1.1, un cran plus haut).
+- **Le seuil de retenue vaut 0** (= aucun seuil). Réglé, il AVERTIT dans `issueWarnings`, jamais un
+  refus, et il ne se lit qu'à **un seul endroit** de l'interface. Le seul cas que la garde protège
+  vraiment est le seuil **négatif** : `Number('') === 0` rend l'assertion évidente inutile (8.3.0).
+- **La TFP est proposée par métier, et aucun métier n'en porte** : le test TOMBE si quelqu'un écrit
+  un `tfp:` dans `ACTIVITIES` sans la réponse du comptable. `tfpTouche` (posé à l'enregistrement des
+  barèmes) empêche la proposition d'écraser un taux décidé — motif `regimeTouche` (7.25.0, 7.30.0).
+- **`docs/e-facture-controle.md`** : champ par champ, ce que le modèle porte de ce qu'un format
+  officiel exigerait. Il ne construit rien ; il répond à la seule question qui compte aujourd'hui —
+  les chiffres sont là, les identités sont incomplètes mais rattrapables, la signature et
+  l'acheminement sont entièrement à faire.
+- Piège de test : `lireApp()` RETIRE les commentaires de ligne, donc une tranche ne peut jamais
+  s'ancrer sur un commentaire (8.2.0, re-rencontré). Et une assertion e2e de la 9.1.0 exigeait les
+  dix onglets de Comptabilité alors que trois sont masqués depuis : **quand une règle change, c'est
+  le test qui se relit en premier** (sixième occurrence).
+
+### 9.2.0 — Le livre du dossier, et le paquet signé
+
+La plus grosse version du chantier Cabinet. `compta.js` gagne le **livre** (pur, testable sans
+Electron) ; `cabstore` l'écrit sur le disque ; le paquet mensuel est enfin **signé**.
+
+**Les trois règles du livre, qui ne bougent plus :**
+
+1. **Une écriture VALIDÉE ne se modifie jamais.** On la contre-passe — une écriture miroir, datée du
+   jour où l'on corrige, **jamais** de celle de l'écriture d'origine : corriger en avril une
+   écriture de janvier dans un janvier déjà déclaré changerait la TVA de janvier en silence (6.0.0).
+2. **Le numéro naît à la VALIDATION**, par ordre de validation et pas de date, et le contrôle passe
+   AVANT l'attribution — sinon chaque refus trouerait la numérotation (le défaut de `nextNumber`,
+   6.0.0). C'est la différence avec la numérotation *déduite* de la 8.9.0 : là-bas un numéro bougeait
+   quand on insérait une pièce en arrière ; ici il est écrit, et il ne bouge plus.
+3. **Le paquet du client ne gagne jamais contre le cabinet.** Un mois renvoyé remplace les
+   brouillards et ne touche AUCUNE validée : on calcule l'écart, on l'affiche, le comptable tranche.
+   Écraser son travail parce que le client a rouvert son mois serait la pire chose que ce logiciel
+   puisse faire.
+
+**Chiffrer n'est pas signer** — le trou que trois relectures extérieures ont pointé, et le plus
+grave du projet. `sealForCabinet` ne demande que la clé PUBLIQUE du cabinet, celle qu'il donne à
+TOUS ses clients : quiconque la tenait pouvait fabriquer un paquet chiffré au nom d'une autre
+entreprise, et le cabinet l'importait sans un mot.
+
+- On signe les **octets exacts** de `manifeste.json` tels qu'ils partent dans le ZIP. Aucune
+  canonicalisation, aucun RFC 8785 : re-sérialiser pour signer, c'est signer autre chose que ce
+  qu'on envoie, et c'est l'écart entre les deux qui fait les failles de signature.
+- La paire est **Ed25519** (signature), pas X25519 (échange de clés) — deux courbes pour deux
+  métiers, et Node refuse la seconde. Elle vit dans `<dossier>/cle-client.json` (0600), créée au
+  PREMIER envoi, **hors** de `skanfact-data.json` : une clé privée qui voyagerait dans un export ou
+  dans le paquet ne serait plus une clé privée.
+- `cabcore.verdictOrigine` porte la RÈGLE, pure et testée. Quatre cas : pas de signature et pas de
+  clé épinglée → accepté « origine non prouvée » (refuser couperait tout le portefeuille le jour de
+  la mise à jour) ; pas de signature mais clé épinglée → **refusé**, donc la tolérance s'éteint
+  d'elle-même **client par client**, sans date butoir ; signature valable et pas de clé → on
+  épingle ; autre clé → refusé en nommant les DEUX empreintes, et la reprise passe par l'empreinte
+  dictée au téléphone.
+- L'ordre sha256-puis-signature est fixé pour la **phrase**, pas pour la sécurité : Ed25519 porte
+  sur les octets, donc un manifeste modifié fait échouer `verify` de toute façon — mais « modifié
+  après l'envoi » et « signature inconnue » ne demandent pas le même coup de téléphone.
+- Les quatre champs épinglés entrent dans `migrateDossier` : absent de cette liste, un champ est
+  jeté au prochain démarrage et la vérification se désarme **en silence**. C'est le défaut de
+  `matricule` de la 6.8.0, appliqué cette fois à un champ de sécurité.
+- Un échec de signature ne fait PAS échouer l'envoi : priver quelqu'un de son paquet mensuel pour
+  une clé qu'on n'a pas su écrire serait pire que le paquet non signé.
+
+**Le fichier :** `livres/<dossier>/livre-<AAAA>.json`, **corps binaire** (décidé par `npm run charge`
+AVANT d'écrire une ligne : 141 ms en base64 pour un seuil de 100, 57 ms en binaire), **entête en
+clair** (client, exercice, nombre d'écritures — rien du contenu). Le verrou **périme à 24 h** : un
+poste qui plante laisserait sinon un dossier verrouillé pour toujours, pire que le risque qu'il
+évite. La copie externe emporte **toujours** les livres, avec ou sans les paquets — un paquet perdu
+se redemande au client, un livre perdu non. Une génération précédente est gardée à chaque écriture ;
+trente feraient 2,9 Go sur un portefeuille de soixante dossiers.
+
+**UNE seule porte d'écriture** (`ecrireLeLivre` dans `src/cabinet/main.js`) : verrou, écriture et
+trace dans le même mouvement. Deux portes, c'est la garantie qu'un jour l'une oubliera l'audit — et
+un livre comptable sans piste d'audit ne vaut rien devant un contrôle.
+
+Autres règles apprises :
+
+- **Le cas qui compte n'est pas le fichier brouillé** (le déchiffrement échoue tout seul) mais celui
+  qui se DÉCHIFFRE sans être un livre : c'est `isValidLivre` qui l'attrape, et le test le fabrique
+  avec la clé de la session plutôt qu'en imitant le format.
+- `lignesDuLivre` rend le contrat d'`entreesDepuisCsv` **au champ près** (`account`, `label`) : les
+  quatre lectures de la 9.1.0 servent telles quelles sur le livre. Deux contrats voisins mais
+  différents auraient obligé à réécrire la balance pour le cabinet — exactement ce que `compta.js`
+  existe pour éviter.
+- `entreesDepuisCsv` prend le **TEXTE** du CSV, pas des lignes découpées (c'est elle qui déduit le
+  séparateur). Lui passer un tableau donnait « 0 écriture ajoutée » sur un paquet qui en a douze,
+  sans erreur nulle part. C'est l'e2e qui l'a vu.
+- **Relire un état à CHAQUE affichage d'une page est un excès qui fabrique un défaut** : le redessin
+  asynchrone de `#c-livres` détachait le menu de ligne ouvert ailleurs, et le clic suivant tombait
+  dans le vide (piège 7.0.0). On relit quand le couple (dossier, exercice) change ; les gestes qui
+  modifient le livre reposent l'état eux-mêmes.
+- Un bloc écrit dans `el.innerHTML` puis **écrasé** par le rendu final ne s'affiche jamais. Aucune
+  erreur, aucune console : il faut ouvrir l'application.
+- Le second exemplaire du contrôle « le cabinet n'écrit jamais chez un client » n'avait **pas** reçu
+  le nettoyage des commentaires de la 6.8.0 : il échouait sur un commentaire qui cite les deux
+  appels interdits pour expliquer la règle. **Un test trop étroit accuse du code juste.**
+- Piège de ma propre méthode, deux fois : un `cp` de sauvegarde par **basename** écrase
+  `src/cabinet/main.js` avec `src/main.js` (même nom de fichier) ; et `npm test | tail -2 && git
+  commit` masque le code de sortie du test — un commit est parti avec un test rouge. **Un test qu'on
+  lit au lieu de le laisser décider ne protège de rien.**
 
 ## Pistes pour la suite (non demandées)
 
