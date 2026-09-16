@@ -963,7 +963,7 @@
     pill.hidden = !relCount;
     if (relCount) pill.textContent = relCount;
     const view = $('#view');
-    if (route === 'dossier') drawDossier(view, arg);
+    if (route === 'dossier') drawDossier(view, arg, hash.split('/')[2]);
     else if (route === 'ecritures') drawEcritures(view);
     else if (route === 'echeances') drawEcheances(view);
     else if (route === 'relances') drawRelances(view);
@@ -1237,7 +1237,26 @@
 
   // ---------- la fiche d'un dossier ----------
   let ficheYear = '';                    // l'exercice choisi sur la fiche, entre deux redessins
-  function drawDossier(view, id) {
+  // ---------- la fiche d'un dossier : un en-tête, des alertes, trois onglets (9.2.2) ----------
+  //
+  // Skander : « le dossier est mal fait et pas pratique, tout est mis dans la même page ». Mesuré
+  // avant d'y toucher : 1 741 px et six panneaux sur l'exemple — et sur un vrai dossier, le bloc
+  // Comptabilité est à lui seul une page entière (15 pièces, 56 lignes) posée entre les mois et les
+  // paquets. Deux métiers mélangés : SUIVRE le dossier (mois manquants, relances, paquets) et
+  // TRAVAILLER sa comptabilité (journal, grand livre, balance, lettrage). Un comptable fait l'un ou
+  // l'autre, jamais les deux à la fois.
+  //
+  // Trois onglets, pas quatre : l'identité (151 px) aurait fait un onglet d'un demi-écran — ce que
+  // la 7.30.0 a retiré des Paramètres. Elle vit dans l'en-tête, avec l'état du dossier en une
+  // phrase. Les alertes (paquet altéré, fichier intrus) restent AU-DESSUS des onglets : un rangement
+  // ne range pas ce qu'il ne faut pas ranger (7.32.0). L'onglet vit dans l'ADRESSE
+  // (`#/dossier/<id>/<onglet>`) : ce qui traverse un onglet doit l'ouvrir, et « précédent » marche.
+  // L'impression, elle, imprime tout : la fiche imprimée reste la fiche entière.
+  const ONGLETS_DOSSIER = ['suivi', 'comptabilite', 'paquets'];
+  let ficheOnglet = 'suivi';
+  let ficheDossierId = '';
+
+  function drawDossier(view, id, ongletDemande) {
     const dossier = (S.dossiers || []).find(d => d.id === decodeURIComponent(id || ''));
     if (!dossier) { view.innerHTML = `<div class="empty">Ce dossier n'existe plus.</div>`; return; }
     const row = K.dossierRow(dossier);
@@ -1250,37 +1269,65 @@
     // qui a 2025 à un dossier qui n'a que 2026 afficherait un graphique vide sans raison visible.
     const anneeVue = years.includes(ficheYear) ? ficheYear : years[0];
     const totalCA = packs.reduce((s, p) => s + ((p.figures && p.figures.ca) || 0), 0);
+    // L'onglet : celui de l'adresse s'il en porte un ; sinon celui où l'on était sur CE dossier ;
+    // sinon Suivi, l'écran du quotidien.
+    const onglet = ONGLETS_DOSSIER.includes(ongletDemande) ? ongletDemande : (ficheDossierId === dossier.id ? ficheOnglet : 'suivi');
+    ficheOnglet = onglet; ficheDossierId = dossier.id;
+    const versOnglet = o => { location.hash = '#/dossier/' + encodeURIComponent(dossier.id) + '/' + o; };
+    // L'état du dossier en une phrase : ce qu'un comptable veut savoir avant tout le reste.
+    const dernierRecu = packs.reduce((m, p) => Math.max(m, p.receivedAt || 0), 0);
+    const caAnnee = packs.filter(p => p.month.slice(0, 4) === anneeVue).reduce((s, p) => s + ((p.figures && p.figures.ca) || 0), 0);
+    const etat = [
+      packs.length ? pl(packs.length, 'mois reçu', 'mois reçus') : (dossier.manual ? 'pas encore sur SkanFact' : 'aucun paquet reçu pour l\'instant'),
+      row.missingCount ? `<span class="warn-text">${pl(row.missingCount, 'manquant')}</span>` : '',
+      row.provisionalCount ? `<span class="warn-text">${pl(row.provisionalCount, 'provisoire')}</span>` : '',
+      dernierRecu ? 'dernier paquet le ' + esc(fmtDay(dernierRecu)) : '',
+      packs.length && anneeVue ? `CA ${esc(anneeVue)} : <strong>${esc(money(caAnnee))}</strong>` : ''
+    ].filter(Boolean).join(' · ');
+    // L'identité, compacte, sans tiret : ce qui n'est pas renseigné ne prend pas de place — sauf
+    // l'email et le téléphone, qui servent à relancer.
+    const ident = [
+      esc(dossier.matricule || 'Matricule inconnu'),
+      dossier.contact ? esc(dossier.contact) : '',
+      dossier.email ? esc(dossier.email) : '<span class="muted">email à renseigner</span>',
+      dossier.phone ? esc(dossier.phone) : '<span class="muted">téléphone à renseigner</span>',
+      labelOf(K.REGIMES, dossier.regime) ? 'régime ' + esc(labelOf(K.REGIMES, dossier.regime)) : '',
+      labelOf(K.TVA_PERIODS, dossier.tvaPeriod) ? 'TVA ' + esc(labelOf(K.TVA_PERIODS, dossier.tvaPeriod)) : '',
+      dossier.from ? 'mission depuis ' + esc(K.monthLabel(dossier.from)) : '',
+      dossier.fees ? esc(money(dossier.fees)) + ' / mois' : ''
+    ].filter(Boolean).join(' · ');
+    const altere = packs.some(p => p.integrity && (p.integrity.bad || []).length);
+    const intrus = packs.some(p => p.integrity && (p.integrity.intrus || []).length);
+    const ongletBtn = (o, label, n) => `<button role="tab" data-tab="${o}" class="${onglet === o ? 'active' : ''}" aria-selected="${onglet === o}">${label}${n ? `<span class="tab-n">${n}</span>` : ''}</button>`;
 
     view.innerHTML = `
       <button class="btn btn-ghost btn-sm btn-back" id="back">← Dossiers</button>
       <div class="page-head"><div>
         <h1>${esc(dossier.name)}${dossier.archived ? ' <span class="badge">archivé</span>' : ''}${dossier.manual ? ' <span class="badge b-hors">pas encore sur SkanFact</span>' : ''}</h1>
-        <div class="muted small">${esc(dossier.matricule || 'Matricule inconnu')}${dossier.contact ? ' · ' + esc(dossier.contact) : ''}</div>
+        <div class="d-ident">${ident}</div>
+        <div class="d-etat" id="d-etat">${etat}</div>
       </div><div class="actions">
+        ${row.missingCount || row.provisionalCount ? '<button class="btn btn-primary" id="rel">Relancer</button>' : ''}
         <button class="btn" id="edit">Modifier la fiche</button>
         <button class="btn" id="print">Imprimer</button>
         ${dossier.phone ? '<button class="btn" id="call">Appeler</button><button class="btn" id="wa">WhatsApp</button>' : ''}
-        ${row.missingCount || row.provisionalCount ? '<button class="btn btn-primary" id="rel">Relancer</button>' : ''}
       </div></div>
       <div class="print-only print-head">${esc(S.cabinet.name || 'Cabinet')} — fiche client imprimée le ${esc(fmtDay(Date.now()))}</div>
 
-      <div class="panel"><h2>La fiche</h2>
-        <div class="kv two">
-          <div><span>Email</span><span>${dossier.email ? esc(dossier.email) : '<span class="muted">— à renseigner</span>'}</span></div>
-          <div><span>Téléphone</span><span>${dossier.phone ? esc(dossier.phone) : '<span class="muted">— à renseigner</span>'}</span></div>
-          <div><span>Régime</span><span>${esc(labelOf(K.REGIMES, dossier.regime) || '—')}</span></div>
-          <div><span>TVA</span><span>${esc(labelOf(K.TVA_PERIODS, dossier.tvaPeriod) || '—')}</span></div>
-          <div><span>Début de mission</span><span>${dossier.from ? esc(K.monthLabel(dossier.from)) : '<span class="muted">au premier paquet reçu</span>'}</span></div>
-          <div><span>Honoraires</span><span>${dossier.fees ? esc(money(dossier.fees)) + ' / mois' : '—'}</span></div>
-        </div>
+      ${altere
+        ? `<div class="warn-box mb"><strong>Au moins un paquet de ce client contient un fichier qui ne correspond pas à l'empreinte annoncée.</strong>
+           Ce n'est pas ce qui a été envoyé : redemande-le avant de déclarer. ${onglet !== 'paquets' ? '<button class="btn btn-sm" data-vers="paquets">Voir les paquets</button>' : ''}</div>` : ''}
+      ${intrus
+        ? `<div class="warn-box mb"><strong>Au moins un paquet de ce client contient un fichier que son manifeste n'annonce pas ${info('p.intrus')}</strong>
+           Personne ne l'a vérifié et il ne compte pas dans les pièces intactes. Ouvre-le seulement si tu sais d'où il vient. ${onglet !== 'paquets' ? '<button class="btn btn-sm" data-vers="paquets">Voir les paquets</button>' : ''}</div>` : ''}
+
+      <div class="tabs" id="d-tabs" role="tablist">
+        ${ongletBtn('suivi', 'Suivi', row.missingCount)}
+        ${ongletBtn('comptabilite', 'Comptabilité', 0)}
+        ${ongletBtn('paquets', 'Paquets', packs.length)}
       </div>
 
-      ${years.length ? `<div class="panel"><h2>Chiffre d'affaires ${info('d.ca')}</h2>
-        ${years.length > 1 ? `<div class="filters"><label class="inline small">Exercice
-          <select id="ca-year">${years.map(y => `<option value="${esc(y)}" ${y === anneeVue ? 'selected' : ''}>${esc(y)}</option>`).join('')}</select></label></div>` : ''}
-        ${caChart(packs, anneeVue) || '<div class="empty">Les paquets de cette année ne portent pas de chiffres (fabriqués avant la 6.2.1).</div>'}
-      </div>` : ''}
-
+      <section data-onglet="suivi" ${onglet === 'suivi' ? '' : 'hidden'}>
       <div class="panel"><h2>Les mois de ce client ${info('p.definitif')}</h2>
         ${months.length ? years.map(y => `<div class="year-row"><div class="year-lab">${esc(y)}</div>
           <div class="mgrid">${months.filter(m => m.month.slice(0, 4) === y).map(m => `<div class="mcell ${m.state}${m.pack && m.pack.path ? ' clickable' : ''}" ${m.pack && m.pack.path ? `data-m="${esc(m.month)}"` : ''}>
@@ -1294,12 +1341,21 @@
         ne déclare pas dessus. Le mois en cours n'est jamais réclamé.</p>` : ''}
       </div>
 
-      ${packs.some(p => p.integrity && (p.integrity.bad || []).length)
-        ? `<div class="warn-box mb"><strong>Au moins un paquet de ce client contient un fichier qui ne correspond pas à l'empreinte annoncée.</strong>
-           Ce n'est pas ce qui a été envoyé : redemande-le avant de déclarer.</div>` : ''}
-      ${packs.some(p => p.integrity && (p.integrity.intrus || []).length)
-        ? `<div class="warn-box mb"><strong>Au moins un paquet de ce client contient un fichier que son manifeste n'annonce pas ${info('p.intrus')}</strong>
-           Personne ne l'a vérifié et il ne compte pas dans les pièces intactes. Ouvre-le seulement si tu sais d'où il vient.</div>` : ''}
+      <div class="panel"><h2>Relances ${info('r.history')}</h2>
+      ${relances.length ? `<table class="list compact"><thead><tr><th class="nw">Date</th><th class="nw">Moyen</th><th>Mois réclamés</th><th>Note</th></tr></thead>
+        <tbody>${relances.map(r => `<tr>
+          <td class="nw">${esc(fmtWhen(r.at))} <span class="muted small">${esc(ago(r.at))}</span></td>
+          <td class="nw">${esc(labelOf(K.RELANCE_WAYS, r.via) || r.via)}</td>
+          <td>${esc((r.months || []).map(K.monthLabel).join(', ') || '—')}</td>
+          <td class="muted">${esc(r.note || '')}</td></tr>`).join('')}</tbody></table>`
+        : '<div class="empty">Aucune relance enregistrée.</div>'}
+        <div class="modal-actions"><button class="btn btn-ghost btn-sm" id="note-rel">Noter une relance faite ailleurs…</button></div>
+      </div>
+
+      ${(dossier.note || '').trim() ? `<div class="panel"><h2>Note interne</h2><div class="notes-md">${esc(dossier.note)}</div></div>` : ''}
+      </section>
+
+      <section data-onglet="comptabilite" ${onglet === 'comptabilite' ? '' : 'hidden'}>
       ${packs.length ? `<div class="panel" id="c-compta"><h2>Comptabilité ${info('lv.compta')}</h2>
         <div class="filters">
           <select id="lv-mode">
@@ -1313,6 +1369,18 @@
           <input type="month" id="lv-au" ${livresState.mode === 'intervalle' ? '' : 'hidden'} value="${esc(livresState.au)}">
         </div>
         <div id="c-livres"><div class="empty">Lecture des paquets…</div></div>
+      </div>` : `<div class="panel"><h2>Comptabilité ${info('lv.compta')}</h2>
+        <div class="empty">${dossier.manual
+          ? 'Ce client n\'est pas encore sur SkanFact : sa comptabilité apparaîtra ici dès son premier paquet.'
+          : 'Aucun paquet reçu pour l\'instant : le livre-journal, le grand livre, la balance et le lettrage de ce client apparaîtront ici dès son premier envoi.'}</div>
+      </div>`}
+      </section>
+
+      <section data-onglet="paquets" ${onglet === 'paquets' ? '' : 'hidden'}>
+      ${years.length ? `<div class="panel"><h2>Chiffre d'affaires ${info('d.ca')}</h2>
+        ${years.length > 1 ? `<div class="filters"><label class="inline small">Exercice
+          <select id="ca-year">${years.map(y => `<option value="${esc(y)}" ${y === anneeVue ? 'selected' : ''}>${esc(y)}</option>`).join('')}</select></label></div>` : ''}
+        ${caChart(packs, anneeVue) || '<div class="empty">Les paquets de cette année ne portent pas de chiffres (fabriqués avant la 6.2.1).</div>'}
       </div>` : ''}
 
       <div class="panel"><h2>Paquets reçus ${info('p.integrity')}</h2>
@@ -1340,21 +1408,13 @@
         <p class="muted small mt">Le bouton « Actions » de chaque ligne ouvre ce qu'on peut faire du mois : l'ouvrir, l'extraire dans un dossier de ton choix ${info('p.extract')} — pour travailler dans ton logiciel, ou pour rendre ses pièces à un client —, accuser réception, ou supprimer un paquet arrivé par erreur ${info('p.delete')}.</p>`
         : '<div class="empty">Aucun paquet reçu.</div>'}
       </div>
-
-      <div class="panel"><h2>Relances ${info('r.history')}</h2>
-      ${relances.length ? `<table class="list compact"><thead><tr><th class="nw">Date</th><th class="nw">Moyen</th><th>Mois réclamés</th><th>Note</th></tr></thead>
-        <tbody>${relances.map(r => `<tr>
-          <td class="nw">${esc(fmtWhen(r.at))} <span class="muted small">${esc(ago(r.at))}</span></td>
-          <td class="nw">${esc(labelOf(K.RELANCE_WAYS, r.via) || r.via)}</td>
-          <td>${esc((r.months || []).map(K.monthLabel).join(', ') || '—')}</td>
-          <td class="muted">${esc(r.note || '')}</td></tr>`).join('')}</tbody></table>`
-        : '<div class="empty">Aucune relance enregistrée.</div>'}
-        <div class="modal-actions"><button class="btn btn-ghost btn-sm" id="note-rel">Noter une relance faite ailleurs…</button></div>
-      </div>
-
-      ${(dossier.note || '').trim() ? `<div class="panel"><h2>Note interne</h2><div class="notes-md">${esc(dossier.note)}</div></div>` : ''}`;
+      </section>`;
 
     $('#back').onclick = () => { location.hash = '#/dossiers'; };
+    // Changer d'onglet, c'est changer d'adresse : « précédent » revient dessus, et une autre page
+    // peut y emmener directement.
+    $$('#d-tabs button', view).forEach(b => b.onclick = () => versOnglet(b.dataset.tab));
+    $$('[data-vers]', view).forEach(b => b.onclick = () => versOnglet(b.dataset.vers));
     $('#edit').onclick = () => dossierForm(dossier);
     $('#print').onclick = () => window.print();
     const cy = $('#ca-year');

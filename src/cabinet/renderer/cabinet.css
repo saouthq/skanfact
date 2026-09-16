@@ -156,8 +156,16 @@
 /* Imprimer la fiche d'un client pour le dossier papier : la barre latérale, les boutons et les
    bulles n'ont rien à y faire. */
 .print-only { display: none; }
+/* La fiche d'un dossier (9.2.2) : l'identité et l'état du dossier vivent dans l'en-tête, sous le
+   nom — pas dans un panneau à quatre tirets. */
+.d-ident { font-size: 13px; color: var(--muted); margin-top: 3px; line-height: 1.6; }
+.d-etat { font-size: 13.5px; margin-top: 6px; line-height: 1.6; }
+
 @media print {
   .sidebar, .page-head .actions, .btn-back, button.i, .filters, .row-actions, #toast, #drop-veil { display: none !important; }
+  /* La fiche imprimée reste la fiche ENTIÈRE : les onglets ne sont qu'un rangement d'écran. */
+  #d-tabs { display: none !important; }
+  section[data-onglet][hidden] { display: block !important; }
   .print-only { display: block; margin-bottom: 14px; font-size: 11px; color: #666; }
   body, #app, main#view { display: block; background: #fff; padding: 0; margin: 0; }
   .panel { break-inside: avoid; box-shadow: none; border: 1px solid #ddd; margin-bottom: 12px; }

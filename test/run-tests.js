@@ -12051,6 +12051,48 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.ok(!/concat\(K\.demoDossiers\(\)\.map\(K\.migrateDossier\)\)/.test(main), 'l\'exemple pose encore des dossiers sans fichier');
   });
 
+  // 9.2.2 — la fiche d'un dossier du Cabinet : un en-tête, des alertes, trois onglets. Skander :
+  // « le dossier est mal fait et pas pratique, tout est mis dans la même page ».
+  t('9.2.2 : la fiche d\'un dossier est en trois onglets, l\'onglet vit dans l\'adresse, les alertes restent au-dessus, et l\'impression imprime tout', () => {
+    const app = lireSource('src', 'cabinet', 'renderer', 'app.js');
+    const css = lireSource('src', 'cabinet', 'renderer', 'cabinet.css');
+    const fiche = app.slice(app.indexOf('function drawDossier(view, id, ongletDemande)'), app.indexOf('const labelOf = (list, id) =>'));
+    assert.ok(fiche.length > 5000 && fiche.length < 30000, 'tranche drawDossier suspecte : ' + fiche.length);
+    // Trois onglets, pas quatre : la fiche d'identité (151 px) aurait fait un onglet d'un demi-écran,
+    // ce que la 7.30.0 a retiré des Paramètres. Elle vit dans l'en-tête.
+    assert.ok(/const ONGLETS_DOSSIER = \['suivi', 'comptabilite', 'paquets'\];/.test(app), 'les trois onglets de la fiche ont changé');
+    ['suivi', 'comptabilite', 'paquets'].forEach(o => assert.ok(fiche.includes(`<section data-onglet="${o}" \${onglet === '${o}' ? '' : 'hidden'}>`), `l'onglet ${o} n'a plus sa section`));
+    assert.ok(!fiche.includes('<h2>La fiche</h2>'), 'le panneau « La fiche » à quatre tirets est revenu');
+    assert.ok(fiche.includes('<div class="d-ident">${ident}</div>') && fiche.includes('<div class="d-etat" id="d-etat">${etat}</div>'), 'l\'identité et l\'état ne sont plus dans l\'en-tête');
+    // L'onglet vit dans l'ADRESSE : « précédent » revient dessus, et une autre page peut y emmener.
+    assert.ok(/drawDossier\(view, arg, hash\.split\('\/'\)\[2\]\)/.test(app), 'le routeur ne transmet plus l\'onglet de l\'adresse');
+    assert.ok(fiche.includes("const versOnglet = o => { location.hash = '#/dossier/' + encodeURIComponent(dossier.id) + '/' + o; };"), 'changer d\'onglet ne change plus l\'adresse');
+    assert.ok(/\$\$\('#d-tabs button', view\)\.forEach\(b => b\.onclick = \(\) => versOnglet\(b\.dataset\.tab\)\);/.test(fiche), 'les onglets ne sont plus branchés');
+    // Sans onglet dans l'adresse : celui où l'on était sur CE dossier, sinon Suivi — jamais celui
+    // d'un autre client (le garde-fou de `ficheYear`).
+    assert.ok(fiche.includes("(ficheDossierId === dossier.id ? ficheOnglet : 'suivi')"), 'l\'onglet d\'un client suit sur un autre client');
+    // Les alertes restent AU-DESSUS des onglets (7.32.0 : un rangement ne range pas ce qu'il ne faut
+    // pas ranger), et elles mènent aux paquets.
+    const tabsAt = fiche.indexOf('<div class="tabs" id="d-tabs"');
+    const altereAt = fiche.indexOf('ne correspond pas à l\'empreinte annoncée');
+    assert.ok(altereAt > 0 && tabsAt > altereAt, 'l\'alerte d\'intégrité est passée sous les onglets');
+    assert.ok(/data-vers="paquets"/.test(fiche) && /\$\$\('\[data-vers\]', view\)\.forEach\(b => b\.onclick = \(\) => versOnglet\(b\.dataset\.vers\)\);/.test(fiche), 'l\'alerte ne mène plus aux paquets');
+    // Ce qui vit dans chaque onglet : le quotidien dans Suivi, la page entière de la compta dans le
+    // sien, et le graphique de CA avec les paquets dont il tire ses chiffres.
+    const suivi = fiche.slice(fiche.indexOf('<section data-onglet="suivi"'), fiche.indexOf('<section data-onglet="comptabilite"'));
+    const compta = fiche.slice(fiche.indexOf('<section data-onglet="comptabilite"'), fiche.indexOf('<section data-onglet="paquets"'));
+    const paquets = fiche.slice(fiche.indexOf('<section data-onglet="paquets"'), fiche.indexOf('</section>`;'));
+    assert.ok(suivi.includes('Les mois de ce client') && suivi.includes('id="note-rel"') && suivi.includes('Note interne'), 'Suivi ne porte plus les mois, les relances et la note');
+    assert.ok(compta.includes('id="c-compta"') && compta.includes('id="c-livres"'), 'la comptabilité n\'est plus dans son onglet');
+    assert.ok(compta.includes('dès son premier envoi'), 'un dossier sans paquet ne dit pas ce que l\'onglet Comptabilité montrera');
+    assert.ok(paquets.includes('Paquets reçus') && paquets.includes('caChart(packs, anneeVue)'), 'les paquets et le graphique de CA ne sont plus ensemble');
+    // Imprimer imprime la fiche ENTIÈRE : les onglets ne sont qu'un rangement d'écran.
+    const print = css.slice(css.indexOf('@media print'));
+    assert.ok(/#d-tabs \{ display: none !important; \}/.test(print) && /section\[data-onglet\]\[hidden\] \{ display: block !important; \}/.test(print), 'l\'impression n\'imprime que l\'onglet ouvert');
+    // Et les deux classes neuves de l'en-tête sont définies (une classe jamais définie ne se voit nulle part, 8.1.0).
+    assert.ok(/^\.d-ident \{/m.test(css) && /^\.d-etat \{/m.test(css), '.d-ident ou .d-etat n\'est pas défini');
+  });
+
   t('aucun fichier source ne traîne à la racine du dépôt', () => {
     // Trouvé en préparant la publication de la 9.2.0, et jamais par un test : DIX-SEPT copies de
     // `src/**` s'étaient posées à la racine — un agent de vérification avait aplati les chemins pour

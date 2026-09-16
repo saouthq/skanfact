@@ -7,6 +7,32 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 9.2.2 — 16/09/2026
+
+**La fiche d'un dossier, dans le Cabinet, tient enfin sur un écran.** Tout était sur la même
+page : l'identité, le graphique, les mois, la comptabilité entière, les paquets, les relances —
+sur un vrai dossier, le seul bloc Comptabilité faisait une page à lui seul, posé au milieu.
+
+- **Un en-tête** avec le nom, l'identité sur une ligne, et l'état du dossier en une phrase :
+  « 3 mois reçus · 2 manquants · dernier paquet le 06/09 · CA 2026 : 86 630 DT ». Le bouton
+  **Relancer** passe en premier quand il manque quelque chose.
+- **Trois onglets** : *Suivi* (les mois, les relances, la note — l'écran du quotidien),
+  *Comptabilité* (livre-journal, grand livre, balance, lettrage, reprise), *Paquets* (les paquets
+  reçus avec leurs actions, et le graphique de chiffre d'affaires qui en vient).
+- **Les alertes restent au-dessus** des onglets, quel que soit celui qu'on regarde, et mènent
+  aux paquets concernés.
+- **L'onglet est dans l'adresse** : « précédent » y revient, et une autre page peut ouvrir un
+  dossier directement sur sa comptabilité.
+- **Imprimer** imprime la fiche entière, comme avant.
+
+**Et le jeu d'exemple du Cabinet livre de vrais paquets.** Ses cinq dossiers n'avaient que des
+chiffres : aucun fichier, donc « aucun paquet ne contient d'écritures » sur la page qui doit
+montrer un exercice ouvert. Ils reçoivent maintenant de vrais `.skanpack` — journaux, écritures
+en partie double, balance, TVA — tirés du jeu de démonstration de SkanFact, recalés sur le mois
+courant, scellés pour ta clé, et importés par la même porte qu'un paquet reçu par mail. Ce que
+l'exemple montre est ce que l'application fait : livre-journal, grand livre, balance, lettrage,
+pièces vérifiées. Effacer l'exemple efface aussi ses fichiers.
+
 ## 9.2.1 — 16/09/2026
 
 **La désignation cherche dans le catalogue.** Sur un achat en destination « stock », SkanFact

@@ -243,7 +243,10 @@ async function launchCabinet() {
   // ---- Les livres du dossier (9.1.0) : le cabinet LIT une comptabilité dans le paquet reçu.
   // C'est la démonstration de la version : le comptable ouvre la fiche de son client et voit un
   // livre-journal, un grand livre, une balance et un lettrage — sans ouvrir un seul CSV.
-  await win.waitForSelector('#c-compta');
+  // Depuis la 9.2.2 la fiche est en trois onglets : la comptabilité vit dans le sien. On clique
+  // l'onglet comme un comptable — reconnu à ce qu'il porte, pas à son rang.
+  await win.click('#d-tabs button[data-tab=comptabilite]');
+  await win.waitForSelector('#c-compta', { timeout: 10000 });
   await win.waitForSelector('#c-tabs button[data-tab=journal]', { timeout: 20000 });
   const journal = await win.evaluate(() => {
     const t = document.querySelector('#c-livres table.list');
@@ -300,6 +303,9 @@ async function launchCabinet() {
   // On vise le menu de la ligne d'un PAQUET, pas « le premier menu de la page » : depuis la 9.1.0
   // le bloc Comptabilité s'insère avant, et ses lignes portent leur propre menu. Cinquième fois
   // que `nth=0` se périme sur un écran qui gagne un tableau — on ancre sur ce que la page CONTIENT.
+  // Les paquets ont leur onglet (9.2.2) : le menu ne se clique que visible.
+  await win.click('#d-tabs button[data-tab=paquets]');
+  await win.waitForTimeout(500);
   const menuPaquet = await win.evaluate(() => {
     const panneaux = [...document.querySelectorAll('.panel')];
     const p = panneaux.find(x => /Paquets reçus/.test(x.querySelector('h2') ? x.querySelector('h2').textContent : ''));
@@ -405,7 +411,9 @@ async function launchCabinet() {
   // un livre en silence.
   await win.evaluate(() => { location.hash = '#/dossiers'; });
   await win.waitForTimeout(300);
-  await win.evaluate(id => { location.hash = '#/dossier/' + id; }, dossierSigne.id);
+  // L'adresse profonde (9.2.2) : `#/dossier/<id>/comptabilite` ouvre la fiche SUR son onglet —
+  // c'est ce qui permet à une autre page d'y emmener directement.
+  await win.evaluate(id => { location.hash = '#/dossier/' + id + '/comptabilite'; }, dossierSigne.id);
   await win.waitForSelector('#c-livres #c-tabs', { timeout: 15000 });
   const avantLivre = await win.evaluate(() => ({
     relire: !!document.querySelector('#lv-relire'),

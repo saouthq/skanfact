@@ -350,7 +350,7 @@ Règles apprises :
 - Le **mois en cours n'est jamais réclamé**, et rien n'est réclamé avant le premier paquet reçu : on ne réclame pas le néant.
 - Un logiciel qui écrit « 1 dossier(s) » ou « de octobre » paraît bâclé — et c'est le premier contact d'un comptable avec SkanFact. D'où `pl()` des deux côtés, `de()` pour l'élision, et `missingLabel` qui donne l'intervalle au-delà de trois mois (un objet de mail qui énumère onze mois n'est plus lu).
 - **Un bouton sans bordure ni couleur n'est pas un bouton.** En 1.0.0 l'exemple se chargeait par un `btn-ghost` centré au milieu d'un cadre pointillé : Skander a ouvert l'application et a dit « elle est vide, il manque le jeu de données ». Une proposition faite au premier lancement doit ressembler à ce qu'elle est — deux vrais boutons côte à côte, et la même action répétée dans les Réglages, là où on va la chercher quand on ne l'a pas trouvée (corrigé en 1.2.0). Au passage : un écran sans aucune donnée ne montre ni recherche, ni filtre, ni « 0 sur 0 », et surtout pas un « tout est à jour » qui parle de dossiers qui n'existent pas.
-- Le **jeu d'exemple** (`demoDossiers`) montre les quatre situations et s'efface tout seul au premier vrai paquet : des retards imaginaires à côté des vrais seraient pires que rien. Ses paquets n'ont pas de `path`, donc l'interface ne propose pas de les ouvrir.
+- Le **jeu d'exemple** (`demoDossiers`) montre les quatre situations et s'efface tout seul au premier vrai paquet : des retards imaginaires à côté des vrais seraient pires que rien. *(Jusqu'à la 9.2.1 ses paquets n'avaient pas de `path` ; depuis la 9.2.2 ce sont de vrais `.skanpack`, voir § 9.2.2.)*
 - Depuis la 6.2.1 le manifeste porte `chiffres` (CA, TVA collectée/déductible, à décaisser, encaissé) et `compte` : le cabinet affiche le chiffre d'affaires du dossier sans ouvrir un CSV. Champ **facultatif à la lecture** — un paquet plus ancien n'en a pas, et on écrit « — », jamais zéro.
 - « 7 pièces vérifiées, intactes » est la **seule affirmation rigoureuse** de l'app cabinet : elle doit compter juste. Le manifeste ne se liste pas lui-même (il ne peut pas porter sa propre empreinte), et un fichier **absent** n'est pas un fichier vérifié. La règle vit dans `cabcore.checkIntegrity(manifest, hashes)` — pure et testée — pendant que main.js se contente de calculer les empreintes. Corrigé en 6.5.2 : le code retranchait un de trop.
 - Les quatre cas tordus à retester après toute modification de `ingest` (`test/e2e/cabinet-refus.js`) : un fichier qui n'est pas un paquet, le même mois reçu deux fois, un paquet adressé à un autre cabinet, un paquet protégé par mot de passe. Chacun doit donner une phrase en français que le comptable comprend sans appeler personne.
@@ -2973,6 +2973,53 @@ il ne réparait pas celle qu'on venait de taper.
 
 `e2e:fiches` gagne l'étape : tapé sans accent, l'article se propose et se choisit ; une désignation
 inconnue en stock porte le bouton, qui ouvre la liste, qui crée la fiche préremplie et suivie.
+
+### 9.2.2 — La fiche d'un dossier en trois onglets, et l'exemple qui livre de vrais paquets
+
+Skander, capture à l'appui : « le dossier est mal fait et pas pratique, tout est mis dans la même
+page », puis « ton jeu d'exemple ne montre pas le vrai écran avec l'exercice ouvert ». Les deux
+tenaient ensemble : l'exemple **cachait** le défaut.
+
+- **Mesurer avant, sur le bon instrument.** Sur l'exemple, la fiche faisait 1 741 px et six
+  panneaux. Sur le vrai dossier de Skander, le seul bloc Comptabilité (15 pièces, 56 lignes) était
+  une page entière posée entre les mois et les paquets. L'exemple n'avait **aucun fichier de
+  paquet** — un manque connu depuis la 8.7.0 — donc « aucun paquet ne contient d'écritures » sur
+  l'écran qui doit montrer un exercice ouvert. Un instrument qui sous-estime rend le diagnostic
+  faux : il fallait d'abord réparer l'exemple.
+- **Le Cabinet n'embarque pas `core.js`, et ne le doit pas** (l'app gratuite n'emporte pas le
+  produit payant ; un test le tient). Les journaux de l'exemple sont donc **pré-calculés** par
+  `scripts/exemple-cabinet.js` avec le moteur de l'app entreprise, pour une date de référence
+  FIXE, et rangés dans `src/cabinet/exemple-paquets.json` (8 mois, 90 Ko). Un test exige que le
+  fichier commité soit ce que le script produit : le seul aléa (les identifiants des salariés dans
+  la CNSS) est remplacé par des noms stables — un identifiant interne n'a aucun sens hors de
+  l'application qui l'a tiré.
+- **`cabcore.rebaserPaquet` recale un gabarit sur le mois courant, pur** : dates ISO et `JJ/MM`
+  glissées du même nombre de mois, jour borné au mois d'arrivée (31 août → 28 février), année des
+  numéros de pièce et mois en lettres qui suivent, montants intacts. Les CSV de l'app entreprise
+  écrivent `JJ/MM/AAAA` : une première version ne visait que l'ISO, et aurait laissé passer toutes
+  les dates des journaux. Prouvé par son défaut. Et mon assertion « 30/09 → 31/03 » était fausse :
+  le jour se GARDE, il ne recule que s'il n'existe pas.
+- **L'exemple passe par la VRAIE porte** : `chargerExemple()` fabrique de vrais `.skanpack`
+  (manifeste avec empreintes, scellés pour la clé de CE cabinet) et les donne à `ingest()`, comme
+  un paquet reçu par mail. `demoDossiers()` ne porte plus que le scénario ; les chiffres viennent
+  des écritures. Retirer l'exemple — ou recevoir un premier vrai paquet — **retire ses fichiers**.
+  La page Écritures regroupe donc l'exemple, et l'assertion « Rien à regrouper » de `e2e:cabinet`
+  est retournée (quand une règle change, c'est le test qui se relit en premier).
+- **Trois onglets, pas quatre.** L'identité (151 px) aurait fait un onglet d'un demi-écran — ce
+  que la 7.30.0 a retiré des Paramètres. Elle vit dans l'en-tête, avec l'état en une phrase
+  (`d-etat`) ; ce qui n'est pas renseigné ne prend pas de place, sauf l'email et le téléphone,
+  qui servent à relancer. *Suivi* (mois, relances, note), *Comptabilité* (une page à elle seule),
+  *Paquets* (le tableau et le graphique de CA, qui en tire ses chiffres).
+- **Les alertes restent au-dessus des onglets** (7.32.0) et portent « Voir les paquets ».
+- **L'onglet vit dans l'ADRESSE** (`#/dossier/<id>/<onglet>`) : « précédent » revient dessus,
+  une autre page peut y emmener, et `e2e:boucle` le prouve avec `/comptabilite`. Sans onglet dans
+  l'adresse : celui où l'on était sur CE dossier, sinon Suivi — jamais celui d'un autre client (le
+  garde-fou de `ficheYear`).
+- **Imprimer imprime tout** : `section[data-onglet][hidden] { display: block }` sous
+  `@media print`, plus spécifique que le `[hidden]` global.
+- Piège d'e2e, sixième fois : trois passages de `e2e:boucle` cliquaient dans ce qui devient un
+  onglet masqué (`#c-compta`, le menu d'un paquet, `#c-livres`). On clique l'onglet comme un
+  comptable, ou on passe par l'adresse profonde.
 
 ## Pistes pour la suite (non demandées)
 
