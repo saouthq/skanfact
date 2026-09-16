@@ -111,7 +111,24 @@ correctifs, les relances d'e2e et le temps de relecture de Skander).*
 | **Livrables** | ☐ Marque déposée à l'INNORPI · ☐ Certificat Apple acheté et la signature branchée dans `release.yml` (`MAC_SIGNED = true`) · ☐ Décision certificat Windows (OV maintenant / EV plus tard) et page « SmartScreen » sur le site · ☐ Déclaration INPDP déposée · ☐ CGV : premier jet Skander, relecture juriste · ☐ Lettre à l'Ordre envoyée (trois phrases) · ☐ Question orale au pilote posée, réponse notée · ☐ Séance de validation fiscale avec le comptable programmée · ☐ Bouton de téléchargement du Cabinet réparé sur le site · ☐ Page unique écrite (problème, solution, pour qui, combien, pourquoi nous) · ☐ `contact@skanfact.tn` vérifié (un mail envoyé, un mail reçu) · ☐ Export de la base de la plateforme (`GET /v1/admin/export` + « Sauvegarder la console… ») · ☐ Pli scellé constitué (Partie D) · ☐ Le fichier des trois nombres mensuels créé, avec la première ligne. |
 | **Critères d'acceptation** | Un `.dmg` téléchargé depuis la release s'ouvre sur un Mac neuf **sans clic droit → Ouvrir** ; l'accusé de dépôt INNORPI et l'accusé INPDP existent ; la lettre à l'Ordre a une date d'envoi ; le pilote a dit oui ou non à voix haute ; la page unique tient sur une page A4 ; `~/.skanfact/` contient un export daté de la console. |
 | **Risques** | Skander préfère coder — c'est ce qu'il sait faire, et le risque n° 1 de tout le plan. Parade : cette phase est **la première ligne du tableau de bord**, et J0 la mesure à un mois. Le certificat EV Windows peut coûter et compliquer (support matériel) : on signe Mac d'abord, Windows en OV, EV quand ça vend. |
-| **Jalon de sortie** | **J0** (15/10/2026). Sans J0, la 9.2.0 ne démarre pas. |
+| **Jalon de sortie** | **J0**, reporté à la phase d'essai par décision de Skander le 16/09/2026 (voir ci-dessous). Le développement n'attend plus J0. |
+
+> **Décision de Skander, 16/09/2026 : la Phase 0 est reportée à la phase d'essai du projet**, une
+> fois le développement complet terminé. Le code n'attend donc plus rien : 9.1.0 → 10.0.0
+> s'enchaînent, et les démarches se font pendant la période d'essai, avant la première vente.
+>
+> **Ce que ce report coûte, écrit une fois pour qu'il ne se redécouvre pas plus tard.** Les six
+> démarches ne coûtent qu'une semaine de travail, mais elles portent des **attentes** de plusieurs
+> semaines qu'on ne peut pas comprimer : l'INNORPI, l'INPDP, le juriste, le certificat Windows. Les
+> lancer en phase d'essai revient donc à ajouter ces attentes **à la fin**, pas à les supprimer.
+> Une seule porte un risque qu'on ne rattrape pas : **le dépôt de la marque**. Tant qu'il n'est pas
+> fait, le nom n'appartient à personne, et un dépôt par un tiers pendant ces mois se paie en
+> changement de nom — après la construction, pas avant. Le reste (certificats, INPDP, conditions de
+> vente, lettre à l'Ordre, page unique) se rattrape sans rien perdre.
+>
+> **Ce qui reste vrai malgré le report** : `contact@skanfact.tn` doit répondre avant le 14/10/2026,
+> parce que c'est la fin du premier essai de trente jours et que l'application y envoie déjà les
+> gens. Ce n'est pas une démarche, c'est une boîte mail à vérifier.
 
 ### Phase 1 — Les livres lus, et l'outillage
 
@@ -125,7 +142,7 @@ correctifs, les relances d'e2e et le temps de relecture de Skander).*
 | **Livrables** | ☐ Outillage **construit en premier** : canal `cabinet-beta`, workflow « Construire un essai », CI Linux + Windows (`npm test` + lint à chaque push), lint, `window.onerror`/`unhandledrejection` dans les deux renderers, `main.log` borné, index thématique de `CLAUDE.md` · ☐ `src/renderer/compta.js` extrait de `core.js`, réexporté, appelants inchangés · ☐ Cabinet : bloc « Comptabilité » à quatre onglets lus dans les paquets, mois manquant annoncé, export CSV · ☐ Entreprise : module `compta` masqué par défaut, option `compta` dans la clé, porte unique `optionBlock`, essai qui l'inclut · ☐ **La clé de secours réclamée au premier import** · ☐ **Le test de charge** (50 000 écritures ; seuils : ouverture < 1 s, écriture < 100 ms, balance de 60 dossiers < 5 s, recherche < 3 s — `QUESTIONS.md` § 5) · ☐ Test de parité (même balance au millime, entreprise vs Cabinet) · ☐ 9.1.1 : exonération de timbre sur la fiche client, TFP proposée par métier, seuil de retenue réglable **par défaut 0**, contrôle d'une heure sur l'e-facture · ☐ Bêta 9.1.0 chez le pilote, puis stable. |
 | **Critères d'acceptation** | `npm test` vert **sur la CI**, Linux et Windows ; e2e `cabinet-livres` et `boucle` verts ; le pilote a ouvert les quatre onglets sur un de **ses** paquets et a dit ce qui manque (par écrit, rangé dans le dépôt) ; le test de charge a ses quatre mesures **sous** les seuils, ou la décision « index à côté des livres » est prise avant d'écrire la 9.2.0 ; `e2e:entreprise` relu avec le module masqué ; un test par règle de la 9.1.1, chacun prouvé en réintroduisant le défaut. |
 | **Risques** | L'outillage déborde (une CI Windows qui refuse de passer peut manger une semaine) : on borne à quatre jours, le reste va en 9.3.1. Le pilote ne répond pas à la bêta : on lui montre en personne, une heure, chez lui. Le test de charge échoue : c'est le résultat **utile** — on change le modèle maintenant, pas en 9.3.0. |
-| **Jalon de sortie** | Le test de charge décide du format de la 9.2.0. Et **J0** doit être atteint avant d'entrer en Phase 2. |
+| **Jalon de sortie** | Le test de charge décide du format de la 9.2.0. **J0 n'est plus une porte** (décision du 16/09/2026) : la Phase 2 enchaîne. |
 
 ### Phase 2 — Le livre du dossier
 

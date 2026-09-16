@@ -115,7 +115,7 @@ pli scellé) — elles sont l'**Étape 0** de `QUESTIONS.md` § 16 et la **Phase
 | **Dépend de** | rien — « n'attend personne », c'est la seule version dans ce cas |
 | **Bloque** | **9.2.0** — le livre a besoin de `compta.js`, et le test de charge décide de son format — donc **toute la chaîne derrière**. Ne bloque pas la 9.1.1 |
 | **Niveau de spec** | Complète : `CAHIER-DES-CHARGES.md` § 3.3, § 4.1, § 4.2, § 5.4, Partie 9, § 11.2, Partie 12 |
-| **Jalon** | le test de charge décide du format de la 9.2.0 ; **J0** doit être atteint avant d'entrer en 9.2.0 |
+| **Jalon** | le test de charge décide du format de la 9.2.0. **J0 n'est plus une porte** : reporté à la phase d'essai le 16/09/2026 (`PLAN-DEVELOPPEMENT.md`, Phase 0) |
 
 | Id | Fonctionnalité | Côté | Spec |
 |---|---|---|---|
