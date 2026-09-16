@@ -11573,7 +11573,16 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       assert.ok(corps.some(b => b > 127 || b < 9), 'le corps doit être binaire, pas base64');
       // Rien du contenu ne fuit dans l'entête : le nombre d'écritures n'est pas un secret, leur
       // contenu si.
-      assert.ok(!buf.slice(0, nl).includes(Buffer.from('706')), 'aucun compte ne doit figurer en clair');
+      //
+      // On juge les CLÉS de l'entête, pas l'absence d'une chaîne. Ma première version cherchait
+      // « 706 » dans les octets — or l'entête porte le sel, l'IV et le tag en base64, c'est-à-dire
+      // des octets AU HASARD : l'assertion pouvait tomber sur du code parfaitement juste, et elle
+      // l'a fait. Une assertion probabiliste n'a rien à faire dans une suite qui décide d'une
+      // publication. La liste exacte est plus stricte, en plus : elle attrape TOUT champ ajouté
+      // sans réfléchir, pas seulement un numéro de compte.
+      assert.deepStrictEqual(Object.keys(tete).sort(),
+        ['ecritLe', 'ecritures', 'dossier', 'exercice', 'iv', 'kdf', 'nom', 'salt', 'skanfact-livre', 'tag'].sort(),
+        'l\'entête en clair ne porte que ce qui identifie le fichier — rien du contenu');
 
       const r = st.lireLivre(d, 2026);
       assert.strictEqual(r.livre.ecritures.length, 1);
@@ -11849,9 +11858,12 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // La règle : à la racine, seuls des fichiers de CONFIGURATION et des scripts d'installation.
     // Tout ce qui s'exécute dans l'application vit dans `src/`, `test/`, `scripts/`, `worker/` ou
     // `plateforme/`.
-    const RACINE_PERMISE = new Set(['eslint.config.js']);
+    // Le `.json` en fait partie, et ce n'est pas théorique : la même passe avait aussi déposé une
+    // copie de `build/licences-publiques.json` à la racine. Un second fichier de clés dans le
+    // dépôt, à côté du vrai, est précisément ce qu'on ne veut jamais voir traîner.
+    const RACINE_PERMISE = new Set(['eslint.config.js', 'package.json', 'package-lock.json']);
     const aLaRacine = fs.readdirSync(path.join(__dirname, '..'))
-      .filter(f => /\.(js|mjs|html|css)$/.test(f))
+      .filter(f => /\.(js|mjs|json|html|css)$/.test(f))
       .filter(f => !RACINE_PERMISE.has(f));
     assert.deepStrictEqual(aLaRacine, [],
       'des fichiers de code traînent à la racine : ' + aLaRacine.join(', ')
