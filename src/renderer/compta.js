@@ -488,12 +488,425 @@
     };
   }
 
+  // ================================================================ LE LIVRE (9.2.0)
+  //
+  // `livre.json` : un fichier par dossier ET par exercice, côté cabinet. Tout ce qui suit est PUR —
+  // la forme du livre, ses invariants et les six gestes qui l'écrivent se testent sans Electron,
+  // sans disque et sans clé. `cabstore` ne fait que poser le résultat sur le disque, chiffré.
+  //
+  // Les trois règles qui décident de tout le reste, et qui ne bougent plus :
+  //
+  //   1. **Une écriture VALIDÉE ne se modifie jamais.** Ni ses lignes, ni sa date, ni son journal.
+  //      On la contre-passe : une écriture miroir, datée du jour où l'on corrige. C'est ce qui fait
+  //      qu'un livre se relit deux ans plus tard et dit la vérité de ce qui a été fait — une
+  //      comptabilité qu'on peut réécrire n'est pas une comptabilité.
+  //   2. **Le numéro s'attribue à la VALIDATION, jamais au brouillard**, et par ordre de
+  //      validation, pas par date. C'est la différence avec la numérotation déduite de la 8.9.0 :
+  //      là-bas un numéro bougeait quand on insérait une pièce en arrière (et la page le disait) ;
+  //      ici il est écrit, et il ne bouge plus jamais.
+  //   3. **Le paquet du client ne gagne jamais contre le cabinet.** Un mois renvoyé remplace les
+  //      brouillards et ne touche AUCUNE validée : on calcule l'écart, on l'affiche, et c'est le
+  //      comptable qui tranche. L'inverse — écraser son travail parce que le client a rouvert son
+  //      mois — serait la pire chose que ce logiciel puisse faire.
+
+  const LIVRE_FORMAT = 1;
+  const STATUTS_ECRITURE = ['brouillard', 'validee', 'contrepassee'];
+  const NATURES_COMPTE = ['bilan', 'gestion', 'tiers', 'tresorerie'];
+  const SOURCES_ECRITURE = ['skanfact', 'saisie', 'banque', 'inventaire', 'an', 'import', 'od'];
+
+  // Les journaux d'un dossier neuf. Le comptable les modifie ; ce ne sont que des propositions.
+  const JOURNAUX_PAR_DEFAUT = [
+    { code: 'VT', libelle: 'Ventes', type: 'ventes' },
+    { code: 'AC', libelle: 'Achats', type: 'achats' },
+    { code: 'BQ', libelle: 'Banque', type: 'tresorerie', compte: '532' },
+    { code: 'CA', libelle: 'Caisse', type: 'tresorerie', compte: '54' },
+    { code: 'PAIE', libelle: 'Paie', type: 'paie' },
+    { code: 'OD', libelle: 'Opérations diverses', type: 'od' },
+    { code: 'AN', libelle: 'À-nouveaux', type: 'an' }
+  ];
+
+  // La nature d'un compte DÉDUITE de son numéro, quand le CSV importé ne la donne pas. Aucun de ces
+  // rangements n'est une vérité — chaque cabinet a les siens — mais deviner vaut mieux que laisser
+  // vide : une nature vide casserait la balance par classe, et personne ne saurait pourquoi.
+  function natureDeCompte(compte) {
+    const n = String(compte || '').trim();
+    if (!/^\d/.test(n)) return '';
+    if (/^(411|401|40|41|42|43|44|45|46)/.test(n)) return 'tiers';
+    if (/^(53|54|58|50)/.test(n)) return 'tresorerie';
+    if (/^[67]/.test(n)) return 'gestion';
+    if (/^[1-5]/.test(n)) return 'bilan';
+    return '';
+  }
+
+  // Un identifiant d'écriture. Pas de `Date.now()` ni de `Math.random()` imposés : l'appelant donne
+  // la graine, parce que ce module doit rester reproductible (règle des workflows, et surtout :
+  // un test qui dépend de l'horloge ne prouve rien).
+  let compteurId = 0;
+  function idEcriture(graine) {
+    compteurId = (compteurId + 1) % 1000000;
+    return 'e_' + String(graine || 0).toString(36) + '_' + compteurId.toString(36);
+  }
+
+  function livreVide(dossierId, annee, opts) {
+    const o = opts || {};
+    const a = Number(annee) || 0;
+    return {
+      format: LIVRE_FORMAT,
+      dossier: String(dossierId || ''),
+      exercice: {
+        annee: a,
+        du: o.du || `${a}-01-01`,
+        au: o.au || `${a}-12-31`,
+        clos: false, closLe: null, closPar: null, reouvertures: []
+      },
+      plan: Array.isArray(o.plan) ? o.plan.slice() : [],
+      journaux: Array.isArray(o.journaux) ? o.journaux.slice() : JOURNAUX_PAR_DEFAUT.map(j => ({ ...j })),
+      ecritures: [],
+      lettrages: [],
+      // Trois listes VIDES dont la forme est figée dès maintenant (SPEC-DATA-005). Elles ne se
+      // remplissent qu'en 9.5.0, 9.6.0 et 9.7.0 — mais un relevé « par ligne » ne se transforme pas
+      // en relevé « par compte » une fois écrit chez soixante clients.
+      releves: [], immobilisations: [], declarations: [],
+      ouverture: { date: null, source: null, lignes: [] },
+      audit: []
+    };
+  }
+
+  // Ce qu'on relit du disque avant d'y toucher. Un `false` ici veut dire « ce fichier n'est pas un
+  // livre » : on le met de côté sans jamais l'écraser (même règle que `skanfact-data.json`).
+  //
+  // Une version SUPÉRIEURE est refusée à part (`versionInconnue`) : ouvrir un livre écrit par une
+  // version plus récente et le réécrire avec nos règles à nous perdrait ce qu'elle y avait mis.
+  function isValidLivre(obj) {
+    if (!obj || typeof obj !== 'object') return false;
+    if (obj.format !== LIVRE_FORMAT) return false;
+    if (typeof obj.dossier !== 'string') return false;
+    if (!obj.exercice || typeof obj.exercice !== 'object') return false;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(obj.exercice.du))) return false;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(obj.exercice.au))) return false;
+    if (String(obj.exercice.du) > String(obj.exercice.au)) return false;
+    const listes = ['plan', 'journaux', 'ecritures', 'lettrages', 'releves', 'immobilisations', 'declarations', 'audit'];
+    if (listes.some(k => !Array.isArray(obj[k]))) return false;
+    return obj.ecritures.every(e => e && typeof e === 'object'
+      && STATUTS_ECRITURE.includes(e.statut) && Array.isArray(e.lignes));
+  }
+  const livreVersionInconnue = obj => !!(obj && typeof obj === 'object'
+    && typeof obj.format === 'number' && obj.format > LIVRE_FORMAT);
+
+  const trace = (livre, qui, quoi, detail, quand) =>
+    livre.audit.push({ quand: Number(quand) || 0, qui: String(qui || ''), quoi, detail: detail || '' });
+
+  // Le plan reçoit un compte qu'il n'a pas. JAMAIS un refus silencieux : une ligne qui référence un
+  // compte absent doit entrer, avec son compte marqué `import`, sinon l'écriture disparaîtrait et
+  // la balance serait fausse sans que rien ne le dise (invariant 2 de SPEC-DATA-005).
+  function assurerCompte(livre, compte, libelle) {
+    const n = String(compte || '').trim();
+    if (!n) return null;
+    let c = livre.plan.find(x => x.compte === n);
+    if (c) return c;
+    c = { compte: n, libelle: libelle || 'Compte hors plan', nature: natureDeCompte(n), source: 'import' };
+    livre.plan.push(c);
+    return c;
+  }
+
+  // Ajouter une écriture : TOUJOURS en brouillard, TOUJOURS sans numéro. Il n'existe aucun chemin
+  // qui écrive directement une validée — c'est ce qui garantit que tout ce qui porte un numéro est
+  // passé par `validerEcriture`, donc par `ecritureValide`.
+  function ajouterEcriture(livre, ecriture, qui, quand) {
+    const e = {
+      id: (ecriture && ecriture.id) || idEcriture(quand),
+      numero: null,
+      date: String((ecriture && ecriture.date) || ''),
+      journal: String((ecriture && ecriture.journal) || ''),
+      piece: String((ecriture && ecriture.piece) || ''),
+      libelle: String((ecriture && ecriture.libelle) || ''),
+      source: SOURCES_ECRITURE.includes(ecriture && ecriture.source) ? ecriture.source : 'saisie',
+      mois: (ecriture && ecriture.mois) || String((ecriture && ecriture.date) || '').slice(0, 7),
+      docId: (ecriture && ecriture.docId) || null,
+      pieceJointe: (ecriture && ecriture.pieceJointe) || null,
+      statut: 'brouillard',
+      auteur: String(qui || ''),
+      creeLe: Number(quand) || 0,
+      valideeLe: null,
+      contrepasseDe: (ecriture && ecriture.contrepasseDe) || null,
+      extourneDe: (ecriture && ecriture.extourneDe) || null,
+      lignes: (Array.isArray(ecriture && ecriture.lignes) ? ecriture.lignes : []).map(l => ({
+        compte: String((l && l.compte) || '').trim(),
+        tiersId: (l && l.tiersId) || null,
+        libelle: String((l && l.libelle) || ''),
+        debit: round3(Math.max(0, Number(l && l.debit) || 0)),
+        credit: round3(Math.max(0, Number(l && l.credit) || 0)),
+        lettre: String((l && l.lettre) || '')
+      }))
+    };
+    e.lignes.forEach(l => assurerCompte(livre, l.compte, l.libelle));
+    livre.ecritures.push(e);
+    return e;
+  }
+
+  // Valider : le seul endroit où un numéro naît. Le contrôle passe AVANT l'attribution — sinon un
+  // refus trouerait la numérotation, exactement le défaut que la 6.0.0 a trouvé sur `nextNumber`.
+  function validerEcriture(livre, id, qui, quand) {
+    const e = livre.ecritures.find(x => x.id === id);
+    if (!e) return { ok: false, motif: 'Cette écriture n\'existe pas.' };
+    if (e.statut !== 'brouillard') return { ok: false, motif: 'Cette écriture est déjà validée : elle se contre-passe, elle ne se revalide pas.' };
+    const v = ecritureValide(e, livre.plan.map(c => c.compte));
+    if (!v.ok) return { ok: false, motif: v.motif, motifs: v.motifs };
+    e.numero = livre.ecritures.reduce((m, x) => Math.max(m, Number(x.numero) || 0), 0) + 1;
+    e.statut = 'validee';
+    e.valideeLe = Number(quand) || 0;
+    trace(livre, qui, 'validation', `${e.journal} ${e.piece} n° ${e.numero}`, quand);
+    return { ok: true, ecriture: e };
+  }
+
+  // Contre-passer : le MIROIR, jamais une modification ni une suppression. La date est celle du jour
+  // où l'on corrige, pas celle de l'écriture d'origine — corriger en mars une écriture de janvier
+  // dans un janvier déjà déclaré changerait la TVA de janvier en silence (règle 6.0.0).
+  function contrepasser(livre, id, qui, dateIso, quand) {
+    const e = livre.ecritures.find(x => x.id === id);
+    if (!e) return { ok: false, motif: 'Cette écriture n\'existe pas.' };
+    if (e.statut !== 'validee') return { ok: false, motif: 'Une écriture en brouillard se modifie : elle n\'a pas besoin d\'être contre-passée.' };
+    if (livre.ecritures.some(x => x.contrepasseDe === id)) return { ok: false, motif: 'Cette écriture a déjà été contre-passée.' };
+    const miroir = ajouterEcriture(livre, {
+      date: dateIso, journal: e.journal, piece: e.piece,
+      libelle: 'Contre-passation — ' + e.libelle,
+      source: e.source, mois: String(dateIso).slice(0, 7), contrepasseDe: id,
+      lignes: e.lignes.map(l => ({ compte: l.compte, tiersId: l.tiersId, libelle: l.libelle, debit: l.credit, credit: l.debit }))
+    }, qui, quand);
+    const r = validerEcriture(livre, miroir.id, qui, quand);
+    if (!r.ok) { livre.ecritures = livre.ecritures.filter(x => x.id !== miroir.id); return r; }
+    e.statut = 'contrepassee';
+    trace(livre, qui, 'contre-passation', `${e.journal} ${e.piece} n° ${e.numero} → n° ${miroir.numero}`, quand);
+    return { ok: true, ecriture: miroir };
+  }
+
+  // La clé d'une écriture venue d'un paquet : c'est elle qui dit « c'est la même pièce, renvoyée ».
+  // Le `docId` d'abord quand il existe (il ne change jamais), la pièce ensuite.
+  const cleDuPaquet = e => e.docId ? 'D:' + e.docId : 'P:' + (e.journal || '') + '|' + (e.piece || '');
+  // La somme d'une écriture, pour dire en UN chiffre que deux versions diffèrent.
+  const totalEcriture = e => round3((e.lignes || []).reduce((s, l) => s + (Number(l.debit) || 0), 0));
+
+  // Importer un mois reçu. Les trois cas, et leur raison :
+  //   — le mois n'était pas là → on ajoute (brouillard, ou validé si le mois est définitif) ;
+  //   — il était là en brouillard → on REMPLACE : le client a rouvert son mois, sa version fait foi
+  //     tant que le comptable n'a rien validé ;
+  //   — il était là VALIDÉ → on ne touche à rien et on calcule l'écart. C'est la règle 3.
+  function importerPaquet(livre, mois, ecritures, definitif, qui, quand) {
+    const m = String(mois || '');
+    const avant = livre.ecritures.filter(e => e.source === 'skanfact' && e.mois === m);
+    const parCle = {};
+    avant.forEach(e => { parCle[cleDuPaquet(e)] = e; });
+    const res = { ajoutees: 0, remplacees: 0, ecarts: [], validees: 0 };
+
+    // Les brouillards du mois s'en vont : ils seront réécrits depuis ce que le paquet dit.
+    const aJeter = avant.filter(e => e.statut === 'brouillard').map(e => e.id);
+    livre.ecritures = livre.ecritures.filter(e => !aJeter.includes(e.id));
+
+    (Array.isArray(ecritures) ? ecritures : []).forEach(src => {
+      const e = { ...src, source: 'skanfact', mois: m };
+      const ancienne = parCle[cleDuPaquet(e)];
+      if (ancienne && ancienne.statut !== 'brouillard') {
+        // Une validée ne bouge pas. On DIT l'écart, et c'est tout : l'appliquer serait écraser le
+        // travail du comptable au nom de ce que le client a refait de son côté.
+        const apres = totalEcriture(e);
+        if (round3(apres - totalEcriture(ancienne)) !== 0) {
+          res.ecarts.push({ id: ancienne.id, piece: ancienne.piece, avant: totalEcriture(ancienne), apres });
+        }
+        return;
+      }
+      const nouvelle = ajouterEcriture(livre, e, qui || 'import', quand);
+      if (ancienne) res.remplacees++; else res.ajoutees++;
+      // Un mois DÉFINITIF (clôturé chez le client) entre validé : il ne bougera plus chez lui non
+      // plus. Un mois provisoire reste en brouillard — le valider reviendrait à s'engager sur des
+      // chiffres que le client peut encore changer.
+      if (definitif && validerEcriture(livre, nouvelle.id, qui || 'import', quand).ok) res.validees++;
+    });
+    trace(livre, qui || 'import', 'import-paquet',
+      `${m}${definitif ? ' (définitif)' : ''} — ${res.ajoutees} ajoutée(s), ${res.remplacees} remplacée(s), ${res.ecarts.length} écart(s)`, quand);
+    return res;
+  }
+
+  // Lettrer : relier des écritures d'un même compte dont la somme débit − crédit fait zéro. C'est le
+  // geste qui dit « cette facture est payée par ce règlement », et la somme nulle EST la preuve.
+  const LETTRES = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  function prochaineLettre(livre) {
+    const prises = new Set((livre.lettrages || []).map(l => l.lettre));
+    for (let n = 1; n < 5; n++) {
+      const gen = (i) => {
+        let s = '', k = i;
+        for (let j = 0; j < n; j++) { s = LETTRES[k % 26] + s; k = Math.floor(k / 26); }
+        return s;
+      };
+      for (let i = 0; i < Math.pow(26, n); i++) { const s = gen(i); if (!prises.has(s)) return s; }
+    }
+    return 'ZZZZ';
+  }
+  function lettrer(livre, compte, ids, lettre, qui, dateIso) {
+    const n = String(compte || '').trim();
+    const ecr = (ids || []).map(id => livre.ecritures.find(e => e.id === id)).filter(Boolean);
+    if (ecr.length !== (ids || []).length) return { ok: false, motif: 'Une des écritures à lettrer n\'existe pas.' };
+    if (ecr.length < 2) return { ok: false, motif: 'Le lettrage relie au moins deux écritures : une facture et son règlement.' };
+    const lignes = [];
+    ecr.forEach(e => e.lignes.forEach((l, i) => { if (l.compte === n) lignes.push({ e, i, l }); }));
+    if (!lignes.length) return { ok: false, motif: `Aucune de ces écritures ne touche le compte ${n}.` };
+    const solde = round3(lignes.reduce((s, x) => s + x.l.debit - x.l.credit, 0));
+    // La somme nulle n'est pas une formalité : un lettrage qui ne solde pas affirme qu'une facture
+    // est payée alors qu'il reste quelque chose. C'est un mensonge que le grand livre propagerait.
+    if (solde !== 0) return { ok: false, motif: `Ces écritures ne se soldent pas : il reste ${solde.toFixed(3)}.`, ecart: solde };
+    const L = String(lettre || '').trim().toUpperCase() || prochaineLettre(livre);
+    lignes.forEach(x => { x.l.lettre = L; });
+    livre.lettrages.push({ lettre: L, compte: n, ecritures: ecr.map(e => e.id), le: String(dateIso || ''), par: String(qui || '') });
+    return { ok: true, lettre: L };
+  }
+  function delettrer(livre, lettre, qui, quand) {
+    const L = String(lettre || '').trim().toUpperCase();
+    const avant = livre.lettrages.length;
+    livre.lettrages = livre.lettrages.filter(x => x.lettre !== L);
+    if (livre.lettrages.length === avant) return { ok: false, motif: 'Ce lettrage n\'existe pas.' };
+    livre.ecritures.forEach(e => e.lignes.forEach(l => { if (l.lettre === L) l.lettre = ''; }));
+    trace(livre, qui, 'délettrage', L, quand);
+    return { ok: true };
+  }
+
+  // La balance d'ouverture d'un dossier repris ailleurs : une SEULE écriture AN, pièce OUVERTURE.
+  // Refusée déséquilibrée, avec l'écart — une reprise fausse fausse tout l'exercice, et on ne la
+  // découvrirait qu'au bilan.
+  function balanceOuverture(livre, lignes, dateIso, source, qui, quand) {
+    const L = (Array.isArray(lignes) ? lignes : [])
+      .map(l => ({
+        compte: String((l && l.compte) || '').trim(),
+        libelle: String((l && l.libelle) || ''),
+        debit: round3(Math.max(0, Number(l && l.debit) || 0)),
+        credit: round3(Math.max(0, Number(l && l.credit) || 0))
+      }))
+      .filter(l => l.compte && (l.debit || l.credit));
+    if (!L.length) return { ok: false, motif: 'La balance d\'ouverture est vide.' };
+    const d = round3(L.reduce((s, l) => s + l.debit, 0));
+    const c = round3(L.reduce((s, l) => s + l.credit, 0));
+    if (round3(d - c) !== 0) return { ok: false, motif: `La balance ne s'équilibre pas : ${d.toFixed(3)} au débit contre ${c.toFixed(3)} au crédit.`, ecart: round3(d - c) };
+    // Une seule ouverture par livre : la refaire remplace la précédente, elle ne s'y ajoute pas.
+    const ancienne = livre.ecritures.filter(e => e.journal === 'AN' && e.piece === 'OUVERTURE');
+    if (ancienne.some(e => e.statut === 'validee' && livre.ecritures.length > ancienne.length)) {
+      // On ne retire une ouverture validée que si elle est seule : sinon tout ce qui suit s'appuie
+      // dessus, et la remplacer en silence changerait chaque solde du livre.
+      return { ok: false, motif: 'Ce livre porte déjà une ouverture validée et des écritures : reprendre le dossier à zéro effacerait leur point de départ.' };
+    }
+    livre.ecritures = livre.ecritures.filter(e => !(e.journal === 'AN' && e.piece === 'OUVERTURE'));
+    const e = ajouterEcriture(livre, {
+      date: dateIso, journal: 'AN', piece: 'OUVERTURE', libelle: 'Balance d\'ouverture',
+      source: 'an', mois: String(dateIso).slice(0, 7), lignes: L
+    }, qui, quand);
+    const v = validerEcriture(livre, e.id, qui, quand);
+    if (!v.ok) { livre.ecritures = livre.ecritures.filter(x => x.id !== e.id); return v; }
+    livre.ouverture = { date: String(dateIso || ''), source: source || 'balance', lignes: L.map(l => ({ compte: l.compte, debit: l.debit, credit: l.credit })) };
+    trace(livre, qui, 'reprise', `${L.length} compte(s), ${d.toFixed(3)}`, quand);
+    return { ok: true, ecriture: e, total: d };
+  }
+
+  // Les écritures du livre, aplaties en LIGNES — la matière des quatre lectures de la 9.1.0. Un
+  // brouillard n'entre pas dans une balance : ce n'est pas encore de la comptabilité.
+  function lignesDuLivre(livre, opts) {
+    const o = opts || {};
+    return (livre.ecritures || [])
+      .filter(e => o.brouillard ? true : e.statut !== 'brouillard')
+      .filter(e => !o.du || (e.date >= o.du && e.date <= (o.au || '9999-12-31')))
+      // Le contrat est celui d'`entreesDepuisCsv`, au champ près : `account` et `label`, pas
+      // `compte` et `libelle`. C'est ce qui permet aux QUATRE lectures de la 9.1.0 de servir telles
+      // quelles sur le livre — deux contrats voisins mais différents auraient obligé à réécrire la
+      // balance pour le cabinet, et c'est exactement ce que ce module existe pour éviter.
+      .flatMap(e => e.lignes.map(l => ({
+        numero: e.numero || 0, date: e.date, journal: e.journal, piece: e.piece,
+        account: l.compte, tiers: l.libelle, label: l.libelle || e.libelle,
+        debit: l.debit, credit: l.credit, lettre: l.lettre || '',
+        tiersId: l.tiersId || '', ecritureId: e.id, statut: e.statut
+      })));
+  }
+
+  // ---------------------------------------------------------------- les deux imports CSV
+  //
+  // Par NOM de colonne, jamais par position (règle 6.8.0) : un plan exporté d'un autre logiciel n'a
+  // pas les mêmes colonnes ni le même ordre, et aligner à l'aveugle met des libellés dans « Débit »
+  // sans que rien ne plante.
+  const normEntete = s => String(s || '').toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]/g, '');
+  function colonnesPar(tete, alias) {
+    const out = {};
+    tete.forEach((t, i) => {
+      const n = normEntete(t);
+      Object.keys(alias).forEach(k => { if (out[k] === undefined && alias[k].includes(n)) out[k] = i; });
+    });
+    return out;
+  }
+
+  function planDepuisCsv(rows) {
+    const r = Array.isArray(rows) ? rows : [];
+    if (!r.length) return { comptes: [], ignorees: [], motif: 'Le fichier est vide.' };
+    const col = colonnesPar(r[0], {
+      compte: ['compte', 'numero', 'numerodecompte', 'ncompte', 'code'],
+      libelle: ['libelle', 'intitule', 'nom', 'designation'],
+      nature: ['nature', 'type', 'classe'],
+      parent: ['parent', 'rattachea', 'collectif']
+    });
+    if (col.compte === undefined || col.libelle === undefined) {
+      return { comptes: [], ignorees: [], motif: 'Il faut au moins une colonne « Compte » et une colonne « Libellé ».' };
+    }
+    const comptes = [], ignorees = [], vus = new Set();
+    r.slice(1).forEach((ligne, i) => {
+      const n = String(ligne[col.compte] || '').trim();
+      const lib = String(ligne[col.libelle] || '').trim();
+      if (!n && !lib) return;                                  // ligne vide : on n'en parle pas
+      if (!/^\d{1,12}$/.test(n)) { ignorees.push({ ligne: i + 2, motif: `« ${n || '(vide)'} » n'est pas un numéro de compte`, valeur: n }); return; }
+      if (!lib) { ignorees.push({ ligne: i + 2, motif: `le compte ${n} n'a pas de libellé`, valeur: n }); return; }
+      if (vus.has(n)) { ignorees.push({ ligne: i + 2, motif: `le compte ${n} figure deux fois`, valeur: n }); return; }
+      vus.add(n);
+      const nat = col.nature !== undefined ? normEntete(ligne[col.nature]) : '';
+      comptes.push({
+        compte: n, libelle: lib,
+        nature: NATURES_COMPTE.includes(nat) ? nat : natureDeCompte(n),
+        parent: col.parent !== undefined ? String(ligne[col.parent] || '').trim() || undefined : undefined,
+        source: 'import'
+      });
+    });
+    return { comptes, ignorees, motif: '' };
+  }
+
+  function balanceDepuisCsv(rows) {
+    const r = Array.isArray(rows) ? rows : [];
+    if (!r.length) return { lignes: [], ignorees: [], motif: 'Le fichier est vide.' };
+    const col = colonnesPar(r[0], {
+      compte: ['compte', 'numero', 'numerodecompte', 'ncompte', 'code'],
+      libelle: ['libelle', 'intitule', 'nom', 'designation'],
+      debit: ['debit', 'soldedebit', 'debiteur', 'soldedebiteur'],
+      credit: ['credit', 'soldecredit', 'crediteur', 'soldecrediteur']
+    });
+    if (col.compte === undefined || col.debit === undefined || col.credit === undefined) {
+      return { lignes: [], ignorees: [], motif: 'Il faut les colonnes « Compte », « Débit » et « Crédit ».' };
+    }
+    const lignes = [], ignorees = [];
+    r.slice(1).forEach((ligne, i) => {
+      const n = String(ligne[col.compte] || '').trim();
+      if (!n) return;
+      if (!/^\d{1,12}$/.test(n)) { ignorees.push({ ligne: i + 2, motif: `« ${n} » n'est pas un numéro de compte`, valeur: n }); return; }
+      const d = nombreDepuisCsv(ligne[col.debit]), c = nombreDepuisCsv(ligne[col.credit]);
+      if (!d && !c) return;                                    // un compte à zéro n'ouvre rien
+      lignes.push({ compte: n, libelle: col.libelle !== undefined ? String(ligne[col.libelle] || '').trim() : '', debit: round3(d), credit: round3(c) });
+    });
+    return { lignes, ignorees, motif: '' };
+  }
+
   return {
     round3, cleDePiece, csvDangereux, nombreDepuisCsv, dateDepuisCsv,
     ecritureValide, entreesDepuisCsv,
     entriesBalance, entriesByAccount,
     balanceDepuisLignes, grandLivreDepuisLignes,
     journalDepuisLignes, centralisateurDepuisLignes,
-    lettrageDepuisLignes
+    lettrageDepuisLignes,
+    // Le livre (9.2.0)
+    LIVRE_FORMAT, STATUTS_ECRITURE, NATURES_COMPTE, SOURCES_ECRITURE, JOURNAUX_PAR_DEFAUT,
+    natureDeCompte, livreVide, isValidLivre, livreVersionInconnue, assurerCompte,
+    ajouterEcriture, validerEcriture, contrepasser, importerPaquet,
+    lettrer, delettrer, prochaineLettre, balanceOuverture, lignesDuLivre,
+    planDepuisCsv, balanceDepuisCsv
   };
 });

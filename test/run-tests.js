@@ -11270,6 +11270,274 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.ok(!/replace\(\/"\/g/.test(zone), 'il ne doit plus échapper lui-même : c\'est la version sans parade');
   });
 
+  // ---------------------------------------------------------------- 9.2.0 — le livre du dossier
+
+  const KL = require('../src/renderer/compta.js');
+  // Un livre de démonstration, fabriqué à la main : quatre pièces, de quoi éprouver les invariants.
+  const faitLivre = () => {
+    const l = KL.livreVide('MAT:1234567A', 2026);
+    const v = (date, piece, ht, docId) => KL.ajouterEcriture(l, {
+      date, journal: 'VT', piece, libelle: 'Facture ' + piece, source: 'skanfact', docId,
+      lignes: [
+        { compte: '411001', tiersId: 'c1', libelle: 'Client Test', debit: KL.round3(ht * 1.19) },
+        { compte: '706', libelle: 'Prestation', credit: ht },
+        { compte: '4367', libelle: 'TVA collectée', credit: KL.round3(ht * 0.19) }
+      ]
+    }, 'import', 1000);
+    return { l, v };
+  };
+
+  t('9.2.0 : le livre est FIGÉ — une version inconnue ne se réécrit jamais', () => {
+    const l = KL.livreVide('MAT:1', 2026);
+    assert.strictEqual(l.format, 1);
+    assert.ok(KL.isValidLivre(l));
+    // Les trois listes de 9.5.0 / 9.6.0 / 9.7.0 existent VIDES dès maintenant : leur forme ne
+    // bouge plus, parce qu'un relevé « par ligne » ne se transforme pas en relevé « par compte »
+    // une fois écrit chez soixante clients.
+    ['releves', 'immobilisations', 'declarations'].forEach(k =>
+      assert.deepStrictEqual(l[k], [], `${k} doit exister, vide`));
+    assert.deepStrictEqual(l.ouverture, { date: null, source: null, lignes: [] });
+    // Un exercice décalé est permis ; `du > au` ne l'est pas.
+    assert.ok(KL.isValidLivre(KL.livreVide('MAT:1', 2026, { du: '2026-07-01', au: '2027-06-30' })));
+    assert.ok(!KL.isValidLivre({ ...l, exercice: { ...l.exercice, du: '2026-12-31', au: '2026-01-01' } }));
+    ['plan', 'journaux', 'ecritures', 'lettrages', 'audit'].forEach(k =>
+      assert.ok(!KL.isValidLivre({ ...l, [k]: null }), `${k} manquant doit être refusé`));
+    // Une version SUPÉRIEURE se reconnaît à part : l'ouvrir et la réécrire avec nos règles à nous
+    // perdrait ce qu'une version plus récente y avait mis.
+    assert.ok(!KL.isValidLivre({ ...l, format: 2 }));
+    assert.ok(KL.livreVersionInconnue({ ...l, format: 2 }));
+    assert.ok(!KL.livreVersionInconnue({ ...l, format: 1 }));
+    assert.ok(!KL.livreVersionInconnue({ pas: 'un livre' }));
+  });
+
+  t('9.2.0 : le numéro naît à la VALIDATION, jamais au brouillard, et ne troue pas', () => {
+    const { l, v } = faitLivre();
+    const a = v('2026-03-04', 'FAC-2026-001', 1000, 'd1');
+    const b = v('2026-01-15', 'FAC-2026-002', 500, 'd2');
+    assert.strictEqual(a.numero, null, 'un brouillard n\'a pas de numéro');
+    assert.strictEqual(a.statut, 'brouillard');
+
+    // Une écriture FAUSSE est refusée AVANT que le numéro soit consommé — sinon chaque refus
+    // trouerait la numérotation (le défaut de `nextNumber` trouvé en 6.0.0).
+    const faux = KL.ajouterEcriture(l, { date: '2026-03-04', journal: 'OD', piece: 'X', lignes: [{ compte: '613', debit: 100 }, { compte: '401', credit: 90 }] }, 'moi', 1);
+    const r = KL.validerEcriture(l, faux.id, 'moi', 2);
+    assert.strictEqual(r.ok, false);
+    assert.ok(/ne tombe pas juste/.test(r.motif), r.motif);
+    assert.strictEqual(faux.numero, null, 'un refus ne doit jamais consommer un numéro');
+
+    // L'ordre est celui de la VALIDATION, pas celui des dates : b est daté avant a et validé après.
+    assert.ok(KL.validerEcriture(l, a.id, 'moi', 3).ok);
+    assert.ok(KL.validerEcriture(l, b.id, 'moi', 4).ok);
+    assert.strictEqual(a.numero, 1);
+    assert.strictEqual(b.numero, 2, 'le numéro suit la validation, pas la date');
+    // 1..n sans trou (invariant 3).
+    const nums = l.ecritures.filter(e => e.statut === 'validee').map(e => e.numero).sort((x, y) => x - y);
+    assert.deepStrictEqual(nums, [1, 2]);
+    // Revalider est refusé : c'est ce qui empêche un second numéro sur la même pièce.
+    assert.strictEqual(KL.validerEcriture(l, a.id, 'moi', 5).ok, false);
+  });
+
+  t('9.2.0 : une validée ne se modifie jamais — elle se contre-passe, à la date du jour', () => {
+    const { l, v } = faitLivre();
+    const a = v('2026-01-20', 'FAC-2026-001', 1000, 'd1');
+    KL.validerEcriture(l, a.id, 'moi', 1);
+    const cp = KL.contrepasser(l, a.id, 'moi', '2026-04-02', 2);
+    assert.ok(cp.ok);
+    assert.strictEqual(a.statut, 'contrepassee');
+    // La date est celle du jour où l'on corrige, JAMAIS celle de l'écriture d'origine : corriger en
+    // avril une écriture de janvier dans un janvier déjà déclaré changerait la TVA de janvier.
+    assert.strictEqual(cp.ecriture.date, '2026-04-02');
+    assert.strictEqual(cp.ecriture.contrepasseDe, a.id);
+    // Le miroir, colonne par colonne.
+    a.lignes.forEach((l0, i) => {
+      assert.strictEqual(cp.ecriture.lignes[i].debit, l0.credit);
+      assert.strictEqual(cp.ecriture.lignes[i].credit, l0.debit);
+    });
+    // Et l'ensemble se solde : c'est la preuve que la contre-passation annule.
+    const b = KL.balanceDepuisLignes(KL.lignesDuLivre(l));
+    assert.strictEqual(b.totaux.debit, b.totaux.credit);
+    b.rows.forEach(r => assert.strictEqual(r.solde, 0, `${r.account} ne se solde pas après contre-passation`));
+    // Deux fois, non : on aurait deux miroirs pour une écriture.
+    assert.strictEqual(KL.contrepasser(l, a.id, 'moi', '2026-04-03', 3).ok, false);
+    // Un brouillard ne se contre-passe pas : il se modifie.
+    const br = v('2026-05-01', 'FAC-2026-009', 100, 'd9');
+    assert.ok(/se modifie/.test(KL.contrepasser(l, br.id, 'moi', '2026-05-02', 4).motif));
+  });
+
+  t('9.2.0 : un mois renvoyé remplace les brouillards et ne TOUCHE JAMAIS une validée', () => {
+    const { l, v } = faitLivre();
+    // Mars arrive une première fois, provisoire : deux pièces, en brouillard.
+    const p1 = [
+      { date: '2026-03-04', journal: 'VT', piece: 'FAC-2026-010', docId: 'd10', libelle: 'A', lignes: [{ compte: '411001', debit: 1190 }, { compte: '706', credit: 1000 }, { compte: '4367', credit: 190 }] },
+      { date: '2026-03-08', journal: 'VT', piece: 'FAC-2026-011', docId: 'd11', libelle: 'B', lignes: [{ compte: '411001', debit: 595 }, { compte: '706', credit: 500 }, { compte: '4367', credit: 95 }] }
+    ];
+    let r = KL.importerPaquet(l, '2026-03', p1, false, 'import', 10);
+    assert.strictEqual(r.ajoutees, 2);
+    assert.strictEqual(r.validees, 0, 'un mois provisoire n\'entre pas validé');
+    assert.ok(l.ecritures.every(e => e.statut === 'brouillard'));
+
+    // Le comptable valide la première, et pas la seconde.
+    const d10 = l.ecritures.find(e => e.docId === 'd10');
+    assert.ok(KL.validerEcriture(l, d10.id, 'moi', 11).ok);
+
+    // Le client rouvre mars et renvoie : les DEUX pièces ont changé de montant.
+    const p2 = [
+      { date: '2026-03-04', journal: 'VT', piece: 'FAC-2026-010', docId: 'd10', libelle: 'A', lignes: [{ compte: '411001', debit: 2380 }, { compte: '706', credit: 2000 }, { compte: '4367', credit: 380 }] },
+      { date: '2026-03-08', journal: 'VT', piece: 'FAC-2026-011', docId: 'd11', libelle: 'B', lignes: [{ compte: '411001', debit: 714 }, { compte: '706', credit: 600 }, { compte: '4367', credit: 114 }] }
+    ];
+    r = KL.importerPaquet(l, '2026-03', p2, true, 'import', 12);
+    // La validée est INTACTE, et l'écart est dit.
+    assert.strictEqual(d10.lignes[0].debit, 1190, 'une validée ne bouge JAMAIS');
+    assert.strictEqual(d10.statut, 'validee');
+    assert.strictEqual(r.ecarts.length, 1);
+    assert.strictEqual(r.ecarts[0].id, d10.id);
+    assert.strictEqual(r.ecarts[0].avant, 1190);
+    assert.strictEqual(r.ecarts[0].apres, 2380);
+    // Le brouillard, lui, a bien été remplacé — et une seule fois, pas deux pièces côte à côte.
+    const d11 = l.ecritures.filter(e => e.docId === 'd11');
+    assert.strictEqual(d11.length, 1, 'un mois renvoyé ne doit pas empiler deux versions du brouillard');
+    assert.strictEqual(d11[0].lignes[0].debit, 714);
+    assert.strictEqual(r.remplacees, 1);
+    // Mois définitif : ce qui entre est validé.
+    assert.strictEqual(d11[0].statut, 'validee');
+    // L'audit garde tout (jamais purgé).
+    assert.strictEqual(l.audit.filter(a => a.quoi === 'import-paquet').length, 2);
+  });
+
+  t('9.2.0 : un lettrage qui ne solde pas est refusé, avec son écart', () => {
+    const { l, v } = faitLivre();
+    const fac = v('2026-02-01', 'FAC-2026-020', 1000, 'd20');
+    KL.validerEcriture(l, fac.id, 'moi', 1);
+    const reg = KL.ajouterEcriture(l, {
+      date: '2026-02-20', journal: 'BQ', piece: 'REG-1', libelle: 'Règlement',
+      lignes: [{ compte: '532', debit: 1190 }, { compte: '411001', credit: 1190 }]
+    }, 'moi', 2);
+    KL.validerEcriture(l, reg.id, 'moi', 3);
+
+    // Une seule écriture ne se lettre pas : le lettrage RELIE.
+    assert.ok(/au moins deux/.test(KL.lettrer(l, '411001', [fac.id], '', 'moi', '2026-03-01').motif));
+    // Un règlement partiel ne solde pas — et c'est justement ce qu'il ne faut pas laisser passer :
+    // un lettrage qui ne solde pas affirme qu'une facture est payée alors qu'il reste quelque chose.
+    const part = KL.ajouterEcriture(l, { date: '2026-02-25', journal: 'BQ', piece: 'REG-2', lignes: [{ compte: '532', debit: 500 }, { compte: '411001', credit: 500 }] }, 'moi', 4);
+    KL.validerEcriture(l, part.id, 'moi', 5);
+    const ko = KL.lettrer(l, '411001', [fac.id, reg.id, part.id], '', 'moi', '2026-03-01');
+    assert.strictEqual(ko.ok, false);
+    assert.strictEqual(ko.ecart, -500);
+    assert.ok(/il reste/.test(ko.motif), ko.motif);
+    assert.strictEqual(l.lettrages.length, 0, 'un lettrage refusé ne laisse aucune trace');
+
+    // Le bon lettrage passe, pose la lettre sur les lignes du compte, et sur celles-là seulement.
+    const ok = KL.lettrer(l, '411001', [fac.id, reg.id], '', 'moi', '2026-03-01');
+    assert.strictEqual(ok.ok, true);
+    assert.strictEqual(ok.lettre, 'A');
+    assert.strictEqual(fac.lignes.find(x => x.compte === '411001').lettre, 'A');
+    assert.strictEqual(fac.lignes.find(x => x.compte === '706').lettre, '', 'la lettre ne touche que le compte lettré');
+    // Et le délettrage rend tout.
+    assert.ok(KL.delettrer(l, 'A', 'moi', 6).ok);
+    assert.strictEqual(fac.lignes.find(x => x.compte === '411001').lettre, '');
+    assert.strictEqual(l.lettrages.length, 0);
+    assert.strictEqual(KL.delettrer(l, 'A', 'moi', 7).ok, false);
+  });
+
+  t('9.2.0 : une balance d\'ouverture déséquilibrée est refusée, avec l\'écart', () => {
+    const l = KL.livreVide('MAT:1', 2026);
+    const ko = KL.balanceOuverture(l, [{ compte: '532', debit: 10000 }, { compte: '101', credit: 9000 }], '2026-01-01', 'balance', 'moi', 1);
+    assert.strictEqual(ko.ok, false);
+    assert.strictEqual(ko.ecart, 1000);
+    assert.ok(/ne s'équilibre pas/.test(ko.motif), ko.motif);
+    assert.strictEqual(l.ecritures.length, 0, 'une reprise refusée ne laisse rien derrière elle');
+
+    const ok = KL.balanceOuverture(l, [
+      { compte: '532', libelle: 'Banque', debit: 10000 },
+      { compte: '411001', libelle: 'Client A', debit: 2000 },
+      { compte: '101', libelle: 'Capital', credit: 12000 }
+    ], '2026-01-01', 'balance', 'moi', 2);
+    assert.strictEqual(ok.ok, true);
+    assert.strictEqual(ok.total, 12000);
+    // UNE écriture AN, pièce OUVERTURE, validée d'office : elle ne se met pas en brouillard.
+    assert.strictEqual(l.ecritures.length, 1);
+    assert.strictEqual(l.ecritures[0].journal, 'AN');
+    assert.strictEqual(l.ecritures[0].piece, 'OUVERTURE');
+    assert.strictEqual(l.ecritures[0].statut, 'validee');
+    assert.strictEqual(l.ecritures[0].numero, 1);
+    // Les comptes inconnus sont entrés au plan, jamais refusés en silence (invariant 2).
+    assert.strictEqual(l.plan.length, 3);
+    assert.ok(l.plan.every(c => c.source === 'import'));
+    assert.strictEqual(l.plan.find(c => c.compte === '532').nature, 'tresorerie');
+    assert.strictEqual(l.plan.find(c => c.compte === '411001').nature, 'tiers');
+    assert.strictEqual(l.plan.find(c => c.compte === '101').nature, 'bilan');
+    // La refaire est permise tant qu'elle est seule.
+    assert.ok(KL.balanceOuverture(l, [{ compte: '532', debit: 5000 }, { compte: '101', credit: 5000 }], '2026-01-01', 'balance', 'moi', 3).ok);
+    assert.strictEqual(l.ecritures.length, 1, 'une seconde reprise remplace la première, elle ne s\'y ajoute pas');
+    // Mais plus une fois que le livre porte autre chose : tout ce qui suit s'appuie dessus.
+    KL.ajouterEcriture(l, { date: '2026-02-01', journal: 'VT', piece: 'F1', lignes: [{ compte: '411001', debit: 100 }, { compte: '706', credit: 100 }] }, 'moi', 4);
+    assert.strictEqual(KL.balanceOuverture(l, [{ compte: '532', debit: 1 }, { compte: '101', credit: 1 }], '2026-01-01', 'balance', 'moi', 5).ok, false);
+  });
+
+  t('9.2.0 : un brouillard n\'entre dans aucune balance', () => {
+    const { l, v } = faitLivre();
+    const a = v('2026-03-04', 'FAC-1', 1000, 'd1');
+    v('2026-03-05', 'FAC-2', 9999, 'd2');           // reste en brouillard
+    KL.validerEcriture(l, a.id, 'moi', 1);
+    const b = KL.balanceDepuisLignes(KL.lignesDuLivre(l));
+    assert.strictEqual(b.totaux.debit, 1190, 'un brouillard n\'est pas encore de la comptabilité');
+    // Mais l'écran qui VEUT le voir peut le demander : c'est la saisie du jour.
+    const bb = KL.balanceDepuisLignes(KL.lignesDuLivre(l, { brouillard: true }));
+    assert.strictEqual(bb.totaux.debit, KL.round3(1190 + 9999 * 1.19));
+    // Et les quatre lectures de la 9.1.0 marchent telles quelles sur le livre : c'est tout l'intérêt.
+    assert.strictEqual(KL.journalDepuisLignes(KL.lignesDuLivre(l)).pieces.length, 1);
+    assert.ok(KL.grandLivreDepuisLignes(KL.lignesDuLivre(l)).comptes.length >= 3);
+  });
+
+  t('9.2.0 : le plan et la balance s\'importent par NOM de colonne, et la ligne fautive est nommée', () => {
+    // TEST-9.2.0-010/011. Un plan exporté d'un autre logiciel n'a ni les mêmes colonnes ni le même
+    // ordre : aligner par position mettrait des libellés dans « Débit » sans que rien ne plante.
+    const p = KL.planDepuisCsv([
+      ['Intitulé', 'Numéro de compte', 'Nature'],          // ordre inversé, entêtes autres
+      ['Clients', '411', ''],
+      ['Banque', '532', ''],
+      ['Ventes de services', '706', 'gestion'],
+      ['', '707', ''],                                      // libellé manquant
+      ['Un texte', 'ABC', ''],                              // pas un numéro
+      ['Doublon', '411', ''],                               // déjà vu
+      ['', '', '']                                          // ligne vide : on n'en parle pas
+    ]);
+    assert.strictEqual(p.motif, '');
+    assert.deepStrictEqual(p.comptes.map(c => c.compte), ['411', '532', '706']);
+    assert.strictEqual(p.comptes[0].libelle, 'Clients');
+    // La nature se DÉDUIT de la classe quand la colonne ne la donne pas.
+    assert.strictEqual(p.comptes[0].nature, 'tiers');
+    assert.strictEqual(p.comptes[1].nature, 'tresorerie');
+    assert.strictEqual(p.comptes[2].nature, 'gestion');
+    // Trois lignes ignorées, chacune NOMMÉE avec son numéro de ligne : un import qui dit « 3 lignes
+    // ignorées » sans dire lesquelles oblige à relire le fichier à la main.
+    assert.strictEqual(p.ignorees.length, 3);
+    assert.deepStrictEqual(p.ignorees.map(x => x.ligne), [5, 6, 7]);
+    assert.ok(/libellé/.test(p.ignorees[0].motif));
+    assert.ok(/deux fois/.test(p.ignorees[2].motif));
+    // Sans les deux colonnes indispensables, on refuse en disant lesquelles.
+    assert.ok(/Compte/.test(KL.planDepuisCsv([['Truc', 'Machin'], ['a', 'b']]).motif));
+
+    const b = KL.balanceDepuisCsv([
+      ['Compte', 'Libellé', 'Solde débiteur', 'Solde créditeur'],
+      ['532', 'Banque', '10 000,000', ''],
+      ['411001', 'Client A', '2.000,500', '0'],             // 1.234,56 et 1 234,56 tous deux lus
+      ['101', 'Capital', '', '12000.5'],
+      ['70', 'À zéro', '0', '0'],                            // un compte à zéro n'ouvre rien
+      ['ZZ', 'Pas un compte', '5', '']
+    ]);
+    assert.strictEqual(b.motif, '');
+    assert.deepStrictEqual(b.lignes.map(l => l.compte), ['532', '411001', '101']);
+    assert.strictEqual(b.lignes[0].debit, 10000);
+    assert.strictEqual(b.lignes[1].debit, 2000.5);
+    assert.strictEqual(b.lignes[2].credit, 12000.5);
+    assert.strictEqual(b.ignorees.length, 1);
+    assert.strictEqual(b.ignorees[0].ligne, 6);
+    // Et elle se branche sur la reprise sans rien reformater.
+    const l = KL.livreVide('MAT:1', 2026);
+    assert.ok(KL.balanceOuverture(l, b.lignes, '2026-01-01', 'balance', 'moi', 1).ok);
+  });
+
   if (enCours) throw new Error(`${enCours} test(s) asynchrone(s) lancé(s) sans « await ta(…) » : ils ne peuvent plus échouer`);
   console.log(`\n${n} tests OK`);
 })().catch(e => { console.error(e); process.exit(1); });
