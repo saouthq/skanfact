@@ -4894,6 +4894,24 @@ t('cabinet : son canal de mise à jour ne peut pas écraser celui de l\'app entr
 
   assert.ok(cfg.publish && cfg.publish.channel, 'le cabinet doit publier sur un canal nommé');
   assert.notStrictEqual(cfg.publish.channel, 'latest', 'le canal « latest » est celui de l\'app entreprise');
+  // Depuis la 9.1.0 le canal du paquet se DÉDUIT du numéro de version, comme pour l'app entreprise
+  // depuis la 7.25.0 : une version stable va sur `cabinet`, une préversion sur `cabinet-beta`.
+  // On teste l'INTERRUPTEUR, pas la position dans laquelle il se trouve aujourd'hui (7.26.0).
+  const canalPaquet = v => {
+    const m = require('module');
+    const chemin = path.join(__dirname, '..', 'build', 'cabinet.config.js');
+    const vraie = pkg.version;
+    delete require.cache[require.resolve(chemin)];
+    delete require.cache[require.resolve(path.join(__dirname, '..', 'package.json'))];
+    require(path.join(__dirname, '..', 'package.json')).version = v;
+    const c = require(chemin).publish.channel;
+    require(path.join(__dirname, '..', 'package.json')).version = vraie;
+    delete require.cache[require.resolve(chemin)];
+    void m;
+    return c;
+  };
+  assert.strictEqual(canalPaquet('9.2.0'), 'cabinet', 'une version stable va sur le canal cabinet');
+  assert.strictEqual(canalPaquet('9.2.0-beta.1'), 'cabinet-beta', 'une préversion va sur le canal d\'essai');
   assert.strictEqual(cfg.publish.provider, 'github');
   assert.strictEqual(cfg.publish.repo, pkg.build.publish.repo, 'les deux applications publient dans le même dépôt');
 
@@ -4909,8 +4927,25 @@ t('cabinet : son canal de mise à jour ne peut pas écraser celui de l\'app entr
 
   // Et l'application doit demander CE canal, sinon elle recevrait les versions de l'app entreprise.
   const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'cabinet', 'main.js'), 'utf8');
-  assert.ok(new RegExp(`UPDATE_CHANNEL = '${cfg.publish.channel}'`).test(src), 'le canal de l\'app et celui du paquet doivent être le même');
-  assert.ok(/autoUpdater\.channel = UPDATE_CHANNEL/.test(src));
+  // Les DEUX canaux que l'application peut demander sont exactement les deux sur lesquels le paquet
+  // peut être publié. Un canal qu'elle réclamerait et que personne ne publie ne donnerait aucune
+  // erreur : elle chercherait un fichier qui n'existe pas, pour toujours.
+  assert.ok(/readUpdateCfg\(\)\.beta \? 'cabinet-beta' : 'cabinet'/.test(src),
+    'l\'app cabinet doit choisir son canal sur le RÉGLAGE du poste, pas sur la version installée');
+  assert.ok(/autoUpdater\.channel = UPDATE_CHANNEL\(\)/.test(src));
+  // Et le canal se choisit sur le réglage, PAS sur la version qui tourne : quelqu'un qui décoche
+  // la case tourne encore sur une bêta jusqu'à la stable suivante, et doit bien la recevoir.
+  const iCanal = src.indexOf('autoUpdater.channel = UPDATE_CHANNEL()');
+  const iDown = src.indexOf('autoUpdater.allowDowngrade');
+  const iPre = src.indexOf('autoUpdater.allowPrerelease');
+  assert.ok(iCanal > 0 && iDown > iCanal, 'allowDowngrade se repose APRÈS le canal : l\'affectation de channel le remet à true (6.7.3)');
+  assert.ok(iPre > 0, 'allowPrerelease manque : sans lui, /releases/latest ignore les préversions PAR CONSTRUCTION et la bêta n\'est proposée à personne');
+  // La seule exception voulue à « jamais de retour en arrière » : sortir du canal d'essai.
+  assert.ok(/allowDowngrade = !beta && canalDeVersion\(VERSION\) !== 'latest'/.test(src),
+    'décocher la case doit permettre de redescendre : sinon on est enfermé dans la bêta qu\'on vient de quitter');
+  // Le cabinet ne charge PAS core.js (il n'est pas dans ses files) : `canalDe` y est recopié.
+  assert.ok(/const canalDeVersion = /.test(src) && !/\bC\.canalDe\(/.test(src),
+    'l\'app cabinet ne peut pas appeler core.js : la règle du canal y est recopiée');
   // macOS n'est pas signé : Squirrel ne peut pas installer, c'est mac-update.sh qui remplace l'app.
   assert.ok(/MAC_SIGNED = false/.test(src) && /mac-update\.sh/.test(src));
   const sh = fs.readFileSync(path.join(__dirname, '..', 'src', 'mac-update.sh'), 'utf8');
@@ -6289,6 +6324,16 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.strictEqual(W.fichierAutorise('app', 'cabinet-mac.yml'), false);
     assert.strictEqual(W.fichierAutorise('cabinet', 'latest-mac.yml'), false);
     assert.strictEqual(W.fichierAutorise('cabinet', 'cabinet-mac.yml'), true);
+    // Le canal d'essai du cabinet (9.1.0). Les trois fichiers, et l'étanchéité dans les deux sens :
+    // un cabinet ne doit pas plus recevoir `beta.yml` (l'essai de l'app entreprise) qu'une
+    // entreprise ne doit recevoir `cabinet-beta.yml`. Rien ne planterait — ils installeraient juste
+    // le mauvais logiciel, en version d'essai.
+    ['cabinet-beta.yml', 'cabinet-beta-mac.yml', 'cabinet-beta-linux.yml'].forEach(f => {
+      assert.strictEqual(W.fichierAutorise('cabinet', f), true, 'canal d\'essai du cabinet : ' + f);
+      assert.strictEqual(W.fichierAutorise('app', f), false, 'servi à tort sur le canal entreprise : ' + f);
+    });
+    ['beta.yml', 'beta-mac.yml', 'beta-linux.yml'].forEach(f =>
+      assert.strictEqual(W.fichierAutorise('cabinet', f), false, 'l\'essai de l\'app entreprise servi au cabinet : ' + f));
     assert.strictEqual(W.fichierAutorise('app', 'SkanFact-6.6.0-mac-universal.zip'), true);
     assert.strictEqual(W.fichierAutorise('app', 'SkanFact-Cabinet-6.6.0-mac-universal.zip'), false, 'préfixe du cabinet servi sur le canal entreprise');
     assert.strictEqual(W.fichierAutorise('cabinet', 'SkanFact-Cabinet-6.6.0-win-x64.exe'), true);
@@ -6409,7 +6454,13 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       // 5. Jamais de retour en arrière : installer une version plus ancienne, c'est réinstaller un
       // défaut déjà corrigé. Piège d'electron-updater : affecter `channel` remet allowDowngrade à
       // true — c'est ce qui a fait proposer la 6.7.1 à une application en 6.7.2.
-      assert.ok(/allowDowngrade = false/.test(src), nom + ' : le retour en arrière n\'est pas interdit');
+      // Deux formes acceptées, et deux seulement : la valeur figée `false`, ou l'exception écrite
+      // — sortir du canal d'essai, où interdire de reculer enfermerait dans la bêta qu'on vient de
+      // quitter (7.25.0). L'app entreprise porte les deux ; l'app cabinet n'a que la seconde depuis
+      // la 9.1.0, et la première version de ce test, qui exigeait `= false` au caractère près, la
+      // faisait tomber sur du code juste.
+      assert.ok(/allowDowngrade = false/.test(src) || /allowDowngrade = !beta &&/.test(src),
+        nom + ' : le retour en arrière n\'est pas interdit');
       // La règle vaut pour TOUTE affectation de canal, quel que soit le nom de la variable qui
       // porte l'objet : `autoUpdater.channel` dans l'app cabinet, `u.channel` dans l'app entreprise
       // depuis que le canal bêta se pose dans `appliquerCanal(u)`. Chercher la seule forme

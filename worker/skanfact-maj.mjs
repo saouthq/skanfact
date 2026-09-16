@@ -30,7 +30,11 @@ export const CANAUX = {
     interdit: 'SkanFact-Cabinet-'
   },
   cabinet: {
-    yml: ['cabinet.yml', 'cabinet-mac.yml', 'cabinet-linux.yml'],
+    // Depuis la 9.1.0, l'application du cabinet a son canal d'essai, comme l'app entreprise depuis
+    // la 7.25.0. Le comptable pilote a besoin de recevoir une version avant tout le monde : sans
+    // ça, la seule façon de lui faire essayer quelque chose est de le publier à tous les cabinets.
+    yml: ['cabinet.yml', 'cabinet-mac.yml', 'cabinet-linux.yml',
+          'cabinet-beta.yml', 'cabinet-beta-mac.yml', 'cabinet-beta-linux.yml'],
     prefixe: 'SkanFact-Cabinet-',
     interdit: null
   }

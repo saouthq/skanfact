@@ -326,6 +326,23 @@ index léger par dossier, `livre-index.json`, liste les exercices et leur état 
 que `cabinet-data.json`, chiffré avec la même clé dérivée). Le format est **figé** : tout ajout
 ultérieur est facultatif à la lecture.
 
+**Le corps est BINAIRE, pas base64** — décidé par la mesure, le 16/09/2026 (`npm run charge`,
+SPEC-OUT-006), avant d'écrire une ligne de 9.2.0. Sur un livre de 50 000 lignes, valider une
+écriture réécrit le fichier entier et coûtait **147 ms** pour un seuil de 100 ms ; en corps binaire,
+**79 ms**. base64 ajoute 33 % d'octets et 46 % du temps d'écriture, pour rien. C'est la règle de la
+6.1.0 (« le corps est binaire, pas base64 ») qui n'avait jamais été portée à `cabstore` parce
+qu'elle ne coûtait rien sur un petit fichier d'état. La forme retenue est celle du paquet mensuel :
+**l'entête reste en clair sur une ligne** (`{ "skanfact-cabinet": 1, kdf, salt, iv, tag }\n`), puis
+les octets chiffrés — sans entête lisible, un fichier mal rangé serait impossible à identifier sans
+la clé. `cabinet-data.json` ne change **pas** : il est petit, et une migration de son enveloppe
+serait un risque pour zéro gain.
+
+Les trois autres seuils sont tenus largement et ne demandent donc **aucune** des autres parades
+envisagées — ni découpage par mois, ni index de recherche, ni journal d'ajouts : ouverture 159 ms
+(seuil 1 000), balance de 60 dossiers 1 291 ms (seuil 5 000), recherche globale 1 040 ms (seuil
+3 000), sur un portefeuille de 345 001 lignes et 97 Mo. La clé se dérive **une fois** au
+déverrouillage et se garde en mémoire : la redériver par fichier coûterait 6,8 s sur 60 dossiers.
+
 ```json
 {
   "format": 1,

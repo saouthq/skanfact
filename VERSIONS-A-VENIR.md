@@ -200,14 +200,14 @@ timbre, métiers qui portent une TFP, périmètre e-facture. Tous *comptable*, t
 | | |
 |---|---|
 | **Durée** | construction 5 à 10 j · réaliste 20 j |
-| **Dépend de** | le test de charge réussi (ou le modèle changé) ; **le plan de comptes du comptable** et le format de balance de son logiciel actuel ; **J0** atteint ; l'engagement écrit du pilote |
+| **Dépend de** | ~~le test de charge réussi~~ — **fait le 16/09/2026**, et il a tranché : corps **binaire** au lieu de base64 (147 ms → 79 ms sur l'écriture, seuil 100 ms), le reste du format inchangé, aucun découpage par mois ni index nécessaire (voir SPEC-DATA-005) ; **le plan de comptes du comptable** et le format de balance de son logiciel actuel ; **J0** atteint ; l'engagement écrit du pilote |
 | **Bloque** | **9.3.0** (la saisie écrit dans le livre) et **9.10.0** (les questions au client voyagent avec la clé créée ici), donc **toute la chaîne derrière** |
 | **Niveau de spec** | Complète : SPEC-DATA-005 (la plus importante du cahier), SPEC-DATA-004b, SPEC-FMT-005/008/009, SPEC-UI-CAB-003 → 006, SPEC-FUNC-103, § 11.4, MIG-9.2.0-001 → 004 |
 | **Jalon** | **J1** (31/12/2026) : trois licences, le pilote par écrit |
 
 | Id | Fonctionnalité | Côté | Spec |
 |---|---|---|---|
-| F-9.2.0-01 | `livre.json` : un fichier par dossier **et par exercice**, chiffré comme le reste, écriture atomique, plus un index léger | Cabinet | SPEC-DATA-005 |
+| F-9.2.0-01 | `livre.json` : un fichier par dossier **et par exercice**, chiffré comme le reste (**corps binaire, entête en clair** — décidé par la mesure), écriture atomique, plus un index léger | Cabinet | SPEC-DATA-005 |
 | F-9.2.0-02 | Exercices : création, plusieurs ouverts en même temps, exercice décalé permis | Cabinet | SPEC-DATA-005 |
 | F-9.2.0-03 | Plan de comptes **SCE complet** à tous les niveaux, modifiable, initialisé depuis le plan de référence du cabinet | Cabinet | SPEC-DATA-005 |
 | F-9.2.0-04 | Import d'un plan de comptes par CSV, colonnes par nom, ligne invalide nommée | Cabinet | SPEC-FMT-008 |

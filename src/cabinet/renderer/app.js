@@ -2719,7 +2719,23 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
     // poste de la semaine.
     const heures = a.autoEvery ? Math.round(a.autoEvery / 3600000) : 0;
     const quand = !a.packaged ? '' : `<p class="small muted mt">Dernière vérification : <b>${esc(quandVerif(a.lastCheck) || 'jamais encore')}</b>${heures ? ` — SkanFact regarde tout seul toutes les ${heures} heures et au retour sur l'application.` : ''}</p>`;
-    el.innerHTML = `<div class="update-head"><div><div class="k-label">Version installée</div><div class="ver">${esc(a.version || '…')}</div></div></div>${corps}${quand}${jeton}`;
+    // Le canal d'essai du cabinet (9.1.0). Le comptable pilote a besoin de recevoir une version
+    // avant les autres : sans ce canal, la seule façon de lui faire essayer quelque chose est de
+    // la publier à TOUS les cabinets d'un coup.
+    //
+    // Le repère « bêta » suit la VERSION INSTALLÉE, jamais le canal choisi : ce qui compte, c'est
+    // ce qui tourne. Les deux se contredisent une journée entière quand on décoche la case en
+    // tournant sur une bêta (règle 7.25.0).
+    const etatBeta = !a.packaged ? '' : (a.prerelease
+      ? `<p class="small mt"><b>Tu tournes sur une version d'essai</b> (${esc(a.version || '')}).${a.beta ? '' : ' Tu es revenu au canal normal : SkanFact Cabinet la remplacera par la prochaine version stable.'}</p>`
+      : '');
+    const beta = !a.packaged ? '' : `<div class="beta-box">
+      <label class="check"><input type="checkbox" id="u-beta" ${a.beta ? 'checked' : ''}> <b>Recevoir les versions d'essai</b></label>
+      <p class="small muted">Les versions d'essai, avant les autres. Numérotées <code>9.2.0-beta.1</code>. À laisser décoché sur l'ordinateur qui sert à travailler.</p>
+      ${etatBeta}
+    </div>`;
+
+    el.innerHTML = `<div class="update-head"><div><div class="k-label">Version installée</div><div class="ver">${esc(a.version || '…')}</div></div></div>${corps}${quand}${beta}${jeton}`;
 
     const relire = async () => { upd.app = await api.updVersion(); drawUpdatePanel(); };
     const verifier = async () => {
@@ -2745,6 +2761,28 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
       if (r && r.state === 'error') { upd.state = 'error'; upd.message = r.message || ''; upd.detail = r.detail || ''; upd.soft = !!r.soft; drawUpdatePanel(); }
     };
     if ($('#u-rel')) $('#u-rel').onclick = () => api.updOpenReleases();
+    if ($('#u-beta')) $('#u-beta').onchange = async (ev) => {
+      const on = ev.target.checked;
+      if (on) {
+        const ok = await confirmDialog('Recevoir les versions d\'essai',
+          '<p>Les versions d\'essai arrivent avant les autres et peuvent contenir des défauts.</p>' +
+          '<p class="small">Elles s\'installent <b>par-dessus SkanFact Cabinet</b> et travaillent sur les mêmes dossiers, les mêmes paquets et la même clé. Une sauvegarde va être prise tout de suite, avant tout changement.</p>' +
+          '<p class="small">Tu pourras revenir au canal normal à tout moment en décochant la case.</p>',
+          'Recevoir les versions d\'essai');
+        // Un refus DÉCOCHE vraiment la case : la laisser cochée après un « Annuler » ferait croire
+        // que le canal est armé alors qu'il ne l'est pas.
+        if (!ok) { ev.target.checked = false; return; }
+        // Le filet, pris AVANT d'armer le canal : au moment où la bêta s'installera, le comptable
+        // sera ailleurs, et il sera trop tard pour y penser.
+        try { await api.backupNow('avant-beta'); } catch { /* pas de filet ≠ pas de canal */ }
+      }
+      const r = await api.updSetBeta(on);
+      upd.app = { ...(upd.app || {}), beta: r.beta };
+      upd.state = 'idle';
+      drawUpdatePanel();
+      toast(r.beta ? 'Versions d\'essai activées — sauvegarde « avant-beta » prise' : 'Retour au canal normal');
+      verifier();
+    };
     if ($('#u-install')) $('#u-install').onclick = async () => {
       const b = $('#u-install'); b.disabled = true; b.textContent = 'Installation…';
       const r = await api.updInstall();

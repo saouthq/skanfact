@@ -76,6 +76,7 @@ contextBridge.exposeInMainWorld('cabinet', {
   updDownload: () => ipcRenderer.invoke('upd:download'),
   updInstall: () => ipcRenderer.invoke('upd:install'),
   updSetToken: (t) => ipcRenderer.invoke('upd:setToken', t),
+  updSetBeta: (on) => ipcRenderer.invoke('upd:setBeta', on),
   updOpenReleases: () => ipcRenderer.invoke('upd:openReleases'),
 
   // Depuis Electron 32, `File.path` n'existe plus : sans ce pont, un fichier glissé sur la fenêtre

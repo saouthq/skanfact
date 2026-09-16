@@ -1052,7 +1052,20 @@ const GITHUB = require('../depot');           // le MÊME fichier que l'app entr
 const RELEASES_URL = `https://github.com/${GITHUB.owner}/${GITHUB.repo}/releases`;
 const IS_MAC = process.platform === 'darwin';
 const MAC_SIGNED = false;
-const UPDATE_CHANNEL = 'cabinet';
+// Le canal du cabinet. Depuis la 9.1.0 il en existe deux, et c'est le RÉGLAGE du poste qui
+// choisit — pas la version installée : quelqu'un qui décoche la case tourne encore sur une bêta
+// jusqu'à ce que la stable suivante arrive, et il doit bien la recevoir.
+const UPDATE_CHANNEL = () => (readUpdateCfg().beta ? 'cabinet-beta' : 'cabinet');
+
+// La même règle que `core.canalDe` (7.25.0), recopiée : l'application du cabinet ne charge PAS
+// core.js — il n'est même pas dans ses `files`, exprès, pour ne pas livrer au comptable le code de
+// l'application payante. Y appeler `C.canalDe` lèverait une TypeError pendant la construction du
+// gabarit, sans un mot en console : c'est la bombe silencieuse de la 7.22.0, et c'est le lint
+// (9.1.0) qui l'a attrapée ici, deux secondes après que je l'ai écrite.
+const canalDeVersion = v => {
+  const m = /^\d+\.\d+\.\d+-([A-Za-z][A-Za-z0-9]*)/.exec(String(v || '').trim());
+  return m ? m[1].toLowerCase() : 'latest';
+};
 
 let updater = null, updateInfo = null, downloaded = false, downloadedFile = null, silentCheck = true;
 // Pourquoi le module n'a pas démarré, en clair : sans ça le comptable lit « indisponible » et
@@ -1121,7 +1134,7 @@ function updateProblem(err) {
 // moment où l'on ne sait pas encore si le relais répond.
 function feedGithub(u) {
   const cfg = readUpdateCfg();
-  u.setFeedURL({ provider: 'github', owner: GITHUB.owner, repo: GITHUB.repo, channel: UPDATE_CHANNEL, private: !!cfg.token, token: cfg.token || undefined });
+  u.setFeedURL({ provider: 'github', owner: GITHUB.owner, repo: GITHUB.repo, channel: UPDATE_CHANNEL(), private: !!cfg.token, token: cfg.token || undefined });
 }
 
 // Le relais a échoué pendant une vérification : on ne repasse plus par lui de la session.
@@ -1134,7 +1147,7 @@ function configureFeed(u) {
     // Une adresse invalide doit être vue ICI, pas au premier téléchargement.
     const url = new URL(`${base}/cabinet`).toString();
     u.requestHeaders = { 'X-SkanFact-App': relaySecret() };
-    u.setFeedURL({ provider: 'generic', url, channel: UPDATE_CHANNEL });
+    u.setFeedURL({ provider: 'generic', url, channel: UPDATE_CHANNEL() });
   } catch (e) {
     // Jamais de cabinet sans recours : on retombe sur GitHub, et on le dit.
     relayFailure = `Relais injoignable (${String(e && e.message || e).slice(0, 120)}). Retour au téléchargement direct depuis GitHub.`;
@@ -1149,12 +1162,20 @@ function getUpdater() {
     autoUpdater.autoDownload = true;
     autoUpdater.autoInstallOnAppQuit = !IS_MAC || MAC_SIGNED;
     autoUpdater.autoRunAppAfterInstall = true;
-    autoUpdater.channel = UPDATE_CHANNEL;         // le canal du cabinet, jamais celui de l'app entreprise
+    const beta = !!readUpdateCfg().beta;
+    autoUpdater.channel = UPDATE_CHANNEL();       // le canal du cabinet, jamais celui de l'app entreprise
     // ATTENTION : affecter `channel` met `allowDowngrade` à true — c'est écrit dans electron-updater,
     // et c'est voulu chez eux (changer de canal peut signifier revenir en arrière). Chez nous, non :
     // l'application proposait d'installer une version PLUS ANCIENNE que celle en place, c'est-à-dire
     // de revenir à un défaut déjà corrigé. Toujours remettre la valeur APRÈS le canal.
-    autoUpdater.allowDowngrade = false;
+    //
+    // La seule exception est voulue : quelqu'un qui DÉCOCHE la case tourne sur une version plus
+    // récente que la dernière stable. Lui interdire de reculer, ce serait l'enfermer dans la bêta
+    // qu'il vient de quitter.
+    autoUpdater.allowDowngrade = !beta && canalDeVersion(VERSION) !== 'latest';
+    // Sans lui, electron-updater interroge /releases/latest, qui ignore les préversions PAR
+    // CONSTRUCTION : la bêta serait publiée et jamais proposée à personne, sans une erreur nulle part.
+    autoUpdater.allowPrerelease = beta;
     const ulog = path.join(app.getPath('userData'), 'updater.log');
     const ul = lvl => m => { try { fs.appendFileSync(ulog, `${new Date().toISOString()} ${lvl} ${m}\n`); } catch {} };
     autoUpdater.logger = { info: ul('info'), warn: ul('warn'), error: ul('error'), debug: ul('debug') };
@@ -1247,11 +1268,31 @@ ipcMain.handle('upd:version', () => ({
   // l'affiche pas en rouge pour autant, elle reste dans le journal. Même règle que la 7.24.0.
   relayFailure: GITHUB.private ? relayFailure : '',
   private: GITHUB.private,
+  // Le canal choisi, et ce que la version installée EST réellement. Les deux, parce qu'ils peuvent
+  // se contredire une journée entière : on décoche la case un matin en tournant sur une bêta, et on
+  // y reste jusqu'à ce que la stable suivante arrive. L'écran doit pouvoir le dire.
+  beta: !!readUpdateCfg().beta,
+  prerelease: canalDeVersion(VERSION) !== 'latest',
   lastCheck: readMajEtat().at || 0,
   lastResult: readMajEtat().resultat || '',
   autoEvery: MAJ_INTERVALLE,
   lastUpdate: takeLastUpdateResult()
 }));
+// Entrer dans le canal d'essai du cabinet ou en sortir (9.1.0). On reconfigure le flux tout de
+// suite : sans ça, le changement ne prendrait effet qu'au prochain démarrage, et « Vérifier les
+// mises à jour » juste après aurait répondu sur l'ancien canal — le contraire de ce qu'on demande.
+ipcMain.handle('upd:setBeta', (_e, on) => {
+  const cfg = readUpdateCfg();
+  if (on) cfg.beta = true; else delete cfg.beta;
+  writeUpdateCfg(cfg);
+  // Un canal déjà téléchargé n'a plus rien à voir avec celui qu'on vient de choisir.
+  updateInfo = null; downloaded = false; downloadedFile = null;
+  // `updater = null` et pas `configureFeed` seul : `channel`, `allowDowngrade` et `allowPrerelease`
+  // se posent dans `getUpdater()`, et les trois doivent changer ensemble.
+  updater = null;
+  return { beta: !!cfg.beta };
+});
+
 ipcMain.handle('upd:setToken', (_e, token) => {
   const cfg = readUpdateCfg();
   if (token) cfg.token = String(token).trim(); else delete cfg.token;
