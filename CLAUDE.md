@@ -3443,10 +3443,12 @@ Règles apprises, à ne pas recasser :
   `SEUIL` qui vivait entre deux blocs déplacés — `contraste.js` est parti en `ReferenceError` au
   premier appel. Une tranche qu'on découpe se relit après découpe, pas seulement avant.
 
-Numérotation : le chantier UI/UX du Cabinet prend **9.4.3 → 9.4.6** et l'entretien qui portait le
-numéro 9.4.3 devient **9.4.7**. 23 occurrences dans cinq documents, contre 281 pour la
-renumérotation de la v2 : prendre le numéro suivant plutôt que décaler toute la suite est ce qui
-rend l'opération tenable.
+Numérotation : le chantier UI/UX du Cabinet prend **9.4.3 → 9.4.9** (il était prévu jusqu'à 9.4.6 ;
+l'audit en a rempli trois de plus) et l'entretien qui portait le numéro 9.4.3 devient **9.4.10**.
+23 occurrences dans cinq documents à chaque décalage, contre 281 pour la renumérotation de la v2 :
+prendre le numéro suivant plutôt que décaler toute la suite est ce qui rend l'opération tenable.
+**Et on ne renumérote JAMAIS une version déjà livrée** — celles du CHANGELOG sont l'histoire, pas
+un plan : le script de décalage ne touche que les documents de planification, et le vérifie.
 
 Prouvé : cinq défauts réintroduits un par un font tomber leur test, et le sixième (l'en-tête de
 colonne désaligné) a été trouvé par l'instrument lui-même à sa première exécution.
