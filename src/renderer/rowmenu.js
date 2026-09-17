@@ -79,7 +79,12 @@
   // `avant` : le SEUL bouton qu'une ligne a le droit de garder toujours visible, quand une page
   // existe pour un geste précis (la page Relances existe pour écrire des relances). Tout le reste
   // passe par le menu. Un au maximum : c'est la règle qui a mis fin aux rangées de cinq.
-  const cellule = (id, avant) => `<td class="actions row-actions">${avant || ''}<button type="button" class="row-menu-btn" data-rowmenu="${h(id)}" aria-haspopup="menu" aria-expanded="false" title="Ce qu'on peut faire sur cette ligne">Actions${CHEVRON}</button></td>`;
+  // Le bouton seul, sans sa cellule. Il sert dans une barre d'actions (l'en-tête d'une fiche du
+  // Cabinet, 9.4.8), là où il n'y a pas de tableau autour. `cellule` l'appelle, donc les deux ne
+  // peuvent pas diverger — une seconde version recopiée aurait perdu le `aria-expanded` ou le
+  // `data-rowmenu` au premier ajustement (règle 7.29.0).
+  const bouton = (id, libelle, classe) => `<button type="button" class="row-menu-btn${classe ? ' ' + classe : ''}" data-rowmenu="${h(id)}" aria-haspopup="menu" aria-expanded="false" title="Ce qu'on peut faire ici">${h(libelle || 'Actions')}${CHEVRON}</button>`;
+  const cellule = (id, avant) => `<td class="actions row-actions">${avant || ''}${bouton(id, 'Actions')}</td>`;
 
   // `actionsDe(id)` rend les actions de CETTE ligne : { icon, label, hint, danger, run } ou { sep: true }.
   function brancherMenus(racine, actionsDe) {
@@ -176,5 +181,5 @@
     const premier = m.querySelector('button'); if (premier) premier.focus();
   }
 
-  global.RowMenu = { ICO, ico, SURFACES, brancher, cellule, brancherMenus };
+  global.RowMenu = { ICO, ico, SURFACES, brancher, cellule, bouton, brancherMenus };
 })(typeof window !== 'undefined' ? window : globalThis);

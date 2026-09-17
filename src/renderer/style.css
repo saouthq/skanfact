@@ -366,6 +366,14 @@ td.r, th.r { text-align: right; font-variant-numeric: tabular-nums; }
    chaque ligne repliée sur trois, parce qu'un libellé de facture porte le nom du client. Un journal
    se PARCOURT — on y cherche une pièce — et une colonne dont le texte revient à la ligne triple la
    hauteur de toutes les autres. Le texte complet reste lisible au survol et intact à l'export. */
+/* Un champ qui compte dans une unité le DIT à côté de lui (9.4.8). « Jour de relance : 10 » ne
+   disait pas dix quoi — dix jours ? le 10 ? — et c'est la date qui déclenche les relances de tout
+   un portefeuille. Le mot encadre le champ au lieu de flotter en légende dessous, parce qu'une
+   légende sous un champ se lit après l'avoir rempli. */
+.suffixe { display: inline-flex; align-items: center; gap: 7px; }
+.suffixe input { width: 5.5ch; text-align: center; }
+.suffixe-av, .suffixe-ap { color: var(--muted); font-size: 13px; white-space: nowrap; }
+
 td.tronq { max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 td.tronq.lg { max-width: 320px; }
 /* Un piège de SPÉCIFICITÉ, vieux comme les tableaux de l'application. `table.list th` (une classe,

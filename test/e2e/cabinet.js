@@ -251,7 +251,23 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   const off = await win.evaluate(() => document.querySelectorAll('.ca-col.off').length);
   if (!off) throw new Error('les mois non reçus ne sont pas estompés');
   ok(`chiffre d'affaires : 12 mois dessinés, ${off} non reçus estompés`);
-  if (!await win.$('#print')) throw new Error('pas de bouton Imprimer sur la fiche');
+  // La RÈGLE est « la fiche s'imprime », pas « il existe un bouton #print » : depuis la 9.4.8 le
+  // geste vit dans le menu d'actions de l'en-tête, parce qu'une barre a un budget de boutons et
+  // qu'imprimer est rare. On vérifie le geste, pas la forme qu'il avait hier.
+  // On NE CLIQUE PAS : l'action est `window.print()`, qui ouvre la boîte d'impression du système et
+  // bloque le parcours pour toujours. On lit ce que le bouton propose. Et on accepte les DEUX
+  // formes, parce que `bindRowMenus` transforme un menu à une seule action en bouton nommé qui
+  // exécute directement (règle 7.29.0) : ce client n'a pas de téléphone, donc « Imprimer la fiche »
+  // est sa seule action rare.
+  const tete = await win.evaluate(() => {
+    const b = document.querySelector('.page-head [data-rowmenu]');
+    if (!b) return null;
+    return { texte: b.textContent.trim(), cle: b.dataset.rowmenu };
+  });
+  if (!tete) throw new Error('l\'en-tête de fiche n\'a pas de menu d\'actions');
+  if (!/^F:/.test(tete.cle)) throw new Error('le menu de l\'en-tête ne porte pas la clé de la fiche : ' + tete.cle);
+  if (!/Imprimer|Actions/.test(tete.texte)) throw new Error('le menu de l\'en-tête ne propose rien : ' + tete.texte);
+  ok(`les gestes rares de la fiche vivent dans « ${tete.texte} », plus dans la barre`);
   await shot('08-fiche-complete');
 
   // une bulle « i » s'ouvre vraiment

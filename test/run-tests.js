@@ -13693,6 +13693,101 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     });
   });
 
+  t('9.4.8 : les finitions — la case, l\'unité, la liste fermée, le compteur d\'écrans', () => {
+    const app = lireSource('src', 'cabinet', 'renderer', 'app.js');
+    const css = lireSource('src', 'cabinet', 'renderer', 'cabinet.css');
+    const partage = lireSource('src', 'renderer', 'style.css');
+
+    // Y2 — la case AVANT son libellé. Dans une grille `span-2`, l'écrire après la posait 500 px à
+    // droite du texte qu'elle coche : l'œil la cherche à gauche et ne la trouve pas.
+    ['sr-datec', 'sr-lot'].forEach(id => {
+      const k = app.indexOf('id="' + id + '"');
+      assert.ok(k > 0, 'case introuvable : ' + id);
+      const avant = app.slice(Math.max(0, k - 220), k);
+      assert.ok(avant.includes('<label class="check span-2">'), id + ' : étiquette introuvable');
+      assert.ok(!/\$\{lbl\(/.test(avant.slice(avant.indexOf('<label class="check span-2">'))),
+        id + ' : la case doit venir AVANT son libellé');
+    });
+
+    // Y7 — « Jour de relance : 10 » ne disait pas dix quoi, et c'est la date qui déclenche les
+    // relances de tout un portefeuille.
+    ['c-day', 'w-day'].forEach(id => {
+      const k = app.indexOf('id="' + id + '"');
+      assert.ok(k > 0, 'champ introuvable : ' + id);
+      const autour = app.slice(Math.max(0, k - 200), k + 200);
+      assert.ok(/suffixe-av">le</.test(autour) && /suffixe-ap">de chaque mois</.test(autour),
+        id + ' : le champ doit dire dans quelle unité il compte');
+    });
+    assert.ok(/\.suffixe \{ display: inline-flex/.test(partage), 'le suffixe doit exister dans la feuille');
+
+    // Y10 — une liste fermée ne se saisit jamais en texte libre (7.30.0) : « VTE » au lieu de
+    // « VT » ne correspondait à aucun journal, et la grille s'ouvrait sur le premier venu.
+    const kj = app.indexOf('id="sr-journal"');
+    assert.ok(kj > 0 && app.slice(kj - 40, kj).includes('<select'), 'le journal proposé doit être une liste');
+    const ijc = app.indexOf('function journauxConnus()');
+    const zjc = app.slice(ijc, app.indexOf('\n  }', ijc));
+    assert.ok(/JOURNAUX_PAR_DEFAUT/.test(zjc), 'la liste vient du moteur, pas de codes écrits à la main');
+    // Un `select` dont aucune option ne correspond retient la PREMIÈRE, en silence (8.3.0) : le
+    // code déjà réglé doit rester dans la liste, sinon rouvrir les Réglages l'efface.
+    assert.ok(/if \(regle\) vus\.add\(regle\)/.test(zjc), 'le code déjà réglé ne doit pas disparaître de la liste');
+
+    // Y8 — cinq pastilles muettes disent qu'il y a des écrans, pas combien il en reste. Et le
+    // compte se DÉDUIT : écrit à la main il mentirait au premier écran ajouté.
+    assert.ok(/Écran \$\{etape \+ 1\} sur \$\{etapes\.length\}/.test(app), 'l\'assistant doit dire où l\'on en est');
+    // La règle générale des pastilles vise TOUS les `span` : sans l'exception, le compteur devient
+    // une barre de 26×4 px sans texte visible (famille du `th.r`, 7.23.0).
+    assert.ok(/#setup \.wiz-dots span:not\(\.wiz-compte\)/.test(css),
+      'le compteur doit échapper à la règle des pastilles');
+    assert.ok(/#setup \.wiz-compte \{/.test(css), 'et porter son propre style');
+  });
+
+  t('9.4.8 : un geste rare vit dans le menu, un manque porte le bouton qui le comble', () => {
+    const app = lireSource('src', 'cabinet', 'renderer', 'app.js');
+    const rm = lireSource('src', 'renderer', 'rowmenu.js');
+    const css = lireSource('src', 'cabinet', 'renderer', 'cabinet.css');
+
+    // Y5 — un en-tête de fiche a un budget de boutons, comme une ligne de liste (7.29.0).
+    assert.ok(!/<button class="btn" id="print">Imprimer<\/button>/.test(app),
+      '« Imprimer » ne doit plus occuper une place premium');
+    assert.ok(/RowMenu\.bouton\('F:' \+ dossier\.id/.test(app), 'l\'en-tête doit porter un menu d\'actions');
+    // Le bouton seul et la cellule sortent de la MÊME fonction : une seconde version recopiée
+    // aurait perdu `aria-expanded` ou `data-rowmenu` au premier ajustement (7.29.0).
+    assert.ok(/const cellule = \(id, avant\) => `<td class="actions row-actions">\$\{avant \|\| ''\}\$\{bouton\(id, 'Actions'\)\}<\/td>`;/.test(rm),
+      'la cellule doit passer par `bouton`, sinon les deux divergent');
+    assert.ok(/bouton, brancherMenus \};/.test(rm), 'et `bouton` doit être exporté');
+
+    // UNE seule table d'actions par racine : `bindRowMenus` écrase le gestionnaire précédent, donc
+    // une seconde table rendrait la première parfaitement inerte, sans une erreur nulle part.
+    const id = app.indexOf('function drawDossier(');
+    const zd = app.slice(id, app.indexOf('\n  async function', id) > id ? app.indexOf('\n  async function', id) : id + 30000);
+    const n = (zd.match(/bindRowMenus\(view,/g) || []).length;
+    assert.strictEqual(n, 1, `la fiche doit avoir UNE table d'actions, elle en a ${n}`);
+    assert.ok(/if \(cle === 'F:' \+ dossier\.id\)/.test(zd), 'et cette table doit servir les deux clés');
+
+    // Mineur — un manque annoncé porte le bouton qui le comble (7.20.0).
+    assert.ok(/class="lien-manque" data-ident="1">email à renseigner</.test(app)
+      && /class="lien-manque" data-ident="1">téléphone à renseigner</.test(app),
+    'les deux manques doivent être cliquables');
+    assert.ok(/\$\$\('\[data-ident\]', view\)\.forEach/.test(app), 'et branchés');
+    assert.ok(/\.lien-manque \{/.test(css), 'et se voir : un bouton se reconnaît AU REPOS');
+
+    // Mineur — la colonne « Taille » n'apprend rien à un comptable ; le poids reste en infobulle.
+    // La tranche est celle du tableau des PAQUETS : la taille d'une sauvegarde, elle, est
+    // légitime — c'est ce qui dit qu'elle n'est pas vide. Un test qui vise « Taille » partout
+    // accuse du code juste (9.4.7, deuxième fois).
+    const ip = app.indexOf("<th class=\"r nw\">Chiffre d'affaires</th>");
+    assert.ok(ip > 0, 'le tableau des paquets est introuvable');
+    const zp = app.slice(ip, app.indexOf('</tfoot>', ip));
+    assert.ok(zp.length > 800 && zp.length < 4000, 'tableau des paquets : tranche de ' + zp.length + ' caractères');
+    assert.ok(!/>Taille</.test(zp), 'la colonne Taille doit avoir disparu du tableau des paquets');
+    assert.ok(/title="\$\{esc\('Poids du fichier : ' \+ fmtBytes\(p\.bytes\)\)\}"/.test(app),
+      'mais le poids reste lisible là où il sert');
+    // Mineur — le geste qui allonge un tableau vit SOUS ce tableau, pas dans la barre qui clôt.
+    assert.ok(/<div class="sous-table"><button class="btn btn-sm" id="sr-corr-add">/.test(app),
+      '« Ajouter une ligne » appartient au tableau, pas à la barre d\'enregistrement');
+    assert.ok(/\.sous-table \{/.test(css), 'classe sans style : .sous-table');
+  });
+
   t('9.4.2 : la ponctuation double porte une espace insécable', () => {
     const src = lireSource('src', 'cabinet', 'renderer', 'app.js');
     const i = src.indexOf('function typographie(');

@@ -147,8 +147,12 @@
 }
 #setup h1 { font-size: 23px; margin: 4px 0 16px; letter-spacing: -.4px; }
 #setup .wiz-body { overflow-y: auto; flex: 1; }
-#setup .wiz-dots { display: flex; gap: 6px; }
-#setup .wiz-dots span { width: 26px; height: 4px; border-radius: 3px; background: var(--border); }
+#setup .wiz-dots { display: flex; gap: 6px; align-items: center; }
+/* `:not(.wiz-compte)` : la règle générale des pastilles vise TOUS les `span` de la barre, et elle
+   aurait réduit le compteur « Écran 2 sur 5 » à une barre de 26×4 px sans texte visible. Même
+   famille que le `th.r` (7.23.0) — le HTML est juste, c'est la feuille qui décide. */
+#setup .wiz-dots span:not(.wiz-compte) { width: 26px; height: 4px; border-radius: 3px; background: var(--border); }
+#setup .wiz-compte { font-size: 11.5px; color: var(--muted); margin-inline-end: 8px; white-space: nowrap; }
 #setup .wiz-dots span.on { background: var(--primary); }
 #setup .wiz-dots span.done { background: var(--primary-soft-2, var(--primary-soft)); }
 #setup .wiz-actions { display: flex; align-items: center; gap: 8px; margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--border); }
@@ -178,7 +182,15 @@
 .print-only { display: none; }
 /* La fiche d'un dossier (9.2.2) : l'identité et l'état du dossier vivent dans l'en-tête, sous le
    nom — pas dans un panneau à quatre tirets. */
-.d-ident { font-size: 13px; color: var(--muted); margin-top: 3px; line-height: 1.6; }
+.d-ident { font-size: 13px; color: var(--muted); margin-block-start: 3px; line-height: 1.6; }
+/* Un manque qui se comble d'un clic : souligné en pointillé pour se distinguer du reste de la
+   ligne d'identité, qui n'est que du texte. Sans ce signe, un bouton au milieu d'une phrase grise
+   ne se voit pas — « un bouton se reconnaît AU REPOS » (Cabinet 1.0.0, 9.4.2). */
+.lien-manque {
+  background: none; border: none; padding: 0; font: inherit; color: var(--muted); cursor: pointer;
+  text-decoration: underline dotted; text-underline-offset: 3px;
+}
+.lien-manque:hover { color: var(--primary); }
 .d-etat { font-size: 13.5px; margin-top: 6px; line-height: 1.6; }
 
 @media print {
@@ -346,6 +358,10 @@ tr.cp-ligne td { text-decoration: line-through; color: var(--muted); }
 .touche-in { width: 9ch; text-align: center; cursor: pointer; }
 .touche-in:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
 .touche-vue { white-space: nowrap; }
+/* Le geste qui allonge un tableau vit SOUS ce tableau, pas dans la barre qui clôt le panneau :
+   côte à côte, deux boutons de poids voisin laissent croire à deux façons d'enregistrer. */
+.sous-table { margin-block-start: 8px; }
+
 .sa-lot { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-block-end: 12px; }
 
 /* Les guides et la correspondance, dans les Réglages. Deux tableaux qu'on remplit à la main : ils

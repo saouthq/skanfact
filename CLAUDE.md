@@ -80,9 +80,12 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Ce qui prend la place n'est pas le **nombre** d'objets mais leur **taille** : replier avant de paginer | 9.4.5 |
 | Un champ **pré-rempli** se sélectionne au clic, sinon la valeur proposée est imposée | 9.4.5 |
 | Une **classe posée par le code et inconnue de la feuille** ne se voit nulle part | 6.8.0, 7.23.0, 7.27.0, 8.1.0, 9.4.3 |
+| Une **règle générale qui vise un élément** avale l'exception qu'on vient d'y poser (`:not()`) | 7.23.0, 7.27.0, 7.30.0, 9.4.8 |
 | Une **phrase rassurante** se vérifie d'abord sur un univers non vide | 7.0.0, 7.3.0, 9.4.2 |
 | Un **avertissement** se lit AVANT le geste, jamais sous le bouton | 9.4.2 |
-| Une ligne garde **au plus UN** bouton visible ; le reste passe par `rowmenu.js` | 7.29.0 |
+| Une ligne garde **au plus UN** bouton visible ; le reste passe par `rowmenu.js` | 7.29.0 ; 9.4.8 — un en-tête de fiche aussi |
+| **UNE seule table d'actions par racine** : `bindRowMenus` écrase la précédente, en silence | 9.4.8 |
+| Un **champ qui compte dans une unité** le dit à côté de lui, pas en légende dessous | 9.4.8 |
 | Un refus dit **trois** choses : ce qui est refusé, pourquoi, et le bouton qui débloque | 7.0.0, 9.2.1 |
 | Un **bouton éteint dit pourquoi**, et par la MÊME fonction que celle qui refusera | 9.4.5 |
 | Une saisie refusée se **MONTRE** : on amène le champ à l'écran (`refus()`) | 7.0.0, 7.20.0 |
@@ -3665,6 +3668,68 @@ Règles apprises, à ne pas recasser :
 
 Prouvé : cinq défauts réintroduits un par un font tomber leur test, et le parcours réel exerce les
 deux moitiés du geste.
+
+### 9.4.8 — Les finitions du Cabinet
+
+Le reste de l'audit du 17/09/2026 : dix constats « moyens » et cinq « mineurs ». Aucun n'est grave
+pris seul ; ensemble, ce sont eux qui font « pas fini ».
+
+Règles apprises, à ne pas recasser :
+
+- **Une case à cocher vient AVANT son libellé.** Dans une grille pleine largeur (`span-2`),
+  l'écrire après la posait 500 px à droite du texte qu'elle coche : l'œil la cherche à gauche et ne
+  la trouve pas. Cinq des sept cases de l'application le faisaient déjà — celle qui diverge est
+  celle qui a tort (règle 9.4.2).
+- **Un champ qui compte dans une unité le DIT à côté de lui.** « Jour de relance : 10 » — dix
+  jours ? le 10 ? — et c'est cette date qui déclenche les relances de tout un portefeuille. Le mot
+  encadre le champ (`le` … `de chaque mois`) au lieu de flotter en légende dessous : une légende
+  sous un champ se lit après l'avoir rempli.
+- **Une liste fermée ne se saisit jamais en texte libre** (7.30.0, re-trouvée) : « VTE » au lieu de
+  « VT » ne correspond à aucun journal, et la grille de saisie s'ouvre alors sur le premier venu
+  sans un mot. Corollaire immédiat (8.3.0) : le code DÉJÀ réglé reste dans la liste, sinon rouvrir
+  les Réglages pour changer autre chose l'effacerait — un `select` dont aucune option ne correspond
+  retient la première, en silence.
+- **Un repère visuel sans chiffre ne dit pas combien il reste.** Cinq pastilles disent qu'il y a
+  plusieurs écrans ; « Écran 2 sur 5 » dit où l'on en est. Et le compte se DÉDUIT de `etapes.length`
+  — écrit à la main, il mentirait au premier écran ajouté, ce qui est exactement le défaut corrigé
+  en 9.4.2 sur la phrase du même assistant.
+- **La règle générale des pastilles vise TOUS les `span`** : sans `:not(.wiz-compte)`, le compteur
+  devenait une barre de 26×4 px sans texte visible. Cinquième fois que ce motif revient (7.23.0,
+  7.27.0, 7.30.0, 8.1.0) : le HTML est juste, c'est la feuille qui décide.
+- **Un en-tête de fiche a un budget de boutons, comme une ligne de liste** (7.29.0). « Imprimer »
+  occupait une place premium à côté des gestes quotidiens ; « Appeler » et « WhatsApp » dépendent
+  d'un numéro qu'un dossier sur deux n'a pas, donc la barre changeait de forme d'un client à
+  l'autre. Les trois vivent dans un menu, et `RowMenu.bouton` — le bouton seul, sans sa cellule —
+  est ce que `RowMenu.cellule` appelle : une seconde version recopiée aurait perdu `aria-expanded`
+  ou `data-rowmenu` au premier ajustement.
+- **UNE seule table d'actions par racine.** `bindRowMenus` écrase le gestionnaire précédent : une
+  seconde table rendrait la première parfaitement inerte, sans une erreur nulle part. J'ai failli
+  l'introduire en ajoutant le menu de l'en-tête à côté de celui des paquets.
+- **Un manque annoncé porte le bouton qui le comble** (7.20.0) : « email à renseigner » et
+  « téléphone à renseigner » étaient du gris inerte, alors que ce sont les deux champs sans lesquels
+  aucune relance ne part.
+- **Une colonne qui n'apprend rien coûte de la largeur à toutes les autres** : « 6 Ko » sur un
+  tableau de dix colonnes. Le poids reste en infobulle, là où il sert — quand on se demande si un
+  paquet est anormal.
+- **Le geste qui allonge un tableau vit SOUS ce tableau**, pas dans la barre qui clôt le panneau :
+  côte à côte, deux boutons de poids voisin laissent croire à deux façons d'enregistrer.
+- **Un e2e ancré sur la forme d'hier, septième fois.** `e2e:cabinet` exigeait un `#print` et
+  `e2e:boucle` prenait « le premier `[data-rowmenu]` venu » — qui est désormais celui de l'en-tête.
+  Les deux ont été retournés vers la règle : la fiche doit pouvoir s'IMPRIMER ; le menu cherché est
+  celui d'une LIGNE de paquet, dans l'onglet Paquets, atteint par son adresse.
+- **Un test e2e ne déclenche pas un geste qui bloque.** Cliquer le bouton d'impression ouvre la
+  boîte du système et fige le parcours pour toujours : on lit ce que le bouton propose. Et le test
+  accepte les DEUX formes, parce qu'un menu à une seule action devient un bouton nommé (7.29.0) —
+  un test qui n'en connaît qu'une accuserait du code juste au premier client sans téléphone.
+- **Un test trop LARGE, deuxième fois en deux versions** : `/<th class="r">Taille<\/th>/` visait la
+  table des sauvegardes, où la taille est légitime — c'est elle qui dit qu'une sauvegarde n'est pas
+  vide. On borne la tranche au tableau visé avant de juger.
+- Piège rencontré : la forme `${/* … */''}` est un commentaire de GABARIT. Écrite dans un tableau
+  JavaScript ordinaire, elle casse le fichier — `node --check` le dit tout de suite, la relecture
+  non.
+
+Prouvé : cinq défauts réintroduits un par un font tomber leur test, et les deux parcours réels ont
+attrapé ce qu'aucun test de source ne pouvait voir.
 
 ## Pistes pour la suite (non demandées)
 

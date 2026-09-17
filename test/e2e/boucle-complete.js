@@ -362,9 +362,13 @@ async function launchCabinet() {
   const ids = await win.evaluate(() => [...document.querySelectorAll('table.list tr[data-id]')].map(r => r.dataset.id));
   let trouve = false;
   for (const id of ids) {
-    await win.evaluate(i => { location.hash = '#/dossier/' + encodeURIComponent(i); }, id);
+    // L'onglet Paquets, par son ADRESSE : le menu qu'on cherche est celui d'une LIGNE de paquet.
+    // Depuis la 9.4.8 l'en-tête de la fiche porte lui aussi un menu (les gestes rares), et prendre
+    // « le premier [data-rowmenu] venu » tombait dessus — un menu qui n'a pas d'« Accuser
+    // réception », dans un onglet où les lignes sont masquées. On vise ce qu'on cherche.
+    await win.evaluate(i => { location.hash = '#/dossier/' + encodeURIComponent(i) + '/paquets'; }, id);
     await win.waitForTimeout(500);
-    const b = await win.$('[data-rowmenu]');
+    const b = await win.$('section[data-onglet=paquets] table.list [data-rowmenu]');
     if (!b) continue;
     await b.click();
     await win.waitForSelector('.row-menu');

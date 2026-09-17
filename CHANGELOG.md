@@ -7,6 +7,27 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 9.4.8 — 17/09/2026
+
+**Les finitions du Cabinet.**
+
+- **La case à cocher vient avant son libellé.** Dans une grille pleine largeur, l'écrire après la
+  posait 500 px à droite du texte qu'elle coche.
+- **« Jour de relance » dit dans quelle unité il compte** : « le **10** de chaque mois ». Dix quoi ?
+  C'est cette date qui déclenche les relances de tout un portefeuille.
+- **« Journal proposé » est une liste, plus un champ libre** : « VTE » au lieu de « VT » ne
+  correspondait à aucun journal, et la grille de saisie s'ouvrait sur le premier venu sans un mot.
+  Un code déjà réglé reste dans la liste, sinon rouvrir les Réglages l'effaçait.
+- **L'assistant dit où l'on en est** : « Écran 2 sur 5 » à côté des pastilles, et le compte se
+  déduit du nombre d'écrans.
+- **« Imprimer » passe dans le menu d'actions de la fiche**, avec « Appeler » et « WhatsApp » : un
+  en-tête a un budget de boutons, et les deux gestes de contact faisaient changer la barre de forme
+  d'un client à l'autre.
+- **« email à renseigner » et « téléphone à renseigner » sont cliquables** et ouvrent la fiche : un
+  manque annoncé porte le bouton qui le comble.
+- La colonne « Taille » quitte le tableau des paquets (le poids reste en infobulle) ; « Ajouter une
+  ligne » descend sous le tableau qu'il allonge, au lieu de voisiner avec « Enregistrer ».
+
 ## 9.4.7 — 17/09/2026
 
 **La fiche d'un client : l'année entière, dans le bon sens, et chaque mois agit.**

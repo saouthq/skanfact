@@ -381,6 +381,18 @@
   const pl = (n, un, plur) => `${n} ${n > 1 ? (plur || un + 's') : un}`;
   // Les douze mois, dans l'ordre du calendrier. Ils servent à dessiner l'année ENTIÈRE sur la fiche
   // d'un client : n'afficher que les mois attendus laissait croire que l'application en avait perdu.
+  // Les codes de journal proposés. Ce réglage vaut pour TOUS les dossiers, donc la liste est celle
+  // que `compta.js` pose à la création d'un livre — pas celle d'un dossier en particulier, qui
+  // n'aurait aucun sens sur les cinquante-neuf autres. Le code déjà réglé y est ajouté s'il n'y
+  // figure pas : un `select` dont aucune option ne correspond retient la PREMIÈRE en silence, et
+  // rouvrir les Réglages pour changer autre chose effacerait le journal choisi (règle 8.3.0).
+  function journauxConnus() {
+    const vus = new Set((KC.JOURNAUX_PAR_DEFAUT || []).map(j => String(j.code || j)));
+    const regle = String(((S.settings || {}).saisie || {}).journalParDefaut || '');
+    if (regle) vus.add(regle);
+    return [...vus].filter(Boolean).sort();
+  }
+
   const MOIS_COURTS = ['Janv.', 'Févr.', 'Mars', 'Avril', 'Mai', 'Juin',
     'Juil.', 'Août', 'Sept.', 'Oct.', 'Nov.', 'Déc.'];
   // Même règle que côté entreprise : le dinar se compte en millimes (trois décimales), les autres
@@ -1579,8 +1591,12 @@
     const ident = [
       esc(dossier.matricule || 'Matricule inconnu'),
       dossier.contact ? esc(dossier.contact) : '',
-      dossier.email ? esc(dossier.email) : '<span class="muted">email à renseigner</span>',
-      dossier.phone ? esc(dossier.phone) : '<span class="muted">téléphone à renseigner</span>',
+      // Un manque annoncé porte le bouton qui le comble (7.20.0) : « email à renseigner » et
+      // « téléphone à renseigner » étaient du gris inerte, alors que ce sont les deux champs sans
+      // lesquels aucune relance ne part. Ici on est dans un tableau JS, pas dans un gabarit : la
+      // forme `${/* … */''}` n'a rien à y faire, et casse le fichier.
+      dossier.email ? esc(dossier.email) : '<button type="button" class="lien-manque" data-ident="1">email à renseigner</button>',
+      dossier.phone ? esc(dossier.phone) : '<button type="button" class="lien-manque" data-ident="1">téléphone à renseigner</button>',
       labelOf(K.REGIMES, dossier.regime) ? 'régime ' + esc(labelOf(K.REGIMES, dossier.regime)) : '',
       labelOf(K.TVA_PERIODS, dossier.tvaPeriod) ? 'TVA ' + esc(labelOf(K.TVA_PERIODS, dossier.tvaPeriod)) : '',
       dossier.from ? 'mission depuis ' + esc(K.monthLabel(dossier.from)) : '',
@@ -1599,8 +1615,12 @@
       </div><div class="actions">
         ${row.missingCount || row.provisionalCount ? '<button class="btn btn-primary" id="rel">Relancer</button>' : ''}
         <button class="btn" id="edit">Modifier la fiche</button>
-        <button class="btn" id="print">Imprimer</button>
-        ${dossier.phone ? '<button class="btn" id="call">Appeler</button><button class="btn" id="wa">WhatsApp</button>' : ''}
+        ${/* Un en-tête de fiche a un budget de boutons, comme une ligne de liste (7.29.0).
+              « Imprimer » est un geste rare : il occupait une place premium à côté de ceux qu'on
+              fait tous les jours. Les deux gestes de contact le rejoignent — ils dépendent d'un
+              numéro qu'un dossier sur deux n'a pas, donc la barre changeait de forme d'un client
+              à l'autre. */''}
+        ${RowMenu.bouton('F:' + dossier.id, 'Actions', 'btn')}
       </div></div>
       <div class="print-only print-head">${esc(S.cabinet.name || 'Cabinet')} — fiche client imprimée le ${esc(fmtDay(Date.now()))}</div>
 
@@ -1718,7 +1738,7 @@
       <div class="panel"><h2>Paquets reçus ${info('p.integrity')}</h2>
       ${packs.length ? `<div class="scroll-x"><table class="list compact">
         <thead><tr><th class="nw">Mois</th><th>État</th><th class="r nw">Chiffre d'affaires</th><th class="r nw">TVA à décaisser</th>
-        <th class="r">Vérifiées</th><th class="r">Signalé</th><th class="nw">Reçu le</th><th class="nw">Fabriqué le</th><th class="r">Taille</th><th></th></tr></thead>
+        <th class="r">Vérifiées</th><th class="r">Signalé</th><th class="nw">Reçu le</th><th class="nw">Fabriqué le</th><th></th></tr></thead>
         <tbody>${packs.map(p => `<tr>
           <td class="nw">${esc(p.label)}</td>
           <td>${p.definitive ? '<span class="badge accepté">définitif</span>' : '<span class="badge partielle">provisoire</span>'}</td>
@@ -1732,11 +1752,10 @@
               : ''}</td>
           <td class="r">${(p.missing || []).reduce((s, m) => s + (m.count || 0), 0) || '—'}</td>
           <td class="muted nw">${esc(fmtWhen(p.receivedAt))}</td>
-          <td class="muted nw">${esc(p.generatedAt ? fmtWhen(Date.parse(p.generatedAt)) : '—')}</td>
-          <td class="r muted nw">${esc(fmtBytes(p.bytes))}</td>
+          <td class="muted nw" title="${esc('Poids du fichier : ' + fmtBytes(p.bytes))}">${esc(p.generatedAt ? fmtWhen(Date.parse(p.generatedAt)) : '—')}</td>
           ${p.path ? rowMenuCell(p.month) : '<td class="row-actions"><span class="muted small">exemple</span></td>'}</tr>`).join('')}</tbody>
         <tfoot><tr><td class="nw"><strong>${pl(packs.length, 'mois', 'mois')}</strong></td><td></td>
-          <td class="r nw"><strong>${esc(money(totalCA))}</strong></td><td colspan="7"></td></tr></tfoot></table></div>
+          <td class="r nw"><strong>${esc(money(totalCA))}</strong></td><td colspan="6"></td></tr></tfoot></table></div>
         <p class="muted small mt">Le bouton « Actions » de chaque ligne ouvre ce qu'on peut faire du mois : l'ouvrir, l'extraire dans un dossier de ton choix ${info('p.extract')} — pour travailler dans ton logiciel, ou pour rendre ses pièces à un client —, accuser réception, ou supprimer un paquet arrivé par erreur ${info('p.delete')}.</p>`
         : '<div class="empty mini">Aucun paquet reçu.</div>'}
       </div>
@@ -1748,14 +1767,9 @@
     $$('#d-tabs button', view).forEach(b => b.onclick = () => versOnglet(b.dataset.tab));
     $$('[data-vers]', view).forEach(b => b.onclick = () => versOnglet(b.dataset.vers));
     $('#edit').onclick = () => dossierForm(dossier);
-    $('#print').onclick = () => window.print();
+    $$('[data-ident]', view).forEach(b3 => { b3.onclick = () => dossierForm(dossier); });
     const cy = $('#ca-year');
     if (cy) cy.onchange = e => { ficheYear = e.target.value; render(); };
-    const call = $('#call'); if (call) call.onclick = () => api.tel({ number: dossier.phone }).catch(e => toast(plainError(e), 'error'));
-    const wa = $('#wa'); if (wa) wa.onclick = () => {
-      const m = K.relanceMail(S.cabinet, row);
-      api.tel({ number: dossier.phone, whatsapp: true, text: m.body }).catch(e => toast(plainError(e), 'error'));
-    };
     const rel = $('#rel'); if (rel) rel.onclick = () => writeRelance(row);
     $('#note-rel').onclick = () => noteRelanceForm(row);
     $$('[data-m]', view).forEach(c => { c.onclick = () => openPack(dossier, c.dataset.m); });
@@ -1820,7 +1834,26 @@
       try { S = await api.deletePack(dossier.id, p.month); render(); toast('Paquet supprimé.'); refreshBackupInfo(); }
       catch (e) { toast(plainError(e), 'error'); }
     };
-    bindRowMenus(view, mois => {
+    // UNE seule table d'actions par racine : `bindRowMenus` écrase le gestionnaire précédent, donc
+    // une seconde table rendrait la première parfaitement inerte — sans une erreur nulle part.
+    bindRowMenus(view, cle => {
+      // Les gestes rares de l'EN-TÊTE de fiche (9.4.8). « Imprimer » occupait une place premium à
+      // côté des gestes quotidiens ; les deux gestes de contact dépendent d'un numéro qu'un dossier
+      // sur deux n'a pas, donc la barre changeait de forme d'un client à l'autre.
+      if (cle === 'F:' + dossier.id) {
+        return [
+          { icon: 'ouvrir', label: 'Imprimer la fiche', hint: 'Tout le dossier, onglets compris', run: () => window.print() },
+          dossier.phone ? { sep: true } : null,
+          dossier.phone ? { icon: 'telephone', label: 'Appeler le client', hint: dossier.phone,
+            run: () => api.tel({ number: dossier.phone }).catch(e => toast(plainError(e), 'error')) } : null,
+          dossier.phone ? { icon: 'cloche', label: 'Écrire sur WhatsApp', hint: 'Le message de relance, tout prêt',
+            run: () => {
+              const m = K.relanceMail(S.cabinet, row);
+              api.tel({ number: dossier.phone, whatsapp: true, text: m.body }).catch(e => toast(plainError(e), 'error'));
+            } } : null
+        ].filter(Boolean);
+      }
+      const mois = cle;
       const p = packs.find(x => x.month === mois);
       if (!p || !p.path) return [];
       return [
@@ -4204,7 +4237,8 @@
           <label class="field span-2">${lbl('Nom du cabinet', 'cab.name')}<input type="text" id="c-name" value="${esc(c.name)}" placeholder="Cabinet Ben Salah"></label>
           <label class="field">${lbl('Email', 'cab.email')}<input type="email" id="c-email" value="${esc(c.email)}" placeholder="contact@cabinet.tn"></label>
           <label class="field">${lbl('Téléphone', 'cab.phone')}<input type="tel" id="c-phone" value="${esc(c.phone || '')}" placeholder="+216 …"></label>
-          <label class="field narrow">${lbl('Jour de relance', 'cab.relanceDay')}<input type="number" id="c-day" min="1" max="28" value="${Number((S.settings || {}).relanceDay) || 10}"></label>
+          <label class="field narrow">${lbl('Jour de relance', 'cab.relanceDay')}
+                <span class="suffixe"><span class="suffixe-av">le</span><input type="number" id="c-day" min="1" max="28" value="${Number((S.settings || {}).relanceDay) || 10}"><span class="suffixe-ap">de chaque mois</span></span></label>
           <label class="field narrow">${lbl('TVA : jour de dépôt', 'ec.jours')}<input type="number" id="c-tvaday" min="1" max="31" value="${K.deadlineSettings(S).tvaDay}"></label>
           <label class="field narrow">${lbl('CNSS : jour de dépôt', 'ec.jours')}<input type="number" id="c-cnssday" min="1" max="31" value="${K.deadlineSettings(S).cnssDay}"></label>
         </div>
@@ -4240,12 +4274,24 @@
               ne peut pas relire. Et les deux cases sont ensemble, alignées à gauche comme tout le
               reste du panneau — l'une d'elles flottait seule à droite de la grille. */''}
         <div class="grid-2">
-          <label class="field">${lbl('Journal proposé', 'sa.journalDefaut')}
-            <input type="text" id="sr-journal" maxlength="5" placeholder="le dernier utilisé" value="${esc(((S.settings || {}).saisie || {}).journalParDefaut || '')}"></label>
-          <label class="check span-2">${lbl('Écrire la date complète', 'sa.dateComplete')}
-            <input type="checkbox" id="sr-datec" ${((S.settings || {}).saisie || {}).dateComplete !== false ? 'checked' : ''}></label>
-          <label class="check span-2">${lbl('Proposer « valider tout le journal du mois »', 'sa.validerLot')}
-            <input type="checkbox" id="sr-lot" ${((S.settings || {}).saisie || {}).validerParLot !== false ? 'checked' : ''}></label>
+          ${/* Une liste fermée ne se saisit jamais en texte libre (7.30.0) : un journal tapé de
+                travers — « VTE » au lieu de « VT » — ne correspond à aucun journal, et la grille
+                s'ouvre alors sur le premier venu sans un mot. « Le dernier utilisé » est la
+                première option, parce que c'est le bon défaut et non un vide à remplir. */''}
+          <label class="field narrow">${lbl('Journal proposé', 'sa.journalDefaut')}
+            <select id="sr-journal">
+              <option value="">le dernier utilisé</option>
+              ${journauxConnus().map(j => `<option value="${esc(j)}" ${((S.settings || {}).saisie || {}).journalParDefaut === j ? 'selected' : ''}>${esc(j)}</option>`).join('')}
+            </select></label>
+          ${/* La case vient AVANT son libellé, comme les cinq autres de l'application. Dans une
+                grille `span-2`, l'écrire après la posait 500 px à droite du texte qu'elle coche :
+                l'œil la cherche à gauche et ne la trouve pas. */''}
+          <label class="check span-2">
+            <input type="checkbox" id="sr-datec" ${((S.settings || {}).saisie || {}).dateComplete !== false ? 'checked' : ''}>
+            ${lbl('Écrire la date complète', 'sa.dateComplete')}</label>
+          <label class="check span-2">
+            <input type="checkbox" id="sr-lot" ${((S.settings || {}).saisie || {}).validerParLot !== false ? 'checked' : ''}>
+            ${lbl('Proposer « valider tout le journal du mois »', 'sa.validerLot')}</label>
         </div>
         <h3 class="mt">${lbl('Les touches', 'sa.touches')}</h3>
         <p class="muted small">Clique dans le champ et <strong>appuie sur la touche</strong> que tu veux utiliser — elle s'inscrit toute seule. Échap pour ressortir sans rien changer.</p>
@@ -4275,8 +4321,8 @@
         <p class="small">Traduire les comptes de tes clients vers les tiens, <strong>à l'import et à l'export</strong>.
         Une écriture déjà validée n'est jamais réécrite : elle porte le compte sous lequel tu l'as validée.</p>
         <div id="sr-corr"></div>
-        <div class="modal-actions"><button class="btn" id="sr-corr-add">Ajouter une ligne</button>
-        <span class="saved" id="sr-corr-saved" hidden></span><button class="btn btn-primary" id="sr-corr-save">Enregistrer la correspondance</button></div>
+        <div class="sous-table"><button class="btn btn-sm" id="sr-corr-add">Ajouter une ligne</button></div>
+        <div class="modal-actions"><span class="saved" id="sr-corr-saved" hidden></span><button class="btn btn-primary" id="sr-corr-save">Enregistrer la correspondance</button></div>
       </div>
       </section>
 
@@ -4844,7 +4890,8 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
               <label class="field span-2">${lbl('Nom du cabinet', 'cab.name')}<input type="text" id="w-name" value="${esc(S.cabinet.name || '')}" placeholder="Cabinet Ben Salah"></label>
               <label class="field">${lbl('Email', 'cab.email')}<input type="email" id="w-email" value="${esc(S.cabinet.email || '')}" placeholder="contact@cabinet.tn"></label>
               <label class="field">${lbl('Téléphone', 'cab.phone')}<input type="tel" id="w-phone" value="${esc(S.cabinet.phone || '')}" placeholder="+216 …"></label>
-              <label class="field narrow">${lbl('Jour de relance', 'cab.relanceDay')}<input type="number" id="w-day" min="1" max="28" value="${Number((S.settings || {}).relanceDay) || 10}"></label>
+              <label class="field narrow">${lbl('Jour de relance', 'cab.relanceDay')}
+                <span class="suffixe"><span class="suffixe-av">le</span><input type="number" id="w-day" min="1" max="28" value="${Number((S.settings || {}).relanceDay) || 10}"><span class="suffixe-ap">de chaque mois</span></span></label>
             </div>`,
           next: async () => {
             const nom = $('#w-name', el).value.trim();
@@ -4928,7 +4975,12 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
       function draw() {
         const e = etapes[etape];
         el.innerHTML = `<div class="wiz-card">
-          <div class="wiz-dots">${etapes.map((_, i) => `<span class="${i === etape ? 'on' : i < etape ? 'done' : ''}"></span>`).join('')}</div>
+          ${/* Cinq pastilles muettes disent qu'il y a plusieurs écrans ; elles ne disent pas
+                combien il en reste. Le chiffre est à côté, et il se DÉDUIT du nombre d'écrans —
+                écrit à la main, il mentirait au premier écran ajouté (défaut corrigé en 9.4.2 sur
+                la phrase du même assistant). */''}
+          <div class="wiz-dots"><span class="wiz-compte">Écran ${etape + 1} sur ${etapes.length}</span>
+            ${etapes.map((_, i) => `<span class="${i === etape ? 'on' : i < etape ? 'done' : ''}"></span>`).join('')}</div>
           <h1>${esc(e.t)}</h1>
           <div class="wiz-body">${e.html()}</div>
           <div class="wiz-actions">
