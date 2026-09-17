@@ -7,6 +7,31 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 9.4.4 — 17/09/2026
+
+**La page Dossiers : le portefeuille au-dessus de la ligne de flottaison.** Sur un portable de
+1280×800 — l'écran d'un comptable, pas un 27 pouces — la liste des clients commençait à **800 px**,
+c'est-à-dire exactement au bas de l'écran. Elle commence maintenant à **523 px**, en-tête et
+premières lignes visibles à l'ouverture. Le portefeuille est le produit ; il ne se mérite pas au
+défilement.
+
+- Les quatre chiffres du haut tiennent sur **une rangée de 72 px** au lieu de quatre cartes de 180,
+  et deux d'entre eux — « à jour » et « mois manquants » — s'ouvrent : un écran qui NOMME un
+  ensemble doit pouvoir le montrer.
+- **« À faire » se replie**, garde les deux lignes les plus urgentes sous les yeux et compte ce
+  qu'il cache (« Voir 4 autres lignes »). Le choix est mémorisé.
+- **Chaque ligne de la liste porte son menu d'actions** : relancer le client, ouvrir sa
+  comptabilité, voir ses paquets, modifier sa fiche. Relancer demandait avant trois écrans.
+- **Les six lignes de « À faire » disent où elles mènent** — cinq portaient le même libellé « Voir ».
+- **Les pastilles de couleur ont leur légende.** Rouge, orange, vert devant chaque client, et rien
+  nulle part ne disait ce que ça voulait dire.
+- **Les colonnes entièrement vides sont masquées**, le nombre est dit, et « Tout afficher » les rend.
+- **La recherche a sa loupe** et cesse de faire 1 220 px de large pour chercher parmi cinq clients.
+- **La colonne d'actions reste collée à droite** quand la table défile : le geste ne se cherche pas.
+- **Le premier écran d'un comptable n'est plus un bandeau rouge.** L'avertissement de la clé de
+  secours était juste, le moment ne l'était pas : avant le premier paquet, il n'y a rien à perdre.
+  Une ligne calme avec son bouton au jour 0, le rouge dès qu'un paquet est sur le disque.
+
 ## 9.4.3 — 17/09/2026
 
 **Le socle visuel du Cabinet, et les instruments qui le tiennent.** L'application entreprise est

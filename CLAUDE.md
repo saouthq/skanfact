@@ -3438,6 +3438,61 @@ rend l'opération tenable.
 Prouvé : cinq défauts réintroduits un par un font tomber leur test, et le sixième (l'en-tête de
 colonne désaligné) a été trouvé par l'instrument lui-même à sa première exécution.
 
+### 9.4.4 — La page Dossiers : le portefeuille au-dessus de la ligne de flottaison
+
+Premier volet du chantier UI/UX, et le défaut qu'il corrige se mesure en un chiffre : sur un
+portable de 1280×800, la liste des clients commençait à **800 px** — le bas de l'écran. Elle
+commence à **523 px**. Devant elle passaient quatre cartes de 180 px, un panneau « À faire » de six
+lignes qui ne se repliait pas, un bandeau, une recherche de 1 220 px et une rangée de filtres.
+
+Règles apprises, à ne pas recasser :
+
+- **Le produit ne se mérite pas au défilement.** La page Dossiers EST le portefeuille, et c'est la
+  seule chose qu'aucun autre logiciel ne donne à un comptable. Ce qui passe devant lui doit tenir
+  en un coup d'œil. La règle est désormais MESURÉE (`e2e:cabinet-jour1`, étape 12) : le haut du
+  tableau, dans la fenêtre, à 1280×800, sous 560 px. Le seuil n'impose pas une maquette, il
+  interdit de repousser le produit hors de l'écran — prouvé en remettant les cartes hautes et le
+  panneau non plafonné : 756 px, et le parcours tombe.
+- **Un panneau d'alertes se replie, et ce qu'il cache se COMPTE.** Six lignes font 400 px.
+  « À faire » garde les DEUX plus urgentes (la liste est triée par urgence) et propose « Voir
+  4 autres lignes » : un « voir plus » qui ne dit pas combien ne se clique pas. Le choix est
+  mémorisé — l'app entreprise a `todo-toggle` + `prefs` depuis la 2.2.0, le Cabinet ne l'avait
+  jamais reçu (le jumeau manquant, encore).
+- **Cinq libellés identiques ne disent pas où ils mènent.** Les six lignes de « À faire » partaient
+  à six endroits et cinq disaient « Voir » : on clique pour savoir, et on revient. Un libellé décrit
+  l'écran d'ARRIVÉE (7.29.0). Le test n'écrit pas la liste des libellés — il interdit le DOUBLON,
+  donc il ne se périme pas au septième.
+- **Une couleur seule n'est pas une information.** Une pastille rouge, orange ou verte devant chaque
+  client, et rien nulle part ne disait ce que ça voulait dire : ni apprenable au premier jour, ni
+  lisible pour qui distingue mal le rouge du vert, ni visible sur une impression. La légende est
+  confrontée par un test aux niveaux que `dossierRow` PEUT produire — lus dans cabcore, jamais
+  recopiés : c'est la couverture des treize boutons morts (7.0.0) appliquée à une couleur.
+- **`rowmenu.js` est partagé depuis la 7.29.0, et la page principale du Cabinet ne l'utilisait pas.**
+  Relancer un client depuis le portefeuille demandait trois écrans. Le menu ne vole pas le clic de
+  la ligne et la ligne ne vole pas le sien (piège 7.28.0). `writeRelance` attend une LIGNE de
+  `dossierList`, pas la fiche brute : les deux existent au même endroit et se ressemblent — c'est
+  exactement ce qui produit un mail vide.
+- **Un avertissement juste au mauvais moment apprend à ignorer la couleur.** Le tout premier écran
+  d'un comptable, avant qu'il ait un seul client, était un bandeau ROUGE sur la clé de secours.
+  Avant le premier paquet, il n'y a rien à perdre : ligne calme avec son bouton au jour 0, rouge dès
+  qu'un paquet est sur le disque. C'est « un filet se réclame au moment où il protège encore »
+  (QUESTIONS.md), pris par l'autre bout — et le bouton reste dans les deux cas, prévenir sans offrir
+  le geste ne sert à rien.
+- **Une colonne entièrement vide coûte de la largeur à toutes les autres.** Trois d'entre elles ne
+  contenaient que des tirets. On les masque, on le DIT, et « Tout afficher » les rend : masquer sans
+  le dire serait un piège (7.12.0).
+- **La colonne d'actions d'une table large reste collée à droite.** Neuf colonnes débordent sur un
+  portable : le menu de la ligne partait 17 px hors de l'écran, et il fallait défiler de côté pour
+  l'atteindre. Un geste qu'on doit chercher n'est pas un geste.
+- **La chaîne de `:not()` de la règle générale des champs gagne toujours** (quatrième fois, après
+  `.help-search` en 7.27.0 et le thème sombre en 7.30.0) : `.champ-loupe input` perdait, donc la
+  loupe se posait SUR la première lettre du texte. Ça ne se voit qu'en regardant l'écran.
+- Deux affinages de l'instrument, chacun avec sa raison écrite : un bouton dans un `.scroll-x` n'est
+  pas « hors de l'écran », il est à une molette (marqueur explicite du projet depuis la 7.13.0) ; et
+  un en-tête de section repliable (`collapse-h`) porte ses trois signes au repos — chevron, curseur,
+  compteur — comme l'en-tête cliquable de la 7.14.0. Les exceptions sont NOMMÉES dans une liste :
+  une exception anonyme est un trou.
+
 ## Pistes pour la suite (non demandées)
 
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.

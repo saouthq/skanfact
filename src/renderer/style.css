@@ -1308,3 +1308,61 @@ kbd { font: inherit; font-size: 12px; font-family: -apple-system, system-ui, san
 .set-manque { background: var(--warning-soft); color: var(--warning); border-radius: var(--radius); padding: 12px 16px; font-size: 13px; }
 .set-manque b { font-weight: 700; }
 .upd-quand { margin-top: 10px; }
+
+/* ---------- la rangée de chiffres (9.4.4) ----------
+   Variante COMPACTE de `.stats`. Elle vit ici, avec le composant qu'elle décline, et pas dans la
+   feuille du Cabinet : une variante rangée à part diverge du composant qu'elle prétend varier.
+
+   Le défaut qu'elle corrige : quatre cartes de 180 px poussaient la liste des clients à 800 px sur
+   un écran de 800 px de haut. Les mêmes quatre chiffres tiennent sur 72 px. */
+.stats.rangee { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+.stats.rangee .stat { padding: 11px 14px; display: block; text-align: start; }
+.stats.rangee .pf-l { display: flex; align-items: baseline; gap: 7px; min-inline-size: 0; }
+.stats.rangee .val { font-size: 19px; margin: 0; white-space: nowrap; }
+.stats.rangee .lbl { text-transform: none; letter-spacing: 0; font-size: 12.5px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stats.rangee .sub { margin-top: 2px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Un chiffre qui NOMME un ensemble l'ouvre (7.15.0) — et il le dit par trois signes, au repos. */
+.stats.rangee .stat.ouvre { cursor: pointer; font: inherit; color: inherit; width: 100%; }
+.stats.rangee .stat.ouvre::after {
+  content: '›'; position: absolute; inset-block-start: 9px; inset-inline-end: 12px;
+  color: var(--muted); font-size: 15px; line-height: 1;
+}
+.stats.rangee .stat.ouvre:hover { border-color: var(--primary); }
+.stats.rangee .stat.ouvre:hover::after { color: var(--primary); }
+.stats.rangee .stat.ouvre:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+/* Un champ de recherche se reconnaît à sa loupe, et il n'a pas besoin de toute la largeur : 1 220 px
+   pour chercher parmi cinq clients, c'est un champ étiré, pas un champ large. */
+.champ-loupe { position: relative; display: inline-flex; flex: 1 1 260px; max-inline-size: 380px; }
+/* La chaîne de `:not()` n'est pas décorative : la règle générale des champs en porte QUATRE, donc
+   `.champ-loupe input` (une classe, un élément) PERD contre elle et le décalage n'est jamais
+   appliqué — la loupe se pose alors SUR la première lettre du texte. C'est exactement le défaut de
+   `.help-search input` en 7.27.0, et il ne se voit qu'en regardant l'écran. */
+.champ-loupe input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]) {
+  padding-inline-start: 34px;
+}
+.champ-loupe::before {
+  content: ''; position: absolute; inset-block-start: 50%; inset-inline-start: 12px;
+  inline-size: 13px; block-size: 13px; margin-block-start: -7px; pointer-events: none; opacity: .5;
+  background: currentColor;
+  -webkit-mask: no-repeat center/13px url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.4' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.6-3.6'/%3E%3C/svg%3E");
+  mask: no-repeat center/13px url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.4' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.6-3.6'/%3E%3C/svg%3E");
+}
+
+/* La légende d'un code couleur. Une pastille sans son mot n'est pas une information : elle n'est ni
+   apprenable, ni accessible, ni lisible sur une impression. */
+.legende { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+.legende .lg { display: inline-flex; align-items: center; }
+
+/* La colonne d'actions d'une table LARGE reste sous la main (9.4.4). Une table de neuf colonnes
+   déborde sur un portable : le menu de la ligne partait 17 px hors de l'écran et il fallait faire
+   défiler de côté pour l'atteindre. Un geste qu'on doit chercher n'est pas un geste. */
+.scroll-x table.list td.row-actions,
+.scroll-x table.list th:last-child {
+  position: sticky; inset-inline-end: 0; background: var(--panel);
+  box-shadow: -8px 0 8px -8px rgba(20, 40, 60, .16);
+}
+.scroll-x table.list tr.clickable:hover td.row-actions { background: #f7fbfa; }
+body.dark .scroll-x table.list tr.clickable:hover td.row-actions { background: #1f2731; }
+body.dark .scroll-x table.list td.row-actions,
+body.dark .scroll-x table.list th:last-child { box-shadow: -8px 0 8px -8px rgba(0, 0, 0, .5); }

@@ -70,7 +70,11 @@ const LARGE = 1440, HAUT = 900;
         return {
           texte: (b.textContent || '').trim().replace(/\s+/g, ' '),
           id: b.id || '', classe: b.className,
-          deborde: Math.round(Math.max(0, r.right - largeur)),
+          // Un bouton dans un conteneur qui défile horizontalement n'est pas « hors de l'écran » :
+          // il est à une molette. `.scroll-x` est le marqueur explicite du projet depuis la 7.13.0,
+          // et une exclusion plus large (tout ancêtre en `overflow-x: auto`) désarmerait le
+          // contrôle en silence — le conteneur de page en est un.
+          deborde: b.closest('.scroll-x') ? 0 : Math.round(Math.max(0, r.right - largeur)),
           hauteur: Math.round(r.height),
           // Une icône seule (la bulle « i », une croix) n'a pas de texte : elle se reconnaît à son
           // dessin, on ne lui demande pas de ressembler à un bouton de formulaire.
@@ -365,6 +369,35 @@ const LARGE = 1440, HAUT = 900;
     await mesurer('10-petit-' + p.hash.replace(/[#/]/g, ''), p.texte + ' à 1280');
   }
 
+  // ================================================================ la ligne de flottaison (9.4.4)
+  //
+  // La règle la plus simple et la plus dure de cette application : sur l'écran d'un comptable, la
+  // LISTE DES CLIENTS se voit sans défiler. C'est le produit — le portefeuille — et il commençait à
+  // 800 px sur un écran de 800 px, c'est-à-dire jamais. Quatre cartes de 180 px, un panneau
+  // « À faire » de six lignes qui ne se repliait pas, un bandeau, une recherche pleine largeur et
+  // une rangée de filtres passaient devant lui.
+  //
+  // On mesure le HAUT DE LA PREMIÈRE LIGNE du tableau, dans la fenêtre, à 1280×800 : c'est
+  // exactement ce qu'un comptable voit. Le seuil est haut (560 px) exprès — il n'impose pas une
+  // maquette, il interdit de repousser le produit hors de l'écran.
+  étape('La liste des clients se voit sans défiler, sur un portable');
+  await aller('#/dossiers', '#view table.list');
+  await attendre(400);
+  const flottaison = await win.evaluate(() => {
+    const tr = document.querySelector('#view table.list tbody tr');
+    const h = document.querySelector('#view table.list thead');
+    return tr && h ? { entete: Math.round(h.getBoundingClientRect().top), ligne: Math.round(tr.getBoundingClientRect().top), ecran: window.innerHeight } : null;
+  });
+  if (!flottaison) throw new Error('aucune ligne de client : la mesure ne prouve rien');
+  mesures.flottaison = flottaison;
+  dit(`en-tête du tableau à ${flottaison.entete} px, première ligne à ${flottaison.ligne} px, écran de ${flottaison.ecran} px`);
+  const SEUIL_FLOTTAISON = 560;
+  if (flottaison.entete > SEUIL_FLOTTAISON) {
+    mesures.defauts.push(`la liste des clients commence à ${flottaison.entete} px sur un écran de `
+      + `${flottaison.ecran} px : le portefeuille est sous la ligne de flottaison (seuil ${SEUIL_FLOTTAISON})`);
+  }
+  ok(`le portefeuille commence à ${flottaison.entete} px, sous le seuil de ${SEUIL_FLOTTAISON}`);
+
   // ================================================================ le rapport
   const tousChamps = mesures.ecrans.flatMap(e => e.champs);
   const sansBulle = tousChamps.filter(c => !c.bulle);
@@ -374,7 +407,13 @@ const LARGE = 1440, HAUT = 900;
     .filter(c => !c.etiquette && !c.placeholder && !c.aria && c.type !== 'checkbox' && c.type !== 'radio')
     .map(c => e.nom + ' → ' + (c.nom || c.type)));
   const debordent = mesures.ecrans.flatMap(e => e.boutons.filter(b => b.deborde > 0).map(b => e.nom + ' → ' + b.texte + ' (+' + b.deborde + 'px)'));
-  const invisibles = [...new Set(mesures.ecrans.flatMap(e => e.boutons.filter(b => !b.seVoit)
+  // Deux exceptions NOMMÉES, et elles doivent le rester : une exception anonyme est un trou.
+  //   `collapse-h` — un titre de section repliable. Il porte ses trois signes au repos (un chevron
+  //     dessiné, un curseur de clic, un compteur en pastille), comme l'en-tête cliquable de la
+  //     7.14.0 ; lui demander un fond ferait de chaque titre de panneau un bouton de formulaire.
+  const EXCEPTIONS = ['collapse-h'];
+  const invisibles = [...new Set(mesures.ecrans.flatMap(e => e.boutons
+    .filter(b => !b.seVoit && !EXCEPTIONS.some(c => String(b.classe || '').split(' ').includes(c)))
     .map(b => '« ' + b.texte.slice(0, 46) + ' » (' + (b.classe || 'sans classe') + ')')))];
   const videsSansGeste = mesures.ecrans.flatMap(e => e.vides.filter(v => !v.bouton).map(v => e.nom + ' → ' + v.texte));
   const debordements = mesures.ecrans.filter(e => e.deborde.length).map(e => e.nom + ' → ' + e.deborde.join(', '));

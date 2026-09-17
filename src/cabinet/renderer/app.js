@@ -1058,11 +1058,14 @@
   const TODO_ACTIONS = {
     'cle-secours': { texte: 'Enregistrer ma clé…', run: () => versReglages('pan-secu') },
     'licence': { texte: 'Voir ce qui est compté…', run: () => versReglages('pan-licence') },
-    'jour-de-relance': { texte: 'Voir', run: () => { location.hash = '#/relances'; } },
-    'echeance': { texte: 'Voir', run: () => { location.hash = '#/echeances'; } },
-    'manquants': { texte: 'Voir', run: () => { location.hash = '#/relances'; } },
-    'provisoires': { texte: 'Voir', run: () => { location.hash = '#/relances'; } },
-    'pieces': { texte: 'Voir', run: () => { location.hash = '#/dossiers'; } }
+    // 9.4.4 — cinq libellés « Voir » identiques. Un libellé décrit l'écran d'ARRIVÉE (règle
+    // 7.29.0) : « Voir » ne dit pas si on part aux Relances, aux Échéances ou dans un dossier, donc
+    // on clique pour savoir, et on revient.
+    'jour-de-relance': { texte: 'Relancer', run: () => { location.hash = '#/relances'; } },
+    'echeance': { texte: 'Voir l\'échéance', run: () => { location.hash = '#/echeances'; } },
+    'manquants': { texte: 'Voir qui doit envoyer', run: () => { location.hash = '#/relances'; } },
+    'provisoires': { texte: 'Voir le provisoire', run: () => { location.hash = '#/relances'; } },
+    'pieces': { texte: 'Voir les dossiers', run: () => { location.hash = '#/dossiers'; } }
   };
   // Ouvrir les Réglages SUR un panneau : on pose l'onglet et la cible avant de naviguer, et on
   // redessine quand on y est déjà (sinon aucun `hashchange` n'a lieu et le clic paraît inerte —
@@ -1082,10 +1085,25 @@
         ? `<div class="todo-ok">Tout est à jour : tes ${p.surSkanfact} dossiers sur SkanFact ont envoyé leurs mois clôturés.</div>`
         : `<div class="todo-ok">Tout est à jour : ton dossier sur SkanFact a envoyé ses mois clôturés.</div>`;
     }
-    return `<div class="panel todo"><h2>À faire</h2><ul>${todo.map(t => `
+    // 9.4.4 — repliable, et plafonné. Six lignes font 400 px : avec les cartes au-dessus, la liste
+    // des clients partait sous l'écran. Le panneau garde les DEUX plus urgentes sous les yeux (la
+    // liste est triée par urgence) et range le reste derrière un lien qui COMPTE ce qu'il cache —
+    // un « voir plus » qui ne dit pas combien ne se clique pas. Le choix de replier est mémorisé :
+    // l'app entreprise a `todo-toggle` + `prefs` depuis la 2.2.0, le Cabinet ne l'avait jamais reçu.
+    const ouvert = prefs.get('todoOpen', true) !== false;
+    const tout = prefs.get('todoAll', false) === true;
+    const VISIBLES = 2;
+    const montres = !ouvert ? [] : (tout ? todo : todo.slice(0, VISIBLES));
+    const caches = todo.length - montres.length;
+    return `<div class="panel todo">
+      <h2><button type="button" class="collapse-h" id="todo-toggle" aria-expanded="${ouvert}" aria-controls="todo-list"
+        title="${ouvert ? 'Replier' : 'Déplier'} la liste"><span class="chev">▾</span>À faire<span class="count">${todo.length}</span></button></h2>
+      <ul id="todo-list"${ouvert ? '' : ' hidden'}>${montres.map(t => `
       <li class="lvl-${t.level}"><span class="td-dot"></span>
         <span class="td-txt"><strong>${esc(t.label)}</strong><span class="small muted">${esc(t.detail)}</span></span>
-        <button class="btn btn-ghost btn-sm nw" data-todo="${esc(t.id)}">${esc((TODO_ACTIONS[t.id] || {}).texte || 'Voir')}</button></li>`).join('')}</ul></div>`;
+        <button class="btn btn-ghost btn-sm nw" data-todo="${esc(t.id)}">${esc((TODO_ACTIONS[t.id] || {}).texte || 'Voir')}</button></li>`).join('')}</ul>
+      ${ouvert && (caches > 0 || tout) ? `<button type="button" class="btn btn-ghost btn-sm" id="todo-plus">${
+    caches > 0 ? `Voir ${pl(caches, 'autre ligne', 'autres lignes')}` : 'Ne montrer que les deux plus urgentes'}</button>` : ''}</div>`;
   }
   function bindTodo(root) {
     $$('[data-todo]', root || document).forEach(b => b.onclick = () => {
@@ -1093,22 +1111,81 @@
       // Un bouton qui avale le clic en silence fait douter de soi, puis du logiciel : on le dit.
       if (a) a.run(); else toast('Cette ligne n\'a pas encore d\'écran à ouvrir.', 'error');
     });
+    const t = $('#todo-toggle', root || document);
+    if (t) t.onclick = () => { prefs.set('todoOpen', prefs.get('todoOpen', true) === false); render(); };
+    const p = $('#todo-plus', root || document);
+    if (p) p.onclick = () => { prefs.set('todoAll', prefs.get('todoAll', false) !== true); render(); };
+  }
+
+  // 9.4.4 — une pastille de couleur seule n'est pas une information. Rouge, orange, vert devant
+  // chaque client, et rien nulle part ne disait ce que ça voulait dire : ni apprenable au premier
+  // jour, ni lisible pour les 8 % d'hommes qui distinguent mal le rouge du vert, ni visible sur une
+  // capture imprimée. La couleur RAPPELLE, elle ne dit pas — donc elle porte son mot.
+  // Les quatre niveaux sont ceux de `dossierRow` — `danger`, `warn`, `ok`, `hors` — et pas des noms
+  // inventés ici : une légende qui nomme des couleurs que le code ne pose pas ne légende rien.
+  const NIVEAUX = {
+    danger: 'en retard : il manque au moins un mois',
+    warn: 'à surveiller : du provisoire, ou des pièces signalées',
+    ok: 'à jour',
+    hors: 'pas encore sur SkanFact : rien ne lui est réclamé'
+  };
+  const ORDRE_NIVEAUX = ['danger', 'warn', 'ok', 'hors'];
+  function legendeNiveaux() {
+    return ORDRE_NIVEAUX.map(n =>
+      `<span class="lg"><span class="dot-lvl ${n === 'ok' ? '' : n}"></span>${esc(NIVEAUX[n])}</span>`).join('');
+  }
+
+  // Les colonnes qui ne contiennent QUE des tirets. Sur cinq dossiers, trois d'entre elles n'avaient
+  // pas une seule valeur : elles coûtaient de la largeur à toutes les autres et serraient les noms
+  // de clients. On les masque, on le DIT, et on laisse un bouton pour les rendre — masquer sans le
+  // dire serait pire que le défaut (règle 7.12.0 : un filet ne doit pas devenir un piège).
+  function colonnesUtiles(rows) {
+    if (prefs.get('colTout', false) === true) return { provisoires: true, signale: true, relance: true, masquees: 0 };
+    const c = {
+      provisoires: rows.some(r => r.provisionalCount > 0),
+      signale: rows.some(r => r.issues > 0),
+      relance: rows.some(r => r.lastRelanceAt)
+    };
+    c.masquees = ['provisoires', 'signale', 'relance'].filter(k => !c[k]).length;
+    return c;
   }
 
   // Le portefeuille d'un coup d'œil. C'est ce qui manquait pour qu'un comptable voie autre chose
   // qu'une liste — et c'est précisément ce qui impressionne en démonstration.
   function portfolioPanel(p) {
     if (!p.total) return '';
-    return `<div class="stats">
-      <div class="stat"><div class="lbl">Clients suivis</div><div class="val">${p.total}</div>
-        <div class="sub">${p.surSkanfact} sur SkanFact${p.horsSkanfact ? ` · ${p.horsSkanfact} pas encore` : ''}</div></div>
-      <div class="stat"><div class="lbl">À jour</div><div class="val ${p.enRetard ? '' : 'ok'}">${p.aJour}<span class="sub">/ ${p.surSkanfact || 0}</span></div>
-        <div class="sub">${p.enRetard ? `${p.enRetard} en retard` : 'aucun retard'}${p.provisoires ? ` · ${p.provisoires} en provisoire` : ''}</div></div>
-      <div class="stat"><div class="lbl">Mois manquants</div><div class="val ${p.moisManquants ? 'due' : 'ok'}">${p.moisManquants}</div>
-        <div class="sub">${p.paquets ? pl(p.paquets, 'paquet') + ' reçu' + (p.paquets > 1 ? 's' : '') : 'aucun paquet reçu'}</div></div>
-      <div class="stat"><div class="lbl">Dernier CA suivi</div><div class="val">${esc(money(p.dernierCA))}</div>
-        <div class="sub">${p.honoraires ? 'Honoraires : ' + esc(money(p.honoraires)) + ' / mois' : 'somme des derniers mois reçus'}</div></div>
+    // 9.4.4 — quatre cartes de 180 px de haut poussaient la LISTE DES CLIENTS sous la ligne de
+    // flottaison : à 1280×800, elle commençait à 800 px, c'est-à-dire exactement au bas de l'écran.
+    // Le portefeuille EST le produit ; il ne se mérite pas au défilement. Les mêmes quatre chiffres
+    // tiennent sur une rangée de 72 px — et deux d'entre eux NOMMENT un ensemble, donc ils
+    // l'ouvrent (règle 7.15.0) : « à jour » et « mois manquants » mènent là où on agit.
+    const item = (cle, lbl, val, sub, ton) => `<${cle ? 'button type="button"' : 'div'} class="stat${cle ? ' ouvre' : ''}"${cle ? ` data-pf="${cle}"` : ''}>
+      <span class="pf-l"><b class="val${ton ? ' ' + ton : ''}">${val}</b> <span class="lbl">${lbl}</span></span>
+      <span class="sub">${sub}</span></${cle ? 'button' : 'div'}>`;
+    return `<div class="stats rangee">
+      ${item('', 'clients suivis', p.total,
+    `${p.surSkanfact} sur SkanFact${p.horsSkanfact ? ` · ${p.horsSkanfact} pas encore` : ''}`)}
+      ${item('ajour', `à jour sur ${p.surSkanfact || 0}`, p.aJour,
+    `${p.enRetard ? `${p.enRetard} en retard` : 'aucun retard'}${p.provisoires ? ` · ${p.provisoires} en provisoire` : ''}`,
+    p.enRetard ? '' : 'ok')}
+      ${item('manquants', 'mois manquants', p.moisManquants,
+    p.paquets ? pl(p.paquets, 'paquet') + ' reçu' + (p.paquets > 1 ? 's' : '') : 'aucun paquet reçu',
+    p.moisManquants ? 'due' : 'ok')}
+      ${item('', 'de CA suivi', esc(money(p.dernierCA)),
+    p.honoraires ? 'Honoraires : ' + esc(money(p.honoraires)) + ' / mois' : 'somme des derniers mois reçus')}
     </div>`;
+  }
+  // Les deux chiffres qui nomment un ensemble l'ouvrent. « À jour » n'a pas de page à lui : il pose
+  // le filtre qui montre les clients concernés, sur la liste qu'on a déjà sous les yeux.
+  function bindPortfolio(root) {
+    $$('[data-pf]', root || document).forEach(b => {
+      b.onclick = () => {
+        if (b.dataset.pf === 'manquants') { location.hash = '#/relances'; return; }
+        listState.q = ''; listState.withArchived = false; listState.onlySkanfact = true;
+        listState.sort = 'urgence'; listState.desc = false; listState.page = 1;
+        render();
+      };
+    });
   }
 
   // Le total du pied de liste additionnait un champ venu du paquet SANS le convertir : une chaîne le
@@ -1191,6 +1268,7 @@
     }
 
     const shown = paginate(rows);
+    const col = colonnesUtiles(rows);
     view.innerHTML = `
       <div class="page-head"><h1>Dossiers</h1>
         <div class="actions">
@@ -1206,7 +1284,7 @@
         montrerait des retards qui n'existent pas. Tes vrais dossiers n'ont pas bougé.` : ''}</span>
         <button class="btn btn-ghost btn-sm nw" id="demo-off">Effacer l'exemple</button></div>` : ''}
       <div class="filters">
-        <input type="text" id="q" placeholder="Chercher un client, un matricule, un téléphone…" value="${esc(listState.q)}">
+        <span class="champ-loupe"><input type="search" id="q" placeholder="Chercher un client, un matricule, un téléphone…" value="${esc(listState.q)}"></span>
         <label class="inline small muted"><input type="checkbox" id="arch" ${listState.withArchived ? 'checked' : ''}> Archivés</label>
         <label class="inline small muted"><input type="checkbox" id="onlysf" ${listState.onlySkanfact ? 'checked' : ''}> Sur SkanFact seulement</label>
         <span class="muted small">${rows.length} sur ${all.length}</span>
@@ -1218,23 +1296,29 @@
       ${rows.length ? `<div class="scroll-x"><table class="list sortable">
         <thead><tr>${sortHead('Client', 'nom')}${sortHead('Dernier mois reçu', 'dernier')}
         <th class="r nw">Chiffre d'affaires</th>${sortHead('Mois manquants', 'manquants', null, true)}
-        <th class="r nw">Provisoires</th><th class="r nw">Signalé</th>${sortHead('Relancé le', 'relance', 'r.history')}${sortHead('Reçu le', 'recu')}</tr></thead>
+        ${col.provisoires ? '<th class="r nw">Provisoires</th>' : ''}${col.signale ? '<th class="r nw">Signalé</th>' : ''}
+        ${col.relance ? sortHead('Relancé le', 'relance', 'r.history') : ''}${sortHead('Reçu le', 'recu')}<th></th></tr></thead>
         <tbody>${shown.map(r => `<tr class="clickable" data-id="${esc(r.id)}">
-          <td class="nw"><span class="dot-lvl ${r.level === 'ok' ? '' : esc(r.level)}"></span>${esc(r.name)}${r.archived ? ' <span class="badge">archivé</span>' : ''}${r.manual ? ' <span class="badge b-hors">pas encore sur SkanFact</span>' : ''}</td>
+          <td class="nw"><span class="dot-lvl ${r.level === 'ok' ? '' : esc(r.level)}" title="${esc(NIVEAUX[r.level] || '')}"></span>${esc(r.name)}${r.archived ? ' <span class="badge">archivé</span>' : ''}${r.manual ? ' <span class="badge b-hors">pas encore sur SkanFact</span>' : ''}</td>
           <td class="nw">${esc(r.lastLabel || '—')}${r.lastMonth && !r.lastDefinitive ? ' <span class="badge partielle">provisoire</span>' : ''}</td>
           <td class="r nw">${esc(r.lastFigures ? money(r.lastFigures.ca, r.lastFigures.devise) : '—')}</td>
           <td class="r">${r.missingCount || '—'}</td>
-          <td class="r">${r.provisionalCount || '—'}</td>
-          <td class="r">${r.issues || '—'}</td>
-          <td class="muted nw">${r.lastRelanceAt ? esc(fmtDay(r.lastRelanceAt)) + ` <span class="small">(${esc(ago(r.lastRelanceAt))})</span>` : '—'}</td>
-          <td class="muted nw">${esc(fmtWhen(r.lastAt))}</td></tr>`).join('')}</tbody>
+          ${col.provisoires ? `<td class="r">${r.provisionalCount || '—'}</td>` : ''}
+          ${col.signale ? `<td class="r">${r.issues || '—'}</td>` : ''}
+          ${col.relance ? `<td class="muted nw">${r.lastRelanceAt ? esc(fmtDay(r.lastRelanceAt)) + ` <span class="small">(${esc(ago(r.lastRelanceAt))})</span>` : '—'}</td>` : ''}
+          <td class="muted nw">${esc(fmtWhen(r.lastAt))}</td>
+          ${RowMenu.cellule('D:' + r.id, '')}</tr>`).join('')}</tbody>
         <tfoot><tr><td class="nw"><strong>${pl(rows.length, 'dossier')}</strong></td><td></td>
           <td class="r nw"><strong>${esc(totalCA(rows))}</strong></td>
           <td class="r"><strong>${rows.reduce((s, r) => s + r.missingCount, 0) || '—'}</strong></td>
-          <td class="r"><strong>${rows.reduce((s, r) => s + r.provisionalCount, 0) || '—'}</strong></td>
-          <td class="r"><strong>${rows.reduce((s, r) => s + r.issues, 0) || '—'}</strong></td><td></td><td></td></tr></tfoot>
+          ${col.provisoires ? `<td class="r"><strong>${rows.reduce((s, r) => s + r.provisionalCount, 0) || '—'}</strong></td>` : ''}
+          ${col.signale ? `<td class="r"><strong>${rows.reduce((s, r) => s + r.issues, 0) || '—'}</strong></td>` : ''}
+          ${col.relance ? '<td></td>' : ''}<td></td><td></td></tr></tfoot>
         </table></div>${pagerBar(rows.length)}
-        <p class="muted small mt">Les totaux et l'export portent sur la sélection entière, pas sur la page affichée.</p>`
+        <p class="legende">${legendeNiveaux()}</p>
+        <p class="muted small">Les totaux et l'export portent sur la sélection entière, pas sur la page affichée.${
+  col.masquees ? ` ${pl(col.masquees, 'colonne vide est masquée', 'colonnes vides sont masquées')}, pour laisser la place aux autres.
+          <button type="button" class="btn btn-ghost btn-sm" id="col-tout">Tout afficher</button>` : ''}</p>`
         : `<div class="empty">Aucun dossier ne correspond à cette recherche.</div>`}`;
 
     $('#imp').onclick = () => doImport();
@@ -1265,9 +1349,46 @@
     };
     bindInboxBanner(view);
     bindTodo(view);
+    bindPortfolio(view);
     bindSort(view, render);
     bindPager(view, render);
-    $$('tr[data-id]', view).forEach(tr => { tr.onclick = () => { location.hash = '#/dossier/' + encodeURIComponent(tr.dataset.id); }; });
+    const ct = $('#col-tout');
+    if (ct) ct.onclick = () => { prefs.set('colTout', true); render(); };
+    $$('tr[data-id]', view).forEach(tr => {
+      tr.onclick = e => {
+        // Le menu d'actions vit DANS la ligne : sans cette garde, l'ouvrir ouvrirait aussi la fiche
+        // (règle 7.28.0 — un menu ne vole pas le clic de sa ligne, et la ligne ne vole pas le sien).
+        if (e.target.closest('.row-actions')) return;
+        location.hash = '#/dossier/' + encodeURIComponent(tr.dataset.id);
+      };
+    });
+    // 9.4.4 — la page principale du Cabinet n'avait AUCUNE action de ligne, alors que `rowmenu.js`
+    // est partagé par les deux applications depuis la 7.29.0. Relancer un client depuis le
+    // portefeuille demandait : cliquer la ligne, ouvrir la fiche, trouver « Relancer ». Trois écrans
+    // pour le geste du lundi matin.
+    bindRowMenus(view, cle => {
+      const r = rows.find(x => 'D:' + x.id === cle);
+      if (!r) return [];
+      const d = (S.dossiers || []).find(x => x.id === r.id);
+      if (!d) return [];
+      const vers = onglet => { location.hash = '#/dossier/' + encodeURIComponent(r.id) + '/' + onglet; };
+      // `writeRelance` attend une LIGNE de `dossierList` (elle y lit `missingMonths`), pas la fiche
+      // brute — les deux existent ici et se ressemblent, et c'est exactement le genre de confusion
+      // qui produit un mail vide. Et on ne propose la relance que s'il y a quelque chose à
+      // réclamer : une action qui n'a rien à faire est du bruit dans un menu.
+      const aRelancer = r.missingCount > 0 || r.provisionalCount > 0;
+      return [
+        ...(aRelancer ? [{
+          icon: 'email', label: 'Relancer ce client',
+          hint: r.missingCount ? `${pl(r.missingCount, 'mois', 'mois')} à réclamer` : 'Son dernier mois n\'est pas clôturé',
+          run: () => writeRelance(r)
+        }] : []),
+        { icon: 'contrat', label: 'Ouvrir sa comptabilité', hint: 'Livre-journal, grand livre, balance, saisie', run: () => vers('comptabilite') },
+        { icon: 'dossier', label: 'Voir ses paquets reçus', hint: 'Ce qu\'il a envoyé, mois par mois', run: () => vers('paquets') },
+        { sep: true },
+        { icon: 'modifier', label: 'Modifier la fiche', hint: 'Nom, matricule, contact, honoraires', run: () => dossierForm(d) }
+      ];
+    });
   }
 
   // Le bouton du bandeau de la clé de secours. Il vit sur DEUX écrans (Dossiers et Réglages) : le
@@ -4132,6 +4253,19 @@
   // et dans « À faire » sur la page d'accueil. Il disparaît le jour où la clé est enregistrée.
   function recoveryBanner() {
     if (recoveryAt !== null) return '';
+    // 9.4.4 — l'avertissement est juste, le MOMENT ne l'était pas. Le tout premier écran d'un
+    // comptable, avant qu'il ait un seul client, était un bandeau rouge : un premier contact qui
+    // menace, et un rouge permanent dès le jour 0 apprend à ignorer le rouge. Tant qu'aucun paquet
+    // n'est arrivé, il n'y a rien à perdre — c'est la règle « un filet se réclame au moment où il
+    // protège encore » (QUESTIONS.md), prise par l'autre bout. Le rouge apparaît au premier paquet,
+    // c'est-à-dire le jour où quelque chose d'irremplaçable est sur ce disque.
+    const recus = (S.dossiers || []).reduce((n, d) => n + ((d.packs || []).length), 0);
+    if (!recus) {
+      return `<div class="banner"><span><strong>Pense à enregistrer ta clé de secours.</strong>
+        C'est elle qui te rendra tes paquets si tu changes d'ordinateur ou si celui-ci est perdu.
+        Trois minutes, une fois pour toutes.</span>
+        <button class="btn btn-sm nw" id="rec-go">Enregistrer ma clé…</button></div>`;
+    }
     return `<div class="banner danger"><span><strong>Tu n'as pas de clé de secours.</strong>
       Si cet ordinateur est perdu, aucun paquet déjà reçu ne pourra plus être ouvert et tes clients devront tous
       refaire leur appairage.</span>

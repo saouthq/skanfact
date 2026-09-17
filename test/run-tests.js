@@ -13345,6 +13345,70 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.ok(r.slice(0, 400).includes('appliquerTheme();'), 'le thème se pose à chaque dessin');
   });
 
+  t('9.4.4 : la page Dossiers laisse le portefeuille se voir, et chaque ligne agir', () => {
+    const app = lireSource('src', 'cabinet', 'renderer', 'app.js');
+
+    // 1. « À faire » se replie, le choix est MÉMORISÉ, et la liste est plafonnée. Six lignes font
+    //    400 px : avec les chiffres au-dessus, la liste des clients partait sous l'écran. L'app
+    //    entreprise a `todo-toggle` + `prefs` depuis la 2.2.0 ; le Cabinet ne l'avait jamais reçu.
+    assert.ok(/id="todo-toggle"/.test(app), 'le panneau « À faire » n\'est pas repliable');
+    assert.ok(/prefs\.set\('todoOpen'/.test(app), 'le choix de replier doit survivre au redessin');
+    assert.ok(/const VISIBLES = \d+;/.test(app), 'la liste doit être plafonnée');
+    // Et ce qui est caché se COMPTE : un « voir plus » qui ne dit pas combien ne se clique pas.
+    assert.ok(/Voir \$\{pl\(caches/.test(app), 'le lien qui déplie doit compter ce qu\'il cache');
+
+    // 2. Les six lignes de « À faire » mènent à six endroits différents ; cinq portaient le même
+    //    libellé « Voir ». Un libellé décrit l'écran d'ARRIVÉE (7.29.0) : on teste qu'il n'y a plus
+    //    de doublon, pas une liste de libellés écrite à la main qui se périmerait.
+    const tbl = app.slice(app.indexOf('const TODO_ACTIONS = {'));
+    const zone = tbl.slice(0, tbl.indexOf('\n  };'));
+    assert.ok(zone.length > 300 && zone.length < 2500, `tranche de ${zone.length} caractères : trop large pour prouver quoi que ce soit`);
+    assert.ok(!zone.includes('function '), 'la tranche a débordé sur autre chose que la table');
+    const libelles = [...zone.matchAll(/texte: '((?:[^'\\]|\\.)*)'/g)].map(m => m[1]);
+    assert.ok(libelles.length >= 6, `seulement ${libelles.length} libellés lus dans la table`);
+    assert.strictEqual(new Set(libelles).size, libelles.length,
+      'deux lignes de « À faire » portent le même libellé : on ne sait pas où elles mènent');
+
+    // 3. La légende du code couleur couvre EXACTEMENT les niveaux que `dossierRow` peut produire.
+    //    Une légende écrite à la main se périme au premier niveau ajouté — c'est le test de
+    //    couverture des treize boutons morts (7.0.0), appliqué à une couleur.
+    const cab = lireSource('src', 'cabinet', 'cabcore.js');
+    const ligne = (cab.match(/const level = [^;]+;/) || [])[0] || '';
+    assert.ok(ligne, 'la ligne qui calcule le niveau d\'un dossier est introuvable');
+    const produits = [...new Set([...ligne.matchAll(/'([a-z]+)'/g)].map(m => m[1]))];
+    assert.ok(produits.length >= 3, `seulement ${produits.length} niveaux lus`);
+    const legendes = Object.keys(JSON.parse('{' + (app.match(/const NIVEAUX = \{([\s\S]*?)\n  \};/) || [, ''])[1]
+      .split('\n').filter(l => l.includes(':')).map(l => {
+        const m = l.match(/^\s*([a-z]+):/); return m ? `"${m[1]}":1` : '';
+      }).filter(Boolean).join(',') + '}'));
+    produits.forEach(n => assert.ok(legendes.includes(n),
+      `le niveau « ${n} » est posé par le code et n'est pas dans la légende : une pastille sans son mot n'est pas une information`));
+
+    // 4. Chaque ligne de la liste porte son menu d'actions — `rowmenu.js` est partagé par les deux
+    //    applications depuis la 7.29.0, et la page principale du Cabinet ne l'utilisait pas.
+    assert.ok(/RowMenu\.cellule\('D:' \+ r\.id/.test(app), 'les lignes de la liste des dossiers n\'ont pas de menu');
+    // Et le menu ne vole pas le clic de la ligne, ni l'inverse (piège 7.28.0).
+    assert.ok(/e\.target\.closest\('\.row-actions'\)\) return;/.test(app),
+      'ouvrir le menu d\'une ligne ouvrirait aussi sa fiche');
+  });
+
+  t('9.4.4 : le rouge de la clé de secours arrive quand il y a quelque chose à perdre', () => {
+    const app = lireSource('src', 'cabinet', 'renderer', 'app.js');
+    const i = app.indexOf('function recoveryBanner()');
+    assert.ok(i > 0, 'le bandeau de la clé de secours est introuvable');
+    const zone = app.slice(i, app.indexOf('\n  }', i));
+    assert.ok(zone.length > 400 && zone.length < 2200, `tranche de ${zone.length} caractères`);
+    // Le premier écran d'un comptable, avant qu'il ait un seul client, était un bandeau ROUGE. Un
+    // avertissement juste au mauvais moment apprend à ignorer la couleur. Le rouge est CONDITIONNÉ
+    // à ce qu'il y ait quelque chose sur le disque ; il ne disparaît pas pour autant — la ligne
+    // calme reste, parce que la clé s'enregistre mieux avant le premier paquet qu'après.
+    assert.ok(/d\.packs \|\| \[\]\)\.length/.test(zone), 'le bandeau ne regarde pas s\'il y a des paquets reçus');
+    assert.ok(/if \(!recus\)/.test(zone), 'le rouge doit être conditionné à un paquet déjà reçu');
+    const calme = zone.slice(zone.indexOf('if (!recus)'), zone.indexOf('return `<div class="banner danger"'));
+    assert.ok(!calme.includes('banner danger'), 'le jour 0 ne s\'ouvre pas sur un bandeau rouge');
+    assert.ok(calme.includes('rec-go'), 'et il garde le bouton : prévenir sans offrir le geste ne sert à rien');
+  });
+
   t('9.4.2 : la ponctuation double porte une espace insécable', () => {
     const src = lireSource('src', 'cabinet', 'renderer', 'app.js');
     const i = src.indexOf('function typographie(');
