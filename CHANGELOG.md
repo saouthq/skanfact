@@ -7,6 +7,30 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 9.4.9 — 17/09/2026
+
+**Le fil du parcours, et la fin de l'audit.**
+
+Le métier du Cabinet est une boucle : un paquet arrive → je vérifie → j'écris les écritures →
+j'exporte → je relance qui n'a rien envoyé. Elle était éclatée sur quatre pages sans lien entre
+elles.
+
+- **Depuis une relance**, on peut ouvrir la comptabilité du client — pour voir ce qu'on a déjà de
+  lui avant d'écrire.
+- **Depuis un paquet reçu**, on passe à ses écritures : « Créer le livre de ce client » s'il n'en a
+  pas, « Voir ses écritures » sinon.
+- **Depuis le livre d'un client**, on rejoint l'export qui regroupe tous les clients d'un mois.
+- **On relance une sélection.** Une case par ligne, une case d'en-tête qui coche ce que l'écran
+  montre (jamais les soixante), et le bouton de groupe qui suit : « Relancer 3 clients cochés ».
+  Une coche posée sur un client qui a envoyé son mois entre-temps tombe d'elle-même.
+- **Une courbe d'une barre sur douze n'est pas une courbe** : sous trois mois reçus, le chiffre
+  d'affaires s'affiche seul, avec les mois sur lesquels il porte. La courbe des douze mois revient
+  dès le troisième.
+- **L'explication des actions d'un paquet passe dans la bulle du titre** : une prose grise sous un
+  tableau se lit une fois et reste pour toujours.
+- Un sous-titre de l'Aide qui finissait sur « si » paraissait coupé — et `e2e:cabinet-jour1`
+  **mesure** désormais qu'aucun ne déborde de sa carte.
+
 ## 9.4.8 — 17/09/2026
 
 **Les finitions du Cabinet.**

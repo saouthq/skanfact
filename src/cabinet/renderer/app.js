@@ -36,7 +36,7 @@
   // La sélection posée par une échéance (9.4.6). Elle ne vit pas dans `prefs` : c'est un état de
   // parcours — « je viens de cliquer sur les onze clients de la TVA d'avril » — et le retrouver
   // lundi matin sans savoir d'où il vient serait un piège. Il se vide dès qu'on quitte les Relances.
-  const relState = { seulement: null, depuis: '' };
+  const relState = { seulement: null, depuis: '', coches: new Set() };
 
   const listState = {
     q: '', withArchived: false, onlySkanfact: false,
@@ -1109,7 +1109,10 @@
     // La sélection posée par une échéance ne survit pas à la sortie des Relances : la retrouver en
     // revenant plus tard, sans savoir d'où elle vient, serait exactement le piège du filtre qui
     // cache ce qu'on est venu chercher (7.18.0).
-    if (route !== 'relances' && relState.seulement) { relState.seulement = null; relState.depuis = ''; }
+    if (route !== 'relances') {
+      if (relState.seulement) { relState.seulement = null; relState.depuis = ''; }
+      relState.coches.clear();
+    }
     const view = $('#view');
     if (route === 'dossier') drawDossier(view, arg, hash.split('/')[2]);
     else if (route === 'ecritures') drawEcritures(view);
@@ -1735,7 +1738,7 @@
         ${caChart(packs, anneeVue) || '<div class="empty mini">Les paquets de cette année ne portent pas de chiffres (fabriqués avant la 6.2.1).</div>'}
       </div>` : ''}
 
-      <div class="panel"><h2>Paquets reçus ${info('p.integrity')}</h2>
+      <div class="panel"><h2>Paquets reçus ${info('p.integrity')}${info('p.actions')}</h2>
       ${packs.length ? `<div class="scroll-x"><table class="list compact">
         <thead><tr><th class="nw">Mois</th><th>État</th><th class="r nw">Chiffre d'affaires</th><th class="r nw">TVA à décaisser</th>
         <th class="r">Vérifiées</th><th class="r">Signalé</th><th class="nw">Reçu le</th><th class="nw">Fabriqué le</th><th></th></tr></thead>
@@ -1756,7 +1759,7 @@
           ${p.path ? rowMenuCell(p.month) : '<td class="row-actions"><span class="muted small">exemple</span></td>'}</tr>`).join('')}</tbody>
         <tfoot><tr><td class="nw"><strong>${pl(packs.length, 'mois', 'mois')}</strong></td><td></td>
           <td class="r nw"><strong>${esc(money(totalCA))}</strong></td><td colspan="6"></td></tr></tfoot></table></div>
-        <p class="muted small mt">Le bouton « Actions » de chaque ligne ouvre ce qu'on peut faire du mois : l'ouvrir, l'extraire dans un dossier de ton choix ${info('p.extract')} — pour travailler dans ton logiciel, ou pour rendre ses pièces à un client —, accuser réception, ou supprimer un paquet arrivé par erreur ${info('p.delete')}.</p>`
+        `
         : '<div class="empty mini">Aucun paquet reçu.</div>'}
       </div>
       </section>`;
@@ -1862,6 +1865,14 @@
         { icon: 'dossier', label: 'Montrer le fichier reçu', hint: 'Dans l\'explorateur de fichiers', run: () => api.reveal(p.path) },
         { sep: true },
         { icon: 'email', label: 'Accuser réception', hint: 'Prévenir le client que c\'est bien arrivé', run: () => accuseReception(dossier, p) },
+        { sep: true },
+        // Le geste qui SUIT l'arrivée d'un mois : en faire des écritures. Rien n'y menait depuis un
+        // paquet — il fallait savoir qu'un bouton existait, deux onglets plus loin.
+        livresState.livre
+          ? { icon: 'contrat', label: 'Voir ses écritures', hint: 'Le livre-journal de ce client',
+            run: () => { location.hash = '#/dossier/' + encodeURIComponent(dossier.id) + '/comptabilite'; } }
+          : { icon: 'contrat', label: 'Créer le livre de ce client', hint: 'À partir des paquets reçus, écriture par écriture',
+            run: () => { location.hash = '#/dossier/' + encodeURIComponent(dossier.id) + '/comptabilite'; } },
         { sep: true },
         { icon: 'supprimer', label: 'Supprimer ce paquet', hint: 'Le mois redeviendra manquant pour ce client', danger: true, run: () => supprimerPaquet(p) }
       ];
@@ -2359,8 +2370,12 @@
         : `<div class="muted small">Tout est lettré : ${pl(r.lettrees, 'pièce')} soldée${r.lettrees > 1 ? 's' : ''}.</div>`}</div>`).join('')}`;
   }
 
+  // Le fil du parcours (3/3) : depuis le livre d'UN client, rien ne menait à l'export qui regroupe
+  // TOUS les clients d'un mois — le geste qui suit la relecture d'un livre, et la dernière étape de
+  // la boucle. Il fallait connaître la page Écritures et y aller par le menu.
   const barreLivres = (controles, libelleExport) => `<div class="filters">${controles}
-    <button class="btn btn-sm btn-ghost" id="lv-csv">${esc(libelleExport)}</button></div>`;
+    <button class="btn btn-sm btn-ghost" id="lv-csv">${esc(libelleExport)}</button>
+    <button class="btn btn-sm btn-ghost" id="lv-tous">Regrouper tous les clients…</button></div>`;
 
   const fmtJour = iso => {
     const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
@@ -3169,6 +3184,7 @@
     const c = $('#lv-compte', el); if (c) c.onchange = () => { s.compte = c.value; s.page = 1; redraw(); };
     const a = $('#lv-aux', el); if (a) a.onclick = () => { s.aux = !s.aux; s.page = 1; redraw(); };
     const x = $('#lv-csv', el); if (x) x.onclick = () => exporterLivre(lignes);
+    const tt = $('#lv-tous', el); if (tt) tt.onclick = () => vers('#/ecritures');
     // L'export porte sur `lignes` — la sélection entière, jamais la page affichée.
     bindPager(el, redraw, s);
     // « Ouvrir la pièce dans le paquet » : seulement si on sait DANS QUEL paquet elle vit.
@@ -3236,6 +3252,17 @@
     const recus = vals.filter(v => v != null).length;
     if (!recus) return '';
     const devise = (packs.find(p => p.figures) || { figures: {} }).figures.devise || 'DT';
+    // Sous trois mois reçus, une courbe n'apprend rien : douze colonnes de 200 px de haut pour une
+    // ou deux barres, et onze « pas reçu ». L'information réelle EST le chiffre — et le fait qu'il
+    // ne porte que sur deux mois, ce qu'aucun graphique ne dit aussi clairement qu'une phrase.
+    if (recus < 3) {
+      const nommes = mois.filter((m, i) => vals[i] != null).map(m => K.monthLabel(m)).join(' et ');
+      return `<div class="ca-maigre">
+        <div><span class="eyebrow">Chiffre d'affaires déclaré</span>
+          <div class="ca-somme">${esc(money(total, devise))}</div></div>
+        <div class="muted small">sur ${pl(recus, 'mois', 'mois')} seulement — ${esc(nommes)}.
+          La courbe des douze mois apparaîtra quand tu auras reçu au moins trois mois.</div></div>`;
+    }
     return `<div class="ca-chart">
       <div class="ca-bars">${mois.map((m, i) => {
         const v = vals[i];
@@ -3475,13 +3502,17 @@
     // mois entre-temps n'a plus rien à faire ici, même si l'échéance le nommait tout à l'heure.
     const filtre = Array.isArray(relState.seulement) ? new Set(relState.seulement) : null;
     const rows = filtre ? toutes.filter(r => filtre.has(r.name)) : toutes;
+    // Une coche posée sur un client qui a envoyé son mois entre-temps n'a plus de sens : on la
+    // laisse tomber au lieu de relancer quelqu'un qui n'a plus rien à envoyer.
+    relState.coches = new Set([...relState.coches].filter(id => rows.some(r => r.id === id)));
+    const coches = rows.filter(r => relState.coches.has(r.id));
     const rel = K.relanceDue(S);
     // « Personne à relancer : tous tes dossiers sont à jour » félicitait un cabinet qui n'a AUCUN
     // dossier. C'est la règle de la 7.0.0 — avant d'écrire une phrase rassurante, vérifier que
     // l'univers concerné est non vide — et c'était la seule des trois pages qui ne l'appliquait pas :
     // Échéances et Écritures ont leur état vide avec son geste depuis toujours.
     if (!K.dossierList(S).length) {
-      relState.seulement = null; relState.depuis = '';
+      relState.seulement = null; relState.depuis = ''; relState.coches.clear();
       view.innerHTML = `<div class="page-head"><h1>Relances</h1></div>
         <div class="panel"><h2>Aucun client pour l'instant</h2>
           <p>Cette page réunit les clients dont il te manque un mois, avec le message déjà écrit : les mois
@@ -3496,7 +3527,8 @@
     view.innerHTML = `
       <div class="page-head"><h1>Relances</h1>
         ${rows.length > 1 ? `<div class="actions"><button class="btn btn-primary" id="group">${
-  filtre ? `Relancer ${pl(rows.length, 'client')}` : 'Relancer tout le monde'} ${info('r.group')}</button></div>` : ''}</div>
+  coches.length ? `Relancer ${pl(coches.length, 'client')} coché${coches.length > 1 ? 's' : ''}`
+    : filtre ? `Relancer ${pl(rows.length, 'client')}` : 'Relancer tout le monde'} ${info('r.group')}</button></div>` : ''}</div>
       ${filtre ? `<div class="banner"><span><strong>${pl(rows.length, 'client')}</strong> sur ${toutes.length}${
   relState.depuis ? ` — ceux qu'il te manque pour « ${esc(relState.depuis)} »` : ''}.</span>
         <button class="btn btn-sm" id="rl-tout">Voir tout le monde</button></div>` : ''}
@@ -3508,8 +3540,15 @@
     rel.provisoires ? `${pl(rel.provisoires, rel.count ? 'autre' : 'dossier')} ${rel.provisoires > 1 ? 'ont' : 'a'} envoyé un mois qui n'est pas clôturé` : ''
   ].filter(Boolean).join(', et ')}.</span></div>` : ''}
       ${rows.length ? `<div class="scroll-x"><table class="list">
-        <thead><tr><th class="nw">Client</th><th class="nw">Contact</th><th class="nw">Ce qui manque</th><th class="nw">Dernière relance</th><th></th></tr></thead>
+        ${/* M11 — « tout le monde ou personne » : un comptable relance les cinq clients d'une
+              échéance, ou ceux qu'il n'a pas eus au téléphone. La case d'en-tête coche ce que
+              l'écran MONTRE, jamais les soixante — cocher ce qu'on ne voit pas est un piège. */''}
+        <thead><tr>
+          <th class="nw sel-col"><input type="checkbox" id="rl-all" aria-label="Tout cocher sur cette page"
+            ${rows.length && rows.every(r => relState.coches.has(r.id)) ? 'checked' : ''}></th>
+          <th class="nw">Client</th><th class="nw">Contact</th><th class="nw">Ce qui manque</th><th class="nw">Dernière relance</th><th></th></tr></thead>
         <tbody>${rows.map(r => `<tr>
+          <td class="nw sel-col"><input type="checkbox" data-sel="${esc(r.id)}" aria-label="Relancer ${esc(r.name)}" ${relState.coches.has(r.id) ? 'checked' : ''}></td>
           <td class="nw"><span class="dot-lvl ${r.level === 'ok' ? '' : esc(r.level)}"></span>${esc(r.name)}</td>
           <td class="muted nw">${esc(r.email || r.phone || '— à renseigner')}</td>
           <td>${r.missingCount
@@ -3533,12 +3572,30 @@
         { icon: 'cloche', label: 'Écrire la relance', hint: 'Le message tout prêt, avec les mois qui manquent', run: () => writeRelance(r) },
         r.phone ? { icon: 'telephone', label: 'Appeler le client', hint: `${r.phone} — l'appel est noté comme une relance`, run: () => appeler(r) } : null,
         { sep: true },
-        { icon: 'dossier', label: 'Ouvrir le dossier', hint: 'Ses paquets, ses chiffres et son historique', run: () => { location.hash = '#/dossier/' + encodeURIComponent(r.id); } }
+        { icon: 'dossier', label: 'Ouvrir le dossier', hint: 'Ses paquets, ses chiffres et son historique', run: () => { location.hash = '#/dossier/' + encodeURIComponent(r.id); } },
+        // Le métier du Cabinet est une BOUCLE : un paquet arrive, on vérifie, on écrit, on exporte,
+        // on relance qui n'a rien envoyé. Chaque écran doit finir par le geste suivant — c'est ce
+        // que l'Aide de l'app entreprise applique depuis la 7.27.0, et qu'aucune page du Cabinet
+        // n'appliquait. Avant d'écrire à quelqu'un, on va voir ce qu'on a déjà de lui.
+        { icon: 'contrat', label: 'Ouvrir sa comptabilité', hint: 'Livre-journal, grand livre, balance, saisie',
+          run: () => { location.hash = '#/dossier/' + encodeURIComponent(r.id) + '/comptabilite'; } }
       ];
     });
     // « Relancer tout le monde » porte sur ce que l'écran MONTRE : sous filtre, il ne peut pas
     // relancer soixante clients pendant que le bandeau en annonce onze (règle 7.16.0).
-    const g = $('#group'); if (g) g.onclick = () => groupRelance(rows.slice());
+    const g = $('#group'); if (g) g.onclick = () => groupRelance((coches.length ? coches : rows).slice());
+    $$('[data-sel]', view).forEach(c => {
+      c.onchange = () => {
+        if (c.checked) relState.coches.add(c.dataset.sel); else relState.coches.delete(c.dataset.sel);
+        render();
+      };
+    });
+    const all = $('#rl-all'); if (all) all.onchange = () => {
+      // La case d'en-tête porte sur ce que l'écran MONTRE : sous filtre, cocher soixante clients
+      // pendant que le bandeau en annonce onze serait exactement le chiffre qui ment (7.16.0).
+      rows.forEach(r => { if (all.checked) relState.coches.add(r.id); else relState.coches.delete(r.id); });
+      render();
+    };
     const rt = $('#rl-tout'); if (rt) rt.onclick = () => { relState.seulement = null; relState.depuis = ''; render(); };
   }
 

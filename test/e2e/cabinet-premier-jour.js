@@ -380,6 +380,21 @@ const LARGE = 1440, HAUT = 900;
   // On mesure le HAUT DE LA PREMIÈRE LIGNE du tableau, dans la fenêtre, à 1280×800 : c'est
   // exactement ce qu'un comptable voit. Le seuil est haut (560 px) exprès — il n'impose pas une
   // maquette, il interdit de repousser le produit hors de l'écran.
+  // Y6 — un sous-titre COUPÉ fait douter de tout le plan : on relit pour vérifier qu'il ne manque
+  // pas un mot. On le MESURE plutôt que de le relire : `scrollHeight > clientHeight` dit qu'un
+  // texte déborde de sa carte, ce qu'aucune lecture du code ne montre.
+  étape('Aucun sous-titre de l\'Aide n\'est coupé');
+  await aller('#/aide', '.help-arts');
+  const coupes = await win.evaluate(() => [...document.querySelectorAll('.help-art .hs')]
+    .filter(el => el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1)
+    .map(el => el.textContent.trim().slice(0, 40)));
+  if (coupes.length) {
+    mesures.defauts.push({ quoi: 'sous-titre coupé', ou: '#/aide', detail: coupes.join(' · ') });
+    throw new Error('sous-titre(s) coupé(s) dans le plan de l\'Aide : ' + coupes.join(' · '));
+  }
+  const nbArts = await win.evaluate(() => document.querySelectorAll('.help-art').length);
+  ok(`${nbArts} cartes du plan, aucun sous-titre coupé`);
+
   étape('La liste des clients se voit sans défiler, sur un portable');
   await aller('#/dossiers', '#view table.list');
   await attendre(400);

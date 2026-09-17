@@ -13616,13 +13616,25 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // Le filtre porte sur TOUT l'écran : le bandeau, la liste et le geste de groupe (7.18.0).
     assert.ok(/const rows = filtre \? toutes\.filter/.test(zr), 'la liste doit suivre la sélection');
     assert.ok(/id="rl-tout"/.test(zr), 'et on doit pouvoir en sortir : un filtre sans issue est un piège');
-    assert.ok(/groupRelance\(rows\.slice\(\)\)/.test(zr),
-      '« Relancer » de groupe porte sur ce que l\'écran MONTRE, jamais sur la page entière');
+    // La RÈGLE : le geste de groupe porte sur ce que l'écran MONTRE — jamais sur `toutes`. La
+    // forme exacte a changé en 9.4.9 (la sélection cochée prime sur la page), et l'assertion
+    // recopiait la ligne : elle est retournée vers la règle plutôt que rafistolée (7.16.0).
+    const ligneG = (zr.match(/const g = \$\('#group'\);[^\n]*/) || [''])[0];
+    assert.ok(/groupRelance\(/.test(ligneG), 'le bouton de groupe doit appeler groupRelance');
+    assert.ok(!/\btoutes\b/.test(ligneG),
+      '« Relancer » de groupe ne doit jamais porter sur la liste entière quand l\'écran est filtré');
+    assert.ok(/\brows\b/.test(ligneG), 'il porte sur ce que l\'écran montre');
     // La sélection ne survit pas à la sortie des Relances.
     const iv = app.indexOf('function render() {');
     const zv = app.slice(iv, iv + 1800);
-    assert.ok(/route !== 'relances' && relState\.seulement/.test(zv),
-      'un filtre de parcours qu\'on retrouve trois jours plus tard est un piège');
+    // La RÈGLE : tout ce qui est un état de PARCOURS (le filtre venu d'une échéance, les clients
+    // cochés) se vide en quittant les Relances. La 9.4.9 a ajouté la sélection ; l'assertion visait
+    // la forme d'une seule ligne, elle vise maintenant ce qu'elle protège.
+    const kq = zv.indexOf("route !== 'relances'");
+    assert.ok(kq > 0, 'rien ne nettoie l\'état de parcours des Relances');
+    const zq = zv.slice(kq, kq + 300);
+    assert.ok(/relState\.seulement = null/.test(zq), 'le filtre venu d\'une échéance doit se vider');
+    assert.ok(/relState\.coches\.clear\(\)/.test(zq), 'et les clients cochés aussi');
   });
 
   t('9.4.7 : les douze mois d\'une année, dans le sens du temps, et chacun dit ce qu\'il est', () => {
@@ -13786,6 +13798,87 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.ok(/<div class="sous-table"><button class="btn btn-sm" id="sr-corr-add">/.test(app),
       '« Ajouter une ligne » appartient au tableau, pas à la barre d\'enregistrement');
     assert.ok(/\.sous-table \{/.test(css), 'classe sans style : .sous-table');
+  });
+
+  t('9.4.9 : chaque écran finit par le geste suivant', () => {
+    const app = lireSource('src', 'cabinet', 'renderer', 'app.js');
+    // Le métier du Cabinet est une BOUCLE : un paquet arrive → je vérifie → j'écris les écritures →
+    // j'exporte → je relance qui n'a rien envoyé. Elle était éclatée sur quatre pages sans lien.
+    // C'est la règle que l'Aide de l'app entreprise applique depuis la 7.27.0 (« chaque article
+    // finit par un geste ») et qu'aucune page du Cabinet n'appliquait.
+    const ir = app.indexOf('function drawRelances(');
+    const zr = app.slice(ir, app.indexOf('\n  }\n', ir));
+    assert.ok(/label: 'Ouvrir sa comptabilité'/.test(zr) && /\/comptabilite'/.test(zr),
+      'depuis une relance, on doit pouvoir voir ce qu\'on a déjà de ce client');
+
+    // Depuis un paquet reçu, rien ne menait à ses écritures — le geste qui suit précisément
+    // l'arrivée d'un mois.
+    const ip = app.indexOf('label: \'Accuser réception\'');
+    assert.ok(ip > 0, 'le menu d\'un paquet est introuvable');
+    const zp = app.slice(ip, ip + 900);
+    assert.ok(/Créer le livre de ce client/.test(zp) && /Voir ses écritures/.test(zp),
+      'un paquet doit mener aux écritures — et le libellé doit dire s\'il y a déjà un livre');
+
+    // Depuis le livre d'UN client, rien ne menait à l'export qui regroupe TOUS les clients.
+    const ib = app.indexOf('const barreLivres = ');
+    const zb = app.slice(ib, ib + 600);
+    assert.ok(/id="lv-tous"/.test(zb), 'le livre doit mener à l\'export groupé');
+    assert.ok(/tt\.onclick = \(\) => vers\('#\/ecritures'\)/.test(app),
+      'et par `vers()` : `location.hash` vers la page courante ne redessine rien (7.15.0)');
+  });
+
+  t('9.4.9 : on relance une SÉLECTION, pas tout le monde ou personne', () => {
+    const app = lireSource('src', 'cabinet', 'renderer', 'app.js');
+    const css = lireSource('src', 'cabinet', 'renderer', 'cabinet.css');
+    const ir = app.indexOf('function drawRelances(');
+    const zr = app.slice(ir, app.indexOf('\n  }\n', ir));
+    assert.ok(/data-sel="\$\{esc\(r\.id\)\}"/.test(zr), 'chaque ligne doit porter sa case');
+    assert.ok(/id="rl-all"/.test(zr), 'et l\'en-tête doit pouvoir tout cocher');
+    // La case d'en-tête porte sur ce que l'écran MONTRE : sous filtre, cocher soixante clients
+    // pendant que le bandeau en annonce onze serait exactement le chiffre qui ment (7.16.0).
+    const ka = app.indexOf("const all = $('#rl-all')");
+    const za = app.slice(ka, ka + 400);
+    assert.ok(/rows\.forEach/.test(za) && !/toutes\.forEach/.test(za),
+      'la case d\'en-tête coche ce que l\'écran montre, jamais la liste entière');
+    // Une coche posée sur un client qui a envoyé son mois entre-temps n'a plus de sens.
+    assert.ok(/relState\.coches = new Set\(\[\.\.\.relState\.coches\]\.filter/.test(zr),
+      'les coches périmées doivent tomber : on ne relance pas quelqu\'un qui n\'a plus rien à envoyer');
+    assert.ok(/\.sel-col \{/.test(css), 'classe sans style : .sel-col');
+  });
+
+  t('9.4.9 : une courbe d\'une barre sur douze n\'est pas une courbe', () => {
+    const app = lireSource('src', 'cabinet', 'renderer', 'app.js');
+    const css = lireSource('src', 'cabinet', 'renderer', 'cabinet.css');
+    const ic = app.indexOf('function caChart(');
+    const zc = app.slice(ic, app.indexOf('\n  }', ic));
+    assert.ok(zc.length > 800 && zc.length < 3000, 'caChart : tranche de ' + zc.length + ' caractères');
+    // 200 px de haut pour une ou deux barres et onze « pas reçu » : l'information réelle EST le
+    // chiffre, et le fait qu'il ne porte que sur deux mois — ce qu'aucun graphique ne dit aussi
+    // clairement qu'une phrase.
+    assert.ok(/if \(recus < 3\)/.test(zc), 'sous trois mois reçus, la courbe doit céder la place au chiffre');
+    assert.ok(/ca-maigre/.test(zc) && /\.ca-maigre \{/.test(css), 'et ce chiffre doit avoir son style');
+    // Mais il DIT sur quoi il porte : un total sans sa période est un agrégat qui ment (3.1.0).
+    assert.ok(/sur \$\{pl\(recus, 'mois', 'mois'\)\} seulement/.test(zc),
+      'le chiffre doit dire sur combien de mois il porte');
+    assert.ok(/nommes/.test(zc), 'et lesquels');
+    // Au-delà, la courbe des douze mois reste — avec les mois non reçus estompés.
+    assert.ok(/ca-col\$\{v == null \? ' off' : ''\}/.test(zc), 'les douze mois restent dessinés au-delà de trois');
+  });
+
+  t('9.4.9 : une explication vit dans la bulle du titre, pas en prose sous le tableau', () => {
+    const app = lireSource('src', 'cabinet', 'renderer', 'app.js');
+    const g = lireSource('src', 'cabinet', 'renderer', 'cabguide.js');
+    // Une prose grise sous chaque tableau remplace la découvrabilité : on la lit une fois, et elle
+    // reste pour toujours. La bulle du titre est là où on la cherche quand on ne sait pas.
+    assert.ok(!/Le bouton « Actions » de chaque ligne ouvre ce qu'on peut faire du mois/.test(app),
+      'la prose sous le tableau des paquets doit avoir disparu');
+    assert.ok(g.includes("'p.actions'"), 'son contenu doit vivre dans une bulle');
+    assert.ok(/<h2>Paquets reçus \$\{info\('p\.integrity'\)\}\$\{info\('p\.actions'\)\}<\/h2>/.test(app),
+      'et cette bulle doit être posée sur le TITRE du panneau');
+    // Et les deux bulles qu'elle absorbe ne doivent pas rester orphelines : une entrée de guide
+    // qu'aucun écran ne pose est une entrée morte, et c'est le test des bulles qui le dit.
+    assert.ok(!g.includes("'p.extract'") && !g.includes("'p.delete'"),
+      'les bulles absorbées doivent être retirées, pas laissées sans endroit où s\'afficher');
   });
 
   t('9.4.2 : la ponctuation double porte une espace insécable', () => {

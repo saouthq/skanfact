@@ -246,11 +246,26 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   const annees = await win.$$('.year-row');
   if (!annees.length) throw new Error('les mois ne sont pas groupés par année');
   ok('mois groupés par année, paquets et relances présents');
-  const barres = await win.$$('.ca-col');
-  if (barres.length !== 12) throw new Error('la courbe doit dessiner les douze mois, pas seulement ceux reçus (' + barres.length + ')');
-  const off = await win.evaluate(() => document.querySelectorAll('.ca-col.off').length);
-  if (!off) throw new Error('les mois non reçus ne sont pas estompés');
-  ok(`chiffre d'affaires : 12 mois dessinés, ${off} non reçus estompés`);
+  // La RÈGLE : le chiffre d'affaires DIT sur quoi il porte. Deux formes légitimes depuis la
+  // 9.4.9 — la courbe des douze mois (avec les mois non reçus estompés), ou, sous trois mois
+  // reçus, le chiffre seul avec les mois qu'il couvre nommés. Une assertion qui exige douze barres
+  // décrit la forme d'hier et tombe sur du code juste : elle vise maintenant ce que l'écran doit
+  // TENIR, quelle que soit la forme qu'il prend.
+  const ca = await win.evaluate(() => ({
+    barres: document.querySelectorAll('.ca-col').length,
+    off: document.querySelectorAll('.ca-col.off').length,
+    maigre: !!document.querySelector('.ca-maigre'),
+    texte: (document.querySelector('.ca-maigre, .ca-foot') || {}).textContent || ''
+  }));
+  if (ca.maigre) {
+    if (!/sur \d+ mois? seulement/.test(ca.texte)) throw new Error('le chiffre seul ne dit pas sur combien de mois il porte : ' + ca.texte);
+    ok('moins de trois mois reçus : le chiffre seul, et il dit sur quoi il porte');
+  } else {
+    if (ca.barres !== 12) throw new Error('la courbe doit dessiner les douze mois, pas seulement ceux reçus (' + ca.barres + ')');
+    if (!ca.off) throw new Error('les mois non reçus ne sont pas estompés');
+    if (!/reçus? sur 12/.test(ca.texte)) throw new Error('la courbe ne dit pas combien de mois elle a reçus : ' + ca.texte);
+    ok(`chiffre d'affaires : 12 mois dessinés, ${ca.off} non reçus estompés`);
+  }
   // La RÈGLE est « la fiche s'imprime », pas « il existe un bouton #print » : depuis la 9.4.8 le
   // geste vit dans le menu d'actions de l'en-tête, parce qu'une barre a un budget de boutons et
   // qu'imprimer est rare. On vérifie le geste, pas la forme qu'il avait hier.

@@ -35,7 +35,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Une pièce émise garde une **copie** de ce qui a servi à la calculer | 7.1.x — le timbre ; 5.0.0 — `slip.computed` ; 9.0.0 — les charges patronales |
 | Un compteur et la liste qu'il annonce se calculent avec la **même fonction** | 6.8.1 — le bandeau des relances ; 7.15.0 — « Reste à encaisser » |
 | Un montant **négatif change de colonne**, il ne garde pas son signe | 6.3.0 — les écritures comptables |
-| Un **agrégat** porte une devise, une unité, et une période nommée | 7.0.1, 7.16.0, 3.1.0 |
+| Un **agrégat** porte une devise, une unité, et une période nommée | 7.0.1, 7.16.0, 3.1.0 ; 9.4.9 — une courbe d'une barre cède la place au chiffre |
 | Un **pied de totaux** porte la sélection entière, jamais la page affichée ; on pagine ce qu'on NOMME | 2.2.0, 7.16.0, 9.4.5 |
 | La valeur par défaut d'une **règle qu'on ne connaît pas** est celle qui ne fait rien | 9.1.1 — le seuil de retenue à 0, la TFP qu'aucun métier ne porte |
 | Une écriture **validée** ne se modifie jamais : elle se contre-passe, à la date du jour | 9.2.0 |
@@ -91,6 +91,8 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Une saisie refusée se **MONTRE** : on amène le champ à l'écran (`refus()`) | 7.0.0, 7.20.0 |
 | Ce qui **détruit** demande ; ce qui **se répare** laisse un « Annuler » (`toastUndo`) | 7.12.0 ; 9.4.6 — porté au Cabinet |
 | Un écran qui **NOMME** un ensemble doit pouvoir l'ouvrir | 7.15.0, 7.17.0, 7.21.0 |
+| Chaque écran **finit par le geste suivant** : le métier est une boucle, pas quatre pages | 7.27.0, 9.4.9 |
+| Une **prose sous un tableau** remplace la découvrabilité : l'explication va dans la bulle du titre | 9.4.9 |
 | L'endroit qui **affiche** un état est celui où on s'attend à le changer | 7.14.0 |
 | Un **moteur sans écran n'existe pas** ; une fonction jamais appelée est invisible | 7.2.0, 7.3.0, 7.19.0 |
 | Un **extrait sans son cadre** fait douter de l'outil : montrer l'ensemble, griser ce qui ne compte pas | 9.4.7 |
@@ -3730,6 +3732,55 @@ Règles apprises, à ne pas recasser :
 
 Prouvé : cinq défauts réintroduits un par un font tomber leur test, et les deux parcours réels ont
 attrapé ce qu'aucun test de source ne pouvait voir.
+
+### 9.4.9 — Le fil du parcours, et la fin de l'audit
+
+Le dernier lot de l'audit du 17/09/2026. Il porte sur ce qui manquait entre les écrans plutôt que
+dans les écrans.
+
+Règles apprises, à ne pas recasser :
+
+- **Le métier du Cabinet est une BOUCLE, et chaque écran doit finir par le geste suivant.** Un
+  paquet arrive → je vérifie → j'écris les écritures → j'exporte → je relance qui n'a rien envoyé.
+  Elle était éclatée sur quatre pages sans lien : depuis Échéances on ne pouvait pas ouvrir la
+  comptabilité du client en retard, depuis un paquet reçu rien ne menait à « créer le livre »,
+  depuis le livre rien ne menait à l'export groupé. C'est la règle que l'Aide de l'app entreprise
+  applique depuis la 7.27.0 (« chaque article finit par un geste ») et qu'aucune page du Cabinet
+  n'appliquait — une règle apprise d'un côté se vérifie de l'autre (7.3.0), y compris quand elle
+  concerne la NAVIGATION et pas un composant.
+- **Un libellé dit l'état d'arrivée** : « Créer le livre de ce client » quand il n'y en a pas,
+  « Voir ses écritures » quand il existe. Le même bouton sous deux noms vaut mieux qu'un nom qui
+  ment une fois sur deux (7.29.0).
+- **« Tout le monde ou personne » n'est pas un choix.** Un comptable relance les cinq clients d'une
+  échéance, ou ceux qu'il n'a pas eus au téléphone. La case d'en-tête coche ce que l'écran MONTRE,
+  jamais les soixante : cocher ce qu'on ne voit pas est un piège, et sous filtre ce serait le
+  chiffre qui ment (7.16.0). Et une coche posée sur un client qui a envoyé son mois entre-temps
+  tombe d'elle-même — on ne relance pas quelqu'un qui n'a plus rien à envoyer.
+- **Une courbe d'une barre sur douze n'est pas une courbe**, c'est 200 px de haut pour un chiffre et
+  onze « pas reçu ». Sous trois mois, l'information réelle EST le chiffre — et le fait qu'il ne
+  porte que sur deux mois, ce qu'aucun graphique ne dit aussi clairement qu'une phrase. Mais il DIT
+  sur quoi il porte : un total sans sa période est un agrégat qui ment (3.1.0).
+- **Une prose grise sous un tableau remplace la découvrabilité** : on la lit une fois et elle reste
+  pour toujours, à prendre de la place. L'explication vit dans la bulle du TITRE, là où on la
+  cherche quand on ne sait pas. Corollaire immédiat, que le test des bulles a dit tout de suite :
+  les deux bulles absorbées n'étaient posées QUE dans cette prose, donc elles seraient devenues des
+  entrées mortes — on les retire, on ne les laisse pas sans endroit où s'afficher.
+- **Un sous-titre qui se termine sur « si » paraît coupé** : on relit pour vérifier qu'il ne manque
+  pas un mot, et c'est tout le plan qui devient suspect. Et on le MESURE plutôt que de le relire —
+  `scrollHeight > clientHeight` dit qu'un texte déborde de sa carte, ce qu'aucune lecture du code
+  ne montre. Prouvé en bornant la hauteur d'une carte : les neuf tombent.
+- **Trois de mes propres assertions ont été retournées** — les neuvième, dixième et onzième fois que
+  ce motif revient. La troisième est la plus instructive : `e2e:cabinet` exigeait « douze barres »
+  sur un client qui n'a que deux mois reçus. Retournée vers la règle — « le chiffre d'affaires DIT
+  sur quoi il porte », quelle que soit la forme — elle est devenue PLUS forte qu'avant : elle vérifie
+  les deux formes, et que chacune nomme sa période. Les deux autres : Elles recopiaient une ligne (`groupRelance(rows.slice())`, `route !==
+  'relances' && relState.seulement`) au lieu d'exiger la règle qu'elle porte : « le geste de groupe
+  ne porte jamais sur la liste entière », « tout état de parcours se vide en quittant la page ».
+  Une assertion qui recopie tombe dès que le geste gagne quelque chose de légitime, et se
+  « répare » en recopiant la nouvelle ligne — donc sans rien prouver (7.16.0).
+
+Prouvé : cinq défauts réintroduits un par un font tomber leur test pur, et la sonde des sous-titres
+se prouve en bornant une carte.
 
 ## Pistes pour la suite (non demandées)
 
