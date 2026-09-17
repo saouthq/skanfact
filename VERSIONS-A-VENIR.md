@@ -46,7 +46,7 @@ En cas de contradiction, `DIRECTION.md` fait foi, puis `CAHIER-DES-CHARGES.md`, 
 | **9.4.4** → **9.4.9** | Le chantier UI/UX du Cabinet (page Dossiers, le livre, les échéances, la fiche, les finitions, le fil du parcours) | — | Mesuré | **livré** 17/09/2026 |
 | ~~**9.4.10**~~ | ~~Entretien~~ | 7 | Intention | **livré** 17/09/2026 |
 | ~~**9.5.0**~~ | ~~La banque~~ | 12 | Intention | **livré** 17/09/2026 |
-| **9.6.0** | La déclaration mensuelle | 14 | Intention | 8 j · 20 j |
+| ~~**9.6.0**~~ | ~~La déclaration mensuelle~~ | 14 | Intention | **livré** 17/09/2026 (13 sur 14) |
 | *9.6.1* | *Entretien (hors des 13 demandées)* | *4* | *Intention* | *3 j · 6 j* |
 | **9.7.0** | Immobilisations et stocks | 10 | Intention | 5 j · 10 j |
 | **9.8.0** | La clôture d'exercice | 15 | Intention | 13 j · 30 j |
@@ -455,10 +455,32 @@ suspens (*comptable*) ; le lettrage partiel (*comptable*) ; les tranches d'âge 
 
 ---
 
-## 9.6.0 — La déclaration mensuelle
+## 9.6.0 — La déclaration mensuelle — **LIVRÉE le 17/09/2026**
 
 > *La déclaration tunisienne du mois produite depuis la balance, avec les chiffres que le comptable
 > recopie sur le portail — et rien de plus.*
+
+**La dépendance — « le modèle de déclaration que le pilote dépose réellement » — n'est pas levée, et
+la version est livrée quand même.** Ce qui le permet, c'est la règle 36 prise au sérieux : une case
+dont la règle n'est pas connue vaut **`null`**, jamais 0, et elle porte sa raison à l'écran. Le jour
+où le comptable montre son formulaire, on remplace un motif par un calcul — on ne réécrit rien.
+
+**Livré** : F-9.6.0-01 (une déclaration par dossier et par période, déduite des écritures), 02 (TVA
+collectée, déductible, crédit reporté ; le report se LIT sur le compte), 03 (retenues opérées et
+subies, IRPP), 06 (droit de timbre), 07 (**chaque case tracée** jusqu'aux écritures qui la font,
+ouvrables d'un clic), 08 (une case inconnue vaut `null`), 09 (trois contrôles avant dépôt, qui
+nomment sans bloquer), 10 (l'écriture de déclaration au dernier jour du mois, en brouillard), 13
+(l'état d'un mois : reçu → saisi → déclaré → payé, pointé et dé-pointable), 14 (les chiffres à
+reporter, exportables en CSV). F-9.6.0-04 (TFP, FOPROLOS) et 05 (TCL) et 11 (acomptes) sont livrés
+**en tant que cases `null` nommées** : leur assiette et leur taux ne sont pas établis.
+
+**Pas livré** : F-9.6.0-12, le calendrier fiscal par régime. Les régimes à distinguer et les
+échéances de chacun sont une question au comptable ; les inventer serait écrire du droit que
+personne n'a confirmé. La page Échéances existante continue de servir.
+
+**Ce qui reste à décider, et ce qui a été tranché en attendant** : « payé » **n'écrit pas** le
+règlement — il vient du relevé bancaire quand le dossier en a un (9.5.0), de la saisie sinon.
+Un seul des deux, jamais les deux (règle 5.0.0, « compté deux fois »), et l'écran dit lequel.
 
 | | |
 |---|---|

@@ -7,6 +7,41 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 9.6.0 — 17/09/2026
+
+**La déclaration du mois : les chiffres à recopier, et rien de plus.**
+
+SkanFact **ne dépose rien** et ne se connecte à aucune administration. Ce que fait cette version,
+c'est préparer les chiffres que le comptable recopie sur le portail — et les rendre vérifiables.
+
+- **Chaque case se déduit des écritures validées**, jamais saisie : un chiffre saisi à côté d'un
+  livre finit toujours par le contredire. TVA collectée, déductible, crédit reporté, net à payer,
+  crédit à reporter, droit de timbre, retenues opérées et subies, IRPP, total à décaisser.
+- **Chaque chiffre s'ouvre sur les pièces qui le font.** Un chiffre qu'on ne peut pas ouvrir se
+  croit ou ne se croit pas ; un chiffre qui montre ses écritures se vérifie.
+- **Une case dont la règle n'est pas connue vaut « — », jamais « 0,000 ».** TFP, FOPROLOS, TCL et
+  acomptes provisionnels : leur assiette et leur taux ne sont pas établis, et un zéro se recopierait
+  sur un formulaire fiscal. Chacune dit pourquoi elle est vide, avec son **À VÉRIFIER**. Le jour où
+  le plan du dossier porte un compte pour l'une d'elles, elle se calcule.
+- **Le crédit reporté se lit sur le compte**, jamais dans un champ : une déclaration isolée qui
+  l'ignore donne un net faux.
+- **Trois contrôles avant dépôt**, qui nomment sans jamais bloquer : les pièces encore en brouillard
+  (elles n'entrent dans aucun chiffre), le compte d'attente non soldé, et la TVA du mois pas encore
+  soldée par son écriture.
+- **L'écriture du mois** (TVA collectée / déductible → à décaisser, timbre et retenues compris)
+  arrive au dernier jour du mois et **en brouillard** : c'est le comptable qui la valide. Elle ne
+  crédite du compte de TVA déductible que ce qui est **utilisé** — le reste est le crédit à
+  reporter, et il doit rester.
+- **L'état d'un mois** : reçu → saisi → déclaré → payé. Les deux derniers sont des pense-bêtes, et
+  ils se **dé-pointent** ; on ne peut pas payer ce qu'on n'a pas déposé, et l'écran le dit.
+- **Le détail par taux ne s'invente pas** : il demande un sous-compte de TVA collectée par taux.
+  Quand le dossier n'en a qu'un, le total reste juste et l'écran explique pourquoi il n'y a pas de
+  répartition, au lieu d'un tableau à une ligne qui laisserait croire que tout est à 19 %.
+
+Ce qui **n'y est pas** : le calendrier fiscal par régime. Les régimes à distinguer et les échéances
+de chacun dépendent de réponses que le cabinet pilote n'a pas encore données, et les inventer
+reviendrait à écrire du droit que personne n'a confirmé.
+
 ## 9.5.0 — 17/09/2026
 
 **La banque : le relevé entre, et le rapprochement propose sans jamais trancher tout seul.**

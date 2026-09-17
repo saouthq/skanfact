@@ -1874,6 +1874,7 @@ portent pas, et un test les nomme.
 | `ERR-ENT-076` | « La console a répondu <n>. » (ou le message de la console) | pont | — | Livré |
 | `ERR-CAB-040` | « Ce relevé ne se boucle pas : <début> au départ, <mouvements> de mouvements, cela fait <attendu> — et le relevé annonce <fin>. Il manque <écart>… » / « Ce fichier a déjà été importé le <date>… » | import d'un relevé (9.5.0) | compléter le fichier, ou corriger le solde de fin | Livré |
 | `ERR-CAB-041` | « Cette ligne d'écriture ne touche pas le compte <n>. » / « Cette ligne de relevé n'existe pas. » | rapprochement (9.5.0) | choisir la bonne ligne | Livré |
+| `ERR-CAB-042` | « La période d'une déclaration mensuelle s'écrit AAAA-MM. » / « La déclaration de <mois> est marquée déposée le <date>… » / « L'écriture de cette déclaration existe déjà… » / « Cette déclaration n'est pas marquée déposée : on ne paie pas ce qu'on n'a pas déposé. » | déclaration (9.6.0) | dé-pointer, ou préparer d'abord | Livré |
 
 ---
 
@@ -2350,21 +2351,21 @@ importeur par format, chacun testé sur un fichier réel anonymisé).
 comptable recopie sur le portail.* Question qui bloque : « Montre-moi ta déclaration d'un client
 type, ligne par ligne. »
 
-**SPEC-UI-CAB-030 — la déclaration du mois**
+**SPEC-UI-CAB-030 — la déclaration du mois** — *livré en 9.6.0 ; les « à décider » sont tranchés dans la colonne de droite*
 
 | Décidé | À décider |
 |---|---|
 | Déduite des écritures, `vatChain` (3.1.0) reste le moteur TVA ; un objet `declarations[]` par période ; **chaque case tracée** aux écritures qui la font (SPEC-DATA-005) | Le **périmètre exact des cases** (le formulaire officiel, ligne par ligne) : *comptable* (14.3, point 4) |
-| Une case dont la règle n'est pas connue vaut **`null`, jamais 0** (règle 36) ; les clés de `cases` sont une liste ouverte | TCL : assiette et taux : *comptable* ; acomptes provisionnels : calcul et cases : *comptable* |
-| L'écriture de déclaration au dernier jour du mois (4367 / 4366 → 4365), les chiffres de `vatChain` (8.9.0) | Ce que le portail accepte (un fichier ? des chiffres à recopier ?) : *comptable* — l'application **ne dépose jamais** (5.2.0), décidé |
+| Une case dont la règle n'est pas connue vaut **`null`, jamais 0** (règle 36) ; les clés de `cases` sont une liste ouverte | TCL, TFP, FOPROLOS et acomptes sont livrés **en cases `null` nommées**, chacune avec son motif à l'écran. Le jour où le plan du dossier porte un compte pour l'une d'elles (`plan[].role`), elle se calcule |
+| L'écriture de déclaration au dernier jour du mois (4367 / 4366 → 4365), en **brouillard** ; elle ne crédite du 4366 que ce qui est UTILISÉ, le reste étant le crédit à reporter | Ce que le portail accepte : toujours *comptable*. En attendant, les cases s'exportent en CSV et se recopient. L'application **ne dépose jamais** |
 | `deposee` est un pense-bête, dé-pointable (droit à l'erreur, 7.12.0) | — |
 
 **SPEC-UI-CAB-031 — le calendrier fiscal du dossier et l'état du mois**
 
 | Décidé | À décider |
 |---|---|
-| L'état d'un mois côté cabinet : **reçu → saisi → déclaré → payé** ; « déclaré » et « payé » pointés et dé-pointables | Les régimes à distinguer (réel, forfaitaire, autres) et les échéances de chacun : *comptable* |
-| Aucune date ne fait foi : échéances réglables, « À VÉRIFIER » sur la page, un réglage aberrant retombe sur l'usage (6.8.0) | « Payé » génère-t-il l'écriture de règlement (4365 → 532), ou vient-elle de la banque (9.5.0) ? **Un seul des deux**, jamais les deux (règle 5.0.0, « compté deux fois ») : *Skander* — proposé : la banque quand le dossier a un relevé, l'écriture sinon |
+| L'état d'un mois côté cabinet : **reçu → saisi → déclaré → payé** ; « déclaré » et « payé » pointés et dé-pointables, et l'on ne paie pas ce qu'on n'a pas déposé | Les régimes et leurs échéances : toujours *comptable* — **F-9.6.0-12 n'est pas livré**, et la page Échéances existante continue de servir |
+| Aucune date ne fait foi : échéances réglables, « À VÉRIFIER » sur la page, un réglage aberrant retombe sur l'usage (6.8.0) | **Tranché en 9.6.0** : « payé » n'écrit RIEN. Le règlement vient du relevé bancaire quand le dossier en a un, de la saisie sinon — et l'écran dit lequel des deux |
 | « À faire » ne remonte une échéance que si des pièces manquent (6.8.0) | — |
 
 ### 9.6.1 — entretien

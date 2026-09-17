@@ -2203,14 +2203,15 @@
     // La BANQUE non plus n'a pas besoin de lignes existantes : le premier relevé arrive souvent
     // avant la première écriture, et c'est justement lui qui va les produire.
     const corps = s.onglet === 'saisie' ? vueSaisie(dossier)
-      : s.onglet === 'banque' ? vueBanque(dossier)
-        : !lignes.length
-          ? `<div class="empty mini">Aucune écriture sur cette période.</div>`
-          : s.onglet === 'journal' ? vueJournal(lignes)
-            : s.onglet === 'grand-livre' ? vueGrandLivre(lignes)
-              : s.onglet === 'balance' ? vueBalance(lignes)
-                : s.onglet === 'recherche' ? vueRecherche(lignes)
-                  : vueLettrage(lignes);
+      : s.onglet === 'declaration' ? vueDeclaration(dossier)
+        : s.onglet === 'banque' ? vueBanque(dossier)
+          : !lignes.length
+            ? `<div class="empty mini">Aucune écriture sur cette période.</div>`
+            : s.onglet === 'journal' ? vueJournal(lignes)
+              : s.onglet === 'grand-livre' ? vueGrandLivre(lignes)
+                : s.onglet === 'balance' ? vueBalance(lignes)
+                  : s.onglet === 'recherche' ? vueRecherche(lignes)
+                    : vueLettrage(lignes);
 
     // D'OÙ viennent ces chiffres. Deux sources, et l'écran le dit en toutes lettres : une balance
     // lue dans les paquets du client et une balance tenue par le cabinet ne disent pas la même
@@ -2231,6 +2232,7 @@
         <button data-tab="grand-livre" class="${s.onglet === 'grand-livre' ? 'active' : ''}">Grand livre</button>
         <button data-tab="balance" class="${s.onglet === 'balance' ? 'active' : ''}">Balance</button>
         <button data-tab="lettrage" class="${s.onglet === 'lettrage' ? 'active' : ''}">Lettrage</button>
+        ${s.livre ? `<button data-tab="declaration" class="${s.onglet === 'declaration' ? 'active' : ''}">Déclaration</button>` : ''}
         ${s.livre ? `<button data-tab="banque" class="${s.onglet === 'banque' ? 'active' : ''}">Banque${
           (() => { const n = (s.livre.releves || []).reduce((a, r) => a + r.lignes.filter(l => !(l.rapprochement && l.rapprochement.ecritureId)).length, 0);
             return n ? ` <span class="tab-n">${n}</span>` : ''; })()}</button>` : ''}
@@ -2245,6 +2247,7 @@
     if (s.onglet === 'saisie') brancherSaisie(el, root, dossier);
     else if (s.onglet === 'recherche') brancherRecherche(el, root, dossier);
     else if (s.onglet === 'banque') brancherBanque(el, root, dossier);
+    else if (s.onglet === 'declaration') brancherDeclaration(el, root, dossier);
     else brancherVue(el, root, dossier, lignes);
   }
 
@@ -2402,6 +2405,180 @@
           <td class="r nw">${o.debit ? esc(money(o.debit)) : ''}</td><td class="r nw">${o.credit ? esc(money(o.credit)) : ''}</td>
           <td class="r nw">${esc(money(o.reste))}</td><td class="row-actions"></td></tr>`).join('')}</tbody></table></div>`
         : `<div class="muted small">Tout est lettré : ${pl(r.lettrees, 'pièce')} soldée${r.lettrees > 1 ? 's' : ''}.</div>`}</div>`).join('')}`;
+  }
+
+  // ---------------------------------------------------------------- la déclaration (9.6.0)
+  //
+  // Ce que cet écran fait : il prépare les chiffres que le comptable RECOPIE sur le portail. Ce
+  // qu'il ne fera jamais : déposer à sa place. « Marquer déposée » est un pense-bête, et l'écran le
+  // dit en toutes lettres — une application qui déposerait se tromperait un jour sans que personne
+  // ne le sache (règle 5.2.0).
+  const declState = { mois: '', ouverte: '' };
+
+  const LIBELLE_CASE = {
+    tvaCollectee: 'TVA collectée', tvaDeductible: 'TVA déductible', creditReporte: 'Crédit reporté du mois précédent',
+    netAPayer: 'TVA nette à payer', creditAReporter: 'Crédit à reporter', timbre: 'Droit de timbre',
+    retenuesOperees: 'Retenues à la source opérées', retenuesSubies: 'Retenues subies (créance)',
+    irpp: 'IRPP retenu sur salaires', aDecaisser: 'Total à décaisser',
+    tfp: 'TFP', foprolos: 'FOPROLOS', tcl: 'TCL', acomptes: 'Acomptes provisionnels'
+  };
+  const ORDRE_CASES = ['tvaCollectee', 'tvaDeductible', 'creditReporte', 'netAPayer', 'creditAReporter',
+    'timbre', 'retenuesOperees', 'irpp', 'aDecaisser', 'retenuesSubies', 'tfp', 'foprolos', 'tcl', 'acomptes'];
+
+  function vueDeclaration(dossier) {
+    const s = livresState;
+    const d = s.decl;
+    const tous = MOIS_COURTS.map((m, i) => `${s.annee}-${String(i + 1).padStart(2, '0')}`);
+    if (!d) return `<div class="empty mini">Lecture de la déclaration…</div>`;
+    const posee = d.posee;
+    const etat = KC.etatDuMois(s.livre, d.periode, { recu: (dossier.months || []).includes(d.periode) });
+    // L'écriture de déclaration déjà passée — la nôtre, ou celle que le client avait déjà dans ses
+    // propres livres. C'est elle qui éteint le bouton : la repasser compterait la TVA deux fois.
+    const ecrite = !!d.ecritureExistante;
+    const echecs = (d.controles || []).filter(c => !c.ok);
+    return `<div class="filters">
+      <label class="f-lab">Mois<select id="dc-mois" aria-label="Le mois à déclarer">${tous.map((m, i) =>
+        `<option value="${m}" ${m === d.periode ? 'selected' : ''}>${MOIS_COURTS[i]} ${esc(s.annee)}</option>`).join('')}</select></label>
+      ${info('dc.etat')}
+      <span class="small muted">État</span>
+      <span class="badge ${etat.etat === 'payé' ? 'b-paid' : etat.etat === 'déclaré' ? 'b-part' : etat.etat === 'saisi' ? 'b-due' : ''}">${esc(etat.etat)}</span>
+      <button class="btn btn-sm" id="dc-preparer">${posee ? 'Recalculer' : 'Préparer la déclaration'}</button>
+      <button class="btn btn-sm btn-ghost" id="dc-csv">Exporter les cases</button>
+    </div>
+    <div class="info-box mb">Ces chiffres se <b>recopient</b> sur le portail. SkanFact ne dépose rien et ne se
+      connecte à aucune administration : « Marquer déposée » est un pense-bête, jamais un accusé de réception.</div>
+    ${echecs.length ? `<div class="warn-box mb">${echecs.map(c => `<div>${esc(c.detail)}</div>`).join('')}</div>`
+      : `<div class="ok-box mb">Les trois contrôles passent : aucun brouillard sur le mois, aucun compte d'attente ouvert, et le report de TVA tombe juste.</div>`}
+    <div class="panel mt"><h2>Les cases ${info('dc.cases')}</h2>
+      <div class="scroll-x"><table class="list compact"><thead><tr>
+        <th>Case</th><th class="r nw">Montant</th><th class="nw">D'où ça vient</th></tr></thead>
+      <tbody>${ORDRE_CASES.filter(k => d.cases[k]).map(k => {
+        const c = d.cases[k];
+        const n = (c.ecritures || []).length;
+        return `<tr class="${k === 'aDecaisser' ? 'dc-total' : ''}">
+          <td>${esc(LIBELLE_CASE[k] || k)}</td>
+          <td class="r nw">${c.montant == null ? '<span class="muted">—</span>' : esc(money(c.montant))}</td>
+          <td class="tronq" title="${esc(c.motif || (n ? pl(n, 'écriture') : ''))}">${
+            c.montant == null ? `<span class="muted small">${esc((c.motif || '').slice(0, 60))}…</span>`
+              : n ? `<button type="button" class="btn btn-sm btn-ghost" data-cases="${k}">${esc(pl(n, 'écriture'))}</button>`
+                : '<span class="muted small">calculé</span>'}</td></tr>`;
+      }).join('')}</tbody></table></div>
+      ${d.parTaux
+        ? `<h3 class="sub-h">TVA collectée par taux</h3><table class="list compact"><tbody>${d.parTaux.map(x =>
+            `<tr><td>${esc(x.compte)}</td><td class="r nw">${esc(money(x.montant))}</td></tr>`).join('')}</tbody></table>`
+        : `<p class="small muted mt">Le détail par taux demande un sous-compte de TVA collectée par taux
+           (${esc(d.comptes.collectee)}1, ${esc(d.comptes.collectee)}2…). Ce dossier n'en a qu'un : le total est juste,
+           sa répartition ne s'invente pas.</p>`}
+    </div>
+    ${declState.ouverte && d.cases[declState.ouverte] ? panneauPieces(d.cases[declState.ouverte], LIBELLE_CASE[declState.ouverte]) : ''}
+    <div class="panel mt"><h2>Ce qui suit ${info('dc.suite')}</h2>
+      <div class="inline">
+        <button class="btn btn-sm" id="dc-ecriture" ${!posee || ecrite ? 'disabled' : ''}
+          title="${!posee ? 'Prépare la déclaration d\'abord.' : ecrite ? 'Elle existe déjà : la refaire compterait la TVA du mois deux fois.' : ''}">Écrire l'écriture du mois</button>
+        <button class="btn btn-sm" id="dc-deposee" ${!posee ? 'disabled' : ''}>${
+          posee && posee.deposee && posee.deposee.le ? 'Déposée le ' + esc(fmtJour(posee.deposee.le)) + ' — annuler' : 'Marquer déposée'}</button>
+        <button class="btn btn-sm" id="dc-payee" ${!posee || !(posee.deposee && posee.deposee.le) ? 'disabled' : ''}
+          title="${!posee || !(posee.deposee && posee.deposee.le) ? 'On ne paie pas ce qu\'on n\'a pas déposé.' : ''}">${
+          posee && posee.payee && posee.payee.le ? 'Payée le ' + esc(fmtJour(posee.payee.le)) + ' — annuler' : 'Marquer payée'}</button>
+      </div>
+      <p class="small muted mt">L'écriture du mois (${esc(d.comptes.collectee)} / ${esc(d.comptes.deductible)} → ${esc(d.comptes.aPayer)})
+      arrive en <b>brouillard</b>, au dernier jour du mois : c'est toi qui la valides.
+      ${(s.livre.releves || []).length
+        ? 'Le règlement, lui, viendra du relevé bancaire — pointer « payée » ne l\'écrit pas, sinon il serait compté deux fois.'
+        : 'Ce dossier n\'a pas de relevé bancaire : le règlement se saisit dans la grille, sur le journal de banque.'}</p>
+    </div>`;
+  }
+
+  const panneauPieces = (c, titre) => `<div class="panel mt" id="dc-pieces"><h2>${esc(titre)} — les pièces</h2>
+    <div class="scroll-x"><table class="list compact"><thead><tr><th class="nw">Date</th><th class="nw">Journal</th><th class="nw">Pièce</th><th>Libellé</th></tr></thead>
+    <tbody>${(c.ecritures || []).map(id => {
+      const e = (livresState.livre.ecritures || []).find(x => x.id === id);
+      return e ? `<tr><td class="nw">${esc(fmtJour(e.date))}</td><td class="nw">${esc(e.journal)}</td>
+        <td class="nw">${esc(e.piece)}</td><td class="tronq lg" title="${esc(e.libelle)}">${esc(e.libelle)}</td></tr>` : '';
+    }).join('')}</tbody></table></div></div>`;
+
+  // Le mois proposé : le DERNIER qui porte des écritures, pas janvier. Un comptable ouvre cet
+  // écran pour le mois qu'il vient de saisir ; le faire commencer au premier mois de l'exercice
+  // serait onze clics par déclaration.
+  function moisPropose(livre) {
+    const dates = (livre.ecritures || []).map(e => e.date).filter(Boolean).sort();
+    return (dates.length ? dates[dates.length - 1] : (livre.exercice.du || '')).slice(0, 7);
+  }
+
+  function brancherDeclaration(el, root, dossier) {
+    const s = livresState;
+    // Une déclaration se LIT au processus principal. Tant qu'elle n'est pas arrivée, l'écran le dit
+    // — et c'est ici qu'on la demande, sinon l'onglet resterait sur « Lecture… » pour toujours.
+    const veut = declState.mois || moisPropose(s.livre);
+    if (!s.decl || s.decl.periode !== veut) { chargerDeclaration(root, dossier); return; }
+    const m = $('#dc-mois', el);
+    if (m) m.onchange = () => { declState.mois = m.value; declState.ouverte = ''; s.decl = null; chargerDeclaration(root, dossier); };
+    $$('[data-cases]', el).forEach(b => { b.onclick = () => { declState.ouverte = declState.ouverte === b.dataset.cases ? '' : b.dataset.cases; drawLivres(root, dossier); }; });
+    const prep = $('#dc-preparer', el);
+    if (prep) prep.onclick = async () => {
+      prep.disabled = true;
+      try {
+        const r = await api.poserDeclaration({ dossierId: dossier.id, annee: s.annee, periode: s.decl.periode });
+        s.livre = r.livre; toast('Déclaration préparée.'); await chargerDeclaration(root, dossier);
+      } catch (e) { toast(plainError(e), 'error'); prep.disabled = false; }
+    };
+    const ec = $('#dc-ecriture', el);
+    if (ec) ec.onclick = async () => {
+      ec.disabled = true;
+      try {
+        const r = await api.ecrireDeclaration({ dossierId: dossier.id, annee: s.annee, periode: s.decl.periode });
+        s.livre = r.livre;
+        toast('Écriture créée en brouillard : valide-la quand tu es d\'accord.');
+        await chargerDeclaration(root, dossier);
+      } catch (e) { toast(plainError(e), 'error'); ec.disabled = false; }
+    };
+    // Les deux pense-bêtes. Ce qui se pointe par erreur se dé-pointe (7.12.0) — et ici le bouton
+    // lui-même porte l'annulation, parce qu'au moment où l'on comprend son erreur, la ligne a déjà
+    // quitté l'écran d'où on l'a cliquée.
+    [['deposee', '#dc-deposee'], ['payee', '#dc-payee']].forEach(([quoi, sel]) => {
+      const b = $(sel, el);
+      if (!b) return;
+      b.onclick = async () => {
+        const posee = s.decl.posee;
+        const actif = posee && posee[quoi] && posee[quoi].le;
+        try {
+          const r = await api.pointerDeclaration({
+            dossierId: dossier.id, annee: s.annee, periode: s.decl.periode, quoi,
+            valeur: actif ? null : { le: K.today() }
+          });
+          s.livre = r.livre;
+          toast(actif ? 'Pointage annulé.' : (quoi === 'deposee' ? 'Notée déposée — c\'est un pense-bête, pas un accusé de réception.' : 'Notée payée.'));
+          await chargerDeclaration(root, dossier);
+        } catch (e) { toast(plainError(e), 'error'); }
+      };
+    });
+    // L'export passe par le MÊME chemin que le reste de l'application (`cab:exportCsv` pose le BOM
+    // et la fenêtre d'enregistrement) : en écrire un second aurait fini par diverger sur l'un des
+    // deux. Une case inconnue sort VIDE avec sa raison — jamais un zéro qu'on recopierait.
+    const csv = $('#dc-csv', el);
+    if (csv) csv.onclick = async () => {
+      const cell = v => String(v == null ? '' : v).replace('.', ',');
+      const texte = [K.toCsvLine(['Case', 'Montant', 'Remarque'])]
+        .concat(ORDRE_CASES.filter(k => s.decl.cases[k]).map(k => K.toCsvLine([
+          LIBELLE_CASE[k] || k,
+          s.decl.cases[k].montant == null ? '' : cell(s.decl.cases[k].montant),
+          s.decl.cases[k].motif || ''
+        ]))).join('\r\n') + '\r\n';
+      try {
+        const r = await api.exportCsv(texte, `declaration-${s.decl.periode}-${dossier.matricule || dossier.name}`);
+        if (r) toast('Fichier enregistré.');
+      } catch (e) { toast(plainError(e), 'error'); }
+    };
+  }
+
+  // La déclaration se relit au processus principal — jamais recalculée dans l'écran : deux moteurs
+  // finiraient par donner deux chiffres, et c'est le genre d'écart qu'on découvre devant un client.
+  async function chargerDeclaration(root, dossier) {
+    const s = livresState;
+    try {
+      s.decl = await api.declaration({ dossierId: dossier.id, annee: s.annee, periode: declState.mois || moisPropose(s.livre) });
+    } catch (e) { s.decl = null; toast(plainError(e), 'error'); }
+    drawLivres(root, dossier);
   }
 
   // ---------------------------------------------------------------- la banque (9.5.0)

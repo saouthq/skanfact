@@ -1,7 +1,7 @@
 {
   "name": "skanfact",
   "productName": "SkanFact",
-  "version": "9.5.0",
+  "version": "9.6.0",
   "description": "Devis et factures pour les petites entreprises",
   "main": "src/main.js",
   "author": "Skander Ben Amor",
@@ -64,7 +64,8 @@
     "e2e:cabinet-licence": "node test/e2e/cabinet-licence.js",
     "e2e:cabinet-jour1": "node test/e2e/cabinet-premier-jour.js",
     "e2e:cabinet-rendu": "xvfb-run -a node test/e2e/cabinet-rendu.js",
-    "e2e:banque": "node test/e2e/banque.js"
+    "e2e:banque": "node test/e2e/banque.js",
+    "e2e:declaration": "node test/e2e/declaration.js"
   },
   "engines": {
     "node": ">=22"

@@ -84,6 +84,12 @@ contextBridge.exposeInMainWorld('cabinet', {
   derapprocher: (o) => ipcRenderer.invoke('cab:derapprocher', o || {}),
   lettrageAuto: (o) => ipcRenderer.invoke('cab:lettrageAuto', o || {}),
   saveBanque: (o) => ipcRenderer.invoke('cab:saveBanque', o || {}),
+  // La déclaration (9.6.0). Préparer n'est pas déposer : « déposée » et « payée » sont des
+  // pense-bêtes, et l'application ne se connecte à aucune administration.
+  declaration: (o) => ipcRenderer.invoke('cab:declaration', o || {}),
+  poserDeclaration: (o) => ipcRenderer.invoke('cab:poserDeclaration', o || {}),
+  pointerDeclaration: (o) => ipcRenderer.invoke('cab:pointerDeclaration', o || {}),
+  ecrireDeclaration: (o) => ipcRenderer.invoke('cab:ecrireDeclaration', o || {}),
   // La licence du cabinet (9.4.0). Elle ne concerne QUE ce cabinet : rien ici ne touche aux
   // données d'un client, et la porte qu'elle ferme est celle de la validation d'une écriture —
   // jamais la lecture, jamais l'import, jamais l'export.

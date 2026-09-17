@@ -38,9 +38,10 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un montant **négatif change de colonne**, il ne garde pas son signe | 6.3.0 — les écritures comptables |
 | Un **agrégat** porte une devise, une unité, et une période nommée | 7.0.1, 7.16.0, 3.1.0 ; 9.4.9 — une courbe d'une barre cède la place au chiffre |
 | Un **rapprochement faux** ferme la question : une ambiguïté n'est JAMAIS « certain » | 9.5.0 |
+| Une écriture qui SOLDE un compte ne compte pas dans ce qu'elle déclare | 9.6.0 |
 | Un **lettrage généreux** affirme qu'une facture est payée : somme nulle, ou rien | 9.5.0 |
 | Un **pied de totaux** porte la sélection entière, jamais la page affichée ; on pagine ce qu'on NOMME | 2.2.0, 7.16.0, 9.4.5 |
-| La valeur par défaut d'une **règle qu'on ne connaît pas** est celle qui ne fait rien | 9.1.1 — le seuil de retenue à 0, la TFP qu'aucun métier ne porte |
+| La valeur par défaut d'une **règle qu'on ne connaît pas** est celle qui ne fait rien | 9.1.1 — le seuil de retenue à 0, la TFP qu'aucun métier ne porte ; 9.6.0 — une case fiscale vaut `null`, jamais 0 |
 | Une écriture **validée** ne se modifie jamais : elle se contre-passe, à la date du jour | 9.2.0 |
 | Un **numéro** naît à la validation, et le contrôle passe AVANT l'attribution | 9.2.0 ; 6.0.0 — `nextNumber` |
 | On pointe une **occurrence**, jamais une règle ; et le pense-bête dit qu'il n'est qu'un pense-bête | 7.21.0, 5.2.0, 9.4.6 |
@@ -125,7 +126,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 **L'outillage (9.1.0)**
 
 `npm test` (les tests purs) · `npm run lint` (ESLint, zéro erreur exigée) · `npm run charge` (le test
-de charge du livre) · `npm run e2e:<nom>` (47 parcours, tableau au § « Les tests qui ouvrent vraiment
+de charge du livre) · `npm run e2e:<nom>` (48 parcours, tableau au § « Les tests qui ouvrent vraiment
 l'application ») · CI GitHub sur Linux et Windows à chaque poussée · « Construire un essai » pour
 faire tester une version sans la publier.
 
@@ -530,6 +531,7 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:justificatif` | **le justificatif se joint avant toute saisie** : sélecteur de fichier remplacé dans le processus principal, une photo jointe sur un achat VIDE, enregistrée avec la pièce, retrouvée sur le disque et dans la liste (📎), un second fichier sur la pièce rangée, une pièce abandonnée qui ne laisse pas de copie, la lecture d'une photo qui redessine sans perdre la pièce, et le même geste sur un devis neuf |
 | `npm run e2e:cabinet-jour1` | **le premier jour d'un comptable** : l'instrument qui MESURE ce qu'il voit, dans l'ordre où il le voit — 35 écrans photographiés du mot de passe à l'Aide, et six règles qui tombent (un bouton hors de l'écran, un bouton qui ressemble à du texte, un état vide sans geste, un champ de saisie sans bulle « i », une boîte sans étiquette, un débordement horizontal). `dist-e2e/cabinet-premier-jour/mesures.json` |
 | `npm run e2e:cabinet-rendu` | **le rendu du Cabinet, mesuré** : les trois sondes de l'app entreprise (contraste et débordement des boutons, alignement des colonnes, barres d'en-tête) braquées sur TOUS ses écrans et TOUS leurs onglets, en clair et en sombre, à 1440 et à 1280 — 1 024 boutons, 777 colonnes. Elles vivent en un seul exemplaire dans `harnais.js` : c'est leur absence côté Cabinet qui l'avait laissé dériver |
+| `npm run e2e:declaration` | **la déclaration du mois** : quatre cases « — » avec leur raison (jamais un zéro), un chiffre ouvert sur ses pièces, un mois DÉJÀ déclaré par le client qui montre quand même sa collectée et dont le bouton s'éteint en disant pourquoi, l'écriture passée en brouillard au dernier jour d'un mois libre, les deux pointages dans l'ordre puis défaits, et le refus de refaire une déposée |
 | `npm run e2e:banque` | **la banque, de bout en bout** : trois banques aux trois formats (montant signé, Débit/Crédit séparés, en-têtes inconnus et associés à la main), un solde de fin faux refusé avec son écart, le même fichier refusé deux fois, l'automatique qui ne pose RIEN sur une ambiguïté, l'écriture manquante écrite depuis une ligne puis retrouvée « certain », le libellé retenu, le relevé retiré sans que le journal bouge |
 | `npm run e2e:cabinet-licence` | **la licence du Cabinet** : trois dossiers hors SkanFact gratuits, l'exemple qui ne compte pas, cinq clients qui dépassent le quota, la validation refusée pendant que lire, importer, exporter et SAISIR restent ouverts, deux dossiers archivés qui rendent la main, la clé d'un autre cabinet refusée en nommant les deux empreintes, celle d'un client parrainé refusée aussi, et le panneau qui nomme chaque dossier compté |
 | `npm run e2e:saisie` | **la grille de saisie, AU CLAVIER** : une pièce entière tapée sans souris (Entrée descend, Tab solde), le brouillard sans numéro, la validation qui referme, les deux refus sur une validée, un lot dont la pièce fausse est au MILIEU et la numérotation qui reste 1..n, l'extourne au 1er du mois suivant, la recherche par montant après réouverture de l'application, et un guide écrit puis appliqué |
@@ -3910,6 +3912,66 @@ signé, débit/crédit séparés, en-têtes inconnus), le refus d'un solde faux 
 refusé, l'automatique qui ne pose rien sur une ambiguïté, l'écriture écrite depuis une ligne puis
 retrouvée « certain » par l'automatique, le libellé retenu, et le relevé retiré sans que le journal
 bouge.
+
+### 9.6.0 — La déclaration mensuelle
+
+Les chiffres que le comptable RECOPIE sur le portail. L'application ne dépose rien, ne se connecte à
+aucune administration, et ne le fera jamais (règle 5.2.0) : « Marquer déposée » est un pense-bête.
+
+Règles apprises, à ne pas recasser :
+
+- **Une case dont la règle n'est pas connue vaut `null`, jamais 0** (règle 9.1.1, appliquée cette
+  fois à un formulaire fiscal). Un zéro se recopie ; un « — » avec sa raison se demande au
+  comptable. TFP, FOPROLOS, TCL et acomptes provisionnels existent dans l'objet — les taire ferait
+  croire qu'elles n'existent pas — et portent leur motif. Le jour où le plan du dossier porte un
+  compte pour l'une d'elles, elle se calcule : la règle « null » n'est pas un abandon, c'est une
+  attente, et elle se lève toute seule.
+- **L'écriture de déclaration ne compte pas dans ce qu'elle déclare.** C'est le défaut que le
+  parcours réel a trouvé et qu'aucun de mes tests ne pouvait voir : le jeu d'exemple porte les
+  livres d'un CLIENT, et un client à jour a déjà passé son écriture de TVA. Celle-ci débite le 4367
+  d'exactement ce que les ventes y ont crédité — donc un « crédit moins débit » sur le mois donne
+  **zéro**, et un mois plein paraît vide. On l'exclut, et on la reconnaît à sa **FORME** (elle
+  touche le compte à décaisser ET un compte de TVA), jamais à son libellé : le client de l'exemple
+  nomme la sienne « TVA-2026-08 », la nôtre s'appelle « DECL-2026-08 », un cabinet la nommera
+  autrement.
+- **Un état et ses drapeaux se calculent UNE fois.** `etatDuMois` rendait `saisi` d'un côté et
+  recalculait `validees.length` de l'autre pour le mot : les deux pouvaient se contredire sur le
+  même écran (règle 6.8.1). Le mot se déduit désormais des drapeaux — et c'est en essayant de faire
+  tomber le test que la divergence est apparue.
+- **On ne crédite du compte de TVA déductible que ce qui est UTILISÉ.** Le solder entièrement ferait
+  disparaître le crédit à reporter, et le mois suivant paierait deux fois.
+- **Le crédit reporté se LIT sur le compte**, jamais dans un champ — c'est la leçon de `vatChain`
+  (3.1.0), portée au Cabinet.
+- **Les contrôles nomment, ils ne bloquent pas** (règle 6.0.0) : un mois déclaré avec deux manques
+  signalés vaut mieux qu'un mois jamais déclaré parce que l'application faisait la difficile. Et le
+  contrôle choisi dit un GESTE : « le compte 4367 porte encore X : l'écriture de déclaration n'a pas
+  été passée » se traduit en action, là où un contrôle sur le report de crédit dirait la même chose
+  d'une façon que personne ne sait traduire.
+- **Une période n'a qu'UNE déclaration**, et une déposée ne se refait pas en silence : deux chiffres
+  différents portant le même dépôt, et plus personne ne sait lequel a été envoyé. Le refus nomme le
+  geste qui débloque.
+- **On ne paie pas ce qu'on n'a pas déposé** : l'ordre des deux pense-bêtes est une information, et
+  le bouton éteint dit pourquoi. Les deux se dé-pointent (7.12.0) — un pense-bête qui ne se défait
+  pas devient un mensonge le jour où l'on se trompe de mois.
+- **Le détail par TAUX ne s'invente pas.** Il demande un sous-compte de TVA collectée par taux ;
+  quand le dossier n'en a qu'un, on le DIT au lieu de rendre un tableau à une ligne qui laisserait
+  croire que tout est à 19 %.
+- **Le RÔLE désigne le compte, jamais le numéro écrit dans le code** (règle 6.3.0 : aucun numéro de
+  compte n'est une vérité). Un cabinet qui a ses propres numéros ne doit pas voir une déclaration
+  vide. Les comptes fiscaux vivent dans `compta.js` — le Cabinet ne charge pas core.js — et un test
+  les confronte à `DEFAULT_ACCOUNTS`.
+- **L'écran s'ouvre sur le dernier mois SAISI**, pas sur janvier : un comptable vient déclarer le
+  mois qu'il vient de terminer, et onze clics par déclaration se paient en usage.
+
+**Ce qui n'est PAS livré, et pourquoi** : le calendrier fiscal par régime (F-9.6.0-12). Les régimes
+à distinguer et les échéances de chacun sont une question au comptable pilote ; les inventer serait
+écrire du droit que personne n'a confirmé — exactement ce que la règle du seuil de retenue (9.1.1)
+interdit. La page Échéances existante continue de servir.
+
+Le test qui compte est `npm run e2e:declaration` : les quatre cases « — » avec leur raison, un
+chiffre ouvert sur ses pièces, un mois DÉJÀ déclaré par le client qui montre quand même sa collectée
+et dont le bouton s'éteint en disant pourquoi, un mois libre où l'écriture se passe en brouillard au
+dernier jour, les deux pointages dans l'ordre puis défaits, et le refus de refaire une déposée.
 
 ## Pistes pour la suite (non demandées)
 

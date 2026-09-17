@@ -1327,6 +1327,66 @@ ipcMain.handle('cab:saveBanque', (_e, { banques, libelles, dossierId, banque } =
   return save();
 });
 
+// ================================================================ LA DÉCLARATION (9.6.0)
+//
+// Préparer n'est pas déposer, et déposer n'est pas payer. L'application ne dépose RIEN et ne se
+// connecte à aucune administration : elle prépare les chiffres, et les deux pointages qui suivent
+// sont des pense-bêtes (règle 5.2.0). Comme partout ici, la RÈGLE vit dans `compta.js`.
+ipcMain.handle('cab:declaration', (_e, { dossierId, annee, periode } = {}) => {
+  requireOpen();
+  const o = ouvrirLivre(dossierId, annee);
+  if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas de livre pour cet exercice.');
+  const d = KC.declarationMensuelle(o.livre, periode);
+  if (!d.ok) throw erreur('ERR-CAB-042', d.motif);
+  // Celle qui est ENREGISTRÉE, si elle existe : c'est elle qui porte les pointages et l'écriture.
+  const posee = (o.livre.declarations || []).find(x => x.periode === periode) || null;
+  return { ...d, posee };
+});
+
+ipcMain.handle('cab:poserDeclaration', (_e, { dossierId, annee, periode } = {}) => {
+  requireOpen();
+  const o = ouvrirLivre(dossierId, annee);
+  if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas de livre pour cet exercice.');
+  const d = KC.declarationMensuelle(o.livre, periode);
+  if (!d.ok) throw erreur('ERR-CAB-042', d.motif);
+  const r = KC.poserDeclaration(o.livre, d, moiPoste().deviceName || 'cabinet', Date.now());
+  if (!r.ok) throw erreur('ERR-CAB-042', r.motif);
+  ecrireLeLivre(dossierId, o.livre, null);
+  return { ok: true, declaration: r.declaration, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+ipcMain.handle('cab:pointerDeclaration', (_e, { dossierId, annee, periode, quoi, valeur } = {}) => {
+  requireOpen();
+  const o = ouvrirLivre(dossierId, annee);
+  if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas de livre pour cet exercice.');
+  const r = KC.pointerDeclaration(o.livre, periode, quoi, valeur, moiPoste().deviceName || 'cabinet', Date.now());
+  if (!r.ok) throw erreur('ERR-CAB-042', r.motif);
+  ecrireLeLivre(dossierId, o.livre, null);
+  return { ok: true, declaration: r.declaration, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+// L'écriture de déclaration entre en BROUILLARD, comme tout ce qui est proposé : c'est le comptable
+// qui la valide, et c'est à ce moment-là qu'elle prend son numéro.
+ipcMain.handle('cab:ecrireDeclaration', (_e, { dossierId, annee, periode } = {}) => {
+  requireOpen();
+  const o = ouvrirLivre(dossierId, annee);
+  if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas de livre pour cet exercice.');
+  const posee = (o.livre.declarations || []).find(x => x.periode === periode);
+  if (!posee) throw erreur('ERR-CAB-042', 'Prépare la déclaration avant d\'en écrire l\'écriture.');
+  const d = KC.declarationMensuelle(o.livre, periode);
+  // Déjà passée — la nôtre, ou celle que le client avait dans ses propres livres, reconnue à sa
+  // FORME et non à son libellé. La repasser compterait la TVA du mois deux fois.
+  if (d.ecritureExistante) {
+    throw erreur('ERR-CAB-042', 'L\'écriture de cette déclaration existe déjà dans le livre : la repasser compterait la TVA du mois deux fois.');
+  }
+  const brouillon = KC.ecritureDeclaration(o.livre, d);
+  if (!brouillon.lignes.length) throw erreur('ERR-CAB-042', 'Ce mois ne porte aucune TVA : il n\'y a pas d\'écriture à passer.');
+  const e = KC.ajouterEcriture(o.livre, brouillon, moiPoste().deviceName || 'cabinet', Date.now());
+  posee.ecritureId = e.id;
+  ecrireLeLivre(dossierId, o.livre, 'écriture de déclaration', periode);
+  return { ok: true, id: e.id, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
 // ================================================================ LA LICENCE DU CABINET (9.4.0)
 //
 // On vend des DOSSIERS, jamais des postes. La porte est posée sur la VALIDATION d'une écriture, et
