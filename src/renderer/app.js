@@ -1283,12 +1283,55 @@
   // relancer un client qui n'existe pas, ou pire, envoyer une facture au nom d'une société inventée.
   // Le bandeau porte la sortie, parce que « revenir à mes données » passait par Paramètres →
   // Sécurité et données → Importer → choisir le bon fichier dans le dossier des sauvegardes.
+  // ---------- l'exemple se refait tout seul (9.4.2) ----------
+  //
+  // Skander : « on part du principe que celui qui essaie ne va pas effacer l'exemple puis le
+  // recharger à chaque mise à jour ». Et le jeu d'exemple est RELATIF à aujourd'hui (`buildDemoData`
+  // date tout par rapport au jour courant) : chargé en septembre et rouvert en décembre, il montre
+  // des relances de trois mois et une TVA jamais déclarée. Un exemple périmé apprend des choses
+  // fausses sur le produit.
+  //
+  // Le garde-fou tient en une ligne : on ne remplace QUE des données qui sont déjà l'exemple
+  // (`estDemo`). Une seule vraie facture ne peut donc jamais passer par ici.
+  //
+  // Et surtout : on ne prend PAS de sauvegarde. `demoSortie` reprend la sauvegarde « avant-demo » la
+  // PLUS RÉCENTE — c'est le seul chemin de retour vers les vraies données. En écrire une ici, ce
+  // serait ranger l'exemple par-dessus, et « Repartir de mes données » rendrait… l'exemple d'avant.
+  let exempleRefait = null;
+
+  // La version installée n'est connue que par le processus principal, et elle arrive par une
+  // promesse. Une seule porte pour la poser : deux endroits qui écrivent ces repères finiraient
+  // par en écrire un seul (la moitié des cas), et l'exemple se referait à chaque démarrage.
+  const versionInstallee = async () => {
+    try { return ((await bridge.updateVersion()) || {}).version || ''; } catch (_) { return ''; }
+  };
+
+  // Une seule porte pour poser le repère : deux endroits qui l'écrivent finiraient par n'en écrire
+  // qu'une moitié, et l'exemple se referait à chaque démarrage.
+  async function marquerExemple() {
+    data.exemple = { version: await versionInstallee(), mois: C.today().slice(0, 7) };
+  }
+
+  async function rafraichirExemple() {
+    if (!data || !C.estDemo(data)) return;
+    const v = await versionInstallee();
+    const raison = C.exemplePerime(data.exemple, v, C.today().slice(0, 7));
+    if (!raison) return;                 // sans numéro de version non plus : on ne décide rien
+    data = window.SkanDemo.buildDemoData(data.company);
+    await marquerExemple();
+    save(true);
+    exempleRefait = { version: v, raison };
+  }
+
   function bandeauDemo() {
     if (!data || !C.estDemo(data)) return;
     const el = document.createElement('div');
     el.className = 'banner demo-banner';
     el.innerHTML = `<span><b>Jeu d'exemple</b> — ce ne sont pas tes données : treize mois d'activité fictive,
-      pour regarder comment l'application fonctionne. N'envoie rien à personne depuis ici.</span>
+      pour regarder comment l'application fonctionne. N'envoie rien à personne depuis ici.${exempleRefait
+        ? ` <b>Il vient d'être refait</b> ${exempleRefait.raison === 'version' ? `pour la version ${h(exempleRefait.version)}` : 'sur le mois en cours'} :
+          un exemple qui date montre des retards qui n'existent pas. Tes données d'avant l'exemple sont intactes.`
+        : ''}</span>
       <button class="btn btn-sm" id="demo-out">Repartir de mes données</button>`;
     const view = $('#view');
     view.insertBefore(el, view.firstChild);
@@ -1327,6 +1370,10 @@
     await bridge.createBackup('avant-demo');
     clearGuard();
     data = window.SkanDemo.buildDemoData(data.company);
+    // Les deux repères de fraîcheur (9.4.2) : sans eux, l'exemple qu'on vient de charger se
+    // referait au prochain démarrage, et le bandeau annoncerait un rattrapage qui n'a pas eu lieu.
+    await marquerExemple();
+    exempleRefait = null;
     save(true); applyTheme();
     $('#brand-company').textContent = data.company.name;
     toast('Jeu de démonstration chargé');
@@ -12680,6 +12727,10 @@
     if (loaded && loaded.locked) raw = await showLockScreen();
     data = migrate(raw);
     if (raw && (raw.version || 1) < 3) save(true); // données migrées vers le nouveau format : on enregistre tout de suite
+    // Le jeu d'exemple se refait tout seul quand l'application a changé de version, ou quand on a
+    // changé de mois (9.4.2) : personne ne pense à l'effacer puis à le recharger, et un exemple
+    // périmé raconte des retards qui n'existent pas. Ne touche rien d'autre que l'exemple.
+    await rafraichirExemple();
     applyTheme();
     // Toute première ouverture : l'assistant remplit l'entreprise avant d'entrer dans l'application
     if (OB.needsSetup(data)) {

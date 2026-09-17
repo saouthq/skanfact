@@ -60,8 +60,11 @@
         <input type="password" id="lock-pw2" autocomplete="new-password" placeholder="••••••••">
       </label>
       <div class="lock-err" id="lock-err" hidden></div>
-      <button class="btn btn-primary" id="lock-go" type="submit">Ouvrir</button>
+      <!-- L'avertissement AVANT le bouton, pas après : « il n'y a aucun moyen de récupérer ce mot
+           de passe » se lisait sous « Créer mon cabinet », c'est-à-dire une fois le mot de passe
+           choisi. Un refus, comme un avertissement, dit ce qu'il faut savoir avant d'agir. -->
       <p class="muted small lock-note" id="lock-note"></p>
+      <button class="btn btn-primary" id="lock-go" type="submit">Ouvrir</button>
       <!-- Changer d'ordinateur n'avait aucun chemin : l'application disait « Bienvenue » et fabriquait
            une clé NEUVE à quelqu'un qui avait tout gardé. Le bouton est ici, sur le seul écran où il
            sert, et AVANT que la moindre clé existe. `type="button"` : il est dans un formulaire. -->

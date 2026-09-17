@@ -30,6 +30,9 @@ const NAVIGATEUR = {
   fetch: 'readonly', URL: 'readonly', URLSearchParams: 'readonly', Blob: 'readonly',
   FileReader: 'readonly', Image: 'readonly', Event: 'readonly', CustomEvent: 'readonly',
   MutationObserver: 'readonly', ResizeObserver: 'readonly', IntersectionObserver: 'readonly',
+  // Parcourir les nœuds de TEXTE d'un bloc sans toucher aux balises : c'est ce qui permet de poser
+  // l'espace insécable de la ponctuation française sans réécrire du HTML (9.4.2).
+  NodeFilter: 'readonly',
   getComputedStyle: 'readonly', matchMedia: 'readonly',
   requestAnimationFrame: 'readonly', cancelAnimationFrame: 'readonly',
   performance: 'readonly', crypto: 'readonly', TextEncoder: 'readonly', TextDecoder: 'readonly',

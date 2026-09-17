@@ -43,7 +43,7 @@ En cas de contradiction, `DIRECTION.md` fait foi, puis `CAHIER-DES-CHARGES.md`, 
 | **9.2.0** | Le livre du dossier, et le paquet signé | 26 | Complète | 8 j · 20 j |
 | **9.3.0** | La saisie | 14 | Intention | 10 j · 20 j |
 | **9.4.0** | La licence du Cabinet | 12 | Intention | 5 j · 10 j |
-| **9.4.1** | Entretien | 7 | Intention | 3 j · 6 j |
+| **9.4.3** | Entretien | 7 | Intention | 3 j · 6 j |
 | **9.5.0** | La banque | 12 | Intention | 10 j · 20 j |
 | **9.6.0** | La déclaration mensuelle | 14 | Intention | 8 j · 20 j |
 | *9.6.1* | *Entretien (hors des 13 demandées)* | *4* | *Intention* | *3 j · 6 j* |
@@ -55,7 +55,7 @@ En cas de contradiction, `DIRECTION.md` fait foi, puis `CAHIER-DES-CHARGES.md`, 
 | **10.0.0** | La liasse et l'annuel | 11 | Esquisse | 10 j · 20 j |
 
 **Total : 171 fonctionnalités à venir** sur les treize versions principales, **179** avec les trois
-versions d'entretien (9.4.1 est comptée dans les treize, 9.6.1 et 9.9.1 ne le sont pas).
+versions d'entretien (9.4.3 est comptée dans les treize, 9.6.1 et 9.9.1 ne le sont pas).
 
 **Répartition par niveau de spec** — c'est le chiffre qui dit quelle part du projet est prête à être
 codée aujourd'hui. Sur les **171** des treize versions principales ; les trois versions d'entretien
@@ -337,9 +337,14 @@ dossier désarchivé recompte (*toi*) ; la vue « les dossiers de ce cabinet »,
 
 ---
 
-## 9.4.1 — Entretien
+## 9.4.3 — Entretien
 
 > *Aucune fonction nouvelle, par règle. C'est la version où l'on rembourse.*
+
+*(Elle s'appelait 9.4.1 dans la v2 de ce document. Deux versions d'entretien NON PRÉVUES ont pris les
+numéros entre-temps — 9.4.1 « la clé de réponse embarquée » et 9.4.2 « l'exemple qui ne périme plus »,
+publiées le 17/09/2026 — et deux choses différentes ne peuvent pas porter le même numéro dans le même
+dépôt. Le contenu ci-dessous n'a pas bougé.)*
 
 | | |
 |---|---|
@@ -351,13 +356,13 @@ dossier désarchivé recompte (*toi*) ; la vue « les dossiers de ce cabinet »,
 
 | Id | Fonctionnalité | Côté | Spec |
 |---|---|---|---|
-| F-9.4.1-01 | Mise à jour d'Electron du semestre | Partagé | — |
-| F-9.4.1-02 | Les **93 déclarations CSS physiques** converties en propriétés logiques — ce qui garde la porte de l'arabe ouverte sans rien promettre | Partagé | `QUESTIONS.md` § 3 |
-| F-9.4.1-03 | Premier découpage de `app.js` par route | Entreprise | `QUESTIONS.md` § 15 |
-| F-9.4.1-04 | `test/run-tests.js` découpé par domaine | Partagé | Partie 15 |
-| F-9.4.1-05 | Les codes `ERR-*` posés sur chaque `throw` | Partagé | Partie 10 |
-| F-9.4.1-06 | La dette listée au § 15 de `QUESTIONS.md` qui n'a pas encore été remboursée | Partagé | — |
-| F-9.4.1-07 | Les retours de la bêta 9.3.0 **qui ne sont pas des nouveautés** | Partagé | — |
+| F-9.4.3-01 | Mise à jour d'Electron du semestre | Partagé | — |
+| F-9.4.3-02 | Les **93 déclarations CSS physiques** converties en propriétés logiques — ce qui garde la porte de l'arabe ouverte sans rien promettre | Partagé | `QUESTIONS.md` § 3 |
+| F-9.4.3-03 | Premier découpage de `app.js` par route | Entreprise | `QUESTIONS.md` § 15 |
+| F-9.4.3-04 | `test/run-tests.js` découpé par domaine | Partagé | Partie 15 |
+| F-9.4.3-05 | Les codes `ERR-*` posés sur chaque `throw` | Partagé | Partie 10 |
+| F-9.4.3-06 | La dette listée au § 15 de `QUESTIONS.md` qui n'a pas encore été remboursée | Partagé | — |
+| F-9.4.3-07 | Les retours de la bêta 9.3.0 **qui ne sont pas des nouveautés** | Partagé | — |
 
 **Ce qui n'y est pas** : toute fonction nouvelle. Si une idée arrive pendant, elle va à la 9.4.0.
 
@@ -710,7 +715,7 @@ encore. Chaque ligne est déjà décidée comme « hors périmètre jusqu'à » 
 | Candidat | Ce qui le déclencherait | Pourquoi il n'est pas planifié |
 |---|---|---|
 | **E-facture TEIF / El Fatoora** | l'obligation légale pour les assujettis TVA, ou le premier client qui la subit | le contrôle de 9.1.1 dit déjà si notre modèle porte les champs ; construire l'export avant l'obligation, c'est viser un format qui bougera |
-| **Interface en arabe** | une demande réelle, pas une hypothèse | la porte est gardée ouverte par les propriétés logiques de la 9.4.1 ; le reste est un chantier de plusieurs semaines |
+| **Interface en arabe** | une demande réelle, pas une hypothèse | la porte est gardée ouverte par les propriétés logiques de la 9.4.3 ; le reste est un chantier de plusieurs semaines |
 | **Lecture de photo de facture** (en pause depuis la 8.7.0) | une application sur téléphone | le code de la 4.2.0 est intact et attend ; sans téléphone, il ne sert à personne |
 | **Application sur téléphone** | le besoin qui rendrait la photo utile : saisir une dépense sur le terrain | un second produit, pas une version |
 | **Serveur de transport des paquets** | un cabinet qui le demande — c'est écrit noir sur blanc dans `PLAN-PLATEFORME.md` § 7.0.0 | le paquet marche, et un serveur qui transporte des comptabilités change le niveau de responsabilité |
@@ -805,7 +810,7 @@ ce document ».
 - **Correction 1 — la numérotation est tranchée.** La règle du projet s'applique : la licence du
   Cabinet ajoute des fonctionnalités, donc elle devient **9.4.0** et tout ce qui suivait décale d'un
   cran (banque 9.5.0, déclaration 9.6.0, clôture 9.8.0, immobilisations 9.7.0, collaborateurs 9.9.0,
-  révision 9.10.0 ; la 10.0.0 ne bouge pas). Les versions d'entretien suivent : 9.4.1, 9.6.1, 9.9.1.
+  révision 9.10.0 ; la 10.0.0 ne bouge pas). Les versions d'entretien suivent : 9.4.3 (9.4.1 et 9.4.2 ont été prises par deux entretiens non prévus), 9.6.1, 9.9.1.
   **Appliquée aux sept documents** (281 occurrences), pas seulement ici — voir « Ce que la relecture
   n'a pas vu », point 1. Le paragraphe « Une remarque sur deux numéros » a disparu : il n'avait plus
   d'objet.

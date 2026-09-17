@@ -13,6 +13,15 @@
   let S = null;                          // l'état du cabinet (sans la clé privée)
   let backupInfo = null;                 // sauvegardes, copie externe, place disque
   let inboxInfo = null;                  // la boîte de réception : dossier surveillé, paquets nouveaux
+  let exempleRefait = null;              // l'exemple vient d'être remis à jour à l'ouverture (9.4.2)
+
+  // Charger ou retirer l'exemple à la main passe par ici, et NON par `api.demo` directement : le
+  // bandeau « ils viennent d'être remis à jour » ne doit pas survivre à un exemple qu'on vient de
+  // recharger soi-même — il annoncerait un rattrapage qui n'a pas eu lieu.
+  async function chargerOuRetirerExemple(on) {
+    exempleRefait = null;
+    return api.demo(on);
+  }
   let fermerPalette = null;              // de quoi refermer la palette quand une fenêtre s'ouvre au-dessus
   // Mises à jour : l'état de la dernière vérification, partagé entre le panneau et la pastille.
   const upd = { state: 'idle', version: '', percent: 0, message: '', app: null };
@@ -103,6 +112,12 @@
   }
 
   // ---------- bulles « i » ----------
+  // Un champ « touche » de la grille de saisie. La valeur et son repli viennent des réglages ; le
+  // titre et la clé d'aide sont écrits par l'appelant, en toutes lettres.
+  const champTouche = (k, titre, cle) => `<label class="field narrow">${lbl(titre, cle)}`
+    + `<input type="text" data-touche="${esc(k)}" value="${esc((((S.settings || {}).saisie || {}).touches || {})[k] || '')}"`
+    + ` placeholder="${esc(K.DEFAULT_SAISIE.touches[k])}"></label>`;
+
   function info(key) {
     if (!G.INFO[key]) return '';
     return `<button type="button" class="i" data-info="${esc(key)}" aria-label="Qu'est-ce que c'est ?" title="Qu'est-ce que c'est ?">i</button>`;
@@ -156,6 +171,7 @@
     layer.style.zIndex = String(400 + root.children.length);
     layer.innerHTML = `<div class="modal">${html}</div>`;
     root.appendChild(layer);
+    typographie(layer);
     let done = false;
     const close = () => {
       if (done) return;
@@ -438,6 +454,11 @@
       $('#lock-go').textContent = 'Créer mon cabinet';
       // L'avertissement le plus important de toute l'application était jusqu'ici la ligne la plus
       // petite et la plus grise de l'écran. Il est maintenant impossible à manquer.
+      // L'avertissement le plus important de toute l'application était la ligne la plus petite et la
+      // plus grise de l'écran ; il est ensuite devenu rouge, mais CENTRÉ sur trois lignes et posé
+      // SOUS le bouton. Un encadré, aligné à gauche, au-dessus du geste : c'est exactement ce à quoi
+      // `.warn-box` sert — « ce qui doit être lu avant d'agir, jamais une ligne grise de plus ».
+      note.className = 'lock-note warn-box grave';
       note.innerHTML = '<span class="lock-warn">⚠ Il n\'y a aucun moyen de récupérer ce mot de passe.</span> '
         + 'Ni nous, ni personne. Note-le maintenant, quelque part de sûr — c\'est le prix à payer pour qu\'un ordinateur volé n\'emporte pas les comptabilités de tes clients.';
     }
@@ -468,7 +489,7 @@
         S = r.state;
         $('#lock-screen').remove();
         $('#app').hidden = false;
-        start(r.created, r.reorganized, aRecuperer);
+        start(r.created, r.reorganized, aRecuperer, r.exemple);
       } catch (ex) {
         err.innerHTML = esc(plainError(ex));
         err.hidden = false;
@@ -599,7 +620,10 @@
     );
   }
 
-  function start(created, reorganized, aRecuperer) {
+  function start(created, reorganized, aRecuperer, exemple) {
+    // L'exemple a pu être refait pendant l'ouverture (9.4.2). Le bandeau des dossiers fictifs le
+    // dit — un toast de trois secondes sur un jeu de données qui a changé n'informe personne.
+    exempleRefait = exemple || null;
     window.addEventListener('hashchange', render);
     api.onUpdateEvent(ev => {
       upd.state = ev.state;
@@ -975,6 +999,32 @@
     else if (route === 'reglages') drawReglages(view);
     else if (route === 'aide') drawAide(view, arg);
     else drawDossiers(view);
+    typographie(view);
+  }
+
+  // ---------- la ponctuation double, à la française ----------
+  //
+  // En français, « ? », « ! », « ; », « : » et l'intérieur des guillemets prennent une espace
+  // INSÉCABLE. Avec une espace ordinaire, le navigateur coupe la ligne juste avant : sur l'écran de
+  // bienvenue, « … ne m'a pas envoyé son mois » finissait une ligne et le « ? » commençait la
+  // suivante, tout seul. Ça ne se voit sur aucune relecture du code — seulement sur une capture — et
+  // c'est le genre de détail qu'un expert-comptable remarque sans savoir le nommer.
+  //
+  // On travaille sur les NŒUDS DE TEXTE d'une prose déjà posée : aucune balise n'est touchée, et
+  // seule la prose est concernée (les titres, les libellés et les cellules de tableau gardent leurs
+  // espaces ordinaires, donc rien de ce qu'un test compare ne change). U+202F est l'espace fine
+  // insécable, celle de la typographie française.
+  const PROSE = 'p, .lead, .help-body, .wiz-body, .warn-box, .banner span, .empty, .kv span';
+  function typographie(racine) {
+    (racine || document).querySelectorAll(PROSE).forEach(bloc => {
+      const it = document.createTreeWalker(bloc, NodeFilter.SHOW_TEXT);
+      let n;
+      while ((n = it.nextNode())) {
+        const t = n.nodeValue;
+        if (!/[ ][?!;:»]|«[ ]/.test(t)) continue;
+        n.nodeValue = t.replace(/ ([?!;:»])/g, ' $1').replace(/« /g, '« ');
+      }
+    });
   }
 
   // Chaque ligne de « À faire » mène QUELQUE PART, et pas toutes au même endroit. Les cinq lignes
@@ -1113,7 +1163,7 @@
         </div>`;
       $('#imp').onclick = () => doImport();
       $('#new-d').onclick = () => newDossierForm();
-      $('#demo-on').onclick = async () => { S = await api.demo(true); render(); toast('Exemple chargé : ces cinq dossiers sont fictifs.'); };
+      $('#demo-on').onclick = async () => { S = await chargerOuRetirerExemple(true); render(); toast('Exemple chargé : ces cinq dossiers sont fictifs.'); };
       bindInboxBanner(view);
       bindRecoveryBanner(view);
       return;
@@ -1130,7 +1180,9 @@
       ${inboxBanner()}
       ${todoPanel(todo)}
       ${demoCount ? `<div class="banner"><span>Ces ${pl(demoCount, 'dossier')} sont <strong>fictifs</strong> : ils montrent les quatre situations
-        que tu rencontreras. Ils disparaîtront au premier vrai paquet importé.</span>
+        que tu rencontreras. Ils disparaîtront au premier vrai paquet importé.${exempleRefait ? ` <strong>Ils viennent d'être remis à jour</strong>
+        ${exempleRefait.raison === 'version' ? `avec la version ${esc(exempleRefait.version)}` : 'sur le mois en cours'} : un exemple qui date
+        montrerait des retards qui n'existent pas. Tes vrais dossiers n'ont pas bougé.` : ''}</span>
         <button class="btn btn-ghost btn-sm nw" id="demo-off">Effacer l'exemple</button></div>` : ''}
       <div class="filters">
         <input type="text" id="q" placeholder="Chercher un client, un matricule, un téléphone…" value="${esc(listState.q)}">
@@ -1167,7 +1219,7 @@
     $('#imp').onclick = () => doImport();
     $('#new-d').onclick = () => newDossierForm();
     const dOff = $('#demo-off');
-    if (dOff) dOff.onclick = async () => { S = await api.demo(false); render(); toast('Exemple effacé.'); };
+    if (dOff) dOff.onclick = async () => { S = await chargerOuRetirerExemple(false); render(); toast('Exemple effacé.'); };
     const q = $('#q');
     q.oninput = () => {
       listState.q = q.value; listState.page = 1;
@@ -1354,8 +1406,12 @@
           <td class="nw">${esc(labelOf(K.RELANCE_WAYS, r.via) || r.via)}</td>
           <td>${esc((r.months || []).map(K.monthLabel).join(', ') || '—')}</td>
           <td class="muted">${esc(r.note || '')}</td></tr>`).join('')}</tbody></table>`
-        : '<div class="empty">Aucune relance enregistrée.</div>'}
-        <div class="modal-actions"><button class="btn btn-ghost btn-sm" id="note-rel">Noter une relance faite ailleurs…</button></div>
+        : `<div class="empty">Aucune relance enregistrée pour ce client.<br>
+          <span class="small">Le bouton « Relancer », en haut, écrit le message et l'enregistre ici. Un appel ou un message
+          passé ailleurs se note à la main.</span></div>`}
+        ${/* Un état vide qui explique le geste en prose n'est pas une interface (7.0.0) : le bouton
+              vit DANS le panneau, et il en a l'air. */''}
+        <div class="modal-actions"><button class="btn btn-sm" id="note-rel">Noter une relance faite ailleurs…</button></div>
       </div>
 
       ${(dossier.note || '').trim() ? `<div class="panel"><h2>Note interne</h2><div class="notes-md">${esc(dossier.note)}</div></div>` : ''}
@@ -1363,16 +1419,21 @@
 
       <section data-onglet="comptabilite" ${onglet === 'comptabilite' ? '' : 'hidden'}>
       ${packs.length ? `<div class="panel" id="c-compta"><h2>Comptabilité ${info('lv.compta')}</h2>
+        ${/* Deux listes déroulantes nues au-dessus d'un livre-journal ne disent pas ce qu'elles
+              choisissent : « L'exercice / 2026 » pouvait tout aussi bien être un filtre de journal.
+              Le mot « Période » devant, et chaque contrôle porte son `aria-label` — un lecteur
+              d'écran n'a pas de capture d'écran pour deviner. */''}
         <div class="filters">
-          <select id="lv-mode">
+          <span class="f-lab">Période</span>
+          <select id="lv-mode" aria-label="Quelle période">
             <option value="exercice" ${livresState.mode === 'exercice' ? 'selected' : ''}>L'exercice</option>
             <option value="mois" ${livresState.mode === 'mois' ? 'selected' : ''}>Un mois</option>
             <option value="intervalle" ${livresState.mode === 'intervalle' ? 'selected' : ''}>Du… au…</option>
           </select>
-          <select id="lv-annee" ${livresState.mode === 'exercice' ? '' : 'hidden'}>${years.map(y => `<option value="${esc(y)}" ${livresState.annee === y ? 'selected' : ''}>${esc(y)}</option>`).join('')}</select>
-          <select id="lv-mois" ${livresState.mode === 'mois' ? '' : 'hidden'}>${months.map(m => `<option value="${esc(m.month)}" ${livresState.mois === m.month ? 'selected' : ''}>${esc(K.monthLabel(m.month))}</option>`).join('')}</select>
-          <input type="month" id="lv-du" ${livresState.mode === 'intervalle' ? '' : 'hidden'} value="${esc(livresState.du)}">
-          <input type="month" id="lv-au" ${livresState.mode === 'intervalle' ? '' : 'hidden'} value="${esc(livresState.au)}">
+          <select id="lv-annee" aria-label="L'exercice" ${livresState.mode === 'exercice' ? '' : 'hidden'}>${years.map(y => `<option value="${esc(y)}" ${livresState.annee === y ? 'selected' : ''}>${esc(y)}</option>`).join('')}</select>
+          <select id="lv-mois" aria-label="Le mois" ${livresState.mode === 'mois' ? '' : 'hidden'}>${months.map(m => `<option value="${esc(m.month)}" ${livresState.mois === m.month ? 'selected' : ''}>${esc(K.monthLabel(m.month))}</option>`).join('')}</select>
+          <input type="month" id="lv-du" aria-label="Du mois" ${livresState.mode === 'intervalle' ? '' : 'hidden'} value="${esc(livresState.du)}">
+          <input type="month" id="lv-au" aria-label="Au mois" ${livresState.mode === 'intervalle' ? '' : 'hidden'} value="${esc(livresState.au)}">
         </div>
         <div id="c-livres"><div class="empty">Lecture des paquets…</div></div>
       </div>
@@ -1860,7 +1921,7 @@
     const cz = KC.centralisateurDepuisLignes(gardees);
     const plates = [];
     lj.pieces.forEach(p => p.lignes.forEach((e, i) => plates.push({ ...e, numero: p.numero, premiere: i === 0 })));
-    return `${barreLivres(`<select id="lv-journal"><option value="">Tous les journaux</option>${journaux.map(j => `<option value="${esc(j)}" ${s.journal === j ? 'selected' : ''}>${esc(j)}</option>`).join('')}</select>
+    return `${barreLivres(`<select id="lv-journal" aria-label="Filtrer par journal"><option value="">Tous les journaux</option>${journaux.map(j => `<option value="${esc(j)}" ${s.journal === j ? 'selected' : ''}>${esc(j)}</option>`).join('')}</select>
       <input type="search" id="lv-q" placeholder="Pièce, tiers, libellé…" value="${esc(s.q)}">`, 'Exporter le livre-journal')}
       <div class="muted small mb">${pl(lj.pieces.length, 'pièce')} · ${pl(gardees.length, 'ligne')}${lj.off.length ? ` · <span class="err-inline">${pl(lj.off.length, 'pièce')} déséquilibrée${lj.off.length > 1 ? 's' : ''}</span>` : ''}</div>
       <div class="scroll-x"><table class="list compact"><thead><tr>
@@ -3009,6 +3070,22 @@
   function drawRelances(view) {
     const rows = K.relanceRows(S);
     const rel = K.relanceDue(S);
+    // « Personne à relancer : tous tes dossiers sont à jour » félicitait un cabinet qui n'a AUCUN
+    // dossier. C'est la règle de la 7.0.0 — avant d'écrire une phrase rassurante, vérifier que
+    // l'univers concerné est non vide — et c'était la seule des trois pages qui ne l'appliquait pas :
+    // Échéances et Écritures ont leur état vide avec son geste depuis toujours.
+    if (!K.dossierList(S).length) {
+      view.innerHTML = `<div class="page-head"><h1>Relances</h1></div>
+        <div class="panel"><h2>Aucun client pour l'instant</h2>
+          <p>Cette page réunit les clients dont il te manque un mois, avec le message déjà écrit : les mois
+          manquants sont nommés dedans, et la relance est enregistrée pour que tu saches, lundi, qui tu as
+          déjà relancé.</p>
+          <div class="modal-actions"><button class="btn btn-primary" id="rl-nd">Ajouter mes clients…</button>
+          <button class="btn" id="rl-imp">Importer un paquet…</button></div></div>`;
+      $('#rl-nd').onclick = () => newDossierForm();
+      $('#rl-imp').onclick = () => doImport();
+      return;
+    }
     view.innerHTML = `
       <div class="page-head"><h1>Relances</h1>
         ${rows.length > 1 ? `<div class="actions"><button class="btn btn-primary" id="group">Relancer tout le monde ${info('r.group')}</button></div>` : ''}</div>
@@ -3362,7 +3439,7 @@
       ${Object.keys(c.raisons).length ? `<h3 class="mt">Ce qui ne compte pas</h3>
         <ul class="small">${Object.keys(c.raisons).map(r => `<li>${esc(r)} <span class="muted">— ${pl(c.raisons[r], 'dossier')}</span></li>`).join('')}</ul>` : ''}
       <h3 class="mt">Ta clé ${info('lic.cle')}</h3>
-      <label class="field"><textarea id="lic-key" rows="3" spellcheck="false" placeholder="SKAN1.…">${esc(licCab.key || '')}</textarea></label>
+      <label class="field">${lbl('Colle ta clé ici', 'lic.cle')}<textarea id="lic-key" rows="3" spellcheck="false" placeholder="SKAN1.…">${esc(licCab.key || '')}</textarea></label>
       <div class="modal-actions">
         ${licCab.key ? '<button class="btn" id="lic-clear">Retirer la clé</button>' : ''}
         <button class="btn" id="lic-ask">Demander une licence…</button>
@@ -3662,7 +3739,7 @@
           <label class="field">${lbl('Téléphone', 'cab.phone')}<input type="tel" id="c-phone" value="${esc(c.phone || '')}" placeholder="+216 …"></label>
           <label class="field narrow">${lbl('Jour de relance', 'cab.relanceDay')}<input type="number" id="c-day" min="1" max="28" value="${Number((S.settings || {}).relanceDay) || 10}"></label>
           <label class="field narrow">${lbl('TVA : jour de dépôt', 'ec.jours')}<input type="number" id="c-tvaday" min="1" max="31" value="${K.deadlineSettings(S).tvaDay}"></label>
-          <label class="field narrow">CNSS : jour de dépôt<input type="number" id="c-cnssday" min="1" max="31" value="${K.deadlineSettings(S).cnssDay}"></label>
+          <label class="field narrow">${lbl('CNSS : jour de dépôt', 'ec.jours')}<input type="number" id="c-cnssday" min="1" max="31" value="${K.deadlineSettings(S).cnssDay}"></label>
         </div>
         <p class="muted small">Les jours de dépôt alimentent la page <a href="#/echeances">Échéances</a>.
         <strong>À VÉRIFIER</strong> : ils dépendent de la forme juridique, du régime et de la loi de finances.</p>
@@ -3691,20 +3768,31 @@
       ${panneauReg('pan-saisie')}
         <p class="small">La grille de saisie vit dans la fiche d'un client, onglet <strong>Comptabilité → Saisie</strong>.
         Ce qui se règle ici vaut pour tous tes dossiers.</p>
+        ${/* Le champ n'est plus `narrow` : son propre texte d'invite (« le dernier utilisé ») y était
+              coupé au milieu. Un champ trop étroit pour ce qu'il affiche lui-même est un champ qu'on
+              ne peut pas relire. Et les deux cases sont ensemble, alignées à gauche comme tout le
+              reste du panneau — l'une d'elles flottait seule à droite de la grille. */''}
         <div class="grid-2">
-          <label class="field narrow">${lbl('Journal proposé', 'sa.journalDefaut')}
+          <label class="field">${lbl('Journal proposé', 'sa.journalDefaut')}
             <input type="text" id="sr-journal" maxlength="5" placeholder="le dernier utilisé" value="${esc(((S.settings || {}).saisie || {}).journalParDefaut || '')}"></label>
-          <label class="check">${lbl('Écrire la date complète', 'sa.dateComplete')}
+          <label class="check span-2">${lbl('Écrire la date complète', 'sa.dateComplete')}
             <input type="checkbox" id="sr-datec" ${((S.settings || {}).saisie || {}).dateComplete !== false ? 'checked' : ''}></label>
-          <label class="check span-2">Proposer « valider tout le journal du mois »
+          <label class="check span-2">${lbl('Proposer « valider tout le journal du mois »', 'sa.validerLot')}
             <input type="checkbox" id="sr-lot" ${((S.settings || {}).saisie || {}).validerParLot !== false ? 'checked' : ''}></label>
         </div>
         <h3 class="mt">${lbl('Les touches', 'sa.touches')}</h3>
         <p class="muted small">Écris-les comme « F2 », « Enter », « Control+Enter ». Vide remet celle d'origine.</p>
+        ${/* Chaque touche porte SA bulle : « Solder la pièce » ne dit pas ce que le geste fait, et
+              c'est précisément ce qu'on veut savoir avant de lui donner une touche. */''}
         <div class="grid-2">
-          ${[['ligneSuivante', 'Ligne suivante'], ['solder', 'Solder la pièce'], ['recopier', 'Recopier la ligne du dessus'],
-             ['dupliquer', 'Dupliquer la pièce'], ['valider', 'Enregistrer et valider']].map(([k, t]) =>
-            `<label class="field narrow">${esc(t)}<input type="text" data-touche="${k}" value="${esc((((S.settings || {}).saisie || {}).touches || {})[k] || '')}" placeholder="${esc(K.DEFAULT_SAISIE.touches[k])}"></label>`).join('')}
+          ${/* Chacune est écrite en toutes lettres plutôt que produite par une boucle : la clé de la
+                bulle doit être LITTÉRALE et en dernier argument, c'est ainsi qu'un test relit
+                l'interface pour vérifier qu'aucun texte d'aide ne meurt oublié. */''}
+          ${champTouche('ligneSuivante', 'Ligne suivante', 'sa.kSuivante')}
+          ${champTouche('solder', 'Solder la pièce', 'sa.kSolder')}
+          ${champTouche('recopier', 'Recopier la ligne du dessus', 'sa.kRecopier')}
+          ${champTouche('dupliquer', 'Dupliquer la pièce', 'sa.kDupliquer')}
+          ${champTouche('valider', 'Enregistrer et valider', 'sa.kValider')}
         </div>
         <div class="modal-actions"><span class="saved" id="sr-saved" hidden></span><button class="btn btn-primary" id="sr-save">Enregistrer</button></div>
       </div>
@@ -3796,9 +3884,9 @@
     dessinerLicence(view);
     bindRecoveryBanner(view);
     if ($('#r-demo-on')) $('#r-demo-on').onclick = async () => {
-      S = await api.demo(true); toast('Exemple chargé : ces cinq dossiers sont fictifs.'); location.hash = '#/dossiers';
+      S = await chargerOuRetirerExemple(true); toast('Exemple chargé : ces cinq dossiers sont fictifs.'); location.hash = '#/dossiers';
     };
-    if ($('#r-demo-off')) $('#r-demo-off').onclick = async () => { S = await api.demo(false); render(); toast('Exemple effacé.'); };
+    if ($('#r-demo-off')) $('#r-demo-off').onclick = async () => { S = await chargerOuRetirerExemple(false); render(); toast('Exemple effacé.'); };
     $('#c-save').onclick = async () => {
       // Les trois jours sont bornés côté processus principal, qui écarte SILENCIEUSEMENT ce qui
       // sort des bornes et remet l'ancienne valeur. L'écran, lui, affichait « ✓ enregistré » en
@@ -4227,7 +4315,11 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
               <div><span>Ce qu'elle ne fait pas</span><span>Elle ne modifie <strong>jamais</strong> la comptabilité d'un client et ne lui renvoie rien. Elle ne dépose aucune déclaration.</span></div>
               <div><span>Ce qu'elle coûte</span><span>Rien. C'est ton client qui paie SkanFact, pas toi.</span></div>
             </div>
-            <p class="muted small mt">Quatre écrans, deux minutes. Tu pourras tout changer ensuite dans Réglages.</p>`,
+            ${/* Le compte se DÉDUIT : la phrase annonçait « Quatre écrans » et l'assistant en comptait
+                  cinq, juste au-dessus de cinq pastilles qui les montraient. Une phrase affichée que
+                  rien ne tient est un bug (7.3.0), et celle-ci se démentait toute seule à l'écran. */''}
+            <p class="muted small mt">${esc(['', 'Un', 'Deux', 'Trois', 'Quatre', 'Cinq', 'Six'][etapes.length] || etapes.length)} écrans,
+            deux minutes. Tu pourras tout changer ensuite dans Réglages.</p>`,
           next: () => true
         },
         {
@@ -4332,6 +4424,7 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
             <button class="btn btn-primary" id="w-next">${etape === etapes.length - 1 ? 'Commencer' : 'Continuer'}</button>
           </div></div>`;
         if (e.mount) e.mount();
+        typographie(el);
         const b = $('#w-back', el); if (b) b.onclick = () => { etape--; draw(); };
         const s = $('#w-skip', el); if (s) s.onclick = () => { etape++; draw(); };
         $('#w-next', el).onclick = async () => {

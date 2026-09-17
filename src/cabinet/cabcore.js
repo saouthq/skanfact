@@ -87,6 +87,10 @@
     cabinet: { name: '', email: '', phone: '', publicKey: '', privateKey: '' },
     dossiers: [],
     licence: null,
+    // Ce que l'exemple chargé sait de lui-même : la version qui l'a fabriqué et le mois sur lequel
+    // il a été recalé. Les deux servent à le REFAIRE tout seul (9.4.2) — `null` tant qu'aucun
+    // exemple n'est chargé.
+    exemple: null,
     // Les guides d'écritures vivent au niveau du CABINET : un comptable écrit « achat avec TVA »
     // une fois, pas soixante fois. Un dossier peut en ajouter (`dossiers[].guides`), jamais en
     // retirer — surcharger n'est pas censurer.
@@ -143,6 +147,26 @@
     };
   }
 
+  // ================================================================ L'EXEMPLE PÉRIMÉ (9.4.2)
+  //
+  // Un jeu d'exemple est RELATIF à aujourd'hui, et il est enrichi de version en version. Personne ne
+  // pense à l'effacer puis à le recharger : la décision se prend donc toute seule, et elle vit ici,
+  // pure et testable, plutôt que dans le processus principal où rien ne peut la vérifier.
+  //
+  // Rend le MOTIF ('version' ou 'mois') ou une chaîne vide s'il n'y a rien à refaire. Ce n'est pas
+  // elle qui sait s'il existe un exemple : l'appelant le sait, et lui seul.
+  //
+  // Le corps est identique à `exemplePerime` de src/renderer/core.js — les deux applications doivent
+  // décider pareil, et aucune ne peut charger le module de l'autre. Un test compare les deux corps
+  // caractère par caractère, comme pour `round3` et `pastille`.
+  function exemplePerime(repere, version, mois) {
+    if (!version) return '';
+    const r = (repere && typeof repere === 'object') ? repere : {};
+    if (!r.version || r.version !== version) return 'version';
+    if (r.mois !== mois) return 'mois';
+    return '';
+  }
+
   function migrate(state) {
     const s = { ...DEFAULT_STATE, ...(state && typeof state === 'object' ? state : {}) };
     s.cabinet = { ...DEFAULT_STATE.cabinet, ...(s.cabinet || {}) };
@@ -171,6 +195,9 @@
     // secours : un cabinet qui change d'ordinateur retrouve sa licence en même temps que ses
     // paquets. Et elle est attachée à son EMPREINTE, qui ne change pas non plus.
     s.licence = (s.licence && typeof s.licence === 'object') ? s.licence : null;
+    // Le repère de l'exemple (9.4.2). Absent de cette liste, il serait jeté au prochain chargement
+    // — et l'exemple se referait à CHAQUE ouverture, silencieusement (défaut `matricule`, 6.8.0).
+    s.exemple = (s.exemple && typeof s.exemple === 'object') ? s.exemple : null;
     s.correspondance = Array.isArray(s.correspondance) ? s.correspondance : [];
     s.dossiers = Array.isArray(s.dossiers) ? s.dossiers.map(migrateDossier) : [];
     s.format = FORMAT;
@@ -1219,6 +1246,7 @@
     GRACE_MOIS, DORMANT_MOIS, dossierFacturable, comptageDossiers, licenceDuPaquet,
     monthLabel, monthListLabel, missingLabel, addMonth, monthsBetween, today, de,
     migrate, migrateDossier, dossierKey, packSummary, filePack, demoDossiers, rebaserPaquet, checkIntegrity,
+    exemplePerime,
     newDossier, parseDossierLines, noteRelance, portfolio, relanceDue, relanceRows, accuseMail,
     parseCsv, verdictOrigine, csvDangereux, toCsvLine, mergeEcritures, ecrituresPlan,
     DEFAULT_DEADLINES, deadlineSettings, echeances, dayOf,

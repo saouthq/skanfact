@@ -326,8 +326,10 @@ ipcMain.handle('cab:unlock', (_e, password) => {
   // Un chemin recollé (paquet repris d'un autre poste) compte autant qu'un fichier déplacé : sans
   // l'enregistrer, le rattrapage serait à refaire à chaque ouverture.
   const moved = s.reorganize(state);
-  if (moved.moved || moved.recovered) s.write(state);
-  return { created: false, state: safeState(), reorganized: moved };
+  // L'exemple se refait AVANT la première écriture : une seule écriture pour les deux rattrapages.
+  const exemple = rafraichirExemple();
+  if (moved.moved || moved.recovered || exemple) s.write(state);
+  return { created: false, state: safeState(), reorganized: moved, exemple };
 });
 
 // ---------- IPC : reprendre un cabinet venu d'un autre ordinateur ----------
@@ -527,6 +529,7 @@ function retirerExemple() {
   // portefeuille serait une pièce comptable qui n'existe pas.
   demos.forEach(d => { getStore().removeDossierFiles(d, state.dossiers); viderCacheLivres(d.id); });
   state.dossiers = state.dossiers.filter(d => !d.demo);
+  state.exemple = null;
 }
 
 function chargerExemple() {
@@ -567,6 +570,33 @@ function chargerExemple() {
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
+  // Ce que l'exemple sait de lui-même : de quelle version il sort, et sur quel mois il a été recalé.
+  // Sans ces deux repères, impossible de savoir qu'il est périmé sans le refaire pour voir.
+  state.exemple = { version: VERSION, mois: aujourdhui, le: K.today() };
+}
+
+// ---------- l'exemple se refait tout seul (9.4.2) ----------
+//
+// Skander : « on part du principe que mon comptable, qui est en train d'essayer l'app, ne va pas
+// appuyer sur effacer l'exemple puis le recharger à chaque mise à jour ». Il a raison, et le
+// problème est plus large que les mises à jour : l'exemple est RELATIF au mois courant (9.2.2).
+// Chargé en septembre et regardé en décembre, il montre trois mois de retard chez des clients qui
+// sont censés être à jour, et une échéance de TVA passée depuis longtemps. Un exemple périmé
+// dessert le produit : c'est exactement la capture qu'on ne veut pas voir arriver.
+//
+// La règle : on ne touche à RIEN d'autre. `retirerExemple()` ne connaît que les dossiers `demo`,
+// donc un vrai dossier créé à la main pendant l'essai survit. Une sauvegarde est prise avant (une
+// note tapée sur un dossier fictif reste du travail), et l'application le DIT au comptable —
+// un jeu de données qui change tout seul sans un mot ferait douter de tout le reste.
+function rafraichirExemple() {
+  if (!state.dossiers.some(d => d.demo)) return null;
+  const mois = K.today().slice(0, 7);
+  // Un exemple d'avant la 9.4.2 n'a aucun repère : il est périmé par construction, on le refait.
+  const raison = K.exemplePerime(state.exemple, VERSION, mois);
+  if (!raison) return null;
+  getStore().backupNow('avant-exemple');
+  chargerExemple();
+  return { version: VERSION, mois, raison };
 }
 
 ipcMain.handle('cab:demo', (_e, on) => {

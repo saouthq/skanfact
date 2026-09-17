@@ -270,12 +270,37 @@ async function servir() {
     await page.waitForFunction(() => { const b = document.querySelector('#tabs button[data-t="clients"]'); return b && b.getAttribute('aria-selected') === 'true'; });
     doit(true, 'cliquer la carte « client » ouvre l\'onglet Clients (un chiffre affiché s\'ouvre)');
 
-    etape('12. Le journal garde tout, dans l\'ordre');
+    etape('12. Le journal garde tout, dans l\'ordre — avec l\'heure');
     await onglet('evenements');
     await page.waitForSelector('#table tbody tr');
     const j = (await lignes()).join('\n');
     ['client.cree', 'licence.emise', 'vente.payee', 'mail.envoye', 'licence.renouvellement', 'licence.revoquee'].forEach(q =>
       doit(j.includes(q), 'le journal porte « ' + q + ' »'));
+    // 9.4.2 — l'heure, et celle de l'horloge de la page : le journal affichait l'heure UTC à côté
+    // d'une date UTC, donc une vente encaissée à 00 h 30 à Tunis s'y lisait la veille à 23 h 30.
+    doit(/\d{2}\/\d{2}\/\d{4} à \d{2}:\d{2}/.test(j), 'chaque ligne du journal porte le jour ET l\'heure');
+
+    etape('12 bis. La colonne « Vu » dit quand l\'application a été ouverte ce jour-là');
+    // Une VRAIE activation : c'est le worker qui l'enregistre, en réponse à une application qui se
+    // présente — et c'est cette ligne-là que la console doit savoir situer dans le temps.
+    const rep = await fetch(base + '/v1/licence/etat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-SkanFact-App': 'secret-de-test-' + 'x'.repeat(20) },
+      body: JSON.stringify({ deviceId: 'poste-du-comptable', deviceNom: 'MacBook du cabinet', plateforme: 'darwin', version: '9.4.2' })
+    });
+    doit(rep.ok, 'une application se présente au serveur (' + rep.status + ')');
+    await onglet('activations');
+    await page.waitForSelector('#table tbody tr');
+    const vu = await page.$$eval('#table tbody tr', ls => {
+      const l = ls.find(x => /MacBook du cabinet/.test(x.textContent));
+      if (!l) return null;
+      const c = [...l.cells].find(td => /aujourd'hui|hier|il y a/.test(td.textContent));
+      return c ? { texte: c.textContent.replace(/\s+/g, ' ').trim(), sous: !!c.querySelector('.quand') } : null;
+    });
+    doit(vu, 'l\'activation apparaît dans la console');
+    doit(/aujourd'hui/.test(vu.texte), 'la phrase dit si l\'installation vit encore : ' + vu.texte);
+    doit(vu.sous && /\d{2}\/\d{2}\/\d{4} à \d{2}:\d{2}/.test(vu.texte),
+      'et l\'horodatage dit à quelle heure : ' + vu.texte);
 
     etape('13. Les six cartes remplissent leurs rangées, à toutes les largeurs');
     await onglet('licences');

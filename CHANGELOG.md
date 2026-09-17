@@ -7,6 +7,46 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 9.4.2 — 17/09/2026
+
+**Le jeu d'exemple se remet à jour tout seul.** Personne ne pense à l'effacer puis à le recharger à
+chaque mise à jour — et il ne faut pas : il est **relatif au mois courant**. Chargé en septembre et
+rouvert en décembre, il montre trois mois de retard chez des clients censés être à jour, et une
+échéance de TVA passée depuis longtemps. Il se refait maintenant quand l'application change de
+version, ou quand on change de mois, **dans les deux applications**.
+
+- Il ne touche **que l'exemple** : un vrai dossier créé à la main pendant l'essai, une vraie facture,
+  ne passent jamais par là. L'application **le dit** dans le bandeau de l'exemple, et rappelle que
+  le reste n'a pas bougé — un jeu de données qui change sans un mot ferait douter de tout.
+- Côté Cabinet, une sauvegarde est prise avant ; côté SkanFact, non, et c'est voulu : « avant-demo »
+  est le seul chemin de retour vers les vraies données, en écrire une ici rangerait l'exemple
+  par-dessus.
+
+**Le premier jour d'un comptable, mesuré écran par écran.** Trente-cinq écrans photographiés du mot
+de passe à l'Aide, dans l'ordre où on les rencontre. Ce que la mesure a trouvé :
+
+- **Neuf boutons se lisaient comme du texte en gras** — dont les cinq « Voir » de « À faire » et
+  « Enregistrer ma clé… », l'action la plus importante de l'application. Un bouton se reconnaît au
+  repos, jamais au survol : personne ne survole ce qu'il ne voit pas.
+- **La page Relances félicitait un cabinet qui n'a aucun client** (« tous tes dossiers sont à jour »)
+  et n'offrait aucun geste. Elle a maintenant son état vide, comme Échéances et Écritures.
+- **« Il n'y a aucun moyen de récupérer ce mot de passe » se lisait SOUS le bouton** qui crée le
+  cabinet. Il est au-dessus, dans un encadré, aligné à gauche.
+- **Neuf champs sans explication** ont reçu leur bulle « i » — dont les cinq touches de la grille de
+  saisie, où « Solder la pièce » ne disait pas ce que le geste fait. Trois listes déroulantes nues
+  ont reçu leur étiquette.
+- L'assistant annonçait « Quatre écrans » au-dessus de **cinq** pastilles qui les montraient. Il les
+  compte.
+- Le champ « Journal proposé » coupait son propre texte d'invite ; les paragraphes d'introduction
+  couraient sur 1 140 px ; la ponctuation double (`?` `!` `;` `:` `«` `»`) porte enfin son espace
+  insécable — sans elle, un « ? » se retrouvait seul en début de ligne.
+
+**Et dans la console (`api.skanfact.tn`), la colonne « Vu » donne l'heure.** « Aujourd'hui » dit si
+l'installation vit encore ; l'horodatage dit à quelle heure elle a été ouverte. Au passage : un jour
+est un jour du calendrier, pas une tranche de 24 heures — une application ouverte hier à 23 h et
+regardée ce matin à 8 h se lisait « aujourd'hui ». Le journal des événements affiche lui aussi
+l'heure locale, et non plus l'heure du serveur.
+
 ## 9.4.1 — 17/09/2026
 
 **La révocation s'applique enfin.** La clé qui permet au serveur de **prouver** que ses réponses

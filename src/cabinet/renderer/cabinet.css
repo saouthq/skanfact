@@ -69,6 +69,10 @@
 }
 .pw-eye:hover { color: var(--primary); background: var(--primary-soft); }
 .lock-warn { color: var(--danger); font-weight: 700; }
+/* Le texte courant de la carte est centré (titre, sous-titre) ; une phrase de trois lignes centrée
+   ne se lit pas. Tout ce qui est une PHRASE y revient à gauche. */
+.lock-card .lock-note { text-align: left; width: 100%; margin: 6px 0 2px; }
+.warn-box.grave { background: var(--danger-soft); border-left-color: var(--danger); }
 
 /* Ce qui doit être lu avant d'agir : jamais une ligne grise de plus. */
 .warn-box {
@@ -271,3 +275,22 @@ tr.cp-ligne td { text-decoration: line-through; color: var(--muted); }
 .sa-table input, .sa-table select { width: 100%; }
 .sa-table td { padding-block: 4px; padding-inline: 6px; vertical-align: top; }
 .sa-vide { color: var(--muted); font-size: 13px; padding-block: 10px; }
+
+/* L'étiquette d'une barre de filtres. Deux listes déroulantes nues au-dessus d'un livre-journal
+   ne disent pas ce qu'elles choisissent : « L'exercice / 2026 » pouvait tout aussi bien être un
+   filtre de journal. Le mot devant tranche, et il coûte trente pixels. */
+.filters .f-lab {
+  font-size: 12px; font-weight: 650; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--muted); margin-inline-end: 2px;
+}
+
+/* Un paragraphe d'introduction posé en tête de page courait sur 1 140 px : à 12,5 px et en gris,
+   la ligne est trop longue pour que l'œil retrouve la suivante. On le borne comme `.lead` le fait
+   depuis toujours dans la feuille partagée — même mesure, même raison. */
+#view p { max-width: 760px; }
+
+/* Le « Passer » de l'assistant : le seul `btn-ghost` du Cabinet qui n'a pas à porter de bordure —
+   il vit à côté du bouton principal et se lit comme l'échappatoire qu'il est. Il porte alors
+   l'autre signe exigé, une couleur qui n'est pas celle du texte courant. La règle est ici et non
+   dans la feuille partagée : `wiz-actions` est une classe du Cabinet. */
+.wiz-actions .btn-ghost { border-color: transparent; color: var(--muted); }

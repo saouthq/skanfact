@@ -70,6 +70,9 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 
 | Règle | Où |
 |---|---|
+| Un **bouton sans bordure ni couleur n'est pas un bouton** : il se reconnaît AU REPOS, pas au survol | Cabinet 1.0.0, 9.4.2 |
+| Une **phrase rassurante** se vérifie d'abord sur un univers non vide | 7.0.0, 7.3.0, 9.4.2 |
+| Un **avertissement** se lit AVANT le geste, jamais sous le bouton | 9.4.2 |
 | Une ligne garde **au plus UN** bouton visible ; le reste passe par `rowmenu.js` | 7.29.0 |
 | Un refus dit **trois** choses : ce qui est refusé, pourquoi, et le bouton qui débloque | 7.0.0, 9.2.1 |
 | Une saisie refusée se **MONTRE** : on amène le champ à l'écran (`refus()`) | 7.0.0, 7.20.0 |
@@ -99,7 +102,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 **L'outillage (9.1.0)**
 
 `npm test` (les tests purs) · `npm run lint` (ESLint, zéro erreur exigée) · `npm run charge` (le test
-de charge du livre) · `npm run e2e:<nom>` (44 parcours, tableau au § « Les tests qui ouvrent vraiment
+de charge du livre) · `npm run e2e:<nom>` (45 parcours, tableau au § « Les tests qui ouvrent vraiment
 l'application ») · CI GitHub sur Linux et Windows à chaque poussée · « Construire un essai » pour
 faire tester une version sans la publier.
 
@@ -502,6 +505,7 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:pont` | **le pont comptable** : le vrai worker sur SQLite et l'application en état éditeur — un secret faux refusé, le bon gardé en 0600 hors des données, deux ventes de la console tirées en deux brouillons (client retrouvé par matricule ou créé), le menu d'une licence de la console sans « Renouveler », le numéro rendu à l'émission et lu dans la base, la console éteinte dite en français |
 | `npm run e2e:livres` | **les livres comptables** : chaque compte du grand livre avec son solde progressif qui finit sur le total, le sélecteur de compte, la balance dont les six totaux tombent juste, l'auxiliaire clients, la case « un sous-compte par tiers » qui donne 411001… et les fige sur les fiches, le livre-journal numéroté et son centralisateur, une OD refusée puis enregistrée, le lettrage qui ouvre sa pièce, les états financiers équilibrés, l'à-nouveau de janvier, l'état de rapprochement à écart nul, la TFP dans les barèmes |
 | `npm run e2e:justificatif` | **le justificatif se joint avant toute saisie** : sélecteur de fichier remplacé dans le processus principal, une photo jointe sur un achat VIDE, enregistrée avec la pièce, retrouvée sur le disque et dans la liste (📎), un second fichier sur la pièce rangée, une pièce abandonnée qui ne laisse pas de copie, la lecture d'une photo qui redessine sans perdre la pièce, et le même geste sur un devis neuf |
+| `npm run e2e:cabinet-jour1` | **le premier jour d'un comptable** : l'instrument qui MESURE ce qu'il voit, dans l'ordre où il le voit — 35 écrans photographiés du mot de passe à l'Aide, et six règles qui tombent (un bouton hors de l'écran, un bouton qui ressemble à du texte, un état vide sans geste, un champ de saisie sans bulle « i », une boîte sans étiquette, un débordement horizontal). `dist-e2e/cabinet-premier-jour/mesures.json` |
 | `npm run e2e:cabinet-licence` | **la licence du Cabinet** : trois dossiers hors SkanFact gratuits, l'exemple qui ne compte pas, cinq clients qui dépassent le quota, la validation refusée pendant que lire, importer, exporter et SAISIR restent ouverts, deux dossiers archivés qui rendent la main, la clé d'un autre cabinet refusée en nommant les deux empreintes, celle d'un client parrainé refusée aussi, et le panneau qui nomme chaque dossier compté |
 | `npm run e2e:saisie` | **la grille de saisie, AU CLAVIER** : une pièce entière tapée sans souris (Entrée descend, Tab solde), le brouillard sans numéro, la validation qui referme, les deux refus sur une validée, un lot dont la pièce fausse est au MILIEU et la numérotation qui reste 1..n, l'extourne au 1er du mois suivant, la recherche par montant après réouverture de l'application, et un guide écrit puis appliqué |
 | `npm run e2e:licence` | **l'éditeur et les offres, puis le client** : une première application DÉSARMÉE (`SKANFACT_CLE_EMBARQUEE` vers un chemin inexistant, développement seulement) — sans clé rien n'apparaît ; « Créer mes clés » écrit la privée dans un dossier isolé (`SKANFACT_DOSSIER_CLES`) et met le poste en état « éditeur » (ni essai ni verrou) ; « Émettre » signe une clé vérifiable, crée un BROUILLON de facture et l'historique ; la clé Indépendant collée refuse un nouveau fournisseur, pose un cadenas sur Achats et laisse les Statistiques ; la clé d'un autre matricule est refusée en nommant les deux ; « Renouveler » ; rien de ce qui traverse le pont ne contient la clé privée — PUIS une seconde application telle qu'un client l'installe (vraie clé embarquée, pas de clé privée) : essai de 30 jours, aucune trace de l'éditeur, plus de porte « Créer mes clés », et la clé signée par la clé d'essai du test REFUSÉE |
@@ -2635,7 +2639,7 @@ fait bouger, et qui ne doit pas se reperdre :
   deviendrait moins cher que « jamais essayé » (trou de ma règle de la veille) ; l'**export de la
   base de la console** avant la première vente (`GET /v1/admin/export`, rangé dans `~/.skanfact/`,
   réclamé par « À faire » à 30 jours) ; le relecteur de chaque version **nommé** (une autre session
-  d'IA, limite assumée) ; les versions d'entretien **numérotées** (9.4.1, 9.6.1, 9.9.1) ; le
+  d'IA, limite assumée) ; les versions d'entretien **numérotées** (9.4.3 — 9.4.1 et 9.4.2 ont été prises par deux entretiens non prévus —, 9.6.1, 9.9.1) ; le
   `.skanclose` quand le client n'est pas à jour (**le cabinet clôture quand même**, le fichier
   attend et porte un PDF) ; le **pli scellé** décrit (fichier chez l'un, mot de passe chez l'autre,
   deux supports, rejoué chaque année) et « Libérer tous les clients… » (clés à vie en lot, derrière
@@ -2681,7 +2685,7 @@ document n'est ni une spécification (`CAHIER-DES-CHARGES.md`) ni un calendrier
 
 **v2 (16/09/2026) — la renumérotation, appliquée à tout le dépôt.** La règle du projet veut que le
 troisième chiffre soit réservé aux correctifs : la licence du Cabinet ajoute des fonctionnalités,
-elle est donc **9.4.0** (et non 9.3.x / P 0.3), l'entretien qui la suit **9.4.1**, et tout ce qui
+elle est donc **9.4.0** (et non 9.3.x / P 0.3), l'entretien qui la suit **9.4.1** — devenu **9.4.3** le 17/09/2026, deux entretiens non prévus ayant pris les numéros —, et tout ce qui
 suivait décale d'un cran — banque **9.5.0**, déclaration **9.6.0**, immobilisations **9.7.0**,
 clôture **9.8.0**, collaborateurs **9.9.0**, révision **9.10.0**, entretiens **9.6.1** et
 **9.9.1** ; la 10.0.0 ne bouge pas. **281 occurrences dans sept documents**, en une seule passe
@@ -3250,6 +3254,102 @@ Prouvé : **27 défauts réintroduits un par un** font tomber leur test — dont
 tomber qu'en les remettant (la clé de réponse redevenue `null`, la clé de réponse confondue avec la
 maître, l'empreinte nue dans la clé signée). `npm run e2e:console` gagne une étape (le type, le
 quota, l'empreinte, et la clé que SkanFact Cabinet reconnaît pendant que SkanFact la refuse).
+
+### 9.4.2 — L'exemple qui ne périme plus, et le premier jour d'un comptable
+
+Skander : « quand je fais la mise à jour des 2 app, recharger les nouveaux jeux de données
+automatiquement, car on part du principe que mon comptable qui est en train d'essayer l'app cabinet
+ne va pas appuyer sur effacer l'exemple et ensuite charger l'exemple à chaque nouvelle mise à jour »,
+puis « faut que le ui/ux de l'app cabinet soit niquel car c'est le comptable qui teste ».
+
+**L'exemple se refait tout seul.** `core.exemplePerime(repere, version, mois)` et son jumeau dans
+`cabcore` (corps identiques, comparés par un test, comme `round3` et `pastille`) rendent le MOTIF —
+`'version'`, `'mois'`, ou rien. Le repère `{ version, mois }` vit dans `data.exemple` et
+`state.exemple`, et il entre dans les deux migrations : absent de la liste, il serait jeté au
+prochain chargement et l'exemple se referait à CHAQUE ouverture, en silence (défaut `matricule`,
+6.8.0).
+
+- **Le mois compte autant que la version** : le jeu d'exemple est relatif à aujourd'hui. Chargé en
+  septembre et rouvert en décembre, il montre trois mois de retard chez des clients censés être à
+  jour. Un exemple périmé apprend des choses fausses sur le produit.
+- **On ne remplace que ce qui EST déjà l'exemple** (`estDemo` / `dossiers.some(d => d.demo)`), et
+  l'application le DIT dans le bandeau — un jeu de données qui change sans un mot ferait douter du
+  reste. `retirerExemple` remet le repère à zéro, sinon un exemple rechargé à la main se referait au
+  démarrage suivant.
+- **Côté Cabinet, une sauvegarde avant ; côté entreprise, surtout pas.** `demoSortie` reprend la
+  sauvegarde « avant-demo » la PLUS RÉCENTE : c'est le seul chemin de retour vers les vraies données.
+  En écrire une ici rangerait l'exemple par-dessus, et « Repartir de mes données » rendrait l'exemple.
+
+**`npm run e2e:cabinet-jour1` — l'instrument qui manquait.** `e2e:cabinet` vérifie que les GESTES
+marchent ; celui-ci regarde ce qu'un comptable VOIT, dans l'ordre où il le voit, et le mesure : 35
+écrans photographiés du mot de passe à l'Aide, à 1440 et à 1280. Ce qu'il a trouvé du premier coup :
+
+- **Neuf boutons se lisaient comme du texte en gras** — les cinq « Voir » de « À faire », « Exporter
+  en CSV », « Exporter le livre-journal », « Noter une relance faite ailleurs… », et « Enregistrer ma
+  clé… », c'est-à-dire l'action la plus importante de l'application. `.btn-ghost` n'avait ni fond, ni
+  bordure, ni couleur propre. **Un bouton se reconnaît AU REPOS, jamais au survol : personne ne
+  survole ce qu'il ne voit pas.** La règle datait de Cabinet 1.0.0 et n'était tenue par aucun test —
+  elle l'est maintenant, dans l'application réelle : fond, bordure, soulignement ou couleur, sinon
+  c'est du texte. Les deux exceptions (pied de barre latérale, « Passer » d'un assistant) sont
+  nommées et portent l'autre signe.
+- **La page Relances félicitait un cabinet qui n'a aucun client** : « Personne à relancer : tous tes
+  dossiers sont à jour » sur un portefeuille vide, et zéro bouton. C'est la règle de la 7.0.0 —
+  vérifier que l'univers concerné est non vide avant de rassurer — et c'était la seule des trois
+  pages à ne pas l'appliquer : Échéances et Écritures ont leur état vide avec son geste depuis
+  toujours. **Quand deux écrans font le même métier, celui qui diverge est celui qui a tort.**
+- **L'avertissement le plus important de l'application se lisait SOUS le bouton** qui crée le
+  cabinet — « il n'y a aucun moyen de récupérer ce mot de passe », lu une fois le mot de passe
+  choisi. Un avertissement, comme un refus, dit ce qu'il faut savoir AVANT d'agir : il est au-dessus,
+  dans un encadré (`warn-box grave`), aligné à gauche — une phrase de trois lignes centrée ne se lit
+  pas.
+- **Neuf champs de saisie sans bulle « i »**, dont les cinq touches de la grille : « Solder la
+  pièce » ne dit pas ce que le geste FAIT, et c'est exactement ce qu'on veut savoir avant de lui
+  donner une touche. Trois listes déroulantes nues (« L'exercice », « 2026 », « Tous les journaux »)
+  ont reçu leur étiquette et leur `aria-label`.
+- **L'assistant annonçait « Quatre écrans » au-dessus de CINQ pastilles qui les montraient.** Une
+  phrase affichée que rien ne tient est un bug (7.3.0) ; celle-ci se démentait toute seule, à
+  l'écran, depuis le premier jour. Le compte se déduit de `etapes.length`.
+- Le champ « Journal proposé » coupait son propre texte d'invite (`field narrow` sur un texte long) ;
+  les paragraphes d'introduction couraient sur 1 140 px (`.lead` était borné à 760 px depuis
+  toujours, eux non) ; deux cases à cocher voisines n'étaient pas alignées.
+
+**La ponctuation double porte une espace insécable.** En français, `?` `!` `;` `:` et l'intérieur des
+guillemets la demandent ; sans elle le navigateur coupe la ligne juste avant, et sur l'écran de
+bienvenue le « ? » se retrouvait seul en début de ligne. `typographie(racine)` travaille sur les
+NŒUDS DE TEXTE d'une prose déjà posée (`createTreeWalker` + `NodeFilter.SHOW_TEXT`) : aucune balise
+n'est touchée, et seule la prose est concernée — les titres, libellés et cellules gardent leurs
+espaces ordinaires, donc rien de ce qu'un test compare ne change. Trois portes l'appellent : la page,
+l'assistant (hors de `#view`) et les fenêtres. *L'app entreprise ne l'a pas encore : à porter le jour
+où sa prose est revue (règle 7.3.0 — une règle apprise d'un côté se vérifie de l'autre).*
+
+**La console horodate son « Vu ».** Skander : « je veux l'heure aussi avec la date, afin de voir
+quand le comptable a testé l'app ce jour-là ». Deux questions différentes, deux réponses : la phrase
+(« aujourd'hui », « hier ») dit si l'installation vit encore, l'horodatage dit à quelle heure.
+Et **un jour est un jour du CALENDRIER, pas une tranche de 24 heures** : une application ouverte hier
+à 23 h et regardée ce matin à 8 h se lisait « aujourd'hui ». Les jours se comptent en UTC dans le
+worker (les deux horodatages viennent du serveur) et dans le fuseau du navigateur dans la console
+(c'est SON « aujourd'hui » qui est en question, règle 5.2.3). Le journal des événements affichait
+l'heure UTC à côté d'une date UTC : tout passe par la même horloge, la locale.
+
+Pièges rencontrés, tous déjà écrits ici :
+- **Aucun backtick dans un commentaire d'un `template literal`** (cinquième fois) : j'ai écrit
+  `` `jour()` `` dans un commentaire de la console, et le fichier entier a cessé d'être analysable.
+- **Un test qui lit du code doit lire du CODE** (deuxième fois dans la même version) : le commentaire
+  qui explique le défaut de l'assistant CITE la phrase interdite, et faisait tomber le test sur du
+  code juste. Les commentaires de bloc se retirent avant de juger, pas seulement ceux de ligne.
+- **Une classe du Cabinet n'a rien à faire dans la feuille partagée** : `.wiz-actions .btn-ghost`
+  posé dans `style.css` a fait tomber le test de collision de la 6.8.0, immédiatement.
+- **Une clé de bulle doit être LITTÉRALE et en dernier argument** : fabriquée par concaténation
+  (`'sa.k.' + k`), elle échappe au test qui relit l'interface, et le texte d'aide meurt oublié.
+- **Une classe utilisée et jamais définie ne se voit nulle part** (8.1.0) : `.f-lab` a été écrite
+  dans le HTML avant d'exister dans la feuille.
+- **Et un test qui ne pouvait pas échouer, trouvé par la preuve elle-même** : celui du bouton
+  discret cherchait `/\.btn-ghost \{/` sans ancrer en début de ligne, et tombait donc sur
+  `.sidebar-foot .btn-ghost {`, deux cents lignes plus haut — la seule règle qui a le DROIT d'être
+  sans bordure. Il jugeait la mauvaise, et restait vert avec le défaut remis. Dans un fichier CSS,
+  un sélecteur se lit avec `^…$`, sinon on lit celui d'un descendant.
+
+Prouvé : **18 défauts réintroduits un par un** font tomber leur test.
 
 ## Pistes pour la suite (non demandées)
 

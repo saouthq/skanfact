@@ -96,11 +96,19 @@ export function pl(n, mot, pluriel) {
 }
 
 // « vu aujourd'hui », « vu hier », « vu il y a 5 jours ». Un horodatage brut dans un tableau ne se
-// lit pas : ce qu'on veut savoir, c'est si cette installation vit encore.
+// lit pas : ce qu'on veut savoir d'abord, c'est si cette installation vit encore. (L'heure exacte,
+// elle, se lit sous la phrase dans la console — les deux questions sont différentes.)
+//
+// Un jour n'est pas une tranche de 24 heures : sans cette distinction, une application ouverte hier
+// à 23 h et regardée ce matin à 8 h se lisait « aujourd'hui ». Ici les deux horodatages viennent du
+// serveur, donc les jours se comptent en UTC ; dans la console, ils se comptent dans le fuseau de
+// celui qui regarde, parce que c'est SON « aujourd'hui » qui est en question.
 export function depuisQuand(iso, maintenant) {
-  const a = Date.parse(String(iso || '')), b = Date.parse(String(maintenant || ''));
+  const da = new Date(String(iso || '')), db = new Date(String(maintenant || ''));
+  const a = da.getTime(), b = db.getTime();
   if (isNaN(a) || isNaN(b)) return '';
-  const j = Math.floor((b - a) / 86400000);
+  const jourUTC = d => Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  const j = Math.round((jourUTC(db) - jourUTC(da)) / 86400000);
   if (j <= 0) return 'aujourd\'hui';
   if (j === 1) return 'hier';
   if (j < 31) return 'il y a ' + pl(j, 'jour');
@@ -1231,6 +1239,10 @@ const CONSOLE_HTML = `<!doctype html>
   td.acts{white-space:normal}
   td.acts .btn{margin:2px 4px 2px 0}
   .mono{font-family:ui-monospace,"SFMono-Regular",Menlo,monospace;font-size:12px}
+  /* Le moment exact sous la phrase : « aujourd'hui » dit si l'installation vit encore, la seconde
+     ligne dit à quelle heure elle a été ouverte. Les deux sont utiles, et ni l'une ni l'autre ne
+     suffit — la première ne sait pas répondre à « il a testé quand dans la journée ? ». */
+  .quand{display:block;color:var(--ink2);font-size:11.5px;font-variant-numeric:tabular-nums}
   .pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11.5px;font-weight:600;
         border:1px solid var(--line)}
   .pill.a{color:var(--acc);border-color:var(--acc)}
@@ -1306,15 +1318,34 @@ const CONSOLE_HTML = `<!doctype html>
     iso = String(iso || '').slice(0, 10);
     return /^\\d{4}-\\d{2}-\\d{2}$/.test(iso) ? iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4) : '';
   };
+  // Un horodatage est un INSTANT ; « aujourd'hui » est un jour du CALENDRIER. Compter des tranches
+  // de 24 h faisait dire « aujourd'hui » à une ouverture d'hier 23 h regardée ce matin à 8 h — et
+  // c'est précisément la question posée : le comptable a-t-il ouvert l'application aujourd'hui ?
+  // Le navigateur de l'éditeur est à Tunis : le jour local est le bon jour (règle 5.2.3).
+  var jourDe = function (d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); };
   var depuis = function (iso) {
-    var a = Date.parse(iso || ''); if (isNaN(a)) return '';
-    var j = Math.floor((Date.now() - a) / 86400000);
+    var d = new Date(iso || ''); if (isNaN(d.getTime())) return '';
+    var j = Math.round((jourDe(new Date()) - jourDe(d)) / 86400000);
     if (j <= 0) return "aujourd'hui";
     if (j === 1) return 'hier';
     if (j < 31) return 'il y a ' + pl(j, 'jour');
     var m = Math.floor(j / 30);
     if (m < 12) return 'il y a ' + pl(m, 'mois', 'mois');
     return 'il y a ' + pl(Math.floor(j / 365), 'an');
+  };
+  // Le jour ET l'heure, dans le fuseau de celui qui regarde. L'aide jour() découpe la chaîne ISO,
+  // donc elle rend le jour UTC : à minuit et demi à Tunis, elle annoncerait la veille à côté d'une
+  // heure qui, elle, serait juste. Deux moitiés d'une même date ne vivent pas dans deux fuseaux.
+  var horodate = function (iso) {
+    var d = new Date(iso || ''); if (isNaN(d.getTime())) return '';
+    var p = function (n) { return String(n).padStart(2, '0'); };
+    return p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + d.getFullYear() + ' à ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  };
+  // « aujourd'hui » répond à « cette installation vit-elle encore ? », l'horodatage à « il a testé
+  // quand, ce jour-là ? ». Skander voulait la seconde réponse sans perdre la première.
+  var quandVu = function (iso) {
+    var q = depuis(iso); if (!q) return '—';
+    return h(q) + '<span class="quand">' + h(horodate(iso)) + '</span>';
   };
   var montant = function (n, dev) {
     var x = Number(n) || 0;
@@ -1704,8 +1735,8 @@ const CONSOLE_HTML = `<!doctype html>
       { k: 'device_nom', t: 'Ordinateur' },
       { k: 'plateforme', t: 'Système' },
       { k: 'version', t: 'Version', m: true },
-      { k: 'derniere_fois', t: 'Vu', f: function (v) { return depuis(v); } },
-      { k: 'premiere_fois', t: 'Depuis', f: function (v) { return jour(v); } }
+      { k: 'derniere_fois', t: 'Vu', f: function (v) { return quandVu(v); }, brut: true },
+      { k: 'premiere_fois', t: 'Depuis', f: function (v) { return quandVu(v); }, brut: true }
     ],
     clients: [
       { k: 'nom', t: 'Nom' }, { k: 'matricule', t: 'Matricule', m: true },
@@ -1724,7 +1755,9 @@ const CONSOLE_HTML = `<!doctype html>
         } }
     ],
     evenements: [
-      { k: 'quand', t: 'Quand', f: function (v) { return jour(v) + ' ' + String(v || '').slice(11, 16); } },
+      // Le journal portait l'heure UTC à côté d'une date UTC : une vente encaissée à 00 h 30 à Tunis
+      // s'y lisait la veille à 23 h 30. Tout ce qui s'affiche passe par la même horloge, la locale.
+      { k: 'quand', t: 'Quand', f: function (v) { return horodate(v); } },
       { k: 'quoi', t: 'Quoi', m: true },
       { k: 'client', t: 'Client' },
       { k: 'detail', t: 'Détail' }

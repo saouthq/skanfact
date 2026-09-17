@@ -2269,7 +2269,7 @@ bloque : l'avis de l'Ordre (avant de vendre, pas avant de construire) et les pri
 | Postes illimités : on vend des dossiers (`DIRECTION.md`, tranché) | — |
 | L'app entreprise (module Éditeur) tire et facture une vente de type cabinet comme les autres (8.7.0) | — |
 
-### 9.4.1 — entretien
+### 9.4.3 — entretien
 
 Pas d'écran. Electron du semestre, les 93 déclarations CSS physiques converties en logiques, le
 premier découpage de `app.js` par route, `run-tests.js` par domaine, les codes `ERR-*` posés sur
@@ -2914,7 +2914,7 @@ payée depuis la relecture du 15/09 — corrigé dans `QUESTIONS.md` (une phrase
 ### v1.2 — 16/09/2026 (la renumérotation, décidée par Skander ; aucun fichier de code n'a changé)
 
 La règle du projet réserve le troisième chiffre aux correctifs. La licence du Cabinet ajoute des
-fonctionnalités : elle passe de `9.3.x` / `P 0.3` à **9.4.0**, l'entretien de `9.3.1` à **9.4.1**,
+fonctionnalités : elle passe de `9.3.x` / `P 0.3` à **9.4.0**, l'entretien de `9.3.1` à **9.4.1**, puis à **9.4.3** le 17/09/2026 (deux entretiens non prévus ont pris les numéros),
 et tout ce qui suivait décale d'un cran (banque **9.5.0**, déclaration **9.6.0**, immobilisations
 **9.7.0**, clôture **9.8.0**, collaborateurs **9.9.0**, révision **9.10.0**, entretiens **9.6.1** et
 **9.9.1**). La 10.0.0 ne bouge pas. Appliquée **en une seule passe simultanée aux sept documents**

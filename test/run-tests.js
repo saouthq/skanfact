@@ -10282,6 +10282,12 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       assert.strictEqual(P.depuisQuand('2024-09-15T12:00:00Z', n), 'il y a 2 ans');
       assert.strictEqual(P.depuisQuand('', n), '', 'une date absente ne fabrique pas de phrase');
       assert.strictEqual(P.depuisQuand('n\'importe quoi', n), '');
+      // Un JOUR, pas une tranche de 24 heures (9.4.2). Ouvert hier à 23 h, regardé ce matin à 8 h :
+      // neuf heures, donc « aujourd'hui » dans l'ancienne version — et la question posée devient
+      // fausse. C'est exactement ce que la colonne « Vu » doit savoir dire.
+      assert.strictEqual(P.depuisQuand('2026-09-14T23:00:00Z', '2026-09-15T08:00:00Z'), 'hier');
+      assert.strictEqual(P.depuisQuand('2026-09-15T00:10:00Z', '2026-09-15T23:50:00Z'), 'aujourd\'hui',
+        'presque 24 h dans la même journée reste la même journée');
 
       // Les compteurs se recopient sans jamais inventer ; ce qu'on ne sait pas se dit.
       const r2 = P.resumeStats({ clients: '3', licencesActives: 2, essaisEnCours: 7 });
@@ -10335,6 +10341,69 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       // fermeture du navigateur.
       assert.ok(dedans.includes('sessionStorage'), 'le secret doit vivre dans sessionStorage');
       assert.ok(!dedans.includes('localStorage'), 'le secret de la console ne survit pas au navigateur');
+    });
+
+    // 9.4.2 — Skander : « la colonne "vu" qui me dit quand ça a été ouvert, je veux qu'elle ait
+    // l'heure aussi avec la date, afin de voir quand le comptable a testé l'app ce jour-là. »
+    //
+    // Deux questions différentes, deux réponses : « aujourd'hui » dit si l'installation vit encore,
+    // l'horodatage dit à quelle heure elle a été ouverte. Ce test ne LIT pas le code de la console,
+    // il l'EXÉCUTE : les aides vivent dans un gabarit de chaîne, donc rien ne les importe — et une
+    // assertion qui se contenterait de chercher « getHours » dans la source passerait sur une
+    // fonction qui ne rend rien.
+    t('plateforme : la colonne « Vu » donne le jour ET l\'heure, dans le fuseau de qui regarde', () => {
+      const src = fs.readFileSync(path.join(__dirname, '..', 'plateforme', 'skanfact-api.mjs'), 'utf8');
+      const page = src.slice(src.indexOf('const CONSOLE_HTML = '));
+      const debut = page.indexOf('var jourDe = ');
+      const fin = page.indexOf('var montant = ');
+      assert.ok(debut > 0 && fin > debut, 'les aides de date de la console sont introuvables');
+      const bloc = page.slice(debut, fin);
+      // Une tranche se prouve par sa taille avant d'être jugée (7.21.0) : bornée sur un voisin, elle
+      // peut avaler la moitié du fichier sans que rien ne le dise.
+      assert.ok(bloc.length > 400 && bloc.length < 2600, 'tranche des aides de date inattendue : ' + bloc.length);
+      assert.ok(!bloc.includes('COLONNES'), 'la tranche déborde sur les colonnes');
+      // Le gabarit est une chaîne : `\\d` y vaut `\d` une fois servi. On rend au bloc sa forme réelle.
+      const code = bloc.replace(/\\\\/g, '\\');
+      // `new Function` est ici la seule façon d'EXÉCUTER ce que la console exécute : ces aides vivent
+      // dans un gabarit de chaîne, rien ne les importe. Le code évalué vient du dépôt, jamais de
+      // l'extérieur — et c'est une suite de tests, pas l'application.
+      // eslint-disable-next-line no-new-func
+      const aides = new Function('pl', 'h', code + ' return { depuis: depuis, horodate: horodate, quandVu: quandVu };')(
+        (n, mot, plur) => n + ' ' + (Math.abs(n) >= 2 ? (plur || (mot + 's')) : mot),
+        s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;'));
+
+      // Les instants se fabriquent en heure LOCALE : le test doit dire la même chose à Tunis, à
+      // Tokyo et sur la machine d'intégration, qui est en UTC.
+      // `setDate`/`setHours` LOCAUX, exprès et par exception à la règle 5.2.3 : ce que ce test
+      // fabrique n'est pas un jour de calendrier de l'application mais un INSTANT vu par l'horloge
+      // du navigateur — c'est exactement ce que la console reçoit et ce qu'elle doit savoir situer.
+      /* eslint-disable no-restricted-syntax */
+      const local = (jours, heures, minutes) => {
+        const d = new Date();
+        d.setDate(d.getDate() - jours); d.setHours(heures, minutes, 0, 0);
+        return d.toISOString();
+      };
+      assert.strictEqual(aides.depuis(local(0, 9, 5)), 'aujourd\'hui');
+      assert.strictEqual(aides.depuis(local(1, 23, 0)), 'hier',
+        'hier 23 h regardé ce matin reste HIER : un jour n\'est pas une tranche de 24 heures');
+      assert.strictEqual(aides.depuis(local(5, 12, 0)), 'il y a 5 jours');
+      assert.strictEqual(aides.depuis(''), '', 'une date absente ne fabrique pas de phrase');
+
+      // L'heure affichée est celle de l'horloge de la page, et la date qui l'accompagne vient de la
+      // MÊME horloge : deux moitiés d'une date ne peuvent pas être dans deux fuseaux.
+      const h9 = aides.horodate(local(2, 16, 40));
+      assert.ok(/^\d{2}\/\d{2}\/\d{4} à 16:40$/.test(h9), 'horodatage inattendu : ' + h9);
+      const attendu = new Date(); attendu.setDate(attendu.getDate() - 2);
+      assert.strictEqual(h9.slice(0, 10), String(attendu.getDate()).padStart(2, '0') + '/'
+        + String(attendu.getMonth() + 1).padStart(2, '0') + '/' + attendu.getFullYear());
+
+      // La cellule porte LES DEUX : « hier » seul ne répond pas à « quand dans la journée ? », et
+      // un horodatage seul ne répond pas à « cette installation vit-elle encore ? ».
+      const cell = aides.quandVu(local(1, 8, 30));
+      assert.ok(cell.includes('hier'), 'la cellule perd la phrase : ' + cell);
+      assert.ok(/08:30/.test(cell), 'la cellule perd l\'heure : ' + cell);
+      assert.strictEqual(aides.quandVu(''), '—', 'une activation sans date n\'invente pas un moment');
+      /* eslint-enable no-restricted-syntax */
     });
 
     // Une installation en ESSAI n'a pas de clé. Si elle ne s'annonçait pas, aucun essai ne serait
@@ -13042,6 +13111,176 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.deepStrictEqual(aLaRacine, [],
       'des fichiers de code traînent à la racine : ' + aLaRacine.join(', ')
       + ' — s\'ils sont des copies de src/, supprime-les ; sinon, range-les.');
+  });
+
+  // ================================================================ 9.4.2 — L'EXEMPLE PÉRIMÉ
+  //
+  // Skander : « quand je fais la mise à jour des 2 app, recharger les nouveaux jeux de données
+  // automatiquement, car on part du principe que mon comptable qui est en train d'essayer l'app
+  // cabinet ne va pas appuyer sur effacer l'exemple et ensuite charger l'exemple à chaque nouvelle
+  // mise à jour. »
+  t('9.4.2 : un exemple périmé se reconnaît, et les deux applications le reconnaissent pareil', () => {
+    const C = require('../src/renderer/core.js');
+    const K = require('../src/cabinet/cabcore.js');
+    const V = '9.4.2', M = '2026-09';
+
+    [['entreprise', C.exemplePerime], ['cabinet', K.exemplePerime]].forEach(([qui, f]) => {
+      assert.strictEqual(f({ version: V, mois: M }, V, M), '', qui + ' : un exemple du jour n\'a rien à refaire');
+      assert.strictEqual(f({ version: '9.4.1', mois: M }, V, M), 'version', qui + ' : une version de retard');
+      assert.strictEqual(f({ version: V, mois: '2026-06' }, V, M), 'mois', qui + ' : trois mois de retard');
+      // Un exemple chargé avant la 9.4.2 ne porte AUCUN repère : il est périmé par construction.
+      assert.strictEqual(f(null, V, M), 'version', qui + ' : sans repère, on refait');
+      assert.strictEqual(f({}, V, M), 'version', qui + ' : un repère vide vaut pas de repère');
+      // Sans numéro de version, on ne décide rien : refaire l'exemple sur un doute serait remplacer
+      // des données parce qu'on n'a pas su lire le `package.json`.
+      assert.strictEqual(f({ version: V, mois: M }, '', M), '', qui + ' : sans version installée, on ne touche à rien');
+      assert.strictEqual(f(null, '', M), '', qui + ' : sans version installée, même sans repère');
+    });
+
+    // Les deux applications doivent décider PAREIL, et aucune ne peut charger le module de l'autre
+    // (core.js est un UMD de navigateur, cabcore vit dans le cabinet). Même règle que `round3` et
+    // que `pastille` : on compare les corps, pas seulement le comportement.
+    const corps = s => (s.match(/function exemplePerime\(repere, version, mois\) \{[\s\S]*?\n  \}/) || [''])[0];
+    const a = corps(lireSource('src', 'renderer', 'core.js'));
+    const b = corps(lireSource('src', 'cabinet', 'cabcore.js'));
+    assert.ok(a.length > 150, 'corps de exemplePerime introuvable dans core.js');
+    assert.strictEqual(a, b, 'exemplePerime diverge entre les deux applications');
+  });
+
+  t('9.4.2 : refaire l\'exemple ne touche QUE l\'exemple, et l\'application le dit', () => {
+    // Côté cabinet : `retirerExemple` ne connaît que les dossiers `demo`, et le rafraîchissement
+    // passe par lui. Un vrai dossier créé à la main pendant l'essai doit survivre à une mise à jour.
+    const cab = lireSource('src', 'cabinet', 'main.js');
+    const i = cab.indexOf('function rafraichirExemple(');
+    assert.ok(i > 0, 'le rafraîchissement de l\'exemple est introuvable');
+    const zone = cab.slice(i, cab.indexOf('ipcMain.handle(\'cab:demo\'', i));
+    assert.ok(zone.length > 300 && zone.length < 1400, 'tranche du rafraîchissement inattendue : ' + zone.length);
+    assert.ok(/if \(!state\.dossiers\.some\(d => d\.demo\)\) return null;/.test(zone),
+      'sans dossier d\'exemple, on ne refait rien du tout');
+    assert.ok(zone.includes('K.exemplePerime('), 'la décision doit venir de la fonction pure, pas d\'une comparaison recopiée');
+    assert.ok(zone.includes('backupNow(\'avant-exemple\')'), 'une sauvegarde est prise avant de remplacer quoi que ce soit');
+    // Et `retirerExemple` remet le repère à zéro : sans ça, un exemple effacé puis rechargé à la
+    // main garderait le repère de l'ancien et se referait au prochain démarrage.
+    const rem = cab.slice(cab.indexOf('function retirerExemple('), cab.indexOf('function chargerExemple('));
+    assert.ok(rem.includes('state.exemple = null'), 'effacer l\'exemple efface son repère');
+
+    // Côté entreprise : le garde-fou est `estDemo`, et on ne prend PAS de sauvegarde — « avant-demo »
+    // est le seul chemin de retour vers les VRAIES données, et `demoSortie` reprend la plus récente.
+    // En écrire une ici rangerait l'exemple par-dessus, et « Repartir de mes données » rendrait
+    // l'exemple d'avant.
+    const app = lireApp();
+    const j = app.indexOf('async function rafraichirExemple(');
+    assert.ok(j > 0, 'le rafraîchissement de l\'exemple est introuvable dans app.js');
+    const za = app.slice(j, app.indexOf('function bandeauDemo(', j));
+    assert.ok(za.length > 200 && za.length < 900, 'tranche du rafraîchissement inattendue : ' + za.length);
+    assert.ok(/if \(!data \|\| !C\.estDemo\(data\)\) return;/.test(za),
+      'on ne remplace que des données qui SONT déjà l\'exemple');
+    assert.ok(za.includes('C.exemplePerime('), 'la décision doit venir de la fonction pure');
+    assert.ok(!/createBackup/.test(za), 'aucune sauvegarde ici : elle recouvrirait « avant-demo »');
+
+    // Un jeu de données qui change tout seul sans un mot ferait douter de tout le reste : les deux
+    // bandeaux d'exemple le disent, et chacun rassure sur ce qui n'a PAS bougé.
+    assert.ok(/exempleRefait[\s\S]{0,400}Tes données d'avant l'exemple sont intactes/.test(app),
+      'le bandeau de l\'app entreprise doit annoncer le rattrapage');
+    const cabr = lireSource('src', 'cabinet', 'renderer', 'app.js');
+    assert.ok(/exempleRefait[\s\S]{0,400}Tes vrais dossiers n'ont pas bougé/.test(cabr),
+      'le bandeau de l\'app cabinet doit annoncer le rattrapage');
+    // Et il ne doit pas survivre à un exemple rechargé À LA MAIN : ce serait annoncer un rattrapage
+    // qui n'a pas eu lieu.
+    assert.ok(!/await api\.demo\(/.test(cabr), 'les deux gestes manuels passent par la même porte');
+    assert.ok(cabr.includes('async function chargerOuRetirerExemple(on)') && cabr.includes('exempleRefait = null;'),
+      'la porte manuelle doit éteindre le bandeau');
+  });
+
+  // ================================================================ 9.4.2 — CE QUE VOIT LE COMPTABLE
+  //
+  // Six défauts trouvés en ouvrant vraiment l'application, écran par écran (`e2e:cabinet-jour1`).
+  // Ces assertions-ci sont les mêmes règles, tenues sans lancer Electron : `npm test` tourne à
+  // chaque poussée, les parcours non.
+  t('9.4.2 : un bouton se reconnaît au repos, jamais au survol', () => {
+    const css = lireSource('src', 'renderer', 'style.css');
+    // `btn-ghost` n'avait ni fond ni bordure, et son texte était celui du corps : « Voir » sur
+    // chaque ligne de « À faire », « Exporter en CSV », « Enregistrer ma clé… » se lisaient comme du
+    // gras. Neuf boutons dans ce cas, mesurés dans l'application réelle.
+    // ANCRÉ EN DÉBUT DE LIGNE : sans le `^`, la première correspondance est
+    // `.sidebar-foot .btn-ghost {` — qui vit 200 lignes plus haut et qui a le droit, elle, d'être
+    // sans bordure. Le test lisait donc la mauvaise règle et ne pouvait pas échouer ; il est resté
+    // vert avec le défaut réintroduit, et c'est la preuve par le défaut qui l'a dit.
+    const regle = (css.match(/^\.btn-ghost \{[^}]*\}/m) || [''])[0];
+    assert.ok(regle, 'la règle .btn-ghost est introuvable');
+    assert.ok(!/border-color:\s*transparent/.test(regle),
+      'un bouton sans bordure ni couleur n\'est pas un bouton (Cabinet 1.0.0)');
+    // Les exceptions sont NOMMÉES et portent l'autre signe : une couleur qui n'est pas celle du
+    // texte. Sans elles, une entrée de menu se retrouverait encadrée au milieu d'une liste.
+    assert.ok(/\.sidebar-foot \.btn-ghost[^{]*\{[^}]*border-color:\s*transparent/.test(css),
+      'le pied de la barre latérale garde ses entrées sans cadre');
+    const cab = lireSource('src', 'cabinet', 'renderer', 'cabinet.css');
+    assert.ok(/\.wiz-actions \.btn-ghost \{[^}]*border-color:\s*transparent[^}]*color:/.test(cab),
+      'le « Passer » de l\'assistant garde sa couleur à défaut de bordure');
+    // Et cette règle-là vit chez le cabinet : `wiz-actions` est une de SES classes (règle 6.8.0).
+    assert.ok(!/\.wiz-actions/.test(css), 'une classe du cabinet n\'a rien à faire dans la feuille partagée');
+  });
+
+  t('9.4.2 : la page Relances ne félicite pas un cabinet qui n\'a aucun client', () => {
+    const src = lireSource('src', 'cabinet', 'renderer', 'app.js');
+    const i = src.indexOf('function drawRelances(');
+    assert.ok(i > 0, 'la page Relances est introuvable');
+    const zone = src.slice(i, i + 1600);
+    // « Personne à relancer : tous tes dossiers sont à jour » s'affichait sur un portefeuille VIDE.
+    // C'est la règle de la 7.0.0 — vérifier que l'univers concerné est non vide avant de rassurer —
+    // et c'était la seule des trois pages à ne pas l'appliquer.
+    assert.ok(/if \(!K\.dossierList\(S\)\.length\)/.test(zone),
+      'la page doit distinguer « aucun client » de « tous à jour »');
+    const vide = src.slice(src.indexOf('if (!K.dossierList(S).length)', i), src.indexOf('view.innerHTML = `', src.indexOf('if (!K.dossierList(S).length)', i) + 40));
+    assert.ok(vide.length > 200 && vide.length < 1400, 'tranche de l\'état vide inattendue : ' + vide.length);
+    // Un état vide porte son geste, comme ses deux voisines (Échéances, Écritures).
+    assert.ok(/id="rl-nd"/.test(vide) && /id="rl-imp"/.test(vide), 'l\'état vide doit offrir un geste');
+    assert.ok(/\$\('#rl-nd'\)\.onclick/.test(src) && /\$\('#rl-imp'\)\.onclick/.test(src),
+      'et les deux boutons doivent être branchés : un bouton mort est pire qu\'un bouton absent');
+  });
+
+  t('9.4.2 : l\'assistant du Cabinet compte ses écrans au lieu de les annoncer', () => {
+    const src = lireSource('src', 'cabinet', 'renderer', 'app.js');
+    const i = src.indexOf('function runSetup(');
+    const brut = src.slice(i, src.indexOf('function draw()', i));
+    assert.ok(brut.length > 3000, 'tranche de l\'assistant inattendue : ' + brut.length);
+    // Un test qui lit du code doit lire du CODE (6.8.0) : le commentaire qui explique ce défaut cite
+    // justement la phrase interdite, et il suffisait à faire tomber ce test sur du code juste.
+    const zone = brut.replace(/\/\*[\s\S]*?\*\//g, ' ').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+    assert.ok(zone.includes('Bienvenue dans SkanFact Cabinet'), 'le nettoyage des commentaires a mangé le code');
+    // La phrase annonçait un nombre au-dessus de pastilles qui en montraient un autre. Une phrase
+    // affichée que rien ne tient est un bug (7.3.0) — celle-ci se démentait toute seule à l'écran.
+    assert.ok(!/(Trois|Quatre|Cinq|Six) écrans/.test(zone),
+      'le nombre d\'écrans de l\'assistant ne s\'écrit pas à la main');
+    assert.ok(/\[etapes\.length\]/.test(zone), 'il se déduit du tableau des étapes');
+  });
+
+  t('9.4.2 : l\'avertissement du mot de passe se lit AVANT le bouton', () => {
+    const html = lireSource('src', 'cabinet', 'renderer', 'index.html');
+    const note = html.indexOf('id="lock-note"');
+    const bouton = html.indexOf('id="lock-go"');
+    assert.ok(note > 0 && bouton > 0, 'l\'écran de mot de passe a changé de forme');
+    // « Il n'y a aucun moyen de récupérer ce mot de passe » se lisait SOUS « Créer mon cabinet ».
+    // Un avertissement posé après le geste est un avertissement lu après coup.
+    assert.ok(note < bouton, 'l\'avertissement doit précéder le bouton qui crée le cabinet');
+    const src = lireSource('src', 'cabinet', 'renderer', 'app.js');
+    assert.ok(/note\.className = 'lock-note warn-box grave'/.test(src),
+      'et il se lit comme un avertissement, pas comme une ligne de plus');
+  });
+
+  t('9.4.2 : la ponctuation double porte une espace insécable', () => {
+    const src = lireSource('src', 'cabinet', 'renderer', 'app.js');
+    const i = src.indexOf('function typographie(');
+    assert.ok(i > 0, 'la passe typographique est introuvable');
+    const zone = src.slice(i, i + 700);
+    // On travaille sur les NŒUDS DE TEXTE : toucher au HTML casserait une balise un jour.
+    assert.ok(/createTreeWalker\([^)]*NodeFilter\.SHOW_TEXT\)/.test(zone),
+      'seuls les nœuds de texte sont touchés, jamais les balises');
+    assert.ok(zone.includes(' '), 'l\'espace fine insécable (U+202F) est celle de la typographie française');
+    // Et elle est APPELÉE — un mécanisme sans appelant est invisible (7.3.0). Trois portes : la page,
+    // l'assistant (hors de #view) et les fenêtres.
+    const appels = (src.match(/\btypographie\(/g) || []).length;
+    assert.ok(appels >= 4, 'la passe doit être appelée sur la page, l\'assistant ET les fenêtres (vu : ' + appels + ')');
   });
 
   if (enCours) throw new Error(`${enCours} test(s) asynchrone(s) lancé(s) sans « await ta(…) » : ils ne peuvent plus échouer`);

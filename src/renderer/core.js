@@ -569,6 +569,24 @@
   // sortir, ni empêcher sa fausse identité de servir à une vraie facture.
   const estDemo = data => !!(data && data.demo);
 
+  // Un jeu d'exemple est RELATIF à aujourd'hui, et il est enrichi de version en version. Personne ne
+  // pense à l'effacer puis à le recharger : la décision se prend donc toute seule, et elle vit ici,
+  // pure et testable, plutôt que dans la séquence de démarrage où rien ne peut la vérifier.
+  //
+  // Rend le MOTIF ('version' ou 'mois') ou une chaîne vide s'il n'y a rien à refaire. Ce n'est pas
+  // elle qui sait s'il existe un exemple : l'appelant le sait, et lui seul.
+  //
+  // Le corps est identique à `exemplePerime` de src/cabinet/cabcore.js — les deux applications
+  // doivent décider pareil, et aucune ne peut charger le module de l'autre. Un test compare les deux
+  // corps caractère par caractère, comme pour `round3` et `pastille`.
+  function exemplePerime(repere, version, mois) {
+    if (!version) return '';
+    const r = (repere && typeof repere === 'object') ? repere : {};
+    if (!r.version || r.version !== version) return 'version';
+    if (r.mois !== mois) return 'mois';
+    return '';
+  }
+
   // Le taux de TVA d'une ligne neuve. Il se règle dans Paramètres et l'assistant le pose à partir du
   // métier déclaré. `''`, `null` ou `undefined` = 19 % ; `0` est une valeur légitime (exonération),
   // d'où le test explicite plutôt qu'un `||`.
@@ -757,6 +775,11 @@
     closureLog: [],          // chaque clôture et chaque réouverture, avec son motif (6.0.0)
     packs: [],               // paquets mensuels construits pour le cabinet (6.1.0)
     demo: false,             // ces données viennent du jeu d'exemple (7.0.0) — l'app le dit à l'écran
+    // De quelle version sort l'exemple chargé, et sur quel mois il a été bâti — `{ version, mois }`.
+    // Le jeu d'exemple est RELATIF à aujourd'hui : chargé en septembre et regardé en décembre, il
+    // montre des relances qui n'ont plus de sens. Ces deux repères le font se REFAIRE tout seul
+    // (9.4.2, `exemplePerime`). `null` hors exemple — même forme que dans l'app du cabinet.
+    exemple: null,
     counters: {}
   };
 
@@ -6600,7 +6623,7 @@
     amountToWords, intToWords, intToWordsEn, documentHtml, fitToPage, paginate, pageCount,
     MODULES, PAGES, moduleById, pageById, pageTitle, moduleCount, moduleCounts, modulesRevenus, moduleOn, moduleWhy, navPages,
     sousModuleOn, sousModuleById, sousModules, OPTION_LABELS,
-    MODULES_PAR_ACTIVITE, modulesSuggeres, wipeData, rendreLesEmprunts, estDemo, firstSteps, liste, defaultVat, seuilRetenue, newLine,
+    MODULES_PAR_ACTIVITE, modulesSuggeres, wipeData, rendreLesEmprunts, estDemo, exemplePerime, firstSteps, liste, defaultVat, seuilRetenue, newLine,
     canalDe, estBeta, pastilleLicence, empreinteCabinet, licencesDuCabinet,
     LICENCE_MOTIFS, prorataOffre, licenceSuivi, licencesAFaire,
     LICENCE_PREAVIS, licenceEtat, licenceRows, licencesExpirant,

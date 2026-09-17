@@ -310,8 +310,19 @@ input[type=color]:not([type=checkbox]):not([type=radio]):not([type=file]):not([t
 .btn-primary:hover { background: var(--primary-hover); }
 .btn-danger { background: var(--danger-soft); color: var(--danger); }
 .btn-danger:hover { background: #f9d7d3; }
-.btn-ghost { background: transparent; border-color: transparent; }
+/* Un bouton se reconnaît AU REPOS, jamais au survol : personne ne survole ce qu'il ne voit pas.
+   `btn-ghost` n'avait ni fond ni bordure, et son texte était celui du corps : « Voir » sur chaque
+   ligne de « À faire », « Exporter en CSV », « Enregistrer ma clé… » se lisaient comme du gras.
+   C'est le défaut nommé en Cabinet 1.0.0 — « elle est vide », disait Skander devant un bouton
+   parfaitement fonctionnel — et il vivait encore dans neuf boutons, mesurés par
+   `npm run e2e:cabinet-jour1`. Une bordure discrète suffit : le bouton reste au second plan, mais
+   il existe. */
+.btn-ghost { background: transparent; border-color: var(--line); }
 .btn-ghost:hover { background: var(--ink-soft); }
+/* Les deux endroits où un `btn-ghost` est une ENTRÉE DE MENU et non un bouton : une bordure y
+   dessinerait un cadre au milieu d'une liste. Ils portent déjà l'autre signe — une couleur qui
+   n'est pas celle du texte courant — et c'est ce que le contrôle exige. */
+.sidebar-foot .btn-ghost, .setup-foot .btn-ghost { border-color: transparent; }
 .btn-sm { padding: 6px 11px; font-size: 12px; border-radius: 8px; }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
 
