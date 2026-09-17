@@ -383,6 +383,12 @@ td.actions { white-space: nowrap; text-align: right; }
    `${cond ? '<button…>' : ''}<button…>` les collait l'un à l'autre, et ça ne se voit qu'à l'écran. */
 td.actions .btn + .btn { margin-left: 6px; }
 .empty { padding: 48px 24px; text-align: center; color: var(--muted); background: var(--panel); border: 1px dashed #d5dbe3; border-radius: var(--radius); }
+/* Le même état vide, DANS un panneau (9.4.5/9.4.6). 48 px de haut et un cadre pointillé, c'est la
+   bonne présence quand la page entière est vide — c'est le premier écran, il faut qu'il occupe la
+   place. Au milieu d'une fiche déjà pleine, le même bloc consacrait 250 px à « aucune relance
+   enregistrée » et repoussait tout le reste : un état vide secondaire s'annonce, il ne se
+   contemple pas. */
+.empty.mini { padding: 14px 16px; text-align: start; border: none; background: transparent; }
 
 /* ---------- badges ---------- */
 .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; background: var(--ink-soft); color: var(--muted); }

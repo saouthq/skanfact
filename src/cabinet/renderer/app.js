@@ -379,6 +379,10 @@
   // « 1 dossier(s) » : personne n'écrit ça non plus. Un logiciel qui parle mal donne l'impression
   // d'être bâclé, et c'est le premier contact d'un comptable avec SkanFact.
   const pl = (n, un, plur) => `${n} ${n > 1 ? (plur || un + 's') : un}`;
+  // Les douze mois, dans l'ordre du calendrier. Ils servent à dessiner l'année ENTIÈRE sur la fiche
+  // d'un client : n'afficher que les mois attendus laissait croire que l'application en avait perdu.
+  const MOIS_COURTS = ['Janv.', 'Févr.', 'Mars', 'Avril', 'Mai', 'Juin',
+    'Juil.', 'Août', 'Sept.', 'Oct.', 'Nov.', 'Déc.'];
   // Même règle que côté entreprise : le dinar se compte en millimes (trois décimales), les autres
   // devises en centimes. « DT » et « TND » désignent la même monnaie.
   const dinar = cur => !cur || cur === 'DT' || cur === 'TND';
@@ -1542,11 +1546,15 @@
     const dossier = (S.dossiers || []).find(d => d.id === decodeURIComponent(id || ''));
     if (!dossier) { view.innerHTML = `<div class="empty">Ce dossier n'existe plus.</div>`; return; }
     const row = K.dossierRow(dossier);
-    const months = K.dossierMonths(dossier).slice().reverse();
+    // Les mois restent dans l'ordre du TEMPS. `.reverse()` les affichait « Août, Juillet, Juin,
+    // Mai, Avril, Mars » sous une étiquette « 2026 » : personne ne lit un calendrier à l'envers, et
+    // il fallait relire deux fois pour comprendre où commençait la mission. L'ordre des ANNÉES,
+    // lui, reste le plus récent d'abord — c'est le mois courant qu'on vient voir.
+    const months = K.dossierMonths(dossier);
     const packs = (dossier.packs || []).slice().sort((a, b) => a.month < b.month ? 1 : -1);
     const relances = (dossier.relances || []).slice().reverse();
     // Les mois regroupés par année : douze cases par ligne valent mieux qu'une bande sans fin.
-    const years = [...new Set(months.map(m => m.month.slice(0, 4)))];
+    const years = [...new Set(months.map(m => m.month.slice(0, 4)))].sort().reverse();
     // L'exercice choisi ne suit pas d'un client à l'autre : sans ce garde-fou, passer d'un dossier
     // qui a 2025 à un dossier qui n'a que 2026 afficherait un graphique vide sans raison visible.
     const anneeVue = years.includes(ficheYear) ? ficheYear : years[0];
@@ -1611,11 +1619,42 @@
 
       <section data-onglet="suivi" ${onglet === 'suivi' ? '' : 'hidden'}>
       <div class="panel"><h2>Les mois de ce client ${info('p.definitif')}</h2>
+        ${/* Les DOUZE mois de chaque année, pas seulement ceux attendus. L'écran en montrait six
+              sous une étiquette « 2026 », sans dire pourquoi : on ne savait pas si la mission
+              commençait en mars ou si l'application avait perdu les deux premiers. Les mois hors
+              mission sont là, en gris, et ils DISENT pourquoi — c'est le calendrier qui explique
+              l'extrait, pas l'inverse. Et chaque mois attendu porte son geste : ouvrir le paquet
+              quand il est là, relancer sur CE mois quand il manque (règle 7.15.0 — un écran qui
+              nomme un ensemble doit pouvoir l'ouvrir). */''}
         ${months.length ? years.map(y => `<div class="year-row"><div class="year-lab">${esc(y)}</div>
-          <div class="mgrid">${months.filter(m => m.month.slice(0, 4) === y).map(m => `<div class="mcell ${m.state}${m.pack && m.pack.path ? ' clickable' : ''}" ${m.pack && m.pack.path ? `data-m="${esc(m.month)}"` : ''}>
-            <div class="m-lab">${esc(m.label.split(' ')[0])}</div>
-            <div class="m-st">${m.state === 'complet' ? 'définitif' : m.state === 'provisoire' ? 'provisoire' : 'manquant'}</div>
-          </div>`).join('')}</div></div>`).join('')
+          <div class="mgrid">${MOIS_COURTS.map((nom, k) => {
+    const mois = `${y}-${String(k + 1).padStart(2, '0')}`;
+    const m = months.find(x => x.month === mois);
+    if (!m) {
+      // « À venir » sur le mois où l'on EST serait faux : il est en cours, et c'est précisément
+      // pour ça qu'il n'est jamais réclamé. Une étiquette approximative sur un calendrier fait
+      // douter de tout le tableau.
+      const avant = mois < (months[0] || {}).month;
+      const raison = avant ? 'hors mission' : mois === K.today().slice(0, 7) ? 'en cours' : 'à venir';
+      return `<div class="mcell hors" title="${esc(avant
+        ? 'Avant le début de mission : rien n\'est réclamé pour ce mois.'
+        : 'Le mois en cours et les suivants ne sont jamais réclamés — le client ne peut pas encore les clôturer.')}">
+        <div class="m-lab">${esc(nom)}</div><div class="m-st">${esc(raison)}</div></div>`;
+    }
+    const ouvrable = !!(m.pack && m.pack.path);
+    const etat = m.state === 'complet' ? 'définitif' : m.state === 'provisoire' ? 'provisoire' : 'manquant';
+    // Un mois reçu avant la 6.1.0 n'a pas de fichier sur le disque : le bouton DIT pourquoi au
+    // lieu de ne rien faire (règle 7.21.0). Un bouton qui accepte le clic sans agir est pire
+    // qu'un bouton absent.
+    const quoi = ouvrable ? 'Ouvrir le paquet de ' + m.label
+      : m.state === 'manquant' ? 'Relancer sur ' + m.label
+        : 'Reçu avant que les paquets ne soient rangés sur le disque : rien à ouvrir.';
+    const agit = ouvrable || m.state === 'manquant';
+    return `<button type="button" class="mcell ${m.state}${agit ? ' clickable' : ''}"
+      ${ouvrable ? `data-m="${esc(m.month)}"` : m.state === 'manquant' ? `data-relm="${esc(m.month)}"` : 'disabled'}
+      title="${esc(quoi)}" aria-label="${esc(m.label)} — ${esc(etat)}. ${esc(quoi)}">
+      <div class="m-lab">${esc(nom)}</div><div class="m-st">${esc(etat)}</div></button>`;
+  }).join('')}</div></div>`).join('')
           : `<span class="muted small">${dossier.manual
               ? 'Ce client n\'utilise pas encore SkanFact : rien ne lui est réclamé. Renseigne un « début de mission » dans sa fiche si tu veux commencer à attendre ses mois.'
               : 'Aucun mois attendu pour l\'instant : l\'attente démarre au premier paquet reçu, ou à la date de début de mission que tu renseignes dans la fiche.'}</span>`}
@@ -1630,7 +1669,7 @@
           <td class="nw">${esc(labelOf(K.RELANCE_WAYS, r.via) || r.via)}</td>
           <td>${esc((r.months || []).map(K.monthLabel).join(', ') || '—')}</td>
           <td class="muted">${esc(r.note || '')}</td></tr>`).join('')}</tbody></table>`
-        : `<div class="empty">Aucune relance enregistrée pour ce client.<br>
+        : `<div class="empty mini">Aucune relance enregistrée pour ce client.<br>
           <span class="small">Le bouton « Relancer », en haut, écrit le message et l'enregistre ici. Un appel ou un message
           passé ailleurs se note à la main.</span></div>`}
         ${/* Un état vide qui explique le geste en prose n'est pas une interface (7.0.0) : le bouton
@@ -1673,7 +1712,7 @@
       ${years.length ? `<div class="panel"><h2>Chiffre d'affaires ${info('d.ca')}</h2>
         ${years.length > 1 ? `<div class="filters"><label class="inline small">Exercice
           <select id="ca-year">${years.map(y => `<option value="${esc(y)}" ${y === anneeVue ? 'selected' : ''}>${esc(y)}</option>`).join('')}</select></label></div>` : ''}
-        ${caChart(packs, anneeVue) || '<div class="empty">Les paquets de cette année ne portent pas de chiffres (fabriqués avant la 6.2.1).</div>'}
+        ${caChart(packs, anneeVue) || '<div class="empty mini">Les paquets de cette année ne portent pas de chiffres (fabriqués avant la 6.2.1).</div>'}
       </div>` : ''}
 
       <div class="panel"><h2>Paquets reçus ${info('p.integrity')}</h2>
@@ -1699,7 +1738,7 @@
         <tfoot><tr><td class="nw"><strong>${pl(packs.length, 'mois', 'mois')}</strong></td><td></td>
           <td class="r nw"><strong>${esc(money(totalCA))}</strong></td><td colspan="7"></td></tr></tfoot></table></div>
         <p class="muted small mt">Le bouton « Actions » de chaque ligne ouvre ce qu'on peut faire du mois : l'ouvrir, l'extraire dans un dossier de ton choix ${info('p.extract')} — pour travailler dans ton logiciel, ou pour rendre ses pièces à un client —, accuser réception, ou supprimer un paquet arrivé par erreur ${info('p.delete')}.</p>`
-        : '<div class="empty">Aucun paquet reçu.</div>'}
+        : '<div class="empty mini">Aucun paquet reçu.</div>'}
       </div>
       </section>`;
 
@@ -1720,6 +1759,15 @@
     const rel = $('#rel'); if (rel) rel.onclick = () => writeRelance(row);
     $('#note-rel').onclick = () => noteRelanceForm(row);
     $$('[data-m]', view).forEach(c => { c.onclick = () => openPack(dossier, c.dataset.m); });
+    // Un mois manquant NOMME un manque : le geste qui va avec, c'est la relance — et elle part
+    // préremplie sur CE mois-là, pas sur tous. Cinq cartouches rouges et aucun bouton, c'était
+    // l'écran qui décrit un problème sans offrir d'y répondre (7.15.0).
+    $$('[data-relm]', view).forEach(c => {
+      c.onclick = () => {
+        const r = K.dossierList(S).find(x => x.id === dossier.id);
+        if (r) writeRelance({ ...r, missingMonths: [c.dataset.relm] });
+      };
+    });
 
     // Les livres du dossier (9.1.0). L'état de la période est propre au dossier : passer d'un
     // client à l'autre en gardant « mars 2026 » afficherait un livre vide sans raison visible
@@ -2098,7 +2146,7 @@
     // exactement le jour où elle sert le plus — le premier.
     const corps = s.onglet === 'saisie' ? vueSaisie(dossier)
       : !lignes.length
-        ? `<div class="empty">Aucune écriture sur cette période.</div>`
+        ? `<div class="empty mini">Aucune écriture sur cette période.</div>`
         : s.onglet === 'journal' ? vueJournal(lignes)
           : s.onglet === 'grand-livre' ? vueGrandLivre(lignes)
             : s.onglet === 'balance' ? vueBalance(lignes)
@@ -2470,7 +2518,7 @@
             <td class="nw">${t.equilibre ? '<span class="muted">équilibrée</span>' : `<span class="err-inline">écart ${t.ecart.toFixed(3)}</span>`}</td>
             ${RowMenu.cellule('B:' + e.id, '')}</tr>`;
         }).join('')}</tbody></table></div>`
-        : `<div class="empty"><p>Rien en brouillard.</p><p class="muted small">Tout ce que tu saisis ici arrive en brouillard : rien ne prend de numéro tant que tu ne l'as pas validé.</p></div>`}
+        : `<div class="empty mini"><p>Rien en brouillard.</p><p class="muted small">Tout ce que tu saisis ici arrive en brouillard : rien ne prend de numéro tant que tu ne l'as pas validé.</p></div>`}
       <p class="muted small mt">Une fois validée, une écriture ne se modifie plus : elle se <b>contre-passe</b> (une écriture miroir à la date du jour, pour corriger une erreur)
       ou s'<b>extourne</b> ${info('sa.extourne')} (une écriture miroir au 1er du mois suivant, pour une charge à payer). Les deux gestes sont dans le menu de la ligne, au livre-journal comme à la recherche.</p>`;
   }
@@ -3613,7 +3661,7 @@
 
       <div class="panel"><h2>À venir</h2>
         ${prochaines.length ? `<div class="ech-list">${prochaines.map(carte).join('')}</div>`
-          : '<div class="empty">Rien dans les trois prochains mois.</div>'}</div>
+          : '<div class="empty mini">Rien dans les trois prochains mois.</div>'}</div>
 
       ${passees.length ? `<div class="panel"><h2>Déjà passées</h2>
         <p class="small muted">SkanFact ne sait pas ce que tu as déposé : pointe celles que tu as faites, et cette liste ne garde que les mois

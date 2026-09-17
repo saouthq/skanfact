@@ -13625,6 +13625,74 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       'un filtre de parcours qu\'on retrouve trois jours plus tard est un piège');
   });
 
+  t('9.4.7 : les douze mois d\'une année, dans le sens du temps, et chacun dit ce qu\'il est', () => {
+    const app = lireSource('src', 'cabinet', 'renderer', 'app.js');
+    const css = lireSource('src', 'cabinet', 'renderer', 'cabinet.css');
+    // Personne ne lit un calendrier à l'envers. `.reverse()` affichait « Août, Juillet, Juin, Mai,
+    // Avril, Mars » sous une étiquette « 2026 » : le moteur rendait l'ordre juste, l'écran
+    // l'inversait. Ce sont les ANNÉES qui vont de la plus récente à la plus ancienne.
+    assert.ok(/const months = K\.dossierMonths\(dossier\);/.test(app),
+      'les mois gardent l\'ordre du temps que leur donne le moteur');
+    assert.ok(/const years = \[\.\.\.new Set\(months\.map\(m => m\.month\.slice\(0, 4\)\)\)\]\.sort\(\)\.reverse\(\);/.test(app),
+      'les années, elles, vont de la plus récente à la plus ancienne');
+    // L'année ENTIÈRE : six mois sous une étiquette « 2026 » ne disaient pas si la mission
+    // commençait là ou si l'application avait perdu les autres.
+    assert.ok(/const MOIS_COURTS = \[/.test(app) && /MOIS_COURTS\.map\(\(nom, k\) =>/.test(app),
+      'la grille doit dessiner les douze mois');
+    assert.ok(/'hors mission'/.test(app) && /'en cours'/.test(app) && /'à venir'/.test(app),
+      'un mois hors mission doit DIRE pourquoi il ne compte pas — y compris le mois où l\'on est');
+    // Un mois qui NOMME un manque porte le geste qui va avec (7.15.0). Cinq cartouches rouges et
+    // aucun bouton, c'est un écran qui décrit un problème sans offrir d'y répondre.
+    assert.ok(/data-relm="\$\{esc\(m\.month\)\}"/.test(app), 'un mois manquant doit porter sa relance');
+    const ib = app.indexOf("$$('[data-relm]', view)");
+    assert.ok(ib > 0, 'et elle doit être branchée : un bouton inerte est pire qu\'un bouton absent');
+    const zb = app.slice(ib, ib + 400);
+    assert.ok(/missingMonths: \[c\.dataset\.relm\]/.test(zb),
+      'la relance part sur CE mois-là, pas sur tous : nommer un mois et en réclamer six est une promesse non tenue');
+    // Un mois reçu avant que les paquets ne soient rangés n'a rien à ouvrir : le bouton le DIT
+    // au lieu d'accepter le clic sans agir (7.21.0).
+    assert.ok(/: 'Reçu avant que les paquets ne soient rangés sur le disque : rien à ouvrir\.'/.test(app),
+      'un mois sans fichier doit dire pourquoi');
+    assert.ok(/\? 'disabled'/.test(app), 'et être désactivé plutôt qu\'inerte');
+    // Une classe posée et inconnue de la feuille ne se voit nulle part (8.1.0).
+    ['.mcell.hors', '.mcell[disabled]'].forEach(c =>
+      assert.ok(css.includes(c), 'classe sans style : ' + c));
+    // La grille est une VRAIE grille : c'est elle qui aligne mars 2025 au-dessus de mars 2026.
+    assert.ok(/\.mgrid \{ display: grid; grid-template-columns: repeat\(12/.test(css),
+      'douze colonnes fixes, sinon rien ne s\'aligne d\'une année à l\'autre');
+  });
+
+  t('9.4.7 : un état vide SECONDAIRE s\'annonce, il ne se contemple pas', () => {
+    const css = lireSource('src', 'renderer', 'style.css');
+    const app = lireSource('src', 'cabinet', 'renderer', 'app.js');
+    // 48 px et un cadre pointillé, c'est la bonne présence quand la page ENTIÈRE est vide — c'est
+    // le premier écran. Au milieu d'une fiche pleine, le même bloc consacrait 250 px à « aucune
+    // relance enregistrée » et repoussait tout le reste.
+    assert.ok(/\.empty\.mini \{ padding: 14px 16px;/.test(css), 'l\'état vide secondaire doit exister');
+    assert.ok(/\.empty \{ padding: 48px 24px;/.test(css), 'et le plein doit rester plein : une page vide a besoin de présence');
+    // Ceux qui vivent DANS un panneau d'une page déjà pleine.
+    // Les phrases sont citées ENTIÈRES, ponctuation comprise : « Aucun paquet reçu » tout court
+    // tombait d'abord sur « Aucun paquet reçu pour l'instant… », qui est le corps d'un onglet et a
+    // raison de garder sa présence. Un test trop large accuse du code juste, exactement comme un
+    // test trop étroit (9.1.0).
+    ['Aucune relance enregistrée pour ce client.', 'Aucun paquet reçu.</div>', 'Aucune écriture sur cette période.',
+      'Rien en brouillard.', 'Rien dans les trois prochains mois.'].forEach(phrase => {
+      const k = app.indexOf(phrase);
+      assert.ok(k > 0, 'phrase introuvable : ' + phrase);
+      assert.strictEqual(app.indexOf(phrase, k + 1), -1, 'phrase ambiguë, le test viserait la mauvaise : ' + phrase);
+      assert.ok(app.slice(Math.max(0, k - 120), k).includes('empty mini'),
+        `« ${phrase} » vit dans un panneau : il doit porter « empty mini »`);
+    });
+    // Et ceux qui SONT le corps d'un écran gardent leur présence — un état vide rétréci sur une
+    // page vide serait l'excès inverse.
+    ['Aucun dossier ne correspond à cette recherche', 'La saisie a besoin d\'un livre'].forEach(phrase => {
+      const k = app.indexOf(phrase);
+      assert.ok(k > 0, 'phrase introuvable : ' + phrase);
+      assert.ok(!app.slice(Math.max(0, k - 120), k).includes('empty mini'),
+        `« ${phrase} » est le corps de son écran : il garde sa présence`);
+    });
+  });
+
   t('9.4.2 : la ponctuation double porte une espace insécable', () => {
     const src = lireSource('src', 'cabinet', 'renderer', 'app.js');
     const i = src.indexOf('function typographie(');

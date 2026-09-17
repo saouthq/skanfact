@@ -7,6 +7,24 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 9.4.7 — 17/09/2026
+
+**La fiche d'un client : l'année entière, dans le bon sens, et chaque mois agit.**
+
+- **Les douze mois de l'année**, et non les six attendus : on ne savait pas si la mission
+  commençait en mars ou si l'application avait perdu les deux premiers. Les mois hors mission sont
+  là, en retrait, et ils disent pourquoi — « hors mission », « en cours », « à venir ».
+- **Dans le sens du temps.** L'écran affichait « Août, Juillet, Juin, Mai, Avril, Mars » sous une
+  étiquette « 2026 » : personne ne lit un calendrier à l'envers. Et c'est une vraie grille de douze
+  colonnes, donc mars 2025 tombe au-dessus de mars 2026.
+- **Chaque mois porte son geste** : ouvrir le paquet quand il est là, **relancer sur ce mois-là**
+  quand il manque. Cinq cartouches rouges et aucun bouton, c'était un écran qui décrit un problème
+  sans offrir d'y répondre. Un mois reçu avant que les paquets ne soient rangés sur le disque le
+  dit, au lieu d'accepter le clic sans rien faire.
+- **Un état vide secondaire s'annonce, il ne se contemple pas.** « Aucune relance enregistrée »
+  occupait 250 px au milieu d'une fiche pleine. Les états vides qui vivent dans un panneau sont
+  désormais discrets ; ceux qui SONT le corps d'un écran gardent leur présence.
+
 ## 9.4.6 — 17/09/2026
 
 **Les Échéances : moins de répétition, un geste au bout, et le droit à l'erreur.**

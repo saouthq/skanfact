@@ -54,7 +54,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un e2e **se périme** : reconnaître un écran à ce qu'il CONTIENT, jamais à son rang | 7.3.0, 7.28.0, 7.29.0, 7.30.0, 9.2.2, 9.4.5 — six parcours pourris sans un mot |
 | Un e2e qui reste **bloqué** est pire qu'un e2e qui échoue | 7.28.0 — `Promise.race` sur toute fermeture |
 | `ta()` sans `await`, `t()` avec une fonction asynchrone : « ok » sans rien vérifier | 6.7.0, 8.4.0 |
-| Un test **trop étroit** accuse du code juste — aussi grave qu'un test trop large | 9.1.0, 9.2.0 — le jumeau du contrôle du pont, sans son nettoyage |
+| Un test **trop étroit** accuse du code juste — aussi grave qu'un test trop large | 9.1.0, 9.2.0 — le jumeau du contrôle du pont, sans son nettoyage ; 9.4.7 — une sous-chaîne ambiguë |
 | Une assertion ancrée sur une **forme** tombe sur du code juste : on la retourne vers la RÈGLE | 7.16.0, 8.2.0, 9.4.1 — trois en une version |
 | `npm test \| tail` **masque le code de sortie** : un commit part avec un test rouge | 9.2.0 |
 
@@ -90,6 +90,8 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un écran qui **NOMME** un ensemble doit pouvoir l'ouvrir | 7.15.0, 7.17.0, 7.21.0 |
 | L'endroit qui **affiche** un état est celui où on s'attend à le changer | 7.14.0 |
 | Un **moteur sans écran n'existe pas** ; une fonction jamais appelée est invisible | 7.2.0, 7.3.0, 7.19.0 |
+| Un **extrait sans son cadre** fait douter de l'outil : montrer l'ensemble, griser ce qui ne compte pas | 9.4.7 |
+| Un **état vide secondaire** s'annonce ; celui qui EST le corps d'un écran garde sa présence | 9.4.7 |
 | Une **phrase affichée** que rien ne tient est un bug, pas une imprécision | 7.3.0, 7.6.0, 8.0.0 ; 9.4.5 — un COMMENTAIRE aussi |
 | `navigate()` vers la page courante ne redessine **rien** : `vers()` | 7.15.0, 7.29.0 |
 | Un état lu une fois au démarrage **se périme** | 7.1.x, 8.0.0 |
@@ -3624,6 +3626,45 @@ Règles apprises, à ne pas recasser :
 
 Prouvé : six défauts réintroduits un par un font tomber leur test pur, et deux de plus font tomber
 le parcours réel.
+
+### 9.4.7 — La fiche d'un client : l'année entière, dans le bon sens
+
+Règles apprises, à ne pas recasser :
+
+- **Un calendrier se lit dans le sens du temps.** `.reverse()` affichait « Août, Juillet, Juin, Mai,
+  Avril, Mars » sous une étiquette « 2026 » : le moteur (`dossierMonths`) rendait l'ordre juste,
+  c'est l'écran qui l'inversait. Ce sont les ANNÉES qui vont de la plus récente à la plus ancienne —
+  on arrive pour le mois courant — jamais les mois à l'intérieur d'une année.
+- **Un extrait sans son cadre fait douter de l'outil.** Six mois affichés sur douze, sans un mot :
+  on ne savait pas si la mission commençait en mars ou si l'application avait perdu les deux
+  premiers. Les douze mois sont là ; ceux qui ne comptent pas sont en retrait et DISENT pourquoi.
+  C'est le calendrier qui explique l'extrait, jamais l'inverse.
+- **Une étiquette approximative sur un calendrier fait douter de tout le tableau** : « à venir » sur
+  le mois où l'on EST est faux — il est *en cours*, et c'est précisément pour ça qu'il n'est jamais
+  réclamé.
+- **Un mois qui NOMME un manque porte le geste qui va avec** (7.15.0) — et la relance part sur CE
+  mois-là, pas sur les six. Nommer un mois et en réclamer six est la même promesse non tenue que
+  « Les relancer » qui ouvrait les soixante clients (9.4.6).
+- **Un `flex-wrap` n'aligne rien d'une ligne à l'autre** : chaque année se recalait sur son propre
+  contenu. Une vraie grille de douze colonnes met mars 2025 au-dessus de mars 2026, et c'est ce qui
+  permet de comparer deux exercices d'un coup d'œil. Sous 1340 px elle passe à six colonnes,
+  deux rangées par année — l'alignement tient toujours.
+- **Un état vide SECONDAIRE s'annonce, il ne se contemple pas.** `.empty` fait 48 px de haut avec
+  son cadre pointillé : c'est la bonne présence quand la page ENTIÈRE est vide — c'est le premier
+  écran, il doit occuper la place. Au milieu d'une fiche déjà pleine, le même bloc consacrait 250 px
+  à « aucune relance enregistrée » et repoussait tout le reste. `.empty.mini` pour les seconds, et
+  le test vérifie les DEUX sens : un état vide qui est le corps de son écran garde sa présence,
+  sinon on aurait juste remplacé un excès par l'autre.
+- **Un test trop LARGE accuse du code juste**, exactement comme un test trop étroit (9.1.0) :
+  `indexOf('Aucun paquet reçu')` tombait sur « Aucun paquet reçu pour l'instant… », le corps d'un
+  onglet qui a raison de garder sa présence. Les phrases se citent entières, ponctuation comprise,
+  et le test vérifie qu'elles ne sont pas ambiguës avant de juger.
+- **Un e2e qui saute sa moitié ne prouve rien.** Ma première version ouvrait le premier dossier
+  venu ; il n'avait aucun mois manquant, donc le geste n'était jamais exercé — et le parcours
+  affichait « ok ». Il cherche maintenant un dossier qui en a un, et échoue s'il n'en trouve aucun.
+
+Prouvé : cinq défauts réintroduits un par un font tomber leur test, et le parcours réel exerce les
+deux moitiés du geste.
 
 ## Pistes pour la suite (non demandées)
 

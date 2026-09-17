@@ -379,6 +379,57 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   if (!/changé/i.test(t2)) throw new Error('le changement de mot de passe a échoué : ' + t2);
   ok('mot de passe changé, sauvegardes rechiffrées');
 
+  // 9.4.7 — la grille des douze mois : l'année entière, dans le sens du temps, et chaque mois
+  // attendu porte son geste. Cinq cartouches rouges et aucun bouton, c'était un écran qui décrit un
+  // problème sans offrir d'y répondre.
+  étape('Les douze mois d\'un client : l\'ordre, l\'explication, et le geste');
+  // On cherche un dossier qui a VRAIMENT un mois manquant : ouvrir le premier venu faisait passer
+  // la moitié du parcours à côté sans un mot — un test qui saute sa moitié ne prouve rien.
+  let trouve = false;
+  await win.evaluate(() => { document.querySelector('.sidebar nav a[data-route=dossiers]').click(); });
+  await win.waitForSelector('#view table.list tbody tr');
+  const nbLignes = await win.evaluate(() => document.querySelectorAll('#view table.list tbody tr').length);
+  for (let k = 0; k < Math.min(nbLignes, 6) && !trouve; k++) {
+    await win.evaluate(() => { document.querySelector('.sidebar nav a[data-route=dossiers]').click(); });
+    await win.waitForSelector('#view table.list tbody tr');
+    await win.evaluate(i => { document.querySelectorAll('#view table.list tbody tr')[i].click(); }, k);
+    await win.waitForSelector('.mgrid');
+    trouve = await win.evaluate(() => !!document.querySelector('[data-relm]'));
+  }
+  if (!trouve) throw new Error('aucun dossier de l\'exemple n\'a de mois manquant : le geste ne peut pas être prouvé');
+  const grille = await win.evaluate(() => {
+    const ligne = document.querySelector('.year-row');
+    const cases = [...ligne.querySelectorAll('.mcell')];
+    return {
+      n: cases.length,
+      mois: cases.map(c => (c.querySelector('.m-lab') || {}).textContent || ''),
+      hors: cases.filter(c => c.classList.contains('hors')).length,
+      relancables: ligne.querySelectorAll('[data-relm]').length,
+      // Un mois hors mission n'est pas un bouton : il n'a rien à faire.
+      horsBouton: cases.filter(c => c.classList.contains('hors') && c.tagName === 'BUTTON').length
+    };
+  });
+  if (grille.n !== 12) throw new Error(`une année compte douze mois, la grille en montre ${grille.n}`);
+  // Personne ne lit un calendrier à l'envers : « Août, Juillet, Juin… » sous une étiquette « 2026 »
+  // obligeait à relire deux fois pour trouver où commence la mission.
+  if (!/janv/i.test(grille.mois[0]) || !/déc/i.test(grille.mois[11])) {
+    throw new Error('les mois doivent aller de janvier à décembre : ' + grille.mois.join(' '));
+  }
+  if (!grille.hors) throw new Error('les mois hors mission doivent être montrés : c\'est eux qui expliquent l\'extrait');
+  if (grille.horsBouton) throw new Error('un mois hors mission n\'a aucun geste : il ne doit pas être un bouton');
+  ok(`les douze mois dans le sens du temps, dont ${grille.hors} hors mission expliqués`);
+
+  {
+    if (!grille.relancables) throw new Error('ce dossier devait avoir un mois manquant');
+    await win.evaluate(() => document.querySelector('[data-relm]').click());
+    await win.waitForSelector('.modal', { timeout: 8000 });
+    const mail = await win.textContent('.modal');
+    if (!/relance|manquant|mois/i.test(mail)) throw new Error('le clic sur un mois manquant doit ouvrir la relance : ' + mail.slice(0, 80));
+    await win.keyboard.press('Escape');
+    await attendre(400);
+    ok('un mois manquant ouvre la relance préremplie sur CE mois');
+  }
+
   // 10bis — les deux nouvelles pages
   étape('Échéances et Écritures');
   await win.evaluate(() => { location.hash = '#/echeances'; });

@@ -3,10 +3,15 @@
 
 /* La bande de mois d'un dossier : douze cases, une couleur, rien à lire. C'est l'écran qui répond
    à « où en est ce client ». */
-.mgrid { display: flex; flex-wrap: wrap; gap: 6px; }
+/* Les douze mois d'une année sur une GRILLE fixe, pas un `flex-wrap` : les colonnes tombent les
+   unes sous les autres d'une année à l'autre, donc « Mars 2025 » est au-dessus de « Mars 2026 » et
+   on compare deux exercices d'un coup d'oeil. Avec `flex`, chaque ligne se recalait sur son propre
+   contenu et rien ne s'alignait. */
+.mgrid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 6px; flex: 1; min-width: 0; }
 .mcell {
-  min-width: 92px; flex: 0 0 auto; border-radius: 10px; padding: 8px 10px; border: 1px solid var(--border);
-  background: var(--panel); text-align: left; font: inherit; cursor: default;
+  border-radius: 10px; padding: 8px 10px; border: 1px solid var(--border);
+  background: var(--panel); text-align: start; font: inherit; cursor: default;
+  display: block; width: 100%; min-width: 0;
 }
 .mcell .m-lab { font-size: 11px; color: var(--muted); text-transform: capitalize; }
 .mcell .m-st { font-size: 12.5px; font-weight: 650; margin-top: 2px; }
@@ -18,6 +23,17 @@
 .mcell.manquant .m-st { color: var(--danger); }
 .mcell.clickable { cursor: pointer; }
 .mcell.clickable:hover { box-shadow: 0 4px 14px rgba(20,40,60,.12); }
+.mcell.clickable:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+/* Un mois hors mission EXISTE et se voit — c'est lui qui explique pourquoi l'année commence en
+   mars. Il est en retrait, sans couleur d'état : il ne réclame rien et n'a pas de geste. */
+.mcell.hors { background: transparent; border-style: dashed; opacity: .55; }
+.mcell.hors .m-st { color: var(--muted); font-weight: 500; }
+.mcell[disabled] { opacity: .6; }
+/* Sur un portable, douze colonnes donneraient des cases de 60 px : on repasse à six, deux rangées
+   par année — l'alignement d'une année sur l'autre tient toujours. */
+@media (max-width: 1340px) {
+  .mgrid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+}
 
 .dot-lvl { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 7px; background: var(--success); }
 .dot-lvl.warn { background: var(--warning); }
