@@ -2841,102 +2841,20 @@
 
   // Familles proposées, avec la durée d'usage couramment admise. Aucune n'est imposée : l'utilisateur
   // change la durée bien par bien, et la bulle d'aide dit que c'est au comptable de trancher.
-  const DEFAULT_ASSET_CLASSES = [
-    ['informatique', 'Matériel informatique', 3],
-    ['logiciel', 'Logiciels et licences', 3],
-    ['bureau', 'Matériel de bureau', 5],
-    ['mobilier', 'Mobilier', 10],
-    ['outillage', 'Outillage et matériel technique', 5],
-    ['transport', 'Matériel de transport', 5],
-    ['agencement', 'Agencements et installations', 10],
-    ['construction', 'Constructions', 20],
-    ['autre', 'Autre immobilisation', 5]
-  ];
-  const assetClassLabel = k => (DEFAULT_ASSET_CLASSES.find(c => c[0] === k) || [, 'Autre immobilisation'])[1];
-  const assetClassYears = k => (DEFAULT_ASSET_CLASSES.find(c => c[0] === k) || [, , 5])[2];
-
-  // Nombre de jours entre deux dates en base 360 (mois de 30 jours), comme le veut le prorata temporis.
-  function days360(fromIso, toIso) {
-    if (!fromIso || !toIso || toIso < fromIso) return 0;
-    const [y1, m1, d1] = fromIso.split('-').map(Number);
-    const [y2, m2, d2] = toIso.split('-').map(Number);
-    return (y2 - y1) * 360 + (m2 - m1) * 30 + (Math.min(d2, 30) - Math.min(d1, 30));
-  }
-
-  // Le tableau d'amortissement d'un bien : une ligne par exercice, de la mise en service à la fin.
-  // `base` = valeur amortissable (acquisition − valeur résiduelle). La dernière annuité absorbe les
-  // arrondis, sinon la VNC finirait à 0,001 DT au lieu de zéro.
-  function assetSchedule(asset) {
-    const value = Number(asset.amount) || 0;
-    const residual = Number(asset.residual) || 0;
-    const years = Number(asset.years) || 0;
-    const start = asset.date || '';
-    const base = round3(Math.max(0, value - residual));
-    if (!start || years <= 0 || base <= 0) return [];
-    const end = addDays(addMonths(start, years * 12, Number(start.slice(8, 10))), -1);   // dernier jour amorti
-    const perYear = base / years;
-    const rows = [];
-    let cumulated = 0;
-    const firstYear = Number(start.slice(0, 4));
-    const lastYear = Number(end.slice(0, 4));
-    for (let y = firstYear; y <= lastYear; y++) {
-      const from = y === firstYear ? start : `${y}-01-01`;
-      const to = y === lastYear ? end : `${y}-12-31`;
-      // +1 jour : le jour de mise en service compte, et le 31/12 aussi.
-      const d = Math.max(0, days360(from, to) + 1);
-      let annuity = round3(perYear * d / 360);
-      if (y === lastYear) annuity = round3(base - cumulated);         // la dernière solde le reste
-      if (round3(cumulated + annuity) > base) annuity = round3(base - cumulated);
-      cumulated = round3(cumulated + annuity);
-      rows.push({ year: y, from, to, days: d, annuity, cumulated, nbv: round3(value - cumulated) });
-    }
-    return rows;
-  }
-
-  // Dotation de l'exercice `year` — zéro hors période d'amortissement, et zéro après une cession
-  // (l'année de la cession, on amortit jusqu'au jour de la sortie : c'est ce que fait `assetYear`).
-  function assetYear(asset, year) {
-    const rows = assetSchedule(asset);
-    const row = rows.find(r => r.year === year);
-    const disposal = asset.disposal && asset.disposal.date ? asset.disposal.date : '';
-    // Sorti d'un exercice antérieur : plus rien ne bouge, le cumul reste figé au jour de la cession.
-    if (disposal && Number(disposal.slice(0, 4)) < year) return { annuity: 0, cumulated: assetCumulated(asset, disposal), nbv: 0, out: true };
-    if (!row) return { annuity: 0, cumulated: assetCumulated(asset, `${year}-12-31`), nbv: round3((Number(asset.amount) || 0) - assetCumulated(asset, `${year}-12-31`)), out: !!disposal };
-    if (disposal && Number(disposal.slice(0, 4)) === year) {
-      const partial = assetCumulated(asset, disposal);
-      const before = assetCumulated(asset, `${year - 1}-12-31`);
-      return { annuity: round3(partial - before), cumulated: partial, nbv: round3((Number(asset.amount) || 0) - partial), out: true };
-    }
-    return { annuity: row.annuity, cumulated: row.cumulated, nbv: row.nbv, out: false };
-  }
-
-  // Amortissement cumulé à une date quelconque (utile pour la VNC au jour d'une cession).
-  function assetCumulated(asset, dateIso) {
-    const value = Number(asset.amount) || 0;
-    const residual = Number(asset.residual) || 0;
-    const years = Number(asset.years) || 0;
-    const start = asset.date || '';
-    const base = round3(Math.max(0, value - residual));
-    if (!start || years <= 0 || base <= 0 || dateIso < start) return 0;
-    // `d` est un nombre de jours base 360 ; la durée totale vaut `years * 360` jours.
-    const d = Math.min(years * 360, days360(start, dateIso) + 1);
-    return round3(Math.min(base, base * d / (years * 360)));
-  }
-
-  // Valeur nette comptable : ce que le bien « vaut » encore dans les comptes.
-  function assetNBV(asset, dateIso) {
-    return round3((Number(asset.amount) || 0) - assetCumulated(asset, dateIso));
-  }
-
-  // Résultat d'une cession : prix de vente moins la VNC au jour de la sortie.
-  // Positif = plus-value (imposable), négatif = moins-value. À VÉRIFIER avec le comptable.
-  function disposalResult(asset) {
-    const dis = asset.disposal;
-    if (!dis || !dis.date) return null;
-    const nbv = assetNBV(asset, dis.date);
-    const price = Number(dis.amount) || 0;
-    return { date: dis.date, price, nbv, result: round3(price - nbv), reason: dis.reason || '' };
-  }
+  // Le moteur d'amortissement vit dans `compta.js` depuis la 9.6.1 : aucune de ces fonctions ne
+  // prend `data` — elles prennent un BIEN — et le Cabinet, qui ne charge pas core.js, en a besoin
+  // pour les dossiers hors SkanFact. Réexportées ici à l'identique : les appelants n'ont pas bougé.
+  const DEFAULT_ASSET_CLASSES = Compta.DEFAULT_ASSET_CLASSES;
+  const assetClassLabel = Compta.assetClassLabel;
+  const assetClassYears = Compta.assetClassYears;
+  const days360 = Compta.days360;
+  const assetSchedule = Compta.assetSchedule;
+  const assetCumulated = Compta.assetCumulated;
+  const assetYear = Compta.assetYear;
+  const assetNBV = Compta.assetNBV;
+  const disposalResult = Compta.disposalResult;
+  const cappedCumulated = Compta.cappedCumulated;
+  const entrySet = Compta.entrySet;
 
   // L'état des immobilisations pour un exercice : une ligne par bien, avec la dotation de l'année.
   function assetsList(data, year) {
@@ -2984,12 +2902,6 @@
       });
     });
     return out.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-  }
-
-  // Amortissement cumulé, figé au jour de la sortie : après une cession, plus rien ne se déduit.
-  function cappedCumulated(asset, dateIso) {
-    const out = asset.disposal && asset.disposal.date ? asset.disposal.date : '';
-    return assetCumulated(asset, out && dateIso > out ? out : dateIso);
   }
 
   // Dotation de la PÉRIODE : c'est elle qui manquait au résultat simplifié et au seuil de rentabilité.
@@ -4051,40 +3963,6 @@
     const compte = (accountId && comptes.find(a => a.id === accountId)) || comptes.find(a => a.isDefault) || comptes[0];
     const caisse = compte ? compte.kind === 'caisse' : cashAccountFor(method, acc) === acc.caisse;
     return caisse ? { journal: 'CA', compte: acc.caisse } : { journal: 'BQ', compte: acc.banque };
-  }
-
-  // Une pièce = un ensemble d'écritures qui s'équilibrent. On la construit avec ce petit aide :
-  // il arrondit, ignore les montants nuls, et refuse de rendre un déséquilibre sans le signaler.
-  function entrySet(base) {
-    const lines = [];
-    const push = (account, label, debit, credit, extra) => {
-      let d = round3(debit || 0), c = round3(credit || 0);
-      // Un avoir produit des montants négatifs. Aucun logiciel comptable n'accepte un débit négatif :
-      // un montant négatif change de colonne, il ne garde pas son signe. C'est ce qui fait qu'un
-      // avoir s'écrit D ventes / D TVA / C client, exactement à l'envers d'une facture.
-      if (d < 0) { c = round3(c - d); d = 0; }
-      if (c < 0) { d = round3(d - c); c = 0; }
-      if (!d && !c) return;
-      lines.push({ ...base, account: String(account || ''), label: label || base.label || '', debit: d, credit: c, ...(extra || {}) });
-    };
-    return {
-      debit: (a, l, n, e) => push(a, l, n, 0, e),
-      credit: (a, l, n, e) => push(a, l, 0, n, e),
-      done() {
-        const d = round3(lines.reduce((s, x) => s + x.debit, 0));
-        const c = round3(lines.reduce((s, x) => s + x.credit, 0));
-        // Un écart de quelques millimes vient des arrondis de TVA ligne par ligne. On l'absorbe sur
-        // la dernière ligne plutôt que de livrer une pièce qui ne passera pas à l'import.
-        const gap = round3(d - c);
-        if (gap && lines.length) {
-          const last = lines[lines.length - 1];
-          if (gap > 0) last.credit = round3(last.credit + gap); else last.debit = round3(last.debit - gap);
-          if (last.credit < 0) { last.debit = round3(last.debit - last.credit); last.credit = 0; }
-          if (last.debit < 0) { last.credit = round3(last.credit - last.debit); last.debit = 0; }
-        }
-        return lines;
-      }
-    };
   }
 
   // Les écritures d'une période. `opts.auxiliaires` ajoute le nom du tiers en compte auxiliaire ;

@@ -7,6 +7,36 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 9.6.1 — 17/09/2026
+
+**Entretien. Aucune fonction nouvelle, par règle.**
+
+- **Le moteur d'écritures a fini de déménager.** Le constructeur de pièce équilibrée (`entrySet`)
+  et tout le moteur d'amortissement — familles de biens, base 360, plan, cumul, VNC, cession —
+  vivaient encore dans `core.js`. Aucun ne prend `data` : ils prennent une pièce ou un bien, donc
+  ils relèvent de `compta.js` selon la règle de découpage posée en 9.1.0. `core.js` les réexporte à
+  l'identique, et un test vérifie que ce sont les **mêmes fonctions**, pas des copies.
+- **Conséquence directe, et c'est la raison de ce déménagement** : le Cabinet, qui ne charge pas
+  `core.js` et ne doit jamais le charger, sait désormais amortir. C'est ce dont la 9.7.0 a besoin
+  pour les dossiers hors SkanFact.
+- **Une cinquième suite de tests** sort du lanceur (`test/suites/moteur.js`).
+- **Electron reste en 44.4.1** : c'est la dernière version publiée, rien à faire.
+
+**Ce qui a été trouvé en écrivant les tests** : mon test de l'absorbeur d'arrondis prenait un bien
+de 3 600 DT sur cinq ans — 720 DT pile. Retirer l'absorbeur ne faisait donc rien tomber : le test
+ne pouvait pas échouer, et je ne l'ai su qu'en essayant. Un montant qui se divise sans reste ne
+prouve rien d'un arrondi. Refait sur 1 000 DT en trois ans, où la dernière annuité doit porter le
+millime manquant.
+
+**Ce qui n'est PAS livré, et pourquoi** : le découpage de `src/renderer/app.js` par route
+(F-9.4.10-03), reporté une première fois. Il est **refusé**, avec sa raison, plutôt que reporté une
+troisième : ce fichier est une seule fermeture de 12 800 lignes, et le découper demanderait soit des
+variables globales — que le lint existe précisément pour interdire — soit un objet de contexte
+passé à travers tout le fichier. Le bénéfice serait la taille du fichier ; le risque, les 48
+parcours. La dette réellement constatée n'est pas la taille du fichier mais les **tranches de
+source qui se périment** dans les tests, et celle-là se rembourse en découpant le lanceur de tests,
+ce que cette version continue de faire.
+
 ## 9.6.0 — 17/09/2026
 
 **La déclaration du mois : les chiffres à recopier, et rien de plus.**

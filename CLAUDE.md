@@ -53,6 +53,8 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | **Tout test se prouve en réintroduisant son défaut.** Sinon on ne sait pas ce qu'on a écrit | 7.2.0, 7.22.0, 7.25.0, 7.27.0 — six tests qui ne pouvaient pas échouer |
 | Un test qui lit du code doit lire du **CODE** : commentaires et chaînes retirés d'abord | 6.8.0, 7.25.0, 9.4.10 — un commentaire satisfaisait l'assertion |
 | Une **suite découpée** que le lanceur ne charge pas n'existe pas : le dossier fait foi | 9.4.10 |
+| Un montant qui se **divise sans reste** ne prouve rien d'un arrondi : les DONNÉES du test comptent autant que sa forme | 9.6.1 |
+| Une **réexportation** se prouve par l'identité d'objet, jamais par le résultat | 9.6.1 |
 | Une assertion sur un montant se **calcule à la main**, jamais en recopiant la sortie | 7.0.1 — l'assertion qui gravait le bug depuis la 1.6.0 |
 | Un test écrit contre l'état du jour **décrit cet état**, pas la règle | 7.12.0, 7.26.0, 8.0.1, 8.2.0, 9.1.0, 9.2.2, 9.4.3, 9.4.5 — neuf assertions retournées |
 | Une **tranche** de source se prouve par sa taille et par ce qu'elle ne contient PAS | 7.20.0, 7.21.0, 8.2.0 ; 9.4.6 — jamais sur un décalage en dur |
@@ -3972,6 +3974,33 @@ Le test qui compte est `npm run e2e:declaration` : les quatre cases « — » av
 chiffre ouvert sur ses pièces, un mois DÉJÀ déclaré par le client qui montre quand même sa collectée
 et dont le bouton s'éteint en disant pourquoi, un mois libre où l'écriture se passe en brouillard au
 dernier jour, les deux pointages dans l'ordre puis défaits, et le refus de refaire une déposée.
+
+### 9.6.1 — L'entretien : le moteur a fini de déménager
+
+*Une version sur quatre ne porte aucune fonction nouvelle, par règle.*
+
+- **La règle de découpage de la 9.1.0 se relit dans les deux sens.** « Une fonction qui prend `data`
+  reste dans core.js ; une fonction qui prend des LIGNES vit dans compta.js » — le constructeur de
+  pièce équilibrée (`entrySet`) et tout le moteur d'amortissement prennent une PIÈCE et un BIEN.
+  Ils étaient du mauvais côté depuis la 3.5.0 et la 6.3.0, et ça ne s'était jamais vu parce que
+  personne d'autre n'en avait besoin. **Le Cabinet en a besoin en 9.7.0** : il ne charge pas core.js
+  et ne doit jamais le charger, donc la seule alternative au déménagement était la recopie — et une
+  copie diverge, toujours (6.8.0, 7.29.0).
+- **Une réexportation se prouve par l'IDENTITÉ, pas par le résultat.** `Core.assetSchedule ===
+  Compta.assetSchedule` : « une copie qui fait pareil » passerait un test de valeur et laisserait
+  deux moteurs vivre côte à côte. Le test compare les objets ; et pour `entrySet`, qui n'a jamais
+  été exporté, il exige la ligne de source qui le fait venir de compta.js.
+- **Un montant qui se divise sans reste ne prouve rien d'un arrondi.** Mon test de l'absorbeur
+  prenait 3 600 DT sur cinq ans — 720 pile : retirer l'absorbeur ne faisait RIEN tomber, et je ne
+  l'ai su qu'en essayant. Refait sur 1 000 DT en trois ans, où la dernière annuité doit porter le
+  millime manquant. C'est la règle 7.2.0 appliquée au choix des **données** du test, pas à sa forme.
+- **Le découpage de `app.js` par route est REFUSÉ, pas reporté une troisième fois.** Le fichier est
+  une seule fermeture de 12 800 lignes : le découper demanderait des variables globales — que le
+  lint existe pour interdire — ou un objet de contexte traversant tout le fichier. Le bénéfice
+  serait la taille du fichier ; le coût, le risque sur 48 parcours. La dette réellement CONSTATÉE
+  n'est pas la taille du fichier, ce sont les tranches de source qui se périment dans les tests
+  (7.20.0, 7.21.0, 8.2.0, 9.4.6) — et celle-là se rembourse en découpant le lanceur de tests.
+  **Une dette qu'on ne sait pas rattacher à un défaut réel n'est pas une dette, c'est un goût.**
 
 ## Pistes pour la suite (non demandées)
 

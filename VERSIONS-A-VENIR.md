@@ -522,7 +522,7 @@ des deux, jamais les deux (*toi* — je propose la banque quand le dossier a un 
 
 ---
 
-## 9.6.1 — Entretien *(hors des treize demandées)*
+## 9.6.1 — Entretien — **LIVRÉE le 17/09/2026**
 
 | | |
 |---|---|
@@ -531,12 +531,13 @@ des deux, jamais les deux (*toi* — je propose la banque quand le dossier a un 
 | **Bloque** | **rien** |
 | **Niveau de spec** | Intention : Partie 15 |
 
-| Id | Fonctionnalité | Côté | Spec |
-|---|---|---|---|
-| F-9.6.1-01 | Les taux et bases de la 9.6.0 confrontés à la **première vraie déclaration** | Cabinet | — |
-| F-9.6.1-02 | `core.js` → `compta.js` **fini** : le moteur d'écritures entièrement dans le module partagé | Partagé | SPEC-FUNC-100 |
-| F-9.6.1-03 | Electron, si une version est sortie | Partagé | — |
-| F-9.6.1-04 | Les retours de bêta qui ne sont pas des nouveautés | Partagé | — |
+| Id | Fonctionnalité | Côté | Spec | État |
+|---|---|---|---|---|
+| F-9.6.1-01 | Les taux et bases de la 9.6.0 confrontés à la **première vraie déclaration** | Cabinet | — | **bloquée** : aucune déclaration réelle n'a encore été déposée avec le Cabinet. Rien ne se confronte à rien |
+| F-9.6.1-02 | `core.js` → `compta.js` **fini** : le moteur d'écritures entièrement dans le module partagé | Partagé | SPEC-FUNC-100 | livrée — `entrySet` et tout le moteur d'amortissement |
+| F-9.6.1-03 | Electron, si une version est sortie | Partagé | — | rien à faire : 44.4.1 est la dernière publiée |
+| F-9.6.1-04 | Les retours de bêta qui ne sont pas des nouveautés | Partagé | — | aucun : rien n'est en bêta |
+| F-9.4.10-03 | Découper `app.js` par route *(reporté ici depuis la 9.4.10)* | Entreprise | — | **refusée**, avec sa raison : une seule fermeture de 12 800 lignes, dont le découpage exige des globales ou un contexte traversant. La dette constatée est ailleurs, voir `CHANGELOG.md` |
 
 ---
 
