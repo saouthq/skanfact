@@ -71,6 +71,51 @@ function dossierCaptures(nom) {
   return d;
 }
 
+// ---------------------------------------------------------------------------- la capture qui montre TOUT
+//
+// Pourquoi cette fonction existe : pendant des versions, TOUTES les captures de ces parcours se sont
+// arrêtées au bas de la fenêtre. Ce n'était pas un oubli de `fullPage: true` — c'est que `fullPage`
+// ne pouvait rien y faire. Les deux applications posent un cadre FIXE (`#app { height: 100vh }`) et
+// c'est `main#view` qui défile : le DOCUMENT ne dépasse donc jamais la fenêtre, et une capture
+// « page entière » rend exactement la même image qu'une capture d'écran. Une page de quatre écrans
+// de haut se photographiait au quart, et on relisait ce quart en croyant relire la page.
+//
+// On relâche le cadre le temps de la photo, on photographie, on le remet. Ce qui est en `position:
+// fixed` (une fenêtre modale, l'assistant, le voile) est relâché aussi, sans quoi il resterait à la
+// taille de l'écran au milieu d'une image trois fois plus haute.
+const RELACHE = `
+  html, body { height: auto !important; overflow: visible !important; }
+  #app { height: auto !important; min-height: 100vh; align-items: flex-start !important; }
+  main, main#view { overflow: visible !important; }
+  .sidebar { position: sticky !important; top: 0; align-self: flex-start !important; }
+  .modal-bg, #setup, #lock-screen {
+    position: absolute !important; inset: 0 auto auto 0 !important; width: 100% !important;
+    height: auto !important; min-height: 100vh; align-items: flex-start !important; padding: 28px 0 !important;
+  }
+  .modal, #setup .wiz-card, .lock-card { max-height: none !important; overflow: visible !important; }
+  .modal, #setup .wiz-card { margin: 0 auto; }
+  #setup .wiz-body { overflow: visible !important; }
+  .scroll-y, nav { overflow: visible !important; }
+`;
+
+async function capturePleine(win, chemin, opts = {}) {
+  await win.evaluate(css => {
+    const s = document.createElement('style');
+    s.id = '__capture-pleine'; s.textContent = css;
+    document.head.appendChild(s);
+  }, RELACHE);
+  await win.waitForTimeout(opts.pose || 150);
+  try {
+    await win.screenshot({ path: chemin, fullPage: true });
+  } finally {
+    await win.evaluate(() => {
+      const s = document.getElementById('__capture-pleine');
+      if (s) s.remove();
+    });
+    await win.waitForTimeout(80);
+  }
+}
+
 // Playwright installé dans le projet peut ne pas avoir SON chromium (image préchargée, version
 // décalée) : il réclame alors `npx playwright install` alors qu'un navigateur parfaitement utilisable
 // est déjà là, sous un autre numéro. On essaie le chemin normal, puis les navigateurs présents.
@@ -98,4 +143,7 @@ async function ouvrirChromium(pw) {
   }
 }
 
-module.exports = { playwright, RACINE, ELECTRON, VERSION, journal, surveiller, dossierCaptures, ouvrirChromium };
+module.exports = {
+  playwright, RACINE, ELECTRON, VERSION, journal, surveiller, dossierCaptures, ouvrirChromium,
+  capturePleine
+};

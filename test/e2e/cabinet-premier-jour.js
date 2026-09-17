@@ -12,7 +12,7 @@
 //
 // Ce n'est pas qu'un instrument : les assertions à la fin sont des règles du projet, et elles
 // doivent tomber si quelqu'un les recasse.
-const { playwright, RACINE, ELECTRON } = require('./harnais');
+const { playwright, RACINE, ELECTRON, capturePleine } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 const OUT = process.argv[2] || path.join(RACINE, 'dist-e2e', 'cabinet-premier-jour');
@@ -133,7 +133,9 @@ const LARGE = 1440, HAUT = 900;
     });
     m.nom = nom; m.quoi = titre;
     mesures.ecrans.push(m);
-    await win.screenshot({ path: path.join(OUT, nom + '.png') });
+    // La page ENTIÈRE, pas le haut de la fenêtre : `#view` défile sous un cadre fixe, donc une
+    // capture ordinaire s'arrête au bas de l'écran quelle que soit la longueur de la page.
+    await capturePleine(win, path.join(OUT, nom + '.png'));
     const sansBulle = m.champs.filter(c => !c.bulle);
     dit(`${m.ecrans} écran(s) de haut · ${m.boutons.length} boutons · ${m.champs.length} champs`
       + (sansBulle.length ? ` · ${sansBulle.length} sans bulle` : '')
