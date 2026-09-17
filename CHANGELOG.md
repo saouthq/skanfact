@@ -7,6 +7,33 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 9.8.2 — 17/09/2026
+
+**Soixante secondes de silence tuaient l'envoi d'un fichier de 220 Mo.**
+
+La 9.8.1 a réglé la course qui faisait échouer la publication, et la suivante a échoué autrement : le
+poste macOS a envoyé son `.dmg` sans problème, puis son `.zip` — de taille identique — a **expiré**.
+Avec lui sont tombés les quatre fichiers du Cabinet macOS qui devaient suivre, dont `cabinet-mac.yml`.
+Résultat visible chez l'utilisateur : le Cabinet sur Mac ne trouvait plus son fichier d'index et ne
+pouvait plus se mettre à jour.
+
+La cause est dans `electron-publish` : son délai d'attente par défaut est de **soixante secondes**, et
+c'est un délai d'**inactivité du socket** (`socket.setTimeout`), pas une durée totale de transfert.
+Une minute sans un seul octet suffit donc à tuer l'envoi — et un fichier de 220 Mo vers GitHub
+s'arrête régulièrement plus longtemps que ça pendant que le serveur digère ce qu'il vient de recevoir.
+
+Le délai passe à **dix minutes**, dans les deux configurations de construction (`package.json` pour
+l'application entreprise, `build/cabinet.config.js` pour le Cabinet). Comme le compteur ne court que
+sur un **silence**, un transfert qui avance n'est jamais interrompu ; seule une connexion vraiment
+morte est rendue, et elle l'est toujours.
+
+Ce qu'on retient : **une valeur par défaut qu'on n'a pas lue est une décision qu'on n'a pas prise.**
+Soixante secondes est un réglage raisonnable pour une requête d'API ; appliqué au téléversement d'un
+installateur, c'est une panne qui attend son jour. Et le jour où elle arrive, ce n'est pas le gros
+fichier qui échoue — c'est le suivant.
+
+Aucune ligne de l'application n'a changé.
+
 ## 9.8.1 — 17/09/2026
 
 **La publication elle-même : la course qui a fait échouer la 9.8.0.**

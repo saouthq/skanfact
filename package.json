@@ -1,7 +1,7 @@
 {
   "name": "skanfact",
   "productName": "SkanFact",
-  "version": "9.8.1",
+  "version": "9.8.2",
   "description": "Devis et factures pour les petites entreprises",
   "main": "src/main.js",
   "author": "Skander Ben Amor",
@@ -158,7 +158,8 @@
       "provider": "github",
       "owner": "saouthq",
       "repo": "skanfact",
-      "releaseType": "release"
+      "releaseType": "release",
+      "timeout": 600000
     },
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "npmRebuild": false

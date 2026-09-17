@@ -110,7 +110,16 @@ module.exports = {
     // lancement du workflow s'oublient et se désaccordent ; un numéro de version, non.
     //   9.2.0        → cabinet.yml        (tous les cabinets)
     //   9.2.0-beta.1 → cabinet-beta.yml   (seulement ceux qui ont coché la case)
-    channel: /-/.test(pkg.version) ? 'cabinet-beta' : 'cabinet'
+    channel: /-/.test(pkg.version) ? 'cabinet-beta' : 'cabinet',
+    // Le délai d'attente par défaut d'electron-publish est de SOIXANTE SECONDES, et c'est un délai
+    // d'INACTIVITÉ du socket (`socket.setTimeout`), pas une durée totale de transfert. Une minute
+    // sans un octet suffit donc à tuer l'envoi — et un fichier de 220 Mo vers GitHub s'arrête
+    // régulièrement plus longtemps que ça pendant que le serveur digère. C'est ce qui a fait échouer
+    // la publication de la 9.8.1 côté macOS : le `.dmg` était passé, le `.zip` de même taille a
+    // expiré, et avec lui les quatre fichiers du Cabinet qui devaient suivre.
+    // Dix minutes d'inactivité tolérée : comme le délai ne court que sur un silence, un transfert
+    // qui avance n'est jamais interrompu, et une connexion vraiment morte est quand même rendue.
+    timeout: 600000
   },
   artifactName: 'SkanFact-Cabinet-${version}-${os}-${arch}.${ext}'
 };
