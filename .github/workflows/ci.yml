@@ -60,6 +60,17 @@ jobs:
       - name: Tests
         run: npm test
 
+      # 9.4.10 — la revue de sécurité des dépendances (QUESTIONS.md § 15, point 11), et elle porte
+      # sur `--omit=dev`. Ce n'est pas un raccourci : ce qui part chez un client, c'est le paquet
+      # construit, et il n'embarque que `dependencies`. Une faille dans `electron-builder` ou dans
+      # ses dépendances de construction se corrige aussi, mais elle ne met personne en danger — et
+      # une CI rouge en permanence pour une faille qui ne s'installe nulle part cesse d'être lue,
+      # emmenant avec elle celle qui comptait. Sur Linux seulement : le verdict ne dépend pas du
+      # système, et le payer deux fois ne l'affine pas.
+      - name: Dépendances livrées
+        if: matrix.os == 'ubuntu-latest'
+        run: npm audit --omit=dev --audit-level=high
+
       # Les 161 documents imprimés dans un vrai chromium. Sur Linux seulement : le rendu d'un PDF
       # ne dépend pas du système hôte ici, parce qu'Electron embarque SON chromium — c'est
       # exactement la raison pour laquelle ce projet imprime avec `printToPDF` plutôt qu'avec une

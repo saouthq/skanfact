@@ -55,6 +55,17 @@ export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 
 if command -v node >/dev/null 2>&1; then
   ok "Node.js $(node -v) détecté"
+  # 9.4.10 — la version minimale vit dans package.json (`engines`), et c'est ELLE qu'on lit : écrite
+  # ici en plus, les deux divergeraient au premier changement. La publication tourne sur Node 22 ;
+  # une construction locale sur un Node plus ancien produit un paquet différent de celui qu'on teste,
+  # et l'écart ne se voit qu'après coup (QUESTIONS.md § 15, point 12).
+  NODE_MIN=$(node -p "String((require('./package.json').engines||{}).node||'').replace(/[^0-9]/g,'') || '22'" 2>/dev/null || echo 22)
+  NODE_VU=$(node -p "process.versions.node.split('.')[0]")
+  if [[ "$NODE_VU" -lt "$NODE_MIN" ]]; then
+    warn "SkanFact se construit avec Node $NODE_MIN ou plus ; celui-ci est le $NODE_VU."
+    echo "  Mets Node.js à jour (nodejs.org, bouton LTS, ou « brew upgrade node ») puis relance."
+    ask "Continuer quand même ?" || fail "Installation arrêtée : Node.js $NODE_MIN ou plus est requis."
+  fi
 else
   warn "Node.js n'est pas installé. C'est indispensable pour faire tourner SkanFact."
   echo

@@ -71,8 +71,17 @@
   const CE_POSTE = () => (surMac() ? 'ce Mac' : 'cet ordinateur');
   const EXPLORATEUR = () => (surMac() ? 'le Finder' : 'l\'Explorateur');
 
+  // Depuis la 9.4.10 chaque refus finit par son code entre crochets (« … [ERR-CAB-009] »). Le code
+  // sert au dépannage, pas à la lecture : on le détache de la phrase. `codeErreur` le rend à qui a
+  // la place de l'afficher — jamais dans un bandeau de 2,6 secondes.
+  const RE_CODE = /\s*\[(ERR-[A-Z]+-\d+)\]\s*$/;
   const plainError = e => String((e && e.message) || e || '')
-    .replace(/^Error invoking remote method '[^']*':\s*/, '').replace(/^Error:\s*/, '') || 'Erreur inconnue.';
+    .replace(/^Error invoking remote method '[^']*':\s*/, '').replace(/^Error:\s*/, '')
+    .replace(RE_CODE, '').trim() || 'Erreur inconnue.';
+  const codeErreur = e => {
+    const m = String((e && e.message) || e || '').match(RE_CODE);
+    return (m && m[1]) || (e && e.code) || '';
+  };
 
   let toastTimer = null;
   function toast(msg, kind) {
@@ -584,7 +593,10 @@
         $('#app').hidden = false;
         start(r.created, r.reorganized, aRecuperer, r.exemple);
       } catch (ex) {
-        err.innerHTML = esc(plainError(ex));
+        // L'écran de verrouillage a la place d'un code, et c'est le seul refus qu'on ne peut pas
+        // dépanner en regardant l'application : elle n'est pas encore ouverte.
+        const code = codeErreur(ex);
+        err.innerHTML = esc(plainError(ex)) + (code ? ' <span class="muted small">' + esc(code) + '</span>' : '');
         err.hidden = false;
         go.disabled = false;
         go.textContent = st.exists ? 'Ouvrir' : 'Créer mon cabinet';

@@ -15,7 +15,7 @@
 //   5. « Facturer ce devis » restait proposé sur un devis déjà facturé.
 //
 //   xvfb-run -a node test/e2e/chiffres.js
-const { playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
+const { playwright, RACINE, ELECTRON, journal, surveiller, montant } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 
@@ -24,7 +24,7 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'skanfact-chiffres-'));
   const app = await electron.launch({ args: ['--no-sandbox', `--user-data-dir=${userData}`, RACINE], executablePath: ELECTRON });
   const win = await app.firstWindow(); surveiller(win, '', bac);
-  const nb = s => Number(String(s).replace(/[^\d,.-]/g, '').replace(/\s/g, '').replace(',', '.'));
+  const nb = montant;
 
   j.etape('Une entreprise et le jeu d\'exemple (qui contient des pièces en euros)');
   await win.waitForSelector('#setup');

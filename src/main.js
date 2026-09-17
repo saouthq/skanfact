@@ -71,6 +71,26 @@ function logError(where, err) {
   try { dialog.showErrorBox('SkanFact — erreur', `${where}\n\n${err && err.message || err}\n\nDétail dans : ${logPath()}`); } catch {}
 }
 
+// 9.4.10 — Chaque refus porte son CODE (Partie 10 du cahier des charges). La phrase en français ne
+// bouge pas : c'est elle qu'on lit. Le code se cite — dans un signalement, au téléphone, dans le
+// cahier. Il voyage DANS le message parce qu'une propriété posée sur une Error ne traverse pas le
+// pont IPC (Electron la sérialise en une chaîne) ; l'écran le détache avant d'afficher la phrase.
+const erreur = (code, message) => Object.assign(new Error(`${message} [${code}]`), { code, refus: true });
+
+// Et un refus laisse une trace, toujours. On enveloppe `ipcMain.handle` UNE fois plutôt qu'à chaque
+// enregistrement : autant de points d'appel, autant d'occasions d'en oublier un — et la forme
+// `ipcMain.handle(` reste celle que les tranches de source des tests reconnaissent.
+const handleBrut = ipcMain.handle.bind(ipcMain);
+ipcMain.handle = (canal, fn) => handleBrut(canal, async (...a) => {
+  try { return await fn(...a); }
+  // Un refus qu'on a ÉCRIT (`erreur(…)`) est une RÉPONSE, pas une panne : l'inscrire noierait le
+  // journal sous les mots de passe mal tapés, et un journal qu'on ne lit plus ne dépanne personne
+  // (même règle que le rouge sur une situation normale, 8.0.1). Ce qui manquait est l'autre moitié :
+  // une exception qu'aucune phrase n'attendait n'écrivait RIEN nulle part — elle repartait vers
+  // l'écran habillée en « Error invoking remote method », et le journal restait muet.
+  catch (e) { if (!(e && e.refus)) logToFile('panne ' + canal, e); throw e; }
+});
+
 // En mode développement (`npm start`), on travaille dans un dossier de données SÉPARÉ.
 // Sans ça, on écrit dans les vraies données de l'utilisateur : l'application installée s'appelle
 // « SkanFact » et celle lancée depuis les sources « skanfact », or macOS ne distingue pas les
@@ -1312,7 +1332,7 @@ ipcMain.handle('logo:pick', async (_e, title) => {
   if (canceled || !filePaths.length) return null;
   const file = filePaths[0];
   const size = fs.statSync(file).size;
-  if (size > 1024 * 1024) throw new Error('Image trop lourde (1 Mo maximum). Réduis-la avant de l\'utiliser.');
+  if (size > 1024 * 1024) throw erreur('ERR-ENT-010', 'Image trop lourde (1 Mo maximum). Réduis-la avant de l\'utiliser.');
   const ext = path.extname(file).slice(1).toLowerCase();
   const mime = ext === 'svg' ? 'image/svg+xml' : ext === 'png' ? 'image/png' : 'image/jpeg';
   const b64 = fs.readFileSync(file).toString('base64');
@@ -1331,7 +1351,7 @@ ipcMain.handle('attach:add', async (_e, docId) => {
   const out = [];
   for (const f of filePaths) {
     const size = fs.statSync(f).size;
-    if (size > 25 * 1024 * 1024) throw new Error(`« ${path.basename(f)} » dépasse 25 Mo. Réduis le fichier avant de le joindre.`);
+    if (size > 25 * 1024 * 1024) throw erreur('ERR-ENT-011', `« ${path.basename(f)} » dépasse 25 Mo. Réduis le fichier avant de le joindre.`);
     out.push(storage.addAttachment(docId, f));
   }
   return out;
@@ -1339,9 +1359,9 @@ ipcMain.handle('attach:add', async (_e, docId) => {
 // Joindre un fichier dont on connaît déjà le chemin (la photo qu'on vient de lire, par exemple) :
 // même copie dans userData/pieces-jointes/, sans redemander à l'utilisateur de le retrouver.
 ipcMain.handle('attach:addPath', (_e, { docId, path: file } = {}) => {
-  if (!file || !fs.existsSync(file)) throw new Error('Fichier introuvable.');
+  if (!file || !fs.existsSync(file)) throw erreur('ERR-ENT-012', 'Fichier introuvable.');
   const size = fs.statSync(file).size;
-  if (size > 25 * 1024 * 1024) throw new Error(`« ${path.basename(file)} » dépasse 25 Mo.`);
+  if (size > 25 * 1024 * 1024) throw erreur('ERR-ENT-011', `« ${path.basename(file)} » dépasse 25 Mo.`);
   return storage.addAttachment(docId, file);
 });
 ipcMain.handle('attach:open', (_e, { docId, file }) => shell.openPath(storage.attachmentPath(docId, file)));
@@ -1429,7 +1449,7 @@ function parseOcrJson(text) {
   const s = String(text || '');
   const start = s.indexOf('{');
   const end = s.lastIndexOf('}');
-  if (start < 0 || end <= start) throw new Error('Le service n\'a pas renvoyé de facture lisible.');
+  if (start < 0 || end <= start) throw erreur('ERR-ENT-020', 'Le service n\'a pas renvoyé de facture lisible.');
   return JSON.parse(s.slice(start, end + 1));
 }
 
@@ -1456,19 +1476,19 @@ ipcMain.handle('ocr:pick', async () => {
   if (canceled || !filePaths.length) return null;
   const f = filePaths[0];
   const type = OCR_TYPES[path.extname(f).toLowerCase()];
-  if (!type) throw new Error('Format non reconnu. Utilise une photo (JPG, PNG, WEBP) ou un PDF.');
+  if (!type) throw erreur('ERR-ENT-021', 'Format non reconnu. Utilise une photo (JPG, PNG, WEBP) ou un PDF.');
   const size = fs.statSync(f).size;
-  if (size > 10 * 1024 * 1024) throw new Error(`« ${path.basename(f)} » fait ${(size / 1024 / 1024).toFixed(1)} Mo. Au-delà de 10 Mo, le service refuse l'image : prends une photo un peu moins lourde.`);
+  if (size > 10 * 1024 * 1024) throw erreur('ERR-ENT-022', `« ${path.basename(f)} » fait ${(size / 1024 / 1024).toFixed(1)} Mo. Au-delà de 10 Mo, le service refuse l'image : prends une photo un peu moins lourde.`);
   return { path: f, name: path.basename(f), size, type };
 });
 
 // La lecture elle-même. Appelée seulement quand l'utilisateur a saisi une clé ET cliqué « Lire ».
 ipcMain.handle('ocr:read', async (_e, { path: file } = {}) => {
   const cfg = readOcrCfg();
-  if (!cfg.key) throw new Error('Aucune clé n\'est enregistrée : rien n\'a été envoyé. Paramètres → Données et sécurité → Lecture de factures.');
-  if (!file || !fs.existsSync(file)) throw new Error('Fichier introuvable.');
+  if (!cfg.key) throw erreur('ERR-ENT-023', 'Aucune clé n\'est enregistrée : rien n\'a été envoyé. Paramètres → Données et sécurité → Lecture de factures.');
+  if (!file || !fs.existsSync(file)) throw erreur('ERR-ENT-012', 'Fichier introuvable.');
   const type = OCR_TYPES[path.extname(file).toLowerCase()];
-  if (!type) throw new Error('Format non reconnu.');
+  if (!type) throw erreur('ERR-ENT-021', 'Format non reconnu.');
   const b64 = fs.readFileSync(file).toString('base64');
   const source = { type: 'base64', media_type: type, data: b64 };
   const content = [
@@ -1711,31 +1731,31 @@ const PONT_MIN = 24;
 // Seuls les chemins de l'espace d'administration, jamais un chemin composé depuis l'écran.
 const PONT_CHEMIN = /^[A-Za-z0-9_-]+(\/[A-Za-z0-9_-]+){0,2}(\?[A-Za-z0-9_=&-]*)?$/;
 async function pontRequete(chemin, corps) {
-  if (!editeurActif()) { const err = new Error('Le pont comptable ne s\'utilise que sur le poste de l\'éditeur.'); err.code = 'PAS_EDITEUR'; throw err; }
-  if (!plateformeBase()) { const err = new Error('Aucune adresse de plan de contrôle dans cette version.'); err.code = 'PAS_DE_BASE'; throw err; }
+  if (!editeurActif()) { throw erreur('ERR-ENT-070', 'Le pont comptable ne s\'utilise que sur le poste de l\'éditeur.'); }
+  if (!plateformeBase()) { throw erreur('ERR-ENT-071', 'Aucune adresse de plan de contrôle dans cette version.'); }
   const secret = pontSecret();
-  if (!secret) { const err = new Error('Colle d\'abord le secret d\'administration de la console (Paramètres → L\'application → Éditeur).'); err.code = 'PAS_DE_SECRET'; throw err; }
+  if (!secret) { throw erreur('ERR-ENT-072', 'Colle d\'abord le secret d\'administration de la console (Paramètres → L\'application → Éditeur).'); }
   const c = String(chemin || '');
-  if (!PONT_CHEMIN.test(c) || c.includes('..')) { const err = new Error('Chemin refusé.'); err.code = 'CHEMIN'; throw err; }
+  if (!PONT_CHEMIN.test(c) || c.includes('..')) { throw erreur('ERR-ENT-073', 'Chemin refusé.'); }
   let r;
   try { r = await requetePlateforme('/v1/admin/' + c, { corps, entetes: { 'X-SkanFact-Admin': secret }, timeout: 15000, max: 4 * 1024 * 1024 }); }
   catch (e) {
     // Aucun message brut à l'écran (7.26.0) : « socket hang up » va dans le journal, pas sous les yeux.
     logToFile('pont ' + c, e);
-    const err = new Error('La console ne répond pas. Vérifie ta connexion, ou réessaie dans un instant.'); err.code = 'RESEAU'; throw err;
+    throw erreur('ERR-ENT-074', 'La console ne répond pas. Vérifie ta connexion, ou réessaie dans un instant.');
   }
-  if (r.status === 403) { const err = new Error('La console refuse ce secret d\'administration : vérifie-le dans Paramètres → L\'application → Éditeur.'); err.code = 'REFUSE'; throw err; }
-  if (r.status >= 400) { const err = new Error((r.corps && r.corps.erreur) || ('La console a répondu ' + r.status + '.')); err.code = 'HTTP_' + r.status; throw err; }
+  if (r.status === 403) { throw erreur('ERR-ENT-075', 'La console refuse ce secret d\'administration : vérifie-le dans Paramètres → L\'application → Éditeur.'); }
+  if (r.status >= 400) { throw erreur('ERR-ENT-076', (r.corps && r.corps.erreur) || ('La console a répondu ' + r.status + '.')); }
   return r.corps;
 }
 ipcMain.handle('pont:status', () => ({ editeur: editeurActif(), base: plateformeBase(), configure: !!pontSecret() }));
 // Enregistrer le secret, puis l'ESSAYER tout de suite : un secret enregistré sans être vérifié se
 // découvre faux le jour où l'on en a besoin. Vide, il s'efface.
 ipcMain.handle('pont:setSecret', async (_e, secret) => {
-  if (!editeurActif()) { const err = new Error('Le pont comptable ne s\'utilise que sur le poste de l\'éditeur.'); err.code = 'PAS_EDITEUR'; throw err; }
+  if (!editeurActif()) { throw erreur('ERR-ENT-070', 'Le pont comptable ne s\'utilise que sur le poste de l\'éditeur.'); }
   const s = String(secret || '').trim();
   if (!s) { try { fs.unlinkSync(PONT_ADMIN()); } catch {} return { configure: false }; }
-  if (s.length < PONT_MIN) { const err = new Error(`Le secret d'administration fait au moins ${PONT_MIN} caractères : celui-ci en a ${s.length}.`); err.code = 'SECRET_COURT'; throw err; }
+  if (s.length < PONT_MIN) { throw erreur('ERR-ENT-072', `Le secret d'administration fait au moins ${PONT_MIN} caractères : celui-ci en a ${s.length}.`); }
   fs.mkdirSync(CLES_DIR(), { recursive: true });
   // L'ancien secret est gardé sous la main : si le nouveau est refusé, il reprend sa place — un
   // secret faux ne doit pas remplacer un secret qui marchait, ni rester écrit après un refus.
@@ -1807,14 +1827,14 @@ ipcMain.handle('cabinet:import', async () => {
   if (canceled || !filePaths || !filePaths[0]) return null;
   let j;
   try { j = JSON.parse(fs.readFileSync(filePaths[0], 'utf8')); }
-  catch { throw new Error('Ce fichier n\'est pas lisible.'); }
-  if (!j || j.kind !== 'cabinet' || !j.publicKey) throw new Error('Ce fichier n\'est pas un appairage de cabinet.');
+  catch { throw erreur('ERR-ENT-030', 'Ce fichier n\'est pas lisible.'); }
+  if (!j || j.kind !== 'cabinet' || !j.publicKey) throw erreur('ERR-ENT-030', 'Ce fichier n\'est pas un appairage de cabinet.');
   let fingerprint;
   try { fingerprint = keyFingerprint(j.publicKey); }
-  catch { throw new Error('La clé de ce cabinet est illisible.'); }
+  catch { throw erreur('ERR-ENT-030', 'La clé de ce cabinet est illisible.'); }
   // L'empreinte annoncée dans le fichier doit correspondre à la clé qu'il contient : sinon quelqu'un
   // a changé l'une des deux, et c'est exactement ce qu'un imposteur ferait.
-  if (j.fingerprint && j.fingerprint !== fingerprint) throw new Error('Fichier incohérent : l\'empreinte ne correspond pas à la clé.');
+  if (j.fingerprint && j.fingerprint !== fingerprint) throw erreur('ERR-ENT-030', 'Fichier incohérent : l\'empreinte ne correspond pas à la clé.');
   return { name: String(j.name || ''), email: String(j.email || ''), publicKey: String(j.publicKey), fingerprint, pairedAt: new Date().toISOString() };
 });
 
@@ -1823,7 +1843,7 @@ ipcMain.handle('cabinet:import', async () => {
 // le HTML des pièces à rendre. Ici on ne fait qu'exécuter : produire les octets, empreinter, zipper,
 // sceller, écrire. Cette séparation permet de tester tout le contenu du paquet sans lancer Electron.
 ipcMain.handle('pack:build', async (_e, { plan, coverHtml, password, cabinetKey, suggestedName } = {}) => {
-  if (!plan || !Array.isArray(plan.entries)) throw new Error('Plan de paquet invalide.');
+  if (!plan || !Array.isArray(plan.entries)) throw erreur('ERR-ENT-032', 'Plan de paquet invalide.');
   const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
     title: 'Enregistrer le paquet pour le cabinet',
     defaultPath: path.join(app.getPath('documents'), suggestedName || 'paquet.skanpack'),

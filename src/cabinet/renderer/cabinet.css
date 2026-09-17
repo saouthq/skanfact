@@ -35,7 +35,7 @@
   .mgrid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 }
 
-.dot-lvl { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 7px; background: var(--success); }
+.dot-lvl { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-inline-end: 7px; background: var(--success); }
 .dot-lvl.warn { background: var(--warning); }
 .dot-lvl.danger { background: var(--danger); }
 
@@ -70,16 +70,16 @@
 .lock-card .brand-mark.cab svg { width: 24px; height: 24px; }
 .brand-tag {
   font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;
-  background: #33414f; color: #fff; border-radius: 5px; padding: 1px 5px; margin-left: 3px; vertical-align: 2px;
+  background: #33414f; color: #fff; border-radius: 5px; padding: 1px 5px; margin-inline-start: 3px; vertical-align: 2px;
 }
 
 /* L'écran de verrouillage : des étiquettes, un bouton pour relire, et l'avertissement qui compte
    écrit comme un avertissement. */
-.lock-card .lock-field { width: 100%; text-align: left; margin-top: 4px; }
+.lock-card .lock-field { width: 100%; text-align: start; margin-top: 4px; }
 .pw-wrap { position: relative; display: block; }
-.pw-wrap input { width: 100%; padding-right: 82px; }
+.pw-wrap input { width: 100%; padding-inline-end: 82px; }
 .pw-eye {
-  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  position: absolute; inset-inline-end: 6px; top: 50%; transform: translateY(-50%);
   background: transparent; border: none; color: var(--muted); font: inherit; font-size: 12px;
   cursor: pointer; padding: 4px 8px; border-radius: 7px;
 }
@@ -87,12 +87,12 @@
 .lock-warn { color: var(--danger); font-weight: 700; }
 /* Le texte courant de la carte est centré (titre, sous-titre) ; une phrase de trois lignes centrée
    ne se lit pas. Tout ce qui est une PHRASE y revient à gauche. */
-.lock-card .lock-note { text-align: left; width: 100%; margin: 6px 0 2px; }
-.warn-box.grave { background: var(--danger-soft); border-left-color: var(--danger); }
+.lock-card .lock-note { text-align: start; width: 100%; margin: 6px 0 2px; }
+.warn-box.grave { background: var(--danger-soft); border-inline-start-color: var(--danger); }
 
 /* Ce qui doit être lu avant d'agir : jamais une ligne grise de plus. */
 .warn-box {
-  background: var(--warning-soft); border-left: 3px solid var(--warning); border-radius: 8px;
+  background: var(--warning-soft); border-inline-start: 3px solid var(--warning); border-radius: 8px;
   padding: 11px 14px; font-size: 13px; line-height: 1.55;
 }
 /* Les deux soeurs de `.warn-box`, posées en 9.1.0 — elles étaient UTILISÉES sans être définies,
@@ -243,10 +243,10 @@
 /* Les échéances : une date lisible à gauche, ce qui manque à droite. Ce qui compte n'est pas la
    date (le comptable la connaît) mais le nombre de clients dont il n'a pas les pièces. */
 .ech-list { display: flex; flex-direction: column; gap: 10px; }
-.ech { display: flex; gap: 14px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; border-left-width: 3px; }
-.ech.lvl-ok { border-left-color: var(--success); }
-.ech.lvl-warn { border-left-color: var(--warning); }
-.ech.lvl-danger { border-left-color: var(--danger); }
+.ech { display: flex; gap: 14px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; border-inline-start-width: 3px; }
+.ech.lvl-ok { border-inline-start-color: var(--success); }
+.ech.lvl-warn { border-inline-start-color: var(--warning); }
+.ech.lvl-danger { border-inline-start-color: var(--danger); }
 .ech-date { text-align: center; min-width: 46px; flex-shrink: 0; }
 .ech-j { font-size: 21px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
 .ech-m { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }

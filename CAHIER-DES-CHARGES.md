@@ -1836,6 +1836,43 @@ et le geste qui débloque.
 | `ERR-API-002` | « SRV_PRIVATE_KEY manque : la console ne peut pas signer. » | émission | — | Livré |
 | `ERR-API-003` | « Relais non configuré (LICENCE_PUBLIC_KEY manque). » / « Licence requise pour les mises à jour. » | relais | — | Livré |
 
+**9.4.10 — les codes sont POSÉS dans le code.** `erreur(code, message)` (les deux `main.js`) fabrique
+l'erreur ; le code voyage à la fin du message entre crochets, parce qu'une propriété posée sur une
+`Error` **ne traverse pas** le pont IPC — Electron la sérialise en chaîne. `plainError` le détache
+avant d'afficher la phrase, `codeErreur` le rend à qui a la place de le montrer, et l'enveloppe posée
+une fois sur `ipcMain.handle` écrit chaque refus dans `main.log` avec son code. Les codes ci-dessous
+sont ceux que la 9.4.10 a ajoutés au tableau pour couvrir tous les `throw` des deux `main.js` ; les
+refus internes attrapés sur place et reformulés (la requête au relais, un document non rendu) n'en
+portent pas, et un test les nomme.
+
+| Identifiant | Message exact | Contexte | Action proposée | Code |
+|---|---|---|---|---|
+| `ERR-CAB-014` | « Ce paquet est adressé à un autre cabinet (<nom>). » | import | demander le bon paquet | Livré |
+| `ERR-CAB-015` | « Ce dossier a déjà un livre pour <année>. Ouvre-le plutôt que de le reprendre à zéro… » | reprise | ouvrir le livre | Livré |
+| `ERR-CAB-016` | « Le fichier du cabinet est illisible. Il a été mis de côté, rien n'a été effacé… » | ouverture | restaurer une sauvegarde | Livré |
+| `ERR-CAB-017` | « Ce paquet est protégé par un mot de passe. » | import | saisir le mot de passe | Livré |
+| `ERR-CAB-026` | « Ce dossier n'a pas de livre pour cet exercice. » | livre | reprendre le dossier | Livré |
+| `ERR-CAB-027` | (motif de `planDepuisCsv`) | import d'un plan | corriger le fichier | Livré |
+| `ERR-CAB-028` | (motif de `lettrer` / `delettrer`, avec l'écart) | lettrage | — | Livré |
+| `ERR-CAB-029` | « Ce justificatif n'est plus sur le disque… » | justificatif | le rejoindre | Livré |
+| `ERR-CAB-050` | (détail de `licenceCabinet` : clé invalide, ou d'un autre cabinet) | licence | vérifier la clé | Livré |
+| `ERR-CAB-051` | « <geste> demande une licence : <n> dossiers hors SkanFact sont comptés… » | validation | Réglages → Licence | Livré |
+| `ERR-ENT-010` | « Image trop lourde (1 Mo maximum). Réduis-la avant de l'utiliser. » | logo, cachet | réduire l'image | Livré |
+| `ERR-ENT-011` | « « <fichier> » dépasse 25 Mo. » | pièce jointe | réduire le fichier | Livré |
+| `ERR-ENT-012` | « Fichier introuvable. » | pièce jointe, photo | — | Livré |
+| `ERR-ENT-020` | « Le service n'a pas renvoyé de facture lisible. » | lecture de photo | saisir à la main | Livré |
+| `ERR-ENT-021` | « Format non reconnu. Utilise une photo (JPG, PNG, WEBP) ou un PDF. » | lecture de photo | — | Livré |
+| `ERR-ENT-022` | « « <fichier> » fait <n> Mo. Au-delà de 10 Mo… » | lecture de photo | réduire | Livré |
+| `ERR-ENT-023` | « Aucune clé n'est enregistrée : rien n'a été envoyé… » | lecture de photo | Paramètres | Livré |
+| `ERR-ENT-032` | « Plan de paquet invalide. » | paquet mensuel | — | Livré |
+| `ERR-ENT-070` | « Le pont comptable ne s'utilise que sur le poste de l'éditeur. » | pont | — | Livré |
+| `ERR-ENT-071` | « Aucune adresse de plan de contrôle dans cette version. » | pont | — | Livré |
+| `ERR-ENT-072` | « Colle d'abord le secret d'administration… » / « … fait au moins <n> caractères… » | pont | Paramètres → Éditeur | Livré |
+| `ERR-ENT-073` | « Chemin refusé. » | pont | — | Livré |
+| `ERR-ENT-074` | « La console ne répond pas. Vérifie ta connexion… » | pont | réessayer | Livré |
+| `ERR-ENT-075` | « La console refuse ce secret d'administration… » | pont | Paramètres → Éditeur | Livré |
+| `ERR-ENT-076` | « La console a répondu <n>. » (ou le message de la console) | pont | — | Livré |
+
 ---
 
 ## Partie 11 — Tests

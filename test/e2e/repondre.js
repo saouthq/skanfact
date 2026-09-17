@@ -13,7 +13,7 @@
 //   6. Les deux compteurs rouges du Stock ouvrent la liste des articles concernés.
 //
 //   xvfb-run -a node test/e2e/repondre.js
-const { playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
+const { playwright, RACINE, ELECTRON, journal, surveiller, montant } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 
@@ -115,7 +115,7 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   if (etat.valeur !== mot) throw new Error(`le champ a perdu des caractères : « ${etat.valeur} » au lieu de « ${mot} »`);
   if (!etat.focus) throw new Error('le curseur a quitté le champ pendant la frappe');
   // Et le total suit quand même, sans redessiner : on change une ligne et on vérifie l'écart exact.
-  const nb0 = x => Number(String(x).replace(/[^\d,.-]/g, '').replace(/\s/g, '').replace(',', '.'));
+  const nb0 = montant;
   const t0 = nb0(etat.total);
   const ligne0 = nb0(await win.$eval('#hf-lines input[data-f=amount]', e => e.value));
   await win.fill('#hf-lines input[data-f=amount]', '250');
@@ -161,7 +161,7 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   await win.click('#m-wrap th[data-sort=amount]');
   await win.waitForTimeout(260);
   const trie = await lire();
-  const nb = x => Number(String(x).replace(/[^\d,.-]/g, '').replace(/\s/g, '').replace(',', '.'));
+  const nb = montant;
   if (JSON.stringify(depart) === JSON.stringify(trie)) throw new Error('la liste est identique après le clic : le tri est inerte');
   // La flèche dit le sens ; la liste doit vraiment être monotone dans CE sens-là.
   const fleche = await win.$eval('#m-wrap th[data-sort=amount] .sort-ar', e => e.textContent);

@@ -242,7 +242,21 @@ async function ouvrirChromium(pw) {
   }
 }
 
+// Relire un montant AFFICHÉ (9.4.10). `core.money` écrit un négatif « − 1 234,500 DT » avec le SIGNE
+// MOINS typographique (U+2212) et une espace derrière : cinq parcours le nettoyaient avec
+// `[^\d,.-]`, qui ne garde que le trait d'union ASCII — le signe disparaissait et « − 4 000 »
+// devenait quatre mille. Un tri décroissant paraissait alors non trié, selon la place des sorties
+// dans le jeu d'exemple : le parcours tombait certains jours et pas d'autres, sur du code juste.
+// Une seule fonction, ici, plutôt que cinq copies qui divergeront (règle 7.29.0).
+function montant(texte) {
+  const s = String(texte == null ? '' : texte).trim();
+  const negatif = /^[-−–]/.test(s);
+  const n = Number(s.replace(/[^\d,.]/g, '').replace(',', '.'));
+  if (!isFinite(n)) return NaN;
+  return negatif ? -n : n;
+}
+
 module.exports = {
   playwright, RACINE, ELECTRON, VERSION, journal, surveiller, dossierCaptures, ouvrirChromium,
-  capturePleine, SONDE_BOUTONS, SONDE_COLONNES, SONDE_ENTETES
+  capturePleine, SONDE_BOUTONS, SONDE_COLONNES, SONDE_ENTETES, montant
 };

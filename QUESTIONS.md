@@ -2012,6 +2012,15 @@ qui manque, mesuré dans le dépôt le 15/09/2026, et ce qu'on en fait.*
   porte-t-il ce qu'un format officiel exigerait ? » jamais fait (tous petits, dans une version de
   corrections fiscales) ; le test de charge du Cabinet (avant 9.2.0). Cette liste vit dans les
   Issues GitHub dès que le point 7 est accepté ; en attendant, ici.
+  **Remboursé en 9.4.10** (17/09/2026) : `npm audit` dans la CI, sur ce qui est LIVRÉ (point 11) ;
+  la version de Node lue dans `engines` par les deux installeurs, au lieu d'être écrite deux fois
+  (point 12) ; le journal technique qui reçoit enfin les exceptions imprévues — un refus qu'on a
+  écrit n'y entre pas, sinon il se remplit de mots de passe mal tapés (point 3, seconde moitié) ;
+  et le **premier** découpage du fichier de tests, un domaine dans `test/suites/` avec le contrôle
+  qui refuse une suite écrite et jamais chargée. **Reste dû** : `app.js` et `core.js` trop gros
+  (par occasion, à partir de 9.6.1 — la 9.4.10 ne touchait aucune route, et déplacer à vide serait
+  le plus gros risque de régression du projet pour zéro bénéfice) ; le reste du fichier de tests ;
+  la clé de secours imprimable ; les applications non signées.
 - **Le projet respecte-t-il « toutes les recommandations » ?** Non, et aucun projet ne le fait :
   ce n'est pas un état, c'est un écart qu'on mesure. Sur l'échelle usuelle de maturité
   (improvisé → répétable → défini → mesuré → optimisé), au 15/09/2026 : *architecture* défini ;

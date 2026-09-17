@@ -365,9 +365,18 @@
   // Une erreur venue du processus principal arrive habillée : « Error invoking remote method 'x:y':
   // Error: … ». Ce préambule n'apprend rien à personne ; on ne garde que la phrase écrite pour
   // l'utilisateur.
+  // Et depuis la 9.4.10 chaque refus finit par son code entre crochets (« … [ERR-ENT-012] »). Le
+  // code sert au dépannage, pas à la lecture : on le détache de la phrase. `codeErreur` le rend à
+  // qui veut l'afficher là où il y a la place — jamais dans un bandeau de 2,6 secondes.
+  const RE_CODE = /\s*\[(ERR-[A-Z]+-\d+)\]\s*$/;
   function plainError(e) {
     const m = String((e && e.message) || e || '');
-    return m.replace(/^Error invoking remote method '[^']*':\s*/, '').replace(/^Error:\s*/, '').trim() || 'Erreur inattendue';
+    return m.replace(/^Error invoking remote method '[^']*':\s*/, '').replace(/^Error:\s*/, '')
+      .replace(RE_CODE, '').trim() || 'Erreur inattendue';
+  }
+  function codeErreur(e) {
+    const m = String((e && e.message) || e || '').match(RE_CODE);
+    return (m && m[1]) || (e && e.code) || '';
   }
 
   // Mémoire des suppressions : sans elle, une pièce supprimée ici reviendrait à la fusion suivante,
@@ -11365,7 +11374,11 @@
     try { lignes = ((await bridge.pontRequete('ventes?non_facturees=1')) || {}).lignes || []; }
     catch (e) {
       const el2 = $('#lic-console'); if (!el2) return;
-      el2.innerHTML = `<h2>Ventes de la console</h2><p class="small" style="color:var(--danger)">${h(plainError(e))}</p>`;
+      // Ce panneau a la place d'un code, et c'est le refus qu'on dépanne le plus souvent à distance
+      // (un secret d'administration mal collé, une console éteinte). Le code va au bout, en gris.
+      const code = codeErreur(e);
+      el2.innerHTML = `<h2>Ventes de la console</h2><p class="small" style="color:var(--danger)">${h(plainError(e))}`
+        + (code ? ` <span class="muted">${h(code)}</span>` : '') + '</p>';
       return;
     }
     const el2 = $('#lic-console'); if (!el2) return;

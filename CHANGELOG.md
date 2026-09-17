@@ -7,6 +7,43 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 9.4.10 — 17/09/2026
+
+**Entretien : rien de neuf à l'écran, et c'est le but.**
+
+Une version sur quatre ne sert qu'à rembourser. Aucune fonction nouvelle ; ce qui change est
+dessous, et c'est ce qui rend les suivantes possibles.
+
+- **Electron passe de la 43 à la 44** — le moteur de rendu des deux applications. Les
+  **46 parcours** ont été relancés dessus, sans exception : c'est la seule version où on les relance
+  tous, et c'est exactement pour ça qu'elle existe.
+- **Les 94 déclarations CSS physiques sont devenues logiques.** `margin-left` dit « le bord gauche
+  de l'écran » ; `margin-inline-start` dit « le bord d'où commence la lecture ». En français les deux
+  donnent la même image — ça ne promet pas l'arabe, ça garde la porte ouverte pour deux heures de
+  travail aujourd'hui au lieu d'un chantier dans deux ans. Une seule règle reste physique, et elle
+  est nommée dans le test : le bandeau passager, dont le `left: 50 %` centre dans les deux sens.
+- **Chaque refus porte son code.** « Le paquet est illisible » ne désigne aucune ligne de code ;
+  `ERR-CAB-010` si. Soixante-huit refus des deux processus principaux passent par une fabrique
+  unique, le code voyage jusqu'à l'écran, et un test confronte les codes posés dans le code à la
+  table du cahier des charges — deux tables qui vivent séparément divergent, toujours.
+- **Et une exception imprévue laisse enfin une trace.** Jusqu'ici, une erreur qui échappait à un
+  handler repartait vers l'écran habillée en anglais et n'écrivait rien dans le journal. Elle y est
+  désormais. Les refus qu'on a ÉCRITS, eux, restent hors du journal : le remplir de mots de passe
+  mal tapés reviendrait à ne plus le lire.
+- **Le fichier de tests commence à se découper.** 13 900 lignes, c'est trop pour tenir en tête. Le
+  premier domaine sort dans `test/suites/` (le rendu du Cabinet, 23 tests) et un contrôle refuse
+  qu'une suite soit écrite sans être chargée — des tests présents qui n'affichent « ok » nulle part
+  seraient pires que pas de tests.
+- **`npm audit` entre dans l'intégration continue**, sur ce qui est LIVRÉ (`--omit=dev`) : une
+  faille dans un outil de construction se corrige aussi, mais elle ne s'installe chez personne, et
+  une CI rouge en permanence cesse d'être lue.
+- **Les deux installeurs vérifient la version de Node**, lue dans `package.json` et pas écrite à
+  côté.
+
+Corrigé au passage, trouvé par le défaut lui-même : le test qui garantit que l'application du
+comptable n'écrit jamais chez un client lisait un commentaire comme du code — troisième fois que ce
+motif revient dans ce dépôt.
+
 ## 9.4.9 — 17/09/2026
 
 **Le fil du parcours, et la fin de l'audit.**

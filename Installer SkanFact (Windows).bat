@@ -43,6 +43,17 @@ where node >nul 2>&1
 if not %errorlevel%==0 goto :sansnode
 for /f "tokens=*" %%v in ('node -v') do echo   OK  Node.js %%v detecte
 for /f "tokens=*" %%v in ('node -v') do echo node %%v>> "%LOG%"
+rem 9.4.10 : la version minimale vit dans package.json (engines)  l ecrire ici en plus ferait
+rem diverger les deux. La publication tourne sur Node 22 ; un Node plus ancien construit un
+rem paquet different de celui qu on teste, et l ecart ne se voit qu apres coup.
+for /f "tokens=1 delims=v." %%v in ('node -v') do set NODEMAJ=%%v
+for /f "delims=" %%m in ('node -p "String((require(`./package.json`).engines||{}).node||``).replace(/[^0-9]/g,``)||22"') do set NODEMIN=%%m
+if !NODEMAJ! GEQ !NODEMIN! goto :deps
+echo   Attention : SkanFact se construit avec Node !NODEMIN! ou plus ; celui-ci est le !NODEMAJ!.
+echo   Mets Node.js a jour (nodejs.org, bouton LTS) puis relance cet installeur.
+echo node trop ancien !NODEMAJ!>> "%LOG%"
+set /p suite=  Continuer quand meme ? (o/N) 
+if /i not "!suite!"=="o" goto :fin
 goto :deps
 
 :sansnode

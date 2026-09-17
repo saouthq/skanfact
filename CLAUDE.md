@@ -23,6 +23,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | L'application **gèle** sans erreur (Cmd+Q sans effet, défilement qui marche encore) | 5.2.3 — boucle infinie de date ; 6.5.0 — le chien de garde ; 8.1.0 — la veille n'est pas un gel |
 | Un **écran blanc**, une fenêtre qui ne s'ouvre pas, rien en console | 7.20.0, 7.22.0, 7.23.0 — une fonction ou une variable d'un autre module ; 9.1.0 — le garde-fou d'erreur et le lint |
 | Un **texte illisible** (blanc sur blanc), un en-tête mal aligné, un fil vertical | 7.12.0, 7.23.0, 7.27.0, 7.30.0, 9.4.3 — le HTML est juste, c'est la feuille de style qui décide : **mesurer** |
+| Une **exception qui échappe à un handler** : rien à l'écran qu'on ait écrit, rien au journal | 9.4.10 — `err.code` **ne traverse pas** le pont IPC |
 | Un bouton **hors de l'écran**, une barre empilée sur trois rangées | 7.13.0, 7.23.0 — `e2e:contraste` et `e2e:entetes` mesurent le bouton, jamais la page |
 
 **Les chiffres**
@@ -47,7 +48,8 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Règle | Où |
 |---|---|
 | **Tout test se prouve en réintroduisant son défaut.** Sinon on ne sait pas ce qu'on a écrit | 7.2.0, 7.22.0, 7.25.0, 7.27.0 — six tests qui ne pouvaient pas échouer |
-| Un test qui lit du code doit lire du **CODE** : commentaires et chaînes retirés d'abord | 6.8.0, 7.25.0 — un commentaire satisfaisait l'assertion |
+| Un test qui lit du code doit lire du **CODE** : commentaires et chaînes retirés d'abord | 6.8.0, 7.25.0, 9.4.10 — un commentaire satisfaisait l'assertion |
+| Une **suite découpée** que le lanceur ne charge pas n'existe pas : le dossier fait foi | 9.4.10 |
 | Une assertion sur un montant se **calcule à la main**, jamais en recopiant la sortie | 7.0.1 — l'assertion qui gravait le bug depuis la 1.6.0 |
 | Un test écrit contre l'état du jour **décrit cet état**, pas la règle | 7.12.0, 7.26.0, 8.0.1, 8.2.0, 9.1.0, 9.2.2, 9.4.3, 9.4.5 — neuf assertions retournées |
 | Une **tranche** de source se prouve par sa taille et par ce qu'elle ne contient PAS | 7.20.0, 7.21.0, 8.2.0 ; 9.4.6 — jamais sur un décalage en dur |
@@ -80,6 +82,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Ce qui prend la place n'est pas le **nombre** d'objets mais leur **taille** : replier avant de paginer | 9.4.5 |
 | Un champ **pré-rempli** se sélectionne au clic, sinon la valeur proposée est imposée | 9.4.5 |
 | Une **classe posée par le code et inconnue de la feuille** ne se voit nulle part | 6.8.0, 7.23.0, 7.27.0, 8.1.0, 9.4.3 |
+| Un CSS **physique** décrit un écran, un CSS **logique** décrit une lecture ; l'exception est NOMMÉE | 9.4.10 |
 | Une **règle générale qui vise un élément** avale l'exception qu'on vient d'y poser (`:not()`) | 7.23.0, 7.27.0, 7.30.0, 9.4.8 |
 | Une **phrase rassurante** se vérifie d'abord sur un univers non vide | 7.0.0, 7.3.0, 9.4.2 |
 | Un **avertissement** se lit AVANT le geste, jamais sous le bouton | 9.4.2 |
@@ -87,6 +90,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | **UNE seule table d'actions par racine** : `bindRowMenus` écrase la précédente, en silence | 9.4.8 |
 | Un **champ qui compte dans une unité** le dit à côté de lui, pas en légende dessous | 9.4.8 |
 | Un refus dit **trois** choses : ce qui est refusé, pourquoi, et le bouton qui débloque | 7.0.0, 9.2.1 |
+| Un refus qu'on a **écrit** est une réponse ; seule une **panne** va au journal | 9.4.10 |
 | Un **bouton éteint dit pourquoi**, et par la MÊME fonction que celle qui refusera | 9.4.5 |
 | Une saisie refusée se **MONTRE** : on amène le champ à l'écran (`refus()`) | 7.0.0, 7.20.0 |
 | Ce qui **détruit** demande ; ce qui **se répare** laisse un « Annuler » (`toastUndo`) | 7.12.0 ; 9.4.6 — porté au Cabinet |
@@ -3783,6 +3787,57 @@ Règles apprises, à ne pas recasser :
 
 Prouvé : cinq défauts réintroduits un par un font tomber leur test pur, et la sonde des sous-titres
 se prouve en bornant une carte.
+
+### 9.4.10 — L'entretien : ce qui se rembourse
+
+*Une version sur quatre ne porte aucune fonction nouvelle, par règle (`QUESTIONS.md` § 15, point 14).
+Elle est écrite d'avance précisément parce que c'est quand on est pressé qu'on la saute.*
+
+Règles apprises, à ne pas recasser :
+
+- **Un CSS physique décrit un écran ; un CSS logique décrit une lecture.** Les 94 déclarations
+  `margin-left` / `text-align: left` / `left:` des deux feuilles sont devenues `margin-inline-start`,
+  `text-align: start`, `inset-inline-start`. Ça ne promet pas l'arabe — ça évite qu'un jour la
+  question coûte un chantier au lieu de deux heures. **Une seule exception, et elle est NOMMÉE dans
+  le test** : `#toast { left: 50% }`, où le centrage par `translateX(-50%)` rend le physique juste
+  dans les deux sens de lecture (`inset-inline-start: 50%` collerait le bandeau à droite en arabe).
+  Une exception anonyme est un trou.
+- **Un code d'erreur n'a de valeur que s'il ARRIVE à l'écran.** `err.code` **ne traverse pas le pont
+  IPC** : Electron sérialise l'erreur en une chaîne, et la propriété est perdue. La Partie 10 du
+  cahier prévoyait `err.code = 'ERR-CAB-001'` depuis la 9.1.0 ; posée telle quelle, elle n'aurait
+  rien montré à personne. Le code voyage donc **dans le message**, entre crochets, et `plainError`
+  le détache avant d'afficher la phrase (`codeErreur` le rend à qui a la place de le montrer —
+  jamais un bandeau de 2,6 secondes).
+- **Un refus qu'on a ÉCRIT est une réponse ; une exception imprévue est une panne.** Seule la
+  seconde va au journal. La première version enveloppait `ipcMain.handle` pour journaliser TOUS les
+  refus : `e2e:entreprise`, qui exige un `main.log` vide après une exécution propre, est tombé sur
+  la clé de lecture de photo absente — un refus parfaitement normal, que le parcours provoque
+  exprès. Un journal rempli de mots de passe mal tapés ne se lit plus, et il emmène avec lui la
+  ligne qui comptait (même règle que le rouge sur une situation normale, 8.0.1). Ce qui manquait
+  était l'autre moitié : **une exception qui échappait à un handler n'écrivait rien, nulle part.**
+- **On enveloppe une fois, pas quatre-vingts.** `ipcMain.handle` est enveloppé au niveau du module :
+  autant de points d'enregistrement, autant d'occasions d'en oublier un — et la forme
+  `ipcMain.handle(` reste celle que les tranches de source des tests reconnaissent.
+- **Deux tables séparées divergent, toujours** (6.8.0, 7.23.0, re-trouvée) : un test confronte les
+  codes `ERR-*` posés dans les deux `main.js` à la table de la Partie 10 du cahier. Un code écrit
+  dans le code et absent du cahier ne se cite nulle part.
+- **Un test qui lit du code doit lire du CODE — troisième fois** (6.8.0, 7.25.0). Le garde-fou « le
+  cabinet n'écrit jamais chez un client » découpe la source sur `ipcMain.handle(` ; mon commentaire
+  expliquant l'enveloppe **citait ce motif entre accents graves**, fabriquait un faux handler sans
+  nom, et faisait tomber le test sur du code juste. Les commentaires se retirent avant de juger.
+- **Un fichier de tests se découpe PAR OCCASION, et la suite découpée doit être CHARGÉE.** Le
+  premier domaine sort dans `test/suites/cabinet-rendu.js` (23 tests, le chantier UI/UX du Cabinet) ;
+  il reçoit le harnais en argument plutôt que d'ouvrir son propre compteur — deux compteurs, c'est un
+  total faux. Et un contrôle lit le DOSSIER : une suite écrite que le lanceur ne charge pas est pire
+  que pas de suite, parce qu'on se croit couvert.
+- **`npm audit` juge ce qui est LIVRÉ** (`--omit=dev`). Les douze failles du jour vivent toutes dans
+  les dépendances de construction d'electron-builder : elles se corrigent, mais elles ne s'installent
+  chez personne. Une CI rouge en permanence cesse d'être lue.
+- **Une version minimale s'écrit à UN endroit.** Les deux installeurs lisent `engines.node` dans
+  `package.json` au lieu de porter le chiffre ; écrit deux fois, il diverge au premier changement.
+- **Electron change de version majeure ici, et nulle part ailleurs.** 43 → 44, et **les 46 parcours
+  relancés** — c'est la seule version où on les relance tous, et c'est la raison d'être de cette
+  version-là.
 
 ## Pistes pour la suite (non demandées)
 

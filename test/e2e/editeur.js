@@ -7,7 +7,7 @@
 // peut demander qu'en pourcentage.
 //
 //   xvfb-run -a node test/e2e/editeur.js
-const { playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
+const { playwright, RACINE, ELECTRON, journal, surveiller, montant } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 
@@ -17,7 +17,7 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   const app = await electron.launch({ args: ['--no-sandbox', `--user-data-dir=${userData}`, RACINE], executablePath: ELECTRON });
   const win = await app.firstWindow(); surveiller(win, '', bac);
   const aller = async hash => { await win.evaluate(x => { location.hash = x; }, hash); await win.waitForTimeout(300); };
-  const nb = x => Number(String(x).replace(/[^\d,.-]/g, '').replace(/\s/g, '').replace(',', '.'));
+  const nb = montant;
 
   j.etape('Une entreprise et le jeu d\'exemple');
   await win.waitForSelector('#setup');

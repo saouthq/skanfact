@@ -36,7 +36,7 @@ body {
 
 /* ---------- sidebar ---------- */
 .sidebar {
-  width: 224px; background: var(--panel); border-right: 1px solid var(--border);
+  width: 224px; background: var(--panel); border-inline-end: 1px solid var(--border);
   display: flex; flex-direction: column; padding: 22px 14px; flex-shrink: 0;
 }
 /* L'en-tête de la barre est le sélecteur d'entreprise (7.14.0) : c'est là que le nom du dossier
@@ -46,7 +46,7 @@ body {
    qu'on essaie de cliquer. */
 .brand-wrap { position: relative; padding-bottom: 22px; }
 .brand {
-  width: 100%; padding: 6px 8px; display: flex; align-items: center; gap: 10px; text-align: left;
+  width: 100%; padding: 6px 8px; display: flex; align-items: center; gap: 10px; text-align: start;
   font: inherit; color: inherit; background: transparent; border: 1px solid transparent;
   border-radius: 12px; cursor: pointer;
 }
@@ -60,12 +60,12 @@ body {
 /* Le menu des dossiers. Au-dessus de la barre latérale mais sous les fenêtres modales (400) : une
    question posée par-dessus doit rester devant. */
 .dos-menu {
-  position: absolute; left: 0; right: 0; top: 100%; margin-top: -14px; z-index: 70;
+  position: absolute; inset-inline-start: 0; inset-inline-end: 0; top: 100%; margin-top: -14px; z-index: 70;
   background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 6px;
   box-shadow: 0 14px 40px rgba(20, 40, 60, .18); max-height: 60vh; overflow-y: auto;
 }
 .dos-menu button {
-  display: flex; width: 100%; align-items: baseline; gap: 8px; text-align: left; font: inherit;
+  display: flex; width: 100%; align-items: baseline; gap: 8px; text-align: start; font: inherit;
   background: none; border: none; border-radius: 8px; padding: 8px 10px; cursor: pointer; color: var(--text);
 }
 .dos-menu button:hover { background: var(--ink-soft); }
@@ -96,7 +96,7 @@ nav a:hover { background: var(--ink-soft); color: var(--text); }
 nav a.active { background: var(--primary-soft); color: var(--primary); font-weight: 600; }
 nav a.active svg { opacity: 1; }
 .sidebar-foot { margin-top: auto; display: flex; flex-direction: column; gap: 2px; padding-top: 12px; border-top: 1px solid var(--border); }
-.sidebar-foot .btn-ghost { color: var(--muted); text-align: left; justify-content: flex-start; }
+.sidebar-foot .btn-ghost { color: var(--muted); text-align: start; justify-content: flex-start; }
 .sidebar-foot .btn-ghost:hover { color: var(--text); background: var(--ink-soft); }
 /* Paramètres et Aide : mêmes liens que dans nav, mais dans le pied, qui ne défile jamais (7.0.0). */
 .sidebar-foot .foot-link {
@@ -110,7 +110,7 @@ nav a.active svg { opacity: 1; }
    dit sa touche, et elle est cliquable — trois choses qui manquaient à un raccourci clavier. */
 .nav-search {
   font: inherit; font-size: 13px; margin: 0 0 8px; width: 100%; cursor: pointer;
-  display: flex; align-items: center; gap: 8px; text-align: left;
+  display: flex; align-items: center; gap: 8px; text-align: start;
   padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border);
   background: var(--ink-soft); color: var(--muted);
 }
@@ -190,14 +190,14 @@ body.dark .beta-tag { background: #35255a; color: #cdb0f5; border-color: #4c3878
 .pp-list li.fait .pp-txt strong { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--border); }
 .pp-list li.fait .pp-txt .small { display: none; }         /* une étape faite n'a plus besoin d'être expliquée */
 .pp-list li.encours .pp-marque { border-color: var(--primary); }
-.pp-list li.encours { background: var(--primary-soft); border-radius: 10px; margin: 0 -8px; padding-left: 10px; padding-right: 10px; }
+.pp-list li.encours { background: var(--primary-soft); border-radius: 10px; margin: 0 -8px; padding-inline-start: 10px; padding-inline-end: 10px; }
 .pp-list li.encours + li { border-top-color: transparent; }
 
 /* Le lien vers l'article d'aide de la page où l'on est. */
 .help-link { color: var(--primary); text-decoration: none; font-weight: 600; }
 .help-link:hover { text-decoration: underline; }
 /* Le lien d'aide de la page : discret, mais toujours au même endroit — sinon on le cherche. */
-.page-head .page-help { font-size: 13px; font-weight: 500; color: var(--muted); margin-right: 4px; white-space: nowrap; }
+.page-head .page-help { font-size: 13px; font-weight: 500; color: var(--muted); margin-inline-end: 4px; white-space: nowrap; }
 .page-head .page-help:hover { color: var(--primary); }
 .todo-more { margin-top: 6px; }
 
@@ -231,7 +231,7 @@ body.dark .lock-banner .btn:not(.btn-primary):not(.btn-danger) { background: rgb
 .field.obligatoire > span:first-child::after, .field.obligatoire > .fl::after {
   content: ' *'; color: var(--danger); font-weight: 700;
 }
-.oblig-note { font-size: 12px; color: var(--muted); margin-right: auto; align-self: center; }
+.oblig-note { font-size: 12px; color: var(--muted); margin-inline-end: auto; align-self: center; }
 .oblig-note b { color: var(--danger); }
 
 /* Le lien d'une bulle vers l'article qui développe. */
@@ -309,7 +309,7 @@ input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]),
 input:hover, select:hover, textarea:hover { border-color: #d5dbe3; }
 input:focus, select:focus, textarea:focus { outline: none; border-color: var(--primary); background: #fff; box-shadow: 0 0 0 3px rgba(15,157,143,.15); }
 textarea { resize: vertical; min-height: 68px; }
-input.num { text-align: right; font-variant-numeric: tabular-nums; }
+input.num { text-align: end; font-variant-numeric: tabular-nums; }
 /* Un sélecteur de couleur étiré sur toute la largeur du champ ressemble à un trait de séparation,
    pas à un bouton qu'on clique. Il garde la taille d'une pastille.
    La chaîne de `:not()` n'est pas décorative : la règle commune ci-dessus en porte quatre, donc
@@ -354,13 +354,13 @@ input[type=color]:not([type=checkbox]):not([type=radio]):not([type=file]):not([t
 /* overflow: clip (et non hidden) : les coins restent arrondis, mais la table ne devient pas
    une zone de défilement, ce qui laisse l'en-tête collant fonctionner sur les longues listes. */
 table.list { width: 100%; border-collapse: separate; border-spacing: 0; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); overflow: clip; box-shadow: var(--shadow); }
-table.list th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); padding: 12px 16px; background: #fafbfc; border-bottom: 1px solid var(--border); font-weight: 700; }
+table.list th { text-align: start; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); padding: 12px 16px; background: #fafbfc; border-bottom: 1px solid var(--border); font-weight: 700; }
 table.list thead th { position: sticky; top: 0; z-index: 2; }
 table.list td { padding: 13px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; }
 table.list tr:last-child td { border-bottom: none; }
 table.list tr.clickable { cursor: pointer; }
 table.list tr.clickable:hover td { background: #f7fbfa; }
-td.r, th.r { text-align: right; font-variant-numeric: tabular-nums; }
+td.r, th.r { text-align: end; font-variant-numeric: tabular-nums; }
 /* Une cellule qui tient sur UNE ligne, le texte entier dans son infobulle (9.4.5). Le livre-journal
    du Cabinet faisait 5 888 px pour dix-sept pièces : ce n'était pas le nombre de lignes, c'était
    chaque ligne repliée sur trois, parce qu'un libellé de facture porte le nom du client. Un journal
@@ -383,13 +383,13 @@ td.tronq.lg { max-width: 320px; }
    dans les deux applications — elles partagent cette feuille.
    On ne peut pas le voir en relisant `<th class="r">` : il faut MESURER dans l'application réelle,
    ce que fait `npm run e2e:colonnes`. */
-table.list th.r, table.lines-edit th.r, table.mini th.r { text-align: right; }
+table.list th.r, table.lines-edit th.r, table.mini th.r { text-align: end; }
 table.lines-edit th.c, table.list th.c, table.mini th.c { text-align: center; }
 .nw { white-space: nowrap; }
-td.actions { white-space: nowrap; text-align: right; }
+td.actions { white-space: nowrap; text-align: end; }
 /* Deux boutons voisins ne doivent pas dépendre d'une espace dans le gabarit pour être séparés :
    `${cond ? '<button…>' : ''}<button…>` les collait l'un à l'autre, et ça ne se voit qu'à l'écran. */
-td.actions .btn + .btn { margin-left: 6px; }
+td.actions .btn + .btn { margin-inline-start: 6px; }
 .empty { padding: 48px 24px; text-align: center; color: var(--muted); background: var(--panel); border: 1px dashed #d5dbe3; border-radius: var(--radius); }
 /* Le même état vide, DANS un panneau (9.4.5/9.4.6). 48 px de haut et un cadre pointillé, c'est la
    bonne présence quand la page entière est vide — c'est le premier écran, il faut qu'il occupe la
@@ -425,7 +425,7 @@ input:disabled, select:disabled, textarea:disabled { background: #f3f5f7; color:
 /* ---------- dashboard ---------- */
 .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 20px; }
 .stat { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; box-shadow: var(--shadow); position: relative; overflow: hidden; }
-.stat::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--primary); opacity: .9; }
+.stat::before { content: ""; position: absolute; inset-inline-start: 0; top: 0; bottom: 0; width: 4px; background: var(--primary); opacity: .9; }
 .stat:nth-child(2)::before { background: #2a6fd6; }
 .stat:nth-child(3)::before { background: #c26a12; }
 .stat:nth-child(4)::before { background: #7c5cd6; }
@@ -439,7 +439,7 @@ input:disabled, select:disabled, textarea:disabled { background: #f3f5f7; color:
 .stat[data-stat]:hover, .stat[data-cstat]:hover { border-color: var(--primary); box-shadow: 0 8px 22px rgba(15,157,143,.14); transform: translateY(-1px); }
 .stat[data-stat]:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .stat[data-stat]::after, .stat[data-cstat]::after {
-  content: '›'; position: absolute; right: 14px; top: 12px; font-size: 17px; line-height: 1;
+  content: '›'; position: absolute; inset-inline-end: 14px; top: 12px; font-size: 17px; line-height: 1;
   color: var(--muted); opacity: .5;
 }
 .stat[data-stat]:hover::after { color: var(--primary); opacity: 1; }
@@ -450,15 +450,15 @@ input:disabled, select:disabled, textarea:disabled { background: #f3f5f7; color:
 .preview iframe { width: 100%; height: calc(100vh - 96px); border: 1px solid var(--border); border-radius: var(--radius); background: #e9edf1; box-shadow: var(--shadow); }
 
 table.lines-edit { width: 100%; border-collapse: collapse; }
-table.lines-edit th { text-align: left; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; padding: 4px 6px 8px; font-weight: 700; }
+table.lines-edit th { text-align: start; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; padding: 4px 6px 8px; font-weight: 700; }
 table.lines-edit td { padding: 5px 6px; vertical-align: top; }
 table.lines-edit tr + tr td { border-top: 1px solid var(--ink-soft); padding-top: 10px; }
 table.lines-edit input, table.lines-edit select, table.lines-edit textarea { padding: 7px 9px; font-size: 13px; }
 table.lines-edit textarea { min-height: 32px; margin-top: 5px; }
-table.lines-edit .total { text-align: right; padding-top: 12px; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+table.lines-edit .total { text-align: end; padding-top: 12px; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .totals-box { margin-top: 14px; display: flex; justify-content: flex-end; }
 .totals-box table { background: var(--primary-soft); border-radius: 12px; padding: 8px 6px; }
-.totals-box table td { padding: 4px 14px; text-align: right; font-variant-numeric: tabular-nums; color: #3d4a57; }
+.totals-box table td { padding: 4px 14px; text-align: end; font-variant-numeric: tabular-nums; color: #3d4a57; }
 .totals-box table tr.grand td { font-weight: 700; font-size: 18px; color: var(--primary); padding-top: 8px; letter-spacing: -.3px; }
 .catalog-pick { display: flex; gap: 8px; align-items: center; margin: 4px 0 14px; }
 
@@ -496,10 +496,10 @@ body.dark .toast-undo:hover { background: rgba(18,22,28,.1); }
 .filters select { width: auto; background: #fff; }
 .logo-preview { max-height: 60px; max-width: 200px; display: block; margin-bottom: 8px; border: 1px solid var(--border); padding: 6px; border-radius: 10px; background: #fff; }
 code { background: var(--ink-soft); padding: 2px 6px; border-radius: 6px; font-size: 12px; }
-table.lines-edit select { padding-right: 4px; min-width: 70px; }
+table.lines-edit select { padding-inline-end: 4px; min-width: 70px; }
 
 /* ---------- mises à jour ---------- */
-.update-pill { font: inherit; font-size: 12px; font-weight: 600; color: var(--primary); background: var(--primary-soft); border: none; border-radius: 999px; padding: 7px 12px; cursor: pointer; margin-bottom: 8px; text-align: left; }
+.update-pill { font: inherit; font-size: 12px; font-weight: 600; color: var(--primary); background: var(--primary-soft); border: none; border-radius: 999px; padding: 7px 12px; cursor: pointer; margin-bottom: 8px; text-align: start; }
 .update-pill:hover { background: var(--primary-soft-2); }
 /* Licence : la même pastille, mais orange quand il faut agir — fin d'essai, licence qui se termine,
    création bloquée. Une information qui demande une action ne doit pas ressembler à une bonne
@@ -517,7 +517,7 @@ table.lines-edit select { padding-right: 4px; min-width: 70px; }
 .notes-md h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); margin: 10px 0 4px; }
 .notes-md h3:first-child { margin-top: 0; }
 .notes-md p { margin: 4px 0; }
-.notes-md ul { margin: 4px 0 6px; padding-left: 20px; }
+.notes-md ul { margin: 4px 0 6px; padding-inline-start: 20px; }
 .notes-md li { margin: 2px 0; }
 .changelog { max-height: 60vh; overflow-y: auto; }
 .changelog .notes-md { background: transparent; padding: 0; }
@@ -544,9 +544,9 @@ details.tech > code {
 body.dark details.tech > code { background: #1d232b; }
 
 /* ---------- relances / contrats / bannière ---------- */
-.nav-count { margin-left: auto; background: var(--warning-soft); color: var(--warning); font-size: 11px; font-weight: 700; border-radius: 999px; padding: 1px 7px; }
+.nav-count { margin-inline-start: auto; background: var(--warning-soft); color: var(--warning); font-size: 11px; font-weight: 700; border-radius: 999px; padding: 1px 7px; }
 /* Le cadenas d'un module fermé par l'offre (7.33.0) : la page reste, elle se lit, elle ne crée plus. */
-nav a svg.nav-lock { width: 12px; height: 12px; margin-left: 4px; opacity: .55; flex: none; }
+nav a svg.nav-lock { width: 12px; height: 12px; margin-inline-start: 4px; opacity: .55; flex: none; }
 .offre-banner code { font-size: 11px; }
 .nav-count.info { background: var(--info-soft); color: var(--info); }
 
@@ -578,9 +578,9 @@ body.dark .collapse-h .count { background: #1f2731; }
 
 /* ---------- historique d'un document ---------- */
 .timeline { list-style: none; margin: 0; padding: 0 0 0 6px; }
-.timeline li { position: relative; padding: 0 0 16px 22px; border-left: 2px solid var(--border); }
-.timeline li:last-child { border-left-color: transparent; padding-bottom: 0; }
-.timeline li::before { content: ""; position: absolute; left: -6px; top: 3px; width: 10px; height: 10px; border-radius: 50%; background: var(--border); border: 2px solid var(--panel); }
+.timeline li { position: relative; padding: 0 0 16px 22px; border-inline-start: 2px solid var(--border); }
+.timeline li:last-child { border-inline-start-color: transparent; padding-bottom: 0; }
+.timeline li::before { content: ""; position: absolute; inset-inline-start: -6px; top: 3px; width: 10px; height: 10px; border-radius: 50%; background: var(--border); border: 2px solid var(--panel); }
 .timeline li.k-emis::before, .timeline li.k-paiement::before, .timeline li.k-facture::before { background: var(--primary); }
 .timeline li.k-relance::before { background: var(--warning); }
 .timeline li.k-avoir::before, .timeline li.k-annule::before { background: var(--danger); }
@@ -600,7 +600,7 @@ nav a.active .nav-count { background: #fff; }
 table.list tr.snoozed td { opacity: .62; }
 table.list tr.snoozed:hover td { opacity: 1; }
 table.mini { width: 100%; border-collapse: collapse; margin-top: 8px; }
-table.mini th { text-align: left; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; padding: 4px 6px; }
+table.mini th { text-align: start; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; padding: 4px 6px; }
 table.mini td { padding: 3px 6px; vertical-align: middle; }
 table.mini input, table.mini select { padding: 6px 8px; font-size: 13px; }
 .section-head { display: flex; align-items: center; justify-content: space-between; margin: 26px 0 12px; }
@@ -616,14 +616,14 @@ table.mini input, table.mini select { padding: 6px 8px; font-size: 13px; }
 .palette .res.sel, .palette .res:hover { background: var(--primary-soft); }
 .palette .res .kind { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); width: 64px; flex-shrink: 0; font-weight: 700; }
 .palette .res .main { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.palette .res .sub { color: var(--muted); font-size: 12px; margin-left: 6px; }
+.palette .res .sub { color: var(--muted); font-size: 12px; margin-inline-start: 6px; }
 .palette .res .amt { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 13px; }
 .palette .hint { padding: 8px 14px; font-size: 11px; color: var(--muted); border-top: 1px solid var(--border); }
 
 /* ---------- menu « Plus » de l'éditeur ---------- */
 .more { position: relative; }
-.more-list { position: absolute; right: 0; top: 42px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 12px 40px rgba(20,40,60,.18); display: flex; flex-direction: column; min-width: 240px; padding: 6px; z-index: 30; }
-.more-list button { font: inherit; font-size: 13px; text-align: left; background: transparent; border: none; padding: 9px 12px; border-radius: 8px; cursor: pointer; color: var(--text); }
+.more-list { position: absolute; inset-inline-end: 0; top: 42px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 12px 40px rgba(20,40,60,.18); display: flex; flex-direction: column; min-width: 240px; padding: 6px; z-index: 30; }
+.more-list button { font: inherit; font-size: 13px; text-align: start; background: transparent; border: none; padding: 9px 12px; border-radius: 8px; cursor: pointer; color: var(--text); }
 .more-list button:hover { background: var(--ink-soft); }
 .more-list button.danger { color: var(--danger); }
 .section-head h2.small { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); }
@@ -637,7 +637,7 @@ table.mini input, table.mini select { padding: 6px 8px; font-size: 13px; }
 .chart .lbl { font-size: 10px; fill: var(--muted); }
 .chart .grid { stroke: var(--border); stroke-dasharray: 2 3; }
 .legend { display: flex; gap: 16px; font-size: 12px; color: var(--muted); margin-top: 6px; }
-.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-inline-end: 6px; vertical-align: -1px; }
 .kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
 .kpi { background: var(--bg); border-radius: 12px; padding: 12px 14px; }
 .kpi .v { font-size: 20px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
@@ -647,7 +647,7 @@ table.mini input, table.mini select { padding: 6px 8px; font-size: 13px; }
 .rank li:last-child { border-bottom: none; }
 .rank .bar { flex: 1; height: 8px; background: var(--ink-soft); border-radius: 999px; overflow: hidden; }
 .rank .bar i { display: block; height: 100%; background: var(--primary); border-radius: 999px; }
-.rank .amt { font-variant-numeric: tabular-nums; color: var(--muted); min-width: 110px; text-align: right; }
+.rank .amt { font-variant-numeric: tabular-nums; color: var(--muted); min-width: 110px; text-align: end; }
 .rank a.name { color: inherit; text-decoration: none; font-weight: 500; }
 .rank a.name:hover { color: var(--primary); text-decoration: underline; }
 /* Un libellé de prestation n'est pas cliquable : il occupe la même place qu'un nom de client. */
@@ -766,7 +766,7 @@ body.dark .kpi, body.dark .pay-grid > div, body.dark .notes-md { background: var
 th.sortable-h { cursor: pointer; user-select: none; }
 th.sortable-h:hover { color: var(--text); background: var(--ink-soft); }
 th.sortable-h:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
-.sort-ar { margin-left: 4px; color: var(--primary); }
+.sort-ar { margin-inline-start: 4px; color: var(--primary); }
 /* Sans repère au repos, personne ne devine qu'un en-tête se clique : « ⇅ » discret, flèche pleine une fois trié. */
 th.sortable-h:not(.sorted) .sort-ar { color: var(--muted); opacity: .45; }
 th.sortable-h:hover .sort-ar { opacity: 1; }
@@ -776,7 +776,7 @@ table.list tfoot td.r { color: var(--text); font-variant-numeric: tabular-nums; 
    en attente : PDF, Email, Accepté, Refusé, Dupliquer). `nowrap` les poussait alors hors de l'écran,
    et un bouton hors champ n'existe pas — c'est `npm run e2e:contraste` qui l'a mesuré. On les laisse
    passer à la ligne plutôt que disparaître ; la cellule reste au plus étroit tant qu'ils tiennent. */
-td.row-actions { text-align: right; width: 1%; }
+td.row-actions { text-align: end; width: 1%; }
 /* Les boutons de ligne restent visibles, en retrait, et reprennent leur pleine opacité au survol.
    Cachés jusqu'au survol (audit), ils étaient introuvables sur les listes de documents et de clients
    alors qu'ils étaient toujours affichés partout ailleurs. */
@@ -804,7 +804,7 @@ th.row-actions-h { width: 1%; }
 .row-menu-btn svg { stroke: currentColor; fill: none; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
 /* Le bouton visible que la ligne a le droit de garder, et le menu juste après : sans cette règle
    ils se touchent, parce que `td.actions .btn + .btn` ne voit pas `.row-menu-btn`. */
-td.row-actions .btn + .row-menu-btn { margin-left: 6px; }
+td.row-actions .btn + .row-menu-btn { margin-inline-start: 6px; }
 .row-menu-btn .rm-chev { width: 13px; height: 13px; }
 .row-menu-btn .rm-i { width: 15px; height: 15px; }
 /* Une action UNIQUE devient un vrai bouton qui la nomme (pas un menu à un choix). Son icône est un
@@ -826,7 +826,7 @@ tr:hover .row-menu-btn, tr:focus-within .row-menu-btn, .row-menu-btn[aria-expand
    autres même quand une action n'en a pas (`ico()` pose un vide de la même largeur). Un menu dont
    les textes ne démarrent pas au même x se lit deux fois plus lentement. */
 .row-menu button {
-  display: grid; grid-template-columns: 18px 1fr; align-items: start; gap: 0 10px; width: 100%; text-align: left;
+  display: grid; grid-template-columns: 18px 1fr; align-items: start; gap: 0 10px; width: 100%; text-align: start;
   font: inherit; background: none; border: 0; border-radius: 8px; padding: 8px 10px; cursor: pointer; color: var(--text);
 }
 .row-menu button:hover, .row-menu button:focus-visible { background: var(--ink-soft); outline: none; }
@@ -854,7 +854,7 @@ body.dark th.sortable-h:hover { background: #1f2731; }
 /* ---------- liste déroulante avec recherche ---------- */
 .combo { position: relative; width: 100%; }
 .combo-btn {
-  font: inherit; font-size: 14px; color: var(--text); text-align: left;
+  font: inherit; font-size: 14px; color: var(--text); text-align: start;
   padding: 9px 11px; border: 1px solid var(--border); border-radius: var(--radius-sm);
   background: #fbfcfd; width: 100%; cursor: pointer;
   display: flex; align-items: center; gap: 8px; transition: border-color .12s, box-shadow .12s, background .12s;
@@ -866,7 +866,7 @@ body.dark th.sortable-h:hover { background: #1f2731; }
 .combo-caret { color: var(--muted); font-size: 11px; flex-shrink: 0; }
 .combo.ro .combo-btn { background: var(--ink-soft); cursor: default; opacity: .75; }
 .combo-pop {
-  position: absolute; z-index: 60; left: 0; right: 0; top: calc(100% + 5px);
+  position: absolute; z-index: 60; inset-inline-start: 0; inset-inline-end: 0; top: calc(100% + 5px);
   background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
   box-shadow: 0 16px 44px rgba(20,40,60,.18); padding: 7px; min-width: 260px;
 }
@@ -885,7 +885,7 @@ body.dark th.sortable-h:hover { background: #1f2731; }
 .combo-empty { padding: 14px 10px; color: var(--muted); font-size: 13px; text-align: center; }
 .combo-add {
   font: inherit; font-size: 12.5px; font-weight: 600; color: var(--primary); background: none; border: 0;
-  border-top: 1px solid var(--border); width: 100%; text-align: left; padding: 9px 10px; margin-top: 5px; cursor: pointer;
+  border-top: 1px solid var(--border); width: 100%; text-align: start; padding: 9px 10px; margin-top: 5px; cursor: pointer;
 }
 .combo-add:hover { background: var(--primary-soft); border-radius: 0 0 8px 8px; }
 /* La désignation qui cherche dans le catalogue (9.2.1) : le même langage que la liste déroulante,
@@ -910,9 +910,9 @@ body.dark .combo.ro .combo-btn { background: #1f2731; }
 
 /* ---------- champ date et calendrier ---------- */
 .datefield { position: relative; display: flex; align-items: center; }
-.datefield .d-txt { padding-right: 38px; font-variant-numeric: tabular-nums; }
+.datefield .d-txt { padding-inline-end: 38px; font-variant-numeric: tabular-nums; }
 .d-btn {
-  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+  position: absolute; inset-inline-end: 4px; top: 50%; transform: translateY(-50%);
   width: 30px; height: 30px; border: 0; background: none; cursor: pointer; color: var(--muted);
   display: grid; place-items: center; border-radius: 8px;
 }
@@ -920,7 +920,7 @@ body.dark .combo.ro .combo-btn { background: #1f2731; }
 .d-btn svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; }
 .datefield.ro .d-btn { display: none; }
 .cal-pop {
-  position: absolute; z-index: 60; left: 0; top: calc(100% + 5px); width: 268px;
+  position: absolute; z-index: 60; inset-inline-start: 0; top: calc(100% + 5px); width: 268px;
   background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
   box-shadow: 0 16px 44px rgba(20,40,60,.18); padding: 10px;
 }
@@ -956,14 +956,14 @@ body.dark .cal-d.out { color: #5b6572; }
   margin: 12px 2px 0; font-size: 12px; color: var(--muted);
 }
 .pg-info { font-weight: 600; }
-.pg-nav { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.pg-nav { display: flex; align-items: center; gap: 8px; margin-inline-start: auto; }
 .pg-page { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .pg-size { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .pg-size select { width: auto; padding: 5px 8px; font-size: 12px; background: var(--panel); }
 .pager .btn[disabled] { opacity: .4; cursor: default; }
 /* Repère « filtres actifs » : une liste filtrée ne doit jamais passer pour une liste vide. */
-.f-note { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; }
-.filters .f-note { margin-left: auto; }
+.f-note { display: inline-flex; align-items: center; gap: 8px; margin-inline-start: auto; }
+.filters .f-note { margin-inline-start: auto; }
 
 /* ---------- fiche client ---------- */
 .kv { display: flex; flex-direction: column; gap: 9px; font-size: 13px; }
@@ -980,7 +980,7 @@ button.i {
   background: var(--ink-soft); color: var(--muted); display: inline-grid; place-items: center; transition: background .12s, color .12s;
 }
 button.i:hover, button.i:focus-visible { background: var(--primary-soft-2); color: var(--primary); outline: none; }
-.check button.i, h2 button.i, .lbl button.i, .k-label button.i { margin-left: 2px; }
+.check button.i, h2 button.i, .lbl button.i, .k-label button.i { margin-inline-start: 2px; }
 /* libellé + bulle sur une seule ligne dans un champ (.field est une colonne flex) */
 .fl { display: flex; align-items: center; gap: 4px; }
 .i-demo { display: inline-grid; place-items: center; width: 15px; height: 15px; border-radius: 50%; background: var(--primary-soft-2); color: var(--primary); font: italic 800 10px/1 Georgia, serif; vertical-align: 1px; }
@@ -1005,7 +1005,7 @@ button.i:hover, button.i:focus-visible { background: var(--primary-soft-2); colo
 .tabs button:hover { color: var(--text); }
 .tabs button.active { color: var(--primary); border-bottom-color: var(--primary); }
 /* compteur discret dans un onglet : il annonce ce qu'on va trouver sans crier comme une pastille d'alerte */
-.tab-n { display: inline-block; min-width: 18px; padding: 1px 5px; margin-left: 4px; border-radius: 999px;
+.tab-n { display: inline-block; min-width: 18px; padding: 1px 5px; margin-inline-start: 4px; border-radius: 999px;
   background: var(--ink-soft); color: var(--muted); font-size: 11px; font-weight: 700; vertical-align: 1px; }
 .tabs button.active .tab-n { background: var(--primary-soft); color: var(--primary); }
 
@@ -1015,7 +1015,7 @@ button.i:hover, button.i:focus-visible { background: var(--primary-soft-2); colo
   background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 16px;
   margin-top: 18px; box-shadow: 0 -6px 24px rgba(20,40,60,.10);
 }
-.save-bar span { margin-right: auto; font-size: 13px; font-weight: 600; color: var(--warning); }
+.save-bar span { margin-inline-end: auto; font-size: 13px; font-weight: 600; color: var(--warning); }
 
 /* ---------- zone sensible ---------- */
 .danger-zone { border-color: #f0d5d2; }
@@ -1028,7 +1028,7 @@ body.dark .danger-zone { border-color: #4a2a2a; }
 .dirty-dot { font-size: 11px; font-weight: 700; color: var(--warning); background: var(--warning-soft); border-radius: 999px; padding: 3px 9px; vertical-align: 4px; }
 .editor .preview { display: flex; flex-direction: column; gap: 8px; height: calc(100vh - 96px); }
 .pv-head { display: flex; align-items: center; gap: 10px; }
-.pv-pages { margin-left: auto; font-size: 11px; color: var(--muted); background: var(--ink-soft); border-radius: 999px; padding: 2px 9px; font-weight: 600; }
+.pv-pages { margin-inline-start: auto; font-size: 11px; color: var(--muted); background: var(--ink-soft); border-radius: 999px; padding: 2px 9px; font-weight: 600; }
 .pv-pages.warn { background: var(--warning-soft); color: var(--warning); }
 .preview iframe { flex: 1 1 auto; height: auto; min-height: 0; }
 /* Fiche de contrat : l'aperçu se cale sur la hauteur du contenu, la liste des factures
@@ -1058,7 +1058,7 @@ tr.row-ok td { background: rgba(28, 143, 90, .05); }
    venait de cliquer. L'interrupteur vit maintenant dans la barre d'actions, en haut, et ne bouge
    plus (.pv-cmd). */
 .editor.no-preview .preview { display: none; }
-.pv-cmd { display: inline-flex; gap: 4px; align-items: center; padding-right: 6px; margin-right: 2px; border-right: 1px solid var(--border); }
+.pv-cmd { display: inline-flex; gap: 4px; align-items: center; padding-inline-end: 6px; margin-inline-end: 2px; border-inline-end: 1px solid var(--border); }
 .pv-cmd .btn.on { background: var(--primary-soft); color: var(--primary); border-color: transparent; }
 
 /* ---------- l'aperçu en grand (7.13.0) ----------
@@ -1067,8 +1067,8 @@ tr.row-ok td { background: rgba(28, 143, 90, .05); }
    posée par-dessus doit rester devant. */
 #pv-full { position: fixed; inset: 0; z-index: 300; background: rgba(20, 32, 44, .55); display: flex; flex-direction: column; }
 .pv-full-bar { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--border); flex: 0 0 auto; flex-wrap: wrap; }
-.pv-full-bar #pv-full-close { margin-left: 0; }
-.pv-zoom { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.pv-full-bar #pv-full-close { margin-inline-start: 0; }
+.pv-zoom { display: flex; align-items: center; gap: 6px; margin-inline-start: auto; }
 .pv-zoom .btn { min-width: 32px; justify-content: center; }
 .pv-zoom #pv-zoom-val { min-width: 96px; text-align: center; font-variant-numeric: tabular-nums; }
 .pv-full-body { flex: 1 1 auto; min-height: 0; padding: 14px; }
@@ -1076,9 +1076,9 @@ tr.row-ok td { background: rgba(28, 143, 90, .05); }
 /* les flèches du champ numérique mangent la colonne Qté sur un écran étroit */
 table.lines-edit input[type=number]::-webkit-inner-spin-button,
 table.lines-edit input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-table.lines-edit input.num { padding-left: 6px; padding-right: 6px; }
+table.lines-edit input.num { padding-inline-start: 6px; padding-inline-end: 6px; }
 table.mini input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-td.line-tools { white-space: nowrap; text-align: right; padding-top: 9px; }
+td.line-tools { white-space: nowrap; text-align: end; padding-top: 9px; }
 td.line-tools .btn { padding: 4px 6px; min-width: 24px; justify-content: center; color: var(--muted); }
 td.line-tools .btn:hover:not(:disabled) { color: var(--text); }
 .link-add { font: inherit; font-size: 12px; background: none; border: none; color: var(--muted); cursor: pointer; padding: 4px 0 0; text-decoration: underline; text-underline-offset: 2px; }
@@ -1124,7 +1124,7 @@ body.dark .th-piloter   { --th: #4dbcd6; --th-bg: #12303a; }
 /* La recherche est la porte d'entrée de l'aide : elle a la taille d'une porte. */
 .help-search { position: relative; max-width: 640px; margin: 0 0 20px; }
 .help-search .hs-loupe {
-  position: absolute; left: 14px; top: 50%; transform: translateY(-50%); width: 17px; height: 17px;
+  position: absolute; inset-inline-start: 14px; top: 50%; transform: translateY(-50%); width: 17px; height: 17px;
   stroke: var(--muted); fill: none; stroke-width: 2; stroke-linecap: round; pointer-events: none;
 }
 /* `#aide-q` et pas `.help-search input` : la règle générale des champs porte quatre `:not(…)`
@@ -1162,8 +1162,8 @@ body.dark .help-sec .hs-ico { color: #0d1418; }
 
 .help-arts { display: grid; grid-template-columns: repeat(auto-fill, minmax(248px, 1fr)); gap: 8px; padding: 14px 16px 16px; }
 .help-art {
-  display: flex; flex-direction: column; gap: 2px; text-align: left; cursor: pointer;
-  background: transparent; border: 1px solid var(--border); border-left: 3px solid var(--th);
+  display: flex; flex-direction: column; gap: 2px; text-align: start; cursor: pointer;
+  background: transparent; border: 1px solid var(--border); border-inline-start: 3px solid var(--th);
   border-radius: 10px; padding: 10px 12px; transition: background .12s, border-color .12s;
 }
 .help-art:hover { background: var(--th-bg); border-color: var(--th); }
@@ -1176,7 +1176,7 @@ body.dark .help-sec .hs-ico { color: #0d1418; }
    dériverait au premier ajustement (règle 6.8.0). */
 .ha-ico {
   display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 7px;
-  background: var(--th); color: #fff; margin-right: 8px; vertical-align: -4px; flex-shrink: 0;
+  background: var(--th); color: #fff; margin-inline-end: 8px; vertical-align: -4px; flex-shrink: 0;
 }
 .ha-ico svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 body.dark .ha-ico { color: #0d1418; }
@@ -1205,9 +1205,9 @@ body.dark .ha-ico { color: #0d1418; }
 .help-col { min-width: 0; }
 .help-toc { position: sticky; top: 0; padding-top: 2px; }
 .help-toc .tt { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); padding: 0 0 8px 12px; }
-.help-toc ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; border-left: 2px solid var(--border); }
+.help-toc ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; border-inline-start: 2px solid var(--border); }
 .help-toc button {
-  font: inherit; font-size: 12.5px; text-align: left; background: none; border: 0;
+  font: inherit; font-size: 12.5px; text-align: start; background: none; border: 0;
   box-shadow: -2px 0 0 transparent; color: var(--muted); cursor: pointer; padding: 6px 10px;
   line-height: 1.35; border-radius: 0 8px 8px 0; width: 100%;
 }
@@ -1215,7 +1215,7 @@ body.dark .ha-ico { color: #0d1418; }
 @media (max-width: 1180px) {
   .help-layout { grid-template-columns: minmax(0, 1fr); }
   .help-toc { position: static; order: -1; margin-bottom: 12px; }
-  .help-toc ol { flex-direction: row; flex-wrap: wrap; gap: 6px; border-left: 0; }
+  .help-toc ol { flex-direction: row; flex-wrap: wrap; gap: 6px; border-inline-start: 0; }
   .help-toc button { width: auto; background: var(--th-bg); color: var(--th); border-radius: 999px; padding: 5px 12px; box-shadow: none; }
 }
 /* Le geste : on lit une explication pour FAIRE quelque chose. */
@@ -1229,7 +1229,7 @@ body.dark .ha-ico { color: #0d1418; }
 .help-body .help-sub { color: var(--muted); margin: 0 0 22px; font-size: 14px; }
 .help-body h3 { font-size: 14px; font-weight: 700; margin: 22px 0 6px; color: var(--text); }
 .help-body p { margin: 8px 0; line-height: 1.65; font-size: 14px; }
-.help-body ul, .help-body ol { margin: 8px 0; padding-left: 22px; line-height: 1.65; font-size: 14px; }
+.help-body ul, .help-body ol { margin: 8px 0; padding-inline-start: 22px; line-height: 1.65; font-size: 14px; }
 .help-body li { margin: 5px 0; }
 .help-body b { font-weight: 650; }
 .help-body em { color: var(--warning); font-style: normal; font-weight: 600; }
@@ -1238,9 +1238,9 @@ body.dark .ha-ico { color: #0d1418; }
 .gloss dt { font-weight: 650; margin-top: 12px; }
 .gloss dd { margin: 2px 0 0; color: var(--muted); line-height: 1.55; }
 table.keys { width: 100%; border-collapse: collapse; font-size: 14px; margin: 10px 0; }
-table.keys th { text-align: left; font-weight: 500; padding: 7px 0; border-bottom: 1px solid var(--border); }
-table.keys td { text-align: right; padding: 7px 0; border-bottom: 1px solid var(--border); white-space: nowrap; }
-kbd { font: inherit; font-size: 12px; font-family: -apple-system, system-ui, sans-serif; background: var(--ink-soft); border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 6px; padding: 2px 7px; margin-left: 3px; }
+table.keys th { text-align: start; font-weight: 500; padding: 7px 0; border-bottom: 1px solid var(--border); }
+table.keys td { text-align: end; padding: 7px 0; border-bottom: 1px solid var(--border); white-space: nowrap; }
+kbd { font: inherit; font-size: 12px; font-family: -apple-system, system-ui, sans-serif; background: var(--ink-soft); border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 6px; padding: 2px 7px; margin-inline-start: 3px; }
 
 /* ---------- petits écrans (1280 px : MacBook 13" en fenêtre) ---------- */
 @media (max-width: 1340px) {
@@ -1249,8 +1249,8 @@ kbd { font: inherit; font-size: 12px; font-family: -apple-system, system-ui, san
   .help-grid { grid-template-columns: 220px 1fr; }
   /* Les listes à huit colonnes débordaient de quelques dizaines de pixels et forçaient un
      défilement horizontal de toute la page. Des cellules plus serrées suffisent à les faire tenir. */
-  table.list th, table.list td, table.list tfoot td { padding-left: 10px; padding-right: 10px; }
-  table.list.compact th, table.list.compact td { padding-left: 8px; padding-right: 8px; }
+  table.list th, table.list td, table.list tfoot td { padding-inline-start: 10px; padding-inline-end: 10px; }
+  table.list.compact th, table.list.compact td { padding-inline-start: 8px; padding-inline-end: 8px; }
   table.list th { letter-spacing: .2px; }
   td.row-actions > span { gap: 3px; }
 }
@@ -1270,7 +1270,7 @@ kbd { font: inherit; font-size: 12px; font-family: -apple-system, system-ui, san
 .setup-head .brand-mark { width: 40px; height: 40px; border-radius: 12px; font-size: 16px; flex-shrink: 0; }
 .setup-t { font-size: 19px; font-weight: 700; letter-spacing: -.3px; }
 .setup-s { font-size: 13px; color: var(--muted); margin-top: 2px; }
-.setup-step { margin-left: auto; font-size: 12px; color: var(--muted); font-weight: 600; white-space: nowrap; }
+.setup-step { margin-inline-start: auto; font-size: 12px; color: var(--muted); font-weight: 600; white-space: nowrap; }
 .setup-bar { height: 3px; background: var(--ink-soft); }
 .setup-bar i { display: block; height: 100%; background: var(--primary); transition: width .25s; }
 .setup-body { padding: 24px 28px; max-height: 58vh; overflow-y: auto; }
@@ -1278,10 +1278,10 @@ kbd { font: inherit; font-size: 12px; font-family: -apple-system, system-ui, san
 .setup-body p:first-child { margin-top: 0; }
 .setup-body em { color: var(--warning); font-style: normal; font-weight: 600; }
 .setup-foot { display: flex; gap: 8px; justify-content: flex-end; padding: 16px 28px 22px; border-top: 1px solid var(--border); }
-.setup-foot .btn-ghost { margin-right: auto; color: var(--muted); }
+.setup-foot .btn-ghost { margin-inline-end: auto; color: var(--muted); }
 .req { font-size: 10px; text-transform: uppercase; letter-spacing: .8px; color: var(--warning); font-weight: 700; }
 .act-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.act { font: inherit; text-align: left; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; cursor: pointer; display: flex; flex-direction: column; gap: 3px; transition: border-color .12s, background .12s; }
+.act { font: inherit; text-align: start; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; cursor: pointer; display: flex; flex-direction: column; gap: 3px; transition: border-color .12s, background .12s; }
 .act:hover { border-color: var(--primary); }
 .act.sel { border-color: var(--primary); background: var(--primary-soft); }
 .act-l { font-size: 13.5px; font-weight: 650; }
@@ -1315,7 +1315,7 @@ kbd { font: inherit; font-size: 12px; font-family: -apple-system, system-ui, san
 
 .set-hits { display: grid; gap: 8px; }
 .set-hit {
-  font: inherit; text-align: left; background: var(--panel); border: 1px solid var(--border);
+  font: inherit; text-align: start; background: var(--panel); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 12px 16px; cursor: pointer;
   display: flex; flex-direction: column; gap: 3px; transition: border-color .12s;
 }

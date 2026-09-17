@@ -43,8 +43,8 @@ En cas de contradiction, `DIRECTION.md` fait foi, puis `CAHIER-DES-CHARGES.md`, 
 | **9.2.0** | Le livre du dossier, et le paquet signé | 26 | Complète | 8 j · 20 j |
 | **9.3.0** | La saisie | 14 | Intention | 10 j · 20 j |
 | **9.4.0** | La licence du Cabinet | 12 | Intention | 5 j · 10 j |
-| **9.4.4** → **9.4.6** | Le chantier UI/UX du Cabinet (page Dossiers, le livre, les commandes) | — | Mesuré | — |
-| **9.4.10** | Entretien | 7 | Intention | 3 j · 6 j |
+| **9.4.4** → **9.4.9** | Le chantier UI/UX du Cabinet (page Dossiers, le livre, les échéances, la fiche, les finitions, le fil du parcours) | — | Mesuré | **livré** 17/09/2026 |
+| ~~**9.4.10**~~ | ~~Entretien~~ | 7 | Intention | **livré** 17/09/2026 |
 | **9.5.0** | La banque | 12 | Intention | 10 j · 20 j |
 | **9.6.0** | La déclaration mensuelle | 14 | Intention | 8 j · 20 j |
 | *9.6.1* | *Entretien (hors des 13 demandées)* | *4* | *Intention* | *3 j · 6 j* |
@@ -338,9 +338,22 @@ dossier désarchivé recompte (*toi*) ; la vue « les dossiers de ce cabinet »,
 
 ---
 
-## 9.4.10 — Entretien
+## 9.4.10 — Entretien — **LIVRÉE le 17/09/2026**
 
 > *Aucune fonction nouvelle, par règle. C'est la version où l'on rembourse.*
+
+**Ce qui a été livré**, et ce qui ne l'a pas été : F-9.4.10-01 (Electron 43 → 44, les 46 parcours
+relancés), F-9.4.10-02 (les 94 déclarations CSS physiques converties, une exception nommée),
+F-9.4.10-04 (**premier** découpage du fichier de tests — le rendu du Cabinet sort dans
+`test/suites/`, avec le contrôle qui refuse une suite non chargée), F-9.4.10-05 (les codes `ERR-*`
+posés sur les 68 refus des deux `main.js`, confrontés à la table du cahier), et trois points de dette
+du § 15 de `QUESTIONS.md` : `npm audit` dans la CI sur ce qui est livré (point 11), la version de
+Node lue dans `engines` par les deux installeurs (point 12), le journal technique qui reçoit enfin
+les exceptions imprévues (point 3, seconde moitié). **F-9.4.10-03 (découpage de `app.js` par route)
+n'est PAS fait** : la règle du § 15 est de déplacer les routes *qu'une version touche*, et celle-ci
+n'en touche aucune — le faire à vide serait le plus gros risque de régression du projet pour zéro
+bénéfice. Il repart en 9.6.1. F-9.4.10-07 (les retours de la bêta 9.3.0) est sans objet : aucune
+bêta 9.3.0 n'a été distribuée.
 
 *(Elle s'appelait 9.4.1 dans la v2 de ce document. Deux versions d'entretien NON PRÉVUES ont pris les
 numéros entre-temps — 9.4.1 « la clé de réponse embarquée » et 9.4.2 « l'exemple qui ne périme plus »,

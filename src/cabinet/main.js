@@ -65,6 +65,27 @@ function logError(where, err) {
   try { dialog.showErrorBox('SkanFact Cabinet — erreur', `${where}\n\n${err && err.message || err}`); } catch {}
 }
 
+// 9.4.10 — Chaque refus porte son CODE (Partie 10 du cahier des charges). La phrase en français ne
+// bouge pas : c'est elle qu'on lit. Le code, lui, se cite — dans un signalement, au téléphone, dans
+// le cahier — alors que « il m'a dit que le paquet est illisible » ne désigne aucune ligne du code.
+// Il voyage DANS le message parce qu'une propriété posée sur une Error ne traverse pas le pont IPC
+// (Electron sérialise l'erreur en une chaîne) ; l'écran le détache avant d'afficher la phrase.
+const erreur = (code, message) => Object.assign(new Error(`${message} [${code}]`), { code, refus: true });
+
+// Et un refus laisse une trace, toujours. On enveloppe `ipcMain.handle` UNE fois plutôt qu'à chaque
+// enregistrement : quatre-vingts points d'appel, c'est quatre-vingts occasions d'en oublier un — et
+// la forme `ipcMain.handle(` reste celle que les tranches de source des tests reconnaissent.
+const handleBrut = ipcMain.handle.bind(ipcMain);
+ipcMain.handle = (canal, fn) => handleBrut(canal, async (...a) => {
+  try { return await fn(...a); }
+  // Un refus qu'on a ÉCRIT (`erreur(…)`) est une RÉPONSE, pas une panne : l'inscrire noierait le
+  // journal sous les mots de passe mal tapés, et un journal qu'on ne lit plus ne dépanne personne
+  // (même règle que le rouge sur une situation normale, 8.0.1). Ce qui manquait est l'autre moitié :
+  // une exception qu'aucune phrase n'attendait n'écrivait RIEN nulle part — elle repartait vers
+  // l'écran habillée en « Error invoking remote method », et le journal restait muet.
+  catch (e) { if (!(e && e.refus)) logToFile('panne ' + canal, e); throw e; }
+});
+
 function getStore() {
   if (!store) {
     store = CS.createCabStore(app.getPath('userData'), {
@@ -78,7 +99,7 @@ function getStore() {
 }
 
 function requireOpen() {
-  if (!state || !getStore().unlocked()) throw new Error('Aucun cabinet ouvert.');
+  if (!state || !getStore().unlocked()) throw erreur('ERR-CAB-009', 'Aucun cabinet ouvert.');
   return state;
 }
 
@@ -315,11 +336,11 @@ ipcMain.handle('cab:unlock', (_e, password) => {
   const r = s.unlock(password);
   if (r.missing) {
     // Le fichier existait et n'était pas lisible : cabstore l'a mis de côté SANS l'écraser.
-    const e = new Error('Le fichier du cabinet est illisible. Il a été mis de côté, rien n\'a été effacé : restaure une sauvegarde depuis l\'écran suivant.');
+    const e = erreur('ERR-CAB-016', 'Le fichier du cabinet est illisible. Il a été mis de côté, rien n\'a été effacé : restaure une sauvegarde depuis l\'écran suivant.');
     e.corrupt = s.state.corruptFile || '';
     throw e;
   }
-  if (!r.ok) throw new Error(r.error);
+  if (!r.ok) throw erreur('ERR-CAB-012', r.error);
   state = K.migrate(r.state);
   // Reprise du rangement à plat des versions précédentes : les paquets passent en
   // paquets/<client>/<année>/<mois>.skanpack. Silencieux, une seule fois.
@@ -415,7 +436,7 @@ const DOSSIER_TEXT = ['name', 'email', 'phone', 'contact', 'note', 'regime', 'tv
 ipcMain.handle('cab:saveDossier', (_e, { id, patch } = {}) => {
   requireOpen();
   const d = state.dossiers.find(x => x.id === id);
-  if (!d) throw new Error('Dossier introuvable.');
+  if (!d) throw erreur('ERR-CAB-009', 'Dossier introuvable.');
   // On calcule d'abord, on valide ensuite, on écrit en dernier. L'ancienne version modifiait l'objet
   // vivant PUIS refusait : le comptable lisait « un autre dossier porte déjà ce matricule », fermait
   // la fenêtre rassuré, et l'enregistrement suivant — une relance notée vingt minutes plus tard —
@@ -438,7 +459,7 @@ ipcMain.handle('cab:saveDossier', (_e, { id, patch } = {}) => {
     const neuf = K.dossierKey({ entreprise: { matricule: futur.matricule, nom: futur.name } });
     if (neuf && neuf !== d.id) {
       if (state.dossiers.some(x => x !== d && x.id === neuf)) {
-        throw new Error('Un autre dossier porte déjà ce matricule (ou ce nom).');
+        throw erreur('ERR-CAB-008', 'Un autre dossier porte déjà ce matricule (ou ce nom).');
       }
       futur.id = neuf;
     }
@@ -455,10 +476,10 @@ ipcMain.handle('cab:saveDossier', (_e, { id, patch } = {}) => {
 ipcMain.handle('cab:newDossier', (_e, fields) => {
   requireOpen();
   const f = fields || {};
-  if (!String(f.name || '').trim()) throw new Error('Donne au moins un nom à ce client.');
+  if (!String(f.name || '').trim()) throw erreur('ERR-CAB-009', 'Donne au moins un nom à ce client.');
   const d = K.newDossier({ ...f, name: String(f.name).trim(), createdAt: Date.now() });
-  if (!d.id || d.id === 'NOM:') throw new Error('Nom de client inutilisable.');
-  if (state.dossiers.some(x => x.id === d.id)) throw new Error('Un dossier existe déjà pour ce client (même matricule ou même nom).');
+  if (!d.id || d.id === 'NOM:') throw erreur('ERR-CAB-009', 'Nom de client inutilisable.');
+  if (state.dossiers.some(x => x.id === d.id)) throw erreur('ERR-CAB-008', 'Un dossier existe déjà pour ce client (même matricule ou même nom).');
   state.dossiers.push(d);
   save();
   return { state: safeState(), id: d.id };
@@ -481,7 +502,7 @@ ipcMain.handle('cab:importDossiers', (_e, text) => {
 ipcMain.handle('cab:deleteDossier', (_e, id) => {
   requireOpen();
   const i = state.dossiers.findIndex(x => x.id === id);
-  if (i < 0) throw new Error('Dossier introuvable.');
+  if (i < 0) throw erreur('ERR-CAB-009', 'Dossier introuvable.');
   const d = state.dossiers[i];
   getStore().backupNow('avant-suppression-dossier');
   getStore().removeDossierFiles(d, state.dossiers);
@@ -493,9 +514,9 @@ ipcMain.handle('cab:deleteDossier', (_e, id) => {
 ipcMain.handle('cab:deletePack', (_e, { id, month } = {}) => {
   requireOpen();
   const d = state.dossiers.find(x => x.id === id);
-  if (!d) throw new Error('Dossier introuvable.');
+  if (!d) throw erreur('ERR-CAB-009', 'Dossier introuvable.');
   const p = (d.packs || []).find(x => x.month === month);
-  if (!p) throw new Error('Paquet introuvable.');
+  if (!p) throw erreur('ERR-CAB-009', 'Paquet introuvable.');
   getStore().backupNow('avant-suppression-paquet');
   if (p.path) getStore().removePack(p.path);
   d.packs = d.packs.filter(x => x.month !== month);
@@ -506,7 +527,7 @@ ipcMain.handle('cab:deletePack', (_e, { id, month } = {}) => {
 ipcMain.handle('cab:noteRelance', (_e, { id, months, via, note } = {}) => {
   requireOpen();
   const d = state.dossiers.find(x => x.id === id);
-  if (!d) throw new Error('Dossier introuvable.');
+  if (!d) throw erreur('ERR-CAB-009', 'Dossier introuvable.');
   K.noteRelance(d, months, via, Date.now(), note);
   return save();
 });
@@ -694,18 +715,18 @@ ipcMain.handle('cab:importPack', async (_e, opts) => {
 const PACK_FORMAT = 1;
 
 function verifierManifeste(m) {
-  if (!m || typeof m !== 'object' || Array.isArray(m)) throw new Error('Le manifeste de ce paquet ne ressemble pas à un envoi SkanFact.');
+  if (!m || typeof m !== 'object' || Array.isArray(m)) throw erreur('ERR-CAB-003', 'Le manifeste de ce paquet ne ressemble pas à un envoi SkanFact.');
   const f = Number(m.format || m.version || 1);
-  if (f > PACK_FORMAT) throw new Error('Ce paquet vient d\'une version plus récente de SkanFact. Mets à jour SkanFact Cabinet pour le lire.');
+  if (f > PACK_FORMAT) throw erreur('ERR-CAB-004', 'Ce paquet vient d\'une version plus récente de SkanFact. Mets à jour SkanFact Cabinet pour le lire.');
   const e = m.entreprise, p = m.periode;
-  if (!e || typeof e !== 'object' || Array.isArray(e)) throw new Error('Ce paquet ne dit pas de quelle entreprise il vient.');
-  if (typeof e.nom !== 'string' && typeof e.matricule !== 'string') throw new Error('Ce paquet ne dit ni le nom ni le matricule de l\'entreprise.');
-  if (!String(e.nom || e.matricule || '').trim()) throw new Error('Ce paquet ne dit ni le nom ni le matricule de l\'entreprise.');
-  if (!p || typeof p !== 'object' || Array.isArray(p)) throw new Error('Ce paquet ne dit pas de quel mois il parle.');
+  if (!e || typeof e !== 'object' || Array.isArray(e)) throw erreur('ERR-CAB-005', 'Ce paquet ne dit pas de quelle entreprise il vient.');
+  if (typeof e.nom !== 'string' && typeof e.matricule !== 'string') throw erreur('ERR-CAB-005', 'Ce paquet ne dit ni le nom ni le matricule de l\'entreprise.');
+  if (!String(e.nom || e.matricule || '').trim()) throw erreur('ERR-CAB-005', 'Ce paquet ne dit ni le nom ni le matricule de l\'entreprise.');
+  if (!p || typeof p !== 'object' || Array.isArray(p)) throw erreur('ERR-CAB-005', 'Ce paquet ne dit pas de quel mois il parle.');
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(String(p.mois || ''))) {
-    throw new Error(`Le mois annoncé par ce paquet est illisible (« ${String(p.mois || '').slice(0, 30)} »).`);
+    throw erreur('ERR-CAB-005', `Le mois annoncé par ce paquet est illisible (« ${String(p.mois || '').slice(0, 30)} »).`);
   }
-  if (m.fichiers != null && !Array.isArray(m.fichiers)) throw new Error('La liste des fichiers de ce paquet est illisible.');
+  if (m.fichiers != null && !Array.isArray(m.fichiers)) throw erreur('ERR-CAB-006', 'La liste des fichiers de ce paquet est illisible.');
   return m;
 }
 
@@ -716,25 +737,25 @@ function ingest(file, password) {
     const head = Z.cabinetHeader(buf);
     const mine = Z.keyFingerprint(state.cabinet.publicKey);
     if (head.destinataire && head.destinataire !== mine) {
-      throw new Error(`Ce paquet est adressé à un autre cabinet (${head.destinataire}).`);
+      throw erreur('ERR-CAB-014', `Ce paquet est adressé à un autre cabinet (${head.destinataire}).`);
     }
     buf = Z.openWithCabinetKey(buf, state.cabinet.privateKey);
     sealed = true;
   } else if (Z.isSealed(buf)) {
-    if (!password) { const e = new Error('Ce paquet est protégé par un mot de passe.'); e.needPassword = true; throw e; }
+    if (!password) { throw Object.assign(erreur('ERR-CAB-017', 'Ce paquet est protégé par un mot de passe.'), { needPassword: true }); }
     buf = Z.openBuffer(buf, password);
     sealed = true;
   }
   const entries = Z.zipRead(buf);
   const mEntry = entries.find(e => e.name === 'manifeste.json');
-  if (!mEntry) throw new Error('Ce fichier n\'est pas un paquet SkanFact : le manifeste est absent.');
+  if (!mEntry) throw erreur('ERR-CAB-001', 'Ce fichier n\'est pas un paquet SkanFact : le manifeste est absent.');
   // Le manifeste n'est décompressé QU'UNE FOIS : `data()` refait l'inflate et le contrôle CRC à
   // chaque appel, et il était appelé trois fois par paquet (la lecture, la boucle d'empreintes,
   // puis l'empreinte du paquet). La lecture reste DANS le try : un CRC abîmé doit continuer de
   // donner la même phrase en français, pas une erreur de bibliothèque.
   let manifest, mBuf;
   try { mBuf = mEntry.data(); manifest = JSON.parse(mBuf.toString('utf8')); }
-  catch { throw new Error('Le manifeste de ce paquet est illisible : le fichier a été abîmé pendant l\'envoi.'); }
+  catch { throw erreur('ERR-CAB-002', 'Le manifeste de ce paquet est illisible : le fichier a été abîmé pendant l\'envoi.'); }
   // Un paquet arrive par mail : il vient de l'EXTÉRIEUR. Tout ce qu'il annonce est contrôlé avant
   // que quoi que ce soit ne touche au disque — un mois de la forme « ../../.. » servait à fabriquer
   // un chemin de fichier, et un paquet d'une version future était rangé à moitié vide, dossier vert.
@@ -783,7 +804,7 @@ function ingest(file, password) {
     catch { sig = { ok: false, motif: 'illisible', texte: 'La signature de ce paquet est illisible.' }; }
   }
   const origine = K.verdictOrigine(fiche, sig);
-  if (!origine.ok) { const e = new Error(origine.texte); e.code = origine.code; e.origine = origine; throw e; }
+  if (!origine.ok) { throw Object.assign(erreur(origine.code, origine.texte), { origine }); }
   const dest = getStore().storePack(file, fiche, month, state.dossiers.concat(known ? [] : [fiche]));
 
   const res = K.filePack(state, manifest, {
@@ -835,7 +856,7 @@ ipcMain.handle('cab:openInPack', async (_e, { packPath, name, password } = {}) =
   if (Z.isSealedForCabinet(buf)) buf = Z.openWithCabinetKey(buf, state.cabinet.privateKey);
   else if (Z.isSealed(buf)) buf = Z.openBuffer(buf, password || '');
   const e = Z.zipRead(buf).find(x => x.name === name);
-  if (!e) throw new Error('Fichier absent du paquet.');
+  if (!e) throw erreur('ERR-CAB-007', 'Fichier absent du paquet.');
   // Le NOM du fichier est choisi par l'expéditeur. `shell.openPath` lance le programme associé à
   // l'extension : un paquet contenant « facture.pdf.command » ou « bulletin.exe » ferait exécuter
   // du code par un simple clic dans une liste de pièces comptables. On n'ouvre que ce qui se lit.
@@ -1024,7 +1045,7 @@ function viderCacheLivres(dossierId) {
 ipcMain.handle('cab:livres', (_e, { dossierId, du, au } = {}) => {
   requireOpen();
   const d = (state.dossiers || []).find(x => x.id === dossierId);
-  if (!d) throw new Error('Ce dossier n\'existe plus.');
+  if (!d) throw erreur('ERR-CAB-009', 'Ce dossier n\'existe plus.');
 
   let cache = cacheLivres.get(dossierId);
   if (!cache) {
@@ -1062,7 +1083,7 @@ const KC = require('../renderer/compta.js');
 
 function dossierDe(dossierId) {
   const d = (state.dossiers || []).find(x => x.id === dossierId);
-  if (!d) throw new Error('Ce dossier n\'existe plus.');
+  if (!d) throw erreur('ERR-CAB-009', 'Ce dossier n\'existe plus.');
   return d;
 }
 const indexDossiers = () => getStore().folderIndex(state.dossiers);
@@ -1081,7 +1102,7 @@ function ecrireLeLivre(dossierId, livre, quoi, detail) {
   const idx = indexDossiers();
   const v = getStore().poserVerrou(d, livre.exercice.annee, moiPoste(), idx);
   if (!v.ok) {
-    const e = new Error(`Ce livre est ouvert sur un autre ordinateur (${v.verrou.deviceName || 'poste inconnu'}). Ferme-le là-bas, ou attends : le verrou tombe tout seul au bout de 24 h.`);
+    const e = erreur('ERR-CAB-022', `Ce livre est ouvert sur un autre ordinateur (${v.verrou.deviceName || 'poste inconnu'}). Ferme-le là-bas, ou attends : le verrou tombe tout seul au bout de 24 h.`);
     e.code = 'ERR-CAB-022';
     throw e;
   }
@@ -1108,15 +1129,20 @@ ipcMain.handle('cab:reprendre', (_e, { dossierId, annee, du, au, plan, ouverture
   requireOpen();
   const existant = ouvrirLivre(dossierId, annee);
   if (existant.livre) {
-    const e = new Error(`Ce dossier a déjà un livre pour ${annee}. Ouvre-le plutôt que de le reprendre à zéro : une reprise effacerait son point de départ.`);
-    e.code = 'ERR-CAB-024';
+    const e = erreur('ERR-CAB-015', `Ce dossier a déjà un livre pour ${annee}. Ouvre-le plutôt que de le reprendre à zéro : une reprise effacerait son point de départ.`);
     throw e;
   }
-  if (existant.illisible || existant.versionInconnue) throw new Error(existant.motif || 'Le livre de cet exercice n\'est pas lisible.');
+  // Deux refus différents sous une même condition : un livre écrit par une version plus récente
+  // (on ne l'ouvre pas, on ne l'abîme pas) et un livre illisible (il a été mis de côté). Le code les
+  // sépare, parce que le geste qui débloque n'est pas le même — mettre à jour, ou restaurer.
+  if (existant.illisible || existant.versionInconnue) {
+    throw erreur(existant.versionInconnue ? 'ERR-CAB-020' : 'ERR-CAB-021',
+      existant.motif || 'Le livre de cet exercice n\'est pas lisible.');
+  }
   const livre = KC.livreVide(dossierId, annee, { du, au, plan: Array.isArray(plan) ? plan : [] });
   if (Array.isArray(ouverture) && ouverture.length) {
     const r = KC.balanceOuverture(livre, ouverture, du || `${annee}-01-01`, source || 'balance', moiPoste().deviceName || 'cabinet', Date.now());
-    if (!r.ok) { const e = new Error(r.motif); e.code = 'ERR-CAB-023'; e.ecart = r.ecart; throw e; }
+    if (!r.ok) { throw Object.assign(erreur('ERR-CAB-023', r.motif), { ecart: r.ecart }); }
   }
   ecrireLeLivre(dossierId, livre, 'reprise', `exercice ${annee}`);
   return ouvrirLivre(dossierId, annee);
@@ -1134,9 +1160,9 @@ ipcMain.handle('cab:importerPlan', async (_e, { dossierId, annee, chemin } = {})
   const f = chemin || (await dialog.showOpenDialog({ title: 'Importer un plan de comptes', filters: [{ name: 'CSV', extensions: ['csv', 'txt'] }], properties: ['openFile'] })).filePaths[0];
   if (!f) return { annule: true };
   const r = KC.planDepuisCsv(lireCsvFichier(f));
-  if (r.motif) throw new Error(r.motif);
+  if (r.motif) throw erreur('ERR-CAB-027', r.motif);
   const o = ouvrirLivre(dossierId, annee);
-  if (!o.livre) throw new Error('Ce dossier n\'a pas encore de livre pour cet exercice.');
+  if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas encore de livre pour cet exercice.');
   // Un compte déjà présent n'est PAS écrasé : le comptable a pu le renommer, et un import ne
   // défait pas ce qu'il a décidé. On ajoute ce qui manque, on dit ce qu'on a laissé.
   let ajoutes = 0, deja = 0;
@@ -1154,7 +1180,7 @@ ipcMain.handle('cab:importerBalance', async (_e, { dossierId, annee, chemin } = 
   const f = chemin || (await dialog.showOpenDialog({ title: 'Importer une balance d\'ouverture', filters: [{ name: 'CSV', extensions: ['csv', 'txt'] }], properties: ['openFile'] })).filePaths[0];
   if (!f) return { annule: true };
   const r = KC.balanceDepuisCsv(lireCsvFichier(f));
-  if (r.motif) throw new Error(r.motif);
+  if (r.motif) throw erreur('ERR-CAB-023', r.motif);
   return { lignes: r.lignes, ignorees: r.ignorees, fichier: f };
 });
 
@@ -1163,10 +1189,10 @@ ipcMain.handle('cab:importerBalance', async (_e, { dossierId, annee, chemin } = 
 ipcMain.handle('cab:valider', (_e, { dossierId, annee, id } = {}) => {
   requireOpen();
   const o = ouvrirLivre(dossierId, annee);
-  if (!o.livre) throw new Error('Ce dossier n\'a pas de livre pour cet exercice.');
+  if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas de livre pour cet exercice.');
   licenceBlockCab('Valider une écriture');
   const r = KC.validerEcriture(o.livre, id, moiPoste().deviceName || 'cabinet', Date.now());
-  if (!r.ok) { const e = new Error(r.motif); e.motifs = r.motifs; throw e; }
+  if (!r.ok) { throw Object.assign(erreur('ERR-CAB-024', r.motif), { motifs: r.motifs }); }
   ecrireLeLivre(dossierId, o.livre, null);
   noterValidation(dossierId);
   return { ok: true, numero: r.ecriture.numero, livre: ouvrirLivre(dossierId, annee).livre };
@@ -1175,10 +1201,10 @@ ipcMain.handle('cab:valider', (_e, { dossierId, annee, id } = {}) => {
 ipcMain.handle('cab:contrepasser', (_e, { dossierId, annee, id, date } = {}) => {
   requireOpen();
   const o = ouvrirLivre(dossierId, annee);
-  if (!o.livre) throw new Error('Ce dossier n\'a pas de livre pour cet exercice.');
+  if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas de livre pour cet exercice.');
   licenceBlockCab('Contre-passer une écriture');
   const r = KC.contrepasser(o.livre, id, moiPoste().deviceName || 'cabinet', date, Date.now());
-  if (!r.ok) throw new Error(r.motif);
+  if (!r.ok) throw erreur('ERR-CAB-025', r.motif);
   ecrireLeLivre(dossierId, o.livre, null);
   noterValidation(dossierId);
   return { ok: true, numero: r.ecriture.numero, livre: ouvrirLivre(dossierId, annee).livre };
@@ -1187,7 +1213,7 @@ ipcMain.handle('cab:contrepasser', (_e, { dossierId, annee, id, date } = {}) => 
 ipcMain.handle('cab:saisir', (_e, { dossierId, annee, ecriture } = {}) => {
   requireOpen();
   const o = ouvrirLivre(dossierId, annee);
-  if (!o.livre) throw new Error('Ce dossier n\'a pas de livre pour cet exercice.');
+  if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas de livre pour cet exercice.');
   const e = KC.ajouterEcriture(o.livre, ecriture, moiPoste().deviceName || 'cabinet', Date.now());
   ecrireLeLivre(dossierId, o.livre, 'saisie', `${e.journal} ${e.piece}`);
   return { ok: true, id: e.id, livre: ouvrirLivre(dossierId, annee).livre };
@@ -1196,11 +1222,11 @@ ipcMain.handle('cab:saisir', (_e, { dossierId, annee, ecriture } = {}) => {
 ipcMain.handle('cab:lettrer', (_e, { dossierId, annee, compte, ids, lettre, delettrer, date } = {}) => {
   requireOpen();
   const o = ouvrirLivre(dossierId, annee);
-  if (!o.livre) throw new Error('Ce dossier n\'a pas de livre pour cet exercice.');
+  if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas de livre pour cet exercice.');
   const r = delettrer
     ? KC.delettrer(o.livre, lettre, moiPoste().deviceName || 'cabinet', Date.now())
     : KC.lettrer(o.livre, compte, ids, lettre, moiPoste().deviceName || 'cabinet', date);
-  if (!r.ok) { const e = new Error(r.motif); e.ecart = r.ecart; throw e; }
+  if (!r.ok) { throw Object.assign(erreur('ERR-CAB-028', r.motif), { ecart: r.ecart }); }
   ecrireLeLivre(dossierId, o.livre, delettrer ? null : 'lettrage', r.lettre || lettre);
   return { ok: true, lettre: r.lettre, livre: ouvrirLivre(dossierId, annee).livre };
 });
@@ -1270,9 +1296,7 @@ ipcMain.handle('licence:set', (_e, key) => {
     comptes: K.comptageDossiers(state, L.today()).comptes, today: L.today()
   });
   if (essai.state === 'invalide' || essai.state === 'autre') {
-    const e = new Error(essai.detail || essai.label);
-    e.code = 'ERR-CAB-050';
-    throw e;
+    throw erreur('ERR-CAB-050', essai.detail || essai.label);
   }
   state.licence = { key: k, poseeLe: new Date().toISOString() };
   save();
@@ -1290,12 +1314,11 @@ ipcMain.handle('licence:requestMail', () => {
 function licenceBlockCab(quoi) {
   const etat = licenceCabinetStatus();
   if (!etat.locked) return null;
-  const e = new Error(
+  const e = erreur('ERR-CAB-051',
     `${quoi} demande une licence : ${etat.comptage.comptes} dossiers hors SkanFact sont comptés, `
     + `et ${etat.autorises} ${etat.autorises === 1 ? 'est couvert' : 'sont couverts'}. `
     + 'Tout le reste — lire, importer un paquet, exporter tes écritures, relancer tes clients — reste ouvert. '
     + 'Réglages → Mon cabinet → Licence : tu y verras exactement quels dossiers sont comptés, et pourquoi.');
-  e.code = 'ERR-CAB-051';
   e.licence = etat;
   throw e;
 }
@@ -1323,9 +1346,9 @@ function noterValidation(dossierId) {
 ipcMain.handle('cab:modifierEcriture', (_e, { dossierId, annee, id, patch } = {}) => {
   requireOpen();
   const o = ouvrirLivre(dossierId, annee);
-  if (!o.livre) throw new Error('Ce dossier n\'a pas de livre pour cet exercice.');
+  if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas de livre pour cet exercice.');
   const r = KC.modifierEcriture(o.livre, id, patch);
-  if (!r.ok) throw new Error(r.motif);
+  if (!r.ok) throw erreur('ERR-CAB-025', r.motif);
   ecrireLeLivre(dossierId, o.livre, 'modification', `${r.ecriture.journal} ${r.ecriture.piece || '(sans pièce)'}`);
   return { ok: true, id: r.ecriture.id, livre: ouvrirLivre(dossierId, annee).livre };
 });
@@ -1333,9 +1356,9 @@ ipcMain.handle('cab:modifierEcriture', (_e, { dossierId, annee, id, patch } = {}
 ipcMain.handle('cab:supprimerEcriture', (_e, { dossierId, annee, id } = {}) => {
   requireOpen();
   const o = ouvrirLivre(dossierId, annee);
-  if (!o.livre) throw new Error('Ce dossier n\'a pas de livre pour cet exercice.');
+  if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas de livre pour cet exercice.');
   const r = KC.supprimerEcriture(o.livre, id);
-  if (!r.ok) throw new Error(r.motif);
+  if (!r.ok) throw erreur('ERR-CAB-025', r.motif);
   ecrireLeLivre(dossierId, o.livre, 'suppression-brouillard', `${r.ecriture.journal} ${r.ecriture.piece || '(sans pièce)'} du ${r.ecriture.date}`);
   return { ok: true, livre: ouvrirLivre(dossierId, annee).livre };
 });
@@ -1343,10 +1366,10 @@ ipcMain.handle('cab:supprimerEcriture', (_e, { dossierId, annee, id } = {}) => {
 ipcMain.handle('cab:extourner', (_e, { dossierId, annee, id } = {}) => {
   requireOpen();
   const o = ouvrirLivre(dossierId, annee);
-  if (!o.livre) throw new Error('Ce dossier n\'a pas de livre pour cet exercice.');
+  if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas de livre pour cet exercice.');
   licenceBlockCab('Extourner une écriture');
   const r = KC.extourner(o.livre, id, moiPoste().deviceName || 'cabinet', Date.now());
-  if (!r.ok) throw new Error(r.motif);
+  if (!r.ok) throw erreur('ERR-CAB-025', r.motif);
   ecrireLeLivre(dossierId, o.livre, null);
   noterValidation(dossierId);
   return { ok: true, numero: r.ecriture.numero, date: r.ecriture.date, livre: ouvrirLivre(dossierId, annee).livre };
@@ -1358,7 +1381,7 @@ ipcMain.handle('cab:extourner', (_e, { dossierId, annee, id } = {}) => {
 ipcMain.handle('cab:validerLot', (_e, { dossierId, annee, journal, mois, ids } = {}) => {
   requireOpen();
   const o = ouvrirLivre(dossierId, annee);
-  if (!o.livre) throw new Error('Ce dossier n\'a pas de livre pour cet exercice.');
+  if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas de livre pour cet exercice.');
   licenceBlockCab('Valider un lot d\'écritures');
   const r = KC.validerLot(o.livre, { journal, mois, ids }, moiPoste().deviceName || 'cabinet', Date.now());
   ecrireLeLivre(dossierId, o.livre, 'validation-lot',
@@ -1379,9 +1402,9 @@ ipcMain.handle('cab:joindreEcriture', async (_e, { dossierId, annee, id, chemin 
   if (!f) return { annule: true };
   const d = dossierDe(dossierId);
   const o = ouvrirLivre(dossierId, annee);
-  if (!o.livre) throw new Error('Ce dossier n\'a pas de livre pour cet exercice.');
+  if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas de livre pour cet exercice.');
   const e = (o.livre.ecritures || []).find(x => x.id === id);
-  if (!e) throw new Error('Cette écriture n\'existe pas.');
+  if (!e) throw erreur('ERR-CAB-009', 'Cette écriture n\'existe pas.');
   const range = getStore().rangerPieceJointe(f, d, state.dossiers, `${e.date || ''}-${e.piece || 'piece'}`);
   // Une VALIDÉE peut recevoir son justificatif : joindre un scan ne change aucun chiffre, et
   // refuser reviendrait à dire « ta pièce restera sans justificatif pour toujours ». C'est le seul
@@ -1394,7 +1417,7 @@ ipcMain.handle('cab:joindreEcriture', async (_e, { dossierId, annee, id, chemin 
 ipcMain.handle('cab:ouvrirJustificatif', (_e, { dossierId, relatif } = {}) => {
   requireOpen();
   const p = getStore().cheminPieceJointe(dossierDe(dossierId), state.dossiers, relatif);
-  if (!p) throw new Error('Ce justificatif n\'est plus sur le disque. Il a peut-être été rangé ailleurs, ou le dossier a changé de nom.');
+  if (!p) throw erreur('ERR-CAB-029', 'Ce justificatif n\'est plus sur le disque. Il a peut-être été rangé ailleurs, ou le dossier a changé de nom.');
   shell.openPath(p);
   return { ok: true };
 });
@@ -1409,7 +1432,7 @@ ipcMain.handle('cab:saveGuides', (_e, { guides, dossierId } = {}) => {
   requireOpen();
   const L = (Array.isArray(guides) ? guides : []);
   const mauvais = L.map((g, i) => ({ i, v: KC.guideValide(g) })).find(x => !x.v.ok);
-  if (mauvais) throw new Error(`Guide « ${L[mauvais.i].nom || mauvais.i + 1} » : ${mauvais.v.motif}`);
+  if (mauvais) throw erreur('ERR-CAB-024', `Guide « ${L[mauvais.i].nom || mauvais.i + 1} » : ${mauvais.v.motif}`);
   if (dossierId) dossierDe(dossierId).guides = L;
   else state.guides = L;
   return save();
@@ -1418,7 +1441,7 @@ ipcMain.handle('cab:saveGuides', (_e, { guides, dossierId } = {}) => {
 ipcMain.handle('cab:saveCorrespondance', (_e, { table, dossierId } = {}) => {
   requireOpen();
   const v = KC.correspondanceValide(table);
-  if (!v.ok) { const e = new Error(v.motif); e.motifs = v.motifs; throw e; }
+  if (!v.ok) { throw Object.assign(erreur('ERR-CAB-024', v.motif), { motifs: v.motifs }); }
   const propre = (Array.isArray(table) ? table : []).filter(r => String(r.de || '').trim() && String(r.vers || '').trim())
     .map(r => ({ de: String(r.de).trim(), vers: String(r.vers).trim(), prefixe: !!r.prefixe }));
   if (dossierId) dossierDe(dossierId).correspondance = propre;
@@ -1446,7 +1469,7 @@ ipcMain.handle('cab:genererAbonnements', (_e, { dossierId, annee, jusquA } = {})
   requireOpen();
   const d = dossierDe(dossierId);
   const o = ouvrirLivre(dossierId, annee);
-  if (!o.livre) throw new Error('Ce dossier n\'a pas de livre pour cet exercice.');
+  if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas de livre pour cet exercice.');
   const guides = K.guidesDuDossier(state, d);
   const bilan = { crees: 0, sansGuide: [], horsExercice: 0, details: [] };
   (d.abonnements || []).forEach(a => {
@@ -1511,7 +1534,7 @@ ipcMain.handle('cab:relireLesPaquets', (_e, { dossierId, annee } = {}) => {
 ipcMain.handle('cab:exportEcritures', async (_e, opts) => {
   requireOpen();
   const plan = K.ecrituresPlan(state, opts);
-  if (!plan.packs.length) throw new Error('Aucun paquet sur cette période.');
+  if (!plan.packs.length) throw erreur('ERR-CAB-009', 'Aucun paquet sur cette période.');
   const sources = [];
   const illisibles = [];
   for (const p of plan.packs) {
@@ -1521,7 +1544,7 @@ ipcMain.handle('cab:exportEcritures', async (_e, opts) => {
     sources.push({ name: p.name, matricule: p.matricule, month: p.month, csv: r.csv });
   }
   if (!sources.length) {
-    const e = new Error('Aucune écriture lisible sur cette période.' + (illisibles.length ? '\n' + illisibles.join('\n') : ''));
+    const e = erreur('ERR-CAB-013', 'Aucune écriture lisible sur cette période.' + (illisibles.length ? '\n' + illisibles.join('\n') : ''));
     throw e;
   }
   const out = K.mergeEcritures(sources);
@@ -1551,7 +1574,7 @@ ipcMain.handle('cab:backups', () => {
 ipcMain.handle('cab:backupNow', (_e, label) => {
   requireOpen();
   const p = getStore().backupNow(label || 'manuelle');
-  if (!p) throw new Error('Rien à sauvegarder pour l\'instant.');
+  if (!p) throw erreur('ERR-CAB-009', 'Rien à sauvegarder pour l\'instant.');
   return { path: p, list: getStore().listBackups() };
 });
 
@@ -1603,11 +1626,11 @@ ipcMain.handle('cab:mirrorNow', () => {
 // collaborateur partait, il n'existait aucun recours.
 ipcMain.handle('cab:changePassword', (_e, { current, next } = {}) => {
   requireOpen();
-  if (String(next || '').length < 8) throw new Error('Choisis un mot de passe d\'au moins huit caractères.');
+  if (String(next || '').length < 8) throw erreur('ERR-CAB-012', 'Choisis un mot de passe d\'au moins huit caractères.');
   // On revérifie l'ancien en relisant le fichier : sans ça, quelqu'un qui passe devant un poste
   // déverrouillé changerait le mot de passe sans connaître l'ancien.
   const check = CS.createCabStore(app.getPath('userData'), {}).unlock(String(current || ''));
-  if (!check.ok) throw new Error('Mot de passe actuel incorrect.');
+  if (!check.ok) throw erreur('ERR-CAB-012', 'Mot de passe actuel incorrect.');
   getStore().backupNow('avant-changement-mot-de-passe');
   getStore().setPassword(state, String(next));
   return { ok: true };
@@ -1616,12 +1639,12 @@ ipcMain.handle('cab:changePassword', (_e, { current, next } = {}) => {
 // La clé de secours : le fichier le plus important que ce cabinet produira jamais.
 ipcMain.handle('cab:exportRecovery', async (_e, { password, current } = {}) => {
   requireOpen();
-  if (String(password || '').length < 8) throw new Error('Choisis un mot de passe d\'au moins huit caractères pour ce fichier.');
+  if (String(password || '').length < 8) throw erreur('ERR-CAB-012', 'Choisis un mot de passe d\'au moins huit caractères pour ce fichier.');
   // Ce fichier contient la clé qui ouvre les comptabilités de TOUS les clients. Le produire sans
   // redemander le mot de passe du cabinet laissait n'importe qui, devant un poste déverrouillé,
   // repartir avec — et sans la moindre trace.
   const check = CS.createCabStore(app.getPath('userData'), {}).unlock(String(current || ''));
-  if (!check.ok) throw new Error('Mot de passe du cabinet incorrect.');
+  if (!check.ok) throw erreur('ERR-CAB-012', 'Mot de passe du cabinet incorrect.');
   const safe = CS.slug(state.cabinet.name || 'cabinet');
   const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
     title: 'Clé de secours du cabinet — à garder hors de cet ordinateur',
@@ -1642,7 +1665,7 @@ ipcMain.handle('cab:importRecovery', async (_e, password) => {
   if (r.canceled || !r.filePaths.length) return null;
   const obj = JSON.parse(fs.readFileSync(r.filePaths[0], 'utf8'));
   const keys = CS.readRecovery(obj, String(password || ''));
-  if (!keys.privateKey || !keys.publicKey) throw new Error('Cette clé de secours est vide.');
+  if (!keys.privateKey || !keys.publicKey) throw erreur('ERR-CAB-012', 'Cette clé de secours est vide.');
   getStore().backupNow('avant-restauration-cle');
   state.cabinet = { ...state.cabinet, publicKey: keys.publicKey, privateKey: keys.privateKey };
   save();
@@ -1997,7 +2020,7 @@ ipcMain.handle('cab:mail', async (_e, { to, subject, body } = {}) => {
 // en Tunisie, un comptable qui court après des pièces appelle bien plus souvent qu'il n'écrit.
 ipcMain.handle('cab:tel', async (_e, { number, whatsapp, text } = {}) => {
   const n = String(number || '').replace(/[^\d+]/g, '');
-  if (!n) throw new Error('Ce dossier n\'a pas de numéro de téléphone.');
+  if (!n) throw erreur('ERR-CAB-009', 'Ce dossier n\'a pas de numéro de téléphone.');
   const url = whatsapp
     ? `https://wa.me/${n.replace(/^\+/, '')}${text ? '?text=' + encodeURIComponent(text) : ''}`
     : `tel:${n}`;

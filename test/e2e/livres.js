@@ -6,7 +6,7 @@
 // chaque tiers son sous-compte — figé sur la fiche.
 //
 //   xvfb-run -a node test/e2e/livres.js
-const { playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
+const { playwright, RACINE, ELECTRON, journal, surveiller, montant } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 
@@ -17,7 +17,7 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   const win = await app.firstWindow(); surveiller(win, '', bac);
   const aller = async hash => { await win.evaluate(x => { location.hash = x; }, hash); await win.waitForTimeout(320); };
   const onglet = async t => { await win.click(`#c-tabs button[data-tab=${t}]`); await win.waitForTimeout(400); };
-  const nombre = s => Number(String(s).replace(/[^\d,.-]/g, '').replace(/\s/g, '').replace(',', '.')) || 0;
+  const nombre = s => montant(s) || 0;
 
   j.etape('Une entreprise et le jeu d\'exemple');
   await win.waitForSelector('#setup');
