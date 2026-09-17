@@ -2200,14 +2200,17 @@
     // La SAISIE n'a pas besoin de lignes existantes : c'est l'écran par lequel elles arrivent. La
     // ranger derrière « Aucune écriture sur cette période » l'aurait rendue inatteignable très
     // exactement le jour où elle sert le plus — le premier.
+    // La BANQUE non plus n'a pas besoin de lignes existantes : le premier relevé arrive souvent
+    // avant la première écriture, et c'est justement lui qui va les produire.
     const corps = s.onglet === 'saisie' ? vueSaisie(dossier)
-      : !lignes.length
-        ? `<div class="empty mini">Aucune écriture sur cette période.</div>`
-        : s.onglet === 'journal' ? vueJournal(lignes)
-          : s.onglet === 'grand-livre' ? vueGrandLivre(lignes)
-            : s.onglet === 'balance' ? vueBalance(lignes)
-              : s.onglet === 'recherche' ? vueRecherche(lignes)
-                : vueLettrage(lignes);
+      : s.onglet === 'banque' ? vueBanque(dossier)
+        : !lignes.length
+          ? `<div class="empty mini">Aucune écriture sur cette période.</div>`
+          : s.onglet === 'journal' ? vueJournal(lignes)
+            : s.onglet === 'grand-livre' ? vueGrandLivre(lignes)
+              : s.onglet === 'balance' ? vueBalance(lignes)
+                : s.onglet === 'recherche' ? vueRecherche(lignes)
+                  : vueLettrage(lignes);
 
     // D'OÙ viennent ces chiffres. Deux sources, et l'écran le dit en toutes lettres : une balance
     // lue dans les paquets du client et une balance tenue par le cabinet ne disent pas la même
@@ -2228,6 +2231,9 @@
         <button data-tab="grand-livre" class="${s.onglet === 'grand-livre' ? 'active' : ''}">Grand livre</button>
         <button data-tab="balance" class="${s.onglet === 'balance' ? 'active' : ''}">Balance</button>
         <button data-tab="lettrage" class="${s.onglet === 'lettrage' ? 'active' : ''}">Lettrage</button>
+        ${s.livre ? `<button data-tab="banque" class="${s.onglet === 'banque' ? 'active' : ''}">Banque${
+          (() => { const n = (s.livre.releves || []).reduce((a, r) => a + r.lignes.filter(l => !(l.rapprochement && l.rapprochement.ecritureId)).length, 0);
+            return n ? ` <span class="tab-n">${n}</span>` : ''; })()}</button>` : ''}
         ${s.livre ? `<button data-tab="recherche" class="${s.onglet === 'recherche' ? 'active' : ''}">Recherche</button>` : ''}
       </div>${corps}`;
 
@@ -2238,6 +2244,7 @@
     const rp = $('#lv-reprendre', el); if (rp) rp.onclick = () => repriseForm(root, dossier);
     if (s.onglet === 'saisie') brancherSaisie(el, root, dossier);
     else if (s.onglet === 'recherche') brancherRecherche(el, root, dossier);
+    else if (s.onglet === 'banque') brancherBanque(el, root, dossier);
     else brancherVue(el, root, dossier, lignes);
   }
 
@@ -2366,8 +2373,23 @@
       ? `<div class="ok-box mb" id="lv-verdict">Ce qui reste ouvert est bien le solde du compte : ${esc(money(l.resteOuvert))}.</div>`
       : `<div class="info-box mb" id="lv-verdict">Reste ouvert ${esc(money(l.resteOuvert))}, solde du compte ${esc(money(l.soldeCompte))} — écart de ${esc(money(Math.abs(l.ecart)))}.
          <div class="small">C'est <strong>attendu</strong> sur un livre lu mois par mois : un règlement reçu ce mois-ci pour une facture d'un mois précédent n'a pas sa facture en face. Le contrôle ne vaut que sur un livre complet, avec ses à-nouveaux.</div></div>`;
-    return `${barreLivres(`<select id="lv-compte" aria-label="Le compte à lettrer"><option value="">Clients (411)</option>${comptes.map(c => `<option value="${esc(c)}" ${s.compte === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>`, 'Exporter le lettrage')}
+    // La balance âgée et le lettrage automatique (9.5.0). Ils lisent les MÊMES lignes non lettrées
+    // que la liste ci-dessous — jamais une seconde liste, qui se désynchroniserait au premier
+    // lettrage (SPEC-UI-CAB-022).
+    const agee = KC.balanceAgeeDepuisLignes(lignes, prefixe, K.today());
+    return `${barreLivres(`<select id="lv-compte" aria-label="Le compte à lettrer"><option value="">Clients (411)</option>${comptes.map(c => `<option value="${esc(c)}" ${s.compte === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>
+      ${s.livre ? `<button class="btn btn-sm" id="lv-auto">Lettrer automatiquement</button>${info('bq.lettrageAuto')}` : ''}`, 'Exporter le lettrage')}
       ${verdict}
+      ${agee.total ? `<div class="panel mt"><h2>Ce qui reste dû, par ancienneté ${info('bq.agee')}</h2>
+        <div class="scroll-x"><table class="list compact"><thead><tr><th>Tiers</th>
+          ${agee.tranches.map(t => `<th class="r nw">${esc(t.label)}</th>`).join('')}<th class="r nw">Total</th></tr></thead>
+        <tbody>${agee.tiers.slice(0, 12).map(t => `<tr><td class="tronq" title="${esc(t.tiers)}">${esc(t.tiers)}</td>
+          ${t.parTranche.map(x => `<td class="r nw">${x.montant ? esc(money(x.montant)) : ''}</td>`).join('')}
+          <td class="r nw"><strong>${esc(money(t.total))}</strong></td></tr>`).join('')}</tbody>
+        <tfoot><tr><td>${esc(pl(agee.tiers.length, 'tiers', 'tiers'))}</td>
+          ${agee.tranches.map(t => `<td class="r nw">${t.montant ? esc(money(t.montant)) : ''}</td>`).join('')}
+          <td class="r nw"><strong>${esc(money(agee.total))}</strong></td></tr></tfoot></table></div>
+        ${agee.tiers.length > 12 ? `<div class="small muted mt">Les douze plus gros ; le pied porte les ${agee.tiers.length}.</div>` : ''}</div>` : ''}
       ${l.lettragesFaux.length ? `<div class="warn-box mb">${l.lettragesFaux.map(f =>
         `<div>Lettrage « ${esc(f.lettre) }» de ${esc(f.tiers)} : les pièces ne se soldent pas entre elles (écart ${esc(money(Math.abs(f.ecart)))}).</div>`).join('')}</div>` : ''}
       ${pagerBar(l.rows.length, s, 'tiers', 'tiers')}
@@ -2380,6 +2402,348 @@
           <td class="r nw">${o.debit ? esc(money(o.debit)) : ''}</td><td class="r nw">${o.credit ? esc(money(o.credit)) : ''}</td>
           <td class="r nw">${esc(money(o.reste))}</td><td class="row-actions"></td></tr>`).join('')}</tbody></table></div>`
         : `<div class="muted small">Tout est lettré : ${pl(r.lettrees, 'pièce')} soldée${r.lettrees > 1 ? 's' : ''}.</div>`}</div>`).join('')}`;
+  }
+
+  // ---------------------------------------------------------------- la banque (9.5.0)
+  //
+  // Le rapprochement, et lui seul : le lettrage vit dans l'onglet d'à côté, avec son propre modèle
+  // et ses propres tests. Confondre les deux est l'erreur de vocabulaire la plus courante de ce
+  // métier, et un écran qui les mélange la rend définitive.
+  const banqueState = { releve: '', filtre: '', ouvert: '' };
+
+  const NIVEAU_LABEL = { certain: 'Rapproché', probable: 'Probable', 'a-confirmer': 'À confirmer', aucun: 'Sans réponse' };
+  // Aucune couleur d'alarme sur « sans réponse » : c'est l'état de DÉPART de toute ligne d'un relevé
+  // qu'on vient d'importer, pas une faute. Du rouge sur une situation normale apprend à ignorer le
+  // rouge, et emmène avec lui celui qui comptait (8.0.1).
+  const NIVEAU_CLASSE = { certain: 'b-paid', probable: 'b-part', 'a-confirmer': 'b-due', aucun: '' };
+
+  function vueBanque(dossier) {
+    const s = livresState;
+    const releves = (s.livre.releves || []).slice().sort((a, b) => (b.du || '').localeCompare(a.du || ''));
+    if (!releves.length) {
+      // L'état vide qui EST le corps de son écran garde sa présence, et porte son geste (9.4.7).
+      return `<div class="empty">Aucun relevé bancaire importé pour ${esc(s.annee)}.
+        <div class="small mt">Un relevé se lit tel que la banque l'exporte : on associe ses colonnes par leur NOM,
+        une fois par banque. Ensuite le rapprochement propose, et c'est toi qui tranches.</div>
+        <div class="mt"><button class="btn btn-primary" id="bq-import">Importer un relevé…</button></div></div>`;
+    }
+    const R = releves.find(r => r.id === banqueState.releve) || releves[0];
+    banqueState.releve = R.id;
+    const parNiveau = { certain: 0, probable: 0, 'a-confirmer': 0, aucun: 0 };
+    R.lignes.forEach(l => { parNiveau[(l.rapprochement || {}).niveau || 'aucun']++; });
+    const sus = KC.suspens(s.livre, R.id);
+    const f = banqueState.filtre;
+    const vues = R.lignes.filter(l => !f || ((l.rapprochement || {}).niveau || 'aucun') === f);
+    return `<div class="filters">
+      <label class="f-lab">Relevé<select id="bq-releve" aria-label="Le relevé à rapprocher">${releves.map(r =>
+        `<option value="${esc(r.id)}" ${r.id === R.id ? 'selected' : ''}>${esc(r.compte)} · ${esc(fmtJour(r.du))} → ${esc(fmtJour(r.au))}${r.banque ? ' · ' + esc(r.banque) : ''}</option>`).join('')}</select></label>
+      <label class="f-lab">Montrer<select id="bq-filtre" aria-label="Filtrer par état de rapprochement">
+        <option value="">Toutes les lignes</option>
+        ${Object.keys(NIVEAU_LABEL).map(k => `<option value="${k}" ${f === k ? 'selected' : ''}>${NIVEAU_LABEL[k]} (${parNiveau[k]})</option>`).join('')}</select></label>
+      ${info('bq.niveaux')}
+      <button class="btn btn-sm" id="bq-auto">Rapprocher automatiquement</button>
+      <button class="btn btn-sm btn-ghost" id="bq-import">Importer un relevé…</button>
+      ${RowMenu.bouton('REL:' + R.id, 'Ce relevé', 'btn btn-sm btn-ghost')}
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="lbl">Rapproché</div><div class="val ok">${parNiveau.certain}</div><div class="sub">sur ${pl(R.lignes.length, 'ligne')}</div></div>
+      <div class="stat"><div class="lbl">À trancher</div><div class="val ${parNiveau.probable + parNiveau['a-confirmer'] ? 'due' : ''}">${parNiveau.probable + parNiveau['a-confirmer']}</div><div class="sub">probables et ambiguïtés</div></div>
+      <div class="stat"><div class="lbl">Sans réponse</div><div class="val ${parNiveau.aucun ? 'due' : ''}">${parNiveau.aucun}</div><div class="sub">rien dans le livre en face</div></div>
+      <div class="stat"><div class="lbl">Écart de suspens</div><div class="val ${sus.ecart ? 'due' : 'ok'}">${esc(money(sus.ecart))}</div><div class="sub">banque moins livre, au ${esc(fmtJour(R.au))}</div></div>
+    </div>
+    <div class="panel mt"><h2>Le relevé ${info('bq.releve')}</h2>
+      <div class="scroll-x"><table class="list compact"><thead><tr>
+        <th class="nw">Date</th><th>Libellé</th><th class="nw">Référence</th><th class="r nw">Montant</th><th class="nw">État</th><th class="nw">En face</th><th></th>
+      </tr></thead><tbody>
+      ${vues.map(l => {
+        const r = l.rapprochement || { niveau: 'aucun' };
+        const e = r.ecritureId ? (s.livre.ecritures || []).find(x => x.id === r.ecritureId) : null;
+        return `<tr data-lig="${esc(l.id)}">
+          <td class="nw">${esc(fmtJour(l.date))}</td>
+          <td class="tronq lg" title="${esc(l.libelle)}">${esc(l.libelle)}</td>
+          <td class="nw">${esc(l.reference)}</td>
+          <td class="r nw">${esc(money(l.montant))}</td>
+          <td class="nw"><span class="badge ${NIVEAU_CLASSE[r.niveau] || ''}">${esc(NIVEAU_LABEL[r.niveau] || r.niveau)}</span>${
+            r.par === 'auto' ? ' <span class="muted small">auto</span>' : ''}</td>
+          <td class="tronq" title="${e ? esc((e.journal || '') + ' ' + (e.piece || '') + ' — ' + (e.libelle || '')) : ''}">${e ? esc((e.journal || '') + ' ' + (e.piece || '')) : ''}</td>
+          ${RowMenu.cellule('LIG:' + l.id)}</tr>`;
+      }).join('')}
+      </tbody></table></div>
+      ${vues.length ? '' : '<div class="empty mini">Aucune ligne dans cet état.</div>'}
+    </div>
+    <div class="panel mt"><h2>Les suspens ${info('bq.suspens')}</h2>
+      <p class="small muted">Ce que la banque porte et que le livre n'a pas, et l'inverse. Un chèque émis qui n'est
+      pas encore encaissé vit ici : ce n'est pas une erreur, c'est ce qui explique l'écart.</p>
+      <div class="split">
+        <div><h3 class="sub-h">Côté banque · ${pl(sus.banque.length, 'ligne')}</h3>
+          ${sus.banque.length ? `<table class="list compact"><tbody>${sus.banque.map(l =>
+            `<tr><td class="nw">${esc(fmtJour(l.date))}</td><td class="tronq" title="${esc(l.libelle)}">${esc(l.libelle)}</td><td class="r nw">${esc(money(l.montant))}</td></tr>`).join('')}</tbody></table>`
+            : '<div class="empty mini">Rien : tout ce que la banque porte est dans le livre.</div>'}</div>
+        <div><h3 class="sub-h">Côté livre · ${pl(sus.livre.length, 'ligne')}</h3>
+          ${sus.livre.length ? `<table class="list compact"><tbody>${sus.livre.map(l =>
+            `<tr><td class="nw">${esc(fmtJour(l.date))}</td><td class="tronq" title="${esc(l.libelle)}">${esc(l.libelle)}</td><td class="r nw">${esc(money(l.montant))}</td></tr>`).join('')}</tbody></table>`
+            : '<div class="empty mini">Rien : tout ce que le livre porte est sur le relevé.</div>'}</div>
+      </div>
+    </div>`;
+  }
+
+  function brancherBanque(el, root, dossier) {
+    const s = livresState;
+    const releves = s.livre.releves || [];
+    const R = releves.find(r => r.id === banqueState.releve);
+    $$('#bq-import', el).forEach(b => { b.onclick = () => releveForm(root, dossier); });
+    const sel = $('#bq-releve', el);
+    if (sel) sel.onchange = () => { banqueState.releve = sel.value; drawLivres(root, dossier); };
+    const fil = $('#bq-filtre', el);
+    if (fil) fil.onchange = () => { banqueState.filtre = fil.value; drawLivres(root, dossier); };
+    const auto = $('#bq-auto', el);
+    if (auto && R) auto.onclick = async () => {
+      auto.disabled = true;
+      try {
+        const jours = ((dossier.banque || {}).jours != null) ? dossier.banque.jours : KC.RELEVE_JOURS;
+        const r = await api.rapprocherAuto({ dossierId: dossier.id, annee: s.annee, releveId: R.id, jours });
+        s.livre = r.livre;
+        // On DIT ce qui a été posé et ce qui ne l'a pas été. « 12 lignes traitées » laisserait
+        // croire que tout est réglé alors que la moitié attend une décision.
+        toast(`${pl(r.compte.certain, 'ligne rapprochée', 'lignes rapprochées')} d'office ; ${
+          r.compte.probable + r.compte['a-confirmer']} à trancher, ${r.compte.aucun} sans réponse.`);
+        drawLivres(root, dossier);
+      } catch (e) { toast(plainError(e), 'error'); auto.disabled = false; }
+    };
+    // UNE seule table d'actions par racine : `bindRowMenus` écrase la précédente en silence (9.4.8).
+    bindRowMenus(el, cle => {
+      if (cle.startsWith('REL:')) {
+        const rel = releves.find(x => x.id === cle.slice(4));
+        if (!rel) return [];
+        // Deux actions, donc un vrai menu : sans la première, `rowmenu.js` transformerait le
+        // bouton en « Retirer ce relevé » nommé et visible (règle 7.29.0), c'est-à-dire un geste
+        // destructeur au premier plan, à côté du bouton d'import. Ce qui se détruit demande ; ce
+        // qui se répare se propose.
+        return [
+          { icon: 'non', label: 'Défaire tous les rapprochements', hint: 'Après un automatique qui s\'est trompé de compte : trente lignes se défont d\'un coup', run: async () => {
+            try {
+              const x = await api.derapprocher({ dossierId: dossier.id, annee: s.annee, releveId: rel.id });
+              s.livre = x.livre;
+              toast(x.defaits ? `${pl(x.defaits, 'rapprochement défait', 'rapprochements défaits')}.` : 'Aucun rapprochement à défaire.');
+              drawLivres(root, dossier);
+            } catch (e) { toast(plainError(e), 'error'); }
+          } },
+          { icon: 'supprimer', label: 'Retirer ce relevé', hint: 'Le fichier sort du livre ; les écritures qu\'il a servi à créer RESTENT', run: () => retirerReleve(root, dossier, rel) }
+        ];
+      }
+      const l = R && R.lignes.find(x => x.id === cle.slice(4));
+      if (!l) return [];
+      const r = l.rapprochement || { niveau: 'aucun' };
+      const actions = [];
+      if (r.ecritureId) {
+        actions.push({ icon: 'non', label: 'Défaire le rapprochement', hint: 'Même « rapproché » se défait : l\'automatique propose, c\'est toi qui décides', run: async () => {
+          try { const x = await api.rapprocher({ dossierId: dossier.id, annee: s.annee, releveId: R.id, ligneId: l.id, choix: {} }); s.livre = x.livre; drawLivres(root, dossier); }
+          catch (e) { toast(plainError(e), 'error'); }
+        } });
+      } else {
+        actions.push({ icon: 'loupe', label: 'Choisir l\'écriture en face', hint: 'Toutes les écritures du compte, la bonne se pointe à la main', run: () => choisirEcritureForm(root, dossier, R, l) });
+        actions.push({ icon: 'nouveau', label: 'Écrire l\'écriture manquante', hint: 'Un brouillon prérempli — rien n\'est enregistré tant que tu n\'as pas cliqué', run: () => ecrireDepuisBanque(root, dossier, R, l) });
+      }
+      return actions;
+    });
+  }
+
+  async function retirerReleve(root, dossier, rel) {
+    const ok = await confirmDialog(`Retirer le relevé de ${fmtJour(rel.du)} → ${fmtJour(rel.au)} ?`,
+      `Ses ${rel.lignes.length} lignes sortent du livre, et les rapprochements avec. Les écritures que tu as créées depuis ce relevé, elles, RESTENT : elles ont été décidées par un clic, et effacer un fichier ne défait pas une décision.`,
+      'Retirer');
+    if (!ok) return;
+    try {
+      const r = await api.supprimerReleve({ dossierId: dossier.id, annee: livresState.annee, id: rel.id });
+      livresState.livre = r.livre; banqueState.releve = '';
+      toast(r.ecrituresGardees ? `Relevé retiré. ${pl(r.ecrituresGardees, 'écriture gardée', 'écritures gardées')}.` : 'Relevé retiré.');
+      drawLivres(root, dossier);
+    } catch (e) { toast(plainError(e), 'error'); }
+  }
+
+  // Choisir l'écriture en face, à la main. On montre TOUS les candidats du bon montant d'abord, puis
+  // le reste du compte : une ambiguïté se tranche en voyant les deux, pas en cherchant.
+  function choisirEcritureForm(root, dossier, R, ligne) {
+    const s = livresState;
+    const toutes = KC.lignesBancaires(s.livre, R.compte);
+    const prises = new Set();
+    (s.livre.releves || []).forEach(x => x.lignes.forEach(l => {
+      if (l.rapprochement && l.rapprochement.ecritureId && l.id !== ligne.id) prises.add(l.rapprochement.ecritureId + '#' + l.rapprochement.ligne);
+    }));
+    const libres = toutes.filter(c => !prises.has(c.ecritureId + '#' + c.ligne));
+    const memeMontant = libres.filter(c => KC.round3(c.montant - ligne.montant) === 0);
+    const autres = libres.filter(c => KC.round3(c.montant - ligne.montant) !== 0);
+    const ligneHtml = c => `<tr><td class="nw">${esc(fmtJour(c.date))}</td><td class="tronq" title="${esc(c.libelle)}">${esc(c.libelle)}</td>
+      <td class="nw">${esc(c.piece)}</td><td class="r nw">${esc(money(c.montant))}</td>
+      <td class="actions"><button type="button" class="btn btn-sm" data-pick="${esc(c.ecritureId)}|${c.ligne}">Rapprocher</button></td></tr>`;
+    modal(`<h2>Rapprocher ${esc(fmtJour(ligne.date))} · ${esc(money(ligne.montant))}</h2>
+      <p class="small muted">${esc(ligne.libelle)}</p>
+      <h3 class="sub-h">Du même montant · ${pl(memeMontant.length, 'écriture')}</h3>
+      ${memeMontant.length ? `<div class="scroll-x"><table class="list compact"><tbody>${memeMontant.map(ligneHtml).join('')}</tbody></table></div>`
+        : '<div class="empty mini">Aucune écriture du compte ' + esc(R.compte) + ' ne porte ce montant.</div>'}
+      ${autres.length ? `<h3 class="sub-h">Les autres écritures du compte · ${pl(autres.length, 'écriture')}</h3>
+        <div class="scroll-x" style="max-height:230px"><table class="list compact"><tbody>${autres.slice(0, 60).map(ligneHtml).join('')}</tbody></table></div>` : ''}
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button></div>`,
+      (rootModal, close) => {
+        $$('[data-pick]', rootModal).forEach(b => { b.onclick = async () => {
+          const [ecritureId, i] = b.dataset.pick.split('|');
+          try {
+            const x = await api.rapprocher({ dossierId: dossier.id, annee: s.annee, releveId: R.id, ligneId: ligne.id, choix: { ecritureId, ligne: Number(i), niveau: 'certain', date: K.today() } });
+            s.livre = x.livre; close(); drawLivres(root, dossier);
+          } catch (e) { toast(plainError(e), 'error'); }
+        }; });
+      });
+  }
+
+  // L'écriture proposée depuis une ligne non rapprochée. Elle arrive PRÉREMPLIE et jamais
+  // enregistrée : la banque ne fait pas foi contre la pièce. Quand aucune règle ne reconnaît le
+  // libellé, la contrepartie reste VIDE — verser d'office au 471 rangerait le doute dans un compte
+  // que personne ne solde, et la question disparaîtrait sans avoir été posée.
+  function ecrireDepuisBanque(root, dossier, R, ligne) {
+    const s = livresState;
+    const table = Array.isArray(S.libelles) ? S.libelles : [];
+    const brouillon = KC.ecritureProposee(ligne, table, { compte: R.compte, journal: 'BQ' });
+    const contre = brouillon.lignes[1];
+    modal(`<h2>Écrire ${esc(fmtJour(ligne.date))} · ${esc(money(ligne.montant))}</h2>
+      <p class="small muted">${esc(ligne.libelle)}</p>
+      ${brouillon.regle
+        ? `<div class="ok-box mb">Le libellé contient « ${esc(brouillon.regle)} » : le compte ${esc(contre.compte)} est proposé.</div>`
+        : `<div class="info-box mb">Aucune règle ne reconnaît ce libellé. Choisis le compte : il sera retenu, et le prochain relevé le proposera tout seul.</div>`}
+      <form id="bf" class="grid-2">
+        <label class="field">Journal<input name="journal" value="${esc(brouillon.journal)}"></label>
+        <label class="field">Date<input type="date" name="date" value="${esc(brouillon.date)}"></label>
+        <label class="field span-2">Libellé<input name="libelle" value="${esc(brouillon.libelle)}"></label>
+        <label class="field">Compte ${esc(R.compte)}<input value="${esc(money(ligne.montant))}" disabled></label>
+        <label class="field obligatoire"><span>Contrepartie</span><input name="compte" value="${esc(contre.compte)}" placeholder="606"></label>
+        <label class="check span-2"><input type="checkbox" name="retenir" ${brouillon.regle ? '' : 'checked'}> Retenir ce libellé pour la prochaine fois</label>
+      </form>
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button>
+        <button class="btn btn-primary" id="ok">Créer le brouillard</button></div>`,
+      (rootModal, close) => {
+        $('#ok', rootModal).onclick = async () => {
+          const v = n => (($(`[name=${n}]`, rootModal) || {}).value || '').trim();
+          const compte = v('compte');
+          if (!compte) return refus($('[name=compte]', rootModal), 'Choisis le compte de contrepartie : sans lui, l\'écriture ne s\'enregistre pas.');
+          const ec = {
+            ...brouillon, journal: v('journal') || 'BQ', date: v('date'), libelle: v('libelle'),
+            lignes: [{ ...brouillon.lignes[0], libelle: v('libelle') }, { ...contre, compte, libelle: v('libelle') }]
+          };
+          delete ec.aChoisir; delete ec.regle;
+          try {
+            const r = await api.saisir(dossier.id, s.annee, ec);
+            s.livre = r.livre;
+            // Le mot RETENU est le plus long du libellé : « PRELEVEMENT STEG 03/2026 » ne se
+            // reverra jamais tel quel, mais « PRELEVEMENT » si — et il ne veut rien dire tout seul.
+            if ($('[name=retenir]', rootModal).checked) {
+              const mot = (String(ligne.libelle || '').split(/[^A-Za-zÀ-ÿ]+/).filter(m => m.length >= 4)
+                .sort((a, b) => b.length - a.length)[0] || '').toUpperCase();
+              if (mot) {
+                const table2 = (Array.isArray(S.libelles) ? S.libelles : []).filter(x => x.motif !== mot).concat([{ motif: mot, compte }]);
+                S = await api.saveBanque({ libelles: table2 });
+              }
+            }
+            // L'écriture créée rapproche la ligne du même geste : la laisser « sans réponse » après
+            // l'avoir écrite ferait recommencer le travail au relevé suivant.
+            const idx = (r.livre.ecritures || []).find(x => x.id === r.id);
+            if (idx) {
+              const x = await api.rapprocher({ dossierId: dossier.id, annee: s.annee, releveId: R.id, ligneId: ligne.id, choix: { ecritureId: r.id, ligne: 0, niveau: 'certain', date: K.today() } });
+              s.livre = x.livre;
+            }
+            close(); toast('Brouillard créé et rapproché.'); drawLivres(root, dossier);
+          } catch (e) { toast(plainError(e), 'error'); }
+        };
+      });
+  }
+
+  // L'import d'un relevé, en DEUX temps. On lit le fichier, on montre ce qu'on a compris, et on
+  // demande ce que le fichier ne dit pas : le compte bancaire, et les deux soldes du relevé papier.
+  // C'est ce contrôle-là qui refuse un fichier auquel il manque des lignes (ERR-CAB-040).
+  function releveForm(root, dossier) {
+    const s = livresState;
+    const banques = (S.banques && typeof S.banques === 'object') ? S.banques : {};
+    const comptes = (s.livre.plan || []).map(c => c.compte).filter(c => /^5/.test(c)).sort();
+    const defaut = (dossier.banque || {}).compte || comptes[0] || '532';
+    let lu = null;
+    modal(`<h2>Importer un relevé bancaire</h2>
+      <p class="small muted">Le fichier tel que la banque l'exporte. Les colonnes s'associent par leur NOM ;
+      si cette banque est nouvelle, tu les associes une fois et je les retiens.</p>
+      <form id="rv" class="grid-2">
+        <label class="field obligatoire"><span>Compte bancaire</span>
+          <input name="compte" value="${esc(defaut)}" list="rv-comptes" placeholder="532">
+          <datalist id="rv-comptes">${comptes.map(c => `<option value="${esc(c)}">`).join('')}</datalist></label>
+        <label class="field">Banque<input name="banque" value="${esc((dossier.banque || {}).banque || '')}" list="rv-banques" placeholder="Le nom, pour retenir ses colonnes">
+          <datalist id="rv-banques">${Object.keys(banques).map(b => `<option value="${esc(b)}">`).join('')}</datalist></label>
+        <label class="field">Solde au début<input name="debut" class="num" inputmode="decimal" value="0"></label>
+        <label class="field">Solde à la fin<input name="fin" class="num" inputmode="decimal" value="0"></label>
+      </form>
+      <div class="modal-actions" style="justify-content:flex-start">
+        <button type="button" class="btn btn-sm" id="rv-fichier">Choisir le fichier…</button>
+        <span id="rv-etat" class="small muted">Aucun fichier choisi.</span>
+      </div>
+      <div id="rv-apercu"></div>
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button>
+        <button class="btn btn-primary" id="ok" disabled>Importer</button></div>`,
+      (rootModal, close) => {
+        const etat = $('#rv-etat', rootModal), apercu = $('#rv-apercu', rootModal), ok = $('#ok', rootModal);
+        const v = n => (($(`[name=${n}]`, rootModal) || {}).value || '').trim();
+        const montrer = () => {
+          if (!lu) return;
+          const lignes = lu.lignes || [];
+          const somme = KC.round3(lignes.reduce((a, l) => a + l.montant, 0));
+          apercu.innerHTML = `${lu.motif ? `<div class="warn-box mb">${esc(lu.motif)}</div>` : ''}
+            ${lignes.length ? `<div class="ok-box mb">${pl(lignes.length, 'ligne lue', 'lignes lues')} · mouvements ${esc(money(somme))}${
+              lu.ignorees.length ? ` · ${pl(lu.ignorees.length, 'ligne ignorée', 'lignes ignorées')}` : ''}</div>` : ''}
+            ${lu.ignorees && lu.ignorees.length ? `<div class="small muted">${lu.ignorees.slice(0, 5).map(i => `Ligne ${i.ligne} : ${esc(i.motif)}`).join(' · ')}</div>` : ''}
+            ${lignes.length ? `<div class="scroll-x" style="max-height:200px"><table class="list compact"><thead><tr><th class="nw">Date</th><th>Libellé</th><th class="r nw">Montant</th></tr></thead>
+              <tbody>${lignes.slice(0, 12).map(l => `<tr><td class="nw">${esc(fmtJour(l.date))}</td><td class="tronq" title="${esc(l.libelle)}">${esc(l.libelle)}</td><td class="r nw">${esc(money(l.montant))}</td></tr>`).join('')}</tbody></table></div>` : ''}
+            ${lu.motif && lu.entetes ? `<h3 class="sub-h">Associer les colonnes</h3>
+              <div class="grid-2">${['date', 'libelle', 'montant', 'debit', 'credit', 'reference'].map(champ =>
+                `<label class="field">${champ === 'libelle' ? 'Libellé' : champ[0].toUpperCase() + champ.slice(1)}
+                  <select data-col="${champ}"><option value="">—</option>${lu.entetes.map((e, i) => `<option value="${i}">${esc(e || ('Colonne ' + (i + 1)))}</option>`).join('')}</select></label>`).join('')}</div>
+              <div class="modal-actions" style="justify-content:flex-start"><button type="button" class="btn btn-sm" id="rv-relire">Relire avec cette association</button></div>` : ''}`;
+          ok.disabled = !lignes.length;
+          const relire = $('#rv-relire', rootModal);
+          if (relire) relire.onclick = async () => {
+            const assoc = {};
+            $$('[data-col]', rootModal).forEach(sel2 => { if (sel2.value !== '') assoc[sel2.dataset.col] = Number(sel2.value); });
+            lu = { ...await api.lireReleve({ chemin: lu.fichier, assoc }), assoc };
+            montrer();
+          };
+        };
+        $('#rv-fichier', rootModal).onclick = async () => {
+          try {
+            const banque = v('banque');
+            const r = await api.lireReleve({ assoc: banques[banque] || null });
+            if (r.annule) return;
+            lu = { ...r, assoc: banques[banque] || r.colonnes };
+            etat.textContent = String(r.fichier || '').split(/[\\/]/).pop();
+            montrer();
+          } catch (e) { toast(plainError(e), 'error'); }
+        };
+        ok.onclick = async () => {
+          if (!lu || !lu.lignes.length) return;
+          const compte = v('compte');
+          if (!compte) return refus($('[name=compte]', rootModal), 'Choisis le compte bancaire : il ne se devine pas depuis le fichier.');
+          const releve = {
+            compte, banque: v('banque'), fichier: lu.fichier, empreinte: lu.empreinte,
+            soldeDebut: KC.nombreDepuisCsv(v('debut')), soldeFin: KC.nombreDepuisCsv(v('fin')),
+            lignes: lu.lignes
+          };
+          try {
+            const r = await api.ajouterReleve({ dossierId: dossier.id, annee: s.annee, releve });
+            s.livre = r.livre; banqueState.releve = r.releve.id;
+            // Ce que l'association apprend ne sert que si on la garde : sans ça, chaque import
+            // d'une même banque redemanderait le même travail.
+            if (v('banque') && lu.assoc) {
+              S = await api.saveBanque({
+                banques: { ...banques, [v('banque')]: lu.assoc },
+                dossierId: dossier.id, banque: { compte, banque: v('banque'), jours: (dossier.banque || {}).jours }
+              });
+            }
+            close(); toast(`Relevé importé : ${pl(r.releve.lignes.length, 'ligne')}.`); drawLivres(root, dossier);
+          } catch (e) { toast(plainError(e), 'error'); }
+        };
+      });
   }
 
   // Le fil du parcours (3/3) : depuis le livre d'UN client, rien ne menait à l'export qui regroupe
@@ -3197,6 +3561,20 @@
     const a = $('#lv-aux', el); if (a) a.onclick = () => { s.aux = !s.aux; s.page = 1; redraw(); };
     const x = $('#lv-csv', el); if (x) x.onclick = () => exporterLivre(lignes);
     const tt = $('#lv-tous', el); if (tt) tt.onclick = () => vers('#/ecritures');
+    // Le lettrage automatique (9.5.0). Il DIT ce qu'il a posé et ce qu'il a laissé : « 12 lignes
+    // traitées » laisserait croire que tout est réglé alors que la moitié attend une décision.
+    const au = $('#lv-auto', el);
+    if (au) au.onclick = async () => {
+      au.disabled = true;
+      try {
+        const r = await api.lettrageAuto({ dossierId: dossier.id, annee: s.annee, compte: s.compte || '411' });
+        s.livre = r.livre;
+        toast(r.poses.length
+          ? `${pl(r.poses.length, 'lettre posée', 'lettres posées')} ; ${pl(r.restent, 'ligne reste ouverte', 'lignes restent ouvertes')}.`
+          : `Rien à lettrer d'office : ${pl(r.restent, 'ligne ouverte')}, aucune paire qui se solde sans ambiguïté.`);
+        redraw();
+      } catch (e) { toast(plainError(e), 'error'); au.disabled = false; }
+    };
     // L'export porte sur `lignes` — la sélection entière, jamais la page affichée.
     bindPager(el, redraw, s);
     // « Ouvrir la pièce dans le paquet » : seulement si on sait DANS QUEL paquet elle vit.

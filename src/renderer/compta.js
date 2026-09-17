@@ -938,11 +938,24 @@
   // Modifier un brouillard. Le garde-fou est ici, pas dans l'écran : `modifierEcriture` est le seul
   // chemin qui touche aux lignes d'une écriture existante, et il refuse une validée. Un test relit
   // la source et exige qu'aucune autre fonction n'écrive dans `ecriture.lignes`.
+  // Une écriture qu'un relevé désigne ne se modifie ni ne se supprime en douce : le rapprochement
+  // pointerait un montant qui a changé, ou une écriture disparue, et il continuerait d'afficher
+  // « rapproché ». Même parade que pour le lettrage — on nomme, et on dit le geste qui débloque.
+  function rapprochementDe(livre, id) {
+    for (const r of (livre.releves || [])) {
+      for (const l of r.lignes) if (l.rapprochement && l.rapprochement.ecritureId === id) return { releve: r, ligne: l };
+    }
+    return null;
+  }
+
   function modifierEcriture(livre, id, patch) {
     const e = (livre.ecritures || []).find(x => x.id === id);
     if (!e) return { ok: false, motif: 'Cette écriture n\'existe pas.' };
     if (e.statut !== 'brouillard') {
       return { ok: false, motif: 'Cette écriture est validée : elle ne se modifie pas, elle se contre-passe.' };
+    }
+    if (rapprochementDe(livre, id)) {
+      return { ok: false, motif: 'Cette écriture est rapprochée d\'une ligne de relevé : défais le rapprochement d\'abord, sinon il désignerait un montant qui a changé.' };
     }
     const p = patch || {};
     ['journal', 'piece', 'libelle'].forEach(k => { if (p[k] !== undefined) e[k] = String(p[k] == null ? '' : p[k]); });
@@ -971,6 +984,9 @@
     }
     if ((e.lignes || []).some(l => l.lettre)) {
       return { ok: false, motif: 'Cette écriture est lettrée : délettre d\'abord, sinon le lettrage désignerait une écriture disparue.' };
+    }
+    if (rapprochementDe(livre, id)) {
+      return { ok: false, motif: 'Cette écriture est rapprochée d\'une ligne de relevé : défais le rapprochement d\'abord, sinon il désignerait une écriture disparue.' };
     }
     livre.ecritures = livre.ecritures.filter(x => x.id !== id);
     return { ok: true, ecriture: e };
@@ -1275,6 +1291,415 @@
     return { lignes, ignorees, motif: '' };
   }
 
+  // ============================================================================ LA BANQUE (9.5.0)
+  //
+  // Deux choses qu'on confond tout le temps, et qui n'ont ni le même modèle ni le même écran :
+  // le RAPPROCHEMENT confronte le relevé de la banque au compte 532 (« la banque et mon livre
+  // disent-ils la même chose ? ») ; le LETTRAGE relie une facture et son règlement sur le compte
+  // d'un tiers (« ce client me doit-il encore quelque chose ? »). Deux modèles, deux tests.
+  //
+  // La question qui bloquait cette version — « quelles banques, et quel format chacune exporte ? »
+  // — n'a pas de réponse, et n'en aura pas avant que le cabinet pilote ouvre ses fichiers. C'est
+  // pour ça que rien ici ne connaît une banque : on associe les colonnes PAR NOM, et l'association
+  // qu'un comptable corrige une fois se retient. Écrire un lecteur par banque aurait fait de chaque
+  // nouvelle banque une nouvelle version du logiciel.
+  const RELEVE_NIVEAUX = ['certain', 'probable', 'a-confirmer', 'aucun'];
+  const RELEVE_JOURS = 3;          // ± n jours pour apparier une date — réglable, À VÉRIFIER
+
+  const ALIAS_RELEVE = {
+    date: ['date', 'dateoperation', 'dateopration', 'dateop', 'datevaleur', 'jour', 'dateecriture', 'datecriture'],
+    libelle: ['libelle', 'libell', 'libelleoperation', 'intitule', 'intitul', 'description', 'motif', 'operation', 'oprtion', 'nature', 'detail'],
+    montant: ['montant', 'mouvement', 'somme', 'amount'],
+    debit: ['debit', 'dbit', 'retrait', 'sortie', 'depense', 'dpense'],
+    credit: ['credit', 'crdit', 'versement', 'entree', 'entre', 'recette'],
+    reference: ['reference', 'rfrence', 'ref', 'numero', 'numro', 'piece', 'pice', 'numoperation']
+  };
+
+  // L'association devinée : ce que l'écran propose avant que le comptable la corrige. Elle rend
+  // AUSSI ce qu'elle n'a pas trouvé — un assistant qui ne dit pas ce qui lui manque ne sert à rien.
+  function colonnesReleve(tete) {
+    const col = colonnesPar(Array.isArray(tete) ? tete : [], ALIAS_RELEVE);
+    const manque = [];
+    if (col.date === undefined) manque.push('date');
+    if (col.libelle === undefined) manque.push('libelle');
+    if (col.montant === undefined && (col.debit === undefined || col.credit === undefined)) manque.push('montant');
+    return { colonnes: col, manque, entetes: (tete || []).map(t => txt(t)) };
+  }
+
+  // Le signe est celui de la BANQUE : un crédit bancaire (l'argent entre) est positif, un débit
+  // négatif. C'est le seul endroit du livre où un montant porte un signe, et c'est voulu : un
+  // relevé se relit à côté de son original papier, et l'inverser rendrait la comparaison
+  // impossible. La conversion en débit/crédit comptable se fait au rapprochement, pas ici.
+  function releveDepuisCsv(rows, assoc) {
+    const r = (Array.isArray(rows) ? rows : []).filter(l => Array.isArray(l) && l.some(c => txt(c)));
+    if (!r.length) return { lignes: [], ignorees: [], colonnes: {}, motif: 'Le fichier est vide.' };
+    const devine = colonnesReleve(r[0]);
+    const col = (assoc && Object.keys(assoc).length) ? assoc : devine.colonnes;
+    const aDate = col.date !== undefined, aLib = col.libelle !== undefined;
+    const aMontant = col.montant !== undefined;
+    const aDC = col.debit !== undefined && col.credit !== undefined;
+    if (!aDate || !aLib || (!aMontant && !aDC)) {
+      return {
+        lignes: [], ignorees: [], colonnes: col, entetes: devine.entetes, manque: devine.manque,
+        motif: 'Ce fichier n\'a pas les colonnes attendues : il faut une date, un libellé, et un montant (ou un débit et un crédit). Associe-les à la main, je retiendrai l\'association pour cette banque.'
+      };
+    }
+    const lignes = [], ignorees = [];
+    r.slice(1).forEach((l, i) => {
+      const date = dateDepuisCsv(l[col.date]);
+      const libelle = txt(l[col.libelle]);
+      const montant = aMontant
+        ? round3(nombreDepuisCsv(l[col.montant]))
+        : round3(nombreDepuisCsv(l[col.credit]) - nombreDepuisCsv(l[col.debit]));
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { ignorees.push({ ligne: i + 2, motif: `date illisible (« ${txt(l[col.date]).slice(0, 20)} »)` }); return; }
+      if (!montant) { ignorees.push({ ligne: i + 2, motif: 'montant nul ou illisible' }); return; }
+      lignes.push({
+        id: '', date, libelle, montant,
+        reference: col.reference !== undefined ? txt(l[col.reference]) : '',
+        rapprochement: { niveau: 'aucun', ecritureId: '', ligne: -1, le: '', par: '' },
+        ecritureId: ''
+      });
+    });
+    return { lignes, ignorees, colonnes: col, entetes: devine.entetes, motif: '' };
+  }
+
+  // Le contrôle qui décide si un relevé entre : `soldeDebut + Σ montants = soldeFin`. Un relevé
+  // dont la somme ne tombe pas juste a perdu des lignes — au découpage, au copier-coller, ou parce
+  // qu'une page manque. L'importer quand même ferait un rapprochement faux que personne ne
+  // saurait expliquer trois mois plus tard, d'où le refus AVEC l'écart (ERR-CAB-040).
+  function releveValide(releve) {
+    const R = releve || {};
+    const L = Array.isArray(R.lignes) ? R.lignes : [];
+    if (!txt(R.compte)) return { ok: false, motif: 'Choisis le compte bancaire de ce relevé avant de l\'importer : il ne se devine pas.' };
+    if (!L.length) return { ok: false, motif: 'Ce relevé ne porte aucune ligne lisible.' };
+    const somme = round3(L.reduce((s, l) => s + num(l.montant), 0));
+    const attendu = round3(num(R.soldeDebut) + somme);
+    const ecart = round3(attendu - num(R.soldeFin));
+    if (ecart !== 0) {
+      return {
+        ok: false, ecart,
+        motif: `Ce relevé ne se boucle pas : ${num(R.soldeDebut).toFixed(3)} au départ, ${somme.toFixed(3)} de mouvements, cela fait ${attendu.toFixed(3)} — et le relevé annonce ${num(R.soldeFin).toFixed(3)}. Il manque ${Math.abs(ecart).toFixed(3)} : il manque des lignes, ou le solde de fin n'est pas le bon.`
+      };
+    }
+    return { ok: true, motif: '', somme };
+  }
+
+  function ajouterReleve(livre, releve, qui, quand) {
+    const v = releveValide(releve);
+    if (!v.ok) return { ok: false, motif: v.motif, ecart: v.ecart };
+    livre.releves = Array.isArray(livre.releves) ? livre.releves : [];
+    const emp = txt(releve.empreinte);
+    // Deux fois le même fichier, c'est deux fois les mêmes mouvements : le rapprochement
+    // trouverait deux lignes pour chaque écriture et n'en rapprocherait plus aucune avec certitude.
+    if (emp && livre.releves.some(x => txt(x.empreinte) === emp)) {
+      const deja = livre.releves.find(x => txt(x.empreinte) === emp);
+      return { ok: false, motif: `Ce fichier a déjà été importé le ${txt(deja.importeLe).slice(0, 10) || '(date inconnue)'} (${txt(deja.du)} → ${txt(deja.au)}).` };
+    }
+    const id = 'REL-' + (livre.releves.length + 1) + '-' + String(quand || 0);
+    const R = {
+      id,
+      compte: txt(releve.compte),
+      banque: txt(releve.banque),
+      du: txt(releve.du) || (releve.lignes[0] || {}).date || '',
+      au: txt(releve.au) || (releve.lignes[releve.lignes.length - 1] || {}).date || '',
+      soldeDebut: round3(num(releve.soldeDebut)),
+      soldeFin: round3(num(releve.soldeFin)),
+      fichier: txt(releve.fichier),
+      empreinte: emp,
+      importeLe: txt(quand ? new Date(quand).toISOString() : ''),
+      par: txt(qui),
+      lignes: releve.lignes.map((l, i) => ({
+        ...l, id: `${id}-L${i + 1}`,
+        rapprochement: { niveau: 'aucun', ecritureId: '', ligne: -1, le: '', par: '' },
+        ecritureId: txt(l.ecritureId)
+      }))
+    };
+    livre.releves.push(R);
+    trace(livre, qui, 'relevé importé', `${R.compte} ${R.du} → ${R.au} (${R.lignes.length} ligne(s))`, quand);
+    return { ok: true, releve: R };
+  }
+
+  // Un relevé mal importé se retire SANS toucher au journal : le lien va de la ligne vers
+  // l'écriture, jamais l'inverse (SPEC-DATA-005). Les écritures nées d'une ligne, elles, restent —
+  // elles ont été décidées par un clic, et ce clic ne se défait pas en effaçant un fichier.
+  function supprimerReleve(livre, id) {
+    const L = Array.isArray(livre.releves) ? livre.releves : [];
+    const i = L.findIndex(r => r.id === id);
+    if (i < 0) return { ok: false, motif: 'Ce relevé n\'existe pas.' };
+    const nees = L[i].lignes.filter(l => txt(l.ecritureId)).length;
+    livre.releves = L.filter((_, k) => k !== i);
+    return { ok: true, ecrituresGardees: nees };
+  }
+
+  // Les lignes du livre qui touchent le compte bancaire, du point de vue de la BANQUE : un débit
+  // comptable sur le 532 (l'argent entre) est un crédit bancaire, donc un montant positif.
+  function lignesBancaires(livre, compte) {
+    const n = txt(compte);
+    const out = [];
+    (livre.ecritures || []).forEach(e => {
+      // Le brouillard COMPTE ici, et c'est un choix : le comptable saisit depuis le relevé et ne
+      // valide qu'ensuite. L'exclure rendrait le rapprochement inutile très exactement pendant la
+      // demi-journée où il sert. Ce qu'il fallait en contrepartie, c'est qu'un brouillard rapproché
+      // ne puisse plus être modifié ni supprimé en douce : la garde vit dans les deux fonctions qui
+      // le feraient, comme celle du lettrage.
+      (e.lignes || []).forEach((l, i) => {
+        if (txt(l.compte) !== n) return;
+        out.push({ ecritureId: e.id, ligne: i, date: e.date, libelle: l.libelle || e.libelle, piece: e.piece, statut: e.statut, montant: round3(num(l.debit) - num(l.credit)) });
+      });
+    });
+    return out;
+  }
+
+  const motsDe = s => sansAccents(String(s || '').toLowerCase()).split(/[^a-z0-9]+/).filter(m => m.length >= 4);
+  // On COMPTE les mots communs au lieu de répondre oui/non. « REMISE CHEQUE DUPONT » ressemble aux
+  // deux écritures « CHEQUE DUPONT » et « CHEQUE MARTIN » si l'on se contente d'un mot partagé —
+  // et le mot partagé est « cheque », celui qui n'apprend rien. C'est le nombre de mots communs qui
+  // départage, et seulement quand un candidat en a STRICTEMENT plus que tous les autres.
+  function motsCommuns(a, b) {
+    const A = motsDe(a), B = motsDe(b);
+    return A.filter(m => B.includes(m)).length;
+  }
+  const ecartJours = (a, b) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(a) || !/^\d{4}-\d{2}-\d{2}$/.test(b)) return 99999;
+    return Math.abs(Math.round((Date.parse(a + 'T00:00:00Z') - Date.parse(b + 'T00:00:00Z')) / 86400000));
+  };
+
+  // Le rapprochement automatique, à quatre niveaux. La règle qui ne bouge pas : **seul `certain` se
+  // pose d'office, et une ambiguïté n'est JAMAIS certaine**. Deux écritures du même montant à deux
+  // jours d'écart, c'est exactement le cas où un logiciel qui tranche tout seul se trompe sans que
+  // personne ne le voie — et un rapprochement faux est pire qu'un rapprochement absent, parce qu'il
+  // ferme la question.
+  function rapprocherAuto(livre, releveId, opts) {
+    const o = opts || {};
+    const jours = o.jours == null ? RELEVE_JOURS : Math.max(0, Number(o.jours) || 0);
+    const R = (livre.releves || []).find(x => x.id === releveId);
+    if (!R) return { ok: false, motif: 'Ce relevé n\'existe pas.' };
+    const dispo = lignesBancaires(livre, R.compte);
+    // Ce qui est déjà rapproché ailleurs ne se propose plus : sinon la même écriture répondrait de
+    // deux lignes du relevé, et le compte tomberait juste deux fois pour un seul mouvement.
+    const prises = new Set();
+    (livre.releves || []).forEach(x => x.lignes.forEach(l => {
+      if (l.rapprochement && l.rapprochement.ecritureId) prises.add(l.rapprochement.ecritureId + '#' + l.rapprochement.ligne);
+    }));
+    const compte = { certain: 0, probable: 0, 'a-confirmer': 0, aucun: 0 };
+    const detail = [];
+    R.lignes.forEach(l => {
+      if (l.rapprochement && l.rapprochement.niveau !== 'aucun') { compte[l.rapprochement.niveau]++; return; }
+      const candidats = dispo
+        .filter(c => !prises.has(c.ecritureId + '#' + c.ligne))
+        .filter(c => round3(c.montant - num(l.montant)) === 0)
+        .filter(c => ecartJours(c.date, l.date) <= jours);
+      let niveau = 'aucun';
+      if (candidats.length === 1) niveau = 'certain';
+      else if (candidats.length > 1) {
+        const scores = candidats.map(c => motsCommuns(c.libelle, l.libelle));
+        const meilleur = Math.max(...scores);
+        niveau = meilleur > 0 && scores.filter(s => s === meilleur).length === 1 ? 'probable' : 'a-confirmer';
+      }
+      if (niveau === 'certain') {
+        const c = candidats[0];
+        l.rapprochement = { niveau: 'certain', ecritureId: c.ecritureId, ligne: c.ligne, le: txt(o.date), par: 'auto' };
+        prises.add(c.ecritureId + '#' + c.ligne);
+      }
+      compte[niveau]++;
+      detail.push({ ligneId: l.id, niveau, candidats: niveau === 'certain' ? [] : candidats });
+    });
+    return { ok: true, compte, detail, jours };
+  }
+
+  // Poser ou défaire un rapprochement à la main. Même `certain` reste défaisable : l'automatique
+  // propose, le comptable décide, et un logiciel qui ne se laisse pas contredire est un logiciel
+  // qu'on finit par contourner ailleurs.
+  function rapprocherLigne(livre, releveId, ligneId, choix, qui, quand) {
+    const R = (livre.releves || []).find(x => x.id === releveId);
+    if (!R) return { ok: false, motif: 'Ce relevé n\'existe pas.' };
+    const l = R.lignes.find(x => x.id === ligneId);
+    if (!l) return { ok: false, motif: 'Cette ligne de relevé n\'existe pas.' };
+    const c = choix || {};
+    if (!c.ecritureId) {
+      l.rapprochement = { niveau: 'aucun', ecritureId: '', ligne: -1, le: '', par: '' };
+      trace(livre, qui, 'rapprochement défait', `${R.compte} ${l.date} ${num(l.montant).toFixed(3)}`, quand);
+      return { ok: true, niveau: 'aucun' };
+    }
+    const e = (livre.ecritures || []).find(x => x.id === c.ecritureId);
+    if (!e) return { ok: false, motif: 'Cette écriture n\'existe pas.' };
+    const i = Number(c.ligne);
+    if (!(e.lignes || [])[i] || txt(e.lignes[i].compte) !== txt(R.compte)) {
+      return { ok: false, motif: `Cette ligne d'écriture ne touche pas le compte ${R.compte}.` };
+    }
+    const niveau = RELEVE_NIVEAUX.includes(c.niveau) ? c.niveau : 'certain';
+    if (niveau === 'aucun') return { ok: false, motif: 'Un rapprochement posé ne peut pas être « aucun » : c\'est ce que veut dire le défaire.' };
+    l.rapprochement = { niveau, ecritureId: e.id, ligne: i, le: txt(c.date), par: txt(qui) };
+    trace(livre, qui, 'rapprochement', `${R.compte} ${l.date} ${num(l.montant).toFixed(3)} → ${e.journal} ${e.piece || ''}`, quand);
+    return { ok: true, niveau };
+  }
+
+  // Tout défaire d'un coup. Après un rapprochement automatique qui s'est trompé de relevé ou de
+  // compte, défaire ligne par ligne serait trente clics — et trente occasions d'en oublier une.
+  function derapprocherReleve(livre, releveId, qui, quand) {
+    const R = (livre.releves || []).find(x => x.id === releveId);
+    if (!R) return { ok: false, motif: 'Ce relevé n\'existe pas.' };
+    let n = 0;
+    R.lignes.forEach(l => {
+      if (!(l.rapprochement && l.rapprochement.ecritureId)) return;
+      l.rapprochement = { niveau: 'aucun', ecritureId: '', ligne: -1, le: '', par: '' };
+      n++;
+    });
+    if (n) trace(livre, qui, 'rapprochements défaits', `${R.compte} ${R.du} → ${R.au} — ${n}`, quand);
+    return { ok: true, defaits: n };
+  }
+
+  // Les suspens, DANS LES DEUX SENS (règle 6.8.1) : ce que la banque porte et que le livre n'a pas,
+  // et ce que le livre porte et que la banque n'a pas. Ne regarder qu'un seul côté laisserait
+  // passer un chèque émis jamais encaissé — c'est-à-dire l'écart le plus courant.
+  function suspens(livre, releveId) {
+    const R = (livre.releves || []).find(x => x.id === releveId);
+    if (!R) return { banque: [], livre: [], ecart: 0 };
+    const rapprochees = new Set();
+    (livre.releves || []).filter(x => x.compte === R.compte).forEach(x => x.lignes.forEach(l => {
+      if (l.rapprochement && l.rapprochement.ecritureId) rapprochees.add(l.rapprochement.ecritureId + '#' + l.rapprochement.ligne);
+    }));
+    const cote = R.lignes.filter(l => !(l.rapprochement && l.rapprochement.ecritureId));
+    const cotL = lignesBancaires(livre, R.compte)
+      .filter(c => c.date <= (R.au || '9999-12-31'))
+      .filter(c => !rapprochees.has(c.ecritureId + '#' + c.ligne));
+    const sB = round3(cote.reduce((s, l) => s + num(l.montant), 0));
+    const sL = round3(cotL.reduce((s, c) => s + c.montant, 0));
+    return { banque: cote, livre: cotL, ecart: round3(sB - sL) };
+  }
+
+  // L'écriture PROPOSÉE depuis une ligne non rapprochée. Elle n'est jamais enregistrée ici : cette
+  // fonction rend un brouillon, et il faut un clic pour qu'il devienne une écriture — la banque ne
+  // fait pas foi contre la pièce. La table libellé → compte part VIDE : écrire « STEG → 606 » dans
+  // le code serait poser une règle comptable que personne n'a validée (règle de la 9.1.1 : la
+  // valeur par défaut d'une règle qu'on ne connaît pas est celle qui ne fait rien). Elle se
+  // remplit toute seule, un libellé à la fois, quand le comptable choisit un compte.
+  function compteDuLibelle(table, libelle) {
+    const L = sansAccents(String(libelle || '').toLowerCase());
+    const T = (Array.isArray(table) ? table : []).filter(x => x && txt(x.motif) && txt(x.compte));
+    // Le motif le plus LONG gagne : « STEG PRELEVEMENT » est plus précis que « STEG », et sans
+    // cette règle le résultat dépendrait de l'ordre du tableau (règle de la correspondance, 9.3.0).
+    let choisi = null;
+    T.forEach(x => {
+      if (!L.includes(sansAccents(txt(x.motif).toLowerCase()))) return;
+      if (!choisi || txt(x.motif).length > txt(choisi.motif).length) choisi = x;
+    });
+    return choisi ? { compte: txt(choisi.compte), libelle: txt(choisi.libelle), motif: txt(choisi.motif) } : null;
+  }
+
+  function ecritureProposee(ligne, table, opts) {
+    const o = opts || {};
+    const l = ligne || {};
+    const m = round3(num(l.montant));
+    const trouve = compteDuLibelle(table, l.libelle);
+    const banque = txt(o.compte);
+    const contre = trouve ? trouve.compte : '';
+    const lib = txt(l.libelle) || 'Mouvement bancaire';
+    return {
+      journal: txt(o.journal) || 'BQ',
+      date: txt(l.date),
+      piece: txt(l.reference),
+      libelle: lib,
+      source: 'banque',
+      // L'argent entre (montant > 0) : la banque est débitée. Il sort : elle est créditée.
+      lignes: [
+        { compte: banque, libelle: lib, debit: m > 0 ? Math.abs(m) : 0, credit: m < 0 ? Math.abs(m) : 0 },
+        { compte: contre, libelle: trouve && trouve.libelle ? trouve.libelle : lib, debit: m < 0 ? Math.abs(m) : 0, credit: m > 0 ? Math.abs(m) : 0 }
+      ],
+      // Sans règle connue, la contrepartie reste VIDE et `ecritureValide` refusera l'enregistrement.
+      // C'est voulu : verser d'office au 471 rangerait le doute dans un compte que personne ne
+      // solde, et la question disparaîtrait sans avoir été posée.
+      aChoisir: !contre,
+      regle: trouve ? trouve.motif : ''
+    };
+  }
+
+  // Le lettrage AUTOMATIQUE : on ne relie que ce qui se solde exactement (règle de `lettrer`), et
+  // on ne relie jamais deux pièces que la référence ou le montant ne désignent pas ensemble.
+  // Un lettrage automatique trop généreux est pire qu'aucun : il affirme qu'une facture est payée.
+  function lettrageAuto(livre, compte, opts) {
+    const o = opts || {};
+    const jours = o.jours == null ? 90 : Math.max(0, Number(o.jours) || 0);
+    const n = txt(compte);
+    const ouvertes = [];
+    (livre.ecritures || []).forEach(e => {
+      if (e.statut === 'brouillard') return;
+      (e.lignes || []).forEach(l => {
+        if (txt(l.compte) !== n || txt(l.lettre)) return;
+        ouvertes.push({ id: e.id, date: e.date, piece: txt(e.piece), tiersId: txt(l.tiersId), montant: round3(num(l.debit) - num(l.credit)) });
+      });
+    });
+    const debits = ouvertes.filter(x => x.montant > 0);
+    const credits = ouvertes.filter(x => x.montant < 0);
+    const utilises = new Set();
+    const poses = [];
+    debits.forEach(d => {
+      if (utilises.has(d.id)) return;
+      const cands = credits.filter(c => !utilises.has(c.id) && round3(c.montant + d.montant) === 0)
+        .filter(c => !d.tiersId || !c.tiersId || c.tiersId === d.tiersId)
+        .filter(c => ecartJours(c.date, d.date) <= jours);
+      // La référence tranche quand plusieurs règlements du même montant existent ; sans elle, deux
+      // candidats veulent dire qu'on ne sait pas, et on ne lettre pas.
+      const parRef = cands.filter(c => d.piece && c.piece && (c.piece.includes(d.piece) || d.piece.includes(c.piece)));
+      const choisi = parRef.length === 1 ? parRef[0] : (cands.length === 1 ? cands[0] : null);
+      if (!choisi) return;
+      const r = lettrer(livre, n, [d.id, choisi.id], '', o.par || 'auto', o.date || '');
+      if (!r.ok) return;
+      utilises.add(d.id); utilises.add(choisi.id);
+      poses.push({ lettre: r.lettre, ecritures: [d.id, choisi.id], montant: d.montant });
+    });
+    return { ok: true, poses, restent: ouvertes.length - utilises.size };
+  }
+
+  // Les tranches d'âge, en UN seul endroit. Elles vivaient dans core.js depuis la 2.5.0 ; le
+  // Cabinet ne charge pas core.js (l'application gratuite n'embarque pas le produit payant), donc
+  // les recopier aurait garanti deux définitions divergentes — et deux balances âgées qui ne disent
+  // pas la même chose. core.js les réexporte depuis ici. À VÉRIFIER avec le comptable : 30/60/90
+  // est l'usage, ce n'est pas une règle.
+  const AGING_BUCKETS = [[0, 0, 'Pas encore échu'], [1, 30, '1 à 30 jours'], [31, 60, '31 à 60 jours'], [61, 90, '61 à 90 jours'], [91, 99999, 'Plus de 90 jours']];
+
+  // L'échéancier et la balance âgée lisent les lignes de tiers NON LETTRÉES — jamais une liste à
+  // part (SPEC-UI-CAB-022). Une seconde liste se désynchroniserait au premier lettrage.
+  function echeancierDepuisLignes(entries, compteOuRole, todayIso, opts) {
+    const o = opts || {};
+    const l = lettrageDepuisLignes(entries, compteOuRole, todayIso);
+    const aujourdhui = txt(todayIso);
+    const lignes = [];
+    (l.rows || []).forEach(t => (t.ouverts || []).forEach(p => {
+      // L'échéance quand la pièce en porte une, sa date sinon : une pièce sans échéance est due
+      // le jour où elle est émise, et la ranger « pas encore échue » pour toujours la ferait
+      // disparaître de ce que le cabinet doit réclamer.
+      const echeance = txt(p.echeance) || txt(p.date);
+      lignes.push({
+        tiersId: t.tiersId, tiers: t.tiers, account: t.account,
+        piece: p.piece, date: p.date, echeance, montant: round3(num(p.reste)),
+        retard: aujourdhui && echeance && echeance < aujourdhui ? ecartJours(aujourdhui, echeance) : 0
+      });
+    }));
+    lignes.sort((a, b) => (a.echeance || '').localeCompare(b.echeance || '') || (a.tiers || '').localeCompare(b.tiers || ''));
+    return { lignes, total: round3(lignes.reduce((s, x) => s + x.montant, 0)), concorde: l.concorde, reste: l.reste };
+  }
+
+  function balanceAgeeDepuisLignes(entries, compteOuRole, todayIso, tranches) {
+    const T = (Array.isArray(tranches) && tranches.length ? tranches : AGING_BUCKETS)
+      .map(([min, max, label]) => ({ label, min, max, montant: 0, nombre: 0 }));
+    const e = echeancierDepuisLignes(entries, compteOuRole, todayIso);
+    const parTiers = {};
+    e.lignes.forEach(l => {
+      const t = T.find(x => l.retard >= x.min && l.retard <= x.max) || T[T.length - 1];
+      t.montant = round3(t.montant + l.montant); t.nombre++;
+      const k = l.tiersId || ('~' + l.tiers);
+      const r = parTiers[k] = parTiers[k] || { tiersId: l.tiersId, tiers: l.tiers, total: 0, parTranche: T.map(x => ({ label: x.label, montant: 0 })) };
+      r.total = round3(r.total + l.montant);
+      const i = T.indexOf(t);
+      r.parTranche[i].montant = round3(r.parTranche[i].montant + l.montant);
+    });
+    return {
+      tranches: T, tiers: Object.values(parTiers).sort((a, b) => b.total - a.total),
+      total: round3(T.reduce((s, x) => s + x.montant, 0))
+    };
+  }
+
   return {
     round3, cleDePiece, csvDangereux, nombreDepuisCsv, dateDepuisCsv,
     ecritureValide, entreesDepuisCsv,
@@ -1292,6 +1717,12 @@
     premierDuMoisSuivant, ajouterMoisIso, sansAccents, soldeDeLignes, comptesQuiCorrespondent,
     modifierEcriture, supprimerEcriture, validerLot, extourner, chercherEcritures,
     guideValide, ecritureDepuisGuide, occurrencesAGenerer,
-    correspondanceValide, compteCorrespondant, appliquerCorrespondance
+    correspondanceValide, compteCorrespondant, appliquerCorrespondance,
+    // La banque (9.5.0)
+    RELEVE_NIVEAUX, RELEVE_JOURS, AGING_BUCKETS,
+    colonnesReleve, releveDepuisCsv, releveValide, ajouterReleve, supprimerReleve,
+    lignesBancaires, rapprocherAuto, rapprocherLigne, derapprocherReleve, suspens,
+    compteDuLibelle, ecritureProposee, lettrageAuto,
+    echeancierDepuisLignes, balanceAgeeDepuisLignes
   };
 });

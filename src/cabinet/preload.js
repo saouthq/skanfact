@@ -72,6 +72,18 @@ contextBridge.exposeInMainWorld('cabinet', {
   saveAbonnements: (dossierId, abonnements) => ipcRenderer.invoke('cab:saveAbonnements', { dossierId, abonnements }),
   genererAbonnements: (o) => ipcRenderer.invoke('cab:genererAbonnements', o || {}),
   dernierJournal: (dossierId, journal) => ipcRenderer.invoke('cab:dernierJournal', { dossierId, journal }),
+  // La banque (9.5.0). LIRE un relevé et l'AJOUTER sont deux portes séparées : entre les deux, le
+  // comptable choisit le compte, saisit les deux soldes du relevé papier et corrige l'association
+  // des colonnes. Rien ici ne touche aux données du client — un relevé bancaire vit dans le livre
+  // que le CABINET tient.
+  lireReleve: (o) => ipcRenderer.invoke('cab:lireReleve', o || {}),
+  ajouterReleve: (o) => ipcRenderer.invoke('cab:ajouterReleve', o || {}),
+  supprimerReleve: (o) => ipcRenderer.invoke('cab:supprimerReleve', o || {}),
+  rapprocherAuto: (o) => ipcRenderer.invoke('cab:rapprocherAuto', o || {}),
+  rapprocher: (o) => ipcRenderer.invoke('cab:rapprocher', o || {}),
+  derapprocher: (o) => ipcRenderer.invoke('cab:derapprocher', o || {}),
+  lettrageAuto: (o) => ipcRenderer.invoke('cab:lettrageAuto', o || {}),
+  saveBanque: (o) => ipcRenderer.invoke('cab:saveBanque', o || {}),
   // La licence du cabinet (9.4.0). Elle ne concerne QUE ce cabinet : rien ici ne touche aux
   // données d'un client, et la porte qu'elle ferme est celle de la validation d'une écriture —
   // jamais la lecture, jamais l'import, jamais l'export.

@@ -7,6 +7,44 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 9.5.0 — 17/09/2026
+
+**La banque : le relevé entre, et le rapprochement propose sans jamais trancher tout seul.**
+
+Le comptable importe le relevé tel que sa banque l'exporte, et l'application confronte chaque ligne
+au compte 532. Ce qu'elle pose d'elle-même, elle en est sûre ; tout le reste, elle le montre.
+
+- **Un relevé s'importe par le NOM de ses colonnes**, jamais par leur position. Montant signé ou
+  colonnes Débit/Crédit séparées, dates françaises ou ISO, espaces des milliers : les trois formes
+  passent. Et quand une banque écrit des en-têtes qu'on ne reconnaît pas, l'écran le **dit**, montre
+  ses colonnes, et tu les associes une fois — l'association est retenue pour cette banque-là. Sans
+  ça, chaque nouvelle banque aurait été une nouvelle version du logiciel.
+- **Un relevé qui ne se boucle pas est refusé, avec l'écart en toutes lettres.** Solde de début, plus
+  les mouvements, égale solde de fin : sinon il manque des lignes, et un rapprochement à moitié ne
+  s'explique plus trois mois après.
+- **Le même fichier ne s'importe jamais deux fois** — l'empreinte des octets le dit, et la date du
+  premier import avec.
+- **Quatre états, et un seul se pose d'office.** *Rapproché* quand une écriture, et une seule,
+  convient. *Probable* quand plusieurs conviennent mais que le libellé en désigne une. *À confirmer*
+  quand rien ne les départage. *Sans réponse* quand le livre ne porte rien en face. **Une ambiguïté
+  n'est jamais « rapproché »** : un rapprochement faux est pire qu'un rapprochement absent, parce
+  qu'il ferme la question. Et même « rapproché » se défait d'un clic.
+- **Les suspens, des deux côtés** : ce que la banque porte et que le livre n'a pas, et l'inverse. Un
+  chèque émis fin mars encaissé en avril vit là — ce n'est pas une erreur, c'est ce qui explique
+  l'écart.
+- **L'écriture qui manque s'écrit depuis la ligne**, préremplie, en brouillard, jamais enregistrée
+  sans un clic. Quand aucune règle ne reconnaît le libellé, **la contrepartie reste vide** : verser
+  d'office au 471 rangerait le doute dans un compte que personne ne solde. Le compte choisi est
+  retenu, et le relevé suivant le proposera tout seul.
+- **Le lettrage reste un AUTRE écran** — le relevé contre la banque d'un côté, la facture contre son
+  règlement de l'autre. Il gagne le lettrage automatique (seulement ce qui se solde exactement et
+  sans ambiguïté ; un règlement partiel reste ouvert, c'est le but) et **la balance âgée** : ce qui
+  reste dû, rangé par ancienneté, la liste d'appels du lundi matin.
+
+Ce qui **n'y est pas**, et pourquoi : aucun format propriétaire (OFX, MT940). Ils n'arriveront que
+si une banque d'un client du cabinet pilote en exporte vraiment. Les tranches d'âge et le « ± 3
+jours » sont des réglages, avec un **À VÉRIFIER** : ce sont des usages, pas des règles.
+
 ## 9.4.10 — 17/09/2026
 
 **Entretien : rien de neuf à l'écran, et c'est le but.**

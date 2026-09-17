@@ -4966,7 +4966,10 @@
   }
 
   // Âge des impayés : ce qui reste dû, rangé par retard. Un bon indicateur de ce qui part en créance douteuse.
-  const AGING_BUCKETS = [[0, 0, 'Pas encore échu'], [1, 30, '1 à 30 jours'], [31, 60, '31 à 60 jours'], [61, 90, '61 à 90 jours'], [91, 99999, 'Plus de 90 jours']];
+  // Les tranches d'âge vivent dans `compta.js` depuis la 9.5.0 : le Cabinet en a besoin et ne
+  // charge pas core.js. Deux définitions donneraient deux balances âgées qui ne disent pas la
+  // même chose — c'est exactement ce que ce module partagé existe pour empêcher.
+  const AGING_BUCKETS = Compta.AGING_BUCKETS;
   function agedReceivables(data, company, todayIso) {
     const t = todayIso || today();
     const buckets = AGING_BUCKETS.map(([min, max, label]) => ({ label, min, max, amount: 0, count: 0 }));

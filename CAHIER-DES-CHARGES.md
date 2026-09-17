@@ -1872,6 +1872,8 @@ portent pas, et un test les nomme.
 | `ERR-ENT-074` | « La console ne répond pas. Vérifie ta connexion… » | pont | réessayer | Livré |
 | `ERR-ENT-075` | « La console refuse ce secret d'administration… » | pont | Paramètres → Éditeur | Livré |
 | `ERR-ENT-076` | « La console a répondu <n>. » (ou le message de la console) | pont | — | Livré |
+| `ERR-CAB-040` | « Ce relevé ne se boucle pas : <début> au départ, <mouvements> de mouvements, cela fait <attendu> — et le relevé annonce <fin>. Il manque <écart>… » / « Ce fichier a déjà été importé le <date>… » | import d'un relevé (9.5.0) | compléter le fichier, ou corriger le solde de fin | Livré |
+| `ERR-CAB-041` | « Cette ligne d'écriture ne touche pas le compte <n>. » / « Cette ligne de relevé n'existe pas. » | rapprochement (9.5.0) | choisir la bonne ligne | Livré |
 
 ---
 
@@ -2318,28 +2320,28 @@ chaque `throw`. **Aucune fonction nouvelle, par règle.** Tous les e2e relancés
 Question qui bloque : « Quelles banques, et quel format d'export chacune donne-t-elle ? » (un
 importeur par format, chacun testé sur un fichier réel anonymisé).
 
-**SPEC-UI-CAB-020 — importer un relevé**
+**SPEC-UI-CAB-020 — importer un relevé** — *livré en 9.5.0 ; les « à décider » ci-dessous sont tranchés dans la colonne de droite*
 
 | Décidé | À décider |
 |---|---|
-| Colonnes associées **par nom, jamais par position** (règle 6.8.0) ; un objet `releves[]` **par fichier** (SPEC-DATA-005) | OFX et MT940 : seulement si une banque des clients les exporte : *comptable* |
-| Refus si `soldeDebut + Σ montant ≠ soldeFin` (`ERR-CAB-040`, l'écart nommé) ; `empreinte` interdit d'importer deux fois le même fichier | L'assistant « CSV inconnu » (colonne → champ, mémorisé par banque) : *Skander* — proposé : oui, sinon chaque nouvelle banque est une version |
+| Colonnes associées **par nom, jamais par position** (règle 6.8.0) ; un objet `releves[]` **par fichier** (SPEC-DATA-005) | OFX et MT940 : **non livrés** — personne n'a encore dit qu'une banque les exporte |
+| Refus si `soldeDebut + Σ montant ≠ soldeFin` (`ERR-CAB-040`, l'écart nommé) ; `empreinte` interdit d'importer deux fois le même fichier | L'assistant « CSV inconnu » : **livré**, et mémorisé par banque dans `state.banques` — c'est lui qui fait qu'une nouvelle banque n'est pas une nouvelle version |
 | Le compte bancaire du relevé est choisi **avant** l'import (532 ou un sous-compte), jamais deviné | — |
 
 **SPEC-UI-CAB-021 — le rapprochement**
 
 | Décidé | À décider |
 |---|---|
-| Quatre niveaux : `certain`, `probable`, `a-confirmer`, `aucun` ; **seul `certain` se pose d'office** et reste défaisable ; une ambiguïté montre tous les candidats et n'est jamais `certain` par `auto` (`QUESTIONS.md` § 16, décidé) | Le « ± n jours » (3 ?) : réglable par dossier ; la valeur par défaut : *comptable* |
-| Critères : montant, date ± n jours, libellé ; `etatRapprochement` (9.0.0) reste la source du solde ; **jamais une écriture créée depuis le relevé sans clic** — la banque ne fait pas foi contre la pièce | L'écriture **proposée** depuis une ligne non rapprochée (guide selon le libellé, « STEG » → 606) : la table libellé → compte est par cabinet ; son contenu initial : *comptable* |
-| Rapprochement (532 contre la banque) et lettrage (tiers contre règlement) sont **deux écrans, deux modèles, deux tests** — jamais confondus | Les lignes non rapprochées en fin de mois : un compte d'attente 471 par ligne, ou une liste « suspens » sans écriture : *comptable* |
+| Quatre niveaux : `certain`, `probable`, `a-confirmer`, `aucun` ; **seul `certain` se pose d'office** et reste défaisable ; une ambiguïté montre tous les candidats et n'est jamais `certain` par `auto` (`QUESTIONS.md` § 16, décidé) | Le « ± n jours » vaut **3** par défaut (`RELEVE_JOURS`), réglable par dossier (`dossiers[].banque.jours`) — **À VÉRIFIER** avec le comptable |
+| Critères : montant, date ± n jours, libellé (les mots COMMUNS comptés, et seulement si un candidat en a strictement plus) ; **jamais une écriture créée depuis le relevé sans clic** | La table libellé → compte (`state.libelles`) part **VIDE** et s'apprend un libellé à la fois ; sans règle, la contrepartie reste vide et l'enregistrement est refusé — jamais un 471 d'office (règle 9.1.1) |
+| Rapprochement (532 contre la banque) et lettrage (tiers contre règlement) sont **deux écrans, deux modèles, deux tests** — jamais confondus | Les lignes non rapprochées : une **liste de suspens**, des deux côtés, sans écriture d'office. Le 471 reste possible ligne par ligne, par un clic |
 
 **SPEC-UI-CAB-022 — lettrage automatique, échéancier, balance âgée**
 
 | Décidé | À décider |
 |---|---|
-| Lettrage auto sur montant + référence, `par: 'auto'` ; délettrage à la main ; « reste ouvert = solde du 411 » est le contrôle (8.9.0) | Le lettrage **partiel** (une facture, deux règlements) : une lettre pour l'ensemble, ou lettre seulement à somme nulle : *comptable* |
-| La balance âgée reprend `AGING_BUCKETS` (2.5.0) — une seule définition des tranches | Les tranches d'âge que le cabinet utilise (30/60/90 ? 90/180/360 ?) : *comptable* |
+| Lettrage auto sur montant + référence, `par: 'auto'` ; délettrage à la main ; « reste ouvert = solde du 411 » est le contrôle (8.9.0) | Le lettrage **partiel** : **non lettré** — la ligne reste ouverte, ce qui est exactement la réponse à « ce client me doit-il encore quelque chose ? ». À VÉRIFIER |
+| La balance âgée reprend `AGING_BUCKETS`, **déménagé dans `compta.js`** en 9.5.0 : core.js le réexporte, un test compare les deux références | Les tranches restent 30/60/90 — **À VÉRIFIER** avec le cabinet, c'est un usage, pas une règle |
 | L'échéancier lit les `lignes[]` de tiers non lettrées, jamais une liste à part | — |
 
 ### 9.6.0 — la déclaration mensuelle

@@ -150,6 +150,11 @@
       // Le dernier journal utilisé sur CE dossier : c'est lui qu'on propose à l'ouverture de la
       // grille. Un journal d'un autre client n'apprend rien.
       dernierJournal: d.dernierJournal || '',
+      // 9.5.0 — le compte bancaire proposé à l'import d'un relevé, et le « ± n jours » de CE
+      // dossier : une petite affaire encaisse le jour même, un gros client a trois jours de
+      // décalage. Réglable, donc enregistré — sinon le réglage repartirait à zéro à chaque
+      // ouverture, ce qui est la façon la plus sûre de faire croire qu'il ne sert à rien.
+      banque: (d.banque && typeof d.banque === 'object') ? d.banque : null,
       audit: Array.isArray(d.audit) ? d.audit : [],
       packs: Array.isArray(d.packs) ? d.packs : []
     };
@@ -218,6 +223,12 @@
     // — et l'exemple se referait à CHAQUE ouverture, silencieusement (défaut `matricule`, 6.8.0).
     s.exemple = (s.exemple && typeof s.exemple === 'object') ? s.exemple : null;
     s.correspondance = Array.isArray(s.correspondance) ? s.correspondance : [];
+    // 9.5.0 — les deux tables de la banque, au niveau du CABINET : un comptable associe les
+    // colonnes d'une banque une fois pour ses soixante clients, et reconnaît « STEG » une fois.
+    // Absentes d'ici, elles seraient jetées au prochain chargement et il faudrait tout réassocier
+    // à chaque import, sans un mot (défaut `matricule`, 6.8.0).
+    s.banques = (s.banques && typeof s.banques === 'object' && !Array.isArray(s.banques)) ? s.banques : {};
+    s.libelles = Array.isArray(s.libelles) ? s.libelles : [];
     s.dossiers = Array.isArray(s.dossiers) ? s.dossiers.map(migrateDossier) : [];
     s.format = FORMAT;
     return s;

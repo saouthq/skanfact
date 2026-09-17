@@ -37,6 +37,8 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un compteur et la liste qu'il annonce se calculent avec la **même fonction** | 6.8.1 — le bandeau des relances ; 7.15.0 — « Reste à encaisser » |
 | Un montant **négatif change de colonne**, il ne garde pas son signe | 6.3.0 — les écritures comptables |
 | Un **agrégat** porte une devise, une unité, et une période nommée | 7.0.1, 7.16.0, 3.1.0 ; 9.4.9 — une courbe d'une barre cède la place au chiffre |
+| Un **rapprochement faux** ferme la question : une ambiguïté n'est JAMAIS « certain » | 9.5.0 |
+| Un **lettrage généreux** affirme qu'une facture est payée : somme nulle, ou rien | 9.5.0 |
 | Un **pied de totaux** porte la sélection entière, jamais la page affichée ; on pagine ce qu'on NOMME | 2.2.0, 7.16.0, 9.4.5 |
 | La valeur par défaut d'une **règle qu'on ne connaît pas** est celle qui ne fait rien | 9.1.1 — le seuil de retenue à 0, la TFP qu'aucun métier ne porte |
 | Une écriture **validée** ne se modifie jamais : elle se contre-passe, à la date du jour | 9.2.0 |
@@ -123,7 +125,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 **L'outillage (9.1.0)**
 
 `npm test` (les tests purs) · `npm run lint` (ESLint, zéro erreur exigée) · `npm run charge` (le test
-de charge du livre) · `npm run e2e:<nom>` (46 parcours, tableau au § « Les tests qui ouvrent vraiment
+de charge du livre) · `npm run e2e:<nom>` (47 parcours, tableau au § « Les tests qui ouvrent vraiment
 l'application ») · CI GitHub sur Linux et Windows à chaque poussée · « Construire un essai » pour
 faire tester une version sans la publier.
 
@@ -528,6 +530,7 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:justificatif` | **le justificatif se joint avant toute saisie** : sélecteur de fichier remplacé dans le processus principal, une photo jointe sur un achat VIDE, enregistrée avec la pièce, retrouvée sur le disque et dans la liste (📎), un second fichier sur la pièce rangée, une pièce abandonnée qui ne laisse pas de copie, la lecture d'une photo qui redessine sans perdre la pièce, et le même geste sur un devis neuf |
 | `npm run e2e:cabinet-jour1` | **le premier jour d'un comptable** : l'instrument qui MESURE ce qu'il voit, dans l'ordre où il le voit — 35 écrans photographiés du mot de passe à l'Aide, et six règles qui tombent (un bouton hors de l'écran, un bouton qui ressemble à du texte, un état vide sans geste, un champ de saisie sans bulle « i », une boîte sans étiquette, un débordement horizontal). `dist-e2e/cabinet-premier-jour/mesures.json` |
 | `npm run e2e:cabinet-rendu` | **le rendu du Cabinet, mesuré** : les trois sondes de l'app entreprise (contraste et débordement des boutons, alignement des colonnes, barres d'en-tête) braquées sur TOUS ses écrans et TOUS leurs onglets, en clair et en sombre, à 1440 et à 1280 — 1 024 boutons, 777 colonnes. Elles vivent en un seul exemplaire dans `harnais.js` : c'est leur absence côté Cabinet qui l'avait laissé dériver |
+| `npm run e2e:banque` | **la banque, de bout en bout** : trois banques aux trois formats (montant signé, Débit/Crédit séparés, en-têtes inconnus et associés à la main), un solde de fin faux refusé avec son écart, le même fichier refusé deux fois, l'automatique qui ne pose RIEN sur une ambiguïté, l'écriture manquante écrite depuis une ligne puis retrouvée « certain », le libellé retenu, le relevé retiré sans que le journal bouge |
 | `npm run e2e:cabinet-licence` | **la licence du Cabinet** : trois dossiers hors SkanFact gratuits, l'exemple qui ne compte pas, cinq clients qui dépassent le quota, la validation refusée pendant que lire, importer, exporter et SAISIR restent ouverts, deux dossiers archivés qui rendent la main, la clé d'un autre cabinet refusée en nommant les deux empreintes, celle d'un client parrainé refusée aussi, et le panneau qui nomme chaque dossier compté |
 | `npm run e2e:saisie` | **la grille de saisie, AU CLAVIER** : une pièce entière tapée sans souris (Entrée descend, Tab solde), le brouillard sans numéro, la validation qui referme, les deux refus sur une validée, un lot dont la pièce fausse est au MILIEU et la numérotation qui reste 1..n, l'extourne au 1er du mois suivant, la recherche par montant après réouverture de l'application, et un guide écrit puis appliqué |
 | `npm run e2e:licence` | **l'éditeur et les offres, puis le client** : une première application DÉSARMÉE (`SKANFACT_CLE_EMBARQUEE` vers un chemin inexistant, développement seulement) — sans clé rien n'apparaît ; « Créer mes clés » écrit la privée dans un dossier isolé (`SKANFACT_DOSSIER_CLES`) et met le poste en état « éditeur » (ni essai ni verrou) ; « Émettre » signe une clé vérifiable, crée un BROUILLON de facture et l'historique ; la clé Indépendant collée refuse un nouveau fournisseur, pose un cadenas sur Achats et laisse les Statistiques ; la clé d'un autre matricule est refusée en nommant les deux ; « Renouveler » ; rien de ce qui traverse le pont ne contient la clé privée — PUIS une seconde application telle qu'un client l'installe (vraie clé embarquée, pas de clé privée) : essai de 30 jours, aucune trace de l'éditeur, plus de porte « Créer mes clés », et la clé signée par la clé d'essai du test REFUSÉE |
@@ -3838,6 +3841,75 @@ Règles apprises, à ne pas recasser :
 - **Electron change de version majeure ici, et nulle part ailleurs.** 43 → 44, et **les 46 parcours
   relancés** — c'est la seule version où on les relance tous, et c'est la raison d'être de cette
   version-là.
+
+### 9.5.0 — La banque
+
+Le relevé importé, rapproché quand c'est certain, proposé quand ça ne l'est pas. La question qui
+bloquait cette version — « quelles banques, et quel format chacune exporte-t-elle ? » — n'a toujours
+pas de réponse, et n'en aura pas avant que le cabinet pilote ouvre ses fichiers. **C'est la
+conception qui répond à sa place** : rien dans le code ne connaît une banque.
+
+Règles apprises, à ne pas recasser :
+
+- **Un rapprochement FAUX est pire qu'un rapprochement absent**, parce qu'il ferme la question.
+  D'où la règle qui ne bouge pas : **seul `certain` se pose d'office, et une ambiguïté n'est jamais
+  `certain`**. Un candidat unique au bon montant, à ± n jours : certain. Deux candidats : jamais,
+  quoi qu'en dise le libellé — au mieux `probable`, et l'écran montre TOUS les candidats.
+- **Le libellé se COMPTE, il ne se répond pas par oui ou non.** Ma première version disait « ces deux
+  libellés se ressemblent-ils ? » : « REMISE CHEQUE DUPONT » ressemblait autant à « CHEQUE DUPONT »
+  qu'à « CHEQUE MARTIN », parce que le mot partagé était « cheque » — celui qui n'apprend rien. On
+  compte les mots communs, et on ne départage que si un candidat en a **strictement plus** que tous
+  les autres.
+- **Le brouillard COMPTE dans le rapprochement**, et c'est un choix. Ma première version l'excluait
+  (« un brouillard n'est pas encore un fait »), et le parcours réel a montré ce que ça donne : on
+  écrit l'écriture manquante depuis une ligne de relevé, elle arrive en brouillard, et l'automatique
+  ne la retrouve plus. Le rapprochement devenait inutile très exactement pendant la demi-journée où
+  il sert. **Ce qu'il faut en contrepartie** : une écriture rapprochée ne se modifie ni ne se
+  supprime — même garde que le lettrage, avec le geste qui débloque nommé dans le refus.
+- **Une écriture déjà rapprochée ne répond pas d'une seconde ligne.** Sans ça, le même mouvement
+  tomberait juste deux fois, et le compte serait équilibré sur un mensonge.
+- **Le signe est celui de la BANQUE** : ce qui entre est positif, ce qui sort négatif. C'est le seul
+  endroit du livre où un montant porte un signe, et c'est voulu — un relevé se relit à côté de son
+  original papier, et l'inverser rendrait la comparaison impossible. La conversion en débit/crédit
+  se fait au rapprochement.
+- **Un relevé qui ne se boucle pas n'entre pas** (`soldeDebut + Σ = soldeFin`), et le refus porte
+  l'écart : il manque des lignes, et un rapprochement à moitié ne s'explique plus trois mois après.
+- **Les suspens se comptent DANS LES DEUX SENS** (6.8.1, re-trouvée) : ne regarder que le relevé
+  laisserait passer le chèque émis jamais encaissé, c'est-à-dire l'écart le plus courant.
+- **La table libellé → compte part VIDE.** Écrire « STEG → 606 » dans le code serait poser une règle
+  comptable que personne n'a validée (règle 9.1.1). Elle se remplit un libellé à la fois, quand le
+  comptable choisit ; et **le motif le plus LONG gagne**, sinon le résultat dépend de l'ordre du
+  tableau (même règle que la correspondance de comptes, 9.3.0).
+- **Sans règle connue, la contrepartie reste VIDE** — et `ecritureValide` refuse alors
+  l'enregistrement. Verser d'office au 471 rangerait le doute dans un compte que personne ne solde,
+  et la question disparaîtrait sans avoir été posée.
+- **Un lettrage automatique généreux est pire qu'aucun** : il affirme qu'une facture est payée. On ne
+  relie que ce qui se solde EXACTEMENT et quand un seul candidat convient — la référence tranche
+  entre deux règlements du même montant. Un règlement partiel reste ouvert : c'est très exactement
+  ce que « ce client me doit-il encore quelque chose ? » veut savoir.
+- **Rapprochement et lettrage sont deux écrans, deux modèles, deux tests.** C'est la confusion de
+  vocabulaire la plus courante du métier, et un écran qui les mélange la rend définitive.
+- **Les tranches d'âge n'existent qu'à UN endroit.** Elles vivaient dans core.js depuis la 2.5.0 ; le
+  Cabinet ne charge pas core.js, donc les recopier aurait donné deux balances âgées qui ne disent pas
+  la même chose. Elles ont déménagé dans `compta.js`, et core.js les réexporte — un test compare les
+  deux références.
+- **Du rouge sur une situation normale apprend à ignorer le rouge** (8.0.1, re-trouvée) : « sans
+  réponse » est l'état de DÉPART de toute ligne d'un relevé qu'on vient d'importer. Pas de badge
+  d'alarme dessus.
+- **Un geste destructeur ne se présente pas comme un bouton nommé.** `rowmenu.js` transforme une
+  action unique en bouton direct (7.29.0) : le menu du relevé n'en portait qu'une, « Retirer ce
+  relevé », qui s'est donc affichée en clair à côté du bouton d'import. Lui donner sa vraie voisine
+  — « Défaire tous les rapprochements », utile et réparable — remet le destructeur derrière un clic.
+- **Deux gestes séparés pour importer** : lire le fichier, puis l'ajouter. Entre les deux, le
+  comptable choisit le compte bancaire, saisit les deux soldes du relevé papier et corrige
+  l'association des colonnes. Les fondre reviendrait à écrire dans un livre comptable à partir d'un
+  fichier que personne n'a regardé.
+
+Le test qui compte est `npm run e2e:banque` : trois banques aux trois formats différents (montant
+signé, débit/crédit séparés, en-têtes inconnus), le refus d'un solde faux avec son écart, le doublon
+refusé, l'automatique qui ne pose rien sur une ambiguïté, l'écriture écrite depuis une ligne puis
+retrouvée « certain » par l'automatique, le libellé retenu, et le relevé retiré sans que le journal
+bouge.
 
 ## Pistes pour la suite (non demandées)
 

@@ -13212,6 +13212,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   // se casse à chaque déménagement. On découpe par occasion, un domaine à la fois. Chaque suite
   // reçoit le harnais — jamais son propre compteur, sinon le total ment.
   require('./suites/cabinet-rendu.js')({ t, assert, lireSource });
+  require('./suites/banque.js')({ t, assert, lireSource });
 
   // ---------- 9.4.10 : aucune suite découpée ne reste sur le bord de la route ----------
   // Le danger d'un découpage, c'est le fichier qu'on écrit et que personne ne charge : les tests

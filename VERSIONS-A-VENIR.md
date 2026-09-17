@@ -45,7 +45,7 @@ En cas de contradiction, `DIRECTION.md` fait foi, puis `CAHIER-DES-CHARGES.md`, 
 | **9.4.0** | La licence du Cabinet | 12 | Intention | 5 j · 10 j |
 | **9.4.4** → **9.4.9** | Le chantier UI/UX du Cabinet (page Dossiers, le livre, les échéances, la fiche, les finitions, le fil du parcours) | — | Mesuré | **livré** 17/09/2026 |
 | ~~**9.4.10**~~ | ~~Entretien~~ | 7 | Intention | **livré** 17/09/2026 |
-| **9.5.0** | La banque | 12 | Intention | 10 j · 20 j |
+| ~~**9.5.0**~~ | ~~La banque~~ | 12 | Intention | **livré** 17/09/2026 |
 | **9.6.0** | La déclaration mensuelle | 14 | Intention | 8 j · 20 j |
 | *9.6.1* | *Entretien (hors des 13 demandées)* | *4* | *Intention* | *3 j · 6 j* |
 | **9.7.0** | Immobilisations et stocks | 10 | Intention | 5 j · 10 j |
@@ -385,10 +385,35 @@ relance tous, parce que c'est celle où le moteur de rendu change.
 
 ---
 
-## 9.5.0 — La banque
+## 9.5.0 — La banque — **LIVRÉE le 17/09/2026**
 
 > *Le relevé importé, rapproché automatiquement quand c'est certain, proposé quand ça ne l'est
 > pas — et jamais validé tout seul sur une ambiguïté.*
+
+**La question qui bloquait — « quelles banques, et quel format chacune exporte-t-elle ? » — n'a
+toujours pas de réponse, et la version est livrée quand même.** C'est la CONCEPTION qui répond à sa
+place : rien dans le code ne connaît une banque. Les colonnes s'associent par leur nom, avec leurs
+synonymes ; un fichier dont les en-têtes ne ressemblent à rien se lit après une association faite à
+la main, qui est ensuite retenue **par banque**. Écrire un lecteur par banque aurait fait de chaque
+nouvelle banque une nouvelle version du logiciel — c'est-à-dire aurait transformé la question
+ouverte en dette permanente.
+
+**Livré** : F-9.5.0-01 (CSV par NOM de colonne), 03 (l'assistant « CSV inconnu », mémorisé par
+banque), 04 (`releves[]`, un objet par fichier), 05 (refus si le relevé ne boucle pas, avec
+l'écart), 06 (empreinte du fichier), 07 et 08 (les quatre niveaux ; seul `certain` se pose, une
+ambiguïté jamais), 09 (écriture PROPOSÉE depuis une ligne, jamais créée sans clic), 10 (les suspens,
+des deux côtés), 11 (lettrage automatique + délettrage), 12 (balance âgée et échéancier sur les
+tranches de 2.5.0, désormais partagées par `compta.js`).
+
+**Pas livré, et c'est écrit dans le plan** : F-9.5.0-02 (OFX et MT940) — « seulement si une banque
+des clients les exporte vraiment ». Personne ne l'a encore dit.
+
+**Ce qui reste à décider et qui a reçu une valeur par défaut, avec son « À VÉRIFIER »** : le « ± n
+jours » vaut **3**, réglable par dossier ; la table libellé → compte part **vide** et s'apprend un
+libellé à la fois (règle 9.1.1 : la valeur par défaut d'une règle qu'on ne connaît pas est celle qui
+ne fait rien) ; les lignes non rapprochées vont dans une **liste de suspens**, jamais au 471 d'office ;
+le lettrage **partiel** n'est pas lettré — la ligne reste ouverte, ce qui est précisément la réponse
+à « ce client me doit-il encore quelque chose ? » ; les tranches d'âge sont celles de la 2.5.0.
 
 | | |
 |---|---|

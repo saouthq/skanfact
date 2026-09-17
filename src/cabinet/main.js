@@ -10,6 +10,7 @@ const { app, BrowserWindow, ipcMain, dialog, shell, Menu, powerMonitor } = requi
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const crypto = require('crypto');
 const Z = require('../zip');
 const K = require('./cabcore');
 const CS = require('./cabstore');
@@ -1229,6 +1230,101 @@ ipcMain.handle('cab:lettrer', (_e, { dossierId, annee, compte, ids, lettre, dele
   if (!r.ok) { throw Object.assign(erreur('ERR-CAB-028', r.motif), { ecart: r.ecart }); }
   ecrireLeLivre(dossierId, o.livre, delettrer ? null : 'lettrage', r.lettre || lettre);
   return { ok: true, lettre: r.lettre, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+// ================================================================ LA BANQUE (9.5.0)
+//
+// Deux écrans, deux modèles, deux tests : le RAPPROCHEMENT confronte le relevé au compte 532, le
+// LETTRAGE relie une facture et son règlement sur le compte d'un tiers. Ici, comme partout dans ce
+// fichier, la RÈGLE est dans `compta.js` : main.js ouvre, applique, referme et trace.
+//
+// Lire un relevé et l'AJOUTER sont deux gestes séparés, exprès. Entre les deux, le comptable
+// choisit le compte bancaire, saisit les deux soldes du relevé papier, et corrige l'association des
+// colonnes si la banque est nouvelle. Fondre les deux reviendrait à écrire dans un livre comptable
+// à partir d'un fichier que personne n'a regardé.
+ipcMain.handle('cab:lireReleve', async (_e, { chemin, assoc } = {}) => {
+  requireOpen();
+  const f = chemin || (await dialog.showOpenDialog({
+    title: 'Importer un relevé bancaire',
+    filters: [{ name: 'Relevé (CSV)', extensions: ['csv', 'txt'] }], properties: ['openFile']
+  })).filePaths[0];
+  if (!f) return { annule: true };
+  const brut = fs.readFileSync(f);
+  const r = KC.releveDepuisCsv(K.parseCsv(brut.toString('utf8').replace(/^﻿/, '')), assoc);
+  // L'empreinte est celle des OCTETS du fichier : c'est elle qui empêche d'importer deux fois le
+  // même relevé, et elle doit donc être insensible à la façon dont on l'a relu.
+  return { ...r, fichier: f, empreinte: crypto.createHash('sha256').update(brut).digest('hex') };
+});
+
+ipcMain.handle('cab:ajouterReleve', (_e, { dossierId, annee, releve } = {}) => {
+  requireOpen();
+  const o = ouvrirLivre(dossierId, annee);
+  if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas de livre pour cet exercice.');
+  const r = KC.ajouterReleve(o.livre, releve, moiPoste().deviceName || 'cabinet', Date.now());
+  if (!r.ok) throw Object.assign(erreur('ERR-CAB-040', r.motif), { ecart: r.ecart });
+  ecrireLeLivre(dossierId, o.livre, null);   // `ajouterReleve` a déjà tracé : jamais deux fois
+  return { ok: true, releve: r.releve, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+ipcMain.handle('cab:supprimerReleve', (_e, { dossierId, annee, id } = {}) => {
+  requireOpen();
+  const o = ouvrirLivre(dossierId, annee);
+  if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas de livre pour cet exercice.');
+  const r = KC.supprimerReleve(o.livre, id);
+  if (!r.ok) throw erreur('ERR-CAB-009', r.motif);
+  ecrireLeLivre(dossierId, o.livre, 'relevé retiré', id);
+  return { ok: true, ecrituresGardees: r.ecrituresGardees, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+ipcMain.handle('cab:rapprocherAuto', (_e, { dossierId, annee, releveId, jours } = {}) => {
+  requireOpen();
+  const o = ouvrirLivre(dossierId, annee);
+  if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas de livre pour cet exercice.');
+  const r = KC.rapprocherAuto(o.livre, releveId, { jours, date: new Date().toISOString().slice(0, 10) });
+  if (!r.ok) throw erreur('ERR-CAB-009', r.motif);
+  ecrireLeLivre(dossierId, o.livre, 'rapprochement automatique',
+    `${r.compte.certain} certain(s), ${r.compte.probable} probable(s), ${r.compte['a-confirmer']} à confirmer, ${r.compte.aucun} sans réponse`);
+  return { ...r, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+ipcMain.handle('cab:rapprocher', (_e, { dossierId, annee, releveId, ligneId, choix } = {}) => {
+  requireOpen();
+  const o = ouvrirLivre(dossierId, annee);
+  if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas de livre pour cet exercice.');
+  const r = KC.rapprocherLigne(o.livre, releveId, ligneId, choix, moiPoste().deviceName || 'cabinet', Date.now());
+  if (!r.ok) throw erreur('ERR-CAB-041', r.motif);
+  ecrireLeLivre(dossierId, o.livre, null);
+  return { ok: true, niveau: r.niveau, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+ipcMain.handle('cab:derapprocher', (_e, { dossierId, annee, releveId } = {}) => {
+  requireOpen();
+  const o = ouvrirLivre(dossierId, annee);
+  if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas de livre pour cet exercice.');
+  const r = KC.derapprocherReleve(o.livre, releveId, moiPoste().deviceName || 'cabinet', Date.now());
+  if (!r.ok) throw erreur('ERR-CAB-041', r.motif);
+  ecrireLeLivre(dossierId, o.livre, null);
+  return { ok: true, defaits: r.defaits, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+ipcMain.handle('cab:lettrageAuto', (_e, { dossierId, annee, compte, jours } = {}) => {
+  requireOpen();
+  const o = ouvrirLivre(dossierId, annee);
+  if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas de livre pour cet exercice.');
+  const r = KC.lettrageAuto(o.livre, compte, { jours, par: 'auto', date: new Date().toISOString().slice(0, 10) });
+  ecrireLeLivre(dossierId, o.livre, 'lettrage automatique', `${compte} — ${r.poses.length} lettre(s) posée(s), ${r.restent} ligne(s) ouverte(s)`);
+  return { ...r, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+// Les deux tables que la banque apprend : l'association des colonnes PAR BANQUE, et les libellés
+// reconnus. Elles vivent au niveau du cabinet (on les écrit une fois pour soixante clients) ; le
+// compte bancaire proposé et le « ± n jours », eux, appartiennent au dossier.
+ipcMain.handle('cab:saveBanque', (_e, { banques, libelles, dossierId, banque } = {}) => {
+  requireOpen();
+  if (banques && typeof banques === 'object') state.banques = banques;
+  if (Array.isArray(libelles)) state.libelles = libelles;
+  if (dossierId) dossierDe(dossierId).banque = (banque && typeof banque === 'object') ? banque : null;
+  return save();
 });
 
 // ================================================================ LA LICENCE DU CABINET (9.4.0)
