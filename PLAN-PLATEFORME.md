@@ -397,7 +397,7 @@ façon la plus courante de ne jamais vendre.
 | ~~**8.5.0**~~ ✅ | la clé du serveur se fabrique dans SkanFact ; l'application accepte une clé `srv-1` | une clé de la console se vérifie, si la version embarque `srv-1` |
 | ~~**8.6.0**~~ ✅ | la publique `srv-1` (créée le 15/09/2026) embarquée | une clé émise depuis la console est reconnue chez les clients à jour |
 | ~~**8.7.0**~~ ✅ | le pont comptable, migration de `data.licences` | les factures se fabriquent toutes seules |
-| *mise en prod* | la clé de réponse recréée et embarquée | la révocation s'applique chez le client |
+| ~~**9.4.1**~~ ✅ | la clé de réponse recréée (17/09/2026, sur le Mac de Skander) et embarquée ; sa privée dans `REPONSE_PRIVATE_KEY` | la révocation s'applique chez tout client à jour |
 | **P 1.0** | console complète, statistiques, journal | on pilote |
 
 Une semaine de travail environ, **0 DT par mois** d'infrastructure. Après ça la structure ne bouge
@@ -483,9 +483,9 @@ collée dans la conversation → `build/licences-publiques.json` → `reponse` ;
 (24) ; `RESEND_API_KEY`, `MAIL_FROM` ; coller `schema-a-coller.sql` dans D1 ; `GET /v1/admin/etat`
 → `emission.ok`, `mail.ok`, `reponse: true`. Puis publier la version qui embarque `reponse`.
 Vérification : `e2e:plateforme` contre l'adresse réelle (variable d'environnement). Jamais :
-embarquer une publique dont la privée a été **vue** (la clé de réponse du 15/09/2026 est brûlée,
-`reponse` reste `null` jusqu'à ce geste) ; poser `LICENCE_REQUISE=1` avant que tous les clients
-aient une clé.
+embarquer une publique dont la privée a été **vue** (la clé de réponse du 15/09/2026 était brûlée ;
+celle du 17/09/2026 est embarquée depuis la 9.4.1 — ce geste-là est **fait**) ; poser
+`LICENCE_REQUISE=1` avant que tous les clients aient une clé.
 
 **R2 — Retirer `srv-1` (compromission).** Déclencheur : la privée `SRV_PRIVATE_KEY` a été vue ou
 copiée hors de Cloudflare. Étapes : `retiree: true` sur l'entrée `srv-1` de

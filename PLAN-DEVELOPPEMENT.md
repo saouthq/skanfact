@@ -26,7 +26,8 @@ semaine de démarches ne retarde aucune version, et une version ne retarde aucun
   assistant, portefeuille, réception et contrôle des paquets, relances, échéances, export d'écritures
   CSV, sauvegardes, clé de secours, changement d'ordinateur, aide. **Aucune tenue de comptabilité.**
 - **La plateforme** (`plateforme/`, Cloudflare Worker + D1) : émission, révocation, activation,
-  ventes, mail — construite et testée sur SQLite, **pas en production** (clé de réponse `null`).
+  ventes, mail — construite et testée sur SQLite, **pas en production** *(la clé de réponse, elle,
+  est embarquée depuis la 9.4.1 du 17/09/2026 ; restent les réglages Cloudflare et la première vente)*.
 - **Le relais de mise à jour** (`worker/`) : déployé chez Skander depuis la 6.7.x.
 - **Les tests** : `npm test` = **384 vérifications** (vérifié le 15/09/2026) ; **42 parcours e2e**
   dans `test/e2e/` (41 scripts `e2e:*` dans `package.json`, `harnais.js` en plus).

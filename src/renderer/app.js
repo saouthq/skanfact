@@ -10008,7 +10008,8 @@
           ${[['fr', 'et', 'Modèles en français', C.DEFAULT_EMAIL_TEMPLATES, c.emailTemplates || {}], ['en', 'eten', 'Modèles en anglais (clients étrangers)', C.DEFAULT_EMAIL_TEMPLATES_EN, c.emailTemplatesEn || {}]].map(([lg, prefix, title, defs, cur2]) => `<details><summary>${title} <span class="muted small">— ${licence.editeur ? 9 : 8} messages</span></summary>
           ${[['devis', lg === 'fr' ? 'Envoi d\'un devis' : 'Quote'], ['facture', lg === 'fr' ? 'Envoi d\'une facture' : 'Invoice'], ['avoir', lg === 'fr' ? 'Envoi d\'un avoir' : 'Credit note'], ['relance1', lg === 'fr' ? 'Rappel (≤ 15 jours de retard)' : 'Reminder (≤ 15 days)'], ['relance2', lg === 'fr' ? 'Relance (16 à 45 jours)' : 'Second reminder (16–45 days)'], ['relance3', lg === 'fr' ? 'Dernière relance (> 45 jours)' : 'Final reminder (> 45 days)'], ['relanceDevis', lg === 'fr' ? 'Relance d\'un devis sans réponse' : 'Quote follow-up'], ['comptable', lg === 'fr' ? 'Envoi au comptable' : 'To the accountant'],
             // Le gabarit de la clé de licence n'a de sens que sur le poste de l'éditeur (7.33.0).
-            ...(licence.editeur ? [['licence', lg === 'fr' ? 'Envoi d\'une clé de licence (éditeur)' : 'Licence key (publisher)']] : [])].map(([k, label]) => {
+            ...(licence.editeur ? [['licence', lg === 'fr' ? 'Envoi d\'une clé de licence (éditeur)' : 'Licence key (publisher)'],
+              ['licenceCabinet', lg === 'fr' ? 'Envoi d\'une clé de licence Cabinet (éditeur)' : 'Cabinet licence key (publisher)']] : [])].map(([k, label]) => {
             const t = { ...defs[k], ...(cur2[k] || {}) };
             return `<div class="section-head"><h2 class="small">${label}</h2></div><div class="grid-2"><label class="field span-2">Objet<input type="text" name="${prefix}_${k}_subject" value="${h(t.subject)}"></label><label class="field span-2">Message<textarea name="${prefix}_${k}_body" rows="4">${h(t.body)}</textarea></label></div>`; }).join('')}
           </details>`).join('')}
@@ -11142,7 +11143,10 @@
     $$('nav a, .sidebar-foot a').forEach(a => a.classList.toggle('active', a.dataset.route === route));
     updateNavCounts();
   }
-  const offreLabelDe = id => ((editeur && editeur.offres && editeur.offres[id]) || {}).label || (id === 'independant' ? 'Indépendant' : 'Entreprise');
+  // « cabinet » (9.4.1) n'est pas une offre de `editeur.offres` : c'est le TYPE d'une licence de
+  // SkanFact Cabinet, rangé dans `offre` pour que la colonne reste renseignée.
+  const offreLabelDe = id => id === 'cabinet' ? 'Cabinet comptable'
+    : ((editeur && editeur.offres && editeur.offres[id]) || {}).label || (id === 'independant' ? 'Indépendant' : 'Entreprise');
   const dureeLabelDe = id => (((editeur && editeur.durees) || []).find(d => d.id === id) || {}).label || '';
 
   async function copierTexte(txt, msg) {
@@ -11361,9 +11365,13 @@
       // laisse le taux à saisir, et « À faire » le réclame comme pour toute pièce.
       inv.currency = C.normCurrency(v.devise || company().currency); inv.exchangeRate = '';
       const fin = v.fin ? 'jusqu\'au ' + C.fmtDate(v.fin) : 'sans limite de durée';
-      inv.lines = [{ label: `Licence SkanFact ${offreLabelDe(v.offre)} — ${fin}`, description: `Licence n° ${v.licence_id}, ${fin}`,
+      // Une vente de licence de CABINET (9.4.1) se facture comme telle : le produit est SkanFact
+      // Cabinet et ce qui est vendu est un quota de dossiers, pas une offre.
+      const cab = v.type === 'cabinet';
+      const produit = cab ? `SkanFact Cabinet — ${pl(Number(v.dossiers_hors) || 0, 'dossier')} hors SkanFact` : `SkanFact ${offreLabelDe(v.offre)}`;
+      inv.lines = [{ label: `Licence ${produit} — ${fin}`, description: `Licence n° ${v.licence_id}, ${fin}`,
         qty: 1, unit: '', unitPrice: Number(v.montant_ht) || 0, unitCost: '', vatRate: v.tva !== null && v.tva !== undefined && v.tva !== '' ? Number(v.tva) : C.defaultVat(company()) }];
-      Object.assign(inv, { clientId: client.id, subject: `Licence SkanFact ${offreLabelDe(v.offre)}`,
+      Object.assign(inv, { clientId: client.id, subject: `Licence ${cab ? 'SkanFact Cabinet' : 'SkanFact ' + offreLabelDe(v.offre)}`,
         discountRate: Math.min(100, Math.max(0, Number(v.remise) || 0)), withholdingRate: clientWithholding(client.id),
         licenceId: v.licence_id, venteConsoleId: v.id });
       data.documents.push(inv);
@@ -11371,6 +11379,7 @@
         data.licences.push({ id: v.licence_id, clientId: client.id, nom: client.name, matricule: v.matricule || '', offre: v.offre || 'entreprise',
           exp: v.fin || '', key: v.cle || '', emisLe: (v.emise_le || '').slice(0, 10), cabinet: v.cabinet_empreinte || '', note: '', invoiceId: inv.id, itemId: '',
           prix: Number(v.montant_ht) || 0, tva: inv.lines[0].vatRate, emails: [], remplace: '', origine: 'console',
+          type: cab ? 'cabinet' : 'entreprise', dossiersHors: cab ? Number(v.dossiers_hors) || 0 : 0,
           envoyeeConsoleLe: (v.envoyee_le || '').slice(0, 10), payeeConsoleLe: v.payee_le || '', revoqueeLe: v.revoquee_le || '' });
       }
       crees++;
@@ -11512,7 +11521,14 @@
       itemId: prec ? prec.itemId || '' : '', prix: prec ? prec.prix : '', tva: prec ? prec.tva : C.defaultVat(company()),
       // La remise de parrainage vaut pour la PREMIÈRE année : au renouvellement, l'empreinte reste
       // (elle est la preuve) et la remise repart à zéro — à remettre à la main si on l'accorde encore.
-      parrain: !!(prec && prec.cabinet), empreinte: prec ? prec.cabinet || '' : '', remise: prec ? 0 : 20, note: ''
+      // Sur une licence de CABINET, `cabinet` est le SUJET de la clé, pas un parrainage.
+      parrain: !!(prec && prec.cabinet && prec.type !== 'cabinet'), empreinte: prec && prec.type !== 'cabinet' ? prec.cabinet || '' : '', remise: prec ? 0 : 20, note: '',
+      // 9.4.1 — le TYPE se choisit à l'émission ; un renouvellement garde celui de la licence en
+      // cours. Une licence de cabinet porte l'empreinte du cabinet et un quota de dossiers hors
+      // SkanFact ; ni offre, ni parrainage.
+      type: prec && prec.type === 'cabinet' ? 'cabinet' : 'entreprise',
+      cabEmpreinte: prec && prec.type === 'cabinet' ? prec.cabinet || '' : '',
+      dossiersHors: prec && prec.type === 'cabinet' ? prec.dossiersHors || '' : ''
     };
     const items = data.catalog.slice().sort((a, b) => a.label.localeCompare(b.label, 'fr')).map(c => ({
       v: c.id, label: c.label, sub: c.description || '', right: C.money(c.unitPrice, cur) + ' HT', text: `${c.label} ${c.description || ''}`
@@ -11522,14 +11538,27 @@
       ${prec ? `<p class="small muted">Nouvelle clé pour ${h(prec.nom)}${depuis ? ` : les durées partent du <strong>${C.fmtDate(depuis)}</strong>, fin de la licence actuelle — rien de ce qui est déjà payé n'est repris` : ''}. Une facture est créée, comme pour une première licence.</p>` : ''}
       <form id="lf" class="grid-2">
         <div class="field span-2 obligatoire">${lbl('Client', 'lic.client')}${combo({ name: 'clientId', value: l.clientId, items: clientItems(), placeholder: '— Choisir un client —', search: 'Rechercher : nom, contact, MF…', add: '+ Nouveau client' })}</div>
-        <label class="field">${lbl('Offre', 'lic.offre')}<select name="offre">${offres.map(o => `<option value="${h(o)}" ${l.offre === o ? 'selected' : ''}>${h(editeur.offres[o].label)}</option>`).join('')}</select></label>
+        <label class="field span-2">${lbl('Type de licence', 'lic.type')}<select name="type" ${prec ? 'disabled' : ''}>
+          <option value="entreprise" ${l.type === 'entreprise' ? 'selected' : ''}>Entreprise — s'installe dans SkanFact</option>
+          <option value="cabinet" ${l.type === 'cabinet' ? 'selected' : ''}>Cabinet comptable — s'installe dans SkanFact Cabinet</option></select></label>
+        <label class="field" id="lf-offre" ${l.type === 'cabinet' ? 'hidden' : ''}>${lbl('Offre', 'lic.offre')}<select name="offre">${offres.map(o => `<option value="${h(o)}" ${l.offre === o ? 'selected' : ''}>${h(editeur.offres[o].label)}</option>`).join('')}</select></label>
         <label class="field">${lbl('Durée', 'lic.duree')}<select name="duree">${dur.map(d => `<option value="${h(d.id)}" ${l.duree === d.id ? 'selected' : ''}>${h(d.label)}${d.exp ? ` — jusqu'au ${C.fmtDate(d.exp)}` : ''}</option>`).join('')}</select></label>
         <div class="span-2" id="lf-date" hidden>${dateFieldHtml('Date de fin', 'expDate', l.expDate)}</div>
+        <div class="grid-2 span-2" id="lf-cab" ${l.type === 'cabinet' ? '' : 'hidden'}>
+          <div class="field obligatoire">${lbl('Empreinte du cabinet', 'lic.empreinte')}
+            <div class="inline">
+              <input type="text" name="cabEmpreinte" value="${h(l.cabEmpreinte)}" placeholder="AB12-CD34-EF56-7890-ABCD" class="mono grow" autocapitalize="characters" spellcheck="false">
+              <button type="button" class="btn" id="lf-verif-cab">Vérifier</button>
+            </div>
+            <p class="small" id="lf-verdict-cab" hidden></p>
+          </div>
+          <label class="field obligatoire">${lbl('Dossiers hors SkanFact couverts', 'lic.quota')}<input type="number" name="dossiersHors" class="num" min="1" max="5000" step="1" value="${h(l.dossiersHors)}" placeholder="en plus des 3 gratuits"></label>
+        </div>
         <div class="field span-2">${lbl('Prestation du catalogue', 'lic.prestation')}${combo({ name: 'itemId', value: l.itemId, items, placeholder: '— Facultatif : la ligne de la facture —', search: 'Rechercher une prestation…', add: '+ Nouvelle prestation' })}</div>
         <label class="field obligatoire">${lbl(`Prix HT (${h(cur)})`, 'lic.prix')}<input type="number" name="prix" class="num" step="0.001" min="0" value="${h(l.prix)}"></label>
         <label class="field">TVA<select name="tva">${C.VAT_RATES.map(r => `<option value="${r}" ${Number(l.tva) === r ? 'selected' : ''}>${r} %</option>`).join('')}</select></label>
-        <label class="check span-2"><input type="checkbox" name="parrain" ${l.parrain ? 'checked' : ''}> ${lbl('Client parrainé par un cabinet comptable', 'lic.parrain')}</label>
-        <div class="grid-2 span-2" id="lf-parrain" ${l.parrain ? '' : 'hidden'}>
+        <label class="check span-2" id="lf-parrain-row" ${l.type === 'cabinet' ? 'hidden' : ''}><input type="checkbox" name="parrain" ${l.parrain ? 'checked' : ''}> ${lbl('Client parrainé par un cabinet comptable', 'lic.parrain')}</label>
+        <div class="grid-2 span-2" id="lf-parrain" ${l.parrain && l.type !== 'cabinet' ? '' : 'hidden'}>
           <div class="field">${lbl('Empreinte du cabinet', 'lic.empreinte')}
             <div class="inline">
               <input type="text" name="empreinte" value="${h(l.empreinte)}" placeholder="AB12-CD34-EF56-7890-ABCD" class="mono grow" autocapitalize="characters" spellcheck="false">
@@ -11570,14 +11599,15 @@
         // l'appartenance à un vrai cabinet ne l'est pas — il faudrait sa clé publique, que l'éditeur
         // n'a pas. Afficher un vert rassurant sur une empreinte simplement bien formée serait un
         // mensonge, et c'est justement le genre d'affirmation que cette application s'interdit.
-        const champE = () => $('#lf input[name=empreinte]', root);
-        const verdict = (texte, ton) => {
-          const p = $('#lf-verdict', root); if (!p) return;
-          p.hidden = false; p.textContent = texte;
-          p.className = 'small ' + (ton === 'ok' ? 'ok-text' : ton === 'ko' ? 'err-text' : 'muted');
-        };
-        const verifierEmpreinte = () => {
-          const e = C.empreinteCabinet(champE().value);
+        // Deux champs d'empreinte, une seule règle : celui du parrainage (une licence d'entreprise
+        // amenée par un cabinet) et celui du SUJET (la licence du cabinet lui-même, 9.4.1).
+        const verifierEmpreinteDe = (champ, pVerdict) => {
+          const verdict = (texte, ton) => {
+            const p = $(pVerdict, root); if (!p) return;
+            p.hidden = false; p.textContent = texte;
+            p.className = 'small ' + (ton === 'ok' ? 'ok-text' : ton === 'ko' ? 'err-text' : 'muted');
+          };
+          const e = C.empreinteCabinet($(champ, root).value);
           if (!e.ok) {
             return verdict(e.raison === 'vide' ? 'Colle l\'empreinte que le comptable lit dans SkanFact Cabinet → Réglages.'
               : e.raison === 'caracteres' ? 'Ce n\'est pas une empreinte : elle ne contient que des chiffres et les lettres A à F.'
@@ -11585,7 +11615,7 @@
           }
           // On range la forme canonique dans le champ : c'est elle qui sera enregistrée, donc deux
           // saisies du même cabinet ne peuvent pas donner deux empreintes différentes.
-          champE().value = e.valeur;
+          $(champ, root).value = e.valeur;
           const vues = C.licencesDuCabinet(data.licences, e.valeur, prec && prec.id);
           if (!vues.length) {
             return verdict('Forme correcte. Ce cabinet n\'a encore parrainé personne : rien ici ne peut prouver qu\'il existe — fais relire l\'empreinte à voix haute par ton client.', 'neutre');
@@ -11593,16 +11623,42 @@
           const noms = [...new Set(vues.map(v => v.nom).filter(Boolean))];
           verdict(`Forme correcte, et ce cabinet est déjà connu : ${pl(vues.length, 'licence')} parrainée${vues.length > 1 ? 's' : ''}${noms.length ? ' (' + noms.slice(0, 3).join(', ') + (noms.length > 3 ? '…' : '') + ')' : ''}.`, 'ok');
         };
+        const verifierEmpreinte = () => verifierEmpreinteDe('#lf input[name=empreinte]', '#lf-verdict');
+        const verifierEmpreinteCab = () => verifierEmpreinteDe('#lf input[name=cabEmpreinte]', '#lf-verdict-cab');
+        const champE = () => $('#lf input[name=empreinte]', root);
+        const champCab = () => $('#lf input[name=cabEmpreinte]', root);
         $('#lf-verif', root).onclick = verifierEmpreinte;
         champE().onblur = () => { if (champE().value.trim()) verifierEmpreinte(); };
+        $('#lf-verif-cab', root).onclick = verifierEmpreinteCab;
+        champCab().onblur = () => { if (champCab().value.trim()) verifierEmpreinteCab(); };
         const majDate = () => { $('#lf-date', root).hidden = $('select[name=duree]', root).value !== 'date'; };
         $('select[name=duree]', root).onchange = majDate; majDate();
+        // Le type décide des champs : une licence de cabinet n'a ni offre ni parrainage, une licence
+        // d'entreprise n'a ni empreinte-sujet ni quota. Rien de ce qui est masqué n'est envoyé.
+        const majType = () => {
+          const cab = $('select[name=type]', root).value === 'cabinet';
+          $('#lf-offre', root).hidden = cab;
+          $('#lf-cab', root).hidden = !cab;
+          $('#lf-parrain-row', root).hidden = cab;
+          $('#lf-parrain', root).hidden = cab || !$('input[name=parrain]', root).checked;
+        };
+        $('select[name=type]', root).onchange = majType;
         $('input[name=parrain]', root).onchange = e => { $('#lf-parrain', root).hidden = !e.target.checked; };
         $('#ok', root).onclick = async () => {
           const v = formValues(form);
           const client = clientById(v.clientId);
           if (!client) return refus('#lf [data-combo=clientId]', 'Choisis le client qui reçoit la licence.');
           if (v.duree === 'date' && !v.expDate) return refus('#lf-date .d-txt', 'Indique la date de fin.');
+          // Le type : celui du formulaire à l'émission, celui de la licence en cours au renouvellement
+          // (le sélecteur y est désactivé, et un champ désactivé ne remonte pas dans `formValues`).
+          const type = prec ? l.type : (v.type === 'cabinet' ? 'cabinet' : 'entreprise');
+          let empCab = null, quota = 0;
+          if (type === 'cabinet') {
+            empCab = C.empreinteCabinet(v.cabEmpreinte);
+            if (!empCab.ok) return refus('#lf input[name=cabEmpreinte]', 'Colle l\'empreinte du cabinet : les vingt caractères qu\'il lit dans SkanFact Cabinet → Réglages → Mon cabinet.');
+            quota = Math.round(Number(v.dossiersHors));
+            if (!Number.isFinite(quota) || quota < 1 || quota > 5000) return refus('#lf input[name=dossiersHors]', 'Combien de dossiers hors SkanFact cette licence couvre-t-elle, en plus des trois gratuits ? (entre 1 et 5000)');
+          }
           if (v.prix === '' || !(Number(v.prix) >= 0)) return refus('#lf input[name=prix]', 'Indique le prix HT de la licence (0 pour une licence offerte).');
           // La facture de licence est une facture : elle passe par le garde-fou de création comme
           // les autres — l'éditeur aussi a une licence (la sienne), et un essai qui se termine.
@@ -11611,7 +11667,8 @@
           let r;
           try {
             r = await bridge.licenceEmettre({ nom: client.name, matricule: client.matricule || '', offre: v.offre, duree: v.duree, dateLibre: v.expDate,
-              depuis, cabinet: v.parrain ? v.empreinte : '', note: v.note });
+              depuis, cabinet: type === 'cabinet' ? empCab.valeur : (v.parrain ? v.empreinte : ''), note: v.note,
+              type, dossiersHors: quota });
           } catch (e) { b.disabled = false; return toast(plainError(e), true); }
           // La facture : un brouillon, comme « Facturer ce devis ». Pas de numéro avant l'émission.
           const it = v.itemId ? data.catalog.find(c => c.id === v.itemId) : null;
@@ -11621,15 +11678,17 @@
           // dans cette devise, même pour un client réglé en euros — sinon 390 deviendrait 390 € sans
           // taux de change. La langue du client, elle, est gardée.
           inv.currency = company().currency; inv.exchangeRate = '';
-          const label = it ? it.label : `Licence SkanFact ${offreLabelDe(r.offre)} — ${v.duree === 'date' ? 'jusqu\'au ' + C.fmtDate(r.exp) : dureeLabelDe(v.duree)}`;
+          const fin = v.duree === 'date' ? 'jusqu\'au ' + C.fmtDate(r.exp) : dureeLabelDe(v.duree);
+          const produit = type === 'cabinet' ? `SkanFact Cabinet — ${pl(quota, 'dossier')} hors SkanFact` : `SkanFact ${offreLabelDe(r.offre)}`;
+          const label = it ? it.label : `Licence ${produit} — ${fin}`;
           inv.lines = [{ label, description: `Licence n° ${r.id}${r.exp ? ', valable jusqu\'au ' + C.fmtDate(r.exp) : ', sans limite de durée'}`,
             qty: 1, unit: (it && it.unit) || '', unitPrice: Number(v.prix), unitCost: (it && it.unitCost) || '', vatRate: Number(v.tva), ...(it ? { itemId: it.id } : {}) }];
-          Object.assign(inv, { clientId: client.id, subject: `Licence SkanFact ${offreLabelDe(r.offre)}`,
-            discountRate: v.parrain ? Math.min(100, Math.max(0, Number(v.remise) || 0)) : 0, withholdingRate: clientWithholding(client.id), licenceId: r.id });
+          Object.assign(inv, { clientId: client.id, subject: `Licence ${type === 'cabinet' ? 'SkanFact Cabinet' : 'SkanFact ' + offreLabelDe(r.offre)}`,
+            discountRate: type !== 'cabinet' && v.parrain ? Math.min(100, Math.max(0, Number(v.remise) || 0)) : 0, withholdingRate: clientWithholding(client.id), licenceId: r.id });
           data.documents.push(inv);
           const lic = { id: r.id, clientId: client.id, nom: r.nom, matricule: r.matricule, offre: r.offre, exp: r.exp, key: r.key, emisLe: r.emisLe,
             cabinet: r.cabinet, note: r.note, invoiceId: inv.id, itemId: it ? it.id : '', prix: Number(v.prix), tva: Number(v.tva), emails: [],
-            remplace: prec ? prec.id : '' };
+            remplace: prec ? prec.id : '', type: r.type === 'cabinet' ? 'cabinet' : 'entreprise', dossiersHors: r.type === 'cabinet' ? Number(r.dossiersHors) || 0 : 0 };
           data.licences.push(lic);
           // La licence remplacée sort du compte des choses à faire ; elle reste lisible dans la liste.
           if (prec) { const p = data.licences.find(x => x.id === prec.id); if (p) p.remplaceePar = lic.id; }
@@ -11655,13 +11714,19 @@
     const en = ((client && client.lang) || company().defaultLang) === 'en';
     const defs = en ? C.DEFAULT_EMAIL_TEMPLATES_EN : C.DEFAULT_EMAIL_TEMPLATES;
     const sur = en ? (company().emailTemplatesEn || {}) : (company().emailTemplates || {});
-    const tpl = { ...defs.licence, ...(sur.licence || {}) };
+    // La clé d'un CABINET a son gabarit (9.4.1) : elle se colle dans SkanFact Cabinet, et le quota
+    // remplace l'offre.
+    const cab = lic.type === 'cabinet';
+    const gabarit = cab ? 'licenceCabinet' : 'licence';
+    const tpl = { ...defs[gabarit], ...(sur[gabarit] || {}) };
+    const nDossiers = Number(lic.dossiersHors) || 0;
     const emise = !!(inv && inv.number);
     // « Votre facture N est jointe » n'est écrit que si la pièce part vraiment : une phrase qui
     // annonce une pièce absente est un bug, pas une formule.
     const phraseFacture = emise ? (en ? `Your invoice ${inv.number} is attached.\n\n` : `Votre facture ${inv.number} est jointe à ce message.\n\n`) : '';
     const vars = {
       cle: lic.key, offre: offreLabelDe(lic.offre),
+      quota: en ? `${nDossiers} ${nDossiers === 1 ? 'file' : 'files'}` : pl(nDossiers, 'dossier'),
       fin: lic.exp ? (en ? ', valid until ' : ', valable jusqu\'au ') + C.fmtDate(lic.exp) : (en ? ', lifetime' : ', à vie'),
       client: client ? client.name : lic.nom, societe: company().name,
       numero: emise ? inv.number : (en ? '(draft)' : '(brouillon)'), facture: phraseFacture
@@ -11712,10 +11777,13 @@
     const client = clientById(lic.clientId);
     const inv = lic.invoiceId ? docById(lic.invoiceId) : null;
     const suivi = C.licenceSuivi(lic, data, company());
+    // Une clé de CABINET se colle dans SkanFact Cabinet, pas dans SkanFact — et son sujet est une
+    // empreinte, pas un matricule (9.4.1).
+    const cab = lic.type === 'cabinet';
     modal(`<h2>${opts.neuve ? 'Licence émise' : 'La clé de ' + h(lic.nom || '')}</h2>
-      <p class="small">Voici ce que ${h(client ? client.name : 'le client')} doit coller dans <em>Paramètres → L'application → Licence</em>.</p>
+      <p class="small">Voici ce que ${h(client ? client.name : 'le client')} doit coller dans <em>${cab ? 'SkanFact Cabinet → Réglages → Mon cabinet → Licence' : 'Paramètres → L\'application → Licence'}</em>.</p>
       <pre class="code-box mono" id="cle-txt">${h(lic.key || '')}</pre>
-      <p class="small muted">${h(offreLabelDe(lic.offre))}${lic.exp ? ' · jusqu\'au ' + C.fmtDate(lic.exp) : ' · sans limite de durée'}${lic.matricule ? ' · matricule ' + h(lic.matricule) : ' · sans matricule (s\'active partout)'}</p>
+      <p class="small muted">${cab ? `Cabinet comptable · ${pl(Number(lic.dossiersHors) || 0, 'dossier')} hors SkanFact` : h(offreLabelDe(lic.offre))}${lic.exp ? ' · jusqu\'au ' + C.fmtDate(lic.exp) : ' · sans limite de durée'}${cab ? ' · empreinte ' + h(lic.cabinet || '') : lic.matricule ? ' · matricule ' + h(lic.matricule) : ' · sans matricule (s\'active partout)'}</p>
       ${suivi.envoyee ? `<p class="small ok-text">Déjà envoyée le ${C.fmtDate(suivi.envoyeeLe)}${suivi.envois > 1 ? ' (' + pl(suivi.envois, 'envoi') + ')' : ''}.</p>` : ''}
       ${inv && !inv.number ? '<p class="small warn-text">La facture est un <strong>brouillon</strong> : relis-la puis émets-la, sinon cette vente n\'entre ni dans ton journal ni dans ta TVA.</p>' : ''}
       <div class="modal-actions">
@@ -11735,7 +11803,76 @@
   // achat : la date de fin ne bouge pas, et on ne facture que la DIFFÉRENCE au prorata des jours qui
   // restent. Refaire payer une année pleine au sixième mois est le meilleur moyen de faire refuser
   // la montée en gamme.
+  // 9.4.1 — le QUOTA d'un cabinet se change comme une offre : la date de fin ne bouge pas, et seule
+  // la différence de prix est facturée, au prorata des jours restants. Le quota est dans la clé
+  // signée, donc une clé neuve part ; l'ancienne marche jusqu'à ce que le cabinet colle la nouvelle.
+  async function changerQuotaForm(lic, done) {
+    if (await demoBlock('Changer le quota d\'une licence')) return;
+    if (lic.exp && C.daysBetween(C.today(), lic.exp) < 0) {
+      return modal(`<h2>Cette licence est expirée</h2>
+        <p>On ne change pas le quota d'une licence terminée : il n'y a plus de jours à reporter, et la clé qu'on signerait serait déjà périmée. C'est un <strong>renouvellement</strong> qu'il faut, avec le quota voulu.</p>
+        <div class="modal-actions"><button class="btn" data-close>Fermer</button><button class="btn btn-primary" id="cq-ren">Renouveler</button></div>`,
+        (root, close) => { $('#cq-ren', root).onclick = () => { close(); licenceForm(lic, done); }; });
+    }
+    const cur = company().currency;
+    const actuel = Math.max(0, Math.round(Number(lic.dossiersHors) || 0));
+    const majPrix = () => {
+      const pr = C.prorataOffre(lic, Number($('#cq-prix').value) || 0, Number(lic.prix) || 0);
+      const el = $('#cq-calc'); if (!el) return;
+      el.innerHTML = pr.jours == null
+        ? `Licence <strong>à vie</strong> : pas de prorata possible, la différence se facture en entier — <strong>${h(C.money(pr.montant, cur))} HT</strong>.`
+        : `Il reste <strong>${pl(pr.jours, 'jour')}</strong> sur ${pl(pr.total, 'jour')}. Différence au prorata : <strong>${h(C.money(pr.montant, cur))} HT</strong>.`;
+    };
+    modal(`<h2>Changer le quota</h2>
+      <p class="small">${h(lic.nom)} couvre <strong>${pl(actuel, 'dossier')}</strong> hors SkanFact${lic.exp ? ` jusqu'au <strong>${C.fmtDate(lic.exp)}</strong>` : ' sans limite de durée'}, en plus des trois gratuits. La date de fin ne change pas : seule la différence de prix est facturée.</p>
+      <form id="cqf" class="grid-2">
+        <label class="field obligatoire">${lbl('Nouveau quota', 'lic.chgquota')}<input type="number" id="cq-quota" name="dossiersHors" class="num" min="1" max="5000" step="1" value="${actuel}"></label>
+        <label class="field obligatoire"><span>Prix plein du nouveau quota (${h(cur)} HT)</span><input type="number" id="cq-prix" name="prix" class="num" step="0.001" min="0" placeholder="pour un an"></label>
+      </form>
+      <div class="notes-md mt"><p class="small" id="cq-calc">Indique le prix plein du nouveau quota pour voir la différence.</p>
+      <p class="small muted">Prix payé pour le quota actuel : ${h(C.money(Number(lic.prix) || 0, cur))} HT.</p></div>
+      <p class="small muted">Une clé neuve sera signée — le quota est inscrit dedans, il ne peut pas se modifier à distance. Envoie-la au cabinet : l'ancienne continue de fonctionner jusqu'à ce qu'il colle la nouvelle.</p>
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Changer et facturer la différence</button></div>`,
+      (root, close) => {
+        $('#cq-prix', root).oninput = majPrix;
+        $('#ok', root).onclick = async () => {
+          const v = formValues($('#cqf', root));
+          const q = Math.round(Number(v.dossiersHors));
+          if (!Number.isFinite(q) || q < 1 || q > 5000) return refus('#cq-quota', 'Indique le nouveau nombre de dossiers hors SkanFact (entre 1 et 5000).');
+          if (q === actuel) return refus('#cq-quota', `Cette licence couvre déjà ${pl(q, 'dossier')} : il n'y a rien à changer.`);
+          if (v.prix === '' || !(Number(v.prix) >= 0)) return refus('#cq-prix', 'Indique le prix plein du nouveau quota.');
+          const pr = C.prorataOffre(lic, Number(v.prix), Number(lic.prix) || 0);
+          if (licenceBlock('Créer une facture de licence')) return;
+          const b = $('#ok', root); b.disabled = true;
+          let r;
+          try {
+            r = await bridge.licenceEmettre({ nom: lic.nom, matricule: lic.matricule || '', type: 'cabinet', dossiersHors: q,
+              exp: lic.exp || '', cabinet: lic.cabinet || '', note: lic.note || '' });
+          } catch (e) { b.disabled = false; return toast(plainError(e), true); }
+          const inv = newDocument('facture');
+          applyClientDefaults(inv, lic.clientId);
+          inv.currency = company().currency; inv.exchangeRate = '';
+          inv.lines = [{ label: `Passage à ${pl(q, 'dossier')} hors SkanFact`,
+            description: `Différence depuis ${pl(actuel, 'dossier')}${pr.jours == null ? '' : `, au prorata des ${pl(pr.jours, 'jour')} restants`}${lic.exp ? ' jusqu\'au ' + C.fmtDate(lic.exp) : ''}`,
+            qty: 1, unit: '', unitPrice: pr.montant, unitCost: '', vatRate: Number(lic.tva) || C.defaultVat(company()) }];
+          Object.assign(inv, { clientId: lic.clientId, subject: `Changement de quota SkanFact Cabinet — ${pl(q, 'dossier')}`,
+            discountRate: 0, withholdingRate: clientWithholding(lic.clientId), licenceId: r.id });
+          data.documents.push(inv);
+          const neuve = { id: r.id, clientId: lic.clientId, nom: r.nom, matricule: r.matricule, offre: r.offre, exp: r.exp,
+            key: r.key, emisLe: r.emisLe, cabinet: r.cabinet, note: r.note, invoiceId: inv.id, itemId: '',
+            prix: Number(v.prix), tva: Number(lic.tva) || C.defaultVat(company()), emails: [], remplace: lic.id, type: 'cabinet', dossiersHors: q };
+          data.licences.push(neuve);
+          const anc = data.licences.find(x => x.id === lic.id);
+          if (anc) { anc.remplaceePar = neuve.id; anc.motif = 'offre'; }
+          save(true); close(); redessinerBarre();
+          if (done) done(neuve);
+          montrerCle(neuve, { neuve: true });
+        };
+      });
+  }
+
   async function changerOffreForm(lic, done) {
+    if (lic.type === 'cabinet') return changerQuotaForm(lic, done);
     if (await demoBlock('Changer l\'offre d\'une licence')) return;
     if (lic.exp && C.daysBetween(C.today(), lic.exp) < 0) {
       return modal(`<h2>Cette licence est expirée</h2>
@@ -11893,7 +12030,8 @@
     const cols = [
       { key: 'nom', label: 'Client', asc: true, val: r => (r.nom || '').toLowerCase(),
         get: r => `<strong>${h(r.nom)}</strong>${r.matricule ? `<div class="small muted">MF ${h(r.matricule)}</div>` : ''}` },
-      { key: 'offre', label: 'Offre', asc: true, val: r => r.offre, get: r => h(offreLabelDe(r.offre)) },
+      { key: 'offre', label: 'Offre', asc: true, val: r => r.offre,
+        get: r => r.type === 'cabinet' ? `Cabinet comptable<div class="small muted">${pl(Number(r.dossiersHors) || 0, 'dossier')} hors SkanFact</div>` : h(offreLabelDe(r.offre)) },
       { key: 'exp', label: 'Fin', val: r => r.exp || '9999', get: r => r.exp ? C.fmtDate(r.exp) : '<span class="muted">À vie</span>' },
       { key: 'etat', label: 'État', val: r => ({ bientot: 0, expiree: 1, active: 2, vie: 3, revoquee: 4 })[r.etat],
         get: r => `<span class="badge ${r.renouvelee ? '' : r.etat === 'bientot' ? 'retard' : r.etat === 'expiree' || r.etat === 'revoquee' ? 'annulée' : 'accepté'}">${h(r.renouvelee ? r.motifLabel : r.etatLabel)}</span>${r.etat === 'bientot' && !r.renouvelee ? `<div class="small muted">dans ${pl(r.jours, 'jour')}</div>` : ''}${r.revoqueeLe ? `<div class="small muted">le ${C.fmtDate(r.revoqueeLe)}${r.revoqueeMotif ? ' — ' + h(r.revoqueeMotif) : ''}</div>` : ''}` },
@@ -11951,8 +12089,10 @@
           peut ? { sep: true } : null,
           peut && !r.remplaceePar && !revoquee ? { icon: 'contrat', label: 'Renouveler', hint: 'Une nouvelle clé et une nouvelle facture', run: () => licenceForm(r, draw) } : null,
           peut && suite ? { icon: 'contrat', label: 'Renouveler la suivante', hint: `Cette licence a déjà été remplacée (n° ${suite.id})`, run: () => licenceForm(suite, draw) } : null,
-          peut && !r.remplaceePar && !revoquee ? { icon: 'contrat', label: 'Changer l\'offre', hint: 'Même date de fin, on ne facture que la différence au prorata', run: () => changerOffreForm(r, draw) } : null,
-          peut && !r.remplaceePar && !revoquee ? { icon: 'client', label: 'Corriger le matricule', hint: 'Une clé neuve pour le bon matricule, sans refacturer', run: () => corrigerMatriculeForm(r, draw) } : null,
+          // Une licence de CABINET (9.4.1) n'a ni offre ni matricule : c'est son quota qui se change,
+          // et son sujet est une empreinte.
+          peut && !r.remplaceePar && !revoquee ? { icon: 'contrat', label: r.type === 'cabinet' ? 'Changer le quota' : 'Changer l\'offre', hint: 'Même date de fin, on ne facture que la différence au prorata', run: () => changerOffreForm(r, draw) } : null,
+          peut && !r.remplaceePar && !revoquee && r.type !== 'cabinet' ? { icon: 'client', label: 'Corriger le matricule', hint: 'Une clé neuve pour le bon matricule, sans refacturer', run: () => corrigerMatriculeForm(r, draw) } : null,
           peut && !revoquee ? { sep: true } : null,
           peut && !revoquee ? { icon: 'supprimer', label: 'Révoquer la licence', hint: 'Rétractation ou remboursement — la clé, elle, vit jusqu\'à sa date de fin', run: () => revoquerForm(r, draw) } : null
         ];

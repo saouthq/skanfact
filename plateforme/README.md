@@ -129,12 +129,13 @@ Les deux gestes peuvent se faire dans n'importe quel ordre, et tant que la publi
 publiée avec une version, **aucune révocation ne mord**. Le panneau de l'éditeur l'écrit noir sur
 blanc plutôt que de laisser croire que ça marche déjà.
 
-> **La clé de réponse créée le 15/09/2026 est BRÛLÉE.** Sa moitié privée a transité par une
-> conversation Claude ; elle est posée dans `REPONSE_PRIVATE_KEY` sur Cloudflare mais aucune version
-> n'embarque sa moitié publique, donc elle ne sert à rien et ne peut nuire à rien. Avant de poser
-> une clé publique de réponse dans `build/licences-publiques.json` : supprimer `reponse-privee.pem`
-> et `reponse-publique.json` dans `~/.skanfact/`, recréer la paire depuis SkanFact, remplacer le
-> secret Cloudflare. **Ne jamais embarquer une clé publique dont la privée a été vue.**
+> **Fait le 17/09/2026 (9.4.1).** La clé de réponse créée le 15/09/2026 était **brûlée** — sa moitié
+> privée avait transité par une conversation Claude. Elle a été jetée (`reponse-privee.pem` et
+> `reponse-publique.json` supprimés dans `~/.skanfact/`), une paire neuve a été créée depuis
+> SkanFact sur le Mac de Skander, sa privée a remplacé le secret `REPONSE_PRIVATE_KEY` sur
+> Cloudflare, et sa publique est embarquée dans `build/licences-publiques.json` (champ `reponse`)
+> depuis la 9.4.1. La règle qui reste : **ne jamais embarquer une clé publique dont la privée a été
+> vue** — si ça arrive un jour, on refait exactement ces trois gestes.
 
 ## 4 bis. Vendre depuis la console (P 0.2)
 
@@ -184,6 +185,37 @@ ALTER TABLE licences ADD COLUMN envoyee_le TEXT;
 
 (Une base créée avec le `schema-a-coller.sql` d'aujourd'hui les a déjà : ces deux lignes répondent
 alors « duplicate column », et c'est normal.)
+
+### Si la base a été créée avant la 9.4.1
+
+Deux colonnes de plus sur `licences`, pour les licences de **cabinet** (§ 4 ter) :
+
+```
+ALTER TABLE licences ADD COLUMN type TEXT;
+ALTER TABLE licences ADD COLUMN dossiers_hors INTEGER;
+```
+
+Même remarque : « duplicate column » veut dire qu'elles y sont déjà.
+
+### 4 ter. Vendre une licence de cabinet (9.4.1)
+
+Depuis la 9.4.0, SkanFact Cabinet est payant au-delà de trois dossiers hors SkanFact — et c'est un
+**quota de dossiers** qu'on vend, jamais des postes. Dans « Émettre une licence… », le champ **Type**
+propose « Cabinet comptable » : l'offre disparaît, et deux champs la remplacent — l'**empreinte du
+cabinet** (les vingt caractères qu'il lit dans SkanFact Cabinet → Réglages → Mon cabinet, c'est le
+sujet de la clé, obligatoire) et le **nombre de dossiers** couverts en plus des trois gratuits. Le
+client reste un client ordinaire de la console : c'est la raison sociale du cabinet.
+
+- Le prix n'est **pas prérempli** tant que `PRIX_CABINET_DOSSIER` (le prix d'un dossier par an) n'est
+  pas posé : les tarifs du Cabinet ne sont pas fixés (l'avis de l'Ordre n'est pas revenu), et un
+  chiffre inventé ici deviendrait un tarif par simple préremplissage. Le montant se décide à la main.
+- Une clé de cabinet est **refusée par SkanFact**, et une clé d'entreprise est refusée par SkanFact
+  Cabinet : le type les sépare (9.4.0). Le mail d'envoi dit où la coller (Réglages → Mon cabinet →
+  Licence).
+- **Renouveler** garde le quota (modifiable dans le formulaire) ; **Changer le quota** remplace
+  « Changer d'offre » : la date de fin ne bouge pas, on facture la différence.
+- La colonne « Offre » affiche « Cabinet — N dossiers » et, entre parenthèses, combien de ses
+  clients ont une licence d'entreprise parrainée par lui.
 
 `charge` porte le **contenu exact** qui a été signé — jamais la clé. Ed25519 est déterministe : le
 même contenu signé par la même clé privée redonne la même clé, à l'octet près. C'est ce qui permet

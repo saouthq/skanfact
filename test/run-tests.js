@@ -3340,6 +3340,45 @@ t('8.4.0 : une licence sans kid reste vérifiée par la clé maître — sinon t
   assert.ok(couvert('build/licence-public.json'), 'l\'ancien fichier doit rester embarqué le temps de la transition');
 });
 
+// 9.4.1 : la clé de réponse est EMBARQUÉE. Créée dans SkanFact sur le Mac de Skander le 17/09/2026
+// (celle du 15/09/2026 était brûlée : sa privée avait transité par une conversation). Sa privée vit
+// dans le réglage Cloudflare `REPONSE_PRIVATE_KEY`, jamais dans le dépôt. C'est ce qui fait qu'une
+// révocation prononcée depuis la console s'applique chez un client à jour — avant, `reponse` valait
+// `null` et l'application ignorait toute réponse du serveur, par construction.
+// Le test tombe si la clé disparaît (retour à `null`), si elle est remplacée par une clé qui n'est
+// pas une Ed25519 lisible, si elle est CONFONDUE avec la maître ou srv-1 (une seule clé pour deux
+// usages, c'est la compromission de l'une qui emporte l'autre), ou si une privée s'est glissée dans
+// le fichier.
+t('9.4.1 : la clé de réponse du plan de contrôle est embarquée, distincte, et vérifie vraiment', () => {
+  const crypto = require('crypto');
+  const f = path.join(__dirname, '..', 'build', 'licences-publiques.json');
+  const brut = fs.readFileSync(f, 'utf8');
+  assert.ok(!/PRIVATE KEY/.test(brut), 'aucune clé privée ne doit vivre dans le fichier embarqué');
+  const j = JSON.parse(brut);
+  assert.ok(j.reponse && j.reponse.publicKey, 'build/licences-publiques.json doit porter la clé publique de réponse (`reponse.publicKey`)');
+  assert.ok(/^\d{4}-\d{2}-\d{2}$/.test(String(j.reponse.depuis || '')), '`reponse.depuis` doit être un jour du calendrier');
+  const k = crypto.createPublicKey(j.reponse.publicKey);
+  assert.strictEqual(k.asymmetricKeyType, 'ed25519', 'la clé de réponse doit être une Ed25519');
+  // Distincte de TOUTES les clés de licence : une clé de réponse compromise ne doit jamais permettre
+  // de signer une licence, et réciproquement.
+  j.cles.forEach(c => assert.notStrictEqual(String(c.publicKey).trim(), String(j.reponse.publicKey).trim(),
+    'la clé de réponse ne doit pas être la clé « ' + c.kid + ' »'));
+  // Et c'est bien elle que `licence.js` consulte : une réponse signée par une AUTRE clé privée est
+  // refusée avec la clé embarquée — sinon on aurait embarqué une clé qui ne sert à rien.
+  const master = lic.generateKeys(), autre = lic.generateKeys();
+  const cle = lic.signLicence({ nom: 'Trabelsi', matricule: '1234567A', exp: '2030-01-01' }, master.privateKey);
+  const sujet = lic.empreinteCle(cle), maintenant = '2026-10-01T10:00:00.000Z';
+  const corps = lic.corpsReponse({ sujet, etat: 'revoquee', motif: 'essai', emisLe: maintenant });
+  const sig = crypto.sign(null, Buffer.from(JSON.stringify(corps), 'utf8'), crypto.createPrivateKey(autre.privateKey));
+  const v = lic.verifierReponse({ ...corps, signature: sig.toString('base64url') }, j.reponse.publicKey, { sujet, maintenant });
+  assert.strictEqual(v.ok, false, 'une réponse signée par une autre clé doit être refusée avec la clé embarquée');
+  // Le chemin que `main.js` emprunte pour la lire (`clePublique().reponse`) : il lit `.publicKey`,
+  // rien d'autre — un champ renommé désarmerait la vérification en silence.
+  const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'main.js'), 'utf8');
+  assert.ok(/reponse:\s*\(trouve\.j && trouve\.j\.reponse && trouve\.j\.reponse\.publicKey\)/.test(main),
+    'main.js doit lire la clé de réponse dans `reponse.publicKey` du fichier embarqué');
+});
+
 t('8.4.0 : la réponse du plan de contrôle est signée, datée et adressée — sinon elle ne restreint rien', () => {
   const crypto = require('crypto');
   const master = lic.generateKeys(), rep = lic.generateKeys(), autre = lic.generateKeys();
@@ -3575,7 +3614,10 @@ t('8.7.0 : l\'historique envoyé à la console est nommé champ par champ, et n\
   assert.deepStrictEqual(ch.map(x => x.id), ['LIC-1', 'LIC-2'], 'une licence venue de la console ne repart pas vers elle');
   // Les champs, tous nommés : un jour quelqu'un voudra « juste ajouter » un client entier ou une
   // facture entière. C'est ce test qui doit l'arrêter.
-  assert.deepStrictEqual(Object.keys(ch[0]).sort(), ['cabinet', 'cle', 'devise', 'email', 'emisLe', 'envoyeeLe', 'exp', 'facture', 'id', 'matricule', 'motif', 'nom', 'offre', 'prix', 'remise', 'remplaceePar', 'revoqueeLe', 'revoqueeMotif']);
+  // (+ `type` et `dossiersHors` depuis la 9.4.1 : une licence de CABINET importée dans la console
+  // doit y rester un cabinet, sinon elle serait renouvelée comme une entreprise.)
+  assert.deepStrictEqual(Object.keys(ch[0]).sort(), ['cabinet', 'cle', 'devise', 'dossiersHors', 'email', 'emisLe', 'envoyeeLe', 'exp', 'facture', 'id', 'matricule', 'motif', 'nom', 'offre', 'prix', 'remise', 'remplaceePar', 'revoqueeLe', 'revoqueeMotif', 'type']);
+  assert.strictEqual(ch[0].type, 'entreprise'); assert.strictEqual(ch[0].dossiersHors, 0, 'une entreprise n\'a pas de quota');
   assert.strictEqual(ch[0].cle, 'SKAN1.aaa'); assert.strictEqual(ch[0].email, 'contact@trabelsi.tn'); assert.strictEqual(ch[0].remise, 20);
   assert.strictEqual(ch[0].envoyeeLe, '2026-03-02'); assert.strictEqual(ch[0].remplaceePar, 'LIC-2');
   // La facture ÉMISE part avec son numéro, son net HT (remise déduite : 690 − 20 % = 552) et le
@@ -3908,7 +3950,16 @@ t('éditeur : le renderer relit la licence avec le matricule, et la page Licence
   // la page Licences pour l'envoyer. Le geste finit maintenant là où il se termine vraiment.
   assert.ok(/data\.licences\.push\(/.test(form) && /data\.documents\.push\(inv\)/.test(form), 'le geste doit écrire l\'historique et la facture');
   assert.ok(/montrerCle\(lic, \{ neuve: true \}\)/.test(form) && !/navigate\('#\/doc\//.test(form), 'le geste doit finir sur la CLÉ, pas sur la facture');
-  assert.ok(/discountRate: v\.parrain \? /.test(form), 'la remise de parrainage se pose sur la facture (doc.discountRate), pas sur la ligne');
+  // La RÈGLE : la remise de parrainage se pose sur la FACTURE (`doc.discountRate`), jamais sur une
+  // ligne — il n'existe pas de remise par ligne dans le modèle. L'assertion d'avant recopiait la
+  // ligne mot pour mot (`discountRate: v.parrain ? `) : elle est tombée en 9.4.1 quand le geste a
+  // gagné un garde-fou légitime (une licence de CABINET n'a pas de parrainage, son empreinte est
+  // son sujet), et se serait « réparée » en recopiant la nouvelle ligne — donc sans rien prouver
+  // (piège 7.16.0, re-rencontré). On ancre sur la règle : la remise est sur l'objet facture, elle
+  // dépend du parrainage, et aucune ligne n'en porte.
+  const ligneRemise = form.split('\n').find(l => /discountRate:/.test(l));
+  assert.ok(ligneRemise && /v\.parrain/.test(ligneRemise), 'la remise de la facture ne dépend plus du parrainage : ' + String(ligneRemise).trim());
+  assert.ok(!/inv\.lines = \[\{[^\]]*discount/i.test(form), 'aucune remise ne se pose sur une LIGNE : il n\'en existe pas dans le modèle');
   // Le mail porte la clé, et la facture en PDF passe par le tampon comme tout document.
   const mail = app.slice(app.indexOf('async function envoyerLicence('), app.indexOf('function montrerCle('));
   assert.ok(mail.length > 800 && mail.length < 6000, 'tranche du mail de licence improbable (' + mail.length + ')');
@@ -6804,17 +6855,31 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.deepStrictEqual(core.licencesDuCabinet(licences, attendu, 'a').map(v => v.id), ['b']);
     assert.strictEqual(core.licencesDuCabinet(licences, 'ZZZZ').length, 0, 'une empreinte invalide ne corrobore rien');
     assert.strictEqual(core.licencesDuCabinet(null, attendu).length, 0);
+    // 9.4.1 — la licence du cabinet LUI-MÊME porte aussi son empreinte, mais comme SUJET, pas comme
+    // parrainage. La compter reviendrait à dire « ce cabinet a déjà parrainé quelqu'un » en montrant
+    // sa propre licence : une corroboration qui se corrobore elle-même ne prouve rien.
+    const avecSienne = licences.concat([{ id: 'c', nom: 'Cabinet lui-même', cabinet: attendu, type: 'cabinet' }]);
+    assert.deepStrictEqual(core.licencesDuCabinet(avecSienne, attendu).map(v => v.id), ['a', 'b'],
+      'la licence du cabinet ne se compte pas comme un client qu\'il a parrainé');
 
     // 4. L'écran : le bouton existe, il passe par la règle partagée, et il ne promet pas plus.
+    // Depuis la 9.4.1 le contrôle sert DEUX champs — le parrainage d'une entreprise, et l'empreinte
+    // qui est le SUJET d'une licence de cabinet — donc il vit dans une fonction qui prend le champ
+    // en paramètre. Ce qui se teste reste la règle : le verdict passe par core.js, et il ne promet
+    // pas plus que ce qu'il peut prouver.
     const app = lireApp();
-    const d = app.indexOf('const verifierEmpreinte =');
+    const d = app.indexOf('const verifierEmpreinteDe =');
     assert.ok(d > 0, 'le contrôle d\'empreinte n\'est pas branché dans le formulaire de licence');
-    const zone = app.slice(d, app.indexOf('champE().onblur', d));
+    const zone = app.slice(d, app.indexOf('const verifierEmpreinte =', d));
     assert.ok(zone.length > 400 && zone.length < 3000, 'tranche du contrôle improbable (' + zone.length + ')');
     assert.ok(/C\.empreinteCabinet\(/.test(zone) && /C\.licencesDuCabinet\(/.test(zone), 'le contrôle doit passer par core.js');
     // (l'apostrophe est ÉCHAPPÉE dans la source : on ancre sur ce qui la suit.)
     assert.ok(/encore parrainé personne/.test(zone), 'un cabinet inconnu doit être annoncé comme tel, pas validé');
-    assert.ok(/id="lf-verif"/.test(app), 'le bouton « Vérifier » manque');
+    // Les DEUX champs passent par lui, et chacun a son bouton : un contrôle branché sur un seul des
+    // deux laisserait l'autre accepter n'importe quoi.
+    assert.ok(/verifierEmpreinteDe\('#lf input\[name=empreinte\]'/.test(app), 'le champ de parrainage ne passe pas par le contrôle');
+    assert.ok(/verifierEmpreinteDe\('#lf input\[name=cabEmpreinte\]'/.test(app), 'le champ « empreinte du cabinet » ne passe pas par le contrôle');
+    assert.ok(/id="lf-verif"/.test(app) && /id="lf-verif-cab"/.test(app), 'un bouton « Vérifier » manque');
   });
 
   // 8.1.0 — L'éditeur qui vend ses deux offres n'a, au premier jour, AUCUNE prestation de licence
@@ -6825,7 +6890,10 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // celui de la licence, le seul qui garde sa poignée pour se recharger après une création.
     const d = app.indexOf("const ic = bindCombo($('[data-combo=itemId]'");
     assert.ok(d > 0, 'le combo des prestations de la licence est introuvable');
-    const zone = app.slice(d, app.indexOf('const champE =', d));
+    // Borné sur ce qui SUIT immédiatement le combo. La borne d'avant (`const champE =`) a glissé en
+    // 9.4.1, quand le contrôle d'empreinte est devenu une fonction à deux appelants : la tranche a
+    // grossi de 300 caractères et le test est tombé sur du code juste.
+    const zone = app.slice(d, app.indexOf('const verifierEmpreinteDe =', d));
     assert.ok(zone.length > 300 && zone.length < 2500, 'tranche improbable (' + zone.length + ')');
     // Les DEUX moitiés : `combo()` dessine l'entrée, `bindCombo` branche le geste. Une seule des
     // deux et le bouton n'apparaît pas, ou apparaît sans rien faire.
@@ -10442,9 +10510,142 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       assert.ok(/paiement/.test(P.nettoyerEmission({ offre: 'entreprise', duree: '1a', prix: 1, payeeLe: 'hier' }, '2026-09-15').erreur));
       assert.strictEqual(P.nettoyerEmission({ offre: 'entreprise', duree: 'vie', prix: 0 }, '2026-09-15').e.exp, '', 'un prix nul est permis (une licence offerte)');
       // Les tarifs ne servent qu'à préremplir, et se règlent sans toucher au code.
-      assert.deepStrictEqual(P.tarifs({}), { independant: 390, entreprise: 690, remiseParrainage: 20, devise: 'TND' });
+      // `cabinetDossier: 0` (9.4.1) : AUCUN prix par défaut pour un dossier de cabinet — les tarifs
+      // du Cabinet ne sont pas fixés, et un chiffre écrit ici deviendrait un tarif par préremplissage.
+      assert.deepStrictEqual(P.tarifs({}), { independant: 390, entreprise: 690, cabinetDossier: 0, remiseParrainage: 20, devise: 'TND' });
       assert.strictEqual(P.tarifs({ PRIX_ENTREPRISE: '750' }).entreprise, 750);
+      assert.strictEqual(P.tarifs({ PRIX_CABINET_DOSSIER: '120' }).cabinetDossier, 120);
       assert.strictEqual(P.tarifs({ PRIX_ENTREPRISE: 'cher' }).entreprise, 690, 'un réglage illisible retombe sur le défaut');
+    });
+
+    // ---------- 9.4.1 : la console vend une licence de CABINET ----------
+    // La 9.4.0 avait appris à SkanFact Cabinet à lire une clé de cabinet, et à l'Éditeur de SkanFact
+    // à en signer une (type, empreinte, quota). La console, elle, ne connaissait que deux offres :
+    // `nettoyerEmission` refusait le type, `emettre` signait une charge sans lui, et le schéma
+    // n'avait pas de colonne pour le quota. Trois moitiés d'une même vente, dont une seule vendait.
+    t('9.4.1 : nettoyerEmission — une licence de cabinet exige une empreinte et un quota, et la clé porte la forme canonique', () => {
+      const base = { type: 'cabinet', duree: '1a', prix: '500', cabinet: '3f9a-2c1e-0000-1111-2222', dossiersHors: 10 };
+      const e = P.nettoyerEmission(base, '2026-09-17');
+      assert.strictEqual(e.ok, true, e.erreur);
+      assert.strictEqual(e.e.type, 'cabinet'); assert.strictEqual(e.e.offre, 'cabinet'); assert.strictEqual(e.e.dossiersHors, 10);
+      assert.strictEqual(e.e.cabinet, '3f9a2c1e000011112222', 'la base range la forme nue');
+      assert.strictEqual(e.e.cabinetCanon, '3F9A-2C1E-0000-1111-2222', 'la clé porte la forme que le cabinet lit dans ses Réglages');
+      assert.ok(/EMPREINTE/.test(P.nettoyerEmission({ ...base, cabinet: '' }, '2026-09-17').erreur), 'sans empreinte : refus qui se lit');
+      assert.ok(/dossiers/.test(P.nettoyerEmission({ ...base, dossiersHors: 0 }, '2026-09-17').erreur), 'un quota nul est refusé');
+      assert.ok(/dossiers/.test(P.nettoyerEmission({ ...base, dossiersHors: 5001 }, '2026-09-17').erreur), 'un quota de 5001 est refusé');
+      assert.ok(/dossiers/.test(P.nettoyerEmission({ ...base, dossiersHors: 'dix' }, '2026-09-17').erreur), 'un quota illisible est refusé');
+      assert.ok(/cabinet/.test(P.nettoyerEmission({ ...base, cabinet: 'abcd' }, '2026-09-17').erreur), 'une empreinte tronquée est refusée');
+      // Une entreprise : le type par défaut, un quota nul, l'offre toujours obligatoire — et un type
+      // inconnu vaut entreprise : rien de ce qui a été vendu ne change de nature.
+      const ent = P.nettoyerEmission({ offre: 'entreprise', duree: '1a', prix: 690, cabinet: 'ABCD-EF01-2345-6789-abcd' }, '2026-09-17');
+      assert.strictEqual(ent.e.type, 'entreprise'); assert.strictEqual(ent.e.dossiersHors, 0);
+      assert.strictEqual(ent.e.cabinetCanon, 'ABCD-EF01-2345-6789-ABCD', 'le parrainage aussi entre dans la clé sous la forme canonique');
+      assert.strictEqual(P.nettoyerEmission({ type: 'entreprise', duree: '1a', prix: 690 }, '2026-09-17').ok, false, 'une entreprise sans offre est refusée');
+      assert.strictEqual(P.nettoyerEmission({ type: 'pirate', offre: 'entreprise', duree: '1a', prix: 1 }, '2026-09-17').e.type, 'entreprise');
+      // Le libellé partagé par le journal, le mail et la console.
+      assert.strictEqual(P.libelleLicence({ type: 'cabinet', dossiersHors: 1 }), 'Cabinet — 1 dossier hors SkanFact');
+      assert.strictEqual(P.libelleLicence({ type: 'cabinet', dossiers_hors: 12 }), 'Cabinet — 12 dossiers hors SkanFact');
+      assert.strictEqual(P.libelleLicence({ offre: 'independant' }), 'Indépendant');
+      // Le mail d'un cabinet : le chemin de SkanFact CABINET, jamais celui de SkanFact — et la même
+      // phrase d'activation que le gabarit `licenceCabinet` de l'application.
+      const m = P.mailLicence({ type: 'cabinet', dossiersHors: 10, exp: '2027-09-17', cle: 'SKAN1.a.b', signature: 'Skander' });
+      assert.strictEqual(m.sujet, 'Votre licence SkanFact Cabinet — 10 dossiers');
+      assert.ok(m.texte.includes('SKAN1.a.b') && m.texte.includes('10 dossiers hors SkanFact') && m.texte.includes('17/09/2027'));
+      const chemin = core.DEFAULT_EMAIL_TEMPLATES.licenceCabinet.body.match(/Pour l'activer : [^\n]+/)[0];
+      assert.ok(/Réglages → Mon cabinet → Licence/.test(chemin), 'le gabarit doit mener aux Réglages de SkanFact Cabinet');
+      assert.ok(m.texte.includes(chemin), 'la phrase d\'activation doit être celle du gabarit licenceCabinet :\n' + chemin);
+      assert.ok(!m.texte.includes('Paramètres → L\'application'), 'jamais le chemin de SkanFact pour une clé de cabinet');
+      assert.ok(P.mailLicence({ type: 'cabinet', dossiersHors: 1, cle: 'x' }).sujet.endsWith('1 dossier'), 'un dossier, sans s');
+      // L'import d'une licence de cabinet émise dans SkanFact garde son type et son quota.
+      const imp = P.nettoyerImport({ id: 'LIC-C1', cle: 'SKAN1.x.y', emisLe: '2026-09-17', type: 'cabinet', dossiersHors: 7, nom: 'Cabinet Ben Salah', cabinet: '3F9A-2C1E-0000-1111-2222' });
+      assert.strictEqual(imp.ok, true); assert.strictEqual(imp.l.type, 'cabinet'); assert.strictEqual(imp.l.dossiersHors, 7); assert.strictEqual(imp.l.offre, 'cabinet');
+      const impE = P.nettoyerImport({ id: 'LIC-E1', cle: 'SKAN1.x.y', emisLe: '2026-09-17', offre: 'entreprise', dossiersHors: 99 });
+      assert.strictEqual(impE.l.type, 'entreprise'); assert.strictEqual(impE.l.dossiersHors, 0, 'un quota sur une entreprise ne veut rien dire');
+    });
+
+    // La vente elle-même, contre la VRAIE base et le vrai worker : la clé que la console signe pour
+    // un cabinet, SkanFact Cabinet la reconnaît (sous les trois graphies de l'empreinte) et SkanFact
+    // la refuse ; la base porte le type et le quota ; le quota se change et se garde au renouvellement.
+    await ta('9.4.1 : la console vend une licence de CABINET, et SkanFact Cabinet la reconnaît', async () => {
+      const { baseD1 } = require('./d1-sqlite');
+      const srv = lic.generateKeys(), master = lic.generateKeys();
+      const ADMIN = 'Y'.repeat(30), APP = 'app-secret-yyyyyyyyyyyy';
+      const mails = [];
+      const vraiFetch = globalThis.fetch;
+      globalThis.fetch = async (url, o) => { mails.push({ url: String(url), corps: JSON.parse(o.body) }); return new Response(JSON.stringify({ id: 'm_2' }), { status: 200 }); };
+      const db = baseD1();
+      const env = { DB: db, ADMIN_SECRET: ADMIN, APP_SECRET: APP, SRV_PRIVATE_KEY: srv.privateKey, RESEND_API_KEY: 're_test',
+        LICENCE_PUBLIC_KEYS: JSON.stringify([{ kid: 'master', publicKey: master.publicKey }, { kid: 'srv-1', publicKey: srv.publicKey }]) };
+      const cles = [{ kid: 'master', publicKey: master.publicKey }, { kid: 'srv-1', publicKey: srv.publicKey }];
+      const call = async (m, p2, corps) => {
+        const r = await P.default.fetch(new Request('https://x' + p2, { method: m, headers: { 'x-skanfact-admin': ADMIN }, body: corps ? JSON.stringify(corps) : undefined }), env);
+        return { status: r.status, j: await r.json() };
+      };
+      try {
+        const c = await call('POST', '/v1/admin/clients', { nom: 'Cabinet Ben Salah', email: 'cabinet@bensalah.tn' });
+        assert.strictEqual(c.status, 201);
+        // Sans empreinte : refus qui se lit — c'est le SUJET de la clé.
+        const sans = await call('POST', '/v1/admin/licences', { clientId: c.j.client.id, type: 'cabinet', duree: '1a', prix: 500, dossiersHors: 10 });
+        assert.strictEqual(sans.status, 400); assert.ok(/EMPREINTE/.test(sans.j.erreur), sans.j.erreur);
+        const e = await call('POST', '/v1/admin/licences', { clientId: c.j.client.id, type: 'cabinet', duree: '1a', prix: 500, dossiersHors: 10,
+          cabinet: '3f9a-2c1e-0000-1111-2222', payeeLe: '2026-09-17', moyen: 'virement' });
+        assert.strictEqual(e.status, 201, JSON.stringify(e.j));
+        assert.strictEqual(e.j.licence.type, 'cabinet'); assert.strictEqual(e.j.licence.dossiers_hors, 10);
+        const cle = e.j.cle;
+        const charge = lic.verifyKey(cle, cles);
+        assert.ok(charge, 'la clé émise se vérifie côté application');
+        assert.strictEqual(charge.type, 'cabinet'); assert.strictEqual(charge.dossiersHors, 10); assert.strictEqual(charge.offre, 'cabinet');
+        assert.strictEqual(charge.cabinet, '3F9A-2C1E-0000-1111-2222', 'la clé porte l\'empreinte sous la forme que le cabinet lit');
+        // SkanFact Cabinet la reconnaît — sous les trois graphies de l'empreinte (message, base, écran).
+        ['3F9A-2C1E-0000-1111-2222', '3f9a2c1e000011112222', '3f9a-2c1e-0000-1111-2222'].forEach(emp => {
+          const st = lic.licenceCabinet({ key: cle, cles, empreinte: emp, comptes: 12, today: '2026-10-01' });
+          assert.strictEqual(st.state, 'active', emp + ' : ' + st.detail);
+          assert.strictEqual(st.autorises, 13, '3 gratuits + 10');
+        });
+        assert.strictEqual(lic.licenceCabinet({ key: cle, cles, empreinte: 'AAAA-BBBB-CCCC-DDDD-EEEE', comptes: 1, today: '2026-10-01' }).state, 'autre', 'un autre cabinet est refusé');
+        // Et SkanFact — l'application des entreprises — la refuse.
+        assert.strictEqual(lic.licenceState({ key: cle, cles, matricule: '', today: '2026-10-01', installedAt: '2026-09-01' }).locked, true, 'une clé de cabinet a ouvert SkanFact');
+        // La base : le type, le quota, l'empreinte nue.
+        // (`{ ...row }` : une ligne de SQLite arrive sans prototype, et `deepStrictEqual` compare
+        // aussi les prototypes.)
+        assert.deepStrictEqual({ ...db.lire('SELECT type, dossiers_hors, cabinet_empreinte, offre FROM licences')[0] },
+          { type: 'cabinet', dossiers_hors: 10, cabinet_empreinte: '3f9a2c1e000011112222', offre: 'cabinet' });
+        // Payée : le mail est parti, avec le chemin de SkanFact Cabinet et le quota en objet.
+        assert.strictEqual(e.j.mail.envoye, true, JSON.stringify(e.j.mail));
+        assert.ok(mails[0].corps.text.includes('Réglages → Mon cabinet → Licence') && mails[0].corps.text.includes(cle));
+        assert.ok(/SkanFact Cabinet — 10 dossiers/.test(mails[0].corps.subject), mails[0].corps.subject);
+        // Le journal nomme le quota, pas une offre — `OFFRES['cabinet']` n'existe pas, et un
+        // `.label` dessus aurait planté l'émission.
+        const j = await call('GET', '/v1/admin/evenements');
+        assert.ok(j.j.lignes.some(x => x.quoi === 'licence.emise' && /Cabinet — 10 dossiers/.test(x.detail)), JSON.stringify(j.j.lignes));
+        // Un client parrainé par ce cabinet : la ligne du cabinet compte UN parrainé, la sienne zéro.
+        const c2 = await call('POST', '/v1/admin/clients', { nom: 'Menuiserie Trabelsi', matricule: '1234567A' });
+        const p = await call('POST', '/v1/admin/licences', { clientId: c2.j.client.id, offre: 'independant', duree: '1a', prix: 390, remise: 20, cabinet: '3F9A-2C1E-0000-1111-2222' });
+        assert.strictEqual(p.status, 201);
+        assert.strictEqual(lic.verifyKey(p.j.cle, cles).cabinet, '3F9A-2C1E-0000-1111-2222', 'le parrainage entre dans la clé sous la forme canonique');
+        const liste = await call('GET', '/v1/admin/licences');
+        assert.strictEqual(Number(liste.j.lignes.find(x => x.type === 'cabinet').parraines), 1);
+        assert.strictEqual(Number(liste.j.lignes.find(x => x.type === 'entreprise').parraines), 0);
+        // Changer le quota : le même quota est refusé ; 25 donne une clé neuve, même fin, motif « offre ».
+        assert.strictEqual((await call('POST', '/v1/admin/licences/' + e.j.licence.id + '/changer-offre', { dossiersHors: 10, prix: 0 })).status, 409);
+        const q = await call('POST', '/v1/admin/licences/' + e.j.licence.id + '/changer-offre', { dossiersHors: 25, prix: 300 });
+        assert.strictEqual(q.status, 201, JSON.stringify(q.j));
+        const ch2 = lic.verifyKey(q.j.cle, cles);
+        assert.strictEqual(ch2.dossiersHors, 25); assert.strictEqual(ch2.type, 'cabinet'); assert.strictEqual(ch2.cabinet, '3F9A-2C1E-0000-1111-2222');
+        assert.strictEqual(q.j.licence.fin, e.j.licence.fin, 'la date de fin ne bouge pas');
+        assert.strictEqual(q.j.licence.remplacee_motif, 'offre');
+        assert.strictEqual(lic.licenceCabinet({ key: q.j.cle, cles, empreinte: '3F9A-2C1E-0000-1111-2222', comptes: 27, today: '2026-10-01' }).autorises, 28);
+        // Renouveler la nouvelle : le quota se garde sans avoir à le redire.
+        const r = await call('POST', '/v1/admin/licences/' + q.j.licence.id + '/renouveler', { duree: '1a', prix: 1500 });
+        assert.strictEqual(r.status, 201, JSON.stringify(r.j));
+        assert.strictEqual(lic.verifyKey(r.j.cle, cles).dossiersHors, 25, 'le renouvellement garde le quota');
+        assert.strictEqual(lic.verifyKey(r.j.cle, cles).type, 'cabinet');
+        // Les ventes non facturées portent le type : SkanFact saura facturer « SkanFact Cabinet ».
+        const v = await call('GET', '/v1/admin/ventes?non_facturees=1');
+        assert.ok(v.j.lignes.some(x => x.type === 'cabinet' && Number(x.dossiers_hors) === 25 && String(x.cle).startsWith('SKAN1.')), JSON.stringify(v.j.lignes.map(x => [x.type, x.dossiers_hors])));
+        // « Voir la clé » refabrique exactement la clé de cabinet (déterminisme d'Ed25519).
+        assert.strictEqual((await call('GET', '/v1/admin/licences/' + q.j.licence.id)).j.cle, q.j.cle);
+      } finally { globalThis.fetch = vraiFetch; db.fermer(); }
     });
 
     // Une privée collée à côté d'une publique qui n'est pas la sienne produirait des clés que
@@ -12759,6 +12960,63 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // L'empreinte est normalisée en MAJUSCULES à l'émission : elle se recopie d'un message, et
     // deux casses différentes désigneraient deux cabinets.
     assert.ok(/\.toUpperCase\(\)/.test(zone), 'l\'empreinte signée n\'est pas normalisée');
+  });
+
+  // 9.4.1 — l'Éditeur de SkanFact propose le type CABINET, et une licence de cabinet vit comme telle
+  // dans l'application : sa facture, son mail, sa clé, son menu de ligne. Chaque assertion se prouve
+  // en retirant la ligne qu'elle nomme.
+  t('9.4.1 : l\'Éditeur propose le type CABINET, et une licence de cabinet vit comme telle dans l\'application', () => {
+    const app = lireApp();
+    const i = app.indexOf('async function licenceForm('), f = app.indexOf('async function envoyerLicence(');
+    const zone = app.slice(i, f);
+    assert.ok(zone.length > 6000 && zone.length < 24000, 'la tranche de licenceForm fait ' + zone.length + ' caractères');
+    assert.ok(/name="type"/.test(zone) && /value="cabinet"/.test(zone), 'le formulaire ne propose pas le type');
+    assert.ok(/name="cabEmpreinte"/.test(zone) && /name="dossiersHors"/.test(zone), 'ni empreinte-sujet ni quota dans le formulaire');
+    assert.ok(/type, dossiersHors: quota/.test(zone), 'le type et le quota ne partent pas à licence:emettre');
+    assert.ok(/C\.empreinteCabinet\(v\.cabEmpreinte\)/.test(zone), 'l\'empreinte-sujet n\'est pas vérifiée avant d\'émettre');
+    assert.ok(/quota < 1 \|\| quota > 5000/.test(zone), 'le quota n\'est pas borné');
+    // Une licence de cabinet ne porte pas de remise de parrainage : son empreinte est son SUJET.
+    assert.ok(/discountRate: type !== 'cabinet' && v\.parrain/.test(zone), 'la remise de parrainage se pose sur une licence de cabinet');
+    assert.ok(/type: r\.type === 'cabinet' \? 'cabinet' : 'entreprise', dossiersHors:/.test(zone), 'la licence rangée ne garde ni type ni quota');
+    // Le menu de ligne : « Corriger le matricule » n'existe pas pour un cabinet (il n'en a pas),
+    // « Changer l'offre » devient « Changer le quota » — et mène au même geste, qui aiguille.
+    const ligneCorr = app.split('\n').find(l => /label: 'Corriger le matricule'/.test(l));
+    assert.ok(ligneCorr && /r\.type !== 'cabinet'/.test(ligneCorr), '« Corriger le matricule » s\'offre sur une licence de cabinet : ' + String(ligneCorr).trim());
+    const ligneOffre = app.split('\n').find(l => /'Changer le quota'/.test(l));
+    assert.ok(ligneOffre && /changerOffreForm\(r, draw\)/.test(ligneOffre), '« Changer le quota » n\'appelle pas changerOffreForm');
+    assert.ok(/if \(lic\.type === 'cabinet'\) return changerQuotaForm\(lic, done\);/.test(app), 'changerOffreForm n\'aiguille pas un cabinet vers son quota');
+    const cq = app.slice(app.indexOf('async function changerQuotaForm('), app.indexOf('async function changerOffreForm('));
+    assert.ok(cq.length > 2000 && cq.length < 8000, 'la tranche de changerQuotaForm fait ' + cq.length);
+    assert.ok(/type: 'cabinet', dossiersHors: q/.test(cq) && /C\.prorataOffre\(lic, Number\(v\.prix\)/.test(cq), 'le quota neuf part signé, au prorata');
+    assert.ok(/anc\.motif = 'offre'/.test(cq), 'la licence remplacée porte le motif « offre »');
+    // Le mail d'un cabinet a son gabarit, en français et en anglais, modifiable dans Paramètres → Envois.
+    const env = app.slice(app.indexOf('async function envoyerLicence('), app.indexOf('function montrerCle('));
+    assert.ok(/const gabarit = cab \? 'licenceCabinet' : 'licence'/.test(env), 'envoyerLicence n\'utilise pas le gabarit du cabinet');
+    assert.ok(/\['licenceCabinet', lg === 'fr'/.test(app), 'le gabarit licenceCabinet n\'est pas dans Paramètres → Envois');
+    assert.ok(core.DEFAULT_EMAIL_TEMPLATES.licenceCabinet && core.DEFAULT_EMAIL_TEMPLATES_EN.licenceCabinet, 'le gabarit doit exister en français et en anglais');
+    assert.ok(/\{quota\}/.test(core.DEFAULT_EMAIL_TEMPLATES.licenceCabinet.body) && /SkanFact Cabinet/.test(core.DEFAULT_EMAIL_TEMPLATES.licenceCabinet.body));
+    // montrerCle dit OÙ coller : dans SkanFact Cabinet, pas dans SkanFact.
+    const mc = app.slice(app.indexOf('function montrerCle('), app.indexOf('async function changerQuotaForm('));
+    assert.ok(mc.length > 800 && mc.length < 5000, 'la tranche de montrerCle fait ' + mc.length);
+    assert.ok(/SkanFact Cabinet → Réglages → Mon cabinet → Licence/.test(mc), 'montrerCle n\'indique pas où coller une clé de cabinet');
+    // Les ventes de la console : une vente de cabinet se facture « SkanFact Cabinet », avec son quota.
+    const iCb = app.indexOf('async function creerBrouillonsConsole(');
+    const cb = app.slice(iCb, app.indexOf('routes.licences();', iCb));
+    assert.ok(cb.length > 1500 && cb.length < 6000, 'la tranche de creerBrouillonsConsole fait ' + cb.length);
+    assert.ok(/v\.type === 'cabinet'/.test(cb) && /SkanFact Cabinet — \$\{pl\(Number\(v\.dossiers_hors\)/.test(cb), 'une vente de cabinet se facture comme une offre');
+    assert.ok(/dossiersHors: cab \? Number\(v\.dossiers_hors\)/.test(cb), 'la licence miroir ne garde pas le quota');
+    // Les trois bulles existent (le test de couverture exige chaque clé posée ; ici on exige qu'elles
+    // soient POSÉES — une bulle écrite et jamais affichée n'explique rien).
+    ['lic.type', 'lic.quota', 'lic.chgquota'].forEach(k => assert.ok(app.includes("'" + k + "'"), 'bulle jamais posée : ' + k));
+    // Et la 9.4.0 avait une comparaison d'empreinte SENSIBLE aux séparateurs : une clé de la console,
+    // dont la base range « 3f9a2c1e… » sans tirets, aurait été refusée par un cabinet qui lit
+    // « 3F9A-2C1E-… ». Les deux graphies désignent le même cabinet.
+    const L = require('../src/licence.js');
+    const k = L.generateKeys();
+    const cles = JSON.stringify({ cles: [{ kid: 'master', publicKey: k.publicKey, creeLe: '2026-01-01' }] });
+    const cabKey = L.signLicence({ id: 'c1', nom: 'Cabinet', matricule: '', offre: 'cabinet', exp: '2027-12-31', cabinet: '3f9a2c1e000011112222', note: '', emisLe: '2026-09-17', type: 'cabinet', dossiersHors: 4 }, k.privateKey);
+    assert.strictEqual(L.licenceCabinet({ key: cabKey, cles, empreinte: '3F9A-2C1E-0000-1111-2222', comptes: 5, today: '2026-10-01' }).state, 'active', 'la forme nue et la forme à tirets sont le même cabinet');
+    assert.strictEqual(L.licenceCabinet({ key: cabKey, cles, empreinte: '3F9A-2C1E-0000-1111-222G', comptes: 5, today: '2026-10-01' }).state, 'autre', 'un G tapé pour un 2 reste une faute');
   });
 
   t('aucun fichier source ne traîne à la racine du dépôt', () => {

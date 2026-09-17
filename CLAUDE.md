@@ -53,6 +53,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un e2e qui reste **bloqué** est pire qu'un e2e qui échoue | 7.28.0 — `Promise.race` sur toute fermeture |
 | `ta()` sans `await`, `t()` avec une fonction asynchrone : « ok » sans rien vérifier | 6.7.0, 8.4.0 |
 | Un test **trop étroit** accuse du code juste — aussi grave qu'un test trop large | 9.1.0, 9.2.0 — le jumeau du contrôle du pont, sans son nettoyage |
+| Une assertion ancrée sur une **forme** tombe sur du code juste : on la retourne vers la RÈGLE | 7.16.0, 8.2.0, 9.4.1 — trois en une version |
 | `npm test \| tail` **masque le code de sortie** : un commit part avec un test rouge | 9.2.0 |
 
 **Les deux applications**
@@ -89,6 +90,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Jamais **prétendre** ce qu'on ne peut pas prouver (« 7 pièces vérifiées, intactes ») | Cabinet 1.0.0, 8.1.0, 8.2.0 |
 | Jamais de **retour en arrière** de version, sauf sortie du canal d'essai | 6.7.3, 7.25.0, 9.1.0 |
 | Jamais **toucher à la clé publique** de `build/licences-publiques.json` | Règles de travail, 8.0.0 |
+| Jamais **embarquer une clé publique dont la privée a été VUE** : elle est brûlée, on la recrée | 9.4.1 |
 | Jamais de **token** commité | Règles de travail, 6.7.0 |
 | Jamais **chiffrer en croyant signer** : seule une signature dit d'où ça vient | 9.2.0 |
 | Jamais une **cellule CSV** exécutée par un tableur (`=` `+` `-` `@`) | 9.1.1 |
@@ -115,7 +117,7 @@ chantier précis ; `ROADMAP.md` est une **archive**.
 - **Chaque amélioration livrée = une nouvelle version** (semver) : correctif 1.0.x, fonctionnalité 1.x.0, gros changement x.0.0. Mettre à jour `package.json` (`version`) **et** ajouter une entrée datée dans `CHANGELOG.md` (c'est elle qui devient les notes de version dans l'app et sur GitHub). Toujours annoncer le numéro de version dans la réponse.
 - Lancer `npm test` avant tout commit (calculs, numérotation, montant en lettres, échappement HTML, stockage/sauvegardes). Pour un changement d'interface, lancer aussi l'app réelle (`xvfb-run` + Playwright `_electron`, voir README « Tests ») : elle attrape les erreurs JS du renderer.
 - Ne jamais commiter de token. Le jeton GitHub que l'utilisateur colle (quand le dépôt est privé) est stocké dans `userData/update-config.json`, jamais dans le code.
-- **La licence est ARMÉE depuis la 8.0.0** : la clé publique de Skander (créée dans SkanFact le 14/09/2026) vit dans `build/licences-publiques.json` sous le `kid` **`master`**, et `build/licence-public.json` la porte encore à l'identique (repli des versions d'avant la 8.4.0). Ne jamais la supprimer, la régénérer ni la remplacer — une autre clé invaliderait toutes les licences déjà vendues, et son absence désarmerait tous les clients. **Une licence sans `kid` se vérifie avec `master`** : toutes celles vendues depuis la 8.0.0 sont dans ce cas. La clé privée vit dans `~/.skanfact/` sur son Mac, jamais dans le dépôt. Des tests exigent la présence du fichier, que ce soit une vraie clé Ed25519, que `master` soit identique au caractère près à celle de la 8.0.0, et que le glob d'electron-builder embarque bien les deux fichiers. **Depuis la 8.6.0 le même fichier porte `srv-1`** (créée dans SkanFact le 15/09/2026), la clé de second rang avec laquelle la console signe les ventes : sa privée vit dans le réglage Cloudflare `SRV_PRIVATE_KEY`, jamais dans le dépôt. La retirer un jour (compromission) est une décision qui exige de réémettre les licences qu'elle a signées ; la « retirer » se fait par `retiree: true`, pas en effaçant l'entrée. Le champ `reponse` reste `null` jusqu'à la mise en production (clé de réponse à recréer, voir `plateforme/README.md`).
+- **La licence est ARMÉE depuis la 8.0.0** : la clé publique de Skander (créée dans SkanFact le 14/09/2026) vit dans `build/licences-publiques.json` sous le `kid` **`master`**, et `build/licence-public.json` la porte encore à l'identique (repli des versions d'avant la 8.4.0). Ne jamais la supprimer, la régénérer ni la remplacer — une autre clé invaliderait toutes les licences déjà vendues, et son absence désarmerait tous les clients. **Une licence sans `kid` se vérifie avec `master`** : toutes celles vendues depuis la 8.0.0 sont dans ce cas. La clé privée vit dans `~/.skanfact/` sur son Mac, jamais dans le dépôt. Des tests exigent la présence du fichier, que ce soit une vraie clé Ed25519, que `master` soit identique au caractère près à celle de la 8.0.0, et que le glob d'electron-builder embarque bien les deux fichiers. **Depuis la 8.6.0 le même fichier porte `srv-1`** (créée dans SkanFact le 15/09/2026), la clé de second rang avec laquelle la console signe les ventes : sa privée vit dans le réglage Cloudflare `SRV_PRIVATE_KEY`, jamais dans le dépôt. La retirer un jour (compromission) est une décision qui exige de réémettre les licences qu'elle a signées ; la « retirer » se fait par `retiree: true`, pas en effaçant l'entrée. **Depuis la 9.4.1 le champ `reponse` porte la clé publique de RÉPONSE** (créée dans SkanFact le 17/09/2026 — celle du 15/09 était brûlée, sa privée ayant transité par une conversation) : sa privée vit dans le réglage Cloudflare `REPONSE_PRIVATE_KEY`, jamais dans le dépôt, et c'est elle qui fait qu'une révocation prononcée depuis la console s'applique chez un client à jour. Un test exige qu'elle soit une Ed25519 distincte de `master` et de `srv-1`. Ne jamais la remplacer par une clé dont la privée a été vue (`plateforme/README.md` § 4).
 - **Partager un dossier à deux se fait en DEUX gestes**, et ils vivent dans `src/main.js` :
   `dossiers:share` copie le dossier OUVERT vers un emplacement commun (l'original reste, la bascule
   n'a lieu qu'une fois la copie constatée), `dossiers:join` ouvre un dossier déjà posé sans rien
@@ -3176,6 +3178,78 @@ embarquée par `SKANFACT_CLE_EMBARQUEE`, privée jamais sortie du dossier tempor
 gratuits, cinq clients qui dépassent, la validation refusée pendant que lire / importer / saisir /
 exporter restent ouverts, deux archivés qui rendent la main, trois clés refusées (autre cabinet,
 client parrainé, charabia) et la bonne qui ouvre.
+
+### 9.4.1 — La clé de réponse embarquée, et la console qui vend un cabinet
+
+Deux moitiés d'une même chose : ce qui manquait pour que la révocation morde, et ce qui manquait à
+la console pour vendre ce que la 9.4.0 avait rendu vendable.
+
+**La clé de réponse.** `build/licences-publiques.json` porte enfin `reponse` (créée dans SkanFact
+sur le Mac de Skander le 17/09/2026). Sa privée vit dans le réglage Cloudflare
+`REPONSE_PRIVATE_KEY`. Sans elle, l'application ignorait TOUTE réponse du serveur — c'était le bon
+défaut (8.4.0 : une réponse qu'on ne peut pas juger ne restreint rien), mais cela voulait dire
+qu'aucune révocation ne s'appliquait chez personne.
+
+- **Une clé privée qui a été VUE est brûlée**, et la règle n'a pas d'exception : celle du
+  15/09/2026 avait transité par une conversation, elle a été jetée (les deux fichiers de
+  `~/.skanfact/` supprimés), une paire neuve créée, le secret Cloudflare remplacé. Poser la publique
+  dans le dépôt sans ce geste aurait armé une clé que quelqu'un d'autre peut imiter.
+- **Une clé de réponse n'est jamais une clé de licence.** Un test exige qu'elle soit une Ed25519
+  lisible, **distincte de toutes les `cles[]`** : une seule clé pour deux usages, et compromettre
+  l'une emporte l'autre. Il exige aussi qu'aucun `PRIVATE KEY` ne traîne dans le fichier, et que
+  `main.js` la lise bien dans `reponse.publicKey` — un champ renommé désarmerait la vérification en
+  silence, exactement comme `licence-public*.json` ne couvrait pas `licences-publiques.json` (8.4.0).
+
+**La console vend un cabinet.** La 9.4.0 avait livré deux tiers d'une vente : SkanFact Cabinet lit
+une clé de cabinet, l'Éditeur de SkanFact en signe une — et la console, elle, ne connaissait que
+deux offres. Trois moitiés d'une même vente, dont une seule vendait.
+
+- **Le type est en QUEUE de charge et le reste** (`type`, `dossiersHors`) : au milieu, il changerait
+  l'ordre des champs déjà signés, et une clé refabriquée depuis sa charge rangée en base ne serait
+  plus identique à celle qu'on a envoyée — or c'est exactement ce qui permet de ne jamais ranger la
+  clé (8.5.0). Deux colonnes de plus dans `licences` (`type`, `dossiers_hors`), NULL = entreprise.
+- **Une empreinte se compare sans ses SÉPARATEURS.** La console range la forme nue
+  (`3f9a2c1e…`), le cabinet lit la forme à tirets (`3F9A-2C1E-…`), et la 9.4.0 comparait
+  caractère à caractère : une clé vendue par la console aurait été refusée par le cabinet qui l'a
+  achetée. La clé porte donc la forme CANONIQUE (`canonEmpreinte`) et `licenceCabinet` normalise
+  les deux côtés — mais retire seulement les séparateurs, jamais « tout ce qui n'est pas
+  hexadécimal » : un G tapé pour un 6 doit rester une faute visible (8.1.0).
+- **Aucun prix par défaut pour un dossier de cabinet** (`PRIX_CABINET_DOSSIER`, défaut 0 = le
+  formulaire ne propose rien). Les tarifs du Cabinet ne sont pas fixés — l'avis de l'Ordre n'est pas
+  revenu — et un chiffre écrit « pour l'exemple » devient un tarif par simple préremplissage. C'est
+  la règle 9.1.1 (« la valeur par défaut d'une règle qu'on ne connaît pas est celle qui ne fait
+  rien ») appliquée à un prix.
+- **`OFFRES['cabinet']` n'existe pas**, et c'est voulu : « cabinet » est un TYPE, rangé dans `offre`
+  pour que la colonne reste renseignée. Tout `OFFRES[x].label` sur une licence de cabinet plante —
+  d'où `libelleLicence`, une seule fonction pour le journal, le mail et la console. Le journal a été
+  le premier à tomber.
+- **Ce qui change de nature change de MAIL** : `licenceCabinet` (FR et EN) mène à *Réglages → Mon
+  cabinet → Licence*, jamais aux Paramètres de SkanFact. Un test compare la phrase d'activation du
+  worker à celle du gabarit de l'application : un client qui reçoit sa clé de la console ou de
+  SkanFact lit le même chemin.
+- **La licence du cabinet LUI-MÊME porte son empreinte comme SUJET**, pas comme parrainage :
+  `licencesDuCabinet` l'exclut, sinon « ce cabinet a déjà parrainé quelqu'un » se corroborerait avec
+  sa propre licence. Et la remise de parrainage ne se pose jamais sur une licence de cabinet.
+
+Pièges rencontrés, tous déjà écrits ici :
+- **Aucun backtick dans un commentaire d'un `template literal`** (quatrième fois, 7.20.0 / 7.29.0 /
+  7.31.0) : deux commentaires de la console citaient `libelleLicence` et une règle CSS entre
+  backticks — le fichier entier cessait d'être analysable, et l'erreur était signalée 1 000 lignes
+  plus loin. Le bisect ligne par ligne l'a désigné en dix secondes ; la relecture, non.
+- **Trois assertions ancrées sur une FORME sont tombées sur du code juste** : `discountRate: v.parrain ? `
+  (recopiée mot pour mot, elle tombe dès que le geste gagne un garde-fou légitime — piège 7.16.0),
+  et deux tranches bornées sur un voisin qui a déménagé. Les trois ont été **retournées vers la
+  règle**, pas rafistolées : la remise dépend du parrainage et vit sur la facture ; le contrôle
+  d'empreinte passe par core.js et sert ses DEUX champs.
+- **Un champ caché par `hidden` reste visible dans la console** : `label.f{display:block}` bat
+  l'attribut du navigateur. On cache par le style (`montrerChamp`).
+- Piège de test : une ligne lue par SQLite arrive **sans prototype**, et `deepStrictEqual` compare
+  aussi les prototypes.
+
+Prouvé : **27 défauts réintroduits un par un** font tomber leur test — dont trois qui ne pouvaient
+tomber qu'en les remettant (la clé de réponse redevenue `null`, la clé de réponse confondue avec la
+maître, l'empreinte nue dans la clé signée). `npm run e2e:console` gagne une étape (le type, le
+quota, l'empreinte, et la clé que SkanFact Cabinet reconnaît pendant que SkanFact la refuse).
 
 ## Pistes pour la suite (non demandées)
 

@@ -25,8 +25,9 @@ En cas de contradiction, `DIRECTION.md` fait foi, puis `CAHIER-DES-CHARGES.md`, 
   entretien** : plus aucun écran neuf n'y est ajouté (`DIRECTION.md`).
 - **SkanFact Cabinet 9.0.0** : reçoit les paquets, recalcule leurs empreintes, relance, suit les
   échéances et exporte les écritures en CSV. **Ne tient pas encore de comptabilité.**
-- **Plateforme** : écrite, testée contre le vrai schéma D1 sur SQLite, **pas en production** — la
-  clé de réponse est `null` et la révocation ne s'applique donc chez personne.
+- **Plateforme** : écrite, testée contre le vrai schéma D1 sur SQLite. *(Mis à jour le 17/09/2026 :
+  la clé de réponse est embarquée depuis la 9.4.1 — la révocation s'applique chez tout client à
+  jour. Reste, côté Skander : les réglages Cloudflare et la première vente.)*
 - **Clients payants : zéro.** Trois utilisateurs, tous de la famille : Skander, son père, son frère.
 - **Prochaine version : 9.1.0** — l'outillage, puis les livres lus dans les paquets.
 - **Ce qui décide de la suite** : J0 le 15/10/2026, et c'est une démarche, pas du code.

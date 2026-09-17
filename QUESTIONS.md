@@ -1175,9 +1175,10 @@ revenus » n'avait pas de suite. Voici la suite. Les dates sont des propositions
   l'abri, sa moitié publique est embarquée dans l'application. Aucune session Claude ne l'a jamais
   vue. La **clé serveur** (`srv-1`) : de second rang, avec laquelle la console signe les ventes ; sa
   privée est dans un réglage Cloudflare, sa publique dans le même fichier embarqué. La **clé de
-  réponse** : celle avec laquelle le serveur signera les révocations ; celle du 15/09/2026 a été
-  brûlée (sa privée a été vue) et sera recréée le jour de la mise en production, dans SkanFact, sur
-  le poste de l'éditeur. **Décidé.**
+  réponse** : celle avec laquelle le serveur signe les révocations ; celle du 15/09/2026 a été
+  brûlée (sa privée a été vue), jetée, et recréée le 17/09/2026 dans SkanFact sur le poste de
+  l'éditeur — sa publique est embarquée depuis la 9.4.1, sa privée dans le réglage Cloudflare
+  `REPONSE_PRIVATE_KEY`. **Fait.**
 - **Pourquoi plusieurs clés ?** Pour pouvoir en retirer une sans invalider les autres. Si la clé
   serveur est compromise, on la marque retirée et on réémet les licences qu'elle a signées ; les
   licences signées par la maître ne bougent pas. Chaque clé porte un identifiant (`kid`) ; une
@@ -1227,7 +1228,7 @@ revenus » n'avait pas de suite. Voici la suite. Les dates sont des propositions
   est signée, datée et adressée à cette licence : sinon un intermédiaire malveillant (un wifi
   d'hôtel) pourrait révoquer un client qui a payé. Le serveur peut **ajouter** une restriction
   prévue, jamais accorder un droit ; lever une révocation exige la même preuve que la poser.
-  **Livré, en attente de la clé de réponse.**
+  **Livré ; la clé de réponse est embarquée depuis la 9.4.1.**
 - **Le pont entre la console et SkanFact ?** SkanFact **tire** les ventes de la console (un serveur
   ne peut pas écrire dans un logiciel éteint), fabrique un brouillon de facture par vente, et rend le
   numéro à l'émission. L'historique des licences émises avant la console y a été envoyé une fois. Le

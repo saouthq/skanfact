@@ -449,6 +449,11 @@ function licenceCabinet(opts) {
   const pub = opts.cles || opts.publicKey || '';
   const comptes = Math.max(0, Number(opts.comptes) || 0);
   const empreinte = String(opts.empreinte || '').trim().toUpperCase();
+  // Deux empreintes se comparent sans leurs séparateurs ni leur casse : « 3f9a-2c1e-… » recopiée
+  // d'un message, « 3F9A2C1E… » telle que la console la range, « 3F9A-2C1E-… » telle que le cabinet
+  // la lit — c'est le même cabinet. Retirer seulement les SÉPARATEURS, jamais « tout ce qui n'est
+  // pas hexadécimal » : un G tapé pour un 6 doit rester une faute visible (8.1.0).
+  const nue = s => String(s || '').replace(/[\s.:_-]/g, '').toUpperCase();
   const base = { comptes, gratuits: CABINET_GRATUITS, quota: 0, autorises: CABINET_GRATUITS, key: opts.key || '', exp: '', daysLeft: null };
   const fin = (x) => {
     const autorises = CABINET_GRATUITS + Math.max(0, Number(x.quota) || 0);
@@ -473,7 +478,7 @@ function licenceCabinet(opts) {
     return fin({ state: 'autre', quota: 0, label: 'Licence d\'une entreprise',
       detail: 'Cette clé est celle d\'une entreprise, pas d\'un cabinet : elle s\'installe dans SkanFact, pas ici.' });
   }
-  if (payload && empreinte && String(payload.cabinet || '').trim().toUpperCase() !== empreinte) {
+  if (payload && empreinte && nue(payload.cabinet) !== nue(empreinte)) {
     return fin({ state: 'autre', quota: 0, label: 'Licence d\'un autre cabinet',
       detail: `Cette clé a été émise pour l'empreinte ${payload.cabinet || '(inconnue)'}, pas pour ${empreinte}. `
         + 'Si tu viens de reprendre ton cabinet sur un autre ordinateur, vérifie que tu as bien repris ta clé de secours : '

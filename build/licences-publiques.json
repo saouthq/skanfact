@@ -12,5 +12,8 @@
       "depuis": "2026-09-15"
     }
   ],
-  "reponse": null
+  "reponse": {
+    "publicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAQGWDAMmSQ251MrG9dNEd7DijJDtjAxS38wqyV/ElBgg=\n-----END PUBLIC KEY-----\n",
+    "depuis": "2026-09-17"
+  }
 }

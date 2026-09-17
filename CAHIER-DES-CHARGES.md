@@ -517,11 +517,13 @@ d'une sauvegarde — comme `cabinet-data.json`.
 { "format": 1,
   "cles": [ { "kid": "master", "publicKey": "-----BEGIN PUBLIC KEY-----…", "depuis": "2026-09-14" },
             { "kid": "srv-1",  "publicKey": "-----BEGIN PUBLIC KEY-----…", "depuis": "2026-09-15" } ],
-  "reponse": null }
+  "reponse": { "publicKey": "-----BEGIN PUBLIC KEY-----…", "depuis": "2026-09-17" } }
 ```
 
-`cles[].retiree?: true` retire une clé sans l'effacer. `reponse` reçoit `{ kid, publicKey, depuis }`
-le jour de la mise en production (la clé créée le 15/09/2026 est **brûlée**, jamais l'embarquer).
+`cles[].retiree?: true` retire une clé sans l'effacer. `reponse` porte `{ publicKey, depuis }` — sans
+`kid` : l'application ne connaît qu'UNE clé de réponse, et `main.js` ne lit que `reponse.publicKey`
+(un test l'exige). Embarquée depuis la **9.4.1** (créée le 17/09/2026 ; la clé du 15/09/2026 était
+**brûlée** et a été jetée). Un test exige qu'elle soit une Ed25519 distincte de toutes les `cles[]`.
 `licence-public.json` = `{ publicKey, createdAt }` de la seule clé `master`, à l'identique (repli
 d'avant 8.4.0). Le glob de `build.files` doit embarquer **les deux** (un test l'évalue contre les deux
 noms). **La clé `master` ne se supprime, ne se régénère et ne se remplace jamais.**

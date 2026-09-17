@@ -7,6 +7,40 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 9.4.1 — 17/09/2026
+
+**La révocation s'applique enfin.** La clé qui permet au serveur de **prouver** que ses réponses
+viennent bien de lui est embarquée dans cette version. Jusqu'ici elle valait `null` : une licence
+révoquée depuis la console continuait de fonctionner chez le client, parce que l'application ignorait
+— par construction, et c'était le bon défaut — toute réponse qu'elle ne pouvait pas vérifier.
+
+- **Ce qui change pour toi (client) : rien**, sauf si ta licence est révoquée. Aucun message, aucune
+  connexion obligatoire, aucun réglage. Une réponse du serveur n'est crue que si elle est **signée,
+  datée et adressée à ta licence** ; sinon elle est ignorée, comme avant.
+- La clé a été **recréée le 17/09/2026** sur l'ordinateur de l'éditeur. Celle du 15/09 avait été vue
+  hors de son poste : une clé privée qui a été vue est brûlée, on la jette et on recommence.
+
+**Et la console (`api.skanfact.tn`) sait vendre une licence de cabinet.** La 9.4.0 avait appris à
+SkanFact Cabinet à lire une clé de cabinet et à l'Éditeur de SkanFact à en signer une ; la console,
+elle, ne connaissait que deux offres. Les trois moitiés d'une même vente sont maintenant d'accord.
+
+- **Un type à l'émission** : « Entreprise » (une offre, un matricule, s'installe dans SkanFact) ou
+  « Cabinet comptable » (l'empreinte du cabinet, un quota de dossiers hors SkanFact, s'installe dans
+  SkanFact Cabinet). Chaque application refuse la clé de l'autre.
+- **Aucun prix n'est proposé pour un dossier de cabinet** tant qu'il n'est pas réglé : les tarifs du
+  Cabinet ne sont pas fixés, et un chiffre écrit « pour l'exemple » deviendrait un tarif.
+- **« Changer le quota »** remplace « Changer d'offre » sur un cabinet : la date de fin ne bouge pas,
+  seule la différence est facturée au prorata. **Renouveler** garde le quota.
+- Le mail d'une clé de cabinet mène à **Réglages → Mon cabinet → Licence**, jamais aux Paramètres de
+  SkanFact. La facture dit « SkanFact Cabinet — N dossiers ». La colonne de la console affiche le
+  quota et combien de clients ce cabinet a parrainés.
+- Une empreinte se compare désormais **sans ses séparateurs** : `3F9A-2C1E-…` recopiée d'un message
+  et `3f9a2c1e…` rangée par la console sont le même cabinet. Un « G » tapé pour un « 6 » reste, lui,
+  une faute qui se voit.
+
+Prouvé : 27 défauts réintroduits un par un font tomber leur test. 458 tests, lint 0 erreur,
+`e2e:console` (16 étapes), `e2e:pont` et `e2e:licence` verts.
+
 ## 9.4.0 — 17/09/2026
 
 **SkanFact Cabinet devient payant — au-delà de trois dossiers, et seulement pour ceux qui ne sont pas

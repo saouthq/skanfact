@@ -517,7 +517,9 @@
   function licencesDuCabinet(licences, empreinte, sauf) {
     const e = empreinteCabinet(empreinte);
     if (!e.ok) return [];
-    return (licences || []).filter(l => l && l.id !== sauf && empreinteCabinet(l.cabinet).valeur === e.valeur);
+    // La licence du cabinet LUI-MÊME (9.4.0) porte aussi son empreinte — comme sujet, pas comme
+    // parrainage. Elle ne compte pas parmi « les clients qu'il a amenés ».
+    return (licences || []).filter(l => l && l.id !== sauf && l.type !== 'cabinet' && empreinteCabinet(l.cabinet).valeur === e.valeur);
   }
 
   // ---------- tout effacer (7.0.0) ----------
@@ -5177,7 +5179,10 @@
         email: (client && client.email) || '', offre: l.offre || 'entreprise', exp: l.exp || '', emisLe: l.emisLe || '',
         cabinet: l.cabinet || '', prix: Number(l.prix) || 0, devise: (inv && inv.currency) || co.currency || 'TND',
         remise: inv ? Number(inv.discountRate) || 0 : 0, motif: l.motif || '', remplaceePar: l.remplaceePar || '',
-        revoqueeLe: l.revoqueeLe || '', revoqueeMotif: l.revoqueeMotif || '', envoyeeLe: suivi.envoyeeLe || '', facture
+        revoqueeLe: l.revoqueeLe || '', revoqueeMotif: l.revoqueeMotif || '', envoyeeLe: suivi.envoyeeLe || '', facture,
+        // 9.4.1 — le type et le quota d'une licence de CABINET : sans eux, la console la rangerait en
+        // « Entreprise » et la renouvellerait comme telle.
+        type: l.type === 'cabinet' ? 'cabinet' : 'entreprise', dossiersHors: l.type === 'cabinet' ? Math.max(0, Math.round(Number(l.dossiersHors) || 0)) : 0
       };
     });
   }
@@ -5677,7 +5682,11 @@
     // La clé de licence envoyée par l'éditeur de SkanFact à son client (7.33.0). `{cle}` est la
     // chaîne « SKAN1.… », `{offre}` et `{fin}` viennent de la licence, `{facture}` est la phrase
     // « Votre facture N est jointe… » — présente SEULEMENT quand la pièce part vraiment avec.
-    licence: { subject: 'Votre licence SkanFact — {offre}', body: 'Bonjour,\n\nVoici votre clé de licence SkanFact ({offre}{fin}) :\n\n{cle}\n\nPour l\'activer : dans SkanFact, ouvrez Paramètres → L\'application → Licence, collez la clé en entier (de « SKAN1. » jusqu\'au dernier caractère) et cliquez sur « Enregistrer la clé ». Aucune connexion n\'est nécessaire.\n\n{facture}Merci de votre confiance.\n\nCordialement,\n{societe}' }
+    licence: { subject: 'Votre licence SkanFact — {offre}', body: 'Bonjour,\n\nVoici votre clé de licence SkanFact ({offre}{fin}) :\n\n{cle}\n\nPour l\'activer : dans SkanFact, ouvrez Paramètres → L\'application → Licence, collez la clé en entier (de « SKAN1. » jusqu\'au dernier caractère) et cliquez sur « Enregistrer la clé ». Aucune connexion n\'est nécessaire.\n\n{facture}Merci de votre confiance.\n\nCordialement,\n{societe}' },
+    // 9.4.1 — la clé d'un CABINET se colle dans SkanFact Cabinet, pas dans SkanFact : le chemin
+    // d'activation est celui de ses Réglages, et `{quota}` remplace l'offre. La console
+    // (`mailLicence`) écrit la même phrase, et un test les compare.
+    licenceCabinet: { subject: 'Votre licence SkanFact Cabinet — {quota}', body: 'Bonjour,\n\nVoici votre clé de licence SkanFact Cabinet ({quota} hors SkanFact en plus des trois gratuits{fin}) :\n\n{cle}\n\nPour l\'activer : dans SkanFact Cabinet, ouvrez Réglages → Mon cabinet → Licence, collez la clé en entier (de « SKAN1. » jusqu\'au dernier caractère) et cliquez sur « Enregistrer la clé ». Aucune connexion n\'est nécessaire.\n\n{facture}Merci de votre confiance.\n\nCordialement,\n{societe}' }
   };
 
   const DEFAULT_EMAIL_TEMPLATES_EN = {
@@ -5691,7 +5700,8 @@
     comptable: { subject: 'Accounting {objet} — {societe}', body: 'Hello,\n\nPlease find attached the sales journal for {objet}.\n\nBest regards,\n{societe}' },
     // L'interface de SkanFact est en français : le mail anglais cite les libellés RÉELS des menus,
     // avec leur traduction — un client anglophone doit pouvoir les retrouver à l'écran.
-    licence: { subject: 'Your SkanFact licence — {offre}', body: 'Hello,\n\nHere is your SkanFact licence key ({offre}{fin}):\n\n{cle}\n\nTo activate it: in SkanFact, open « Paramètres → L\'application → Licence » (Settings → The application → Licence), paste the whole key (from "SKAN1." to the last character) and click « Enregistrer la clé » (Save the key). No internet connection is needed.\n\n{facture}Thank you for your trust.\n\nBest regards,\n{societe}' }
+    licence: { subject: 'Your SkanFact licence — {offre}', body: 'Hello,\n\nHere is your SkanFact licence key ({offre}{fin}):\n\n{cle}\n\nTo activate it: in SkanFact, open « Paramètres → L\'application → Licence » (Settings → The application → Licence), paste the whole key (from "SKAN1." to the last character) and click « Enregistrer la clé » (Save the key). No internet connection is needed.\n\n{facture}Thank you for your trust.\n\nBest regards,\n{societe}' },
+    licenceCabinet: { subject: 'Your SkanFact Cabinet licence — {quota}', body: 'Hello,\n\nHere is your SkanFact Cabinet licence key ({quota} outside SkanFact, on top of the three free ones{fin}):\n\n{cle}\n\nTo activate it: in SkanFact Cabinet, open « Réglages → Mon cabinet → Licence » (Settings → My firm → Licence), paste the whole key (from "SKAN1." to the last character) and click « Enregistrer la clé » (Save the key). No internet connection is needed.\n\n{facture}Thank you for your trust.\n\nBest regards,\n{societe}' }
   };
 
   function emailFor(kind, doc, client, company, extra) {

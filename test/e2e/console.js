@@ -290,6 +290,57 @@ async function servir() {
     }
     await page.setViewportSize({ width: 1280, height: 900 });
 
+    etape('13 bis. Une licence de CABINET : le type, l\'empreinte, le quota — et SkanFact Cabinet la reconnaît');
+    await page.click('#nouveau-client');
+    await page.waitForSelector('#form:not([hidden]) [name=nom]');
+    await page.fill('#form [name=nom]', 'Cabinet Ben Salah');
+    await page.fill('#form [name=email]', 'cabinet@bensalah.tn');
+    await valider();
+    await page.waitForFunction(() => /Client créé/.test((document.getElementById('info') || {}).textContent || ''));
+    const idCab = db.lire("SELECT id FROM clients WHERE nom = 'Cabinet Ben Salah'")[0].id;
+    await page.click('#emettre');
+    await page.waitForSelector('#form:not([hidden]) [name=type]');
+    await page.selectOption('#form [name=clientId]', idCab);
+    doit(await page.isVisible('#form [name=offre]'), 'en Entreprise, l\'offre se voit');
+    await page.selectOption('#form [name=type]', 'cabinet');
+    doit(!(await page.isVisible('#form [name=offre]')), 'en Cabinet, l\'offre disparaît');
+    doit(await page.isVisible('#form [name=dossiersHors]'), 'et le quota apparaît');
+    doit(!(await page.isVisible('#form [name=parrain]')), 'le parrainage n\'a pas de sens pour un cabinet');
+    doit((await page.inputValue('#form [name=prix]')) === '', 'aucun prix proposé : les tarifs du Cabinet ne sont pas fixés');
+    await page.fill('#form [name=dossiersHors]', '10');
+    await page.fill('#form [name=prix]', '500');
+    await page.click('#f-ok');   // sans empreinte : refus qui se lit — c'est le sujet de la clé
+    await page.waitForSelector('#f-msg:not([hidden])');
+    doit(/EMPREINTE/i.test(await page.textContent('#f-msg')), 'sans empreinte, refus : « ' + (await page.textContent('#f-msg')).trim().slice(0, 60) + '… »');
+    await page.fill('#form [name=cabinet]', '3f9a-2c1e-0000-1111-2222');
+    await valider();
+    await page.waitForSelector('#resultat:not([hidden]) #cle');
+    const cleCab = (await page.textContent('#resultat #cle')).trim();
+    const chCab = L.verifyKey(cleCab, cles);
+    doit(!!chCab && chCab.type === 'cabinet' && chCab.dossiersHors === 10 && chCab.cabinet === '3F9A-2C1E-0000-1111-2222',
+      'la clé porte le type, le quota et l\'empreinte sous sa forme canonique');
+    const stCab = L.licenceCabinet({ key: cleCab, cles, empreinte: '3F9A-2C1E-0000-1111-2222', comptes: 12, today: L.today() });
+    doit(stCab.state === 'active' && stCab.autorises === 13, 'SkanFact Cabinet la verrait « active » : 3 gratuits + 10');
+    doit(L.licenceState({ key: cleCab, cles, matricule: '1234567A', today: L.today(), installedAt: L.today() }).locked === true, 'et SkanFact (l\'entreprise) la refuse');
+    doit(/Cabinet — 10 dossiers/.test(await page.textContent('#resultat')), 'l\'écran nomme le quota, pas une offre');
+    await page.click('#cle-fermer');
+    await onglet('licences');
+    await page.waitForSelector('#table tbody tr');
+    ls = await lignes();
+    doit(ls.some(l => /Ben Salah/.test(l) && /Cabinet — 10 dossiers/.test(l)), 'la ligne dit « Cabinet — 10 dossiers »');
+    await boutonDeLigne('Ben Salah', 'Changer le quota');
+    await page.waitForSelector('#form:not([hidden]) [name=dossiersHors]');
+    doit(/Changer le quota/.test(await page.textContent('#form h2')), 'le formulaire parle de quota, pas d\'offre');
+    await page.fill('#form [name=dossiersHors]', '25');
+    await page.fill('#form [name=prix]', '300');
+    await valider();
+    await page.waitForSelector('#resultat:not([hidden]) #cle');
+    const cleCab2 = (await page.textContent('#resultat #cle')).trim();
+    doit(cleCab2 !== cleCab && L.verifyKey(cleCab2, cles).dossiersHors === 25
+      && L.licenceCabinet({ key: cleCab2, cles, empreinte: '3f9a2c1e000011112222', comptes: 20, today: L.today() }).autorises === 28,
+      'le nouveau quota est dans la clé neuve : 3 + 25, reconnu sous l\'empreinte sans tirets');
+    await page.click('#cle-fermer');
+
     etape('14. Fermer la session referme vraiment');
     await page.click('#out');
     await page.waitForSelector('#lock:not([hidden])');
@@ -303,7 +354,7 @@ async function servir() {
     doit(fautes.length === 0, 'aucune exception JavaScript (' + (fautes[0] || 'rien') + ')');
     doit(attendues.length > 0, 'le serveur a réellement refusé le mauvais secret (' + attendues.length + ' refus)');
 
-    console.log('\n15 étapes — la console vend : le client, la clé, la vente, le mail, le renouvellement, la révocation.');
+    console.log('\n16 étapes — la console vend : le client, la clé, la vente, le mail, le renouvellement, la révocation, et la licence d\'un cabinet.');
   } finally {
     await nav.close();
     srv.close();

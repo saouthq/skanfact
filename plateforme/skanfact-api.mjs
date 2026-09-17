@@ -308,6 +308,11 @@ export function tarifs(env) {
   return {
     independant: n(env && env.PRIX_INDEPENDANT, 390),
     entreprise: n(env && env.PRIX_ENTREPRISE, 690),
+    // 9.4.1 — le prix d'UN dossier hors SkanFact, par an, pour une licence de cabinet. Aucun
+    // défaut : les prix du Cabinet ne sont pas fixés (l'avis de l'Ordre n'est pas revenu,
+    // DIRECTION.md § 8), et un chiffre inventé ici deviendrait un tarif par simple préremplissage.
+    // Zéro = « le formulaire ne propose rien, le montant se décide à la main ».
+    cabinetDossier: n(env && env.PRIX_CABINET_DOSSIER, 0),
     remiseParrainage: n(env && env.REMISE_PARRAINAGE, 20),
     devise: String((env && env.DEVISE) || 'TND').slice(0, 3).toUpperCase()
   };
@@ -394,11 +399,25 @@ export function nettoyerClient(corps) {
   };
 }
 
+// L'empreinte telle que l'application l'ÉCRIT dans la clé (`licence:emettre` dans main.js) et
+// telle que le cabinet la lit dans ses Réglages : cinq groupes de quatre, en majuscules, tirets.
+// La base, elle, range la forme nue (vingt hexadécimaux minuscules, `CABINET`) : c'est sur elle
+// que les jointures se font, et une seule forme en base évite qu'un même cabinet apparaisse deux
+// fois selon la casse du copier-coller.
+export const canonEmpreinte = nue => (String(nue || '').toUpperCase().match(/.{4}/g) || []).join('-');
+
 // Une émission (ou un renouvellement, ou un changement d'offre : ce sont les mêmes champs, moins
 // ceux que la licence remplacée impose). `depuis` : le jour d'où part la durée.
+//
+// 9.4.1 — le TYPE. Une licence d'ENTREPRISE porte une offre et un matricule ; une licence de
+// CABINET porte un quota de dossiers hors SkanFact, et son sujet est l'EMPREINTE du cabinet — pas
+// de matricule, pas d'offre (`offre: 'cabinet'`, pour que la colonne reste renseignée). Les mêmes
+// règles que `licence:emettre` dans src/main.js : une empreinte obligatoire, un quota de 1 à 5000.
+// Les deux applications refusent la clé de l'autre (9.4.0) : le type est ce qui les sépare.
 export function nettoyerEmission(corps, depuis) {
   const c = corps && typeof corps === 'object' ? corps : {};
-  const offre = OFFRES[c.offre] ? String(c.offre) : '';
+  const type = c.type === 'cabinet' ? 'cabinet' : 'entreprise';
+  const offre = type === 'cabinet' ? 'cabinet' : (OFFRES[c.offre] ? String(c.offre) : '');
   if (!offre) return { ok: false, erreur: 'Choisis une offre : Indépendant ou Entreprise.' };
   const exp = expirationPour(depuis, String(c.duree || ''), c.dateLibre);
   if (exp === null) return { ok: false, erreur: 'La durée est inconnue, ou la date de fin n\'est pas dans le futur.' };
@@ -406,19 +425,41 @@ export function nettoyerEmission(corps, depuis) {
   if (!Number.isFinite(prix) || prix < 0) return { ok: false, erreur: 'Le prix HT doit être un nombre positif ou nul.' };
   const remise = c.remise == null || c.remise === '' ? 0 : Number(c.remise);
   if (!Number.isFinite(remise) || remise < 0 || remise > 100) return { ok: false, erreur: 'La remise est un pourcentage entre 0 et 100.' };
-  const cabinet = String(c.cabinet || '').toLowerCase().replace(/[\s:.-]/g, '');
+  const cabinet = String(c.cabinet || '').toLowerCase().replace(/[\s:._-]/g, '');
   if (cabinet && !CABINET.test(cabinet)) return { ok: false, erreur: 'L\'empreinte du cabinet fait vingt caractères hexadécimaux (cinq groupes de quatre).' };
+  let dossiersHors = 0;
+  if (type === 'cabinet') {
+    if (!cabinet) return { ok: false, erreur: 'Une licence de cabinet est attachée à son EMPREINTE : les vingt caractères que le comptable lit dans SkanFact Cabinet → Réglages → Mon cabinet.' };
+    dossiersHors = Math.round(Number(c.dossiersHors));
+    if (!Number.isFinite(dossiersHors) || dossiersHors < 1 || dossiersHors > 5000) {
+      return { ok: false, erreur: 'Combien de dossiers hors SkanFact cette licence couvre-t-elle, en plus des trois gratuits ? (entre 1 et 5000)' };
+    }
+  }
   const payeeLe = c.payeeLe ? String(c.payeeLe).trim() : '';
   if (payeeLe && !dateValide(payeeLe)) return { ok: false, erreur: 'La date de paiement n\'est pas une date (AAAA-MM-JJ).' };
   const devise = String(c.devise || 'TND').trim().toUpperCase().slice(0, 3) || 'TND';
   return {
     ok: true,
     e: {
+      type, dossiersHors,
       offre, exp, prix: Math.round(prix * 1000) / 1000, remise, devise, cabinet,
+      // Ce qui entre dans la CLÉ : la forme que l'application écrit et que le cabinet compare.
+      cabinetCanon: cabinet ? canonEmpreinte(cabinet) : '',
       montant: Math.round(prix * (1 - remise / 100) * 1000) / 1000,
       payeeLe, moyen: texteNet(c.moyen, 40)
     }
   };
+}
+
+// Ce qu'une licence EST, en un libellé : l'offre d'une entreprise, ou le quota d'un cabinet.
+// Partagé par le journal, le mail et la console — deux libellés écrits à deux endroits divergent.
+export function libelleLicence(l) {
+  const x = l || {};
+  if (x.type === 'cabinet') {
+    const n = Math.max(0, Number(x.dossiersHors != null ? x.dossiersHors : x.dossiers_hors) || 0);
+    return 'Cabinet — ' + n + ' dossier' + (n === 1 ? '' : 's') + ' hors SkanFact';
+  }
+  return (OFFRES[x.offre] || {}).label || 'Entreprise';
 }
 
 // Une licence de l'historique de SkanFact, telle que l'application l'envoie au premier branchement.
@@ -430,7 +471,11 @@ export function nettoyerImport(l) {
   if (!/^[A-Za-z0-9_-]{4,40}$/.test(id)) return { ok: false, erreur: 'identifiant manquant ou douteux' };
   const cle = String(c.cle || '').trim();
   if (!cle.startsWith('SKAN1.')) return { ok: false, erreur: 'clé absente' };
-  const offre = OFFRES[c.offre] ? String(c.offre) : 'entreprise';
+  // 9.4.1 — une licence de CABINET émise dans SkanFact garde son type et son quota à l'import :
+  // sans eux, la console la montrerait en « Entreprise » et la renouvellerait comme telle.
+  const type = c.type === 'cabinet' ? 'cabinet' : 'entreprise';
+  const offre = type === 'cabinet' ? 'cabinet' : (OFFRES[c.offre] ? String(c.offre) : 'entreprise');
+  const dossiersHors = type === 'cabinet' ? Math.max(0, Math.round(Number(c.dossiersHors) || 0)) : 0;
   const emisLe = dateValide(c.emisLe) ? c.emisLe : null;
   if (!emisLe) return { ok: false, erreur: 'date d\'émission illisible' };
   const exp = c.exp ? String(c.exp) : '';
@@ -443,7 +488,7 @@ export function nettoyerImport(l) {
   return {
     ok: true,
     l: {
-      id, cle, offre, emisLe, exp,
+      id, cle, offre, emisLe, exp, type, dossiersHors,
       nom: texteNet(c.nom, 120) || '', matricule: (texteNet(c.matricule, 30) || '').toUpperCase() || '', email: texteNet(c.email, 200),
       prix: Number.isFinite(prix) && prix >= 0 ? prix : null, devise: String(c.devise || 'TND').toUpperCase().slice(0, 3) || 'TND',
       remise: remise >= 0 && remise <= 100 ? remise : 0, cabinet: CABINET.test(cabinet) ? cabinet : '',
@@ -538,8 +583,25 @@ export async function cleServeur(env) {
 const fmtJour = iso => (dateValide(iso) ? iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4) : '');
 export function mailLicence(o) {
   const x = o || {};
-  const offre = (OFFRES[x.offre] || {}).label || 'Entreprise';
   const fin = x.exp ? ', valable jusqu\'au ' + fmtJour(x.exp) : ', sans limite de durée';
+  // 9.4.1 — la clé d'un CABINET se colle dans SkanFact Cabinet, pas dans SkanFact : le chemin
+  // d'activation est celui de ses Réglages, et le mail porte le quota au lieu d'une offre. La
+  // phrase est celle du gabarit `licenceCabinet` de l'application (un test les compare).
+  if (x.type === 'cabinet') {
+    const n = Math.max(0, Number(x.dossiersHors) || 0);
+    const quota = n + ' dossier' + (n === 1 ? '' : 's') + ' hors SkanFact en plus des trois gratuits';
+    return {
+      sujet: 'Votre licence SkanFact Cabinet — ' + n + ' dossier' + (n === 1 ? '' : 's'),
+      texte: 'Bonjour,\n\n'
+        + 'Voici votre clé de licence SkanFact Cabinet (' + quota + fin + ') :\n\n'
+        + String(x.cle || '') + '\n\n'
+        + 'Pour l\'activer : dans SkanFact Cabinet, ouvrez Réglages → Mon cabinet → Licence, collez la clé en entier (de « SKAN1. » jusqu\'au dernier caractère) et cliquez sur « Enregistrer la clé ». Aucune connexion n\'est nécessaire.\n\n'
+        + (x.facture ? 'Votre facture ' + x.facture + ' suit par le même canal.\n\n' : '')
+        + 'Merci de votre confiance.\n\n'
+        + 'Cordialement,\n' + String(x.signature || 'SkanFact')
+    };
+  }
+  const offre = (OFFRES[x.offre] || {}).label || 'Entreprise';
   return {
     sujet: 'Votre licence SkanFact — ' + offre,
     texte: 'Bonjour,\n\n'
@@ -668,9 +730,15 @@ async function repondreAdmin(r, request, env) {
   const SEL_LICENCE =
     'SELECT l.id, l.client_id, l.kid, l.empreinte, l.offre, l.postes, l.debut, l.fin, l.prix, l.devise, l.remise,' +
     ' l.cabinet_empreinte, l.emise_le, l.remplace_id, l.remplacee_motif, l.revoquee_le, l.revoquee_motif, l.envoyee_le,' +
+    // 9.4.1 — le type et le quota (NULL sur tout ce qui a été émis avant : une entreprise).
+    ' COALESCE(l.type, \'entreprise\') AS type, l.dossiers_hors,' +
     ' l.charge IS NOT NULL AS resignable, c.nom AS client, c.matricule, c.email,' +
     ' (SELECT r2.id FROM licences r2 WHERE r2.remplace_id = l.id LIMIT 1) AS remplacee_par,' +
-    ' (SELECT COUNT(*) FROM activations a2 WHERE a2.licence_id = l.id) AS activations' +
+    ' (SELECT COUNT(*) FROM activations a2 WHERE a2.licence_id = l.id) AS activations,' +
+    // Pour un cabinet : combien de ses clients ont une licence d'entreprise parrainée par lui — la
+    // preuve, côté éditeur, que ce cabinet amène du monde (et ce qui, un jour, décidera d'une remise).
+    ' (SELECT COUNT(*) FROM licences p WHERE COALESCE(l.type, \'entreprise\') = \'cabinet\' AND p.cabinet_empreinte = l.cabinet_empreinte' +
+    '   AND COALESCE(p.type, \'entreprise\') = \'entreprise\' AND p.revoquee_le IS NULL) AS parraines' +
     ' FROM licences l LEFT JOIN clients c ON c.id = l.client_id';
 
   if (request.method === 'GET') {
@@ -729,6 +797,7 @@ async function repondreAdmin(r, request, env) {
       const lignes = await tous(
         'SELECT v.id, v.client_id, v.licence_id, v.montant_ht, v.tva, v.devise, v.payee_le, v.moyen, v.facture_skanfact, v.importee_le,' +
         ' c.nom AS client, c.matricule, c.email, l.offre, l.fin, l.debut, l.kid, l.emise_le, l.prix, l.remise, l.cabinet_empreinte, l.envoyee_le, l.revoquee_le,' +
+        ' COALESCE(l.type, \'entreprise\') AS type, l.dossiers_hors,' +
         ' l.empreinte, l.charge IS NOT NULL AS resignable' +
         ' FROM ventes v LEFT JOIN clients c ON c.id = v.client_id LEFT JOIN licences l ON l.id = v.licence_id' +
         (nonFacturees ? ' WHERE v.facture_skanfact IS NULL' : '') +
@@ -794,20 +863,35 @@ async function repondreAdmin(r, request, env) {
       const client = await un('SELECT id, nom, matricule, email FROM clients WHERE id = ?', l.client_id);
       if (!client) return json({ erreur: 'Le client de cette licence est introuvable.' }, 409);
       let n, motif;
+      // Le type et l'empreinte de la licence en cours ne se choisissent pas ici : une licence de
+      // cabinet reste une licence de cabinet, pour le même cabinet. Seul le quota peut bouger.
+      const cab = l.type === 'cabinet';
       if (r.sous === 'renouveler') {
         // Un renouvellement part de la FIN de la licence en cours quand elle est encore future : les
         // trente jours de préavis sont payés (règle 8.2.0). La remise de parrainage repart à zéro.
         const depart = l.fin && l.fin > aujourdhui ? l.fin : aujourdhui;
-        n = nettoyerEmission({ ...corps, offre: l.offre, remise: corps.remise == null ? 0 : corps.remise, cabinet: l.cabinet_empreinte || '' }, depart);
+        n = nettoyerEmission({ ...corps, type: l.type, offre: l.offre, remise: corps.remise == null ? 0 : corps.remise, cabinet: l.cabinet_empreinte || '',
+          // Le quota se garde tel quel, sauf si le formulaire en propose un autre.
+          dossiersHors: cab ? (corps.dossiersHors == null || corps.dossiersHors === '' ? l.dossiers_hors : corps.dossiersHors) : 0 }, depart);
         if (!n.ok) return json({ erreur: n.erreur }, 400);
         n.e.debut = depart;
         motif = 'renouvellement';
+      } else if (cab) {
+        // Changer le QUOTA d'un cabinet : même règle que changer d'offre — la date de fin ne bouge
+        // pas, on facture ce que l'écran a annoncé (la différence au prorata, ou un montant décidé à
+        // la main). Même quota = rien à changer.
+        const q = Math.round(Number(corps.dossiersHors));
+        if (!Number.isFinite(q) || q < 1) return json({ erreur: 'Indique le nouveau nombre de dossiers hors SkanFact.' }, 400);
+        if (q === Number(l.dossiers_hors)) return json({ erreur: 'Cette licence couvre déjà ' + q + ' dossier' + (q === 1 ? '' : 's') + ' hors SkanFact.' }, 409);
+        n = nettoyerEmission({ ...corps, type: 'cabinet', dossiersHors: q, duree: l.fin ? 'date' : 'vie', dateLibre: l.fin, remise: 0, cabinet: l.cabinet_empreinte || '' }, aujourdhui);
+        if (!n.ok) return json({ erreur: n.erreur }, 400);
+        motif = 'offre';
       } else {
         // Changer d'offre : la date de fin ne bouge pas, on facture ce que l'écran a annoncé (le
         // prorata, ou un autre montant décidé à la main). Même offre = rien à changer.
         if (!OFFRES[corps.offre]) return json({ erreur: 'Choisis la nouvelle offre.' }, 400);
         if (corps.offre === l.offre) return json({ erreur: 'Cette licence est déjà en offre ' + OFFRES[l.offre].label + '.' }, 409);
-        n = nettoyerEmission({ ...corps, duree: l.fin ? 'date' : 'vie', dateLibre: l.fin, remise: 0, cabinet: l.cabinet_empreinte || '' }, aujourdhui);
+        n = nettoyerEmission({ ...corps, type: 'entreprise', duree: l.fin ? 'date' : 'vie', dateLibre: l.fin, remise: 0, cabinet: l.cabinet_empreinte || '' }, aujourdhui);
         if (!n.ok) return json({ erreur: n.erreur }, 400);
         motif = 'offre';
       }
@@ -817,7 +901,7 @@ async function repondreAdmin(r, request, env) {
     if (r.sous === 'envoyer') {
       const cle = await cleDeLicence(env, l);
       if (!cle.cle) return json({ erreur: cle.raison }, 409);
-      const m = mailLicence({ offre: l.offre, exp: l.fin || '', cle: cle.cle, signature: env.MAIL_SIGNATURE });
+      const m = mailLicence({ type: l.type, dossiersHors: l.dossiers_hors, offre: l.offre, exp: l.fin || '', cle: cle.cle, signature: env.MAIL_SIGNATURE });
       const envoi = await envoyerMail(env, { a: l.email, sujet: m.sujet, texte: m.texte });
       if (!envoi.ok) {
         await journaliser(env, 'mail.echec', { client_id: l.client_id, licence_id: l.id, detail: envoi.raison });
@@ -857,16 +941,17 @@ async function repondreAdmin(r, request, env) {
       }
       const ok = await executer(
         'INSERT INTO licences (id, client_id, kid, empreinte, offre, postes, debut, fin, prix, devise, remise, cabinet_empreinte,' +
-        ' emise_le, remplacee_motif, revoquee_le, revoquee_motif, envoyee_le, charge) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        ' emise_le, remplacee_motif, revoquee_le, revoquee_motif, envoyee_le, charge, type, dossiers_hors) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         n.l.id, client.id, v.kid, empreinte, n.l.offre, null, n.l.emisLe, n.l.exp || null, n.l.prix, n.l.devise, n.l.remise, n.l.cabinet || null,
-        n.l.emisLe + 'T00:00:00.000Z', n.l.motif || null, n.l.revoqueeLe || null, n.l.revoqueeMotif || null, n.l.envoyeeLe ? n.l.envoyeeLe + 'T00:00:00.000Z' : null, null);
+        n.l.emisLe + 'T00:00:00.000Z', n.l.motif || null, n.l.revoqueeLe || null, n.l.revoqueeMotif || null, n.l.envoyeeLe ? n.l.envoyeeLe + 'T00:00:00.000Z' : null, null,
+        n.l.type === 'cabinet' ? 'cabinet' : null, n.l.type === 'cabinet' ? n.l.dossiersHors : null);
       if (!ok) { bilan.ignorees.push({ id: n.l.id, raison: 'la base a refusé l\'écriture' }); continue; }
       ids.set(n.l.id, n.l.id);
       if (n.l.facture) {
         await executer('INSERT INTO ventes (id, client_id, licence_id, montant_ht, tva, devise, payee_le, moyen, facture_skanfact, importee_le) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
           'v_' + idCourt(), client.id, n.l.id, n.l.facture.montant, null, n.l.devise, n.l.facture.payeeLe || null, null, n.l.facture.numero || null, maintenant);
       }
-      await journaliser(env, 'licence.importee', { client_id: client.id, licence_id: n.l.id, detail: OFFRES[n.l.offre].label + ' — émise dans SkanFact le ' + n.l.emisLe });
+      await journaliser(env, 'licence.importee', { client_id: client.id, licence_id: n.l.id, detail: libelleLicence(n.l) + ' — émise dans SkanFact le ' + n.l.emisLe });
       bilan.importees++;
     }
     // Second passage : qui remplace qui. L'ordre d'arrivée ne garantit rien.
@@ -906,9 +991,13 @@ async function repondreAdmin(r, request, env) {
     const ks = await cleServeur(envx);
     if (!ks.ok) return json({ erreur: 'Émission impossible : ' + ks.raison }, 503);
     const id = idCourt();
+    // L'empreinte entre dans la clé sous sa forme CANONIQUE (majuscules, tirets) — celle que
+    // `licence:emettre` écrit dans SkanFact et que `licenceCabinet` compare ; la base garde la forme
+    // nue, sur laquelle les jointures se font. Le type et le quota (9.4.0) vont en QUEUE de charge.
     const charge = chargeLicence({
       kid: ks.kid, id, sub: o.client.id, nom: o.client.nom, matricule: o.client.matricule || '',
-      offre: o.e.offre, exp: o.e.exp, cabinet: o.e.cabinet, emisLe: o.aujourdhui
+      offre: o.e.offre, exp: o.e.exp, cabinet: o.e.cabinetCanon, emisLe: o.aujourdhui,
+      type: o.e.type, dossiersHors: o.e.dossiersHors
     });
     const chargeTexte = JSON.stringify(charge);
     let cle;
@@ -917,9 +1006,10 @@ async function repondreAdmin(r, request, env) {
     const empreinte = await empreinteCle(cle);
     const ok = await executer(
       'INSERT INTO licences (id, client_id, kid, empreinte, offre, postes, debut, fin, prix, devise, remise, cabinet_empreinte,' +
-      ' emise_le, remplace_id, remplacee_motif, charge) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      ' emise_le, remplace_id, remplacee_motif, charge, type, dossiers_hors) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       id, o.client.id, ks.kid, empreinte, o.e.offre, null, o.e.debut || o.aujourdhui, o.e.exp || null, o.e.prix, o.e.devise,
-      o.e.remise, o.e.cabinet || null, o.maintenant, o.remplace ? o.remplace.id : null, o.motif, chargeTexte);
+      o.e.remise, o.e.cabinet || null, o.maintenant, o.remplace ? o.remplace.id : null, o.motif, chargeTexte,
+      o.e.type === 'cabinet' ? 'cabinet' : null, o.e.type === 'cabinet' ? o.e.dossiersHors : null);
     if (!ok) return json({ erreur: 'La base a refusé l\'écriture de la licence.' }, 500);
     const venteId = 'v_' + idCourt();
     await executer(
@@ -927,12 +1017,13 @@ async function repondreAdmin(r, request, env) {
       venteId, o.client.id, id, o.e.montant, null, o.e.devise, o.e.payeeLe || null, o.e.payeeLe ? o.e.moyen : null);
     await journaliser(envx, o.motif ? 'licence.' + o.motif : 'licence.emise', {
       client_id: o.client.id, licence_id: id,
-      detail: OFFRES[o.e.offre].label + (o.e.exp ? ' jusqu\'au ' + o.e.exp : ' à vie') + ' — ' + o.e.montant + ' ' + o.e.devise + ' HT'
+      detail: libelleLicence(o.e) + (o.e.exp ? ' jusqu\'au ' + o.e.exp : ' à vie') + ' — ' + o.e.montant + ' ' + o.e.devise + ' HT'
         + (o.remplace ? ' (remplace ' + o.remplace.id + ')' : '')
     });
     const mail = o.e.payeeLe ? await envoyerSiPossible(envx, id, o.maintenant) : { envoye: false, raison: 'la vente n\'est pas encore payée' };
     return json({
       licence: { id, client: o.client.nom, matricule: o.client.matricule, email: o.client.email, kid: ks.kid, empreinte, offre: o.e.offre,
+        type: o.e.type, dossiers_hors: o.e.type === 'cabinet' ? o.e.dossiersHors : null, cabinet_empreinte: o.e.cabinet || null,
         debut: o.e.debut || o.aujourdhui, fin: o.e.exp || null, prix: o.e.prix, remise: o.e.remise, devise: o.e.devise, emise_le: o.maintenant,
         remplace_id: o.remplace ? o.remplace.id : null, remplacee_motif: o.motif },
       cle, vente: { id: venteId, montant_ht: o.e.montant, devise: o.e.devise, payee_le: o.e.payeeLe || null }, mail
@@ -965,7 +1056,7 @@ async function repondreAdmin(r, request, env) {
     if (!l.email) return { envoye: false, raison: 'ce client n\'a pas d\'adresse e-mail : copie la clé et envoie-la toi-même' };
     const cle = await cleDeLicence(envx, l);
     if (!cle.cle) return { envoye: false, raison: cle.raison };
-    const m = mailLicence({ offre: l.offre, exp: l.fin || '', cle: cle.cle, signature: envx.MAIL_SIGNATURE });
+    const m = mailLicence({ type: l.type, dossiersHors: l.dossiers_hors, offre: l.offre, exp: l.fin || '', cle: cle.cle, signature: envx.MAIL_SIGNATURE });
     const envoi = await envoyerMail(envx, { a: l.email, sujet: m.sujet, texte: m.texte });
     if (!envoi.ok) {
       await journaliser(envx, 'mail.echec', { client_id: l.client_id, licence_id: l.id, detail: envoi.raison });
@@ -1342,10 +1433,30 @@ const CONSOLE_HTML = `<!doctype html>
       });
   }
 
-  // Émettre (lic = null), renouveler (mode 'renouveler') ou changer d'offre (mode 'offre').
+  // Ce qu'une licence EST, en un libellé — la même règle que libelleLicence() côté serveur : l'offre
+  // d'une entreprise, ou le quota d'un cabinet.
+  // (Aucun backtick dans un commentaire d'ici : cette page est un template literal, et un backtick
+  // le referme — le fichier entier cesse alors d'être lisible. Quatrième fois, CLAUDE.md § 7.31.0.)
+  var estCabinet = function (l) { return !!l && l.type === 'cabinet'; };
+  var libOffre = function (l) {
+    if (estCabinet(l)) { var n = Number(l.dossiers_hors) || 0; return 'Cabinet — ' + n + ' dossier' + (n === 1 ? '' : 's') + ' hors SkanFact'; }
+    return etat && etat.offres[l.offre] ? etat.offres[l.offre].label : l.offre;
+  };
+  // Un champ du formulaire se montre ou se cache par son STYLE : la règle label.f{display:block} de
+  // cette page bat l'attribut hidden de la feuille du navigateur, et un champ caché ainsi resterait
+  // visible.
+  var montrerChamp = function (id, oui) { var e = document.getElementById(id); if (e) e.style.display = oui ? '' : 'none'; };
+
+  // Émettre (lic = null), renouveler (mode 'renouveler') ou changer d'offre / de quota (mode 'offre').
+  //
+  // 9.4.1 — le TYPE. Une licence d'ENTREPRISE porte une offre et un matricule et s'installe dans
+  // SkanFact ; une licence de CABINET porte l'empreinte du cabinet et un quota de dossiers hors
+  // SkanFact, et s'installe dans SkanFact Cabinet. Le type se choisit à l'émission ; renouveler et
+  // changer gardent celui de la licence en cours. Une licence de cabinet n'a ni offre ni parrainage.
   function formEmettre(lic, mode) {
     if (!etat || !etat.emission.ok) return montrerErreur(new Error(etat ? etat.emission.raison : 'État du serveur inconnu.'));
     var t = etat.tarifs;
+    var cab = estCabinet(lic);
     var offres = Object.keys(etat.offres).map(function (k) {
       return '<option value="' + k + '"' + (lic && lic.offre === k && mode !== 'offre' ? ' selected' : '') + '>' + h(etat.offres[k].label) + '</option>';
     }).join('');
@@ -1353,50 +1464,78 @@ const CONSOLE_HTML = `<!doctype html>
     var choixClient = clients.length
       ? '<select name="clientId">' + clients.map(function (c) { return '<option value="' + h(c.id) + '">' + h(c.nom) + (c.matricule ? ' — ' + h(c.matricule) : '') + (c.email ? '' : ' (sans e-mail)') + '</option>'; }).join('') + '</select>'
       : '<span style="color:var(--alr)">Aucun client : crée-le d\\u2019abord (« Nouveau client… »).</span>';
+    var paiement = '<label class="c w"><input type="checkbox" name="payee"> Déjà payée</label>' +
+      champ('payeeLe', 'Payée le', 'type="date" value="' + aujourdhui() + '"') +
+      champ('moyen', 'Moyen de paiement', 'placeholder="virement, espèces, chèque…" maxlength="40"');
+    // Le quota d'un cabinet, en plus des trois gratuits. Le prix d'un dossier n'est proposé que
+    // s'il est réglé (PRIX_CABINET_DOSSIER) : les tarifs du Cabinet ne sont pas fixés, et un chiffre
+    // inventé ici deviendrait un tarif par simple préremplissage.
+    var champQuota = function (valeur, cache) {
+      return '<label class="f" id="f-quota"' + (cache ? ' style="display:none"' : '') + '><span>Dossiers hors SkanFact couverts, en plus des 3 gratuits *</span>' +
+        '<input name="dossiersHors" type="number" min="1" max="5000" step="1" value="' + h(valeur == null ? '' : valeur) + '"></label>';
+    };
+    var prixCabinet = function (n) { return t.cabinetDossier > 0 && n > 0 ? Math.round(t.cabinetDossier * n * 1000) / 1000 : ''; };
     var titre, why, champs, ok;
     if (!lic) {
       titre = 'Émettre une licence';
-      why = 'Trois choses dans le même geste : la clé signée par le serveur, la vente, la ligne de journal. Si la vente est déjà payée, la clé part par mail tout de suite (quand le client a une adresse).';
+      why = 'Trois choses dans le même geste : la clé signée par le serveur, la vente, la ligne de journal. Si la vente est déjà payée, la clé part par mail tout de suite (quand le client a une adresse). ' +
+        'Une licence de <strong>cabinet</strong> porte l\\u2019empreinte du cabinet et un quota de dossiers hors SkanFact, jamais une offre : SkanFact Cabinet la reconnaît, SkanFact la refuse.';
       champs = '<label class="f w"><span>Client *</span>' + choixClient + '</label>' +
-        '<label class="f"><span>Offre</span><select name="offre">' + offres + '</select></label>' +
+        '<label class="f w"><span>Type</span><select name="type">' +
+          '<option value="entreprise">Entreprise — s\\u2019installe dans SkanFact (une offre, un matricule)</option>' +
+          '<option value="cabinet">Cabinet comptable — s\\u2019installe dans SkanFact Cabinet (un quota de dossiers)</option></select></label>' +
+        '<label class="f" id="f-offre"><span>Offre</span><select name="offre">' + offres + '</select></label>' +
         '<label class="f"><span>Durée</span><select name="duree">' + durees + '</select></label>' +
         champ('dateLibre', 'Date de fin (si « jusqu\\u2019à une date précise »)', 'type="date"') +
+        champQuota('', true) +
         champ('prix', 'Prix HT (' + h(t.devise) + ') *', 'type="number" step="0.001" min="0" value="' + t.entreprise + '"') +
-        '<label class="c w"><input type="checkbox" name="parrain"> Client parrainé par un cabinet comptable (remise de ' + t.remiseParrainage + ' % la première année)</label>' +
+        '<label class="c w" id="f-parrain"><input type="checkbox" name="parrain"> Client parrainé par un cabinet comptable (remise de ' + t.remiseParrainage + ' % la première année)</label>' +
         champ('cabinet', 'Empreinte du cabinet (facultatif)', 'placeholder="xxxx-xxxx-xxxx-xxxx-xxxx" maxlength="30"', true) +
-        '<label class="c w"><input type="checkbox" name="payee"> Déjà payée</label>' +
-        champ('payeeLe', 'Payée le', 'type="date" value="' + aujourdhui() + '"') +
-        champ('moyen', 'Moyen de paiement', 'placeholder="virement, espèces, chèque…" maxlength="40"');
+        paiement;
       ok = 'Émettre la clé';
     } else if (mode === 'renouveler') {
       var depart = lic.fin && lic.fin > aujourdhui() ? lic.fin : aujourdhui();
       titre = 'Renouveler la licence de ' + lic.client;
-      why = 'Offre ' + h(etat.offres[lic.offre].label) + (lic.fin ? ', fin actuelle le ' + jour(lic.fin) : '') + '. La nouvelle période part du <strong>' + jour(depart) + '</strong> : les jours déjà payés ne sont pas perdus. Une nouvelle clé est signée, l\\u2019ancienne reste valable jusqu\\u2019à sa date. La remise de parrainage ne s\\u2019applique qu\\u2019à la première année.';
+      why = (cab ? h(libOffre(lic)) : 'Offre ' + h(libOffre(lic))) + (lic.fin ? ', fin actuelle le ' + jour(lic.fin) : '') + '. La nouvelle période part du <strong>' + jour(depart) + '</strong> : les jours déjà payés ne sont pas perdus. Une nouvelle clé est signée, l\\u2019ancienne reste valable jusqu\\u2019à sa date.' +
+        (cab ? ' Le quota se garde tel quel — modifie-le ici si le cabinet a pris des clients.' : ' La remise de parrainage ne s\\u2019applique qu\\u2019à la première année.');
       champs = '<label class="f"><span>Durée</span><select name="duree">' + durees + '</select></label>' +
         champ('dateLibre', 'Date de fin (si « jusqu\\u2019à une date précise »)', 'type="date"') +
-        champ('prix', 'Prix HT (' + h(t.devise) + ') *', 'type="number" step="0.001" min="0" value="' + (t[lic.offre] || t.entreprise) + '"') +
-        '<label class="c w"><input type="checkbox" name="payee"> Déjà payée</label>' +
-        champ('payeeLe', 'Payée le', 'type="date" value="' + aujourdhui() + '"') +
-        champ('moyen', 'Moyen de paiement', 'maxlength="40"');
+        (cab ? champQuota(lic.dossiers_hors, false) : '') +
+        champ('prix', 'Prix HT (' + h(t.devise) + ') *', 'type="number" step="0.001" min="0" value="' + (cab ? prixCabinet(Number(lic.dossiers_hors) || 0) : (t[lic.offre] || t.entreprise)) + '"') +
+        paiement;
       ok = 'Renouveler';
+    } else if (cab) {
+      // Changer le QUOTA : même règle que changer d'offre. La date de fin ne bouge pas, on facture
+      // la différence sur les jours restants — et le montant se décide à la main tant que le prix
+      // d'un dossier n'est pas réglé.
+      var actuel = Number(lic.dossiers_hors) || 0;
+      var proQ = prorata(lic, 0, 0);
+      titre = 'Changer le quota de ' + lic.client;
+      why = 'Actuellement <strong>' + h(libOffre(lic)) + '</strong>' + (lic.fin ? ', jusqu\\u2019au ' + jour(lic.fin) : ', à vie') + '. La date de fin ne bouge pas ; on facture la différence sur les jours restants' +
+        (proQ.jours == null ? ' — <strong>licence à vie : pas de prorata possible, décide le montant à la main</strong>.' : ' : <strong>' + proQ.jours + ' jours sur ' + proQ.total + '</strong>.') +
+        (t.cabinetDossier > 0 ? ' Le montant proposé suit le prix d\\u2019un dossier (' + montant(t.cabinetDossier, t.devise) + ' HT par an).' : ' Aucun prix de dossier n\\u2019est réglé : le montant se décide à la main.') +
+        ' Une « descente » vers moins de dossiers ne rembourse rien toute seule.';
+      champs = champQuota(actuel, false) +
+        champ('prix', 'Montant à facturer HT (' + h(t.devise) + ') *', 'type="number" step="0.001" min="0" value=""') +
+        paiement;
+      ok = 'Changer le quota';
     } else {
       var autre = lic.offre === 'entreprise' ? 'independant' : 'entreprise';
       var pro = prorata(lic, t[autre], t[lic.offre]);
       titre = 'Changer l\\u2019offre de ' + lic.client;
-      why = 'Actuellement <strong>' + h(etat.offres[lic.offre].label) + '</strong>' + (lic.fin ? ', jusqu\\u2019au ' + jour(lic.fin) : ', à vie') + '. La date de fin ne bouge pas ; on facture la différence sur les jours restants' +
+      why = 'Actuellement <strong>' + h(libOffre(lic)) + '</strong>' + (lic.fin ? ', jusqu\\u2019au ' + jour(lic.fin) : ', à vie') + '. La date de fin ne bouge pas ; on facture la différence sur les jours restants' +
         (pro.jours == null ? ' — <strong>licence à vie : pas de prorata possible, décide le montant à la main</strong>.' : ' : <strong>' + pro.jours + ' jours sur ' + pro.total + '</strong>, soit ' + montant(pro.montant, t.devise) + ' HT proposés.') +
         ' Une « descente » vers moins cher ne rembourse rien toute seule.';
       champs = '<label class="f"><span>Nouvelle offre</span><select name="offre">' + Object.keys(etat.offres).map(function (k) {
           return '<option value="' + k + '"' + (k === autre ? ' selected' : '') + '>' + h(etat.offres[k].label) + '</option>';
         }).join('') + '</select></label>' +
         champ('prix', 'Montant à facturer HT (' + h(t.devise) + ') *', 'type="number" step="0.001" min="0" value="' + pro.montant + '"') +
-        '<label class="c w"><input type="checkbox" name="payee"> Déjà payée</label>' +
-        champ('payeeLe', 'Payée le', 'type="date" value="' + aujourdhui() + '"') +
-        champ('moyen', 'Moyen de paiement', 'maxlength="40"');
+        paiement;
       ok = 'Changer l\\u2019offre';
     }
     formulaire(titre, why, champs, ok, function () {
-      var corps = { offre: val('offre'), duree: val('duree'), dateLibre: val('dateLibre'), prix: val('prix'),
+      var corps = { type: val('type') || undefined, offre: val('offre'), duree: val('duree'), dateLibre: val('dateLibre'), prix: val('prix'),
+        dossiersHors: val('dossiersHors'),
         remise: val('parrain') ? t.remiseParrainage : 0, cabinet: val('cabinet'),
         payeeLe: val('payee') ? val('payeeLe') : '', moyen: val('moyen'), devise: t.devise };
       var chemin;
@@ -1407,8 +1546,30 @@ const CONSOLE_HTML = `<!doctype html>
       });
     });
     // Le prix proposé suit l'offre choisie — c'est un préremplissage, jamais une décision.
+    var prixEl = function () { return document.querySelector('#form [name="prix"]'); };
     var so = document.querySelector('#form [name="offre"]');
-    if (so && !lic) so.onchange = function () { var p = document.querySelector('#form [name="prix"]'); if (p) p.value = t[so.value]; };
+    if (so && !lic) so.onchange = function () { var p = prixEl(); if (p) p.value = t[so.value]; };
+    // Le type décide des champs : une licence de cabinet n'a ni offre ni parrainage, une licence
+    // d'entreprise n'a ni quota. L'empreinte, elle, change de rôle : facultative (parrainage) pour
+    // une entreprise, obligatoire (sujet de la clé) pour un cabinet.
+    var st = document.querySelector('#form [name="type"]');
+    var sq = document.querySelector('#form [name="dossiersHors"]');
+    var etiquetteEmpreinte = function (obligatoire) {
+      var e = document.querySelector('#form [name="cabinet"]');
+      var s = e && e.previousElementSibling; if (!s) return;
+      s.textContent = obligatoire ? 'Empreinte du cabinet (le sujet de la clé) *' : 'Empreinte du cabinet (facultatif)';
+    };
+    if (st) st.onchange = function () {
+      var cabinet = st.value === 'cabinet';
+      montrerChamp('f-offre', !cabinet); montrerChamp('f-quota', cabinet); montrerChamp('f-parrain', !cabinet);
+      etiquetteEmpreinte(cabinet);
+      var p = prixEl(); if (p) p.value = cabinet ? prixCabinet(Number(sq && sq.value) || 0) : t[so ? so.value : 'entreprise'];
+    };
+    if (sq) sq.oninput = function () {
+      var q = Number(sq.value) || 0, p = prixEl(); if (!p || !(t.cabinetDossier > 0)) return;
+      // Émission ou renouvellement : le prix plein du quota. Changement : la différence au prorata.
+      p.value = lic && mode !== 'renouveler' ? prorata(lic, prixCabinet(q), prixCabinet(Number(lic.dossiers_hors) || 0)).montant : prixCabinet(q);
+    };
   }
   function prorata(lic, prixNouveau, prixAncien) {
     var diff = Math.max(0, (Number(prixNouveau) || 0) - (Number(prixAncien) || 0));
@@ -1426,7 +1587,7 @@ const CONSOLE_HTML = `<!doctype html>
     var el = $('resultat'); var l = j.licence || {};
     var mail = j.mail || {};
     el.innerHTML = '<h2>Clé émise pour ' + h(l.client) + '</h2>' +
-      '<p class="why">' + h(etat.offres[l.offre] ? etat.offres[l.offre].label : l.offre) + (l.fin ? ', jusqu\\u2019au ' + jour(l.fin) : ', à vie') +
+      '<p class="why">' + h(libOffre(l)) + (l.fin ? ', jusqu\\u2019au ' + jour(l.fin) : ', à vie') +
       ' — ' + montant(j.vente ? j.vente.montant_ht : l.prix, l.devise) + ' HT' + (j.vente && j.vente.payee_le ? ', payée le ' + jour(j.vente.payee_le) : ', à encaisser') + '.</p>' +
       '<div class="cle" id="cle">' + h(j.cle) + '</div>' +
       '<p class="note">' + (mail.envoye ? '✓ Envoyée par mail à ' + h(mail.a) + '.' : 'Pas envoyée par mail : ' + h(mail.raison || '') + '.') + '</p>' +
@@ -1448,7 +1609,7 @@ const CONSOLE_HTML = `<!doctype html>
     api('licences/' + id).then(function (j) {
       var el = $('resultat'); var l = j.licence;
       el.innerHTML = '<h2>Licence de ' + h(l.client) + '</h2>' +
-        '<p class="why">' + h(etat.offres[l.offre] ? etat.offres[l.offre].label : l.offre) + (l.fin ? ', jusqu\\u2019au ' + jour(l.fin) : ', à vie') +
+        '<p class="why">' + h(libOffre(l)) + (l.fin ? ', jusqu\\u2019au ' + jour(l.fin) : ', à vie') +
         ' — émise le ' + jour(l.emise_le) + (l.envoyee_le ? ', envoyée le ' + jour(l.envoyee_le) : ', jamais envoyée') +
         (l.email ? ' (' + h(l.email) + ')' : ' — ce client n\\u2019a pas d\\u2019e-mail') + '.</p>' +
         (j.cle ? '<div class="cle" id="cle">' + h(j.cle) + '</div>' : '<p class="note">' + h(j.cleRaison) + '</p>') +
@@ -1461,14 +1622,14 @@ const CONSOLE_HTML = `<!doctype html>
     }, montrerErreur);
   }
   function envoyer(lic) {
-    formulaire('Envoyer la clé par mail', 'À <strong>' + h(lic.email || '(pas d\\u2019adresse)') + '</strong>, pour ' + h(lic.client) + ' — offre ' + h(etat.offres[lic.offre] ? etat.offres[lic.offre].label : lic.offre) + (lic.envoyee_le ? '. Déjà envoyée le ' + jour(lic.envoyee_le) + ' : ceci renvoie la même clé.' : '.'),
+    formulaire('Envoyer la clé par mail', 'À <strong>' + h(lic.email || '(pas d\\u2019adresse)') + '</strong>, pour ' + h(lic.client) + ' — ' + (estCabinet(lic) ? '' : 'offre ') + h(libOffre(lic)) + (lic.envoyee_le ? '. Déjà envoyée le ' + jour(lic.envoyee_le) + ' : ceci renvoie la même clé.' : '.'),
       '', 'Envoyer', function () {
         return api('licences/' + lic.id + '/envoyer', {}).then(function (j) { fermerForm(); montrerInfo('Clé envoyée à ' + j.a + '.'); dessiner(); });
       });
   }
   function revoquer(lic) {
     formulaire('Révoquer la licence de ' + lic.client,
-      'Offre ' + h(etat.offres[lic.offre] ? etat.offres[lic.offre].label : lic.offre) + (lic.fin ? ', jusqu\\u2019au ' + jour(lic.fin) : ', à vie') + ', ' + pl(lic.activations, 'ordinateur') + ' vu' + (Number(lic.activations) >= 2 ? 's' : '') + '.<br>' +
+      (estCabinet(lic) ? '' : 'Offre ') + h(libOffre(lic)) + (lic.fin ? ', jusqu\\u2019au ' + jour(lic.fin) : ', à vie') + ', ' + pl(lic.activations, 'ordinateur') + ' vu' + (Number(lic.activations) >= 2 ? 's' : '') + '.<br>' +
       '<strong style="color:var(--warn)">Ce que ça fait vraiment :</strong> la licence sort des actives avec son motif, et l\\u2019application du client ferme la création de nouvelles pièces à sa prochaine connexion — si sa version embarque la clé de réponse. Hors ligne, la clé continue jusqu\\u2019à sa date de fin : une clé livrée ne se reprend pas. Le remboursement, lui, passe par un avoir dans SkanFact.',
       champ('motif', 'Motif *', 'placeholder="rétractation, impayé, erreur d\\u2019émission…" maxlength="200"', true),
       'Révoquer', function () {
@@ -1517,7 +1678,11 @@ const CONSOLE_HTML = `<!doctype html>
   var COLONNES = {
     licences: [
       { k: 'client', t: 'Client' },
-      { k: 'offre', t: 'Offre', f: function (v) { return etat && etat.offres[v] ? etat.offres[v].label : v; } },
+      // Un cabinet : son quota, et combien de ses clients ont une licence parrainée par lui.
+      { k: 'offre', t: 'Offre', f: function (v, r) {
+          var n = Number(r.parraines) || 0;
+          return libOffre(r) + (estCabinet(r) && n ? ' (' + n + ' parrainé' + (n === 1 ? '' : 's') + ')' : '');
+        } },
       { k: 'fin', t: 'Fin', f: function (v) { return v ? jour(v) : 'à vie'; } },
       { k: 'activations', t: 'Postes', n: true },
       { k: 'kid', t: 'Clé', m: true },
@@ -1528,7 +1693,7 @@ const CONSOLE_HTML = `<!doctype html>
           var s = b('voir', 'Voir la clé');
           if (!r.revoquee_le) {
             if (r.resignable) s += b('envoyer', r.envoyee_le ? 'Renvoyer par mail' : 'Envoyer par mail');
-            if (!r.remplacee_par) s += b('renouveler', 'Renouveler') + b('offre', 'Changer d\\u2019offre');
+            if (!r.remplacee_par) s += b('renouveler', 'Renouveler') + b('offre', estCabinet(r) ? 'Changer le quota' : 'Changer d\\u2019offre');
             s += b('revoquer', 'Révoquer', ' d');
           }
           return s;

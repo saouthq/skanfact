@@ -55,7 +55,12 @@ CREATE TABLE IF NOT EXISTS licences (
   -- elle-même : Ed25519 est déterministe, donc signer de nouveau ce contenu avec la même clé privée
   -- redonne la même clé, à l'identique — et sans la clé privée, ce contenu ne vaut rien.
   charge            TEXT,
-  envoyee_le        TEXT                  -- la clé est partie par mail (NULL = jamais envoyée)
+  envoyee_le        TEXT,                 -- la clé est partie par mail (NULL = jamais envoyée)
+  -- 9.4.1 : une licence de CABINET (SkanFact Cabinet). NULL = entreprise, c'est-à-dire tout ce qui
+  -- a été émis avant. Son sujet est `cabinet_empreinte`, et ce qu'elle porte est un quota de
+  -- dossiers hors SkanFact (9.4.0 : on vend des dossiers, jamais des postes).
+  type              TEXT,                 -- 'cabinet' ou NULL
+  dossiers_hors     INTEGER               -- le quota, en plus des trois gratuits (NULL sauf cabinet)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_licences_empreinte ON licences(empreinte);
 CREATE INDEX IF NOT EXISTS idx_licences_client ON licences(client_id);
