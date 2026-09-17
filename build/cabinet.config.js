@@ -42,6 +42,14 @@ module.exports = {
     'src/renderer/rowmenu.js',         // le menu d'actions d'une ligne, partagé lui aussi
     'src/renderer/reglages.js',        // le sommaire et la recherche des réglages, partagés aussi
     'src/renderer/compta.js',          // le moteur comptable : la balance du cabinet est celle du client
+    // La licence du cabinet (9.4.0) : elle se vérifie HORS LIGNE, comme celle de l'entreprise, donc
+    // le module et les clés publiques entrent dans le paquet. Le glob des clés est le MÊME que côté
+    // entreprise, au nom de fichier près — et `licence-public*.json` ne correspond PAS à
+    // `licences-publiques.json` (défaut de la 8.4.0) : les deux motifs sont écrits, et un test les
+    // ÉVALUE contre les deux noms de fichier réels plutôt que de comparer leur orthographe.
+    'src/licence.js',
+    'build/licence-public*.json',
+    'build/licences-publiques*.json',
     'package.json',
     'CHANGELOG.md'
   ],

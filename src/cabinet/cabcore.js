@@ -86,6 +86,7 @@
     format: FORMAT,
     cabinet: { name: '', email: '', phone: '', publicKey: '', privateKey: '' },
     dossiers: [],
+    licence: null,
     // Les guides d'écritures vivent au niveau du CABINET : un comptable écrit « achat avec TVA »
     // une fois, pas soixante fois. Un dossier peut en ajouter (`dossiers[].guides`), jamais en
     // retirer — surcharger n'est pas censurer.
@@ -127,6 +128,11 @@
       // prochain chargement, en silence. Un abonnement perdu, c'est un loyer qui cesse d'être
       // écrit sans que personne ne le remarque avant le bilan.
       abonnements: Array.isArray(d.abonnements) ? d.abonnements : [],
+      // 9.4.0 — ce qui décide si ce dossier se compte dans la licence du cabinet. Même règle que
+      // les champs ci-dessus : absents d'ici, ils seraient jetés au prochain chargement, et le
+      // comptage se mettrait à facturer des dossiers qui ne le devaient pas.
+      clientLicence: (d.clientLicence && typeof d.clientLicence === 'object') ? d.clientLicence : null,
+      derniereValidation: d.derniereValidation || '',
       guides: Array.isArray(d.guides) ? d.guides : [],
       correspondance: Array.isArray(d.correspondance) ? d.correspondance : [],
       // Le dernier journal utilisé sur CE dossier : c'est lui qu'on propose à l'ouverture de la
@@ -161,10 +167,91 @@
     sa.validerParLot = sa.validerParLot !== false;
     s.settings.saisie = sa;
     s.guides = Array.isArray(s.guides) ? s.guides : [];
+    // La licence du cabinet (9.4.0). Elle vit dans l'état CHIFFRÉ, donc elle voyage avec la clé de
+    // secours : un cabinet qui change d'ordinateur retrouve sa licence en même temps que ses
+    // paquets. Et elle est attachée à son EMPREINTE, qui ne change pas non plus.
+    s.licence = (s.licence && typeof s.licence === 'object') ? s.licence : null;
     s.correspondance = Array.isArray(s.correspondance) ? s.correspondance : [];
     s.dossiers = Array.isArray(s.dossiers) ? s.dossiers.map(migrateDossier) : [];
     s.format = FORMAT;
     return s;
+  }
+
+  // ================================================================ CE QUI SE COMPTE (9.4.0)
+  //
+  // On vend des DOSSIERS, jamais des postes. Ce qui se compte, ce sont les dossiers **hors
+  // SkanFact** : ceux dont le client n'a pas l'application. Un cabinet dont les soixante clients
+  // sont sur SkanFact ne paie jamais rien — c'est le cœur du modèle, et c'est ce qui donne au
+  // comptable une raison d'y amener ses clients.
+  //
+  // Cette fonction est PURE et dit POURQUOI chaque dossier compte ou ne compte pas. Un écran qui
+  // annoncerait « 7 dossiers comptés » sans pouvoir les nommer serait exactement le genre de
+  // chiffre qu'on ne croit pas — et ici c'est un chiffre qui décide d'une facture.
+  const GRACE_MOIS = 12;
+  const DORMANT_MOIS = 12;
+
+  function dossierFacturable(d, aujourdhui) {
+    const t = aujourdhui || today();
+    const ilYA = n => {
+      const j = new Date(String(t) + 'T00:00:00Z');
+      return isoJour(new Date(Date.UTC(j.getUTCFullYear(), j.getUTCMonth() - n, j.getUTCDate())));
+    };
+    if (!d) return { compte: false, raison: 'dossier introuvable' };
+    if (d.archived) return { compte: false, raison: 'archivé' };
+    if (d.demo) return { compte: false, raison: 'jeu d\'exemple' };
+
+    // Un dossier qu'on ne travaille plus ne se facture pas. « Sans écriture validée depuis douze
+    // mois » : c'est le client parti dont on garde les archives, et le faire payer serait une
+    // facture pour du vide.
+    const derniere = String(d.derniereValidation || '');
+    if (derniere && derniere < ilYA(DORMANT_MOIS)) {
+      return { compte: false, raison: `aucune écriture validée depuis ${DORMANT_MOIS} mois` };
+    }
+
+    const recu = Array.isArray(d.packs) && d.packs.length;
+    if (!recu) return { compte: true, raison: 'hors SkanFact' };
+
+    // Le client utilise SkanFact. Reste à savoir si sa licence à lui couvre le dossier — et c'est
+    // là que **le doute profite au cabinet** : un paquet d'avant la 9.4.0 ne porte pas cette
+    // information, et on ne fait pas payer un cabinet pour ce qu'on n'a pas su lire. L'écran le
+    // dit, plutôt que de compter en silence dans un sens ou dans l'autre.
+    const lic = d.clientLicence || null;
+    if (!lic || !lic.etat) return { compte: false, raison: 'sur SkanFact (paquet d\'avant la 9.4.0 : licence non renseignée)' };
+    if (lic.etat === 'active' || lic.etat === 'libre' || lic.etat === 'editeur') return { compte: false, raison: 'sur SkanFact' };
+    if (lic.etat === 'essai') return { compte: false, raison: 'sur SkanFact (essai en cours)' };
+    // Expirée : douze mois de grâce, mais SEULEMENT après une licence payée. Sans ce garde-fou,
+    // « avoir essayé » coûterait moins cher au cabinet que « n'avoir jamais essayé », et on
+    // fabriquerait la catégorie qu'on veut éviter.
+    if (lic.etat === 'expiree' && lic.payee && String(lic.exp || '') >= ilYA(GRACE_MOIS)) {
+      return { compte: false, raison: `licence du client expirée le ${lic.exp} — ${GRACE_MOIS} mois de grâce` };
+    }
+    if (lic.etat === 'expiree' && lic.payee) return { compte: true, raison: `licence du client expirée depuis plus de ${GRACE_MOIS} mois` };
+    return { compte: true, raison: 'sur SkanFact, mais sans licence payée' };
+  }
+
+  const isoJour = d => d.toISOString().slice(0, 10);
+
+  function comptageDossiers(state, aujourdhui) {
+    const t = aujourdhui || today();
+    const tous = (state && Array.isArray(state.dossiers) ? state.dossiers : [])
+      .map(d => ({ id: d.id, name: d.name || '', ...dossierFacturable(d, t) }));
+    const comptes = tous.filter(x => x.compte);
+    return {
+      total: tous.length,
+      comptes: comptes.length,
+      liste: comptes,
+      libres: tous.filter(x => !x.compte),
+      // Les raisons, groupées : c'est ce que l'écran affiche pour que le chiffre s'explique tout seul.
+      raisons: tous.filter(x => !x.compte).reduce((a, x) => { a[x.raison] = (a[x.raison] || 0) + 1; return a; }, {})
+    };
+  }
+
+  // Ce que le manifeste d'un paquet dit de la licence du CLIENT (9.4.0). Facultatif à la lecture :
+  // un paquet plus ancien n'en a pas, et on ne devine pas — `null`, et le doute profite au cabinet.
+  function licenceDuPaquet(manifest) {
+    const l = manifest && manifest.licence;
+    if (!l || typeof l !== 'object' || !l.etat) return null;
+    return { etat: String(l.etat), exp: String(l.exp || ''), payee: !!l.payee, vuLe: String((manifest && manifest.genereLe) || '').slice(0, 10) };
   }
 
   // Une date TAPÉE, dans la grille de saisie (9.3.0). Le comptable tape « 4 », « 4/3 », « 04/03/26 »,
@@ -608,6 +695,17 @@
       detail: 'Sans elle, si cet ordinateur est perdu ou volé, aucun paquet déjà reçu ne pourra plus être ouvert, '
         + 'et tous tes clients devront refaire leur appairage. Trois minutes, une fois.',
       count: 0, rows: []
+    });
+    // La licence (9.4.0), juste après la clé de secours : c'est le second manque qui BLOQUE un
+    // geste. On ne le dit qu'une fois le quota dépassé — un cabinet dans les trois dossiers
+    // gratuits n'a rien à faire, et lui poser une ligne « À faire » reviendrait à lui vendre
+    // quelque chose dont il n'a pas besoin.
+    if (opts && opts.licence && opts.licence.locked) out.push({
+      id: 'licence', level: 'danger',
+      label: `${pl(opts.licence.comptes, 'dossier')} hors SkanFact ${opts.licence.comptes > 1 ? 'sont comptés' : 'est compté'}, ${opts.licence.autorises} ${opts.licence.autorises > 1 ? 'sont couverts' : 'est couvert'}`,
+      detail: 'La validation d\'une écriture demande une licence. Tout le reste — lire, importer un paquet, '
+        + 'exporter tes écritures, relancer tes clients — reste ouvert. La page te dit quels dossiers sont comptés, et pourquoi.',
+      count: opts.licence.depasse || 0, rows: []
     });
     // Le jour de relance : c'est une échéance, pas un état.
     const rel = relanceDue(state, todayIso);
@@ -1118,6 +1216,7 @@
   return {
     FORMAT, MONTHS_FR, DEFAULT_STATE, DEFAULT_SETTINGS, DEFAULT_SAISIE, TVA_PERIODS, REGIMES, RELANCE_WAYS, SORTS,
     guidesDuDossier, correspondanceDuDossier, dateTapee,
+    GRACE_MOIS, DORMANT_MOIS, dossierFacturable, comptageDossiers, licenceDuPaquet,
     monthLabel, monthListLabel, missingLabel, addMonth, monthsBetween, today, de,
     migrate, migrateDossier, dossierKey, packSummary, filePack, demoDossiers, rebaserPaquet, checkIntegrity,
     newDossier, parseDossierLines, noteRelance, portfolio, relanceDue, relanceRows, accuseMail,

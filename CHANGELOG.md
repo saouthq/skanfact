@@ -7,6 +7,36 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 9.4.0 — 17/09/2026
+
+**SkanFact Cabinet devient payant — au-delà de trois dossiers, et seulement pour ceux qui ne sont pas
+sur SkanFact.** On vend des **dossiers**, jamais des postes : installe-le sur autant d'ordinateurs
+que tu veux, c'est le même cabinet.
+
+- **Gratuit pour toujours** pour tous les dossiers dont le client utilise SkanFact, quel qu'en soit
+  le nombre — plus **trois dossiers hors SkanFact**. Un cabinet dont les soixante clients sont sur
+  SkanFact ne paie jamais rien.
+- **Ce qui peut attendre une licence, c'est la validation d'une écriture. Rien d'autre.** Lire un
+  livre, importer un paquet, saisir, exporter tes écritures, relancer un client : toujours ouvert.
+  Jamais de données en otage — ce sont les pièces de tes clients qui dorment ici.
+- **L'écran nomme chaque dossier compté, avec sa raison.** Ne comptent pas : un dossier archivé, un
+  dossier sans écriture validée depuis douze mois, un client sur SkanFact, et un client dont la
+  licence **payée** a expiré il y a moins de douze mois — on ne te fait pas payer un retard qui
+  n'est pas le tien.
+- **Le doute profite au cabinet** : un paquet fabriqué avant cette version ne dit pas si son client
+  a une licence. Dans ce cas, le dossier **ne compte pas**, et l'écran explique pourquoi.
+- **La clé est attachée à l'empreinte de ton cabinet** — celle que tu dictes à tes clients. Elle te
+  suit quand tu changes d'ordinateur, à condition d'avoir **repris** ton cabinet par ta clé de
+  secours. Un cabinet recréé à neuf a une autre empreinte.
+- Bandeau à trois tons dans la barre latérale, ligne « À faire » quand le quota est dépassé, et
+  « Demander une licence » qui prépare le message. Ce qui part : ton empreinte, le nombre de
+  dossiers comptés, la version. **Jamais un nom de client.**
+
+**Côté SkanFact (l'application des entreprises)** : le paquet mensuel porte désormais l'**état** de
+ta licence — l'état, sa date de fin et si elle a été payée, rien d'autre, jamais la clé. C'est ce qui
+permet à ton comptable de ne pas payer pour toi. Et une clé de cabinet ne peut plus déverrouiller une
+application d'entreprise, ni l'inverse.
+
 ## 9.3.0 — 17/09/2026
 
 **Le Cabinet sait enfin SAISIR.** Jusqu'ici il lisait la comptabilité que le client lui envoyait ; il

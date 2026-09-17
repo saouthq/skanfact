@@ -97,7 +97,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 **L'outillage (9.1.0)**
 
 `npm test` (les tests purs) · `npm run lint` (ESLint, zéro erreur exigée) · `npm run charge` (le test
-de charge du livre) · `npm run e2e:<nom>` (43 parcours, tableau au § « Les tests qui ouvrent vraiment
+de charge du livre) · `npm run e2e:<nom>` (44 parcours, tableau au § « Les tests qui ouvrent vraiment
 l'application ») · CI GitHub sur Linux et Windows à chaque poussée · « Construire un essai » pour
 faire tester une version sans la publier.
 
@@ -500,6 +500,7 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:pont` | **le pont comptable** : le vrai worker sur SQLite et l'application en état éditeur — un secret faux refusé, le bon gardé en 0600 hors des données, deux ventes de la console tirées en deux brouillons (client retrouvé par matricule ou créé), le menu d'une licence de la console sans « Renouveler », le numéro rendu à l'émission et lu dans la base, la console éteinte dite en français |
 | `npm run e2e:livres` | **les livres comptables** : chaque compte du grand livre avec son solde progressif qui finit sur le total, le sélecteur de compte, la balance dont les six totaux tombent juste, l'auxiliaire clients, la case « un sous-compte par tiers » qui donne 411001… et les fige sur les fiches, le livre-journal numéroté et son centralisateur, une OD refusée puis enregistrée, le lettrage qui ouvre sa pièce, les états financiers équilibrés, l'à-nouveau de janvier, l'état de rapprochement à écart nul, la TFP dans les barèmes |
 | `npm run e2e:justificatif` | **le justificatif se joint avant toute saisie** : sélecteur de fichier remplacé dans le processus principal, une photo jointe sur un achat VIDE, enregistrée avec la pièce, retrouvée sur le disque et dans la liste (📎), un second fichier sur la pièce rangée, une pièce abandonnée qui ne laisse pas de copie, la lecture d'une photo qui redessine sans perdre la pièce, et le même geste sur un devis neuf |
+| `npm run e2e:cabinet-licence` | **la licence du Cabinet** : trois dossiers hors SkanFact gratuits, l'exemple qui ne compte pas, cinq clients qui dépassent le quota, la validation refusée pendant que lire, importer, exporter et SAISIR restent ouverts, deux dossiers archivés qui rendent la main, la clé d'un autre cabinet refusée en nommant les deux empreintes, celle d'un client parrainé refusée aussi, et le panneau qui nomme chaque dossier compté |
 | `npm run e2e:saisie` | **la grille de saisie, AU CLAVIER** : une pièce entière tapée sans souris (Entrée descend, Tab solde), le brouillard sans numéro, la validation qui referme, les deux refus sur une validée, un lot dont la pièce fausse est au MILIEU et la numérotation qui reste 1..n, l'extourne au 1er du mois suivant, la recherche par montant après réouverture de l'application, et un guide écrit puis appliqué |
 | `npm run e2e:licence` | **l'éditeur et les offres, puis le client** : une première application DÉSARMÉE (`SKANFACT_CLE_EMBARQUEE` vers un chemin inexistant, développement seulement) — sans clé rien n'apparaît ; « Créer mes clés » écrit la privée dans un dossier isolé (`SKANFACT_DOSSIER_CLES`) et met le poste en état « éditeur » (ni essai ni verrou) ; « Émettre » signe une clé vérifiable, crée un BROUILLON de facture et l'historique ; la clé Indépendant collée refuse un nouveau fournisseur, pose un cadenas sur Achats et laisse les Statistiques ; la clé d'un autre matricule est refusée en nommant les deux ; « Renouveler » ; rien de ce qui traverse le pont ne contient la clé privée — PUIS une seconde application telle qu'un client l'installe (vraie clé embarquée, pas de clé privée) : essai de 30 jours, aucune trace de l'éditeur, plus de porte « Créer mes clés », et la clé signée par la clé d'essai du test REFUSÉE |
 
@@ -3109,6 +3110,72 @@ Le test qui compte est `npm run e2e:saisie` : il tape une pièce entière **au c
 Tab solde, enregistre en brouillard sans numéro, valide, se voit refuser la modification ET la
 suppression, valide un lot dont la pièce fautive est au MILIEU et vérifie que la suite des numéros
 reste 1..n, extourne, rouvre l'application, cherche par montant, écrit un guide et s'en sert.
+
+### 9.4.0 — La licence du Cabinet
+
+On vend des **dossiers**, jamais des postes. Dans `src/licence.js` : `CABINET_GRATUITS` (3),
+`licenceCabinet`, `pastille`, `requestMailCabinet`, et le refus croisé dans `licenceState`. Dans
+cabcore : `dossierFacturable`, `comptageDossiers`, `licenceDuPaquet`, `GRACE_MOIS`, `DORMANT_MOIS`.
+Dans `src/cabinet/main.js` : `licenceCabinetStatus`, `licenceBlockCab` (la porte unique),
+`noterValidation`. Panneau **Réglages → Mon cabinet → Licence**, bandeau à trois tons, ligne
+« À faire ». `src/licence.js` et les clés publiques entrent dans `build/cabinet.config.js`.
+
+La question qui bloque la VENTE — l'avis de l'Ordre, et les prix — n'est pas levée. Le code, lui,
+n'attendait pas : c'est écrit ainsi dans le plan.
+
+Règles apprises, à ne pas recasser :
+
+- **Deux règles justes se combinaient en un trou.** Une licence de cabinet n'a pas de matricule (son
+  sujet est l'empreinte) ; et `memeMatricule` laisse passer un côté vide, parce qu'« on ne punit pas
+  qui n'a pas rempli sa fiche » (7.33.0). Ensemble : une clé Cabinet déverrouillait TOUT chez
+  n'importe quelle entreprise. Le garde-fou est le `type`, et il est **symétrique** — une clé
+  d'entreprise ne vaut rien dans le Cabinet non plus. Le cas qui le prouve n'est pas la clé sans
+  empreinte (la comparaison d'empreinte la refuse déjà, correctif double, 7.27.0) mais la clé d'un
+  client **parrainé par ce cabinet** : elle porte légitimement son empreinte, et seul le type la
+  distingue.
+- **Le verrou ferme la VALIDATION, et rien d'autre.** Lire, importer, saisir, exporter, relancer :
+  toujours ouverts. Un test relit `main.js` et vérifie les deux sens — la porte sur les quatre
+  gestes qui valident, et son ABSENCE sur sept handlers qui lisent. Sans la seconde moitié, le test
+  laisserait passer une porte posée partout, c'est-à-dire des données en otage (6.4.0) — et ici ce
+  sont les pièces de soixante entreprises.
+- **Le doute profite au cabinet.** Un paquet d'avant la 9.4.0 ne dit pas si son client a une
+  licence : le dossier **ne compte pas**, et l'écran dit pourquoi. On ne fait pas payer quelqu'un
+  pour ce qu'on n'a pas su lire.
+- **La grâce de douze mois ne suit qu'une licence PAYÉE.** Sans ce garde-fou, « avoir essayé »
+  coûterait moins cher au cabinet que « n'avoir jamais essayé », et on fabriquerait exactement la
+  catégorie qu'on veut éviter. D'où `payee` dans le manifeste — la PRÉSENCE d'une clé, jamais la clé.
+- **Un chiffre qui décide d'une facture doit pouvoir s'expliquer.** `comptageDossiers` nomme chaque
+  dossier avec sa raison, et groupe les raisons de ceux qui ne comptent pas. « 7 dossiers comptés »
+  sans la liste, c'est le genre de chiffre qu'on ne croit pas — et on aurait raison.
+- **L'empreinte du cabinet n'est PAS rangée dans l'état : elle se calcule.** `safeState()` l'ajoute
+  pour l'écran, donc `state.cabinet.fingerprint` vaut `undefined` côté processus principal. Une
+  empreinte vide désarme la comparaison, et la licence d'un AUTRE cabinet passait. **Aucun test pur
+  ne pouvait le voir** : le moteur, lui, rendait le bon verdict — c'est le parcours réel qui l'a
+  montré. Même famille que « un champ lu mais jamais écrit » (7.3.0), vue de l'autre côté.
+- **Un état lu une fois au démarrage se périme** (7.1.x, re-trouvé) : le panneau de licence relit à
+  chaque affichage, parce que le compte change à chaque dossier créé, archivé ou reçu.
+- **`pastille` est le jumeau EXACT de `core.pastilleLicence`**, corps comparé par un test — comme
+  `round3`. Les deux applications doivent dire la même chose de la même échéance, et aucune ne peut
+  charger le module de l'autre (core.js est un UMD de navigateur, licence.js a besoin de `crypto`).
+- **Les deux champs de la charge signée sont en QUEUE** (`type`, `dossiersHors`). Au milieu, ils
+  changeraient l'ordre des champs déjà signés, et une clé refabriquée depuis sa charge rangée en
+  base ne serait plus identique à celle qu'on a envoyée — or c'est exactement ce qui permet de ne
+  jamais ranger la clé elle-même (8.5.0).
+- **Un test qui interdit un MOT accuse du code juste.** Ma première version exigeait que le mot
+  `key` n'apparaisse pas dans ce qui part au manifeste : elle refusait `payee: !!st.key`, qui ne
+  transporte pas la clé mais sa présence. On vise le danger (une sortie non booléenne), pas le mot.
+- **Un test écrit contre l'état du jour, huitième occurrence** : « `src/licence.js` n'a rien à faire
+  dans l'app du comptable » était vrai tant que le Cabinet n'avait pas de licence. La RÈGLE est
+  « l'app gratuite n'embarque pas le PRODUIT payant » — et le code qui vérifie une signature n'est
+  pas un produit : le secret n'est pas le code, c'est la clé privée (7.33.0). Le besoin se DÉDUIT
+  désormais du `require`, comme les autres, et le test évalue les globs des clés publiques contre
+  les deux vrais noms de fichier (le défaut de la 8.4.0).
+
+Le test qui compte est `npm run e2e:cabinet-licence` : application ARMÉE pour de vrai (clé d'essai
+embarquée par `SKANFACT_CLE_EMBARQUEE`, privée jamais sortie du dossier temporaire), trois dossiers
+gratuits, cinq clients qui dépassent, la validation refusée pendant que lire / importer / saisir /
+exporter restent ouverts, deux archivés qui rendent la main, trois clés refusées (autre cabinet,
+client parrainé, charabia) et la bonne qui ouvre.
 
 ## Pistes pour la suite (non demandées)
 

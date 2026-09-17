@@ -473,7 +473,16 @@ export function chargeLicence(o) {
     exp: String(x.exp || ''),
     cabinet: String(x.cabinet || ''),
     note: '',
-    emisLe: String(x.emisLe || '')
+    emisLe: String(x.emisLe || ''),
+    // 9.4.0 — la licence d'un CABINET. Elle n'a ni offre utile ni matricule : son sujet est
+    // l'empreinte du cabinet (champ `cabinet`), et ce qu'elle porte est un quota de dossiers hors
+    // SkanFact. Les deux champs sont en QUEUE : ajoutés au milieu, ils changeraient l'ordre des
+    // champs déjà signés, et une clé refabriquée depuis sa charge rangée en base ne serait plus
+    // identique à celle qu'on a envoyée — or c'est exactement ce qui permet de ne jamais ranger la
+    // clé elle-même. L'application ignore ce qu'elle ne connaît pas : un `type` absent vaut
+    // `entreprise`, donc rien de ce qui a été vendu ne bouge.
+    type: String(x.type || 'entreprise'),
+    dossiersHors: Math.max(0, Math.round(Number(x.dossiersHors) || 0))
   };
 }
 

@@ -637,6 +637,11 @@
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); openPalette(); }
     });
     $('#upd-pill').onclick = () => versReglages('pan-maj');
+    // La licence, dès l'ouverture : un bandeau qui n'apparaît qu'une fois les Réglages ouverts
+    // n'avertit personne (règle 8.0.1 — « une échéance qui verrouille se voit depuis le premier
+    // jour, pas depuis le dernier »).
+    $('#lic-banner').onclick = () => versReglages('pan-licence');
+    chargerLicence();
     if (!location.hash) location.hash = '#/dossiers';
     render();
     refreshBackupInfo();
@@ -981,6 +986,7 @@
   // une ligne ajoutée demain sans son action fait tomber le test, pas l'utilisateur.
   const TODO_ACTIONS = {
     'cle-secours': { texte: 'Enregistrer ma clé…', run: () => versReglages('pan-secu') },
+    'licence': { texte: 'Voir ce qui est compté…', run: () => versReglages('pan-licence') },
     'jour-de-relance': { texte: 'Voir', run: () => { location.hash = '#/relances'; } },
     'echeance': { texte: 'Voir', run: () => { location.hash = '#/echeances'; } },
     'manquants': { texte: 'Voir', run: () => { location.hash = '#/relances'; } },
@@ -1074,7 +1080,7 @@
     const demoCount = (S.dossiers || []).filter(d => d.demo).length;
     // `recoveryAt` vaut `undefined` tant que la réponse n'est pas revenue : on ne réclame que sur un
     // non franc. La date ne vit pas dans l'état chiffré, elle ne peut donc pas venir de `S`.
-    const todo = K.cabinetTodo(S, null, { cleSecours: recoveryAt === undefined ? null : recoveryAt !== null });
+    const todo = K.cabinetTodo(S, null, { cleSecours: recoveryAt === undefined ? null : recoveryAt !== null, licence: licCab });
     const p = K.portfolio(S);
 
     // Écran d'ouverture d'un cabinet qui vient d'installer l'application : il n'a rien reçu, et il
@@ -3298,6 +3304,105 @@
   // deuxième, 0,6 pour le troisième. Le troisième reste léger — c'est le prix de la symétrie avec
   // l'autre application, et c'est pour ça que « Signaler un problème » a quitté Sécurité, où il
   // n'avait rien à faire, pour rejoindre « Aide et dépannage ».
+  // ---------------------------------------------------------------- la licence du cabinet (9.4.0)
+  //
+  // Elle se lit dans le processus principal (hors ligne, `licence.js`) et arrive ici toute faite :
+  // l'état, ce qui est compté, et POURQUOI chaque dossier compte ou ne compte pas. Un écran qui
+  // annoncerait « 7 dossiers comptés » sans pouvoir les nommer serait un chiffre qu'on ne croit pas
+  // — et c'est un chiffre qui décide d'une facture.
+  let licCab = null;
+
+  async function chargerLicence() {
+    try { licCab = await api.licenceStatus(); } catch (e) { licCab = { erreur: plainError(e) }; }
+    majBandeauLicence();
+  }
+
+  // Le bandeau, à trois tons. La décision vient de `licence.pastille`, dont un test exige qu'elle
+  // soit le JUMEAU EXACT de `core.pastilleLicence` : les deux applications doivent dire la même
+  // chose de la même échéance, et aucune ne peut charger le module de l'autre.
+  function majBandeauLicence() {
+    const el = $('#lic-banner');
+    if (!el) return;
+    const p = (licCab && licCab.pastille) || { show: false };
+    el.hidden = !p.show;
+    el.classList.toggle('warn', p.ton === 'alerte' || p.ton === 'attire');
+    el.classList.toggle('calme', p.ton === 'calme');
+    if (p.show) el.textContent = p.texte;
+  }
+
+  // Le panneau RELIT l'état à chaque affichage. Le compte change à chaque dossier créé, archivé ou
+  // reçu : un panneau qui garderait l'état lu au démarrage annoncerait un chiffre périmé — et c'est
+  // un chiffre qui décide d'une facture (règle 7.1.x : « un état lu une fois au démarrage se
+  // périme »). Le coût est un appel au processus principal, et rien d'autre.
+  async function dessinerLicence(view, dejaLu) {
+    if (!dejaLu) {
+      await chargerLicence();
+      // La page a pu changer pendant l'attente : on redemande l'élément APRÈS, jamais avant
+      // (règle 7.6.0). Sinon on écrit dans un élément détaché, sans que rien ne s'affiche.
+      return dessinerLicence(document, true);
+    }
+    const box = $('#lic-panel', view);
+    if (!box) return;
+    if (!licCab) { box.innerHTML = '<p class="muted small">Chargement…</p>'; return; }
+    if (licCab.erreur) { box.innerHTML = `<div class="warn-box">${esc(licCab.erreur)}</div>`; return; }
+    const c = licCab.comptage || { comptes: 0, liste: [], libres: [], raisons: {} };
+    const boite = licCab.locked ? 'warn-box' : licCab.state === 'active' ? 'ok-box' : 'info-box';
+    box.innerHTML = `
+      <div class="${boite} mb"><b>${esc(licCab.label || '')}</b>${licCab.detail ? '<br>' + esc(licCab.detail) : ''}</div>
+      <p class="small">On vend des <strong>dossiers</strong>, jamais des postes : installe SkanFact Cabinet sur autant
+      d'ordinateurs que tu veux. Ce qui se compte, ce sont tes dossiers <strong>hors SkanFact</strong> —
+      ceux dont le client n'a pas l'application. Les ${licCab.gratuits} premiers sont gratuits.</p>
+      <div class="grid-2 mt">
+        <div><div class="k-label">Comptés</div><div class="ver">${c.comptes}</div></div>
+        <div><div class="k-label">Couverts</div><div class="ver">${licCab.autorises}</div></div>
+      </div>
+      ${c.comptes ? `<h3 class="mt">Les dossiers comptés ${info('lic.comptes')}</h3>
+        <ul class="small">${c.liste.slice(0, 40).map(d => `<li>${esc(d.name || d.id)} <span class="muted">— ${esc(d.raison)}</span></li>`).join('')}</ul>`
+        : `<p class="muted small mt">Aucun dossier compté pour l'instant.</p>`}
+      ${Object.keys(c.raisons).length ? `<h3 class="mt">Ce qui ne compte pas</h3>
+        <ul class="small">${Object.keys(c.raisons).map(r => `<li>${esc(r)} <span class="muted">— ${pl(c.raisons[r], 'dossier')}</span></li>`).join('')}</ul>` : ''}
+      <h3 class="mt">Ta clé ${info('lic.cle')}</h3>
+      <label class="field"><textarea id="lic-key" rows="3" spellcheck="false" placeholder="SKAN1.…">${esc(licCab.key || '')}</textarea></label>
+      <div class="modal-actions">
+        ${licCab.key ? '<button class="btn" id="lic-clear">Retirer la clé</button>' : ''}
+        <button class="btn" id="lic-ask">Demander une licence…</button>
+        <button class="btn btn-primary" id="lic-save">Enregistrer la clé</button>
+      </div>
+      <p class="muted small">Ce qui part dans la demande : ton <strong>empreinte</strong>, le nombre de dossiers comptés
+      et la version. <strong>Jamais un nom de client</strong> — ton portefeuille ne sort pas d'ici.</p>`;
+
+    const sv = $('#lic-save', box);
+    if (sv) {
+      sv.onclick = async () => {
+        try {
+          licCab = await api.licenceSet($('#lic-key', box).value.trim());
+          majBandeauLicence(); dessinerLicence(document, true);
+          toast('Licence enregistrée.');
+        } catch (e) { await infoDialog('Cette clé n\'a pas été retenue', plainError(e)); }
+      };
+    }
+    const cl = $('#lic-clear', box);
+    if (cl) {
+      cl.onclick = async () => {
+        const ok = await confirmDialog('Retirer la clé ?',
+          'Tu repasses à l\'offre gratuite : trois dossiers hors SkanFact.\n\nRien n\'est effacé, et tout reste lisible, importable et exportable — seule la validation d\'une écriture peut attendre si tu dépasses.',
+          'Retirer', true);
+        if (!ok) return;
+        try { licCab = await api.licenceSet(''); majBandeauLicence(); dessinerLicence(document, true); toast('Clé retirée.'); }
+        catch (e) { toast(plainError(e), 'error'); }
+      };
+    }
+    const ask = $('#lic-ask', box);
+    if (ask) {
+      ask.onclick = async () => {
+        try {
+          const m = await api.licenceRequestMail();
+          await api.mail({ to: 'contact@skanfact.tn', subject: m.subject, body: m.body });
+        } catch (e) { await infoDialog('Impossible d\'ouvrir le message', plainError(e)); }
+      };
+    }
+  }
+
   // ---------------------------------------------------------------- Réglages → Comptabilité (9.3.0)
   //
   // Trois panneaux : les touches de la grille, les guides, la correspondance des comptes. Aucun n'a
@@ -3514,6 +3619,7 @@
   const REG_PANNEAUX = {
     'pan-cabinet': { onglet: 'cabinet', titre: 'Ton cabinet', mots: 'cabinet nom email telephone jour relance tva cnss depot echeance' },
     'pan-appairage': { onglet: 'cabinet', titre: 'Le fichier à remettre à tes clients', mots: 'appairage fichier client empreinte cle publique chiffrer skanpair' },
+    'pan-licence': { onglet: 'cabinet', titre: 'Licence', mots: 'licence cle payer prix dossiers hors skanfact quota gratuit acheter abonnement facture' },
     'pan-saisie': { onglet: 'compta', titre: 'La grille de saisie', mots: 'saisie clavier touches raccourci solder recopier dupliquer journal date kilometre grille brouillard validation' },
     'pan-guides': { onglet: 'compta', titre: 'Guides d\'écritures', mots: 'guide modele ecriture type loyer salaire achat tva honoraires steg prerempli abonnement recurrent' },
     'pan-comptes': { onglet: 'compta', titre: 'Correspondance des comptes', mots: 'correspondance compte plan client cabinet traduire import export numero prefixe' },
@@ -3573,6 +3679,10 @@
         <p class="muted small mt">Cette empreinte identifie ton cabinet. Ton client la voit après l'import : s'il te la lit au téléphone
         et qu'elle correspond, c'est bien à toi qu'il envoie.</p>
         <div class="modal-actions"><button class="btn btn-primary" id="c-pair">Enregistrer le fichier d'appairage…</button></div>
+      </div>
+
+      ${panneauReg('pan-licence', info('lic.cab'))}
+        <div id="lic-panel"><p class="muted small">Chargement…</p></div>
       </div>
 
       </section>
@@ -3683,6 +3793,7 @@
     const sup = $('#s-support'); if (sup) sup.onclick = supportDialog;
     const idee = $('#s-idee'); if (idee) idee.onclick = ideeDialog;
     brancherReglagesCompta(view);
+    dessinerLicence(view);
     bindRecoveryBanner(view);
     if ($('#r-demo-on')) $('#r-demo-on').onclick = async () => {
       S = await api.demo(true); toast('Exemple chargé : ces cinq dossiers sont fictifs.'); location.hash = '#/dossiers';

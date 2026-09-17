@@ -739,6 +739,24 @@ function licenceStatus(matricule) {
     editeur: editeurActif()
   };
 }
+// Ce que le manifeste d'un paquet dit de la licence de ce client (9.4.0). QUATRE champs, et rien
+// d'autre : l'état, la date de fin, si elle a été payée, et l'offre. Ni la clé, ni le nom, ni le
+// matricule — ils sont déjà dans le manifeste par ailleurs, et une clé qui voyagerait dans un
+// paquet serait une clé qu'on peut réutiliser ailleurs.
+//
+// `payee` distingue une vraie licence d'un essai : c'est ce qui décide, chez le cabinet, si le
+// dossier garde douze mois de grâce après l'expiration. Sans cette distinction, « avoir essayé »
+// coûterait moins cher à son comptable que « n'avoir jamais essayé ».
+function etatLicencePourPaquet(matricule) {
+  try {
+    const st = licenceStatus(matricule || '');
+    return { etat: st.state, exp: String(st.exp || ''), payee: !!st.key, offre: st.offre || '' };
+  } catch (e) {
+    logToFile('licence du paquet', e);
+    return null;                      // on ne devine pas : le cabinet ne comptera pas ce dossier
+  }
+}
+
 // L'état de l'éditeur, tel que l'écran le reçoit. JAMAIS la clé privée dedans — elle ne traverse
 // pas le pont, exactement comme la clé du cabinet dans l'autre application.
 // `depuis` : le jour d'où partent les durées proposées (aujourd'hui, ou la fin de la licence qu'on
@@ -1740,7 +1758,24 @@ ipcMain.handle('licence:emettre', (_e, p) => {
   p = p || {};
   const nom = String(p.nom || '').trim();
   if (!nom) { const err = new Error('La licence doit porter le nom de l\'entreprise.'); err.code = 'LICENCE_NOM'; throw err; }
-  const offre = L.OFFRES[p.offre] ? p.offre : '';
+  // Le TYPE (9.4.0) : une licence d'entreprise, ou une licence de CABINET. Une licence de cabinet
+  // n'a pas d'offre ni de matricule — son sujet est l'empreinte du cabinet, et ce qu'elle porte est
+  // un quota de dossiers hors SkanFact. Les deux ne se mélangent jamais : l'application entreprise
+  // refuse une clé de cabinet, et réciproquement.
+  const type = p.type === 'cabinet' ? 'cabinet' : 'entreprise';
+  if (type === 'cabinet') {
+    const emp = String(p.cabinet || '').trim().toUpperCase();
+    if (!/^[0-9A-F]{4}(-[0-9A-F]{4}){4}$/.test(emp)) {
+      const err = new Error('Une licence de cabinet est attachée à son EMPREINTE : cinq groupes de quatre caractères hexadécimaux, comme 3F9A-2C1E-….');
+      err.code = 'LICENCE_EMPREINTE'; throw err;
+    }
+    const quota = Math.round(Number(p.dossiersHors));
+    if (!Number.isFinite(quota) || quota < 1 || quota > 5000) {
+      const err = new Error('Combien de dossiers hors SkanFact cette licence couvre-t-elle, en plus des trois gratuits ? (entre 1 et 5000)');
+      err.code = 'LICENCE_QUOTA'; throw err;
+    }
+  }
+  const offre = type === 'cabinet' ? 'cabinet' : (L.OFFRES[p.offre] ? p.offre : '');
   if (!offre) { const err = new Error('Choisis une offre : Indépendant ou Entreprise.'); err.code = 'LICENCE_OFFRE'; throw err; }
   // Soit une durée (« 1a », « vie », « date » + date libre), soit une date de fin toute faite ('' = à vie).
   // `depuis` : un renouvellement part de la fin de la licence précédente quand elle est encore
@@ -1752,7 +1787,11 @@ ipcMain.handle('licence:emettre', (_e, p) => {
   }
   const payload = {
     id: L.licenceId(), nom, matricule: String(p.matricule || '').trim(), offre, exp,
-    cabinet: String(p.cabinet || '').trim(), note: String(p.note || '').trim(), emisLe: L.today()
+    cabinet: String(p.cabinet || '').trim().toUpperCase(), note: String(p.note || '').trim(), emisLe: L.today(),
+    // Les deux champs de la 9.4.0, en QUEUE de charge : ajoutés au milieu, ils changeraient l'ordre
+    // des champs déjà signés, et une clé refabriquée depuis sa charge rangée en base ne serait plus
+    // identique à celle qu'on a envoyée (Ed25519 est déterministe — c'est ce qui le permet).
+    type, dossiersHors: type === 'cabinet' ? Math.round(Number(p.dossiersHors)) : 0
   };
   return { key: L.signLicence(payload, lirePrivee()), ...payload };
 });
@@ -1828,6 +1867,11 @@ ipcMain.handle('pack:build', async (_e, { plan, coverHtml, password, cabinetKey,
       ...plan.manifest,
       genereLe: new Date().toISOString(),
       versionApp: app.getVersion(),
+      // L'ÉTAT de la licence de ce client, et rien de plus (9.4.0) : ni la clé, ni son nom, ni son
+      // matricule — ils sont déjà ailleurs dans le manifeste. Le cabinet s'en sert pour savoir si
+      // ce dossier compte dans SA licence à lui : un client sur SkanFact ne lui coûte rien. Un
+      // paquet d'avant la 9.4.0 n'a pas ce champ, et le cabinet ne devine pas — il ne compte pas.
+      licence: etatLicencePourPaquet(((plan.manifest || {}).entreprise || {}).matricule || ''),
       absents: missing,
       fichiers: files.map(f => ({ chemin: f.name, octets: f.data.length, empreinte: sha256(f.data) }))
     };

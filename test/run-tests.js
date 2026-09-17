@@ -5271,9 +5271,26 @@ t('audit H5 : l\'app gratuite du comptable n\'embarque pas le code de l\'app pay
   // où le fichier est là — et plante une fois CONSTRUITE, sur un `RowMenu is not defined` qui ne
   // se voit qu'après installation. Exactement le piège de `src/depot.js` en 7.26.0.
   if (/renderer\/rowmenu\.js/.test(lus)) besoins.push('src/renderer/rowmenu.js');
+  // La licence du cabinet (9.4.0) : elle se vérifie HORS LIGNE, donc le module et les clés
+  // publiques entrent dans le paquet. `licence.js` figurait jusqu'ici dans la liste des INTERDITS —
+  // c'était vrai tant que le Cabinet n'avait pas de licence, et ça décrivait l'état du jour, pas la
+  // règle. La règle est « l'app gratuite n'embarque pas le PRODUIT payant » : le code qui vérifie
+  // une signature n'est pas un produit, et le secret n'est pas le code, c'est la clé privée — qui,
+  // elle, ne part nulle part (règle 7.33.0). Le besoin se DÉDUIT du require, comme les autres.
+  if (/require\('\.\.\/licence(\.js)?'\)/.test(lus)) besoins.push('src/licence.js');
   besoins.forEach(f => assert.ok(motifs.includes(f), `l'app cabinet a besoin de ${f} et il n'est pas livré`));
-  // Les fichiers de l'app entreprise qui ne doivent PAS partir.
-  ['src/renderer/app.js', 'src/renderer/core.js', 'src/main.js', 'src/storage.js', 'src/licence.js']
+  // Et si `licence.js` part, les clés publiques doivent partir avec : sans elles, l'application
+  // installée serait DÉSARMÉE et n'importe quelle clé passerait. Les motifs sont ÉVALUÉS contre les
+  // deux vrais noms de fichier — comparer leur orthographe laisserait passer le défaut de la 8.4.0
+  // (`licence-public*.json` ne correspond pas à `licences-publiques.json`).
+  if (besoins.includes('src/licence.js')) {
+    ['build/licences-publiques.json', 'build/licence-public.json'].forEach(vrai => {
+      const couvert = motifs.some(m => new RegExp('^' + m.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*') + '$').test(vrai));
+      assert.ok(couvert, `aucun motif de build/cabinet.config.js n'embarque ${vrai} : l'app cabinet serait désarmée`);
+    });
+  }
+  // Les fichiers de l'app entreprise qui ne doivent PAS partir : ceux qui SONT le produit payant.
+  ['src/renderer/app.js', 'src/renderer/core.js', 'src/main.js', 'src/storage.js']
     .forEach(f => assert.ok(!motifs.includes(f), `${f} n'a rien à faire dans l'app du comptable`));
 });
 
@@ -10371,8 +10388,14 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       const master = lic.generateKeys(), srv = lic.generateKeys(), autre = lic.generateKeys();
       const charge = P.chargeLicence({ kid: 'srv-1', id: '3f9a2c1e', sub: 'cli_1', nom: 'Menuiserie Trabelsi', matricule: '1234567A/M/P/000', offre: 'independant', exp: '2027-09-15', cabinet: '', emisLe: '2026-09-15' });
       assert.strictEqual(charge.format, 2);
-      assert.deepStrictEqual(Object.keys(charge), ['format', 'kid', 'id', 'sub', 'nom', 'matricule', 'offre', 'exp', 'cabinet', 'note', 'emisLe'],
+      // Les deux champs de la 9.4.0 (`type`, `dossiersHors`) sont en QUEUE, et c'est la seule place
+      // possible : les insérer au milieu changerait l'ordre des champs déjà signés, et une clé
+      // refabriquée depuis sa charge rangée en base ne serait plus identique à celle qu'on a
+      // envoyée — or c'est exactement ce qui permet de ne jamais ranger la clé elle-même.
+      assert.deepStrictEqual(Object.keys(charge), ['format', 'kid', 'id', 'sub', 'nom', 'matricule', 'offre', 'exp', 'cabinet', 'note', 'emisLe', 'type', 'dossiersHors'],
         'l\'ordre des champs est celui que l\'application écrit — un champ déplacé change la signature');
+      assert.strictEqual(charge.type, 'entreprise', 'un type absent vaut « entreprise » : rien de ce qui a été vendu ne bouge');
+      assert.strictEqual(charge.dossiersHors, 0);
       const cle = await P.signerLicence(charge, srv.privateKey);
       assert.ok(cle.startsWith('SKAN1.'), 'le même conteneur que src/licence.js');
       // Déterministe : c'est ce qui permet de ne jamais ranger la clé en base, seulement son contenu.
@@ -12502,6 +12525,240 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // La recherche porte sur TOUT le livre, pas sur la période affichée : on cherche justement
     // parce qu'on ne sait plus quand c'était.
     assert.strictEqual(C.chercherEcritures(L, '1191', { du: '2026-01-01', au: '2026-12-31' }).length, 2);
+  });
+
+
+  // ================================================================ 9.4.0 — la licence du Cabinet
+  //
+  // On vend des DOSSIERS, jamais des postes. Ce qui se compte, ce sont les dossiers hors SkanFact ;
+  // ce qui se ferme, c'est la VALIDATION d'une écriture, et elle seule.
+
+  t('9.4.0 : une clé de CABINET n\'ouvre pas l\'application entreprise, et réciproquement', () => {
+    // Le trou que ce garde-fou bouche : une licence de cabinet n'a pas de matricule (son sujet est
+    // l'empreinte), et `memeMatricule` laisse passer un côté vide — « on ne punit pas qui n'a pas
+    // rempli sa fiche » (7.33.0). Deux règles justes, posées chacune pour une bonne raison, se
+    // combinaient en une clé Cabinet qui déverrouillait TOUT chez n'importe quelle entreprise.
+    const L = require('../src/licence.js');
+    const k = L.generateKeys();
+    const cles = JSON.stringify({ cles: [{ kid: 'master', publicKey: k.publicKey, creeLe: '2026-01-01' }] });
+    const cabKey = L.signLicence({
+      id: 'c1', nom: 'Cabinet Ben Salah', matricule: '', offre: 'cabinet', exp: '2027-12-31',
+      cabinet: '3F9A-2C1E-0000-1111-2222', note: '', emisLe: '2026-09-17', type: 'cabinet', dossiersHors: 10
+    }, k.privateKey);
+    const entKey = L.signLicence({
+      id: 'e1', nom: 'Menuiserie', matricule: '1234567A', offre: 'entreprise', exp: '2027-12-31',
+      cabinet: '', note: '', emisLe: '2026-09-17', type: 'entreprise', dossiersHors: 0
+    }, k.privateKey);
+
+    // La clé de cabinet, dans l'application ENTREPRISE : refusée, et le refus dit où elle s'installe.
+    const chezEntreprise = L.licenceState({ key: cabKey, cles, matricule: '1234567A', today: '2026-10-01' });
+    assert.strictEqual(chezEntreprise.locked, true, 'une clé de CABINET a déverrouillé l\'application entreprise');
+    assert.ok(/Cabinet/.test(chezEntreprise.label), chezEntreprise.label);
+    assert.ok(/SkanFact Cabinet/.test(chezEntreprise.detail), 'le refus ne dit pas où cette clé s\'installe');
+    assert.deepStrictEqual(chezEntreprise.reserves, [], 'une clé refusée n\'accorde aucun module');
+
+    // Et la clé d'entreprise, dans le CABINET : refusée aussi. La symétrie compte — sans elle, il
+    // suffirait d'une licence Indépendant à 390 DT pour couvrir soixante dossiers.
+    const chezCabinet = L.licenceCabinet({ key: entKey, cles, empreinte: '3F9A-2C1E-0000-1111-2222', comptes: 20, today: '2026-10-01' });
+    assert.strictEqual(chezCabinet.state, 'autre');
+    assert.strictEqual(chezCabinet.quota, 0, 'une clé d\'entreprise a accordé un quota au cabinet');
+    assert.strictEqual(chezCabinet.locked, true);
+
+    // Le cas que la garde de TYPE protège vraiment, et que la comparaison d'empreinte ne voit pas :
+    // la clé d'un client PARRAINÉ par ce cabinet. Elle porte légitimement son empreinte (c'est ce
+    // qui donne la remise de parrainage depuis la 6.2.0), donc la seule chose qui la distingue
+    // d'une licence de cabinet est son type. Sans cette garde, un comptable n'aurait qu'à coller la
+    // clé d'un de ses clients pour voir « Licence active » — un quota de zéro, mais un écran qui
+    // ment. C'est le cas à tester : le premier, sur une clé sans empreinte, était tenu par la
+    // comparaison d'empreinte et ne prouvait donc pas la garde (le piège du correctif double, 7.27.0).
+    const parraine = L.signLicence({
+      id: 'e2', nom: 'Menuiserie', matricule: '1234567A', offre: 'entreprise', exp: '2027-12-31',
+      cabinet: '3F9A-2C1E-0000-1111-2222', note: '', emisLe: '2026-09-17', type: 'entreprise', dossiersHors: 0
+    }, k.privateKey);
+    const filou = L.licenceCabinet({ key: parraine, cles, empreinte: '3F9A-2C1E-0000-1111-2222', comptes: 20, today: '2026-10-01' });
+    assert.strictEqual(filou.state, 'autre', 'la clé d\'un client parrainé passe pour une licence de cabinet');
+    assert.ok(/entreprise/.test(filou.label), filou.label);
+
+    // La bonne clé, au bon endroit.
+    const bonne = L.licenceCabinet({ key: cabKey, cles, empreinte: '3f9a-2c1e-0000-1111-2222', comptes: 12, today: '2026-10-01' });
+    assert.strictEqual(bonne.state, 'active', bonne.detail);
+    assert.strictEqual(bonne.quota, 10);
+    assert.strictEqual(bonne.autorises, 13, '3 gratuits + 10 du quota');
+    assert.strictEqual(bonne.locked, false);
+    // Une empreinte se compare sans tenir compte de la casse : elle se recopie d'un message.
+    const autreCab = L.licenceCabinet({ key: cabKey, cles, empreinte: 'AAAA-BBBB-CCCC-DDDD-EEEE', comptes: 1, today: '2026-10-01' });
+    assert.strictEqual(autreCab.state, 'autre');
+    assert.ok(/3F9A-2C1E-0000-1111-2222/.test(autreCab.detail) && /AAAA-BBBB/.test(autreCab.detail),
+      'le refus doit nommer LES DEUX empreintes, sinon on ne sait pas laquelle est la sienne');
+  });
+
+  t('9.4.0 : on vend des dossiers — ce qui compte, et ce qui ne compte pas', () => {
+    const K = require('../src/cabinet/cabcore.js');
+    const t0 = '2026-09-17';
+    const cas = [
+      [{ id: '1', packs: [] }, true, 'un client hors SkanFact compte'],
+      [{ id: '2', packs: [], archived: true }, false, 'un dossier archivé ne compte pas'],
+      [{ id: '3', packs: [], demo: true }, false, 'le jeu d\'exemple ne compte pas'],
+      [{ id: '4', packs: [], derniereValidation: '2025-01-05' }, false, 'un dossier sans écriture validée depuis 12 mois ne compte pas'],
+      [{ id: '5', packs: [], derniereValidation: '2026-09-01' }, true, 'un dossier travaillé ce mois-ci compte'],
+      [{ id: '6', packs: [{ month: '2026-08' }], clientLicence: { etat: 'active' } }, false, 'un client sur SkanFact ne compte pas'],
+      [{ id: '7', packs: [{ month: '2026-08' }], clientLicence: { etat: 'essai' } }, false, 'un client en essai est sur SkanFact']
+    ];
+    cas.forEach(([d, attendu, quoi]) => {
+      const r = K.dossierFacturable(d, t0);
+      assert.strictEqual(r.compte, attendu, quoi + ' (raison donnée : ' + r.raison + ')');
+      assert.ok(r.raison, 'chaque dossier doit dire POURQUOI il compte ou non');
+    });
+    const c = K.comptageDossiers({ dossiers: cas.map(x => x[0]) }, t0);
+    assert.strictEqual(c.total, 7);
+    assert.strictEqual(c.comptes, 2);
+    assert.strictEqual(c.liste.length, 2);
+    assert.strictEqual(c.libres.length, 5);
+    assert.ok(Object.keys(c.raisons).length >= 4, 'les raisons se groupent pour que le chiffre s\'explique');
+    // Un cabinet dont TOUS les clients sont sur SkanFact ne paie jamais rien, quel qu'en soit le nombre.
+    const cent = { dossiers: Array.from({ length: 100 }, (_, i) => ({ id: 's' + i, packs: [{}], clientLicence: { etat: 'active' } })) };
+    assert.strictEqual(K.comptageDossiers(cent, t0).comptes, 0, 'cent clients sur SkanFact doivent rester gratuits');
+  });
+
+  t('9.4.0 : le doute profite au cabinet, et la grâce ne suit qu\'une licence PAYÉE', () => {
+    const K = require('../src/cabinet/cabcore.js');
+    const t0 = '2026-09-17';
+    // Un paquet d'avant la 9.4.0 ne porte pas l'état de la licence du client. On ne devine pas, et
+    // on ne fait pas payer un cabinet pour ce qu'on n'a pas su lire — l'écran le DIT.
+    const vieux = K.dossierFacturable({ id: '1', packs: [{ month: '2026-03' }] }, t0);
+    assert.strictEqual(vieux.compte, false, 'un paquet sans information de licence fait compter le dossier');
+    assert.ok(/9\.4\.0/.test(vieux.raison), 'la raison doit dire d\'où vient le doute : ' + vieux.raison);
+
+    // La grâce : douze mois après l'expiration d'une licence PAYÉE. Le client a peut-être juste
+    // tardé à renouveler, et ce n'est pas au cabinet de le payer.
+    const grace = K.dossierFacturable({ id: '2', packs: [{}], clientLicence: { etat: 'expiree', exp: '2026-06-01', payee: true } }, t0);
+    assert.strictEqual(grace.compte, false, grace.raison);
+    assert.ok(/grâce/.test(grace.raison));
+    const finie = K.dossierFacturable({ id: '3', packs: [{}], clientLicence: { etat: 'expiree', exp: '2025-01-01', payee: true } }, t0);
+    assert.strictEqual(finie.compte, true, 'la grâce ne dure pas éternellement');
+
+    // Mais un ESSAI non converti n'ouvre aucune grâce : sinon « avoir essayé » coûterait moins cher
+    // au cabinet que « n'avoir jamais essayé », et on fabriquerait la catégorie qu'on veut éviter.
+    const essai = K.dossierFacturable({ id: '4', packs: [{}], clientLicence: { etat: 'expiree', exp: '2026-06-01', payee: false } }, t0);
+    assert.strictEqual(essai.compte, true, 'un essai non converti ouvre une grâce : le trou de la règle 44');
+
+    // Et ce que le manifeste donne se lit sans rien inventer.
+    assert.strictEqual(K.licenceDuPaquet({}), null);
+    assert.strictEqual(K.licenceDuPaquet({ licence: {} }), null);
+    const lu = K.licenceDuPaquet({ licence: { etat: 'active', exp: '2027-01-01', payee: true }, genereLe: '2026-09-05T08:00:00.000Z' });
+    assert.deepStrictEqual(lu, { etat: 'active', exp: '2027-01-01', payee: true, vuLe: '2026-09-05' });
+  });
+
+  t('9.4.0 : le verrou du Cabinet ne ferme QUE la validation', () => {
+    // Jamais de données en otage (6.4.0) — et ici ce sont les pièces de SOIXANTE entreprises qui
+    // dorment dans cette application. Lire, importer un paquet, exporter des écritures, relancer un
+    // client : rien de tout cela ne demande une licence, quoi qu'il arrive.
+    const main = lireSource('src', 'cabinet', 'main.js')
+      .replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+    assert.ok(main.includes('function licenceBlockCab'), 'la porte unique a disparu');
+    const appels = [...main.matchAll(/licenceBlockCab\(/g)].length;
+    assert.ok(appels >= 5, 'la porte doit être posée sur les gestes qui valident (trouvée ' + appels + ' fois)');
+
+    // Chacun des gestes qui VALIDE la pose, et aucun de ceux qui lisent.
+    const bloc = nom => {
+      const i = main.indexOf(`ipcMain.handle('${nom}'`);
+      assert.ok(i > 0, 'handler introuvable : ' + nom);
+      const suivants = [main.indexOf('ipcMain.handle(', i + 10), main.indexOf('\nfunction ', i)].filter(x => x > 0);
+      return main.slice(i, suivants.length ? Math.min(...suivants) : main.length);
+    };
+    ['cab:valider', 'cab:validerLot', 'cab:contrepasser', 'cab:extourner'].forEach(n => {
+      assert.ok(/licenceBlockCab\(/.test(bloc(n)), n + ' valide une écriture sans passer par la porte');
+    });
+    ['cab:livre', 'cab:livres', 'cab:importPack', 'cab:ecrituresPlan', 'cab:saisir', 'cab:mail', 'cab:noteRelance'].forEach(n => {
+      assert.ok(!/licenceBlockCab\(/.test(bloc(n)), n + ' demande une licence alors qu\'il ne valide rien : des données en otage');
+    });
+  });
+
+  t('9.4.0 : la pastille du Cabinet est le JUMEAU EXACT de celle de l\'entreprise', () => {
+    // Les deux applications doivent dire la même chose de la même échéance, et aucune ne peut
+    // charger le module de l'autre : core.js est un UMD de navigateur, licence.js a besoin de
+    // `crypto`. Le seul garde-fou possible est l'égalité des corps — même règle que `round3`.
+    const L = require('../src/licence.js');
+    const C = require('../src/renderer/core.js');
+    const corps = f => String(f).replace(/^\s*function\s+\w+/, 'function').replace(/\s+/g, ' ').trim();
+    assert.strictEqual(corps(L.pastille), corps(C.pastilleLicence),
+      'pastille (licence.js) et pastilleLicence (core.js) ont divergé : les deux applications ne diront plus la même chose');
+    // Et elle décide vraiment (sinon comparer deux fonctions mortes ne prouverait rien).
+    assert.strictEqual(L.pastille({ locked: true, label: 'x' }).ton, 'alerte');
+    assert.strictEqual(L.pastille({ state: 'essai', daysLeft: 20 }).ton, 'calme');
+    assert.strictEqual(L.pastille({ state: 'essai', daysLeft: 3 }).ton, 'attire');
+    assert.strictEqual(L.pastille({ state: 'active', daysLeft: 10 }).ton, 'attire');
+    assert.strictEqual(L.pastille({ state: 'active', daysLeft: 200 }).show, false);
+    assert.strictEqual(L.pastille({ state: 'gratuit', daysLeft: null }).show, false,
+      'un cabinet gratuit n\'a pas d\'échéance : rien ne doit s\'afficher');
+  });
+
+  t('9.4.0 : ce qui remonte pour demander une licence — jamais un nom de client', () => {
+    const L = require('../src/licence.js');
+    const m = L.requestMailCabinet(
+      { name: 'Cabinet Ben Salah', email: 'contact@cabinet.tn', fingerprint: '3F9A-2C1E-0000-1111-2222' },
+      { comptes: 7, label: 'Gratuit — 7 dossiers hors SkanFact sur 3' }, '9.4.0');
+    ['Cabinet Ben Salah', 'contact@cabinet.tn', '3F9A-2C1E-0000-1111-2222', '7', '9.4.0'].forEach(x =>
+      assert.ok(m.body.includes(x), 'la demande doit porter ' + x));
+    // Et rien du portefeuille : un cabinet ne donne pas la liste de ses clients pour acheter une
+    // licence. Un jour quelqu'un voudra « juste ajouter les noms pour vérifier le compte » — c'est
+    // ce test qui doit l'arrêter.
+    ['Menuiserie', 'Trabelsi', 'matricule', 'dossiers :'].forEach(x =>
+      assert.ok(!m.body.includes(x), 'la demande ne doit pas contenir « ' + x +' »'));
+    assert.ok(m.body.split('\n').length < 16, 'la demande doit rester courte : ' + m.body.split('\n').length + ' lignes');
+  });
+
+  t('9.4.0 : la licence du cabinet survit à migrate, et voyage avec la clé de secours', () => {
+    const K = require('../src/cabinet/cabcore.js');
+    // Absente de `migrate`, elle serait jetée au prochain chargement — en silence, et le cabinet se
+    // retrouverait bloqué un matin sans savoir pourquoi (le défaut `matricule` de 6.8.0).
+    assert.deepStrictEqual(K.migrate({ licence: { key: 'SKAN1.abc', poseeLe: '2026-09-17' } }).licence,
+      { key: 'SKAN1.abc', poseeLe: '2026-09-17' });
+    assert.strictEqual(K.migrate({}).licence, null);
+    assert.strictEqual('licence' in K.DEFAULT_STATE, true, 'la licence doit exister dans l\'état par défaut');
+    // Elle vit dans l'état CHIFFRÉ, donc elle part avec la clé de secours : un cabinet qui change
+    // d'ordinateur (6.8.1) retrouve sa licence en même temps que ses paquets. Et elle est attachée
+    // à son EMPREINTE, qui ne change pas non plus — à condition d'avoir REPRIS, pas recréé.
+    assert.strictEqual(K.migrate({ licence: 'pas un objet' }).licence, null);
+  });
+
+  t('9.4.0 : le manifeste dit l\'état de la licence du client, et rien de plus', () => {
+    const main = lireSource('src', 'main.js')
+      .replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+    const i = main.indexOf('function etatLicencePourPaquet');
+    assert.ok(i > 0, 'le manifeste ne porte plus l\'état de la licence');
+    const zone = main.slice(i, main.indexOf('\nfunction ', i + 10));
+    assert.ok(zone.length > 150 && zone.length < 1500, 'la tranche fait ' + zone.length + ' caractères');
+    // QUATRE champs. Ni la clé, ni le nom, ni le matricule — ils sont déjà ailleurs dans le
+    // manifeste, et une clé qui voyagerait dans un paquet serait une clé réutilisable ailleurs.
+    const champs = [...zone.matchAll(/(\w+):/g)].map(m => m[1]).filter(x => x !== 'return');
+    assert.deepStrictEqual(champs.sort(), ['etat', 'exp', 'offre', 'payee'],
+      'le manifeste porte autre chose que l\'état de la licence : ' + champs.join(', '));
+    // La clé ne voyage JAMAIS dans un paquet : elle serait réutilisable ailleurs. `!!st.key` est
+    // permis — c'est sa PRÉSENCE qui dit si la licence a été payée, et une présence n'est pas une
+    // clé. Une première version de ce test interdisait le mot `key` tout court : elle accusait du
+    // code juste, ce qui est aussi grave qu'un test trop large (9.1.0).
+    [...zone.matchAll(/st\.key/g)].forEach(m => {
+      const avant = zone.slice(Math.max(0, m.index - 4), m.index);
+      assert.ok(/!!$/.test(avant), 'la clé sort autrement qu\'en booléen : elle voyagerait dans le paquet');
+    });
+    assert.ok(!/key:/.test(zone), 'le manifeste porte un champ « key »');
+    // Et en cas d'échec, on rend `null` : le cabinet ne devinera pas, il ne comptera pas.
+    assert.ok(/return null;/.test(zone), 'un échec doit rendre null, jamais un état inventé');
+  });
+
+  t('9.4.0 : l\'émission d\'une licence de cabinet exige une empreinte et un quota', () => {
+    const main = lireSource('src', 'main.js')
+      .replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+    const i = main.indexOf("ipcMain.handle('licence:emettre'");
+    const zone = main.slice(i, main.indexOf('\n});', i));
+    assert.ok(zone.length > 800 && zone.length < 4000, 'la tranche de l\'émission fait ' + zone.length + ' caractères');
+    assert.ok(/LICENCE_EMPREINTE/.test(zone), 'une licence de cabinet peut être émise sans empreinte');
+    assert.ok(/LICENCE_QUOTA/.test(zone), 'une licence de cabinet peut être émise sans quota');
+    assert.ok(/type,\s*dossiersHors/.test(zone), 'les deux champs de la 9.4.0 ne sont pas signés');
+    // L'empreinte est normalisée en MAJUSCULES à l'émission : elle se recopie d'un message, et
+    // deux casses différentes désigneraient deux cabinets.
+    assert.ok(/\.toUpperCase\(\)/.test(zone), 'l\'empreinte signée n\'est pas normalisée');
   });
 
   t('aucun fichier source ne traîne à la racine du dépôt', () => {

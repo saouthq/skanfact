@@ -72,6 +72,12 @@ contextBridge.exposeInMainWorld('cabinet', {
   saveAbonnements: (dossierId, abonnements) => ipcRenderer.invoke('cab:saveAbonnements', { dossierId, abonnements }),
   genererAbonnements: (o) => ipcRenderer.invoke('cab:genererAbonnements', o || {}),
   dernierJournal: (dossierId, journal) => ipcRenderer.invoke('cab:dernierJournal', { dossierId, journal }),
+  // La licence du cabinet (9.4.0). Elle ne concerne QUE ce cabinet : rien ici ne touche aux
+  // données d'un client, et la porte qu'elle ferme est celle de la validation d'une écriture —
+  // jamais la lecture, jamais l'import, jamais l'export.
+  licenceStatus: () => ipcRenderer.invoke('licence:status'),
+  licenceSet: (key) => ipcRenderer.invoke('licence:set', key),
+  licenceRequestMail: () => ipcRenderer.invoke('licence:requestMail'),
   relireLesPaquets: (dossierId, annee) => ipcRenderer.invoke('cab:relireLesPaquets', { dossierId, annee }),
   exportEcritures: (opts) => ipcRenderer.invoke('cab:exportEcritures', opts),
 

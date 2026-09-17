@@ -771,6 +771,15 @@ function ingest(file, password) {
       getStore().write(state);
     }
   }
+  // Ce que le paquet dit de la licence du CLIENT (9.4.0) : c'est elle qui décide si ce dossier
+  // compte dans la licence du cabinet. On ne la retient que si le paquet la porte — un paquet plus
+  // ancien laisse la valeur d'avant plutôt que de l'effacer, sinon rejouer un vieux mois ferait
+  // soudain compter un dossier qui ne comptait pas.
+  const licenceClient = K.licenceDuPaquet(manifest);
+  if (licenceClient) {
+    const d = state.dossiers.find(x => x.id === key);
+    if (d) { d.clientLicence = licenceClient; getStore().write(state); }
+  }
   // Un mois qui vient d'arriver doit apparaître dans les livres tout de suite. Sans cette ligne,
   // il n'apparaîtrait qu'au redémarrage et le comptable croirait l'import raté.
   viderCacheLivres(key);
@@ -1118,9 +1127,11 @@ ipcMain.handle('cab:valider', (_e, { dossierId, annee, id } = {}) => {
   requireOpen();
   const o = ouvrirLivre(dossierId, annee);
   if (!o.livre) throw new Error('Ce dossier n\'a pas de livre pour cet exercice.');
+  licenceBlockCab('Valider une écriture');
   const r = KC.validerEcriture(o.livre, id, moiPoste().deviceName || 'cabinet', Date.now());
   if (!r.ok) { const e = new Error(r.motif); e.motifs = r.motifs; throw e; }
   ecrireLeLivre(dossierId, o.livre, null);
+  noterValidation(dossierId);
   return { ok: true, numero: r.ecriture.numero, livre: ouvrirLivre(dossierId, annee).livre };
 });
 
@@ -1128,9 +1139,11 @@ ipcMain.handle('cab:contrepasser', (_e, { dossierId, annee, id, date } = {}) => 
   requireOpen();
   const o = ouvrirLivre(dossierId, annee);
   if (!o.livre) throw new Error('Ce dossier n\'a pas de livre pour cet exercice.');
+  licenceBlockCab('Contre-passer une écriture');
   const r = KC.contrepasser(o.livre, id, moiPoste().deviceName || 'cabinet', date, Date.now());
   if (!r.ok) throw new Error(r.motif);
   ecrireLeLivre(dossierId, o.livre, null);
+  noterValidation(dossierId);
   return { ok: true, numero: r.ecriture.numero, livre: ouvrirLivre(dossierId, annee).livre };
 });
 
@@ -1154,6 +1167,113 @@ ipcMain.handle('cab:lettrer', (_e, { dossierId, annee, compte, ids, lettre, dele
   ecrireLeLivre(dossierId, o.livre, delettrer ? null : 'lettrage', r.lettre || lettre);
   return { ok: true, lettre: r.lettre, livre: ouvrirLivre(dossierId, annee).livre };
 });
+
+// ================================================================ LA LICENCE DU CABINET (9.4.0)
+//
+// On vend des DOSSIERS, jamais des postes. La porte est posée sur la VALIDATION d'une écriture, et
+// sur elle seule : lire, importer un paquet, exporter des écritures, relancer un client restent
+// ouverts quoi qu'il arrive. Jamais de données en otage (règle 6.4.0) — et ici ce sont les pièces
+// de soixante entreprises qui dorment dans cette application.
+//
+// Le sujet de la clé est l'EMPREINTE du cabinet : elle survit au changement d'ordinateur (6.8.1),
+// et c'est celle que le comptable dicte déjà à ses clients.
+const L = require('../licence.js');
+
+const CLES_CABINET = () => [
+  path.join(__dirname, '..', '..', 'build', 'licences-publiques.json'),
+  path.join(__dirname, '..', '..', 'build', 'licence-public.json')
+];
+function clesCabinet() {
+  // `SKANFACT_CLE_EMBARQUEE` n'est honoré qu'en DÉVELOPPEMENT (règle 8.0.0) : une application
+  // installée lit toujours sa propre clé, quoi que dise l'environnement.
+  if (!app.isPackaged && process.env.SKANFACT_CLE_EMBARQUEE) {
+    return lireJson(process.env.SKANFACT_CLE_EMBARQUEE) || '';
+  }
+  for (const f of CLES_CABINET()) { const j = lireJson(f); if (j) return j; }
+  return '';
+}
+function lireJson(f) {
+  try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; }
+}
+
+// L'empreinte du cabinet. Elle n'est PAS rangée dans l'état : elle se CALCULE à partir de la clé
+// publique, et `safeState()` l'ajoute pour l'écran. Lire `state.cabinet.fingerprint` rend donc
+// `undefined` côté processus principal — et une empreinte vide désarme la comparaison, si bien que
+// la licence d'un AUTRE cabinet passait. C'est le parcours réel qui l'a montré ; aucun test pur ne
+// pouvait le voir, puisque le moteur, lui, rendait le bon verdict.
+const empreinteDuCabinet = () => (state.cabinet && state.cabinet.publicKey) ? Z.keyFingerprint(state.cabinet.publicKey) : '';
+
+// Ce que le cabinet doit : le comptage est PUR (`cabcore.comptageDossiers`), la décision aussi
+// (`licence.licenceCabinet`). Ce fichier ne fait que les mettre l'un devant l'autre.
+function licenceCabinetStatus() {
+  const compte = K.comptageDossiers(state, L.today());
+  const lic = (state && state.licence) || {};
+  const etat = L.licenceCabinet({
+    key: lic.key || '', cles: clesCabinet(), empreinte: empreinteDuCabinet(),
+    comptes: compte.comptes, today: L.today()
+  });
+  return { ...etat, comptage: compte, pastille: L.pastille(etat) };
+}
+
+ipcMain.handle('licence:status', () => { requireOpen(); return licenceCabinetStatus(); });
+
+// On REFUSE d'enregistrer une clé qui ne vaut rien ici, plutôt que de la ranger et de laisser le
+// comptable croire qu'il est en règle (règle 6.4.0). Et le refus dit POUR QUI la clé a été émise :
+// « invalide » tout court n'aide personne à comprendre ce qu'il vient de coller.
+ipcMain.handle('licence:set', (_e, key) => {
+  requireOpen();
+  const k = String(key || '').trim();
+  if (!k) {
+    state.licence = null;
+    save();
+    return licenceCabinetStatus();
+  }
+  const essai = L.licenceCabinet({
+    key: k, cles: clesCabinet(), empreinte: empreinteDuCabinet(),
+    comptes: K.comptageDossiers(state, L.today()).comptes, today: L.today()
+  });
+  if (essai.state === 'invalide' || essai.state === 'autre') {
+    const e = new Error(essai.detail || essai.label);
+    e.code = 'ERR-CAB-050';
+    throw e;
+  }
+  state.licence = { key: k, poseeLe: new Date().toISOString() };
+  save();
+  return licenceCabinetStatus();
+});
+
+ipcMain.handle('licence:requestMail', () => {
+  requireOpen();
+  return L.requestMailCabinet(state.cabinet || {}, licenceCabinetStatus(), app.getVersion());
+});
+
+// La porte UNIQUE. Elle est appelée par les quatre gestes qui valident une écriture, et par eux
+// seuls — un test relit la source et l'exige. La poser ailleurs (sur la lecture, sur l'import)
+// mettrait des données en otage.
+function licenceBlockCab(quoi) {
+  const etat = licenceCabinetStatus();
+  if (!etat.locked) return null;
+  const e = new Error(
+    `${quoi} demande une licence : ${etat.comptage.comptes} dossiers hors SkanFact sont comptés, `
+    + `et ${etat.autorises} ${etat.autorises === 1 ? 'est couvert' : 'sont couverts'}. `
+    + 'Tout le reste — lire, importer un paquet, exporter tes écritures, relancer tes clients — reste ouvert. '
+    + 'Réglages → Mon cabinet → Licence : tu y verras exactement quels dossiers sont comptés, et pourquoi.');
+  e.code = 'ERR-CAB-051';
+  e.licence = etat;
+  throw e;
+}
+
+// La date de la dernière validation, retenue SUR LE DOSSIER. On pourrait la déduire du livre, mais
+// il faudrait ouvrir et déchiffrer soixante fichiers à chaque affichage des Réglages — mesuré à
+// 1,3 s par `npm run charge`. C'est un confort de comptage, jamais une donnée comptable.
+function noterValidation(dossierId) {
+  const d = (state.dossiers || []).find(x => x.id === dossierId);
+  if (!d) return;
+  const t = L.today();
+  if (d.derniereValidation === t) return;
+  d.derniereValidation = t;
+  save();
+}
 
 // ================================================================ LA SAISIE (9.3.0)
 //
@@ -1187,9 +1307,11 @@ ipcMain.handle('cab:extourner', (_e, { dossierId, annee, id } = {}) => {
   requireOpen();
   const o = ouvrirLivre(dossierId, annee);
   if (!o.livre) throw new Error('Ce dossier n\'a pas de livre pour cet exercice.');
+  licenceBlockCab('Extourner une écriture');
   const r = KC.extourner(o.livre, id, moiPoste().deviceName || 'cabinet', Date.now());
   if (!r.ok) throw new Error(r.motif);
   ecrireLeLivre(dossierId, o.livre, null);
+  noterValidation(dossierId);
   return { ok: true, numero: r.ecriture.numero, date: r.ecriture.date, livre: ouvrirLivre(dossierId, annee).livre };
 });
 
@@ -1200,9 +1322,11 @@ ipcMain.handle('cab:validerLot', (_e, { dossierId, annee, journal, mois, ids } =
   requireOpen();
   const o = ouvrirLivre(dossierId, annee);
   if (!o.livre) throw new Error('Ce dossier n\'a pas de livre pour cet exercice.');
+  licenceBlockCab('Valider un lot d\'écritures');
   const r = KC.validerLot(o.livre, { journal, mois, ids }, moiPoste().deviceName || 'cabinet', Date.now());
   ecrireLeLivre(dossierId, o.livre, 'validation-lot',
     `${journal || 'tous journaux'} ${mois || ''} — ${r.validees.length} validée(s), ${r.refusees.length} refusée(s)`);
+  if (r.validees.length) noterValidation(dossierId);
   return { ...r, livre: ouvrirLivre(dossierId, annee).livre };
 });
 

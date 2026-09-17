@@ -341,6 +341,19 @@ function licenceState(opts) {
   const trialEnd = addDays(trialStart, TRIAL_DAYS);
   const payload = opts.key ? verifyKey(opts.key, pub) : null;
 
+  // Une clé de CABINET n'ouvre pas l'application entreprise (9.4.0). Le garde-fou est ici et pas
+  // seulement sur le type : une licence de cabinet n'a pas de matricule (son sujet est l'empreinte
+  // du cabinet), et `memeMatricule` laisse passer un côté vide — « on ne punit pas qui n'a pas
+  // rempli sa fiche » (7.33.0). Les deux règles, posées chacune pour une bonne raison, se
+  // combinaient en un trou : une clé Cabinet déverrouillait TOUT chez n'importe quelle entreprise.
+  if (payload && payload.type === 'cabinet') {
+    return { state: 'autre', locked: true, label: 'Licence de SkanFact Cabinet',
+      detail: 'Cette clé est celle d\'un cabinet comptable, pas d\'une entreprise : elle s\'installe dans SkanFact Cabinet. '
+        + 'Pour cette application, demande une licence à ton nom.',
+      key: opts.key, name: payload.nom || '', exp: String(payload.exp || ''), daysLeft: null,
+      offre: OFFRE_DEFAUT, offreLabel: '', reserves: [], options: [] };
+  }
+
   if (opts.key && !payload) {
     return { state: 'invalide', locked: true, label: 'Licence non reconnue',
       detail: 'Cette clé n\'est pas lisible ou n\'a pas été émise pour SkanFact. Vérifie qu\'elle a été collée en entier.',
@@ -414,6 +427,131 @@ function licenceState(opts) {
     key: '', name: '', exp: trialEnd, daysLeft: left, offre: OFFRE_DEFAUT, offreLabel: '', reserves: [], options: [] };
 }
 
+// ================================================================ LA LICENCE DU CABINET (9.4.0)
+//
+// On vend des DOSSIERS, jamais des postes (`DIRECTION.md`) : un cabinet installe l'application sur
+// autant d'ordinateurs qu'il veut. Ce qui se compte, ce sont ses dossiers **hors SkanFact** — ceux
+// de ses clients qui n'utilisent pas l'application. Les trois premiers sont gratuits, et un cabinet
+// dont tous les clients sont sur SkanFact ne paie jamais rien.
+//
+// Le sujet de la clé est l'EMPREINTE du cabinet, pas un matricule : c'est elle qui l'identifie de
+// façon stable, elle survit à un changement d'ordinateur (6.8.1), et le cabinet la connaît déjà —
+// c'est celle qu'il dicte à ses clients au téléphone.
+const CABINET_GRATUITS = 3;
+
+// Ce qui est AUTORISÉ, et ce qui est bloqué. La porte unique est sur la VALIDATION d'une écriture :
+// lire, importer un paquet, exporter, relancer un client restent libres quoi qu'il arrive. Jamais de
+// données en otage (règle 6.4.0) — et ici c'est encore plus vrai qu'ailleurs, puisque ce sont les
+// pièces de SOIXANTE entreprises qui dorment dans cette application.
+function licenceCabinet(opts) {
+  opts = opts || {};
+  const t = opts.today || today();
+  const pub = opts.cles || opts.publicKey || '';
+  const comptes = Math.max(0, Number(opts.comptes) || 0);
+  const empreinte = String(opts.empreinte || '').trim().toUpperCase();
+  const base = { comptes, gratuits: CABINET_GRATUITS, quota: 0, autorises: CABINET_GRATUITS, key: opts.key || '', exp: '', daysLeft: null };
+  const fin = (x) => {
+    const autorises = CABINET_GRATUITS + Math.max(0, Number(x.quota) || 0);
+    // UN seul endroit décide du verrou, et c'est un dépassement de quota. Une clé illisible ou
+    // d'un autre cabinet n'accorde rien — mais elle ne punit rien non plus tant qu'on est dans les
+    // trois dossiers gratuits : on ne verrouille pas quelqu'un qui ne devait rien.
+    return { ...base, ...x, autorises, locked: comptes > autorises, depasse: Math.max(0, comptes - autorises) };
+  };
+
+  if (!lireCles(pub).length) {
+    return fin({ state: 'libre', quota: 0, label: 'Licence non requise',
+      detail: 'Cette version n\'exige pas de licence.', autorisesInfini: true, locked: false });
+  }
+
+  const payload = opts.key ? verifyKey(opts.key, pub) : null;
+
+  if (opts.key && !payload) {
+    return fin({ state: 'invalide', quota: 0, label: 'Licence non reconnue',
+      detail: 'Cette clé n\'est pas lisible ou n\'a pas été émise pour SkanFact Cabinet. Vérifie qu\'elle a été collée en entier.' });
+  }
+  if (payload && payload.type !== 'cabinet') {
+    return fin({ state: 'autre', quota: 0, label: 'Licence d\'une entreprise',
+      detail: 'Cette clé est celle d\'une entreprise, pas d\'un cabinet : elle s\'installe dans SkanFact, pas ici.' });
+  }
+  if (payload && empreinte && String(payload.cabinet || '').trim().toUpperCase() !== empreinte) {
+    return fin({ state: 'autre', quota: 0, label: 'Licence d\'un autre cabinet',
+      detail: `Cette clé a été émise pour l'empreinte ${payload.cabinet || '(inconnue)'}, pas pour ${empreinte}. `
+        + 'Si tu viens de reprendre ton cabinet sur un autre ordinateur, vérifie que tu as bien repris ta clé de secours : '
+        + 'un cabinet recréé à neuf a une autre empreinte.' });
+  }
+
+  if (payload) {
+    const quota = Math.max(0, Number(payload.dossiersHors) || 0);
+    const exp = String(payload.exp || '');
+    const left = exp ? daysBetween(t, exp) : null;
+    const srv = opts.serveur || null;
+    if (srv && srv.etat === 'revoquee' && srv.sujet && srv.sujet === empreinteCle(opts.key)) {
+      return fin({ state: 'revoquee', quota: 0, exp, daysLeft: null, label: 'Licence révoquée',
+        detail: 'Cette clé a été révoquée par l\'éditeur' + (srv.motif ? ` (${srv.motif})` : '')
+          + '. Tout reste lisible, importable et exportable ; seule la validation d\'une écriture attend.'
+          + ' Si c\'est une erreur, écris à ' + CONTACT + '.' });
+    }
+    if (!exp || left >= 0) {
+      return fin({ state: 'active', quota, exp, daysLeft: left,
+        label: (exp ? `Licence active jusqu'au ${exp}` : 'Licence sans limite de durée')
+          + ` — ${quota} dossier${quota === 1 ? '' : 's'} hors SkanFact en plus des ${CABINET_GRATUITS} gratuits`,
+        detail: left != null && left <= 30 ? `Elle se termine dans ${left} jour${left === 1 ? '' : 's'} : pense à la renouveler.` : '' });
+    }
+    return fin({ state: 'expiree', quota: 0, exp, daysLeft: left, label: `Licence expirée le ${exp}`,
+      detail: 'Tout reste lisible, importable et exportable. Seule la validation d\'une écriture attend le renouvellement.' });
+  }
+
+  // Sans clé : les trois dossiers gratuits. Ce n'est pas un essai qui se termine — c'est l'offre.
+  // Un cabinet dont tous les clients sont sur SkanFact reste ici pour toujours, sans rien payer.
+  return fin({ state: 'gratuit', quota: 0,
+    label: comptes > CABINET_GRATUITS
+      ? `${comptes} dossiers hors SkanFact comptés — ${CABINET_GRATUITS} sont gratuits`
+      : `Gratuit — ${comptes} dossier${comptes === 1 ? '' : 's'} hors SkanFact sur ${CABINET_GRATUITS}`,
+    detail: comptes > CABINET_GRATUITS
+      ? 'Au-delà de trois dossiers hors SkanFact, la validation d\'une écriture demande une licence. Tout le reste — lire, importer, exporter, relancer — reste ouvert.'
+      : 'Les dossiers de tes clients qui utilisent SkanFact ne comptent pas, quel que soit leur nombre.' });
+}
+
+// Le bandeau, à trois tons. **Corps IDENTIQUE à `pastilleLicence` de core.js** — un test l'exige,
+// comme pour `round3` (9.1.0). Les deux applications doivent dire la même chose de la même échéance,
+// et aucune des deux ne peut charger le module de l'autre : core.js est un UMD de navigateur, ce
+// fichier a besoin de `crypto`. Le seul garde-fou possible est donc l'égalité, vérifiée.
+function pastille(lic) {
+  const l = lic || {};
+  const j = l.daysLeft;
+  if (l.locked) return { show: true, ton: 'alerte', texte: (l.label || 'Licence requise') + ' — voir Paramètres → L\'application → Licence' };
+  if (l.state === 'essai' && j != null) {
+    const reste = `Essai — ${j} jour${j === 1 ? '' : 's'}`;
+    return j <= 7
+      ? { show: true, ton: 'attire', texte: reste + (j === 0 ? ' : dernier jour' : ' avant la fin') }
+      : { show: true, ton: 'calme', texte: reste };
+  }
+  // Une licence payante qui se termine se dit ici aussi : sans ça, un client verrouillé un matin
+  // n'aurait été prévenu nulle part ailleurs que dans un panneau qu'il n'ouvre jamais.
+  if (l.state === 'active' && j != null && j <= 14) {
+    return { show: true, ton: 'attire', texte: (l.label || '') + ' — pense à la renouveler' };
+  }
+  return { show: false, ton: '', texte: '' };
+}
+
+// Le mail de demande de licence d'un CABINET. Ce qui part : l'empreinte, le nombre de dossiers
+// comptés, la version — jamais un nom de client. Un cabinet ne donne pas son portefeuille pour
+// acheter une licence, et cette règle est tenue par un test (§ 17 de PLAN-PLATEFORME).
+function requestMailCabinet(cabinet, etat, version) {
+  const c = cabinet || {};
+  return {
+    subject: `Demande de licence SkanFact Cabinet — ${c.name || ''}`,
+    body: `Bonjour,\n\nJe souhaite une licence SkanFact Cabinet.\n\n`
+      + `Cabinet : ${c.name || ''}\n`
+      + `Email : ${c.email || ''}\n`
+      + `Empreinte : ${c.fingerprint || ''}\n`
+      + `Dossiers hors SkanFact comptés : ${(etat && etat.comptes) || 0}\n`
+      + `Version : ${version || ''}\n`
+      + `État actuel : ${etat ? etat.label : ''}\n\n`
+      + `Merci,\n${c.name || ''}`
+  };
+}
+
 // Un identifiant court pour retrouver une licence dans l'historique de l'éditeur : il voyage dans la
 // clé, donc un client qui écrit « ma licence 3f9a2c1e » désigne une ligne précise.
 function licenceId() { return crypto.randomBytes(4).toString('hex'); }
@@ -437,4 +575,5 @@ function requestMail(company, state, deviceName) {
 
 module.exports = { FORMAT, TRIAL_DAYS, PREFIX, CONTACT, OFFRES, OFFRE_DEFAUT, DUREES, TOUTES_OPTIONS, OPTION_LABELS, optionsDe, generateKeys, signLicence, parseKey, verifyKey,
   licenceState, licenceId, offreDe, expirationPour, dateValide, memeMatricule, normMatricule, requestMail, today, addDays, addMonths, daysBetween,
+  CABINET_GRATUITS, licenceCabinet, pastille, requestMailCabinet,
   lireCles, choisirCle, empreinteCle, corpsReponse, verifierReponse, ageReponse, REPONSE_V, REPONSE_JOURS_MAX };
