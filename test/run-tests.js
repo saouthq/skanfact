@@ -12735,10 +12735,19 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     const L = C.livreVide('D', 2026);
     assert.ok(!('guides' in L) && !('abonnements' in L) && !('correspondance' in L),
       'le livre a gagné une liste qui n\'est pas dans son format');
+    // La règle exacte, et elle a été relue en 9.7.0 quand ce test a fait son travail : une liste
+    // AJOUTÉE est compatible — un livre écrit avant ne la porte pas, elle vaut `[]`, et aucun
+    // lecteur ancien ne s'en plaint. Un champ RENOMMÉ ou RETIRÉ ne l'est pas : là, un livre écrit
+    // chez soixante clients cesse d'être lisible. Le test dit donc les deux : la liste complète
+    // d'aujourd'hui (pour qu'un ajout soit une DÉCISION, jamais un effet de bord), et le socle
+    // qui ne peut plus bouger.
+    const SOCLE = ['audit', 'dossier', 'ecritures', 'exercice', 'format', 'journaux', 'lettrages',
+      'ouverture', 'plan', 'releves', 'immobilisations', 'declarations'];
+    const manquants = SOCLE.filter(k => !(k in L));
+    assert.deepStrictEqual(manquants, [], 'un champ du socle de livre.json a disparu');
     assert.deepStrictEqual(Object.keys(L).sort(),
-      ['audit', 'dossier', 'ecritures', 'exercice', 'format', 'journaux', 'lettrages',
-        'ouverture', 'plan', 'releves', 'immobilisations', 'declarations'].sort(),
-      'la forme du livre a changé');
+      SOCLE.concat(['inventaires']).sort(),          // 9.7.0 : l'inventaire de stock
+      'la forme du livre a changé — si c\'est voulu, c\'est une décision à écrire dans le cahier');
     // Et la surcharge : un guide du dossier qui porte le même id REMPLACE celui du cabinet, il ne
     // s'y ajoute pas — un doublon dans la liste, on ne saurait pas lequel est le bon.
     const K = require('../src/cabinet/cabcore.js');
@@ -13215,6 +13224,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   require('./suites/banque.js')({ t, assert, lireSource });
   require('./suites/declaration.js')({ t, assert, lireSource });
   require('./suites/moteur.js')({ t, assert, lireSource });
+  require('./suites/immobilisations.js')({ t, assert, lireSource });
 
   // ---------- 9.4.10 : aucune suite découpée ne reste sur le bord de la route ----------
   // Le danger d'un découpage, c'est le fichier qu'on écrit et que personne ne charge : les tests

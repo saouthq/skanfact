@@ -1949,6 +1949,10 @@
   async function chargerLeLivre(dossier) {
     const s = livresState;
     s.livre = null; s.livreEtat = '';
+    // Tout ce qui est lu POUR un couple (dossier, exercice) se périme avec lui. Garder l'état des
+    // immobilisations d'un dossier en ouvrant le suivant afficherait les biens de quelqu'un d'autre
+    // — et personne ne le verrait, puisque le tableau serait plein (règle 7.1.x).
+    s.decl = null; s.immo = null; s.inv = null;
     const annee = s.annee || String(new Date().getFullYear());
     s.livreCle = dossier.id + '|' + annee;
     try {
@@ -2202,16 +2206,20 @@
     // exactement le jour où elle sert le plus — le premier.
     // La BANQUE non plus n'a pas besoin de lignes existantes : le premier relevé arrive souvent
     // avant la première écriture, et c'est justement lui qui va les produire.
+    // Les IMMOBILISATIONS et l'INVENTAIRE non plus n'ont pas besoin de lignes existantes : un
+    // dossier hors SkanFact commence souvent par sa reprise de biens, avant la moindre écriture.
     const corps = s.onglet === 'saisie' ? vueSaisie(dossier)
       : s.onglet === 'declaration' ? vueDeclaration(dossier)
         : s.onglet === 'banque' ? vueBanque(dossier)
-          : !lignes.length
-            ? `<div class="empty mini">Aucune écriture sur cette période.</div>`
-            : s.onglet === 'journal' ? vueJournal(lignes)
-              : s.onglet === 'grand-livre' ? vueGrandLivre(lignes)
-                : s.onglet === 'balance' ? vueBalance(lignes)
-                  : s.onglet === 'recherche' ? vueRecherche(lignes)
-                    : vueLettrage(lignes);
+          : s.onglet === 'immobilisations' ? vueImmobilisations(dossier)
+            : s.onglet === 'inventaire' ? vueInventaire(dossier)
+              : !lignes.length
+                ? `<div class="empty mini">Aucune écriture sur cette période.</div>`
+                : s.onglet === 'journal' ? vueJournal(lignes)
+                  : s.onglet === 'grand-livre' ? vueGrandLivre(lignes)
+                    : s.onglet === 'balance' ? vueBalance(lignes)
+                      : s.onglet === 'recherche' ? vueRecherche(lignes)
+                        : vueLettrage(lignes);
 
     // D'OÙ viennent ces chiffres. Deux sources, et l'écran le dit en toutes lettres : une balance
     // lue dans les paquets du client et une balance tenue par le cabinet ne disent pas la même
@@ -2236,6 +2244,9 @@
         ${s.livre ? `<button data-tab="banque" class="${s.onglet === 'banque' ? 'active' : ''}">Banque${
           (() => { const n = (s.livre.releves || []).reduce((a, r) => a + r.lignes.filter(l => !(l.rapprochement && l.rapprochement.ecritureId)).length, 0);
             return n ? ` <span class="tab-n">${n}</span>` : ''; })()}</button>` : ''}
+        ${s.livre ? `<button data-tab="immobilisations" class="${s.onglet === 'immobilisations' ? 'active' : ''}">Immobilisations${
+  (s.livre.immobilisations || []).length ? ` <span class="tab-n">${(s.livre.immobilisations || []).length}</span>` : ''}</button>` : ''}
+        ${s.livre ? `<button data-tab="inventaire" class="${s.onglet === 'inventaire' ? 'active' : ''}">Inventaire</button>` : ''}
         ${s.livre ? `<button data-tab="recherche" class="${s.onglet === 'recherche' ? 'active' : ''}">Recherche</button>` : ''}
       </div>${corps}`;
 
@@ -2248,6 +2259,8 @@
     else if (s.onglet === 'recherche') brancherRecherche(el, root, dossier);
     else if (s.onglet === 'banque') brancherBanque(el, root, dossier);
     else if (s.onglet === 'declaration') brancherDeclaration(el, root, dossier);
+    else if (s.onglet === 'immobilisations') brancherImmobilisations(el, root, dossier);
+    else if (s.onglet === 'inventaire') brancherInventaire(el, root, dossier);
     else brancherVue(el, root, dossier, lignes);
   }
 
@@ -2579,6 +2592,409 @@
       s.decl = await api.declaration({ dossierId: dossier.id, annee: s.annee, periode: declState.mois || moisPropose(s.livre) });
     } catch (e) { s.decl = null; toast(plainError(e), 'error'); }
     drawLivres(root, dossier);
+  }
+
+  // ---------------------------------------------------------------- les immobilisations (9.7.0)
+  //
+  // Le dossier permanent du cabinet. Pour un dossier HORS SkanFact, c'est le seul endroit où le
+  // plan d'amortissement existe — personne d'autre ne le lui calcule.
+
+  const immoState = { ouverte: '' };
+
+  const METHODE_LABEL = { lineaire: 'Linéaire', degressif: 'Dégressif' };
+
+  function vueImmobilisations(dossier) {
+    const s = livresState;
+    const d = s.immo;
+    if (!d) return `<div class="empty mini">Lecture des immobilisations…</div>`;
+    const e = d.etat;
+    const y = Number(s.annee);
+    return `<div class="filters">
+      ${info('im.etat')}
+      <span class="small muted">Exercice ${esc(s.annee)}</span>
+      <button class="btn btn-sm btn-primary" id="im-neuf">Ajouter un bien…</button>
+      <button class="btn btn-sm" id="im-ecrire" ${e.aEcrire ? '' : 'disabled'}
+        title="${e.aEcrire ? '' : 'Aucune dotation ni sortie en attente sur cet exercice.'}">Passer les écritures d'inventaire${
+  e.aEcrire ? ` (${e.aEcrire})` : ''}</button>
+      <button class="btn btn-sm btn-ghost" id="im-csv" ${e.rows.length ? '' : 'disabled'}>Exporter le tableau</button>
+    </div>
+    ${d.aCreer.length ? `<div class="warn-box mb"><b>${pl(d.aCreer.length, 'ligne', 'lignes')} au compte
+      d'immobilisation ${d.aCreer.length > 1 ? 'n\'ont' : 'n\'a'} pas de fiche.</b>
+      Tant qu'une fiche n'existe pas, ce bien ne s'amortit nulle part. On ne la crée jamais tout seul :
+      la durée d'amortissement est une décision, pas une donnée.
+      <div class="scroll-x mt"><table class="list compact"><thead><tr><th class="nw">Date</th><th>Libellé</th>
+        <th class="nw">Compte</th><th class="r nw">Montant</th><th></th></tr></thead>
+      <tbody>${d.aCreer.slice(0, 12).map(l => `<tr>
+        <td class="nw">${esc(fmtJour(l.date))}</td><td class="tronq" title="${esc(l.libelle)}">${esc(l.libelle)}</td>
+        <td class="nw">${esc(l.compte)}</td><td class="r nw">${esc(money(l.montant))}</td>
+        <td class="row-actions"><button class="btn btn-sm" data-creer="${esc(l.docId)}">Créer la fiche du bien…</button></td>
+      </tr>`).join('')}</tbody></table></div></div>` : ''}
+    <div class="panel mt"><h2>Les biens de l'exercice ${info('im.tableau')}</h2>
+      ${!e.rows.length
+    ? `<div class="empty mini">Aucun bien sur cet exercice. <button class="btn btn-sm" id="im-neuf2">Ajouter un bien…</button></div>`
+    : `<div class="scroll-x"><table class="list compact"><thead><tr>
+        <th>Bien</th><th class="nw">Mise en service</th><th class="nw">Méthode</th>
+        <th class="r nw">Valeur</th><th class="r nw">Cumul au 01/01</th><th class="r nw">Dotation ${esc(s.annee)}</th>
+        <th class="r nw">Cumul</th><th class="r nw">VNC</th><th></th></tr></thead>
+      <tbody>${e.rows.map(r => `<tr>
+        <td class="tronq" title="${esc(r.libelle)}">${esc(r.libelle)}${r.cession
+    ? ` <span class="badge b-part">${esc(r.cession.motif === 'rebut' ? 'rebut' : 'cédé')}</span>` : ''}${
+  r.ecrite ? ' <span class="badge b-paid">écrite</span>' : ''}</td>
+        <td class="nw">${esc(fmtJour(r.date))}</td>
+        <td class="nw">${esc(METHODE_LABEL[r.methode] || r.methode)}</td>
+        <td class="r nw">${esc(money(r.valeur))}</td>
+        <td class="r nw">${esc(money(r.ouverture))}</td>
+        <td class="r nw">${esc(money(r.dotation))}</td>
+        <td class="r nw">${esc(money(r.cumul))}</td>
+        <td class="r nw">${esc(money(r.vnc))}</td>
+        ${RowMenu.cellule('IM:' + r.id)}</tr>`).join('')}</tbody>
+      <tfoot><tr><th colspan="3">${esc(pl(e.rows.length, 'bien'))}</th>
+        <th class="r nw">${esc(money(e.valeur))}</th><th class="r nw">${esc(money(e.ouverture))}</th>
+        <th class="r nw">${esc(money(e.dotation))}</th><th class="r nw">${esc(money(e.cumul))}</th>
+        <th class="r nw">${esc(money(e.vnc))}</th><th></th></tr></tfoot></table></div>`}
+    </div>
+    ${immoState.ouverte ? panneauPlan(d, immoState.ouverte, y) : ''}
+    <div class="panel mt"><h2>Ce que cet écran ne décide pas ${info('im.verifier')}</h2>
+      <p class="small muted">${esc(KC.IMMO_A_VERIFIER.tauxDegressif)}</p>
+      <p class="small muted">${esc(KC.IMMO_A_VERIFIER.bascule)}</p>
+      <p class="small muted">${esc(KC.IMMO_A_VERIFIER.subvention)}</p>
+      <p class="small muted">L'amortissement <b>dérogatoire</b> n'existe pas ici : le format du livre ne lui
+      réserve rien, et personne ne l'a demandé. Le jour où un cabinet en a besoin, c'est une décision de
+      format — pas une case à cocher qu'on aurait posée « au cas où ».</p>
+    </div>`;
+  }
+
+  // Le plan d'un bien, année par année. C'est lui qui répond à « d'où sort cette dotation ? » —
+  // un chiffre qu'on ne peut pas ouvrir se croit ou ne se croit pas (règle 9.6.0).
+  function panneauPlan(d, id, annee) {
+    const f = (d.fiches || []).find(x => x.id === id);
+    if (!f) return '';
+    const plan = KC.planDuBien(f);
+    const ced = KC.resultatCession(f);
+    return `<div class="panel mt" id="im-plan"><h2>${esc(f.libelle)} — le plan d'amortissement</h2>
+      <p class="small muted">${esc(METHODE_LABEL[f.methode] || f.methode)}${
+  f.methode === 'degressif' ? ` au taux de ${esc(String(f.tauxDegressif))} %${f.bascule ? ', avec bascule au linéaire' : ''}` : ''}
+        · ${esc(f.duree)} ans · mise en service le ${esc(fmtJour(f.dateMiseEnService))}
+        · compte ${esc(f.compte)} / amortissement ${esc(f.compteAmort)} / dotation ${esc(f.compteDotation)}</p>
+      <div class="scroll-x"><table class="list compact"><thead><tr><th class="nw">Exercice</th>
+        <th class="r nw">Dotation</th><th class="r nw">Cumul</th><th class="r nw">VNC</th><th class="nw">Écriture</th></tr></thead>
+      <tbody>${plan.map(p => `<tr class="${p.annee === annee ? 'dc-total' : ''}">
+        <td class="nw">${esc(p.annee)}</td><td class="r nw">${esc(money(p.dotation))}</td>
+        <td class="r nw">${esc(money(p.cumul))}</td><td class="r nw">${esc(money(p.vnc))}</td>
+        <td class="nw">${p.ecritureId ? '<span class="badge b-paid">passée</span>' : '<span class="muted small">—</span>'}</td></tr>`).join('')}</tbody></table></div>
+      ${ced ? `<div class="${ced.resultat >= 0 ? 'ok-box' : 'warn-box'} mt">
+        ${esc(ced.motif === 'rebut' ? 'Mise au rebut' : 'Cession')} le ${esc(fmtJour(ced.date))} —
+        prix ${esc(money(ced.prix))}, valeur comptable ${esc(money(ced.vnc))},
+        <b>${esc(ced.resultat >= 0 ? 'plus-value' : 'moins-value')} de ${esc(money(Math.abs(ced.resultat)))}</b>.
+        Le prix n'est jamais écrit d'office : il arrive par la facture de vente ou par le relevé bancaire.</div>` : ''}
+      ${f.subvention ? `<p class="small muted mt">Subvention d'investissement de ${esc(money(f.subvention.montant))}
+        (${esc(f.subvention.compte)} → ${esc(f.subvention.compteReprise)}), reprise au rythme de l'amortissement. À VÉRIFIER.</p>` : ''}</div>`;
+  }
+
+  function brancherImmobilisations(el, root, dossier) {
+    const s = livresState;
+    if (!s.immo) { chargerImmobilisations(root, dossier); return; }
+    [$('#im-neuf', el), $('#im-neuf2', el)].forEach(b => { if (b) b.onclick = () => immoForm(root, dossier, null); });
+    $$('[data-creer]', el).forEach(b => {
+      b.onclick = () => {
+        const l = (s.immo.aCreer || []).find(x => x.docId === b.dataset.creer);
+        if (l) immoForm(root, dossier, { libelle: l.libelle, compte: l.compte, valeur: l.montant, dateAcquisition: l.date, dateMiseEnService: l.date, origine: { source: 'paquet', docId: l.docId, mois: String(l.date).slice(0, 7) } });
+      };
+    });
+    bindRowMenus(el, cle => {
+      const id = cle.slice(3);
+      const f = (s.immo.fiches || []).find(x => x.id === id);
+      if (!f) return [];
+      return [
+        { icon: 'loupe', label: 'Voir le plan d\'amortissement', hint: 'Année par année, et l\'écriture de chacune',
+          run: () => { immoState.ouverte = immoState.ouverte === id ? '' : id; drawLivres(root, dossier); } },
+        { icon: 'modifier', label: 'Modifier la fiche', hint: 'Valeur, durée, méthode, cession', run: () => immoForm(root, dossier, f) },
+        { sep: true },
+        { icon: 'supprimer', label: 'Supprimer ce bien', hint: 'Refusé si une dotation est déjà passée en écriture', danger: true,
+          run: async () => {
+            const ok = await confirmDialog(`Supprimer « ${f.libelle} » ?`,
+              'Le bien disparaît du tableau d\'amortissement. Les écritures déjà passées, elles, restent : c\'est une fiche qu\'on retire, pas de la comptabilité.',
+              'Supprimer', true);
+            if (!ok) return;
+            try {
+              const r = await api.supprimerImmobilisation({ dossierId: dossier.id, annee: s.annee, id });
+              s.livre = r.livre; toast('Bien supprimé.'); await chargerImmobilisations(root, dossier);
+            } catch (err) { toast(plainError(err), 'error'); }
+          } }
+      ];
+    });
+    const ec = $('#im-ecrire', el);
+    if (ec) ec.onclick = async () => {
+      ec.disabled = true;
+      try {
+        const r = await api.ecrireDotations({ dossierId: dossier.id, annee: s.annee });
+        s.livre = r.livre;
+        toast(`${pl(r.ids.length, 'écriture passée', 'écritures passées')} en brouillard.`);
+        await chargerImmobilisations(root, dossier);
+      } catch (err) { toast(plainError(err), 'error'); ec.disabled = false; }
+    };
+    const cs = $('#im-csv', el);
+    if (cs) cs.onclick = async () => {
+      const cols = [
+        { label: 'Bien', get: r => r.libelle }, { label: 'Mise en service', get: r => r.date },
+        { label: 'Méthode', get: r => METHODE_LABEL[r.methode] || r.methode },
+        { label: 'Valeur', get: r => r.valeur }, { label: 'Cumul au 01/01', get: r => r.ouverture },
+        { label: 'Dotation', get: r => r.dotation }, { label: 'Cumul', get: r => r.cumul },
+        { label: 'VNC', get: r => r.vnc }
+      ];
+      try {
+        const r = await api.exportCsv(toCsv(cols, s.immo.etat.rows), `immobilisations-${s.annee}`);
+        if (r && r.path) toast('Tableau exporté.');
+      } catch (err) { toast(plainError(err), 'error'); }
+    };
+  }
+
+  async function chargerImmobilisations(root, dossier) {
+    const s = livresState;
+    try { s.immo = await api.immobilisations({ dossierId: dossier.id, annee: s.annee }); }
+    catch (e) { s.immo = null; toast(plainError(e), 'error'); }
+    drawLivres(root, dossier);
+  }
+
+  function immoForm(root, dossier, fiche) {
+    const s = livresState;
+    const f = fiche || {};
+    const neuf = !f.id;
+    const comptes = (s.livre.plan || []).map(c => c.compte);
+    const dl = (pref) => comptes.filter(c => String(c).startsWith(pref)).sort();
+    const familles = KC.DEFAULT_ASSET_CLASSES;
+    modal(`<h2>${neuf ? 'Ajouter un bien' : 'Modifier ' + esc(f.libelle)}</h2>
+      <form id="im" class="grid-2">
+        <label class="field obligatoire span-2"><span>Désignation</span>
+          <input name="libelle" value="${esc(f.libelle || '')}" placeholder="Serveur Dell R450"></label>
+        <label class="field"><span>Famille</span>
+          <select name="famille"><option value="">—</option>${familles.map(c =>
+    `<option value="${esc(c[0])}" data-duree="${c[2]}">${esc(c[1])} (${c[2]} ans)</option>`).join('')}</select></label>
+        <label class="field obligatoire"><span>Durée (années)</span>
+          <input name="duree" class="num" inputmode="numeric" value="${esc(String(f.duree || ''))}"></label>
+        <label class="field obligatoire"><span>Date de mise en service</span>
+          <input name="dateMiseEnService" placeholder="AAAA-MM-JJ" value="${esc(f.dateMiseEnService || '')}"></label>
+        <label class="field"><span>Date d'acquisition</span>
+          <input name="dateAcquisition" placeholder="AAAA-MM-JJ" value="${esc(f.dateAcquisition || '')}"></label>
+        <label class="field obligatoire"><span>Valeur d'acquisition (HT)</span>
+          <input name="valeur" class="num" inputmode="decimal" value="${esc(String(f.valeur || ''))}"></label>
+        <label class="field"><span>Valeur résiduelle</span>
+          <input name="residuelle" class="num" inputmode="decimal" value="${esc(String(f.residuelle || 0))}"></label>
+        <label class="field"><span>Méthode</span>
+          <select name="methode">${KC.IMMO_METHODES.map(m =>
+    `<option value="${m}" ${(f.methode || 'lineaire') === m ? 'selected' : ''}>${esc(METHODE_LABEL[m])}</option>`).join('')}</select></label>
+        <label class="field" id="im-taux-l"><span>Taux dégressif (%)</span>
+          <input name="tauxDegressif" class="num" inputmode="decimal" value="${esc(f.tauxDegressif == null ? '' : String(f.tauxDegressif))}"></label>
+        <label class="check span-2" id="im-bascule-l"><input type="checkbox" name="bascule" ${f.bascule ? 'checked' : ''}>
+          Basculer au linéaire quand il devient plus favorable</label>
+        <label class="field obligatoire"><span>Compte du bien</span>
+          <input name="compte" value="${esc(f.compte || '22')}" list="im-c1"><datalist id="im-c1">${dl('2').map(c => `<option value="${esc(c)}">`).join('')}</datalist></label>
+        <label class="field"><span>Compte d'amortissement</span>
+          <input name="compteAmort" value="${esc(f.compteAmort || '28')}" list="im-c1"></label>
+        <label class="field"><span>Compte de dotation</span>
+          <input name="compteDotation" value="${esc(f.compteDotation || '681')}" list="im-c2"><datalist id="im-c2">${dl('6').map(c => `<option value="${esc(c)}">`).join('')}</datalist></label>
+        <label class="field"><span>Subvention reçue (À VÉRIFIER)</span>
+          <input name="subvention" class="num" inputmode="decimal" value="${esc(String((f.subvention && f.subvention.montant) || ''))}"></label>
+        <label class="field"><span>Date de cession ou de rebut</span>
+          <input name="cessionDate" placeholder="AAAA-MM-JJ" value="${esc((f.cession && f.cession.date) || '')}"></label>
+        <label class="field"><span>Prix de cession (0 = rebut)</span>
+          <input name="cessionPrix" class="num" inputmode="decimal" value="${esc(String((f.cession && f.cession.prix) || ''))}"></label>
+      </form>
+      <div id="im-apercu" class="small muted"></div>
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button>
+        <button class="btn btn-primary" id="ok">${neuf ? 'Ajouter' : 'Enregistrer'}</button></div>`,
+    (rootModal, close) => {
+      const v = n => (($(`[name=${n}]`, rootModal) || {}).value || '').trim();
+      const lire = () => {
+        const cd = v('cessionDate');
+        return {
+          ...(f.id ? { id: f.id } : {}),
+          libelle: v('libelle'),
+          duree: Number(v('duree')) || 0,
+          dateMiseEnService: v('dateMiseEnService'),
+          dateAcquisition: v('dateAcquisition') || v('dateMiseEnService'),
+          valeur: Number(String(v('valeur')).replace(',', '.')) || 0,
+          residuelle: Number(String(v('residuelle')).replace(',', '.')) || 0,
+          methode: v('methode'),
+          tauxDegressif: v('tauxDegressif') === '' ? null : Number(String(v('tauxDegressif')).replace(',', '.')),
+          bascule: !!($('[name=bascule]', rootModal) || {}).checked,
+          compte: v('compte'), compteAmort: v('compteAmort'), compteDotation: v('compteDotation'),
+          subvention: v('subvention') ? { montant: Number(String(v('subvention')).replace(',', '.')) || 0 } : null,
+          cession: cd ? { date: cd, prix: Number(String(v('cessionPrix')).replace(',', '.')) || 0, motif: Number(v('cessionPrix')) ? 'cession' : 'rebut' } : null,
+          origine: f.origine || { source: 'saisie', docId: '', mois: '' }
+        };
+      };
+      // L'aperçu du plan PENDANT la saisie : on voit ce qu'on décide avant de l'enregistrer, comme
+      // dans l'éditeur d'immobilisation de l'app entreprise (3.5.0).
+      const apercu = $('#im-apercu', rootModal);
+      const majTaux = () => {
+        const deg = v('methode') === 'degressif';
+        $('#im-taux-l', rootModal).style.display = deg ? '' : 'none';
+        $('#im-bascule-l', rootModal).style.display = deg ? '' : 'none';
+      };
+      const maj = () => {
+        majTaux();
+        const p = lire();
+        const val = KC.immoValide(p);
+        if (!val.ok) { apercu.innerHTML = `<div class="warn-box mt">${esc(val.motifs[0])}</div>`; return; }
+        const plan = KC.planDuBien(p);
+        apercu.innerHTML = `<div class="ok-box mt">${esc(pl(plan.length, 'exercice'))} —
+          première dotation ${esc(money(plan.length ? plan[0].dotation : 0))},
+          dernière ${esc(money(plan.length ? plan[plan.length - 1].dotation : 0))},
+          VNC finale ${esc(money(plan.length ? plan[plan.length - 1].vnc : 0))}.</div>`;
+      };
+      $$('input,select', rootModal).forEach(x => { x.oninput = maj; x.onchange = maj; });
+      // La famille PROPOSE sa durée, elle ne l'impose pas : dès que la durée a été touchée, on n'y
+      // revient plus (même motif que `regimeTouche`, 7.25.0).
+      let dureeTouchee = !!f.duree;
+      const dd = $('[name=duree]', rootModal); if (dd) dd.oninput = () => { dureeTouchee = true; maj(); };
+      const fam = $('[name=famille]', rootModal);
+      if (fam) fam.onchange = () => {
+        const o = fam.selectedOptions[0];
+        if (o && o.dataset.duree && !dureeTouchee) dd.value = o.dataset.duree;
+        maj();
+      };
+      maj();
+      $('#ok', rootModal).onclick = async () => {
+        try {
+          const r = await api.saveImmobilisation({ dossierId: dossier.id, annee: s.annee, fiche: lire() });
+          s.livre = r.livre; close(); toast(neuf ? 'Bien ajouté.' : 'Fiche enregistrée.');
+          await chargerImmobilisations(root, dossier);
+        } catch (err) { toast(plainError(err), 'error'); }
+      };
+    });
+  }
+
+  // ---------------------------------------------------------------- l'inventaire de stock (9.7.0)
+  //
+  // Inventaire INTERMITTENT : on compte ce qui reste au dernier jour, la variation devient une
+  // écriture. C'est ce que fait un cabinet pour un dossier sans logiciel de stock — et un dossier
+  // SkanFact tient déjà le sien depuis la 4.0.0.
+
+  function vueInventaire(dossier) {
+    const s = livresState;
+    const d = s.inv;
+    if (!d) return `<div class="empty mini">Lecture de l'inventaire…</div>`;
+    const inv = d.inventaire;
+    const v = d.variation || {};
+    return `<div class="filters">
+      ${info('iv.etat')}
+      <span class="small muted">Exercice ${esc(s.annee)}</span>
+      <button class="btn btn-sm btn-primary" id="iv-saisir">${inv ? 'Reprendre l\'inventaire…' : 'Saisir l\'inventaire…'}</button>
+      <button class="btn btn-sm" id="iv-ecrire" ${inv && v.ok && v.ecriture && !inv.ecritureId ? '' : 'disabled'}
+        title="${!inv ? 'Saisis l\'inventaire d\'abord.'
+    : inv.ecritureId ? 'Déjà passée : la repasser compterait le stock deux fois.'
+      : !v.ecriture ? 'Le stock compté est exactement celui des comptes : rien à écrire.' : ''}">Écrire la variation de stock</button>
+    </div>
+    ${!inv
+    ? `<div class="empty">Aucun inventaire saisi pour ${esc(s.annee)}.
+        <p class="small muted">Un inventaire, c'est ce qui reste au dernier jour, compté et valorisé.
+        La différence avec ce que portent les comptes devient une écriture (${esc(KC.COMPTES_IMMO.variationStocks)} / ${esc(KC.COMPTES_IMMO.stocks)}).</p>
+        <button class="btn btn-primary" id="iv-saisir2">Saisir l'inventaire…</button></div>`
+    : `<div class="panel mt"><h2>Ce qui a été compté au ${esc(fmtJour(inv.date))} ${info('iv.lignes')}</h2>
+        <div class="scroll-x"><table class="list compact"><thead><tr><th class="nw">Réf.</th><th>Désignation</th>
+          <th class="r nw">Quantité</th><th class="r nw">Coût unitaire</th><th class="r nw">Valeur</th></tr></thead>
+        <tbody>${inv.lignes.map(l => `<tr><td class="nw">${esc(l.ref)}</td>
+          <td class="tronq" title="${esc(l.libelle)}">${esc(l.libelle)}</td>
+          <td class="r nw">${esc(String(l.quantite))}</td><td class="r nw">${esc(money(l.cout))}</td>
+          <td class="r nw">${esc(money(l.valeur))}</td></tr>`).join('')}</tbody>
+        <tfoot><tr><th colspan="4">${esc(pl(inv.lignes.length, 'ligne comptée', 'lignes comptées'))}</th>
+          <th class="r nw">${esc(money(inv.total))}</th></tr></tfoot></table></div></div>
+      <div class="panel mt"><h2>La variation ${info('iv.variation')}</h2>
+        ${v.ok
+    ? `<table class="list compact"><tbody>
+            <tr><td>Stock aux comptes à l'ouverture</td><td class="r nw">${esc(money(v.initial))}</td></tr>
+            <tr><td>Stock compté au ${esc(fmtJour(inv.date))}</td><td class="r nw">${esc(money(v.final))}</td></tr>
+            <tr class="dc-total"><td><b>Variation</b></td><td class="r nw"><b>${esc(money(v.ecart))}</b></td></tr></tbody></table>
+          ${v.ecart
+    ? `<p class="small muted mt">Le stock ${v.ecart > 0 ? 'augmente' : 'diminue'} :
+              on ${v.ecart > 0 ? 'débite' : 'crédite'} le stock et on ${v.ecart > 0 ? 'crédite' : 'débite'} la variation.
+              L'écriture arrive en <b>brouillard</b>, au ${esc(fmtJour(inv.date))}.</p>`
+    : `<div class="ok-box mt">${esc(v.motif || '')}</div>`}
+          ${inv.ecritureId ? '<div class="ok-box mt">L\'écriture de variation est passée.</div>' : ''}`
+    : `<div class="warn-box">${esc(v.motif || '')}</div>`}
+      </div>`}`;
+  }
+
+  function brancherInventaire(el, root, dossier) {
+    const s = livresState;
+    if (!s.inv) { chargerInventaire(root, dossier); return; }
+    [$('#iv-saisir', el), $('#iv-saisir2', el)].forEach(b => { if (b) b.onclick = () => inventaireForm(root, dossier); });
+    const ec = $('#iv-ecrire', el);
+    if (ec) ec.onclick = async () => {
+      ec.disabled = true;
+      try {
+        const r = await api.ecrireVariationStock({ dossierId: dossier.id, annee: s.annee });
+        s.livre = r.livre; toast('Variation de stock passée en brouillard.');
+        await chargerInventaire(root, dossier);
+      } catch (err) { toast(plainError(err), 'error'); ec.disabled = false; }
+    };
+  }
+
+  async function chargerInventaire(root, dossier) {
+    const s = livresState;
+    try { s.inv = await api.inventaire({ dossierId: dossier.id, annee: s.annee }); }
+    catch (e) { s.inv = null; toast(plainError(e), 'error'); }
+    drawLivres(root, dossier);
+  }
+
+  function inventaireForm(root, dossier) {
+    const s = livresState;
+    const dejaLa = (s.inv && s.inv.inventaire) || null;
+    // On saisit en COLLANT une liste depuis un tableur : ligne par ligne dans un formulaire,
+    // personne ne compterait deux cents références (même règle que les dossiers collés, 6.8.0).
+    const depart = dejaLa
+      ? dejaLa.lignes.map(l => [l.ref, l.libelle, l.quantite, l.cout].join('\t')).join('\n')
+      : '';
+    modal(`<h2>L'inventaire de ${esc(s.annee)}</h2>
+      <p class="small muted">Une ligne par référence : <b>référence, désignation, quantité, coût unitaire</b>,
+      séparées par une tabulation ou un point-virgule. Colle-les depuis ton tableur.</p>
+      <form id="iv" class="grid-2">
+        <label class="field obligatoire"><span>Date de l'inventaire</span>
+          <input name="date" placeholder="AAAA-MM-JJ" value="${esc((dejaLa && dejaLa.date) || (s.livre.exercice.au || ''))}"></label>
+        <label class="field"><span>Compte de stock</span>
+          <input name="compte" value="${esc((dejaLa && dejaLa.compte) || KC.COMPTES_IMMO.stocks)}"></label>
+      </form>
+      <label class="field"><span>Les lignes comptées</span>
+        <textarea id="iv-lignes" rows="10" placeholder="REF-01&#9;Câble HDMI 2 m&#9;24&#9;7.500">${esc(depart)}</textarea></label>
+      <div id="iv-apercu" class="small muted"></div>
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button>
+        <button class="btn btn-primary" id="ok">Enregistrer l'inventaire</button></div>`,
+    (rootModal, close) => {
+      const apercu = $('#iv-apercu', rootModal);
+      const lire = () => {
+        const lignes = ($('#iv-lignes', rootModal).value || '').split('\n')
+          .map(l => l.trim()).filter(Boolean)
+          .map(l => {
+            const p = l.split(/\t|;/).map(x => x.trim());
+            // Quatre colonnes attendues ; avec trois, la référence manque et c'est le cas le plus
+            // courant d'un tableur qui n'en tient pas.
+            const [a, b, c, d] = p.length >= 4 ? p : ['', p[0], p[1], p[2]];
+            return { ref: a || '', libelle: b || '', quantite: Number(String(c || '').replace(',', '.')) || 0, cout: Number(String(d || '').replace(',', '.')) || 0 };
+          });
+        return {
+          date: (($('[name=date]', rootModal) || {}).value || '').trim(),
+          compte: (($('[name=compte]', rootModal) || {}).value || '').trim(),
+          lignes
+        };
+      };
+      const maj = () => {
+        const inv = lire();
+        const v = KC.inventaireValide(inv);
+        apercu.innerHTML = v.ok
+          ? `<div class="ok-box mt">${esc(pl(inv.lignes.length, 'ligne'))} — total ${esc(money(KC.totalInventaire(inv)))}.</div>`
+          : `<div class="warn-box mt">${esc(v.motifs[0])}</div>`;
+      };
+      $$('input,textarea', rootModal).forEach(x => { x.oninput = maj; });
+      maj();
+      $('#ok', rootModal).onclick = async () => {
+        try {
+          const r = await api.saveInventaire({ dossierId: dossier.id, annee: s.annee, inventaire: lire() });
+          s.livre = r.livre; close(); toast('Inventaire enregistré.');
+          await chargerInventaire(root, dossier);
+        } catch (err) { toast(plainError(err), 'error'); }
+      };
+    });
   }
 
   // ---------------------------------------------------------------- la banque (9.5.0)

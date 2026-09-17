@@ -567,6 +567,11 @@
       // remplissent qu'en 9.5.0, 9.6.0 et 9.7.0 — mais un relevé « par ligne » ne se transforme pas
       // en relevé « par compte » une fois écrit chez soixante clients.
       releves: [], immobilisations: [], declarations: [],
+      // La quatrième liste, ajoutée en 9.7.0 : l'inventaire de stock de fin d'exercice. Elle ne
+      // pouvait pas être une écriture — une écriture porte UN montant, un inventaire porte ce qui a
+      // été compté, ligne par ligne, et un chiffre qu'on ne peut pas ouvrir se croit ou ne se croit
+      // pas. Absente d'un livre écrit avant, elle vaut `[]` : aucun lecteur ancien ne s'en plaint.
+      inventaires: [],
       ouverture: { date: null, source: null, lignes: [] },
       audit: []
     };
@@ -1995,6 +2000,482 @@
     return etat;
   }
 
+  // ---------- les immobilisations et l'inventaire du cabinet (9.7.0) ----------
+  //
+  // Le cabinet tient les fiches de biens de ses dossiers HORS SkanFact : ceux-là n'ont aucune
+  // application qui les leur calcule. Le modèle est celui de l'app entreprise (`data.assets`,
+  // 3.5.0), avec les noms de champs du livre — et le calcul est le MÊME, celui qui vient de
+  // déménager en 9.6.1. Recopier le moteur aurait donné deux plans d'amortissement pour un seul
+  // bien, et c'est exactement le risque que cette version devait éviter.
+  //
+  // Ce qui n'y est PAS, et pourquoi :
+  //  — l'amortissement DÉROGATOIRE. Le format de `livre.json` est figé et ne lui réserve rien, et
+  //    la règle du plan est explicite : s'il n'est pas demandé, il n'existe pas. Le jour où un
+  //    cabinet le demande, c'est une décision de format, pas une ligne de code en plus.
+  //  — l'inventaire PERMANENT. Il attend qu'un cabinet le demande ; l'intermittent est ce que fait
+  //    un cabinet pour un dossier qui n'a pas de logiciel de stock.
+
+  const IMMO_METHODES = ['lineaire', 'degressif'];
+
+  // Les comptes par défaut. Aucun numéro de compte n'est une vérité (règle 6.3.0) : c'est le RÔLE
+  // qui désigne, le plan du dossier qui tranche, et ces valeurs ne servent que si le plan est muet.
+  const COMPTES_IMMO = {
+    immobilisations: '22', amortissements: '28', dotations: '681',
+    vncCedee: '675', produitsCession: '775',
+    stocks: '37', variationStocks: '603',
+    subventions: '14', repriseSubventions: '739'
+  };
+
+  // Ce dont personne n'a confirmé la règle. Comme pour les cases fiscales de la 9.6.0 : on ne
+  // remplit pas à la place du comptable, on DIT ce qui manque.
+  const IMMO_A_VERIFIER = {
+    tauxDegressif: 'Le coefficient dégressif tunisien dépend de la durée et du régime : personne ne l\'a confirmé. Le taux se saisit sur la fiche, il n\'est jamais deviné. À VÉRIFIER.',
+    bascule: 'Basculer au linéaire quand il devient plus favorable est l\'usage dans plusieurs pays ; nul n\'a dit que c\'est celui d\'ici. Décoché par défaut. À VÉRIFIER.',
+    subvention: 'La reprise d\'une subvention d\'investissement suit ici le rythme de l\'amortissement. Les comptes et la règle sont À VÉRIFIER.'
+  };
+
+  const compteImmo = (livre, role) => {
+    const p = (livre.plan || []).find(c => c.role === role);
+    return txt(p && p.compte) || COMPTES_IMMO[role] || '';
+  };
+
+  // La fiche du livre → la forme que connaît le moteur partagé. Deux jeux de noms pour un seul
+  // modèle : le livre écrit en français (`valeur`, `duree`, `cession`), le moteur porte les noms
+  // qu'il a depuis la 3.5.0. L'adaptateur vit à UN endroit, sinon les deux côtés divergent.
+  function bienVersActif(fiche) {
+    const f = fiche || {};
+    return {
+      amount: num(f.valeur),
+      residual: num(f.residuelle),
+      years: num(f.duree),
+      date: txt(f.dateMiseEnService) || txt(f.dateAcquisition),
+      disposal: f.cession && f.cession.date
+        ? { date: txt(f.cession.date), amount: num(f.cession.prix), reason: txt(f.cession.motif) }
+        : null
+    };
+  }
+
+  // Le plan DÉGRESSIF. Le taux se saisit — jamais un coefficient écrit dans le code : il dépend de
+  // la durée et du régime, et écrire en dur une règle de droit que personne n'a confirmée est très
+  // exactement ce que ce projet s'interdit (règle 9.1.1).
+  //
+  // Chaque exercice : dotation = valeur nette de début × taux, au prorata des jours (base 360) sur
+  // le premier et le dernier. La dernière annuité solde le reste, comme en linéaire — sans quoi un
+  // dégressif pur ne finit jamais, et le bien resterait au bilan pour l'éternité.
+  function planDegressif(fiche) {
+    const a = bienVersActif(fiche);
+    const taux = num(fiche.tauxDegressif) / 100;
+    const base = round3(Math.max(0, a.amount - a.residual));
+    if (!a.date || a.years <= 0 || base <= 0 || taux <= 0) return [];
+    const fin = ajouterJoursIso(ajouterMoisIso(a.date, a.years * 12), -1);
+    const premier = Number(a.date.slice(0, 4));
+    const dernier = Number(fin.slice(0, 4));
+    const rows = [];
+    let cumul = 0;
+    for (let y = premier; y <= dernier; y++) {
+      const du = y === premier ? a.date : `${y}-01-01`;
+      const au = y === dernier ? fin : `${y}-12-31`;
+      const jours = Math.max(0, days360(du, au) + 1);
+      const reste = round3(base - cumul);
+      let dotation = round3(reste * taux * jours / 360);
+      // La bascule au linéaire : DÉCOCHÉE par défaut. Elle change le plan, donc le résultat
+      // imposable : la poser d'office reviendrait à décider à la place du comptable.
+      if (fiche.bascule) {
+        const joursRestants = Math.max(1, days360(du, fin) + 1);
+        const lineaire = round3(reste * jours / joursRestants);
+        if (lineaire > dotation) dotation = lineaire;
+      }
+      if (y === dernier) dotation = reste;
+      if (round3(cumul + dotation) > base) dotation = round3(base - cumul);
+      cumul = round3(cumul + dotation);
+      rows.push({ year: y, from: du, to: au, days: jours, annuity: dotation, cumulated: cumul, nbv: round3(a.amount - cumul) });
+    }
+    return rows;
+  }
+
+  // Le plan d'un bien, quelle que soit sa méthode, dans les noms du livre.
+  //
+  // Il est RECALCULÉ depuis les champs, jamais saisi (invariant SPEC-DATA-005). Mais `ecritureId`
+  // est un FAIT, pas un calcul : la dotation de 2026 a été passée en écriture ou elle ne l'a pas
+  // été, et aucun recalcul ne peut le défaire. On le reporte donc depuis le plan rangé.
+  function planDuBien(fiche) {
+    const f = fiche || {};
+    const rows = txt(f.methode) === 'degressif' ? planDegressif(f) : assetSchedule(bienVersActif(f));
+    const ancien = {};
+    (f.plan || []).forEach(p => { if (p && p.ecritureId) ancien[p.annee] = p.ecritureId; });
+    const ced = f.cession && f.cession.date ? Number(String(f.cession.date).slice(0, 4)) : 0;
+    return rows.filter(r => !ced || r.year <= ced).map(r => {
+      // L'année de la cession, on n'amortit que jusqu'au jour de la sortie.
+      const coupe = ced === r.year;
+      const dot = coupe ? round3(cumulDuBien(f, f.cession.date) - cumulDuBien(f, `${r.year - 1}-12-31`)) : r.annuity;
+      const cum = coupe ? cumulDuBien(f, f.cession.date) : r.cumulated;
+      return {
+        annee: r.year, dotation: dot, cumul: cum,
+        vnc: round3(num(f.valeur) - cum),
+        ecritureId: ancien[r.year] || ''
+      };
+    });
+  }
+
+  // Cumul à une date quelconque — en dégressif comme en linéaire. En linéaire c'est le moteur
+  // partagé ; en dégressif on interpole dans l'année du plan, parce qu'un dégressif ne s'écoule pas
+  // linéairement dans le temps et qu'une règle de trois sur la durée totale donnerait un faux.
+  function cumulDuBien(fiche, dateIso) {
+    const f = fiche || {};
+    if (txt(f.methode) !== 'degressif') return cappedCumulated(bienVersActif(f), dateIso);
+    const rows = planDegressif(f);
+    if (!rows.length || !estUnJour(dateIso)) return 0;
+    let cumul = 0;
+    for (const r of rows) {
+      if (dateIso >= r.to) { cumul = r.cumulated; continue; }
+      if (dateIso < r.from) break;
+      const jours = Math.max(0, days360(r.from, dateIso) + 1);
+      cumul = round3(cumul + r.annuity * Math.min(1, jours / Math.max(1, r.days)));
+      break;
+    }
+    return cumul;
+  }
+
+  const vncDuBien = (fiche, dateIso) => round3(num((fiche || {}).valeur) - cumulDuBien(fiche, dateIso));
+
+  // Le résultat d'une cession — ou d'une mise au rebut, qui est une cession à prix nul. Les deux
+  // s'écrivent pareil ; ce qui change, c'est le motif, et il figure sur la pièce.
+  function resultatCession(fiche) {
+    const c = (fiche || {}).cession;
+    if (!c || !c.date) return null;
+    const vnc = vncDuBien(fiche, c.date);
+    const prix = num(c.prix);
+    return { date: txt(c.date), prix, vnc, resultat: round3(prix - vnc), motif: txt(c.motif) || 'cession' };
+  }
+
+  // La quote-part de subvention reprise sur l'exercice : elle suit le rythme de l'amortissement du
+  // bien qu'elle a financé. Les comptes et la règle sont À VÉRIFIER — le calcul, lui, est une règle
+  // de trois sur le plan, pas une règle de droit.
+  function repriseSubvention(fiche, annee) {
+    const sub = (fiche || {}).subvention;
+    if (!sub || !num(sub.montant)) return 0;
+    const base = round3(Math.max(0, num(fiche.valeur) - num(fiche.residuelle)));
+    if (base <= 0) return 0;
+    const ligne = planDuBien(fiche).find(p => p.annee === Number(annee));
+    if (!ligne) return 0;
+    return round3(num(sub.montant) * ligne.dotation / base);
+  }
+
+  function immoValide(fiche) {
+    const f = fiche || {};
+    const motifs = [];
+    if (!txt(f.libelle)) motifs.push('Le bien n\'a pas de libellé : une ligne sans nom ne se retrouve jamais.');
+    if (!estUnJour(txt(f.dateMiseEnService) || txt(f.dateAcquisition))) motifs.push('La date de mise en service manque : c\'est elle qui fait partir l\'amortissement.');
+    if (num(f.valeur) <= 0) motifs.push('La valeur d\'acquisition doit être positive.');
+    if (num(f.residuelle) < 0) motifs.push('Une valeur résiduelle négative n\'existe pas.');
+    if (num(f.residuelle) >= num(f.valeur) && num(f.valeur) > 0) motifs.push('La valeur résiduelle ne peut pas atteindre la valeur d\'acquisition : il n\'y aurait rien à amortir.');
+    if (num(f.duree) <= 0) motifs.push('La durée d\'amortissement doit être d\'au moins un an.');
+    if (IMMO_METHODES.indexOf(txt(f.methode) || 'lineaire') < 0) motifs.push('La méthode d\'amortissement doit être linéaire ou dégressive.');
+    if (txt(f.methode) === 'degressif' && num(f.tauxDegressif) <= 0) {
+      motifs.push('Un amortissement dégressif demande son TAUX : il dépend de la durée et du régime, et l\'application ne le devine pas.');
+    }
+    if (!txt(f.compte)) motifs.push('Le compte d\'immobilisation manque.');
+    const c = f.cession;
+    if (c && c.date && !estUnJour(txt(c.date))) motifs.push('La date de cession n\'est pas un jour du calendrier.');
+    if (c && c.date && txt(c.date) < (txt(f.dateMiseEnService) || txt(f.dateAcquisition))) {
+      motifs.push('Un bien ne se cède pas avant d\'être mis en service.');
+    }
+    return { ok: !motifs.length, motifs };
+  }
+
+  // Même fabrique d'identifiant que les écritures : un compteur, jamais un tirage au sort — deux
+  // fiches créées dans la même milliseconde doivent porter deux identifiants différents, et un
+  // hasard non semé rend les tests impossibles à rejouer.
+  let compteurImmo = 0;
+  const idImmo = graine => {
+    compteurImmo = (compteurImmo + 1) % 1000000;
+    return 'i_' + String(graine || 0).toString(36) + '_' + compteurImmo.toString(36);
+  };
+
+  function ajouterImmobilisation(livre, fiche, qui, quand) {
+    const v = immoValide(fiche);
+    if (!v.ok) return { ok: false, motif: v.motifs[0], motifs: v.motifs };
+    livre.immobilisations = Array.isArray(livre.immobilisations) ? livre.immobilisations : [];
+    const f = {
+      id: txt(fiche.id) || idImmo(quand),
+      libelle: txt(fiche.libelle),
+      compte: txt(fiche.compte) || compteImmo(livre, 'immobilisations'),
+      compteAmort: txt(fiche.compteAmort) || compteImmo(livre, 'amortissements'),
+      compteDotation: txt(fiche.compteDotation) || compteImmo(livre, 'dotations'),
+      dateAcquisition: txt(fiche.dateAcquisition) || txt(fiche.dateMiseEnService),
+      dateMiseEnService: txt(fiche.dateMiseEnService) || txt(fiche.dateAcquisition),
+      valeur: round3(num(fiche.valeur)),
+      residuelle: round3(num(fiche.residuelle)),
+      tva: round3(num(fiche.tva)),
+      methode: txt(fiche.methode) || 'lineaire',
+      duree: num(fiche.duree),
+      tauxDegressif: fiche.tauxDegressif == null || fiche.tauxDegressif === '' ? null : num(fiche.tauxDegressif),
+      bascule: !!fiche.bascule,
+      prorata: 'jours360',
+      subvention: fiche.subvention && num(fiche.subvention.montant)
+        ? {
+          montant: round3(num(fiche.subvention.montant)),
+          compte: txt(fiche.subvention.compte) || compteImmo(livre, 'subventions'),
+          compteReprise: txt(fiche.subvention.compteReprise) || compteImmo(livre, 'repriseSubventions')
+        }
+        : null,
+      origine: fiche.origine || { source: 'saisie', docId: '', mois: '' },
+      plan: [],
+      cession: fiche.cession && fiche.cession.date ? { ...fiche.cession, date: txt(fiche.cession.date), prix: round3(num(fiche.cession.prix)) } : null,
+      creeLe: Number(quand) || 0,
+      par: txt(qui)
+    };
+    f.plan = planDuBien(f);
+    livre.immobilisations.push(f);
+    trace(livre, qui, 'immobilisation créée', f.libelle, quand);
+    return { ok: true, fiche: f };
+  }
+
+  // Modifier une fiche recalcule son plan. Mais une dotation DÉJÀ passée en écriture est un fait
+  // écrit dans le livre : la changer en silence ferait diverger le plan et la comptabilité, et
+  // personne ne verrait lequel des deux a raison. On refuse en nommant le geste qui débloque.
+  function modifierImmobilisation(livre, id, patch, qui, quand) {
+    const f = (livre.immobilisations || []).find(x => x.id === id);
+    if (!f) return { ok: false, motif: 'Cette immobilisation n\'existe pas.' };
+    const essai = { ...f, ...(patch || {}) };
+    const v = immoValide(essai);
+    if (!v.ok) return { ok: false, motif: v.motifs[0], motifs: v.motifs };
+    essai.plan = f.plan;
+    const neuf = planDuBien(essai);
+    const change = (f.plan || []).filter(p => p.ecritureId
+      && round3(p.dotation) !== round3(((neuf.find(n => n.annee === p.annee)) || {}).dotation || 0));
+    if (change.length) {
+      return {
+        ok: false,
+        motif: `La dotation de ${change[0].annee} est déjà passée en écriture : ce changement la rendrait fausse. Contre-passe l'écriture de dotation de ${change[0].annee}, puis recommence.`
+      };
+    }
+    Object.assign(f, patch || {});
+    f.valeur = round3(num(f.valeur));
+    f.residuelle = round3(num(f.residuelle));
+    f.plan = neuf;
+    trace(livre, qui, 'immobilisation modifiée', f.libelle, quand);
+    return { ok: true, fiche: f };
+  }
+
+  function supprimerImmobilisation(livre, id, qui, quand) {
+    const f = (livre.immobilisations || []).find(x => x.id === id);
+    if (!f) return { ok: false, motif: 'Cette immobilisation n\'existe pas.' };
+    const ecrite = (f.plan || []).find(p => p.ecritureId);
+    if (ecrite) {
+      return { ok: false, motif: `La dotation de ${ecrite.annee} est passée en écriture : supprimer la fiche laisserait une dotation sans bien. Contre-passe l'écriture d'abord.` };
+    }
+    livre.immobilisations = (livre.immobilisations || []).filter(x => x.id !== id);
+    trace(livre, qui, 'immobilisation supprimée', f.libelle, quand);
+    return { ok: true };
+  }
+
+  // L'état des immobilisations d'un exercice : une ligne par bien, et des totaux qui tombent juste.
+  function etatImmobilisations(livre, annee) {
+    const y = Number(annee) || 0;
+    const rows = (livre.immobilisations || []).map(f => {
+      const ligne = planDuBien(f).find(p => p.annee === y);
+      const ouverture = cumulDuBien(f, `${y - 1}-12-31`);
+      const ced = resultatCession(f);
+      const sorti = !!(ced && Number(ced.date.slice(0, 4)) <= y);
+      return {
+        id: f.id, libelle: f.libelle, compte: f.compte, methode: f.methode,
+        date: txt(f.dateMiseEnService) || txt(f.dateAcquisition),
+        valeur: round3(num(f.valeur)),
+        ouverture: round3(ouverture),
+        dotation: ligne ? ligne.dotation : 0,
+        cumul: ligne ? ligne.cumul : round3(cumulDuBien(f, `${y}-12-31`)),
+        vnc: sorti ? 0 : round3(num(f.valeur) - (ligne ? ligne.cumul : cumulDuBien(f, `${y}-12-31`))),
+        reprise: repriseSubvention(f, y),
+        cession: ced && Number(ced.date.slice(0, 4)) === y ? ced : null,
+        ecrite: !!(ligne && ligne.ecritureId),
+        actif: (txt(f.dateMiseEnService) || txt(f.dateAcquisition)) <= `${y}-12-31`
+          && !(ced && Number(ced.date.slice(0, 4)) < y)
+      };
+    }).filter(r => r.actif).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    const somme = f => round3(rows.reduce((s, r) => s + (Number(f(r)) || 0), 0));
+    return {
+      rows,
+      valeur: somme(r => r.valeur), ouverture: somme(r => r.ouverture),
+      dotation: somme(r => r.dotation), cumul: somme(r => r.cumul), vnc: somme(r => r.vnc),
+      reprise: somme(r => r.reprise),
+      cessions: rows.filter(r => r.cession),
+      // Ce qui reste à passer en écriture : c'est ce chiffre qui fait le bouton.
+      aEcrire: rows.filter(r => !r.ecrite && (r.dotation || r.cession)).length
+    };
+  }
+
+  // Les lignes d'un compte d'immobilisation qui n'ont AUCUNE fiche : le pont avec ce que le client
+  // a envoyé dans son paquet. On ne crée jamais la fiche tout seul — la durée d'amortissement est
+  // une décision, pas une donnée (règle 3.5.0, portée ici).
+  function immobilisationsACreer(livre, annee) {
+    const prefixe = compteImmo(livre, 'immobilisations');
+    if (!prefixe) return [];
+    const connus = new Set();
+    (livre.immobilisations || []).forEach(f => { if (f.origine && f.origine.docId) connus.add(f.origine.docId); });
+    const y = Number(annee) || 0;
+    const out = [];
+    (livre.ecritures || []).forEach(e => {
+      if (e.statut === 'contrepassee') return;
+      if (y && Number(String(e.date).slice(0, 4)) !== y) return;
+      (e.lignes || []).forEach((l, i) => {
+        if (!txt(l.compte).startsWith(prefixe)) return;
+        if (!num(l.debit)) return;                       // une acquisition DÉBITE le compte
+        const cle = e.id + '#' + i;
+        if (connus.has(cle)) return;
+        out.push({ docId: cle, ecritureId: e.id, date: e.date, libelle: txt(l.libelle) || txt(e.libelle), compte: txt(l.compte), montant: round3(num(l.debit)) });
+      });
+    });
+    return out.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  }
+
+  // Les écritures d'inventaire des immobilisations, au dernier jour de l'exercice. Une pièce par
+  // bien : « 14 biens » sur une seule pièce serait équilibré et illisible, et la première question
+  // du comptable devant un cumul est toujours « lequel ? ».
+  function ecrituresImmobilisations(livre, annee, opts) {
+    const o = opts || {};
+    const y = Number(annee) || 0;
+    const au = txt(o.au) || `${y}-12-31`;
+    const etat = etatImmobilisations(livre, y);
+    const out = [];
+    etat.rows.forEach(r => {
+      const f = (livre.immobilisations || []).find(x => x.id === r.id);
+      if (!f) return;
+      if (r.dotation && !r.ecrite) {
+        out.push({
+          immoId: f.id, genre: 'dotation',
+          journal: 'OD', date: au, piece: 'DOT-' + y + '-' + f.id.slice(-4),
+          libelle: `Dotation ${y} — ${f.libelle}`, source: 'inventaire',
+          lignes: [
+            { compte: txt(f.compteDotation) || compteImmo(livre, 'dotations'), libelle: `Dotation ${y}`, debit: r.dotation, credit: 0 },
+            { compte: txt(f.compteAmort) || compteImmo(livre, 'amortissements'), libelle: `Amortissement ${f.libelle}`, debit: 0, credit: r.dotation }
+          ]
+        });
+      }
+      if (r.reprise) {
+        out.push({
+          immoId: f.id, genre: 'subvention',
+          journal: 'OD', date: au, piece: 'SUB-' + y + '-' + f.id.slice(-4),
+          libelle: `Reprise de subvention ${y} — ${f.libelle}`, source: 'inventaire',
+          lignes: [
+            { compte: f.subvention.compte, libelle: 'Quote-part reprise', debit: r.reprise, credit: 0 },
+            { compte: f.subvention.compteReprise, libelle: 'Reprise de subvention', debit: 0, credit: r.reprise }
+          ]
+        });
+      }
+      if (r.cession && !r.ecrite) {
+        // La SORTIE d'actif seulement. Le prix de vente n'est jamais inventé : il arrive par une
+        // facture ou un mouvement de banque (règle 9.0.0). L'écrire d'office au 471 laisserait un
+        // compte d'attente que personne ne solde.
+        const lignes = [];
+        const cum = r.cumul;
+        const vnc = round3(num(f.valeur) - cum);
+        if (cum) lignes.push({ compte: txt(f.compteAmort) || compteImmo(livre, 'amortissements'), libelle: 'Amortissements repris', debit: cum, credit: 0 });
+        if (vnc) lignes.push({ compte: compteImmo(livre, 'vncCedee'), libelle: r.cession.motif === 'rebut' ? 'Mise au rebut' : 'Valeur comptable cédée', debit: vnc, credit: 0 });
+        lignes.push({ compte: txt(f.compte), libelle: f.libelle, debit: 0, credit: round3(num(f.valeur)) });
+        out.push({
+          immoId: f.id, genre: 'cession',
+          journal: 'OD', date: r.cession.date, piece: 'SOR-' + y + '-' + f.id.slice(-4),
+          libelle: `${r.cession.motif === 'rebut' ? 'Mise au rebut' : 'Sortie'} — ${f.libelle}`, source: 'inventaire', lignes
+        });
+      }
+    });
+    return out;
+  }
+
+  // Rattacher une écriture passée à la ligne de plan qu'elle porte : c'est ce qui éteint le bouton
+  // et ce qui empêche de passer deux fois la même dotation.
+  function noterEcritureImmo(livre, immoId, annee, ecritureId) {
+    const f = (livre.immobilisations || []).find(x => x.id === immoId);
+    if (!f) return { ok: false, motif: 'Cette immobilisation n\'existe pas.' };
+    f.plan = planDuBien(f);
+    const ligne = f.plan.find(p => p.annee === Number(annee));
+    if (!ligne) return { ok: false, motif: `Le plan de ${f.libelle} ne porte rien en ${annee}.` };
+    ligne.ecritureId = txt(ecritureId);
+    return { ok: true, fiche: f };
+  }
+
+  // ---------- l'inventaire de stock (9.7.0) ----------
+  //
+  // Inventaire INTERMITTENT : on compte ce qui reste au dernier jour, et la variation devient une
+  // écriture. C'est ce que fait un cabinet pour un dossier qui n'a aucun logiciel de stock — et
+  // c'est le seul cas qui existe ici, puisqu'un dossier SkanFact tient déjà son stock (4.0.0).
+
+  function inventaireValide(inv) {
+    const i = inv || {};
+    const motifs = [];
+    if (!estUnJour(txt(i.date))) motifs.push('La date de l\'inventaire manque : c\'est le dernier jour de l\'exercice.');
+    const lignes = Array.isArray(i.lignes) ? i.lignes : [];
+    if (!lignes.length) motifs.push('Un inventaire sans une seule ligne ne dit pas « le stock est vide », il dit « rien n\'a été compté ».');
+    lignes.forEach((l, k) => {
+      if (!txt(l.libelle)) motifs.push(`Ligne ${k + 1} : la désignation manque.`);
+      if (num(l.quantite) < 0) motifs.push(`Ligne ${k + 1} : une quantité négative ne s\'inventorie pas.`);
+      if (num(l.cout) < 0) motifs.push(`Ligne ${k + 1} : un coût unitaire négatif n\'existe pas.`);
+    });
+    return { ok: !motifs.length, motifs };
+  }
+
+  const totalInventaire = inv => round3(((inv && inv.lignes) || [])
+    .reduce((s, l) => s + round3(num(l.quantite) * num(l.cout)), 0));
+
+  function poserInventaire(livre, inv, qui, quand) {
+    const v = inventaireValide(inv);
+    if (!v.ok) return { ok: false, motif: v.motifs[0], motifs: v.motifs };
+    livre.inventaires = Array.isArray(livre.inventaires) ? livre.inventaires : [];
+    const annee = Number(String(inv.date).slice(0, 4));
+    const avant = livre.inventaires.find(x => Number(String(x.date).slice(0, 4)) === annee);
+    if (avant && avant.ecritureId) {
+      return { ok: false, motif: `L'inventaire de ${annee} est déjà passé en écriture. Contre-passe l'écriture de variation de stock avant de le refaire.` };
+    }
+    const obj = {
+      id: avant ? avant.id : 'inv_' + annee + '_' + String(quand || 0).toString(36),
+      date: txt(inv.date),
+      lignes: (inv.lignes || []).map(l => ({
+        ref: txt(l.ref), libelle: txt(l.libelle),
+        quantite: num(l.quantite), cout: round3(num(l.cout)),
+        valeur: round3(num(l.quantite) * num(l.cout))
+      })),
+      total: totalInventaire(inv),
+      compte: txt(inv.compte) || compteImmo(livre, 'stocks'),
+      saisiLe: Number(quand) || 0, par: txt(qui),
+      ecritureId: (avant && avant.ecritureId) || ''
+    };
+    livre.inventaires = livre.inventaires.filter(x => x !== avant).concat([obj]);
+    trace(livre, qui, avant ? 'inventaire refait' : 'inventaire saisi', String(annee), quand);
+    return { ok: true, inventaire: obj };
+  }
+
+  // La variation de stock : ce que le compte de stock portait à l'ouverture contre ce qu'on vient
+  // de compter. Le stock AUGMENTE → on débite le stock et on crédite la variation (c'est une charge
+  // en moins) ; il DIMINUE → l'inverse. Une variation nulle ne produit aucune écriture : une pièce
+  // à zéro dans un journal n'apprend rien et se relit dix fois.
+  function variationDeStock(livre, annee) {
+    const y = Number(annee) || 0;
+    const inv = (livre.inventaires || []).find(x => Number(String(x.date).slice(0, 4)) === y);
+    if (!inv) return { ok: false, motif: `Aucun inventaire saisi pour ${y}.` };
+    const cStock = txt(inv.compte) || compteImmo(livre, 'stocks');
+    const cVar = compteImmo(livre, 'variationStocks');
+    const m = mouvementCompte(livre, cStock, livre.exercice.du, inv.date, e => e.id === inv.ecritureId);
+    const initial = round3(m.debit - m.credit);
+    const final = round3(inv.total);
+    const ecart = round3(final - initial);
+    if (!ecart) {
+      return { ok: true, ecart: 0, initial, final, ecriture: null, motif: 'Le stock compté est exactement celui des comptes : aucune écriture à passer.' };
+    }
+    const lignes = ecart > 0
+      ? [{ compte: cStock, libelle: `Stock au ${inv.date}`, debit: ecart, credit: 0 },
+        { compte: cVar, libelle: 'Variation de stock', debit: 0, credit: ecart }]
+      : [{ compte: cVar, libelle: 'Variation de stock', debit: -ecart, credit: 0 },
+        { compte: cStock, libelle: `Stock au ${inv.date}`, debit: 0, credit: -ecart }];
+    return {
+      ok: true, ecart, initial, final,
+      ecriture: {
+        journal: 'OD', date: inv.date, piece: 'STK-' + y,
+        libelle: `Variation de stock ${y}`, source: 'inventaire', lignes
+      }
+    };
+  }
+
   // ---------- la pièce équilibrée et l'amortissement (9.6.1) ----------
   //
   // Ces deux moteurs vivaient dans core.js depuis la 3.5.0 et la 6.3.0. Ils n'y avaient plus leur
@@ -2173,6 +2654,13 @@
     // La déclaration mensuelle (9.6.0)
     COMPTES_FISCAUX, CASES_A_VERIFIER, mouvementCompte, declarationMensuelle, controlesDeclaration,
     ecritureDeclaration, poserDeclaration, pointerDeclaration, etatDuMois,
+    // Les immobilisations et l'inventaire (9.7.0)
+    IMMO_METHODES, COMPTES_IMMO, IMMO_A_VERIFIER,
+    bienVersActif, planDegressif, planDuBien, cumulDuBien, vncDuBien,
+    resultatCession, repriseSubvention, immoValide,
+    ajouterImmobilisation, modifierImmobilisation, supprimerImmobilisation,
+    etatImmobilisations, immobilisationsACreer, ecrituresImmobilisations, noterEcritureImmo,
+    inventaireValide, totalInventaire, poserInventaire, variationDeStock,
     // La pièce équilibrée et l'amortissement (9.6.1)
     ajouterJoursIso, entrySet,
     DEFAULT_ASSET_CLASSES, assetClassLabel, assetClassYears, days360,

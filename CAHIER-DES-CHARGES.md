@@ -428,6 +428,8 @@ déverrouillage et se garde en mémoire : la redériver par fichier coûterait 6
 | `ecritures[].lignes[]` | `{ compte, tiersId?, libelle, debit: number ≥ 0, credit: number ≥ 0, lettre: string }` | `debit === 0 \|\| credit === 0` (jamais les deux) ; **un montant négatif change de colonne** |
 | `lettrages[]` | `{ lettre, compte, ecritures: string[], le, par }` | la somme débit − crédit des lignes lettrées **= 0** au millime |
 | `releves[]`, `immobilisations[]`, `declarations[]` | Array | `[]` tant que 9.5.0 / 9.7.0 / 9.6.0 ne les remplissent pas ; leur **forme est figée ici** (exemple ci-dessus, invariants ci-dessous) — la v0 les disait « hors de ce document », la v1 les a spécifiées, la v1.1 corrige cette ligne restée fausse |
+| `inventaires[]` | Array | **Ajoutée en 9.7.0**, par décision : l'inventaire de stock de fin d'exercice ne pouvait pas être une écriture (une écriture porte UN montant, un inventaire porte ce qui a été compté ligne par ligne, et un total qu'on ne peut pas ouvrir se croit ou ne se croit pas). Objet : `{ id, date, lignes[]{ ref, libelle, quantite, cout, valeur }, total, compte, saisiLe, par, ecritureId }`. **Absente d'un livre écrit avant, elle vaut `[]`** : une liste ajoutée est compatible, un champ renommé ou retiré ne l'est pas — c'est la règle que le test du format porte désormais |
+| `immobilisations[].residuelle`, `.bascule`, `.subvention`, `.cession.motif` | — | **Champs optionnels ajoutés en 9.7.0.** `residuelle` (0 par défaut) pour la parité avec `data.assets` ; `bascule` (false) pour le dégressif ; `subvention` (`null` ou `{ montant, compte, compteReprise }`) ; `cession.motif` (`'cession'` ou `'rebut'`). Absents, ils ne changent rien |
 | `ouverture` | `{ date, source: 'balance'|'skanfact'|null, lignes: [{ compte, debit, credit }] }` | la balance d'ouverture de reprise, transformée en une écriture AN `piece: "OUVERTURE"` |
 | `audit[]` | `{ quand: number, qui: string, quoi: string, detail?: string }` | **jamais purgé** |
 
@@ -1875,6 +1877,11 @@ portent pas, et un test les nomme.
 | `ERR-CAB-040` | « Ce relevé ne se boucle pas : <début> au départ, <mouvements> de mouvements, cela fait <attendu> — et le relevé annonce <fin>. Il manque <écart>… » / « Ce fichier a déjà été importé le <date>… » | import d'un relevé (9.5.0) | compléter le fichier, ou corriger le solde de fin | Livré |
 | `ERR-CAB-041` | « Cette ligne d'écriture ne touche pas le compte <n>. » / « Cette ligne de relevé n'existe pas. » | rapprochement (9.5.0) | choisir la bonne ligne | Livré |
 | `ERR-CAB-042` | « La période d'une déclaration mensuelle s'écrit AAAA-MM. » / « La déclaration de <mois> est marquée déposée le <date>… » / « L'écriture de cette déclaration existe déjà… » / « Cette déclaration n'est pas marquée déposée : on ne paie pas ce qu'on n'a pas déposé. » | déclaration (9.6.0) | dé-pointer, ou préparer d'abord | Livré |
+| `ERR-CAB-043` | (détail de `immoValide` : libellé, date de mise en service, valeur, durée, taux dégressif manquant) / « La dotation de <année> est déjà passée en écriture : ce changement la rendrait fausse. Contre-passe… » | fiche d'immobilisation (9.7.0) | compléter la fiche, ou contre-passer la dotation | Livré |
+| `ERR-CAB-044` | « La dotation de <année> est passée en écriture : supprimer la fiche laisserait une dotation sans bien. Contre-passe l'écriture d'abord. » | suppression d'un bien (9.7.0) | contre-passer d'abord | Livré |
+| `ERR-CAB-045` | « Rien à passer : aucune dotation ni sortie en attente sur cet exercice. » | écritures d'inventaire des biens (9.7.0) | — | Livré |
+| `ERR-CAB-046` | (détail de `inventaireValide` : date, aucune ligne, quantité ou coût négatif) / « L'inventaire de <année> est déjà passé en écriture… » | inventaire de stock (9.7.0) | corriger les lignes, ou contre-passer | Livré |
+| `ERR-CAB-047` | « La variation de stock de cet exercice est déjà passée : la repasser compterait le stock deux fois. » / « Le stock compté est celui des comptes : aucune écriture à passer. » | variation de stock (9.7.0) | — | Livré |
 
 ---
 
@@ -2392,6 +2399,17 @@ qui bloque : « Quels biens en dégressif chez tes clients ? »
 |---|---|
 | Saisi (quantité × coût) au dernier jour ; la **variation** devient une écriture d'inventaire (603 / 37) ; inventaire intermittent par défaut | Permanent pour les dossiers SkanFact (le paquet porterait les mouvements de stock de 4.0.0) : *Skander* — après un cabinet qui le demande, pas avant |
 | Coût moyen pondéré, comme `runningStock` (4.0.0) — une seule méthode dans le moteur | FIFO si un dossier l'exige : *comptable* — sinon non |
+
+**Ce que la 9.7.0 a tranché en livrant** (les « à décider » ci-dessus, résolus sans le comptable —
+et chacun résolu **par la conception**, pas par une réponse inventée) :
+
+| Question | Ce qui a été fait |
+|---|---|
+| Les coefficients dégressifs tunisiens | **Aucun n'est écrit.** `tauxDegressif` est un pourcentage saisi sur la fiche ; un dégressif sans taux est **refusé en nommant le taux**. Un test interdit l'apparition d'une table de coefficients dans `compta.js`. La question reste ouverte — mais elle ne bloque plus, et personne ne recopiera un chiffre que l'application aurait deviné |
+| La bascule au linéaire | **Livrée, décochée par défaut** (`bascule`). Elle change le plan et un test l'exige — mais nul n'a dit que c'est l'usage d'ici, donc le défaut est celui qui ne fait rien (règle 9.1.1) |
+| L'amortissement dérogatoire | **Refusé, avec sa raison.** Le format ne lui réserve rien ; un test tient son absence. Le jour où un cabinet le demande : décision de format |
+| Les subventions d'investissement | **Livrées** : `subvention` optionnelle sur la fiche, reprise au **rythme de l'amortissement** du bien financé (quote-part = subvention × dotation / base). C'est un calcul, pas une règle fiscale, et l'écran écrit **À VÉRIFIER** sur les comptes (14 / 739) |
+| L'inventaire permanent | **Non livré**, comme prévu. L'intermittent est ce que fait un cabinet pour un dossier sans logiciel de stock, et un dossier SkanFact tient déjà le sien (4.0.0) |
 
 ### 9.8.0 — la clôture d'exercice
 

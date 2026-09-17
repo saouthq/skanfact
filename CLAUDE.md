@@ -39,6 +39,8 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un **agrégat** porte une devise, une unité, et une période nommée | 7.0.1, 7.16.0, 3.1.0 ; 9.4.9 — une courbe d'une barre cède la place au chiffre |
 | Un **rapprochement faux** ferme la question : une ambiguïté n'est JAMAIS « certain » | 9.5.0 |
 | Une écriture qui SOLDE un compte ne compte pas dans ce qu'elle déclare | 9.6.0 |
+| Un taux qui dépend du **droit** se saisit ; un taux qui dépend d'un **calcul** se déduit | 9.7.0 — le coefficient dégressif |
+| Le **prix d'une cession** ne s'invente pas ; la sortie d'actif, oui | 9.0.0, 9.7.0 |
 | Un **lettrage généreux** affirme qu'une facture est payée : somme nulle, ou rien | 9.5.0 |
 | Un **pied de totaux** porte la sélection entière, jamais la page affichée ; on pagine ce qu'on NOMME | 2.2.0, 7.16.0, 9.4.5 |
 | La valeur par défaut d'une **règle qu'on ne connaît pas** est celle qui ne fait rien | 9.1.1 — le seuil de retenue à 0, la TFP qu'aucun métier ne porte ; 9.6.0 — une case fiscale vaut `null`, jamais 0 |
@@ -55,6 +57,8 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Une **suite découpée** que le lanceur ne charge pas n'existe pas : le dossier fait foi | 9.4.10 |
 | Un montant qui se **divise sans reste** ne prouve rien d'un arrondi : les DONNÉES du test comptent autant que sa forme | 9.6.1 |
 | Une **réexportation** se prouve par l'identité d'objet, jamais par le résultat | 9.6.1 |
+| Une preuve par réintroduction ne vaut que sur un lot **VERT** : sinon on mesure le vide | 9.7.0 |
+| Un **adaptateur** vaut mieux qu'une seconde implémentation ; deux moteurs divergent | 9.7.0 |
 | Une assertion sur un montant se **calcule à la main**, jamais en recopiant la sortie | 7.0.1 — l'assertion qui gravait le bug depuis la 1.6.0 |
 | Un test écrit contre l'état du jour **décrit cet état**, pas la règle | 7.12.0, 7.26.0, 8.0.1, 8.2.0, 9.1.0, 9.2.2, 9.4.3, 9.4.5 — neuf assertions retournées |
 | Une **tranche** de source se prouve par sa taille et par ce qu'elle ne contient PAS | 7.20.0, 7.21.0, 8.2.0 ; 9.4.6 — jamais sur un décalage en dur |
@@ -128,7 +132,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 **L'outillage (9.1.0)**
 
 `npm test` (les tests purs) · `npm run lint` (ESLint, zéro erreur exigée) · `npm run charge` (le test
-de charge du livre) · `npm run e2e:<nom>` (48 parcours, tableau au § « Les tests qui ouvrent vraiment
+de charge du livre) · `npm run e2e:<nom>` (49 parcours, tableau au § « Les tests qui ouvrent vraiment
 l'application ») · CI GitHub sur Linux et Windows à chaque poussée · « Construire un essai » pour
 faire tester une version sans la publier.
 
@@ -534,6 +538,7 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:cabinet-jour1` | **le premier jour d'un comptable** : l'instrument qui MESURE ce qu'il voit, dans l'ordre où il le voit — 35 écrans photographiés du mot de passe à l'Aide, et six règles qui tombent (un bouton hors de l'écran, un bouton qui ressemble à du texte, un état vide sans geste, un champ de saisie sans bulle « i », une boîte sans étiquette, un débordement horizontal). `dist-e2e/cabinet-premier-jour/mesures.json` |
 | `npm run e2e:cabinet-rendu` | **le rendu du Cabinet, mesuré** : les trois sondes de l'app entreprise (contraste et débordement des boutons, alignement des colonnes, barres d'en-tête) braquées sur TOUS ses écrans et TOUS leurs onglets, en clair et en sombre, à 1440 et à 1280 — 1 024 boutons, 777 colonnes. Elles vivent en un seul exemplaire dans `harnais.js` : c'est leur absence côté Cabinet qui l'avait laissé dériver |
 | `npm run e2e:declaration` | **la déclaration du mois** : quatre cases « — » avec leur raison (jamais un zéro), un chiffre ouvert sur ses pièces, un mois DÉJÀ déclaré par le client qui montre quand même sa collectée et dont le bouton s'éteint en disant pourquoi, l'écriture passée en brouillard au dernier jour d'un mois libre, les deux pointages dans l'ordre puis défaits, et le refus de refaire une déposée |
+| `npm run e2e:immobilisations` | **les biens et le stock** : une acquisition venue d'un paquet qui remonte SANS fiche et propose de la créer (jamais d'office), le plan visible pendant la saisie, un dégressif sans taux refusé en nommant le taux, les dotations passées en brouillard au 31/12 et le bouton qui s'éteint, la modification d'un bien dont la dotation est écrite refusée en nommant le geste, un inventaire collé depuis un tableur et sa variation dans le bon sens |
 | `npm run e2e:banque` | **la banque, de bout en bout** : trois banques aux trois formats (montant signé, Débit/Crédit séparés, en-têtes inconnus et associés à la main), un solde de fin faux refusé avec son écart, le même fichier refusé deux fois, l'automatique qui ne pose RIEN sur une ambiguïté, l'écriture manquante écrite depuis une ligne puis retrouvée « certain », le libellé retenu, le relevé retiré sans que le journal bouge |
 | `npm run e2e:cabinet-licence` | **la licence du Cabinet** : trois dossiers hors SkanFact gratuits, l'exemple qui ne compte pas, cinq clients qui dépassent le quota, la validation refusée pendant que lire, importer, exporter et SAISIR restent ouverts, deux dossiers archivés qui rendent la main, la clé d'un autre cabinet refusée en nommant les deux empreintes, celle d'un client parrainé refusée aussi, et le panneau qui nomme chaque dossier compté |
 | `npm run e2e:saisie` | **la grille de saisie, AU CLAVIER** : une pièce entière tapée sans souris (Entrée descend, Tab solde), le brouillard sans numéro, la validation qui referme, les deux refus sur une validée, un lot dont la pièce fausse est au MILIEU et la numérotation qui reste 1..n, l'extourne au 1er du mois suivant, la recherche par montant après réouverture de l'application, et un guide écrit puis appliqué |
@@ -3974,6 +3979,49 @@ Le test qui compte est `npm run e2e:declaration` : les quatre cases « — » av
 chiffre ouvert sur ses pièces, un mois DÉJÀ déclaré par le client qui montre quand même sa collectée
 et dont le bouton s'éteint en disant pourquoi, un mois libre où l'écriture se passe en brouillard au
 dernier jour, les deux pointages dans l'ordre puis défaits, et le refus de refaire une déposée.
+
+### 9.7.0 — Les immobilisations et l'inventaire du cabinet
+
+Règles apprises, à ne pas recasser :
+
+- **Un taux qui dépend du droit se SAISIT ; un taux qui dépend d'un calcul se déduit.** Le
+  coefficient dégressif tunisien n'est confirmé par personne : il n'existe donc nulle part dans le
+  code, et un dégressif sans taux est **refusé en nommant le taux** plutôt que calculé avec une
+  valeur devinée. La bascule au linéaire suit la même règle : elle existe, elle est décochée, et
+  c'est une case — pas une version (règle 9.1.1, appliquée à un coefficient).
+- **Un adaptateur vaut mieux qu'une seconde implémentation.** Le livre écrit ses champs en français
+  (`valeur`, `duree`, `dateMiseEnService`, `cession`), le moteur porte les siens depuis la 3.5.0.
+  `bienVersActif` traduit à UN endroit, et un test compare le plan des deux côtés exercice par
+  exercice. Recopier le moteur aurait donné deux tableaux d'amortissement pour un seul bien — et le
+  comptable et son client n'auraient eu aucun moyen de savoir lequel croire.
+- **Un plan se recalcule ; une écriture est un FAIT.** `plan[]` est déduit des champs à chaque
+  lecture (invariant SPEC-DATA-005), mais `ecritureId` se reporte : la dotation de 2026 a été passée
+  ou elle ne l'a pas été, et aucun recalcul ne peut le défaire. Sans ce report, le bouton se
+  rallumait et la dotation était comptée deux fois sans que rien ne le montre.
+- **Ce qui rendrait une écriture fausse est refusé ; ce qui ne la touche pas passe.** Changer la
+  valeur d'un bien dont la dotation est écrite est refusé (avec « contre-passe d'abord ») ; le
+  renommer passe. Un refus qui bloque tout ferait renoncer à corriger une faute de frappe.
+- **Le prix d'une cession n'est jamais inventé** (règle 9.0.0, portée ici) : la sortie d'actif
+  s'écrit — amortissement repris EN ENTIER, VNC en charge, valeur brute créditée — et le prix arrive
+  par la facture ou le relevé. L'écrire d'office au 471 laisserait un compte d'attente que personne
+  ne solde. Une **mise au rebut** est la même écriture à prix nul, et la pièce le DIT.
+- **Une liste AJOUTÉE à un format figé est compatible ; un champ renommé ne l'est pas.** `livre.json`
+  gagne `inventaires[]` ; absente d'un livre ancien, elle vaut `[]`. Le test du format a fait son
+  travail en tombant — il dit maintenant les deux : le socle qui ne peut plus bouger, et la liste
+  complète d'aujourd'hui, pour qu'un ajout reste une **décision** et jamais un effet de bord.
+- **Une variation nulle ne produit aucune écriture**, et l'écran dit pourquoi. Une pièce à zéro dans
+  un journal n'apprend rien et se relit dix fois.
+- **Un inventaire sans ligne ne dit pas « le stock est vide »**, il dit « rien n'a été compté ».
+- Piège d'e2e, **septième fois** : `[data-rowmenu]` attrape le menu de l'en-tête de fiche (9.4.8),
+  qui vient avant dans le document. On vise ce que l'élément DÉSIGNE (`[data-rowmenu^="IM:"]`).
+- **Un e2e qui saute sa moitié ne prouve rien** (règle 9.4.7, re-rencontrée) : ma première version
+  prenait « le premier dossier de la liste », qui n'a qu'un mois reçu et aucune acquisition — le
+  parcours passait en sautant très exactement ce qu'il devait prouver. Il choisit maintenant le
+  dossier **par ce qu'il contient**, et échoue si aucun ne convient.
+- **Une preuve par réintroduction ne vaut que sur un lot VERT.** Mes huit preuves ont d'abord toutes
+  rendu « 0 test vert » : le lot s'arrêtait bien avant la suite, sur le test d'index de ce fichier
+  (48 parcours annoncés, 49 réels). Je mesurais le vide. **Avant de prouver un test, vérifier que le
+  lot passe sans le défaut** — sinon on lit un chiffre qui ne parle pas de ce qu'on croit.
 
 ### 9.6.1 — L'entretien : le moteur a fini de déménager
 

@@ -1387,6 +1387,104 @@ ipcMain.handle('cab:ecrireDeclaration', (_e, { dossierId, annee, periode } = {})
   return { ok: true, id: e.id, livre: ouvrirLivre(dossierId, annee).livre };
 });
 
+// ================================================ LES IMMOBILISATIONS ET L'INVENTAIRE (9.7.0)
+//
+// Le cabinet tient les fiches de biens de ses dossiers — surtout ceux qui n'ont PAS SkanFact, car
+// eux n'ont aucune application qui les leur calcule. Le calcul vient de `compta.js`, partagé avec
+// l'app entreprise : recopier le moteur donnerait deux plans d'amortissement pour un seul bien.
+//
+// Rien n'est jamais créé d'office. Une durée d'amortissement est une décision (règle 3.5.0), et
+// une écriture de dotation passe en BROUILLARD comme tout ce que l'application propose.
+
+const livreOuErreur = (dossierId, annee) => {
+  const o = ouvrirLivre(dossierId, annee);
+  if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas de livre pour cet exercice.');
+  return o.livre;
+};
+
+ipcMain.handle('cab:immobilisations', (_e, { dossierId, annee } = {}) => {
+  requireOpen();
+  const livre = livreOuErreur(dossierId, annee);
+  return {
+    etat: KC.etatImmobilisations(livre, annee),
+    aCreer: KC.immobilisationsACreer(livre, annee),
+    aEcrire: KC.ecrituresImmobilisations(livre, annee),
+    fiches: livre.immobilisations || []
+  };
+});
+
+ipcMain.handle('cab:saveImmobilisation', (_e, { dossierId, annee, fiche } = {}) => {
+  requireOpen();
+  const livre = livreOuErreur(dossierId, annee);
+  const qui = moiPoste().deviceName || 'cabinet';
+  const r = fiche && fiche.id && (livre.immobilisations || []).some(x => x.id === fiche.id)
+    ? KC.modifierImmobilisation(livre, fiche.id, fiche, qui, Date.now())
+    : KC.ajouterImmobilisation(livre, fiche, qui, Date.now());
+  if (!r.ok) throw erreur('ERR-CAB-043', r.motif);
+  ecrireLeLivre(dossierId, livre, 'immobilisation', r.fiche.libelle);
+  return { ok: true, fiche: r.fiche, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+ipcMain.handle('cab:supprimerImmobilisation', (_e, { dossierId, annee, id } = {}) => {
+  requireOpen();
+  const livre = livreOuErreur(dossierId, annee);
+  const r = KC.supprimerImmobilisation(livre, id, moiPoste().deviceName || 'cabinet', Date.now());
+  if (!r.ok) throw erreur('ERR-CAB-044', r.motif);
+  ecrireLeLivre(dossierId, livre, 'immobilisation supprimée', id);
+  return { ok: true, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+// Les écritures d'inventaire des biens : dotations, reprises de subvention, sorties d'actif.
+// Elles arrivent en BROUILLARD, et chaque ligne de plan retient l'écriture qui la porte — c'est ce
+// qui empêche de passer deux fois la même dotation.
+ipcMain.handle('cab:ecrireDotations', (_e, { dossierId, annee } = {}) => {
+  requireOpen();
+  const livre = livreOuErreur(dossierId, annee);
+  const props = KC.ecrituresImmobilisations(livre, annee);
+  if (!props.length) throw erreur('ERR-CAB-045', 'Rien à passer : aucune dotation ni sortie en attente sur cet exercice.');
+  const qui = moiPoste().deviceName || 'cabinet';
+  const ids = [];
+  props.forEach(p => {
+    const e = KC.ajouterEcriture(livre, p, qui, Date.now());
+    ids.push(e.id);
+    if (p.genre !== 'subvention') KC.noterEcritureImmo(livre, p.immoId, annee, e.id);
+  });
+  ecrireLeLivre(dossierId, livre, 'écritures d\'inventaire', String(annee));
+  return { ok: true, ids, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+ipcMain.handle('cab:inventaire', (_e, { dossierId, annee } = {}) => {
+  requireOpen();
+  const livre = livreOuErreur(dossierId, annee);
+  return {
+    inventaire: (livre.inventaires || []).find(x => Number(String(x.date).slice(0, 4)) === Number(annee)) || null,
+    variation: KC.variationDeStock(livre, annee)
+  };
+});
+
+ipcMain.handle('cab:saveInventaire', (_e, { dossierId, annee, inventaire } = {}) => {
+  requireOpen();
+  const livre = livreOuErreur(dossierId, annee);
+  const r = KC.poserInventaire(livre, inventaire, moiPoste().deviceName || 'cabinet', Date.now());
+  if (!r.ok) throw erreur('ERR-CAB-046', r.motif);
+  ecrireLeLivre(dossierId, livre, 'inventaire de stock', String(annee));
+  return { ok: true, inventaire: r.inventaire, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+ipcMain.handle('cab:ecrireVariationStock', (_e, { dossierId, annee } = {}) => {
+  requireOpen();
+  const livre = livreOuErreur(dossierId, annee);
+  const v = KC.variationDeStock(livre, annee);
+  if (!v.ok) throw erreur('ERR-CAB-046', v.motif);
+  if (!v.ecriture) throw erreur('ERR-CAB-047', v.motif || 'Le stock compté est celui des comptes : aucune écriture à passer.');
+  const inv = (livre.inventaires || []).find(x => Number(String(x.date).slice(0, 4)) === Number(annee));
+  if (inv && inv.ecritureId) throw erreur('ERR-CAB-047', 'La variation de stock de cet exercice est déjà passée : la repasser compterait le stock deux fois.');
+  const e = KC.ajouterEcriture(livre, v.ecriture, moiPoste().deviceName || 'cabinet', Date.now());
+  if (inv) inv.ecritureId = e.id;
+  ecrireLeLivre(dossierId, livre, 'variation de stock', String(annee));
+  return { ok: true, id: e.id, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
 // ================================================================ LA LICENCE DU CABINET (9.4.0)
 //
 // On vend des DOSSIERS, jamais des postes. La porte est posée sur la VALIDATION d'une écriture, et

@@ -90,6 +90,14 @@ contextBridge.exposeInMainWorld('cabinet', {
   poserDeclaration: (o) => ipcRenderer.invoke('cab:poserDeclaration', o || {}),
   pointerDeclaration: (o) => ipcRenderer.invoke('cab:pointerDeclaration', o || {}),
   ecrireDeclaration: (o) => ipcRenderer.invoke('cab:ecrireDeclaration', o || {}),
+  // Les immobilisations et l'inventaire (9.7.0)
+  immobilisations: (o) => ipcRenderer.invoke('cab:immobilisations', o || {}),
+  saveImmobilisation: (o) => ipcRenderer.invoke('cab:saveImmobilisation', o || {}),
+  supprimerImmobilisation: (o) => ipcRenderer.invoke('cab:supprimerImmobilisation', o || {}),
+  ecrireDotations: (o) => ipcRenderer.invoke('cab:ecrireDotations', o || {}),
+  inventaire: (o) => ipcRenderer.invoke('cab:inventaire', o || {}),
+  saveInventaire: (o) => ipcRenderer.invoke('cab:saveInventaire', o || {}),
+  ecrireVariationStock: (o) => ipcRenderer.invoke('cab:ecrireVariationStock', o || {}),
   // La licence du cabinet (9.4.0). Elle ne concerne QUE ce cabinet : rien ici ne touche aux
   // données d'un client, et la porte qu'elle ferme est celle de la validation d'une écriture —
   // jamais la lecture, jamais l'import, jamais l'export.

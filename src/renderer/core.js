@@ -3803,7 +3803,14 @@
     vncCedee: '675',             // Valeur comptable des immobilisations cédées
     produitsCession: '775',      // Produits des cessions d'immobilisations
     taxesSalaires: '661',        // TFP et FOPROLOS : impôts et taxes sur rémunérations (charge)
-    tfpFoprolos: '4335'          // TFP et FOPROLOS à payer (dette envers l'État)
+    tfpFoprolos: '4335',         // TFP et FOPROLOS à payer (dette envers l'État)
+    // 9.7.0 — l'inventaire de fin d'exercice et les subventions d'investissement. Les rôles vivent
+    // ici parce que `COMPTES_IMMO` (compta.js) n'est que le repli du Cabinet : un test confronte
+    // les deux tables, sans quoi elles diraient un jour deux numéros différents pour un seul rôle.
+    stocks: '37',                // Stocks de marchandises et de matières
+    variationStocks: '603',      // Variation des stocks — la contrepartie de l'inventaire
+    subventions: '14',           // Subventions d'investissement (À VÉRIFIER)
+    repriseSubventions: '739'    // Quote-part de subvention reprise au résultat (À VÉRIFIER)
   };
   const ACCOUNT_LABELS = {
     clients: 'Clients', fournisseurs: 'Fournisseurs', ventes: 'Ventes',
@@ -3818,7 +3825,9 @@
     associes: 'Compte courant des associés', emprunts: 'Emprunts', attente: 'Compte d\'attente (à ventiler)',
     reportANouveau: 'Report à nouveau (soldes de départ)',
     dotations: 'Dotations aux amortissements', amortissements: 'Amortissements cumulés', vncCedee: 'Valeur comptable des immobilisations cédées',
-    produitsCession: 'Produits des cessions d\'immobilisations', taxesSalaires: 'TFP et FOPROLOS (charge)', tfpFoprolos: 'TFP et FOPROLOS à payer'
+    produitsCession: 'Produits des cessions d\'immobilisations', taxesSalaires: 'TFP et FOPROLOS (charge)', tfpFoprolos: 'TFP et FOPROLOS à payer',
+    stocks: 'Stocks', variationStocks: 'Variation des stocks',
+    subventions: 'Subventions d\'investissement', repriseSubventions: 'Quote-part de subvention reprise'
   };
   // Un mouvement libre de trésorerie (3.3.0) porte une NATURE ; la 8.9.0 lui donne sa contrepartie.
   // La nature décide par défaut ; un mouvement peut porter son propre `compte` (la TVA du mois

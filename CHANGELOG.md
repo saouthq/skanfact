@@ -7,6 +7,47 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 9.7.0 — 17/09/2026
+
+**Les immobilisations et l'inventaire, côté cabinet.**
+
+Pour un client qui n'a pas SkanFact — c'est-à-dire le dossier payant — personne ne calcule son plan
+d'amortissement. C'est ce que cette version livre, avec le **même moteur** que l'app entreprise :
+recopier le calcul aurait donné deux tableaux d'amortissement pour un seul bien, et aucun moyen de
+savoir lequel croire.
+
+- **Les fiches de biens du dossier**, au modèle de l'app entreprise. Un test compare les deux :
+  le même bien doit donner la même dotation et la même VNC, exercice par exercice.
+- **Amortissement dégressif**, au taux **saisi sur la fiche**. Aucun coefficient n'est écrit dans le
+  code : il dépend de la durée et du régime, personne ne l'a confirmé, et une table de coefficients
+  serait une règle de droit offerte sans validation. Un dégressif sans taux est **refusé**, en
+  nommant le taux.
+- **La bascule au linéaire** existe, et elle est **décochée par défaut** — l'usage d'ici n'est pas
+  établi. C'est une case, pas une version.
+- **Cessions et mises au rebut** : la sortie d'actif reprend l'amortissement **en entier** et ne
+  laisse aucune VNC derrière elle. Le **prix n'est jamais inventé** : il arrive par la facture de
+  vente ou par le relevé bancaire.
+- **Subventions d'investissement** : la reprise suit le rythme de l'amortissement du bien financé.
+  Calcul, pas règle fiscale — et l'écran le dit.
+- **Une acquisition venue d'un paquet remonte sans fiche**, avec le bouton qui la crée préremplie.
+  Jamais d'office : une durée d'amortissement est une décision, pas une donnée lue dans un fichier.
+- **Les dotations passent en écritures d'inventaire**, une pièce par bien, au dernier jour de
+  l'exercice, **en brouillard**. Chaque ligne de plan retient l'écriture qui la porte : le bouton
+  s'éteint, et la dotation ne peut pas être comptée deux fois.
+- **Une dotation déjà écrite ne se recalcule jamais en silence** : modifier la valeur ou la durée
+  d'un bien dont la dotation est passée est refusé, en nommant le geste (contre-passer d'abord).
+  Renommer le bien, lui, passe : ça n'a jamais rendu une écriture fausse.
+- **L'inventaire de stock de fin d'exercice** se colle depuis un tableur (référence, désignation,
+  quantité, coût). La **variation** devient une écriture dans le bon sens, et une variation **nulle**
+  ne produit rien du tout — une pièce à zéro dans un journal n'apprend rien.
+- `livre.json` gagne une quatrième liste, `inventaires[]`. Absente d'un livre écrit avant, elle vaut
+  `[]` : aucun lecteur ancien ne s'en plaint.
+
+**Ce qui n'est PAS livré, et pourquoi** : l'amortissement **dérogatoire**. Le format du livre ne lui
+réserve rien et personne ne l'a demandé — une case posée « au cas où » serait une règle fiscale
+offerte sans validation. Et l'**inventaire permanent** côté cabinet : il attend qu'un cabinet le
+demande ; un dossier SkanFact tient déjà son stock depuis la 4.0.0.
+
 ## 9.6.1 — 17/09/2026
 
 **Entretien. Aucune fonction nouvelle, par règle.**

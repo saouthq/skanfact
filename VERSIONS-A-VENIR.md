@@ -541,7 +541,7 @@ des deux, jamais les deux (*toi* — je propose la banque quand le dossier a un 
 
 ---
 
-## 9.7.0 — Immobilisations et stocks
+## 9.7.0 — Immobilisations et stocks — **LIVRÉE le 17/09/2026**
 
 > *Le dégressif, la sortie, les stocks valorisés — côté cabinet, pour les dossiers qui n'ont pas
 > SkanFact.*
@@ -568,6 +568,11 @@ des deux, jamais les deux (*toi* — je propose la banque quand le dossier a un 
 | F-9.7.0-10 | La **variation de stock** devient une écriture d'inventaire (603 / 37) | Cabinet | SPEC-UI-CAB-051 |
 
 **Ce qui n'y est pas** : l'inventaire permanent côté cabinet — il attend qu'un cabinet le demande.
+**Et l'amortissement DÉROGATOIRE (F-9.7.0-03), refusé avec sa raison** : le format de `livre.json`
+est figé et ne lui réserve rien, et la règle de cette section est explicite — s'il n'est pas
+demandé, il n'existe pas. Une case posée « au cas où » serait une règle fiscale offerte sans
+validation. Le jour où un cabinet le demande, c'est une décision de format, pas une ligne de code.
+Un test tient l'absence, pour qu'il ne rentre pas par la porte de derrière.
 
 **Ce qui la prouve** : le dégressif contre un calcul à la main ; la dernière annuité qui absorbe les
 arrondis ; le 28 d'un bien cédé repris **en entier** ; « sur un mois on amortit un mois » ; et la
