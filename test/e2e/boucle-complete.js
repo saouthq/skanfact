@@ -277,12 +277,20 @@ async function launchCabinet() {
   // Le grand livre et le lettrage s'ouvrent, et disent ce qu'ils savent — y compris ce qu'ils ne
   // savent PAS : il n'y a pas d'à-nouveau dans un livre lu mois par mois, et l'écran l'écrit.
   await win.click('#c-tabs button[data-tab=grand-livre]');
-  await win.waitForSelector('#c-livres .panel h2');
+  // On reconnaît un compte à ce qu'il EST (`.gl-compte`), jamais à la balise qui le titrait : depuis
+  // la 9.4.5 chaque compte est replié sur sa ligne de synthèse, et le `h2` que ce parcours attendait
+  // n'existe plus. C'est le motif de la 7.28.0, une fois de plus — un e2e ancré sur une forme se
+  // périme à la refonte suivante.
+  await win.waitForSelector('#c-livres .gl-compte .gl-nom');
   const gl = await win.evaluate(() => ({
-    comptes: document.querySelectorAll('#c-livres .panel').length,
+    comptes: document.querySelectorAll('#c-livres .gl-compte').length,
+    // Replié, un compte doit quand même porter son solde : un plan de comptes sans chiffres
+    // n'apprend rien, et c'est toute la raison d'être du repli.
+    soldes: [...document.querySelectorAll('#c-livres .gl-compte .gl-solde')].filter(x => /Solde/.test(x.textContent)).length,
     ouverture: /ouverture inconnue/i.test(document.querySelector('#c-livres').textContent)
   }));
   if (!gl.comptes) throw new Error('le grand livre est vide');
+  if (gl.soldes !== gl.comptes) throw new Error(`${gl.comptes} comptes mais ${gl.soldes} soldes visibles : un compte replié sans son chiffre n'apprend rien`);
   if (!gl.ouverture) throw new Error('le grand livre doit DIRE qu\'il n\'a pas d\'à-nouveau');
   await win.click('#c-tabs button[data-tab=lettrage]');
   await win.waitForSelector('#lv-verdict');

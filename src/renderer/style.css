@@ -361,6 +361,13 @@ table.list tr:last-child td { border-bottom: none; }
 table.list tr.clickable { cursor: pointer; }
 table.list tr.clickable:hover td { background: #f7fbfa; }
 td.r, th.r { text-align: right; font-variant-numeric: tabular-nums; }
+/* Une cellule qui tient sur UNE ligne, le texte entier dans son infobulle (9.4.5). Le livre-journal
+   du Cabinet faisait 5 888 px pour dix-sept pièces : ce n'était pas le nombre de lignes, c'était
+   chaque ligne repliée sur trois, parce qu'un libellé de facture porte le nom du client. Un journal
+   se PARCOURT — on y cherche une pièce — et une colonne dont le texte revient à la ligne triple la
+   hauteur de toutes les autres. Le texte complet reste lisible au survol et intact à l'export. */
+td.tronq { max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+td.tronq.lg { max-width: 320px; }
 /* Un piège de SPÉCIFICITÉ, vieux comme les tableaux de l'application. `table.list th` (une classe,
    deux éléments) l'emporte sur `th.r` (une classe, un élément) : l'en-tête restait donc aligné à
    GAUCHE au-dessus d'une colonne de chiffres alignés à DROITE. « En stock » finissait 80 px à

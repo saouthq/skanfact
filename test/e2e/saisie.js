@@ -112,10 +112,14 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   await win.keyboard.type('4/3');                    // saisie tolérante : jour/mois
   await win.keyboard.press('Tab');
   await attendre(200);
+  // L'assertion porte sur la RÈGLE — « 4/3 » désigne le 4 mars — et non sur la forme affichée :
+  // jusqu'à la 9.4.5 elle exigeait l'ISO à l'écran, c'est-à-dire qu'elle décrivait le format
+  // interne qui fuyait dans un champ de saisie. L'écran montre le jour en français ; c'est la
+  // PIÈCE qui porte l'ISO, et le parcours vérifie les deux.
   const dateLue = await win.evaluate(() => document.querySelector('#sa-date').value);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateLue)) throw new Error('la date tapée « 4/3 » n\'a pas été comprise : ' + dateLue);
-  if (!dateLue.endsWith('-03-04')) throw new Error('« 4/3 » devrait donner le 4 mars, pas ' + dateLue);
-  ok('« 4/3 » devient ' + dateLue);
+  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(dateLue)) throw new Error('la date doit s\'afficher en français : ' + dateLue);
+  if (!dateLue.startsWith('04/03/')) throw new Error('« 4/3 » devrait donner le 4 mars, pas ' + dateLue);
+  ok('« 4/3 » devient ' + dateLue + ' à l\'écran — l\'ISO est vérifié sur la pièce enregistrée, plus bas');
 
   // L'en-tête se descend à ENTRÉE, la même touche que la grille. Tab ne peut pas le faire : chaque
   // libellé porte sa bulle « i », qui est un vrai bouton et prend le focus au passage — c'est le
@@ -197,6 +201,8 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   if (mienne.statut !== 'brouillard') throw new Error('la pièce est arrivée en ' + mienne.statut + ' au lieu de brouillard');
   if (mienne.numero !== null) throw new Error('un brouillard porte déjà le numéro ' + mienne.numero);
   if (mienne.lignes.length !== 3) throw new Error('la pièce a ' + mienne.lignes.length + ' lignes au lieu de 3');
+  // L'autre moitié de la règle des dates : l'écran montre « 04/03/2026 », la PIÈCE porte l'ISO.
+  if (!/^\d{4}-03-04$/.test(mienne.date)) throw new Error('la pièce devrait porter le 4 mars en ISO, elle porte ' + mienne.date);
   if (Math.abs(mienne.lignes[2].credit - 191) > 0.001) throw new Error('le montant soldé n\'a pas été enregistré');
   ok('enregistrée en brouillard, sans numéro, avec ses trois lignes');
 

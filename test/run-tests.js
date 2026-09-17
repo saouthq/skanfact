@@ -13409,6 +13409,126 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.ok(calme.includes('rec-go'), 'et il garde le bouton : prévenir sans offrir le geste ne sert à rien');
   });
 
+  t('9.4.5 : les quatre vues du livre sont paginées, et le pied porte la sélection entière', () => {
+    const app = lireSource('src', 'cabinet', 'renderer', 'app.js');
+    // Les trois aides prennent un ÉTAT. Câblées sur `listState` en dur (jusqu'à la 9.4.5), elles ne
+    // pouvaient servir qu'à la liste des dossiers — et le grand livre d'un client faisait 6 462 px.
+    assert.ok(/function pagerBar\(total, st = listState/.test(app), 'pagerBar doit accepter un état');
+    assert.ok(/function bindPager\(root, redraw, st = listState\)/.test(app), 'bindPager doit accepter un état');
+    assert.ok(/const paginate = \(rows, st = listState\)/.test(app), 'paginate doit accepter un état');
+
+    // Chacune des quatre vues pagine, et sur l'unité qu'elle MONTRE : le livre-journal par pièce
+    // (couper une pièce en deux montrerait un débit sans son crédit), le grand livre par compte
+    // (le solde progressif se calcule sur le compte entier).
+    const vue = nom => {
+      const i = app.indexOf('function ' + nom + '(');
+      assert.ok(i > 0, nom + ' est introuvable');
+      const fin = app.indexOf('\n  }', i);
+      const z = app.slice(i, fin);
+      assert.ok(z.length > 500 && z.length < 6000, nom + ' : tranche de ' + z.length + ' caractères');
+      return z;
+    };
+    const j = vue('vueJournal');
+    assert.ok(/paginate\(lj\.pieces, s\)/.test(j), 'le livre-journal doit paginer les PIÈCES, pas les lignes');
+    assert.ok(/pagerBar\(lj\.pieces\.length, s, 'pièce'\)/.test(j), 'et annoncer des pièces');
+    // Le pied porte sur la sélection entière : `lj` est construit sur `gardees`, jamais sur la page.
+    assert.ok(/const lj = KC\.journalDepuisLignes\(gardees\)/.test(j), 'le total doit se calculer sur la sélection entière');
+
+    const g = vue('vueGrandLivre');
+    assert.ok(/pagerBar\(gl\.comptes\.length, s, 'compte'\)/.test(g) && /paginate\(gl\.comptes, s\)/.test(g),
+      'le grand livre doit paginer les COMPTES');
+    // Et paginer ne suffisait pas : vingt comptes tiennent sur une page, et la page faisait sept
+    // écrans. Chaque compte est REPLIÉ sur sa ligne de synthèse — sauf celui qu'on a demandé.
+    assert.ok(/<details class="panel mt gl-compte"/.test(g), 'chaque compte doit être repliable');
+    assert.ok(/s\.compte \|\| gl\.comptes\.length === 1 \? 'open' : ''/.test(g),
+      'le compte choisi dans la liste doit s\'ouvrir tout seul');
+    assert.ok(/<summary class="gl-tete">/.test(g) && /Solde \$\{esc\(money\(c\.solde\)\)\}/.test(g),
+      'la ligne repliée doit porter le solde : un compte replié sans son chiffre n\'apprend rien');
+    const cssGl = lireSource('src', 'cabinet', 'renderer', 'cabinet.css');
+    assert.ok(/details\.gl-compte > \*:not\(summary\) \{ display: block !important/.test(cssGl),
+      'un grand livre imprimé plié serait une feuille de soldes : l\'impression ouvre tout');
+    const b = vue('vueBalance');
+    assert.ok(/paginate\(b\.rows, s\)/.test(b), 'la balance doit paginer ses lignes');
+    assert.ok(/money\(b\.totaux\.debit\)/.test(b), 'et totaliser `b.totaux`, calculé sur toutes les lignes');
+    const l = vue('vueLettrage');
+    assert.ok(/paginate\(l\.rows, s\)/.test(l), 'le lettrage doit paginer ses tiers');
+
+    // Le pager est BRANCHÉ sur l'état des livres — un pager dessiné et non branché est un bouton
+    // mort (7.0.0), et personne ne le verrait : il a l'air normal.
+    const iv = app.indexOf('function brancherVue(');
+    const zv = app.slice(iv, app.indexOf('\n  }', iv));
+    assert.ok(/bindPager\(el, redraw, s\)/.test(zv), 'brancherVue doit brancher le pager sur `s`');
+    // Et tout ce qui change la sélection remet la page à 1 : sans ça, filtrer depuis la page 7 rend
+    // un tableau vide sans que rien à l'écran ne l'explique.
+    ['s.journal = j.value', 's.q = q.value', 's.compte = c.value', 's.aux = !s.aux'].forEach(geste => {
+      const k = zv.indexOf(geste);
+      assert.ok(k > 0, 'geste introuvable : ' + geste);
+      assert.ok(zv.slice(k, k + 60).includes('s.page = 1'), geste + ' doit remettre la page à 1');
+    });
+  });
+
+  t('9.4.5 : les totaux de la grille vivent SOUS leurs colonnes, et le bouton éteint dit pourquoi', () => {
+    const app = lireSource('src', 'cabinet', 'renderer', 'app.js');
+    const i = app.indexOf('function vueSaisie(');
+    const z = app.slice(i, app.indexOf('\n  }\n', i));
+    // Une somme annoncée dans une phrase à gauche de l'écran ne se compare à rien : l'œil descend
+    // une colonne de montants et doit trouver son total au bout de CETTE colonne.
+    assert.ok(/<tfoot>/.test(z), 'la grille de saisie doit porter un pied de totaux');
+    assert.ok(/id="sa-td"/.test(z) && /id="sa-tc"/.test(z), 'un total par colonne (débit, crédit)');
+    assert.ok(/id="sa-te"/.test(z), 'et la ligne d\'écart');
+    // Le refus se lit AVANT le bouton, pas dessous (9.4.2).
+    const iR = z.indexOf('id="sa-refus"'), iB = z.indexOf('id="sa-okvalider"');
+    assert.ok(iR > 0 && iB > 0 && iR < iB, 'le motif du refus doit précéder le bouton qu\'il explique');
+
+    const im = app.indexOf('const majSolde = () => {');
+    const m = app.slice(im, app.indexOf('\n    };', im));
+    assert.ok(m.length > 600 && m.length < 3000, 'majSolde : tranche de ' + m.length + ' caractères');
+    // **La même fonction que celle qui refusera à l'enregistrement.** Un contrôle recopié à la main
+    // dans l'écran finirait par diverger de celui du moteur, et le bouton s'éteindrait sur une
+    // pièce que l'enregistrement accepte — ou l'inverse, bien pire.
+    assert.ok(/KC\.ecritureValide\(ecritureSaisie\(p\)/.test(m),
+      'le contrôle en direct doit passer par `ecritureValide`, jamais par une règle recopiée');
+    assert.ok(/b\.disabled = !v\.ok/.test(m), 'les deux boutons s\'éteignent quand la pièce ne passe pas');
+    assert.ok(/motif\.textContent = v\.ok \? '' : v\.motif/.test(m), 'et le motif s\'AFFICHE, pas seulement en title');
+    // Toujours pas de redessin à la frappe (règle 9.3.0) : on met à jour la donnée, puis les seuls
+    // éléments qui en dépendent.
+    assert.ok(!/drawLivres/.test(m), 'le solde ne redessine pas la grille : le curseur y repartirait dans le vide');
+  });
+
+  t('9.4.5 : un raccourci s\'affiche comme une touche, et se règle en appuyant dessus', () => {
+    const app = lireSource('src', 'cabinet', 'renderer', 'app.js');
+    const css = lireSource('src', 'cabinet', 'renderer', 'cabinet.css');
+    // « Control+Enter » au milieu d'une phrase grise se lit comme une faute de frappe. Chaque touche
+    // sort dans un `<kbd>`, et sous un nom de clavier français.
+    assert.ok(/const kbd = combo =>/.test(app), 'le rendu d\'une touche doit vivre en UN endroit');
+    assert.ok(/<kbd>\$\{esc\(NOM_TOUCHE\[t\] \|\| t\)\}<\/kbd>/.test(app), 'et passer par la table des noms');
+    assert.ok(/Enter: '↵ Entrée'/.test(app), 'Enter s\'écrit « Entrée » sur un clavier français');
+    // La ligne d'aide de la grille suit les touches RÉGLÉES : une aide qui annonce F2 quand la
+    // touche est F5 est pire que pas d'aide.
+    const ia = app.indexOf('function aideTouches()');
+    assert.ok(ia > 0, 'la ligne d\'aide est introuvable');
+    const za = app.slice(ia, app.indexOf('\n  }', ia));
+    assert.ok(/const t = touchesSaisie\(\)/.test(za), 'elle doit lire les touches réglées');
+    ['ligneSuivante', 'solder', 'recopier', 'dupliquer', 'valider'].forEach(k => {
+      assert.ok(za.includes('t.' + k), 'la touche « ' + k + ' » n\'est pas montrée');
+    });
+    assert.ok(app.includes('${aideTouches()}'), 'et la grille doit la poser');
+    // Le champ se règle en APPUYANT : personne ne sait que la touche Entrée s'appelle « Enter », et
+    // une faute de frappe donnait un raccourci qui ne se déclenchait jamais, sans rien à l'écran.
+    assert.ok(/readonly data-touche=/.test(app), 'le champ « touche » ne se tape pas, il se capture');
+    const ib = app.indexOf('function brancherReglagesCompta(');
+    const zb = app.slice(ib, ib + 1800);
+    assert.ok(/inp\.onkeydown = ev =>/.test(zb), 'la capture au clavier manque');
+    assert.ok(/poser\(toucheDe\(ev\)\)/.test(zb), 'et elle doit passer par `toucheDe`, la même que la grille');
+    assert.ok(/ev\.key === 'Escape'/.test(zb), 'Échap doit rendre la main : on sort toujours d\'un champ qui avale le clavier');
+    assert.ok(/\['Control', 'Alt', 'Shift', 'Meta'\]\.includes\(ev\.key\)/.test(zb),
+      'un modificateur seul n\'est pas un raccourci');
+    assert.ok(/data-touche-reset=/.test(app), 'et on doit pouvoir remettre la touche d\'origine');
+    // Les classes posées existent dans une feuille : une classe inconnue ne se voit nulle part (8.1.0).
+    ['.kbd-aide', '.kbd-paire', '.kbd-plus', '.touche-ligne', '.touche-in', '.touche-vue', '.sa-refus']
+      .forEach(c => assert.ok(css.includes(c + ' ') || css.includes(c + ','), 'classe sans style : ' + c));
+  });
+
   t('9.4.2 : la ponctuation double porte une espace insécable', () => {
     const src = lireSource('src', 'cabinet', 'renderer', 'app.js');
     const i = src.indexOf('function typographie(');

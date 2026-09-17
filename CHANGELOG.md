@@ -7,6 +7,37 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 9.4.5 — 17/09/2026
+
+**Le livre du Cabinet : on le parcourt au lieu de le subir.**
+
+- **Le grand livre se lit d'un coup d'œil.** Chaque compte est replié sur sa ligne de synthèse —
+  numéro, intitulé, mouvements, débit, crédit, solde, en colonnes alignées d'un compte à l'autre —
+  et s'ouvre d'un clic. Le compte choisi dans la liste s'ouvre tout seul, et l'impression les ouvre
+  tous. La page passe de **6 554 px à 2 170 px** : on voit enfin quels comptes existent sans
+  défiler, c'est-à-dire la seule question qu'on se pose en arrivant.
+- **Les quatre vues de la comptabilité sont paginées** — le livre-journal par pièce (jamais par
+  ligne : couper une pièce en deux montrerait un débit sans son crédit), le grand livre par compte,
+  la balance et le lettrage par ligne. Le pied de totaux et l'export portent sur la **sélection
+  entière**, jamais sur la page affichée, et chaque changement de filtre ramène à la page 1.
+- **Un libellé tient sur une ligne**, avec son texte entier au survol et intact à l'export. Le
+  livre-journal faisait 5 888 px pour dix-sept pièces : ce n'était pas le nombre de lignes, c'était
+  chaque ligne repliée sur trois parce qu'un libellé de facture porte le nom du client. **3 268 px**
+  désormais.
+- **Les totaux de la grille de saisie vivent sous leurs colonnes**, débit et crédit, en chiffres de
+  même chasse, avec la ligne d'écart quand la pièce ne tombe pas juste.
+- **Un bouton éteint dit pourquoi.** Les deux boutons d'enregistrement s'éteignent tant que la pièce
+  ne passerait pas, et le motif — celui exact qu'on aurait lu après le clic — s'affiche à côté du
+  solde, au-dessus des boutons.
+- **La date est proposée** (aujourd'hui, ou le dernier jour de l'exercice) et **s'affiche en
+  français** : l'écran montrait « 2026-09-17 » sous une invite qui annonce « 04/03/2026 ». La pièce,
+  elle, garde l'ISO. Le champ se sélectionne au clic, pour qu'une date tapée remplace celle qu'on
+  propose au lieu de s'y ajouter.
+- **Les raccourcis s'affichent comme des touches** (⌃ + ↵, ⇥ Tab, F2…) au lieu d'être écrits en
+  toutes lettres au milieu d'une phrase grise — et chaque touche **se règle en appuyant dessus**,
+  plus en tapant « Control+Enter » de mémoire. Un bouton remet celle d'origine.
+- Les trois boutons « Enregistrer » des Réglages disent ce qu'ils enregistrent.
+
 ## 9.4.4 — 17/09/2026
 
 **La page Dossiers : le portefeuille au-dessus de la ligne de flottaison.** Sur un portable de

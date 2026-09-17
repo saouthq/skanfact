@@ -170,12 +170,47 @@
   /* La fiche imprimée reste la fiche ENTIÈRE : les onglets ne sont qu'un rangement d'écran. */
   #d-tabs { display: none !important; }
   section[data-onglet][hidden] { display: block !important; }
+  /* Même principe pour le grand livre : un compte replié à l'écran est un compte imprimé. Sans
+     cette ligne, un grand livre imprimé ne serait qu'une liste de soldes. */
+  details.gl-compte > *:not(summary) { display: block !important; }
+  details.gl-compte > summary { list-style: none; }
   .print-only { display: block; margin-bottom: 14px; font-size: 11px; color: #666; }
   body, #app, main#view { display: block; background: #fff; padding: 0; margin: 0; }
   .panel { break-inside: avoid; box-shadow: none; border: 1px solid #ddd; margin-bottom: 12px; }
   .ca-bars { height: 110px; }
   a[href]::after { content: ""; }
 }
+
+/* ---------------------------------------------------------------- le grand livre (9.4.5)
+   Un compte replié sur sa ligne de synthèse. Le `summary` est une VRAIE ligne de tableau à l'oeil :
+   le numéro et l'intitulé à gauche, les trois chiffres à droite, alignés d'un compte à l'autre —
+   c'est cet alignement qui fait qu'on lit la colonne « Solde » sans la chercher. */
+.gl-compte > summary {
+  cursor: pointer; display: flex; gap: 14px; align-items: baseline;
+  flex-wrap: wrap; list-style: none;
+}
+.gl-compte > summary::-webkit-details-marker { display: none; }
+.gl-compte > summary::before {
+  content: "▸"; color: var(--muted); font-size: 12px; margin-inline-end: 2px;
+}
+.gl-compte[open] > summary::before { content: "▾"; }
+.gl-compte > summary:hover { color: var(--primary); }
+/* `margin-inline-end: auto` et NON `justify-content: space-between` : le chevron ::before est un
+   troisième élément de la ligne, et « space-between » écartait les trois — le nom du compte
+   finissait CENTRÉ, flottant au milieu d'une ligne dont les deux bouts étaient occupés. C'est le
+   genre de chose qu'aucune sonde ne mesure et qu'une capture montre en une seconde. */
+.gl-nom { font-weight: 650; font-size: 15px; margin-inline-end: auto; }
+.gl-chiffres { display: flex; gap: 12px; align-items: baseline; font-size: 12.5px; flex-wrap: wrap; }
+/* Les trois chiffres tombent en COLONNES d'un compte à l'autre. Sans largeur minimale ils flottaient
+   selon la longueur du nombre, et « Solde » changeait de place à chaque ligne : on le cherchait à
+   chaque fois au lieu de descendre la colonne. */
+.gl-chiffres .gl-mv { min-width: 96px; text-align: end; }
+.gl-m { font-variant-numeric: tabular-nums; white-space: nowrap; min-width: 132px; text-align: end; }
+.gl-m.gl-solde { min-width: 156px; }
+.gl-compte[open] > .scroll-x { margin-block-start: 10px; }
+/* Un compte replié est une LIGNE, pas une carte : le padding d'un panneau en faisait 81 px, et
+   vingt comptes repliés reprenaient la moitié de la hauteur qu'on venait de gagner. */
+.gl-compte:not([open]) { padding-block: 10px; }
 
 /* Les échéances : une date lisible à gauche, ce qui manque à droite. Ce qui compte n'est pas la
    date (le comptable la connaît) mais le nombre de clients dont il n'a pas les pièces. */
@@ -266,6 +301,24 @@ tr.cp-ligne td { text-decoration: line-through; color: var(--muted); }
 .sa-solde.ok { color: var(--success); }
 .sa-solde.ko { color: var(--danger); }
 .sa-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+/* Le motif du refus, à côté du solde et AU-DESSUS des boutons. Il n'est ni rouge vif ni encadré :
+   pendant qu'on tape, « la date manque » est l'état NORMAL d'une pièce qu'on commence. */
+.sa-refus { font-size: 12.5px; color: var(--muted); margin-block-start: 4px; max-width: 46ch; }
+/* L'étiquette des totaux en pied de grille : alignée au début, comme le reste de sa colonne. */
+.sa-grille tfoot .sa-tl { font-weight: 600; }
+.sa-grille tfoot tr:last-child td { color: var(--danger); }
+
+/* ---------------------------------------------------------------- les touches (9.4.5)
+   Un raccourci s'AFFICHE comme une touche. `kbd` vient de la feuille partagée ; ce qui est ici,
+   c'est la mise en ligne : la paire « ce que ça fait → la touche », et le champ qui se règle en
+   appuyant plutôt qu'en tapant le nom de la touche. */
+.kbd-aide { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; }
+.kbd-paire { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.kbd-plus { color: var(--muted); font-size: 11px; margin-inline-start: 3px; }
+.touche-ligne { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.touche-in { width: 9ch; text-align: center; cursor: pointer; }
+.touche-in:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
+.touche-vue { white-space: nowrap; }
 .sa-lot { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-block-end: 12px; }
 
 /* Les guides et la correspondance, dans les Réglages. Deux tableaux qu'on remplit à la main : ils

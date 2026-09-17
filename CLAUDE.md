@@ -36,6 +36,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un compteur et la liste qu'il annonce se calculent avec la **même fonction** | 6.8.1 — le bandeau des relances ; 7.15.0 — « Reste à encaisser » |
 | Un montant **négatif change de colonne**, il ne garde pas son signe | 6.3.0 — les écritures comptables |
 | Un **agrégat** porte une devise, une unité, et une période nommée | 7.0.1, 7.16.0, 3.1.0 |
+| Un **pied de totaux** porte la sélection entière, jamais la page affichée ; on pagine ce qu'on NOMME | 2.2.0, 7.16.0, 9.4.5 |
 | La valeur par défaut d'une **règle qu'on ne connaît pas** est celle qui ne fait rien | 9.1.1 — le seuil de retenue à 0, la TFP qu'aucun métier ne porte |
 | Une écriture **validée** ne se modifie jamais : elle se contre-passe, à la date du jour | 9.2.0 |
 | Un **numéro** naît à la validation, et le contrôle passe AVANT l'attribution | 9.2.0 ; 6.0.0 — `nextNumber` |
@@ -47,9 +48,9 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | **Tout test se prouve en réintroduisant son défaut.** Sinon on ne sait pas ce qu'on a écrit | 7.2.0, 7.22.0, 7.25.0, 7.27.0 — six tests qui ne pouvaient pas échouer |
 | Un test qui lit du code doit lire du **CODE** : commentaires et chaînes retirés d'abord | 6.8.0, 7.25.0 — un commentaire satisfaisait l'assertion |
 | Une assertion sur un montant se **calcule à la main**, jamais en recopiant la sortie | 7.0.1 — l'assertion qui gravait le bug depuis la 1.6.0 |
-| Un test écrit contre l'état du jour **décrit cet état**, pas la règle | 7.12.0, 7.26.0, 8.0.1, 8.2.0, 9.1.0 — cinq assertions retournées |
+| Un test écrit contre l'état du jour **décrit cet état**, pas la règle | 7.12.0, 7.26.0, 8.0.1, 8.2.0, 9.1.0, 9.2.2, 9.4.3, 9.4.5 — neuf assertions retournées |
 | Une **tranche** de source se prouve par sa taille et par ce qu'elle ne contient PAS | 7.20.0, 7.21.0, 8.2.0 |
-| Un e2e **se périme** : reconnaître un écran à ce qu'il CONTIENT, jamais à son rang | 7.3.0, 7.28.0, 7.29.0, 7.30.0 — cinq parcours pourris sans un mot |
+| Un e2e **se périme** : reconnaître un écran à ce qu'il CONTIENT, jamais à son rang | 7.3.0, 7.28.0, 7.29.0, 7.30.0, 9.2.2, 9.4.5 — six parcours pourris sans un mot |
 | Un e2e qui reste **bloqué** est pire qu'un e2e qui échoue | 7.28.0 — `Promise.race` sur toute fermeture |
 | `ta()` sans `await`, `t()` avec une fonction asynchrone : « ok » sans rien vérifier | 6.7.0, 8.4.0 |
 | Un test **trop étroit** accuse du code juste — aussi grave qu'un test trop large | 9.1.0, 9.2.0 — le jumeau du contrôle du pont, sans son nettoyage |
@@ -74,17 +75,21 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 |---|---|
 | Un **bouton sans bordure ni couleur n'est pas un bouton** : il se reconnaît AU REPOS, pas au survol | Cabinet 1.0.0, 9.4.2 |
 | Un **titre gris de 11 px ne hiérarchise rien** : il décore. Trois niveaux, un rôle chacun | 9.4.3 |
+| Un **total vit sous sa colonne** ; un raccourci s'affiche comme une **touche**, pas comme du texte | 9.4.5 |
+| Ce qui prend la place n'est pas le **nombre** d'objets mais leur **taille** : replier avant de paginer | 9.4.5 |
+| Un champ **pré-rempli** se sélectionne au clic, sinon la valeur proposée est imposée | 9.4.5 |
 | Une **classe posée par le code et inconnue de la feuille** ne se voit nulle part | 6.8.0, 7.23.0, 7.27.0, 8.1.0, 9.4.3 |
 | Une **phrase rassurante** se vérifie d'abord sur un univers non vide | 7.0.0, 7.3.0, 9.4.2 |
 | Un **avertissement** se lit AVANT le geste, jamais sous le bouton | 9.4.2 |
 | Une ligne garde **au plus UN** bouton visible ; le reste passe par `rowmenu.js` | 7.29.0 |
 | Un refus dit **trois** choses : ce qui est refusé, pourquoi, et le bouton qui débloque | 7.0.0, 9.2.1 |
+| Un **bouton éteint dit pourquoi**, et par la MÊME fonction que celle qui refusera | 9.4.5 |
 | Une saisie refusée se **MONTRE** : on amène le champ à l'écran (`refus()`) | 7.0.0, 7.20.0 |
 | Ce qui **détruit** demande ; ce qui **se répare** laisse un « Annuler » (`toastUndo`) | 7.12.0 |
 | Un écran qui **NOMME** un ensemble doit pouvoir l'ouvrir | 7.15.0, 7.17.0, 7.21.0 |
 | L'endroit qui **affiche** un état est celui où on s'attend à le changer | 7.14.0 |
 | Un **moteur sans écran n'existe pas** ; une fonction jamais appelée est invisible | 7.2.0, 7.3.0, 7.19.0 |
-| Une **phrase affichée** que rien ne tient est un bug, pas une imprécision | 7.3.0, 7.6.0, 8.0.0 |
+| Une **phrase affichée** que rien ne tient est un bug, pas une imprécision | 7.3.0, 7.6.0, 8.0.0 ; 9.4.5 — un COMMENTAIRE aussi |
 | `navigate()` vers la page courante ne redessine **rien** : `vers()` | 7.15.0, 7.29.0 |
 | Un état lu une fois au démarrage **se périme** | 7.1.x, 8.0.0 |
 
@@ -3492,6 +3497,92 @@ Règles apprises, à ne pas recasser :
   un en-tête de section repliable (`collapse-h`) porte ses trois signes au repos — chevron, curseur,
   compteur — comme l'en-tête cliquable de la 7.14.0. Les exceptions sont NOMMÉES dans une liste :
   une exception anonyme est un trou.
+
+### 9.4.5 — Le livre : on le parcourt au lieu de le subir
+
+La suite du même chantier, sur l'écran où un comptable passe ses journées. Les chiffres, mesurés
+avant et après par `e2e:cabinet-jour1` : grand livre **6 554 → 2 170 px**, livre-journal
+**5 888 → 3 268 px**, fiche Comptabilité **3 608 → 3 098 px**.
+
+Règles apprises, à ne pas recasser :
+
+- **Paginer ne suffit pas quand le tout tient sur une page.** Le grand livre de l'exemple a vingt
+  comptes : `paginate` à 50 ne mordait sur rien, et la page faisait toujours sept écrans. Ce qui la
+  faisait longue, ce n'était pas le NOMBRE d'objets, c'était leur TAILLE. Chaque compte est replié
+  sur sa ligne de synthèse — un comptable **ouvre** un compte, il ne lit pas les vingt d'affilée —
+  et le plan du grand livre se lit enfin d'un coup d'œil. Avant de paginer, demander ce qui prend
+  la place.
+- **Un objet replié porte son chiffre.** Un compte réduit à son numéro serait une table des
+  matières ; avec ses mouvements, son débit, son crédit et son solde, c'est une balance qu'on peut
+  déplier. Et les trois chiffres tombent en **colonnes** d'un compte à l'autre (`min-width` +
+  `text-align: end`) : sans ça « Solde » change de place à chaque ligne et on le cherche à chaque
+  fois au lieu de descendre la colonne.
+- **`justify-content: space-between` compte le `::before` comme un troisième élément.** Le chevron,
+  le nom, les chiffres : les trois étaient écartés, donc le nom du compte finissait **centré**,
+  flottant au milieu d'une ligne dont les deux bouts étaient pris. `margin-inline-end: auto` sur ce
+  qui doit rester à gauche. Aucune sonde ne mesure ça ; une capture le montre en une seconde.
+- **Un commentaire qui décrit ce que le code ne fait pas est un bug.** Le mien annonçait que
+  l'alignement des chiffres « fait qu'on lit la colonne Solde sans la chercher » — et il n'y était
+  pas. C'est « une phrase affichée que rien ne tient » (7.3.0), appliquée au code.
+- **Une ligne repliée sur trois lignes de texte triple la hauteur de tout le tableau.** Dix-sept
+  pièces faisaient 5 888 px : un libellé de facture porte le nom du client, et la colonne passait à
+  la ligne. `td.tronq` (feuille PARTAGÉE, les deux applications en profitent) tient la cellule sur
+  une ligne, le texte entier au survol, intact à l'export. Un journal se PARCOURT — on y cherche
+  une pièce — et ce qu'on y lit d'abord, c'est le compte, le montant et la date.
+- **On pagine ce que l'écran MONTRE, et on le NOMME.** Le livre-journal se pagine par **pièce**
+  (couper une pièce en deux montrerait un débit sans son crédit, et le lecteur conclurait à un
+  déséquilibre qui n'existe pas), le grand livre par compte, la balance et le lettrage par ligne.
+  Un pied qui annonce « 25 sur 340 lignes » là où ce sont des pièces raconte autre chose que le
+  tableau. Et le pied de totaux porte sur la **sélection entière** — il se calcule sur `gardees`,
+  jamais sur la page, comme dans l'app entreprise depuis la 2.2.0.
+- **`pagerBar` s'appelle AVANT `paginate`** : c'est lui qui ramène `page` dans les bornes quand un
+  filtre vient de réduire la sélection. L'inverse affiche une page vide, puis la bonne au redessin
+  suivant — c'est-à-dire un tableau qui paraît vide sans raison.
+- **Les trois aides de pagination prennent un ÉTAT** (`st = listState` par défaut, donc la page
+  Dossiers n'a pas bougé). Câblées en dur sur `listState`, elles ne pouvaient servir qu'à une seule
+  liste de toute l'application : un mécanisme qui ne se paramètre pas se recopie, et une copie
+  diverge (7.29.0).
+- **Un total vit SOUS sa colonne.** Une somme annoncée dans une phrase à gauche de l'écran ne se
+  compare à rien : l'œil descend une colonne de montants et doit trouver son total au bout de
+  CETTE colonne. Le pied de la grille de saisie porte débit, crédit et l'écart, en chiffres de même
+  chasse — et la ligne d'écart ne s'affiche que s'il y en a un.
+- **Un bouton éteint dit POURQUOI**, et par la MÊME fonction que celle qui refusera à
+  l'enregistrement (`ecritureValide`). Un contrôle recopié dans l'écran finirait par diverger du
+  moteur, et le bouton s'éteindrait sur une pièce que l'enregistrement accepte — ou l'inverse, bien
+  pire. Le motif se lit **au-dessus** des boutons (9.4.2), en gris : pendant qu'on tape, « la date
+  manque » est l'état NORMAL d'une pièce qu'on commence, pas une alarme.
+- **Un raccourci s'AFFICHE comme une touche.** « Control+Enter » au milieu d'une phrase grise se lit
+  comme une faute de frappe ; ⌃ + ↵ en relief se reconnaît sans être lu. C'est ce que Skander a vu
+  sur une capture : « la section "les touches" sont en texte, alors que personne ne fait ça ». Les
+  noms sont ceux d'un clavier **français** (`NOM_TOUCHE`), pas ceux de `KeyboardEvent.key`, et la
+  ligne d'aide suit les touches RÉGLÉES — une aide qui annonce F2 quand la touche est F5 est pire
+  que pas d'aide.
+- **Une touche se règle en APPUYANT dessus.** Personne ne sait que la touche Entrée s'appelle
+  « Enter » ni que Ctrl s'appelle « Control » : une faute de frappe donnait un raccourci qui ne se
+  déclenchait jamais, sans rien à l'écran pour le dire. Le champ reste un `input` (donc l'étiquette,
+  la bulle et le focus), mais en lecture seule — c'est le clavier qui l'écrit. Échap rend la main :
+  on sort toujours d'un champ qui avale le clavier. Un modificateur seul n'est pas un raccourci.
+- **Le format interne ne fuit pas dans un écran de saisie.** Le champ Date affichait
+  « 2026-09-17 » sous une invite qui annonce « 04/03/2026 ». L'écran montre le jour en français, la
+  PIÈCE garde l'ISO, et `dateTapee` continue d'accepter 4, 4/3, 04/03/2026 et l'ISO.
+- **Un champ PRÉ-REMPLI se sélectionne au clic.** La date proposée (aujourd'hui, ou le dernier jour
+  de l'exercice) a fabriqué son propre défaut : cliquer dedans et taper « 4/3 » donnait
+  « 17/09/20264/3 ». C'est `e2e:saisie` qui l'a montré — la relecture, jamais. Corollaire : toute
+  valeur qu'on propose doit pouvoir être remplacée en une frappe, sinon on l'a imposée.
+- **Un bouton « Enregistrer » nu dans une page à plusieurs panneaux ne dit pas ce qu'il enregistre.**
+  Trois cohabitaient dans les Réglages. Dans une fenêtre, « Enregistrer » suffit — c'est son titre
+  qui le dit ; dans une page, non.
+- **Un e2e ancré sur une FORME se périme à la refonte suivante** (sixième fois, après 7.3.0, 7.28.0,
+  7.29.0, 7.30.0 et 9.2.2) : `e2e:boucle` attendait `#c-livres .panel h2`, la balise qui titrait un
+  compte. On reconnaît un compte à ce qu'il EST (`.gl-compte`), et on en profite pour exiger la
+  règle que la refonte a créée — chaque compte replié porte son solde.
+- **Une assertion qui exige l'ISO à l'écran décrit le format interne, pas la règle** (neuvième
+  occurrence du motif) : `e2e:saisie` a été **retourné** — l'écran affiche « 04/03/2026 », la pièce
+  porte `2026-03-04`, et le parcours vérifie les DEUX.
+
+Prouvé : huit défauts réintroduits un par un font tomber leur test, et deux des corrections (le nom
+centré, la date pré-remplie qu'on ne peut pas remplacer) n'ont été trouvées que par la capture et
+par le parcours réel.
 
 ## Pistes pour la suite (non demandées)
 

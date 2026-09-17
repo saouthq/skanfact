@@ -36,7 +36,7 @@
   const listState = {
     q: '', withArchived: false, onlySkanfact: false,
     sort: prefs.get('sort', 'urgence'), desc: prefs.get('desc', false),
-    page: 1, size: prefs.get('size', 25)
+    page: 1, size: prefs.get('size', 25), sizeKey: 'size'
   };
 
   // ---------- petits outils ----------
@@ -112,11 +112,48 @@
   }
 
   // ---------- bulles « i » ----------
-  // Un champ « touche » de la grille de saisie. La valeur et son repli viennent des réglages ; le
-  // titre et la clé d'aide sont écrits par l'appelant, en toutes lettres.
-  const champTouche = (k, titre, cle) => `<label class="field narrow">${lbl(titre, cle)}`
-    + `<input type="text" data-touche="${esc(k)}" value="${esc((((S.settings || {}).saisie || {}).touches || {})[k] || '')}"`
-    + ` placeholder="${esc(K.DEFAULT_SAISIE.touches[k])}"></label>`;
+  // ---------- les touches ----------
+  // Un raccourci s'AFFICHE comme une touche, jamais comme du texte. « Control+Enter » au milieu
+  // d'une phrase grise se lit comme une faute de frappe ; ⌃ + ↵ en relief se reconnaît sans être lu.
+  // C'est ce que Skander a vu sur une capture : « la section "les touches" sont en texte, alors que
+  // personne ne fait ça ». Les noms sont ceux d'un clavier français, pas ceux de `KeyboardEvent.key`.
+  const NOM_TOUCHE = {
+    Enter: '↵ Entrée', Tab: '⇥ Tab', Escape: 'Échap', ' ': 'Espace', Space: 'Espace',
+    Control: 'Ctrl', Alt: 'Alt', Shift: '⇧ Maj', Meta: 'Cmd',
+    ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→',
+    Backspace: '⌫', Delete: 'Suppr'
+  };
+  const kbd = combo => String(combo || '').split('+')
+    .map(t => `<kbd>${esc(NOM_TOUCHE[t] || t)}</kbd>`).join('<span class="kbd-plus">+</span>');
+  // La ligne d'aide de la grille : elle nomme le geste, puis montre la touche. Les touches viennent
+  // des réglages, donc elle suit ce que le comptable a choisi — une aide qui annonce F2 quand la
+  // touche est F5 est pire que pas d'aide.
+  function aideTouches() {
+    const t = touchesSaisie();
+    const paire = (quoi, k) => `<span class="kbd-paire">${esc(quoi)} ${kbd(k)}</span>`;
+    return `<div class="kbd-aide">${[
+      paire('Ligne suivante', t.ligneSuivante),
+      paire('Solder la pièce', t.solder),
+      paire('Recopier la ligne du dessus', t.recopier),
+      paire('Dupliquer la pièce', t.dupliquer),
+      paire('Enregistrer et valider', t.valider)
+    ].join('')}</div>`;
+  }
+  // Un champ « touche » de la grille de saisie. Il se règle en APPUYANT sur la touche, pas en
+  // tapant son nom : personne ne sait que la touche Entrée s'appelle « Enter » et que Ctrl s'appelle
+  // « Control », et une faute de frappe donnait un raccourci qui ne se déclenchait jamais — sans
+  // rien à l'écran pour le dire. Le champ reste un `input` (donc il garde le focus, l'étiquette et
+  // la bulle), mais il est en lecture seule : c'est le clavier qui l'écrit.
+  const champTouche = (k, titre, cle) => {
+    const v = (((S.settings || {}).saisie || {}).touches || {})[k] || K.DEFAULT_SAISIE.touches[k];
+    return `<div class="field narrow touche-champ">${lbl(titre, cle)}
+      <div class="touche-ligne">
+        <input type="text" readonly data-touche="${esc(k)}" value="${esc(v)}" class="touche-in"
+          aria-label="${esc(titre)} — appuie sur la touche à utiliser" title="Appuie sur la touche à utiliser">
+        <span class="touche-vue" data-vue="${esc(k)}">${kbd(v)}</span>
+        <button type="button" class="btn btn-sm" data-touche-reset="${esc(k)}" title="Remettre ${esc(K.DEFAULT_SAISIE.touches[k])}">Remettre d'origine</button>
+      </div></div>`;
+  };
 
   function info(key) {
     if (!G.INFO[key]) return '';
@@ -398,27 +435,33 @@
       };
     });
   }
-  function pagerBar(total) {
-    const pages = Math.max(1, Math.ceil(total / listState.size));
-    if (listState.page > pages) listState.page = pages;
-    if (pages <= 1 && listState.size >= total) return '';
-    const from = total ? (listState.page - 1) * listState.size + 1 : 0;
-    const to = Math.min(total, listState.page * listState.size);
+  // Les trois aides de pagination prennent un ÉTAT, et retombent sur celui de la liste des
+  // dossiers. Avant la 9.4.5 elles étaient câblées sur `listState` en dur : les vingt tableaux de
+  // la comptabilité d'un dossier ne pouvaient donc pas s'en servir, et le grand livre d'un client
+  // faisait 6 462 px — six écrans et demi d'un seul tenant. Le nom de l'unité (« ligne », « pièce »,
+  // « compte ») est passé par l'appelant : un pied qui annonce « 25 sur 340 lignes » là où ce sont
+  // des pièces raconte autre chose que ce que le tableau montre.
+  function pagerBar(total, st = listState, unite = 'ligne', pluriel) {
+    const pages = Math.max(1, Math.ceil(total / st.size));
+    if (st.page > pages) st.page = pages;
+    if (pages <= 1 && st.size >= total) return '';
+    const from = total ? (st.page - 1) * st.size + 1 : 0;
+    const to = Math.min(total, st.page * st.size);
     return `<div class="pager">
-      <button class="btn btn-sm" id="pg-prev" ${listState.page <= 1 ? 'disabled' : ''}>← Précédent</button>
-      <span class="muted small">${from}–${to} sur ${total}</span>
-      <button class="btn btn-sm" id="pg-next" ${listState.page >= pages ? 'disabled' : ''}>Suivant →</button>
+      <button class="btn btn-sm" id="pg-prev" ${st.page <= 1 ? 'disabled' : ''}>← Précédent</button>
+      <span class="muted small">${from}–${to} sur ${pl(total, unite, pluriel)}</span>
+      <button class="btn btn-sm" id="pg-next" ${st.page >= pages ? 'disabled' : ''}>Suivant →</button>
       <select id="pg-size" class="sm" aria-label="Lignes par page">
-        ${[25, 50, 100, 500].map(n => `<option value="${n}" ${listState.size === n ? 'selected' : ''}>${n} par page</option>`).join('')}
+        ${[25, 50, 100, 500].map(n => `<option value="${n}" ${st.size === n ? 'selected' : ''}>${n} par page</option>`).join('')}
       </select></div>`;
   }
-  function bindPager(root, redraw) {
+  function bindPager(root, redraw, st = listState) {
     const p = $('#pg-prev', root), n = $('#pg-next', root), s = $('#pg-size', root);
-    if (p) p.onclick = () => { listState.page--; redraw(); };
-    if (n) n.onclick = () => { listState.page++; redraw(); };
-    if (s) s.onchange = () => { listState.size = Number(s.value); listState.page = 1; prefs.set('size', listState.size); redraw(); };
+    if (p) p.onclick = () => { st.page--; redraw(); };
+    if (n) n.onclick = () => { st.page++; redraw(); };
+    if (s) s.onchange = () => { st.size = Number(s.value); st.page = 1; if (st.sizeKey) prefs.set(st.sizeKey, st.size); redraw(); };
   }
-  const paginate = rows => rows.slice((listState.page - 1) * listState.size, listState.page * listState.size);
+  const paginate = (rows, st = listState) => rows.slice((st.page - 1) * st.size, st.page * st.size);
 
   // Une seule porte : `K.toCsvLine`. Cet écran avait sa propre version, qui n'échappait que
   // `" ; \n` — donc sans la parade à l'injection de formule (9.1.1), et sans qu'on puisse le voir
@@ -1647,19 +1690,20 @@
         livresState.dossierId = dossier.id; livresState.data = null;
         livresState.annee = ''; livresState.mois = ''; livresState.du = ''; livresState.au = '';
         livresState.onglet = 'journal'; livresState.compte = ''; livresState.journal = ''; livresState.q = ''; livresState.aux = false;
+        livresState.page = 1;
       }
       const relire = () => drawLivres(view, dossier);
       const mode = $('#lv-mode', view);
-      mode.onchange = () => { livresState.mode = mode.value; render(); };
+      mode.onchange = () => { livresState.mode = mode.value; livresState.page = 1; render(); };
       // Changer d'exercice change de LIVRE : sans cette relecture, on regarderait 2025 dans le
       // livre de 2026 sans que rien ne le dise.
       const an = $('#lv-annee', view); if (an) an.onchange = () => {
-        livresState.annee = an.value;
+        livresState.annee = an.value; livresState.page = 1;
         chargerLeLivre(dossier).then(apres, apres);
       };
-      const mo = $('#lv-mois', view); if (mo) mo.onchange = () => { livresState.mois = mo.value; relire(); };
-      const du = $('#lv-du', view); if (du) du.onchange = () => { livresState.du = du.value; relire(); };
-      const au = $('#lv-au', view); if (au) au.onchange = () => { livresState.au = au.value; relire(); };
+      const mo = $('#lv-mois', view); if (mo) mo.onchange = () => { livresState.mois = mo.value; livresState.page = 1; relire(); };
+      const du = $('#lv-du', view); if (du) du.onchange = () => { livresState.du = du.value; livresState.page = 1; relire(); };
+      const au = $('#lv-au', view); if (au) au.onchange = () => { livresState.au = au.value; livresState.page = 1; relire(); };
       // La page a pu changer pendant la lecture : on redemande l'élément APRÈS l'attente, jamais
       // avant (règle 7.6.0). Sinon on écrit dans un élément détaché.
       const apres = () => {
@@ -1720,6 +1764,10 @@
   const livresState = {
     dossierId: '', mode: 'exercice', annee: '', mois: '', du: '', au: '',
     onglet: 'journal', compte: '', journal: '', q: '', aux: false, data: null,
+    // 9.4.5 : la pagination des quatre vues. Un seul couple page/taille suffit — une seule vue est
+    // affichée à la fois — mais il se remet à 1 dès que ce qu'on regarde change (onglet, filtre,
+    // recherche, période, dossier), sinon on arrive « page 7 » sur une sélection qui en fait deux.
+    page: 1, size: prefs.get('lvSize', 25), sizeKey: 'lvSize',
     // 9.2.0 : le livre du dossier, quand il existe. Deux sources possibles, et l'écran DIT
     // laquelle il montre — une balance lue dans les paquets et une balance tenue par le cabinet
     // ne disent pas la même chose, et les confondre serait exactement le genre de chiffre qui ment.
@@ -2040,7 +2088,7 @@
         ${s.livre ? `<button data-tab="recherche" class="${s.onglet === 'recherche' ? 'active' : ''}">Recherche</button>` : ''}
       </div>${corps}`;
 
-    $$('#c-tabs button', el).forEach(b => { b.onclick = () => { s.onglet = b.dataset.tab; drawLivres(root, dossier); }; });
+    $$('#c-tabs button', el).forEach(b => { b.onclick = () => { s.onglet = b.dataset.tab; s.page = 1; drawLivres(root, dossier); }; });
     const cb = $('#lv-brouillard', el);
     if (cb) cb.onchange = () => { s.brouillard = cb.checked; drawLivres(root, dossier); };
     [$('#lv-relire', el), $('#lv-relire2', el)].forEach(b => { if (b) b.onclick = () => relireLesPaquets(root, dossier); });
@@ -2061,10 +2109,17 @@
       && (!q || `${l.piece} ${l.tiers} ${l.label} ${l.account}`.toLowerCase().includes(q)));
     const lj = KC.journalDepuisLignes(gardees);
     const cz = KC.centralisateurDepuisLignes(gardees);
+    // On pagine les PIÈCES, jamais les lignes : une pièce coupée en deux montrerait un débit sans
+    // son crédit, et le lecteur conclurait à un déséquilibre qui n'existe pas. Le pied, lui, porte
+    // sur la sélection entière (`lj.debit` / `lj.credit`) — règle des listes depuis la 2.2.0.
+    // `pagerBar` est appelé AVANT `paginate` : c'est lui qui ramène `s.page` dans les bornes quand
+    // un filtre vient de réduire la sélection. L'inverse afficherait une page vide, puis la bonne
+    // au redessin suivant — c'est-à-dire un tableau qui paraît vide sans raison.
+    const pager = pagerBar(lj.pieces.length, s, 'pièce');
     const plates = [];
-    lj.pieces.forEach(p => p.lignes.forEach((e, i) => plates.push({ ...e, numero: p.numero, premiere: i === 0 })));
+    paginate(lj.pieces, s).forEach(p => p.lignes.forEach((e, i) => plates.push({ ...e, numero: p.numero, premiere: i === 0 })));
     return `${barreLivres(`<select id="lv-journal" aria-label="Filtrer par journal"><option value="">Tous les journaux</option>${journaux.map(j => `<option value="${esc(j)}" ${s.journal === j ? 'selected' : ''}>${esc(j)}</option>`).join('')}</select>
-      <input type="search" id="lv-q" placeholder="Pièce, tiers, libellé…" value="${esc(s.q)}">`, 'Exporter le livre-journal')}
+      <span class="champ-loupe"><input type="search" id="lv-q" placeholder="Pièce, tiers, libellé…" value="${esc(s.q)}"></span>`, 'Exporter le livre-journal')}
       <div class="muted small mb">${pl(lj.pieces.length, 'pièce')} · ${pl(gardees.length, 'ligne')}${lj.off.length ? ` · <span class="err-inline">${pl(lj.off.length, 'pièce')} déséquilibrée${lj.off.length > 1 ? 's' : ''}</span>` : ''}</div>
       <div class="scroll-x"><table class="list compact"><thead><tr>
         <th class="r nw">N°</th><th class="nw">Date</th><th>Journal</th><th class="nw">Pièce</th><th class="nw">Compte</th>
@@ -2074,13 +2129,16 @@
         <td class="nw">${e.premiere ? esc(fmtJour(e.date)) : ''}</td>
         <td>${e.premiere ? esc(e.journal) : ''}</td>
         <td class="nw">${e.premiere ? esc(e.piece) : ''}</td>
-        <td class="nw">${esc(e.account)}</td><td>${esc(e.tiers)}</td><td>${esc(e.label)}</td>
+        <td class="nw">${esc(e.account)}</td>
+        <td class="tronq" title="${esc(e.tiers)}">${esc(e.tiers)}</td>
+        <td class="tronq lg" title="${esc(e.label)}">${esc(e.label)}</td>
         <td class="r nw">${e.debit ? esc(money(e.debit, e.currency)) : ''}</td>
         <td class="r nw">${e.credit ? esc(money(e.credit, e.currency)) : ''}</td>
         ${e.premiere ? rowMenuCell(e.ecritureId ? 'E:' + e.ecritureId : e.piece + '|' + (e.mois || '')) : '<td class="row-actions"></td>'}</tr>`).join('')}</tbody>
-      <tfoot><tr><td colspan="7"><strong>Total de la sélection</strong></td>
+      <tfoot><tr><td colspan="7"><strong>Total de la sélection</strong> <span class="muted small">— toutes les pièces, pas seulement la page affichée</span></td>
         <td class="r nw"><strong>${esc(money(lj.debit))}</strong></td>
         <td class="r nw"><strong>${esc(money(lj.credit))}</strong></td><td></td></tr></tfoot></table></div>
+      ${pagerBar(lj.pieces.length, s, 'pièce')}
       <details class="mt"><summary>Centralisateur : mois par mois, journal par journal</summary>
         <table class="list compact mt"><thead><tr><th class="nw">Mois</th><th>Journal</th><th class="r">Pièces</th><th class="r nw">Débit</th><th class="r nw">Crédit</th></tr></thead>
         <tbody>${cz.map(r => `<tr><td class="nw">${esc(moisLabelCourt(r.mois))}</td><td>${esc(r.journal)}</td>
@@ -2094,15 +2152,28 @@
     const comptes = [...new Set(lignes.map(l => l.account))].sort();
     return `${barreLivres(`<select id="lv-compte" aria-label="Le compte à afficher"><option value="">Tous les comptes</option>${comptes.map(c => `<option value="${esc(c)}" ${s.compte === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>`, 'Exporter le grand livre')}
       <div class="muted small mb">Ouverture inconnue : ce livre est lu dans les paquets, sans à-nouveau ${info('lv.ouverture')}</div>
-      ${gl.comptes.map(c => `<div class="panel mt"><h2>${esc(c.account)}${c.label ? ' — ' + esc(c.label) : ''}</h2>
+      ${pagerBar(gl.comptes.length, s, 'compte')}
+      ${/* Un comptable OUVRE un compte ; il ne lit pas les vingt d'affilée. La page en faisait
+            6 554 px — sept écrans d'un seul tenant — et il fallait défiler pour savoir quels comptes
+            existent, c'est-à-dire pour poser la seule question qu'on se pose en arrivant ici.
+            Chaque compte est replié sur sa ligne de synthèse (mouvements, débit, crédit, solde) :
+            l'information n'est pas perdue, elle est à un clic, et le PLAN du grand livre se lit
+            enfin d'un coup d'oeil. Le compte choisi dans la liste s'ouvre tout seul, et l'impression
+            les ouvre tous — un grand livre imprimé plié serait une feuille vide. */''}
+      ${paginate(gl.comptes, s).map(c => `<details class="panel mt gl-compte" ${s.compte || gl.comptes.length === 1 ? 'open' : ''}>
+        <summary class="gl-tete"><span class="gl-nom">${esc(c.account)}${c.label ? ' — ' + esc(c.label) : ''}</span>
+          <span class="gl-chiffres"><span class="muted gl-mv">${pl(c.lignes.length, 'mouvement')}</span>
+            <span class="gl-m">D ${esc(money(c.debit))}</span><span class="gl-m">C ${esc(money(c.credit))}</span>
+            <strong class="gl-m gl-solde">Solde ${esc(money(c.solde))}</strong></span></summary>
         <div class="scroll-x"><table class="list compact"><thead><tr><th class="nw">Date</th><th class="nw">Pièce</th><th>Libellé</th>
           <th class="r nw">Débit</th><th class="r nw">Crédit</th><th class="r nw">Solde</th></tr></thead>
-        <tbody>${c.lignes.map(e => `<tr><td class="nw">${esc(fmtJour(e.date))}</td><td class="nw">${esc(e.piece)}</td><td>${esc(e.label)}</td>
+        <tbody>${c.lignes.map(e => `<tr><td class="nw">${esc(fmtJour(e.date))}</td><td class="nw">${esc(e.piece)}</td>
+          <td class="tronq lg" title="${esc(e.label)}">${esc(e.label)}</td>
           <td class="r nw">${e.debit ? esc(money(e.debit)) : ''}</td><td class="r nw">${e.credit ? esc(money(e.credit)) : ''}</td>
           <td class="r nw">${esc(money(e.solde))}</td></tr>`).join('')}</tbody>
         <tfoot><tr><td colspan="3"><strong>${pl(c.lignes.length, 'mouvement')}</strong></td>
           <td class="r nw"><strong>${esc(money(c.debit))}</strong></td><td class="r nw"><strong>${esc(money(c.credit))}</strong></td>
-          <td class="r nw"><strong>${esc(money(c.solde))}</strong></td></tr></tfoot></table></div></div>`).join('')}`;
+          <td class="r nw"><strong>${esc(money(c.solde))}</strong></td></tr></tfoot></table></div></details>`).join('')}`;
   }
 
   function vueBalance(lignes) {
@@ -2111,17 +2182,19 @@
     // balance auxiliaire, et les lignes portent leur tiers depuis la 8.8.0.
     const b = s.aux ? balanceAux(lignes) : KC.balanceDepuisLignes(lignes, null, (c, t) => t || '');
     const ecart = Math.round((b.totaux.soldeD - b.totaux.soldeC) * 1000) / 1000;
+    const pager = pagerBar(b.rows.length, s, s.aux ? 'tiers' : 'compte', s.aux ? 'tiers' : 'comptes');
     return `${barreLivres(`<button class="btn btn-sm ${s.aux ? '' : 'btn-ghost'}" id="lv-aux">${s.aux ? 'Balance générale' : 'Balance auxiliaire'}</button>`, 'Exporter la balance')}
       <div class="${b.ok ? 'ok-box' : 'warn-box'} mb" id="lv-verdict">${b.ok ? 'Équilibrée : débit = crédit sur les trois paires de totaux.'
         : `Écart de ${esc(money(Math.abs(ecart)))} entre les soldes débiteurs et créditeurs.`}</div>
+      ${pager}
       <div class="scroll-x"><table class="list compact"><thead><tr>
         <th class="nw">${s.aux ? 'Tiers' : 'Compte'}</th><th>${s.aux ? 'Compte' : 'Intitulé'}</th>
         <th class="r nw">Mouvements débit</th><th class="r nw">Mouvements crédit</th>
         <th class="r nw">Solde débiteur</th><th class="r nw">Solde créditeur</th></tr></thead>
-      <tbody>${b.rows.map(r => `<tr><td class="nw">${esc(s.aux ? r.tiers : r.account)}</td><td>${esc(s.aux ? r.account : (r.label || ''))}</td>
+      <tbody>${paginate(b.rows, s).map(r => `<tr><td class="nw">${esc(s.aux ? r.tiers : r.account)}</td><td>${esc(s.aux ? r.account : (r.label || ''))}</td>
         <td class="r nw">${esc(money(r.debit))}</td><td class="r nw">${esc(money(r.credit))}</td>
         <td class="r nw">${r.soldeD ? esc(money(r.soldeD)) : ''}</td><td class="r nw">${r.soldeC ? esc(money(r.soldeC)) : ''}</td></tr>`).join('')}</tbody>
-      <tfoot><tr><td colspan="2"><strong>${pl(b.rows.length, s.aux ? 'tiers' : 'compte', s.aux ? 'tiers' : 'comptes')}</strong></td>
+      <tfoot><tr><td colspan="2"><strong>${pl(b.rows.length, s.aux ? 'tiers' : 'compte', s.aux ? 'tiers' : 'comptes')}</strong> <span class="muted small">— la sélection entière</span></td>
         <td class="r nw"><strong>${esc(money(b.totaux.debit))}</strong></td><td class="r nw"><strong>${esc(money(b.totaux.credit))}</strong></td>
         <td class="r nw"><strong>${esc(money(b.totaux.soldeD))}</strong></td><td class="r nw"><strong>${esc(money(b.totaux.soldeC))}</strong></td></tr></tfoot></table></div>`;
   }
@@ -2154,7 +2227,8 @@
       ${verdict}
       ${l.lettragesFaux.length ? `<div class="warn-box mb">${l.lettragesFaux.map(f =>
         `<div>Lettrage « ${esc(f.lettre) }» de ${esc(f.tiers)} : les pièces ne se soldent pas entre elles (écart ${esc(money(Math.abs(f.ecart)))}).</div>`).join('')}</div>` : ''}
-      ${l.rows.map(r => `<div class="panel mt"><h2>${esc(r.tiers)} <span class="muted small">${esc(r.account)} · reste ${esc(money(r.reste))}</span></h2>
+      ${pagerBar(l.rows.length, s, 'tiers', 'tiers')}
+      ${paginate(l.rows, s).map(r => `<div class="panel mt"><h2>${esc(r.tiers)} <span class="muted small">${esc(r.account)} · reste ${esc(money(r.reste))}</span></h2>
         ${r.ouverts.length ? `<div class="scroll-x"><table class="list compact"><thead><tr><th class="nw">Pièce</th><th class="nw">Date</th>
           <th class="r nw">Débit</th><th class="r nw">Crédit</th><th class="r nw">Reste</th><th></th></tr></thead>
         <tbody>${r.ouverts.map(o => `<tr data-piece="${esc(o.piece)}" data-mois="">
@@ -2188,6 +2262,19 @@
   // rendait un champ littéralement impossible à remplir.
   const saisieState = { dossierId: '', piece: null, focusApres: null };
 
+  // Un jour du calendrier, jamais un instant : `K.today()` rend le jour LOCAL, et la comparaison se
+  // fait sur des chaînes `AAAA-MM-JJ` — aucune arithmétique de date, donc aucune question de fuseau
+  // (règle 5.2.3). Hors de l'exercice ouvert, on propose son dernier jour : c'est là qu'on saisit
+  // quand on rattrape un exercice passé.
+  const dateProposee = annee => {
+    const a = String(annee || '').slice(0, 4);
+    if (!/^\d{4}$/.test(a)) return '';
+    const auj = K.today();
+    return auj.slice(0, 4) === a ? auj : `${a}-12-31`;
+  };
+  // Ce que le champ Date MONTRE : le jour en français quand on écrit la date complète, le seul
+  // numéro de jour quand on est en saisie rapide. Ce que la pièce PORTE reste l'ISO, toujours.
+  const dateAffichee = (iso, r) => (!iso ? '' : r.dateComplete ? fmtJour(iso) : String(Number(iso.slice(8, 10))));
   const pieceVide = (journal, date) => ({
     id: '', date: date || '', journal: journal || '', piece: '', libelle: '', pieceJointe: null,
     lignes: [ligneVide(), ligneVide()]
@@ -2274,7 +2361,11 @@
     if (!saisieState.piece || saisieState.dossierId !== dossier.id) {
       saisieState.dossierId = dossier.id;
       const j = r.journalParDefaut || dossier.dernierJournal || (s.livre.journaux[0] || {}).code || '';
-      saisieState.piece = pieceVide(j, '');
+      // La date est PROPOSÉE : aujourd'hui si l'on est dans l'exercice ouvert, sinon son dernier
+      // jour. La grille s'ouvrait vide, et le refus annonçait « La date manque » sur un écran où
+      // l'invite grise « 04/03/2026 » se lit comme une valeur — on cherchait ce qui n'allait pas.
+      // Elle reste modifiable, et les pièces suivantes reprennent celle de la précédente.
+      saisieState.piece = pieceVide(j, dateProposee(s.annee));
     }
     const p = saisieState.piece;
     const brouillards = (s.livre.ecritures || []).filter(e => e.statut === 'brouillard')
@@ -2285,7 +2376,11 @@
         <label class="field"><span class="fl">Journal ${info('sa.journal')}</span>
           <select id="sa-journal">${s.livre.journaux.map(j => `<option value="${esc(j.code)}" ${p.journal === j.code ? 'selected' : ''}>${esc(j.code)} — ${esc(j.libelle)}</option>`).join('')}</select></label>
         <label class="field"><span class="fl">Date ${info('sa.date')}</span>
-          <input id="sa-date" autocomplete="off" placeholder="${r.dateComplete ? '04/03/2026' : '4'}" value="${esc(p.date)}"></label>
+          ${/* Le champ montre le jour en FRANÇAIS, la pièce garde l'ISO. L'écran affichait
+                « 2026-09-17 » sous une invite qui annonce « 04/03/2026 » : le format interne
+                fuyait dans l'écran où un comptable tunisien lit une date. La saisie reste
+                tolérante — `dateTapee` accepte 4, 4/3, 04/03/2026 et l'ISO. */''}
+          <input id="sa-date" autocomplete="off" placeholder="${r.dateComplete ? '04/03/2026' : '4'}" value="${esc(dateAffichee(p.date, r))}"></label>
         <label class="field"><span class="fl">Pièce ${info('sa.piece')}</span>
           <input id="sa-piece" autocomplete="off" value="${esc(p.piece)}"></label>
         <label class="field sa-grow"><span class="fl">Libellé ${info('sa.libelle')}</span>
@@ -2295,14 +2390,24 @@
         ${guides.length ? `<select id="sa-guide" aria-label="Partir d'un guide d'écritures"><option value="">Partir d'un guide…</option>${guides.map(g => `<option value="${esc(g.id)}">${esc(g.nom)}</option>`).join('')}</select>
           <input id="sa-guide-montant" class="sa-montant" inputmode="decimal" placeholder="Montant" autocomplete="off">` : ''}
         <button type="button" class="btn btn-sm" id="sa-joindre">${p.pieceJointe ? 'Justificatif joint ✓' : 'Joindre un justificatif…'}</button>
-        <span class="muted small sa-aide">Entrée : ligne suivante · Tab sur la dernière ligne : solder · ${esc(touchesSaisie().recopier)} : recopier la ligne du dessus · ${esc(touchesSaisie().dupliquer)} : dupliquer la pièce</span>
+        ${aideTouches()}
       </div>
       <div class="scroll-x"><table class="list compact sa-grille"><thead><tr>
         <th class="nw">Compte</th><th>Intitulé</th><th>Libellé</th>
         <th class="r nw">Débit</th><th class="r nw">Crédit</th><th></th></tr></thead>
-        <tbody id="sa-lignes">${lignesSaisieHtml()}</tbody></table></div>
+        <tbody id="sa-lignes">${lignesSaisieHtml()}</tbody>
+        <tfoot><tr>
+          <td colspan="3" class="sa-tl">Total de la pièce</td>
+          <td class="r nw" id="sa-td">0,000</td><td class="r nw" id="sa-tc">0,000</td><td></td></tr>
+          <tr id="sa-ecart-l"><td colspan="3" class="sa-tl">Écart</td>
+          <td class="r nw" id="sa-te" colspan="2">0,000</td><td></td></tr></tfoot></table></div>
       <div class="sa-pied">
-        <div id="sa-solde"></div>
+        <div>
+          <div id="sa-solde"></div>
+          ${/* Le motif du refus se lit AVANT le bouton, jamais dessous : un avertissement sous le
+                geste arrive après la décision (règle 9.4.2). */''}
+          <div class="sa-refus" id="sa-refus" hidden></div>
+        </div>
         <div class="sa-actions">
           <button type="button" class="btn btn-sm" id="sa-vider">Vider</button>
           <button type="button" class="btn" id="sa-ok">Enregistrer en brouillard</button>
@@ -2370,6 +2475,27 @@
         : t2.equilibre
           ? `<b>Équilibrée</b> — ${t2.debit.toFixed(3)} de chaque côté.`
           : `<b>Écart ${t2.ecart.toFixed(3)}</b> — débit ${t2.debit.toFixed(3)} / crédit ${t2.credit.toFixed(3)}. Il manque ${t2.solde.debit ? `${t2.solde.debit.toFixed(3)} au débit` : `${t2.solde.credit.toFixed(3)} au crédit`}.`;
+
+      // Les totaux vivent SOUS leurs colonnes, en chiffres de même chasse. Une somme annoncée dans
+      // une phrase à gauche de l'écran ne se compare à rien : l'œil descend une colonne de montants
+      // et doit trouver leur total au bout, pas ailleurs.
+      const td = $('#sa-td', el), tc = $('#sa-tc', el), te = $('#sa-te', el), lig = $('#sa-ecart-l', el);
+      if (td) td.textContent = t2.debit.toFixed(3);
+      if (tc) tc.textContent = t2.credit.toFixed(3);
+      if (lig) lig.hidden = t2.equilibre;
+      if (te) te.textContent = t2.ecart.toFixed(3);
+
+      // **Un bouton éteint dit POURQUOI.** `ecritureValide` est la même fonction que celle qui
+      // refusera à l'enregistrement : le motif affiché ici est donc exactement celui qu'on aurait
+      // vu après le clic — on le lit avant, pendant qu'on a encore le curseur dans la grille.
+      const v = KC.ecritureValide(ecritureSaisie(p), ((s.livre || {}).plan || []).map(c => c.compte));
+      const motif = $('#sa-refus', el);
+      [$('#sa-ok', el), $('#sa-okvalider', el)].forEach(b => {
+        if (!b) return;
+        b.disabled = !v.ok;
+        b.title = v.ok ? '' : v.motif;
+      });
+      if (motif) { motif.hidden = v.ok; motif.textContent = v.ok ? '' : v.motif; }
     };
 
     const redessinerLignes = (focus) => {
@@ -2470,9 +2596,14 @@
         const iso = K.dateTapee(dt.value, s.annee, p.date || `${s.annee}-${String(new Date().getMonth() + 1).padStart(2, '0')}`);
         p.date = iso || '';
         dt.classList.toggle('sa-ko', !!dt.value.trim() && !iso);
-        if (iso) dt.value = r.dateComplete ? iso : String(Number(iso.slice(8, 10)));
+        if (iso) dt.value = dateAffichee(iso, r);
       };
       dt.onblur = lire;
+      // Un champ PRÉ-REMPLI se sélectionne au clic : sans ça, cliquer dedans et taper « 4/3 »
+      // donne « 17/09/20264/3 », et il faut effacer à la main ce que l'application vient de
+      // proposer. Le défaut est né avec la date proposée, deux corrections plus haut — c'est le
+      // parcours réel qui l'a montré, jamais la relecture.
+      dt.onfocus = () => dt.select();
     }
     const pc = $('#sa-piece', el); if (pc) pc.oninput = () => { p.piece = pc.value; };
     const lb = $('#sa-libelle', el); if (lb) lb.oninput = () => { p.libelle = lb.value; };
@@ -2911,11 +3042,15 @@
   function brancherVue(el, root, dossier, lignes) {
     const s = livresState;
     const redraw = () => drawLivres(root, dossier);
-    const j = $('#lv-journal', el); if (j) j.onchange = () => { s.journal = j.value; redraw(); };
-    const q = $('#lv-q', el); if (q) q.oninput = () => { s.q = q.value; redraw(); };
-    const c = $('#lv-compte', el); if (c) c.onchange = () => { s.compte = c.value; redraw(); };
-    const a = $('#lv-aux', el); if (a) a.onclick = () => { s.aux = !s.aux; redraw(); };
+    // Tout ce qui change la SÉLECTION remet la page à 1 : sans ça, filtrer sur un journal depuis la
+    // page 7 donne un tableau vide, et rien à l'écran n'explique pourquoi.
+    const j = $('#lv-journal', el); if (j) j.onchange = () => { s.journal = j.value; s.page = 1; redraw(); };
+    const q = $('#lv-q', el); if (q) q.oninput = () => { s.q = q.value; s.page = 1; redraw(); };
+    const c = $('#lv-compte', el); if (c) c.onchange = () => { s.compte = c.value; s.page = 1; redraw(); };
+    const a = $('#lv-aux', el); if (a) a.onclick = () => { s.aux = !s.aux; s.page = 1; redraw(); };
     const x = $('#lv-csv', el); if (x) x.onclick = () => exporterLivre(lignes);
+    // L'export porte sur `lignes` — la sélection entière, jamais la page affichée.
+    bindPager(el, redraw, s);
     // « Ouvrir la pièce dans le paquet » : seulement si on sait DANS QUEL paquet elle vit.
     bindRowMenus(el, cle => {
       // Sur le LIVRE, la clé désigne l'écriture : c'est elle qui se valide et se contre-passe.
@@ -2929,7 +3064,7 @@
         // au premier ajout (règle 7.29.0).
         const actions = actionsEcriture(root, dossier, e);
         if (e.mois && (s.data.paquets || []).some(z => z.month === e.mois && z.path)) {
-          actions.push({ icon: 'loupe', label: 'Ouvrir la pièce dans le paquet', hint: `${e.piece} · ${moisLabelCourt(e.mois)}`,
+          actions.push({ icon: 'loupe', label: 'Voir dans le paquet', hint: `${e.piece} · ${moisLabelCourt(e.mois)}`,
             run: () => openPack(dossier, e.mois) });
         }
         return actions;
@@ -2937,7 +3072,7 @@
       const [piece, mois] = String(cle).split('|');
       const p = (s.data.paquets || []).find(z => z.month === mois);
       if (!p || !p.path) return [];
-      return [{ icon: 'loupe', label: 'Ouvrir la pièce dans le paquet', hint: `${piece} · ${moisLabelCourt(mois)}`,
+      return [{ icon: 'loupe', label: 'Voir dans le paquet', hint: `${piece} · ${moisLabelCourt(mois)}`,
         run: () => openPack(dossier, mois) }];
     });
   }
@@ -3636,6 +3771,30 @@
   let corrBrouillon = null;                 // la table en cours d'édition, tant qu'on n'a pas enregistré
 
   function brancherReglagesCompta(view) {
+    // La capture : on APPUIE sur la touche, elle s'inscrit. Tab est une touche comme une autre ici
+    // (c'est le raccourci « solder »), donc on l'intercepte aussi — sans quoi elle sortirait du
+    // champ au lieu de s'y écrire. Échap rend la main sans rien changer : il faut toujours pouvoir
+    // sortir d'un champ qui avale le clavier.
+    $$('[data-touche]', view).forEach(inp => {
+      const vue = $(`[data-vue="${inp.dataset.touche}"]`, view);
+      const poser = v => { inp.value = v; if (vue) vue.innerHTML = kbd(v); };
+      inp.onkeydown = ev => {
+        if (ev.key === 'Escape') { inp.blur(); return; }
+        // Un modificateur seul n'est pas un raccourci : on attend la touche qui l'accompagne.
+        if (['Control', 'Alt', 'Shift', 'Meta'].includes(ev.key)) { ev.preventDefault(); return; }
+        ev.preventDefault();
+        poser(toucheDe(ev));
+      };
+      inp.onfocus = () => inp.select();
+    });
+    $$('[data-touche-reset]', view).forEach(b => {
+      b.onclick = () => {
+        const k = b.dataset.toucheReset, d = K.DEFAULT_SAISIE.touches[k];
+        const inp = $(`[data-touche="${k}"]`, view), vue = $(`[data-vue="${k}"]`, view);
+        if (inp) inp.value = d;
+        if (vue) vue.innerHTML = kbd(d);
+      };
+    });
     const sr = $('#sr-save', view);
     if (sr) {
       sr.onclick = async () => {
@@ -3891,7 +4050,7 @@
         <p class="muted small">Les jours de dépôt alimentent la page <a href="#/echeances">Échéances</a>.
         <strong>À VÉRIFIER</strong> : ils dépendent de la forme juridique, du régime et de la loi de finances.</p>
         <p class="muted small mt">Ce nom apparaît en bas des relances que tu envoies et dans le fichier d'appairage remis à tes clients.</p>
-        <div class="modal-actions"><span class="saved" id="c-saved" hidden></span><button class="btn btn-primary" id="c-save">Enregistrer</button></div>
+        <div class="modal-actions"><span class="saved" id="c-saved" hidden></span><button class="btn btn-primary" id="c-save">Enregistrer mon cabinet</button></div>
       </div>
 
       ${panneauReg('pan-appairage', info('cab.pairing'))}
@@ -3928,7 +4087,7 @@
             <input type="checkbox" id="sr-lot" ${((S.settings || {}).saisie || {}).validerParLot !== false ? 'checked' : ''}></label>
         </div>
         <h3 class="mt">${lbl('Les touches', 'sa.touches')}</h3>
-        <p class="muted small">Écris-les comme « F2 », « Enter », « Control+Enter ». Vide remet celle d'origine.</p>
+        <p class="muted small">Clique dans le champ et <strong>appuie sur la touche</strong> que tu veux utiliser — elle s'inscrit toute seule. Échap pour ressortir sans rien changer.</p>
         ${/* Chaque touche porte SA bulle : « Solder la pièce » ne dit pas ce que le geste fait, et
               c'est précisément ce qu'on veut savoir avant de lui donner une touche. */''}
         <div class="grid-2">
@@ -3941,7 +4100,7 @@
           ${champTouche('dupliquer', 'Dupliquer la pièce', 'sa.kDupliquer')}
           ${champTouche('valider', 'Enregistrer et valider', 'sa.kValider')}
         </div>
-        <div class="modal-actions"><span class="saved" id="sr-saved" hidden></span><button class="btn btn-primary" id="sr-save">Enregistrer</button></div>
+        <div class="modal-actions"><span class="saved" id="sr-saved" hidden></span><button class="btn btn-primary" id="sr-save">Enregistrer la grille de saisie</button></div>
       </div>
 
       ${panneauReg('pan-guides', info('sa.guides'))}
@@ -3956,7 +4115,7 @@
         Une écriture déjà validée n'est jamais réécrite : elle porte le compte sous lequel tu l'as validée.</p>
         <div id="sr-corr"></div>
         <div class="modal-actions"><button class="btn" id="sr-corr-add">Ajouter une ligne</button>
-        <span class="saved" id="sr-corr-saved" hidden></span><button class="btn btn-primary" id="sr-corr-save">Enregistrer</button></div>
+        <span class="saved" id="sr-corr-saved" hidden></span><button class="btn btn-primary" id="sr-corr-save">Enregistrer la correspondance</button></div>
       </div>
       </section>
 
@@ -4771,7 +4930,7 @@ Copie externe : ${esc((inf.external && inf.external.dir) || 'aucune')}${inf.exte
       <p class="small muted">SkanFact est distribué depuis un dépôt privé : un jeton de lecture est nécessaire pour recevoir les mises à jour.
       Demande-le à qui t'a remis l'application. Il reste sur cet ordinateur et ne sert qu'à télécharger les nouvelles versions.</p>
       <div class="inline"><input type="text" id="u-token" placeholder="${a.hasToken ? 'Jeton enregistré ✓ — en coller un nouveau pour le remplacer' : 'github_pat_… ou ghp_…'}" autocomplete="off" spellcheck="false">
-      <button class="btn btn-sm" id="u-token-save">Enregistrer</button>${a.hasToken ? '<button class="btn btn-sm btn-ghost" id="u-token-clear">Retirer</button>' : ''}</div>
+      <button class="btn btn-sm" id="u-token-save">Enregistrer le jeton</button>${a.hasToken ? '<button class="btn btn-sm btn-ghost" id="u-token-clear">Retirer</button>' : ''}</div>
     </div>`
         : noteRelais + (a.hasToken ? `<div class="token-box">
       <div class="k-label">Ancien jeton d'accès</div>
