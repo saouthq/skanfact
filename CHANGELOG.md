@@ -7,6 +7,41 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 9.8.1 — 17/09/2026
+
+**La publication elle-même : la course qui a fait échouer la 9.8.0.**
+
+La 9.8.0 est complète et verte ; c'est sa **publication** qui a échoué, et l'application n'y est
+pour rien. Le workflow construisait Mac et Windows en parallèle, et **chacun des deux postes créait
+la page de la release**. Les deux ont demandé la liste des releases au même instant, n'ont rien
+trouvé tous les deux, ont créé tous les deux — et le second a reçu `422 already_exists`.
+electron-builder rattrape ce refus quand il envoie un *fichier*, mais pas quand il crée la
+*release* : le poste Windows est tombé, et comme rien ne disait le contraire, le poste macOS — déjà
+bien avancé, et le plus cher des deux — a été annulé avec lui. La release `v9.8.0` est restée avec
+un seul fichier sur huit.
+
+Ce que la 9.8.1 change, dans `.github/workflows/release.yml` :
+
+- **La page de la release est créée une seule fois**, dans un job qui passe avant les constructions.
+  Quand les deux postes démarrent, elle existe : ils ne font plus qu'y déposer leurs fichiers. La
+  course n'existe plus, et une reprise après échec ne détruit rien (la release existante est
+  reconnue, son titre et ses notes remis, ses fichiers conservés).
+- **Un échec sur un poste n'annule plus l'autre** (`fail-fast: false`). Savoir si une panne touche un
+  seul poste ou les deux est en plus ce qui désigne la cause.
+- **Le tag pointe enfin sur le commit construit** (`--target`). Sans ce drapeau, GitHub posait le tag
+  sur la branche par défaut du dépôt : `v9.6.0` et `v9.8.0` désignent tous les deux un commit de la
+  9.4.1. Les installateurs publiés étaient justes — c'est `git checkout v9.8.0` qui ne rendait pas
+  la source publiée.
+- **Le titre et les notes sont posés dès la première seconde**, au lieu d'apparaître après le premier
+  fichier envoyé. Entre les deux, la page n'affichait que le numéro de version.
+- **`EP_GH_IGNORE_TIME`** : electron-builder refuse de déposer dans une release publiée il y a plus
+  de deux heures — et il le fait en écrivant « skipped publishing » puis **en sortant vert**. Le job
+  réussit, la release reste vide, et personne ne le voit. C'est le pire des échecs : celui qui se
+  présente comme un succès.
+
+Aucune ligne de l'application n'a changé. Le numéro passe quand même, parce que le numéro est ce qui
+dit lequel des deux paquets est celui qu'on a pu installer.
+
 ## 9.8.0 — 17/09/2026
 
 **La clôture d'exercice, et le flux retour vers le client.**

@@ -4094,6 +4094,47 @@ Règles apprises, à ne pas recasser :
   (7.20.0, 7.21.0, 8.2.0, 9.4.6) — et celle-là se rembourse en découpant le lanceur de tests.
   **Une dette qu'on ne sait pas rattacher à un défaut réel n'est pas une dette, c'est un goût.**
 
+### 9.8.1 — La publication elle-même
+
+La 9.8.0 était complète, verte, poussée — et elle n'est jamais arrivée chez personne. Ce n'est pas
+l'application qui a échoué, c'est **le mécanisme qui la publie**, et il n'était tenu par aucun test.
+
+Règles apprises, à ne pas recasser :
+
+- **Deux jobs qui créent la même ressource sont une course, pas une redondance.** Chacun des deux
+  postes appelait `createRelease()` ; tous les deux demandaient la liste des releases au même
+  instant, ne trouvaient rien, et créaient. Le second recevait `422 already_exists`.
+  `electron-publish` rattrape ce refus pour l'envoi d'un **fichier** (`doesErrorMeanAlreadyExists`)
+  et **jamais** pour la création de la release — lire la source du module plutôt que son README, la
+  troisième fois que ça paie (6.7.3, 7.25.0). La page est désormais créée **une fois**, dans un job
+  qui passe avant : quand les postes démarrent, elle existe, et ils ne font plus qu'y déposer.
+- **Un commentaire du workflow affirmait le contraire de ce qui arrive.** Il expliquait que la page
+  « existe dès que le poste Windows a fini, deux minutes avant le Mac » — le jour où le cache a rendu
+  la construction macOS plus rapide, l'ordre s'est inversé et la course s'est ouverte. *Une phrase
+  qui décrit un ordre que rien ne garantit est un bug* (7.3.0), y compris dans un fichier de CI.
+- **Un échec sur un poste ne doit pas annuler l'autre** (`fail-fast: false`). Deux secondes de panne
+  côté Windows ont annulé une construction macOS déjà bien avancée — la plus chère des deux, et la
+  seule qu'on aurait gardée. Le quota est une ressource limitée (6.7.2).
+- **Un tag qui ne désigne pas le commit construit ne sert à rien.** Sans `--target`, GitHub pose le
+  tag sur la branche par défaut : `v9.6.0` et `v9.8.0` désignent **tous les deux** un commit de la
+  9.4.1. Les installateurs publiés étaient justes ; c'est `git checkout v9.8.0` qui ne rendait pas la
+  source publiée — et personne ne s'en serait aperçu avant d'en avoir besoin.
+- **Le pire échec est celui qui se présente comme un succès.** `electron-publish` refuse de déposer
+  dans une release publiée il y a plus de deux heures : il écrit « skipped publishing » et sort
+  **vert**. Le job réussit, la release reste vide. `EP_GH_IGNORE_TIME` sur **chaque** étape qui
+  publie — une seule qui l'oublie, et ce sont ses fichiers à elle qui manquent.
+- **Une assertion ancrée sur une FORME est tombée sur du code juste** (douzième occurrence) : le test
+  du canal bêta exigeait `steps.canal.outputs.prerelease`, le chemin exact du drapeau. Le calcul a
+  déménagé dans un job à part, et le test est tombé. Retourné vers la RÈGLE : le type de release est
+  décidé par un drapeau déduit du numéro de version, et **le même** drapeau décide si l'app du
+  comptable se construit — quel que soit son chemin.
+- **Un test qui lit du code doit lire du CODE** (quatrième fois, après 6.8.0, 7.25.0 et 9.4.10) : le
+  commentaire qui explique la course CITE `gh release create`, et faisait compter deux créateurs là
+  où il n'y en a qu'un. On retire toute ligne commençant par `#` — commentaire YAML comme commentaire
+  de shell — et on vérifie que le nettoyage n'a pas mangé le code.
+
+Prouvé : six défauts réintroduits un par un font tomber leur test.
+
 ## Pistes pour la suite (non demandées)
 
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.

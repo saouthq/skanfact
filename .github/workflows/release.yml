@@ -1,7 +1,7 @@
 # Construit SkanFact pour Mac et Windows et publie une release GitHub.
 # Déclenché par un tag de version (créé par `npm run release`) ou à la main
-# (onglet Actions → Release → Run workflow) : electron-builder crée alors la release
-# et le tag à partir de la version de package.json.
+# (onglet Actions → Release → Run workflow) : la page de la release est créée à partir de la
+# version de package.json, puis chaque poste y dépose ses installateurs.
 name: Release
 
 on:
@@ -21,8 +21,86 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # ─────────────────────────────────────────────────────────────────────────────────────────────
+  # La page de la release est créée ICI, une seule fois, avant que le moindre installateur ne soit
+  # construit. Avant la 9.8.1, c'était electron-builder qui la créait, depuis CHACUN des deux
+  # postes — et `createRelease()` ne rattrape PAS le 422 « already_exists » (contrairement à l'envoi
+  # d'un fichier, qui le rattrape). Les deux postes demandaient donc la liste des releases au même
+  # instant, ne trouvaient rien tous les deux, et créaient tous les deux : celui qui arrivait en
+  # second échouait. La 9.8.0 est tombée exactement là-dessus.
+  #
+  # Ce job règle trois choses d'un coup :
+  #  1. plus de course : quand les postes démarrent, la release existe et ils ne font qu'y déposer ;
+  #  2. `--target` : la release est rattachée au COMMIT QU'ON CONSTRUIT. Sans lui, GitHub pose le
+  #     tag sur la branche par défaut du dépôt — c'est pourquoi `v9.6.0` et `v9.8.0` désignent tous
+  #     les deux un commit de la 9.4.1 : les installateurs sont justes, mais `git checkout v9.8.0`
+  #     ne rend pas la source publiée ;
+  #  3. le titre et les notes sont posés dès la première seconde, au lieu d'apparaître après le
+  #     premier envoi de fichier — entre les deux, la page affichait le numéro de version tout seul
+  #     et rien d'autre.
+  # ─────────────────────────────────────────────────────────────────────────────────────────────
+  preparer:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.canal.outputs.version }}
+      prerelease: ${{ steps.canal.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      # Stable ou bêta ? C'est le NUMÉRO DE VERSION qui décide, rien d'autre : `7.26.0-beta.1` est
+      # une préversion, `7.26.0` n'en est pas une. Aucune case à cocher au lancement du workflow,
+      # donc aucun moyen de se tromper — et electron-builder lit exactement la même chose pour
+      # nommer `beta.yml` au lieu de `latest.yml`.
+      - name: Stable ou bêta
+        id: canal
+        shell: bash
+        run: |
+          V=$(node -p "require('./package.json').version")
+          # `case` plutôt que `grep` : pas de commande externe, donc rien qui puisse manquer ou se
+          # comporter autrement sur le poste Windows.
+          case "$V" in *-*) PRE=true ;; *) PRE=false ;; esac
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$PRE" >> "$GITHUB_OUTPUT"
+          echo "Version $V — préversion : $PRE"
+
+      # Notes de version : la section de CHANGELOG.md qui porte cette version. Node pur, aucune
+      # dépendance — ce job n'a donc pas besoin de `npm ci`.
+      - run: node scripts/release-notes.js
+
+      # `gh release create` est refusé si la release existe déjà : on regarde AVANT, et on se
+      # contente alors de remettre le titre et les notes. C'est ce qui rend une reprise possible
+      # après un échec, sans rien détruire de ce qui a déjà été déposé.
+      - name: La page de la release
+        shell: bash
+        run: |
+          V="${{ steps.canal.outputs.version }}"
+          if [ "${{ steps.canal.outputs.prerelease }}" = "true" ]; then
+            TITRE="SkanFact $V (bêta)"; PRE=--prerelease
+          else
+            TITRE="SkanFact $V"; PRE=
+          fi
+          if gh release view "v$V" > /dev/null 2>&1; then
+            echo "La release v$V existe déjà — on remet le titre et les notes, on ne touche à rien d'autre."
+            gh release edit "v$V" --title "$TITRE" --notes-file build/release-notes.md
+          else
+            echo "Création de la release v$V sur $GITHUB_SHA."
+            gh release create "v$V" --target "$GITHUB_SHA" --title "$TITRE" --notes-file build/release-notes.md $PRE
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   build:
+    needs: preparer
     strategy:
+      # Un échec sur un poste ne doit pas annuler l'autre. Sans ce drapeau, la panne de deux
+      # secondes du poste Windows a annulé une construction macOS déjà bien avancée — la plus chère
+      # des deux, et celle qu'on aurait gardée. Savoir si une panne touche un seul poste ou les deux
+      # est en plus l'information qui désigne la cause (règle apprise en 5.2.3).
+      fail-fast: false
       matrix:
         os: [macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
@@ -54,24 +132,9 @@ jobs:
 
       - run: npm test
 
-      # Notes de version (section CHANGELOG.md de cette version) → latest.yml + page de la release
+      # Les mêmes notes que celles posées sur la page : electron-builder les met dans latest.yml,
+      # que l'application affiche dans Paramètres → Mises à jour.
       - run: node scripts/release-notes.js
-
-      # Stable ou bêta ? C'est le NUMÉRO DE VERSION qui décide, rien d'autre : `7.26.0-beta.1` est
-      # une préversion, `7.26.0` n'en est pas une. Aucune case à cocher au lancement du workflow,
-      # donc aucun moyen de se tromper — et electron-builder lit exactement la même chose pour
-      # nommer `beta.yml` au lieu de `latest.yml`.
-      - name: Stable ou bêta
-        id: canal
-        shell: bash
-        run: |
-          V=$(node -p "require('./package.json').version")
-          # `case` plutôt que `grep` : pas de commande externe, donc rien qui puisse manquer ou se
-          # comporter autrement sur le poste Windows.
-          case "$V" in *-*) PRE=true ;; *) PRE=false ;; esac
-          echo "version=$V" >> "$GITHUB_OUTPUT"
-          echo "prerelease=$PRE" >> "$GITHUB_OUTPUT"
-          echo "Version $V — préversion : $PRE"
 
       # UPDATE_BASE / UPDATE_SECRET : les réglages du relais de mise à jour, pris dans les secrets du
       # dépôt et posés dans le paquet. Non définis → les applications retombent sur GitHub + jeton
@@ -87,7 +150,7 @@ jobs:
       # bêta. Sans ce drapeau, publier une préversion écraserait la version « officielle » du dépôt.
       - name: Build & publish
         shell: bash
-        run: npx electron-builder --publish always -c.publish.releaseType=${{ steps.canal.outputs.prerelease == 'true' && 'prerelease' || 'release' }} -c.extraMetadata.updateBase="$UPDATE_BASE" -c.extraMetadata.updateSecret="$UPDATE_SECRET" -c.extraMetadata.plateformeBase="$PLATEFORME_BASE" -c.extraMetadata.plateformeSecret="$PLATEFORME_SECRET"
+        run: npx electron-builder --publish always -c.publish.releaseType=${{ needs.preparer.outputs.prerelease == 'true' && 'prerelease' || 'release' }} -c.extraMetadata.updateBase="$UPDATE_BASE" -c.extraMetadata.updateSecret="$UPDATE_SECRET" -c.extraMetadata.plateformeBase="$PLATEFORME_BASE" -c.extraMetadata.plateformeSecret="$PLATEFORME_SECRET"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           UPDATE_BASE: ${{ secrets.UPDATE_BASE }}
@@ -96,23 +159,12 @@ jobs:
           PLATEFORME_SECRET: ${{ secrets.PLATEFORME_SECRET }}
           # Pas de signature Apple pour l'instant : on désactive la notarisation.
           CSC_IDENTITY_AUTO_DISCOVERY: false
-
-      # Le titre et les notes se posent sur les DEUX postes, pas seulement sur le Mac. La page de la
-      # release existe dès le premier fichier envoyé — c'est-à-dire dès que le poste Windows a fini,
-      # deux minutes avant le Mac, dont la construction « universal » compile deux architectures.
-      # Tant que cette étape n'a pas tourné, la page affiche le titre par défaut d'electron-builder
-      # (le numéro de version tout seul) et pas de notes : quelqu'un qui regarde à ce moment-là voit
-      # une release qui a l'air bâclée. Les deux postes écrivent exactement la même chose, donc
-      # celui qui arrive en second ne fait que réécrire à l'identique — et si l'un des deux échoue,
-      # les notes sont quand même posées par l'autre.
-      - name: Release notes on GitHub
-        shell: bash
-        run: |
-          V="${{ steps.canal.outputs.version }}"
-          if [ "${{ steps.canal.outputs.prerelease }}" = "true" ]; then T="SkanFact $V (bêta)"; else T="SkanFact $V"; fi
-          gh release edit "v$V" --title "$T" --notes-file build/release-notes.md
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # electron-builder REFUSE de déposer dans une release publiée il y a plus de deux heures,
+          # et il le fait en ÉCRIVANT « skipped publishing » puis en sortant VERT : le job réussit,
+          # la release reste vide, et personne ne le voit. Ici la release est toujours celle de la
+          # version qu'on est en train de construire, et reprendre une publication après un échec
+          # est précisément ce qu'on veut pouvoir faire.
+          EP_GH_IGNORE_TIME: true
 
       # SkanFact Cabinet : seconde application du dépôt, construite depuis le même code avec un
       # autre point d'entrée. Elle se publie elle-même dans la MÊME release (même version), sur son
@@ -122,10 +174,11 @@ jobs:
       # remplacerait `cabinet.yml` par une préversion, et tous les comptables — qui n'ont rien
       # demandé et n'ont aucune case à décocher — se verraient proposer une version d'essai.
       - name: Build & publish SkanFact Cabinet
-        if: steps.canal.outputs.prerelease != 'true'
+        if: needs.preparer.outputs.prerelease != 'true'
         run: npx electron-builder -c build/cabinet.config.js --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           UPDATE_BASE: ${{ secrets.UPDATE_BASE }}
           UPDATE_SECRET: ${{ secrets.UPDATE_SECRET }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
+          EP_GH_IGNORE_TIME: true

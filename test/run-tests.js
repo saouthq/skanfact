@@ -7005,15 +7005,76 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
 
   t('canal bêta : la publication est décidée par le numéro, pas par une case', () => {
     const wf = lireSource('.github', 'workflows', 'release.yml');
+    // Le drapeau se DÉDUIT du numéro de version, et de rien d'autre : aucune case au lancement du
+    // workflow, donc aucun moyen de se tromper.
+    assert.ok(/case "\$V" in \*-\*\) PRE=true ;; \*\) PRE=false ;; esac/.test(wf),
+      'la préversion ne se déduit plus du numéro de version');
     // Une préversion se marque « Pre-release » : c'est ce qui laisse /releases/latest pointer sur
     // la dernière STABLE. Sans ça, publier un essai écraserait la version officielle du dépôt.
-    assert.ok(/steps\.canal\.outputs\.prerelease == 'true' && 'prerelease' \|\| 'release'/.test(wf),
-      'le type de release ne suit pas le numéro de version');
+    //
+    // On n'ancre PAS sur le CHEMIN du drapeau (`steps.canal.…` / `needs.preparer.…`) : il a changé
+    // en 9.8.1 quand le calcul est passé dans un job à part, et cette assertion est tombée sur un
+    // workflow parfaitement juste. Ce qui compte est la RÈGLE — le type de release est décidé par
+    // ce drapeau-là, et c'est le MÊME drapeau qui décide si l'app du comptable se construit.
+    const m = wf.match(/-c\.publish\.releaseType=\$\{\{ ([\w.]+\.outputs\.prerelease) == 'true' && 'prerelease' \|\| 'release' \}\}/);
+    assert.ok(m, 'le type de release ne suit pas le numéro de version');
     // Et l'app du comptable ne bouge pas : elle n'a aucune case à décocher, personne ne lui a rien
     // demandé, et sa mise à jour passe par le même fichier `cabinet.yml`.
-    const cab = wf.slice(wf.indexOf('Build & publish SkanFact Cabinet'));
-    assert.ok(/if: steps\.canal\.outputs\.prerelease != 'true'/.test(cab.slice(0, 400)),
+    const cab = wf.slice(wf.indexOf('- name: Build & publish SkanFact Cabinet'));
+    assert.ok(cab.slice(0, 400).includes(`if: ${m[1]} != 'true'`),
       'une bêta d\'entreprise publierait aussi une bêta du cabinet');
+  });
+
+  // La 9.8.0 est complète et verte ; c'est sa PUBLICATION qui a échoué. Les deux postes créaient
+  // chacun la page de la release, au même instant : le second a reçu `422 already_exists`, et
+  // electron-builder ne rattrape ce refus que pour l'envoi d'un FICHIER, jamais pour la création
+  // de la release elle-même. Le poste Windows est tombé, et le poste macOS — déjà bien avancé, et
+  // le plus cher des deux — a été annulé avec lui.
+  t('publication : la page de la release est créée UNE fois, avant les constructions', () => {
+    // Un test qui lit du code doit lire du CODE (6.8.0, 7.25.0, 9.4.2, 9.4.10). Le commentaire qui
+    // explique la course CITE `gh release create` : compté, il faisait tomber le test sur un
+    // workflow parfaitement juste. On retire toute ligne qui commence par `#` — commentaire YAML
+    // comme commentaire de shell — puis on vérifie que le nettoyage n'a pas mangé le code.
+    const brut = lireSource('.github', 'workflows', 'release.yml');
+    const wf = brut.split('\n').filter(l => !/^\s*#/.test(l)).join('\n');
+    assert.ok(wf.length < brut.length, 'le nettoyage des commentaires n\'a rien retiré');
+    assert.ok(wf.includes('npx electron-builder') && wf.includes('gh release create'),
+      'le nettoyage des commentaires a mangé le code');
+    const jobs = i => wf.slice(wf.indexOf(`\n  ${i}:`), (j => j === -1 ? wf.length : j)(wf.indexOf('\n  build:', wf.indexOf(`\n  ${i}:`) + 1)));
+    const prep = jobs('preparer');
+    assert.ok(prep.length > 400 && prep.includes('gh release create'), 'découpage du job preparer raté');
+    const build = wf.slice(wf.indexOf('\n  build:'));
+    assert.ok(build.length > 400 && build.includes('npx electron-builder'), 'découpage du job build raté');
+
+    // 1. UN seul créateur, et il passe AVANT. Sans `needs`, les deux jobs repartiraient en
+    // parallèle et la course reviendrait par la fenêtre.
+    assert.ok(/needs: preparer/.test(build), 'le job build ne dépend plus de la création de la release');
+    assert.ok(!/gh release create/.test(build), 'le job build recrée la release : la course est de retour');
+    assert.strictEqual((wf.match(/gh release create/g) || []).length, 1,
+      'la page de la release doit être créée à un seul endroit');
+
+    // 2. Une reprise après échec ne détruit rien : la release existante est reconnue et gardée.
+    assert.ok(/gh release view "v\$V"/.test(prep) && /gh release edit "v\$V"/.test(prep),
+      'une release déjà là doit être reconnue, pas recréée ni détruite');
+
+    // 3. Le tag pointe sur le commit CONSTRUIT. Sans `--target`, GitHub le pose sur la branche par
+    // défaut du dépôt : `v9.6.0` et `v9.8.0` désignent tous les deux un commit de la 9.4.1, donc
+    // `git checkout v9.8.0` ne rend pas la source publiée.
+    assert.ok(/gh release create "v\$V" --target "\$GITHUB_SHA"/.test(prep),
+      'le tag de la release ne suit pas le commit qu\'on construit');
+
+    // 4. Un échec sur un poste n'annule pas l'autre — et savoir si une panne touche un seul poste
+    // ou les deux est l'information qui désigne la cause (règle 5.2.3).
+    assert.ok(/fail-fast: false/.test(build), 'une panne sur un poste annule encore la construction de l\'autre');
+
+    // 5. Le pire échec est celui qui se présente comme un succès : sans EP_GH_IGNORE_TIME,
+    // electron-builder écrit « skipped publishing » et sort VERT quand la release a plus de deux
+    // heures. Le job réussit, la release reste vide, et personne ne le voit. Chaque étape qui
+    // publie doit le porter — une seule qui l'oublie, et c'est ses fichiers à elle qui manquent.
+    const publient = [...build.matchAll(/npx electron-builder[\s\S]*?(?=\n      - |$)/g)].map(x => x[0]);
+    assert.strictEqual(publient.length, 2, 'découpage des étapes de publication raté');
+    publient.forEach((e, i) => assert.ok(/EP_GH_IGNORE_TIME: true/.test(e),
+      `l'étape de publication n° ${i + 1} peut réussir sans rien publier`));
   });
 
   // ------------------------------------------------------------------
