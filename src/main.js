@@ -4,7 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
 const { createStorage } = require('./storage');
-const { zipBuffer, sha256, sealBuffer, sealForCabinet, keyFingerprint, generateClientKeys, signManifest } = require('./zip');
+const { zipBuffer, zipRead, sha256, sealBuffer, openBuffer, isSealed, sealForCabinet, keyFingerprint, generateClientKeys, signManifest, verifyManifest } = require('./zip');
 
 // Identifiants de l'app. Ne PAS les lire dans package.json au démarrage : electron-builder
 // retire la section « build » du package.json empaqueté (l'app installée n'a plus build.publish).
@@ -1836,6 +1836,72 @@ ipcMain.handle('cabinet:import', async () => {
   // a changé l'une des deux, et c'est exactement ce qu'un imposteur ferait.
   if (j.fingerprint && j.fingerprint !== fingerprint) throw erreur('ERR-ENT-030', 'Fichier incohérent : l\'empreinte ne correspond pas à la clé.');
   return { name: String(j.name || ''), email: String(j.email || ''), publicKey: String(j.publicKey), fingerprint, pairedAt: new Date().toISOString() };
+});
+
+// ---------- le dossier de clôture reçu du cabinet (9.8.0) ----------
+//
+// Le flux RETOUR. Sans lui, le bilan du cabinet et celui du client divergent pour toujours, et
+// personne ne s'en aperçoit avant le contrôle. Ce handler LIT et VÉRIFIE ; il n'écrit rien dans les
+// données — c'est le renderer qui décide, après avoir montré ce qui va changer.
+ipcMain.handle('cloture:lire', async (_e, { motDePasse } = {}) => {
+  const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+    title: 'Le dossier de clôture envoyé par ton comptable',
+    filters: [{ name: 'Clôture SkanFact', extensions: ['skanclose'] }],
+    properties: ['openFile']
+  });
+  if (canceled || !filePaths || !filePaths[0]) return null;
+  let buf;
+  try { buf = fs.readFileSync(filePaths[0]); }
+  catch { throw erreur('ERR-ENT-080', 'Ce fichier n\'a pas pu être lu.'); }
+  if (isSealed(buf)) {
+    if (!motDePasse) throw erreur('ERR-ENT-081', 'Ce dossier de clôture est protégé par un mot de passe. Ton comptable te le dit au téléphone, jamais dans le même mail que le fichier.');
+    try { buf = openBuffer(buf, String(motDePasse)); }
+    catch (e) { throw erreur('ERR-ENT-081', e.message); }
+  }
+  let fichiers;
+  try { fichiers = zipRead(buf); }
+  catch { throw erreur('ERR-ENT-080', 'Ce fichier n\'est pas un dossier de clôture SkanFact.'); }
+  const par = {};
+  // `zipRead` rend `data` en fonction PARESSEUSE (elle décompresse et vérifie le CRC à l'appel).
+  // Ranger la fonction au lieu des octets donne un « [object Function] » qui ne ressemble à rien —
+  // et c'est le parcours réel qui l'a montré, jamais la relecture.
+  fichiers.forEach(f => { try { par[f.name] = f.data(); } catch (e) { logToFile('cloture-lire', e); } });
+  if (!par['cloture.json']) throw erreur('ERR-ENT-080', 'Ce fichier ne contient pas de dossier de clôture.');
+  let obj;
+  try { obj = JSON.parse(par['cloture.json'].toString('utf8')); }
+  catch { throw erreur('ERR-ENT-080', 'Le dossier de clôture est abîmé.'); }
+
+  // L'ORIGINE. Chiffrer dit « seul lui peut lire » ; seule une signature dit « ça vient de lui ».
+  // Confiance au premier usage, exactement comme le cabinet fait pour ses clients depuis la 9.2.0 :
+  // une fois une clé épinglée, un dossier non signé ou signé d'une autre clé est REFUSÉ.
+  let origine = { niveau: 'non-prouvee', empreinte: '', motif: 'Ce dossier n\'est pas signé : rien ne prouve qu\'il vient de ton cabinet.' };
+  if (par['manifeste.json'] && par['signature.json']) {
+    let sig = null;
+    try { sig = JSON.parse(par['signature.json'].toString('utf8')); } catch { sig = null; }
+    const v = sig ? verifyManifest(par['manifeste.json'], sig) : { ok: false, motif: 'signature illisible' };
+    origine = v.ok
+      ? { niveau: 'prouvee', empreinte: sig.empreinte, motif: '' }
+      : { niveau: 'refusee', empreinte: (sig && sig.empreinte) || '', motif: v.motif || 'La signature ne correspond pas.' };
+  }
+  return {
+    path: filePaths[0], cloture: obj, origine,
+    // Les deux documents lisibles par n'importe qui, écrits à côté du fichier pour être ouverts.
+    etatsHtml: par['etats.html'] ? par['etats.html'].toString('utf8') : '',
+    pdf: !!par['etats.pdf'],
+    fichiers: fichiers.map(f => f.name)
+  };
+});
+
+// Écrire les deux documents à côté du fichier reçu et les ouvrir : un client qui ne lit pas la
+// comptabilité veut voir SON bilan, pas une liste d'à-nouveaux.
+ipcMain.handle('cloture:ouvrirEtats', async (_e, { source, html, pdf } = {}) => {
+  if (!html && !pdf) throw erreur('ERR-ENT-082', 'Ce dossier de clôture ne porte aucun document à ouvrir.');
+  const dir = path.join(app.getPath('temp'), 'skanfact-cloture');
+  fs.mkdirSync(dir, { recursive: true });
+  const cible = path.join(dir, 'etats-' + String(source || 'cloture').replace(/[^\w-]/g, '') + '.html');
+  fs.writeFileSync(cible, String(html || ''), 'utf8');
+  await shell.openPath(cible);
+  return { ok: true, path: cible };
 });
 
 // ---------- le paquet mensuel pour le cabinet (6.1.0) ----------

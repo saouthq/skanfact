@@ -1,0 +1,282 @@
+// SkanFact 9.8.0 — la clôture d'exercice et le FLUX RETOUR, dans les DEUX applications réelles.
+//
+// C'est le jumeau du test de parité, dans l'autre sens : le cabinet clôture, produit son fichier,
+// le client l'importe — et les deux doivent dire le même résultat. Sans ce flux, le bilan du
+// cabinet et celui du client divergent pour toujours, et personne ne s'en aperçoit avant le
+// contrôle.
+//
+// Ce qu'aucun test pur ne peut prouver : que le fichier écrit sur le DISQUE par une application est
+// relu par l'autre, signature comprise ; que l'exercice se verrouille vraiment chez le client ; et
+// qu'un dossier non signé le DIT au lieu de passer en silence.
+const { playwright, RACINE, ELECTRON } = require('./harnais');
+const { _electron: electron } = playwright();
+const path = require('path'); const fs = require('fs'); const os = require('os');
+const OUT = process.argv[2] || path.join(RACINE, 'dist-e2e', 'cloture');
+fs.mkdirSync(OUT, { recursive: true });
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'skanfact-cloture-'));
+const errors = [];
+let pas = 0;
+const ok = m => console.log('  ✓ ' + m);
+const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
+const MDP = 'mot-de-passe-cabinet';
+// Une phrase de l'écran est coupée par les retours à la ligne de la SOURCE : `textContent` les
+// garde, donc « liasse fiscale » y devient « liasse\n      fiscale ». On aplatit les espaces avant
+// de juger — sinon le test accuse du texte parfaitement juste.
+const plat = s => String(s || '').replace(/\s+/g, ' ');
+
+// Le fichier de clôture est écrit par une boîte de dialogue « Enregistrer sous ». On la remplace
+// dans le PROCESSUS PRINCIPAL, comme le fait e2e:justificatif pour le sélecteur de fichier : c'est
+// le seul moyen de faire passer un parcours par le VRAI chemin d'écriture.
+const CIBLE = path.join(dir, 'cloture.skanclose');
+
+(async () => {
+  // ============================================================ le cabinet
+  étape('Le cabinet : ouvrir un livre et le clôturer');
+  const cab = await electron.launch({
+    args: ['--no-sandbox', `--user-data-dir=${path.join(dir, 'cab')}`, path.join(RACINE, 'src', 'cabinet', 'main.js')],
+    executablePath: ELECTRON, env: { ...process.env }
+  });
+  await cab.evaluate(({ dialog }, cible) => {
+    dialog.showSaveDialog = async () => ({ canceled: false, filePath: cible });
+  }, CIBLE);
+  const wc = await cab.firstWindow();
+  wc.on('pageerror', e => errors.push('CABINET PAGEERROR: ' + e.message));
+  wc.on('console', m => { if (m.type() === 'error') errors.push('CABINET CONSOLE: ' + m.text()); });
+  const attendreC = (ms = 350) => wc.waitForTimeout(ms);
+  await wc.setViewportSize({ width: 1440, height: 900 });
+  await wc.waitForSelector('#lock-form');
+  await wc.fill('#lock-pw', MDP); await wc.fill('#lock-pw2', MDP); await wc.click('#lock-go');
+  await wc.waitForSelector('#app:not([hidden])', { timeout: 20000 });
+  for (let g = 0; g < 14 && await wc.$('#setup'); g++) {
+    if (await wc.$('#w-name')) await wc.fill('#w-name', 'Cabinet Clôture');
+    if (await wc.$('#w-skip')) await wc.click('#w-skip'); else if (await wc.$('#w-next')) await wc.click('#w-next');
+    await attendreC(300);
+  }
+  await wc.waitForFunction(() => !document.querySelector('#setup'), { timeout: 15000 });
+  await wc.evaluate(() => { location.hash = '#/dossiers'; });
+  await wc.waitForSelector('#demo-on', { timeout: 8000 });
+  await wc.click('#demo-on');
+  await wc.waitForSelector('tr[data-id]', { timeout: 20000 });
+  // Le dossier qui porte le plus d'écritures : « le premier de la liste » n'en porte qu'un mois, et
+  // un exercice d'un mois ne prouve pas grand-chose d'une clôture (règle 9.4.7).
+  const cible = await wc.evaluate(async () => {
+    const ids = [...document.querySelectorAll('tr[data-id]')].map(t => t.dataset.id);
+    const annee = String(new Date().getFullYear());
+    let best = null;
+    for (const id of ids) {
+      await window.cabinet.relireLesPaquets(id, annee).catch(() => null);
+      const r = await window.cabinet.livre(id, annee).catch(() => null);
+      const n = r && r.livre ? (r.livre.ecritures || []).length : 0;
+      if (!best || n > best.n) best = { id, n };
+    }
+    return best;
+  });
+  if (!cible || !cible.n) throw new Error('aucun dossier de l\'exemple ne porte d\'écritures');
+  await wc.evaluate(o => { location.hash = '#/dossier/' + encodeURIComponent(o.id) + '/comptabilite'; }, cible);
+  await wc.waitForSelector('#c-livres', { timeout: 15000 });
+  await wc.waitForFunction(() => {
+    const t = document.querySelector('#c-tabs');
+    return t && t.textContent.includes('Exercice');
+  }, { timeout: 30000 });
+  ok(`dossier ouvert — ${cible.n} écritures`);
+
+  // ------------------------------------------------ les contrôles nomment sans bloquer
+  étape('Les contrôles NOMMENT, et la clôture passe quand même');
+  await wc.click('#c-tabs button[data-tab="exercice"]');
+  await wc.waitForFunction(() => {
+    const e = document.querySelector('#c-livres');
+    return e && !e.textContent.includes('Lecture de l\'exercice');
+  }, { timeout: 20000 });
+  await attendreC(400);
+  await wc.screenshot({ path: path.join(OUT, '01-exercice.png') });
+  const ecran = plat(await wc.evaluate(() => (document.querySelector('#c-livres') || {}).textContent || ''));
+  if (!/pas la liasse fiscale NCT 01/i.test(ecran)) {
+    throw new Error('l\'écran doit dire que ce ne sont PAS les états de la liasse');
+  }
+  const controles = await wc.$$eval('#c-livres .panel table tbody tr', trs => trs.length);
+  if (controles < 6) throw new Error('les six contrôles devraient être affichés, vu ' + controles);
+  const equilibre = /Actif = passif/.test(ecran);
+  if (!equilibre) throw new Error('le bilan de ce dossier ne s\'équilibre pas');
+  ok('six contrôles affichés, bilan équilibré, et la limite des états est écrite');
+
+  // ------------------------------------------------ clôturer
+  étape('Clôturer : définitif, tracé, et impossible deux fois');
+  await wc.click('#cl-cloturer');
+  await wc.waitForSelector('.modal-bg', { timeout: 10000 });
+  await wc.screenshot({ path: path.join(OUT, '02-question.png') });
+  const question = plat(await wc.evaluate(() => (document.querySelector('.modal-bg') || {}).textContent || ''));
+  if (!/motif/i.test(question)) throw new Error('la question doit annoncer que rouvrir exigera un motif');
+  await wc.click('.modal-bg .btn-primary');
+  await wc.waitForFunction(() => /clos/i.test((document.querySelector('#toast') || {}).textContent || ''), { timeout: 15000 });
+  await attendreC(900);
+  const clos = await wc.evaluate(async () => {
+    const id = decodeURIComponent((location.hash.split('/')[2] || ''));
+    const a = document.querySelector('#lv-annee');
+    const r = await window.cabinet.livre(id, a ? a.value : String(new Date().getFullYear()));
+    return { clos: r.livre.exercice.clos, par: r.livre.exercice.closPar, audit: (r.livre.audit || []).some(x => x.quoi === 'clôture') };
+  });
+  if (!clos.clos) throw new Error('l\'exercice n\'est pas clos');
+  if (!clos.audit) throw new Error('la clôture ne laisse pas de trace d\'audit');
+  const boutonEteint = await wc.evaluate(() => !!(document.querySelector('#cl-cloturer') || {}).disabled);
+  if (!boutonEteint) throw new Error('le bouton doit s\'éteindre : clôturer deux fois n\'a pas de sens');
+  ok('exercice clos, tracé, et le bouton s\'éteint');
+
+  // ------------------------------------------------ rouvrir exige un motif
+  étape('Rouvrir sans motif est refusé ; avec un motif, c\'est écrit');
+  await wc.click('#cl-rouvrir');
+  await wc.waitForSelector('#cl-motif', { timeout: 10000 });
+  await wc.click('.modal-bg #ok');
+  await wc.waitForFunction(() => /motif/i.test((document.querySelector('#toast') || {}).textContent || ''), { timeout: 10000 });
+  const refus = await wc.evaluate(() => document.querySelector('#toast').textContent);
+  if (!/motif/i.test(refus)) throw new Error('le refus doit nommer le motif : ' + refus);
+  await wc.fill('.modal-bg #cl-motif', 'Facture d\'électricité de décembre reçue après la clôture');
+  await wc.click('.modal-bg #ok');
+  await wc.waitForFunction(() => !document.querySelector('.modal-bg'), { timeout: 10000 });
+  await attendreC(900);
+  // Puis on re-clôture : c'est l'état dans lequel le fichier doit partir.
+  await wc.click('#cl-cloturer');
+  await wc.waitForSelector('.modal-bg', { timeout: 10000 });
+  await wc.click('.modal-bg .btn-primary');
+  await wc.waitForFunction(() => /clos/i.test((document.querySelector('#toast') || {}).textContent || ''), { timeout: 15000 });
+  await attendreC(900);
+  ok('refus sans motif, réouverture tracée, puis re-clôturé : ' + refus.slice(0, 60));
+
+  // ------------------------------------------------ l'exercice suivant s'ouvre
+  étape('L\'exercice suivant s\'ouvre pendant que celui-ci se termine');
+  await wc.click('#cl-suivant');
+  await wc.waitForFunction(() => /nouveaux/i.test((document.querySelector('#toast') || {}).textContent || ''), { timeout: 15000 });
+  await attendreC(900);
+  const suivant = await wc.evaluate(async () => {
+    const id = decodeURIComponent((location.hash.split('/')[2] || ''));
+    const y = Number((document.querySelector('#lv-annee') || {}).value || new Date().getFullYear()) + 1;
+    const r = await window.cabinet.livre(id, String(y));
+    const an = ((r.livre || {}).ecritures || []).filter(e => e.source === 'an');
+    return { n: an.length, statut: (an[0] || {}).statut, date: (an[0] || {}).date, lignes: (an[0] || {}).lignes.length };
+  });
+  if (suivant.n !== 1) throw new Error('il devrait y avoir une pièce d\'à-nouveaux, vu ' + suivant.n);
+  if (suivant.statut !== 'brouillard') throw new Error('les à-nouveaux arrivent en brouillard, vu ' + suivant.statut);
+  if (!/-01-01$/.test(suivant.date)) throw new Error('les à-nouveaux tombent au 1er janvier, vu ' + suivant.date);
+  // Les REFAIRE ne doit pas les doubler : un exercice qui bouge encore change son report.
+  await wc.click('#cl-suivant');
+  await wc.waitForFunction(() => /refaits|posés/i.test((document.querySelector('#toast') || {}).textContent || ''), { timeout: 15000 });
+  await attendreC(900);
+  const apres = await wc.evaluate(async () => {
+    const id = decodeURIComponent((location.hash.split('/')[2] || ''));
+    const y = Number((document.querySelector('#lv-annee') || {}).value || new Date().getFullYear()) + 1;
+    const r = await window.cabinet.livre(id, String(y));
+    return ((r.livre || {}).ecritures || []).filter(e => e.source === 'an').length;
+  });
+  if (apres !== 1) throw new Error('refaire les à-nouveaux les a doublés : ' + apres);
+  ok(`${suivant.lignes} lignes d'à-nouveaux en brouillard au ${suivant.date}, et les refaire ne double rien`);
+
+  // ------------------------------------------------ le fichier de clôture
+  étape('Produire le dossier de clôture pour le client');
+  await wc.click('#cl-fichier');
+  await wc.waitForSelector('#cl-mdp', { timeout: 10000 });
+  await wc.click('.modal-bg #ok');
+  await wc.waitForFunction(() => /clôture écrit|PDF/i.test((document.querySelector('#toast') || {}).textContent || ''), { timeout: 30000 });
+  await attendreC(600);
+  if (!fs.existsSync(CIBLE)) throw new Error('le fichier .skanclose n\'a pas été écrit');
+  const taille = fs.statSync(CIBLE).size;
+  const Z = require(path.join(RACINE, 'src', 'zip.js'));
+  const contenu = Z.zipRead(fs.readFileSync(CIBLE)).map(f => f.name).sort();
+  ['cloture.json', 'etats.html', 'manifeste.json', 'signature.json'].forEach(n => {
+    if (!contenu.includes(n)) throw new Error('le dossier de clôture ne contient pas ' + n);
+  });
+  await wc.screenshot({ path: path.join(OUT, '03-fichier.png') });
+  const resultatCabinet = JSON.parse(Z.zipRead(fs.readFileSync(CIBLE)).find(f => f.name === 'cloture.json').data().toString('utf8')).resultat;
+  ok(`${contenu.length} fichiers, ${Math.round(taille / 1024)} Ko${contenu.includes('etats.pdf') ? ', PDF compris' : ' (sans PDF)'} — résultat ${resultatCabinet}`);
+  await cab.close();
+
+  // ============================================================ le client
+  étape('Le client : importer le dossier, et voir son exercice se VERROUILLER');
+  const ent = await electron.launch({
+    args: ['--no-sandbox', `--user-data-dir=${path.join(dir, 'ent')}`, path.join(RACINE, 'src', 'main.js')],
+    executablePath: ELECTRON, env: { ...process.env }
+  });
+  await ent.evaluate(({ dialog }, cible) => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [cible] });
+  }, CIBLE);
+  const we = await ent.firstWindow();
+  we.on('pageerror', e => errors.push('ENTREPRISE PAGEERROR: ' + e.message));
+  we.on('console', m => { if (m.type() === 'error') errors.push('ENTREPRISE CONSOLE: ' + m.text()); });
+  const attendreE = (ms = 350) => we.waitForTimeout(ms);
+  await we.setViewportSize({ width: 1440, height: 900 });
+  await we.waitForSelector('#setup', { timeout: 30000 });
+  // On reconnaît chaque écran de l'assistant à CE QU'IL CONTIENT, jamais à son rang (règle 7.28.0).
+  for (let g = 0; g < 16 && await we.$('#setup'); g++) {
+    if (await we.$('#sf-form input[name=name]')) {
+      await we.fill('#sf-form input[name=name]', 'Client Clôture SUARL');
+      await we.fill('#sf-form input[name=matricule]', '1234567X/A/P/000');
+    }
+    if (await we.$('[data-act="batiment"]')) { await we.click('[data-act="batiment"]'); await we.waitForSelector('[data-act="batiment"].sel'); }
+    await we.click('#sf-next'); await attendreE(180);
+  }
+  await we.waitForFunction(() => !document.querySelector('#setup'), { timeout: 20000 });
+  await we.evaluate(() => { location.hash = '#/compta'; });
+  await attendreE(700);
+  // L'onglet Clôtures — reconnu par ce qu'il CONTIENT, jamais par son rang (règle 7.30.0).
+  await we.evaluate(() => {
+    const b = [...document.querySelectorAll('#c-tabs button, .tabs button')].find(x => /Clôture/i.test(x.textContent));
+    if (b) b.click();
+  });
+  await we.waitForSelector('#cl-import', { timeout: 15000 });
+  await we.screenshot({ path: path.join(OUT, '04-client-avant.png') });
+  const avant = plat(await we.evaluate(() => (document.querySelector('#view') || {}).textContent || ''));
+  if (!/Aucune clôture reçue/.test(avant)) throw new Error('l\'état vide de la clôture reçue ne s\'annonce pas');
+  await we.click('#cl-import');
+  await we.waitForSelector('.modal-bg', { timeout: 20000 });
+  const annonce = plat(await we.evaluate(() => (document.querySelector('.modal-bg') || {}).textContent || ''));
+  if (!/VERROUILL/i.test(annonce)) throw new Error('la question doit annoncer le verrouillage AVANT d\'écrire : ' + annonce.slice(0, 120));
+  if (!/à-nouveaux? officiels?/i.test(annonce)) throw new Error('la question doit annoncer les à-nouveaux officiels');
+  // L'origine : le fichier EST signé, donc l'écran doit le dire — et pas l'inverse.
+  if (!/Origine vérifiée/.test(annonce)) throw new Error('la signature du cabinet n\'a pas été reconnue : ' + annonce.slice(0, 200));
+  await we.screenshot({ path: path.join(OUT, '05-client-question.png') });
+  await we.click('.modal-bg .btn-primary');
+  await we.waitForFunction(() => /reprise/i.test((document.querySelector('#toast') || {}).textContent || ''), { timeout: 15000 });
+  await attendreE(900);
+  const etat = await we.evaluate(() => ({
+    clotures: (window.__data && window.__data.clotures || []).length,
+    closedUntil: (window.__data || {}).closedUntil || '',
+    resultat: ((window.__data && window.__data.clotures || [])[0] || {}).resultat,
+    origine: ((window.__data && window.__data.clotures || [])[0] || {}).origine,
+    verrouille: ((window.__data && window.__data.clotures || [])[0] || {}).verrouille,
+    au: ((window.__data && window.__data.clotures || [])[0] || {}).au,
+    ecran: ((document.querySelector('#view') || {}).textContent || '').replace(/\s+/g, ' ')
+  }));
+  if (etat.clotures !== 1) throw new Error('la clôture n\'a pas été enregistrée');
+  if (etat.origine !== 'prouvee') throw new Error('l\'origine devrait être prouvée, vue ' + etat.origine);
+  if (!/signée/.test(etat.ecran)) throw new Error('l\'écran doit montrer que le dossier est signé');
+  // LE VERROU, et le défaut que ce parcours a trouvé : le jeu d'exemple porte l'exercice EN COURS,
+  // donc sa fin est dans le futur — et on ne verrouille pas une période qui n'est pas terminée.
+  // Les deux issues sont légitimes ; ce qui ne l'est pas, c'est d'avaler un refus en silence et de
+  // laisser croire que l'exercice est verrouillé alors qu'il ne l'est pas.
+  const aujourdhui = new Date().toISOString().slice(0, 10);
+  if (etat.au <= aujourdhui) {
+    if (!etat.closedUntil) throw new Error('un exercice TERMINÉ doit être verrouillé chez le client');
+    if (etat.verrouille !== true) throw new Error('le verrou devrait être posé');
+    if (!/verrouillé/.test(etat.ecran)) throw new Error('l\'écran doit montrer le verrou');
+    ok(`clôture reprise, signée, verrouillé jusqu'au ${etat.closedUntil}`);
+  } else {
+    if (etat.verrouille !== false) throw new Error('un exercice non terminé ne peut pas être verrouillé');
+    if (!/verrou en attente/.test(etat.ecran)) throw new Error('l\'écran doit DIRE que le verrou attend : ' + etat.ecran.slice(0, 200));
+    if (!/pas encore terminé/.test(etat.ecran)) throw new Error('l\'écran doit dire POURQUOI le verrou attend');
+    ok(`clôture reprise et signée ; l'exercice finit le ${etat.au}, le verrou attend — et l'écran le dit`);
+  }
+  await we.screenshot({ path: path.join(OUT, '06-client-apres.png') });
+
+  // ------------------------------------------------ LA parité : le même résultat des deux côtés
+  étape('Le jumeau du test de parité : le MÊME résultat des deux côtés');
+  if (Math.abs(Number(etat.resultat) - Number(resultatCabinet)) > 0.001) {
+    throw new Error(`le résultat diverge : ${resultatCabinet} chez le cabinet, ${etat.resultat} chez le client`);
+  }
+  ok(`résultat ${resultatCabinet} des deux côtés, au millime`);
+
+  await ent.close();
+  console.log('\n' + '─'.repeat(60));
+  if (errors.length) { console.log('erreurs JS :'); errors.forEach(e => console.log('  ' + e)); }
+  console.log('erreurs JS : ' + errors.length);
+  console.log('captures : ' + OUT);
+  if (errors.length) process.exit(1);
+  console.log('\n' + pas + ' étapes — le cabinet clôture, le client reprend, et les deux disent la même chose.');
+})().catch(async e => { console.error(e); process.exit(1); });

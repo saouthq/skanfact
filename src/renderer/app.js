@@ -9579,6 +9579,30 @@
             : '<div class="empty">Rien n\'est clôturé, donc rien à rouvrir.</div>'}
         </div>
 
+        <div class="panel"><h2>La clôture de ton comptable ${info('clot.cabinet')}</h2>
+          ${(data.clotures || []).length
+            ? `<table class="list compact"><thead><tr><th>Exercice</th><th>Reçu le</th><th>Origine</th><th class="r nw">Résultat</th><th>Verrou</th><th></th></tr></thead><tbody>
+                ${(data.clotures || []).slice().sort((a, b) => String(b.exercice).localeCompare(String(a.exercice))).map(c => `<tr>
+                  <td class="nw">${h(c.exercice)}</td>
+                  <td class="nw">${C.fmtDate(String(c.recuLe || '').slice(0, 10))}</td>
+                  <td>${c.origine === 'prouvee'
+                    ? `<span class="badge b-paid">signée</span> <span class="small muted mono">${h(c.empreinte || '')}</span>`
+                    : '<span class="badge b-late">origine non prouvée</span>'}</td>
+                  <td class="r nw">${C.money(c.resultat || 0, company().currency)}</td>
+                  <td>${c.verrouille === false
+                    ? `<span class="badge b-due">verrou en attente</span><div class="small muted">${h(c.verrouMotif || '')}</div>`
+                    : '<span class="badge b-paid">verrouillé</span>'}</td>
+                  <td class="r nw">${c.etatsHtml ? `<button class="btn btn-sm" data-etats="${h(c.exercice)}">Voir les états</button>` : ''}</td></tr>`).join('')}
+              </tbody></table>
+              <p class="small muted">Les à-nouveaux officiels de ton comptable sont posés. Quand l'exercice est
+              <strong>verrouillé</strong>, plus aucune pièce datée dedans ne bouge : c'est ce qui garantit que
+              ton bilan et le sien disent la même chose. Un exercice qui n'est pas encore terminé sur ce poste
+              n'est pas verrouillé tout de suite, et la ligne le dit.</p>`
+            : `<div class="empty mini">Aucune clôture reçue. Quand ton comptable a fini un exercice, il t'envoie un
+               fichier <code>.skanclose</code> : il porte les à-nouveaux officiels et tes états financiers.</div>`}
+          <div class="inline mt"><button class="btn" id="cl-import">Importer un dossier de clôture…</button></div>
+        </div>
+
         <div class="panel"><h2>Journal des clôtures ${info('clot.journal')}</h2>
           ${log.length
             ? `<table class="list compact"><thead><tr><th>Action</th><th>Jusqu'au</th><th>Motif</th></tr></thead><tbody>
@@ -9594,6 +9618,81 @@
       // Même table, même branchement — un manque qu'on ne peut pas ouvrir n'est pas un manque,
       // c'est un reproche.
       $$('[data-check]').forEach(b => b.onclick = () => CHECK_ACTIONS[b.dataset.check].run());
+
+      // 9.8.0 — le flux RETOUR. Le fichier de clôture pose les à-nouveaux OFFICIELS du comptable et
+      // verrouille l'exercice : on montre donc ce qui va changer AVANT d'écrire quoi que ce soit.
+      $$('[data-etats]').forEach(b => b.onclick = async () => {
+        const c = (data.clotures || []).find(x => String(x.exercice) === b.dataset.etats);
+        if (!c) return;
+        try { await bridge.ouvrirEtatsCloture({ source: c.exercice, html: c.etatsHtml }); }
+        catch (e) { toast(plainError(e), true); }
+      });
+      if ($('#cl-import')) $('#cl-import').onclick = () => importerCloture();
+
+      async function importerCloture(motDePasse) {
+        let lu;
+        try { lu = await bridge.lireCloture({ motDePasse }); }
+        catch (e) {
+          // Un fichier scellé n'est pas une panne : c'est le cas normal quand le comptable a choisi
+          // un mot de passe. On le demande au lieu d'afficher du rouge (règle 8.0.1).
+          if (codeErreur(e) === 'ERR-ENT-081' && !motDePasse) {
+            promptDialog('Le mot de passe du dossier de clôture',
+              'Ton comptable te le dit au téléphone, jamais dans le même mail que le fichier.', '',
+              v => { if (v) importerCloture(v); });
+            return;
+          }
+          return toast(plainError(e), true);
+        }
+        if (!lu) return;
+        const v = C.clotureValide(lu.cloture, { matricule: company().taxId });
+        if (!v.ok) return toast(v.motifs[0], true);
+        const cl = lu.cloture;
+        const fin = (cl.exercice && cl.exercice.au) || '';
+        const deja = (data.clotures || []).find(x => String(x.exercice) === String(cl.exercice.annee));
+        const ok = await confirmDialog(
+          `Reprendre la clôture ${cl.exercice.annee} de ton comptable ?\n\n`
+          + `• ${pl(cl.anouveaux.length, 'à-nouveau officiel', 'à-nouveaux officiels')} seront enregistrés.\n`
+          + `• Ton exercice sera VERROUILLÉ jusqu'au ${C.fmtDate(fin)} : plus aucune pièce datée dedans ne pourra être créée, modifiée ou supprimée.\n`
+          + (lu.origine.niveau === 'prouvee'
+            ? `• Origine vérifiée : signature ${lu.origine.empreinte}.\n`
+            : `• ORIGINE NON PROUVÉE : ${lu.origine.motif} Vérifie avec ton comptable avant d'accepter.\n`)
+          + (deja ? `\nUne clôture ${cl.exercice.annee} a déjà été reprise : celle-ci la remplacera.` : ''),
+          'Reprendre la clôture', lu.origine.niveau !== 'prouvee');
+        if (!ok) return;
+        data.clotures = (data.clotures || []).filter(x => String(x.exercice) !== String(cl.exercice.annee));
+        data.clotures.push({
+          exercice: String(cl.exercice.annee), du: cl.exercice.du, au: fin,
+          recuLe: new Date().toISOString(), cabinet: cl.cabinet || '',
+          origine: lu.origine.niveau, empreinte: lu.origine.empreinte || '',
+          anouveaux: cl.anouveaux, inventaire: cl.inventaire || [], resultat: cl.resultat || 0,
+          etats: cl.etats || null, etatsHtml: lu.etatsHtml || ''
+        });
+        // Le VERROU. Deux règles, et la seconde n'existe que parce que le parcours réel l'a montrée :
+        //  — on ne recule jamais le verrou : si le client avait clôturé plus loin que son comptable,
+        //    lui retirer sa clôture rouvrirait des mois qu'il avait arrêtés ;
+        //  — on ne verrouille pas une période qui n'est pas TERMINÉE sur ce poste. Un cabinet qui
+        //    clôture un exercice encore en cours, ou deux horloges qui ne disent pas la même date,
+        //    ce n'est pas rien : on le DIT, au lieu d'avaler un refus en silence et de laisser
+        //    croire que l'exercice est verrouillé alors qu'il ne l'est pas.
+        const entree = data.clotures[data.clotures.length - 1];
+        let mot = `Clôture ${cl.exercice.annee} reprise`;
+        if (fin > C.today()) {
+          entree.verrouille = false;
+          entree.verrouMotif = `L'exercice finit le ${C.fmtDate(fin)} : il n'est pas encore terminé sur ce poste. Le verrou se posera quand il le sera.`;
+          mot += ` — le verrou attend la fin de l'exercice (${C.fmtDate(fin)}).`;
+        } else if (fin > C.closedUntil(data)) {
+          const r = C.closePeriod(data, fin, { at: Date.now(), by: 'clôture du cabinet', reason: `Clôture ${cl.exercice.annee} reçue du cabinet` });
+          if (r.error) { entree.verrouille = false; entree.verrouMotif = r.error; mot += ` — ${r.error}`; }
+          else { entree.verrouille = true; mot += ` — exercice verrouillé jusqu'au ${C.fmtDate(fin)}.`; }
+        } else {
+          entree.verrouille = true;
+          mot += ` — déjà verrouillé jusqu'au ${C.fmtDate(C.closedUntil(data))}.`;
+        }
+        save(true);
+        toast(mot);
+        draw(); updateNavCounts();
+      }
+
       if ($('#do-close')) $('#do-close').onclick = async () => {
         const warn = blocking.length
           ? `\n\n${pl(blocking.length, 'point')} à régler d'abord : ${blocking.map(c => c.label).join(', ')}.`

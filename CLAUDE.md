@@ -45,6 +45,8 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un **pied de totaux** porte la sélection entière, jamais la page affichée ; on pagine ce qu'on NOMME | 2.2.0, 7.16.0, 9.4.5 |
 | La valeur par défaut d'une **règle qu'on ne connaît pas** est celle qui ne fait rien | 9.1.1 — le seuil de retenue à 0, la TFP qu'aucun métier ne porte ; 9.6.0 — une case fiscale vaut `null`, jamais 0 |
 | Une écriture **validée** ne se modifie jamais : elle se contre-passe, à la date du jour | 9.2.0 |
+| Une **extourne** n'est pas une contre-passation : l'originale reste dans son exercice, avec son numéro | 9.3.0, 9.8.0 |
+| Les **à-nouveaux** se calculent sur les écritures réelles, jamais sur les à-nouveaux précédents | 9.0.0, 9.8.0 |
 | Un **numéro** naît à la validation, et le contrôle passe AVANT l'attribution | 9.2.0 ; 6.0.0 — `nextNumber` |
 | On pointe une **occurrence**, jamais une règle ; et le pense-bête dit qu'il n'est qu'un pense-bête | 7.21.0, 5.2.0, 9.4.6 |
 
@@ -58,6 +60,8 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un montant qui se **divise sans reste** ne prouve rien d'un arrondi : les DONNÉES du test comptent autant que sa forme | 9.6.1 |
 | Une **réexportation** se prouve par l'identité d'objet, jamais par le résultat | 9.6.1 |
 | Une preuve par réintroduction ne vaut que sur un lot **VERT** : sinon on mesure le vide | 9.7.0 |
+| Un **refus qu'on avale** en silence est pire que le refus : l'écran affirme alors le contraire du vrai | 9.8.0 |
+| Un parcours qui compare du texte **aplatit les espaces** : `textContent` garde les retours de la source | 9.8.0 |
 | Un **adaptateur** vaut mieux qu'une seconde implémentation ; deux moteurs divergent | 9.7.0 |
 | Une assertion sur un montant se **calcule à la main**, jamais en recopiant la sortie | 7.0.1 — l'assertion qui gravait le bug depuis la 1.6.0 |
 | Un test écrit contre l'état du jour **décrit cet état**, pas la règle | 7.12.0, 7.26.0, 8.0.1, 8.2.0, 9.1.0, 9.2.2, 9.4.3, 9.4.5 — neuf assertions retournées |
@@ -132,7 +136,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 **L'outillage (9.1.0)**
 
 `npm test` (les tests purs) · `npm run lint` (ESLint, zéro erreur exigée) · `npm run charge` (le test
-de charge du livre) · `npm run e2e:<nom>` (49 parcours, tableau au § « Les tests qui ouvrent vraiment
+de charge du livre) · `npm run e2e:<nom>` (50 parcours, tableau au § « Les tests qui ouvrent vraiment
 l'application ») · CI GitHub sur Linux et Windows à chaque poussée · « Construire un essai » pour
 faire tester une version sans la publier.
 
@@ -538,6 +542,7 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:cabinet-jour1` | **le premier jour d'un comptable** : l'instrument qui MESURE ce qu'il voit, dans l'ordre où il le voit — 35 écrans photographiés du mot de passe à l'Aide, et six règles qui tombent (un bouton hors de l'écran, un bouton qui ressemble à du texte, un état vide sans geste, un champ de saisie sans bulle « i », une boîte sans étiquette, un débordement horizontal). `dist-e2e/cabinet-premier-jour/mesures.json` |
 | `npm run e2e:cabinet-rendu` | **le rendu du Cabinet, mesuré** : les trois sondes de l'app entreprise (contraste et débordement des boutons, alignement des colonnes, barres d'en-tête) braquées sur TOUS ses écrans et TOUS leurs onglets, en clair et en sombre, à 1440 et à 1280 — 1 024 boutons, 777 colonnes. Elles vivent en un seul exemplaire dans `harnais.js` : c'est leur absence côté Cabinet qui l'avait laissé dériver |
 | `npm run e2e:declaration` | **la déclaration du mois** : quatre cases « — » avec leur raison (jamais un zéro), un chiffre ouvert sur ses pièces, un mois DÉJÀ déclaré par le client qui montre quand même sa collectée et dont le bouton s'éteint en disant pourquoi, l'écriture passée en brouillard au dernier jour d'un mois libre, les deux pointages dans l'ordre puis défaits, et le refus de refaire une déposée |
+| `npm run e2e:cloture` | **la clôture et le FLUX RETOUR, dans les DEUX applications** : les six contrôles qui nomment sans bloquer, une clôture définitive et tracée, une réouverture refusée sans motif, l'exercice suivant qui s'ouvre sans doubler ses à-nouveaux, le `.skanclose` écrit sur le disque (cloture.json, états HTML et PDF, manifeste, signature), puis le client qui l'importe — origine vérifiée, verrou posé ou son attente EXPLIQUÉE, et **le même résultat des deux côtés au millime** |
 | `npm run e2e:immobilisations` | **les biens et le stock** : une acquisition venue d'un paquet qui remonte SANS fiche et propose de la créer (jamais d'office), le plan visible pendant la saisie, un dégressif sans taux refusé en nommant le taux, les dotations passées en brouillard au 31/12 et le bouton qui s'éteint, la modification d'un bien dont la dotation est écrite refusée en nommant le geste, un inventaire collé depuis un tableur et sa variation dans le bon sens |
 | `npm run e2e:banque` | **la banque, de bout en bout** : trois banques aux trois formats (montant signé, Débit/Crédit séparés, en-têtes inconnus et associés à la main), un solde de fin faux refusé avec son écart, le même fichier refusé deux fois, l'automatique qui ne pose RIEN sur une ambiguïté, l'écriture manquante écrite depuis une ligne puis retrouvée « certain », le libellé retenu, le relevé retiré sans que le journal bouge |
 | `npm run e2e:cabinet-licence` | **la licence du Cabinet** : trois dossiers hors SkanFact gratuits, l'exemple qui ne compte pas, cinq clients qui dépassent le quota, la validation refusée pendant que lire, importer, exporter et SAISIR restent ouverts, deux dossiers archivés qui rendent la main, la clé d'un autre cabinet refusée en nommant les deux empreintes, celle d'un client parrainé refusée aussi, et le panneau qui nomme chaque dossier compté |
@@ -3979,6 +3984,45 @@ Le test qui compte est `npm run e2e:declaration` : les quatre cases « — » av
 chiffre ouvert sur ses pièces, un mois DÉJÀ déclaré par le client qui montre quand même sa collectée
 et dont le bouton s'éteint en disant pourquoi, un mois libre où l'écriture se passe en brouillard au
 dernier jour, les deux pointages dans l'ordre puis défaits, et le refus de refaire une déposée.
+
+### 9.8.0 — La clôture d'exercice, et le flux retour
+
+Règles apprises, à ne pas recasser :
+
+- **Un refus qu'on avale en silence est pire que le refus.** Le verrou d'un exercice reçu du cabinet
+  passe par `closePeriod`, qui refuse une période non terminée (règle 6.0.0, juste) — et ma première
+  version jetait ce refus. L'écran affichait « exercice verrouillé » sur un exercice qui ne l'était
+  pas. La ligne dit maintenant « verrou en attente » avec sa raison. C'est le parcours réel qui l'a
+  montré : le jeu d'exemple porte l'exercice EN COURS, donc le cas limite est le cas normal.
+- **`zipRead` rend `data` en fonction PARESSEUSE** (elle décompresse et vérifie le CRC à l'appel).
+  Ranger `f.data` au lieu de `f.data()` donne un « [object Function] » qui ne ressemble à rien, et
+  aucune relecture ne le voit — seul le parcours qui ouvre vraiment le fichier.
+- **Une extourne n'est pas une contre-passation** (règle 9.3.0, portée à la clôture) : l'originale
+  reste `validee`, dans son exercice, avec son numéro. La marquer « contrepassée » la ferait
+  disparaître du mois où elle a été passée, et le résultat de cet exercice-là serait faux.
+- **Ce qui est déjà fait ne se refait pas.** Rouvrir l'exercice suivant une seconde fois reposait
+  les extournes : la charge était annulée deux fois, et rien à l'écran ne le montrait. Les
+  extournes déjà VALIDÉES dans le livre cible sont exclues ; les brouillards, eux, se remplacent —
+  un exercice qui bouge encore change son report.
+- **Les à-nouveaux se calculent sur les écritures RÉELLES et l'ouverture, jamais sur les à-nouveaux
+  précédents** (règle 9.0.0, re-posée) : sinon le passé est compté deux fois.
+- **Chaque solde de gestion porte SA FORMULE à côté de lui.** Un chiffre qu'un comptable ne sait pas
+  refaire ne se discute pas avec un client. Et un ratio sans dénominateur vaut `null`, jamais 0 % —
+  la règle des cases fiscales inconnues (9.6.0), appliquée aux ratios.
+- **`ajouterEcriture` normalise et JETTE ce qu'elle ne connaît pas, exprès** : la forme d'une
+  écriture est fixée, sinon chaque appelant y glisserait ses champs à lui. Un drapeau neuf
+  (`extourne`) doit donc entrer dans cette forme — c'est une décision de format, pas un ajout
+  discret côté appelant. Le test l'a montré en rendant zéro extourne sur une écriture qui en portait.
+- **Une phrase de l'écran est coupée par les retours à la ligne de la SOURCE** : `textContent` les
+  garde, donc « liasse fiscale » y devient « liasse\\n      fiscale ». Un parcours qui compare du
+  texte aplatit les espaces avant de juger — sinon il accuse du texte parfaitement juste.
+- **Le PDF ne fait jamais échouer la clôture** (règle 6.1.0) : il est produit quand Electron le peut,
+  le manifeste dit s'il est là, et l'HTML — lisible par n'importe quel navigateur, aujourd'hui et
+  dans dix ans — part de toute façon.
+- **Chiffrer n'est pas signer**, dans ce sens aussi : le cabinet signe le manifeste avec une clé
+  Ed25519 créée à son premier fichier de clôture, symétrique de celle du client (9.2.0). Le client
+  épingle au premier usage. Un dossier non signé est accepté avec « origine non prouvée » écrit en
+  toutes lettres, jamais en silence.
 
 ### 9.7.0 — Les immobilisations et l'inventaire du cabinet
 

@@ -1485,6 +1485,192 @@ ipcMain.handle('cab:ecrireVariationStock', (_e, { dossierId, annee } = {}) => {
   return { ok: true, id: e.id, livre: ouvrirLivre(dossierId, annee).livre };
 });
 
+// ================================================== LA CLÔTURE D'EXERCICE (9.8.0)
+//
+// Clôturer, c'est arrêter de bouger. Les trois garanties : la clôture est DÉFINITIVE et tracée, une
+// réouverture exige un motif, et les contrôles ne bloquent JAMAIS (règle 6.0.0) — un exercice clos
+// avec trois manques signalés vaut mieux qu'un exercice jamais clos.
+//
+// Le fichier de clôture (`.skanclose`) referme la boucle dans l'autre sens : sans lui, le bilan du
+// cabinet et celui du client divergent pour toujours, et personne ne s'en aperçoit avant le
+// contrôle. Il porte les à-nouveaux officiels, les écritures d'inventaire, et un document lisible
+// par n'importe qui — y compris par un client qui ne met jamais son application à jour.
+
+// La clé de SIGNATURE du cabinet, créée au premier fichier de clôture. Symétrique de celle du
+// client (9.2.0) : chiffrer dit « seul lui peut lire », seule une signature dit « ça vient de lui ».
+// Elle vit hors des données, en 0600, et ne traverse jamais le pont.
+const CLE_SIGNATURE = () => path.join(app.getPath('userData'), 'cle-cabinet-signature.json');
+function cleSignatureCabinet() {
+  try {
+    const p = CLE_SIGNATURE();
+    if (fs.existsSync(p)) return JSON.parse(fs.readFileSync(p, 'utf8'));
+    const k = Z.generateClientKeys();
+    const obj = { ...k, creeLe: Date.now() };
+    fs.writeFileSync(p, JSON.stringify(obj, null, 2), { mode: 0o600 });
+    return obj;
+  } catch (e) { logToFile('cle-signature-cabinet', e); return null; }
+}
+
+// Le document lisible par n'importe qui. HTML : il s'ouvre dans n'importe quel navigateur, sur
+// n'importe quel système, aujourd'hui et dans dix ans — et il s'imprime en PDF de là. Le PDF est
+// produit en plus quand Electron peut le faire ; son échec ne fait JAMAIS échouer la clôture
+// (règle 6.1.0 : mieux vaut 99 % avec le trou signalé qu'un envoi qui échoue).
+function htmlDeCloture(dossier, dos, etats) {
+  const m = n => (Number(n) || 0).toFixed(3).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  const e = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const groupe = g => `<tr class="g"><th colspan="2">${e(g.titre)}</th><th class="r">${m(g.total)}</th></tr>`
+    + g.lignes.map(l => `<tr><td>${e(l.compte)}</td><td>${e(l.libelle)}</td><td class="r">${m(l.montant)}</td></tr>`).join('');
+  return `<!doctype html><html lang="fr"><head><meta charset="utf-8">
+<title>Clôture ${e(dos.exercice.annee)} — ${e(dossier.name || '')}</title>
+<style>
+  body{font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;color:#1d2530;margin:32px;max-width:820px}
+  h1{font-size:20px;margin:0 0 4px} h2{font-size:15px;margin:26px 0 8px;border-bottom:1px solid #d9dfe7;padding-bottom:4px}
+  .sub{color:#6b7788;margin:0 0 20px}
+  table{width:100%;border-collapse:collapse;margin-bottom:10px}
+  td,th{padding:3px 6px;text-align:start;border-bottom:1px solid #eef1f5;font-weight:400}
+  .r{text-align:end;font-variant-numeric:tabular-nums;white-space:nowrap}
+  tr.g th{background:#f5f7fa;font-weight:600}
+  tr.t td,tr.t th{font-weight:700;border-top:2px solid #1d2530;border-bottom:none}
+  .note{color:#6b7788;font-size:12px;margin-top:24px;border-top:1px solid #d9dfe7;padding-top:10px}
+  @media print{body{margin:0}}
+</style></head><body>
+<h1>Clôture de l'exercice ${e(dos.exercice.annee)}</h1>
+<p class="sub">${e(dossier.name || '')}${dossier.matricule ? ' · ' + e(dossier.matricule) : ''}
+  · du ${e(dos.exercice.du)} au ${e(dos.exercice.au)}${dos.closLe ? ' · close le ' + new Date(dos.closLe).toLocaleDateString('fr-FR') : ''}</p>
+<h2>Bilan — actif</h2><table>${etats.actif.map(groupe).join('')}
+  <tr class="t"><td colspan="2">Total actif</td><td class="r">${m(etats.totalActif)}</td></tr></table>
+<h2>Bilan — passif</h2><table>${etats.passif.map(groupe).join('')}
+  <tr class="g"><th colspan="2">Résultat de l'exercice</th><th class="r">${m(etats.resultat)}</th></tr>
+  <tr class="t"><td colspan="2">Total passif</td><td class="r">${m(etats.totalPassif)}</td></tr></table>
+<h2>État de résultat</h2><table>${groupe(etats.produits)}${groupe(etats.charges)}
+  <tr class="t"><td colspan="2">Résultat de l'exercice</td><td class="r">${m(etats.resultat)}</td></tr></table>
+<h2>À-nouveaux de l'exercice suivant</h2><table>
+  <tr class="g"><th>Compte</th><th>Intitulé</th><th class="r">Débit / Crédit</th></tr>
+  ${dos.anouveaux.map(l => `<tr><td>${e(l.compte)}</td><td>${e(l.libelle)}</td><td class="r">${l.debit ? m(l.debit) + ' D' : m(l.credit) + ' C'}</td></tr>`).join('')}</table>
+<p class="note">Ces états sont <b>déduits de la balance</b>, rubrique par rubrique. Ce n'est pas la
+liasse fiscale NCT 01 : sa présentation exacte n'est pas établie ici. Document produit par SkanFact
+Cabinet ; les chiffres engagent le cabinet qui l'a émis, pas l'application.</p>
+</body></html>`;
+}
+
+async function pdfDeCloture(html) {
+  let w = null;
+  try {
+    w = new BrowserWindow({ show: false, width: 860, height: 1200, webPreferences: { offscreen: true, javascript: false } });
+    await w.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+    const buf = await w.webContents.printToPDF({ printBackground: true, pageSize: 'A4', margins: { marginType: 'default' } });
+    return buf;
+  } catch (e) { logToFile('pdf-cloture', e); return null; }
+  finally { if (w && !w.isDestroyed()) w.destroy(); }
+}
+
+ipcMain.handle('cab:cloture', (_e, { dossierId, annee } = {}) => {
+  requireOpen();
+  const livre = livreOuErreur(dossierId, annee);
+  const lignes = KC.lignesDuLivre(livre, { du: livre.exercice.du, au: livre.exercice.au });
+  const ouv = KC.soldesDepuisOuverture(livre);
+  const libelle = (c) => ((livre.plan || []).find(p => p.compte === c) || {}).libelle || '';
+  return {
+    exercice: livre.exercice,
+    controles: KC.controlesCloture(livre),
+    etats: KC.etatsDepuisLignes(lignes, ouv, { libelle }),
+    sig: KC.sigDepuisLignes(lignes, ouv, { libelle }),
+    anouveaux: KC.anouveauxDe(livre),
+    extournes: KC.extournesDe(livre, Number(annee) + 1),
+    guides: KC.GUIDES_INVENTAIRE
+  };
+});
+
+ipcMain.handle('cab:cloturer', (_e, { dossierId, annee } = {}) => {
+  requireOpen();
+  licenceBlockCab('Clôturer un exercice');
+  const livre = livreOuErreur(dossierId, annee);
+  const r = KC.cloturerExercice(livre, moiPoste().deviceName || 'cabinet', Date.now());
+  if (!r.ok) throw erreur('ERR-CAB-060', r.motif);
+  ecrireLeLivre(dossierId, livre, 'clôture', String(annee));
+  return { ok: true, brouillards: r.brouillards, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+ipcMain.handle('cab:rouvrir', (_e, { dossierId, annee, motif } = {}) => {
+  requireOpen();
+  const livre = livreOuErreur(dossierId, annee);
+  const r = KC.rouvrirExercice(livre, motif, moiPoste().deviceName || 'cabinet', Date.now());
+  if (!r.ok) throw erreur('ERR-CAB-061', r.motif);
+  ecrireLeLivre(dossierId, livre, 'réouverture', String(motif || '').slice(0, 120));
+  return { ok: true, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+// Ouvrir l'exercice SUIVANT pendant que celui-ci se termine : les à-nouveaux y entrent en
+// brouillard, et le comptable continue de saisir janvier sans attendre que décembre soit fini.
+// Ils se REFONT tant qu'ils ne sont pas validés — un exercice qui bouge encore change son report.
+ipcMain.handle('cab:ouvrirSuivant', (_e, { dossierId, annee } = {}) => {
+  requireOpen();
+  const livre = livreOuErreur(dossierId, annee);
+  const suivante = Number(annee) + 1;
+  const o = ouvrirLivre(dossierId, suivante);
+  const cible = o.livre || KC.livreVide(dossierId, suivante, { plan: (livre.plan || []).map(p => ({ ...p })), journaux: (livre.journaux || []).map(j => ({ ...j })) });
+  const brouillon = KC.ecritureAnouveaux(livre, suivante);
+  if (!brouillon.lignes.length) throw erreur('ERR-CAB-062', 'Cet exercice ne porte aucun solde à reporter.');
+  if (!brouillon.an.equilibre) throw erreur('ERR-CAB-062', 'Les à-nouveaux ne s\'équilibrent pas : la balance de l\'exercice est fausse, et la reporter propagerait la faute.');
+  const ancien = (cible.ecritures || []).filter(e => e.statut === 'brouillard' && (e.source === 'an' || e.extourneDe));
+  if ((cible.ecritures || []).some(e => e.source === 'an' && e.statut === 'validee')) {
+    throw erreur('ERR-CAB-062', `Les à-nouveaux de ${suivante} sont déjà validés. Contre-passe-les si le report a changé.`);
+  }
+  // Ce qui a DÉJÀ été validé ne se repose pas : une extourne posée deux fois annule la charge deux
+  // fois, et rien à l'écran ne le montrerait.
+  const dejaFaites = new Set((cible.ecritures || []).filter(e => e.statut === 'validee' && e.extourneDe).map(e => e.extourneDe));
+  cible.ecritures = (cible.ecritures || []).filter(e => !ancien.includes(e));
+  const qui = moiPoste().deviceName || 'cabinet';
+  const ne = KC.ajouterEcriture(cible, brouillon, qui, Date.now());
+  KC.extournesDe(livre, suivante, dejaFaites).forEach(x => KC.ajouterEcriture(cible, x, qui, Date.now()));
+  ecrireLeLivre(dossierId, cible, ancien.length ? 'à-nouveaux refaits' : 'à-nouveaux posés', String(suivante));
+  return { ok: true, id: ne.id, annee: suivante, refaits: ancien.length };
+});
+
+ipcMain.handle('cab:ecrireCloture', async (_e, { dossierId, annee, motDePasse } = {}) => {
+  requireOpen();
+  const livre = livreOuErreur(dossierId, annee);
+  const d = dossierDe(dossierId);
+  const dos = KC.dossierDeCloture(livre);
+  dos.matricule = d.matricule || '';
+  dos.client = d.name || '';
+  dos.cabinet = (state.cabinet && state.cabinet.name) || '';
+  if (!dos.anouveaux.length) throw erreur('ERR-CAB-063', 'Cet exercice ne porte aucun à-nouveau : il n\'y aurait rien à envoyer au client.');
+
+  const lignes = KC.lignesDuLivre(livre, { du: livre.exercice.du, au: livre.exercice.au });
+  const libelle = (c) => ((livre.plan || []).find(p => p.compte === c) || {}).libelle || '';
+  const etats = KC.etatsDepuisLignes(lignes, KC.soldesDepuisOuverture(livre), { libelle });
+  const html = htmlDeCloture(d, dos, etats);
+  const pdf = await pdfDeCloture(html);
+
+  const clotureBuf = Buffer.from(JSON.stringify(dos, null, 2), 'utf8');
+  const fichiers = [
+    { name: 'cloture.json', data: clotureBuf },
+    { name: 'etats.html', data: Buffer.from(html, 'utf8') }
+  ];
+  if (pdf) fichiers.push({ name: 'etats.pdf', data: pdf });
+  const manifeste = Buffer.from(JSON.stringify({
+    format: 1, type: 'skanclose', cabinet: dos.cabinet, client: dos.client, matricule: dos.matricule,
+    exercice: dos.exercice, closLe: dos.closLe, produitLe: Date.now(),
+    fichiers: fichiers.map(f => ({ nom: f.name, sha256: Z.sha256(f.data) })),
+    // Le PDF a pu échouer : on le DIT plutôt que de laisser croire qu'il a été oublié.
+    pdf: !!pdf
+  }, null, 2), 'utf8');
+  fichiers.push({ name: 'manifeste.json', data: manifeste });
+  const cle = cleSignatureCabinet();
+  if (cle) fichiers.push({ name: 'signature.json', data: Buffer.from(JSON.stringify(Z.signManifest(manifeste, cle.privateKey, cle.publicKey), null, 2), 'utf8') });
+
+  let buf = Z.zipBuffer(fichiers);
+  if (motDePasse) buf = Z.sealBuffer(buf, String(motDePasse), { type: 'skanclose', client: dos.client, exercice: dos.exercice.annee });
+
+  const nom = `cloture-${(d.name || 'client').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '')}-${dos.exercice.annee}.skanclose`;
+  const res = await dialog.showSaveDialog({ title: 'Le dossier de clôture pour le client', defaultPath: nom });
+  if (res.canceled || !res.filePath) return { ok: false, annule: true };
+  fs.writeFileSync(res.filePath, buf);
+  ecrireLeLivre(dossierId, livre, 'dossier de clôture produit', path.basename(res.filePath));
+  return { ok: true, path: res.filePath, pdf: !!pdf, signe: !!cle, scelle: !!motDePasse };
+});
+
 // ================================================================ LA LICENCE DU CABINET (9.4.0)
 //
 // On vend des DOSSIERS, jamais des postes. La porte est posée sur la VALIDATION d'une écriture, et

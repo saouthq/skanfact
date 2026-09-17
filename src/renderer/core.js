@@ -773,6 +773,7 @@
     conflictArchive: [],     // versions écartées lors d'une fusion : rien n'est détruit sans trace
     closedUntil: '',         // dernier jour clôturé : rien de daté avant ne bouge plus (6.0.0)
     closureLog: [],          // chaque clôture et chaque réouverture, avec son motif (6.0.0)
+    clotures: [],            // les clôtures d'exercice reçues du cabinet (9.8.0) : à-nouveaux officiels
     packs: [],               // paquets mensuels construits pour le cabinet (6.1.0)
     demo: false,             // ces données viennent du jeu d'exemple (7.0.0) — l'app le dit à l'écran
     // De quelle version sort l'exemple chargé, et sur quel mois il a été bâti — `{ version, mois }`.
@@ -1187,6 +1188,7 @@
     // clôturé, et l'utilisateur clôture quand il veut.
     if (typeof data.closedUntil !== 'string') data.closedUntil = '';
     if (!Array.isArray(data.closureLog)) data.closureLog = [];
+    if (!Array.isArray(data.clotures)) data.clotures = [];
     if (!Array.isArray(data.packs)) data.packs = [];   // 6.1.0 : historique des envois au cabinet
     if (!Array.isArray(data.licences)) data.licences = [];   // 7.33.0 : licences émises par l'éditeur
     if (!Array.isArray(data.ecrituresOD)) data.ecrituresOD = [];   // 8.9.0 : opérations diverses
@@ -4291,6 +4293,9 @@
   // depuis la 9.1.0 : elles ne prennent que des LIGNES, donc elles servent aussi au cabinet, qui
   // n'a pas de `data`. Réexportées ici à l'identique — aucun appelant n'a changé.
   const entriesBalance = Compta.entriesBalance;
+  // 9.8.0 — le dossier de clôture reçu du cabinet se valide avec la MÊME fonction que celle qui l'a
+  // écrit : deux lectures du même format finiraient par ne plus accepter la même chose.
+  const clotureValide = Compta.clotureValide;
   const entriesByAccount = Compta.entriesByAccount;
 
   const entryCsvColumns = () => ([
@@ -6474,7 +6479,7 @@
     CLOSURE_ACTIONS, closedUntil, isClosedDate, closedPeriodLabel, closableMonths, closureChecks, closePeriod, reopenPeriod, closureLog,
     PACK_FORMAT, packPeriod, packPlan, packChecklist, packFileName, packCoverHtml,
     DEFAULT_ACCOUNTS, ACCOUNT_LABELS, ENTRY_JOURNALS, journalLabel, chartAccounts, journalEntries,
-    entriesBalance, entriesByAccount, entryCsvColumns, MOVE_ACCOUNTS, COMPTES_CONTREPARTIE, journalDeCompte,
+    entriesBalance, entriesByAccount, entryCsvColumns, MOVE_ACCOUNTS, COMPTES_CONTREPARTIE, journalDeCompte, clotureValide,
     numerosDuJournal, livreJournal, journalCentralisateur, centralisateurCsvColumns, centralisateurRows, inPeriod,
     odValide, odPiece, comptesProposes, lettrage, SECTIONS_ECRITURES,
     etatRapprochement, etatsFinanciers, etatsCsvRows, etatsCsvColumns, employerChargesOf,

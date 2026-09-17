@@ -1952,7 +1952,7 @@
     // Tout ce qui est lu POUR un couple (dossier, exercice) se périme avec lui. Garder l'état des
     // immobilisations d'un dossier en ouvrant le suivant afficherait les biens de quelqu'un d'autre
     // — et personne ne le verrait, puisque le tableau serait plein (règle 7.1.x).
-    s.decl = null; s.immo = null; s.inv = null;
+    s.decl = null; s.immo = null; s.inv = null; s.cloture = null;
     const annee = s.annee || String(new Date().getFullYear());
     s.livreCle = dossier.id + '|' + annee;
     try {
@@ -2212,14 +2212,15 @@
       : s.onglet === 'declaration' ? vueDeclaration(dossier)
         : s.onglet === 'banque' ? vueBanque(dossier)
           : s.onglet === 'immobilisations' ? vueImmobilisations(dossier)
-            : s.onglet === 'inventaire' ? vueInventaire(dossier)
-              : !lignes.length
-                ? `<div class="empty mini">Aucune écriture sur cette période.</div>`
-                : s.onglet === 'journal' ? vueJournal(lignes)
-                  : s.onglet === 'grand-livre' ? vueGrandLivre(lignes)
-                    : s.onglet === 'balance' ? vueBalance(lignes)
-                      : s.onglet === 'recherche' ? vueRecherche(lignes)
-                        : vueLettrage(lignes);
+            : s.onglet === 'exercice' ? vueCloture(dossier)
+              : s.onglet === 'inventaire' ? vueInventaire(dossier)
+                : !lignes.length
+                  ? `<div class="empty mini">Aucune écriture sur cette période.</div>`
+                  : s.onglet === 'journal' ? vueJournal(lignes)
+                    : s.onglet === 'grand-livre' ? vueGrandLivre(lignes)
+                      : s.onglet === 'balance' ? vueBalance(lignes)
+                        : s.onglet === 'recherche' ? vueRecherche(lignes)
+                          : vueLettrage(lignes);
 
     // D'OÙ viennent ces chiffres. Deux sources, et l'écran le dit en toutes lettres : une balance
     // lue dans les paquets du client et une balance tenue par le cabinet ne disent pas la même
@@ -2247,6 +2248,8 @@
         ${s.livre ? `<button data-tab="immobilisations" class="${s.onglet === 'immobilisations' ? 'active' : ''}">Immobilisations${
   (s.livre.immobilisations || []).length ? ` <span class="tab-n">${(s.livre.immobilisations || []).length}</span>` : ''}</button>` : ''}
         ${s.livre ? `<button data-tab="inventaire" class="${s.onglet === 'inventaire' ? 'active' : ''}">Inventaire</button>` : ''}
+        ${s.livre ? `<button data-tab="exercice" class="${s.onglet === 'exercice' ? 'active' : ''}">Exercice${
+  s.livre.exercice && s.livre.exercice.clos ? ' <span class="tab-n">clos</span>' : ''}</button>` : ''}
         ${s.livre ? `<button data-tab="recherche" class="${s.onglet === 'recherche' ? 'active' : ''}">Recherche</button>` : ''}
       </div>${corps}`;
 
@@ -2261,6 +2264,7 @@
     else if (s.onglet === 'declaration') brancherDeclaration(el, root, dossier);
     else if (s.onglet === 'immobilisations') brancherImmobilisations(el, root, dossier);
     else if (s.onglet === 'inventaire') brancherInventaire(el, root, dossier);
+    else if (s.onglet === 'exercice') brancherCloture(el, root, dossier);
     else brancherVue(el, root, dossier, lignes);
   }
 
@@ -2592,6 +2596,188 @@
       s.decl = await api.declaration({ dossierId: dossier.id, annee: s.annee, periode: declState.mois || moisPropose(s.livre) });
     } catch (e) { s.decl = null; toast(plainError(e), 'error'); }
     drawLivres(root, dossier);
+  }
+
+  // ---------------------------------------------------------------- la clôture d'exercice (9.8.0)
+  //
+  // Clôturer, c'est arrêter de bouger. Les contrôles NOMMENT sans bloquer : un exercice clos avec
+  // trois manques signalés vaut mieux qu'un exercice jamais clos (règle 6.0.0).
+
+  const clotureState = { vue: 'controles' };
+
+  const LIBELLE_CONTROLE = {
+    brouillard: 'Les pièces encore en brouillard', attente: 'Le compte d\'attente',
+    tva: 'Les déclarations de TVA', tiers: 'La balance des tiers',
+    dotations: 'Les dotations aux amortissements', equilibre: 'L\'équilibre de la balance'
+  };
+
+  function vueCloture(dossier) {
+    const s = livresState;
+    const d = s.cloture;
+    if (!d) return `<div class="empty mini">Lecture de l'exercice…</div>`;
+    const ex = d.exercice;
+    const echecs = (d.controles || []).filter(c => !c.ok);
+    const e = d.etats;
+    const money0 = n => esc(money(n));
+    const groupe = g => `<tr class="gl-g"><th colspan="2">${esc(g.titre)}</th><th class="r nw">${money0(g.total)}</th></tr>`
+      + g.lignes.map(l => `<tr><td class="nw">${esc(l.compte)}</td><td class="tronq" title="${esc(l.libelle)}">${esc(l.libelle)}</td><td class="r nw">${money0(l.montant)}</td></tr>`).join('');
+    return `<div class="filters">
+      ${info('cl.etat')}
+      <span class="small muted">Exercice ${esc(ex.annee)}</span>
+      <span class="badge ${ex.clos ? 'b-paid' : 'b-due'}">${ex.clos ? 'clos' : 'ouvert'}</span>
+      <button class="btn btn-sm ${ex.clos ? '' : 'btn-primary'}" id="cl-cloturer" ${ex.clos ? 'disabled' : ''}
+        title="${ex.clos ? 'Cet exercice est déjà clos.' : ''}">Clôturer l'exercice…</button>
+      ${ex.clos ? '<button class="btn btn-sm" id="cl-rouvrir">Rouvrir (motif exigé)…</button>' : ''}
+      <button class="btn btn-sm" id="cl-suivant">Ouvrir ${esc(Number(ex.annee) + 1)} (à-nouveaux)…</button>
+      <button class="btn btn-sm" id="cl-fichier">Le dossier pour le client…</button>
+    </div>
+    ${ex.clos
+    ? `<div class="ok-box mb"><b>Exercice clos</b>${ex.closLe ? ' le ' + esc(fmtJour(new Date(ex.closLe).toISOString().slice(0, 10))) : ''}${
+      ex.closPar ? ' par ' + esc(ex.closPar) : ''}.${(ex.reouvertures || []).length
+      ? ` Rouvert ${pl(ex.reouvertures.length, 'fois', 'fois')} — ${esc((ex.reouvertures[ex.reouvertures.length - 1] || {}).motif || '')}` : ''}</div>`
+    : echecs.length
+      ? `<div class="warn-box mb"><b>${pl(echecs.length, 'contrôle', 'contrôles')} ${echecs.length > 1 ? 'signalent' : 'signale'} quelque chose.</b>
+           Ils ne bloquent pas : un exercice clos avec des manques signalés vaut mieux qu'un exercice jamais clos.</div>`
+      : `<div class="ok-box mb">Les six contrôles passent.</div>`}
+    <div class="panel mt"><h2>Avant de clôturer ${info('cl.controles')}</h2>
+      <table class="list compact"><tbody>${(d.controles || []).map(c => `<tr>
+        <td class="nw">${c.ok ? '<span class="badge b-paid">ok</span>' : '<span class="badge b-late">à voir</span>'}</td>
+        <td>${esc(LIBELLE_CONTROLE[c.id] || c.id)}</td>
+        <td class="small muted">${esc(c.detail || 'rien à signaler')}</td></tr>`).join('')}</tbody></table>
+    </div>
+    <div class="panel mt"><h2>Les états financiers ${info('cl.etats')}</h2>
+      <p class="small muted">Déduits de la <b>balance</b>, rubrique par rubrique. <b>Ce n'est pas la liasse
+      fiscale NCT 01</b> : sa présentation exacte n'est pas établie ici, et la promettre serait promettre
+      ce qu'une autre version livrera.</p>
+      <div class="split">
+        <div><h3 class="sub-h">Bilan — actif</h3>
+          <table class="list compact"><tbody>${e.actif.map(groupe).join('')}
+            <tr class="dc-total"><td colspan="2"><b>Total actif</b></td><td class="r nw"><b>${money0(e.totalActif)}</b></td></tr></tbody></table></div>
+        <div><h3 class="sub-h">Bilan — passif</h3>
+          <table class="list compact"><tbody>${e.passif.map(groupe).join('')}
+            <tr class="gl-g"><th colspan="2">Résultat de l'exercice</th><th class="r nw">${money0(e.resultat)}</th></tr>
+            <tr class="dc-total"><td colspan="2"><b>Total passif</b></td><td class="r nw"><b>${money0(e.totalPassif)}</b></td></tr></tbody></table></div>
+      </div>
+      ${e.equilibre
+    ? `<div class="ok-box mt">Actif = passif, au millime.</div>`
+    : `<div class="warn-box mt">Actif et passif diffèrent de ${money0(Math.round((e.totalActif - e.totalPassif) * 1000) / 1000)} :
+         une pièce est déséquilibrée, et c'est à regarder avant tout le reste.</div>`}
+      <h3 class="sub-h">État de résultat</h3>
+      <table class="list compact"><tbody>${groupe(e.produits)}${groupe(e.charges)}
+        <tr class="dc-total"><td colspan="2"><b>Résultat de l'exercice</b></td><td class="r nw"><b>${money0(e.resultat)}</b></td></tr></tbody></table>
+    </div>
+    <div class="panel mt"><h2>Soldes intermédiaires et ratios ${info('cl.sig')}</h2>
+      <table class="list compact"><thead><tr><th>Solde</th><th class="r nw">Montant</th><th>Comment il se calcule</th></tr></thead>
+      <tbody>${d.sig.lignes.map(l => `<tr class="${l.id === 'net' ? 'dc-total' : ''}">
+        <td>${esc(l.label)}</td><td class="r nw">${money0(l.montant)}</td>
+        <td class="small muted">${esc(l.formule)}</td></tr>`).join('')}</tbody></table>
+      <table class="list compact mt"><tbody>${d.sig.ratios.map(r => `<tr>
+        <td>${esc(r.label)}</td>
+        <td class="r nw">${r.valeur == null ? '<span class="muted">—</span>' : esc(String(r.valeur).replace('.', ',')) + ' ' + esc(r.unite)}</td></tr>`).join('')}</tbody></table>
+      <p class="small muted mt">Un ratio sans dénominateur ne vaut rien : il affiche « — », jamais 0 %.
+      Les rubriques retenues sont celles de l'usage — <b>À VÉRIFIER</b>.</p>
+    </div>
+    <div class="panel mt"><h2>Les à-nouveaux de ${esc(Number(ex.annee) + 1)} ${info('cl.anouveaux')}</h2>
+      <p class="small muted">Calculés sur les écritures <b>réelles</b> de cet exercice et son ouverture :
+      les comptes de bilan se reportent, le net des comptes de gestion va au résultat. Ils se posent
+      en <b>brouillard</b> dans le livre suivant, et se refont tant qu'ils ne sont pas validés —
+      un exercice qui bouge encore change son report.</p>
+      <div class="scroll-x"><table class="list compact"><thead><tr><th class="nw">Compte</th><th>Intitulé</th>
+        <th class="r nw">Débit</th><th class="r nw">Crédit</th></tr></thead>
+      <tbody>${d.anouveaux.lignes.map(l => `<tr><td class="nw">${esc(l.compte)}</td>
+        <td class="tronq" title="${esc(l.libelle)}">${esc(l.libelle)}</td>
+        <td class="r nw">${l.debit ? money0(l.debit) : ''}</td><td class="r nw">${l.credit ? money0(l.credit) : ''}</td></tr>`).join('')}</tbody>
+      <tfoot><tr><th colspan="2">${esc(pl(d.anouveaux.lignes.length, 'ligne'))}</th>
+        <th class="r nw">${money0(d.anouveaux.debit)}</th><th class="r nw">${money0(d.anouveaux.credit)}</th></tr></tfoot></table></div>
+      ${d.extournes.length ? `<p class="small muted mt">${pl(d.extournes.length, 'écriture s\'extourne', 'écritures s\'extournent')}
+        au 1er janvier : elles partiront avec les à-nouveaux. L'originale, elle, reste dans son exercice avec son numéro.</p>` : ''}
+    </div>`;
+  }
+
+  function brancherCloture(el, root, dossier) {
+    const s = livresState;
+    if (!s.cloture) { chargerCloture(root, dossier); return; }
+    const clo = $('#cl-cloturer', el);
+    if (clo) clo.onclick = async () => {
+      const echecs = (s.cloture.controles || []).filter(c => !c.ok);
+      const ok = await confirmDialog(`Clôturer l'exercice ${s.annee} ?`,
+        `Après la clôture, plus aucune écriture de cet exercice ne bouge. La rouvrir reste possible, mais elle exigera un motif — c'est la seule trace qui expliquera pourquoi un chiffre a changé après coup.`
+        + (echecs.length ? `\n\n${pl(echecs.length, 'contrôle signale', 'contrôles signalent')} encore quelque chose :\n` + echecs.map(c => '• ' + c.detail).join('\n') : ''),
+        'Clôturer', false);
+      if (!ok) return;
+      try {
+        const r = await api.cloturer({ dossierId: dossier.id, annee: s.annee });
+        s.livre = r.livre;
+        toast(r.brouillards ? `Exercice clos — ${pl(r.brouillards, 'pièce restée en brouillard', 'pièces restées en brouillard')}.` : 'Exercice clos.');
+        await chargerCloture(root, dossier);
+      } catch (err) { toast(plainError(err), 'error'); }
+    };
+    const rou = $('#cl-rouvrir', el);
+    if (rou) rou.onclick = () => motifForm(root, dossier);
+    const su = $('#cl-suivant', el);
+    if (su) su.onclick = async () => {
+      su.disabled = true;
+      try {
+        const r = await api.ouvrirSuivant({ dossierId: dossier.id, annee: s.annee });
+        toast(`${r.refaits ? 'À-nouveaux refaits' : 'À-nouveaux posés'} en brouillard sur ${r.annee}.`);
+      } catch (err) { toast(plainError(err), 'error'); }
+      su.disabled = false;
+    };
+    const fi = $('#cl-fichier', el);
+    if (fi) fi.onclick = () => clotureFichierForm(root, dossier);
+  }
+
+  async function chargerCloture(root, dossier) {
+    const s = livresState;
+    try { s.cloture = await api.cloture({ dossierId: dossier.id, annee: s.annee }); }
+    catch (e) { s.cloture = null; toast(plainError(e), 'error'); }
+    drawLivres(root, dossier);
+  }
+
+  function motifForm(root, dossier) {
+    const s = livresState;
+    modal(`<h2>Rouvrir l'exercice ${esc(s.annee)}</h2>
+      <p class="small muted">Le motif est la <b>seule trace</b> qui expliquera, dans six mois, pourquoi un
+      chiffre a changé après que le client a reçu ses états. Il est obligatoire.</p>
+      <label class="field obligatoire"><span>Pourquoi rouvrir</span>
+        <textarea id="cl-motif" rows="3" placeholder="Facture d'électricité de décembre reçue après la clôture"></textarea></label>
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button>
+        <button class="btn btn-primary" id="ok">Rouvrir</button></div>`,
+    (rootModal, close) => {
+      $('#ok', rootModal).onclick = async () => {
+        try {
+          const r = await api.rouvrir({ dossierId: dossier.id, annee: s.annee, motif: $('#cl-motif', rootModal).value });
+          s.livre = r.livre; close(); toast('Exercice rouvert.');
+          await chargerCloture(root, dossier);
+        } catch (err) { toast(plainError(err), 'error'); }
+      };
+    });
+  }
+
+  function clotureFichierForm(root, dossier) {
+    const s = livresState;
+    modal(`<h2>Le dossier de clôture pour ${esc(dossier.name || 'ce client')}</h2>
+      <p class="small muted">Un fichier <code>.skanclose</code> : les à-nouveaux officiels, les écritures
+      d'inventaire, et les états en <b>HTML et PDF</b> — lisibles par n'importe qui, même par un client
+      qui ne met jamais son application à jour. Sans lui, son bilan et le tien divergent pour toujours.</p>
+      <label class="field"><span>Mot de passe (facultatif)</span>
+        <input id="cl-mdp" type="password" placeholder="Laisse vide pour un fichier non scellé"></label>
+      <p class="small muted">Le mot de passe se dit au téléphone, jamais dans le même mail que le fichier.
+      La clé de signature de ton cabinet, elle, est posée automatiquement : c'est elle qui prouve que ce
+      dossier vient bien de toi.</p>
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button>
+        <button class="btn btn-primary" id="ok">Produire le fichier…</button></div>`,
+    (rootModal, close) => {
+      $('#ok', rootModal).onclick = async () => {
+        const b = $('#ok', rootModal); b.disabled = true;
+        try {
+          const r = await api.ecrireCloture({ dossierId: dossier.id, annee: s.annee, motDePasse: $('#cl-mdp', rootModal).value });
+          close();
+          if (r.annule) return;
+          toast(`Dossier de clôture écrit${r.pdf ? ' (avec le PDF)' : ' — le PDF n\'a pas pu être produit, l\'HTML est là'}.`);
+        } catch (err) { toast(plainError(err), 'error'); b.disabled = false; }
+      };
+    });
   }
 
   // ---------------------------------------------------------------- les immobilisations (9.7.0)

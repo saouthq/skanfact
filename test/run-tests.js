@@ -12960,7 +12960,9 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       const suivants = [main.indexOf('ipcMain.handle(', i + 10), main.indexOf('\nfunction ', i)].filter(x => x > 0);
       return main.slice(i, suivants.length ? Math.min(...suivants) : main.length);
     };
-    ['cab:valider', 'cab:validerLot', 'cab:contrepasser', 'cab:extourner'].forEach(n => {
+    // 9.8.0 : clôturer un exercice rejoint cette liste. Ce n'est pas une lecture — c'est le geste
+    // le plus engageant de l'application, celui après lequel plus rien ne bouge.
+    ['cab:valider', 'cab:validerLot', 'cab:contrepasser', 'cab:extourner', 'cab:cloturer'].forEach(n => {
       assert.ok(/licenceBlockCab\(/.test(bloc(n)), n + ' valide une écriture sans passer par la porte');
     });
     ['cab:livre', 'cab:livres', 'cab:importPack', 'cab:ecrituresPlan', 'cab:saisir', 'cab:mail', 'cab:noteRelance'].forEach(n => {
@@ -13225,6 +13227,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   require('./suites/declaration.js')({ t, assert, lireSource });
   require('./suites/moteur.js')({ t, assert, lireSource });
   require('./suites/immobilisations.js')({ t, assert, lireSource });
+  require('./suites/cloture.js')({ t, assert, lireSource });
 
   // ---------- 9.4.10 : aucune suite découpée ne reste sur le bord de la route ----------
   // Le danger d'un découpage, c'est le fichier qu'on écrit et que personne ne charge : les tests

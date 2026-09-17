@@ -586,7 +586,7 @@ subventions (*comptable*) ; le dérogatoire — **s'il n'est pas demandé, il n'
 
 ---
 
-## 9.8.0 — La clôture d'exercice
+## 9.8.0 — La clôture d'exercice — **LIVRÉE le 17/09/2026**
 
 > *L'inventaire, les états, l'à-nouveau — et le flux retour vers le client, sans lequel les deux
 > bilans divergent pour toujours.*
@@ -619,6 +619,16 @@ subventions (*comptable*) ; le dérogatoire — **s'il n'est pas demandé, il n'
 
 **Ce qui n'y est pas** : **la liasse**. Cette version produit des états **déduits de la balance**, et
 la page l'écrit. Confondre les deux ferait promettre ce que la 10.0.0 seule livre.
+
+**Ce qui a été tranché en livrant, sans le pilote** : le format `.skanclose` (SPEC-FMT-007) est un
+ZIP — `cloture.json`, `etats.html`, `etats.pdf`, `manifeste.json`, `signature.json` — scellé par mot
+de passe au choix du cabinet, et **signé** avec une clé Ed25519 propre au cabinet, symétrique de
+celle du client (9.2.0). Il n'est pas chiffré pour la clé du client de la 9.2.0 : celle-ci est une
+clé de **signature** (Ed25519), pas d'échange (X25519) — deux courbes pour deux métiers. La
+présentation NCT 01, les notes, les SIG et ratios retenus restent des questions au comptable ; les
+rubriques livrées sont celles de l'usage, et chaque solde porte sa formule à l'écran. Côté client,
+ses propres écritures d'un exercice que le cabinet vient de clore ne sont **pas** touchées : elles
+sont verrouillées, jamais effacées.
 
 **Ce qui la prouve** : actif = passif, résultat identique des deux côtés, à-nouveau égal aux soldes
 du 31/12 ; une clôture refusée puis acceptée ; la réouverture impossible sans motif. Et surtout

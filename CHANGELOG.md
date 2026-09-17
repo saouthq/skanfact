@@ -7,6 +7,54 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 9.8.0 — 17/09/2026
+
+**La clôture d'exercice, et le flux retour vers le client.**
+
+Sans ce flux, le bilan du cabinet et celui du client divergent pour toujours — et personne ne s'en
+aperçoit avant le contrôle. C'est le jumeau du test de parité, dans l'autre sens.
+
+Côté **Cabinet** :
+
+- **Six contrôles avant clôture**, qui **nomment sans jamais bloquer** : brouillard restant, compte
+  d'attente, déclarations de TVA manquantes, tiers au solde inversé, dotations non passées,
+  équilibre de la balance. Chacun dit un **geste**, pas un constat.
+- **La clôture est définitive et tracée** ; elle dit combien de pièces sont restées en brouillard
+  plutôt que de les avaler. **Une réouverture exige un motif** d'au moins cinq caractères — c'est la
+  seule trace qui expliquera, dans six mois, pourquoi un chiffre a changé après l'envoi.
+- **Les à-nouveaux**, calculés sur les écritures **réelles** de l'exercice et son ouverture — jamais
+  sur les à-nouveaux précédents, ce qui compterait le passé deux fois. Les comptes de bilan se
+  reportent, le net des comptes de gestion va au résultat : une perte au débit, un bénéfice au crédit.
+- **L'exercice suivant s'ouvre pendant que celui-ci se termine** : les à-nouveaux s'y posent en
+  brouillard et se **refont** tant qu'ils ne sont pas validés. Les refaire ne double rien, et les
+  extournes déjà validées ne repartent pas.
+- **Les extournes** : une écriture d'inventaire marquée « s'extourne » repart en miroir au 1er
+  janvier. L'originale, elle, **reste dans son exercice avec son numéro** — une extourne n'est pas
+  une contre-passation. Une provision, elle, ne s'extourne pas : elle se reprend.
+- **Les états financiers** déduits de la balance, les **soldes intermédiaires** (chacun avec **sa
+  formule** à côté de lui) et trois **ratios** — dont un dénominateur nul affiche « — », jamais 0 %.
+  L'écran écrit en toutes lettres que **ce n'est pas la liasse NCT 01**.
+- **Le fichier `.skanclose`** pour le client : à-nouveaux officiels, écritures d'inventaire, états en
+  **HTML et PDF** (lisibles par n'importe qui, même par un client qui ne met jamais son application
+  à jour), manifeste et **signature du cabinet**. Scellé par un mot de passe si on veut.
+
+Côté **entreprise** :
+
+- **Importer le dossier de clôture** : l'application montre ce qui va changer **avant** d'écrire,
+  vérifie la **signature** du cabinet et le **dit** quand elle manque, refuse un fichier
+  déséquilibré en nommant les deux totaux, refuse le matricule d'une autre entreprise, et dit
+  « mets l'application à jour » quand le format vient d'une version plus récente.
+- L'exercice est **verrouillé** — sauf s'il n'est pas encore terminé sur ce poste, auquel cas la
+  ligne le dit et explique pourquoi le verrou attend.
+
+**Ce que le parcours réel a trouvé, et qu'aucun test pur ne pouvait voir** : `zipRead` rend le
+contenu d'un fichier en **fonction paresseuse**, et mon handler d'import rangeait la fonction au
+lieu des octets. Et le verrou : le jeu d'exemple porte l'exercice **en cours**, donc sa fin est dans
+le futur — or on ne verrouille pas une période qui n'est pas terminée. Avaler ce refus en silence
+aurait laissé croire que l'exercice était verrouillé alors qu'il ne l'était pas.
+
+**Ce qui n'y est pas** : la liasse fiscale. Ces états sont déduits de la balance, et la page l'écrit.
+
 ## 9.7.0 — 17/09/2026
 
 **Les immobilisations et l'inventaire, côté cabinet.**

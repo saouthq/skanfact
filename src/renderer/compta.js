@@ -635,6 +635,13 @@
       valideeLe: null,
       contrepasseDe: (ecriture && ecriture.contrepasseDe) || null,
       extourneDe: (ecriture && ecriture.extourneDe) || null,
+      // 9.8.0 — « cette écriture d'inventaire se défait au 1er janvier ». Le drapeau doit vivre
+      // ICI : `ajouterEcriture` normalise et jette ce qu'elle ne connaît pas, exprès — la forme
+      // d'une écriture est fixée, sinon chaque appelant y glisserait ses champs à lui.
+      // `extourneeLe` retient que l'extourne a été posée : sans lui, elle repartirait chaque fois
+      // qu'on rouvre l'exercice suivant, et la charge serait annulée deux fois.
+      extourne: !!(ecriture && ecriture.extourne),
+      extourneeLe: (ecriture && ecriture.extourneeLe) || null,
       lignes: (Array.isArray(ecriture && ecriture.lignes) ? ecriture.lignes : []).map(l => ({
         compte: String((l && l.compte) || '').trim(),
         tiersId: (l && l.tiersId) || null,
@@ -2476,6 +2483,319 @@
     };
   }
 
+  // ---------- la clôture d'exercice (9.8.0) ----------
+  //
+  // Ce que cette section fait : les écritures d'inventaire guidées, les contrôles avant clôture,
+  // la clôture elle-même (définitive, tracée, réouvrable contre un motif), les à-nouveaux
+  // EXPLICITES de l'exercice suivant, et les états financiers.
+  //
+  // Ce qu'elle ne fait PAS, et l'écran le dit : la liasse fiscale. Les états sont DÉDUITS de la
+  // balance, rubrique par rubrique. Confondre les deux ferait promettre ce que la 10.0.0 seule
+  // livrera, et une liasse est le document où une erreur coûte le plus cher.
+
+  // Les guides d'inventaire LIVRÉS. Ils désignent des RÔLES quand le rôle existe, et laissent le
+  // compte à choisir quand il n'existe pas : la liste exacte et les comptes de provisions par
+  // nature sont une question au comptable (SPEC-UI-CAB-040). Chacun dit s'il s'EXTOURNE.
+  const GUIDES_INVENTAIRE = [
+    { id: 'cca', nom: 'Charge constatée d\'avance', extourne: true,
+      aide: 'La part de charge qui appartient à l\'exercice suivant. Elle s\'extourne au 1er janvier.',
+      debit: { compte: '', libelle: 'Charges constatées d\'avance (47…)' }, credit: { role: '', libelle: 'Le compte de charge d\'origine' } },
+    { id: 'pca', nom: 'Produit constaté d\'avance', extourne: true,
+      aide: 'La part de produit qui appartient à l\'exercice suivant.',
+      debit: { role: '', libelle: 'Le compte de produit d\'origine' }, credit: { compte: '', libelle: 'Produits constatés d\'avance (47…)' } },
+    { id: 'fnp', nom: 'Facture non parvenue', extourne: true,
+      aide: 'Une charge engagée dont la facture n\'est pas arrivée.',
+      debit: { role: '', libelle: 'Le compte de charge' }, credit: { compte: '', libelle: 'Fournisseurs — factures non parvenues (408)' } },
+    { id: 'fae', nom: 'Facture à établir', extourne: true,
+      aide: 'Un produit acquis dont la facture n\'est pas encore émise.',
+      debit: { compte: '', libelle: 'Clients — factures à établir (418)' }, credit: { role: '', libelle: 'Le compte de produit' } },
+    { id: 'provision', nom: 'Provision', extourne: false,
+      aide: 'Une charge probable. Elle ne s\'extourne pas : elle se reprend quand le risque disparaît. Les comptes par nature sont À VÉRIFIER.',
+      debit: { role: '', libelle: 'La dotation aux provisions (68…)' }, credit: { compte: '', libelle: 'La provision (15… ou 49…)' } }
+  ];
+
+  // Les contrôles AVANT clôture. Ils ne bloquent JAMAIS (règle 6.0.0) : un exercice clôturé avec
+  // trois manques signalés vaut mieux qu'un exercice jamais clôturé parce que l'application faisait
+  // la difficile. Chacun dit un GESTE, pas un constat.
+  function controlesCloture(livre, opts) {
+    const o = opts || {};
+    const du = livre.exercice.du, au = livre.exercice.au;
+    const out = [];
+    const dedans = e => e.date >= du && e.date <= au && e.statut !== 'contrepassee';
+
+    const brouillards = (livre.ecritures || []).filter(e => e.statut === 'brouillard' && dedans(e));
+    out.push({
+      id: 'brouillard', ok: !brouillards.length,
+      detail: brouillards.length
+        ? `${brouillards.length} pièce(s) encore en brouillard : elles n'entrent dans aucun état. Valide-les ou supprime-les avant de clôturer.`
+        : ''
+    });
+
+    const attente = mouvementCompte(livre, txt(o.compteAttente) || '471', du, au);
+    const solde471 = round3(attente.debit - attente.credit);
+    out.push({
+      id: 'attente', ok: solde471 === 0,
+      detail: solde471 ? `Le compte d'attente porte encore ${solde471.toFixed(3)} : une pièce est rangée nulle part. Ventile-la avant la clôture.` : ''
+    });
+
+    // La TVA de chaque mois de l'exercice a-t-elle sa déclaration préparée ? On ne réclame pas le
+    // mois en cours ni un mois sans la moindre écriture : on ne réclame pas le néant (6.8.0).
+    const moisAvecEcritures = [...new Set((livre.ecritures || []).filter(dedans).map(e => String(e.date).slice(0, 7)))].sort();
+    const declarees = new Set((livre.declarations || []).map(d => d.periode));
+    const sansDecl = moisAvecEcritures.filter(m => !declarees.has(m));
+    out.push({
+      id: 'tva', ok: !sansDecl.length,
+      detail: sansDecl.length
+        ? `${sansDecl.length} mois sans déclaration préparée (${sansDecl.slice(0, 4).join(', ')}${sansDecl.length > 4 ? '…' : ''}). Prépare-les dans l'onglet Déclaration.`
+        : ''
+    });
+
+    // La balance des tiers : un compte client CRÉDITEUR ou un fournisseur DÉBITEUR n'est pas une
+    // faute en soi (acompte, avoir), mais c'est ce qu'un réviseur regarde en premier.
+    const lignes = lignesDuLivre(livre, { du, au });
+    const bal = balanceDepuisLignes(lignes, soldesDepuisOuverture(livre));
+    const anormaux = bal.rows.filter(r =>
+      (String(r.account).startsWith(txt(o.compteClients) || '411') && r.solde < -0.001)
+      || (String(r.account).startsWith(txt(o.compteFournisseurs) || '401') && r.solde > 0.001));
+    out.push({
+      id: 'tiers', ok: !anormaux.length,
+      detail: anormaux.length
+        ? `${anormaux.length} compte(s) de tiers au solde inversé (${anormaux.slice(0, 3).map(r => r.account).join(', ')}). Un acompte l'explique ; une pièce oubliée aussi.`
+        : ''
+    });
+
+    // Les dotations de l'exercice sont-elles passées ? C'est le contrôle qui relie la 9.7.0 à la
+    // clôture : sans dotation, le résultat est faux de tout l'amortissement de l'année.
+    const etatImmo = etatImmobilisations(livre, Number(String(au).slice(0, 4)));
+    out.push({
+      id: 'dotations', ok: !etatImmo.aEcrire,
+      detail: etatImmo.aEcrire
+        ? `${etatImmo.aEcrire} bien(s) dont la dotation n'est pas passée : le résultat est faux de ce montant. Onglet Immobilisations.`
+        : ''
+    });
+
+    out.push({
+      id: 'equilibre', ok: bal.ok,
+      detail: bal.ok ? '' : 'La balance de l\'exercice ne tombe pas juste. Une pièce a été écrite hors de la porte d\'écriture : c\'est à regarder avant tout le reste.'
+    });
+    return out;
+  }
+
+  // Les soldes d'ouverture rangés sur le livre (pièce d'à-nouveau ou reprise de balance).
+  function soldesDepuisOuverture(livre) {
+    const o = {};
+    ((livre.ouverture && livre.ouverture.lignes) || []).forEach(l => {
+      o[txt(l.compte)] = round3((o[txt(l.compte)] || 0) + num(l.debit) - num(l.credit));
+    });
+    return o;
+  }
+
+  function cloturerExercice(livre, qui, quand) {
+    if (livre.exercice.clos) {
+      return { ok: false, motif: `L'exercice ${livre.exercice.annee} est déjà clos depuis le ${String(livre.exercice.closLe || '').slice(0, 10)}.` };
+    }
+    const brouillards = (livre.ecritures || []).filter(e => e.statut === 'brouillard');
+    livre.exercice.clos = true;
+    livre.exercice.closLe = Number(quand) || 0;
+    livre.exercice.closPar = txt(qui);
+    trace(livre, qui, 'exercice clos', String(livre.exercice.annee), quand);
+    // On DIT ce qui a été laissé de côté. Clôturer en avalant douze brouillards en silence, c'est
+    // exactement le genre de chiffre qu'on découvre six mois après.
+    return { ok: true, brouillards: brouillards.length };
+  }
+
+  // Une réouverture exige un MOTIF : c'est la seule trace qui explique pourquoi un chiffre a changé
+  // après que le client l'a reçu (règle 6.0.0).
+  function rouvrirExercice(livre, motif, qui, quand) {
+    if (!livre.exercice.clos) return { ok: false, motif: 'Cet exercice n\'est pas clos.' };
+    const m = txt(motif);
+    if (m.length < 5) return { ok: false, motif: 'Une réouverture demande un motif : c\'est la seule trace qui expliquera pourquoi un chiffre a changé après coup.' };
+    livre.exercice.clos = false;
+    livre.exercice.reouvertures = Array.isArray(livre.exercice.reouvertures) ? livre.exercice.reouvertures : [];
+    livre.exercice.reouvertures.push({ le: Number(quand) || 0, par: txt(qui), motif: m, closLe: livre.exercice.closLe });
+    livre.exercice.closLe = null; livre.exercice.closPar = null;
+    trace(livre, qui, 'exercice rouvert', m, quand);
+    return { ok: true };
+  }
+
+  // Les à-nouveaux de l'exercice SUIVANT, calculés sur les écritures RÉELLES de celui-ci plus son
+  // ouverture. Les classes 1 à 5 se reportent ; le net des classes 6 et 7 va au compte de résultat.
+  // C'est l'écriture qu'on posera dans le livre suivant — explicite, jamais déduite deux fois
+  // (règle 9.0.0 : l'implicite disparaît au profit de l'explicite, il ne s'y ajoute pas).
+  function anouveauxDe(livre, opts) {
+    const o = opts || {};
+    const compteResultat = txt(o.compteResultat) || '13';
+    const lignes = lignesDuLivre(livre, { du: livre.exercice.du, au: livre.exercice.au });
+    const bal = balanceDepuisLignes(lignes, soldesDepuisOuverture(livre));
+    const out = [];
+    let gestion = 0;
+    bal.rows.forEach(r => {
+      if (!r.solde) return;
+      const c = String(r.account).slice(0, 1);
+      if (c === '6' || c === '7') { gestion = round3(gestion + r.solde); return; }
+      out.push({ compte: r.account, libelle: r.label || '', debit: r.soldeD, credit: r.soldeC });
+    });
+    // `gestion` est le solde net des comptes de gestion, signe débiteur : positif = charges >
+    // produits = PERTE. Une perte est un débit au compte de résultat, un bénéfice un crédit.
+    if (gestion) out.push({ compte: compteResultat, libelle: 'Résultat de l\'exercice ' + livre.exercice.annee, debit: gestion > 0 ? gestion : 0, credit: gestion < 0 ? round3(-gestion) : 0 });
+    const d = round3(out.reduce((s, l) => s + l.debit, 0));
+    const c = round3(out.reduce((s, l) => s + l.credit, 0));
+    return { lignes: out, debit: d, credit: c, equilibre: round3(d - c) === 0, resultat: round3(-gestion) };
+  }
+
+  function ecritureAnouveaux(livre, anneeSuivante, opts) {
+    const an = anouveauxDe(livre, opts);
+    const y = Number(anneeSuivante) || (Number(livre.exercice.annee) + 1);
+    return {
+      journal: 'AN', date: `${y}-01-01`, piece: 'AN-' + y,
+      libelle: `À-nouveaux ${y} — repris de ${livre.exercice.annee}`, source: 'an',
+      lignes: an.lignes, an
+    };
+  }
+
+  // Les EXTOURNES : ce qui a été provisionné à la clôture et qui se défait au premier jour de
+  // l'exercice suivant. Une écriture d'inventaire porte `extourne: true` ; l'extourne est une
+  // écriture miroir, datée du 1er janvier — jamais une modification de l'originale, qui reste dans
+  // son exercice avec son numéro (règle 9.3.0 : une extourne n'est pas une contre-passation).
+  //
+  // `dejaFaites` est l'ensemble des écritures d'origine dont l'extourne est DÉJÀ validée dans le
+  // livre suivant. Sans lui, rouvrir l'exercice suivant une seconde fois reposerait les extournes,
+  // et la charge serait annulée deux fois — sans que rien ne le montre.
+  function extournesDe(livre, anneeSuivante, dejaFaites) {
+    const y = Number(anneeSuivante) || (Number(livre.exercice.annee) + 1);
+    const au = `${y}-01-01`;
+    const faites = dejaFaites instanceof Set ? dejaFaites : new Set(Array.isArray(dejaFaites) ? dejaFaites : []);
+    return (livre.ecritures || [])
+      .filter(e => e.extourne && e.statut === 'validee' && !e.extourneeLe && !faites.has(e.id))
+      .map(e => ({
+        origineId: e.id, extourneDe: e.id,
+        journal: 'OD', date: au, piece: 'EXT-' + (e.piece || e.numero || ''),
+        libelle: 'Extourne — ' + (e.libelle || ''), source: 'inventaire',
+        lignes: (e.lignes || []).map(l => ({ compte: l.compte, libelle: l.libelle, debit: round3(num(l.credit)), credit: round3(num(l.debit)) }))
+      }));
+  }
+
+  // ---------------------------------------------------------------- les états financiers
+
+  // Déduits de la BALANCE, rubrique par rubrique. Ce qui est garanti et testé : actif = passif, et
+  // le résultat du bilan égale celui de l'état de résultat. Ce qui n'est PAS garanti : la
+  // présentation exacte NCT 01, que personne n'a encore validée — et l'écran l'écrit.
+  function etatsDepuisLignes(lignes, ouverture, opts) {
+    const o = opts || {};
+    const libelle = o.libelle || (() => '');
+    const bal = balanceDepuisLignes(lignes, ouverture || {}, libelle);
+    const rows = bal.rows.filter(r => r.solde);
+    const amorti = r => /^(28|29|39|49|59)/.test(String(r.account));
+    const groupe = (titre, pred, signe) => {
+      const l = rows.filter(pred).map(r => ({ compte: r.account, libelle: r.label || '', montant: round3(signe * r.solde) }));
+      return { titre, lignes: l, total: round3(l.reduce((s, x) => s + x.montant, 0)) };
+    };
+    const actif = [
+      groupe('Actifs non courants (valeur brute)', r => r.classe === '2' && !amorti(r), 1),
+      groupe('Amortissements et provisions', r => r.classe === '2' && amorti(r), 1),
+      groupe('Stocks', r => r.classe === '3', 1),
+      groupe('Clients et autres créances', r => r.classe === '4' && r.solde > 0, 1),
+      groupe('Trésorerie', r => r.classe === '5' && r.solde > 0, 1)
+    ];
+    const passif = [
+      groupe('Capitaux propres et résultats reportés', r => r.classe === '1', -1),
+      groupe('Fournisseurs et autres dettes', r => r.classe === '4' && r.solde < 0, -1),
+      groupe('Concours bancaires', r => r.classe === '5' && r.solde < 0, -1)
+    ];
+    const produits = groupe('Produits', r => r.classe === '7', -1);
+    const charges = groupe('Charges', r => r.classe === '6', 1);
+    const resultat = round3(produits.total - charges.total);
+    const totalActif = round3(actif.reduce((s, g) => s + g.total, 0));
+    const totalPassif = round3(passif.reduce((s, g) => s + g.total, 0) + resultat);
+    return {
+      actif, passif, produits, charges, resultat, totalActif, totalPassif,
+      equilibre: round3(totalActif - totalPassif) === 0,
+      balance: bal
+    };
+  }
+
+  // Les soldes intermédiaires de gestion et quelques ratios. Les rubriques retenues sont celles de
+  // l'usage — À VÉRIFIER : la présentation SCE exacte n'est validée par personne, et un ratio
+  // affiché sans sa formule ne vaut rien. Chacun porte donc la sienne.
+  function sigDepuisLignes(lignes, ouverture, opts) {
+    const e = etatsDepuisLignes(lignes, ouverture, opts);
+    const somme = (g, pref) => round3(g.lignes.filter(l => String(l.compte).startsWith(pref)).reduce((s, l) => s + l.montant, 0));
+    const ventes = round3(somme(e.produits, '70') + somme(e.produits, '71'));
+    const achats = round3(somme(e.charges, '60') + somme(e.charges, '61') + somme(e.charges, '62'));
+    const valeurAjoutee = round3(ventes - achats);
+    const personnel = round3(somme(e.charges, '64') + somme(e.charges, '65'));
+    const impots = somme(e.charges, '66');
+    const ebe = round3(valeurAjoutee - personnel - impots);
+    const dotations = somme(e.charges, '68');
+    const resultatExploitation = round3(ebe - dotations);
+    const pct = (a, b) => (b ? round3(100 * a / b) : null);
+    return {
+      lignes: [
+        { id: 'ca', label: 'Chiffre d\'affaires', montant: ventes, formule: 'comptes 70 et 71' },
+        { id: 'achats', label: 'Achats et charges externes', montant: achats, formule: 'comptes 60, 61 et 62' },
+        { id: 'va', label: 'Valeur ajoutée', montant: valeurAjoutee, formule: 'chiffre d\'affaires − achats et charges externes' },
+        { id: 'personnel', label: 'Charges de personnel', montant: personnel, formule: 'comptes 64 et 65' },
+        { id: 'ebe', label: 'Excédent brut d\'exploitation', montant: ebe, formule: 'valeur ajoutée − personnel − impôts et taxes' },
+        { id: 'dotations', label: 'Dotations aux amortissements', montant: dotations, formule: 'compte 68' },
+        { id: 'rex', label: 'Résultat d\'exploitation', montant: resultatExploitation, formule: 'EBE − dotations' },
+        { id: 'net', label: 'Résultat de l\'exercice', montant: e.resultat, formule: 'produits − charges' }
+      ],
+      ratios: [
+        { id: 'marge', label: 'Taux de marge (VA / CA)', valeur: pct(valeurAjoutee, ventes), unite: '%' },
+        { id: 'personnel', label: 'Poids du personnel (charges de personnel / VA)', valeur: pct(personnel, valeurAjoutee), unite: '%' },
+        { id: 'rentabilite', label: 'Rentabilité nette (résultat / CA)', valeur: pct(e.resultat, ventes), unite: '%' }
+      ],
+      // Un ratio sans dénominateur ne vaut RIEN, et `null` le dit mieux que 0 % (règle 9.6.0).
+      etats: e
+    };
+  }
+
+  // Le contenu du fichier de clôture (`.skanclose`) : ce que le client doit recevoir pour que son
+  // bilan et celui du cabinet ne divergent jamais. Pur — le fichier lui-même est fabriqué par
+  // l'appelant, qui seul sait chiffrer et écrire sur le disque.
+  function dossierDeCloture(livre, opts) {
+    const o = opts || {};
+    const an = anouveauxDe(livre, o);
+    const inventaire = (livre.ecritures || [])
+      .filter(e => e.source === 'inventaire' && e.statut === 'validee' && e.date >= livre.exercice.du && e.date <= livre.exercice.au)
+      .map(e => ({ id: e.id, numero: e.numero, date: e.date, journal: e.journal, piece: e.piece, libelle: e.libelle, extourne: !!e.extourne, lignes: e.lignes }));
+    const lignes = lignesDuLivre(livre, { du: livre.exercice.du, au: livre.exercice.au });
+    const etats = etatsDepuisLignes(lignes, soldesDepuisOuverture(livre), o);
+    return {
+      format: 1,
+      dossier: livre.dossier,
+      exercice: { annee: livre.exercice.annee, du: livre.exercice.du, au: livre.exercice.au },
+      closLe: livre.exercice.closLe || null,
+      closPar: livre.exercice.closPar || null,
+      anouveaux: an.lignes,
+      resultat: an.resultat,
+      inventaire,
+      etats: { totalActif: etats.totalActif, totalPassif: etats.totalPassif, resultat: etats.resultat, equilibre: etats.equilibre }
+    };
+  }
+
+  // Ce que le CLIENT en fait. Pur, et il refuse plus qu'il n'accepte : un fichier de clôture pose
+  // les à-nouveaux officiels de son comptable, c'est-à-dire qu'il écrase ce que le client croyait.
+  function clotureValide(obj, attendu) {
+    const motifs = [];
+    if (!obj || typeof obj !== 'object') return { ok: false, motifs: ['Ce fichier n\'est pas un dossier de clôture.'] };
+    if (obj.format !== 1) {
+      return { ok: false, tropRecent: Number(obj.format) > 1, motifs: [Number(obj.format) > 1
+        ? 'Ce dossier de clôture vient d\'une version plus récente de SkanFact. Mets l\'application à jour : l\'ouvrir avec les règles d\'aujourd\'hui perdrait ce qu\'elle y a mis.'
+        : 'Ce dossier de clôture n\'est pas d\'un format connu.'] };
+    }
+    if (!obj.exercice || !obj.exercice.annee) motifs.push('Ce dossier de clôture ne dit pas sur quel exercice il porte.');
+    const an = Array.isArray(obj.anouveaux) ? obj.anouveaux : [];
+    if (!an.length) motifs.push('Ce dossier de clôture ne porte aucun à-nouveau : il n\'y aurait rien à reprendre.');
+    const d = round3(an.reduce((s, l) => s + num(l.debit), 0));
+    const c = round3(an.reduce((s, l) => s + num(l.credit), 0));
+    if (round3(d - c) !== 0) motifs.push(`Les à-nouveaux ne s'équilibrent pas : ${d.toFixed(3)} au débit contre ${c.toFixed(3)} au crédit.`);
+    if (attendu && txt(attendu.matricule) && txt(obj.matricule) && txt(attendu.matricule) !== txt(obj.matricule)) {
+      motifs.push('Ce dossier de clôture porte le matricule d\'une autre entreprise.');
+    }
+    return { ok: !motifs.length, motifs, debit: d, credit: c };
+  }
+
   // ---------- la pièce équilibrée et l'amortissement (9.6.1) ----------
   //
   // Ces deux moteurs vivaient dans core.js depuis la 3.5.0 et la 6.3.0. Ils n'y avaient plus leur
@@ -2661,6 +2981,10 @@
     ajouterImmobilisation, modifierImmobilisation, supprimerImmobilisation,
     etatImmobilisations, immobilisationsACreer, ecrituresImmobilisations, noterEcritureImmo,
     inventaireValide, totalInventaire, poserInventaire, variationDeStock,
+    // La clôture d'exercice (9.8.0)
+    GUIDES_INVENTAIRE, controlesCloture, soldesDepuisOuverture,
+    cloturerExercice, rouvrirExercice, anouveauxDe, ecritureAnouveaux, extournesDe,
+    etatsDepuisLignes, sigDepuisLignes, dossierDeCloture, clotureValide,
     // La pièce équilibrée et l'amortissement (9.6.1)
     ajouterJoursIso, entrySet,
     DEFAULT_ASSET_CLASSES, assetClassLabel, assetClassYears, days360,

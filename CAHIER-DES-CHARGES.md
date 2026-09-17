@@ -1882,6 +1882,13 @@ portent pas, et un test les nomme.
 | `ERR-CAB-045` | « Rien à passer : aucune dotation ni sortie en attente sur cet exercice. » | écritures d'inventaire des biens (9.7.0) | — | Livré |
 | `ERR-CAB-046` | (détail de `inventaireValide` : date, aucune ligne, quantité ou coût négatif) / « L'inventaire de <année> est déjà passé en écriture… » | inventaire de stock (9.7.0) | corriger les lignes, ou contre-passer | Livré |
 | `ERR-CAB-047` | « La variation de stock de cet exercice est déjà passée : la repasser compterait le stock deux fois. » / « Le stock compté est celui des comptes : aucune écriture à passer. » | variation de stock (9.7.0) | — | Livré |
+| `ERR-CAB-060` | « L'exercice <année> est déjà clos depuis le <date>. » | clôture (9.8.0) | rouvrir d'abord | Livré |
+| `ERR-CAB-061` | « Cet exercice n'est pas clos. » / « Une réouverture demande un motif : c'est la seule trace qui expliquera pourquoi un chiffre a changé après coup. » | réouverture (9.8.0) | écrire le motif | Livré |
+| `ERR-CAB-062` | « Cet exercice ne porte aucun solde à reporter. » / « Les à-nouveaux ne s'équilibrent pas… » / « Les à-nouveaux de <année> sont déjà validés. Contre-passe-les si le report a changé. » | ouverture de l'exercice suivant (9.8.0) | contre-passer, ou corriger la balance | Livré |
+| `ERR-CAB-063` | « Cet exercice ne porte aucun à-nouveau : il n'y aurait rien à envoyer au client. » | `.skanclose` (9.8.0) | — | Livré |
+| `ERR-ENT-080` | « Ce fichier n'a pas pu être lu. » / « Ce fichier n'est pas un dossier de clôture SkanFact. » / « Le dossier de clôture est abîmé. » | import d'un `.skanclose` (9.8.0) | redemander le fichier au cabinet | Livré |
+| `ERR-ENT-081` | « Ce dossier de clôture est protégé par un mot de passe… » (l'application le DEMANDE au lieu d'afficher du rouge) / « Mot de passe incorrect, ou paquet modifié depuis son envoi. » | import d'un `.skanclose` (9.8.0) | le mot de passe, dit au téléphone | Livré |
+| `ERR-ENT-082` | « Ce dossier de clôture ne porte aucun document à ouvrir. » | états d'une clôture reçue (9.8.0) | — | Livré |
 
 ---
 
