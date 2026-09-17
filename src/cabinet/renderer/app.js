@@ -1888,14 +1888,14 @@
 
     el.innerHTML = `${sansLivre}${bandeau}${avert.length ? `<div class="warn-box mb">${avert.map(a => `<div>${esc(a)}</div>`).join('')}</div>` : ''}
       <div class="tabs" id="c-tabs">
-        ${s.livre ? `<button data-tab="saisie" class="${s.onglet === 'saisie' ? 'on' : ''}">Saisie${
+        ${s.livre ? `<button data-tab="saisie" class="${s.onglet === 'saisie' ? 'active' : ''}">Saisie${
           (s.livre.ecritures || []).some(e => e.statut === 'brouillard')
             ? ` <span class="tab-n">${(s.livre.ecritures || []).filter(e => e.statut === 'brouillard').length}</span>` : ''}</button>` : ''}
-        <button data-tab="journal" class="${s.onglet === 'journal' ? 'on' : ''}">Livre-journal</button>
-        <button data-tab="grand-livre" class="${s.onglet === 'grand-livre' ? 'on' : ''}">Grand livre</button>
-        <button data-tab="balance" class="${s.onglet === 'balance' ? 'on' : ''}">Balance</button>
-        <button data-tab="lettrage" class="${s.onglet === 'lettrage' ? 'on' : ''}">Lettrage</button>
-        ${s.livre ? `<button data-tab="recherche" class="${s.onglet === 'recherche' ? 'on' : ''}">Recherche</button>` : ''}
+        <button data-tab="journal" class="${s.onglet === 'journal' ? 'active' : ''}">Livre-journal</button>
+        <button data-tab="grand-livre" class="${s.onglet === 'grand-livre' ? 'active' : ''}">Grand livre</button>
+        <button data-tab="balance" class="${s.onglet === 'balance' ? 'active' : ''}">Balance</button>
+        <button data-tab="lettrage" class="${s.onglet === 'lettrage' ? 'active' : ''}">Lettrage</button>
+        ${s.livre ? `<button data-tab="recherche" class="${s.onglet === 'recherche' ? 'active' : ''}">Recherche</button>` : ''}
       </div>${corps}`;
 
     $$('#c-tabs button', el).forEach(b => { b.onclick = () => { s.onglet = b.dataset.tab; drawLivres(root, dossier); }; });
@@ -1950,7 +1950,7 @@
     const s = livresState;
     const gl = KC.grandLivreDepuisLignes(lignes, s.compte, null, (c, t) => t || '');
     const comptes = [...new Set(lignes.map(l => l.account))].sort();
-    return `${barreLivres(`<select id="lv-compte"><option value="">Tous les comptes</option>${comptes.map(c => `<option value="${esc(c)}" ${s.compte === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>`, 'Exporter le grand livre')}
+    return `${barreLivres(`<select id="lv-compte" aria-label="Le compte à afficher"><option value="">Tous les comptes</option>${comptes.map(c => `<option value="${esc(c)}" ${s.compte === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>`, 'Exporter le grand livre')}
       <div class="muted small mb">Ouverture inconnue : ce livre est lu dans les paquets, sans à-nouveau ${info('lv.ouverture')}</div>
       ${gl.comptes.map(c => `<div class="panel mt"><h2>${esc(c.account)}${c.label ? ' — ' + esc(c.label) : ''}</h2>
         <div class="scroll-x"><table class="list compact"><thead><tr><th class="nw">Date</th><th class="nw">Pièce</th><th>Libellé</th>
@@ -2008,7 +2008,7 @@
       ? `<div class="ok-box mb" id="lv-verdict">Ce qui reste ouvert est bien le solde du compte : ${esc(money(l.resteOuvert))}.</div>`
       : `<div class="info-box mb" id="lv-verdict">Reste ouvert ${esc(money(l.resteOuvert))}, solde du compte ${esc(money(l.soldeCompte))} — écart de ${esc(money(Math.abs(l.ecart)))}.
          <div class="small">C'est <strong>attendu</strong> sur un livre lu mois par mois : un règlement reçu ce mois-ci pour une facture d'un mois précédent n'a pas sa facture en face. Le contrôle ne vaut que sur un livre complet, avec ses à-nouveaux.</div></div>`;
-    return `${barreLivres(`<select id="lv-compte"><option value="">Clients (411)</option>${comptes.map(c => `<option value="${esc(c)}" ${s.compte === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>`, 'Exporter le lettrage')}
+    return `${barreLivres(`<select id="lv-compte" aria-label="Le compte à lettrer"><option value="">Clients (411)</option>${comptes.map(c => `<option value="${esc(c)}" ${s.compte === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>`, 'Exporter le lettrage')}
       ${verdict}
       ${l.lettragesFaux.length ? `<div class="warn-box mb">${l.lettragesFaux.map(f =>
         `<div>Lettrage « ${esc(f.lettre) }» de ${esc(f.tiers)} : les pièces ne se soldent pas entre elles (écart ${esc(money(Math.abs(f.ecart)))}).</div>`).join('')}</div>` : ''}
@@ -2150,7 +2150,7 @@
           <input id="sa-libelle" autocomplete="off" value="${esc(p.libelle)}"></label>
       </div>
       <div class="sa-outils">
-        ${guides.length ? `<select id="sa-guide"><option value="">Partir d'un guide…</option>${guides.map(g => `<option value="${esc(g.id)}">${esc(g.nom)}</option>`).join('')}</select>
+        ${guides.length ? `<select id="sa-guide" aria-label="Partir d'un guide d'écritures"><option value="">Partir d'un guide…</option>${guides.map(g => `<option value="${esc(g.id)}">${esc(g.nom)}</option>`).join('')}</select>
           <input id="sa-guide-montant" class="sa-montant" inputmode="decimal" placeholder="Montant" autocomplete="off">` : ''}
         <button type="button" class="btn btn-sm" id="sa-joindre">${p.pieceJointe ? 'Justificatif joint ✓' : 'Joindre un justificatif…'}</button>
         <span class="muted small sa-aide">Entrée : ligne suivante · Tab sur la dernière ligne : solder · ${esc(touchesSaisie().recopier)} : recopier la ligne du dessus · ${esc(touchesSaisie().dupliquer)} : dupliquer la pièce</span>
@@ -2193,12 +2193,16 @@
     const p = saisieState.piece || pieceVide();
     const plan = ((livresState.livre || {}).plan) || [];
     const nom = c => (plan.find(x => x.compte === String(c || '').trim()) || {}).libelle || '';
+    // Chaque case porte son `aria-label` : le rapport entre une case et son en-tête de colonne est
+    // évident à l'œil et invisible au clavier comme à la voix. Le numéro de ligne y est, sinon cinq
+    // cases annoncent toutes « Compte » et on ne sait plus laquelle on remplit.
+    const lab = (quoi, i) => `aria-label="${quoi} — ligne ${i + 1}"`;
     return (p.lignes || []).map((l, i) => `<tr data-i="${i}">
-      <td><input data-k="compte" class="sa-compte" autocomplete="off" value="${esc(l.compte)}"></td>
+      <td><input data-k="compte" class="sa-compte" ${lab('Compte', i)} autocomplete="off" value="${esc(l.compte)}"></td>
       <td class="sa-nom muted small" data-nom="${i}">${esc(nom(l.compte))}</td>
-      <td><input data-k="libelle" autocomplete="off" value="${esc(l.libelle)}"></td>
-      <td><input data-k="debit" class="r sa-montant" inputmode="decimal" autocomplete="off" value="${esc(l.debit)}"></td>
-      <td><input data-k="credit" class="r sa-montant" inputmode="decimal" autocomplete="off" value="${esc(l.credit)}"></td>
+      <td><input data-k="libelle" ${lab('Libellé', i)} autocomplete="off" value="${esc(l.libelle)}"></td>
+      <td><input data-k="debit" class="r sa-montant" ${lab('Débit', i)} inputmode="decimal" autocomplete="off" value="${esc(l.debit)}"></td>
+      <td><input data-k="credit" class="r sa-montant" ${lab('Crédit', i)} inputmode="decimal" autocomplete="off" value="${esc(l.credit)}"></td>
       <td class="sa-sup"><button type="button" class="btn btn-sm" data-sup="${i}" title="Retirer cette ligne" aria-label="Retirer cette ligne">✕</button></td>
     </tr>`).join('');
   }
@@ -2671,8 +2675,8 @@
     const total = (s.livre.ecritures || []).length;
     return `<div class="filters mb">
         <input type="search" id="re-q" placeholder="Pièce, tiers, libellé, compte, numéro, montant…" value="${esc(rechState.q)}" style="min-width:280px">
-        <select id="re-journal"><option value="">Tous les journaux</option>${(s.livre.journaux || []).map(j => `<option value="${esc(j.code)}" ${rechState.journal === j.code ? 'selected' : ''}>${esc(j.code)}</option>`).join('')}</select>
-        <select id="re-statut"><option value="">Brouillard et validées</option>
+        <select id="re-journal" aria-label="Le journal"><option value="">Tous les journaux</option>${(s.livre.journaux || []).map(j => `<option value="${esc(j.code)}" ${rechState.journal === j.code ? 'selected' : ''}>${esc(j.code)}</option>`).join('')}</select>
+        <select id="re-statut" aria-label="L'état des écritures"><option value="">Brouillard et validées</option>
           <option value="brouillard" ${rechState.statut === 'brouillard' ? 'selected' : ''}>Brouillard seulement</option>
           <option value="validee" ${rechState.statut === 'validee' ? 'selected' : ''}>Validées seulement</option>
           <option value="contrepassee" ${rechState.statut === 'contrepassee' ? 'selected' : ''}>Contre-passées</option></select>

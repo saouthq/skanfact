@@ -287,9 +287,47 @@ const LARGE = 1440, HAUT = 900;
   const base = await win.evaluate(() => location.hash.replace(/\/(suivi|comptabilite|paquets)$/, ''));
   if (!/^#\/dossier\//.test(base)) throw new Error('cliquer une ligne n\'ouvre pas la fiche : ' + base);
   ok('la ligne ouvre ' + base);
+  // Un onglet peut en cacher d'autres. La Comptabilité porte SA propre barre — livre-journal,
+  // grand livre, balance, lettrage, et, dès qu'un livre existe, saisie et recherche — et jusqu'ici
+  // seul son onglet d'ouverture était photographié : on jugeait la page sur un sixième d'elle-même.
+  // On les parcourt tous, en cliquant comme un comptable.
+  const sousOnglets = async prefixe => {
+    const liste = await win.evaluate(() => [...document.querySelectorAll('#c-tabs button')]
+      .map(b => ({ tab: b.dataset.tab, t: (b.textContent || '').trim().replace(/\s+/g, ' ') })));
+    if (!liste.length) { dit('aucun sous-onglet de Comptabilité'); return []; }
+    dit('sous-onglets : ' + liste.map(o => o.t).join(' · '));
+    for (const o of liste) {
+      await win.click(`#c-tabs button[data-tab="${o.tab}"]`);
+      await attendre(650);
+      await mesurer(prefixe + o.tab, 'fiche client, Comptabilité → ' + o.t);
+    }
+    return liste;
+  };
+
   for (const onglet of ['suivi', 'comptabilite', 'paquets']) {
     await aller(base + '/' + onglet, '#view');
     await mesurer('07-fiche-' + onglet, 'fiche client, onglet ' + onglet);
+    if (onglet === 'comptabilite') mesures.sousOngletsSansLivre = await sousOnglets('07-compta-');
+  }
+
+  // ------------------------------------------------------------------ et le dossier une fois TENU
+  //
+  // Sans livre, deux onglets n'existent pas — dont la Saisie, l'écran où un comptable passe ses
+  // journées. Un audit qui ne les ouvre jamais ne les corrige jamais. On crée donc le livre depuis
+  // les paquets reçus, exactement comme le ferait le comptable, et on refait le tour.
+  étape('Le même dossier, une fois le livre créé : la Saisie et la Recherche apparaissent');
+  await aller(base + '/comptabilite', '#view');
+  const creer = await win.$('#lv-relire');
+  if (creer) {
+    await creer.click();
+    await win.waitForSelector('.modal-bg', { timeout: 15000 });
+    await attendre(500);
+    await mesurer('07b-livre-cree', 'le compte rendu de la création du livre');
+    await win.keyboard.press('Escape');
+    await attendre(700);
+    mesures.sousOngletsAvecLivre = await sousOnglets('07b-compta-');
+  } else {
+    dit('ce dossier a déjà un livre — les six onglets sont déjà passés');
   }
 
   // ================================================================ 8 — les Réglages, onglet par onglet
