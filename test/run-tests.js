@@ -5447,20 +5447,28 @@ t('cabinet : le plan d\'export dit ce qui sera lu et ce qui manque', () => {
     { id: 'b', name: 'Beta', matricule: '2222222B', packs: [{ month: '2026-08', definitive: true, path: '/p/b-08', missing: [] }] },
     { id: 'c', name: 'Gamma', packs: [] },                                   // n'a rien envoyé
     { id: 'd', name: 'Delta', manual: true, packs: [] },                     // pas encore sur SkanFact
-    { id: 'e', name: 'Exemple', demo: true, packs: [{ month: '2026-08', path: '' }] }
+    { id: 'e', name: 'Exemple', demo: true, packs: [{ month: '2026-08', path: '' }] },
+    { id: 'f', name: 'Exemple posé', demo: true, packs: [{ month: '2026-08', definitive: true, path: '/p/f-08', missing: [] }] }
   ] });
   const plan = cab.ecrituresPlan(S, { month: '2026-08' });
-  assert.deepStrictEqual(plan.packs.map(p => p.name), ['Alpha', 'Beta']);
+  assert.deepStrictEqual(plan.packs.map(p => p.name), ['Alpha', 'Beta', 'Exemple posé']);
   assert.deepStrictEqual(plan.mois, ['2026-08']);
   assert.deepStrictEqual(plan.provisoires, ['Alpha (août 2026)']);
   assert.deepStrictEqual(plan.sansPaquet, ['Gamma'], 'un client hors SkanFact n\'est pas « en manque »');
   // Un intervalle prend les deux mois, dans l'ordre.
   const large = cab.ecrituresPlan(S, { from: '2026-07', to: '2026-08' });
-  assert.deepStrictEqual(large.packs.map(p => p.month + ' ' + p.name), ['2026-07 Alpha', '2026-08 Alpha', '2026-08 Beta']);
+  assert.deepStrictEqual(large.packs.map(p => p.month + ' ' + p.name),
+    ['2026-07 Alpha', '2026-08 Alpha', '2026-08 Beta', '2026-08 Exemple posé']);
   // On peut se limiter à un client.
   assert.deepStrictEqual(cab.ecrituresPlan(S, { month: '2026-08', ids: ['b'] }).packs.map(p => p.name), ['Beta']);
-  // Un paquet d'exemple n'a pas de fichier : il ne doit jamais entrer dans un export réel.
-  assert.ok(!plan.packs.some(p => p.id === 'e'));
+  // 9.4.3 — assertion RETOURNÉE. Elle disait « un dossier d'exemple n'entre jamais dans un export »,
+  // ce qui décrivait l'état de la 6.8.0 (l'exemple n'avait alors aucun fichier) et non la règle.
+  // Depuis la 9.2.2 l'exemple livre de vrais `.skanpack` : ce qui décide est le FICHIER, pas
+  // l'étiquette. Un paquet sans chemin est hors de l'export même s'il est d'exemple (« e ») ; un
+  // paquet posé sur le disque y entre même s'il est d'exemple (« f »). Sans ce retournement, la
+  // page Écritures proposait une période puis se déclarait vide dessus.
+  assert.ok(!plan.packs.some(p => p.id === 'e'), 'un paquet sans fichier ne s\'exporte pas');
+  assert.ok(plan.packs.some(p => p.id === 'f'), 'un paquet posé sur le disque s\'exporte, exemple ou non');
 });
 
 // ---------- cabinet : le magasin et ses filets (src/cabinet/cabstore.js) ----------
@@ -13266,6 +13274,75 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     const src = lireSource('src', 'cabinet', 'renderer', 'app.js');
     assert.ok(/note\.className = 'lock-note warn-box grave'/.test(src),
       'et il se lit comme un avertissement, pas comme une ligne de plus');
+  });
+
+  t('9.4.3 : un titre de section est un titre, et la sur-étiquette n\'est déclarée qu\'une fois', () => {
+    // Un test qui lit du code doit lire du CODE (6.8.0) : les commentaires de cette feuille citent
+    // les sélecteurs qu'ils expliquent, et ma première version de ce test tombait sur son propre
+    // commentaire. On les retire — puis on vérifie que le nettoyage n'a pas mangé le code.
+    const sansCommentaires = s => s.replace(/\/\*[\s\S]*?\*\//g, '');
+    const css = sansCommentaires(lireSource('src', 'renderer', 'style.css'));
+    const cab = sansCommentaires(lireSource('src', 'cabinet', 'renderer', 'cabinet.css'));
+    assert.ok(css.length > 20000 && cab.length > 3000, 'le retrait des commentaires a mangé le code');
+
+    // 1. `.panel h2` est le SEUL titre de section des deux applications. Il valait 11 px, gris, en
+    //    capitales : il donnait le même poids à « Comptabilité » qu'à « Abonnements », et un titre
+    //    gris de 11 px ne hiérarchise rien — il décore. On teste la RÈGLE (c'est un titre, il porte
+    //    la couleur du texte et une taille de titre), pas une valeur au pixel près.
+    const bloc = css.match(/^\.panel h2 \{[^}]*\}/m);
+    assert.ok(bloc, 'la règle `.panel h2` a disparu de la feuille partagée');
+    const regle = bloc[0];
+    assert.ok(/text-transform:\s*none/.test(regle), 'un titre de section ne se lit pas en capitales');
+    assert.ok(/color:\s*var\(--text\)/.test(regle), 'un titre de section porte la couleur du texte, pas celle du gris secondaire');
+    const taille = Number((regle.match(/font-size:\s*([\d.]+)px/) || [])[1]);
+    assert.ok(taille >= 14, `un titre de section fait au moins 14 px (il en fait ${taille})`);
+
+    // 2. La sur-étiquette en capitales garde son rôle — au-dessus d'un CHIFFRE — mais elle n'est
+    //    plus recopiée. Elle l'était sept fois, six dans la feuille partagée et une dans celle du
+    //    Cabinet : un mécanisme recopié diverge toujours (7.29.0), et celui-là avait déjà commencé
+    //    (l'un des sept portait un `margin-bottom` que les autres n'avaient pas).
+    // On compte les RÈGLES qui habillent ce rôle — la catégorie posée au-dessus d'un chiffre. Le
+    // motif compté n'est pas une chaîne au hasard : c'est la déclaration qui était recopiée mot
+    // pour mot. Elle ne doit plus exister qu'à un seul endroit, et porter les trois sélecteurs qui
+    // partagent ce rôle. Un en-tête de tableau en capitales n'en fait pas partie : ce n'est pas le
+    // même rôle, et le lui donner ferait bouger toutes les colonnes de l'application.
+    const roles = (s) => (s.match(/[^{}]*\.(k-label|stat \.lbl)[^{}]*\{[^}]*font-size[^}]*\}/g) || []);
+    const n = roles(css).length + roles(cab).length;
+    assert.strictEqual(n, 1, `la sur-étiquette doit être déclarée une seule fois, elle l'est ${n} fois`);
+    assert.ok(/^\.eyebrow, \.k-label, \.stat \.lbl \{/m.test(css),
+      'et elle porte un nom qui dit son rôle (`.eyebrow`), partagé par les trois sélecteurs qui l\'ont');
+
+    // 3. Le garde-fou de la 6.8.0 dans l'autre sens : la feuille du Cabinet ne redéclare pas un
+    //    titre de section pour son compte, sinon les deux applications divergeraient à la première
+    //    retouche.
+    assert.ok(!/\.panel h2 \{/.test(cab), 'le Cabinet ne redéclare pas le titre de section');
+  });
+
+  t('9.4.3 : le Cabinet a un thème, et il le RETIENT', () => {
+    const core = lireSource('src', 'cabinet', 'cabcore.js');
+    const app = lireSource('src', 'cabinet', 'renderer', 'app.js');
+    const main = lireSource('src', 'cabinet', 'main.js');
+
+    // Le réglage existe, il a une valeur par défaut, et une valeur inventée retombe dessus.
+    assert.ok(/theme:\s*'auto'/.test(core), '`theme` manque aux réglages par défaut du Cabinet');
+    assert.ok(/\['light', 'dark', 'auto'\]\.includes\(s\.settings\.theme\)/.test(core),
+      'un thème inconnu doit retomber sur « auto » : une valeur inventée ne doit pas laisser l\'application dans un état qu\'aucun écran ne propose');
+
+    // Il SURVIT à l'enregistrement d'un autre panneau. `cab:saveCabinet` remplaçait autrefois des
+    // réglages en bloc : un écran qui n'envoie que le jour de relance ne doit pas effacer le thème.
+    const h = main.slice(main.indexOf("ipcMain.handle('cab:saveCabinet'"));
+    const fin = h.indexOf('ipcMain.handle(', 10);
+    const zone = h.slice(0, fin > 0 ? fin : 2000);
+    assert.ok(zone.length < 2500, 'la tranche du handler est trop large pour prouver quoi que ce soit');
+    assert.ok(/state\.settings = \{ \.\.\.state\.settings, theme:/.test(zone),
+      'le thème doit être FUSIONNÉ dans les réglages, pas les remplacer');
+
+    // Et il est posé par le renderer à chaque dessin — un état lu une fois au démarrage se périme
+    // (7.1.x), et « auto » doit suivre le système quand il bascule à la tombée de la nuit.
+    assert.ok(/mqSombre\.addEventListener\('change'/.test(app),
+      '« auto » doit réagir au changement de thème du système');
+    const r = app.slice(app.indexOf('function render() {'));
+    assert.ok(r.slice(0, 400).includes('appliquerTheme();'), 'le thème se pose à chaque dessin');
   });
 
   t('9.4.2 : la ponctuation double porte une espace insécable', () => {

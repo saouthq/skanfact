@@ -396,6 +396,9 @@ ipcMain.handle('cab:saveCabinet', (_e, patch) => {
         touches: { ...(avant.touches || {}), ...(p.settings.saisie.touches || {}) }
       };
     }
+    // Le thème (9.4.3). Fusionné comme le reste : un écran qui n'envoie que le thème ne doit pas
+    // effacer le jour de relance, et réciproquement.
+    if (p.settings.theme) state.settings = { ...state.settings, theme: String(p.settings.theme) };
     // migrate() rejette les valeurs aberrantes et remet l'usage : un réglage à zéro ferait
     // disparaître l'échéance du calendrier au lieu de la décaler.
     state.settings = K.migrate(state).settings;

@@ -11,7 +11,7 @@
 // Comme pour les colonnes, ça ne se voit pas en relisant le code : **on mesure**.
 //
 //   xvfb-run -a node test/e2e/entetes.js
-const { playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
+const { playwright, RACINE, ELECTRON, journal, surveiller, SONDE_ENTETES } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 
@@ -64,20 +64,8 @@ const HAUTEUR_MAX = 100;
   let controles = 0; const fautes = [];
   for (const hash of PAGES) {
     await aller(hash);
-    const r = await win.evaluate(({ maxL, maxR, maxH }) => {
-      const head = document.querySelector('#view .page-head');
-      if (!head) return { n: 0, larges: [], hauteur: 0 };
-      const actions = head.querySelector('.actions');
-      if (!actions) return { n: 0, larges: [], hauteur: 0 };
-      const ctrls = [...actions.querySelectorAll('select, input:not([type=checkbox]):not([type=radio])')];
-      const larges = ctrls.map(c => ({
-        tag: c.tagName.toLowerCase(),
-        id: c.id || c.name || '(sans nom)',
-        w: Math.round(c.getBoundingClientRect().width),
-        borne: c.type === 'search' ? maxR : maxL
-      })).filter(x => x.w > x.borne);
-      return { n: ctrls.length, larges, hauteur: Math.round(actions.getBoundingClientRect().height) };
-    }, { maxL: LARGEUR_MAX, maxR: LARGEUR_MAX_RECHERCHE, maxH: HAUTEUR_MAX });
+    // La sonde vit dans `harnais.js` depuis la 9.4.3, partagée avec le Cabinet.
+    const r = await win.evaluate(SONDE_ENTETES, { maxL: LARGEUR_MAX, maxR: LARGEUR_MAX_RECHERCHE, maxH: HAUTEUR_MAX });
     controles += r.n;
     r.larges.forEach(x => fautes.push(`${hash} — ${x.tag} « ${x.id} » fait ${x.w} px (borne ${x.borne}) : il est étiré, pas large`));
     if (r.n && r.hauteur > HAUTEUR_MAX) {

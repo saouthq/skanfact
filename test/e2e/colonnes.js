@@ -14,7 +14,7 @@
 // l'alignement calculé de l'en-tête à celui de ses cellules.
 //
 //   xvfb-run -a node test/e2e/colonnes.js
-const { playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
+const { playwright, RACINE, ELECTRON, journal, surveiller, SONDE_COLONNES } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 
@@ -60,42 +60,11 @@ const PAGES = [
   await win.waitForSelector('.demo-banner');
   j.ok('prêt — le jeu d\'exemple remplit tous les tableaux');
 
-  // La mesure : pour chaque tableau visible, chaque colonne, on compare l'alignement CALCULÉ de
-  // l'en-tête à celui de ses cellules. On ne juge que les colonnes qui portent du texte des deux
-  // côtés : un en-tête vide (colonne d'actions) n'a rien à aligner.
-  const mesurer = () => win.evaluate(() => {
-    const ecarts = [];
-    const visible = el => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
-    document.querySelectorAll('table').forEach((table, ti) => {
-      if (!visible(table)) return;
-      const ths = [...table.querySelectorAll('thead th')];
-      const corps = [...table.querySelectorAll('tbody tr')].filter(visible);
-      if (!ths.length || !corps.length) return;
-      ths.forEach((th, i) => {
-        const titre = (th.textContent || '').replace(/\s+/g, ' ').trim();
-        if (!titre) return;                                   // colonne d'actions : rien à aligner
-        // L'alignement réel des cellules de CETTE colonne, celui qui revient le plus souvent.
-        const comptes = {};
-        corps.forEach(tr => {
-          const td = tr.children[i];
-          if (!td || td.colSpan > 1) return;
-          const txt = (td.textContent || '').trim();
-          if (!txt) return;
-          const a = getComputedStyle(td).textAlign;
-          comptes[a] = (comptes[a] || 0) + 1;
-        });
-        const paires = Object.entries(comptes).sort((x, y) => y[1] - x[1]);
-        if (!paires.length) return;
-        const aCellules = paires[0][0];
-        const aEntete = getComputedStyle(th).textAlign;
-        const norme = a => (a === 'start' ? 'left' : a === 'end' ? 'right' : a);
-        if (norme(aEntete) !== norme(aCellules)) {
-          ecarts.push({ table: ti, colonne: titre, entete: norme(aEntete), cellules: norme(aCellules) });
-        }
-      });
-    });
-    return ecarts;
-  });
+  // La mesure vit dans `harnais.js` depuis la 9.4.3, partagée avec le parcours de rendu du
+  // Cabinet : pour chaque tableau visible, chaque colonne, elle compare l'alignement CALCULÉ
+  // de l'en-tête à celui de ses cellules, et ne juge que les colonnes qui portent du texte
+  // des deux côtés — un en-tête vide (colonne d'actions) n'a rien à aligner.
+  const mesurer = () => win.evaluate(SONDE_COLONNES);
 
   const onglets = async (sel, hash) => {
     if (!sel) return [null];
@@ -116,12 +85,9 @@ const PAGES = [
         await win.click(`${tabsSel} button[data-tab="${tab}"]`);
         await win.waitForTimeout(260);
       }
-      const ecarts = await mesurer();
-      const n = await win.evaluate(() => [...document.querySelectorAll('table')]
-        .filter(t => t.getBoundingClientRect().width > 0)
-        .reduce((s, t) => s + t.querySelectorAll('thead th').length, 0));
-      colonnes += n;
-      ecarts.forEach(e => fautes.push(`${hash}${tab ? ' · ' + tab : ''} — « ${e.colonne} » : en-tête ${e.entete}, valeurs ${e.cellules}`));
+      const m = await mesurer();
+      colonnes += m.colonnes;
+      m.ecarts.forEach(e => fautes.push(`${hash}${tab ? ' · ' + tab : ''} — « ${e.colonne} » : en-tête ${e.entete}, valeurs ${e.cellules}`));
     }
     j.ok(`${hash} parcourue`);
   }

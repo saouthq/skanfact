@@ -375,11 +375,16 @@
   // ---------- listes : tri et pagination ----------
   // À soixante dossiers, une liste sans tri ni pages devient un mur. Les totaux et les exports
   // portent toujours sur la SÉLECTION ENTIÈRE, jamais sur la page affichée (règle de la 2.2.0).
-  function sortHead(label, key, help) {
+  // `droite` (9.4.3) : une colonne de CHIFFRES s'aligne à droite, et son en-tête avec elle. Sans ce
+  // paramètre, `sortHead` posait toujours un en-tête à gauche : « Mois manquants » se lisait donc
+  // à gauche au-dessus de valeurs alignées à droite, et on lisait la ligne de travers. C'est la
+  // famille du `th.r` de la 7.23.0, et elle est revenue ici parce qu'aucun instrument ne mesurait
+  // les colonnes du Cabinet — `e2e:cabinet-rendu` le fait depuis cette version.
+  function sortHead(label, key, help, droite) {
     const on = listState.sort === key;
     // `sortable-h` : c'est le nom que connaît la feuille partagée. Avec `sortable`, l'en-tête n'avait
     // ni curseur, ni survol, ni flèche lisible — rien ne disait qu'on pouvait cliquer.
-    return `<th class="nw sortable-h${on ? ' sorted' : ''}" data-sort="${esc(key)}" title="Trier">${esc(label)}${help ? ' ' + info(help) : ''}<span class="sort-ar">${on ? (listState.desc ? '↓' : '↑') : '⇅'}</span></th>`;
+    return `<th class="nw sortable-h${droite ? ' r' : ''}${on ? ' sorted' : ''}" data-sort="${esc(key)}" title="Trier">${esc(label)}${help ? ' ' + info(help) : ''}<span class="sort-ar">${on ? (listState.desc ? '↓' : '↑') : '⇅'}</span></th>`;
   }
   function bindSort(root, redraw) {
     $$('th.sortable-h', root).forEach(th => {
@@ -487,6 +492,9 @@
       try {
         const r = await api.unlock(v);
         S = r.state;
+        // Avant de montrer l'application, pas après : le thème n'est lisible qu'une fois l'état
+        // déchiffré, et une image blanche d'une frame sur un poste en sombre se voit.
+        appliquerTheme();
         $('#lock-screen').remove();
         $('#app').hidden = false;
         start(r.created, r.reorganized, aRecuperer, r.exemple);
@@ -979,9 +987,22 @@
       : `Version ${upd.version} disponible`;
   }
 
+  // Le thème (9.4.3). L'app entreprise en a un depuis la 1.6.0 ; le Cabinet n'en avait aucun, donc
+  // une fenêtre blanche à côté de tout le reste sur un poste réglé en sombre. « auto » suit le
+  // système et RÉAGIT quand il change : un réglage lu une fois au démarrage se périme (7.1.x), et
+  // celui-là bascule à la tombée de la nuit sur un Mac réglé ainsi.
+  const mqSombre = window.matchMedia('(prefers-color-scheme: dark)');
+  const themeCourant = () => ((S || {}).settings || {}).theme || 'auto';
+  function appliquerTheme() {
+    const t = ((S || {}).settings || {}).theme || 'auto';
+    document.body.classList.toggle('dark', t === 'dark' || (t === 'auto' && mqSombre.matches));
+  }
+  mqSombre.addEventListener('change', () => { if (S) appliquerTheme(); });
+
   function render() {
     const hash = location.hash.replace(/^#\//, '') || 'dossiers';
     const [route, arg] = hash.split('/');
+    appliquerTheme();
     $$('.sidebar nav a').forEach(a => a.classList.toggle('active', a.dataset.route === route));
     $('#brand-cab').textContent = S.cabinet.name || 'Cabinet';
     updateBanner();
@@ -1196,7 +1217,7 @@
       </div>
       ${rows.length ? `<div class="scroll-x"><table class="list sortable">
         <thead><tr>${sortHead('Client', 'nom')}${sortHead('Dernier mois reçu', 'dernier')}
-        <th class="r nw">Chiffre d'affaires</th>${sortHead('Mois manquants', 'manquants')}
+        <th class="r nw">Chiffre d'affaires</th>${sortHead('Mois manquants', 'manquants', null, true)}
         <th class="r nw">Provisoires</th><th class="r nw">Signalé</th>${sortHead('Relancé le', 'relance', 'r.history')}${sortHead('Reçu le', 'recu')}</tr></thead>
         <tbody>${shown.map(r => `<tr class="clickable" data-id="${esc(r.id)}">
           <td class="nw"><span class="dot-lvl ${r.level === 'ok' ? '' : esc(r.level)}"></span>${esc(r.name)}${r.archived ? ' <span class="badge">archivé</span>' : ''}${r.manual ? ' <span class="badge b-hors">pas encore sur SkanFact</span>' : ''}</td>
@@ -3707,6 +3728,7 @@
     'pan-inbox': { onglet: 'donnees', titre: 'Boîte de réception', mots: 'boite reception dossier surveille paquets arrives import mail' },
     'pan-backup': { onglet: 'donnees', titre: 'Sauvegardes', mots: 'sauvegarde restaurer copie externe usb icloud filet perdu' },
     'pan-secu': { onglet: 'donnees', titre: 'Sécurité', mots: 'securite mot de passe cle de secours verrouiller chiffrement empreinte' },
+    'pan-theme': { onglet: 'app', titre: 'Apparence', mots: 'theme apparence sombre clair nuit dark mode couleur fond ecran yeux' },
     'pan-maj': { onglet: 'app', titre: 'Mises à jour', mots: 'mise a jour version telecharger installer jeton token maj' },
     'pan-support': { onglet: 'app', titre: 'Aide et dépannage', mots: 'probleme bug journal log support signaler panne aide idee suggestion amelioration proposer fonctionnalite demande manque' },
     'pan-exemple': { onglet: 'app', titre: 'Exemple', mots: 'exemple demo dossiers fictifs essayer decouvrir' }
@@ -3827,6 +3849,22 @@
       </section>
 
       <section data-pane="app"${reglagesTab === 'app' ? '' : ' hidden'}>
+      ${panneauReg('pan-theme')}
+        <p class="small">Un logiciel de comptabilité s'ouvre le matin et se referme le soir : sur un écran
+        réglé en sombre, une fenêtre blanche fatigue au bout d'une heure.</p>
+        <div class="theme-choix" role="radiogroup" aria-label="Le thème de l'application">
+          ${[['auto', 'Comme le système', 'suit le réglage de ton ordinateur'],
+            ['light', 'Clair', 'toujours clair'],
+            ['dark', 'Sombre', 'toujours sombre']].map(([v, t, sub]) => `
+            <label class="theme-op${themeCourant() === v ? ' on' : ''}">
+              <input type="radio" name="theme" value="${v}" ${themeCourant() === v ? 'checked' : ''}>
+              <span class="theme-ap" data-ap="${v}" aria-hidden="true"><i></i><b></b></span>
+              <span class="theme-t">${esc(t)}</span>
+              <span class="theme-s">${esc(sub)}</span>
+            </label>`).join('')}
+        </div>
+      </div>
+
       ${panneauReg('pan-maj')}<div id="upd-panel"><p class="muted small">Chargement…</p></div></div>
 
       ${panneauReg('pan-support')}
@@ -3884,6 +3922,24 @@
     }
     const sup = $('#s-support'); if (sup) sup.onclick = supportDialog;
     const idee = $('#s-idee'); if (idee) idee.onclick = ideeDialog;
+    // Le thème s'applique AVANT d'être enregistré : on choisit une apparence en la voyant, pas en
+    // cliquant « Enregistrer » puis en attendant. Si l'écriture échoue, on remet ce qui était là —
+    // une apparence appliquée que le disque ne porte pas reviendrait au prochain démarrage.
+    $$('input[name=theme]', view).forEach(r => {
+      r.onchange = async () => {
+        const avant = themeCourant();
+        S = { ...S, settings: { ...(S.settings || {}), theme: r.value } };
+        appliquerTheme();
+        try {
+          S = await api.saveCabinet({ ...S.cabinet, settings: { theme: r.value } });
+          $$('.theme-op', view).forEach(l => l.classList.toggle('on', l.querySelector('input').value === r.value));
+        } catch (e) {
+          S = { ...S, settings: { ...(S.settings || {}), theme: avant } };
+          appliquerTheme();
+          toast(plainError(e), 'error');
+        }
+      };
+    });
     brancherReglagesCompta(view);
     dessinerLicence(view);
     bindRecoveryBanner(view);

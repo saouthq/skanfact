@@ -203,7 +203,6 @@ body.dark .badge.b-hors { background: #2a3440; color: #9aa7b4; }
    partout, et sans toucher au fichier partagé. */
 #upd-panel .update-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 12px; }
 #upd-panel .ver { font-size: 20px; font-weight: 700; margin-top: 2px; }
-#upd-panel .k-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
 
 /* Reprendre un cabinet venu d'un autre ordinateur : les mêmes lignes que l'assistant, mais dans une
    fenêtre. `#setup .wiz-step` est accroché à l'assistant, il ne s'applique pas ici — et réutiliser un
@@ -294,3 +293,39 @@ tr.cp-ligne td { text-decoration: line-through; color: var(--muted); }
    l'autre signe exigé, une couleur qui n'est pas celle du texte courant. La règle est ici et non
    dans la feuille partagée : `wiz-actions` est une classe du Cabinet. */
 .wiz-actions .btn-ghost { border-color: transparent; color: var(--muted); }
+
+/* ---------- le choix du thème (9.4.3) ----------
+   Trois cartes, pas une liste déroulante : une apparence se choisit en la VOYANT. Chaque carte
+   porte une maquette miniature — une barre latérale et une page — peinte aux couleurs du thème
+   qu'elle propose, y compris pour « Comme le système », dont la miniature est coupée en deux.
+   Les couleurs y sont écrites en dur, et c'est le seul endroit du projet où c'est juste : une
+   miniature du thème clair doit rester claire QUAND ON EST EN SOMBRE, sinon elle ne montre rien. */
+.theme-choix { display: flex; gap: 12px; flex-wrap: wrap; margin-block-start: 16px; }
+.theme-op {
+  flex: 1 1 180px; max-inline-size: 240px; display: grid; gap: 2px;
+  padding: 12px 12px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--panel); cursor: pointer; transition: border-color .12s, box-shadow .12s;
+}
+.theme-op:hover { border-color: #d5dbe3; }
+body.dark .theme-op:hover { border-color: #3c4654; }
+.theme-op.on { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(15, 157, 143, .15); }
+.theme-op input { position: absolute; opacity: 0; pointer-events: none; }
+.theme-op:focus-within { outline: 2px solid var(--primary); outline-offset: 2px; }
+.theme-t { font-size: 13.5px; font-weight: 650; color: var(--text); margin-block-start: 8px; }
+.theme-s { font-size: 12px; color: var(--muted); }
+/* La miniature : un cadre, une colonne à gauche, une page à droite. */
+.theme-ap {
+  display: block; block-size: 58px; border-radius: 7px; overflow: hidden;
+  border: 1px solid var(--border); position: relative;
+}
+.theme-ap i, .theme-ap b { position: absolute; inset-block: 0; display: block; }
+.theme-ap i { inset-inline-start: 0; inline-size: 34%; }
+.theme-ap b { inset-inline-end: 0; inline-size: 66%; }
+.theme-ap[data-ap="light"] i { background: #ffffff; border-inline-end: 1px solid #e6eaf0; }
+.theme-ap[data-ap="light"] b { background: #f5f7fa; }
+.theme-ap[data-ap="dark"] i { background: #1a2029; border-inline-end: 1px solid #2a3340; }
+.theme-ap[data-ap="dark"] b { background: #12161c; }
+/* « Comme le système » : la moitié de chaque, en diagonale — c'est la façon la plus courte de dire
+   « l'un ou l'autre selon ton ordinateur » sans une phrase de plus. */
+.theme-ap[data-ap="auto"] i { background: linear-gradient(135deg, #ffffff 50%, #1a2029 50%); }
+.theme-ap[data-ap="auto"] b { background: linear-gradient(135deg, #f5f7fa 50%, #12161c 50%); }

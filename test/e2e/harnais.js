@@ -71,6 +71,105 @@ function dossierCaptures(nom) {
   return d;
 }
 
+// ---------------------------------------------------------------------------- les trois sondes de rendu
+//
+// Elles vivaient chacune DANS son parcours — `contraste.js`, `colonnes.js`, `entetes.js` — et les
+// trois ne regardaient que l'application entreprise. L'app Cabinet a hérité de ses fonctionnalités
+// et d'aucun de ses garde-fous visuels : c'est très exactement pourquoi elle a dérivé (des onglets
+// qui ne montrent pas lequel est ouvert pendant trois versions, des champs muets, des tableaux de
+// six mille pixels). Recopier les sondes dans un quatrième fichier aurait garanti la divergence
+// (règle 7.29.0) ; elles sont donc ici, en un exemplaire, et les quatre parcours les partagent.
+//
+// Chacune est une fonction PURE du document, passée telle quelle à `win.evaluate` : elle ne connaît
+// ni Playwright, ni Electron, ni laquelle des deux applications elle mesure.
+
+// 1. Les boutons : lisibles, et dans la fenêtre. On remonte les ancêtres jusqu'à un fond opaque,
+//    parce qu'un bouton dont le fond est `transparent` est peint par ce qu'il y a derrière.
+const SONDE_BOUTONS = () => {
+  const lum = ([r, g, b]) => {
+    const f = c => { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+    return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+  };
+  const rgb = s => (s.match(/[\d.]+/g) || []).map(Number);
+  const opaque = s => { const v = rgb(s); return v.length >= 3 && (v.length < 4 || v[3] >= 0.95) ? v.slice(0, 3) : null; };
+  const fondDe = el => {
+    for (let n = el; n; n = n.parentElement) {
+      const v = opaque(getComputedStyle(n).backgroundColor);
+      if (v) return v;
+    }
+    return [255, 255, 255];
+  };
+  const out = [];
+  document.querySelectorAll('button, .btn').forEach(b => {
+    const r = b.getBoundingClientRect();
+    const s = getComputedStyle(b);
+    if (!r.width || !r.height || s.visibility === 'hidden' || s.display === 'none') return;
+    if (!b.textContent.trim()) return;             // un pictogramme seul n'est pas jugé ici
+    if (b.disabled || s.opacity < 0.3) return;     // un bouton désactivé a le droit d'être pâle
+    const t = rgb(s.color).slice(0, 3), f = fondDe(b);
+    const a = lum(t), c = lum(f);
+    out.push({
+      texte: b.textContent.trim().replace(/\s+/g, ' ').slice(0, 40),
+      id: b.id || '', cls: String(b.className || '').split(' ')[0],
+      color: s.color, bg: `rgb(${f.join(',')})`,
+      ratio: +(((Math.max(a, c) + 0.05) / (Math.min(a, c) + 0.05))).toFixed(2),
+      hors: Math.round(Math.max(0, r.right - document.documentElement.clientWidth))
+    });
+  });
+  return out;
+};
+
+// 2. Les colonnes : l'en-tête aligné comme ses valeurs. `table.list th` (une classe, deux éléments)
+//    l'emporte sur `th.r` — le HTML est juste, c'est la feuille qui décide, et ça ne se voit qu'en
+//    mesurant (7.23.0).
+const SONDE_COLONNES = () => {
+  const ecarts = []; let colonnes = 0;
+  const visible = el => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+  const norme = a => (a === 'start' ? 'left' : a === 'end' ? 'right' : a);
+  document.querySelectorAll('table').forEach(table => {
+    if (!visible(table)) return;
+    const ths = [...table.querySelectorAll('thead th')];
+    const corps = [...table.querySelectorAll('tbody tr')].filter(visible);
+    colonnes += ths.length;
+    if (!ths.length || !corps.length) return;
+    ths.forEach((th, i) => {
+      const titre = (th.textContent || '').replace(/\s+/g, ' ').trim();
+      if (!titre) return;                                    // colonne d'actions : rien à aligner
+      const comptes = {};
+      corps.forEach(tr => {
+        const td = tr.children[i];
+        if (!td || td.colSpan > 1) return;
+        if (!(td.textContent || '').trim()) return;
+        const a = getComputedStyle(td).textAlign;
+        comptes[a] = (comptes[a] || 0) + 1;
+      });
+      const paires = Object.entries(comptes).sort((x, y) => y[1] - x[1]);
+      if (!paires.length) return;
+      if (norme(getComputedStyle(th).textAlign) !== norme(paires[0][0])) {
+        ecarts.push({ colonne: titre, entete: norme(getComputedStyle(th).textAlign), cellules: norme(paires[0][0]) });
+      }
+    });
+  });
+  return { colonnes, ecarts };
+};
+
+// 3. Les barres d'en-tête : aucun contrôle étiré d'un bord à l'autre, aucune barre sur trois rangées.
+//    Un `select` hérite de `width: 100%` de la règle générale des champs ; dans un conteneur flex,
+//    chacun réclame donc toute la ligne (7.23.0).
+const SONDE_ENTETES = ({ maxL, maxR, maxH }) => {
+  const head = document.querySelector('#view .page-head');
+  if (!head) return { n: 0, larges: [], hauteur: 0 };
+  const actions = head.querySelector('.actions');
+  if (!actions) return { n: 0, larges: [], hauteur: 0 };
+  const ctrls = [...actions.querySelectorAll('select, input:not([type=checkbox]):not([type=radio])')];
+  const larges = ctrls.map(c => ({
+    tag: c.tagName.toLowerCase(), id: c.id || c.name || '(sans nom)',
+    w: Math.round(c.getBoundingClientRect().width),
+    borne: c.type === 'search' ? maxR : maxL
+  })).filter(x => x.w > x.borne);
+  return { n: ctrls.length, larges, hauteur: Math.round(actions.getBoundingClientRect().height), maxH };
+};
+
 // ---------------------------------------------------------------------------- la capture qui montre TOUT
 //
 // Pourquoi cette fonction existe : pendant des versions, TOUTES les captures de ces parcours se sont
@@ -145,5 +244,5 @@ async function ouvrirChromium(pw) {
 
 module.exports = {
   playwright, RACINE, ELECTRON, VERSION, journal, surveiller, dossierCaptures, ouvrirChromium,
-  capturePleine
+  capturePleine, SONDE_BOUTONS, SONDE_COLONNES, SONDE_ENTETES
 };

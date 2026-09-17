@@ -7,6 +7,45 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 9.4.3 — 17/09/2026
+
+**Le socle visuel du Cabinet, et les instruments qui le tiennent.** L'application entreprise est
+tenue par quatre parcours qui mesurent ce qui s'affiche vraiment : le contraste et le débordement de
+chaque bouton, l'alignement de chaque colonne, la largeur de chaque contrôle d'en-tête, la barre
+latérale sur quatre tailles d'écran. **Aucun des quatre ne regardait l'app Cabinet.** Elle a donc
+hérité des fonctionnalités de sa jumelle et d'aucun de ses garde-fous visuels, et elle a dérivé
+exactement là où personne ne mesurait.
+
+- **`npm run e2e:cabinet-rendu`** braque les trois sondes sur TOUS les écrans du Cabinet et TOUS
+  leurs onglets, en clair et en sombre, à 1440 et à 1280 : **1 024 boutons, 777 colonnes,
+  20 contrôles** mesurés. Les sondes vivent désormais en un seul exemplaire dans `test/e2e/harnais.js`,
+  partagées par les quatre parcours — recopiées, elles auraient divergé.
+- **Le Cabinet a un thème sombre.** Il n'en avait aucun : pas une ligne, pas un réglage. Trois
+  cartes dans Réglages → L'application (« Comme le système », « Clair », « Sombre »), chacune avec
+  sa miniature ; « Comme le système » suit le réglage du poste et bascule avec lui.
+- **Une vraie échelle de titres.** Un seul style de titre de section existait dans les deux
+  applications — 11 px, gris, en capitales — et il donnait le même poids à « Comptabilité » qu'à
+  « Abonnements ». Un titre de section se lit maintenant comme un titre ; la capitale grise garde
+  son seul bon rôle, la catégorie posée au-dessus d'un chiffre. La même déclaration était recopiée
+  **huit fois** dans les deux feuilles, et deux exemplaires avaient déjà dérivé : il en reste un.
+- **Les six onglets de la Comptabilité montrent enfin lequel est ouvert.** Ils posaient une classe
+  que la feuille de style ne connaît pas, depuis la 9.1.0.
+- **Huit champs sans étiquette** en ont une : le sélecteur de compte du grand livre et du lettrage,
+  les deux filtres de la Recherche, le choix d'un guide, et les cinq cases de chaque ligne de la
+  grille de saisie.
+- **La page Écritures ne s'ouvre plus sur quatre zéros** alors que les données existent. Elle
+  proposait une période construite sur les paquets de l'exemple, puis se déclarait vide dessus :
+  ce qui décide est le fichier sur le disque, plus l'étiquette du dossier.
+- **« Mois manquants » s'aligne sur ses chiffres.** L'en-tête se lisait à gauche au-dessus de
+  valeurs alignées à droite.
+
+Et les captures de tous les parcours montrent enfin la page **entière** : le cadre est fixe et c'est
+le contenu qui défile, donc `fullPage` rendait la même image qu'une capture d'écran. Le grand livre
+d'un dossier fait 6 462 px ; on n'en voyait que 900.
+
+Numérotation : l'entretien qui portait le numéro 9.4.3 (Electron, découpage, codes d'erreur) devient
+**9.4.7**.
+
 ## 9.4.2 — 17/09/2026
 
 **Le jeu d'exemple se remet à jour tout seul.** Personne ne pense à l'effacer puis à le recharger à

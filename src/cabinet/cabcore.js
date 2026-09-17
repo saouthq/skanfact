@@ -81,7 +81,11 @@
       valider: 'Control+Enter'
     }
   };
-  const DEFAULT_SETTINGS = { relanceDay: 10, deadlines: null, saisie: null };
+  // `theme` (9.4.3) : « light », « dark » ou « auto » (le réglage du système). L'app entreprise a le
+  // sien depuis la 1.6.0 ; le Cabinet n'en avait AUCUN — pas une ligne — donc une fenêtre blanche
+  // éblouissante à côté de tout le reste sur un poste réglé en sombre. Défaut `auto` : on suit le
+  // système plutôt que d'imposer un choix que personne n'a fait.
+  const DEFAULT_SETTINGS = { relanceDay: 10, deadlines: null, saisie: null, theme: 'auto' };
   const DEFAULT_STATE = {
     format: FORMAT,
     cabinet: { name: '', email: '', phone: '', publicKey: '', privateKey: '' },
@@ -190,6 +194,9 @@
     sa.dateComplete = sa.dateComplete !== false;
     sa.validerParLot = sa.validerParLot !== false;
     s.settings.saisie = sa;
+    // Un thème inconnu retombe sur « auto » : une valeur inventée ne doit pas laisser l'application
+    // dans un état qu'aucun écran ne propose.
+    if (!['light', 'dark', 'auto'].includes(s.settings.theme)) s.settings.theme = 'auto';
     s.guides = Array.isArray(s.guides) ? s.guides : [];
     // La licence du cabinet (9.4.0). Elle vit dans l'état CHIFFRÉ, donc elle voyage avec la clé de
     // secours : un cabinet qui change d'ordinateur retrouve sa licence en même temps que ses
@@ -1212,11 +1219,22 @@
     const ids = opts.ids && opts.ids.length ? new Set(opts.ids) : null;
     const pris = [], sansPaquet = [];
     (state.dossiers || []).forEach(d => {
-      if (d.demo) return;                                   // les dossiers d'exemple n'ont pas de fichier
+      // Il n'y a plus de garde « d.demo » ici, et c'est un correctif, pas un oubli. Elle datait de
+      // la 6.8.0, où l'exemple n'avait aucun fichier sur le disque : l'exclure était juste. Depuis
+      // la 9.2.2 il livre de VRAIS `.skanpack`, et la garde a fabriqué une contradiction que
+      // personne n'a vue — `moisDisponibles()` proposait les mois de l'exemple, `ecrituresPlan` les
+      // sautait, et la page Écritures s'ouvrait sur quatre zéros et un bouton éteint en annonçant
+      // « Aucun paquet sur cette période » pour une période qu'elle venait elle-même de proposer.
+      // Ce qui décide reste `p.path` : ce qui a un fichier s'exporte, ce qui n'en a pas ne s'exporte
+      // pas — un seul critère, le même pour tout le monde.
       if (ids && !ids.has(d.id)) return;
       const dans = (d.packs || []).filter(p => p.path && (!du || (p.month >= du && p.month <= au)))
         .sort((a, b) => a.month < b.month ? -1 : 1);
-      if (!dans.length) { if (!d.manual && !d.archived) sansPaquet.push(d.name); return; }
+      // `sansPaquet` nomme les clients à qui il manque quelque chose : un dossier d'exemple n'y entre
+      // jamais, même sans fichier. On ne reproche rien à un client qui n'existe pas — c'est la règle
+      // « on ne réclame pas le néant » (Cabinet 1.0.0), et c'est la SEULE chose que l'étiquette
+      // `demo` décide ici ; ce qui entre dans l'export, lui, se décide sur le fichier.
+      if (!dans.length) { if (!d.manual && !d.archived && !d.demo) sansPaquet.push(d.name); return; }
       dans.forEach(p => pris.push({
         id: d.id, name: d.name, matricule: d.matricule, month: p.month,
         path: p.path, definitive: !!p.definitive, sealed: !!p.sealed

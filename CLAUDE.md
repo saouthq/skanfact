@@ -22,7 +22,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un bouton qui **accepte le clic et ne fait rien** | 7.0.0 — les treize « Voir » sans action ; 7.17.0 — les écrans qui ne répondent pas |
 | L'application **gèle** sans erreur (Cmd+Q sans effet, défilement qui marche encore) | 5.2.3 — boucle infinie de date ; 6.5.0 — le chien de garde ; 8.1.0 — la veille n'est pas un gel |
 | Un **écran blanc**, une fenêtre qui ne s'ouvre pas, rien en console | 7.20.0, 7.22.0, 7.23.0 — une fonction ou une variable d'un autre module ; 9.1.0 — le garde-fou d'erreur et le lint |
-| Un **texte illisible** (blanc sur blanc), un en-tête mal aligné, un fil vertical | 7.12.0, 7.23.0, 7.27.0, 7.30.0 — le HTML est juste, c'est la feuille de style qui décide : **mesurer** |
+| Un **texte illisible** (blanc sur blanc), un en-tête mal aligné, un fil vertical | 7.12.0, 7.23.0, 7.27.0, 7.30.0, 9.4.3 — le HTML est juste, c'est la feuille de style qui décide : **mesurer** |
 | Un bouton **hors de l'écran**, une barre empilée sur trois rangées | 7.13.0, 7.23.0 — `e2e:contraste` et `e2e:entetes` mesurent le bouton, jamais la page |
 
 **Les chiffres**
@@ -61,6 +61,8 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Règle | Où |
 |---|---|
 | Une règle apprise d'un côté **se vérifie de l'autre**, à la main | 7.3.0 (purge des sauvegardes), 7.18.0 (`pl`), 7.32.0 (« À faire »), 8.1.0 (le saut d'horloge) |
+| Un **INSTRUMENT qui ne couvre qu'une des deux applications** ne protège qu'une des deux | 9.4.3 |
+| Une **capture qui s'arrête au bas de l'écran** fait juger une page sur son premier écran | 9.4.3 |
 | Un fichier partagé a **trois** branchements : les deux `index.html`, dans l'ordre, et les `files` du Cabinet | 7.26.0 (`depot.js`), 7.29.0 (`rowmenu.js`), 9.1.0 (`compta.js`) |
 | Le Cabinet **n'écrit jamais** chez un client et ne lui renvoie rien | Cabinet 1.0.0 |
 | Une classe du Cabinet ne peut pas porter un nom déjà pris dans la feuille partagée | 6.8.0 — `.setup-card` |
@@ -71,6 +73,8 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Règle | Où |
 |---|---|
 | Un **bouton sans bordure ni couleur n'est pas un bouton** : il se reconnaît AU REPOS, pas au survol | Cabinet 1.0.0, 9.4.2 |
+| Un **titre gris de 11 px ne hiérarchise rien** : il décore. Trois niveaux, un rôle chacun | 9.4.3 |
+| Une **classe posée par le code et inconnue de la feuille** ne se voit nulle part | 6.8.0, 7.23.0, 7.27.0, 8.1.0, 9.4.3 |
 | Une **phrase rassurante** se vérifie d'abord sur un univers non vide | 7.0.0, 7.3.0, 9.4.2 |
 | Un **avertissement** se lit AVANT le geste, jamais sous le bouton | 9.4.2 |
 | Une ligne garde **au plus UN** bouton visible ; le reste passe par `rowmenu.js` | 7.29.0 |
@@ -102,7 +106,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 **L'outillage (9.1.0)**
 
 `npm test` (les tests purs) · `npm run lint` (ESLint, zéro erreur exigée) · `npm run charge` (le test
-de charge du livre) · `npm run e2e:<nom>` (45 parcours, tableau au § « Les tests qui ouvrent vraiment
+de charge du livre) · `npm run e2e:<nom>` (46 parcours, tableau au § « Les tests qui ouvrent vraiment
 l'application ») · CI GitHub sur Linux et Windows à chaque poussée · « Construire un essai » pour
 faire tester une version sans la publier.
 
@@ -506,6 +510,7 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:livres` | **les livres comptables** : chaque compte du grand livre avec son solde progressif qui finit sur le total, le sélecteur de compte, la balance dont les six totaux tombent juste, l'auxiliaire clients, la case « un sous-compte par tiers » qui donne 411001… et les fige sur les fiches, le livre-journal numéroté et son centralisateur, une OD refusée puis enregistrée, le lettrage qui ouvre sa pièce, les états financiers équilibrés, l'à-nouveau de janvier, l'état de rapprochement à écart nul, la TFP dans les barèmes |
 | `npm run e2e:justificatif` | **le justificatif se joint avant toute saisie** : sélecteur de fichier remplacé dans le processus principal, une photo jointe sur un achat VIDE, enregistrée avec la pièce, retrouvée sur le disque et dans la liste (📎), un second fichier sur la pièce rangée, une pièce abandonnée qui ne laisse pas de copie, la lecture d'une photo qui redessine sans perdre la pièce, et le même geste sur un devis neuf |
 | `npm run e2e:cabinet-jour1` | **le premier jour d'un comptable** : l'instrument qui MESURE ce qu'il voit, dans l'ordre où il le voit — 35 écrans photographiés du mot de passe à l'Aide, et six règles qui tombent (un bouton hors de l'écran, un bouton qui ressemble à du texte, un état vide sans geste, un champ de saisie sans bulle « i », une boîte sans étiquette, un débordement horizontal). `dist-e2e/cabinet-premier-jour/mesures.json` |
+| `npm run e2e:cabinet-rendu` | **le rendu du Cabinet, mesuré** : les trois sondes de l'app entreprise (contraste et débordement des boutons, alignement des colonnes, barres d'en-tête) braquées sur TOUS ses écrans et TOUS leurs onglets, en clair et en sombre, à 1440 et à 1280 — 1 024 boutons, 777 colonnes. Elles vivent en un seul exemplaire dans `harnais.js` : c'est leur absence côté Cabinet qui l'avait laissé dériver |
 | `npm run e2e:cabinet-licence` | **la licence du Cabinet** : trois dossiers hors SkanFact gratuits, l'exemple qui ne compte pas, cinq clients qui dépassent le quota, la validation refusée pendant que lire, importer, exporter et SAISIR restent ouverts, deux dossiers archivés qui rendent la main, la clé d'un autre cabinet refusée en nommant les deux empreintes, celle d'un client parrainé refusée aussi, et le panneau qui nomme chaque dossier compté |
 | `npm run e2e:saisie` | **la grille de saisie, AU CLAVIER** : une pièce entière tapée sans souris (Entrée descend, Tab solde), le brouillard sans numéro, la validation qui referme, les deux refus sur une validée, un lot dont la pièce fausse est au MILIEU et la numérotation qui reste 1..n, l'extourne au 1er du mois suivant, la recherche par montant après réouverture de l'application, et un guide écrit puis appliqué |
 | `npm run e2e:licence` | **l'éditeur et les offres, puis le client** : une première application DÉSARMÉE (`SKANFACT_CLE_EMBARQUEE` vers un chemin inexistant, développement seulement) — sans clé rien n'apparaît ; « Créer mes clés » écrit la privée dans un dossier isolé (`SKANFACT_DOSSIER_CLES`) et met le poste en état « éditeur » (ni essai ni verrou) ; « Émettre » signe une clé vérifiable, crée un BROUILLON de facture et l'historique ; la clé Indépendant collée refuse un nouveau fournisseur, pose un cadenas sur Achats et laisse les Statistiques ; la clé d'un autre matricule est refusée en nommant les deux ; « Renouveler » ; rien de ce qui traverse le pont ne contient la clé privée — PUIS une seconde application telle qu'un client l'installe (vraie clé embarquée, pas de clé privée) : essai de 30 jours, aucune trace de l'éditeur, plus de porte « Créer mes clés », et la clé signée par la clé d'essai du test REFUSÉE |
@@ -3350,6 +3355,88 @@ Pièges rencontrés, tous déjà écrits ici :
   un sélecteur se lit avec `^…$`, sinon on lit celui d'un descendant.
 
 Prouvé : **18 défauts réintroduits un par un** font tomber leur test.
+
+### 9.4.3 — Le socle visuel du Cabinet, et les instruments qui le tiennent
+
+Skander : « faut qu'on se pose et prenne du recul… il faut pas juste que ça soit fonctionnel, mais
+faut que ça soit ergonomique, pratique et moderne », et le reproche qui va avec : « tu rajoutes des
+choses au fur et à mesure du développement mais tu penses pas au rendu global ui/ux quand tu le
+fais ». Il avait raison, et la cause est mesurable.
+
+**L'app entreprise est tenue par quatre instruments qui mesurent ce qui s'AFFICHE** — `e2e:contraste`
+(441 boutons), `e2e:colonnes` (405 colonnes), `e2e:entetes` (21 pages), `e2e:barre`. **Aucun des
+quatre ne regardait l'app Cabinet.** Pas un. Elle a reçu les fonctionnalités de sa jumelle et aucun
+de ses garde-fous visuels, et elle a dérivé très exactement là où personne ne mesurait. C'est la
+règle 7.3.0 — « une règle apprise d'un côté se vérifie de l'autre » — appliquée non plus à une règle
+mais à un INSTRUMENT : *un garde-fou qui ne couvre qu'une des deux applications ne protège qu'une
+des deux applications.*
+
+Règles apprises, à ne pas recasser :
+
+- **Une capture qui ne montre pas la page entière fait juger une page sur son premier écran.** Ce
+  n'était pas un `fullPage: true` oublié : les deux applications posent un cadre FIXE
+  (`#app { height: 100vh }`) et c'est `main#view` qui défile, donc le DOCUMENT ne dépasse jamais la
+  fenêtre et « page entière » rend exactement la même image qu'une capture d'écran. Tous les audits
+  faits jusqu'ici ont relu un quart de page en croyant relire la page — le grand livre d'un dossier
+  fait **6 462 px**. `capturePleine()` (harnais) relâche le cadre le temps de la photo, y compris
+  les couches en `position: fixed`, puis le remet ; les mesures sont prises AVANT le relâchement.
+- **Un parcours qui n'ouvre que l'onglet par défaut juge un sixième de la page.** Les six
+  sous-onglets de la Comptabilité d'un dossier — dont la **Saisie**, l'écran où un comptable passe
+  ses journées — n'avaient jamais été photographiés une seule fois. Les ouvrir a fait tomber six
+  défauts en une passe.
+- **Un mécanisme de MESURE se partage comme un mécanisme de production.** Les trois sondes
+  (contraste et débordement, alignement des colonnes, barres d'en-tête) vivent dans
+  `test/e2e/harnais.js`, en un exemplaire, et les quatre parcours les appellent. Recopiée dans un
+  quatrième fichier, une sonde aurait divergé (7.29.0) — et c'est précisément la faute qu'on répare.
+- **Un titre gris de 11 px ne hiérarchise rien : il décore.** `.panel h2` était le SEUL style de
+  titre de section des deux applications — 11 px, gris, capitales, `letter-spacing: 1.2px` — et il
+  donnait le même poids à « Comptabilité » qu'à « Abonnements ». Trois niveaux désormais, un rôle
+  chacun : `h1` la page, `.panel h2` la section (15,5 px, couleur du texte), `.eyebrow` la
+  sur-étiquette en capitales, **au-dessus d'un chiffre et jamais comme titre**.
+- **La même déclaration était recopiée HUIT fois**, six dans la feuille partagée, une dans celle du
+  Cabinet, et deux avaient déjà dérivé (12 px au lieu de 11, `.5px` au lieu de `1px`). C'est la
+  démonstration du motif : un mécanisme recopié ne diverge pas peut-être, il diverge. Il en reste
+  un, sous trois sélecteurs qui partagent le rôle, et un test le compte.
+- **Une classe posée par le code et inconnue de la feuille ne se voit nulle part.** Les six onglets
+  de la Comptabilité posaient `class="on"` ; la feuille ne connaît que `.tabs button.active`, et
+  `#d-tabs` comme `#set-tabs` l'utilisent déjà. **Aucun des six ne montrait lequel était ouvert,
+  depuis la 9.1.0**, et je l'avais sous les yeux sur une capture sans le voir. Quatrième occurrence
+  du motif après `th.r` (7.23.0), `.help-fil` (7.27.0) et `.mono` (8.1.0).
+- **Le rapport entre une case et son en-tête de colonne est évident à l'œil et invisible au
+  clavier.** Les cinq cases de chaque ligne de la grille de saisie, le sélecteur de compte du grand
+  livre et du lettrage, les deux filtres de la Recherche : huit champs sans étiquette, sans
+  placeholder et sans `aria-label`. Le numéro de ligne entre dans l'étiquette, sinon cinq cases
+  annoncent toutes « Compte ».
+- **Une application de bureau s'ouvre le matin et se referme le soir.** Le Cabinet n'avait **aucun**
+  thème sombre — pas une ligne, pas un réglage — alors que l'app entreprise en a un depuis la 1.6.0.
+  Défaut « auto » : on suit le système plutôt que d'imposer un choix que personne n'a fait, et on
+  RÉAGIT quand il bascule (un réglage lu une fois au démarrage se périme, 7.1.x). Le thème
+  s'applique avant d'être enregistré — on choisit une apparence en la voyant — et si l'écriture
+  échoue on remet ce qui était là.
+- **Un réglage se choisit en le VOYANT** : trois cartes avec leur miniature, pas une liste
+  déroulante. Les couleurs de ces miniatures sont écrites en dur, et c'est le seul endroit du projet
+  où c'est juste : la miniature du thème clair doit rester claire quand on est en sombre.
+- **Ce qui décide d'un export est le FICHIER, pas l'étiquette du dossier.** `ecrituresPlan` sautait
+  les dossiers d'exemple — juste en 6.8.0, où l'exemple n'avait aucun fichier ; faux depuis la 9.2.2,
+  où il livre de vrais `.skanpack`. La page Écritures proposait donc une période construite sur les
+  paquets de l'exemple, puis se déclarait vide dessus : quatre zéros et un bouton éteint sur un
+  portefeuille plein. La garde `demo` ne décide plus que d'une chose : on ne RÉCLAME rien à un
+  client qui n'existe pas.
+- **Un test qui lit du CSS doit lire du CSS** (6.8.0, re-rencontrée) : ma première version du test de
+  l'échelle de titres tombait sur son propre commentaire, qui cite les sélecteurs qu'il explique.
+  Les commentaires de bloc se retirent avant de juger, et on vérifie que le nettoyage n'a pas mangé
+  le code.
+- Piège de ma propre méthode : une chirurgie `python` sur un fichier de test a emporté la constante
+  `SEUIL` qui vivait entre deux blocs déplacés — `contraste.js` est parti en `ReferenceError` au
+  premier appel. Une tranche qu'on découpe se relit après découpe, pas seulement avant.
+
+Numérotation : le chantier UI/UX du Cabinet prend **9.4.3 → 9.4.6** et l'entretien qui portait le
+numéro 9.4.3 devient **9.4.7**. 23 occurrences dans cinq documents, contre 281 pour la
+renumérotation de la v2 : prendre le numéro suivant plutôt que décaler toute la suite est ce qui
+rend l'opération tenable.
+
+Prouvé : cinq défauts réintroduits un par un font tomber leur test, et le sixième (l'en-tête de
+colonne désaligné) a été trouvé par l'instrument lui-même à sa première exécution.
 
 ## Pistes pour la suite (non demandées)
 

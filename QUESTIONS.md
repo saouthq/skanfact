@@ -1991,7 +1991,7 @@ qui manque, mesuré dans le dépôt le 15/09/2026, et ce qu'on en fait.*
   quatre est une version d'entretien** (Electron, lint, découpage d'un fichier, docs, dette), sans
   nouveauté, publiée dans un lot comme les autres. **Décidé.** Et pour que ce ne soit pas un vœu
   pieux (une relecture a constaté qu'aucune version du § 16 n'était marquée « entretien ») : **la
-  9.1.0 en est une pour moitié** (l'outillage passe avant les livres), puis **9.4.3** après la
+  9.1.0 en est une pour moitié** (l'outillage passe avant les livres), puis **9.4.7** après la
   saisie, **9.6.1** après le fiscal, et **9.9.1** après le multi-poste sont des versions
   d'entretien, écrites dans le § 16, avec un contenu (Electron, conversion des 93 déclarations CSS,
   découpage d'un gros fichier, dette listée au point 15). Elles ne sautent pas parce qu'on est
@@ -2264,7 +2264,7 @@ version, ce qui est la meilleure façon de ne jamais les faire (§ 11).*
   lecture ouverte, dossier archivé qui ne compte plus, licence client dans un paquet qui rend le
   dossier gratuit, paquet ancien qui le dit ; test « ce qui remonte au serveur » étendu.
 
-### 9.4.3 — Entretien (quelques jours)
+### 9.4.7 — Entretien (quelques jours)
 
 - **Contenu.** La mise à jour d'Electron du semestre ; la conversion des 93 déclarations CSS
   physiques en logiques (§ 3) ; le premier découpage de `app.js` par route (§ 15) ; la dette listée
@@ -2312,7 +2312,7 @@ version, ce qui est la meilleure façon de ne jamais les faire (§ 11).*
 
 ### 9.6.1 — Entretien (quelques jours)
 
-- **Contenu.** Comme la 9.4.3 : Electron si une version est sortie, dette, découpage suivant
+- **Contenu.** Comme la 9.4.7 : Electron si une version est sortie, dette, découpage suivant
   (`core.js` → `compta.js` fini, `run-tests.js` découpé par domaine), retours de bêta hors
   nouveautés. **Aucune fonction nouvelle.**
 

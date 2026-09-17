@@ -16,74 +16,15 @@
 // l'esthétique, il attrape ce qu'on ne peut pas lire du tout.
 //
 //   xvfb-run -a node test/e2e/contraste.js
-const { playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais');
+const { playwright, RACINE, ELECTRON, journal, surveiller, SONDE_BOUTONS } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 
-// Le calcul du contraste, injecté dans la page : on remonte les ancêtres jusqu'à un fond opaque,
-// parce qu'un bouton dont le fond est `transparent` est peint par ce qu'il y a derrière.
-const SONDE = () => {
-  const lum = ([r, g, b]) => {
-    const f = c => { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
-    return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
-  };
-  const rgb = s => (s.match(/[\d.]+/g) || []).map(Number);
-  const opaque = s => { const v = rgb(s); return v.length >= 3 && (v.length < 4 || v[3] >= 0.95) ? v.slice(0, 3) : null; };
-  const fondDe = el => {
-    for (let n = el; n; n = n.parentElement) {
-      const v = opaque(getComputedStyle(n).backgroundColor);
-      if (v) return v;
-    }
-    return [255, 255, 255];
-  };
-  const out = [];
-  document.querySelectorAll('button, .btn').forEach(b => {
-    const r = b.getBoundingClientRect();
-    const s = getComputedStyle(b);
-    if (!r.width || !r.height || s.visibility === 'hidden' || s.display === 'none') return;
-    if (!b.textContent.trim()) return;            // un bouton sans texte (pictogramme seul) n'est pas jugé ici
-    if (b.disabled || s.opacity < 0.3) return;    // un bouton désactivé a le droit d'être pâle
-    const t = rgb(s.color); if (t.length < 3) return;
-    const f = fondDe(b);
-    const a = lum(t), c = lum(f);
-    const ratio = (Math.max(a, c) + 0.05) / (Math.min(a, c) + 0.05);
-    // Hors de la fenêtre ? Un bouton peut être parfaitement lisible ET coupé par le bord de l'écran.
-    // Le document, lui, ne déborde pas : un ancêtre le rogne, donc `scrollWidth` ne voit rien.
-    // Les conteneurs qui défilent horizontalement (.scroll-x, les tableaux larges) sont exclus :
-    // leur contenu est hors champ à dessein, et on peut l'amener à soi.
-    // `.scroll-x` est le marqueur explicite du projet : « ce tableau défile horizontalement, c'est
-    // voulu ». Exclure tout ancêtre dont `overflow-x` vaut auto — ce qu'essayait la première
-    // version — désarmait le contrôle en entier, parce que le conteneur de page en est un : le test
-    // restait vert avec le défaut réintroduit. Un test qui ne peut pas échouer ne sert à rien.
-    let defilable = false;
-    for (let nd = b.parentElement; nd && nd !== document.body; nd = nd.parentElement) {
-      if (nd.classList.contains('scroll-x')) { defilable = true; break; }
-    }
-    const hors = defilable ? 0 : Math.max(0, Math.round(r.right - document.documentElement.clientWidth), Math.round(-r.left));
-    out.push({ texte: b.textContent.trim().slice(0, 40), id: b.id, cls: b.className, ratio: Math.round(ratio * 100) / 100, color: s.color, bg: s.backgroundColor, hors });
-  });
-
-  // Les CHAMPS DE SAISIE, pour la même raison et par la même méthode (7.30.0).
-  //
-  // Le thème sombre laissait tous les `<input>` de l'application sur fond CLAIR avec le texte clair
-  // du thème : contraste mesuré 1,18, c'est-à-dire du blanc sur du blanc. `select` et `textarea`
-  // n'étaient pas touchés — dans une liste de sélecteurs, chacun porte sa propre spécificité — donc
-  // l'écran paraissait à moitié correct, ce qui est la pire façon d'être faux. Le défaut vivait là
-  // depuis que le thème existe, et ce test ne regardait que les boutons.
-  document.querySelectorAll('input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]):not([type=color]):not([type=hidden]), select, textarea').forEach(el => {
-    const r = el.getBoundingClientRect();
-    const s = getComputedStyle(el);
-    if (!r.width || !r.height || s.visibility === 'hidden' || s.display === 'none') return;
-    const t = rgb(s.color); if (t.length < 3) return;
-    const f = fondDe(el);
-    const a = lum(t), c = lum(f);
-    const ratio = (Math.max(a, c) + 0.05) / (Math.min(a, c) + 0.05);
-    out.push({ texte: 'champ ' + (el.name || el.id || el.tagName.toLowerCase()), id: el.id, cls: el.className,
-      ratio: Math.round(ratio * 100) / 100, color: s.color, bg: s.backgroundColor, hors: 0 });
-  });
-  return out;
-};
-
+// La sonde vit dans `harnais.js` depuis la 9.4.3 : elle est partagée avec le parcours de rendu du
+// Cabinet, qui mesure exactement la même chose. Recopiée, elle aurait divergé (7.29.0).
+const SONDE = SONDE_BOUTONS;
+// Le seuil est très bas exprès : il ne juge pas l'esthétique, il attrape ce qu'on ne peut pas lire
+// du tout — du blanc sur du blanc, comme le « Corriger par un avoir… » de la 7.12.0.
 const SEUIL = 2.0;
 
 (async () => {

@@ -264,7 +264,31 @@ main { flex: 1; overflow-y: auto; padding: 32px 36px 48px; }
 /* Un lien qui promet un réglage précis l'amène et le désigne : sans repère, on atterrit au milieu
    d'une pile de panneaux identiques et on cherche le titre à la main. */
 .panel.flash { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(15, 157, 143, .18); }
-.panel h2 { margin: 0 0 16px; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1.2px; font-weight: 700; }
+/* ---------- l'échelle de titres (9.4.3) ----------
+   Avant, UN seul style de titre de section existait dans les deux applications : 11 px, gris,
+   en capitales, `letter-spacing: 1.2px`. Il donnait exactement le même poids à « COMPTABILITÉ »
+   qu'à « ABONNEMENTS », et il était recopié à l'identique sept fois dans cette feuille sous le nom
+   `.k-label` — un mécanisme recopié diverge toujours (7.29.0).
+
+   Un titre gris de 11 px ne hiérarchise rien : il décore. Trois niveaux, un rôle chacun :
+     h1         la PAGE                        24 px, couleur du texte
+     .panel h2  la SECTION d'une page          15,5 px, couleur du texte
+     .eyebrow   la SUR-ÉTIQUETTE en capitales  11 px, grise — au-dessus d'un chiffre, jamais
+                comme titre : « CHIFFRE D'AFFAIRES » posé sur « 40 077,900 DT » est une unité de
+                lecture, pas une section.
+   Un titre de section est donc lisible de loin, et une capitale grise ne sert plus qu'à ce pour
+   quoi elle est bonne. */
+.panel h2 {
+  margin: 0 0 14px; font-size: 15.5px; font-weight: 650; letter-spacing: -.15px;
+  color: var(--text); text-transform: none;
+}
+/* Le second niveau DANS un panneau (« Les touches », « Le brouillard ») : il doit se distinguer du
+   titre de la section sans redevenir un titre de page. */
+.panel h3 { margin: 22px 0 10px; font-size: 13.5px; font-weight: 650; letter-spacing: -.1px; color: var(--text); }
+.panel h3:first-child { margin-top: 0; }
+.eyebrow, .k-label, .stat .lbl {
+  font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 700;
+}
 
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 20px; }
 .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px 20px; }
@@ -367,7 +391,6 @@ td.actions .btn + .btn { margin-left: 6px; }
 /* ---------- paiements ---------- */
 .pay-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 14px; }
 .pay-grid > div { background: var(--bg); border-radius: 12px; padding: 12px 14px; }
-.pay-grid .k-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
 .pay-grid .v { font-size: 18px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
 .pay-grid .v.due { color: var(--warning); }
 .pay-grid .v.ok { color: var(--success); }
@@ -385,7 +408,6 @@ input:disabled, select:disabled, textarea:disabled { background: #f3f5f7; color:
 .stat:nth-child(2)::before { background: #2a6fd6; }
 .stat:nth-child(3)::before { background: #c26a12; }
 .stat:nth-child(4)::before { background: #7c5cd6; }
-.stat .lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
 .stat .val { font-size: 22px; font-weight: 700; margin-top: 6px; letter-spacing: -.4px; font-variant-numeric: tabular-nums; }
 /* L'écart passe sous le montant quand la carte est étroite, mais jamais coupé en deux. */
 .stat .val { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
@@ -478,13 +500,12 @@ table.lines-edit select { padding-right: 4px; min-width: 70px; }
 .notes-md li { margin: 2px 0; }
 .changelog { max-height: 60vh; overflow-y: auto; }
 .changelog .notes-md { background: transparent; padding: 0; }
-#update-panel .k-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
 #update-panel .ver { font-size: 20px; font-weight: 700; margin-top: 2px; }
 .progress { height: 8px; background: var(--ink-soft); border-radius: 999px; overflow: hidden; margin-top: 8px; }
 .progress div { height: 100%; background: var(--primary); border-radius: 999px; transition: width .2s; }
 
 .token-box { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); }
-.token-box .k-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 700; margin-bottom: 6px; }
+.token-box .k-label { margin-bottom: 6px; }
 .token-box input { max-width: 520px; font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 12px; }
 
 /* « Détails techniques » (7.26.0) : la cause exacte d'un échec de mise à jour, repliée.
@@ -598,7 +619,6 @@ table.mini input, table.mini select { padding: 6px 8px; font-size: 13px; }
 .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
 .kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
 .kpi { background: var(--bg); border-radius: 12px; padding: 12px 14px; }
-.kpi .k-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
 .kpi .v { font-size: 20px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
 .kpi .sub { font-size: 12px; color: var(--muted); }
 .rank { list-style: none; margin: 0; padding: 0; }
@@ -987,7 +1007,6 @@ body.dark .danger-zone { border-color: #4a2a2a; }
 .dirty-dot { font-size: 11px; font-weight: 700; color: var(--warning); background: var(--warning-soft); border-radius: 999px; padding: 3px 9px; vertical-align: 4px; }
 .editor .preview { display: flex; flex-direction: column; gap: 8px; height: calc(100vh - 96px); }
 .pv-head { display: flex; align-items: center; gap: 10px; }
-.pv-head .k-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
 .pv-pages { margin-left: auto; font-size: 11px; color: var(--muted); background: var(--ink-soft); border-radius: 999px; padding: 2px 9px; font-weight: 600; }
 .pv-pages.warn { background: var(--warning-soft); color: var(--warning); }
 .preview iframe { flex: 1 1 auto; height: auto; min-height: 0; }
@@ -1027,7 +1046,6 @@ tr.row-ok td { background: rgba(28, 143, 90, .05); }
    posée par-dessus doit rester devant. */
 #pv-full { position: fixed; inset: 0; z-index: 300; background: rgba(20, 32, 44, .55); display: flex; flex-direction: column; }
 .pv-full-bar { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--border); flex: 0 0 auto; flex-wrap: wrap; }
-.pv-full-bar .k-label { font-size: 12px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; color: var(--muted); }
 .pv-full-bar #pv-full-close { margin-left: 0; }
 .pv-zoom { display: flex; align-items: center; gap: 6px; margin-left: auto; }
 .pv-zoom .btn { min-width: 32px; justify-content: center; }
