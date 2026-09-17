@@ -58,6 +58,20 @@ contextBridge.exposeInMainWorld('cabinet', {
   contrepasser: (dossierId, annee, id, date) => ipcRenderer.invoke('cab:contrepasser', { dossierId, annee, id, date }),
   saisir: (dossierId, annee, ecriture) => ipcRenderer.invoke('cab:saisir', { dossierId, annee, ecriture }),
   lettrer: (o) => ipcRenderer.invoke('cab:lettrer', o || {}),
+  // La saisie (9.3.0). Même remarque que ci-dessus : tout cela touche le livre que le CABINET
+  // tient, jamais les données du client. `modifierEcriture` et `supprimerEcriture` ne peuvent
+  // atteindre qu'un brouillard — le garde-fou vit dans `compta.js`, pas ici.
+  modifierEcriture: (dossierId, annee, id, patch) => ipcRenderer.invoke('cab:modifierEcriture', { dossierId, annee, id, patch }),
+  supprimerEcriture: (dossierId, annee, id) => ipcRenderer.invoke('cab:supprimerEcriture', { dossierId, annee, id }),
+  extourner: (dossierId, annee, id) => ipcRenderer.invoke('cab:extourner', { dossierId, annee, id }),
+  validerLot: (o) => ipcRenderer.invoke('cab:validerLot', o || {}),
+  joindreEcriture: (o) => ipcRenderer.invoke('cab:joindreEcriture', o || {}),
+  ouvrirJustificatif: (dossierId, relatif) => ipcRenderer.invoke('cab:ouvrirJustificatif', { dossierId, relatif }),
+  saveGuides: (guides, dossierId) => ipcRenderer.invoke('cab:saveGuides', { guides, dossierId }),
+  saveCorrespondance: (table, dossierId) => ipcRenderer.invoke('cab:saveCorrespondance', { table, dossierId }),
+  saveAbonnements: (dossierId, abonnements) => ipcRenderer.invoke('cab:saveAbonnements', { dossierId, abonnements }),
+  genererAbonnements: (o) => ipcRenderer.invoke('cab:genererAbonnements', o || {}),
+  dernierJournal: (dossierId, journal) => ipcRenderer.invoke('cab:dernierJournal', { dossierId, journal }),
   relireLesPaquets: (dossierId, annee) => ipcRenderer.invoke('cab:relireLesPaquets', { dossierId, annee }),
   exportEcritures: (opts) => ipcRenderer.invoke('cab:exportEcritures', opts),
 

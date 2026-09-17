@@ -12093,6 +12093,417 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.ok(/^\.d-ident \{/m.test(css) && /^\.d-etat \{/m.test(css), '.d-ident ou .d-etat n\'est pas défini');
   });
 
+
+  // ================================================================ 9.3.0 — la saisie
+  //
+  // Les trois règles du livre ne bougent pas (9.2.0) ; ce qui s'ajoute ici, ce sont les gestes
+  // AUTOUR. Chaque test ci-dessous a été prouvé en réintroduisant son défaut — c'est la seule façon
+  // de savoir ce qu'on a écrit.
+
+  t('9.3.0 : une validée ne se modifie ni ne se supprime — un brouillard, si', () => {
+    const C = require('../src/renderer/compta.js');
+    const L = C.livreVide('D', 2026);
+    const e = C.ajouterEcriture(L, {
+      date: '2026-03-04', journal: 'VT', piece: 'F1', libelle: 'Vente',
+      lignes: [{ compte: '411', debit: 100 }, { compte: '706', credit: 100 }]
+    }, 'poste', 1);
+
+    // Tant qu'il est en brouillard : tout bouge.
+    assert.ok(C.modifierEcriture(L, e.id, { libelle: 'Vente corrigée', date: '2026-03-05' }).ok);
+    assert.strictEqual(e.libelle, 'Vente corrigée');
+    assert.strictEqual(e.mois, '2026-03', 'le mois doit suivre la date, sinon la pièce se range dans le mauvais mois');
+
+    // Validée : les deux gestes sont refusés, et le refus DIT quoi faire à la place.
+    assert.ok(C.validerEcriture(L, e.id, 'poste', 2).ok);
+    const mod = C.modifierEcriture(L, e.id, { libelle: 'x' });
+    assert.strictEqual(mod.ok, false, 'une écriture validée s\'est laissée modifier');
+    assert.ok(/contre-passe/.test(mod.motif), 'le refus ne dit pas par quoi remplacer le geste : ' + mod.motif);
+    const sup = C.supprimerEcriture(L, e.id);
+    assert.strictEqual(sup.ok, false, 'une écriture validée s\'est laissée supprimer');
+    assert.ok(/contre-passe/.test(sup.motif), 'le refus ne dit pas par quoi remplacer le geste : ' + sup.motif);
+    assert.strictEqual(e.libelle, 'Vente corrigée', 'la validée a quand même bougé');
+
+    // Un brouillard LETTRÉ ne se supprime pas non plus : le lettrage désignerait une écriture
+    // disparue, et c'est le genre de lien mort qu'on n'élucide plus six mois après.
+    const b = C.ajouterEcriture(L, { date: '2026-03-06', journal: 'VT', piece: 'F2', lignes: [{ compte: '411', credit: 100, lettre: 'A' }, { compte: '532', debit: 100 }] }, 'p', 3);
+    assert.strictEqual(C.supprimerEcriture(L, b.id).ok, false, 'un brouillard lettré s\'est laissé supprimer');
+    b.lignes[0].lettre = '';
+    assert.ok(C.supprimerEcriture(L, b.id).ok, 'un brouillard délettré doit se supprimer');
+  });
+
+  t('9.3.0 : valider un lot ne troue JAMAIS la numérotation', () => {
+    // C'est l'invariant 3 de SPEC-DATA-005, et le piège est connu depuis la 6.0.0 : `nextNumber`
+    // écrivait le compteur avant de savoir si l'enregistrement passerait. Ici le contrôle vit dans
+    // `validerEcriture`, AVANT l'attribution — donc une pièce refusée au milieu d'un lot de
+    // cinquante ne consomme aucun numéro. Le test prend exprès un lot dont la pièce fautive est au
+    // milieu : la mettre en dernier laisserait passer le défaut.
+    const C = require('../src/renderer/compta.js');
+    const L = C.livreVide('D', 2026);
+    const ok1 = C.ajouterEcriture(L, { date: '2026-03-01', journal: 'VT', piece: 'A', lignes: [{ compte: '411', debit: 10 }, { compte: '706', credit: 10 }] }, 'p', 1);
+    const faux = C.ajouterEcriture(L, { date: '2026-03-02', journal: 'VT', piece: 'B', lignes: [{ compte: '411', debit: 10 }, { compte: '706', credit: 9 }] }, 'p', 2);
+    const ok2 = C.ajouterEcriture(L, { date: '2026-03-03', journal: 'VT', piece: 'C', lignes: [{ compte: '411', debit: 10 }, { compte: '706', credit: 10 }] }, 'p', 3);
+    const autre = C.ajouterEcriture(L, { date: '2026-03-04', journal: 'AC', piece: 'D', lignes: [{ compte: '607', debit: 5 }, { compte: '401', credit: 5 }] }, 'p', 4);
+
+    const r = C.validerLot(L, { journal: 'VT', mois: '2026-03' }, 'poste', 9);
+    assert.strictEqual(r.candidates, 3, 'le filtre de journal ne tient pas : ' + r.candidates);
+    assert.strictEqual(r.validees.length, 2);
+    assert.strictEqual(r.refusees.length, 1);
+    assert.strictEqual(r.refusees[0].piece, 'B');
+    assert.ok(r.refusees[0].motif, 'une refusée doit être NOMMÉE avec son motif, sinon le lot avale le refus en silence');
+
+    const nums = L.ecritures.filter(x => x.statut === 'validee').map(x => x.numero).sort((a, b) => a - b);
+    assert.deepStrictEqual(nums, [1, 2], 'la suite des numéros a un trou : ' + nums.join(','));
+    assert.strictEqual(faux.numero, null, 'la pièce refusée a consommé un numéro');
+    assert.strictEqual(ok1.numero, 1);
+    assert.strictEqual(ok2.numero, 2);
+    assert.strictEqual(autre.statut, 'brouillard', 'le lot a débordé sur un autre journal');
+
+    // Et le lot suivant reprend la suite, sans trou ni doublon.
+    C.validerLot(L, { journal: 'AC' }, 'poste', 10);
+    assert.strictEqual(autre.numero, 3);
+  });
+
+  t('9.3.0 : une extourne ne contre-passe pas son origine, et ne sort pas de l\'exercice', () => {
+    const C = require('../src/renderer/compta.js');
+    const L = C.livreVide('D', 2026);
+    const prov = C.ajouterEcriture(L, {
+      date: '2026-03-31', journal: 'OD', piece: 'PROV', libelle: 'Charge à payer',
+      lignes: [{ compte: '61', debit: 300 }, { compte: '408', credit: 300 }]
+    }, 'p', 1);
+    C.validerEcriture(L, prov.id, 'p', 2);
+
+    const r = C.extourner(L, prov.id, 'p', 3);
+    assert.ok(r.ok, r.motif);
+    assert.strictEqual(r.ecriture.date, '2026-04-01', 'l\'extourne ne tombe pas au 1er du mois suivant');
+    assert.strictEqual(r.ecriture.extourneDe, prov.id);
+    // LA différence avec une contre-passation : l'origine reste validée, dans son mois, avec son
+    // numéro. Une provision extournée a bien existé — la marquer « contrepassee » la ferait
+    // disparaître du mois où elle a été passée, et le résultat de mars serait faux.
+    assert.strictEqual(prov.statut, 'validee', 'l\'extourne a marqué son origine comme contre-passée');
+    assert.strictEqual(prov.numero, 1);
+    assert.strictEqual(r.ecriture.lignes[0].credit, 300, 'le miroir n\'inverse pas les colonnes');
+    assert.strictEqual(r.ecriture.lignes[0].debit, 0);
+    assert.strictEqual(C.extourner(L, prov.id, 'p', 4).ok, false, 'on a pu extourner deux fois');
+
+    // Décembre : le 1er janvier appartient à l'exercice SUIVANT, et un livre n'en porte qu'un. On
+    // refuse en le disant, plutôt que de la ranger au mauvais endroit — ce qui fausserait les deux.
+    const dec = C.ajouterEcriture(L, { date: '2026-12-31', journal: 'OD', piece: 'P2', lignes: [{ compte: '61', debit: 1 }, { compte: '408', credit: 1 }] }, 'p', 5);
+    C.validerEcriture(L, dec.id, 'p', 6);
+    const hors = C.extourner(L, dec.id, 'p', 7);
+    assert.strictEqual(hors.ok, false, 'une extourne a été posée hors de son exercice');
+    assert.ok(/exercice suivant/.test(hors.motif), hors.motif);
+    assert.ok(!L.ecritures.some(x => x.date > L.exercice.au), 'une écriture est datée après la fin de l\'exercice');
+  });
+
+  t('9.3.0 : Tab solde la pièce, et le montant change de COLONNE', () => {
+    // Un montant négatif ne garde jamais son signe (règle 6.3.0) : il change de colonne. Aucun
+    // logiciel comptable n'accepte un débit négatif, et c'est ce qui fait refuser le fichier à
+    // l'import sans que personne comprenne pourquoi.
+    const C = require('../src/renderer/compta.js');
+    const manqueCredit = C.soldeDeLignes([{ debit: 1191 }, { credit: 1000 }]);
+    assert.deepStrictEqual(manqueCredit.solde, { debit: 0, credit: 191 });
+    const manqueDebit = C.soldeDeLignes([{ credit: 1191 }, { debit: 1000 }]);
+    assert.deepStrictEqual(manqueDebit.solde, { debit: 191, credit: 0 });
+    assert.ok(manqueDebit.solde.debit > 0, 'le solde est sorti négatif au lieu de changer de colonne');
+    assert.strictEqual(C.soldeDeLignes([{ debit: 10 }, { credit: 10 }]).equilibre, true);
+    assert.strictEqual(C.soldeDeLignes([]).equilibre, true);
+    // Trois décimales : le dinar. Un arrondi à deux centimes fabriquerait un écart de balance.
+    assert.strictEqual(C.soldeDeLignes([{ debit: 0.3335 }, { credit: 0.1 }]).solde.credit, 0.234);
+  });
+
+  t('9.3.0 : un compte se cherche par numéro OU par nom, sans accent', () => {
+    const C = require('../src/renderer/compta.js');
+    const plan = [
+      { compte: '411', libelle: 'Clients' }, { compte: '4111', libelle: 'Clients divers' },
+      { compte: '411001', libelle: 'Trabelsi' }, { compte: '6511', libelle: 'Intérêts bancaires' },
+      { compte: '999', libelle: 'Ancien compte', desactive: true }
+    ];
+    // Le numéro EXACT d'abord : celui qui tape « 411 » veut le 411, pas « Clients divers ».
+    assert.strictEqual(C.comptesQuiCorrespondent(plan, '411')[0].compte, '411');
+    assert.strictEqual(C.comptesQuiCorrespondent(plan, 'interets')[0].compte, '6511', 'la recherche ne passe pas les accents');
+    assert.strictEqual(C.comptesQuiCorrespondent(plan, 'INTÉRÊTS')[0].compte, '6511', 'la recherche ne passe pas la casse');
+    assert.strictEqual(C.comptesQuiCorrespondent(plan, 'trabelsi')[0].compte, '411001');
+    assert.ok(!C.comptesQuiCorrespondent(plan, '999').length, 'un compte désactivé se propose encore');
+    assert.strictEqual(C.comptesQuiCorrespondent(plan, 'zzz').length, 0);
+    // Sans terme, on rend le plan : c'est ce qui fait qu'un champ vide montre quelque chose.
+    assert.ok(C.comptesQuiCorrespondent(plan, '', 3).length === 3);
+  });
+
+  t('9.3.0 : un guide préremplit une pièce qui tombe juste, et refuse deux soldes', () => {
+    const C = require('../src/renderer/compta.js');
+    const guide = {
+      nom: 'Achat avec TVA 19 %', journal: 'AC',
+      lignes: [
+        { compte: '607', sens: 'debit', base: true, libelle: 'Achat' },
+        { compte: '4366', sens: 'debit', taux: 19, libelle: 'TVA déductible' },
+        { compte: '401', sens: 'credit', solde: true, libelle: 'Fournisseur' }
+      ]
+    };
+    assert.ok(C.guideValide(guide).ok, C.guideValide(guide).motif);
+    const e = C.ecritureDepuisGuide(guide, { date: '2026-05-02', piece: 'F-77', montant: 1000, libelle: 'Papeterie' });
+    // Les trois montants sont calculés à la MAIN, à partir de la règle : 1000 de base, 19 % de TVA,
+    // et le fournisseur reçoit le reste. Recopier ce que le code produit graverait son défaut
+    // (leçon 7.0.1, la plus coûteuse du projet).
+    assert.strictEqual(e.lignes[0].debit, 1000);
+    assert.strictEqual(e.lignes[1].debit, 190);
+    assert.strictEqual(e.lignes[2].credit, 1190);
+    assert.strictEqual(e.lignes[2].debit, 0, 'la ligne de solde a basculé de colonne');
+    assert.strictEqual(e.journal, 'AC');
+    assert.ok(C.ecritureValide(e).ok, 'un guide doit produire une écriture qui entre : ' + C.ecritureValide(e).motif);
+    // Le taux vient du GUIDE, jamais du code (règle 5.0.0). Le changer change le résultat.
+    const g13 = { ...guide, lignes: guide.lignes.map(l => l.taux ? { ...l, taux: 13 } : l) };
+    assert.strictEqual(C.ecritureDepuisGuide(g13, { montant: 1000 }).lignes[1].debit, 130);
+    // Deux lignes qui réclament « le reste » n'ont pas de réponse.
+    assert.strictEqual(C.guideValide({ nom: 'x', journal: 'AC', lignes: [
+      { compte: '1', sens: 'debit', solde: true }, { compte: '2', sens: 'credit', solde: true }] }).ok, false);
+    assert.strictEqual(C.guideValide({ nom: '', journal: 'AC', lignes: guide.lignes }).ok, false, 'un guide sans nom est passé');
+    assert.strictEqual(C.guideValide({ nom: 'x', journal: '', lignes: guide.lignes }).ok, false, 'un guide sans journal est passé');
+    assert.strictEqual(C.guideValide({ nom: 'x', journal: 'AC', lignes: [{ compte: 'abc', sens: 'debit' }, { compte: '2', sens: 'credit' }] }).ok, false, 'un compte non numérique est passé');
+  });
+
+  t('9.3.0 : un abonnement génère en brouillard et jamais deux fois le même mois', () => {
+    const C = require('../src/renderer/compta.js');
+    const ab = { actif: true, depuis: '2026-01-05', tousLesMois: 1, jusqua: '2026-04-30' };
+    assert.deepStrictEqual(C.occurrencesAGenerer(ab, '2026-06-30'),
+      ['2026-01-05', '2026-02-05', '2026-03-05', '2026-04-05'], 'la borne `jusqua` ne tient pas');
+    // Rejouer ne double RIEN : c'est ce qui rend le geste sûr à répéter (même règle que l'import
+    // d'un paquet, 9.2.0). Sans `faites`, chaque clic reposerait douze loyers de plus.
+    assert.deepStrictEqual(C.occurrencesAGenerer(ab, '2026-06-30', ['2026-01', '2026-02']), ['2026-03-05', '2026-04-05']);
+    assert.deepStrictEqual(C.occurrencesAGenerer({ ...ab, actif: false }, '2026-06-30'), [], 'un abonnement suspendu génère encore');
+    assert.deepStrictEqual(C.occurrencesAGenerer({ ...ab, depuis: '' }, '2026-06-30'), []);
+    // Un pas de 3 mois, et le jour qui se garde en butant sur la fin du mois.
+    assert.deepStrictEqual(C.occurrencesAGenerer({ actif: true, depuis: '2026-01-31', tousLesMois: 1 }, '2026-03-31'),
+      ['2026-01-31', '2026-02-28', '2026-03-28'], '31 janvier + 1 mois doit donner le 28 février');
+    assert.deepStrictEqual(C.occurrencesAGenerer({ actif: true, depuis: '2026-01-15', tousLesMois: 3 }, '2026-12-31'),
+      ['2026-01-15', '2026-04-15', '2026-07-15', '2026-10-15']);
+  });
+
+  t('9.3.0 : la correspondance la plus précise gagne, et un compte n\'a jamais deux réponses', () => {
+    const C = require('../src/renderer/compta.js');
+    const table = [{ de: '4', vers: '5', prefixe: true }, { de: '411', vers: '3411', prefixe: true }, { de: '411001', vers: '341199' }];
+    assert.ok(C.correspondanceValide(table).ok);
+    assert.strictEqual(C.compteCorrespondant(table, '411001'), '341199', 'la règle la plus précise ne gagne pas');
+    assert.strictEqual(C.compteCorrespondant(table, '411002'), '3411002', 'le préfixe ne garde pas la queue du numéro');
+    assert.strictEqual(C.compteCorrespondant(table, '401'), '501', 'le préfixe le plus court doit quand même servir');
+    assert.strictEqual(C.compteCorrespondant(table, '706'), '706', 'un compte sans correspondance a bougé');
+    assert.strictEqual(C.compteCorrespondant([], '411'), '411');
+    // Une correspondance sans `prefixe` ne touche QUE le compte exact.
+    assert.strictEqual(C.compteCorrespondant([{ de: '706', vers: '704' }], '7061'), '7061');
+    // Les deux contrats de ligne coexistent : `compte` (le livre) et `account` (les lignes plates).
+    const a = C.appliquerCorrespondance([{ account: '411001', debit: 1 }, { account: '706' }], table);
+    assert.strictEqual(a.traduites, 1);
+    assert.strictEqual(a.lignes[0].account, '341199');
+    assert.strictEqual(a.lignes[0].debit, 1, 'la traduction a perdu le reste de la ligne');
+    const b = C.appliquerCorrespondance([{ compte: '411001' }], table);
+    assert.strictEqual(b.lignes[0].compte, '341199');
+    assert.strictEqual(b.lignes[0].account, undefined, 'la traduction a inventé le champ de l\'autre contrat');
+    // Deux réponses pour le même compte : refusé, avec sa raison.
+    assert.strictEqual(C.correspondanceValide([{ de: '411', vers: '3411' }, { de: '411', vers: '5411' }]).ok, false);
+    assert.strictEqual(C.correspondanceValide([{ de: '411', vers: '411' }]).ok, false, 'un compte traduit par lui-même est passé');
+    assert.strictEqual(C.correspondanceValide([{ de: '411', vers: '' }]).ok, false, 'une correspondance à moitié écrite est passée');
+    assert.ok(C.correspondanceValide([{ de: '', vers: '' }]).ok, 'une ligne entièrement vide n\'est pas une faute');
+  });
+
+  t('9.3.0 : une date tapée accepte six formes et refuse le 30 février', () => {
+    const K = require('../src/cabinet/cabcore.js');
+    assert.strictEqual(K.dateTapee('2026-03-04', 2026, '2026-03'), '2026-03-04');
+    assert.strictEqual(K.dateTapee('04/03/2026', 2026, '2026-03'), '2026-03-04');
+    assert.strictEqual(K.dateTapee('4/3/26', 2026, '2026-03'), '2026-03-04');
+    assert.strictEqual(K.dateTapee('4/3', 2026, '2026-03'), '2026-03-04');
+    assert.strictEqual(K.dateTapee('4', 2026, '2026-03'), '2026-03-04', 'le jour seul doit reprendre le mois de la pièce précédente');
+    assert.strictEqual(K.dateTapee('040326', 2026, '2026-03'), '2026-03-04', 'la frappe au pavé numérique n\'est pas lue');
+    assert.strictEqual(K.dateTapee('04032026', 2026, '2026-03'), '2026-03-04');
+    // Une date qui n'existe pas rend la CHAÎNE VIDE : le champ reste rouge, et on ne choisit jamais
+    // un jour voisin à la place de quelqu'un.
+    assert.strictEqual(K.dateTapee('30/02/2026', 2026, '2026-02'), '', 'le 30 février a été accepté');
+    assert.strictEqual(K.dateTapee('32/01/2026', 2026, '2026-01'), '');
+    assert.strictEqual(K.dateTapee('04/13/2026', 2026, '2026-01'), '');
+    assert.strictEqual(K.dateTapee('bonjour', 2026, '2026-01'), '');
+    assert.strictEqual(K.dateTapee('', 2026, '2026-01'), '');
+    // 29 février d'une année bissextile : accepté. C'est le cas que le test d'à côté doit couvrir,
+    // sinon « refuse le 30 février » serait satisfait par une fonction qui refuse tout février.
+    assert.strictEqual(K.dateTapee('29/02/2024', 2024, '2024-02'), '2024-02-29');
+    assert.strictEqual(K.dateTapee('29/02/2026', 2026, '2026-02'), '', '2026 n\'est pas bissextile');
+  });
+
+  t('9.3.0 : la grille de saisie ne se redessine pas à chaque frappe', () => {
+    // Le défaut de la 7.17.0 : un champ qui se redessine à chaque caractère est un champ dans lequel
+    // on ne peut pas écrire — l'élément est détruit, le curseur repart dans le vide. On met à jour
+    // la donnée, puis le SEUL élément qui en dépend.
+    const cab = lireSource('src', 'cabinet', 'renderer', 'app.js')
+      .replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+    assert.ok(cab.includes('function brancherSaisie'), 'la grille de saisie a disparu');
+    const zone = cab.slice(cab.indexOf('function brancherSaisie'), cab.indexOf('const pieceDepuis'));
+    assert.ok(zone.length > 2000 && zone.length < 20000, 'la tranche de la saisie fait ' + zone.length + ' caractères : elle ne vise plus ce qu\'on croit');
+    assert.ok(!zone.includes('const pieceDepuis'), 'la tranche déborde sur la fonction suivante');
+    // Le gestionnaire de frappe d'une ligne ne redessine QUE le solde.
+    const oninput = zone.slice(zone.indexOf('inp.oninput = () => {'), zone.indexOf('inp.onkeydown'));
+    assert.ok(oninput.length > 100, 'le gestionnaire de frappe est introuvable');
+    assert.ok(!/drawLivres|redessinerLignes|render\(\)/.test(oninput),
+      'la frappe redessine la grille : le champ sous le curseur sera détruit à chaque caractère');
+    assert.ok(/majSolde\(\)/.test(oninput), 'la frappe ne met plus le solde à jour');
+    // Et le solde vient du MOTEUR, pas d'une addition écrite dans l'écran : deux façons d'arrondir
+    // finiraient par diverger, et une pièce soldée à l'écran serait refusée à l'enregistrement.
+    assert.ok(/KC\.soldeDeLignes/.test(zone), 'l\'écran calcule le solde lui-même au lieu de passer par compta.js');
+  });
+
+  t('9.3.0 : les touches de la grille sont réglables, et aucune n\'est écrite en dur', () => {
+    const K = require('../src/cabinet/cabcore.js');
+    const cab = lireSource('src', 'cabinet', 'renderer', 'app.js')
+      .replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+    // Les cinq touches existent, et `migrate` les fusionne UNE PAR UNE : quelqu'un qui n'en a
+    // redéfini qu'une ne doit pas perdre les autres, et une version qui en ajoute une doit la
+    // donner à ceux qui ont déjà réglé les leurs.
+    ['ligneSuivante', 'solder', 'recopier', 'dupliquer', 'valider'].forEach(k =>
+      assert.ok(K.DEFAULT_SAISIE.touches[k], 'la touche « ' + k + ' » n\'a plus de valeur par défaut'));
+    const m = K.migrate({ settings: { saisie: { touches: { recopier: 'F9' } } } });
+    assert.strictEqual(m.settings.saisie.touches.recopier, 'F9');
+    assert.strictEqual(m.settings.saisie.touches.dupliquer, K.DEFAULT_SAISIE.touches.dupliquer,
+      'régler une touche a effacé les autres');
+    // La grille compare la touche frappée aux RÉGLAGES, jamais à une constante. Une comparaison
+    // à « F2 » écrite dans le code rendrait le réglage inerte — le pire cas : un écran qui accepte
+    // le clic et ne change rien (7.12.0).
+    const zone = cab.slice(cab.indexOf('function brancherSaisie'), cab.indexOf('const pieceDepuis'));
+    assert.ok(/touche === t\.recopier/.test(zone) && /touche === t\.dupliquer/.test(zone) && /touche === t\.valider/.test(zone)
+      && /touche === t\.ligneSuivante/.test(zone), 'la grille ne lit plus les touches réglées');
+    assert.ok(!/ev\.key === 'F2'|ev\.key === 'F4'/.test(zone), 'une touche est de nouveau écrite en dur');
+  });
+
+  t('9.3.0 : tout geste sur le livre passe par la porte d\'écriture unique', () => {
+    // Deux portes, c'est la garantie qu'un jour l'une oubliera la piste d'audit — et un livre
+    // comptable sans piste d'audit ne vaut rien devant un contrôle.
+    const main = lireSource('src', 'cabinet', 'main.js')
+      .replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+    assert.ok(main.includes('function ecrireLeLivre'), 'la porte unique a disparu');
+    ['cab:modifierEcriture', 'cab:supprimerEcriture', 'cab:extourner', 'cab:validerLot', 'cab:joindreEcriture', 'cab:genererAbonnements']
+      .forEach(nom => {
+        const i = main.indexOf(`ipcMain.handle('${nom}'`);
+        assert.ok(i > 0, 'le handler ' + nom + ' n\'existe pas');
+        const suivants = [main.indexOf('ipcMain.handle(', i + 10), main.indexOf('\nfunction ', i)].filter(x => x > 0);
+        const bloc = main.slice(i, suivants.length ? Math.min(...suivants) : main.length);
+        assert.ok(bloc.length < 4000, nom + ' : la tranche fait ' + bloc.length + ' caractères, elle déborde');
+        assert.ok(/ecrireLeLivre\(/.test(bloc), nom + ' écrit le livre sans passer par la porte unique');
+        assert.ok(!/getStore\(\)\.ecrireLivre\(/.test(bloc), nom + ' appelle l\'écriture du disque directement');
+      });
+    // Et le moteur ne trace PAS ces gestes : c'est l'appelant qui trace, sinon la piste d'audit
+    // s'écrit en double et ne se lit plus.
+    const C = lireSource('src', 'renderer', 'compta.js');
+    const mod = C.slice(C.indexOf('function modifierEcriture'), C.indexOf('function supprimerEcriture'));
+    assert.ok(mod.length > 400 && mod.length < 3000, 'la tranche de modifierEcriture fait ' + mod.length + ' caractères');
+    assert.ok(!/trace\(/.test(mod), 'modifierEcriture trace : la piste d\'audit s\'écrira en double');
+  });
+
+  t('9.3.0 : les champs neufs du dossier survivent à migrate', () => {
+    // C'est le défaut de `matricule` trouvé en 6.8.0 : un champ absent de `migrateDossier` est jeté
+    // au prochain chargement, EN SILENCE. Ici, un abonnement perdu c'est un loyer qui cesse d'être
+    // écrit sans que personne ne le remarque avant le bilan.
+    const K = require('../src/cabinet/cabcore.js');
+    const d = K.migrateDossier({
+      id: 'x', name: 'Client', abonnements: [{ id: 'a1', nom: 'Loyer' }],
+      guides: [{ id: 'g1', nom: 'Perso' }], correspondance: [{ de: '411', vers: '3411' }],
+      dernierJournal: 'AC'
+    });
+    assert.strictEqual(d.abonnements.length, 1, 'les abonnements du dossier sont jetés par migrate');
+    assert.strictEqual(d.guides.length, 1, 'les guides du dossier sont jetés par migrate');
+    assert.strictEqual(d.correspondance.length, 1, 'la correspondance du dossier est jetée par migrate');
+    assert.strictEqual(d.dernierJournal, 'AC');
+    // Une base d'AVANT la 9.3.0 ne perd rien et ne casse rien : les trois listes arrivent vides.
+    const vieux = K.migrateDossier({ id: 'y', name: 'Ancien' });
+    assert.deepStrictEqual(vieux.abonnements, []);
+    assert.deepStrictEqual(vieux.guides, []);
+    assert.deepStrictEqual(vieux.correspondance, []);
+    // Au niveau du cabinet, pareil.
+    const s = K.migrate({ guides: [{ id: 'g' }], correspondance: [{ de: '1', vers: '2' }] });
+    assert.strictEqual(s.guides.length, 1, 'les guides du cabinet sont jetés par migrate');
+    assert.strictEqual(s.correspondance.length, 1, 'la correspondance du cabinet est jetée par migrate');
+    assert.deepStrictEqual(K.migrate({}).guides, []);
+  });
+
+  t('9.3.0 : guides et abonnements ne vivent pas dans livre.json', () => {
+    // Le format du livre est FIGÉ (SPEC-DATA-005) : tout ce qui n'y est pas décrit vit ailleurs.
+    // Les guides au niveau du cabinet (un comptable les écrit une fois pour ses soixante clients),
+    // les abonnements sur le dossier (un loyer appartient à un client).
+    const C = require('../src/renderer/compta.js');
+    const L = C.livreVide('D', 2026);
+    assert.ok(!('guides' in L) && !('abonnements' in L) && !('correspondance' in L),
+      'le livre a gagné une liste qui n\'est pas dans son format');
+    assert.deepStrictEqual(Object.keys(L).sort(),
+      ['audit', 'dossier', 'ecritures', 'exercice', 'format', 'journaux', 'lettrages',
+        'ouverture', 'plan', 'releves', 'immobilisations', 'declarations'].sort(),
+      'la forme du livre a changé');
+    // Et la surcharge : un guide du dossier qui porte le même id REMPLACE celui du cabinet, il ne
+    // s'y ajoute pas — un doublon dans la liste, on ne saurait pas lequel est le bon.
+    const K = require('../src/cabinet/cabcore.js');
+    const gs = K.guidesDuDossier({ guides: [{ id: 'g1', nom: 'Loyer' }, { id: 'g2', nom: 'Achat' }] },
+      { guides: [{ id: 'g1', nom: 'Loyer (ce client)' }] });
+    assert.strictEqual(gs.length, 2, 'la surcharge a fabriqué un doublon');
+    assert.strictEqual(gs.find(g => g.id === 'g1').nom, 'Loyer (ce client)');
+    assert.strictEqual(gs.find(g => g.id === 'g1').portee, 'dossier');
+    assert.strictEqual(gs.find(g => g.id === 'g2').portee, 'cabinet');
+    const cr = K.correspondanceDuDossier({ correspondance: [{ de: '411', vers: '3411' }] },
+      { correspondance: [{ de: '411', vers: '9411' }] });
+    assert.strictEqual(cr.length, 1, 'une exception du dossier s\'ajoute au lieu de remplacer');
+    assert.strictEqual(cr[0].vers, '9411');
+  });
+
+  t('9.3.0 : un justificatif est un chemin RELATIF, rangé avec le dossier', () => {
+    // Le fichier du comptable est sur son Bureau, dans un mail téléchargé, sur une clé USB — trois
+    // endroits qui auront disparu dans six mois, pendant que l'écriture doit rester justifiée
+    // pendant dix ans. Le livre ne porte donc jamais un chemin absolu.
+    const os2 = require('os');
+    const racine = fs.mkdtempSync(path.join(os2.tmpdir(), 'cab-pj-'));
+    const store = require('../src/cabinet/cabstore.js').createCabStore(racine);
+    const dossier = { id: 'D1', name: 'Client Test', matricule: '1234567A' };
+    const src = path.join(racine, 'facture.pdf');
+    fs.writeFileSync(src, 'PDF');
+
+    const r = store.rangerPieceJointe(src, dossier, [dossier], '2026-03-04-F1');
+    assert.ok(r.relatif.startsWith('pieces/'), 'le chemin enregistré n\'est pas relatif : ' + r.relatif);
+    assert.ok(!path.isAbsolute(r.relatif), 'le chemin enregistré est absolu');
+    assert.ok(fs.existsSync(r.absolu), 'le fichier n\'a pas été copié');
+    assert.strictEqual(fs.readFileSync(r.absolu, 'utf8'), 'PDF');
+    assert.ok(fs.existsSync(src), 'le fichier d\'origine a été déplacé au lieu d\'être copié');
+
+    // Deux fichiers du même nom ne s'écrasent pas.
+    const r2 = store.rangerPieceJointe(src, dossier, [dossier], '2026-03-04-F1');
+    assert.notStrictEqual(r2.relatif, r.relatif, 'un second justificatif a écrasé le premier');
+
+    // Le chemin se retrouve, et une remontée est refusée : ce qui vient de l'extérieur se valide
+    // AVANT de toucher au disque (règle 6.8.1) — un livre peut avoir été fabriqué ailleurs.
+    assert.strictEqual(store.cheminPieceJointe(dossier, [dossier], r.relatif), r.absolu);
+    // La remontée se teste sur un fichier qui EXISTE VRAIMENT, sinon c'est le simple « ce fichier
+    // n'est pas là » qui répond, et le test resterait vert avec les gardes retirées. Ici on vise la
+    // base du cabinet elle-même : deux crans au-dessus du dossier du client.
+    const vise = path.join(racine, 'cabinet-data.json');
+    fs.writeFileSync(vise, 'la base du cabinet');
+    assert.ok(fs.existsSync(vise), 'le fichier visé par le test doit exister, sinon le test ne prouve rien');
+    assert.strictEqual(store.cheminPieceJointe(dossier, [dossier], '../../cabinet-data.json'), '', 'une remontée de chemin est acceptée');
+    assert.strictEqual(store.cheminPieceJointe(dossier, [dossier], '..\\\\..\\\\cabinet-data.json'), '', 'une remontée à la Windows est acceptée');
+    assert.strictEqual(store.cheminPieceJointe(dossier, [dossier], vise), '', 'un chemin absolu est accepté');
+    assert.strictEqual(store.cheminPieceJointe(dossier, [dossier], 'pieces/jamais-vu.pdf'), '', 'un fichier absent rend un chemin quand même');
+    fs.rmSync(racine, { recursive: true, force: true });
+  });
+
+  t('9.3.0 : la recherche lit un libellé comme un montant', () => {
+    const C = require('../src/renderer/compta.js');
+    const L = C.livreVide('D', 2026);
+    C.ajouterEcriture(L, { date: '2026-03-04', journal: 'VT', piece: 'FAC-2026-031', libelle: 'Facture Trabelsi',
+      lignes: [{ compte: '411001', libelle: 'Trabelsi', debit: 1191 }, { compte: '706', credit: 1000 }, { compte: '4367', credit: 191 }] }, 'p', 1);
+    C.ajouterEcriture(L, { date: '2026-04-02', journal: 'BQ', piece: 'VIR-12', libelle: 'Règlement client',
+      lignes: [{ compte: '532', libelle: 'Virement reçu', debit: 1191 }, { compte: '411001', libelle: 'Trabelsi', credit: 1191 }] }, 'p', 2);
+    assert.strictEqual(C.chercherEcritures(L, 'trabelsi').length, 2, 'la recherche ne descend pas dans les lignes');
+    assert.strictEqual(C.chercherEcritures(L, 'FAC-2026-031').length, 1);
+    assert.strictEqual(C.chercherEcritures(L, '1191').length, 2, 'un montant ne se cherche pas');
+    assert.strictEqual(C.chercherEcritures(L, '1191,000').length, 2, 'un montant à la française ne se cherche pas');
+    assert.strictEqual(C.chercherEcritures(L, 'reglement').length, 1, 'la recherche ne passe pas les accents');
+    assert.strictEqual(C.chercherEcritures(L, 'zzz').length, 0);
+    assert.strictEqual(C.chercherEcritures(L, '', { journal: 'BQ' }).length, 1, 'le filtre de journal ne tient pas');
+    assert.strictEqual(C.chercherEcritures(L, 'trabelsi', { statut: 'validee' }).length, 0, 'le filtre de statut ne tient pas');
+    // La recherche porte sur TOUT le livre, pas sur la période affichée : on cherche justement
+    // parce qu'on ne sait plus quand c'était.
+    assert.strictEqual(C.chercherEcritures(L, '1191', { du: '2026-01-01', au: '2026-12-31' }).length, 2);
+  });
+
   t('aucun fichier source ne traîne à la racine du dépôt', () => {
     // Trouvé en préparant la publication de la 9.2.0, et jamais par un test : DIX-SEPT copies de
     // `src/**` s'étaient posées à la racine — un agent de vérification avait aplati les chemins pour

@@ -97,7 +97,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 **L'outillage (9.1.0)**
 
 `npm test` (les tests purs) · `npm run lint` (ESLint, zéro erreur exigée) · `npm run charge` (le test
-de charge du livre) · `npm run e2e:<nom>` (42 parcours, tableau au § « Les tests qui ouvrent vraiment
+de charge du livre) · `npm run e2e:<nom>` (43 parcours, tableau au § « Les tests qui ouvrent vraiment
 l'application ») · CI GitHub sur Linux et Windows à chaque poussée · « Construire un essai » pour
 faire tester une version sans la publier.
 
@@ -500,6 +500,7 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:pont` | **le pont comptable** : le vrai worker sur SQLite et l'application en état éditeur — un secret faux refusé, le bon gardé en 0600 hors des données, deux ventes de la console tirées en deux brouillons (client retrouvé par matricule ou créé), le menu d'une licence de la console sans « Renouveler », le numéro rendu à l'émission et lu dans la base, la console éteinte dite en français |
 | `npm run e2e:livres` | **les livres comptables** : chaque compte du grand livre avec son solde progressif qui finit sur le total, le sélecteur de compte, la balance dont les six totaux tombent juste, l'auxiliaire clients, la case « un sous-compte par tiers » qui donne 411001… et les fige sur les fiches, le livre-journal numéroté et son centralisateur, une OD refusée puis enregistrée, le lettrage qui ouvre sa pièce, les états financiers équilibrés, l'à-nouveau de janvier, l'état de rapprochement à écart nul, la TFP dans les barèmes |
 | `npm run e2e:justificatif` | **le justificatif se joint avant toute saisie** : sélecteur de fichier remplacé dans le processus principal, une photo jointe sur un achat VIDE, enregistrée avec la pièce, retrouvée sur le disque et dans la liste (📎), un second fichier sur la pièce rangée, une pièce abandonnée qui ne laisse pas de copie, la lecture d'une photo qui redessine sans perdre la pièce, et le même geste sur un devis neuf |
+| `npm run e2e:saisie` | **la grille de saisie, AU CLAVIER** : une pièce entière tapée sans souris (Entrée descend, Tab solde), le brouillard sans numéro, la validation qui referme, les deux refus sur une validée, un lot dont la pièce fausse est au MILIEU et la numérotation qui reste 1..n, l'extourne au 1er du mois suivant, la recherche par montant après réouverture de l'application, et un guide écrit puis appliqué |
 | `npm run e2e:licence` | **l'éditeur et les offres, puis le client** : une première application DÉSARMÉE (`SKANFACT_CLE_EMBARQUEE` vers un chemin inexistant, développement seulement) — sans clé rien n'apparaît ; « Créer mes clés » écrit la privée dans un dossier isolé (`SKANFACT_DOSSIER_CLES`) et met le poste en état « éditeur » (ni essai ni verrou) ; « Émettre » signe une clé vérifiable, crée un BROUILLON de facture et l'historique ; la clé Indépendant collée refuse un nouveau fournisseur, pose un cadenas sur Achats et laisse les Statistiques ; la clé d'un autre matricule est refusée en nommant les deux ; « Renouveler » ; rien de ce qui traverse le pont ne contient la clé privée — PUIS une seconde application telle qu'un client l'installe (vraie clé embarquée, pas de clé privée) : essai de 30 jours, aucune trace de l'éditeur, plus de porte « Créer mes clés », et la clé signée par la clé d'essai du test REFUSÉE |
 
 Ils ont longtemps vécu dans un dossier de travail temporaire, effacé à chaque session : il fallait les réécrire de mémoire, et ils dérivaient (une assertion restée sur une version périmée, un écran neuf jamais parcouru). **Un test qu'on doit réécrire pour s'en servir n'est pas un test.** Le harnais (`test/e2e/harnais.js`) trouve Playwright où il est, lit la version dans `package.json` au lieu de l'écrire en dur, et range les captures dans `dist-e2e/` (ignoré par Git).
@@ -3020,6 +3021,94 @@ tenaient ensemble : l'exemple **cachait** le défaut.
 - Piège d'e2e, sixième fois : trois passages de `e2e:boucle` cliquaient dans ce qui devient un
   onglet masqué (`#c-compta`, le menu d'un paquet, `#c-livres`). On clique l'onglet comme un
   comptable, ou on passe par l'adresse profonde.
+
+### 9.3.0 — La saisie
+
+L'écran où un comptable passe ses journées. Dans `compta.js` : `modifierEcriture`, `supprimerEcriture`,
+`validerLot`, `extourner`, `chercherEcritures`, `soldeDeLignes`, `comptesQuiCorrespondent`,
+`guideValide`/`ecritureDepuisGuide`, `occurrencesAGenerer`, `correspondanceValide`/`compteCorrespondant`/
+`appliquerCorrespondance`, plus `premierDuMoisSuivant` et `ajouterMoisIso` (UTC pur). Dans cabcore :
+`dateTapee`, `guidesDuDossier`, `correspondanceDuDossier`, `DEFAULT_SAISIE`. Onglets **Saisie** et
+**Recherche** dans la comptabilité d'un dossier, onglet **Comptabilité** dans les Réglages.
+
+La dépendance que le plan pose sur cette version — **regarder le pilote saisir une heure dans son
+logiciel actuel** — n'est pas levée. C'est pour ça que tout ce qui s'apprend par les doigts est
+**réglable** : les touches, le journal proposé à l'ouverture, la date complète ou le jour seul. On
+change un réglage, pas une version.
+
+Règles apprises, à ne pas recasser :
+
+- **Le contrôle passe AVANT l'attribution du numéro, et valider un lot ne refuse jamais en bloc.**
+  Les deux vont ensemble : chaque pièce d'un lot passe par `validerEcriture` une par une, donc une
+  refusée au milieu de cinquante ne consomme aucun numéro. Un lot tout-ou-rien obligerait à sortir la
+  pièce fautive d'un mois de saisie avant de pouvoir valider les quarante-neuf autres — et le
+  comptable finirait par ne plus valider du tout. Les refusées sont NOMMÉES : « 12 validées » en
+  avalant trois refus serait pire qu'un refus global.
+- **Une extourne n'est pas une contre-passation**, et la différence est comptable, pas cosmétique :
+  l'écriture d'origine reste `validee`, dans son mois, avec son numéro. La marquer `contrepassee` la
+  ferait disparaître du mois où elle a été passée, et le résultat de ce mois-là serait faux. Une
+  extourne de décembre tombe au 1er janvier, donc dans l'exercice SUIVANT : on REFUSE en le disant,
+  plutôt que de la ranger dans le livre de décembre — ça fausserait les deux.
+- **L'écran ne calcule jamais le solde lui-même.** `soldeDeLignes` vit dans `compta.js`, et c'est lui
+  que `Tab` appelle : deux façons d'arrondir finiraient par diverger, et une pièce « soldée » à
+  l'écran serait refusée à l'enregistrement. Le solde posé **change de colonne**, il ne garde pas un
+  signe (règle 6.3.0).
+- **Une grille ne se redessine pas à la frappe** (défaut 7.17.0) : on met à jour la donnée, puis le
+  SEUL élément qui en dépend (`#sa-solde`). Un test relit le gestionnaire `oninput` et interdit qu'il
+  contienne `drawLivres`. Le redessin n'a lieu qu'à l'ajout ou au retrait d'une ligne, et il replace
+  le curseur.
+- **Tab ne peut pas servir de chaîne dans l'en-tête** : chaque libellé porte sa bulle « i », qui est
+  un vrai `<button>` et prend donc le focus au passage. Les sortir de l'ordre de tabulation rendrait
+  l'explication inatteignable au clavier — ce que ce projet s'interdit depuis la 7.0.0. On AJOUTE un
+  chemin au lieu d'en couper un : Entrée descend de champ en champ jusqu'à la première ligne. Trouvé
+  par `e2e:saisie`, invisible autrement — le libellé n'était simplement jamais tapé.
+- **Un guide préremplit, il n'écrit pas.** Un abonnement génère **en brouillard**, jamais une validée
+  d'office : une écriture que personne n'a regardée ne doit pas engager la signature du comptable.
+  Rejouer la génération ne double rien (`faites` porte les mois déjà générés — même règle que
+  `importerPaquet`). Et le taux d'un guide vient du guide, jamais du code (règle 5.0.0).
+- **Ni les guides ni les abonnements ne vivent dans `livre.json`** : son format est FIGÉ
+  (SPEC-DATA-005). Les guides au niveau du cabinet (on les écrit une fois pour soixante clients), les
+  abonnements sur le dossier (un loyer appartient à un client). Un guide du dossier qui porte le même
+  `id` REMPLACE celui du cabinet — surcharger n'est pas doubler.
+- **La correspondance la plus PRÉCISE gagne** (411001 avant 411), et un compte n'a jamais deux
+  réponses. Sans cette règle, une ligne « 4 → 5 » écraserait tout selon l'ordre du tableau et
+  personne ne saurait laquelle a servi. Elle traduit à l'import et à l'export, **jamais** en
+  réécrivant une validée : celle-ci porte le compte sous lequel elle a été validée.
+- **Un justificatif est COPIÉ, et son chemin est RELATIF.** Le fichier du comptable est sur son
+  Bureau ou dans un mail téléchargé — deux endroits qui auront disparu bien avant l'écriture qu'ils
+  justifient. Un chemin relatif suit le dossier quand on change d'ordinateur, et part avec lui quand
+  on l'efface. Une validée peut recevoir son justificatif (joindre un scan ne change aucun chiffre) :
+  c'est le seul de ses champs qui bouge, et l'audit le nomme.
+- **Le moteur ne trace pas ces gestes, l'appelant si.** `compta.js` laisse `ecrireLeLivre` (la porte
+  unique, 9.2.0) écrire la piste d'audit. Deux endroits qui tracent le même geste écrivent la piste
+  en double, et une piste d'audit en double ne se lit plus. Un test relit les six handlers neufs et
+  exige qu'aucun n'appelle `getStore().ecrireLivre` directement.
+- **Les quatre champs neufs du dossier entrent dans `migrateDossier`** (`abonnements`, `guides`,
+  `correspondance`, `dernierJournal`) : absent de cette liste, un champ est jeté au prochain
+  chargement, en silence. C'est le défaut de `matricule` de la 6.8.0 — ici, un abonnement perdu,
+  c'est un loyer qui cesse d'être écrit sans que personne ne le remarque avant le bilan.
+- **Une cellule de grille d'édition n'est pas une `row-actions`.** Le « ✕ » qui retire une ligne
+  qu'on est en train de taper est juste ; le test de la 7.29.0, qui interdit un pictogramme en fin de
+  ligne de LISTE, visait autre chose. D'où `.sa-sup`, et la distinction écrite dans la feuille.
+- **Un test écrit contre l'état du jour décrit cet état** (septième occurrence) : `e2e:boucle`
+  exigeait qu'« une écriture ne se supprime JAMAIS depuis une liste ». C'était vrai en 9.2.0, où rien
+  ne se supprimait. La RÈGLE est qu'une **validée** ne se supprime jamais ; un brouillard, si — c'est
+  toute sa raison d'être. L'assertion a été **retournée**, pas retirée, et doublée de son autre
+  moitié : le pont lui-même refuse de modifier ou supprimer une validée.
+- Piège d'e2e rencontré : un parcours qui agit par le PONT laisse l'écran en retard, parce que les
+  gestes du renderer reposent `s.livre` eux-mêmes. Rouvrir l'application (`win.reload()`) est la
+  parade honnête — et elle prouve en plus que tout est sur le DISQUE, pas seulement dans la mémoire
+  d'un écran. Au passage : `#app` existe toujours dans le document, simplement masqué ; on attend
+  qu'un écran soit VISIBLE, jamais qu'un sélecteur existe.
+- Piège de test rencontré : ma preuve de la remontée de chemin (`../..`) ne tombait pas, parce que le
+  fichier visé n'existait pas et que c'est la garde « fichier absent » qui répondait. On vise un
+  fichier qui existe VRAIMENT — et il faut retirer LES DEUX gardes pour retrouver le défaut, comme
+  pour le fil d'Ariane de la 7.27.0.
+
+Le test qui compte est `npm run e2e:saisie` : il tape une pièce entière **au clavier**, vérifie que
+Tab solde, enregistre en brouillard sans numéro, valide, se voit refuser la modification ET la
+suppression, valide un lot dont la pièce fautive est au MILIEU et vérifie que la suite des numéros
+reste 1..n, extourne, rouvre l'application, cherche par montant, écrit un guide et s'en sert.
 
 ## Pistes pour la suite (non demandées)
 

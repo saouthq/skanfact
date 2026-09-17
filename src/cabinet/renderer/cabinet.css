@@ -221,3 +221,53 @@ body.dark .badge.b-hors { background: #2a3440; color: #9aa7b4; }
    nulle part, et rien ne le signale (le défaut `.mono` de la 8.1.0). */
 tr.br-ligne td { font-style: italic; background: var(--info-soft); }
 tr.cp-ligne td { text-decoration: line-through; color: var(--muted); }
+
+/* ---------------------------------------------------------------- la grille de saisie (9.3.0)
+   Toutes les classes sont préfixées `sa-` : une classe du cabinet ne peut pas porter un nom déjà
+   pris dans la feuille partagée, sinon elle hériterait en silence de règles écrites pour l'autre
+   application (règle 6.8.0, le défaut `.setup-card`). Un test l'exige.
+   Propriétés LOGIQUES (`padding-inline`, `margin-inline-start`) : c'est ce qui garde la porte de
+   l'arabe ouverte sans rien promettre (QUESTIONS.md, 15/09/2026). */
+.sa-tete { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; margin-block-end: 12px; }
+.sa-tete .field { min-width: 130px; }
+.sa-tete .field.sa-grow { flex: 1; min-width: 220px; }
+.sa-tete input.sa-ko { border-color: var(--danger); }
+
+.sa-outils { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-block-end: 10px; }
+.sa-outils select { width: auto; }
+.sa-aide { flex: 1; min-width: 200px; text-align: end; }
+
+/* La grille elle-même. Les champs remplissent leur cellule et perdent leur bordure : ce qu'on
+   regarde en saisissant, c'est l'alignement des colonnes, pas cinquante rectangles. */
+.sa-grille td { padding-block: 2px; padding-inline: 6px; }
+.sa-grille input {
+  width: 100%; border: 1px solid transparent; background: transparent;
+  padding-block: 6px; padding-inline: 6px; border-radius: 6px; font-size: 13px;
+}
+.sa-grille input:focus { border-color: var(--primary); background: var(--card); }
+.sa-grille input.sa-montant { font-variant-numeric: tabular-nums; }
+.sa-grille .sa-nom { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* La cellule qui porte le « ✕ » d'une ligne qu'on est en train de TAPER. Elle ne s'appelle pas
+   `row-actions` exprès : cette classe-là désigne les actions d'une ligne de LISTE, et un test
+   interdit qu'on y mette un pictogramme (7.29.0). Ici le « ✕ » est juste — on retire une ligne
+   d'une grille d'édition, pas on agit sur une pièce — mais ce n'est pas le même objet. */
+.sa-sup { width: 1%; }
+.sa-sup .btn { padding-inline: 8px; }
+
+.sa-pied {
+  display: flex; gap: 14px; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  margin-block-start: 12px; padding-block: 12px; padding-inline: 14px;
+  border: 1px solid var(--border); border-radius: 12px;
+}
+.sa-solde { font-size: 14px; font-variant-numeric: tabular-nums; }
+.sa-solde.ok { color: var(--success); }
+.sa-solde.ko { color: var(--danger); }
+.sa-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.sa-lot { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-block-end: 12px; }
+
+/* Les guides et la correspondance, dans les Réglages. Deux tableaux qu'on remplit à la main : ils
+   ont besoin de champs pleine cellule, comme la grille — et pas de la bordure de chaque `input`,
+   qui ferait une page de rectangles. */
+.sa-table input, .sa-table select { width: 100%; }
+.sa-table td { padding-block: 4px; padding-inline: 6px; vertical-align: top; }
+.sa-vide { color: var(--muted); font-size: 13px; padding-block: 10px; }

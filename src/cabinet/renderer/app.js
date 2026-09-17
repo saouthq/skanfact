@@ -1369,7 +1369,9 @@
           <input type="month" id="lv-au" ${livresState.mode === 'intervalle' ? '' : 'hidden'} value="${esc(livresState.au)}">
         </div>
         <div id="c-livres"><div class="empty">Lecture des paquets…</div></div>
-      </div>` : `<div class="panel"><h2>Comptabilité ${info('lv.compta')}</h2>
+      </div>
+      <div class="panel" id="c-abos"><h2>Abonnements ${info('sa.abonnements')}</h2>
+        <div id="d-abos"></div></div>` : `<div class="panel"><h2>Comptabilité ${info('lv.compta')}</h2>
         <div class="empty">${dossier.manual
           ? 'Ce client n\'est pas encore sur SkanFact : sa comptabilité apparaîtra ici dès son premier paquet.'
           : 'Aucun paquet reçu pour l\'instant : le livre-journal, le grand livre, la balance et le lettrage de ce client apparaîtront ici dès son premier envoi.'}</div>
@@ -1454,6 +1456,7 @@
       const apres = () => {
         if (livresState.dossierId === dossier.id && $('#c-livres')) drawLivres(document, dossier);
       };
+      dessinerAbonnements(view, dossier);
       // Le livre se relit quand le COUPLE (dossier, exercice) change — pas à chaque affichage de
       // la page. Relire à chaque fois redessinait `#c-livres` de façon asynchrone pendant qu'un
       // menu de ligne était ouvert ailleurs sur la page, et le clic suivant tombait dans le vide :
@@ -1794,12 +1797,17 @@
     if (anciens.length) avert.push(`${anciens.length > 1 ? 'Des paquets viennent' : 'Un paquet vient'} d'une version d'avant la 8.8.0 : pas de numéro ni de tiers (${anciens.map(moisLabelCourt).join(', ')}).`);
     illisibles.forEach(i => avert.push(`${moisLabelCourt(i.month)} : ${i.motif}.`));
 
-    const corps = !lignes.length
-      ? `<div class="empty">Aucune écriture sur cette période.</div>`
-      : s.onglet === 'journal' ? vueJournal(lignes)
-        : s.onglet === 'grand-livre' ? vueGrandLivre(lignes)
-          : s.onglet === 'balance' ? vueBalance(lignes)
-            : vueLettrage(lignes);
+    // La SAISIE n'a pas besoin de lignes existantes : c'est l'écran par lequel elles arrivent. La
+    // ranger derrière « Aucune écriture sur cette période » l'aurait rendue inatteignable très
+    // exactement le jour où elle sert le plus — le premier.
+    const corps = s.onglet === 'saisie' ? vueSaisie(dossier)
+      : !lignes.length
+        ? `<div class="empty">Aucune écriture sur cette période.</div>`
+        : s.onglet === 'journal' ? vueJournal(lignes)
+          : s.onglet === 'grand-livre' ? vueGrandLivre(lignes)
+            : s.onglet === 'balance' ? vueBalance(lignes)
+              : s.onglet === 'recherche' ? vueRecherche(lignes)
+                : vueLettrage(lignes);
 
     // D'OÙ viennent ces chiffres. Deux sources, et l'écran le dit en toutes lettres : une balance
     // lue dans les paquets du client et une balance tenue par le cabinet ne disent pas la même
@@ -1813,10 +1821,14 @@
 
     el.innerHTML = `${sansLivre}${bandeau}${avert.length ? `<div class="warn-box mb">${avert.map(a => `<div>${esc(a)}</div>`).join('')}</div>` : ''}
       <div class="tabs" id="c-tabs">
+        ${s.livre ? `<button data-tab="saisie" class="${s.onglet === 'saisie' ? 'on' : ''}">Saisie${
+          (s.livre.ecritures || []).some(e => e.statut === 'brouillard')
+            ? ` <span class="tab-n">${(s.livre.ecritures || []).filter(e => e.statut === 'brouillard').length}</span>` : ''}</button>` : ''}
         <button data-tab="journal" class="${s.onglet === 'journal' ? 'on' : ''}">Livre-journal</button>
         <button data-tab="grand-livre" class="${s.onglet === 'grand-livre' ? 'on' : ''}">Grand livre</button>
         <button data-tab="balance" class="${s.onglet === 'balance' ? 'on' : ''}">Balance</button>
         <button data-tab="lettrage" class="${s.onglet === 'lettrage' ? 'on' : ''}">Lettrage</button>
+        ${s.livre ? `<button data-tab="recherche" class="${s.onglet === 'recherche' ? 'on' : ''}">Recherche</button>` : ''}
       </div>${corps}`;
 
     $$('#c-tabs button', el).forEach(b => { b.onclick = () => { s.onglet = b.dataset.tab; drawLivres(root, dossier); }; });
@@ -1824,7 +1836,9 @@
     if (cb) cb.onchange = () => { s.brouillard = cb.checked; drawLivres(root, dossier); };
     [$('#lv-relire', el), $('#lv-relire2', el)].forEach(b => { if (b) b.onclick = () => relireLesPaquets(root, dossier); });
     const rp = $('#lv-reprendre', el); if (rp) rp.onclick = () => repriseForm(root, dossier);
-    brancherVue(el, root, dossier, lignes);
+    if (s.onglet === 'saisie') brancherSaisie(el, root, dossier);
+    else if (s.onglet === 'recherche') brancherRecherche(el, root, dossier);
+    else brancherVue(el, root, dossier, lignes);
   }
 
   // Le livre-journal : une pièce par (date, journal, numéro), numérotée 1..n. Le filtre de journal
@@ -1950,6 +1964,737 @@
     return m ? `${m[3]}/${m[2]}/${m[1]}` : String(iso || '');
   };
 
+  // ---------------------------------------------------------------- la grille de saisie (9.3.0)
+  //
+  // SPEC-UI-CAB-010. L'écran où un comptable passe ses journées, et la seule règle qui le décide :
+  // **la souris n'est jamais obligatoire**. Journal, date, pièce, puis les lignes ; Entrée descend,
+  // Tab sur la dernière ligne solde, Ctrl+Entrée enregistre. Les touches sont RÉGLABLES (Réglages →
+  // Comptabilité) parce qu'on ne les invente pas : on reprend celles que le comptable a déjà dans
+  // les doigts, et tant que personne ne l'a regardé travailler, ce qui est livré n'est qu'une
+  // proposition.
+  //
+  // La pièce en cours vit dans `saisieState.piece` et l'écran ne se redessine PAS à chaque frappe :
+  // on met à jour la donnée, puis le seul élément qui en dépend (`#sa-solde`). Redessiner la grille
+  // à chaque caractère détruirait le champ sous le curseur — c'est le défaut de la 7.17.0, et il
+  // rendait un champ littéralement impossible à remplir.
+  const saisieState = { dossierId: '', piece: null, focusApres: null };
+
+  const pieceVide = (journal, date) => ({
+    id: '', date: date || '', journal: journal || '', piece: '', libelle: '', pieceJointe: null,
+    lignes: [ligneVide(), ligneVide()]
+  });
+  const ligneVide = () => ({ compte: '', libelle: '', debit: '', credit: '' });
+
+  // Les lignes telles que le moteur les attend : les champs texte redeviennent des nombres ici, et
+  // nulle part ailleurs. Une ligne entièrement vide ne compte pas — on en laisse toujours une au
+  // bout de la grille pour pouvoir taper la suivante.
+  const lignesReelles = p => (p.lignes || [])
+    .filter(l => String(l.compte || '').trim() || Number(l.debit) || Number(l.credit))
+    .map(l => ({
+      compte: String(l.compte || '').trim(), libelle: String(l.libelle || ''),
+      debit: Number(String(l.debit).replace(',', '.')) || 0,
+      credit: Number(String(l.credit).replace(',', '.')) || 0
+    }));
+
+  const ecritureSaisie = p => ({
+    date: p.date, journal: p.journal, piece: p.piece, libelle: p.libelle,
+    source: 'saisie', pieceJointe: p.pieceJointe || null, lignes: lignesReelles(p)
+  });
+
+  // Une touche, sous la forme des réglages : « Enter », « Control+Enter », « F2 ».
+  function toucheDe(ev) {
+    const mods = [];
+    if (ev.ctrlKey || ev.metaKey) mods.push('Control');
+    if (ev.altKey) mods.push('Alt');
+    if (ev.shiftKey && ev.key !== 'Tab') mods.push('Shift');
+    return mods.concat([ev.key]).join('+');
+  }
+  const touchesSaisie = () => (((S || {}).settings || {}).saisie || K.DEFAULT_SAISIE).touches || K.DEFAULT_SAISIE.touches;
+  const reglagesSaisie = () => ({ ...K.DEFAULT_SAISIE, ...(((S || {}).settings || {}).saisie || {}) });
+
+  // Chercher un compte PENDANT la frappe, par numéro ou par nom. Le classement vient de
+  // `compta.comptesQuiCorrespondent` : l'écran ne trie rien lui-même, sinon sa façon de classer
+  // finirait par différer de celle qu'un test prouve. Les classes `.sugg-*` viennent de la feuille
+  // PARTAGÉE (9.2.1) : même composant visuel des deux côtés, et aucune règle en double.
+  function suggererCompte(input, planDe, onPick) {
+    const host = input.closest('td') || input.parentElement;
+    if (!host) return;
+    host.classList.add('sugg-host');
+    let pop = null, sel = 0, items = [];
+    const fermer = () => { if (pop) pop.remove(); pop = null; items = []; };
+    const dessiner = () => {
+      items = KC.comptesQuiCorrespondent(planDe(), input.value, 8);
+      if (!items.length || document.activeElement !== input) { fermer(); return; }
+      if (!pop) { pop = document.createElement('div'); pop.className = 'sugg-pop'; host.appendChild(pop); }
+      sel = Math.min(sel, items.length - 1);
+      pop.innerHTML = items.map((c, i) => `<div class="sugg-it ${i === sel ? 'sel' : ''}" data-i="${i}">
+        <b>${esc(c.compte)}</b> <span class="muted">${esc(c.libelle || '')}</span></div>`).join('');
+      $$('.sugg-it', pop).forEach(d => {
+        // `mousedown` et pas `click` : le `blur` du champ referme la liste avant qu'un `click`
+        // n'arrive, et le choix se perdrait sans que rien ne plante.
+        d.onmousedown = ev => { ev.preventDefault(); choisir(items[Number(d.dataset.i)]); };
+      });
+    };
+    const choisir = c => { if (!c) return; input.value = c.compte; fermer(); onPick(c); };
+    input.addEventListener('input', () => { sel = 0; dessiner(); });
+    input.addEventListener('focus', () => { sel = 0; dessiner(); });
+    input.addEventListener('blur', () => setTimeout(fermer, 120));
+    input.addEventListener('keydown', ev => {
+      if (!pop || !items.length) return;
+      if (ev.key === 'ArrowDown') { ev.preventDefault(); sel = (sel + 1) % items.length; dessiner(); }
+      else if (ev.key === 'ArrowUp') { ev.preventDefault(); sel = (sel - 1 + items.length) % items.length; dessiner(); }
+      else if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); fermer(); }
+      else if (ev.key === 'Enter' || ev.key === 'Tab') {
+        // Entrée et Tab CHOISISSENT quand une liste est ouverte : sans ça, il faudrait la souris
+        // pour prendre ce qu'on vient de chercher, et la grille cesserait d'être au clavier.
+        if (items[sel]) { ev.preventDefault(); choisir(items[sel]); }
+      }
+    });
+  }
+
+  function vueSaisie(dossier) {
+    const s = livresState;
+    const r = reglagesSaisie();
+    if (!s.livre) {
+      return `<div class="empty"><p>La saisie a besoin d'un livre.</p>
+        <p class="muted small">Crée-le à partir des paquets reçus, ou reprends le dossier par sa balance d'ouverture — les deux boutons sont en haut de cette page.</p></div>`;
+    }
+    if (s.livre.exercice.clos) {
+      return `<div class="warn-box"><b>L'exercice ${esc(s.annee)} est clos.</b> On n'y saisit plus. Rouvre-le si tu dois vraiment y toucher : la réouverture demande un motif, et c'est elle qui expliquera plus tard pourquoi un chiffre a changé.</div>`;
+    }
+    if (!saisieState.piece || saisieState.dossierId !== dossier.id) {
+      saisieState.dossierId = dossier.id;
+      const j = r.journalParDefaut || dossier.dernierJournal || (s.livre.journaux[0] || {}).code || '';
+      saisieState.piece = pieceVide(j, '');
+    }
+    const p = saisieState.piece;
+    const brouillards = (s.livre.ecritures || []).filter(e => e.statut === 'brouillard')
+      .slice().sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+    const guides = K.guidesDuDossier(S, dossier);
+
+    return `<div class="sa-tete">
+        <label class="field"><span class="fl">Journal ${info('sa.journal')}</span>
+          <select id="sa-journal">${s.livre.journaux.map(j => `<option value="${esc(j.code)}" ${p.journal === j.code ? 'selected' : ''}>${esc(j.code)} — ${esc(j.libelle)}</option>`).join('')}</select></label>
+        <label class="field"><span class="fl">Date ${info('sa.date')}</span>
+          <input id="sa-date" autocomplete="off" placeholder="${r.dateComplete ? '04/03/2026' : '4'}" value="${esc(p.date)}"></label>
+        <label class="field"><span class="fl">Pièce ${info('sa.piece')}</span>
+          <input id="sa-piece" autocomplete="off" value="${esc(p.piece)}"></label>
+        <label class="field sa-grow"><span class="fl">Libellé ${info('sa.libelle')}</span>
+          <input id="sa-libelle" autocomplete="off" value="${esc(p.libelle)}"></label>
+      </div>
+      <div class="sa-outils">
+        ${guides.length ? `<select id="sa-guide"><option value="">Partir d'un guide…</option>${guides.map(g => `<option value="${esc(g.id)}">${esc(g.nom)}</option>`).join('')}</select>
+          <input id="sa-guide-montant" class="sa-montant" inputmode="decimal" placeholder="Montant" autocomplete="off">` : ''}
+        <button type="button" class="btn btn-sm" id="sa-joindre">${p.pieceJointe ? 'Justificatif joint ✓' : 'Joindre un justificatif…'}</button>
+        <span class="muted small sa-aide">Entrée : ligne suivante · Tab sur la dernière ligne : solder · ${esc(touchesSaisie().recopier)} : recopier la ligne du dessus · ${esc(touchesSaisie().dupliquer)} : dupliquer la pièce</span>
+      </div>
+      <div class="scroll-x"><table class="list compact sa-grille"><thead><tr>
+        <th class="nw">Compte</th><th>Intitulé</th><th>Libellé</th>
+        <th class="r nw">Débit</th><th class="r nw">Crédit</th><th></th></tr></thead>
+        <tbody id="sa-lignes">${lignesSaisieHtml()}</tbody></table></div>
+      <div class="sa-pied">
+        <div id="sa-solde"></div>
+        <div class="sa-actions">
+          <button type="button" class="btn btn-sm" id="sa-vider">Vider</button>
+          <button type="button" class="btn" id="sa-ok">Enregistrer en brouillard</button>
+          <button type="button" class="btn btn-primary" id="sa-okvalider">Enregistrer et valider</button>
+        </div>
+      </div>
+      <h2 class="mt">Le brouillard ${info('sa.brouillard')}</h2>
+      ${brouillards.length ? `${r.validerParLot ? `<div class="sa-lot">
+          <button type="button" class="btn btn-sm" id="sa-lot-journal">Valider tout le journal ${esc(p.journal)}</button>
+          <button type="button" class="btn btn-sm" id="sa-lot-mois">Valider le mois ${esc(p.date ? moisLabelCourt(p.date.slice(0, 7)) : '')}</button>
+          <span class="muted small">Ce qui ne tombe pas juste n'est pas validé, et te sera nommé.</span></div>` : ''}
+        <div class="scroll-x"><table class="list compact"><thead><tr>
+          <th class="nw">Date</th><th>Journal</th><th class="nw">Pièce</th><th>Libellé</th>
+          <th class="r nw">Total</th><th class="nw">État</th><th></th></tr></thead>
+        <tbody>${brouillards.map(e => {
+          const t = KC.soldeDeLignes(e.lignes);
+          return `<tr data-br="${esc(e.id)}" class="br-ligne">
+            <td class="nw">${esc(e.date)}</td><td>${esc(e.journal)}</td><td class="nw">${esc(e.piece || '—')}</td>
+            <td>${esc(e.libelle || '')}${e.pieceJointe ? ' <span title="Justificatif joint">📎</span>' : ''}</td>
+            <td class="r nw">${t.debit.toFixed(3)}</td>
+            <td class="nw">${t.equilibre ? '<span class="muted">équilibrée</span>' : `<span class="err-inline">écart ${t.ecart.toFixed(3)}</span>`}</td>
+            ${RowMenu.cellule('B:' + e.id, '')}</tr>`;
+        }).join('')}</tbody></table></div>`
+        : `<div class="empty"><p>Rien en brouillard.</p><p class="muted small">Tout ce que tu saisis ici arrive en brouillard : rien ne prend de numéro tant que tu ne l'as pas validé.</p></div>`}
+      <p class="muted small mt">Une fois validée, une écriture ne se modifie plus : elle se <b>contre-passe</b> (une écriture miroir à la date du jour, pour corriger une erreur)
+      ou s'<b>extourne</b> ${info('sa.extourne')} (une écriture miroir au 1er du mois suivant, pour une charge à payer). Les deux gestes sont dans le menu de la ligne, au livre-journal comme à la recherche.</p>`;
+  }
+
+  function lignesSaisieHtml() {
+    const p = saisieState.piece || pieceVide();
+    const plan = ((livresState.livre || {}).plan) || [];
+    const nom = c => (plan.find(x => x.compte === String(c || '').trim()) || {}).libelle || '';
+    return (p.lignes || []).map((l, i) => `<tr data-i="${i}">
+      <td><input data-k="compte" class="sa-compte" autocomplete="off" value="${esc(l.compte)}"></td>
+      <td class="sa-nom muted small" data-nom="${i}">${esc(nom(l.compte))}</td>
+      <td><input data-k="libelle" autocomplete="off" value="${esc(l.libelle)}"></td>
+      <td><input data-k="debit" class="r sa-montant" inputmode="decimal" autocomplete="off" value="${esc(l.debit)}"></td>
+      <td><input data-k="credit" class="r sa-montant" inputmode="decimal" autocomplete="off" value="${esc(l.credit)}"></td>
+      <td class="sa-sup"><button type="button" class="btn btn-sm" data-sup="${i}" title="Retirer cette ligne" aria-label="Retirer cette ligne">✕</button></td>
+    </tr>`).join('');
+  }
+
+  function brancherSaisie(el, root, dossier) {
+    const s = livresState;
+    if (!s.livre || !saisieState.piece) return;
+    const p = saisieState.piece;
+    const corps = $('#sa-lignes', el);
+    const t = touchesSaisie();
+    const r = reglagesSaisie();
+
+    // Le solde, recalculé sans rien redessiner d'autre. C'est le « contrôle d'équilibre en direct » :
+    // il ne refuse rien tout seul — c'est `ecritureValide` qui refuse, à l'enregistrement — il dit
+    // seulement où on en est, pendant qu'on tape.
+    const majSolde = () => {
+      const box = $('#sa-solde', el);
+      if (!box) return;
+      const t2 = KC.soldeDeLignes(lignesReelles(p));
+      box.className = t2.equilibre && t2.debit ? 'sa-solde ok' : t2.debit || t2.credit ? 'sa-solde ko' : 'sa-solde';
+      box.innerHTML = !t2.debit && !t2.credit
+        ? '<span class="muted">Débit et crédit à zéro.</span>'
+        : t2.equilibre
+          ? `<b>Équilibrée</b> — ${t2.debit.toFixed(3)} de chaque côté.`
+          : `<b>Écart ${t2.ecart.toFixed(3)}</b> — débit ${t2.debit.toFixed(3)} / crédit ${t2.credit.toFixed(3)}. Il manque ${t2.solde.debit ? `${t2.solde.debit.toFixed(3)} au débit` : `${t2.solde.credit.toFixed(3)} au crédit`}.`;
+    };
+
+    const redessinerLignes = (focus) => {
+      corps.innerHTML = lignesSaisieHtml();
+      brancherLignes();
+      majSolde();
+      if (focus) {
+        const cible = $(`tr[data-i="${focus.i}"] input[data-k="${focus.k}"]`, corps);
+        if (cible) { cible.focus(); cible.select(); }
+      }
+    };
+
+    const ligneDe = inp => Number(inp.closest('tr').dataset.i);
+    const allerA = (i, k) => {
+      const cible = $(`tr[data-i="${i}"] input[data-k="${k}"]`, corps);
+      if (cible) { cible.focus(); cible.select(); return true; }
+      return false;
+    };
+
+    function brancherLignes() {
+      $$('input[data-k]', corps).forEach(inp => {
+        const i = ligneDe(inp), k = inp.dataset.k;
+        inp.oninput = () => {
+          p.lignes[i][k] = inp.value;
+          if (k === 'compte') {
+            const c = (s.livre.plan || []).find(x => x.compte === inp.value.trim());
+            const cell = $(`[data-nom="${i}"]`, corps);
+            if (cell) cell.textContent = c ? (c.libelle || '') : '';
+          }
+          // Débit et crédit s'excluent : une ligne va d'un côté OU de l'autre, jamais des deux
+          // (invariant de SPEC-DATA-005). On vide l'autre colonne plutôt que de laisser saisir une
+          // ligne que la validation refusera trois écrans plus loin.
+          if ((k === 'debit' || k === 'credit') && inp.value.trim()) {
+            const autre = k === 'debit' ? 'credit' : 'debit';
+            if (String(p.lignes[i][autre] || '').trim()) {
+              p.lignes[i][autre] = '';
+              const el2 = $(`tr[data-i="${i}"] input[data-k="${autre}"]`, corps);
+              if (el2) el2.value = '';
+            }
+          }
+          majSolde();
+        };
+        inp.onkeydown = ev => {
+          const touche = toucheDe(ev);
+          if (touche === t.recopier) {
+            ev.preventDefault();
+            if (i > 0) { p.lignes[i][k] = p.lignes[i - 1][k]; inp.value = p.lignes[i][k]; inp.dispatchEvent(new Event('input')); }
+            return;
+          }
+          if (touche === t.dupliquer) { ev.preventDefault(); dupliquerPiece(); return; }
+          if (touche === t.valider) { ev.preventDefault(); enregistrer(true); return; }
+          if (touche === t.ligneSuivante) {
+            ev.preventDefault();
+            // Sur la dernière ligne, Entrée en AJOUTE une : la grille suit la saisie, on ne clique
+            // jamais « ajouter une ligne ».
+            if (i === p.lignes.length - 1) { p.lignes.push(ligneVide()); redessinerLignes({ i: i + 1, k: 'compte' }); }
+            else allerA(i + 1, 'compte');
+            return;
+          }
+          // Tab depuis le CRÉDIT de la dernière ligne : on solde. C'est le geste qui fait gagner le
+          // plus de temps de toute la grille — et il ne s'invente pas : `soldeDeLignes` calcule,
+          // l'écran pose. Si la pièce tombe déjà juste, Tab reprend son comportement normal.
+          if (ev.key === 'Tab' && !ev.shiftKey && k === 'credit' && i === p.lignes.length - 1) {
+            const solde = KC.soldeDeLignes(lignesReelles(p));
+            if (!solde.equilibre && (solde.debit || solde.credit) && String(p.lignes[i].compte || '').trim()) {
+              if (!String(p.lignes[i].debit || '').trim() && !String(p.lignes[i].credit || '').trim()) {
+                ev.preventDefault();
+                p.lignes[i].debit = solde.solde.debit ? solde.solde.debit.toFixed(3) : '';
+                p.lignes[i].credit = solde.solde.credit ? solde.solde.credit.toFixed(3) : '';
+                redessinerLignes({ i, k: solde.solde.debit ? 'debit' : 'credit' });
+              }
+            }
+          }
+        };
+        if (k === 'compte') {
+          suggererCompte(inp, () => s.livre.plan || [], c => {
+            p.lignes[i].compte = c.compte;
+            if (!String(p.lignes[i].libelle || '').trim()) p.lignes[i].libelle = c.libelle || '';
+            redessinerLignes({ i, k: 'libelle' });
+          });
+        }
+      });
+      $$('[data-sup]', corps).forEach(b => {
+        b.onclick = () => {
+          const i = Number(b.dataset.sup);
+          if (p.lignes.length <= 1) { p.lignes[0] = ligneVide(); } else { p.lignes.splice(i, 1); }
+          redessinerLignes();
+        };
+      });
+    }
+
+    // L'entête : chaque champ écrit dans la pièce, aucun ne redessine la grille.
+    const j = $('#sa-journal', el);
+    if (j) j.onchange = () => { p.journal = j.value; api.dernierJournal(dossier.id, j.value).catch(() => {}); };
+    const dt = $('#sa-date', el);
+    if (dt) {
+      const lire = () => {
+        const iso = K.dateTapee(dt.value, s.annee, p.date || `${s.annee}-${String(new Date().getMonth() + 1).padStart(2, '0')}`);
+        p.date = iso || '';
+        dt.classList.toggle('sa-ko', !!dt.value.trim() && !iso);
+        if (iso) dt.value = r.dateComplete ? iso : String(Number(iso.slice(8, 10)));
+      };
+      dt.onblur = lire;
+    }
+    const pc = $('#sa-piece', el); if (pc) pc.oninput = () => { p.piece = pc.value; };
+    const lb = $('#sa-libelle', el); if (lb) lb.oninput = () => { p.libelle = lb.value; };
+
+    // L'en-tête a sa propre chaîne, et c'est ENTRÉE — la même touche que dans la grille. Tab ne
+    // peut pas la faire : chaque libellé porte sa bulle « i », qui est un vrai bouton et prend donc
+    // le focus au passage. Les retirer de l'ordre de tabulation rendrait l'explication
+    // inatteignable au clavier, ce que ce projet s'interdit depuis la 7.0.0. On ajoute un chemin
+    // au lieu d'en couper un : Entrée descend de champ en champ, jusqu'à la première ligne.
+    const chaine = [dt, pc, lb];
+    chaine.forEach((champ, i) => {
+      if (!champ) return;
+      champ.addEventListener('keydown', ev => {
+        if (toucheDe(ev) !== t.ligneSuivante) return;
+        ev.preventDefault();
+        if (champ === dt) champ.dispatchEvent(new Event('blur'));
+        const suivant = chaine.slice(i + 1).find(Boolean);
+        if (suivant) { suivant.focus(); suivant.select(); } else allerA(0, 'compte');
+      });
+    });
+
+    // Les guides. Ils PRÉREMPLISSENT : après le clic, tout est encore modifiable, et rien n'est
+    // enregistré. Un guide qui écrirait directement dans le livre serait un guide qu'on n'ose plus
+    // utiliser.
+    const gs = $('#sa-guide', el);
+    if (gs) {
+      gs.onchange = () => {
+        const g = K.guidesDuDossier(S, dossier).find(x => x.id === gs.value);
+        if (!g) return;
+        const montant = Number(String(($('#sa-guide-montant', el) || {}).value || '').replace(',', '.')) || 0;
+        const ecr = KC.ecritureDepuisGuide(g, { date: p.date, journal: g.journal, piece: p.piece, libelle: p.libelle, montant });
+        p.journal = ecr.journal; p.libelle = ecr.libelle;
+        p.lignes = ecr.lignes.map(l => ({
+          compte: l.compte, libelle: l.libelle,
+          debit: l.debit ? l.debit.toFixed(3) : '', credit: l.credit ? l.credit.toFixed(3) : ''
+        }));
+        p.lignes.push(ligneVide());
+        gs.value = '';
+        drawLivres(root, dossier);
+      };
+    }
+
+    const jo = $('#sa-joindre', el);
+    if (jo) jo.onclick = () => joindreJustificatif(root, dossier);
+
+    const dupliquerPiece = () => {
+      const base = lignesReelles(p);
+      if (!base.length) return;
+      p.lignes = base.map(l => ({ compte: l.compte, libelle: l.libelle, debit: l.debit ? l.debit.toFixed(3) : '', credit: l.credit ? l.credit.toFixed(3) : '' }))
+        .concat([ligneVide()]);
+      p.id = ''; p.piece = '';
+      toast('Pièce dupliquée : la nouvelle n\'a ni numéro ni pièce, tape-les.');
+      drawLivres(root, dossier);
+    };
+
+    const enregistrer = async (puisValider) => {
+      const ecr = ecritureSaisie(p);
+      const v = KC.ecritureValide(ecr, (s.livre.plan || []).map(c => c.compte));
+      // Une saisie refusée se MONTRE : on amène le champ fautif à l'écran et on y met le curseur
+      // (règle 7.0.0). Un message seul oblige à relire toute la grille.
+      if (!v.ok) {
+        const premier = v.motifs[0] || v.motif;
+        if (/date/i.test(premier) && dt) { dt.focus(); dt.classList.add('sa-ko'); }
+        else if (/journal/i.test(premier) && j) j.focus();
+        else {
+          const m = /Ligne (\d+)/.exec(premier);
+          if (m) allerA(Number(m[1]) - 1, 'compte');
+        }
+        await infoDialog('Cette écriture n\'entre pas', v.motifs.join('\n'));
+        return;
+      }
+      try {
+        const res = p.id
+          ? await api.modifierEcriture(dossier.id, s.annee, p.id, ecr)
+          : await api.saisir(dossier.id, s.annee, ecr);
+        s.livre = res.livre;
+        if (puisValider) {
+          const w = await api.valider(dossier.id, s.annee, res.id || p.id);
+          s.livre = w.livre;
+          toast(`Écriture validée sous le n° ${w.numero}.`);
+        } else {
+          toast(p.id ? 'Brouillard enregistré.' : 'Écriture enregistrée en brouillard : elle n\'a pas encore de numéro.');
+        }
+        // On enchaîne : même journal, même date, tout le reste vide. C'est ça, la saisie au
+        // kilomètre — on ne revient jamais au menu entre deux pièces.
+        saisieState.piece = pieceVide(p.journal, p.date);
+        drawLivres(root, dossier);
+        const d2 = $('#sa-piece'); if (d2) d2.focus();
+      } catch (e) { await infoDialog('Enregistrement impossible', plainError(e)); }
+    };
+
+    const ok = $('#sa-ok', el); if (ok) ok.onclick = () => enregistrer(false);
+    const okv = $('#sa-okvalider', el); if (okv) okv.onclick = () => enregistrer(true);
+    const vd = $('#sa-vider', el);
+    if (vd) vd.onclick = () => { saisieState.piece = pieceVide(p.journal, p.date); drawLivres(root, dossier); };
+
+    const lotJ = $('#sa-lot-journal', el);
+    if (lotJ) lotJ.onclick = () => validerUnLot(root, dossier, { journal: p.journal });
+    const lotM = $('#sa-lot-mois', el);
+    if (lotM) lotM.onclick = () => validerUnLot(root, dossier, { mois: (p.date || '').slice(0, 7) });
+
+    brancherLignes();
+    majSolde();
+
+    // Les actions d'un brouillard : une seule porte par ligne (règle 7.29.0), et chaque action
+    // porte une phrase entière.
+    bindRowMenus(el, cle => {
+      if (!String(cle).startsWith('B:')) return [];
+      const e = (s.livre.ecritures || []).find(x => x.id === String(cle).slice(2));
+      return e ? actionsEcriture(root, dossier, e) : [];
+    });
+  }
+
+  // Une écriture rangée, reprise dans la grille. Les montants redeviennent du TEXTE : la grille est
+  // faite de champs, et un zéro affiché « 0 » dans une colonne vide se retaperait à chaque pièce.
+  const pieceDepuis = e => ({
+    id: e.id, date: e.date, journal: e.journal, piece: e.piece, libelle: e.libelle,
+    pieceJointe: e.pieceJointe || null,
+    lignes: (e.lignes || []).map(l => ({
+      compte: l.compte, libelle: l.libelle,
+      debit: l.debit ? Number(l.debit).toFixed(3) : '', credit: l.credit ? Number(l.credit).toFixed(3) : ''
+    })).concat([ligneVide()])
+  });
+
+  async function supprimerBrouillard(root, dossier, e) {
+    const ok = await confirmDialog('Supprimer ce brouillard ?',
+      `${e.journal} ${e.piece || '(sans pièce)'} du ${e.date}.\n\nIl n'a pas de numéro : il ne laissera aucun trou dans la numérotation, et rien n'en restera.`,
+      'Supprimer', true);
+    if (!ok) return;
+    try {
+      const r = await api.supprimerEcriture(dossier.id, livresState.annee, e.id);
+      livresState.livre = r.livre;
+      if (saisieState.piece && saisieState.piece.id === e.id) saisieState.piece = null;
+      toast('Brouillard supprimé.');
+      drawLivres(root, dossier);
+    } catch (err) { await infoDialog('Suppression impossible', plainError(err)); }
+  }
+
+  async function joindreJustificatif(root, dossier, ecritureId) {
+    const s = livresState;
+    // Sans écriture rangée, on joint à la pièce EN COURS : le justificatif se regarde pendant qu'on
+    // saisit, pas après (règle 8.5.1, apprise sur l'app entreprise). Il faut donc l'enregistrer
+    // d'abord, et on le dit.
+    let id = ecritureId;
+    if (!id) {
+      if (!saisieState.piece || !saisieState.piece.id) {
+        const suite = await confirmDialog('Enregistrer d\'abord ?',
+          'Un justificatif se range avec une écriture. Celle-ci n\'est pas encore enregistrée.\n\nJe l\'enregistre en brouillard, puis j\'ouvre le sélecteur de fichier — elle reste modifiable.',
+          'Enregistrer et joindre');
+        if (!suite) return;
+        const ecr = ecritureSaisie(saisieState.piece);
+        const v = KC.ecritureValide(ecr, (s.livre.plan || []).map(c => c.compte));
+        if (!v.ok) { await infoDialog('Cette écriture n\'entre pas', v.motifs.join('\n')); return; }
+        try {
+          const res = await api.saisir(dossier.id, s.annee, ecr);
+          s.livre = res.livre; saisieState.piece.id = res.id; id = res.id;
+        } catch (e) { await infoDialog('Enregistrement impossible', plainError(e)); return; }
+      } else id = saisieState.piece.id;
+    }
+    try {
+      const r = await api.joindreEcriture({ dossierId: dossier.id, annee: s.annee, id });
+      if (r.annule) return;
+      s.livre = r.livre;
+      if (saisieState.piece && saisieState.piece.id === id) saisieState.piece.pieceJointe = r.pieceJointe;
+      toast('Justificatif joint et copié dans le dossier du client.');
+      drawLivres(root, dossier);
+    } catch (e) { await infoDialog('Justificatif impossible', plainError(e)); }
+  }
+
+  // Valider un lot. On DIT d'abord combien de pièces sont concernées : « valider » est irréversible,
+  // et un bouton qui en validerait trente sans le dire serait un piège.
+  async function validerUnLot(root, dossier, filtre) {
+    const s = livresState;
+    const cibles = (s.livre.ecritures || []).filter(e => e.statut === 'brouillard'
+      && (!filtre.journal || e.journal === filtre.journal)
+      && (!filtre.mois || String(e.date || '').slice(0, 7) === filtre.mois));
+    if (!cibles.length) { await infoDialog('Rien à valider', 'Aucune écriture en brouillard ne correspond.'); return; }
+    const quoi = filtre.journal ? `du journal ${filtre.journal}` : `de ${moisLabelCourt(filtre.mois)}`;
+    const ok = await confirmDialog(`Valider ${pl(cibles.length, 'écriture')} ${quoi} ?`,
+      'Chacune prend son numéro et ne se modifiera plus : une validée se contre-passe.\n\nCelles qui ne tombent pas juste ne seront pas validées, et te seront nommées.',
+      'Valider');
+    if (!ok) return;
+    try {
+      const r = await api.validerLot({ dossierId: dossier.id, annee: s.annee, journal: filtre.journal, mois: filtre.mois });
+      s.livre = r.livre;
+      const lignes = [`${pl(r.validees.length, 'écriture validée', 'écritures validées')}.`];
+      if (r.refusees.length) {
+        lignes.push(`${pl(r.refusees.length, 'écriture n\'est pas entrée', 'écritures ne sont pas entrées')} — elles restent en brouillard :`);
+        r.refusees.slice(0, 10).forEach(x => lignes.push(`  • ${x.journal} ${x.piece || '(sans pièce)'} du ${x.date} : ${x.motif}`));
+      }
+      await infoDialog('Validation', lignes.join('\n'));
+      drawLivres(root, dossier);
+    } catch (e) { await infoDialog('Validation impossible', plainError(e)); }
+  }
+
+  // ---------------------------------------------------------------- les abonnements (9.3.0)
+  //
+  // Un abonnement = un guide + une périodicité. Il vit sur le DOSSIER : un loyer appartient à un
+  // client, pas au cabinet. Il génère EN BROUILLARD, jamais une validée d'office — une écriture que
+  // personne n'a regardée ne doit pas engager la signature du comptable.
+  function dessinerAbonnements(root, dossier) {
+    const box = $('#d-abos', root);
+    if (!box) return;
+    const abos = dossier.abonnements || [];
+    const guides = K.guidesDuDossier(S, dossier);
+    if (!guides.length) {
+      box.innerHTML = `<div class="sa-vide">Un abonnement s'appuie sur un guide d'écritures, et il n'y en a aucun pour l'instant.</div>
+        <div class="modal-actions"><button type="button" class="btn" id="ab-guides">Écrire un premier guide…</button></div>`;
+      const b = $('#ab-guides', box);
+      if (b) b.onclick = () => versReglages('pan-guides');
+      return;
+    }
+    box.innerHTML = `${abos.length ? `<div class="scroll-x"><table class="list compact"><thead><tr>
+        <th>Nom</th><th>Guide</th><th class="nw">Depuis</th><th class="nw">Tous les</th>
+        <th class="r nw">Montant</th><th class="nw">État</th><th></th></tr></thead>
+      <tbody>${abos.map(a => {
+        const g = guides.find(x => x.id === a.guideId);
+        const reste = KC.occurrencesAGenerer(a, K.today()).length;
+        return `<tr data-ab="${esc(a.id)}">
+          <td>${esc(a.nom || '')}</td>
+          <td>${g ? esc(g.nom) : '<span class="err-inline">guide supprimé</span>'}</td>
+          <td class="nw">${esc(a.depuis || '—')}</td>
+          <td class="nw">${a.tousLesMois > 1 ? `${a.tousLesMois} mois` : 'mois'}</td>
+          <td class="r nw">${(Number(a.montant) || 0).toFixed(3)}</td>
+          <td class="nw">${!a.actif ? '<span class="muted">suspendu</span>' : reste ? `<b>${pl(reste, 'à générer', 'à générer')}</b>` : '<span class="muted">à jour</span>'}</td>
+          ${RowMenu.cellule('A:' + a.id, '')}</tr>`;
+      }).join('')}</tbody></table></div>`
+      : `<div class="sa-vide">Aucun abonnement. C'est ce qui évite de ressaisir le loyer tous les mois.</div>`}
+      <div class="modal-actions">
+        ${abos.some(a => a.actif && KC.occurrencesAGenerer(a, K.today()).length)
+          ? '<button type="button" class="btn btn-primary" id="ab-gen">Générer ce qui manque</button>' : ''}
+        <button type="button" class="btn" id="ab-new">Nouvel abonnement…</button></div>`;
+    const nw = $('#ab-new', box); if (nw) nw.onclick = () => abonnementForm(root, dossier, null);
+    const gen = $('#ab-gen', box);
+    if (gen) gen.onclick = () => genererAbonnements(root, dossier);
+    bindRowMenus(box, cle => {
+      const a = abos.find(x => x.id === String(cle).slice(2));
+      if (!a) return [];
+      return [
+        { icon: 'modifier', label: 'Modifier cet abonnement', hint: 'Son guide, son montant, sa période', run: () => abonnementForm(root, dossier, a) },
+        a.actif
+          ? { icon: 'pause', label: 'Suspendre cet abonnement', hint: 'Il cesse de proposer des écritures', run: () => basculerAbo(root, dossier, a, false) }
+          : { icon: 'reprendre', label: 'Reprendre cet abonnement', hint: 'Il recommence à proposer des écritures', run: () => basculerAbo(root, dossier, a, true) }
+      ];
+    });
+  }
+
+  async function basculerAbo(root, dossier, abo, actif) {
+    const liste = (dossier.abonnements || []).map(a => a.id === abo.id ? { ...a, actif } : a);
+    try {
+      S = await api.saveAbonnements(dossier.id, liste);
+      toast(actif ? 'Abonnement repris.' : 'Abonnement suspendu.');
+      render();
+    } catch (e) { toast(plainError(e), 'error'); }
+  }
+
+  async function genererAbonnements(root, dossier) {
+    const annee = livresState.annee || String(new Date().getFullYear());
+    try {
+      const r = await api.genererAbonnements({ dossierId: dossier.id, annee, jusquA: K.today() });
+      livresState.livre = r.livre;
+      const lignes = [`${pl(r.crees, 'écriture créée', 'écritures créées')} en brouillard.`];
+      if (r.crees) lignes.push('Elles n\'ont pas de numéro : relis-les, puis valide-les.');
+      if (r.horsExercice) lignes.push(`${pl(r.horsExercice, 'occurrence tombait', 'occurrences tombaient')} hors de l'exercice ${annee} : elles se génèreront dans le livre de leur année.`);
+      if (r.sansGuide.length) lignes.push(`Guide introuvable pour : ${r.sansGuide.join(', ')}.`);
+      await infoDialog('Abonnements', lignes.join('\n\n'));
+      render();
+    } catch (e) { await infoDialog('Génération impossible', plainError(e)); }
+  }
+
+  function abonnementForm(root, dossier, abo) {
+    const guides = K.guidesDuDossier(S, dossier);
+    const a = abo ? { ...abo } : {
+      id: '', nom: '', guideId: (guides[0] || {}).id || '', actif: true,
+      depuis: `${new Date().getFullYear()}-01-01`, jusqua: '', tousLesMois: 1, montant: 0, piece: '', libelle: '', faites: []
+    };
+    modal(
+      `<h2>${abo ? 'Modifier l\'abonnement' : 'Nouvel abonnement'}</h2>
+       <div class="grid-2">
+         <label class="field obligatoire">Nom<input type="text" id="ab-nom" value="${esc(a.nom)}" placeholder="Loyer du local"></label>
+         <label class="field obligatoire">Guide<select id="ab-guide">${guides.map(g => `<option value="${esc(g.id)}" ${a.guideId === g.id ? 'selected' : ''}>${esc(g.nom)}</option>`).join('')}</select></label>
+         <label class="field narrow obligatoire">Depuis<input type="date" id="ab-depuis" value="${esc(a.depuis)}"></label>
+         <label class="field narrow">Jusqu'à<input type="date" id="ab-jusqua" value="${esc(a.jusqua || '')}"></label>
+         <label class="field narrow">Tous les (mois)<input type="number" id="ab-pas" min="1" max="12" value="${Number(a.tousLesMois) || 1}"></label>
+         <label class="field narrow obligatoire">Montant<input type="text" id="ab-montant" class="r" value="${esc(a.montant || '')}"></label>
+         <label class="field">Préfixe de pièce<input type="text" id="ab-piece" value="${esc(a.piece || '')}" placeholder="LOYER"></label>
+         <label class="field">Libellé<input type="text" id="ab-libelle" value="${esc(a.libelle || '')}" placeholder="Loyer du local"></label>
+       </div>
+       <p class="muted small">La génération crée les écritures manquantes <strong>en brouillard</strong>, jusqu'à aujourd'hui. Relancer ne double rien : les mois déjà générés sont retenus.</p>
+       <div class="modal-actions">
+         ${abo ? '<button class="btn btn-danger" id="ab-sup">Supprimer</button>' : ''}
+         <button class="btn" id="no">Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
+      (layer, close) => {
+        $('#no', layer).onclick = close;
+        const ecrire = async liste => {
+          try { S = await api.saveAbonnements(dossier.id, liste); close(); render(); toast('Abonnement enregistré.'); }
+          catch (e) { toast(plainError(e), 'error'); }
+        };
+        const sup = $('#ab-sup', layer);
+        if (sup) {
+          sup.onclick = async () => {
+            const ok = await confirmDialog('Supprimer cet abonnement ?',
+              `« ${a.nom} » ne proposera plus d'écritures.\n\nCelles qu'il a déjà créées ne bougent pas : elles vivent leur vie dans le livre.`, 'Supprimer', true);
+            if (ok) ecrire((dossier.abonnements || []).filter(x => x.id !== a.id));
+          };
+        }
+        $('#ok', layer).onclick = () => {
+          const nom = $('#ab-nom', layer).value.trim();
+          if (!nom) return refus($('#ab-nom', layer), 'Donne un nom à cet abonnement : c\'est lui que tu liras dans la liste.');
+          const depuis = $('#ab-depuis', layer).value;
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(depuis)) return refus($('#ab-depuis', layer), 'Il faut une date de départ : c\'est elle qui dit à partir de quel mois générer.');
+          const montant = Number(String($('#ab-montant', layer).value).replace(',', '.'));
+          if (!Number.isFinite(montant) || montant <= 0) return refus($('#ab-montant', layer), 'Le montant doit être un nombre positif : c\'est lui que le guide répartit.');
+          const neuf = {
+            ...a, nom, guideId: $('#ab-guide', layer).value, depuis,
+            jusqua: $('#ab-jusqua', layer).value || '',
+            tousLesMois: Math.max(1, Number($('#ab-pas', layer).value) || 1),
+            montant, piece: $('#ab-piece', layer).value.trim(), libelle: $('#ab-libelle', layer).value.trim(),
+            actif: a.actif !== false
+          };
+          if (!neuf.id) neuf.id = 'a' + Date.now().toString(36) + Math.floor(Math.random() * 1000).toString(36);
+          const autres = (dossier.abonnements || []).filter(x => x.id !== neuf.id);
+          ecrire(autres.concat([neuf]));
+        };
+      }
+    );
+  }
+
+  // ---------------------------------------------------------------- la recherche (SPEC-UI-CAB-013)
+  //
+  // Chercher dans TOUT le journal de l'exercice, pas seulement dans la période affichée : on cherche
+  // justement parce qu'on ne sait plus quand c'était. Le moteur est `compta.chercherEcritures` —
+  // pur, testé, et il lit aussi bien un libellé qu'un montant.
+  const rechState = { q: '', journal: '', statut: '' };
+
+  function vueRecherche(/* lignes */) {
+    const s = livresState;
+    if (!s.livre) return '<div class="empty">La recherche a besoin d\'un livre.</div>';
+    const trouvees = rechState.q.trim() || rechState.journal || rechState.statut
+      ? KC.chercherEcritures(s.livre, rechState.q, { journal: rechState.journal, statut: rechState.statut, max: 200 })
+      : [];
+    const total = (s.livre.ecritures || []).length;
+    return `<div class="filters mb">
+        <input type="search" id="re-q" placeholder="Pièce, tiers, libellé, compte, numéro, montant…" value="${esc(rechState.q)}" style="min-width:280px">
+        <select id="re-journal"><option value="">Tous les journaux</option>${(s.livre.journaux || []).map(j => `<option value="${esc(j.code)}" ${rechState.journal === j.code ? 'selected' : ''}>${esc(j.code)}</option>`).join('')}</select>
+        <select id="re-statut"><option value="">Brouillard et validées</option>
+          <option value="brouillard" ${rechState.statut === 'brouillard' ? 'selected' : ''}>Brouillard seulement</option>
+          <option value="validee" ${rechState.statut === 'validee' ? 'selected' : ''}>Validées seulement</option>
+          <option value="contrepassee" ${rechState.statut === 'contrepassee' ? 'selected' : ''}>Contre-passées</option></select>
+      </div>
+      ${!rechState.q.trim() && !rechState.journal && !rechState.statut
+        ? `<div class="empty"><p>Tape ce que tu cherches.</p><p class="muted small">${pl(total, 'écriture')} dans le livre de ${esc(s.annee)}. Un montant se cherche aussi : « 1191 » ou « 1191,000 ».</p></div>`
+        : !trouvees.length
+          ? `<div class="empty"><p>Rien ne correspond.</p><p class="muted small">La recherche porte sur toute l'année, pas seulement sur la période affichée en haut.</p></div>`
+          : `<div class="muted small mb">${pl(trouvees.length, 'écriture trouvée', 'écritures trouvées')} sur ${pl(total, 'écriture')}${trouvees.length >= 200 ? ' — affichage limité aux 200 premières, précise ta recherche' : ''}.</div>
+        <div class="scroll-x"><table class="list compact"><thead><tr>
+          <th class="r nw">N°</th><th class="nw">Date</th><th>Journal</th><th class="nw">Pièce</th><th>Libellé</th>
+          <th class="r nw">Total</th><th class="nw">État</th><th></th></tr></thead>
+        <tbody>${trouvees.map(e => {
+          const t = KC.soldeDeLignes(e.lignes);
+          return `<tr data-re="${esc(e.id)}" class="${e.statut === 'brouillard' ? 'br-ligne' : e.statut === 'contrepassee' ? 'cp-ligne' : ''}">
+            <td class="r nw">${e.numero == null ? '—' : e.numero}</td><td class="nw">${esc(e.date)}</td>
+            <td>${esc(e.journal)}</td><td class="nw">${esc(e.piece || '—')}</td>
+            <td>${esc(e.libelle || '')}${e.pieceJointe ? ' <span title="Justificatif joint">📎</span>' : ''}</td>
+            <td class="r nw">${t.debit.toFixed(3)}</td>
+            <td class="nw">${e.statut === 'brouillard' ? '<i>brouillard</i>' : e.statut === 'contrepassee' ? 'contre-passée' : 'validée'}</td>
+            ${RowMenu.cellule('R:' + e.id, '')}</tr>`;
+        }).join('')}</tbody></table></div>`}`;
+  }
+
+  function brancherRecherche(el, root, dossier) {
+    const s = livresState;
+    const q = $('#re-q', el);
+    if (q) {
+      // On redessine à la frappe, mais le champ de recherche est REMIS et le curseur replacé au
+      // bout : sans ça on ne peut taper qu'une lettre (défaut 7.17.0).
+      q.oninput = () => {
+        rechState.q = q.value;
+        drawLivres(root, dossier);
+        const n = $('#re-q');
+        if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); }
+      };
+    }
+    const j = $('#re-journal', el); if (j) j.onchange = () => { rechState.journal = j.value; drawLivres(root, dossier); };
+    const st = $('#re-statut', el); if (st) st.onchange = () => { rechState.statut = st.value; drawLivres(root, dossier); };
+    bindRowMenus(el, cle => {
+      if (!String(cle).startsWith('R:') || !s.livre) return [];
+      const e = (s.livre.ecritures || []).find(x => x.id === String(cle).slice(2));
+      if (!e) return [];
+      return actionsEcriture(root, dossier, e);
+    });
+  }
+
+  // Les actions d'une écriture, à UN endroit. Elles sont les mêmes depuis la recherche, le
+  // livre-journal et le brouillard — trois tables séparées auraient divergé au premier ajout, et
+  // c'est exactement le défaut que la 7.29.0 a trouvé sur le devis déjà facturé.
+  function actionsEcriture(root, dossier, e) {
+    const a = [];
+    if (e.statut === 'brouillard') {
+      a.push({ icon: 'oui', label: 'Valider cette écriture', hint: 'Elle prend son numéro et ne se modifiera plus',
+        run: () => validerEcriture(root, dossier, e) });
+      a.push({ icon: 'modifier', label: 'Reprendre dans la grille', hint: 'Elle remonte dans la saisie, modifiable',
+        run: () => { saisieState.piece = pieceDepuis(e); livresState.onglet = 'saisie'; drawLivres(root, dossier); } });
+      a.push({ icon: 'supprimer', label: 'Supprimer ce brouillard', hint: 'Il n\'a pas de numéro : rien ne restera', danger: true,
+        run: () => supprimerBrouillard(root, dossier, e) });
+    }
+    if (e.statut === 'validee') {
+      a.push({ icon: 'contrat', label: 'Contre-passer cette écriture', hint: 'Une écriture miroir, à la date du jour',
+        run: () => contrepasserEcriture(root, dossier, e) });
+      a.push({ icon: 'horloge', label: 'Extourner au 1er du mois suivant', hint: 'Pour une charge à payer ou un produit à recevoir',
+        run: () => extournerEcriture(root, dossier, e) });
+    }
+    a.push({ icon: 'texte', label: e.pieceJointe ? 'Remplacer le justificatif…' : 'Joindre un justificatif…',
+      hint: 'Le fichier est copié dans le dossier du client', run: () => joindreJustificatif(root, dossier, e.id) });
+    if (e.pieceJointe) {
+      a.push({ icon: 'ouvrir', label: 'Ouvrir le justificatif', hint: esc(e.pieceJointe),
+        run: async () => { try { await api.ouvrirJustificatif(dossier.id, e.pieceJointe); } catch (x) { await infoDialog('Justificatif introuvable', plainError(x)); } } });
+    }
+    return a;
+  }
+
+  async function extournerEcriture(root, dossier, e) {
+    const date = KC.premierDuMoisSuivant(e.date);
+    const ok = await confirmDialog('Extourner cette écriture ?',
+      `${e.journal} ${e.piece || '(sans pièce)'} n° ${e.numero} du ${e.date}.\n\nUne écriture miroir sera créée et VALIDÉE au ${date}. L'écriture d'origine ne bouge pas : elle reste dans son mois, avec son numéro — c'est ce qui distingue une extourne d'une contre-passation.`,
+      'Extourner');
+    if (!ok) return;
+    try {
+      const r = await api.extourner(dossier.id, livresState.annee, e.id);
+      livresState.livre = r.livre;
+      toast(`Extourne créée au ${r.date}, sous le n° ${r.numero}.`);
+      drawLivres(root, dossier);
+    } catch (err) { await infoDialog('Extourne impossible', plainError(err)); }
+  }
+
   function brancherVue(el, root, dossier, lignes) {
     const s = livresState;
     const redraw = () => drawLivres(root, dossier);
@@ -1967,15 +2712,9 @@
         const id = String(cle).slice(2);
         const e = s.livre.ecritures.find(x => x.id === id);
         if (!e) return [];
-        const actions = [];
-        if (e.statut === 'brouillard') {
-          actions.push({ icon: 'oui', label: 'Valider cette écriture', hint: 'Elle prend son numéro et ne se modifiera plus',
-            run: () => validerEcriture(root, dossier, e) });
-        }
-        if (e.statut === 'validee') {
-          actions.push({ icon: 'contrat', label: 'Contre-passer cette écriture', hint: 'Une écriture miroir, à la date du jour',
-            run: () => contrepasserEcriture(root, dossier, e) });
-        }
+        // La MÊME table que la recherche et le brouillard : trois listes séparées auraient divergé
+        // au premier ajout (règle 7.29.0).
+        const actions = actionsEcriture(root, dossier, e);
         if (e.mois && (s.data.paquets || []).some(z => z.month === e.mois && z.path)) {
           actions.push({ icon: 'loupe', label: 'Ouvrir la pièce dans le paquet', hint: `${e.piece} · ${moisLabelCourt(e.mois)}`,
             run: () => openPack(dossier, e.mois) });
@@ -2559,7 +3298,214 @@
   // deuxième, 0,6 pour le troisième. Le troisième reste léger — c'est le prix de la symétrie avec
   // l'autre application, et c'est pour ça que « Signaler un problème » a quitté Sécurité, où il
   // n'avait rien à faire, pour rejoindre « Aide et dépannage ».
-  const REG_TABS = [['cabinet', 'Mon cabinet'], ['donnees', 'Données et sécurité'], ['app', 'L\'application']];
+  // ---------------------------------------------------------------- Réglages → Comptabilité (9.3.0)
+  //
+  // Trois panneaux : les touches de la grille, les guides, la correspondance des comptes. Aucun n'a
+  // de valeur imposée — c'est toute la raison d'être de cet onglet. Les touches surtout : elles se
+  // reprennent de l'ancien logiciel du comptable, elles ne s'inventent pas.
+
+  const SENS = [['debit', 'Débit'], ['credit', 'Crédit']];
+  let corrBrouillon = null;                 // la table en cours d'édition, tant qu'on n'a pas enregistré
+
+  function brancherReglagesCompta(view) {
+    const sr = $('#sr-save', view);
+    if (sr) {
+      sr.onclick = async () => {
+        const touches = {};
+        $$('[data-touche]', view).forEach(i => { touches[i.dataset.touche] = i.value.trim() || K.DEFAULT_SAISIE.touches[i.dataset.touche]; });
+        try {
+          S = await api.saveCabinet({
+            name: (S.cabinet || {}).name || '', email: (S.cabinet || {}).email || '', phone: (S.cabinet || {}).phone || '',
+            settings: {
+              saisie: {
+                journalParDefaut: $('#sr-journal', view).value.trim().toUpperCase(),
+                dateComplete: $('#sr-datec', view).checked,
+                validerParLot: $('#sr-lot', view).checked,
+                touches
+              }
+            }
+          });
+          flash($('#sr-saved', view));
+        } catch (e) { toast(plainError(e), 'error'); }
+      };
+    }
+    const ng = $('#sr-guide-new', view);
+    if (ng) ng.onclick = () => guideForm(null);
+    dessinerGuides(view);
+
+    const add = $('#sr-corr-add', view);
+    if (add) {
+      add.onclick = () => {
+        corrBrouillon = lireCorrespondance(view).concat([{ de: '', vers: '', prefixe: false }]);
+        dessinerCorrespondance(view);
+      };
+    }
+    const sv = $('#sr-corr-save', view);
+    if (sv) {
+      sv.onclick = async () => {
+        const table = lireCorrespondance(view).filter(r => r.de || r.vers);
+        const v = KC.correspondanceValide(table);
+        if (!v.ok) { await infoDialog('Cette correspondance n\'entre pas', v.motifs.join('\n')); return; }
+        try {
+          S = await api.saveCorrespondance(table);
+          corrBrouillon = null;
+          dessinerCorrespondance(view);
+          flash($('#sr-corr-saved', view));
+        } catch (e) { toast(plainError(e), 'error'); }
+      };
+    }
+    dessinerCorrespondance(view);
+  }
+
+  function dessinerGuides(view) {
+    const box = $('#sr-guides', view);
+    if (!box) return;
+    const gs = (S.guides || []).slice().sort((a, b) => String(a.nom || '').localeCompare(String(b.nom || ''), 'fr'));
+    if (!gs.length) {
+      // Un état vide qui explique le geste en prose n'est pas une interface (règle 7.0.0) : le
+      // bouton qui crée est juste en dessous, et cette phrase dit à quoi ça sert, pas comment faire.
+      box.innerHTML = `<div class="sa-vide">Aucun guide pour l'instant. Un guide fait gagner du temps sur les pièces qui reviennent : le loyer, les honoraires, un achat avec TVA.</div>`;
+      return;
+    }
+    box.innerHTML = `<div class="scroll-x"><table class="list compact"><thead><tr>
+        <th>Nom</th><th class="nw">Journal</th><th class="r nw">Lignes</th><th>Comptes</th><th></th></tr></thead>
+      <tbody>${gs.map(g => `<tr data-g="${esc(g.id)}">
+        <td>${esc(g.nom || '')}</td><td class="nw">${esc(g.journal || '')}</td>
+        <td class="r nw">${(g.lignes || []).length}</td>
+        <td class="muted small">${esc((g.lignes || []).map(l => l.compte).filter(Boolean).join(' · '))}</td>
+        ${RowMenu.cellule('G:' + g.id, '')}</tr>`).join('')}</tbody></table></div>`;
+    bindRowMenus(box, cle => {
+      const g = (S.guides || []).find(x => x.id === String(cle).slice(2));
+      if (!g) return [];
+      return [
+        { icon: 'modifier', label: 'Modifier ce guide', hint: 'Ses comptes et d\'où viennent ses montants', run: () => guideForm(g) },
+        { icon: 'copier', label: 'Dupliquer ce guide', hint: 'Pour en écrire un proche sans repartir de zéro',
+          run: () => guideForm({ ...g, id: '', nom: (g.nom || '') + ' (copie)' }) }
+      ];
+    });
+  }
+
+  // Le formulaire d'un guide. La suppression vit DEDANS, comme partout depuis la 5.2.1 : plus aucun
+  // « Supprimer » en bout de ligne.
+  function guideForm(guide) {
+    const g = guide
+      ? { ...guide, lignes: (guide.lignes || []).map(l => ({ ...l })) }
+      : { id: '', nom: '', journal: '', lignes: [{ compte: '', libelle: '', sens: 'debit', base: true }, { compte: '', libelle: '', sens: 'credit', solde: true }] };
+    const existe = !!(guide && guide.id && (S.guides || []).some(x => x.id === guide.id));
+
+    const lignesHtml = () => g.lignes.map((l, i) => `<tr data-i="${i}">
+      <td><input data-k="compte" value="${esc(l.compte || '')}" placeholder="607"></td>
+      <td><input data-k="libelle" value="${esc(l.libelle || '')}" placeholder="Achat"></td>
+      <td><select data-k="sens">${SENS.map(([v, t]) => `<option value="${v}" ${l.sens === v ? 'selected' : ''}>${t}</option>`).join('')}</select></td>
+      <td><input data-k="montant" class="r" value="${esc(l.montant == null ? '' : l.montant)}" placeholder="fixe"></td>
+      <td><input data-k="taux" class="r" value="${esc(l.taux == null ? '' : l.taux)}" placeholder="%"></td>
+      <td class="nw"><label class="check"><input type="checkbox" data-k="base" ${l.base ? 'checked' : ''}> base</label></td>
+      <td class="nw"><label class="check"><input type="checkbox" data-k="solde" ${l.solde ? 'checked' : ''}> solde</label></td>
+      <td class="sa-sup"><button type="button" class="btn btn-sm" data-sup="${i}" aria-label="Retirer cette ligne">✕</button></td>
+    </tr>`).join('');
+
+    modal(
+      `<h2>${existe ? 'Modifier le guide' : 'Nouveau guide'}</h2>
+       <div class="grid-2">
+         <label class="field obligatoire">Nom<input type="text" id="g-nom" value="${esc(g.nom || '')}" placeholder="Achat avec TVA 19 %"></label>
+         <label class="field narrow obligatoire">Journal<input type="text" id="g-journal" maxlength="5" value="${esc(g.journal || '')}" placeholder="AC"></label>
+       </div>
+       <h3 class="mt">Les lignes ${info('sa.guideLigne')}</h3>
+       <div class="scroll-x"><table class="list compact sa-table"><thead><tr>
+         <th class="nw">Compte</th><th>Libellé</th><th class="nw">Sens</th><th class="r nw">Montant</th>
+         <th class="r nw">Taux</th><th class="nw"></th><th class="nw"></th><th></th></tr></thead>
+       <tbody id="g-lignes">${lignesHtml()}</tbody></table></div>
+       <div class="modal-actions" style="justify-content:flex-start"><button type="button" class="btn btn-sm" id="g-add">Ajouter une ligne</button></div>
+       <p class="muted small">« base » = le montant que tu tapes. « taux » = un pourcentage de ce montant. « solde » = ce qu'il manque pour que la pièce tombe juste — une seule ligne peut le porter.</p>
+       <div class="modal-actions">
+         ${existe ? '<button class="btn btn-danger" id="g-sup">Supprimer ce guide</button>' : ''}
+         <button class="btn" id="no">Annuler</button><button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
+      (layer, close) => {
+        const corps = $('#g-lignes', layer);
+        const relire = () => {
+          $$('tr[data-i]', corps).forEach(tr => {
+            const i = Number(tr.dataset.i);
+            $$('[data-k]', tr).forEach(f => {
+              g.lignes[i][f.dataset.k] = f.type === 'checkbox' ? f.checked : f.value;
+            });
+          });
+        };
+        const redessiner = () => { corps.innerHTML = lignesHtml(); brancher(); };
+        function brancher() {
+          $$('[data-k]', corps).forEach(f => { f.onchange = relire; });
+          $$('[data-sup]', corps).forEach(b => {
+            b.onclick = () => { relire(); g.lignes.splice(Number(b.dataset.sup), 1); redessiner(); };
+          });
+        }
+        brancher();
+        $('#g-add', layer).onclick = () => { relire(); g.lignes.push({ compte: '', libelle: '', sens: 'debit' }); redessiner(); };
+        $('#no', layer).onclick = close;
+        const sup = $('#g-sup', layer);
+        if (sup) {
+          sup.onclick = async () => {
+            const ok = await confirmDialog('Supprimer ce guide ?',
+              `« ${g.nom} » ne sera plus proposé dans la grille.\n\nLes écritures qu'il a déjà produites ne bougent pas : un guide ne laisse aucun lien derrière lui, il préremplit et s'efface.`,
+              'Supprimer', true);
+            if (!ok) return;
+            try {
+              S = await api.saveGuides((S.guides || []).filter(x => x.id !== g.id));
+              close(); dessinerGuides(document); toast('Guide supprimé.');
+            } catch (e) { toast(plainError(e), 'error'); }
+          };
+        }
+        $('#ok', layer).onclick = async () => {
+          relire();
+          g.nom = $('#g-nom', layer).value.trim();
+          g.journal = $('#g-journal', layer).value.trim().toUpperCase();
+          const v = KC.guideValide(g);
+          if (!v.ok) {
+            if (/nom/i.test(v.motif)) return refus($('#g-nom', layer), v.motif);
+            if (/journal/i.test(v.motif)) return refus($('#g-journal', layer), v.motif);
+            await infoDialog('Ce guide n\'entre pas', v.motifs.join('\n'));
+            return;
+          }
+          if (!g.id) g.id = 'g' + Date.now().toString(36) + Math.floor(Math.random() * 1000).toString(36);
+          const autres = (S.guides || []).filter(x => x.id !== g.id);
+          try {
+            S = await api.saveGuides(autres.concat([g]));
+            close(); dessinerGuides(document); toast(existe ? 'Guide modifié.' : 'Guide créé.');
+          } catch (e) { toast(plainError(e), 'error'); }
+        };
+      }
+    );
+  }
+
+  const lireCorrespondance = view => $$('#sr-corr tr[data-c]', view).map(tr => ({
+    de: $('[data-k=de]', tr).value.trim(),
+    vers: $('[data-k=vers]', tr).value.trim(),
+    prefixe: $('[data-k=prefixe]', tr).checked
+  }));
+
+  function dessinerCorrespondance(view) {
+    const box = $('#sr-corr', view);
+    if (!box) return;
+    const table = corrBrouillon || (S.correspondance || []);
+    box.innerHTML = !table.length
+      ? `<div class="sa-vide">Aucune correspondance. Tant qu'il n'y en a pas, les comptes de tes clients entrent tels quels — ce qui est le bon réglage si ton plan est le leur.</div>`
+      : `<div class="scroll-x"><table class="list compact sa-table"><thead><tr>
+          <th class="nw">Compte du client</th><th class="nw">Compte du cabinet</th><th class="nw">Toute la famille</th><th></th></tr></thead>
+        <tbody>${table.map((r, i) => `<tr data-c="${i}">
+          <td><input data-k="de" value="${esc(r.de || '')}" placeholder="411"></td>
+          <td><input data-k="vers" value="${esc(r.vers || '')}" placeholder="3411"></td>
+          <td><label class="check"><input type="checkbox" data-k="prefixe" ${r.prefixe ? 'checked' : ''}> préfixe</label></td>
+          <td class="sa-sup"><button type="button" class="btn btn-sm" data-cs="${i}" aria-label="Retirer cette correspondance">✕</button></td>
+        </tr>`).join('')}</tbody></table></div>`;
+    $$('[data-cs]', box).forEach(b => {
+      b.onclick = () => {
+        const t = lireCorrespondance(view);
+        t.splice(Number(b.dataset.cs), 1);
+        corrBrouillon = t;
+        dessinerCorrespondance(view);
+      };
+    });
+  }
+
+  const REG_TABS = [['cabinet', 'Mon cabinet'], ['compta', 'Comptabilité'], ['donnees', 'Données et sécurité'], ['app', 'L\'application']];
 
   // Une seule table pour TROIS choses qui, écrites à trois endroits, divergent toujours : le titre du
   // panneau, les mots que sa recherche connaît sans qu'ils soient à l'écran, et son entrée de palette
@@ -2568,6 +3514,9 @@
   const REG_PANNEAUX = {
     'pan-cabinet': { onglet: 'cabinet', titre: 'Ton cabinet', mots: 'cabinet nom email telephone jour relance tva cnss depot echeance' },
     'pan-appairage': { onglet: 'cabinet', titre: 'Le fichier à remettre à tes clients', mots: 'appairage fichier client empreinte cle publique chiffrer skanpair' },
+    'pan-saisie': { onglet: 'compta', titre: 'La grille de saisie', mots: 'saisie clavier touches raccourci solder recopier dupliquer journal date kilometre grille brouillard validation' },
+    'pan-guides': { onglet: 'compta', titre: 'Guides d\'écritures', mots: 'guide modele ecriture type loyer salaire achat tva honoraires steg prerempli abonnement recurrent' },
+    'pan-comptes': { onglet: 'compta', titre: 'Correspondance des comptes', mots: 'correspondance compte plan client cabinet traduire import export numero prefixe' },
     'pan-inbox': { onglet: 'donnees', titre: 'Boîte de réception', mots: 'boite reception dossier surveille paquets arrives import mail' },
     'pan-backup': { onglet: 'donnees', titre: 'Sauvegardes', mots: 'sauvegarde restaurer copie externe usb icloud filet perdu' },
     'pan-secu': { onglet: 'donnees', titre: 'Sécurité', mots: 'securite mot de passe cle de secours verrouiller chiffrement empreinte' },
@@ -2626,6 +3575,44 @@
         <div class="modal-actions"><button class="btn btn-primary" id="c-pair">Enregistrer le fichier d'appairage…</button></div>
       </div>
 
+      </section>
+
+      <section data-pane="compta"${reglagesTab === 'compta' ? '' : ' hidden'}>
+      ${panneauReg('pan-saisie')}
+        <p class="small">La grille de saisie vit dans la fiche d'un client, onglet <strong>Comptabilité → Saisie</strong>.
+        Ce qui se règle ici vaut pour tous tes dossiers.</p>
+        <div class="grid-2">
+          <label class="field narrow">${lbl('Journal proposé', 'sa.journalDefaut')}
+            <input type="text" id="sr-journal" maxlength="5" placeholder="le dernier utilisé" value="${esc(((S.settings || {}).saisie || {}).journalParDefaut || '')}"></label>
+          <label class="check">${lbl('Écrire la date complète', 'sa.dateComplete')}
+            <input type="checkbox" id="sr-datec" ${((S.settings || {}).saisie || {}).dateComplete !== false ? 'checked' : ''}></label>
+          <label class="check span-2">Proposer « valider tout le journal du mois »
+            <input type="checkbox" id="sr-lot" ${((S.settings || {}).saisie || {}).validerParLot !== false ? 'checked' : ''}></label>
+        </div>
+        <h3 class="mt">${lbl('Les touches', 'sa.touches')}</h3>
+        <p class="muted small">Écris-les comme « F2 », « Enter », « Control+Enter ». Vide remet celle d'origine.</p>
+        <div class="grid-2">
+          ${[['ligneSuivante', 'Ligne suivante'], ['solder', 'Solder la pièce'], ['recopier', 'Recopier la ligne du dessus'],
+             ['dupliquer', 'Dupliquer la pièce'], ['valider', 'Enregistrer et valider']].map(([k, t]) =>
+            `<label class="field narrow">${esc(t)}<input type="text" data-touche="${k}" value="${esc((((S.settings || {}).saisie || {}).touches || {})[k] || '')}" placeholder="${esc(K.DEFAULT_SAISIE.touches[k])}"></label>`).join('')}
+        </div>
+        <div class="modal-actions"><span class="saved" id="sr-saved" hidden></span><button class="btn btn-primary" id="sr-save">Enregistrer</button></div>
+      </div>
+
+      ${panneauReg('pan-guides', info('sa.guides'))}
+        <p class="small">Un guide préremplit une pièce : un journal, des comptes, et d'où vient chaque montant.
+        Il n'écrit rien tout seul — après le clic, tout reste modifiable.</p>
+        <div id="sr-guides"></div>
+        <div class="modal-actions"><button class="btn btn-primary" id="sr-guide-new">Nouveau guide…</button></div>
+      </div>
+
+      ${panneauReg('pan-comptes', info('sa.correspondance'))}
+        <p class="small">Traduire les comptes de tes clients vers les tiens, <strong>à l'import et à l'export</strong>.
+        Une écriture déjà validée n'est jamais réécrite : elle porte le compte sous lequel tu l'as validée.</p>
+        <div id="sr-corr"></div>
+        <div class="modal-actions"><button class="btn" id="sr-corr-add">Ajouter une ligne</button>
+        <span class="saved" id="sr-corr-saved" hidden></span><button class="btn btn-primary" id="sr-corr-save">Enregistrer</button></div>
+      </div>
       </section>
 
       <!-- Les trois panneaux ci-dessous sont remplis APRÈS coup par drawBackupPanels(). Ils restent
@@ -2695,6 +3682,7 @@
     }
     const sup = $('#s-support'); if (sup) sup.onclick = supportDialog;
     const idee = $('#s-idee'); if (idee) idee.onclick = ideeDialog;
+    brancherReglagesCompta(view);
     bindRecoveryBanner(view);
     if ($('#r-demo-on')) $('#r-demo-on').onclick = async () => {
       S = await api.demo(true); toast('Exemple chargé : ces cinq dossiers sont fictifs.'); location.hash = '#/dossiers';

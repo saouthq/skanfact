@@ -65,8 +65,35 @@
   // Cinq ans : au-delà, ce n'est plus un retard, c'est une reprise d'archives — et réclamer soixante
   // mois par mail ne fait bouger personne.
   const MAX_MOIS_ATTENDUS = 60;
-  const DEFAULT_SETTINGS = { relanceDay: 10, deadlines: null };
-  const DEFAULT_STATE = { format: FORMAT, cabinet: { name: '', email: '', phone: '', publicKey: '', privateKey: '' }, dossiers: [], settings: { ...DEFAULT_SETTINGS } };
+  // Les réglages de la SAISIE (9.3.0). Ils sont tous réglables, et c'est voulu : les touches d'une
+  // grille de saisie ne s'inventent pas, elles se reprennent de celles que le comptable a déjà dans
+  // les doigts. Tant que personne n'a regardé le pilote travailler, ce qui est ici n'est qu'une
+  // proposition — et une proposition qu'on change dans un écran, pas dans une version.
+  const DEFAULT_SAISIE = {
+    journalParDefaut: '',        // vide = le dernier journal utilisé sur ce dossier
+    dateComplete: true,          // false = on ne tape que le jour, dans le mois en cours
+    validerParLot: true,         // proposer « valider tout le journal du mois » en plus du geste pièce par pièce
+    touches: {
+      ligneSuivante: 'Enter',
+      solder: 'Tab',             // sur la dernière ligne : le reste se pose tout seul
+      recopier: 'F2',            // recopier la ligne du dessus
+      dupliquer: 'F4',           // dupliquer la pièce entière
+      valider: 'Control+Enter'
+    }
+  };
+  const DEFAULT_SETTINGS = { relanceDay: 10, deadlines: null, saisie: null };
+  const DEFAULT_STATE = {
+    format: FORMAT,
+    cabinet: { name: '', email: '', phone: '', publicKey: '', privateKey: '' },
+    dossiers: [],
+    // Les guides d'écritures vivent au niveau du CABINET : un comptable écrit « achat avec TVA »
+    // une fois, pas soixante fois. Un dossier peut en ajouter (`dossiers[].guides`), jamais en
+    // retirer — surcharger n'est pas censurer.
+    guides: [],
+    // La correspondance des comptes, côté cabinet. Un dossier porte ses exceptions.
+    correspondance: [],
+    settings: { ...DEFAULT_SETTINGS }
+  };
 
   // Une fiche de dossier complète. Tout ce qui est ajouté ici doit être FACULTATIF à la lecture :
   // un cabinet qui ouvre une base d'avant cette version ne doit rien perdre et rien voir casser.
@@ -96,6 +123,15 @@
       clePublique: d.clePublique || '',
       cleEmpreinte: d.cleEmpreinte || '',
       cleEpingleeLe: d.cleEpingleeLe || null,
+      // 9.3.0 — même règle que les quatre champs ci-dessus : absents d'ici, ils seraient jetés au
+      // prochain chargement, en silence. Un abonnement perdu, c'est un loyer qui cesse d'être
+      // écrit sans que personne ne le remarque avant le bilan.
+      abonnements: Array.isArray(d.abonnements) ? d.abonnements : [],
+      guides: Array.isArray(d.guides) ? d.guides : [],
+      correspondance: Array.isArray(d.correspondance) ? d.correspondance : [],
+      // Le dernier journal utilisé sur CE dossier : c'est lui qu'on propose à l'ouverture de la
+      // grille. Un journal d'un autre client n'apprend rien.
+      dernierJournal: d.dernierJournal || '',
       audit: Array.isArray(d.audit) ? d.audit : [],
       packs: Array.isArray(d.packs) ? d.packs : []
     };
@@ -115,9 +151,74 @@
       dl[k] = v >= 1 && v <= 31 ? Math.round(v) : DEFAULT_DEADLINES[k];
     });
     s.settings.deadlines = dl;
+    // Les réglages de saisie (9.3.0). `touches` se fusionne touche par touche : quelqu'un qui n'en
+    // a redéfini qu'une ne doit pas perdre les autres, et une version qui en ajoute une nouvelle
+    // doit la donner à ceux qui ont déjà réglé les leurs.
+    const sa = { ...DEFAULT_SAISIE, ...(s.settings.saisie || {}) };
+    sa.touches = { ...DEFAULT_SAISIE.touches, ...((s.settings.saisie || {}).touches || {}) };
+    sa.journalParDefaut = String(sa.journalParDefaut || '').toUpperCase().slice(0, 5);
+    sa.dateComplete = sa.dateComplete !== false;
+    sa.validerParLot = sa.validerParLot !== false;
+    s.settings.saisie = sa;
+    s.guides = Array.isArray(s.guides) ? s.guides : [];
+    s.correspondance = Array.isArray(s.correspondance) ? s.correspondance : [];
     s.dossiers = Array.isArray(s.dossiers) ? s.dossiers.map(migrateDossier) : [];
     s.format = FORMAT;
     return s;
+  }
+
+  // Une date TAPÉE, dans la grille de saisie (9.3.0). Le comptable tape « 4 », « 4/3 », « 04/03/26 »,
+  // « 2026-03-04 » ou « 040326 » au pavé numérique — et il tape vite. N'accepter qu'une seule forme,
+  // c'est lui faire lever les mains du clavier pour aller chercher un calendrier à la souris : très
+  // exactement ce que cette grille existe pour éviter.
+  //
+  // Tout est ramené à un JOUR DU CALENDRIER (AAAA-MM-JJ), jamais à un instant (règle 5.2.3), et une
+  // date qui n'existe pas (le 30 février) rend la chaîne vide plutôt qu'un jour voisin inventé.
+  function dateTapee(texte, annee, moisDefaut) {
+    const t = String(texte || '').trim().replace(/[.\s-]/g, '/').replace(/\/+/g, '/');
+    const iso = String(texte || '').trim();
+    const an = Number(annee) || Number(String(moisDefaut || '').slice(0, 4)) || 0;
+    const moisD = Number(String(moisDefaut || '').slice(5, 7)) || 0;
+    const fini = (y, m, d) => {
+      if (!y || !(m >= 1 && m <= 12) || !(d >= 1)) return '';
+      const dernier = new Date(Date.UTC(y, m, 0)).getUTCDate();
+      if (d > dernier) return '';
+      return `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    };
+    let m;
+    if ((m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(iso))) return fini(+m[1], +m[2], +m[3]);
+    if ((m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(t))) return fini(+m[3], +m[2], +m[1]);
+    if ((m = /^(\d{1,2})\/(\d{1,2})\/(\d{2})$/.exec(t))) return fini(2000 + +m[3], +m[2], +m[1]);
+    if ((m = /^(\d{1,2})\/(\d{1,2})$/.exec(t))) return fini(an, +m[2], +m[1]);
+    if ((m = /^(\d{1,2})$/.exec(t))) return fini(an, moisD, +m[1]);
+    if ((m = /^(\d{2})(\d{2})(\d{4})$/.exec(t))) return fini(+m[3], +m[2], +m[1]);
+    if ((m = /^(\d{2})(\d{2})(\d{2})$/.exec(t))) return fini(2000 + +m[3], +m[2], +m[1]);
+    return '';
+  }
+
+  // Les guides utilisables sur un dossier : ceux du cabinet, plus les siens. Un guide du dossier qui
+  // porte le même `id` qu'un guide du cabinet le REMPLACE — c'est la surcharge, et elle vaut mieux
+  // qu'un doublon dans la liste, où l'on ne saurait pas lequel est le bon.
+  function guidesDuDossier(state, dossier) {
+    const cab = Array.isArray(state && state.guides) ? state.guides : [];
+    const loc = Array.isArray(dossier && dossier.guides) ? dossier.guides : [];
+    const par = new Map();
+    cab.forEach(g => par.set(g.id, { ...g, portee: 'cabinet' }));
+    loc.forEach(g => par.set(g.id, { ...g, portee: 'dossier' }));
+    return Array.from(par.values()).sort((a, b) => String(a.nom || '').localeCompare(String(b.nom || ''), 'fr'));
+  }
+
+  // La correspondance qui s'applique à un dossier : celle du cabinet, puis ses exceptions. Une
+  // exception du dossier sur le MÊME compte de départ l'emporte — sinon « exception » ne voudrait
+  // rien dire. L'ordre compte : la fonction qui l'applique (`compta.compteCorrespondant`) choisit
+  // déjà la plus précise, mais deux règles sur le même `de` ne peuvent pas coexister.
+  function correspondanceDuDossier(state, dossier) {
+    const cab = Array.isArray(state && state.correspondance) ? state.correspondance : [];
+    const loc = Array.isArray(dossier && dossier.correspondance) ? dossier.correspondance : [];
+    const par = new Map();
+    cab.forEach(r => par.set(String(r.de), { ...r, portee: 'cabinet' }));
+    loc.forEach(r => par.set(String(r.de), { ...r, portee: 'dossier' }));
+    return Array.from(par.values());
   }
 
   // L'identité d'un dossier vient du MATRICULE FISCAL quand il existe : c'est le seul identifiant
@@ -1015,7 +1116,8 @@
   }
 
   return {
-    FORMAT, MONTHS_FR, DEFAULT_STATE, DEFAULT_SETTINGS, TVA_PERIODS, REGIMES, RELANCE_WAYS, SORTS,
+    FORMAT, MONTHS_FR, DEFAULT_STATE, DEFAULT_SETTINGS, DEFAULT_SAISIE, TVA_PERIODS, REGIMES, RELANCE_WAYS, SORTS,
+    guidesDuDossier, correspondanceDuDossier, dateTapee,
     monthLabel, monthListLabel, missingLabel, addMonth, monthsBetween, today, de,
     migrate, migrateDossier, dossierKey, packSummary, filePack, demoDossiers, rebaserPaquet, checkIntegrity,
     newDossier, parseDossierLines, noteRelance, portfolio, relanceDue, relanceRows, accuseMail,

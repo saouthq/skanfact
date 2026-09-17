@@ -470,7 +470,13 @@ async function launchCabinet() {
   await win.waitForSelector('.row-menu', { timeout: 5000 });
   const actions = await win.evaluate(() => [...document.querySelectorAll('.row-menu button')].map(b => b.textContent.trim()));
   if (!actions.some(a => /Valider/.test(a))) throw new Error('le menu d\'une écriture en brouillard doit offrir « Valider » : ' + actions.join(' · '));
-  if (actions.some(a => /Supprimer/.test(a))) throw new Error('une écriture ne se supprime JAMAIS depuis une liste');
+  // Un BROUILLARD se supprime : il n'a pas de numéro, il ne laisse aucun trou, et c'est toute la
+  // raison d'être d'un brouillard (9.3.0). L'assertion d'avant exigeait le contraire — elle décrivait
+  // l'état du jour, où rien ne se supprimait encore, pas la règle. Ce qui ne se supprime JAMAIS,
+  // c'est une VALIDÉE, et c'est vérifié plus bas, après la validation.
+  if (!actions.some(a => /Supprimer ce brouillard/.test(a))) {
+    throw new Error('un brouillard doit pouvoir se supprimer : ' + actions.join(' · '));
+  }
   await shot(win, 'livre-menu');
   await win.evaluate(() => {
     [...document.querySelectorAll('.row-menu button')].find(b => /Valider/.test(b.textContent)).click();
@@ -503,6 +509,25 @@ async function launchCabinet() {
   });
   console.log(`13 sexies. validation : ${apresValidation.validees} validée(s), n° ${apresValidation.numeros.join(',')}`);
   await shot(win, 'livre-validee');
+
+  // Et l'autre moitié de la règle : une VALIDÉE ne se modifie ni ne se supprime — jamais, par aucun
+  // chemin. On le demande au pont lui-même, c'est-à-dire au vrai chemin, pas à ce que l'écran
+  // affiche : un bouton absent ne prouve rien si la porte, elle, reste ouverte.
+  const refus = await win.evaluate(async ([id, annee]) => {
+    const r = await window.cabinet.livre(id, annee);
+    const v = (r.livre.ecritures || []).find(e => e.statut === 'validee');
+    if (!v) return { pas: 'aucune validée à éprouver' };
+    const essai = async fn => { try { await fn(); return 'PASSÉ'; } catch (e) { return String(e.message || e); } };
+    return {
+      mod: await essai(() => window.cabinet.modifierEcriture(id, annee, v.id, { libelle: 'trafiquée' })),
+      sup: await essai(() => window.cabinet.supprimerEcriture(id, annee, v.id))
+    };
+  }, [dossierSigne.id, anneeLivre]);
+  if (refus.pas) throw new Error(refus.pas);
+  if (refus.mod === 'PASSÉ') throw new Error('une écriture VALIDÉE s\'est laissée modifier');
+  if (refus.sup === 'PASSÉ') throw new Error('une écriture VALIDÉE s\'est laissée supprimer');
+  if (!/contre-passe/.test(refus.mod)) throw new Error('le refus ne dit pas par quoi remplacer le geste : ' + refus.mod);
+  console.log('13 septies. une validée ne se modifie ni ne se supprime — elle se contre-passe');
 
   // ---------- 14. les écritures regroupées, sur le VRAI paquet ----------
   const csvFile = path.join(tmp, 'ecritures.csv');

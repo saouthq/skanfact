@@ -851,6 +851,357 @@
     return Array.from(par.values());
   }
 
+  // ================================================================ LA SAISIE (9.3.0)
+  //
+  // L'écran où un comptable passe ses journées. Tout ce qui suit est PUR : les règles de la saisie
+  // se prouvent sans Electron, sans disque et sans clavier.
+  //
+  // Ce que la 9.2.0 avait posé et qui ne bouge pas : une validée ne se modifie jamais, le numéro
+  // naît à la validation, le contrôle passe AVANT l'attribution. Ce que la 9.3.0 ajoute, c'est ce
+  // qu'on fait AUTOUR : modifier et supprimer un brouillard (les deux gestes qui n'existaient pas,
+  // donc une saisie qu'on ne pouvait pas corriger), valider un lot, extourner, chercher, et les
+  // deux mécanismes qui font gagner du temps sans jamais écrire à la place de quelqu'un — les
+  // guides et les abonnements.
+  //
+  // Aucune de ces fonctions ne trace : c'est l'appelant qui trace, en passant `quoi` à la porte
+  // d'écriture unique (`ecrireLeLivre`, 9.2.0). Deux endroits qui tracent le même geste écrivent la
+  // piste d'audit en double, et une piste d'audit en double ne se lit plus.
+
+  // Les dates, en UTC PUR (règle 5.2.3). Un jour de calendrier n'est jamais un instant : à minuit à
+  // Tunis il est 23 h la veille en UTC, et toute l'arithmétique se décalerait d'un jour.
+  const jourUTC = iso => new Date(String(iso) + 'T00:00:00Z');
+  const isoUTC = d => d.toISOString().slice(0, 10);
+  const estUnJour = iso => /^\d{4}-\d{2}-\d{2}$/.test(String(iso || ''));
+
+  function premierDuMoisSuivant(iso) {
+    if (!estUnJour(iso)) return '';
+    const d = jourUTC(iso);
+    return isoUTC(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1)));
+  }
+
+  // Ajouter des mois à un jour du calendrier. Le jour se GARDE et ne recule que s'il n'existe pas
+  // dans le mois d'arrivée : 31 janvier + 1 mois = 28 février, pas le 3 mars.
+  function ajouterMoisIso(iso, n) {
+    if (!estUnJour(iso)) return '';
+    const d = jourUTC(iso);
+    const cible = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + (Number(n) || 0), 1));
+    const dernier = new Date(Date.UTC(cible.getUTCFullYear(), cible.getUTCMonth() + 1, 0)).getUTCDate();
+    return isoUTC(new Date(Date.UTC(cible.getUTCFullYear(), cible.getUTCMonth(), Math.min(d.getUTCDate(), dernier))));
+  }
+
+  // Comparer sans accent : « interets » trouve « Intérêts ». `\p{M}` après une décomposition NFD,
+  // parce qu'un intervalle de caractères combinants écrit en dur dans la source est illisible et
+  // se fait manger par le premier éditeur qui normalise le fichier.
+  const sansAccents = s => String(s == null ? '' : s).normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+
+  // Ce qui manque pour que la pièce tombe juste. C'est le moteur du « Tab solde automatiquement » :
+  // l'écran ne calcule rien lui-même, sinon sa façon d'arrondir finirait par différer de celle de
+  // la validation, et une pièce soldée à l'écran serait refusée à l'enregistrement.
+  function soldeDeLignes(lignes) {
+    const L = Array.isArray(lignes) ? lignes : [];
+    const debit = round3(L.reduce((s, l) => s + Math.max(0, num(l && l.debit)), 0));
+    const credit = round3(L.reduce((s, l) => s + Math.max(0, num(l && l.credit)), 0));
+    const ecart = round3(debit - credit);
+    return {
+      debit, credit, ecart,
+      equilibre: ecart === 0,
+      // Ce qu'il faut poser sur une ligne neuve. Un montant négatif CHANGE DE COLONNE (règle
+      // 6.3.0) : il ne garde jamais son signe.
+      solde: ecart > 0 ? { debit: 0, credit: ecart } : ecart < 0 ? { debit: round3(-ecart), credit: 0 } : { debit: 0, credit: 0 }
+    };
+  }
+
+  // Chercher un compte par NUMÉRO ou par NOM pendant la frappe. L'ordre n'est pas décoratif : celui
+  // qui tape « 411 » veut le compte 411, pas « Achats 411xx » ; celui qui tape « client » veut les
+  // comptes dont le nom commence par là. Un classement au hasard rend la liste inutilisable, et on
+  // retourne taper le numéro de mémoire — ce que cette liste existe précisément pour éviter.
+  function comptesQuiCorrespondent(plan, q, max) {
+    const terme = sansAccents(q).trim();
+    const n = Math.max(1, Number(max) || 12);
+    const tous = (Array.isArray(plan) ? plan : []).filter(c => c && c.compte && !c.desactive);
+    if (!terme) return tous.slice().sort((a, b) => (a.compte < b.compte ? -1 : 1)).slice(0, n);
+    const mots = terme.split(/\s+/).filter(Boolean);
+    const rang = c => {
+      const numero = String(c.compte);
+      const lib = sansAccents(c.libelle);
+      if (numero === terme) return 0;
+      if (numero.startsWith(terme)) return 1;
+      if (lib.startsWith(terme)) return 2;
+      if (mots.every(m => numero.includes(m) || lib.includes(m))) return 3;
+      return -1;
+    };
+    return tous.map(c => ({ c, r: rang(c) })).filter(x => x.r >= 0)
+      .sort((a, b) => a.r - b.r || (a.c.compte < b.c.compte ? -1 : 1))
+      .slice(0, n).map(x => x.c);
+  }
+
+  // Modifier un brouillard. Le garde-fou est ici, pas dans l'écran : `modifierEcriture` est le seul
+  // chemin qui touche aux lignes d'une écriture existante, et il refuse une validée. Un test relit
+  // la source et exige qu'aucune autre fonction n'écrive dans `ecriture.lignes`.
+  function modifierEcriture(livre, id, patch) {
+    const e = (livre.ecritures || []).find(x => x.id === id);
+    if (!e) return { ok: false, motif: 'Cette écriture n\'existe pas.' };
+    if (e.statut !== 'brouillard') {
+      return { ok: false, motif: 'Cette écriture est validée : elle ne se modifie pas, elle se contre-passe.' };
+    }
+    const p = patch || {};
+    ['journal', 'piece', 'libelle'].forEach(k => { if (p[k] !== undefined) e[k] = String(p[k] == null ? '' : p[k]); });
+    if (p.pieceJointe !== undefined) e.pieceJointe = p.pieceJointe || null;
+    if (p.date !== undefined) { e.date = String(p.date || ''); e.mois = e.date.slice(0, 7); }
+    if (p.source !== undefined && SOURCES_ECRITURE.includes(p.source)) e.source = p.source;
+    if (Array.isArray(p.lignes)) {
+      e.lignes = p.lignes.map(l => ({
+        compte: String((l && l.compte) || '').trim(),
+        tiersId: (l && l.tiersId) || null,
+        libelle: String((l && l.libelle) || ''),
+        debit: round3(Math.max(0, Number(l && l.debit) || 0)),
+        credit: round3(Math.max(0, Number(l && l.credit) || 0)),
+        lettre: String((l && l.lettre) || '')
+      }));
+      e.lignes.forEach(l => assurerCompte(livre, l.compte, l.libelle));
+    }
+    return { ok: true, ecriture: e };
+  }
+
+  function supprimerEcriture(livre, id) {
+    const e = (livre.ecritures || []).find(x => x.id === id);
+    if (!e) return { ok: false, motif: 'Cette écriture n\'existe pas.' };
+    if (e.statut !== 'brouillard') {
+      return { ok: false, motif: 'Une écriture validée ne se supprime pas : elle se contre-passe. C\'est ce qui fait qu\'un livre dit la vérité de ce qui a été fait.' };
+    }
+    if ((e.lignes || []).some(l => l.lettre)) {
+      return { ok: false, motif: 'Cette écriture est lettrée : délettre d\'abord, sinon le lettrage désignerait une écriture disparue.' };
+    }
+    livre.ecritures = livre.ecritures.filter(x => x.id !== id);
+    return { ok: true, ecriture: e };
+  }
+
+  // Valider un LOT — un journal, un mois, ou une sélection. Chaque pièce passe par `validerEcriture`
+  // une par une : c'est ce qui garantit que le contrôle reste avant l'attribution, donc qu'une pièce
+  // refusée au milieu du lot ne troue pas la numérotation. Les refusées sont NOMMÉES : un lot qui
+  // dirait « 12 validées » en avalant 3 refus en silence serait pire qu'un refus global.
+  //
+  // L'ordre est celui de la DATE puis de la saisie. Le numéro suit toujours l'ordre de validation
+  // (règle 2) ; valider un lot étant UN geste, autant que ses numéros se lisent dans l'ordre du
+  // journal plutôt que dans celui, invisible, où les pièces ont été tapées.
+  function validerLot(livre, filtre, qui, quand) {
+    const f = filtre || {};
+    const cibles = (livre.ecritures || [])
+      .filter(e => e.statut === 'brouillard')
+      .filter(e => !f.journal || e.journal === f.journal)
+      .filter(e => !f.mois || String(e.date || '').slice(0, 7) === f.mois)
+      .filter(e => !Array.isArray(f.ids) || f.ids.includes(e.id))
+      .slice()
+      .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : (Number(a.creeLe) || 0) - (Number(b.creeLe) || 0)));
+    const validees = [], refusees = [];
+    cibles.forEach(e => {
+      const r = validerEcriture(livre, e.id, qui, quand);
+      if (r.ok) validees.push({ id: e.id, numero: e.numero, piece: e.piece, journal: e.journal, date: e.date });
+      else refusees.push({ id: e.id, piece: e.piece, journal: e.journal, date: e.date, motif: r.motif, motifs: r.motifs || [] });
+    });
+    return { ok: true, candidates: cibles.length, validees, refusees };
+  }
+
+  // Extourner : le miroir au 1er du mois suivant. Ce n'est PAS une contre-passation — l'écriture
+  // d'origine reste `validee` et garde sa place dans son mois. C'est le geste des charges à payer
+  // et des produits à recevoir : on provisionne en fin de mois, on annule au début du suivant, et
+  // les deux écritures existent vraiment.
+  function extourner(livre, id, qui, quand) {
+    const e = (livre.ecritures || []).find(x => x.id === id);
+    if (!e) return { ok: false, motif: 'Cette écriture n\'existe pas.' };
+    if (e.statut !== 'validee') return { ok: false, motif: 'On extourne une écriture validée. Un brouillard se modifie ou se supprime.' };
+    if (livre.ecritures.some(x => x.extourneDe === id)) return { ok: false, motif: 'Cette écriture a déjà été extournée.' };
+    const date = premierDuMoisSuivant(e.date);
+    if (!date) return { ok: false, motif: 'Cette écriture n\'a pas de date lisible : impossible de savoir quel est le mois suivant.' };
+    // Une extourne de décembre tombe au 1er janvier, c'est-à-dire dans l'exercice SUIVANT — et un
+    // livre porte un seul exercice. On le dit au lieu de la poser silencieusement au mauvais
+    // endroit : une écriture de janvier rangée dans le livre de décembre fausserait les deux.
+    if (date > String(livre.exercice.au)) {
+      return { ok: false, motif: `L'extourne tomberait le ${date}, après la fin de cet exercice (${livre.exercice.au}). Elle se saisit dans le livre de l'exercice suivant — c'est là qu'elle doit vivre.` };
+    }
+    const miroir = ajouterEcriture(livre, {
+      date, journal: e.journal, piece: e.piece,
+      libelle: 'Extourne — ' + e.libelle,
+      source: e.source, mois: date.slice(0, 7), extourneDe: id,
+      lignes: e.lignes.map(l => ({ compte: l.compte, tiersId: l.tiersId, libelle: l.libelle, debit: l.credit, credit: l.debit }))
+    }, qui, quand);
+    const r = validerEcriture(livre, miroir.id, qui, quand);
+    if (!r.ok) { livre.ecritures = livre.ecritures.filter(x => x.id !== miroir.id); return r; }
+    trace(livre, qui, 'extourne', `${e.journal} ${e.piece} n° ${e.numero} → n° ${miroir.numero} au ${date}`, quand);
+    return { ok: true, ecriture: miroir };
+  }
+
+  // Chercher dans tout le journal de l'exercice : pièce, tiers, libellé, compte, numéro, montant.
+  // Un comptable cherche « le virement de 1 191 » aussi souvent que « la facture Trabelsi » — un
+  // moteur qui ne saurait pas lire un montant enverrait à la liste complète, qu'on relit à la main.
+  function chercherEcritures(livre, q, opts) {
+    const o = opts || {};
+    const terme = sansAccents(q).trim();
+    const mots = terme.split(/\s+/).filter(Boolean);
+    const brut = terme.replace(',', '.');
+    const montant = /^\d+(\.\d{1,3})?$/.test(brut) ? round3(Number(brut)) : null;
+    return (livre.ecritures || [])
+      .filter(e => !o.journal || e.journal === o.journal)
+      .filter(e => !o.statut || e.statut === o.statut)
+      .filter(e => !o.du || (e.date >= o.du && e.date <= (o.au || '9999-12-31')))
+      .filter(e => {
+        if (!mots.length) return true;
+        const foin = sansAccents([
+          e.piece, e.libelle, e.journal, e.date, e.numero == null ? '' : e.numero,
+          (e.lignes || []).map(l => `${l.compte} ${l.libelle}`).join(' ')
+        ].join(' '));
+        if (mots.every(m => foin.includes(m))) return true;
+        return montant != null && (e.lignes || []).some(l => round3(l.debit) === montant || round3(l.credit) === montant);
+      })
+      .slice()
+      .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : (Number(b.creeLe) || 0) - (Number(a.creeLe) || 0)))
+      .slice(0, Math.max(1, Number(o.max) || 200));
+  }
+
+  // ---------------------------------------------------------------- guides et abonnements
+  //
+  // Un GUIDE préremplit, il n'écrit pas. Un ABONNEMENT est un guide plus une périodicité, et il
+  // génère EN BROUILLARD, jamais une validée d'office : un logiciel qui validerait tout seul une
+  // écriture que personne n'a regardée engagerait le comptable sur des chiffres qu'il n'a pas vus.
+  //
+  // Ni l'un ni l'autre ne vit dans `livre.json` (format figé, SPEC-DATA-005) : les guides au niveau
+  // du cabinet, les abonnements sur le dossier.
+
+  function guideValide(guide) {
+    const g = guide || {};
+    const motifs = [];
+    if (!txt(g.nom)) motifs.push('Le guide a besoin d\'un nom : c\'est lui qu\'on tape pour le retrouver.');
+    if (!txt(g.journal)) motifs.push('Le journal manque : c\'est lui qui range les écritures que ce guide produira.');
+    const lignes = (Array.isArray(g.lignes) ? g.lignes : []).filter(l => l && (txt(l.compte) || txt(l.libelle)));
+    if (lignes.length < 2) motifs.push('Un guide a au moins deux lignes : un compte au débit, un compte au crédit.');
+    lignes.forEach((l, i) => {
+      if (!/^\d{1,12}$/.test(txt(l.compte))) motifs.push(`Ligne ${i + 1} : le compte doit être un numéro.`);
+      if (l.sens !== 'debit' && l.sens !== 'credit') motifs.push(`Ligne ${i + 1} : il faut dire si la ligne va au débit ou au crédit.`);
+      if (txt(l.montant) && num(l.montant) < 0) motifs.push(`Ligne ${i + 1} : un montant négatif change de colonne, il ne garde pas son signe.`);
+      if (txt(l.taux) && num(l.taux) < 0) motifs.push(`Ligne ${i + 1} : un taux négatif n'existe pas.`);
+    });
+    const soldes = lignes.filter(l => l.solde).length;
+    if (soldes > 1) motifs.push('Une seule ligne peut porter le solde : deux lignes qui réclament « le reste » n\'ont pas de réponse.');
+    return { ok: !motifs.length, motif: motifs[0] || '', motifs };
+  }
+
+  // Le guide appliqué. Trois façons de poser un montant sur une ligne, dans cet ordre :
+  //   — `montant` fixe (un abonnement de loyer),
+  //   — `taux` en pourcentage du montant de base (la TVA),
+  //   — `base` : le montant de base lui-même.
+  // Et `solde: true` pour la ligne qui reçoit ce qui manque. Une ligne sans rien reste à zéro : on
+  // la tape. Le guide PROPOSE, il ne devine pas — c'est la règle « aucun taux écrit en dur dans un
+  // calcul » (5.0.0) appliquée à la saisie : le taux vient du guide, que le comptable a réglé.
+  function ecritureDepuisGuide(guide, champs) {
+    const g = guide || {}, c = champs || {};
+    const base = num(c.montant);
+    const lignes = (Array.isArray(g.lignes) ? g.lignes : []).filter(l => l && txt(l.compte)).map(l => {
+      let m = 0;
+      if (txt(l.montant)) m = round3(num(l.montant));
+      else if (txt(l.taux)) m = round3(base * num(l.taux) / 100);
+      else if (l.base) m = round3(base);
+      return {
+        compte: txt(l.compte), tiersId: l.tiersId || null,
+        libelle: txt(l.libelle) || txt(c.libelle) || txt(g.nom),
+        debit: l.sens === 'debit' ? m : 0,
+        credit: l.sens === 'credit' ? m : 0,
+        lettre: '',
+        _solde: !!l.solde, _sens: l.sens
+      };
+    });
+    const s = soldeDeLignes(lignes.filter(l => !l._solde));
+    lignes.forEach(l => {
+      if (!l._solde) return;
+      // La ligne de solde reçoit ce qui manque, DANS SA COLONNE si elle en a une : un guide qui
+      // dit « le crédit va en 401 » ne doit pas voir sa ligne basculer au débit sur un cas limite.
+      const v = l._sens === 'debit' ? Math.max(0, s.ecart < 0 ? round3(-s.ecart) : 0) : Math.max(0, s.ecart > 0 ? s.ecart : 0);
+      l.debit = l._sens === 'debit' ? (v || s.solde.debit) : 0;
+      l.credit = l._sens === 'credit' ? (v || s.solde.credit) : 0;
+    });
+    lignes.forEach(l => { delete l._solde; delete l._sens; });
+    return {
+      date: txt(c.date), journal: txt(c.journal) || txt(g.journal), piece: txt(c.piece),
+      libelle: txt(c.libelle) || txt(g.nom), source: 'saisie', lignes
+    };
+  }
+
+  // Les occurrences d'un abonnement qui restent à générer. `faites` porte les mois DÉJÀ générés :
+  // rejouer ne double donc rien, et c'est ce qui rend le geste sûr à répéter — la même règle que
+  // l'import d'un paquet (9.2.0).
+  function occurrencesAGenerer(abonnement, jusquA, faites) {
+    const a = abonnement || {};
+    const out = [];
+    if (!a.actif) return out;
+    if (!estUnJour(a.depuis)) return out;
+    const deja = new Set(Array.isArray(faites) ? faites : (Array.isArray(a.faites) ? a.faites : []));
+    const fin = estUnJour(jusquA) ? String(jusquA) : String(a.depuis);
+    const pas = Math.max(1, Number(a.tousLesMois) || 1);
+    let d = String(a.depuis);
+    for (let garde = 0; garde < 600 && d && d <= fin; garde++) {
+      if (!txt(a.jusqua) || d <= String(a.jusqua)) {
+        if (!deja.has(d.slice(0, 7))) out.push(d);
+      }
+      d = ajouterMoisIso(d, pas);
+    }
+    return out;
+  }
+
+  // ---------------------------------------------------------------- la correspondance des comptes
+  //
+  // Le plan du client n'est pas celui du cabinet. La table traduit À L'IMPORT et À L'EXPORT, jamais
+  // en réécrivant une validée (invariant 4 de SPEC-DATA-005) : une écriture validée porte le compte
+  // sous lequel elle a été validée, et c'est ce compte-là qui fait foi.
+  function correspondanceValide(table) {
+    const motifs = [];
+    const vus = new Set();
+    (Array.isArray(table) ? table : []).forEach((r, i) => {
+      const de = txt(r && r.de), vers = txt(r && r.vers);
+      if (!de && !vers) return;                                  // une ligne vide n'est pas une faute
+      if (!de || !vers) { motifs.push(`Ligne ${i + 1} : il faut les deux comptes — celui du client et celui du cabinet.`); return; }
+      if (!/^\d{1,12}$/.test(de) || !/^\d{1,12}$/.test(vers)) { motifs.push(`Ligne ${i + 1} : un compte est un numéro.`); return; }
+      if (de === vers) motifs.push(`Ligne ${i + 1} : ${de} se traduirait par lui-même — cette ligne ne sert à rien.`);
+      if (vus.has(de)) motifs.push(`Ligne ${i + 1} : le compte ${de} est déjà traduit plus haut. Une correspondance ne peut pas avoir deux réponses.`);
+      vus.add(de);
+    });
+    return { ok: !motifs.length, motif: motifs[0] || '', motifs };
+  }
+
+  // La correspondance la PLUS PRÉCISE gagne : 411001 avant 411. Sans cette règle, une ligne
+  // « 4 → 5 » écraserait tout le reste selon l'ordre du tableau, et personne ne saurait laquelle a
+  // servi. Un préfixe traduit la TÊTE et garde la queue : 411001 par « 411 → 3411 » donne 3411001.
+  function compteCorrespondant(table, compte) {
+    const n = txt(compte);
+    if (!n) return n;
+    let choix = null;
+    (Array.isArray(table) ? table : []).forEach(r => {
+      const de = txt(r && r.de);
+      if (!de || !txt(r && r.vers)) return;
+      if (n !== de && !(r.prefixe && n.startsWith(de))) return;
+      if (!choix || de.length > txt(choix.de).length) choix = r;
+    });
+    if (!choix) return n;
+    const de = txt(choix.de), vers = txt(choix.vers);
+    return n === de ? vers : vers + n.slice(de.length);
+  }
+
+  // Les lignes traduites. Le contrat des lignes plates (`account`, 9.1.0) et celui du livre
+  // (`compte`) coexistent : on traduit celui que la ligne porte, sans jamais inventer l'autre.
+  function appliquerCorrespondance(lignes, table) {
+    const t = (Array.isArray(table) ? table : []).filter(r => txt(r && r.de) && txt(r && r.vers));
+    const L = Array.isArray(lignes) ? lignes : [];
+    if (!t.length) return { lignes: L.slice(), traduites: 0 };
+    let traduites = 0;
+    const out = L.map(l => {
+      const cle = l && l.compte !== undefined ? 'compte' : 'account';
+      const avant = txt(l && l[cle]);
+      const apres = compteCorrespondant(t, avant);
+      if (!avant || apres === avant) return l;
+      traduites++;
+      return { ...l, [cle]: apres };
+    });
+    return { lignes: out, traduites };
+  }
+
   // ---------------------------------------------------------------- les deux imports CSV
   //
   // Par NOM de colonne, jamais par position (règle 6.8.0) : un plan exporté d'un autre logiciel n'a
@@ -936,6 +1287,11 @@
     natureDeCompte, livreVide, isValidLivre, livreVersionInconnue, assurerCompte,
     ajouterEcriture, validerEcriture, contrepasser, importerPaquet, piecesDepuisLignes,
     lettrer, delettrer, prochaineLettre, balanceOuverture, lignesDuLivre,
-    planDepuisCsv, balanceDepuisCsv
+    planDepuisCsv, balanceDepuisCsv,
+    // La saisie (9.3.0)
+    premierDuMoisSuivant, ajouterMoisIso, sansAccents, soldeDeLignes, comptesQuiCorrespondent,
+    modifierEcriture, supprimerEcriture, validerLot, extourner, chercherEcritures,
+    guideValide, ecritureDepuisGuide, occurrencesAGenerer,
+    correspondanceValide, compteCorrespondant, appliquerCorrespondance
   };
 });

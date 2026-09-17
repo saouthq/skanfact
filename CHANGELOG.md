@@ -7,6 +7,42 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 9.3.0 — 17/09/2026
+
+**Le Cabinet sait enfin SAISIR.** Jusqu'ici il lisait la comptabilité que le client lui envoyait ; il
+tenait son livre, mais rien ne permettait d'y écrire une pièce à la main. C'est l'écran où un
+comptable passe ses journées, et il est fait pour le clavier : **la souris n'est jamais obligatoire**.
+
+- **La grille**, dans la fiche d'un client → Comptabilité → **Saisie**. Journal, date, pièce, puis les
+  lignes. **Entrée** descend et ajoute une ligne quand tu es sur la dernière. **Tab** sur le crédit de
+  la dernière ligne **solde la pièce** : ce qui manque se pose tout seul, dans la bonne colonne.
+  **F2** recopie la cellule du dessus, **F4** duplique la pièce, **Ctrl+Entrée** enregistre et valide.
+- **La date se tape vite** : « 4 », « 4/3 », « 04/03/26 », « 2026-03-04 » ou « 040326 » au pavé
+  numérique. Une date qui n'existe pas laisse le champ en rouge plutôt que de choisir un jour voisin.
+- **Le compte se cherche par numéro OU par nom** pendant la frappe, sans accent : « interets » trouve
+  « Intérêts ». Et l'**équilibre s'affiche en direct**, pendant que tu tapes.
+- **Brouillard, puis validation.** Ce que tu saisis arrive sans numéro, modifiable, supprimable — et
+  n'entre ni dans la balance ni dans le grand livre. Valider attribue le numéro et referme la pièce :
+  après, elle se **contre-passe** (miroir à la date du jour) ou s'**extourne** (miroir au 1er du mois
+  suivant, pour une charge à payer). Une validée ne se modifie ni ne se supprime, jamais.
+- **Valider un lot** — tout un journal, tout un mois — sans jamais refuser en bloc : ce qui tombe
+  juste est validé, ce qui ne tombe pas juste t'est **nommé** et reste en brouillard. La numérotation
+  ne se troue pas.
+- **Les guides d'écritures** (Réglages → Comptabilité) : un modèle de pièce, avec d'où vient chaque
+  montant — un montant fixe, un pourcentage, ou le solde. « Achat avec TVA 19 % » sur 1 000 pose
+  1 000 / 190 / 1 190 et la pièce tombe juste. Un guide **préremplit, il n'écrit pas**.
+- **Les abonnements** (sur la fiche du client) : un guide plus une périodicité, pour le loyer de
+  chaque mois. Ils génèrent **en brouillard**, jamais une écriture validée que personne n'a regardée,
+  et relancer la génération ne double rien.
+- **La correspondance des comptes** : le plan de ton client traduit vers le tien, à l'import et à
+  l'export — jamais en réécrivant une écriture déjà validée.
+- **Chercher** dans tout le journal de l'exercice : pièce, tiers, libellé, compte, numéro — et
+  **montant** (« 1191 » ou « 1191,000 »).
+- **Un justificatif** se glisse sur une écriture : le fichier est **copié** dans le dossier du client,
+  jamais simplement pointé.
+- **Les touches sont réglables** (Réglages → Comptabilité). C'est délibéré : une grille de saisie ne
+  s'invente pas, elle se reprend de celle que le comptable a déjà dans les doigts.
+
 ## 9.2.2 — 16/09/2026
 
 **La fiche d'un dossier, dans le Cabinet, tient enfin sur un écran.** Tout était sur la même

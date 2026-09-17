@@ -385,6 +385,15 @@ ipcMain.handle('cab:saveCabinet', (_e, patch) => {
     const day = Number(p.settings.relanceDay);
     state.settings = { ...state.settings, relanceDay: day >= 1 && day <= 28 ? Math.round(day) : state.settings.relanceDay };
     if (p.settings.deadlines) state.settings.deadlines = { ...state.settings.deadlines, ...p.settings.deadlines };
+    // Les réglages de saisie (9.3.0). On fusionne au lieu de remplacer : un écran qui n'envoie que
+    // les touches ne doit pas effacer le journal par défaut réglé dans un autre panneau.
+    if (p.settings.saisie) {
+      const avant = state.settings.saisie || {};
+      state.settings.saisie = {
+        ...avant, ...p.settings.saisie,
+        touches: { ...(avant.touches || {}), ...(p.settings.saisie.touches || {}) }
+      };
+    }
     // migrate() rejette les valeurs aberrantes et remet l'usage : un réglage à zéro ferait
     // disparaître l'échéance du calendrier au lieu de la décaler.
     state.settings = K.migrate(state).settings;
@@ -1144,6 +1153,168 @@ ipcMain.handle('cab:lettrer', (_e, { dossierId, annee, compte, ids, lettre, dele
   if (!r.ok) { const e = new Error(r.motif); e.ecart = r.ecart; throw e; }
   ecrireLeLivre(dossierId, o.livre, delettrer ? null : 'lettrage', r.lettre || lettre);
   return { ok: true, lettre: r.lettre, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+// ================================================================ LA SAISIE (9.3.0)
+//
+// Les gestes de la grille. Tous passent par `ecrireLeLivre` — la porte unique — et tous délèguent
+// la RÈGLE à `compta.js` : ce fichier ouvre, applique, referme et trace. Il ne décide rien.
+//
+// La trace est ici et nulle part ailleurs : `compta.js` ne trace pas ces gestes exprès, pour que la
+// piste d'audit ne s'écrive jamais en double.
+
+ipcMain.handle('cab:modifierEcriture', (_e, { dossierId, annee, id, patch } = {}) => {
+  requireOpen();
+  const o = ouvrirLivre(dossierId, annee);
+  if (!o.livre) throw new Error('Ce dossier n\'a pas de livre pour cet exercice.');
+  const r = KC.modifierEcriture(o.livre, id, patch);
+  if (!r.ok) throw new Error(r.motif);
+  ecrireLeLivre(dossierId, o.livre, 'modification', `${r.ecriture.journal} ${r.ecriture.piece || '(sans pièce)'}`);
+  return { ok: true, id: r.ecriture.id, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+ipcMain.handle('cab:supprimerEcriture', (_e, { dossierId, annee, id } = {}) => {
+  requireOpen();
+  const o = ouvrirLivre(dossierId, annee);
+  if (!o.livre) throw new Error('Ce dossier n\'a pas de livre pour cet exercice.');
+  const r = KC.supprimerEcriture(o.livre, id);
+  if (!r.ok) throw new Error(r.motif);
+  ecrireLeLivre(dossierId, o.livre, 'suppression-brouillard', `${r.ecriture.journal} ${r.ecriture.piece || '(sans pièce)'} du ${r.ecriture.date}`);
+  return { ok: true, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+ipcMain.handle('cab:extourner', (_e, { dossierId, annee, id } = {}) => {
+  requireOpen();
+  const o = ouvrirLivre(dossierId, annee);
+  if (!o.livre) throw new Error('Ce dossier n\'a pas de livre pour cet exercice.');
+  const r = KC.extourner(o.livre, id, moiPoste().deviceName || 'cabinet', Date.now());
+  if (!r.ok) throw new Error(r.motif);
+  ecrireLeLivre(dossierId, o.livre, null);
+  return { ok: true, numero: r.ecriture.numero, date: r.ecriture.date, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+// Valider un lot. Il n'échoue JAMAIS en bloc : ce qui passe est validé, ce qui ne passe pas est
+// nommé. Un lot tout-ou-rien obligerait à ressortir la pièce fautive d'un mois de saisie avant de
+// pouvoir valider les cinquante autres — et le comptable finirait par ne plus valider du tout.
+ipcMain.handle('cab:validerLot', (_e, { dossierId, annee, journal, mois, ids } = {}) => {
+  requireOpen();
+  const o = ouvrirLivre(dossierId, annee);
+  if (!o.livre) throw new Error('Ce dossier n\'a pas de livre pour cet exercice.');
+  const r = KC.validerLot(o.livre, { journal, mois, ids }, moiPoste().deviceName || 'cabinet', Date.now());
+  ecrireLeLivre(dossierId, o.livre, 'validation-lot',
+    `${journal || 'tous journaux'} ${mois || ''} — ${r.validees.length} validée(s), ${r.refusees.length} refusée(s)`);
+  return { ...r, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+// Le justificatif. Le fichier est COPIÉ dans le dossier du client : le chemin d'origine aura disparu
+// bien avant l'écriture qu'il justifie.
+ipcMain.handle('cab:joindreEcriture', async (_e, { dossierId, annee, id, chemin } = {}) => {
+  requireOpen();
+  const f = chemin || (await dialog.showOpenDialog({
+    title: 'Joindre un justificatif',
+    filters: [{ name: 'Justificatifs', extensions: ['pdf', 'jpg', 'jpeg', 'png', 'heic', 'webp', 'csv', 'xlsx', 'txt'] }],
+    properties: ['openFile']
+  })).filePaths[0];
+  if (!f) return { annule: true };
+  const d = dossierDe(dossierId);
+  const o = ouvrirLivre(dossierId, annee);
+  if (!o.livre) throw new Error('Ce dossier n\'a pas de livre pour cet exercice.');
+  const e = (o.livre.ecritures || []).find(x => x.id === id);
+  if (!e) throw new Error('Cette écriture n\'existe pas.');
+  const range = getStore().rangerPieceJointe(f, d, state.dossiers, `${e.date || ''}-${e.piece || 'piece'}`);
+  // Une VALIDÉE peut recevoir son justificatif : joindre un scan ne change aucun chiffre, et
+  // refuser reviendrait à dire « ta pièce restera sans justificatif pour toujours ». C'est le seul
+  // champ d'une validée qui bouge, et l'audit le nomme.
+  e.pieceJointe = range.relatif;
+  ecrireLeLivre(dossierId, o.livre, 'justificatif', `${e.journal} ${e.piece || '(sans pièce)'} → ${range.relatif}`);
+  return { ok: true, pieceJointe: range.relatif, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+ipcMain.handle('cab:ouvrirJustificatif', (_e, { dossierId, relatif } = {}) => {
+  requireOpen();
+  const p = getStore().cheminPieceJointe(dossierDe(dossierId), state.dossiers, relatif);
+  if (!p) throw new Error('Ce justificatif n\'est plus sur le disque. Il a peut-être été rangé ailleurs, ou le dossier a changé de nom.');
+  shell.openPath(p);
+  return { ok: true };
+});
+
+// ---------------------------------------------------------------- guides, abonnements, comptes
+//
+// Rien de tout cela ne vit dans `livre.json` : son format est FIGÉ (SPEC-DATA-005). Les guides et la
+// correspondance vivent au niveau du cabinet (un comptable les écrit une fois pour ses soixante
+// clients), les abonnements sur le dossier (un loyer appartient à un client).
+
+ipcMain.handle('cab:saveGuides', (_e, { guides, dossierId } = {}) => {
+  requireOpen();
+  const L = (Array.isArray(guides) ? guides : []);
+  const mauvais = L.map((g, i) => ({ i, v: KC.guideValide(g) })).find(x => !x.v.ok);
+  if (mauvais) throw new Error(`Guide « ${L[mauvais.i].nom || mauvais.i + 1} » : ${mauvais.v.motif}`);
+  if (dossierId) dossierDe(dossierId).guides = L;
+  else state.guides = L;
+  return save();
+});
+
+ipcMain.handle('cab:saveCorrespondance', (_e, { table, dossierId } = {}) => {
+  requireOpen();
+  const v = KC.correspondanceValide(table);
+  if (!v.ok) { const e = new Error(v.motif); e.motifs = v.motifs; throw e; }
+  const propre = (Array.isArray(table) ? table : []).filter(r => String(r.de || '').trim() && String(r.vers || '').trim())
+    .map(r => ({ de: String(r.de).trim(), vers: String(r.vers).trim(), prefixe: !!r.prefixe }));
+  if (dossierId) dossierDe(dossierId).correspondance = propre;
+  else state.correspondance = propre;
+  return save();
+});
+
+ipcMain.handle('cab:saveAbonnements', (_e, { dossierId, abonnements } = {}) => {
+  requireOpen();
+  const d = dossierDe(dossierId);
+  d.abonnements = (Array.isArray(abonnements) ? abonnements : []).map(a => ({
+    id: String(a.id || ''), nom: String(a.nom || ''), guideId: String(a.guideId || ''),
+    actif: !!a.actif, depuis: String(a.depuis || ''), jusqua: String(a.jusqua || ''),
+    tousLesMois: Math.max(1, Number(a.tousLesMois) || 1),
+    montant: Number(a.montant) || 0, piece: String(a.piece || ''), libelle: String(a.libelle || ''),
+    faites: Array.isArray(a.faites) ? a.faites : []
+  }));
+  return save();
+});
+
+// Générer ce qu'un abonnement doit à ce jour. EN BROUILLARD, toujours : une écriture validée d'office
+// engagerait le comptable sur des chiffres que personne n'a regardés. Et rejouer ne double rien —
+// `faites` porte les mois déjà générés, comme `importerPaquet` porte les mois déjà reçus.
+ipcMain.handle('cab:genererAbonnements', (_e, { dossierId, annee, jusquA } = {}) => {
+  requireOpen();
+  const d = dossierDe(dossierId);
+  const o = ouvrirLivre(dossierId, annee);
+  if (!o.livre) throw new Error('Ce dossier n\'a pas de livre pour cet exercice.');
+  const guides = K.guidesDuDossier(state, d);
+  const bilan = { crees: 0, sansGuide: [], horsExercice: 0, details: [] };
+  (d.abonnements || []).forEach(a => {
+    const g = guides.find(x => x.id === a.guideId);
+    if (!g) { if (a.actif) bilan.sansGuide.push(a.nom || a.id); return; }
+    KC.occurrencesAGenerer(a, jusquA || K.today()).forEach(date => {
+      if (date < o.livre.exercice.du || date > o.livre.exercice.au) { bilan.horsExercice++; return; }
+      const ecr = KC.ecritureDepuisGuide(g, {
+        date, journal: g.journal, montant: a.montant,
+        piece: a.piece ? `${a.piece}-${date.slice(0, 7)}` : '',
+        libelle: a.libelle || a.nom
+      });
+      const e = KC.ajouterEcriture(o.livre, ecr, moiPoste().deviceName || 'cabinet', Date.now());
+      a.faites = (a.faites || []).concat([date.slice(0, 7)]);
+      bilan.crees++;
+      bilan.details.push({ id: e.id, date, nom: a.nom || g.nom });
+    });
+  });
+  if (bilan.crees) ecrireLeLivre(dossierId, o.livre, 'abonnements', `${bilan.crees} écriture(s) en brouillard`);
+  save();
+  return { ...bilan, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+// Le dernier journal utilisé sur CE dossier, pour le proposer à l'ouverture de la grille. C'est un
+// confort, pas une donnée comptable : il ne part dans aucun export et ne change aucun chiffre.
+ipcMain.handle('cab:dernierJournal', (_e, { dossierId, journal } = {}) => {
+  requireOpen();
+  dossierDe(dossierId).dernierJournal = String(journal || '').toUpperCase().slice(0, 5);
+  return save();
 });
 
 // Relire les paquets déjà reçus DANS le livre. C'est la migration (MIG-9.2.0-001) et le rattrapage

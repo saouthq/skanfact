@@ -675,6 +675,44 @@ function createCabStore(dir, opts) {
     return dest;
   }
 
+  // ---------------------------------------------------------------- les justificatifs (9.3.0)
+  //
+  // Une pièce jointe glissée sur une écriture. Elle est RANGÉE AVEC LE DOSSIER, jamais désignée par
+  // un chemin absolu vers l'endroit d'où elle vient : le fichier du comptable est sur son Bureau,
+  // dans un mail téléchargé, sur une clé USB — trois endroits qui auront disparu dans six mois,
+  // pendant que l'écriture, elle, doit rester justifiée pendant dix ans.
+  //
+  // Le livre ne porte donc qu'un chemin RELATIF (`pieces/2026-03-04-facture.pdf`). C'est ce qui
+  // permet de changer d'ordinateur (6.8.1) et à `removeDossierFiles` d'emporter les justificatifs
+  // avec le dossier qu'on efface.
+  function rangerPieceJointe(sourceFile, dossier, dossiers, nomVoulu) {
+    const dir = path.join(packRoot, folderName(dossier, folderIndex(dossiers)), 'pieces');
+    fs.mkdirSync(dir, { recursive: true });
+    const ext = (path.extname(sourceFile || '') || '').slice(0, 10);
+    const base = slug((nomVoulu || path.basename(sourceFile || '', ext) || 'piece')).slice(0, 60) || 'piece';
+    let rel = `${base}${ext}`;
+    for (let n = 2; fs.existsSync(path.join(dir, rel)) && n < 200; n++) rel = `${base}-${n}${ext}`;
+    const dest = path.join(dir, rel);
+    if (!path.resolve(dest).startsWith(path.resolve(dir) + path.sep)) {
+      throw new Error('Chemin de justificatif refusé : il sortirait du dossier du client.');
+    }
+    fs.copyFileSync(sourceFile, dest);
+    mirrorExternal({ packs: true });
+    return { relatif: 'pieces/' + rel, absolu: dest };
+  }
+
+  // Le chemin absolu d'un justificatif, pour l'ouvrir. Une remontée (`..`) est refusée : le chemin
+  // vient du livre, et un livre peut avoir été fabriqué ailleurs (règle 6.8.1 — ce qui vient de
+  // l'extérieur se valide AVANT de toucher au disque).
+  function cheminPieceJointe(dossier, dossiers, relatif) {
+    const r = String(relatif || '').replace(/\\/g, '/');
+    if (!r || r.startsWith('/') || r.split('/').includes('..')) return '';
+    const racine = path.join(packRoot, folderName(dossier, folderIndex(dossiers)));
+    const p = path.join(racine, r);
+    if (!path.resolve(p).startsWith(path.resolve(racine) + path.sep)) return '';
+    return fs.existsSync(p) ? p : '';
+  }
+
   // Ranger un paquet reçu à sa place. Le fichier d'origine du comptable n'est jamais déplacé.
   // Le comptable a déclaré sur un paquet. Si le client rouvre son mois et renvoie, l'ancien fichier
   // ne doit PAS disparaître : sans lui, il ne peut ni montrer sur quoi il a déclaré, ni établir la
@@ -878,6 +916,7 @@ function createCabStore(dir, opts) {
     snapshotDaily, backupNow, listBackups, peek, restore,
     inspectSource, adoptSource,
     packPathFor, storePack, removePack, removeDossierFiles, reorganize, packStats, folderName, folderIndex,
+    rangerPieceJointe, cheminPieceJointe,
     // Le livre (9.2.0)
     livreDir, livrePath, lireLivre, ecrireLivre, enteteLivre, lireIndexLivres,
     lireVerrou, poserVerrou, leverVerrou,
