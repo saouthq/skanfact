@@ -49,6 +49,7 @@
 
     // — échéances —
     'ec.dates': { t: 'D\'où viennent ces dates', d: 'Elles sont calculées à partir de la <b>périodicité de TVA</b> que tu donnes à chaque client, et des jours que tu règles dans Réglages. Ce qui fait la différence avec un calendrier papier : chaque échéance compte les clients dont tu <b>n\'as pas encore le mois</b>. <em>À VÉRIFIER : les délais réels dépendent de la forme juridique, du régime et de la loi de finances de l\'année.</em>' },
+    'ec.depot': { t: 'Marquer une échéance déposée', d: 'Un <b>pense-bête</b>, rien de plus : SkanFact ne dépose rien à ta place et ne se connecte à aucune administration. Le pointage porte sur <b>cette échéance-là</b> — la TVA d\'avril cesse de te réclamer, celle de mai reste due. Tu peux le défaire à tout moment, sur la carte ou avec le « Annuler » qui s\'affiche juste après.' },
     'ec.passees': { t: 'Les échéances passées', d: 'SkanFact ne sait pas ce que tu as réellement déposé — il ne se connecte à aucune administration et ne déposera jamais rien à ta place. Cette liste sert à repérer un mois qu\'on n\'a jamais pu déclarer faute de pièces, et qui traîne depuis.' },
     'ec.jours': { t: 'Jours de dépôt', d: 'Le jour du mois suivant où la déclaration est attendue. Les valeurs proposées suivent la pratique courante en Tunisie (TVA le 28, CNSS le 15) mais <b>ne font pas foi</b> : elles changent selon la forme juridique et le régime. <em>À VÉRIFIER auprès de ton Ordre ou de ta recette des finances.</em>' },
 

@@ -7,6 +7,26 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 9.4.6 — 17/09/2026
+
+**Les Échéances : moins de répétition, un geste au bout, et le droit à l'erreur.**
+
+- **Marquer une échéance déposée** — un pense-bête, et l'écran le dit : SkanFact ne dépose rien à ta
+  place et ne se connecte à aucune administration. Le pointage porte sur **cette échéance-là** : la
+  TVA d'avril cesse de réclamer, celle de mai reste due. Il se défait sur la carte, ou par le
+  « Annuler » qui s'affiche juste après le clic.
+- **« Les relancer » est un vrai bouton**, et il emmène aux Relances **filtrées sur ces clients-là**.
+  Un lien qui nomme onze clients et en ouvre soixante ne tient pas sa promesse. La page annonce
+  « n sur N », « Relancer » de groupe ne porte que sur ce qui est montré, et « Voir tout le monde »
+  en sort.
+- **Une échéance ne se répète plus.** L'explication d'une règle se lit une fois, pas sous les quatre
+  mois de TVA d'affilée ; et quand les clients qui manquent sont les mêmes que l'échéance du dessus,
+  on le dit au lieu de recopier la liste — quatre fois les mêmes noms font croire à quatre problèmes
+  différents.
+- Deux mécanismes de l'app entreprise enfin portés au Cabinet : le **« Annuler » de huit secondes**
+  (`toastUndo`, qui reçoit vraiment les clics) et **`vers()`**, sans quoi un filtre posé avant de
+  naviguer vers la page courante ne redessinait rien.
+
 ## 9.4.5 — 17/09/2026
 
 **Le livre du Cabinet : on le parcourt au lieu de le subir.**

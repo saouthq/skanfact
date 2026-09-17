@@ -85,7 +85,11 @@
   // sien depuis la 1.6.0 ; le Cabinet n'en avait AUCUN — pas une ligne — donc une fenêtre blanche
   // éblouissante à côté de tout le reste sur un poste réglé en sombre. Défaut `auto` : on suit le
   // système plutôt que d'imposer un choix que personne n'a fait.
-  const DEFAULT_SETTINGS = { relanceDay: 10, deadlines: null, saisie: null, theme: 'auto' };
+  // `depots` (9.4.6) : les échéances qu'on a POINTÉES, une par une. SkanFact ne dépose rien et ne se
+  // connecte à aucune administration — c'est un pense-bête, pas un accusé de réception (règle
+  // 5.2.0). On pointe une OCCURRENCE (`tva-m@2026-05-15`), jamais une règle : faire taire « TVA »
+  // ferait taire tous les mois suivants, et c'est le défaut que la 7.21.0 a corrigé côté entreprise.
+  const DEFAULT_SETTINGS = { relanceDay: 10, deadlines: null, saisie: null, theme: 'auto', depots: [] };
   const DEFAULT_STATE = {
     format: FORMAT,
     cabinet: { name: '', email: '', phone: '', publicKey: '', privateKey: '' },
@@ -197,6 +201,14 @@
     // Un thème inconnu retombe sur « auto » : une valeur inventée ne doit pas laisser l'application
     // dans un état qu'aucun écran ne propose.
     if (!['light', 'dark', 'auto'].includes(s.settings.theme)) s.settings.theme = 'auto';
+    // Absent de cette liste, le pointage serait jeté au prochain démarrage et chaque échéance
+    // déposée se remettrait à crier — en silence (défaut `matricule`, 6.8.0).
+    s.settings.depots = (Array.isArray(s.settings.depots) ? s.settings.depots : [])
+      // Le mois et le jour sont bornés, pas seulement comptés : « tva-m@2026-13-99 » ne pourra
+      // jamais désigner une échéance réelle, donc il n'a rien à faire dans les données — il y
+      // traînerait pour toujours à faire taire on ne sait quoi.
+      .map(x => String(x || ''))
+      .filter(x => /^[a-z-]+@\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(x));
     s.guides = Array.isArray(s.guides) ? s.guides : [];
     // La licence du cabinet (9.4.0). Elle vit dans l'état CHIFFRÉ, donc elle voyage avec la clé de
     // secours : un cabinet qui change d'ordinateur retrouve sa licence en même temps que ses
@@ -1044,6 +1056,13 @@
       .sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : a.label.localeCompare(b.label, 'fr'));
   }
 
+  // La clé d'une occurrence : la RÈGLE et sa DATE. Elle vit ici, pas dans l'écran, parce que le
+  // pointage et la lecture du pointage doivent la fabriquer pareil — deux versions divergeraient au
+  // premier changement de format, et un dépôt pointé cesserait d'être reconnu sans rien dire.
+  const cleEcheance = e => `${(e || {}).id || ''}@${(e || {}).date || ''}`;
+  const echeanceDeposee = (state, e) =>
+    ((((state || {}).settings || {}).depots) || []).includes(cleEcheance(e));
+
   function ligneEcheance(id, label, date, mois, dossiers, todayIso, attendus, detail) {
     const liste = Array.isArray(mois) ? mois : [mois];
     const manquants = [], provisoires = [];
@@ -1263,6 +1282,7 @@
     guidesDuDossier, correspondanceDuDossier, dateTapee,
     GRACE_MOIS, DORMANT_MOIS, dossierFacturable, comptageDossiers, licenceDuPaquet,
     monthLabel, monthListLabel, missingLabel, addMonth, monthsBetween, today, de,
+    cleEcheance, echeanceDeposee,
     migrate, migrateDossier, dossierKey, packSummary, filePack, demoDossiers, rebaserPaquet, checkIntegrity,
     exemplePerime,
     newDossier, parseDossierLines, noteRelance, portfolio, relanceDue, relanceRows, accuseMail,

@@ -13239,8 +13239,13 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // et c'était la seule des trois pages à ne pas l'appliquer.
     assert.ok(/if \(!K\.dossierList\(S\)\.length\)/.test(zone),
       'la page doit distinguer « aucun client » de « tous à jour »');
-    const vide = src.slice(src.indexOf('if (!K.dossierList(S).length)', i), src.indexOf('view.innerHTML = `', src.indexOf('if (!K.dossierList(S).length)', i) + 40));
-    assert.ok(vide.length > 200 && vide.length < 1400, 'tranche de l\'état vide inattendue : ' + vide.length);
+    // La tranche va du `if` au `return;` qui referme la branche — une borne que le code PORTE.
+    // Jusqu'à la 9.4.6 elle sautait « les 40 premiers caractères » pour ignorer le `view.innerHTML`
+    // de l'état vide : un décalage arbitraire, qui a basculé sur un autre bloc dès qu'une ligne s'est
+    // insérée entre le `if` et lui. Une tranche s'ancre sur du code, jamais sur un nombre.
+    const dVide = src.indexOf('if (!K.dossierList(S).length)', i);
+    const vide = src.slice(dVide, src.indexOf('\n      return;', dVide));
+    assert.ok(vide.length > 400 && vide.length < 1600, 'tranche de l\'état vide inattendue : ' + vide.length);
     // Un état vide porte son geste, comme ses deux voisines (Échéances, Écritures).
     assert.ok(/id="rl-nd"/.test(vide) && /id="rl-imp"/.test(vide), 'l\'état vide doit offrir un geste');
     assert.ok(/\$\('#rl-nd'\)\.onclick/.test(src) && /\$\('#rl-imp'\)\.onclick/.test(src),
@@ -13527,6 +13532,97 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // Les classes posées existent dans une feuille : une classe inconnue ne se voit nulle part (8.1.0).
     ['.kbd-aide', '.kbd-paire', '.kbd-plus', '.touche-ligne', '.touche-in', '.touche-vue', '.sa-refus']
       .forEach(c => assert.ok(css.includes(c + ' ') || css.includes(c + ','), 'classe sans style : ' + c));
+  });
+
+  t('9.4.6 : on pointe une OCCURRENCE, jamais une règle — et ça se défait', () => {
+    const K = require('../src/cabinet/cabcore.js');
+    // La clé porte la RÈGLE et sa DATE. Faire taire « tva-m » ferait taire tous les mois suivants :
+    // c'est le défaut que la 7.21.0 a corrigé côté entreprise, jamais porté ici jusqu'à la 9.4.6.
+    const avril = { id: 'tva-m', date: '2026-05-15' }, mai = { id: 'tva-m', date: '2026-06-15' };
+    assert.strictEqual(K.cleEcheance(avril), 'tva-m@2026-05-15');
+    const st = K.migrate({ settings: { depots: [K.cleEcheance(avril)] } });
+    assert.ok(K.echeanceDeposee(st, avril), 'la TVA d\'avril doit être pointée');
+    assert.ok(!K.echeanceDeposee(st, mai), 'celle de mai reste due : on pointe une occurrence, pas une règle');
+
+    // Absent de `migrate`, le pointage serait jeté au prochain démarrage et chaque échéance
+    // déposée se remettrait à crier, en silence (défaut `matricule`, 6.8.0).
+    assert.deepStrictEqual(K.migrate(st).settings.depots, ['tva-m@2026-05-15'],
+      'le pointage doit survivre à migrate');
+    // Ce qui ne ressemble pas à une occurrence est écarté : une clé inventée ne doit pas rester
+    // dans les données à faire taire on ne sait quoi.
+    assert.deepStrictEqual(
+      K.migrate({ settings: { depots: ['tva-m', 'x@2026-13-99', 'cnss@2026-04-15', 42] } }).settings.depots,
+      ['cnss@2026-04-15']);
+    // Par défaut, rien n'est pointé : une application livrée ne fait taire aucune échéance.
+    assert.deepStrictEqual(K.migrate({}).settings.depots, []);
+
+    const app = lireSource('src', 'cabinet', 'renderer', 'app.js');
+    const i = app.indexOf('function drawEcheances(');
+    const z = app.slice(i, app.indexOf('\n  }\n', i));
+    assert.ok(/K\.echeanceDeposee\(S, e\)/.test(z) && /K\.cleEcheance\(e\)/.test(z),
+      'l\'écran doit lire le verdict du moteur, jamais recalculer la clé lui-même');
+    assert.ok(/data-depot=/.test(z), 'chaque carte doit porter son pointage');
+    assert.ok(/toastUndo\(/.test(z), 'ce qui se répare laisse un « Annuler » sous la main (7.12.0)');
+    // Un pense-bête qui laisserait croire à un dépôt réel serait le pire de tous les mensonges :
+    // l'app ne dépose rien et ne se connecte à aucune administration (règle 5.2.0).
+    assert.ok(/ne dépose rien à ta place/.test(z), 'l\'écran doit dire que rien n\'est déposé pour de vrai');
+    const g = lireSource('src', 'cabinet', 'renderer', 'cabguide.js');
+    assert.ok(g.includes("'ec.depot'"), 'le geste doit porter sa bulle');
+  });
+
+  t('9.4.6 : une échéance ne réénumère ni sa phrase ni ses clients', () => {
+    const app = lireSource('src', 'cabinet', 'renderer', 'app.js');
+    const i = app.indexOf('function drawEcheances(');
+    const z = app.slice(i, app.indexOf('\n  }\n', i));
+    assert.ok(z.length > 2000 && z.length < 9000, 'tranche de ' + z.length + ' caractères');
+    // Le `detail` explique la RÈGLE : la même phrase de 90 caractères s'affichait sous les quatre
+    // mois de TVA d'affilée. Une explication se lit une fois.
+    assert.ok(/const vus = new Set\(\)/.test(z) && /nouveauDetail \? /.test(z),
+      'le détail d\'une règle ne se répète pas d\'une occurrence à l\'autre');
+    // Les mêmes clients réénumérés quatre fois font croire à quatre problèmes différents.
+    assert.ok(/derniersManquants/.test(z) && /memeListe/.test(z),
+      'une liste de clients identique à la précédente se dit, elle ne se recopie pas');
+    // Et la liste reste NOMMÉE quand elle change : on ne remplace pas l'information par un compte.
+    assert.ok(/e\.manquants\.slice\(0, 8\)\.join\(', '\)/.test(z),
+      'les noms doivent rester affichés quand la liste diffère');
+  });
+
+  t('9.4.6 : « Les relancer » est un bouton, et il emmène sur CES clients', () => {
+    const app = lireSource('src', 'cabinet', 'renderer', 'app.js');
+    const i = app.indexOf('function drawEcheances(');
+    const z = app.slice(i, app.indexOf('\n  }\n', i));
+    // Un lien souligné au milieu d'une phrase n'est pas un geste.
+    assert.ok(!/<a href="#\/relances">Les relancer<\/a>/.test(z), 'le lien doit être devenu un bouton');
+    assert.ok(/<button class="btn btn-sm" data-relq=/.test(z), 'et ce bouton doit exister');
+    // Il POSE la sélection avant de naviguer : nommer onze clients et en ouvrir soixante, c'est la
+    // promesse non tenue de la 7.15.0.
+    assert.ok(/relState\.seulement = e \? e\.manquants\.slice\(\) : null/.test(z),
+      'le bouton doit poser la sélection');
+    assert.ok(/vers\('#\/relances'\)/.test(z), 'et passer par `vers()` : `location.hash` vers la page courante ne redessine rien');
+
+    // `vers()` et `toastUndo()` viennent de l'app entreprise et n'avaient JAMAIS été portés ici.
+    assert.ok(/function vers\(hash\) \{[\s\S]{0,200}if \(location\.hash === hash\) render\(\);/.test(app),
+      '`vers()` doit redessiner quand on vise la page où l\'on est déjà (7.15.0)');
+    const iu = app.indexOf('function toastUndo(');
+    const zu = app.slice(iu, app.indexOf('\n  }', iu));
+    assert.ok(zu.length > 200 && zu.length < 1200, 'toastUndo : tranche de ' + zu.length + ' caractères');
+    // `#toast` vit en `pointer-events: none` : sans la classe qui les relève, le bouton serait
+    // parfaitement visible et parfaitement inerte (5.2.2, puis 7.12.0).
+    assert.ok(/avec-bouton/.test(zu), 'le bandeau qui porte « Annuler » doit recevoir les clics');
+    assert.ok(/8000/.test(zu), 'et durer plus longtemps qu\'un message ordinaire : comprendre son erreur prend du temps');
+
+    const ir = app.indexOf('function drawRelances(');
+    const zr = app.slice(ir, app.indexOf('\n  }\n', ir));
+    // Le filtre porte sur TOUT l'écran : le bandeau, la liste et le geste de groupe (7.18.0).
+    assert.ok(/const rows = filtre \? toutes\.filter/.test(zr), 'la liste doit suivre la sélection');
+    assert.ok(/id="rl-tout"/.test(zr), 'et on doit pouvoir en sortir : un filtre sans issue est un piège');
+    assert.ok(/groupRelance\(rows\.slice\(\)\)/.test(zr),
+      '« Relancer » de groupe porte sur ce que l\'écran MONTRE, jamais sur la page entière');
+    // La sélection ne survit pas à la sortie des Relances.
+    const iv = app.indexOf('function render() {');
+    const zv = app.slice(iv, iv + 1800);
+    assert.ok(/route !== 'relances' && relState\.seulement/.test(zv),
+      'un filtre de parcours qu\'on retrouve trois jours plus tard est un piège');
   });
 
   t('9.4.2 : la ponctuation double porte une espace insécable', () => {

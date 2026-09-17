@@ -40,6 +40,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | La valeur par défaut d'une **règle qu'on ne connaît pas** est celle qui ne fait rien | 9.1.1 — le seuil de retenue à 0, la TFP qu'aucun métier ne porte |
 | Une écriture **validée** ne se modifie jamais : elle se contre-passe, à la date du jour | 9.2.0 |
 | Un **numéro** naît à la validation, et le contrôle passe AVANT l'attribution | 9.2.0 ; 6.0.0 — `nextNumber` |
+| On pointe une **occurrence**, jamais une règle ; et le pense-bête dit qu'il n'est qu'un pense-bête | 7.21.0, 5.2.0, 9.4.6 |
 
 **Les tests**
 
@@ -49,7 +50,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un test qui lit du code doit lire du **CODE** : commentaires et chaînes retirés d'abord | 6.8.0, 7.25.0 — un commentaire satisfaisait l'assertion |
 | Une assertion sur un montant se **calcule à la main**, jamais en recopiant la sortie | 7.0.1 — l'assertion qui gravait le bug depuis la 1.6.0 |
 | Un test écrit contre l'état du jour **décrit cet état**, pas la règle | 7.12.0, 7.26.0, 8.0.1, 8.2.0, 9.1.0, 9.2.2, 9.4.3, 9.4.5 — neuf assertions retournées |
-| Une **tranche** de source se prouve par sa taille et par ce qu'elle ne contient PAS | 7.20.0, 7.21.0, 8.2.0 |
+| Une **tranche** de source se prouve par sa taille et par ce qu'elle ne contient PAS | 7.20.0, 7.21.0, 8.2.0 ; 9.4.6 — jamais sur un décalage en dur |
 | Un e2e **se périme** : reconnaître un écran à ce qu'il CONTIENT, jamais à son rang | 7.3.0, 7.28.0, 7.29.0, 7.30.0, 9.2.2, 9.4.5 — six parcours pourris sans un mot |
 | Un e2e qui reste **bloqué** est pire qu'un e2e qui échoue | 7.28.0 — `Promise.race` sur toute fermeture |
 | `ta()` sans `await`, `t()` avec une fonction asynchrone : « ok » sans rien vérifier | 6.7.0, 8.4.0 |
@@ -85,7 +86,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un refus dit **trois** choses : ce qui est refusé, pourquoi, et le bouton qui débloque | 7.0.0, 9.2.1 |
 | Un **bouton éteint dit pourquoi**, et par la MÊME fonction que celle qui refusera | 9.4.5 |
 | Une saisie refusée se **MONTRE** : on amène le champ à l'écran (`refus()`) | 7.0.0, 7.20.0 |
-| Ce qui **détruit** demande ; ce qui **se répare** laisse un « Annuler » (`toastUndo`) | 7.12.0 |
+| Ce qui **détruit** demande ; ce qui **se répare** laisse un « Annuler » (`toastUndo`) | 7.12.0 ; 9.4.6 — porté au Cabinet |
 | Un écran qui **NOMME** un ensemble doit pouvoir l'ouvrir | 7.15.0, 7.17.0, 7.21.0 |
 | L'endroit qui **affiche** un état est celui où on s'attend à le changer | 7.14.0 |
 | Un **moteur sans écran n'existe pas** ; une fonction jamais appelée est invisible | 7.2.0, 7.3.0, 7.19.0 |
@@ -3583,6 +3584,46 @@ Règles apprises, à ne pas recasser :
 Prouvé : huit défauts réintroduits un par un font tomber leur test, et deux des corrections (le nom
 centré, la date pré-remplie qu'on ne peut pas remplacer) n'ont été trouvées que par la capture et
 par le parcours réel.
+
+### 9.4.6 — Les Échéances : la répétition, le geste, et le droit à l'erreur
+
+Règles apprises, à ne pas recasser :
+
+- **On pointe une OCCURRENCE, jamais une règle** (7.21.0, jamais portée ici) : `tva-m@2026-05-15`.
+  Faire taire « TVA » ferait taire tous les mois suivants. La clé se fabrique en UN endroit
+  (`K.cleEcheance`) : deux versions divergeraient au premier changement de format, et un dépôt
+  pointé cesserait d'être reconnu sans rien dire. Et le filtre de `migrate` **borne le mois et le
+  jour**, il ne les compte pas : « tva-m@2026-13-99 » ne pourra jamais désigner une échéance réelle,
+  donc il n'a rien à faire dans les données.
+- **Un pense-bête dit qu'il n'est qu'un pense-bête**, sur l'écran, sous le bouton : le Cabinet ne
+  dépose rien et ne se connecte à aucune administration (règle 5.2.0). Une application qui laisserait
+  croire à un dépôt réel se tromperait un jour sans que personne ne le sache.
+- **Une explication se lit une fois.** Le `detail` décrit la RÈGLE, pas l'occurrence : la même phrase
+  de 90 caractères s'affichait sous les quatre mois de TVA d'affilée. Et les mêmes clients
+  réénumérés d'une carte à l'autre font croire à quatre problèmes différents — quand la liste est
+  identique à celle qu'on vient d'écrire, on le DIT. Mais on ne remplace jamais une liste qui
+  CHANGE par un compte : c'est l'information, pas le bruit.
+- **Un lien souligné au milieu d'une phrase n'est pas un geste**, et « Les relancer » qui ouvre les
+  soixante ne tient pas sa promesse (7.15.0). Le bouton POSE la sélection, puis navigue — et le
+  filtre porte sur TOUT l'écran : le bandeau, la liste et le « Relancer » de groupe (7.18.0).
+- **Un filtre de parcours ne survit pas à la sortie de sa page.** Le retrouver trois jours plus tard
+  sans savoir d'où il vient serait le piège du filtre qui cache ce qu'on est venu chercher.
+- **Deux mécanismes de l'app entreprise n'avaient JAMAIS été portés** — zéro occurrence des deux
+  côtés du fichier (règle 7.3.0, encore) : `toastUndo` (le « Annuler » de huit secondes ; le CSS
+  était déjà dans la feuille partagée, seul le JavaScript manquait) et `vers()`, sans quoi poser un
+  filtre puis viser la page courante ne redessine rien. Le Cabinet avait exactement les gestes qui
+  en ont besoin.
+- **Une tranche de test s'ancre sur du code, jamais sur un nombre.** Celle de l'état vide des
+  Relances sautait « les 40 premiers caractères » pour ignorer un `view.innerHTML` : elle a basculé
+  sur un autre bloc dès qu'une ligne s'est insérée entre le `if` et lui — et le test a accusé du
+  code juste. Elle va maintenant du `if` au `return;` que le code PORTE.
+- **Un test de source dit qu'un bouton existe, pas qu'il agit.** Les trois gestes (pointer, annuler,
+  partir relancer) sont refaits dans l'application réelle par `e2e:cabinet`, qui mesure aussi le
+  `pointer-events` du bandeau : c'est le seul moyen d'attraper le défaut de la 5.2.2, où le bouton
+  est parfaitement visible et parfaitement inerte.
+
+Prouvé : six défauts réintroduits un par un font tomber leur test pur, et deux de plus font tomber
+le parcours réel.
 
 ## Pistes pour la suite (non demandées)
 

@@ -33,6 +33,11 @@
     set(k, v) { try { localStorage.setItem('cab.' + k, JSON.stringify(v)); } catch {} }
   };
 
+  // La sélection posée par une échéance (9.4.6). Elle ne vit pas dans `prefs` : c'est un état de
+  // parcours — « je viens de cliquer sur les onze clients de la TVA d'avril » — et le retrouver
+  // lundi matin sans savoir d'où il vient serait un piège. Il se vide dès qu'on quitte les Relances.
+  const relState = { seulement: null, depuis: '' };
+
   const listState = {
     q: '', withArchived: false, onlySkanfact: false,
     sort: prefs.get('sort', 'urgence'), desc: prefs.get('desc', false),
@@ -76,6 +81,27 @@
     t.className = 'show' + (kind === 'error' ? ' error' : '');
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => { t.className = ''; }, kind === 'error' ? 5200 : 2800);
+  }
+
+  // Ce qui se RÉPARE laisse un « Annuler » sous la main (règle 7.12.0). L'app entreprise l'a depuis
+  // cette version-là ; le Cabinet n'en avait aucun — zéro occurrence — alors que ses gestes pointés
+  // ont exactement le même défaut : au moment où l'on comprend qu'on s'est trompé de ligne, la ligne
+  // a déjà changé sous le doigt. Deux détails qui font toute la différence : le bandeau doit
+  // RECEVOIR les clics (`#toast` est en `pointer-events: none`, un bouton posé dedans serait visible
+  // et parfaitement inerte), et il dure trois fois plus longtemps qu'un message ordinaire —
+  // comprendre son erreur prend quelques secondes.
+  function toastUndo(msg, annuler) {
+    const t = $('#toast');
+    t.textContent = '';
+    const txt = document.createElement('span');
+    txt.textContent = msg;
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'toast-undo'; b.textContent = 'Annuler';
+    b.onclick = () => { clearTimeout(toastTimer); t.className = ''; annuler(); };
+    t.append(txt, b);
+    t.className = 'show avec-bouton';
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { t.className = ''; t.textContent = ''; }, 8000);
   }
 
   // Un « ✓ enregistré » posé À CÔTÉ du bouton, plutôt qu'un message passager au bas de l'écran qui
@@ -1042,6 +1068,15 @@
   }
   mqSombre.addEventListener('change', () => { if (S) appliquerTheme(); });
 
+  // Aller à une page en ayant posé un état juste avant. `location.hash = …` vers la page COURANTE
+  // ne produit aucun `hashchange`, donc ne redessine rien : le filtre venait d'être posé et l'écran
+  // ne bougeait pas. L'app entreprise a `vers()` depuis la 7.15.0 ; le Cabinet ne l'avait pas, et
+  // c'est le même piège que le cas « on y est déjà » de `goBack` (2.4.0).
+  function vers(hash) {
+    if (location.hash === hash) render();
+    else location.hash = hash;
+  }
+
   function render() {
     const hash = location.hash.replace(/^#\//, '') || 'dossiers';
     const [route, arg] = hash.split('/');
@@ -1055,6 +1090,10 @@
     const pill = $('#nav-relances');
     pill.hidden = !relCount;
     if (relCount) pill.textContent = relCount;
+    // La sélection posée par une échéance ne survit pas à la sortie des Relances : la retrouver en
+    // revenant plus tard, sans savoir d'où elle vient, serait exactement le piège du filtre qui
+    // cache ce qu'on est venu chercher (7.18.0).
+    if (route !== 'relances' && relState.seulement) { relState.seulement = null; relState.depuis = ''; }
     const view = $('#view');
     if (route === 'dossier') drawDossier(view, arg, hash.split('/')[2]);
     else if (route === 'ecritures') drawEcritures(view);
@@ -3349,13 +3388,19 @@
 
   // ---------- relances ----------
   function drawRelances(view) {
-    const rows = K.relanceRows(S);
+    const toutes = K.relanceRows(S);
+    // La sélection venue d'une échéance. On la compare sur le NOM, parce que c'est ce que
+    // `ligneEcheance` retient — et on garde ce qui reste à relancer : un client qui a envoyé son
+    // mois entre-temps n'a plus rien à faire ici, même si l'échéance le nommait tout à l'heure.
+    const filtre = Array.isArray(relState.seulement) ? new Set(relState.seulement) : null;
+    const rows = filtre ? toutes.filter(r => filtre.has(r.name)) : toutes;
     const rel = K.relanceDue(S);
     // « Personne à relancer : tous tes dossiers sont à jour » félicitait un cabinet qui n'a AUCUN
     // dossier. C'est la règle de la 7.0.0 — avant d'écrire une phrase rassurante, vérifier que
     // l'univers concerné est non vide — et c'était la seule des trois pages qui ne l'appliquait pas :
     // Échéances et Écritures ont leur état vide avec son geste depuis toujours.
     if (!K.dossierList(S).length) {
+      relState.seulement = null; relState.depuis = '';
       view.innerHTML = `<div class="page-head"><h1>Relances</h1></div>
         <div class="panel"><h2>Aucun client pour l'instant</h2>
           <p>Cette page réunit les clients dont il te manque un mois, avec le message déjà écrit : les mois
@@ -3369,7 +3414,11 @@
     }
     view.innerHTML = `
       <div class="page-head"><h1>Relances</h1>
-        ${rows.length > 1 ? `<div class="actions"><button class="btn btn-primary" id="group">Relancer tout le monde ${info('r.group')}</button></div>` : ''}</div>
+        ${rows.length > 1 ? `<div class="actions"><button class="btn btn-primary" id="group">${
+  filtre ? `Relancer ${pl(rows.length, 'client')}` : 'Relancer tout le monde'} ${info('r.group')}</button></div>` : ''}</div>
+      ${filtre ? `<div class="banner"><span><strong>${pl(rows.length, 'client')}</strong> sur ${toutes.length}${
+  relState.depuis ? ` — ceux qu'il te manque pour « ${esc(relState.depuis)} »` : ''}.</span>
+        <button class="btn btn-sm" id="rl-tout">Voir tout le monde</button></div>` : ''}
       <p class="muted small mb">Un message qui nomme les mois manquants fait bouger ; « envoie-moi tes documents » non.
       SkanFact prépare le texte, ton logiciel de messagerie l'envoie — et la relance est enregistrée pour que tu saches, lundi, qui tu as déjà relancé.</p>
       ${rel.due && rel.total ? `<div class="banner"><span>On est le <strong>${rel.jour}</strong> : tu as fixé le ${rel.day} du mois comme jour de relance.
@@ -3406,7 +3455,10 @@
         { icon: 'dossier', label: 'Ouvrir le dossier', hint: 'Ses paquets, ses chiffres et son historique', run: () => { location.hash = '#/dossier/' + encodeURIComponent(r.id); } }
       ];
     });
+    // « Relancer tout le monde » porte sur ce que l'écran MONTRE : sous filtre, il ne peut pas
+    // relancer soixante clients pendant que le bandeau en annonce onze (règle 7.16.0).
     const g = $('#group'); if (g) g.onclick = () => groupRelance(rows.slice());
+    const rt = $('#rl-tout'); if (rt) rt.onclick = () => { relState.seulement = null; relState.depuis = ''; render(); };
   }
 
   async function recordRelance(row, via, note) {
@@ -3508,20 +3560,48 @@
       return;
     }
 
-    const carte = e => `<div class="ech lvl-${e.level}">
+    // Deux répétitions que la capture montre et qu'aucun test ne voit. (1) Le `detail` explique la
+    // RÈGLE, pas l'occurrence : la même phrase de 90 caractères s'affichait sous les quatre mois de
+    // TVA d'affilée. Une explication se lit une fois — on la garde sur la première carte de chaque
+    // règle. (2) Les noms des clients qui manquent sont les mêmes d'un mois sur l'autre : les
+    // réénumérer quatre fois fait croire à quatre problèmes différents. Quand la liste est
+    // identique à celle qu'on vient d'écrire, on le DIT au lieu de la recopier.
+    const vus = new Set();
+    let derniersManquants = '';
+    const carte = e => {
+      const cle = K.cleEcheance(e);
+      const depose = K.echeanceDeposee(S, e);
+      const nouveauDetail = !vus.has(e.id);
+      vus.add(e.id);
+      const sig = e.manquants.join('|');
+      const memeListe = !!sig && sig === derniersManquants;
+      derniersManquants = sig;
+      return `<div class="ech lvl-${depose ? 'ok' : e.level}${depose ? ' ech-fait' : ''}">
       <div class="ech-date"><div class="ech-j">${esc(e.date.slice(8))}</div><div class="ech-m">${esc(K.monthLabel(e.date.slice(0, 7)).split(' ')[0])}</div></div>
       <div class="ech-txt">
-        <div class="ech-lab">${esc(e.label)}<span class="ech-when">${e.passee ? `il y a ${-e.jours} j` : e.jours === 0 ? "aujourd'hui" : `dans ${e.jours} j`}</span></div>
-        <div class="small muted">${esc(e.detail)}</div>
+        <div class="ech-lab">${esc(e.label)}<span class="ech-when">${depose ? 'déposée' : e.passee ? `il y a ${-e.jours} j` : e.jours === 0 ? "aujourd'hui" : `dans ${e.jours} j`}</span></div>
+        ${nouveauDetail ? `<div class="small muted">${esc(e.detail)}</div>` : ''}
         <div class="ech-bar">
           <span class="ok-inline">${e.prets} prêt${e.prets > 1 ? 's' : ''}</span>
           ${e.provisoires.length ? `<span class="warn-inline">${e.provisoires.length} en provisoire</span>` : ''}
           ${e.manquants.length ? `<span class="err-inline">${e.manquants.length} sans ${e.mois.length > 1 ? 'les mois' : 'le mois'}</span>` : ''}
           <span class="muted small">sur ${pl(e.clients, 'client')}</span>
         </div>
-        ${e.manquants.length ? `<div class="small mt">${esc(e.manquants.slice(0, 8).join(', '))}${e.manquants.length > 8 ? '…' : ''}
-          <a href="#/relances">Les relancer</a></div>` : ''}
+        ${e.manquants.length ? `<div class="small mt ech-qui">${memeListe
+          ? `<span class="muted">Les mêmes ${pl(e.manquants.length, 'client')} que l'échéance du dessus.</span>`
+          : `${esc(e.manquants.slice(0, 8).join(', '))}${e.manquants.length > 8 ? '…' : ''}`}
+          ${/* Un lien souligné au milieu d'une phrase n'est pas un geste : c'est un vrai bouton, et
+                il emmène aux Relances FILTRÉES sur ces clients-là — « Les relancer » qui ouvre les
+                soixante n'a pas tenu sa promesse (règle 7.15.0). */''}
+          <button class="btn btn-sm" data-relq="${esc(cle)}">Relancer ces ${pl(e.manquants.length, 'client')}</button></div>` : ''}
+        ${/* Pointer une occurrence, jamais une règle (7.21.0) : la TVA d'avril cesse de réclamer,
+              celle de mai reste due. Et c'est un PENSE-BÊTE — le Cabinet ne dépose rien et ne se
+              connecte à aucune administration : c'est écrit sous le bouton. */''}
+        <div class="ech-fin"><button class="btn btn-sm ${depose ? '' : 'btn-ghost'}" data-depot="${esc(cle)}">${
+  depose ? 'Annuler « déposée »' : 'Marquer déposée'}</button>
+          <span class="muted small">Un pense-bête : SkanFact ne dépose rien à ta place. ${info('ec.depot')}</span></div>
       </div></div>`;
+    };
 
     view.innerHTML = `
       <div class="page-head"><h1>Échéances</h1></div>
@@ -3536,9 +3616,42 @@
           : '<div class="empty">Rien dans les trois prochains mois.</div>'}</div>
 
       ${passees.length ? `<div class="panel"><h2>Déjà passées</h2>
-        <p class="small muted">SkanFact ne sait pas ce que tu as déposé : cette liste est là pour repérer un mois qu'on n'a jamais pu déclarer
-        faute de pièces. ${info('ec.passees')}</p>
+        <p class="small muted">SkanFact ne sait pas ce que tu as déposé : pointe celles que tu as faites, et cette liste ne garde que les mois
+        qu'on n'a jamais pu déclarer faute de pièces. ${info('ec.passees')}</p>
         <div class="ech-list">${passees.slice(0, 8).map(carte).join('')}</div></div>` : ''}`;
+
+    // Le pointage : on écrit, puis on propose de défaire. Au moment où l'on comprend qu'on s'est
+    // trompé de ligne, la carte a déjà changé de couleur — d'où le « Annuler » sous la main (7.12.0),
+    // et le bouton de la carte elle-même, qui reste le chemin du lendemain.
+    $$('[data-depot]', view).forEach(b2 => {
+      b2.onclick = async () => {
+        const cle = b2.dataset.depot;
+        const avant = ((S.settings || {}).depots || []).slice();
+        const apres = avant.includes(cle) ? avant.filter(x => x !== cle) : avant.concat([cle]);
+        const poser = async (liste, refaire) => {
+          try {
+            S = await api.saveCabinet({
+              name: (S.cabinet || {}).name || '', email: (S.cabinet || {}).email || '', phone: (S.cabinet || {}).phone || '',
+              settings: { depots: liste }
+            });
+            render();
+            if (refaire) toastUndo(liste.includes(cle) ? 'Échéance marquée déposée.' : 'Pointage annulé.', () => poser(avant, false));
+          } catch (e) { toast(plainError(e), 'error'); }
+        };
+        await poser(apres, true);
+      };
+    });
+
+    // « Relancer ces N clients » : on emmène aux Relances avec la sélection POSÉE, pas la page
+    // entière. Le lien d'avant nommait un ensemble et en ouvrait un autre.
+    $$('[data-relq]', view).forEach(b2 => {
+      b2.onclick = () => {
+        const e = liste.find(x => K.cleEcheance(x) === b2.dataset.relq);
+        relState.seulement = e ? e.manquants.slice() : null;
+        relState.depuis = e ? e.label : '';
+        vers('#/relances');
+      };
+    });
   }
 
   // ---------- écritures regroupées ----------

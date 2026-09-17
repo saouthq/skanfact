@@ -399,6 +399,10 @@ ipcMain.handle('cab:saveCabinet', (_e, patch) => {
     // Le thème (9.4.3). Fusionné comme le reste : un écran qui n'envoie que le thème ne doit pas
     // effacer le jour de relance, et réciproquement.
     if (p.settings.theme) state.settings = { ...state.settings, theme: String(p.settings.theme) };
+    // Les échéances pointées (9.4.6). REMPLACÉES et non fusionnées : dépointer est un geste, et une
+    // fusion rendrait le « Annuler » impossible — on ne pourrait qu'ajouter. `migrate` filtre
+    // ensuite les clés qui n'ont pas la forme attendue.
+    if (Array.isArray(p.settings.depots)) state.settings = { ...state.settings, depots: p.settings.depots };
     // migrate() rejette les valeurs aberrantes et remet l'usage : un réglage à zéro ferait
     // disparaître l'échéance du calendrier au lieu de la décaler.
     state.settings = K.migrate(state).settings;

@@ -392,6 +392,61 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   ok(`${cartes.length} échéances, rattachées aux paquets manquants`);
   await shot('16-echeances');
 
+  // 9.4.6 — pointer une échéance, la dépointer, et partir relancer SES clients. Trois gestes que
+  // seul le parcours réel prouve : un test de source dit que le bouton existe, pas qu'il agit.
+  const premierDepot = await win.$('[data-depot]');
+  if (!premierDepot) throw new Error('aucune échéance ne porte son pointage');
+  const cleDepot = await premierDepot.getAttribute('data-depot');
+  await premierDepot.click();
+  await attendre(700);
+  // Le libellé du bouton vient de `S`, que `saveCabinet` renvoie depuis le processus principal :
+  // qu'il ait changé prouve l'aller-retour jusqu'à l'écriture. La survie au redémarrage, elle, est
+  // prouvée par le test pur de `migrate` — ici on ne rejoue pas ce qu'un test pur couvre déjà.
+  const apresDepot = await win.evaluate(cle => ({
+    libelle: (document.querySelector(`[data-depot="${cle}"]`) || {}).textContent || '',
+    annuler: !!document.querySelector('#toast .toast-undo'),
+    clicable: getComputedStyle(document.querySelector('#toast')).pointerEvents
+  }), cleDepot);
+  if (!/Annuler/.test(apresDepot.libelle)) throw new Error('la carte doit proposer de défaire : ' + apresDepot.libelle);
+  if (!apresDepot.annuler) throw new Error('un geste qui se répare laisse un « Annuler » sous la main (7.12.0)');
+  // Le défaut le plus difficile à croire : le bouton est parfaitement visible et parfaitement
+  // inerte parce que `#toast` vit en `pointer-events: none` (5.2.2).
+  if (apresDepot.clicable === 'none') throw new Error('le bandeau « Annuler » ne reçoit pas les clics');
+  ok('échéance pointée, et le « Annuler » est cliquable pour de vrai');
+
+  await win.click('#toast .toast-undo');
+  await attendre(700);
+  const apresAnnul = await win.evaluate(cle =>
+    ((document.querySelector(`[data-depot="${cle}"]`) || {}).textContent || ''), cleDepot);
+  if (!/Marquer déposée/.test(apresAnnul)) throw new Error('« Annuler » n\'a pas défait le pointage : ' + apresAnnul);
+  ok('« Annuler » remet vraiment l\'échéance en attente');
+
+  const relq = await win.$('[data-relq]');
+  if (relq) {
+    const attendus = await win.evaluate(() => {
+      const c = document.querySelector('[data-relq]').closest('.ech');
+      const m = /(\d+) sans/.exec(c.textContent);
+      return m ? Number(m[1]) : 0;
+    });
+    await relq.click();
+    await win.waitForSelector('#rl-tout', { timeout: 8000 });
+    const filtre = await win.evaluate(() => ({
+      lignes: document.querySelectorAll('#view table.list tbody tr').length,
+      bandeau: (document.querySelector('.banner') || {}).textContent || ''
+    }));
+    // Nommer onze clients et en ouvrir soixante, c'est la promesse non tenue de la 7.15.0.
+    if (attendus && filtre.lignes > attendus) {
+      throw new Error(`l'échéance annonçait ${attendus} clients, les Relances en montrent ${filtre.lignes}`);
+    }
+    if (!/sur/.test(filtre.bandeau)) throw new Error('le bandeau doit dire combien sur combien : ' + filtre.bandeau);
+    await shot('16b-relances-filtrees');
+    await win.click('#rl-tout');
+    await attendre(500);
+    const sorti = await win.evaluate(() => !document.querySelector('#rl-tout'));
+    if (!sorti) throw new Error('un filtre sans issue est un piège : « Voir tout le monde » n\'a rien fait');
+    ok(`« Relancer ces clients » ouvre ${filtre.lignes} ligne(s), et on en ressort`);
+  }
+
   await win.evaluate(() => { location.hash = '#/ecritures'; });
   await attendre(700);
   const ecr = await win.textContent('#view');
