@@ -185,6 +185,32 @@ date, alors que c'est une différence de deux ensembles de périodes différente
 
 ---
 
+### T-07 · MINEUR · « Rapprocher automatiquement » sur un relevé déjà rapproché annonce trois zéros
+
+**Vu** : relevé entièrement rapproché (10 sur 10). Clic sur « Rapprocher automatiquement » → le
+message est « **0 ligne rapprochée d'office ; 0 à trancher, 0 sans réponse.** ». Le testeur a
+rapporté : « rien n'a changé ».
+
+**Pourquoi ça compte** : trois zéros se lisent comme un échec, alors que la réalité est la
+meilleure possible — il n'y avait rien à faire. C'est le seul cas où le message devrait annoncer une
+bonne nouvelle, et c'est celui où il ressemble le plus à une panne. Un bouton dont la réponse
+ressemble à un échec quand tout va bien, on cesse de l'utiliser.
+
+**Ancrage** : `src/cabinet/renderer/app.js:3287` — le `toast` de `brancherBanque` énumère
+toujours les trois compteurs. `pl(0, 'ligne rapprochée', …)` rend « 0 ligne rapprochée »
+(`app.js:390`).
+
+**Ce qui est juste et ne doit pas bouger** : dire ce qui N'A PAS été posé est la bonne règle
+(« 12 validées » en avalant trois refus serait pire). Le défaut est l'absence du cas « rien à
+faire », pas la forme du message.
+
+**Piste** : quand les quatre compteurs sont à zéro et que toutes les lignes sont déjà rapprochées,
+dire « Tout est déjà rapproché : 10 lignes sur 10. » Distinguer aussi « rien à faire parce que tout
+est rapproché » de « rien à faire parce que rien ne correspond » — ce ne sont pas les mêmes
+nouvelles.
+
+---
+
 ## Comment se servir de ce document
 
 - Un constat qui part dans une version : barrer la ligne, citer le numéro de version.
