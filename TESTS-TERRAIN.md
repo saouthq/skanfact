@@ -656,6 +656,10 @@ qu'on interdit de poser dans un sens doit être interdit d'obtenir dans l'autre.
 annulés »), plutôt que de laisser un état que rien ne permet de quitter. Un test pur : après
 `pointerDeclaration(…, 'deposee', null)`, `d.payee.le` doit être vide.
 
+**Confirmé à l'écran** (18/09, capture) : la barre montre « Marquer déposée » actif à côté de
+**« Payée le 18/09/2026 — annuler » en gris et inerte**. Sortie possible seulement en remarquant
+« déposée » d'abord — ce que rien n'indique.
+
 ---
 
 ### T-11 · confirmé à l'écran (18/09)
