@@ -980,6 +980,107 @@ compte est connu avant le clic.
 
 ---
 
+### T-30 · GRAVE · T-13 atteint la SAISIE, et y écrit un libellé faux dans une vraie écriture
+
+**Quatrième manifestation de T-13, et celle qui fait passer le défaut de « affichage » à
+« données ».**
+
+**Vu** : saisie d'un achat de fournitures. On tape `606`, et la colonne **INTITULÉ** annonce
+« **Achat LOC-2026-08 — A…** » (le libellé d'une écriture de loyer). `401` donne la même chose.
+`4366` donne « TVA déductible LOC-202… ». Puis — signalé par le testeur : *« le libellé à chaque
+fois que je mets le compte il s'écrit tout seul »* — la colonne **LIBELLÉ de la ligne** se remplit
+avec ce même texte. Une facture de papeterie part donc avec trois lignes libellées
+« Achat LOC-2026-08 ».
+
+**Pourquoi c'est un cran au-dessus** : jusqu'ici T-13 salissait des écrans. Ici, **si le comptable
+valide, le mensonge est écrit** — dans une écriture numérotée, définitive, qui ne se modifie plus.
+Et il ne se corrige que par une contre-passation.
+
+**La chaîne** :
+- `livre.plan` reçoit ses comptes par `assurerCompte(livre, compte, libelle)`
+  (`src/renderer/compta.js:607-613`), qui prend le **libellé de la ligne** comme nom de compte.
+  Comme `lignesDuLivre` met `tiers: l.libelle` (T-13), le plan se peuple de libellés d'écritures.
+- `lignesSaisieHtml` (`src/cabinet/renderer/app.js:3732`) rend ce nom dans la colonne INTITULÉ.
+- Et le sélecteur de compte **le recopie dans la ligne** :
+  `if (!String(p.lignes[i].libelle || '').trim()) p.lignes[i].libelle = c.libelle || '';`
+  (`app.js:3866`).
+
+**Ce qui est juste et ne doit pas bouger** : pré-remplir le libellé d'une ligne avec le **nom du
+compte** est le bon geste — tous les logiciels comptables le font, et ça fait gagner du temps. Et
+`assurerCompte` a raison de ne jamais refuser en silence. C'est la **valeur** qui est fausse, pas
+le mécanisme.
+
+**Piste** : corriger T-13 à la racine (`tiers` dans la forme d'une ligne de `livre.json`) règle les
+quatre manifestations d'un coup. En attendant, `assurerCompte` devrait nommer le compte par le
+**plan comptable SCE** (`PLAN_COMPTABLE` existe côté entreprise, `accountLabel` fait exactement ça)
+et ne retomber sur un libellé d'écriture que si rien d'autre n'existe.
+
+---
+
+### T-31 · MOYEN · La légende du clavier cache le comportement normal de Tab
+
+**Vu**, et dit par le testeur : *« quand je fais Entrée ça passe de libellé à compte de la ligne
+suivante — j'avais pas essayé Tab car je pensais qu'il soldait et pas aller vers la case des
+débit/crédit, donc c'est pas clair »*.
+
+Le partage des touches est **bon** et c'est celui des vrais logiciels comptables : **Tab** avance de
+champ en champ (comportement natif), **Entrée** saute à la ligne suivante, et **Tab sur le crédit de
+la dernière ligne** solde la pièce.
+
+Mais la légende n'annonce que : « Ligne suivante ↵ Entrée · **Solder la pièce ⇥ Tab** ». Elle nomme
+l'**exception** de Tab et tait sa **règle**. Résultat : l'utilisateur n'ose pas s'en servir pour
+atteindre les montants, cherche avec Entrée, tombe sur la ligne suivante, et conclut que la grille
+est mal faite.
+
+**Ancrage** : `src/cabinet/renderer/app.js:3830-3838` — `t.ligneSuivante` va toujours au `compte` de
+la ligne suivante ; `:3849` — Tab ne solde que depuis `credit` de la dernière ligne.
+
+**Piste** : « Champ suivant ⇥ Tab · Ligne suivante ↵ Entrée · Solder la dernière ligne ⇥ Tab ». La
+règle avant l'exception.
+
+---
+
+### T-32 · MOYEN · Aucun bouton « Ajouter une ligne »
+
+**Vu**, et dit par le testeur : *« il manque le bouton ajouter une ligne quand on ne veut pas
+utiliser le clavier »*.
+
+Une ligne ne s'ajoute qu'en appuyant sur **Entrée depuis la dernière ligne**. Le commentaire du code
+l'assume : « la grille suit la saisie, on ne clique jamais "ajouter une ligne" » (`app.js:3833`).
+
+**Pourquoi ça compte** : c'est vrai pour qui saisit au kilomètre toute la journée — et faux pour
+tous les autres. Le comptable qui corrige une pièce à la souris, celui qui découvre l'écran, celui
+qui revient dessus une fois par semaine : aucun ne devinera qu'Entrée ajoute une ligne. **Et chaque
+ligne porte son « ✕ » pour la retirer** : une grille qui offre le geste destructeur à la souris et
+réserve le geste constructif au clavier est déséquilibrée.
+
+**Piste** : un « + Ajouter une ligne » discret sous la grille. Le clavier reste le chemin rapide ;
+la souris cesse d'être un cul-de-sac.
+
+---
+
+### T-33 · MOYEN · La liste des comptes est coupée par le cadre du tableau
+
+**Vu**, et dit par le testeur : *« la liste est cachée du compte »*. En tapant un numéro de compte,
+la liste de propositions apparaît **sous la dernière ligne** et se trouve tronquée : une seule
+entrée visible, elle-même coupée en deux.
+
+**Ancrage** : `src/cabinet/renderer/app.js:3606` — la liste (`.sugg-pop`) est ajoutée dans le
+`<td>` du champ, donc **à l'intérieur** du tableau, lui-même dans un conteneur `.scroll-x`
+(`overflow-x: auto`). Un conteneur qui défile **rogne** ce qui dépasse : c'est la même mécanique que
+le débordement des boutons de la 7.13.0, vue de l'autre côté.
+
+**Pourquoi ça compte** : la liste est le seul moyen de retrouver un compte quand on ne connaît pas
+son numéro par cœur — c'est-à-dire tout le temps, sur un plan de cent comptes. Coupée, elle ne sert
+qu'à confirmer ce qu'on savait déjà.
+
+**Ce qui est juste et ne doit pas bouger** : le composant lui-même (`mousedown` plutôt que `click`
+pour survivre au `blur`, Entrée et Tab qui choisissent, flèches, Échap). Il est bien fait.
+
+**Piste** : sortir la liste du tableau — l'ancrer au `body` en position fixe, calculée sur le champ.
+
+---
+
 ### T-11 · confirmé à l'écran (18/09)
 
 Le testeur a cliqué une ligne de pièce dans un panneau client : **rien ne se passe**. Le constat
