@@ -1099,6 +1099,39 @@ pour survivre au `blur`, Entrée et Tab qui choisissent, flèches, Échap). Il e
 
 ---
 
+### T-34 · MOYEN · La mention « Contre-passation — » est écrite par le moteur et n'arrive jamais à l'écran
+
+**Vu** : la pièce 49 contre-passée est **barrée** dans le livre-journal (numéro, date, montants) —
+signal net et correct. La pièce **50**, elle, ne porte **aucun repère** : même numéro de pièce
+(`FA-2026-0912`), mêmes libellés de ligne, même journal. Rien ne dit qu'elle est la contre-passation
+de la 49 ; seul le sens des montants le laisse deviner.
+
+**Ce que le moteur fait, et qui est juste** : `contrepasser` (`src/renderer/compta.js:682-691`)
+pose **trois** liens — `contrepasseDe: id`, le libellé de pièce
+`'Contre-passation — ' + e.libelle`, et une ligne de piste d'audit
+(`AC FA-2026-0912 n° 49 → n° 50`). Tout est enregistré.
+
+**Pourquoi rien ne s'affiche** : le livre-journal rend `e.label`
+(`src/cabinet/renderer/app.js:2303`), c'est-à-dire le libellé de **LIGNE**
+(`lignesDuLivre` : `label: l.libelle || e.libelle`, `compta.js:831`). Comme chaque ligne porte le
+sien — recopié de l'originale (`compta.js:686`) — le libellé de **PIÈCE**, celui qui contient
+« Contre-passation — », n'est jamais atteint. Et la classe `cp-ligne` ne marque que l'**originale**
+(`app.js:2297`, sur `statut === 'contrepassee'`) : le miroir est une validée ordinaire.
+
+**Pourquoi ça compte** : dans six mois, quelqu'un relit le journal et voit deux pièces jumelles, une
+barrée, une non. Il doit **déduire** la correction au lieu de la **lire** — et il n'a aucun moyen de
+savoir laquelle annule laquelle si l'ordre des numéros ne suffit pas. C'est la règle 7.21.0 : *une
+donnée enregistrée et jamais affichée n'existe pas*. Ici trois données sur trois.
+
+**Ce qui est juste et ne doit pas bouger** : le barré sur l'originale, le refus de contre-passer
+deux fois, le fait que les deux restent au journal, et la piste d'audit.
+
+**Piste** : marquer le miroir (une classe, un badge « contre-passation »), et afficher le lien
+« ↩ n° 49 » sur sa première ligne. Le libellé de pièce mérite aussi d'apparaître quelque part —
+c'est le seul endroit où le moteur explique ce qu'il a fait.
+
+---
+
 ### T-11 · confirmé à l'écran (18/09)
 
 Le testeur a cliqué une ligne de pièce dans un panneau client : **rien ne se passe**. Le constat
