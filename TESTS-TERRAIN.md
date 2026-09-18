@@ -1253,6 +1253,94 @@ Pas de question : c'est le bon comportement, mais un comportement qu'on annonce.
 
 ---
 
+### T-37 · GRAVE · La colonne « Intitulé » du grand livre et de la balance affiche le TIERS, jamais le nom du compte
+
+**Vu** : capture de la Balance en 9.8.6, sur le livre de Menuiserie Trabelsi SUARL. **La colonne
+« Intitulé » est entièrement vide**, sur les 28 comptes. Les chiffres sont justes, les totaux
+tombent — il n'y a simplement aucun nom nulle part.
+
+**La cause, et elle est de moi.** Ces écrans n'ont **jamais** lu le nom du compte :
+
+```js
+KC.balanceDepuisLignes(lignes, null, (c, t) => t || '')      // app.js:2353
+KC.grandLivreDepuisLignes(lignes, s.compte, null, (c, t) => t || '')  // app.js:2321
+```
+
+Le troisième argument est le résolveur de libellé, et il rend **le tiers** (`t`), pas le nom du
+compte. Avant la 9.8.5, `lignesDuLivre` fabriquait un tiers en découpant le libellé (T-13) : la
+colonne portait donc « Agence Immobilière Le Lac » en face du 606. C'était faux, mais visible. La
+9.8.5 a rendu au tiers son honnêteté — vide tant que les paquets ne sont pas relus — et la colonne
+est devenue vide avec lui.
+
+**Donc T-13 n'est corrigé qu'à moitié, et la moitié corrigée est la bonne** : le nom inventé ne part
+plus dans une écriture validée (le sélecteur de compte de la Saisie lit `livre.plan`, qui est
+désormais nommé par le plan comptable). Mais l'AFFICHAGE n'a jamais lu ce plan.
+
+**Pourquoi ça compte** : sur une balance générale, « Intitulé » désigne le nom du COMPTE — c'est la
+définition du document. Le tiers a son écran à lui, la **balance auxiliaire**, qui groupe par tiers
+et l'affiche en première colonne : c'est le bouton juste à côté. Les deux vues montraient donc la
+même information dans deux colonnes différentes, et la vue générale ne montrait pas la sienne.
+
+**Ancrage** — quatre points d'appel, la même ligne recopiée :
+- `src/cabinet/renderer/app.js:2321` — grand livre
+- `src/cabinet/renderer/app.js:2353` — balance générale
+- `src/cabinet/renderer/app.js:2376` — balance auxiliaire (ici c'est juste : le tiers EST la clé)
+- `src/cabinet/renderer/app.js:4391` — **l'export CSV**, donc le fichier qui part du cabinet
+
+**Ce qui est juste et ne doit pas bouger** : le nom vit dans `livre.plan[].libelle`, nommé par
+`libelleDuPlan` depuis la 9.8.5, et un compte **nommé par le cabinet** ne se réécrit jamais. La
+balance auxiliaire garde son résolveur : là, la clé de regroupement est le tiers.
+
+**Piste** : un résolveur unique qui lit le plan du livre (`s.livre.plan`), passé aux quatre points —
+et comme une ligne recopiée quatre fois diverge toujours (7.29.0), il vit à UN endroit. Le tiers
+reste affiché là où il est l'information : l'auxiliaire, et le lettrage.
+
+**Règle du projet violée** : « une donnée enregistrée et jamais affichée n'existe pas » (7.21.0) —
+ici le nom du compte est écrit dans le plan et aucun écran ne le lit · « une table en double diverge
+toujours » (6.8.0, 7.29.0) · et la leçon de la 9.8.5 elle-même, prise par l'autre bout : **corriger
+la donnée ne corrige pas l'écran qui ne l'a jamais lue.**
+
+---
+
+### T-38 · MOYEN · Une balance a TROIS paires de totaux ; l'écran en montre deux et en annonce trois
+
+**Vu** : le pied de la balance porte quatre chiffres — mouvements débit / crédit (142 334,381 DT des
+deux côtés) et soldes débiteur / créditeur (49 678,698 DT des deux côtés). Les deux paires tombent
+juste. Mais le bandeau vert au-dessus dit : « Équilibrée : débit = crédit sur **les trois paires de
+totaux** ».
+
+**La cause** : `ouverture` est passé à `null` aux quatre mêmes points d'appel. Les colonnes
+d'ouverture existent dans le moteur (`ouvertureD` / `ouvertureC`, `compta.js:295`) et valent zéro
+partout, donc l'écran ne les dessine pas.
+
+**Sur l'exercice entier, c'est LÉGITIME** : au 1er janvier l'ouverture est nulle et c'est la pièce
+d'à-nouveau qui porte les soldes reportés (règle 9.0.0). La phrase, elle, promet quand même une
+troisième paire qu'on ne voit pas.
+
+**Sur un MOIS, ça ne l'est plus.** Le sélecteur de période propose autre chose que l'exercice ; sur
+mars seul, la balance affiche les mouvements de mars et un « solde » qui ne vaut que les mouvements
+de mars — sans ce que les comptes portaient au 1er mars. Un comptable qui lit cette colonne y voit
+un solde de compte. Ce n'en est pas un.
+
+**Et une phrase qui ne tient plus** : le grand livre affiche « Ouverture inconnue : ce livre est lu
+dans les paquets, sans à-nouveau » (`app.js:2324`) **en permanence**, y compris — comme sur cette
+capture — quand la source est le LIVRE du cabinet et non les paquets. Le constat est vrai (aucune
+ouverture n'est calculée), la raison donnée est fausse.
+
+**Ancrage** : `src/cabinet/renderer/app.js:2321, 2353, 2376, 4391` (le `null`) ·
+`src/cabinet/renderer/app.js:2324` (la phrase) · `src/cabinet/renderer/app.js:2357` (« trois
+paires ») · `src/renderer/compta.js:277` (le moteur, qui sait les calculer).
+
+**Piste** : calculer l'ouverture depuis le début de l'exercice quand la période est plus courte, et
+afficher les deux colonnes ; sur l'exercice entier, écrire que l'ouverture est nulle **et pourquoi**
+plutôt que de la taire. Même racine que T-37 : un seul appel, quatre recopies.
+
+**Règle du projet violée** : « une phrase affichée que rien ne tient est un bug » (7.3.0) · « un
+agrégat porte une période nommée » (3.1.0) · « un chiffre qu'un comptable ne sait pas refaire ne se
+discute pas avec un client » (9.8.0).
+
+---
+
 ## Le plan de parcours — ce qui est testé, ce qui ne l'est pas
 
 *Posé le 18/09/2026, après le premier tour. « Il faut tout tester, pas que la partie qu'on vient de
@@ -1286,7 +1374,7 @@ quelqu'un qui cherchait un défaut.*
 | Recherche | ☐ | C |
 | Livre-journal | ☐ | D — ce qu'on imprime |
 | Grand livre | ☐ | D |
-| Balance | ☐ | D |
+| Balance | ☑ | D |
 | Immobilisations | ☐ | E — le dossier permanent |
 | Inventaire | ☐ | E |
 | Lettrage | ☑ | — |
