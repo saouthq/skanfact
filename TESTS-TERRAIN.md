@@ -341,6 +341,39 @@ pièce est connu — le mécanisme existe déjà dix lignes plus haut.
 
 ---
 
+### T-12 · MOYEN · « En face » nomme une écriture, ne dit pas QUELLE ligne, et ne l'ouvre pas
+
+**Vu** : relevé entièrement rapproché. La colonne « En face » porte `BQ PAIE-2026-07`,
+`BQ FAC-2026-021`, `BQ COM0831`… Les **deux** lignes de salaire du 01/08 (−1 703,731 et −508,355)
+affichent **le même texte**. Et aucune de ces pièces ne s'ouvre : une ligne rapprochée n'offre que
+« Défaire le rapprochement ».
+
+**Pourquoi ça compte** — deux moitiés :
+
+1. **Vérifier est impossible.** Le moteur rapproche **ligne à ligne** (la clé est
+   `ecritureId#ligne`), donc deux lignes de relevé sur deux lignes différentes d'une pièce de paie,
+   c'est juste. Mais à l'écran, ça ressemble trait pour trait à la faute que le moteur interdit —
+   la même écriture qui répondrait deux fois. Le comptable qui contrôle ne peut pas trancher, et
+   **un contrôle qu'on ne peut pas faire finit par ne plus se faire**.
+2. **Le nom ne mène nulle part.** « BQ FAC-2026-021 » est une pièce nommée sur l'écran de
+   quelqu'un dont le métier est de la regarder. Règle 7.15.0 : *un écran qui NOMME un ensemble doit
+   pouvoir l'ouvrir* — même défaut que T-11, sur l'écran d'à côté.
+
+**Ancrage** : `src/cabinet/renderer/app.js:3248` — la cellule rend `e.journal + ' ' + e.piece`, le
+`title` ajoute le libellé ; ni le montant de la ligne appariée, ni son numéro de ligne.
+`app.js:3317-3320` — quand `r.ecritureId` existe, la seule action est « Défaire le rapprochement ».
+
+**Ce qui est juste et ne doit pas bouger** : le moteur (clé par ligne), et le fait que « rapproché »
+se défasse (« l'automatique propose, c'est toi qui décides »). Le défaut est dans ce que la colonne
+MONTRE.
+
+**Piste** : afficher le **montant de la ligne appariée** à côté du numéro de pièce — deux lignes de
+la même pièce cessent alors d'être indiscernables, et l'œil vérifie que le montant en face est bien
+celui du relevé. Et ajouter « Voir l'écriture » au menu d'une ligne rapprochée, le mécanisme existe
+déjà pour les lignes sans réponse (« Choisir l'écriture en face »).
+
+---
+
 ## Comment se servir de ce document
 
 - Un constat qui part dans une version : barrer la ligne, citer le numéro de version.
