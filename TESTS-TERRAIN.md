@@ -769,6 +769,17 @@ toujours « 3 mois sans déclaration préparée (2026-06, 2026-07, 2026-08) ». 
 existe bien est prouvé par ailleurs : les pointages « déposée » puis « payée » ont survécu à
 plusieurs redessins, et ils sont rangés **dans** cette déclaration.
 
+**Preuve décisive** : la clôture force une relecture (`app.js:2712`). Avant / après le geste, sans
+qu'aucune donnée n'ait changé entre les deux :
+
+| Contrôle | Avant (état figé) | Après la relecture |
+|---|---|---|
+| Les pièces encore en brouillard | `ok — rien à signaler` | `à voir — 1 pièce encore en brouillard` |
+| Les déclarations de TVA | `3 mois (2026-06, 07, 08)` | `2 mois (2026-06, 07)` |
+
+**Deux contrôles faux sur six** — dont un qui passait du vert au rouge — sur l'écran qui décide
+d'une clôture. Et la fenêtre de confirmation avait affiché les deux valeurs périmées.
+
 ---
 
 ### T-25 · MOYEN · La fenêtre de clôture noie ses avertissements dans un pavé
