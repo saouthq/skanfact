@@ -229,9 +229,16 @@ premier, et ne teste l'empreinte qu'à la ligne 1406.
 **Ce qui est juste et ne doit pas bouger** : les deux contrôles, et leurs deux phrases. C'est leur
 ORDRE qui trompe.
 
+**Vu de plus** (capture du 18/09, refus obtenu avec les bons soldes) : la fenêtre affiche un bandeau
+**vert** « 10 lignes lues · mouvements 3 821,147 DT » **en même temps** que le refus rouge s'affiche
+en bas de l'écran. Deux messages contradictoires sur le même écran, et le rassurant est celui qui se
+trouve dans la fenêtre où l'œil est posé. L'empreinte est connue à la lecture du fichier,
+c'est-à-dire **au moment exact où l'app écrit le vert**.
+
 **Piste** : tester l'empreinte avant le bouclage. Mieux : le dire **dès que le fichier est choisi**,
-dans l'aperçu — l'empreinte est déjà connue à ce moment-là, et les champs de solde deviennent
-inutiles à remplir.
+dans l'aperçu — le bandeau vert devient orange et nomme la date du premier import, le bouton
+« Importer » s'éteint en disant pourquoi (règle 9.4.5), et les champs de solde deviennent inutiles à
+remplir.
 
 **Règle du projet en jeu** : « un refus dit trois choses : ce qui est refusé, pourquoi, et le bouton
 qui débloque » (7.0.0). Ici le *pourquoi* annoncé n'est pas le vrai.
