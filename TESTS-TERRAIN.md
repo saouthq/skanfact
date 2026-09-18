@@ -314,6 +314,12 @@ compte tombe à zéro, ce qui est la bonne règle.
 biens dont la dotation de l'exercice n'est pas passée ; Exercice garderait « clos » mais dans un
 autre habit (le mot n'est pas un compteur).
 
+**Un cas de plus, vu le 18/09** : sur un exercice **clos**, l'onglet Saisie garde sa pastille `1`
+(une écriture en brouillard) alors que l'écran répond « L'exercice 2026 est clos. On n'y saisit
+plus. » Un compteur qui annonce une chose à traiter sur un écran qui refuse de la traiter. Le refus,
+lui, est parfait — il nomme le geste qui débloque. C'est la pastille qui devrait se taire, ou dire
+autre chose (« 1 en attente, exercice clos »).
+
 ---
 
 ### T-11 · MOYEN · Le lettrage NOMME des pièces et n'en ouvre aucune
