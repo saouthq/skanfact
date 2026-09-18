@@ -551,6 +551,14 @@ déposé ». Ils méritent mieux qu'une infobulle.
 **Piste** : une phrase grise au-dessus des trois boutons, et le bouton « Préparer la déclaration »
 répété **là**, au moment où il sert.
 
+**Confirmé à l'écran de la meilleure façon** (18/09) : après « Préparer la déclaration », « Marquer
+déposée » s'allume et « Marquer payée » reste éteint — les deux corrects — mais **« Écrire
+l'écriture du mois » reste éteint lui aussi**, c'est-à-dire précisément l'action que le geste devait
+débloquer. Le comportement est JUSTE : `ecrite = !!d.ecritureExistante` (`app.js:2454`), et le
+client avait déjà passé son écriture de TVA d'août dans ses propres livres. Mais le testeur, qui
+venait de faire ce qu'on lui demandait, **n'avait aucun moyen de savoir si c'était un bug ou le bon
+comportement**. Un motif juste et invisible vaut un bug.
+
 ---
 
 ### T-18 · MOYEN · Le panneau « Abonnements » s'affiche sous les ONZE sous-onglets
