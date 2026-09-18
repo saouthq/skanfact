@@ -430,6 +430,31 @@ C'est **une régression de la 9.2.0** : en 9.1.0, le Cabinet lisait les CSV dire
 jamais de sa voisine ne porte aucune information — et c'est celle qui devrait nommer le client ou le
 fournisseur de chaque ligne.
 
+**Le plan comptable entier, vu au grand livre le 18/09** — c'est la preuve la plus large :
+
+| Compte | Nom affiché | Ce que ça devrait être |
+|---|---|---|
+| 22 | `Sortie — Serveur de sauvegarde : valeur brute` | Immobilisations corporelles |
+| 28 | `Amortissement 2026 — Serveur de sauvegarde` | Amortissements |
+| 401 | `Achat LOC-2026-08 — Agence Immobilière Le Lac` | Fournisseurs |
+| 411 | `Facture FAC-2026-014 — Clinique Les Jasmins` | Clients |
+| 425 | `Paiement salaire Ahmed Ben Salah mai 2026` | Personnel — rémunérations dues |
+| 4365 | `TVA, timbres et retenues de mai 2026` | État — TVA à décaisser |
+| 4366 | `TVA déductible LOC-2026-08` | TVA déductible |
+| 4367 | `TVA 19 % — FAC-2026-014` | TVA collectée |
+| 4368 | `Timbre fiscal FAC-2026-014` | Droits de timbre |
+| 532 | `Paiement salaire Ahmed Ben Salah mai 2026` | Banque |
+| 606 | `Achat LOC-2026-08 — Agence Immobilière Le Lac (charge)` | Achats non stockés |
+| 706 | `Facture FAC-2026-014 — Clinique Les Jasmins (HT 19 %)` | Ventes de services |
+
+Quelques comptes tombent juste **par hasard** (616 « Prime d'assurance multirisque », 627 « Frais de
+tenue de compte », 4421 « Avance du gérant en compte courant ») : le libellé de la première écriture
+y décrit fortuitement le compte. Et **471** et **54**, deux comptes distincts, portent tous les deux
+« Fournitures diverses ».
+
+**Six écrans touchés** : lettrage, balance âgée, balance auxiliaire, bilan, saisie, grand livre —
+plus le livre-journal (colonne Tiers) et les données écrites (T-30).
+
 Et c'est la faute la plus coûteuse en confiance : **seize alertes orange qui accusent du travail
 correct**. Un comptable qui voit ça une fois cesse de lire l'encadré ; la dix-septième, qui sera
 vraie, ne sera plus lue non plus.
@@ -732,6 +757,10 @@ Le vert affirme quelque chose de vrai (l'équilibre) à un endroit où le lecteu
 (« ce bilan est bon »). C'est la règle de la 7.0.0 — *avant d'écrire une phrase rassurante,
 vérifier que l'univers concerné est non vide* — et celle du Cabinet 1.0.0 : *ne jamais prétendre ce
 qu'on ne peut pas prouver*.
+
+**La phrase existe déjà, à un onglet de là** (vu le 18/09) : le **grand livre** affiche en tête
+« **Ouverture inconnue : ce livre est lu dans les paquets, sans à-nouveau** ». C'est exactement ce
+qui manque aux états financiers. Deux écrans du même livre, un qui prévient et un qui rassure.
 
 **Ce qui est juste et ne doit pas bouger** : l'équilibre est bien la seule chose garantie, et le
 dire est honnête. L'écran du **lettrage** fait déjà exactement ce qu'il faut à deux onglets de là :
@@ -1129,6 +1158,16 @@ deux fois, le fait que les deux restent au journal, et la piste d'audit.
 **Piste** : marquer le miroir (une classe, un badge « contre-passation »), et afficher le lien
 « ↩ n° 49 » sur sa première ligne. Le libellé de pièce mérite aussi d'apparaître quelque part —
 c'est le seul endroit où le moteur explique ce qu'il a fait.
+
+**Et au GRAND LIVRE, c'est pire** (vu le 18/09, compte 401) : les deux lignes `FA-2026-0912`
+(15/09 crédit 297,500 · 18/09 débit 297,500) sont **strictement indiscernables** — même pièce, même
+libellé, **aucun barré**. Le livre-journal marque au moins l'originale ; le grand livre ne marque
+**ni l'une ni l'autre**. Un comptable qui lit le compte fournisseur voit deux mouvements opposés et
+doit deviner qu'il s'agit d'une correction.
+
+*(Au passage, le grand livre est mécaniquement juste : le solde progressif passe de −3 844,500 à
+−4 142,000 puis revient à −3 844,500. La contre-passation s'annule au millime, et la dernière ligne
+tombe sur le total du compte.)*
 
 ---
 
