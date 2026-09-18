@@ -2316,9 +2316,32 @@
       </details>`;
   }
 
+  // Le NOM d'un compte, pour la colonne « Intitulé » du grand livre et de la balance générale.
+  //
+  // Ces deux écrans passaient `(c, t) => t || ''` : ils affichaient le TIERS, jamais le nom du
+  // compte, et ce depuis leur premier jour. Tant que `lignesDuLivre` fabriquait un tiers en
+  // découpant le libellé (T-13), quelque chose s'affichait — « Agence Immobilière Le Lac » en face
+  // du 606, faux mais visible. La 9.8.5 a rendu au tiers son honnêteté, et la colonne s'est vidée :
+  // corriger la donnée ne corrige pas l'écran qui ne l'a jamais lue.
+  //
+  // Sur une balance GÉNÉRALE, « Intitulé » désigne le nom du compte — c'est la définition du
+  // document. Le tiers a son écran à lui, la balance AUXILIAIRE, qui groupe par tiers et l'affiche
+  // en première colonne : les deux vues montraient la même chose, et la générale pas la sienne.
+  //
+  // Le nom vit dans `livre.plan`, nommé par le plan comptable depuis la 9.8.5 — et un compte nommé
+  // par le cabinet n'y est jamais réécrit. Sans livre (lecture dans les paquets), on retombe sur le
+  // plan comptable de référence, puis sur le tiers : mieux vaut un repère que rien.
+  // UN seul résolveur : recopié à chaque écran, il divergerait (7.29.0) — c'est très exactement ce
+  // qui vient d'arriver à ces quatre points d'appel.
+  function nomDeCompte() {
+    const plan = (livresState.livre && livresState.livre.plan) || [];
+    const par = new Map(plan.map(c => [c.compte, c.libelle || '']));
+    return (c, t) => par.get(c) || KC.libelleDuPlan(c) || t || '';
+  }
+
   function vueGrandLivre(lignes) {
     const s = livresState;
-    const gl = KC.grandLivreDepuisLignes(lignes, s.compte, null, (c, t) => t || '');
+    const gl = KC.grandLivreDepuisLignes(lignes, s.compte, null, nomDeCompte());
     const comptes = [...new Set(lignes.map(l => l.account))].sort();
     return `${barreLivres(`<select id="lv-compte" aria-label="Le compte à afficher"><option value="">Tous les comptes</option>${comptes.map(c => `<option value="${esc(c)}" ${s.compte === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>`, 'Exporter le grand livre')}
       <div class="muted small mb">Ouverture inconnue : ce livre est lu dans les paquets, sans à-nouveau ${info('lv.ouverture')}</div>
@@ -2350,7 +2373,7 @@
     const s = livresState;
     // L'auxiliaire regroupe par TIERS, pas par compte : c'est ce qu'un comptable appelle une
     // balance auxiliaire, et les lignes portent leur tiers depuis la 8.8.0.
-    const b = s.aux ? balanceAux(lignes) : KC.balanceDepuisLignes(lignes, null, (c, t) => t || '');
+    const b = s.aux ? balanceAux(lignes) : KC.balanceDepuisLignes(lignes, null, nomDeCompte());
     const ecart = Math.round((b.totaux.soldeD - b.totaux.soldeC) * 1000) / 1000;
     const pager = pagerBar(b.rows.length, s, s.aux ? 'tiers' : 'compte', s.aux ? 'tiers' : 'comptes');
     return `${barreLivres(`<button class="btn btn-sm ${s.aux ? '' : 'btn-ghost'}" id="lv-aux">${s.aux ? 'Balance générale' : 'Balance auxiliaire'}</button>`, 'Exporter la balance')}
@@ -4388,7 +4411,7 @@
       ? [['account', 'Compte'], ['label', 'Intitulé'], ['debit', 'Mouvements débit'], ['credit', 'Mouvements crédit'], ['soldeD', 'Solde débiteur'], ['soldeC', 'Solde créditeur']]
       : [['numero', 'N°'], ['date', 'Date'], ['journal', 'Journal'], ['piece', 'Pièce'], ['account', 'Compte'], ['tiers', 'Tiers'], ['label', 'Libellé'], ['debit', 'Débit'], ['credit', 'Crédit'], ['lettre', 'Lettrage']];
     const rows = s.onglet === 'balance'
-      ? (s.aux ? balanceAux(lignes) : KC.balanceDepuisLignes(lignes, null, (c, t) => t || '')).rows
+      ? (s.aux ? balanceAux(lignes) : KC.balanceDepuisLignes(lignes, null, nomDeCompte())).rows
       : KC.journalDepuisLignes(lignes).pieces.flatMap(p => p.lignes.map(e => ({ ...e, numero: p.numero })));
     // `K.toCsvLine` échappe comme le reste du Cabinet : un libellé de facture contient un
     // point-virgule un jour sur dix, et un montant s'écrit à la virgule décimale.

@@ -1341,6 +1341,70 @@ discute pas avec un client » (9.8.0).
 
 ---
 
+### T-39 · GRAVE · Le livre survit à la suppression de son dossier — le correctif 9.8.5 n'a jamais tourné
+
+**Vu** : le testeur met à jour de la 9.8.3 à la 9.8.6, n'ouvre que l'onglet Balance, et **son livre
+est toujours là** — 49 écritures validées, 1 en brouillard, exactement où il s'était arrêté la
+veille. Or « Menuiserie Trabelsi SUARL » est un dossier du jeu d'exemple (`demo: true`,
+`cabcore.js:918`), le numéro de version a changé, donc `rafraichirExemple()` a bien dû refaire
+l'exemple. Les dossiers ont été retirés et recréés ; **le livre, non.**
+
+**La cause, ligne par ligne.** `removeDossierFiles(dossier, dossiers)` mélange DEUX conventions
+d'argument dans une seule fonction :
+
+```js
+const f = path.join(packRoot, folderName(dossier, folderIndex(dossiers)));  // attend un TABLEAU
+…
+const d = livreDir(dossier, dossiers);        // 9.8.5 — attend un INDEX (une Map)
+```
+
+`livreDir(dossier, collisions)` appelle `folderName`, qui fait `collisions.has(base)`. Passé un
+**tableau**, `.has` n'existe pas : ça lève un `TypeError`, le `catch` juste en dessous l'avale
+(`log('suppression livres', e)`), et le dossier des livres n'est jamais effacé. Aucun message, aucun
+écran, rien — seulement une ligne dans `main.log` que personne n'ouvre.
+
+**Et mon test ne pouvait pas l'attraper, parce qu'il n'appelle pas la fonction comme l'application.**
+
+```js
+store.removeDossierFiles(dossier, idx);      // le TEST passe un index
+getStore().removeDossierFiles(d, state.dossiers);   // le SEUL appelant passe un tableau
+```
+
+J'avais rencontré `collisions.has is not a function` en écrivant le test, et je l'ai « corrigé » en
+changeant **le test** pour qu'il passe un index — au lieu de voir que l'appelant réel, lui, ne
+pouvait pas en passer un. Le test prouvait donc que ma ligne marche quand on l'appelle comme elle
+veut être appelée. C'est exactement la faute que le projet combat depuis la 7.2.0, dans une forme
+qu'on n'avait pas encore vue : **un test qui appelle une fonction autrement que son unique appelant
+ne prouve rien de l'application.**
+
+**Conséquence mesurable** : le défaut du « livre orphelin » que la 9.8.5 annonce corriger est intact.
+Les identifiants de l'exemple sont stables (`MF:<matricule>`), donc l'exemple se recharge avec des
+paquets neufs et **le livre de la version d'avant** — ce que le commit de la 9.8.5 décrit mot pour
+mot comme corrigé. Sur un vrai dossier supprimé par erreur puis recréé, le livre du client précédent
+se rattacherait au nouveau.
+
+**Et ça croise T-35** : supprimer un vrai dossier laissait donc son livre sur le disque. Ce n'est pas
+une consolation — c'est un livre fantôme que rien ne liste, qui n'est dans aucune sauvegarde locale
+et qui se recollera au premier dossier de même identifiant.
+
+**Ancrage** : `src/cabinet/cabstore.js:741` (`removeDossierFiles`) · `:514` (`livreDir`) · `:475`
+(`folderName`) · `src/cabinet/main.js:559` (l'appelant, qui passe `state.dossiers`) ·
+`test/run-tests.js:12997` (le test qui passe un index).
+
+**Piste** : construire l'index UNE fois en tête de `removeDossierFiles` et s'en servir pour les deux
+moitiés — une fonction n'a qu'une convention d'argument. Et **le test appelle exactement comme
+l'appelant** : avec le tableau. Se prouve en remettant `livreDir(dossier, dossiers)`.
+
+**Ce qu'on ne fait pas** : retirer le `catch`. Un échec d'effacement ne doit pas faire échouer le
+rechargement de l'exemple. Mais il doit se voir autrement que dans un journal — au minimum compté
+et remonté à l'appelant.
+
+**Règle du projet violée** : « tout test se prouve en réintroduisant son défaut » (7.2.0) — celui-ci
+tombait bien, mais sur un appel que personne ne fait · « un test qui ne peut pas échouer est pire
+que pas de test » (6.8.1) · « un refus qu'on avale en silence est pire que le refus » (9.8.0).
+
+---
+
 ## Le plan de parcours — ce qui est testé, ce qui ne l'est pas
 
 *Posé le 18/09/2026, après le premier tour. « Il faut tout tester, pas que la partie qu'on vient de

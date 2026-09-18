@@ -738,21 +738,34 @@ function createCabStore(dir, opts) {
 
   // Supprimer un dossier : ses paquets partent avec lui. On ne garde pas les pièces d'un client qu'on
   // a décidé d'effacer — ce serait le pire des deux mondes (plus visible, mais toujours là).
+  // UNE seule convention d'argument par fonction. La 9.8.5 en a mélangé deux ici : la moitié des
+  // paquets construit son index elle-même (elle attend donc un TABLEAU de dossiers), et la ligne
+  // ajoutée pour les livres passait ce tableau à `livreDir`, qui attend l'INDEX déjà construit.
+  // `folderName` y fait `collisions.has(base)` : sur un tableau, ça lève, le `catch` l'avalait, et
+  // le dossier des livres n'était jamais effacé. Aucun écran, aucun message — une ligne dans
+  // `main.log`, et le correctif annoncé qui ne tournait pas une seule fois.
+  // L'index se construit donc UNE fois, en tête, et sert aux deux moitiés.
   function removeDossierFiles(dossier, dossiers) {
-    const f = path.join(packRoot, folderName(dossier, folderIndex(dossiers)));
-    try { if (fs.existsSync(f)) fs.rmSync(f, { recursive: true, force: true }); } catch (e) { log('suppression dossier', e); }
+    const idx = folderIndex(dossiers);
+    const restes = [];
+    const f = path.join(packRoot, folderName(dossier, idx));
+    try { if (fs.existsSync(f)) fs.rmSync(f, { recursive: true, force: true }); } catch (e) { log('suppression dossier', e); restes.push('paquets'); }
     (dossier.packs || []).forEach(p => { if (p.path) removePack(p.path); });
-    // Et ses livres (9.8.5). Ils partaient avec les paquets qu'ils traduisent — sauf qu'ils ne
-    // partaient pas : un livre orphelin restait sur le disque, et se rattachait au dossier suivant
-    // qui portait le même identifiant. C'est ce qui arrivait au jeu d'exemple, dont les
-    // identifiants sont stables (`MF:<matricule>`) : on le rechargeait avec des paquets neufs et un
-    // livre de la version d'avant. L'appelant qui efface un VRAI dossier prend sa sauvegarde
-    // nommée avant (« ce qui détruit demande », 7.12.0) : ce livre-là est donc récupérable.
+    // Et ses livres. Un livre orphelin reste sur le disque et se rattache au dossier suivant qui
+    // porte le même identifiant : le jeu d'exemple tombe pile dedans, ses identifiants sont stables
+    // (`MF:<matricule>`), donc on le recharge avec des paquets neufs et le livre de la version
+    // d'avant. L'appelant qui efface un VRAI dossier prend sa sauvegarde nommée avant (« ce qui
+    // détruit demande », 7.12.0) — mais elle ne contient PAS les livres (T-35), donc la copie
+    // externe est le seul filet ici, et c'est écrit dans l'écran de suppression.
     try {
-      const d = livreDir(dossier, dossiers);
+      const d = livreDir(dossier, idx);
       if (fs.existsSync(d)) fs.rmSync(d, { recursive: true, force: true });
-    } catch (e) { log('suppression livres', e); }
-    return true;
+    } catch (e) { log('suppression livres', e); restes.push('livres'); }
+    // Un échec d'effacement ne fait pas échouer l'appelant — refuser de recharger l'exemple parce
+    // qu'un fichier résiste serait pire. Mais il ne vit plus UNIQUEMENT dans le journal : il est
+    // rendu, donc un test peut l'exiger. C'est ce qui manquait : le `catch` avalait un TypeError
+    // de programmation, et rien, nulle part, ne pouvait s'en apercevoir.
+    return { ok: !restes.length, restes };
   }
 
   // Remettre tous les paquets à leur place canonique et corriger les chemins enregistrés. Sert à la

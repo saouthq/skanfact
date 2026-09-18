@@ -7,6 +7,41 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 9.8.7 — 18/09/2026
+
+**Deux défauts trouvés en testant le Cabinet écran par écran, et les deux sont des trous de la
+9.8.5 elle-même.**
+
+**La colonne « Intitulé » n'a jamais porté le nom du compte.** Le grand livre, la balance générale
+et l'export CSV passaient `(c, t) => t || ''` au moteur : ils affichaient le **tiers**. Tant que
+T-13 fabriquait un tiers en découpant le libellé, quelque chose s'affichait — « Agence Immobilière
+Le Lac » en face du 606, faux mais visible. La 9.8.5 a rendu au tiers son honnêteté, et la colonne
+s'est vidée : **corriger la donnée ne corrige pas l'écran qui ne l'a jamais lue.** Sur une balance
+générale, « Intitulé » désigne le nom du compte — c'est la définition du document ; le tiers a son
+écran à lui, la balance auxiliaire, qui le montre en première colonne. Un résolveur unique
+(`nomDeCompte`) lit le plan du livre, retombe sur le plan comptable de référence, puis sur le tiers.
+La balance auxiliaire garde le sien, et c'est l'exception **nommée** dans le test : elle échange
+`account` et `tiers` avant d'appeler.
+
+**Le livre survivait à la suppression de son dossier : le correctif de la 9.8.5 n'a jamais tourné.**
+`removeDossierFiles` mélangeait deux conventions d'argument — la moitié des paquets construit son
+index elle-même et attend un **tableau**, la ligne ajoutée pour les livres passait ce tableau à
+`livreDir`, qui attend l'**index**. `folderName` y fait `collisions.has(...)` : sur un tableau ça
+lève, le `catch` l'avalait, et le dossier des livres n'était jamais effacé. Aucun écran, aucun
+message — une ligne dans `main.log`. Le défaut du « livre orphelin » que la 9.8.5 annonce corriger
+était donc intact : l'exemple se rechargeait avec des paquets neufs et le livre de la version
+d'avant. L'index se construit maintenant **une fois**, en tête, et sert aux deux moitiés ; un échec
+d'effacement ne fait toujours pas échouer l'appelant, mais il est **rendu** au lieu de disparaître.
+
+**Et la leçon de méthode, la plus chère.** Mon test appelait `removeDossierFiles(dossier, idx)` —
+avec un index. Le seul appelant, lui, passe `state.dossiers`, un tableau. J'avais rencontré
+`collisions.has is not a function` en écrivant ce test, et je l'ai « corrigé » en changeant **le
+test**. Il prouvait donc que ma ligne marche quand on l'appelle comme elle veut être appelée :
+**un test qui appelle une fonction autrement que son unique appelant ne prouve rien de
+l'application.** Il passe désormais le tableau.
+
+559 tests, 0 erreur de lint, cinq défauts réintroduits un par un font tomber leur test.
+
 ## 9.8.6 — 18/09/2026
 
 **L'app du comptable ne se construisait plus.** La 9.8.5 est complète et verte ; c'est sa

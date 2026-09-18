@@ -12994,9 +12994,44 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     store.ecrireLivre(dossier, C.livreVide(dossier.id, 2026), idx);
     const f = store.livrePath(dossier, 2026, idx);
     assert.ok(fs.existsSync(f), 'le livre n\'a pas été écrit');
-    store.removeDossierFiles(dossier, idx);
+    // ON APPELLE COMME L'APPELANT RÉEL, avec le TABLEAU de dossiers — `main.js` n'a jamais eu
+    // d'index sous la main. Ma première version passait `idx`, donc elle prouvait que la ligne
+    // marche quand on l'appelle comme elle veut être appelée ; le seul appelant, lui, lui passait un
+    // tableau, `folderName` y faisait `collisions.has(...)`, ça levait, le `catch` l'avalait, et le
+    // livre restait sur le disque. Le correctif n'a jamais tourné une seule fois (T-39).
+    const r = store.removeDossierFiles(dossier, [dossier]);
     assert.ok(!fs.existsSync(f), 'le livre survit à la suppression de son dossier');
+    // Et l'échec ne se perd plus dans le journal : il est rendu. C'est la moitié qui manquait —
+    // un TypeError de programmation ne pouvait alerter personne.
+    assert.deepStrictEqual(r, { ok: true, restes: [] }, 'la suppression ne rend pas son résultat');
     fs.rmSync(racine, { recursive: true, force: true });
+  });
+
+  t('9.8.7 : la colonne « Intitulé » porte le NOM DU COMPTE, jamais le tiers', () => {
+    // Le grand livre, la balance générale et l'export CSV passaient `(c, t) => t || ''` : ils
+    // affichaient le tiers. Tant que T-13 fabriquait un tiers depuis le libellé, quelque chose
+    // s'affichait ; la 9.8.5 a vidé la colonne. On teste la RÈGLE — ces trois écrans résolvent le
+    // libellé par le NOM DU COMPTE — et non la forme de la ligne, qui retomberait sur du code juste
+    // au premier refactor (7.16.0).
+    const app = lireSource('src', 'cabinet', 'renderer', 'app.js');
+    const code = codeSeulement(app);
+    assert.ok(code.includes('function nomDeCompte('), 'le résolveur de nom de compte a disparu');
+    // Chaque appel au grand livre et à la balance GÉNÉRALE passe par lui. La balance AUXILIAIRE est
+    // l'exception NOMMÉE : elle échange `account` et `tiers` avant d'appeler, donc `(c, t) => t` y
+    // rend le vrai numéro de compte — une exception anonyme serait un trou (9.4.10).
+    const lignes = code.split('\n').filter(l => /(?:grandLivre|balance)DepuisLignes\(/.test(l));
+    assert.ok(lignes.length >= 4, `on attend au moins quatre points d'appel, vu ${lignes.length}`);
+    const aux = lignes.filter(l => l.includes('avecTiers'));
+    assert.strictEqual(aux.length, 1, 'la balance auxiliaire doit être le seul appel sur les lignes échangées');
+    lignes.filter(l => !l.includes('avecTiers')).forEach(l => {
+      assert.ok(l.includes('nomDeCompte()'),
+        'un écran résout encore le libellé autrement que par le nom du compte : ' + l.trim().slice(0, 120));
+    });
+    // Et le nom se lit dans le PLAN du livre, pas dans les lignes : c'est là qu'il est écrit.
+    const zone = code.slice(code.indexOf('function nomDeCompte('), code.indexOf('function vueGrandLivre('));
+    assert.ok(zone.length > 200 && zone.length < 1200, `tranche suspecte (${zone.length} caractères)`);
+    assert.ok(/livresState\.livre[\s\S]*\.plan/.test(zone), 'le résolveur ne lit pas le plan du livre');
+    assert.ok(zone.includes('KC.libelleDuPlan('), 'sans livre, le résolveur ne retombe pas sur le plan comptable');
   });
 
   t('9.8.5 : le Cabinet migre le livre À LA LECTURE, jamais à l\'écriture', () => {
