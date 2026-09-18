@@ -950,6 +950,36 @@ correction repartira dans l'autre sens à la version suivante.
 
 ---
 
+### T-29 · MOYEN · Les deux boutons « Valider par lot » ne peuvent rien valider de ce qui est affiché
+
+**Vu** : le panneau « Le brouillard » contient **une** écriture — `2026-08-31 · BQ · COM0831`. Juste
+au-dessus, deux boutons : « **Valider tout le journal VT** » et « **Valider le mois septembre
+2026** ». Cliquer l'un ou l'autre donne : « **Rien à valider — Aucune écriture en brouillard ne
+correspond.** »
+
+Les deux périmètres viennent de l'**en-tête de saisie** (journal `VT`, date du jour `18/09/2026`),
+jamais du contenu du brouillard. Le journal proposé par défaut et le mois du jour n'ont aucune
+raison de correspondre à ce qui attend d'être validé.
+
+**Pourquoi ça compte** : c'est la règle 7.0.0 — *un bouton qui accepte le clic et ne fait rien est
+pire qu'un bouton absent* — et la 9.4.5 — *un bouton éteint dit pourquoi*. Ici il n'est même pas
+éteint : il est vif, il se clique, et il ouvre une fenêtre pour dire qu'il n'y avait rien à faire.
+Répété, ça apprend à ne plus s'en servir — or valider un lot est précisément le geste qui fait
+gagner du temps sur une journée de saisie.
+
+**Ancrage** : `src/cabinet/renderer/app.js:3709-3710` — les libellés sont construits sur
+`p.journal` et `moisLabelCourt(p.date.slice(0, 7))`, c'est-à-dire sur la pièce **en cours de
+saisie**, pas sur `brouillards`.
+
+**Ce qui est juste et ne doit pas bouger** : suivre l'en-tête **quand on vient de taper** est le bon
+comportement — on valide ce qu'on vient de saisir. Et le refus est honnête.
+
+**Piste** : proposer les périmètres qui **existent** dans le brouillard (« Valider les 3 de BQ »,
+« Valider les 7 d'août ») ; à défaut, éteindre le bouton en disant combien il trouverait — le
+compte est connu avant le clic.
+
+---
+
 ### T-11 · confirmé à l'écran (18/09)
 
 Le testeur a cliqué une ligne de pièce dans un panneau client : **rien ne se passe**. Le constat
