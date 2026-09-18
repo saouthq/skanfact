@@ -736,6 +736,36 @@ qui a ses à-nouveaux.
 
 ---
 
+### T-24 · MOYEN · Les contrôles de clôture sont lus UNE fois et ne se rafraîchissent jamais
+
+**Vu** : le contrôle annonce « **3 mois sans déclaration préparée (2026-06, 2026-07, 2026-08)** »
+alors qu'août venait d'être préparé dans l'onglet Déclaration. Il devrait en rester deux.
+
+**Ancrage** : `src/cabinet/renderer/app.js:2699` — `if (!s.cloture) { chargerCloture(…); return; }`.
+`s.cloture` n'est remis à `null` qu'au **changement de couple (dossier, exercice)** (`app.js:1955`).
+Préparer une déclaration, écrire une écriture, valider un brouillard, poser un inventaire : aucun de
+ces gestes ne l'invalide, et tous changent les six contrôles.
+
+**Pourquoi ça compte** — et c'est la seconde moitié qui est sérieuse : `s.cloture.controles` sert
+aussi à **construire la question posée avant de clôturer** (`app.js:2702-2706`). Le comptable peut
+donc lire, dans la fenêtre de confirmation du geste le plus définitif de l'application, une liste de
+manques **déjà réglés** — ou pire, ne pas y lire un manque apparu depuis. Il clôture alors sur une
+photo périmée.
+
+C'est la règle 7.1.x, appliquée à l'écran où elle coûte le plus cher : *un état lu une fois au
+démarrage se périme*. Et la règle 6.8.1 : *un compteur et la liste qu'il annonce se calculent avec
+la même fonction* — ici avec les mêmes **données**.
+
+**Ce qui est juste et ne doit pas bouger** : ne pas relire à chaque affichage (règle 9.2.0 — un
+redessin systématique détache les menus ouverts). La bonne parade est celle que le projet a déjà
+retenue : **les gestes qui modifient le livre reposent l'état eux-mêmes.** Ici, il en manque.
+
+**Piste** : `s.cloture = null` dans les gestes qui touchent aux déclarations, aux écritures, aux
+immobilisations et à l'inventaire ; et, à défaut, relire à l'ouverture de l'onglet Exercice — c'est
+un écran qu'on n'ouvre pas dix fois par heure.
+
+---
+
 ### T-11 · confirmé à l'écran (18/09)
 
 Le testeur a cliqué une ligne de pièce dans un panneau client : **rien ne se passe**. Le constat
