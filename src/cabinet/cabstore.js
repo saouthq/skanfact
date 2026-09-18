@@ -612,6 +612,10 @@ function createCabStore(dir, opts) {
       try { fs.renameSync(f, aside); } catch { /* on garde le fichier tel quel */ }
       return { illisible: true, motif: 'Ce fichier n\'a pas la forme d\'un livre.', misDeCote: aside };
     }
+    // Un livre écrit avant la 9.8.5 reçoit ici la case `tiers` de ses lignes et retrouve les NOMS
+    // de ses comptes (voir `migrerLivre`). Pure, idempotente, aucun chiffre touché — et posée à la
+    // LECTURE, donc un livre qu'on ne rouvre jamais n'est jamais réécrit pour rien.
+    KC.migrerLivre(r.livre);
     return { livre: r.livre, entete: r.entete, fichier: f };
   }
 
@@ -738,6 +742,16 @@ function createCabStore(dir, opts) {
     const f = path.join(packRoot, folderName(dossier, folderIndex(dossiers)));
     try { if (fs.existsSync(f)) fs.rmSync(f, { recursive: true, force: true }); } catch (e) { log('suppression dossier', e); }
     (dossier.packs || []).forEach(p => { if (p.path) removePack(p.path); });
+    // Et ses livres (9.8.5). Ils partaient avec les paquets qu'ils traduisent — sauf qu'ils ne
+    // partaient pas : un livre orphelin restait sur le disque, et se rattachait au dossier suivant
+    // qui portait le même identifiant. C'est ce qui arrivait au jeu d'exemple, dont les
+    // identifiants sont stables (`MF:<matricule>`) : on le rechargeait avec des paquets neufs et un
+    // livre de la version d'avant. L'appelant qui efface un VRAI dossier prend sa sauvegarde
+    // nommée avant (« ce qui détruit demande », 7.12.0) : ce livre-là est donc récupérable.
+    try {
+      const d = livreDir(dossier, dossiers);
+      if (fs.existsSync(d)) fs.rmSync(d, { recursive: true, force: true });
+    } catch (e) { log('suppression livres', e); }
     return true;
   }
 

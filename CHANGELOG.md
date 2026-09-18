@@ -7,6 +7,60 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 9.8.5 — 18/09/2026
+
+**Un compte porte un nom de compte, et un tiers porte le nom du tiers.**
+
+Trouvé sur le terrain, en testant l'app Cabinet écran par écran avec Skander dans le rôle d'un
+comptable. Le CSV d'un paquet porte **deux colonnes distinctes** — « Tiers » (qui) et « Libellé »
+(quoi). Depuis la 9.2.0, le livre du dossier ne gardait que la seconde : la forme d'une ligne
+n'avait pas de case pour le tiers. `lignesDuLivre` en inventait donc un à partir du libellé, et
+`assurerCompte` nommait chaque compte d'après la première écriture qui le touchait.
+
+Une seule ligne de code, **six écrans faux** :
+
+- le **lettrage** groupait par FACTURE et non par client — une facture et son règlement, qui n'ont
+  jamais le même libellé, devenaient deux « tiers » différents, et leur lettrage parfaitement juste
+  était dénoncé comme faux. Seize alertes orange sur du travail correct ;
+- la **balance âgée** rendait une ligne par facture sous une colonne « Tiers », et son pied comptait
+  « 5 tiers » là où il y avait 5 factures ;
+- la **balance auxiliaire** prenait le libellé comme numéro de compte ;
+- le **bilan** et l'**état de résultat** étiquetaient chaque rubrique du nom d'une opération :
+  le chiffre d'affaires de l'exercice s'appelait « Facture FAC-2026-014 — Clinique Les Jasmins » ;
+- le **grand livre** montrait le plan comptable entier ainsi nommé — 401 « Achat LOC-2026-08 »,
+  532 « Paiement salaire Ahmed Ben Salah mai 2026 » ;
+- et la **saisie**, où c'était le pire : le sélecteur de compte **recopiait** ce nom dans le libellé
+  de la ligne. Une facture de papeterie partait avec trois lignes « Achat LOC-2026-08 — Agence
+  Immobilière Le Lac », validées, numérotées, définitives.
+
+Ce qui change :
+
+- **`tiers` entre dans la forme d'une ligne de `livre.json`.** C'est une décision de format, et le
+  test du format tombe pour le dire (règle 9.7.0). Le test couvre désormais la forme d'une LIGNE,
+  pas seulement le socle du livre : c'est par ce trou-là que le défaut est passé.
+- **`PLAN_COMPTABLE` déménage de core.js vers compta.js**, et core.js le réexporte (un test compare
+  les deux par identité d'objet). Le Cabinet ne charge pas core.js et avait besoin de NOMMER un
+  compte — la règle de découpage de la 9.1.0 le veut là.
+- **`assurerCompte` nomme par le plan** ; le libellé reçu n'est plus qu'un repli pour un numéro que
+  le plan ne connaît pas.
+- **`migrerLivre`** rend leurs noms aux comptes d'un livre écrit avant, pose la case `tiers` à vide,
+  et ne touche à aucun chiffre. Posée à la LECTURE : un livre qu'on n'ouvre jamais n'est jamais
+  réécrit pour rien. Elle ne renomme **jamais** un compte que le cabinet a nommé lui-même.
+- **Les livres d'un dossier partent avec le dossier.** Un livre orphelin restait sur le disque et se
+  rattachait au dossier suivant portant le même identifiant — ce qui arrivait au jeu d'exemple, dont
+  les identifiants sont stables.
+
+**Limite à connaître** : les lignes déjà écrites gardent une case `tiers` vide jusqu'à ce que leurs
+paquets soient relus (« Relire les paquets reçus »). « (sans tiers) » est honnête ; un nom de tiers
+recopié du libellé ne l'était pas. Et les écritures **validées** déjà parties avec un libellé faux ne
+sont pas réécrites : une validée ne se modifie jamais, elle se contre-passe.
+
+**Pourquoi en stable et pas en bêta** : la règle veut la bêta pour ce qui touche au moteur comptable
+ou au format d'un fichier, et c'est le cas ici. Skander teste l'application en ce moment même et a
+demandé la stable pour pouvoir continuer sur une version corrigée. L'ajout d'un champ à un format
+est compatible (règle 9.7.0), la migration est pure et idempotente, et sept défauts réintroduits un
+par un font tomber leur test.
+
 ## 9.8.4 — 18/09/2026
 
 **Une version d'essai construit désormais les DEUX applications.**

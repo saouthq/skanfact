@@ -12841,6 +12841,18 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.deepStrictEqual(Object.keys(L).sort(),
       SOCLE.concat(['inventaires']).sort(),          // 9.7.0 : l'inventaire de stock
       'la forme du livre a changé — si c\'est voulu, c\'est une décision à écrire dans le cahier');
+    // 9.8.5 — la forme d'une LIGNE est figée elle aussi. Ce test manquait, et c'est le trou par
+    // lequel T-13 est passé : la 9.2.0 a écrit une ligne SANS `tiers`, personne ne l'a vu, et le
+    // nom du client s'est perdu sur six écrans. `ajouterEcriture` normalise et jette ce qu'elle ne
+    // connaît pas — donc ce que cette liste ne dit pas n'existe pas.
+    const av = C.ajouterEcriture(L, {
+      date: '2026-03-04', journal: 'VT', piece: 'X1',
+      lignes: [{ compte: '411', tiers: 'Clinique', libelle: 'Facture', debit: 10 },
+        { compte: '706', tiers: 'Clinique', libelle: 'Facture', credit: 10 }]
+    }, 'test', 1);
+    assert.deepStrictEqual(Object.keys(av.lignes[0]).sort(),
+      ['compte', 'credit', 'debit', 'lettre', 'libelle', 'tiers', 'tiersId'],
+      'la forme d\'une ligne a changé — c\'est une décision de format, pas un effet de bord');
     // Et la surcharge : un guide du dossier qui porte le même id REMPLACE celui du cabinet, il ne
     // s'y ajoute pas — un doublon dans la liste, on ne saurait pas lequel est le bon.
     const K = require('../src/cabinet/cabcore.js');
@@ -12854,6 +12866,130 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       { correspondance: [{ de: '411', vers: '9411' }] });
     assert.strictEqual(cr.length, 1, 'une exception du dossier s\'ajoute au lieu de remplacer');
     assert.strictEqual(cr[0].vers, '9411');
+  });
+
+  t('9.8.5 : le TIERS d\'une ligne survit au livre, et le lettrage groupe par CLIENT', () => {
+    // Le défaut T-13, trouvé sur le terrain le 18/09/2026. Le CSV d'un paquet porte DEUX colonnes
+    // distinctes — « Tiers » (qui) et « Libellé » (quoi) — et le livre ne gardait que la seconde.
+    // `lignesDuLivre` inventait alors un tiers à partir du libellé, et le lettrage se mettait à
+    // raisonner par FACTURE au lieu de par client : une facture et son règlement, qui n'ont jamais
+    // le même libellé, devenaient deux « tiers » différents et leur lettrage était déclaré faux.
+    const C = require('../src/renderer/compta.js');
+    const L = C.livreVide('D', 2026);
+    const poser = (piece, compte, tiers, libelle, d, c, lettre) => {
+      const e = C.ajouterEcriture(L, {
+        date: '2026-03-04', journal: 'VT', piece,
+        lignes: [{ compte, tiers, libelle, debit: d, credit: c, lettre },
+          { compte: '706', tiers, libelle, debit: c, credit: d }]
+      }, 'test', 1);
+      C.validerEcriture(L, e.id, 'test', 1);
+      return e;
+    };
+    poser('FAC-1', '411', 'Clinique Les Jasmins', 'Facture FAC-1 — Clinique Les Jasmins', 100, 0, 'A');
+    poser('REG-1', '411', 'Clinique Les Jasmins', 'Règlement FAC-1 — Clinique (VIR 42)', 0, 100, 'A');
+    const lignes = C.lignesDuLivre(L);
+    const l411 = lignes.filter(x => x.account === '411');
+    assert.deepStrictEqual([...new Set(l411.map(x => x.tiers))], ['Clinique Les Jasmins'],
+      'le tiers d\'une ligne n\'est pas son NOM de tiers : T-13 est revenu');
+    assert.ok(l411.every(x => x.tiers !== x.label),
+      'le tiers reprend le libellé — les deux colonnes redeviennent identiques');
+    // La conséquence, et c'est elle qui compte : UNE seule ligne de lettrage, et zéro faux.
+    const let1 = C.lettrageDepuisLignes(lignes, '411', '2026-04-01');
+    assert.strictEqual(let1.rows.length, 1, 'le lettrage groupe par pièce au lieu de grouper par client');
+    assert.deepStrictEqual(let1.lettragesFaux, [],
+      'un lettrage juste est déclaré faux : le groupe tiers|lettre a été coupé en deux');
+    // Et la balance âgée : autant de lignes que de CLIENTS distincts, jamais que de factures.
+    const agee = C.balanceAgeeDepuisLignes(lignes, '411', '2026-04-01');
+    assert.ok(agee.tiers.length <= 1, 'la balance âgée rend une ligne par facture');
+  });
+
+  t('9.8.5 : un compte porte un NOM DE COMPTE, jamais le libellé d\'une écriture', () => {
+    // Deuxième moitié de T-13. `assurerCompte` nommait le compte avec le libellé de la ligne qui le
+    // créait : le 401 s'appelait « Achat LOC-2026-08 — Agence Immobilière Le Lac ». Ça ressortait au
+    // grand livre, à la balance, au bilan, dans la colonne INTITULÉ de la saisie — et le sélecteur
+    // de compte RECOPIAIT ce nom dans la ligne saisie, donc dans une écriture validée et définitive.
+    const C = require('../src/renderer/compta.js');
+    const L = C.livreVide('D', 2026);
+    C.assurerCompte(L, '401', 'Achat LOC-2026-08 — Agence Immobilière Le Lac');
+    C.assurerCompte(L, '706', 'Facture FAC-2026-014 — Clinique Les Jasmins (HT 19 %)');
+    C.assurerCompte(L, '4366', 'TVA déductible LOC-2026-08');
+    const nom = c => (L.plan.find(x => x.compte === c) || {}).libelle;
+    assert.strictEqual(nom('401'), 'Fournisseurs d\'exploitation');
+    assert.strictEqual(nom('706'), 'Prestations de services');
+    assert.strictEqual(nom('4366'), 'TVA déductible');
+    // Le plus LONG préfixe gagne : 4366 n'est pas « Tiers ».
+    assert.strictEqual(C.libelleDuPlan('4366'), 'TVA déductible');
+    assert.strictEqual(C.libelleDuPlan('4'), 'Tiers');
+    // Un numéro que le plan ne connaît pas : le libellé reçu sert de repli, et sinon on le DIT.
+    C.assurerCompte(L, '999901', 'Compte maison du cabinet');
+    assert.strictEqual(nom('999901'), 'Compte maison du cabinet');
+    C.assurerCompte(L, '999902', '');
+    assert.strictEqual(nom('999902'), 'Compte hors plan');
+    assert.strictEqual(C.libelleDuPlan('999903'), '',
+      'libelleDuPlan invente un nom pour un compte qu\'il ne connaît pas');
+    // Et la table vit à UN seul endroit : core.js la réexporte, il n'en garde pas une copie (9.6.1).
+    const Core = require('../src/renderer/core.js');
+    assert.strictEqual(Core.PLAN_COMPTABLE, C.PLAN_COMPTABLE,
+      'core.js a une COPIE du plan comptable : les deux vont diverger');
+  });
+
+  t('9.8.5 : un livre écrit avant retrouve ses noms de compte, sans qu\'un chiffre bouge', () => {
+    const C = require('../src/renderer/compta.js');
+    const L = C.livreVide('D', 2026);
+    // Un livre tel que la 9.2.0 l'écrivait : des comptes nommés d'après une écriture, des lignes
+    // sans case `tiers`.
+    L.plan = [
+      { compte: '401', libelle: 'Achat LOC-2026-08 — Agence Immobilière Le Lac', nature: 'tiers', source: 'import' },
+      { compte: '532', libelle: 'Paiement salaire Ahmed Ben Salah mai 2026', nature: 'tresorerie', source: 'import' },
+      { compte: '606', libelle: 'Fournitures de bureau (nommé par le cabinet)', nature: 'gestion', source: 'cabinet' }
+    ];
+    L.ecritures = [{
+      id: 'e1', statut: 'validee', numero: 1, date: '2026-03-04', journal: 'AC', piece: 'X',
+      lignes: [{ compte: '401', libelle: 'Achat LOC-2026-08', debit: 0, credit: 100 }]
+    }];
+    C.migrerLivre(L);
+    const nom = c => (L.plan.find(x => x.compte === c) || {}).libelle;
+    assert.strictEqual(nom('401'), 'Fournisseurs d\'exploitation');
+    assert.strictEqual(nom('532'), 'Banques');
+    assert.strictEqual(nom('606'), 'Fournitures de bureau (nommé par le cabinet)',
+      'un compte nommé PAR LE CABINET a été renommé : c\'est son choix, pas notre table');
+    assert.strictEqual(L.ecritures[0].lignes[0].tiers, '',
+      'la migration a inventé un tiers au lieu de laisser la case vide');
+    assert.strictEqual(L.ecritures[0].lignes[0].credit, 100, 'la migration a touché un chiffre');
+    // Idempotente : la relancer ne change rien.
+    const avant = JSON.stringify(L);
+    C.migrerLivre(L);
+    assert.strictEqual(JSON.stringify(L), avant, 'migrerLivre n\'est pas idempotente');
+  });
+
+  t('9.8.5 : les livres d\'un dossier partent AVEC le dossier', () => {
+    // Un livre orphelin restait sur le disque et se rattachait au dossier suivant qui portait le
+    // même identifiant. Le jeu d'exemple tombait pile dedans : ses identifiants sont stables
+    // (`MF:<matricule>`), donc on le rechargeait avec des paquets neufs et le livre de la version
+    // d'avant — celui-là même qu'on venait de corriger.
+    const os2 = require('os');
+    const racine = fs.mkdtempSync(path.join(os2.tmpdir(), 'cab-livre-'));
+    const store = require('../src/cabinet/cabstore.js').createCabStore(racine);
+    store.create('mot-de-passe-assez-long', { cabinet: { name: 'Cabinet' }, dossiers: [] });
+    const dossier = { id: 'MF:1234567A', name: 'Client Test', matricule: '1234567A', packs: [] };
+    const C = require('../src/renderer/compta.js');
+    const idx = store.folderIndex([dossier]);
+    store.ecrireLivre(dossier, C.livreVide(dossier.id, 2026), idx);
+    const f = store.livrePath(dossier, 2026, idx);
+    assert.ok(fs.existsSync(f), 'le livre n\'a pas été écrit');
+    store.removeDossierFiles(dossier, idx);
+    assert.ok(!fs.existsSync(f), 'le livre survit à la suppression de son dossier');
+    fs.rmSync(racine, { recursive: true, force: true });
+  });
+
+  t('9.8.5 : le Cabinet migre le livre À LA LECTURE, jamais à l\'écriture', () => {
+    // Posée à la lecture, la migration ne réécrit pas un livre qu'on n'ouvre jamais — et elle
+    // s'applique quoi qu'il arrive, y compris si l'écran ne fait que lire.
+    const store = lireSource('src', 'cabinet', 'cabstore.js');
+    const zone = store.slice(store.indexOf('function lireLivre('), store.indexOf('function ecrireLivre('));
+    assert.ok(zone.includes('KC.migrerLivre('), 'lireLivre ne migre pas le livre');
+    const zoneW = store.slice(store.indexOf('function ecrireLivre('), store.indexOf('function ecrireLivre(') + 1200);
+    assert.ok(!zoneW.includes('migrerLivre('), 'la migration est posée à l\'écriture : elle réécrirait des livres pour rien');
   });
 
   t('9.3.0 : un justificatif est un chemin RELATIF, rangé avec le dossier', () => {

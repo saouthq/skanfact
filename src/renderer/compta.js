@@ -525,6 +525,89 @@
     { code: 'AN', libelle: 'À-nouveaux', type: 'an' }
   ];
 
+  // ---------------------------------------------------------------- le plan comptable (9.8.5)
+  //
+  // Déplacé de core.js : le Cabinet ne charge pas core.js, et il a besoin de NOMMER un compte. La
+  // règle de découpage de la 9.1.0 le veut ici — cette table ne prend pas `data`, elle prend un
+  // numéro. core.js la réexporte, et un test compare les deux par identité d'objet (9.6.1).
+  //
+  // Aucun de ces numéros n'est une vérité (règle 6.3.0) : ils suivent l'usage tunisien, chaque
+  // cabinet a les siens, et le plan d'un dossier les écrase. Ce qui compte, c'est qu'un compte ait
+  // un NOM de compte — et pas, comme jusqu'à la 9.8.4, le libellé de la première écriture qui l'a
+  // touché.
+  const PLAN_COMPTABLE = [
+    ['1', 'Capitaux propres et passifs non courants'],
+    ['10', 'Capital'], ['101', 'Capital social'], ['11', 'Réserves'], ['12', 'Résultats reportés'],
+    ['13', 'Résultat de l\'exercice'], ['131', 'Résultat bénéficiaire'], ['135', 'Résultat déficitaire'],
+    ['14', 'Autres capitaux propres'], ['15', 'Provisions pour risques et charges'],
+    ['16', 'Emprunts et dettes assimilées'], ['17', 'Dettes rattachées à des participations'], ['18', 'Comptes de liaison'],
+    ['2', 'Actifs non courants'],
+    ['21', 'Immobilisations incorporelles'], ['213', 'Logiciels'], ['22', 'Immobilisations corporelles'],
+    ['221', 'Terrains'], ['222', 'Constructions'], ['223', 'Installations techniques et matériel'],
+    ['224', 'Matériel de transport'], ['228', 'Autres immobilisations corporelles'], ['2282', 'Matériel de bureau'],
+    ['2283', 'Matériel informatique'], ['2284', 'Mobilier'], ['23', 'Immobilisations en cours'],
+    ['24', 'Immobilisations à statut juridique particulier'], ['25', 'Participations'],
+    ['26', 'Autres immobilisations financières'], ['27', 'Autres actifs non courants'],
+    ['28', 'Amortissements des immobilisations'], ['281', 'Amortissements des immobilisations incorporelles'],
+    ['282', 'Amortissements des immobilisations corporelles'], ['29', 'Provisions pour dépréciation des immobilisations'],
+    ['3', 'Stocks'],
+    ['31', 'Matières premières'], ['32', 'Autres approvisionnements'], ['33', 'En-cours de production'],
+    ['34', 'Produits intermédiaires'], ['35', 'Produits finis'], ['37', 'Marchandises'], ['39', 'Provisions pour dépréciation des stocks'],
+    ['4', 'Tiers'],
+    ['40', 'Fournisseurs et comptes rattachés'], ['401', 'Fournisseurs d\'exploitation'], ['403', 'Fournisseurs — effets à payer'],
+    ['404', 'Fournisseurs d\'immobilisations'], ['408', 'Fournisseurs — factures non parvenues'], ['409', 'Fournisseurs débiteurs (avances)'],
+    ['41', 'Clients et comptes rattachés'], ['411', 'Clients'], ['413', 'Clients — effets à recevoir'], ['416', 'Clients douteux'],
+    ['418', 'Clients — produits à recevoir'], ['419', 'Clients créditeurs (avances reçues)'],
+    ['42', 'Personnel et comptes rattachés'], ['421', 'Personnel — rémunérations dues'], ['425', 'Personnel — rémunérations dues'],
+    ['4251', 'Personnel — avances et acomptes'], ['427', 'Personnel — oppositions'], ['428', 'Personnel — charges à payer'],
+    ['43', 'État et collectivités publiques'], ['431', 'État — impôt sur les bénéfices'], ['432', 'État — impôts et taxes retenus à la source'],
+    ['4321', 'Retenues à la source sur salaires (IRPP)'], ['433', 'État — autres impôts et taxes'], ['4331', 'Taxe sur les établissements (TCL)'],
+    ['4335', 'TFP et FOPROLOS'], ['434', 'État — acomptes provisionnels'], ['435', 'État — retenues à la source'],
+    ['4352', 'Retenue à la source opérée (à reverser)'], ['4358', 'Retenue à la source subie (à imputer)'],
+    ['436', 'État — taxes sur le chiffre d\'affaires'], ['4364', 'Crédit de TVA à reporter'], ['4365', 'TVA à payer'],
+    ['4366', 'TVA déductible'], ['4367', 'TVA collectée'], ['4368', 'Timbre fiscal'], ['437', 'État — obligations cautionnées'],
+    ['44', 'Sociétés du groupe et associés'], ['442', 'Associés — comptes courants'], ['4421', 'Apports en compte courant'],
+    ['446', 'Associés — dividendes à payer'],
+    ['45', 'Organismes sociaux'], ['453', 'CNSS'], ['4531', 'CNSS — cotisations à payer'],
+    ['46', 'Débiteurs et créditeurs divers'], ['47', 'Comptes transitoires ou d\'attente'], ['471', 'Compte d\'attente'],
+    ['48', 'Comptes de régularisation'], ['49', 'Provisions pour dépréciation des comptes de tiers'],
+    ['5', 'Comptes financiers'],
+    ['50', 'Placements courants'], ['53', 'Banques et établissements financiers'], ['532', 'Banques'],
+    ['54', 'Caisse'], ['58', 'Virements internes'], ['59', 'Provisions pour dépréciation des comptes financiers'],
+    ['6', 'Charges'],
+    ['60', 'Achats'], ['601', 'Achats de matières premières'], ['602', 'Achats d\'approvisionnements'],
+    ['603', 'Variation des stocks'], ['606', 'Achats non stockés (fournitures, services)'], ['607', 'Achats de marchandises'],
+    ['608', 'Frais accessoires d\'achat'],
+    ['61', 'Services extérieurs'], ['611', 'Sous-traitance'], ['613', 'Locations'], ['615', 'Entretien et réparations'],
+    ['616', 'Assurances'], ['618', 'Divers services extérieurs'],
+    ['62', 'Autres services extérieurs'], ['621', 'Personnel extérieur'], ['622', 'Honoraires'], ['623', 'Publicité'],
+    ['624', 'Transports'], ['625', 'Déplacements et réceptions'], ['626', 'Frais postaux et télécommunications'],
+    ['627', 'Services bancaires'], ['628', 'Divers'],
+    ['63', 'Charges diverses ordinaires'], ['64', 'Charges de personnel'], ['640', 'Salaires et traitements'],
+    ['641', 'Rémunérations du personnel'], ['645', 'Charges sociales'], ['647', 'Charges sociales légales'],
+    ['65', 'Charges financières'], ['651', 'Intérêts des emprunts'], ['66', 'Impôts, taxes et versements assimilés'],
+    ['661', 'Impôts et taxes sur rémunérations (TFP, FOPROLOS)'], ['665', 'Autres impôts et taxes (TCL…)'],
+    ['67', 'Pertes extraordinaires'], ['675', 'Valeur comptable des immobilisations cédées'],
+    ['68', 'Dotations aux amortissements et provisions'], ['681', 'Dotations aux amortissements'], ['69', 'Impôt sur les bénéfices'],
+    ['7', 'Produits'],
+    ['70', 'Ventes'], ['701', 'Ventes de produits finis'], ['706', 'Prestations de services'], ['707', 'Ventes de marchandises'],
+    ['708', 'Produits des activités annexes'], ['71', 'Production stockée'], ['72', 'Production immobilisée'],
+    ['73', 'Produits divers ordinaires'], ['74', 'Subventions d\'exploitation'], ['75', 'Produits financiers'],
+    ['77', 'Gains extraordinaires'], ['775', 'Produits des cessions d\'immobilisations'], ['78', 'Reprises sur amortissements et provisions'],
+    ['79', 'Transferts de charges']
+  ];
+
+  // Le nom d'un compte d'après le plan, par le plus LONG préfixe : `4366` donne « TVA déductible »
+  // et pas « Tiers ». Rend `''` quand le plan ne connaît pas le numéro — c'est à l'appelant de
+  // décider quoi mettre, et surtout pas à cette fonction d'inventer.
+  function libelleDuPlan(compte) {
+    const n = String(compte || '').trim();
+    if (!n) return '';
+    let best = null;
+    PLAN_COMPTABLE.forEach(([p, l]) => { if (n.startsWith(p) && (!best || p.length > best[0].length)) best = [p, l]; });
+    return best ? best[1] : '';
+  }
+
   // La nature d'un compte DÉDUITE de son numéro, quand le CSV importé ne la donne pas. Aucun de ces
   // rangements n'est une vérité — chaque cabinet a les siens — mais deviner vaut mieux que laisser
   // vide : une nature vide casserait la balance par classe, et personne ne saurait pourquoi.
@@ -598,18 +681,50 @@
   const livreVersionInconnue = obj => !!(obj && typeof obj === 'object'
     && typeof obj.format === 'number' && obj.format > LIVRE_FORMAT);
 
+  // Ce qu'un livre écrit AVANT la 9.8.5 doit recevoir en le relisant. Deux choses, et aucune ne
+  // touche à un chiffre :
+  //
+  //  1. La case `tiers` sur chaque ligne. Absente, elle vaut `''` — et non le libellé, qui est
+  //     précisément la confusion qu'on répare. Les lignes déjà écrites restent donc sans tiers
+  //     jusqu'à ce que leurs paquets soient relus : « (sans tiers) » est honnête, un nom de tiers
+  //     inventé ne l'est pas.
+  //  2. Le nom des comptes créés à l'import. Ils portaient le libellé de la première écriture qui
+  //     les touchait ; on leur rend leur nom de compte. Un compte que le cabinet a nommé lui-même
+  //     (`source` autre qu'`import`) n'est JAMAIS renommé — c'est son choix, pas notre table.
+  //
+  // Pure et idempotente : la relancer sur un livre déjà migré ne change rien.
+  function migrerLivre(livre) {
+    if (!livre || typeof livre !== 'object') return livre;
+    (livre.ecritures || []).forEach(e => {
+      (e.lignes || []).forEach(l => { if (typeof l.tiers !== 'string') l.tiers = ''; });
+    });
+    (livre.plan || []).forEach(c => {
+      if (c.source !== 'import') return;
+      const nom = libelleDuPlan(c.compte);
+      if (nom) c.libelle = nom;
+    });
+    return livre;
+  }
+
   const trace = (livre, qui, quoi, detail, quand) =>
     livre.audit.push({ quand: Number(quand) || 0, qui: String(qui || ''), quoi, detail: detail || '' });
 
   // Le plan reçoit un compte qu'il n'a pas. JAMAIS un refus silencieux : une ligne qui référence un
   // compte absent doit entrer, avec son compte marqué `import`, sinon l'écriture disparaîtrait et
   // la balance serait fausse sans que rien ne le dise (invariant 2 de SPEC-DATA-005).
+  // **Un compte porte un NOM DE COMPTE, jamais le libellé d'une écriture** (9.8.5). Jusqu'à la
+  // 9.8.4, `libelle` était le libellé de la ligne qui créait le compte : le 401 s'appelait
+  // « Achat LOC-2026-08 — Agence Immobilière Le Lac » et le 706 « Facture FAC-2026-014 — Clinique
+  // Les Jasmins ». Ça ressortait au grand livre, à la balance, au bilan, dans la colonne INTITULÉ
+  // de la saisie — et le sélecteur de compte RECOPIAIT ce nom dans la ligne saisie, donc dans une
+  // écriture validée, définitive. Le plan tranche d'abord ; le libellé reçu n'est qu'un repli, pour
+  // un compte que le plan ne connaît pas.
   function assurerCompte(livre, compte, libelle) {
     const n = String(compte || '').trim();
     if (!n) return null;
     let c = livre.plan.find(x => x.compte === n);
     if (c) return c;
-    c = { compte: n, libelle: libelle || 'Compte hors plan', nature: natureDeCompte(n), source: 'import' };
+    c = { compte: n, libelle: libelleDuPlan(n) || libelle || 'Compte hors plan', nature: natureDeCompte(n), source: 'import' };
     livre.plan.push(c);
     return c;
   }
@@ -645,6 +760,12 @@
       lignes: (Array.isArray(ecriture && ecriture.lignes) ? ecriture.lignes : []).map(l => ({
         compte: String((l && l.compte) || '').trim(),
         tiersId: (l && l.tiersId) || null,
+        // 9.8.5 — le NOM DU TIERS de la ligne. Il existait dans le CSV du paquet et se perdait ici :
+        // la forme d'une ligne ne le portait pas, donc `lignesDuLivre` en inventait un à partir du
+        // libellé. Conséquence, sur six écrans : le lettrage groupait par FACTURE, la balance âgée
+        // rendait une ligne par pièce, le bilan étiquetait chaque rubrique du nom d'une opération.
+        // C'est une décision de FORMAT (règle 9.7.0) : le test du format tombe pour le dire.
+        tiers: String((l && l.tiers) || ''),
         libelle: String((l && l.libelle) || ''),
         debit: round3(Math.max(0, Number(l && l.debit) || 0)),
         credit: round3(Math.max(0, Number(l && l.credit) || 0)),
@@ -828,7 +949,11 @@
       // balance pour le cabinet, et c'est exactement ce que ce module existe pour éviter.
       .flatMap(e => e.lignes.map(l => ({
         numero: e.numero || 0, date: e.date, journal: e.journal, piece: e.piece,
-        account: l.compte, tiers: l.libelle, label: l.libelle || e.libelle,
+        // `tiers` est le NOM DU TIERS, pas le libellé (9.8.5). Écrire `tiers: l.libelle` — ce que
+        // faisait la 9.2.0 — revenait à dire que le client d'une facture s'appelle « Facture
+        // FAC-2026-014 ». Vide quand la ligne n'en porte pas : « (sans tiers) » est honnête, un
+        // libellé recopié ne l'est pas.
+        account: l.compte, tiers: l.tiers || '', label: l.libelle || e.libelle,
         debit: l.debit, credit: l.credit, lettre: l.lettre || '',
         tiersId: l.tiersId || '', ecritureId: e.id, statut: e.statut
       })));
@@ -855,6 +980,9 @@
       if (!e.libelle && l.label) e.libelle = l.label;
       e.lignes.push({
         compte: txt(l.account), tiersId: l.tiersId || null,
+        // Le tiers a désormais SA case (9.8.5). Avant, il servait de repli au libellé et
+        // disparaissait dès que le libellé existait — c'est-à-dire toujours.
+        tiers: txt(l.tiers),
         libelle: l.label || l.tiers || '',
         debit: round3(num(l.debit)), credit: round3(num(l.credit)),
         lettre: l.lettre || ''
@@ -2956,6 +3084,7 @@
     lettrageDepuisLignes,
     // Le livre (9.2.0)
     LIVRE_FORMAT, STATUTS_ECRITURE, NATURES_COMPTE, SOURCES_ECRITURE, JOURNAUX_PAR_DEFAUT,
+    PLAN_COMPTABLE, libelleDuPlan, migrerLivre,
     natureDeCompte, livreVide, isValidLivre, livreVersionInconnue, assurerCompte,
     ajouterEcriture, validerEcriture, contrepasser, importerPaquet, piecesDepuisLignes,
     lettrer, delettrer, prochaineLettre, balanceOuverture, lignesDuLivre,
