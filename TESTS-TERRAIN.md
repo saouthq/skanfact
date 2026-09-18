@@ -211,6 +211,33 @@ nouvelles.
 
 ---
 
+### T-08 · MOYEN · Réimporter le même fichier reproche les SOLDES avant de dire qu'il est déjà là
+
+**Vu** : relevé déjà importé. On le réimporte avec des soldes quelconques (23220 / 11110) → refus
+« **Ce relevé ne se boucle pas** : … il manque 15 931,147 ». Le vrai motif — *ce fichier a déjà été
+importé* — n'apparaît que si l'on prend la peine de retrouver les bons soldes d'abord.
+
+**Pourquoi ça compte** : le doublon est une propriété du **fichier**, connue avant toute saisie —
+l'empreinte est calculée à la lecture, et le fichier est nommé à l'écran. Reprocher les soldes
+envoie le comptable chercher dans un relevé papier une information qui ne servira à rien : il
+reviendra dix minutes plus tard pour apprendre que l'import n'aurait de toute façon pas eu lieu.
+Deux refus pour une seule situation, et le premier est un faux motif.
+
+**Ancrage** : `src/renderer/compta.js:1399` — `ajouterReleve` appelle `releveValide` (bouclage) en
+premier, et ne teste l'empreinte qu'à la ligne 1406.
+
+**Ce qui est juste et ne doit pas bouger** : les deux contrôles, et leurs deux phrases. C'est leur
+ORDRE qui trompe.
+
+**Piste** : tester l'empreinte avant le bouclage. Mieux : le dire **dès que le fichier est choisi**,
+dans l'aperçu — l'empreinte est déjà connue à ce moment-là, et les champs de solde deviennent
+inutiles à remplir.
+
+**Règle du projet en jeu** : « un refus dit trois choses : ce qui est refusé, pourquoi, et le bouton
+qui débloque » (7.0.0). Ici le *pourquoi* annoncé n'est pas le vrai.
+
+---
+
 ## Comment se servir de ce document
 
 - Un constat qui part dans une version : barrer la ligne, citer le numéro de version.
