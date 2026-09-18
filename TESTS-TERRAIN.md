@@ -238,6 +238,44 @@ qui débloque » (7.0.0). Ici le *pourquoi* annoncé n'est pas le vrai.
 
 ---
 
+### T-09 · GRAVE · Les NEUF boutons « Annuler » de l'app Cabinet sont inertes
+
+**Vu** : dans la fenêtre d'import d'un relevé, le bouton « Annuler » ne fait rien. Constaté par le
+testeur : « et le bouton annuler (pour fermer) ne marche pas ne fait rien btw ».
+
+**Ce n'est pas un bouton, c'est tous.** `modal()` de l'app Cabinet branche Échap, le clic sur le
+fond, et la touche Entrée vers le bouton principal — **jamais `[data-close]`**. Les neuf boutons
+« Annuler » de l'application sont donc parfaitement visibles et parfaitement morts, depuis toujours.
+
+**Pourquoi ça compte** : c'est le symptôme le plus démoralisant qui soit — on clique, rien ne se
+passe, on reclique, on doute de soi puis du logiciel. Et il se produit au pire moment : dans une
+fenêtre, donc quand on vient de décider de NE PAS faire quelque chose. La sortie existe (Échap, ou
+un clic à côté), donc ce n'est pas un piège sans issue — c'est pire à sa façon : le seul chemin
+visible est celui qui ne marche pas, et le chemin qui marche n'est écrit nulle part.
+
+**Ancrage** :
+- `src/cabinet/renderer/app.js:229-298` — `modal()` : `onKey` (Échap → `dismiss`), le `mousedown`
+  sur la couche, le `keydown` pour Entrée, puis `onMount(layer, close)`. Aucune ligne ne cherche
+  `[data-close]`.
+- Les neuf boutons morts : lignes **2070, 2744, 2768, 2990, 3147, 3365, 3399, 3463, 6062**.
+- **Le jumeau existe et fonctionne** : `src/renderer/app.js:505` —
+  `$$('[data-close]', layer).forEach(b => b.addEventListener('click', close));`, plus les lignes
+  538 et 550 pour `confirmDialog` et `choiceDialog`.
+
+**Ce qui est juste et ne doit pas bouger** : Échap et le clic sur le fond valent « Annuler », et la
+promesse posée par la fenêtre se résout toujours (règle 5.2.2). Le mécanisme de sortie est bon ;
+c'est son bouton qui n'y est pas relié.
+
+**Piste** : une ligne dans `modal()`, copiée de l'app entreprise. Et un test qui compte, des DEUX
+côtés : tout `[data-close]` posé dans une couche doit refermer cette couche — sinon la même ligne
+disparaîtra un jour d'un seul des deux fichiers, sans que rien ne le dise.
+
+**Règles du projet en jeu** : « une règle apprise d'un côté se vérifie de l'autre, à la main »
+(7.3.0) — celle-ci ne l'a jamais été ; et « un bouton qui ne répond pas est pire qu'un bouton
+absent » (7.0.0), qui avait coûté les treize « Voir » morts de l'app entreprise.
+
+---
+
 ## Comment se servir de ce document
 
 - Un constat qui part dans une version : barrer la ligne, citer le numéro de version.
