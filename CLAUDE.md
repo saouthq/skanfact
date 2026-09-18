@@ -37,6 +37,8 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un compteur et la liste qu'il annonce se calculent avec la **même fonction** | 6.8.1 — le bandeau des relances ; 7.15.0 — « Reste à encaisser » |
 | Un montant **négatif change de colonne**, il ne garde pas son signe | 6.3.0 — les écritures comptables |
 | Un **agrégat** porte une devise, une unité, et une période nommée | 7.0.1, 7.16.0, 3.1.0 ; 9.4.9 — une courbe d'une barre cède la place au chiffre |
+| Une donnée qui n'a pas de **case** se réinvente — et ce qu'on réinvente est faux | 9.8.5 — le tiers déduit du libellé, le compte nommé par la première écriture |
+| Un compte porte un **nom de compte** ; un compte nommé par le cabinet ne se réécrit jamais | 9.8.5, 6.3.0 |
 | Un **rapprochement faux** ferme la question : une ambiguïté n'est JAMAIS « certain » | 9.5.0 |
 | Une écriture qui SOLDE un compte ne compte pas dans ce qu'elle déclare | 9.6.0 |
 | Un taux qui dépend du **droit** se saisit ; un taux qui dépend d'un **calcul** se déduit | 9.7.0 — le coefficient dégressif |
@@ -80,6 +82,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Une règle apprise d'un côté **se vérifie de l'autre**, à la main | 7.3.0 (purge des sauvegardes), 7.18.0 (`pl`), 7.32.0 (« À faire »), 8.1.0 (le saut d'horloge) |
 | Un **INSTRUMENT qui ne couvre qu'une des deux applications** ne protège qu'une des deux | 9.4.3 |
 | Une **BÊTA qui ne construit qu'une des deux** ne se fait tester qu'à moitié ; la cloison, c'est le canal | 9.8.4 |
+| Une commande ne porte jamais `-c <fichier>` **et** `-c.<clé>=` : les deux visent la même option | 9.8.6 — et l'ambiguïté ne tombe que sous PowerShell |
 | Une **capture qui s'arrête au bas de l'écran** fait juger une page sur son premier écran | 9.4.3 |
 | Un fichier partagé a **trois** branchements : les deux `index.html`, dans l'ordre, et les `files` du Cabinet | 7.26.0 (`depot.js`), 7.29.0 (`rowmenu.js`), 9.1.0 (`compta.js`) |
 | Le Cabinet **n'écrit jamais** chez un client et ne lui renvoie rien | Cabinet 1.0.0 |
@@ -4267,6 +4270,76 @@ Règles apprises, à ne pas recasser :
 
 Le chemin complet — quand une bêta, quand une stable, et les cinq étapes — est au § « Publier une
 version ».
+
+### 9.8.5 — Un compte porte un nom de compte, un tiers le nom du tiers
+
+Trouvé en testant le Cabinet écran par écran avec Skander, qui jouait le comptable. Le CSV d'un
+paquet porte **deux colonnes distinctes** — `Tiers` (qui) et `Libellé` (quoi) — et depuis la 9.2.0 la
+forme d'une ligne de `livre.json` n'avait **pas de case pour la première**.
+
+Règles apprises, à ne pas recasser :
+
+- **Une donnée qui n'a pas de case se réinvente, et une donnée réinventée est fausse.**
+  `lignesDuLivre` fabriquait le tiers en découpant le libellé, et `assurerCompte` nommait chaque
+  compte d'après **la première écriture qui le touchait** : le 606 s'appelait « Achat LOC-2026-08 —
+  Agence Immobilière Le Lac » parce qu'une facture de loyer était passée avant. Six écrans faux — le
+  grand livre, la balance, le lettrage, la déclaration, la saisie et l'export.
+- **Le pire n'était pas l'affichage, c'était l'ÉCRITURE.** Le sélecteur de compte de la grille de
+  saisie recopie le nom du compte dans le libellé de la ligne : ce nom inventé partait donc dans une
+  écriture **validée, numérotée et définitive**. Un défaut d'affichage qui atteint un écran de saisie
+  cesse d'être un défaut d'affichage.
+- **Un compte porte un NOM DE COMPTE.** `assurerCompte` nomme par le plan comptable ; le libellé reçu
+  n'est qu'un repli, pour un compte que le plan ne connaît pas. Et un compte **nommé par le cabinet**
+  n'est jamais réécrit — c'est son plan, pas le nôtre (règle 6.3.0 : aucun numéro de compte n'est une
+  vérité).
+- **`PLAN_COMPTABLE` a déménagé de core.js vers compta.js**, réexporté à l'identique — et la
+  réexportation se prouve par l'**identité d'objet**, jamais par le résultat (9.6.1). Le Cabinet ne
+  charge pas core.js : la seule alternative au déménagement était la recopie, et une copie diverge.
+- **Une migration rend un nom, jamais un chiffre.** `migrerLivre` tourne **à la lecture**, pas à
+  l'écriture : un livre ancien retrouve ses noms de compte sans qu'aucune écriture validée ne soit
+  réécrite sur le disque. Une validée ne se modifie jamais (9.2.0), et « corriger en migrant » serait
+  très exactement la modifier.
+- **La forme d'une ligne est une DÉCISION de format.** Le test du format couvrait le socle du livre
+  et pas la ligne : c'est ce trou qui a laissé passer l'absence de `tiers` en 9.2.0. Il fixe désormais
+  les sept clés d'une ligne, donc un champ ajouté demain sera une décision et jamais un effet de bord
+  (même leçon qu'en 9.7.0 sur `inventaires[]`).
+- **Un livre orphelin se rattache au dossier suivant qui porte le même identifiant.** Les identifiants
+  de l'exemple sont stables (`MF:<matricule>`) : on le rechargeait avec des paquets neufs et un livre
+  de la version d'avant. Les livres d'un dossier partent donc avec le dossier.
+
+### 9.8.6 — L'app du comptable ne se construisait plus
+
+La 9.8.5 est complète et verte ; c'est sa **publication** qui a échoué, du côté du Cabinet seulement,
+deux secondes après le début de l'étape. Aucune ligne des deux applications ne change ici.
+
+- **`-c <fichier>` et `-c.<clé>=<valeur>` visent la MÊME option courte.** Posés sur la même commande,
+  le second gagne, et electron-builder part chercher un fichier de configuration nommé
+  « `.publish.releaseType=release` ». L'étape de l'app entreprise n'a pas ce problème parce qu'elle ne
+  passe aucun fichier de configuration. **Rien dans le nom des deux drapeaux ne laisse deviner qu'ils
+  se disputent quoi que ce soit** — c'est la troisième fois qu'une ligne d'electron-builder se
+  comporte autrement qu'attendu (6.7.3, 7.25.0), et la troisième fois que la réponse est de lire la
+  source du module plutôt que son README.
+- **Le même défaut n'a pas le même effet selon le SHELL** : l'étape a réussi sur macOS (bash) et
+  échoué sur Windows (PowerShell). Une commande ambiguë qui « marche » sur un poste n'est pas
+  correcte, elle est chanceuse — et le poste où elle échoue est, comme toujours depuis la 7.21.x,
+  celui que personne ne teste.
+- **Ce qui doit varier va DANS le fichier de configuration**, où c'est une donnée et non une collision
+  d'arguments. Le type de release du Cabinet se déduit donc du numéro de version, à côté de son canal
+  et pour la même raison (7.25.0 : une seule source de vérité). Il y était écrit `'release'` en dur :
+  sur une bêta, l'étape aurait demandé une release pleine.
+- **Un drapeau ajouté et jamais publié n'est pas un drapeau testé.** La 9.8.4 l'avait posé avec une
+  bonne raison (« deux étapes qui peuvent se contredire finissent toujours par se contredire ») et
+  n'a jamais été construite : le défaut a attendu la publication suivante, celle qui pressait.
+- **Le garde-fou qui manquait** : aucune commande `electron-builder` ne peut porter à la fois
+  `-c <fichier>` et `-c.<clé>=<valeur>`. C'est lui qui aurait arrêté la 9.8.5 avant de brûler une
+  publication.
+- **Un test écrit contre l'état du jour décrit cet état, pas la règle — quatorzième occurrence**
+  (7.12.0, 7.26.0, 8.0.1, 8.2.0, 9.1.0, 9.2.2, 9.4.3, 9.4.5, 9.4.7, 9.4.9, 9.7.0, 9.8.1, 9.8.4).
+  Celui de la 9.8.4 exigeait **deux** occurrences du drapeau dans le workflow : il décrivait le geste.
+  La règle est que le type de release de **chacune** des deux applications se déduit du numéro de
+  version ; par quel chemin ne regarde que le chemin.
+- **`fail-fast: false` (9.8.1) a fait son travail** : le poste macOS, le plus cher des deux, n'a pas
+  été annulé par l'échec de l'autre, et l'app entreprise est partie complète sur les deux plateformes.
 
 ## Pistes pour la suite (non demandées)
 
