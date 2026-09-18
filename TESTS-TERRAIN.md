@@ -1449,6 +1449,119 @@ balance générale d'un dossier sans écriture.
 
 ---
 
+### T-41 · GRAVE · La balance auxiliaire est structurellement à ZÉRO — et elle contredit la générale
+
+**Vu** : 9.8.7, livre neuf de Menuiserie Trabelsi SUARL, 48 écritures validées. La balance auxiliaire
+se remplit enfin (12 tiers), et **chaque tiers affiche exactement débit = crédit, solde 0,000 DT**.
+Total : 122 037,680 / 122 037,680 / **0,000** / **0,000**.
+
+**Un clic à côté, la balance générale dit l'inverse** : `411 Clients — solde débiteur 2 711,635 DT`.
+L'une affirme que douze clients sont soldés, l'autre que les clients doivent 2 711,635 DT. **Deux
+onglets voisins, deux réponses à la même question.**
+
+**La cause, et elle tient en une ligne de moteur.** Dans `entrySet`, chaque ligne est poussée par
+`lines.push({ ...base, … })` : **toutes** les lignes d'une pièce héritent du tiers de la pièce. Une
+facture de vente s'écrit donc ainsi (visible sur la capture du livre-journal) :
+
+| Compte | Tiers | Débit | Crédit |
+|---|---|---|---|
+| 411 | Clinique Les Jasmins | 399,531 | |
+| 4358 | Clinique Les Jasmins | 6,069 | |
+| 706 | Clinique Les Jasmins | | 340,000 |
+| 4367 | Clinique Les Jasmins | | 64,600 |
+| 4368 | Clinique Les Jasmins | | 1,000 |
+
+Or `balanceAux` groupe **par tiers, tous comptes confondus**. Elle additionne donc une pièce
+**équilibrée** sous un seul nom : 405,600 au débit, 405,600 au crédit, solde nul. Par construction,
+et pour tous les clients, toujours.
+
+**Ce n'est pas « un chiffre faux », c'est un écran qui ne peut RIEN dire.** Une balance auxiliaire
+existe pour répondre à une seule question — « combien ce client me doit-il encore ? » — et celle-ci
+répondra « zéro » quoi qu'il arrive, y compris sur un client qui n'a jamais payé. C'est le pire cas
+du projet : elle **ferme la question** au lieu de la laisser ouverte (règle 9.5.0 sur le
+rapprochement faux, ici appliquée au lettrage).
+
+**Deux défauts distincts, et il faut les séparer :**
+
+1. **Le tiers est posé sur des lignes qui n'en ont pas.** Une ligne de TVA, de produit ou de timbre
+   n'a pas de tiers — le tiers appartient à la ligne du **collectif** (411 pour un client, 401 pour
+   un fournisseur). `entrySet` le recopie sur toute la pièce par `{ ...base }`.
+2. **La balance auxiliaire ne filtre pas sur les comptes collectifs.** Même avec le tiers partout,
+   détailler le 411 par client donnerait le bon solde. Aujourd'hui elle prend tout ce qui porte un
+   nom, donc elle mélange un client (411), un salarié (425 Ahmed Ben Salah, 640 Ines Gharbi) et un
+   fournisseur (606 STEG, 607 Tunisie Matériel Informatique) dans le même tableau.
+
+**Et la colonne « Compte » ment aussi** : elle affiche **un seul** compte par ligne — le premier
+rencontré — alors que le total agrège tous les comptes de ce tiers. « Clinique Les Jasmins · 411 ·
+2 015,862 » laisse croire à un mouvement sur le 411, alors que c'est la somme du 411, du 706, du
+4367, du 4368 et du 4358.
+
+**Ancrage** : `src/renderer/compta.js:2953` (`lines.push({ ...base, … })`) ·
+`src/cabinet/renderer/app.js:2397` (`balanceAux`, le regroupement) · `:2399` (la colonne « Compte »,
+premier compte rencontré).
+
+**Ce qui est juste et ne doit pas bouger** : le tiers SUR la ligne du collectif (c'est lui qui fait
+le lettrage, 8.8.0), et le principe de l'écran — une balance auxiliaire est le détail d'un compte
+collectif, pas un annuaire.
+
+**Piste** : `balanceAux` ne garde que les lignes dont le compte est un **collectif de tiers** (rôles
+`clients` / `fournisseurs` du plan, jamais un numéro écrit en dur — règle 6.3.0), et l'écran dit
+lequel il détaille : « Balance auxiliaire **clients** (411) ». Le second bouton donne les
+fournisseurs. Le contrôle qui prouve la correction est déjà écrit dans le projet : *le total de
+l'auxiliaire doit égaler le solde du collectif dans la générale* — c'est celui qui aurait fait
+tomber ce défaut le jour de sa naissance.
+
+**Règle du projet violée** : « un compteur et la liste qu'il annonce se calculent avec la même
+fonction » (6.8.1) · « deux chiffres du même écran ne peuvent pas raconter deux années
+différentes » (7.16.0) · « un lettrage généreux affirme qu'une facture est payée : somme nulle, ou
+rien » (9.5.0) · « jamais prétendre ce qu'on ne peut pas prouver » (Cabinet 1.0.0).
+
+---
+
+### T-42 · MOYEN · « Regrouper tous les clients… » ne regroupe aucun client et quitte le dossier
+
+**Vu** : clic sur le bouton depuis la Balance d'un dossier → **redirection vers la page Écritures**,
+l'export CSV de tout le portefeuille. Le testeur s'attendait à la création de sous-comptes par
+client ; moi aussi, en écrivant le protocole de test. **Deux lecteurs sur deux, la même erreur.**
+
+**Le comportement est VOULU** — c'est le lien de parcours posé en 9.4.9 (« depuis le livre d'UN
+client, rien ne menait à l'export qui regroupe TOUS les clients d'un mois »). L'intention est bonne
+et la règle qui l'a fait écrire aussi. **C'est le libellé qui est faux**, et il l'est sur un écran
+qui rend la confusion presque obligatoire :
+
+- Il est posé **à côté de « Balance auxiliaire » et « Exporter la balance »**, au milieu d'un
+  vocabulaire où « regrouper les clients » a un sens précis et différent : donner à chacun son
+  sous-compte (411001, 411002…), ce que le projet appelle exactement ainsi depuis la 8.8.0.
+- Il a le **même poids visuel** (`btn-ghost`) que « Exporter la balance », qui, lui, ne quitte pas le
+  dossier. Deux boutons voisins d'apparence identique, dont l'un change de page et de périmètre.
+- `barreLivres` étant partagée, il apparaît sur **tous** les sous-onglets du livre — Saisie comprise,
+  c'est-à-dire pendant une saisie en cours.
+
+**Piste** : un libellé qui décrit l'écran d'ARRIVÉE (règle 7.29.0) — « Exporter les écritures de tous
+les clients… », ou mieux, le ranger dans le menu d'actions plutôt que sur la même rangée qu'un export
+local. Et rien ne dit qu'on va quitter le dossier : un geste qui change de périmètre l'annonce.
+
+**Règle du projet violée** : « un libellé décrit l'écran d'arrivée » (7.29.0) · « une ligne garde au
+plus UN bouton visible, le reste passe par le menu » (7.29.0, 9.4.8).
+
+---
+
+### T-37 et T-39 · CONFIRMÉS CORRIGÉS en 9.8.7 (18/09)
+
+Vérifié par le testeur, dans l'ordre :
+
+- **T-39** — après mise à jour, la fiche affiche « Ce dossier n'a pas encore de livre pour 2026 » et
+  les sept sous-onglets qui exigent un livre disparaissent. Le livre est donc bien parti avec son
+  dossier : le correctif mord enfin.
+- **T-37** — livre recréé (« 3 mois relus. 48 écritures ajoutées, dont 48 validées (mois
+  définitifs) »), et la colonne **Intitulé** de la balance porte les vrais noms : Immobilisations
+  corporelles, Fournisseurs d'exploitation, Clients, TVA collectée, Prestations de services…
+- **T-40, première moitié** — la balance auxiliaire se remplit (12 tiers). Il reste sa seconde
+  moitié : « Équilibrée » affiché sur une sélection vide. Et T-41 montre que remplie, elle est
+  fausse.
+
+---
+
 ## Le plan de parcours — ce qui est testé, ce qui ne l'est pas
 
 *Posé le 18/09/2026, après le premier tour. « Il faut tout tester, pas que la partie qu'on vient de
