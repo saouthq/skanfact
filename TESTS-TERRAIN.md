@@ -425,6 +425,11 @@ fausses alertes en orange.
 C'est **une régression de la 9.2.0** : en 9.1.0, le Cabinet lisait les CSV directement et
 `entreesDepuisCsv` rendait un vrai tiers. Le livre l'a perdu en chemin.
 
+**La forme la plus nue du défaut**, vue au livre-journal le 18/09 : les colonnes **TIERS** et
+**LIBELLÉ** portent **exactement le même texte, sur les 185 lignes**. Une colonne qui ne diffère
+jamais de sa voisine ne porte aucune information — et c'est celle qui devrait nommer le client ou le
+fournisseur de chaque ligne.
+
 Et c'est la faute la plus coûteuse en confiance : **seize alertes orange qui accusent du travail
 correct**. Un comptable qui voit ça une fois cesse de lire l'encadré ; la dix-septième, qui sera
 vraie, ne sera plus lue non plus.
@@ -1014,6 +1019,19 @@ le mécanisme.
 quatre manifestations d'un coup. En attendant, `assurerCompte` devrait nommer le compte par le
 **plan comptable SCE** (`PLAN_COMPTABLE` existe côté entreprise, `accountLabel` fait exactement ça)
 et ne retomber sur un libellé d'écriture que si rien d'autre n'existe.
+
+**PROUVÉ SUR DONNÉES RÉELLES** (18/09) — la pièce a été validée, elle porte le **n° 49** et ne se
+modifie plus :
+
+| Compte | Libellé écrit au livre-journal | Montant |
+|---|---|---|
+| 606 | `Achat LOC-2026-08 — Agence Immobilière Le Lac (ch…)` | 250,000 DT |
+| 4366 | `TVA déductible LOC-2026-08` | 47,500 DT |
+| 401 | `Achat LOC-2026-08 — Agence Immobilière Le Lac` | 297,500 DT |
+
+Une facture de **papeterie** (`FA-2026-0912`, journal AC) est inscrite au registre légal comme une
+facture de **loyer d'agence immobilière**. Ce n'est plus un défaut d'affichage : c'est une écriture
+comptable fausse, numérotée, et qui ne se corrige que par contre-passation.
 
 ---
 
