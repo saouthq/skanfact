@@ -487,6 +487,108 @@ celui-là on ne le verra pas non plus.
 
 ---
 
+### T-16 · GRAVE · « Total à décaisser » exclut l'IRPP qui figure juste au-dessus, sans le dire
+
+**Vu** (déclaration d'août 2026) :
+
+| Case | Montant |
+|---|---|
+| TVA nette à payer | 127,400 DT |
+| Droit de timbre | 4,000 DT |
+| Retenues à la source opérées | 0,000 DT |
+| **IRPP retenu sur salaires** | **292,046 DT** |
+| **Total à décaisser** | **131,400 DT** |
+
+Le total est **127,400 + 4,000 + 0** : il saute la ligne de 292,046 DT, qui est **plus de deux fois
+son montant**, et qui est imprimée juste au-dessus de lui.
+
+**Pourquoi c'est grave** : ce tableau existe pour être **recopié sur le portail**. Un total posé au
+bas d'une colonne de montants est lu comme la somme de cette colonne — c'est la règle 9.4.5 du
+projet, *un total vit sous sa colonne*. Si l'IRPP retenu doit être reversé avec cette déclaration,
+le comptable recopie 131,400 au lieu de 423,446 et le client prend une pénalité. Si au contraire il
+ne doit pas l'être, l'écran doit l'écrire — parce que sans ça, personne ne peut savoir lequel des
+deux cas s'applique.
+
+**Ancrage** : `src/renderer/compta.js:1852` —
+`aDecaisser: caseDe(round3(Math.max(0, net) + timbre.v + rsOp.v), [])`. L'IRPP (`irpp.v`, posé
+ligne 1851) n'y entre pas, et aucune phrase de l'écran ne le signale.
+
+**À VÉRIFIER avec le comptable** : en Tunisie, la déclaration mensuelle d'impôt porte
+habituellement sur la TVA, le droit de timbre **et les retenues à la source, salaires compris**, le
+tout réglé ensemble. Si c'est le cas, `aDecaisser` doit inclure `irpp.v`. **Je ne tranche pas une
+règle de droit** (règle 9.1.1) — mais le choix actuel est invisible, et c'est ça le défaut, quelle
+que soit la réponse.
+
+**Ce qui est juste et ne doit pas bouger** : que la case IRPP existe et soit tracée (« 1 écriture »).
+La faute n'est pas de la calculer, c'est de ne pas dire ce qu'on en fait.
+
+**Piste** : quelle que soit la réponse du comptable, le total NOMME ce qu'il additionne
+(« TVA nette + timbre + retenues »), et toute ligne du tableau qui n'y entre pas le dit dans sa
+colonne « d'où ça vient ». Même remarque pour **« Retenues subies (créance) »**, rangée *après* le
+total : c'est une somme qu'on **récupère**, pas qu'on paie, et rien ne l'indique.
+
+---
+
+### T-17 · MOYEN · Trois boutons éteints, dont un qui n'explique rien et deux qui n'expliquent qu'au survol
+
+**Vu** : le panneau « Ce qui suit » porte trois boutons tous gris et inertes — « Écrire l'écriture du
+mois », « Marquer déposée », « Marquer payée ». Rien à l'écran ne dit pourquoi.
+
+**Pourquoi ça compte** : la raison existe (« Prépare la déclaration d'abord »), et le bouton qui
+débloque existe (« Préparer la déclaration », tout en haut de l'écran, à deux écrans de défilement).
+Mais les deux ne se rencontrent jamais. La règle 9.4.5 dit qu'**un bouton éteint dit pourquoi**, et
+la 9.4.2 que **le motif se lit au-dessus des boutons, en gris** — pas dans une infobulle qu'il faut
+deviner en survolant, invisible au clavier et sur un écran tactile.
+
+**Ancrage** : `src/cabinet/renderer/app.js:2493-2499`. `#dc-ecriture` porte un `title`,
+`#dc-payee` aussi — **`#dc-deposee` n'en a aucun** : il est `disabled` quand `!posee` et ne dit rien
+du tout.
+
+**Ce qui est juste et ne doit pas bouger** : les motifs eux-mêmes, qui sont excellents — « Elle
+existe déjà : la refaire compterait la TVA du mois deux fois », « On ne paie pas ce qu'on n'a pas
+déposé ». Ils méritent mieux qu'une infobulle.
+
+**Piste** : une phrase grise au-dessus des trois boutons, et le bouton « Préparer la déclaration »
+répété **là**, au moment où il sert.
+
+---
+
+### T-18 · MOYEN · Le panneau « Abonnements » s'affiche sous les ONZE sous-onglets
+
+**Vu** : sous la déclaration de TVA, un panneau « Abonnements — Un abonnement s'appuie sur un guide
+d'écritures, et il n'y en a aucun pour l'instant. » avec son bouton « Écrire un premier guide… ».
+
+**Pourquoi ça compte** : un abonnement est un modèle d'écriture récurrente — il appartient à la
+**Saisie**. Le voir sous la Balance, sous le Grand livre, sous la Banque et sous la Déclaration
+n'apprend rien et repousse chaque fois le contenu réel. Et c'est un état vide **secondaire** qui
+prend la place d'un état vide principal (T-14, même famille).
+
+**Ancrage** : `src/cabinet/renderer/app.js:1738` — `<div class="panel" id="c-abos">` est posé
+**hors** de `#c-livres`, donc hors du corps des sous-onglets.
+
+**Piste** : le déplacer dans le corps de l'onglet Saisie.
+
+---
+
+### T-19 · MINEUR · « 1 pièce(s) » — la forme que le projet s'interdit depuis Cabinet 1.0.0
+
+**Vu** : « **1 pièce(s) encore en brouillard sur ce mois** : elles n'entrent dans aucun chiffre de
+cette déclaration. » Et au passage, « elles » au pluriel pour une seule pièce.
+
+**Pourquoi ça compte** : c'est **littéralement** l'exemple cité dans la règle fondatrice de l'app
+Cabinet — *« un logiciel qui écrit "1 dossier(s)" paraît bâclé, et c'est le premier contact d'un
+comptable avec SkanFact »*.
+
+**Ancrage** : `src/renderer/compta.js:1888` et `src/renderer/compta.js:2530`. C'est dans le **moteur
+partagé**, donc les deux applications le portent. Le contrôle de la 7.30.0 interdit la forme dans
+les deux `app.js` — il n'a jamais été étendu à `compta.js`, créé en 9.1.0. Encore un jumeau
+manquant (règle 7.3.0), cette fois entre un fichier et son garde-fou.
+
+**Piste** : les deux phrases s'accordent, et le test de la 7.30.0 couvre `compta.js`, `core.js` et
+`cabcore.js` — pas seulement les deux interfaces.
+
+---
+
 ### T-11 · confirmé à l'écran (18/09)
 
 Le testeur a cliqué une ligne de pièce dans un panneau client : **rien ne se passe**. Le constat
