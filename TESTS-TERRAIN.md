@@ -866,6 +866,54 @@ depuis la 6.0.0. Encore un jumeau manquant (7.3.0). Un test : après
 
 ---
 
+### T-27 · MOYEN · Le dossier de clôture ne laisse AUCUNE trace
+
+**Vu**, et signalé par le testeur : *« quand je produis et que je l'ai mis dans Téléchargements, y'a
+rien qui dit que c'est déjà produit, et pas d'ouvrir le dossier, rien »*.
+
+Le fichier est bien écrit — le nom est excellent et reconnaissable
+(`cloture-menuiserie-trabelsi-suarl-2026.skanclose`). Puis un message passager de 2,6 secondes :
+« Dossier de clôture écrit (avec le PDF). » Et **plus rien**, pour toujours :
+
+- pas de **chemin** affiché, donc rien à recopier pour retrouver le fichier ;
+- pas de bouton **« Ouvrir le dossier »** — *un fichier qu'on ne retrouve pas est un fichier qu'on
+  ne peut pas envoyer* ;
+- **rien n'est enregistré** : revenir demain sur l'onglet Exercice ne dit pas que ce dossier a été
+  produit, ni quand, ni s'il était scellé.
+
+**Pourquoi ça compte** : un cabinet a soixante clients et clôture en rafale sur trois semaines. La
+question du lundi matin est *« lesquels ont reçu leur dossier de clôture ? »* — et l'application n'a
+aucune réponse. C'est le geste final du flux retour, celui qui justifie tout le reste, et il ne
+laisse pas de trace.
+
+**Le jumeau existe et fait exactement ce qu'il faut** (règle 7.3.0) : côté entreprise, le paquet
+mensuel écrit `data.packs` depuis la 6.1.0 — mois, horodatage, chemin, empreinte — et la page
+affiche l'historique des douze derniers avec le bouton qui ouvre le fichier
+(`src/renderer/app.js:9759-9760`, `:9894`). La 7.21.0 avait même corrigé ce même écran parce qu'il
+montrait l'empreinte au lieu du chemin. Rien de tout ça n'a été porté ici.
+
+**Ancrage** : `src/cabinet/renderer/app.js:2774-2777` — `api.ecrireCloture` puis un `toast`, et
+c'est tout. Aucune écriture dans le livre, aucun panneau d'historique.
+
+**Ce qui est juste et ne doit pas bouger** : le nom du fichier, le fait que l'utilisateur choisisse
+l'emplacement, et le message qui distingue « avec le PDF » de « le PDF n'a pas pu être produit,
+l'HTML est là ».
+
+**Piste** : ranger `{ annee, le, chemin, scelle, pdf }` dans le livre, l'afficher dans l'onglet
+Exercice (« Dossier de clôture produit le 18/09/2026 — Ouvrir le dossier »), et le remonter dans la
+liste des dossiers pour répondre à la question du lundi matin.
+
+---
+
+### T-09 · confirmé à l'écran une seconde fois (18/09)
+
+Le testeur, sur la fenêtre du dossier de clôture : *« le bouton annuler ne marche pas déjà »*. Cette
+fenêtre (`app.js:2768`) et celle du motif de réouverture (`app.js:2744`) portent toutes deux
+`<button class="btn" data-close>Annuler</button>` — deux des neuf boutons morts. Le défaut se
+rencontre donc à chaque étape du parcours, pas seulement à l'import d'un relevé.
+
+---
+
 ### T-11 · confirmé à l'écran (18/09)
 
 Le testeur a cliqué une ligne de pièce dans un panneau client : **rien ne se passe**. Le constat
