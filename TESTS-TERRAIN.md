@@ -662,6 +662,80 @@ annulés »), plutôt que de laisser un état que rien ne permet de quitter. Un 
 
 ---
 
+### T-22 · GRAVE · Dans le BILAN, chaque rubrique porte le libellé d'une écriture au hasard
+
+**Troisième manifestation de T-13, et la plus grave** — parce qu'un bilan se montre à une banque et
+à un contrôleur.
+
+**Vu** :
+
+| Compte | Intitulé affiché | Montant |
+|---|---|---|
+| 411 | `Facture FAC-2026-014 — Clinique Les Jasmins` | **2 711,635 DT** |
+| 532 | `Paiement salaire Ahmed Ben Salah mai 2026` | **11 739,502 DT** |
+| 401 | `Achat LOC-2026-08 — Agence Immobilière Le…` | **3 844,500 DT** |
+| 706 | `Facture FAC-2026-014 — Clinique Les Jasmins (HT 19 %)` | **32 720,000 DT** |
+| 54 | `Fournitures diverses` | 120,000 DT |
+
+Ces intitulés devraient être **« Clients »**, **« Banque »**, **« Fournisseurs »**, **« Ventes »**,
+**« Concours bancaires »**. Le montant est le **total du compte** ; l'étiquette nomme **une seule
+opération** parmi des dizaines. Le 706 à 32 720,000 DT, c'est le chiffre d'affaires de tout
+l'exercice, étiqueté du nom d'une facture de 2 711 DT.
+
+**Pourquoi c'est pire qu'ailleurs** : dans le lettrage, l'erreur produisait des groupes faux ; ici
+elle produit un **document faux qui a l'air juste**. Les totaux tombent, l'actif égale le passif, et
+chaque ligne raconte quelque chose qui n'est pas vrai.
+
+**La chaîne** : `balanceDepuisLignes` (`compta.js:286`) retient le tiers de la **PREMIÈRE** ligne
+rencontrée sur le compte (`if (e.tiers && !r.tiers) r.tiers = e.tiers;`) et le rend comme `label`
+(`:293`). Le Cabinet lui passe `(c, t) => t || ''`. Et `tiers` vaut `l.libelle` (T-13). Donc
+l'étiquette d'une rubrique de bilan est le libellé de la première écriture de l'exercice qui touche
+ce compte.
+
+**Ce qui est juste et ne doit pas bouger** : le mécanisme lui-même. `etatsDepuisLignes` prend une
+**fonction** `libelle(compte, tiers)` : c'est la bonne conception, et elle attend seulement qu'on
+lui donne un nom de compte. `accountLabel` existe déjà côté entreprise.
+
+**Piste** : le Cabinet passe le **plan comptable du dossier** comme fonction de libellé, et n'utilise
+le tiers que sur un **sous-compte** de tiers (411001, 401002…), là où c'est le sens même du compte.
+Un test : sur le jeu d'exemple, aucune ligne de bilan ne doit porter un libellé contenant
+« Facture », « Paiement » ou « Achat ».
+
+---
+
+### T-23 · MOYEN · « Actif = passif, au millime » en vert sur un bilan à capitaux propres NULS
+
+**Vu** :
+- **Actifs non courants (valeur brute) : −7 550,000 DT** — un actif **négatif**, dont l'unique ligne
+  est « Sortie — Serveur de sauvegarde : valeur brute ».
+- **Capitaux propres et résultats reportés : 0,000 DT**.
+- Et sous le tout, un bandeau **vert** : « Actif = passif, au millime. »
+
+**Pourquoi ça compte** : les deux chiffres sont **exacts** et le bilan **s'équilibre** — mais ce
+n'est pas un bilan, c'est la photo d'un livre qui commence en juin 2026 **sans à-nouveaux**. La
+cession du serveur y figure sans son acquisition, donc l'actif part en négatif ; aucun capital
+n'ayant jamais été saisi, les capitaux propres sont à zéro. Un bilan avec un actif négatif et zéro
+capital, présenté à une banque, ne se discute pas : il se referme.
+
+Le vert affirme quelque chose de vrai (l'équilibre) à un endroit où le lecteur comprend autre chose
+(« ce bilan est bon »). C'est la règle de la 7.0.0 — *avant d'écrire une phrase rassurante,
+vérifier que l'univers concerné est non vide* — et celle du Cabinet 1.0.0 : *ne jamais prétendre ce
+qu'on ne peut pas prouver*.
+
+**Ce qui est juste et ne doit pas bouger** : l'équilibre est bien la seule chose garantie, et le
+dire est honnête. L'écran du **lettrage** fait déjà exactement ce qu'il faut à deux onglets de là :
+« *C'est attendu sur un livre lu mois par mois : … Le contrôle ne vaut que sur un livre complet,
+avec ses à-nouveaux.* » Cette phrase manque ici, où elle compte bien davantage.
+
+**Ancrage** : `src/cabinet/renderer/app.js:2660-2664` — le bandeau ne juge que `e.equilibre`.
+
+**Piste** : quand le livre n'a **aucune ouverture** (`soldesDepuisOuverture` vide) ou que les
+capitaux propres sont nuls, le dire au-dessus du bilan, et proposer le geste : **« Reprendre les
+soldes d'ouverture… »**, qui existe déjà (`repriseForm`). Le vert ne se pose que sur un exercice
+qui a ses à-nouveaux.
+
+---
+
 ### T-11 · confirmé à l'écran (18/09)
 
 Le testeur a cliqué une ligne de pièce dans un panneau client : **rien ne se passe**. Le constat
