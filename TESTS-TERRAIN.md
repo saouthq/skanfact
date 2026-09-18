@@ -920,6 +920,36 @@ rencontre donc à chaque étape du parcours, pas seulement à l'import d'un rele
 
 ---
 
+### T-28 · MOYEN · La grille de saisie change de séparateur décimal dès qu'on tape
+
+**Vu** : au repos, le pied affiche « Total de la pièce **0,000** / **0,000** » — virgule, comme tout
+le reste de l'application (« 32 720,000 DT », « −7 913,855 DT »). La ligne de brouillard juste en
+dessous, elle, affiche **« 4.500 »**. Et dès la première frappe dans la grille, les totaux
+deviennent « 1250.000 ».
+
+**Pourquoi ça compte** : en français, le séparateur décimal est la **virgule**. « 4.500 » se lit
+*quatre mille cinq cents*. Sur l'écran dont le métier entier est de saisir et de contrôler des
+montants, lire son propre total dans une autre convention que celle qu'on vient de taper est une
+invitation à l'erreur — et l'écart de mille entre les deux lectures est exactement celui qu'un
+comptable passe sa journée à traquer.
+
+**Ancrage** : le gabarit écrit la virgule (`src/cabinet/renderer/app.js:3691`, `:3693` — `0,000`),
+mais **toutes** les mises à jour au fil de la frappe passent par `toFixed(3)`, qui rend un point :
+`:3773`, `:3774`, `:3776`. **Seize occurrences de `toFixed(3)`** dans le renderer du Cabinet —
+la liste du brouillard (`:3720`, `:3721`), la phrase de solde (`:3766`, `:3767`), les abonnements
+(`:4120`), la recherche (`:4261`), le compte rendu de relecture des paquets (`:2030`)… Partout
+ailleurs l'application passe par `money()`.
+
+**Ce qui est juste et ne doit pas bouger** : `toFixed(3)` aux lignes `:3856`, `:3857`, `:3931`,
+`:3945`, `:4017` — là il remplit un **champ de saisie**, et un champ numérique se relit en interne.
+C'est le rendu **à l'écran** qui doit porter la virgule, pas la valeur.
+
+**Piste** : un `montant(n)` du Cabinet, jumeau de `money()`, et un test qui interdit `toFixed(3)`
+dans du HTML rendu. Le distinguo « champ de saisie / texte affiché » doit être écrit, sinon la
+correction repartira dans l'autre sens à la version suivante.
+
+---
+
 ### T-11 · confirmé à l'écran (18/09)
 
 Le testeur a cliqué une ligne de pièce dans un panneau client : **rien ne se passe**. Le constat
