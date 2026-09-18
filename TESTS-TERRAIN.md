@@ -771,6 +771,45 @@ plusieurs redessins, et ils sont rangés **dans** cette déclaration.
 
 ---
 
+### T-25 · MOYEN · La fenêtre de clôture noie ses avertissements dans un pavé
+
+**Vu**, et signalé par le testeur : *« c'est mal écrit les deux contrôles, ça se distingue pas dans le
+paragraphe »*. La fenêtre « Clôturer l'exercice 2026 ? » affiche :
+
+> …La rouvrir reste possible, mais elle exigera un motif — c'est la seule trace qui expliquera
+> pourquoi un chiffre a changé après coup. 2 contrôles signalent encore quelque chose : • Le compte
+> d'attente porte encore 120.000 : une pièce est rangée nulle part. Ventile-la avant la clôture. •
+> 3 mois sans déclaration préparée (2026-06, 2026-07, 2026-08). Prépare-les dans l'onglet
+> Déclaration.
+
+Les puces existent, les retours à la ligne aussi — dans la **chaîne**. Pas à l'écran.
+
+**Pourquoi ça compte** : c'est la dernière fenêtre avant le geste le plus définitif de
+l'application, et son rôle est de faire **lire** deux avertissements. Un pavé de six lignes sans
+respiration ne se lit pas : on cherche le bouton vert. La règle du projet veut qu'un refus dise
+trois choses distinctement (7.0.0) ; ici l'avertissement en dit deux et les colle l'une à l'autre.
+
+**Ancrage** — le contrat diverge entre les deux applications, pour une fonction du même nom :
+- `src/cabinet/renderer/app.js:318` — `<div>${body}</div>` : le corps est du **HTML**, et presque
+  tous les appels passent des `<p>` (ex. `:1845`, `:4489`).
+- `src/cabinet/renderer/app.js:2704-2706` — ce caller-ci passe du **texte brut**, avec `\n\n` et
+  `map(c => '• ' + c.detail).join('\n')`. Le HTML avale les `\n`.
+- `src/renderer/app.js:536` — l'app entreprise, elle, fait `C.nl2br(msg)`. **Deux fonctions du même
+  nom, deux contrats** : c'est la divergence que la 6.8.0 avait déjà nommée sur `h`/`esc`.
+
+**Ce qui est juste et ne doit pas bouger** : lister les contrôles dans la fenêtre plutôt que de
+renvoyer à la page, et ne pas bloquer.
+
+**Piste** : ce caller construit une vraie liste (`<ul><li>`), avec la phrase d'introduction dans son
+propre `<p>`. Et un test qui interdit un `\n` dans le corps d'un `confirmDialog` du Cabinet — le
+contrat est « HTML », il doit être tenu partout.
+
+**Vérifié au passage, et ce n'est PAS un défaut** : les données venues d'un paquet (nom de fichier,
+nom de dossier, libellé de pièce) sont bien échappées dans les corps de fenêtre (`esc(p.label)`,
+`esc(dossier.name)`, `esc(f.name)`). Un `.skanpack` ne peut pas injecter de HTML par cette porte.
+
+---
+
 ### T-11 · confirmé à l'écran (18/09)
 
 Le testeur a cliqué une ligne de pièce dans un panneau client : **rien ne se passe**. Le constat
