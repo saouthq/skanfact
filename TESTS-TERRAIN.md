@@ -209,6 +209,10 @@ dire « Tout est déjà rapproché : 10 lignes sur 10. » Distinguer aussi « ri
 est rapproché » de « rien à faire parce que rien ne correspond » — ce ne sont pas les mêmes
 nouvelles.
 
+**Le bon modèle existe un onglet plus loin** (constaté le 18/09) : le lettrage automatique répond
+« **Rien à lettrer d'office : 5 lignes ouvertes, aucune paire qui se solde sans ambiguïté.** » — une
+phrase pour le cas « rien à faire », avec sa raison. C'est exactement ce qui manque à la banque.
+
 ---
 
 ### T-08 · MOYEN · Réimporter le même fichier reproche les SOLDES avant de dire qu'il est déjà là
@@ -452,6 +456,34 @@ même information qu'un client absent de la liste — c'est une bonne nouvelle, 
 **Piste** : une seule ligne récapitulative sous le tableau (« 11 tiers entièrement lettrés »),
 dépliable. Règle 9.4.5 : *ce qui prend la place n'est pas le nombre d'objets mais leur taille —
 replier avant de paginer*.
+
+---
+
+### T-15 · MINEUR · « 5 ligne ouvertes » — le raccourci de pluriel ne sait accorder qu'UN mot
+
+**Vu** : le message du lettrage automatique affiche **« Rien à lettrer d'office : 5 ligne ouvertes,
+aucune paire qui se solde sans ambiguïté. »** Nom au singulier, adjectif au pluriel.
+
+**Pourquoi ça compte** : c'est la règle que le projet s'est donnée à sa toute première version
+Cabinet — *« un logiciel qui écrit "1 dossier(s)" paraît bâclé, et c'est le premier contact d'un
+comptable avec SkanFact »* — et celle de la 7.30.0, *« un pluriel mal accordé se compte en
+dizaines »*. Elle est tenue partout ailleurs ; ici elle tombe sur un cas que le raccourci ne sait
+pas traiter.
+
+**Ancrage** : `pl` colle le `s` à la fin de **toute la chaîne** —
+`const pl = (n, un, plur) => \`${n} ${n > 1 ? (plur || un + 's') : un}\`` (`cabinet/renderer/app.js:390`
+et `renderer/app.js:1908`, corps identiques). Donc `pl(5, 'ligne ouverte')` rend
+`'ligne ouverte' + 's'` = **« ligne ouvertes »**. Le troisième argument existe pour ça, et il
+manque. **Deux appels concernés dans tout le projet** :
+- `src/cabinet/renderer/app.js:4353` — `pl(r.restent, 'ligne ouverte')`
+- `src/renderer/app.js:11446` — `pl(r.importees || 0, 'licence importée')` → « 5 licence importées »
+
+**Ce qui est juste et ne doit pas bouger** : le raccourci lui-même. Il ne peut pas connaître la
+grammaire française ; c'est pour ça qu'il prend une forme plurielle en paramètre.
+
+**Piste** : les deux appels passent leur pluriel. Et un **test** interdit la forme dangereuse —
+`pl(n, '<deux mots ou plus>')` sans troisième argument — sinon un troisième appel naîtra faux, et
+celui-là on ne le verra pas non plus.
 
 ---
 
