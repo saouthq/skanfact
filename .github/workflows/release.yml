@@ -182,11 +182,19 @@ jobs:
       # d'essai ET sa case. Le garde-fou ne protégeait donc plus rien — il empêchait seulement de
       # faire tester au cabinet pilote la seule application sur laquelle on travaille.
       #
-      # Le type de release vient du MÊME drapeau que l'étape du dessus : la release est déjà créée
-      # par `preparer`, donc electron-builder n'a plus qu'à y déposer — mais deux étapes qui peuvent
-      # se contredire finissent toujours par se contredire.
+      # Le type de release du Cabinet se déduit du NUMÉRO DE VERSION, dans `build/cabinet.config.js`,
+      # à côté de son canal et pour la même raison (7.25.0 : une seule source de vérité, écrite dans
+      # le paquet, dans la release et dans le nom du fichier).
+      #
+      # Il a bien failli être posé ici, en ligne de commande, comme pour l'étape du dessus — et c'est
+      # ce qui a fait échouer la publication de la 9.8.5 : `-c.publish.releaseType=…` écrit APRÈS un
+      # `-c build/cabinet.config.js` vise la même option `-c`, le second gagne, et electron-builder
+      # est parti chercher un fichier de configuration nommé « .publish.releaseType=release ».
+      # L'étape du dessus n'a pas ce problème parce qu'elle ne passe aucun fichier de configuration.
+      # Une commande ne porte donc JAMAIS `-c <fichier>` et `-c.<clé>=<valeur>` ensemble ; ce qui doit
+      # varier va dans le fichier, où c'est une donnée et non une collision d'arguments.
       - name: Build & publish SkanFact Cabinet
-        run: npx electron-builder -c build/cabinet.config.js --publish always -c.publish.releaseType=${{ needs.preparer.outputs.prerelease == 'true' && 'prerelease' || 'release' }}
+        run: npx electron-builder -c build/cabinet.config.js --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           UPDATE_BASE: ${{ secrets.UPDATE_BASE }}

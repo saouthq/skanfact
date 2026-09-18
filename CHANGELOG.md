@@ -7,6 +7,39 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 9.8.6 — 18/09/2026
+
+**L'app du comptable ne se construisait plus.** La 9.8.5 est complète et verte ; c'est sa
+publication qui a échoué, du côté du Cabinet seulement, deux secondes après le début de l'étape.
+
+La 9.8.4 avait ajouté à cette étape le même drapeau de type de release que l'étape de l'app
+entreprise, « parce que deux étapes qui peuvent se contredire finissent toujours par se
+contredire ». La raison était bonne, le geste non : l'étape du Cabinet passe un fichier de
+configuration (`-c build/cabinet.config.js`), et `-c.publish.releaseType=…` vise **la même option**.
+Le second gagne, et electron-builder est parti chercher un fichier de configuration nommé
+`.publish.releaseType=release` — qui n'existe pas. L'étape de l'app entreprise n'a pas ce problème
+parce qu'elle ne passe aucun fichier. Rien dans le nom des deux drapeaux ne laisse deviner qu'ils se
+disputent quoi que ce soit, et **la 9.8.4 n'a jamais été publiée** : personne ne l'avait exercé.
+
+Ce qui change :
+
+- Le type de release du Cabinet se déduit du **numéro de version**, dans `build/cabinet.config.js`,
+  à côté de son canal et pour la même raison (7.25.0 : une seule source de vérité). Il y était écrit
+  `'release'` en dur : sur une bêta, l'étape aurait demandé une release pleine — sans conséquence
+  tant que le job `preparer` crée la page (9.8.1), et faux le jour où ce ne serait plus lui.
+- L'étape ne porte plus aucun `-c.…`.
+- **Le garde-fou qui manquait** : aucune commande `electron-builder` ne peut porter à la fois
+  `-c <fichier>` et `-c.<clé>=<valeur>`. C'est lui qui aurait arrêté la 9.8.5 avant de brûler une
+  publication.
+
+Et une assertion retournée, quatorzième occurrence du motif : celle de la 9.8.4 exigeait **deux**
+occurrences du drapeau dans le workflow. Elle décrivait le geste, pas la règle — la règle est que le
+type de release de **chacune** des deux applications se déduit du numéro de version ; par quel
+chemin ne regarde que le chemin.
+
+Aucune ligne des deux applications ne change. 558 tests, 0 erreur de lint, trois défauts
+réintroduits un par un font tomber leur test.
+
 ## 9.8.5 — 18/09/2026
 
 **Un compte porte un nom de compte, et un tiers porte le nom du tiers.**

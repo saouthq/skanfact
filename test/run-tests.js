@@ -7029,10 +7029,6 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     const drapeau = /-c\.publish\.releaseType=\$\{\{ ([\w.]+\.outputs\.prerelease) == 'true' && 'prerelease' \|\| 'release' \}\}/;
     const m = wf.match(drapeau);
     assert.ok(m, 'le type de release ne suit pas le numéro de version');
-    // Les DEUX étapes qui publient portent le MÊME drapeau. Deux étapes qui peuvent se contredire
-    // finissent toujours par se contredire (6.8.0, 7.26.0).
-    assert.strictEqual((wf.match(new RegExp(drapeau.source, 'g')) || []).length, 2,
-      'les deux applications ne suivent pas le même drapeau de préversion');
 
     // Et l'app du comptable suit la même règle, sur SON canal. Jusqu'à la 9.8.4 cette étape était
     // sautée sur une préversion, et ce test EXIGEAIT qu'elle le soit : il décrivait l'état du jour,
@@ -7050,6 +7046,27 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     const cfg = lireSource('build', 'cabinet.config.js');
     assert.ok(/channel:\s*\/-\/\.test\(pkg\.version\)\s*\?\s*'cabinet-beta'\s*:\s*'cabinet'/.test(cfg),
       'le canal du Cabinet ne se déduit plus du numéro de version : une bêta toucherait cabinet.yml');
+    // Et son TYPE de release suit la même règle, au même endroit. La 9.8.4 l'avait posé en ligne de
+    // commande pour que « les deux étapes portent le même drapeau » ; l'assertion d'à côté exigeait
+    // alors DEUX occurrences du drapeau dans le workflow. Elle décrivait le geste, pas la règle —
+    // quatorzième occurrence du motif (7.12.0, 7.26.0, 8.0.1, 8.2.0, 9.1.0, 9.2.2, 9.4.3, 9.4.5,
+    // 9.4.7, 9.4.9, 9.7.0, 9.8.1, 9.8.4). La RÈGLE est que le type de release de CHACUNE des deux
+    // applications se déduit du numéro de version ; par quel chemin ne regarde que le chemin.
+    assert.ok(/releaseType:\s*\/-\/\.test\(pkg\.version\)\s*\?\s*'prerelease'\s*:\s*'release'/.test(cfg),
+      'le type de release du Cabinet ne se déduit plus du numéro de version');
+
+    // LE GARDE-FOU QUI MANQUAIT, et qui aurait arrêté la 9.8.5 avant de brûler une publication :
+    // `-c.<clé>=<valeur>` et `-c <fichier>` visent la MÊME option courte. Posés sur la même
+    // commande, le second gagne, et electron-builder va chercher un fichier de configuration nommé
+    // « .publish.releaseType=release » — ENOENT, deux secondes après le début de l'étape. Rien dans
+    // le nom des deux drapeaux ne laisse deviner qu'ils se disputent quoi que ce soit.
+    wf.split('\n').filter(l => l.includes('electron-builder')).forEach(l => {
+      if (!/-c\s+\S/.test(l)) return;                       // pas de fichier de configuration : rien à craindre
+      assert.ok(!/-c\.[\w.]+=/.test(l),
+        'cette commande passe un fichier de configuration ET un `-c.x=y` : les deux visent `-c`, '
+        + 'le second gagne, et la construction échoue en cherchant un fichier qui n\'existe pas. '
+        + 'Ce qui doit varier va DANS le fichier de configuration.');
+    });
     // Et le relais doit laisser passer le fichier d'index de ce canal, sinon la bêta est publiée et
     // personne ne peut la recevoir (défaut de la 7.25.0 côté entreprise).
     const worker = lireSource('worker', 'skanfact-maj.mjs');

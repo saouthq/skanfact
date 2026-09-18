@@ -103,7 +103,13 @@ module.exports = {
     provider: 'github',
     owner: 'saouthq',
     repo: 'skanfact',
-    releaseType: 'release',
+    // Le type de release suit le numéro, exactement comme le canal juste en dessous. Il était écrit
+    // `'release'` en dur : sur une bêta, l'étape aurait donc demandé une release PLEINE — sans
+    // conséquence tant que `preparer` crée la page (9.8.1), et faux le jour où ce ne serait plus lui.
+    // La 9.8.4 avait voulu le poser en ligne de commande, comme pour l'app entreprise ; c'est ce qui
+    // a fait échouer la publication de la 9.8.5, parce que `-c.publish.…` et `-c <fichier>` visent la
+    // même option (voir le commentaire de l'étape, dans release.yml). Ici, c'est une donnée.
+    releaseType: /-/.test(pkg.version) ? 'prerelease' : 'release',
     // Le canal se DÉDUIT du numéro de version, comme pour l'app entreprise depuis la 7.25.0 : une
     // seule source de vérité, écrite dans le paquet, dans la release, dans l'écran des mises à jour
     // et dans le nom du fichier téléchargé. Un drapeau posé à la construction ou une case au
