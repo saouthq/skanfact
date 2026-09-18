@@ -79,6 +79,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 |---|---|
 | Une règle apprise d'un côté **se vérifie de l'autre**, à la main | 7.3.0 (purge des sauvegardes), 7.18.0 (`pl`), 7.32.0 (« À faire »), 8.1.0 (le saut d'horloge) |
 | Un **INSTRUMENT qui ne couvre qu'une des deux applications** ne protège qu'une des deux | 9.4.3 |
+| Une **BÊTA qui ne construit qu'une des deux** ne se fait tester qu'à moitié ; la cloison, c'est le canal | 9.8.4 |
 | Une **capture qui s'arrête au bas de l'écran** fait juger une page sur son premier écran | 9.4.3 |
 | Un fichier partagé a **trois** branchements : les deux `index.html`, dans l'ordre, et les `files` du Cabinet | 7.26.0 (`depot.js`), 7.29.0 (`rowmenu.js`), 9.1.0 (`compta.js`) |
 | Le Cabinet **n'écrit jamais** chez un client et ne lui renvoie rien | Cabinet 1.0.0 |
@@ -114,7 +115,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un **moteur sans écran n'existe pas** ; une fonction jamais appelée est invisible | 7.2.0, 7.3.0, 7.19.0 |
 | Un **extrait sans son cadre** fait douter de l'outil : montrer l'ensemble, griser ce qui ne compte pas | 9.4.7 |
 | Un **état vide secondaire** s'annonce ; celui qui EST le corps d'un écran garde sa présence | 9.4.7 |
-| Une **phrase affichée** que rien ne tient est un bug, pas une imprécision | 7.3.0, 7.6.0, 8.0.0 ; 9.4.5 — un COMMENTAIRE aussi |
+| Une **phrase affichée** que rien ne tient est un bug, pas une imprécision | 7.3.0, 7.6.0, 8.0.0 ; 9.4.5 — un COMMENTAIRE aussi ; 9.8.1 et 9.8.4 — dans un fichier de CI aussi |
 | `navigate()` vers la page courante ne redessine **rien** : `vers()` | 7.15.0, 7.29.0 |
 | Un état lu une fois au démarrage **se périme** | 7.1.x, 8.0.0 |
 
@@ -177,10 +178,45 @@ chantier précis ; `ROADMAP.md` est une **archive**.
 
 ## Publier une version
 
-1. Bump `package.json` + entrée `CHANGELOG.md`, `npm test`, commit, push sur `main`.
-2. Déclencher le workflow **Release** (`.github/workflows/release.yml`) : soit un tag `vX.Y.Z` (`npm run release` sur le Mac de Skander), soit **workflow_dispatch** sur `main` (onglet Actions → Release → Run workflow, ou l'outil GitHub `actions_run_trigger`). Depuis une session Claude Code, le push de tag est bloqué par le proxy git : utiliser workflow_dispatch.
-3. electron-builder (`publish.releaseType = "release"`) crée la release `vX.Y.Z` et le tag, attache `.dmg` + `.zip` (mac universal), `.exe` (win x64), `latest.yml`, `latest-mac.yml`. Le job mac copie les notes dans la release (`gh release edit`).
-4. Vérifier que le run est vert **et** que la release contient bien ces fichiers avant de dire que c'est publié ; s'il est rouge, lire les logs et corriger.
+**Le chemin normal passe par la bêta** (décidé le 18/09/2026 par Skander : « au lieu de faire sur ta
+branche et publier, pourquoi pas faire le bon workflow, c'est-à-dire sur la bêta ? »). `main` est la
+branche stable, `beta` la branche de travail, et **c'est le numéro de version qui décide de tout le
+reste** — il n'existe aucune case ni aucun drapeau à poser au lancement.
+
+1. **La bêta.** Travailler sur `beta`, numéroter `X.Y.Z-beta.N` (`npm run release preminor` puis
+   `prerelease` ; le `--preid beta` est posé par le script, un `-0` sans nom de canal donnerait un
+   canal « 0 »). Publier : le workflow marque la release **préversion** (donc `/releases/latest`
+   continue de pointer sur la dernière stable), electron-builder écrit `beta.yml` / `beta-mac.yml`
+   et `cabinet-beta.yml` / `cabinet-beta-mac.yml`. **Les deux applications sont construites**, chacune
+   sur son canal d'essai (corrigé en 9.8.4 — voir cette section).
+2. **L'essai.** Skander coche « Recevoir les versions bêta » (Paramètres → Mises à jour) ; le cabinet
+   pilote coche « Recevoir les versions d'essai » (Réglages → Mises à jour). Une sauvegarde
+   `avant-beta` est prise **avant** d'armer le canal. Personne d'autre ne voit rien.
+3. **La confirmation.** Quand Skander valide, `npm run release minor` transforme `X.Y.Z-beta.N` en
+   `X.Y.Z`, `main` avance, et on publie la stable. Décocher la case ramène à la stable (c'est le seul
+   retour en arrière autorisé, voir 6.7.3 et 7.25.0).
+
+**Le chemin direct en stable** reste légitime pour ce qui ne peut pas casser de chiffre : correctif
+d'interface, entretien, documentation, correctif de la publication elle-même. Il ne l'est pas pour ce
+qui touche **à l'argent, à une clé, au moteur comptable ou au format d'un fichier** — là, la bêta est
+la règle. Le motif du choix s'écrit dans l'entrée du `CHANGELOG.md`.
+
+Dans les deux cas :
+
+1. Bump `package.json` + entrée `CHANGELOG.md`, `npm test`, `npm run lint`, commit, push sur la
+   branche visée (`beta` pour un essai, `main` pour une stable).
+2. Déclencher le workflow **Release** (`.github/workflows/release.yml`) : soit un tag `vX.Y.Z`
+   (`npm run release` sur le Mac de Skander), soit **workflow_dispatch** en choisissant la branche
+   (onglet Actions → Release → Run workflow, ou l'outil GitHub `actions_run_trigger`). Depuis une
+   session Claude Code, le push de tag est bloqué par le proxy git : utiliser workflow_dispatch.
+3. Le job `preparer` crée la page de la release **une seule fois** (9.8.1), puis les deux postes y
+   déposent : `.dmg` + `.zip` (mac universal), `.exe` (win x64) pour chaque application, plus les
+   quatre fichiers d'index du canal. **16 fichiers** pour une stable.
+4. Vérifier que le run est vert **et** que la release contient bien ces fichiers avant de dire que
+   c'est publié ; s'il est rouge, lire les logs et corriger. Un job vert ne suffit pas : c'est très
+   exactement le défaut que la 9.8.1 a corrigé.
+5. Remettre `main` (et `beta`) à niveau après une stable, pour qu'aucune branche n'annonce une
+   version qui n'est plus la bonne.
 
 ## Structure
 
@@ -1376,9 +1412,12 @@ Règles apprises, à ne pas recasser :
   `avant-beta` **avant** d'armer le canal (au moment de l'installation, il sera trop tard pour y
   penser), on n'interdit pas. Et le repère « bêta » du menu suit la **version installée**, jamais le
   canal choisi : ce qui compte, c'est ce qui tourne.
-- **Une bêta d'entreprise ne construit plus l'app cabinet du tout** : elle n'a aucune case à
+- ~~**Une bêta d'entreprise ne construit plus l'app cabinet du tout** : elle n'a aucune case à
   décocher et personne ne lui a rien demandé. Publier une préversion sur `cabinet.yml` proposerait
-  une version d'essai à tous les comptables d'un coup.
+  une version d'essai à tous les comptables d'un coup.~~ **Vrai jusqu'à la 9.1.0, faux après, et
+  corrigé en 9.8.4** : le Cabinet a reçu son canal `cabinet-beta` ET sa case en 9.1.0, donc une
+  préversion écrit `cabinet-beta.yml` et ne touche pas `cabinet.yml`. Une bêta construit désormais
+  **les deux** applications. Voir § 9.8.4.
 - **Le relais ne regarde plus 5 releases mais 20** : plusieurs préversions peuvent s'intercaler
   entre deux stables, et une installation restée sur le canal normal ne trouverait plus `latest.yml`
   dans la fenêtre.
@@ -4184,6 +4223,50 @@ Règles apprises, à ne pas recasser :
 Prouvé : huit défauts réintroduits un par un font tomber leur test — dont deux qui prouvent
 l'instrument lui-même (la boîte au lieu de l'encre, et l'exception de la bulle, qui accusent tous
 deux du code juste). 1 678 écarts mesurés dans les deux applications.
+
+### 9.8.4 — Le bon workflow : une bêta construit LES DEUX applications
+
+Skander : « au lieu de faire sur ta branche et publier, pourquoi pas faire le bon workflow, c'est-à-dire
+sur la bêta ? » Il a raison, et c'était déjà sa décision en 7.25.0 — c'est moi qui avais dérivé, en
+publiant quatorze versions d'affilée en stable direct depuis une branche de session. Mais en vérifiant
+ce que le code sait faire, une ligne rendait sa proposition **inapplicable au Cabinet**, c'est-à-dire là
+où vit tout le travail en cours.
+
+Règles apprises, à ne pas recasser :
+
+- **Un garde-fou dont la raison a disparu n'est plus un garde-fou, c'est un blocage.**
+  `release.yml` sautait la construction du Cabinet sur une préversion, et son commentaire donnait deux
+  raisons : les comptables « n'ont aucune case à décocher », et une bêta « remplacerait `cabinet.yml` ».
+  Les deux sont fausses **depuis la 9.1.0**, qui a donné au Cabinet son canal `cabinet-beta` ET sa case.
+  Le garde-fou empêchait donc uniquement de faire tester au cabinet pilote la seule application sur
+  laquelle on travaille. C'est « une phrase affichée que rien ne tient est un bug » (7.3.0) appliqué à
+  un fichier de CI — la deuxième fois en deux versions, après le commentaire sur l'ordre des postes
+  (9.8.1). **Un commentaire qui justifie une ligne se relit quand le monde qu'il décrit a changé.**
+- **Ce qui protège n'est pas l'absence de construction, c'est le CANAL.** Le vrai garde-fou vit dans
+  `build/cabinet.config.js` : `channel: /-/.test(pkg.version) ? 'cabinet-beta' : 'cabinet'`. Une
+  préversion écrit `cabinet-beta.yml` et ne touche jamais `cabinet.yml`. Le test vise donc cette
+  ligne-là — la règle — plutôt que l'absence d'un `if:`.
+- **Quatre pièces sur cinq étaient déjà en place**, et personne ne pouvait le savoir sans les lire
+  ensemble : la config, `UPDATE_CHANNEL()` dans `src/cabinet/main.js`, la case de l'écran, et le relais
+  (`worker/skanfact-maj.mjs` laisse passer `cabinet-beta*.yml` depuis la 9.1.0). Seule la cinquième
+  bloquait. **Un mécanisme livré à 80 % ne se voit pas : il ressemble à un mécanisme absent.**
+- **Deux étapes qui peuvent se contredire finissent toujours par se contredire** (6.8.0, 7.26.0) :
+  l'étape Cabinet porte désormais le MÊME drapeau `releaseType` que l'étape entreprise. Il est
+  redondant aujourd'hui — `preparer` a déjà créé la release — et c'est exactement pour ça qu'il serait
+  oublié le jour où il cesserait de l'être.
+- **La cloison des canaux se teste dans les DEUX sens.** Jusqu'ici la même release ne pouvait pas
+  porter `beta.yml` et `cabinet-beta.yml` ; maintenant si. Servir la bêta du Cabinet à l'app entreprise
+  lui proposerait d'installer le logiciel du comptable — le défaut que la cloison existe pour empêcher
+  (7.25.0), dans le sens qui n'avait jamais pu se produire.
+- **Un test écrit contre l'état du jour décrit cet état, pas la règle — treizième occurrence**
+  (7.12.0, 7.26.0, 8.0.1, 8.2.0, 9.1.0, 9.2.2, 9.4.3, 9.4.5, 9.4.7, 9.4.9, 9.7.0, 9.8.1). Celui-ci
+  EXIGEAIT la ligne qui bloque. Quand une règle change, c'est le test qui se relit en premier.
+- **Deux des quatre preuves sont tombées sur des tests ANTÉRIEURS** (9.1.0), qui couvraient déjà la
+  config et le relais. C'est le diagnostic confirmé par la preuve : le mécanisme était testé, seul le
+  workflow ne l'était pas contre la vraie règle.
+
+Le chemin complet — quand une bêta, quand une stable, et les cinq étapes — est au § « Publier une
+version ».
 
 ## Pistes pour la suite (non demandées)
 

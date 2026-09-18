@@ -7,6 +7,40 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 9.8.4 — 18/09/2026
+
+**Une version d'essai construit désormais les DEUX applications.**
+
+Skander : « au lieu de faire sur ta branche et publier, pourquoi pas faire le bon workflow, c'est-à-dire
+sur la bêta ? » C'était déjà sa décision en 7.25.0 : `main` reste la stable, `beta` est la branche de
+travail, et rien ne part chez personne avant qu'il ait confirmé. Mais une ligne du workflow rendait ce
+chemin **inapplicable à SkanFact Cabinet** — c'est-à-dire à la seule application sur laquelle on
+travaille, et celle que le cabinet pilote est en train d'essayer.
+
+Cette ligne sautait la construction du Cabinet sur une préversion. Sa raison, écrite juste au-dessus :
+les comptables « n'ont aucune case à décocher », et une bêta « remplacerait `cabinet.yml` ». **Les deux
+moitiés sont fausses depuis la 9.1.0**, qui a donné au Cabinet son canal d'essai `cabinet-beta` ET sa
+case « Recevoir les versions d'essai ». Le garde-fou ne protégeait donc plus rien ; il empêchait
+seulement de faire tester quoi que ce soit au comptable.
+
+Quatre pièces sur cinq étaient déjà là — la config, le canal lu par l'application, la case de l'écran,
+et le relais qui laisse passer `cabinet-beta*.yml`. Seule la cinquième bloquait.
+
+Ce qui change, et rien d'autre :
+
+- Une préversion construit et publie **les deux applications**, chacune sur son canal d'essai. Ce qui
+  protège les cabinets n'est pas de sauter l'étape, c'est le canal : `9.9.0-beta.1` écrit
+  `cabinet-beta.yml` et ne touche jamais `cabinet.yml`.
+- Les deux étapes de publication portent le **même** drapeau de préversion. Deux étapes qui peuvent se
+  contredire finissent toujours par se contredire.
+- La cloison entre canaux est vérifiée dans les **deux** sens : jusqu'ici une même release ne pouvait
+  pas porter `beta.yml` et `cabinet-beta.yml`, maintenant si — et servir l'un à l'autre proposerait
+  d'installer le mauvais logiciel.
+
+Aucune ligne des deux applications ne change. 553 tests, lint 0 erreur ; quatre défauts réintroduits un
+par un font tomber leur test, dont deux sur des assertions écrites en 9.1.0 qui couvraient déjà le
+mécanisme — seul le workflow n'était pas tenu contre la vraie règle.
+
 ## 9.8.3 — 18/09/2026
 
 **Les boutons collés au contenu, et la sonde qui les voit.**

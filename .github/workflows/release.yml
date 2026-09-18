@@ -170,12 +170,23 @@ jobs:
       # autre point d'entrée. Elle se publie elle-même dans la MÊME release (même version), sur son
       # propre canal de mise à jour : cabinet.yml / cabinet-mac.yml à côté de latest.yml.
       #
-      # Une bêta ne concerne QUE l'application entreprise. La construire aussi côté cabinet
-      # remplacerait `cabinet.yml` par une préversion, et tous les comptables — qui n'ont rien
-      # demandé et n'ont aucune case à décocher — se verraient proposer une version d'essai.
+      # Une bêta construit LES DEUX applications, chacune sur SON canal d'essai. Ce qui protège les
+      # comptables n'est pas de sauter cette étape, c'est le canal : `build/cabinet.config.js` le
+      # déduit du numéro de version, donc 9.9.0-beta.1 écrit `cabinet-beta.yml` et ne touche JAMAIS
+      # `cabinet.yml`. Seul un cabinet qui a coché « Recevoir les versions d'essai » le lit, et le
+      # relais laisse passer les deux noms de fichier depuis la 9.1.0.
+      #
+      # Jusqu'à la 9.8.4, cette étape était sautée sur une préversion. Sa raison, écrite ici, était
+      # qu'une bêta « remplacerait cabinet.yml » et que les comptables « n'ont aucune case à
+      # décocher » : les deux moitiés sont fausses depuis la 9.1.0, qui a donné au Cabinet son canal
+      # d'essai ET sa case. Le garde-fou ne protégeait donc plus rien — il empêchait seulement de
+      # faire tester au cabinet pilote la seule application sur laquelle on travaille.
+      #
+      # Le type de release vient du MÊME drapeau que l'étape du dessus : la release est déjà créée
+      # par `preparer`, donc electron-builder n'a plus qu'à y déposer — mais deux étapes qui peuvent
+      # se contredire finissent toujours par se contredire.
       - name: Build & publish SkanFact Cabinet
-        if: needs.preparer.outputs.prerelease != 'true'
-        run: npx electron-builder -c build/cabinet.config.js --publish always
+        run: npx electron-builder -c build/cabinet.config.js --publish always -c.publish.releaseType=${{ needs.preparer.outputs.prerelease == 'true' && 'prerelease' || 'release' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           UPDATE_BASE: ${{ secrets.UPDATE_BASE }}

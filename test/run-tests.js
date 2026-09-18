@@ -6445,6 +6445,16 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.strictEqual(W.fichierAutorise('app', 'SkanFact-7.26.0-beta.1-mac-universal.zip'), true);
     assert.strictEqual(W.fichierAutorise('app', 'SkanFact-7.26.0-beta.1-win-x64.exe'), true);
     assert.strictEqual(W.fichierAutorise('cabinet', 'SkanFact-7.26.0-beta.1-mac-universal.zip'), false);
+    // Et dans l'AUTRE sens, depuis la 9.8.4 : une bêta construit désormais les deux applications,
+    // donc la même release porte `beta.yml` ET `cabinet-beta.yml`. Servir le second à l'app
+    // entreprise lui proposerait d'installer le logiciel du comptable — le défaut que la cloison
+    // des canaux existe pour empêcher (7.25.0), dans le sens qui n'avait jamais pu se produire.
+    ['cabinet-beta.yml', 'cabinet-beta-mac.yml', 'cabinet-beta-linux.yml'].forEach(f => {
+      assert.strictEqual(W.fichierAutorise('cabinet', f), true, 'bêta refusée au cabinet : ' + f);
+      assert.strictEqual(W.fichierAutorise('app', f), false, 'bêta du cabinet servie à l\'app : ' + f);
+    });
+    assert.strictEqual(W.fichierAutorise('cabinet', 'SkanFact-Cabinet-9.9.0-beta.1-mac-universal.zip'), true);
+    assert.strictEqual(W.fichierAutorise('app', 'SkanFact-Cabinet-9.9.0-beta.1-mac-universal.zip'), false);
   });
 
   // Le formulaire de contact. Écrit pour le site le 14/09, resté sur une branche jamais fusionnée
@@ -7016,13 +7026,35 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // en 9.8.1 quand le calcul est passé dans un job à part, et cette assertion est tombée sur un
     // workflow parfaitement juste. Ce qui compte est la RÈGLE — le type de release est décidé par
     // ce drapeau-là, et c'est le MÊME drapeau qui décide si l'app du comptable se construit.
-    const m = wf.match(/-c\.publish\.releaseType=\$\{\{ ([\w.]+\.outputs\.prerelease) == 'true' && 'prerelease' \|\| 'release' \}\}/);
+    const drapeau = /-c\.publish\.releaseType=\$\{\{ ([\w.]+\.outputs\.prerelease) == 'true' && 'prerelease' \|\| 'release' \}\}/;
+    const m = wf.match(drapeau);
     assert.ok(m, 'le type de release ne suit pas le numéro de version');
-    // Et l'app du comptable ne bouge pas : elle n'a aucune case à décocher, personne ne lui a rien
-    // demandé, et sa mise à jour passe par le même fichier `cabinet.yml`.
+    // Les DEUX étapes qui publient portent le MÊME drapeau. Deux étapes qui peuvent se contredire
+    // finissent toujours par se contredire (6.8.0, 7.26.0).
+    assert.strictEqual((wf.match(new RegExp(drapeau.source, 'g')) || []).length, 2,
+      'les deux applications ne suivent pas le même drapeau de préversion');
+
+    // Et l'app du comptable suit la même règle, sur SON canal. Jusqu'à la 9.8.4 cette étape était
+    // sautée sur une préversion, et ce test EXIGEAIT qu'elle le soit : il décrivait l'état du jour,
+    // pas la règle (treizième occurrence du motif — 7.12.0, 7.26.0, 8.0.1, 8.2.0, 9.1.0, 9.2.2,
+    // 9.4.3, 9.4.5, 9.4.7, 9.4.9, 9.7.0, 9.8.1). La raison écrite dans le workflow — les comptables
+    // « n'ont aucune case à décocher », une bêta « remplacerait cabinet.yml » — est fausse depuis la
+    // 9.1.0, qui a donné au Cabinet son canal d'essai et sa case.
     const cab = wf.slice(wf.indexOf('- name: Build & publish SkanFact Cabinet'));
-    assert.ok(cab.slice(0, 400).includes(`if: ${m[1]} != 'true'`),
-      'une bêta d\'entreprise publierait aussi une bêta du cabinet');
+    assert.ok(!/^\s*if:/m.test(cab.slice(0, 400)),
+      'l\'app du comptable est encore sautée sur une préversion : le cabinet pilote n\'a rien à tester');
+
+    // Ce qui protège vraiment les comptables n'est PAS l'absence de construction, c'est le canal —
+    // et il se déduit du numéro de version, comme tout le reste. Sans cette ligne, une bêta
+    // écraserait `cabinet.yml` et tous les cabinets se verraient proposer une version d'essai.
+    const cfg = lireSource('build', 'cabinet.config.js');
+    assert.ok(/channel:\s*\/-\/\.test\(pkg\.version\)\s*\?\s*'cabinet-beta'\s*:\s*'cabinet'/.test(cfg),
+      'le canal du Cabinet ne se déduit plus du numéro de version : une bêta toucherait cabinet.yml');
+    // Et le relais doit laisser passer le fichier d'index de ce canal, sinon la bêta est publiée et
+    // personne ne peut la recevoir (défaut de la 7.25.0 côté entreprise).
+    const worker = lireSource('worker', 'skanfact-maj.mjs');
+    ['cabinet-beta.yml', 'cabinet-beta-mac.yml'].forEach(f => assert.ok(worker.includes(f),
+      `le relais ne laisse pas passer ${f} : une bêta du cabinet serait injoignable`));
   });
 
   // La 9.8.0 est complète et verte ; c'est sa PUBLICATION qui a échoué. Les deux postes créaient
