@@ -283,6 +283,64 @@ absent » (7.0.0), qui avait coûté les treize « Voir » morts de l'app entrep
 
 ---
 
+### T-10 · MINEUR · La pastille d'un onglet veut dire trois choses différentes
+
+**Vu** : la barre d'onglets de la comptabilité d'un dossier porte des pastilles `tab-n`. Elles ne
+comptent pas la même chose :
+
+| Onglet | Ce que la pastille compte | Ce que le lecteur comprend |
+|---|---|---|
+| Saisie | les écritures **en brouillard** | à traiter ✔ |
+| Banque | les lignes **non rapprochées** | à traiter ✔ |
+| Immobilisations | **le nombre de biens** | à traiter ✘ — c'est un inventaire |
+| Exercice | le mot « **clos** » | un état, pas un nombre |
+
+**Pourquoi ça compte** : une pastille sur un onglet se lit universellement comme « il y a N choses
+qui t'attendent là-dedans ». « Immobilisations 4 » sur un dossier dont les quatre fiches sont
+parfaitement à jour envoie le comptable ouvrir un onglet où il n'a rien à faire. Répété chaque
+matin, ça apprend à ignorer les pastilles — y compris les deux qui disent vrai.
+
+**Ancrage** : `src/cabinet/renderer/app.js:2237-2252` — quatre expressions dans la même barre, trois
+sémantiques.
+
+**Ce qui est juste et ne doit pas bouger** : Saisie et Banque. Et la pastille **disparaît** quand le
+compte tombe à zéro, ce qui est la bonne règle.
+
+**Piste** : une pastille = « ce qui attend une décision », partout. Immobilisations compterait les
+biens dont la dotation de l'exercice n'est pas passée ; Exercice garderait « clos » mais dans un
+autre habit (le mot n'est pas un compteur).
+
+---
+
+### T-11 · MOYEN · Le lettrage NOMME des pièces et n'en ouvre aucune
+
+**Vu** : l'onglet Lettrage liste, tiers par tiers, les pièces qui restent ouvertes — numéro, date,
+débit, crédit, reste. Chaque ligne se termine par une **colonne vide**, et aucune ligne ne s'ouvre.
+
+**Pourquoi ça compte** : « FAC-2026-014 · 3 200,000 DT · en retard » est une **question**, pas une
+information : le comptable veut voir la pièce pour comprendre pourquoi elle n'est pas soldée. C'est
+très exactement la règle 7.15.0 — *un écran qui NOMME un ensemble doit pouvoir l'ouvrir*. Et la
+colonne vide en bout de ligne coûte de la largeur à toutes les autres (règle 9.4.4).
+
+**Ancrage** : `src/cabinet/renderer/app.js:2419-2423` — la ligne porte `data-piece` et un
+`<td class="row-actions"></td>` **toujours vide**. `bindRowMenus` est bien appelé sur l'écran
+(ligne 4359) mais aucune cellule du lettrage n'appelle `rowMenuCell`. Et `data-piece` est **écrit à
+deux endroits et lu nulle part** dans tout le fichier : c'est un attribut mort.
+
+**Ce qui est juste et ne doit pas bouger** : le livre-journal, lui, pose le menu sur la **première**
+ligne de chaque pièce (ligne 2307) et laisse les suivantes vides — c'est le bon modèle, il suffisait
+de le reprendre.
+
+**À ne pas confondre** : CLAUDE.md (8.9.0) écrit « le lettrage dont une ligne ouvre sa pièce » et
+`e2e:livres` le prouve — mais sur l'**app entreprise** (`#bal-vues button[data-vue=lettrage]`). Le
+lettrage du Cabinet est un écran distinct, livré en 9.5.0, qui n'a jamais reçu ce geste. Encore un
+jumeau manquant (règle 7.3.0).
+
+**Piste** : `rowMenuCell` sur chaque ligne ouverte, avec « Voir dans le paquet » quand le mois de la
+pièce est connu — le mécanisme existe déjà dix lignes plus haut.
+
+---
+
 ## Comment se servir de ce document
 
 - Un constat qui part dans une version : barrer la ligne, citer le numéro de version.
