@@ -629,6 +629,35 @@ ouvert (`aria-expanded`, un chevron), sinon on ne sait pas qu'on peut le referme
 
 ---
 
+### T-21 · MOYEN · Annuler « déposée » avant « payée » enferme dans un état sans issue
+
+**Le geste** : marquer déposée, marquer payée, puis annuler **« déposée » en premier**.
+
+**Ce qui arrive** : `pointerDeclaration` efface `d.deposee` et **ne touche pas à `d.payee`**. La
+déclaration est donc « payée mais pas déposée » — l'état exact que le moteur REFUSE de créer par la
+porte d'entrée (`compta.js:1975` : *« on ne paie pas ce qu'on n'a pas déposé »*). Et le bouton, lui,
+est éteint dès que `deposee` est vide (`app.js:2497`), quelle que soit la valeur de `payee` : il
+affiche donc **« Payée le 18/09/2026 — annuler »** en gris, inerte. **Le seul chemin pour défaire le
+paiement est fermé par l'annulation du dépôt.**
+
+**Pourquoi ça compte** : c'est la règle 7.12.0, mot pour mot — *un réglage qui accepte un clic, ne
+fait rien de visible, et se retire ensuite la possibilité de revenir en arrière est pire que pas de
+réglage du tout*. Et l'état obtenu est **faux** : sur soixante dossiers, le comptable lit « payée »
+sur une déclaration que l'application elle-même considère comme non déposée.
+
+**Ancrage** : `src/renderer/compta.js:1978-1980` — l'effacement ne porte que sur `quoi` ;
+`src/cabinet/renderer/app.js:2497` — la condition `disabled` ignore `payee`.
+
+**Ce qui est juste et ne doit pas bouger** : l'ordre imposé à la pose (on ne paie pas ce qu'on n'a
+pas déposé) et le fait que les deux pointages se défassent. C'est la **symétrie** qui manque : ce
+qu'on interdit de poser dans un sens doit être interdit d'obtenir dans l'autre.
+
+**Piste** : annuler « déposée » annule « payée » du même geste, et **le dit** (« Dépôt et paiement
+annulés »), plutôt que de laisser un état que rien ne permet de quitter. Un test pur : après
+`pointerDeclaration(…, 'deposee', null)`, `d.payee.le` doit être vide.
+
+---
+
 ### T-11 · confirmé à l'écran (18/09)
 
 Le testeur a cliqué une ligne de pièce dans un panneau client : **rien ne se passe**. Le constat
