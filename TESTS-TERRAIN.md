@@ -134,6 +134,57 @@ brouillards d'un mois renvoyé, ne touche jamais une écriture validée ».
 
 ---
 
+### T-06 · GRAVE · L'écart de suspens ne peut pas atteindre zéro, et ignore le solde de départ
+
+**Vu** : relevé d'août importé sur un livre qui porte juin, juillet et août. La carte **Écart de
+suspens** affiche **−7 918,355 DT** et **ne bouge pas** quand on corrige les soldes de début et de
+fin du relevé. Elle ne bougera pas non plus au rapprochement automatique, et finira à
+**−7 913,855 DT** — soit exactement le solde du compte 532 sur juin + juillet.
+
+**Le calcul réel** (`src/renderer/compta.js:1567`, `suspens`) :
+
+```
+sB = Σ des lignes du RELEVÉ non rapprochées
+sL = Σ des lignes 532 du LIVRE non rapprochées, avec date <= releve.au
+ecart = sB − sL
+```
+
+Il n'y a **aucune borne basse** côté livre, et `soldeDebut` / `soldeFin` n'entrent **nulle part**.
+
+**Pourquoi ça compte** : c'est la carte qui répond à « ce mois est-il propre ? ». Dès que les relevés
+ne couvrent pas toute l'histoire du livre — c'est-à-dire dans la vie réelle, où un cabinet reprend un
+dossier en cours d'année — elle affiche un nombre qui ne désigne rien et qui ne peut jamais tomber à
+zéro. Le comptable apprend à l'ignorer, et le jour où elle dirait quelque chose de vrai, personne ne
+la regarde plus.
+
+**Le symptôme qui trahit le défaut** : `soldeDebut` est demandé, contrôlé (le bouclage refuse un
+relevé qui ne tombe pas juste), puis **jamais réutilisé**. Une donnée qu'on exige et qu'on n'emploie
+pas est le signe qu'un calcul l'a oubliée.
+
+**Ce qui est juste et ne doit pas bouger** : les deux listes du panneau « Les suspens » (ce que la
+banque porte et que le livre n'a pas, et l'inverse) sont correctes. L'absence de borne basse côté
+livre est même VOULUE — un chèque émis en juillet et encaissé en août doit apparaître. C'est le
+**nombre unique** qui est faux, pas les listes.
+
+**Le chiffre attendu par un comptable** est celui du rapprochement classique :
+
+```
+ecart = soldeFin du relevé − solde comptable du compte à la même date
+```
+
+Sur le cas testé : 11 735,002 − 11 739,502 = **−4,500**, soit exactement la seule opération que le
+livre n'a pas (la commission bancaire). Et **0** une fois cette écriture passée. Un indicateur qui
+atteint zéro est un indicateur ; un indicateur qui ne peut pas l'atteindre est une décoration.
+
+**Piste** : ancrer l'écart sur les soldes, et garder les deux listes telles quelles. Vérifier au
+passage que la somme des suspens explique bien l'écart — c'est le contrôle qui prouve les deux.
+
+**Règle du projet en jeu** : « un agrégat porte une devise, une unité, et une période nommée »
+(3.1.0). Ici la période affichée (« au 31/08/2026 ») laisse croire à une comparaison de soldes à une
+date, alors que c'est une différence de deux ensembles de périodes différentes.
+
+---
+
 ## Comment se servir de ce document
 
 - Un constat qui part dans une version : barrer la ligne, citer le numéro de version.
