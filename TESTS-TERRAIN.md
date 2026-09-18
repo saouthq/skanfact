@@ -921,6 +921,54 @@ tient.
 
 ---
 
+## Le plan de parcours — ce qui est testé, ce qui ne l'est pas
+
+*Posé le 18/09/2026, après le premier tour. « Il faut tout tester, pas que la partie qu'on vient de
+faire » (Skander). On coche au fur et à mesure ; ce qui n'est pas coché n'a jamais été ouvert par
+quelqu'un qui cherchait un défaut.*
+
+**Les 6 pages**
+
+| Page | État |
+|---|---|
+| Dossiers | ▨ vue en surface (liste, « À faire ») — pas exercée |
+| Relances | ☐ |
+| Échéances | ☐ |
+| Écritures | ☐ |
+| Réglages | ☐ |
+| Aide | ☐ |
+
+**Les 3 onglets d'une fiche client**
+
+| Onglet | État |
+|---|---|
+| Suivi | ☐ |
+| Comptabilité | ☑ |
+| Paquets | ☐ |
+
+**Les 11 sous-onglets de Comptabilité**
+
+| Sous-onglet | État | Bloc |
+|---|---|---|
+| Saisie | ☐ | C — l'écran où un comptable passe ses journées |
+| Recherche | ☐ | C |
+| Livre-journal | ☐ | D — ce qu'on imprime |
+| Grand livre | ☐ | D |
+| Balance | ☐ | D |
+| Immobilisations | ☐ | E — le dossier permanent |
+| Inventaire | ☐ | E |
+| Lettrage | ☑ | — |
+| Déclaration | ☑ | — |
+| Banque | ☑ | — |
+| Exercice | ☑ | — |
+
+**Ordre retenu** : C (saisie et recherche) → D (les livres) → E (dossier permanent) → F (Suivi et
+Paquets) → G (portefeuille : Dossiers en profondeur, Relances, Échéances, Écritures) → H (Réglages,
+Aide). La saisie d'abord parce que c'est l'écran le plus utilisé et le plus complexe ; l'Aide en
+dernier parce qu'elle décrit les écrans qu'on vient de corriger.
+
+---
+
 ## Comment se servir de ce document
 
 - Un constat qui part dans une version : barrer la ligne, citer le numéro de version.
