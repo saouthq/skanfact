@@ -374,6 +374,94 @@ déjà pour les lignes sans réponse (« Choisir l'écriture en face »).
 
 ---
 
+### T-13 · GRAVE · Le nom du TIERS est détruit à l'import : le lettrage et la balance âgée raisonnent par FACTURE
+
+**Le constat le plus important de la session.** Une ligne de code, trois écrans faux, et seize
+fausses alertes en orange.
+
+**Vu**, sur les trois captures :
+
+1. Le tableau « **Ce qui reste dû, par ancienneté** » a une colonne **TIERS** dont les lignes sont
+   `Facture FAC-2026-025 — Cabin…`, `Facture FAC-2026-017 — Lemo…` — **des pièces, pas des tiers**.
+   Le pied annonce « **5 tiers** » : ce sont cinq **factures**.
+2. Les panneaux du bas sont **un par facture** : « Facture FAC-2026-022 — Clinique Les Jasmins »,
+   « Facture FAC-2026-014 — Clinique Les Jasmins », « Facture FAC-2026-018 — Clinique Les
+   Jasmins ». **Le même client occupe trois panneaux** et n'a jamais de total.
+3. Un bandeau orange annonce **seize lettrages faux**, tous par **paires** :
+   « Lettrage "FAC-2026-014" de **Facture** FAC-2026-014 … écart 399,531 » et
+   « Lettrage "FAC-2026-014" de **Règlement** FAC-2026-014 … écart 399,531 ». Même lettre, même
+   montant, sens opposés — c'est un lettrage **parfaitement juste**, coupé en deux.
+
+**La chaîne, vérifiée de bout en bout** :
+
+- Le CSV du paquet est **juste** : `Tiers = Clinique Les Jasmins`,
+  `Libellé = Facture FAC-2026-022 — Clinique Les Jasmins`. Deux colonnes distinctes.
+- `entreesDepuisCsv` (`compta.js:216`) lit bien les deux.
+- **`piecesDepuisLignes` (`compta.js:857`) jette le tiers** : la ligne du livre n'a que
+  `compte`, `tiersId`, `libelle`, `debit`, `credit`, `lettre` — **aucun champ `tiers`** — et elle
+  écrit `libelle: l.label || l.tiers`, donc le libellé gagne toujours. `tiersId` reste `null`
+  (aucune colonne du CSV ne le porte).
+- **`lignesDuLivre` (`compta.js:831`) doit alors en inventer un** : `tiers: l.libelle`.
+
+**Ce que ça casse, et pourquoi c'est grave** :
+
+| Écran | Conséquence |
+|---|---|
+| Balance âgée | Regroupe par `tiersId \|\| '~' + tiers` (`compta.js:1703`) → **une ligne par facture**. Le tableau qui doit répondre à « qui me doit combien » ne peut plus totaliser un client. |
+| Lettrage | Un panneau par facture ; le « reste » d'un client n'existe nulle part. |
+| Contrôle des lettrages | Le groupe est `tiers\|lettre` (`compta.js:452`) : deux libellés différents pour la même lettre → **deux groupes déséquilibrés**. Seize accusations contre du travail juste. |
+| Balance auxiliaire | `balanceAux` (`app.js:2375`) prend `l.tiers` **comme numéro de compte auxiliaire** → un « compte » par facture. |
+
+C'est **une régression de la 9.2.0** : en 9.1.0, le Cabinet lisait les CSV directement et
+`entreesDepuisCsv` rendait un vrai tiers. Le livre l'a perdu en chemin.
+
+Et c'est la faute la plus coûteuse en confiance : **seize alertes orange qui accusent du travail
+correct**. Un comptable qui voit ça une fois cesse de lire l'encadré ; la dix-septième, qui sera
+vraie, ne sera plus lue non plus.
+
+**Ce qui est juste et ne doit pas bouger** : le CSV du paquet, `entreesDepuisCsv`, le contrôle des
+lettrages lui-même (une lettre dont les pièces ne se soldent pas EST une faute de saisie, et il faut
+la nommer), et la clé `tiersId || tiers` — c'est la bonne clé, elle est simplement alimentée avec la
+mauvaise valeur.
+
+**Piste** : ajouter `tiers` à la forme d'une ligne de `livre.json`. C'est une **décision de format**
+(règle 9.7.0 : une liste ajoutée est compatible, un champ ajouté doit être décidé et le test du
+format doit tomber pour le dire), pas un ajout discret côté appelant. Les livres déjà écrits se
+rattrapent en relisant les paquets. Et un test : sur le jeu d'exemple, la balance âgée doit rendre
+**autant de lignes que de clients distincts**, jamais que de factures.
+
+---
+
+### T-14 · MOYEN · Le lettrage consacre un panneau entier à ce qui est SOLDÉ
+
+**Vu** : entre les factures ouvertes, des panneaux pleine largeur — titre, sous-titre, cadre,
+~130 px — pour dire « **Tout est lettré : 1 pièce soldée.** ». Il y en a autant que de pièces
+soldées, et la page en devient interminable.
+
+**Pourquoi ça compte** : cet écran répond à UNE question — *qu'est-ce qui reste dû ?* Ce qui est
+soldé est précisément ce qu'on n'a plus à regarder. Lui donner la même présence visuelle qu'à une
+créance en retard, c'est noyer la réponse dans ce qui n'est pas la question. (Amplifié par T-13 :
+avec un vrai regroupement par client, ces panneaux seraient rares au lieu d'être la majorité.)
+
+**Ancrage** : `src/cabinet/renderer/app.js:2416-2424` — chaque entrée de `l.rows` produit un
+`.panel`, y compris quand `r.ouverts` est vide.
+
+**Ce qui est juste et ne doit pas bouger** : le dire. Un client dont tout est soldé n'est pas la
+même information qu'un client absent de la liste — c'est une bonne nouvelle, et elle se voit.
+
+**Piste** : une seule ligne récapitulative sous le tableau (« 11 tiers entièrement lettrés »),
+dépliable. Règle 9.4.5 : *ce qui prend la place n'est pas le nombre d'objets mais leur taille —
+replier avant de paginer*.
+
+---
+
+### T-11 · confirmé à l'écran (18/09)
+
+Le testeur a cliqué une ligne de pièce dans un panneau client : **rien ne se passe**. Le constat
+tient.
+
+---
+
 ## Comment se servir de ce document
 
 - Un constat qui part dans une version : barrer la ligne, citer le numéro de version.
