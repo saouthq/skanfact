@@ -821,6 +821,51 @@ nom de dossier, libellé de pièce) sont bien échappées dans les corps de fen�
 
 ---
 
+### T-26 · GRAVE · Le motif de réouverture disparaît de l'écran à la seconde où il est donné
+
+**Vu**, et signalé par le testeur : *« je ne vois pas le motif après la réouverture avec motif »*.
+
+L'application EXIGE ce motif, et elle écrit pourquoi, dans la fenêtre qui le demande :
+
+> « Le motif est la **seule trace** qui expliquera, **dans six mois**, pourquoi un chiffre a changé
+> après que le client a reçu ses états. Il est obligatoire. »
+
+Le motif est bien enregistré (`ex.reouvertures`). Il n'est affiché **nulle part** une fois la
+réouverture faite.
+
+**Ancrage** : `src/cabinet/renderer/app.js:2636-2637` — **unique** occurrence de `reouvertures` dans
+tout le renderer, et elle vit **à l'intérieur de la branche `ex.clos ? …`**. Dès que l'exercice
+repasse « ouvert », ce bandeau cède la place à l'avertissement des contrôles et le motif s'évapore.
+Aucune vue de piste d'audit n'existe par ailleurs dans l'app (zéro occurrence de `audit` dans le
+renderer).
+
+**Pourquoi c'est grave — deux fois** :
+
+1. **Le motif est invisible pendant la période exacte où il sert.** Un exercice rouvert est un
+   exercice *en train de changer* : c'est là que le collaborateur qui reprend le dossier, ou le
+   comptable lui-même trois semaines plus tard, se demande *pourquoi est-il ouvert ?*. Il ne
+   réapparaît qu'une fois reclôturé — quand la question ne se pose plus.
+2. **Seul le DERNIER motif est rendu**, même une fois clos
+   (`ex.reouvertures[ex.reouvertures.length - 1]`). Deux réouvertures, et la première explication
+   est perdue pour l'écran. Or c'est précisément la succession qui intéresse un contrôleur.
+
+**La règle du projet, mot pour mot** : *une donnée enregistrée et jamais affichée n'existe pas*
+(7.21.0). Et celle de la 6.8.1 : *un verdict qui vit deux secondes n'est pas un verdict*. Ici c'est
+pire qu'une donnée oubliée : l'application **promet à l'écran** que cette trace sera là dans six
+mois, et la cache dès la seconde suivante — c'est « une phrase affichée que rien ne tient » (7.3.0),
+sur la garantie la plus sérieuse du logiciel.
+
+**Ce qui est juste et ne doit pas bouger** : exiger le motif, la phrase qui l'explique, et le refus
+quand il manque. Tout cela fonctionne parfaitement.
+
+**Piste** : un bandeau permanent sur un exercice rouvert — « **Exercice rouvert le 18/09/2026 :
+"Facture d'électricité de décembre reçue après la clôture"** » — et **l'historique complet** des
+clôtures et réouvertures dans un panneau dépliable, comme `closureLog` le fait côté entreprise
+depuis la 6.0.0. Encore un jumeau manquant (7.3.0). Un test : après
+`rouvrir(…, motif)`, le motif doit figurer dans le rendu de l'onglet Exercice.
+
+---
+
 ### T-11 · confirmé à l'écran (18/09)
 
 Le testeur a cliqué une ligne de pièce dans un panneau client : **rien ne se passe**. Le constat
