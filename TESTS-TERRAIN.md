@@ -589,6 +589,38 @@ manquant (règle 7.3.0), cette fois entre un fichier et son garde-fou.
 
 ---
 
+### T-20 · MOYEN · « D'où ça vient » ouvre un panneau qu'il faut aller chercher
+
+**Vu**, et signalé par le testeur : *« l'affichage vient en fin de page, faut le chercher, pas
+pratique »*. Clic sur « 4 écritures » face à la TVA collectée → le panneau « TVA collectée — les
+pièces » s'ouvre **sous le tableau des quatorze cases**, donc hors de l'écran. Rien ne bouge, rien ne
+clignote, le bouton n'a pas changé d'aspect : l'impression immédiate est que le clic n'a rien fait.
+
+**Pourquoi ça compte** : c'est le geste de **contrôle** de cet écran — *d'où vient ce chiffre que je
+m'apprête à recopier sur le portail ?* Un geste de contrôle dont on doute qu'il ait fonctionné n'est
+pas fait. Et c'est le symptôme le plus démoralisant du projet (7.0.0) : un bouton qui accepte le
+clic sans effet visible.
+
+**Ancrage** : `src/cabinet/renderer/app.js:2533` — le clic pose `declState.ouverte` puis appelle
+`drawLivres`, qui redessine tout. Le panneau est bien inséré à sa place logique
+(`app.js:2490`, entre les cases et « Ce qui suit ») mais **rien ne l'amène à l'écran** : aucun
+`scrollIntoView`, aucun repère. Le Cabinet n'a que **deux** `scrollIntoView` dans tout son fichier,
+tous deux pour les Réglages.
+
+**Le jumeau manquant, encore** (règle 7.3.0) : l'app entreprise a `pageFocus` depuis la 7.18.0
+(`src/renderer/app.js:83` et `:1501`) — elle retient la cible, l'amène à l'écran **après** le rendu
+(`render()` remet `scrollTop` à zéro, donc un `scrollIntoView` posé pendant le dessin serait effacé,
+règle 7.27.0) et la marque une seconde et demie. Le Cabinet ne l'a jamais reçu.
+
+**Ce qui est juste et ne doit pas bouger** : la place du panneau (les pièces vivent sous les cases,
+pas ailleurs), et le fait que le bouton soit un interrupteur — recliquer referme.
+
+**Piste** : porter `pageFocus` au Cabinet. Il servira aussi à T-17 (le bouton qui débloque, deux
+écrans plus haut) et partout où un clic ouvre un panneau plus bas. Et le bouton dit qu'il est
+ouvert (`aria-expanded`, un chevron), sinon on ne sait pas qu'on peut le refermer.
+
+---
+
 ### T-11 · confirmé à l'écran (18/09)
 
 Le testeur a cliqué une ligne de pièce dans un panneau client : **rien ne se passe**. Le constat
