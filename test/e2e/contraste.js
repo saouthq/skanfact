@@ -16,7 +16,7 @@
 // l'esthétique, il attrape ce qu'on ne peut pas lire du tout.
 //
 //   xvfb-run -a node test/e2e/contraste.js
-const { playwright, RACINE, ELECTRON, journal, surveiller, SONDE_BOUTONS } = require('./harnais');
+const { playwright, RACINE, ELECTRON, journal, surveiller, SONDE_BOUTONS, SONDE_ESPACEMENT } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 
@@ -26,9 +26,15 @@ const SONDE = SONDE_BOUTONS;
 // Le seuil est très bas exprès : il ne juge pas l'esthétique, il attrape ce qu'on ne peut pas lire
 // du tout — du blanc sur du blanc, comme le « Corriger par un avoir… » de la 7.12.0.
 const SEUIL = 2.0;
+// L'ESPACEMENT, braqué ici aussi (9.8.3). Il a été écrit pour l'app Cabinet, où Skander a vu des
+// boutons collés au contenu — et la règle du projet est qu'un instrument qui ne couvre qu'une des
+// deux applications n'en protège qu'une (9.4.3). Les trois exceptions sont les mêmes des deux
+// côtés : elles décrivent des composants PARTAGÉS.
+const ECART_MIN = 4;   // voir la justification dans cabinet-rendu.js
+const SEGMENTS = ['.tabs', '.row-menu', '.pager'];
 
 (async () => {
-  const j = journal(); const bac = []; const fautes = [];
+  const j = journal(); const bac = []; const fautes = []; let ecarts = 0;
   const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'skanfact-contraste-'));
   const app = await electron.launch({ args: ['--no-sandbox', `--user-data-dir=${userData}`, RACINE], executablePath: ELECTRON });
   const win = await app.firstWindow(); surveiller(win, '', bac);
@@ -42,6 +48,11 @@ const SEUIL = 2.0;
     // `scrollWidth` n'en savait rien : c'est le bouton qu'il faut mesurer, pas la page.
     boutons.filter(b => b.hors > 2).forEach(b =>
       fautes.push(`${ou} → « ${b.texte} » (${b.id || b.cls}) dépasse de ${b.hors} px hors de la fenêtre`));
+
+    const e = await win.evaluate(SONDE_ESPACEMENT, { min: ECART_MIN, exceptions: SEGMENTS });
+    ecarts += e.mesures;
+    e.colles.forEach(x => fautes.push(`${ou} — « ${x.bouton} » touche « ${x.voisin} » (${x.cote},`
+      + ` ${x.sens}) : ${x.ecart} px, minimum ${ECART_MIN}`));
     return boutons.length;
   };
 
@@ -142,9 +153,12 @@ const SEUIL = 2.0;
   await app.close();
 
   if (bac.length) { console.error('\nErreurs du renderer :\n' + bac.join('\n')); process.exit(2); }
+  // Un instrument qui ne mesure rien annonce « tout va bien » : il doit échouer, pas se taire.
+  if (!ecarts) { console.error('\nAucun écart mesuré : le parcours ne prouve plus rien de l\'espacement.'); process.exit(2); }
   if (fautes.length) {
-    console.error(`\n${fautes.length} bouton(s) illisible(s) — contraste texte/fond sous ${SEUIL} :\n` + fautes.join('\n'));
+    const u = [...new Set(fautes)];
+    console.error(`\n${u.length} défaut(s) — bouton illisible, coupé, ou collé à son voisin :\n` + u.join('\n'));
     process.exit(1);
   }
-  console.log(`\n${j.total()} étapes — aucun bouton illisible.`);
+  console.log(`\n${j.total()} étapes — aucun bouton illisible, aucun collé (${ecarts} écarts mesurés).`);
 })().catch(e => { console.error(e); process.exit(1); });

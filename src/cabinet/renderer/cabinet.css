@@ -436,3 +436,9 @@ body.dark .theme-op:hover { border-color: #3c4654; }
    « l'un ou l'autre selon ton ordinateur » sans une phrase de plus. */
 .theme-ap[data-ap="auto"] i { background: linear-gradient(135deg, #ffffff 50%, #1a2029 50%); }
 .theme-ap[data-ap="auto"] b { background: linear-gradient(135deg, #f5f7fa 50%, #12161c 50%); }
+
+/* « Voir 4 autres lignes » — le bouton qui déplie le reste d'« À faire » (9.4.4). Il suit
+   directement la liste, et rien ne l'en séparait : il se collait à la dernière ligne, donc au texte
+   de l'alerte la plus urgente. Un geste collé à ce qu'il prolonge se lit comme une sixième ligne de
+   la liste, pas comme un bouton. */
+#todo-plus { margin-block-start: 10px; }

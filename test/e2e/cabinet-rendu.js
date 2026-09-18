@@ -20,12 +20,24 @@
 //
 //   xvfb-run -a node test/e2e/cabinet-rendu.js
 const { playwright, RACINE, ELECTRON, journal, surveiller, dossierCaptures, capturePleine,
-  SONDE_BOUTONS, SONDE_COLONNES, SONDE_ENTETES } = require('./harnais');
+  SONDE_BOUTONS, SONDE_COLONNES, SONDE_ENTETES, SONDE_ESPACEMENT } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 
 const SEUIL = 2.0;                       // le seuil de contraste : il n'est pas esthétique, il attrape l'illisible
 const LARGEUR_MAX = 300, LARGEUR_MAX_RECHERCHE = 400, HAUTEUR_MAX = 100;
+
+// L'écart minimum entre un bouton et ce qui le touche. QUATRE pixels, et ce n'est pas un goût :
+// c'est la ligne que le code trace déjà tout seul. Au-dessus, l'espace vient d'un `gap` DÉCIDÉ en
+// CSS — `td.row-actions > span { gap: 4px }`, `.pv-cmd { gap: 4px }`, `.inline { gap: 8px }`. En
+// dessous, il ne vient de nulle part : 3,6 px et 3,9 px sont la largeur d'une espace laissée entre
+// deux balises du gabarit, et 0 px est l'absence pure. Un premier jet à 6 px accusait des
+// espacements que le projet avait explicitement choisis — un test trop large accuse du code juste,
+// ce qui est aussi grave qu'un test trop étroit (9.1.0, 9.4.7).
+// Les trois conteneurs où des boutons se touchent par construction, nommés parce qu'une exception
+// anonyme est un trou : les onglets, le menu d'une ligne, la pagination.
+const ECART_MIN = 4;
+const SEGMENTS = ['.tabs', '.row-menu', '.pager'];
 
 // Les pages du Cabinet. Une page qui en gagnera une demain sera mesurée sans que personne y pense,
 // à condition de l'ajouter ici — et le parcours REFUSE une page qui ne s'ouvre pas, plutôt que de
@@ -43,7 +55,7 @@ const PAGES = ['#/dossiers', '#/relances', '#/echeances', '#/ecritures', '#/regl
   const attendre = (ms = 280) => win.waitForTimeout(ms);
   const aller = async hash => { await win.evaluate(x => { location.hash = x; }, hash); await attendre(350); };
 
-  let boutons = 0, colonnes = 0, controles = 0;
+  let boutons = 0, colonnes = 0, controles = 0, ecarts = 0;
 
   // Les trois sondes sur l'écran courant. `ou` nomme l'endroit ET le contexte (largeur, thème) :
   // une faute qui n'existe qu'en sombre à 1280 doit se lire comme telle, sinon on la cherche à
@@ -59,6 +71,11 @@ const PAGES = ['#/dossiers', '#/relances', '#/echeances', '#/ecritures', '#/regl
     const c = await win.evaluate(SONDE_COLONNES);
     colonnes += c.colonnes;
     c.ecarts.forEach(e => fautes.push(`${ou} — colonne « ${e.colonne} » : en-tête ${e.entete}, valeurs ${e.cellules}`));
+
+    const e = await win.evaluate(SONDE_ESPACEMENT, { min: ECART_MIN, exceptions: SEGMENTS });
+    ecarts += e.mesures;
+    e.colles.forEach(x => fautes.push(`${ou} — « ${x.bouton} » touche « ${x.voisin} » (${x.cote},`
+      + ` ${x.sens}) : ${x.ecart} px, minimum ${ECART_MIN}`));
 
     const h = await win.evaluate(SONDE_ENTETES, { maxL: LARGEUR_MAX, maxR: LARGEUR_MAX_RECHERCHE, maxH: HAUTEUR_MAX });
     controles += h.n;
@@ -194,12 +211,13 @@ const PAGES = ['#/dossiers', '#/relances', '#/echeances', '#/ecritures', '#/regl
 
   if (bac.length) { console.error('\nErreurs du renderer :\n' + bac.join('\n')); process.exit(2); }
   // Un instrument qui ne mesure rien annonce « tout va bien » : il doit échouer, pas se taire.
-  if (!boutons || !colonnes) { console.error('\nRien n\'a été mesuré : le parcours ne prouve rien.'); process.exit(2); }
+  if (!boutons || !colonnes || !ecarts) { console.error('\nRien n\'a été mesuré : le parcours ne prouve rien.'); process.exit(2); }
   if (fautes.length) {
     const u = [...new Set(fautes)];
     console.error(`\n${u.length} défaut(s) de rendu dans l'app Cabinet :\n  ` + u.join('\n  '));
     process.exit(1);
   }
-  console.log(`\n${j.total()} étapes — ${boutons} boutons, ${colonnes} colonnes, ${controles} contrôles mesurés`
-    + ' en clair et en sombre, à 1440 et à 1280 : rien d\'illisible, rien de désaligné, rien d\'étiré.');
+  console.log(`\n${j.total()} étapes — ${boutons} boutons, ${colonnes} colonnes, ${controles} contrôles,`
+    + ` ${ecarts} écarts mesurés en clair et en sombre, à 1440 et à 1280 : rien d'illisible, rien de`
+    + ' désaligné, rien d\'étiré, rien de collé.');
 })().catch(e => { console.error(e); process.exit(1); });

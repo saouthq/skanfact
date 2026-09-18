@@ -4135,6 +4135,56 @@ Règles apprises, à ne pas recasser :
 
 Prouvé : six défauts réintroduits un par un font tomber leur test.
 
+### 9.8.3 — Les boutons collés, et la sonde qui mesure une RELATION
+
+Skander : « sur l'app cabinet y'a plein de boutons qui sont mal espacés et collés au contenu ».
+
+Règles apprises, à ne pas recasser :
+
+- **Les trois sondes mesuraient un bouton TOUT SEUL.** Sa couleur, son débordement, l'alignement de
+  sa colonne — jamais sa distance à ce qui l'entoure. Or un bouton collé au titre du dessus est
+  parfaitement lisible, parfaitement dans la fenêtre, et parfaitement moche : c'est une propriété de
+  la **relation** entre deux éléments, et aucune mesure d'un objet isolé ne peut la voir. La règle
+  avait d'ailleurs déjà été écrite deux fois pour un cas particulier — `td.actions .btn + .btn`
+  (7.29.0) et `.modal-actions` (6.8.0). **Deux correctifs ponctuels pour un défaut général, c'est le
+  signe qu'il manque la mesure.**
+- **Un seuil se tire du code, pas de son goût.** Mon premier jet exigeait 6 px et accusait
+  `.pv-cmd { gap: 4px }` — un espacement que le projet avait explicitement choisi. Les mesures
+  tracent elles-mêmes la ligne : **au-dessus de 4 px, l'espace vient d'un `gap` décidé en CSS ; en
+  dessous, il ne vient de nulle part** — 3,6 px et 3,9 px sont la largeur d'une espace laissée entre
+  deux balises du gabarit, et 0 px est l'absence pure. Un test trop large accuse du code juste, ce
+  qui est aussi grave qu'un test trop étroit (9.1.0, 9.4.7).
+- **On mesure l'ENCRE, pas la boîte.** Un bouton qui porte un fond ou une bordure a les deux
+  confondus ; un bouton qui n'a ni l'un ni l'autre (`.link-add`, un lien souligné) n'est visible que
+  par son texte, et son `padding` est du vide. « + description » touchait son champ de 0 px de boîte
+  alors que l'œil voit ses 4 px de `padding-top` : mesurer la boîte aurait accusé du code juste.
+- **Une bulle « i » est une ANNOTATION, pas un bouton voisin.** Elle DOIT toucher le libellé qu'elle
+  explique — l'en écarter la ferait flotter entre deux titres. On ne la juge donc que face à un autre
+  objet cliquable : deux bulles collées sont deux cibles qui se lisent comme une seule.
+- **Un même composant à deux placements n'a d'espacement qu'à un seul.** `.btn-back` vit dans une
+  barre `.actions` (qui porte son `gap`) dans l'app entreprise, et **seul au-dessus du titre** dans
+  le Cabinet — où il se collait au nom du client, zéro pixel, sur les vingt-huit écrans d'une fiche.
+  La règle vise le PLACEMENT (`#view > .btn-back`), jamais le bouton en soi : une marge posée sur la
+  classe aurait désaligné l'autre usage.
+- **Un correctif qui dépend d'une classe qu'on pense à mettre n'est pas un correctif.**
+  `td.actions .btn + .btn` ne protégeait que les cellules portant `actions` : « PDF » et « Modifier »
+  de la page Paie, dans un `td.r.nw`, restaient séparés par une espace de gabarit. La règle vise
+  maintenant toute cellule et NOMME les deux grappes qui décident de leur densité.
+- **Le même instrument sur les DEUX applications, du premier jour** (9.4.3) : la sonde a été écrite
+  pour le Cabinet, et elle a trouvé cinq défauts dans l'app entreprise en une passe.
+- **Une preuve ne vaut que sur une ligne de base VERTE** (9.7.0, re-rencontrée) : `e2e:cabinet-jour1`
+  est tombé après mes corrections, et j'ai failli m'accuser. Il était **déjà rouge avant**, sur un
+  défaut de la 9.8.0 que l'instrument n'avait jamais vu : le bilan actif et le bilan passif sont deux
+  tableaux côte à côte dans un `.split` **sans leur `.scroll-x`** — exactement le défaut de la 3.4.0.
+  Avant d'accuser son propre changement, **remettre l'état d'avant et relancer.**
+- Piège de ma propre méthode : `git checkout -- <fichier>` après une preuve par réintroduction emporte
+  aussi la correction non commitée. Une preuve se restaure depuis la copie qu'on a prise, jamais
+  depuis HEAD quand le correctif n'y est pas encore.
+
+Prouvé : huit défauts réintroduits un par un font tomber leur test — dont deux qui prouvent
+l'instrument lui-même (la boîte au lieu de l'encre, et l'exception de la bulle, qui accusent tous
+deux du code juste). 1 678 écarts mesurés dans les deux applications.
+
 ## Pistes pour la suite (non demandées)
 
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.

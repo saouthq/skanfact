@@ -388,8 +388,13 @@ table.lines-edit th.c, table.list th.c, table.mini th.c { text-align: center; }
 .nw { white-space: nowrap; }
 td.actions { white-space: nowrap; text-align: end; }
 /* Deux boutons voisins ne doivent pas dépendre d'une espace dans le gabarit pour être séparés :
-   `${cond ? '<button…>' : ''}<button…>` les collait l'un à l'autre, et ça ne se voit qu'à l'écran. */
-td.actions .btn + .btn { margin-inline-start: 6px; }
+   `${cond ? '<button…>' : ''}<button…>` les collait l'un à l'autre, et ça ne se voit qu'à l'écran.
+   La règle ne visait que `td.actions` — et deux boutons dans une cellule qui ne porte PAS cette
+   classe restaient séparés par la seule espace du gabarit, 3,6 px (« PDF » et « Modifier » de la
+   page Paie). Un correctif qui dépend d'une classe qu'on pense à mettre n'est pas un correctif :
+   il vise maintenant TOUTE cellule, et nomme les deux grappes qui décident de leur propre densité
+   — le menu de ligne (`gap: 4px`) et les pictogrammes de l'éditeur, juste en dessous. */
+td:not(.row-actions):not(.line-tools) .btn + .btn { margin-inline-start: 6px; }
 .empty { padding: 48px 24px; text-align: center; color: var(--muted); background: var(--panel); border: 1px dashed #d5dbe3; border-radius: var(--radius); }
 /* Le même état vide, DANS un panneau (9.4.5/9.4.6). 48 px de haut et un cadre pointillé, c'est la
    bonne présence quand la page entière est vide — c'est le premier écran, il faut qu'il occupe la
@@ -707,6 +712,13 @@ tr.row-now td { background: rgba(15, 157, 143, .08); }
 .btn-back { background: none; border-color: var(--border); color: var(--muted); font-weight: 500; }
 .btn-back:hover { background: var(--ink-soft); color: var(--text); }
 body.dark .btn-back { border-color: #2b3540; }
+/* Le retour a DEUX placements, et un seul des deux avait son espacement. Dans l'app entreprise il
+   vit à l'intérieur d'une barre `.actions`, qui porte son propre `gap` : il est alors sur la même
+   rangée que les autres gestes, et une marge basse le désalignerait. Dans le Cabinet il est posé
+   SEUL, juste au-dessus du titre de la fiche — et il s'y collait au nom du client : zéro pixel,
+   sur les vingt-huit écrans d'un dossier, dans les deux thèmes et aux deux largeurs. La règle vise
+   donc le placement autonome (enfant direct de la page), jamais le bouton en soi. */
+#view > .btn-back { margin-block-end: 14px; }
 .stamp-preview { max-height: 70px; max-width: 220px; display: block; margin-bottom: 8px; border: 1px solid var(--border); padding: 6px; border-radius: 10px; background: #fff; }
 
 /* ---------- thème sombre ---------- */
@@ -981,6 +993,12 @@ button.i {
 }
 button.i:hover, button.i:focus-visible { background: var(--primary-soft-2); color: var(--primary); outline: none; }
 .check button.i, h2 button.i, .lbl button.i, .k-label button.i { margin-inline-start: 2px; }
+/* Une bulle est une ANNOTATION : elle doit rester collée au libellé qu'elle explique, et ces 2 px
+   sont justes. Mais DEUX bulles côte à côte ne sont pas une annotation, ce sont deux explications
+   différentes et deux cibles différentes — collées, elles se lisent comme un seul objet et on ne
+   sait pas laquelle on clique. C'est le défaut de la 7.29.0 (deux boutons collés par un gabarit
+   sans espace), à l'échelle de 15 px. */
+button.i + button.i { margin-inline-start: 6px; }
 /* libellé + bulle sur une seule ligne dans un champ (.field est une colonne flex) */
 .fl { display: flex; align-items: center; gap: 4px; }
 .i-demo { display: inline-grid; place-items: center; width: 15px; height: 15px; border-radius: 50%; background: var(--primary-soft-2); color: var(--primary); font: italic 800 10px/1 Georgia, serif; vertical-align: 1px; }
@@ -1081,6 +1099,11 @@ table.mini input[type=number]::-webkit-inner-spin-button { -webkit-appearance: n
 td.line-tools { white-space: nowrap; text-align: end; padding-top: 9px; }
 td.line-tools .btn { padding: 4px 6px; min-width: 24px; justify-content: center; color: var(--muted); }
 td.line-tools .btn:hover:not(:disabled) { color: var(--text); }
+/* Monter · Descendre · Dupliquer · Supprimer : une grappe de pictogrammes, volontairement dense —
+   c'est une seule famille de gestes sur une seule ligne. Mais sa densité venait de l'espace entre
+   deux balises du gabarit (3,9 px), c'est-à-dire de rien : réécrire ces quatre boutons sur une
+   seule ligne l'aurait ramenée à zéro sans que personne le veuille. On la DÉCIDE. */
+td.line-tools .btn + .btn { margin-inline-start: 2px; }
 .link-add { font: inherit; font-size: 12px; background: none; border: none; color: var(--muted); cursor: pointer; padding: 4px 0 0; text-decoration: underline; text-underline-offset: 2px; }
 .link-add:hover { color: var(--primary); }
 

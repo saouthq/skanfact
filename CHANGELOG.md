@@ -7,6 +7,46 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 9.8.3 — 18/09/2026
+
+**Les boutons collés au contenu, et la sonde qui les voit.**
+
+Signalé par Skander : « sur l'app cabinet y'a plein de boutons qui sont mal espacés et collés au
+contenu ». Il avait raison, et la cause est mesurable : les trois sondes de rendu du projet mesurent
+un bouton **tout seul** — sa couleur, son débordement, l'alignement de sa colonne — et **aucune** ne
+mesure sa distance à ce qui l'entoure. Or un bouton collé au titre du dessus est parfaitement
+lisible, parfaitement dans la fenêtre, et parfaitement moche. C'est une propriété de la RELATION
+entre deux éléments ; il fallait la mesurer comme telle.
+
+**Une quatrième sonde**, dans `harnais.js` avec les trois autres et partagée par les deux
+applications : pour chaque bouton visible, l'écart réel avec son voisin de gauche et de droite,
+horizontal s'ils sont sur la même rangée, vertical s'ils sont empilés. **1 678 écarts mesurés**, en
+clair et en sombre, à 1440 et à 1280.
+
+Ce qu'elle a trouvé, et qui est corrigé :
+
+- **Le retour « ← Dossiers » collé au nom du client** — zéro pixel, sur les vingt-huit écrans d'une
+  fiche. Le bouton a deux placements et un seul avait son espacement : dans l'app entreprise il vit
+  dans une barre `.actions` qui porte son `gap`, dans le Cabinet il est posé seul au-dessus du
+  titre. La règle vise donc le placement autonome, jamais le bouton en soi.
+- **« Voir 4 autres lignes » collé à la liste** qu'il prolonge : un geste collé à ce qu'il prolonge
+  se lit comme une ligne de plus, pas comme un bouton.
+- **Deux bulles « i » collées** sur un même titre — deux explications, deux cibles, qui se lisaient
+  comme un seul objet.
+- **« PDF » et « Modifier »** dans la page Paie : 3,6 px, c'est-à-dire la largeur d'une espace entre
+  deux balises du gabarit. La parade de la 7.29.0 existait mais ne visait que `td.actions` ; un
+  correctif qui dépend d'une classe qu'on pense à mettre n'est pas un correctif. Il vise maintenant
+  toute cellule, et nomme les deux grappes qui décident de leur propre densité.
+- **Les pictogrammes ↑ ↓ ⧉ ✕ de l'éditeur** : leur densité venait elle aussi d'une espace du
+  gabarit, c'est-à-dire de rien. Elle est désormais décidée.
+
+Et un défaut que l'instrument a trouvé au passage, sans rapport avec l'espacement : sur l'onglet
+**Exercice** livré la veille, le bilan actif et le bilan passif sont deux tableaux côte à côte dans
+un `.split`, **sans leur `.scroll-x`** — exactement le défaut corrigé en 3.4.0 sur la fiche
+d'affaire. Les trois tableaux des états financiers l'ont maintenant.
+
+Aucune fonction nouvelle : uniquement de l'espacement, et l'instrument qui empêche qu'il se reperde.
+
 ## 9.8.2 — 17/09/2026
 
 **Soixante secondes de silence tuaient l'envoi d'un fichier de 220 Mo.**

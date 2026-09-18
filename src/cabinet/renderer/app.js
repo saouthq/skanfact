@@ -2651,20 +2651,20 @@
       ce qu'une autre version livrera.</p>
       <div class="split">
         <div><h3 class="sub-h">Bilan — actif</h3>
-          <table class="list compact"><tbody>${e.actif.map(groupe).join('')}
-            <tr class="dc-total"><td colspan="2"><b>Total actif</b></td><td class="r nw"><b>${money0(e.totalActif)}</b></td></tr></tbody></table></div>
+          <div class="scroll-x"><table class="list compact"><tbody>${e.actif.map(groupe).join('')}
+            <tr class="dc-total"><td colspan="2"><b>Total actif</b></td><td class="r nw"><b>${money0(e.totalActif)}</b></td></tr></tbody></table></div></div>
         <div><h3 class="sub-h">Bilan — passif</h3>
-          <table class="list compact"><tbody>${e.passif.map(groupe).join('')}
+          <div class="scroll-x"><table class="list compact"><tbody>${e.passif.map(groupe).join('')}
             <tr class="gl-g"><th colspan="2">Résultat de l'exercice</th><th class="r nw">${money0(e.resultat)}</th></tr>
-            <tr class="dc-total"><td colspan="2"><b>Total passif</b></td><td class="r nw"><b>${money0(e.totalPassif)}</b></td></tr></tbody></table></div>
+            <tr class="dc-total"><td colspan="2"><b>Total passif</b></td><td class="r nw"><b>${money0(e.totalPassif)}</b></td></tr></tbody></table></div></div>
       </div>
       ${e.equilibre
     ? `<div class="ok-box mt">Actif = passif, au millime.</div>`
     : `<div class="warn-box mt">Actif et passif diffèrent de ${money0(Math.round((e.totalActif - e.totalPassif) * 1000) / 1000)} :
          une pièce est déséquilibrée, et c'est à regarder avant tout le reste.</div>`}
       <h3 class="sub-h">État de résultat</h3>
-      <table class="list compact"><tbody>${groupe(e.produits)}${groupe(e.charges)}
-        <tr class="dc-total"><td colspan="2"><b>Résultat de l'exercice</b></td><td class="r nw"><b>${money0(e.resultat)}</b></td></tr></tbody></table>
+      <div class="scroll-x"><table class="list compact"><tbody>${groupe(e.produits)}${groupe(e.charges)}
+        <tr class="dc-total"><td colspan="2"><b>Résultat de l'exercice</b></td><td class="r nw"><b>${money0(e.resultat)}</b></td></tr></tbody></table></div>
     </div>
     <div class="panel mt"><h2>Soldes intermédiaires et ratios ${info('cl.sig')}</h2>
       <table class="list compact"><thead><tr><th>Solde</th><th class="r nw">Montant</th><th>Comment il se calcule</th></tr></thead>

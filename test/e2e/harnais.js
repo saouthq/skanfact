@@ -170,6 +170,96 @@ const SONDE_ENTETES = ({ maxL, maxR, maxH }) => {
   return { n: ctrls.length, larges, hauteur: Math.round(actions.getBoundingClientRect().height), maxH };
 };
 
+// 4. L'ESPACEMENT des boutons. Signalé par Skander sur l'app Cabinet : « plein de boutons mal
+//    espacés et collés au contenu ».
+//
+//    Pourquoi aucune des trois sondes précédentes ne pouvait le voir : elles mesurent un bouton
+//    TOUT SEUL — sa couleur, son débordement — jamais sa distance à ce qui l'entoure. Or un bouton
+//    collé au paragraphe du dessus est parfaitement lisible, parfaitement dans la fenêtre, et
+//    parfaitement moche. C'est une propriété de la RELATION entre deux éléments, et il faut donc
+//    la mesurer comme telle.
+//
+//    La règle a déjà été écrite deux fois pour un cas particulier — `td.actions .btn + .btn`
+//    (7.29.0, deux boutons collés par un gabarit sans espace) et `.modal-actions` (6.8.0, des
+//    boutons collés au texte faute de mise en page). Deux correctifs ponctuels pour un défaut
+//    général : c'est le signe qu'il manquait la mesure.
+//
+//    Ce qu'on mesure : pour chaque bouton visible, l'écart géométrique avec son voisin de gauche et
+//    celui de droite dans le document. Si les deux rectangles se chevauchent verticalement, ils
+//    sont sur la même rangée et l'écart est horizontal ; sinon ils sont empilés et l'écart est
+//    vertical. Un `gap` de flex, une marge, un `margin-inline-start` : peu importe d'où vient
+//    l'espace, c'est le résultat À L'ÉCRAN qui est jugé.
+//
+//    Les exceptions sont NOMMÉES, jamais devinées — une exception anonyme est un trou (9.4.10) :
+//      · `.tabs`     — un jeu d'onglets est un contrôle segmenté, ses boutons se touchent par
+//                      construction et l'onglet actif se reconnaît à son trait, pas à son écart ;
+//      · `.row-menu` — les entrées d'un menu déroulant sont une LISTE : les espacer en ferait des
+//                      objets séparés flottant dans une boîte ;
+//      · `.pager`    — même raison qu'un jeu d'onglets : une pagination est une bande.
+const SONDE_ESPACEMENT = ({ min, exceptions }) => {
+  const visible = el => {
+    const r = el.getBoundingClientRect();
+    const s = getComputedStyle(el);
+    return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none';
+  };
+  const nomme = el => {
+    const t = (el.textContent || '').replace(/\s+/g, ' ').trim();
+    if (t) return t.slice(0, 32);
+    return el.tagName.toLowerCase() + (el.className ? '.' + String(el.className).split(' ')[0] : '');
+  };
+  // Le rectangle qu'on MESURE est celui de l'encre, pas celui de la boîte. Un bouton qui porte un
+  // fond ou une bordure a les deux confondus. Un bouton sans l'un ni l'autre — `.link-add`, un lien
+  // souligné — n'est visible que par son texte, et son `padding` est du vide : « + description »
+  // touchait son champ de 0 px de boîte alors que l'œil voit les 4 px de son `padding-top`.
+  // Mesurer la boîte reviendrait à accuser du code juste, ce que le projet refuse autant qu'un test
+  // trop étroit (9.1.0).
+  const encre = el => {
+    const r = el.getBoundingClientRect(), s = getComputedStyle(el);
+    const fond = (s.backgroundColor.match(/[\d.]+/g) || []);
+    const peint = fond.length >= 3 && (fond.length < 4 || Number(fond[3]) > 0.05);
+    const borde = ['Top', 'Right', 'Bottom', 'Left'].some(c => parseFloat(s['border' + c + 'Width']) > 0);
+    if (peint || borde) return r;
+    const p = c => parseFloat(s['padding' + c]) || 0;
+    return {
+      top: r.top + p('Top'), bottom: r.bottom - p('Bottom'),
+      left: r.left + p('Left'), right: r.right - p('Right'),
+      get height() { return this.bottom - this.top; }, get width() { return this.right - this.left; }
+    };
+  };
+  const out = []; let mesures = 0;
+  document.querySelectorAll('#view button, #view .btn').forEach(b => {
+    if (!visible(b)) return;
+    if (!(b.textContent || '').trim()) return;          // un pictogramme seul n'est pas jugé ici
+    if (exceptions.some(sel => b.closest(sel))) return;
+    const rb = encre(b);
+    const cliquable = el => el.matches('button, .btn, a[href]');
+    [['avant', b.previousElementSibling], ['après', b.nextElementSibling]].forEach(([cote, v]) => {
+      if (!v || !visible(v)) return;
+      // La bulle « i » est une ANNOTATION : elle explique ce qu'elle touche, et elle DOIT le
+      // toucher — l'écarter de son libellé la ferait flotter entre deux titres, et on ne saurait
+      // plus lequel elle explique. On ne la juge donc que face à un autre objet cliquable : deux
+      // bulles collées sont deux cibles qui se lisent comme une seule, et ça, c'est un défaut.
+      if ((b.matches('button.i') || v.matches('button.i')) && !(cliquable(b) && cliquable(v))) return;
+      const rv = encre(v);
+      // Même rangée ? On exige un vrai recouvrement vertical — deux objets qui se frôlent d'un
+      // pixel ne sont pas côte à côte, ils sont empilés et mal alignés.
+      const haut = Math.max(rb.top, rv.top), bas = Math.min(rb.bottom, rv.bottom);
+      const recouvre = bas - haut > Math.min(rb.height, rv.height) * 0.5;
+      const ecart = recouvre
+        ? (rv.left >= rb.right ? rv.left - rb.right : rb.left - rv.right)
+        : (rv.top >= rb.bottom ? rv.top - rb.bottom : rb.top - rv.bottom);
+      mesures++;
+      if (ecart >= min) return;
+      out.push({
+        bouton: nomme(b), voisin: nomme(v), cote, sens: recouvre ? 'horizontal' : 'vertical',
+        ecart: Math.round(ecart * 10) / 10,
+        parent: v.parentElement ? (v.parentElement.className || v.parentElement.tagName).toString().split(' ')[0] : ''
+      });
+    });
+  });
+  return { mesures, colles: out, min };
+};
+
 // ---------------------------------------------------------------------------- la capture qui montre TOUT
 //
 // Pourquoi cette fonction existe : pendant des versions, TOUTES les captures de ces parcours se sont
@@ -258,5 +348,5 @@ function montant(texte) {
 
 module.exports = {
   playwright, RACINE, ELECTRON, VERSION, journal, surveiller, dossierCaptures, ouvrirChromium,
-  capturePleine, SONDE_BOUTONS, SONDE_COLONNES, SONDE_ENTETES, montant
+  capturePleine, SONDE_BOUTONS, SONDE_COLONNES, SONDE_ENTETES, SONDE_ESPACEMENT, montant
 };
