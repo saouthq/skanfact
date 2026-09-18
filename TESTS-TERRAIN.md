@@ -764,6 +764,11 @@ retenue : **les gestes qui modifient le livre reposent l'état eux-mêmes.** Ici
 immobilisations et à l'inventaire ; et, à défaut, relire à l'ouverture de l'onglet Exercice — c'est
 un écran qu'on n'ouvre pas dix fois par heure.
 
+**Confirmé à l'écran** (18/09) : après un aller-retour sur un autre sous-onglet, le contrôle annonce
+toujours « 3 mois sans déclaration préparée (2026-06, 2026-07, 2026-08) ». Que la déclaration d'août
+existe bien est prouvé par ailleurs : les pointages « déposée » puis « payée » ont survécu à
+plusieurs redessins, et ils sont rangés **dans** cette déclaration.
+
 ---
 
 ### T-11 · confirmé à l'écran (18/09)
