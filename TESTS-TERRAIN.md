@@ -1405,6 +1405,50 @@ que pas de test » (6.8.1) · « un refus qu'on avale en silence est pire que le
 
 ---
 
+### T-40 · MOYEN · La balance auxiliaire annonce « Équilibrée » sur un tableau vide
+
+**Vu** : clic sur « Balance auxiliaire » en 9.8.6, livre de Menuiserie Trabelsi SUARL, 49 écritures
+validées. Le tableau est **vide** — « 0 tiers — la sélection entière », quatre colonnes à
+0,000 DT — et juste au-dessus, en vert : « **Équilibrée** : débit = crédit sur les trois paires de
+totaux. »
+
+**Pourquoi c'est vide, ici** : `balanceAux` fait `lignes.filter(l => l.tiers)`. Les 49 écritures de
+ce livre ont été importées avant la 9.8.5, quand la ligne n'avait pas de case `tiers` (T-13) — et
+une écriture **validée** ne se réécrit jamais, même par une migration. Elles resteront donc sans
+tiers, et c'est **le bon comportement** : c'est la règle qui protège une comptabilité, et elle vaut
+aussi contre nous.
+
+**Mais le défaut n'est pas là.** Il est dans ce que l'écran en dit :
+
+- **« Équilibrée » sur zéro ligne, c'est féliciter quelqu'un de rien.** 0 = 0 est vrai et
+  n'apprend rien. C'est la règle de la 7.0.0 — « avant d'écrire une phrase rassurante, vérifier que
+  l'univers concerné est non vide » — appliquée à la seule affirmation que cette page produit.
+- **Rien ne dit POURQUOI c'est vide**, et c'est la seule information qui compte : « aucune de tes
+  écritures ne porte de tiers ». Sans elle, un comptable conclut que le logiciel a perdu ses
+  chiffres — ils sont pourtant tous là, sur la balance générale, à un clic.
+- **Aucun geste** : l'état vide n'offre rien, alors que la réponse existe (relire les paquets pour
+  les brouillards, ou saisir le tiers sur les écritures à venir).
+
+**Le cas général, au-delà de ce livre-ci** : un dossier dont les écritures ne touchent aucun tiers
+(charges directes, OD, écritures d'inventaire) donnera exactement le même écran — donc le défaut
+survivra à T-13.
+
+**Ancrage** : `src/cabinet/renderer/app.js:2397` (`balanceAux`, le filtre) · `:2380` (le bandeau
+« Équilibrée », posé avant de savoir si la sélection est vide).
+
+**Ce qui est juste et ne doit pas bouger** : le filtre lui-même (une balance auxiliaire ne parle que
+des tiers), le bouton qui bascule et se renomme « Balance générale » pour revenir, et le refus de
+réécrire une validée.
+
+**Piste** : quand la sélection est vide, remplacer le verdict par l'état vide qui NOMME la cause et
+porte son geste — jamais un « Équilibrée » qui ne porte sur rien. Et le même contrôle vaut pour la
+balance générale d'un dossier sans écriture.
+
+**Règle du projet violée** : « une phrase rassurante se vérifie d'abord sur un univers non vide »
+(7.0.0, 7.3.0, 9.4.2) · « un état vide s'annonce et porte son geste » (7.0.0, 9.4.7).
+
+---
+
 ## Le plan de parcours — ce qui est testé, ce qui ne l'est pas
 
 *Posé le 18/09/2026, après le premier tour. « Il faut tout tester, pas que la partie qu'on vient de
