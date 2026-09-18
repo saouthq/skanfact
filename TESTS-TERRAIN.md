@@ -1178,6 +1178,81 @@ tient.
 
 ---
 
+### T-35 · GRAVE · Une sauvegarde du Cabinet n'emporte PAS les livres — et un commentaire affirme le contraire
+
+**Vu** : en vérifiant, avant la mise à jour 9.8.5, ce que le rafraîchissement du jeu d'exemple allait
+faire au livre du testeur. Constat trouvé dans le code, pas à l'écran — mais il porte sur le fichier
+le plus cher de l'application.
+
+`backupNow(label)` (`cabstore.js:256`) fait **une seule** chose : `fs.copyFileSync(file, target)`,
+où `file` est `cabinet-data.json`. Les livres vivent ailleurs, dans
+`livres/<dossier>/livre-<AAAA>.json`. **Aucune sauvegarde locale ne les contient** — ni la
+quotidienne, ni « avant-import », ni « avant-suppression », ni « avant-exemple ».
+
+Or `removeDossierFiles` **efface le dossier des livres** depuis la 9.8.5 (mon correctif de la veille,
+juste par ailleurs : un livre orphelin se rattachait au dossier suivant portant le même
+identifiant). Les deux mis bout à bout :
+
+> **Supprimer un dossier par erreur, puis restaurer la sauvegarde nommée prise juste avant, rend le
+> dossier et ses mois — et JAMAIS son livre.** Les écritures saisies, validées, numérotées et
+> lettrées par le comptable sont perdues définitivement, alors que l'écran a annoncé une sauvegarde.
+
+**Pourquoi ça compte** : c'est le seul endroit de l'application où un incident coûte vraiment cher
+(règle 6.8.0). Un paquet perdu se redemande au client ; un livre perdu, non — personne d'autre ne
+l'a. Et le geste est protégé par une fenêtre qui dit « une sauvegarde est prise juste avant » : on
+efface donc *en confiance*.
+
+**Le pire** : j'ai écrit, hier, dans le correctif 9.8.5 lui-même (`cabstore.js:749`) :
+« *L'appelant qui efface un VRAI dossier prend sa sauvegarde nommée avant (« ce qui détruit demande »,
+7.12.0) : ce livre-là est donc récupérable.* » **C'est faux.** Une phrase que rien ne tient est un
+bug, y compris dans un commentaire (7.3.0, et 9.4.5 — « un COMMENTAIRE aussi ») : celui-ci a servi à
+me convaincre moi-même que le filet existait.
+
+**Ancrage** :
+- `src/cabinet/cabstore.js:256` — `backupNow` ne copie que `file`.
+- `src/cabinet/cabstore.js:741` — `removeDossierFiles` efface `livreDir(...)`.
+- `src/cabinet/cabstore.js:749` — le commentaire faux.
+- `src/cabinet/cabstore.js:916` — `mirrorExternal` emporte les livres, lui.
+
+**Ce qui est juste et ne doit pas bouger** :
+- La **copie externe** les emporte toujours, avec ou sans les paquets (9.2.0). C'est un vrai filet —
+  mais il est **facultatif** : sans dossier externe configuré, il n'y en a aucun. Le défaut du
+  produit ne peut pas reposer sur un réglage que personne n'a posé.
+- Effacer le livre avec le dossier reste juste : « plus visible, mais toujours là » serait le pire
+  des deux mondes.
+
+**Piste** : `backupNow` prend une sauvegarde qui emporte les livres du portefeuille — un ZIP (`zip.js`
+existe et n'a aucune dépendance) plutôt qu'un JSON nu, et `restore` dit ce qu'il va rendre ET ce
+qu'il va perdre, livres compris (règle 6.8.0 : « une restauration dit d'abord ce qu'on va perdre »).
+La purge par date ne change pas. Et le commentaire faux se corrige dans le même geste.
+
+**Règle du projet violée** : « la sauvegarde est le seul point où un incident coûte vraiment cher »
+(6.8.0) · « une phrase affichée que rien ne tient est un bug — un COMMENTAIRE aussi » (7.3.0, 9.4.5)
+· « toute donnée qu'on demande à quelqu'un de conserver doit avoir un bouton pour la reprendre »
+(6.8.1).
+
+---
+
+### T-36 · MOYEN · Le rafraîchissement de l'exemple détruit le livre sans le dire
+
+Même racine que T-35, vu par l'autre bout. `rafraichirExemple()` (`main.js:620`) tourne au premier
+démarrage après une mise à jour : il prend `backupNow('avant-exemple')`, puis `chargerExemple()` →
+`retirerExemple()` → `removeDossierFiles` → **le livre de chaque dossier d'exemple est effacé**.
+
+C'est mécaniquement nécessaire (un livre d'exemple de la version d'avant à côté de paquets neufs
+serait faux — c'est même le défaut que 9.8.5 corrige). Mais **rien ne le dit**. Le bandeau annonce
+« le jeu d'exemple a été remis à jour » ; il ne dit pas que le travail saisi dessus est parti.
+Quelqu'un qui essaie l'application pendant une semaine — c'est exactement le cabinet pilote — perd
+sa saisie d'essai un matin, sans un mot.
+
+**Piste** : le bandeau compte ce qui part (« 1 livre de démonstration, 12 écritures ») et le dit.
+Pas de question : c'est le bon comportement, mais un comportement qu'on annonce.
+
+**Règle du projet violée** : « un jeu de données qui change sans un mot ferait douter du reste »
+(9.4.2, écrite pour ce mécanisme précis — et appliquée aux dossiers, pas à leurs livres).
+
+---
+
 ## Le plan de parcours — ce qui est testé, ce qui ne l'est pas
 
 *Posé le 18/09/2026, après le premier tour. « Il faut tout tester, pas que la partie qu'on vient de
