@@ -2259,7 +2259,11 @@ function updateProblem(err) {
   // Une release existe mais son fichier d'index n'est pas encore en ligne : c'est une publication
   // en cours, pas une panne. Gris, pas rouge.
   if (/CHANNEL_FILE_NOT_FOUND/.test(code) || /Cannot find .+ in the (latest )?release/i.test(brut)) {
-    return dit('Une nouvelle version vient d\'être publiée et ses fichiers finissent de monter en ligne. Réessaie dans quelques minutes.', true);
+    // Sur le canal d'essai, l'index qui manque est le plus souvent une bêta qui n'existe pas encore :
+    // c'est le cas normal entre deux essais (7.25.0), pas une publication en cours.
+    return readUpdateCfg().beta
+      ? dit('Aucune version d\'essai publiée pour l\'instant. Tu as la dernière version ; décoche la case pour revenir au canal normal.', true)
+      : dit('Une nouvelle version vient d\'être publiée et ses fichiers finissent de monter en ligne. Réessaie dans quelques minutes.', true);
   }
   if (/NO_PUBLISHED_VERSIONS|LATEST_VERSION_NOT_FOUND/.test(code)) return dit('Aucune version publiée pour l\'instant.', true);
   if (/401|403|Bad credentials/i.test(tout)) return dit('Le jeton d\'accès a été refusé ou a expiré. Demandes-en un nouveau.');
@@ -2279,15 +2283,61 @@ function updateProblem(err) {
 // repli automatique (voir checkForUpdates) doit pouvoir rebrancher le flux après coup. Enfermé dans
 // une fermeture, il n'existait qu'au moment de la construction du module — c'est-à-dire au seul
 // moment où l'on ne sait pas encore si le relais répond.
-function feedGithub(u) {
-  const cfg = readUpdateCfg();
-  u.setFeedURL({ provider: 'github', owner: GITHUB.owner, repo: GITHUB.repo, channel: UPDATE_CHANNEL(), private: !!cfg.token, token: cfg.token || undefined });
+// La liste des releases du dépôt, telle que l'API la rend (de la plus récente à la plus ancienne,
+// vingt au plus — plusieurs préversions peuvent s'intercaler entre deux stables, 7.25.0). Le jeton
+// n'est envoyé qu'à l'API, jamais au CDN des fichiers.
+function releasesGithub(token) {
+  return new Promise((resolve, reject) => {
+    const https = require('https');
+    const entetes = { 'User-Agent': `SkanFact-Cabinet/${VERSION}`, Accept: 'application/vnd.github+json' };
+    if (token) entetes.Authorization = `Bearer ${String(token).trim()}`;
+    const req = https.get(`https://api.github.com/repos/${GITHUB.owner}/${GITHUB.repo}/releases?per_page=20`, { headers: entetes, timeout: 15000 }, res => {
+      let corps = '';
+      res.setEncoding('utf8');
+      res.on('data', d => { corps += d; });
+      res.on('end', () => {
+        if (res.statusCode !== 200) return reject(Object.assign(new Error(`GitHub a répondu ${res.statusCode} sur la liste des releases`), { code: `HTTP_${res.statusCode}` }));
+        try { resolve(JSON.parse(corps)); } catch (e) { reject(e); }
+      });
+    });
+    req.on('timeout', () => req.destroy(new Error('ETIMEDOUT: GitHub ne répond pas')));
+    req.on('error', reject);
+  });
 }
 
-// Le relais a échoué pendant une vérification : on ne repasse plus par lui de la session.
+// GitHub en direct. **Le canal d'essai n'y passe JAMAIS par le fournisseur GitHub d'electron-updater**
+// (9.8.8-beta.2) : ce fournisseur ne connaît que les canaux « alpha » et « beta » — lus dans le tag
+// de la release — donc `cabinet-beta` n'y trouve jamais rien (« No published versions on GitHub »,
+// ce que le comptable pilote a lu à l'écran), et s'il trouvait, il irait chercher `beta-mac.yml`,
+// l'index de l'app ENTREPRISE. Le Cabinet choisit donc lui-même la release qui porte son index
+// (`K.releasePourIndex`, la règle du relais) et laisse le fournisseur GÉNÉRIQUE lire cette page.
+// Le canal stable, lui, passe par `/releases/latest`, que le fournisseur GitHub lit correctement.
+// Limite écrite : sur un dépôt PRIVÉ, la page d'une release ne se lit pas avec un jeton — le canal
+// d'essai du Cabinet a alors besoin du relais.
+async function feedGithub(u) {
+  const cfg = readUpdateCfg();
+  // Les en-têtes posés pour le relais (secret de l'application) ne partent ni vers GitHub ni vers le
+  // CDN des fichiers : on les retire AVANT de changer de flux (8.0.0, jamais porté ici).
+  u.requestHeaders = null;
+  if (!cfg.beta) {
+    u.setFeedURL({ provider: 'github', owner: GITHUB.owner, repo: GITHUB.repo, channel: 'cabinet', private: !!cfg.token, token: cfg.token || undefined });
+    return;
+  }
+  const fichier = K.nomIndex('cabinet-beta', process.platform);
+  const rel = K.releasePourIndex(await releasesGithub(cfg.token), fichier);
+  if (!rel) {
+    // Pas de bêta publiée : le même code que le fournisseur générique sur un index absent, pour que
+    // `updateProblem` en fasse la même phrase grise.
+    throw Object.assign(new Error(`Aucune release ne porte ${fichier}`), { code: 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND' });
+  }
+  u.setFeedURL({ provider: 'generic', url: `https://github.com/${GITHUB.owner}/${GITHUB.repo}/releases/download/${rel.tag}`, channel: 'cabinet-beta' });
+}
+
+// Le relais a échoué pendant une vérification : on ne repasse plus par lui de la session — sauf
+// sur un clic (voir checkForUpdates).
 let relayDown = false;
 
-function configureFeed(u) {
+async function configureFeed(u) {
   const base = relayBase();
   if (!base || relayDown) return feedGithub(u);
   try {
@@ -2298,7 +2348,7 @@ function configureFeed(u) {
   } catch (e) {
     // Jamais de cabinet sans recours : on retombe sur GitHub, et on le dit.
     relayFailure = `Relais injoignable (${String(e && e.message || e).slice(0, 120)}). Retour au téléchargement direct depuis GitHub.`;
-    feedGithub(u);
+    await feedGithub(u);
   }
 }
 
@@ -2306,6 +2356,9 @@ function getUpdater() {
   if (updater) return updater;
   try {
     const { autoUpdater } = require('electron-updater');
+    // `updater = null` (changement de canal ou de jeton) fait repasser ici sur le MÊME objet : sans
+    // ce nettoyage, chaque passage ajoute un second jeu d'écouteurs et chaque événement arrive deux fois.
+    autoUpdater.removeAllListeners();
     autoUpdater.autoDownload = true;
     autoUpdater.autoInstallOnAppQuit = !IS_MAC || MAC_SIGNED;
     autoUpdater.autoRunAppAfterInstall = true;
@@ -2332,7 +2385,8 @@ function getUpdater() {
     autoUpdater.on('download-progress', p => sendUpd('downloading', { percent: Math.round(p.percent), version: updateInfo && updateInfo.version }));
     autoUpdater.on('update-downloaded', info => { downloaded = true; enTelechargement = false; downloadedFile = info.downloadedFile || null; sendUpd('downloaded', { version: info.version }); });
     autoUpdater.on('error', err => { noterVerification('error'); const pendant = enTelechargement; enTelechargement = false; if ((pendant || !silentCheck) && !silencerErreur) sendUpd('error', updateProblem(err)); });
-    configureFeed(autoUpdater);
+    // Le flux se branche dans `checkForUpdates` (il peut demander la liste des releases à GitHub,
+    // donc attendre) : ici on ne pose que ce qui est synchrone.
     updater = autoUpdater;
   } catch (e) {
     updaterError = String(e && e.message || e).split('\n')[0].slice(0, 200);
@@ -2358,9 +2412,15 @@ async function checkForUpdates(isSilent) {
   // GitHub en direct — et le second ne servait que lorsque le premier était MAL RÉGLÉ, pas quand il
   // répondait mal : le seul cas qui arrive vraiment. Le comptable lisait « Aucune version trouvée :
   // le jeton d'accès manque » pendant qu'un chemin parfaitement fonctionnel l'attendait à côté.
+  // Un clic sur « Vérifier maintenant » réessaie le relais, même s'il a échoué plus tôt dans la
+  // session : la cause la plus fréquente d'un échec est un index qui finissait de monter en ligne,
+  // et c'est très exactement le moment où l'on clique. Les vérifications silencieuses, elles,
+  // gardent le chemin qui a répondu.
+  if (!isSilent && relayDown) { relayDown = false; relayFailure = ''; }
   const avecRelais = !!relayBase() && !relayDown;
   silencerErreur = avecRelais;
   try {
+    await configureFeed(u);
     const r = await Promise.race([u.checkForUpdates(), patiente()]);
     silencerErreur = false;
     if (!r) return { state: 'error', message: 'Le module de mise à jour est inactif dans cette installation.' };
@@ -2369,8 +2429,8 @@ async function checkForUpdates(isSilent) {
     if (avecRelais) {
       relayDown = true;
       relayFailure = `Le service de mise à jour n'a pas répondu (${String((e && e.message) || e).slice(0, 120)}). Téléchargement direct depuis GitHub.`;
-      configureFeed(u);                              // relayDown est posé : on repart sur GitHub
       try {
+        await configureFeed(u);                        // relayDown est posé : on repart sur GitHub
         const r2 = await Promise.race([u.checkForUpdates(), patiente()]);
         silencerErreur = false;
         if (r2) return { state: 'ok' };

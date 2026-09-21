@@ -7,6 +7,38 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 9.8.8-beta.2 — 21/09/2026
+
+**La bêta que le comptable ne voyait pas.** Skander, case « Recevoir les versions d'essai » cochée sur
+SkanFact Cabinet 9.8.7, lisait « Aucune version publiée pour l'instant » pendant que la 9.8.8-beta.1
+était en ligne avec ses seize fichiers. Cause, lue dans la source d'electron-updater et pas dans son
+README (la cinquième fois) : son fournisseur GitHub ne connaît que **deux** canaux de préversion,
+« alpha » et « beta », lus dans le tag de la release. Le canal `cabinet-beta` n'y trouve donc jamais
+rien — et s'il trouvait, il irait chercher `beta-mac.yml`, l'index de l'app **entreprise**. Le chemin
+GitHub, c'est celui que l'application prend dès que le relais a échoué une fois dans la session ; et
+il avait échoué, soit pendant que l'index montait en ligne, soit parce que le relais déployé sur
+Cloudflare est antérieur à la 9.1.0 et ne connaît pas encore le canal d'essai du Cabinet.
+
+- **Le canal d'essai du Cabinet ne passe plus jamais par le fournisseur GitHub.** Le Cabinet lit la
+  liste des releases, choisit lui-même celle qui porte son index (`releasePourIndex`, pur, la règle du
+  relais : jamais un brouillon, jamais un index stable venu d'une préversion) et laisse le fournisseur
+  générique lire cette page. Le canal stable ne change pas. Vérifié sur la vraie liste : la bêta
+  pour `cabinet-beta-mac.yml`, la 9.8.7 pour `cabinet-mac.yml`.
+- **Un clic sur « Vérifier maintenant » réessaie le relais**, dans les deux applications, même s'il a
+  échoué plus tôt dans la session : la cause la plus fréquente d'un échec est un index qui finissait
+  de monter, et c'est le moment où l'on clique. Les vérifications silencieuses gardent le chemin qui
+  a répondu.
+- Sur le canal d'essai, un index absent se dit « Aucune version d'essai publiée pour l'instant » en
+  gris, comme dans l'app entreprise depuis la 7.25.0 — plus « une version vient d'être publiée ».
+- Les en-têtes du relais ne partent plus vers GitHub après un repli (règle 8.0.0, jamais portée au
+  Cabinet), et changer de canal ne double plus les écouteurs du module de mise à jour.
+- **À faire sur Cloudflare** : redéployer `worker/skanfact-maj.mjs` (canal `cabinet-beta` depuis la
+  9.1.0, `releaseAdmissible` depuis la 9.8.8-beta.1). Sans ça, le Cabinet reçoit sa bêta par GitHub en
+  direct — ce qui marche désormais — mais pas par le relais.
+
+Chemin direct en bêta : c'est une correction du mécanisme de mise à jour lui-même, et elle ne touche
+aucun chiffre. 587 tests, 8 défauts réintroduits un par un font tomber leur test.
+
 ## 9.8.8-beta.1 — 21/09/2026
 
 **Les quarante-deux constats du carnet de terrain (`TESTS-TERRAIN.md`), corrigés en une version — et

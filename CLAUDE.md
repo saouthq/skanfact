@@ -90,6 +90,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un **INSTRUMENT qui ne couvre qu'une des deux applications** ne protège qu'une des deux | 9.4.3 |
 | Une **BÊTA qui ne construit qu'une des deux** ne se fait tester qu'à moitié ; la cloison, c'est le canal | 9.8.4 |
 | electron-builder **ne déduit pas le canal du numéro** : on le NOMME, et la page de la release se relit | 9.8.8 — `latest.yml` sur une bêta, servi aux stables |
+| Le fournisseur GitHub d'electron-updater **ne connaît que « alpha » et « beta »** : `cabinet-beta` n'y passe jamais ; un repli se teste sur le canal qu'il doit servir | 9.8.8 — la bêta que le comptable ne voyait pas |
 | Une commande ne porte jamais `-c <fichier>` **et** `-c.<clé>=` : les deux visent la même option | 9.8.6 — et l'ambiguïté ne tombe que sous PowerShell |
 | Une **capture qui s'arrête au bas de l'écran** fait juger une page sur son premier écran | 9.4.3 |
 | Un fichier partagé a **trois** branchements : les deux `index.html`, dans l'ordre, et les `files` du Cabinet | 7.26.0 (`depot.js`), 7.29.0 (`rowmenu.js`), 9.1.0 (`compta.js`) |
@@ -4480,6 +4481,23 @@ constructions — il retire tout index du mauvais canal (erreur s'il vient de ce
 s'il restait d'avant), exige les quatre index du bon canal et compte seize fichiers. C'est la
 vérification que je faisais à la main depuis la 9.8.1 ; une vérification qu'on fait à la main
 finit par ne plus se faire.
+
+**Et la bêta que le comptable ne voyait pas (9.8.8-beta.2).** Case cochée, « Vérifier maintenant »,
+et l'écran répondait « Aucune version publiée pour l'instant » pendant que la bêta était en ligne
+avec ses seize fichiers. Cette phrase ne peut venir que du fournisseur GitHub d'electron-updater
+(`ERR_UPDATER_NO_PUBLISHED_VERSIONS`), donc du chemin de REPLI — et lu dans sa source, ce fournisseur
+ne connaît que **deux** canaux de préversion, « alpha » et « beta », pris dans le tag de la release :
+`cabinet-beta` n'y trouve jamais rien, et s'il trouvait, il irait chercher `beta-mac.yml`, l'index de
+l'app ENTREPRISE. Le Cabinet choisit donc lui-même la release qui porte son index
+(`cabcore.releasePourIndex`, pur, la règle du relais) et laisse le fournisseur GÉNÉRIQUE lire cette
+page ; le canal stable ne change pas. Règles : **un mécanisme de repli se teste sur le canal qu'il
+doit servir, pas seulement sur le canal par défaut** — le repli GitHub du Cabinet n'avait jamais été
+essayé en bêta ; **un clic réessaie le relais** (les deux applications), parce que la cause la plus
+fréquente de son échec est un index qui finissait de monter, et c'est le moment où l'on clique — les
+vérifications silencieuses gardent le chemin qui a répondu ; et deux jumeaux manquants de plus
+(7.3.0) : les en-têtes du relais retirés avant le repli (8.0.0) et la phrase grise de la bêta absente
+(7.25.0). Le fichier `.yml` se télécharge bien depuis la page de la release en GET (un HEAD répond
+401 : electron-updater n'en fait pas, mais un test à la main pourrait s'y tromper).
 
 ## Pistes pour la suite (non demandées)
 

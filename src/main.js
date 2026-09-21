@@ -2356,6 +2356,11 @@ async function checkForUpdates(isSilent) {
   // vraiment : l'application affichait alors une erreur en rouge alors qu'un autre chemin
   // parfaitement fonctionnel l'attendait juste à côté. C'est le défaut de la 6.7.2, une couche plus
   // bas. Sur un dépôt public, GitHub en direct marche sans rien présenter du tout.
+  // Un clic sur « Vérifier maintenant » réessaie le relais, même s'il a échoué plus tôt dans la
+  // session (9.8.8-beta.2, porté du Cabinet) : la cause la plus fréquente d'un échec est un index qui
+  // finissait de monter en ligne, et c'est très exactement le moment où l'on clique. Les
+  // vérifications silencieuses, elles, gardent le chemin qui a répondu.
+  if (!isSilent && relayDown) { relayDown = false; relayFailure = ''; configureFeed(u); }
   const avecRelais = !!relayBase() && !relayDown;
   // Tant qu'un second essai reste possible, on ne crie pas : l'événement `error` du premier
   // échec afficherait un message rouge que le repli va démentir une seconde plus tard.

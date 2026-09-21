@@ -50,8 +50,16 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
   j.etape('La case arrive décochée');
   await ouvrirMaj();
   if (await win.isChecked('#upd-beta')) throw new Error('le canal bêta est armé sur une installation neuve');
-  if (!(await win.$('#beta-tag[hidden]'))) throw new Error('le repère « bêta » s\'affiche sur une version stable');
-  j.ok('canal normal, aucun repère');
+  // Le repère suit la VERSION INSTALLÉE, jamais la case (7.25.0). Le dépôt peut tourner sur une
+  // préversion (`9.8.8-beta.2`) : le repère est alors légitime, case cochée ou non. Une assertion
+  // « jamais de repère » décrivait l'état du jour où le test a été écrit, pas la règle (9.8.8-beta.2).
+  const preversion = /-/.test(require('../../package.json').version);
+  const repereCache = async () => !!(await win.$('#beta-tag[hidden]'));
+  if ((await repereCache()) === preversion) {
+    throw new Error(preversion ? 'la version installée est une préversion et le repère « bêta » ne s\'affiche pas'
+      : 'le repère « bêta » s\'affiche sur une version stable');
+  }
+  j.ok(`canal normal, repère ${preversion ? 'allumé (préversion installée)' : 'absent (version stable)'}`);
 
   // -------------------------------------------------- 2. cocher pose une question, et Annuler tient
   j.etape('Cocher pose une question — et « Annuler » laisse la case décochée');
@@ -92,10 +100,12 @@ const path = require('path'); const fs = require('fs'); const os = require('os')
 
   // -------------------------------------------------- 4. le repère suit la version, pas le canal
   j.etape('Le repère « bêta » suit la version installée, pas la case');
-  if (!(await win.$('#beta-tag[hidden]'))) {
-    throw new Error('le repère s\'allume alors que la version installée est encore une stable');
+  // Cocher la case ne change pas la version qui tourne : le repère est exactement ce qu'il était.
+  if ((await repereCache()) === preversion) {
+    throw new Error(preversion ? 'le repère s\'est éteint alors que la version installée reste une préversion'
+      : 'le repère s\'allume alors que la version installée est encore une stable');
   }
-  j.ok('la case est cochée, la version reste stable, aucun repère');
+  j.ok(`la case est cochée, la version n'a pas changé, le repère non plus`);
 
   // -------------------------------------------------- 5. revenir en arrière ne se négocie pas
   j.etape('Décocher revient au canal normal, sans question');

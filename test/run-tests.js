@@ -5004,6 +5004,77 @@ t('cabinet : son canal de mise à jour ne peut pas écraser celui de l\'app entr
   assert.ok(/MacOS\/\$BIN/.test(sh), 'et le vérifier avec ce nom, pas avec « SkanFact » en dur');
 });
 
+// 9.8.8-beta.2 — le comptable pilote, case « versions d'essai » cochée, lisait « Aucune version
+// publiée pour l'instant » pendant que la 9.8.8-beta.1 était en ligne avec ses seize fichiers. Le
+// fournisseur GitHub d'electron-updater ne connaît que les canaux « alpha » et « beta », lus dans le
+// tag : `cabinet-beta` n'y trouve jamais rien (ERR_UPDATER_NO_PUBLISHED_VERSIONS), et s'il trouvait,
+// il irait chercher `beta-mac.yml` — l'index de l'app ENTREPRISE. Lu dans la source du module, pas
+// dans son README (6.7.3, 7.25.0, 9.8.6, 9.8.8 : la cinquième fois).
+t('canal d\'essai du Cabinet : jamais par le fournisseur GitHub d\'electron-updater', () => {
+  const K = require('../src/cabinet/cabcore.js');
+  // 1. La règle du choix de release est pure, et c'est celle du relais (`releaseAdmissible`).
+  const rels = [
+    { tag_name: 'v9.9.0', draft: true, prerelease: false, assets: [{ name: 'cabinet-mac.yml' }, { name: 'cabinet-beta-mac.yml' }] },
+    { tag_name: 'v9.8.8-beta.1', prerelease: true, assets: [{ name: 'beta-mac.yml' }, { name: 'cabinet-beta-mac.yml' }, { name: 'cabinet-beta.yml' }] },
+    { tag_name: 'v9.8.7', prerelease: false, assets: [{ name: 'cabinet-mac.yml' }, { name: 'cabinet.yml' }, { name: 'latest-mac.yml' }] }
+  ];
+  assert.deepStrictEqual(K.releasePourIndex(rels, 'cabinet-beta-mac.yml'), { tag: 'v9.8.8-beta.1', prerelease: true }, 'la bêta porte son index : c\'est elle');
+  assert.deepStrictEqual(K.releasePourIndex(rels, 'cabinet-beta.yml'), { tag: 'v9.8.8-beta.1', prerelease: true });
+  assert.deepStrictEqual(K.releasePourIndex(rels, 'cabinet-mac.yml'), { tag: 'v9.8.7', prerelease: false }, 'un brouillon ne sert rien');
+  assert.strictEqual(K.releasePourIndex(rels, 'cabinet-beta-linux.yml'), null, 'aucune release ne porte ce fichier : null, pas une exception');
+  assert.strictEqual(K.releasePourIndex(null, 'cabinet-mac.yml'), null);
+  // L'accident de la 9.8.8-beta.1 : un index STABLE posé sur une préversion ne doit jamais être servi.
+  const accident = [{ tag_name: 'v9.8.8-beta.1', prerelease: true, assets: [{ name: 'cabinet-mac.yml' }] }, rels[2]];
+  assert.deepStrictEqual(K.releasePourIndex(accident, 'cabinet-mac.yml'), { tag: 'v9.8.7', prerelease: false },
+    'un index stable ne vient jamais d\'une préversion (même règle que releaseAdmissible du relais)');
+  // Le nom de l'index suit `getChannelFilename` d'electron-updater, plateforme par plateforme.
+  assert.strictEqual(K.nomIndex('cabinet-beta', 'darwin'), 'cabinet-beta-mac.yml');
+  assert.strictEqual(K.nomIndex('cabinet-beta', 'win32'), 'cabinet-beta.yml');
+  assert.strictEqual(K.nomIndex('cabinet', 'linux'), 'cabinet-linux.yml');
+  // Et la liste des index stables du Cabinet est la même que celle du relais, sans recopie divergente.
+  ['cabinet.yml', 'cabinet-mac.yml', 'cabinet-linux.yml', 'latest.yml', 'latest-mac.yml', 'latest-linux.yml']
+    .forEach(f => assert.ok(K.INDEX_STABLES.includes(f), f + ' est un index stable'));
+
+  // 2. Dans l'application : le fournisseur GitHub ne reçoit que le canal STABLE ; la bêta passe par
+  // le fournisseur générique sur la page de la release choisie par la règle ci-dessus.
+  const src = lireSource('src', 'cabinet', 'main.js');
+  const fg = src.slice(src.indexOf('async function feedGithub('), src.indexOf('let relayDown'));
+  assert.ok(fg.length > 400 && fg.length < 4000 && !fg.includes('function configureFeed'), 'découpage de feedGithub raté');
+  assert.ok(/u\.requestHeaders = null;[\s\S]*setFeedURL/.test(fg), 'les en-têtes du relais partent AVANT de changer de flux (8.0.0, jamais porté au Cabinet)');
+  assert.ok(/if \(!cfg\.beta\) \{[\s\S]*provider: 'github'[^\n]*channel: 'cabinet'/.test(fg),
+    'le fournisseur GitHub ne sert que le canal stable, sous la garde `!cfg.beta`');
+  assert.ok(!/provider: 'github'[^\n]*(UPDATE_CHANNEL\(\)|cabinet-beta)/.test(fg),
+    'le fournisseur GitHub ne doit jamais recevoir cabinet-beta : il ne connaît que alpha et beta, et irait chercher beta-mac.yml, l\'index de l\'app entreprise');
+  assert.ok(/K\.releasePourIndex\(await releasesGithub\(/.test(fg) && /K\.nomIndex\('cabinet-beta', process\.platform\)/.test(fg),
+    'la release de la bêta se choisit par la règle pure, sur la vraie liste des releases');
+  assert.ok(/provider: 'generic', url: `https:\/\/github\.com\/\$\{GITHUB\.owner\}\/\$\{GITHUB\.repo\}\/releases\/download\/\$\{rel\.tag\}`, channel: 'cabinet-beta'/.test(fg),
+    'la bêta se lit par le fournisseur générique, sur la page de CETTE release, canal cabinet-beta');
+  assert.ok(/code: 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND'/.test(fg), 'pas de bêta publiée = le code du fournisseur générique sur un index absent, donc la même phrase grise');
+  // La phrase, sur le canal d'essai, dit « version d'essai » et n'annonce pas une publication en cours.
+  const up = src.slice(src.indexOf('function updateProblem('), src.indexOf('function releasesGithub('));
+  assert.ok(up.length > 300 && /CHANNEL_FILE_NOT_FOUND[\s\S]{0,500}readUpdateCfg\(\)\.beta[\s\S]{0,120}version d\\'essai publiée/.test(up),
+    'sur le canal d\'essai, un index absent se dit « aucune version d\'essai publiée », en gris');
+  // Le flux se branche à CHAQUE vérification (il peut attendre GitHub), sur les deux chemins.
+  const cf = src.slice(src.indexOf('async function checkForUpdates('), src.indexOf('function takeLastUpdateResult('));
+  assert.strictEqual((cf.match(/await configureFeed\(u\)/g) || []).length, 2, 'configureFeed s\'attend sur les deux chemins de checkForUpdates (relais, puis GitHub)');
+  assert.ok(!/configureFeed\(autoUpdater\)/.test(src.slice(src.indexOf('function getUpdater('), src.indexOf('function updaterUnavailable('))),
+    'getUpdater ne branche plus le flux lui-même : il est asynchrone désormais');
+  // Le même objet repasse par getUpdater après un changement de canal : les écouteurs ne doublent pas.
+  assert.ok(/autoUpdater\.removeAllListeners\(\);/.test(src.slice(src.indexOf('function getUpdater('), src.indexOf('function updaterUnavailable('))),
+    'sans removeAllListeners, chaque changement de canal double les écouteurs et chaque événement arrive deux fois');
+
+  // 3. Un clic réessaie le relais — dans les DEUX applications (une règle apprise d'un côté se
+  // vérifie de l'autre, 7.3.0). Le relais avait échoué pendant que l'index montait en ligne, et
+  // toute la journée, chaque « Vérifier maintenant » repartait sur GitHub sans le redemander.
+  [['src', 'main.js'], ['src', 'cabinet', 'main.js']].forEach(p => {
+    const s = lireSource(...p);
+    const c = s.slice(s.indexOf('async function checkForUpdates('), s.indexOf('function takeLastUpdateResult('));
+    assert.ok(c.length > 500 && c.length < 6000, 'découpage de checkForUpdates raté (' + p.join('/') + ')');
+    const i = c.indexOf('if (!isSilent && relayDown) { relayDown = false; relayFailure = \'\';');
+    assert.ok(i > 0 && i < c.indexOf('const avecRelais'), 'un clic sur « Vérifier maintenant » réessaie le relais AVANT de décider du chemin (' + p.join('/') + ')');
+  });
+});
+
 t('cabinet : la clé privée ne traverse jamais le pont vers l\'interface', () => {
   const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'cabinet', 'main.js'), 'utf8');
 

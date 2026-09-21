@@ -1278,6 +1278,37 @@
     };
   }
 
+  // ---------- le canal d'essai, sans le fournisseur GitHub d'electron-updater (9.8.8-beta.2) ----------
+  //
+  // Le fournisseur GitHub d'electron-updater ne connaît que DEUX canaux de préversion, « alpha » et
+  // « beta » : un tag `v9.8.8-beta.1` porte le canal « beta », et une application dont le canal est
+  // `cabinet-beta` ne trouve donc jamais rien (« No published versions on GitHub »). Et si elle
+  // trouvait, elle irait chercher `beta-mac.yml` — l'index de l'app ENTREPRISE. Le Cabinet choisit
+  // donc lui-même la release qui porte son index, puis laisse le fournisseur GÉNÉRIQUE lire cette
+  // page. La règle est la même que celle du relais (`releaseAdmissible`) : un brouillon ne sert
+  // rien, et un index STABLE ne vient jamais d'une préversion — c'est l'accident de la 9.8.8-beta.1.
+  const INDEX_STABLES = ['cabinet.yml', 'cabinet-mac.yml', 'cabinet-linux.yml', 'latest.yml', 'latest-mac.yml', 'latest-linux.yml'];
+
+  // Le nom de l'index qu'electron-updater demandera pour ce canal sur cette plateforme
+  // (`getChannelFilename` : `-mac` sur macOS, `-linux` sur Linux, rien sur Windows).
+  function nomIndex(canal, plateforme) {
+    const suffixe = plateforme === 'darwin' ? '-mac' : plateforme === 'linux' ? '-linux' : '';
+    return `${canal}${suffixe}.yml`;
+  }
+
+  // La première release (l'API les rend de la plus récente à la plus ancienne) qui porte ce fichier
+  // et a le droit de le servir. `null` si aucune : c'est « pas encore de version d'essai », pas une panne.
+  function releasePourIndex(releases, fichier) {
+    const stable = INDEX_STABLES.includes(String(fichier || ''));
+    for (const rel of Array.isArray(releases) ? releases : []) {
+      if (!rel || rel.draft) continue;
+      if (rel.prerelease && stable) continue;
+      const assets = Array.isArray(rel.assets) ? rel.assets : [];
+      if (assets.some(a => a && a.name === fichier)) return { tag: String(rel.tag_name || ''), prerelease: !!rel.prerelease };
+    }
+    return null;
+  }
+
   // Le fichier d'appairage remis aux clients. Il ne contient QUE la clé publique : rien de secret,
   // mais tout ce qu'il faut pour que leurs paquets n'appartiennent qu'à ce cabinet.
   function pairingFile(cabinet, fingerprint) {
@@ -1299,6 +1330,7 @@
     newDossier, parseDossierLines, noteRelance, portfolio, relanceDue, relanceRows, accuseMail,
     parseCsv, verdictOrigine, csvDangereux, toCsvLine, mergeEcritures, ecrituresPlan,
     DEFAULT_DEADLINES, deadlineSettings, echeances, dayOf,
-    dossierMonths, dossierRow, dossierList, cabinetTodo, relanceMail, pairingFile
+    dossierMonths, dossierRow, dossierList, cabinetTodo, relanceMail, pairingFile,
+    INDEX_STABLES, nomIndex, releasePourIndex
   };
 }));
