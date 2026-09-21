@@ -1599,6 +1599,34 @@ l'inspection les compte — des LIVRES, pas des fichiers : l'index du dossier et
 précédente ne font pas « 2 livres » — et le ZIP des livres d'une sauvegarde nommée suit son JSON
 sur la clé. Le test T-44 fait deux magasins, une clé entre les deux, et relit le livre à l'arrivée.
 
+### ~~T-45 · GRAVE · La bêta publiée, case cochée, et le Cabinet répond « Aucune version publiée pour l'instant »~~ — corrigé en 9.8.8-beta.2
+
+**Vu** par Skander le 21/09, SkanFact Cabinet 9.8.7 sur Mac, Réglages → Mises à jour, « Recevoir
+les versions d'essai » cochée, « Vérifier maintenant » : « Aucune version publiée pour l'instant. »
+pendant que la 9.8.8-beta.1 était en ligne avec ses seize fichiers, `cabinet-beta-mac.yml` compris.
+
+**Pourquoi ça compte** : c'est le seul chemin par lequel le cabinet pilote peut recevoir une version
+avant tout le monde. Sans lui, tester une bêta veut dire l'installer à la main depuis un `.dmg`.
+
+**Ancrage** : la phrase ne peut venir que du fournisseur GitHub d'electron-updater
+(`ERR_UPDATER_NO_PUBLISHED_VERSIONS`, `src/cabinet/main.js` → `updateProblem`), donc du chemin de
+REPLI : le relais avait échoué une fois dans la session (index en train de monter, ou relais
+déployé avant la 9.1.0, qui ne connaît pas `cabinet-beta`), et `relayDown` le tenait à l'écart pour
+toute la journée. Puis `node_modules/electron-updater/out/providers/GitHubProvider.js`,
+`getLatestVersion` : avec `allowPrerelease`, le canal courant est comparé au canal lu dans le TAG
+(`semver.prerelease(hrefTag)[0]`), et seuls « alpha » et « beta » sont acceptés. `cabinet-beta`
+ne correspond jamais → aucun tag → « No published versions on GitHub ». Et s'il correspondait, le
+fichier demandé serait `getCustomChannelName(prerelease[0])` = `beta-mac.yml` : l'app entreprise.
+
+**Ce qui est juste** : le Cabinet choisit lui-même la release qui porte son index
+(`cabcore.releasePourIndex`, pur, la règle du relais) et laisse le fournisseur générique lire sa
+page ; le canal stable ne change pas ; un clic sur « Vérifier maintenant » réessaie le relais
+(les deux applications). Prouvé sur la vraie liste des releases et par huit défauts réintroduits.
+
+**Règle violée** : « un chemin de secours ne sert que s'il se déclenche tout seul » (6.7.2) — et
+son corollaire, nouveau : **un repli se teste sur le canal qu'il doit servir**, pas seulement sur le
+canal par défaut. Le repli GitHub du Cabinet n'avait jamais été essayé en bêta.
+
 ### Ce que la 9.8.8 a décidé, et ce qu'elle laisse À VÉRIFIER
 
 - **T-41, le tiers sur chaque ligne** : gardé. Que la ligne de TVA d'une facture porte le tiers de
