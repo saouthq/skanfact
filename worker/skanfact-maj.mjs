@@ -150,6 +150,20 @@ async function github(url, env, accept) {
   });
 }
 
+// Une PRÉVERSION ne sert JAMAIS un fichier d'index STABLE. Trouvé le 21/09/2026, sur la
+// 9.8.8-beta.1 : electron-builder ne déduit PAS le canal du numéro de version (il lit
+// `publishConfig.channel || 'latest'`, contrairement à ce que la 7.25.0 croyait), la release
+// d'essai est donc partie avec `latest.yml` — et ce relais, qui prend la première release qui
+// porte le fichier demandé, l'a servie à toutes les installations STABLES. Le workflow nomme
+// désormais le canal et retire tout index du mauvais canal ; le relais refuse quand même, parce
+// que la ceinture ne dispense pas des bretelles, et que ce sont les postes des clients.
+export const INDEX_STABLES = ['latest.yml', 'latest-mac.yml', 'latest-linux.yml', 'cabinet.yml', 'cabinet-mac.yml', 'cabinet-linux.yml'];
+export function releaseAdmissible(rel, fichier) {
+  if (!rel || rel.draft) return false;
+  if (rel.prerelease && INDEX_STABLES.includes(String(fichier || ''))) return false;
+  return true;
+}
+
 async function trouveFichier(fichier, env) {
   const base = `https://api.github.com/repos/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/releases`;
   // On regarde la dernière release, puis les précédentes : une mise à jour peut demander un fichier
@@ -160,7 +174,7 @@ async function trouveFichier(fichier, env) {
   if (!r.ok) return { erreur: `GitHub a répondu ${r.status}` };
   const releases = await r.json();
   for (const rel of releases) {
-    if (rel.draft) continue;
+    if (!releaseAdmissible(rel, fichier)) continue;
     const a = (rel.assets || []).find(x => x.name === fichier);
     if (a) return { asset: a, tag: rel.tag_name };
   }

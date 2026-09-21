@@ -89,6 +89,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Une règle apprise d'un côté **se vérifie de l'autre**, à la main | 7.3.0 (purge des sauvegardes), 7.18.0 (`pl`), 7.32.0 (« À faire »), 8.1.0 (le saut d'horloge) |
 | Un **INSTRUMENT qui ne couvre qu'une des deux applications** ne protège qu'une des deux | 9.4.3 |
 | Une **BÊTA qui ne construit qu'une des deux** ne se fait tester qu'à moitié ; la cloison, c'est le canal | 9.8.4 |
+| electron-builder **ne déduit pas le canal du numéro** : on le NOMME, et la page de la release se relit | 9.8.8 — `latest.yml` sur une bêta, servi aux stables |
 | Une commande ne porte jamais `-c <fichier>` **et** `-c.<clé>=` : les deux visent la même option | 9.8.6 — et l'ambiguïté ne tombe que sous PowerShell |
 | Une **capture qui s'arrête au bas de l'écran** fait juger une page sur son premier écran | 9.4.3 |
 | Un fichier partagé a **trois** branchements : les deux `index.html`, dans l'ordre, et les `files` du Cabinet | 7.26.0 (`depot.js`), 7.29.0 (`rowmenu.js`), 9.1.0 (`compta.js`) |
@@ -198,9 +199,13 @@ reste** — il n'existe aucune case ni aucun drapeau à poser au lancement.
 1. **La bêta.** Travailler sur `beta`, numéroter `X.Y.Z-beta.N` (`npm run release preminor` puis
    `prerelease` ; le `--preid beta` est posé par le script, un `-0` sans nom de canal donnerait un
    canal « 0 »). Publier : le workflow marque la release **préversion** (donc `/releases/latest`
-   continue de pointer sur la dernière stable), electron-builder écrit `beta.yml` / `beta-mac.yml`
-   et `cabinet-beta.yml` / `cabinet-beta-mac.yml`. **Les deux applications sont construites**, chacune
-   sur son canal d'essai (corrigé en 9.8.4 — voir cette section).
+   continue de pointer sur la dernière stable) et **NOMME le canal** à electron-builder
+   (`-c.publish.channel=beta` pour l'entreprise, `channel: 'cabinet-beta'` dans
+   `build/cabinet.config.js`) — il ne le déduit PAS du numéro (voir § 9.8.8) — qui écrit alors
+   `beta.yml` / `beta-mac.yml` et `cabinet-beta.yml` / `cabinet-beta-mac.yml`. **Les deux
+   applications sont construites**, chacune sur son canal d'essai (corrigé en 9.8.4 — voir cette
+   section), et le job `verifier` relit la page : un index du mauvais canal est retiré, un index
+   attendu qui manque fait tomber le run.
 2. **L'essai.** Skander coche « Recevoir les versions bêta » (Paramètres → Mises à jour) ; le cabinet
    pilote coche « Recevoir les versions d'essai » (Réglages → Mises à jour). Une sauvegarde
    `avant-beta` est prise **avant** d'armer le canal. Personne d'autre ne voit rien.
@@ -1397,8 +1402,10 @@ seul dépôt.
 travail. Une version d'essai se numérote `7.26.0-beta.1` (`npm run release preminor` puis
 `prerelease`), et **c'est le numéro qui décide de tout le reste** : le workflow Release marque la
 release « préversion » sur GitHub (donc `/releases/latest` pointe toujours sur la dernière stable),
-electron-builder écrit `beta.yml` / `beta-mac.yml` au lieu de `latest.yml`, le relais Cloudflare les
-laisse passer (`CANAUX.app.yml`), et `core.canalDe(version)` en déduit le canal côté application.
+electron-builder écrit `beta.yml` / `beta-mac.yml` au lieu de `latest.yml` ~~tout seul~~ — **faux
+jusqu'à la 9.8.8 : il lit `publishConfig.channel || 'latest'` et ne déduit rien du numéro ; le
+workflow lui NOMME le canal depuis le 21/09/2026** —, le relais Cloudflare les laisse passer
+(`CANAUX.app.yml`), et `core.canalDe(version)` en déduit le canal côté application.
 Quand la bêta est confirmée, `npm run release minor` la transforme en `7.26.0` stable et `main`
 avance. Publier se fait depuis l'onglet Actions → Release → Run workflow, en choisissant la branche.
 
@@ -1407,8 +1414,11 @@ Règles apprises, à ne pas recasser :
 - **Une seule source de vérité, et c'est le numéro de version.** Un drapeau posé à la construction,
   une case au lancement du workflow, un réglage du dépôt : tout ça s'oublie et se désaccorde. Un
   numéro de version, non — il est écrit dans le paquet, dans la release, dans l'écran des mises à
-  jour et dans le nom du fichier téléchargé. Les deux moitiés du système (electron-builder et
-  `canalDe`) lisent la même chose, il n'y a donc aucun moyen de les faire diverger.
+  jour et dans le nom du fichier téléchargé. ~~Les deux moitiés du système (electron-builder et
+  `canalDe`) lisent la même chose, il n'y a donc aucun moyen de les faire diverger.~~ **Faux, et
+  ça a coûté une publication (9.8.8-beta.1)** : electron-builder ne lit PAS le numéro pour nommer
+  le canal. Le workflow le lui nomme, déduit du même drapeau que le type de release — c'est ça qui
+  rend les deux moitiés indivergeables, pas une propriété du module (§ 9.8.8).
 - **`allowPrerelease` est indispensable, et il ne se devine pas.** Sans lui, electron-updater
   interroge `/releases/latest`, qui **ignore les préversions par construction** : la bêta serait
   publiée et jamais proposée à personne, sans une erreur nulle part.
@@ -4452,6 +4462,24 @@ Règles apprises, à ne pas recasser :
   d'un gabarit — `[\s\S]{0,220}` borne sans mentir.
 - Piège d'outil : `$TMPDIR` vide fait de `cp "$TMPDIR/x"` une copie depuis `/x`. Une sauvegarde de
   preuve se restaure depuis un chemin ÉCRIT EN ENTIER.
+
+**Et la publication elle-même, une quatrième fois** (6.7.3, 7.25.0, 9.8.6 : lire la source du
+module, pas son README). La première bêta publiée par le « bon workflow » est partie avec
+`latest.yml` et `latest-mac.yml` pour l'app entreprise — pas `beta.yml`. **electron-builder ne
+déduit PAS le canal du numéro de version** : `computeChannelNames` lit `publishConfig.channel ||
+'latest'`, et rien d'autre. La 7.25.0 l'affirmait, le commentaire du workflow le répétait, et le
+Cabinet n'a jamais eu le trou parce que `build/cabinet.config.js` NOMME son canal depuis la 9.1.0.
+Conséquence, mesurée sur la page de la release avant qu'elle ne soit corrigée : le relais sert la
+première release qui porte le fichier demandé — donc `latest.yml` posé sur une préversion propose
+la bêta à TOUTES les installations stables, et `isUpdateAvailable` d'electron-updater ne filtre pas
+les préversions (`allowPrerelease` ne concerne que le fournisseur GitHub). Trois parades, prouvées
+chacune par réintroduction : le workflow nomme `-c.publish.channel=beta|latest` d'après le MÊME
+drapeau que le type de release ; le relais refuse un index stable venu d'une préversion
+(`releaseAdmissible`, exporté et testé) ; et un job `verifier` relit la page après les deux
+constructions — il retire tout index du mauvais canal (erreur s'il vient de ce run, avertissement
+s'il restait d'avant), exige les quatre index du bon canal et compte seize fichiers. C'est la
+vérification que je faisais à la main depuis la 9.8.1 ; une vérification qu'on fait à la main
+finit par ne plus se faire.
 
 ## Pistes pour la suite (non demandées)
 

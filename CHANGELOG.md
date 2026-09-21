@@ -68,7 +68,15 @@ information sur la ligne de TVA aussi) — ce qui était faux, c'est de le somme
 collectifs. `livre.json` gagne la LISTE `exercice.dossiersProduits` : une liste ajoutée est
 compatible, un champ renommé ne l'est pas (9.7.0).
 
-585 tests, 0 erreur de lint, 32 défauts réintroduits un par un font tomber leur test.
+**La publication, corrigée le jour même.** La première construction de cette bêta est partie avec
+`latest.yml` pour l'app entreprise au lieu de `beta.yml` : electron-builder ne déduit pas le canal du
+numéro de version, il faut le lui nommer — et le relais servait donc la bêta aux installations
+stables. Le workflow nomme le canal, retire tout index du mauvais canal et vérifie la page (job
+`verifier`) ; le relais refuse un index stable venu d'une préversion (`releaseAdmissible`, à
+redéployer sur Cloudflare). Une installation stable qui aurait pris la bêta entre-temps revient
+d'elle-même sur la 9.8.7 (le seul retour en arrière autorisé, 7.25.0).
+
+586 tests, 0 erreur de lint, 36 défauts réintroduits un par un font tomber leur test.
 
 ## 9.8.7 — 18/09/2026
 

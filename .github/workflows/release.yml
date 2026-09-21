@@ -44,6 +44,7 @@ jobs:
     outputs:
       version: ${{ steps.canal.outputs.version }}
       prerelease: ${{ steps.canal.outputs.prerelease }}
+      debut: ${{ steps.canal.outputs.debut }}
     steps:
       - uses: actions/checkout@v7
 
@@ -53,8 +54,10 @@ jobs:
 
       # Stable ou bêta ? C'est le NUMÉRO DE VERSION qui décide, rien d'autre : `7.26.0-beta.1` est
       # une préversion, `7.26.0` n'en est pas une. Aucune case à cocher au lancement du workflow,
-      # donc aucun moyen de se tromper — et electron-builder lit exactement la même chose pour
-      # nommer `beta.yml` au lieu de `latest.yml`.
+      # donc aucun moyen de se tromper. Et le canal se NOMME à electron-builder (étape « Build &
+      # publish ») : il ne le déduit PAS du numéro — il lit `publishConfig.channel || 'latest'`, et
+      # la 9.8.8-beta.1 est partie avec `latest.yml`, servie par le relais à toutes les installations
+      # stables. Le Cabinet le nomme dans `build/cabinet.config.js` depuis la 9.1.0.
       - name: Stable ou bêta
         id: canal
         shell: bash
@@ -65,6 +68,9 @@ jobs:
           case "$V" in *-*) PRE=true ;; *) PRE=false ;; esac
           echo "version=$V" >> "$GITHUB_OUTPUT"
           echo "prerelease=$PRE" >> "$GITHUB_OUTPUT"
+          # L'heure de départ : le job « verifier » distingue un fichier déposé par CE run d'un
+          # fichier resté d'une publication précédente.
+          echo "debut=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
           echo "Version $V — préversion : $PRE"
 
       # Notes de version : la section de CHANGELOG.md qui porte cette version. Node pur, aucune
@@ -150,7 +156,7 @@ jobs:
       # bêta. Sans ce drapeau, publier une préversion écraserait la version « officielle » du dépôt.
       - name: Build & publish
         shell: bash
-        run: npx electron-builder --publish always -c.publish.releaseType=${{ needs.preparer.outputs.prerelease == 'true' && 'prerelease' || 'release' }} -c.extraMetadata.updateBase="$UPDATE_BASE" -c.extraMetadata.updateSecret="$UPDATE_SECRET" -c.extraMetadata.plateformeBase="$PLATEFORME_BASE" -c.extraMetadata.plateformeSecret="$PLATEFORME_SECRET"
+        run: npx electron-builder --publish always -c.publish.releaseType=${{ needs.preparer.outputs.prerelease == 'true' && 'prerelease' || 'release' }} -c.publish.channel=${{ needs.preparer.outputs.prerelease == 'true' && 'beta' || 'latest' }} -c.extraMetadata.updateBase="$UPDATE_BASE" -c.extraMetadata.updateSecret="$UPDATE_SECRET" -c.extraMetadata.plateformeBase="$PLATEFORME_BASE" -c.extraMetadata.plateformeSecret="$PLATEFORME_SECRET"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           UPDATE_BASE: ${{ secrets.UPDATE_BASE }}
@@ -201,3 +207,58 @@ jobs:
           UPDATE_SECRET: ${{ secrets.UPDATE_SECRET }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
           EP_GH_IGNORE_TIME: true
+
+  # ─────────────────────────────────────────────────────────────────────────────────────────────
+  # La page est VÉRIFIÉE, pas seulement construite. Un job vert ne suffit pas (9.8.1) : ce job
+  # relit la release et refuse deux choses. Un fichier d'index du MAUVAIS canal — `latest.yml` sur
+  # une préversion, `beta.yml` sur une stable — est retiré sur-le-champ, parce que le relais sert
+  # la première release qui porte le fichier demandé : `latest.yml` posé sur une bêta propose la
+  # bêta à toutes les installations stables (c'est arrivé, 9.8.8-beta.1). Et l'absence d'un index
+  # attendu est une erreur : une release sans `beta-mac.yml` est une bêta que personne ne recevra.
+  # Un fichier déposé par CE run est une erreur (le job tombe) ; un fichier resté d'une publication
+  # précédente est retiré avec un avertissement — la page est juste, c'est ce qui compte.
+  # ─────────────────────────────────────────────────────────────────────────────────────────────
+  verifier:
+    needs: [preparer, build]
+    if: ${{ always() && needs.preparer.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Aucun index du mauvais canal, tous ceux du bon
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEBUT: ${{ needs.preparer.outputs.debut }}
+        run: |
+          V="${{ needs.preparer.outputs.version }}"
+          PRE="${{ needs.preparer.outputs.prerelease }}"
+          if [ "$PRE" = "true" ]; then
+            INTERDITS="latest.yml latest-mac.yml latest-linux.yml cabinet.yml cabinet-mac.yml cabinet-linux.yml"
+            ATTENDUS="beta.yml beta-mac.yml cabinet-beta.yml cabinet-beta-mac.yml"
+          else
+            INTERDITS="beta.yml beta-mac.yml beta-linux.yml cabinet-beta.yml cabinet-beta-mac.yml cabinet-beta-linux.yml"
+            ATTENDUS="latest.yml latest-mac.yml cabinet.yml cabinet-mac.yml"
+          fi
+          LISTE=$(gh release view "v$V" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[] | "\(.name) \(.createdAt)"')
+          echo "$LISTE"
+          ECHEC=0
+          for f in $INTERDITS; do
+            QUAND=$(echo "$LISTE" | awk -v f="$f" '$1 == f { print $2 }')
+            [ -z "$QUAND" ] && continue
+            gh release delete-asset "v$V" "$f" --yes --repo "$GITHUB_REPOSITORY"
+            if [ "$QUAND" \> "$DEBUT" ] || [ "$QUAND" = "$DEBUT" ]; then
+              echo "::error::$f a été déposé par cette publication dans la release v$V (préversion : $PRE) — retiré, mais c'est le pipeline qui est faux."
+              ECHEC=1
+            else
+              echo "::warning::$f restait d'une publication précédente dans la release v$V — retiré."
+            fi
+          done
+          for f in $ATTENDUS; do
+            if ! echo "$LISTE" | awk '{ print $1 }' | grep -qx "$f"; then
+              echo "::error::$f manque dans la release v$V : personne ne recevrait cette version."
+              ECHEC=1
+            fi
+          done
+          N=$(gh release view "v$V" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets | length')
+          echo "Release v$V : $N fichiers."
+          if [ "$N" -ne 16 ]; then echo "::error::16 fichiers attendus (deux applications, deux postes), $N trouvés."; ECHEC=1; fi
+          exit $ECHEC

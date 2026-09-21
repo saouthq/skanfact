@@ -6425,6 +6425,22 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     ['beta.yml', 'beta-mac.yml', 'beta-linux.yml'].forEach(f =>
       assert.strictEqual(W.fichierAutorise('cabinet', f), false, 'l\'essai de l\'app entreprise servi au cabinet : ' + f));
     assert.strictEqual(W.fichierAutorise('app', 'SkanFact-6.6.0-mac-universal.zip'), true);
+    // Une PRÉVERSION ne sert jamais un index STABLE (21/09/2026) : `latest.yml` posé sur la
+    // 9.8.8-beta.1 a proposé la bêta à toutes les installations stables. Le relais prend la
+    // première release qui porte le fichier — il doit donc SAUTER une préversion pour un index
+    // stable, et rien d'autre : la bêta y reste servie, et les installateurs aussi.
+    const pre = { prerelease: true, draft: false }, stable = { prerelease: false, draft: false };
+    W.INDEX_STABLES.forEach(f => assert.strictEqual(W.releaseAdmissible(pre, f), false, 'une préversion sert un index stable : ' + f));
+    ['beta.yml', 'beta-mac.yml', 'cabinet-beta.yml', 'cabinet-beta-mac.yml', 'SkanFact-9.8.8-beta.1-mac-universal.zip'].forEach(f =>
+      assert.strictEqual(W.releaseAdmissible(pre, f), true, 'une préversion doit servir son propre canal : ' + f));
+    W.INDEX_STABLES.forEach(f => assert.strictEqual(W.releaseAdmissible(stable, f), true, 'une stable doit servir ' + f));
+    assert.strictEqual(W.releaseAdmissible({ prerelease: false, draft: true }, 'latest.yml'), false, 'un brouillon ne se sert jamais');
+    assert.strictEqual(W.releaseAdmissible(null, 'latest.yml'), false);
+    // Et c'est bien la fonction que la recherche appelle — un garde-fou jamais appelé est invisible.
+    const src = fs.readFileSync(path.join(__dirname, '..', 'worker', 'skanfact-maj.mjs'), 'utf8').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+    const tf = src.slice(src.indexOf('async function trouveFichier('), src.indexOf('const typeDe ='));
+    assert.ok(tf.length > 300 && tf.length < 2000, 'tranche trouveFichier suspecte : ' + tf.length);
+    assert.ok(/if \(!releaseAdmissible\(rel, fichier\)\) continue;/.test(tf), 'trouveFichier ne consulte pas releaseAdmissible');
     assert.strictEqual(W.fichierAutorise('app', 'SkanFact-Cabinet-6.6.0-mac-universal.zip'), false, 'préfixe du cabinet servi sur le canal entreprise');
     assert.strictEqual(W.fichierAutorise('cabinet', 'SkanFact-Cabinet-6.6.0-win-x64.exe'), true);
     assert.strictEqual(W.fichierAutorise('cabinet', 'SkanFact-6.6.0-win-x64.exe'), false);
@@ -7077,6 +7093,32 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   // La 9.8.0 est complète et verte ; c'est sa PUBLICATION qui a échoué. Les deux postes créaient
   // chacun la page de la release, au même instant : le second a reçu `422 already_exists`, et
   // electron-builder ne rattrape ce refus que pour l'envoi d'un FICHIER, jamais pour la création
+  // Le canal de l'app entreprise se NOMME (21/09/2026). electron-builder lit
+  // `publishConfig.channel || 'latest'` (app-builder-lib, updateInfoBuilder.js) : il ne déduit
+  // RIEN du numéro de version, contrairement à ce que la 7.25.0 affirmait. La 9.8.8-beta.1 est
+  // donc partie avec `latest.yml`, et le relais l'a servie aux installations stables. Le Cabinet
+  // n'a jamais eu ce trou : son fichier de configuration nomme `cabinet-beta`.
+  t('canal bêta : l\'app entreprise NOMME son canal d\'après le même drapeau, et la page est vérifiée', () => {
+    const brut = lireSource('.github', 'workflows', 'release.yml');
+    const wf = brut.split('\n').filter(l => !/^\s*#/.test(l)).join('\n');
+    assert.ok(wf.includes('npx electron-builder'), 'le nettoyage des commentaires a mangé le code');
+    const canal = wf.match(/-c\.publish\.channel=\$\{\{ ([\w.]+\.outputs\.prerelease) == 'true' && 'beta' \|\| 'latest' \}\}/);
+    assert.ok(canal, 'le canal de l\'app entreprise n\'est pas nommé d\'après le numéro de version : electron-builder écrirait latest.yml sur une bêta');
+    const type = wf.match(/-c\.publish\.releaseType=\$\{\{ ([\w.]+\.outputs\.prerelease) == 'true'/);
+    assert.strictEqual(canal[1], type[1], 'le canal et le type de release doivent suivre le MÊME drapeau');
+    // Un job vert ne suffit pas (9.8.1) : la page est relue. Un index du mauvais canal est retiré,
+    // un index attendu qui manque est une erreur, et le compte des fichiers est vérifié.
+    const v = wf.slice(wf.indexOf('\n  verifier:'));
+    assert.ok(v.length > 800, 'le job verifier manque');
+    assert.ok(/needs: \[preparer, build\]/.test(v), 'verifier doit passer APRÈS les deux constructions');
+    assert.ok(/gh release delete-asset "v\$V" "\$f"/.test(v), 'un index du mauvais canal n\'est pas retiré');
+    ['latest.yml latest-mac.yml latest-linux.yml cabinet.yml cabinet-mac.yml cabinet-linux.yml',
+     'beta.yml beta-mac.yml beta-linux.yml cabinet-beta.yml cabinet-beta-mac.yml cabinet-beta-linux.yml',
+     'beta.yml beta-mac.yml cabinet-beta.yml cabinet-beta-mac.yml',
+     'latest.yml latest-mac.yml cabinet.yml cabinet-mac.yml'].forEach(l => assert.ok(v.includes(l), 'liste manquante : ' + l));
+    assert.ok(/::error::\$f manque/.test(v) && /-ne 16/.test(v) && /exit \$ECHEC/.test(v), 'les manques et le compte ne font pas tomber le job');
+  });
+
   // de la release elle-même. Le poste Windows est tombé, et le poste macOS — déjà bien avancé, et
   // le plus cher des deux — a été annulé avec lui.
   t('publication : la page de la release est créée UNE fois, avant les constructions', () => {
