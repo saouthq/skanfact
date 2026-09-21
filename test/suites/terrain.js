@@ -685,6 +685,57 @@ t('T-49 : le geste qui allonge la grille vit sous la grille, avant la barre qui 
   assert.ok(iPied < iBrouillard, 'la barre d\'actions reste le dernier geste de la pièce en cours');
 });
 
+// T-49 bis (9.8.8-beta.4) — la remontée d'un cran écrite pour T-49 a fait accuser du code juste :
+// « téléphone à renseigner », bouton posé AU MILIEU de la ligne d'identité d'une fiche, s'est
+// retrouvé jugé contre le titre du client — 28 défauts annoncés par `e2e:cabinet-rendu`, tous sur
+// un écart de 3 px décidé dans la feuille (`.d-ident { margin-block-start: 3px }`). Un conteneur
+// qui porte du TEXTE n'est pas l'emballage d'un bouton : c'est une phrase, et les voisins du
+// bouton y sont des mots. Un test trop large accuse du code juste (9.1.0, 9.4.7).
+t('T-49 bis : la sonde ne remonte d\'un cran que sur un VRAI emballage, jamais sur une phrase', () => {
+  const h = sansComm(lireSource('test', 'e2e', 'harnais.js'));
+  const i = h.indexOf('const seul = b.parentElement');
+  assert.ok(i > 0, 'la remontée d\'un cran de la sonde d\'espacement a disparu');
+  const regle = h.slice(i, i + 220);
+  assert.ok(/children\.length === 1/.test(regle), 'un emballage ne contient qu\'un seul élément');
+  assert.ok(/enProse\(b\.parentElement\)/.test(regle) && /&&\s*!enProse/.test(regle),
+    'un conteneur qui porte aussi du texte n\'est pas un emballage : la remontée doit s\'y arrêter');
+  assert.ok(/nodeType === 3 && n\.textContent\.trim\(\)/.test(h),
+    'la prose se reconnaît à ses NŒUDS DE TEXTE, pas à un textContent qui compte celui du bouton');
+});
+
+// T-56 et T-57 (9.8.8-beta.4) — les deux premiers défauts que l'instrument a vus une fois qu'il
+// atteignait les sept écrans cachés (T-55). Les deux sont des écarts que PERSONNE n'a décidés.
+t('T-56 : le bandeau du livre est une rangée de gestes, pas de la prose à marges posées à la main', () => {
+  const app = cabApp();
+  const i = app.indexOf('<div class="ok-box mb box-gestes">');
+  assert.ok(i > 0, 'le bandeau du livre ouvert doit porter la classe qui décide de ses écarts');
+  const bandeau = app.slice(i, i + 900);
+  assert.ok(!/style="margin-inline-start/.test(bandeau),
+    'une marge posée à la main ne décide que l\'écart horizontal : au passage à la ligne, le bouton se colle sous la case');
+  assert.ok(/<span class="nw"><button class="btn btn-sm" id="lv-relire2"/.test(bandeau),
+    'le bouton et sa bulle forment UN objet de la rangée, sinon le gap les sépare et la bulle ne dit plus ce qu\'elle explique');
+  // Une classe posée par le code et inconnue de la feuille ne se voit nulle part (6.8.0, 8.1.0, 9.4.3).
+  const css = lireSource('src', 'cabinet', 'renderer', 'cabinet.css');
+  const regle = css.match(/^\.box-gestes \{[^}]*\}/m);
+  assert.ok(regle, '.box-gestes doit exister dans la feuille du Cabinet');
+  assert.ok(/display: flex/.test(regle[0]) && /flex-wrap: wrap/.test(regle[0]) && /gap:/.test(regle[0]),
+    'la rangée doit pouvoir passer à la ligne ET porter un gap, sinon elle ne règle qu\'un des deux écarts');
+});
+
+t('T-57 : une bulle qui suit un BOUTON a son écart, et rien ne se colle par une espace de gabarit', () => {
+  // Les 2 px de l'annotation valent face à un libellé, qui ne se clique pas. Face à un bouton, ce
+  // sont deux cibles bord à bord, et c'est la règle « button.i + button.i » (7.29.0) un cran plus
+  // large : deux objets cliquables collés se lisent comme un seul.
+  const css = lireSource('src', 'renderer', 'style.css');
+  assert.ok(/^\.btn \+ button\.i \{ margin-inline-start: \d+px; \}$/m.test(css),
+    'une bulle posée après un bouton doit porter son propre écart dans la feuille PARTAGÉE');
+  const app = cabApp();
+  assert.ok(/const hors = c\.horsTotal \? `<span class="muted small dc-hors"/.test(app),
+    'la mention « hors total » ne se sépare pas du bouton par une espace de gabarit (3,6 px, décidés par personne)');
+  const cab = lireSource('src', 'cabinet', 'renderer', 'cabinet.css');
+  assert.ok(/^\.dc-hors \{ margin-inline-start: \d+px; \}$/m.test(cab), '.dc-hors doit exister dans la feuille');
+});
+
 // T-50 (9.8.8-beta.3) — le brouillard et la recherche affichaient « 2026-03-04 » sous une grille
 // qui écrit « 04/03/2026 ». Le format interne ne fuit pas dans un écran (9.4.5).
 t('T-50 : aucune cellule de tableau du Cabinet n\'affiche une date brute', () => {

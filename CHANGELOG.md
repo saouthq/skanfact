@@ -7,6 +7,34 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 9.8.8-beta.4 — 21/09/2026
+
+**L'instrument ne regardait que quatre écrans sur onze.** Version d'essai, dans la continuité de la
+9.8.8. Publiée en bêta parce qu'elle touche l'app du comptable, pas parce qu'elle touche un chiffre.
+
+- **`e2e:cabinet-rendu` mesurait 4 des 11 écrans de comptabilité** (T-55), et c'est le défaut qui
+  explique tous les autres. Trouvé en prouvant un correctif : le défaut de T-49 remis en place, le
+  parcours est resté **vert**. Sept onglets sur onze — Saisie, Déclaration, Banque, Immobilisations,
+  Inventaire, Exercice, Recherche — n'existent que si le dossier a un livre, et le parcours cliquait
+  le premier dossier venu, qui n'en a pas. L'écran où un comptable passe ses journées n'avait jamais
+  été mesuré une seule fois, et c'est pour ça que six constats terrain d'affilée ont été trouvés sur
+  des captures. Le parcours crée maintenant le livre par le geste réel et **exige onze onglets**. De
+  1 167 boutons et 728 écarts, il passe à **2 083 boutons et 1 059 écarts**.
+- **La sonde d'espacement accusait du code juste** (T-49 bis) : la remontée d'un cran écrite pour
+  T-49 comptait les ÉLÉMENTS d'un conteneur et ignorait son texte, donc « téléphone à renseigner »,
+  posé au milieu de la ligne d'identité d'une fiche, s'est retrouvé jugé contre le nom du client —
+  28 accusations sur un écart de 3 px écrit dans la feuille. Un conteneur qui porte du texte n'est
+  pas un emballage, c'est une phrase, et les voisins d'un bouton posé dedans sont des mots.
+- **Le bandeau du livre ouvert collait son bouton sous la case à cocher** (T-56), à zéro pixel :
+  deux marges posées à la main décidaient l'écart horizontal et rien du vertical. C'est une rangée
+  flex avec son `gap`, qui décide des deux.
+- **Une bulle « i » collée à un bouton** (T-57), et une mention séparée du sien par une simple espace
+  de gabarit (3,6 px). Les 2 px de l'annotation valent face à un libellé, qui ne se clique pas ; face
+  à un bouton, ce sont deux cibles bord à bord.
+
+Six défauts réintroduits un par un font tomber leur test, et le parcours attrape enfin le défaut de
+T-49 qu'il ne pouvait pas voir.
+
 ## 9.8.8-beta.3 — 21/09/2026
 
 **Les tests terrain reprennent sur la beta.2, et le premier constat tombe sur l'écran qu'on venait de

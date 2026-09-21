@@ -237,8 +237,16 @@ const SONDE_ESPACEMENT = ({ min, exceptions }) => {
     // et c'est très souvent un TITRE de section. Sans cette remontée d'un cran, « + Ajouter une
     // ligne », seul dans son `<div>`, touchait le titre du panneau suivant sans qu'aucune mesure ne
     // le voie (T-49) — la sonde ne regardait que les frères du bouton, et il n'en avait aucun.
+    // Mais « seul » veut dire SEUL. Un conteneur qui porte aussi du TEXTE n'est pas l'emballage du
+    // bouton, c'est une phrase dans laquelle il est posé : ses voisins à lui sont des MOTS, pas des
+    // objets, et l'espacement de la prose n'est pas le sujet de cette sonde. « téléphone à
+    // renseigner » vit au milieu de la ligne d'identité d'une fiche ; remonter d'un cran revenait à
+    // juger cette ligne contre le titre au-dessus — 28 accusations portées sur du code juste, dont
+    // l'écart de 3 px est écrit noir sur blanc dans la feuille (`margin-block-start`). Un test trop
+    // large accuse du code juste, ce qui est aussi grave qu'un test trop étroit (9.1.0, 9.4.7).
+    const enProse = el => Array.from(el.childNodes).some(n => n.nodeType === 3 && n.textContent.trim());
     const seul = b.parentElement && b.parentElement.children.length === 1
-      && !b.parentElement.matches('td, th, li');
+      && !b.parentElement.matches('td, th, li') && !enProse(b.parentElement);
     const ref = seul ? b.parentElement : b;
     [['avant', ref.previousElementSibling], ['après', ref.nextElementSibling]].forEach(([cote, v]) => {
       if (!v || !visible(v)) return;

@@ -66,6 +66,8 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un montant qui se **divise sans reste** ne prouve rien d'un arrondi : les DONNÉES du test comptent autant que sa forme | 9.6.1 |
 | Une **réexportation** se prouve par l'identité d'objet, jamais par le résultat | 9.6.1 |
 | Une preuve par réintroduction ne vaut que sur un lot **VERT** : sinon on mesure le vide | 9.7.0 |
+| Un **instrument qui n'ATTEINT pas l'écran** annonce « tout va bien » : l'état par défaut de l'objet qu'on ouvre cache la page autant que l'onglet par défaut | 9.8.8 — T-55, quatre écrans sur onze ; 9.4.3 |
+| **Élargir** une sonde se prouve dans les DEUX sens : qu'elle voie le défaut, et qu'elle ne voie rien ailleurs | 9.8.8 — T-49 bis, 28 accusations sur du code juste |
 | Un **refus qu'on avale** en silence est pire que le refus : l'écran affirme alors le contraire du vrai | 9.8.0 |
 | Un parcours qui compare du texte **aplatit les espaces** : `textContent` garde les retours de la source | 9.8.0 |
 | Un **adaptateur** vaut mieux qu'une seconde implémentation ; deux moteurs divergent | 9.7.0 |
@@ -4535,7 +4537,46 @@ figeait. Règles posées :
 - **Un bouton SEUL dans son conteneur n'a pas de frère** : son voisin réel est celui du conteneur,
   et c'est souvent un titre de section. La sonde d'espacement de la 9.8.3 ne regardait que les
   frères du bouton, donc elle ne pouvait pas voir « + Ajouter une ligne » collé au titre suivant.
-  Elle remonte d'un cran quand le bouton est seul.
+  Elle remonte d'un cran quand le bouton est seul. **Mais « seul » veut dire SEUL** (T-49 bis) : ma
+  première version comptait les ÉLÉMENTS du conteneur et ignorait son texte, donc « téléphone à
+  renseigner », posé au milieu de la ligne d'identité d'une fiche, s'est retrouvé jugé contre le nom
+  du client — 28 accusations portées sur du code juste, sur un écart de 3 px écrit noir sur blanc
+  dans la feuille. Un conteneur qui porte du TEXTE n'est pas un emballage, c'est une phrase, et les
+  voisins d'un bouton posé dedans sont des MOTS : l'espacement de la prose n'est pas le sujet de
+  cette sonde. **Élargir un instrument se prouve dans les deux sens** — qu'il voie le défaut, ET
+  qu'il ne voie rien ailleurs : ici la seconde moitié manquait, et c'est le parcours qui l'a dit.
+- **Et en prouvant CE correctif, le trou qui explique tous les autres** (T-55) : le défaut de T-49
+  remis en place, `e2e:cabinet-rendu` est resté **vert**. Il ne pouvait pas le voir — il n'ouvre
+  jamais la Saisie. Sept onglets sur onze (Saisie, Déclaration, Banque, Immobilisations, Inventaire,
+  Exercice, Recherche) n'existent QUE si le dossier a un livre, et le parcours cliquait le premier
+  dossier venu, qui n'en a pas : il mesurait **quatre écrans sur onze** et déclarait le Cabinet
+  propre. L'écran où un comptable passe ses journées n'avait jamais été mesuré une seule fois, et
+  c'est pourquoi T-13, T-29, T-48, T-49, T-50 et T-53 ont tous été trouvés sur des captures. Le
+  parcours crée maintenant le livre par le geste réel et **exige onze onglets**, sinon il tombe en
+  nommant le compte. C'est la règle de la 9.4.3 une couche plus bas : ce n'est pas l'onglet par
+  défaut qui cachait la page, c'est l'ÉTAT par défaut de l'objet qu'on ouvre. Corollaire :
+  **prouver un correctif d'instrument, c'est d'abord prouver que l'instrument atteint l'écran** —
+  sans quoi on mesure le vide (9.7.0, re-trouvée sur un parcours au lieu d'un lot de tests).
+- **Ce que l'instrument a vu dès qu'il a pu voir** (T-56, T-57), et les deux sont des écarts que
+  personne n'a décidés. Un **bandeau qui porte des GESTES n'est pas de la prose** : écrit avec deux
+  `margin-inline-start` posés à la main, il ne décidait que l'écart horizontal, et au premier
+  passage à la ligne « Relire les paquets reçus » se collait sous « Voir le brouillard », à zéro
+  pixel — un `gap` de rangée flex décide des deux à la fois. Et une **bulle « i » qui suit un
+  BOUTON est une seconde cible** : les 2 px de l'annotation valent face à un LIBELLÉ, qui ne se
+  clique pas ; face à un bouton, le bord de l'un est le bord de l'autre. C'est
+  `button.i + button.i` (7.29.0) un cran plus large, dans la feuille PARTAGÉE. De 1 167 boutons et
+  728 écarts, le parcours est passé à **2 083 boutons et 1 059 écarts**.
+- Piège de lancement, et il m'a fait accuser l'environnement à tort : **un seul des cinquante
+  parcours porte `xvfb-run` dans son script npm.** `e2e:cabinet-rendu` se lance seul ;
+  `e2e:pages` n'ouvre pas Electron et n'en a pas besoin ; **les quarante-huit autres attendent
+  d'être enveloppés** (`xvfb-run -a npm run e2e:<nom>`, comme le dit le § « Les tests qui ouvrent
+  vraiment l'application »). Sans l'enveloppe, Electron répond **« Missing X server or $DISPLAY »** — cinq
+  parcours rouges d'affilée sans qu'une ligne de code ait bougé. Le symptôme le dit : l'erreur tombe
+  AVANT que la moindre ligne de l'application s'exécute, la première ligne du journal montre
+  `> node test/e2e/…` sans `xvfb-run`, et le même code venait de passer. J'ai cherché un serveur X
+  orphelin et failli écrire la règle correspondante : **une cause d'environnement se prouve avant
+  d'être écrite**, sinon on grave une phrase que rien ne tient (7.3.0). Ce qui a tranché en une
+  minute : un lancement d'Electron minimal sous `xvfb-run`, qui a marché du premier coup.
 - **Le geste qui ALLONGE un tableau vit sous ce tableau**, avant la barre qui CLÔT la pièce — sinon
   on le cherche au-dessus d'un bouton qui enregistre, et on ne l'y trouve pas (9.4.8).
 - **Un refus de validation à l'import ne s'avale pas** (9.8.0, re-trouvée) : une pièce d'un mois

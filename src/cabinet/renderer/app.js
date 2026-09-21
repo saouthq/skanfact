@@ -2296,10 +2296,10 @@
     // lue dans les paquets du client et une balance tenue par le cabinet ne disent pas la même
     // chose dès la première saisie, et rien ne permettrait de savoir laquelle on regarde.
     const bandeau = source === 'livre'
-      ? `<div class="ok-box mb"><b>Le livre de ${esc(s.annee)}</b> — ${pl((s.livre.ecritures || []).filter(e => e.statut === 'validee').length, 'écriture validée', 'écritures validées')}${
-          (s.livre.ecritures || []).some(e => e.statut === 'brouillard') ? ', ' + pl(s.livre.ecritures.filter(e => e.statut === 'brouillard').length, 'en brouillard', 'en brouillard') : ''}.
-          <label class="check" style="margin-inline-start:12px"><input type="checkbox" id="lv-brouillard" ${s.brouillard ? 'checked' : ''}> Voir le brouillard</label>
-          <button class="btn btn-sm" id="lv-relire2" style="margin-inline-start:12px">Relire les paquets reçus</button>${info('lv.relire')}</div>`
+      ? `<div class="ok-box mb box-gestes"><span><b>Le livre de ${esc(s.annee)}</b> — ${pl((s.livre.ecritures || []).filter(e => e.statut === 'validee').length, 'écriture validée', 'écritures validées')}${
+          (s.livre.ecritures || []).some(e => e.statut === 'brouillard') ? ', ' + pl(s.livre.ecritures.filter(e => e.statut === 'brouillard').length, 'en brouillard', 'en brouillard') : ''}.</span>
+          <label class="check"><input type="checkbox" id="lv-brouillard" ${s.brouillard ? 'checked' : ''}> Voir le brouillard</label>
+          <span class="nw"><button class="btn btn-sm" id="lv-relire2">Relire les paquets reçus</button>${info('lv.relire')}</span></div>`
       : '';
 
     el.innerHTML = `${sansLivre}${bandeau}${avert.length ? `<div class="warn-box mb">${avert.map(a => `<div>${esc(a)}</div>`).join('')}</div>` : ''}
@@ -2641,7 +2641,9 @@
         // Une ligne qui N'ENTRE PAS dans le total le dit dans sa colonne « d'où ça vient » (T-16) :
         // un total posé au bas d'une colonne se lit comme la somme de la colonne (9.4.5), et l'IRPP
         // imprimé juste au-dessus faisait plus de deux fois le total qui le sautait sans un mot.
-        const hors = c.horsTotal ? ` <span class="muted small" title="${esc(c.horsTotal)}">— ${esc(c.horsTotal.split(' — ')[0])}, À VÉRIFIER</span>` : '';
+        // L'écart avec le bouton qui précède vient d'une CLASSE, pas d'une espace de gabarit : une
+        // espace entre deux balises vaut 3,6 px, c'est-à-dire un écart que personne n'a décidé.
+        const hors = c.horsTotal ? `<span class="muted small dc-hors" title="${esc(c.horsTotal)}">— ${esc(c.horsTotal.split(' — ')[0])}, À VÉRIFIER</span>` : '';
         return `<tr class="${k === 'aDecaisser' ? 'dc-total' : ''}">
           <td>${esc(LIBELLE_CASE[k] || k)}</td>
           <td class="r nw">${c.montant == null ? '<span class="muted">—</span>' : esc(money(c.montant))}</td>

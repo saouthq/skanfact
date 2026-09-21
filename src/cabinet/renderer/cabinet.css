@@ -109,6 +109,13 @@
   background: var(--info-soft); border-inline-start: 3px solid var(--info); border-radius: 8px;
   padding: 11px 14px; font-size: 13px; line-height: 1.55;
 }
+/* Un bandeau qui porte des GESTES n'est pas de la prose. Écrit en prose avec deux
+   `margin-inline-start` posés à la main, il ne décidait que l'écart HORIZONTAL : au premier passage
+   à la ligne, « Relire les paquets reçus » se retrouvait collé sous « Voir le brouillard », à zéro
+   pixel. Un `gap` de rangée flex décide des deux à la fois (9.8.3). */
+.box-gestes { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+/* Ce qui suit un bouton dans une cellule n'est pas collé à lui par une espace de gabarit. */
+.dc-hors { margin-inline-start: 6px; }
 .err-inline { color: var(--danger); font-weight: 600; }
 .ok-inline { color: var(--success); font-weight: 600; }
 

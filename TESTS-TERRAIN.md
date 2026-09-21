@@ -1718,6 +1718,17 @@ pièce — le geste qui allonge un tableau vit sous ce tableau (9.4.8). Et la so
 conteneur, très souvent un titre de section. Sans cette remontée d'un cran, aucune mesure ne pouvait
 voir le défaut.
 
+**Suite (T-49 bis)** : cette remontée, trop large, a fait accuser du code juste au parcours suivant —
+28 « défauts » annoncés par `e2e:cabinet-rendu`, tous les mêmes : « téléphone à renseigner » (le
+bouton de la 9.4.8, posé **au milieu** de la ligne d'identité d'une fiche) jugé contre le nom du
+client, à 3 px. Or ces 3 px sont écrits noir sur blanc dans la feuille — `.d-ident { margin-block-start:
+3px }` — et surtout la relation mesurée n'est pas celle d'un bouton avec un objet : c'est celle d'une
+ligne de prose avec le titre au-dessus, ce que cette sonde n'a pas à trancher. **« Seul » veut dire
+SEUL** : un conteneur qui porte aussi du TEXTE n'est pas l'emballage du bouton, c'est une phrase dans
+laquelle il est posé, et ses voisins y sont des mots. La remontée s'y arrête (`enProse`, qui cherche
+un nœud de texte non vide). Un test trop LARGE accuse du code juste, aussi gravement qu'un test trop
+étroit (9.1.0, 9.4.7).
+
 ### ~~T-50 · MINEUR · Le brouillard affiche la date en `2026-03-04`, la grille juste au-dessus en `04/03/2026`~~ — corrigé en 9.8.8-beta.3
 
 **Vu** sur la capture du 21/09 (Saisie, panneau « Le brouillard ») : `${esc(e.date)}` brut. Le
@@ -1796,6 +1807,54 @@ validation que le numéro raconte, pas l'ordre du calendrier.
 **Règle violée** : 9.2.0 (« le numéro naît à la validation … il est écrit, et il ne bouge plus ») ;
 7.21.0 (« une donnée enregistrée et jamais affichée n'existe pas ») — le numéro était sur chaque
 ligne et l'écran en fabriquait un autre.
+
+### ~~T-55 · GRAVE (instrument) · `e2e:cabinet-rendu` ne mesurait que 4 des 11 écrans de comptabilité~~ — corrigé en 9.8.8-beta.4
+
+**Trouvé en prouvant T-49 bis** : j'ai remis le défaut de T-49 (« + Ajouter une ligne » reposé après
+la barre d'actions, collé au titre suivant) et le parcours est resté **vert**. Il ne pouvait pas le
+voir : il n'ouvre jamais la Saisie. Sept onglets sur onze — **Saisie, Déclaration, Banque,
+Immobilisations, Inventaire, Exercice, Recherche** — n'existent que si le dossier a un LIVRE, et le
+parcours cliquait le premier dossier de la liste, qui n'en a pas. Il mesurait donc Livre-journal,
+Grand livre, Balance et Lettrage, puis déclarait « rien d'illisible, rien de désaligné, rien de
+collé » sur une application dont l'écran le plus utilisé — celui où un comptable passe ses journées —
+n'avait **jamais été mesuré une seule fois**. C'est pour ça que T-13, T-29, T-48, T-49, T-50 et T-53
+ont tous été trouvés sur des captures : l'instrument ne regardait pas.
+
+**Ce qui est juste** : le parcours crée le livre (le geste réel, « Créer le livre à partir des
+paquets reçus… »), puis **exige onze onglets** — moins, et il tombe en nommant le compte. Un
+instrument qui ne mesure rien annonce « tout va bien » : le garde-fou existait déjà pour « aucun
+bouton mesuré », il manquait pour « aucun écran de saisie ouvert ».
+
+**Règle violée** : 9.4.3 (« un parcours qui n'ouvre que l'onglet par défaut juge un sixième de la
+page »), une couche plus bas — ici ce n'est pas l'onglet par défaut, c'est l'état par défaut du
+dossier. Et 9.4.7 / 9.7.0 : un e2e qui saute sa moitié ne prouve rien ; on choisit son objet par ce
+qu'il CONTIENT, et on échoue si rien ne convient.
+
+**Ce que l'instrument a vu dès qu'il a pu voir** : de 1 167 boutons et 728 écarts, il est passé à
+**2 083 boutons et 1 059 écarts** — et il a rendu 145 défauts, trois distincts, corrigés ci-dessous
+(T-56, T-57).
+
+### ~~T-56 · MINEUR · Le bandeau du livre ouvert colle son bouton sous la case à cocher~~ — corrigé en 9.8.8-beta.4
+
+**Vu** par l'instrument sur les onze onglets : « Relire les paquets reçus » touche « Voir le
+brouillard » à **0 px** (vertical). Le bandeau est écrit en prose avec deux `margin-inline-start:12px`
+posés à la main : ils décident l'écart HORIZONTAL, et rien du vertical — au premier passage à la
+ligne, le bouton atterrit collé sous la case.
+**Ce qui est juste** : une rangée flex (`.box-gestes`) avec un `gap: 8px 14px`, qui décide des deux
+à la fois. Un bandeau qui porte des GESTES n'est pas de la prose.
+**Règle violée** : 9.8.3 (« les inline styles ponctuels sont le signe qu'il manque un gap »).
+
+### ~~T-57 · MINEUR · Une bulle « i » collée à un bouton : deux cibles bord à bord~~ — corrigé en 9.8.8-beta.4
+
+**Vu** : « Relire les paquets reçus » et sa bulle à **0 px**, et « 1 écriture ▾ » à **3,6 px** de la
+mention « — Non compris dans le total à décaisser » (une espace de gabarit, décidée par personne).
+**Ce qui est juste** : les 2 px de l'annotation valent face à un **libellé**, qui ne se clique pas ;
+face à un **bouton**, le bord de l'un est le bord de l'autre et on ne sait pas lequel on vise.
+`.btn + button.i { margin-inline-start: 6px }` dans la feuille PARTAGÉE, à côté de
+`button.i + button.i` qui dit déjà la même chose pour deux bulles (7.29.0) ; et la mention hors
+total porte une classe (`.dc-hors`) au lieu d'une espace.
+**Règle violée** : 7.29.0 (« deux boutons voisins ne doivent pas dépendre d'une espace dans le
+gabarit ») et 9.4.8 — l'exception de la bulle protège sa proximité à un libellé, pas à un bouton.
 
 ### Ce que la 9.8.8 a décidé, et ce qu'elle laisse À VÉRIFIER
 

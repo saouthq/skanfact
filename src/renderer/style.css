@@ -999,6 +999,10 @@ button.i:hover, button.i:focus-visible { background: var(--primary-soft-2); colo
    sait pas laquelle on clique. C'est le défaut de la 7.29.0 (deux boutons collés par un gabarit
    sans espace), à l'échelle de 15 px. */
 button.i + button.i { margin-inline-start: 6px; }
+/* Et pour la même raison : une bulle qui suit un BOUTON est une seconde cible collée à la première.
+   Les 2 px de l'annotation valent face à un LIBELLÉ, qui ne se clique pas ; face à un bouton, le
+   bord de l'un est le bord de l'autre et on ne sait pas lequel on vise. */
+.btn + button.i { margin-inline-start: 6px; }
 /* libellé + bulle sur une seule ligne dans un champ (.field est une colonne flex) */
 .fl { display: flex; align-items: center; gap: 4px; }
 .i-demo { display: inline-grid; place-items: center; width: 15px; height: 15px; border-radius: 50%; background: var(--primary-soft-2); color: var(--primary); font: italic 800 10px/1 Georgia, serif; vertical-align: 1px; }
