@@ -267,7 +267,11 @@ t('9.4.5 : les quatre vues du livre sont paginées, et le pied porte la sélecti
   assert.ok(/paginate\(b\.rows, s\)/.test(b), 'la balance doit paginer ses lignes');
   assert.ok(/money\(b\.totaux\.debit\)/.test(b), 'et totaliser `b.totaux`, calculé sur toutes les lignes');
   const l = vue('vueLettrage');
-  assert.ok(/paginate\(l\.rows, s\)/.test(l), 'le lettrage doit paginer ses tiers');
+  // Depuis la 9.8.8 (T-14), ce sont les tiers OUVERTS qui se paginent : les soldés tiennent sur une
+  // ligne dépliable, et un panneau entier par client soldé noyait la seule question de l'écran.
+  assert.ok(/const ouverts = l\.rows\.filter\(r => r\.ouverts\.length\)/.test(l), 'le lettrage doit séparer les tiers ouverts des soldés');
+  assert.ok(/paginate\(ouverts, s\)/.test(l), 'le lettrage doit paginer ses tiers ouverts');
+  assert.ok(/id="lv-soldes"/.test(l), 'les tiers soldés doivent rester visibles, repliés');
 
   // Le pager est BRANCHÉ sur l'état des livres — un pager dessiné et non branché est un bouton
   // mort (7.0.0), et personne ne le verrait : il a l'air normal.
@@ -632,8 +636,12 @@ t('9.4.9 : chaque écran finit par le geste suivant', () => {
 
   // Depuis le livre d'UN client, rien ne menait à l'export qui regroupe TOUS les clients.
   const ib = app.indexOf('const barreLivres = ');
-  const zb = app.slice(ib, ib + 600);
+  const zb = app.slice(ib, ib + 1400);
   assert.ok(/id="lv-tous"/.test(zb), 'le livre doit mener à l\'export groupé');
+  // Et le libellé décrit l'écran d'ARRIVÉE (T-42) : « Regrouper tous les clients… » se lisait comme
+  // « un sous-compte par client », deux lecteurs sur deux. Un geste qui change de page l'annonce.
+  assert.ok(/id="lv-tous"[^>]*title="Quitte ce dossier/.test(zb), 'le bouton ne dit pas qu\'il quitte le dossier');
+  assert.ok(/Exporter les écritures de tous les clients/.test(zb) && !/Regrouper tous les clients/.test(zb), 'le libellé promet un regroupement qu\'il ne fait pas');
   assert.ok(/tt\.onclick = \(\) => vers\('#\/ecritures'\)/.test(app),
     'et par `vers()` : `location.hash` vers la page courante ne redessine rien (7.15.0)');
 });

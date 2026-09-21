@@ -224,7 +224,7 @@ t('T-38 : l\'ouverture d\'une période se calcule, et la phrase qui la décrit d
 
 t('T-23 : le vert du bilan ne se pose que sur un exercice qui a ses à-nouveaux', () => {
   const app = cabApp();
-  const z = tranche(app, 'function vueCloture(', 'function brancherCloture(', 2000, 9000);
+  const z = tranche(app, 'function vueCloture(', 'function brancherCloture(', 2000, 16000);
   assert.ok(/const sansOuverture = !\(\(s\.livre\.ouverture \|\| \{\}\)\.lignes \|\| \[\]\)\.length && !\(capitaux && capitaux\.total\)/.test(z), 'sansOuverture ne juge pas ET la reprise ET les capitaux');
   const bloc = z.slice(z.indexOf('${!e.equilibre'), z.indexOf('Actif = passif, au millime.') + 40);
   assert.ok(bloc.includes('sansOuverture') && bloc.indexOf('sansOuverture') < bloc.indexOf('Actif = passif, au millime.'), 'le vert se pose avant d\'avoir jugé l\'ouverture');
@@ -241,6 +241,173 @@ t('T-17 : les trois gestes d\'une déclaration disent pourquoi ils attendent, et
   // T-21, côté écran : le bouton du paiement reste allumé tant qu'un paiement est posé.
   assert.ok(app.includes("id=\"dc-payee\" ${!posee || (!(posee.deposee && posee.deposee.le) && !(posee.payee && posee.payee.le)) ? 'disabled' : ''}"), 'le bouton du paiement s\'éteint dès que le dépôt est vide, même payée');
   assert.ok(app.includes('Dépôt et paiement annulés'), 'le geste double n\'est pas dit');
+});
+
+t('T-03 / T-05 / T-36 : ce qu\'un bouton fait apparaître, ce qu\'il ne touche pas, ce qui est parti', () => {
+  const app = cabApp();
+  assert.ok(app.includes('Créer le livre ouvre sept onglets de plus'), 'le bandeau ne dit pas ce que le bouton vert fait apparaître (T-03)');
+  const onglets = ['Saisie', 'Déclaration', 'Banque', 'Immobilisations', 'Inventaire', 'Exercice', 'Recherche'];
+  const z = tranche(app, 'Créer le livre ouvre sept onglets', '</div>', 40, 400);
+  onglets.forEach(o => assert.ok(z.includes(o), 'un onglet n\'est pas nommé : ' + o));
+  // Les sept sont bien ceux qui n'existent qu'avec un livre : on les relit dans la barre d'onglets.
+  const tabs = tranche(app, '<div class="tabs" id="c-tabs">', '</div>${corps}', 500, 4000);
+  onglets.forEach(o => assert.ok(new RegExp(`\\$\\{s\\.livre \\? \`<button data-tab="[a-z-]+"[^>]*>${o}`).test(tabs), `${o} n'est pas conditionné au livre, ou le bandeau ment`));
+  // T-05 : la réassurance se lit AVANT le geste — une bulle à côté du bouton, avec sa clé d'aide.
+  assert.ok(/id="lv-relire2"[^`]*Relire les paquets reçus<\/button>\$\{info\('lv\.relire'\)\}/.test(app), '« Relire les paquets reçus » n\'a pas sa bulle');
+  const guide = lireSource('src', 'cabinet', 'renderer', 'cabguide.js');
+  assert.ok(/'lv\.relire': \{[^}]*ne touche jamais/.test(guide), 'la bulle ne dit pas que les validées ne bougent pas');
+  // T-36 : le bandeau de l'exemple compte les livres partis, et main.js les compte à la source.
+  assert.ok(app.includes('exempleRefait.livres') && app.includes('livre de démonstration est parti'), 'le bandeau ne dit pas que la saisie d\'essai est partie');
+  const main = sansComm(lireSource('src', 'cabinet', 'main.js'));
+  assert.ok(/livres \+= \(r && r\.livres\) \|\| 0/.test(main) && /return \{ version: VERSION, mois, raison, livres:/.test(main), 'rafraichirExemple ne compte pas les livres');
+});
+
+t('T-10 : une pastille compte ce qui attend une décision, partout', () => {
+  const app = cabApp();
+  const tabs = tranche(app, '<div class="tabs" id="c-tabs">', '</div>${corps}', 500, 4000);
+  assert.ok(/etatImmobilisations\(s\.livre, s\.annee\)\.aEcrire/.test(tabs), 'Immobilisations compte encore ses fiches, pas les dotations à passer');
+  assert.ok(!/immobilisations \|\| \[\]\)\.length\}<\/span>/.test(tabs), 'la pastille des immobilisations affiche encore un inventaire');
+  assert.ok(/<span class="badge b-paid">clos<\/span>/.test(tabs) && !/tab-n">clos/.test(tabs), '« clos » est encore habillé en compteur');
+  assert.ok(/statut === 'brouillard'\) && !\(s\.livre\.exercice && s\.livre\.exercice\.clos\)/.test(tabs), 'la Saisie garde sa pastille sur un exercice clos');
+});
+
+t('T-11 / T-14 : chaque pièce ouverte du lettrage s\'ouvre, et les soldés tiennent sur une ligne', () => {
+  const app = cabApp();
+  const z = tranche(app, 'function vueLettrage(', 'const declState', 3000, 12000);
+  assert.ok(/rowMenuCell\(o\.ecritureId \? 'E:' \+ o\.ecritureId : o\.piece \+ '\|' \+ \(o\.mois \|\| ''\)\)/.test(z), 'une pièce ouverte n\'a pas de menu');
+  assert.ok(!/<td class="row-actions"><\/td>/.test(z), 'une colonne d\'actions toujours vide');
+  assert.ok(!/data-piece=/.test(z), '`data-piece` : un attribut écrit et lu nulle part');
+  assert.ok(/id="lv-soldes"/.test(z) && !/Tout est lettré :/.test(z), 'les tiers soldés ont encore un panneau chacun');
+  // Le moteur porte ce que l'écran ouvre : l'identifiant de l'écriture et son mois.
+  const K = require('../../src/renderer/compta.js');
+  const l = K.lettrageDepuisLignes([
+    { account: '411', tiers: 'A', piece: 'F1', date: '2026-03-01', debit: 100, credit: 0, ecritureId: 'E9', mois: '2026-03' }
+  ], '411', '2026-04-01');
+  assert.strictEqual(l.rows[0].ouverts[0].ecritureId, 'E9');
+  assert.strictEqual(l.rows[0].ouverts[0].mois, '2026-03');
+});
+
+t('T-12 : « En face » montre la LIGNE appariée avec son montant, et l\'écriture s\'ouvre', () => {
+  const app = cabApp();
+  const z = tranche(app, 'function vueBanque(', 'function brancherBanque(', 3000, 14000);
+  assert.ok(/const lg = e && Array\.isArray\(e\.lignes\) \? e\.lignes\[Number\(r\.ligne\)\] : null/.test(z), 'la ligne appariée n\'est pas relue');
+  assert.ok(/mFace != null \? ` <span class="muted nw">· \$\{esc\(money\(mFace\)\)\}<\/span>` : ''/.test(z), 'le montant de la ligne en face n\'est pas affiché');
+  const m = tranche(app, 'function brancherBanque(', 'function ecritureDialog(', 2000, 9000);
+  assert.ok(/label: 'Voir l\\'écriture en face'[\s\S]{0,220}run: \(\) => ecritureDialog\(e, Number\(r\.ligne\)\)/.test(m), 'une ligne rapprochée n\'ouvre pas son écriture');
+  assert.ok(app.includes('function ecritureDialog('), 'la fenêtre de lecture d\'une écriture manque');
+});
+
+t('T-18 / T-20 / T-42 : les abonnements vivent dans la Saisie, un clic amène son panneau, un libellé dit où il mène', () => {
+  const app = cabApp();
+  const z = tranche(app, 'function vueSaisie(', 'function lotsDuBrouillard(', 3000, 12000);
+  assert.ok(/<div class="panel mt" id="c-abos">/.test(z), 'le panneau Abonnements n\'est pas dans la Saisie');
+  assert.strictEqual((app.match(/id="c-abos"/g) || []).length, 1, 'le panneau Abonnements vit à deux endroits');
+  assert.ok(/if \(s\.onglet === 'saisie'\) \{ brancherSaisie\(el, root, dossier\); dessinerAbonnements\(el, dossier\); \}/.test(app), 'les abonnements ne se dessinent pas avec la Saisie');
+  assert.ok(/if \(String\(cle\)\.startsWith\('A:'\)\) return actionsAbonnement\(root, dossier, cle\);/.test(app), 'UNE table d\'actions par racine : les abonnements doivent passer par celle de la Saisie');
+  const abos = tranche(app, 'function dessinerAbonnements(', 'function actionsAbonnement(', 500, 4000);
+  assert.ok(!/bindRowMenus\(/.test(abos), 'dessinerAbonnements branche encore ses menus sur une racine imbriquée');
+  // T-20 : pageFocus, consommé APRÈS le dessin, et posé par le bouton « d'où ça vient ».
+  assert.ok(/let pageFocus = '';/.test(app) && /function focaliser\(root\)/.test(app), 'pageFocus n\'a pas été porté');
+  const dl = tranche(app, 'function drawLivres(', 'const miroirBadge', 3000, 16000);
+  assert.ok(/else brancherVue\(el, root, dossier, lignes\);\s*focaliser\(el\);/.test(dl), 'focaliser doit venir APRÈS le dessin, pas au milieu');
+  assert.ok(/if \(declState\.ouverte\) pageFocus = 'dc-pieces';/.test(app), 'ouvrir les pièces d\'une case ne les amène pas à l\'écran');
+  assert.ok(/data-cases="\$\{k\}" aria-expanded=/.test(app), 'le bouton ne dit pas qu\'il est ouvert');
+});
+
+t('T-24 / T-25 / T-26 / T-27 : l\'exercice se relit, sa fenêtre liste, son motif se lit, son dossier laisse une trace', () => {
+  const app = cabApp();
+  const bc = tranche(app, 'function brancherCloture(', 'async function chargerCloture(', 800, 5000);
+  assert.ok(/const rev = `\$\{\(s\.livre\.audit \|\| \[\]\)\.length\}:\$\{\(s\.livre\.ecritures \|\| \[\]\)\.length\}`/.test(bc) && /s\.clotureRev !== rev/.test(bc), 'les contrôles de clôture ne se relisent pas quand le livre bouge (T-24)');
+  // T-25 : le corps est du HTML, une vraie liste, et aucun `\n` dans un corps de confirmDialog.
+  assert.ok(/<ul>\$\{echecs\.map\(c => `<li>\$\{esc\(c\.detail\)\}<\/li>`\)\.join\(''\)\}<\/ul>/.test(bc), 'la fenêtre de clôture ne liste pas ses contrôles');
+  // Le contrat de `confirmDialog` est HTML : un `\n\n` de paragraphe n'y produit RIEN. Sept
+  // fenêtres le faisaient. Un `\n\n` littéral ne peut vivre que dans un `infoDialog` (qui rend en
+  // `pre-wrap`) ou dans le corps d'un mail.
+  app.split('\n').forEach(l => {
+    if (!l.includes('\\n\\n')) return;
+    assert.ok(/infoDialog\(|Bonjour,|Ce que j'aimerais|Comment je fais|--- version|\.join\('\\n\\n'\)/.test(l),
+      'un corps de fenêtre porte un `\\n\\n` que le HTML avalera : ' + l.trim().slice(0, 100));
+  });
+  assert.ok(app.includes("<p>Une écriture miroir sera créée et VALIDÉE au"), 'la fenêtre d\'extourne ne fait pas ses paragraphes');
+  // T-26 : le motif se lit sur l'exercice ROUVERT, et l'historique complet existe.
+  const vc = tranche(app, 'function vueCloture(', 'function brancherCloture(', 3000, 14000);
+  assert.ok(/id="cl-rouvert"/.test(vc) && /!ex\.clos && \(ex\.reouvertures \|\| \[\]\)\.length/.test(vc), 'le motif de réouverture disparaît dès que l\'exercice est rouvert');
+  assert.ok(/id="cl-historique"/.test(vc) && /\(ex\.reouvertures \|\| \[\]\)\.map\(d =>/.test(vc), 'l\'historique complet des réouvertures manque');
+  // T-27 : la trace du dossier produit, dans le livre, avec le bouton qui retrouve le fichier.
+  assert.ok(/id="cl-produits"/.test(vc) && /data-reveal="\$\{esc\(p\.chemin\)\}"/.test(vc), 'les dossiers produits n\'ont ni panneau ni bouton « Ouvrir le dossier »');
+  assert.ok(/\$\$\('\[data-reveal\]', el\)\.forEach\(b => \{ b\.onclick = \(\) => api\.reveal\(b\.dataset\.reveal\); \}\);/.test(bc), '« Ouvrir le dossier » n\'est pas branché');
+  const main = sansComm(lireSource('src', 'cabinet', 'main.js'));
+  assert.ok(/KC\.noterDossierCloture\(livre, \{ chemin: res\.filePath/.test(main), 'main.js n\'écrit pas la trace dans le livre');
+  const K = require('../../src/renderer/compta.js');
+  const livre = K.livreVide('D1', 2026);
+  K.noterDossierCloture(livre, { chemin: '/tmp/x.skanclose', scelle: true, pdf: false }, 'moi', 5);
+  assert.strictEqual(livre.exercice.dossiersProduits.length, 1);
+  assert.deepStrictEqual(livre.exercice.dossiersProduits[0], { le: 5, par: 'moi', chemin: '/tmp/x.skanclose', scelle: true, pdf: false, signe: false });
+  assert.ok(livre.audit.some(a => a.quoi === 'dossier de clôture produit' && a.detail === 'x.skanclose'), 'la piste d\'audit ne porte pas le dossier produit');
+});
+
+t('T-28 : un montant AFFICHÉ porte la virgule ; toFixed(3) ne sert plus qu\'à remplir un champ', () => {
+  const app = cabApp();
+  assert.ok(/const montant = n => money\(n\)\.replace/.test(app), 'le formateur sans devise manque');
+  const restes = app.split('\n').filter(l => l.includes('.toFixed(3)'));
+  restes.forEach(l => {
+    // Autorisé : remplir la VALEUR d'un champ de saisie (`debit: x ? x.toFixed(3) : ''`,
+    // `p.lignes[i].debit = …`, `champDebut.value = …`). Tout le reste est du texte rendu.
+    assert.ok(/(debit|credit): [\w.()]+ \? [\w.()]+\.toFixed\(3\) : ''|p\.lignes\[i\]\.(debit|credit) = |\.value = [\w.]+\.toFixed\(3\)/.test(l),
+      'un montant est rendu à l\'écran par toFixed(3), donc avec un point : ' + l.trim().slice(0, 110));
+  });
+  assert.ok(restes.length >= 4, 'les champs de saisie doivent garder toFixed(3), sinon le test ne garde rien');
+});
+
+t('T-29 / T-31 / T-32 / T-33 : les lots existent, Tab est expliqué, une ligne s\'ajoute à la souris, la liste sort du tableau', () => {
+  const app = cabApp();
+  assert.ok(/function lotsDuBrouillard\(brouillards\)/.test(app), 'les lots ne se déduisent pas du brouillard');
+  assert.ok(/lotsDuBrouillard\(brouillards\)\.map\(l => `<button type="button" class="btn btn-sm" data-lot-\$\{l\.type\}/.test(app), 'les boutons de lot ne viennent pas du brouillard');
+  assert.ok(!/Valider tout le journal \$\{esc\(p\.journal\)\}/.test(app), 'le lot suit encore l\'en-tête de saisie');
+  assert.ok(/\$\$\('\[data-lot-journal\]', el\)\.forEach/.test(app) && /\$\$\('\[data-lot-mois\]', el\)\.forEach/.test(app), 'les lots ne sont pas branchés');
+  // T-31 : la règle avant l'exception.
+  const aide = tranche(app, 'function aideTouches(', '\n  }', 200, 1200);
+  assert.ok(aide.indexOf("paire('Champ suivant', 'Tab')") > 0 && aide.indexOf("paire('Champ suivant', 'Tab')") < aide.indexOf("paire('Solder la dernière ligne'"), 'la légende nomme l\'exception de Tab avant sa règle');
+  assert.ok(!/paire\('Solder la pièce'/.test(aide), '« Solder la pièce » laisse croire que Tab solde toujours');
+  // T-32.
+  assert.ok(/id="sa-ajouter"/.test(app) && /aj\.onclick = \(\) => \{ p\.lignes\.push\(ligneVide\(\)\); redessinerLignes\(\{ i: p\.lignes\.length - 1, k: 'compte' \}\); \}/.test(app), '« + Ajouter une ligne » manque ou n\'est pas branché');
+  // T-33 : la liste vit sur le body, en position fixe calculée sur le champ.
+  const sg = tranche(app, 'function suggererCompte(', 'const choisir', 400, 3000);
+  assert.ok(/pop\.className = 'sugg-pop sugg-fixe'; document\.body\.appendChild\(pop\)/.test(sg), 'la liste est encore dans la cellule, donc rognée par le tableau');
+  assert.ok(/input\.getBoundingClientRect\(\)/.test(sg) && /pop\.style\.top = \(r\.bottom \+ 4\)/.test(sg), 'la liste n\'est pas placée sur le champ');
+  const css = lireSource('src', 'cabinet', 'renderer', 'cabinet.css');
+  assert.ok(/^\.sugg-pop\.sugg-fixe \{ position: fixed;/m.test(css), 'la feuille ne pose pas la position fixe');
+});
+
+t('T-34 : le miroir d\'une contre-passation se reconnaît, au journal comme au grand livre', () => {
+  const K = require('../../src/renderer/compta.js');
+  const livre = K.livreVide('D1', 2026, { plan: [{ compte: '606', libelle: 'Achats' }, { compte: '401', libelle: 'Fournisseurs' }] });
+  const e = K.ajouterEcriture(livre, { date: '2026-03-04', journal: 'AC', piece: 'FA-1', libelle: 'Papeterie', lignes: [
+    { compte: '606', libelle: 'Papeterie', debit: 100, credit: 0 }, { compte: '401', libelle: 'Papeterie', debit: 0, credit: 100 }] }, 'moi', 1);
+  assert.strictEqual(K.validerEcriture(livre, e.id, 'moi', 2).ok, true);
+  const r = K.contrepasser(livre, e.id, 'moi', '2026-04-10', 3);
+  assert.strictEqual(r.ok, true);
+  const lignes = K.lignesDuLivre(livre);
+  const miroir = lignes.find(l => l.ecritureId === r.ecriture.id);
+  assert.strictEqual(miroir.contrepasseDe, e.id, 'le lien vers l\'origine ne traverse pas lignesDuLivre');
+  assert.strictEqual(miroir.origineNumero, 1, 'le numéro de l\'origine n\'est pas résolu');
+  assert.ok(/^Contre-passation — /.test(miroir.libellePiece), 'le libellé de PIÈCE n\'arrive pas à l\'écran');
+  const app = cabApp();
+  assert.ok(/const miroirBadge = e => e\.contrepasseDe/.test(app), 'le badge du miroir manque');
+  const vj = tranche(app, 'function vueJournal(', 'function nomDeCompte(', 2000, 9000);
+  assert.ok(/e\.contrepasseDe \|\| e\.extourneDe \? 'cp-miroir'/.test(vj) && /esc\(e\.piece\) \+ miroirBadge\(e\)/.test(vj), 'le livre-journal ne marque pas le miroir');
+  const gl = tranche(app, 'function vueGrandLivre(', 'function vueBalance(', 1500, 8000);
+  assert.ok(/'cp-ligne' : e\.contrepasseDe \|\| e\.extourneDe \? 'cp-miroir'/.test(gl) && /miroirBadge\(e\)/.test(gl), 'le grand livre ne marque ni l\'originale ni le miroir');
+  assert.ok(/^tr\.cp-miroir td \{/m.test(lireSource('src', 'cabinet', 'renderer', 'cabinet.css')), 'la classe du miroir n\'existe pas dans la feuille');
+});
+
+t('T-04 : le solde de départ d\'un relevé se propose depuis le livre, et cède à ce qu\'on tape', () => {
+  const app = cabApp();
+  const z = tranche(app, 'function releveForm(', 'const barreLivres', 3000, 10000);
+  assert.ok(/KC\.lignesBancaires\(s\.livre, compte\)\.filter\(c => c\.date < premiere\)/.test(z), 'le solde n\'est pas lu dans le livre à la veille de la première ligne');
+  assert.ok(/champDebut\.addEventListener\('input', \(\) => \{ debutTouche = true; \}\)/.test(z) && /if \(!champDebut \|\| debutTouche \|\| !lignes\.length\) return;/.test(z), 'la proposition écraserait ce que le comptable a tapé');
+  assert.ok(/d'après le livre : \$\{money\(solde\)\}/.test(z), 'la proposition n\'est pas nommée');
+  assert.ok(/id="rv-debut-hint"/.test(z), 'l\'endroit où la nommer manque');
 });
 
 t('T-07 / T-08 : la banque nomme « rien à faire », et un doublon se voit dès le choix du fichier', () => {

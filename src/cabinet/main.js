@@ -555,14 +555,17 @@ const moisEntre = (a, b) => { const [ya, ma] = a.split('-').map(Number), [yb, mb
 function retirerExemple() {
   const demos = state.dossiers.filter(d => d.demo);
   // Leurs fichiers partent avec eux : un paquet d'exemple qui traîne dans le rangement d'un vrai
-  // portefeuille serait une pièce comptable qui n'existe pas.
-  demos.forEach(d => { getStore().removeDossierFiles(d, state.dossiers); viderCacheLivres(d.id); });
+  // portefeuille serait une pièce comptable qui n'existe pas. On COMPTE les livres qui partent
+  // (T-36) : le travail saisi sur un dossier d'exemple s'efface avec lui, et l'écran le dit.
+  let livres = 0;
+  demos.forEach(d => { const r = getStore().removeDossierFiles(d, state.dossiers); livres += (r && r.livres) || 0; viderCacheLivres(d.id); });
   state.dossiers = state.dossiers.filter(d => !d.demo);
   state.exemple = null;
+  return { livres };
 }
 
 function chargerExemple() {
-  retirerExemple();
+  const retire = retirerExemple();
   const scenario = K.demoDossiers();
   const gabarits = GABARITS_EXEMPLE.mois;
   const aujourdhui = K.today().slice(0, 7);
@@ -602,6 +605,7 @@ function chargerExemple() {
   // Ce que l'exemple sait de lui-même : de quelle version il sort, et sur quel mois il a été recalé.
   // Sans ces deux repères, impossible de savoir qu'il est périmé sans le refaire pour voir.
   state.exemple = { version: VERSION, mois: aujourdhui, le: K.today() };
+  return retire;
 }
 
 // ---------- l'exemple se refait tout seul (9.4.2) ----------
@@ -624,8 +628,8 @@ function rafraichirExemple() {
   const raison = K.exemplePerime(state.exemple, VERSION, mois);
   if (!raison) return null;
   getStore().backupNow('avant-exemple');
-  chargerExemple();
-  return { version: VERSION, mois, raison };
+  const retire = chargerExemple();
+  return { version: VERSION, mois, raison, livres: (retire && retire.livres) || 0 };
 }
 
 ipcMain.handle('cab:demo', (_e, on) => {
@@ -1670,8 +1674,10 @@ ipcMain.handle('cab:ecrireCloture', async (_e, { dossierId, annee, motDePasse } 
   const res = await dialog.showSaveDialog({ title: 'Le dossier de clôture pour le client', defaultPath: nom });
   if (res.canceled || !res.filePath) return { ok: false, annule: true };
   fs.writeFileSync(res.filePath, buf);
-  ecrireLeLivre(dossierId, livre, 'dossier de clôture produit', path.basename(res.filePath));
-  return { ok: true, path: res.filePath, pdf: !!pdf, signe: !!cle, scelle: !!motDePasse };
+  // La trace vit dans le LIVRE (T-27) — le moteur la pose et trace, la porte unique écrit.
+  KC.noterDossierCloture(livre, { chemin: res.filePath, scelle: !!motDePasse, pdf: !!pdf, signe: !!cle }, moiPoste().deviceName || 'cabinet', Date.now());
+  ecrireLeLivre(dossierId, livre, null);
+  return { ok: true, path: res.filePath, pdf: !!pdf, signe: !!cle, scelle: !!motDePasse, livre: ouvrirLivre(dossierId, annee).livre };
 });
 
 // ================================================================ LA LICENCE DU CABINET (9.4.0)

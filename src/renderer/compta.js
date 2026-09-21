@@ -488,7 +488,8 @@
       r.solde = round3(r.solde + num(e.debit) - num(e.credit));
       const k = `${r.tiersId || r.tiers}|${txt(e.lettre)}|${txt(e.piece)}`;
       if (!pieces[k]) {
-        pieces[k] = { r, lettre: txt(e.lettre), piece: txt(e.piece), date: txt(e.date), echeance: txt(e.echeance), debit: 0, credit: 0 };
+        // `ecritureId` et `mois` : ce qui permet à l'écran d'OUVRIR la pièce qu'il nomme (T-11).
+        pieces[k] = { r, lettre: txt(e.lettre), piece: txt(e.piece), date: txt(e.date), echeance: txt(e.echeance), debit: 0, credit: 0, ecritureId: txt(e.ecritureId), mois: txt(e.mois) };
       }
       pieces[k].debit = round3(pieces[k].debit + num(e.debit));
       pieces[k].credit = round3(pieces[k].credit + num(e.credit));
@@ -521,7 +522,8 @@
       p.r.ouverts.push({
         piece: p.piece || '(sans numéro)', date: p.date, echeance: p.echeance,
         montant: round3(Math.abs(p.debit || p.credit)), debit: p.debit, credit: p.credit,
-        reste, retard: !!(p.echeance && t && p.echeance < t)
+        reste, retard: !!(p.echeance && t && p.echeance < t),
+        ecritureId: p.ecritureId, mois: p.mois
       });
       p.r.reste = round3(p.r.reste + reste);
     });
@@ -993,6 +995,11 @@
   // brouillard n'entre pas dans une balance : ce n'est pas encore de la comptabilité.
   function lignesDuLivre(livre, opts) {
     const o = opts || {};
+    // Le numéro de l'écriture d'ORIGINE d'un miroir (contre-passation, extourne) : c'est le lien
+    // « ↩ n° 49 » que l'écran doit pouvoir afficher (T-34). Le moteur posait trois liens et l'écran
+    // n'en atteignait aucun — une donnée enregistrée et jamais affichée n'existe pas (7.21.0).
+    const parId = new Map((livre.ecritures || []).map(e => [e.id, e]));
+    const numeroDe = id => { const x = id && parId.get(id); return x ? (Number(x.numero) || 0) : 0; };
     return (livre.ecritures || [])
       .filter(e => o.brouillard ? true : e.statut !== 'brouillard')
       .filter(e => !o.du || (e.date >= o.du && e.date <= (o.au || '9999-12-31')))
@@ -1008,7 +1015,11 @@
         // libellé recopié ne l'est pas.
         account: l.compte, tiers: l.tiers || '', label: l.libelle || e.libelle,
         debit: l.debit, credit: l.credit, lettre: l.lettre || '',
-        tiersId: l.tiersId || '', ecritureId: e.id, statut: e.statut
+        tiersId: l.tiersId || '', ecritureId: e.id, statut: e.statut,
+        // Le libellé de PIÈCE (« Contre-passation — … ») et les liens du miroir vers son origine.
+        libellePiece: e.libelle || '', mois: e.mois || '',
+        contrepasseDe: e.contrepasseDe || '', extourneDe: e.extourneDe || '',
+        origineNumero: numeroDe(e.contrepasseDe || e.extourneDe)
       })));
   }
 
@@ -2842,6 +2853,19 @@
     return { ok: true };
   }
 
+  // Le dossier de clôture PRODUIT laisse une trace dans le livre (T-27) : quand, où, scellé ou non,
+  // avec ou sans PDF. Sans elle, « lesquels de mes soixante clients ont reçu leur dossier ? » n'a
+  // aucune réponse le lundi matin — et c'est le geste final du flux retour. Une LISTE ajoutée à
+  // l'exercice, jamais un champ renommé : un livre écrit avant la 9.8.8 la lit vide (règle 9.7.0).
+  function noterDossierCloture(livre, infos, qui, quand) {
+    const i = infos || {};
+    livre.exercice.dossiersProduits = Array.isArray(livre.exercice.dossiersProduits) ? livre.exercice.dossiersProduits : [];
+    const d = { le: Number(quand) || 0, par: txt(qui), chemin: txt(i.chemin), scelle: !!i.scelle, pdf: !!i.pdf, signe: !!i.signe };
+    livre.exercice.dossiersProduits.push(d);
+    trace(livre, qui, 'dossier de clôture produit', txt(i.chemin).split(/[\\/]/).pop(), quand);
+    return d;
+  }
+
   // Les à-nouveaux de l'exercice SUIVANT, calculés sur les écritures RÉELLES de celui-ci plus son
   // ouverture. Les classes 1 à 5 se reportent ; le net des classes 6 et 7 va au compte de résultat.
   // C'est l'écriture qu'on posera dans le livre suivant — explicite, jamais déduite deux fois
@@ -3208,7 +3232,7 @@
     inventaireValide, totalInventaire, poserInventaire, variationDeStock,
     // La clôture d'exercice (9.8.0)
     GUIDES_INVENTAIRE, controlesCloture, soldesDepuisOuverture,
-    cloturerExercice, rouvrirExercice, anouveauxDe, ecritureAnouveaux, extournesDe,
+    cloturerExercice, rouvrirExercice, noterDossierCloture, anouveauxDe, ecritureAnouveaux, extournesDe,
     etatsDepuisLignes, sigDepuisLignes, dossierDeCloture, clotureValide,
     // La pièce équilibrée et l'amortissement (9.6.1)
     ajouterJoursIso, entrySet,

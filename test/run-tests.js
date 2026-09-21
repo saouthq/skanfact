@@ -13024,7 +13024,8 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.ok(!fs.existsSync(f), 'le livre survit à la suppression de son dossier');
     // Et l'échec ne se perd plus dans le journal : il est rendu. C'est la moitié qui manquait —
     // un TypeError de programmation ne pouvait alerter personne.
-    assert.deepStrictEqual(r, { ok: true, restes: [] }, 'la suppression ne rend pas son résultat');
+    // Et elle COMPTE les livres qu'elle emporte (T-36) : c'est ce que le bandeau de l'exemple dit.
+    assert.deepStrictEqual(r, { ok: true, restes: [], livres: 1 }, 'la suppression ne rend pas son résultat');
     fs.rmSync(racine, { recursive: true, force: true });
   });
 

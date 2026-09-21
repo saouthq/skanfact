@@ -298,6 +298,15 @@ body.dark .badge.b-hors { background: #2a3440; color: #9aa7b4; }
    nulle part, et rien ne le signale (le défaut `.mono` de la 8.1.0). */
 tr.br-ligne td { font-style: italic; background: var(--info-soft); }
 tr.cp-ligne td { text-decoration: line-through; color: var(--muted); }
+/* Le MIROIR d'une contre-passation ou d'une extourne (T-34) : reconnaissable au repos, sans être
+   barré — c'est une validée à part entière, qui annule l'autre. */
+tr.cp-miroir td { background: var(--info-soft); }
+/* « + Ajouter une ligne » sous la grille de saisie (T-32) : un geste discret, aligné sur le début
+   de la grille, pour la souris. */
+.sa-ajout { margin-top: 6px; }
+/* La liste des comptes, sortie du tableau qui la rognait (T-33) : position fixe, calculée sur le
+   champ, au-dessus de tout ce qui défile. */
+.sugg-pop.sugg-fixe { position: fixed; inset-inline-start: auto; top: auto; z-index: 380; }
 
 /* ---------------------------------------------------------------- la grille de saisie (9.3.0)
    Toutes les classes sont préfixées `sa-` : une classe du cabinet ne peut pas porter un nom déjà

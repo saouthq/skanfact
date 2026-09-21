@@ -757,15 +757,21 @@ function createCabStore(dir, opts) {
     // d'avant. L'appelant qui efface un VRAI dossier prend sa sauvegarde nommée avant (« ce qui
     // détruit demande », 7.12.0) — mais elle ne contient PAS les livres (T-35), donc la copie
     // externe est le seul filet ici, et c'est écrit dans l'écran de suppression.
+    let livres = 0;
     try {
       const d = livreDir(dossier, idx);
-      if (fs.existsSync(d)) fs.rmSync(d, { recursive: true, force: true });
+      if (fs.existsSync(d)) {
+        // Combien de livres partent : l'appelant le DIT (T-36). Un jeu de données qui change sans
+        // un mot fait douter du reste — et ici ce sont des écritures saisies qui s'en vont.
+        try { livres = fs.readdirSync(d).filter(f => /^livre-\d{4}\.json$/.test(f)).length; } catch {}
+        fs.rmSync(d, { recursive: true, force: true });
+      }
     } catch (e) { log('suppression livres', e); restes.push('livres'); }
     // Un échec d'effacement ne fait pas échouer l'appelant — refuser de recharger l'exemple parce
     // qu'un fichier résiste serait pire. Mais il ne vit plus UNIQUEMENT dans le journal : il est
     // rendu, donc un test peut l'exiger. C'est ce qui manquait : le `catch` avalait un TypeError
     // de programmation, et rien, nulle part, ne pouvait s'en apercevoir.
-    return { ok: !restes.length, restes };
+    return { ok: !restes.length, restes, livres };
   }
 
   // Remettre tous les paquets à leur place canonique et corriger les chemins enregistrés. Sert à la
