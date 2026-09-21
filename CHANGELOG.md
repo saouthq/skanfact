@@ -7,6 +7,42 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 9.9.0 — 21/09/2026
+
+**Le cabinet à plusieurs.** Plusieurs collaborateurs sur un cabinet, sans que l'un efface le travail
+de l'autre en silence. **À publier en bêta** : elle touche le moteur comptable et le format du livre.
+
+- **Des collaborateurs, avec trois rôles qui se contiennent** — Saisie ⊂ Validation ⊂ Supervision.
+  Une identité **déclarée**, pas un mot de passe par personne : celui du cabinet ouvre déjà toute la
+  base, donc un second ne protégerait rien de plus, et l'écran le dit au lieu de faire croire le
+  contraire. Ce que les rôles apportent, c'est de savoir **qui** a validé une écriture, et d'éviter
+  qu'elle le soit par quelqu'un dont ce n'est pas le travail. Tant que personne n'est déclaré —
+  c'est-à-dire chez tous les cabinets d'aujourd'hui — **rien n'est restreint et rien ne change à
+  l'écran**.
+- **Des droits par dossier**, qui l'emportent sur le rôle général dans les deux sens : quelqu'un qui
+  valide partout peut n'être que saisisseur sur un client, et l'inverse. C'est aussi ce qui
+  **confie** un dossier : le « À faire » d'une personne ne montre que les siens.
+- **La piste d'audit porte QUI**, sur chaque geste, en plus du poste.
+- **Deux postes ne s'écrasent plus.** Le livre porte une **révision** : on relit le disque avant
+  d'écrire, et si elle a bougé on ne écrit rien — on **fusionne**. Trois règles qui ne bougent pas :
+  une écriture validée ne se fusionne jamais et n'est jamais perdue ; un numéro déjà pris est
+  signalé, jamais réattribué (un numéro naît à la validation, 9.2.0) ; un brouillard présent des
+  deux côtés est gardé **deux fois** plutôt que tranché à la place de quelqu'un. Et « Réunir le
+  livre d'un autre poste… » pour le cas où les deux ne se sont jamais vus (clé USB, réseau coupé).
+- **Le verrou se lève.** `leverVerrou` n'avait aucun appelant : posé à chaque écriture et jamais
+  levé, il interdisait à l'autre poste d'écrire pendant vingt-quatre heures après un seul
+  enregistrement. Et un verrou orphelin se **reprend**, en nommant le poste et depuis quand.
+- **Un tableau de production** : par client et par mois, reçu → saisi → révisé → déclaré, qui et
+  depuis quand. Tout est **lu** (paquets, écritures, déclarations), jamais coché à la main. « Révisé »
+  affiche « — » tant que le dossier de révision n'existe pas — ne pas savoir n'est pas « non » — et
+  il ne bloque rien, sinon la grille entière s'afficherait rouge le jour de la livraison.
+- Le parcours qui compte est **`npm run e2e:cabinet-equipe`** : deux postes du même cabinet, deux
+  collaborateurs, et rien de perdu. C'est lui qui a trouvé que le premier superviseur déclaré
+  fermait la porte derrière lui — le poste qui venait de le créer n'était personne, donc il ne
+  pouvait plus ajouter le second.
+
+Vingt-six défauts réintroduits un par un font tomber leur test.
+
 ## 9.8.8-beta.4 — 21/09/2026
 
 **L'instrument ne regardait que quatre écrans sur onze.** Version d'essai, dans la continuité de la

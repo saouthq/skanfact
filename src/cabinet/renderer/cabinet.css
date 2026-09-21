@@ -458,3 +458,39 @@ body.dark .theme-op:hover { border-color: #3c4654; }
    de l'alerte la plus urgente. Un geste collé à ce qu'il prolonge se lit comme une sixième ligne de
    la liste, pas comme un bouton. */
 #todo-plus { margin-block-start: 10px; }
+
+/* ------------------------------------------------------------------ la production (9.9.0)
+   Une grille client × mois. Chaque case porte UNE pastille, et la pastille porte un signe en plus
+   de sa couleur : une couleur seule n'est pas une information (9.4.4) — ni pour qui distingue mal
+   le rouge du vert, ni sur une impression, ni pour qui découvre l'écran. */
+.prod-c { inline-size: 1%; padding-inline: 4px !important; }
+.prod-p {
+  display: inline-flex; align-items: center; justify-content: center;
+  inline-size: 20px; block-size: 20px; border-radius: 5px;
+  font-size: 12px; font-weight: 700; line-height: 1;
+  border: 1px solid var(--border); color: var(--muted); background: var(--card);
+}
+.prod-recu   { background: #fdecec; border-color: #f3b9b9; color: #a12c2c; }
+.prod-saisi  { background: #fdecec; border-color: #e88; color: #9a1f1f; }
+.prod-revise { background: #fff6e5; border-color: #f0cf95; color: #8a5a06; }
+.prod-declare{ background: #eef4ff; border-color: #bcd0f5; color: #2b4f9e; }
+.prod-fini   { background: #e8f6ee; border-color: #a8dcc0; color: #1d6b42; }
+.prod-hors   { opacity: .35; }
+body.dark .prod-recu   { background: #3a1f20; border-color: #6a3436; color: #f0b4b4; }
+body.dark .prod-saisi  { background: #3a1f20; border-color: #7d3a3c; color: #f6bcbc; }
+body.dark .prod-revise { background: #3a2f18; border-color: #6d5726; color: #f0d29a; }
+body.dark .prod-declare{ background: #1e2a45; border-color: #3a5288; color: #bcd0f5; }
+body.dark .prod-fini   { background: #1c3527; border-color: #2f6045; color: #a8dcc0; }
+/* La légende : une rangée qui passe à la ligne, jamais six lignes empilées sous le tableau. */
+.prod-leg { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-block-start: 12px; align-items: center; }
+.prod-leg span { display: inline-flex; align-items: center; gap: 6px; }
+table.prod tbody tr { cursor: pointer; }
+
+/* ------------------------------------------------------------------ l'équipe (9.9.0) */
+/* La ligne de la personne qui travaille sur CE poste : un repère discret, pas une alarme. */
+tr.eq-moi > td { background: var(--hover); }
+/* Le sélecteur « Je suis » vit DANS le bandeau, sous sa phrase : posé à côté, il se lisait comme
+   un filtre de la page. Un écart de rangée, pas une marge posée à la main — au premier passage à
+   la ligne, une marge horizontale seule ne décide de rien (T-56). */
+.mt-s { margin-block-start: 8px; }
+#eq-moi { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }

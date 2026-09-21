@@ -42,7 +42,7 @@ const SEGMENTS = ['.tabs', '.row-menu', '.pager'];
 // Les pages du Cabinet. Une page qui en gagnera une demain sera mesurée sans que personne y pense,
 // à condition de l'ajouter ici — et le parcours REFUSE une page qui ne s'ouvre pas, plutôt que de
 // l'ignorer en annonçant quand même son total (le défaut de `#stk-tabs` en 7.23.0).
-const PAGES = ['#/dossiers', '#/relances', '#/echeances', '#/ecritures', '#/reglages', '#/aide'];
+const PAGES = ['#/dossiers', '#/relances', '#/echeances', '#/ecritures', '#/production', '#/reglages', '#/aide'];
 
 (async () => {
   const j = journal(); const bac = []; const fautes = [];

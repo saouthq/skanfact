@@ -1158,6 +1158,7 @@
     }
     const view = $('#view');
     if (route === 'dossier') drawDossier(view, arg, hash.split('/')[2]);
+    else if (route === 'production') drawProduction(view);
     else if (route === 'ecritures') drawEcritures(view);
     else if (route === 'echeances') drawEcheances(view);
     else if (route === 'relances') drawRelances(view);
@@ -1744,6 +1745,11 @@
         <div class="modal-actions"><button class="btn btn-sm" id="note-rel">Noter une relance faite ailleurs…</button></div>
       </div>
 
+      ${/* Les droits sur CE dossier (9.9.0). Le panneau n'existe QUE si le cabinet a déclaré des
+            collaborateurs : un cabinet d'une personne n'a personne à qui donner un droit, et lui
+            poser une grille vide reviendrait à lui vendre un problème qu'il n'a pas. */''}
+      ${panneauDroits(dossier)}
+
       ${(dossier.note || '').trim() ? `<div class="panel"><h2>Note interne</h2><div class="notes-md">${esc(dossier.note)}</div></div>` : ''}
       </section>
 
@@ -1817,6 +1823,7 @@
     if (cy) cy.onchange = e => { ficheYear = e.target.value; render(); };
     const rel = $('#rel'); if (rel) rel.onclick = () => writeRelance(row);
     $('#note-rel').onclick = () => noteRelanceForm(row);
+    brancherDroits(view, dossier);
     $$('[data-m]', view).forEach(c => { c.onclick = () => openPack(dossier, c.dataset.m); });
     // Un mois manquant NOMME un manque : le geste qui va avec, c'est la relance — et elle part
     // préremplie sur CE mois-là, pas sur tous. Cinq cartouches rouges et aucun bouton, c'était
@@ -2829,6 +2836,11 @@
       ${ex.clos ? '<button class="btn btn-sm" id="cl-rouvrir">Rouvrir (motif exigé)…</button>' : ''}
       <button class="btn btn-sm" id="cl-suivant">Ouvrir ${esc(Number(ex.annee) + 1)} (à-nouveaux)…</button>
       <button class="btn btn-sm" id="cl-fichier">Le dossier pour le client…</button>
+      ${/* Réunir deux postes (9.9.0). Ici, et pas dans la Saisie : c'est un geste d'exercice, rare,
+            et qui touche le livre entier. Quand les deux postes voient le même fichier, il ne sert
+            à rien — l'application s'en aperçoit toute seule à l'enregistrement, fusionne et le
+            dit. Il ne reste que le cas où les deux ne se sont jamais vus. */''}
+      <span class="nw"><button class="btn btn-sm" id="cl-fusion">Réunir le livre d'un autre poste…</button>${info('eq.fusion')}</span>
     </div>
     ${/* Le motif d'une réouverture se lit PENDANT qu'elle sert (T-26) : un exercice rouvert est un
           exercice en train de changer, et c'est là que « pourquoi est-il ouvert ? » se pose. Il
@@ -2920,6 +2932,34 @@
     </div>`;
   }
 
+  // Réunir le livre d'un autre poste (9.9.0). Le compte rendu n'est jamais un « c'est fait » : il
+  // nomme ce qui est ENTRÉ et, surtout, ce qui est À REGARDER — un conflit résolu en silence est
+  // encore un silence, et c'est très exactement ce que le partage à deux doit cesser de faire.
+  async function fusionnerLivre(root, dossier) {
+    const s = livresState;
+    try {
+      const r = await api.fusionner(dossier.id, s.annee);
+      if (r.annule) return;
+      const q = r.rapport;
+      const bloc = (titre, liste, quoi) => liste.length
+        ? `<p><b>${esc(titre)}</b></p><ul>${liste.slice(0, 12).map(x => `<li>${esc(quoi(x))}</li>`).join('')}</ul>`
+          + (liste.length > 12 ? `<p class="muted small">… et ${liste.length - 12} de plus.</p>` : '')
+        : '';
+      await infoDialog(`Les deux livres sont réunis`,
+        `<p>${pl(q.valideesAjoutees.length, 'écriture validée', 'écritures validées')} et ${pl(q.brouillardsAjoutes.length, 'brouillard')} `
+        + `${q.valideesAjoutees.length + q.brouillardsAjoutes.length > 1 ? 'sont arrivés' : 'est arrivé'} de l'autre poste.</p>`
+        + bloc('À regarder — même numéro que chez toi, sur une autre écriture :', q.numerosEnDoublon,
+          x => `n° ${x.numero} · ${x.piece} du ${x.date} — un numéro naît à la validation et ne se réattribue jamais ; il faut en contre-passer une`)
+        + bloc('À regarder — la même écriture validée des deux côtés, avec un contenu différent :', q.valideesEnConflit,
+          x => `${x.piece} du ${x.date} — la tienne est gardée telle quelle`)
+        + bloc('À regarder — un brouillard modifié des deux côtés :', q.brouillardsEnConflit,
+          x => `${x.piece} du ${x.date} — les DEUX sont gardés, à toi de choisir`)
+        + (q.aRegarder ? '' : '<p class="muted small">Rien à trancher : les deux versions se complétaient.</p>'));
+      s.livre = r.livre;
+      render();
+    } catch (e) { await infoDialog('Les livres n\'ont pas été réunis', plainError(e)); }
+  }
+
   function brancherCloture(el, root, dossier) {
     const s = livresState;
     // Les contrôles se relisent dès que le LIVRE a bougé (T-24) — préparer une déclaration, valider
@@ -2930,6 +2970,8 @@
     if (!s.cloture || s.clotureRev !== rev) { s.clotureRev = rev; chargerCloture(root, dossier); return; }
     const rep = $('#cl-reprise', el);
     if (rep) rep.onclick = () => repriseForm(root, dossier);
+    const fus = $('#cl-fusion', el);
+    if (fus) fus.onclick = () => fusionnerLivre(root, dossier);
     const clo = $('#cl-cloturer', el);
     if (clo) clo.onclick = async () => {
       const echecs = (s.cloture.controles || []).filter(c => !c.ok);
@@ -5246,6 +5288,106 @@
   //
   // Une liste de dates, un comptable en a déjà une. Ce que personne d'autre ne fait pour lui :
   // rattacher chaque échéance aux paquets qu'il n'a PAS reçus.
+  // ---------------------------------------------------------------- le tableau de production (9.9.0)
+  //
+  // « Où en est chaque client, et depuis quand ? » — la question qu'un cabinet se pose le lundi
+  // matin et à laquelle il répondait jusqu'ici en ouvrant soixante fiches. Tout est LU (paquets
+  // reçus, écritures du livre, déclarations pointées) : une liste d'états qu'on coche à la main
+  // est fausse le jour où quelqu'un oublie de cocher.
+  let prodState = { lignes: null, etapes: [], collaborateurs: [], collab: '', mois: 12 };
+
+  async function drawProduction(view) {
+    if (!prodState.lignes) {
+      view.innerHTML = `<div class="page-head"><h1>Production</h1></div>
+        <div class="panel"><div class="empty">Lecture des dossiers…</div></div>`;
+      try {
+        const r = await api.production({});
+        prodState = { ...prodState, lignes: r.lignes || [], etapes: r.etapes || [], collaborateurs: r.collaborateurs || [] };
+      } catch (e) {
+        view.innerHTML = `<div class="page-head"><h1>Production</h1></div>
+          <div class="panel"><div class="warn-box">${esc(plainError(e))}</div></div>`;
+        return;
+      }
+      // La page a pu changer pendant l'attente : on ne redessine que si on y est encore (7.6.0).
+      if (!location.hash.startsWith('#/production')) return;
+    }
+    const confies = prodState.collab
+      ? new Set((S.dossiers || []).filter(d => (d.droits || {})[prodState.collab]).map(d => d.id))
+      : null;
+    const lignes = (prodState.lignes || []).filter(l => !confies || confies.has(l.id));
+    // Les N derniers mois, communs à toutes les lignes : une grille dont chaque ligne aurait ses
+    // propres colonnes ne se lit pas en colonne, et c'est en colonne qu'on repère un mois où
+    // personne n'a rien fait.
+    const tous = [...new Set(lignes.flatMap(l => l.mois.map(m => m.mois)))].sort();
+    const colonnes = tous.slice(-prodState.mois);
+    const parDossier = new Map(lignes.map(l => [l.id, new Map(l.mois.map(m => [m.mois, m]))]));
+    const retard = lignes.reduce((s, l) => s + l.aSaisir, 0);
+
+    view.innerHTML = `<div class="page-head"><h1>Production ${info('eq.production')}</h1>
+      <div class="actions">
+        ${prodState.collaborateurs.length ? `<label class="f-lab">Collaborateur
+          <select id="pr-collab" aria-label="Filtrer sur les dossiers confiés à">
+            <option value="">Tout le cabinet</option>
+            ${prodState.collaborateurs.map(c => `<option value="${esc(c.id)}" ${c.id === prodState.collab ? 'selected' : ''}>${esc(c.nom)}</option>`).join('')}
+          </select></label>` : ''}
+        <label class="f-lab">Sur <select id="pr-mois" aria-label="Combien de mois afficher">
+          ${[6, 12, 24].map(n => `<option value="${n}" ${n === prodState.mois ? 'selected' : ''}>${n} mois</option>`).join('')}
+        </select></label>
+      </div></div>
+      ${!lignes.length ? `<div class="panel"><div class="empty">${prodState.collab
+    ? 'Aucun dossier n\'est confié à cette personne.<br><span class="small">Un dossier se confie dans sa fiche, onglet Suivi, panneau « Qui travaille sur ce dossier ».</span>'
+    : 'Aucun dossier dans le portefeuille.'}</div></div>`
+    : `<div class="${retard ? 'warn-box' : 'ok-box'} mb">${retard
+      ? `${pl(retard, 'mois', 'mois')} ${retard > 1 ? 'sont reçus et pas encore saisis' : 'est reçu et pas encore saisi'}.`
+      : 'Tout ce qui est reçu est saisi.'}</div>
+      <div class="panel"><div class="scroll-x"><table class="list compact prod">
+        <thead><tr><th>Client</th>${colonnes.map(m => `<th class="r nw">${esc(K.monthLabel(m).replace(/ \d{4}$/, ''))}<br><span class="muted small">${esc(m.slice(0, 4))}</span></th>`).join('')}<th class="r nw">À saisir</th></tr></thead>
+        <tbody>${lignes.map(l => `<tr data-id="${esc(l.id)}">
+          <td class="tronq" title="${esc(l.name)}">${esc(l.name)}${l.demo ? ' <span class="badge">exemple</span>' : ''}</td>
+          ${colonnes.map(m => {
+    const c = (parDossier.get(l.id) || new Map()).get(m);
+    if (!c) return '<td class="r prod-c"><span class="prod-p prod-hors" title="Hors mission">·</span></td>';
+    const t = [
+      `${K.monthLabel(m)} — ${c.recu ? 'reçu' : 'pas reçu'}`,
+      c.saisi ? `${pl(c.saisi, 'écriture')} dont ${c.brouillards} au brouillard` : 'rien de saisi',
+      // « — » et non « non » : la révision n'a pas encore d'écrivain, et ne pas savoir
+      // n'est pas savoir que non (règle des cases fiscales, 9.6.0).
+      `révisé : ${c.revise === null ? '—' : c.revise ? 'oui' : 'non'}`,
+      `déclaré : ${c.declare === null ? '—' : c.declare ? 'oui' : 'non'}`,
+      c.qui ? `dernier geste : ${c.qui}` : ''
+    ].filter(Boolean).join(' · ');
+    return `<td class="r prod-c"><span class="prod-p prod-${esc(c.etape)}" title="${esc(t)}">${
+      c.etape === 'fini' ? '✓' : c.etape === 'recu' ? '·' : c.etape === 'saisi' ? '!' : '◦'}</span></td>`;
+  }).join('')}
+          <td class="r nw">${l.aSaisir ? `<b class="err-inline">${l.aSaisir}</b>` : '—'}</td></tr>`).join('')}</tbody>
+      </table></div>
+      ${/* Une couleur seule n'est pas une information (9.4.4) : la légende nomme chaque étape, et
+            elle est engendrée depuis `ETAPES_PRODUCTION` — écrite à la main, elle oublierait la
+            cinquième le jour où le cabinet en ajoute une. */''}
+      <div class="prod-leg small muted">
+        <span><span class="prod-p prod-recu">·</span> reçu, rien de saisi</span>
+        <span><span class="prod-p prod-saisi">!</span> à saisir</span>
+        <span><span class="prod-p prod-revise">◦</span> saisi, pas encore révisé ni déclaré</span>
+        <span><span class="prod-p prod-declare">◦</span> révisé, pas déclaré</span>
+        <span><span class="prod-p prod-fini">✓</span> déclaré</span>
+        <span><span class="prod-p prod-hors">·</span> hors mission</span>
+      </div>
+      <p class="muted small">Clique une ligne pour ouvrir la comptabilité du client.
+      « Révisé » affiche « — » tant que le dossier de révision n'existe pas : ne pas savoir n'est pas « non ».</p>
+      </div>`}`;
+
+    const c = $('#pr-collab', view);
+    if (c) c.onchange = () => { prodState.collab = c.value; render(); };
+    const m = $('#pr-mois', view);
+    if (m) m.onchange = () => { prodState.mois = Number(m.value) || 12; render(); };
+    $$('tbody tr[data-id]', view).forEach(tr => {
+      tr.onclick = () => { location.hash = `#/dossier/${tr.dataset.id}/comptabilite`; };
+    });
+    // Une route ASYNCHRONE pose son écran APRÈS la fin de `render()` : la ponctuation française
+    // serait passée sur la page « Lecture des dossiers… » et jamais sur celle-ci (piège 8.3.0).
+    typographie(view);
+  }
+
   function drawEcheances(view) {
     const liste = K.echeances(S);
     const prochaines = liste.filter(e => !e.passee);
@@ -5505,6 +5647,180 @@
   // reçu : un panneau qui garderait l'état lu au démarrage annoncerait un chiffre périmé — et c'est
   // un chiffre qui décide d'une facture (règle 7.1.x : « un état lu une fois au démarrage se
   // périme »). Le coût est un appel au processus principal, et rien d'autre.
+  // Les droits d'un dossier (9.9.0). Le tableau se dessine à partir de l'état déjà chargé (`S`) :
+  // pas d'appel, donc pas de panneau qui apparaît une seconde après le reste.
+  function panneauDroits(dossier) {
+    const liste = (S.collaborateurs || []).filter(c => c.actif);
+    if (!liste.length) return '';
+    const droits = dossier.droits || {};
+    const confies = liste.filter(c => droits[c.id]);
+    return `<div class="panel" id="d-droits"><h2>Qui travaille sur ce dossier ${info('eq.droits')}</h2>
+      <div class="scroll-x"><table class="list compact"><thead><tr>
+        <th>Collaborateur</th><th>Rôle général</th><th>Sur ce dossier</th></tr></thead>
+      <tbody>${liste.map(c => `<tr>
+        <td>${esc(c.nom)}${c.id === S.moi ? ' <span class="badge">toi</span>' : ''}</td>
+        <td class="muted">${esc(K.LIBELLE_ROLE[c.role])}</td>
+        <td><select class="dr-role" data-collab="${esc(c.id)}" aria-label="Droit de ${esc(c.nom)} sur ce dossier">
+          <option value="">— son rôle général —</option>
+          ${K.ROLES_COLLAB.map(r => `<option value="${r}" ${droits[c.id] === r ? 'selected' : ''}>${esc(K.LIBELLE_ROLE[r])}</option>`).join('')}
+        </select></td></tr>`).join('')}</tbody></table></div>
+      ${/* « Confié » et « autorisé » ne sont pas la même question, et les confondre ferait mentir
+            le « À faire » de chacun. On le DIT plutôt que de le laisser deviner. */''}
+      <p class="muted small mt">${confies.length
+    ? `Ce dossier est confié à <b>${confies.map(c => esc(c.nom)).join(', ')}</b> : il apparaît dans ${confies.length > 1 ? 'leurs' : 'son'} « À faire ».`
+    : 'Ce dossier n\'est confié à personne : tout le monde peut y travailler selon son rôle général, et il n\'apparaît dans aucun « À faire » personnel.'}</p>
+      <div class="modal-actions"><span class="saved" id="dr-saved" hidden></span>
+        <button class="btn btn-primary" id="dr-save">Enregistrer les droits</button></div></div>`;
+  }
+
+  function brancherDroits(view, dossier) {
+    const b = $('#dr-save', view);
+    if (!b) return;
+    b.onclick = async () => {
+      const droits = {};
+      $$('.dr-role', view).forEach(s => { if (s.value) droits[s.dataset.collab] = s.value; });
+      try {
+        S = await api.saveDroits(dossier.id, droits);
+        const sv = $('#dr-saved', view);
+        if (sv) { sv.textContent = '✓ enregistré'; sv.hidden = false; setTimeout(() => { sv.hidden = true; }, 2200); }
+        render();
+      } catch (e) { await infoDialog('Les droits n\'ont pas été enregistrés', plainError(e)); }
+    };
+  }
+
+  // ---------------------------------------------------------------- l'équipe (9.9.0)
+  //
+  // Trois questions, dans cet ordre, parce que c'est l'ordre où elles se posent : qui travaille sur
+  // CE poste, qui compose le cabinet, et qui a le droit de faire quoi. Tant que personne n'est
+  // déclaré, le panneau ne montre qu'une phrase et un bouton — un cabinet d'une personne n'a rien
+  // à régler, et lui poser une grille de droits vide serait lui vendre un problème qu'il n'a pas.
+  let equipe = null;
+  async function dessinerEquipe(view, dejaLu) {
+    if (!dejaLu) {
+      try { equipe = await api.collaborateurs(); } catch { equipe = null; }
+      // La page a pu changer pendant l'attente : on redemande l'élément APRÈS (règle 7.6.0).
+      return dessinerEquipe(document, true);
+    }
+    const box = $('#eq-panel', view);
+    if (!box) return;
+    if (!equipe) { box.innerHTML = '<p class="muted small">Chargement…</p>'; return; }
+    const liste = (equipe.liste || []).filter(c => c.actif);
+    const g = equipe.gestion || { ok: false };
+    const moi = liste.find(c => c.id === equipe.moi) || null;
+    box.innerHTML = `
+      ${liste.length ? `<div class="${moi ? 'ok-box' : 'warn-box'} mb" id="eq-moi">
+          ${moi ? `Sur cet ordinateur, c'est <b>${esc(moi.nom)}</b> qui travaille — ${esc(K.LIBELLE_ROLE[moi.role])}.`
+    : 'Cet ordinateur ne dit pas qui travaille dessus : la piste d\'audit portera le nom du poste, et les droits par dossier ne s\'appliquent pas.'}
+          <label class="f-lab mt-s">Je suis
+            <select id="eq-je-suis" aria-label="Qui travaille sur cet ordinateur">
+              <option value="">— personne de déclaré —</option>
+              ${liste.map(c => `<option value="${esc(c.id)}" ${c.id === equipe.moi ? 'selected' : ''}>${esc(c.nom)}</option>`).join('')}
+            </select></label>
+        </div>`
+    : `<p class="small">Ce cabinet fonctionne <strong>à une personne</strong> : rien n'est restreint, et la piste
+          d'audit porte le nom de cet ordinateur. Déclare tes collaborateurs le jour où vous êtes plusieurs —
+          chaque écriture validée portera alors le nom de qui l'a validée.</p>`}
+
+      ${liste.length ? `<div class="scroll-x"><table class="list compact"><thead><tr>
+          <th>Nom</th><th>Rôle</th><th>Poste habituel</th><th></th></tr></thead>
+        <tbody>${liste.map(c => `<tr${c.id === equipe.moi ? ' class="eq-moi"' : ''}>
+          <td>${esc(c.nom)}${c.id === equipe.moi ? ' <span class="badge">ce poste</span>' : ''}</td>
+          <td>${esc(K.LIBELLE_ROLE[c.role])} <span class="muted small">— ${esc(K.DETAIL_ROLE[c.role])}</span></td>
+          <td class="muted">${esc(c.poste || '—')}</td>
+          ${g.ok ? RowMenu.cellule('EQ:' + c.id) : '<td class="row-actions"></td>'}</tr>`).join('')}</tbody></table></div>` : ''}
+
+      ${/* Un bouton éteint DIT pourquoi, et par la même fonction que celle qui refusera (9.4.5) :
+            `peutGererCollaborateurs` est appelée côté processus principal au moment du geste, et
+            son verdict voyage jusqu'ici. Deux contrôles recopiés finiraient par diverger, et
+            l'écran proposerait un geste que l'enregistrement refuse. */''}
+      ${g.ok ? '' : `<p class="muted small mt">${esc(g.motif || '')} ${esc(g.geste || '')}</p>`}
+      <div class="modal-actions">
+        <button class="btn btn-primary" id="eq-add" ${g.ok ? '' : 'disabled'}>Ajouter un collaborateur…</button>
+      </div>
+      <p class="muted small">Une identité <strong>déclarée</strong>, pas un mot de passe : celui du cabinet ouvre déjà
+      toute la base, donc un second par personne ne protégerait rien de plus. Ce que les rôles apportent, c'est de
+      savoir <strong>qui</strong> a validé une écriture, et d'éviter qu'elle soit validée par quelqu'un dont ce n'est
+      pas le travail. Les droits d'un dossier précis se règlent dans sa fiche, onglet <strong>Suivi</strong>.</p>`;
+
+    const sel = $('#eq-je-suis', box);
+    if (sel) {
+      sel.onchange = async () => {
+        try {
+          await api.jeSuis(sel.value);
+          S = await api.state();
+          equipe = await api.collaborateurs();
+          dessinerEquipe(document, true);
+          toast(sel.value ? 'C\'est noté : tes gestes porteront ton nom.' : 'Plus personne n\'est déclaré sur ce poste.');
+        } catch (e) { toast(plainError(e), 'error'); }
+      };
+    }
+    const add = $('#eq-add', box);
+    if (add) add.onclick = () => formCollaborateur(null);
+    RowMenu.brancherMenus(box, id => {
+      const c = liste.find(x => x.id === String(id).slice(3));
+      if (!c) return [];
+      return [
+        { icon: 'modifier', label: 'Modifier ce collaborateur', detail: 'Son nom et son rôle.', run: () => formCollaborateur(c) },
+        { icon: 'supprimer', label: 'Retirer du cabinet', danger: true,
+          detail: 'Son nom reste sur les écritures qu\'il a validées : une piste d\'audit ne s\'efface pas.',
+          run: () => retirerCollaborateur(c) }
+      ];
+    });
+  }
+
+  function formCollaborateur(c) {
+    modal(`<h2>${c ? 'Modifier ' + esc(c.nom) : 'Ajouter un collaborateur'}</h2>
+      <label class="field obligatoire"><span>Nom</span>
+        <input type="text" id="eq-nom" value="${esc(c ? c.nom : '')}" placeholder="Amine Ben Salah"></label>
+      <label class="field"><span>Rôle</span><select id="eq-role">
+        ${K.ROLES_COLLAB.map(r => `<option value="${r}" ${c && c.role === r ? 'selected' : ''}>${esc(K.LIBELLE_ROLE[r])}</option>`).join('')}
+      </select></label>
+      <p class="muted small" id="eq-detail"></p>
+      <p class="muted small">Le rôle vaut partout, sauf sur les dossiers où un droit a été posé pour cette personne :
+      c'est ce qui permet de confier un dossier à quelqu'un sans lui ouvrir tout le portefeuille.</p>
+      <div class="modal-actions"><button class="btn" data-close>Annuler</button>
+        <button class="btn btn-primary" id="eq-ok">${c ? 'Enregistrer' : 'Ajouter'}</button></div>`,
+    (couche, close) => {
+      // Le détail du rôle suit la liste : choisir « Supervision » sans savoir ce que ça ouvre, c'est
+      // choisir au hasard. La phrase vient de `DETAIL_ROLE`, la même que le tableau affiche.
+      const r = $('#eq-role', couche), d = $('#eq-detail', couche);
+      const dire = () => { d.textContent = K.DETAIL_ROLE[r.value] || ''; };
+      r.onchange = dire; dire();
+      $('#eq-ok', couche).onclick = async () => {
+        const nom = $('#eq-nom', couche).value.trim();
+        try {
+          const avant = (equipe.liste || []).filter(x => x.actif).length;
+          S = await api.saveCollaborateur({ id: c ? c.id : '', nom, role: r.value });
+          equipe = await api.collaborateurs();
+          close(); dessinerEquipe(document, true);
+          // Le premier déclaré devient l'identité de ce poste : on le DIT, sinon la personne
+          // découvre son nom en haut d'un bandeau sans savoir qui l'y a mis.
+          toast(c ? 'Collaborateur enregistré.'
+            : avant ? `${nom} fait partie du cabinet.`
+              : `${nom} fait partie du cabinet, et c'est ton nom sur cet ordinateur.`);
+        } catch (e) {
+          // Un refus se MONTRE : on ramène le champ fautif à l'écran avec le curseur dedans,
+          // plutôt qu'une phrase au-dessus d'un formulaire qui a pu défiler (règle 7.0.0).
+          refus($('#eq-nom', couche), plainError(e));
+        }
+      };
+    });
+  }
+
+  async function retirerCollaborateur(c) {
+    const ok = await confirmDialog(`Retirer ${c.nom} ?`,
+      '<p>Son nom <strong>reste</strong> sur les écritures qu\'il a validées : une piste d\'audit ne s\'efface pas, '
+      + 'et c\'est elle que lit un contrôle.</p><p>Il ne pourra plus être choisi comme identité sur un poste, '
+      + 'et les droits posés pour lui sur des dossiers cessent de s\'appliquer.</p>', 'Retirer', true);
+    if (!ok) return;
+    try {
+      S = await api.retirerCollaborateur(c.id);
+      equipe = await api.collaborateurs();
+      dessinerEquipe(document, true);
+      toast(`${c.nom} a été retiré du cabinet.`);
+    } catch (e) { await infoDialog('Ce collaborateur reste en place', plainError(e)); }
+  }
+
   async function dessinerLicence(view, dejaLu) {
     if (!dejaLu) {
       await chargerLicence();
@@ -5814,6 +6130,7 @@
   const REG_PANNEAUX = {
     'pan-cabinet': { onglet: 'cabinet', titre: 'Ton cabinet', mots: 'cabinet nom email telephone jour relance tva cnss depot echeance' },
     'pan-appairage': { onglet: 'cabinet', titre: 'Le fichier à remettre à tes clients', mots: 'appairage fichier client empreinte cle publique chiffrer skanpair' },
+    'pan-equipe': { onglet: 'cabinet', titre: 'L\'équipe', mots: 'equipe collaborateur collaborateurs qui saisit valide supervision role droits personne poste partage plusieurs assistant stagiaire chef mission' },
     'pan-licence': { onglet: 'cabinet', titre: 'Licence', mots: 'licence cle payer prix dossiers hors skanfact quota gratuit acheter abonnement facture' },
     'pan-saisie': { onglet: 'compta', titre: 'La grille de saisie', mots: 'saisie clavier touches raccourci solder recopier dupliquer journal date kilometre grille brouillard validation' },
     'pan-guides': { onglet: 'compta', titre: 'Guides d\'écritures', mots: 'guide modele ecriture type loyer salaire achat tva honoraires steg prerempli abonnement recurrent' },
@@ -5876,6 +6193,10 @@
         <p class="muted small mt">Cette empreinte identifie ton cabinet. Ton client la voit après l'import : s'il te la lit au téléphone
         et qu'elle correspond, c'est bien à toi qu'il envoie.</p>
         <div class="modal-actions"><button class="btn btn-primary" id="c-pair">Enregistrer le fichier d'appairage…</button></div>
+      </div>
+
+      ${panneauReg('pan-equipe', info('eq.equipe'))}
+        <div id="eq-panel"><p class="muted small">Chargement…</p></div>
       </div>
 
       ${panneauReg('pan-licence', info('lic.cab'))}
@@ -6047,6 +6368,7 @@
       };
     });
     brancherReglagesCompta(view);
+    dessinerEquipe(view);
     dessinerLicence(view);
     bindRecoveryBanner(view);
     if ($('#r-demo-on')) $('#r-demo-on').onclick = async () => {

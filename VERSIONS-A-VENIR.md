@@ -50,7 +50,7 @@ En cas de contradiction, `DIRECTION.md` fait foi, puis `CAHIER-DES-CHARGES.md`, 
 | *9.6.1* | *Entretien (hors des 13 demandées)* | *4* | *Intention* | *3 j · 6 j* |
 | **9.7.0** | Immobilisations et stocks | 10 | Intention | 5 j · 10 j |
 | **9.8.0** | La clôture d'exercice | 15 | Intention | 13 j · 30 j |
-| **9.9.0** | Le cabinet à plusieurs | 8 | Intention | 10 j · 20 j |
+| ~~**9.9.0**~~ | ~~Le cabinet à plusieurs~~ | 8 | Intention | **livré** 21/09/2026 |
 | *9.9.1* | *Entretien (hors des 13 demandées)* | *4* | *Intention* | *3 j · 6 j* |
 | **9.10.0** | La révision et les questions | 10 | Intention | 10 j · 20 j |
 | **10.0.0** | La liasse et l'annuel | 11 | Esquisse | 10 j · 20 j |
@@ -643,7 +643,7 @@ propose l'archivage, jamais une perte silencieuse).
 
 ---
 
-## 9.9.0 — Le cabinet à plusieurs
+## 9.9.0 — Le cabinet à plusieurs — **LIVRÉE le 21/09/2026**
 
 > *Plusieurs collaborateurs sur un cabinet, sans que l'un efface le travail de l'autre en silence.*
 

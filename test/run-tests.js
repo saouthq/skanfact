@@ -5112,14 +5112,21 @@ t('cabinet : la clé privée ne traverse jamais le pont vers l\'interface', () =
   // n'en sort pas. Le réécrire dans le test ne prouverait rien (« un e2e ne doit jamais rejouer
   // le code qu'il teste », 6.8.1).
   // eslint-disable-next-line no-new-func
-  const faireSafeState = new Function('state', 'Z', corps + '; return safeState();');
-  const sorti = faireSafeState(faux, { keyFingerprint: k => 'EMPREINTE-DE-' + k });
+  const faireSafeState = new Function('state', 'Z', 'moiId', 'quiSuisJe', corps + '; return safeState();');
+  const sorti = faireSafeState(faux, { keyFingerprint: k => 'EMPREINTE-DE-' + k },
+    () => 'c_essai', () => 'Amine');
   const texte = JSON.stringify(sorti);
   assert.ok(!/SECRET-A-NE-JAMAIS-SORTIR/.test(texte), 'safeState laisse passer la clé privée');
   assert.ok(!('privateKey' in (sorti.cabinet || {})), 'la clé privée est encore là, même vide');
   assert.strictEqual(sorti.cabinet.fingerprint, 'EMPREINTE-DE-PUB', 'l\'empreinte doit être calculée, pas recopiée');
   assert.strictEqual(sorti.cabinet.name, 'Cabinet Essai', 'safeState ne doit pas vider le reste');
   assert.strictEqual(faux.cabinet.privateKey, 'SECRET-A-NE-JAMAIS-SORTIR', 'safeState a muté l\'état d\'origine');
+  // 9.9.0 — QUI travaille sur ce poste. L'identité vit dans `app-config.json`, pas dans l'état :
+  // elle est AJOUTÉE ici pour l'écran. Absente, elle vaudrait `undefined` côté renderer, et tout
+  // ce qui s'y fie se désarmerait en silence — c'est exactement ainsi que l'empreinte du cabinet
+  // a laissé passer la licence d'un AUTRE cabinet en 9.4.0, et aucun test pur ne pouvait le voir.
+  assert.strictEqual(sorti.moi, 'c_essai', 'safeState doit porter l\'identité du poste');
+  assert.strictEqual(sorti.moiNom, 'Amine', 'safeState doit porter le nom affiché de qui travaille ici');
   // L'interface ne reçoit aucun moyen de demander la clé.
   const preRaw = fs.readFileSync(path.join(__dirname, '..', 'src', 'cabinet', 'preload.js'), 'utf8');
   // On juge le CODE, pas les commentaires : un commentaire qui explique la règle en la citant
@@ -12993,7 +13000,11 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     const manquants = SOCLE.filter(k => !(k in L));
     assert.deepStrictEqual(manquants, [], 'un champ du socle de livre.json a disparu');
     assert.deepStrictEqual(Object.keys(L).sort(),
-      SOCLE.concat(['inventaires']).sort(),          // 9.7.0 : l'inventaire de stock
+      // 9.7.0 : l'inventaire de stock. 9.9.0 : l'état de RÉVISION mois par mois — posé maintenant,
+      // rempli en 9.10.0, pour la même raison que les trois listes vides de la 9.2.0 : le tableau
+      // de production le lit dès aujourd'hui pour dire « révisé : — » au lieu de « non », et une
+      // liste dont la forme change après avoir été écrite chez soixante clients ne se rattrape plus.
+      SOCLE.concat(['inventaires', 'revisions']).sort(),
       'la forme du livre a changé — si c\'est voulu, c\'est une décision à écrire dans le cahier');
     // 9.8.5 — la forme d'une LIGNE est figée elle aussi. Ce test manquait, et c'est le trou par
     // lequel T-13 est passé : la 9.2.0 a écrit une ligne SANS `tiers`, personne ne l'a vu, et le
@@ -13687,6 +13698,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   require('./suites/moteur.js')({ t, assert, lireSource });
   require('./suites/immobilisations.js')({ t, assert, lireSource });
   require('./suites/cloture.js')({ t, assert, lireSource });
+  require('./suites/equipe.js')({ t, assert, lireSource });
   require('./suites/terrain.js')({ t, assert, lireSource });
 
   // ---------- 9.4.10 : aucune suite découpée ne reste sur le bord de la route ----------

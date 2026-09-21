@@ -105,6 +105,9 @@
     guides: [],
     // La correspondance des comptes, côté cabinet. Un dossier porte ses exceptions.
     correspondance: [],
+    // Les collaborateurs (9.9.0). Vide = cabinet d'une personne : tout est permis, et rien ne
+    // change à l'écran tant que personne n'est déclaré.
+    collaborateurs: [],
     settings: { ...DEFAULT_SETTINGS }
   };
 
@@ -155,6 +158,11 @@
       // décalage. Réglable, donc enregistré — sinon le réglage repartirait à zéro à chaque
       // ouverture, ce qui est la façon la plus sûre de faire croire qu'il ne sert à rien.
       banque: (d.banque && typeof d.banque === 'object') ? d.banque : null,
+      // 9.9.0 — les droits SUR CE DOSSIER, collaborateur par collaborateur. Absent d'ici, le
+      // droit posé sur un dossier serait jeté au prochain chargement et chacun retomberait sur son
+      // rôle général : le seul cas où ça se verrait est celui où ça compte — quelqu'un qui n'avait
+      // pas le droit de valider ici l'aurait à nouveau, sans un mot.
+      droits: (d.droits && typeof d.droits === 'object' && !Array.isArray(d.droits)) ? d.droits : {},
       audit: Array.isArray(d.audit) ? d.audit : [],
       packs: Array.isArray(d.packs) ? d.packs : []
     };
@@ -178,6 +186,196 @@
     if (!r.version || r.version !== version) return 'version';
     if (r.mois !== mois) return 'mois';
     return '';
+  }
+
+  // ================================================================ LES COLLABORATEURS (9.9.0)
+  //
+  // Un cabinet de plus d'une personne. Trois rôles, et ils se contiennent l'un l'autre :
+  // `supervision` ⊃ `validation` ⊃ `saisie`.
+  //
+  // **Ce qui est décidé, et pourquoi** : une identité DÉCLARÉE, pas un mot de passe par
+  // collaborateur. Le mot de passe du cabinet ouvre déjà toute la base — celle de soixante
+  // entreprises — donc un second mot de passe par personne ne protégerait rien de plus : qui
+  // connaît le premier lit tout. Ce que l'identité apporte, ce n'est pas le secret, c'est
+  // l'ATTRIBUTION (qui a validé cette écriture) et les DROITS (qui a le droit de la valider).
+  // Prétendre le contraire serait exactement le genre d'affirmation que cette application
+  // s'interdit depuis « 7 pièces vérifiées, intactes » (Cabinet 1.0.0), et l'écran le dit.
+  // **À VÉRIFIER avec le cabinet pilote** : un mot de passe par collaborateur devient utile le jour
+  // où un cabinet le demande — c'est alors une décision, pas un effet de bord.
+  //
+  // **La valeur par défaut est celle qui ne fait rien** (9.1.1) : tant qu'AUCUN collaborateur n'est
+  // déclaré, tout est permis et rien ne change à l'écran. Un cabinet d'une personne — c'est-à-dire
+  // tous ceux d'aujourd'hui — ne doit pas se retrouver enfermé dehors par une mise à jour.
+  const ROLES_COLLAB = ['saisie', 'validation', 'supervision'];
+  const RANG_ROLE = { saisie: 1, validation: 2, supervision: 3 };
+  const LIBELLE_ROLE = {
+    saisie: 'Saisie', validation: 'Saisie et validation', supervision: 'Supervision'
+  };
+  const DETAIL_ROLE = {
+    saisie: 'Écrit au brouillard, importe, rapproche. Ne valide pas.',
+    validation: 'Tout ce que fait la saisie, plus la validation, le lettrage et les déclarations.',
+    supervision: 'Tout, plus la clôture d\'un exercice et la gestion des collaborateurs.'
+  };
+
+  function migrateCollaborateur(c) {
+    c = c || {};
+    return {
+      id: String(c.id || ''),
+      nom: String(c.nom || '').trim(),
+      role: ROLES_COLLAB.includes(c.role) ? c.role : 'saisie',
+      actif: c.actif !== false,
+      creeLe: c.creeLe || null,
+      // Le poste sur lequel cette personne travaille d'habitude. Indicatif : il sert à proposer la
+      // bonne identité à l'ouverture, jamais à interdire quoi que ce soit — quelqu'un qui dépanne
+      // sur le poste d'un autre reste lui-même.
+      poste: String(c.poste || '')
+    };
+  }
+
+  const collaborateurs = state => (state && Array.isArray(state.collaborateurs) ? state.collaborateurs : []).filter(c => c.actif);
+  const collaborateurDe = (state, id) => collaborateurs(state).find(c => c.id === String(id || '')) || null;
+
+  // Le rôle de quelqu'un SUR UN DOSSIER. Un droit posé sur le dossier l'emporte sur le rôle général
+  // — c'est le sens de « droits par dossier » : quelqu'un qui valide partout peut n'être que
+  // saisisseur sur le dossier d'un proche, et l'inverse est vrai aussi.
+  //
+  // Rend `'libre'` quand aucun collaborateur n'est déclaré : il n'y a alors personne à qui refuser
+  // quoi que ce soit.
+  function roleSurDossier(state, dossierId, collabId) {
+    if (!collaborateurs(state).length) return 'libre';
+    const c = collaborateurDe(state, collabId);
+    if (!c) return '';
+    const d = (state.dossiers || []).find(x => x.id === dossierId);
+    const pose = d && d.droits && ROLES_COLLAB.includes(d.droits[c.id]) ? d.droits[c.id] : '';
+    return pose || c.role;
+  }
+
+  // La porte unique des droits. Elle rend un objet, jamais un booléen nu : un refus dit TROIS
+  // choses — ce qui est refusé, pourquoi, et qui peut le faire (7.0.0).
+  function peut(state, dossierId, collabId, geste) {
+    const exige = RANG_ROLE[geste] || RANG_ROLE.saisie;
+    const role = roleSurDossier(state, dossierId, collabId);
+    if (role === 'libre') return { ok: true, role: 'libre' };
+    if (!role) {
+      return { ok: false, role: '', motif: 'Ce poste ne dit pas qui travaille dessus.',
+        geste: 'Choisis ton nom dans les Réglages, panneau « Collaborateurs ».' };
+    }
+    if ((RANG_ROLE[role] || 0) >= exige) return { ok: true, role };
+    const c = collaborateurDe(state, collabId);
+    const qui = collaborateurs(state).filter(x => (RANG_ROLE[roleSurDossier(state, dossierId, x.id)] || 0) >= exige);
+    return {
+      ok: false, role, exige: geste,
+      motif: `${c ? c.nom : 'Ce collaborateur'} a le rôle « ${LIBELLE_ROLE[role]} » sur ce dossier : ce geste demande « ${LIBELLE_ROLE[geste] || geste} ».`,
+      geste: qui.length
+        ? `${qui.map(x => x.nom).join(', ')} ${qui.length > 1 ? 'peuvent' : 'peut'} le faire.`
+        : 'Personne n\'a encore ce rôle sur ce dossier : un superviseur peut le donner dans la fiche du dossier.'
+    };
+  }
+
+  // Qui a le droit de créer ou de retirer un collaborateur. Tant qu'AUCUN superviseur n'existe, la
+  // porte est ouverte — sinon le premier cabinet qui déclare deux saisisseurs et ferme l'écran ne
+  // pourrait plus jamais y revenir. Dès qu'un superviseur existe, lui seul.
+  function peutGererCollaborateurs(state, collabId) {
+    const sup = collaborateurs(state).filter(c => c.role === 'supervision');
+    if (!sup.length) return { ok: true, amorce: true };
+    const c = collaborateurDe(state, collabId);
+    if (c && c.role === 'supervision') return { ok: true };
+    return {
+      ok: false,
+      motif: 'Seul un superviseur ajoute ou retire un collaborateur.',
+      geste: `${sup.map(x => x.nom).join(', ')} ${sup.length > 1 ? 'peuvent' : 'peut'} le faire.`
+    };
+  }
+
+  function collaborateurValide(state, c, idExistant) {
+    const nom = String((c && c.nom) || '').trim();
+    if (nom.length < 2) return { ok: false, motif: 'Un collaborateur a besoin d\'un nom d\'au moins deux caractères.' };
+    if (!ROLES_COLLAB.includes(c && c.role)) return { ok: false, motif: 'Choisis un rôle.' };
+    const pris = (state.collaborateurs || []).some(x => x.id !== idExistant && x.actif !== false
+      && x.nom.toLowerCase() === nom.toLowerCase());
+    if (pris) return { ok: false, motif: `« ${nom} » existe déjà : deux personnes du même nom ne se distingueraient pas dans la piste d'audit.` };
+    return { ok: true, nom };
+  }
+
+  // Les dossiers CONFIÉS à quelqu'un : ceux où un droit est posé explicitement pour lui. C'est une
+  // question différente de « a-t-il le droit d'y toucher ? » — tout le monde a un rôle général, donc
+  // tout le monde peut travailler partout tant qu'on ne restreint rien. Ce qui fait un « À faire »
+  // personnel, c'est l'ATTRIBUTION : ce dossier est à moi. Personne n'a rien de confié → la liste
+  // est vide, et l'écran le DIT avec le geste (ouvrir la fiche, poser un droit), plutôt que de
+  // montrer tout le cabinet sous le nom d'une personne.
+  function dossiersConfies(state, collabId) {
+    const id = String(collabId || '');
+    return (state.dossiers || []).filter(d => d.droits && ROLES_COLLAB.includes(d.droits[id]));
+  }
+
+  // ================================================================ LA PRODUCTION (9.9.0)
+  //
+  // Par dossier et par mois : reçu → saisi → révisé → déclaré, qui et depuis quand. Tout est LU —
+  // les paquets pour « reçu », l'index des livres pour le reste — jamais tenu à la main : une liste
+  // d'états qu'on coche est fausse le jour où quelqu'un oublie de cocher.
+  //
+  // « Révisé » n'a pas encore d'écrivain : c'est la 9.10.0 qui le remplira. En attendant il vaut
+  // `null`, et l'écran écrit « — », jamais « non » — on ne dit pas d'un dossier qu'il n'est pas
+  // révisé quand on n'a simplement aucun moyen de le savoir (règle des cases fiscales, 9.6.0).
+  const ETAPES_PRODUCTION = [
+    { id: 'recu', label: 'Reçu', detail: 'Le paquet du mois est arrivé.' },
+    { id: 'saisi', label: 'Saisi', detail: 'Des écritures existent sur ce mois dans le livre.' },
+    { id: 'revise', label: 'Révisé', detail: 'Le dossier de révision de la 9.10.0 le remplira.' },
+    { id: 'declare', label: 'Déclaré', detail: 'La déclaration du mois est marquée déposée.' }
+  ];
+
+  // `index` est l'index des livres de CE dossier (`livre-index.json`), pas le livre lui-même : le
+  // tableau de production d'un portefeuille de soixante dossiers ne peut pas ouvrir et déchiffrer
+  // cent quatre-vingts livres pour dessiner une grille (c'est la mesure de la 9.1.0 qui l'interdit).
+  function productionDuDossier(dossier, index, todayIso, graceDay) {
+    const parMois = {};
+    ((index && index.exercices) || []).forEach(ex => {
+      const p = (ex && ex.production) || {};
+      Object.keys(p).forEach(m => { parMois[m] = p[m]; });
+    });
+    return dossierMonths(dossier, todayIso, graceDay).map(m => {
+      const p = parMois[m.month] || {};
+      const recu = !!m.pack;
+      const saisi = Number(p.ecritures) || 0;
+      return {
+        mois: m.month, label: m.label, recu, etat: m.state, pack: m.pack || null,
+        saisi, validees: Number(p.validees) || 0, brouillards: Number(p.brouillards) || 0,
+        // `null` et non `false` : sans livre sur cet exercice, on ne SAIT pas — et ne pas savoir
+        // n'est pas « non ». L'écran écrit « — » (règle des cases fiscales, 9.6.0).
+        revise: p.revise === undefined ? null : !!p.revise,
+        declare: p.declare === undefined ? null : !!p.declare,
+        qui: p.qui || '', depuis: p.depuis || null,
+        // L'étape où ce mois EST BLOQUÉ, c'est-à-dire la première qui n'est pas franchie.
+        //
+        // « Révisé » ne BLOQUE rien, et c'est une décision : il n'a pas encore d'écrivain — la
+        // 9.10.0 le remplira — donc le faire barrer la route mettrait TOUS les mois de TOUS les
+        // dossiers à « bloqué à la révision » le jour de la livraison, et une grille entièrement
+        // rouge n'apprend rien à personne. Un mois déclaré est au bout de la chaîne, révisé ou
+        // non ; la révision ne distingue que les deux états intermédiaires. C'est la règle « la
+        // valeur par défaut d'une règle qu'on ne connaît pas est celle qui ne fait rien » (9.1.1),
+        // appliquée à une étape dont personne ne tient encore le stylo.
+        etape: !recu ? 'recu' : !saisi ? 'saisi' : p.declare ? 'fini' : p.revise ? 'declare' : 'revise'
+      };
+    });
+  }
+
+  // Le tableau entier : une ligne par dossier, ses mois, et combien sont bloqués où.
+  function production(state, index, opts) {
+    const o = opts || {};
+    const jour = (state.settings || {}).relanceDay;
+    return (state.dossiers || [])
+      .filter(d => !d.archived && (o.avecExemple !== false || !d.demo))
+      .map(d => {
+        const mois = productionDuDossier(d, (index && index[d.id]) || null, o.today, jour);
+        return {
+          id: d.id, name: d.name, matricule: d.matricule || '', demo: !!d.demo, manual: !!d.manual,
+          mois, recus: mois.filter(m => m.recu).length, saisis: mois.filter(m => m.saisi).length,
+          declares: mois.filter(m => m.declare).length,
+          aSaisir: mois.filter(m => m.etape === 'saisi').length,
+          dernier: mois.filter(m => m.recu).slice(-1)[0] || null
+        };
+      })
+      .sort((a, b) => (b.aSaisir - a.aSaisir) || String(a.name).localeCompare(b.name, 'fr'));
   }
 
   function migrate(state) {
@@ -223,6 +421,11 @@
     // — et l'exemple se referait à CHAQUE ouverture, silencieusement (défaut `matricule`, 6.8.0).
     s.exemple = (s.exemple && typeof s.exemple === 'object') ? s.exemple : null;
     s.correspondance = Array.isArray(s.correspondance) ? s.correspondance : [];
+    // 9.9.0 — les collaborateurs. Même règle que tout ce qui précède : absents d'ici, ils seraient
+    // jetés au prochain chargement, et un cabinet de trois personnes redeviendrait anonyme sans un
+    // mot — la piste d'audit cesserait de dire QUI, ce qui est le seul point de cette version.
+    s.collaborateurs = (Array.isArray(s.collaborateurs) ? s.collaborateurs : [])
+      .map(migrateCollaborateur).filter(c => c.id && c.nom);
     // 9.5.0 — les deux tables de la banque, au niveau du CABINET : un comptable associe les
     // colonnes d'une banque une fois pour ses soixante clients, et reconnaît « STEG » une fois.
     // Absentes d'ici, elles seraient jetées au prochain chargement et il faudrait tout réassocier
@@ -740,6 +943,11 @@
   // l'alerte sur un « je ne sais pas encore » la ferait clignoter à chaque démarrage, et une alerte
   // qui clignote ne se lit plus.
   function cabinetTodo(state, todayIso, opts) {
+    // « À faire » par collaborateur (9.9.0). On restreint le PORTEFEUILLE, pas la liste d'arrivée :
+    // filtrer les lignes après coup laisserait chaque libellé annoncer le compte du cabinet entier
+    // au-dessus d'une liste réduite — un compteur et la liste qu'il annonce se calculent avec la
+    // même fonction (6.8.1). Ici, la même fonction sur un portefeuille plus petit.
+    if (opts && opts.collabId) state = { ...state, dossiers: dossiersConfies(state, opts.collabId) };
     const rows = dossierList(state, todayIso);
     const out = [];
     // La clé de secours passe AVANT tout le reste. C'est le seul manque irréparable de cette
@@ -1361,6 +1569,11 @@
     parseCsv, verdictOrigine, csvDangereux, toCsvLine, mergeEcritures, ecrituresPlan,
     DEFAULT_DEADLINES, deadlineSettings, echeances, dayOf,
     dossierMonths, dossierRow, dossierList, cabinetTodo, relanceMail, pairingFile,
-    INDEX_STABLES, nomIndex, releasePourIndex, moisManquants
+    INDEX_STABLES, nomIndex, releasePourIndex, moisManquants,
+    // Le cabinet à plusieurs (9.9.0)
+    ROLES_COLLAB, RANG_ROLE, LIBELLE_ROLE, DETAIL_ROLE, ETAPES_PRODUCTION,
+    migrateCollaborateur, collaborateurs, collaborateurDe, collaborateurValide,
+    roleSurDossier, peut, peutGererCollaborateurs, dossiersConfies,
+    productionDuDossier, production
   };
 }));

@@ -67,6 +67,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Une **réexportation** se prouve par l'identité d'objet, jamais par le résultat | 9.6.1 |
 | Une preuve par réintroduction ne vaut que sur un lot **VERT** : sinon on mesure le vide | 9.7.0 |
 | Un **instrument qui n'ATTEINT pas l'écran** annonce « tout va bien » : l'état par défaut de l'objet qu'on ouvre cache la page autant que l'onglet par défaut | 9.8.8 — T-55, quatre écrans sur onze ; 9.4.3 |
+| Un test **trop LARGE** laisse passer le défaut, aussi sûrement qu'un test trop étroit accuse du code juste | 9.9.0 — la seconde piste d'audit qui satisfaisait l'assertion, la tranche qui avalait la porte ; 9.4.7 |
 | **Élargir** une sonde se prouve dans les DEUX sens : qu'elle voie le défaut, et qu'elle ne voie rien ailleurs | 9.8.8 — T-49 bis, 28 accusations sur du code juste |
 | Un **refus qu'on avale** en silence est pire que le refus : l'écran affirme alors le contraire du vrai | 9.8.0 |
 | Un parcours qui compare du texte **aplatit les espaces** : `textContent` garde les retours de la source | 9.8.0 |
@@ -90,6 +91,9 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 |---|---|
 | Une règle apprise d'un côté **se vérifie de l'autre**, à la main | 7.3.0 (purge des sauvegardes), 7.18.0 (`pl`), 7.32.0 (« À faire »), 8.1.0 (le saut d'horloge) |
 | Un **INSTRUMENT qui ne couvre qu'une des deux applications** ne protège qu'une des deux | 9.4.3 |
+| Ce qui protège du **travail perdu** entre deux postes, c'est la RÉVISION relue avant d'écrire — le verrou ne couvre que deux écritures simultanées | 9.9.0 ; 3.2.0 |
+| Une **écriture validée** ne se fusionne jamais : elle existe ou pas, et celle de l'autre poste n'est jamais perdue ni renumérotée | 9.9.0 |
+| Une **étape qui n'a pas d'écrivain** ne bloque rien, et vaut « — », jamais « non » | 9.9.0 — « révisé » avant la 9.10.0 ; 9.6.0 |
 | Une **BÊTA qui ne construit qu'une des deux** ne se fait tester qu'à moitié ; la cloison, c'est le canal | 9.8.4 |
 | electron-builder **ne déduit pas le canal du numéro** : on le NOMME, et la page de la release se relit | 9.8.8 — `latest.yml` sur une bêta, servi aux stables |
 | Le fournisseur GitHub d'electron-updater **ne connaît que « alpha » et « beta »** : `cabinet-beta` n'y passe jamais ; un repli se teste sur le canal qu'il doit servir | 9.8.8 — la bêta que le comptable ne voyait pas |
@@ -153,7 +157,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 **L'outillage (9.1.0)**
 
 `npm test` (les tests purs) · `npm run lint` (ESLint, zéro erreur exigée) · `npm run charge` (le test
-de charge du livre) · `npm run e2e:<nom>` (50 parcours, tableau au § « Les tests qui ouvrent vraiment
+de charge du livre) · `npm run e2e:<nom>` (51 parcours, tableau au § « Les tests qui ouvrent vraiment
 l'application ») · CI GitHub sur Linux et Windows à chaque poussée · « Construire un essai » pour
 faire tester une version sans la publier.
 
@@ -602,6 +606,7 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:immobilisations` | **les biens et le stock** : une acquisition venue d'un paquet qui remonte SANS fiche et propose de la créer (jamais d'office), le plan visible pendant la saisie, un dégressif sans taux refusé en nommant le taux, les dotations passées en brouillard au 31/12 et le bouton qui s'éteint, la modification d'un bien dont la dotation est écrite refusée en nommant le geste, un inventaire collé depuis un tableur et sa variation dans le bon sens |
 | `npm run e2e:banque` | **la banque, de bout en bout** : trois banques aux trois formats (montant signé, Débit/Crédit séparés, en-têtes inconnus et associés à la main), un solde de fin faux refusé avec son écart, le même fichier refusé deux fois, l'automatique qui ne pose RIEN sur une ambiguïté, l'écriture manquante écrite depuis une ligne puis retrouvée « certain », le libellé retenu, le relevé retiré sans que le journal bouge |
 | `npm run e2e:cabinet-licence` | **la licence du Cabinet** : trois dossiers hors SkanFact gratuits, l'exemple qui ne compte pas, cinq clients qui dépassent le quota, la validation refusée pendant que lire, importer, exporter et SAISIR restent ouverts, deux dossiers archivés qui rendent la main, la clé d'un autre cabinet refusée en nommant les deux empreintes, celle d'un client parrainé refusée aussi, et le panneau qui nomme chaque dossier compté |
+| `npm run e2e:cabinet-equipe` | **le cabinet à plusieurs** : deux postes du même cabinet, deux collaborateurs — rien n'est restreint tant que personne n'est déclaré, le premier déclaré devient l'identité du poste, la piste d'audit porte son NOM, un saisisseur saisit et ne valide pas (le refus nomme qui peut), aucune lecture n'est fermée, le second poste reprend le cabinet par la copie externe, et la fusion des deux livres ne perd aucune validée sans toucher au fichier de l'autre |
 | `npm run e2e:saisie` | **la grille de saisie, AU CLAVIER** : une pièce entière tapée sans souris (Entrée descend, Tab solde), le brouillard sans numéro, la validation qui referme, les deux refus sur une validée, un lot dont la pièce fausse est au MILIEU et la numérotation qui reste 1..n, l'extourne au 1er du mois suivant, la recherche par montant après réouverture de l'application, et un guide écrit puis appliqué |
 | `npm run e2e:licence` | **l'éditeur et les offres, puis le client** : une première application DÉSARMÉE (`SKANFACT_CLE_EMBARQUEE` vers un chemin inexistant, développement seulement) — sans clé rien n'apparaît ; « Créer mes clés » écrit la privée dans un dossier isolé (`SKANFACT_DOSSIER_CLES`) et met le poste en état « éditeur » (ni essai ni verrou) ; « Émettre » signe une clé vérifiable, crée un BROUILLON de facture et l'historique ; la clé Indépendant collée refuse un nouveau fournisseur, pose un cadenas sur Achats et laisse les Statistiques ; la clé d'un autre matricule est refusée en nommant les deux ; « Renouveler » ; rien de ce qui traverse le pont ne contient la clé privée — PUIS une seconde application telle qu'un client l'installe (vraie clé embarquée, pas de clé privée) : essai de 30 jours, aucune trace de l'éditeur, plus de porte « Créer mes clés », et la clé signée par la clé d'essai du test REFUSÉE |
 
@@ -4592,6 +4597,85 @@ figeait. Règles posées :
   recopiait `b.disabled = !v.ok` est tombée le jour où les deux boutons ont cessé d'exiger la même
   chose, et celle qui recopiait le libellé « Solder la dernière ligne » le jour où il a dit d'où
   l'on solde. Les deux portaient sur du code juste.
+
+### 9.9.0 — Le cabinet à plusieurs
+
+Règles apprises, à ne pas recasser :
+
+- **Une identité DÉCLARÉE, pas un mot de passe par personne** — et l'écran le dit. Le mot de passe
+  du cabinet ouvre déjà toute la base, celle de soixante entreprises : un second par collaborateur
+  ne protégerait rien de plus, puisque qui connaît le premier lit tout. Ce que les rôles apportent,
+  ce n'est pas le secret, c'est l'**attribution** (qui a validé) et les **droits** (qui a le droit
+  de valider). Prétendre le contraire serait exactement le genre d'affirmation que ce projet
+  s'interdit depuis « 7 pièces vérifiées, intactes » (Cabinet 1.0.0). **À VÉRIFIER** : un mot de
+  passe par collaborateur devient utile le jour où un cabinet le demande — c'est alors une
+  décision, pas un effet de bord.
+- **La valeur par défaut est celle qui ne fait rien** (9.1.1) : aucun collaborateur déclaré → tout
+  est permis, et aucun écran ne change. Tous les cabinets d'aujourd'hui sont à une personne ; une
+  mise à jour ne doit enfermer personne dehors, ni lui poser une grille de droits vide — ce serait
+  lui vendre un problème qu'il n'a pas.
+- **Le premier collaborateur déclaré devient l'identité du poste.** Sans ça, quelqu'un qui se
+  déclare « Supervision » en premier **ferme la porte derrière lui** : le poste n'est plus personne,
+  un superviseur existe désormais, et plus aucun bouton ne permet d'ajouter le second. C'est « un
+  réglage qui accepte un clic et se retire ensuite la possibilité de revenir en arrière » (7.12.0),
+  et c'est le parcours à deux postes qui l'a trouvé — aucune relecture ne le voyait. Le PREMIER
+  seulement : déclarer un collègue ne doit pas vous faire changer de nom au milieu d'une saisie.
+- **Une porte UNIQUE pour les droits** (`droitBlock`), jumelle de `licenceBlockCab`. Un test relit
+  la source et exige les DEUX sens : la porte sur les trente-quatre gestes qui écrivent dans le
+  livre, et son **absence** sur tout ce qui lit. Sans la seconde moitié, le test laisserait passer
+  une porte posée partout — c'est-à-dire des données en otage (6.4.0), et ici ce sont les pièces de
+  soixante entreprises.
+- **Ce qui protège du travail perdu, c'est la RÉVISION, pas le verrou.** Le verrou ne couvre que
+  deux écritures simultanées ; le vrai danger du partage par fichier est silencieux — A ouvre, B
+  ouvre, A enregistre, B enregistre, et la demi-journée de A a disparu sans un mot. On relit le
+  disque avant d'écrire, et si la révision a bougé on n'écrit RIEN : on rend ce qu'on a trouvé, et
+  l'appelant fusionne. C'est la parade de la 3.2.0, portée au livre.
+- **`leverVerrou` n'avait AUCUN appelant.** Posé à chaque écriture et jamais levé, le verrou
+  interdisait à l'autre poste d'écrire pendant vingt-quatre heures après un seul enregistrement.
+  Une fonction écrite, exportée, testée et jamais appelée est invisible (7.3.0) — ici elle l'était
+  depuis la 9.2.0.
+- **Les trois règles de la fusion**, et aucune ne se négocie : (1) une écriture **validée** ne se
+  fusionne jamais — elle existe ou pas, et celle de l'autre poste n'est **jamais perdue** ; (2) un
+  numéro déjà pris est **signalé**, jamais réattribué (un numéro naît à la validation et ne bouge
+  plus, 9.2.0) et jamais jeté — c'est le seul cas insoluble du partage, exactement comme deux
+  factures émises hors ligne sous le même numéro en 3.2.0, et la parade est organisationnelle ;
+  (3) un **brouillard** présent des deux côtés est gardé **deux fois**, jamais tranché : c'est un
+  travail en cours, et en choisir un pour quelqu'un, c'est jeter sa demi-journée.
+- **Une étape qui n'a pas d'écrivain ne BLOQUE rien.** « Révisé » sera rempli par la 9.10.0 : le
+  faire barrer la route mettrait tous les mois de tous les dossiers à « bloqué à la révision » le
+  jour de la livraison, et une grille entièrement rouge n'apprend rien. Il vaut `null` quand on ne
+  sait pas (l'écran écrit « — », règle 9.6.0) et ne distingue que les deux états intermédiaires.
+- **Un tableau de portefeuille se lit dans les INDEX, jamais dans les livres.** Soixante dossiers
+  font cent quatre-vingts fichiers chiffrés ; l'état de production se calcule au moment où le livre
+  est en main (`productionDuLivre`) et se range dans `livre-index.json`. C'est la mesure de la
+  9.1.0 qui l'impose.
+- **« Confié » et « autorisé » ne sont pas la même question.** Tout le monde a un rôle général,
+  donc tout le monde peut travailler partout ; ce qui fait un « À faire » personnel, c'est
+  l'attribution. Et le filtre porte sur le **PORTEFEUILLE**, pas sur les lignes d'arrivée : filtrer
+  après coup laisserait chaque libellé annoncer le compte du cabinet entier au-dessus d'une liste
+  réduite (6.8.1).
+- **Retirer un collaborateur ne l'EFFACE pas** (`actif: false`) : son nom vit sur des écritures
+  validées, et c'est la seule chose qu'un contrôle vient lire. Même règle que `retiree: true` sur
+  une clé de signature (8.6.0). Et le **seul superviseur** ne se retire pas : ce serait fermer la
+  porte de l'intérieur.
+- **Une liste ajoutée au format du livre est une DÉCISION** (9.7.0, re-rencontrée) : `revisions[]`
+  est posée maintenant et remplie en 9.10.0, pour la même raison que les trois listes vides de la
+  9.2.0 — le tableau de production la lit dès aujourd'hui, et une liste dont la forme change après
+  avoir été écrite chez soixante clients ne se rattrape plus. Le test du format tombe pour le dire.
+- **Un test trop LARGE laisse passer le défaut**, aussi sûrement qu'un test trop étroit accuse du
+  code juste (9.4.7). Deux fois dans cette version : une assertion sur le CORPS d'`ecrireLeLivre`
+  était satisfaite par sa SECONDE piste d'audit (celle de la fusion), et une tranche de source
+  bornée sur le seul handler suivant avalait la définition de `droitBlock` cent lignes plus bas —
+  elle accusait alors un handler de lecture parfaitement innocent (7.21.0). Les deux n'ont été vues
+  qu'en essayant de les faire tomber.
+- Piège de parcours : `#w-skip` sur l'écran du nom laisse le cabinet **sans nom**, et un poste qui
+  reprend un cabinet sans nom rouvre l'assistant. Légitime — mais un e2e qui traverse l'assistant
+  en cliquant « Passer » partout ne met pas l'application dans l'état qu'il prétend tester.
+
+Le test qui compte est `npm run e2e:cabinet-equipe` : deux postes du MÊME cabinet (le second reprend
+par la copie externe — deux cabinets créés séparément ont deux sels, donc deux clés, et ne peuvent
+pas lire les livres l'un de l'autre), deux collaborateurs, les droits tenus dans les deux sens, et la
+fusion qui ne perd aucune validée sans toucher au fichier de l'autre poste.
 
 ## Pistes pour la suite (non demandées)
 

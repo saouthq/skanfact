@@ -738,6 +738,12 @@
       // été compté, ligne par ligne, et un chiffre qu'on ne peut pas ouvrir se croit ou ne se croit
       // pas. Absente d'un livre écrit avant, elle vaut `[]` : aucun lecteur ancien ne s'en plaint.
       inventaires: [],
+      // La cinquième, ajoutée en 9.9.0 et remplie en 9.10.0 : l'état de RÉVISION, mois par mois.
+      // Elle est posée maintenant pour la même raison que les trois de la 9.2.0 — le tableau de
+      // production la lit dès aujourd'hui pour dire « révisé : — » au lieu de « non », et une
+      // liste dont la forme change après avoir été écrite chez soixante clients ne se rattrape
+      // plus. Absente d'un livre écrit avant, elle vaut `[]`.
+      revisions: [],
       ouverture: { date: null, source: null, lignes: [] },
       audit: []
     };
@@ -3083,6 +3089,121 @@
     return { ok: !motifs.length, motifs, debit: d, credit: c };
   }
 
+  // ---------------------------------------------------------------- la fusion de deux livres (9.9.0)
+  //
+  // Deux postes ont travaillé sur le même exercice pendant que le dossier réseau était coupé. Le
+  // verrou (`livre-<AAAA>.lock`) empêche l'écrasement quand les deux voient le même fichier ; il ne
+  // peut rien quand ils ne le voient pas. C'est là que la fusion sert, et elle suit la règle de la
+  // 3.2.0 : **le danger du partage n'est pas la panne, c'est le SILENCE**.
+  //
+  // Les trois règles, dans cet ordre :
+  //
+  //  1. **Une écriture validée ne se fusionne jamais : elle existe, ou elle n'existe pas.** On ne
+  //     recompose pas deux versions d'une validée en une troisième — c'est la règle qui vaut depuis
+  //     `mergeData` (3.2.0), et elle est ici plus forte encore : une validée est numérotée, datée,
+  //     signée par celui qui l'a passée. Si les deux livres en portent une sous le même `id` avec
+  //     un contenu différent, la NÔTRE est gardée et l'écart est RAPPORTÉ. Jamais réécrit.
+  //  2. **Une validée de l'autre poste n'est jamais perdue.** Absente de chez nous, elle entre,
+  //     telle quelle, avec son numéro. Et si ce numéro est déjà pris par une AUTRE écriture, elle
+  //     entre quand même — signalée comme doublon de numéro, jamais renumérotée (un numéro naît à
+  //     la validation et ne bouge plus, 9.2.0) et jamais jetée. C'est le seul cas insoluble du
+  //     partage, exactement comme deux factures émises hors ligne sous le même numéro en 3.2.0 :
+  //     la parade est organisationnelle (« une seule personne valide »), pas technique, et le rôle
+  //     `validation` par dossier existe pour ça.
+  //  3. **Un brouillard n'est jamais résolu en silence.** Même `id` des deux côtés avec un contenu
+  //     différent : les DEUX sont gardés — le nôtre intact, le sien ajouté sous un `id` neuf qui
+  //     dit d'où il vient — et le conflit est montré. Un brouillard est un travail en cours ; en
+  //     choisir un pour l'utilisateur, c'est jeter la demi-journée de quelqu'un.
+  //
+  // Ce qui n'est PAS fusionné, et pourquoi : l'exercice (ses dates, sa clôture), l'ouverture et le
+  // plan nommé par le cabinet appartiennent au dossier, pas au poste. Les listes qui portent un
+  // état (relevés, immobilisations, déclarations, inventaires, lettrages) se fusionnent par
+  // identifiant, à l'ajout seul — ce qui manque entre, ce qui existe des deux côtés reste chez
+  // nous. Rien ne s'y écrase.
+  const empreinteEcriture = e => JSON.stringify([
+    txt(e.date), txt(e.journal), txt(e.piece), txt(e.libelle), e.numero == null ? null : num(e.numero),
+    (Array.isArray(e.lignes) ? e.lignes : []).map(l => [txt(l.compte), txt(l.tiers), txt(l.libelle), num(l.debit), num(l.credit)])
+  ]);
+
+  function fusionnerLivres(mien, autre, quand) {
+    const r = {
+      valideesAjoutees: [], valideesEnConflit: [], numerosEnDoublon: [],
+      brouillardsAjoutes: [], brouillardsEnConflit: [], listes: {}
+    };
+    if (!isValidLivre(mien)) return { ok: false, motif: 'Le livre de ce poste n\'est pas lisible.', rapport: r };
+    if (!isValidLivre(autre)) return { ok: false, motif: 'Le fichier choisi n\'est pas un livre.', rapport: r };
+    if (txt(mien.dossier) !== txt(autre.dossier)) {
+      return { ok: false, motif: 'Ce livre appartient à un autre dossier.', rapport: r };
+    }
+    if (num(mien.exercice.annee) !== num(autre.exercice.annee)) {
+      return { ok: false, motif: `Ce livre porte l'exercice ${num(autre.exercice.annee)}, pas ${num(mien.exercice.annee)}.`, rapport: r };
+    }
+    // D'où vient l'autre livre : le dernier geste de SA piste d'audit le nomme. Un livre ne porte
+    // pas de champ « poste » — c'est l'audit qui sait qui a écrit, et c'est lui qui doit le dire.
+    const dernier = (autre.audit || [])[(autre.audit || []).length - 1] || {};
+    const nomAutre = txt(dernier.poste) || txt(dernier.qui) || 'autre poste';
+    const parId = new Map(mien.ecritures.map(e => [txt(e.id), e]));
+    // Les numéros DÉJÀ pris chez nous, écriture par écriture : c'est contre eux qu'un numéro venu
+    // de l'autre poste se compare, et pas contre le plus grand — deux postes qui valident chacun
+    // de leur côté produisent des suites qui se chevauchent, pas qui se suivent.
+    const numeros = new Map();
+    mien.ecritures.forEach(e => { if (e.numero != null) numeros.set(num(e.numero), txt(e.id)); });
+
+    autre.ecritures.forEach(e => {
+      const id = txt(e.id);
+      const chezMoi = parId.get(id);
+      const valide = e.statut !== 'brouillard';
+      if (chezMoi) {
+        if (empreinteEcriture(chezMoi) === empreinteEcriture(e)) return;      // identiques : rien à dire
+        if (valide || chezMoi.statut !== 'brouillard') {
+          r.valideesEnConflit.push({ id, numero: chezMoi.numero, piece: txt(chezMoi.piece), date: txt(chezMoi.date),
+            garde: 'ce poste', motif: 'les deux postes portent cette écriture sous le même identifiant avec un contenu différent' });
+          return;
+        }
+        // Deux brouillards du même identifiant, différents : les DEUX sont gardés.
+        // Un identifiant neuf, et qui reste neuf si l'on refusionne : `+fusion` posé deux fois
+        // écraserait la copie du premier tour, c'est-à-dire le travail qu'on vient de sauver.
+        let neuf = id + '+fusion';
+        for (let n = 2; parId.has(neuf); n++) neuf = id + '+fusion' + n;
+        const copie = { ...e, id: neuf, lignes: (e.lignes || []).map(l => ({ ...l })), venuDe: { poste: nomAutre, id }, statut: 'brouillard', numero: null };
+        mien.ecritures.push(copie);
+        parId.set(neuf, copie);
+        copie.lignes.forEach(l => assurerCompte(mien, l.compte, l.libelle));
+        r.brouillardsEnConflit.push({ id, copie: copie.id, piece: txt(e.piece), date: txt(e.date) });
+        return;
+      }
+      const venue = { ...e };
+      if (valide && venue.numero != null && numeros.has(num(venue.numero))) {
+        r.numerosEnDoublon.push({ id, numero: num(venue.numero), piece: txt(venue.piece), date: txt(venue.date),
+          avec: numeros.get(num(venue.numero)) });
+      }
+      mien.ecritures.push(venue);
+      (Array.isArray(venue.lignes) ? venue.lignes : []).forEach(l => assurerCompte(mien, l.compte, l.libelle));
+      if (valide) { if (venue.numero != null) numeros.set(num(venue.numero), id); r.valideesAjoutees.push({ id, numero: venue.numero, piece: txt(venue.piece), date: txt(venue.date) }); }
+      else r.brouillardsAjoutes.push({ id, piece: txt(venue.piece), date: txt(venue.date) });
+    });
+
+    // Les listes à état : ce qui MANQUE entre, ce qui existe des deux côtés ne bouge pas.
+    ['lettrages', 'releves', 'immobilisations', 'declarations', 'inventaires'].forEach(k => {
+      const miens = Array.isArray(mien[k]) ? mien[k] : (mien[k] = []);
+      const vus = new Set(miens.map(x => txt(x && x.id)));
+      const neufs = (Array.isArray(autre[k]) ? autre[k] : []).filter(x => x && !vus.has(txt(x.id)));
+      neufs.forEach(x => miens.push(x));
+      if (neufs.length) r.listes[k] = neufs.length;
+    });
+    // La piste d'audit des deux postes se recolle dans l'ordre du temps : c'est elle qui dit qui a
+    // fait quoi, et amputer la moitié venue de l'autre poste reviendrait à effacer son travail.
+    const vusAudit = new Set((mien.audit || []).map(a => JSON.stringify([a.quand, a.qui, a.quoi, a.detail])));
+    (autre.audit || []).forEach(a => {
+      const k = JSON.stringify([a.quand, a.qui, a.quoi, a.detail]);
+      if (!vusAudit.has(k)) { vusAudit.add(k); mien.audit.push(a); }
+    });
+    mien.audit.sort((a, b) => num(a.quand) - num(b.quand));
+    r.total = r.valideesAjoutees.length + r.brouillardsAjoutes.length + r.brouillardsEnConflit.length;
+    r.aRegarder = r.valideesEnConflit.length + r.numerosEnDoublon.length + r.brouillardsEnConflit.length;
+    return { ok: true, livre: mien, rapport: r, quand: Number(quand) || 0 };
+  }
+
   // ---------- la pièce équilibrée et l'amortissement (9.6.1) ----------
   //
   // Ces deux moteurs vivaient dans core.js depuis la 3.5.0 et la 6.3.0. Ils n'y avaient plus leur
@@ -3273,6 +3394,8 @@
     GUIDES_INVENTAIRE, controlesCloture, soldesDepuisOuverture,
     cloturerExercice, rouvrirExercice, noterDossierCloture, anouveauxDe, ecritureAnouveaux, extournesDe,
     etatsDepuisLignes, sigDepuisLignes, dossierDeCloture, clotureValide,
+    // Le cabinet à plusieurs (9.9.0)
+    fusionnerLivres, empreinteEcriture,
     // La pièce équilibrée et l'amortissement (9.6.1)
     ajouterJoursIso, entrySet,
     DEFAULT_ASSET_CLASSES, assetClassLabel, assetClassYears, days360,

@@ -701,13 +701,17 @@ function createCabStore(dir, opts) {
       return (now().getTime() - Number(o.depuis)) > LOCK_MS ? null : o;
     } catch { return null; }
   }
-  function poserVerrou(dossier, annee, moi, collisions) {
+  function poserVerrou(dossier, annee, moi, collisions, opts) {
     const v = lireVerrou(dossier, annee, collisions);
-    if (v && v.deviceId && moi && v.deviceId !== moi.deviceId) return { ok: false, verrou: v };
+    // `forcer` : la reprise d'un verrou orphelin (9.9.0). Un poste qui s'éteint au milieu d'une
+    // écriture laisse son verrou derrière lui, et attendre vingt-quatre heures pour saisir une
+    // facture n'est pas une réponse. On ne le reprend jamais tout seul — l'écran demande, en
+    // nommant le poste et depuis quand, et c'est le comptable qui tranche.
+    if (v && v.deviceId && moi && v.deviceId !== moi.deviceId && !(opts && opts.forcer)) return { ok: false, verrou: v };
     const f = lockPath(dossier, annee, collisions);
     fs.mkdirSync(path.dirname(f), { recursive: true });
     fs.writeFileSync(f, JSON.stringify({ deviceId: (moi && moi.deviceId) || '', deviceName: (moi && moi.deviceName) || '', depuis: now().getTime() }), 'utf8');
-    return { ok: true };
+    return { ok: true, repris: !!(v && opts && opts.forcer) };
   }
   function leverVerrou(dossier, annee, collisions) {
     try { fs.unlinkSync(lockPath(dossier, annee, collisions)); } catch { /* déjà parti */ }
@@ -742,10 +746,43 @@ function createCabStore(dir, opts) {
     return { livre: r.livre, entete: r.entete, fichier: f };
   }
 
-  function ecrireLivre(dossier, livre, collisions) {
+  // Lire un livre posé N'IMPORTE OÙ (9.9.0) : la clé USB d'un collaborateur, un dossier réseau
+  // coupé. Même clé de session, même contrôle de forme, et AUCUNE écriture — le fichier d'origine
+  // n'est jamais touché, mis de côté ni migré sur son support. Un livre illisible se dit, il ne se
+  // déplace pas : ce support-là n'est pas le nôtre.
+  function lireLivreFichier(fichier) {
+    if (!st.key) throw new Error('Aucun cabinet ouvert.');
+    const r = openLivreBuffer(fs.readFileSync(fichier), st.key);
+    if (KC.livreVersionInconnue(r.livre)) return { versionInconnue: true, format: r.livre.format };
+    if (!KC.isValidLivre(r.livre)) return { illisible: true, motif: 'Ce fichier n\'a pas la forme d\'un livre.' };
+    KC.migrerLivre(r.livre);
+    return { livre: r.livre, entete: r.entete, fichier };
+  }
+
+  // `opts.force` : écrire quoi qu'il y ait sur le disque. Réservé au SECOND temps d'une fusion —
+  // une fois que le livre en mémoire porte déjà ce que l'autre poste avait écrit.
+  function ecrireLivre(dossier, livre, collisions, opts) {
     if (!st.key) throw new Error('Aucun cabinet ouvert.');
     if (!KC.isValidLivre(livre)) throw new Error('Livre invalide : enregistrement refusé.');
     const f = livrePath(dossier, livre.exercice.annee, collisions);
+    // ---------- la révision : ce qui empêche un poste d'écraser l'autre (9.9.0) ----------
+    //
+    // Le verrou ne protège que de deux écritures SIMULTANÉES. Le vrai danger du partage par
+    // fichier est ailleurs, et il est silencieux : le poste A ouvre le livre, le poste B l'ouvre
+    // aussi, A enregistre, B enregistre — et la demi-journée de A a disparu sans qu'une seule
+    // ligne ne s'affiche nulle part. C'est très exactement le défaut que la 3.2.0 a corrigé côté
+    // entreprise, et la parade est la même : on RELIT le disque avant d'écrire, et si la révision
+    // a bougé on n'écrit RIEN — on rend ce qu'on a trouvé, et l'appelant fusionne.
+    const attendue = Number(livre.revision) || 0;
+    if (!(opts && opts.force) && fs.existsSync(f)) {
+      const r = lireLivre(dossier, livre.exercice.annee, collisions);
+      if (r && r.livre && (Number(r.livre.revision) || 0) !== attendue) {
+        return { conflit: true, disque: r.livre, revision: Number(r.livre.revision) || 0, attendue };
+      }
+    }
+    livre.revision = attendue + 1;
+    livre.ecritPar = String((opts && opts.qui) || livre.ecritPar || '');
+    livre.ecritLe = now().getTime();
     fs.mkdirSync(path.dirname(f), { recursive: true });
     // L'entête en clair : de qui, de quand, combien. Pas un chiffre de plus — elle n'est pas
     // chiffrée, et le nombre d'écritures d'un client n'est pas un secret, son contenu si.
@@ -777,6 +814,42 @@ function createCabStore(dir, opts) {
     try { const o = JSON.parse(fs.readFileSync(indexPath(dossier, collisions), 'utf8')); return Array.isArray(o.exercices) ? o : { format: 1, exercices: [] }; }
     catch { return { format: 1, exercices: [] }; }
   }
+  // L'état de PRODUCTION, mois par mois (9.9.0) : reçu → saisi → révisé → déclaré. Il se calcule
+  // ici, au moment où le livre est en main, et il se range dans l'index — le tableau de production
+  // d'un portefeuille de soixante dossiers ne peut pas ouvrir cent quatre-vingts livres pour
+  // dessiner une grille (c'est la mesure de la 9.1.0 qui l'interdit : la balance de soixante
+  // dossiers tient en 1,3 s parce qu'elle lit des index, pas des livres).
+  //
+  // « Révisé » n'a pas encore d'écrivain — la 9.10.0 le remplira. Il vaut donc `false` tant que
+  // rien ne l'a posé, et l'absence du livre lui-même vaut `undefined`, que l'écran écrit « — » :
+  // ne pas savoir n'est pas « non ».
+  function productionDuLivre(livre) {
+    const p = {};
+    const mois = m => (p[m] = p[m] || { ecritures: 0, validees: 0, brouillards: 0, revise: false, declare: false, qui: '', depuis: null });
+    (livre.ecritures || []).forEach(e => {
+      const m = String(e.mois || String(e.date || '').slice(0, 7));
+      if (!/^\d{4}-\d{2}$/.test(m)) return;
+      const x = mois(m);
+      x.ecritures++;
+      if (e.statut === 'brouillard') x.brouillards++; else x.validees++;
+      // Qui a touché ce mois en dernier, et quand : c'est ce que « depuis quand » veut dire dans le
+      // tableau de production. On prend la date de validation, sinon celle de création.
+      const q = Number(e.valideeLe) || Number(e.creeLe) || 0;
+      if (q >= (x.depuis || 0)) { x.depuis = q; x.qui = String(e.auteur || ''); }
+    });
+    (livre.declarations || []).forEach(d => {
+      const m = String(d.periode || '');
+      if (!/^\d{4}-\d{2}$/.test(m)) return;
+      mois(m).declare = !!d.deposee;
+    });
+    (livre.revisions || []).forEach(r => {
+      const m = String(r.periode || '');
+      if (!/^\d{4}-\d{2}$/.test(m)) return;
+      mois(m).revise = !!r.faite;
+    });
+    return p;
+  }
+
   function majIndexLivres(dossier, livre, collisions) {
     const idx = lireIndexLivres(dossier, collisions);
     const e = {
@@ -784,6 +857,9 @@ function createCabStore(dir, opts) {
       clos: !!livre.exercice.clos,
       ecritures: livre.ecritures.length,
       brouillards: livre.ecritures.filter(x => x.statut === 'brouillard').length,
+      production: productionDuLivre(livre),
+      revision: Number(livre.revision) || 0,
+      ecritPar: String(livre.ecritPar || ''),
       majLe: stamp(now())
     };
     idx.exercices = idx.exercices.filter(x => x.annee !== e.annee).concat([e]).sort((a, b) => a.annee - b.annee);
@@ -1076,8 +1152,8 @@ function createCabStore(dir, opts) {
     packPathFor, storePack, removePack, removeDossierFiles, reorganize, packStats, folderName, folderIndex,
     rangerPieceJointe, cheminPieceJointe,
     // Le livre (9.2.0)
-    livreDir, livrePath, lireLivre, ecrireLivre, enteteLivre, lireIndexLivres,
-    lireVerrou, poserVerrou, leverVerrou,
+    livreDir, livrePath, lireLivre, lireLivreFichier, ecrireLivre, enteteLivre, lireIndexLivres,
+    lireVerrou, poserVerrou, leverVerrou, productionDuLivre,
     setExternalDir, mirrorExternal
   };
 }

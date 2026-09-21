@@ -115,6 +115,12 @@ function safeState() {
     delete s.cabinet.privateKey;
     s.cabinet.fingerprint = state.cabinet.publicKey ? Z.keyFingerprint(state.cabinet.publicKey) : '';
   }
+  // QUI travaille sur ce poste (9.9.0). L'identité vit dans `app-config.json`, pas dans l'état :
+  // elle est AJOUTÉE ici pour l'écran, exactement comme l'empreinte du cabinet — et pour la même
+  // raison qu'elle a failli désarmer le contrôle de licence en 9.4.0, un test l'exige, parce qu'un
+  // champ absent de `safeState` vaut `undefined` côté renderer et désarme tout ce qui s'y fie.
+  s.moi = moiId();
+  s.moiNom = quiSuisJe();
   return s;
 }
 
@@ -502,6 +508,7 @@ ipcMain.handle('cab:importDossiers', (_e, text) => {
 // par erreur, ou un client parti qui demande l'effacement de ses pièces, restait là pour toujours.
 ipcMain.handle('cab:deleteDossier', (_e, id) => {
   requireOpen();
+  droitBlock(id, 'supervision');
   const i = state.dossiers.findIndex(x => x.id === id);
   if (i < 0) throw erreur('ERR-CAB-009', 'Dossier introuvable.');
   const d = state.dossiers[i];
@@ -1094,6 +1101,32 @@ function dossierDe(dossierId) {
 const indexDossiers = () => getStore().folderIndex(state.dossiers);
 const moiPoste = () => ({ deviceId: readAppCfg().deviceId || '', deviceName: readAppCfg().deviceName || '' });
 
+// ---------------------------------------------------------------- le cabinet à plusieurs (9.9.0)
+//
+// QUI travaille sur ce poste. L'identité vit dans `app-config.json` et non dans l'état chiffré :
+// c'est une propriété du POSTE, pas du cabinet. Deux postes partagent la même base — donc la même
+// liste de collaborateurs — et doivent pouvoir être deux personnes différentes en même temps ;
+// rangée dans l'état, l'identité du dernier qui s'est déclaré suivrait la copie externe et
+// renommerait l'autre.
+const moiId = () => String(readAppCfg().collaborateurId || '');
+const moiCollab = () => K.collaborateurDe(state, moiId());
+
+// Le `qui` de la piste d'audit. Le nom de la personne quand elle est déclarée, le nom du poste
+// sinon — un cabinet d'une seule personne n'a rien à déclarer, et sa piste d'audit ne doit pas se
+// vider pour autant.
+const quiSuisJe = () => { const c = moiCollab(); return (c && c.nom) || moiPoste().deviceName || 'cabinet'; };
+
+// La porte UNIQUE des droits, jumelle de `licenceBlockCab` (9.4.0). Toute la 9.9.0 tient à ce
+// qu'il n'y en ait qu'une : une seconde vérification recopiée ailleurs finirait par diverger, et
+// une divergence ici veut dire « quelqu'un valide ce qu'il n'a pas le droit de valider ».
+function droitBlock(dossierId, geste) {
+  const v = K.peut(state, dossierId, moiId(), geste);
+  if (v.ok) return v;
+  const e = erreur('ERR-CAB-070', `${v.motif} ${v.geste}`);
+  e.code = 'ERR-CAB-070';
+  throw e;
+}
+
 // Ouvrir un livre, ou dire pourquoi on ne peut pas. JAMAIS d'écriture ici : un livre créé en
 // silence à la première consultation ferait croire à un dossier repris qui ne l'est pas.
 function ouvrirLivre(dossierId, annee) {
@@ -1102,17 +1135,56 @@ function ouvrirLivre(dossierId, annee) {
   return { dossier: { id: d.id, name: d.name, matricule: d.matricule || '' }, ...r };
 }
 
-function ecrireLeLivre(dossierId, livre, quoi, detail) {
+// Depuis quand un verrou traîne, en français. « depuis 3 heures » se juge tout seul ; un
+// horodatage brut demande de compter, et on ne compte pas avant de décider d'un geste.
+function depuisQuand(ms) {
+  const min = Math.max(0, Math.round((Date.now() - Number(ms || 0)) / 60000));
+  if (min < 2) return 'à l\'instant';
+  if (min < 60) return `depuis ${min} minutes`;
+  const h = Math.round(min / 60);
+  return h < 24 ? `depuis ${h} heure${h > 1 ? 's' : ''}` : `depuis ${Math.round(h / 24)} jour${h >= 48 ? 's' : ''}`;
+}
+
+function ecrireLeLivre(dossierId, livre, quoi, detail, opts) {
   const d = dossierDe(dossierId);
   const idx = indexDossiers();
-  const v = getStore().poserVerrou(d, livre.exercice.annee, moiPoste(), idx);
+  const v = getStore().poserVerrou(d, livre.exercice.annee, moiPoste(), idx, { forcer: !!(opts && opts.forcerVerrou) });
   if (!v.ok) {
-    const e = erreur('ERR-CAB-022', `Ce livre est ouvert sur un autre ordinateur (${v.verrou.deviceName || 'poste inconnu'}). Ferme-le là-bas, ou attends : le verrou tombe tout seul au bout de 24 h.`);
+    // Le refus porte de quoi DÉCIDER : quel poste, depuis quand, et le geste qui débloque. Sans
+    // ces trois-là, « attends » est la seule réponse possible, et un poste éteint au milieu d'une
+    // écriture bloquerait la saisie pour vingt-quatre heures (ERR-CAB-022, moitié « forcer »).
+    const e = erreur('ERR-CAB-022', `Ce livre est ouvert sur un autre ordinateur (${v.verrou.deviceName || 'poste inconnu'}) ${depuisQuand(v.verrou.depuis)}.`
+      + ' Ferme-le là-bas, ou reprends le verrou si ce poste est éteint.');
     e.code = 'ERR-CAB-022';
+    e.verrou = { deviceName: v.verrou.deviceName || '', depuis: v.verrou.depuis || 0 };
     throw e;
   }
-  if (quoi) livre.audit.push({ quand: Date.now(), qui: moiPoste().deviceName || 'cabinet', quoi, detail: detail || '' });
-  const r = getStore().ecrireLivre(d, livre, idx);
+  if (quoi) livre.audit.push({ quand: Date.now(), qui: quiSuisJe(), poste: moiPoste().deviceName || '', quoi, detail: detail || '' });
+  let r = getStore().ecrireLivre(d, livre, idx, { qui: quiSuisJe() });
+  // ---------- deux postes ont écrit le même exercice (9.9.0) ----------
+  //
+  // La révision du disque a bougé depuis qu'on a ouvert ce livre : un autre poste a enregistré
+  // entre-temps. Écrire par-dessus ferait disparaître son travail SANS UN MOT — c'est le défaut
+  // que la 3.2.0 a corrigé côté entreprise, et le danger du partage n'est pas la panne, c'est le
+  // silence. On fusionne : sa version devient la base, la nôtre s'y ajoute, et rien de validé ne
+  // se perd ni ne s'écrase (voir `fusionnerLivres`). Le rapport remonte à l'écran, parce qu'un
+  // conflit résolu en silence est encore un silence.
+  if (r && r.conflit) {
+    const f = KC.fusionnerLivres(r.disque, livre, Date.now());
+    if (!f.ok) throw erreur('ERR-CAB-072', `Impossible de réunir les deux versions de ce livre : ${f.motif}`);
+    f.livre.audit.push({
+      quand: Date.now(), qui: quiSuisJe(), poste: moiPoste().deviceName || '', quoi: 'fusion',
+      detail: `${f.rapport.total} écriture(s) reprises d'un autre poste, ${f.rapport.aRegarder} à regarder`
+    });
+    r = getStore().ecrireLivre(d, f.livre, idx, { force: true, qui: quiSuisJe() });
+    r.fusion = f.rapport;
+    r.livre = f.livre;
+  }
+  // Le verrou se LÈVE : il garde l'écriture, pas la session. Laissé posé — et il l'était jusqu'ici,
+  // `leverVerrou` n'ayant jamais eu un seul appelant — il interdisait à l'autre poste d'écrire
+  // pendant vingt-quatre heures après un seul enregistrement. Ce qui protège du travail perdu,
+  // c'est la révision ci-dessus ; le verrou ne protège que de deux écritures simultanées.
+  getStore().leverVerrou(d, livre.exercice.annee, idx);
   return r;
 }
 
@@ -1132,6 +1204,7 @@ ipcMain.handle('cab:livreIndex', (_e, { dossierId } = {}) => {
 // existe déjà pour cette année — on ne remplace pas un exercice commencé sans le dire.
 ipcMain.handle('cab:reprendre', (_e, { dossierId, annee, du, au, plan, ouverture, source } = {}) => {
   requireOpen();
+  droitBlock(dossierId, 'supervision');
   const existant = ouvrirLivre(dossierId, annee);
   if (existant.livre) {
     const e = erreur('ERR-CAB-015', `Ce dossier a déjà un livre pour ${annee}. Ouvre-le plutôt que de le reprendre à zéro : une reprise effacerait son point de départ.`);
@@ -1146,7 +1219,7 @@ ipcMain.handle('cab:reprendre', (_e, { dossierId, annee, du, au, plan, ouverture
   }
   const livre = KC.livreVide(dossierId, annee, { du, au, plan: Array.isArray(plan) ? plan : [] });
   if (Array.isArray(ouverture) && ouverture.length) {
-    const r = KC.balanceOuverture(livre, ouverture, du || `${annee}-01-01`, source || 'balance', moiPoste().deviceName || 'cabinet', Date.now());
+    const r = KC.balanceOuverture(livre, ouverture, du || `${annee}-01-01`, source || 'balance', quiSuisJe(), Date.now());
     if (!r.ok) { throw Object.assign(erreur('ERR-CAB-023', r.motif), { ecart: r.ecart }); }
   }
   ecrireLeLivre(dossierId, livre, 'reprise', `exercice ${annee}`);
@@ -1162,6 +1235,7 @@ function lireCsvFichier(chemin) {
 
 ipcMain.handle('cab:importerPlan', async (_e, { dossierId, annee, chemin } = {}) => {
   requireOpen();
+  droitBlock(dossierId, 'saisie');
   const f = chemin || (await dialog.showOpenDialog({ title: 'Importer un plan de comptes', filters: [{ name: 'CSV', extensions: ['csv', 'txt'] }], properties: ['openFile'] })).filePaths[0];
   if (!f) return { annule: true };
   const r = KC.planDepuisCsv(lireCsvFichier(f));
@@ -1182,6 +1256,7 @@ ipcMain.handle('cab:importerPlan', async (_e, { dossierId, annee, chemin } = {})
 
 ipcMain.handle('cab:importerBalance', async (_e, { dossierId, annee, chemin } = {}) => {
   requireOpen();
+  droitBlock(dossierId, 'saisie');
   const f = chemin || (await dialog.showOpenDialog({ title: 'Importer une balance d\'ouverture', filters: [{ name: 'CSV', extensions: ['csv', 'txt'] }], properties: ['openFile'] })).filePaths[0];
   if (!f) return { annule: true };
   const r = KC.balanceDepuisCsv(lireCsvFichier(f));
@@ -1193,10 +1268,11 @@ ipcMain.handle('cab:importerBalance', async (_e, { dossierId, annee, chemin } = 
 // jamais ce que l'écriture est devenue, il le lit.
 ipcMain.handle('cab:valider', (_e, { dossierId, annee, id } = {}) => {
   requireOpen();
+  droitBlock(dossierId, 'validation');
   const o = ouvrirLivre(dossierId, annee);
   if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas de livre pour cet exercice.');
   licenceBlockCab('Valider une écriture');
-  const r = KC.validerEcriture(o.livre, id, moiPoste().deviceName || 'cabinet', Date.now());
+  const r = KC.validerEcriture(o.livre, id, quiSuisJe(), Date.now());
   if (!r.ok) { throw Object.assign(erreur('ERR-CAB-024', r.motif), { motifs: r.motifs }); }
   ecrireLeLivre(dossierId, o.livre, null);
   noterValidation(dossierId);
@@ -1205,10 +1281,11 @@ ipcMain.handle('cab:valider', (_e, { dossierId, annee, id } = {}) => {
 
 ipcMain.handle('cab:contrepasser', (_e, { dossierId, annee, id, date } = {}) => {
   requireOpen();
+  droitBlock(dossierId, 'validation');
   const o = ouvrirLivre(dossierId, annee);
   if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas de livre pour cet exercice.');
   licenceBlockCab('Contre-passer une écriture');
-  const r = KC.contrepasser(o.livre, id, moiPoste().deviceName || 'cabinet', date, Date.now());
+  const r = KC.contrepasser(o.livre, id, quiSuisJe(), date, Date.now());
   if (!r.ok) throw erreur('ERR-CAB-025', r.motif);
   ecrireLeLivre(dossierId, o.livre, null);
   noterValidation(dossierId);
@@ -1217,20 +1294,22 @@ ipcMain.handle('cab:contrepasser', (_e, { dossierId, annee, id, date } = {}) => 
 
 ipcMain.handle('cab:saisir', (_e, { dossierId, annee, ecriture } = {}) => {
   requireOpen();
+  droitBlock(dossierId, 'saisie');
   const o = ouvrirLivre(dossierId, annee);
   if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas de livre pour cet exercice.');
-  const e = KC.ajouterEcriture(o.livre, ecriture, moiPoste().deviceName || 'cabinet', Date.now());
+  const e = KC.ajouterEcriture(o.livre, ecriture, quiSuisJe(), Date.now());
   ecrireLeLivre(dossierId, o.livre, 'saisie', `${e.journal} ${e.piece}`);
   return { ok: true, id: e.id, livre: ouvrirLivre(dossierId, annee).livre };
 });
 
 ipcMain.handle('cab:lettrer', (_e, { dossierId, annee, compte, ids, lettre, delettrer, date } = {}) => {
   requireOpen();
+  droitBlock(dossierId, 'validation');
   const o = ouvrirLivre(dossierId, annee);
   if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas de livre pour cet exercice.');
   const r = delettrer
-    ? KC.delettrer(o.livre, lettre, moiPoste().deviceName || 'cabinet', Date.now())
-    : KC.lettrer(o.livre, compte, ids, lettre, moiPoste().deviceName || 'cabinet', date);
+    ? KC.delettrer(o.livre, lettre, quiSuisJe(), Date.now())
+    : KC.lettrer(o.livre, compte, ids, lettre, quiSuisJe(), date);
   if (!r.ok) { throw Object.assign(erreur('ERR-CAB-028', r.motif), { ecart: r.ecart }); }
   ecrireLeLivre(dossierId, o.livre, delettrer ? null : 'lettrage', r.lettre || lettre);
   return { ok: true, lettre: r.lettre, livre: ouvrirLivre(dossierId, annee).livre };
@@ -1262,9 +1341,10 @@ ipcMain.handle('cab:lireReleve', async (_e, { chemin, assoc } = {}) => {
 
 ipcMain.handle('cab:ajouterReleve', (_e, { dossierId, annee, releve } = {}) => {
   requireOpen();
+  droitBlock(dossierId, 'saisie');
   const o = ouvrirLivre(dossierId, annee);
   if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas de livre pour cet exercice.');
-  const r = KC.ajouterReleve(o.livre, releve, moiPoste().deviceName || 'cabinet', Date.now());
+  const r = KC.ajouterReleve(o.livre, releve, quiSuisJe(), Date.now());
   if (!r.ok) throw Object.assign(erreur('ERR-CAB-040', r.motif), { ecart: r.ecart });
   ecrireLeLivre(dossierId, o.livre, null);   // `ajouterReleve` a déjà tracé : jamais deux fois
   return { ok: true, releve: r.releve, livre: ouvrirLivre(dossierId, annee).livre };
@@ -1272,6 +1352,7 @@ ipcMain.handle('cab:ajouterReleve', (_e, { dossierId, annee, releve } = {}) => {
 
 ipcMain.handle('cab:supprimerReleve', (_e, { dossierId, annee, id } = {}) => {
   requireOpen();
+  droitBlock(dossierId, 'saisie');
   const o = ouvrirLivre(dossierId, annee);
   if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas de livre pour cet exercice.');
   const r = KC.supprimerReleve(o.livre, id);
@@ -1282,6 +1363,7 @@ ipcMain.handle('cab:supprimerReleve', (_e, { dossierId, annee, id } = {}) => {
 
 ipcMain.handle('cab:rapprocherAuto', (_e, { dossierId, annee, releveId, jours } = {}) => {
   requireOpen();
+  droitBlock(dossierId, 'saisie');
   const o = ouvrirLivre(dossierId, annee);
   if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas de livre pour cet exercice.');
   const r = KC.rapprocherAuto(o.livre, releveId, { jours, date: new Date().toISOString().slice(0, 10) });
@@ -1293,9 +1375,10 @@ ipcMain.handle('cab:rapprocherAuto', (_e, { dossierId, annee, releveId, jours } 
 
 ipcMain.handle('cab:rapprocher', (_e, { dossierId, annee, releveId, ligneId, choix } = {}) => {
   requireOpen();
+  droitBlock(dossierId, 'saisie');
   const o = ouvrirLivre(dossierId, annee);
   if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas de livre pour cet exercice.');
-  const r = KC.rapprocherLigne(o.livre, releveId, ligneId, choix, moiPoste().deviceName || 'cabinet', Date.now());
+  const r = KC.rapprocherLigne(o.livre, releveId, ligneId, choix, quiSuisJe(), Date.now());
   if (!r.ok) throw erreur('ERR-CAB-041', r.motif);
   ecrireLeLivre(dossierId, o.livre, null);
   return { ok: true, niveau: r.niveau, livre: ouvrirLivre(dossierId, annee).livre };
@@ -1303,9 +1386,10 @@ ipcMain.handle('cab:rapprocher', (_e, { dossierId, annee, releveId, ligneId, cho
 
 ipcMain.handle('cab:derapprocher', (_e, { dossierId, annee, releveId } = {}) => {
   requireOpen();
+  droitBlock(dossierId, 'saisie');
   const o = ouvrirLivre(dossierId, annee);
   if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas de livre pour cet exercice.');
-  const r = KC.derapprocherReleve(o.livre, releveId, moiPoste().deviceName || 'cabinet', Date.now());
+  const r = KC.derapprocherReleve(o.livre, releveId, quiSuisJe(), Date.now());
   if (!r.ok) throw erreur('ERR-CAB-041', r.motif);
   ecrireLeLivre(dossierId, o.livre, null);
   return { ok: true, defaits: r.defaits, livre: ouvrirLivre(dossierId, annee).livre };
@@ -1313,6 +1397,7 @@ ipcMain.handle('cab:derapprocher', (_e, { dossierId, annee, releveId } = {}) => 
 
 ipcMain.handle('cab:lettrageAuto', (_e, { dossierId, annee, compte, jours } = {}) => {
   requireOpen();
+  droitBlock(dossierId, 'validation');
   const o = ouvrirLivre(dossierId, annee);
   if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas de livre pour cet exercice.');
   const r = KC.lettrageAuto(o.livre, compte, { jours, par: 'auto', date: new Date().toISOString().slice(0, 10) });
@@ -1349,11 +1434,12 @@ ipcMain.handle('cab:declaration', (_e, { dossierId, annee, periode } = {}) => {
 
 ipcMain.handle('cab:poserDeclaration', (_e, { dossierId, annee, periode } = {}) => {
   requireOpen();
+  droitBlock(dossierId, 'validation');
   const o = ouvrirLivre(dossierId, annee);
   if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas de livre pour cet exercice.');
   const d = KC.declarationMensuelle(o.livre, periode);
   if (!d.ok) throw erreur('ERR-CAB-042', d.motif);
-  const r = KC.poserDeclaration(o.livre, d, moiPoste().deviceName || 'cabinet', Date.now());
+  const r = KC.poserDeclaration(o.livre, d, quiSuisJe(), Date.now());
   if (!r.ok) throw erreur('ERR-CAB-042', r.motif);
   ecrireLeLivre(dossierId, o.livre, null);
   return { ok: true, declaration: r.declaration, livre: ouvrirLivre(dossierId, annee).livre };
@@ -1361,9 +1447,10 @@ ipcMain.handle('cab:poserDeclaration', (_e, { dossierId, annee, periode } = {}) 
 
 ipcMain.handle('cab:pointerDeclaration', (_e, { dossierId, annee, periode, quoi, valeur } = {}) => {
   requireOpen();
+  droitBlock(dossierId, 'validation');
   const o = ouvrirLivre(dossierId, annee);
   if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas de livre pour cet exercice.');
-  const r = KC.pointerDeclaration(o.livre, periode, quoi, valeur, moiPoste().deviceName || 'cabinet', Date.now());
+  const r = KC.pointerDeclaration(o.livre, periode, quoi, valeur, quiSuisJe(), Date.now());
   if (!r.ok) throw erreur('ERR-CAB-042', r.motif);
   ecrireLeLivre(dossierId, o.livre, null);
   return { ok: true, declaration: r.declaration, aussiPayee: !!r.aussiPayee, livre: ouvrirLivre(dossierId, annee).livre };
@@ -1373,6 +1460,7 @@ ipcMain.handle('cab:pointerDeclaration', (_e, { dossierId, annee, periode, quoi,
 // qui la valide, et c'est à ce moment-là qu'elle prend son numéro.
 ipcMain.handle('cab:ecrireDeclaration', (_e, { dossierId, annee, periode } = {}) => {
   requireOpen();
+  droitBlock(dossierId, 'validation');
   const o = ouvrirLivre(dossierId, annee);
   if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas de livre pour cet exercice.');
   const posee = (o.livre.declarations || []).find(x => x.periode === periode);
@@ -1385,7 +1473,7 @@ ipcMain.handle('cab:ecrireDeclaration', (_e, { dossierId, annee, periode } = {})
   }
   const brouillon = KC.ecritureDeclaration(o.livre, d);
   if (!brouillon.lignes.length) throw erreur('ERR-CAB-042', 'Ce mois ne porte aucune TVA : il n\'y a pas d\'écriture à passer.');
-  const e = KC.ajouterEcriture(o.livre, brouillon, moiPoste().deviceName || 'cabinet', Date.now());
+  const e = KC.ajouterEcriture(o.livre, brouillon, quiSuisJe(), Date.now());
   posee.ecritureId = e.id;
   ecrireLeLivre(dossierId, o.livre, 'écriture de déclaration', periode);
   return { ok: true, id: e.id, livre: ouvrirLivre(dossierId, annee).livre };
@@ -1419,8 +1507,9 @@ ipcMain.handle('cab:immobilisations', (_e, { dossierId, annee } = {}) => {
 
 ipcMain.handle('cab:saveImmobilisation', (_e, { dossierId, annee, fiche } = {}) => {
   requireOpen();
+  droitBlock(dossierId, 'saisie');
   const livre = livreOuErreur(dossierId, annee);
-  const qui = moiPoste().deviceName || 'cabinet';
+  const qui = quiSuisJe();
   const r = fiche && fiche.id && (livre.immobilisations || []).some(x => x.id === fiche.id)
     ? KC.modifierImmobilisation(livre, fiche.id, fiche, qui, Date.now())
     : KC.ajouterImmobilisation(livre, fiche, qui, Date.now());
@@ -1431,8 +1520,9 @@ ipcMain.handle('cab:saveImmobilisation', (_e, { dossierId, annee, fiche } = {}) 
 
 ipcMain.handle('cab:supprimerImmobilisation', (_e, { dossierId, annee, id } = {}) => {
   requireOpen();
+  droitBlock(dossierId, 'saisie');
   const livre = livreOuErreur(dossierId, annee);
-  const r = KC.supprimerImmobilisation(livre, id, moiPoste().deviceName || 'cabinet', Date.now());
+  const r = KC.supprimerImmobilisation(livre, id, quiSuisJe(), Date.now());
   if (!r.ok) throw erreur('ERR-CAB-044', r.motif);
   ecrireLeLivre(dossierId, livre, 'immobilisation supprimée', id);
   return { ok: true, livre: ouvrirLivre(dossierId, annee).livre };
@@ -1443,10 +1533,11 @@ ipcMain.handle('cab:supprimerImmobilisation', (_e, { dossierId, annee, id } = {}
 // qui empêche de passer deux fois la même dotation.
 ipcMain.handle('cab:ecrireDotations', (_e, { dossierId, annee } = {}) => {
   requireOpen();
+  droitBlock(dossierId, 'validation');
   const livre = livreOuErreur(dossierId, annee);
   const props = KC.ecrituresImmobilisations(livre, annee);
   if (!props.length) throw erreur('ERR-CAB-045', 'Rien à passer : aucune dotation ni sortie en attente sur cet exercice.');
-  const qui = moiPoste().deviceName || 'cabinet';
+  const qui = quiSuisJe();
   const ids = [];
   props.forEach(p => {
     const e = KC.ajouterEcriture(livre, p, qui, Date.now());
@@ -1468,8 +1559,9 @@ ipcMain.handle('cab:inventaire', (_e, { dossierId, annee } = {}) => {
 
 ipcMain.handle('cab:saveInventaire', (_e, { dossierId, annee, inventaire } = {}) => {
   requireOpen();
+  droitBlock(dossierId, 'saisie');
   const livre = livreOuErreur(dossierId, annee);
-  const r = KC.poserInventaire(livre, inventaire, moiPoste().deviceName || 'cabinet', Date.now());
+  const r = KC.poserInventaire(livre, inventaire, quiSuisJe(), Date.now());
   if (!r.ok) throw erreur('ERR-CAB-046', r.motif);
   ecrireLeLivre(dossierId, livre, 'inventaire de stock', String(annee));
   return { ok: true, inventaire: r.inventaire, livre: ouvrirLivre(dossierId, annee).livre };
@@ -1477,13 +1569,14 @@ ipcMain.handle('cab:saveInventaire', (_e, { dossierId, annee, inventaire } = {})
 
 ipcMain.handle('cab:ecrireVariationStock', (_e, { dossierId, annee } = {}) => {
   requireOpen();
+  droitBlock(dossierId, 'validation');
   const livre = livreOuErreur(dossierId, annee);
   const v = KC.variationDeStock(livre, annee);
   if (!v.ok) throw erreur('ERR-CAB-046', v.motif);
   if (!v.ecriture) throw erreur('ERR-CAB-047', v.motif || 'Le stock compté est celui des comptes : aucune écriture à passer.');
   const inv = (livre.inventaires || []).find(x => Number(String(x.date).slice(0, 4)) === Number(annee));
   if (inv && inv.ecritureId) throw erreur('ERR-CAB-047', 'La variation de stock de cet exercice est déjà passée : la repasser compterait le stock deux fois.');
-  const e = KC.ajouterEcriture(livre, v.ecriture, moiPoste().deviceName || 'cabinet', Date.now());
+  const e = KC.ajouterEcriture(livre, v.ecriture, quiSuisJe(), Date.now());
   if (inv) inv.ecritureId = e.id;
   ecrireLeLivre(dossierId, livre, 'variation de stock', String(annee));
   return { ok: true, id: e.id, livre: ouvrirLivre(dossierId, annee).livre };
@@ -1590,9 +1683,10 @@ ipcMain.handle('cab:cloture', (_e, { dossierId, annee } = {}) => {
 
 ipcMain.handle('cab:cloturer', (_e, { dossierId, annee } = {}) => {
   requireOpen();
+  droitBlock(dossierId, 'supervision');
   licenceBlockCab('Clôturer un exercice');
   const livre = livreOuErreur(dossierId, annee);
-  const r = KC.cloturerExercice(livre, moiPoste().deviceName || 'cabinet', Date.now());
+  const r = KC.cloturerExercice(livre, quiSuisJe(), Date.now());
   if (!r.ok) throw erreur('ERR-CAB-060', r.motif);
   ecrireLeLivre(dossierId, livre, 'clôture', String(annee));
   return { ok: true, brouillards: r.brouillards, livre: ouvrirLivre(dossierId, annee).livre };
@@ -1600,8 +1694,9 @@ ipcMain.handle('cab:cloturer', (_e, { dossierId, annee } = {}) => {
 
 ipcMain.handle('cab:rouvrir', (_e, { dossierId, annee, motif } = {}) => {
   requireOpen();
+  droitBlock(dossierId, 'supervision');
   const livre = livreOuErreur(dossierId, annee);
-  const r = KC.rouvrirExercice(livre, motif, moiPoste().deviceName || 'cabinet', Date.now());
+  const r = KC.rouvrirExercice(livre, motif, quiSuisJe(), Date.now());
   if (!r.ok) throw erreur('ERR-CAB-061', r.motif);
   ecrireLeLivre(dossierId, livre, 'réouverture', String(motif || '').slice(0, 120));
   return { ok: true, livre: ouvrirLivre(dossierId, annee).livre };
@@ -1612,6 +1707,7 @@ ipcMain.handle('cab:rouvrir', (_e, { dossierId, annee, motif } = {}) => {
 // Ils se REFONT tant qu'ils ne sont pas validés — un exercice qui bouge encore change son report.
 ipcMain.handle('cab:ouvrirSuivant', (_e, { dossierId, annee } = {}) => {
   requireOpen();
+  droitBlock(dossierId, 'supervision');
   const livre = livreOuErreur(dossierId, annee);
   const suivante = Number(annee) + 1;
   const o = ouvrirLivre(dossierId, suivante);
@@ -1627,7 +1723,7 @@ ipcMain.handle('cab:ouvrirSuivant', (_e, { dossierId, annee } = {}) => {
   // fois, et rien à l'écran ne le montrerait.
   const dejaFaites = new Set((cible.ecritures || []).filter(e => e.statut === 'validee' && e.extourneDe).map(e => e.extourneDe));
   cible.ecritures = (cible.ecritures || []).filter(e => !ancien.includes(e));
-  const qui = moiPoste().deviceName || 'cabinet';
+  const qui = quiSuisJe();
   const ne = KC.ajouterEcriture(cible, brouillon, qui, Date.now());
   KC.extournesDe(livre, suivante, dejaFaites).forEach(x => KC.ajouterEcriture(cible, x, qui, Date.now()));
   ecrireLeLivre(dossierId, cible, ancien.length ? 'à-nouveaux refaits' : 'à-nouveaux posés', String(suivante));
@@ -1636,6 +1732,7 @@ ipcMain.handle('cab:ouvrirSuivant', (_e, { dossierId, annee } = {}) => {
 
 ipcMain.handle('cab:ecrireCloture', async (_e, { dossierId, annee, motDePasse } = {}) => {
   requireOpen();
+  droitBlock(dossierId, 'supervision');
   const livre = livreOuErreur(dossierId, annee);
   const d = dossierDe(dossierId);
   const dos = KC.dossierDeCloture(livre);
@@ -1675,7 +1772,7 @@ ipcMain.handle('cab:ecrireCloture', async (_e, { dossierId, annee, motDePasse } 
   if (res.canceled || !res.filePath) return { ok: false, annule: true };
   fs.writeFileSync(res.filePath, buf);
   // La trace vit dans le LIVRE (T-27) — le moteur la pose et trace, la porte unique écrit.
-  KC.noterDossierCloture(livre, { chemin: res.filePath, scelle: !!motDePasse, pdf: !!pdf, signe: !!cle }, moiPoste().deviceName || 'cabinet', Date.now());
+  KC.noterDossierCloture(livre, { chemin: res.filePath, scelle: !!motDePasse, pdf: !!pdf, signe: !!cle }, quiSuisJe(), Date.now());
   ecrireLeLivre(dossierId, livre, null);
   return { ok: true, path: res.filePath, pdf: !!pdf, signe: !!cle, scelle: !!motDePasse, livre: ouvrirLivre(dossierId, annee).livre };
 });
@@ -1794,6 +1891,7 @@ function noterValidation(dossierId) {
 
 ipcMain.handle('cab:modifierEcriture', (_e, { dossierId, annee, id, patch } = {}) => {
   requireOpen();
+  droitBlock(dossierId, 'saisie');
   const o = ouvrirLivre(dossierId, annee);
   if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas de livre pour cet exercice.');
   const r = KC.modifierEcriture(o.livre, id, patch);
@@ -1804,6 +1902,7 @@ ipcMain.handle('cab:modifierEcriture', (_e, { dossierId, annee, id, patch } = {}
 
 ipcMain.handle('cab:supprimerEcriture', (_e, { dossierId, annee, id } = {}) => {
   requireOpen();
+  droitBlock(dossierId, 'saisie');
   const o = ouvrirLivre(dossierId, annee);
   if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas de livre pour cet exercice.');
   const r = KC.supprimerEcriture(o.livre, id);
@@ -1814,10 +1913,11 @@ ipcMain.handle('cab:supprimerEcriture', (_e, { dossierId, annee, id } = {}) => {
 
 ipcMain.handle('cab:extourner', (_e, { dossierId, annee, id } = {}) => {
   requireOpen();
+  droitBlock(dossierId, 'validation');
   const o = ouvrirLivre(dossierId, annee);
   if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas de livre pour cet exercice.');
   licenceBlockCab('Extourner une écriture');
-  const r = KC.extourner(o.livre, id, moiPoste().deviceName || 'cabinet', Date.now());
+  const r = KC.extourner(o.livre, id, quiSuisJe(), Date.now());
   if (!r.ok) throw erreur('ERR-CAB-025', r.motif);
   ecrireLeLivre(dossierId, o.livre, null);
   noterValidation(dossierId);
@@ -1829,10 +1929,11 @@ ipcMain.handle('cab:extourner', (_e, { dossierId, annee, id } = {}) => {
 // pouvoir valider les cinquante autres — et le comptable finirait par ne plus valider du tout.
 ipcMain.handle('cab:validerLot', (_e, { dossierId, annee, journal, mois, ids } = {}) => {
   requireOpen();
+  droitBlock(dossierId, 'validation');
   const o = ouvrirLivre(dossierId, annee);
   if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas de livre pour cet exercice.');
   licenceBlockCab('Valider un lot d\'écritures');
-  const r = KC.validerLot(o.livre, { journal, mois, ids }, moiPoste().deviceName || 'cabinet', Date.now());
+  const r = KC.validerLot(o.livre, { journal, mois, ids }, quiSuisJe(), Date.now());
   ecrireLeLivre(dossierId, o.livre, 'validation-lot',
     `${journal || 'tous journaux'} ${mois || ''} — ${r.validees.length} validée(s), ${r.refusees.length} refusée(s)`);
   if (r.validees.length) noterValidation(dossierId);
@@ -1843,6 +1944,7 @@ ipcMain.handle('cab:validerLot', (_e, { dossierId, annee, journal, mois, ids } =
 // bien avant l'écriture qu'il justifie.
 ipcMain.handle('cab:joindreEcriture', async (_e, { dossierId, annee, id, chemin } = {}) => {
   requireOpen();
+  droitBlock(dossierId, 'saisie');
   const f = chemin || (await dialog.showOpenDialog({
     title: 'Joindre un justificatif',
     filters: [{ name: 'Justificatifs', extensions: ['pdf', 'jpg', 'jpeg', 'png', 'heic', 'webp', 'csv', 'xlsx', 'txt'] }],
@@ -1869,6 +1971,153 @@ ipcMain.handle('cab:ouvrirJustificatif', (_e, { dossierId, relatif } = {}) => {
   if (!p) throw erreur('ERR-CAB-029', 'Ce justificatif n\'est plus sur le disque. Il a peut-être été rangé ailleurs, ou le dossier a changé de nom.');
   shell.openPath(p);
   return { ok: true };
+});
+
+// ---------------------------------------------------------------- les collaborateurs (9.9.0)
+//
+// La liste vit dans l'état CHIFFRÉ du cabinet : elle voyage donc avec la clé de secours et avec la
+// copie externe, comme la licence. L'identité du poste, elle, vit dans `app-config.json` — deux
+// postes partagent la liste et doivent pouvoir être deux personnes différentes.
+
+ipcMain.handle('cab:collaborateurs', () => {
+  requireOpen();
+  return {
+    liste: state.collaborateurs || [],
+    moi: moiId(),
+    // Qui a le droit de toucher à cette liste, et pourquoi : l'écran doit pouvoir éteindre son
+    // bouton EN DISANT POURQUOI, par la même fonction que celle qui refusera (règle 9.4.5).
+    gestion: K.peutGererCollaborateurs(state, moiId())
+  };
+});
+
+ipcMain.handle('cab:saveCollaborateur', (_e, { id, nom, role, poste } = {}) => {
+  requireOpen();
+  const g = K.peutGererCollaborateurs(state, moiId());
+  if (!g.ok) throw erreur('ERR-CAB-071', `${g.motif} ${g.geste}`);
+  const v = K.collaborateurValide(state, { nom, role }, id);
+  if (!v.ok) throw erreur('ERR-CAB-071', v.motif);
+  state.collaborateurs = state.collaborateurs || [];
+  const existant = state.collaborateurs.find(c => c.id === id);
+  if (existant) Object.assign(existant, { nom: v.nom, role, poste: String(poste || existant.poste || '') });
+  else {
+    // Le TOUT PREMIER collaborateur d'un cabinet est celui qui est en train de le déclarer : ce
+    // poste devient le sien. Sans ça, quelqu'un qui se déclare « Supervision » en premier ferme la
+    // porte derrière lui — le poste n'est plus personne, un superviseur existe désormais, et plus
+    // aucun bouton ne permet d'ajouter le second. C'est très exactement « un réglage qui accepte
+    // un clic et se retire ensuite la possibilité de revenir en arrière » (7.12.0), et c'est le
+    // parcours à deux postes qui l'a trouvé — aucune relecture ne le voyait.
+    //
+    // Le PREMIER seulement : ensuite, ajouter quelqu'un ne change plus qui travaille ici. Déclarer
+    // un collègue ne doit pas vous faire changer de nom au milieu d'une saisie.
+    const premier = !K.collaborateurs(state).length;
+    const neuf = K.migrateCollaborateur({
+      id: 'c_' + Date.now().toString(36) + '_' + state.collaborateurs.length,
+      nom: v.nom, role, poste: String(poste || moiPoste().deviceName || ''), creeLe: Date.now()
+    });
+    state.collaborateurs.push(neuf);
+    if (premier && !moiId()) writeAppCfg({ collaborateurId: neuf.id });
+  }
+  return save();
+});
+
+// Retirer quelqu'un ne l'EFFACE pas : `actif: false`. Sa piste d'audit le nomme sur des écritures
+// validées — un nom effacé rendrait illisible la seule chose qu'un contrôle vient lire. C'est la
+// même règle que `retiree: true` sur une clé de signature (8.6.0).
+ipcMain.handle('cab:retirerCollaborateur', (_e, id) => {
+  requireOpen();
+  const g = K.peutGererCollaborateurs(state, moiId());
+  if (!g.ok) throw erreur('ERR-CAB-071', `${g.motif} ${g.geste}`);
+  const c = (state.collaborateurs || []).find(x => x.id === id);
+  if (!c) throw erreur('ERR-CAB-071', 'Ce collaborateur n\'existe plus.');
+  const sup = K.collaborateurs(state).filter(x => x.role === 'supervision');
+  if (c.role === 'supervision' && sup.length === 1) {
+    throw erreur('ERR-CAB-071', 'C\'est le seul superviseur du cabinet : le retirer fermerait la porte de l\'intérieur. '
+      + 'Donne d\'abord le rôle « Supervision » à quelqu\'un d\'autre.');
+  }
+  c.actif = false;
+  if (moiId() === id) writeAppCfg({ collaborateurId: '' });
+  return save();
+});
+
+// Qui travaille sur CE poste. Aucun mot de passe : l'identité est déclarée, pas prouvée — c'est
+// écrit à l'écran, et c'est la vérité (le mot de passe du cabinet ouvre déjà toute la base).
+ipcMain.handle('cab:jeSuis', (_e, id) => {
+  requireOpen();
+  const c = id ? K.collaborateurDe(state, id) : null;
+  if (id && !c) throw erreur('ERR-CAB-071', 'Ce collaborateur n\'existe plus.');
+  writeAppCfg({ collaborateurId: c ? c.id : '' });
+  // Le poste habituel suit : c'est lui qui proposera la bonne identité au prochain démarrage.
+  if (c) { c.poste = moiPoste().deviceName || c.poste; save(); }
+  return { moi: moiId(), nom: quiSuisJe() };
+});
+
+// Les droits SUR UN DOSSIER. Un rôle vide retire le droit posé et rend la personne à son rôle
+// général — ce n'est pas la même chose que lui interdire, et l'écran le dit.
+ipcMain.handle('cab:saveDroits', (_e, { dossierId, droits } = {}) => {
+  requireOpen();
+  const g = K.peutGererCollaborateurs(state, moiId());
+  if (!g.ok) throw erreur('ERR-CAB-071', `${g.motif} ${g.geste}`);
+  const d = dossierDe(dossierId);
+  const neuf = {};
+  Object.keys(droits || {}).forEach(k => {
+    if (K.collaborateurDe(state, k) && K.ROLES_COLLAB.includes(droits[k])) neuf[k] = droits[k];
+  });
+  d.droits = neuf;
+  return save();
+});
+
+// ---------------------------------------------------------------- le tableau de production (9.9.0)
+//
+// Lu dans les INDEX, jamais dans les livres : soixante dossiers font cent quatre-vingts fichiers
+// chiffrés, et une grille ne peut pas coûter une minute à dessiner (mesure de la 9.1.0).
+ipcMain.handle('cab:production', (_e, opts) => {
+  requireOpen();
+  const idx = indexDossiers();
+  const index = {};
+  (state.dossiers || []).forEach(d => { index[d.id] = getStore().lireIndexLivres(d, idx); });
+  return {
+    lignes: K.production(state, index, opts || {}),
+    etapes: K.ETAPES_PRODUCTION,
+    collaborateurs: K.collaborateurs(state)
+  };
+});
+
+// ---------------------------------------------------------------- réunir deux postes (9.9.0)
+//
+// Le cas que la révision ne rattrape pas : deux postes qui n'ont JAMAIS vu le même fichier — une
+// clé USB, un dossier réseau coupé, un collaborateur qui a travaillé chez lui. On lit le livre de
+// l'autre poste tel qu'il est sur son support et on le réunit au nôtre.
+ipcMain.handle('cab:fusionner', async (_e, { dossierId, annee } = {}) => {
+  requireOpen();
+  droitBlock(dossierId, 'validation');
+  const r = await dialog.showOpenDialog(mainWindow, {
+    title: 'Le livre de l\'autre poste',
+    properties: ['openFile'],
+    filters: [{ name: 'Livre SkanFact', extensions: ['json'] }]
+  });
+  if (r.canceled || !r.filePaths[0]) return { annule: true };
+  const o = ouvrirLivre(dossierId, annee);
+  if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas de livre pour cet exercice.');
+  let autre;
+  try { autre = getStore().lireLivreFichier(r.filePaths[0]); }
+  catch (e) { throw erreur('ERR-CAB-072', `Ce fichier ne s'ouvre pas avec le mot de passe de ce cabinet : ${e.message}`); }
+  if (!autre || !autre.livre) throw erreur('ERR-CAB-072', 'Ce fichier n\'est pas un livre lisible par ce cabinet.');
+  const f = KC.fusionnerLivres(o.livre, autre.livre, Date.now());
+  if (!f.ok) throw erreur('ERR-CAB-072', f.motif);
+  ecrireLeLivre(dossierId, f.livre, 'fusion',
+    `${f.rapport.total} écriture(s) reprises, ${f.rapport.aRegarder} à regarder`);
+  return { ok: true, rapport: f.rapport, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+// Reprendre un verrou laissé par un poste éteint. Jamais tout seul : l'écran a demandé, en nommant
+// le poste et depuis quand (ERR-CAB-022, la moitié « forcer » qui manquait).
+ipcMain.handle('cab:reprendreVerrou', (_e, { dossierId, annee } = {}) => {
+  requireOpen();
+  droitBlock(dossierId, 'saisie');
+  const d = dossierDe(dossierId);
+  const v = getStore().poserVerrou(d, annee, moiPoste(), indexDossiers(), { forcer: true });
+  getStore().leverVerrou(d, annee, indexDossiers());
+  return { ok: true, repris: !!v.repris };
 });
 
 // ---------------------------------------------------------------- guides, abonnements, comptes
@@ -1900,6 +2149,7 @@ ipcMain.handle('cab:saveCorrespondance', (_e, { table, dossierId } = {}) => {
 
 ipcMain.handle('cab:saveAbonnements', (_e, { dossierId, abonnements } = {}) => {
   requireOpen();
+  droitBlock(dossierId, 'saisie');
   const d = dossierDe(dossierId);
   d.abonnements = (Array.isArray(abonnements) ? abonnements : []).map(a => ({
     id: String(a.id || ''), nom: String(a.nom || ''), guideId: String(a.guideId || ''),
@@ -1916,6 +2166,7 @@ ipcMain.handle('cab:saveAbonnements', (_e, { dossierId, abonnements } = {}) => {
 // `faites` porte les mois déjà générés, comme `importerPaquet` porte les mois déjà reçus.
 ipcMain.handle('cab:genererAbonnements', (_e, { dossierId, annee, jusquA } = {}) => {
   requireOpen();
+  droitBlock(dossierId, 'saisie');
   const d = dossierDe(dossierId);
   const o = ouvrirLivre(dossierId, annee);
   if (!o.livre) throw erreur('ERR-CAB-026', 'Ce dossier n\'a pas de livre pour cet exercice.');
@@ -1931,7 +2182,7 @@ ipcMain.handle('cab:genererAbonnements', (_e, { dossierId, annee, jusquA } = {})
         piece: a.piece ? `${a.piece}-${date.slice(0, 7)}` : '',
         libelle: a.libelle || a.nom
       });
-      const e = KC.ajouterEcriture(o.livre, ecr, moiPoste().deviceName || 'cabinet', Date.now());
+      const e = KC.ajouterEcriture(o.livre, ecr, quiSuisJe(), Date.now());
       a.faites = (a.faites || []).concat([date.slice(0, 7)]);
       bilan.crees++;
       bilan.details.push({ id: e.id, date, nom: a.nom || g.nom });
@@ -1955,6 +2206,7 @@ ipcMain.handle('cab:dernierJournal', (_e, { dossierId, journal } = {}) => {
 // déjà importé remplace ses brouillards et laisse les validées intactes.
 ipcMain.handle('cab:relireLesPaquets', (_e, { dossierId, annee } = {}) => {
   requireOpen();
+  droitBlock(dossierId, 'saisie');
   const d = dossierDe(dossierId);
   const o = ouvrirLivre(dossierId, annee);
   const livre = o.livre || KC.livreVide(dossierId, annee);

@@ -72,6 +72,17 @@ contextBridge.exposeInMainWorld('cabinet', {
   saveAbonnements: (dossierId, abonnements) => ipcRenderer.invoke('cab:saveAbonnements', { dossierId, abonnements }),
   genererAbonnements: (o) => ipcRenderer.invoke('cab:genererAbonnements', o || {}),
   dernierJournal: (dossierId, journal) => ipcRenderer.invoke('cab:dernierJournal', { dossierId, journal }),
+  // Le cabinet à plusieurs (9.9.0). Rien ici ne sort du cabinet : une identité déclarée, des droits
+  // posés sur SES dossiers, un tableau lu dans SES index. Le client ne voit jamais qui, chez son
+  // comptable, a saisi son mois — et n'a pas à le voir.
+  collaborateurs: () => ipcRenderer.invoke('cab:collaborateurs'),
+  saveCollaborateur: (o) => ipcRenderer.invoke('cab:saveCollaborateur', o || {}),
+  retirerCollaborateur: (id) => ipcRenderer.invoke('cab:retirerCollaborateur', id),
+  jeSuis: (id) => ipcRenderer.invoke('cab:jeSuis', id),
+  saveDroits: (dossierId, droits) => ipcRenderer.invoke('cab:saveDroits', { dossierId, droits }),
+  production: (o) => ipcRenderer.invoke('cab:production', o || {}),
+  fusionner: (dossierId, annee) => ipcRenderer.invoke('cab:fusionner', { dossierId, annee }),
+  reprendreVerrou: (dossierId, annee) => ipcRenderer.invoke('cab:reprendreVerrou', { dossierId, annee }),
   // La banque (9.5.0). LIRE un relevé et l'AJOUTER sont deux portes séparées : entre les deux, le
   // comptable choisit le compte, saisit les deux soldes du relevé papier et corrige l'association
   // des colonnes. Rien ici ne touche aux données du client — un relevé bancaire vit dans le livre
