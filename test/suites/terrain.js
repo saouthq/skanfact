@@ -177,6 +177,32 @@ t('T-46 : la balance auxiliaire se calcule aussi sur un dossier sans livre (lu d
   assert.strictEqual(repris, 0);
 });
 
+// T-47 (9.8.8-beta.3) — « Il manque 9 mois » sans livre, « 5 mois » avec, sur le même dossier au
+// même instant : le compte sans livre réclamait le mois en cours ET l'avenir. Une seule fonction
+// pour les deux états, qui s'arrête au mois dernier (Cabinet 1.0.0).
+t('T-47 : les mois manquants se comptent avec la MÊME fonction, avec ou sans livre, et jamais l\'avenir', () => {
+  const Kc = require('../../src/cabinet/cabcore.js');
+  // Trois mois reçus (juin, juillet, août) sur un exercice lu le 21 septembre : janvier→mai manquent,
+  // septembre est en cours, octobre→décembre n'existent pas encore.
+  const m = Kc.moisManquants(['2026-06', '2026-07', '2026-08'], '2026-01', '2026-12', '2026-09-21');
+  assert.deepStrictEqual(m, ['2026-01', '2026-02', '2026-03', '2026-04', '2026-05'], 'cinq mois, jamais neuf');
+  // Des DATES complètes (les lignes d'un livre) comptent comme des mois.
+  assert.deepStrictEqual(Kc.moisManquants(['2026-06-05', '2026-07-18', '2026-08-29'], '2026-01', '2026-12', '2026-09-21'), m);
+  // Une période entièrement passée se compte en entier ; une période entièrement future ne réclame rien.
+  assert.deepStrictEqual(Kc.moisManquants([], '2025-11', '2025-12', '2026-09-21'), ['2025-11', '2025-12']);
+  assert.deepStrictEqual(Kc.moisManquants([], '2026-10', '2026-12', '2026-09-21'), []);
+  // Un mois seul, tout juste passé.
+  assert.deepStrictEqual(Kc.moisManquants([], '2026-08', '2026-08', '2026-09-21'), ['2026-08']);
+  assert.deepStrictEqual(Kc.moisManquants([], '2026-09', '2026-09', '2026-09-21'), [], 'le mois en cours n\'est jamais réclamé');
+  assert.deepStrictEqual(Kc.moisManquants([], '', '2026-12'), [], 'sans bornes, rien');
+  // Et l'écran n'a plus de boucle à lui : les deux états passent par cette fonction.
+  const src = lireSource('src', 'cabinet', 'renderer', 'app.js');
+  const zone = src.slice(src.indexOf('function lignesDeLaPeriode('), src.indexOf('function lignesDeLaPeriode(') + 6000);
+  assert.ok(zone.includes("source: 'livre'") && zone.includes("source: 'paquets'"), 'découpage de lignesDeLaPeriode raté');
+  assert.strictEqual((zone.match(/K\.moisManquants\(/g) || []).length, 2, 'les DEUX états du dossier comptent par la même fonction');
+  assert.ok(!/manquants\.push\(/.test(zone), 'aucune boucle locale ne doit recompter les mois à sa façon');
+});
+
 t('T-41 : la balance auxiliaire détaille le COLLECTIF, et son total est le solde du 411 dans la générale', () => {
   const livre = livreDeLExemple();
   const lignes = K.lignesDuLivre(livre);

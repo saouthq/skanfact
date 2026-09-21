@@ -18,6 +18,9 @@ corriger.** Version d'essai, dans la continuité de la 9.8.8.
   moteur rend désormais une ouverture vide sans livre ; le test pur et le parcours réel cliquent le
   bouton sur un dossier lu dans ses paquets, exigent le tableau par tiers et le verdict de
   concordance avec la générale.
+- **« Il manque 9 mois » sans livre, « 5 mois » avec, sur le même dossier** (T-47) : le compte sans
+  livre réclamait le mois en cours et l'avenir. Une seule fonction (`moisManquants`) pour les deux
+  états, qui s'arrête au mois dernier.
 
 ## 9.8.8-beta.2 — 21/09/2026
 

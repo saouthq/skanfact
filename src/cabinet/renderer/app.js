@@ -2019,17 +2019,11 @@
       // d'un client à qui il manque neuf mois sur douze doit continuer à le dire : c'est sur ce
       // livre-là qu'on valide, qu'on déclare et qu'on clôture. Le mois en cours n'est jamais
       // réclamé (Cabinet 1.0.0), et un livre encore VIDE n'est pas incomplet, il est vide.
-      const manquants = [];
+      // Le compte vit dans cabcore (`moisManquants`), le MÊME pour un dossier avec ou sans livre (T-47).
+      let manquants = [];
       if (toutes.length && jour(du) && jour(au)) {
-        const vus = new Set(toutes.map(l => String(l.date || '').slice(0, 7)));
         const debutEx = String((s.livre.exercice || {}).du || '').slice(0, 7);
-        const dernier = K.addMonth(K.today().slice(0, 7), -1);
-        let m = debutEx && debutEx > du ? debutEx : du;
-        const fin = au < dernier ? au : dernier;
-        for (let garde = 0; garde < 120 && m <= fin; garde++) {
-          if (!vus.has(m)) manquants.push(m);
-          m = K.addMonth(m, 1);
-        }
+        manquants = K.moisManquants(toutes.map(l => l.date), debutEx && debutEx > du ? debutEx : du, au);
       }
       return { source: 'livre', lignes, avant, ouverture, du: duJ, au: auJ, illisibles: [], anciens: [], manquants, pris: [] };
     }
@@ -2048,15 +2042,9 @@
     });
     // Les mois ABSENTS de la période sont nommés en tête : un livre incomplet qui ne le dit pas
     // est un livre faux (règle « avant d'écrire une phrase rassurante, vérifier l'univers »).
-    const manquants = [];
-    if (du && au && du.length === 7 && au.length === 7) {
-      const vus = new Set(pris.map(p => p.month));
-      let m = du;
-      for (let garde = 0; garde < 120 && m <= au; garde++) {
-        if (!vus.has(m)) manquants.push(m);
-        m = K.addMonth(m, 1);
-      }
-    }
+    // Jamais le mois en cours ni l'avenir : sans cette borne, un exercice lu en septembre annonçait
+    // neuf mois manquants sur douze, dont quatre qui n'étaient pas encore arrivés (T-47).
+    const manquants = K.moisManquants(pris.map(p => p.month), du, au);
     return { source: 'paquets', lignes, avant: [], ouverture: null, du: '', au: '', illisibles, anciens, manquants, pris };
   }
 

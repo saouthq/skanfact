@@ -1652,6 +1652,28 @@ par tiers et le verdict de concordance, puis le second clic qui ramène la gén�
 livre seulement (T-41 a été prouvé sur `livreDeLExemple()`) ne prouve rien du dossier sans livre.
 **Une correction se prouve dans les DEUX états du dossier, avec et sans livre.**
 
+### ~~T-47 · MOYEN · « Il manque 9 mois » sans livre, « 5 mois » avec — sur le même dossier, au même instant~~ — corrigé en 9.8.8-beta.3
+
+**Vu** sur deux captures de Skander le 21/09, Trabelsi, exercice 2026, trois paquets reçus (juin,
+juillet, août) : le bandeau orange disait « Il manque 9 mois sur cette période » avant la création
+du livre, « Il manque 5 mois » une minute après, sans qu'aucun paquet n'arrive.
+
+**Pourquoi ça compte** : c'est le chiffre qui dit au comptable si le livre est complet. Deux valeurs
+pour le même fait, c'est le défaut du bandeau des relances (6.8.1) — un compteur qu'on ne croit
+plus. Et « 9 » est faux : il réclame septembre, en cours, et octobre à décembre, qui n'existent pas.
+
+**Ancrage** : `src/cabinet/renderer/app.js`, `lignesDeLaPeriode` — deux boucles recopiées. Celle du
+livre bornait au mois dernier (`dernier = addMonth(today, -1)`), celle des paquets bornait à `au`,
+soit décembre. Le dossier sans livre était donc jugé sur des mois à venir.
+
+**Ce qui est juste** : `cabcore.moisManquants(vus, du, au, aujourdhui)`, pure, appelée par les DEUX
+états, qui s'arrête au mois dernier (Cabinet 1.0.0 : « le mois en cours n'est jamais réclamé »). Test
+T-47 : cinq mois et jamais neuf, les dates complètes comptent comme des mois, une période future ne
+réclame rien, et la source n'a plus de boucle locale.
+
+**Règle violée** : un compteur et la liste qu'il annonce se calculent avec la même fonction (6.8.1) —
+ici deux copies de la même boucle, qui avaient déjà divergé.
+
 ### Ce que la 9.8.8 a décidé, et ce qu'elle laisse À VÉRIFIER
 
 - **T-41, le tiers sur chaque ligne** : gardé. Que la ligne de TVA d'une facture porte le tiers de

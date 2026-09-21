@@ -1278,6 +1278,26 @@
     };
   }
 
+  // Les mois d'une période sans la moindre pièce — jamais le mois en cours, jamais l'avenir
+  // (Cabinet 1.0.0 : « le mois en cours n'est jamais réclamé »). UNE fonction pour les deux états
+  // d'un dossier (T-47) : lu dans ses paquets, il annonçait « 9 mois manquants » sur un exercice
+  // dont quatre mois n'étaient pas encore arrivés, et « 5 » une minute plus tard, avec un livre.
+  // Un compteur et la liste qu'il annonce se calculent avec la même fonction (6.8.1).
+  function moisManquants(vus, du, au, aujourdhui) {
+    const d = String(du || '').slice(0, 7), a = String(au || '').slice(0, 7);
+    const out = [];
+    if (d.length !== 7 || a.length !== 7) return out;
+    const dernier = addMonth(String(aujourdhui || today()).slice(0, 7), -1);
+    const fin = a < dernier ? a : dernier;
+    const v = new Set([...(vus || [])].map(m => String(m || '').slice(0, 7)));
+    let m = d;
+    for (let garde = 0; garde < 120 && m <= fin; garde++) {
+      if (!v.has(m)) out.push(m);
+      m = addMonth(m, 1);
+    }
+    return out;
+  }
+
   // ---------- le canal d'essai, sans le fournisseur GitHub d'electron-updater (9.8.8-beta.2) ----------
   //
   // Le fournisseur GitHub d'electron-updater ne connaît que DEUX canaux de préversion, « alpha » et
@@ -1331,6 +1351,6 @@
     parseCsv, verdictOrigine, csvDangereux, toCsvLine, mergeEcritures, ecrituresPlan,
     DEFAULT_DEADLINES, deadlineSettings, echeances, dayOf,
     dossierMonths, dossierRow, dossierList, cabinetTodo, relanceMail, pairingFile,
-    INDEX_STABLES, nomIndex, releasePourIndex
+    INDEX_STABLES, nomIndex, releasePourIndex, moisManquants
   };
 }));
