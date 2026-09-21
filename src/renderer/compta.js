@@ -314,6 +314,54 @@
     return { rows, totaux, ok, equilibree: ok };
   }
 
+  // ---------------------------------------------------------------- la balance auxiliaire
+  //
+  // Le DÉTAIL D'UN COMPTE COLLECTIF par tiers — pas un annuaire de tout ce qui porte un nom. La
+  // première version (Cabinet, 9.1.0) regroupait par tiers TOUTES les lignes qui en portaient un ;
+  // or `entrySet` pose le tiers de la pièce sur chacune de ses lignes (411, 706, 4367, 4368…), donc
+  // chaque client additionnait une pièce ÉQUILIBRÉE sous son nom : débit = crédit, solde 0,000,
+  // pour tous les clients, toujours, y compris ceux qui n'avaient jamais payé (T-41). Un écran qui
+  // ne peut RIEN dire ferme la question au lieu de la poser (règle 9.5.0, portée au lettrage).
+  //
+  // On ne garde que les lignes des COLLECTIFS demandés (411…, 401…), désignés par leur RÔLE dans
+  // le plan du dossier — jamais un numéro écrit en dur (règle 6.3.0) ; les numéros ci-dessous ne
+  // sont que le repli d'un plan qui n'a pas nommé ses collectifs. Le contrôle qui prouve la
+  // correction : le total de l'auxiliaire EST le solde du collectif dans la balance générale.
+  const COMPTES_TIERS = { clients: '411', fournisseurs: '401' };
+  function collectifsDeTiers(livre, role) {
+    const p = ((livre && livre.plan) || []).filter(c => c && c.role === role).map(c => txt(c.compte)).filter(Boolean);
+    if (p.length) return p;
+    return COMPTES_TIERS[role] ? [COMPTES_TIERS[role]] : [];
+  }
+  function balanceAuxiliaireDepuisLignes(entries, collectifs, opts) {
+    const o = opts || {};
+    const C = (Array.isArray(collectifs) ? collectifs : [collectifs]).map(txt).filter(Boolean);
+    const dedans = e => C.some(c => txt(e.account).startsWith(c));
+    const cle = e => e.tiersId || ('~' + (txt(e.tiers) || '(sans tiers)'));
+    const noms = {}, comptes = {};
+    const echanger = e => {
+      const k = cle(e);
+      noms[k] = txt(e.tiers) || '(sans tiers)';
+      (comptes[k] = comptes[k] || new Set()).add(txt(e.account));
+      return { ...e, account: k };
+    };
+    // L'ouverture par tiers se déduit des lignes d'AVANT la période (`opts.avant`) : un solde
+    // d'ouverture par compte ne sait pas se répartir entre les clients.
+    const ouverture = {};
+    (Array.isArray(o.avant) ? o.avant : []).filter(dedans).forEach(e => {
+      const k = cle(echanger(e));
+      ouverture[k] = round3((ouverture[k] || 0) + num(e.debit) - num(e.credit));
+    });
+    const b = balanceDepuisLignes((entries || []).filter(dedans).map(echanger), ouverture, null);
+    const rows = b.rows
+      .map(r => ({ ...r, tiers: noms[r.account], tiersId: r.account.startsWith('~') ? '' : r.account, account: [...(comptes[r.account] || [])].sort().join(', '), label: noms[r.account] }))
+      .sort((x, y) => x.tiers.localeCompare(y.tiers, 'fr'));
+    // Pas de `ok` ici : une balance auxiliaire n'a aucune raison d'être « équilibrée » (les clients
+    // sont tous débiteurs). Son seul contrôle est externe — le total contre le collectif de la
+    // balance générale — et c'est l'appelant qui le fait, avec le chiffre qu'il affiche.
+    return { rows, totaux: b.totaux, collectifs: C, solde: round3(b.totaux.soldeD - b.totaux.soldeC) };
+  }
+
   // ---------------------------------------------------------------- le grand livre
   //
   // `compte` est un numéro ou un PRÉFIXE : « 4 » donne tous les tiers, « 411 » les clients. Les
@@ -1529,17 +1577,29 @@
     return { ok: true, motif: '', somme };
   }
 
+  // Le même fichier, déjà dans le livre. Deux fois le même fichier, c'est deux fois les mêmes
+  // mouvements : le rapprochement trouverait deux lignes pour chaque écriture et n'en
+  // rapprocherait plus aucune avec certitude. Exposée à part pour que l'écran puisse le dire DÈS
+  // que le fichier est choisi — l'empreinte est connue à la lecture, avant toute saisie de solde.
+  function releveDejaImporte(livre, empreinte) {
+    const emp = txt(empreinte);
+    if (!emp) return null;
+    return ((livre && livre.releves) || []).find(x => txt(x.empreinte) === emp) || null;
+  }
+
   function ajouterReleve(livre, releve, qui, quand) {
+    livre.releves = Array.isArray(livre.releves) ? livre.releves : [];
+    const emp = txt((releve || {}).empreinte);
+    // Le doublon se juge AVANT le bouclage (T-08). Il est une propriété du fichier, connue avant
+    // toute saisie ; reprocher d'abord les soldes envoyait le comptable chercher dans un relevé
+    // papier une information qui ne servait à rien, pour apprendre dix minutes plus tard que
+    // l'import n'aurait de toute façon pas eu lieu. Deux refus pour une situation, le premier faux.
+    const deja = releveDejaImporte(livre, emp);
+    if (deja) {
+      return { ok: false, deja: true, motif: `Ce fichier a déjà été importé le ${txt(deja.importeLe).slice(0, 10) || '(date inconnue)'} (${txt(deja.du)} → ${txt(deja.au)}).` };
+    }
     const v = releveValide(releve);
     if (!v.ok) return { ok: false, motif: v.motif, ecart: v.ecart };
-    livre.releves = Array.isArray(livre.releves) ? livre.releves : [];
-    const emp = txt(releve.empreinte);
-    // Deux fois le même fichier, c'est deux fois les mêmes mouvements : le rapprochement
-    // trouverait deux lignes pour chaque écriture et n'en rapprocherait plus aucune avec certitude.
-    if (emp && livre.releves.some(x => txt(x.empreinte) === emp)) {
-      const deja = livre.releves.find(x => txt(x.empreinte) === emp);
-      return { ok: false, motif: `Ce fichier a déjà été importé le ${txt(deja.importeLe).slice(0, 10) || '(date inconnue)'} (${txt(deja.du)} → ${txt(deja.au)}).` };
-    }
     const id = 'REL-' + (livre.releves.length + 1) + '-' + String(quand || 0);
     const R = {
       id,
@@ -1705,12 +1765,23 @@
       if (l.rapprochement && l.rapprochement.ecritureId) rapprochees.add(l.rapprochement.ecritureId + '#' + l.rapprochement.ligne);
     }));
     const cote = R.lignes.filter(l => !(l.rapprochement && l.rapprochement.ecritureId));
-    const cotL = lignesBancaires(livre, R.compte)
-      .filter(c => c.date <= (R.au || '9999-12-31'))
-      .filter(c => !rapprochees.has(c.ecritureId + '#' + c.ligne));
+    const toutes = lignesBancaires(livre, R.compte).filter(c => c.date <= (R.au || '9999-12-31'));
+    const cotL = toutes.filter(c => !rapprochees.has(c.ecritureId + '#' + c.ligne));
     const sB = round3(cote.reduce((s, l) => s + num(l.montant), 0));
     const sL = round3(cotL.reduce((s, c) => s + c.montant, 0));
-    return { banque: cote, livre: cotL, ecart: round3(sB - sL) };
+    // L'ÉCART est celui du rapprochement classique : le solde que la banque annonce à la date du
+    // relevé, moins ce que le livre porte sur le compte à la même date (T-06). La première version
+    // faisait « Σ suspens banque − Σ suspens livre » : sans borne basse côté livre et sans jamais
+    // relire `soldeFin`, ce nombre ne pouvait pas tomber à zéro dès que les relevés ne couvraient
+    // pas toute l'histoire du livre — le cas normal d'un cabinet qui reprend un dossier en cours
+    // d'année. Un indicateur qui ne peut pas atteindre zéro est une décoration.
+    // Les deux LISTES ne bougent pas : elles sont justes, et l'absence de borne basse côté livre y
+    // est voulue (un chèque émis en juillet et encaissé en août doit apparaître). Ce qu'elles
+    // expliquent de l'écart se compare ; le reste vient d'avant le premier relevé, et on le nomme.
+    const soldeComptable = round3(toutes.reduce((s, c) => s + c.montant, 0));
+    const ecart = round3(num(R.soldeFin) - soldeComptable);
+    const ecartSuspens = round3(sB - sL);
+    return { banque: cote, livre: cotL, ecart, soldeComptable, soldeFin: round3(num(R.soldeFin)), ecartSuspens, avant: round3(ecart - ecartSuspens) };
   }
 
   // L'écriture PROPOSÉE depuis une ligne non rapprochée. Elle n'est jamais enregistrée ici : cette
@@ -1980,9 +2051,19 @@
       creditAReporter: caseDe(Math.max(0, -net), []),
       timbre: caseDe(timbre.v, timbre.e),
       retenuesOperees: caseDe(rsOp.v, rsOp.e),
-      retenuesSubies: caseDe(rsSub.v, rsSub.e),
-      irpp: caseDe(irpp.v, irpp.e),
-      aDecaisser: caseDe(round3(Math.max(0, net) + timbre.v + rsOp.v), [])
+      // Une somme qu'on RÉCUPÈRE, jamais qu'on paie : rangée après le total, sans ce mot, elle se
+      // lisait comme une ligne oubliée du total (T-16).
+      retenuesSubies: { ...caseDe(rsSub.v, rsSub.e), sens: 'creance' },
+      // L'IRPP retenu sur les salaires est calculé et tracé, mais il N'ENTRE PAS dans le total : la
+      // règle (le reverse-t-on avec la déclaration mensuelle de TVA, ou à part ?) n'est confirmée
+      // par personne, et « la valeur par défaut d'une règle qu'on ne connaît pas est celle qui ne
+      // fait rien » (9.1.1). Ce qui était faux, c'était de ne pas le DIRE : un total posé au bas
+      // d'une colonne se lit comme la somme de la colonne (9.4.5). Le champ `horsTotal` porte la
+      // raison, et l'écran l'affiche à côté de la ligne.
+      irpp: { ...caseDe(irpp.v, irpp.e), horsTotal: 'Non compris dans le total à décaisser — À VÉRIFIER avec le comptable : selon le régime, l\'IRPP retenu se reverse avec cette déclaration ou à part.' },
+      // Le total NOMME ce qu'il additionne (`composantes`) : c'est ce qui permet à l'écran de
+      // l'écrire dans le libellé, et à un test de refuser une composante ajoutée sans son nom.
+      aDecaisser: { ...caseDe(round3(Math.max(0, net) + timbre.v + rsOp.v), []), composantes: ['netAPayer', 'timbre', 'retenuesOperees'] }
     };
     Object.keys(CASES_A_VERIFIER).forEach(k => {
       const c = compteDuRole(livre, k);
@@ -2112,7 +2193,17 @@
       ? { le: txt((valeur && valeur.le) || ''), par: txt(qui), reference: txt((valeur && valeur.reference) || '') }
       : { le: '', par: '', reference: '' };
     trace(livre, qui, (valeur ? '' : 'dé-') + (quoi === 'deposee' ? 'pointage dépôt' : 'pointage paiement'), periode, quand);
-    return { ok: true, declaration: d };
+    // Ce qu'on interdit de poser dans un sens est interdit d'obtenir dans l'autre (T-21). Annuler
+    // le dépôt d'une déclaration déjà payée laissait « payée mais pas déposée » — l'état exact que
+    // la porte d'entrée refuse — et le bouton du paiement, éteint dès que le dépôt est vide, ne
+    // permettait plus d'en sortir. Le paiement tombe donc avec le dépôt, et l'appelant le DIT.
+    let aussiPayee = false;
+    if (quoi === 'deposee' && !valeur && d.payee && d.payee.le) {
+      d.payee = { le: '', par: '', reference: '' };
+      trace(livre, qui, 'dé-pointage paiement', periode + ' (avec le dépôt)', quand);
+      aussiPayee = true;
+    }
+    return { ok: true, declaration: d, aussiPayee };
   }
 
   // L'état d'un mois, côté cabinet : reçu → saisi → déclaré → payé. Chaque étape se DÉDUIT de ce
@@ -3084,7 +3175,7 @@
     round3, cleDePiece, csvDangereux, nombreDepuisCsv, dateDepuisCsv,
     ecritureValide, entreesDepuisCsv,
     entriesBalance, entriesByAccount,
-    balanceDepuisLignes, grandLivreDepuisLignes,
+    balanceDepuisLignes, grandLivreDepuisLignes, balanceAuxiliaireDepuisLignes, collectifsDeTiers, COMPTES_TIERS,
     journalDepuisLignes, centralisateurDepuisLignes,
     lettrageDepuisLignes,
     // Le livre (9.2.0)
@@ -3101,7 +3192,7 @@
     correspondanceValide, compteCorrespondant, appliquerCorrespondance,
     // La banque (9.5.0)
     RELEVE_NIVEAUX, RELEVE_JOURS, AGING_BUCKETS,
-    colonnesReleve, releveDepuisCsv, releveValide, ajouterReleve, supprimerReleve,
+    colonnesReleve, releveDepuisCsv, releveValide, releveDejaImporte, ajouterReleve, supprimerReleve,
     lignesBancaires, rapprocherAuto, rapprocherLigne, derapprocherReleve, suspens,
     compteDuLibelle, ecritureProposee, lettrageAuto,
     echeancierDepuisLignes, balanceAgeeDepuisLignes,

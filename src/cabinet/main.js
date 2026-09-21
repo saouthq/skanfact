@@ -1362,7 +1362,7 @@ ipcMain.handle('cab:pointerDeclaration', (_e, { dossierId, annee, periode, quoi,
   const r = KC.pointerDeclaration(o.livre, periode, quoi, valeur, moiPoste().deviceName || 'cabinet', Date.now());
   if (!r.ok) throw erreur('ERR-CAB-042', r.motif);
   ecrireLeLivre(dossierId, o.livre, null);
-  return { ok: true, declaration: r.declaration, livre: ouvrirLivre(dossierId, annee).livre };
+  return { ok: true, declaration: r.declaration, aussiPayee: !!r.aussiPayee, livre: ouvrirLivre(dossierId, annee).livre };
 });
 
 // L'écriture de déclaration entre en BROUILLARD, comme tout ce qui est proposé : c'est le comptable
@@ -1569,7 +1569,10 @@ ipcMain.handle('cab:cloture', (_e, { dossierId, annee } = {}) => {
   const livre = livreOuErreur(dossierId, annee);
   const lignes = KC.lignesDuLivre(livre, { du: livre.exercice.du, au: livre.exercice.au });
   const ouv = KC.soldesDepuisOuverture(livre);
-  const libelle = (c) => ((livre.plan || []).find(p => p.compte === c) || {}).libelle || '';
+  // Le NOM DU COMPTE, jamais le tiers : le plan du dossier d'abord, le plan comptable en repli
+  // (T-22). Une rubrique de bilan étiquetée « Facture FAC-2026-014 — Clinique Les Jasmins » pour
+  // 32 720 DT de chiffre d'affaires est un document faux qui a l'air juste.
+  const libelle = (c) => ((livre.plan || []).find(p => p.compte === c) || {}).libelle || KC.libelleDuPlan(c) || '';
   return {
     exercice: livre.exercice,
     controles: KC.controlesCloture(livre),
@@ -1638,7 +1641,7 @@ ipcMain.handle('cab:ecrireCloture', async (_e, { dossierId, annee, motDePasse } 
   if (!dos.anouveaux.length) throw erreur('ERR-CAB-063', 'Cet exercice ne porte aucun à-nouveau : il n\'y aurait rien à envoyer au client.');
 
   const lignes = KC.lignesDuLivre(livre, { du: livre.exercice.du, au: livre.exercice.au });
-  const libelle = (c) => ((livre.plan || []).find(p => p.compte === c) || {}).libelle || '';
+  const libelle = (c) => ((livre.plan || []).find(p => p.compte === c) || {}).libelle || KC.libelleDuPlan(c) || '';
   const etats = KC.etatsDepuisLignes(lignes, KC.soldesDepuisOuverture(livre), { libelle });
   const html = htmlDeCloture(d, dos, etats);
   const pdf = await pdfDeCloture(html);

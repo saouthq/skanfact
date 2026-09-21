@@ -3534,6 +3534,24 @@
       { key: 'reference', label: 'Référence' }, { key: 'reconciled', label: 'Pointé' }
     ];
   }
+  // Les LIGNES du journal de trésorerie, dans la forme que ses colonnes réclament. `cashMovements`
+  // rend `kind`, `accountId` et un `amount` signé ; les colonnes demandaient `kindLabel`,
+  // `accountName`, `inAmount` et `outAmount` — quatre clés que personne n'écrivait, donc quatre
+  // colonnes vides dans CHAQUE paquet envoyé depuis la 6.1.0, sans qu'aucun message ne le dise
+  // (T-01). Un test confronte désormais chaque clé des colonnes aux lignes produites ici.
+  function cashCsvRows(data, moves) {
+    const accName = id => ((data.accounts || []).find(a => a.id === id) || {}).name || '';
+    const nature = m => m.source === 'vente' ? 'Encaissement client'
+      : m.source === 'achat' ? 'Règlement fournisseur'
+        : m.source === 'paie' ? 'Salaire'
+          : m.party || 'Mouvement';
+    return (moves || []).map(m => ({
+      ...m,
+      kindLabel: nature(m), accountName: accName(m.accountId),
+      inAmount: m.amount > 0 ? m.amount : 0, outAmount: m.amount < 0 ? round3(-m.amount) : 0,
+      reconciled: m.reconciled ? 'oui' : 'non'
+    }));
+  }
 
   // Nom de fichier : lisible d'un coup d'œil dans une boîte mail encombrée, et triable.
   function packFileName(company, period, definitive) {
@@ -3586,7 +3604,7 @@
     add({ path: 'journaux/achats.csv', kind: 'text', label: 'Journal des achats', text: toCsv(buys, buyCsvColumns()), rows: buys.length });
     add({ path: 'journaux/encaissements.csv', kind: 'text', label: 'Encaissements clients', text: toCsv(pays, payCsvColumns()), rows: pays.length });
     add({ path: 'journaux/reglements-fournisseurs.csv', kind: 'text', label: 'Règlements fournisseurs', text: toCsv(supPays, supplierPayCsvColumns()), rows: supPays.length });
-    add({ path: 'journaux/tresorerie.csv', kind: 'text', label: 'Mouvements de trésorerie', text: toCsv(cash, cashCsvColumns()), rows: cash.length });
+    add({ path: 'journaux/tresorerie.csv', kind: 'text', label: 'Mouvements de trésorerie', text: toCsv(cashCsvRows(data, cash), cashCsvColumns()), rows: cash.length });
 
     // 1 bis. Les écritures en partie double. C'est le fichier qui fait gagner des heures au cabinet :
     // il l'importe au lieu de retaper les pièces une à une. Les numéros de compte sont ceux réglés
@@ -6429,7 +6447,7 @@
     PLAN_COMPTABLE, accountLabel, classeDe, compteDeGestion, auxiliairesActifs, codesAuxiliaires, numeroterAuxiliaires,
     debutExercice, soldesOuverture, balanceGenerale, grandLivre, grandLivreRows, balanceAuxiliaire,
     balanceCsvColumns, balanceAuxCsvColumns, grandLivreCsvColumns,
-    salesCsvColumns, buyCsvColumns, payCsvColumns, supplierPayCsvColumns, cashCsvColumns,
+    salesCsvColumns, buyCsvColumns, payCsvColumns, supplierPayCsvColumns, cashCsvColumns, cashCsvRows,
     nextNumber, isLocked, isIssued, computeTotals, creditsFor, invoiceBalance, effectiveStatus,
     depositLines, settlementLines, salesJournal, vatSummary, paymentsJournal, toCsv, migrateData,
     PERIODS, MONTHS_FR, MONTHS_SHORT, monthLabel, addMonths, nextRecurrenceDate, dueRecurrences, catchUpRecurrence, fillTemplate, buildRecurringInvoice,

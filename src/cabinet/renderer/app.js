@@ -1981,15 +1981,35 @@
     if (s.livre) {
       const { du, au } = bornesLivres(s.data.tousLesMois || []);
       const jour = m => (m && m.length === 7 ? m : '');
-      return {
-        source: 'livre',
-        lignes: KC.lignesDuLivre(s.livre, {
-          brouillard: s.brouillard,
-          du: jour(du) ? jour(du) + '-01' : '',
-          au: jour(au) ? jour(au) + '-31' : ''
-        }),
-        illisibles: [], anciens: [], manquants: [], pris: []
-      };
+      const duJ = jour(du) ? jour(du) + '-01' : '', auJ = jour(au) ? jour(au) + '-31' : '';
+      // TOUTES les lignes du livre, une fois ; puis on sépare ce qui est DANS la période de ce qui
+      // la précède. Ce qui précède fait l'OUVERTURE (T-38) : sur mars seul, un « solde » qui ne vaut
+      // que les mouvements de mars n'est pas un solde de compte, et c'est pourtant ainsi qu'un
+      // comptable lit cette colonne. L'ouverture = les soldes repris (la balance d'ouverture du
+      // dossier) + les mouvements de l'exercice antérieurs au premier jour de la période.
+      const toutes = KC.lignesDuLivre(s.livre, { brouillard: s.brouillard });
+      const lignes = toutes.filter(l => (!duJ || l.date >= duJ) && (!auJ || l.date <= auJ));
+      const avant = duJ ? toutes.filter(l => l.date < duJ) : [];
+      const ouverture = KC.soldesDepuisOuverture(s.livre);
+      avant.forEach(l => { ouverture[l.account] = KC.round3((ouverture[l.account] || 0) + (Number(l.debit) || 0) - (Number(l.credit) || 0)); });
+      // Les mois de l'exercice SANS LA MOINDRE ÉCRITURE (T-02). Avec un livre, « manquant » ne veut
+      // plus dire « paquet non reçu » — un dossier hors SkanFact n'en reçoit aucun — mais le livre
+      // d'un client à qui il manque neuf mois sur douze doit continuer à le dire : c'est sur ce
+      // livre-là qu'on valide, qu'on déclare et qu'on clôture. Le mois en cours n'est jamais
+      // réclamé (Cabinet 1.0.0), et un livre encore VIDE n'est pas incomplet, il est vide.
+      const manquants = [];
+      if (toutes.length && jour(du) && jour(au)) {
+        const vus = new Set(toutes.map(l => String(l.date || '').slice(0, 7)));
+        const debutEx = String((s.livre.exercice || {}).du || '').slice(0, 7);
+        const dernier = K.addMonth(K.today().slice(0, 7), -1);
+        let m = debutEx && debutEx > du ? debutEx : du;
+        const fin = au < dernier ? au : dernier;
+        for (let garde = 0; garde < 120 && m <= fin; garde++) {
+          if (!vus.has(m)) manquants.push(m);
+          m = K.addMonth(m, 1);
+        }
+      }
+      return { source: 'livre', lignes, avant, ouverture, du: duJ, au: auJ, illisibles: [], anciens: [], manquants, pris: [] };
     }
     const { du, au } = bornesLivres(s.data.tousLesMois || []);
     const pris = (s.data.paquets || []).filter(p => (!du || p.month >= du) && (!au || p.month <= au));
@@ -2015,7 +2035,23 @@
         m = K.addMonth(m, 1);
       }
     }
-    return { lignes, illisibles, anciens, manquants, pris };
+    return { source: 'paquets', lignes, avant: [], ouverture: null, du: '', au: '', illisibles, anciens, manquants, pris };
+  }
+
+  // Ce que la période affichée porte AVANT elle, et comment le dire. Une seule phrase pour le
+  // grand livre et la balance : la 9.1.0 écrivait « ce livre est lu dans les paquets, sans
+  // à-nouveau » en permanence, y compris sur le LIVRE du cabinet (T-38) — le constat était vrai,
+  // la raison donnée était fausse, et une phrase que rien ne tient est un bug (7.3.0).
+  function phraseOuverture() {
+    const s = livresState;
+    const p = s.periode || {};
+    if (p.source !== 'livre') return `Ouverture inconnue : ces écritures sont lues dans les paquets reçus, sans à-nouveau ${info('lv.ouverture')}`;
+    const reprise = ((s.livre.ouverture || {}).lignes || []).length;
+    const debutEx = String((s.livre.exercice || {}).du || '');
+    if (p.du && p.du > debutEx) return `Ouverture au ${esc(fmtJour(p.du))} : les soldes repris${reprise ? '' : ' (aucun)'} plus les mouvements de l'exercice avant cette date ${info('lv.ouverture')}`;
+    return reprise
+      ? `Ouverture au ${esc(fmtJour(debutEx))} : la balance d'ouverture reprise (${pl(reprise, 'compte')}) ${info('lv.ouverture')}`
+      : `Ouverture au ${esc(fmtJour(debutEx))} : nulle — aucune balance d'ouverture reprise ; si l'exercice porte une pièce d'à-nouveau, c'est elle qui porte les soldes reportés ${info('lv.ouverture')}`;
   }
 
   // ---------------------------------------------------------------- reprendre / relire (9.2.0)
@@ -2196,7 +2232,11 @@
            Les tableaux ci-dessous sont lus dans les paquets reçus. Tes sauvegardes sont dans les Réglages.</div>`
         : '';
 
-    const { lignes, illisibles, anciens, manquants, source } = lignesDeLaPeriode();
+    const periode = lignesDeLaPeriode();
+    const { lignes, illisibles, anciens, manquants, source } = periode;
+    // Les vues et l'export lisent la MÊME période (lignes, ouverture, bornes) : recalculée dans
+    // chacune, elle finirait par diverger (7.29.0).
+    s.periode = periode;
     const avert = [];
     if (source === 'livre') {
       const br = s.livre.ecritures.filter(e => e.statut === 'brouillard').length;
@@ -2348,10 +2388,11 @@
 
   function vueGrandLivre(lignes) {
     const s = livresState;
-    const gl = KC.grandLivreDepuisLignes(lignes, s.compte, null, nomDeCompte());
+    const ouverture = (s.periode || {}).ouverture || null;
+    const gl = KC.grandLivreDepuisLignes(lignes, s.compte, ouverture, nomDeCompte());
     const comptes = [...new Set(lignes.map(l => l.account))].sort();
     return `${barreLivres(`<select id="lv-compte" aria-label="Le compte à afficher"><option value="">Tous les comptes</option>${comptes.map(c => `<option value="${esc(c)}" ${s.compte === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>`, 'Exporter le grand livre')}
-      <div class="muted small mb">Ouverture inconnue : ce livre est lu dans les paquets, sans à-nouveau ${info('lv.ouverture')}</div>
+      <div class="muted small mb">${phraseOuverture()}</div>
       ${pagerBar(gl.comptes.length, s, 'compte')}
       ${/* Un comptable OUVRE un compte ; il ne lit pas les vingt d'affilée. La page en faisait
             6 554 px — sept écrans d'un seul tenant — et il fallait défiler pour savoir quels comptes
@@ -2362,7 +2403,7 @@
             les ouvre tous — un grand livre imprimé plié serait une feuille vide. */''}
       ${paginate(gl.comptes, s).map(c => `<details class="panel mt gl-compte" ${s.compte || gl.comptes.length === 1 ? 'open' : ''}>
         <summary class="gl-tete"><span class="gl-nom">${esc(c.account)}${c.label ? ' — ' + esc(c.label) : ''}</span>
-          <span class="gl-chiffres"><span class="muted gl-mv">${pl(c.lignes.length, 'mouvement')}</span>
+          <span class="gl-chiffres"><span class="muted gl-mv">${pl(c.lignes.length, 'mouvement')}${c.ouverture ? ` · ouverture ${esc(money(c.ouverture))}` : ''}</span>
             <span class="gl-m">D ${esc(money(c.debit))}</span><span class="gl-m">C ${esc(money(c.credit))}</span>
             <strong class="gl-m gl-solde">Solde ${esc(money(c.solde))}</strong></span></summary>
         <div class="scroll-x"><table class="list compact"><thead><tr><th class="nw">Date</th><th class="nw">Pièce</th><th>Libellé</th>
@@ -2378,33 +2419,75 @@
 
   function vueBalance(lignes) {
     const s = livresState;
-    // L'auxiliaire regroupe par TIERS, pas par compte : c'est ce qu'un comptable appelle une
-    // balance auxiliaire, et les lignes portent leur tiers depuis la 8.8.0.
-    const b = s.aux ? balanceAux(lignes) : KC.balanceDepuisLignes(lignes, null, nomDeCompte());
+    const ouverture = (s.periode || {}).ouverture || null;
+    const generale = KC.balanceDepuisLignes(lignes, ouverture, nomDeCompte());
+    const role = s.auxRole === 'fournisseurs' ? 'fournisseurs' : 'clients';
+    const b = s.aux ? balanceAux(lignes, role) : generale;
     const ecart = Math.round((b.totaux.soldeD - b.totaux.soldeC) * 1000) / 1000;
+    // Les colonnes d'ouverture ne se dessinent que si l'une des deux porte quelque chose : sur
+    // l'exercice entier elles valent zéro par construction (règle 9.0.0), et deux colonnes de zéros
+    // n'apprennent rien. Mais la phrase du verdict compte les paires qu'on VOIT (T-38).
+    const avecOuv = !!(b.totaux.ouvertureD || b.totaux.ouvertureC);
+    const paires = avecOuv ? 'les trois paires de totaux (ouverture, mouvements, soldes)' : 'les deux paires de totaux (mouvements, soldes)';
     const pager = pagerBar(b.rows.length, s, s.aux ? 'tiers' : 'compte', s.aux ? 'tiers' : 'comptes');
-    return `${barreLivres(`<button class="btn btn-sm ${s.aux ? '' : 'btn-ghost'}" id="lv-aux">${s.aux ? 'Balance générale' : 'Balance auxiliaire'}</button>`, 'Exporter la balance')}
-      <div class="${b.ok ? 'ok-box' : 'warn-box'} mb" id="lv-verdict">${b.ok ? 'Équilibrée : débit = crédit sur les trois paires de totaux.'
-        : `Écart de ${esc(money(Math.abs(ecart)))} entre les soldes débiteurs et créditeurs.`}</div>
+    const commandes = `<button class="btn btn-sm ${s.aux ? '' : 'btn-ghost'}" id="lv-aux">${s.aux ? 'Balance générale' : 'Balance auxiliaire'}</button>${
+      s.aux ? `<label class="f-lab">Collectif<select id="lv-aux-role" aria-label="Le collectif de tiers à détailler">
+        <option value="clients" ${role === 'clients' ? 'selected' : ''}>Clients (${esc(KC.collectifsDeTiers(s.livre, 'clients').join(', '))})</option>
+        <option value="fournisseurs" ${role === 'fournisseurs' ? 'selected' : ''}>Fournisseurs (${esc(KC.collectifsDeTiers(s.livre, 'fournisseurs').join(', '))})</option></select></label>${info('lv.aux')}` : ''}`;
+    // Le verdict d'une balance GÉNÉRALE, c'est l'équilibre. Celui d'une AUXILIAIRE, c'est qu'elle
+    // détaille exactement le solde du collectif dans la générale — c'est le contrôle qui aurait
+    // fait tomber T-41 le jour de sa naissance. Et une auxiliaire VIDE le dit avec sa cause, jamais
+    // « Équilibrée » sur rien (T-40).
+    let verdict;
+    if (!s.aux) {
+      verdict = `<div class="${b.ok ? 'ok-box' : 'warn-box'} mb" id="lv-verdict">${b.ok ? `Équilibrée : débit = crédit sur ${paires}.`
+        : `Écart de ${esc(money(Math.abs(ecart)))} entre les soldes débiteurs et créditeurs.`}</div>`;
+    } else {
+      const C = b.collectifs;
+      const nomRole = role === 'clients' ? 'clients' : 'fournisseurs';
+      const soldeGen = KC.round3(generale.rows.filter(r => C.some(c => String(r.account).startsWith(c))).reduce((a, r) => a + r.solde, 0));
+      const reprisMap = KC.soldesDepuisOuverture(s.livre);
+      const repris = KC.round3(Object.keys(reprisMap).filter(k => C.some(c => k.startsWith(c))).reduce((a, k) => a + reprisMap[k], 0));
+      if (!b.rows.length) {
+        const surCollectif = lignes.some(l => C.some(c => String(l.account).startsWith(c)));
+        verdict = `<div class="info-box mb" id="lv-verdict">Aucun ${nomRole === 'clients' ? 'client' : 'fournisseur'} sur cette période : ${
+          surCollectif ? `des lignes touchent ${esc(C.join(', '))} mais aucune ne porte de tiers.`
+            : `aucune écriture ne touche le collectif ${esc(C.join(', '))}${(s.periode || {}).source !== 'livre' ? ' — ou les paquets datent d\'avant la 8.8.0 et ne portent pas de tiers' : ''}.`}</div>`;
+      } else if (KC.round3(b.solde - soldeGen) === 0) {
+        verdict = `<div class="ok-box mb" id="lv-verdict">Balance auxiliaire <b>${nomRole}</b> (${esc(C.join(', '))}) : son total, ${esc(money(b.solde))}, est le solde du collectif dans la balance générale.</div>`;
+      } else {
+        verdict = `<div class="warn-box mb" id="lv-verdict">Balance auxiliaire <b>${nomRole}</b> (${esc(C.join(', '))}) : elle totalise ${esc(money(b.solde))}, la balance générale porte ${esc(money(soldeGen))} sur le collectif — écart de ${esc(money(Math.abs(KC.round3(b.solde - soldeGen))))}${
+          repris ? `, dont ${esc(money(Math.abs(repris)))} de solde d'ouverture repris PAR COMPTE, que l'auxiliaire ne sait pas répartir entre les tiers` : ''}.</div>`;
+      }
+    }
+    const colOuv = avecOuv ? `<th class="r nw">Ouverture débit</th><th class="r nw">Ouverture crédit</th>` : '';
+    return `${barreLivres(commandes, 'Exporter la balance')}
+      ${s.aux ? '' : `<div class="muted small mb">${phraseOuverture()}</div>`}
+      ${verdict}
       ${pager}
       <div class="scroll-x"><table class="list compact"><thead><tr>
-        <th class="nw">${s.aux ? 'Tiers' : 'Compte'}</th><th>${s.aux ? 'Compte' : 'Intitulé'}</th>
+        <th class="nw">${s.aux ? 'Tiers' : 'Compte'}</th><th>${s.aux ? 'Comptes' : 'Intitulé'}</th>${colOuv}
         <th class="r nw">Mouvements débit</th><th class="r nw">Mouvements crédit</th>
         <th class="r nw">Solde débiteur</th><th class="r nw">Solde créditeur</th></tr></thead>
-      <tbody>${paginate(b.rows, s).map(r => `<tr><td class="nw">${esc(s.aux ? r.tiers : r.account)}</td><td>${esc(s.aux ? r.account : (r.label || ''))}</td>
+      <tbody>${paginate(b.rows, s).map(r => `<tr><td class="nw">${esc(s.aux ? r.tiers : r.account)}</td><td>${esc(s.aux ? r.account : (r.label || ''))}</td>${
+        avecOuv ? `<td class="r nw">${r.ouvertureD ? esc(money(r.ouvertureD)) : ''}</td><td class="r nw">${r.ouvertureC ? esc(money(r.ouvertureC)) : ''}</td>` : ''}
         <td class="r nw">${esc(money(r.debit))}</td><td class="r nw">${esc(money(r.credit))}</td>
         <td class="r nw">${r.soldeD ? esc(money(r.soldeD)) : ''}</td><td class="r nw">${r.soldeC ? esc(money(r.soldeC)) : ''}</td></tr>`).join('')}</tbody>
-      <tfoot><tr><td colspan="2"><strong>${pl(b.rows.length, s.aux ? 'tiers' : 'compte', s.aux ? 'tiers' : 'comptes')}</strong> <span class="muted small">— la sélection entière</span></td>
+      <tfoot><tr><td colspan="2"><strong>${pl(b.rows.length, s.aux ? 'tiers' : 'compte', s.aux ? 'tiers' : 'comptes')}</strong> <span class="muted small">— la sélection entière</span></td>${
+        avecOuv ? `<td class="r nw"><strong>${esc(money(b.totaux.ouvertureD))}</strong></td><td class="r nw"><strong>${esc(money(b.totaux.ouvertureC))}</strong></td>` : ''}
         <td class="r nw"><strong>${esc(money(b.totaux.debit))}</strong></td><td class="r nw"><strong>${esc(money(b.totaux.credit))}</strong></td>
         <td class="r nw"><strong>${esc(money(b.totaux.soldeD))}</strong></td><td class="r nw"><strong>${esc(money(b.totaux.soldeC))}</strong></td></tr></tfoot></table></div>`;
   }
 
-  // La balance auxiliaire : par tiers. Elle se construit sur les mêmes lignes, en remplaçant la
-  // clé de regroupement — on ne réécrit pas le calcul, on change ce qu'on regroupe.
-  function balanceAux(lignes) {
-    const avecTiers = lignes.filter(l => l.tiers).map(l => ({ ...l, account: l.tiers, tiers: l.account }));
-    const b = KC.balanceDepuisLignes(avecTiers, null, (c, t) => t || '');
-    return { ...b, rows: b.rows.map(r => ({ ...r, tiers: r.account, account: r.tiers || '' })) };
+  // La balance auxiliaire : le DÉTAIL D'UN COLLECTIF par tiers, calculé par le moteur
+  // (`balanceAuxiliaireDepuisLignes`). La première version échangeait `account` et `tiers` sur
+  // TOUTES les lignes qui portaient un tiers, donc chaque client additionnait sa pièce entière —
+  // 411, 706, 4367, 4368 — et soldait à zéro par construction (T-41). Les collectifs viennent du
+  // RÔLE dans le plan du dossier, jamais d'un numéro écrit ici (règle 6.3.0). Les lignes d'avant
+  // la période font l'ouverture par tiers.
+  function balanceAux(lignes, role) {
+    const s = livresState;
+    return KC.balanceAuxiliaireDepuisLignes(lignes, KC.collectifsDeTiers(s.livre, role), { avant: (s.periode || {}).avant || [] });
   }
 
   function vueLettrage(lignes) {
@@ -2465,8 +2548,8 @@
   const LIBELLE_CASE = {
     tvaCollectee: 'TVA collectée', tvaDeductible: 'TVA déductible', creditReporte: 'Crédit reporté du mois précédent',
     netAPayer: 'TVA nette à payer', creditAReporter: 'Crédit à reporter', timbre: 'Droit de timbre',
-    retenuesOperees: 'Retenues à la source opérées', retenuesSubies: 'Retenues subies (créance)',
-    irpp: 'IRPP retenu sur salaires', aDecaisser: 'Total à décaisser',
+    retenuesOperees: 'Retenues à la source opérées', retenuesSubies: 'Retenues subies — à récupérer, pas à payer',
+    irpp: 'IRPP retenu sur salaires', aDecaisser: 'Total à décaisser (TVA nette + timbre + retenues opérées)',
     tfp: 'TFP', foprolos: 'FOPROLOS', tcl: 'TCL', acomptes: 'Acomptes provisionnels'
   };
   const ORDRE_CASES = ['tvaCollectee', 'tvaDeductible', 'creditReporte', 'netAPayer', 'creditAReporter',
@@ -2502,13 +2585,19 @@
       <tbody>${ORDRE_CASES.filter(k => d.cases[k]).map(k => {
         const c = d.cases[k];
         const n = (c.ecritures || []).length;
+        // Une ligne qui N'ENTRE PAS dans le total le dit dans sa colonne « d'où ça vient » (T-16) :
+        // un total posé au bas d'une colonne se lit comme la somme de la colonne (9.4.5), et l'IRPP
+        // imprimé juste au-dessus faisait plus de deux fois le total qui le sautait sans un mot.
+        const hors = c.horsTotal ? ` <span class="muted small" title="${esc(c.horsTotal)}">— ${esc(c.horsTotal.split(' — ')[0])}, À VÉRIFIER</span>` : '';
         return `<tr class="${k === 'aDecaisser' ? 'dc-total' : ''}">
           <td>${esc(LIBELLE_CASE[k] || k)}</td>
           <td class="r nw">${c.montant == null ? '<span class="muted">—</span>' : esc(money(c.montant))}</td>
-          <td class="tronq" title="${esc(c.motif || (n ? pl(n, 'écriture') : ''))}">${
+          <td class="tronq" title="${esc(c.horsTotal || c.motif || (n ? pl(n, 'écriture') : ''))}">${
             c.montant == null ? `<span class="muted small">${esc((c.motif || '').slice(0, 60))}…</span>`
-              : n ? `<button type="button" class="btn btn-sm btn-ghost" data-cases="${k}">${esc(pl(n, 'écriture'))}</button>`
-                : '<span class="muted small">calculé</span>'}</td></tr>`;
+              : n ? `<button type="button" class="btn btn-sm btn-ghost" data-cases="${k}">${esc(pl(n, 'écriture'))}</button>${hors}`
+                : c.sens === 'creance' ? '<span class="muted small">à récupérer — hors total</span>'
+                  : c.composantes ? `<span class="muted small">somme de : ${esc(c.composantes.map(x => LIBELLE_CASE[x] || x).join(' + '))}</span>`
+                    : `<span class="muted small">calculé</span>${hors}`}</td></tr>`;
       }).join('')}</tbody></table></div>
       ${d.parTaux
         ? `<h3 class="sub-h">TVA collectée par taux</h3><table class="list compact"><tbody>${d.parTaux.map(x =>
@@ -2519,13 +2608,24 @@
     </div>
     ${declState.ouverte && d.cases[declState.ouverte] ? panneauPieces(d.cases[declState.ouverte], LIBELLE_CASE[declState.ouverte]) : ''}
     <div class="panel mt"><h2>Ce qui suit ${info('dc.suite')}</h2>
+      ${/* Un bouton éteint dit POURQUOI, et le motif se lit AU-DESSUS des boutons, en gris — pas
+            dans une infobulle qu'il faut deviner au survol, invisible au clavier et au doigt
+            (T-17, règles 9.4.5 et 9.4.2). Et le bouton qui débloque est répété ICI : « Préparer la
+            déclaration » vivait deux écrans plus haut, et les deux ne se rencontraient jamais. */''}
+      ${!posee ? `<p class="small muted">Ces trois gestes attendent la déclaration : prépare-la d'abord.
+        <button type="button" class="btn btn-sm btn-primary" id="dc-preparer2" style="margin-inline-start:8px">Préparer la déclaration</button></p>`
+        : ecrite ? `<p class="small muted">L'écriture du mois existe déjà : la refaire compterait la TVA du mois deux fois.</p>`
+          : !(posee.deposee && posee.deposee.le) && !(posee.payee && posee.payee.le)
+            ? `<p class="small muted">« Marquer payée » attend le dépôt : on ne paie pas ce qu'on n'a pas déposé.</p>` : ''}
       <div class="inline">
         <button class="btn btn-sm" id="dc-ecriture" ${!posee || ecrite ? 'disabled' : ''}
           title="${!posee ? 'Prépare la déclaration d\'abord.' : ecrite ? 'Elle existe déjà : la refaire compterait la TVA du mois deux fois.' : ''}">Écrire l'écriture du mois</button>
-        <button class="btn btn-sm" id="dc-deposee" ${!posee ? 'disabled' : ''}>${
+        <button class="btn btn-sm" id="dc-deposee" ${!posee ? 'disabled' : ''} title="${!posee ? 'Prépare la déclaration d\'abord.' : ''}">${
           posee && posee.deposee && posee.deposee.le ? 'Déposée le ' + esc(fmtJour(posee.deposee.le)) + ' — annuler' : 'Marquer déposée'}</button>
-        <button class="btn btn-sm" id="dc-payee" ${!posee || !(posee.deposee && posee.deposee.le) ? 'disabled' : ''}
-          title="${!posee || !(posee.deposee && posee.deposee.le) ? 'On ne paie pas ce qu\'on n\'a pas déposé.' : ''}">${
+        ${/* Le bouton du paiement reste ALLUMÉ tant qu'un paiement est posé (T-21) : éteint dès que
+              le dépôt est vide, il enfermait dans « payée mais pas déposée » sans aucune issue. */''}
+        <button class="btn btn-sm" id="dc-payee" ${!posee || (!(posee.deposee && posee.deposee.le) && !(posee.payee && posee.payee.le)) ? 'disabled' : ''}
+          title="${!posee ? 'Prépare la déclaration d\'abord.' : !(posee.deposee && posee.deposee.le) && !(posee.payee && posee.payee.le) ? 'On ne paie pas ce qu\'on n\'a pas déposé.' : ''}">${
           posee && posee.payee && posee.payee.le ? 'Payée le ' + esc(fmtJour(posee.payee.le)) + ' — annuler' : 'Marquer payée'}</button>
       </div>
       <p class="small muted mt">L'écriture du mois (${esc(d.comptes.collectee)} / ${esc(d.comptes.deductible)} → ${esc(d.comptes.aPayer)})
@@ -2561,14 +2661,17 @@
     const m = $('#dc-mois', el);
     if (m) m.onchange = () => { declState.mois = m.value; declState.ouverte = ''; s.decl = null; chargerDeclaration(root, dossier); };
     $$('[data-cases]', el).forEach(b => { b.onclick = () => { declState.ouverte = declState.ouverte === b.dataset.cases ? '' : b.dataset.cases; drawLivres(root, dossier); }; });
-    const prep = $('#dc-preparer', el);
-    if (prep) prep.onclick = async () => {
-      prep.disabled = true;
-      try {
-        const r = await api.poserDeclaration({ dossierId: dossier.id, annee: s.annee, periode: s.decl.periode });
-        s.livre = r.livre; toast('Déclaration préparée.'); await chargerDeclaration(root, dossier);
-      } catch (e) { toast(plainError(e), 'error'); prep.disabled = false; }
-    };
+    // Le MÊME geste sur les deux boutons (celui du haut et celui répété sous « Ce qui suit », T-17).
+    [$('#dc-preparer', el), $('#dc-preparer2', el)].forEach(prep => {
+      if (!prep) return;
+      prep.onclick = async () => {
+        prep.disabled = true;
+        try {
+          const r = await api.poserDeclaration({ dossierId: dossier.id, annee: s.annee, periode: s.decl.periode });
+          s.livre = r.livre; s.cloture = null; toast('Déclaration préparée.'); await chargerDeclaration(root, dossier);
+        } catch (e) { toast(plainError(e), 'error'); prep.disabled = false; }
+      };
+    });
     const ec = $('#dc-ecriture', el);
     if (ec) ec.onclick = async () => {
       ec.disabled = true;
@@ -2593,8 +2696,10 @@
             dossierId: dossier.id, annee: s.annee, periode: s.decl.periode, quoi,
             valeur: actif ? null : { le: K.today() }
           });
-          s.livre = r.livre;
-          toast(actif ? 'Pointage annulé.' : (quoi === 'deposee' ? 'Notée déposée — c\'est un pense-bête, pas un accusé de réception.' : 'Notée payée.'));
+          s.livre = r.livre; s.cloture = null;
+          toast(actif
+            ? (r.aussiPayee ? 'Dépôt et paiement annulés : on ne paie pas ce qu\'on n\'a pas déposé.' : 'Pointage annulé.')
+            : (quoi === 'deposee' ? 'Notée déposée — c\'est un pense-bête, pas un accusé de réception.' : 'Notée payée.'));
           await chargerDeclaration(root, dossier);
         } catch (e) { toast(plainError(e), 'error'); }
       };
@@ -2649,6 +2754,11 @@
     const echecs = (d.controles || []).filter(c => !c.ok);
     const e = d.etats;
     const money0 = n => esc(money(n));
+    // Un livre SANS à-nouveaux (T-23) : aucune balance d'ouverture reprise ET des capitaux propres
+    // à zéro. Une pièce d'à-nouveau venue du client ou de « Ouvrir N+1 » porte ses capitaux dans
+    // les lignes : elle suffit, et le vert reste légitime.
+    const capitaux = (e.passif || []).find(g => /^Capitaux/.test(g.titre));
+    const sansOuverture = !((s.livre.ouverture || {}).lignes || []).length && !(capitaux && capitaux.total);
     const groupe = g => `<tr class="gl-g"><th colspan="2">${esc(g.titre)}</th><th class="r nw">${money0(g.total)}</th></tr>`
       + g.lignes.map(l => `<tr><td class="nw">${esc(l.compte)}</td><td class="tronq" title="${esc(l.libelle)}">${esc(l.libelle)}</td><td class="r nw">${money0(l.montant)}</td></tr>`).join('');
     return `<div class="filters">
@@ -2688,10 +2798,20 @@
             <tr class="gl-g"><th colspan="2">Résultat de l'exercice</th><th class="r nw">${money0(e.resultat)}</th></tr>
             <tr class="dc-total"><td colspan="2"><b>Total passif</b></td><td class="r nw"><b>${money0(e.totalPassif)}</b></td></tr></tbody></table></div></div>
       </div>
-      ${e.equilibre
-    ? `<div class="ok-box mt">Actif = passif, au millime.</div>`
-    : `<div class="warn-box mt">Actif et passif diffèrent de ${money0(Math.round((e.totalActif - e.totalPassif) * 1000) / 1000)} :
-         une pièce est déséquilibrée, et c'est à regarder avant tout le reste.</div>`}
+      ${/* Le vert ne se pose que sur un exercice qui a ses à-nouveaux (T-23). « Actif = passif, au
+            millime » sur un livre qui commence en juin sans balance d'ouverture affirmait une chose
+            vraie (l'équilibre) là où le lecteur en comprend une autre (« ce bilan est bon ») — avec
+            un actif négatif et zéro capital. Une phrase rassurante se vérifie d'abord sur un univers
+            non vide (7.0.0) ; ici l'univers, ce sont les soldes d'ouverture. */''}
+      ${!e.equilibre
+    ? `<div class="warn-box mt">Actif et passif diffèrent de ${money0(Math.round((e.totalActif - e.totalPassif) * 1000) / 1000)} :
+         une pièce est déséquilibrée, et c'est à regarder avant tout le reste.</div>`
+    : sansOuverture
+      ? `<div class="warn-box mt" id="cl-sans-ouverture"><b>Ce bilan est la photo d'un livre sans à-nouveaux.</b> Aucune balance d'ouverture
+           n'a été reprise et les capitaux propres sont à zéro : ce que les comptes portaient avant la première écriture n'y est pas.
+           Actif et passif s'équilibrent — c'est la seule chose garantie — mais ce n'est pas encore un bilan qu'on montre à une banque.
+           <div class="mt"><button type="button" class="btn btn-sm" id="cl-reprise">Reprendre les soldes d'ouverture…</button></div></div>`
+      : `<div class="ok-box mt">Actif = passif, au millime.</div>`}
       <h3 class="sub-h">État de résultat</h3>
       <div class="scroll-x"><table class="list compact"><tbody>${groupe(e.produits)}${groupe(e.charges)}
         <tr class="dc-total"><td colspan="2"><b>Résultat de l'exercice</b></td><td class="r nw"><b>${money0(e.resultat)}</b></td></tr></tbody></table></div>
@@ -2727,6 +2847,8 @@
   function brancherCloture(el, root, dossier) {
     const s = livresState;
     if (!s.cloture) { chargerCloture(root, dossier); return; }
+    const rep = $('#cl-reprise', el);
+    if (rep) rep.onclick = () => repriseForm(root, dossier);
     const clo = $('#cl-cloturer', el);
     if (clo) clo.onclick = async () => {
       const echecs = (s.cloture.controles || []).filter(c => !c.ok);
@@ -3258,7 +3380,13 @@
       <div class="stat"><div class="lbl">Rapproché</div><div class="val ok">${parNiveau.certain}</div><div class="sub">sur ${pl(R.lignes.length, 'ligne')}</div></div>
       <div class="stat"><div class="lbl">À trancher</div><div class="val ${parNiveau.probable + parNiveau['a-confirmer'] ? 'due' : ''}">${parNiveau.probable + parNiveau['a-confirmer']}</div><div class="sub">probables et ambiguïtés</div></div>
       <div class="stat"><div class="lbl">Sans réponse</div><div class="val ${parNiveau.aucun ? 'due' : ''}">${parNiveau.aucun}</div><div class="sub">rien dans le livre en face</div></div>
-      <div class="stat"><div class="lbl">Écart de suspens</div><div class="val ${sus.ecart ? 'due' : 'ok'}">${esc(money(sus.ecart))}</div><div class="sub">banque moins livre, au ${esc(fmtJour(R.au))}</div></div>
+      ${/* L'écart du rapprochement classique : le solde de fin du relevé moins le solde comptable
+            du compte à la même date (T-06). Il PEUT tomber à zéro, et c'est ce qui en fait un
+            indicateur. Ce que les suspens n'expliquent pas vient d'avant le premier relevé, et on
+            le nomme plutôt que de le laisser fondu dans le chiffre. */''}
+      <div class="stat"><div class="lbl">Écart de rapprochement</div><div class="val ${sus.ecart ? 'due' : 'ok'}">${esc(money(sus.ecart))}</div>
+        <div class="sub">relevé ${esc(money(sus.soldeFin))} − livre ${esc(money(sus.soldeComptable))} au ${esc(fmtJour(R.au))}${
+          sus.avant ? ` · dont ${esc(money(sus.avant))} d'avant les relevés` : ''}</div></div>
     </div>
     <div class="panel mt"><h2>Le relevé ${info('bq.releve')}</h2>
       <div class="scroll-x"><table class="list compact"><thead><tr>
@@ -3314,8 +3442,20 @@
         s.livre = r.livre;
         // On DIT ce qui a été posé et ce qui ne l'a pas été. « 12 lignes traitées » laisserait
         // croire que tout est réglé alors que la moitié attend une décision.
-        toast(`${pl(r.compte.certain, 'ligne rapprochée', 'lignes rapprochées')} d'office ; ${
-          r.compte.probable + r.compte['a-confirmer']} à trancher, ${r.compte.aucun} sans réponse.`);
+        // Et le cas « rien à faire » a SA phrase (T-07) : trois zéros se lisent comme un échec,
+        // alors que « tout est déjà rapproché » est la meilleure nouvelle possible. Deux riens qui
+        // ne sont pas la même nouvelle : tout rapproché, ou rien qui corresponde.
+        const c = r.compte;
+        // Le relevé se RELIT dans le livre rendu : `R` est la poignée d'avant le geste (7.17.0).
+        const apres = ((r.livre && r.livre.releves) || []).find(x => x.id === R.id) || R;
+        const total = apres.lignes.length;
+        const dejaFait = apres.lignes.filter(l => l.rapprochement && l.rapprochement.ecritureId).length;
+        const rien = !c.certain && !c.probable && !c['a-confirmer'];
+        toast(rien && dejaFait === total && total
+          ? `Tout est déjà rapproché : ${pl(total, 'ligne')} sur ${total}.`
+          : rien
+            ? `Rien à rapprocher d'office : ${pl(c.aucun, 'ligne')} sans réponse, aucune écriture au même montant dans le livre.`
+            : `${pl(c.certain, 'ligne rapprochée', 'lignes rapprochées')} d'office ; ${c.probable + c['a-confirmer']} à trancher, ${c.aucun} sans réponse.`);
         drawLivres(root, dossier);
       } catch (e) { toast(plainError(e), 'error'); auto.disabled = false; }
     };
@@ -3499,8 +3639,16 @@
           if (!lu) return;
           const lignes = lu.lignes || [];
           const somme = KC.round3(lignes.reduce((a, l) => a + l.montant, 0));
+          // Le doublon se dit DÈS que le fichier est choisi (T-08) : l'empreinte est connue à la
+          // lecture, c'est-à-dire au moment exact où l'app écrivait un bandeau vert. Un vert dans la
+          // fenêtre et un refus rouge en bas de l'écran, c'est deux messages contradictoires, et
+          // le rassurant est celui où l'œil est posé. Le bandeau devient orange, nomme la date du
+          // premier import, et le bouton s'éteint en disant pourquoi (9.4.5).
+          const deja = KC.releveDejaImporte(s.livre, lu.empreinte);
           apercu.innerHTML = `${lu.motif ? `<div class="warn-box mb">${esc(lu.motif)}</div>` : ''}
-            ${lignes.length ? `<div class="ok-box mb">${pl(lignes.length, 'ligne lue', 'lignes lues')} · mouvements ${esc(money(somme))}${
+            ${deja ? `<div class="warn-box mb" id="rv-deja"><b>Ce fichier a déjà été importé</b> le ${esc(fmtJour(String(deja.importeLe || '').slice(0, 10)))} (${esc(fmtJour(deja.du))} → ${esc(fmtJour(deja.au))}).
+              L'importer une seconde fois doublerait chacun de ses mouvements : les soldes n'ont pas besoin d'être saisis.</div>`
+            : lignes.length ? `<div class="ok-box mb">${pl(lignes.length, 'ligne lue', 'lignes lues')} · mouvements ${esc(money(somme))}${
               lu.ignorees.length ? ` · ${pl(lu.ignorees.length, 'ligne ignorée', 'lignes ignorées')}` : ''}</div>` : ''}
             ${lu.ignorees && lu.ignorees.length ? `<div class="small muted">${lu.ignorees.slice(0, 5).map(i => `Ligne ${i.ligne} : ${esc(i.motif)}`).join(' · ')}</div>` : ''}
             ${lignes.length ? `<div class="scroll-x" style="max-height:200px"><table class="list compact"><thead><tr><th class="nw">Date</th><th>Libellé</th><th class="r nw">Montant</th></tr></thead>
@@ -3510,7 +3658,8 @@
                 `<label class="field">${champ === 'libelle' ? 'Libellé' : champ[0].toUpperCase() + champ.slice(1)}
                   <select data-col="${champ}"><option value="">—</option>${lu.entetes.map((e, i) => `<option value="${i}">${esc(e || ('Colonne ' + (i + 1)))}</option>`).join('')}</select></label>`).join('')}</div>
               <div class="modal-actions" style="justify-content:flex-start"><button type="button" class="btn btn-sm" id="rv-relire">Relire avec cette association</button></div>` : ''}`;
-          ok.disabled = !lignes.length;
+          ok.disabled = !lignes.length || !!deja;
+          ok.title = deja ? 'Ce fichier est déjà dans le livre.' : '';
           const relire = $('#rv-relire', rootModal);
           if (relire) relire.onclick = async () => {
             const assoc = {};
@@ -4368,6 +4517,7 @@
     const q = $('#lv-q', el); if (q) q.oninput = () => { s.q = q.value; s.page = 1; redraw(); };
     const c = $('#lv-compte', el); if (c) c.onchange = () => { s.compte = c.value; s.page = 1; redraw(); };
     const a = $('#lv-aux', el); if (a) a.onclick = () => { s.aux = !s.aux; s.page = 1; redraw(); };
+    const ar = $('#lv-aux-role', el); if (ar) ar.onchange = () => { s.auxRole = ar.value; s.page = 1; redraw(); };
     const x = $('#lv-csv', el); if (x) x.onclick = () => exporterLivre(lignes);
     const tt = $('#lv-tous', el); if (tt) tt.onclick = () => vers('#/ecritures');
     // Le lettrage automatique (9.5.0). Il DIT ce qu'il a posé et ce qu'il a laissé : « 12 lignes
@@ -4415,10 +4565,15 @@
   async function exporterLivre(lignes) {
     const s = livresState;
     const cols = s.onglet === 'balance'
-      ? [['account', 'Compte'], ['label', 'Intitulé'], ['debit', 'Mouvements débit'], ['credit', 'Mouvements crédit'], ['soldeD', 'Solde débiteur'], ['soldeC', 'Solde créditeur']]
+      ? (s.aux
+        ? [['tiers', 'Tiers'], ['account', 'Comptes'], ['ouvertureD', 'Ouverture débit'], ['ouvertureC', 'Ouverture crédit'], ['debit', 'Mouvements débit'], ['credit', 'Mouvements crédit'], ['soldeD', 'Solde débiteur'], ['soldeC', 'Solde créditeur']]
+        : [['account', 'Compte'], ['label', 'Intitulé'], ['ouvertureD', 'Ouverture débit'], ['ouvertureC', 'Ouverture crédit'], ['debit', 'Mouvements débit'], ['credit', 'Mouvements crédit'], ['soldeD', 'Solde débiteur'], ['soldeC', 'Solde créditeur']])
       : [['numero', 'N°'], ['date', 'Date'], ['journal', 'Journal'], ['piece', 'Pièce'], ['account', 'Compte'], ['tiers', 'Tiers'], ['label', 'Libellé'], ['debit', 'Débit'], ['credit', 'Crédit'], ['lettre', 'Lettrage']];
+    // La MÊME période que l'écran (ouverture comprise, T-38) : un export qui ne porte pas ce que
+    // l'écran montre est un second document, et les deux finissent par se contredire.
     const rows = s.onglet === 'balance'
-      ? (s.aux ? balanceAux(lignes) : KC.balanceDepuisLignes(lignes, null, nomDeCompte())).rows
+      ? (s.aux ? balanceAux(lignes, s.auxRole === 'fournisseurs' ? 'fournisseurs' : 'clients')
+        : KC.balanceDepuisLignes(lignes, (s.periode || {}).ouverture || null, nomDeCompte())).rows
       : KC.journalDepuisLignes(lignes).pieces.flatMap(p => p.lignes.map(e => ({ ...e, numero: p.numero })));
     // `K.toCsvLine` échappe comme le reste du Cabinet : un libellé de facture contient un
     // point-virgule un jour sur dix, et un montant s'écrit à la virgule décimale.

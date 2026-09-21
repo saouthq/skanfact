@@ -73,7 +73,7 @@
     },
     {
      "chemin": "journaux/tresorerie.csv",
-     "texte": "﻿Date;Libellé;Nature;Compte;Entrée;Sortie;Référence;Pointé\r\n01/08/2026;Salaire juillet 2026;;;0,000;0,000;;false\r\n01/08/2026;Salaire juillet 2026;;;0,000;0,000;;false\r\n05/08/2026;Frais de tenue de compte;;;0,000;0,000;;false\r\n12/08/2026;Règlement LOC-2026-09;;;0,000;0,000;VIR 202608-12;false\r\n15/08/2026;Règlement FA-2026-1187;;;0,000;0,000;VIR 202608-15;false\r\n23/08/2026;Encaissement FAC-2026-021;;;0,000;0,000;VIR 202608-23;true\r\n25/08/2026;Encaissement FAC-2026-024;;;0,000;0,000;VIR 202608-25;false\r\n28/08/2026;Règlement STEG-884512;;;0,000;0,000;;false\r\n28/08/2026;TVA, timbres et retenues de juillet 2026;;;0,000;0,000;TVA 2026-07;false\r\n"
+     "texte": "﻿Date;Libellé;Nature;Compte;Entrée;Sortie;Référence;Pointé\r\n01/08/2026;Salaire juillet 2026;Salaire;BIAT — compte courant;0,000;1703,731;;non\r\n01/08/2026;Salaire juillet 2026;Salaire;BIAT — compte courant;0,000;508,355;;non\r\n05/08/2026;Frais de tenue de compte;Frais bancaires;BIAT — compte courant;0,000;18,000;;non\r\n12/08/2026;Règlement LOC-2026-09;Règlement fournisseur;BIAT — compte courant;0,000;500,000;VIR 202608-12;non\r\n15/08/2026;Règlement FA-2026-1187;Règlement fournisseur;BIAT — compte courant;0,000;13567,000;VIR 202608-15;non\r\n23/08/2026;Encaissement FAC-2026-021;Encaissement client;BIAT — compte courant;20794,941;0,000;VIR 202608-23;oui\r\n25/08/2026;Encaissement FAC-2026-024;Encaissement client;BIAT — compte courant;950,442;0,000;VIR 202608-25;non\r\n28/08/2026;Règlement STEG-884512;Règlement fournisseur;BIAT — compte courant;0,000;404,600;;non\r\n28/08/2026;TVA, timbres et retenues de juillet 2026;Impôts et taxes;BIAT — compte courant;0,000;1218,050;TVA 2026-07;non\r\n"
     },
     {
      "chemin": "journaux/ecritures.csv",
@@ -169,7 +169,7 @@
     },
     {
      "chemin": "journaux/tresorerie.csv",
-     "texte": "﻿Date;Libellé;Nature;Compte;Entrée;Sortie;Référence;Pointé\r\n02/07/2026;Salaire juin 2026;;;0,000;0,000;;false\r\n02/07/2026;Salaire juin 2026;;;0,000;0,000;;false\r\n05/07/2026;Encaissement FAC-2026-013;;;0,000;0,000;Traite à 30 jours;true\r\n05/07/2026;Frais de tenue de compte;;;0,000;0,000;;false\r\n09/07/2026;Encaissement FAC-2026-015;;;0,000;0,000;CHQ 0045902;false\r\n11/07/2026;Encaissement FAC-2026-016;;;0,000;0,000;VIR 202607-11;false\r\n14/07/2026;Fournitures diverses;;;0,000;0,000;;false\r\n28/07/2026;Encaissement FAC-2026-018;;;0,000;0,000;VIR 202607-28;false\r\n28/07/2026;TVA, timbres et retenues de juin 2026;;;0,000;0,000;TVA 2026-06;false\r\n31/07/2026;Encaissement FAC-2026-019;;;0,000;0,000;SWIFT NOVA-2211;true\r\n"
+     "texte": "﻿Date;Libellé;Nature;Compte;Entrée;Sortie;Référence;Pointé\r\n02/07/2026;Salaire juin 2026;Salaire;BIAT — compte courant;0,000;1443,326;;non\r\n02/07/2026;Salaire juin 2026;Salaire;BIAT — compte courant;0,000;508,355;;non\r\n05/07/2026;Encaissement FAC-2026-013;Encaissement client;BIAT — compte courant;3247,201;0,000;Traite à 30 jours;oui\r\n05/07/2026;Frais de tenue de compte;Frais bancaires;BIAT — compte courant;0,000;18,000;;non\r\n09/07/2026;Encaissement FAC-2026-015;Encaissement client;BIAT — compte courant;405,600;0,000;CHQ 0045902;non\r\n11/07/2026;Encaissement FAC-2026-016;Encaissement client;BIAT — compte courant;5177,500;0,000;VIR 202607-11;non\r\n14/07/2026;Fournitures diverses;Autre sortie;Caisse espèces;0,000;120,000;;non\r\n28/07/2026;Encaissement FAC-2026-018;Encaissement client;BIAT — compte courant;399,531;0,000;VIR 202607-28;non\r\n28/07/2026;TVA, timbres et retenues de juin 2026;Impôts et taxes;BIAT — compte courant;0,000;1164,100;TVA 2026-06;non\r\n31/07/2026;Encaissement FAC-2026-019;Encaissement client;BIAT — compte courant;3685,000;0,000;SWIFT NOVA-2211;oui\r\n"
     },
     {
      "chemin": "journaux/ecritures.csv",
@@ -259,7 +259,7 @@
     },
     {
      "chemin": "journaux/tresorerie.csv",
-     "texte": "﻿Date;Libellé;Nature;Compte;Entrée;Sortie;Référence;Pointé\r\n01/06/2026;Salaire mai 2026;;;0,000;0,000;;false\r\n05/06/2026;Frais de tenue de compte;;;0,000;0,000;;false\r\n25/06/2026;Encaissement FAC-2026-014;;;0,000;0,000;VIR 202606-25;false\r\n28/06/2026;TVA, timbres et retenues de mai 2026;;;0,000;0,000;TVA 2026-05;false\r\n"
+     "texte": "﻿Date;Libellé;Nature;Compte;Entrée;Sortie;Référence;Pointé\r\n01/06/2026;Salaire mai 2026;Salaire;BIAT — compte courant;0,000;1443,326;;non\r\n05/06/2026;Frais de tenue de compte;Frais bancaires;BIAT — compte courant;0,000;18,000;;non\r\n25/06/2026;Encaissement FAC-2026-014;Encaissement client;BIAT — compte courant;399,531;0,000;VIR 202606-25;non\r\n28/06/2026;TVA, timbres et retenues de mai 2026;Impôts et taxes;BIAT — compte courant;0,000;805,401;TVA 2026-05;non\r\n"
     },
     {
      "chemin": "journaux/ecritures.csv",
@@ -347,7 +347,7 @@
     },
     {
      "chemin": "journaux/tresorerie.csv",
-     "texte": "﻿Date;Libellé;Nature;Compte;Entrée;Sortie;Référence;Pointé\r\n02/05/2026;Salaire avril 2026;;;0,000;0,000;;false\r\n05/05/2026;Frais de tenue de compte;;;0,000;0,000;;false\r\n07/05/2026;Encaissement FAC-2026-008;;;0,000;0,000;CHQ 1120034;true\r\n25/05/2026;Acompte provisionnel;;;0,000;0,000;;false\r\n25/05/2026;Encaissement FAC-2026-010;;;0,000;0,000;CHQ 0045871;false\r\n27/05/2026;Encaissement FAC-2026-012;;;0,000;0,000;VIR 202605-27;false\r\n28/05/2026;TVA, timbres et retenues de avril 2026;;;0,000;0,000;TVA 2026-04;false\r\n31/05/2026;Encaissement FAC-2026-009;;;0,000;0,000;VIR 202605-31;false\r\n"
+     "texte": "﻿Date;Libellé;Nature;Compte;Entrée;Sortie;Référence;Pointé\r\n02/05/2026;Salaire avril 2026;Salaire;BIAT — compte courant;0,000;1443,326;;non\r\n05/05/2026;Frais de tenue de compte;Frais bancaires;BIAT — compte courant;0,000;18,000;;non\r\n07/05/2026;Encaissement FAC-2026-008;Encaissement client;BIAT — compte courant;3247,560;0,000;CHQ 1120034;oui\r\n25/05/2026;Acompte provisionnel;Impôts et taxes;BIAT — compte courant;0,000;2400,000;;non\r\n25/05/2026;Encaissement FAC-2026-010;Encaissement client;BIAT — compte courant;405,600;0,000;CHQ 0045871;non\r\n27/05/2026;Encaissement FAC-2026-012;Encaissement client;BIAT — compte courant;950,442;0,000;VIR 202605-27;non\r\n28/05/2026;TVA, timbres et retenues de avril 2026;Impôts et taxes;BIAT — compte courant;0,000;562,600;TVA 2026-04;non\r\n31/05/2026;Encaissement FAC-2026-009;Encaissement client;BIAT — compte courant;399,531;0,000;VIR 202605-31;non\r\n"
     },
     {
      "chemin": "journaux/ecritures.csv",
@@ -431,7 +431,7 @@
     },
     {
      "chemin": "journaux/tresorerie.csv",
-     "texte": "﻿Date;Libellé;Nature;Compte;Entrée;Sortie;Référence;Pointé\r\n05/04/2026;Frais de tenue de compte;;;0,000;0,000;;false\r\n06/04/2026;Encaissement FAC-2026-005;;;0,000;0,000;VIR 202604-06;false\r\n23/04/2026;Encaissement FAC-2026-007;;;0,000;0,000;VIR 202604-23;false\r\n28/04/2026;TVA, timbres et retenues de mars 2026;;;0,000;0,000;TVA 2026-03;false\r\n"
+     "texte": "﻿Date;Libellé;Nature;Compte;Entrée;Sortie;Référence;Pointé\r\n05/04/2026;Frais de tenue de compte;Frais bancaires;BIAT — compte courant;0,000;18,000;;non\r\n06/04/2026;Encaissement FAC-2026-005;Encaissement client;BIAT — compte courant;399,531;0,000;VIR 202604-06;non\r\n23/04/2026;Encaissement FAC-2026-007;Encaissement client;BIAT — compte courant;399,531;0,000;VIR 202604-23;non\r\n28/04/2026;TVA, timbres et retenues de mars 2026;Impôts et taxes;BIAT — compte courant;0,000;54,079;TVA 2026-03;non\r\n"
     },
     {
      "chemin": "journaux/ecritures.csv",
@@ -515,7 +515,7 @@
     },
     {
      "chemin": "journaux/tresorerie.csv",
-     "texte": "﻿Date;Libellé;Nature;Compte;Entrée;Sortie;Référence;Pointé\r\n05/03/2026;Frais de tenue de compte;;;0,000;0,000;;false\r\n07/03/2026;Encaissement FAC-2026-003;;;0,000;0,000;VIR 202603-07;false\r\n28/03/2026;Encaissement FAC-2026-006;;;0,000;0,000;VIR 202603-28;false\r\n28/03/2026;TVA, timbres et retenues de février 2026;;;0,000;0,000;TVA 2026-02;false\r\n"
+     "texte": "﻿Date;Libellé;Nature;Compte;Entrée;Sortie;Référence;Pointé\r\n05/03/2026;Frais de tenue de compte;Frais bancaires;BIAT — compte courant;0,000;18,000;;non\r\n07/03/2026;Encaissement FAC-2026-003;Encaissement client;BIAT — compte courant;950,442;0,000;VIR 202603-07;non\r\n28/03/2026;Encaissement FAC-2026-006;Encaissement client;BIAT — compte courant;1392,229;0,000;VIR 202603-28;non\r\n28/03/2026;TVA, timbres et retenues de février 2026;Impôts et taxes;BIAT — compte courant;0,000;3,000;TVA 2026-02;non\r\n"
     },
     {
      "chemin": "journaux/ecritures.csv",
@@ -605,7 +605,7 @@
     },
     {
      "chemin": "journaux/tresorerie.csv",
-     "texte": "﻿Date;Libellé;Nature;Compte;Entrée;Sortie;Référence;Pointé\r\n05/02/2026;Frais de tenue de compte;;;0,000;0,000;;false\r\n18/02/2026;Encaissement FAC-2026-002;;;0,000;0,000;VIR 202602-18;false\r\n21/02/2026;Règlement FA-2026-0940;;;0,000;0,000;CHQ 4451;false\r\n25/02/2026;Encaissement FAC-2026-004;;;0,000;0,000;;true\r\n28/02/2026;TVA, timbres et retenues de janvier 2026;;;0,000;0,000;TVA 2026-01;false\r\n"
+     "texte": "﻿Date;Libellé;Nature;Compte;Entrée;Sortie;Référence;Pointé\r\n05/02/2026;Frais de tenue de compte;Frais bancaires;BIAT — compte courant;0,000;18,000;;non\r\n18/02/2026;Encaissement FAC-2026-002;Encaissement client;BIAT — compte courant;399,531;0,000;VIR 202602-18;non\r\n21/02/2026;Règlement FA-2026-0940;Règlement fournisseur;BIAT — compte courant;0,000;3095,000;CHQ 4451;non\r\n25/02/2026;Encaissement FAC-2026-004;Encaissement client;BIAT — compte courant;256,850;0,000;;oui\r\n28/02/2026;TVA, timbres et retenues de janvier 2026;Impôts et taxes;BIAT — compte courant;0,000;65,600;TVA 2026-01;non\r\n"
     },
     {
      "chemin": "journaux/ecritures.csv",
@@ -689,7 +689,7 @@
     },
     {
      "chemin": "journaux/tresorerie.csv",
-     "texte": "﻿Date;Libellé;Nature;Compte;Entrée;Sortie;Référence;Pointé\r\n05/01/2026;Frais de tenue de compte;;;0,000;0,000;;false\r\n28/01/2026;TVA, timbres et retenues de décembre 2025;;;0,000;0,000;TVA 2025-12;false\r\n29/01/2026;Encaissement FAC-2026-001;;;0,000;0,000;VIR 202601-29;false\r\n"
+     "texte": "﻿Date;Libellé;Nature;Compte;Entrée;Sortie;Référence;Pointé\r\n05/01/2026;Frais de tenue de compte;Frais bancaires;BIAT — compte courant;0,000;18,000;;non\r\n28/01/2026;TVA, timbres et retenues de décembre 2025;Impôts et taxes;BIAT — compte courant;0,000;65,600;TVA 2025-12;non\r\n29/01/2026;Encaissement FAC-2026-001;Encaissement client;BIAT — compte courant;399,531;0,000;VIR 202601-29;non\r\n"
     },
     {
      "chemin": "journaux/ecritures.csv",

@@ -13041,13 +13041,18 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // l'exception NOMMÉE : elle échange `account` et `tiers` avant d'appeler, donc `(c, t) => t` y
     // rend le vrai numéro de compte — une exception anonyme serait un trou (9.4.10).
     const lignes = code.split('\n').filter(l => /(?:grandLivre|balance)DepuisLignes\(/.test(l));
-    assert.ok(lignes.length >= 4, `on attend au moins quatre points d'appel, vu ${lignes.length}`);
-    const aux = lignes.filter(l => l.includes('avecTiers'));
-    assert.strictEqual(aux.length, 1, 'la balance auxiliaire doit être le seul appel sur les lignes échangées');
-    lignes.filter(l => !l.includes('avecTiers')).forEach(l => {
+    // Trois points d'appel depuis la 9.8.8 : le grand livre, la balance générale, et l'export —
+    // l'auxiliaire est passée au moteur (T-41).
+    assert.ok(lignes.length >= 3, `on attend au moins trois points d'appel, vu ${lignes.length}`);
+    lignes.forEach(l => {
       assert.ok(l.includes('nomDeCompte()'),
         'un écran résout encore le libellé autrement que par le nom du compte : ' + l.trim().slice(0, 120));
     });
+    // La balance AUXILIAIRE, elle, ne passe plus par un échange `account` ↔ `tiers` dans l'écran
+    // (c'était T-41 : chaque client soldait à zéro) : elle vient du moteur, qui ne garde que les
+    // collectifs de tiers.
+    assert.ok(!code.includes('avecTiers'), 'l\'écran échange encore compte et tiers lui-même');
+    assert.ok(/KC\.balanceAuxiliaireDepuisLignes\(lignes, KC\.collectifsDeTiers\(/.test(code), 'la balance auxiliaire ne vient pas du moteur');
     // Et le nom se lit dans le PLAN du livre, pas dans les lignes : c'est là qu'il est écrit.
     const zone = code.slice(code.indexOf('function nomDeCompte('), code.indexOf('function vueGrandLivre('));
     assert.ok(zone.length > 200 && zone.length < 1200, `tranche suspecte (${zone.length} caractères)`);
@@ -13565,6 +13570,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   require('./suites/moteur.js')({ t, assert, lireSource });
   require('./suites/immobilisations.js')({ t, assert, lireSource });
   require('./suites/cloture.js')({ t, assert, lireSource });
+  require('./suites/terrain.js')({ t, assert, lireSource });
 
   // ---------- 9.4.10 : aucune suite découpée ne reste sur le bord de la route ----------
   // Le danger d'un découpage, c'est le fichier qu'on écrit et que personne ne charge : les tests
