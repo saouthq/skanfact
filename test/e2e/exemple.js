@@ -263,10 +263,16 @@ const os = require('os');
   const restes = await win.evaluate(() => window.__data.clients.map(c => c.name));
   if (restes.includes('Client de trop')) throw new Error('la restauration n\'a rien remis : ' + restes.join(', '));
   // Les DEUX moitiés (10.0.1). Vérifier que le client ajouté a disparu ne dit rien de ce qui est
-  // REVENU : une restauration qui vide tout passerait exactement pareil. Le compte d'avant est la
-  // seconde moitié, et il était mesuré depuis toujours sans être comparé à quoi que ce soit.
-  if (restes.length !== avantCount) {
-    throw new Error(`la restauration rend ${restes.length} client(s) au lieu des ${avantCount} d'avant`);
+  // REVENU : une restauration qui vide tout passerait exactement pareil. Le compte d'avant était
+  // mesuré depuis toujours sans être comparé à quoi que ce soit — c'était la seconde moitié.
+  //
+  // Et l'assertion évidente était FAUSSE : « on doit retrouver le compte d'avant » accuse du code
+  // juste ici, parce qu'à ce point du parcours « Tout effacer » vient de passer. Le compte d'avant
+  // vaut donc 0, et la sauvegarde la plus récente est le filet pris JUSTE AVANT l'effacement : la
+  // restaurer doit rendre les clients d'avant l'effacement, pas les zéro d'après. La règle est
+  // qu'elle en rend STRICTEMENT PLUS — sinon elle n'a rien défait.
+  if (restes.length <= avantCount) {
+    throw new Error(`la restauration n'a rien défait : ${restes.length} client(s), contre ${avantCount} avant de la lancer`);
   }
   // À ce point du test, « Tout effacer » vient de passer : la sauvegarde la plus récente est le filet
   // pris juste avant. La restaurer défait donc l'effacement — ce qui est précisément ce qu'on veut
