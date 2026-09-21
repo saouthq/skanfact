@@ -4556,7 +4556,11 @@ figeait. Règles posées :
   nommant le compte. C'est la règle de la 9.4.3 une couche plus bas : ce n'est pas l'onglet par
   défaut qui cachait la page, c'est l'ÉTAT par défaut de l'objet qu'on ouvre. Corollaire :
   **prouver un correctif d'instrument, c'est d'abord prouver que l'instrument atteint l'écran** —
-  sans quoi on mesure le vide (9.7.0, re-trouvée sur un parcours au lieu d'un lot de tests).
+  sans quoi on mesure le vide (9.7.0, re-trouvée sur un parcours au lieu d'un lot de tests). Et le
+  **jumeau manquant, encore** (7.3.0) : `cabinet-premier-jour.js` créait le livre et refaisait le
+  tour depuis la 9.4.3, commentaire à l'appui (« on jugeait la page sur un sixième d'elle-même ») ;
+  la leçon n'avait jamais été portée à la sonde de rendu. Une règle apprise sur un INSTRUMENT se
+  vérifie sur les autres instruments, exactement comme une règle apprise sur une application.
 - **Ce que l'instrument a vu dès qu'il a pu voir** (T-56, T-57), et les deux sont des écarts que
   personne n'a décidés. Un **bandeau qui porte des GESTES n'est pas de la prose** : écrit avec deux
   `margin-inline-start` posés à la main, il ne décidait que l'écart horizontal, et au premier
