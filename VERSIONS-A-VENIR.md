@@ -804,7 +804,7 @@ encore. Chaque ligne est déjà décidée comme « hors périmètre jusqu'à » 
 | **Lecture de photo de facture** (en pause depuis la 8.7.0) | une application sur téléphone | le code de la 4.2.0 est intact et attend ; sans téléphone, il ne sert à personne |
 | **Application sur téléphone** | le besoin qui rendrait la photo utile : saisir une dépense sur le terrain | un second produit, pas une version |
 | **Serveur de transport des paquets** | un cabinet qui le demande — c'est écrit noir sur blanc dans `PLAN-PLATEFORME.md` § 7.0.0 | le paquet marche, et un serveur qui transporte des comptabilités change le niveau de responsabilité |
-| **Paie de cabinet** | un cabinet qui la demande | le moteur de paie existe côté entreprise depuis la 5.0.0 et se partagerait par `compta.js` |
+| **Congés, avances et documents du personnel côté cabinet** | un cabinet qui les demande — la paie de base est livrée en 10.3.0 | l'app entreprise les a depuis la 5.1.0 ; le cabinet établit les bulletins, le suivi des congés appartient à l'employeur |
 | **GED de cabinet, gestion du temps, facturation des honoraires** | un cabinet qui les demande | le comptable a déjà des outils, et SkanFact entreprise sait facturer |
 | **Portail client, inscription en autonomie, abonnement géré par le client** | le volume — au-delà de ce qu'un clic par vente peut absorber | `PLAN-PLATEFORME.md` § 13 : construire la surface avant la production est la façon la plus courante de ne jamais vendre |
 | **Installateurs séparés arm64 / x64** | la taille du `.dmg` universel (222 Mo) devenue un frein | confort, pas fonction |

@@ -1673,6 +1673,90 @@ ipcMain.handle('cab:ecrireDotations', (_e, { dossierId, annee } = {}) => {
   return { ok: true, ids, livre: ouvrirLivre(dossierId, annee).livre };
 });
 
+// ---------- la paie d'un dossier (10.3.0) ----------
+// Un cabinet a soixante clients dont deux utilisent SkanFact : pour les cinquante-huit autres — ceux
+// qui PAIENT — il n'existait aucun moyen de tenir la paie. Le comptable établissait les bulletins
+// ailleurs et retapait l'écriture à la main.
+//
+// Tout passe par `ecrireLeLivre`, la porte unique (9.2.0) : verrou, écriture et piste d'audit dans
+// le même mouvement. Deux portes, c'est la garantie qu'un jour l'une oubliera l'audit.
+ipcMain.handle('cab:paie', (_e, { dossierId, annee, mois } = {}) => {
+  requireOpen();
+  const livre = livreOuErreur(dossierId, annee);
+  const m = Number(mois) || 1;
+  const bulletins = KC.bulletinsDuMois(livre, annee, m);
+  return {
+    salaries: livre.salaries || [],
+    bulletins,
+    masse: KC.masseSalariale(bulletins),
+    annee: KC.masseSalariale((livre.bulletins || []).filter(b => Number(b.annee) === Number(annee))),
+    controles: KC.controlesPaie(livre, annee, m),
+    aEcrire: bulletins.some(b => !b.ecritureId),
+    baremes: KC.baremesPaie(dossierDe(dossierId).paie || {})
+  };
+});
+
+ipcMain.handle('cab:saveSalarie', (_e, { dossierId, annee, salarie } = {}) => {
+  requireOpen();
+  droitBlock(dossierId, 'saisie');
+  const livre = livreOuErreur(dossierId, annee);
+  const r = KC.ajouterSalarie(livre, salarie, quiSuisJe(), Date.now());
+  if (!r.ok) throw erreur('ERR-CAB-078', r.motif);
+  ecrireLeLivre(dossierId, livre, 'salarié', r.salarie.nom);
+  return { ok: true, salarie: r.salarie, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+ipcMain.handle('cab:retirerSalarie', (_e, { dossierId, annee, id } = {}) => {
+  requireOpen();
+  droitBlock(dossierId, 'saisie');
+  const livre = livreOuErreur(dossierId, annee);
+  const r = KC.retirerSalarie(livre, id, quiSuisJe(), Date.now());
+  if (!r.ok) throw erreur('ERR-CAB-078', r.motif);
+  ecrireLeLivre(dossierId, livre, 'salarié retiré', id);
+  return { ok: true, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+ipcMain.handle('cab:saveBulletin', (_e, { dossierId, annee, bulletin } = {}) => {
+  requireOpen();
+  droitBlock(dossierId, 'saisie');
+  const livre = livreOuErreur(dossierId, annee);
+  const r = KC.ajouterBulletin(livre, bulletin, dossierDe(dossierId).paie || {}, quiSuisJe(), Date.now());
+  if (!r.ok) throw erreur('ERR-CAB-079', r.motif);
+  ecrireLeLivre(dossierId, livre, 'bulletin de paie', `${r.bulletin.salarieId} ${r.bulletin.annee}-${r.bulletin.mois}`);
+  return { ok: true, bulletin: r.bulletin, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+ipcMain.handle('cab:supprimerBulletin', (_e, { dossierId, annee, id } = {}) => {
+  requireOpen();
+  droitBlock(dossierId, 'saisie');
+  const livre = livreOuErreur(dossierId, annee);
+  const r = KC.supprimerBulletin(livre, id, quiSuisJe(), Date.now());
+  if (!r.ok) throw erreur('ERR-CAB-079', r.motif);
+  ecrireLeLivre(dossierId, livre, 'bulletin supprimé', id);
+  return { ok: true, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+// L'écriture de paie du mois, en BROUILLARD : elle se relit avant d'être validée. Chaque bulletin
+// du lot la porte, sinon le bouton se rallumerait et la paie serait comptée deux fois (9.7.0).
+ipcMain.handle('cab:ecrirePaie', (_e, { dossierId, annee, mois } = {}) => {
+  requireOpen();
+  droitBlock(dossierId, 'validation');
+  const livre = livreOuErreur(dossierId, annee);
+  const d = dossierDe(dossierId);
+  const prop = KC.ecritureDePaie(livre, annee, mois, { comptes: (d.comptesPaie || {}) });
+  if (!prop.ok) throw erreur('ERR-CAB-080', prop.motif);
+  const e = KC.ajouterEcriture(livre, prop.ecriture, quiSuisJe(), Date.now());
+  KC.noterEcriturePaie(livre, prop.lot, e.id, quiSuisJe(), Date.now());
+  ecrireLeLivre(dossierId, livre, 'écriture de paie', `${annee}-${String(mois).padStart(2, '0')}`);
+  return { ok: true, id: e.id, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+ipcMain.handle('cab:cnss', (_e, { dossierId, annee, trimestre } = {}) => {
+  requireOpen();
+  const livre = livreOuErreur(dossierId, annee);
+  return KC.cnssDuTrimestre(livre, annee, trimestre);
+});
+
 ipcMain.handle('cab:inventaire', (_e, { dossierId, annee } = {}) => {
   requireOpen();
   const livre = livreOuErreur(dossierId, annee);

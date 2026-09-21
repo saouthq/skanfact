@@ -7,6 +7,40 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 10.3.0 — 21/09/2026
+
+**La paie des clients, dans SkanFact Cabinet.** Le travail mensuel le plus réclamé après la TVA, et
+le Cabinet ne savait pas le faire. Un cabinet a soixante clients dont deux utilisent SkanFact :
+pour les cinquante-huit autres — ceux qui PAIENT — il n'existait aucun moyen de tenir la paie. Le
+comptable établissait les bulletins ailleurs et **retapait l'écriture à la main**.
+
+Concrètement, une boulangerie de l'Ariana, six salariés, pas sur SkanFact : chaque mois son patron
+envoie « Mohamed a pris trois jours sans solde, Sonia a fait une prime, on a embauché Karim le 10 ».
+Il fallait six bulletins, l'écriture de paie, la déclaration CNSS du trimestre — et rien de tout ça
+n'existait côté cabinet.
+
+**À publier par la bêta** : ça touche des chiffres, des écritures et le format d'un fichier.
+
+- **Le moteur de paie a déménagé** de `core.js` vers `compta.js`, partagé par les deux applications.
+  La règle de découpage de la 9.1.0, relue dans les deux sens (9.6.1) : ces fonctions prennent un
+  SALARIÉ et une SAISIE, jamais `data`. Elles étaient du mauvais côté depuis la 5.0.0. `core.js`
+  les réexporte à l'identique — un test compare les OBJETS, jamais leurs résultats.
+- **Les salariés et les bulletins vivent dans le livre de l'exercice.** Un bulletin garde une COPIE
+  de son calcul : changer un barème plus tard ne réécrit jamais un bulletin déjà remis. Un salarié
+  qui part ne s'efface pas — on note sa sortie, et son nom reste sur les bulletins existants.
+- **L'écriture de paie du mois** arrive en brouillard, au dernier jour du mois, avec exactement les
+  comptes de l'app entreprise. Chaque bulletin retient l'écriture qui le porte : la repasser
+  compterait la paie deux fois, et le bouton s'éteint en disant pourquoi.
+- **La déclaration CNSS du trimestre** : un salarié par ligne, son assiette et les deux parts, à
+  recopier sur le portail. SkanFact Cabinet ne dépose rien et ne se connecte à aucune administration.
+- **Les contrôles NOMMENT et ne bloquent pas** : les salariés sans bulletin sont cités par leur nom,
+  ceux dont le numéro CNSS manque aussi. L'écriture passe quand même — un mois traité avec deux
+  manques signalés vaut mieux qu'un mois jamais traité.
+- Un aperçu du net se recalcule pendant la frappe, avec le moteur qui enregistrera ; le détail d'un
+  bulletin s'ouvre ligne par ligne, avec les taux qui ont servi ce jour-là.
+
+Douze tests de comportement, chacun prouvé en réintroduisant son défaut.
+
 ## 10.2.0 — 21/09/2026
 
 **L'avoir fournisseur, l'acompte versé et le relevé de compte client.** Trois gestes du métier que

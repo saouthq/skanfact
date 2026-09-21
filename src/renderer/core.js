@@ -2113,141 +2113,33 @@
   //  3. Le bulletin garde une COPIE de ce qui a servi à le calculer. Changer un barème ne doit jamais
   //     réécrire l'histoire d'un bulletin déjà remis à un salarié.
 
-  const CONTRACT_TYPES = [
-    ['cdi', 'CDI — contrat à durée indéterminée'],
-    ['cdd', 'CDD — contrat à durée déterminée'],
-    ['sivp', 'SIVP — stage d\'initiation à la vie professionnelle'],
-    ['karama', 'Contrat Karama'],
-    ['stage', 'Stage'],
-    ['autre', 'Autre']
-  ];
-  const contractLabel = k => (CONTRACT_TYPES.find(x => x[0] === k) || [, k])[1];
-
-  // Valeurs de départ, toutes modifiables. Régime tunisien, secteur non agricole.
-  // À VÉRIFIER avec le comptable : chacune de ces lignes peut changer d'une loi de finances à l'autre.
-  const DEFAULT_PAYROLL = {
-    cnssEmployee: 9.18,        // part salarié
-    cnssEmployer: 16.57,       // part employeur
-    accidentRate: 0.4,         // accident du travail : dépend de l'activité
-    tfpRate: 2,                // taxe de formation professionnelle : 2 % (1 % pour les industries manufacturières) — 9.0.0
-    foprolosRate: 1,           // FOPROLOS (logement social) : 1 % de la masse salariale — 9.0.0
-    solidarity: 1,             // contribution sociale de solidarité, en points sur la base imposable
-    proRate: 10,               // frais professionnels : % du salaire imposable…
-    proCap: 2000,              // …plafonnés à ce montant par an
-    headOfFamily: 300,         // déduction annuelle chef de famille
-    perChild: 100,             // déduction annuelle par enfant à charge
-    maxChildren: 4,
-    workedDays: 26,            // jours ouvrables d'un mois complet
-    offDays: [0],              // jours chômés de la semaine (0 = dimanche) — semaine de six jours
-    leaveDaysPerYear: 18,      // droit annuel à congé payé, en jours ouvrables
-    // Barème IRPP annuel progressif : `upTo` en dinars (null = au-delà), `rate` en %.
-    brackets: [
-      { upTo: 5000, rate: 0 },
-      { upTo: 10000, rate: 15 },
-      { upTo: 20000, rate: 25 },
-      { upTo: 30000, rate: 30 },
-      { upTo: 40000, rate: 33 },
-      { upTo: 50000, rate: 36 },
-      { upTo: 70000, rate: 38 },
-      { upTo: null, rate: 40 }
-    ]
-  };
+  // Le moteur de paie vit dans `compta.js` depuis la 10.3.0, et core.js le réexporte à l'identique.
+  // La règle de découpage de la 9.1.0, relue dans les deux sens (9.6.1) : ces fonctions prennent un
+  // SALARIÉ et une SAISIE, jamais `data`. Elles étaient du mauvais côté depuis la 5.0.0, et ça ne
+  // s'était jamais vu parce que personne d'autre n'en avait besoin — le Cabinet, lui, en a besoin
+  // pour tenir la paie des dossiers qui ne sont PAS sur SkanFact, et il ne charge pas core.js.
+  // La seule alternative au déménagement était la recopie, et une copie diverge, toujours.
+  const CONTRACT_TYPES = Compta.CONTRACT_TYPES;
+  const contractLabel = Compta.contractLabel;
+  const DEFAULT_PAYROLL = Compta.DEFAULT_PAYROLL;
 
   function payrollSettings(data) {
-    const s = (data && data.payrollSettings) || {};
-    const r = {
-      ...DEFAULT_PAYROLL, ...s,
-      brackets: Array.isArray(s.brackets) && s.brackets.length ? s.brackets : DEFAULT_PAYROLL.brackets
-    };
+    const regle = (data && data.payrollSettings) || {};
+    const r = Compta.baremesPaie(regle);
     // La TFP du métier, PROPOSÉE (9.1.1) : seulement tant que personne n'a réglé le taux à la main
     // — ni en le saisissant (`tfpRate` présent), ni en touchant le champ (`tfpTouche`). C'est le
     // motif de `regimeTouche` (7.25.0) et de la durée proposée par la famille d'un bien : proposer
     // ne veut rien dire si la proposition écrase ensuite ce qu'on a décidé.
-    if (s.tfpRate === undefined && !s.tfpTouche) {
+    if (regle.tfpRate === undefined && !regle.tfpTouche) {
       const p = tfpSuggere(((data && data.company) || {}).activity);
       if (p !== null) r.tfpRate = p;
     }
     return r;
   }
 
-  // Impôt annuel sur un revenu imposable, barème progressif par tranches.
-  function irppAnnual(base, brackets) {
-    const total = Math.max(0, Number(base) || 0);
-    let from = 0, tax = 0;
-    for (const b of brackets) {
-      const to = b.upTo == null ? Infinity : Number(b.upTo);
-      // La tranche ne porte que sur la part du revenu comprise entre `from` et `to` — surtout pas sur
-      // toute la tranche quand le revenu s'arrête au milieu (c'est l'erreur classique du barème).
-      const slice = Math.max(0, Math.min(total, to) - from);
-      if (slice > 0) tax += slice * (Number(b.rate) || 0) / 100;
-      from = to;
-      if (from >= total) break;
-    }
-    return round3(tax);
-  }
-
-  // Le calcul d'un bulletin. `input` porte ce qui varie d'un mois à l'autre :
-  // { gross, bonuses:[{label, amount, taxable}], deductions:[{label, amount}], absentDays, workedDays }
-  // Retourne TOUT le détail, pour que le bulletin imprimé et l'écran disent exactement la même chose.
-  function computePayslip(employee, input, settings) {
-    const s = settings || DEFAULT_PAYROLL;
-    const i = input || {};
-    const emp = employee || {};
-    const baseGross = round3(Number(i.gross != null ? i.gross : emp.grossSalary) || 0);
-    const workedDays = Number(i.workedDays) || 26;      // jours ouvrables du mois, modifiable
-    const absent = Math.max(0, Number(i.absentDays) || 0);
-    // Absence non rémunérée : le brut est réduit au prorata des jours.
-    const absenceCut = absent > 0 && workedDays > 0 ? round3(baseGross * absent / workedDays) : 0;
-
-    const bonuses = (i.bonuses || []).map(b => ({ label: b.label || 'Prime', amount: round3(Number(b.amount) || 0), taxable: b.taxable !== false }));
-    const taxableBonus = round3(bonuses.filter(b => b.taxable).reduce((a, b) => a + b.amount, 0));
-    const freeBonus = round3(bonuses.filter(b => !b.taxable).reduce((a, b) => a + b.amount, 0));
-
-    const gross = round3(baseGross - absenceCut + taxableBonus + freeBonus);
-    const cnssBase = round3(baseGross - absenceCut + taxableBonus);   // les primes non imposables sont hors assiette
-    const cnssEmployee = round3(cnssBase * (Number(s.cnssEmployee) || 0) / 100);
-
-    // Base imposable mensuelle → annualisée pour appliquer le barème, puis ramenée au mois.
-    const afterCnss = round3(cnssBase - cnssEmployee);
-    const annualAfterCnss = round3(afterCnss * 12);
-    const pro = round3(Math.min(annualAfterCnss * (Number(s.proRate) || 0) / 100, Number(s.proCap) || 0));
-    const children = Math.min(Number(emp.children) || 0, Number(s.maxChildren) || 0);
-    const family = round3((emp.headOfFamily ? (Number(s.headOfFamily) || 0) : 0) + children * (Number(s.perChild) || 0));
-    const annualTaxable = round3(Math.max(0, annualAfterCnss - pro - family));
-    const irppYear = irppAnnual(annualTaxable, s.brackets);
-    const irpp = round3(irppYear / 12);
-    const css = round3(annualTaxable * (Number(s.solidarity) || 0) / 100 / 12);
-
-    const deductions = (i.deductions || []).map(d => ({ label: d.label || 'Retenue', amount: round3(Number(d.amount) || 0) }));
-    const otherDeductions = round3(deductions.reduce((a, d) => a + d.amount, 0));
-
-    const net = round3(gross - cnssEmployee - irpp - css - otherDeductions);
-    const cnssEmployer = round3(cnssBase * (Number(s.cnssEmployer) || 0) / 100);
-    const accident = round3(cnssBase * (Number(s.accidentRate) || 0) / 100);
-    // 9.0.0 : la TFP et le FOPROLOS sont des taxes patronales sur la masse salariale, déclarées
-    // chaque mois avec la TVA. Elles entrent dans le coût employeur, jamais dans le net.
-    const tfp = round3(cnssBase * (Number(s.tfpRate) || 0) / 100);
-    const foprolos = round3(cnssBase * (Number(s.foprolosRate) || 0) / 100);
-    const employerCharges = round3(cnssEmployer + accident + tfp + foprolos);
-    const employerCost = round3(gross + employerCharges);
-
-    return {
-      baseGross, absenceCut, absentDays: absent, workedDays,
-      bonuses, taxableBonus, freeBonus, gross,
-      cnssBase, cnssEmployee, afterCnss, pro, family, children,
-      annualTaxable, irppYear, irpp, css,
-      deductions, otherDeductions, net,
-      cnssEmployer, accident, tfp, foprolos, employerCharges, employerCost,
-      rates: {
-        cnssEmployee: Number(s.cnssEmployee) || 0, cnssEmployer: Number(s.cnssEmployer) || 0,
-        accidentRate: Number(s.accidentRate) || 0, solidarity: Number(s.solidarity) || 0,
-        tfpRate: Number(s.tfpRate) || 0, foprolosRate: Number(s.foprolosRate) || 0
-      }
-    };
-  }
-  // Les charges patronales d'un bulletin, telles qu'il les a FIGÉES (5.0.0) : un bulletin d'avant la
-  // 9.0.0 n'a ni TFP ni FOPROLOS, et ne doit pas en gagner après coup.
-  const employerChargesOf = c => round3((Number(c.cnssEmployer) || 0) + (Number(c.accident) || 0) + (Number(c.tfp) || 0) + (Number(c.foprolos) || 0));
+  const irppAnnual = Compta.irppAnnual;
+  const computePayslip = Compta.computePayslip;
+  const employerChargesOf = Compta.employerChargesOf;
 
   const activeEmployees = (data, dateIso) => {
     const t = dateIso || today();

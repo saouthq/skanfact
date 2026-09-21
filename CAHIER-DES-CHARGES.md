@@ -331,6 +331,16 @@ dossier, `clePublique: string` (base64 SPKI DER Ed25519 du client), `cleEpinglee
 
 ### SPEC-DATA-005 — `livre.json` (Cible 9.2.0, `format: 1`) — **la spécification la plus importante**
 
+**10.3.0 — deux listes de plus : `salaries[]` et `bulletins[]`.** Un cabinet a soixante clients dont
+deux utilisent SkanFact ; pour les autres, la paie se tient ici. Elles vivent dans le livre de
+l'EXERCICE parce qu'un bulletin appartient à un mois et que son calcul est figé comme une écriture
+validée. Un salarié : `{ id, nom, cin, cnss, poste, contrat, embauche, sortie, brut, chefDeFamille,
+enfants, actif, note }` — il ne se supprime pas, il devient `actif: false`. Un bulletin :
+`{ id, salarieId, annee, mois, brut, joursTravailles, joursAbsence, primes[], retenues[], calcul,
+payeLe, ecritureId, creeLe, auteur }` — `calcul` est la COPIE figée rendue par `computePayslip`,
+`ecritureId` retient l'écriture de paie qui le porte (sans quoi elle se repasserait). Ajoutées,
+donc compatibles : absentes d'un livre écrit avant, elles valent `[]`.
+
 Un fichier **par dossier et par exercice** : `userData/dossiers/<client>/livre-<AAAA>.json`. Un
 index léger par dossier, `livre-index.json`, liste les exercices et leur état (ouvert / clos) pour
 éviter d'ouvrir soixante fichiers pour une liste. Écriture atomique par `cabstore` (même mécanisme
@@ -1914,6 +1924,9 @@ portent pas, et un test les nomme.
 | `ERR-ENT-084` | « Cet envoi de questions est protégé par un mot de passe… » (l'application le DEMANDE au lieu d'afficher du rouge) / « Mot de passe incorrect, ou fichier modifié depuis son envoi. » | import d'un `.skanask` (9.10.0) | le mot de passe, dit au téléphone | Livré |
 | `ERR-ENT-085` | « Le disque est plein : rien n'a été enregistré… » et les neuf autres phrases de `PANNES_DISQUE` (quota, accès refusé, lecture seule, fichier occupé, dossier introuvable, disque muet, trop de fichiers ouverts) | **toute** panne système, posée UNE fois dans l'enveloppe d'`ipcMain.handle` (10.0.1) | libérer de la place, fermer l'autre programme, rebrancher le support — la phrase le dit | Livré |
 | `ERR-CAB-076` | les mêmes dix phrases, table identique au caractère près (un test compare les deux corps) | **toute** panne système du Cabinet, même enveloppe (10.0.1) | idem | Livré |
+| `ERR-CAB-078` | « Le nom du salarié est obligatoire. » / « La date d'embauche est obligatoire. » / « La date de sortie précède l'embauche. » / « Le salaire brut mensuel doit être supérieur à zéro. » / « Salarié introuvable. » | fiche d'un salarié d'un dossier (10.3.0) | compléter la fiche | Livré |
+| `ERR-CAB-079` | « Choisis un salarié. » / « Le mois doit être compris entre 1 et 12. » / « Ce bulletin est daté de AAAA et ce livre porte l'exercice AAAA. » / « Le brut du mois doit être supérieur à zéro. » / « X a déjà un bulletin pour <mois> <année>. » / « L'écriture de paie de ce mois est déjà passée : contre-passe-la d'abord. » | bulletin de paie d'un dossier (10.3.0) | corriger la saisie, ou contre-passer l'écriture du mois | Livré |
+| `ERR-CAB-080` | « Aucun bulletin à passer pour ce mois. » | écriture de paie du mois (10.3.0) | établir les bulletins d'abord | Livré |
 | `ERR-CAB-077` | « Un import de paquets est déjà en cours. Attends qu'il finisse — ou arrête-le depuis la fenêtre d'avancement — avant d'en lancer un second. » | seconde entrée simultanée dans `cab:importPack` (10.0.1) | attendre, ou arrêter l'import en cours | Livré |
 
 ---

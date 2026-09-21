@@ -13049,7 +13049,11 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       // cabinet parce qu'une question naît d'une LIGNE — elle porte l'écriture, la pièce et le
       // compte sur lesquels elle est née, et ces trois-là n'existent que dans l'exercice où ils
       // ont été écrits. Ajoutée, donc compatible : absente d'un livre écrit avant, elle vaut `[]`.
-      SOCLE.concat(['inventaires', 'revisions', 'questions']).sort(),
+      // 10.3.0 : les SALARIÉS du dossier et leurs BULLETINS. Un cabinet a soixante clients dont
+      // deux utilisent SkanFact ; pour les cinquante-huit autres, il n'existait aucun moyen de
+      // tenir la paie. Elles vivent dans le livre de l'EXERCICE parce qu'un bulletin appartient à
+      // un mois et que son calcul est figé comme une écriture validée.
+      SOCLE.concat(['inventaires', 'revisions', 'questions', 'salaries', 'bulletins']).sort(),
       'la forme du livre a changé — si c\'est voulu, c\'est une décision à écrire dans le cahier');
     // 9.8.5 — la forme d'une LIGNE est figée elle aussi. Ce test manquait, et c'est le trou par
     // lequel T-13 est passé : la 9.2.0 a écrit une ligne SANS `tiers`, personne ne l'a vu, et le
@@ -13750,6 +13754,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   require('./suites/terrain.js')({ t, assert, lireSource });
   require('./suites/devise-achat.js')({ t, assert, lireSource });
   require('./suites/avoir-fournisseur.js')({ t, assert, lireSource });
+  require('./suites/paie-cabinet.js')({ t, assert, lireSource });
 
   // ---------- 9.4.10 : aucune suite découpée ne reste sur le bord de la route ----------
   // Le danger d'un découpage, c'est le fichier qu'on écrit et que personne ne charge : les tests

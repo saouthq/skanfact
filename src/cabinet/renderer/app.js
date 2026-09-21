@@ -2300,6 +2300,7 @@
               : s.onglet === 'revision' ? vueRevision(dossier)
                 : s.onglet === 'liasse' ? vueLiasse(dossier)
                   : s.onglet === 'inventaire' ? vueInventaire(dossier)
+                  : s.onglet === 'paie' ? vuePaie(dossier)
                     : !lignes.length
                       ? `<div class="empty mini">Aucune écriture sur cette période.</div>`
                       : s.onglet === 'journal' ? vueJournal(lignes)
@@ -2341,6 +2342,11 @@
   (() => { const n = (s.livre.immobilisations || []).length ? KC.etatImmobilisations(s.livre, s.annee).aEcrire : 0;
     return n ? ` <span class="tab-n" title="${n} dont la dotation de l'exercice n'est pas passée">${n}</span>` : ''; })()}</button>` : ''}
         ${s.livre ? `<button data-tab="inventaire" class="${s.onglet === 'inventaire' ? 'active' : ''}">Inventaire</button>` : ''}
+        ${/* La PAIE (10.3.0). La pastille compte les mois dont l'écriture n'est pas passée — ce qui
+              attend une décision, jamais le nombre de bulletins, qui est un inventaire (T-10). */''}
+        ${s.livre ? `<button data-tab="paie" class="${s.onglet === 'paie' ? 'active' : ''}">Paie${
+  (() => { const n = new Set((s.livre.bulletins || []).filter(x => !x.ecritureId).map(x => x.mois)).size;
+    return n ? ` <span class="tab-n" title="${n} mois dont l'écriture de paie n'est pas passée">${n}</span>` : ''; })()}</button>` : ''}
         ${s.livre ? `<button data-tab="revision" class="${s.onglet === 'revision' ? 'active' : ''}">Révision${
   (() => { const n = (s.livre.questions || []).filter(q => q.statut !== 'close' && q.statut !== 'repondue').length;
     return n ? ` <span class="tab-n" title="${n} question${n > 1 ? 's' : ''} en attente de réponse">${n}</span>` : ''; })()}</button>` : ''}
@@ -2361,6 +2367,7 @@
     else if (s.onglet === 'declaration') brancherDeclaration(el, root, dossier);
     else if (s.onglet === 'immobilisations') brancherImmobilisations(el, root, dossier);
     else if (s.onglet === 'inventaire') brancherInventaire(el, root, dossier);
+    else if (s.onglet === 'paie') brancherPaie(el, root, dossier);
     else if (s.onglet === 'exercice') brancherCloture(el, root, dossier);
     else if (s.onglet === 'revision') brancherRevision(el, root, dossier);
     else if (s.onglet === 'liasse') brancherLiasse(el, root, dossier);
@@ -3842,6 +3849,312 @@
   // Inventaire INTERMITTENT : on compte ce qui reste au dernier jour, la variation devient une
   // écriture. C'est ce que fait un cabinet pour un dossier sans logiciel de stock — et un dossier
   // SkanFact tient déjà le sien depuis la 4.0.0.
+
+
+  // ---------- la paie d'un dossier (10.3.0) ----------
+  //
+  // Le travail mensuel le plus réclamé après la TVA, et le Cabinet ne savait pas le faire. Un
+  // cabinet a soixante clients dont deux utilisent SkanFact : pour les cinquante-huit autres, le
+  // comptable établissait les bulletins ailleurs et RETAPAIT l'écriture ici.
+  //
+  // Tout se calcule sur `s.livre`, déjà en mémoire : le moteur est celui de l'app entreprise
+  // (`compta.js`), donc le bulletin du client et celui du cabinet ne peuvent pas diverger.
+  function vuePaie(dossier) {
+    const s = livresState;
+    const L = s.livre;
+    if (!s.paieMois) s.paieMois = Number(String(L.exercice.au || '').slice(5, 7)) || 12;
+    const m = s.paieMois;
+    const bulletins = KC.bulletinsDuMois(L, s.annee, m);
+    const masse = KC.masseSalariale(bulletins);
+    const anneeEntiere = KC.masseSalariale((L.bulletins || []).filter(b => Number(b.annee) === Number(s.annee)));
+    const controles = KC.controlesPaie(L, s.annee, m);
+    const aPasser = bulletins.filter(b => !b.ecritureId).length;
+    const nomDe = id => ((L.salaries || []).find(x => x.id === id) || {}).nom || '—';
+    const t = s.paieTrimestre || Math.ceil(m / 3);
+    const cnss = KC.cnssDuTrimestre(L, s.annee, t);
+    const actifs = (L.salaries || []).filter(x => x.actif);
+
+    const lignesBulletins = bulletins.map(b => {
+      const c = b.calcul || {};
+      return `<tr data-bul="${esc(b.id)}">
+        <td class="tronq" title="${esc(nomDe(b.salarieId))}">${esc(nomDe(b.salarieId))}</td>
+        <td class="r nw">${esc(money(c.gross))}</td>
+        <td class="r nw">${esc(money(c.cnssEmployee))}</td>
+        <td class="r nw">${esc(money(KC.round3((c.irpp || 0) + (c.css || 0))))}</td>
+        <td class="r nw"><b>${esc(money(c.net))}</b></td>
+        <td class="r nw">${esc(money(KC.employerChargesOf(c)))}</td>
+        <td class="r nw">${esc(money(c.employerCost))}</td>
+        <td class="nw">${b.ecritureId ? '<span class="badge b-paid">écrite</span>' : '<span class="badge b-due">brouillon</span>'}</td>
+        ${RowMenu.cellule('PAIE:' + b.id)}</tr>`;
+    }).join('');
+
+    return `<div class="filters">
+      ${info('pa.mois')}
+      <label class="f-lab" for="pa-mois">Mois</label>
+      <select id="pa-mois">${KC.MOIS_PAIE.map((lab, i) => `<option value="${i + 1}" ${i + 1 === m ? 'selected' : ''}>${esc(lab)} ${esc(s.annee)}</option>`).join('')}</select>
+      <button class="btn btn-sm" id="pa-salarie">+ Salarié…</button>
+      <button class="btn btn-sm btn-primary" id="pa-bulletin" ${actifs.length ? '' : 'disabled'}
+        title="${actifs.length ? '' : 'Déclare d\'abord un salarié.'}">+ Bulletin…</button>
+      <button class="btn btn-sm" id="pa-ecrire" ${aPasser ? '' : 'disabled'}
+        title="${aPasser ? '' : (bulletins.length ? 'L\'écriture de ce mois est déjà passée : la repasser compterait la paie deux fois.' : 'Aucun bulletin pour ce mois.')}">Passer l'écriture de paie</button>
+    </div>
+    ${controles.length ? `<div class="warn-box mb">${controles.map(c => `<div><b>${esc(c.quoi)}</b> — ${esc(c.detail)}</div>`).join('')}
+      <div class="small muted">Ces contrôles NOMMENT, ils ne bloquent rien : un mois traité avec deux manques signalés vaut mieux qu'un mois jamais traité.</div></div>` : ''}
+
+    <div class="panel mt"><h2>Les bulletins de ${esc(KC.moisPaie(m))} ${esc(s.annee)} ${info('pa.bulletins')}</h2>
+      ${bulletins.length
+    ? `<div class="scroll-x"><table class="list compact"><thead><tr><th>Salarié</th>
+        <th class="r nw">Brut</th><th class="r nw">CNSS salarié</th><th class="r nw">IRPP + CSS</th>
+        <th class="r nw">Net à payer</th><th class="r nw">Charges patronales</th><th class="r nw">Coût employeur</th>
+        <th class="nw">Écriture</th><th class="row-actions-h"></th></tr></thead>
+        <tbody>${lignesBulletins}</tbody>
+        <tfoot><tr><th>${esc(pl(masse.count, 'bulletin'))}</th>
+          <th class="r nw">${esc(money(masse.brut))}</th><th class="r nw">${esc(money(masse.cnssSalarie))}</th>
+          <th class="r nw">${esc(money(KC.round3(masse.irpp + masse.css)))}</th><th class="r nw">${esc(money(masse.net))}</th>
+          <th class="r nw">${esc(money(masse.chargesPatronales))}</th><th class="r nw">${esc(money(masse.cout))}</th>
+          <th colspan="2"></th></tr></tfoot></table></div>`
+    : `<div class="empty">Aucun bulletin pour ${esc(KC.moisPaie(m))} ${esc(s.annee)}.
+        <p class="small muted">Un bulletin garde une COPIE de son calcul : changer un barème plus tard ne réécrit jamais un bulletin déjà remis.</p>
+        ${actifs.length ? '<button class="btn btn-primary" id="pa-bulletin2">Établir un bulletin…</button>'
+    : '<button class="btn btn-primary" id="pa-salarie2">Déclarer un salarié…</button>'}</div>`}
+    </div>
+
+    <div class="split mt">
+      <div class="panel"><h2>Les salariés ${info('pa.salaries')}</h2>
+        ${(L.salaries || []).length
+    ? `<div class="scroll-x"><table class="list compact"><thead><tr><th>Nom</th><th class="nw">N° CNSS</th>
+        <th>Poste</th><th class="nw">Contrat</th><th class="r nw">Brut mensuel</th><th class="row-actions-h"></th></tr></thead>
+        <tbody>${(L.salaries || []).map(x => `<tr class="${x.actif ? '' : 'muted'}" data-sal="${esc(x.id)}">
+          <td class="tronq" title="${esc(x.nom)}">${esc(x.nom)}${x.actif ? '' : ' <span class="badge">sorti</span>'}</td>
+          <td class="nw">${x.cnss ? esc(x.cnss) : '<span class="warn-text small">à renseigner</span>'}</td>
+          <td class="tronq" title="${esc(x.poste)}">${esc(x.poste || '—')}</td>
+          <td class="nw small">${esc(KC.contractLabel(x.contrat).split(' —')[0])}</td>
+          <td class="r nw">${esc(money(x.brut))}</td>
+          ${RowMenu.cellule('SAL:' + x.id)}</tr>`).join('')}</tbody></table></div>`
+    : `<div class="empty mini">Aucun salarié déclaré. C'est par là qu'une paie commence.</div>`}
+      </div>
+      <div class="panel"><h2>La déclaration CNSS ${info('pa.cnss')}</h2>
+        <div class="filters">
+          <label class="f-lab" for="pa-trim">Trimestre</label>
+          <select id="pa-trim">${KC.TRIMESTRES_PAIE.map(x => `<option value="${x[0]}" ${x[0] === t ? 'selected' : ''}>${esc(x[1])} ${esc(s.annee)}</option>`).join('')}</select>
+        </div>
+        ${cnss.lignes.length
+    ? `<div class="scroll-x"><table class="list compact"><thead><tr><th>Salarié</th><th class="nw">N° CNSS</th>
+        <th class="r nw">Assiette</th><th class="r nw">Part salarié</th><th class="r nw">Part employeur</th></tr></thead>
+        <tbody>${cnss.lignes.map(l => `<tr><td class="tronq" title="${esc(l.nom)}">${esc(l.nom)}</td>
+          <td class="nw">${l.cnss ? esc(l.cnss) : '<span class="warn-text small">—</span>'}</td>
+          <td class="r nw">${esc(money(l.assiette))}</td><td class="r nw">${esc(money(l.partSalarie))}</td>
+          <td class="r nw">${esc(money(KC.round3(l.partEmployeur + l.accident)))}</td></tr>`).join('')}</tbody>
+        <tfoot><tr><th colspan="2">${esc(pl(cnss.salaries, 'salarié'))}</th>
+          <th class="r nw">${esc(money(cnss.assiette))}</th><th class="r nw">${esc(money(cnss.partSalarie))}</th>
+          <th class="r nw">${esc(money(KC.round3(cnss.partEmployeur + cnss.accident)))}</th></tr>
+          <tr class="dc-total"><th colspan="4"><b>Total à verser</b></th><th class="r nw"><b>${esc(money(cnss.total))}</b></th></tr></tfoot></table></div>
+        <p class="small muted mt">Échéance proposée : le ${esc(fmtJour(cnss.echeance))}. <b>À VÉRIFIER</b> — la date et la forme
+        exacte du dépôt dépendent du régime. SkanFact Cabinet ne dépose rien et ne se connecte à aucune administration :
+        c'est un tableau à recopier sur le portail.</p>`
+    : `<div class="empty mini">Aucun bulletin sur ce trimestre : il n'y a rien à déclarer.</div>`}
+      </div>
+    </div>
+
+    <div class="panel mt"><h2>La masse salariale de l'exercice ${info('pa.masse')}</h2>
+      <table class="list compact"><tbody>
+        <tr><td>Brut versé</td><td class="r nw">${esc(money(anneeEntiere.brut))}</td></tr>
+        <tr><td>Retenues salariales (CNSS, IRPP, CSS)</td><td class="r nw">${esc(money(KC.round3(anneeEntiere.cnssSalarie + anneeEntiere.irpp + anneeEntiere.css)))}</td></tr>
+        <tr><td>Net versé au personnel</td><td class="r nw">${esc(money(anneeEntiere.net))}</td></tr>
+        <tr><td>Charges patronales (CNSS, accident, TFP, FOPROLOS)</td><td class="r nw">${esc(money(anneeEntiere.chargesPatronales))}</td></tr>
+        <tr class="dc-total"><td><b>Coût employeur</b></td><td class="r nw"><b>${esc(money(anneeEntiere.cout))}</b></td></tr>
+      </tbody></table>
+      <p class="small muted mt">Ce qui entre dans le résultat, c'est le <b>coût employeur</b> — jamais le net, jamais le brut seul.</p>
+    </div>`;
+  }
+
+  function brancherPaie(el, root, dossier) {
+    const s = livresState;
+    const redraw = () => drawLivres(root, dossier);
+    const mois = $('#pa-mois', el);
+    if (mois) mois.onchange = () => { s.paieMois = Number(mois.value) || 1; redraw(); };
+    const trim = $('#pa-trim', el);
+    if (trim) trim.onchange = () => { s.paieTrimestre = Number(trim.value) || 1; redraw(); };
+    [$('#pa-salarie', el), $('#pa-salarie2', el)].forEach(b => { if (b) b.onclick = () => salarieForm(root, dossier, null); });
+    [$('#pa-bulletin', el), $('#pa-bulletin2', el)].forEach(b => { if (b) b.onclick = () => bulletinForm(root, dossier, null); });
+    const ec = $('#pa-ecrire', el);
+    if (ec) ec.onclick = async () => {
+      ec.disabled = true;
+      try {
+        const r = await api.ecrirePaie({ dossierId: dossier.id, annee: s.annee, mois: s.paieMois });
+        s.livre = r.livre;
+        toast(`Écriture de paie de ${KC.moisPaie(s.paieMois)} passée en brouillard.`);
+        redraw();
+      } catch (err) { toast(plainError(err), 'error'); ec.disabled = false; }
+    };
+    // UNE table d'actions par racine (9.4.8) : celle de la Paie vit sur SON panneau, jamais sur
+    // `document` — deux tables posées sur la même racine se mangent, et celle qui perd retire les
+    // boutons qu'elle ne reconnaît pas.
+    RowMenu.brancherMenus(el, id => {
+      if (id.startsWith('SAL:')) {
+        const x = (s.livre.salaries || []).find(y => y.id === id.slice(4));
+        if (!x) return [];
+        const a = [{ icon: 'modifier', label: 'Modifier la fiche', hint: 'Nom, CNSS, poste, brut', run: () => salarieForm(root, dossier, x) }];
+        if (x.actif) a.push({ sep: true }, { icon: 'non', label: 'Noter la sortie', danger: true,
+          hint: 'Son nom reste sur les bulletins déjà établis', run: async () => {
+            if (!await confirmDialog(`Noter la sortie de ${x.nom} ?`, 'Il ne sera plus proposé pour un nouveau bulletin. Son nom reste sur ceux qui existent — un bulletin remis ne se réécrit pas.', 'Noter la sortie')) return;
+            try { const r = await api.retirerSalarie({ dossierId: dossier.id, annee: s.annee, id: x.id }); s.livre = r.livre; toast('Sortie notée.'); redraw(); }
+            catch (err) { toast(plainError(err), 'error'); }
+          } });
+        return a;
+      }
+      const b = (s.livre.bulletins || []).find(y => y.id === id.slice(5));
+      if (!b) return [];
+      const a = [{ icon: 'ouvrir', label: 'Voir le détail du calcul', hint: 'Assiette, tranches, charges', run: () => detailBulletin(b) }];
+      if (!b.ecritureId) a.push(
+        { icon: 'modifier', label: 'Modifier le bulletin', hint: 'Brut, primes, absences, retenues', run: () => bulletinForm(root, dossier, b) },
+        { sep: true },
+        { icon: 'supprimer', label: 'Supprimer ce bulletin', danger: true, hint: 'Possible tant que l\'écriture n\'est pas passée', run: async () => {
+          if (!await confirmDialog('Supprimer ce bulletin ?', 'Il n\'a pas encore d\'écriture : rien d\'autre ne bouge.', 'Supprimer', true)) return;
+          try { const r = await api.supprimerBulletin({ dossierId: dossier.id, annee: s.annee, id: b.id }); s.livre = r.livre; toast('Bulletin supprimé.'); redraw(); }
+          catch (err) { toast(plainError(err), 'error'); }
+        } });
+      return a;
+    });
+  }
+
+  // Le détail d'un bulletin, tel qu'il a été FIGÉ. Un chiffre qu'on ne peut pas ouvrir se croit ou
+  // ne se croit pas ; celui-ci s'ouvre, ligne par ligne, avec les taux qui ont servi.
+  function detailBulletin(b) {
+    const c = b.calcul || {};
+    const r = c.rates || {};
+    const L = livresState.livre;
+    const nom = ((L.salaries || []).find(x => x.id === b.salarieId) || {}).nom || '';
+    const ligne = (lab, val, sub) => `<tr><td>${esc(lab)}${sub ? `<div class="small muted">${esc(sub)}</div>` : ''}</td><td class="r nw">${esc(money(val))}</td></tr>`;
+    modal(`<h2>${esc(nom)} — ${esc(KC.moisPaie(b.mois))} ${esc(b.annee)}</h2>
+      <table class="list compact"><tbody>
+        ${ligne('Brut de base', c.baseGross)}
+        ${c.absenceCut ? ligne('Absence non rémunérée', -c.absenceCut, `${pl(c.absentDays, 'jour')} sur ${c.workedDays}`) : ''}
+        ${(c.bonuses || []).map(p => ligne(p.label, p.amount, p.taxable ? 'imposable' : 'non imposable')).join('')}
+        <tr class="dc-total"><td><b>Brut du mois</b></td><td class="r nw"><b>${esc(money(c.gross))}</b></td></tr>
+        ${ligne('CNSS part salarié', -c.cnssEmployee, `${r.cnssEmployee} % de ${money(c.cnssBase)}`)}
+        ${ligne('IRPP', -c.irpp, `barème annuel sur ${money(c.annualTaxable)} imposables`)}
+        ${ligne('Contribution sociale de solidarité', -c.css, `${r.solidarity} %`)}
+        ${(c.deductions || []).map(d => ligne(d.label, -d.amount)).join('')}
+        <tr class="dc-total"><td><b>Net à payer</b></td><td class="r nw"><b>${esc(money(c.net))}</b></td></tr>
+        ${ligne('CNSS part employeur', c.cnssEmployer, `${r.cnssEmployer} %`)}
+        ${ligne('Accident du travail', c.accident, `${r.accidentRate} %`)}
+        ${ligne('TFP', c.tfp, `${r.tfpRate} %`)}
+        ${ligne('FOPROLOS', c.foprolos, `${r.foprolosRate} %`)}
+        <tr class="dc-total"><td><b>Coût employeur</b></td><td class="r nw"><b>${esc(money(c.employerCost))}</b></td></tr>
+      </tbody></table>
+      <p class="small muted mt">Les taux affichés sont ceux qui ont servi le jour où ce bulletin a été établi : ils sont
+      figés avec lui. <b>À VÉRIFIER</b> — les barèmes changent à chaque loi de finances.</p>
+      <div class="modal-actions"><button class="btn btn-primary" data-close>Fermer</button></div>`);
+  }
+
+  function salarieForm(root, dossier, x) {
+    const s = livresState;
+    const e = x || { contrat: 'cdi', actif: true, enfants: 0 };
+    modal(`<h2>${x ? 'Modifier ' + esc(x.nom) : 'Déclarer un salarié'}</h2>
+      <form id="sf" class="grid-2">
+        <label class="field obligatoire span-2"><span>Nom et prénom</span><input name="nom" value="${esc(e.nom || '')}"></label>
+        <label class="field"><span>N° CIN</span><input name="cin" value="${esc(e.cin || '')}"></label>
+        <label class="field"><span>N° CNSS</span><input name="cnss" value="${esc(e.cnss || '')}" placeholder="La déclaration trimestrielle le demande"></label>
+        <label class="field span-2"><span>Poste occupé</span><input name="poste" value="${esc(e.poste || '')}"></label>
+        <label class="field"><span>Type de contrat</span><select name="contrat">${KC.CONTRACT_TYPES.map(c => `<option value="${c[0]}" ${c[0] === (e.contrat || 'cdi') ? 'selected' : ''}>${esc(c[1].split(' —')[0])}</option>`).join('')}</select></label>
+        <label class="field obligatoire"><span>Salaire brut mensuel</span><input name="brut" type="number" step="0.001" min="0" class="num" value="${esc(String(e.brut || ''))}"></label>
+        <label class="field obligatoire"><span>Date d'embauche</span><input name="embauche" placeholder="AAAA-MM-JJ" value="${esc(e.embauche || '')}"></label>
+        <label class="field"><span>Date de sortie</span><input name="sortie" placeholder="AAAA-MM-JJ" value="${esc(e.sortie || '')}"></label>
+        <label class="check span-2"><input type="checkbox" name="chefDeFamille" ${e.chefDeFamille ? 'checked' : ''}> Chef de famille (déduction annuelle)</label>
+        <label class="field"><span>Enfants à charge</span><input name="enfants" type="number" min="0" step="1" class="num" value="${esc(String(e.enfants || 0))}"></label>
+      </form>
+      <p class="small muted">Le chef de famille et les enfants à charge entrent dans le calcul de l'IRPP.
+      <b>À VÉRIFIER</b> — les conditions et les montants dépendent de la loi de finances.</p>
+      <div class="modal-actions"><button class="btn" dismiss>Annuler</button>
+        <button class="btn btn-primary" id="ok">Enregistrer</button></div>`,
+    (rootModal, close) => {
+      $('#ok', rootModal).onclick = async () => {
+        const f = $('#sf', rootModal);
+        const v = {
+          id: x ? x.id : '', nom: $('[name=nom]', f).value, cin: $('[name=cin]', f).value,
+          cnss: $('[name=cnss]', f).value, poste: $('[name=poste]', f).value,
+          contrat: $('[name=contrat]', f).value, brut: Number($('[name=brut]', f).value),
+          embauche: $('[name=embauche]', f).value.trim(), sortie: $('[name=sortie]', f).value.trim(),
+          chefDeFamille: $('[name=chefDeFamille]', f).checked, enfants: Number($('[name=enfants]', f).value) || 0,
+          actif: x ? x.actif : true
+        };
+        const ok = KC.salarieValide(v);
+        if (!ok.ok) return toast(ok.motif, 'error');
+        try {
+          const r = await api.saveSalarie({ dossierId: dossier.id, annee: s.annee, salarie: v });
+          s.livre = r.livre; close(); toast('Salarié enregistré.'); drawLivres(root, dossier);
+        } catch (err) { toast(plainError(err), 'error'); }
+      };
+    });
+  }
+
+  function bulletinForm(root, dossier, b) {
+    const s = livresState;
+    const L = s.livre;
+    const actifs = (L.salaries || []).filter(x => x.actif || (b && x.id === b.salarieId));
+    const e = b || { mois: s.paieMois, annee: s.annee, joursTravailles: 26, joursAbsence: 0, primes: [], retenues: [] };
+    const salDefaut = b ? b.salarieId : (actifs[0] || {}).id;
+    const brutDefaut = b ? b.brut : ((actifs[0] || {}).brut || 0);
+    modal(`<h2>${b ? 'Modifier le bulletin' : 'Établir un bulletin'}</h2>
+      <form id="bf" class="grid-2">
+        <label class="field obligatoire span-2"><span>Salarié</span>
+          <select name="salarieId" ${b ? 'disabled' : ''}>${actifs.map(x => `<option value="${esc(x.id)}" ${x.id === salDefaut ? 'selected' : ''}>${esc(x.nom)}</option>`).join('')}</select></label>
+        <label class="field"><span>Mois</span><select name="mois">${KC.MOIS_PAIE.map((lab, i) => `<option value="${i + 1}" ${i + 1 === Number(e.mois) ? 'selected' : ''}>${esc(lab)}</option>`).join('')}</select></label>
+        <label class="field obligatoire"><span>Brut du mois</span><input name="brut" type="number" step="0.001" min="0" class="num" value="${esc(String(brutDefaut))}"></label>
+        <label class="field"><span>Jours ouvrables du mois</span><input name="joursTravailles" type="number" min="1" step="1" class="num" value="${esc(String(e.joursTravailles || 26))}"></label>
+        <label class="field"><span>Jours d'absence non payés</span><input name="joursAbsence" type="number" min="0" step="1" class="num" value="${esc(String(e.joursAbsence || 0))}"></label>
+        <label class="field span-2"><span>Prime (facultatif)</span><input name="primeLabel" value="${esc(((e.primes || [])[0] || {}).label || '')}" placeholder="Prime de rendement"></label>
+        <label class="field"><span>Montant de la prime</span><input name="primeAmount" type="number" step="0.001" min="0" class="num" value="${esc(String(((e.primes || [])[0] || {}).amount || ''))}"></label>
+        <label class="check"><input type="checkbox" name="primeTaxable" ${((e.primes || [])[0] || {}).taxable !== false ? 'checked' : ''}> Prime imposable</label>
+        <label class="field span-2"><span>Retenue (facultatif)</span><input name="retLabel" value="${esc(((e.retenues || [])[0] || {}).label || '')}" placeholder="Remboursement d'avance"></label>
+        <label class="field"><span>Montant de la retenue</span><input name="retAmount" type="number" step="0.001" min="0" class="num" value="${esc(String(((e.retenues || [])[0] || {}).amount || ''))}"></label>
+      </form>
+      <div id="bf-apercu" class="ok-box mt"></div>
+      <div class="modal-actions"><button class="btn" dismiss>Annuler</button>
+        <button class="btn btn-primary" id="ok">Enregistrer le bulletin</button></div>`,
+    (rootModal, close) => {
+      const f = $('#bf', rootModal);
+      const lire = () => {
+        const sal = (L.salaries || []).find(x => x.id === (b ? b.salarieId : $('[name=salarieId]', f).value)) || {};
+        const primeM = Number($('[name=primeAmount]', f).value) || 0;
+        const retM = Number($('[name=retAmount]', f).value) || 0;
+        return {
+          id: b ? b.id : '', salarieId: sal.id, annee: s.annee, mois: Number($('[name=mois]', f).value) || 1,
+          brut: Number($('[name=brut]', f).value) || 0,
+          joursTravailles: Number($('[name=joursTravailles]', f).value) || 26,
+          joursAbsence: Number($('[name=joursAbsence]', f).value) || 0,
+          primes: primeM ? [{ label: $('[name=primeLabel]', f).value || 'Prime', amount: primeM, taxable: $('[name=primeTaxable]', f).checked }] : [],
+          retenues: retM ? [{ label: $('[name=retLabel]', f).value || 'Retenue', amount: retM }] : []
+        };
+      };
+      // L'aperçu se recalcule pendant la frappe : c'est le seul moyen de vérifier un net AVANT de
+      // l'enregistrer, et le moteur est exactement celui qui enregistrera (9.4.5).
+      const maj = () => {
+        const v = lire();
+        const sal = (L.salaries || []).find(x => x.id === v.salarieId) || {};
+        const c = KC.computePayslip({ grossSalary: sal.brut, headOfFamily: sal.chefDeFamille, children: sal.enfants },
+          { gross: v.brut, workedDays: v.joursTravailles, absentDays: v.joursAbsence,
+            bonuses: v.primes.map(p => ({ label: p.label, amount: p.amount, taxable: p.taxable })),
+            deductions: v.retenues.map(d => ({ label: d.label, amount: d.amount })) },
+          KC.baremesPaie({}));
+        $('#bf-apercu', rootModal).innerHTML = `<b>Net à payer ${esc(money(c.net))}</b>
+          <span class="small muted">— brut ${esc(money(c.gross))}, retenues ${esc(money(KC.round3(c.cnssEmployee + c.irpp + c.css + c.otherDeductions)))},
+          coût employeur ${esc(money(c.employerCost))}</span>`;
+      };
+      f.oninput = f.onchange = maj;
+      maj();
+      $('#ok', rootModal).onclick = async () => {
+        const v = lire();
+        const ok = KC.bulletinValide(v, L);
+        if (!ok.ok) return toast(ok.motif, 'error');
+        try {
+          const r = await api.saveBulletin({ dossierId: dossier.id, annee: s.annee, bulletin: v });
+          s.livre = r.livre; close(); toast('Bulletin enregistré.'); drawLivres(root, dossier);
+        } catch (err) { toast(plainError(err), 'error'); }
+      };
+    });
+  }
 
   function vueInventaire(dossier) {
     const s = livresState;

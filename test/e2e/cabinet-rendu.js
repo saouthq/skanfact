@@ -121,9 +121,10 @@ const PAGES = ['#/dossiers', '#/relances', '#/echeances', '#/ecritures', '#/prod
       await attendre(450);
       await mesurer(`${etiquette} fiche · ${onglet}`);
       if (onglet !== 'comptabilite') continue;
-      // Sept onglets sur onze — Saisie, Déclaration, Banque, Immobilisations, Inventaire, Exercice
-      // et Recherche — n'existent QUE si le dossier a un livre, et un dossier neuf n'en a pas. Sans
-      // ce geste, l'instrument mesurait quatre écrans sur onze et déclarait le Cabinet propre :
+      // Neuf onglets sur treize — Saisie, Déclaration, Banque, Immobilisations, Inventaire, Paie,
+      // Révision, Exercice, Liasse et Recherche — n'existent QUE si le dossier a un livre, et un
+      // dossier neuf n'en a pas. Sans ce geste, l'instrument mesurait quatre écrans et déclarait
+      // le Cabinet propre :
       // c'est pour ça que « + Ajouter une ligne » collé au titre (T-49) a été trouvé sur une
       // capture et pas ici, et c'est la leçon de la 9.4.3 (un parcours qui n'ouvre que l'onglet par
       // défaut juge un sixième de la page), une couche plus bas.
@@ -139,11 +140,11 @@ const PAGES = ['#/dossiers', '#/relances', '#/echeances', '#/ecritures', '#/prod
       }, { timeout: 25000 });
       for (const b2 of await barres()) {
         if (b2.sel !== '#c-tabs') continue;
-        // DOUZE depuis la 10.0.0 : la Révision (9.10.0) et la Liasse (10.0.0) sont venues s'ajouter
-        // aux dix précédents. Le seuil dit ce que le livre DOIT ouvrir — s'il n'est pas créé, quatre
-        // écrans seulement existent, et l'instrument déclarerait le Cabinet propre sans avoir vu
-        // l'écran où un comptable passe ses journées (T-55).
-        if (b2.tabs.length < 12) throw new Error(`la comptabilité n'offre que ${b2.tabs.length} onglets : le livre n'a pas été créé, et huit écrans ne seraient pas mesurés`);
+        // TREIZE depuis la 10.3.0 : la Révision (9.10.0), la Liasse (10.0.0) et la Paie (10.3.0)
+        // sont venues s'ajouter aux dix précédents. Le seuil dit ce que le livre DOIT ouvrir —
+        // s'il n'est pas créé, quatre écrans seulement existent, et l'instrument déclarerait le
+        // Cabinet propre sans avoir vu l'écran où un comptable passe ses journées (T-55).
+        if (b2.tabs.length < 13) throw new Error(`la comptabilité n'offre que ${b2.tabs.length} onglets : le livre n'a pas été créé, et neuf écrans ne seraient pas mesurés`);
         for (const t of b2.tabs) {
           await win.click(`#c-tabs button[data-tab="${t}"]`);
           await attendre(450);

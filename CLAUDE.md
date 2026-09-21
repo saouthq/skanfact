@@ -160,7 +160,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 
 `npm test` (les tests purs) · `npm run lint` (ESLint, **zéro erreur ET zéro avertissement** depuis la
 10.0.1) · `npm run charge` (le livre du Cabinet) · `npm run charge:entreprise` (le fichier de l'app
-entreprise, dix ans d'activité — 10.0.1) · `npm run e2e:<nom>` (51 parcours, tableau au § « Les tests
+entreprise, dix ans d'activité — 10.0.1) · `npm run e2e:<nom>` (52 parcours, tableau au § « Les tests
 qui ouvrent vraiment l'application ») · CI GitHub sur Linux et Windows à chaque poussée ·
 « Construire un essai » pour faire tester une version sans la publier.
 
@@ -604,6 +604,7 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:justificatif` | **le justificatif se joint avant toute saisie** : sélecteur de fichier remplacé dans le processus principal, une photo jointe sur un achat VIDE, enregistrée avec la pièce, retrouvée sur le disque et dans la liste (📎), un second fichier sur la pièce rangée, une pièce abandonnée qui ne laisse pas de copie, la lecture d'une photo qui redessine sans perdre la pièce, et le même geste sur un devis neuf |
 | `npm run e2e:cabinet-jour1` | **le premier jour d'un comptable** : l'instrument qui MESURE ce qu'il voit, dans l'ordre où il le voit — 35 écrans photographiés du mot de passe à l'Aide, et six règles qui tombent (un bouton hors de l'écran, un bouton qui ressemble à du texte, un état vide sans geste, un champ de saisie sans bulle « i », une boîte sans étiquette, un débordement horizontal). `dist-e2e/cabinet-premier-jour/mesures.json` |
 | `npm run e2e:cabinet-rendu` | **le rendu du Cabinet, mesuré** : les trois sondes de l'app entreprise (contraste et débordement des boutons, alignement des colonnes, barres d'en-tête) et la quatrième (l'écart d'ENCRE entre un bouton et ce qui le touche, 9.8.3) braquées sur TOUS ses écrans et TOUS leurs onglets, en clair et en sombre, à 1440 et à 1280 — **2 107 boutons, 883 colonnes, 1 087 écarts** (mesuré le 21/09/2026). Elles vivent en un seul exemplaire dans `harnais.js` : c'est leur absence côté Cabinet qui l'avait laissé dériver |
+| `npm run e2e:paie` | **la paie d'un client du cabinet** : un dossier sans salarié qui DIT par où commencer et dont les deux boutons éteints disent pourquoi, un salarié déclaré sans numéro CNSS (signalé, jamais bloquant), un bulletin dont le net se recalcule pendant la frappe, l'écriture de paie en brouillard au dernier jour du mois — équilibrée, sans numéro —, le bouton qui s'éteint en nommant le « deux fois », un bulletin écrit qui ne propose plus ni « Modifier » ni « Supprimer » mais dont le calcul s'ouvre ligne par ligne, et la CNSS du trimestre qui dit ce qu'elle ne fera jamais |
 | `npm run e2e:declaration` | **la déclaration du mois** : quatre cases « — » avec leur raison (jamais un zéro), un chiffre ouvert sur ses pièces, un mois DÉJÀ déclaré par le client qui montre quand même sa collectée et dont le bouton s'éteint en disant pourquoi, l'écriture passée en brouillard au dernier jour d'un mois libre, les deux pointages dans l'ordre puis défaits, et le refus de refaire une déposée |
 | `npm run e2e:cloture` | **la clôture et le FLUX RETOUR, dans les DEUX applications** : les six contrôles qui nomment sans bloquer, une clôture définitive et tracée, une réouverture refusée sans motif, l'exercice suivant qui s'ouvre sans doubler ses à-nouveaux, le `.skanclose` écrit sur le disque (cloture.json, états HTML et PDF, manifeste, signature), puis le client qui l'importe — origine vérifiée, verrou posé ou son attente EXPLIQUÉE, et **le même résultat des deux côtés au millime** |
 | `npm run e2e:immobilisations` | **les biens et le stock** : une acquisition venue d'un paquet qui remonte SANS fiche et propose de la créer (jamais d'office), le plan visible pendant la saisie, un dégressif sans taux refusé en nommant le taux, les dotations passées en brouillard au 31/12 et le bouton qui s'éteint, la modification d'un bien dont la dotation est écrite refusée en nommant le geste, un inventaire collé depuis un tableur et sa variation dans le bon sens |
@@ -5021,6 +5022,52 @@ Règles apprises, à ne pas recasser :
 
 Prouvé : **quinze défauts réintroduits un par un** font tomber leur test — dont celui de l'avoir
 imputé et remboursé, qui n'existait qu'en cherchant ce que le garde-fou redondant protégeait vraiment.
+
+### 10.3.0 — La paie des clients, dans le Cabinet
+
+Le travail mensuel le plus réclamé après la TVA, et le Cabinet ne savait pas le faire. Un cabinet a
+soixante clients dont deux utilisent SkanFact : pour les cinquante-huit autres — ceux qui PAIENT —
+le comptable établissait les bulletins ailleurs et RETAPAIT l'écriture à la main.
+
+Règles apprises, à ne pas recasser :
+
+- **La règle de découpage de la 9.1.0 se relit dans les deux sens** (9.6.1, re-rencontrée). Le
+  moteur de paie prend un SALARIÉ et une SAISIE, jamais `data` : il était du mauvais côté depuis la
+  5.0.0, et ça ne s'était jamais vu parce que personne d'autre n'en avait besoin. Le Cabinet, lui,
+  en a besoin et ne charge pas core.js ; la seule alternative au déménagement était la recopie, et
+  deux moteurs de paie divergent au premier ajustement. La réexportation se prouve par l'**identité
+  d'objet**, jamais par le résultat.
+- **Deux applications, un seul bulletin.** Un test pose la même saisie des deux côtés et compare le
+  calcul ENTIER : sans lui, le client et son comptable auraient deux bulletins pour le même mois
+  sans moyen de savoir lequel croire — la même exigence que la parité des balances (9.1.0).
+- **Une liste AJOUTÉE à un format figé est compatible ; un champ renommé ne l'est pas** (9.7.0,
+  re-rencontrée). `livre.json` gagne `salaries[]` et `bulletins[]`, et c'est le test du format qui
+  l'a demandé en tombant : un ajout reste une DÉCISION, jamais un effet de bord. `migrerLivre` les
+  rend à la LECTURE, sans réécrire le fichier.
+- **Un bulletin garde une COPIE de son calcul** (5.0.0, portée au Cabinet), taux compris : changer
+  un barème plus tard ne réécrit jamais un bulletin déjà remis à un salarié. Et un bulletin dont
+  l'écriture est PASSÉE ne se modifie plus — on contre-passe, puis on refait (même règle qu'une
+  dotation, 9.7.0).
+- **Chaque bulletin retient l'écriture qui le porte.** Sans ce report, le bouton se rallumerait et
+  la paie du mois serait comptée deux fois — le défaut de la dotation, à l'identique.
+- **Un salarié qui part ne s'EFFACE pas** : son nom vit sur des bulletins déjà établis, et un
+  bulletin remis ne se réécrit pas. Il devient inactif — même règle que `retiree: true` sur une clé
+  de signature (8.6.0).
+- **Un contrôle NOMME les gens.** « 3 salariés sans bulletin » ne se traduit en aucun geste ;
+  « Sonia Khelifi, Karim Ben Ali » si. Et rien ne bloque : un mois traité avec deux manques
+  signalés vaut mieux qu'un mois jamais traité (règle 6.0.0).
+- **Le numéro CNSS n'empêche pas de calculer, il empêche de déclarer** : on le signale, on ne refuse
+  pas. La valeur par défaut d'une règle qu'on ne connaît pas est celle qui ne fait rien (9.1.1).
+- **Un trimestre qui bascule sur l'année suivante** : l'échéance du 4e trimestre est au 15 janvier
+  de l'année d'après, pas au « 2026-13-15 ». C'est le genre de date qu'un test attrape et qu'aucune
+  relecture ne voit.
+- **UNE table d'actions par racine** (9.4.8, re-rencontrée le même jour que la 10.2.0) : celle de la
+  Paie vit sur SON panneau, jamais sur `document`.
+- **L'instrument suit la fonctionnalité** : `e2e:cabinet-rendu` exigeait douze onglets de
+  comptabilité, il en exige treize. Un seuil qui ne bouge pas quand un écran s'ajoute laisse
+  l'écran neuf hors de toute mesure — c'est très exactement T-55 (9.8.8), un onglet plus loin.
+
+Prouvé : **quatorze défauts réintroduits un par un** font tomber leur test.
 
 ## Pistes pour la suite (non demandées)
 

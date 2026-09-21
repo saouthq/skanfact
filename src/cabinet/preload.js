@@ -126,6 +126,14 @@ contextBridge.exposeInMainWorld('cabinet', {
   inventaire: (o) => ipcRenderer.invoke('cab:inventaire', o || {}),
   saveInventaire: (o) => ipcRenderer.invoke('cab:saveInventaire', o || {}),
   ecrireVariationStock: (o) => ipcRenderer.invoke('cab:ecrireVariationStock', o || {}),
+  // La paie d'un dossier (10.3.0)
+  paie: (o) => ipcRenderer.invoke('cab:paie', o || {}),
+  saveSalarie: (o) => ipcRenderer.invoke('cab:saveSalarie', o || {}),
+  retirerSalarie: (o) => ipcRenderer.invoke('cab:retirerSalarie', o || {}),
+  saveBulletin: (o) => ipcRenderer.invoke('cab:saveBulletin', o || {}),
+  supprimerBulletin: (o) => ipcRenderer.invoke('cab:supprimerBulletin', o || {}),
+  ecrirePaie: (o) => ipcRenderer.invoke('cab:ecrirePaie', o || {}),
+  cnss: (o) => ipcRenderer.invoke('cab:cnss', o || {}),
   // La clôture d'exercice (9.8.0)
   cloture: (o) => ipcRenderer.invoke('cab:cloture', o || {}),
   cloturer: (o) => ipcRenderer.invoke('cab:cloturer', o || {}),
