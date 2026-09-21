@@ -7,6 +7,69 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 10.4.0 — 21/09/2026
+
+**L'espace de gestion des deux plateformes.** Skander voulait « le contrôle dessus autant que
+auditeur ». En regardant ce que la console savait faire, deux trous se sont ouverts, et le second
+n'avait jamais été nommé.
+
+Le premier : **la console ne voyait qu'une des deux applications**. Seule SkanFact s'annonçait.
+SkanFact Cabinet, qui porte pourtant sa licence depuis la 9.4.0 et son canal d'essai depuis la
+9.1.0, n'existait nulle part — ni combien de postes tournent, ni sur quelle version, ni depuis
+quand une installation ne s'est plus montrée. Un éditeur qui ne voit qu'une moitié de son parc ne
+la contrôle pas : il la découvre.
+
+Le second : **rien ne rangeait la base**. D1 est le seul endroit où vit « qui a acheté quelle clé »,
+le contenu signé compris — celui qui permet de refabriquer une clé à l'identique et de la renvoyer
+à un client qui a perdu la sienne. La perdre emporte toutes les ventes, et plus aucune clé vendue
+ne peut être renvoyée, renouvelée ni révoquée. C'était décidé avant la première vente
+(`QUESTIONS.md`, 4e relecture) et ça n'avait jamais été écrit.
+
+**À publier par la bêta** : ça touche une clé, le format de la base et ce qui part d'une
+application vers un serveur.
+
+- **SkanFact Cabinet s'annonce**, exactement comme SkanFact : la clé, l'identité du poste, le
+  système, la version, et le nom de l'application. **Rien d'autre** — jamais un dossier, jamais un
+  client, jamais un chiffre. L'app du comptable détient la comptabilité de dizaines d'entreprises,
+  et c'est un test qui compte les champs qui doit arrêter quiconque voudra « juste ajouter » un
+  compteur de dossiers. Tout reste facultatif : sans adresse et sans secret, rien ne part.
+- **La colonne `app`** sur les activations. `NULL` = tout ce qui a été noté avant, c'est-à-dire
+  l'app entreprise : elle était seule à s'annoncer. Une colonne s'AJOUTE, aucune ne se renomme.
+- **L'onglet « Parc »** : les deux applications, groupées par version. Cinq cents lignes brutes ne
+  répondaient pas à la seule question qu'on se pose avant de publier un correctif — combien de
+  postes sont restés sur une version d'il y a six mois ? Et « endormi » se compte **à part**, il ne
+  se retranche pas : un portable refermé pour les vacances n'est pas un poste perdu.
+- **L'onglet « À décider »**, l'écran d'entrée de la console : clés jamais envoyées, ventes à
+  encaisser, licences qui se terminent, base jamais exportée. Trié par urgence, jamais par ordre
+  d'écriture, et chaque ligne OUVRE l'onglet qui la règle. Sur une console où rien n'a été vendu,
+  rien n'est réclamé : on vérifie que l'univers est non vide avant de crier (7.0.0).
+- **L'onglet « Cabinets »** : un cabinet par ligne, son quota, ses clients parrainés, ses postes.
+  La moitié de l'activité que la console ne montrait nulle part.
+- **« Exporter la base… »**, des deux côtés : un bouton dans la console (le fichier descend dans le
+  navigateur) et un dans SkanFact → Paramètres → L'application → Éditeur, qui le range dans
+  `~/.skanfact/`, en 0600, à côté des clés — jamais dans les données, jamais dans une sauvegarde,
+  jamais dans un dossier partagé. L'enveloppe porte un **compte par table** : un export tronqué
+  ressemble à un export complet, et c'est le jour où l'on en a besoin qu'on s'en aperçoit. Une
+  ligne « À faire » le réclame à trente jours — et tout de suite s'il n'a jamais eu lieu.
+- **La santé des canaux de mise à jour.** La 9.8.8 a coûté une publication : un `latest.yml` posé
+  par erreur sur une préversion s'est retrouvé servi à toutes les installations stables. Le
+  workflow le vérifie au moment de publier — mais rien, ensuite, ne disait ce que chaque canal sert.
+  Le relais gagne `/sante`, la console l'affiche, et **non branchée, elle le DIT** au lieu d'un vert
+  rassurant.
+- **Combien j'ai encaissé, combien m'attend.** La question qu'un éditeur se pose en ouvrant sa
+  console, et qui n'avait de réponse nulle part — les ventes se lisaient ligne par ligne, aucun
+  total ne les résumait. Groupé par **devise** (additionner des dinars et des euros est la faute de
+  la 7.16.0, et elle ne se voit pas) et « encaissé » porte son **année** ; « en attente » n'en porte
+  pas, parce qu'une vente de l'an dernier qui n'est pas payée attend toujours.
+- **Le journal se filtre** (par client, par licence, par geste, par période) : cinq cents dernières
+  lignes sans filtre, ce n'est pas une piste d'audit, c'est un flux.
+- **Un défaut trouvé en chemin** : `dateValide` **levait** sur une date impossible (« 2026-13-99 »
+  passe la forme et ne fait pas une date, et `toISOString` lève dessus). Un jour tapé de travers
+  dans le champ de date libre de la console ne rendait pas un refus — il rendait un 500.
+
+*Si la base D1 a été créée avant la 10.4.0, une ligne à coller dans la console D1 :
+`ALTER TABLE activations ADD COLUMN app TEXT;` (voir `plateforme/README.md`).*
+
 ## 10.3.0 — 21/09/2026
 
 **La paie des clients, dans SkanFact Cabinet.** Le travail mensuel le plus réclamé après la TVA, et

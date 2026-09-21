@@ -181,6 +181,57 @@ async function trouveFichier(fichier, env) {
   return { erreur: 'fichier introuvable dans les dernières versions' };
 }
 
+// ---------- la santé des canaux (10.4.0) ----------
+// Ce que chaque canal sert AUJOURD'HUI. La 9.8.8 a coûté une publication : un `latest.yml` posé par
+// erreur sur une préversion s'est retrouvé servi à toutes les installations stables. Le workflow le
+// vérifie désormais au moment de publier, et ce relais refuse un index stable venu d'une
+// préversion — mais rien, ensuite, ne disait ce que le canal sert. Une vérification qu'on fait à la
+// main finit par ne plus se faire (§ 9.8.8) : celle-ci se lit depuis la console.
+//
+// Pur, donc testable sans réseau : on lui donne la liste des releases, il rend un état par index.
+// Un index qu'aucune release ne porte est un canal MUET — l'application qui l'interroge reçoit un
+// 404 et affiche « aucune version trouvée », ce qui n'a l'air d'une panne que de son côté.
+export function resumeCanaux(releases) {
+  const out = [];
+  for (const canal of Object.keys(CANAUX)) {
+    for (const fichier of CANAUX[canal].yml) {
+      let trouve = null;
+      for (const rel of (releases || [])) {
+        if (!releaseAdmissible(rel, fichier)) continue;
+        if ((rel.assets || []).some(a => a && a.name === fichier)) { trouve = rel; break; }
+      }
+      out.push({
+        canal, fichier,
+        essai: !INDEX_STABLES.includes(fichier),
+        servi: !!trouve,
+        tag: trouve ? String(trouve.tag_name || '') : '',
+        prerelease: trouve ? !!trouve.prerelease : false,
+        publie: trouve ? String(trouve.published_at || '') : ''
+      });
+    }
+  }
+  return out;
+}
+
+async function servirSante(request, env) {
+  // Même porte que les fichiers : le secret de l'application. Ce qu'on rend — un canal et un
+  // numéro de version — est de toute façon public dès qu'une release l'est ; la porte est là pour
+  // le quota GitHub, pas pour un secret.
+  if (!env || !env.APP_SECRET) return new Response('Relais non configuré.', { status: 503 });
+  if (!memeSecret(request.headers.get('x-skanfact-app') || '', env.APP_SECRET)) {
+    return new Response('Accès refusé.', { status: 403 });
+  }
+  const base = `https://api.github.com/repos/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/releases`;
+  const r = await github(`${base}?per_page=20`, env);
+  if (!r.ok) return new Response(JSON.stringify({ erreur: `GitHub a répondu ${r.status}`, canaux: [] }), {
+    status: 502, headers: { 'Content-Type': 'application/json; charset=utf-8' }
+  });
+  const releases = await r.json();
+  return new Response(JSON.stringify({ v: 1, canaux: resumeCanaux(releases) }), {
+    headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }
+  });
+}
+
 const typeDe = f => f.endsWith('.yml') ? 'text/yaml; charset=utf-8'
   : f.endsWith('.zip') ? 'application/zip'
   : f.endsWith('.exe') ? 'application/octet-stream'
@@ -320,6 +371,10 @@ export default {
     if (request.method !== 'GET' && request.method !== 'HEAD') {
       return new Response('Méthode non autorisée.', { status: 405 });
     }
+    // L'état des canaux, lu par la console (10.4.0). Avant le filtre de `route`, qui n'accepte que
+    // « /<canal>/<fichier> » et rendrait 404 sur un chemin d'un seul segment.
+    if (url.pathname === '/sante') return servirSante(request, env);
+
     const r = route(url.pathname);
     if (!r) return new Response('Introuvable.', { status: 404 });
     if (!fichierAutorise(r.canal, r.fichier)) return new Response('Introuvable.', { status: 404 });

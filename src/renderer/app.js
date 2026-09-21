@@ -4773,7 +4773,10 @@
     'licences-impayees': { label: 'Voir les impayées', run: vers('#/licences', () => { licState.q = ''; licState.st = ''; licState.tri = 'impaye'; licState.page = 1; }) },
     // Les questions du comptable (9.10.0). Elles vivent dans l'onglet Cabinet, à côté du paquet
     // qui les a apportées et de celui qui emportera les réponses.
-    questions: { label: 'Voir les questions', run: vers('#/compta', () => { comptaState.tab = 'cabinet'; pageFocus = 'p-questions'; }) }
+    questions: { label: 'Voir les questions', run: vers('#/compta', () => { comptaState.tab = 'cabinet'; pageFocus = 'p-questions'; }) },
+    // L'export de la base de la console (10.4.0) : le bouton vit dans le panneau Éditeur, et la
+    // ligne y mène directement — un raccourci vise un PANNEAU, pas une page (7.18.0).
+    'console-export': { label: 'Exporter la base', run: vers('#/parametres', () => { settingsTab = 'app'; settingsFocus = 'p-editeur'; }) }
   };
 
   // « Ce qui manque » (Comptabilité → Cabinet) et les contrôles avant clôture disent exactement ce
@@ -11777,7 +11780,22 @@
         <button type="button" class="btn" id="ed-pont-ventes">Voir les ventes à facturer</button>
         ${C.chargeHistorique(data, company()).length && !data.pontImporte ? '<button type="button" class="btn" id="ed-pont-import">Envoyer l\'historique à la console…</button>' : ''}
       </div>
-      ${data.pontImporte ? `<p class="small muted mt">Historique envoyé à la console le ${C.fmtDate(data.pontImporte)}.</p>` : ''}` : ''}`;
+      ${data.pontImporte ? `<p class="small muted mt">Historique envoyé à la console le ${C.fmtDate(data.pontImporte)}.</p>` : ''}
+      ${blocExportConsole()}` : ''}`;
+  }
+
+  // L'export de la base de la console (10.4.0). La base du service est le SEUL endroit où vit
+  // « qui a acheté quelle clé » : sans copie, la perdre emporte toutes les ventes, et plus aucune
+  // clé vendue ne peut être renvoyée, renouvelée ni révoquée. L'avertissement se lit AVANT le
+  // geste, jamais sous le bouton (9.4.2).
+  function blocExportConsole() {
+    const e = C.exportConsoleAFaire(data, C.today());
+    const etat = !e.du
+      ? '<span class="badge retard">Jamais exportée</span>'
+      : (e.reclame ? `<span class="badge partielle">Exportée il y a ${pl(e.jours, 'jour')}</span>` : `<span class="badge payée">Exportée le ${C.fmtDate(e.du)}</span>`);
+    return `<p class="mt"><strong>La copie de la base</strong> ${etat}</p>
+      <p class="small">La base de la console porte tes clients, tes licences et tes ventes — et le contenu signé de chaque clé, celui qui permet de la refabriquer à l'identique. L'export la range dans un seul fichier de <code>~/.skanfact/</code>, à côté de tes clés : jamais dans tes données, jamais dans une sauvegarde, jamais dans un dossier partagé.</p>
+      <div class="inline mt"><button type="button" class="btn ${e.reclame ? 'btn-primary' : ''}" id="ed-export-base">Exporter la base…</button></div>`;
   }
   function brancherPont() {
     const champ = $('#ed-pont-secret');
@@ -11800,6 +11818,18 @@
     };
     if ($('#ed-pont-ventes')) $('#ed-pont-ventes').onclick = () => navigate('#/licences');
     if ($('#ed-pont-import')) $('#ed-pont-import').onclick = envoyerHistoriqueConsole;
+    if ($('#ed-export-base')) $('#ed-export-base').onclick = async () => {
+      const b = $('#ed-export-base'); b.disabled = true;
+      try {
+        const r = await bridge.pontExporterBase();
+        // Le COMPTE par table, dit : un export tronqué ressemble à un export complet, et c'est le
+        // jour où l'on en a besoin qu'on s'en aperçoit (règle du manifeste, 6.1.0).
+        const lignes = Object.keys(r.comptes || {}).map(t => `${t} : ${r.comptes[t]}`).join('\n');
+        data.exportConsole = r.jour; save(true);
+        await confirmDialog(`Base exportée.\n\n${r.chemin}\n\n${lignes}\n\nEmpreinte : ${String(r.sha256 || '').slice(0, 16)}…\n\nCe fichier n'est pas chiffré et porte tes clients : garde-le où tu gardes tes clés.`, 'Fermer', false);
+        drawEditeurPanel();
+      } catch (e) { b.disabled = false; toast(plainError(e), true); }
+    };
   }
 
   // L'historique des licences émises DANS SkanFact part UNE fois vers la console, pour qu'elle

@@ -197,6 +197,61 @@ ALTER TABLE licences ADD COLUMN dossiers_hors INTEGER;
 
 Même remarque : « duplicate column » veut dire qu'elles y sont déjà.
 
+### Si la base a été créée avant la 10.4.0
+
+Une colonne de plus sur `activations` — **laquelle des deux applications** s'annonce :
+
+```
+ALTER TABLE activations ADD COLUMN app TEXT;
+```
+
+`NULL` veut dire « l'app entreprise » : avant la 10.4.0, elle était seule à s'annoncer. Sans cette
+colonne, l'onglet **Parc** confond SkanFact et SkanFact Cabinet sur la même ligne de version.
+
+### 4 quater. L'espace de gestion (10.4.0)
+
+La console s'ouvre désormais sur **À décider** : les clés jamais envoyées, les ventes à encaisser,
+les licences qui se terminent dans les trente jours, et la copie de la base. Chaque ligne porte
+« Ouvrir », qui va à l'onglet qui la règle — une alerte qu'on ne peut pas ouvrir est une inquiétude,
+pas une tâche. Sur une console où rien n'a encore été vendu, la liste est vide : on ne réclame pas
+la copie du néant.
+
+Trois onglets de plus :
+
+- **Parc** — les DEUX applications, groupées par version : combien de postes, combien vus dans les
+  trente derniers jours, combien endormis, combien sous licence, combien en essai, Mac / Windows.
+  « Endormi » n'est pas « perdu » : un portable refermé pour les vacances se compte à part.
+- **Cabinets** — un cabinet par ligne, avec son quota de dossiers, ses clients parrainés, ses postes
+  et la dernière fois qu'il s'est montré.
+- Le **Journal** se filtre par client, licence, geste ou période (`?client=`, `?licence=`, `?quoi=`,
+  `?depuis=`).
+
+**« Exporter la base… »**, dans la barre du haut. Le fichier descend dans le navigateur ; il porte
+la base ENTIÈRE (clients, licences, activations, ventes, journal), le contenu signé de chaque clé,
+un **compte par table** et une empreinte SHA-256. C'est la seule chose dont la disparition ne se
+rattrape pas : sans copie, une base perdue emporte « qui a acheté quelle clé », et plus aucune clé
+vendue ne peut être renvoyée, renouvelée ni révoquée. Ce fichier **n'est pas chiffré** et porte la
+liste des clients : il se range où l'on range ses clés.
+
+Le même export existe dans SkanFact → Paramètres → L'application → Éditeur (« Exporter la base… ») :
+là, il est rangé tout seul dans `~/.skanfact/console-AAAA-MM-JJ.json`, en 0600, et « À faire » le
+réclame au bout de trente jours.
+
+### 4 quinquies. La santé des canaux (10.4.0) — deux réglages facultatifs
+
+La console peut afficher ce que **chaque canal de mise à jour sert aujourd'hui** (`latest.yml` →
+v10.3.0, `beta.yml` → v10.4.0-beta.1, etc.). Elle ne le devine pas : le relais est un autre worker.
+Deux réglages à poser sur le worker de la console, dans Cloudflare → Settings → Variables :
+
+| Réglage | Valeur |
+|---|---|
+| `RELAIS_BASE` | l'adresse du relais de mise à jour (le même `UPDATE_BASE` que les applications) |
+| `RELAIS_SECRET` | son `APP_SECRET` (le même `UPDATE_SECRET` que les applications) |
+
+Sans eux, la console écrit « canaux : non lus » et dit pourquoi — elle n'affiche jamais un vert
+qu'elle ne peut pas prouver. Ce qu'elle surveille est très précisément le défaut de la 9.8.8 : un
+index **stable** servi par une **préversion**, c'est-à-dire une bêta proposée à tout le monde.
+
 ### 4 ter. Vendre une licence de cabinet (9.4.1)
 
 Depuis la 9.4.0, SkanFact Cabinet est payant au-delà de trois dossiers hors SkanFact — et c'est un

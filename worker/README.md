@@ -117,6 +117,31 @@ résultat : sans le secret de l'application, personne n'entre. C'est exactement 
 Dans Cloudflare, **Workers → ton service → Logs** montre en direct qui met à jour et vers quelle
 version.
 
+### `/sante` — ce que chaque canal sert aujourd'hui (10.4.0)
+
+`GET /sante`, avec l'en-tête `X-SkanFact-App` (le même secret que les fichiers), rend pour chacun
+des douze fichiers d'index — six pour SkanFact, six pour SkanFact Cabinet — la release qui le porte
+en ce moment :
+
+```json
+{ "v": 1, "canaux": [
+  { "canal": "app", "fichier": "latest.yml", "essai": false, "servi": true,
+    "tag": "v10.3.0", "prerelease": false, "publie": "2026-09-20T…" }, … ] }
+```
+
+C'est la **console** qui l'affiche (réglages `RELAIS_BASE` et `RELAIS_SECRET`, voir
+`plateforme/README.md`). Deux choses s'y lisent d'un coup d'œil, et aucune ne se voyait avant :
+
+- un **canal muet** (`servi: false`) : l'application qui l'interroge prend un 404 et affiche
+  « aucune version trouvée » — une panne qui n'a l'air d'une panne que de son côté ;
+- un index **stable** servi par une **préversion** : c'est le défaut de la 9.8.8, celui qui a
+  proposé une bêta à toutes les installations stables. Le relais le refuse déjà, et le workflow
+  le retire à la publication — cet écran est la troisième ceinture, celle qui regarde APRÈS.
+
+La porte est le secret de l'application, pas un secret d'administration : ce qui sort de là (un
+canal et un numéro de version) est public dès qu'une release l'est. Elle sert à ne pas laisser
+n'importe qui brûler le quota de l'API GitHub.
+
 ## Ce qu'il protège, et ce qu'il ne protège pas
 
 - ✅ Un inconnu ne peut rien télécharger : il n'a ni l'adresse ni le secret.

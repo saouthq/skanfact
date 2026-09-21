@@ -76,6 +76,10 @@ CREATE TABLE IF NOT EXISTS activations (
   device_nom     TEXT,
   plateforme     TEXT,
   version        TEXT,
+  -- 10.4.0 — 'entreprise' ou 'cabinet'. NULL = tout ce qui a été noté avant, c'est-à-dire l'app
+  -- entreprise : elle était seule à s'annoncer. Sans cette colonne, la moitié du parc — celle des
+  -- comptables — n'existait nulle part, et deux applications se confondaient sur la même version.
+  app            TEXT,
   premiere_fois  TEXT NOT NULL,
   derniere_fois  TEXT NOT NULL
 );

@@ -65,7 +65,9 @@ async function servir() {
 (async () => {
   const { srv, base, mails, cles, db, restaurer } = await servir();
   const nav = await ouvrirChromium(playwright());
-  const ctx = await nav.newContext();
+  // `acceptDownloads` : l'export de la base (10.4.0) descend un vrai fichier, et c'est ce fichier
+  // qu'on vérifie — pas une intention.
+  const ctx = await nav.newContext({ acceptDownloads: true });
   const page = await ctx.newPage();
 
   // Toute erreur JavaScript de la page fait échouer le parcours. C'est la moitié de l'intérêt :
@@ -365,6 +367,73 @@ async function servir() {
       && L.licenceCabinet({ key: cleCab2, cles, empreinte: '3f9a2c1e000011112222', comptes: 20, today: L.today() }).autorises === 28,
       'le nouveau quota est dans la clé neuve : 3 + 25, reconnu sous l\'empreinte sans tirets');
     await page.click('#cle-fermer');
+
+    etape('13 ter. L\'espace de gestion : ce qui demande une décision, le parc des DEUX applications, les cabinets');
+    // Le parc : l'app du comptable s'annonce aussi depuis la 10.4.0. Sans cette moitié, la console
+    // ne voyait qu'une des deux applications — et l'éditeur ne savait rien du parc des cabinets.
+    const annonce = (app2, version, poste) => fetch(base + '/v1/licence/etat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-SkanFact-App': 'secret-de-test-' + 'x'.repeat(20) },
+      body: JSON.stringify({ deviceId: poste, deviceNom: poste, plateforme: 'darwin', version, app: app2 })
+    });
+    doit((await annonce('cabinet', '10.4.0', 'poste-cabinet-A')).ok, 'SkanFact Cabinet s\'annonce');
+    doit((await annonce('entreprise', '10.4.0', 'poste-entreprise-B')).ok, 'SkanFact s\'annonce');
+    await page.click('#refresh');
+    await onglet('parc');
+    await page.waitForSelector('#table tbody tr');
+    const parc = (await lignes()).join('\n');
+    doit(/SkanFact Cabinet/.test(parc) && /SkanFact(?! Cabinet)/.test(parc),
+      'les DEUX applications ont leur ligne — c\'est la moitié qu\'on ne voyait pas');
+
+    await onglet('cabinets');
+    await page.waitForSelector('#table tbody tr');
+    doit((await lignes()).some(l => /Ben Salah/.test(l) && /25/.test(l)),
+      'le cabinet vendu s\'y lit avec son quota');
+
+    // L'argent : la question qu'un éditeur se pose en ouvrant sa console, et qui n'avait de réponse
+    // nulle part. Groupé par DEVISE, et « encaissé » porte son année.
+    await page.waitForFunction(() => /Encaissé en|Aucune vente/.test((document.getElementById('argent') || {}).textContent || ''));
+    const argent = (await page.textContent('#argent')).replace(/\s+/g, ' ');
+    doit(/Encaissé en \d{4} : [\d  ,]+ [A-Z]{2,4}/.test(argent), 'le total encaissé porte son année ET sa devise : « ' + argent.trim() + ' »');
+    doit(/En attente : [\d  ,]+ [A-Z]{2,4}/.test(argent), 'et ce qui attend se lit à côté');
+
+    await onglet('alertes');
+    await page.waitForSelector('#table .wrap');
+    const al = (await lignes()).join('\n');
+    doit(/jamais été exportée/i.test(al), 'la base jamais exportée est annoncée : c\'est la seule perte qu\'on ne rattrape pas');
+    // Une alerte qu'on ne peut pas ouvrir est une inquiétude, pas une tâche (7.15.0).
+    const bAller = await page.$('xpath=//tbody/tr[contains(., "encaisser")]//button[normalize-space()="Ouvrir"]');
+    if (bAller) {
+      await bAller.click();
+      await page.waitForFunction(() => { const b = document.querySelector('#tabs button[data-t="ventes"]'); return b && b.getAttribute('aria-selected') === 'true'; });
+      doit(true, '« Ouvrir » d\'une vente à encaisser mène bien à l\'onglet Ventes');
+      await onglet('alertes');
+    }
+
+    etape('13 quater. Exporter la base : le fichier, ses comptes, et la trace');
+    const dl = page.waitForEvent('download');
+    await page.click('#exporter');
+    const fichier = await dl;
+    doit(/^skanfact-console-\d{4}-\d{2}-\d{2}\.json$/.test(fichier.suggestedFilename()),
+      'le fichier porte la date du jour : ' + fichier.suggestedFilename());
+    await page.waitForFunction(() => /Base exportée/.test((document.getElementById('info') || {}).textContent || ''));
+    const texteInfo = await info();
+    doit(/licences : \d+/.test(texteInfo) && /clients : \d+/.test(texteInfo),
+      'le message dit le COMPTE par table : un export tronqué ressemble à un export complet');
+    doit(/n’est pas chiffré|n'est pas chiffré/.test(texteInfo),
+      'et il dit ce que le fichier porte, avant qu\'on le range n\'importe où');
+    doit(db.lire("SELECT id FROM evenements WHERE quoi = 'base.exportee'").length === 1,
+      'l\'export laisse une trace dans le journal : c\'est elle qui date l\'alerte');
+    await page.click('#refresh');
+    await onglet('alertes');
+    await page.waitForSelector('#table .wrap');
+    doit(!(await lignes()).join('\n').match(/jamais été exportée/i),
+      'et l\'alerte a disparu : la base vient d\'être exportée');
+
+    etape('13 quinquies. La santé des canaux : non branchée, elle le DIT');
+    const sante = (await page.textContent('#sante')).replace(/\s+/g, ' ');
+    doit(/non lus/.test(sante) && /RELAIS_BASE/.test(sante),
+      'la console n\'invente pas ce qu\'elle ne peut pas lire : « ' + sante.trim().slice(0, 90) + '… »');
 
     etape('14. Fermer la session referme vraiment');
     await page.click('#out');

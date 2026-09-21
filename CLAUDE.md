@@ -76,7 +76,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un **adaptateur** vaut mieux qu'une seconde implémentation ; deux moteurs divergent | 9.7.0 |
 | Une assertion sur un montant se **calcule à la main**, jamais en recopiant la sortie | 7.0.1 — l'assertion qui gravait le bug depuis la 1.6.0 |
 | Un test écrit contre l'état du jour **décrit cet état**, pas la règle | 7.12.0, 7.26.0, 8.0.1, 8.2.0, 9.1.0, 9.2.2, 9.4.3, 9.4.5 — neuf assertions retournées |
-| Une **tranche** de source se prouve par sa taille et par ce qu'elle ne contient PAS | 7.20.0, 7.21.0, 8.2.0 ; 9.4.6 — jamais sur un décalage en dur |
+| Une **tranche** de source se prouve par sa taille et par ce qu'elle ne contient PAS | 7.20.0, 7.21.0, 8.2.0 ; 9.4.6 — jamais sur un décalage en dur ; 10.4.0 — ni sur un VOISIN, qui déménage |
 | Un e2e **se périme** : reconnaître un écran à ce qu'il CONTIENT, jamais à son rang | 7.3.0, 7.28.0, 7.29.0, 7.30.0, 9.2.2, 9.4.5 — six parcours pourris sans un mot |
 | Un e2e qui reste **bloqué** est pire qu'un e2e qui échoue | 7.28.0 — `Promise.race` sur toute fermeture |
 | `ta()` sans `await`, `t()` avec une fonction asynchrone : « ok » sans rien vérifier | 6.7.0, 8.4.0 |
@@ -93,6 +93,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 |---|---|
 | Une règle apprise d'un côté **se vérifie de l'autre**, à la main | 7.3.0 (purge des sauvegardes), 7.18.0 (`pl`), 7.32.0 (« À faire »), 8.1.0 (le saut d'horloge) |
 | Un **INSTRUMENT qui ne couvre qu'une des deux applications** ne protège qu'une des deux | 9.4.3 |
+| Une **TÉLÉMÉTRIE non plus** : la console ne voyait qu'une des deux applications | 10.4.0 |
 | Ce qui protège du **travail perdu** entre deux postes, c'est la RÉVISION relue avant d'écrire — le verrou ne couvre que deux écritures simultanées | 9.9.0 ; 3.2.0 |
 | Une **écriture validée** ne se fusionne jamais : elle existe ou pas, et celle de l'autre poste n'est jamais perdue ni renumérotée | 9.9.0 |
 | Une **étape qui n'a pas d'écrivain** ne bloque rien, et vaut « — », jamais « non » | 9.9.0 — « révisé » avant la 9.10.0 ; 9.6.0 |
@@ -118,7 +119,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Une **classe posée par le code et inconnue de la feuille** ne se voit nulle part | 6.8.0, 7.23.0, 7.27.0, 8.1.0, 9.4.3 |
 | Un CSS **physique** décrit un écran, un CSS **logique** décrit une lecture ; l'exception est NOMMÉE | 9.4.10 |
 | Une **règle générale qui vise un élément** avale l'exception qu'on vient d'y poser (`:not()`) | 7.23.0, 7.27.0, 7.30.0, 9.4.8 |
-| Une **phrase rassurante** se vérifie d'abord sur un univers non vide | 7.0.0, 7.3.0, 9.4.2 |
+| Une **phrase rassurante** se vérifie d'abord sur un univers non vide | 7.0.0, 7.3.0, 9.4.2 ; 10.4.0 — une alerte aussi |
 | Un **avertissement** se lit AVANT le geste, jamais sous le bouton | 9.4.2 |
 | Une ligne garde **au plus UN** bouton visible ; le reste passe par `rowmenu.js` | 7.29.0 ; 9.4.8 — un en-tête de fiche aussi |
 | **UNE seule table d'actions par racine** : `bindRowMenus` écrase la précédente, en silence | 9.4.8 |
@@ -128,7 +129,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un **bouton éteint dit pourquoi**, et par la MÊME fonction que celle qui refusera | 9.4.5 |
 | Une saisie refusée se **MONTRE** : on amène le champ à l'écran (`refus()`) | 7.0.0, 7.20.0 |
 | Ce qui **détruit** demande ; ce qui **se répare** laisse un « Annuler » (`toastUndo`) | 7.12.0 ; 9.4.6 — porté au Cabinet |
-| Un écran qui **NOMME** un ensemble doit pouvoir l'ouvrir | 7.15.0, 7.17.0, 7.21.0 |
+| Un écran qui **NOMME** un ensemble doit pouvoir l'ouvrir | 7.15.0, 7.17.0, 7.21.0, 10.4.0 |
 | Chaque écran **finit par le geste suivant** : le métier est une boucle, pas quatre pages | 7.27.0, 9.4.9 |
 | Une **prose sous un tableau** remplace la découvrabilité : l'explication va dans la bulle du titre | 9.4.9 |
 | L'endroit qui **affiche** un état est celui où on s'attend à le changer | 7.14.0 |
@@ -150,6 +151,8 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Jamais **toucher à la clé publique** de `build/licences-publiques.json` | Règles de travail, 8.0.0 |
 | Jamais **embarquer une clé publique dont la privée a été VUE** : elle est brûlée, on la recrée | 9.4.1 |
 | Jamais de **token** commité | Règles de travail, 6.7.0 |
+| Jamais une **donnée de plus** dans ce qui part vers le serveur : la liste se compte | 8.4.0, 10.4.0 |
+| Jamais une **base de ventes sans copie** : D1 est le seul endroit où vit qui a acheté quelle clé | 10.4.0 |
 | Jamais **chiffrer en croyant signer** : seule une signature dit d'où ça vient | 9.2.0 |
 | Jamais une **cellule CSV** exécutée par un tableur (`=` `+` `-` `@`) | 9.1.1 |
 | Jamais **écraser le travail du cabinet** avec un mois que le client renvoie | 9.2.0 |
@@ -5068,6 +5071,76 @@ Règles apprises, à ne pas recasser :
   l'écran neuf hors de toute mesure — c'est très exactement T-55 (9.8.8), un onglet plus loin.
 
 Prouvé : **quatorze défauts réintroduits un par un** font tomber leur test.
+
+### 10.4.0 — L'espace de gestion des deux plateformes
+
+Skander : « et après on passera à la gestion des deux plateformes… afin d'avoir le contrôle dessus
+autant que auditeur ». En regardant ce que la console savait faire, deux trous se sont ouverts.
+
+Règles apprises, à ne pas recasser :
+
+- **Un instrument qui ne couvre qu'une des deux applications ne protège qu'une des deux** (9.4.3,
+  re-trouvée un cran plus haut) : la console ne voyait QUE SkanFact. Le Cabinet porte sa licence
+  depuis la 9.4.0 et son canal d'essai depuis la 9.1.0, et n'existait nulle part — ni son nombre de
+  postes, ni ses versions, ni ses installations disparues. Un éditeur qui ne voit qu'une moitié de
+  son parc ne la contrôle pas, il la découvre. C'est le **jumeau manquant** (7.3.0) appliqué non
+  plus à une règle ni à un instrument, mais à une TÉLÉMÉTRIE.
+- **Ce qui part est écrit en toutes lettres, et un test compte les champs.** La clé, l'identité du
+  poste, le système, la version, le nom de l'application — rien d'autre. L'app du comptable détient
+  la comptabilité de dizaines d'entreprises : un jour quelqu'un voudra « juste ajouter » un compteur
+  de dossiers pour s'y retrouver, et c'est ce test qui doit l'arrêter. Le test de l'app entreprise
+  (8.4.0) a d'ailleurs TOMBÉ à l'ajout de `app` — c'est exactement pour ça qu'il liste les champs :
+  un champ ajouté est une **décision**, jamais un effet de bord.
+- **Une colonne s'AJOUTE, aucune ne se renomme** (9.4.1, 9.7.0, re-rencontrée) : `activations.app`,
+  `NULL` = tout ce qui précède, c'est-à-dire l'app entreprise, seule à s'annoncer alors. Le fichier
+  `schema-a-coller.sql` est **engendré** : le modifier à la main fait tomber le test de parité, et
+  c'est lui qui a rappelé que la source est `schema.sql`.
+- **« Endormi » n'est pas « perdu ».** Une installation qu'on n'a pas vue depuis trente jours peut
+  être un portable refermé pour les vacances : elle se compte À PART, elle ne se retranche pas.
+  Sans cette nuance, un mois d'août passe pour un parc qui rétrécit — et la somme des deux doit
+  faire le total, sinon quelque chose a disparu en route.
+- **Une version se compare en NOMBRES.** `10.3.0` est plus récent que `9.8.8`, ce qu'un tri de
+  chaînes dit exactement à l'envers ; et une préversion passe AVANT la version qu'elle prépare.
+- **Avant de crier, vérifier que l'univers concerné est non vide** (7.0.0, trouvée ici par le
+  parcours réel) : la console d'un éditeur qui n'a rien vendu n'a rien à perdre, et réclamer la copie
+  du néant sur son tout premier écran apprend à ignorer les alertes. C'est l'e2e qui l'a montré —
+  l'onglet d'entrée est devenu « À décider », et sur une base vide il affichait une alerte.
+- **Une alerte qu'on ne peut pas ouvrir est une inquiétude, pas une tâche** (7.15.0) : chaque ligne
+  nomme l'onglet qui la règle, et un test confronte ces noms à la table des onglets de la console —
+  deux tables séparées divergent, toujours.
+- **L'export porte un COMPTE par table**, et son empreinte ne porte pas sur elle-même : un manifeste
+  ne peut pas contenir sa propre empreinte (6.1.0). Un export tronqué ressemble à un export complet,
+  et c'est le jour où l'on en a besoin qu'on s'en aperçoit.
+- **Le fichier va à côté des CLÉS, jamais dans les données** : il porte la liste des clients et des
+  ventes de l'éditeur. `~/.skanfact/`, mode 0600, écriture atomique — un export à moitié écrit
+  ressemble à un export.
+- **Un agrégat de montants porte une DEVISE et une PÉRIODE** (7.0.1, 7.16.0, 3.1.0, re-posées côté
+  console) : « encaissé » sans son année ne veut rien dire, et additionner des dinars avec des euros
+  ne se voit sur aucun écran. « En attente » ne porte PAS d'année, elle — une vente de l'an dernier
+  qui n'est pas payée attend toujours, et c'est justement celle-là qu'on veut voir.
+- **Une vérification qu'on fait à la main finit par ne plus se faire** (9.8.8, re-posée) : le relais
+  gagne `/sante`, qui dit ce que chaque canal sert AUJOURD'HUI. Le relais est un autre worker : non
+  branché, la console le DIT au lieu d'afficher un vert rassurant (Cabinet 1.0.0).
+- **Ajouter une sortie réseau à un worker est une décision** : le test « une seule requête sortante »
+  est passé à DEUX, chacune nommée — le mail qui porte la clé, et le relais dont l'adresse vient d'un
+  réglage et jamais d'une adresse écrite dans le code.
+- **Une date impossible se REFUSE, elle ne fait pas tomber le serveur.** `dateValide` testait la
+  forme puis appelait `toISOString`, qui **lève** sur « 2026-13-99 » : un jour tapé de travers dans
+  le champ de date libre de la console rendait un 500 au lieu d'un refus. Aucun écran ne montre une
+  exception de worker — c'est en écrivant le test du filtre de journal qu'elle est tombée.
+- Piège de tranche, **troisième fois** (7.21.0, 9.8.1, 9.9.0) : le test de `trouveFichier` était
+  borné sur son VOISIN (`const typeDe =`), et `resumeCanaux` s'est glissé entre les deux. Une
+  tranche se borne sur la FIN de ce qu'elle juge — l'accolade en colonne 0 — jamais sur un voisin,
+  qui déménage.
+- Piège du harnais, re-rencontré : une suite qui utilise `ta` doit être **asynchrone et attendue**,
+  des deux côtés. `ta()` sans `await` part détaché, son « ok » s'affiche après le total, et une
+  assertion qui tombe ne fait plus échouer la commande (8.4.0). Le lanceur les compte et refuse de
+  conclure s'il en reste — c'est lui qui l'a dit.
+
+Les parcours qui comptent sont `npm run e2e:console` (les trois onglets ouverts pour de vrai, les
+deux applications qui s'annoncent, l'export qui descend un VRAI fichier, la trace dans le journal,
+l'alerte qui disparaît) et `npm run e2e:pont` (le bouton de SkanFact, le fichier sur le disque en
+0600, son compte par table, et l'état qui suit).
 
 ## Pistes pour la suite (non demandées)
 

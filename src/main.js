@@ -967,7 +967,10 @@ async function annoncerPlateforme() {
   const cle = String(readLicence().key || '').trim();
   let rep;
   try {
-    rep = await postPlateforme({ cle, deviceId: dev.id, deviceNom: dev.name, plateforme: process.platform, version: app.getVersion() });
+    // `app` depuis la 10.4.0 : la console voit enfin LAQUELLE des deux applications s'annonce.
+    // Une annonce qui ne le dit pas est comptée comme une annonce de SkanFact, parce que c'est ce
+    // qu'elle était forcément avant que l'app du comptable sache s'annoncer.
+    rep = await postPlateforme({ cle, deviceId: dev.id, deviceNom: dev.name, plateforme: process.platform, version: app.getVersion(), app: 'entreprise' });
   } catch (e) {
     // Une panne du plan de contrôle n'est pas une panne de l'application. On l'écrit dans le
     // journal — c'est ce qui permet de dépanner à distance (6.7.2) — et rien à l'écran : il n'y a
@@ -1810,6 +1813,32 @@ ipcMain.handle('pont:setSecret', async (_e, secret) => {
   return { configure: true, etat };
 });
 ipcMain.handle('pont:requete', (_e, chemin, corps) => pontRequete(chemin, corps));
+
+// ---------- l'export de la base de la console (10.4.0) ----------
+//
+// La base D1 est le SEUL endroit où vit « qui a acheté quelle clé ». Le contenu signé de chaque
+// licence en fait partie : c'est lui qui permet de la refabriquer à l'identique (8.5.0), donc de la
+// renvoyer à un client qui a perdu la sienne. Sans export, une base perdue emporte tout ça, et
+// aucune clé vendue ne peut plus être renvoyée, renouvelée ni révoquée.
+//
+// Le fichier va dans `~/.skanfact/`, à côté des clés — jamais dans les données, jamais dans une
+// sauvegarde, jamais dans un dossier partagé : il porte la liste des clients et des ventes de
+// l'éditeur. Mode 0600, comme le secret d'administration.
+ipcMain.handle('pont:exporterBase', async () => {
+  const doc = await pontRequete('export');
+  if (!doc || !doc.tables || !doc.comptes) { throw erreur('ERR-ENT-077', 'La console n\'a pas rendu un export lisible.'); }
+  const jour = new Date().toISOString().slice(0, 10);
+  const nom = 'console-' + jour + '.json';
+  const dest = path.join(CLES_DIR(), nom);
+  fs.mkdirSync(CLES_DIR(), { recursive: true });
+  const texte = JSON.stringify(doc, null, 2);
+  // Écriture atomique : un export à moitié écrit ressemble à un export, et c'est le jour où on en a
+  // besoin qu'on s'en aperçoit.
+  const tmp = dest + '.tmp';
+  fs.writeFileSync(tmp, texte, { mode: 0o600 });
+  fs.renameSync(tmp, dest);
+  return { chemin: dest, jour, comptes: doc.comptes, sha256: String(doc.sha256 || '') };
+});
 
 // Émettre une licence : l'écran envoie les champs, le processus principal vérifie et signe.
 ipcMain.handle('licence:emettre', (_e, p) => {

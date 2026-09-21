@@ -239,6 +239,39 @@ const { baseD1 } = require('../d1-sqlite');
   if (restantes.j.lignes.length !== 1 || restantes.j.lignes[0].id !== v2.j.vente.id) throw new Error('seule la vente d\'El Amen devrait rester sans facture : ' + JSON.stringify(restantes.j.lignes.map(l => l.id)));
   j.ok(`${emise.number} rendue à la console · il reste la vente d'El Amen`);
 
+  // ---------------------------------------------------- 4 bis. la copie de la base (10.4.0)
+  //
+  // La base de la console est le SEUL endroit où vit « qui a acheté quelle clé », le contenu signé
+  // compris — celui qui permet de refabriquer une clé à l'identique et de la renvoyer à un client
+  // qui a perdu la sienne. Sans copie, la perdre emporte toutes les ventes.
+  j.etape('Exporter la base de la console : le fichier est VRAIMENT sur le disque, à côté des clés');
+  await ouvrirParametres('p-editeur');
+  await win.waitForSelector('#ed-export-base');
+  // L'avertissement se lit AVANT le geste (9.4.2), et l'état dit qu'on n'a jamais exporté.
+  bloc = await texte('#editeur-panel');
+  if (!/Jamais exportée/.test(bloc)) throw new Error('l\'état de la copie doit se lire avant le bouton : ' + bloc.slice(-400));
+  await win.click('#ed-export-base');
+  await win.waitForFunction(() => /Base exportée/.test((document.querySelector('.modal') || {}).textContent || ''), null, { timeout: 20000 });
+  const compteRendu = await win.evaluate(() => (document.querySelector('.modal') || {}).textContent || '');
+  const fichiersCles = fs.readdirSync(cles).filter(f => /^console-\d{4}-\d{2}-\d{2}\.json$/.test(f));
+  if (fichiersCles.length !== 1) throw new Error('un seul export attendu dans ~/.skanfact, trouvé : ' + fichiersCles.join(', '));
+  const chemin = path.join(cles, fichiersCles[0]);
+  // 0600 : le fichier porte la liste des clients et des ventes de l'éditeur.
+  const mode = fs.statSync(chemin).mode & 0o777;
+  if (mode !== 0o600) throw new Error('l\'export doit être en 0600, il est en ' + mode.toString(8));
+  const dedans = JSON.parse(fs.readFileSync(chemin, 'utf8'));
+  if (!dedans.tables || !dedans.tables.licences.length) throw new Error('l\'export ne porte aucune licence');
+  if (!dedans.comptes || dedans.comptes.licences !== dedans.tables.licences.length) {
+    throw new Error('le compte annoncé ne correspond pas au contenu : un export tronqué ressemble à un export complet');
+  }
+  if (!/licences : \d+/.test(compteRendu)) throw new Error('le compte rendu doit dire le compte par table : ' + compteRendu.slice(0, 200));
+  await win.click('.modal button');
+  await win.waitForFunction(() => !document.querySelector('.modal'), null, { timeout: 10000 });
+  await ouvrirParametres('p-editeur');
+  bloc = await texte('#editeur-panel');
+  if (!/Exportée le/.test(bloc)) throw new Error('l\'état doit se mettre à jour après l\'export : ' + bloc.slice(-400));
+  j.ok(`${fichiersCles[0]} en 0600 · ${dedans.comptes.licences} licence(s) · l'état suit`);
+
   // ---------------------------------------------------- 5. la console éteinte
   j.etape('Console éteinte : la page Licences le dit, en français, et l\'application reste entière');
   eteint = true;

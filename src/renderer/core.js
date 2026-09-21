@@ -769,6 +769,7 @@
     ecrituresOD: [],         // opérations diverses saisies à la main : { id, date, piece, label, lignes:[{compte,label,debit,credit}] } (8.9.0)
     licences: [],            // licences SkanFact ÉMISES par l'éditeur depuis ce dossier (7.33.0) — vide chez un client
     pontImporte: '',         // jour où l'historique des licences est parti vers la console (8.7.0) — vide chez un client
+    exportConsole: '',       // jour du dernier export de la base de la console (10.4.0) — vide chez un client
     deleted: [],             // pièces supprimées, pour qu'elles ne reviennent pas d'un autre poste (v4)
     conflictArchive: [],     // versions écartées lors d'une fusion : rien n'est détruit sans trace
     closedUntil: '',         // dernier jour clôturé : rien de daté avant ne bouge plus (6.0.0)
@@ -5210,6 +5211,18 @@
 
   // Les trois manques que « À faire » doit remonter, dans cet ordre de gravité. Une licence
   // révoquée n'y figure jamais : on ne réclame pas l'argent qu'on vient de rendre.
+  // L'export de la base de la console : depuis combien de jours, et faut-il le réclamer ?
+  // Réclamé au bout de trente jours — et tout de suite s'il n'a JAMAIS eu lieu, parce que « jamais »
+  // n'est pas un retard, c'est un filet qui n'existe pas.
+  const EXPORT_CONSOLE_DELAI = 30;
+  function exportConsoleAFaire(data, todayIso) {
+    const t = todayIso || today();
+    const du = String((data && data.exportConsole) || '').slice(0, 10);
+    if (!du) return { du: '', jours: null, reclame: true };
+    const jours = daysBetween(du, t);
+    return { du, jours, reclame: jours > EXPORT_CONSOLE_DELAI };
+  }
+
   function licencesAFaire(data, company, todayIso) {
     const t = todayIso || today();
     const vivantes = (data.licences || []).filter(l => l && !l.revoqueeLe && !l.remplaceePar);
@@ -5614,6 +5627,21 @@
       detail: 'Le client a sa clé, elle fonctionne, et la facture n\'est pas réglée. C\'est le cas qui coûte : une licence hors ligne ne se reprend pas.',
       count: licSuite.impayees.length, route: '#/licences', docs: []
     });
+    // L'export de la base de la console (10.4.0). C'est la SEULE chose dont la disparition ne se
+    // rattrape pas : la base D1 est le seul endroit où vit « qui a acheté quelle clé », et sans
+    // elle aucune licence vendue ne peut plus être renvoyée, renouvelée ni révoquée. Décidé avant
+    // la première vente (QUESTIONS.md, 4e relecture) ; la ligne ne vit que sur le poste de
+    // l'éditeur, comme les quatre du dessus.
+    if (editeurIci) {
+      const ex = exportConsoleAFaire(data, t);
+      if (ex.reclame) out.push({
+        id: 'console-export', level: ex.du ? 'warn' : 'danger',
+        label: ex.du ? `La base de la console n'a pas été exportée depuis ${plFr(ex.jours, 'jour')}` : 'La base de la console n\'a jamais été exportée',
+        detail: 'Un export la range en un fichier dans ~/.skanfact/. Sans lui, une base perdue emporte toutes les ventes : plus aucune clé vendue ne peut être renvoyée ni révoquée. Paramètres → L\'application → Éditeur.',
+        count: 1, route: '#/licences'
+      });
+    }
+
     const licExp = licSuite.expirant;
     if (licExp.length) out.push({
       id: 'licences-expirent', level: 'warn',
@@ -6739,6 +6767,7 @@
     MODULES_PAR_ACTIVITE, modulesSuggeres, wipeData, rendreLesEmprunts, estDemo, exemplePerime, firstSteps, liste, defaultVat, seuilRetenue, newLine,
     canalDe, estBeta, pastilleLicence, empreinteCabinet, licencesDuCabinet,
     LICENCE_MOTIFS, prorataOffre, licenceSuivi, licencesAFaire,
+    EXPORT_CONSOLE_DELAI, exportConsoleAFaire,
     LICENCE_PREAVIS, licenceEtat, licenceRows, licencesExpirant,
     clientPourVente, chargeHistorique, facturesAAnnoncer
   };

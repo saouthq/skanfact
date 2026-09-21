@@ -789,6 +789,19 @@ complète et validation du pilote **avant** publication.
 
 ---
 
+## Les versions qui ont suivi le plan — livrées le 21/09/2026
+
+Elles ne figuraient dans aucun plan : elles sont nées d'une relecture du produit fini, à la demande
+de Skander (« est-ce que ce qu'on a développé répond vraiment au métier ? », puis « la gestion des
+deux plateformes »). Elles sont ici pour que l'inventaire reste vrai.
+
+| Version | Ce qu'elle a comblé |
+|---|---|
+| **10.1.0** | **Un achat n'avait aucune devise.** Une facture fournisseur de 1 000 € comptait 1 000 dinars dans la TVA déductible, les charges, le résultat, le stock, la trésorerie et le paquet du comptable. La faute de la 7.0.1 et de la 7.16.0, jamais portée du côté des achats |
+| **10.2.0** | L'**avoir fournisseur**, l'**acompte versé** et le **relevé de compte client** : trois pièces du métier qui n'existaient pas. Le SENS d'une pièce se porte désormais dans `base`, jamais dans la mémoire de chaque agrégateur |
+| **10.3.0** | La **paie des clients dans le Cabinet** : pour les cinquante-huit clients sur soixante qui ne sont pas sur SkanFact, le comptable établissait les bulletins ailleurs et retapait l'écriture à la main |
+| **10.4.0** | L'**espace de gestion des deux plateformes**. La console ne voyait qu'une des deux applications — SkanFact Cabinet n'existait nulle part — et **rien ne rangeait la base**, alors que D1 est le seul endroit où vit « qui a acheté quelle clé ». L'export était décidé avant la première vente (`QUESTIONS.md`, 4e relecture) et n'avait jamais été écrit |
+
 ## Au-delà de la 10.0.0
 
 Oui, il y aura une suite — la 10.0.0 arrive vers J4 (30/06/2028) et ne ferme rien. Ce qui suit n'a

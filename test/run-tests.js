@@ -3463,8 +3463,10 @@ t('8.4.0 : le plan de contrôle ne peut ni faire attendre l\'application, ni emp
   const corps = zone.match(/postPlateforme\(\{([^}]*)\}\)/);
   assert.ok(corps, 'l\'appel à postPlateforme est introuvable');
   const champs = corps[1].split(',').map(x => x.split(':')[0].trim()).filter(Boolean).sort();
-  assert.deepStrictEqual(champs, ['cle', 'deviceId', 'deviceNom', 'plateforme', 'version'],
-    'le plan de contrôle ne doit emporter que la clé, le poste, la plateforme et la version : ' + champs.join(', '));
+  // `app` depuis la 10.4.0 : LAQUELLE des deux applications s'annonce. Ajouter un champ ici est une
+  // DÉCISION, et ce test tombe pour l'exiger — c'est exactement pour ça qu'il liste les champs.
+  assert.deepStrictEqual(champs, ['app', 'cle', 'deviceId', 'deviceNom', 'plateforme', 'version'],
+    'le plan de contrôle ne doit emporter que la clé, le poste, la plateforme, la version et le nom de l\'application : ' + champs.join(', '));
 
   // L'adresse et le secret se nettoient AVANT usage : une espace invisible en fin de secret avait
   // cassé les mises à jour en 6.7.2, et rien ne l'avait montré.
@@ -6527,7 +6529,11 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.strictEqual(W.releaseAdmissible(null, 'latest.yml'), false);
     // Et c'est bien la fonction que la recherche appelle — un garde-fou jamais appelé est invisible.
     const src = fs.readFileSync(path.join(__dirname, '..', 'worker', 'skanfact-maj.mjs'), 'utf8').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
-    const tf = src.slice(src.indexOf('async function trouveFichier('), src.indexOf('const typeDe ='));
+    // La tranche se borne sur la FIN de la fonction (l'accolade en colonne 0), jamais sur son
+    // voisin : un voisin déménage, et la tranche avale alors le code d'à côté — c'est ce qui est
+    // arrivé en 9.8.1, et c'est arrivé de nouveau en 10.4.0 quand `resumeCanaux` s'est glissé ici.
+    const debutTf = src.indexOf('async function trouveFichier(');
+    const tf = src.slice(debutTf, src.indexOf('\n}\n', debutTf) + 3);
     assert.ok(tf.length > 300 && tf.length < 2000, 'tranche trouveFichier suspecte : ' + tf.length);
     assert.ok(/if \(!releaseAdmissible\(rel, fichier\)\) continue;/.test(tf), 'trouveFichier ne consulte pas releaseAdmissible');
     assert.strictEqual(W.fichierAutorise('app', 'SkanFact-Cabinet-6.6.0-mac-universal.zip'), false, 'préfixe du cabinet servi sur le canal entreprise');
@@ -10454,7 +10460,10 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       });
       assert.deepStrictEqual(bon, {
         deviceId: 'a1b2c3d4-e5f6-4789-ab12-34567890abcd',
-        deviceNom: 'Le Mac de Skander', plateforme: 'darwin', version: '8.4.0'
+        deviceNom: 'Le Mac de Skander', plateforme: 'darwin', version: '8.4.0',
+        // 10.4.0 : sans `app`, l'annonce est celle de SkanFact — c'est ce qu'elle était forcément
+        // avant que l'app du comptable sache s'annoncer.
+        app: 'entreprise'
       });
       assert.strictEqual(P.nettoyerActivation({ version: '8.4.0-beta.1' }).version, '8.4.0-beta.1');
 
@@ -11036,7 +11045,12 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       const urls = [...code.matchAll(/https?:\/\/[^\s'"`)]+/g)].map(m2 => m2[0]);
       assert.deepStrictEqual([...new Set(urls)], [P.MAIL_API], 'une adresse sortante inattendue dans le worker : ' + urls.join(', '));
       // `await fetch(` : l'appel SORTANT — pas `async fetch(request, env)`, qui est le point d'entrée.
-      assert.strictEqual((code.match(/await fetch\(/g) || []).length, 1, 'un seul appel réseau sortant');
+      // DEUX depuis la 10.4.0, et pas un de plus : le mail qui porte la clé, et le relais de mise à
+      // jour dont l'adresse vient d'un RÉGLAGE (jamais d'une adresse écrite ici — c'est ce que
+      // l'assertion du dessus vérifie). Ajouter une sortie à ce worker est une décision, et ce
+      // compte est là pour qu'elle ne se prenne jamais par inadvertance.
+      assert.strictEqual((code.match(/await fetch\(/g) || []).length, 2, 'deux appels réseau sortants : le mail, et le relais');
+      assert.ok(/await fetch\(base \+ '\/sante'/.test(code), 'la seconde sortie est la santé des canaux, lue au relais');
     });
 
     // Une vente complète contre une VRAIE base (SQLite, vrai schéma) et le vrai worker : le client,
@@ -13755,6 +13769,8 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   require('./suites/devise-achat.js')({ t, assert, lireSource });
   require('./suites/avoir-fournisseur.js')({ t, assert, lireSource });
   require('./suites/paie-cabinet.js')({ t, assert, lireSource });
+  // Celle-ci reçoit `ta` en plus : elle interroge le vrai worker sur une vraie base SQLite.
+  await require('./suites/plateforme-gestion.js')({ t, ta, assert, lireSource });
 
   // ---------- 9.4.10 : aucune suite découpée ne reste sur le bord de la route ----------
   // Le danger d'un découpage, c'est le fichier qu'on écrit et que personne ne charge : les tests

@@ -372,6 +372,7 @@ ipcMain.handle('cab:unlock', (_e, password) => {
     // déjà un cabinet sur un autre ordinateur » de l'écran de mot de passe : on reprend AVANT de créer.
     const keys = Z.generateCabinetKeys();
     state = s.create(password, K.migrate({ cabinet: { name: '', email: '', phone: '', publicKey: keys.publicKey, privateKey: keys.privateKey } }));
+    demarrerPlateforme();
     return { created: true, state: safeState() };
   }
   const r = s.unlock(password);
@@ -391,6 +392,9 @@ ipcMain.handle('cab:unlock', (_e, password) => {
   // L'exemple se refait AVANT la première écriture : une seule écriture pour les deux rattrapages.
   const exemple = rafraichirExemple();
   if (moved.moved || moved.recovered || exemple) s.write(state);
+  // L'annonce au plan de contrôle part APRÈS l'ouverture : avant, il n'y a pas de clé de licence à
+  // présenter, et le poste s'annoncerait comme un essai alors qu'il est peut-être sous licence.
+  demarrerPlateforme();
   return { created: false, state: safeState(), reorganized: moved, exemple };
 });
 
@@ -421,6 +425,7 @@ ipcMain.handle('cab:adopt', (_e, { path: p, password } = {}) => {
   // vient de reprendre, sans quoi des paquets bien présents passeraient pour perdus.
   const moved = s.reorganize(state);
   s.write(state);
+  demarrerPlateforme();
   return {
     state: safeState(), reorganized: moved,
     repris: { dossiers: state.dossiers.length, sauvegardes: r.backups, paquets: r.packs }
@@ -2306,6 +2311,86 @@ function licenceBlockCab(quoi) {
     + 'Réglages → Mon cabinet → Licence : tu y verras exactement quels dossiers sont comptés, et pourquoi.');
   e.licence = etat;
   throw e;
+}
+
+// ================================================ s'annoncer au plan de contrôle (10.4.0)
+//
+// Jusqu'ici, seule l'app entreprise s'annonçait : la console voyait UNE des deux applications, et
+// l'éditeur ne savait rien du parc des comptables — ni combien de postes tournent, ni sur quelle
+// version, ni depuis quand une installation ne s'est plus montrée. Un éditeur qui ne voit qu'une
+// moitié de son parc ne la contrôle pas, il la découvre.
+//
+// Ce qui part est écrit en toutes lettres, et un test le compte : la clé, l'identité du poste, le
+// système, la version, et le nom de l'application. **Rien d'autre** — jamais un dossier, jamais un
+// client, jamais un chiffre. L'app du comptable détient la comptabilité de dizaines d'entreprises :
+// c'est ce test qui doit arrêter quiconque voudra « juste ajouter » un compteur de dossiers.
+//
+// Tout est facultatif : sans adresse et sans secret, rien ne part et rien ne s'affiche (règle 1 du
+// § 8 de PLAN-PLATEFORME.md). Et rien ne REVIENT qui restreigne quoi que ce soit ici : la licence
+// du cabinet est vérifiée sur le poste, hors ligne, contre la clé publique embarquée.
+const PLATEFORME_DEBUT = 20 * 1000;
+const plateformeBase = () => String(
+  (!app.isPackaged && process.env.SKANFACT_PLATEFORME_BASE !== undefined)
+    ? process.env.SKANFACT_PLATEFORME_BASE : (PKG.plateformeBase || '')
+).trim().replace(/\/+$/, '');
+const plateformeSecret = () => String(
+  (!app.isPackaged && process.env.SKANFACT_PLATEFORME_SECRET !== undefined)
+    ? process.env.SKANFACT_PLATEFORME_SECRET : (PKG.plateformeSecret || '')
+).trim();
+
+// L'identité du POSTE, pas celle du cabinet : elle vit dans `app-config.json` (jamais dans l'état
+// chiffré, qui voyage par la copie externe — deux postes partageraient alors une seule identité).
+function identitePoste() {
+  const cfg = readAppCfg();
+  if (!cfg.deviceId) {
+    cfg.deviceId = require('crypto').randomUUID();
+    try { cfg.deviceName = cfg.deviceName || require('os').hostname().replace(/\.local$/, ''); }
+    catch { cfg.deviceName = 'Cet ordinateur'; }
+    writeAppCfg(cfg);
+  }
+  return { id: cfg.deviceId, name: cfg.deviceName || 'Cet ordinateur' };
+}
+
+// Ne jette jamais : c'est un appel de confort, pas une étape du démarrage. Une panne du plan de
+// contrôle n'est pas une panne de l'application — elle va au journal (6.7.2) et rien à l'écran,
+// parce qu'il n'y a rien que le comptable puisse faire et qu'un rouge sur une situation normale
+// apprend à ignorer les rouges (8.0.1).
+async function annoncerPlateforme() {
+  const base = plateformeBase(), secret = plateformeSecret();
+  if (!base || !secret) return { fait: false, raison: 'plan de contrôle non configuré' };
+  const poste = identitePoste();
+  const cle = String(((state && state.licence) || {}).key || '').trim();
+  let url;
+  try { url = new URL(base + '/v1/licence/etat'); } catch { return { fait: false, raison: 'adresse invalide' }; }
+  // En clair seulement en développement (le faux serveur des parcours) : la clé de licence voyage
+  // dans ce corps de requête.
+  if (url.protocol !== 'https:' && app.isPackaged) return { fait: false, raison: 'le plan de contrôle exige https' };
+  const donnees = Buffer.from(JSON.stringify({
+    cle, deviceId: poste.id, deviceNom: poste.name,
+    plateforme: process.platform, version: app.getVersion(), app: 'cabinet'
+  }), 'utf8');
+  try {
+    await new Promise((resolve, reject) => {
+      const req = require(url.protocol === 'http:' ? 'http' : 'https').request(url, {
+        method: 'POST', timeout: 8000,
+        headers: { 'Content-Type': 'application/json', 'Content-Length': donnees.length, 'X-SkanFact-App': secret }
+      }, res => { res.resume(); res.on('end', () => (res.statusCode === 200 ? resolve() : reject(new Error('HTTP ' + res.statusCode)))); });
+      req.on('timeout', () => req.destroy(new Error('délai dépassé')));
+      req.on('error', reject);
+      req.end(donnees);
+    });
+  } catch (e) { logToFile('plan de contrôle', e); return { fait: false, raison: String((e && e.message) || e) }; }
+  return { fait: true };
+}
+
+let plateformeArmee = false;
+function demarrerPlateforme() {
+  if (plateformeArmee || !plateformeBase()) return;
+  plateformeArmee = true;
+  // Même cadence que la vérification de mise à jour, et pour la même raison : l'application du
+  // comptable reste ouverte toute la semaine.
+  setTimeout(() => { annoncerPlateforme(); }, PLATEFORME_DEBUT);
+  setInterval(() => { annoncerPlateforme(); }, MAJ_INTERVALLE);
 }
 
 // La date de la dernière validation, retenue SUR LE DOSSIER. On pourrait la déduire du livre, mais

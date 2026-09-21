@@ -205,6 +205,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           UPDATE_BASE: ${{ secrets.UPDATE_BASE }}
           UPDATE_SECRET: ${{ secrets.UPDATE_SECRET }}
+          # 10.4.0 — le Cabinet s'annonce lui aussi au plan de contrôle. Sans ces deux secrets, la
+          # console ne voit qu'une des deux applications.
+          PLATEFORME_BASE: ${{ secrets.PLATEFORME_BASE }}
+          PLATEFORME_SECRET: ${{ secrets.PLATEFORME_SECRET }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
           EP_GH_IGNORE_TIME: true
 
