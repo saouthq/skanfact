@@ -623,4 +623,19 @@ t('T-52 : le livre-journal montre le numéro ÉCRIT à la validation, jamais un 
   const relues = K.entreesDepuisCsv(csv).map(l => ({ ...l, numero: l.numero + 40 }));
   K.journalDepuisLignes(relues).pieces.forEach((p, i) => assert.strictEqual(p.numero, i + 1, 'un paquet se recompte 1..n'));
 });
+
+// T-53 (9.8.8-beta.3) — « Valider la seule de AC » : le bouton de lot n'avait pas de nom et
+// n'élidait pas, alors que la branche des mois élidait trois caractères plus loin. Un seul libellé,
+// dans cabcore, et l'écran ne fabrique plus le sien.
+t('T-53 : le bouton de lot nomme la pièce et élide devant une voyelle', () => {
+  const Kc = require('../../src/cabinet/cabcore.js');
+  assert.strictEqual(Kc.libelleLot({ type: 'journal', cle: 'AC', label: 'AC', n: 1 }), 'Valider la seule pièce d\'AC');
+  assert.strictEqual(Kc.libelleLot({ type: 'journal', cle: 'VT', label: 'VT', n: 3 }), 'Valider les 3 pièces de VT');
+  assert.strictEqual(Kc.libelleLot({ type: 'mois', cle: '2026-08', label: 'août 2026', n: 1 }), 'Valider la seule pièce d\'août 2026');
+  assert.strictEqual(Kc.libelleLot({ type: 'mois', cle: '2026-03', label: 'mars 2026', n: 2 }), 'Valider les 2 pièces de mars 2026');
+  const app = cabApp();
+  const zone = tranche(app, 'lotsDuBrouillard(brouillards).map(', '</button>', 40, 400);
+  assert.ok(/K\.libelleLot\(l\)/.test(zone), 'le bouton de lot doit prendre son libellé dans cabcore');
+  assert.ok(!/la seule|les \$\{/.test(zone), 'l\'écran ne doit plus fabriquer le libellé lui-même');
+});
 };

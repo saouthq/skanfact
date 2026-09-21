@@ -4018,7 +4018,7 @@
             avait rien à faire — un bouton vif qui ne peut rien valider de ce qui est affiché. Le
             compte est connu avant le clic, donc il est écrit dessus. */''}
       ${brouillards.length ? `${r.validerParLot ? `<div class="sa-lot">
-          ${lotsDuBrouillard(brouillards).map(l => `<button type="button" class="btn btn-sm" data-lot-${l.type}="${esc(l.cle)}">Valider ${l.n > 1 ? `les ${l.n}` : 'la seule'} ${l.type === 'journal' ? 'de ' + esc(l.cle) : 'd' + (/^[aeiouy]/i.test(l.label) ? '\'' : 'e ') + esc(l.label)}</button>`).join('')}
+          ${lotsDuBrouillard(brouillards).map(l => `<button type="button" class="btn btn-sm" data-lot-${l.type}="${esc(l.cle)}">${esc(K.libelleLot(l))}</button>`).join('')}
           <span class="muted small">Ce qui ne tombe pas juste n'est pas validé, et te sera nommé.</span></div>` : ''}
         <div class="scroll-x"><table class="list compact"><thead><tr>
           <th class="nw">Date</th><th>Journal</th><th class="nw">Pièce</th><th>Libellé</th>

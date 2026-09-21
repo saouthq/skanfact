@@ -29,6 +29,9 @@ corriger.** Version d'essai, dans la continuité de la 9.8.8.
   compte à 1 ; un brouillard n'en a pas ; un paquet, lui, se recompte 1..n comme avant, parce que
   chez le client le numéro est déduit. Test pur prouvé par réintroduction, et le parcours
   `e2e:saisie` lit la colonne N° de l'écran pièce par pièce contre le livre sur le disque.
+- **« Valider la seule de AC »** (T-53) : le bouton de lot de la grille de saisie nomme désormais ce
+  qu'il valide et élide devant une voyelle — « Valider la seule pièce d'AC », « Valider les 3 pièces
+  de VT ». Une seule fonction dans cabcore, testée, au lieu d'une phrase fabriquée dans le gabarit.
 
 ## 9.8.8-beta.2 — 21/09/2026
 

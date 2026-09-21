@@ -824,6 +824,16 @@
   // « de octobre » ne s'écrit pas. Quatre des douze mois commencent par une voyelle.
   function de(label) { return (/^[aeiouéèê]/i.test(label) ? 'd\'' : 'de ') + label; }
 
+  // Le libellé d'un bouton de lot de la grille de saisie (T-53) : « Valider la seule pièce d'AC »,
+  // « Valider les 3 pièces de VT », « Valider la seule pièce d'août ». L'écran écrivait « Valider la
+  // seule de AC » — sans le nom, et sans l'élision que la branche des mois faisait pourtant trois
+  // caractères plus loin. Un code de journal commence par une voyelle une fois sur trois (AC, OD).
+  function libelleLot(lot) {
+    const n = Number(lot && lot.n) || 0;
+    const quoi = n > 1 ? `les ${n} pièces` : 'la seule pièce';
+    return `Valider ${quoi} ${de(String((lot && lot.label) || ''))}`;
+  }
+
   // Ce qui manque, dit en une ligne. Au-delà de trois mois on donne l'intervalle : une énumération de
   // onze mois n'est plus lue, elle est vue comme un pavé — que ce soit dans un tableau ou dans un mail.
   function missingLabel(months) {
@@ -1343,7 +1353,7 @@
     FORMAT, MONTHS_FR, DEFAULT_STATE, DEFAULT_SETTINGS, DEFAULT_SAISIE, TVA_PERIODS, REGIMES, RELANCE_WAYS, SORTS,
     guidesDuDossier, correspondanceDuDossier, dateTapee,
     GRACE_MOIS, DORMANT_MOIS, dossierFacturable, comptageDossiers, licenceDuPaquet,
-    monthLabel, monthListLabel, missingLabel, addMonth, monthsBetween, today, de,
+    monthLabel, monthListLabel, missingLabel, addMonth, monthsBetween, today, de, libelleLot,
     cleEcheance, echeanceDeposee,
     migrate, migrateDossier, dossierKey, packSummary, filePack, demoDossiers, rebaserPaquet, checkIntegrity,
     exemplePerime,

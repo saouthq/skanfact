@@ -1698,6 +1698,12 @@ DÉBIT vide de la dernière ligne pourrait solder aussi (le montant sait de quel
 La sonde de la 9.8.3 mesure un bouton contre ses VOISINS CLIQUABLES ; un titre n'en est pas un, elle
 ne l'a donc pas vu. **Piste** : marge sous le bouton (ou au-dessus du panneau), et la sonde apprend
 qu'un titre de section est un voisin.
+**Complété le 21/09** (capture après TEST-2) : le bouton vit APRÈS la barre d'actions (« Vider »,
+« Enregistrer en brouillard », « Enregistrer et valider »), donc entre le geste qui CLÔT la pièce et le
+titre du panneau suivant. Le geste qui allonge un tableau vit SOUS ce tableau (9.4.8), avant la barre
+qui le clôt — sinon on cherche « ajouter une ligne » au-dessus d'un bouton qui enregistre, et on ne
+l'y trouve pas.
+
 
 ### T-50 · MINEUR · Le brouillard affiche la date en `2026-03-04`, la grille juste au-dessus en `04/03/2026`
 
@@ -1719,6 +1725,21 @@ libellé. **Piste** : le brouillard accepte tout (c'est sa raison d'être) ; la 
 libellé vide en nommant le champ, et la fenêtre de confirmation dit « sans pièce » plutôt que « — ».
 À VÉRIFIER avec le comptable pilote : la pièce (référence) est-elle obligatoire chez lui, ou seulement
 le libellé ? C'est lui qui tranche, pas nous (règle 9.1.1).
+
+### ~~T-53 · MINEUR · « Valider la seule de AC » : le bouton de lot n'a pas de nom et n'élide pas~~ — corrigé en 9.8.8-beta.3
+
+**Vu** sur la capture du 21/09 (Saisie, après TEST-2 en brouillard) : le bouton de lot dit « Valider la
+seule de AC ». Il manque le nom de ce qu'on valide (« pièce »), et « de AC » ne s'écrit pas — c'est
+« d'AC », comme « d'octobre » (Cabinet 1.0.0, `de()`). Le bouton fait ce qu'il doit (il ne propose
+que le journal du brouillard, T-29) ; c'est son libellé qui est bâclé, sur le premier écran qu'un
+comptable lit tous les jours.
+
+**Pourquoi** : le gabarit fabriquait la phrase à la main, avec une élision écrite pour la branche des
+MOIS seulement — la branche des journaux, trois caractères plus loin, collait « de » sans regarder.
+Deux règles pour une phrase divergent (7.29.0).
+
+**Ce qui est juste** : `cabcore.libelleLot` écrit « Valider la seule pièce d'AC », « Valider les 3
+pièces de VT », « Valider la seule pièce d'août 2026 » — une fonction, testée, et l'écran l'appelle.
 
 ### ~~T-52 · GRAVE · Le livre-journal renumérote les validées par date : TEST-1 passe « n° 1 », les six d'avant deviennent 2..7~~ — corrigé en 9.8.8-beta.3
 
