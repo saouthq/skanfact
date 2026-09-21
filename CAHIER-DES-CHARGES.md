@@ -1897,6 +1897,7 @@ portent pas, et un test les nomme.
 | `ERR-ENT-081` | « Ce dossier de clôture est protégé par un mot de passe… » (l'application le DEMANDE au lieu d'afficher du rouge) / « Mot de passe incorrect, ou paquet modifié depuis son envoi. » | import d'un `.skanclose` (9.8.0) | le mot de passe, dit au téléphone | Livré |
 | `ERR-CAB-073` | « Aucun compte désigné. » / « Une note de revue sans texte n'apprend rien. » / « Cette note de revue n'existe plus. » / « Cette question n'existe plus. » | dossier de révision (9.10.0) | rouvrir l'écran, la fiche a bougé | Livré |
 | `ERR-CAB-074` | « Une question sans texte n'apprend rien au client. » / « Cette question a reçu sa réponse : elle ne se réécrit plus. » / « Cette question est déjà partie chez le client : elle se ferme, elle ne s'efface pas. » / « Aucune question n'attend de réponse : il n'y aurait rien à envoyer. » | questions au client (9.10.0) | fermer au lieu d'effacer, ou poser une question d'abord | Livré |
+| `ERR-CAB-075` | « La nature de ce retraitement n'est pas connue. » / « Un retraitement sans libellé ne s'explique pas devant un contrôle. » / « Le montant doit être positif : c'est la NATURE qui dit dans quel sens il joue. » / « Le taux d'impôt se donne en pourcentage, entre 0 et 100. » | résultat fiscal annuel (10.0.0) | corriger la ligne, ou vider le taux | Livré |
 | `ERR-ENT-082` | « Ce dossier de clôture ne porte aucun document à ouvrir. » | états d'une clôture reçue (9.8.0) | — | Livré |
 | `ERR-ENT-083` | « Ce fichier n'a pas pu être lu. » / « Ce fichier n'est pas un envoi de questions SkanFact. » / « Ce fichier ne contient aucune question. » / « L'envoi de questions est abîmé. » | import d'un `.skanask` (9.10.0) | redemander le fichier au cabinet | Livré |
 | `ERR-ENT-084` | « Cet envoi de questions est protégé par un mot de passe… » (l'application le DEMANDE au lieu d'afficher du rouge) / « Mot de passe incorrect, ou fichier modifié depuis son envoi. » | import d'un `.skanask` (9.10.0) | le mot de passe, dit au téléphone | Livré |
@@ -2389,7 +2390,7 @@ type, ligne par ligne. »
 
 | Décidé | À décider |
 |---|---|
-| L'état d'un mois côté cabinet : **reçu → saisi → déclaré → payé** ; « déclaré » et « payé » pointés et dé-pointables, et l'on ne paie pas ce qu'on n'a pas déposé | Les régimes et leurs échéances : toujours *comptable* — **F-9.6.0-12 n'est pas livré**, et la page Échéances existante continue de servir |
+| L'état d'un mois côté cabinet : **reçu → saisi → déclaré → payé** ; « déclaré » et « payé » pointés et dé-pointables, et l'on ne paie pas ce qu'on n'a pas déposé | Les régimes et leurs échéances : toujours *comptable* — **F-9.6.0-12 est livré en 10.0.0** avec une table de régimes qui part VIDE : SkanFact n'écrit aucune règle de droit, le cabinet déclare les siennes |
 | Aucune date ne fait foi : échéances réglables, « À VÉRIFIER » sur la page, un réglage aberrant retombe sur l'usage (6.8.0) | **Tranché en 9.6.0** : « payé » n'écrit RIEN. Le règlement vient du relevé bancaire quand le dossier en a un, de la saisie sinon — et l'écran dit lequel des deux |
 | « À faire » ne remonte une échéance que si des pièces manquent (6.8.0) | — |
 

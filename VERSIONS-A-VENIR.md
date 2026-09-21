@@ -32,7 +32,10 @@ En cas de contradiction, `DIRECTION.md` fait foi, puis `CAHIER-DES-CHARGES.md`, 
   la clé de réponse est embarquée depuis la 9.4.1 — la révocation s'applique chez tout client à
   jour. Reste, côté Skander : les réglages Cloudflare et la première vente.)*
 - **Clients payants : zéro.** Trois utilisateurs, tous de la famille : Skander, son père, son frère.
-- **Prochaine version : 9.10.0** — la révision et les questions, puis la 10.0.0.
+- **Tout le plan est livré.** 9.10.0 (révision et questions) et 10.0.0 (liasse et annuel) sont
+  publiées le 21/09/2026, avec F-9.6.0-12 (calendrier par régime) qui restait de la 9.6.0. Ce qui
+  suit reste à faire : **confronter la liasse à un document réel** avec le cabinet pilote, et les
+  deux lignes du SITE (page Tarifs, téléchargement du Cabinet) qui vivent dans l'autre dépôt.
 - **Ce qui décide de la suite** : J0 le 15/10/2026, et c'est une démarche, pas du code.
 
 ---
@@ -55,7 +58,7 @@ En cas de contradiction, `DIRECTION.md` fait foi, puis `CAHIER-DES-CHARGES.md`, 
 | **9.8.0** | La clôture d'exercice | 15 | Intention | 13 j · 30 j |
 | ~~**9.9.0**~~ | ~~Le cabinet à plusieurs~~ | 8 | Intention | **livré** 21/09/2026 |
 | ~~*9.9.1*~~ | ~~*Entretien (hors des 13 demandées)*~~ | *4* | *Intention* | **livré** 21/09/2026 |
-| **9.10.0** | La révision et les questions | 10 | Intention | 10 j · 20 j |
+| ~~**9.10.0**~~ | ~~La révision et les questions~~ | 10 | **Livrée le 21/09/2026** | — |
 | **10.0.0** | La liasse et l'annuel | 11 | Esquisse | 10 j · 20 j |
 
 **Total : 171 fonctionnalités à venir** sur les treize versions principales, **179** avec les trois
@@ -477,9 +480,11 @@ nomment sans bloquer), 10 (l'écriture de déclaration au dernier jour du mois, 
 reporter, exportables en CSV). F-9.6.0-04 (TFP, FOPROLOS) et 05 (TCL) et 11 (acomptes) sont livrés
 **en tant que cases `null` nommées** : leur assiette et leur taux ne sont pas établis.
 
-**Pas livré** : F-9.6.0-12, le calendrier fiscal par régime. Les régimes à distinguer et les
-échéances de chacun sont une question au comptable ; les inventer serait écrire du droit que
-personne n'a confirmé. La page Échéances existante continue de servir.
+**F-9.6.0-12 (calendrier par régime) a été livré avec la 10.0.0**, le 21/09/2026 — sans écrire une
+ligne de droit : la table des régimes part **vide**, et tant qu'elle l'est, le calendrier ne change
+pas d'un pixel. C'est le cabinet qui déclare SES régimes (périodicité de TVA, CNSS ou non,
+échéances annuelles qu'il écrit lui-même). Ce qui bloquait n'était pas le code mais la question
+« quels régimes, et que dépose chacun ? » : elle est désormais posée à celui qui sait y répondre.
 
 **Ce qui reste à décider, et ce qui a été tranché en attendant** : « payé » **n'écrit pas** le
 règlement — il vient du relevé bancaire quand le dossier en a un (9.5.0), de la saisie sinon.
@@ -703,7 +708,7 @@ le même jour ? »
 
 ---
 
-## 9.10.0 — La révision et les questions
+## ~~9.10.0 — La révision et les questions~~ · **livrée le 21/09/2026**
 
 > *Le dossier de travail du comptable, et les questions qui arrivent en face de la pièce chez le
 > client — l'avantage que personne d'autre n'a.*
@@ -744,7 +749,7 @@ méthode.
 
 ---
 
-## 10.0.0 — La liasse et l'annuel
+## ~~10.0.0 — La liasse et l'annuel~~ · **livrée le 21/09/2026** (sauf les deux lignes du site)
 
 > *L'exercice se dépose, et le premier lancement du Cabinet montre enfin un vrai portefeuille.*
 

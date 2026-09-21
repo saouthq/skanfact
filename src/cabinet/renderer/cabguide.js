@@ -42,6 +42,11 @@
     'lv.compta': { t: 'La comptabilité de ce client', d: 'Les écritures que ton client a produites, lues dans les paquets qu\'il t\'a envoyés. Livre-journal, grand livre, balance et lettrage — <b>les mêmes calculs que dans son application</b>, au millime près : c\'est le même moteur des deux côtés, et un test le vérifie à chaque version.<br><br>Ce que le Cabinet ne fait <b>pas</b> encore ici : tenir son propre livre. Il lit, il ne saisit rien et ne modifie rien chez le client. Les mois qui manquent sur la période sont nommés en tête : un livre incomplet qui ne le dirait pas serait un livre faux.' },
     'lv.ouverture': { t: 'Ce que « ouverture » veut dire ici', d: 'L\'<b>ouverture</b> d\'une période, c\'est ce que chaque compte portait la veille de son premier jour. Sur le <b>livre</b> du dossier, elle se calcule : la balance d\'ouverture reprise (Réglages du dossier → « Reprendre ») plus les mouvements de l\'exercice antérieurs à la période affichée. Sur l\'exercice entier elle est donc nulle par construction — c\'est la pièce d\'à-nouveau qui porte les soldes reportés.<br><br>Quand les écritures sont <b>lues dans les paquets</b> (pas encore de livre), il n\'y a aucune ouverture : les soldes sont ceux des mouvements reçus, pas ceux du compte depuis sa création.' },
     'lv.relire': { t: 'Ce que « Relire les paquets reçus » fait', d: 'Un geste <b>sûr</b>. Il relit les paquets du client et : <b>ajoute</b> les écritures qui manquent au livre, <b>remplace</b> les brouillards d\'un mois que le client a renvoyé, et <b>ne touche jamais</b> une écriture validée — si le client a changé une pièce que tu as déjà validée, l\'écart t\'est montré et c\'est toi qui tranches. Ton travail (saisies, validations, lettrages) n\'est pas en jeu.' },
+    'rg.regimes': { t: 'Les régimes et leurs échéances', d: 'Ce que chaque régime <b>dépose</b>, et quand. Le champ « Régime fiscal » existe sur la fiche d\'un client depuis longtemps ; jusqu\'ici personne ne le lisait, et le calendrier réclamait une TVA mensuelle à tout le monde — <b>y compris à un forfaitaire qui n\'en dépose pas</b>. Tant que tu ne déclares aucun régime, rien ne change : c\'est le comportement d\'avant, et il ne se modifie pas tout seul. Dès que tu en déclares un, les dossiers qui le portent suivent SES règles : périodicité de TVA, CNSS ou non, et les échéances annuelles que tu écris toi-même (<code>nom@JJ-MM</code>). <em>À VÉRIFIER : aucune de ces périodicités ni aucune de ces dates n\'est écrite dans SkanFact. Ce sont les tiennes.</em>' },
+    'li.liasse': { t: 'La liasse', d: 'Le bilan et l\'état de résultat en <b>rubriques</b>, déduits de la balance — jamais saisis. Chaque rubrique s\'ouvre sur les comptes qui l\'ont remplie : un chiffre qu\'on ne peut pas ouvrir se croit ou ne se croit pas, et sur une liasse c\'est le pire des deux. Une rubrique qu\'aucun compte n\'a remplie vaut « — » avec sa raison, jamais 0 : un zéro se recopie sur un formulaire. Et ce qu\'<b>aucune</b> rubrique ne capte est montré en rouge : une liasse qui perd un compte en silence est une liasse fausse. <em>À VÉRIFIER : la présentation exacte du système comptable des entreprises n\'est validée par personne ici. Confronte-la à ce que le portail attend.</em>' },
+    'li.fiscal': { t: 'Le résultat fiscal et l\'impôt', d: 'Résultat comptable, <b>plus</b> les réintégrations, <b>moins</b> les déductions et les reports : c\'est la base imposable. Ce qui se réintègre et ce qui se déduit dépend du <b>droit</b> — rien n\'est proposé, chaque ligne se saisit et s\'explique. Le <b>taux d\'impôt n\'existe nulle part dans SkanFact</b> : il dépend de la forme juridique, du secteur et de la loi de finances de l\'année. Tant qu\'il n\'est pas saisi, l\'impôt vaut « — ». Le minimum d\'impôt n\'est pas calculé non plus : un chiffre inventé sur une déclaration coûte plus cher qu\'une case vide. <em>À VÉRIFIER.</em>' },
+    'li.employeur': { t: 'La déclaration annuelle d\'employeur', d: 'Elle porte <b>deux choses distinctes</b> qu\'on confond : les <b>salaires versés</b>, et les <b>retenues à la source</b> pratiquées sur des fournisseurs (honoraires, loyers). Les deux figurent sur le même formulaire. Le Cabinet ne donne ici que les <b>masses</b> lues dans le livre : le détail par bénéficiaire demande les bulletins de paie, qu\'il ne reçoit pas. Ces masses se confrontent à l\'état nominatif que ton client tient dans SkanFact.' },
+    'li.modele': { t: 'Le modèle de liasse', d: 'Quelle rubrique capte quel compte. Le préfixe le plus <b>long</b> gagne, parmi les rubriques du bon <b>sens de solde</b> : le 44 débiteur est une créance sur l\'État, le même 44 créditeur est une dette envers lui — les deux rubriques existent et portent le même préfixe. « En moins » marque ce qui se retranche de son état : les amortissements à l\'actif, les charges au résultat. Tant que tu n\'écris rien, le modèle proposé sert ; dès que tu en écris un, il le remplace <b>entièrement</b>.' },
     'rv.dossier': { t: 'Le dossier de révision', d: 'Ton dossier de travail sur une période — un mois pour arrêter une TVA, l\'exercice pour arrêter un bilan. Il réunit quatre choses : les <b>feuilles maîtresses</b> par cycle, les comptes que tu as <b>signés</b>, tes <b>notes de revue</b>, et le <b>questionnaire</b> de fin d\'exercice. Rien n\'y est obligatoire et rien n\'y bloque : les contrôles nomment ce qui manque, tu arrêtes quand tu décides. Une période arrêtée passe à « révisée » dans le tableau de production, et se rouvre à tout moment.' },
     'rv.feuilles': { t: 'Les feuilles maîtresses', d: 'Un cycle, une feuille : chaque compte avec son ouverture, ses mouvements, son solde et sa <b>variation</b> — c\'est elle qui désigne ce qu\'il faut regarder. Seules les écritures <b>validées</b> y entrent : on ne révise pas un brouillard, qui par définition n\'est pas encore un fait, et les contrôles te disent combien en restent. Les sept cycles proposés rattachent un compte par son préfixe, et <em>aucun rattachement n\'est une vérité comptable</em> : si ton cabinet range autrement, écris tes cycles dans Réglages → Comptabilité.' },
     'rv.hors': { t: 'Les comptes hors cycle', d: 'Ceux qu\'aucun cycle ne réclame. On les MONTRE plutôt que de les perdre : un compte hors cycle est très exactement celui qu\'une révision doit voir. S\'ils sont nombreux, c\'est que ta table de cycles ne couvre pas ton plan — elle se complète dans les Réglages.' },
@@ -211,6 +216,52 @@
       icon: '<path d="M12 3l7 3v6c0 4.5-3 7.7-7 9-4-1.3-7-4.5-7-9V6z"/><path d="M9 12l2 2 4-4"/>', d: `
       <p class="small">Un paquet n'est <b>définitif</b> que si le client a clôturé son mois : après une clôture, il ne peut plus ni modifier ni supprimer une pièce de cette période sans rouvrir le mois, avec un motif écrit.</p>
       <p class="small">Un paquet <b>provisoire</b> se lit, mais ses chiffres peuvent encore bouger. Si tu reçois deux fois le même mois, SkanFact te le dit — et te prévient si le remplacé était définitif.</p>` },
+    {
+      id: 'tenue', t: 'Le manuel de tenue',
+      s: 'Le mois, le trimestre, l\'année — et ce que SkanFact ne fera jamais à ta place',
+      couleur: 'th-declarer', geste: { label: 'Voir mes dossiers', hash: '#/' },
+      icon: '<path d="M4 4h11l5 5v11H4z"/><path d="M15 4v5h5"/><path d="M8 13h8M8 17h5"/>', d: `
+      <p class="lead">La boucle d'un dossier, dans l'ordre. Chaque étape a son écran, et aucune ne se saute :
+      celle qu'on saute est celle qui fait tomber les chiffres du mois suivant.</p>
+      <h3 class="eyebrow">Chaque mois</h3>
+      <ol class="small" style="line-height:1.9">
+        <li><b>Recevoir</b> — le paquet du client arrive dans la boîte de réception, ou se glisse sur la fenêtre.
+          Un client hors SkanFact n'envoie rien : sa saisie se fait à la main, à l'étape suivante.</li>
+        <li><b>Saisir</b> — <b>Comptabilité → Saisie</b>, au clavier. Ce qui vient d'un paquet est déjà là ; le reste
+          se tape au kilomètre. Tout arrive au <b>brouillard</b>, qui ne porte aucun numéro.</li>
+        <li><b>Rapprocher</b> — <b>Banque</b> : le relevé entre, l'automatique ne pose QUE ce qui est certain, et
+          l'écriture manquante s'écrit depuis la ligne. L'écart de suspens doit tomber à zéro.</li>
+        <li><b>Lettrer</b> — ce qui reste ouvert sur un tiers, c'est ce qu'il doit encore.</li>
+        <li><b>Valider</b> — la validation numérote et fige. Une validée ne se modifie plus : elle se contre-passe,
+          à la date du jour.</li>
+        <li><b>Déclarer</b> — <b>Déclaration</b> : les chiffres à recopier sur le portail, avec leurs pièces derrière.
+          « Déposée » et « payée » sont des <b>pense-bêtes</b> : SkanFact ne dépose rien et ne se connecte à
+          aucune administration.</li>
+        <li><b>Réviser</b> — <b>Révision</b> : les feuilles maîtresses par cycle, les comptes signés, et les
+          <b>questions</b> qui partent chez le client et reviennent avec leurs réponses dans son paquet suivant.</li>
+      </ol>
+      <h3 class="eyebrow">À la fin de l'exercice</h3>
+      <ol class="small" style="line-height:1.9">
+        <li><b>Immobilisations</b> : les dotations de l'année passent en brouillard au 31/12. Un bien dont la
+          dotation est écrite ne se modifie plus sans contre-passation.</li>
+        <li><b>Inventaire</b> : le stock compté entre, et sa variation s'écrit — dans le bon sens.</li>
+        <li><b>Exercice</b> : les six contrôles nomment ce qui manque sans bloquer, puis la clôture fige tout.
+          Une réouverture exige un motif : c'est la seule trace qui expliquera un chiffre qui a changé.</li>
+        <li><b>Ouvrir N+1</b> : les à-nouveaux entrent en brouillard sur l'exercice suivant, et se refont tant
+          qu'ils ne sont pas validés.</li>
+        <li><b>Liasse</b> : le bilan et l'état de résultat en rubriques, le résultat fiscal, la déclaration
+          d'employeur. <em>À VÉRIFIER : les rubriques suivent l'usage, et aucun taux d'impôt n'est écrit dans
+          l'application.</em></li>
+        <li><b>Le dossier pour le client</b> : un <code>.skanclose</code> signé, avec ses à-nouveaux officiels et
+          ses états. C'est lui qui garantit que son bilan et le tien ne divergent jamais.</li>
+      </ol>
+      <h3 class="eyebrow">Ce que SkanFact ne fera jamais</h3>
+      <ul class="small" style="line-height:1.9">
+        <li><b>Écrire chez ton client.</b> Jamais. Une question est une demande, pas une écriture.</li>
+        <li><b>Déposer à ta place.</b> Aucune connexion à une administration, dans aucune version.</li>
+        <li><b>Inventer un taux ou une règle de droit.</b> Ce qu'il ne sait pas, il l'écrit « — » avec sa raison,
+          et t'attend.</li>
+      </ul>` },
     {
       id: 'filets', t: 'Ne rien perdre',
       s: 'Trois filets, et ce que chacun protège', couleur: 'th-piloter', geste: { label: 'Ouvrir les sauvegardes', hash: '#/reglages', panneau: 'pan-backup' },

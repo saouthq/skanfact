@@ -95,6 +95,11 @@ contextBridge.exposeInMainWorld('cabinet', {
   ecrireQuestions: (o) => ipcRenderer.invoke('cab:ecrireQuestions', o || {}),
   saveQuestionnaire: (o) => ipcRenderer.invoke('cab:saveQuestionnaire', o || {}),
   questionsEnAttente: () => ipcRenderer.invoke('cab:questionsEnAttente'),
+  // La liasse et l'annuel (10.0.0). Rien n'y est inventé : la liasse est déduite de la balance par
+  // une table modifiable, et le taux d'impôt se saisit — il n'existe nulle part dans le code.
+  liasse: (o) => ipcRenderer.invoke('cab:liasse', o || {}),
+  fiscalAnnuel: (o) => ipcRenderer.invoke('cab:fiscalAnnuel', o || {}),
+  saveLiasse: (o) => ipcRenderer.invoke('cab:saveLiasse', o || {}),
   // La banque (9.5.0). LIRE un relevé et l'AJOUTER sont deux portes séparées : entre les deux, le
   // comptable choisit le compte, saisit les deux soldes du relevé papier et corrige l'association
   // des colonnes. Rien ici ne touche aux données du client — un relevé bancaire vit dans le livre

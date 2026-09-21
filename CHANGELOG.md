@@ -7,6 +7,88 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 10.0.0 — 21/09/2026
+
+**La liasse et l'annuel.** La dernière version du plan accepté, et le document où une erreur coûte
+le plus cher. **Publiée en stable direct sur `main`, à la demande de Skander** — la règle du projet
+veut la bêta pour tout ce qui touche au moteur comptable ; c'est sa décision, elle est notée ici.
+
+- **La liasse, déduite de la balance.** Bilan actif, bilan passif, état de résultat, en rubriques
+  codées. Trois choses garanties et testées : **actif = passif**, le résultat du bilan est celui de
+  l'état de résultat, et **aucun compte n'est perdu** — ce qu'aucune rubrique ne capte est montré en
+  rouge, parce qu'une liasse qui perd un compte en silence est une liasse fausse et qu'on s'en
+  aperçoit au contrôle. Chaque rubrique s'ouvre sur les comptes qui l'ont remplie.
+- **Aucune rubrique n'est une vérité.** Le modèle livré suit l'usage ; la présentation exacte du
+  système comptable des entreprises n'est validée par personne ici, et l'écran l'écrit. La table
+  entière se modifie dans les Réglages, et celle du cabinet **remplace** la nôtre — jamais un
+  mélange des deux, qui donnerait un rattachement que personne n'a décidé. Le compte va dans la
+  rubrique du préfixe le plus LONG, parmi celles du bon **sens de solde** : le 44 débiteur est une
+  créance sur l'État, le même 44 créditeur est une dette envers lui.
+- **Une rubrique vide vaut « — » avec sa raison, jamais 0** : un zéro se recopie sur un formulaire.
+- **Le résultat fiscal, et aucun taux d'impôt dans le code.** Résultat comptable + réintégrations −
+  déductions et reports. Ce qui se réintègre dépend du droit : rien n'est proposé, chaque ligne se
+  saisit et s'explique, et son montant est toujours positif — c'est la NATURE qui dit dans quel sens
+  elle joue. Le taux se saisit ; tant qu'il ne l'est pas, l'impôt vaut « — ». Le **minimum d'impôt**
+  n'est pas calculé : un chiffre inventé sur une déclaration coûte plus cher qu'une case vide.
+- **La déclaration annuelle d'employeur**, lue dans le livre. Elle porte deux choses distinctes
+  qu'on confond — les salaires versés et les retenues sur fournisseurs — et dit ce qu'elle ne peut
+  PAS donner : le détail par bénéficiaire demande les bulletins, que le cabinet ne reçoit pas.
+- **Les états envoyés au client portent un cadre de signature** : des états financiers qui n'engagent
+  personne ne valent rien. Et « ce n'est pas la liasse » a disparu de l'écran des états — la phrase
+  existait parce que la liasse n'existait pas ; la garder maintenant dirait faux.
+- **Le calendrier fiscal par régime** (F-9.6.0-12, la seule ligne de la 9.6.0 jamais livrée). Le
+  champ « Régime fiscal » existait sur une fiche depuis la 6.8.0 et **personne ne le lisait** : un
+  forfaitaire se voyait réclamer une TVA qu'il ne dépose pas. La table part **vide** — tant qu'elle
+  l'est, rien ne change à l'écran — et c'est le cabinet qui déclare SES régimes : périodicité de
+  TVA, CNSS ou non, et les échéances annuelles qu'il écrit lui-même. SkanFact n'écrit aucune règle
+  de droit.
+- **Le jeu d'exemple porte enfin un exercice entier** : douze paquets ouvrables sur un dossier (une
+  liasse sur huit mois n'est pas une liasse), et un **client hors SkanFact** — un cabinet a soixante
+  clients dont deux sur SkanFact, et c'est ce dossier-là qui compte dans sa licence.
+- **Le manuel de tenue** dans l'aide du Cabinet : la boucle du mois, celle de l'exercice, et les
+  trois choses que SkanFact ne fera jamais — écrire chez un client, déposer à sa place, inventer une
+  règle de droit.
+- Correctif au passage : `cab:saveCabinet` **effaçait le nom du cabinet** dès qu'un écran n'envoyait
+  que des réglages. Tous les appelants pensaient à recopier l'identité ; le premier qui l'oublierait
+  aurait rouvert l'assistant de bienvenue au démarrage suivant. Le piège vivait dans le handler.
+
+**Ce qui n'y est pas, et pourquoi.** La page Tarifs et le téléchargement du Cabinet (F-10.0.0-09 et
+10) vivent dans le dépôt du site, pas ici. Et la liasse **n'a pas encore été confrontée à un document
+réel** : c'est ce que la version demande au cabinet pilote, et tant que ce n'est pas fait, chaque
+écran porte son « À VÉRIFIER ».
+
+17 défauts réintroduits un par un font tomber leur test — dont un que le modèle livré ne pouvait pas
+prouver (aucun de ses préfixes n'est imbriqué), et qu'il a fallu tester contre la table d'un cabinet.
+
+## 9.10.0 — 21/09/2026
+
+**La révision et les questions.** Le dossier de travail du comptable, et le seul mécanisme du projet
+qui remonte du cabinet vers le client. Il ne remonte pas une écriture : il remonte une **question**.
+
+- **Le dossier de révision par période** — un mois pour arrêter une TVA, l'exercice pour arrêter un
+  bilan : sept **feuilles maîtresses** par cycle (trésorerie, ventes, achats, immobilisations,
+  personnel, fiscal, capitaux), chaque compte **signé** par qui et quand, les **notes de revue** du
+  superviseur, et le **questionnaire de fin d'exercice**.
+- **La méthode appartient au comptable.** Les cycles PROPOSENT un rattachement par préfixe,
+  entièrement surchargeable ; le questionnaire part **vide** — les cinq questions les plus
+  fréquentes du pilote ne sont pas connues, et les inventer serait écrire sa méthode à sa place.
+- **Une feuille maîtresse ne lit que les validées** : on ne révise pas un brouillard, qui par
+  définition n'est pas encore un fait. Les contrôles le nomment avant d'arrêter, sans bloquer.
+- **Une question naît d'une LIGNE** — elle porte le compte, l'écriture et la pièce sur lesquels elle
+  est née — part dans un `.skanask` signé et scellé comme le dossier de clôture, et **s'affiche chez
+  le client en face de la pièce qu'elle vise**. C'est tout l'intérêt : une question rangée dans une
+  liste que personne n'ouvre est une question perdue.
+- **Les réponses reviennent dans le paquet suivant**, jamais dans un envoi à part qu'on oublierait.
+  Elles ne touchent **aucun chiffre** : une question est une demande, pas une écriture.
+- **Deux paquets sans réponse** et la question remonte dans « À faire » **des deux côtés**, avec le
+  même seuil lu par les deux applications.
+- Une question déjà partie se **ferme**, elle ne s'efface pas : le client l'a sous les yeux.
+- `livre.json` gagne `questions[]` (liste ajoutée, donc compatible) et `revisions[]` reçoit enfin
+  l'écrivain que la 9.9.0 lui avait réservé. La fusion de deux postes garde les deux.
+
+16 défauts réintroduits un par un font tomber leur test — dont un qui a montré que mon assertion
+lisait son propre commentaire (quatrième fois que ce piège revient).
+
 ## 9.9.1 — 21/09/2026
 
 **Entretien.** Aucune fonction nouvelle — c'est la règle : une version sur quatre rembourse au lieu

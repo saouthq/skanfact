@@ -69,6 +69,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Quand une **mesure fait changer le code**, c'est l'INSTRUMENT qui se relit en premier : sinon il annonce un défaut qui n'existe plus | 9.9.1 — `npm run charge` mesurait le base64 d'un livre devenu binaire par sa faute |
 | Un **instrument qui n'ATTEINT pas l'écran** annonce « tout va bien » : l'état par défaut de l'objet qu'on ouvre cache la page autant que l'onglet par défaut | 9.8.8 — T-55, quatre écrans sur onze ; 9.4.3 |
 | Un test **trop LARGE** laisse passer le défaut, aussi sûrement qu'un test trop étroit accuse du code juste | 9.9.0 — la seconde piste d'audit qui satisfaisait l'assertion, la tranche qui avalait la porte ; 9.4.7 |
+| Un test dont les **DONNÉES ne discriminent pas** ne prouve rien : le modèle livré n'avait aucun préfixe imbriqué | 10.0.0 ; 9.6.1 |
 | **Élargir** une sonde se prouve dans les DEUX sens : qu'elle voie le défaut, et qu'elle ne voie rien ailleurs | 9.8.8 — T-49 bis, 28 accusations sur du code juste |
 | Un **refus qu'on avale** en silence est pire que le refus : l'écran affirme alors le contraire du vrai | 9.8.0 |
 | Un parcours qui compare du texte **aplatit les espaces** : `textContent` garde les retours de la source | 9.8.0 |
@@ -4709,6 +4710,135 @@ fusion qui ne perd aucune validée sans toucher au fichier de l'autre poste.
   les chiffres des instruments sont ceux d'aujourd'hui. Les chiffres cités **à l'intérieur** d'une
   section de version, eux, ne bougent pas : ce sont des mesures datées, c'est-à-dire de l'histoire —
   même règle que « on ne renumérote jamais une version déjà livrée » (9.4.3).
+
+### 9.10.0 — La révision et les questions
+
+Le dossier de travail du comptable, et le **seul mécanisme du projet qui remonte du cabinet vers le
+client**. Il ne remonte pas une écriture : il remonte une QUESTION.
+
+Règles apprises, à ne pas recasser :
+
+- **Le cabinet n'écrit jamais chez un client** (Cabinet 1.0.0), et ce pont-là ne fait pas exception.
+  Une question est une **demande** : elle s'affiche en face de la pièce, elle attend, et rien de ce
+  qui arrive par là ne touche à un chiffre. Un test de source relit toute la tranche de la 9.10.0 et
+  interdit `ajouterEcriture` / `validerEcriture` : le jour où quelqu'un écrira « et si on proposait
+  la correction ? », c'est là qu'il faudra s'arrêter et rouvrir la question du format avec le pilote.
+- **Une question naît d'une LIGNE**, jamais d'une liste. Elle porte le compte, l'écriture et la pièce
+  sur lesquels elle est née — et c'est très exactement ce qui lui permet de s'afficher chez le client
+  EN FACE de cette pièce. Une question rangée dans une liste que personne n'ouvre est une question
+  perdue, et le comptable finit par téléphoner : c'est tout l'intérêt du mécanisme.
+- **La méthode de révision appartient au comptable.** Les sept cycles PROPOSENT un rattachement par
+  préfixe (le plus long gagne, comme partout depuis `libelleDuPlan`) ; la table du cabinet les
+  REMPLACE entièrement — jamais un mélange, qui donnerait un rattachement que personne n'a décidé.
+  Le questionnaire de fin d'exercice part **VIDE** : les cinq questions les plus fréquentes du pilote
+  ne sont pas connues, et les inventer serait écrire sa méthode à sa place (règle 9.1.1). Un test
+  tombe si quelqu'un y écrit une question « d'exemple ».
+- **Une feuille maîtresse ne lit que les VALIDÉES** : on ne révise pas un brouillard, qui par
+  définition n'est pas encore un fait. Les contrôles le NOMMENT avant d'arrêter une révision, sans
+  jamais bloquer (règle 6.0.0).
+- **Les réponses voyagent DANS le paquet**, jamais dans un envoi à part : c'est déjà le geste mensuel
+  du client, et une réponse qu'il faut penser à envoyer séparément n'est jamais envoyée. Et le
+  fichier n'existe que s'il y a quelque chose à dire — un `reponses.json` vide dans chaque paquet
+  apprendrait au cabinet à ne plus l'ouvrir.
+- **Une question DÉJÀ PARTIE se ferme, elle ne s'efface pas.** Le client l'a sous les yeux : la faire
+  disparaître de notre côté le laisserait répondre à une question qui n'existe plus.
+- **La règle des DEUX paquets vaut des deux côtés**, et le seuil est le MÊME objet lu par les deux
+  applications (`QUESTION_RELANCE`, réexporté à l'identité). Deux chiffres écrits à deux endroits
+  divergent, et les deux applications ne diraient plus la même chose de la même question.
+- **L'envoi se note APRÈS l'écriture du fichier.** Une question comptée comme partie sur un fichier
+  qu'on n'a pas su écrire ferait croire au client qu'il l'a déjà vue — et c'est précisément ce
+  compteur qui décide de la relance.
+- **Une réponse plus ANCIENNE ne remplace pas une plus récente** : le client peut renvoyer un vieux
+  paquet, et la réponse d'hier écraserait celle d'aujourd'hui.
+- **La révision se fusionne par PÉRIODE, jamais par identifiant** (9.9.0) : un compte signé sur un
+  poste l'est pour le dossier, et une période arrêtée d'un côté reste arrêtée — on ne défait pas la
+  révision d'un collègue parce que notre copie ne l'avait pas vue.
+- Piège de test, **quatrième fois** (6.8.0, 7.25.0, 9.4.10) : mon assertion « le paquet emporte les
+  réponses » cherchait `reponses.json` dans la source BRUTE, et le commentaire qui explique la règle
+  porte ce mot. Elle restait verte avec le fichier renommé. Trouvé en réintroduisant le défaut,
+  jamais autrement.
+
+Prouvé : 16 défauts réintroduits un par un font tomber leur test.
+
+### 10.0.0 — La liasse et l'annuel
+
+La dernière version du plan accepté le 11/09/2026, et le document où une erreur coûte le plus cher.
+
+Règles apprises, à ne pas recasser :
+
+- **Aucune rubrique de liasse n'est une vérité**, exactement comme aucun numéro de compte n'en est
+  une (6.3.0). Le modèle livré suit l'usage ; la présentation exacte du système comptable des
+  entreprises n'est validée par personne, et la liasse réelle du pilote n'a pas encore été produite.
+  Chaque rubrique est une ligne de table modifiable, chaque écran porte « À VÉRIFIER », et la table
+  du cabinet REMPLACE la nôtre.
+- **Le SENS du solde départage deux rubriques de même préfixe.** Le 44 débiteur est une créance sur
+  l'État, le même 44 créditeur est une dette envers lui : les deux rubriques existent et portent le
+  même préfixe. Sans ce départage, la TVA à décaisser se retrouve à l'actif — et le bilan tombe
+  quand même juste, ce qui est le pire des cas.
+- **Ce qu'aucune rubrique ne capte est MONTRÉ.** Une liasse qui perd un compte en silence est une
+  liasse fausse, et personne ne s'en aperçoit avant le contrôle.
+- **Une rubrique qu'aucun compte n'a remplie vaut « — » avec sa raison, jamais 0** (règle 9.6.0) :
+  un zéro se recopie sur un formulaire, un « — » se demande au comptable.
+- **Un montant de rubrique est toujours POSITIF ; c'est le SENS de la rubrique qui le retranche.**
+  Ma première version stockait l'amortissement négatif ET le retranchait : il s'AJOUTAIT, et l'actif
+  dépassait le passif de deux fois l'amortissement. Une seule règle pour les trois états — `deduit`
+  ou `charge` se retranche, le reste s'ajoute — parce que deux règles distinctes divergeraient au
+  premier état ajouté.
+- **Aucun taux d'impôt n'existe dans le code**, et un test relit la source pour l'interdire : le taux
+  dépend de la forme juridique, du secteur et de la loi de finances de l'année — trois choses qu'un
+  logiciel écrit en 2026 ne peut pas suivre (règle 5.0.0). Tant qu'il n'est pas saisi, l'impôt vaut
+  `null` et la RAISON s'affiche à sa place. Le **minimum d'impôt** n'est pas calculé non plus : il
+  dépend d'une règle de droit que personne n'a confirmée, et un chiffre inventé sur une déclaration
+  coûte plus cher qu'une case vide.
+- **Le montant d'un retraitement est positif ; c'est sa NATURE qui dit dans quel sens il joue.** Un
+  montant signé laisserait saisir « −200 » en réintégration, c'est-à-dire une déduction déguisée que
+  personne ne relirait comme telle. Et une base imposable **négative n'existe pas** : elle est nulle
+  et le déficit se reporte — un impôt négatif serait un crédit d'impôt inventé.
+- **La déclaration d'employeur dit ce qu'elle ne peut PAS donner** : le détail par bénéficiaire
+  demande les bulletins, que le cabinet ne reçoit pas. Elle ne livre que les masses, et la phrase le
+  dit — même exigence que « 7 pièces vérifiées, intactes » (Cabinet 1.0.0).
+- **Une phrase qui niait une fonction absente ment le jour où la fonction existe.** « Ce n'est pas la
+  liasse NCT 01 » était juste tant que la liasse n'existait pas ; la garder maintenant dirait faux.
+  C'est « une phrase affichée que rien ne tient est un bug » (7.3.0), vu de l'autre côté.
+- **Des états financiers qui n'engagent personne ne valent rien** : le PDF envoyé au client porte son
+  cadre de signature, laissé vide pour le cachet — c'est ce qu'un portail et un contrôleur attendent.
+- **F-9.6.0-12, la ligne que la 9.6.0 n'avait pas livrée.** Le champ « Régime fiscal » existait sur
+  une fiche depuis la 6.8.0 et **personne ne le lisait** : le calendrier réclamait une TVA mensuelle
+  à tout le monde, y compris à un forfaitaire qui n'en dépose pas. Ce qui est livré n'écrit toujours
+  AUCUN droit : la table part vide, et tant qu'elle l'est rien ne change à l'écran. C'est le cabinet
+  qui déclare SES régimes. Un champ lu mais jamais écrit donne un chiffre faux tous les jours
+  (7.3.0) ; celui-ci était écrit et jamais lu, ce qui revient au même.
+- **Un mois ABSENT ne se borne pas à janvier.** Une échéance annuelle saisie sans mois vaut 0 et la
+  ligne est jetée ; un mois hors bornes (99) se borne à 12. Borner une valeur manquante invente une
+  date que personne n'a donnée ; borner une valeur aberrante corrige une faute de frappe sur une
+  intention claire. C'est le test qui a fait la distinction.
+- **Un handler qui remplace une identité doit vérifier qu'elle est FOURNIE.** `cab:saveCabinet`
+  écrasait le nom du cabinet par une chaîne vide dès qu'un écran n'envoyait que des réglages — et un
+  cabinet sans nom rouvre l'assistant de bienvenue au démarrage suivant. Tous les appelants pensaient
+  à recopier `...S.cabinet` ; le premier qui l'oublierait aurait effacé l'identité sans un mot. Le
+  piège vivait dans le handler, il se répare dans le handler.
+- **Un exemple à huit mois ne peut pas démontrer une liasse.** Elle porte sur un EXERCICE : le jeu
+  d'exemple passe à douze paquets ouvrables sur un dossier, et gagne un **client hors SkanFact** —
+  un cabinet a soixante clients dont deux sur SkanFact (6.8.0), et c'est ce dossier-là qui compte
+  dans sa licence. Un dossier sans paquet n'a aucun `ingest` pour le créer : il se pose à la main,
+  sinon il n'existe tout simplement pas.
+- **Un seuil de test qui obligerait à gonfler l'exemple rend l'exemple faux.** Les premiers mois du
+  jeu de démonstration sont sincèrement légers — une entreprise qui démarre ne fait pas soixante
+  pièces en septembre. Le seuil vaut désormais par mois ET sur l'ensemble : aucun mois n'est un
+  jeton, et l'exercice entier est dense.
+- **Un test dont le jeu de données ne peut pas discriminer ne prouve rien** (9.6.1, re-rencontrée).
+  Ma preuve du « préfixe le plus long » passait avec le départage retiré : le modèle livré ne contient
+  aucun préfixe imbriqué du même sens, donc il ne POUVAIT pas l'attraper. La table d'un cabinet, elle,
+  en aura — « 4 » pour tout, « 411 » pour les clients, c'est la première chose qu'on écrit. Le test
+  s'appuie maintenant sur une table imbriquée, et vérifie en plus que retourner le tableau ne change
+  rien.
+
+**Ce qui n'y est pas, et pourquoi** : la page Tarifs et le téléchargement du Cabinet vivent dans le
+dépôt du site, pas ici. Et la liasse **n'a pas encore été confrontée à un document réel** — c'est ce
+que cette version demande au cabinet pilote, et tant que ce n'est pas fait, chaque écran porte son
+« À VÉRIFIER ».
+
+Prouvé : 17 défauts réintroduits un par un font tomber leur test.
 
 ## Pistes pour la suite (non demandées)
 

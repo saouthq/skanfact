@@ -112,6 +112,10 @@
     // la méthode de révision appartient au comptable, pas à nous. Cycles vides = ceux que le
     // moteur PROPOSE (`CYCLES_REVISION`).
     questionnaire: [], cycles: [],
+    // Le modèle de liasse (10.0.0). Vide = celui que le moteur propose. Aucune rubrique n'est une
+    // vérité : la présentation exacte du SCE n'est validée par personne, et « À VÉRIFIER » est
+    // écrit sur chaque écran qui l'affiche.
+    liasse: [],
     settings: { ...DEFAULT_SETTINGS }
   };
 
@@ -410,6 +414,10 @@
     if (!['light', 'dark', 'auto'].includes(s.settings.theme)) s.settings.theme = 'auto';
     // Absent de cette liste, le pointage serait jeté au prochain démarrage et chaque échéance
     // déposée se remettrait à crier — en silence (défaut `matricule`, 6.8.0).
+    // Les régimes déclarés par le cabinet (F-9.6.0-12). Absents d'ici, ils seraient jetés au
+    // prochain chargement et le calendrier redeviendrait le même pour tous — sans un mot.
+    s.settings.regimes = (Array.isArray(s.settings.regimes) ? s.settings.regimes : [])
+      .map(migrateRegime).filter(r => r.id && r.label);
     s.settings.depots = (Array.isArray(s.settings.depots) ? s.settings.depots : [])
       // Le mois et le jour sont bornés, pas seulement comptés : « tva-m@2026-13-99 » ne pourra
       // jamais désigner une échéance réelle, donc il n'a rien à faire dans les données — il y
@@ -434,6 +442,16 @@
     // comme les guides : on les écrit une fois pour soixante clients. Les deux partent VIDES — les
     // cinq questions les plus fréquentes du pilote ne sont pas connues, et les inventer serait
     // écrire sa méthode à sa place. Absents d'ici, ils seraient jetés au prochain chargement.
+    // 10.0.0 — le modèle de liasse, au niveau du cabinet lui aussi : on l'ajuste une fois pour
+    // soixante clients. Vide = celui que le moteur PROPOSE. Absent d'ici, il serait jeté au
+    // prochain chargement et le cabinet devrait le refaire chaque matin (défaut `matricule`, 6.8.0).
+    s.liasse = (Array.isArray(s.liasse) ? s.liasse : []).map(r => ({
+      id: String((r && r.id) || '').trim(), etat: String((r && r.etat) || '').trim(),
+      label: String((r && r.label) || '').trim(),
+      comptes: (Array.isArray(r && r.comptes) ? r.comptes : []).map(c => String(c).trim()).filter(Boolean),
+      signe: Number(r && r.signe) === -1 ? -1 : 1,
+      deduit: !!(r && r.deduit), charge: !!(r && r.charge), resultat: !!(r && r.resultat)
+    })).filter(r => r.id && r.label && r.etat);
     s.questionnaire = (Array.isArray(s.questionnaire) ? s.questionnaire : [])
       .map(q => ({ question: String((q && q.question != null ? q.question : q) || '').trim() }))
       .filter(q => q.question);
@@ -1159,9 +1177,14 @@
         tvaADecaisser: round3((ca || 0) * 0.12), creditTva: 0, encaisse: round3((ca || 0) * 0.8), devise: 'DT' }
     });
     const d = (name, matricule, email, packs) => ({ id: 'MF:' + matricule.replace(/[^A-Z0-9]/gi, '').toUpperCase(), name, matricule, email, note: '', archived: false, packs, demo: true });
+    // Trabelsi porte DOUZE mois depuis la 10.0.0 : la liasse porte sur un exercice, et un exemple
+    // à trois mois montre un onglet Liasse tronqué — c'est-à-dire l'inverse de ce que cette
+    // version doit démontrer. Les quatre autres dossiers gardent leur scénario : ce qu'ils
+    // enseignent, c'est le RETARD, le provisoire et le client endormi, pas la production annuelle.
+    const CA_ANNEE = [28450, 31200, 26980, 24310, 29740, 22860, 25120, 30480, 27310, 23990, 26640, 28120];
     return [
       d('Menuiserie Trabelsi SUARL', '1122334A/M/P/000', 'contact@trabelsi.tn',
-        [pack(M(-1), true, null, 28450, 0), pack(M(-2), true, null, 31200, 0), pack(M(-3), true, null, 26980, 0)]),
+        CA_ANNEE.map((ca, i) => pack(M(-(i + 1)), true, null, ca, 0))),
       d('Pharmacie El Menzah', '2233445B/A/M/000', 'pharmacie.menzah@example.tn',
         [pack(M(-4), true, null, 84300, 1), pack(M(-5), true, null, 79150, 1)]),    // deux mois de retard
       d('Studio Sfax Design', '3344556C/N/M/000', 'hello@sfaxdesign.tn',
@@ -1170,7 +1193,13 @@
         [pack(M(-1), true, [{ id: 'justif', level: 'warn', label: 'achats sans justificatif joint', count: 6 }], 46800, 3),
          pack(M(-2), true, [{ id: 'brouillon', level: 'warn', label: 'factures restées en brouillon', count: 2 }], 44120, 3)]),
       d('Café des Jasmins', '5566778E/C/M/000', 'jasmins@example.tn',
-        [pack(M(-6), true, null, 9870, 4)])                                         // parti ou endormi
+        [pack(M(-6), true, null, 9870, 4)]),                                        // parti ou endormi
+      // Un client HORS SkanFact (10.0.0). Un cabinet a soixante clients dont deux sur SkanFact
+      // (6.8.0) : un exemple qui ne montrerait que ceux qui envoient leurs paquets donnerait une
+      // image fausse du portefeuille — et surtout, ce dossier-là est celui qui COMPTE dans la
+      // licence. On ne lui réclame rien : il n'a rien promis d'envoyer.
+      { ...d('Garage Ben Salem', '6677889F/G/M/000', '', []), manual: true,
+        note: 'Client hors SkanFact : ses pièces arrivent sur papier. Le cabinet tient sa comptabilité à la main, dans la Saisie.' }
     ];
   }
 
@@ -1244,6 +1273,59 @@
   // la loi de finances de l'année.
   const DEFAULT_DEADLINES = { tvaDay: 28, cnssDay: 15 };
 
+  // ---------- le calendrier par RÉGIME (F-9.6.0-12, livré en 10.0.0) ----------
+  //
+  // Le champ `regime` existe sur une fiche de dossier depuis la 6.8.0 et n'avait aucun lecteur :
+  // le calendrier traitait tous les clients pareil, et un forfaitaire se voyait réclamer une TVA
+  // qu'il ne dépose pas. La 9.6.0 avait laissé cette ligne de côté pour une bonne raison, écrite
+  // alors : « les régimes à distinguer et les échéances de chacun sont une question au comptable
+  // pilote ; les inventer serait écrire du droit que personne n'a confirmé ».
+  //
+  // Ce qui est livré ici n'écrit toujours AUCUN droit : la table part **vide**, et tant qu'elle
+  // l'est, rien ne change à l'écran — exactement comme les collaborateurs (9.9.0) ou le
+  // questionnaire (9.10.0). C'est le cabinet qui déclare SES régimes et ce que chacun dépose ;
+  // SkanFact ne fait que l'appliquer. La valeur par défaut d'une règle qu'on ne connaît pas est
+  // celle qui ne fait rien (9.1.1).
+  const TVA_PERIODES = [
+    { id: '', label: 'Comme le dossier le dit' },
+    { id: 'mensuelle', label: 'TVA mensuelle' },
+    { id: 'trimestrielle', label: 'TVA trimestrielle' },
+    { id: 'aucune', label: 'Pas de TVA' }
+  ];
+
+  function migrateRegime(r) {
+    return {
+      id: String((r && r.id) || '').trim(),
+      label: String((r && r.label) || '').trim(),
+      tva: TVA_PERIODES.some(p => p.id && p.id === String(r && r.tva)) ? String(r.tva) : '',
+      cnss: !(r && r.cnss === false),
+      // Les échéances ANNUELLES propres à un régime : le cabinet les écrit lui-même, une par
+      // ligne, avec son mois et son jour. Rien n'est proposé — ni date, ni nom.
+      annuelles: (Array.isArray(r && r.annuelles) ? r.annuelles : []).map(a => ({
+        id: String((a && a.id) || '').trim(),
+        label: String((a && a.label) || '').trim(),
+        // Un mois ABSENT (0, vide, illisible) reste 0 et la ligne est jetée : le ramener à janvier
+        // inventerait une date que personne n'a donnée. Un mois hors bornes, lui, se BORNE — c'est
+        // une faute de frappe sur une intention claire, pas une intention manquante.
+        mois: Number(a && a.mois) >= 1 ? Math.min(12, Math.round(Number(a.mois))) : 0,
+        jour: Number(a && a.jour) >= 1 ? Math.min(31, Math.round(Number(a.jour))) : 0
+      })).filter(a => a.id && a.label && a.mois && a.jour)
+    };
+  }
+
+  const regimes = state => ((state && state.settings && state.settings.regimes) || []).filter(r => r.id && r.label);
+  const regimeDe = (state, dossier) => regimes(state).find(r => r.id === String((dossier && dossier.regime) || '')) || null;
+
+  // La périodicité de TVA qui s'applique VRAIMENT à un dossier : celle de son régime quand le
+  // cabinet en a déclaré une, sinon celle posée sur sa fiche, sinon mensuelle. Le régime prime sur
+  // un réglage oublié — même règle que `defaultVat` côté entreprise (7.22.0).
+  function periodeTva(state, dossier) {
+    const r = regimeDe(state, dossier);
+    if (r && r.tva) return r.tva;
+    return String((dossier && dossier.tvaPeriod) || '') || 'mensuelle';
+  }
+  const deposeCnss = (state, dossier) => { const r = regimeDe(state, dossier); return !r || r.cnss !== false; };
+
   const QUARTER_END = { 3: 1, 6: 2, 9: 3, 12: 4 };
 
   function deadlineSettings(state) {
@@ -1290,7 +1372,7 @@
       const mois = addMonth(dernierMoisFini, -k);
       const depot = addMonth(mois, 1);
 
-      const mensuels = actifs.filter(d => (!d.tvaPeriod || d.tvaPeriod === 'mensuelle') && concerne(d, [mois]));
+      const mensuels = actifs.filter(d => periodeTva(state, d) === 'mensuelle' && concerne(d, [mois]));
       // « TVA de octobre » ne s'écrit pas : quatre mois sur douze commencent par une voyelle.
       if (mensuels.length) out.push(ligneEcheance('tva-m', `TVA ${de(monthLabel(mois))}`, dayOf(depot, cfg.tvaDay), mois, mensuels, t, attendus,
         'Déclaration mensuelle de TVA. Les clients dont tu n\'as pas le mois ne peuvent pas être déclarés.'));
@@ -1299,14 +1381,37 @@
       if (QUARTER_END[mm]) {
         const trim = QUARTER_END[mm];
         const moisTrim = [addMonth(mois, -2), addMonth(mois, -1), mois];
-        const trimestriels = actifs.filter(d => d.tvaPeriod === 'trimestrielle' && concerne(d, moisTrim));
+        const trimestriels = actifs.filter(d => periodeTva(state, d) === 'trimestrielle' && concerne(d, moisTrim));
         if (trimestriels.length) out.push(ligneEcheance('tva-t', `TVA du ${trim}ᵉ trimestre`, dayOf(depot, cfg.tvaDay), moisTrim, trimestriels, t, attendus,
           'Déclaration trimestrielle de TVA. Il te faut les trois mois du trimestre.'));
-        const employeurs = actifs.filter(d => concerne(d, moisTrim));
+        const employeurs = actifs.filter(d => deposeCnss(state, d) && concerne(d, moisTrim));
         if (employeurs.length) out.push(ligneEcheance('cnss', `CNSS du ${trim}ᵉ trimestre`, dayOf(depot, cfg.cnssDay), moisTrim, employeurs, t, attendus,
           'Déclaration sociale trimestrielle, pour les clients qui ont des salariés. SkanFact ne sait pas lesquels : à toi de filtrer.'));
       }
     }
+    // Les échéances ANNUELLES déclarées par le cabinet, régime par régime. Elles portent sur
+    // l'exercice écoulé : ce qui se dépose en 2027 concerne 2026. Aucune n'existe tant que le
+    // cabinet n'en a pas écrit une — la table part vide, exprès.
+    regimes(state).forEach(r => {
+      const concernes = actifs.filter(d => String(d.regime || '') === r.id);
+      if (!concernes.length) return;
+      (r.annuelles || []).forEach(a => {
+        // Deux occurrences : celle de cette année et celle de l'an prochain. La borne qui suit
+        // ne garde que ce qui est utile — l'échéance qu'on vient de passer (jusqu'à deux mois) et
+        // celle qui vient. Sans les DEUX années, une échéance d'avril disparaîtrait du calendrier
+        // dès le mois de juin pour n'y revenir qu'au 1er janvier.
+        [0, 1].forEach(decal => {
+          const an = Number(t.slice(0, 4)) + decal;
+          const date = dayOf(`${an}-${pad2(a.mois)}`, a.jour);
+          const exercice = an - 1;
+          const moisEx = Array.from({ length: 12 }, (_, i) => `${exercice}-${pad2(i + 1)}`);
+          const jours = Math.round((Date.parse(date + 'T00:00:00Z') - Date.parse(t + 'T00:00:00Z')) / 86400000);
+          if (jours < -60 || jours > 366) return;
+          out.push(ligneEcheance(`an-${r.id}-${a.id}`, `${a.label} ${exercice}`, date, moisEx, concernes, t, attendus,
+            `Échéance annuelle que tu as déclarée pour le régime « ${r.label} ». Elle porte sur l'exercice ${exercice}.`));
+        });
+      });
+    });
     return out
       .filter(e => e.clients > 0)
       .sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : a.label.localeCompare(b.label, 'fr'));
@@ -1595,6 +1700,7 @@
     newDossier, parseDossierLines, noteRelance, portfolio, relanceDue, relanceRows, accuseMail,
     parseCsv, verdictOrigine, csvDangereux, toCsvLine, mergeEcritures, ecrituresPlan,
     DEFAULT_DEADLINES, deadlineSettings, echeances, dayOf,
+    TVA_PERIODES, migrateRegime, regimes, regimeDe, periodeTva, deposeCnss,
     dossierMonths, dossierRow, dossierList, cabinetTodo, relanceMail, pairingFile,
     INDEX_STABLES, nomIndex, releasePourIndex, moisManquants,
     // Le cabinet à plusieurs (9.9.0)

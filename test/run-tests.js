@@ -4857,13 +4857,25 @@ t('cabinet : les chiffres du mois traversent le paquet, et leur absence se voit'
 t('cabinet : le jeu d\'exemple montre les quatre situations, à n\'importe quelle date', () => {
   for (const jour of ['2026-09-12', '2026-01-03', '2026-12-31', '2027-02-28']) {
     const s = cab.migrate({ dossiers: cab.demoDossiers(jour) });
-    assert.strictEqual(s.dossiers.length, 5, jour);
+    // Six depuis la 10.0.0 : un client HORS SkanFact a rejoint les cinq autres. Un cabinet a
+    // soixante clients dont deux sur SkanFact (6.8.0) — un exemple qui ne montrerait que ceux qui
+    // envoient des paquets donnerait une image fausse du portefeuille, et surtout, c'est ce
+    // dossier-là qui compte dans sa licence. On teste ce qu'il DOIT porter, pas le compte tout
+    // seul : un dossier hors SkanFact, sans paquet, et à qui on ne réclame rien.
+    assert.strictEqual(s.dossiers.length, 6, jour);
+    const hors = s.dossiers.filter(d => d.manual);
+    assert.strictEqual(hors.length, 1, jour + ' : il faut un client hors SkanFact, et un seul');
+    assert.strictEqual(hors[0].packs.length, 0, jour + ' : un client hors SkanFact n\'envoie rien');
+    // Douze paquets sur un dossier : la liasse porte sur un EXERCICE, et un exemple à trois mois
+    // montrerait un onglet Liasse tronqué — l'inverse de ce que la 10.0.0 démontre.
+    assert.ok(s.dossiers.some(d => d.packs.length >= 12), jour + ' : un dossier doit porter un exercice entier');
     assert.ok(s.dossiers.every(d => d.demo), jour + ' : le drapeau « exemple » doit survivre à migrate()');
     const rows = cab.dossierList(s, jour);
     assert.ok(rows.some(r => r.missingCount > 0), jour + ' : un dossier en retard');
     assert.ok(rows.some(r => r.provisionalCount > 0), jour + ' : un dossier provisoire');
     assert.ok(rows.some(r => r.issues > 0), jour + ' : un dossier avec des pièces signalées');
     assert.ok(rows.some(r => r.level === 'ok'), jour + ' : un dossier à jour');
+    assert.ok(rows.some(r => r.level === 'hors'), jour + ' : « hors SkanFact » n\'est pas « en retard » (6.8.0)');
     assert.ok(rows[0].score >= rows[rows.length - 1].score, jour + ' : les retards en tête');
     // Aucun paquet d'exemple n'a de fichier sur le disque : l'interface ne doit pas proposer de l'ouvrir.
     assert.ok(s.dossiers.every(d => d.packs.every(p => !p.path)), jour);
@@ -7390,7 +7402,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     }
     assert.ok(paquets >= 50, 'le jeu d\'exemple a maigri : ' + paquets + ' paquets vérifiés');
     // Les cinq dossiers ne doivent pas tous avoir envoyé à la même minute.
-    const heures = new Set(cab.demoDossiers('2026-06-20').map(d => d.packs[0].receivedAt));
+    const heures = new Set(cab.demoDossiers('2026-06-20').filter(d => d.packs.length).map(d => d.packs[0].receivedAt));
     assert.ok(heures.size >= 3, 'tous les clients de l\'exemple envoient le même jour à la même minute');
   });
 
@@ -12548,11 +12560,18 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.deepStrictEqual(commis, fabriquer(),
       'src/cabinet/exemple-paquets.json ne suit plus scripts/exemple-cabinet.js — relance `node scripts/exemple-cabinet.js`');
     const K = require('../src/renderer/compta.js');
+    let totalEcritures = 0;
     commis.mois.forEach(m => {
       const e = m.fichiers.find(f => f.chemin === 'journaux/ecritures.csv');
       assert.ok(e, m.mois + ' : pas d\'écritures');
       const rows = K.entreesDepuisCsv(e.texte);
-      assert.ok(rows.length >= 20, m.mois + ' : trop peu d\'écritures pour ressembler à un exercice (' + rows.length + ')');
+      // Le seuil vaut par mois ET sur l'ensemble depuis la 10.0.0, qui a porté l'exemple de huit à
+      // DOUZE mois. Les premiers mois du jeu de démonstration sont sincèrement légers : une
+      // entreprise qui démarre ne fait pas soixante pièces en septembre, et exiger vingt écritures
+      // partout obligerait à gonfler l'exemple pour satisfaire un test — c'est-à-dire à le rendre
+      // faux. Ce qu'on tient : aucun mois n'est un jeton, et l'exercice entier est dense.
+      assert.ok(rows.length >= 10, m.mois + ' : trop peu d\'écritures pour ressembler à un mois (' + rows.length + ')');
+      totalEcritures += rows.length;
       const b = K.entriesBalance(rows);
       assert.strictEqual(b.debit, b.credit, m.mois + ' : débit ≠ crédit');
       assert.ok(m.manifest.chiffres && typeof m.manifest.chiffres.ca === 'number', m.mois + ' : le manifeste ne porte pas de chiffres');
@@ -12561,6 +12580,8 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       // Aucun identifiant tiré au hasard : c'est ce qui rend le fichier identique d'une passe à l'autre.
       m.fichiers.forEach(f => assert.ok(!/"employeeId": "[a-z0-9]{10,}"/.test(f.texte), f.chemin + ' porte un identifiant aléatoire'));
     });
+    assert.ok(totalEcritures >= 20 * MOIS,
+      `l'exercice entier de l'exemple a maigri : ${totalEcritures} écritures sur ${MOIS} mois`);
     // Et le Cabinet n'a toujours pas le moteur : le script vit dans scripts/, pas dans src/cabinet/.
     const cfg = require('../build/cabinet.config.js');
     assert.ok(!cfg.files.some(f => /scripts/.test(String(f))), 'le script de fabrication n\'a rien à faire dans l\'app du comptable');
@@ -13709,6 +13730,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   require('./suites/cloture.js')({ t, assert, lireSource });
   require('./suites/equipe.js')({ t, assert, lireSource });
   require('./suites/revision.js')({ t, assert, lireSource });
+  require('./suites/liasse.js')({ t, assert, lireSource });
   require('./suites/terrain.js')({ t, assert, lireSource });
 
   // ---------- 9.4.10 : aucune suite découpée ne reste sur le bord de la route ----------

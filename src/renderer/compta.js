@@ -3094,6 +3094,215 @@
     return { ok: !motifs.length, motifs, debit: d, credit: c };
   }
 
+  // ------------------------------------------------------ la liasse et l'annuel (10.0.0)
+  //
+  // Le document où une erreur coûte le plus cher. Trois règles, et elles tiennent tout :
+  //
+  //  1. **Aucune rubrique n'est une vérité, et aucun taux n'est écrit dans un calcul.** Le modèle
+  //     livré suit l'usage tunisien ; la présentation exacte du système comptable des entreprises
+  //     n'est validée par personne, et la liasse réelle du pilote n'a pas encore été produite.
+  //     Chaque rubrique est donc une LIGNE DE TABLE modifiable (`data.liasse` côté cabinet),
+  //     chaque écran porte « À VÉRIFIER », et les taux d'impôt se SAISISSENT (règle 5.0.0 et
+  //     9.1.1 : la valeur par défaut d'une règle qu'on ne connaît pas est celle qui ne fait rien).
+  //  2. **Une rubrique qui ne capte aucun compte le DIT.** Un zéro se recopie sur un formulaire ;
+  //     un « — » avec sa raison se demande au comptable (règle des cases fiscales, 9.6.0).
+  //  3. **Ce qui n'entre dans aucune rubrique est MONTRÉ.** Une liasse qui perd un compte en
+  //     silence est une liasse fausse, et personne ne s'en aperçoit avant le contrôle.
+
+  const LIASSE_ETATS = [
+    { id: 'bilan-actif', label: 'Bilan — Actif' },
+    { id: 'bilan-passif', label: 'Bilan — Capitaux propres et passifs' },
+    { id: 'resultat', label: 'État de résultat' }
+  ];
+
+  // Le modèle livré. `signe` dit quel SOLDE la rubrique capte et comment elle l'affiche : 1 pour un
+  // solde débiteur, −1 pour un créditeur. Le montant d'une rubrique est donc toujours POSITIF quand
+  // elle est remplie — c'est ainsi qu'une liasse s'imprime, et un montant négatif change de
+  // colonne, il ne garde pas son signe (règle 6.3.0). `deduit` et `charge` disent que la rubrique
+  // se RETRANCHE de son état : les amortissements de l'actif, les charges du résultat.
+  const MODELE_LIASSE = [
+    { id: 'AC1', etat: 'bilan-actif', label: 'Immobilisations incorporelles', comptes: ['20'], signe: 1 },
+    { id: 'AC2', etat: 'bilan-actif', label: 'Amortissements des immobilisations incorporelles', comptes: ['280'], signe: -1, deduit: true },
+    { id: 'AC3', etat: 'bilan-actif', label: 'Immobilisations corporelles', comptes: ['21', '22', '23'], signe: 1 },
+    { id: 'AC4', etat: 'bilan-actif', label: 'Amortissements des immobilisations corporelles', comptes: ['281', '282', '283'], signe: -1, deduit: true },
+    { id: 'AC5', etat: 'bilan-actif', label: 'Immobilisations financières', comptes: ['25', '26', '27'], signe: 1 },
+    { id: 'AC6', etat: 'bilan-actif', label: 'Stocks', comptes: ['3'], signe: 1 },
+    { id: 'AC7', etat: 'bilan-actif', label: 'Provisions sur stocks', comptes: ['39'], signe: -1, deduit: true },
+    { id: 'AC8', etat: 'bilan-actif', label: 'Clients et comptes rattachés', comptes: ['41'], signe: 1 },
+    { id: 'AC9', etat: 'bilan-actif', label: 'Autres actifs courants', comptes: ['42', '43', '44', '45', '46', '47'], signe: 1 },
+    { id: 'AC10', etat: 'bilan-actif', label: 'Liquidités et équivalents', comptes: ['5'], signe: 1 },
+    { id: 'CP1', etat: 'bilan-passif', label: 'Capital social', comptes: ['10'], signe: -1 },
+    { id: 'CP2', etat: 'bilan-passif', label: 'Réserves et primes', comptes: ['11', '12'], signe: -1 },
+    { id: 'CP3', etat: 'bilan-passif', label: 'Résultats reportés', comptes: ['13'], signe: -1 },
+    { id: 'CP4', etat: 'bilan-passif', label: 'Résultat de l\'exercice', comptes: [], signe: -1, resultat: true },
+    { id: 'PA1', etat: 'bilan-passif', label: 'Emprunts et dettes financières', comptes: ['16', '17'], signe: -1 },
+    { id: 'PA2', etat: 'bilan-passif', label: 'Provisions', comptes: ['14', '15'], signe: -1 },
+    { id: 'PA3', etat: 'bilan-passif', label: 'Fournisseurs et comptes rattachés', comptes: ['40'], signe: -1 },
+    { id: 'PA4', etat: 'bilan-passif', label: 'Autres passifs courants', comptes: ['42', '43', '44', '45', '46', '47'], signe: -1 },
+    { id: 'PA5', etat: 'bilan-passif', label: 'Concours bancaires', comptes: ['5'], signe: -1 },
+    { id: 'RE1', etat: 'resultat', label: 'Revenus', comptes: ['70', '71'], signe: -1 },
+    { id: 'RE2', etat: 'resultat', label: 'Autres produits d\'exploitation', comptes: ['73', '74', '75'], signe: -1 },
+    { id: 'RE3', etat: 'resultat', label: 'Achats consommés', comptes: ['60'], signe: 1, charge: true },
+    { id: 'RE4', etat: 'resultat', label: 'Charges externes', comptes: ['61', '62'], signe: 1, charge: true },
+    { id: 'RE5', etat: 'resultat', label: 'Charges de personnel', comptes: ['64'], signe: 1, charge: true },
+    { id: 'RE6', etat: 'resultat', label: 'Charges sociales', comptes: ['65'], signe: 1, charge: true },
+    { id: 'RE7', etat: 'resultat', label: 'Impôts et taxes', comptes: ['66'], signe: 1, charge: true },
+    { id: 'RE8', etat: 'resultat', label: 'Dotations aux amortissements et provisions', comptes: ['68'], signe: 1, charge: true },
+    { id: 'RE9', etat: 'resultat', label: 'Autres charges', comptes: ['63', '67'], signe: 1, charge: true },
+    { id: 'RE10', etat: 'resultat', label: 'Produits financiers', comptes: ['76'], signe: -1 },
+    { id: 'RE11', etat: 'resultat', label: 'Charges financières', comptes: ['69'], signe: 1, charge: true }
+  ];
+
+  const modeleLiasse = table => (Array.isArray(table) && table.length ? table : MODELE_LIASSE);
+
+  // Un compte va dans la rubrique dont le préfixe est le PLUS LONG, parmi celles du bon SENS de
+  // solde. Le sens compte : le 44 débiteur est une créance sur l'État, le même 44 créditeur est une
+  // dette envers lui — les deux rubriques existent et portent le même préfixe. Sans ce départage,
+  // la TVA à décaisser se retrouverait à l'actif.
+  function rubriqueDuCompte(compte, solde, table) {
+    const n = txt(compte);
+    if (!n) return null;
+    let best = null;
+    modeleLiasse(table).forEach(r => {
+      if (r.resultat) return;
+      if (solde > 0 && r.signe !== 1) return;
+      if (solde < 0 && r.signe !== -1) return;
+      (r.comptes || []).forEach(p => {
+        if (n.startsWith(p) && (!best || p.length > best.p.length)) best = { p, r };
+      });
+    });
+    return best ? best.r : null;
+  }
+
+  // La liasse, déduite de la balance. Elle ne s'invente rien : chaque rubrique porte les comptes
+  // qui l'ont remplie, et on peut donc l'ouvrir. Trois choses garanties et testées : actif =
+  // passif, résultat du bilan = résultat de l'état de résultat, et AUCUN compte perdu.
+  const contribution = l => round3(l.reduce((s, x) =>
+    s + (x.montant == null ? 0 : ((x.deduit || x.charge) ? -x.montant : x.montant)), 0));
+
+  function liasseDepuisLignes(lignes, ouverture, opts) {
+    const o = opts || {};
+    const table = modeleLiasse(o.modele);
+    const libelle = o.libelle || (() => '');
+    const bal = balanceDepuisLignes(lignes, ouverture || {}, libelle);
+    const rows = bal.rows.filter(r => r.solde);
+    const par = new Map(table.map(r => [r.id, { ...r, montant: 0, comptesVus: [] }]));
+    const orphelins = [];
+    let resultat = 0;
+    rows.forEach(r => {
+      // Les comptes de gestion font le résultat ; ils entrent AUSSI dans l'état de résultat.
+      if (r.classe === '6' || r.classe === '7') resultat = round3(resultat - r.solde);
+      const rub = rubriqueDuCompte(r.account, r.solde, table);
+      if (!rub) { orphelins.push({ compte: r.account, libelle: r.label || '', solde: r.solde }); return; }
+      const cible = par.get(rub.id);
+      const m = round3(rub.signe * r.solde);
+      cible.montant = round3(cible.montant + m);
+      cible.comptesVus.push({ compte: r.account, libelle: r.label || '', montant: m });
+    });
+    const ligneResultat = par.get((table.find(r => r.resultat) || {}).id);
+    if (ligneResultat) ligneResultat.montant = resultat;
+    const etats = LIASSE_ETATS.map(e => {
+      const l = table.filter(r => r.etat === e.id).map(r => {
+        const x = par.get(r.id);
+        return {
+          id: r.id, label: r.label, comptes: r.comptes || [], deduit: !!r.deduit, charge: !!r.charge,
+          // Une rubrique qu'AUCUN compte n'a remplie vaut `null`, jamais 0 : un zéro se recopie sur
+          // un formulaire, un « — » se demande au comptable (règle 9.6.0).
+          montant: x.comptesVus.length || r.resultat ? x.montant : null,
+          detail: x.comptesVus,
+          raison: x.comptesVus.length || r.resultat ? '' : `Aucun compte ${(r.comptes || []).join(', ') || 'rattaché'} n'est mouvementé.`
+        };
+      });
+      // UNE règle pour les trois états : ce qui est marqué `deduit` ou `charge` se retranche, le
+      // reste s'ajoute. Deux règles distinctes divergeraient au premier état ajouté.
+      const total = contribution(l);
+      return { ...e, lignes: l, total };
+    });
+    const actif = etats.find(e => e.id === 'bilan-actif').total;
+    const passif = etats.find(e => e.id === 'bilan-passif').total;
+    const resultatEtat = etats.find(e => e.id === 'resultat').total;
+    return {
+      etats, orphelins, resultat, resultatEtat,
+      totalActif: actif, totalPassif: passif,
+      equilibre: round3(actif - passif) === 0,
+      coherent: round3(resultat - resultatEtat) === 0,
+      balance: bal
+    };
+  }
+
+  // ------------------------------------------------------------ l'impôt annuel
+
+  // Les natures de retraitement. Ce qui se réintègre et ce qui se déduit dépend du DROIT : la liste
+  // livrée est un pense-bête, chaque ligne se saisit à la main avec son montant, et rien n'est
+  // proposé par défaut. Le taux ne figure NULLE PART dans le code (règle 5.0.0).
+  const RETRAITEMENTS = [
+    { id: 'reintegration', label: 'Réintégration', signe: 1, aide: 'Charge comptabilisée que le droit fiscal n\'admet pas.' },
+    { id: 'deduction', label: 'Déduction', signe: -1, aide: 'Produit comptabilisé que le droit fiscal n\'impose pas, ou charge déductible non comptabilisée.' },
+    { id: 'deficit', label: 'Report déficitaire', signe: -1, aide: 'Déficit d\'un exercice antérieur imputé sur ce bénéfice.' },
+    { id: 'amortissement', label: 'Amortissement différé', signe: -1, aide: 'Amortissement réputé différé en période déficitaire.' }
+  ];
+
+  function retraitementValide(r) {
+    const motifs = [];
+    if (!RETRAITEMENTS.some(x => x.id === txt(r && r.nature))) motifs.push('La nature de ce retraitement n\'est pas connue.');
+    if (!txt(r && r.libelle)) motifs.push('Un retraitement sans libellé ne s\'explique pas devant un contrôle.');
+    if (!(num(r && r.montant) > 0)) motifs.push('Le montant doit être positif : c\'est la NATURE qui dit dans quel sens il joue.');
+    return { ok: !motifs.length, motifs };
+  }
+
+  // Le résultat fiscal, et l'impôt s'il y a un taux. `taux` vaut `null` tant que personne ne l'a
+  // saisi — et l'impôt vaut alors `null`, que l'écran écrit « — » avec sa raison. Le minimum
+  // d'impôt n'est PAS calculé : il dépend d'une règle de droit que personne n'a confirmée, et un
+  // chiffre inventé sur une déclaration coûte plus cher qu'une case vide.
+  function resultatFiscal(resultatComptable, retraitements, opts) {
+    const o = opts || {};
+    const rs = (Array.isArray(retraitements) ? retraitements : []).filter(r => retraitementValide(r).ok);
+    const par = id => round3(rs.filter(r => txt(r.nature) === id).reduce((s, r) => s + num(r.montant), 0));
+    const reintegrations = par('reintegration');
+    const deductions = round3(par('deduction') + par('deficit') + par('amortissement'));
+    const base = round3(num(resultatComptable) + reintegrations - deductions);
+    const taux = o.taux == null || txt(o.taux) === '' ? null : num(o.taux);
+    const imposable = base > 0 ? base : 0;
+    return {
+      resultatComptable: round3(num(resultatComptable)),
+      reintegrations, deductions, base, imposable,
+      deficitaire: base < 0,
+      taux,
+      impot: taux == null ? null : round3(imposable * taux / 100),
+      raisonImpot: taux == null
+        ? 'Aucun taux saisi : le taux d\'impôt dépend de la forme juridique, du secteur et de la loi de finances de l\'année. À VÉRIFIER avec ton client et à saisir ici.'
+        : '',
+      lignes: rs.map(r => ({ ...r, signe: (RETRAITEMENTS.find(x => x.id === txt(r.nature)) || {}).signe || 1 }))
+    };
+  }
+
+  // La déclaration annuelle d'employeur, lue dans le LIVRE. Elle porte DEUX choses distinctes
+  // qu'on confond (règle 5.2.0) : les salaires versés, et les retenues à la source pratiquées sur
+  // des fournisseurs. Les deux figurent sur le même formulaire. Ici on ne peut donner que les
+  // MASSES — le détail par bénéficiaire demande les bulletins, que le cabinet n'a pas — et l'écran
+  // le dit plutôt que de laisser croire à un état nominatif.
+  function employeurAnnuel(livre, opts) {
+    const o = opts || {};
+    const lignes = lignesDuLivre(livre, { du: livre.exercice.du, au: livre.exercice.au });
+    const bal = balanceDepuisLignes(lignes, {}, () => '');
+    const masse = pref => round3(bal.rows.filter(r => String(r.account).startsWith(pref))
+      .reduce((s, r) => s + r.debit - r.credit, 0));
+    const credit = pref => round3(bal.rows.filter(r => String(r.account).startsWith(pref))
+      .reduce((s, r) => s + r.credit - r.debit, 0));
+    const cases = [
+      { id: 'salaires', label: 'Salaires et traitements versés', montant: masse('64'), comptes: ['64'] },
+      { id: 'charges', label: 'Charges sociales patronales', montant: masse('65'), comptes: ['65'] },
+      { id: 'irpp', label: 'Retenues à la source sur salaires', montant: credit(txt(o.compteIrpp) || '4321'), comptes: [txt(o.compteIrpp) || '4321'] },
+      { id: 'rsFournisseurs', label: 'Retenues à la source sur fournisseurs', montant: credit(txt(o.compteRs) || '4322'), comptes: [txt(o.compteRs) || '4322'] }
+    ].map(c => c.montant ? c : { ...c, montant: null, raison: `Aucun mouvement sur ${c.comptes.join(', ')} dans cet exercice.` });
+    return {
+      exercice: livre.exercice.annee, cases,
+      nominatif: false,
+      raisonNominatif: 'Le détail par bénéficiaire demande les bulletins de paie, que le cabinet ne reçoit pas : '
+        + 'ces masses se confrontent à l\'état nominatif que le client tient dans SkanFact.'
+    };
+  }
+
   // ------------------------------------------------- la révision et les questions (9.10.0)
   //
   // Le dossier de travail du comptable, et le seul mécanisme du projet qui remonte du cabinet vers
@@ -3907,6 +4116,10 @@
     GUIDES_INVENTAIRE, controlesCloture, soldesDepuisOuverture,
     cloturerExercice, rouvrirExercice, noterDossierCloture, anouveauxDe, ecritureAnouveaux, extournesDe,
     etatsDepuisLignes, sigDepuisLignes, dossierDeCloture, clotureValide,
+    // La liasse et l'annuel (10.0.0)
+    LIASSE_ETATS, MODELE_LIASSE, RETRAITEMENTS,
+    modeleLiasse, rubriqueDuCompte, liasseDepuisLignes,
+    retraitementValide, resultatFiscal, employeurAnnuel,
     // La révision et les questions (9.10.0)
     CYCLES_REVISION, QUESTION_STATUTS, QUESTION_ATTENDUS, QUESTION_RELANCE,
     cycleDuCompte, libelleCycle, nomDuCompte,

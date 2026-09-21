@@ -407,14 +407,24 @@ ipcMain.handle('cab:lock', () => {
 ipcMain.handle('cab:saveCabinet', (_e, patch) => {
   requireOpen();
   const p = patch || {};
-  state.cabinet = {
-    ...state.cabinet,
-    name: String(p.name || ''), email: String(p.email || ''), phone: String(p.phone || '')
-  };
+  // L'identité ne se remplace que si elle est FOURNIE. Avant la 10.0.0, `String(p.name || '')`
+  // écrasait le nom du cabinet par une chaîne vide dès qu'un écran n'envoyait que des réglages —
+  // et un cabinet sans nom rouvre l'assistant de bienvenue au démarrage suivant. Tous les appelants
+  // pensaient à recopier `...S.cabinet` ; le premier qui oublierait effacerait l'identité du
+  // cabinet sans un mot. Le piège vivait dans le handler, il se répare dans le handler.
+  ['name', 'email', 'phone'].forEach(k => {
+    if (p[k] !== undefined) state.cabinet = { ...state.cabinet, [k]: String(p[k] || '') };
+  });
   if (p.settings) {
     const day = Number(p.settings.relanceDay);
     state.settings = { ...state.settings, relanceDay: day >= 1 && day <= 28 ? Math.round(day) : state.settings.relanceDay };
     if (p.settings.deadlines) state.settings.deadlines = { ...state.settings.deadlines, ...p.settings.deadlines };
+    // Les régimes et ce que chacun dépose (F-9.6.0-12). REMPLACÉS et non fusionnés : retirer un
+    // régime est un geste, et fusionner le ferait revenir. La normalisation vit dans `migrateRegime`
+    // — une seule porte, donc un fichier relu et un fichier écrit disent la même chose.
+    if (Array.isArray(p.settings.regimes)) {
+      state.settings.regimes = p.settings.regimes.map(K.migrateRegime).filter(r => r.id && r.label);
+    }
     // Les réglages de saisie (9.3.0). On fusionne au lieu de remplacer : un écran qui n'envoie que
     // les touches ne doit pas effacer le journal par défaut réglé dans un autre panneau.
     if (p.settings.saisie) {
@@ -579,6 +589,19 @@ function chargerExemple() {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'skanfact-exemple-'));
   try {
     scenario.forEach((d, rang) => {
+      // Un dossier SANS paquet — le client hors SkanFact (10.0.0) — n'a aucun `ingest` pour le
+      // créer : il se pose ici, à la main. Sans cette branche il n'existerait tout simplement pas,
+      // et l'exemple ne montrerait que les clients qui envoient — c'est-à-dire l'inverse d'un vrai
+      // portefeuille, où ils sont deux sur soixante (6.8.0).
+      if (!(d.packs || []).length) {
+        if (!state.dossiers.some(x => x.id === d.id)) {
+          state.dossiers.push(K.migrateDossier({
+            ...d, demo: true, createdAt: new Date().toISOString(), packs: []
+          }));
+          getStore().write(state);
+        }
+        return;
+      }
       (d.packs || []).slice().sort((a, b) => (a.month < b.month ? -1 : 1)).forEach(p => {
         // Le gabarit se choisit par l'ancienneté du mois, décalé d'un cran par dossier : deux
         // clients ne montrent pas le même chiffre d'affaires pour le même mois.
@@ -1665,6 +1688,11 @@ function htmlDeCloture(dossier, dos, etats) {
   tr.g th{background:#f5f7fa;font-weight:600}
   tr.t td,tr.t th{font-weight:700;border-top:2px solid #1d2530;border-bottom:none}
   .note{color:#6b7788;font-size:12px;margin-top:24px;border-top:1px solid #d9dfe7;padding-top:10px}
+  /* 10.0.0 — la signature. Des états financiers qui partent chez un client sans dire QUI les a
+     établis n'engagent personne : le cadre est laissé vide pour le cachet, parce qu'une signature
+     manuscrite reste ce qu'un portail et un contrôleur attendent. */
+  .sig{font-size:12px;margin-top:18px;color:#31404f}
+  .sigbox{height:70px;border:1px solid #c7d0da;border-radius:6px;margin-top:6px;inline-size:260px}
   @media print{body{margin:0}}
 </style></head><body>
 <h1>Clôture de l'exercice ${e(dos.exercice.annee)}</h1>
@@ -1680,9 +1708,12 @@ function htmlDeCloture(dossier, dos, etats) {
 <h2>À-nouveaux de l'exercice suivant</h2><table>
   <tr class="g"><th>Compte</th><th>Intitulé</th><th class="r">Débit / Crédit</th></tr>
   ${dos.anouveaux.map(l => `<tr><td>${e(l.compte)}</td><td>${e(l.libelle)}</td><td class="r">${l.debit ? m(l.debit) + ' D' : m(l.credit) + ' C'}</td></tr>`).join('')}</table>
-<p class="note">Ces états sont <b>déduits de la balance</b>, rubrique par rubrique. Ce n'est pas la
-liasse fiscale NCT 01 : sa présentation exacte n'est pas établie ici. Document produit par SkanFact
-Cabinet ; les chiffres engagent le cabinet qui l'a émis, pas l'application.</p>
+<p class="note">Ces états sont <b>déduits de la balance</b>, rubrique par rubrique. La présentation exacte
+du système comptable des entreprises est à VÉRIFIER : elle n'est validée par personne dans l'application.
+Document produit par SkanFact Cabinet ; les chiffres engagent le cabinet qui l'a émis, pas l'application.</p>
+<p class="sig">Établi par ${e((dos.cabinet || '').trim() || 'le cabinet')}${dos.closPar ? ' — ' + e(dos.closPar) : ''}${
+  dos.closLe ? ', le ' + e(new Date(dos.closLe).toISOString().slice(0, 10).split('-').reverse().join('/')) : ''}.<br>
+Signature et cachet :</p><div class="sigbox"></div>
 </body></html>`;
 }
 
@@ -1811,6 +1842,81 @@ ipcMain.handle('cab:ecrireCloture', async (_e, { dossierId, annee, motDePasse } 
   KC.noterDossierCloture(livre, { chemin: res.filePath, scelle: !!motDePasse, pdf: !!pdf, signe: !!cle }, quiSuisJe(), Date.now());
   ecrireLeLivre(dossierId, livre, null);
   return { ok: true, path: res.filePath, pdf: !!pdf, signe: !!cle, scelle: !!motDePasse, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+// ================================================ LA LIASSE ET L'ANNUEL (10.0.0)
+//
+// Le document où une erreur coûte le plus cher. Rien ici n'invente un chiffre : la liasse est
+// DÉDUITE de la balance par une table de rubriques entièrement modifiable, le taux d'impôt se
+// saisit, et ce qu'aucune rubrique ne capte est MONTRÉ plutôt que perdu en silence.
+
+const modeleLiasseDuCabinet = () => (Array.isArray(state.liasse) && state.liasse.length ? state.liasse : KC.MODELE_LIASSE);
+
+ipcMain.handle('cab:liasse', (_e, { dossierId, annee } = {}) => {
+  requireOpen();
+  const livre = livreOuErreur(dossierId, annee);
+  const lignes = KC.lignesDuLivre(livre, { du: livre.exercice.du, au: livre.exercice.au });
+  const libelle = c => ((livre.plan || []).find(p => p.compte === c) || {}).libelle || KC.libelleDuPlan(c) || '';
+  const modele = modeleLiasseDuCabinet();
+  const ex = livre.exercice;
+  return {
+    ok: true,
+    liasse: KC.liasseDepuisLignes(lignes, KC.soldesDepuisOuverture(livre), { libelle, modele }),
+    fiscal: KC.resultatFiscal(
+      KC.liasseDepuisLignes(lignes, KC.soldesDepuisOuverture(livre), { libelle, modele }).resultat,
+      ex.retraitements || [], { taux: ex.tauxImpot == null ? null : ex.tauxImpot }),
+    employeur: KC.employeurAnnuel(livre, {}),
+    retraitements: ex.retraitements || [],
+    tauxImpot: ex.tauxImpot == null ? null : ex.tauxImpot,
+    natures: KC.RETRAITEMENTS,
+    modele, etats: KC.LIASSE_ETATS,
+    clos: !!ex.clos
+  };
+});
+
+ipcMain.handle('cab:fiscalAnnuel', (_e, { dossierId, annee, retraitements, tauxImpot } = {}) => {
+  requireOpen();
+  droitBlock(dossierId, 'validation');
+  const livre = livreOuErreur(dossierId, annee);
+  if (Array.isArray(retraitements)) {
+    const mauvais = retraitements.map(r => KC.retraitementValide(r)).filter(v => !v.ok);
+    if (mauvais.length) throw erreur('ERR-CAB-075', mauvais[0].motifs.join(' '));
+    livre.exercice.retraitements = retraitements.map(r => ({
+      id: String(r.id || ''), nature: String(r.nature || ''), libelle: String(r.libelle || '').slice(0, 200),
+      montant: Number(r.montant) || 0
+    }));
+  }
+  // Le taux se SAISIT, et `null` (le champ vide) est une valeur légitime : c'est elle qui fait
+  // écrire « — » avec sa raison au lieu d'un impôt calculé sur un taux deviné (règle 9.1.1).
+  if (tauxImpot !== undefined) {
+    const t = String(tauxImpot == null ? '' : tauxImpot).trim();
+    if (t === '') livre.exercice.tauxImpot = null;
+    else {
+      const n = Number(t.replace(',', '.'));
+      if (!isFinite(n) || n < 0 || n > 100) throw erreur('ERR-CAB-075', 'Le taux d\'impôt se donne en pourcentage, entre 0 et 100.');
+      livre.exercice.tauxImpot = n;
+    }
+  }
+  ecrireLeLivre(dossierId, livre, 'fiscal', `${annee} · résultat fiscal`);
+  return { ok: true, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+// Le modèle de liasse vit au niveau du CABINET, comme les guides et les cycles : on l'ajuste une
+// fois pour soixante clients. Vide = celui que le moteur propose — et « À VÉRIFIER » est écrit
+// partout, parce que la présentation exacte n'est validée par personne.
+ipcMain.handle('cab:saveLiasse', (_e, { modele } = {}) => {
+  requireOpen();
+  if (Array.isArray(modele)) {
+    state.liasse = modele.map(r => ({
+      id: String(r.id || '').trim(), etat: String(r.etat || '').trim(),
+      label: String(r.label || '').trim(),
+      comptes: (Array.isArray(r.comptes) ? r.comptes : []).map(c => String(c).trim()).filter(Boolean),
+      signe: Number(r.signe) === -1 ? -1 : 1,
+      deduit: !!r.deduit, charge: !!r.charge, resultat: !!r.resultat
+    })).filter(r => r.id && r.label && KC.LIASSE_ETATS.some(e => e.id === r.etat));
+  }
+  save();
+  return { ok: true, state: safeState() };
 });
 
 // ============================================ LA RÉVISION ET LES QUESTIONS (9.10.0)

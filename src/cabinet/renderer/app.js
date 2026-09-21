@@ -2295,14 +2295,15 @@
           : s.onglet === 'immobilisations' ? vueImmobilisations(dossier)
             : s.onglet === 'exercice' ? vueCloture(dossier)
               : s.onglet === 'revision' ? vueRevision(dossier)
-                : s.onglet === 'inventaire' ? vueInventaire(dossier)
-                  : !lignes.length
-                    ? `<div class="empty mini">Aucune écriture sur cette période.</div>`
-                    : s.onglet === 'journal' ? vueJournal(lignes)
-                      : s.onglet === 'grand-livre' ? vueGrandLivre(lignes)
-                        : s.onglet === 'balance' ? vueBalance(lignes)
-                          : s.onglet === 'recherche' ? vueRecherche(lignes)
-                            : vueLettrage(lignes);
+                : s.onglet === 'liasse' ? vueLiasse(dossier)
+                  : s.onglet === 'inventaire' ? vueInventaire(dossier)
+                    : !lignes.length
+                      ? `<div class="empty mini">Aucune écriture sur cette période.</div>`
+                      : s.onglet === 'journal' ? vueJournal(lignes)
+                        : s.onglet === 'grand-livre' ? vueGrandLivre(lignes)
+                          : s.onglet === 'balance' ? vueBalance(lignes)
+                            : s.onglet === 'recherche' ? vueRecherche(lignes)
+                              : vueLettrage(lignes);
 
     // D'OÙ viennent ces chiffres. Deux sources, et l'écran le dit en toutes lettres : une balance
     // lue dans les paquets du client et une balance tenue par le cabinet ne disent pas la même
@@ -2342,6 +2343,7 @@
     return n ? ` <span class="tab-n" title="${n} question${n > 1 ? 's' : ''} en attente de réponse">${n}</span>` : ''; })()}</button>` : ''}
         ${s.livre ? `<button data-tab="exercice" class="${s.onglet === 'exercice' ? 'active' : ''}">Exercice${
   s.livre.exercice && s.livre.exercice.clos ? ' <span class="badge b-paid">clos</span>' : ''}</button>` : ''}
+        ${s.livre ? `<button data-tab="liasse" class="${s.onglet === 'liasse' ? 'active' : ''}">Liasse</button>` : ''}
         ${s.livre ? `<button data-tab="recherche" class="${s.onglet === 'recherche' ? 'active' : ''}">Recherche</button>` : ''}
       </div>${corps}`;
 
@@ -2358,6 +2360,7 @@
     else if (s.onglet === 'inventaire') brancherInventaire(el, root, dossier);
     else if (s.onglet === 'exercice') brancherCloture(el, root, dossier);
     else if (s.onglet === 'revision') brancherRevision(el, root, dossier);
+    else if (s.onglet === 'liasse') brancherLiasse(el, root, dossier);
     else brancherVue(el, root, dossier, lignes);
     // APRÈS le dessin, jamais pendant (7.27.0) : un `scrollIntoView` posé dans un gabarit est
     // effacé par le `innerHTML` qui suit.
@@ -2883,9 +2886,11 @@
         <td class="small muted">${esc(c.detail || 'rien à signaler')}</td></tr>`).join('')}</tbody></table>
     </div>
     <div class="panel mt"><h2>Les états financiers ${info('cl.etats')}</h2>
-      <p class="small muted">Déduits de la <b>balance</b>, rubrique par rubrique. <b>Ce n'est pas la liasse
-      fiscale NCT 01</b> : sa présentation exacte n'est pas établie ici, et la promettre serait promettre
-      ce qu'une autre version livrera.</p>
+      <p class="small muted">Déduits de la <b>balance</b>, rubrique par rubrique — la présentation d'ensemble
+      qui dit où en est le dossier. La <b>liasse</b>, avec ses codes de rubriques et le résultat fiscal, vit dans
+      son onglet à elle. <em>À VÉRIFIER : la présentation exacte du système comptable des entreprises n'est
+      validée par personne ici.</em>
+      <button type="button" class="btn btn-sm" id="cl-liasse">Ouvrir la liasse</button></p>
       <div class="split">
         <div><h3 class="sub-h">Bilan — actif</h3>
           <div class="scroll-x"><table class="list compact"><tbody>${e.actif.map(groupe).join('')}
@@ -2979,6 +2984,8 @@
     if (!s.cloture || s.clotureRev !== rev) { s.clotureRev = rev; chargerCloture(root, dossier); return; }
     const rep = $('#cl-reprise', el);
     if (rep) rep.onclick = () => repriseForm(root, dossier);
+    const vli = $('#cl-liasse', el);
+    if (vli) vli.onclick = () => { s.onglet = 'liasse'; drawLivres(root, dossier); };
     const fus = $('#cl-fusion', el);
     if (fus) fus.onclick = () => fusionnerLivre(root, dossier);
     const clo = $('#cl-cloturer', el);
@@ -3020,6 +3027,184 @@
     try { s.cloture = await api.cloture({ dossierId: dossier.id, annee: s.annee }); }
     catch (e) { s.cloture = null; toast(plainError(e), 'error'); }
     drawLivres(root, dossier);
+  }
+
+  // ==================================================== LA LIASSE ET L'ANNUEL (10.0.0)
+  //
+  // Le document où une erreur coûte le plus cher, et c'est pour ça que cet écran ne cache rien :
+  // chaque rubrique s'ouvre sur les comptes qui l'ont remplie, une rubrique vide DIT pourquoi, et
+  // ce qu'aucune rubrique ne capte est montré en rouge. « À VÉRIFIER » est écrit en tête : la
+  // présentation exacte du système comptable des entreprises n'est validée par personne, et la
+  // liasse réelle du pilote n'a pas encore été produite.
+
+  async function chargerLiasse(root, dossier) {
+    const s = livresState;
+    try { s.liasse = await api.liasse({ dossierId: dossier.id, annee: s.annee }); }
+    catch (e) { s.liasse = null; toast(plainError(e), 'error'); }
+    drawLivres(root, dossier);
+  }
+
+  function vueLiasse(dossier) {
+    const s = livresState;
+    const L = s.liasse;
+    if (!L) return `<div class="empty mini">Lecture de la liasse…</div>`;
+    const li = L.liasse, f = L.fiscal;
+    const money0 = n => esc(money(n));
+    const nature = id => (L.natures.find(x => x.id === id) || {}).label || id;
+    const ligne = x => `<tr class="${x.montant === null ? 'row-muted' : ''}">
+      <td class="nw small muted">${esc(x.id)}</td>
+      <td>${esc(x.label)}${x.deduit || x.charge ? ' <span class="small muted">(en moins)</span>' : ''}
+        ${x.montant === null ? `<div class="small muted">${esc(x.raison)}</div>` : ''}</td>
+      <td class="r nw">${x.montant === null ? '<span class="muted">—</span>' : money0(x.montant)}</td>
+      <td class="row-actions">${x.detail.length ? `<button type="button" class="btn btn-sm" data-rub="${esc(x.id)}">Voir les comptes</button>` : ''}</td></tr>`;
+    return `<div class="filters">
+      ${info('li.liasse')}
+      <span class="small muted">Exercice ${esc(s.annee)}</span>
+      <span class="badge ${L.clos ? 'b-paid' : 'b-due'}">${L.clos ? 'clos' : 'ouvert'}</span>
+      <button class="btn btn-sm" id="li-modele">Ajuster le modèle de rubriques…</button>
+      <button class="btn btn-sm" id="li-csv">Exporter la liasse en CSV</button>
+    </div>
+    <div class="warn-box mb"><b>À VÉRIFIER avec ton client et l'administration.</b> Les rubriques ci-dessous suivent
+      l'usage ; la présentation exacte du système comptable des entreprises n'est validée par personne ici, et
+      <b>aucun taux d'impôt n'est écrit dans SkanFact</b>. Chaque rubrique s'ouvre sur les comptes qui l'ont remplie :
+      compare-la à ce que le portail attend avant de la recopier.</div>
+    ${li.equilibre && li.coherent
+    ? '<div class="ok-box mb">Actif = passif, et le résultat du bilan est celui de l\'état de résultat.</div>'
+    : `<div class="warn-box mb"><b>La liasse ne tombe pas juste.</b>
+        ${li.equilibre ? '' : `Actif ${money0(li.totalActif)} contre passif ${money0(li.totalPassif)}, écart ${money0(li.totalActif - li.totalPassif)}. `}
+        ${li.coherent ? '' : `Le résultat du bilan (${money0(li.resultat)}) n'est pas celui de l'état de résultat (${money0(li.resultatEtat)}). `}
+        Signale-le avant de déposer quoi que ce soit.</div>`}
+    ${li.orphelins.length ? `<div class="warn-box mb" id="li-orphelins"><b>${esc(pl(li.orphelins.length, 'compte n\'entre', 'comptes n\'entrent'))} dans aucune rubrique</b>
+      — et ${li.orphelins.length > 1 ? 'ils ne sont' : 'il n\'est'} donc nulle part dans la liasse :
+      ${li.orphelins.slice(0, 10).map(o => `${esc(o.compte)} (${money0(o.solde)})`).join(' · ')}${li.orphelins.length > 10 ? '…' : ''}.
+      <div class="small">Ajuste le modèle de rubriques pour les rattacher.</div></div>` : ''}
+
+    ${li.etats.map(e => `<div class="panel"><h2>${esc(e.label)}</h2>
+      <div class="scroll-x"><table class="list compact"><thead><tr><th class="nw">Code</th><th>Rubrique</th><th class="r">Montant</th><th></th></tr></thead>
+      <tbody>${e.lignes.map(ligne).join('')}</tbody>
+      <tfoot><tr><th colspan="2">${esc(e.id === 'resultat' ? 'Résultat de l\'exercice' : 'Total')}</th><th class="r nw">${money0(e.total)}</th><th></th></tr></tfoot></table></div></div>`).join('')}
+
+    <div class="panel"><h2>Résultat fiscal et impôt ${info('li.fiscal')}</h2>
+      <table class="list compact"><tbody>
+        <tr><td>Résultat comptable</td><td class="r nw">${money0(f.resultatComptable)}</td></tr>
+        <tr><td>+ Réintégrations</td><td class="r nw">${money0(f.reintegrations)}</td></tr>
+        <tr><td>− Déductions et reports</td><td class="r nw">${money0(f.deductions)}</td></tr>
+        <tr class="gl-g"><th>Résultat fiscal</th><th class="r nw">${money0(f.base)}</th></tr>
+        ${f.deficitaire ? '<tr><td colspan="2" class="small muted">Exercice déficitaire : la base imposable est nulle, et le déficit se reporte — le report s\'impute à la main sur l\'exercice suivant.</td></tr>' : ''}
+        <tr><td>Impôt${f.taux == null ? '' : ` au taux de ${esc(String(f.taux))} %`}</td>
+          <td class="r nw">${f.impot === null ? '<span class="muted">—</span>' : money0(f.impot)}</td></tr>
+        ${f.raisonImpot ? `<tr><td colspan="2" class="small muted">${esc(f.raisonImpot)}</td></tr>` : ''}
+      </tbody></table>
+      <p class="small muted mt">Le <b>minimum d'impôt</b> n'est pas calculé : il dépend d'une règle de droit que
+      personne n'a confirmée ici, et un chiffre inventé sur une déclaration coûte plus cher qu'une case vide.</p>
+      <div class="inline mt">
+        <label class="field narrow"><span>Taux d'impôt (%)</span>
+          <input type="text" id="li-taux" value="${esc(L.tauxImpot == null ? '' : String(L.tauxImpot))}" placeholder="vide = aucun"></label>
+        <button class="btn btn-sm" id="li-taux-ok">Enregistrer le taux</button>
+      </div>
+      <h3 class="eyebrow mt">Retraitements</h3>
+      ${L.retraitements.length
+    ? `<table class="list compact"><tbody>${L.retraitements.map(r => `<tr>
+          <td class="nw small">${esc(nature(r.nature))}</td><td>${esc(r.libelle)}</td>
+          <td class="r nw">${money0(r.montant)}</td>
+          <td class="row-actions"><button type="button" class="btn btn-sm" data-rtx="${esc(r.id)}">Retirer la ligne</button></td></tr>`).join('')}</tbody></table>`
+    : '<div class="empty mini">Aucun retraitement. Ce qui se réintègre et ce qui se déduit dépend du droit : chaque ligne se saisit, rien n\'est proposé.</div>'}
+      <div class="sous-table"><button class="btn btn-sm" id="li-rt-add">Ajouter un retraitement…</button></div>
+    </div>
+
+    <div class="panel"><h2>Déclaration annuelle d'employeur ${info('li.employeur')}</h2>
+      <p class="small">Elle porte <b>deux choses distinctes</b> qu'on confond : les salaires versés, et les
+      retenues à la source pratiquées sur des fournisseurs. Les deux figurent sur le même formulaire.</p>
+      <table class="list compact"><tbody>${L.employeur.cases.map(c => `<tr class="${c.montant === null ? 'row-muted' : ''}">
+        <td>${esc(c.label)}<div class="small muted">${esc(c.comptes.join(', '))}${c.raison ? ' · ' + esc(c.raison) : ''}</div></td>
+        <td class="r nw">${c.montant === null ? '<span class="muted">—</span>' : money0(c.montant)}</td></tr>`).join('')}</tbody></table>
+      <p class="small muted mt">${esc(L.employeur.raisonNominatif)}</p>
+    </div>`;
+  }
+
+  function brancherLiasse(el, root, dossier) {
+    const s = livresState;
+    const rev = `${(s.livre.audit || []).length}:${(s.livre.ecritures || []).length}`;
+    if (!s.liasse || s.liasseRev !== rev) { s.liasseRev = rev; chargerLiasse(root, dossier); return; }
+    const relire = () => { s.liasseRev = ''; chargerLiasse(root, dossier); };
+
+    // Chaque rubrique s'OUVRE sur les comptes qui l'ont remplie : un chiffre qu'on ne peut pas
+    // ouvrir se croit ou ne se croit pas, et sur une liasse c'est le pire des deux (7.15.0).
+    $$('[data-rub]', el).forEach(b => { b.onclick = () => {
+      const x = s.liasse.liasse.etats.flatMap(e => e.lignes).find(y => y.id === b.dataset.rub);
+      if (!x) return;
+      infoDialog(`${x.id} — ${x.label}`,
+        `<table class="list compact"><tbody>${x.detail.map(d => `<tr><td class="nw">${esc(d.compte)}</td>
+          <td>${esc(d.libelle)}</td><td class="r nw">${esc(money(d.montant))}</td></tr>`).join('')}</tbody>
+        <tfoot><tr><th colspan="2">Total</th><th class="r nw">${esc(money(x.montant))}</th></tr></tfoot></table>`);
+    }; });
+
+    const t = $('#li-taux-ok', el);
+    if (t) t.onclick = async () => {
+      try {
+        const r = await api.fiscalAnnuel({ dossierId: dossier.id, annee: s.annee, tauxImpot: $('#li-taux', el).value });
+        s.livre = r.livre; relire();
+      } catch (e) { toast(plainError(e), 'error'); }
+    };
+    const add = $('#li-rt-add', el);
+    if (add) add.onclick = () => retraitementForm(root, dossier);
+    $$('[data-rtx]', el).forEach(b => { b.onclick = async () => {
+      const reste = (s.liasse.retraitements || []).filter(r => r.id !== b.dataset.rtx);
+      try {
+        const r = await api.fiscalAnnuel({ dossierId: dossier.id, annee: s.annee, retraitements: reste });
+        s.livre = r.livre; relire();
+      } catch (e) { toast(plainError(e), 'error'); }
+    }; });
+    const mod = $('#li-modele', el);
+    if (mod) mod.onclick = () => versReglages('pan-liasse');
+    const csv = $('#li-csv', el);
+    if (csv) csv.onclick = async () => {
+      // `K.toCsvLine` échappe comme le reste du Cabinet : un libellé de rubrique qui commence par
+      // « = » serait exécuté par un tableur (9.1.1).
+      const cell = v => String(v == null ? '' : v).replace('.', ',');
+      const texte = [K.toCsvLine(['État', 'Code', 'Rubrique', 'Montant', 'Sens'])]
+        .concat(s.liasse.liasse.etats.flatMap(e => e.lignes.map(x => K.toCsvLine([
+          e.label, x.id, x.label, x.montant === null ? '' : cell(x.montant),
+          (x.deduit || x.charge) ? 'en moins' : ''
+        ])))).join('\r\n') + '\r\n';
+      try {
+        const r = await api.exportCsv(texte, `liasse-${s.annee}-${dossier.matricule || dossier.name}`);
+        if (r) toast('Fichier enregistré.');
+      } catch (e) { toast(plainError(e), 'error'); }
+    };
+  }
+
+  function retraitementForm(root, dossier) {
+    const s = livresState;
+    const nats = s.liasse.natures;
+    modal(`<h2>Ajouter un retraitement</h2>
+      <p class="small muted">Ce qui se réintègre et ce qui se déduit dépend du <b>droit fiscal</b>, pas de nous :
+      rien n'est proposé, chaque ligne se saisit et s'explique. <em>À VÉRIFIER avec ton client.</em></p>
+      <div class="grid-2">
+        <label class="field"><span>Nature</span><select id="rt-nature">${nats.map(n => `<option value="${esc(n.id)}">${esc(n.label)}</option>`).join('')}</select></label>
+        <label class="field obligatoire"><span>Montant</span><input type="text" id="rt-montant" placeholder="0,000"></label>
+        <label class="field obligatoire span-2"><span>Libellé</span><input type="text" id="rt-libelle" placeholder="Amende fiscale non déductible"></label>
+      </div>
+      <p class="small muted" id="rt-aide">${esc(nats[0].aide)}</p>
+      <div class="modal-actions"><button class="btn" dismiss>Annuler</button><button class="btn btn-primary" id="rt-ok">Ajouter</button></div>`,
+    (couche, close) => {
+      const sel = $('#rt-nature', couche);
+      sel.onchange = () => { $('#rt-aide', couche).textContent = (nats.find(n => n.id === sel.value) || {}).aide || ''; };
+      $('#rt-ok', couche).onclick = async () => {
+        const ligne = {
+          id: 'rt' + Date.now().toString(36), nature: sel.value,
+          libelle: $('#rt-libelle', couche).value.trim(),
+          montant: Number(String($('#rt-montant', couche).value).replace(',', '.')) || 0
+        };
+        const v = KC.retraitementValide(ligne);
+        if (!v.ok) return toast(v.motifs[0], 'error');
+        try {
+          const r = await api.fiscalAnnuel({ dossierId: dossier.id, annee: s.annee,
+            retraitements: (s.liasse.retraitements || []).concat([ligne]) });
+          s.livre = r.livre; close(); s.liasseRev = ''; chargerLiasse(root, dossier);
+        } catch (e) { toast(plainError(e), 'error'); }
+      };
+    });
   }
 
   // ================================================ LA RÉVISION ET LES QUESTIONS (9.10.0)
@@ -6266,6 +6451,27 @@
     if (ng) ng.onclick = () => guideForm(null);
     dessinerGuides(view);
 
+    // F-9.6.0-12 (livré en 10.0.0) — les régimes et ce que chacun dépose. La table part VIDE : tant
+    // qu'elle l'est, le calendrier ne change pas d'un pixel. C'est le cabinet qui écrit SES règles.
+    const ra = $('#sr-reg-add', view);
+    if (ra) ra.onclick = () => { regBrouillon = lireRegimes(view).concat([{ id: '', label: '', tva: '', cnss: true, annuelles: [] }]); dessinerRegimes(view); };
+    const rb = $('#sr-reg-base', view);
+    if (rb) rb.onclick = () => {
+      regBrouillon = K.REGIMES.map(r => ({ id: r.id, label: r.label, tva: '', cnss: true, annuelles: [] }));
+      dessinerRegimes(view);
+      toast('Les trois régimes sont posés, sans aucune règle : à toi de dire ce que chacun dépose.');
+    };
+    const rs2 = $('#sr-reg-save', view);
+    if (rs2) rs2.onclick = async () => {
+      const table = lireRegimes(view).filter(r => r.id || r.label);
+      if (table.some(r => !r.id || !r.label)) return toast('Chaque régime a besoin d\'un identifiant et d\'un nom.', 'error');
+      try {
+        S = await api.saveCabinet({ settings: { regimes: table } });
+        regBrouillon = null; dessinerRegimes(view); flash($('#sr-reg-saved', view));
+      } catch (e) { toast(plainError(e), 'error'); }
+    };
+    dessinerRegimes(view);
+
     const add = $('#sr-corr-add', view);
     if (add) {
       add.onclick = () => {
@@ -6317,6 +6523,69 @@
       } catch (e) { toast(plainError(e), 'error'); }
     };
     dessinerCycles(view); dessinerQuestionnaire(view);
+
+    // 10.0.0 — le modèle de liasse. Même mécanique : vide = celui que le moteur PROPOSE, et dès
+    // qu'on en écrit un, il le remplace entièrement — jamais un mélange des deux, qui donnerait un
+    // rattachement de compte que personne n'a décidé.
+    const la = $('#sr-liasse-add', view);
+    if (la) la.onclick = () => { liasseBrouillon = lireLiasse(view).concat([{ id: '', etat: 'bilan-actif', label: '', comptes: [], signe: 1, deduit: false, charge: false }]); dessinerLiasse(view); };
+    const lr = $('#sr-liasse-reset', view);
+    if (lr) lr.onclick = async () => {
+      if (!await confirmDialog('Reprendre le modèle proposé ?',
+        '<p>Tes rubriques à toi seront remplacées par celles que SkanFact propose. Tu pourras les remodifier ensuite.</p>', 'Reprendre', false)) return;
+      liasseBrouillon = KC.MODELE_LIASSE.map(r => ({ ...r, comptes: (r.comptes || []).slice() }));
+      dessinerLiasse(view);
+    };
+    const ls = $('#sr-liasse-save', view);
+    if (ls) ls.onclick = async () => {
+      const table = lireLiasse(view).filter(r => r.id || r.label || r.comptes.length);
+      const boiteux = table.filter(r => !r.id || !r.label);
+      if (boiteux.length) return toast('Chaque rubrique a besoin d\'un code et d\'un libellé : sans eux, elle s\'imprimerait « ».', 'error');
+      const doublons = table.map(r => r.id).filter((x, i, a) => a.indexOf(x) !== i);
+      if (doublons.length) return toast(`Le code « ${doublons[0]} » est posé deux fois : deux rubriques ne peuvent pas porter le même.`, 'error');
+      try {
+        S = await api.saveLiasse({ modele: table });
+        liasseBrouillon = null; dessinerLiasse(view); flash($('#sr-liasse-saved', view));
+      } catch (e) { toast(plainError(e), 'error'); }
+    };
+    dessinerLiasse(view);
+  }
+
+  let liasseBrouillon = null;
+  const lireLiasse = view => $$('#sr-liasse tr[data-lr]', view).map(tr => ({
+    id: ($('[data-k=id]', tr) || {}).value || '',
+    etat: ($('[data-k=etat]', tr) || {}).value || 'bilan-actif',
+    label: ($('[data-k=label]', tr) || {}).value || '',
+    comptes: String((($('[data-k=comptes]', tr) || {}).value) || '').split(/[,\s]+/).map(x => x.trim()).filter(Boolean),
+    signe: ($('[data-k=signe]', tr) || {}).value === '-1' ? -1 : 1,
+    deduit: !!($('[data-k=deduit]', tr) || {}).checked,
+    charge: !!($('[data-k=charge]', tr) || {}).checked,
+    resultat: ($('[data-k=res]', tr) || {}).value === '1'
+  }));
+
+  function dessinerLiasse(view) {
+    const box = $('#sr-liasse', view);
+    if (!box) return;
+    const table = liasseBrouillon || (S.liasse || []);
+    const propose = !table.length;
+    const rows = propose ? KC.MODELE_LIASSE : table;
+    const d = propose ? 'disabled' : '';
+    box.innerHTML = `${propose ? '<div class="sa-vide">Le modèle proposé sert tant que tu n\'en écris pas un autre.</div>' : ''}
+      <div class="scroll-x"><table class="list compact sa-table"><thead><tr>
+        <th class="nw">Code</th><th class="nw">État</th><th>Libellé</th><th>Comptes</th><th class="nw">Solde</th><th class="nw">En moins</th><th></th></tr></thead>
+      <tbody>${rows.map((r, i) => `<tr data-lr="${i}">
+        <td><input data-k="id" value="${esc(r.id)}" ${d} placeholder="AC1"></td>
+        <td><select data-k="etat" ${d}>${KC.LIASSE_ETATS.map(e => `<option value="${esc(e.id)}" ${r.etat === e.id ? 'selected' : ''}>${esc(e.label)}</option>`).join('')}</select></td>
+        <td><input data-k="label" value="${esc(r.label)}" ${d} placeholder="Clients et comptes rattachés"></td>
+        <td><input data-k="comptes" value="${esc((r.comptes || []).join(' '))}" ${d} placeholder="41"></td>
+        <td><select data-k="signe" ${d}><option value="1" ${r.signe === 1 ? 'selected' : ''}>débiteur</option><option value="-1" ${r.signe === -1 ? 'selected' : ''}>créditeur</option></select></td>
+        <td><label class="check"><input type="checkbox" data-k="${r.charge ? 'charge' : 'deduit'}" ${(r.deduit || r.charge) ? 'checked' : ''} ${d}> ${r.charge ? 'charge' : 'déduit'}</label>
+          <input type="hidden" data-k="res" value="${r.resultat ? '1' : '0'}"></td>
+        <td class="sa-sup">${propose ? '' : `<button type="button" class="btn btn-sm" data-lrx="${i}" aria-label="Retirer cette rubrique">✕</button>`}</td>
+      </tr>`).join('')}</tbody></table></div>`;
+    $$('[data-lrx]', box).forEach(b => { b.onclick = () => {
+      const t = lireLiasse(view); t.splice(Number(b.dataset.lrx), 1); liasseBrouillon = t; dessinerLiasse(view);
+    }; });
   }
 
   let cyclesBrouillon = null, questBrouillon = null;
@@ -6358,6 +6627,50 @@
         </tr>`).join('')}</tbody></table></div>`;
     $$('[data-qx]', box).forEach(b => { b.onclick = () => {
       const t = lireQuestionnaire(view); t.splice(Number(b.dataset.qx), 1); questBrouillon = t; dessinerQuestionnaire(view);
+    }; });
+  }
+
+  let regBrouillon = null;
+  const lireRegimes = view => $$('#sr-regimes tr[data-rg]', view).map(tr => ({
+    id: ($('[data-k=id]', tr) || {}).value || '', label: ($('[data-k=label]', tr) || {}).value || '',
+    tva: ($('[data-k=tva]', tr) || {}).value || '',
+    cnss: !!($('[data-k=cnss]', tr) || {}).checked,
+    annuelles: (() => {
+      // Une échéance annuelle par régime, saisie en « nom / JJ-MM » : trois champs par ligne
+      // auraient fait une grille de douze colonnes, illisible. Ce qui est tapé reste relu par le
+      // moteur, qui borne le mois et le jour — un « 31-02 » ne peut désigner aucune date réelle.
+      const t = String((($('[data-k=annuelles]', tr) || {}).value) || '').trim();
+      return t ? t.split(';').map((x, i) => {
+        const [nom, quand] = x.split('@').map(y => String(y || '').trim());
+        const [j, m] = String(quand || '').split(/[-/]/).map(Number);
+        return { id: 'a' + (i + 1), label: nom, jour: j || 0, mois: m || 0 };
+      }).filter(a => a.label && a.jour && a.mois) : [];
+    })()
+  }));
+
+  function dessinerRegimes(view) {
+    const box = $('#sr-regimes', view);
+    if (!box) return;
+    const table = regBrouillon || ((S.settings || {}).regimes || []);
+    box.innerHTML = !table.length
+      ? `<div class="sa-vide">Aucun régime déclaré : le calendrier réclame la TVA mensuelle et la CNSS à tous tes
+         clients, comme avant. Déclare-les pour qu'un forfaitaire cesse de se voir réclamer une TVA qu'il ne dépose pas.</div>`
+      : `<div class="scroll-x"><table class="list compact sa-table"><thead><tr>
+          <th class="nw">Identifiant</th><th class="nw">Nom du régime</th><th class="nw">TVA</th><th class="nw">CNSS</th>
+          <th>Échéances annuelles</th><th></th></tr></thead>
+        <tbody>${table.map((r, i) => `<tr data-rg="${i}">
+          <td><input data-k="id" value="${esc(r.id)}" placeholder="forfaitaire"></td>
+          <td><input data-k="label" value="${esc(r.label)}" placeholder="Régime forfaitaire"></td>
+          <td><select data-k="tva">${K.TVA_PERIODES.map(p => `<option value="${esc(p.id)}" ${(r.tva || '') === p.id ? 'selected' : ''}>${esc(p.label)}</option>`).join('')}</select></td>
+          <td><label class="check"><input type="checkbox" data-k="cnss" ${r.cnss !== false ? 'checked' : ''}> dépose</label></td>
+          <td><input data-k="annuelles" value="${esc((r.annuelles || []).map(a => `${a.label}@${String(a.jour).padStart(2, '0')}-${String(a.mois).padStart(2, '0')}`).join(' ; '))}"
+            placeholder="Déclaration annuelle@25-04 ; Acompte@25-06"></td>
+          <td class="sa-sup"><button type="button" class="btn btn-sm" data-rgx="${i}" aria-label="Retirer ce régime">✕</button></td>
+        </tr>`).join('')}</tbody></table></div>
+        <p class="small muted">Une échéance annuelle s'écrit <code>nom@JJ-MM</code>, séparée par un point-virgule.
+        Elle porte sur l'exercice écoulé.</p>`;
+    $$('[data-rgx]', box).forEach(b => { b.onclick = () => {
+      const t = lireRegimes(view); t.splice(Number(b.dataset.rgx), 1); regBrouillon = t; dessinerRegimes(view);
     }; });
   }
 
@@ -6523,6 +6836,8 @@
     'pan-saisie': { onglet: 'compta', titre: 'La grille de saisie', mots: 'saisie clavier touches raccourci solder recopier dupliquer journal date kilometre grille brouillard validation' },
     'pan-guides': { onglet: 'compta', titre: 'Guides d\'écritures', mots: 'guide modele ecriture type loyer salaire achat tva honoraires steg prerempli abonnement recurrent' },
     'pan-comptes': { onglet: 'compta', titre: 'Correspondance des comptes', mots: 'correspondance compte plan client cabinet traduire import export numero prefixe' },
+    'pan-regimes': { onglet: 'cabinet', titre: 'Les régimes et leurs échéances', mots: 'regime regimes forfaitaire reel tva mensuelle trimestrielle cnss echeance annuelle calendrier fiscal depot' },
+    'pan-liasse': { onglet: 'compta', titre: 'Le modèle de liasse', mots: 'liasse nct fiscale bilan actif passif resultat rubrique rubriques etats financiers annuel depot modele' },
     'pan-questionnaire': { onglet: 'compta', titre: 'Révision : cycles et questionnaire', mots: 'revision cycle cycles feuille maitresse lead schedule questionnaire fin exercice question client trésorerie ventes achats immobilisations personnel fiscal capitaux' },
     'pan-inbox': { onglet: 'donnees', titre: 'Boîte de réception', mots: 'boite reception dossier surveille paquets arrives import mail' },
     'pan-backup': { onglet: 'donnees', titre: 'Sauvegardes', mots: 'sauvegarde restaurer copie externe usb icloud filet perdu' },
@@ -6582,6 +6897,17 @@
         <p class="muted small mt">Cette empreinte identifie ton cabinet. Ton client la voit après l'import : s'il te la lit au téléphone
         et qu'elle correspond, c'est bien à toi qu'il envoie.</p>
         <div class="modal-actions"><button class="btn btn-primary" id="c-pair">Enregistrer le fichier d'appairage…</button></div>
+      </div>
+
+      ${panneauReg('pan-regimes', info('rg.regimes'))}
+        <p class="small">Ce que chaque <strong>régime</strong> dépose, et quand. Tant que tu n'en déclares aucun, le
+        calendrier traite tous tes clients pareil — c'est le comportement d'avant, et il ne change pas tout seul.
+        Dès que tu déclares un régime, les dossiers qui le portent suivent ses règles. <em>À VÉRIFIER : les
+        périodicités et les dates sont les TIENNES. SkanFact n'écrit aucune règle de droit.</em></p>
+        <div id="sr-regimes"></div>
+        <div class="sous-table"><button class="btn btn-sm" id="sr-reg-add">Ajouter un régime</button>
+          <button class="btn btn-sm" id="sr-reg-base">Partir des trois régimes proposés</button></div>
+        <div class="modal-actions"><span class="saved" id="sr-reg-saved" hidden></span><button class="btn btn-primary" id="sr-reg-save">Enregistrer les régimes</button></div>
       </div>
 
       ${panneauReg('pan-equipe', info('eq.equipe'))}
@@ -6667,6 +6993,18 @@
         <div id="sr-quest"></div>
         <div class="sous-table"><button class="btn btn-sm" id="sr-quest-add">Ajouter une question</button></div>
         <div class="modal-actions"><span class="saved" id="sr-quest-saved" hidden></span><button class="btn btn-primary" id="sr-quest-save">Enregistrer ma méthode</button></div>
+      </div>
+
+      ${panneauReg('pan-liasse', info('li.modele'))}
+        <p class="small">Les rubriques de la <strong>liasse</strong>, et les comptes que chacune capte. Le compte va
+        dans la rubrique dont le préfixe est le plus <strong>long</strong>, parmi celles du bon sens de solde — le 44
+        débiteur est une créance sur l'État, le même 44 créditeur est une dette envers lui.
+        <em>À VÉRIFIER : la présentation exacte du système comptable des entreprises n'est validée par personne ici.
+        Confronte-la à ce que le portail attend avant de déposer.</em></p>
+        <div id="sr-liasse"></div>
+        <div class="sous-table"><button class="btn btn-sm" id="sr-liasse-add">Ajouter une rubrique</button>
+          <button class="btn btn-sm" id="sr-liasse-reset">Reprendre le modèle proposé</button></div>
+        <div class="modal-actions"><span class="saved" id="sr-liasse-saved" hidden></span><button class="btn btn-primary" id="sr-liasse-save">Enregistrer le modèle</button></div>
       </div>
       </section>
 

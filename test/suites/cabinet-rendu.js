@@ -149,7 +149,12 @@ t('9.4.3 : le Cabinet a un thème, et il le RETIENT', () => {
   const h = main.slice(main.indexOf("ipcMain.handle('cab:saveCabinet'"));
   const fin = h.indexOf('ipcMain.handle(', 10);
   const zone = h.slice(0, fin > 0 ? fin : 2000);
-  assert.ok(zone.length < 2500, 'la tranche du handler est trop large pour prouver quoi que ce soit');
+  // 2 900 depuis la 10.0.0 : le handler a gagné les régimes (F-9.6.0-12) et le garde-fou qui
+  // empêche un écran n'envoyant que des réglages d'effacer le NOM du cabinet. La borne ne protège
+  // pas d'une taille, elle protège d'une tranche qui déborderait sur le handler suivant et
+  // prouverait alors n'importe quoi (7.21.0) : le contrôle qui compte est celui du `fin` ci-dessus.
+  assert.ok(zone.length < 2900, 'la tranche du handler est trop large pour prouver quoi que ce soit');
+  assert.ok(!zone.slice(10).includes('ipcMain.handle('), 'la tranche déborde sur le handler suivant');
   assert.ok(/state\.settings = \{ \.\.\.state\.settings, theme:/.test(zone),
     'le thème doit être FUSIONNÉ dans les réglages, pas les remplacer');
 

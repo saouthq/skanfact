@@ -7,7 +7,7 @@
 // justement montrer un exercice ouvert. Skander, devant son vrai dossier : « ton jeu d'exemple ne
 // montre pas le vrai écran ».
 //
-// Ce script calcule ICI, avec le moteur de l'application entreprise, les journaux de huit mois du
+// Ce script calcule ICI, avec le moteur de l'application entreprise, les journaux de douze mois du
 // jeu de démonstration — écritures en partie double, ventes, achats, encaissements, trésorerie,
 // balance, TVA — exactement comme `pack:build` les produirait, et les range en JSON dans le
 // Cabinet. Au chargement de l'exemple, le Cabinet en fait de vrais `.skanpack` recalés sur le mois
@@ -25,7 +25,10 @@ const C = require('../src/renderer/core.js');
 const { buildDemoData } = require('../src/renderer/demo.js');
 
 const REFERENCE = '2026-09-16';
-const MOIS = 8;
+// DOUZE mois depuis la 10.0.0, et pas huit : la liasse porte sur un EXERCICE. Avec huit mois, le
+// premier comptable qui ouvre l'onglet Liasse de l'exemple voit un exercice tronqué — une liasse
+// sur huit mois n'est pas une liasse, et c'est très exactement ce que cette version doit montrer.
+const MOIS = 12;
 const SORTIE = path.join(__dirname, '..', 'src', 'cabinet', 'exemple-paquets.json');
 
 function ajouterMois(ym, n) {
