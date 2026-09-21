@@ -2889,8 +2889,8 @@
       <p class="small muted">Déduits de la <b>balance</b>, rubrique par rubrique — la présentation d'ensemble
       qui dit où en est le dossier. La <b>liasse</b>, avec ses codes de rubriques et le résultat fiscal, vit dans
       son onglet à elle. <em>À VÉRIFIER : la présentation exacte du système comptable des entreprises n'est
-      validée par personne ici.</em>
-      <button type="button" class="btn btn-sm" id="cl-liasse">Ouvrir la liasse</button></p>
+      validée par personne ici.</em></p>
+      <div class="inline mb"><button type="button" class="btn btn-sm" id="cl-liasse">Ouvrir la liasse</button></div>
       <div class="split">
         <div><h3 class="sub-h">Bilan — actif</h3>
           <div class="scroll-x"><table class="list compact"><tbody>${e.actif.map(groupe).join('')}
@@ -3098,7 +3098,7 @@
       <p class="small muted mt">Le <b>minimum d'impôt</b> n'est pas calculé : il dépend d'une règle de droit que
       personne n'a confirmée ici, et un chiffre inventé sur une déclaration coûte plus cher qu'une case vide.</p>
       <div class="inline mt">
-        <label class="field narrow"><span>Taux d'impôt (%)</span>
+        <label class="field narrow"><span>Taux d'impôt (%) ${info('li.taux')}</span>
           <input type="text" id="li-taux" value="${esc(L.tauxImpot == null ? '' : String(L.tauxImpot))}" placeholder="vide = aucun"></label>
         <button class="btn btn-sm" id="li-taux-ok">Enregistrer le taux</button>
       </div>
@@ -3258,9 +3258,9 @@
 
     <div class="panel"><h2>Les feuilles maîtresses ${info('rv.feuilles')}</h2>
       <p class="lead">${esc(d.revus)} compte${d.revus > 1 ? 's' : ''} signé${d.revus > 1 ? 's' : ''} sur ${esc(d.total)}${d.reste ? ` — ${esc(pl(d.reste, 'reste à revoir', 'restent à revoir'))}` : ''}.</p>
-      <div class="cards">${d.feuilles.map(f => `<button type="button" class="card ${cycle === f.cycle ? 'card-on' : ''}" data-cycle="${esc(f.cycle)}">
+      <div class="stats rangee cy-cartes">${d.feuilles.map(f => `<button type="button" class="stat cy-carte${cycle === f.cycle ? ' cy-on' : ''}" data-cycle="${esc(f.cycle)}" aria-pressed="${cycle === f.cycle}">
         <span class="eyebrow">${esc(f.label)}</span>
-        <b>${esc(f.revus)} / ${esc(f.total)}</b>
+        <span class="val">${esc(f.revus)} / ${esc(f.total)}</span>
         <span class="small muted">${f.total ? money0(f.totaux.solde) : 'aucun compte'}</span></button>`).join('')}</div>
       ${feuille
     ? (feuille.rows.length
@@ -5838,7 +5838,13 @@
       </div></div>
       ${!lignes.length ? `<div class="panel"><div class="empty">${prodState.collab
     ? 'Aucun dossier n\'est confié à cette personne.<br><span class="small">Un dossier se confie dans sa fiche, onglet Suivi, panneau « Qui travaille sur ce dossier ».</span>'
-    : 'Aucun dossier dans le portefeuille.'}</div></div>`
+    // « Aucun dossier dans le portefeuille » s'affichait sur un portefeuille PLEIN : le tableau
+    // de production lit les LIVRES, et tant qu'aucun n'est créé il n'a rien à montrer. Une phrase
+    // qui dit le contraire de ce que l'écran d'à côté affiche est un bug, pas une imprécision
+    // (7.3.0) — et un état vide sans geste n'apprend rien (7.0.0).
+    : (S.dossiers || []).filter(d => !d.archived).length
+      ? 'Aucun livre n\'est encore ouvert.<br><span class="small">Le tableau de production suit les <b>livres</b> de tes dossiers, pas leurs paquets : ouvre la comptabilité d\'un client et relis ses paquets pour qu\'il apparaisse ici.</span><div class="inline mt"><button class="btn btn-sm btn-primary" id="pr-vers-dossiers">Voir mes dossiers</button></div>'
+      : 'Aucun dossier dans le portefeuille.<div class="inline mt"><button class="btn btn-sm btn-primary" id="pr-vers-dossiers">Ajouter un client</button></div>'}</div></div>`
     : `<div class="${retard ? 'warn-box' : 'ok-box'} mb">${retard
       ? `${pl(retard, 'mois', 'mois')} ${retard > 1 ? 'sont reçus et pas encore saisis' : 'est reçu et pas encore saisi'}.`
       : 'Tout ce qui est reçu est saisi.'}</div>
@@ -5880,6 +5886,8 @@
 
     const c = $('#pr-collab', view);
     if (c) c.onchange = () => { prodState.collab = c.value; render(); };
+    const pv = $('#pr-vers-dossiers', view);
+    if (pv) pv.onclick = () => { location.hash = '#/dossiers'; };
     const m = $('#pr-mois', view);
     if (m) m.onchange = () => { prodState.mois = Number(m.value) || 12; render(); };
     $$('tbody tr[data-id]', view).forEach(tr => {
@@ -6575,10 +6583,10 @@
         <th class="nw">Code</th><th class="nw">État</th><th>Libellé</th><th>Comptes</th><th class="nw">Solde</th><th class="nw">En moins</th><th></th></tr></thead>
       <tbody>${rows.map((r, i) => `<tr data-lr="${i}">
         <td><input data-k="id" value="${esc(r.id)}" ${d} placeholder="AC1"></td>
-        <td><select data-k="etat" ${d}>${KC.LIASSE_ETATS.map(e => `<option value="${esc(e.id)}" ${r.etat === e.id ? 'selected' : ''}>${esc(e.label)}</option>`).join('')}</select></td>
+        <td><select data-k="etat" ${d} aria-label="L'état où cette rubrique s'imprime">${KC.LIASSE_ETATS.map(e => `<option value="${esc(e.id)}" ${r.etat === e.id ? 'selected' : ''}>${esc(e.label)}</option>`).join('')}</select></td>
         <td><input data-k="label" value="${esc(r.label)}" ${d} placeholder="Clients et comptes rattachés"></td>
         <td><input data-k="comptes" value="${esc((r.comptes || []).join(' '))}" ${d} placeholder="41"></td>
-        <td><select data-k="signe" ${d}><option value="1" ${r.signe === 1 ? 'selected' : ''}>débiteur</option><option value="-1" ${r.signe === -1 ? 'selected' : ''}>créditeur</option></select></td>
+        <td><select data-k="signe" ${d} aria-label="Le sens du solde que cette rubrique capte"><option value="1" ${r.signe === 1 ? 'selected' : ''}>débiteur</option><option value="-1" ${r.signe === -1 ? 'selected' : ''}>créditeur</option></select></td>
         <td><label class="check"><input type="checkbox" data-k="${r.charge ? 'charge' : 'deduit'}" ${(r.deduit || r.charge) ? 'checked' : ''} ${d}> ${r.charge ? 'charge' : 'déduit'}</label>
           <input type="hidden" data-k="res" value="${r.resultat ? '1' : '0'}"></td>
         <td class="sa-sup">${propose ? '' : `<button type="button" class="btn btn-sm" data-lrx="${i}" aria-label="Retirer cette rubrique">✕</button>`}</td>
@@ -6661,7 +6669,7 @@
         <tbody>${table.map((r, i) => `<tr data-rg="${i}">
           <td><input data-k="id" value="${esc(r.id)}" placeholder="forfaitaire"></td>
           <td><input data-k="label" value="${esc(r.label)}" placeholder="Régime forfaitaire"></td>
-          <td><select data-k="tva">${K.TVA_PERIODES.map(p => `<option value="${esc(p.id)}" ${(r.tva || '') === p.id ? 'selected' : ''}>${esc(p.label)}</option>`).join('')}</select></td>
+          <td><select data-k="tva" aria-label="La périodicité de TVA de ce régime">${K.TVA_PERIODES.map(p => `<option value="${esc(p.id)}" ${(r.tva || '') === p.id ? 'selected' : ''}>${esc(p.label)}</option>`).join('')}</select></td>
           <td><label class="check"><input type="checkbox" data-k="cnss" ${r.cnss !== false ? 'checked' : ''}> dépose</label></td>
           <td><input data-k="annuelles" value="${esc((r.annuelles || []).map(a => `${a.label}@${String(a.jour).padStart(2, '0')}-${String(a.mois).padStart(2, '0')}`).join(' ; '))}"
             placeholder="Déclaration annuelle@25-04 ; Acompte@25-06"></td>

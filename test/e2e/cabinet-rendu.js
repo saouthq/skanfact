@@ -139,7 +139,11 @@ const PAGES = ['#/dossiers', '#/relances', '#/echeances', '#/ecritures', '#/prod
       }, { timeout: 25000 });
       for (const b2 of await barres()) {
         if (b2.sel !== '#c-tabs') continue;
-        if (b2.tabs.length < 11) throw new Error(`la comptabilité n'offre que ${b2.tabs.length} onglets : le livre n'a pas été créé, et sept écrans ne seraient pas mesurés`);
+        // DOUZE depuis la 10.0.0 : la Révision (9.10.0) et la Liasse (10.0.0) sont venues s'ajouter
+        // aux dix précédents. Le seuil dit ce que le livre DOIT ouvrir — s'il n'est pas créé, quatre
+        // écrans seulement existent, et l'instrument déclarerait le Cabinet propre sans avoir vu
+        // l'écran où un comptable passe ses journées (T-55).
+        if (b2.tabs.length < 12) throw new Error(`la comptabilité n'offre que ${b2.tabs.length} onglets : le livre n'a pas été créé, et huit écrans ne seraient pas mesurés`);
         for (const t of b2.tabs) {
           await win.click(`#c-tabs button[data-tab="${t}"]`);
           await attendre(450);

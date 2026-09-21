@@ -387,7 +387,22 @@ tr.cp-miroir td { background: var(--info-soft); }
 
 /* Le geste qui allonge un tableau vit SOUS ce tableau, pas dans la barre qui clôt le panneau :
    côte à côte, deux boutons de poids voisin laissent croire à deux façons d'enregistrer. */
-.sous-table { margin-block-start: 8px; }
+/* 10.0.0 — `.sous-table` portait un seul bouton partout : le jour où elle en a porté DEUX, ils se
+   sont retrouvés à 3,9 px l'un de l'autre, c'est-à-dire séparés par l'espace d'un gabarit et par
+   rien d'autre. Un `gap` décide de l'écart ; une espace entre deux balises ne décide de rien. */
+.sous-table { margin-block-start: 8px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+/* Les cartes de cycle de la révision (10.0.0). Elles reprennent `.stats.rangee` / `.stat` de la
+   feuille PARTAGÉE — mes premières classes (`.cards`, `.card`, `.card-on`) n'existaient nulle part,
+   et une classe posée par le code et inconnue de la feuille ne se voit nulle part (6.8.0, 8.1.0,
+   9.4.3). Ne restent ici que les deux choses que le composant ne sait pas faire : être un bouton,
+   et dire lequel est ouvert. */
+.cy-cartes { margin-block: 10px 14px; }
+.cy-carte { display: flex; flex-direction: column; gap: 2px; text-align: start; cursor: pointer;
+  font: inherit; color: inherit; transition: border-color .12s, box-shadow .12s; }
+.cy-carte:hover { border-color: var(--primary); }
+.cy-carte.cy-on { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-soft); }
+.cy-carte .val { font-size: 19px; }
 
 .sa-lot { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-block-end: 12px; }
 

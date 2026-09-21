@@ -90,9 +90,16 @@ const CIBLE = path.join(dir, 'cloture.skanclose');
   await attendreC(400);
   await wc.screenshot({ path: path.join(OUT, '01-exercice.png') });
   const ecran = plat(await wc.evaluate(() => (document.querySelector('#c-livres') || {}).textContent || ''));
-  if (!/pas la liasse fiscale NCT 01/i.test(ecran)) {
-    throw new Error('l\'écran doit dire que ce ne sont PAS les états de la liasse');
+  // RETOURNÉE en 10.0.0, et c'est la dix-septième fois que ce motif revient : l'assertion exigeait
+  // « ce n'est pas la liasse fiscale NCT 01 ». Elle décrivait l'ÉTAT du jour — la liasse n'existait
+  // pas — et la 10.0.0 l'a livrée : garder la phrase la ferait dire faux (7.3.0, vu de l'autre
+  // côté). La RÈGLE, elle, ne bouge pas : **cet écran ne prétend pas être la liasse**. Il dit ce
+  // qu'il est (des états déduits de la balance), il porte son « À VÉRIFIER », et il MÈNE à la
+  // liasse plutôt que de la nier.
+  if (!/déduits de la balance/i.test(ecran) || !/À VÉRIFIER/i.test(ecran)) {
+    throw new Error('l\'écran des états doit dire d\'où viennent ses chiffres, et porter son « À VÉRIFIER »');
   }
+  if (!(await wc.$('#cl-liasse'))) throw new Error('l\'écran des états doit mener à la liasse');
   const controles = await wc.$$eval('#c-livres .panel table tbody tr', trs => trs.length);
   if (controles < 6) throw new Error('les six contrôles devraient être affichés, vu ' + controles);
   // La RÈGLE : actif = passif, et l'écran le dit. Deux formes légitimes (T-23) : le vert « Actif =
