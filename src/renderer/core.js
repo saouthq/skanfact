@@ -5326,7 +5326,7 @@
     const licSuite = editeurIci ? licencesAFaire(data, company, t) : { jamaisEnvoyees: [], nonFacturees: [], impayees: [], expirant: [] };
     if (licSuite.jamaisEnvoyees.length) out.push({
       id: 'licences-a-envoyer', level: 'bad',
-      label: `${plFr(licSuite.jamaisEnvoyees.length, 'clé de licence')} jamais ${licSuite.jamaisEnvoyees.length > 1 ? 'envoyées' : 'envoyée'}`,
+      label: `${plFr(licSuite.jamaisEnvoyees.length, 'clé de licence', 'clés de licence')} jamais ${licSuite.jamaisEnvoyees.length > 1 ? 'envoyées' : 'envoyée'}`,
       detail: 'La clé est signée mais n\'a jamais quitté cet ordinateur : le client l\'attend, et il a peut-être déjà payé. « Envoyer la clé par email » depuis la page Licences.',
       count: licSuite.jamaisEnvoyees.length, route: '#/licences', docs: []
     });

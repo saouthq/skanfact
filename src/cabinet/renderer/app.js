@@ -279,6 +279,13 @@
     };
     document.addEventListener('keydown', onKey);
     layer.addEventListener('mousedown', e => { if (e.target === layer) dismiss(); });
+    // Le bouton « Annuler » lui-même. Il était posé dans neuf fenêtres (`data-close`) et relié à
+    // RIEN : Échap et le clic à côté fermaient, le seul chemin écrit sur l'écran ne faisait rien.
+    // On clique, rien ne se passe, on reclique, on doute de soi puis du logiciel — au pire moment,
+    // celui où on vient de décider de NE PAS faire quelque chose. L'app entreprise a cette ligne
+    // depuis la 1.8.0 ; elle n'avait jamais été portée (7.3.0). Il passe par `dismiss`, pas `close` :
+    // « Annuler » vaut Échap, donc la garde de saisie pose sa question s'il y a du travail à jeter.
+    $$('[data-close]', layer).forEach(b => b.addEventListener('click', dismiss));
     // Entrée valide, comme dans l'app entreprise depuis la 1.8.0. Sans ça, sur « Fichier créé ·
     // Le montrer dans le dossier », le réflexe « Entrée = oui » répondait « Annuler ».
     layer.addEventListener('keydown', e => {
@@ -4373,7 +4380,7 @@
         s.livre = r.livre;
         toast(r.poses.length
           ? `${pl(r.poses.length, 'lettre posée', 'lettres posées')} ; ${pl(r.restent, 'ligne reste ouverte', 'lignes restent ouvertes')}.`
-          : `Rien à lettrer d'office : ${pl(r.restent, 'ligne ouverte')}, aucune paire qui se solde sans ambiguïté.`);
+          : `Rien à lettrer d'office : ${pl(r.restent, 'ligne ouverte', 'lignes ouvertes')}, aucune paire qui se solde sans ambiguïté.`);
         redraw();
       } catch (e) { toast(plainError(e), 'error'); au.disabled = false; }
     };
@@ -5031,7 +5038,7 @@
           <div class="stat"><div class="lbl">Paquets</div><div class="val">${plan.packs.length}</div>
             <div class="sub">${plan.mois.length ? pl(plan.mois.length, 'mois', 'mois') : 'aucun'}</div></div>
           <div class="stat"><div class="lbl">Clients</div><div class="val">${new Set(plan.packs.map(p => p.id)).size}</div>
-            <div class="sub">${plan.sansPaquet.length ? pl(plan.sansPaquet.length, 'sans rien envoyé') : 'tous ont envoyé'}</div></div>
+            <div class="sub">${plan.sansPaquet.length ? `${plan.sansPaquet.length} sans rien envoyé` : 'tous ont envoyé'}</div></div>
           <div class="stat"><div class="lbl">Provisoires</div><div class="val ${plan.provisoires.length ? 'due' : 'ok'}">${plan.provisoires.length}</div>
             <div class="sub">${plan.provisoires.length ? 'chiffres susceptibles de bouger' : 'tout est définitif'}</div></div>
           <div class="stat"><div class="lbl">Période</div><div class="val" style="font-size:16px">${esc(plan.mois.length ? (plan.mois.length > 1 ? K.monthLabel(plan.mois[0]) + ' → ' + K.monthLabel(plan.mois[plan.mois.length - 1]) : K.monthLabel(plan.mois[0])) : '—')}</div></div>

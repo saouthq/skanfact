@@ -8313,14 +8313,16 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   // et le message dit quoi faire — l'allonger pour un vrai appel, corriger le texte sinon.
   t('aucun écran n\'écrit « 1 facture(s) »', () => {
     const APPELS = ['String', 'push', 'done', 'bodyFor', 'balance', 'nPoint', 'escapeHtml', 'nl2br',
-      'statusLabel', 'payslipDate', 'test', 'exec', 'indexOf', 'br', 'normNom', 'trim', 'esc', 'h'];
+      'statusLabel', 'payslipDate', 'test', 'exec', 'indexOf', 'br', 'normNom', 'trim', 'esc', 'h', 'Number', 'has'];
     // On lit la source avec ses CHAÎNES : `codeSeulement` les vide, or c'est très exactement dedans
     // que vivent les pluriels — première version de ce test, qui ne pouvait donc pas échouer, et je
     // ne l'ai su qu'en réintroduisant le défaut. Seuls les commentaires partent, parce qu'ils citent
     // la faute pour l'expliquer.
     const sansCommentaires = src => src.replace(/\/\*[\s\S]*?\*\//g, '')
       .split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
-    ['src/renderer/app.js', 'src/renderer/core.js', 'src/cabinet/renderer/app.js', 'src/cabinet/cabcore.js']
+    // `compta.js` (9.1.0) manquait à la liste : « 1 pièce(s) encore en brouillard » y vivait, dans le
+    // moteur partagé, donc dans les deux applications à la fois (T-19).
+    ['src/renderer/app.js', 'src/renderer/core.js', 'src/renderer/compta.js', 'src/cabinet/renderer/app.js', 'src/cabinet/cabcore.js']
       .forEach(f => {
         const code = sansCommentaires(fs.readFileSync(path.join(__dirname, '..', f), 'utf8'));
         assert.ok(code.length > 1000, `le nettoyage des commentaires a mangé ${f}`);
@@ -8335,6 +8337,25 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       'app.js n\'a pas de quoi accorder un pluriel');
     assert.ok(/const plFr = \(n, un, plur\)/.test(core) && /const sAccord = n =>/.test(core),
       'core.js n\'a pas de quoi accorder un pluriel');
+    // Et compta.js a le SIEN, au corps identique (il ne peut pas importer core.js).
+    const compta = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'compta.js'), 'utf8');
+    const corps = src => (src.match(/const plFr = \(n, un, plur\) => (.*);/) || [])[1];
+    assert.ok(corps(compta), 'compta.js n\'a pas de quoi accorder un pluriel');
+    assert.strictEqual(corps(compta), corps(core), 'plFr diverge entre core.js et compta.js');
+  });
+
+  // T-15 : le raccourci colle le « s » à la fin de TOUTE la chaîne — `pl(5, 'ligne ouverte')` rend
+  // « 5 ligne ouvertes ». Le troisième argument existe pour ça. Un singulier de deux mots ou plus
+  // sans pluriel explicite naîtra donc faux, et celui-là on ne le verra pas non plus.
+  t('T-15 : un singulier de deux mots passe son pluriel à pl()', () => {
+    const sansCommentaires = src => src.replace(/\/\*[\s\S]*?\*\//g, '')
+      .split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+    ['src/renderer/app.js', 'src/renderer/core.js', 'src/renderer/compta.js', 'src/cabinet/renderer/app.js', 'src/cabinet/cabcore.js']
+      .forEach(f => {
+        const code = sansCommentaires(fs.readFileSync(path.join(__dirname, '..', f), 'utf8'));
+        const fautes = code.match(/\bpl(?:Fr)?\([^,()]+,\s*'[^']* [^']*'\s*\)/g) || [];
+        assert.deepStrictEqual(fautes, [], `${f} accorde un singulier de deux mots sans pluriel : ${fautes.join(' · ')}`);
+      });
   });
 
   t('un même geste porte partout le même nom et le même habit', () => {
@@ -13032,6 +13053,41 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.ok(zone.length > 200 && zone.length < 1200, `tranche suspecte (${zone.length} caractères)`);
     assert.ok(/livresState\.livre[\s\S]*\.plan/.test(zone), 'le résolveur ne lit pas le plan du livre');
     assert.ok(zone.includes('KC.libelleDuPlan('), 'sans livre, le résolveur ne retombe pas sur le plan comptable');
+  });
+
+  t('T-09 : le bouton « Annuler » d\'une fenêtre est relié, dans les DEUX applications', () => {
+    // Neuf fenêtres du Cabinet posaient `data-close` sur leur « Annuler », et `modal()` ne le
+    // reliait à rien : Échap et le clic à côté fermaient, le seul chemin ÉCRIT sur l'écran ne
+    // faisait rien. L'app entreprise avait cette ligne depuis la 1.8.0 (le jumeau manquant, 7.3.0).
+    // On teste la règle dans le corps de `modal()` de chaque application, commentaires retirés.
+    const cas = [
+      { f: ['src', 'cabinet', 'renderer', 'app.js'], via: 'dismiss' },
+      { f: ['src', 'renderer', 'app.js'], via: 'close' },
+    ];
+    // `codeSeulement` VIDE les chaînes — et le sélecteur `'[data-close]'` en est une. On retire donc
+    // les seuls commentaires (celui qui explique la règle cite le sélecteur), en gardant les chaînes.
+    const sansComm = src => {
+      const net = src.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+      assert.ok(net.length > src.length * 0.6, 'le nettoyage des commentaires a mangé le code');
+      return net;
+    };
+    cas.forEach(({ f, via }) => {
+      const code = sansComm(lireSource(...f));
+      const deb = code.indexOf('function modal(');
+      assert.ok(deb > 0, f.join('/') + ' : modal() introuvable');
+      const fin = code.indexOf('\n  function ', deb + 10);
+      const zone = code.slice(deb, fin > deb ? fin : deb + 6000);
+      assert.ok(zone.length > 400 && zone.length < 6000, `${f.join('/')} : tranche suspecte (${zone.length})`);
+      const m = zone.match(/\$\$\('\[data-close\]', layer\)\.forEach\(b => b\.addEventListener\('click', (\w+)\)\)/);
+      assert.ok(m, f.join('/') + ' : les boutons [data-close] d\'une fenêtre ne sont reliés à rien');
+      // Au Cabinet, « Annuler » vaut Échap : il passe par `dismiss`, qui pose la question de la
+      // garde de saisie. Relié à `close`, il jetterait huit champs sans un mot.
+      assert.strictEqual(m[1], via, `${f.join('/')} : [data-close] doit passer par ${via}, pas ${m[1]}`);
+    });
+    // Et le Cabinet a bien des fenêtres qui s'en servent : sans elles, la ligne ne protégerait rien.
+    const cab = sansComm(lireSource('src', 'cabinet', 'renderer', 'app.js'));
+    const n = (cab.match(/<button class="btn" data-close>/g) || []).length;
+    assert.ok(n >= 9, `on attend au moins neuf « Annuler » data-close au Cabinet, vu ${n}`);
   });
 
   t('9.8.5 : le Cabinet migre le livre À LA LECTURE, jamais à l\'écriture', () => {

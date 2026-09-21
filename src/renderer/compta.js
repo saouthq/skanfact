@@ -61,6 +61,11 @@
 
   const txt = v => String(v == null ? '' : v).trim();
   const num = v => Number(v) || 0;
+  // Le pluriel, ici aussi. « 1 pièce(s) » est littéralement l'exemple de la règle fondatrice du
+  // Cabinet (« un logiciel qui écrit « 1 dossier(s) » paraît bâclé ») — et ce module, créé en
+  // 9.1.0, n'avait jamais été couvert par le garde-fou de la 7.30.0. Même corps que `plFr` de
+  // core.js, et un test compare les deux.
+  const plFr = (n, un, plur) => `${n} ${n > 1 ? (plur || un + 's') : un}`;
 
   // ---------------------------------------------------------------- la validité d'une écriture
   //
@@ -855,7 +860,7 @@
       if (definitif && validerEcriture(livre, nouvelle.id, qui || 'import', quand).ok) res.validees++;
     });
     trace(livre, qui || 'import', 'import-paquet',
-      `${m}${definitif ? ' (définitif)' : ''} — ${res.ajoutees} ajoutée(s), ${res.remplacees} remplacée(s), ${res.ecarts.length} écart(s)`, quand);
+      `${m}${definitif ? ' (définitif)' : ''} — ${plFr(res.ajoutees, 'ajoutée')}, ${plFr(res.remplacees, 'remplacée')}, ${plFr(res.ecarts.length, 'écart')}`, quand);
     return res;
   }
 
@@ -932,7 +937,7 @@
     const v = validerEcriture(livre, e.id, qui, quand);
     if (!v.ok) { livre.ecritures = livre.ecritures.filter(x => x.id !== e.id); return v; }
     livre.ouverture = { date: String(dateIso || ''), source: source || 'balance', lignes: L.map(l => ({ compte: l.compte, debit: l.debit, credit: l.credit })) };
-    trace(livre, qui, 'reprise', `${L.length} compte(s), ${d.toFixed(3)}`, quand);
+    trace(livre, qui, 'reprise', `${plFr(L.length, 'compte')}, ${d.toFixed(3)}`, quand);
     return { ok: true, ecriture: e, total: d };
   }
 
@@ -1555,7 +1560,7 @@
       }))
     };
     livre.releves.push(R);
-    trace(livre, qui, 'relevé importé', `${R.compte} ${R.du} → ${R.au} (${R.lignes.length} ligne(s))`, quand);
+    trace(livre, qui, 'relevé importé', `${R.compte} ${R.du} → ${R.au} (${plFr(R.lignes.length, 'ligne')})`, quand);
     return { ok: true, releve: R };
   }
 
@@ -2013,7 +2018,7 @@
     const brouillards = (livre.ecritures || []).filter(e => e.statut === 'brouillard' && e.date >= du && e.date <= au);
     out.push({
       id: 'brouillard', ok: !brouillards.length,
-      detail: brouillards.length ? `${brouillards.length} pièce(s) encore en brouillard sur ce mois : elles n'entrent dans aucun chiffre de cette déclaration.` : ''
+      detail: brouillards.length ? `${plFr(brouillards.length, 'pièce')} encore en brouillard sur ce mois : ${brouillards.length > 1 ? 'elles n\'entrent' : 'elle n\'entre'} dans aucun chiffre de cette déclaration.` : ''
     });
     const attente = mouvementCompte(livre, txt(o.compteAttente) || '471', livre.exercice.du, au);
     const solde471 = round3(attente.debit - attente.credit);
@@ -2655,7 +2660,7 @@
     out.push({
       id: 'brouillard', ok: !brouillards.length,
       detail: brouillards.length
-        ? `${brouillards.length} pièce(s) encore en brouillard : elles n'entrent dans aucun état. Valide-les ou supprime-les avant de clôturer.`
+        ? `${plFr(brouillards.length, 'pièce')} encore en brouillard : ${brouillards.length > 1 ? 'elles n\'entrent dans aucun état. Valide-les ou supprime-les' : 'elle n\'entre dans aucun état. Valide-la ou supprime-la'} avant de clôturer.`
         : ''
     });
 
@@ -2688,7 +2693,7 @@
     out.push({
       id: 'tiers', ok: !anormaux.length,
       detail: anormaux.length
-        ? `${anormaux.length} compte(s) de tiers au solde inversé (${anormaux.slice(0, 3).map(r => r.account).join(', ')}). Un acompte l'explique ; une pièce oubliée aussi.`
+        ? `${plFr(anormaux.length, 'compte')} de tiers au solde inversé (${anormaux.slice(0, 3).map(r => r.account).join(', ')}). Un acompte l'explique ; une pièce oubliée aussi.`
         : ''
     });
 
@@ -2698,7 +2703,7 @@
     out.push({
       id: 'dotations', ok: !etatImmo.aEcrire,
       detail: etatImmo.aEcrire
-        ? `${etatImmo.aEcrire} bien(s) dont la dotation n'est pas passée : le résultat est faux de ce montant. Onglet Immobilisations.`
+        ? `${plFr(etatImmo.aEcrire, 'bien')} dont la dotation n'est pas passée : le résultat est faux de ce montant. Onglet Immobilisations.`
         : ''
     });
 

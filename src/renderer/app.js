@@ -11443,7 +11443,7 @@
       const r = await bridge.pontRequete('importer', { licences: charge });
       data.pontImporte = C.today(); save(true);
       const refus = (r.ignorees || []).length ? `\n\nRefusées (${r.ignorees.length}) : ${r.ignorees.slice(0, 5).map(x => `${x.id} — ${x.raison}`).join(' ; ')}${r.ignorees.length > 5 ? '…' : ''}` : '';
-      await confirmDialog(`Historique envoyé.\n\n${pl(r.importees || 0, 'licence importée')}, ${r.dejaLa || 0} déjà connue${(r.dejaLa || 0) > 1 ? 's' : ''}.${refus}`, 'Fermer', false);
+      await confirmDialog(`Historique envoyé.\n\n${pl(r.importees || 0, 'licence importée', 'licences importées')}, ${r.dejaLa || 0} déjà connue${(r.dejaLa || 0) > 1 ? 's' : ''}.${refus}`, 'Fermer', false);
       drawEditeurPanel();
     } catch (e) { toast(plainError(e), true); }
   }
