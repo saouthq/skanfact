@@ -186,9 +186,39 @@
     clearTimeout(saveTimer);
     const doSave = () => bridge.saveData(data)
       .then(r => { if (r && r.conflict) return resolveConflict(r); })
-      .catch(e => toast('Erreur de sauvegarde : ' + e.message, true));
+      .catch(echecEnregistrement);
     if (immediate) return doSave();
     saveTimer = setTimeout(doSave, 300);
+  }
+
+  // 10.0.1 — Ce chemin-ci affichait `e.message` brut : le SEUL des trente endroits de ce fichier
+  // qui ne passait pas par `plainError`, et c'est celui où l'utilisateur perd son travail. Sur un
+  // disque plein, il lisait « Erreur de sauvegarde : Error invoking remote method 'data:save':
+  // Error: ENOSPC: no space left on device, write /Users/… ». La phrase vient maintenant du
+  // processus principal (`PANNES_DISQUE`) et dit quoi faire.
+  //
+  // Et ce n'est plus un bandeau : un message qui s'efface en 2,6 secondes annonce une perte de
+  // travail à quelqu'un qui regarde son clavier, et la frappe suivante le fait disparaître. On
+  // pose une fenêtre, elle offre le geste qui débloque (règle 7.0.0 : ce qui est refusé, pourquoi,
+  // et le bouton qui sort), et un drapeau empêche qu'un enregistrement automatique toutes les
+  // 300 ms n'en empile dix.
+  let echecOuvert = false;
+  function echecEnregistrement(e) {
+    if (echecOuvert) return;
+    echecOuvert = true;
+    const code = codeErreur(e);
+    modal(`<h2>Rien n'a été enregistré</h2>
+      <p>${h(plainError(e))}</p>
+      <p class="small muted">Ce que tu vois à l'écran est intact : rien n'est perdu tant que
+      l'application reste ouverte.${code ? ` <span class="mono">${h(code)}</span>` : ''}</p>
+      <div class="modal-actions">
+        <button class="btn" data-close>Fermer</button>
+        <button class="btn btn-primary" id="reessayer">Réessayer</button>
+      </div>`, (root, close) => {
+      // `close()` déclenche `onDismiss`, qui rouvre la porte : si le second essai échoue aussi, la
+      // fenêtre revient. C'est voulu — on ne se tait pas parce qu'on a déjà parlé une fois.
+      $('#reessayer', root).onclick = () => { close(); save(true); };
+    }, () => { echecOuvert = false; });
   }
 
   async function resolveConflict(r) {
@@ -437,7 +467,7 @@
     if (lien) lien.onclick = () => closeInfoPop();
     const r = btn.getBoundingClientRect();
     const w = pop.offsetWidth, hh = pop.offsetHeight;
-    let left = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), window.innerWidth - w - 8);
+    const left = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), window.innerWidth - w - 8);
     let top = r.bottom + 8;
     if (top + hh > window.innerHeight - 8) top = Math.max(8, r.top - hh - 8);
     pop.style.left = left + 'px'; pop.style.top = top + 'px';
@@ -888,7 +918,7 @@
     $$('select[data-rs]', root || document).forEach(sel => {
       if (sel.dataset.rsBound) return;
       sel.dataset.rsBound = '1';
-      let o = {}; try { o = JSON.parse(sel.dataset.rs || '{}'); } catch (e) { o = {}; }
+      let o = {}; try { o = JSON.parse(sel.dataset.rs || '{}'); } catch (_) { o = {}; }
       bindWithholdingSelect(sel, o);
     });
   }
@@ -1087,8 +1117,6 @@
   //
   // Le menu liste aussi ce qu'on ne peut faire nulle part ailleurs en un geste : créer une seconde
   // entreprise, et rejoindre un dossier partagé.
-  let dossiersConnus = null;                  // dernière liste lue, pour ne pas re-demander à chaque clic
-
   // Deux noms pour la même chose, à dix pixels d'écart : l'en-tête affichait « Atelier Un SUARL »
   // (la société, dans les données) pendant que le menu et Paramètres → Dossiers affichaient
   // « Mon entreprise » (le nom du dossier, posé par main.js à la création). Personne ne peut savoir
@@ -1121,7 +1149,6 @@
     if (!bridge.listDossiers) return toast('Les dossiers ne sont pas disponibles ici.', true);
     let r;
     try { r = await bridge.listDossiers(); } catch (e) { return toast(plainError(e), true); }
-    dossiersConnus = r;
     const autres = (r.dossiers || []).filter(d => d.id !== r.current);
     // Pour le dossier ouvert on connaît la vraie société : on l'affiche plutôt que l'étiquette du
     // dossier, qui peut être restée générique sur une installation ancienne.
@@ -2930,16 +2957,23 @@
     // que le PDF s'exporte — donnaient DEUX passages dans `issue()`, donc deux appels à
     // `nextNumber` : la pièce prenait un numéro, puis le suivant, et le premier restait en trou.
     //
-    // Deux moitiés, et les deux comptent : `isIssued` refuse une pièce déjà émise (l'état fait foi,
-    // même après un rechargement), `emissionEnCours` refuse pendant le geste (l'état n'a pas encore
-    // changé). L'une sans l'autre laisse passer un des deux cas.
-    let emissionEnCours = false;
+    // Deux moitiés, et les deux comptent. Pendant l'ATTENTE, c'est le bouton qui refuse
+    // (`data-busy` + `disabled`, posés avant le `await` et retirés dans un `finally`) ; une fois
+    // le geste passé, c'est l'ÉTAT (`isIssued`), qui fait foi même après un rechargement.
+    //
+    // Ce qui tient les deux ensemble, c'est que `issue()` est ENTIÈREMENT SYNCHRONE : entre le
+    // `isIssued()` d'entrée et le `nextNumber`, rien ne rend la main au navigateur, donc aucun
+    // second clic ne peut s'y glisser. Un `await` posé là-dedans un jour rouvrirait le trou sans
+    // qu'aucun écran ne le montre — c'est très exactement ce qu'un test interdit désormais.
+    // (Il a existé ici un drapeau `emissionEnCours` que RIEN n'armait : une troisième moitié
+    // annoncée par un commentaire, jamais écrite, et que le test de la 9.1.0 cherchait par son
+    // NOM. Retiré en 10.0.1 ; le test exige maintenant la règle.)
     const isIssued = () => {
       const d = docById(doc.id) || doc;
       return !!(d.number && d.status && d.status !== 'brouillon');
     };
     function issue() {
-      if (emissionEnCours || isIssued()) return false;
+      if (isIssued()) return false;
       if (!validate()) return false;
       // Avant `nextNumber` : le compteur est écrit même quand l'enregistrement échoue ensuite. Un
       // garde-fou posé après aurait troué la numérotation à chaque tentative refusée.
@@ -3342,7 +3376,7 @@
         toast('PDF enregistré : ' + p.split(/[\\/]/).pop());
         if (company().openAfterExport !== false) bridge.openPath(p);
       }
-    } catch (e) { toast('Erreur PDF : ' + e.message, true); }
+    } catch (e) { toast('Export PDF impossible : ' + plainError(e), true); }
   }
 
   // ---------- Clients ----------
@@ -4037,7 +4071,7 @@
           save(true); close();
           toast(r && r.state === 'mail' ? 'Message ouvert dans Mail avec le PDF joint' : 'Message ouvert dans ta messagerie' + (attachment ? ' — glisse le PDF affiché dans le Finder' : ''));
           render();
-        } catch (e) { b.disabled = false; b.textContent = 'Ouvrir dans la messagerie'; toast('Erreur : ' + e.message.replace(/^.*Error: /, ''), true); }
+        } catch (e) { b.disabled = false; b.textContent = 'Ouvrir dans la messagerie'; toast(plainError(e), true); }
       }; });
   }
   function sendReminder(item) {
@@ -5009,7 +5043,8 @@
     q: '',                                 // recherche, commune aux journaux de la page
     journal: { sort: null, page: 1 },      // journal des ventes
     pays: { sort: null, page: 1 },         // encaissements
-    buys: { sort: null, page: 1 }          // journal des achats
+    buys: { sort: null, page: 1 },         // journal des achats
+    decs: { sort: null, page: 1 }          // règlements fournisseurs (10.0.1)
   };
   // Les onglets de l'option Comptabilité (9.1.0). Trois, et seulement trois : ce sont des écrans de
   // COMPTABLE. Les journaux, la TVA, le calendrier fiscal, les clôtures et le paquet du comptable
@@ -5512,7 +5547,6 @@
       const q = $(`tr[data-i="${i}"] input[data-k=qty]`, body); if (q) { q.focus(); q.select(); }
     };
     function drawLines() {
-      const n = p.lines.length;
       body.innerHTML = p.lines.map((l, i) => `<tr data-i="${i}">
         <td><input type="text" data-k="label" value="${h(l.label || '')}" placeholder="Désignation"></td>
         <td><input type="number" class="num" data-k="qty" value="${l.qty}" step="0.01"></td>
@@ -5933,7 +5967,6 @@
 
   // ---------- Affaires et marges ----------
   const projectById = id => data.projects.find(p => p.id === id);
-  const projectName = id => (projectById(id) || {}).name || '';
   // Liste utilisée par tous les sélecteurs d'affaire : les affaires en cours d'abord.
   const projectItems = (clientId) => data.projects
     .filter(p => !clientId || !p.clientId || p.clientId === clientId)
@@ -6267,8 +6300,8 @@
     const auto = slip ? null : C.payslipInputFor(data, emp, year, month);
     const p = slip || { id: C.uid(), employeeId: emp.id, year, month, ...auto, paidDate: '', accountId: '',
       method: emp.method || 'virement', reference: '', issuedAt: C.today() };
-    let bonuses = deepCopy(p.bonuses || []);
-    let deductions = deepCopy(p.deductions || []);
+    const bonuses = deepCopy(p.bonuses || []);
+    const deductions = deepCopy(p.deductions || []);
 
     modal(`<h2>Bulletin de ${h(emp.name)} — ${h(MONTHS_LONG[Number(p.month) - 1])} ${h(String(p.year))}</h2>
       <form id="bf" class="grid-2">
@@ -6485,7 +6518,7 @@
     const bal = C.leaveBalance(data, e.id, Number((e.endDate || C.today()).slice(0, 4)));
     const last = C.payslipsOf(data).filter(p => p.employeeId === e.id)[0];
     const daily = last ? C.round3(last.c.gross / (Number(st.workedDays) || 26)) : C.round3(e.grossSalary / 26);
-    let lines = [
+    const lines = [
       { label: 'Salaire du mois en cours', amount: 0 },
       { label: `Indemnité de congés non pris (${pct(Math.max(0, bal.remaining))} jour${sPl(Math.max(0, bal.remaining))})`, amount: C.round3(daily * Math.max(0, bal.remaining)) },
       { label: 'Indemnité de préavis', amount: 0 },
@@ -6989,7 +7022,7 @@
             <button type="button" class="btn" id="rf-reset">Revenir aux valeurs livrées</button>
           </div>
         </form>`;
-      let brackets = deepCopy(st.brackets);
+      const brackets = deepCopy(st.brackets);
       const drawBrackets = () => {
         let from = 0;
         $('#rf-br').innerHTML = brackets.map((b, i) => {
@@ -7594,7 +7627,7 @@
     // core.js : elle est testable sans Electron, ce qui compte quand on manipule ce qu'une machine a cru lire.
     const prep = C.ocrToPurchase(read, data);
     const head = { ...prep.head, category: '' };
-    let lines = prep.lines;
+    const lines = prep.lines;
 
     const computed = () => C.round3(lines.reduce((a, l) => a + l.qty * l.unitPrice, 0));
     const gapHT = () => prep.readHT == null ? null : C.round3(computed() - prep.readHT);
@@ -7749,7 +7782,6 @@
     const lines = (doc.lines || []).map(l => ({ l, item: C.itemOfLine(l, data) }))
       .filter(x => x.item && x.item.serialized);
     if (!lines.length) return toast('Aucune ligne de ce document ne porte un article suivi par numéro de série.', true);
-    const cur = company().currency;
     const chosen = {};                       // itemId → Set d'identifiants
     const draw = (root) => {
       const body = $('#sa-body', root);
@@ -8973,7 +9005,7 @@
               if (v.remember) { data.company.accountantEmail = v.to; save(true); }
               close();
               toast(r && r.state === 'mail' ? 'Message ouvert dans Mail avec le journal joint' : 'Message ouvert — glisse le fichier affiché dans le Finder');
-            } catch (e) { b.disabled = false; b.textContent = 'Ouvrir dans la messagerie'; toast('Erreur : ' + e.message.replace(/^.*Error: /, ''), true); }
+            } catch (e) { b.disabled = false; b.textContent = 'Ouvrir dans la messagerie'; toast(plainError(e), true); }
           }; });
       };
       // La carte « Reste à encaisser » affichait le même chiffre que sa jumelle de l'accueil et,
@@ -8996,7 +9028,7 @@
         const files = rows.map(r => { const d = docById(r.id); return { name: `${d.number}_${(r.client || '').replace(/[^\w\-àâäéèêëïîôöùûüç ]/gi, '').trim().replace(/\s+/g, '_')}.pdf`, html: C.documentHtml(d, clientById(d.clientId), company(), { stampText: stampFor(d) }) }; });
         toast(`Génération de ${files.length} PDF…`);
         try { const dir = await bridge.exportPdfMany(files, `SkanFact-${tag}`); if (dir) { toast(`${files.length} PDF exportés`); bridge.openPath(dir); } }
-        catch (e) { toast('Erreur : ' + e.message, true); }
+        catch (e) { toast(plainError(e), true); }
       };
     };
     // ---------- onglet Achats : le journal symétrique de celui des ventes ----------
@@ -9016,6 +9048,24 @@
         { key: 'net', label: 'Net payé', r: true, val: r => r.net, get: r => C.money(r.net) },
         { key: 'status', label: 'Statut', val: r => r.status, get: r => buyBadge(r.status) }
       ];
+      // 10.0.1 — Les règlements fournisseurs partaient dans le paquet du comptable
+      // (`journaux/reglements-fournisseurs.csv`, depuis la 6.1.0) et n'avaient AUCUN écran ici : le
+      // seul des cinq journaux que ton comptable recevait sans que tu puisses l'ouvrir. `decColumns`
+      // existait, lue par personne — la signature d'un mécanisme écrit et jamais branché (7.3.0).
+      // Le panneau est le jumeau exact des « Encaissements » de l'onglet Ventes : même place, même
+      // export, même ligne cliquable — l'argent qui sort se lit comme l'argent qui entre.
+      const allDecs = C.supplierPayments(data, company(), p);
+      const decs = allDecs.filter(r => !q || `${r.number || ''} ${r.supplier || ''} ${r.reference || ''} ${r.method || ''}`.toLowerCase().includes(q));
+      const decTotal = decs.reduce((s, r) => s + r.amount, 0);
+      const decCols = [
+        { key: 'date', label: 'Date', asc: true, cls: 'nw', val: r => r.date || '', get: r => C.fmtDate(r.date) },
+        { key: 'number', label: 'Pièce', asc: true, cls: 'nw', val: r => (r.number || '').toLowerCase(), get: r => r.number ? `<strong>${h(r.number)}</strong>` : '<span class="muted">sans numéro</span>' },
+        { key: 'supplier', label: 'Fournisseur', asc: true, val: r => (r.supplier || '').toLowerCase(), get: r => h(r.supplier) },
+        { key: 'method', label: 'Mode', asc: true, val: r => r.method || '', get: r => h(r.method) },
+        { key: 'reference', label: 'Référence', asc: true, val: r => (r.reference || '').toLowerCase(), get: r => h(r.reference) },
+        { key: 'amount', label: 'Montant', r: true, val: r => r.amount, get: r => C.money(r.amount, cur) }
+      ];
+      const decPage = paginate(applySort(decs, decCols, comptaState.decs.sort), comptaState.decs);
       const pg = paginate(applySort(rows, cols, comptaState.buys.sort), comptaState.buys);
       $('#c-body').innerHTML = `
         <div class="filters">
@@ -9039,9 +9089,16 @@
           </tbody><tfoot><tr><td colspan="4"><strong>Total</strong></td><td class="r"><strong>${C.money(sum.ht)}</strong></td><td class="r"><strong>${C.money(sum.tva)}</strong></td>
             <td class="r"><strong>${C.money(sum.deductible)}</strong></td><td class="r"><strong>${C.money(sum.net)}</strong></td><td></td></tr></tfoot></table></div>${pagerBar(pg.pg, { noun: 'pièce' })}`
             : '<div class="empty">Aucun achat sur cette période.</div>'}
+        </div>
+        <div class="panel"><h2>Règlements fournisseurs — ${h(label)} ${info('compta.decaissements')}</h2>
+          <div class="inline mb"><button class="btn" id="exp-decs">Exporter en CSV</button></div>
+          ${decs.length ? `<div id="d-wrap"><table class="list compact sortable"><thead>${sortHead(decCols, comptaState.decs.sort)}</thead><tbody>
+            ${decPage.rows.map(r => `<tr class="clickable" data-bid="${r.purchaseId}">${decCols.map(c => `<td class="${c.r ? 'r nw' : ''}${c.cls ? ' ' + c.cls : ''}">${c.get(r)}</td>`).join('')}</tr>`).join('')}
+          </tbody><tfoot><tr><td colspan="5"><strong>Total réglé</strong></td><td class="r"><strong>${C.money(decTotal, cur)}</strong></td></tr></tfoot></table></div>${pagerBar(decPage.pg, { noun: 'règlement' })}`
+            : '<div class="empty">Aucun règlement fournisseur sur cette période.</div>'}
         </div>`;
       $$('#c-body tr[data-bid]').forEach(tr => tr.onclick = () => navigate('#/achat/' + tr.dataset.bid));
-      $('#cpt-q').oninput = e => { comptaState.q = e.target.value; comptaState.buys.page = 1; draw(); const el = $('#cpt-q'); el.focus(); el.setSelectionRange(el.value.length, el.value.length); };
+      $('#cpt-q').oninput = e => { comptaState.q = e.target.value; comptaState.buys.page = 1; comptaState.decs.page = 1; draw(); const el = $('#cpt-q'); el.focus(); el.setSelectionRange(el.value.length, el.value.length); };
       if ($('#reset-f')) $('#reset-f').onclick = () => { comptaState.q = ''; draw(); };
       const panel = $('#b-wrap') && $('#b-wrap').closest('.panel');
       if (panel) {
@@ -9051,6 +9108,20 @@
       $('#exp-buys').onclick = async () => {
         if (!rows.length) return toast('Rien à exporter sur cette période.', true);
         const f = await bridge.saveText(`journal-achats-${tagOf()}.csv`, C.toCsv(rows, buyJournalColumns()));
+        if (f) toast('Exporté : ' + f.split(/[\\/]/).pop());
+      };
+      // Le panneau des règlements a son tri, sa pagination et son export — comme les autres listes
+      // depuis la 2.2.0, et l'export porte sur la SÉLECTION entière, jamais sur la page affichée.
+      const dPanel = $('#d-wrap') && $('#d-wrap').closest('.panel');
+      if (dPanel) {
+        bindSort(dPanel, key => { comptaState.decs.sort = toggleSort(comptaState.decs.sort, key, decCols); comptaState.decs.page = 1; draw(); });
+        bindPager(dPanel, comptaState.decs, () => draw(), '#d-wrap');
+      }
+      $('#exp-decs').onclick = async () => {
+        if (!decs.length) return toast('Rien à exporter sur cette période.', true);
+        // `decColumns()` est la MÊME liste que celle du paquet envoyé au comptable (6.1.0) : deux
+        // exports du même mois ne peuvent pas dire deux choses différentes.
+        const f = await bridge.saveText(`reglements-fournisseurs-${tagOf()}.csv`, C.toCsv(decs, decColumns()));
         if (f) toast('Exporté : ' + f.split(/[\\/]/).pop());
       };
     }
@@ -10123,7 +10194,7 @@
     }
 
     const tagOf = () => comptaState.month ? `${comptaState.year}-${comptaState.month}` : comptaState.year;
-    const resetPages = () => { comptaState.journal.page = 1; comptaState.pays.page = 1; comptaState.buys.page = 1; };
+    const resetPages = () => { comptaState.journal.page = 1; comptaState.pays.page = 1; comptaState.buys.page = 1; comptaState.decs.page = 1; };
     $('#c-year').onchange = e => { comptaState.year = e.target.value; resetPages(); draw(); };
     $('#c-month').onchange = e => { comptaState.month = e.target.value; resetPages(); draw(); };
     // La porte mène à LA CASE, pas à la page qui mène à la page qui la contient. Les Paramètres
@@ -12189,7 +12260,6 @@
           if (v.prix === '' || !(Number(v.prix) >= 0)) return refus('#co-prix', 'Indique le prix plein de la nouvelle offre.');
           const pr = C.prorataOffre(lic, Number(v.prix), Number(lic.prix) || 0);
           if (licenceBlock('Créer une facture de licence')) return;
-          const client = clientById(lic.clientId);
           const b = $('#ok', root); b.disabled = true;
           let r;
           try {
@@ -12552,7 +12622,7 @@
       if (!ok) { if (box) box.checked = false; return; }
       // Le filet, pris AVANT d'armer le canal : au moment où la bêta s'installera, l'utilisateur
       // sera peut-être ailleurs, et c'est trop tard pour y penser.
-      try { await bridge.createBackup('avant-beta'); } catch (e) { /* pas de filet ≠ pas de canal */ }
+      try { await bridge.createBackup('avant-beta'); } catch (_) { /* pas de filet ≠ pas de canal */ }
     }
     const r = await bridge.updateSetBeta(!!on);
     upd.app.beta = r.beta;
@@ -12898,7 +12968,7 @@
       // reperdait le fichier importé ; sans le désarmement, le garde-fou réclamait ensuite des
       // modifications qui n'existent plus.
       if (d) { clearGuard(); data = migrate(d); save(true); applyTheme(); $('#brand-company').textContent = data.company.name; toast('Données importées'); render(); }
-    } catch (e) { toast('Import impossible : ' + e.message.replace(/^.*Error: /, ''), true); }
+    } catch (e) { toast('Import impossible : ' + plainError(e), true); }
   }
   // « Exporter » et « Importer » vivaient dans le pied de la barre latérale, donc toujours visibles,
   // alors que « Paramètres » et « Aide » ne l'étaient jamais. Les deux boutons dont un débutant n'a

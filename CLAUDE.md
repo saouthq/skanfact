@@ -158,10 +158,11 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 
 **L'outillage (9.1.0)**
 
-`npm test` (les tests purs) · `npm run lint` (ESLint, zéro erreur exigée) · `npm run charge` (le test
-de charge du livre) · `npm run e2e:<nom>` (51 parcours, tableau au § « Les tests qui ouvrent vraiment
-l'application ») · CI GitHub sur Linux et Windows à chaque poussée · « Construire un essai » pour
-faire tester une version sans la publier.
+`npm test` (les tests purs) · `npm run lint` (ESLint, **zéro erreur ET zéro avertissement** depuis la
+10.0.1) · `npm run charge` (le livre du Cabinet) · `npm run charge:entreprise` (le fichier de l'app
+entreprise, dix ans d'activité — 10.0.1) · `npm run e2e:<nom>` (51 parcours, tableau au § « Les tests
+qui ouvrent vraiment l'application ») · CI GitHub sur Linux et Windows à chaque poussée ·
+« Construire un essai » pour faire tester une version sans la publier.
 
 **Les documents du dépôt**, et lequel fait foi :
 `DIRECTION.md` (prime sur tous) → `CAHIER-DES-CHARGES.md` (les spécifications citables) →
@@ -4839,6 +4840,77 @@ que cette version demande au cabinet pilote, et tant que ce n'est pas fait, chaq
 « À VÉRIFIER ».
 
 Prouvé : 17 défauts réintroduits un par un font tomber leur test.
+
+### 10.0.1 — Les pannes se disent en français, et l'outillage cesse de crier pour rien
+
+Le premier lot de l'audit de mise en production. Correctif : rien ici ne touche à un chiffre, à une
+clé, au moteur comptable ni au format d'un fichier — c'est le cas que la règle de publication
+autorise en stable direct.
+
+Règles apprises, à ne pas recasser :
+
+- **Une panne du SYSTÈME se traduit au pont, pas au point d'appel** — « on enveloppe une fois, pas
+  quatre-vingts » (9.4.10), appliqué cette fois aux codes d'erreur de Node. Dix codes
+  (`ENOSPC`, `EDQUOT`, `EACCES`, `EPERM`, `EROFS`, `EBUSY`, `ENOENT`, `EIO`, `EMFILE`, `ENFILE`)
+  rendent une phrase française ; les tables des deux applications sont **identiques au caractère
+  près** et un test compare les corps (motif `round3`). Et `err.code` **ne traverse pas le pont
+  IPC** (9.4.10) : la traduction lit `e.code` ET le préfixe du message, parce que l'un des deux
+  seulement finit par arriver.
+- **Un refus qu'on a ÉCRIT n'est pas une panne** (9.4.10, re-trouvée en écrivant ce lot) : seul ce
+  qu'on n'a pas prévu se traduit et va au journal. Traduire un refus métier le déguiserait en
+  incident, et un journal plein de mots de passe mal tapés ne se lit plus.
+- **Ce qui dit qu'un travail est PERDU ne peut pas s'effacer tout seul.** Un enregistrement qui
+  échoue ouvrait un bandeau de 2,6 secondes ; il ouvre une fenêtre, qui dit ce qui s'est passé,
+  rappelle que **ce qui est à l'écran est intact**, et propose « Réessayer ». C'est le pendant de
+  « le premier message d'un logiciel ne peut pas être un toast » (7.0.0), pour le dernier.
+- **Deux gestes qui écrivent le même état ne peuvent pas courir ensemble.** Deux imports de paquets
+  simultanés dans le Cabinet : le second effaçait le travail du premier, sans un mot. Le garde-fou
+  se pose **avant** le sélecteur de fichier — après, on a déjà fait choisir pour rien.
+- **Un fichier qui part dans le paquet du comptable doit avoir son écran.** Le journal des
+  règlements fournisseurs y allait depuis la 6.1.0 et n'était visible NULLE PART : ni lisible, ni
+  triable, ni exportable. C'est « un moteur sans écran n'existe pas » (7.3.0), vu par l'autre bout —
+  ici le moteur tournait, ses résultats sortaient, et personne ne pouvait les regarder.
+- **La RAISON d'un refus change le geste, donc elle se lit.** « Dossier introuvable (support
+  débranché ?) » sur un dossier que le système refuse d'ouvrir envoie chercher une clé USB qui est
+  là. Quand `e.code` donne la cause, on ne la devine pas. Même chose pour un fichier de données
+  illisible : l'écran garde sa phrase, le JOURNAL reçoit la raison — c'était le seul endroit du
+  stockage où une erreur disparaissait sans trace.
+- **Un garde-fou que rien n'arme est pire qu'un garde-fou absent : il rassure.** `emissionEnCours`
+  était `false` pour toujours, et le test de la 9.1.0 le cherchait par son NOM. Ce qui protège
+  réellement du double numéro, c'est le bouton qui se désactive pendant l'attente **et** le fait
+  que `issue()` ne rende jamais la main entre le contrôle et `nextNumber`. Le test exige désormais
+  cette règle-là : **aucun `await` dans le corps d'`issue()`** — un `await` posé là un jour
+  rouvrirait le trou sans qu'aucun écran ne le montre. C'est la quinzième fois que le motif
+  « un test cherche une mention là où il faut exiger la branche » (7.2.0) revient.
+- **Un avertissement de lint qui ne peut pas être corrigé finit par cacher ceux qui comptent.**
+  Quatre-vingt-dix avertissements dont quatre-vingt-cinq décrivaient une convention volontaire
+  (`catch (_)`), et au milieu : onze variables mortes, dont **deux dont le commentaire décrivait un
+  mécanisme inexistant** (un cache jamais relu, une clé publique sans appelant) et **une qui
+  désignait un vrai défaut** — `EXPLORATEUR()` existait pour ne pas parler du « Finder » à un
+  comptable sous Windows, et n'était appelé nulle part pendant que l'écran disait « le Finder ».
+  Zéro avertissement désormais, et c'est ce qui rend le prochain lisible.
+- **Une valeur mesurée AVANT un geste et jamais comparée APRÈS est une moitié de test.** Trois
+  parcours le faisaient depuis des versions : la restauration vérifiait que le client ajouté avait
+  disparu sans jamais vérifier que les autres étaient revenus (une restauration qui vide tout
+  passait) ; la validation par lot vérifiait « 1..n sans trou » sans vérifier que les numéros
+  **déjà attribués n'avaient pas bougé** (une renumérotation complète donne 1..n tout autant) ; et
+  le libellé du bouton de clôture était lu sans qu'on exige qu'il NOMME la période. Le lint les a
+  désignés : c'est exactement ce à quoi sert un lint qu'on peut encore lire.
+- **Un seuil de charge se pose là où la base passe, et l'écart se DIT.** `npm run charge:entreprise`
+  mesure dix ans d'activité sur les vraies primitives (chiffrement, écriture atomique). Cinq seuils
+  passent largement ; le sixième — la préparation du paquet mensuel — a d'abord été posé à 1 000 ms
+  et rendait 0,9 à 1,4 s selon la pression mémoire, c'est-à-dire un instrument qui tombe au hasard
+  sur le même code. Mesuré morceau par morceau, le coût vient de `balanceGenerale` (641 ms) et de
+  `journalEntries` (129 ms en juin, **526 ms en janvier**, à cause des à-nouveaux) : par
+  construction ces deux-là lisent depuis le début de l'exercice, pas du mois. Ce n'est pas un défaut,
+  c'est ce que ces chiffres coûtent quand ils sont justes. Seuil posé à 2 000 ms **avec la raison
+  écrite dans le script** — « un instrument rouge est un instrument qu'on désactive » (9.1.0) — et
+  la marge la plus étroite des six est nommée comme telle.
+- **Le meilleur de trois passages, et on le dit.** Le calcul est déterministe : ce qui varie vient
+  de la machine. Le minimum est l'estimation la plus proche du coût réel, et surtout un instrument
+  qui passe ou tombe au hasard cesse d'être lu. Ce n'est honnête que parce que la sortie l'écrit.
+- Piège : `pagerBar` **borne `st.page`** en plus de rendre son HTML. Un appel dont on jette le
+  retour n'est donc pas mort — il se commente, sinon il se supprime.
 
 ## Pistes pour la suite (non demandées)
 

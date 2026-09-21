@@ -7,6 +7,50 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 10.0.1 — 21/09/2026
+
+**Les pannes se disent en français, et l'outillage cesse de crier pour rien.** Correctif
+d'entretien, publié **en stable direct** : rien ici ne touche à un chiffre, à une clé, au moteur
+comptable ni au format d'un fichier — c'est très exactement le cas que la règle de publication
+autorise sans passer par la bêta.
+
+- **Un disque plein ne dit plus « ENOSPC ».** Dix pannes du système (disque plein, quota atteint,
+  accès refusé, dossier en lecture seule, support débranché, trop de fichiers ouverts…) sont
+  traduites en une phrase française, **au niveau du pont IPC des deux applications** — on enveloppe
+  une fois, pas quatre-vingts fois. Les tables des deux applications sont identiques au caractère
+  près, et un test les compare.
+- **Un enregistrement qui échoue ouvre une fenêtre, plus un bandeau de 2,6 secondes.** Elle dit ce
+  qui s'est passé, rappelle que **ce qui est à l'écran est intact**, et propose « Réessayer ».
+  Perdre l'information la plus importante de la journée dans un message qui s'efface était le
+  contraire de ce que cette application promet.
+- **Deux imports de paquets à la fois sont refusés** dans l'app du comptable, en nommant celui qui
+  est déjà en cours : les deux écrivaient dans le même état, et le second effaçait le travail du
+  premier sans un mot.
+- **Le journal des règlements fournisseurs a enfin son écran.** Il partait dans le paquet du
+  comptable depuis la 6.1.0 et n'était visible nulle part : on ne pouvait ni le lire, ni le trier,
+  ni l'exporter. Comptabilité → Achats, avec sa bulle qui dit en quoi il diffère du journal des
+  achats (celui-ci porte les dates de facture, celui-là les dates de paiement).
+- **Le dossier de réception dit pourquoi il ne s'ouvre pas** : « accès refusé » et « support
+  débranché » n'appellent pas le même geste, et l'application devinait la seconde dans les deux cas.
+- **Un fichier de données illisible écrit sa raison au journal.** L'écran continue de dire « un
+  fichier a été mis de côté » — c'est ce qu'il faut à l'utilisateur —, mais « JSON mal formé » et
+  « structure inattendue » ne se dépannent pas pareil, et c'était le seul endroit du stockage où
+  l'erreur disparaissait sans trace.
+- **Le garde-fou de double-numéro dit enfin la vérité.** Un drapeau que rien n'armait était censé
+  refuser pendant le geste, et le test de la 9.1.0 le cherchait par son NOM. Ce qui protège
+  vraiment, c'est le bouton qui se désactive pendant l'attente et le fait que l'émission ne rende
+  jamais la main entre le contrôle et l'attribution du numéro — c'est cette règle-là que le test
+  exige maintenant.
+- **`npm run charge:entreprise`** : dix ans d'activité (4 800 factures, 1 440 achats, 300 clients,
+  3,8 Mo), et six gestes mesurés sur les vraies primitives, chiffrement et écriture atomique
+  compris. Tout passe ; la marge la plus étroite est la préparation du paquet mensuel.
+- **Le lint passe de 90 avertissements à zéro.** Onze variables mortes retirées — dont deux dont le
+  commentaire décrivait un mécanisme inexistant —, `catch (_)` reconnu comme la façon d'écrire « je
+  jette délibérément cette erreur », et trois parcours de test qui mesuraient une valeur sans jamais
+  la comparer à rien s'en servent enfin.
+- **Le README dit vrai** : le dépôt est public, l'app du comptable a sa section d'installation, et
+  la publication décrit le chemin réel (bêta, stable, seize fichiers, job de vérification).
+
 ## 10.0.0 — 21/09/2026
 
 **La liasse et l'annuel.** La dernière version du plan accepté, et le document où une erreur coûte

@@ -68,6 +68,9 @@
   // `h` est le nom de la fonction d'échappement dans l'app entreprise. On l'aliase ici parce qu'une
   // ligne copiée d'un fichier à l'autre a déjà appelé `h()` dans ce fichier-ci, où il n'existait
   // pas : le panneau des mises à jour plantait au moment précis où il devait annoncer une panne.
+  // Aucun appel aujourd'hui — c'est un filet, pas un outil : il est DÉLIBÉRÉMENT inutilisé, et
+  // c'est pour ça qu'on fait taire le lint ici plutôt que de le supprimer.
+  // eslint-disable-next-line no-unused-vars
   const h = esc;
 
   // Le menu d'actions d'une ligne vit dans `src/renderer/rowmenu.js`, chargé par les DEUX
@@ -1405,7 +1408,7 @@
           <ol class="small" style="line-height:1.9;margin:0;padding-left:20px">
             <li>Tu remets à ton client le <strong>fichier d'appairage</strong> (Réglages → Mon cabinet → Le fichier à remettre à tes clients).</li>
             <li>Il l'importe une fois dans son SkanFact, puis t'envoie son <strong>.skanpack</strong> chaque mois.</li>
-            <li>Tu le <strong>glisses sur cette fenêtre</strong>, ou tu le double-cliques dans le Finder.</li>
+            <li>Tu le <strong>glisses sur cette fenêtre</strong>, ou tu le double-cliques dans ${EXPLORATEUR()}.</li>
           </ol>
         </div>`;
       $('#imp').onclick = () => doImport();
@@ -2392,7 +2395,7 @@
     // `pagerBar` est appelé AVANT `paginate` : c'est lui qui ramène `s.page` dans les bornes quand
     // un filtre vient de réduire la sélection. L'inverse afficherait une page vide, puis la bonne
     // au redessin suivant — c'est-à-dire un tableau qui paraît vide sans raison.
-    const pager = pagerBar(lj.pieces.length, s, 'pièce');
+    pagerBar(lj.pieces.length, s, 'pièce');   // appelé pour son EFFET (borner s.page) ; la barre se dessine plus bas
     const plates = [];
     paginate(lj.pieces, s).forEach(p => p.lignes.forEach((e, i) => plates.push({ ...e, numero: p.numero, premiere: i === 0 })));
     return `${barreLivres(`<select id="lv-journal" aria-label="Filtrer par journal"><option value="">Tous les journaux</option>${journaux.map(j => `<option value="${esc(j)}" ${s.journal === j ? 'selected' : ''}>${esc(j)}</option>`).join('')}</select>
@@ -2815,8 +2818,6 @@
   //
   // Clôturer, c'est arrêter de bouger. Les contrôles NOMMENT sans bloquer : un exercice clos avec
   // trois manques signalés vaut mieux qu'un exercice jamais clos (règle 6.0.0).
-
-  const clotureState = { vue: 'controles' };
 
   const LIBELLE_CONTROLE = {
     brouillard: 'Les pièces encore en brouillard', attente: 'Le compte d\'attente',

@@ -1341,12 +1341,6 @@
     return `${month}-${pad2(Math.min(day, dernier))}`;
   }
 
-  // Est-ce que ce dossier a envoyé ce mois-là, et de façon définitive ?
-  function moisRecu(dossier, month) {
-    const p = (dossier.packs || []).find(x => x.month === month);
-    return !p ? 'manquant' : p.definitive ? 'complet' : 'provisoire';
-  }
-
   function echeances(state, todayIso, opts) {
     opts = opts || {};
     const t = todayIso || today();

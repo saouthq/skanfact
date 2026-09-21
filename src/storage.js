@@ -122,6 +122,11 @@ function createStorage(dir, opts) {
     } catch (e) {
       const aside = path.join(dir, `skanfact-data.illisible-${stamp(now())}.json`);
       try { fs.renameSync(file, aside); state.corruptFile = aside; } catch (_) { state.corruptFile = file; }
+      // La RAISON va au journal (10.0.1). L'écran dit « un fichier illisible a été mis de côté » —
+      // c'est ce qu'il faut à l'utilisateur — mais pour dépanner à distance, « JSON mal formé » et
+      // « structure inattendue » n'appellent pas du tout le même geste. C'est le seul endroit du
+      // stockage où une erreur était jetée sans que rien nulle part ne dise pourquoi.
+      log('fichier de données illisible, mis de côté : ' + aside, e);
       return { missing: true };
     }
   }
@@ -134,7 +139,7 @@ function createStorage(dir, opts) {
       state.encrypted = true;
       if (!state.key) return { locked: true };
       try { return decryptWithKey(r.envelope, state.key); }
-      catch (e) { return { locked: true }; }
+      catch (_) { return { locked: true }; }
     }
     state.encrypted = false;
     state.revision = Number(r.data.syncRevision) || 0;
@@ -149,7 +154,7 @@ function createStorage(dir, opts) {
     if (r.envelope) {
       if (!state.key) return { locked: true, revision: state.revision };
       try { const d = decryptWithKey(r.envelope, state.key); return { revision: Number(d.syncRevision) || 0, data: d }; }
-      catch (e) { return { locked: true, revision: state.revision }; }
+      catch (_) { return { locked: true, revision: state.revision }; }
     }
     return { revision: Number(r.data.syncRevision) || 0, data: r.data };
   }
@@ -164,7 +169,7 @@ function createStorage(dir, opts) {
       const data = decryptWithKey(r.envelope, key);
       state.key = key; state.salt = salt; state.encrypted = true;
       return { ok: true, data };
-    } catch (e) { return { ok: false, error: 'Mot de passe incorrect.' }; }
+    } catch (_) { return { ok: false, error: 'Mot de passe incorrect.' }; }
   }
 
   function lock() { state.key = null; state.salt = null; }

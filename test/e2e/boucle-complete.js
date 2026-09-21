@@ -3,7 +3,7 @@
 //   entreprise : importer l'appairage → clôturer un mois → fabriquer le paquet
 //   cabinet : importer le paquet → le dossier apparaît, les mois se lisent, une pièce s'ouvre
 // C'est le seul test qui prouve que le plan tient debout de bout en bout.
-const { playwright, RACINE, ELECTRON, VERSION } = require('./harnais');
+const { playwright, RACINE, ELECTRON } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 const root = RACINE;

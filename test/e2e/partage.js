@@ -57,7 +57,7 @@ const MF = '1234567X/A/M/000';
 
   // ---------------------------------------------------------------- 1. poste A
   j.etape('Poste A : une vraie entreprise, avec un client');
-  let appA = await electron.launch({ args: ['--no-sandbox', `--user-data-dir=${udA}`, RACINE], executablePath: ELECTRON });
+  const appA = await electron.launch({ args: ['--no-sandbox', `--user-data-dir=${udA}`, RACINE], executablePath: ELECTRON });
   let winA = await appA.firstWindow(); surveiller(winA, 'A', bac);
   await assistant(winA, NOM, MF);
   await winA.evaluate(() => { location.hash = '#/clients'; });

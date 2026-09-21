@@ -1901,6 +1901,9 @@ portent pas, et un test les nomme.
 | `ERR-ENT-082` | « Ce dossier de clôture ne porte aucun document à ouvrir. » | états d'une clôture reçue (9.8.0) | — | Livré |
 | `ERR-ENT-083` | « Ce fichier n'a pas pu être lu. » / « Ce fichier n'est pas un envoi de questions SkanFact. » / « Ce fichier ne contient aucune question. » / « L'envoi de questions est abîmé. » | import d'un `.skanask` (9.10.0) | redemander le fichier au cabinet | Livré |
 | `ERR-ENT-084` | « Cet envoi de questions est protégé par un mot de passe… » (l'application le DEMANDE au lieu d'afficher du rouge) / « Mot de passe incorrect, ou fichier modifié depuis son envoi. » | import d'un `.skanask` (9.10.0) | le mot de passe, dit au téléphone | Livré |
+| `ERR-ENT-085` | « Le disque est plein : rien n'a été enregistré… » et les neuf autres phrases de `PANNES_DISQUE` (quota, accès refusé, lecture seule, fichier occupé, dossier introuvable, disque muet, trop de fichiers ouverts) | **toute** panne système, posée UNE fois dans l'enveloppe d'`ipcMain.handle` (10.0.1) | libérer de la place, fermer l'autre programme, rebrancher le support — la phrase le dit | Livré |
+| `ERR-CAB-076` | les mêmes dix phrases, table identique au caractère près (un test compare les deux corps) | **toute** panne système du Cabinet, même enveloppe (10.0.1) | idem | Livré |
+| `ERR-CAB-077` | « Un import de paquets est déjà en cours. Attends qu'il finisse — ou arrête-le depuis la fenêtre d'avancement — avant d'en lancer un second. » | seconde entrée simultanée dans `cab:importPack` (10.0.1) | attendre, ou arrêter l'import en cours | Livré |
 
 ---
 

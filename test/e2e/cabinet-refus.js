@@ -2,7 +2,7 @@
 // deux fois, un paquet adressé à quelqu'un d'autre, un paquet protégé par mot de passe, et un
 // paquet qui contient un fichier que son manifeste n'annonce pas. Ce sont les situations qu'un
 // comptable rencontrera pour de vrai, et dans lesquelles un mauvais message coûte un appel.
-const { playwright, RACINE, ELECTRON, VERSION } = require('./harnais');
+const { playwright, RACINE, ELECTRON } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 const root = RACINE;

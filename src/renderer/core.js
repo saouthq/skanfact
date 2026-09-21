@@ -6332,7 +6332,7 @@
       if (!final) return abandon();
       body.setAttribute('data-sf-pages', String(final.length));
       return final.length;
-    } catch (e) {
+    } catch (_) {
       return abandon();
     }
   }

@@ -77,6 +77,39 @@ function logError(where, err) {
 // pont IPC (Electron la sérialise en une chaîne) ; l'écran le détache avant d'afficher la phrase.
 const erreur = (code, message) => Object.assign(new Error(`${message} [${code}]`), { code, refus: true });
 
+// 10.0.1 — La panne SYSTÈME est la seule famille de refus que la règle de la 7.26.0 n'avait jamais
+// couverte, et c'est celle où l'utilisateur perd son travail. Node lève « ENOSPC: no space left on
+// device, write /Users/…/skanfact-data.json », le pont la sérialise telle quelle, et l'écran
+// affiche l'anglais et le chemin du fichier — sur le geste le plus fréquent de l'application.
+//
+// Chaque phrase dit les TROIS choses d'un refus (7.0.0) : ce qui est refusé (rien n'a été
+// enregistré), pourquoi, et ce qui débloque. « ton travail est encore à l'écran » n'est pas une
+// consolation : c'est l'information qui évite de tout retaper avant d'avoir libéré de la place.
+//
+// La table est identique au caractère près dans `src/cabinet/main.js` — un test compare les deux
+// corps, comme pour `round3` (9.1.0) : les deux applications écrivent des fichiers sur le même
+// disque, et rien ne justifierait qu'elles n'en disent pas la même chose. D'où une phrase NEUTRE
+// (« l'application »), qui vaut des deux côtés sans se recopier de travers.
+const PANNES_DISQUE = {
+  ENOSPC: 'Le disque est plein : rien n\'a été enregistré. Libère de la place, puis réessaie — ton travail est encore à l\'écran.',
+  EDQUOT: 'Le quota de ce disque est atteint : rien n\'a été enregistré. Libère de la place, puis réessaie — ton travail est encore à l\'écran.',
+  EACCES: 'L\'accès au fichier de données est refusé : rien n\'a été enregistré. Un antivirus ou un autre programme le tient peut-être ouvert — ferme-le, puis réessaie.',
+  EPERM: 'L\'accès au fichier de données est refusé : rien n\'a été enregistré. Un antivirus ou un autre programme le tient peut-être ouvert — ferme-le, puis réessaie.',
+  EROFS: 'Le dossier de données est en lecture seule : rien n\'a été enregistré. Choisis un autre emplacement dans les réglages, puis réessaie.',
+  EBUSY: 'Le fichier de données est utilisé par un autre programme : rien n\'a été enregistré. Ferme-le, puis réessaie.',
+  ENOENT: 'Le dossier de données est introuvable : rien n\'a été enregistré. Un disque externe ou un dossier iCloud s\'est peut-être déconnecté — rebranche-le, puis réessaie.',
+  EIO: 'Le disque ne répond plus : rien n\'a été enregistré. Fais une copie de tes données dès qu\'il répond de nouveau.',
+  EMFILE: 'Trop de fichiers sont ouverts sur cet ordinateur : rien n\'a été enregistré. Redémarre l\'application, puis réessaie.',
+  ENFILE: 'Trop de fichiers sont ouverts sur cet ordinateur : rien n\'a été enregistré. Redémarre l\'application, puis réessaie.'
+};
+// `e.code` d'abord — mais une erreur qui a déjà traversé une frontière l'a perdu (9.4.10), et il ne
+// reste alors que le préfixe du message. On lit les deux plutôt que de rater la moitié des cas.
+function panneDisque(e) {
+  const direct = e && e.code;
+  const dansLeTexte = (String((e && e.message) || '').match(/^([A-Z]{3,6}):/) || [])[1];
+  return PANNES_DISQUE[direct] || PANNES_DISQUE[dansLeTexte] || '';
+}
+
 // Et un refus laisse une trace, toujours. On enveloppe `ipcMain.handle` UNE fois plutôt qu'à chaque
 // enregistrement : autant de points d'appel, autant d'occasions d'en oublier un — et la forme
 // `ipcMain.handle(` reste celle que les tranches de source des tests reconnaissent.
@@ -88,7 +121,16 @@ ipcMain.handle = (canal, fn) => handleBrut(canal, async (...a) => {
   // (même règle que le rouge sur une situation normale, 8.0.1). Ce qui manquait est l'autre moitié :
   // une exception qu'aucune phrase n'attendait n'écrivait RIEN nulle part — elle repartait vers
   // l'écran habillée en « Error invoking remote method », et le journal restait muet.
-  catch (e) { if (!(e && e.refus)) logToFile('panne ' + canal, e); throw e; }
+  //
+  // Une panne système, elle, va au journal ET reçoit sa phrase : c'est une panne (donc on l'écrit)
+  // dont on connaît la cause (donc on la nomme). La traduire ICI plutôt qu'à l'écran, c'est la
+  // règle de la 9.4.10 : on enveloppe une fois, pas quatre-vingts — et les quatre-vingts handlers
+  // en profitent sans qu'aucun ait à y penser.
+  catch (e) {
+    if (!(e && e.refus)) logToFile('panne ' + canal, e);
+    const phrase = (e && e.refus) ? '' : panneDisque(e);
+    throw phrase ? erreur('ERR-ENT-085', phrase) : e;
+  }
 });
 
 // En mode développement (`npm start`), on travaille dans un dossier de données SÉPARÉ.
@@ -660,9 +702,6 @@ function clePublique() {
   };
   return clePubliqueCache;
 }
-// La clé maître, pour les appelants qui n'en veulent qu'une (le repli d'une licence rangée par la
-// 6.4.0, et l'état de l'éditeur).
-function publicKey() { return (L.choisirCle('', clePublique().cles) || {}).publicKey || ''; }
 // La clé publique de l'ÉDITEUR (le pendant de sa clé privée), ou null s'il n'y a pas de clé privée
 // ici. Des clés créées par l'outil en ligne de commande d'avant n'ont pas de fichier public : on le
 // déduit de la privée et on l'écrit, une fois pour toutes.
@@ -2204,7 +2243,7 @@ function noterVerification(resultat, version) {
   try {
     fs.mkdirSync(path.dirname(MAJ_ETAT()), { recursive: true });
     fs.writeFileSync(MAJ_ETAT(), JSON.stringify({ at: Date.now(), resultat, version: version || '' }));
-  } catch (e) { /* une date non écrite ne doit jamais empêcher une mise à jour */ }
+  } catch (_) { /* une date non écrite ne doit jamais empêcher une mise à jour */ }
 }
 
 // Deux chemins possibles, et c'est volontaire :

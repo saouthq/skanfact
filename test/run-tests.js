@@ -395,7 +395,7 @@ t('chiffrement : aller-retour, mauvais mot de passe, fichier verrouillé, sauveg
   assert.ok(isEncrypted(env) && !JSON.stringify(env).includes('"a":1'));
   assert.deepStrictEqual(decryptData(env, 'secret'), { a: 1 });
   assert.throws(() => decryptData(env, 'wrong'));
-  let day = new Date('2026-09-11T09:00:00');
+  const day = new Date('2026-09-11T09:00:00');
   const s = createStorage(tmpDir(), { now: () => day });
   s.write({ ...core.DEFAULT_DATA, clients: [{ id: 'a', name: 'X' }] });
   s.write({ ...core.DEFAULT_DATA, clients: [{ id: 'a', name: 'X2' }] }); // crée la sauvegarde du jour (en clair)
@@ -1604,7 +1604,7 @@ t('fusion : la même pièce modifiée des deux côtés est signalée, pas écras
 t('fusion : une pièce supprimée ne ressuscite pas', () => {
   const theirs = base({ documents: [mkDoc('001'), mkDoc('002')], syncWrittenAt: 100 });
   // ici on supprime 002 et on le note
-  let mine = base({ documents: [mkDoc('001')], syncWrittenAt: 200 });
+  const mine = base({ documents: [mkDoc('001')], syncWrittenAt: 200 });
   core.trackDeletion(mine, 'documents', '002', 'Facture FAC-2026-002');
   const r = core.mergeData(mine, theirs);
   assert.deepStrictEqual(r.data.documents.map(d => d.id), ['001']);
@@ -2104,7 +2104,7 @@ t('achats : une ligne « immobilisation » attend sa fiche, une seule fois', () 
       ], payments: []
     }]
   });
-  let todo = core.assetsToCreate(data);
+  const todo = core.assetsToCreate(data);
   assert.strictEqual(todo.length, 1);
   assert.strictEqual(todo[0].label, 'Serveur');
   assert.strictEqual(todo[0].amount, 7000);
@@ -2513,7 +2513,7 @@ t('paie : les bulletins manquants du mois sont ceux des salariés actifs', () =>
     payslips: []
   });
   // en septembre 2026 : seul « Présent » doit avoir un bulletin
-  let manquants = core.missingPayslips(d, 2026, 9).map(e => e.name);
+  const manquants = core.missingPayslips(d, 2026, 9).map(e => e.name);
   assert.deepStrictEqual(manquants, ['Présent']);
   d.payslips.push({ id: 'b1', employeeId: 'e1', year: 2026, month: 9, gross: 1200, computed: core.computePayslip(d.employees[0], {}, core.payrollSettings(d)) });
   assert.deepStrictEqual(core.missingPayslips(d, 2026, 9), []);
@@ -5461,7 +5461,6 @@ t('audit C4 : une bombe à décompression est refusée au lieu de tuer l\'applic
   // Un ZIP de quelques centaines de kilo-octets peut produire plusieurs gigaoctets. Le paquet vient
   // de l'extérieur, par mail : la mémoire du processus explosait avant qu'aucun contrôle ne
   // s'exécute, et l'application mourait sans un mot.
-  const zlib = require('zlib');
   const zip = require('../src/zip.js');
   const gros = Buffer.alloc(600 * 1024 * 1024, 0);                 // > MAX_FICHIER une fois gonflé
   const b = zip.zipBuffer([{ name: 'bombe.bin', data: gros }]);
@@ -9732,7 +9731,8 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       // forme `return brut` laissait passer `return dit(brut.split(…))`, vérifié en le réintroduisant.
       const rendus = [];
       for (let k = f.indexOf('return dit('); k >= 0; k = f.indexOf('return dit(', k + 1)) {
-        let p = f.indexOf('(', k), prof = 0, fin = p;
+        const p = f.indexOf('(', k);
+        let prof = 0, fin = p;
         for (; fin < f.length; fin++) {
           if (f[fin] === '(') prof++;
           else if (f[fin] === ')') { prof--; if (!prof) break; }
@@ -11730,10 +11730,21 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     const i = app.indexOf('    function issue() {');
     assert.ok(i > 0, 'issue() introuvable');
     const entete = app.slice(i, i + 200);
-    // Les DEUX moitiés : l'état (après un rechargement) et le drapeau (pendant le geste).
-    assert.ok(/emissionEnCours/.test(entete), 'issue() doit refuser pendant le geste');
     assert.ok(/isIssued\(\)/.test(entete), 'issue() doit refuser une pièce déjà émise');
     assert.ok(app.includes('const isIssued = () =>'), 'isIssued doit exister');
+
+    // La RÈGLE, et pas la mention. La version de la 9.1.0 exigeait le mot `emissionEnCours` dans
+    // l'entête — un drapeau que RIEN n'armait : il valait `false` pour toujours, et le test passait
+    // sur un garde-fou qui n'existait pas (retourné en 10.0.1). Ce qui protège vraiment, c'est que
+    // `issue()` ne rende JAMAIS la main entre le contrôle et `nextNumber` : sans `await`, aucun
+    // second clic ne peut s'y glisser. Un `await` posé là un jour rouvrirait le trou en silence.
+    const fin = app.indexOf('\n    bindBack(backTo);', i);
+    const corpsIssue = app.slice(i, fin);
+    assert.ok(corpsIssue.length > 400 && corpsIssue.length < 2000, 'tranche de issue() : ' + corpsIssue.length);
+    assert.ok(!corpsIssue.includes("$('#issue').onclick"), 'la tranche ne doit pas avaler le gestionnaire du bouton, qui LUI est asynchrone');
+    assert.ok(corpsIssue.includes('C.nextNumber('), 'la tranche doit contenir nextNumber');
+    assert.ok(!/\bawait\b/.test(corpsIssue), 'issue() doit rester ENTIÈREMENT synchrone : un await entre le contrôle et nextNumber rouvre le double numéro');
+    assert.ok(!/\basync\b/.test(corpsIssue), 'issue() ne doit pas devenir asynchrone');
 
     // Et le bouton le DIT : `data-busy` + `disabled`. Un bouton qui refuse en silence fait
     // recliquer, ce qui est exactement le geste qu'on cherche à empêcher.
@@ -12018,7 +12029,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   });
 
   t('9.2.0 : un mois renvoyé remplace les brouillards et ne TOUCHE JAMAIS une validée', () => {
-    const { l, v } = faitLivre();
+    const { l } = faitLivre();
     // Mars arrive une première fois, provisoire : deux pièces, en brouillard.
     const p1 = [
       { date: '2026-03-04', journal: 'VT', piece: 'FAC-2026-010', docId: 'd10', libelle: 'A', lignes: [{ compte: '411001', debit: 1190 }, { compte: '706', credit: 1000 }, { compte: '4367', credit: 190 }] },
@@ -13728,6 +13739,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   require('./suites/moteur.js')({ t, assert, lireSource });
   require('./suites/immobilisations.js')({ t, assert, lireSource });
   require('./suites/cloture.js')({ t, assert, lireSource });
+  require('./suites/pannes.js')({ t, assert, lireSource });
   require('./suites/equipe.js')({ t, assert, lireSource });
   require('./suites/revision.js')({ t, assert, lireSource });
   require('./suites/liasse.js')({ t, assert, lireSource });

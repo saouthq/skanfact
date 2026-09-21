@@ -1934,8 +1934,7 @@
 
   // L'échéancier et la balance âgée lisent les lignes de tiers NON LETTRÉES — jamais une liste à
   // part (SPEC-UI-CAB-022). Une seconde liste se désynchroniserait au premier lettrage.
-  function echeancierDepuisLignes(entries, compteOuRole, todayIso, opts) {
-    const o = opts || {};
+  function echeancierDepuisLignes(entries, compteOuRole, todayIso) {
     const l = lettrageDepuisLignes(entries, compteOuRole, todayIso);
     const aujourdhui = txt(todayIso);
     const lignes = [];
@@ -3899,7 +3898,7 @@
       let touchees = 0;
       (Array.isArray(autre.revisions) ? autre.revisions : []).forEach(v => {
         if (!v || !txt(v.periode)) return;
-        let m = miennes.find(x => txt(x.periode) === txt(v.periode));
+        const m = miennes.find(x => txt(x.periode) === txt(v.periode));
         if (!m) { miennes.push(v); touchees++; return; }
         const avant = (m.comptes || []).length + (m.notes || []).length + (m.questionnaire || []).length;
         const vusC = new Set((m.comptes || []).map(c => txt(c.compte)));
