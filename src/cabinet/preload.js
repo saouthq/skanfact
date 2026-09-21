@@ -83,6 +83,18 @@ contextBridge.exposeInMainWorld('cabinet', {
   production: (o) => ipcRenderer.invoke('cab:production', o || {}),
   fusionner: (dossierId, annee) => ipcRenderer.invoke('cab:fusionner', { dossierId, annee }),
   reprendreVerrou: (dossierId, annee) => ipcRenderer.invoke('cab:reprendreVerrou', { dossierId, annee }),
+  // La révision et les questions (9.10.0). Rien ici n'écrit chez le client : une question PART
+  // dans un fichier scellé, s'affiche en face de sa pièce dans SkanFact, et attend. Le cabinet
+  // n'écrit jamais chez un client (Cabinet 1.0.0), et ce pont-là ne fait pas exception.
+  revision: (o) => ipcRenderer.invoke('cab:revision', o || {}),
+  signerCompte: (o) => ipcRenderer.invoke('cab:signerCompte', o || {}),
+  noteRevue: (o) => ipcRenderer.invoke('cab:noteRevue', o || {}),
+  questionnaire: (o) => ipcRenderer.invoke('cab:questionnaire', o || {}),
+  arreterRevision: (o) => ipcRenderer.invoke('cab:arreterRevision', o || {}),
+  question: (o) => ipcRenderer.invoke('cab:question', o || {}),
+  ecrireQuestions: (o) => ipcRenderer.invoke('cab:ecrireQuestions', o || {}),
+  saveQuestionnaire: (o) => ipcRenderer.invoke('cab:saveQuestionnaire', o || {}),
+  questionsEnAttente: () => ipcRenderer.invoke('cab:questionsEnAttente'),
   // La banque (9.5.0). LIRE un relevé et l'AJOUTER sont deux portes séparées : entre les deux, le
   // comptable choisit le compte, saisit les deux soldes du relevé papier et corrige l'association
   // des colonnes. Rien ici ne touche aux données du client — un relevé bancaire vit dans le livre

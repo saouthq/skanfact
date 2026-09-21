@@ -744,6 +744,11 @@
       // liste dont la forme change après avoir été écrite chez soixante clients ne se rattrape
       // plus. Absente d'un livre écrit avant, elle vaut `[]`.
       revisions: [],
+      // La sixième, ajoutée en 9.10.0 : les questions posées au client. Elle est dans le livre et
+      // non au niveau du cabinet parce qu'une question naît d'une LIGNE : elle porte l'écriture,
+      // la pièce et le compte sur lesquels elle est née, et ces trois-là n'existent que dans
+      // l'exercice où ils ont été écrits. Absente d'un livre écrit avant, elle vaut `[]`.
+      questions: [],
       ouverture: { date: null, source: null, lignes: [] },
       audit: []
     };
@@ -3089,6 +3094,491 @@
     return { ok: !motifs.length, motifs, debit: d, credit: c };
   }
 
+  // ------------------------------------------------- la révision et les questions (9.10.0)
+  //
+  // Le dossier de travail du comptable, et le seul mécanisme du projet qui remonte du cabinet vers
+  // le client. Trois principes, et ils ne bougent pas :
+  //
+  //  1. **Le cabinet n'écrit JAMAIS chez le client** (Cabinet 1.0.0). Une question n'est pas une
+  //     écriture : c'est une demande, qui part scellée, s'affiche en face de la pièce, et attend.
+  //     Le client répond ou ne répond pas ; rien de ce qui arrive ici ne touche à ses chiffres.
+  //  2. **La méthode de révision appartient au comptable.** Les sept cycles sont nommés dans la
+  //     spécification — trésorerie, ventes-clients, achats-fournisseurs, immobilisations,
+  //     personnel, fiscal, capitaux — mais le rattachement d'un compte à son cycle est une table
+  //     de PRÉFIXES entièrement surchargeable : un cabinet qui range son 47 ailleurs le range
+  //     ailleurs. La table PROPOSE (5.0.0, 8.3.0), elle n'enferme pas.
+  //  3. **Le questionnaire de fin d'exercice part VIDE.** Les cinq questions les plus fréquentes
+  //     du pilote ne sont pas connues ; les inventer serait écrire sa méthode à sa place, et un
+  //     dossier de travail imposé par un logiciel ne sert à personne. La valeur par défaut d'une
+  //     règle qu'on ne connaît pas est celle qui ne fait rien (9.1.1).
+
+  const CYCLES_REVISION = [
+    { id: 'tresorerie', label: 'Trésorerie', prefixes: ['5'] },
+    { id: 'ventes', label: 'Ventes et clients', prefixes: ['41', '70', '73'] },
+    { id: 'achats', label: 'Achats et fournisseurs', prefixes: ['40', '60', '61', '62', '65'] },
+    { id: 'immobilisations', label: 'Immobilisations', prefixes: ['2', '68', '78'] },
+    { id: 'personnel', label: 'Personnel', prefixes: ['42', '43', '64'] },
+    { id: 'fiscal', label: 'Fiscal', prefixes: ['436', '43', '44', '66', '67', '69'] },
+    { id: 'capitaux', label: 'Capitaux et emprunts', prefixes: ['1'] }
+  ];
+
+  // Le cycle d'un compte : le préfixe le plus LONG gagne, jamais l'ordre du tableau (même règle
+  // que `libelleDuPlan`, que `compteCorrespondant` et que `compteDuLibelle`). Sans ça, le résultat
+  // dépendrait de l'ordre dans lequel les cycles ont été écrits — 436 irait en « personnel »
+  // ou en « fiscal » selon le jour.
+  function cycleDuCompte(compte, cycles) {
+    const n = txt(compte);
+    if (!n) return '';
+    let best = null;
+    (Array.isArray(cycles) && cycles.length ? cycles : CYCLES_REVISION).forEach(c => {
+      (c.prefixes || []).forEach(p => {
+        if (n.startsWith(p) && (!best || p.length > best.p.length)) best = { p, id: c.id };
+      });
+    });
+    return best ? best.id : '';
+  }
+
+  const libelleCycle = (id, cycles) => {
+    const c = (Array.isArray(cycles) && cycles.length ? cycles : CYCLES_REVISION).find(x => x.id === id);
+    return c ? c.label : '';
+  };
+
+  // La révision d'une période. `periode` vaut soit un mois (`AAAA-MM`), soit l'exercice (`AAAA`) :
+  // on révise un mois pour arrêter une TVA, et l'exercice pour arrêter un bilan. C'est la même
+  // fiche, parce que ce sont les mêmes gestes.
+  function revisionVide(periode) {
+    return {
+      periode: txt(periode), faite: false, faiteLe: null, faitePar: '',
+      comptes: [], notes: [], questionnaire: []
+    };
+  }
+
+  const revisionDe = (livre, periode) =>
+    ((livre && livre.revisions) || []).find(r => txt(r.periode) === txt(periode)) || null;
+
+  function assurerRevision(livre, periode) {
+    let r = revisionDe(livre, periode);
+    if (!r) { r = revisionVide(periode); livre.revisions = (livre.revisions || []).concat([r]); }
+    ['comptes', 'notes', 'questionnaire'].forEach(k => { if (!Array.isArray(r[k])) r[k] = []; });
+    return r;
+  }
+
+  // La feuille maîtresse d'un cycle (F-9.10.0-02) : chaque compte du cycle avec son ouverture, ses
+  // mouvements, son solde — et son état de revue. C'est le tableau qu'un comptable appelle « lead
+  // schedule », et il n'apprend rien sans la VARIATION : c'est elle qui désigne ce qu'il faut
+  // regarder. Un compte qui n'a pas bougé et dont le solde est nul ne se révise pas.
+  function feuilleMaitresse(livre, cycleId, opts) {
+    const o = opts || {};
+    const cycles = o.cycles;
+    // Une feuille maîtresse se bâtit sur les VALIDÉES : on ne révise pas un brouillard, qui par
+    // définition n'est pas encore un fait. `brouillard: true` reste possible pour regarder ce qui
+    // attend, et les contrôles le NOMMENT avant d'arrêter une révision.
+    const lignes = lignesDuLivre(livre, { du: o.du || livre.exercice.du, au: o.au || livre.exercice.au, brouillard: !!o.brouillard });
+    const bal = balanceDepuisLignes(lignes, soldesDepuisOuverture(livre), c => nomDuCompte(livre, c));
+    const rev = revisionDe(livre, o.periode || String(livre.exercice.annee));
+    const vus = new Map(((rev && rev.comptes) || []).map(c => [txt(c.compte), c]));
+    const rows = bal.rows
+      .filter(r => !cycleId || cycleDuCompte(r.account, cycles) === cycleId)
+      .map(r => {
+        const v = vus.get(txt(r.account));
+        return {
+          compte: r.account, libelle: r.label, cycle: cycleDuCompte(r.account, cycles),
+          ouverture: r.ouverture, debit: r.debit, credit: r.credit, solde: r.solde,
+          variation: round3(r.solde - r.ouverture), lignes: r.lignes,
+          revu: !!v, revuLe: (v && v.revuLe) || null, revuPar: (v && v.revuPar) || '', note: (v && v.note) || ''
+        };
+      });
+    const tot = rows.reduce((s, r) => ({
+      ouverture: round3(s.ouverture + r.ouverture), debit: round3(s.debit + r.debit),
+      credit: round3(s.credit + r.credit), solde: round3(s.solde + r.solde)
+    }), { ouverture: 0, debit: 0, credit: 0, solde: 0 });
+    return {
+      cycle: cycleId, label: libelleCycle(cycleId, cycles), rows,
+      totaux: { ...tot, variation: round3(tot.solde - tot.ouverture) },
+      revus: rows.filter(r => r.revu).length, total: rows.length
+    };
+  }
+
+  const nomDuCompte = (livre, compte) => {
+    const c = ((livre && livre.plan) || []).find(x => txt(x.compte) === txt(compte));
+    return (c && c.libelle) || libelleDuPlan(compte) || '';
+  };
+
+  // Le dossier de révision au complet (F-9.10.0-01) : un cycle par feuille, et l'avancement.
+  function dossierDeRevision(livre, opts) {
+    const o = opts || {};
+    const periode = txt(o.periode) || String(livre.exercice.annee);
+    const cycles = Array.isArray(o.cycles) && o.cycles.length ? o.cycles : CYCLES_REVISION;
+    const bornes = /^\d{4}-\d{2}$/.test(periode)
+      ? { du: `${periode}-01`, au: finDuMois(periode) }
+      : { du: livre.exercice.du, au: livre.exercice.au };
+    const feuilles = cycles.map(c => feuilleMaitresse(livre, c.id, { ...o, ...bornes, periode, cycles }));
+    // Les comptes qu'aucun cycle ne réclame. On les MONTRE plutôt que de les perdre : un compte
+    // hors cycle est exactement celui qu'une révision doit voir (règle du « Compte hors plan »).
+    const hors = feuilleMaitresse(livre, '', { ...o, ...bornes, periode, cycles })
+      .rows.filter(r => !r.cycle);
+    const rev = revisionDe(livre, periode);
+    const revus = feuilles.reduce((s, f) => s + f.revus, 0) + hors.filter(r => r.revu).length;
+    const total = feuilles.reduce((s, f) => s + f.total, 0) + hors.length;
+    return {
+      periode, du: bornes.du, au: bornes.au, feuilles, hors,
+      revus, total, reste: total - revus,
+      faite: !!(rev && rev.faite), faiteLe: (rev && rev.faiteLe) || null, faitePar: (rev && rev.faitePar) || '',
+      notes: (rev && rev.notes) || [], questionnaire: (rev && rev.questionnaire) || []
+    };
+  }
+
+  const finDuMois = m => {
+    const [a, mo] = String(m).split('-').map(Number);
+    return new Date(Date.UTC(a, mo, 0)).toISOString().slice(0, 10);
+  };
+
+  // Signer un compte (F-9.10.0-03). C'est un pointage, donc il se DÉFAIT (7.12.0) : `revu: false`
+  // retire la ligne. Un dossier de révision qu'on ne peut pas corriger ne se remplit pas.
+  function signerCompte(livre, periode, compte, qui, quand, opts) {
+    const o = opts || {};
+    const r = assurerRevision(livre, periode);
+    const n = txt(compte);
+    if (!n) return { ok: false, motif: 'Aucun compte désigné.' };
+    r.comptes = r.comptes.filter(c => txt(c.compte) !== n);
+    if (o.revu === false) return { ok: true, revu: false, compte: n };
+    r.comptes.push({ compte: n, revuLe: Number(quand) || 0, revuPar: txt(qui), note: txt(o.note) });
+    return { ok: true, revu: true, compte: n };
+  }
+
+  // Une note de revue (F-9.10.0-05). Elle porte son cycle quand elle en vise un, et son auteur
+  // toujours : une note de superviseur sans nom ne vaut rien devant un contrôle.
+  function ajouterNoteRevue(livre, periode, note, qui, quand) {
+    const texte = txt(note && note.texte);
+    if (!texte) return { ok: false, motif: 'Une note de revue sans texte n\'apprend rien.' };
+    const r = assurerRevision(livre, periode);
+    const n = {
+      id: idEcriture(quand), texte, cycle: txt(note && note.cycle),
+      compte: txt(note && note.compte), par: txt(qui), le: Number(quand) || 0,
+      levee: false, leveeLe: null, leveePar: ''
+    };
+    r.notes.push(n);
+    return { ok: true, note: n };
+  }
+
+  function leverNoteRevue(livre, periode, id, qui, quand, levee) {
+    const r = revisionDe(livre, periode);
+    const n = r && (r.notes || []).find(x => x.id === id);
+    if (!n) return { ok: false, motif: 'Cette note de revue n\'existe plus.' };
+    n.levee = levee !== false;
+    n.leveeLe = n.levee ? (Number(quand) || 0) : null;
+    n.leveePar = n.levee ? txt(qui) : '';
+    return { ok: true, note: n };
+  }
+
+  // Le questionnaire de fin d'exercice (F-9.10.0-06). Il part VIDE, et c'est le cabinet qui
+  // l'écrit — une fois, au niveau du cabinet (`modeles`), puis il se pose sur chaque exercice.
+  function poserQuestionnaire(livre, periode, modeles, qui, quand) {
+    const r = assurerRevision(livre, periode);
+    const deja = new Set(r.questionnaire.map(q => txt(q.question)));
+    let poses = 0;
+    (Array.isArray(modeles) ? modeles : []).forEach(m => {
+      const q = txt(typeof m === 'string' ? m : m && m.question);
+      if (!q || deja.has(q)) return;
+      r.questionnaire.push({ id: idEcriture(quand), question: q, reponse: '', par: '', le: null });
+      deja.add(q); poses++;
+    });
+    trace(livre, qui, 'questionnaire', `${periode} : ${plFr(poses, 'question posée', 'questions posées')}`, quand);
+    return { ok: true, poses, total: r.questionnaire.length };
+  }
+
+  function repondreQuestionnaire(livre, periode, id, reponse, qui, quand) {
+    const r = revisionDe(livre, periode);
+    const q = r && (r.questionnaire || []).find(x => x.id === id);
+    if (!q) return { ok: false, motif: 'Cette question n\'existe plus.' };
+    q.reponse = txt(reponse); q.par = txt(qui); q.le = Number(quand) || 0;
+    return { ok: true, question: q };
+  }
+
+  // Arrêter la révision d'une période. Les contrôles NOMMENT sans bloquer (règle 6.0.0) : une
+  // révision arrêtée avec deux comptes non signés vaut mieux qu'une révision jamais arrêtée parce
+  // que l'application faisait la difficile.
+  function controlesRevision(livre, periode, opts) {
+    const d = dossierDeRevision(livre, { ...(opts || {}), periode });
+    const c = [];
+    const brouillards = (livre.ecritures || []).filter(e => e.statut === 'brouillard'
+      && e.date >= d.du && e.date <= d.au).length;
+    if (brouillards) c.push({ id: 'brouillard', gravite: 'attention', texte: `${plFr(brouillards, 'écriture est encore au brouillard', 'écritures sont encore au brouillard')} sur la période, donc hors des feuilles maîtresses.` });
+    if (d.reste) c.push({ id: 'comptes', gravite: 'info', texte: `${plFr(d.reste, 'compte n\'est pas signé', 'comptes ne sont pas signés')}.` });
+    const ouvertes = (d.notes || []).filter(n => !n.levee).length;
+    if (ouvertes) c.push({ id: 'notes', gravite: 'attention', texte: `${plFr(ouvertes, 'note de revue n\'est pas levée', 'notes de revue ne sont pas levées')}.` });
+    const sansReponse = (d.questionnaire || []).filter(q => !txt(q.reponse)).length;
+    if (sansReponse) c.push({ id: 'questionnaire', gravite: 'info', texte: `${plFr(sansReponse, 'question du questionnaire est sans réponse', 'questions du questionnaire sont sans réponse')}.` });
+    const qs = questionsOuvertes(livre, { periode });
+    if (qs.length) c.push({ id: 'questions', gravite: 'attention', texte: `${plFr(qs.length, 'question au client attend sa réponse', 'questions au client attendent leur réponse')}.` });
+    return c;
+  }
+
+  function arreterRevision(livre, periode, qui, quand, opts) {
+    const o = opts || {};
+    const r = assurerRevision(livre, periode);
+    if (o.faite === false) {
+      r.faite = false; r.faiteLe = null; r.faitePar = '';
+      trace(livre, qui, 'revision', `${periode} : révision rouverte`, quand);
+      return { ok: true, faite: false, controles: controlesRevision(livre, periode, o) };
+    }
+    const controles = controlesRevision(livre, periode, o);
+    r.faite = true; r.faiteLe = Number(quand) || 0; r.faitePar = txt(qui);
+    trace(livre, qui, 'revision', `${periode} : révision arrêtée`, quand);
+    return { ok: true, faite: true, controles };
+  }
+
+  // ------------------------------------------------------------------- les questions au client
+
+  const QUESTION_STATUTS = ['ouverte', 'envoyee', 'repondue', 'close'];
+  // Ce qu'on attend en retour. Trois valeurs seulement, et « correction proposée » n'en est PAS
+  // une : le format d'une correction venue du client n'est pas décidé (il attend les cinq
+  // questions les plus fréquentes du pilote), et une case qu'on ne sait pas traiter est pire
+  // qu'une case absente.
+  const QUESTION_ATTENDUS = [
+    { id: 'piece', label: 'Une pièce justificative' },
+    { id: 'explication', label: 'Une explication' },
+    { id: 'confirmation', label: 'Une confirmation' }
+  ];
+  // Le nombre de paquets sans réponse au bout duquel une question remonte dans « À faire » des
+  // DEUX côtés (F-9.10.0-10). Deux : un client qui n'a pas vu la question dans son paquet du mois
+  // peut l'avoir manquée ; deux paquets, c'est qu'elle ne passera pas toute seule.
+  const QUESTION_RELANCE = 2;
+
+  function questionValide(q) {
+    const motifs = [];
+    if (!txt(q && q.texte)) motifs.push('Une question sans texte n\'apprend rien au client.');
+    if (txt(q && q.attendu) && !QUESTION_ATTENDUS.some(a => a.id === txt(q.attendu))) {
+      motifs.push('Ce que la question attend en retour n\'est pas connu.');
+    }
+    return { ok: !motifs.length, motifs };
+  }
+
+  // Une question naît depuis la LIGNE (F-9.10.0-07) : elle porte le compte, l'écriture et la pièce
+  // sur lesquels elle est née. C'est ce qui permet à SkanFact de l'afficher EN FACE de la pièce
+  // plutôt que dans une liste que personne n'ouvre — et c'est tout l'intérêt du mécanisme.
+  function ajouterQuestion(livre, question, qui, quand) {
+    const v = questionValide(question);
+    if (!v.ok) return { ok: false, motifs: v.motifs };
+    const src = question || {};
+    const e = txt(src.ecritureId) && (livre.ecritures || []).find(x => x.id === txt(src.ecritureId));
+    const q = {
+      id: idEcriture(quand),
+      creeLe: Number(quand) || 0, creePar: txt(qui),
+      periode: txt(src.periode) || (e ? String(e.date || '').slice(0, 7) : ''),
+      cycle: txt(src.cycle) || cycleDuCompte(src.compte, src.cycles),
+      compte: txt(src.compte), ecritureId: txt(src.ecritureId),
+      piece: txt(src.piece) || (e ? txt(e.piece) : ''),
+      numero: e ? (Number(e.numero) || null) : null,
+      montant: num(src.montant),
+      objet: txt(src.objet), texte: txt(src.texte),
+      attendu: txt(src.attendu) || 'explication',
+      statut: 'ouverte', envois: [], reponse: null, closeLe: null, closePar: ''
+    };
+    livre.questions = (livre.questions || []).concat([q]);
+    trace(livre, qui, 'question', `${q.piece || q.compte || q.periode} : ${q.objet || q.texte.slice(0, 40)}`, quand);
+    return { ok: true, question: q };
+  }
+
+  function modifierQuestion(livre, id, champs, qui, quand) {
+    const q = ((livre && livre.questions) || []).find(x => x.id === id);
+    if (!q) return { ok: false, motifs: ['Cette question n\'existe plus.'] };
+    if (q.statut === 'repondue' || q.statut === 'close') {
+      return { ok: false, motifs: ['Cette question a reçu sa réponse : elle ne se réécrit plus.'] };
+    }
+    const c = champs || {};
+    const v = questionValide({ texte: c.texte == null ? q.texte : c.texte, attendu: c.attendu == null ? q.attendu : c.attendu });
+    if (!v.ok) return { ok: false, motifs: v.motifs };
+    ['objet', 'texte', 'attendu', 'cycle', 'compte'].forEach(k => { if (c[k] != null) q[k] = txt(c[k]); });
+    trace(livre, qui, 'question', `${q.piece || q.compte} : question modifiée`, quand);
+    return { ok: true, question: q };
+  }
+
+  function supprimerQuestion(livre, id, qui, quand) {
+    const q = ((livre && livre.questions) || []).find(x => x.id === id);
+    if (!q) return { ok: false, motifs: ['Cette question n\'existe plus.'] };
+    if ((q.envois || []).length) {
+      return { ok: false, motifs: ['Cette question est déjà partie chez le client : elle se ferme, elle ne s\'efface pas.'] };
+    }
+    livre.questions = (livre.questions || []).filter(x => x.id !== id);
+    trace(livre, qui, 'question', 'question retirée', quand);
+    return { ok: true };
+  }
+
+  function fermerQuestion(livre, id, qui, quand, ouvrir) {
+    const q = ((livre && livre.questions) || []).find(x => x.id === id);
+    if (!q) return { ok: false, motifs: ['Cette question n\'existe plus.'] };
+    if (ouvrir) {
+      q.statut = q.reponse ? 'repondue' : ((q.envois || []).length ? 'envoyee' : 'ouverte');
+      q.closeLe = null; q.closePar = '';
+    } else {
+      q.statut = 'close'; q.closeLe = Number(quand) || 0; q.closePar = txt(qui);
+    }
+    return { ok: true, question: q };
+  }
+
+  // Ce qui part chez le client. Les questions CLOSES ne partent pas — elles ont trouvé leur
+  // réponse ailleurs, et les renvoyer ferait chercher au client quelque chose qui n'existe plus.
+  function questionsAEnvoyer(livre, opts) {
+    const o = opts || {};
+    return ((livre && livre.questions) || []).filter(q => {
+      if (q.statut === 'close' || q.statut === 'repondue') return false;
+      if (o.periode && txt(q.periode) !== txt(o.periode)) return false;
+      return true;
+    });
+  }
+
+  const questionsOuvertes = (livre, opts) => questionsAEnvoyer(livre, opts);
+
+  // Le fichier de questions (`.skanask`, SPEC-FMT-006). Pur — l'appelant seul chiffre et écrit.
+  // Il porte STRICTEMENT ce que le client a besoin de lire pour répondre : ni solde, ni balance,
+  // ni le nom d'un autre client. Un test compte les champs (même garde que `chargeHistorique`).
+  function dossierDeQuestions(livre, opts) {
+    const o = opts || {};
+    const qs = questionsAEnvoyer(livre, o);
+    return {
+      format: 1,
+      dossier: livre.dossier,
+      exercice: livre.exercice.annee,
+      cabinet: txt(o.cabinet),
+      matricule: txt(o.matricule),
+      produitLe: Number(o.quand) || 0,
+      questions: qs.map(q => ({
+        id: q.id, periode: q.periode, piece: q.piece, compte: q.compte,
+        libelleCompte: nomDuCompte(livre, q.compte), montant: q.montant,
+        objet: q.objet, texte: q.texte, attendu: q.attendu, creeLe: q.creeLe
+      }))
+    };
+  }
+
+  // Noter que le paquet est parti. C'est ce compteur — un envoi par paquet, jamais un par jour —
+  // qui fait la règle des deux paquets : ce qu'on compte, c'est le nombre de fois où le client a
+  // EU la question sous les yeux.
+  function noterEnvoiQuestions(livre, ids, quand) {
+    const set = new Set((Array.isArray(ids) ? ids : []).map(txt));
+    let n = 0;
+    ((livre && livre.questions) || []).forEach(q => {
+      if (!set.has(txt(q.id))) return;
+      q.envois = (q.envois || []).concat([Number(quand) || 0]);
+      if (q.statut === 'ouverte') q.statut = 'envoyee';
+      n++;
+    });
+    return { ok: true, envoyees: n };
+  }
+
+  // La réponse revient dans le paquet suivant. Elle ne touche à AUCUN chiffre du livre : elle se
+  // range sur la question, et c'est le comptable qui décide ensuite ce qu'il en fait.
+  function noterReponsesQuestions(livre, reponses, quand) {
+    const r = { posees: 0, inconnues: [] };
+    (Array.isArray(reponses) ? reponses : []).forEach(rep => {
+      const q = ((livre && livre.questions) || []).find(x => txt(x.id) === txt(rep && rep.id));
+      if (!q) { r.inconnues.push(txt(rep && rep.id)); return; }
+      if (q.reponse && Number(q.reponse.le) >= Number(rep.le || 0)) return;
+      q.reponse = {
+        texte: txt(rep.texte), le: Number(rep.le) || Number(quand) || 0,
+        piece: rep.piece ? { nom: txt(rep.piece.nom), sha256: txt(rep.piece.sha256) } : null
+      };
+      if (q.statut !== 'close') q.statut = 'repondue';
+      r.posees++;
+    });
+    return r;
+  }
+
+  // La règle des deux paquets (F-9.10.0-10), et elle vaut des DEUX côtés — le cabinet la lit sur
+  // ses questions, le client sur celles qu'il a reçues. Une question partie deux fois et toujours
+  // sans réponse n'est plus une question en attente : c'est un point bloquant.
+  function questionsARelancer(livre, opts) {
+    const o = opts || {};
+    const seuil = Number(o.seuil) || QUESTION_RELANCE;
+    return questionsAEnvoyer(livre, o).filter(q => (q.envois || []).length >= seuil);
+  }
+
+  // Ce que le CLIENT reçoit et lit. Refuse plus qu'il n'accepte, comme `clotureValide`.
+  function questionsValides(obj, attendu) {
+    const motifs = [];
+    if (!obj || typeof obj !== 'object') return { ok: false, motifs: ['Ce fichier n\'est pas un envoi de questions.'] };
+    if (obj.format !== 1) {
+      return { ok: false, tropRecent: Number(obj.format) > 1, motifs: [Number(obj.format) > 1
+        ? 'Cet envoi de questions vient d\'une version plus récente de SkanFact. Mets l\'application à jour : l\'ouvrir avec les règles d\'aujourd\'hui perdrait ce qu\'elle y a mis.'
+        : 'Cet envoi de questions n\'est pas d\'un format connu.'] };
+    }
+    const qs = Array.isArray(obj.questions) ? obj.questions : [];
+    if (!qs.length) motifs.push('Cet envoi ne porte aucune question.');
+    if (qs.some(q => !q || !txt(q.id) || !txt(q.texte))) motifs.push('Une question de cet envoi n\'a ni identifiant ni texte.');
+    if (attendu && txt(attendu.matricule) && txt(obj.matricule) && txt(attendu.matricule) !== txt(obj.matricule)) {
+      motifs.push('Cet envoi de questions porte le matricule d\'une autre entreprise.');
+    }
+    return { ok: !motifs.length, motifs, questions: qs.length };
+  }
+
+  // ------------------------------------------------------------ côté client (F-9.10.0-08 à 10)
+  //
+  // Ces trois fonctions vivent ici plutôt que dans core.js parce qu'elles ne prennent pas `data` :
+  // elles prennent une LISTE de questions (règle de découpage 9.1.0). core.js les réexporte.
+
+  function fusionnerQuestionsRecues(liste, envoi, quand) {
+    const out = Array.isArray(liste) ? liste.slice() : [];
+    const parId = new Map(out.map((q, i) => [txt(q.id), i]));
+    const r = { nouvelles: 0, revues: 0 };
+    ((envoi && envoi.questions) || []).forEach(q => {
+      const id = txt(q.id);
+      if (!id) return;
+      const base = {
+        id, periode: txt(q.periode), piece: txt(q.piece), compte: txt(q.compte),
+        libelleCompte: txt(q.libelleCompte), montant: num(q.montant),
+        objet: txt(q.objet), texte: txt(q.texte), attendu: txt(q.attendu) || 'explication',
+        cabinet: txt(envoi.cabinet), exercice: num(envoi.exercice)
+      };
+      const i = parId.get(id);
+      if (i == null) {
+        out.push({ ...base, recueLe: Number(quand) || 0, recues: 1, reponse: null });
+        parId.set(id, out.length - 1); r.nouvelles++;
+      } else {
+        // Reçue une seconde fois : on met à jour le texte (le comptable a pu le préciser) et on
+        // COMPTE la réception. C'est ce compteur qui fait la règle des deux paquets côté client.
+        out[i] = { ...out[i], ...base, recues: (Number(out[i].recues) || 0) + 1, recueLe: Number(quand) || 0 };
+        r.revues++;
+      }
+    });
+    return { liste: out, ...r };
+  }
+
+  // Les questions qui visent UNE pièce. C'est ce que l'écran d'un devis, d'une facture ou d'un
+  // achat affiche en face du document (F-9.10.0-08). On compare sur le numéro de pièce, seule
+  // chose que les deux applications nomment pareil.
+  function questionsDeLaPiece(liste, numero) {
+    const n = txt(numero);
+    if (!n) return [];
+    return (Array.isArray(liste) ? liste : []).filter(q => txt(q.piece) === n && !(q.reponse && txt(q.reponse.texte)));
+  }
+
+  function repondreQuestion(liste, id, reponse, quand) {
+    const out = (Array.isArray(liste) ? liste : []).map(q => {
+      if (txt(q.id) !== txt(id)) return q;
+      return { ...q, reponse: {
+        texte: txt(reponse && reponse.texte), le: Number(quand) || 0,
+        piece: reponse && reponse.piece ? { nom: txt(reponse.piece.nom), sha256: txt(reponse.piece.sha256) } : null
+      } };
+    });
+    const q = out.find(x => txt(x.id) === txt(id));
+    if (!q) return { ok: false, motif: 'Cette question n\'existe plus.' };
+    if (!txt(q.reponse.texte) && !q.reponse.piece) {
+      return { ok: false, motif: 'Une réponse vide n\'apprend rien à ton comptable.' };
+    }
+    return { ok: true, liste: out, question: q };
+  }
+
+  // Ce que le client renvoie dans son paquet. Rien d'autre que l'identifiant, la réponse et
+  // l'empreinte de la pièce jointe — jamais le fichier lui-même, qui voyage déjà comme
+  // justificatif du paquet.
+  const reponsesAEnvoyer = liste => (Array.isArray(liste) ? liste : [])
+    .filter(q => q.reponse && (txt(q.reponse.texte) || q.reponse.piece))
+    .map(q => ({ id: txt(q.id), texte: txt(q.reponse.texte), le: Number(q.reponse.le) || 0, piece: q.reponse.piece || null }));
+
+  const questionsSansReponse = (liste, seuil) => (Array.isArray(liste) ? liste : [])
+    .filter(q => !(q.reponse && (txt(q.reponse.texte) || q.reponse.piece))
+      && (Number(q.recues) || 0) >= (Number(seuil) || QUESTION_RELANCE));
+
   // ---------------------------------------------------------------- la fusion de deux livres (9.9.0)
   //
   // Deux postes ont travaillé sur le même exercice pendant que le dossier réseau était coupé. Le
@@ -3184,13 +3674,36 @@
     });
 
     // Les listes à état : ce qui MANQUE entre, ce qui existe des deux côtés ne bouge pas.
-    ['lettrages', 'releves', 'immobilisations', 'declarations', 'inventaires'].forEach(k => {
+    ['lettrages', 'releves', 'immobilisations', 'declarations', 'inventaires', 'questions'].forEach(k => {
       const miens = Array.isArray(mien[k]) ? mien[k] : (mien[k] = []);
       const vus = new Set(miens.map(x => txt(x && x.id)));
       const neufs = (Array.isArray(autre[k]) ? autre[k] : []).filter(x => x && !vus.has(txt(x.id)));
       neufs.forEach(x => miens.push(x));
       if (neufs.length) r.listes[k] = neufs.length;
     });
+    // La révision se fusionne par PÉRIODE, jamais par identifiant : chaque poste tient la sienne,
+    // et ce qui compte est le travail fait — un compte signé sur un poste l'est pour le dossier.
+    // Une période arrêtée d'un côté et pas de l'autre reste arrêtée : on ne défait pas une
+    // révision qu'un collègue a terminée parce que notre copie ne l'avait pas vue.
+    {
+      const miennes = Array.isArray(mien.revisions) ? mien.revisions : (mien.revisions = []);
+      let touchees = 0;
+      (Array.isArray(autre.revisions) ? autre.revisions : []).forEach(v => {
+        if (!v || !txt(v.periode)) return;
+        let m = miennes.find(x => txt(x.periode) === txt(v.periode));
+        if (!m) { miennes.push(v); touchees++; return; }
+        const avant = (m.comptes || []).length + (m.notes || []).length + (m.questionnaire || []).length;
+        const vusC = new Set((m.comptes || []).map(c => txt(c.compte)));
+        (v.comptes || []).forEach(c => { if (!vusC.has(txt(c.compte))) m.comptes.push(c); });
+        ['notes', 'questionnaire'].forEach(k => {
+          const vus = new Set((m[k] || []).map(x => txt(x.id)));
+          (v[k] || []).forEach(x => { if (x && !vus.has(txt(x.id))) m[k].push(x); });
+        });
+        if (v.faite && !m.faite) { m.faite = true; m.faiteLe = v.faiteLe; m.faitePar = v.faitePar; }
+        if ((m.comptes || []).length + (m.notes || []).length + (m.questionnaire || []).length !== avant) touchees++;
+      });
+      if (touchees) r.listes.revisions = touchees;
+    }
     // La piste d'audit des deux postes se recolle dans l'ordre du temps : c'est elle qui dit qui a
     // fait quoi, et amputer la moitié venue de l'autre poste reviendrait à effacer son travail.
     const vusAudit = new Set((mien.audit || []).map(a => JSON.stringify([a.quand, a.qui, a.quoi, a.detail])));
@@ -3394,6 +3907,16 @@
     GUIDES_INVENTAIRE, controlesCloture, soldesDepuisOuverture,
     cloturerExercice, rouvrirExercice, noterDossierCloture, anouveauxDe, ecritureAnouveaux, extournesDe,
     etatsDepuisLignes, sigDepuisLignes, dossierDeCloture, clotureValide,
+    // La révision et les questions (9.10.0)
+    CYCLES_REVISION, QUESTION_STATUTS, QUESTION_ATTENDUS, QUESTION_RELANCE,
+    cycleDuCompte, libelleCycle, nomDuCompte,
+    revisionVide, revisionDe, assurerRevision, feuilleMaitresse, dossierDeRevision,
+    signerCompte, ajouterNoteRevue, leverNoteRevue,
+    poserQuestionnaire, repondreQuestionnaire, controlesRevision, arreterRevision,
+    questionValide, ajouterQuestion, modifierQuestion, supprimerQuestion, fermerQuestion,
+    questionsAEnvoyer, questionsOuvertes, questionsARelancer, dossierDeQuestions,
+    noterEnvoiQuestions, noterReponsesQuestions, questionsValides,
+    fusionnerQuestionsRecues, questionsDeLaPiece, repondreQuestion, reponsesAEnvoyer, questionsSansReponse,
     // Le cabinet à plusieurs (9.9.0)
     fusionnerLivres, empreinteEcriture,
     // La pièce équilibrée et l'amortissement (9.6.1)

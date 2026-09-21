@@ -108,6 +108,10 @@
     // Les collaborateurs (9.9.0). Vide = cabinet d'une personne : tout est permis, et rien ne
     // change à l'écran tant que personne n'est déclaré.
     collaborateurs: [],
+    // Le questionnaire de fin d'exercice et les cycles de révision (9.10.0). Vides tous les deux :
+    // la méthode de révision appartient au comptable, pas à nous. Cycles vides = ceux que le
+    // moteur PROPOSE (`CYCLES_REVISION`).
+    questionnaire: [], cycles: [],
     settings: { ...DEFAULT_SETTINGS }
   };
 
@@ -426,6 +430,17 @@
     // mot — la piste d'audit cesserait de dire QUI, ce qui est le seul point de cette version.
     s.collaborateurs = (Array.isArray(s.collaborateurs) ? s.collaborateurs : [])
       .map(migrateCollaborateur).filter(c => c.id && c.nom);
+    // 9.10.0 — le questionnaire de fin d'exercice et les cycles de révision, au niveau du CABINET
+    // comme les guides : on les écrit une fois pour soixante clients. Les deux partent VIDES — les
+    // cinq questions les plus fréquentes du pilote ne sont pas connues, et les inventer serait
+    // écrire sa méthode à sa place. Absents d'ici, ils seraient jetés au prochain chargement.
+    s.questionnaire = (Array.isArray(s.questionnaire) ? s.questionnaire : [])
+      .map(q => ({ question: String((q && q.question != null ? q.question : q) || '').trim() }))
+      .filter(q => q.question);
+    s.cycles = (Array.isArray(s.cycles) ? s.cycles : []).map(c => ({
+      id: String((c && c.id) || '').trim(), label: String((c && c.label) || '').trim(),
+      prefixes: (Array.isArray(c && c.prefixes) ? c.prefixes : []).map(p => String(p).trim()).filter(Boolean)
+    })).filter(c => c.id && c.label);
     // 9.5.0 — les deux tables de la banque, au niveau du CABINET : un comptable associe les
     // colonnes d'une banque une fois pour ses soixante clients, et reconnaît « STEG » une fois.
     // Absentes d'ici, elles seraient jetées au prochain chargement et il faudrait tout réassocier
@@ -1008,6 +1023,18 @@
       label: `${pl(prov.length, 'dossier')} n'${prov.length > 1 ? 'ont' : 'a'} envoyé que du provisoire`,
       detail: 'Leur mois n\'est pas clôturé : les chiffres peuvent encore bouger. À relancer avant de déclarer.',
       count: prov.length, rows: prov
+    });
+    // Les questions posées au client et restées sans réponse au bout de DEUX paquets (9.10.0).
+    // Elle remonte des deux côtés — le client la voit aussi dans son « À faire » — parce qu'une
+    // question qui reste sans réponse n'est pas un oubli du client : c'est un point qui bloque la
+    // révision, et le comptable doit décrocher son téléphone.
+    const qs = (opts && Array.isArray(opts.questions) ? opts.questions : []).filter(q => q.aRelancer > 0);
+    if (qs.length) out.push({
+      id: 'questions', level: 'warn',
+      label: `${pl(qs.length, 'client n\'a pas répondu', 'clients n\'ont pas répondu')} à tes questions`,
+      detail: `Parties dans deux paquets sans réponse. ${qs.slice(0, 6).map(q => `${q.name} (${pl(q.aRelancer, 'question')})`).join(' · ')}`,
+      count: qs.reduce((s, q) => s + q.aRelancer, 0),
+      rows: qs.map(q => rows.find(r => r.id === q.dossierId)).filter(Boolean)
     });
     const holes = rows.filter(r => r.issues > 0);
     if (holes.length) out.push({

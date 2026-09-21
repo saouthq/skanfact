@@ -2339,6 +2339,7 @@
           ${canUnlock ? '<button class="btn btn-sm" id="lock-unlock">Modifier quand même…</button>'
             : (isInv && doc.status !== 'annulée' ? `<span class="small" title="${h(bal && bal.paid ? 'Cette facture est soldée.' : 'Cette facture a déjà reçu un paiement ou un avoir.')}">Plus déverrouillable${bal && bal.credits.length ? ' (un avoir existe)' : (bal && (bal.paid || bal.remaining < C.computeTotals(doc, company()).netToPay) ? ' (déjà payée en partie)' : '')}</span>` : '')}
         </span></div>`}
+      ${bandeauQuestions(doc.number)}
       <div class="editor">
         <div>
           <div class="panel"><h2>Informations</h2>
@@ -3095,6 +3096,7 @@
     // quelqu'un qui vient de comprendre pourquoi il ne peut rien taper doit trouver la suite là où il
     // l'a lu, pas dans un menu qu'il n'a pas encore ouvert.
     if ($('#lock-credit')) $('#lock-credit').onclick = () => navigate('#/doc/new/avoir/' + doc.id);
+    brancherQuestions();
     if ($('#lock-unlock')) $('#lock-unlock').onclick = () => { const u = $('#unlock'); if (u) u.onclick(); };
     if ($('#email')) $('#email').onclick = async () => {
       // La porte de l'exemple AVANT tout le reste : sinon on explique d'abord comment émettre une
@@ -4563,6 +4565,53 @@
   // d'annoncer. Une recopie à cinq morceaux se trompe un jour ; un helper, jamais.
   const filtre = (liste, st, extra) => () => Object.assign(listState[liste],
     { q: '', st: st || '', kind: '', year: '', yearAuto: false, yearTouched: true, page: 1 }, extra || {});
+  // ---------------------------------------------- répondre à une question du comptable (9.10.0)
+  //
+  // La fenêtre vit ici, au niveau du module, parce qu'elle s'ouvre de DEUX endroits : la liste de
+  // l'onglet Cabinet, et le bandeau posé en face de la pièce que la question vise. Recopiée dans
+  // les deux, elle divergerait au premier ajustement (7.29.0).
+  const repondue = q => !!(q && q.reponse && (String(q.reponse.texte || '').trim() || q.reponse.piece));
+
+  // Le bandeau posé EN FACE de la pièce que la question vise (F-9.10.0-08). C'est tout l'intérêt du
+  // mécanisme : une question rangée dans une liste que personne n'ouvre est une question perdue,
+  // et le comptable finit par téléphoner. Ici, elle est là où on regarde déjà la pièce.
+  // `brancherQuestions(racine)` arme les boutons ; les deux vont ensemble — le gabarit seul
+  // donnerait un bouton qui accepte le clic et n'en fait rien (7.0.0).
+  function bandeauQuestions(numero) {
+    const qs = C.questionsDeLaPiece(data.questionsCabinet || [], numero);
+    if (!qs.length) return '';
+    return `<div class="banner" id="q-piece"><span><b>${h(pl(qs.length, 'question de ton comptable', 'questions de ton comptable'))} sur cette pièce.</b>
+      ${qs.map(q => h(q.texte)).join(' · ')}</span>
+      <span class="lock-go">${qs.map(q => `<button class="btn btn-sm btn-primary" data-qrep="${h(q.id)}">Répondre</button>`).join('')}</span></div>`;
+  }
+  const brancherQuestions = racine => $$('[data-qrep]', racine).forEach(b => b.onclick = () => repondreA(b.dataset.qrep));
+
+  function repondreA(id) {
+    const q = (data.questionsCabinet || []).find(x => x.id === id);
+    if (!q) return;
+    const att = (C.QUESTION_ATTENDUS.find(x => x.id === q.attendu) || {}).label || 'Une explication';
+    modal(`<h2>Répondre à ton comptable</h2>
+      <p class="small">${q.piece ? `Sur la pièce <strong>${h(q.piece)}</strong>. ` : ''}Il attend : <strong>${h(att)}</strong>.</p>
+      <div class="warn-box mb">${h(q.objet ? q.objet + ' — ' : '')}${h(q.texte)}</div>
+      <form id="qf"><label class="field obligatoire"><span>Ta réponse</span>
+        <textarea name="texte" rows="4" placeholder="Réponds en une phrase : c'est ce que ton comptable lira.">${h((q.reponse && q.reponse.texte) || '')}</textarea></label>
+        <p class="small muted">Une pièce justificative se joint sur la pièce elle-même : elle part déjà dans le paquet,
+        et la joindre ici en ferait une seconde copie.</p></form>
+      <div class="modal-actions"><span class="small muted">* obligatoire</span><button class="btn" data-close>Annuler</button><button class="btn btn-primary" id="ok">Enregistrer ma réponse</button></div>`,
+      (root, close) => {
+        $('#ok', root).onclick = () => {
+          const t = $('textarea[name=texte]', root).value.trim();
+          if (!t) return refus($('textarea[name=texte]', root), 'Une réponse vide n\'apprend rien à ton comptable.');
+          const r = C.repondreQuestion(data.questionsCabinet || [], id, { texte: t }, Date.now());
+          if (!r.ok) return toast(r.motif, true);
+          data.questionsCabinet = r.liste;
+          save(true); close();
+          toast('Réponse enregistrée — elle repart dans ton prochain paquet');
+          render(true); updateNavCounts();
+        };
+      });
+  }
+
   const TODO_ACTIONS = {
     contrats: { label: 'Générer les brouillons', run: () => { const res = generateRecurring(); toast(`${pl(res.n, 'brouillon créé', 'brouillons créés')} — à relire puis émettre`); render(); } },
     retards: { label: 'Voir les relances', run: vers('#/relances') },
@@ -4596,7 +4645,10 @@
     // posent problème, c'est la même impasse que de ne pas pouvoir cliquer du tout (7.15.0).
     'licences-a-envoyer': { label: 'Voir les clés à envoyer', run: vers('#/licences', () => { licState.q = ''; licState.st = ''; licState.tri = 'envoi'; licState.page = 1; }) },
     'licences-sans-facture': { label: 'Voir les factures à émettre', run: vers('#/licences', () => { licState.q = ''; licState.st = ''; licState.tri = 'facture'; licState.page = 1; }) },
-    'licences-impayees': { label: 'Voir les impayées', run: vers('#/licences', () => { licState.q = ''; licState.st = ''; licState.tri = 'impaye'; licState.page = 1; }) }
+    'licences-impayees': { label: 'Voir les impayées', run: vers('#/licences', () => { licState.q = ''; licState.st = ''; licState.tri = 'impaye'; licState.page = 1; }) },
+    // Les questions du comptable (9.10.0). Elles vivent dans l'onglet Cabinet, à côté du paquet
+    // qui les a apportées et de celui qui emportera les réponses.
+    questions: { label: 'Voir les questions', run: vers('#/compta', () => { comptaState.tab = 'cabinet'; pageFocus = 'p-questions'; }) }
   };
 
   // « Ce qui manque » (Comptabilité → Cabinet) et les contrôles avant clôture disent exactement ce
@@ -5391,6 +5443,7 @@
             <button id="del" class="danger">Supprimer</button>
           </div></div>`}
         </div></div>
+      ${bandeauQuestions(p.number)}
       <div class="buy-editor">
         <div>
           <div class="panel"><h2>La pièce du fournisseur ${info('buy.head')}</h2>
@@ -5643,6 +5696,7 @@
       toast(ajoutes.length > 1 ? `${ajoutes.length} justificatifs joints` : 'Justificatif joint');
       return true;
     };
+    brancherQuestions();
     $('#attach-top').onclick = async () => {
       try { await joindre(await bridge.addAttachments(p.id)); }
       catch (e) { toast(plainError(e), true); }
@@ -9831,6 +9885,8 @@
           <div id="cab-prog" class="small muted mt" hidden></div>
         </div>
 
+        ${panneauQuestions()}
+
         <div class="panel"><h2>Ce qui a déjà été envoyé ${info('cab.historique')}</h2>
           ${history.length
             ? `<div class="scroll-x"><table class="list compact"><thead><tr><th>Mois</th><th>Fabriqué le</th><th>État</th><th class="r">Fichiers</th><th class="r">Taille</th><th>Empreinte</th><th></th></tr></thead><tbody>
@@ -9845,6 +9901,73 @@
             : '<div class="empty">Aucun paquet fabriqué pour l\'instant.</div>'}
         </div>`;
 
+      // ---------------------------------------------- les questions du comptable (9.10.0)
+      //
+      // Elles arrivent par un fichier `.skanask`, s'affichent ici ET en face de la pièce qu'elles
+      // visent, et les réponses repartent dans le paquet suivant — jamais dans un envoi à part,
+      // qu'on oublierait. Rien ici ne touche à un chiffre.
+      function panneauQuestions() {
+        const qs = (data.questionsCabinet || []).slice()
+          .sort((a, b) => Number(!!repondue(a)) - Number(!!repondue(b)) || Number(b.recueLe || 0) - Number(a.recueLe || 0));
+        const bloquees = C.questionsSansReponse(data.questionsCabinet || []);
+        const attendu = id => (C.QUESTION_ATTENDUS.find(x => x.id === id) || {}).label || 'Une explication';
+        return `<div class="panel" id="p-questions"><h2>Les questions de ton comptable ${info('cab.questions')}</h2>
+          ${bloquees.length ? `<div class="warn-box grave mb">${h(pl(bloquees.length, 'question est arrivée', 'questions sont arrivées'))} dans deux paquets sans réponse.
+            Tant qu'${bloquees.length > 1 ? 'elles restent' : 'elle reste'} en l'air, ton comptable ne peut pas arrêter ton mois.</div>` : ''}
+          ${qs.length
+            ? `<div class="scroll-x"><table class="list compact"><thead><tr><th>Pièce</th><th>La question</th><th>Attendu</th><th>Reçue</th><th>Réponse</th><th></th></tr></thead><tbody>
+                ${qs.map(q => `<tr class="${!repondue(q) && (Number(q.recues) || 0) >= C.QUESTION_RELANCE ? 'row-warn' : ''}">
+                  <td class="nw">${q.piece ? `<strong>${h(q.piece)}</strong>` : '<span class="muted">—</span>'}
+                    ${q.compte ? `<div class="small muted">${h(q.compte)} ${h(q.libelleCompte || '')}</div>` : ''}</td>
+                  <td>${h(q.objet || '')}<div class="small">${h(q.texte)}</div></td>
+                  <td class="nw small">${h(attendu(q.attendu))}</td>
+                  <td class="nw small">${(Number(q.recues) || 0) > 1 ? `<span class="badge b-late">${h(pl(Number(q.recues), 'fois', 'fois'))}</span>` : '<span class="muted">1 fois</span>'}</td>
+                  <td>${repondue(q)
+                    ? `<span class="badge b-paid">répondue</span><div class="small">${h(q.reponse.texte || '')}</div>`
+                    : '<span class="badge b-due">sans réponse</span>'}</td>
+                  <td class="actions r nw"><button class="btn btn-sm" data-rep="${h(q.id)}">${repondue(q) ? 'Corriger ma réponse' : 'Répondre'}</button></td></tr>`).join('')}
+              </tbody></table></div>
+              <p class="small muted mt">Tes réponses repartent <strong>dans le prochain paquet</strong> : il n'y a rien d'autre à envoyer.</p>`
+            : `<div class="empty mini">Aucune question reçue. Quand ton comptable a besoin d'une pièce ou d'une explication,
+               il t'envoie un fichier <code>.skanask</code> : chaque question s'affiche ensuite en face de la pièce qu'elle vise.</div>`}
+          <div class="inline mt"><button class="btn" id="q-import">Importer les questions de ton comptable…</button></div>
+        </div>`;
+      }
+      $$('[data-rep]').forEach(b => b.onclick = () => repondreA(b.dataset.rep));
+      if ($('#q-import')) $('#q-import').onclick = () => importerQuestions();
+
+      async function importerQuestions(motDePasse) {
+        let lu;
+        try { lu = await bridge.lireQuestions({ motDePasse }); }
+        catch (e) {
+          // Un fichier scellé n'est pas une panne : c'est le cas normal quand le comptable a choisi
+          // un mot de passe. On le demande au lieu d'afficher du rouge (règle 8.0.1).
+          if (codeErreur(e) === 'ERR-ENT-084' && !motDePasse) {
+            promptDialog('Le mot de passe de l\'envoi de questions',
+              'Ton comptable te le dit au téléphone, jamais dans le même mail que le fichier.', '',
+              v => { if (v) importerQuestions(v); });
+            return;
+          }
+          return toast(plainError(e), true);
+        }
+        if (!lu) return;
+        const v = C.questionsValides(lu.envoi, { matricule: company().taxId });
+        if (!v.ok) return toast(v.motifs[0], true);
+        const ok = await confirmDialog(
+          `Reprendre ${pl(v.questions, 'question')} de ton comptable ?\n\n`
+          + '• Elles s\'afficheront en face des pièces qu\'elles visent.\n'
+          + '• Aucun de tes chiffres ne change : une question est une demande, pas une écriture.\n'
+          + (lu.origine.niveau === 'prouvee'
+            ? `• Origine vérifiée : signature ${lu.origine.empreinte}.`
+            : `• ORIGINE NON PROUVÉE : ${lu.origine.motif} Vérifie avec ton comptable avant d'accepter.`),
+          'Reprendre les questions', lu.origine.niveau !== 'prouvee');
+        if (!ok) return;
+        const r = C.fusionnerQuestionsRecues(data.questionsCabinet || [], lu.envoi, Date.now());
+        data.questionsCabinet = r.liste;
+        save(true);
+        toast(`${pl(r.nouvelles, 'question reçue', 'questions reçues')}${r.revues ? `, ${pl(r.revues, 'déjà connue', 'déjà connues')}` : ''}`);
+        draw(); updateNavCounts();
+      }
       $('#cab-month').onchange = e => { cabinetState.month = e.target.value; draw(); };
       if ($('#cab-goclose')) $('#cab-goclose').onclick = e => { e.preventDefault(); comptaState.tab = 'clotures'; draw(); $$('#c-tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === 'clotures')); };
       if ($('#cab-seal')) $('#cab-seal').onchange = e => { cabinetState.seal = e.target.checked; $('#cab-pw').hidden = !e.target.checked; };

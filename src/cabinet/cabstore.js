@@ -838,9 +838,9 @@ function createCabStore(dir, opts) {
   // dessiner une grille (c'est la mesure de la 9.1.0 qui l'interdit : la balance de soixante
   // dossiers tient en 1,3 s parce qu'elle lit des index, pas des livres).
   //
-  // « Révisé » n'a pas encore d'écrivain — la 9.10.0 le remplira. Il vaut donc `false` tant que
-  // rien ne l'a posé, et l'absence du livre lui-même vaut `undefined`, que l'écran écrit « — » :
-  // ne pas savoir n'est pas « non ».
+  // « Révisé » a reçu son écrivain en 9.10.0 (`arreterRevision`). Il vaut `false` tant que rien ne
+  // l'a posé, et l'absence du livre lui-même vaut `undefined`, que l'écran écrit « — » : ne pas
+  // savoir n'est pas « non ».
   function productionDuLivre(livre) {
     const p = {};
     const mois = m => (p[m] = p[m] || { ecritures: 0, validees: 0, brouillards: 0, revise: false, declare: false, qui: '', depuis: null });
@@ -876,6 +876,17 @@ function createCabStore(dir, opts) {
       ecritures: livre.ecritures.length,
       brouillards: livre.ecritures.filter(x => x.statut === 'brouillard').length,
       production: productionDuLivre(livre),
+      // Les questions au client, résumées dans l'index pour la même raison que la production : le
+      // tableau du portefeuille et « À faire » doivent les compter sans déchiffrer soixante livres
+      // (mesure de la 9.1.0). `aRelancer` est la règle des deux paquets, calculée ici une fois.
+      questions: (() => {
+        const ouvertes = (livre.questions || []).filter(q => q.statut !== 'close' && q.statut !== 'repondue');
+        return {
+          ouvertes: ouvertes.length,
+          aRelancer: ouvertes.filter(q => (q.envois || []).length >= KC.QUESTION_RELANCE).length,
+          repondues: (livre.questions || []).filter(q => q.statut === 'repondue').length
+        };
+      })(),
       revision: Number(livre.revision) || 0,
       ecritPar: String(livre.ecritPar || ''),
       majLe: stamp(now())

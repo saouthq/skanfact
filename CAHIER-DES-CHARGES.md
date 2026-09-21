@@ -1895,7 +1895,11 @@ portent pas, et un test les nomme.
 | `ERR-CAB-072` | « Ce livre appartient à un autre dossier. » / « Ce livre porte l'exercice <n>, pas <m>. » / « Ce fichier ne s'ouvre pas avec le mot de passe de ce cabinet. » / « Impossible de réunir les deux versions de ce livre : <motif>. » | fusion de deux postes (9.9.0) | choisir le bon fichier | Livré |
 | `ERR-ENT-080` | « Ce fichier n'a pas pu être lu. » / « Ce fichier n'est pas un dossier de clôture SkanFact. » / « Le dossier de clôture est abîmé. » | import d'un `.skanclose` (9.8.0) | redemander le fichier au cabinet | Livré |
 | `ERR-ENT-081` | « Ce dossier de clôture est protégé par un mot de passe… » (l'application le DEMANDE au lieu d'afficher du rouge) / « Mot de passe incorrect, ou paquet modifié depuis son envoi. » | import d'un `.skanclose` (9.8.0) | le mot de passe, dit au téléphone | Livré |
+| `ERR-CAB-073` | « Aucun compte désigné. » / « Une note de revue sans texte n'apprend rien. » / « Cette note de revue n'existe plus. » / « Cette question n'existe plus. » | dossier de révision (9.10.0) | rouvrir l'écran, la fiche a bougé | Livré |
+| `ERR-CAB-074` | « Une question sans texte n'apprend rien au client. » / « Cette question a reçu sa réponse : elle ne se réécrit plus. » / « Cette question est déjà partie chez le client : elle se ferme, elle ne s'efface pas. » / « Aucune question n'attend de réponse : il n'y aurait rien à envoyer. » | questions au client (9.10.0) | fermer au lieu d'effacer, ou poser une question d'abord | Livré |
 | `ERR-ENT-082` | « Ce dossier de clôture ne porte aucun document à ouvrir. » | états d'une clôture reçue (9.8.0) | — | Livré |
+| `ERR-ENT-083` | « Ce fichier n'a pas pu être lu. » / « Ce fichier n'est pas un envoi de questions SkanFact. » / « Ce fichier ne contient aucune question. » / « L'envoi de questions est abîmé. » | import d'un `.skanask` (9.10.0) | redemander le fichier au cabinet | Livré |
+| `ERR-ENT-084` | « Cet envoi de questions est protégé par un mot de passe… » (l'application le DEMANDE au lieu d'afficher du rouge) / « Mot de passe incorrect, ou fichier modifié depuis son envoi. » | import d'un `.skanask` (9.10.0) | le mot de passe, dit au téléphone | Livré |
 
 ---
 

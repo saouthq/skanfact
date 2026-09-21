@@ -850,10 +850,46 @@ function ingest(file, password) {
     const d = state.dossiers.find(x => x.id === key);
     if (d) { d.clientLicence = licenceClient; getStore().write(state); }
   }
+  // Les RÉPONSES aux questions posées à ce client (9.10.0). Elles voyagent dans le paquet plutôt
+  // que dans un fichier à part : c'est déjà le geste mensuel du client, et une réponse qu'il faut
+  // penser à envoyer séparément n'est jamais envoyée. Elles ne touchent AUCUN chiffre — elles se
+  // rangent sur la question, et le comptable décide ensuite de ce qu'il en fait.
+  let reponses = null;
+  const rEntry = entries.find(e => e.name === 'reponses.json');
+  if (rEntry) {
+    try {
+      const obj = JSON.parse(rEntry.data().toString('utf8'));
+      if (obj && Number(obj.format) === 1 && Array.isArray(obj.reponses)) reponses = posterReponses(key, obj.reponses);
+    } catch (e) { logToFile('reponses-paquet', e); }
+  }
   // Un mois qui vient d'arriver doit apparaître dans les livres tout de suite. Sans cette ligne,
   // il n'apparaîtrait qu'au redémarrage et le comptable croirait l'import raté.
   viderCacheLivres(key);
-  return { ...res, integrity: { checked, bad, intrus }, origine };
+  return { ...res, integrity: { checked, bad, intrus }, origine, reponses };
+}
+
+// Ranger les réponses dans le livre qui porte les questions. On les cherche dans TOUS les exercices
+// du dossier : une question posée sur 2025 peut recevoir sa réponse dans le paquet de mars 2026.
+// Le droit ne s'applique pas ici — c'est le CLIENT qui répond, pas un collaborateur qui valide, et
+// refuser une réponse reçue reviendrait à la perdre.
+function posterReponses(dossierId, reponses) {
+  const d = dossierDe(dossierId);
+  if (!d) return null;
+  const out = { posees: 0, inconnues: 0 };
+  const annees = (getStore().lireIndexLivres(d, indexDossiers()).exercices || []).map(x => x.annee);
+  const restantes = new Map(reponses.map(r => [String(r && r.id), r]));
+  annees.forEach(annee => {
+    if (!restantes.size) return;
+    const o = ouvrirLivre(dossierId, annee);
+    if (!o || !o.livre) return;
+    const r = KC.noterReponsesQuestions(o.livre, Array.from(restantes.values()), Date.now());
+    if (!r.posees) return;
+    (o.livre.questions || []).forEach(q => { if (q.reponse) restantes.delete(String(q.id)); });
+    out.posees += r.posees;
+    ecrireLeLivre(dossierId, o.livre, 'reponses', `${r.posees} réponse${r.posees > 1 ? 's' : ''} du client`);
+  });
+  out.inconnues = restantes.size;
+  return out.posees || out.inconnues ? out : null;
 }
 
 // Ouvrir un fichier contenu dans un paquet : on l'extrait dans un dossier temporaire, en lecture.
@@ -1777,6 +1813,153 @@ ipcMain.handle('cab:ecrireCloture', async (_e, { dossierId, annee, motDePasse } 
   return { ok: true, path: res.filePath, pdf: !!pdf, signe: !!cle, scelle: !!motDePasse, livre: ouvrirLivre(dossierId, annee).livre };
 });
 
+// ============================================ LA RÉVISION ET LES QUESTIONS (9.10.0)
+//
+// Le dossier de travail du comptable, et le SEUL mécanisme du projet qui remonte du cabinet vers
+// le client. Il ne remonte pas une écriture : il remonte une QUESTION. Le cabinet n'écrit jamais
+// chez un client (Cabinet 1.0.0), et rien de ce qui part d'ici ne touche à ses chiffres.
+//
+// Tout passe par `ecrireLeLivre` — la porte unique (9.2.0) — donc par le verrou, la révision et la
+// piste d'audit. Aucun handler n'appelle `getStore().ecrireLivre` directement.
+
+ipcMain.handle('cab:revision', (_e, { dossierId, annee, periode } = {}) => {
+  requireOpen();
+  const livre = livreOuErreur(dossierId, annee);
+  const o = { periode: periode || String(annee), cycles: cyclesDuCabinet() };
+  return {
+    ok: true,
+    dossier: KC.dossierDeRevision(livre, o),
+    controles: KC.controlesRevision(livre, o.periode, o),
+    questions: livre.questions || [],
+    modeles: (state.questionnaire || []).slice(),
+    cycles: cyclesDuCabinet()
+  };
+});
+
+// Les cycles PROPOSENT (5.0.0, 8.3.0). Un cabinet qui range son 47 ailleurs le range ailleurs, et
+// la table du cabinet remplace alors celle du moteur — jamais une fusion des deux, qui donnerait
+// un rattachement que personne n'a décidé.
+const cyclesDuCabinet = () => (Array.isArray(state.cycles) && state.cycles.length ? state.cycles : KC.CYCLES_REVISION);
+
+ipcMain.handle('cab:signerCompte', (_e, { dossierId, annee, periode, compte, revu, note } = {}) => {
+  requireOpen();
+  droitBlock(dossierId, 'validation');
+  const livre = livreOuErreur(dossierId, annee);
+  const r = KC.signerCompte(livre, periode || String(annee), compte, quiSuisJe(), Date.now(), { revu, note });
+  if (!r.ok) throw erreur('ERR-CAB-073', r.motif);
+  ecrireLeLivre(dossierId, livre, 'révision', `${periode || annee} · ${compte} ${r.revu ? 'signé' : 'dé-signé'}`);
+  return { ok: true, revu: r.revu, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+ipcMain.handle('cab:noteRevue', (_e, { dossierId, annee, periode, note, id, levee } = {}) => {
+  requireOpen();
+  droitBlock(dossierId, 'validation');
+  const livre = livreOuErreur(dossierId, annee);
+  const p = periode || String(annee);
+  const r = id ? KC.leverNoteRevue(livre, p, id, quiSuisJe(), Date.now(), levee)
+    : KC.ajouterNoteRevue(livre, p, note, quiSuisJe(), Date.now());
+  if (!r.ok) throw erreur('ERR-CAB-073', r.motif);
+  ecrireLeLivre(dossierId, livre, 'révision', `${p} · note de revue`);
+  return { ok: true, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+ipcMain.handle('cab:questionnaire', (_e, { dossierId, annee, periode, poser, id, reponse } = {}) => {
+  requireOpen();
+  droitBlock(dossierId, 'validation');
+  const livre = livreOuErreur(dossierId, annee);
+  const p = periode || String(annee);
+  const r = poser
+    ? KC.poserQuestionnaire(livre, p, state.questionnaire || [], quiSuisJe(), Date.now())
+    : KC.repondreQuestionnaire(livre, p, id, reponse, quiSuisJe(), Date.now());
+  if (!r.ok) throw erreur('ERR-CAB-073', r.motif);
+  ecrireLeLivre(dossierId, livre, 'révision', `${p} · questionnaire`);
+  return { ok: true, poses: r.poses || 0, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+ipcMain.handle('cab:arreterRevision', (_e, { dossierId, annee, periode, faite } = {}) => {
+  requireOpen();
+  droitBlock(dossierId, 'validation');
+  const livre = livreOuErreur(dossierId, annee);
+  const p = periode || String(annee);
+  const r = KC.arreterRevision(livre, p, quiSuisJe(), Date.now(), { faite, cycles: cyclesDuCabinet() });
+  ecrireLeLivre(dossierId, livre, 'révision', `${p} · ${r.faite ? 'arrêtée' : 'rouverte'}`);
+  return { ok: true, faite: r.faite, controles: r.controles, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+ipcMain.handle('cab:question', (_e, { dossierId, annee, question, id, geste, champs } = {}) => {
+  requireOpen();
+  droitBlock(dossierId, 'saisie');
+  const livre = livreOuErreur(dossierId, annee);
+  const qui = quiSuisJe();
+  let r;
+  if (geste === 'modifier') r = KC.modifierQuestion(livre, id, champs, qui, Date.now());
+  else if (geste === 'supprimer') r = KC.supprimerQuestion(livre, id, qui, Date.now());
+  else if (geste === 'fermer') r = KC.fermerQuestion(livre, id, qui, Date.now(), false);
+  else if (geste === 'rouvrir') r = KC.fermerQuestion(livre, id, qui, Date.now(), true);
+  else r = KC.ajouterQuestion(livre, { ...(question || {}), cycles: cyclesDuCabinet() }, qui, Date.now());
+  if (!r.ok) throw erreur('ERR-CAB-074', (r.motifs || []).join(' '));
+  ecrireLeLivre(dossierId, livre, 'question', geste || 'posée');
+  return { ok: true, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+// Le fichier de questions (`.skanask`, SPEC-FMT-006). Même construction que `.skanclose` (9.8.0) —
+// un ZIP ordinaire, un manifeste qui porte l'empreinte de chaque fichier, une signature Ed25519 du
+// cabinet quand il en a une, et un scellement par mot de passe si on le demande. Le client doit
+// pouvoir l'ouvrir avec le Finder même si SkanFact disparaît (règle 6.1.0).
+ipcMain.handle('cab:ecrireQuestions', async (_e, { dossierId, annee, motDePasse } = {}) => {
+  requireOpen();
+  droitBlock(dossierId, 'validation');
+  const livre = livreOuErreur(dossierId, annee);
+  const d = dossierDe(dossierId);
+  const quand = Date.now();
+  const dos = KC.dossierDeQuestions(livre, {
+    cabinet: (state.cabinet && state.cabinet.name) || '', matricule: d.matricule || '', quand
+  });
+  if (!dos.questions.length) throw erreur('ERR-CAB-074', 'Aucune question n\'attend de réponse : il n\'y aurait rien à envoyer.');
+
+  const fichiers = [{ name: 'questions.json', data: Buffer.from(JSON.stringify(dos, null, 2), 'utf8') }];
+  const manifeste = Buffer.from(JSON.stringify({
+    format: 1, type: 'skanask', cabinet: dos.cabinet, client: d.name || '', matricule: dos.matricule,
+    exercice: dos.exercice, questions: dos.questions.length, produitLe: quand,
+    fichiers: fichiers.map(f => ({ nom: f.name, sha256: Z.sha256(f.data) }))
+  }, null, 2), 'utf8');
+  fichiers.push({ name: 'manifeste.json', data: manifeste });
+  const cle = cleSignatureCabinet();
+  if (cle) fichiers.push({ name: 'signature.json', data: Buffer.from(JSON.stringify(Z.signManifest(manifeste, cle.privateKey, cle.publicKey), null, 2), 'utf8') });
+
+  let buf = Z.zipBuffer(fichiers);
+  if (motDePasse) buf = Z.sealBuffer(buf, String(motDePasse), { type: 'skanask', client: d.name || '', exercice: dos.exercice });
+
+  const nom = `questions-${(d.name || 'client').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '')}-${dos.exercice}.skanask`;
+  const res = await dialog.showSaveDialog({ title: 'Les questions pour le client', defaultPath: nom });
+  if (res.canceled || !res.filePath) return { ok: false, annule: true };
+  fs.writeFileSync(res.filePath, buf);
+  // L'envoi se note APRÈS l'écriture : une question comptée comme partie sur un fichier qu'on n'a
+  // pas su écrire ferait croire au client qu'il l'a déjà vue (règle des deux paquets).
+  KC.noterEnvoiQuestions(livre, dos.questions.map(q => q.id), quand);
+  ecrireLeLivre(dossierId, livre, 'question', `${dos.questions.length} envoyées`);
+  return { ok: true, path: res.filePath, envoyees: dos.questions.length, signe: !!cle, scelle: !!motDePasse, livre: ouvrirLivre(dossierId, annee).livre };
+});
+
+// Les modèles de questionnaire vivent au NIVEAU DU CABINET, comme les guides de saisie (9.3.0) :
+// on les écrit une fois pour soixante clients. Ils partent VIDES — les cinq questions les plus
+// fréquentes du pilote ne sont pas connues, et les inventer serait écrire sa méthode à sa place.
+ipcMain.handle('cab:saveQuestionnaire', (_e, { modeles, cycles } = {}) => {
+  requireOpen();
+  if (Array.isArray(modeles)) {
+    state.questionnaire = modeles.map(m => String(m && m.question != null ? m.question : m).trim())
+      .filter(Boolean).slice(0, 60).map(question => ({ question }));
+  }
+  if (Array.isArray(cycles)) {
+    state.cycles = cycles.map(c => ({
+      id: String(c.id || '').trim(), label: String(c.label || '').trim(),
+      prefixes: (Array.isArray(c.prefixes) ? c.prefixes : []).map(p => String(p).trim()).filter(Boolean)
+    })).filter(c => c.id && c.label);
+  }
+  save();
+  return { ok: true, state: safeState() };
+});
+
 // ================================================================ LA LICENCE DU CABINET (9.4.0)
 //
 // On vend des DOSSIERS, jamais des postes. La porte est posée sur la VALIDATION d'une écriture, et
@@ -2080,6 +2263,22 @@ ipcMain.handle('cab:production', (_e, opts) => {
     etapes: K.ETAPES_PRODUCTION,
     collaborateurs: K.collaborateurs(state)
   };
+});
+
+// Les questions sans réponse, résumées dossier par dossier depuis les INDEX (jamais en
+// déchiffrant soixante livres — mesure de la 9.1.0). C'est ce que « À faire » compte.
+ipcMain.handle('cab:questionsEnAttente', () => {
+  requireOpen();
+  const idx = indexDossiers();
+  return (state.dossiers || []).filter(d => !d.archived).map(d => {
+    const i = getStore().lireIndexLivres(d, idx);
+    const q = (i.exercices || []).reduce((s, e) => ({
+      ouvertes: s.ouvertes + Number((e.questions || {}).ouvertes || 0),
+      aRelancer: s.aRelancer + Number((e.questions || {}).aRelancer || 0),
+      repondues: s.repondues + Number((e.questions || {}).repondues || 0)
+    }), { ouvertes: 0, aRelancer: 0, repondues: 0 });
+    return { dossierId: d.id, name: d.name, ...q };
+  }).filter(r => r.ouvertes || r.repondues);
 });
 
 // ---------------------------------------------------------------- réunir deux postes (9.9.0)

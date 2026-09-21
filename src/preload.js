@@ -56,6 +56,8 @@ contextBridge.exposeInMainWorld('skanfact', {
   // Le dossier de clôture reçu du cabinet (9.8.0)
   lireCloture: (o) => ipcRenderer.invoke('cloture:lire', o || {}),
   ouvrirEtatsCloture: (o) => ipcRenderer.invoke('cloture:ouvrirEtats', o || {}),
+  // Les questions du cabinet (9.10.0) : on LIT le fichier, le renderer décide ensuite.
+  lireQuestions: (o) => ipcRenderer.invoke('questions:lire', o || {}),
   licenceStatus: (matricule) => ipcRenderer.invoke('licence:status', { matricule }),
   licenceSet: (key, matricule) => ipcRenderer.invoke('licence:set', key, { matricule }),
   licenceMail: (company, device) => ipcRenderer.invoke('licence:requestMail', { company, device }),

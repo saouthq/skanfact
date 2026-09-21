@@ -809,6 +809,7 @@
     // L'état de la clé de secours arrive par une promesse : sans ce redessin, le bandeau et la ligne
     // « À faire » n'apparaîtraient qu'au prochain changement de page.
     chargerRecovery(true);
+    chargerQuestionsAttente(true);
     // Le comptable enregistre ses pièces jointes dans sa messagerie, puis revient ici : c'est le
     // moment exact où il faut regarder la boîte. Sans ça, il faudrait redémarrer l'application pour
     // voir arriver ce qu'on vient d'y déposer.
@@ -1210,7 +1211,10 @@
     'echeance': { texte: 'Voir l\'échéance', run: () => { location.hash = '#/echeances'; } },
     'manquants': { texte: 'Voir qui doit envoyer', run: () => { location.hash = '#/relances'; } },
     'provisoires': { texte: 'Voir le provisoire', run: () => { location.hash = '#/relances'; } },
-    'pieces': { texte: 'Voir les dossiers', run: () => { location.hash = '#/dossiers'; } }
+    'pieces': { texte: 'Voir les dossiers', run: () => { location.hash = '#/dossiers'; } },
+    // Les questions restées sans réponse (9.10.0). On emmène sur le portefeuille : la ligne nomme
+    // les clients, et c'est de là qu'on ouvre le dossier de révision de chacun.
+    'questions': { texte: 'Voir les clients qui n\'ont pas répondu', run: () => { location.hash = '#/dossiers'; } }
   };
   // Ouvrir les Réglages SUR un panneau : on pose l'onglet et la cible avant de naviguer, et on
   // redessine quand on y est déjà (sinon aucun `hashchange` n'a lieu et le clic paraît inerte —
@@ -1373,7 +1377,7 @@
     const demoCount = (S.dossiers || []).filter(d => d.demo).length;
     // `recoveryAt` vaut `undefined` tant que la réponse n'est pas revenue : on ne réclame que sur un
     // non franc. La date ne vit pas dans l'état chiffré, elle ne peut donc pas venir de `S`.
-    const todo = K.cabinetTodo(S, null, { cleSecours: recoveryAt === undefined ? null : recoveryAt !== null, licence: licCab });
+    const todo = K.cabinetTodo(S, null, { cleSecours: recoveryAt === undefined ? null : recoveryAt !== null, licence: licCab, questions: questionsAttente });
     const p = K.portfolio(S);
 
     // Écran d'ouverture d'un cabinet qui vient d'installer l'application : il n'a rien reçu, et il
@@ -2290,14 +2294,15 @@
         : s.onglet === 'banque' ? vueBanque(dossier)
           : s.onglet === 'immobilisations' ? vueImmobilisations(dossier)
             : s.onglet === 'exercice' ? vueCloture(dossier)
-              : s.onglet === 'inventaire' ? vueInventaire(dossier)
-                : !lignes.length
-                  ? `<div class="empty mini">Aucune écriture sur cette période.</div>`
-                  : s.onglet === 'journal' ? vueJournal(lignes)
-                    : s.onglet === 'grand-livre' ? vueGrandLivre(lignes)
-                      : s.onglet === 'balance' ? vueBalance(lignes)
-                        : s.onglet === 'recherche' ? vueRecherche(lignes)
-                          : vueLettrage(lignes);
+              : s.onglet === 'revision' ? vueRevision(dossier)
+                : s.onglet === 'inventaire' ? vueInventaire(dossier)
+                  : !lignes.length
+                    ? `<div class="empty mini">Aucune écriture sur cette période.</div>`
+                    : s.onglet === 'journal' ? vueJournal(lignes)
+                      : s.onglet === 'grand-livre' ? vueGrandLivre(lignes)
+                        : s.onglet === 'balance' ? vueBalance(lignes)
+                          : s.onglet === 'recherche' ? vueRecherche(lignes)
+                            : vueLettrage(lignes);
 
     // D'OÙ viennent ces chiffres. Deux sources, et l'écran le dit en toutes lettres : une balance
     // lue dans les paquets du client et une balance tenue par le cabinet ne disent pas la même
@@ -2332,6 +2337,9 @@
   (() => { const n = (s.livre.immobilisations || []).length ? KC.etatImmobilisations(s.livre, s.annee).aEcrire : 0;
     return n ? ` <span class="tab-n" title="${n} dont la dotation de l'exercice n'est pas passée">${n}</span>` : ''; })()}</button>` : ''}
         ${s.livre ? `<button data-tab="inventaire" class="${s.onglet === 'inventaire' ? 'active' : ''}">Inventaire</button>` : ''}
+        ${s.livre ? `<button data-tab="revision" class="${s.onglet === 'revision' ? 'active' : ''}">Révision${
+  (() => { const n = (s.livre.questions || []).filter(q => q.statut !== 'close' && q.statut !== 'repondue').length;
+    return n ? ` <span class="tab-n" title="${n} question${n > 1 ? 's' : ''} en attente de réponse">${n}</span>` : ''; })()}</button>` : ''}
         ${s.livre ? `<button data-tab="exercice" class="${s.onglet === 'exercice' ? 'active' : ''}">Exercice${
   s.livre.exercice && s.livre.exercice.clos ? ' <span class="badge b-paid">clos</span>' : ''}</button>` : ''}
         ${s.livre ? `<button data-tab="recherche" class="${s.onglet === 'recherche' ? 'active' : ''}">Recherche</button>` : ''}
@@ -2349,6 +2357,7 @@
     else if (s.onglet === 'immobilisations') brancherImmobilisations(el, root, dossier);
     else if (s.onglet === 'inventaire') brancherInventaire(el, root, dossier);
     else if (s.onglet === 'exercice') brancherCloture(el, root, dossier);
+    else if (s.onglet === 'revision') brancherRevision(el, root, dossier);
     else brancherVue(el, root, dossier, lignes);
     // APRÈS le dessin, jamais pendant (7.27.0) : un `scrollIntoView` posé dans un gabarit est
     // effacé par le `innerHTML` qui suit.
@@ -3011,6 +3020,314 @@
     try { s.cloture = await api.cloture({ dossierId: dossier.id, annee: s.annee }); }
     catch (e) { s.cloture = null; toast(plainError(e), 'error'); }
     drawLivres(root, dossier);
+  }
+
+  // ================================================ LA RÉVISION ET LES QUESTIONS (9.10.0)
+  //
+  // Le dossier de travail. Il part de la méthode du comptable, pas de la nôtre : les sept cycles
+  // PROPOSENT un rattachement par préfixe de compte, entièrement surchargeable dans les Réglages,
+  // et le questionnaire de fin d'exercice part VIDE — les cinq questions les plus fréquentes du
+  // pilote ne sont pas connues, et les inventer serait écrire sa méthode à sa place.
+
+  async function chargerRevision(root, dossier) {
+    const s = livresState;
+    try { s.revision = await api.revision({ dossierId: dossier.id, annee: s.annee, periode: s.revPeriode || String(s.annee) }); }
+    catch (e) { s.revision = null; toast(plainError(e), 'error'); }
+    drawLivres(root, dossier);
+  }
+
+  function vueRevision(dossier) {
+    const s = livresState;
+    const r = s.revision;
+    if (!r) return `<div class="empty mini">Lecture du dossier de révision…</div>`;
+    const d = r.dossier;
+    const cycle = s.revCycle || '';
+    const feuille = cycle ? d.feuilles.find(f => f.cycle === cycle) : null;
+    const money0 = n => esc(money(n));
+    const mois = [''].concat(Array.from({ length: 12 }, (_, i) => `${s.annee}-${String(i + 1).padStart(2, '0')}`));
+    const ligneCompte = c => `<tr class="${c.revu ? '' : 'row-warn'}">
+      <td class="nw">${esc(c.compte)}</td>
+      <td class="tronq" title="${esc(c.libelle)}">${esc(c.libelle)}</td>
+      <td class="r nw">${money0(c.ouverture)}</td>
+      <td class="r nw">${money0(c.debit)}</td>
+      <td class="r nw">${money0(c.credit)}</td>
+      <td class="r nw"><b>${money0(c.solde)}</b></td>
+      <td class="r nw">${money0(c.variation)}</td>
+      <td class="nw small">${c.revu
+    ? `<span class="badge b-paid">revu</span> ${esc(c.revuPar || '')}${c.revuLe ? ' · ' + esc(fmtJour(new Date(c.revuLe).toISOString().slice(0, 10))) : ''}`
+    : '<span class="muted">à revoir</span>'}</td>
+      ${rowMenuCell('RV:' + c.compte)}</tr>`;
+    return `<div class="filters">
+      ${info('rv.dossier')}
+      <label class="f-lab" for="rv-periode">La période révisée</label>
+      <select id="rv-periode">${mois.map(m => `<option value="${esc(m || String(s.annee))}" ${String(d.periode) === (m || String(s.annee)) ? 'selected' : ''}>${m ? esc(moisLabelCourt(m)) : 'L\'exercice ' + esc(s.annee)}</option>`).join('')}</select>
+      <span class="badge ${d.faite ? 'b-paid' : 'b-due'}">${d.faite ? 'révision arrêtée' : 'en cours'}</span>
+      <button class="btn btn-sm ${d.faite ? '' : 'btn-primary'}" id="rv-arreter">${d.faite ? 'Rouvrir la révision' : 'Arrêter la révision…'}</button>
+      <button class="btn btn-sm" id="rv-note">Note de revue…</button>
+      <button class="btn btn-sm" id="rv-question">Poser une question…</button>
+      <span class="nw"><button class="btn btn-sm" id="rv-envoyer">Envoyer les questions au client…</button>${info('rv.envoi')}</span>
+    </div>
+    ${d.faite ? `<div class="ok-box mb"><b>Révision arrêtée</b>${d.faiteLe ? ' le ' + esc(fmtJour(new Date(d.faiteLe).toISOString().slice(0, 10))) : ''}${d.faitePar ? ' par ' + esc(d.faitePar) : ''}.</div>` : ''}
+    ${(r.controles || []).length ? `<div class="warn-box mb">${r.controles.map(c => `<div>${esc(c.texte)}</div>`).join('')}
+      <div class="small">Ils ne bloquent pas : une révision arrêtée avec des manques signalés vaut mieux qu'une révision jamais arrêtée.</div></div>` : ''}
+
+    <div class="panel"><h2>Les feuilles maîtresses ${info('rv.feuilles')}</h2>
+      <p class="lead">${esc(d.revus)} compte${d.revus > 1 ? 's' : ''} signé${d.revus > 1 ? 's' : ''} sur ${esc(d.total)}${d.reste ? ` — ${esc(pl(d.reste, 'reste à revoir', 'restent à revoir'))}` : ''}.</p>
+      <div class="cards">${d.feuilles.map(f => `<button type="button" class="card ${cycle === f.cycle ? 'card-on' : ''}" data-cycle="${esc(f.cycle)}">
+        <span class="eyebrow">${esc(f.label)}</span>
+        <b>${esc(f.revus)} / ${esc(f.total)}</b>
+        <span class="small muted">${f.total ? money0(f.totaux.solde) : 'aucun compte'}</span></button>`).join('')}</div>
+      ${feuille
+    ? (feuille.rows.length
+      ? `<div class="scroll-x mt"><table class="list compact"><thead><tr><th>Compte</th><th>Intitulé</th><th class="r">Ouverture</th><th class="r">Débit</th><th class="r">Crédit</th><th class="r">Solde</th><th class="r">Variation</th><th>Revu</th><th></th></tr></thead>
+          <tbody>${feuille.rows.map(ligneCompte).join('')}</tbody>
+          <tfoot><tr><th colspan="2">${esc(feuille.label)}</th><th class="r nw">${money0(feuille.totaux.ouverture)}</th><th class="r nw">${money0(feuille.totaux.debit)}</th><th class="r nw">${money0(feuille.totaux.credit)}</th><th class="r nw">${money0(feuille.totaux.solde)}</th><th class="r nw">${money0(feuille.totaux.variation)}</th><th colspan="2"></th></tr></tfoot></table></div>`
+      : `<div class="empty mini mt">Aucun compte de ce cycle n'est mouvementé sur la période.</div>`)
+    : `<div class="empty mini mt">Choisis un cycle ci-dessus pour ouvrir sa feuille maîtresse.</div>`}
+      ${d.hors.length ? `<details class="mt"><summary>${esc(pl(d.hors.length, 'compte hors cycle', 'comptes hors cycle'))} ${info('rv.hors')}</summary>
+        <div class="scroll-x"><table class="list compact"><thead><tr><th>Compte</th><th>Intitulé</th><th class="r">Ouverture</th><th class="r">Débit</th><th class="r">Crédit</th><th class="r">Solde</th><th class="r">Variation</th><th>Revu</th><th></th></tr></thead>
+          <tbody>${d.hors.map(ligneCompte).join('')}</tbody></table></div></details>` : ''}
+    </div>
+
+    <div class="panel"><h2>Notes de revue ${info('rv.notes')}</h2>
+      ${d.notes.length
+    ? `<table class="list compact"><tbody>${d.notes.slice().reverse().map(n => `<tr class="${n.levee ? '' : 'row-warn'}">
+          <td>${esc(n.texte)}<div class="small muted">${esc(n.par || '')}${n.le ? ' · ' + esc(fmtJour(new Date(n.le).toISOString().slice(0, 10))) : ''}${n.cycle ? ' · ' + esc(libelleDuCycle(r, n.cycle)) : ''}${n.compte ? ' · ' + esc(n.compte) : ''}</div></td>
+          <td class="nw">${n.levee ? `<span class="badge b-paid">levée</span>` : '<span class="badge b-due">ouverte</span>'}</td>
+          <td class="row-actions"><button type="button" class="btn btn-sm" data-note="${esc(n.id)}">${n.levee ? 'Rouvrir' : 'Lever'} la note</button></td></tr>`).join('')}</tbody></table>`
+    : '<div class="empty mini">Aucune note de revue sur cette période.</div>'}
+    </div>
+
+    <div class="panel"><h2>Questionnaire de fin d'exercice ${info('rv.questionnaire')}</h2>
+      ${d.questionnaire.length
+    ? `<table class="list compact"><tbody>${d.questionnaire.map(q => `<tr>
+          <td>${esc(q.question)}</td>
+          <td>${q.reponse ? esc(q.reponse) : '<span class="muted">sans réponse</span>'}</td>
+          <td class="row-actions"><button type="button" class="btn btn-sm" data-qq="${esc(q.id)}">Répondre</button></td></tr>`).join('')}</tbody></table>`
+    : r.modeles.length
+      ? `<div class="empty mini">Le questionnaire de ton cabinet n'est pas encore posé sur cette période.</div>
+         <div class="inline mt"><button class="btn btn-sm btn-primary" id="rv-poser">Poser les ${esc(pl(r.modeles.length, 'question'))} de ton cabinet</button></div>`
+      : `<div class="empty mini">Ton cabinet n'a pas encore écrit son questionnaire de fin d'exercice.
+         Il s'écrit une fois, pour tous tes dossiers.</div>
+         <div class="inline mt"><button class="btn btn-sm" id="rv-modeles">Écrire le questionnaire…</button></div>`}
+    </div>
+
+    <div class="panel"><h2>Les questions posées au client ${info('rv.questions')}</h2>
+      ${r.questions.length
+    ? `<div class="scroll-x"><table class="list compact"><thead><tr><th>Pièce</th><th>Compte</th><th>La question</th><th>Attendu</th><th>Envois</th><th>Réponse</th><th></th></tr></thead>
+        <tbody>${r.questions.slice().reverse().map(q => `<tr class="${(q.envois || []).length >= 2 && q.statut !== 'repondue' && q.statut !== 'close' ? 'row-warn' : ''}">
+          <td class="nw">${q.piece ? esc(q.piece) : '<span class="muted">—</span>'}</td>
+          <td class="nw small">${esc(q.compte || '')}</td>
+          <td>${esc(q.objet || '')}<div class="small">${esc(q.texte)}</div></td>
+          <td class="nw small">${esc(libelleAttendu(q.attendu))}</td>
+          <td class="nw small">${(q.envois || []).length ? esc(pl((q.envois || []).length, 'fois', 'fois')) : '<span class="muted">pas encore</span>'}</td>
+          <td>${q.reponse ? `<span class="badge b-paid">répondue</span><div class="small">${esc(q.reponse.texte || '')}</div>`
+    : q.statut === 'close' ? '<span class="badge">close</span>' : '<span class="badge b-due">en attente</span>'}</td>
+          ${rowMenuCell('QU:' + q.id)}</tr>`).join('')}</tbody></table></div>`
+    : `<div class="empty mini">Aucune question posée sur cet exercice. Une question naît d'une LIGNE :
+       ouvre un compte dans une feuille maîtresse et choisis « Poser une question au client ».</div>`}
+    </div>`;
+  }
+
+  const libelleAttendu = id => (KC.QUESTION_ATTENDUS.find(x => x.id === id) || {}).label || 'Une explication';
+  const libelleDuCycle = (r, id) => ((r.cycles || KC.CYCLES_REVISION).find(c => c.id === id) || {}).label || id;
+
+  function brancherRevision(el, root, dossier) {
+    const s = livresState;
+    // Le dossier se relit dès que le LIVRE a bougé : signer un compte, valider un brouillard ou
+    // poser une question change ce que les feuilles maîtresses montrent (même parade qu'en T-24).
+    const rev = `${(s.livre.audit || []).length}:${(s.livre.ecritures || []).length}:${s.revPeriode || s.annee}`;
+    if (!s.revision || s.revisionRev !== rev) { s.revisionRev = rev; chargerRevision(root, dossier); return; }
+    const relire = () => { s.revisionRev = ''; chargerRevision(root, dossier); };
+
+    const per = $('#rv-periode', el);
+    if (per) per.onchange = () => { s.revPeriode = per.value; s.revisionRev = ''; chargerRevision(root, dossier); };
+    $$('[data-cycle]', el).forEach(b => { b.onclick = () => { s.revCycle = s.revCycle === b.dataset.cycle ? '' : b.dataset.cycle; drawLivres(root, dossier); }; });
+
+    const geste = async (id, g) => {
+      try {
+        const r = await api.question({ dossierId: dossier.id, annee: s.annee, id, geste: g });
+        s.livre = r.livre; relire();
+      } catch (e) { toast(plainError(e), 'error'); }
+    };
+    bindRowMenus(el, cle => {
+      const [quoi, id] = String(cle).split(/:(.*)/);
+      if (quoi === 'RV') {
+        const c = (s.revision.dossier.feuilles.flatMap(f => f.rows).concat(s.revision.dossier.hors)).find(x => x.compte === id);
+        if (!c) return [];
+        return [
+          { icon: c.revu ? 'non' : 'oui', label: c.revu ? 'Retirer ma signature' : 'Signer ce compte',
+            hint: c.revu ? 'Le compte redevient « à revoir ».' : 'Je l\'ai revu : il est juste.',
+            run: async () => {
+              try {
+                const r = await api.signerCompte({ dossierId: dossier.id, annee: s.annee, periode: s.revision.dossier.periode, compte: id, revu: !c.revu });
+                s.livre = r.livre; toast(r.revu ? `Compte ${id} signé.` : `Signature retirée sur ${id}.`); relire();
+              } catch (e) { toast(plainError(e), 'error'); }
+            } },
+          { icon: 'modifier', label: 'Écrire une note de revue', hint: 'Ce qu\'il reste à vérifier sur ce compte.',
+            run: () => noteForm(root, dossier, { compte: id, cycle: c.cycle }) },
+          { icon: 'email', label: 'Poser une question au client', hint: 'Elle s\'affichera chez lui, en face de la pièce.',
+            run: () => questionForm(root, dossier, { compte: id, cycle: c.cycle }) }
+        ];
+      }
+      if (quoi !== 'QU') return [];
+      const q = (s.revision.questions || []).find(x => x.id === id);
+      if (!q) return [];
+      const partie = (q.envois || []).length;
+      return [
+        q.statut === 'close'
+          ? { icon: 'reprendre', label: 'Rouvrir cette question', hint: 'Elle repartira dans le prochain envoi.', run: () => geste(id, 'rouvrir') }
+          : { icon: 'oui', label: 'Fermer cette question', hint: 'Elle a trouvé sa réponse ailleurs : elle ne repartira plus.', run: () => geste(id, 'fermer') },
+        !q.reponse && q.statut !== 'close'
+          ? { icon: 'modifier', label: 'Préciser la question', hint: 'Le client verra le texte corrigé au prochain envoi.', run: () => questionForm(root, dossier, null, id) } : null,
+        // Une question DÉJÀ PARTIE ne s'efface pas : le client l'a sous les yeux, et la faire
+        // disparaître de notre côté le laisserait répondre à une question qui n'existe plus.
+        !partie ? { sep: true } : null,
+        !partie ? { icon: 'supprimer', label: 'Retirer cette question', danger: true,
+          hint: 'Elle n\'est jamais partie chez le client : elle s\'efface sans trace.',
+          run: async () => {
+            if (!await confirmDialog('Retirer cette question ?', '<p>Elle n\'est jamais partie chez le client : elle s\'efface sans laisser de trace.</p>', 'Retirer', true)) return;
+            geste(id, 'supprimer');
+          } } : null
+      ].filter(Boolean);
+    });
+
+    $$('[data-note]', el).forEach(b => { b.onclick = async () => {
+      const n = (s.revision.dossier.notes || []).find(x => x.id === b.dataset.note);
+      try {
+        const r = await api.noteRevue({ dossierId: dossier.id, annee: s.annee, periode: s.revision.dossier.periode, id: b.dataset.note, levee: !(n && n.levee) });
+        s.livre = r.livre; relire();
+      } catch (e) { toast(plainError(e), 'error'); }
+    }; });
+
+    $$('[data-qq]', el).forEach(b => { b.onclick = () => {
+      const q = (s.revision.dossier.questionnaire || []).find(x => x.id === b.dataset.qq);
+      modal(`<h2>Répondre</h2><p class="small">${esc((q && q.question) || '')}</p>
+        <label class="field"><span>La réponse</span><textarea id="qq-rep" rows="3">${esc((q && q.reponse) || '')}</textarea></label>
+        <div class="modal-actions"><button class="btn" dismiss>Annuler</button><button class="btn btn-primary" id="qq-ok">Enregistrer</button></div>`,
+      (couche, close) => { $('#qq-ok', couche).onclick = async () => {
+        try {
+          const r = await api.questionnaire({ dossierId: dossier.id, annee: s.annee, periode: s.revision.dossier.periode, id: b.dataset.qq, reponse: $('#qq-rep', couche).value });
+          s.livre = r.livre; close(); relire();
+        } catch (e) { toast(plainError(e), 'error'); }
+      }; });
+    }; });
+
+    const poser = $('#rv-poser', el);
+    if (poser) poser.onclick = async () => {
+      try {
+        const r = await api.questionnaire({ dossierId: dossier.id, annee: s.annee, periode: s.revision.dossier.periode, poser: true });
+        s.livre = r.livre; toast(`${pl(r.poses, 'question posée', 'questions posées')}.`); relire();
+      } catch (e) { toast(plainError(e), 'error'); }
+    };
+    const mod = $('#rv-modeles', el);
+    if (mod) mod.onclick = () => versReglages('pan-questionnaire');
+    const nb = $('#rv-note', el); if (nb) nb.onclick = () => noteForm(root, dossier, {});
+    const qb = $('#rv-question', el); if (qb) qb.onclick = () => questionForm(root, dossier, {});
+
+    const arr = $('#rv-arreter', el);
+    if (arr) arr.onclick = async () => {
+      const faite = !s.revision.dossier.faite;
+      if (faite) {
+        const c = s.revision.controles || [];
+        const ok = await confirmDialog(`Arrêter la révision de ${esc(s.revision.dossier.periode)} ?`,
+          '<p>La période est marquée révisée dans le tableau de production. Tu peux la rouvrir à tout moment.</p>'
+          + (c.length ? `<p><b>${pl(c.length, 'point signalé', 'points signalés')} :</b></p><ul>${c.map(x => `<li>${esc(x.texte)}</li>`).join('')}</ul>` : ''),
+          'Arrêter la révision', false);
+        if (!ok) return;
+      }
+      try {
+        const r = await api.arreterRevision({ dossierId: dossier.id, annee: s.annee, periode: s.revision.dossier.periode, faite });
+        s.livre = r.livre; toast(r.faite ? 'Révision arrêtée.' : 'Révision rouverte.'); relire();
+      } catch (e) { toast(plainError(e), 'error'); }
+    };
+
+    const env = $('#rv-envoyer', el);
+    if (env) env.onclick = () => envoyerQuestions(root, dossier);
+  }
+
+  function noteForm(root, dossier, base) {
+    const s = livresState;
+    modal(`<h2>Note de revue</h2>
+      <p class="small muted">Ce qu'il reste à vérifier${base.compte ? ` sur le compte ${esc(base.compte)}` : ''}. Elle reste dans le
+      dossier de révision et ne part jamais chez le client — c'est une note pour toi et ton équipe.</p>
+      <label class="field obligatoire"><span>La note</span><textarea id="nv-texte" rows="3" placeholder="Rapprocher le 471 avec le relevé de décembre"></textarea></label>
+      <div class="modal-actions"><button class="btn" dismiss>Annuler</button><button class="btn btn-primary" id="nv-ok">Écrire la note</button></div>`,
+    (couche, close) => { $('#nv-ok', couche).onclick = async () => {
+      const t = $('#nv-texte', couche).value.trim();
+      if (!t) return toast('Une note de revue sans texte n\'apprend rien.', 'error');
+      try {
+        const r = await api.noteRevue({ dossierId: dossier.id, annee: s.annee, periode: (s.revision && s.revision.dossier.periode) || String(s.annee),
+          note: { texte: t, compte: base.compte || '', cycle: base.cycle || '' } });
+        s.livre = r.livre; close(); s.revisionRev = ''; chargerRevision(root, dossier);
+      } catch (e) { toast(plainError(e), 'error'); }
+    }; });
+  }
+
+  // Une question naît d'une LIGNE : elle porte le compte, la pièce et l'écriture sur lesquels elle
+  // est née. C'est ce qui permet à SkanFact de l'afficher EN FACE de la pièce chez le client, au
+  // lieu de la ranger dans une liste que personne n'ouvre — et c'est tout l'intérêt du mécanisme.
+  function questionForm(root, dossier, base, id) {
+    const s = livresState;
+    const q = id ? (s.revision.questions || []).find(x => x.id === id) : null;
+    const b = base || {};
+    modal(`<h2>${id ? 'Préciser la question' : 'Poser une question au client'}</h2>
+      <p class="small muted">Elle s'affichera chez lui <b>en face de la pièce</b> qu'elle vise, et sa réponse
+      reviendra toute seule dans son prochain paquet. Rien de ce que tu écris ici ne touche à ses chiffres.</p>
+      <div class="grid-2">
+        <label class="field"><span>La pièce</span><input type="text" id="qf-piece" value="${esc((q && q.piece) || b.piece || '')}" placeholder="FAC-2026-014"></label>
+        <label class="field"><span>Le compte</span><input type="text" id="qf-compte" value="${esc((q && q.compte) || b.compte || '')}" placeholder="471"></label>
+        <label class="field"><span>L'objet</span><input type="text" id="qf-objet" value="${esc((q && q.objet) || '')}" placeholder="Justificatif absent"></label>
+        <label class="field"><span>Ce que tu attends</span><select id="qf-attendu">${KC.QUESTION_ATTENDUS.map(a => `<option value="${esc(a.id)}" ${(q ? q.attendu : 'explication') === a.id ? 'selected' : ''}>${esc(a.label)}</option>`).join('')}</select></label>
+        <label class="field obligatoire span-2"><span>La question</span>
+          <textarea id="qf-texte" rows="3" placeholder="Peux-tu m'envoyer la facture correspondant à ce virement de 1 200 DT ?">${esc((q && q.texte) || '')}</textarea></label>
+      </div>
+      <div class="modal-actions"><button class="btn" dismiss>Annuler</button><button class="btn btn-primary" id="qf-ok">${id ? 'Enregistrer' : 'Poser la question'}</button></div>`,
+    (couche, close) => { $('#qf-ok', couche).onclick = async () => {
+      const champs = {
+        piece: $('#qf-piece', couche).value.trim(), compte: $('#qf-compte', couche).value.trim(),
+        objet: $('#qf-objet', couche).value.trim(), attendu: $('#qf-attendu', couche).value,
+        texte: $('#qf-texte', couche).value.trim(), periode: (s.revision && s.revision.dossier.periode) || String(s.annee)
+      };
+      if (!champs.texte) return toast('Une question sans texte n\'apprend rien au client.', 'error');
+      try {
+        const r = id
+          ? await api.question({ dossierId: dossier.id, annee: s.annee, id, geste: 'modifier', champs })
+          : await api.question({ dossierId: dossier.id, annee: s.annee, question: champs });
+        s.livre = r.livre; close(); s.revisionRev = ''; chargerRevision(root, dossier);
+      } catch (e) { toast(plainError(e), 'error'); }
+    }; });
+  }
+
+  // L'envoi. Même construction que le dossier de clôture (9.8.0) : un ZIP ordinaire, un manifeste
+  // qui porte l'empreinte de chaque fichier, la signature Ed25519 du cabinet, et un mot de passe
+  // facultatif. Le client doit pouvoir l'ouvrir avec le Finder même si SkanFact disparaît.
+  function envoyerQuestions(root, dossier) {
+    const s = livresState;
+    const en = (s.revision && s.revision.questions || []).filter(q => q.statut !== 'close' && q.statut !== 'repondue');
+    if (!en.length) return toast('Aucune question n\'attend de réponse : il n\'y a rien à envoyer.', 'error');
+    modal(`<h2>Envoyer les questions à ${esc(dossier.name)}</h2>
+      <p class="small">${esc(pl(en.length, 'question partira', 'questions partiront'))} dans un fichier <code>.skanask</code>.
+      Chez le client, chacune s'affiche en face de la pièce qu'elle vise, et ses réponses reviennent dans son prochain paquet.</p>
+      <label class="check"><input type="checkbox" id="qe-seal"> Protéger le fichier par un mot de passe</label>
+      <label class="field" id="qe-pwf" hidden><span>Le mot de passe</span><input type="password" id="qe-pw" placeholder="Dis-le-lui au téléphone, jamais dans le même mail"></label>
+      <div class="modal-actions"><button class="btn" dismiss>Annuler</button><button class="btn btn-primary" id="qe-ok">Écrire le fichier…</button></div>`,
+    (couche, close) => {
+      const c = $('#qe-seal', couche);
+      c.onchange = () => { $('#qe-pwf', couche).hidden = !c.checked; };
+      $('#qe-ok', couche).onclick = async () => {
+        const pw = c.checked ? $('#qe-pw', couche).value.trim() : '';
+        if (c.checked && pw.length < 6) return toast('Choisis un mot de passe d\'au moins six caractères.', 'error');
+        try {
+          const r = await api.ecrireQuestions({ dossierId: dossier.id, annee: s.annee, motDePasse: pw });
+          close();
+          if (r.annule) return;
+          s.livre = r.livre; s.revisionRev = '';
+          toast(`${pl(r.envoyees, 'question envoyée', 'questions envoyées')}${r.signe ? ', signées' : ''}${r.scelle ? ' et scellées' : ''}.`);
+          chargerRevision(root, dossier);
+        } catch (e) { toast(plainError(e), 'error'); }
+      };
+    });
   }
 
   function motifForm(root, dossier) {
@@ -5971,6 +6288,77 @@
       };
     }
     dessinerCorrespondance(view);
+
+    // 9.10.0 — les cycles de révision et le questionnaire de fin d'exercice. Les deux se saisissent
+    // et s'enregistrent ENSEMBLE : ce sont les deux moitiés d'une même chose, la méthode du cabinet.
+    const ca = $('#sr-cycles-add', view);
+    if (ca) ca.onclick = () => { cyclesBrouillon = lireCycles(view).concat([{ id: '', label: '', prefixes: [] }]); dessinerCycles(view); };
+    const cr = $('#sr-cycles-reset', view);
+    if (cr) cr.onclick = async () => {
+      if (!await confirmDialog('Reprendre les sept cycles proposés ?',
+        '<p>Tes cycles à toi seront remplacés par ceux que SkanFact propose. Tu pourras les remodifier ensuite.</p>', 'Reprendre', false)) return;
+      cyclesBrouillon = KC.CYCLES_REVISION.map(c => ({ ...c, prefixes: c.prefixes.slice() }));
+      dessinerCycles(view);
+    };
+    const qa = $('#sr-quest-add', view);
+    if (qa) qa.onclick = () => { questBrouillon = lireQuestionnaire(view).concat(['']); dessinerQuestionnaire(view); };
+    const qs = $('#sr-quest-save', view);
+    if (qs) qs.onclick = async () => {
+      // Une table de cycles À MOITIÉ remplie est pire que pas de table : le compte tombe alors dans
+      // un cycle qui n'a pas de nom, et la feuille maîtresse s'appelle « ».
+      const cycles = lireCycles(view).filter(c => c.id || c.label || c.prefixes.length);
+      const boiteux = cycles.filter(c => !c.id || !c.label || !c.prefixes.length);
+      if (boiteux.length) return toast('Chaque cycle a besoin d\'un identifiant, d\'un nom et d\'au moins un préfixe de compte.', 'error');
+      try {
+        S = await api.saveQuestionnaire({ cycles, modeles: lireQuestionnaire(view).filter(Boolean) });
+        cyclesBrouillon = null; questBrouillon = null;
+        dessinerCycles(view); dessinerQuestionnaire(view);
+        flash($('#sr-quest-saved', view));
+      } catch (e) { toast(plainError(e), 'error'); }
+    };
+    dessinerCycles(view); dessinerQuestionnaire(view);
+  }
+
+  let cyclesBrouillon = null, questBrouillon = null;
+  const lireCycles = view => $$('#sr-cycles tr[data-cy]', view).map(tr => ({
+    id: ($('[data-k=id]', tr) || {}).value || '', label: ($('[data-k=label]', tr) || {}).value || '',
+    prefixes: String((($('[data-k=prefixes]', tr) || {}).value) || '').split(/[,\s]+/).map(s => s.trim()).filter(Boolean)
+  }));
+  const lireQuestionnaire = view => $$('#sr-quest input[data-q]', view).map(i => i.value.trim());
+
+  function dessinerCycles(view) {
+    const box = $('#sr-cycles', view);
+    if (!box) return;
+    const table = cyclesBrouillon || (S.cycles || []);
+    const propose = !table.length;
+    const rows = propose ? KC.CYCLES_REVISION : table;
+    box.innerHTML = `${propose ? '<div class="sa-vide">Les sept cycles proposés servent tant que tu n\'en écris pas d\'autres.</div>' : ''}
+      <div class="scroll-x"><table class="list compact sa-table"><thead><tr>
+        <th class="nw">Identifiant</th><th class="nw">Nom du cycle</th><th>Préfixes de comptes</th><th></th></tr></thead>
+      <tbody>${rows.map((c, i) => `<tr data-cy="${i}">
+        <td><input data-k="id" value="${esc(c.id)}" ${propose ? 'disabled' : ''} placeholder="tresorerie"></td>
+        <td><input data-k="label" value="${esc(c.label)}" ${propose ? 'disabled' : ''} placeholder="Trésorerie"></td>
+        <td><input data-k="prefixes" value="${esc((c.prefixes || []).join(' '))}" ${propose ? 'disabled' : ''} placeholder="5 53 54"></td>
+        <td class="sa-sup">${propose ? '' : `<button type="button" class="btn btn-sm" data-cyx="${i}" aria-label="Retirer ce cycle">✕</button>`}</td>
+      </tr>`).join('')}</tbody></table></div>`;
+    $$('[data-cyx]', box).forEach(b => { b.onclick = () => {
+      const t = lireCycles(view); t.splice(Number(b.dataset.cyx), 1); cyclesBrouillon = t; dessinerCycles(view);
+    }; });
+  }
+
+  function dessinerQuestionnaire(view) {
+    const box = $('#sr-quest', view);
+    if (!box) return;
+    const table = questBrouillon || (S.questionnaire || []).map(q => q.question);
+    box.innerHTML = !table.length
+      ? '<div class="sa-vide">Aucune question. Elles s\'ajoutent une à une, et se posent ensuite sur chaque exercice d\'un clic.</div>'
+      : `<div class="scroll-x"><table class="list compact sa-table"><tbody>${table.map((q, i) => `<tr data-qr="${i}">
+          <td><input data-q="${i}" value="${esc(q)}" placeholder="Tous les contrats de leasing ont-ils été communiqués ?"></td>
+          <td class="sa-sup"><button type="button" class="btn btn-sm" data-qx="${i}" aria-label="Retirer cette question">✕</button></td>
+        </tr>`).join('')}</tbody></table></div>`;
+    $$('[data-qx]', box).forEach(b => { b.onclick = () => {
+      const t = lireQuestionnaire(view); t.splice(Number(b.dataset.qx), 1); questBrouillon = t; dessinerQuestionnaire(view);
+    }; });
   }
 
   function dessinerGuides(view) {
@@ -6135,6 +6523,7 @@
     'pan-saisie': { onglet: 'compta', titre: 'La grille de saisie', mots: 'saisie clavier touches raccourci solder recopier dupliquer journal date kilometre grille brouillard validation' },
     'pan-guides': { onglet: 'compta', titre: 'Guides d\'écritures', mots: 'guide modele ecriture type loyer salaire achat tva honoraires steg prerempli abonnement recurrent' },
     'pan-comptes': { onglet: 'compta', titre: 'Correspondance des comptes', mots: 'correspondance compte plan client cabinet traduire import export numero prefixe' },
+    'pan-questionnaire': { onglet: 'compta', titre: 'Révision : cycles et questionnaire', mots: 'revision cycle cycles feuille maitresse lead schedule questionnaire fin exercice question client trésorerie ventes achats immobilisations personnel fiscal capitaux' },
     'pan-inbox': { onglet: 'donnees', titre: 'Boîte de réception', mots: 'boite reception dossier surveille paquets arrives import mail' },
     'pan-backup': { onglet: 'donnees', titre: 'Sauvegardes', mots: 'sauvegarde restaurer copie externe usb icloud filet perdu' },
     'pan-secu': { onglet: 'donnees', titre: 'Sécurité', mots: 'securite mot de passe cle de secours verrouiller chiffrement empreinte' },
@@ -6263,6 +6652,21 @@
         <div id="sr-corr"></div>
         <div class="sous-table"><button class="btn btn-sm" id="sr-corr-add">Ajouter une ligne</button></div>
         <div class="modal-actions"><span class="saved" id="sr-corr-saved" hidden></span><button class="btn btn-primary" id="sr-corr-save">Enregistrer la correspondance</button></div>
+      </div>
+
+      ${panneauReg('pan-questionnaire', info('rv.reglages'))}
+        <p class="small">Ta méthode de révision, écrite <strong>une fois pour tous tes dossiers</strong>. Les sept cycles
+        proposés rattachent un compte à sa feuille maîtresse par son préfixe — le plus long gagne. Si ton cabinet range
+        autrement, écris tes cycles ici : ils remplacent alors ceux que SkanFact propose. <em>À VÉRIFIER : aucun rattachement
+        n'est une vérité comptable.</em></p>
+        <div id="sr-cycles"></div>
+        <div class="sous-table"><button class="btn btn-sm" id="sr-cycles-add">Ajouter un cycle</button>
+          <button class="btn btn-sm" id="sr-cycles-reset">Reprendre les sept cycles proposés</button></div>
+        <p class="small mt">Le <strong>questionnaire de fin d'exercice</strong> : les questions que tu poses sur chaque
+        dossier avant de clôturer. Il part vide — ce sont les tiennes, pas les nôtres.</p>
+        <div id="sr-quest"></div>
+        <div class="sous-table"><button class="btn btn-sm" id="sr-quest-add">Ajouter une question</button></div>
+        <div class="modal-actions"><span class="saved" id="sr-quest-saved" hidden></span><button class="btn btn-primary" id="sr-quest-save">Enregistrer ma méthode</button></div>
       </div>
       </section>
 
@@ -6595,6 +6999,19 @@
       // vraiment changé, pour ne pas effacer une saisie en cours.
       if (redessiner && recoveryAt !== avant && !$('#modal-root').children.length && !$('#palette-root')) render();
     }).catch(() => { recoveryAt = null; });
+  }
+
+  // Les questions sans réponse, résumées dossier par dossier (9.10.0). Lues dans les INDEX, jamais
+  // en déchiffrant soixante livres (mesure de la 9.1.0), et comme `recoveryAt` : on ne redessine
+  // que si le chiffre a vraiment changé, pour ne pas effacer une saisie en cours.
+  let questionsAttente = [];
+  function chargerQuestionsAttente(redessiner) {
+    if (!api.questionsEnAttente) return Promise.resolve();
+    const avant = JSON.stringify(questionsAttente);
+    return api.questionsEnAttente().then(r => {
+      questionsAttente = Array.isArray(r) ? r : [];
+      if (redessiner && JSON.stringify(questionsAttente) !== avant && !$('#modal-root').children.length && !$('#palette-root')) render();
+    }).catch(() => { questionsAttente = []; });
   }
 
   async function doRestore(entry) {

@@ -774,6 +774,9 @@
     closedUntil: '',         // dernier jour clôturé : rien de daté avant ne bouge plus (6.0.0)
     closureLog: [],          // chaque clôture et chaque réouverture, avec son motif (6.0.0)
     clotures: [],            // les clôtures d'exercice reçues du cabinet (9.8.0) : à-nouveaux officiels
+    // Les questions reçues du cabinet (9.10.0). Elles ne touchent AUCUN chiffre : elles s'affichent
+    // en face de la pièce qu'elles visent, on y répond, et la réponse repart dans le paquet suivant.
+    questionsCabinet: [],
     packs: [],               // paquets mensuels construits pour le cabinet (6.1.0)
     demo: false,             // ces données viennent du jeu d'exemple (7.0.0) — l'app le dit à l'écran
     // De quelle version sort l'exemple chargé, et sur quel mois il a été bâti — `{ version, mois }`.
@@ -1189,6 +1192,9 @@
     if (typeof data.closedUntil !== 'string') data.closedUntil = '';
     if (!Array.isArray(data.closureLog)) data.closureLog = [];
     if (!Array.isArray(data.clotures)) data.clotures = [];
+    // 9.10.0 : les questions du cabinet. Absentes de cette liste, elles seraient jetées au prochain
+    // chargement et le comptable n'aurait jamais de réponse — sans un mot (défaut `matricule`, 6.8.0).
+    if (!Array.isArray(data.questionsCabinet)) data.questionsCabinet = [];
     if (!Array.isArray(data.packs)) data.packs = [];   // 6.1.0 : historique des envois au cabinet
     if (!Array.isArray(data.licences)) data.licences = [];   // 7.33.0 : licences émises par l'éditeur
     if (!Array.isArray(data.ecrituresOD)) data.ecrituresOD = [];   // 8.9.0 : opérations diverses
@@ -2857,6 +2863,18 @@
   const disposalResult = Compta.disposalResult;
   const cappedCumulated = Compta.cappedCumulated;
   const entrySet = Compta.entrySet;
+  // Les questions du cabinet (9.10.0), réexportées à l'IDENTITÉ : elles prennent une LISTE, pas
+  // `data`, donc elles vivent dans compta.js (règle de découpage 9.1.0) et l'app entreprise les
+  // lit ici. Une copie divergerait, et les deux applications ne diraient plus la même chose d'une
+  // même question. Un test compare les objets, jamais leur résultat (9.6.1).
+  const QUESTION_ATTENDUS = Compta.QUESTION_ATTENDUS;
+  const QUESTION_RELANCE = Compta.QUESTION_RELANCE;
+  const fusionnerQuestionsRecues = Compta.fusionnerQuestionsRecues;
+  const questionsDeLaPiece = Compta.questionsDeLaPiece;
+  const repondreQuestion = Compta.repondreQuestion;
+  const reponsesAEnvoyer = Compta.reponsesAEnvoyer;
+  const questionsSansReponse = Compta.questionsSansReponse;
+  const questionsValides = Compta.questionsValides;
 
   // L'état des immobilisations pour un exercice : une ligne par bien, avec la dotation de l'année.
   function assetsList(data, year) {
@@ -3620,6 +3638,16 @@
     // 2. La TVA du mois, avec son report : un mois isolé sans le crédit reporté donne un chiffre faux.
     const vat = vatReturn(data, company, period, (data.vatCarryIn || {})[period.month.slice(0, 4)] || 0);
     add({ path: 'journaux/tva.json', kind: 'text', label: 'TVA du mois', text: JSON.stringify(vat, null, 2) });
+
+    // 2 bis. Les réponses aux questions du cabinet (9.10.0). Elles voyagent DANS le paquet plutôt
+    // que dans un fichier à part : c'est déjà le geste mensuel, et une réponse qu'il faut penser à
+    // envoyer séparément n'est jamais envoyée. Le fichier n'existe que s'il y a quelque chose à
+    // dire — un `reponses.json` vide dans chaque paquet apprendrait au cabinet à ne plus l'ouvrir.
+    const reponses = Compta.reponsesAEnvoyer(data.questionsCabinet || []);
+    if (reponses.length) {
+      add({ path: 'reponses.json', kind: 'text', label: `Réponses à ton comptable (${plFr(reponses.length, 'question')})`,
+        text: JSON.stringify({ format: 1, reponses }, null, 2), rows: reponses.length });
+    }
 
     // 3. Le PDF de chaque pièce émise. C'est le justificatif, pas le tableau.
     const issued = (data.documents || []).filter(d => (d.type === 'facture' || d.type === 'avoir')
@@ -5100,6 +5128,23 @@
       count: overdue.length, amount: overdueAmount, route: '#/relances', docs: overdue.map(x => x.doc)
     });
 
+    // Les questions du comptable restées sans réponse (9.10.0). Une question attend une pièce, une
+    // explication ou une confirmation : tant qu'elle attend, le comptable ne peut pas arrêter son
+    // travail, et c'est le client qui bloque sans le savoir. La ligne monte à `danger` au bout de
+    // deux paquets — même seuil des deux côtés, c'est la même règle lue par les deux applications.
+    const qsOuvertes = (data.questionsCabinet || []).filter(q => !(q.reponse && (String(q.reponse.texte || '').trim() || q.reponse.piece)));
+    if (qsOuvertes.length) {
+      const bloquees = questionsSansReponse(data.questionsCabinet || []);
+      out.push({
+        id: 'questions', level: bloquees.length ? 'danger' : 'warn',
+        label: `${plFr(qsOuvertes.length, 'question')} de ton comptable ${qsOuvertes.length > 1 ? 'attendent' : 'attend'} ta réponse`,
+        detail: bloquees.length
+          ? `${plFr(bloquees.length, 'est arrivée', 'sont arrivées')} dans deux paquets sans réponse : ton comptable ne peut pas arrêter ton mois tant qu'${bloquees.length > 1 ? 'elles restent' : 'elle reste'} en l'air.`
+          : 'Chacune est posée en face de la pièce qu\'elle vise : ouvre-la et réponds, ta réponse repart dans le prochain paquet.',
+        count: qsOuvertes.length, route: '#/compta?onglet=cabinet', docs: []
+      });
+    }
+
     // Fiche société : sans raison sociale ni matricule, une facture n'est pas conforme ; sans RIB, le client ne sait pas où payer
     const missing = companyGaps(company);
     if (missing.length) out.push({
@@ -6441,6 +6486,9 @@
     PACK_FORMAT, packPeriod, packPlan, packChecklist, packFileName, packCoverHtml,
     DEFAULT_ACCOUNTS, ACCOUNT_LABELS, ENTRY_JOURNALS, journalLabel, chartAccounts, journalEntries,
     entriesBalance, entriesByAccount, entryCsvColumns, MOVE_ACCOUNTS, COMPTES_CONTREPARTIE, journalDeCompte, clotureValide,
+    // Les questions du cabinet (9.10.0)
+    QUESTION_ATTENDUS, QUESTION_RELANCE, questionsValides, fusionnerQuestionsRecues,
+    questionsDeLaPiece, repondreQuestion, reponsesAEnvoyer, questionsSansReponse,
     numerosDuJournal, livreJournal, journalCentralisateur, centralisateurCsvColumns, centralisateurRows, inPeriod,
     odValide, odPiece, comptesProposes, lettrage, SECTIONS_ECRITURES,
     etatRapprochement, etatsFinanciers, etatsCsvRows, etatsCsvColumns, employerChargesOf,

@@ -13005,11 +13005,15 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     const manquants = SOCLE.filter(k => !(k in L));
     assert.deepStrictEqual(manquants, [], 'un champ du socle de livre.json a disparu');
     assert.deepStrictEqual(Object.keys(L).sort(),
-      // 9.7.0 : l'inventaire de stock. 9.9.0 : l'état de RÉVISION mois par mois — posé maintenant,
+      // 9.7.0 : l'inventaire de stock. 9.9.0 : l'état de RÉVISION mois par mois — posé alors,
       // rempli en 9.10.0, pour la même raison que les trois listes vides de la 9.2.0 : le tableau
-      // de production le lit dès aujourd'hui pour dire « révisé : — » au lieu de « non », et une
-      // liste dont la forme change après avoir été écrite chez soixante clients ne se rattrape plus.
-      SOCLE.concat(['inventaires', 'revisions']).sort(),
+      // de production le lit pour dire « révisé : — » au lieu de « non », et une liste dont la
+      // forme change après avoir été écrite chez soixante clients ne se rattrape plus.
+      // 9.10.0 : les QUESTIONS posées au client. Elles sont dans le livre et non au niveau du
+      // cabinet parce qu'une question naît d'une LIGNE — elle porte l'écriture, la pièce et le
+      // compte sur lesquels elle est née, et ces trois-là n'existent que dans l'exercice où ils
+      // ont été écrits. Ajoutée, donc compatible : absente d'un livre écrit avant, elle vaut `[]`.
+      SOCLE.concat(['inventaires', 'revisions', 'questions']).sort(),
       'la forme du livre a changé — si c\'est voulu, c\'est une décision à écrire dans le cahier');
     // 9.8.5 — la forme d'une LIGNE est figée elle aussi. Ce test manquait, et c'est le trou par
     // lequel T-13 est passé : la 9.2.0 a écrit une ligne SANS `tiers`, personne ne l'a vu, et le
@@ -13704,6 +13708,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   require('./suites/immobilisations.js')({ t, assert, lireSource });
   require('./suites/cloture.js')({ t, assert, lireSource });
   require('./suites/equipe.js')({ t, assert, lireSource });
+  require('./suites/revision.js')({ t, assert, lireSource });
   require('./suites/terrain.js')({ t, assert, lireSource });
 
   // ---------- 9.4.10 : aucune suite découpée ne reste sur le bord de la route ----------

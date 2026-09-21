@@ -1904,6 +1904,49 @@ ipcMain.handle('cloture:ouvrirEtats', async (_e, { source, html, pdf } = {}) => 
   return { ok: true, path: cible };
 });
 
+// ---------- les questions du cabinet (9.10.0) ----------
+//
+// Le second flux retour, et le seul qui arrive EN FACE d'une pièce. Comme pour la clôture, ce
+// handler LIT et VÉRIFIE ; il n'écrit rien dans les données — c'est le renderer qui décide, après
+// avoir montré ce qui arrive. Et comme pour la clôture, l'origine se prouve par une signature :
+// chiffrer dit « seul toi peux lire », seule une signature dit « ça vient bien de ton comptable ».
+ipcMain.handle('questions:lire', async (_e, { motDePasse } = {}) => {
+  const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+    title: 'Les questions envoyées par ton comptable',
+    filters: [{ name: 'Questions SkanFact', extensions: ['skanask'] }],
+    properties: ['openFile']
+  });
+  if (canceled || !filePaths || !filePaths[0]) return null;
+  let buf;
+  try { buf = fs.readFileSync(filePaths[0]); }
+  catch { throw erreur('ERR-ENT-083', 'Ce fichier n\'a pas pu être lu.'); }
+  if (isSealed(buf)) {
+    if (!motDePasse) throw erreur('ERR-ENT-084', 'Cet envoi de questions est protégé par un mot de passe. Ton comptable te le dit au téléphone, jamais dans le même mail que le fichier.');
+    try { buf = openBuffer(buf, String(motDePasse)); }
+    catch (e) { throw erreur('ERR-ENT-084', e.message); }
+  }
+  let fichiers;
+  try { fichiers = zipRead(buf); }
+  catch { throw erreur('ERR-ENT-083', 'Ce fichier n\'est pas un envoi de questions SkanFact.'); }
+  const par = {};
+  fichiers.forEach(f => { try { par[f.name] = f.data(); } catch (e) { logToFile('questions-lire', e); } });
+  if (!par['questions.json']) throw erreur('ERR-ENT-083', 'Ce fichier ne contient aucune question.');
+  let obj;
+  try { obj = JSON.parse(par['questions.json'].toString('utf8')); }
+  catch { throw erreur('ERR-ENT-083', 'L\'envoi de questions est abîmé.'); }
+
+  let origine = { niveau: 'non-prouvee', empreinte: '', motif: 'Cet envoi n\'est pas signé : rien ne prouve qu\'il vient de ton cabinet.' };
+  if (par['manifeste.json'] && par['signature.json']) {
+    let sig = null;
+    try { sig = JSON.parse(par['signature.json'].toString('utf8')); } catch { sig = null; }
+    const v = sig ? verifyManifest(par['manifeste.json'], sig) : { ok: false, motif: 'signature illisible' };
+    origine = v.ok
+      ? { niveau: 'prouvee', empreinte: sig.empreinte, motif: '' }
+      : { niveau: 'refusee', empreinte: (sig && sig.empreinte) || '', motif: v.motif || 'La signature ne correspond pas.' };
+  }
+  return { path: filePaths[0], envoi: obj, origine, fichiers: fichiers.map(f => f.name) };
+});
+
 // ---------- le paquet mensuel pour le cabinet (6.1.0) ----------
 // Le renderer décide de CE QUE contient le paquet (core.packPlan, testable sans Electron) et fournit
 // le HTML des pièces à rendre. Ici on ne fait qu'exécuter : produire les octets, empreinter, zipper,
