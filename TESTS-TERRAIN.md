@@ -1699,6 +1699,27 @@ La sonde de la 9.8.3 mesure un bouton contre ses VOISINS CLIQUABLES ; un titre n
 ne l'a donc pas vu. **Piste** : marge sous le bouton (ou au-dessus du panneau), et la sonde apprend
 qu'un titre de section est un voisin.
 
+### T-50 · MINEUR · Le brouillard affiche la date en `2026-03-04`, la grille juste au-dessus en `04/03/2026`
+
+**Vu** sur la capture du 21/09 (Saisie, panneau « Le brouillard ») : `${esc(e.date)}` brut. Le
+format interne fuit dans l'écran où un comptable lit une date — la règle de la 9.4.5, un panneau plus
+bas. **Piste** : `dateAffichee` (ou `JJ/MM/AAAA`) dans la liste du brouillard, et vérifier le
+livre-journal, la recherche et le lettrage au passage. Le parcours `e2e:saisie` exige déjà le format
+français sur la GRILLE ; il doit l'exiger sur la ligne du brouillard aussi.
+
+### T-51 · MOYEN · Une écriture sans pièce ni libellé s'enregistre et se valide sans un mot
+
+**Vu** le 21/09 : Skander avait cliqué « Vider » (qui garde le journal et la date, et efface pièce et
+libellé), retapé les lignes, enregistré : la fenêtre « Valider cette écriture ? » disait « AC — » et
+aurait validé, numéroté, figé une écriture sans référence ni libellé. Une saisie à moitié vide qui
+prend un numéro se relit dans deux ans sans qu'on sache ce que c'était.
+
+**Ancrage** : `compta.ecritureValide` — exige la date, le journal, deux lignes et l'équilibre, pas le
+libellé. **Piste** : le brouillard accepte tout (c'est sa raison d'être) ; la VALIDATION refuse un
+libellé vide en nommant le champ, et la fenêtre de confirmation dit « sans pièce » plutôt que « — ».
+À VÉRIFIER avec le comptable pilote : la pièce (référence) est-elle obligatoire chez lui, ou seulement
+le libellé ? C'est lui qui tranche, pas nous (règle 9.1.1).
+
 ### Ce que la 9.8.8 a décidé, et ce qu'elle laisse À VÉRIFIER
 
 - **T-41, le tiers sur chaque ligne** : gardé. Que la ligne de TVA d'une facture porte le tiers de
