@@ -144,11 +144,12 @@ const CSV_INCONNU = 'Jour;Ce que c\'est;Combien\n'
   await win.click('#bq-import');
   await win.waitForSelector('#rv-fichier', { timeout: 10000 });
   await win.click('#rv-fichier');
-  await win.waitForFunction(() => /ligne/.test((document.querySelector('#rv-apercu') || {}).textContent || ''), { timeout: 10000 });
-  await win.fill('[name=debut]', '1000');
-  await win.fill('[name=fin]', '1860,700');
-  await win.click('.modal-bg #ok');
-  await win.waitForFunction(() => /déjà été importé/.test((document.querySelector('#toast') || {}).textContent || ''), { timeout: 8000 });
+  // T-08 : le doublon se voit DÈS le choix du fichier, avant qu'on ait tapé un solde, et le bouton
+  // « Importer » s'éteint. Reprocher un solde faux sur un fichier déjà là faisait corriger un
+  // chiffre pour rien. L'ancienne forme (cliquer, puis lire un refus) décrivait cet ordre-là.
+  await win.waitForFunction(() => /déjà été importé/.test((document.querySelector('#rv-deja') || {}).textContent || ''), { timeout: 10000 });
+  const okEteint = await win.evaluate(() => !!(document.querySelector('.modal-bg #ok') || {}).disabled);
+  if (!okEteint) throw new Error('le bouton « Importer » reste allumé sur un doublon');
   // Échap ferme la fenêtre, comme chez un vrai utilisateur — et on ATTEND qu'elle ait disparu :
   // cliquer sur l'écran du dessous pendant qu'une fenêtre le couvre est le défaut de la 5.2.2,
   // et le parcours le reproduirait en accusant un bouton parfaitement sain.

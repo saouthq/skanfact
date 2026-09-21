@@ -95,9 +95,15 @@ const CIBLE = path.join(dir, 'cloture.skanclose');
   }
   const controles = await wc.$$eval('#c-livres .panel table tbody tr', trs => trs.length);
   if (controles < 6) throw new Error('les six contrôles devraient être affichés, vu ' + controles);
-  const equilibre = /Actif = passif/.test(ecran);
-  if (!equilibre) throw new Error('le bilan de ce dossier ne s\'équilibre pas');
-  ok('six contrôles affichés, bilan équilibré, et la limite des états est écrite');
+  // La RÈGLE : actif = passif, et l'écran le dit. Deux formes légitimes (T-23) : le vert « Actif =
+  // passif, au millime » sur un exercice qui a ses à-nouveaux, ou l'avertissement « livre sans
+  // à-nouveaux » — qui affirme lui aussi l'équilibre, sans prétendre que le bilan se montre à une
+  // banque. Un déséquilibre, lui, s'écrit « Actif et passif diffèrent ».
+  if (/Actif et passif diffèrent/.test(ecran)) throw new Error('le bilan de ce dossier ne s\'équilibre pas');
+  const equilibre = /Actif = passif, au millime/.test(ecran) || /Actif et passif s'équilibrent/.test(ecran);
+  if (!equilibre) throw new Error('l\'écran ne dit pas si le bilan s\'équilibre');
+  const sansAN = await wc.$('#cl-sans-ouverture');
+  ok(`six contrôles affichés, bilan équilibré${sansAN ? ' (livre sans à-nouveaux, et l\'écran le dit)' : ''}, et la limite des états est écrite`);
 
   // ------------------------------------------------ clôturer
   étape('Clôturer : définitif, tracé, et impossible deux fois');
