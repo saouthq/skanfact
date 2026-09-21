@@ -1605,7 +1605,10 @@ revenus » n'avait pas de suite. Voici la suite. Les dates sont des propositions
 - **Dans quel ordre ensuite ?** Le § 16 détaille chaque version. En résumé : 9.2.0 le livre par
   dossier → 9.3.0 la saisie → la licence du Cabinet → 9.5.0 la banque → 9.6.0 le fiscal mensuel →
   9.7.0 immobilisations et stocks → 9.8.0 la clôture d'exercice → 9.9.0 collaborateurs → 9.10.0
-  révision et questions → 10.0.0 liasse et exemple complet. **Décidé.**
+  révision et questions → 10.0.0 liasse et exemple complet. **Décidé** — et **livré : la 10.0.0 est
+  publiée le 21/09/2026.** Cet ordre a été suivi de bout en bout ; ce qui reste n'est plus une
+  version, ce sont les réponses listées trois questions plus bas (« Qu'est-ce qui exige le
+  comptable ? »), qu'aucune ligne de code ne peut fournir.
 - **Pourquoi la licence du Cabinet arrive après la saisie ?** Parce que c'est la saisie qui crée le
   premier dossier hors SkanFact, donc la première chose qu'on peut vendre. Avant, il n'y a rien à
   compter.

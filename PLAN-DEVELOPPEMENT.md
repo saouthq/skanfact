@@ -12,6 +12,21 @@ semaine de démarches ne retarde aucune version, et une version ne retarde aucun
 
 ---
 
+> **Mise à jour du 21/09/2026 — les Phases 1 à 10 sont livrées.** La **10.0.0** est publiée : de la
+> 9.1.0 à la 10.0.0, tout ce que la Partie B décrit est dans le dépôt. Les Parties A et B ci-dessous
+> gardent leurs chiffres et leurs cases du 15/09/2026 : ce sont des mesures **datées**, c'est-à-dire
+> de l'histoire, et on ne les réécrit pas (même règle qu'en 9.4.3 : on ne renumérote jamais une
+> version déjà livrée). Ce qu'elles disent au futur — « le prochain geste de code est la 9.1.0 »,
+> « ce qui n'existe pas encore » — a donc cessé d'être vrai, et ce paragraphe est là pour que
+> personne ne le lise comme un plan.
+>
+> **Ce qui attend maintenant n'est plus du code, c'est la Phase 0** (les six démarches) et les
+> **dépendances humaines** que chaque phase nommait sans pouvoir les obtenir : la méthode de révision
+> du pilote, sa liasse d'un exercice réel, ses formats de banque, les échéances de chaque régime. Le
+> code a été construit pour ne rien décider à leur place — tables vides, tout surchargeable,
+> « À VÉRIFIER » sur chaque écran — mais c'est **la confrontation avec le pilote**, pas une version
+> de plus, qui les lèvera.
+
 ## Partie A — État des lieux
 
 ### Ce qui est livré (vérifié dans `CHANGELOG.md` et `package.json`)
@@ -226,7 +241,7 @@ correctifs, les relances d'e2e et le temps de relecture de Skander).*
 | **Propriétaire** | Claude, le pilote. |
 | **Livrables** | ☐ Inventaire guidé avec extourne · ☐ Contrôles de clôture (jamais bloquants, règle 6.0.0) · ☐ Clôture définitive tracée, réouverture avec motif · ☐ À-nouveaux explicites (jamais comptés deux fois, règle 9.0.0) · ☐ États SCE, N/N-1, SIG, PDF · ☐ `.skanclose` chiffré pour le client, avec PDF lisible par tous ; **le cabinet clôture même si le client n'est pas à jour** (règle 48) · ☐ Entreprise : réception, exercice verrouillé, écritures du comptable en lecture. |
 | **Critères d'acceptation** | Actif = passif, résultat identique des deux côtés, à-nouveau = soldes du 31/12 ; **e2e du flux retour : le cabinet clôture, le client importe, les deux bilans sont identiques au millime** ; une clôture refusée puis acceptée, la réouverture impossible sans motif. |
-| **Risques** | La liasse n'est pas la clôture : cette phase produit des états **déduits de la balance**, pas la liasse NCT 01 — la page l'écrit. Confondre les deux ferait promettre ce que la 10.0.0 seule livre. |
+| **Risques** | La liasse n'est pas la clôture : cette phase produit des états **déduits de la balance**, et la page l'écrit. Confondre les deux ferait promettre ce que la Phase 10 seule livre — depuis la 10.0.0, l'écran de clôture mène à la liasse par un bouton plutôt que de faire croire qu'il la produit. |
 | **Jalon de sortie** | **J3** (31/12/2027) : un second cabinet a commencé, vingt-cinq licences. Sans second cabinet, les Phases 7 à 10 ne se justifient plus. |
 
 ### Phase 8 — Le cabinet à plusieurs

@@ -254,6 +254,13 @@ ce qu'il fait le plus souvent, ce qu'il rend au client.
 
 ## Le calendrier, en ordre de grandeur
 
+> **21/09/2026 : les dix versions sont livrées, la 10.0.0 est publiée.** Le tableau garde ses durées
+> d'origine — ce sont des estimations datées, et les confronter à ce qui s'est vraiment passé n'a de
+> sens qu'une fois. En revanche la colonne « Dépend du comptable » n'a **pas** été levée : chaque
+> version marquée y a été construite de façon à ne rien décider à sa place (tables vides, tout
+> surchargeable, « À VÉRIFIER » sur l'écran). C'est maintenant la seule chose qui reste, et elle ne
+> se fait pas au clavier.
+
 | Version | Ce qu'elle apporte | Dépend du comptable | Ordre de grandeur |
 |---|---|---|---|
 | 9.1.0 | Les livres lus dans les paquets | non | jours |

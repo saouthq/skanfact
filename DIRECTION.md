@@ -339,6 +339,14 @@ remplacées). Le site et l'aide suivent les versions.
 
 ## 7. L'ordre
 
+> **21/09/2026 : les étapes 1 à 11 sont livrées, la 10.0.0 est publiée.** Le tableau reste écrit tel
+> qu'il a été décidé — c'est l'ordre qui a été suivi, et il explique pourquoi chaque version est
+> arrivée à sa place. Ce qui reste devant nous est l'**étape 0 bis** (les six choses qui bloquent la
+> vente et qui ne sont pas du code) et les **dépendances de la colonne de droite** : le plan de
+> comptes du pilote, ses formats de relevés, son modèle de déclaration, sa méthode de révision, sa
+> liasse de l'année. Le code a été construit pour ne rien décider à leur place ; elles se lèvent en
+> s'asseyant avec lui, pas en écrivant une version de plus.
+
 | Étape | Quoi | Dépend de |
 |---|---|---|
 | 0 | Ce document ; les plans corrigés ; la décision « masquer ou supprimer » ; les questions au comptable et à l'Ordre posées | Skander |
