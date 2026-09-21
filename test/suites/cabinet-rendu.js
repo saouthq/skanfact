@@ -302,14 +302,27 @@ t('9.4.5 : les totaux de la grille vivent SOUS leurs colonnes, et le bouton éte
 
   const im = app.indexOf('const majSolde = () => {');
   const m = app.slice(im, app.indexOf('\n    };', im));
-  assert.ok(m.length > 600 && m.length < 3000, 'majSolde : tranche de ' + m.length + ' caractères');
+  assert.ok(m.length > 600 && m.length < 4200, 'majSolde : tranche de ' + m.length + ' caractères');
   // **La même fonction que celle qui refusera à l'enregistrement.** Un contrôle recopié à la main
   // dans l'écran finirait par diverger de celui du moteur, et le bouton s'éteindrait sur une
   // pièce que l'enregistrement accepte — ou l'inverse, bien pire.
-  assert.ok(/KC\.ecritureValide\(ecritureSaisie\(p\)/.test(m),
+  //
+  // Les trois assertions qui suivaient recopiaient la LIGNE du jour (`KC.ecritureValide(
+  // ecritureSaisie(p)`, `b.disabled = !v.ok`, `motif.textContent = v.ok ? …`) : elles sont tombées
+  // le jour où les deux boutons ont cessé d'exiger la même chose (T-51), sur du code juste — la
+  // quinzième fois que ce motif revient. On exige la RÈGLE, pas sa forme.
+  assert.ok(/KC\.ecritureValide\(/.test(m),
     'le contrôle en direct doit passer par `ecritureValide`, jamais par une règle recopiée');
-  assert.ok(/b\.disabled = !v\.ok/.test(m), 'les deux boutons s\'éteignent quand la pièce ne passe pas');
-  assert.ok(/motif\.textContent = v\.ok \? '' : v\.motif/.test(m), 'et le motif s\'AFFICHE, pas seulement en title');
+  // Le brouillard accepte une pièce à moitié tapée, la validation exige un libellé : DEUX verdicts,
+  // et chaque bouton suit le sien. Un seul verdict éteindrait le brouillard sur le motif de la
+  // validation, et enfermerait la saisie en cours.
+  assert.ok(/\{ valider: true \}/.test(m), 'le bouton « valider » doit juger avec les exigences de la validation');
+  ['sa-ok', 'sa-okvalider'].forEach(id => {
+    const zone = m.slice(m.indexOf(id));
+    assert.ok(/disabled = !\w+\.ok/.test(zone), `le bouton ${id} doit s'éteindre sur son propre verdict`);
+  });
+  assert.ok(/motif\.textContent = /.test(m) && !/motif\.textContent = ''/.test(m),
+    'le motif s\'AFFICHE, pas seulement en title');
   // Toujours pas de redessin à la frappe (règle 9.3.0) : on met à jour la donnée, puis les seuls
   // éléments qui en dépendent.
   assert.ok(!/drawLivres/.test(m), 'le solde ne redessine pas la grille : le curseur y repartirait dans le vide');

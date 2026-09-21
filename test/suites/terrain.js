@@ -413,10 +413,17 @@ t('T-29 / T-31 / T-32 / T-33 : les lots existent, Tab est expliqué, une ligne s
   assert.ok(/lotsDuBrouillard\(brouillards\)\.map\(l => `<button type="button" class="btn btn-sm" data-lot-\$\{l\.type\}/.test(app), 'les boutons de lot ne viennent pas du brouillard');
   assert.ok(!/Valider tout le journal \$\{esc\(p\.journal\)\}/.test(app), 'le lot suit encore l\'en-tête de saisie');
   assert.ok(/\$\$\('\[data-lot-journal\]', el\)\.forEach/.test(app) && /\$\$\('\[data-lot-mois\]', el\)\.forEach/.test(app), 'les lots ne sont pas branchés');
-  // T-31 : la règle avant l'exception.
+  // T-31 : la règle avant l'exception. L'assertion recopiait le libellé du jour et est tombée le
+  // jour où il a dit d'OÙ l'on solde (T-48), sur du code juste — la seizième fois que ce motif
+  // revient. Ce qui compte est l'ORDRE des deux paires, pas leur orthographe.
   const aide = tranche(app, 'function aideTouches(', '\n  }', 200, 1200);
-  assert.ok(aide.indexOf("paire('Champ suivant', 'Tab')") > 0 && aide.indexOf("paire('Champ suivant', 'Tab')") < aide.indexOf("paire('Solder la dernière ligne'"), 'la légende nomme l\'exception de Tab avant sa règle');
+  const iChamp = aide.indexOf("paire('Champ suivant', 'Tab')");
+  const iSolder = aide.search(/paire\('Solder/);
+  assert.ok(iChamp > 0 && iSolder > iChamp, 'la légende nomme l\'exception de Tab avant sa règle');
   assert.ok(!/paire\('Solder la pièce'/.test(aide), '« Solder la pièce » laisse croire que Tab solde toujours');
+  // T-48 : et elle dit d'OÙ. Le geste ne part que de la case Crédit de la dernière ligne ; une
+  // légende qui l'annonce sans sa condition fait croire à un raccourci qui marche une fois sur deux.
+  assert.ok(/paire\('Solder[^']*Crédit'/.test(aide), 'la légende de solde doit nommer la case d\'où l\'on appuie');
   // T-32.
   assert.ok(/id="sa-ajouter"/.test(app) && /aj\.onclick = \(\) => \{ p\.lignes\.push\(ligneVide\(\)\); redessinerLignes\(\{ i: p\.lignes\.length - 1, k: 'compte' \}\); \}/.test(app), '« + Ajouter une ligne » manque ou n\'est pas branché');
   // T-33 : la liste vit sur le body, en position fixe calculée sur le champ.
@@ -637,5 +644,134 @@ t('T-53 : le bouton de lot nomme la pièce et élide devant une voyelle', () => 
   const zone = tranche(app, 'lotsDuBrouillard(brouillards).map(', '</button>', 40, 400);
   assert.ok(/K\.libelleLot\(l\)/.test(zone), 'le bouton de lot doit prendre son libellé dans cabcore');
   assert.ok(!/la seule|les \$\{/.test(zone), 'l\'écran ne doit plus fabriquer le libellé lui-même');
+});
+
+// T-48 (9.8.8-beta.3) — « Solder la dernière ligne ⇥ Tab » ne disait pas d'OÙ : le geste ne part
+// que de la case Crédit, sur une ligne qui porte un compte et pas encore de montant. Trois
+// conditions qu'aucun écran ne montrait — donc un raccourci qui « ne marche pas » une fois sur deux.
+t('T-48 : le geste de solde s\'annonce dans la case d\'où il part, par la MÊME fonction qui l\'exécute', () => {
+  const app = cabApp();
+  assert.ok(/const soldeProposable = \(\) => \{/.test(app), 'la condition du geste doit vivre dans UNE fonction');
+  // Le gestionnaire de Tab ne rejuge rien lui-même : il demande, il pose.
+  const tab = tranche(app, "if (ev.key === 'Tab' && !ev.shiftKey && k === 'credit'", '\n          }', 80, 700);
+  assert.ok(/soldeProposable\(\)/.test(tab), 'Tab doit demander le solde à `soldeProposable`');
+  assert.ok(!/KC\.soldeDeLignes/.test(tab), 'Tab recalcule la condition à la main : elle divergera de ce que l\'écran annonce');
+  // Et l'annonce vit dans `majSolde`, avec les totaux : écrite au dessin, elle serait périmée à la
+  // frappe suivante — c'est le même mécanisme que `#sa-td` / `#sa-tc` (9.4.5).
+  const maj = tranche(app, 'const majSolde = () => {', '\n    };', 600, 4200);
+  assert.ok(/soldeProposable\(\)/.test(maj), 'le placeholder du solde doit se recalculer avec les totaux');
+  // Les deux assertions qui suivaient cherchaient `placeholder = ` et « au débit » : la première
+  // était satisfaite par `placeholder = ''` (une annonce VIDE), la seconde par la phrase du solde
+  // juste au-dessus, qui écrit déjà « Il manque 191,000 au débit ». Un test trop large laisse
+  // passer le défaut aussi sûrement qu'un test trop étroit accuse du code juste (9.4.7) — et on ne
+  // l'a su qu'en essayant de le faire tomber. On exige que l'annonce soit CONSTRUITE sur `prop`.
+  assert.ok(/placeholder = prop/.test(maj) && /montant\(prop\./.test(maj),
+    'le geste doit s\'annoncer DANS la case avec le montant qu\'il posera, pas par une chaîne vide');
+  assert.ok(/prop\.debit \? ' au débit'/.test(maj),
+    'l\'annonce doit nommer la colonne quand le montant n\'ira pas dans celle où l\'on est');
+});
+
+// T-49 (9.8.8-beta.3) — « + Ajouter une ligne » vivait APRÈS la barre qui clôt la pièce, et collé
+// au titre du panneau suivant. Le geste qui ALLONGE un tableau vit sous ce tableau (9.4.8).
+t('T-49 : le geste qui allonge la grille vit sous la grille, avant la barre qui clôt la pièce', () => {
+  const app = cabApp();
+  const iGrille = app.indexOf('<tbody id="sa-lignes">');
+  const iAjout = app.indexOf('<div class="sa-ajout">');
+  const iPied = app.indexOf('<div class="sa-pied">');
+  const iBrouillard = app.indexOf('<h2 class="mt">Le brouillard');
+  [iGrille, iAjout, iPied, iBrouillard].forEach(i => assert.ok(i > 0, 'un repère du gabarit de saisie a disparu'));
+  assert.ok(iGrille < iAjout, '« + Ajouter une ligne » doit suivre la grille qu\'il allonge');
+  assert.ok(iAjout < iPied, 'il doit précéder la barre qui CLÔT la pièce, sinon on le cherche au-dessus d\'un bouton qui enregistre');
+  assert.ok(iPied < iBrouillard, 'la barre d\'actions reste le dernier geste de la pièce en cours');
+});
+
+// T-50 (9.8.8-beta.3) — le brouillard et la recherche affichaient « 2026-03-04 » sous une grille
+// qui écrit « 04/03/2026 ». Le format interne ne fuit pas dans un écran (9.4.5).
+t('T-50 : aucune cellule de tableau du Cabinet n\'affiche une date brute', () => {
+  const app = cabApp();
+  // Un contrôle de FORME assumé, parce que la faute EST une forme : une cellule qui interpole une
+  // date sans passer par `fmtJour`. Les `value=` des champs de saisie ne sont pas concernés — là,
+  // le format est annoncé par le placeholder.
+  const fautes = [];
+  const re = /<td[^>]*>\$\{([^}]*\.date[^}]*)\}/g;
+  let m;
+  while ((m = re.exec(app))) {
+    if (!/fmtJour|moisLabel/.test(m[1])) fautes.push(m[1].slice(0, 60));
+  }
+  assert.deepStrictEqual(fautes, [], 'des cellules affichent une date au format interne : ' + fautes.join(' · '));
+  // Et les deux écrans qui l'avaient le font bien, maintenant.
+  assert.ok(/<td class="nw">\$\{esc\(fmtJour\(e\.date\)\)\}<\/td><td>\$\{esc\(e\.journal\)\}/.test(app), 'le brouillard doit dater en français');
+});
+
+// T-51 (9.8.8-beta.3) — « Valider cette écriture ? AC — » : une pièce sans référence NI libellé se
+// validait, prenait un numéro et devenait définitive sans que rien ne dise ce qu'elle enregistre.
+t('T-51 : la validation exige un libellé, le brouillard non, et la référence se montre sans être exigée', () => {
+  const K = require('../../src/renderer/compta.js');
+  const piece = {
+    date: '2026-03-04', journal: 'AC', piece: '', libelle: '',
+    lignes: [{ compte: '606', debit: 100 }, { compte: '401', credit: 100 }]
+  };
+  // Le brouillard accepte tout : c'est sa raison d'être, on y revient avant de valider.
+  assert.strictEqual(K.ecritureValide(piece, []).ok, true, 'un brouillard anonyme doit pouvoir s\'enregistrer');
+  const v = K.ecritureValide(piece, [], { valider: true });
+  assert.strictEqual(v.ok, false, 'une écriture que rien ne nomme ne peut pas devenir définitive');
+  assert.ok(/libellé/i.test(v.motif), 'le refus doit NOMMER le champ qui manque : ' + v.motif);
+  // Le libellé peut vivre sur la pièce OU sur chaque ligne : `lignesDuLivre` affiche
+  // `l.libelle || e.libelle`, donc ce qu'on refuse est une ligne que RIEN ne nomme.
+  assert.strictEqual(K.ecritureValide({ ...piece, libelle: 'Achat de fournitures' }, [], { valider: true }).ok, true);
+  const parLigne = { ...piece, lignes: piece.lignes.map(l => ({ ...l, libelle: 'Fournitures' })) };
+  assert.strictEqual(K.ecritureValide(parLigne, [], { valider: true }).ok, true, 'des lignes toutes nommées suffisent');
+  const moitie = { ...piece, lignes: [{ ...piece.lignes[0], libelle: 'Fournitures' }, piece.lignes[1]] };
+  assert.strictEqual(K.ecritureValide(moitie, [], { valider: true }).ok, false, 'une ligne anonyme sur deux ne suffit pas');
+  // La RÉFÉRENCE de pièce, elle, n'est jamais exigée (règle 9.1.1) : savoir si un cabinet l'impose
+  // est une règle d'organisation que personne n'a confirmée.
+  assert.strictEqual(K.ecritureValide({ ...piece, libelle: 'Achat', piece: '' }, [], { valider: true }).ok, true,
+    'la référence de pièce ne doit pas bloquer une validation');
+
+  // Le MOTEUR refuse, pas seulement l'écran : le pont passe par là.
+  const L = K.livreVide('D', 2026);
+  const anonyme = K.ajouterEcriture(L, piece, 'p', 1);
+  const r = K.validerEcriture(L, anonyme.id, 'p', 2);
+  assert.strictEqual(r.ok, false, 'le moteur doit refuser de valider une écriture anonyme');
+  assert.strictEqual(L.ecritures.find(e => e.id === anonyme.id).numero, null, 'un refus ne consomme pas de numéro');
+
+  const app = cabApp();
+  // La fenêtre NOMME ce qu'elle valide, et dit ce qui manque au lieu d'un tiret.
+  const fen = tranche(app, "confirmDialog('Valider cette écriture ?'", '</p>', 60, 500);
+  assert.ok(/sans référence/.test(app.slice(app.indexOf('const quoi = ['), app.indexOf('const quoi = [') + 220)),
+    'la fenêtre doit écrire « sans référence » au lieu d\'un vide');
+  assert.ok(/\$\{quoi\}/.test(fen), 'la fenêtre doit afficher la pièce nommée');
+  // Le geste DEMANDÉ décide du contrôle : valider exige plus que le brouillard.
+  assert.ok(/puisValider \? \{ valider: true \} : null/.test(app),
+    'l\'enregistrement doit juger selon le geste demandé, sinon le pont refuse APRÈS avoir enregistré');
+});
+
+// T-51 bis — un refus de validation à l'import ne s'avale pas : le mois paraîtrait classé.
+t('T-51 bis : une pièce qu\'un import définitif n\'a pas pu valider est NOMMÉE', () => {
+  const K = require('../../src/renderer/compta.js');
+  const L = K.livreVide('D', 2026);
+  const r = K.importerPaquet(L, '2026-03', [
+    { date: '2026-03-01', journal: 'VT', piece: 'F1', libelle: 'Vente', lignes: [{ compte: '411', debit: 10 }, { compte: '706', credit: 10 }] },
+    { date: '2026-03-02', journal: 'VT', piece: 'F2', libelle: '', lignes: [{ compte: '411', debit: 10 }, { compte: '706', credit: 10 }] }
+  ], true, 'import', 100);
+  assert.strictEqual(r.ajoutees, 2);
+  assert.strictEqual(r.validees, 1, 'la pièce anonyme ne doit pas devenir définitive');
+  assert.strictEqual(r.nonValidees.length, 1, 'et le refus ne s\'avale pas en silence');
+  assert.strictEqual(r.nonValidees[0].piece, 'F2');
+  assert.ok(r.nonValidees[0].motif, 'la pièce refusée porte son motif');
+  assert.strictEqual(L.ecritures.find(e => e.piece === 'F2').statut, 'brouillard');
+  // Et le compte rendu de l'écran le dit.
+  const app = cabApp();
+  assert.ok(/r\.nonValidees/.test(app), 'le compte rendu de relecture doit nommer les pièces restées en brouillard');
+  const main = sansComm(lireSource('src', 'cabinet', 'main.js'));
+  assert.ok(/nonValidees/.test(main), 'le bilan de relecture doit remonter les non validées');
+});
+
+// T-54 (9.8.8-beta.3) — « 1 écriture trouvée sur 49 écritures » répétait le mot des deux côtés.
+t('T-54 : le compteur de recherche ne répète pas le mot des deux côtés du « sur »', () => {
+  const app = cabApp();
+  const z = tranche(app, "pl(trouvees.length, 'écriture trouvée'", '</div>', 40, 300);
+  assert.ok(/sur \$\{total\}/.test(z), 'le total se lit en chiffres : « n sur N »');
+  assert.ok(!/sur \$\{pl\(total/.test(z), 'le mot « écritures » ne se répète pas après le « sur »');
 });
 };

@@ -11953,7 +11953,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
 
     // Une écriture FAUSSE est refusée AVANT que le numéro soit consommé — sinon chaque refus
     // trouerait la numérotation (le défaut de `nextNumber` trouvé en 6.0.0).
-    const faux = KL.ajouterEcriture(l, { date: '2026-03-04', journal: 'OD', piece: 'X', lignes: [{ compte: '613', debit: 100 }, { compte: '401', credit: 90 }] }, 'moi', 1);
+    const faux = KL.ajouterEcriture(l, { date: '2026-03-04', journal: 'OD', piece: 'X', libelle: 'Loyer mars', lignes: [{ compte: '613', debit: 100 }, { compte: '401', credit: 90 }] }, 'moi', 1);
     const r = KL.validerEcriture(l, faux.id, 'moi', 2);
     assert.strictEqual(r.ok, false);
     assert.ok(/ne tombe pas juste/.test(r.motif), r.motif);
@@ -12052,7 +12052,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.ok(/au moins deux/.test(KL.lettrer(l, '411001', [fac.id], '', 'moi', '2026-03-01').motif));
     // Un règlement partiel ne solde pas — et c'est justement ce qu'il ne faut pas laisser passer :
     // un lettrage qui ne solde pas affirme qu'une facture est payée alors qu'il reste quelque chose.
-    const part = KL.ajouterEcriture(l, { date: '2026-02-25', journal: 'BQ', piece: 'REG-2', lignes: [{ compte: '532', debit: 500 }, { compte: '411001', credit: 500 }] }, 'moi', 4);
+    const part = KL.ajouterEcriture(l, { date: '2026-02-25', journal: 'BQ', piece: 'REG-2', libelle: 'Règlement client', lignes: [{ compte: '532', debit: 500 }, { compte: '411001', credit: 500 }] }, 'moi', 4);
     KL.validerEcriture(l, part.id, 'moi', 5);
     const ko = KL.lettrer(l, '411001', [fac.id, reg.id, part.id], '', 'moi', '2026-03-01');
     assert.strictEqual(ko.ok, false);
@@ -12104,7 +12104,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     assert.ok(KL.balanceOuverture(l, [{ compte: '532', debit: 5000 }, { compte: '101', credit: 5000 }], '2026-01-01', 'balance', 'moi', 3).ok);
     assert.strictEqual(l.ecritures.length, 1, 'une seconde reprise remplace la première, elle ne s\'y ajoute pas');
     // Mais plus une fois que le livre porte autre chose : tout ce qui suit s'appuie dessus.
-    KL.ajouterEcriture(l, { date: '2026-02-01', journal: 'VT', piece: 'F1', lignes: [{ compte: '411001', debit: 100 }, { compte: '706', credit: 100 }] }, 'moi', 4);
+    KL.ajouterEcriture(l, { date: '2026-02-01', journal: 'VT', piece: 'F1', libelle: 'Facture F1', lignes: [{ compte: '411001', debit: 100 }, { compte: '706', credit: 100 }] }, 'moi', 4);
     assert.strictEqual(KL.balanceOuverture(l, [{ compte: '532', debit: 1 }, { compte: '101', credit: 1 }], '2026-01-01', 'balance', 'moi', 5).ok, false);
   });
 
@@ -12180,7 +12180,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       st.create('un-mot-de-passe', { cabinet: { name: 'Cabinet Essai' }, dossiers: [] });
       const d = { id: 'MAT:1234567A', name: 'Client Test', matricule: '1234567A' };
       const l = KL.livreVide('MAT:1234567A', 2026);
-      KL.ajouterEcriture(l, { date: '2026-01-04', journal: 'VT', piece: 'F1', lignes: [{ compte: '411', debit: 100 }, { compte: '706', credit: 100 }] }, 'moi', 1);
+      KL.ajouterEcriture(l, { date: '2026-01-04', journal: 'VT', piece: 'F1', libelle: 'Facture F1', lignes: [{ compte: '411', debit: 100 }, { compte: '706', credit: 100 }] }, 'moi', 1);
       assert.ok(st.ecrireLivre(d, l).ok);
 
       const f = st.livrePath(d, 2026);
@@ -12310,7 +12310,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       st.create('mdp', { cabinet: { name: 'C' }, dossiers: [] });
       const d = { id: 'MAT:1', name: 'Client', matricule: '1' };
       const l = KL.livreVide('MAT:1', 2026);
-      KL.ajouterEcriture(l, { date: '2026-01-04', journal: 'VT', piece: 'F1', lignes: [{ compte: '411', debit: 100 }, { compte: '706', credit: 100 }] }, 'moi', 1);
+      KL.ajouterEcriture(l, { date: '2026-01-04', journal: 'VT', piece: 'F1', libelle: 'Facture F1', lignes: [{ compte: '411', debit: 100 }, { compte: '706', credit: 100 }] }, 'moi', 1);
       st.ecrireLivre(d, l);
       // Sans les paquets : un paquet perdu se redemande au client, un livre perdu non — il porte
       // le travail du comptable, et personne d'autre ne l'a.
@@ -12677,7 +12677,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
 
     // Un brouillard LETTRÉ ne se supprime pas non plus : le lettrage désignerait une écriture
     // disparue, et c'est le genre de lien mort qu'on n'élucide plus six mois après.
-    const b = C.ajouterEcriture(L, { date: '2026-03-06', journal: 'VT', piece: 'F2', lignes: [{ compte: '411', credit: 100, lettre: 'A' }, { compte: '532', debit: 100 }] }, 'p', 3);
+    const b = C.ajouterEcriture(L, { date: '2026-03-06', journal: 'VT', piece: 'F2', libelle: 'Facture F2', lignes: [{ compte: '411', credit: 100, lettre: 'A' }, { compte: '532', debit: 100 }] }, 'p', 3);
     assert.strictEqual(C.supprimerEcriture(L, b.id).ok, false, 'un brouillard lettré s\'est laissé supprimer');
     b.lignes[0].lettre = '';
     assert.ok(C.supprimerEcriture(L, b.id).ok, 'un brouillard délettré doit se supprimer');
@@ -12691,10 +12691,13 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // milieu : la mettre en dernier laisserait passer le défaut.
     const C = require('../src/renderer/compta.js');
     const L = C.livreVide('D', 2026);
-    const ok1 = C.ajouterEcriture(L, { date: '2026-03-01', journal: 'VT', piece: 'A', lignes: [{ compte: '411', debit: 10 }, { compte: '706', credit: 10 }] }, 'p', 1);
-    const faux = C.ajouterEcriture(L, { date: '2026-03-02', journal: 'VT', piece: 'B', lignes: [{ compte: '411', debit: 10 }, { compte: '706', credit: 9 }] }, 'p', 2);
-    const ok2 = C.ajouterEcriture(L, { date: '2026-03-03', journal: 'VT', piece: 'C', lignes: [{ compte: '411', debit: 10 }, { compte: '706', credit: 10 }] }, 'p', 3);
-    const autre = C.ajouterEcriture(L, { date: '2026-03-04', journal: 'AC', piece: 'D', lignes: [{ compte: '607', debit: 5 }, { compte: '401', credit: 5 }] }, 'p', 4);
+    // Chaque pièce porte son libellé : c'est ce qu'une écriture réelle porte, et depuis la 9.8.8
+    // la VALIDATION l'exige (T-51). Les données d'un test comptent autant que sa forme (9.6.1) —
+    // un lot de pièces anonymes prouverait la numérotation sur un cas qui n'existe pas.
+    const ok1 = C.ajouterEcriture(L, { date: '2026-03-01', journal: 'VT', piece: 'A', libelle: 'Vente A', lignes: [{ compte: '411', debit: 10 }, { compte: '706', credit: 10 }] }, 'p', 1);
+    const faux = C.ajouterEcriture(L, { date: '2026-03-02', journal: 'VT', piece: 'B', libelle: 'Vente B', lignes: [{ compte: '411', debit: 10 }, { compte: '706', credit: 9 }] }, 'p', 2);
+    const ok2 = C.ajouterEcriture(L, { date: '2026-03-03', journal: 'VT', piece: 'C', libelle: 'Vente C', lignes: [{ compte: '411', debit: 10 }, { compte: '706', credit: 10 }] }, 'p', 3);
+    const autre = C.ajouterEcriture(L, { date: '2026-03-04', journal: 'AC', piece: 'D', libelle: 'Achat D', lignes: [{ compte: '607', debit: 5 }, { compte: '401', credit: 5 }] }, 'p', 4);
 
     const r = C.validerLot(L, { journal: 'VT', mois: '2026-03' }, 'poste', 9);
     assert.strictEqual(r.candidates, 3, 'le filtre de journal ne tient pas : ' + r.candidates);
@@ -12739,7 +12742,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
 
     // Décembre : le 1er janvier appartient à l'exercice SUIVANT, et un livre n'en porte qu'un. On
     // refuse en le disant, plutôt que de la ranger au mauvais endroit — ce qui fausserait les deux.
-    const dec = C.ajouterEcriture(L, { date: '2026-12-31', journal: 'OD', piece: 'P2', lignes: [{ compte: '61', debit: 1 }, { compte: '408', credit: 1 }] }, 'p', 5);
+    const dec = C.ajouterEcriture(L, { date: '2026-12-31', journal: 'OD', piece: 'P2', libelle: 'Charge à payer', lignes: [{ compte: '61', debit: 1 }, { compte: '408', credit: 1 }] }, 'p', 5);
     C.validerEcriture(L, dec.id, 'p', 6);
     const hors = C.extourner(L, dec.id, 'p', 7);
     assert.strictEqual(hors.ok, false, 'une extourne a été posée hors de son exercice');

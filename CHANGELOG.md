@@ -32,6 +32,28 @@ corriger.** Version d'essai, dans la continuité de la 9.8.8.
 - **« Valider la seule de AC »** (T-53) : le bouton de lot de la grille de saisie nomme désormais ce
   qu'il valide et élide devant une voyelle — « Valider la seule pièce d'AC », « Valider les 3 pièces
   de VT ». Une seule fonction dans cabcore, testée, au lieu d'une phrase fabriquée dans le gabarit.
+- **Une écriture sans libellé ne devient plus définitive** (T-51). La fenêtre disait « AC — » sur une
+  pièce sans référence ni libellé, la validait, lui donnait un numéro : dans deux ans, rien n'aurait
+  dit ce qu'elle enregistre. La validation exige un libellé — sur la pièce ou sur chaque ligne — et
+  le brouillard continue d'accepter tout, puisque c'est sa raison d'être. Les deux boutons de la
+  grille s'éteignent donc chacun sur son propre verdict, par la même fonction que celle qui
+  refusera. La référence de pièce, elle, n'est pas exigée : la fenêtre écrit « sans référence » pour
+  qu'on le voie, et laisse passer. Trouvé en corrigeant : un import définitif dont une pièce ne
+  passait pas la validation la laissait en brouillard **en silence** — elle est maintenant nommée
+  avec son motif dans le compte rendu.
+- **Le raccourci de solde s'annonce dans la case d'où il part** (T-48) : « ⇥ 191,000 » apparaît dans
+  la case Crédit de la dernière ligne dès que le geste est possible, et nomme la colonne quand le
+  montant ira dans l'autre. La légende dit « Solder depuis la case Crédit ». Une seule fonction
+  décide de la condition, et c'est elle que la touche appelle.
+- **« + Ajouter une ligne » est remonté sous la grille** (T-49), avant la barre qui clôt la pièce :
+  le geste qui allonge un tableau vit sous ce tableau. La sonde d'espacement a appris au passage
+  qu'un bouton seul dans son conteneur n'a pas de frère, et que son voisin réel est celui du
+  conteneur — un titre de section, le plus souvent.
+- **Le brouillard et la recherche datent en français** (T-50) : ils affichaient « 2026-03-04 » sous
+  une grille qui écrit « 04/03/2026 ». Un test interdit désormais toute cellule de tableau du
+  Cabinet qui affiche une date au format interne.
+- **« 1 écriture trouvée sur 49 »** (T-54) : le compteur de la recherche répétait le mot des deux
+  côtés du « sur ».
 
 ## 9.8.8-beta.2 — 21/09/2026
 

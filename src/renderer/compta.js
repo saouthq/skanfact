@@ -76,7 +76,7 @@
   // Ce que cette fonction NE fait pas : juger si un compte existe dans le plan. `plan` n'est là que
   // pour le dire quand on le lui donne — un plan de comptes est propre à chaque cabinet (6.3.0),
   // et refuser une écriture parce qu'un numéro n'est pas dans NOTRE liste serait imposer la nôtre.
-  function ecritureValide(ecriture, plan) {
+  function ecritureValide(ecriture, plan, opts) {
     const motifs = [];
     const e = ecriture || {};
     const lignes = (Array.isArray(e.lignes) ? e.lignes : [])
@@ -103,6 +103,18 @@
     const credit = round3(lignes.reduce((s, l) => s + num(l.credit), 0));
     if (lignes.length >= 2 && round3(debit - credit) !== 0) {
       motifs.push(`Débit ${debit.toFixed(3)} ≠ crédit ${credit.toFixed(3)} : l'écriture ne tombe pas juste.`);
+    }
+
+    // Ce que la VALIDATION exige en plus (T-51). Le brouillard, lui, accepte tout : c'est sa raison
+    // d'être, on y laisse une pièce à moitié tapée et on y revient. Une validée, non — elle est
+    // définitive et numérotée, et dans deux ans c'est le LIBELLÉ qui dira ce qu'elle enregistre.
+    // Il peut vivre sur la pièce OU sur chaque ligne : `lignesDuLivre` affiche `l.libelle ||
+    // e.libelle`, donc ce qu'on refuse est une ligne que RIEN ne nomme, jamais une forme.
+    // La RÉFÉRENCE de pièce, elle, n'est pas exigée : savoir si un cabinet l'impose est une règle
+    // d'organisation que personne n'a confirmée (règle 9.1.1). La fenêtre de validation écrit
+    // « (sans référence) » pour qu'on le voie, et laisse passer.
+    if (opts && opts.valider && !txt(e.libelle) && lignes.some(l => !txt(l.libelle))) {
+      motifs.push('Le libellé manque : une écriture validée ne se modifie plus, et rien ne dirait ce qu\'elle enregistre. Écris-le sur la pièce, ou sur chaque ligne.');
     }
     return { ok: !motifs.length, motif: motifs[0] || '', motifs, debit, credit, lignes };
   }
@@ -854,7 +866,7 @@
     const e = livre.ecritures.find(x => x.id === id);
     if (!e) return { ok: false, motif: 'Cette écriture n\'existe pas.' };
     if (e.statut !== 'brouillard') return { ok: false, motif: 'Cette écriture est déjà validée : elle se contre-passe, elle ne se revalide pas.' };
-    const v = ecritureValide(e, livre.plan.map(c => c.compte));
+    const v = ecritureValide(e, livre.plan.map(c => c.compte), { valider: true });
     if (!v.ok) return { ok: false, motif: v.motif, motifs: v.motifs };
     e.numero = livre.ecritures.reduce((m, x) => Math.max(m, Number(x.numero) || 0), 0) + 1;
     e.statut = 'validee';
@@ -900,7 +912,7 @@
     const avant = livre.ecritures.filter(e => e.source === 'skanfact' && e.mois === m);
     const parCle = {};
     avant.forEach(e => { parCle[cleDuPaquet(e)] = e; });
-    const res = { ajoutees: 0, remplacees: 0, ecarts: [], validees: 0 };
+    const res = { ajoutees: 0, remplacees: 0, ecarts: [], validees: 0, nonValidees: [] };
 
     // Les brouillards du mois s'en vont : ils seront réécrits depuis ce que le paquet dit.
     const aJeter = avant.filter(e => e.statut === 'brouillard').map(e => e.id);
@@ -923,7 +935,15 @@
       // Un mois DÉFINITIF (clôturé chez le client) entre validé : il ne bougera plus chez lui non
       // plus. Un mois provisoire reste en brouillard — le valider reviendrait à s'engager sur des
       // chiffres que le client peut encore changer.
-      if (definitif && validerEcriture(livre, nouvelle.id, qui || 'import', quand).ok) res.validees++;
+      //
+      // Une validation REFUSÉE ici (une pièce du client qu'aucun libellé ne nomme, par exemple) ne
+      // s'avale pas : elle reste en brouillard, et elle est NOMMÉE. Un refus silencieux ferait
+      // croire le mois classé alors que deux pièces attendent (règle 9.8.0).
+      if (definitif) {
+        const r = validerEcriture(livre, nouvelle.id, qui || 'import', quand);
+        if (r.ok) res.validees++;
+        else res.nonValidees.push({ piece: nouvelle.piece || '', journal: nouvelle.journal || '', motif: r.motif });
+      }
     });
     trace(livre, qui || 'import', 'import-paquet',
       `${m}${definitif ? ' (définitif)' : ''} — ${plFr(res.ajoutees, 'ajoutée')}, ${plFr(res.remplacees, 'remplacée')}, ${plFr(res.ecarts.length, 'écart')}`, quand);

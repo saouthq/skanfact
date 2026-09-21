@@ -1958,7 +1958,7 @@ ipcMain.handle('cab:relireLesPaquets', (_e, { dossierId, annee } = {}) => {
   const d = dossierDe(dossierId);
   const o = ouvrirLivre(dossierId, annee);
   const livre = o.livre || KC.livreVide(dossierId, annee);
-  const bilan = { mois: 0, ajoutees: 0, remplacees: 0, validees: 0, ecarts: [], illisibles: [] };
+  const bilan = { mois: 0, ajoutees: 0, remplacees: 0, validees: 0, ecarts: [], illisibles: [], nonValidees: [] };
   (d.packs || []).filter(p => p.path && String(p.month).slice(0, 4) === String(annee))
     .sort((a, b) => (a.month < b.month ? -1 : 1))
     .forEach(p => {
@@ -1975,6 +1975,7 @@ ipcMain.handle('cab:relireLesPaquets', (_e, { dossierId, annee } = {}) => {
       bilan.mois++;
       bilan.ajoutees += res.ajoutees; bilan.remplacees += res.remplacees; bilan.validees += res.validees;
       res.ecarts.forEach(x => bilan.ecarts.push({ mois: p.month, ...x }));
+      (res.nonValidees || []).forEach(x => bilan.nonValidees.push({ mois: p.month, ...x }));
     });
   ecrireLeLivre(dossierId, livre, 'relecture-paquets', `${bilan.mois} mois, ${bilan.ajoutees} ajoutée(s), ${bilan.ecarts.length} écart(s)`);
   return { ...bilan, livre: ouvrirLivre(dossierId, annee).livre };

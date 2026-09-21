@@ -187,7 +187,7 @@
     return `<div class="kbd-aide">${[
       paire('Champ suivant', 'Tab'),
       paire('Ligne suivante', t.ligneSuivante),
-      paire('Solder la dernière ligne', t.solder),
+      paire('Solder depuis la case Crédit', t.solder),
       paire('Recopier la ligne du dessus', t.recopier),
       paire('Dupliquer la pièce', t.dupliquer),
       paire('Enregistrer et valider', t.valider)
@@ -2081,6 +2081,10 @@
         // Les écarts ne s'appliquent JAMAIS seuls : on les montre, le comptable tranche.
         r.ecarts.length ? `${pl(r.ecarts.length, 'écriture validée diffère', 'écritures validées diffèrent')} du mois renvoyé — elles n'ont pas été touchées :\n` +
           r.ecarts.slice(0, 8).map(e => `  • ${esc(e.piece || e.id)} (${moisLabelCourt(e.mois)}) : ${esc(montant(e.avant))} → ${esc(montant(e.apres))}`).join('\n') : '',
+        // Un mois définitif dont une pièce n'a pas pu être VALIDÉE reste en brouillard : on le dit,
+        // sinon le mois paraît classé alors que deux pièces attendent encore (règle 9.8.0).
+        (r.nonValidees || []).length ? `${pl(r.nonValidees.length, 'écriture n\'a pas pu être validée', 'écritures n\'ont pas pu être validées')} et ${r.nonValidees.length > 1 ? 'restent' : 'reste'} en brouillard :\n` +
+          r.nonValidees.slice(0, 8).map(x => `  • ${esc(x.journal || '')} ${esc(x.piece || '(sans référence)')} (${moisLabelCourt(x.mois)}) : ${esc(x.motif || '')}`).join('\n') : '',
         r.illisibles.length ? `${pl(r.illisibles.length, 'mois', 'mois')} illisible${r.illisibles.length > 1 ? 's' : ''} : ${r.illisibles.map(x => moisLabelCourt(x.mois)).join(', ')}.` : ''
       ].filter(Boolean);
       await infoDialog(`Le livre de ${s.annee}`, lignes.join('\n\n'));
@@ -2182,8 +2186,13 @@
   // valider est irréversible (le numéro est pris pour toujours), contre-passer laisse une trace
   // dans le journal que personne ne pourra effacer.
   async function validerEcriture(root, dossier, e) {
+    // Ce qu'on valide se NOMME (T-51). La fenêtre écrivait « AC — » sur une pièce sans référence ni
+    // libellé : on lisait un tiret et on cliquait. Ce qui manque est écrit en toutes lettres — et la
+    // référence n'est pas exigée pour autant (savoir si un cabinet l'impose est une règle
+    // d'organisation que personne n'a confirmée, règle 9.1.1) : on la montre, et on laisse passer.
+    const quoi = [esc(e.journal), e.piece ? esc(e.piece) : '<i>sans référence</i>'].filter(Boolean).join(' ');
     const ok = await confirmDialog('Valider cette écriture ?',
-      `<p><b>${esc(e.journal)} ${esc(e.piece)}</b> — ${esc(e.libelle || '')}</p>
+      `<p><b>${quoi}</b>${e.libelle ? ' — ' + esc(e.libelle) : ''}</p>
        <p class="small muted">Elle prendra son numéro dans le livre-journal et <b>ne pourra plus être modifiée</b> :
        on corrige une écriture validée en la contre-passant, jamais en la réécrivant. C'est ce qui fait qu'un
        livre relu dans deux ans dit la vérité de ce qui a été fait.</p>`, 'Valider');
@@ -3998,6 +4007,7 @@
           <td class="r nw" id="sa-td">0,000</td><td class="r nw" id="sa-tc">0,000</td><td></td></tr>
           <tr id="sa-ecart-l"><td colspan="3" class="sa-tl">Écart</td>
           <td class="r nw" id="sa-te" colspan="2">0,000</td><td></td></tr></tfoot></table></div>
+      <div class="sa-ajout"><button type="button" class="btn btn-sm btn-ghost" id="sa-ajouter">+ Ajouter une ligne</button></div>
       <div class="sa-pied">
         <div>
           <div id="sa-solde"></div>
@@ -4011,7 +4021,6 @@
           <button type="button" class="btn btn-primary" id="sa-okvalider">Enregistrer et valider</button>
         </div>
       </div>
-      <div class="sa-ajout"><button type="button" class="btn btn-sm btn-ghost" id="sa-ajouter">+ Ajouter une ligne</button></div>
       <h2 class="mt">Le brouillard ${info('sa.brouillard')}</h2>
       ${/* Les lots proposés sont ceux qui EXISTENT dans le brouillard (T-29) : « Valider tout le
             journal VT » quand le seul brouillard est en BQ ouvrait une fenêtre pour dire qu'il n'y
@@ -4026,7 +4035,7 @@
         <tbody>${brouillards.map(e => {
           const t = KC.soldeDeLignes(e.lignes);
           return `<tr data-br="${esc(e.id)}" class="br-ligne">
-            <td class="nw">${esc(e.date)}</td><td>${esc(e.journal)}</td><td class="nw">${esc(e.piece || '—')}</td>
+            <td class="nw">${esc(fmtJour(e.date))}</td><td>${esc(e.journal)}</td><td class="nw">${esc(e.piece || '—')}</td>
             <td>${esc(e.libelle || '')}${e.pieceJointe ? ' <span title="Justificatif joint">📎</span>' : ''}</td>
             <td class="r nw">${esc(montant(t.debit))}</td>
             <td class="nw">${t.equilibre ? '<span class="muted">équilibrée</span>' : `<span class="err-inline">écart ${esc(montant(t.ecart))}</span>`}</td>
@@ -4081,6 +4090,25 @@
     const t = touchesSaisie();
     const r = reglagesSaisie();
 
+    // Le montant que ⇥ poserait sur la dernière ligne, ou `null` si le geste ne se propose pas.
+    //
+    // UNE fonction pour les deux moitiés : celle qui POSE le montant (le gestionnaire de Tab) et
+    // celle qui l'ANNONCE dans la case d'où l'on appuie. L'aide disait « Solder la dernière ligne
+    // ⇥ Tab » sans dire d'OÙ : le geste ne part que de la case Crédit, sur une ligne qui porte un
+    // compte et pas encore de montant — trois conditions qu'aucun écran ne montrait, donc un
+    // raccourci qui « ne marche pas » une fois sur deux sans qu'on sache pourquoi (T-48). C'est la
+    // règle du bouton éteint (9.4.5) appliquée à une touche : ce qui refuse et ce qui annonce
+    // doivent être la même fonction, sinon les deux divergent.
+    const soldeProposable = () => {
+      const i = (p.lignes || []).length - 1;
+      const l = (p.lignes || [])[i];
+      if (!l || !String(l.compte || '').trim()) return null;
+      if (String(l.debit || '').trim() || String(l.credit || '').trim()) return null;
+      const t2 = KC.soldeDeLignes(lignesReelles(p));
+      if (t2.equilibre || (!t2.debit && !t2.credit)) return null;
+      return { i, debit: t2.solde.debit, credit: t2.solde.credit };
+    };
+
     // Le solde, recalculé sans rien redessiner d'autre. C'est le « contrôle d'équilibre en direct » :
     // il ne refuse rien tout seul — c'est `ecritureValide` qui refuse, à l'enregistrement — il dit
     // seulement où on en est, pendant qu'on tape.
@@ -4107,14 +4135,32 @@
       // **Un bouton éteint dit POURQUOI.** `ecritureValide` est la même fonction que celle qui
       // refusera à l'enregistrement : le motif affiché ici est donc exactement celui qu'on aurait
       // vu après le clic — on le lit avant, pendant qu'on a encore le curseur dans la grille.
-      const v = KC.ecritureValide(ecritureSaisie(p), ((s.livre || {}).plan || []).map(c => c.compte));
+      //
+      // DEUX verdicts, parce que les deux boutons n'exigent pas la même chose : le brouillard
+      // accepte une pièce à moitié tapée (c'est sa raison d'être), la validation exige en plus un
+      // libellé (T-51). Éteindre le brouillard sur le motif de la validation enfermerait la saisie
+      // en cours ; ne rien dire ferait cliquer un bouton vif pour lire un refus.
+      const plan = ((s.livre || {}).plan || []).map(c => c.compte);
+      const ecr = ecritureSaisie(p);
+      const v = KC.ecritureValide(ecr, plan);
+      const vv = KC.ecritureValide(ecr, plan, { valider: true });
       const motif = $('#sa-refus', el);
-      [$('#sa-ok', el), $('#sa-okvalider', el)].forEach(b => {
-        if (!b) return;
-        b.disabled = !v.ok;
-        b.title = v.ok ? '' : v.motif;
-      });
-      if (motif) { motif.hidden = v.ok; motif.textContent = v.ok ? '' : v.motif; }
+      const bOk = $('#sa-ok', el), bVal = $('#sa-okvalider', el);
+      if (bOk) { bOk.disabled = !v.ok; bOk.title = v.ok ? '' : v.motif; }
+      if (bVal) { bVal.disabled = !vv.ok; bVal.title = vv.ok ? '' : vv.motif; }
+      const phrase = !v.ok ? v.motif : !vv.ok ? 'Pour valider : ' + vv.motif : '';
+      if (motif) { motif.hidden = !phrase; motif.textContent = phrase; }
+
+      // Le geste de solde s'annonce là où il se déclenche, avec le montant qu'il posera — et il
+      // nomme la colonne quand ce n'est pas celle où l'on est. Le placeholder se remet à jour ici,
+      // avec les totaux : écrit une fois au dessin, il serait périmé à la frappe suivante.
+      const prop = soldeProposable();
+      const derniere = $(`tr[data-i="${(p.lignes || []).length - 1}"] input[data-k="credit"]`, corps);
+      if (derniere) {
+        derniere.placeholder = prop
+          ? `⇥ ${montant(prop.debit || prop.credit)}${prop.debit ? ' au débit' : ''}`
+          : '';
+      }
     };
 
     const redessinerLignes = (focus) => {
@@ -4178,14 +4224,12 @@
           // plus de temps de toute la grille — et il ne s'invente pas : `soldeDeLignes` calcule,
           // l'écran pose. Si la pièce tombe déjà juste, Tab reprend son comportement normal.
           if (ev.key === 'Tab' && !ev.shiftKey && k === 'credit' && i === p.lignes.length - 1) {
-            const solde = KC.soldeDeLignes(lignesReelles(p));
-            if (!solde.equilibre && (solde.debit || solde.credit) && String(p.lignes[i].compte || '').trim()) {
-              if (!String(p.lignes[i].debit || '').trim() && !String(p.lignes[i].credit || '').trim()) {
-                ev.preventDefault();
-                p.lignes[i].debit = solde.solde.debit ? solde.solde.debit.toFixed(3) : '';
-                p.lignes[i].credit = solde.solde.credit ? solde.solde.credit.toFixed(3) : '';
-                redessinerLignes({ i, k: solde.solde.debit ? 'debit' : 'credit' });
-              }
+            const prop = soldeProposable();
+            if (prop && prop.i === i) {
+              ev.preventDefault();
+              p.lignes[i].debit = prop.debit ? prop.debit.toFixed(3) : '';
+              p.lignes[i].credit = prop.credit ? prop.credit.toFixed(3) : '';
+              redessinerLignes({ i, k: prop.debit ? 'debit' : 'credit' });
             }
           }
         };
@@ -4280,13 +4324,17 @@
 
     const enregistrer = async (puisValider) => {
       const ecr = ecritureSaisie(p);
-      const v = KC.ecritureValide(ecr, (s.livre.plan || []).map(c => c.compte));
+      // Le contrôle porte sur le geste DEMANDÉ : valider exige un libellé, le brouillard non
+      // (T-51). Sans ce drapeau, le pont refusait la validation APRÈS l'enregistrement, et l'écran
+      // annonçait « Enregistrement impossible » sur une pièce pourtant bien rangée en brouillard.
+      const v = KC.ecritureValide(ecr, (s.livre.plan || []).map(c => c.compte), puisValider ? { valider: true } : null);
       // Une saisie refusée se MONTRE : on amène le champ fautif à l'écran et on y met le curseur
       // (règle 7.0.0). Un message seul oblige à relire toute la grille.
       if (!v.ok) {
         const premier = v.motifs[0] || v.motif;
         if (/date/i.test(premier) && dt) { dt.focus(); dt.classList.add('sa-ko'); }
         else if (/journal/i.test(premier) && j) j.focus();
+        else if (/libellé/i.test(premier) && lb) lb.focus();
         else {
           const m = /Ligne (\d+)/.exec(premier);
           if (m) allerA(Number(m[1]) - 1, 'compte');
@@ -4583,14 +4631,16 @@
         ? `<div class="empty"><p>Tape ce que tu cherches.</p><p class="muted small">${pl(total, 'écriture')} dans le livre de ${esc(s.annee)}. Un montant se cherche aussi : « 1191 » ou « 1191,000 ».</p></div>`
         : !trouvees.length
           ? `<div class="empty"><p>Rien ne correspond.</p><p class="muted small">La recherche porte sur toute l'année, pas seulement sur la période affichée en haut.</p></div>`
-          : `<div class="muted small mb">${pl(trouvees.length, 'écriture trouvée', 'écritures trouvées')} sur ${pl(total, 'écriture')}${trouvees.length >= 200 ? ' — affichage limité aux 200 premières, précise ta recherche' : ''}.</div>
+          // « 1 écriture trouvée sur 49 écritures » répétait le mot des deux côtés du « sur » :
+          // un bandeau « n sur N » se lit d'un coup d'oeil, c'est sa raison d'être (T-54).
+          : `<div class="muted small mb">${pl(trouvees.length, 'écriture trouvée', 'écritures trouvées')} sur ${total}${trouvees.length >= 200 ? ' — affichage limité aux 200 premières, précise ta recherche' : ''}.</div>
         <div class="scroll-x"><table class="list compact"><thead><tr>
           <th class="r nw">N°</th><th class="nw">Date</th><th>Journal</th><th class="nw">Pièce</th><th>Libellé</th>
           <th class="r nw">Total</th><th class="nw">État</th><th></th></tr></thead>
         <tbody>${trouvees.map(e => {
           const t = KC.soldeDeLignes(e.lignes);
           return `<tr data-re="${esc(e.id)}" class="${e.statut === 'brouillard' ? 'br-ligne' : e.statut === 'contrepassee' ? 'cp-ligne' : ''}">
-            <td class="r nw">${e.numero == null ? '—' : e.numero}</td><td class="nw">${esc(e.date)}</td>
+            <td class="r nw">${e.numero == null ? '—' : e.numero}</td><td class="nw">${esc(fmtJour(e.date))}</td>
             <td>${esc(e.journal)}</td><td class="nw">${esc(e.piece || '—')}</td>
             <td>${esc(e.libelle || '')}${e.pieceJointe ? ' <span title="Justificatif joint">📎</span>' : ''}</td>
             <td class="r nw">${esc(montant(t.debit))}</td>

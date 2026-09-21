@@ -1674,7 +1674,7 @@ réclame rien, et la source n'a plus de boucle locale.
 **Règle violée** : un compteur et la liste qu'il annonce se calculent avec la même fonction (6.8.1) —
 ici deux copies de la même boucle, qui avaient déjà divergé.
 
-### T-48 · MOYEN · « Solder la dernière ligne ⇥ Tab » ne dit pas d'OÙ on appuie
+### ~~T-48 · MOYEN · « Solder la dernière ligne ⇥ Tab » ne dit pas d'OÙ on appuie~~ — corrigé en 9.8.8-beta.3
 
 **Vu** par Skander le 21/09, 9.8.8-beta.2, Saisie sur Trabelsi : pièce TEST-1, ligne 1 606 / 100 au
 débit, ligne 2 401 sans montant, écart 100. Il a suivi la ligne d'aide et appuyé sur Tab après le
@@ -1692,7 +1692,14 @@ ligne', t.solder)` dans la ligne d'aide ; `cabguide.js`, `sa.kSolder`.
 DÉBIT vide de la dernière ligne pourrait solder aussi (le montant sait de quel côté il tombe :
 `soldeDeLignes` le rend). Règle : un raccourci s'affiche comme une touche (9.4.5) — et dit où il agit.
 
-### T-49 · MINEUR · « + Ajouter une ligne » collé au titre « Le brouillard »
+**Corrigé (T-48)** : le geste s'annonce DANS la case d'où il part. La case Crédit de la dernière
+ligne porte « ⇥ 191,000 » (et « ⇥ 191,000 au débit » quand le montant ira dans l'autre colonne) dès
+que les trois conditions sont réunies, et l'annonce se recalcule avec les totaux — écrite au dessin,
+elle serait périmée à la frappe suivante. UNE fonction (`soldeProposable`) décide, et c'est elle que
+le gestionnaire de Tab appelle : ce qui annonce et ce qui exécute ne peuvent pas diverger (9.4.5).
+La légende dit « Solder depuis la case Crédit ».
+
+### ~~T-49 · MINEUR · « + Ajouter une ligne » collé au titre « Le brouillard »~~ — corrigé en 9.8.8-beta.3
 
 **Vu** sur la même capture : le bouton touche le titre du panneau suivant, zéro pixel entre les deux.
 La sonde de la 9.8.3 mesure un bouton contre ses VOISINS CLIQUABLES ; un titre n'en est pas un, elle
@@ -1705,7 +1712,13 @@ qui le clôt — sinon on cherche « ajouter une ligne » au-dessus d'un bouton 
 l'y trouve pas.
 
 
-### T-50 · MINEUR · Le brouillard affiche la date en `2026-03-04`, la grille juste au-dessus en `04/03/2026`
+**Corrigé (T-49)** : « + Ajouter une ligne » est remonté SOUS la grille, avant la barre qui clôt la
+pièce — le geste qui allonge un tableau vit sous ce tableau (9.4.8). Et la sonde d'espacement de la
+9.8.3 a appris qu'un bouton SEUL dans son conteneur n'a pas de frère : son voisin réel est celui du
+conteneur, très souvent un titre de section. Sans cette remontée d'un cran, aucune mesure ne pouvait
+voir le défaut.
+
+### ~~T-50 · MINEUR · Le brouillard affiche la date en `2026-03-04`, la grille juste au-dessus en `04/03/2026`~~ — corrigé en 9.8.8-beta.3
 
 **Vu** sur la capture du 21/09 (Saisie, panneau « Le brouillard ») : `${esc(e.date)}` brut. Le
 format interne fuit dans l'écran où un comptable lit une date — la règle de la 9.4.5, un panneau plus
@@ -1713,7 +1726,12 @@ bas. **Piste** : `dateAffichee` (ou `JJ/MM/AAAA`) dans la liste du brouillard, e
 livre-journal, la recherche et le lettrage au passage. Le parcours `e2e:saisie` exige déjà le format
 français sur la GRILLE ; il doit l'exiger sur la ligne du brouillard aussi.
 
-### T-51 · MOYEN · Une écriture sans pièce ni libellé s'enregistre et se valide sans un mot
+**Corrigé (T-50)** : les deux seuls écrans qui affichaient l'ISO (le brouillard de la saisie et la
+recherche) passent par `fmtJour`. Un test générique interdit désormais toute cellule de tableau du
+Cabinet qui interpole une date sans la mettre en français : c'est un contrôle de FORME assumé,
+parce que la faute EST une forme.
+
+### ~~T-51 · MOYEN · Une écriture sans pièce ni libellé s'enregistre et se valide sans un mot~~ — corrigé en 9.8.8-beta.3
 
 **Vu** le 21/09 : Skander avait cliqué « Vider » (qui garde le journal et la date, et efface pièce et
 libellé), retapé les lignes, enregistré : la fenêtre « Valider cette écriture ? » disait « AC — » et
@@ -1725,6 +1743,15 @@ libellé. **Piste** : le brouillard accepte tout (c'est sa raison d'être) ; la 
 libellé vide en nommant le champ, et la fenêtre de confirmation dit « sans pièce » plutôt que « — ».
 À VÉRIFIER avec le comptable pilote : la pièce (référence) est-elle obligatoire chez lui, ou seulement
 le libellé ? C'est lui qui tranche, pas nous (règle 9.1.1).
+
+**Corrigé (T-51)** : la validation exige un libellé — sur la pièce OU sur chaque ligne, puisque
+`lignesDuLivre` affiche `l.libelle || e.libelle` : ce qu'on refuse est une ligne que RIEN ne nomme.
+Le brouillard, lui, accepte tout. Les deux boutons de la grille s'éteignent donc sur DEUX verdicts
+différents, par la même fonction que celle qui refusera. La RÉFÉRENCE de pièce n'est pas exigée
+(règle 9.1.1, et **À VÉRIFIER avec le comptable pilote** : l'impose-t-il ?) : la fenêtre écrit
+« sans référence » pour qu'on le voie, et laisse passer. Trouvé en corrigeant : un import définitif
+dont une pièce ne passait pas la validation la laissait en brouillard **en silence** — elle est
+maintenant nommée avec son motif dans le compte rendu (règle 9.8.0).
 
 ### ~~T-53 · MINEUR · « Valider la seule de AC » : le bouton de lot n'a pas de nom et n'élide pas~~ — corrigé en 9.8.8-beta.3
 
@@ -1740,6 +1767,12 @@ Deux règles pour une phrase divergent (7.29.0).
 
 **Ce qui est juste** : `cabcore.libelleLot` écrit « Valider la seule pièce d'AC », « Valider les 3
 pièces de VT », « Valider la seule pièce d'août 2026 » — une fonction, testée, et l'écran l'appelle.
+
+### ~~T-54 · MINEUR · « 1 écriture trouvée sur 49 écritures » répète le mot des deux côtés du « sur »~~ — corrigé en 9.8.8-beta.3
+
+**Vu** le 21/09 sur la Recherche. Le bandeau « n sur N » du projet se lit d'un coup d'oeil — c'est sa
+raison d'être ; répéter « écritures » après le « sur » le fait relire. Corrigé : « 1 écriture trouvée
+sur 49 ».
 
 ### ~~T-52 · GRAVE · Le livre-journal renumérote les validées par date : TEST-1 passe « n° 1 », les six d'avant deviennent 2..7~~ — corrigé en 9.8.8-beta.3
 

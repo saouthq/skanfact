@@ -233,7 +233,14 @@ const SONDE_ESPACEMENT = ({ min, exceptions }) => {
     if (exceptions.some(sel => b.closest(sel))) return;
     const rb = encre(b);
     const cliquable = el => el.matches('button, .btn, a[href]');
-    [['avant', b.previousElementSibling], ['après', b.nextElementSibling]].forEach(([cote, v]) => {
+    // Un bouton SEUL dans son conteneur n'a pas de frère : son voisin réel est celui du conteneur,
+    // et c'est très souvent un TITRE de section. Sans cette remontée d'un cran, « + Ajouter une
+    // ligne », seul dans son `<div>`, touchait le titre du panneau suivant sans qu'aucune mesure ne
+    // le voie (T-49) — la sonde ne regardait que les frères du bouton, et il n'en avait aucun.
+    const seul = b.parentElement && b.parentElement.children.length === 1
+      && !b.parentElement.matches('td, th, li');
+    const ref = seul ? b.parentElement : b;
+    [['avant', ref.previousElementSibling], ['après', ref.nextElementSibling]].forEach(([cote, v]) => {
       if (!v || !visible(v)) return;
       // La bulle « i » est une ANNOTATION : elle explique ce qu'elle touche, et elle DOIT le
       // toucher — l'écarter de son libellé la ferait flotter entre deux titres, et on ne saurait

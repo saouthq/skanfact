@@ -4512,6 +4512,42 @@ le numéro raconte, pas celui du calendrier. Le parcours `e2e:saisie` lit désor
 l'écran pièce par pièce contre le livre sur le disque : la règle 9.2.0 était tenue dans le fichier
 et dans aucun écran.
 
+**Et ce que la validation exige de plus que le brouillard (9.8.8-beta.3, T-48 à T-54).** La fenêtre
+disait « Valider cette écriture ? AC — » sur une pièce sans référence ni libellé, la numérotait, la
+figeait. Règles posées :
+
+- **Le brouillard et la validation n'exigent pas la même chose, et c'est la MÊME fonction qui le
+  dit.** `ecritureValide(e, plan, { valider: true })` ajoute ce que la validation seule réclame : un
+  libellé, sur la pièce OU sur chaque ligne (`lignesDuLivre` affiche `l.libelle || e.libelle`, donc
+  ce qu'on refuse est une ligne que RIEN ne nomme). Le brouillard continue d'accepter tout — c'est
+  sa raison d'être. Les deux boutons de la grille s'éteignent donc sur DEUX verdicts, et
+  l'enregistrement juge selon le geste DEMANDÉ : sans ce drapeau, le pont refusait après coup et
+  l'écran annonçait « Enregistrement impossible » sur une pièce pourtant bien rangée.
+- **Ce qu'un écran valide se NOMME.** « (sans référence) » plutôt qu'un vide ; et la référence n'est
+  pas exigée pour autant — savoir si un cabinet l'impose est une règle d'organisation que personne
+  n'a confirmée (9.1.1). On la montre, on laisse passer.
+- **Un test trop LARGE laisse passer le défaut**, aussi sûrement qu'un test trop étroit accuse du
+  code juste (9.4.7). Mon assertion « l'annonce nomme la colonne » cherchait « au débit » dans la
+  fonction — or la phrase du solde, quatre lignes plus haut, écrit déjà « Il manque 191,000 au
+  débit ». Elle restait verte avec l'annonce remplacée par une chaîne vide, et je ne l'ai su qu'en
+  essayant de la faire tomber. On ancre sur ce qui CONSTRUIT l'annonce, pas sur un mot qu'elle
+  contient.
+- **Un bouton SEUL dans son conteneur n'a pas de frère** : son voisin réel est celui du conteneur,
+  et c'est souvent un titre de section. La sonde d'espacement de la 9.8.3 ne regardait que les
+  frères du bouton, donc elle ne pouvait pas voir « + Ajouter une ligne » collé au titre suivant.
+  Elle remonte d'un cran quand le bouton est seul.
+- **Le geste qui ALLONGE un tableau vit sous ce tableau**, avant la barre qui CLÔT la pièce — sinon
+  on le cherche au-dessus d'un bouton qui enregistre, et on ne l'y trouve pas (9.4.8).
+- **Un refus de validation à l'import ne s'avale pas** (9.8.0, re-trouvée) : une pièce d'un mois
+  définitif qui ne passe pas reste en brouillard, et elle est NOMMÉE avec son motif. Sans ça le mois
+  paraît classé pendant que deux pièces attendent.
+- Piège re-rencontré, **sixième fois** : un commentaire de gabarit `${/* … */''}` écrit dans une
+  expression JavaScript ordinaire casse le fichier (9.4.8). Je l'ai refait dans un ternaire.
+- Et **deux assertions de plus retournées vers la règle** (quinzième et seizième fois) : celle qui
+  recopiait `b.disabled = !v.ok` est tombée le jour où les deux boutons ont cessé d'exiger la même
+  chose, et celle qui recopiait le libellé « Solder la dernière ligne » le jour où il a dit d'où
+  l'on solde. Les deux portaient sur du code juste.
+
 ## Pistes pour la suite (non demandées)
 
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.
