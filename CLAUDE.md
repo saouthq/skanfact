@@ -45,6 +45,10 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Le **prix d'une cession** ne s'invente pas ; la sortie d'actif, oui | 9.0.0, 9.7.0 |
 | Un **lettrage généreux** affirme qu'une facture est payée : somme nulle, ou rien | 9.5.0 |
 | Un **pied de totaux** porte la sélection entière, jamais la page affichée ; on pagine ce qu'on NOMME | 2.2.0, 7.16.0, 9.4.5 |
+| Un **total sous une colonne** est lu comme sa somme : ce qui n'y entre pas le DIT, sur la ligne | 9.8.8 — l'IRPP hors du total à décaisser |
+| Une **balance auxiliaire** ne somme que les comptes COLLECTIFS, et son total se confronte à la générale | 9.8.8 — douze clients « soldés » contre un 411 débiteur |
+| Un **écart** se calcule avec ses DEUX termes, sinon il ne peut jamais atteindre zéro | 9.8.8 — l'écart de suspens sans le solde de départ |
+| Une **liste de colonnes** et les lignes qui la remplissent se confrontent clé par clé | 9.8.8 — quatre colonnes vides dans chaque paquet depuis la 6.1.0 |
 | La valeur par défaut d'une **règle qu'on ne connaît pas** est celle qui ne fait rien | 9.1.1 — le seuil de retenue à 0, la TFP qu'aucun métier ne porte ; 9.6.0 — une case fiscale vaut `null`, jamais 0 |
 | Une écriture **validée** ne se modifie jamais : elle se contre-passe, à la date du jour | 9.2.0 |
 | Une **extourne** n'est pas une contre-passation : l'originale reste dans son exercice, avec son numéro | 9.3.0, 9.8.0 |
@@ -74,6 +78,9 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un test **trop étroit** accuse du code juste — aussi grave qu'un test trop large | 9.1.0, 9.2.0 — le jumeau du contrôle du pont, sans son nettoyage ; 9.4.7 — une sous-chaîne ambiguë |
 | Une assertion ancrée sur une **forme** tombe sur du code juste : on la retourne vers la RÈGLE | 7.16.0, 8.2.0, 9.4.1 — trois en une version |
 | `npm test \| tail` **masque le code de sortie** : un commit part avec un test rouge | 9.2.0 |
+| Un test qui **appelle une fonction autrement que son unique appelant** ne prouve rien de l'application | 9.8.7 |
+| Un **commentaire de gabarit** `${/* */''}` survit au nettoyage ligne à ligne : un test tombe sur une phrase citée | 9.8.8 |
+| Un **compte de fichiers** n'est pas un compte de livres : l'index et la génération précédente font « 2 » | 9.8.8 |
 
 **Les deux applications**
 
@@ -136,6 +143,8 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Jamais **chiffrer en croyant signer** : seule une signature dit d'où ça vient | 9.2.0 |
 | Jamais une **cellule CSV** exécutée par un tableur (`=` `+` `-` `@`) | 9.1.1 |
 | Jamais **écraser le travail du cabinet** avec un mois que le client renvoie | 9.2.0 |
+| Jamais une **sauvegarde qui laisse le livre derrière elle** ; changer une clé rechiffre TOUT ce qu'elle protège | 9.8.8 — T-35, T-43, T-44 |
+| Jamais un **attribut posé par le code et lu par personne** : `data-close` posé, `dismiss` attendu, neuf « Annuler » inertes | 9.8.8 — T-09 |
 
 **L'outillage (9.1.0)**
 
@@ -4340,6 +4349,109 @@ deux secondes après le début de l'étape. Aucune ligne des deux applications n
   version ; par quel chemin ne regarde que le chemin.
 - **`fail-fast: false` (9.8.1) a fait son travail** : le poste macOS, le plus cher des deux, n'a pas
   été annulé par l'échec de l'autre, et l'app entreprise est partie complète sur les deux plateformes.
+
+### 9.8.7 — L'Intitulé porte le nom du compte, et le livre part enfin avec son dossier
+
+Deux défauts trouvés en testant le Cabinet écran par écran avec Skander, et les deux sont des trous
+de la 9.8.5 elle-même.
+
+- **Corriger la donnée ne corrige pas l'écran qui ne l'a jamais lue.** Le grand livre, la balance et
+  l'export passaient `(c, t) => t || ''` au moteur : ils affichaient le TIERS dans la colonne
+  « Intitulé ». Tant que T-13 fabriquait un tiers en découpant le libellé, quelque chose s'affichait,
+  faux mais visible ; la 9.8.5 a rendu au tiers son honnêteté et la colonne s'est vidée. Un résolveur
+  unique (`nomDeCompte`) lit le plan du livre, puis le plan de référence, puis le tiers. La balance
+  auxiliaire est l'exception NOMMÉE dans le test : là, le tiers EST l'intitulé.
+- **Un test qui appelle une fonction autrement que son unique appelant ne prouve rien de
+  l'application.** `removeDossierFiles` mélangeait deux conventions (un TABLEAU de dossiers pour les
+  paquets, un INDEX pour les livres) ; `folderName` faisait `collisions.has(...)` sur le tableau, ça
+  levait, le `catch` l'avalait, et le livre n'était jamais effacé. Mon test passait un index — j'avais
+  rencontré `collisions.has is not a function` en l'écrivant, et je l'avais « corrigé » en changeant
+  LE TEST. Il passe désormais ce que le seul appelant passe ; l'index se construit une fois, en tête ;
+  et un échec d'effacement est RENDU au lieu de disparaître dans le journal.
+
+### 9.8.8 — Le carnet de terrain, corrigé d'un bloc
+
+Quarante-deux constats de `TESTS-TERRAIN.md` — deux jours de Skander jouant le comptable — corrigés
+en une version, un test par constat, prouvé en réintroduisant le défaut (32 preuves), plus deux
+trouvés en corrigeant. Publiée en **bêta** : c'est la règle pour ce qui change des chiffres (9.8.4).
+
+Règles apprises, à ne pas recasser :
+
+- **Une liste de colonnes et les lignes qui la remplissent se confrontent clé par clé.**
+  `cashCsvColumns` réclamait `kindLabel`, `accountName`, `inAmount`, `outAmount` que `cashMovements`
+  n'écrivait pas : quatre colonnes vides dans le journal de trésorerie de CHAQUE paquet depuis la
+  6.1.0, sans un message. C'est le jumeau du `toCsv` sans entête (6.3.0) : `cashCsvRows` produit les
+  lignes, et le test parcourt les colonnes.
+- **Un écart se calcule avec ses deux termes.** L'écart de suspens comparait des suspens entre eux
+  et ignorait le solde de départ du relevé : il ne pouvait jamais atteindre zéro, sur un relevé
+  parfaitement rapproché. `suspens()` rend `soldeFin − soldeComptable(≤ au)`, et la carte affiche les
+  deux termes — un chiffre dont on ne voit pas les termes ne se corrige pas.
+- **Une balance auxiliaire ne somme que les comptes COLLECTIFS.** Toutes les lignes d'une pièce
+  portent le tiers (411, 4358 et 706 d'une même facture) ; les sommer donnait douze clients
+  exactement soldés pendant que la générale disait 411 débiteur de 2 711 DT. Le moteur
+  (`balanceAuxiliaireDepuisLignes`, `COMPTES_TIERS` par RÔLE, jamais un numéro en dur) filtre sur
+  les collectifs, et le verdict de l'écran confronte le total de l'auxiliaire au solde du collectif
+  de la générale. **Décidé** : le tiers reste sur chaque ligne — c'est une information sur la ligne
+  de TVA aussi ; ce qui était faux, c'est l'addition.
+- **Un total sous une colonne est lu comme la somme de cette colonne.** « Total à décaisser »
+  sautait l'IRPP imprimé juste au-dessus. Chaque case porte `composantes` ou `horsTotal`, et
+  l'écran l'écrit sur la ligne ; l'IRPP reste hors total avec son « À VÉRIFIER » — on ne tranche pas
+  une règle de droit en la faisant entrer dans une somme (9.1.1).
+- **Un pense-bête qui s'annule annule ce qui dépendait de lui.** Annuler « déposée » en laissant
+  « payée » enfermait dans un état sans issue (le bouton s'éteignait). `pointerDeclaration` rend
+  `aussiPayee`, et l'écran le dit.
+- **Le doublon se vérifie AVANT les soldes** : refuser dans l'ordre où l'utilisateur peut agir.
+  Reprocher un solde de fin faux sur un fichier déjà importé fait corriger un chiffre pour rien.
+- **Un contrôle lu une fois ne se rafraîchit jamais** (7.1.x, encore) : les contrôles de clôture
+  étaient calculés au premier dessin et gardés ; `clotureRev` les recalcule quand le livre bouge.
+- **Un geste qui laisse une trace se relit** : le motif de réouverture disparaissait à la seconde
+  où il était donné (bandeau `#cl-rouvert`, historique) ; le dossier de clôture n'était écrit nulle
+  part (`noterDossierCloture` → `exercice.dossiersProduits`, une LISTE ajoutée au format figé —
+  compatible, comme `inventaires[]` en 9.7.0 — et un bouton qui l'ouvre depuis l'onglet Exercice).
+- **Une sauvegarde qui n'emporte pas le fichier le plus cher n'est pas une sauvegarde.** `backupNow`
+  ne copiait que `cabinet-data.json` ; les livres vivaient ailleurs. Supprimer un dossier puis
+  restaurer rendait ses mois, jamais ses écritures — et un commentaire affirmait le contraire. Une
+  sauvegarde NOMMÉE écrit `<nom>.livres.zip` à côté (un ZIP ordinaire, 6.1.0) ; la quotidienne non
+  (trente ZIP d'un portefeuille rempliraient le disque), et `livresDansSauvegarde` rend `null`,
+  jamais 0, pour que l'écran le DISE avant de restaurer. La purge emporte le ZIP avec son JSON.
+- **Changer une clé rechiffre TOUT ce qu'elle protège.** Trouvé en corrigeant le point précédent :
+  `setPassword` rechiffrait le fichier et ses sauvegardes, pas les livres — chiffrés avec la même
+  clé dérivée. Au démarrage suivant, chaque livre du portefeuille répondait « illisible » pendant
+  que l'écran annonçait « Les sauvegardes ont été rechiffrées ». Les livres du disque, puis ceux de
+  chaque ZIP. Et la reprise sur un poste neuf (`adoptSource`) ne rapportait jamais `livres/` que la
+  copie externe emportait depuis la 9.2.0 : le comptable avait tout bien fait (6.8.1).
+- **On compte des LIVRES, pas des fichiers** : l'index du dossier et la génération précédente
+  faisaient annoncer « 2 livres » à qui n'en a qu'un, dans l'inspection comme dans la reprise.
+- **Un attribut posé par le code et lu par personne est le jumeau de la classe inconnue de la
+  feuille** (6.8.0, 8.1.0) : les neuf « Annuler » du Cabinet posaient `data-close` quand `modal()`
+  lit `dismiss`. Parfaitement visibles, parfaitement inertes (5.2.2). Un test lit les deux
+  applications et exige que chaque bouton d'annulation porte l'attribut que le gestionnaire lit.
+- **Ce qu'un écran nomme, il l'ouvre** (7.15.0, re-trouvée trois fois) : le lettrage nommait des
+  pièces sans en ouvrir aucune ; « En face » nommait une écriture sans dire quelle ligne ; « D'où ça
+  vient » ouvrait un panneau qu'il fallait aller chercher (`pageFocus`).
+- **Le moteur écrit, l'écran affiche — les deux moitiés** : « Contre-passation — » vivait dans le
+  libellé de PIÈCE que `lignesDuLivre` ne rendait pas ; le journal et le grand livre marquent
+  maintenant l'originale et son miroir (`contrepasseDe`, `extourneDe`, `origineNumero`).
+- **Un montant s'affiche par `montant()`, jamais par `toFixed(3)`** : la grille de saisie changeait
+  de séparateur décimal dès qu'on tapait.
+- **Un bouton de lot se déduit de ce qui est AFFICHÉ** : « Valider par lot » proposait des lots que
+  le brouillard n'avait pas (`lotsDuBrouillard`).
+- **Une liste déroulante dans un tableau à défilement se pose sur `body`** (`.sugg-pop.sugg-fixe`,
+  `position: fixed`) : coupée par le cadre, elle n'offrait que ses deux premières entrées.
+- **UNE table d'actions par racine** (9.4.8, re-trouvée) : le panneau Abonnements posait son
+  `bindRowMenus` sous celui de la saisie ; il vit dans la vue Saisie et ses actions `A:` sont routées.
+- **Un état vide dit sa cause** : « Équilibrée » en vert sur une balance auxiliaire VIDE (7.0.0 :
+  vérifier l'univers avant de rassurer) ; « Rien à rapprocher d'office » et « Tout est déjà
+  rapproché : N lignes sur N » ne sont pas la même nouvelle.
+- **Le pluriel s'accorde sur chaque mot** (Cabinet 1.0.0, 7.30.0) : `pl(n, 'ligne ouverte')` ne
+  savait accorder qu'un mot ; `plFr` vit aussi dans `compta.js` (corps comparé), et la garde de
+  forme couvre les trois fichiers.
+- Piège de test : **un commentaire de gabarit `${/* … */''}` n'est pas une ligne de commentaire**,
+  le nettoyage ligne à ligne le garde, et un test est tombé sur « Regrouper tous les clients » cité
+  dans le commentaire. Et `[^}]*` dans une expression régulière s'arrête à la première accolade
+  d'un gabarit — `[\s\S]{0,220}` borne sans mentir.
+- Piège d'outil : `$TMPDIR` vide fait de `cp "$TMPDIR/x"` une copie depuis `/x`. Une sauvegarde de
+  preuve se restaure depuis un chemin ÉCRIT EN ENTIER.
 
 ## Pistes pour la suite (non demandées)
 

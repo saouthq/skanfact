@@ -19,7 +19,7 @@ Contexte : jeu d'exemple en place, cabinet « Cabinet Elyes », cinq clients. Pa
 boucle du mois (recevoir → écrire → contrôler → déclarer → relancer → clôturer) sur **Menuiserie
 Trabelsi SUARL**, le seul dossier à trois mois (juin, juillet, août 2026).
 
-### T-01 · GRAVE · Le journal de trésorerie part vide dans CHAQUE paquet
+### ~~T-01 · GRAVE · Le journal de trésorerie part vide dans CHAQUE paquet~~ — corrigé en 9.8.8
 
 **Vu** : `journaux/tresorerie.csv` d'un paquet reçu porte neuf mouvements dont **les colonnes
 Nature, Compte, Entrée et Sortie sont vides ou à 0,000**. Seules Date, Libellé, Référence et Pointé
@@ -44,7 +44,7 @@ la lecture humaine du journal qui l'est.
 
 ---
 
-### T-02 · GRAVE · L'avertissement « livre incomplet » disparaît quand le livre est créé
+### ~~T-02 · GRAVE · L'avertissement « livre incomplet » disparaît quand le livre est créé~~ — corrigé en 9.8.8
 
 **Vu** : sans livre, la page Comptabilité affiche « Il manque 9 mois sur cette période : ces livres
 sont incomplets. » Une fois le livre créé par « Créer le livre à partir des paquets reçus… », le
@@ -69,7 +69,7 @@ vérifier que l'univers concerné est non vide » (7.0.0).
 
 ---
 
-### T-03 · MOYEN · Rien ne dit que créer le livre fait apparaître sept onglets
+### ~~T-03 · MOYEN · Rien ne dit que créer le livre fait apparaître sept onglets~~ — corrigé en 9.8.8
 
 **Vu** : le testeur a cherché l'onglet **Banque** pendant plusieurs minutes et a conclu « il manque,
 il faut peut-être publier la dernière version ». Sans livre, la page ne montre que quatre onglets
@@ -87,7 +87,7 @@ vert va faire apparaître.
 
 ---
 
-### T-04 · MOYEN · « Solde au début » proposé à 0, alors que le livre connaît la réponse
+### ~~T-04 · MOYEN · « Solde au début » proposé à 0, alors que le livre connaît la réponse~~ — corrigé en 9.8.8
 
 **Vu** : le formulaire d'import d'un relevé propose `0` en solde de départ. Or un relevé bancaire ne
 commence quasiment jamais à zéro — il reprend le solde de la veille. Avec `0`, le contrôle de
@@ -110,7 +110,7 @@ juste au-dessus, et la date vient du fichier. À défaut, dire l'écart avec le 
 
 ---
 
-### T-05 · MOYEN · « Relire les paquets reçus » : on n'ose pas cliquer
+### ~~T-05 · MOYEN · « Relire les paquets reçus » : on n'ose pas cliquer~~ — corrigé en 9.8.8
 
 **Vu** : question posée au testeur — « comprends-tu ce que fait ce bouton **sans** cliquer ? ».
 Réponse : « oui j'hésite ». Le bouton vit dans le bandeau **vert** du livre, à côté de « 48 écritures
@@ -134,7 +134,7 @@ brouillards d'un mois renvoyé, ne touche jamais une écriture validée ».
 
 ---
 
-### T-06 · GRAVE · L'écart de suspens ne peut pas atteindre zéro, et ignore le solde de départ
+### ~~T-06 · GRAVE · L'écart de suspens ne peut pas atteindre zéro, et ignore le solde de départ~~ — corrigé en 9.8.8
 
 **Vu** : relevé d'août importé sur un livre qui porte juin, juillet et août. La carte **Écart de
 suspens** affiche **−7 918,355 DT** et **ne bouge pas** quand on corrige les soldes de début et de
@@ -185,7 +185,7 @@ date, alors que c'est une différence de deux ensembles de périodes différente
 
 ---
 
-### T-07 · MINEUR · « Rapprocher automatiquement » sur un relevé déjà rapproché annonce trois zéros
+### ~~T-07 · MINEUR · « Rapprocher automatiquement » sur un relevé déjà rapproché annonce trois zéros~~ — corrigé en 9.8.8
 
 **Vu** : relevé entièrement rapproché (10 sur 10). Clic sur « Rapprocher automatiquement » → le
 message est « **0 ligne rapprochée d'office ; 0 à trancher, 0 sans réponse.** ». Le testeur a
@@ -215,7 +215,7 @@ phrase pour le cas « rien à faire », avec sa raison. C'est exactement ce qui 
 
 ---
 
-### T-08 · MOYEN · Réimporter le même fichier reproche les SOLDES avant de dire qu'il est déjà là
+### ~~T-08 · MOYEN · Réimporter le même fichier reproche les SOLDES avant de dire qu'il est déjà là~~ — corrigé en 9.8.8
 
 **Vu** : relevé déjà importé. On le réimporte avec des soldes quelconques (23220 / 11110) → refus
 « **Ce relevé ne se boucle pas** : … il manque 15 931,147 ». Le vrai motif — *ce fichier a déjà été
@@ -249,7 +249,7 @@ qui débloque » (7.0.0). Ici le *pourquoi* annoncé n'est pas le vrai.
 
 ---
 
-### T-09 · GRAVE · Les NEUF boutons « Annuler » de l'app Cabinet sont inertes
+### ~~T-09 · GRAVE · Les NEUF boutons « Annuler » de l'app Cabinet sont inertes~~ — corrigé en 9.8.8
 
 **Vu** : dans la fenêtre d'import d'un relevé, le bouton « Annuler » ne fait rien. Constaté par le
 testeur : « et le bouton annuler (pour fermer) ne marche pas ne fait rien btw ».
@@ -287,7 +287,7 @@ absent » (7.0.0), qui avait coûté les treize « Voir » morts de l'app entrep
 
 ---
 
-### T-10 · MINEUR · La pastille d'un onglet veut dire trois choses différentes
+### ~~T-10 · MINEUR · La pastille d'un onglet veut dire trois choses différentes~~ — corrigé en 9.8.8
 
 **Vu** : la barre d'onglets de la comptabilité d'un dossier porte des pastilles `tab-n`. Elles ne
 comptent pas la même chose :
@@ -322,7 +322,7 @@ autre chose (« 1 en attente, exercice clos »).
 
 ---
 
-### T-11 · MOYEN · Le lettrage NOMME des pièces et n'en ouvre aucune
+### ~~T-11 · MOYEN · Le lettrage NOMME des pièces et n'en ouvre aucune~~ — corrigé en 9.8.8
 
 **Vu** : l'onglet Lettrage liste, tiers par tiers, les pièces qui restent ouvertes — numéro, date,
 débit, crédit, reste. Chaque ligne se termine par une **colonne vide**, et aucune ligne ne s'ouvre.
@@ -351,7 +351,7 @@ pièce est connu — le mécanisme existe déjà dix lignes plus haut.
 
 ---
 
-### T-12 · MOYEN · « En face » nomme une écriture, ne dit pas QUELLE ligne, et ne l'ouvre pas
+### ~~T-12 · MOYEN · « En face » nomme une écriture, ne dit pas QUELLE ligne, et ne l'ouvre pas~~ — corrigé en 9.8.8
 
 **Vu** : relevé entièrement rapproché. La colonne « En face » porte `BQ PAIE-2026-07`,
 `BQ FAC-2026-021`, `BQ COM0831`… Les **deux** lignes de salaire du 01/08 (−1 703,731 et −508,355)
@@ -384,7 +384,7 @@ déjà pour les lignes sans réponse (« Choisir l'écriture en face »).
 
 ---
 
-### T-13 · GRAVE · Le nom du TIERS est détruit à l'import : le lettrage et la balance âgée raisonnent par FACTURE
+### ~~T-13 · GRAVE · Le nom du TIERS est détruit à l'import : le lettrage et la balance âgée raisonnent par FACTURE~~ — corrigé en 9.8.5 (la case `tiers` ; l'affichage du nom du compte en 9.8.7, la balance auxiliaire en 9.8.8)
 
 **Le constat le plus important de la session.** Une ligne de code, trois écrans faux, et seize
 fausses alertes en orange.
@@ -472,7 +472,7 @@ rattrapent en relisant les paquets. Et un test : sur le jeu d'exemple, la balanc
 
 ---
 
-### T-14 · MOYEN · Le lettrage consacre un panneau entier à ce qui est SOLDÉ
+### ~~T-14 · MOYEN · Le lettrage consacre un panneau entier à ce qui est SOLDÉ~~ — corrigé en 9.8.8
 
 **Vu** : entre les factures ouvertes, des panneaux pleine largeur — titre, sous-titre, cadre,
 ~130 px — pour dire « **Tout est lettré : 1 pièce soldée.** ». Il y en a autant que de pièces
@@ -495,7 +495,7 @@ replier avant de paginer*.
 
 ---
 
-### T-15 · MINEUR · « 5 ligne ouvertes » — le raccourci de pluriel ne sait accorder qu'UN mot
+### ~~T-15 · MINEUR · « 5 ligne ouvertes » — le raccourci de pluriel ne sait accorder qu'UN mot~~ — corrigé en 9.8.8
 
 **Vu** : le message du lettrage automatique affiche **« Rien à lettrer d'office : 5 ligne ouvertes,
 aucune paire qui se solde sans ambiguïté. »** Nom au singulier, adjectif au pluriel.
@@ -523,7 +523,7 @@ celui-là on ne le verra pas non plus.
 
 ---
 
-### T-16 · GRAVE · « Total à décaisser » exclut l'IRPP qui figure juste au-dessus, sans le dire
+### ~~T-16 · GRAVE · « Total à décaisser » exclut l'IRPP qui figure juste au-dessus, sans le dire~~ — corrigé en 9.8.8 (chaque case dit si elle entre dans le total ; l'IRPP reste hors total avec son « À VÉRIFIER »)
 
 **Vu** (déclaration d'août 2026) :
 
@@ -565,7 +565,7 @@ total : c'est une somme qu'on **récupère**, pas qu'on paie, et rien ne l'indiq
 
 ---
 
-### T-17 · MOYEN · Trois boutons éteints, dont un qui n'explique rien et deux qui n'expliquent qu'au survol
+### ~~T-17 · MOYEN · Trois boutons éteints, dont un qui n'explique rien et deux qui n'expliquent qu'au survol~~ — corrigé en 9.8.8
 
 **Vu** : le panneau « Ce qui suit » porte trois boutons tous gris et inertes — « Écrire l'écriture du
 mois », « Marquer déposée », « Marquer payée ». Rien à l'écran ne dit pourquoi.
@@ -597,7 +597,7 @@ comportement**. Un motif juste et invisible vaut un bug.
 
 ---
 
-### T-18 · MOYEN · Le panneau « Abonnements » s'affiche sous les ONZE sous-onglets
+### ~~T-18 · MOYEN · Le panneau « Abonnements » s'affiche sous les ONZE sous-onglets~~ — corrigé en 9.8.8
 
 **Vu** : sous la déclaration de TVA, un panneau « Abonnements — Un abonnement s'appuie sur un guide
 d'écritures, et il n'y en a aucun pour l'instant. » avec son bouton « Écrire un premier guide… ».
@@ -614,7 +614,7 @@ prend la place d'un état vide principal (T-14, même famille).
 
 ---
 
-### T-19 · MINEUR · « 1 pièce(s) » — la forme que le projet s'interdit depuis Cabinet 1.0.0
+### ~~T-19 · MINEUR · « 1 pièce(s) » — la forme que le projet s'interdit depuis Cabinet 1.0.0~~ — corrigé en 9.8.8
 
 **Vu** : « **1 pièce(s) encore en brouillard sur ce mois** : elles n'entrent dans aucun chiffre de
 cette déclaration. » Et au passage, « elles » au pluriel pour une seule pièce.
@@ -633,7 +633,7 @@ manquant (règle 7.3.0), cette fois entre un fichier et son garde-fou.
 
 ---
 
-### T-20 · MOYEN · « D'où ça vient » ouvre un panneau qu'il faut aller chercher
+### ~~T-20 · MOYEN · « D'où ça vient » ouvre un panneau qu'il faut aller chercher~~ — corrigé en 9.8.8
 
 **Vu**, et signalé par le testeur : *« l'affichage vient en fin de page, faut le chercher, pas
 pratique »*. Clic sur « 4 écritures » face à la TVA collectée → le panneau « TVA collectée — les
@@ -665,7 +665,7 @@ ouvert (`aria-expanded`, un chevron), sinon on ne sait pas qu'on peut le referme
 
 ---
 
-### T-21 · MOYEN · Annuler « déposée » avant « payée » enferme dans un état sans issue
+### ~~T-21 · MOYEN · Annuler « déposée » avant « payée » enferme dans un état sans issue~~ — corrigé en 9.8.8
 
 **Le geste** : marquer déposée, marquer payée, puis annuler **« déposée » en premier**.
 
@@ -698,7 +698,7 @@ annulés »), plutôt que de laisser un état que rien ne permet de quitter. Un 
 
 ---
 
-### T-22 · GRAVE · Dans le BILAN, chaque rubrique porte le libellé d'une écriture au hasard
+### ~~T-22 · GRAVE · Dans le BILAN, chaque rubrique porte le libellé d'une écriture au hasard~~ — corrigé en 9.8.8
 
 **Troisième manifestation de T-13, et la plus grave** — parce qu'un bilan se montre à une banque et
 à un contrôleur.
@@ -739,7 +739,7 @@ Un test : sur le jeu d'exemple, aucune ligne de bilan ne doit porter un libellé
 
 ---
 
-### T-23 · MOYEN · « Actif = passif, au millime » en vert sur un bilan à capitaux propres NULS
+### ~~T-23 · MOYEN · « Actif = passif, au millime » en vert sur un bilan à capitaux propres NULS~~ — corrigé en 9.8.8
 
 **Vu** :
 - **Actifs non courants (valeur brute) : −7 550,000 DT** — un actif **négatif**, dont l'unique ligne
@@ -776,7 +776,7 @@ qui a ses à-nouveaux.
 
 ---
 
-### T-24 · MOYEN · Les contrôles de clôture sont lus UNE fois et ne se rafraîchissent jamais
+### ~~T-24 · MOYEN · Les contrôles de clôture sont lus UNE fois et ne se rafraîchissent jamais~~ — corrigé en 9.8.8
 
 **Vu** : le contrôle annonce « **3 mois sans déclaration préparée (2026-06, 2026-07, 2026-08)** »
 alors qu'août venait d'être préparé dans l'onglet Déclaration. Il devrait en rester deux.
@@ -822,7 +822,7 @@ d'une clôture. Et la fenêtre de confirmation avait affiché les deux valeurs p
 
 ---
 
-### T-25 · MOYEN · La fenêtre de clôture noie ses avertissements dans un pavé
+### ~~T-25 · MOYEN · La fenêtre de clôture noie ses avertissements dans un pavé~~ — corrigé en 9.8.8
 
 **Vu**, et signalé par le testeur : *« c'est mal écrit les deux contrôles, ça se distingue pas dans le
 paragraphe »*. La fenêtre « Clôturer l'exercice 2026 ? » affiche :
@@ -861,7 +861,7 @@ nom de dossier, libellé de pièce) sont bien échappées dans les corps de fen�
 
 ---
 
-### T-26 · GRAVE · Le motif de réouverture disparaît de l'écran à la seconde où il est donné
+### ~~T-26 · GRAVE · Le motif de réouverture disparaît de l'écran à la seconde où il est donné~~ — corrigé en 9.8.8
 
 **Vu**, et signalé par le testeur : *« je ne vois pas le motif après la réouverture avec motif »*.
 
@@ -906,7 +906,7 @@ depuis la 6.0.0. Encore un jumeau manquant (7.3.0). Un test : après
 
 ---
 
-### T-27 · MOYEN · Le dossier de clôture ne laisse AUCUNE trace
+### ~~T-27 · MOYEN · Le dossier de clôture ne laisse AUCUNE trace~~ — corrigé en 9.8.8
 
 **Vu**, et signalé par le testeur : *« quand je produis et que je l'ai mis dans Téléchargements, y'a
 rien qui dit que c'est déjà produit, et pas d'ouvrir le dossier, rien »*.
@@ -954,7 +954,7 @@ rencontre donc à chaque étape du parcours, pas seulement à l'import d'un rele
 
 ---
 
-### T-28 · MOYEN · La grille de saisie change de séparateur décimal dès qu'on tape
+### ~~T-28 · MOYEN · La grille de saisie change de séparateur décimal dès qu'on tape~~ — corrigé en 9.8.8
 
 **Vu** : au repos, le pied affiche « Total de la pièce **0,000** / **0,000** » — virgule, comme tout
 le reste de l'application (« 32 720,000 DT », « −7 913,855 DT »). La ligne de brouillard juste en
@@ -984,7 +984,7 @@ correction repartira dans l'autre sens à la version suivante.
 
 ---
 
-### T-29 · MOYEN · Les deux boutons « Valider par lot » ne peuvent rien valider de ce qui est affiché
+### ~~T-29 · MOYEN · Les deux boutons « Valider par lot » ne peuvent rien valider de ce qui est affiché~~ — corrigé en 9.8.8
 
 **Vu** : le panneau « Le brouillard » contient **une** écriture — `2026-08-31 · BQ · COM0831`. Juste
 au-dessus, deux boutons : « **Valider tout le journal VT** » et « **Valider le mois septembre
@@ -1014,7 +1014,7 @@ compte est connu avant le clic.
 
 ---
 
-### T-30 · GRAVE · T-13 atteint la SAISIE, et y écrit un libellé faux dans une vraie écriture
+### ~~T-30 · GRAVE · T-13 atteint la SAISIE, et y écrit un libellé faux dans une vraie écriture~~ — corrigé en 9.8.5
 
 **Quatrième manifestation de T-13, et celle qui fait passer le défaut de « affichage » à
 « données ».**
@@ -1064,7 +1064,7 @@ comptable fausse, numérotée, et qui ne se corrige que par contre-passation.
 
 ---
 
-### T-31 · MOYEN · La légende du clavier cache le comportement normal de Tab
+### ~~T-31 · MOYEN · La légende du clavier cache le comportement normal de Tab~~ — corrigé en 9.8.8
 
 **Vu**, et dit par le testeur : *« quand je fais Entrée ça passe de libellé à compte de la ligne
 suivante — j'avais pas essayé Tab car je pensais qu'il soldait et pas aller vers la case des
@@ -1087,7 +1087,7 @@ règle avant l'exception.
 
 ---
 
-### T-32 · MOYEN · Aucun bouton « Ajouter une ligne »
+### ~~T-32 · MOYEN · Aucun bouton « Ajouter une ligne »~~ — corrigé en 9.8.8
 
 **Vu**, et dit par le testeur : *« il manque le bouton ajouter une ligne quand on ne veut pas
 utiliser le clavier »*.
@@ -1106,7 +1106,7 @@ la souris cesse d'être un cul-de-sac.
 
 ---
 
-### T-33 · MOYEN · La liste des comptes est coupée par le cadre du tableau
+### ~~T-33 · MOYEN · La liste des comptes est coupée par le cadre du tableau~~ — corrigé en 9.8.8
 
 **Vu**, et dit par le testeur : *« la liste est cachée du compte »*. En tapant un numéro de compte,
 la liste de propositions apparaît **sous la dernière ligne** et se trouve tronquée : une seule
@@ -1128,7 +1128,7 @@ pour survivre au `blur`, Entrée et Tab qui choisissent, flèches, Échap). Il e
 
 ---
 
-### T-34 · MOYEN · La mention « Contre-passation — » est écrite par le moteur et n'arrive jamais à l'écran
+### ~~T-34 · MOYEN · La mention « Contre-passation — » est écrite par le moteur et n'arrive jamais à l'écran~~ — corrigé en 9.8.8
 
 **Vu** : la pièce 49 contre-passée est **barrée** dans le livre-journal (numéro, date, montants) —
 signal net et correct. La pièce **50**, elle, ne porte **aucun repère** : même numéro de pièce
@@ -1178,7 +1178,7 @@ tient.
 
 ---
 
-### T-35 · GRAVE · Une sauvegarde du Cabinet n'emporte PAS les livres — et un commentaire affirme le contraire
+### ~~T-35 · GRAVE · Une sauvegarde du Cabinet n'emporte PAS les livres — et un commentaire affirme le contraire~~ — corrigé en 9.8.8
 
 **Vu** : en vérifiant, avant la mise à jour 9.8.5, ce que le rafraîchissement du jeu d'exemple allait
 faire au livre du testeur. Constat trouvé dans le code, pas à l'écran — mais il porte sur le fichier
@@ -1233,7 +1233,7 @@ La purge par date ne change pas. Et le commentaire faux se corrige dans le même
 
 ---
 
-### T-36 · MOYEN · Le rafraîchissement de l'exemple détruit le livre sans le dire
+### ~~T-36 · MOYEN · Le rafraîchissement de l'exemple détruit le livre sans le dire~~ — corrigé en 9.8.8
 
 Même racine que T-35, vu par l'autre bout. `rafraichirExemple()` (`main.js:620`) tourne au premier
 démarrage après une mise à jour : il prend `backupNow('avant-exemple')`, puis `chargerExemple()` →
@@ -1253,7 +1253,7 @@ Pas de question : c'est le bon comportement, mais un comportement qu'on annonce.
 
 ---
 
-### T-37 · GRAVE · La colonne « Intitulé » du grand livre et de la balance affiche le TIERS, jamais le nom du compte
+### ~~T-37 · GRAVE · La colonne « Intitulé » du grand livre et de la balance affiche le TIERS, jamais le nom du compte~~ — corrigé en 9.8.7
 
 **Vu** : capture de la Balance en 9.8.6, sur le livre de Menuiserie Trabelsi SUARL. **La colonne
 « Intitulé » est entièrement vide**, sur les 28 comptes. Les chiffres sont justes, les totaux
@@ -1302,7 +1302,7 @@ la donnée ne corrige pas l'écran qui ne l'a jamais lue.**
 
 ---
 
-### T-38 · MOYEN · Une balance a TROIS paires de totaux ; l'écran en montre deux et en annonce trois
+### ~~T-38 · MOYEN · Une balance a TROIS paires de totaux ; l'écran en montre deux et en annonce trois~~ — corrigé en 9.8.8
 
 **Vu** : le pied de la balance porte quatre chiffres — mouvements débit / crédit (142 334,381 DT des
 deux côtés) et soldes débiteur / créditeur (49 678,698 DT des deux côtés). Les deux paires tombent
@@ -1341,7 +1341,7 @@ discute pas avec un client » (9.8.0).
 
 ---
 
-### T-39 · GRAVE · Le livre survit à la suppression de son dossier — le correctif 9.8.5 n'a jamais tourné
+### ~~T-39 · GRAVE · Le livre survit à la suppression de son dossier — le correctif 9.8.5 n'a jamais tourné~~ — corrigé en 9.8.7
 
 **Vu** : le testeur met à jour de la 9.8.3 à la 9.8.6, n'ouvre que l'onglet Balance, et **son livre
 est toujours là** — 49 écritures validées, 1 en brouillard, exactement où il s'était arrêté la
@@ -1405,7 +1405,7 @@ que pas de test » (6.8.1) · « un refus qu'on avale en silence est pire que le
 
 ---
 
-### T-40 · MOYEN · La balance auxiliaire annonce « Équilibrée » sur un tableau vide
+### ~~T-40 · MOYEN · La balance auxiliaire annonce « Équilibrée » sur un tableau vide~~ — corrigé en 9.8.8
 
 **Vu** : clic sur « Balance auxiliaire » en 9.8.6, livre de Menuiserie Trabelsi SUARL, 49 écritures
 validées. Le tableau est **vide** — « 0 tiers — la sélection entière », quatre colonnes à
@@ -1449,7 +1449,7 @@ balance générale d'un dossier sans écriture.
 
 ---
 
-### T-41 · GRAVE · La balance auxiliaire est structurellement à ZÉRO — et elle contredit la générale
+### ~~T-41 · GRAVE · La balance auxiliaire est structurellement à ZÉRO — et elle contredit la générale~~ — corrigé en 9.8.8 (la balance et son verdict ; le tiers reste posé sur chaque ligne, voir « Ce que la 9.8.8 a décidé »)
 
 **Vu** : 9.8.7, livre neuf de Menuiserie Trabelsi SUARL, 48 écritures validées. La balance auxiliaire
 se remplit enfin (12 tiers), et **chaque tiers affiche exactement débit = crédit, solde 0,000 DT**.
@@ -1518,7 +1518,7 @@ rien » (9.5.0) · « jamais prétendre ce qu'on ne peut pas prouver » (Cabinet
 
 ---
 
-### T-42 · MOYEN · « Regrouper tous les clients… » ne regroupe aucun client et quitte le dossier
+### ~~T-42 · MOYEN · « Regrouper tous les clients… » ne regroupe aucun client et quitte le dossier~~ — corrigé en 9.8.8
 
 **Vu** : clic sur le bouton depuis la Balance d'un dossier → **redirection vers la page Écritures**,
 l'export CSV de tout le portefeuille. Le testeur s'attendait à la création de sous-comptes par
@@ -1559,6 +1559,64 @@ Vérifié par le testeur, dans l'ordre :
 - **T-40, première moitié** — la balance auxiliaire se remplit (12 tiers). Il reste sa seconde
   moitié : « Équilibrée » affiché sur une sélection vide. Et T-41 montre que remplie, elle est
   fausse.
+
+---
+
+### ~~T-43 · GRAVE · Changer le mot de passe rend TOUS les livres illisibles~~ — corrigé en 9.8.8
+
+**Vu** dans le code, en corrigeant T-35 (pas à l'écran — mais le premier comptable qui aurait changé
+son mot de passe l'aurait vu au démarrage suivant, sur soixante dossiers d'un coup).
+
+`setPassword` (`cabstore.js`) rechiffrait `cabinet-data.json` et chaque sauvegarde du dossier
+`sauvegardes/`, puis annonçait « Les sauvegardes ont été rechiffrées ». Les livres
+(`livres/<dossier>/livre-<AAAA>.json`) sont chiffrés avec la **même clé dérivée** — et n'étaient
+pas touchés. Au prochain démarrage, `lireLivre` répond « illisible » (`Unsupported state or unable
+to authenticate data`) sur chaque livre du portefeuille.
+
+**Pourquoi ça compte** : c'est la règle de la 6.8.0 (« changer le mot de passe rechiffre les
+sauvegardes, une sauvegarde restée sur l'ancien mot de passe n'est pas une sauvegarde »), écrite
+avant que les livres existent, et jamais portée au fichier le plus cher de l'application.
+
+**Ce qui est juste** : les livres du disque sont rechiffrés (`rechiffrerLivres`), puis ceux que
+chaque sauvegarde nommée emporte dans son ZIP (`rechiffrerZipLivres`). Le test T-43 change le mot de
+passe, relit le livre, efface le dossier, restaure la sauvegarde nommée et relit encore — puis
+rouvre une session neuve avec le nouveau mot de passe.
+
+**Règle violée** : *changer une clé rechiffre TOUT ce qu'elle protège* (6.8.0, généralisée).
+
+### ~~T-44 · GRAVE · La reprise sur un poste neuf ne rapporte jamais les livres~~ — corrigé en 9.8.8
+
+**Vu** dans le code, au même moment. `mirrorExternal` emporte `livres/` sur la clé USB depuis la
+9.2.0 (« un livre perdu ne se redemande à personne ») ; `adoptSource` — « changer d'ordinateur »,
+6.8.1 — reprenait la base, les sauvegardes et les paquets, **et pas les livres**. `inspectSource` ne
+les comptait même pas.
+
+**Pourquoi ça compte** : « le pire défaut est celui qui punit quelqu'un qui a tout bien fait »
+(6.8.1). Le comptable avait sa clé USB et sa copie, et retrouvait ses dossiers sans une écriture.
+
+**Ce qui est juste** : la reprise copie `livres/` (`reprendreArbre(lv, livreRoot, estLivre)`),
+l'inspection les compte — des LIVRES, pas des fichiers : l'index du dossier et la génération
+précédente ne font pas « 2 livres » — et le ZIP des livres d'une sauvegarde nommée suit son JSON
+sur la clé. Le test T-44 fait deux magasins, une clé entre les deux, et relit le livre à l'arrivée.
+
+### Ce que la 9.8.8 a décidé, et ce qu'elle laisse À VÉRIFIER
+
+- **T-41, le tiers sur chaque ligne** : gardé. Que la ligne de TVA d'une facture porte le tiers de
+  la facture est une information (on sait de qui vient la TVA déductible), pas une erreur. Ce qui
+  était faux, c'est de SOMMER ces lignes dans une balance auxiliaire : elle ne compte que les
+  comptes collectifs (`COMPTES_TIERS`, par rôle du plan), et son total est confronté au solde du
+  collectif dans la générale. Si un jour le tiers doit quitter les lignes hors collectif, c'est une
+  décision de format (SPEC-DATA-005), pas un correctif.
+- **T-16, l'IRPP** : hors du total à décaisser, et l'écran l'écrit sur la ligne avec son
+  « À VÉRIFIER ». Le faire entrer dans la somme serait trancher une règle de droit que personne n'a
+  confirmée (9.1.1) ; le laisser muet était le défaut. Question posée au comptable pilote.
+- **T-35, la sauvegarde quotidienne** n'emporte pas les livres, exprès : trente ZIP d'un
+  portefeuille rempliraient le disque. Elle le DIT (« sans les livres »), et la copie externe, elle,
+  les emporte toujours.
+
+**Ce qui reste à confirmer à l'écran** (par Skander, sur la 9.8.8-beta.1) : tout ce qui est barré
+ci-dessus. Un constat barré par un test n'est confirmé que par l'écran — c'est ce que T-37 et T-39
+ont appris.
 
 ---
 

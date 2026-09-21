@@ -7,6 +7,69 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 9.8.8-beta.1 — 21/09/2026
+
+**Les quarante-deux constats du carnet de terrain (`TESTS-TERRAIN.md`), corrigés en une version — et
+deux de plus, trouvés en les corrigeant.** Skander a joué le comptable pendant deux jours, écran par
+écran, sur SkanFact Cabinet ; ce qu'il a vu est corrigé ici, avec un test par constat, prouvé en
+réintroduisant le défaut. **Version d'essai** : plusieurs de ces corrections changent des chiffres
+(l'écart de rapprochement, la balance auxiliaire, le total à décaisser, l'annulation d'un dépôt), et
+la règle du projet veut que ce qui touche au moteur passe par la bêta (9.8.4). Elle devient la 9.8.8
+stable quand les tests terrain reprennent et la confirment.
+
+**Ce qui était FAUX** (et qu'aucune console ne montrait) :
+
+- **Le journal de trésorerie partait vide dans chaque paquet** depuis la 6.1.0 : quatre colonnes
+  réclamées par `cashCsvColumns` que `cashMovements` n'écrivait pas. Le contrat se vérifie clé par clé.
+- **L'écart de suspens ne pouvait jamais atteindre zéro** : il ignorait le solde de départ du
+  relevé. C'est maintenant un écart de rapprochement, avec ses deux termes affichés (solde du relevé,
+  solde comptable à la date).
+- **La balance auxiliaire était structurellement à zéro**, et contredisait la générale : elle
+  sommait toutes les lignes d'une pièce qui portent un tiers, TVA et produit compris. Elle vit dans
+  le moteur (`balanceAuxiliaireDepuisLignes`), ne compte que les lignes des comptes collectifs, et
+  son total est confronté au solde du 411 de la générale.
+- **« Total à décaisser » sautait l'IRPP** imprimé juste au-dessus, sans le dire. Chaque case dit
+  maintenant si elle entre dans le total ; l'IRPP est hors total **et l'écran l'écrit**, avec un
+  « À VÉRIFIER » — la règle n'est pas confirmée, on ne l'invente pas.
+- **Le bilan nommait chaque rubrique par une écriture au hasard** ; il lit le plan.
+- **Annuler « déposée » avant « payée » enfermait** dans un état sans issue ; annuler l'un annule
+  l'autre.
+- **Réimporter le même relevé reprochait les soldes** avant de dire qu'il était déjà là.
+- **La balance générale annonçait trois paires de totaux et en montrait deux** ; les colonnes
+  d'ouverture apparaissent dès qu'elles ne sont pas nulles.
+- **Une sauvegarde du Cabinet n'emportait pas les livres** (T-35) — supprimer un dossier par erreur
+  puis restaurer rendait ses mois, jamais ses écritures. Une sauvegarde nommée écrit un ZIP des livres
+  à côté du JSON, la restauration les remet, la liste et la fenêtre de restauration disent lesquelles
+  les portent (la quotidienne, non, et c'est écrit). **Trouvé en corrigeant** : changer le mot de passe
+  ne rechiffrait pas les livres — tout le portefeuille devenait « illisible » au démarrage suivant
+  (T-43) ; et la reprise sur un poste neuf ne rapportait jamais les livres de la copie externe (T-44).
+- **Les neuf boutons « Annuler » du Cabinet étaient inertes** : posés avec `data-close`, lus sous
+  `dismiss`.
+
+**Ce qui ne RÉPONDAIT pas ou ne se comprenait pas** : le lettrage nomme des pièces sans en ouvrir
+aucune (chaque ligne ouvre la sienne ; « En face » dit la ligne et l'ouvre) ; les contrôles de
+clôture étaient lus une fois et ne se rafraîchissaient jamais ; le motif de réouverture disparaissait
+à la seconde où il était donné ; le dossier de clôture ne laissait aucune trace (il est tracé dans
+le livre, `exercice.dossiersProduits`, et s'ouvre depuis l'onglet Exercice) ; la grille de saisie
+changeait de séparateur décimal dès qu'on tapait ; « Valider par lot » ne pouvait rien valider de ce
+qui était affiché (les lots se déduisent du brouillard) ; aucun bouton « Ajouter une ligne » ; la
+liste des comptes coupée par le cadre du tableau ; « Contre-passation — » écrite par le moteur et
+jamais affichée (le miroir est marqué dans le journal et le grand livre) ; « Regrouper tous les
+clients… » quittait le dossier sans rien regrouper ; « Abonnements » affiché sous les onze onglets ;
+le solde de départ d'un relevé proposé à 0 quand le livre connaît la réponse ; les pastilles d'onglet
+qui voulaient dire trois choses ; les avertissements de clôture noyés dans un pavé ; « D'où ça
+vient » qui ouvrait un panneau à aller chercher ; le rafraîchissement de l'exemple qui détruisait le
+livre sans le dire ; « Équilibrée » sur une balance auxiliaire vide ; les pluriels « 5 ligne
+ouvertes » et « 1 pièce(s) » ; l'avertissement « livre incomplet » qui disparaissait quand le livre
+était créé.
+
+**Décidé, et écrit dans le carnet** : le tiers reste posé sur chaque ligne d'une pièce (c'est une
+information sur la ligne de TVA aussi) — ce qui était faux, c'est de le sommer hors des comptes
+collectifs. `livre.json` gagne la LISTE `exercice.dossiersProduits` : une liste ajoutée est
+compatible, un champ renommé ne l'est pas (9.7.0).
+
+585 tests, 0 erreur de lint, 32 défauts réintroduits un par un font tomber leur test.
+
 ## 9.8.7 — 18/09/2026
 
 **Deux défauts trouvés en testant le Cabinet écran par écran, et les deux sont des trous de la
