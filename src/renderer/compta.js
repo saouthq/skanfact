@@ -2817,9 +2817,12 @@
   }
 
   // Les soldes d'ouverture rangés sur le livre (pièce d'à-nouveau ou reprise de balance).
+  // Un dossier SANS livre (lu dans ses paquets) n'a pas d'ouverture : `{}`, jamais une exception.
+  // C'est ce qui rendait le bouton « Balance auxiliaire » muet sur tout dossier hors livre (T-46) :
+  // le redessin plantait ici, en silence, et l'écran restait celui d'avant le clic.
   function soldesDepuisOuverture(livre) {
     const o = {};
-    ((livre.ouverture && livre.ouverture.lignes) || []).forEach(l => {
+    ((livre && livre.ouverture && livre.ouverture.lignes) || []).forEach(l => {
       o[txt(l.compte)] = round3((o[txt(l.compte)] || 0) + num(l.debit) - num(l.credit));
     });
     return o;

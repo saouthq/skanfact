@@ -155,6 +155,28 @@ t('T-16 : le total à décaisser NOMME ce qu\'il additionne, et ce qui n\'y entr
   assert.strictEqual(c.retenuesSubies.sens, 'creance', 'une somme qu\'on récupère ne se lit pas comme une somme qu\'on paie');
 });
 
+// T-46 (9.8.8-beta.3) — sur un dossier SANS livre, « Balance auxiliaire » ne faisait rien : le
+// redessin lisait `livre.ouverture` sur un livre absent, plantait en silence, et l'écran restait celui
+// d'avant le clic. Le moteur doit rendre le même verdict avec ou sans livre : l'auxiliaire se calcule
+// sur des LIGNES (règle 9.1.0), et un dossier lu dans ses paquets en a.
+t('T-46 : la balance auxiliaire se calcule aussi sur un dossier sans livre (lu dans ses paquets)', () => {
+  assert.deepStrictEqual(K.soldesDepuisOuverture(null), {}, 'sans livre, aucune ouverture — pas une exception');
+  assert.deepStrictEqual(K.soldesDepuisOuverture(undefined), {});
+  assert.deepStrictEqual(K.soldesDepuisOuverture({}), {}, 'un livre sans ouverture non plus');
+  // Et la chaîne entière que l'écran déroule sur un dossier sans livre, avec les lignes de l'exemple.
+  const lignes = K.lignesDuLivre(livreDeLExemple());
+  const C = K.collectifsDeTiers(null, 'clients');
+  assert.deepStrictEqual(C, ['411'], 'sans livre, le collectif clients est le repli du plan');
+  const aux = K.balanceAuxiliaireDepuisLignes(lignes, C, { avant: [] });
+  const gen = K.balanceDepuisLignes(lignes, null, null);
+  const solde411 = K.round3(gen.rows.filter(r => String(r.account).startsWith('411')).reduce((s, r) => s + r.solde, 0));
+  assert.ok(aux.rows.length >= 2 && aux.solde === solde411, 'l\'auxiliaire d\'un dossier sans livre dit la même chose que sa générale');
+  // Le verdict de l'écran lit l'ouverture reprise PAR COMPTE pour expliquer un écart : sur un dossier
+  // sans livre elle vaut zéro, et la phrase ne doit pas l'inventer.
+  const repris = K.round3(Object.keys(K.soldesDepuisOuverture(null)).filter(k => C.some(c => k.startsWith(c))).reduce((a, k) => a + 0, 0));
+  assert.strictEqual(repris, 0);
+});
+
 t('T-41 : la balance auxiliaire détaille le COLLECTIF, et son total est le solde du 411 dans la générale', () => {
   const livre = livreDeLExemple();
   const lignes = K.lignesDuLivre(livre);

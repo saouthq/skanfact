@@ -619,6 +619,39 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   await attendre(400);
   await shot('14-aide');
 
+  // 11 bis — T-46 : « Balance auxiliaire » sur un dossier SANS livre (c'est-à-dire tous les dossiers
+  // de l'exemple, et la majorité d'un vrai portefeuille). Le bouton basculait l'état, le redessin
+  // plantait sur `livre.ouverture`, et l'écran restait celui d'avant : parfaitement visible, parfaitement
+  // inerte (5.2.2). Un test de source ne peut pas le voir — seul le clic dans l'application le montre.
+  étape('Balance auxiliaire d\'un dossier sans livre (T-46)');
+  await win.evaluate(() => { location.hash = '#/dossiers'; });
+  await win.waitForSelector('tr[data-id]');
+  const idSansLivre = await win.evaluate(() => {
+    const tr = [...document.querySelectorAll('tr[data-id]')].find(t => /Trabelsi/.test(t.textContent));
+    return tr ? tr.dataset.id : '';
+  });
+  if (!idSansLivre) throw new Error('le dossier Trabelsi de l\'exemple manque');
+  await win.evaluate(id => { location.hash = '#/dossier/' + encodeURIComponent(id) + '/comptabilite'; }, idSansLivre);
+  await win.waitForSelector('#c-tabs button[data-tab="balance"]');
+  const aUnLivre = await win.$('#c-tabs button[data-tab="saisie"]');
+  if (aUnLivre) throw new Error('ce dossier a un livre : le test doit porter sur un dossier lu dans ses paquets');
+  await win.click('#c-tabs button[data-tab="balance"]');
+  await win.waitForSelector('#lv-aux');
+  const avantAux = (await win.textContent('#lv-verdict')).replace(/\s+/g, ' ');
+  if (!/Équilibrée/.test(avantAux)) throw new Error('la balance générale devrait annoncer son équilibre : ' + avantAux);
+  await win.click('#lv-aux');
+  await win.waitForFunction(() => /auxiliaire|Aucun client/.test((document.querySelector('#lv-verdict') || {}).textContent || ''), null, { timeout: 4000 })
+    .catch(() => { throw new Error('« Balance auxiliaire » ne fait rien sur un dossier sans livre (T-46)'); });
+  const enteteAux = await win.textContent('#view table.list thead');
+  if (!/Tiers/.test(enteteAux)) throw new Error('le tableau doit être par tiers, pas par compte');
+  const apresAux = (await win.textContent('#lv-verdict')).replace(/\s+/g, ' ');
+  if (!/est le solde du collectif/.test(apresAux)) throw new Error('l\'auxiliaire de l\'exemple doit concorder avec la générale : ' + apresAux);
+  // Et le bouton est un interrupteur : un second clic ramène la générale.
+  await win.click('#lv-aux');
+  await win.waitForFunction(() => /Équilibrée/.test((document.querySelector('#lv-verdict') || {}).textContent || ''), null, { timeout: 4000 });
+  ok('auxiliaire clients affichée puis refermée, sans livre — ' + apresAux.slice(0, 80) + '…');
+  await shot('14b-balance-auxiliaire-sans-livre');
+
   // 12 — la fenêtre étroite ne déborde pas
   étape('Fenêtre étroite (960 px, le minimum)');
   await win.evaluate(() => { location.hash = '#/dossiers'; });

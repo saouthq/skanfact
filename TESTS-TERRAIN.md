@@ -1627,6 +1627,31 @@ page ; le canal stable ne change pas ; un clic sur « Vérifier maintenant » r�
 son corollaire, nouveau : **un repli se teste sur le canal qu'il doit servir**, pas seulement sur le
 canal par défaut. Le repli GitHub du Cabinet n'avait jamais été essayé en bêta.
 
+### ~~T-46 · GRAVE · « Balance auxiliaire » ne fait rien sur un dossier sans livre~~ — corrigé en 9.8.8-beta.3
+
+**Vu** par Skander le 21/09 sur la 9.8.8-beta.2, Menuiserie Trabelsi (exemple, sans livre) →
+Comptabilité → Balance → « Balance auxiliaire » : rien ne se passe, à chaque clic.
+
+**Pourquoi ça compte** : c'est le contrôle que la 9.8.8 venait d'écrire pour T-41, et il est muet
+sur la situation la plus courante d'un portefeuille — un dossier lu dans ses paquets, sans livre.
+Un bouton parfaitement visible et parfaitement inerte (5.2.2), sur l'écran qu'on venait de corriger.
+
+**Ancrage** : `src/cabinet/renderer/app.js`, `vueBalance` — la branche auxiliaire appelle
+`KC.soldesDepuisOuverture(s.livre)` pour expliquer un écart par l'ouverture reprise ; `s.livre` vaut
+`null` sans livre, et `soldesDepuisOuverture` (`src/renderer/compta.js`) lisait `livre.ouverture`
+sans garde. TypeError pendant le redessin, attrapée par le garde-fou de la 9.1.0 (donc dans
+`main.log`, jamais à l'écran) ; l'écran reste celui d'avant le clic. Le second clic rebascule
+l'état et redessine la générale : « rien ne se passe », deux fois de suite.
+
+**Ce qui est juste** : `soldesDepuisOuverture(null)` rend `{}`, comme `collectifsDeTiers(null)` le
+faisait déjà — l'auxiliaire se calcule sur des LIGNES (règle 9.1.0), un dossier lu dans ses paquets
+en a. Test T-46 (pur), et `e2e:cabinet` clique le bouton sur Trabelsi sans livre, exige le tableau
+par tiers et le verdict de concordance, puis le second clic qui ramène la générale.
+
+**Règle violée** : « un moteur sans écran n'existe pas » vu de l'autre côté — un écran testé avec un
+livre seulement (T-41 a été prouvé sur `livreDeLExemple()`) ne prouve rien du dossier sans livre.
+**Une correction se prouve dans les DEUX états du dossier, avec et sans livre.**
+
 ### Ce que la 9.8.8 a décidé, et ce qu'elle laisse À VÉRIFIER
 
 - **T-41, le tiers sur chaque ligne** : gardé. Que la ligne de TVA d'une facture porte le tiers de

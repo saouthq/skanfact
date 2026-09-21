@@ -7,6 +7,18 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 9.8.8-beta.3 — 21/09/2026
+
+**Les tests terrain reprennent sur la beta.2, et le premier constat tombe sur l'écran qu'on venait de
+corriger.** Version d'essai, dans la continuité de la 9.8.8.
+
+- **« Balance auxiliaire » ne faisait rien sur un dossier sans livre** (T-46) — c'est-à-dire sur tous
+  les dossiers de l'exemple et la majorité d'un vrai portefeuille. Le redessin lisait l'ouverture
+  d'un livre qui n'existe pas, plantait en silence, et l'écran restait celui d'avant le clic. Le
+  moteur rend désormais une ouverture vide sans livre ; le test pur et le parcours réel cliquent le
+  bouton sur un dossier lu dans ses paquets, exigent le tableau par tiers et le verdict de
+  concordance avec la générale.
+
 ## 9.8.8-beta.2 — 21/09/2026
 
 **La bêta que le comptable ne voyait pas.** Skander, case « Recevoir les versions d'essai » cochée sur
