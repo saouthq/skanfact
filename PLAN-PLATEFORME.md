@@ -496,3 +496,34 @@ renouveler) et renvoyer les clés ; publier. Vérification : une clé `srv-1` re
 de la nouvelle version, une clé `srv-2` acceptée, une clé **sans `kid`** toujours acceptée
 (`master`). Jamais : toucher à `master` — une autre clé maître invaliderait toutes les licences
 vendues depuis la 8.0.0.
+
+**R3 — Mettre l'espace de gestion (10.4.0) en service.** Déclencheur : la 10.4.0 est écrite,
+testée et commitée ; il reste à la mettre en ligne. Les étapes sont dans cet ordre parce que la
+console interroge le relais : le relais d'abord, sinon elle reçoit un 404 et l'annonce.
+
+| | Étape | État |
+|---|---|---|
+| 1 | `ALTER TABLE activations ADD COLUMN app TEXT;` dans D1 | **fait le 21/09/2026, succès** |
+| 2 | Redéployer le **relais** (`worker/skanfact-maj.mjs` → worker `skanfact-maj`) — c'est lui qui gagne `/sante` | à faire |
+| 3 | Redéployer la **console** (`plateforme/skanfact-api.mjs` → worker `skanfact-api`) — onglets « À décider », « Parc », « Cabinets », export, ligne d'argent | à faire |
+| 4 | *(facultatif)* `RELAIS_BASE` (Text) et `RELAIS_SECRET` (Secret) sur **skanfact-api** | à faire |
+| 5 | Publier **10.2.0 + 10.3.0 + 10.4.0** en **bêta** (les trois touchent des chiffres ou un format : § « Publier une version » de `CLAUDE.md`) | à faire |
+
+Sur l'étape 1 : rejouer l'`ALTER` une seconde fois répond « duplicate column » — c'est sans
+gravité, la colonne est posée. `NULL` y vaut « app entreprise », la seule qui s'annonçait avant la
+10.4.0 (§ 10.4.0 de `CLAUDE.md`).
+
+Sur l'étape 4 : `RELAIS_BASE` est l'adresse **racine** du worker du relais (rien après), et
+`RELAIS_SECRET` est l'`APP_SECRET` **du relais**, c'est-à-dire le secret de dépôt `UPDATE_SECRET`.
+**Ce n'est PAS l'`APP_SECRET` de la console**, qui vaut `PLATEFORME_SECRET` : les deux workers
+vérifient le même en-tête `X-SkanFact-App` mais contre deux secrets différents, et les recopier
+l'un sur l'autre donne un 403 permanent. La valeur se retrouve dans `relais.local.json` à la racine
+du clone sur le Mac de Skander (en clair, mode 600, écrit par `Installer SkanFact.command`, jamais
+commité), ou dans le `package.json` de `app.asar` d'une application installée construite par la CI.
+Vérifié le 21/09/2026 : elle n'a **jamais** transité par une conversation.
+
+Vérification : rouvrir la console, la ligne sous les cartes passe de « canaux : non lus » à
+« Les N canaux stables servent une version ». Un **403** dit que `RELAIS_SECRET` ne correspond pas
+à l'`APP_SECRET` du relais ; un **404**, que le relais n'a pas été redéployé. Jamais : publier ces
+trois versions en stable direct ; laisser la console afficher un vert qu'elle ne peut pas prouver
+(sans les deux réglages elle écrit « non lus » **avec la raison**, et c'est le comportement voulu).
