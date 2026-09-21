@@ -4983,7 +4983,7 @@
           const ok = await confirmTyped('Supprimer ce dossier ?',
             `<p>Le dossier <strong>${esc(dossier.name)}</strong> et ${n ? `ses ${pl(n, 'paquet')}` : 'son historique'} seront <strong>effacés de ce poste</strong>.
              ${n ? 'Les pièces comptables que ce client t\'a envoyées seront supprimées du disque.' : ''}</p>
-             <p class="muted small">Une sauvegarde est prise juste avant. Si le client est simplement parti, préfère <strong>l'archivage</strong> : il disparaît des listes sans rien perdre.</p>
+             <p class="muted small">Une sauvegarde est prise juste avant, ses livres compris. Si le client est simplement parti, préfère <strong>l'archivage</strong> : il disparaît des listes sans rien perdre.</p>
              ${backupInfo && backupInfo.external && backupInfo.external.dir ? '<p class="muted small">La copie externe n\'est pas touchée : une sauvegarde qui efface ce que tu effaces n\'en est plus une. Si le client demande l\'effacement de ses pièces, supprime-les aussi là-bas.</p>' : ''}`,
             'SUPPRIMER');
           if (!ok) return;
@@ -6094,9 +6094,10 @@
       ${list.length ? `<h3 class="mt">${lbl('Restaurer une sauvegarde', 'b.restore')}</h3>
       <div class="scroll-x"><table class="list compact"><thead><tr><th>Sauvegarde</th><th class="nw">Date</th><th class="r">Taille</th><th></th></tr></thead>
       <tbody>${list.slice(0, 40).map((x, i) => `<tr>
-        <td>${esc(x.daily ? 'Quotidienne' : x.name.replace(/-\d{4}-\d{2}-\d{2}_.*$/, '').replace(/_/g, ' '))}</td>
+        <td>${esc(x.daily ? 'Quotidienne' : x.name.replace(/-\d{4}-\d{2}-\d{2}_.*$/, '').replace(/_/g, ' '))}
+          <span class="muted small">${x.livres ? '· avec les livres' : '· sans les livres'}</span></td>
         <td class="nw">${esc(fmtWhen(x.mtime))} <span class="muted small">${esc(ago(x.mtime))}</span></td>
-        <td class="r muted nw">${esc(fmtBytes(x.size))}</td>
+        <td class="r muted nw">${esc(fmtBytes(x.size + (x.livresSize || 0)))}</td>
         <!-- Un bouton fantôme n'a ni bordure ni couleur, et c'est ici le bouton du pire jour :
              celui où l'on vient rechercher ce qu'on a perdu. Il ressemble maintenant à un bouton. -->
         <td class="actions row-actions"><button class="btn btn-sm" data-restore="${i}">Restaurer cette sauvegarde…</button></td></tr>`).join('')}</tbody></table></div>` : ''}`;
@@ -6256,9 +6257,16 @@
       `<p>Sauvegarde du <strong>${esc(fmtWhen(entry.mtime))}</strong>.</p>
        <table class="list compact"><thead><tr><th></th><th class="r">La sauvegarde</th><th class="r">Maintenant</th></tr></thead>
        <tbody><tr><td>Dossiers</td><td class="r">${peek.dossiers}</td><td class="r">${peek.actuels.dossiers}</td></tr>
-       <tr><td>Paquets</td><td class="r">${peek.paquets}</td><td class="r">${peek.actuels.paquets}</td></tr></tbody></table>
+       <tr><td>Paquets</td><td class="r">${peek.paquets}</td><td class="r">${peek.actuels.paquets}</td></tr>
+       <tr><td>Livres (écritures du cabinet)</td><td class="r">${peek.livres == null ? '<span class="muted">aucun</span>' : peek.livres}</td><td class="r">${peek.actuels.livres || 0}</td></tr></tbody></table>
        ${dd > 0 || dp > 0 ? `<p class="warn-box mt">Tu perdrais <strong>${dd > 0 ? pl(dd, 'dossier') : ''}${dd > 0 && dp > 0 ? ' et ' : ''}${dp > 0 ? pl(dp, 'paquet') : ''}</strong> enregistrés depuis.</p>` : ''}
-       <p class="muted small">Une sauvegarde de l'état actuel est prise juste avant : tu pourras revenir en arrière.</p>`,
+       ${/* Une restauration dit d'abord ce qu'elle ne rendra PAS (T-35) : une quotidienne, ou une
+             sauvegarde d'avant la 9.8.8, ne porte pas les livres. Ils resteront tels qu'ils sont —
+             ni rendus, ni détruits — et c'est écrit avant le clic. */''}
+       ${peek.livres == null && peek.actuels.livres
+         ? `<p class="warn-box mt">Cette sauvegarde <strong>ne porte pas les livres</strong> (${pl(peek.actuels.livres, 'livre')} aujourd'hui) : ils resteront tels qu'ils sont. Seules les sauvegardes nommées prises depuis la 9.8.8 les emportent.</p>`
+         : peek.livres != null ? `<p class="small">Les ${pl(peek.livres, 'livre')} de la sauvegarde remplaceront ceux d'aujourd'hui qui portent le même nom.</p>` : ''}
+       <p class="muted small">Une sauvegarde de l'état actuel, livres compris, est prise juste avant : tu pourras revenir en arrière.</p>`,
       'Restaurer', dd > 0 || dp > 0);
     if (!ok) return;
     try {

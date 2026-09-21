@@ -2035,9 +2035,12 @@ ipcMain.handle('cab:peekBackup', (_e, { path: p, password } = {}) => {
   return {
     dossiers: d.dossiers.length,
     paquets: d.dossiers.reduce((s, x) => s + (x.packs || []).length, 0),
+    // Les livres que la sauvegarde rendra — `null` quand elle n'en porte pas (T-35), et l'écran
+    // le dit AVANT de restaurer, livres compris (règle 6.8.0).
+    livres: getStore().livresDansSauvegarde(p),
     cabinet: (d.cabinet || {}).name || '',
     // Ce que la restauration ferait perdre : ce qu'on a maintenant et que la sauvegarde n'a pas.
-    actuels: { dossiers: state.dossiers.length, paquets: state.dossiers.reduce((s, x) => s + (x.packs || []).length, 0) }
+    actuels: { dossiers: state.dossiers.length, paquets: state.dossiers.reduce((s, x) => s + (x.packs || []).length, 0), livres: getStore().compterLivres() }
   };
 });
 
@@ -2047,6 +2050,8 @@ ipcMain.handle('cab:restore', (_e, { path: p, password } = {}) => {
   state = K.migrate(plain);
   getStore().reorganize(state);
   getStore().write(state);
+  // Les livres viennent d'être réécrits sur le disque : le cache servirait l'ancien.
+  viderCacheLivres();
   return safeState();
 });
 

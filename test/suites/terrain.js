@@ -420,4 +420,117 @@ t('T-07 / T-08 : la banque nomme « rien à faire », et un doublon se voit dès
   // T-06, côté écran : la carte affiche l'écart de rapprochement avec ses deux termes.
   assert.ok(app.includes('Écart de rapprochement') && app.includes('sus.soldeComptable') && !app.includes('Écart de suspens'), 'la carte affiche encore l\'ancien nombre');
 });
+
+// ---------- le stockage : une sauvegarde qui n'emporte pas le fichier le plus cher n'est pas une sauvegarde ----------
+
+// Un vrai magasin dans un dossier temporaire, avec une horloge qu'on avance à la main : deux
+// sauvegardes prises dans la même seconde portent le MÊME nom (7.21.x), et une horloge réelle ne
+// se pilote pas.
+function magasin(nom) {
+  const os = require('os');
+  const { createCabStore } = require('../../src/cabinet/cabstore.js');
+  const racine = fs.mkdtempSync(path.join(os.tmpdir(), 'skan-' + nom + '-'));
+  const horloge = { t: Date.UTC(2026, 8, 21, 10, 0, 0) };
+  const store = createCabStore(path.join(racine, 'app'), { now: () => new Date(horloge.t) });
+  return { store, racine, avance: s => { horloge.t += s * 1000; } };
+}
+const DOSSIER = { id: 'MF:1234567A', name: 'Client Un', matricule: '1234567A' };
+const MDP = 'mot-de-passe-assez-long';
+function livreAvecUnePiece() {
+  const livre = K.livreVide(DOSSIER.id, 2026, { plan: [{ compte: '606', libelle: 'Achats' }, { compte: '401', libelle: 'Fournisseurs' }] });
+  const e = K.ajouterEcriture(livre, { date: '2026-03-04', journal: 'AC', piece: 'FA-1', libelle: 'Papeterie', lignes: [
+    { compte: '606', libelle: 'Papeterie', debit: 100, credit: 0 }, { compte: '401', libelle: 'Papeterie', debit: 0, credit: 100 }] }, 'moi', 1);
+  assert.strictEqual(K.validerEcriture(livre, e.id, 'moi', 2).ok, true);
+  return livre;
+}
+const zipDe = f => f.replace(/\.json$/, '.livres.zip');
+
+t('T-35 : une sauvegarde nommée emporte les livres, la quotidienne dit qu\'elle ne les a pas, et la restauration les rend', () => {
+  const { store, avance } = magasin('t35');
+  store.create(MDP, { cabinet: { name: 'Cabinet' }, dossiers: [DOSSIER] });
+  store.ecrireLivre(DOSSIER, livreAvecUnePiece(), null);
+  assert.strictEqual(store.compterLivres(), 1);
+  const nommee = store.backupNow('avant-suppression-dossier');
+  assert.ok(fs.existsSync(zipDe(nommee)), 'la sauvegarde nommée n\'emporte pas les livres');
+  assert.strictEqual(store.livresDansSauvegarde(nommee), 1, 'le compte des livres emportés est faux');
+  const quotidienne = store.snapshotDaily();
+  assert.ok(quotidienne && !fs.existsSync(zipDe(quotidienne)), 'la quotidienne ne doit pas emporter les livres (trente ZIP rempliraient le disque)');
+  assert.strictEqual(store.livresDansSauvegarde(quotidienne), null, 'une sauvegarde sans livres doit répondre null, pas 0 : l\'écran doit pouvoir le DIRE');
+  const liste = store.listBackups();
+  assert.strictEqual(liste.find(b => b.path === nommee).livres, true);
+  assert.strictEqual(liste.find(b => b.path === quotidienne).livres, false);
+  // Le dossier est effacé par erreur, livre compris ; la sauvegarde prise juste avant le rend.
+  assert.strictEqual(store.removeDossierFiles(DOSSIER, [DOSSIER]).livres, 1);
+  assert.strictEqual(store.lireLivre(DOSSIER, 2026, null).absent, true, 'le livre devrait avoir disparu');
+  avance(2);
+  const rendu = store.restore(nommee);
+  assert.strictEqual(rendu.dossiers.length, 1);
+  const relu = store.lireLivre(DOSSIER, 2026, null);
+  assert.ok(relu.livre, 'la restauration ne rend pas le livre : ' + JSON.stringify(relu));
+  assert.strictEqual(relu.livre.ecritures.length, 1);
+  assert.strictEqual(relu.livre.ecritures[0].statut, 'validee');
+  // Une sauvegarde d'avant la 9.8.8 (JSON seul) ne détruit pas les livres qu'elle ne connaît pas.
+  avance(2);
+  const ancienne = store.backupNow('manuelle');
+  fs.unlinkSync(zipDe(ancienne));
+  avance(2);
+  store.restore(ancienne);
+  assert.ok(store.lireLivre(DOSSIER, 2026, null).livre, 'restaurer une sauvegarde sans livres ne doit pas les effacer');
+  // La purge emporte le ZIP avec son JSON : un ZIP orphelin serait une sauvegarde à moitié.
+  for (let i = 0; i < 22; i++) { avance(2); store.backupNow('avant-x'); }
+  const zips = fs.readdirSync(store.backupDir).filter(n => n.endsWith('.livres.zip'));
+  const jsons = fs.readdirSync(store.backupDir).filter(n => n.endsWith('.json'));
+  zips.forEach(z => assert.ok(jsons.includes(z.replace(/\.livres\.zip$/, '.json')), 'ZIP orphelin après la purge : ' + z));
+  assert.ok(!fs.existsSync(zipDe(nommee)), 'la première sauvegarde a été purgée, son ZIP doit partir avec elle');
+});
+
+t('T-43 : changer le mot de passe rechiffre les livres du disque ET ceux des sauvegardes', () => {
+  // Trouvé en corrigeant T-35 : les livres sont chiffrés avec la clé dérivée du mot de passe, et
+  // `setPassword` ne rechiffrait que `cabinet-data.json` et ses sauvegardes. Au prochain démarrage,
+  // chaque livre du portefeuille répondait « illisible » — pendant que l'écran annonçait « Les
+  // sauvegardes ont été rechiffrées ».
+  const { store, avance } = magasin('t43');
+  const etat = store.create(MDP, { cabinet: { name: 'Cabinet' }, dossiers: [DOSSIER] });
+  store.ecrireLivre(DOSSIER, livreAvecUnePiece(), null);
+  const nommee = store.backupNow('avant-changement-mot-de-passe');
+  avance(2);
+  store.setPassword(etat, 'un-autre-mot-de-passe-long');
+  const relu = store.lireLivre(DOSSIER, 2026, null);
+  assert.ok(relu.livre, 'le livre du disque n\'a pas été rechiffré : ' + JSON.stringify(relu));
+  // Et celui que la sauvegarde nommée emporte : on le prouve en effaçant le dossier puis en restaurant.
+  store.removeDossierFiles(DOSSIER, [DOSSIER]);
+  avance(2);
+  store.restore(nommee);
+  const depuisSauvegarde = store.lireLivre(DOSSIER, 2026, null);
+  assert.ok(depuisSauvegarde.livre, 'le livre de la sauvegarde nommée n\'a pas été rechiffré : ' + JSON.stringify(depuisSauvegarde));
+  // Une session rouverte avec le NOUVEAU mot de passe lit tout.
+  const { createCabStore } = require('../../src/cabinet/cabstore.js');
+  const store2 = createCabStore(path.dirname(store.file));
+  assert.strictEqual(store2.unlock('un-autre-mot-de-passe-long').ok, true);
+  assert.ok(store2.lireLivre(DOSSIER, 2026, null).livre, 'une session neuve ne lit pas le livre avec le nouveau mot de passe');
+});
+
+t('T-44 : la copie externe emporte les livres et leurs ZIP, et la reprise sur un poste neuf les rapporte', () => {
+  // La copie externe emportait les livres depuis la 9.2.0 ; la reprise (« changer d\'ordinateur »)
+  // ne les rapportait jamais. Le comptable avait tout bien fait et retrouvait ses dossiers sans une
+  // écriture — « le pire défaut est celui qui punit quelqu\'un qui a tout bien fait » (6.8.1).
+  const a = magasin('t44a');
+  a.store.create(MDP, { cabinet: { name: 'Cabinet' }, dossiers: [DOSSIER] });
+  a.store.ecrireLivre(DOSSIER, livreAvecUnePiece(), null);
+  const nommee = a.store.backupNow('avant-x');
+  const cle = path.join(a.racine, 'cle-usb');
+  fs.mkdirSync(cle);
+  a.store.setExternalDir(cle);
+  const ext = path.join(cle, 'SkanFact Cabinet');
+  assert.ok(fs.existsSync(path.join(ext, 'sauvegardes', path.basename(zipDe(nommee)))), 'le ZIP des livres ne suit pas sa sauvegarde sur la clé');
+  assert.ok(fs.existsSync(path.join(ext, 'livres')), 'les livres ne partent pas sur la clé');
+  const b = magasin('t44b');
+  const vu = b.store.inspectSource(cle);
+  assert.strictEqual(vu.livres, 1, 'l\'inspection ne compte pas les livres de la copie');
+  const r = b.store.adoptSource(cle, MDP);
+  assert.strictEqual(r.livres, 1, 'la reprise ne rapporte pas les livres');
+  const relu = b.store.lireLivre(DOSSIER, 2026, null);
+  assert.ok(relu.livre && relu.livre.ecritures.length === 1, 'le livre repris n\'est pas lisible sur le poste neuf : ' + JSON.stringify(relu));
+  assert.ok(fs.existsSync(path.join(ext, 'livres')), 'la reprise ne doit rien enlever à la clé');
+});
 };

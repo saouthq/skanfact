@@ -20,6 +20,9 @@ const crypto = require('crypto');
 // Le moteur comptable partagé (9.1.0) : `cabstore` ne juge pas un livre lui-même, il demande à
 // `compta.js` s'il en est un. Deux jugements séparés divergeraient au premier champ ajouté.
 const KC = require('../renderer/compta.js');
+// Le ZIP maison (6.1.0), sans dépendance : c'est lui qui emporte les livres avec une sauvegarde
+// nommée (T-35) — un ZIP ordinaire, lisible sans SkanFact, comme le paquet mensuel.
+const Z = require('../zip.js');
 
 const MARK = 'skanfactCabinet';
 const RECOVER_MARK = 'skanfactCabinetRecovery';
@@ -225,6 +228,14 @@ function createCabStore(dir, opts) {
         fs.renameSync(p + '.tmp', p);
       } catch (e) { log('conversion sauvegarde ' + n, e); }
     });
+    // Les LIVRES aussi (T-43, trouvé en corrigeant T-35). Ils sont chiffrés avec la MÊME clé
+    // dérivée que `cabinet-data.json` — et jusqu'à la 9.8.8, changer le mot de passe ne les
+    // rechiffrait pas : au prochain démarrage, chaque livre du portefeuille répondait « illisible »,
+    // et l'écran annonçait pourtant « Les sauvegardes ont été rechiffrées ». Ceux du disque, puis
+    // ceux que chaque sauvegarde nommée emporte : une sauvegarde qu'aucun mot de passe n'ouvre plus
+    // n'est pas une sauvegarde.
+    rechiffrerLivres(oldKey);
+    names.forEach(n => rechiffrerZipLivres(zipDe(path.join(backupDir, n)), oldKey));
     // Les sauvegardes déjà copiées sur la clé USB restent chiffrées avec l'ANCIEN mot de passe.
     // Comme on ne remplace que ce qui diffère par la taille et la date, et que le rechiffrement
     // change les deux, elles seront bien réécrites — mais on vide d'abord ce qui ne correspond plus
@@ -259,12 +270,107 @@ function createCabStore(dir, opts) {
     const safe = String(label || 'manuelle').replace(/[^a-z0-9_-]/gi, '_');
     const target = path.join(backupDir, `${safe}-${stamp(now())}.json`);
     fs.copyFileSync(file, target);
+    // Les LIVRES partent avec la sauvegarde NOMMÉE (T-35), dans un ZIP à côté du JSON. Avant la
+    // 9.8.8, `backupNow` ne copiait que `cabinet-data.json` : supprimer un dossier par erreur, puis
+    // restaurer la sauvegarde prise juste avant, rendait le dossier et ses mois — jamais son livre.
+    // Les écritures saisies, validées et lettrées par le comptable partaient pour toujours, pendant
+    // que l'écran annonçait une sauvegarde. Un livre perdu ne se redemande à personne.
+    ecrireZipLivres(target);
     prune();
     // Une sauvegarde annoncée qui n'existe plus est pire que pas de sauvegarde : on le dit tout de
     // suite plutôt que de laisser l'appelant effacer trente-six paquets en toute confiance.
     if (!fs.existsSync(target)) throw new Error('La sauvegarde n\'a pas pu être conservée : vérifie l\'espace disque.');
     mirrorExternal();
     return target;
+  }
+
+  // ---------- les livres dans une sauvegarde (T-35) ----------
+  //
+  // Un ZIP ORDINAIRE à côté du JSON : `avant-suppression-dossier-<date>.livres.zip`. Il porte
+  // l'arborescence `livres/` telle quelle — les livres sont déjà chiffrés, l'index de chaque dossier
+  // est en clair. La sauvegarde QUOTIDIENNE ne l'a pas : trente ZIP d'un portefeuille entier
+  // rempliraient le disque, et une sauvegarde qui remplit le disque n'est plus une sauvegarde.
+  // C'est écrit dans la liste (« sans les livres ») et dit avant de restaurer.
+  const zipDe = json => String(json).replace(/\.json$/, '.livres.zip');
+  const estLivre = n => /(^|\/)livre-\d{4}\.json$/.test(n);
+  function fichiersLivres(racine) {
+    const out = [];
+    const walk = (d, rel) => {
+      let entries = [];
+      try { entries = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
+      entries.forEach(x => {
+        const p = path.join(d, x.name), r = rel ? rel + '/' + x.name : x.name;
+        if (x.isDirectory()) walk(p, r);
+        else if (/\.json$/.test(x.name)) out.push({ name: r, path: p });
+      });
+    };
+    walk(racine || livreRoot, '');
+    return out;
+  }
+  const compterLivres = () => fichiersLivres().filter(x => estLivre(x.name)).length;
+  function ecrireZipLivres(json) {
+    const f = fichiersLivres();
+    if (!f.length) return null;
+    const z = zipDe(json);
+    try {
+      const buf = Z.zipBuffer(f.map(x => ({ name: x.name, data: fs.readFileSync(x.path) })), { date: now() });
+      fs.writeFileSync(z + '.tmp', buf);
+      fs.renameSync(z + '.tmp', z);
+      return z;
+    } catch (e) { log('sauvegarde des livres', e); return null; }
+  }
+  const donneesDe = e => (typeof e.data === 'function' ? e.data() : e.data);
+  // Combien de livres une sauvegarde emporte : `null` quand elle n'en a pas (quotidienne, ou
+  // d'avant la 9.8.8) — et l'écran le DIT au lieu de laisser croire qu'elle les rendra.
+  function livresDansSauvegarde(json) {
+    const z = zipDe(json);
+    if (!fs.existsSync(z)) return null;
+    try { return Z.zipRead(fs.readFileSync(z)).filter(e => estLivre(e.name)).length; } catch { return null; }
+  }
+  function restaurerLivres(json) {
+    const z = zipDe(json);
+    if (!fs.existsSync(z)) return null;
+    let n = 0;
+    Z.zipRead(fs.readFileSync(z)).forEach(e => {
+      const name = String(e.name || '');
+      // Un nom de fichier vient d'une archive : il ne sort JAMAIS du dossier des livres.
+      const dst = path.join(livreRoot, name);
+      if (/(^|\/)\.\.(\/|$)/.test(name) || !path.resolve(dst).startsWith(path.resolve(livreRoot) + path.sep)) return;
+      fs.mkdirSync(path.dirname(dst), { recursive: true });
+      fs.writeFileSync(dst + '.tmp', donneesDe(e));
+      fs.renameSync(dst + '.tmp', dst);
+      if (estLivre(name)) n++;
+    });
+    return n;
+  }
+  // Rechiffrer un livre (fichier ou entrée de ZIP) avec la clé COURANTE, depuis l'ancienne.
+  function rechiffrerBuffer(buf, oldKey) {
+    const r = openLivreBuffer(buf, oldKey);
+    const entete = { ...r.entete };
+    delete entete[LIVRE_MARK]; delete entete.kdf; delete entete.salt; delete entete.iv; delete entete.tag;
+    return sealLivreBuffer(r.livre, st.salt, st.key, entete);
+  }
+  const estChiffre = n => /\.json$/.test(n) && !/livre-index\.json$/.test(n);
+  function rechiffrerLivres(oldKey) {
+    fichiersLivres().forEach(x => {
+      if (!estChiffre(x.name)) return;
+      try {
+        const b = rechiffrerBuffer(fs.readFileSync(x.path), oldKey);
+        fs.writeFileSync(x.path + '.tmp', b);
+        fs.renameSync(x.path + '.tmp', x.path);
+      } catch (e) { log('rechiffrement livre ' + x.name, e); }
+    });
+  }
+  function rechiffrerZipLivres(z, oldKey) {
+    if (!fs.existsSync(z)) return;
+    try {
+      const entries = Z.zipRead(fs.readFileSync(z)).map(e => {
+        const data = donneesDe(e);
+        return { name: e.name, data: estChiffre(e.name) ? rechiffrerBuffer(data, oldKey) : data };
+      });
+      fs.writeFileSync(z + '.tmp', Z.zipBuffer(entries, { date: now() }));
+      fs.renameSync(z + '.tmp', z);
+    } catch (e) { log('rechiffrement sauvegarde ' + path.basename(z), e); }
   }
 
   // On purge par DATE, jamais par nom. L'ordre alphabétique mettait « avant-changement-mot-de-passe »
@@ -283,7 +389,8 @@ function createCabStore(dir, opts) {
   function prune() {
     let names;
     try { names = fs.readdirSync(backupDir).filter(f => f.endsWith('.json')); } catch { return; }
-    const jeter = liste => { while (liste.length > 0) { try { fs.unlinkSync(path.join(backupDir, liste.shift().name)); } catch {} } };
+    // Le ZIP des livres part avec son JSON : un ZIP orphelin serait une sauvegarde à moitié.
+    const jeter = liste => { while (liste.length > 0) { const n = liste.shift().name; try { fs.unlinkSync(path.join(backupDir, n)); } catch {} try { fs.unlinkSync(zipDe(path.join(backupDir, n))); } catch {} } };
     const daily = dated(names.filter(f => DAILY_RE.test(f)));
     jeter(daily.slice(0, Math.max(0, daily.length - DAILY_KEEP)));
     // Deux réserves séparées : les filets pris par l'application avant un geste risqué ne doivent
@@ -300,7 +407,9 @@ function createCabStore(dir, opts) {
     return names.map(name => {
       const p = path.join(backupDir, name);
       const s = fs.statSync(p);
-      return { name, path: p, size: s.size, mtime: s.mtimeMs, daily: DAILY_RE.test(name) };
+      let livres = false, livresSize = 0;
+      try { livresSize = fs.statSync(zipDe(p)).size; livres = true; } catch {}
+      return { name, path: p, size: s.size, mtime: s.mtimeMs, daily: DAILY_RE.test(name), livres, livresSize };
       // Même ordre que la purge, à l'envers : la plus récente en tête. Trier ici par mtime seul
       // mettrait la liste des sauvegardes dans un ordre arbitraire sur Windows — et le jour où on
       // restaure est le pire jour pour choisir au hasard.
@@ -339,8 +448,12 @@ function createCabStore(dir, opts) {
   function restore(p, password) {
     const plain = peek(p, password);
     if (!isValidCabinet(plain)) throw new Error('Cette sauvegarde ne contient pas un cabinet SkanFact.');
+    // « avant-restauration » emporte aussi les livres d'aujourd'hui : revenir en arrière rend tout.
     backupNow('avant-restauration');
     write(plain);
+    // Puis les livres que la sauvegarde porte (T-35). Ceux qu'elle ne porte pas restent tels quels :
+    // on ne détruit pas ce qu'une sauvegarde ne connaît pas, et l'écran a dit ce qui reviendrait.
+    restaurerLivres(p);
     return plain;
   }
 
@@ -388,7 +501,10 @@ function createCabStore(dir, opts) {
       throw new Error('Ce dossier ne contient aucun cabinet SkanFact. Cherche le dossier « SkanFact Cabinet » de ta copie de sauvegarde : il contient « cabinet-data.json ».');
     }
     const stats = treeStats(path.join(racine, 'paquets'));
-    return { kind: 'dossier', source: racine, base, backups, packs: stats.files, bytes: stats.bytes };
+    // Le nombre de LIVRES, pas de fichiers : l'index de chaque dossier et la génération précédente
+    // ne comptent pas, sinon l'écran annonce deux livres à qui n'en a qu'un.
+    const livres = fichiersLivres(path.join(racine, 'livres')).filter(x => estLivre(x.name)).length;
+    return { kind: 'dossier', source: racine, base, backups, packs: stats.files, bytes: stats.bytes, livres };
   }
 
   // On ne remplace JAMAIS un fichier déjà présent ici : ce qui est sur ce poste y a été reçu, il fait
@@ -405,13 +521,15 @@ function createCabStore(dir, opts) {
     } catch (e) { log('reprise ' + path.basename(src), e); return false; }
   }
 
-  function reprendreArbre(src, dst) {
+  // `compte` dit quels fichiers entrent dans le nombre rendu : tout, par défaut — ou les seuls
+  // livres, pour ne pas annoncer « 2 livres » à qui n'en a qu'un (l'index du dossier en est un autre).
+  function reprendreArbre(src, dst, compte) {
     let n = 0, entries = [];
     try { entries = fs.readdirSync(src, { withFileTypes: true }); } catch { return 0; }
     entries.forEach(e => {
       const a = path.join(src, e.name), b = path.join(dst, e.name);
-      if (e.isDirectory()) n += reprendreArbre(a, b);
-      else if (reprendreFichier(a, b)) n++;
+      if (e.isDirectory()) n += reprendreArbre(a, b, compte);
+      else if (reprendreFichier(a, b) && (!compte || compte(e.name))) n++;
     });
     return n;
   }
@@ -452,16 +570,21 @@ function createCabStore(dir, opts) {
     }
     st.salt = salt; st.key = key; st.password = String(password);
 
-    let backups = 0, packs = 0;
+    let backups = 0, packs = 0, livres = 0;
     if (vu.kind === 'dossier') {
       const sauv = path.join(vu.source, 'sauvegardes');
       if (path.resolve(sauv) !== path.resolve(backupDir)) backups = reprendreArbre(sauv, backupDir);
       const pq = path.join(vu.source, 'paquets');
       if (path.resolve(pq) !== path.resolve(packRoot)) packs = reprendreArbre(pq, packRoot);
+      // Et les LIVRES (T-44, trouvé en corrigeant T-35) : la copie externe les emportait depuis la
+      // 9.2.0, la reprise sur un poste neuf ne les rapportait jamais. Le comptable avait tout bien
+      // fait — la clé USB, la copie — et retrouvait ses dossiers sans une écriture.
+      const lv = path.join(vu.source, 'livres');
+      if (path.resolve(lv) !== path.resolve(livreRoot)) livres = reprendreArbre(lv, livreRoot, estLivre);
     }
     // Les chemins enregistrés dans l'état désignent encore l'autre poste : c'est `reorganize` qui les
     // recolle, et c'est l'appelant qui enregistre ensuite.
-    return { state: plain, from: depuis, backups, packs };
+    return { state: plain, from: depuis, backups, packs, livres };
   }
 
   // ---------- les paquets ----------
@@ -755,8 +878,9 @@ function createCabStore(dir, opts) {
     // porte le même identifiant : le jeu d'exemple tombe pile dedans, ses identifiants sont stables
     // (`MF:<matricule>`), donc on le recharge avec des paquets neufs et le livre de la version
     // d'avant. L'appelant qui efface un VRAI dossier prend sa sauvegarde nommée avant (« ce qui
-    // détruit demande », 7.12.0) — mais elle ne contient PAS les livres (T-35), donc la copie
-    // externe est le seul filet ici, et c'est écrit dans l'écran de suppression.
+    // détruit demande », 7.12.0), et depuis la 9.8.8 elle emporte les livres (T-35) : ce livre-là
+    // est donc récupérable par « Restaurer cette sauvegarde ». Un test le prouve — la phrase
+    // précédente à cet endroit affirmait la même chose alors que c'était faux (9.8.7).
     let livres = 0;
     try {
       const d = livreDir(dossier, idx);
@@ -925,7 +1049,8 @@ function createCabStore(dir, opts) {
       fs.mkdirSync(path.join(target, 'sauvegardes'), { recursive: true });
       if (exists()) copierSiDifferent(file, path.join(target, 'cabinet-data.json'));
       let names = [];
-      try { names = fs.readdirSync(backupDir).filter(f => f.endsWith('.json')); } catch {}
+      // Les ZIP des livres suivent leur JSON (T-35).
+      try { names = fs.readdirSync(backupDir).filter(f => f.endsWith('.json') || f.endsWith('.livres.zip')); } catch {}
       names.forEach(n => copierSiDifferent(path.join(backupDir, n), path.join(target, 'sauvegardes', n)));
       if (avecPaquets && fs.existsSync(packRoot)) copierArbre(packRoot, path.join(target, 'paquets'));
       // Les LIVRES partent toujours, avec ou sans les paquets (9.2.0). Un paquet perdu se redemande
@@ -946,7 +1071,7 @@ function createCabStore(dir, opts) {
   return {
     file, backupDir, packRoot, state: st,
     exists, unlocked, create, unlock, lock, write, setPassword,
-    snapshotDaily, backupNow, listBackups, peek, restore,
+    snapshotDaily, backupNow, listBackups, peek, restore, livresDansSauvegarde, compterLivres,
     inspectSource, adoptSource,
     packPathFor, storePack, removePack, removeDossierFiles, reorganize, packStats, folderName, folderIndex,
     rangerPieceJointe, cheminPieceJointe,
