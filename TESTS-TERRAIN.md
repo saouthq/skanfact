@@ -1674,6 +1674,31 @@ réclame rien, et la source n'a plus de boucle locale.
 **Règle violée** : un compteur et la liste qu'il annonce se calculent avec la même fonction (6.8.1) —
 ici deux copies de la même boucle, qui avaient déjà divergé.
 
+### T-48 · MOYEN · « Solder la dernière ligne ⇥ Tab » ne dit pas d'OÙ on appuie
+
+**Vu** par Skander le 21/09, 9.8.8-beta.2, Saisie sur Trabelsi : pièce TEST-1, ligne 1 606 / 100 au
+débit, ligne 2 401 sans montant, écart 100. Il a suivi la ligne d'aide et appuyé sur Tab après le
+compte : rien ne s'est soldé, et il a envoyé la capture sans comprendre.
+
+**Pourquoi ça compte** : c'est « le geste qui fait gagner le plus de temps de toute la grille »
+(commentaire du code), et il n'est atteignable que si l'on sait qu'il ne marche que depuis la case
+CRÉDIT de la dernière ligne, vide. La ligne d'aide et la bulle disent la touche, pas l'endroit.
+
+**Ancrage** : `src/cabinet/renderer/app.js`, le gestionnaire `onkeydown` des lignes
+(`ev.key === 'Tab' && k === 'credit' && i === p.lignes.length - 1`), et `paire('Solder la dernière
+ligne', t.solder)` dans la ligne d'aide ; `cabguide.js`, `sa.kSolder`.
+
+**Piste** : la ligne d'aide écrit « depuis la case Crédit de la dernière ligne » ; et Tab depuis le
+DÉBIT vide de la dernière ligne pourrait solder aussi (le montant sait de quel côté il tombe :
+`soldeDeLignes` le rend). Règle : un raccourci s'affiche comme une touche (9.4.5) — et dit où il agit.
+
+### T-49 · MINEUR · « + Ajouter une ligne » collé au titre « Le brouillard »
+
+**Vu** sur la même capture : le bouton touche le titre du panneau suivant, zéro pixel entre les deux.
+La sonde de la 9.8.3 mesure un bouton contre ses VOISINS CLIQUABLES ; un titre n'en est pas un, elle
+ne l'a donc pas vu. **Piste** : marge sous le bouton (ou au-dessus du panneau), et la sonde apprend
+qu'un titre de section est un voisin.
+
 ### Ce que la 9.8.8 a décidé, et ce qu'elle laisse À VÉRIFIER
 
 - **T-41, le tiers sur chaque ligne** : gardé. Que la ligne de TVA d'une facture porte le tiers de
