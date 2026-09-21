@@ -346,8 +346,28 @@
       buy({ supplierId: sp[0].id, number: 'FA-2026-1402', date: daysAgo(18), dueDate: C.addDays(daysAgo(18), 30), category: 'Petit équipement',
         subject: 'Imprimante multifonction du bureau', fees: 1,
         lines: [bline('Imprimante multifonction couleur', 1, 1450, 19, 'immobilisation')],
-        notes: 'À immobiliser : durée d\'amortissement à confirmer avec le comptable.' })
+        notes: 'À immobiliser : durée d\'amortissement à confirmer avec le comptable.' }),
+      // ---------- les pièces qui se RATTACHENT à une facture (10.2.0) ----------
+      // Un acompte versé à la commande : l'argent est sorti, mais ce n'est pas encore une charge —
+      // c'est une avance sur un fournisseur, qui se solde le jour de sa facture.
+      buy({ kind: 'acompte', supplierId: sp[0].id, number: 'ACPT-2026-11', date: daysAgo(30), dueDate: daysAgo(30),
+        category: 'Petit équipement', subject: 'Acompte à la commande de l\'imprimante',
+        lines: [bline('Acompte 30 % à la commande', 1, 500, 19)],
+        payments: [{ date: daysAgo(30), amount: 'all' }] }),
+      // Un avoir déjà imputé : le bailleur a fait un geste sur un loyer resté impayé.
+      buy({ kind: 'avoir', supplierId: sp[3].id, number: 'AV-2026-0233', date: mo(1, 28),
+        category: 'Loyer et charges locatives', subject: 'Geste commercial sur le loyer',
+        lines: [bline('Remise exceptionnelle', 1, 200, 19)] }),
+      // Un avoir qui n'a pas encore trouvé sa facture : un crédit qu'on a chez ce fournisseur, et
+      // que « À faire » rappelle tant qu'il n'est rattaché à rien.
+      buy({ kind: 'avoir', supplierId: sp[0].id, number: 'AV-2026-0221', date: daysAgo(9),
+        category: 'Achats de marchandises', subject: 'Rabais de fin d\'année',
+        lines: [bline('Rabais commercial', 1, 300, 19)],
+        notes: 'À déduire de la prochaine facture de ce fournisseur.' })
     ];
+    // Le rattachement se pose APRÈS : une pièce se retrouve par son numéro, jamais par son indice.
+    achatParNumero('ACPT-2026-11').achatLie = achatParNumero('FA-2026-1402').id;
+    achatParNumero('AV-2026-0233').achatLie = achatParNumero('LOC-2026-08').id;
     d.expenseCategories = [];
 
     // ---------- paie (5.0.0) ----------

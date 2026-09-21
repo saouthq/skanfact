@@ -7,6 +7,46 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 10.2.0 — 21/09/2026
+
+**L'avoir fournisseur, l'acompte versé et le relevé de compte client.** Trois gestes du métier que
+l'application ne savait pas faire, trouvés en répondant à « est-ce que ce qu'on a développé répond
+vraiment au métier ? ». Un avoir de fournisseur se saisissait en tapant des montants négatifs — ce
+qu'aucune comptabilité n'accepte (règle 6.3.0) — ou ne se saisissait pas du tout. Un acompte versé
+à la commande n'existait nulle part tant que la facture n'était pas arrivée. Et un client qui avait
+six factures ouvertes recevait six relances, à charge pour lui d'en faire le total.
+
+**À publier par la bêta** : ça touche des chiffres et des écritures.
+
+- **Avoir fournisseur** : les montants se saisissent en POSITIF, comme le fournisseur les a écrits,
+  et c'est le sens de la pièce qui décide de la colonne. Il se rattache à la facture qu'il diminue
+  (le reste à payer baisse d'autant), ou reste libre — un crédit qu'on détient chez ce fournisseur,
+  que la fiche du fournisseur compte et que « À faire » rappelle. La marchandise rendue RESSORT du
+  stock, la TVA déductible baisse, la charge baisse, et un remboursement reçu entre en trésorerie
+  au lieu d'en sortir.
+- **Acompte versé** : ce n'est pas une charge, c'est une avance sur un fournisseur qui n'a pas
+  encore livré. Elle va au compte d'avances (409 — À VÉRIFIER), n'entre ni dans le résultat, ni
+  dans le seuil de rentabilité, ni dans le stock, et se solde toute seule le jour de la facture par
+  une écriture d'imputation qui rend aussi la TVA déjà déduite — sans elle, la TVA de l'acompte
+  était déduite deux fois.
+- **Les deux se créent depuis la pièce concernée** : le menu d'une facture d'achat propose « Saisir
+  un avoir sur cette pièce » et « Saisir un acompte versé », qui arrivent déjà rattachés et dans la
+  bonne devise. Un avoir dans une autre devise que la facture qu'il vise est refusé, en le disant.
+- **Relevé de compte client** : toutes les pièces encore ouvertes à une date, leur total, ce qui est
+  échu et ce qui ne l'est pas. Il s'ouvre depuis la fiche du client, depuis la liste des clients et
+  depuis chaque ligne des relances, s'exporte en PDF et s'envoie par email avec le PDF joint. Il se
+  déduit à l'instant où on l'imprime — un relevé enregistré se périmerait au prochain encaissement.
+- **Un en-tête de fiche a un budget de boutons**, comme une ligne de liste : « Modifier »,
+  « Écrire » et le relevé vivent désormais dans un menu « Actions », et les deux gestes quotidiens
+  (« + Facture », « + Devis ») gardent leur place.
+
+**Corrigé au passage**, trouvé par le parcours réel : le bouton « Actions » d'un en-tête de fiche
+disparaissait dès qu'un tableau de documents se dessinait sur la même page. Deux menus d'actions
+posés sur la même racine se mangent — celui du tableau retire les boutons qu'il ne reconnaît pas.
+
+Quinze tests de comportement, chacun prouvé en réintroduisant son défaut, plus deux étapes de bout
+en bout dans l'application réelle (`npm run e2e:fiches`).
+
 ## 10.1.0 — 21/09/2026
 
 **La devise d'un achat.** Trouvé en répondant à la question « est-ce que les deux applications

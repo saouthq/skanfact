@@ -194,10 +194,21 @@ vatRate: number (0|7|13|19 ou libre), noDiscount?: boolean, itemId?: string, cos
 withholdingRate?: number|'' }` — un taux vide veut dire « celui de la société ». **Cible 9.1.1** :
 `stampExempt?: boolean` (SPEC-DATA-001b).
 
-**Achat** (`newPurchase(kind, supplierId)`) : `{ id, kind: 'facture'|'depense', supplierId, number
-(celui du fournisseur), date, dueDate, subject, category, notes, fees: number, withholdingRate,
-lines: [{ label, qty, unit, unitPrice, vatRate, destination: 'charge'|'stock'|'immobilisation',
-deductible: boolean }], payments, attachments, createdAt, projectId? }`.
+**Achat** (`newPurchase(kind, supplierId)`) : `{ id, kind: 'facture'|'depense'|'avoir'|'acompte',
+supplierId, number (celui du fournisseur), date, dueDate, subject, category, notes, fees: number,
+withholdingRate, currency, exchangeRate, achatLie, lines: [{ label, qty, unit, unitPrice, vatRate,
+destination: 'charge'|'stock'|'immobilisation', deductible: boolean }], payments, attachments,
+createdAt, projectId? }`.
+
+`currency` / `exchangeRate` (10.1.0) : la devise de la pièce du fournisseur et le taux du jour.
+`migrateData` pose la devise de la société avec un taux de 1 sur tout achat qui n'en portait pas,
+donc aucun chiffre existant ne bouge ; `missingRate` refuse l'enregistrement quand la devise diffère
+et que le taux manque. `achatLie` (10.2.0) : l'identifiant de la facture d'achat qu'un `avoir` ou un
+`acompte` diminue — vide tant que la pièce n'est pas rattachée, ce qui est un état normal que
+`todoList` rappelle (`achat-impute`). Les deux pièces doivent être dans la même devise.
+`purchaseTotals` rend `sens` (−1 pour un avoir) et un bloc `base` SIGNÉ ET CONVERTI : c'est lui que
+lisent tous les agrégateurs, et `base.avance` (non nul pour un acompte seulement) porte ce qui va au
+compte d'avances au lieu d'une charge.
 
 **Licence émise** (`data.licences[]`) : `{ id, clientId, nom, matricule, offre: 'independant'|
 'entreprise', exp, key, emisLe, cabinet (empreinte), note, invoiceId, itemId, prix, tva, emails: [],

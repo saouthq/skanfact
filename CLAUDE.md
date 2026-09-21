@@ -4963,6 +4963,65 @@ Règles apprises, à ne pas recasser :
   `DT`. Un jeu d'essai qui pose `TND` à la main se fait corriger par la migration et fait échouer
   l'assertion sur autre chose que ce qu'elle teste.
 
+### 10.2.0 — L'avoir fournisseur, l'acompte versé et le relevé de compte
+
+Règles apprises, à ne pas recasser :
+
+- **Le SENS d'une pièce se porte dans `base`, jamais dans la mémoire de chaque agrégateur.** Côté
+  ventes, `type === 'avoir' ? -1 : 1` est recopié dans une quinzaine d'endroits depuis la 1.4.0, et
+  le premier qui l'oublie fabrique un chiffre faux que rien ne montre. Côté achats, `purchaseTotals`
+  rend `sens` et signe `base` : les treize agrégateurs passés à `.base` en 10.1.0 sont devenus justes
+  **sans une ligne de plus**, et celui qu'on écrira demain le sera aussi. C'est la même leçon que la
+  devise, une couche plus haut — et c'est ce qui rend une règle structurelle meilleure qu'une règle
+  qu'on répète.
+- **Un avoir se saisit en POSITIF.** C'est ce que le fournisseur a écrit sur sa pièce, et aucune
+  comptabilité n'accepte un débit négatif (règle 6.3.0) : `entrySet` change la colonne tout seul.
+- **Un acompte versé n'est pas une charge**, et le dire à chaque agrégateur aurait été le défaut
+  qu'on venait de corriger : ses `byDestination` sont VIDES et le montant vit dans `base.avance`.
+  Le résultat, le seuil de rentabilité, la marge d'une affaire et le stock deviennent justes sans
+  rien savoir de lui ; seul `journalEntries` connaît `avance`, parce que lui seul doit décider du
+  compte.
+- **L'imputation d'un acompte REPREND ce que l'acompte avait posé, TVA comprise.** La TVA de la
+  facture porte sur le montant entier, acompte compris : garder celle de l'acompte la déduirait deux
+  fois. Trouvé par le test qui vérifie que le 409 revient à zéro — une imputation qui ne rendait que
+  le TTC laissait le compte d'avances débiteur de la TVA, pour toujours.
+- **Un avoir IMPUTÉ ne vaut plus rien tout seul.** Le compter en plus comme un crédit ferait payer
+  deux fois moins ; et un règlement porté dessus — le fournisseur qui rembourse EN PLUS d'avoir
+  avoisé — ne doit pas le transformer en dette. C'est ce cas-là qui a fait retirer un garde-fou
+  REDONDANT de `payablesList` : un filtre qu'aucun test ne peut faire tomber est le miroir exact
+  d'un test qui ne peut pas échouer (7.2.0). La décision se prend à UN endroit, `purchaseBalance`.
+- **Le lettrage compte dans les DEUX sens.** Un avoir non imputé laisse le fournisseur DÉBITEUR :
+  ne regarder que les restes positifs faisait dire au lettrage un chiffre différent du solde du 401,
+  sur la même donnée. `Math.abs(remaining)`, et les deux écrans se rejoignent (règle 6.8.1).
+- **Un avoir et la facture qu'il vise sont dans la MÊME devise.** Un fournisseur avoise dans la
+  monnaie où il a facturé ; déduire 300 € de 1 000 DT donnerait un reste dû faux que personne ne
+  verrait. L'éditeur le refuse en nommant les deux devises.
+- **Un avoir peut porter le même numéro qu'une facture** : ce sont deux séries. `achatDoublon` ne
+  compare que des pièces de même nature, sinon il accuse une pièce parfaitement juste.
+- **Un relevé de compte se DÉDUIT à l'instant où on l'imprime**, comme un statut. Un relevé
+  enregistré se périmerait au premier encaissement, et on l'enverrait faux.
+- **Un avoir de vente RATTACHÉ est déjà dans le reste dû de sa facture** : le remontrer sur le relevé
+  le compterait deux fois et donnerait un relevé deux fois trop favorable. Seul un avoir LIBRE fait
+  une ligne.
+- **Un en-tête de fiche a un budget de boutons**, comme une ligne de liste (7.29.0, porté du Cabinet
+  en 9.4.8). « Écrire » dépend d'une adresse qu'un client sur deux n'a pas : la barre changeait de
+  forme d'une fiche à l'autre. Les trois gestes rares vivent dans un menu « Actions ».
+- **Un filtre qui n'est pas un statut vit quand même dans le sélecteur de statuts** : « à rattacher »
+  est une QUESTION, pas un état, mais c'est là qu'on la cherche — et elle se réinitialise comme les
+  autres, parce qu'un filtre actif qu'on ne voit pas est un piège (9.4.6).
+- **UNE table d'actions par racine (9.4.8), et deux tables sur la même racine SE MANGENT.**
+  `bindDocTable` posait la sienne sur `document` : elle retirait donc tout bouton de menu qu'elle ne
+  reconnaît pas — c'est sa règle (7.29.0, une ligne sans action perd son bouton) — et le bouton
+  « Actions » de l'en-tête de la fiche client disparaissait à chaque dessin du tableau des
+  documents, sans une erreur nulle part. Elle vit maintenant sur l'ancre du TABLEAU, que
+  `bindDocTable` recevait déjà pour sa pagination. Seul le parcours réel pouvait le voir : le
+  gabarit était juste, et la relecture ne montre rien.
+- Piège de données, re-rencontré : une pièce de la démo se retrouve par son NUMÉRO, jamais par son
+  indice (10.1.0). Les trois pièces ajoutées auraient sinon décalé les fiches d'immobilisation.
+
+Prouvé : **quinze défauts réintroduits un par un** font tomber leur test — dont celui de l'avoir
+imputé et remboursé, qui n'existait qu'en cherchant ce que le garde-fou redondant protégeait vraiment.
+
 ## Pistes pour la suite (non demandées)
 
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.

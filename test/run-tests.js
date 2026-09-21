@@ -8310,7 +8310,10 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // La LISTE offre le geste sans qu'on ait à ouvrir le devis. Depuis la 7.28.0 les actions d'une
     // ligne vivent dans un menu et non plus dans une rangée de boutons : ce n'est donc plus un
     // `data-facturer` qu'on cherche, mais l'entrée du menu — la RÈGLE n'a pas changé, sa forme si.
-    const menuDoc = code.slice(code.indexOf('bindRowMenus(document, id => {'), code.indexOf('function duplicateDoc'));
+    // La tranche s'ancre sur la FONCTION, pas sur la forme de son appel à `bindRowMenus` : celui-ci
+    // a changé de racine en 10.2.0 (deux tables d'actions sur `document` se mangent), et un ancrage
+    // sur son texte exact tombait alors sur du code juste (piège 7.21.0).
+    const menuDoc = code.slice(code.indexOf('function bindDocTable('), code.indexOf('function duplicateDoc'));
     assert.ok(menuDoc.length > 400 && !menuDoc.includes('clientForm('), 'découpage du menu de ligne raté');
     assert.ok(/label: 'Facturer ce devis'/.test(menuDoc), 'la LISTE doit aussi porter le geste, sans avoir à ouvrir le devis');
     // Les deux chemins passent par la MÊME fonction : recopiés, ils divergeraient au premier
@@ -9292,7 +9295,8 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
     // Depuis la 7.28.0 les deux réponses vivent dans le menu de la ligne, avec une phrase entière
     // au lieu d'un « Accepté ✓ ». On teste la RÈGLE — les réponses sont offertes depuis la liste,
     // sur les devis en attente seulement, et chacune laisse un retour en arrière.
-    const menu = app.slice(app.indexOf('bindRowMenus(document, id => {'), app.indexOf('function duplicateDoc'));
+    // Ancrée sur la FONCTION, pas sur la forme de son appel à `bindRowMenus` (voir 10.2.0).
+    const menu = app.slice(app.indexOf('function bindDocTable('), app.indexOf('function duplicateDoc'));
     assert.ok(menu.length > 400 && !menu.includes('clientForm('), 'découpage du menu de ligne raté');
     assert.ok(/label: 'Le client a accepté'/.test(menu) && /label: 'Le client a refusé'/.test(menu),
       'rien ne permet de répondre à un devis depuis la liste');
@@ -13745,6 +13749,7 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
   require('./suites/liasse.js')({ t, assert, lireSource });
   require('./suites/terrain.js')({ t, assert, lireSource });
   require('./suites/devise-achat.js')({ t, assert, lireSource });
+  require('./suites/avoir-fournisseur.js')({ t, assert, lireSource });
 
   // ---------- 9.4.10 : aucune suite découpée ne reste sur le bord de la route ----------
   // Le danger d'un découpage, c'est le fichier qu'on écrit et que personne ne charge : les tests
