@@ -7,6 +7,44 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 10.1.0 — 21/09/2026
+
+**La devise d'un achat.** Trouvé en répondant à la question « est-ce que les deux applications
+répondent vraiment au métier ? » : **un achat n'avait aucune devise**. Une facture fournisseur de
+1 000 € saisie telle quelle comptait 1 000 dinars — dans la TVA déductible, dans les charges, dans
+le résultat, dans le seuil de rentabilité, dans le stock, dans la trésorerie, dans les écritures et
+dans le paquet envoyé au comptable. Trois fois et demie trop peu, partout, et **rien à l'écran ne
+le montrait**. C'est la faute de la 7.0.1 (le timbre compté en euros) et de la 7.16.0 (les cartes de
+l'accueil), jamais portée du côté des achats.
+
+**À publier par la bêta** : ça touche des chiffres, et c'est très exactement le cas que la règle
+réserve au canal d'essai.
+
+- **Un achat porte sa devise et son taux**, comme une facture de vente depuis la 1.6.0. On saisit ce
+  qui est imprimé sur la pièce du fournisseur, sans rien convertir de tête ; l'écran annonce sous
+  les totaux le montant qui entrera en comptabilité, avec le taux appliqué.
+- **Le taux est OBLIGATOIRE dès que la devise diffère**, et l'enregistrement le refuse en amenant le
+  champ à l'écran. Les achats déjà saisis qui en manqueraient remontent en rouge dans « À faire »,
+  avec leur propre ligne et leur propre bouton — la ligne des ventes mène aux factures, celle-ci aux
+  achats.
+- **Treize endroits convertissent désormais** : la TVA déductible de la déclaration, le journal des
+  achats, le résultat, le seuil de rentabilité, les écritures comptables, le coût moyen pondéré du
+  stock, la marge d'une affaire, la rentabilité d'un contrat, ce qu'on doit aux fournisseurs, la
+  fiche d'un fournisseur, la retenue à la source à reverser, la déclaration d'employeur, et la
+  sortie d'argent en trésorerie. Chacun a son test, et chacun a été prouvé en remettant le défaut.
+- **Rien ne bouge pour ceux qui n'achètent qu'en dinars** : la migration pose la devise de la
+  société avec un taux de 1, donc aucun chiffre déjà déclaré ne change d'un millime.
+- **La devise d'origine est NOMMÉE partout où le montant est converti** — le journal des achats, la
+  liste, ce qu'on doit. Un chiffre converti dont on ne sait plus d'où il vient ne se vérifie plus
+  contre la facture papier.
+- **Et l'absorbeur d'arrondis dit enfin ce qu'il avale.** Il existe depuis la 6.3.0 pour les
+  quelques millimes que laisse une TVA calculée ligne par ligne ; il avalait en réalité n'importe
+  quel écart et rendait une pièce équilibrée, plausible et fausse. Trouvé en prouvant la conversion :
+  le défaut remis laissait **2 856 DT** de trou et la pièce sortait juste. La pièce reste équilibrée
+  (une pièce déséquilibrée ne s'importe nulle part), mais au-delà d'un millime par ligne l'écart est
+  marqué — et un test vérifie qu'aucune écriture des 24 mois du jeu d'exemple n'en porte.
+- **Le jeu d'exemple montre le cas** : une licence antivirus achetée en euros, avec son taux.
+
 ## 10.0.1 — 21/09/2026
 
 **Les pannes se disent en français, et l'outillage cesse de crier pour rien.** Correctif

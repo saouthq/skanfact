@@ -4673,6 +4673,10 @@
     'salaires-double': { label: 'Voir les mouvements', run: vers('#/tresorerie', () => { tresoState.tab = 'mouvements'; }) },
     tresorerie: { label: 'Voir la prévision', run: vers('#/tresorerie', () => { tresoState.tab = 'prevision'; }) },
     'taux-change': { label: 'Voir les pièces', run: vers('#/factures', filtre('facture')) },
+    // Le jumeau côté achats (10.1.0). Les deux lignes nomment des pièces différentes et mènent donc
+    // à deux listes différentes : une seule entrée pour les deux enverrait la moitié des gens sur
+    // un écran où ce qu'on vient de leur annoncer n'existe pas.
+    'taux-achat': { label: 'Voir les achats', run: vers('#/achats', () => { buyState.q = ''; buyState.st = ''; buyState.kind = ''; buyState.cat = ''; buyState.year = ''; buyState.page = 1; }) },
     sauvegarde: { label: 'Choisir un dossier', run: vers('#/parametres', () => { settingsTab = 'donnees'; settingsFocus = 'p-externe'; }) },
     'licences-expirent': { label: 'Voir les licences', run: vers('#/licences') },
     // Chaque ligne emmène sur la liste AVEC sa vue : arriver sur cent licences quand trois seulement
@@ -5231,8 +5235,13 @@
   function purchaseColumns(opts) {
     opts = opts || {};
     const cur = company().currency;
-    const netOf = p => C.purchaseTotals(p, company()).netToPay;
-    const restOf = p => C.purchaseBalance(p, company()).remaining;
+    // La colonne additionne des pièces de plusieurs devises : elle affiche donc le montant CONVERTI,
+    // et la devise d'origine se lit sous le chiffre quand elle diffère (10.1.0). Trier sur le montant
+    // natif comparerait des euros à des dinars — c'est la faute de la 7.18.0, côté achats.
+    const netOf = p => C.purchaseTotals(p, company()).base.netToPay;
+    const restOf = p => C.toBase(p, C.purchaseBalance(p, company()).remaining, company());
+    const devise = p => (p.currency && p.currency !== company().currency)
+      ? `<div class="small muted">${h(C.money(C.purchaseTotals(p, company()).netToPay, p.currency))}</div>` : '';
     const cols = [
       { key: 'date', label: 'Date', cls: 'nw', val: p => p.date || '', get: p => C.fmtDate(p.date) },
       // Le trombone : on voit d'un coup d'œil quelles pièces ont leur justificatif — et lesquelles
@@ -5247,7 +5256,7 @@
       { key: 'category', label: 'Catégorie', asc: true, val: p => (p.category || '').toLowerCase(), get: p => `${h(p.category || '')}${p.kind === 'depense' ? '<div class="small muted">dépense</div>' : ''}` || '<span class="muted">—</span>' },
       { key: 'due', label: 'Échéance', cls: 'nw', val: p => p.dueDate || '', get: p => p.dueDate ? C.fmtDate(p.dueDate) : '<span class="muted">—</span>' },
       { key: 'status', label: 'Statut', val: p => buyStatus(p), get: p => buyBadge(buyStatus(p)) },
-      { key: 'net', label: 'Net à payer', r: true, val: netOf, get: p => C.money(netOf(p), cur) },
+      { key: 'net', label: 'Net à payer', r: true, val: netOf, get: p => C.money(netOf(p), cur) + devise(p) },
       { key: 'rest', label: 'Reste', r: true, val: restOf, get: p => { const x = restOf(p); return x > 0.0005 ? C.money(x, cur) : '<span class="muted">—</span>'; } }
     );
     return { cols, netOf, restOf };
@@ -5273,7 +5282,7 @@
       const filtered = !!(s.q || s.st || s.kind || s.cat || s.year);
       const { rows: page, pg } = paginate(rows, s);
       // Les totaux portent sur toute la sélection, jamais sur la page affichée.
-      const totHT = rows.reduce((a, p) => a + C.purchaseTotals(p, company()).totalHT, 0);
+      const totHT = rows.reduce((a, p) => a + C.purchaseTotals(p, company()).base.totalHT, 0);
       const totNet = rows.reduce((a, p) => a + netOf(p), 0);
       const totRest = rows.reduce((a, p) => a + Math.max(0, restOf(p)), 0);
       $('#list-wrap').innerHTML = rows.length ? `<table class="list sortable"><thead>${sortHead(cols, s.sort, '<th class="row-actions-h"></th>')}</thead><tbody>
@@ -5453,7 +5462,10 @@
       p = deepCopy(stored);
     }
     const isDep = p.kind === 'depense';
-    const cur = company().currency;
+    // La devise de la PIÈCE (10.1.0), plus celle de la société. Une facture fournisseur venue de
+    // l'étranger est libellée en euros ou en dollars : l'écran la montre telle que le fournisseur
+    // l'a écrite, et tout ce qui agrège passe par `t.base`.
+    let cur = p.currency || company().currency;
     const stored = isNew ? null : purchaseById(p.id);
     const cats = C.expenseCategories(data);
 
@@ -5499,6 +5511,8 @@
               </div>
               <label class="field">${lbl('Retenue à la source opérée', 'buy.withholding')}${withholdingSelect('withholdingRate', p.withholdingRate)}</label>
               ${field(lbl('Timbre et frais', 'buy.fees'), 'fees', p.fees || 0, 'number', 'step="0.001" min="0" class="num"')}
+              <label class="field">${lbl('Devise de la facture', 'buy.currency')}<select name="currency">${C.CURRENCIES.map(c => `<option value="${c}" ${c === cur ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
+              <label class="field" id="b-rate-field" ${cur === company().currency ? 'hidden' : ''}><span class="fl"><span class="b-rate-lbl">Taux : 1 ${h(cur)} = ? ${h(company().currency)}</span> <span class="req">obligatoire</span> ${info('buy.rate')}</span><input type="number" name="exchangeRate" value="${h(p.exchangeRate || '')}" step="0.0001" min="0" class="num" placeholder="ex. 3.4"></label>
             </form>
           </div>
           <div class="panel"><h2>Lignes ${info('buy.lines')}</h2>
@@ -5622,6 +5636,7 @@
         ${t.fees ? `<tr><td>Timbre et frais</td><td>${C.money(t.fees, cur)}</td></tr>` : ''}
         ${t.withholding ? `<tr><td>Total TTC</td><td>${C.money(t.totalTTC, cur)}</td></tr><tr><td>Retenue opérée ${pct(t.withholdingRate)}%</td><td>- ${C.money(t.withholding, cur)}</td></tr>` : ''}
         <tr class="grand"><td>Net à payer</td><td>${C.money(t.netToPay, cur)}</td></tr>
+        ${cur !== company().currency ? `<tr><td class="small muted">soit, en comptabilité ${C.missingRate(p, company()) ? '<span class="warn-text">(taux manquant)</span>' : `<span class="muted">(1 ${h(cur)} = ${pct(t.rate)} ${h(company().currency)})</span>`}</td><td class="small">${C.money(t.base.netToPay, company().currency)}</td></tr>` : ''}
         ${dest.length ? `<tr><td colspan="2" class="small muted" style="padding-top:8px">${dest.map(([k, lab]) => `${lab} ${C.money(t.byDestination[k], cur)}`).join(' · ')}</td></tr>` : ''}
       </table>`;
       // Une ligne « stock » dont le libellé ne retrouve aucun article suivi n'entrera dans aucun stock :
@@ -5667,6 +5682,15 @@
       p.fees = Number(p.fees) || 0;
       p.withholdingRate = Number(p.withholdingRate) || 0;
       touch();
+      // La devise de la pièce (10.1.0) : le champ du taux n'apparaît que quand il sert, et son
+      // libellé NOMME les deux monnaies — « 1 EUR = ? TND » se remplit sans réfléchir, « Taux de
+      // change » tout court se remplit à l'envers une fois sur deux.
+      if (e && e.target && e.target.name === 'currency') {
+        cur = p.currency || company().currency;
+        const rf = $('#b-rate-field', head);
+        if (rf) { rf.hidden = cur === company().currency; $('.b-rate-lbl', rf).textContent = `Taux : 1 ${cur} = ? ${company().currency}`; }
+        drawLines();
+      }
       if (e && e.target && e.target.name === 'supplierId' && p.supplierId !== appliedSupplier) {
         appliedSupplier = p.supplierId;
         // nouveau fournisseur : on reprend son délai de paiement et son taux de retenue
@@ -5839,6 +5863,14 @@
     function validate() {
       if (!p.supplierId) return refus('[data-combo=supplierId] .combo-btn', 'Choisis un fournisseur.');
       if (!p.date) return refus('[name=date]', 'La date de la pièce est obligatoire.');
+      // Le taux de change d'un achat (10.1.0) : même règle que sur un document de vente depuis la
+      // 7.0.1. Son oubli ne se voit nulle part ICI et fausse tout AILLEURS — la TVA déductible, la
+      // charge, le résultat, le stock, les écritures et le paquet du comptable compteraient
+      // 1 euro = 1 dinar. Il est donc obligatoire, pas conseillé.
+      if (C.missingRate(p, company())) {
+        return refus('[name=exchangeRate]',
+          `Indique le taux de change : combien vaut 1 ${p.currency} en ${company().currency} ? Sans lui, ta TVA déductible et tes charges compteraient 1 ${p.currency} = 1 ${company().currency}.`);
+      }
       if (!p.lines.some(l => (l.label || '').trim() || Number(l.unitPrice))) return refus('#b-lines input[data-k=label]', 'Saisis au moins une ligne avec un montant.');
       if (p.dueDate && p.dueDate < p.date) return refus('[name=dueDate]', 'L\'échéance ne peut pas précéder la date de la pièce.');
       return true;

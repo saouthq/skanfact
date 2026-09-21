@@ -4912,6 +4912,57 @@ Règles apprises, à ne pas recasser :
 - Piège : `pagerBar` **borne `st.page`** en plus de rendre son HTML. Un appel dont on jette le
   retour n'est donc pas mort — il se commente, sinon il se supprime.
 
+### 10.1.0 — La devise d'un achat
+
+Trouvé en répondant à « est-ce que ce qu'on a développé répond vraiment au métier ? » : **un achat
+n'avait aucune devise**. Une facture fournisseur de 1 000 € comptait 1 000 dinars dans la TVA
+déductible, les charges, le résultat, le seuil de rentabilité, le stock, la trésorerie, les
+écritures et le paquet du comptable. C'est la faute de la 7.0.1 et de la 7.16.0, **jamais portée du
+côté des achats** — le jumeau manquant (7.3.0), sur des chiffres qui partent chez un tiers.
+
+Règles apprises, à ne pas recasser :
+
+- **Les montants NATIFS et les montants de BASE portent des noms différents**, et c'est ce qui rend
+  l'oubli lisible. `purchaseTotals` rend les montants tels que le fournisseur les a écrits — c'est
+  ce que l'écran de la pièce affiche — et `t.base` les mêmes convertis. Un agrégateur qui lirait
+  `t.totalHT` au lieu de `t.base.totalHT` se voit à la relecture, au lieu de se fondre dans le
+  paysage. C'est l'inverse de la convention des ventes (où l'appelant convertit), et l'asymétrie est
+  assumée : côté achats il y a UN écran natif contre treize agrégateurs.
+- **Un test de couverture se prend par le comportement, pas par la source.** Un test statique
+  (« chaque agrégateur mentionne `.base` ») aurait été une FORME, fragile et satisfaisable par
+  accident. À la place : un achat de 1 000 € à 3,4 et chaque agrégateur interrogé pour de vrai —
+  3 400 est un chiffre qu'aucun arrondi ne produit depuis 1 000. Treize lignes, treize preuves par
+  réintroduction, et un agrégateur oublié demain tombe nommément.
+- **L'absorbeur d'arrondis avalait n'importe quoi.** `entrySet.done()` existe depuis la 6.3.0 pour
+  les quelques millimes d'une TVA calculée ligne par ligne ; il absorbait en réalité TOUT écart, et
+  rendait une pièce équilibrée, plausible et fausse. La preuve par réintroduction l'a dit : le
+  défaut remis (le fournisseur crédité du montant natif) laissait **2 856 DT** de trou et la pièce
+  sortait juste — donc mon test ne pouvait pas le voir, et un vrai défaut du même genre passerait
+  de même. On continue d'équilibrer, mais au-delà d'un millime par ligne — le maximum que `round3`
+  peut laisser, pas un seuil choisi au jugé — l'écart est MARQUÉ (`ecartAbsorbe`). Et un test exige
+  qu'aucune écriture des 24 mois du jeu d'exemple n'en porte : un marqueur qui parlerait tout le
+  temps cesserait d'être lu.
+- **Une assertion sur des TOTAUX ne prouve rien d'une LIGNE** quand un mécanisme rééquilibre. La
+  bonne assertion vise la ligne fournisseur, plus la somme. Sans la preuve par réintroduction, je
+  n'aurais jamais su que cette assertion-là ne pouvait pas échouer — c'est la seule méthode qui le
+  dise (7.2.0).
+- **Le test d'un AUTRE module a trouvé le treizième agrégateur.** `cashMovements` sortait le montant
+  natif du compte ; c'est l'assertion « la trésorerie du bilan est celle de la page Trésorerie »
+  (9.0.0) qui est tombée, sur un écart valant exactement la conversion. Deux écrans qui disent la
+  même chose ne peuvent pas se contredire (6.8.1) — et c'est ce contrôle-là qui a fait le travail,
+  pas ma relecture.
+- **Un signalement se dédouble quand le GESTE qui le règle est ailleurs.** Les pièces de vente sans
+  taux et les achats sans taux ont deux lignes dans « À faire », parce qu'elles mènent à deux listes
+  différentes. Une seule ligne enverrait la moitié des gens sur un écran où ce qu'on vient de leur
+  annoncer n'existe pas (7.15.0). Le test de couverture de `TODO_ACTIONS` (7.0.0) a réclamé son
+  bouton dans la seconde.
+- Piège de test : `employerAnnual(data, year, company)` — pas `(data, company, year)`. Et
+  `stockOf` rend `cmp` (coût moyen pondéré) et `value`, pas `unitCost`. Un test qui invente une
+  signature échoue sur du code juste.
+- Piège de données : l'application écrit le dinar **`DT`**, pas `TND` ; `normCurrency('TND')` rend
+  `DT`. Un jeu d'essai qui pose `TND` à la main se fait corriger par la migration et fait échouer
+  l'assertion sur autre chose que ce qu'elle teste.
+
 ## Pistes pour la suite (non demandées)
 
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.

@@ -3967,6 +3967,20 @@
           if (gap > 0) last.credit = round3(last.credit + gap); else last.debit = round3(last.debit - gap);
           if (last.credit < 0) { last.debit = round3(last.debit - last.credit); last.credit = 0; }
           if (last.debit < 0) { last.credit = round3(last.credit - last.debit); last.debit = 0; }
+          // MAIS L'ABSORBEUR DIT CE QU'IL A AVALÉ (10.1.0), au-delà de ce qu'un arrondi peut
+          // produire. Il existe depuis la 6.3.0 pour les quelques millimes que laisse une TVA
+          // calculée ligne par ligne ; il avalait en réalité N'IMPORTE QUEL écart, et rendait une
+          // pièce parfaitement équilibrée, parfaitement plausible, et fausse. Trouvé en prouvant la
+          // conversion de devise des achats : le défaut réintroduit (le fournisseur crédité du
+          // montant natif au lieu du converti) laissait 2 856 DT de trou, et la pièce sortait juste
+          // — donc le test ne pouvait pas le voir, et un vrai défaut du même genre passerait de
+          // même. On continue d'équilibrer (une pièce déséquilibrée ne s'importe nulle part), mais
+          // on MARQUE : `ecartAbsorbe` porte le trou, et c'est lui qui se vérifie.
+          //
+          // La tolérance est un millime par ligne : c'est le maximum que `round3` peut laisser, et
+          // pas un seuil choisi au jugé.
+          const tolerance = round3(0.001 * lines.length);
+          if (Math.abs(gap) > tolerance) lines.forEach(l => { l.ecartAbsorbe = gap; });
         }
         return lines;
       }

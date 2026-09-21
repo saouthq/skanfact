@@ -1217,6 +1217,14 @@
       if (p.kind !== 'depense') p.kind = 'facture';
       p.withholdingRate = Number(p.withholdingRate) || 0;
       p.fees = Number(p.fees) || 0;
+      // La devise d'un achat (10.1.0). Un achat d'avant n'en portait pas : on lui pose celle de la
+      // société avec un taux de 1, donc ses chiffres ne bougent pas d'un millime. Le faire ici et
+      // pas à la lecture évite qu'un achat sans devise traverse un écran qui, lui, en attendrait
+      // une — un champ absent de cette liste est jeté au prochain chargement (défaut `matricule`
+      // de la 6.8.0), et un champ jamais posé se réinvente.
+      if (!p.currency) p.currency = (data.company || {}).currency || 'TND';
+      if (p.currency === ((data.company || {}).currency || 'TND')) p.exchangeRate = 1;
+      else p.exchangeRate = Number(p.exchangeRate) > 0 ? Number(p.exchangeRate) : '';
     });
     // Geler le timbre des pièces DÉJÀ émises sur la valeur en vigueur aujourd'hui. Sans ça, elles
     // resteraient à la merci du prochain changement de réglage — c'est-à-dire dans l'état qu'on
@@ -1434,7 +1442,40 @@
     const byDestination = {};
     LINE_DESTINATIONS.forEach(([k]) => { byDestination[k] = 0; });
     lines.forEach(l => { byDestination[l.destination] = round3(byDestination[l.destination] + l.ht); });
-    return { lines, totalHT, vatByRate, totalVAT, deductibleVAT, fees, totalTTC, withholdingRate, withholding, netToPay, byDestination };
+
+    // LA DEVISE DE L'ACHAT (10.1.0). Une facture fournisseur venue de l'étranger — une licence
+    // logicielle, du matériel — est libellée en euros ou en dollars. Jusqu'ici l'achat n'avait
+    // AUCUNE devise : ses chiffres étaient pris pour des dinars, et la TVA déductible, la charge,
+    // le résultat, le seuil de rentabilité, la trésorerie, les écritures et le paquet du comptable
+    // comptaient 1 000 DT là où l'entreprise avait payé 3 400 DT. Rien à l'écran ne le montrait.
+    // C'est exactement la faute de la 7.0.1 (le timbre en euros) et de la 7.16.0 (les cartes de
+    // l'accueil), jamais portée du côté des achats.
+    //
+    // La règle du projet : « tout ce qui ADDITIONNE plusieurs pièces se convertit dans la devise de
+    // base ». Les montants natifs restent en tête — c'est ce que l'écran de LA pièce affiche, et
+    // c'est ce que le fournisseur a écrit sur sa facture — et `base` porte les mêmes montants
+    // convertis, pour tout ce qui agrège. Deux noms différents : un agrégateur qui oublie de
+    // convertir se lit, au lieu de passer inaperçu.
+    //
+    // Sur un achat sans devise (tous ceux d'avant la 10.1.0, que la migration met à la devise de la
+    // société avec un taux de 1), `base` est identique aux montants natifs : aucun chiffre existant
+    // ne bouge.
+    const conv = v => toBase(purchase, v, company || {});
+    const baseVatByRate = {};
+    Object.keys(vatByRate).forEach(k => {
+      baseVatByRate[k] = { base: conv(vatByRate[k].base), vat: conv(vatByRate[k].vat), deductible: conv(vatByRate[k].deductible) };
+    });
+    const baseByDestination = {};
+    Object.keys(byDestination).forEach(k => { baseByDestination[k] = conv(byDestination[k]); });
+    const base = {
+      totalHT: conv(totalHT), totalVAT: conv(totalVAT), deductibleVAT: conv(deductibleVAT),
+      fees: conv(fees), totalTTC: conv(totalTTC), withholding: conv(withholding),
+      netToPay: conv(netToPay), vatByRate: baseVatByRate, byDestination: baseByDestination
+    };
+    return {
+      lines, totalHT, vatByRate, totalVAT, deductibleVAT, fees, totalTTC, withholdingRate, withholding, netToPay, byDestination,
+      currency: purchase.currency || (company || {}).currency || '', rate: rateOf(purchase, company || {}), base
+    };
   }
 
   // Situation d'un achat : payé, reste dû. Le symétrique exact d'invoiceBalance.
@@ -1485,8 +1526,8 @@
       const late = p.dueDate && p.dueDate < t ? daysBetween(p.dueDate, t) : 0;
       return {
         id: p.id, supplierId: p.supplierId, number: p.number || '', date: p.date, dueDate: p.dueDate || '',
-        subject: p.subject || '', remaining: b.remaining, total: b.totals.netToPay, late,
-        status: purchaseStatus(p, company, t)
+        subject: p.subject || '', remaining: toBase(p, b.remaining, company), total: b.totals.base.netToPay, late,
+        currency: p.currency || company.currency, status: purchaseStatus(p, company, t)
       };
     }).filter(Boolean).sort((a, b) => (b.late - a.late) || (a.dueDate || '9999').localeCompare(b.dueDate || '9999'));
   }
@@ -1500,7 +1541,8 @@
       const m = PAYMENT_METHODS.find(k => k[0] === x.method);
       out.push({
         id: x.id, purchaseId: p.id, date: x.date, number: p.number || '', supplier: name(p.supplierId), supplierId: p.supplierId || '',
-        amount: round3(Number(x.amount) || 0), method: m ? m[1] : (x.method || ''), reference: x.reference || '', note: x.note || '', accountId: x.accountId || ''
+        amount: round3(toBase(p, Number(x.amount) || 0, company)), method: m ? m[1] : (x.method || ''),
+        currency: p.currency || company.currency, reference: x.reference || '', note: x.note || '', accountId: x.accountId || ''
       });
     }));
     return out.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
@@ -1517,8 +1559,9 @@
         return {
           id: p.id, date: p.date, number: p.number || '', supplier: name(p.supplierId),
           kind: p.kind === 'depense' ? 'Dépense' : 'Facture d\'achat', category: p.category || '',
-          ht: t.totalHT, tva: t.totalVAT, deductible: t.deductibleVAT, fees: t.fees,
-          ttc: t.totalTTC, rs: t.withholding, net: t.netToPay,
+          ht: t.base.totalHT, tva: t.base.totalVAT, deductible: t.base.deductibleVAT, fees: t.base.fees,
+          ttc: t.base.totalTTC, rs: t.base.withholding, net: t.base.netToPay,
+          currency: t.currency, rate: t.rate,
           status: purchaseStatus(p, company, '9999-12-31'), subject: p.subject || ''
         };
       });
@@ -1542,10 +1585,10 @@
     let ht = 0, remaining = 0, late = 0;
     mine.forEach(p => {
       const b = purchaseBalance(p, company);
-      ht = round3(ht + b.totals.totalHT);
+      ht = round3(ht + b.totals.base.totalHT);
       if (b.remaining > 0.0005) {
-        remaining = round3(remaining + b.remaining);
-        if (purchaseStatus(p, company, todayIso) === 'retard') late = round3(late + b.remaining);
+        remaining = round3(remaining + toBase(p, b.remaining, company));
+        if (purchaseStatus(p, company, todayIso) === 'retard') late = round3(late + toBase(p, b.remaining, company));
       }
     });
     const dates = mine.map(p => p.date).filter(Boolean).sort();
@@ -1558,7 +1601,7 @@
     return (data.purchases || [])
       .map(p => ({ p, t: purchaseTotals(p, company) }))
       .filter(x => x.t.withholding > 0.0005 && !x.p.withholdingCertificate)
-      .map(x => ({ id: x.p.id, supplier: name(x.p.supplierId), number: x.p.number || '', date: x.p.date, amount: x.t.withholding, rate: x.t.withholdingRate }))
+      .map(x => ({ id: x.p.id, supplier: name(x.p.supplierId), number: x.p.number || '', date: x.p.date, amount: x.t.base.withholding, rate: x.t.withholdingRate }))
       .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
   }
 
@@ -1666,8 +1709,8 @@
     let cost = 0, paid = 0;
     buys.forEach(p => {
       const t = purchaseTotals(p, company);
-      cost = round3(cost + t.totalHT + t.fees);
-      paid = round3(paid + purchaseBalance(p, company).paid);
+      cost = round3(cost + t.base.totalHT + t.base.fees);
+      paid = round3(paid + toBase(p, purchaseBalance(p, company).paid, company));
     });
     // Devis en cours : ce qui est proposé mais pas encore vendu, pour voir l'affaire en entier.
     const quotes = (data.documents || []).filter(d => d.projectId === projectId && d.type === 'devis' && d.status !== 'brouillon');
@@ -1700,7 +1743,7 @@
     });
     // Les achats rattachés au même client ET à la même affaire, s'il y en a une.
     const linked = (data.purchases || []).filter(p => rec && p.projectId && p.projectId === rec.projectId);
-    linked.forEach(p => { const t = purchaseTotals(p, company); cost = round3(cost + t.totalHT + t.fees); });
+    linked.forEach(p => { const t = purchaseTotals(p, company); cost = round3(cost + t.base.totalHT + t.base.fees); });
     const margin = round3(revenue - cost);
     const dates = invoices.map(d => d.date).filter(Boolean).sort();
     const months = dates.length ? Math.max(1, Math.round(daysBetween(dates[0], dates[dates.length - 1]) / 30) + 1) : 0;
@@ -1734,7 +1777,7 @@
     (data.purchases || []).filter(p => inPeriod(p.date, period && period.from, period && period.to)).forEach(p => {
       const t = purchaseTotals(p, company);
       // Le stock et les immobilisations ne sont pas des charges de la période.
-      const charge = round3(t.byDestination.charge + t.fees);
+      const charge = round3(t.base.byDestination.charge + t.base.fees);
       if (isFixedCategory(data, p.category)) fixed = round3(fixed + charge);
       else variable = round3(variable + charge);
     });
@@ -1824,8 +1867,13 @@
         if (limit && p.date > limit) return;
         const qty = Number(l.qty) || 0;
         if (!qty) return;
+        // Le coût d'entrée est en DEVISE DE BASE (10.1.0) : le coût moyen pondéré mélange des
+        // entrées de plusieurs achats, et le stock se valorise au bilan en dinars. Un composant
+        // payé 120 € entrait à 120 DT, donc la valeur du stock, le coût des ventes et la marge
+        // étaient faux ensemble et dans le même sens.
         out.push({ id: `buy-${p.id}-${i}`, date: p.date, itemId: c.id, label: c.label, qty,
-          unitCost: Number(l.unitPrice) || 0, source: 'achat', ref: p.number || '', docId: p.id, note: '' });
+          unitCost: toBase(p, Number(l.unitPrice) || 0, data.company || {}),
+          source: 'achat', ref: p.number || '', docId: p.id, note: '' });
       });
     });
 
@@ -2633,8 +2681,8 @@
         const t = purchaseTotals(p, company || (data.company || {}));
         const sup = (data.suppliers || []).find(s2 => s2.id === p.supplierId) || {};
         return { purchaseId: p.id, supplier: sup.name || '—', matricule: sup.matricule || '',
-          number: p.number || '', date: p.date, base: round3(t.totalTTC - t.fees),
-          rate: Number(p.withholdingRate) || 0, amount: t.withholding, certificate: !!p.withholdingCertificate };
+          number: p.number || '', date: p.date, base: round3(t.base.totalTTC - t.base.fees),
+          rate: Number(p.withholdingRate) || 0, amount: t.base.withholding, certificate: !!p.withholdingCertificate };
       })
       .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
     const heldBySupplier = {};
@@ -2983,7 +3031,11 @@
       out.push({
         id: p.id, kind: 'decaissement', date: p.date, accountId: p.accountId || fallback,
         label: `Règlement ${pu.number || 'sans numéro'}`, party: supplierName(pu.supplierId),
-        amount: -round3(Number(p.amount) || 0), method: p.method || '',
+        // Ce qui sort du compte sort en DINARS (10.1.0), comme l'encaissement client dix lignes
+        // plus haut : régler 500 € vide le compte de 1 700 DT, pas de 500. Sans ça, la trésorerie
+        // de la page et celle du grand livre se contredisaient — et c'est le test des états
+        // financiers qui l'a dit, pas la relecture.
+        amount: -round3(toBase(pu, Number(p.amount) || 0, company)), method: p.method || '',
         reference: p.reference || '', purchaseId: pu.id, reconciled: !!p.reconciled, source: 'achat'
       });
     }));
@@ -3234,7 +3286,7 @@
       const t = purchaseTotals(p, company);
       Object.keys(t.vatByRate).forEach(rate => {
         if (!byRate[rate]) byRate[rate] = { collected: 0, deductible: 0 };
-        byRate[rate].deductible = round3(byRate[rate].deductible + t.vatByRate[rate].deductible);
+        byRate[rate].deductible = round3(byRate[rate].deductible + t.base.vatByRate[rate].deductible);
       });
     });
     const collected = round3(sales.reduce((s, r) => s + r.tva, 0));
@@ -3357,9 +3409,9 @@
     const cogs = costOfGoodsSold(data, period);
     (data.purchases || []).filter(p => inPeriod(p.date, period && period.from, period && period.to)).forEach(p => {
       const t = purchaseTotals(p, company);
-      charges = round3(charges + t.byDestination.charge + t.fees);
-      stock = round3(stock + t.byDestination.stock);
-      immo = round3(immo + t.byDestination.immobilisation);
+      charges = round3(charges + t.base.byDestination.charge + t.base.fees);
+      stock = round3(stock + t.base.byDestination.stock);
+      immo = round3(immo + t.base.byDestination.immobilisation);
     });
     // L'achat d'une immobilisation n'est pas une charge, mais son AMORTISSEMENT en est une : sans lui,
     // le résultat de l'année d'un gros investissement serait artificiellement bon (3.5.0).
@@ -4026,16 +4078,19 @@
           const e = entrySet({ date: p.date, journal: 'AC', piece: num, tiers: sup, tiersId: p.supplierId || '', source: 'achat', docId: p.id, currency: cur, lettre: lettreAchat(p) });
           const label = `${p.kind === 'depense' ? 'Dépense' : 'Achat'} ${num}${sup ? ' — ' + sup : ''}`;
           const dest = { charge: acc.charges, stock: acc.achatsStock, immobilisation: acc.immobilisations };
-          Object.keys(t.byDestination).forEach(k => {
-            if (t.byDestination[k]) e.debit(dest[k] || acc.charges, `${label} (${k})`, t.byDestination[k], { destination: k });
+          // Tout ce qui entre dans un LIVRE est en devise de base (10.1.0) : une écriture porte la
+          // devise de la comptabilité, jamais celle de la facture du fournisseur. Le montant
+          // d'origine reste sur la pièce, et c'est elle qu'on rouvre pour le lire.
+          Object.keys(t.base.byDestination).forEach(k => {
+            if (t.base.byDestination[k]) e.debit(dest[k] || acc.charges, `${label} (${k})`, t.base.byDestination[k], { destination: k });
           });
-          if (t.fees) e.debit(acc.fraisAccessoires, `Frais accessoires ${num}`, t.fees);
-          if (t.deductibleVAT) e.debit(acc.tvaDeductible, `TVA déductible ${num}`, t.deductibleVAT);
+          if (t.base.fees) e.debit(acc.fraisAccessoires, `Frais accessoires ${num}`, t.base.fees);
+          if (t.base.deductibleVAT) e.debit(acc.tvaDeductible, `TVA déductible ${num}`, t.base.deductibleVAT);
           // TVA non déductible : elle n'est pas récupérable, elle grossit la charge.
-          const nonDeductible = round3(t.totalVAT - t.deductibleVAT);
+          const nonDeductible = round3(t.base.totalVAT - t.base.deductibleVAT);
           if (nonDeductible) e.debit(acc.charges, `TVA non déductible ${num}`, nonDeductible);
-          if (t.withholding) e.credit(acc.rsOperee, `Retenue à la source opérée ${num}`, t.withholding);
-          e.credit(cptFourn(p.supplierId), label, t.netToPay, { role: 'fournisseurs' });
+          if (t.base.withholding) e.credit(acc.rsOperee, `Retenue à la source opérée ${num}`, t.base.withholding);
+          e.credit(cptFourn(p.supplierId), label, t.base.netToPay, { role: 'fournisseurs' });
           out.push(...e.done());
         });
     }
@@ -5375,6 +5430,18 @@
       label: `${sansTaux.length} pièce${sansTaux.length > 1 ? 's' : ''} en devise sans taux de change`,
       detail: 'Tant que le taux manque, ces montants comptent comme des dinars : ton chiffre d\'affaires et ta TVA sont faux.',
       count: sansTaux.length, route: '#/factures', docs: sansTaux
+    });
+
+    // Le JUMEAU côté achats (10.1.0). Un achat n'avait aucune devise avant cette version : ceux qui
+    // en reçoivent une sans taux tombent dans le même trou, en pire — la TVA DÉDUCTIBLE part alors
+    // fausse dans une déclaration qu'on ne refait pas. Une ligne à part, parce que le geste qui la
+    // règle n'est pas au même endroit (règle 7.15.0 : ce qu'un écran nomme, il doit l'ouvrir).
+    const achatsSansTaux = (data.purchases || []).filter(p => missingRate(p, company));
+    if (achatsSansTaux.length) out.push({
+      id: 'taux-achat', level: 'danger',
+      label: `${plFr(achatsSansTaux.length, 'achat')} en devise sans taux de change`,
+      detail: 'Tant que le taux manque, ces montants comptent comme des dinars : ta TVA déductible et tes charges sont fausses.',
+      count: achatsSansTaux.length, route: '#/achats', purchases: achatsSansTaux
     });
 
     // Les licences que l'ÉDITEUR a émises et qui finissent dans les trente jours — sur son poste
