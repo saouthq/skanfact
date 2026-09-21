@@ -357,6 +357,35 @@ const étape = m => { pas++; console.log('\n' + pas + '. ' + m); };
   ok(trouve + ' écriture(s) trouvée(s) par le montant, et le champ garde « ' + q + ' »');
   await shot('03-recherche');
 
+  // ---------------------------------------------------------------- 6 bis. le numéro à l'ÉCRAN
+  étape('Le livre-journal montre le numéro écrit à la validation, pas un rang recompté par date (T-52)');
+  // FAC-E2E-1 est datée du 4 mars et validée APRÈS des pièces de mois postérieurs : le moteur
+  // recomptait 1..n par date et l'affichait « n° 1 », en poussant toutes les validées d'avant d'un
+  // cran. On lit la colonne N° de l'écran et on la confronte au livre sur le disque, pièce par pièce.
+  await win.click('#c-tabs button[data-tab="journal"]');
+  await win.waitForSelector('#lv-journal', { timeout: 8000 });
+  await win.selectOption('#lv-journal', 'VT');
+  await attendre(400);
+  L = await livre();
+  // L'extourne porte le MÊME numéro de pièce que son origine (à une autre date) : la clé est
+  // (pièce, date), et la date de l'écran est celle du calendrier français, JJ/MM/AAAA.
+  const cle = (piece, iso) => piece + '|' + iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4);
+  const numeroSurDisque = new Map(L.ecritures.filter(e => e.statut === 'validee' && e.journal === 'VT').map(e => [cle(e.piece, e.date), e.numero]));
+  const ecran = await win.evaluate(() => [...document.querySelectorAll('#view table.list tbody tr')]
+    .map(tr => [...tr.children].map(td => td.textContent.trim()))
+    .filter(c => c[0] && c[3]).map(c => ({ n: c[0], piece: c[3].replace(/\s+(contre-passation|extourne).*$/, ''), date: c[1] })));
+  const mienneCle = cle('FAC-E2E-1', mienne.date);
+  const vue = ecran.find(r => r.piece + '|' + r.date === mienneCle);
+  if (!vue) throw new Error('FAC-E2E-1 du ' + mienne.date + ' n\'apparaît pas dans le livre-journal filtré sur VT : ' + JSON.stringify(ecran.slice(0, 4)));
+  if (String(numeroSurDisque.get(mienneCle)) !== vue.n) {
+    throw new Error('l\'écran affiche « n° ' + vue.n + ' » pour FAC-E2E-1, le livre dit n° ' + numeroSurDisque.get(mienneCle));
+  }
+  const faux = ecran.filter(r => numeroSurDisque.has(r.piece + '|' + r.date) && String(numeroSurDisque.get(r.piece + '|' + r.date)) !== r.n);
+  if (faux.length) throw new Error('des validées changent de numéro à l\'écran : ' + faux.map(f => f.piece + ' → ' + f.n).join(', '));
+  if (numeroSurDisque.size < 2) throw new Error('le journal VT devrait porter plusieurs validées pour que la preuve compte');
+  ok('FAC-E2E-1 porte le n° ' + vue.n + ' à l\'écran comme sur le disque, et aucune des ' + numeroSurDisque.size + ' validées de VT n\'a bougé');
+  await win.selectOption('#lv-journal', '');
+
   // ---------------------------------------------------------------- 7. un guide
   étape('Écrire un guide, puis s\'en servir dans la grille');
   await win.evaluate(() => { location.hash = '#/reglages'; });

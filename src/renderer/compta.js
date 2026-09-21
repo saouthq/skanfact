@@ -405,30 +405,46 @@
 
   // ---------------------------------------------------------------- le livre-journal
   //
-  // Une pièce par (date, journal, numéro de pièce), numérotée 1..n dans l'ordre (date, pièce). Le
-  // numéro est DÉDUIT, donc mobile tant que la période est ouverte : une pièce datée en arrière
-  // décale les suivantes. Ce n'est pas un défaut à corriger, c'est la raison d'être de la clôture —
-  // et c'est écrit à l'écran, sinon un comptable qui voit deux numéros différents pour la même
-  // pièce à deux jours d'intervalle appelle.
+  // Une pièce par (date, journal, numéro de pièce), dans l'ordre (date, pièce). Le numéro dépend
+  // d'OÙ viennent les lignes, et les deux cas ne se confondent pas :
+  //
+  // - Des lignes du LIVRE (elles portent `ecritureId`) : le numéro est celui que la validation a
+  //   ÉCRIT (9.2.0 — il naît à la validation, par ordre de validation, et ne bouge plus). Un
+  //   brouillard n'en a pas : `null`, et l'écran met son badge. Recompter 1..n par date ici, c'est
+  //   ce que faisait la 9.1.0 : une pièce de mars validée en septembre passait « n° 1 » et poussait
+  //   toutes les validées d'avant d'un cran — sur l'écran d'un comptable, le numéro qu'il a vu la
+  //   veille avait changé (T-52).
+  // - Des lignes lues dans un PAQUET (pas d'`ecritureId`) : le numéro est DÉDUIT, 1..n, donc mobile
+  //   tant que la période est ouverte — une pièce datée en arrière décale les suivantes. Ce n'est
+  //   pas un défaut à corriger, c'est la raison d'être de la clôture. Le CSV porte bien un « N° »,
+  //   mais c'est celui que le client a déduit au moment de SON export : deux paquets de deux mois
+  //   peuvent donner le même numéro à deux pièces différentes, donc on recompte sur ce qu'on lit.
   function journalDepuisLignes(entries) {
     const by = {};
     const ordre = [];
     (entries || []).forEach(e => {
       const k = cleDePiece(e);
       if (!by[k]) {
-        by[k] = { key: k, date: txt(e.date), journal: txt(e.journal), piece: txt(e.piece), lignes: [], debit: 0, credit: 0 };
+        by[k] = { key: k, date: txt(e.date), journal: txt(e.journal), piece: txt(e.piece), lignes: [], debit: 0, credit: 0, fixe: 0 };
         ordre.push(k);
       }
       const p = by[k];
       p.lignes.push(e);
+      if (e.ecritureId) p.fixe = Math.max(p.fixe, Math.floor(num(e.numero)) || 0);
       p.debit = round3(p.debit + num(e.debit));
       p.credit = round3(p.credit + num(e.credit));
     });
+    const duLivre = ordre.some(k => by[k].lignes.some(e => e.ecritureId));
     const pieces = ordre.map(k => by[k])
       .sort((a, b) => a.date.localeCompare(b.date)
+        // Le même jour : les validées dans l'ordre de leur numéro, puis les brouillards.
+        || ((a.fixe ? 0 : 1) - (b.fixe ? 0 : 1)) || (a.fixe - b.fixe)
         || a.piece.localeCompare(b.piece, undefined, { numeric: true })
         || a.journal.localeCompare(b.journal))
-      .map((p, i) => ({ ...p, numero: i + 1, equilibree: round3(p.debit - p.credit) === 0 }));
+      .map((p, i) => {
+        const { fixe, ...reste } = p;
+        return { ...reste, numero: duLivre ? (fixe || null) : i + 1, equilibree: round3(p.debit - p.credit) === 0 };
+      });
     return {
       pieces,
       debit: round3(pieces.reduce((s, p) => s + p.debit, 0)),

@@ -21,6 +21,14 @@ corriger.** Version d'essai, dans la continuité de la 9.8.8.
 - **« Il manque 9 mois » sans livre, « 5 mois » avec, sur le même dossier** (T-47) : le compte sans
   livre réclamait le mois en cours et l'avenir. Une seule fonction (`moisManquants`) pour les deux
   états, qui s'arrête au mois dernier.
+- **Le livre-journal renumérotait les écritures validées par date** (T-52) : une pièce de mars
+  validée en septembre s'affichait « n° 1 » et poussait toutes les validées d'avant d'un cran — sur
+  l'écran d'un comptable, le numéro vu la veille avait changé. Le moteur recomptait 1..n sur des
+  lignes qui portaient pourtant chacune le numéro écrit à la validation (9.2.0). Les lignes du livre
+  affichent désormais ce numéro-là, tel quel, et filtrer sur un journal ne fait plus repartir le
+  compte à 1 ; un brouillard n'en a pas ; un paquet, lui, se recompte 1..n comme avant, parce que
+  chez le client le numéro est déduit. Test pur prouvé par réintroduction, et le parcours
+  `e2e:saisie` lit la colonne N° de l'écran pièce par pièce contre le livre sur le disque.
 
 ## 9.8.8-beta.2 — 21/09/2026
 

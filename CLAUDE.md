@@ -53,7 +53,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Une écriture **validée** ne se modifie jamais : elle se contre-passe, à la date du jour | 9.2.0 |
 | Une **extourne** n'est pas une contre-passation : l'originale reste dans son exercice, avec son numéro | 9.3.0, 9.8.0 |
 | Les **à-nouveaux** se calculent sur les écritures réelles, jamais sur les à-nouveaux précédents | 9.0.0, 9.8.0 |
-| Un **numéro** naît à la validation, et le contrôle passe AVANT l'attribution | 9.2.0 ; 6.0.0 — `nextNumber` |
+| Un **numéro** naît à la validation, et le contrôle passe AVANT l'attribution ; l'écran l'AFFICHE, il ne le recompte pas | 9.2.0 ; 6.0.0 — `nextNumber` ; 9.8.8 — T-52, le livre-journal qui renumérotait par date |
 | On pointe une **occurrence**, jamais une règle ; et le pense-bête dit qu'il n'est qu'un pense-bête | 7.21.0, 5.2.0, 9.4.6 |
 
 **Les tests**
@@ -4498,6 +4498,19 @@ vérifications silencieuses gardent le chemin qui a répondu ; et deux jumeaux m
 (7.3.0) : les en-têtes du relais retirés avant le repli (8.0.0) et la phrase grise de la bêta absente
 (7.25.0). Le fichier `.yml` se télécharge bien depuis la page de la release en GET (un HEAD répond
 401 : electron-updater n'en fait pas, mais un test à la main pourrait s'y tromper).
+
+**Et le numéro qui bougeait à l'écran (9.8.8-beta.3, T-52).** TEST-1, datée du 4 mars et validée le
+21 septembre, s'affichait « n° 1 » dans le livre-journal, et les six validées d'avant passaient 2..7.
+`journalDepuisLignes` recomptait 1..n par date sur toutes les lignes qu'on lui donne — juste pour un
+paquet (le client déduit ses numéros, 8.9.0), faux pour le livre, dont chaque ligne portait pourtant
+le numéro écrit à la validation. **Le moteur écrit, l'écran affiche** (7.21.0) : les lignes du livre
+(elles portent `ecritureId`) montrent leur numéro tel quel, un brouillard n'en a pas, et filtrer sur
+un journal ne fait plus repartir le compte à 1 ; un paquet se recompte 1..n comme avant, parce que
+deux paquets de deux mois peuvent donner le même « N° » à deux pièces différentes. Un journal se lit
+toujours par DATE : la pièce de mars reste en tête avec son n° 12 — c'est l'ordre de validation que
+le numéro raconte, pas celui du calendrier. Le parcours `e2e:saisie` lit désormais la colonne N° de
+l'écran pièce par pièce contre le livre sur le disque : la règle 9.2.0 était tenue dans le fichier
+et dans aucun écran.
 
 ## Pistes pour la suite (non demandées)
 

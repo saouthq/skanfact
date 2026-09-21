@@ -1720,6 +1720,29 @@ libellé vide en nommant le champ, et la fenêtre de confirmation dit « sans pi
 À VÉRIFIER avec le comptable pilote : la pièce (référence) est-elle obligatoire chez lui, ou seulement
 le libellé ? C'est lui qui tranche, pas nous (règle 9.1.1).
 
+### ~~T-52 · GRAVE · Le livre-journal renumérote les validées par date : TEST-1 passe « n° 1 », les six d'avant deviennent 2..7~~ — corrigé en 9.8.8-beta.3
+
+**Vu** sur la capture du 21/09 (Livre-journal, filtre AC) : TEST-1, datée du 04/03/2026 et validée
+à l'instant, s'affiche **N° 1** ; LOC-2026-08 et les cinq autres validées d'avant, qui portaient déjà
+leur numéro, s'affichent 2 à 7. Le comptable qui a vu « n° 3 » hier lit « n° 4 » aujourd'hui, sur une
+écriture validée, définitive, qu'il a peut-être déjà citée à son client.
+
+**Pourquoi** : `compta.journalDepuisLignes` recomptait 1..n dans l'ordre (date, pièce) sur TOUTES les
+lignes qu'on lui donne — juste pour un paquet (où le numéro est déduit, comme chez le client, 8.9.0),
+faux pour le livre, dont chaque ligne porte pourtant le numéro écrit à la validation
+(`lignesDuLivre` → `numero: e.numero`). L'écran l'ignorait. Et le filtre par journal faisait repartir
+le compte à 1.
+
+**Ce qui est juste** : le numéro d'une validée est celui que la validation a ÉCRIT, par ordre de
+validation et pas de date (9.2.0) — il ne bouge plus. Les lignes du livre (elles portent
+`ecritureId`) l'affichent tel quel ; un brouillard n'en a pas ; un paquet se recompte 1..n comme avant.
+Un journal se lit toujours par date : la pièce de mars reste en tête avec son n° 12, c'est l'ordre de
+validation que le numéro raconte, pas l'ordre du calendrier.
+
+**Règle violée** : 9.2.0 (« le numéro naît à la validation … il est écrit, et il ne bouge plus ») ;
+7.21.0 (« une donnée enregistrée et jamais affichée n'existe pas ») — le numéro était sur chaque
+ligne et l'écran en fabriquait un autre.
+
 ### Ce que la 9.8.8 a décidé, et ce qu'elle laisse À VÉRIFIER
 
 - **T-41, le tiers sur chaque ligne** : gardé. Que la ligne de TVA d'une facture porte le tiers de

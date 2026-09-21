@@ -581,4 +581,46 @@ t('T-44 : la copie externe emporte les livres et leurs ZIP, et la reprise sur un
   assert.ok(relu.livre && relu.livre.ecritures.length === 1, 'le livre repris n\'est pas lisible sur le poste neuf : ' + JSON.stringify(relu));
   assert.ok(fs.existsSync(path.join(ext, 'livres')), 'la reprise ne doit rien enlever à la clé');
 });
+
+// T-52 (9.8.8-beta.3) — TEST-1, datée du 4 mars et validée le 21 septembre, s'affichait « n° 1 »
+// dans le livre-journal, et les six validées d'avant passaient 2..7. Le moteur recomptait 1..n par
+// date sur des lignes qui portaient pourtant, chacune, le numéro ÉCRIT à la validation (9.2.0).
+t('T-52 : le livre-journal montre le numéro ÉCRIT à la validation, jamais un rang recompté par date', () => {
+  const livre = livreDeLExemple();
+  const validees = livre.ecritures.filter(e => e.statut === 'validee');
+  assert.ok(validees.length > 5, 'l\'exemple doit porter des validées');
+  const avant = new Map(validees.map(e => [e.id, e.numero]));
+  const max = Math.max(...validees.map(e => e.numero));
+  // Une pièce datée AVANT toutes les autres, validée après elles : elle prend le numéro suivant.
+  const premiere = validees.map(e => e.date).sort()[0];
+  const date = livre.exercice.du < premiere ? livre.exercice.du : premiere;
+  const tard = K.ajouterEcriture(livre, { date, journal: 'AC', piece: 'TEST-1', libelle: 'Test saisie',
+    lignes: [{ compte: '606', debit: 100 }, { compte: '401', credit: 100 }] }, 'test', 5000);
+  const brouillon = K.ajouterEcriture(livre, { date, journal: 'AC', piece: 'TEST-2', libelle: 'Brouillard',
+    lignes: [{ compte: '606', debit: 50 }, { compte: '401', credit: 50 }] }, 'test', 5001);
+  assert.ok(K.validerEcriture(livre, tard.id, 'test', 5002).ok, 'la validation doit passer');
+  assert.strictEqual(livre.ecritures.find(e => e.id === tard.id).numero, max + 1, 'le numéro naît à la validation, par ordre de validation');
+
+  const lj = K.journalDepuisLignes(K.lignesDuLivre(livre, { brouillard: true }));
+  const parPiece = new Map(lj.pieces.map(p => [p.lignes[0].ecritureId, p.numero]));
+  assert.strictEqual(parPiece.get(tard.id), max + 1, 'la pièce validée en dernier porte le dernier numéro, pas « 1 » parce qu\'elle est datée en premier');
+  avant.forEach((n, id) => assert.strictEqual(parPiece.get(id), n, 'une validée d\'avant a changé de numéro : ' + id));
+  assert.strictEqual(parPiece.get(brouillon.id), null, 'un brouillard n\'a pas de numéro');
+  // Un journal se lit par DATE, et le numéro dit l'ordre de validation — les deux informations
+  // coexistent, l'une ne réécrit pas l'autre : la pièce datée du premier jour reste au début, le
+  // même jour se range par numéro, et le brouillard du même jour passe après les validées.
+  const rang = id => lj.pieces.findIndex(p => p.lignes[0].ecritureId === id);
+  assert.ok(lj.pieces.slice(0, rang(tard.id)).every(p => p.date === date), 'la pièce datée du premier jour a été rangée après une date postérieure');
+  assert.ok(rang(tard.id) < rang(brouillon.id), 'un brouillard du même jour passe après les validées');
+  // Filtrer sur un journal ne fait pas repartir la numérotation à 1 (c'était le cas sur l'écran).
+  const seulAC = K.journalDepuisLignes(K.lignesDuLivre(livre).filter(l => l.journal === 'AC'));
+  seulAC.pieces.forEach(p => assert.strictEqual(p.numero, avant.get(p.lignes[0].ecritureId) || max + 1, 'le filtre a renuméroté ' + p.piece));
+
+  // Des lignes lues dans un PAQUET n'ont pas de numéro écrit : là, on recompte 1..n — et le « N° »
+  // du CSV (celui que le client a déduit chez lui) n'est pas repris tel quel.
+  const commis = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'cabinet', 'exemple-paquets.json'), 'utf8'));
+  const csv = commis.mois[commis.mois.length - 1].fichiers.find(f => f.chemin === 'journaux/ecritures.csv').texte;
+  const relues = K.entreesDepuisCsv(csv).map(l => ({ ...l, numero: l.numero + 40 }));
+  K.journalDepuisLignes(relues).pieces.forEach((p, i) => assert.strictEqual(p.numero, i + 1, 'un paquet se recompte 1..n'));
+});
 };
