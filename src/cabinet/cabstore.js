@@ -691,7 +691,9 @@ function createCabStore(dir, opts) {
   //
   // Un livre ouvert en écriture sur un autre poste ne s'écrase pas. Le verrou est **consultatif** et
   // il PÉRIME : un poste qui plante laisserait sinon un dossier verrouillé pour toujours, et c'est
-  // pire que le risque qu'il évite (il n'y a qu'un poste en 9.2.0 ; la vraie fusion vient en 9.9.0).
+  // pire que le risque qu'il évite. Depuis la 9.9.0 il n'est plus la protection principale : ce
+  // qui empêche un poste d'écraser l'autre est la RÉVISION relue avant d'écrire (plus bas), et
+  // le verrou ne couvre que la fenêtre de deux écritures SIMULTANÉES. Il se lève après coup.
   const LOCK_MS = 24 * 3600 * 1000;
   const lockPath = (dossier, annee, collisions) => livrePath(dossier, annee, collisions).replace(/\.json$/, '.lock');
   function lireVerrou(dossier, annee, collisions) {
@@ -773,11 +775,18 @@ function createCabStore(dir, opts) {
     // ligne ne s'affiche nulle part. C'est très exactement le défaut que la 3.2.0 a corrigé côté
     // entreprise, et la parade est la même : on RELIT le disque avant d'écrire, et si la révision
     // a bougé on n'écrit RIEN — on rend ce qu'on a trouvé, et l'appelant fusionne.
+    // Le contrôle se fait sur l'ENTÊTE EN CLAIR — mille vingt-quatre octets, aucune clé, aucun
+    // déchiffrement. Relire le livre entier à chaque enregistrement coûterait le prix d'une
+    // ouverture complète (159 ms mesurés en 9.1.0 sur 50 000 lignes) pour un geste dont le seuil
+    // est de 100 ms : le garde-fou aurait coûté plus cher que ce qu'il protège, et `npm run charge`
+    // le dit en deux lignes. On ne déchiffre QUE lorsqu'il y a vraiment conflit, c'est-à-dire
+    // presque jamais.
     const attendue = Number(livre.revision) || 0;
     if (!(opts && opts.force) && fs.existsSync(f)) {
-      const r = lireLivre(dossier, livre.exercice.annee, collisions);
-      if (r && r.livre && (Number(r.livre.revision) || 0) !== attendue) {
-        return { conflit: true, disque: r.livre, revision: Number(r.livre.revision) || 0, attendue };
+      const h = enteteLivre(f);
+      if (h && (Number(h.revision) || 0) !== attendue) {
+        const r = lireLivre(dossier, livre.exercice.annee, collisions);
+        if (r && r.livre) return { conflit: true, disque: r.livre, revision: Number(r.livre.revision) || 0, attendue };
       }
     }
     livre.revision = attendue + 1;
@@ -788,7 +797,16 @@ function createCabStore(dir, opts) {
     // chiffrée, et le nombre d'écritures d'un client n'est pas un secret, son contenu si.
     const buf = sealLivreBuffer(livre, st.salt, st.key, {
       dossier: livre.dossier, nom: dossier.name || '', exercice: livre.exercice.annee,
-      ecritures: livre.ecritures.length, ecritLe: stamp(now())
+      ecritures: livre.ecritures.length, ecritLe: stamp(now()),
+      // 9.9.0 — la révision, EN CLAIR. C'est elle qui rend le contrôle anti-écrasement gratuit :
+      // mille vingt-quatre octets lus au lieu d'un livre entier déchiffré. Elle ne dit rien du
+      // contenu — un compteur qui monte n'est pas un secret, les écritures le sont.
+      //
+      // Et elle est la SEULE chose que la 9.9.0 ajoute ici. `ecritPar` y avait sa place technique
+      // — l'écran aurait pu dire « dernier enregistrement par Amine » sans déchiffrer — mais le
+      // nom d'un collaborateur n'est pas l'identité du fichier, et un livre égaré sur une clé USB
+      // n'a pas à nommer qui travaille dans le cabinet. Il reste dans le corps chiffré.
+      revision: Number(livre.revision) || 0
     });
     // La version PRÉCÉDENTE est gardée, une génération, avant d'écrire la nouvelle. Ce n'est pas la
     // sauvegarde — c'est la copie externe qui l'est — mais c'est ce qui rattrape l'accident réel :

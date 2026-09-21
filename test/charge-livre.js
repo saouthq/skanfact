@@ -2,18 +2,22 @@
 //
 //   npm run charge
 //
-// POURQUOI IL PASSE AVANT LA 9.2.0, ET PAS APRÈS.
+// POURQUOI IL EST PASSÉ AVANT LA 9.2.0, ET POURQUOI IL RESTE.
 //
-// La 9.2.0 écrit `livre.json` : un fichier par dossier et par exercice, chiffré, réécrit en entier
+// Il a été écrit pour DÉCIDER un format : la 9.2.0 écrit `livre.json` : un fichier par dossier et par exercice, chiffré, réécrit en entier
 // à chaque validation d'écriture. Le format une fois livré chez un cabinet pilote ne se change plus
 // sans migration. Or personne n'a jamais mesuré ce que ce format coûte — et « on mesure avant
 // d'écrire un format, jamais après » est la seule raison d'être de ce script. S'il échoue, c'est la
 // 9.2.0 qui change, avant d'exister : découpage par mois, index séparé, corps binaire au lieu de
 // base64, journal d'ajouts plutôt que réécriture totale. Chacune de ces décisions coûte une heure
-// aujourd'hui et un chantier dans deux ans.
+// aujourd'hui et un chantier dans deux ans. C'est ce qui s'est passé : il a fait choisir le corps
+// binaire. Depuis, il ne décide plus, il SURVEILLE — un format livré chez un cabinet ne change plus
+// sans migration, et le rôle de ce script est maintenant de dire quand on s'en approche.
 //
 // CE QU'IL MESURE VRAIMENT. Le livre du cabinet est chiffré avec la même clé dérivée que
-// `cabinet-data.json` (scrypt N=2^15, AES-256-GCM, corps en base64). Mesurer un JSON en clair
+// `cabinet-data.json` (scrypt N=2^15, AES-256-GCM) mais posé autrement : entête en CLAIR sur une
+// ligne, puis un corps BINAIRE — c'est la décision que ce script a fait prendre en 9.1.0, et qu'il
+// mesurait encore en base64 jusqu'à la 9.9.1 (voir les primitives plus bas). Mesurer un JSON en clair
 // donnerait un chiffre qui n'existe nulle part : l'ouverture, c'est lire + déchiffrer + analyser +
 // valider, et l'écriture, c'est sérialiser + chiffrer + écrire atomiquement. On passe donc par les
 // primitives RÉELLES de `cabstore.js`, pas par une imitation.
@@ -23,6 +27,8 @@
 //   ajout + écriture atomique    <    100 ms   à chaque écriture validée : au-delà, la saisie rame
 //   balance de 60 dossiers       <  5 000 ms   le tableau de production du cabinet, en entier
 //   recherche globale            <  3 000 ms   « où est cette facture ? » sur tout le portefeuille
+//   enregistrer à trois postes   <    100 ms   (9.9.1) le contrôle anti-écrasement de la 9.9.0 ne
+//                                              doit pas se payer en confort de saisie
 //
 // Le script ÉCHOUE (exit 1) au premier seuil dépassé, mais il imprime les quatre : savoir lequel
 // passe et de combien vaut autant que savoir lequel tombe.
@@ -42,28 +48,44 @@ const SCRYPT = { N: 1 << 15, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
 const MARK = 'skanfact-cabinet';
 const deriveKey = (password, salt) => crypto.scryptSync(String(password), salt, 32, SCRYPT);
 
+// CORPS BINAIRE, entête en clair sur une ligne — les primitives de `sealLivreBuffer` /
+// `openLivreBuffer`, celles que le LIVRE utilise vraiment depuis la 9.2.0.
+//
+// Ce script a mesuré le base64 jusqu'à la 9.9.1, et c'était un défaut d'instrument, pas du code :
+// il avait été écrit AVANT le format, sa mesure avait décidé le corps binaire (SPEC-DATA-005), la
+// 9.2.0 l'avait écrit — et personne n'était revenu mettre l'instrument à jour. Il annonçait donc
+// « 174 ms pour un seuil de 100, le format doit changer avant d'être écrit » sur un format déjà
+// changé, et pour cette raison même. Un instrument qui mesure ce que le code n'utilise plus
+// annonce un défaut qui n'existe pas — c'est le jumeau de « un test écrit contre l'état du jour
+// décrit cet état, pas la règle », vu du côté des mesures.
 function sealWithKey(obj, salt, key) {
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
   const body = Buffer.concat([cipher.update(Buffer.from(JSON.stringify(obj), 'utf8')), cipher.final()]);
-  return {
-    [MARK]: 1, kdf: 'scrypt', salt: salt.toString('base64'), iv: iv.toString('base64'),
-    tag: cipher.getAuthTag().toString('base64'), data: body.toString('base64')
-  };
+  const head = Buffer.from(JSON.stringify({
+    [MARK]: 1, kdf: 'scrypt', salt: salt.toString('base64'),
+    iv: iv.toString('base64'), tag: cipher.getAuthTag().toString('base64')
+  }) + '\n', 'utf8');
+  return Buffer.concat([head, body]);
 }
-function openWithKey(env, key) {
-  const d = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(env.iv, 'base64'));
-  d.setAuthTag(Buffer.from(env.tag, 'base64'));
-  return JSON.parse(Buffer.concat([d.update(Buffer.from(env.data, 'base64')), d.final()]).toString('utf8'));
+function openWithKey(buf, key) {
+  const nl = buf.indexOf(0x0a);
+  const head = JSON.parse(buf.slice(0, nl).toString('utf8'));
+  const d = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(head.iv, 'base64'));
+  d.setAuthTag(Buffer.from(head.tag, 'base64'));
+  return JSON.parse(Buffer.concat([d.update(buf.slice(nl + 1)), d.final()]).toString('utf8'));
 }
 
 // Le contrôle annoncé : si `cabstore.js` change ses paramètres, la mesure ne veut plus rien dire.
+// Il vise maintenant les primitives du LIVRE, pas celles de `cabinet-data.json` — c'est le livre
+// qu'on mesure, et les deux ne se posent pas sur le disque de la même façon.
 (function verifierLesPrimitives() {
   const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'cabinet', 'cabstore.js'), 'utf8');
   const memes = [
     ['SCRYPT', 'const SCRYPT = { N: 1 << 15, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };'],
     ['aes-256-gcm', "crypto.createCipheriv('aes-256-gcm', key, iv)"],
-    ['base64', "data: body.toString('base64')"]
+    ['corps binaire du livre', 'return Buffer.concat([head, body]);'],
+    ['entête en clair', "}) + '\\n', 'utf8');"]
   ];
   const ecarts = memes.filter(([, ligne]) => !src.includes(ligne)).map(([nom]) => nom);
   if (ecarts.length) {
@@ -191,7 +213,11 @@ const mo = o => (o / 1024 / 1024).toFixed(1) + ' Mo';
 const chrono = (fn) => { const t = performance.now(); const r = fn(); return { ms: performance.now() - t, r }; };
 const mediane = (xs) => { const s = xs.slice().sort((a, b) => a - b); return s[Math.floor(s.length / 2)]; };
 
-const SEUILS = { ouverture: 1000, ecriture: 100, balance: 5000, recherche: 3000 };
+const SEUILS = { ouverture: 1000, ecriture: 100, balance: 5000, recherche: 3000,
+  // 9.9.1 — le geste d'un poste qui enregistre pendant que deux autres travaillent. Même seuil que
+  // l'écriture seule, et c'est volontaire : le garde-fou anti-écrasement de la 9.9.0 ne doit pas se
+  // payer en confort de saisie. Écrit avant la mesure, comme les quatre autres.
+  ecritureAdeux: 100 };
 const mesures = {};
 const echecs = [];
 
@@ -242,16 +268,15 @@ function juger(cle, titre, valeur, detail) {
   console.log(`  Réparti sur ${mois.length} mois (${Math.min(...Object.values(parMois))} à ${Math.max(...Object.values(parMois))} écritures) et ${jx.size} journaux`);
 
   const fichier = path.join(dossier, 'livre-2026.json');
-  const scelle = chrono(() => { fs.writeFileSync(fichier, JSON.stringify(sealWithKey(livre, salt, key)), 'utf8'); });
+  const scelle = chrono(() => { fs.writeFileSync(fichier, sealWithKey(livre, salt, key)); });
   const taille = fs.statSync(fichier).size;
   const clair = Buffer.byteLength(JSON.stringify(livre), 'utf8');
-  console.log(`  Sur le disque : ${mo(taille)} chiffré · ${mo(clair)} en clair · base64 ajoute ${((taille / clair - 1) * 100).toFixed(0)} %   (${ms(scelle.ms)})\n`);
+  console.log(`  Sur le disque : ${mo(taille)} chiffré · ${mo(clair)} en clair · corps BINAIRE — en base64 il ferait ${mo(clair * 4 / 3)}   (${ms(scelle.ms)})\n`);
 
   // ---- 2. ouverture
   console.log('Les quatre seuils');
   const ouv = chrono(() => {
-    const env = JSON.parse(fs.readFileSync(fichier, 'utf8'));
-    const l = openWithKey(env, key);
+    const l = openWithKey(fs.readFileSync(fichier), key);
     if (!isValidLivre(l)) throw new Error('le livre fabriqué ne passe pas son propre validateur');
     return l;
   });
@@ -273,7 +298,7 @@ function juger(cle, titre, valeur, detail) {
                  { compte: '6001', libelle: 'Charge', debit: 0, credit: 100, lettre: '' }]
       });
       const tmp = fichier + '.tmp';
-      fs.writeFileSync(tmp, JSON.stringify(sealWithKey(relu, salt, key)), 'utf8');
+      fs.writeFileSync(tmp, sealWithKey(relu, salt, key));
       fs.renameSync(tmp, fichier);
     });
     tmps.push(t.ms);
@@ -291,7 +316,7 @@ function juger(cle, titre, valeur, detail) {
   for (let i = 1; i < 60; i++) {
     const l = fabriquerLivre('MAT:' + pad(1000000 + i, 7) + 'A', 2026, LIGNES_ORDINAIRE);
     const f = path.join(dossier, `livre-2026-${pad(i, 2)}.json`);
-    fs.writeFileSync(f, JSON.stringify(sealWithKey(l, salt, key)), 'utf8');
+    fs.writeFileSync(f, sealWithKey(l, salt, key));
     fichiers.push(f);
   }
   const totalLignes = nbLignes + 59 * LIGNES_ORDINAIRE;
@@ -301,7 +326,7 @@ function juger(cle, titre, valeur, detail) {
   const bal = chrono(() => {
     let comptes = 0;
     fichiers.forEach(f => {
-      const l = openWithKey(JSON.parse(fs.readFileSync(f, 'utf8')), key);
+      const l = openWithKey(fs.readFileSync(f), key);
       const plates = [];
       l.ecritures.forEach(e => e.lignes.forEach(li => plates.push({
         account: li.compte, tiers: li.libelle, debit: li.debit, credit: li.credit,
@@ -324,7 +349,7 @@ function juger(cle, titre, valeur, detail) {
   const rech = chrono(() => {
     const trouves = [];
     fichiers.forEach(f => {
-      const l = openWithKey(JSON.parse(fs.readFileSync(f, 'utf8')), key);
+      const l = openWithKey(fs.readFileSync(f), key);
       l.ecritures.forEach(e => { if (e.piece === cherche) trouves.push({ dossier: l.dossier, id: e.id }); });
     });
     return trouves;
@@ -344,6 +369,66 @@ function juger(cle, titre, valeur, detail) {
   console.log(`    Livre-journal de 50 000 lignes    ${ms(lj.ms).padStart(11)}   ${lj.r.pieces.length.toLocaleString('fr-FR')} pièces`);
   console.log(`    Lettrage du compte 411            ${ms(lt.ms).padStart(11)}   ${lt.r.rows.length} tiers · ${lt.r.ouverts.toLocaleString('fr-FR')} pièces ouvertes`);
 
+
+  // ---- 6 bis. TROIS POSTES sur le même livre (9.9.1, F-9.9.1-01)
+  //
+  // La 9.9.0 a posé un garde-fou anti-écrasement : avant d'écrire, on relit ce qu'il y a sur le
+  // disque et on refuse d'écraser un travail plus récent. La question que cette mesure existe pour
+  // poser : **combien coûte ce garde-fou ?** Écrit naïvement — relire le LIVRE — il coûte une
+  // ouverture complète à chaque enregistrement, c'est-à-dire plus que le seuil d'écriture
+  // lui-même : le garde-fou aurait coûté plus cher que ce qu'il protège. Écrit sur l'ENTÊTE EN
+  // CLAIR, il coûte mille vingt-quatre octets.
+  //
+  // On mesure les DEUX, parce qu'un chiffre seul ne dit pas si on a bien choisi.
+  console.log('\nTrois postes sur le même livre (9.9.0 — le contrôle anti-écrasement)');
+  const enteteDe = f => {
+    const fd = fs.openSync(f, 'r');
+    const b = Buffer.alloc(1024);
+    const n = fs.readSync(fd, b, 0, 1024, 0);
+    fs.closeSync(fd);
+    const nl = b.slice(0, n).indexOf(0x0a);
+    return nl < 0 ? null : JSON.parse(b.slice(0, nl).toString('utf8'));
+  };
+  // Le fichier du gros dossier est en base64 (une seule ligne JSON) : on en pose une variante à
+  // entête en clair pour mesurer la lecture d'entête sur le MÊME volume de données.
+  const fEntete = path.join(dossier, 'livre-entete.json');
+  {
+    const iv = crypto.randomBytes(12);
+    const c = crypto.createCipheriv('aes-256-gcm', key, iv);
+    const body = Buffer.concat([c.update(Buffer.from(JSON.stringify(relu), 'utf8')), c.final()]);
+    const tete = { [MARK]: 1, kdf: 'scrypt', salt: salt.toString('base64'), iv: iv.toString('base64'),
+      tag: c.getAuthTag().toString('base64'), revision: 42, ecritures: relu.ecritures.length };
+    fs.writeFileSync(fEntete, Buffer.concat([Buffer.from(JSON.stringify(tete) + '\n', 'utf8'), body]));
+  }
+  const tEntete = [], tLivre = [];
+  for (let i = 0; i < 20; i++) {
+    tEntete.push(chrono(() => enteteDe(fEntete)).ms);
+    tLivre.push(chrono(() => openWithKey(fs.readFileSync(fichier), key)).ms);
+  }
+  const mEntete = mediane(tEntete), mLivre = mediane(tLivre);
+  console.log(`  ✓ Contrôle par l'ENTÊTE en clair      ${ms(mEntete).padStart(11)}   1 024 octets, aucune clé — c'est ce que fait la 9.9.0`);
+  console.log(`  ${mLivre < SEUILS.ecriture ? '·' : '✗'} Contrôle en relisant le LIVRE       ${ms(mLivre).padStart(11)}   ${mLivre >= SEUILS.ecriture
+    ? 'au-dessus du seuil d\'écriture à lui seul : le garde-fou aurait coûté plus cher que ce qu\'il protège'
+    : 'tenable, mais ' + Math.round(mLivre / Math.max(mEntete, 0.01)) + ' fois plus cher pour rien'}`);
+  mesures.controleEntete = mEntete;
+  // Le geste complet d'un poste qui enregistre pendant que deux autres travaillent : contrôle
+  // d'entête + écriture. C'est LUI qui doit tenir sous le seuil, pas ses moitiés.
+  const tTrois = [];
+  for (let i = 0; i < 20; i++) {
+    tTrois.push(chrono(() => {
+      enteteDe(fEntete);                                   // le contrôle de révision
+      const tmp = fEntete + '.tmp';
+      const iv = crypto.randomBytes(12);
+      const c = crypto.createCipheriv('aes-256-gcm', key, iv);
+      const body = Buffer.concat([c.update(Buffer.from(JSON.stringify(relu), 'utf8')), c.final()]);
+      const tete = { [MARK]: 1, kdf: 'scrypt', salt: salt.toString('base64'), iv: iv.toString('base64'),
+        tag: c.getAuthTag().toString('base64'), revision: 43 + i, ecritures: relu.ecritures.length };
+      fs.writeFileSync(tmp, Buffer.concat([Buffer.from(JSON.stringify(tete) + '\n', 'utf8'), body]));
+      fs.renameSync(tmp, fEntete);
+    }).ms);
+  }
+  juger('ecritureAdeux', 'Enregistrer à trois postes', mediane(tTrois),
+    'contrôle de révision + écriture, corps binaire · le geste entier, pas ses moitiés');
 
   // ---- 7. si l'écriture a échoué : QUEL levier suffit ?
   //
@@ -391,10 +476,11 @@ function juger(cle, titre, valeur, detail) {
 
   console.log('');
   if (echecs.length) {
-    console.log('VERDICT — le format de la 9.2.0 doit changer AVANT d\'être écrit :');
+    console.log('VERDICT — un seuil est dépassé. Le format de SPEC-DATA-005 est LIVRÉ : ce qui change\n'
+    + 'maintenant se migre. Lis les leviers mesurés ci-dessus avant de toucher à quoi que ce soit.');
     echecs.forEach(e => console.log('  · ' + e));
     console.log('');
     process.exit(1);
   }
-  console.log('Les quatre seuils sont tenus : le format de SPEC-DATA-005 peut être écrit tel quel.\n');
+  console.log('Les cinq seuils sont tenus : le format de SPEC-DATA-005, tel qu\'il est livré, les tient.\n');
 })();

@@ -12214,8 +12214,13 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       // l'a fait. Une assertion probabiliste n'a rien à faire dans une suite qui décide d'une
       // publication. La liste exacte est plus stricte, en plus : elle attrape TOUT champ ajouté
       // sans réfléchir, pas seulement un numéro de compte.
+      // 9.9.0 ajoute `revision`, et elle seule : c'est un COMPTEUR, pas du contenu, et c'est elle
+      // qui rend le contrôle anti-écrasement gratuit (mille vingt-quatre octets au lieu d'un livre
+      // déchiffré, mesuré par `npm run charge`). `ecritPar` a été REFUSÉ ici pour la même règle :
+      // le nom d'un collaborateur n'est pas l'identité du fichier, et un livre égaré sur une clé
+      // USB n'a pas à nommer qui travaille dans le cabinet.
       assert.deepStrictEqual(Object.keys(tete).sort(),
-        ['ecritLe', 'ecritures', 'dossier', 'exercice', 'iv', 'kdf', 'nom', 'salt', 'skanfact-livre', 'tag'].sort(),
+        ['ecritLe', 'ecritures', 'dossier', 'exercice', 'iv', 'kdf', 'nom', 'revision', 'salt', 'skanfact-livre', 'tag'].sort(),
         'l\'entête en clair ne porte que ce qui identifie le fichier — rien du contenu');
 
       const r = st.lireLivre(d, 2026);

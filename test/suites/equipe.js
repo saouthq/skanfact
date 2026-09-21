@@ -419,6 +419,59 @@ t('9.9.0 : deux postes sur un même livre — le second ne peut pas écraser le 
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+t('9.9.1 : le contrôle anti-écrasement se paie sur l\'ENTÊTE, pas sur le livre entier', () => {
+  // Relire le LIVRE avant chaque enregistrement coûterait une ouverture complète — 90 à 160 ms sur
+  // 50 000 lignes, mesurés par `npm run charge`, pour un geste dont le seuil est de 100 ms. Le
+  // garde-fou aurait coûté plus cher que ce qu'il protège. L'entête est en clair : mille vingt-
+  // quatre octets, aucune clé, 0,1 ms. Ce test tient les deux moitiés — la révision EST dans
+  // l'entête, et c'est elle que le contrôle lit.
+  const fs = require('fs'); const os = require('os'); const path = require('path');
+  const { createCabStore } = require('../../src/cabinet/cabstore.js');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'equipe3-'));
+  const store = createCabStore(dir);
+  store.create('motdepasse-essai');
+  const dossier = { id: 'D1', name: 'Client' };
+  const idx = store.folderIndex([dossier]);
+  const l = livre('D1', 2026); piece(l, { id: 'a' }, true);
+  const r1 = store.ecrireLivre(dossier, l, idx);
+  const h1 = store.enteteLivre(r1.fichier);
+  assert.ok(h1, 'l\'entête du livre ne se lit plus sans la clé');
+  assert.strictEqual(h1.revision, 1, 'l\'entête ne porte pas la révision : le contrôle devrait déchiffrer le livre entier');
+  piece(l, { id: 'b' }, true);
+  store.ecrireLivre(dossier, l, idx);
+  assert.strictEqual(store.enteteLivre(r1.fichier).revision, 2, 'la révision de l\'entête ne monte pas');
+
+  const src = lireSource('src', 'cabinet', 'cabstore.js')
+    .replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter(x => !/^\s*\/\//.test(x)).join('\n');
+  const i = src.indexOf('function ecrireLivre(');
+  const corps = src.slice(i, src.indexOf('\n  }', i));
+  assert.ok(/const h = enteteLivre\(f\);/.test(corps),
+    'le contrôle de révision ne passe plus par l\'entête : il déchiffrerait le livre à chaque enregistrement');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+t('9.9.1 : le test de charge mesure les primitives que le LIVRE utilise vraiment', () => {
+  // Il a mesuré le base64 jusqu'ici, alors que le livre est en corps binaire depuis la 9.2.0 —
+  // décidé par cette mesure même. Il annonçait donc « 174 ms pour un seuil de 100, le format doit
+  // changer avant d'être écrit » sur un format déjà changé pour cette raison. Un instrument qui
+  // mesure ce que le code n'utilise plus annonce un défaut qui n'existe pas.
+  const charge = lireSource('test', 'charge-livre.js');
+  // On juge la FONCTION DE SCELLEMENT, pas le fichier : il porte aussi un banc de comparaison qui
+  // écrit délibérément du base64 pour mesurer ce que ça coûterait. Un test qui interdit un MOT
+  // accuse du code juste (9.4.0).
+  const i = charge.indexOf('function sealWithKey(');
+  const seal = charge.slice(i, charge.indexOf('\n}', i));
+  assert.ok(i > 0 && /return Buffer\.concat\(\[head, body\]\);/.test(seal),
+    'le test de charge ne scelle plus comme le livre : sa mesure ne porte pas sur ce qu\'elle annonce');
+  assert.ok(!/data: body\.toString\('base64'\)/.test(seal),
+    'le test de charge est revenu au base64 — ce n\'est pas ce que le livre écrit');
+  // Et son garde-fou vise les primitives du LIVRE, pas celles de `cabinet-data.json`.
+  assert.ok(/\['corps binaire du livre', 'return Buffer\.concat\(\[head, body\]\);'\]/.test(charge),
+    'le contrôle de dérive du test de charge ne surveille plus le bon scellement');
+  // Le cinquième seuil existe, et il est écrit AVANT la mesure comme les quatre autres.
+  assert.ok(/ecritureAdeux: 100/.test(charge), 'le seuil « enregistrer à trois postes » a disparu');
+});
+
 t('9.9.0 : un livre venu d\'ailleurs se lit sans jamais toucher à son fichier', () => {
   const fs = require('fs'); const os = require('os'); const path = require('path');
   const { createCabStore } = require('../../src/cabinet/cabstore.js');

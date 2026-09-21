@@ -7,6 +7,29 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 9.9.1 — 21/09/2026
+
+**Entretien.** Aucune fonction nouvelle — c'est la règle : une version sur quatre rembourse au lieu
+d'ajouter, et elle est écrite d'avance précisément parce que c'est quand on est pressé qu'on la saute.
+
+- **Le contrôle anti-écrasement de la 9.9.0 se paie sur l'ENTÊTE, pas sur le livre entier.** Mesuré :
+  relire le livre coûte 90 à 160 ms sur 50 000 lignes, pour un geste dont le seuil est de 100 ms — le
+  garde-fou aurait coûté plus cher que ce qu'il protège. L'entête est en clair : **0,1 ms**. Le livre
+  ne se déchiffre que lorsqu'il y a vraiment conflit, c'est-à-dire presque jamais.
+- **`npm run charge` mesurait un format que le livre n'utilise plus.** Il avait été écrit avant le
+  format, sa mesure avait fait choisir le corps binaire, la 9.2.0 l'avait écrit — et personne n'était
+  revenu mettre l'instrument à jour. Il annonçait donc « 174 ms pour un seuil de 100, le format doit
+  changer avant d'être écrit » sur un format déjà changé, et pour cette raison même. Corrigé, avec un
+  **cinquième seuil** : « enregistrer à trois postes » (contrôle de révision + écriture), écrit avant
+  la mesure comme les quatre autres. Les cinq sont tenus : 166 / 85 / 822 / 707 / 65 ms.
+- **`ecritPar` a été refusé dans l'entête en clair.** Techniquement pratique, mais le nom d'un
+  collaborateur n'est pas l'identité du fichier : un livre égaré sur une clé USB n'a pas à nommer qui
+  travaille dans le cabinet. Il reste dans le corps chiffré.
+- **`CLAUDE.md` et le cahier relus** : la fusion n'est plus « à venir en 9.9.0 », le verrou n'est plus
+  la protection principale, le Cabinet ne « ne tient pas encore de comptabilité », et les chiffres des
+  instruments sont ceux d'aujourd'hui (2 107 boutons, 883 colonnes, 405 colonnes côté entreprise).
+- `npm audit --omit=dev` : **0 faille** dans ce qui est livré. Electron 44, à jour.
+
 ## 9.9.0 — 21/09/2026
 
 **Le cabinet à plusieurs.** Plusieurs collaborateurs sur un cabinet, sans que l'un efface le travail

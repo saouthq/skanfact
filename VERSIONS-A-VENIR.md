@@ -18,18 +18,21 @@ En cas de contradiction, `DIRECTION.md` fait foi, puis `CAHIER-DES-CHARGES.md`, 
 
 ---
 
-## Où on en est (16/09/2026)
+## Où on en est (21/09/2026)
 
 - **SkanFact Entreprise 9.0.0** : neuf modules et vingt et une pages livrés — ventes, achats,
   trésorerie, stock, immobilisations, paie, marges, statistiques, comptabilité. **Passe en
   entretien** : plus aucun écran neuf n'y est ajouté (`DIRECTION.md`).
-- **SkanFact Cabinet 9.0.0** : reçoit les paquets, recalcule leurs empreintes, relance, suit les
-  échéances et exporte les écritures en CSV. **Ne tient pas encore de comptabilité.**
+- **SkanFact Cabinet 9.9.0** : il TIENT la comptabilité. Livre par dossier et par exercice (9.2.0),
+  saisie au kilomètre (9.3.0), licence (9.4.0), banque et rapprochement (9.5.0), déclaration
+  mensuelle (9.6.0), immobilisations et inventaire (9.7.0), clôture d'exercice et flux retour
+  (9.8.0), et le cabinet à plusieurs (9.9.0 — collaborateurs, droits par dossier, deux postes qui
+  ne s'écrasent plus, tableau de production).
 - **Plateforme** : écrite, testée contre le vrai schéma D1 sur SQLite. *(Mis à jour le 17/09/2026 :
   la clé de réponse est embarquée depuis la 9.4.1 — la révocation s'applique chez tout client à
   jour. Reste, côté Skander : les réglages Cloudflare et la première vente.)*
 - **Clients payants : zéro.** Trois utilisateurs, tous de la famille : Skander, son père, son frère.
-- **Prochaine version : 9.1.0** — l'outillage, puis les livres lus dans les paquets.
+- **Prochaine version : 9.10.0** — la révision et les questions, puis la 10.0.0.
 - **Ce qui décide de la suite** : J0 le 15/10/2026, et c'est une démarche, pas du code.
 
 ---
@@ -51,7 +54,7 @@ En cas de contradiction, `DIRECTION.md` fait foi, puis `CAHIER-DES-CHARGES.md`, 
 | **9.7.0** | Immobilisations et stocks | 10 | Intention | 5 j · 10 j |
 | **9.8.0** | La clôture d'exercice | 15 | Intention | 13 j · 30 j |
 | ~~**9.9.0**~~ | ~~Le cabinet à plusieurs~~ | 8 | Intention | **livré** 21/09/2026 |
-| *9.9.1* | *Entretien (hors des 13 demandées)* | *4* | *Intention* | *3 j · 6 j* |
+| ~~*9.9.1*~~ | ~~*Entretien (hors des 13 demandées)*~~ | *4* | *Intention* | **livré** 21/09/2026 |
 | **9.10.0** | La révision et les questions | 10 | Intention | 10 j · 20 j |
 | **10.0.0** | La liasse et l'annuel | 11 | Esquisse | 10 j · 20 j |
 
@@ -682,7 +685,7 @@ le même jour ? »
 
 ---
 
-## 9.9.1 — Entretien *(hors des treize demandées)*
+## 9.9.1 — Entretien *(hors des treize demandées)* — **LIVRÉE le 21/09/2026**
 
 | | |
 |---|---|

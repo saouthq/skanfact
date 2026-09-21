@@ -1339,7 +1339,11 @@ antérieure à la 9.2.0 ») / refus `ERR-CAB-030` en rouge avec le dossier nomm�
 
 - `livre.json` : SPEC-DATA-005 ; **verrouillage** (9.2.0) : un fichier `livre-<AAAA>.lock` `{ deviceId,
   deviceName, depuis }` posé à l'ouverture en écriture, ignoré s'il a plus de 24 h, avec le message
-  `ERR-CAB-022` ; **fusion** : aucune en 9.2.0 (un poste), 9.9.0 reprend `mergeData` ; **épinglage** :
+  `ERR-CAB-022`, repris par « forcer » depuis la 9.9.0 ; **révision** (9.9.0) : `revision` dans
+  l'entête EN CLAIR, relue avant chaque écriture — c'est elle qui empêche un poste d'écraser
+  l'autre, le verrou ne couvrant que deux écritures simultanées ; **fusion** (9.9.0) :
+  `compta.fusionnerLivres`, une validée ne se fusionne jamais et n'est jamais perdue ;
+  **épinglage** :
   SPEC-DATA-004b.
 - **Import du plan de comptes** (SPEC-FMT-008, CSV, colonnes **par nom**, `;` ou tabulation, BOM
   toléré, guillemets doublés) : `Compte` (obligatoire), `Libellé` (obligatoire), `Nature`
@@ -2284,7 +2288,7 @@ une touche.
 |---|---|
 | « Valider » attribue `numero` (continu, par ordre de validation, jamais par date — invariant 3 de SPEC-DATA-005) ; **irréversible** ; `audit[]` reçoit qui / quand | Validation pièce par pièce, ou **par journal et par mois** en un geste : *comptable* (son habitude) |
 | Une validée n'a ni « Modifier » ni « Supprimer » (SPEC-UI-CAB-005) ; seulement « Contre-passer » (miroir, `contrepasseDe`) et « Extourner » (miroir au 1er du mois suivant, `extourneDe`) | La date de la contre-passation : le jour du geste, ou la date de l'écriture d'origine : *comptable* |
-| Un brouillard se modifie, se supprime, se cherche ; la pastille « brouillard » et l'italique le distinguent partout | Qui a le droit de valider : reporté à 9.9.0 (rôles) — en 9.3.0, le poste |
+| Un brouillard se modifie, se supprime, se cherche ; la pastille « brouillard » et l'italique le distinguent partout | Qui a le droit de valider : **livré en 9.9.0** (rôles par dossier, porte unique `droitBlock`) |
 | Un mois **clôturé côté client** (paquet définitif) n'empêche pas une écriture du cabinet : ce sont deux clôtures (`DIRECTION.md`) | — |
 
 **SPEC-UI-CAB-012 — guides d'écritures et abonnements**
@@ -2682,7 +2686,7 @@ Comptable  → chaque client : « renvoie-moi tes mois » → les dossiers revie
 
 | Limite | Valeur | Pourquoi c'est une décision et pas un oubli | Ce qui la lèverait |
 |---|---|---|---|
-| Multi-utilisateur | **à tour de rôle**, jamais simultané (3.2.0) | le danger du partage est le silence ; une fusion par identifiant avec archive vaut mieux qu'un verrou réseau qu'on contourne | 9.9.0 : verrou par livre côté cabinet ; un serveur seulement si un cabinet dit oui |
+| Multi-utilisateur | **à tour de rôle**, jamais simultané (3.2.0) | le danger du partage est le silence ; une fusion par identifiant avec archive vaut mieux qu'un verrou réseau qu'on contourne | **livré en 9.9.0** : révision relue avant d'écrire, fusion qui ne perd aucune validée, verrou consultatif qui se lève ; un serveur seulement si un cabinet dit oui |
 | Données sur un serveur | **aucune** — la plateforme ne connaît que clés, postes, ventes | « jamais de données en otage » ; l'app survit à son éditeur | rien ne le lèvera |
 | Révocation | **à la prochaine connexion**, et seulement si la version embarque `reponse` | vérification hors ligne = pas de kill switch, c'est le prix de la promesse inverse | rien ; c'est écrit en orange dans la console |
 | Listes de la console | `LIMIT 500` partout | une console d'un seul éditeur ; au-delà de 500 licences, c'est un autre logiciel | pagination P 0.3 si le jalon des 200 licences est atteint |

@@ -66,6 +66,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un montant qui se **divise sans reste** ne prouve rien d'un arrondi : les DONNÉES du test comptent autant que sa forme | 9.6.1 |
 | Une **réexportation** se prouve par l'identité d'objet, jamais par le résultat | 9.6.1 |
 | Une preuve par réintroduction ne vaut que sur un lot **VERT** : sinon on mesure le vide | 9.7.0 |
+| Quand une **mesure fait changer le code**, c'est l'INSTRUMENT qui se relit en premier : sinon il annonce un défaut qui n'existe plus | 9.9.1 — `npm run charge` mesurait le base64 d'un livre devenu binaire par sa faute |
 | Un **instrument qui n'ATTEINT pas l'écran** annonce « tout va bien » : l'état par défaut de l'objet qu'on ouvre cache la page autant que l'onglet par défaut | 9.8.8 — T-55, quatre écrans sur onze ; 9.4.3 |
 | Un test **trop LARGE** laisse passer le défaut, aussi sûrement qu'un test trop étroit accuse du code juste | 9.9.0 — la seconde piste d'audit qui satisfaisait l'assertion, la tranche qui avalait la porte ; 9.4.7 |
 | **Élargir** une sonde se prouve dans les DEUX sens : qu'elle voie le défaut, et qu'elle ne voie rien ailleurs | 9.8.8 — T-49 bis, 28 accusations sur du code juste |
@@ -591,7 +592,7 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:partage` | **partager une entreprise déjà saisie** : deux applications, deux profils, un emplacement commun — on partage, le second poste rejoint sans assistant, et ce que l'un enregistre l'autre le voit |
 | `npm run e2e:actions` | **une seule porte par ligne** : un menu d'actions écrites en toutes lettres et illustrées sur huit listes, un bouton qui ouvre ET referme, qui ne vole pas le clic de la ligne, la question posée avant d'agir, et « Accepter et facturer » qui ouvre le brouillon |
 | `npm run e2e:aide` | **l'Aide, mesurée** : le plan (sept sections, trente-deux articles, sept couleurs), la pastille qui descend à sa section sans dupliquer le plan, le fil d'Ariane sur UNE ligne, « suivant » dans la colonne de l'article, le geste qui mène à sa page, la recherche classée et surlignée, et le sommaire d'un article long (absent d'un article court) |
-| `npm run e2e:colonnes` | **les colonnes alignées** : l'en-tête de chaque colonne de chaque tableau comparé à ses valeurs, sur 19 pages et tous leurs onglets (392 colonnes) |
+| `npm run e2e:colonnes` | **les colonnes alignées** : l'en-tête de chaque colonne de chaque tableau comparé à ses valeurs, sur 19 pages et tous leurs onglets (**405 colonnes**, mesuré le 21/09/2026) |
 | `npm run e2e:entetes` | **les barres d'actions mesurées** : aucun contrôle d'en-tête étiré sur toute la largeur, aucune barre empilée sur trois rangées (21 pages) |
 | `npm run e2e:beta` | **le canal bêta** : la case décochée à l'installation, la question avant de cocher, le refus qui décoche vraiment, la sauvegarde « avant-beta » écrite sur le disque, et le retour en arrière sans question |
 | `npm run e2e:depot` | **public ou privé** : `src/depot.js` est VRAIMENT basculé en privé, l'application ouverte, le champ jeton doit revenir — puis repartir au retour au public (le fichier est restauré quoi qu'il arrive) |
@@ -600,7 +601,7 @@ Ils vivent dans **`test/e2e/`** et se lancent par `npm run e2e:<nom>` (sous `xvf
 | `npm run e2e:livres` | **les livres comptables** : chaque compte du grand livre avec son solde progressif qui finit sur le total, le sélecteur de compte, la balance dont les six totaux tombent juste, l'auxiliaire clients, la case « un sous-compte par tiers » qui donne 411001… et les fige sur les fiches, le livre-journal numéroté et son centralisateur, une OD refusée puis enregistrée, le lettrage qui ouvre sa pièce, les états financiers équilibrés, l'à-nouveau de janvier, l'état de rapprochement à écart nul, la TFP dans les barèmes |
 | `npm run e2e:justificatif` | **le justificatif se joint avant toute saisie** : sélecteur de fichier remplacé dans le processus principal, une photo jointe sur un achat VIDE, enregistrée avec la pièce, retrouvée sur le disque et dans la liste (📎), un second fichier sur la pièce rangée, une pièce abandonnée qui ne laisse pas de copie, la lecture d'une photo qui redessine sans perdre la pièce, et le même geste sur un devis neuf |
 | `npm run e2e:cabinet-jour1` | **le premier jour d'un comptable** : l'instrument qui MESURE ce qu'il voit, dans l'ordre où il le voit — 35 écrans photographiés du mot de passe à l'Aide, et six règles qui tombent (un bouton hors de l'écran, un bouton qui ressemble à du texte, un état vide sans geste, un champ de saisie sans bulle « i », une boîte sans étiquette, un débordement horizontal). `dist-e2e/cabinet-premier-jour/mesures.json` |
-| `npm run e2e:cabinet-rendu` | **le rendu du Cabinet, mesuré** : les trois sondes de l'app entreprise (contraste et débordement des boutons, alignement des colonnes, barres d'en-tête) braquées sur TOUS ses écrans et TOUS leurs onglets, en clair et en sombre, à 1440 et à 1280 — 1 024 boutons, 777 colonnes. Elles vivent en un seul exemplaire dans `harnais.js` : c'est leur absence côté Cabinet qui l'avait laissé dériver |
+| `npm run e2e:cabinet-rendu` | **le rendu du Cabinet, mesuré** : les trois sondes de l'app entreprise (contraste et débordement des boutons, alignement des colonnes, barres d'en-tête) et la quatrième (l'écart d'ENCRE entre un bouton et ce qui le touche, 9.8.3) braquées sur TOUS ses écrans et TOUS leurs onglets, en clair et en sombre, à 1440 et à 1280 — **2 107 boutons, 883 colonnes, 1 087 écarts** (mesuré le 21/09/2026). Elles vivent en un seul exemplaire dans `harnais.js` : c'est leur absence côté Cabinet qui l'avait laissé dériver |
 | `npm run e2e:declaration` | **la déclaration du mois** : quatre cases « — » avec leur raison (jamais un zéro), un chiffre ouvert sur ses pièces, un mois DÉJÀ déclaré par le client qui montre quand même sa collectée et dont le bouton s'éteint en disant pourquoi, l'écriture passée en brouillard au dernier jour d'un mois libre, les deux pointages dans l'ordre puis défaits, et le refus de refaire une déposée |
 | `npm run e2e:cloture` | **la clôture et le FLUX RETOUR, dans les DEUX applications** : les six contrôles qui nomment sans bloquer, une clôture définitive et tracée, une réouverture refusée sans motif, l'exercice suivant qui s'ouvre sans doubler ses à-nouveaux, le `.skanclose` écrit sur le disque (cloture.json, états HTML et PDF, manifeste, signature), puis le client qui l'importe — origine vérifiée, verrou posé ou son attente EXPLIQUÉE, et **le même résultat des deux côtés au millime** |
 | `npm run e2e:immobilisations` | **les biens et le stock** : une acquisition venue d'un paquet qui remonte SANS fiche et propose de la créer (jamais d'office), le plan visible pendant la saisie, un dégressif sans taux refusé en nommant le taux, les dotations passées en brouillard au 31/12 et le bouton qui s'éteint, la modification d'un bien dont la dotation est écrite refusée en nommant le geste, un inventaire collé depuis un tableur et sa variation dans le bon sens |
@@ -4676,6 +4677,38 @@ Le test qui compte est `npm run e2e:cabinet-equipe` : deux postes du MÊME cabin
 par la copie externe — deux cabinets créés séparément ont deux sels, donc deux clés, et ne peuvent
 pas lire les livres l'un de l'autre), deux collaborateurs, les droits tenus dans les deux sens, et la
 fusion qui ne perd aucune validée sans toucher au fichier de l'autre poste.
+
+### 9.9.1 — L'entretien : ce que la mesure rembourse
+
+*Une version sur quatre ne porte aucune fonction nouvelle, par règle (`QUESTIONS.md` § 15, point 14).*
+
+- **Un garde-fou se MESURE avant d'être gardé.** Celui de la 9.9.0 relisait le livre entier avant
+  chaque enregistrement : 90 à 160 ms sur 50 000 lignes, pour un geste dont le seuil est de 100 ms.
+  Il aurait coûté plus cher que ce qu'il protège. La révision vit donc dans l'**entête en clair** —
+  mille vingt-quatre octets, aucune clé, 0,1 ms — et le livre ne se déchiffre que lorsqu'il y a
+  vraiment conflit. Le code écrit la veille est passé de « juste » à « juste et tenable » en une
+  exécution de `npm run charge` ; sans elle, personne ne l'aurait su avant le premier cabinet à
+  50 000 lignes.
+- **Un instrument qui mesure ce que le code n'utilise plus annonce un défaut qui n'existe pas.**
+  `npm run charge` mesurait le corps **base64** alors que le livre est **binaire** depuis la 9.2.0
+  — décidé par cette mesure même. Il criait donc « le format doit changer AVANT d'être écrit » sur
+  un format déjà changé pour cette raison, et il était rouge depuis. C'est le jumeau de « un test
+  écrit contre l'état du jour décrit cet état, pas la règle », vu du côté des mesures : **quand une
+  mesure fait changer le code, c'est l'instrument qui se relit en premier.**
+- **Un cinquième seuil, écrit AVANT la mesure** comme les quatre autres : « enregistrer à trois
+  postes » (contrôle de révision + écriture) < 100 ms. Le geste ENTIER, pas ses moitiés — c'est lui
+  qui décide du confort de saisie, pas le coût du contrôle pris à part.
+- **Un champ pratique n'entre pas dans une entête en clair.** `ecritPar` y aurait permis d'afficher
+  « dernier enregistrement par Amine » sans déchiffrer ; le nom d'un collaborateur n'est pas
+  l'identité du fichier, et un livre égaré sur une clé USB n'a pas à nommer qui travaille dans le
+  cabinet. C'est le test de l'entête — qui juge la LISTE EXACTE de ses clés, pas l'absence d'une
+  chaîne — qui a posé la question, et c'est sa raison d'être.
+- **Ce que la relecture des documents a retiré** : la fusion n'est plus « à venir en 9.9.0 » (cahier
+  § 5.2 et § « ce qu'on ne fait pas »), le verrou n'est plus présenté comme la protection principale
+  (`cabstore.js`), le Cabinet ne « ne tient pas encore de comptabilité » (`VERSIONS-A-VENIR.md`), et
+  les chiffres des instruments sont ceux d'aujourd'hui. Les chiffres cités **à l'intérieur** d'une
+  section de version, eux, ne bougent pas : ce sont des mesures datées, c'est-à-dire de l'histoire —
+  même règle que « on ne renumérote jamais une version déjà livrée » (9.4.3).
 
 ## Pistes pour la suite (non demandées)
 
