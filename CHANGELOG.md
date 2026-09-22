@@ -7,6 +7,63 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 10.7.0-beta.1 — 22/09/2026
+
+**Achats sort des réserves de l'offre Indépendant.** Signalé par la session qui développe
+`skanfact.tn` : « tu ne peux pas vendre 390 DT une version qui oblige le cabinet à ressaisir,
+alors que le cabinet est ton canal de distribution ». L'argument est juste, et le vrai motif est
+plus grave que celui-là.
+
+**Le chiffre.** Mesuré sur le jeu de démonstration, exercice 2026 entier, en vidant simplement
+les achats et les fournisseurs — c'est-à-dire l'état exact des données d'un client qui n'a jamais
+pu en créer : le paquet qu'il envoie à son comptable déclare **7 441,33 DT de TVA au lieu de
+3 250,16**. La collectée y est entière, la déductible vaut **zéro**, et l'écart de **4 191 DT**
+part à l'administration sur un logiciel vendu 390. Sur le seul mois d'août : 313,50 DT annoncés
+alors que rien n'est dû. Le journal des achats est vide (13 lignes → 0), celui des règlements
+fournisseurs aussi (8 → 0), et les écritures tombent de 382 à 314.
+
+Ce n'est donc pas « le cabinet doit ressaisir » : **c'est l'offre qui vend une déclaration
+fausse**, en silence, dans le fichier même qui sert à déclarer. Le module s'appelle d'ailleurs
+« Achats et fournisseurs — ce que tu dépenses, et *la TVA que tu récupères dessus* ».
+
+**Les cinq autres réserves ne bougent pas, et c'est mesuré aussi.** Les six modules ont été
+testés un par un : stock, immobilisations, paie, pilotage et partage ne changent **ni la TVA ni
+aucune case déposée** — ils retirent des écritures de gestion (la paie 68, les immobilisations 7,
+la trésorerie 38), pas un chiffre que le client dépose et paie. Et ce qu'ils portent est très
+exactement ce que le cabinet fait à sa place depuis les 9.7.0 (amortissements) et 10.3.0 (paie).
+La ligne reste donc nette : **Indépendant = tout ce qu'il faut pour facturer ET déclarer juste ;
+Entreprise = gérer** (stock, immobilisations, salariés, trésorerie et marges, deux postes).
+
+**La règle qui en sort, et le garde-fou qui la tient : une offre peut fermer un confort, jamais
+une case de déclaration.** Le test ne lit pas une liste de modules interdits — il MESURE : pour
+chaque module qu'une offre réserve, il vide ce que ce module permet de créer et recalcule la TVA
+de l'exercice. Si elle bouge, il tombe, avec le chiffre dans le message. Il est général exprès :
+il tombera aussi le jour où quelqu'un réservera un module neuf qui touche à la déclaration.
+
+**La contrepartie, livrée avec.** Avec Achats ouvert, un Indépendant peut désormais saisir un
+achat en « immobilisation » sans pouvoir créer la fiche du bien. C'est voulu — le cabinet la crée
+depuis les écritures du paquet, au compte 22, depuis la 9.7.0 — mais l'application ne doit pas le
+lui **reprocher** : « Tant que la fiche manque, rien n'est déduit » devient faux. La ligne d'« À
+faire » dit maintenant que le comptable s'en charge, l'avertissement de l'éditeur d'achat aussi,
+et la pastille rouge de la barre latérale disparaît — un compteur de tâches à côté d'un cadenas
+dit deux choses contraires.
+
+**Et un instrument rouge depuis la 10.5.0, réparé au passage.** `e2e:plateforme` — le parcours qui
+prouve qu'une révocation signée ferme vraiment la création chez un client — portait une base de
+données écrite **à la main**, un objet qui n'implémentait que `first()` et `run()`. C'est
+exactement ce que la 8.5.0 avait condamné et corrigé pour `e2e:console` (« les tests ne rejouent
+plus le worker, ils le font tourner ») : la leçon n'avait jamais été portée ici. Le prix s'est payé
+en 10.5.0, quand une route a commencé à appeler `.all()` : le parcours est mort sur
+`env.DB.prepare(...).all is not a function`, et personne ne l'a vu — un parcours rouge qu'on ne
+relance pas cesse d'exister. Il tourne désormais sur la VRAIE base SQLite, sur le schéma qu'on
+demande à Skander de coller, avec de vraies révocations écrites en SQL. La fidélité a livré son
+premier constat dans la foulée : la vraie base **met à jour** l'annonce d'un poste déjà connu au
+lieu d'en empiler une — c'est tout l'intérêt, on compte des ordinateurs, pas des démarrages — là
+où la fausse en ajoutait une à chaque fois.
+
+Les prix ne changent pas : ils se règlent dans la console depuis la 10.5.0, et c'est une décision
+du propriétaire, pas de cette version.
+
 ## 10.6.0-beta.1 — 22/09/2026
 
 **L'audit de la console, en Product Designer, et les vingt-neuf constats corrigés d'un bloc.**

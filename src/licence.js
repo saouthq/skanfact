@@ -33,13 +33,27 @@ const CONTACT = 'contact@skanfact.tn';
 // ---------- les offres (7.33.0) ----------
 // Ce que la page Tarifs du site promet, et rien d'autre. L'offre voyage DANS la clé signée : un client
 // ne peut pas se la changer. `reserves` liste les modules (ids de core.MODULES) dont la CRÉATION est
-// réservée à l'offre du dessus — jamais la lecture : quelqu'un qui repasse d'Entreprise à Indépendant
-// garde ses bulletins de paie lisibles pour toujours, il ne peut plus en établir de nouveaux.
+// réservée à l'offre du dessus — jamais la lecture, jamais l'export, jamais l'envoi au comptable
+// (6.4.0 : aucune donnée en otage). Quelqu'un qui repasse d'Entreprise à Indépendant garde ses
+// bulletins de paie lisibles pour toujours, il ne peut plus en établir de nouveaux.
 // `partage` n'est pas un module de la barre latérale : c'est le dossier partagé à deux (3.2.0).
 // Une clé sans `offre` (émise avant la 7.33.0) vaut Entreprise, et une offre inconnue aussi : en cas de
 // doute, on ouvre — jamais de données en otage.
+//
+// « achats » en est sorti en 10.7.0, et ce n'est pas une concession commerciale : c'est un
+// correctif. Mesuré sur le jeu de démonstration, exercice 2026 entier — un client qui n'a jamais
+// pu enregistrer un achat envoie à son comptable un paquet qui déclare **7 441,33 DT** de TVA au
+// lieu de **3 250,16** : la collectée y est, la déductible vaut zéro, et l'écart de 4 191 DT est
+// annoncé à l'administration sur un logiciel vendu 390. C'est le seul des six modules réservés qui
+// change un chiffre que le client DÉPOSE et PAIE ; les cinq autres ne touchent ni la TVA ni une
+// case déclarée, et ce qu'ils portent (stock, amortissements, bulletins) est très exactement ce
+// que le cabinet fait à sa place depuis les 9.7.0 et 10.3.0. Le module s'appelle d'ailleurs
+// « Achats et fournisseurs — ce que tu dépenses, et LA TVA QUE TU RÉCUPÈRES DESSUS ».
+//
+// La règle qui en sort, et qu'un test tient : **une offre peut fermer un confort, jamais une case
+// de déclaration.** Remettre « achats » ici fait tomber ce test, avec le chiffre.
 const OFFRES = {
-  independant: { label: 'Indépendant', reserves: ['achats', 'stock', 'immos', 'pilotage', 'paie', 'partage'] },
+  independant: { label: 'Indépendant', reserves: ['stock', 'immos', 'pilotage', 'paie', 'partage'] },
   entreprise: { label: 'Entreprise', reserves: [] }
 };
 const OFFRE_DEFAUT = 'entreprise';

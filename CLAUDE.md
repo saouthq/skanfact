@@ -50,6 +50,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Un **écart** se calcule avec ses DEUX termes, sinon il ne peut jamais atteindre zéro | 9.8.8 — l'écart de suspens sans le solde de départ |
 | Une **liste de colonnes** et les lignes qui la remplissent se confrontent clé par clé | 9.8.8 — quatre colonnes vides dans chaque paquet depuis la 6.1.0 |
 | La valeur par défaut d'une **règle qu'on ne connaît pas** est celle qui ne fait rien | 9.1.1 — le seuil de retenue à 0, la TFP qu'aucun métier ne porte ; 9.6.0 — une case fiscale vaut `null`, jamais 0 |
+| Une **réserve d'offre** se juge sur ce qu'elle fait au PAQUET, pas sur ce qu'elle retire de l'écran | 10.7.0 — on ouvre ce qui fausse, pas tout |
 | Une écriture **validée** ne se modifie jamais : elle se contre-passe, à la date du jour | 9.2.0 |
 | Une **extourne** n'est pas une contre-passation : l'originale reste dans son exercice, avec son numéro | 9.3.0, 9.8.0 |
 | Les **à-nouveaux** se calculent sur les écritures réelles, jamais sur les à-nouveaux précédents | 9.0.0, 9.8.0 |
@@ -93,7 +94,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | Règle | Où |
 |---|---|
 | Une règle apprise d'un côté **se vérifie de l'autre**, à la main | 7.3.0 (purge des sauvegardes), 7.18.0 (`pl`), 7.32.0 (« À faire »), 8.1.0 (le saut d'horloge) |
-| Un **INSTRUMENT qui ne couvre qu'une des deux applications** ne protège qu'une des deux | 9.4.3 |
+| Un **INSTRUMENT qui ne couvre qu'une des deux applications** ne protège qu'une des deux | 9.4.3 ; 10.6.0 — la capture pleine, jamais portée à la console ; 10.7.0 — la vraie base, jamais portée à `e2e:plateforme` |
 | Une **TÉLÉMÉTRIE non plus** : la console ne voyait qu'une des deux applications | 10.4.0 |
 | Ce qui protège du **travail perdu** entre deux postes, c'est la RÉVISION relue avant d'écrire — le verrou ne couvre que deux écritures simultanées | 9.9.0 ; 3.2.0 |
 | Une **écriture validée** ne se fusionne jamais : elle existe ou pas, et celle de l'autre poste n'est jamais perdue ni renumérotée | 9.9.0 |
@@ -149,6 +150,7 @@ Chaque ligne renvoie à la section qui l'explique en entier — avec le défaut 
 | | Où |
 |---|---|
 | Jamais de **données en otage** : une licence expirée ne bloque que la création | 6.4.0 |
+| Une **offre** peut fermer un confort, jamais une case de DÉCLARATION | 10.7.0 — Achats fermé, et le paquet déclarait 4 191 DT de TVA en trop |
 | Jamais de **message brut** à l'écran : `updateProblem(err)` | 7.26.0 |
 | Jamais **prétendre** ce qu'on ne peut pas prouver (« 7 pièces vérifiées, intactes ») | Cabinet 1.0.0, 8.1.0, 8.2.0 |
 | Jamais de **retour en arrière** de version, sauf sortie du canal d'essai | 6.7.3, 7.25.0, 9.1.0 |
@@ -5359,6 +5361,84 @@ l'instrument a trouvé deux défauts dans l'heure qui a suivi (l'en-tête désal
 de la page publique), tous deux sur des écrans qu'aucune sonde n'avait jamais regardés.
 
 Prouvé : vingt-neuf défauts réintroduits un par un font tomber leur test.
+
+### 10.7.0 — Une offre peut fermer un confort, jamais une case de déclaration
+
+Signalé par la session qui développe `skanfact.tn` : « tu ne peux pas vendre 390 DT une version
+qui oblige le cabinet à ressaisir, alors que le cabinet est ton canal de distribution ». Vérifié
+avant d'agir, et le motif réel s'est révélé plus grave que l'argument commercial.
+
+Règles apprises, à ne pas recasser :
+
+- **Une offre peut fermer un confort, jamais une case de déclaration.** Mesuré sur le jeu de
+  démonstration, exercice entier, en vidant simplement `purchases` et `suppliers` — l'état exact
+  des données d'un client qui n'a jamais pu en créer : le paquet qu'il envoie à son comptable
+  déclare **7 441,33 DT de TVA au lieu de 3 250,16**. La collectée y est entière, la déductible
+  vaut zéro, et **4 191 DT** partent à l'administration sur un logiciel vendu 390. Ce n'est pas
+  une limite commerciale, c'est un chiffre faux en silence dans le fichier qui sert à déclarer
+  (7.0.1, 7.16.0) — et le module s'appelle « Achats et fournisseurs : ce que tu dépenses, et **la
+  TVA que tu récupères dessus** ».
+- **Une réserve se juge sur ce qu'elle fait au PAQUET, pas sur ce qu'elle retire de l'écran.** Les
+  six modules ont été mesurés un par un. Seul `achats` change un chiffre que le client dépose et
+  paie ; `stock`, `immos`, `paie`, `pilotage` et `partage` retirent des écritures de gestion sans
+  toucher ni la TVA ni une case déposée — et ce qu'ils portent est ce que le cabinet fait à sa
+  place depuis les 9.7.0 et 10.3.0. **Ce n'est pas « ouvrir tout » : c'est ouvrir ce qui fausse.**
+- **Le garde-fou MESURE, il ne lit pas une liste.** Pour chaque module qu'une offre réserve, on
+  vide ce qu'il permet de créer et on recalcule la TVA de l'exercice. S'il bouge, le test tombe
+  avec le chiffre dans le message. Une liste de modules interdits se périmerait au premier module
+  ajouté ; celui-ci tombera aussi le jour où quelqu'un réservera un module neuf qui touche à la
+  déclaration. Il porte sa propre contre-preuve : fermer Achats DOIT changer la TVA — si ce n'est
+  plus vrai, c'est le moteur qui a cessé de lire les achats, et le garde-fou ne prouve plus rien.
+- **La liste exacte reste, à côté, et c'est un contrat.** Ce qu'une offre ferme voyage dans une
+  clé SIGNÉE : le changer est une décision, jamais un effet de bord (même règle que les dix-huit
+  champs de `chargeHistorique` en 8.7.0 et que les clés de l'entête d'un livre en 9.9.1).
+- **On ne reproche pas ce qu'on n'a pas offert** (7.20.0), et **une phrase affichée que rien ne
+  tient est un bug** (7.3.0) : les deux se croisent sur la même ligne. « Tant que la fiche manque,
+  rien n'est déduit » est vrai quand on PEUT créer la fiche ; quand l'offre ferme le module, c'est
+  faux — la ligne part au cabinet dans les écritures, au compte 22, et c'est lui qui établit le
+  plan depuis la 9.7.0. Avec Achats ouvert, ce cas devient le cas courant : la ligne d'« À faire »
+  et l'avertissement de l'éditeur d'achat disent désormais que le comptable s'en charge.
+- **Une pastille rouge à côté d'un cadenas dit deux choses contraires** — « tu as deux choses à
+  faire » et « tu ne peux pas ». Quand l'offre ferme le module, le compteur disparaît : ce n'est
+  plus la tâche du client.
+- **Une assertion qui recopie une ligne d'appel tombe sur du code juste** (7.16.0, re-rencontrée) :
+  celle qui exigeait `C.todoList(data, company(), null, { copieExterne, editeur: !!licence.editeur })`
+  mot pour mot est tombée dès que l'appel a gagné `reserves`, un argument parfaitement légitime.
+  Retournée vers ce que l'appel PORTE, elle exige maintenant les deux.
+- **Un test écrit contre l'état du jour décrit cet état, pas la règle — dix-neuvième occurrence.**
+  `e2e:licence` exigeait « la clé Indépendant pose un cadenas sur Achats et refuse un nouveau
+  fournisseur ». Retourné : Achats est ouvert (le fournisseur se crée VRAIMENT, ni cadenas ni
+  bandeau) et c'est un module ENCORE réservé qui porte le refus. Sans cette seconde moitié, le
+  parcours ne prouverait plus qu'une offre ferme quoi que ce soit — un test qui n'exerce plus son
+  refus ne protège de rien.
+- Piège rencontré : le garde-fou d'une création ouverte depuis plusieurs pages vit **dans le
+  formulaire, sur la branche création** (7.33.0). Le refus arrive donc à l'enregistrement, pas à
+  l'ouverture — un parcours qui attend une fenêtre de refus au clic sur « + Nouveau bien » trouve
+  le formulaire et accuse du code juste.
+- Piège de méthode : **une preuve par réintroduction doit viser le garde-fou qu'elle teste.**
+  Remettre « achats » dans les réserves fait tomber la liste exacte AVANT le garde-fou général, et
+  `npm test` s'arrête là : on croit avoir prouvé le second alors qu'on n'a vu que le premier. Il
+  faut remettre le défaut **comme le ferait quelqu'un qui décide vraiment** — liste exacte mise à
+  jour comprise — pour que seul le garde-fou général puisse encore le voir.
+
+**Et un instrument rouge depuis la 10.5.0, réparé au passage** : `e2e:plateforme` portait une base
+de données écrite À LA MAIN, un objet qui n'implémentait que `first()` et `run()`. C'est ce que la
+8.5.0 avait condamné et corrigé pour `e2e:console` — « les tests ne rejouent plus le worker, ils le
+font tourner » — et la leçon n'avait jamais été portée ici : **le jumeau manquant (7.3.0), appliqué
+à un INSTRUMENT** (comme la capture pleine en 10.6.0, comme les quatre sondes en 9.4.3). Le prix
+s'est payé en 10.5.0, quand `lireReglages` a commencé à appeler `.all()` : le parcours est mort sur
+`env.DB.prepare(...).all is not a function`, et personne ne l'a vu — **un parcours rouge qu'on ne
+relance pas cesse d'exister** (7.25.0, 7.28.0). Il tourne maintenant sur la vraie base SQLite, sur
+le vrai schéma, avec de vraies révocations écrites en SQL. Et la fidélité a livré son premier
+constat aussitôt : la vraie base **met à jour** l'annonce d'un poste déjà connu au lieu d'en
+empiler une — c'est tout l'intérêt, on compte des ordinateurs, pas des démarrages — là où la fausse
+en ajoutait une à chaque fois, et où le parcours comptait donc les lignes.
+
+Les prix ne changent pas : ils se règlent dans la console depuis la 10.5.0, et c'est une décision
+du propriétaire, pas de cette version.
+
+Prouvé : trois défauts réintroduits un par un font tomber leur test, et le parcours réel exerce
+les deux moitiés — ce que l'offre ouvre et ce qu'elle ferme.
 
 ## Pistes pour la suite (non demandées)
 

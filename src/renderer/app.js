@@ -4801,7 +4801,11 @@
   const TODO_VISIBLE = 5;
 
   function todoPanel() {
-    let items = C.todoList(data, company(), null, { copieExterne, editeur: !!licence.editeur });
+    // `reserves` : ce que l'offre ferme. Sans lui, la ligne « à immobiliser » affirmerait
+    // « rien n'est déduit » à quelqu'un qui ne PEUT pas créer la fiche — et c'est faux, le cabinet
+    // la crée depuis le paquet (9.7.0). On ne reproche pas ce qu'on n'a pas offert (7.20.0).
+    let items = C.todoList(data, company(), null, { copieExterne, editeur: !!licence.editeur,
+      reserves: licence.reserves || [] });
     // Tant que « Tes premiers pas » est à l'écran, il porte déjà la fiche société — en étape 1, et
     // formulée comme une étape. La répéter dix centimètres plus bas sous le titre « À faire » et le
     // libellé « Fiche société incomplète », c'est dire deux fois la même chose, dont une fois comme
@@ -4881,7 +4885,13 @@
       tr.className = 'nav-count' + (hole ? '' : '');
     }
     const im = $('#nav-immos');
-    if (im) { const n = C.assetsToCreate(data).length; im.hidden = !n; im.textContent = n; }
+    // Une pastille rouge qui compte des tâches à côté d'un cadenas dit deux choses contraires :
+    // « tu as deux choses à faire » et « tu ne peux pas ». Quand l'offre ferme le module, ce n'est
+    // plus la tâche du client — c'est celle du cabinet (9.7.0), et le compteur disparaît.
+    if (im) {
+      const n = (licence.reserves || []).includes('immos') ? 0 : C.assetsToCreate(data).length;
+      im.hidden = !n; im.textContent = n;
+    }
     const pay = $('#nav-paie');
     if (pay) {
       const t = C.today();
@@ -5783,7 +5793,14 @@
         // Le refus dit ce qui est refusé, pourquoi, ET le bouton qui débloque (7.0.0) : chaque ligne
         // fautive porte « Choisir l'article… », qui ramène au champ et ouvre les propositions.
         if (orphelines.length) morceaux.push(`<span class="small warn-text">${pl(orphelines.length, 'ligne')} en destination « stock » ${orphelines.length > 1 ? 'ne correspondent' : 'ne correspond'} à aucun article suivi du catalogue : ${orphelines.map(({ l, i }) => `« ${h(l.label || 'sans désignation')} » <button type="button" class="btn btn-sm" data-orph="${i}">Choisir l'article…</button>`).join(', ')}. ${orphelines.length > 1 ? 'Elles n\'entreront' : 'Elle n\'entrera'} dans aucun stock. ${info('stk.orphan')}</span>`);
-        if (immos.length) morceaux.push(`<div class="small warn-text mt">${pl(immos.length, 'ligne')} en immobilisation : l'amortissement ne commencera qu'une fois la fiche du bien créée (famille, durée, date de mise en service). En attendant, ${immos.length > 1 ? 'ces montants ne sont déduits' : 'ce montant n\'est déduit'} nulle part. ${info('immo.attente')}
+        // Quand l'offre ferme le module Immobilisations, l'avertissement change de sens : on ne
+        // reproche pas ce qu'on n'a pas offert (7.20.0), et « ce montant n'est déduit nulle part »
+        // serait faux — la ligne part au cabinet dans les écritures, au compte 22, et c'est lui qui
+        // établit le plan depuis la 9.7.0. Le refus se dirait deux fois, dont une à tort.
+        const immoFerme = (licence.reserves || []).includes('immos');
+        if (immos.length) morceaux.push(immoFerme
+          ? `<div class="small muted mt">${pl(immos.length, 'ligne')} en immobilisation : ${immos.length > 1 ? 'ces achats partent' : 'cet achat part'} à ton comptable dans les écritures du paquet, et c'est lui qui établit le plan d'amortissement. ${info('immo.attente')}</div>`
+          : `<div class="small warn-text mt">${pl(immos.length, 'ligne')} en immobilisation : l'amortissement ne commencera qu'une fois la fiche du bien créée (famille, durée, date de mise en service). En attendant, ${immos.length > 1 ? 'ces montants ne sont déduits' : 'ce montant n\'est déduit'} nulle part. ${info('immo.attente')}
           <button class="btn btn-sm mt" id="b-immo" type="button">Voir les biens à créer</button></div>`);
         box.hidden = !morceaux.length;
         box.innerHTML = morceaux.join('');

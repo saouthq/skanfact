@@ -5487,12 +5487,22 @@
     // Lignes d'achat marquées « immobilisation » sans fiche : sans elles, aucune dotation n'est calculée
     // et le résultat de l'année est faussement bon (3.5.0).
     const toImmo = assetsToCreate(data);
-    if (toImmo.length) out.push({
-      id: 'immobilisations', level: 'info',
-      label: `${toImmo.length} achat${toImmo.length > 1 ? 's' : ''} à immobiliser`,
-      detail: `${fmt(round3(toImmo.reduce((sum, x) => sum + x.amount, 0)))} achetés en immobilisation sans plan d'amortissement. Tant que la fiche manque, rien n'est déduit.`,
-      count: toImmo.length, route: '#/immos', docs: []
-    });
+    if (toImmo.length) {
+      const montantImmo = fmt(round3(toImmo.reduce((sum, x) => sum + x.amount, 0)));
+      // « Tant que la fiche manque, rien n'est déduit » est vrai quand on PEUT créer la fiche. Quand
+      // l'offre ferme le module, c'est faux — et c'est un reproche adressé à quelqu'un à qui on n'a
+      // rien offert (7.20.0). La ligne d'achat part au cabinet dans les écritures, au compte 22, et
+      // c'est LUI qui crée la fiche depuis la 9.7.0 : rien n'est perdu, et l'app doit le dire.
+      const immoFerme = (opts && opts.reserves || []).includes('immos');
+      out.push({
+        id: 'immobilisations', level: 'info',
+        label: `${toImmo.length} achat${toImmo.length > 1 ? 's' : ''} à immobiliser`,
+        detail: immoFerme
+          ? `${montantImmo} achetés en immobilisation. Ton comptable les voit dans les écritures du paquet et établit leur plan d'amortissement : tu n'as rien à faire.`
+          : `${montantImmo} achetés en immobilisation sans plan d'amortissement. Tant que la fiche manque, rien n'est déduit.`,
+        count: toImmo.length, route: '#/immos', docs: []
+      });
+    }
     // Attestations de retenue que TU dois remettre à tes fournisseurs prestataires
     const wOut = withholdingsToIssue(data, company);
     if (wOut.length) out.push({

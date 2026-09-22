@@ -3825,7 +3825,10 @@ t('licence : l\'offre voyage dans la clé, le matricule l\'attache, et l\'essai 
   const st = S({ key: indep, matricule: '1234567 A' });
   assert.strictEqual(st.state, 'active');
   assert.strictEqual(st.offre, 'independant');
-  assert.deepStrictEqual(st.reserves, ['achats', 'stock', 'immos', 'pilotage', 'paie', 'partage']);
+  // La liste EXACTE, parce que c'est le contrat d'une clé signée : ce qu'une offre ferme est une
+  // décision, jamais un effet de bord. « achats » en est sorti en 10.7.0 — voir le garde-fou
+  // général plus bas, c'est lui qui dit POURQUOI et qui tombe si on l'y remet.
+  assert.deepStrictEqual(st.reserves, ['stock', 'immos', 'pilotage', 'paie', 'partage']);
   assert.ok(/Indépendant/.test(st.label), 'l\'écran doit nommer l\'offre : ' + st.label);
   const entr = lic.signLicence({ nom: 'Y', offre: 'entreprise', exp: '2027-09-14' }, k.privateKey);
   assert.deepStrictEqual(S({ key: entr }).reserves, []);
@@ -3881,6 +3884,107 @@ t('licence : l\'offre voyage dans la clé, le matricule l\'attache, et l\'essai 
   assert.ok(!/\(s\)/.test(S({ installedAt: '2026-08-16' }).label + S({ installedAt: '2026-08-16' }).detail));
   assert.ok(/1 jour restant\b/.test(S({ installedAt: '2026-08-16' }).label), S({ installedAt: '2026-08-16' }).label);
   assert.ok(/0 jours restants/.test(S({ installedAt: '2026-08-15' }).label), 'le dernier jour se lit « 0 jours restants »');
+});
+
+// 10.7.0 — UNE OFFRE PEUT FERMER UN CONFORT, JAMAIS UNE CASE DE DÉCLARATION.
+//
+// Le garde-fou qui explique pourquoi « achats » est sorti des réserves de l'Indépendant, et le
+// seul qui empêche de l'y remettre. Il ne lit pas une liste : il MESURE. Pour chaque module que
+// l'offre réserve, on vide ce que ce module permet de créer — c'est exactement l'état des données
+// d'un client qui n'a jamais pu y toucher — et on recalcule la TVA de l'exercice que le paquet
+// porte au comptable. Si elle bouge, l'offre vend une déclaration fausse.
+//
+// Le chiffre qui l'a fait écrire : avec « achats » réservé, le jeu de démonstration déclare
+// 7 441,33 DT au lieu de 3 250,16 — 4 191 DT annoncés EN TROP sur l'exercice, parce que la TVA
+// déductible tombe à zéro pendant que la collectée reste entière. Sur un logiciel vendu 390 DT.
+//
+// Il est GÉNÉRAL exprès : il tombe aussi le jour où quelqu'un réservera un module neuf qui touche
+// à la déclaration. Une liste de modules interdits se périmerait au premier module ajouté.
+t('10.7.0 : aucun module réservé par une offre ne change la TVA que le client DÉCLARE', () => {
+  const lic2 = require('../src/licence.js');
+  const { buildDemoData } = require('../src/renderer/demo.js');
+  const soc = { name: 'Essai', matricule: '1111111A', regime: 'reel', currency: 'DT',
+    stampFee: 1, vatRate: 19, activity: 'informatique' };
+  const plein = buildDemoData(soc, '2026-09-22');
+
+  // Ce qu'un client qui n'a JAMAIS pu créer dans ce module a dans ses données. La table couvre les
+  // modules que `MODULES` déclare ; un module réservé qui n'y figure pas fait TOMBER le test, sinon
+  // on mesurerait le vide et on annoncerait que tout va bien (T-55).
+  const VIDES = {
+    achats: d => { d.purchases = []; d.suppliers = []; },
+    stock: d => { d.stockAdjustments = []; d.serials = []; (d.catalog || []).forEach(c => { c.tracked = false; }); },
+    immos: d => { d.assets = []; },
+    paie: d => { d.employees = []; d.payslips = []; d.leaves = []; d.advances = []; d.socialFilings = []; },
+    pilotage: d => { d.projects = []; d.accounts = []; d.movements = []; },
+    pieces: d => { d.documents = (d.documents || []).filter(x => !core.EXTRA_TYPES.includes(x.type)); d.recurring = []; },
+    partage: () => {}                       // ne crée aucune donnée : deux postes sur le même dossier
+  };
+  const tvaDeLAnnee = d => Math.round(core.vatChain(d, soc, '2026', 0)
+    .reduce((s, x) => s + (x.toPay || 0), 0) * 1000) / 1000;
+  const reference = tvaDeLAnnee(plein);
+  assert.ok(reference > 0, 'le jeu de démonstration doit déclarer de la TVA, sinon le test ne discrimine rien');
+
+  const offres = lic2.OFFRES || {};
+  const vus = [];
+  Object.keys(offres).forEach(o => {
+    (offres[o].reserves || []).forEach(m => {
+      assert.ok(VIDES[m], `le module réservé « ${m} » n'est pas décrit ici : le test mesurerait le vide`);
+      vus.push(m);
+      const d = JSON.parse(JSON.stringify(plein));
+      VIDES[m](d);
+      const sans = tvaDeLAnnee(d);
+      assert.strictEqual(sans, reference,
+        `l'offre ${o} réserve « ${m} », et sans ce module la TVA déclarée de l'exercice passe de `
+        + `${reference} à ${sans} DT. Une offre peut fermer un confort, jamais une case que le client `
+        + 'dépose et paie (10.7.0).');
+    });
+  });
+  assert.ok(vus.length >= 5, 'aucune réserve mesurée : le test ne prouve rien');
+
+  // Et la moitié qui prouve que le test SAIT voir : « achats » remis dans les réserves le fait
+  // tomber. Sans cette assertion, un jour où `vatChain` cesserait de lire les achats, le garde-fou
+  // resterait vert sur un produit cassé (7.2.0 — un test se prouve en réintroduisant son défaut).
+  const sansAchats = JSON.parse(JSON.stringify(plein));
+  VIDES.achats(sansAchats);
+  assert.notStrictEqual(tvaDeLAnnee(sansAchats), reference,
+    'fermer Achats DOIT changer la TVA déclarée — si ce n\'est plus vrai, c\'est le moteur de TVA '
+    + 'qui a cessé de lire les achats, et le garde-fou ci-dessus ne prouve plus rien');
+});
+
+// 10.7.0 — ON NE REPROCHE PAS CE QU'ON N'A PAS OFFERT (7.20.0), et une phrase affichée que rien
+// ne tient est un bug (7.3.0). Les deux se croisent ici : « Tant que la fiche manque, rien n'est
+// déduit » est vrai quand on PEUT créer la fiche. Quand l'offre ferme le module, c'est faux — la
+// ligne d'achat part au cabinet dans les écritures, au compte 22, et c'est lui qui établit le plan
+// depuis la 9.7.0. Avec Achats ouvert à l'Indépendant, ce cas devient le cas COURANT.
+t('10.7.0 : la ligne « à immobiliser » n\'accuse pas un client dont l\'offre ferme le module', () => {
+  const soc = { name: 'Essai', matricule: '1111111A', regime: 'reel', currency: 'DT', stampFee: 1, vatRate: 19 };
+  const d = {
+    ...core.migrateData({}),
+    company: soc,
+    suppliers: [{ id: 'f1', name: 'Informatique Plus' }],
+    purchases: [{ id: 'a1', kind: 'facture', supplierId: 'f1', number: 'F-77', date: '2026-03-04',
+      lines: [{ label: 'Ordinateur portable', qty: 1, unitPrice: 2400, vat: 19, destination: 'immobilisation' }] }]
+  };
+  const ligne = o => (core.todoList(d, soc, '2026-09-22', o) || []).find(x => x.id === 'immobilisations');
+
+  // Ouvert : on réclame la fiche, et on dit ce qu'il en coûte de ne pas la faire.
+  const ouvert = ligne({});
+  assert.ok(ouvert, 'la ligne doit exister quand une ligne d\'achat attend sa fiche');
+  assert.ok(/rien n'est déduit/.test(ouvert.detail), 'module ouvert : la ligne dit ce qu\'on perd — ' + ouvert.detail);
+
+  // Fermé par l'offre : la ligne reste (le client doit savoir qu'il a investi), mais elle dit la
+  // VÉRITÉ — le cabinet s'en charge — et elle ne réclame plus un geste impossible.
+  const ferme = ligne({ reserves: ['immos'] });
+  assert.ok(ferme, 'la ligne ne disparaît pas : un achat immobilisé reste une information');
+  assert.ok(!/rien n'est déduit/.test(ferme.detail),
+    'module fermé par l\'offre : la ligne ne peut pas affirmer que rien n\'est déduit — ' + ferme.detail);
+  assert.ok(/comptable/.test(ferme.detail), 'elle doit dire QUI le fait : ' + ferme.detail);
+  assert.strictEqual(ouvert.count, ferme.count, 'le compte ne change pas, seule la phrase change');
+
+  // Et la moitié qui prouve que le test discrimine : une réserve qui ne concerne PAS ce module ne
+  // change rien. Sans elle, un `reserves` non vide suffirait à satisfaire l'assertion (9.8.8).
+  assert.strictEqual(ligne({ reserves: ['paie', 'stock'] }).detail, ouvert.detail,
+    'réserver un AUTRE module ne doit pas changer cette ligne');
 });
 
 t('éditeur : la clé privée ne traverse jamais le pont, et l\'app livrée embarque la clé publique', () => {
@@ -3955,7 +4059,14 @@ t('éditeur : le renderer relit la licence avec le matricule, et la page Licence
   assert.ok(/\.\.\.\(licence\.editeur \? \[\['Licences émises'/.test(app), 'l\'entrée de palette « Licences émises » doit être conditionnelle');
   assert.ok(/\.\.\.\(licence\.editeur \? \[\['licence', /.test(app), 'le gabarit d\'email « licence » ne s\'édite que chez l\'éditeur');
   // « À faire » reçoit le drapeau, et la ligne mène à la page.
-  assert.ok(/C\.todoList\(data, company\(\), null, \{ copieExterne, editeur: !!licence\.editeur \}\)/.test(app), 'todoList doit recevoir editeur');
+  // On ancre sur ce que l'appel PORTE, jamais sur sa forme : recopier la ligne mot pour mot la
+  // fait tomber dès qu'elle gagne un argument légitime, et on la « répare » en recopiant la
+  // nouvelle — donc sans rien prouver (7.16.0). C'est arrivé en 10.7.0, avec `reserves`.
+  const appelTodo = (app.match(/C\.todoList\([\s\S]{0,400}?\}\s*\)/) || [''])[0];
+  assert.ok(/editeur:\s*!!licence\.editeur/.test(appelTodo), 'todoList doit recevoir editeur : ' + appelTodo.slice(0, 120));
+  // Et `reserves` (10.7.0) : sans lui, la ligne « à immobiliser » affirme « rien n'est déduit »
+  // à quelqu'un dont l'offre ferme le module — c'est faux, le cabinet la crée depuis le paquet.
+  assert.ok(/reserves:\s*licence\.reserves/.test(appelTodo), 'todoList doit recevoir reserves : ' + appelTodo.slice(0, 200));
   // Émettre = signer dans main.js + un BROUILLON (jamais nextNumber) + l'historique + la page de la facture.
   const form = app.slice(app.indexOf('function licenceForm('), app.indexOf('async function envoyerLicence('));
   assert.ok(/bridge\.licenceEmettre\(\{/.test(form) && !/signLicence/.test(form), 'le formulaire signe par le pont, jamais lui-même');

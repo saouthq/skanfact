@@ -23,6 +23,7 @@ const { playwright, RACINE, ELECTRON, journal, surveiller } = require('./harnais
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os'); const http = require('http');
 const L = require('../../src/licence.js');
+const { baseD1 } = require('../d1-sqlite');
 
 (async () => {
   const j = journal(); const bac = [];
@@ -47,29 +48,49 @@ const L = require('../../src/licence.js');
   }, null, 2));
 
   // ---------- le serveur : le vrai worker, une base minimale, et un transport qu'on peut abîmer ----
-  const etatServeur = { revoquee: false, alteration: null };
-  const annonces = [];
-  const DB = {
-    prepare(sql) {
-      return {
-        bind(...args) {
-          return {
-            async first() {
-              // Le client que la console vend (étape 3 ter) ; et la révocation, quand on la pose.
-              if (/FROM clients/.test(sql)) return { id: 'cli_1', nom: 'Atelier Plateforme SUARL', matricule: MF, email: null };
-              return etatServeur.revoquee ? { id: 'lic_1', revoquee_le: '2026-10-01', revoquee_motif: 'rétractation' } : null;
-            },
-            async run() {
-              if (/INSERT INTO activations/.test(sql)) {
-                annonces.push({ empreinte: args[2], deviceId: args[3], deviceNom: args[4], plateforme: args[5], version: args[6] });
-              }
-              return { success: true };
-            }
-          };
-        }
-      };
+  const etatServeur = { alteration: null };
+
+  // La base est la VRAIE : SQLite sur `plateforme/schema-a-coller.sql`, le fichier qu'on demande à
+  // Skander de coller dans D1. Jusqu'à la 10.7.0, ce parcours portait une base écrite À LA MAIN —
+  // un objet qui n'implémentait que `first()` et `run()`. C'est exactement ce que la 8.5.0 avait
+  // condamné et corrigé pour `e2e:console` (« les tests ne rejouent plus le worker, ils le font
+  // tourner »), et la leçon n'avait jamais été portée ici : le jumeau manquant (7.3.0), appliqué à
+  // un INSTRUMENT. Le prix s'est payé en 10.5.0, quand `lireReglages` a commencé à appeler `.all()`
+  // — le parcours est mort sur `env.DB.prepare(...).all is not a function`, et personne ne l'a vu,
+  // parce qu'un parcours rouge qu'on ne relance pas cesse d'exister.
+  const DB = baseD1();
+  const sql = (q, ...a) => DB.prepare(q).bind(...a).run();
+  const lire = (q, ...a) => DB.prepare(q).bind(...a).all().then(r => r.results || []);
+
+  // L'empreinte que les étapes suivent, et les lignes que la plateforme connaît — posées par de
+  // VRAIES écritures, celles que la console aurait faites en vendant. Sans la ligne de licence, le
+  // serveur ne retrouverait rien et « pas de révocation » serait vrai pour une mauvaise raison.
+  let empreinteSuivie = '';
+  const suivre = async (cle, mf, offre) => {
+    empreinteSuivie = L.empreinteCle(cle);
+    const client = await lire('SELECT id FROM clients WHERE id = ?', 'cli_1');
+    if (!client.length) {
+      await sql('INSERT INTO clients (id, nom, matricule, cree_le) VALUES (?, ?, ?, ?)',
+        'cli_1', 'Atelier Plateforme SUARL', mf, '2026-09-01T08:00:00.000Z');
+    }
+    const deja = await lire('SELECT id FROM licences WHERE empreinte = ?', empreinteSuivie);
+    if (!deja.length) {
+      await sql('INSERT INTO licences (id, client_id, kid, empreinte, offre, debut, fin, prix, devise, emise_le)'
+        + ' VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        'lic_' + empreinteSuivie.slice(0, 8), 'cli_1', 'master', empreinteSuivie, offre || 'entreprise',
+        '2026-09-01', '2027-09-01', 690, 'TND', '2026-09-01T08:00:00.000Z');
     }
   };
+  // Poser et lever la révocation se font par de vraies écritures, comme la console les ferait.
+  const revoquer = (oui, motif) => sql(
+    'UPDATE licences SET revoquee_le = ?, revoquee_motif = ? WHERE empreinte = ?',
+    oui ? '2026-10-01T00:00:00.000Z' : null, oui ? (motif || 'rétractation') : null, empreinteSuivie);
+  // Les annonces ne sont plus poussées dans un tableau : elles sont LUES dans la table que le
+  // worker écrit. C'est la moitié qui compte — un tableau nourri par une fausse base prouve que le
+  // parcours sait intercepter un INSERT, pas que le worker sait en écrire un.
+  const annoncesDeLaBase = () => lire('SELECT empreinte, device_id AS deviceId, device_nom AS deviceNom,'
+    + ' plateforme, version, app, derniere_fois FROM activations ORDER BY rowid');
+
   const env = { DB, APP_SECRET: SECRET, ADMIN_SECRET: ADMIN, REPONSE_PRIVATE_KEY: reponse.privateKey, SRV_PRIVATE_KEY: srv.privateKey,
     LICENCE_PUBLIC_KEYS: JSON.stringify({ cles: [{ kid: 'master', publicKey: master.publicKey }, { kid: 'srv-1', publicKey: srv.publicKey }] }) };
 
@@ -142,13 +163,27 @@ const L = require('../../src/licence.js');
   };
   // Coller la clé déclenche une annonce immédiate (`licence:set`), donc on attend que le serveur
   // l'ait vraiment reçue avant de juger — jamais un `waitForTimeout` au hasard.
+  // Sur la VRAIE base, une annonce du même poste pour la même clé ne crée pas une ligne de plus :
+  // elle MET À JOUR celle qui existe (c'est tout l'intérêt — on compte des ordinateurs, pas des
+  // démarrages). La fausse base, elle, empilait un élément à chaque INSERT, et le parcours comptait
+  // les lignes. On attend donc ce que la plateforme a vraiment enregistré : un poste de plus, OU le
+  // même poste revu — `derniere_fois` qui bouge. C'est plus fidèle, et c'est ce qui l'a révélé.
+  const vuPar = async () => {
+    const r = await annoncesDeLaBase();
+    return { n: r.length, dernier: r.map(x => x.empreinte + '@' + (x.derniere_fois || '')).join('|') };
+  };
   const collerLaCle = async cle => {
-    const avant = annonces.length;
+    const avant = await vuPar();
     await ouvrirParametres('p-licence');
     await win.fill('#lic-key', cle);
     await win.click('#lic-save');
-    for (let i = 0; i < 100 && annonces.length === avant; i++) await win.waitForTimeout(100);
-    if (annonces.length === avant) throw new Error('la plateforme n\'a jamais reçu l\'annonce');
+    let apres = avant;
+    for (let i = 0; i < 100; i++) {
+      apres = await vuPar();
+      if (apres.n !== avant.n || apres.dernier !== avant.dernier) break;
+      await win.waitForTimeout(100);
+    }
+    if (apres.n === avant.n && apres.dernier === avant.dernier) throw new Error('la plateforme n\'a jamais reçu l\'annonce');
     await win.waitForTimeout(200);   // le temps que le verdict soit écrit sur le disque
   };
   // Ce que l'application dit APRÈS avoir relu : le rechargement est le moment où un utilisateur
@@ -217,6 +252,7 @@ const L = require('../../src/licence.js');
     await traverserAssistant(win, 'Atelier Plateforme SUARL', MF);
     await creerUnClient();
     if (L.parseKey(cleValide).payload.kid) throw new Error('la clé du test ne doit porter aucun kid');
+    await suivre(cleValide, MF, 'entreprise');
     await collerLaCle(cleValide);
     let txt = (await win.textContent('#p-licence')).replace(/\s+/g, ' ');
     if (!/Licence active/.test(txt)) throw new Error('la clé sans kid a été refusée : ' + txt.slice(0, 200));
@@ -224,7 +260,8 @@ const L = require('../../src/licence.js');
 
     // ------------------------------------------------ 2. l'installation s'annonce
     j.etape('L\'installation s\'annonce : la plateforme voit l\'ordinateur');
-    const a = annonces[annonces.length - 1];
+    const toutes = await annoncesDeLaBase();
+    const a = toutes[toutes.length - 1];
     if (!a || !a.deviceId) throw new Error('aucune activation enregistrée');
     if (a.empreinte !== L.empreinteCle(cleValide)) throw new Error('l\'empreinte annoncée ne désigne pas cette licence');
     if (!['darwin', 'win32', 'linux'].includes(a.plateforme)) throw new Error('plateforme non transmise : ' + a.plateforme);
@@ -234,7 +271,7 @@ const L = require('../../src/licence.js');
 
     // ------------------------------------------------ 3. une révocation signée ferme la création
     j.etape('Une révocation signée, datée et adressée ferme la création');
-    etatServeur.revoquee = true;
+    await revoquer(true);
     await collerLaCle(cleValide);
     txt = await relireEtat();
     if (!/révoquée/i.test(txt)) throw new Error('la révocation n\'a pas été appliquée : ' + txt.slice(0, 200));
@@ -255,7 +292,7 @@ const L = require('../../src/licence.js');
 
     // ------------------------------------------------ 3 bis. et elle se lève avec la même preuve
     j.etape('Lever la révocation exige exactement la même preuve que la poser');
-    etatServeur.revoquee = false;
+    await revoquer(false);
     await collerLaCle(cleValide);
     txt = await relireEtat();
     if (!/Licence active/.test(txt)) throw new Error('la révocation n\'a pas été levée : ' + txt.slice(0, 200));
@@ -269,21 +306,27 @@ const L = require('../../src/licence.js');
     }).then(r => r.json());
     if (!emis.cle) throw new Error('la console n\'a pas émis de clé : ' + JSON.stringify(emis));
     if ((L.parseKey(emis.cle).payload || {}).kid !== 'srv-1') throw new Error('la clé de la console doit nommer srv-1');
+    // Celle-ci, la VRAIE route d'émission l'a déjà écrite en base : on la suit, on ne la réinsère
+    // pas. C'est la moitié qui prouve que la console et l'application parlent de la même ligne.
+    await suivre(emis.cle, MF, 'independant');
     await collerLaCle(emis.cle);
     txt = (await win.textContent('#p-licence')).replace(/\s+/g, ' ');
     if (!/Licence active/.test(txt)) throw new Error('la clé signée par le serveur a été refusée : ' + txt.slice(0, 200));
     if (!/Indépendant/.test(txt)) throw new Error('l\'offre écrite dans la clé n\'est pas celle affichée');
     j.ok('signée par srv-1, reconnue par la version qui embarque cette clé, offre Indépendant appliquée');
-    etatServeur.revoquee = true;
+    await revoquer(true);
     await collerLaCle(emis.cle);
     txt = await relireEtat();
     if (!/révoquée/i.test(txt)) throw new Error('la révocation n\'atteint pas une clé vendue par la console : ' + txt.slice(0, 200));
     j.ok('et une révocation la ferme comme n\'importe quelle autre');
-    etatServeur.revoquee = false;
+    await revoquer(false);
+    // Les étapes suivantes reprennent la clé maître : on rebascule l'empreinte suivie, sinon on
+    // révoquerait la licence de la console en croyant révoquer celle-là.
+    await suivre(cleValide, MF, 'entreprise');
 
     // ------------------------------------------------ 4. signature abîmée → ignorée
     j.etape('La même révocation, signature abîmée : ignorée');
-    etatServeur.revoquee = true; etatServeur.alteration = 'signature';
+    await revoquer(true); etatServeur.alteration = 'signature';
     await collerLaCle(cleValide);
     txt = await relireEtat();
     if (/révoquée/i.test(txt)) throw new Error('une réponse mal signée a restreint l\'application');
