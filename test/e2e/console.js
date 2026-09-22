@@ -60,19 +60,51 @@ const { servir, SECRET } = require('./console-serveur');
     await page.click('#tabs button[data-t="reglages"]');
     await page.waitForSelector('#fiche:not([hidden]) [data-reg]');
   };
-  // Un bouton de ligne, repéré par ce qu'il DIT et par la ligne qui porte ce texte.
+  // Un geste de ligne, repéré par ce qu'il DIT et par la ligne qui porte ce texte.
+  //
+  // 10.6.0 — une ligne garde AU PLUS UN bouton visible et met le reste dans un menu (7.29.0). Le
+  // parcours fait donc ce qu'une personne fait : il cherche le bouton en clair, et s'il n'y est
+  // pas il ouvre le menu de la ligne. Écrire deux helpers — un « bouton », un « menu » — aurait
+  // obligé à savoir d'avance où vit chaque geste, c'est-à-dire à graver l'état du jour (7.12.0).
   const boutonDeLigne = async (texteLigne, libelle) => {
-    const b = await page.$('xpath=//tbody/tr[contains(., "' + texteLigne + '")]//button[normalize-space()="' + libelle + '"]');
-    if (!b) throw new Error('bouton « ' + libelle + ' » introuvable sur la ligne « ' + texteLigne + ' »');
-    await b.click();
+    const direct = await page.$('xpath=//tbody/tr[contains(., "' + texteLigne + '")]//button[normalize-space()="' + libelle + '"]');
+    if (direct) { await direct.click(); return; }
+    const menu = await page.$('xpath=//tbody/tr[contains(., "' + texteLigne + '")]//button[@data-menu]');
+    if (!menu) throw new Error('ni bouton « ' + libelle + ' » ni menu sur la ligne « ' + texteLigne + ' »');
+    await menu.click();
+    await page.waitForSelector('#rowmenu', { timeout: 5000 });
+    const dans = await page.$('xpath=//div[@id="rowmenu"]//button[.//span[starts-with(normalize-space(), "' + libelle + '")]]');
+    if (!dans) {
+      const vus = await page.$$eval('#rowmenu button span', ss => ss.map(x => x.childNodes[0].textContent.trim()));
+      throw new Error('« ' + libelle + ' » introuvable sur la ligne « ' + texteLigne + ' » — le menu offre : ' + vus.join(', '));
+    }
+    await dans.click();
   };
   const valider = async () => {
     await page.click('#f-ok');
     // Le formulaire disparaît (succès) ou son message s'allume (refus) : une fois fermé, `#f-msg`
     // n'existe plus, d'où la garde — la première version lisait `.hidden` sur null.
     await page.waitForFunction(() => { const f = document.getElementById('form'), m = document.getElementById('f-msg'); return f.hidden || (m && !m.hidden); });
+    // 10.6.0 — un geste IRRÉVERSIBLE se relit avant de partir : le premier clic rend le
+    // récapitulatif et le bouton change de verbe. Ce n'est ni un succès ni un refus, c'est une
+    // étape de plus, et le parcours doit la franchir comme une personne le ferait.
+    if (await page.$('#f-msg.recap:not([hidden])')) {
+      const b = await page.$eval('#f-ok', e => e.textContent.trim());
+      if (!/confirmer/i.test(b)) throw new Error('le récapitulatif s\'affiche mais le bouton ne change pas de verbe : ' + b);
+      await page.click('#f-ok');
+      await page.waitForFunction(() => { const f = document.getElementById('form'), m = document.getElementById('f-msg'); return f.hidden || (m && !m.hidden && !m.classList.contains('recap')); });
+    }
     const msg = await page.evaluate(() => { const m = document.getElementById('f-msg'); return m && !m.hidden ? m.textContent : ''; });
     if (msg) throw new Error('le formulaire a refusé : ' + msg);
+  };
+  // 10.6.0 — le panneau de la clé émise montre un RÉSUMÉ ; le texte complet vit derrière « Voir la
+  // clé entière ». Le parcours l'ouvre comme une personne le ferait, plutôt que de lire un élément
+  // caché : ce qu'on teste est ce que l'écran MONTRE (7.17.0).
+  const lireCle = async () => {
+    await page.waitForSelector('#resultat:not([hidden]) #cle-court');
+    await page.click('#cle-voir');
+    await page.waitForSelector('#resultat #cle:not([hidden])');
+    return (await page.textContent('#resultat #cle')).trim();
   };
   const info = () => page.evaluate(() => { const i = document.getElementById('info'); return i.hidden ? '' : i.textContent; });
 
@@ -141,8 +173,7 @@ const { servir, SECRET } = require('./console-serveur');
     doit(prixPropose === '390', 'le prix proposé suit l\'offre choisie (' + prixPropose + ')');
     await page.check('#form [name=parrain]');
     await valider();
-    await page.waitForSelector('#resultat:not([hidden]) #cle');
-    const cle = (await page.textContent('#resultat #cle')).trim();
+    const cle = await lireCle();
     doit(/^SKAN1\./.test(cle), 'la clé est affichée : ' + cle.slice(0, 24) + '…');
     const charge = L.verifyKey(cle, cles);
     doit(!!charge && charge.kid === 'srv-1', 'elle est signée par srv-1 et l\'application la VÉRIFIE (src/licence.js)');
@@ -163,8 +194,7 @@ const { servir, SECRET } = require('./console-serveur');
     let ls = await lignes();
     doit(ls.some(l => /Trabelsi/.test(l) && /active/.test(l) && /jamais/.test(l)), 'la ligne dit « active » et « jamais » envoyée');
     await boutonDeLigne('Trabelsi', 'Voir la clé');
-    await page.waitForSelector('#resultat:not([hidden]) #cle');
-    doit((await page.textContent('#resultat #cle')).trim() === cle, '« Voir la clé » refabrique EXACTEMENT la même clé (Ed25519 déterministe)');
+    doit(await lireCle() === cle, '« Voir la clé » refabrique EXACTEMENT la même clé (Ed25519 déterministe)');
     await page.click('#cle-fermer');
 
     etape('7 bis. Relancer : la console COMPOSE, c\'est l\'éditeur qui envoie');
@@ -211,8 +241,7 @@ const { servir, SECRET } = require('./console-serveur');
     const why = await page.textContent('#form .why');
     doit(/part du/.test(why), 'le formulaire rappelle d\'où part la nouvelle période');
     await valider();
-    await page.waitForSelector('#resultat:not([hidden]) #cle');
-    const cle2 = (await page.textContent('#resultat #cle')).trim();
+    const cle2 = await lireCle();
     doit(cle2 !== cle && !!L.verifyKey(cle2, cles), 'une seconde clé, différente, et vérifiable');
     const fins = db.lire('SELECT debut, fin, remplace_id FROM licences ORDER BY emise_le');
     doit(fins[1].debut === fins[0].fin && fins[1].remplace_id != null, 'elle part de la fin de la première (' + fins[0].fin + ')');
@@ -227,7 +256,9 @@ const { servir, SECRET } = require('./console-serveur');
 
     etape('10. Révoquer : un motif obligatoire, et la limite dite en toutes lettres');
     const nouvelle = fins[1];
-    await page.$eval('xpath=//tbody/tr[contains(., "active")]//button[normalize-space()="Révoquer"]', b => b.click());
+    // Le geste le plus destructif de la console vit dans le MENU depuis la 10.6.0, et c'est sa
+    // place : il ne peut plus se cliquer par erreur à côté de « Voir la clé ».
+    await boutonDeLigne('active', 'Révoquer');
     await page.waitForSelector('#form:not([hidden]) [name=motif]');
     doit(/ne se reprend pas/.test(await page.textContent('#form .why')), 'le formulaire dit qu\'une clé livrée ne se reprend pas');
     await page.click('#f-ok');
@@ -238,7 +269,17 @@ const { servir, SECRET } = require('./console-serveur');
     await page.waitForFunction(() => /révoquée/.test((document.getElementById('info') || {}).textContent || ''));
     await page.waitForSelector('#table tbody tr');
     ls = await lignes();
-    doit(ls.some(l => /révoquée — rétractation/.test(l)), 'la ligne dit « révoquée — rétractation »');
+    // 10.6.0 — RETOURNÉE. L'assertion exigeait « révoquée — rétractation » dans la ligne : elle
+    // décrivait l'état du jour, où le motif était collé DANS la pastille d'état. Un état est un
+    // vocabulaire fermé ; un motif est un texte libre, et il portait la colonne « État » à 338 px
+    // sur une table qui débordait de 256. La RÈGLE est que la ligne dit l'état, et que le motif
+    // reste atteignable — ici au survol. Quand une règle change, c'est le test qui se relit en
+    // premier (7.12.0, 7.26.0, 8.0.1, 8.2.0, 9.1.0, 9.2.2, 9.4.3, 9.4.5, 9.4.7, 9.4.9, 9.7.0,
+    // 9.8.1, 9.8.4, 9.8.6, 10.4.0).
+    doit(ls.some(l => /révoquée/.test(l)) && !ls.some(l => /révoquée — rétractation/.test(l)),
+      'la ligne dit l\'ÉTAT « révoquée », sans y coller le motif');
+    doit(await page.$('xpath=//tbody//span[@title="rétractation"]') !== null,
+      'et le motif reste lisible au survol de la pastille');
     const rev = db.lire('SELECT id, revoquee_le, revoquee_motif FROM licences WHERE revoquee_le IS NOT NULL');
     doit(rev.length === 1 && rev[0].revoquee_motif === 'rétractation' && rev[0].id !== nouvelle.remplace_id,
       'et la base porte la date et le motif, sur la licence en cours (pas sur la remplacée)');
@@ -333,8 +374,7 @@ const { servir, SECRET } = require('./console-serveur');
     doit(/EMPREINTE/i.test(await page.textContent('#f-msg')), 'sans empreinte, refus : « ' + (await page.textContent('#f-msg')).trim().slice(0, 60) + '… »');
     await page.fill('#form [name=cabinet]', '3f9a-2c1e-0000-1111-2222');
     await valider();
-    await page.waitForSelector('#resultat:not([hidden]) #cle');
-    const cleCab = (await page.textContent('#resultat #cle')).trim();
+    const cleCab = await lireCle();
     const chCab = L.verifyKey(cleCab, cles);
     doit(!!chCab && chCab.type === 'cabinet' && chCab.dossiersHors === 10 && chCab.cabinet === '3F9A-2C1E-0000-1111-2222',
       'la clé porte le type, le quota et l\'empreinte sous sa forme canonique');
@@ -353,8 +393,7 @@ const { servir, SECRET } = require('./console-serveur');
     await page.fill('#form [name=dossiersHors]', '25');
     await page.fill('#form [name=prix]', '300');
     await valider();
-    await page.waitForSelector('#resultat:not([hidden]) #cle');
-    const cleCab2 = (await page.textContent('#resultat #cle')).trim();
+    const cleCab2 = await lireCle();
     doit(cleCab2 !== cleCab && L.verifyKey(cleCab2, cles).dossiersHors === 25
       && L.licenceCabinet({ key: cleCab2, cles, empreinte: '3f9a2c1e000011112222', comptes: 20, today: L.today() }).autorises === 28,
       'le nouveau quota est dans la clé neuve : 3 + 25, reconnu sous l\'empreinte sans tirets');
@@ -481,11 +520,28 @@ const { servir, SECRET } = require('./console-serveur');
       return /réglé ici/.test(l.querySelector('.src').textContent);
     }), 'et la source a changé : il vient maintenant de l\'écran');
     // L'effet, mesuré là où il compte : le formulaire d'émission propose le nouveau prix.
+    //
+    // 10.6.0 — RETOURNÉE, et c'est la plus instructive du lot. L'assertion exigeait 880 — le prix
+    // ENTREPRISE — sur un formulaire qui affiche « Indépendant » : elle gravait exactement le
+    // défaut C1, où le champ prix était initialisé en dur à « t.entreprise » pendant que la liste
+    // des offres commence par « independant ». Un test écrit contre l'état du jour décrit cet
+    // état, pas la règle (vingtième occurrence). La RÈGLE est : le prix proposé est celui de
+    // l'offre AFFICHÉE, à l'ouverture comme après un changement.
     await onglet('licences');
     await page.click('#emettre');
     await page.waitForSelector('#form:not([hidden])');
+    const offreVue = await page.inputValue('#form [name="offre"]');
+    const prixVu = await page.inputValue('#form [name="prix"]');
+    doit(offreVue === 'independant' && prixVu === '390',
+      'à l\'ouverture, le prix est celui de l\'offre affichée (' + offreVue + ' → ' + prixVu + ')');
+    await page.selectOption('#form [name="offre"]', 'entreprise');
     doit(await page.inputValue('#form [name="prix"]') === '880',
-      'le formulaire d\'émission propose le prix qu\'on vient de régler');
+      'et en changeant d\'offre, il suit le prix qu\'on vient de régler à l\'écran (880)');
+    doit(/propos/i.test(await page.textContent('#f-prix-src')),
+      'le champ DIT que le montant est proposé, tant que personne ne l\'a saisi');
+    await page.fill('#form [name="prix"]', '750');
+    doit(/main/i.test(await page.textContent('#f-prix-src')),
+      'et qu\'il est saisi à la main dès qu\'on y touche');
     await page.click('#f-non');
 
     etape('13 septies. Le lien de paiement entre dans la relance — et rien d\'inventé sans lui');

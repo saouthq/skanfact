@@ -10731,16 +10731,22 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       // test (6.8.1). La borne reste, parce qu'elle protège le jour où quelque chose s'ajoutera
       // après ; c'est son seul effet, et il est écrit plutôt que prétendu.
       // 11 Ko en lecture seule (P 0.1), 36 Ko avec la vente (P 0.2), 80 Ko avec l'espace de
-      // gestion (10.4.0) : la borne haute garde une marge, elle ne fixe pas une taille.
-      assert.ok(page.length > 3000 && page.length < 140000, 'tranche de la console inattendue : ' + page.length);
+      // gestion (10.4.0), 147 Ko avec le menu d'actions et la refonte (10.6.0) : la borne haute
+      // garde une marge, elle ne fixe pas une taille.
+      assert.ok(page.length > 3000 && page.length < 200000, 'tranche de la console inattendue : ' + page.length);
       // Les boutons de LIGNE n'ont pas d'identifiant : ils portent un `data-act`, et un seul
       // gestionnaire les retrouve. Chaque action posée dans une ligne doit avoir sa branche.
-      // Deux formes coexistent : l'attribut construit par un helper (`b('voir', …)`) et l'attribut
-      // écrit LITTÉRALEMENT dans une colonne. Ne lire que la première laissait passer toute
-      // action posée en clair — et c'est la forme la plus courante depuis la 10.5.0.
+      // TROIS formes coexistent, et c'est la troisième fois que ce test se fait périmer par une
+      // écriture nouvelle : l'attribut construit par un helper (`b('voir', …)`), l'attribut écrit
+      // LITTÉRALEMENT dans une colonne, et — depuis que les gestes d'une ligne vivent dans un menu
+      // (10.6.0) — l'action déclarée comme une DONNÉE (`{ act: 'voir', lib: … }`). Ne lire qu'une
+      // forme laisse passer toutes celles écrites autrement, et un bouton mort est pire qu'un
+      // bouton absent (7.0.0). On lit donc les trois, et le compte minimum garde le test d'être
+      // satisfait par le vide le jour où une quatrième forme apparaîtra.
       const acts = [...new Set([
         ...[...page.matchAll(/\bb\('([a-z-]+)', '/g)].map(m => m[1]),
-        ...[...page.matchAll(/data-act="([a-z-]+)"/g)].map(m => m[1])
+        ...[...page.matchAll(/data-act="([a-z-]+)"/g)].map(m => m[1]),
+        ...[...page.matchAll(/\bact: '([a-z-]+)'/g)].map(m => m[1])
       ])];
       assert.ok(acts.length >= 5, 'trop peu d\'actions de ligne lues : ' + acts.join(', '));
       acts.forEach(a => assert.ok(

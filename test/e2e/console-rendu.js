@@ -334,6 +334,12 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
     await page.click('#emettre');
     await page.waitForSelector('#form:not([hidden]) [name=clientId]');
     await page.selectOption('#form [name=offre]', 'independant');
+    // Émettre demande une confirmation depuis la 10.6.0 : le premier clic rend le récapitulatif
+    // — à qui, quelle offre, jusqu'à quand, combien — et le second signe. Le parcours mesure donc
+    // aussi cet écran-là, qui est le dernier qu'on voit avant un geste qu'on ne peut pas reprendre.
+    await page.click('#f-ok');
+    await page.waitForSelector('#f-msg.recap:not([hidden])', { timeout: 5000 });
+    await mesurer(`${etiquette} · le récapitulatif avant signature`);
     await page.click('#f-ok');
     await page.waitForSelector('#resultat:not([hidden]) #cle', { timeout: 15000 });
     await page.waitForTimeout(260);
@@ -345,7 +351,14 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
     // lien déguisé en bouton principal et deux boutons — trois surfaces qu'aucune adresse ne mène,
     // donc invisibles pour un instrument qui se contente de parcourir les onglets (T-55).
     await onglet('ventes');
-    await page.click('#table button[data-act="ecrire"]');
+    // « Relancer… » vit dans le MENU depuis la 10.6.0 : une ligne garde au plus un bouton visible
+    // (7.29.0). On l'atteint comme une personne — on ouvre le menu — et on en profite pour mesurer
+    // le menu lui-même, qui est une surface à part entière et que rien ne regardait.
+    await page.click('#table td.acts button[data-menu]');
+    await page.waitForSelector('#rowmenu', { timeout: 5000 });
+    await page.waitForTimeout(160);
+    await mesurer(`${etiquette} · le menu d’une ligne`);
+    await page.click('#rowmenu button[data-act="ecrire"]');
     await page.waitForSelector('#relance-txt', { timeout: 15000 });
     await page.waitForTimeout(200);
     await mesurer(`${etiquette} · la relance composée`);
