@@ -55,6 +55,7 @@
     "e2e:parametres": "node test/e2e/parametres.js",
     "e2e:pages": "node test/e2e/pages.js",
     "e2e:console": "node test/e2e/console.js",
+    "e2e:console-rendu": "node test/e2e/console-rendu.js",
     "e2e:licence": "node test/e2e/licence.js",
     "e2e:plateforme": "node test/e2e/plateforme.js",
     "e2e:justificatif": "node test/e2e/justificatif.js",

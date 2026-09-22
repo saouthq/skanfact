@@ -99,6 +99,19 @@ const SONDE_BOUTONS = () => {
     }
     return [255, 255, 255];
   };
+  // Un bouton qui dépasse n'est pas toujours HORS de l'écran : s'il vit dans un conteneur qui
+  // défile vraiment de côté, il est à une molette, et le projet a tranché que ce n'est pas un
+  // défaut (7.13.0 sur `.scroll-x`, 9.4.4). La sonde rend donc le FAIT — « il est dans quelque
+  // chose qui défile » — et laisse l'appelant décider : elle ne connaît ni la classe que telle
+  // surface emploie pour le marquer (`.scroll-x` dans les applications, `.wrap` dans la console),
+  // ni ce que cet appelant-là veut en faire.
+  const defile = el => {
+    for (let n = el; n && n !== document.body; n = n.parentElement) {
+      const o = getComputedStyle(n).overflowX;
+      if ((o === 'auto' || o === 'scroll') && n.scrollWidth > n.clientWidth + 1) return true;
+    }
+    return false;
+  };
   const out = [];
   document.querySelectorAll('button, .btn').forEach(b => {
     const r = b.getBoundingClientRect();
@@ -113,7 +126,8 @@ const SONDE_BOUTONS = () => {
       id: b.id || '', cls: String(b.className || '').split(' ')[0],
       color: s.color, bg: `rgb(${f.join(',')})`,
       ratio: +(((Math.max(a, c) + 0.05) / (Math.min(a, c) + 0.05))).toFixed(2),
-      hors: Math.round(Math.max(0, r.right - document.documentElement.clientWidth))
+      hors: Math.round(Math.max(0, r.right - document.documentElement.clientWidth)),
+      defilant: defile(b)
     });
   });
   return out;
@@ -156,18 +170,28 @@ const SONDE_COLONNES = () => {
 // 3. Les barres d'en-tête : aucun contrôle étiré d'un bord à l'autre, aucune barre sur trois rangées.
 //    Un `select` hérite de `width: 100%` de la règle générale des champs ; dans un conteneur flex,
 //    chacun réclame donc toute la ligne (7.23.0).
-const SONDE_ENTETES = ({ maxL, maxR, maxH }) => {
-  const head = document.querySelector('#view .page-head');
-  if (!head) return { n: 0, larges: [], hauteur: 0 };
-  const actions = head.querySelector('.actions');
-  if (!actions) return { n: 0, larges: [], hauteur: 0 };
-  const ctrls = [...actions.querySelectorAll('select, input:not([type=checkbox]):not([type=radio])')];
-  const larges = ctrls.map(c => ({
-    tag: c.tagName.toLowerCase(), id: c.id || c.name || '(sans nom)',
-    w: Math.round(c.getBoundingClientRect().width),
-    borne: c.type === 'search' ? maxR : maxL
-  })).filter(x => x.w > x.borne);
-  return { n: ctrls.length, larges, hauteur: Math.round(actions.getBoundingClientRect().height), maxH };
+//
+//    `barres` nomme les conteneurs à juger, parce que les trois surfaces du produit ne rangent pas
+//    leurs actions sous le même nom : les deux applications ont `#view .page-head .actions`, la
+//    console de l'éditeur a `main .bar`. La sonde ne connaît ni l'une ni l'autre — c'est l'appelant
+//    qui dit où regarder, et le défaut jugé reste exactement le même. Un second exemplaire de cette
+//    sonde, écrit pour la console, aurait divergé au premier ajustement (7.29.0).
+const SONDE_ENTETES = ({ maxL, maxR, maxH, barres }) => {
+  const zones = [...document.querySelectorAll(barres || '#view .page-head .actions')]
+    .filter(a => { const r = a.getBoundingClientRect(); return r.width > 0 && r.height > 0; });
+  if (!zones.length) return { n: 0, larges: [], hauteur: 0 };
+  let n = 0, hauteur = 0; const larges = [];
+  zones.forEach(actions => {
+    const ctrls = [...actions.querySelectorAll('select, input:not([type=checkbox]):not([type=radio])')];
+    n += ctrls.length;
+    ctrls.map(c => ({
+      tag: c.tagName.toLowerCase(), id: c.id || c.name || '(sans nom)',
+      w: Math.round(c.getBoundingClientRect().width),
+      borne: c.type === 'search' ? maxR : maxL
+    })).filter(x => x.w > x.borne).forEach(x => larges.push(x));
+    if (ctrls.length) hauteur = Math.max(hauteur, Math.round(actions.getBoundingClientRect().height));
+  });
+  return { n, larges, hauteur, maxH };
 };
 
 // 4. L'ESPACEMENT des boutons. Signalé par Skander sur l'app Cabinet : « plein de boutons mal
@@ -196,7 +220,11 @@ const SONDE_ENTETES = ({ maxL, maxR, maxH }) => {
 //      · `.row-menu` — les entrées d'un menu déroulant sont une LISTE : les espacer en ferait des
 //                      objets séparés flottant dans une boîte ;
 //      · `.pager`    — même raison qu'un jeu d'onglets : une pagination est une bande.
-const SONDE_ESPACEMENT = ({ min, exceptions }) => {
+//
+//    `racine` borne la sonde au corps de la page, parce qu'une barre de fenêtre ou un pied n'ont
+//    pas les mêmes règles d'espacement que le contenu. Les deux applications passent `#view`, la
+//    console `body` : elle n'a pas de cadre fixe, tout son écran EST le contenu.
+const SONDE_ESPACEMENT = ({ min, exceptions, racine }) => {
   const visible = el => {
     const r = el.getBoundingClientRect();
     const s = getComputedStyle(el);
@@ -227,7 +255,8 @@ const SONDE_ESPACEMENT = ({ min, exceptions }) => {
     };
   };
   const out = []; let mesures = 0;
-  document.querySelectorAll('#view button, #view .btn').forEach(b => {
+  const R = racine || '#view';
+  document.querySelectorAll(R + ' button, ' + R + ' .btn').forEach(b => {
     if (!visible(b)) return;
     if (!(b.textContent || '').trim()) return;          // un pictogramme seul n'est pas jugé ici
     if (exceptions.some(sel => b.closest(sel))) return;

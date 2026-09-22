@@ -3575,8 +3575,21 @@ t('8.5.0 : la clé du serveur se fabrique sur le poste de l\'éditeur, se dit à
   ['SRV_PRIVATE_KEY', 'RESEND_API_KEY', 'ALTER TABLE licences ADD COLUMN charge TEXT', 'ALTER TABLE licences ADD COLUMN envoyee_le TEXT'].forEach(m =>
     assert.ok(readme.includes(m), 'plateforme/README.md doit nommer : ' + m));
   // Les parcours : la console contre une VRAIE base, et l'application contre une clé de la console.
+  //
+  // Le décor (worker réel + D1 réelle) vit dans `console-serveur.js` depuis que le parcours de
+  // RENDU en a eu besoin à l'identique : une seconde copie aurait divergé (7.29.0). Ce test
+  // s'ancrait sur le FICHIER qui le portait, donc il est tombé au déménagement — la règle, elle,
+  // n'a pas bougé : les deux parcours doivent faire tourner le vrai worker, jamais une imitation
+  // (c'est la leçon de P 0.2, où des réponses écrites à la main cachaient une requête SQL fausse
+  // jusqu'à Cloudflare). On juge donc ce que les parcours CHARGENT, pas où le code est rangé.
+  const serveur = lireSource('test', 'e2e', 'console-serveur.js');
+  assert.ok(/require\('\.\.\/d1-sqlite'\)/.test(serveur) && /P\.default\.fetch\(/.test(serveur),
+    'le décor partagé doit faire tourner le vrai worker sur une vraie base');
   const e2eC = lireSource('test', 'e2e', 'console.js');
-  assert.ok(/require\('\.\.\/d1-sqlite'\)/.test(e2eC) && /P\.default\.fetch\(/.test(e2eC), 'e2e:console doit faire tourner le vrai worker sur une vraie base');
+  const e2eR = lireSource('test', 'e2e', 'console-rendu.js');
+  [['console.js', e2eC], ['console-rendu.js', e2eR]].forEach(([nom, src]) =>
+    assert.ok(/require\('\.\/console-serveur'\)/.test(src),
+      'e2e:' + nom + ' doit prendre son serveur dans le décor partagé, jamais une imitation à lui'));
   assert.ok(/L\.verifyKey\(cle, cles\)/.test(e2eC), 'e2e:console doit vérifier la clé émise avec src/licence.js');
   const e2eP = lireSource('test', 'e2e', 'plateforme.js');
   assert.ok(/\/v1\/admin\/licences/.test(e2eP) && /kid !== 'srv-1'/.test(e2eP), 'e2e:plateforme doit coller une clé émise par la console dans l\'application');
