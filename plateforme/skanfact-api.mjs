@@ -705,7 +705,12 @@ export const appDe = v => (Object.prototype.hasOwnProperty.call(APPS, String(v |
 // affirmation qu'on s'autorise quand on peut la prouver (Cabinet 1.0.0).
 export function verdictCanaux(canaux) {
   const l = Array.isArray(canaux) ? canaux : [];
-  const stables = l.filter(c => !c.essai);
+  // On ne juge que ce que le projet PUBLIE (`attendus` du relais). Sans ce filtre, les index
+  // `-linux.yml` — permis par le relais, produits par aucune construction — étaient comptés muets
+  // pour toujours : un orange qui ne s'éteint jamais apprend à ignorer la barre (8.0.1).
+  // `!== false` et non `=== true` : un relais d'AVANT la 10.4.1 n'envoie pas ce champ, et on
+  // préfère qu'il juge trop que de se taire — un instrument muet annonce que tout va bien (9.8.8).
+  const stables = l.filter(c => !c.essai && c.attendu !== false);
   const muets = stables.filter(c => !c.servi).map(c => c.fichier);
   // Un index STABLE servi par une PRÉVERSION : c'est le défaut de la 9.8.8, celui qui a proposé une
   // bêta à toutes les installations stables. Le relais le refuse désormais, donc ceci ne devrait

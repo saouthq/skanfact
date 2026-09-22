@@ -446,4 +446,81 @@ module.exports = async ({ t, ta, assert, lireSource }) => {
       'même porte que les fichiers : sans elle, n\'importe qui brûle le quota GitHub');
     assert.ok(/APP_SECRET/.test(zone));
   });
+
+  // ---------------------------------------------------------------- 10.4.1 : ce qu'on PUBLIE
+
+  // Le 22/09/2026, la ligne de santé — branchée depuis dix minutes — annonçait « 2 canaux stables
+  // muets : latest-linux.yml, cabinet-linux.yml ». Vrai au pied de la lettre, et faux comme
+  // signal : aucune construction ne produit de fichier Linux. Un orange qui ne peut jamais
+  // s'éteindre apprend à ignorer la barre entière (8.0.1), et l'instrument accusait du code juste
+  // (9.4.7). Ce que `attendus` sépare : ce que le relais a le DROIT de servir, et ce que le projet
+  // PUBLIE.
+  await ta('10.4.1 : « attendus » du relais = les ATTENDUS du workflow de publication', async () => {
+    const R = await RELAIS();
+    const wf = lireSource('.github/workflows', 'release.yml');
+    const listes = [...wf.matchAll(/ATTENDUS="([^"]+)"/g)].map(m => m[1].trim().split(/\s+/));
+    assert.strictEqual(listes.length, 2,
+      'le workflow doit porter exactement deux listes ATTENDUS (bêta, stable) — ' + listes.length + ' trouvée(s)');
+    const duWorkflow = [...new Set(listes.flat())].sort();
+    const duRelais = Object.keys(R.CANAUX)
+      .flatMap(c => R.CANAUX[c].attendus || []).sort();
+    assert.deepStrictEqual(duRelais, duWorkflow,
+      'deux tables séparées divergent, toujours (6.8.0) : le relais et le workflow doivent nommer ' +
+      'les MÊMES index attendus.\n  relais   : ' + duRelais.join(' ') + '\n  workflow : ' + duWorkflow.join(' '));
+    // Et la preuve que la distinction sert à quelque chose : `yml` est plus large qu'`attendus`.
+    for (const c of Object.keys(R.CANAUX)) {
+      const sup = R.CANAUX[c].yml.filter(f => !R.CANAUX[c].attendus.includes(f));
+      assert.ok(sup.length, 'canal ' + c + ' : `yml` doit rester plus permissif qu\'`attendus`');
+      assert.ok(sup.every(f => /-linux\.yml$/.test(f)),
+        'canal ' + c + ' : seuls les index Linux sont permis sans être attendus, ' + sup.join(', ') + ' trouvés');
+    }
+  });
+
+  await ta('10.4.1 : un index qu\'on ne publie pas ne compte pas comme un canal muet', async () => {
+    const P = await API();
+    // Le cas réel du 22/09/2026 : les quatre index attendus servent, les deux Linux ne servent
+    // pas — parce qu'ils n'existent pas.
+    const lignes = [
+      { fichier: 'latest.yml', essai: false, attendu: true, servi: true, prerelease: false },
+      { fichier: 'latest-mac.yml', essai: false, attendu: true, servi: true, prerelease: false },
+      { fichier: 'latest-linux.yml', essai: false, attendu: false, servi: false, prerelease: false },
+      { fichier: 'cabinet.yml', essai: false, attendu: true, servi: true, prerelease: false },
+      { fichier: 'cabinet-mac.yml', essai: false, attendu: true, servi: true, prerelease: false },
+      { fichier: 'cabinet-linux.yml', essai: false, attendu: false, servi: false, prerelease: false },
+      { fichier: 'beta.yml', essai: true, attendu: true, servi: true, prerelease: true }
+    ];
+    const v = P.verdictCanaux(lignes);
+    assert.strictEqual(v.niveau, 'calme', 'les Linux ne se publient pas : rien à signaler — ' + v.phrase);
+    assert.ok(/ 4 /.test(v.phrase), 'quatre canaux stables attendus, pas six : ' + v.phrase);
+
+    // Et l'autre sens : un index VRAIMENT attendu qui ne sert pas doit toujours crier.
+    const manque = lignes.map(c => c.fichier === 'latest-mac.yml' ? { ...c, servi: false } : c);
+    const v2 = P.verdictCanaux(manque);
+    assert.strictEqual(v2.niveau, 'attention', 'un index attendu et muet reste un avertissement');
+    assert.ok(v2.phrase.includes('latest-mac.yml'), v2.phrase);
+  });
+
+  await ta('10.4.1 : un relais d\'AVANT ne rend pas la ligne muette', async () => {
+    const P = await API();
+    // Pas de champ `attendu` : c'est ce que renvoie un relais non redéployé. On préfère qu'il juge
+    // trop que de se taire — un instrument muet annonce que tout va bien (9.8.8, T-55).
+    const vieux = [
+      { fichier: 'latest.yml', essai: false, servi: true, prerelease: false },
+      { fichier: 'latest-mac.yml', essai: false, servi: true, prerelease: false }
+    ];
+    const v = P.verdictCanaux(vieux);
+    assert.strictEqual(v.niveau, 'calme');
+    assert.ok(/ 2 /.test(v.phrase), 'les deux lignes doivent être jugées, pas ignorées : ' + v.phrase);
+  });
+
+  await ta('10.4.1 : resumeCanaux marque « attendu » sur les bons fichiers', async () => {
+    const R = await RELAIS();
+    const lignes = R.resumeCanaux([]);
+    const att = lignes.filter(c => c.attendu).map(c => c.fichier).sort();
+    assert.deepStrictEqual(att,
+      ['beta-mac.yml', 'beta.yml', 'cabinet-beta-mac.yml', 'cabinet-beta.yml',
+        'cabinet-mac.yml', 'cabinet.yml', 'latest-mac.yml', 'latest.yml'].sort());
+    assert.ok(lignes.some(c => !c.attendu), 'les Linux doivent rester DANS la réponse, marqués non attendus');
+    assert.ok(lignes.every(c => 'servi' in c && 'essai' in c), 'la forme d\'une ligne ne change pas');
+  });
 };

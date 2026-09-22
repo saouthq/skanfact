@@ -7,6 +7,34 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 10.4.0-beta.2 — 22/09/2026
+
+**L'instrument de surveillance accusait du code juste, dix minutes après avoir été branché.**
+Correctif des deux workers uniquement : aucune application ne change, et **aucune publication
+n'est nécessaire** — il suffit de redéployer `skanfact-maj` et `skanfact-api`.
+
+La ligne de santé des canaux (10.4.0), branchée pour la première fois, a annoncé « 2 canaux
+stables muets : `latest-linux.yml`, `cabinet-linux.yml` ». Vrai au pied de la lettre, et faux comme
+signal : ni `package.json` ni `build/cabinet.config.js` ne déclarent de cible Linux, ces fichiers
+n'existeront jamais. Un orange qui ne peut **jamais** s'éteindre apprend à ignorer la barre entière
+(8.0.1), et c'est un test trop large : il accuse du code juste (9.4.7).
+
+- **`CANAUX[].attendus`** sépare ce que le relais a le DROIT de servir (`yml`, volontairement
+  permissif — le jour où une cible Linux existe, il la sert sans qu'on y retouche) de ce que le
+  projet PUBLIE. `resumeCanaux` marque chaque ligne, la console ne juge que celles-là. Les autres
+  restent dans la réponse : un index servi alors qu'on ne l'attend pas est une information.
+- **La liste est confrontée aux deux `ATTENDUS` du workflow de publication** par un test : deux
+  tables séparées divergent, toujours (6.8.0). Le workflow savait depuis la 9.8.8 que quatre index
+  seulement sont publiés ; le relais ne partageait pas cette connaissance.
+- **`c.attendu !== false` et non `=== true`** : un relais d'avant cette version n'envoie pas le
+  champ, et on préfère qu'il juge trop plutôt qu'il se taise — un instrument muet annonce que tout
+  va bien (9.8.8, T-55).
+
+Trois défauts réintroduits un par un font tomber leur test. Et la preuve elle-même a appris quelque
+chose : mes trois premières injections ont rendu « 0 rouge » parce que je comptais des lignes
+« not ok » que ce harnais ne produit pas — une assertion qui tombe **lève**, et le lot s'arrête.
+C'est la mesure qui était fausse, pas le code (9.9.1).
+
 ## 10.4.0-beta.1 — 22/09/2026
 
 **La bêta qui rattrape cinq versions.** Aucune ligne de code nouvelle : cette préversion porte

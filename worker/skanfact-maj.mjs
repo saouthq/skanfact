@@ -23,9 +23,20 @@
 // (7.25.0). Sans cette ligne, une installation qui a coché « recevoir les bêtas » réclamerait
 // `beta-mac.yml`, le relais répondrait 404, et l'écran afficherait « aucune version trouvée » —
 // un canal muet, sans rien qui dise pourquoi.
+// `yml` est ce que le relais a le DROIT de servir ; `attendus`, ce que le projet PUBLIE vraiment.
+// Les deux diffèrent exprès, et confondre les deux a produit un faux positif le 22/09/2026 : la
+// ligne de santé de la console (10.4.0) annonçait « 2 canaux stables muets : latest-linux.yml,
+// cabinet-linux.yml » — sur des fichiers qu'aucune construction ne produit, puisque ni
+// `package.json` ni `build/cabinet.config.js` ne déclarent de cible Linux. Un orange qui ne peut
+// JAMAIS s'éteindre apprend à ignorer la barre entière (8.0.1), et c'est un test trop large :
+// il accuse du code juste (9.4.7). `yml` reste permissif pour que le jour où une cible Linux
+// existe, le relais la serve sans qu'on y retouche — mais il faudra alors l'AJOUTER ici, et
+// c'est une décision, jamais un effet de bord (9.7.0). Un test confronte `attendus` aux deux
+// listes `ATTENDUS` du workflow de publication : deux tables séparées divergent, toujours (6.8.0).
 export const CANAUX = {
   app: {
     yml: ['latest.yml', 'latest-mac.yml', 'latest-linux.yml', 'beta.yml', 'beta-mac.yml', 'beta-linux.yml'],
+    attendus: ['latest.yml', 'latest-mac.yml', 'beta.yml', 'beta-mac.yml'],
     prefixe: 'SkanFact-',
     interdit: 'SkanFact-Cabinet-'
   },
@@ -35,6 +46,7 @@ export const CANAUX = {
     // ça, la seule façon de lui faire essayer quelque chose est de le publier à tous les cabinets.
     yml: ['cabinet.yml', 'cabinet-mac.yml', 'cabinet-linux.yml',
           'cabinet-beta.yml', 'cabinet-beta-mac.yml', 'cabinet-beta-linux.yml'],
+    attendus: ['cabinet.yml', 'cabinet-mac.yml', 'cabinet-beta.yml', 'cabinet-beta-mac.yml'],
     prefixe: 'SkanFact-Cabinet-',
     interdit: null
   }
@@ -203,6 +215,10 @@ export function resumeCanaux(releases) {
       out.push({
         canal, fichier,
         essai: !INDEX_STABLES.includes(fichier),
+        // Ce que le projet publie vraiment. La console ne juge que ces lignes-là ; les autres
+        // restent dans la réponse, parce qu'un index servi alors qu'on ne l'attend pas est une
+        // information, pas un silence.
+        attendu: (CANAUX[canal].attendus || []).includes(fichier),
         servi: !!trouve,
         tag: trouve ? String(trouve.tag_name || '') : '',
         prerelease: trouve ? !!trouve.prerelease : false,
