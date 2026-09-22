@@ -6,7 +6,7 @@ Il ne remplace pas `VERSIONS-A-VENIR.md`, qui inventorie les VERSIONS à écrire
 constats isolés, les dettes et les décisions en attente. Une ligne en sort quand elle est faite, ou
 quand elle devient une version.*
 
-Dernière relecture : 22/09/2026.
+Dernière relecture : 23/09/2026.
 
 ---
 
@@ -40,6 +40,16 @@ lourds, ce qui n'est pas la même chose.
   elles mènent (règle 7.29.0 : un libellé décrit l'écran d'arrivée).
 - **GoatCounter n'est pas branché** : `var MESURE = ''` dans `assets/site.js`. Tant qu'il est vide,
   on ne sait rien de ce que les visiteurs regardent.
+- **Ce que l'audit commercial du 23/09/2026 a demandé et que seul Skander peut fournir** (le reste
+  est corrigé, voir le README du site, « L'audit commercial ») :
+  - des **témoignages et des chiffres réels** — noms, entreprises, nombre d'installations. On n'en
+    invente pas ; la page Nouveautés reste la seule preuve honnête tant qu'il n'y en a pas.
+  - la **signature des exécutables** (certificats Apple et Windows, payants) : la page
+    Téléchargement explique l'alerte, elle ne la supprime pas.
+  - un **lien de parrainage par cabinet** (`skanfact.tn/…?cabinet=<empreinte>`) qui préremplit la
+    remise et rend le canal mesurable — aujourd'hui le client tape le nom de son cabinet, et la
+    console rattache à la main. Une version du site et du worker, à décider.
+  - un **numéro de téléphone** publié, ou la décision de rester sur « rendez-vous par email ».
 - **Une branche distante orpheline** : `claude/bancs-de-captures` sur le dépôt du site.
 
 ## 3. La console
