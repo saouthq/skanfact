@@ -349,10 +349,24 @@ const { servir, SECRET } = require('./console-serveur');
 
     // L'argent : la question qu'un éditeur se pose en ouvrant sa console, et qui n'avait de réponse
     // nulle part. Groupé par DEVISE, et « encaissé » porte son année.
-    await page.waitForFunction(() => /Encaissé en|Aucune vente/.test((document.getElementById('argent') || {}).textContent || ''));
-    const argent = (await page.textContent('#argent')).replace(/\s+/g, ' ');
-    doit(/Encaissé en \d{4} : [\d  ,]+ [A-Z]{2,4}/.test(argent), 'le total encaissé porte son année ET sa devise : « ' + argent.trim() + ' »');
-    doit(/En attente : [\d  ,]+ [A-Z]{2,4}/.test(argent), 'et ce qui attend se lit à côté');
+    //
+    // L'assertion lit la STRUCTURE, pas une phrase aplatie. Sa première version exigeait
+    // « Encaissé en 2026 : 690,000 TND », c'est-à-dire la FORME du jour — deux pastilles de texte.
+    // Le jour où l'étiquette est passée au-dessus du nombre (elle portait l'information la plus
+    // importante de l'écran dans son plus petit texte), elle est tombée sur un affichage juste.
+    // On teste la RÈGLE : chaque montant porte sa période et sa devise, et ce qui attend s'OUVRE.
+    await page.waitForFunction(() => document.querySelectorAll('#argent .sous').length > 0);
+    const sous = await page.$$eval('#argent .sous', bs => bs.map(b => ({
+      etiquette: (b.querySelector('.eyebrow') || {}).textContent || '',
+      nombre: (b.querySelector('.n') || {}).textContent || '',
+      ouvre: b.getAttribute('data-t') || ''
+    })));
+    const rentre = sous.find(s => /Encaissé/.test(s.etiquette));
+    doit(rentre && /\d{4}/.test(rentre.etiquette) && /[\d  ,]+ [A-Z]{2,4}/.test(rentre.nombre),
+      'le total encaissé porte son année ET sa devise : « ' + (rentre ? rentre.etiquette + ' → ' + rentre.nombre : '—') + ' »');
+    const attente = sous.find(s => /En attente/.test(s.etiquette));
+    doit(attente && /[\d  ,]+ [A-Z]{2,4}/.test(attente.nombre) && attente.ouvre === 'ventes',
+      'ce qui attend se lit à côté, et s\'ouvre sur les ventes (7.15.0)');
 
     await onglet('alertes');
     await page.waitForSelector('#table .wrap');

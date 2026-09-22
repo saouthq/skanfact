@@ -882,6 +882,48 @@ export function alertesPlateforme(d, aujourdhui) {
   return out.sort((a, b) => (NIVEAUX[a.niveau] - NIVEAUX[b.niveau]) || (a.quoi < b.quoi ? -1 : a.quoi > b.quoi ? 1 : 0));
 }
 
+// Combien de sujets on ÉNUMÈRE avant de compter le reste. Trois, pour la raison de la Cabinet
+// 1.0.0 : « un objet de mail qui énumère onze mois n'est plus lu ». Au-delà, le nombre apprend
+// plus que la liste.
+export const ALERTES_NOMMEES = 3;
+
+// Grouper les alertes pour l'écran. Mesuré avant d'y toucher : la colonne « Pourquoi ça compte »
+// imprimait jusqu'à CINQ fois « La licence est signée et n'est jamais partie. » — et à la
+// troisième, on ne lit plus la colonne du tout. Une explication se lit une fois (9.4.6).
+//
+// La clé du groupe inclut le DÉTAIL, et c'est tout l'intérêt : une explication qui décrit la RÈGLE
+// est la même sur chaque occurrence et se replie ; une qui nomme un FAIT — « Finie le 2026-09-01 »,
+// « Dernier export le 2026-08-30 » — diffère d'une ligne à l'autre et reste sur sa ligne. On ne
+// fusionne donc jamais deux informations différentes sous prétexte qu'elles portent le même titre.
+export function grouperAlertes(lignes, nommees) {
+  const max = Number.isInteger(nommees) && nommees > 0 ? nommees : ALERTES_NOMMEES;
+  const ordre = [];
+  const par = new Map();
+  (lignes || []).forEach(a => {
+    const cle = [a.niveau, a.quoi, a.detail, a.onglet].join('\u0000');
+    if (!par.has(cle)) {
+      par.set(cle, { id: cle, niveau: a.niveau, quoi: a.quoi, detail: a.detail, onglet: a.onglet, n: 0, tous: [], ids: [] });
+      ordre.push(cle);
+    }
+    const g = par.get(cle);
+    g.n += 1;
+    // Rien ne se perd dans un repli : le groupe garde l'identifiant de CHACUN de ses membres. Sans
+    // eux, replier reviendrait à jeter ce qui permettra un jour d'agir sur une alerte précise.
+    if (a.id) g.ids.push(a.id);
+    // Le même client deux fois sous la même alerte ne se nomme qu'une fois : on compte les
+    // occurrences, on n'écrit pas deux fois son nom.
+    if (a.sujet && g.tous.indexOf(a.sujet) < 0) g.tous.push(a.sujet);
+  });
+  return ordre.map(cle => {
+    const g = par.get(cle);
+    const reste = g.tous.length - max;
+    g.sujets = reste > 0
+      ? g.tous.slice(0, max).join(', ') + ' et ' + reste + ' autre' + (reste === 1 ? '' : 's')
+      : g.tous.join(', ');
+    return g;
+  });
+}
+
 // ---------- l'export de la base ----------
 // Décidé avant la première vente (QUESTIONS.md, 4e relecture). Ce n'est pas une sauvegarde de
 // confort : D1 est le SEUL endroit où vit la correspondance « qui a acheté quelle clé ». Le
@@ -1112,7 +1154,7 @@ async function repondreAdmin(r, request, env) {
         'SELECT v.id, v.payee_le, c.nom AS client FROM ventes v LEFT JOIN clients c ON c.id = v.client_id' +
         ' ORDER BY v.rowid DESC LIMIT 500');
       const ex = await un('SELECT quand FROM evenements WHERE quoi = ? ORDER BY id DESC LIMIT 1', 'base.exportee');
-      return json({ lignes: alertesPlateforme({ licences, ventes, dernierExport: ex && ex.quand }, aujourdhui) });
+      return json({ lignes: grouperAlertes(alertesPlateforme({ licences, ventes, dernierExport: ex && ex.quand }, aujourdhui)) });
     }
 
     if (r.action === 'sante') return json(await santeCanaux(env));
@@ -1496,7 +1538,12 @@ const CONSOLE_HTML = `<!doctype html>
   body{margin:0;background:var(--ground);color:var(--ink);font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
   header{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:18px 22px;
          border-bottom:1px solid var(--line);background:var(--surface)}
-  header h1{font-size:17px;margin:0;font-weight:700;letter-spacing:-.01em}
+  header h1{font-size:18px;margin:0;font-weight:700;letter-spacing:-.4px}
+  /* L'échelle de titres des deux applications (9.4.3), portée ici : trois niveaux, un rôle chacun.
+     Un titre gris de 11 px ne hiérarchise rien, il décore — et l'eyebrow ne sert QUE de
+     sur-étiquette au-dessus d'un chiffre, jamais de titre de section. C'est très exactement
+     l'usage qu'en fait le bloc de l'argent ci-dessous. */
+  .eyebrow{font-size:11px;color:var(--ink2);text-transform:uppercase;letter-spacing:1px;font-weight:700}
   header .sp{flex:1}
   main{padding:22px;max-width:1280px;margin:0 auto}
   .btn{font:inherit;font-size:14px;padding:8px 14px;border-radius:8px;border:1px solid var(--line);
@@ -1529,11 +1576,34 @@ const CONSOLE_HTML = `<!doctype html>
   @media (max-width:1180px){.cards{grid-template-columns:repeat(3,minmax(0,1fr))}}
   @media (max-width:700px){.cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
   @media (max-width:430px){.cards{grid-template-columns:1fr}}
-  .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
-  .card b{display:block;font-size:28px;font-weight:700;letter-spacing:-.02em;
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .card b{display:block;font-size:24px;font-weight:700;letter-spacing:-.02em;
           font-variant-numeric:tabular-nums;line-height:1.1}
   .card span{display:block;font-size:12.5px;color:var(--ink2);margin-top:4px}
   .card.ess b{color:var(--srv)} .card.rev b{color:var(--alr)} .card.act b{color:var(--acc)}
+  /* Un compteur à zéro n'a rien à annoncer : il reste lisible — on ne cache jamais un chiffre —
+     mais il cesse de crier aussi fort que celui qui porte une décision. « 0 expirée » et
+     « 0 ordinateur vu » occupaient deux des six places de tête au même poids que le reste. */
+  .card.zero b{color:var(--ink2);font-weight:600}
+
+  /* ---------- l'argent ----------
+     C'est le chiffre d'un éditeur : combien est rentré, combien attend. Il vivait dans deux
+     pastilles de 11,5 px sous six cartes de même poids — la hiérarchie était à l'envers, et ça se
+     mesure : le plus petit texte de l'écran portait l'information la plus importante. Il passe en
+     tête, avec l'eyebrow des applications au-dessus du nombre (9.4.3).
+     Chaque montant garde sa DEVISE et son ANNÉE : additionner des dinars et des euros est la faute
+     de la 7.16.0, et un agrégat sans sa période ne veut rien dire (3.1.0). */
+  .argent{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:16px}
+  .sous{background:var(--surface);border:1px solid var(--line);border-radius:12px;
+        padding:14px 18px;min-width:210px}
+  .sous .n{display:block;font-size:30px;font-weight:700;letter-spacing:-.6px;line-height:1.15;
+           font-variant-numeric:tabular-nums;margin-top:2px}
+  .sous.du{border-color:var(--warn)} .sous.du .n{color:var(--warn)}
+  .sous.rentre .n{color:var(--acc)}
+  .sous .q{display:block;font-size:12.5px;color:var(--ink2);margin-top:2px}
+  .sous[role=button]{cursor:pointer}
+  .sous[role=button]:hover{border-color:var(--acc)}
+  .sous:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
   .bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:18px}
   .panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin-bottom:20px}
   .panel h2{margin:0 0 4px;font-size:16px}
@@ -1550,6 +1620,19 @@ const CONSOLE_HTML = `<!doctype html>
   td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
   td.acts{white-space:normal}
   td.acts .btn{margin:2px 4px 2px 0}
+  /* Le geste d'une ligne reste ATTEIGNABLE quand la table déborde. Mesuré : à 1280 px, la table
+     de l'écran d'entrée faisait 1350 px et « Ouvrir » sortait de 70 px — il fallait faire défiler
+     de côté pour agir sur la ligne qu'on venait de lire. Un geste qu'on doit aller chercher est un
+     geste qu'on ne fait pas. La colonne d'actions se colle à droite, comme celle du Cabinet
+     (9.4.4), et porte son propre fond pour que le texte ne passe pas dessous. */
+  .wrap{position:relative}
+  th.acts,td.acts{position:sticky;inset-inline-end:0;background:var(--surface)}
+  th.acts{background:var(--surface2)}
+  td.acts::before{content:'';position:absolute;inset-block:0;inset-inline-start:0;width:1px;background:var(--line)}
+  /* Une colonne qui EXPLIQUE a le droit de revenir à la ligne : c'est elle qui portait la table à
+     1350 px, parce que le nowrap de la règle générale vaut pour toutes. Les colonnes de chiffres et de
+     dates, elles, ne se coupent jamais. */
+  td.libre{white-space:normal;min-width:260px}
   .mono{font-family:ui-monospace,"SFMono-Regular",Menlo,monospace;font-size:12px}
   /* Le moment exact sous la phrase : « aujourd'hui » dit si l'installation vit encore, la seconde
      ligne dit à quelle heure elle a été ouverte. Les deux sont utiles, et ni l'une ni l'autre ne
@@ -1596,8 +1679,8 @@ const CONSOLE_HTML = `<!doctype html>
   <main>
     <div id="err" class="msg" hidden></div>
     <div id="info" class="msg ok" hidden></div>
+    <div id="argent" class="argent"></div>
     <div class="cards" id="cards"></div>
-    <div id="argent" class="bar" style="display:block"></div>
     <div class="bar">
       <button id="emettre" class="btn p" type="button">Émettre une licence…</button>
       <button id="nouveau-client" class="btn" type="button">Nouveau client…</button>
@@ -2124,13 +2207,19 @@ const CONSOLE_HTML = `<!doctype html>
       { k: 'detail', t: 'Détail' }
     ],
     // 10.4.0 — ce qui demande une décision, le parc des DEUX applications, et les cabinets.
+    // Les alertes sont GROUPÉES par nature avant d'arriver ici (voir grouperAlertes) : la colonne
+    // « Pourquoi ça compte » imprimait jusqu'à cinq fois la même phrase, mesuré, et à la troisième
+    // on ne lit plus la colonne du tout. Une explication se lit une fois (9.4.6) ; ce qui varie
+    // d'une occurrence à l'autre, c'est le SUJET, et c'est lui qu'on énumère.
     alertes: [
       { k: 'niveau', t: 'Niveau', f: function (v) {
           return '<span class="pill ' + (v === 'alerte' ? 'r' : (v === 'attention' ? 'w' : 'a')) + '">' + h(v) + '</span>';
         }, brut: true },
-      { k: 'quoi', t: 'Quoi' },
-      { k: 'sujet', t: 'Sujet' },
-      { k: 'detail', t: 'Pourquoi ça compte' },
+      { k: 'quoi', t: 'Quoi', f: function (v, r) {
+          return h(v) + (r.n > 1 ? ' <span class="pill e">' + r.n + '</span>' : '');
+        }, brut: true },
+      { k: 'sujets', t: 'Qui', l: true },
+      { k: 'detail', t: 'Pourquoi ça compte', l: true },
       { k: 'onglet', t: 'Où', brut: true, a: true, f: function (v) {
           return '<button type="button" class="btn s" data-act="aller" data-onglet="' + h(v) + '">Ouvrir</button>';
         } }
@@ -2192,18 +2281,26 @@ const CONSOLE_HTML = `<!doctype html>
     api('stats').then(function (s) {
       $('cards').innerHTML = CARTES.map(function (c) {
         var n = Number(s[c.k]) || 0;
-        return '<div class="card ' + c.c + '" role="button" tabindex="0" data-t="' + c.t + '" style="cursor:pointer"><b>' + n + '</b><span>' + (n >= 2 ? c.p : c.s) + '</span></div>';
+        return '<div class="card ' + c.c + (n ? '' : ' zero') + '" role="button" tabindex="0" data-t="' + c.t + '" style="cursor:pointer"><b>' + n + '</b><span>' + (n >= 2 ? c.p : c.s) + '</span></div>';
       }).join('');
       // L'argent : combien encaissé cette année, combien attend. Groupé par DEVISE — additionner
       // des dinars et des euros est la faute de la 7.16.0, et elle ne se voit pas.
       var a = s.argent || { annee: '', lignes: [] };
+      // L'eyebrow porte la PÉRIODE et la DEVISE, le nombre porte le montant : « ENCAISSÉ EN 2026 »
+      // posé sur « 690,000 TND » est une unité de lecture (9.4.3). « En attente » n'a PAS d'année —
+      // une vente de l'an dernier qui n'est pas payée attend toujours, et c'est justement celle-là
+      // qu'on veut voir — et elle s'ouvre, parce qu'un chiffre affiché s'ouvre (7.15.0).
       $('argent').innerHTML = a.lignes.length
         ? a.lignes.map(function (g) {
-            return '<span class="pill a">' + h('Encaissé en ' + a.annee) + ' : ' + h(montant(g.encaisse, g.devise)) + '</span>'
-              + (g.nbAttente ? ' <span class="pill w" role="button" tabindex="0" data-t="ventes" style="cursor:pointer">'
-                  + h('En attente : ' + montant(g.attente, g.devise)) + h(' (' + pl(g.nbAttente, 'vente') + ')') + '</span>' : '');
-          }).join(' ')
-        : '<span class="quand">Aucune vente : les montants apparaîtront ici.</span>';
+            return '<div class="sous rentre"><span class="eyebrow">' + h('Encaissé en ' + a.annee) + '</span>'
+                + '<span class="n">' + h(montant(g.encaisse, g.devise)) + '</span></div>'
+              + (g.nbAttente ? '<div class="sous du" role="button" tabindex="0" data-t="ventes">'
+                  + '<span class="eyebrow">En attente</span>'
+                  + '<span class="n">' + h(montant(g.attente, g.devise)) + '</span>'
+                  + '<span class="q">' + h(pl(g.nbAttente, 'vente') + ' livrée' + (g.nbAttente > 1 ? 's' : '') + ', rien d\\u2019encaissé') + '</span></div>' : '');
+          }).join('')
+        : '<div class="sous"><span class="eyebrow">Encaissé</span><span class="n">—</span>'
+          + '<span class="q">Aucune vente : les montants apparaîtront ici.</span></div>';
       Array.prototype.forEach.call($('argent').querySelectorAll('[data-t]'), function (el) {
         var aller = function () { onglet = el.dataset.t; dessiner(); };
         el.onclick = aller;
@@ -2224,13 +2321,16 @@ const CONSOLE_HTML = `<!doctype html>
       if (!lignes.length) { $('table').innerHTML = '<div class="wrap"><div class="vide">' + VIDES[onglet] + '</div></div>'; return; }
       var cols = COLONNES[onglet];
       var html = '<div class="wrap"><table><thead><tr>' +
-        cols.map(function (c) { return '<th' + (c.n ? ' class="num"' : '') + '>' + c.t + '</th>'; }).join('') +
+        cols.map(function (c) {
+          var cl = (c.n ? 'num' : '') + (c.a ? ' acts' : '');
+          return '<th' + (cl.trim() ? ' class="' + cl.trim() + '"' : '') + '>' + c.t + '</th>';
+        }).join('') +
         '</tr></thead><tbody>' +
         lignes.map(function (r) {
           return '<tr>' + cols.map(function (c) {
             var v = r[c.k];
             var texte = c.f ? c.f(v, r) : (v == null || v === '' ? '—' : v);
-            var cl = (c.n ? 'num ' : '') + (c.m ? 'mono ' : '') + (c.a ? 'acts' : '');
+            var cl = (c.n ? 'num ' : '') + (c.m ? 'mono ' : '') + (c.l ? 'libre ' : '') + (c.a ? 'acts' : '');
             return '<td' + (cl.trim() ? ' class="' + cl.trim() + '"' : '') + '>' + (c.brut ? texte : h(texte)) + '</td>';
           }).join('') + '</tr>';
         }).join('') + '</tbody></table></div>';

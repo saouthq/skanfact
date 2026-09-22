@@ -400,7 +400,12 @@ module.exports = async ({ t, ta, assert, lireSource }) => {
         + " VALUES ('lic_1', 'cli_1', 'srv-1', 'abc', 'independant', '2026-01-01', '2026-01-01', '2026-01-02')");
       const avant = await P.default.fetch(new Request('https://x/v1/admin/alertes', { headers: { 'x-skanfact-admin': ADMIN } }), env);
       const ja = await avant.json();
-      assert.ok(ja.lignes.some(x => x.id === 'exp:base' && x.niveau === 'alerte'), 'avant tout export, l\'alerte est là');
+      // La route rend désormais des alertes GROUPÉES : on reconnaît la ligne à ce qu'elle DIT, pas
+      // à un identifiant interne que le repli a dû recomposer. Et on vérifie que le repli n'a rien
+      // jeté — l'identifiant d'origine vit dans `ids`.
+      const expBase = ja.lignes.find(x => /jamais été exportée/.test(x.quoi));
+      assert.ok(expBase && expBase.niveau === 'alerte', 'avant tout export, l\'alerte est là');
+      assert.ok(expBase.ids.includes('exp:base'), 'le groupe garde l\'identifiant de son alerte');
 
       const r = await P.default.fetch(new Request('https://x/v1/admin/export', { headers: { 'x-skanfact-admin': ADMIN } }), env);
       assert.strictEqual(r.status, 200);
@@ -522,5 +527,46 @@ module.exports = async ({ t, ta, assert, lireSource }) => {
         'cabinet-mac.yml', 'cabinet.yml', 'latest-mac.yml', 'latest.yml'].sort());
     assert.ok(lignes.some(c => !c.attendu), 'les Linux doivent rester DANS la réponse, marqués non attendus');
     assert.ok(lignes.every(c => 'servi' in c && 'essai' in c), 'la forme d\'une ligne ne change pas');
+  });
+
+  // ---------------------------------------------------------------- les alertes groupées (9.4.6)
+  await ta('console : une explication qui décrit la RÈGLE se replie, une qui nomme un FAIT reste', async () => {
+    const P = await API();
+    const brutes = [
+      { niveau: 'alerte', quoi: 'Clé jamais envoyée', sujet: 'Trabelsi', detail: 'La licence est signée et n\'est jamais partie.', onglet: 'licences' },
+      { niveau: 'alerte', quoi: 'Clé jamais envoyée', sujet: 'El Amen', detail: 'La licence est signée et n\'est jamais partie.', onglet: 'licences' },
+      { niveau: 'alerte', quoi: 'Clé jamais envoyée', sujet: 'Ben Youssef', detail: 'La licence est signée et n\'est jamais partie.', onglet: 'licences' },
+      // Deux licences expirées : même titre, mais le détail nomme une DATE différente. Les replier
+      // ferait disparaître une information — ce n'est pas une explication redite, c'est un fait.
+      { niveau: 'attention', quoi: 'Licence expirée', sujet: 'Trabelsi', detail: 'Finie le 2026-09-01.', onglet: 'licences' },
+      { niveau: 'attention', quoi: 'Licence expirée', sujet: 'El Amen', detail: 'Finie le 2026-07-15.', onglet: 'licences' }
+    ];
+    const g = P.grouperAlertes(brutes);
+    assert.strictEqual(g.length, 3, 'trois clés jamais envoyées font UNE ligne, deux dates différentes en font deux');
+    assert.strictEqual(g[0].n, 3);
+    assert.strictEqual(g[0].sujets, 'Trabelsi, El Amen, Ben Youssef');
+    assert.strictEqual(g[1].n, 1, 'une expiration datée ne se replie pas avec l\'autre');
+    assert.strictEqual(g[2].n, 1);
+    // L'ordre de `alertesPlateforme` (niveau puis quoi) doit survivre au groupement.
+    assert.deepStrictEqual(g.map(x => x.niveau), ['alerte', 'attention', 'attention']);
+    // Rien ne se perd : chaque groupe garde son onglet, donc « Ouvrir » sait où aller (7.15.0).
+    assert.ok(g.every(x => x.onglet && x.detail && x.quoi), 'un groupe garde de quoi s\'afficher ET s\'ouvrir');
+  });
+
+  await ta('console : au-delà de trois sujets on COMPTE le reste, on ne l\'énumère pas', async () => {
+    const P = await API();
+    const cinq = ['A', 'B', 'C', 'D', 'E'].map(s => ({
+      niveau: 'attention', quoi: 'Vente à encaisser', sujet: s, detail: 'Licence livrée, rien d\'encaissé.', onglet: 'ventes'
+    }));
+    const g = P.grouperAlertes(cinq);
+    assert.strictEqual(g.length, 1);
+    assert.strictEqual(g[0].n, 5);
+    assert.strictEqual(g[0].sujets, 'A, B, C et 2 autres');
+    // Le singulier s'accorde : « et 1 autre », jamais « et 1 autres » (Cabinet 1.0.0).
+    assert.strictEqual(P.grouperAlertes(cinq.slice(0, 4))[0].sujets, 'A, B, C et 1 autre');
+    // Le même client deux fois ne se nomme qu'une fois, mais compte deux fois.
+    const bis = P.grouperAlertes([cinq[0], cinq[0], cinq[1]]);
+    assert.strictEqual(bis[0].sujets, 'A, B');
+    assert.strictEqual(bis[0].n, 3, 'le compte suit les occurrences, pas les noms distincts');
   });
 };

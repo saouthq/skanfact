@@ -100,13 +100,17 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
       fautes.push(`${ou} → « ${b.texte} » (${b.id || b.cls}) : contraste ${b.ratio} — ${b.color} sur ${b.bg}`));
     // Un bouton qui dépasse DANS un conteneur qui défile n'est pas hors de l'écran, il est à une
     // molette : le projet l'a tranché en 7.13.0 et re-tranché en 9.4.4, et l'accuser reviendrait à
-    // accuser du code juste. Mais ce n'est pas rien pour autant — un geste qu'on doit aller
-    // chercher de côté est un geste qu'on ne fait pas. On le COMPTE, sans en faire un échec, et
-    // c'est ce chiffre-là que la refonte devra faire tomber.
+    // accuser du code juste : il ne s'agit donc pas du même défaut, et il porte sa propre phrase.
+    // Mais ce n'est pas rien pour autant — un geste qu'on doit aller chercher de côté est un geste
+    // qu'on ne fait pas. Ce fut d'abord un simple CONSTAT, le temps que la refonte le fasse tomber
+    // (colonne d'actions collée à droite, colonne explicative qui revient à la ligne) ; c'est à ce
+    // moment-là qu'il devient un garde-fou. L'armer plus tôt aurait laissé l'instrument rouge en
+    // permanence, et un instrument rouge cesse d'être lu (9.1.0).
     bs.filter(b => b.hors > 2 && !b.defilant).forEach(b =>
       fautes.push(`${ou} → « ${b.texte} » (${b.id || b.cls}) dépasse de ${b.hors} px hors de la fenêtre`));
     bs.filter(b => b.hors > 2 && b.defilant).forEach(b =>
-      densite.push(`${ou} → « ${b.texte} » n'est atteignable qu'en faisant défiler le tableau de ${b.hors} px`));
+      fautes.push(`${ou} → « ${b.texte} » n'est atteignable qu'en faisant défiler le tableau de ${b.hors} px :`
+        + ' un geste qu\'on doit aller chercher est un geste qu\'on ne fait pas'));
 
     const c = await page.evaluate(SONDE_COLONNES);
     colonnes += c.colonnes;
@@ -145,6 +149,14 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
       //    produit : tout ce qui passe devant lui se paie.
       const th = document.querySelector('#table thead');
       out.flottaison = th ? Math.round(th.getBoundingClientRect().top) : null;
+      // 1 bis. L'écran d'ENTRÉE ne se lit pas de côté. Un tableau large se laisse défiler — c'est à
+      //    ça que sert son conteneur — mais l'écran sur lequel la console s'ouvre doit tenir dans
+      //    la fenêtre : on y vient pour voir ce qui demande une décision, pas pour chercher la
+      //    moitié droite d'une phrase. C'est ce que le repli des alertes et la colonne explicative
+      //    qui revient à la ligne obtiennent ensemble ; sans cette mesure, la seconde ne serait
+      //    tenue par rien (7.27.0 — il faut retirer la ceinture ET les bretelles pour voir tomber).
+      const w = document.querySelector('#table .wrap');
+      out.deborde = w ? Math.max(0, w.scrollWidth - w.clientWidth) : 0;
       // 2. La répétition (9.4.6) : une explication se lit UNE fois. Quand le `detail` décrit la
       //    RÈGLE et non l'occurrence, la même phrase s'imprime sur chaque ligne de même nature —
       //    et à la troisième, la colonne n'est plus lue du tout.
@@ -171,6 +183,11 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
       return out;
     });
     if (d.flottaison != null) flottaison.push({ ou, y: d.flottaison });
+    // Seulement sur l'onglet d'entrée : « Parc » a dix colonnes et le droit de se lire de côté.
+    if (d.deborde > 2 && / · alertes$/.test(ou)) {
+      fautes.push(`${ou} — l'écran d'entrée déborde de ${d.deborde} px : on l'ouvre pour voir ce qui`
+        + ' demande une décision, pas pour chercher la moitié droite d\'une phrase');
+    }
     // On garde le PIRE compte par phrase, pas une ligne par passe : chaque passe émet une licence
     // de plus (le panneau de résultat n'existe qu'après une émission), donc le même constat
     // remonterait quatre fois avec quatre chiffres différents — et on lirait une aggravation là où
@@ -235,8 +252,13 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
     j.etape('Garnir la base par les vraies routes d\'administration');
     // Jamais un INSERT écrit à la main : les lignes doivent être celles que le worker écrit, sinon
     // l'instrument mesure un écran nourri de données qui n'existent pas en production.
-    const c1 = (await admin('clients', { nom: 'Trabelsi Informatique', matricule: '1234567A',
-      email: 'contact@trabelsi.tn', tel: '+216 71 000 000' })).client;
+    // Un nom long, et ce n'est pas une coquetterie : sans lui AUCUN tableau ne dépasse, et le
+    // garde-fou « aucun geste hors de portée » ne peut pas échouer — c'est-à-dire qu'il ne prouve
+    // rien (7.2.0). Prouvé : avec ce client, retirer la colonne d'actions collée à droite fait
+    // tomber le parcours ; sans lui, il reste vert et on croit être protégé. Les raisons sociales
+    // tunisiennes sont longues, celle-ci n'a rien d'extraordinaire.
+    const c1 = (await admin('clients', { nom: 'Société Générale de Maintenance Industrielle et de Services Techniques SUARL',
+      matricule: '1234567A', email: 'contact@sgmist.com.tn', tel: '+216 71 000 000' })).client;
     const c2 = (await admin('clients', { nom: 'El Amen Services', matricule: '7654321B',
       email: 'gerant@elamen.tn' })).client;
     const c3 = (await admin('clients', { nom: 'Cabinet Ben Youssef', matricule: '5551234C',
@@ -323,8 +345,12 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
     console.log(`\nLigne de flottaison à 1280×800 — le tableau commence au plus bas à ${pire.y} px`
       + ` (${pire.ou}) : tout ce qui passe devant le produit se paie (9.4.4).`);
   }
-  Object.keys(repetitions).sort().forEach(cle => densite.push(
-    `la colonne « ${cle.split(' | ')[0]} » imprime jusqu'à ${repetitions[cle]} fois`
+  // Même histoire que le geste hors de portée : constat d'abord, garde-fou une fois la refonte
+  // passée. Les alertes sont groupées par (nature + explication), donc une phrase qui décrit la
+  // RÈGLE ne s'imprime plus qu'une fois — pendant qu'une explication qui nomme un FAIT (« Finie le
+  // 2026-09-01 ») reste sur sa ligne, parce que ce n'est pas une redite.
+  Object.keys(repetitions).sort().forEach(cle => fautes.push(
+    `la colonne « ${cle.split(' | ')[0]} » imprime ${repetitions[cle]} fois`
     + ` « ${cle.split(' | ')[1]}… » : une explication se lit une fois (9.4.6)`));
   if (densite.length) {
     const d = [...new Set(densite)];
