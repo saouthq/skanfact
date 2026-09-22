@@ -5537,6 +5537,39 @@ Cloudflare en MCP puis demandé la corvée qui va avec — un jeton, deux secret
   phrase — la chaîne tient, un réglage manque, ou Resend refuse l'expéditeur — parce qu'un échec
   qui ne dit pas lequel des trois se cherche dans les trois.
 
+### 10.8.0-beta.6 — le site vérifie une licence chez lui
+
+`skanfact.tn/verifier` ne savait que RENVOYER vers `api.skanfact.tn/verifier` : le visiteur
+quittait le site pour une page nue sur une autre adresse, au moment précis où il vérifie une
+licence qu'on vient de lui vendre.
+
+- **CORS ne protège rien, et ne doit jamais être présenté comme une protection.** `curl` l'ignore,
+  et cette route est publique par construction. Ce qui PROTÈGE une réponse publique, c'est la
+  REQUÊTE (10.5.0) : le SELECT ne lit jamais la table des clients. CORS ne décide que d'une chose
+  — quelle PAGE a le droit de lire la réponse dans un navigateur. Écrire le contraire dans un
+  commentaire aurait fabriqué exactement la fausse assurance que le projet combat.
+- **Une origine inconnue reçoit quand même sa réponse, sans l'en-tête.** Refuser (ce que fait
+  `/contact` sur le relais, parce que c'est une ÉCRITURE) fabriquerait une panne là où il n'y en a
+  pas : la page servie par le worker lui-même n'envoie AUCUNE origine, et c'est elle qui sert
+  aujourd'hui. Le geste décide du refus, pas le mécanisme.
+- **Le droit s'arrête à l'espace public, et le test le prouve dans les DEUX sens** (9.4.0) : les
+  en-têtes sont posés par `repondreVerif` et par lui seul, jamais par le helper `json` global.
+  Sans la seconde moitié, le test laisserait passer une autorisation posée partout — la console et
+  l'état des licences ouverts au navigateur de n'importe quel visiteur du site.
+- **La liste des origines est la JUMELLE de celle du relais** (7.3.0) : les deux workers servent le
+  même site, et deux listes qui divergent donneraient un site dont une moitié fonctionne — la
+  moitié qu'on n'ouvre pas. Corps comparés par un test, motif `round3`.
+- **Un garde-fou qui compte des adresses ne sait pas distinguer ce qu'on APPELLE de ce qu'on
+  RECONNAÎT.** « Une seule requête sortante » (8.5.0) collecte les `https://` de la source : les
+  trois origines l'ont fait tomber alors que rien ne part jamais vers elles. Elles sont nommées
+  par RÉFÉRENCE (`P.ORIGINES_SITE`), jamais par motif — sinon `https://skanfact.tn/collecte`, une
+  vraie sortie, passerait sous le même nez. **Élargir un garde-fou se fait en nommant l'exception,
+  pas en assouplissant la règle.**
+
+Prouvé : cinq défauts réintroduits un par un font tomber leur test — l'en-tête jamais posé, l'en-tête
+posé pour tout le monde, l'en-tête qui déborde sur `admin`, les deux listes qui divergent, et la
+demande de permission du navigateur laissée sans réponse.
+
 ## Pistes pour la suite (non demandées)
 
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.

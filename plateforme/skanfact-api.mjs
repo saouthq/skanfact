@@ -2346,10 +2346,51 @@ export default {
 };
 
 // ---------- la vérification publique ----------
+// Les pages du site qui ont le droit d'interroger cette route depuis le navigateur de leurs
+// visiteurs. Jumelle de `ORIGINES` dans `worker/skanfact-maj.mjs` (7.3.0) : les deux workers
+// servent le MÊME site, et deux listes qui divergent donneraient un site dont une moitié
+// fonctionne. Un test compare les deux.
+export const ORIGINES_SITE = [
+  'https://saouthq.github.io',
+  'https://skanfact.tn',
+  'https://www.skanfact.tn'
+];
+
+export function origineDuSite(origine, env) {
+  const sup = String(env && env.VERIF_ORIGINES || '').split(',').map(x => x.trim()).filter(Boolean);
+  return ORIGINES_SITE.concat(sup).includes(String(origine || ''));
+}
+
+// Ce que CORS fait ici, et ce qu'il ne fait pas. Il ne protège rien : `curl` l'ignore, et cette
+// route est publique par construction. Ce qui PROTÈGE la réponse, c'est la REQUÊTE — le SELECT
+// ci-dessous ne lit jamais la table des clients (10.5.0). CORS ne décide que d'une chose : quelle
+// PAGE a le droit de lire la réponse dans un navigateur. On l'accorde au site pour qu'il vérifie
+// une licence sans envoyer le visiteur sur `api.skanfact.tn`, et on ne l'accorde pas ailleurs.
+//
+// Une origine inconnue reçoit quand même sa réponse, simplement sans l'en-tête : refuser
+// fabriquerait une panne là où il n'y en a pas — la page hébergée par ce worker lui-même
+// n'envoie aucune origine, et c'est elle qui sert aujourd'hui.
+function entetesVerif(request, env) {
+  const h = new Headers({ 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'Vary': 'Origin' });
+  const origine = request.headers.get('Origin') || '';
+  if (origineDuSite(origine, env)) {
+    h.set('Access-Control-Allow-Origin', origine);
+    h.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    h.set('Access-Control-Allow-Headers', 'Content-Type');
+    h.set('Access-Control-Max-Age', '86400');
+  }
+  return h;
+}
+
 // Ce qu'on rend : l'état, et rien de nominatif. Ce qu'on ne rend pas : le nom du client, son
 // matricule, son adresse, ses postes. Une empreinte inconnue est dite inconnue — refuser de
 // répondre ferait croire à une panne, et répondre « valable » par prudence serait un mensonge.
 async function repondreVerif(request, env) {
+  const h = entetesVerif(request, env);
+  const json = (obj, status) => new Response(JSON.stringify(obj), { status: status || 200, headers: h });
+
+  // Le navigateur demande la permission AVANT d'envoyer : il ne doit rien lire ni écrire.
+  if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: h });
   if (request.method !== 'POST') return json({ erreur: 'Méthode non autorisée.' }, 405);
   if (!env || !env.DB) return json({ erreur: 'Service momentanément indisponible.' }, 503);
   let corps = {};

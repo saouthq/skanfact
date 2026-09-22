@@ -1081,6 +1081,60 @@ module.exports = async ({ t, ta, assert, lireSource }) => {
     } finally { db.fermer(); }
   });
 
+  await ta('10.8.0 : le site vérifie une licence CHEZ LUI, et l\'autorisation ne déborde nulle part', async () => {
+    const { baseD1 } = require('../d1-sqlite');
+    const P = await API();
+    const R = await RELAIS();
+    const db = baseD1();
+    const env = { DB: db, ADMIN_SECRET: 'Z'.repeat(30), APP_SECRET: 'S'.repeat(30) };
+    try {
+      // Les deux workers servent le MÊME site : deux listes qui divergent donneraient un site dont
+      // une moitié fonctionne, et on ne le verrait que sur la moitié qu'on n'ouvre pas (7.3.0).
+      assert.deepStrictEqual(P.ORIGINES_SITE, R.ORIGINES,
+        'la liste des origines du site est la même des deux côtés');
+
+      const SITE = 'https://skanfact.tn';
+      const appel = (chemin, origine, methode) => P.default.fetch(new Request('https://x' + chemin, {
+        method: methode || 'POST',
+        headers: Object.assign({ 'content-type': 'application/json' }, origine ? { Origin: origine } : {}),
+        body: methode === 'OPTIONS' ? undefined : JSON.stringify({ empreinte: 'aaaa1111bbbb2222cccc' })
+      }), env);
+
+      // Le navigateur demande la permission avant d'envoyer.
+      const pre = await appel('/v1/verif/licence', SITE, 'OPTIONS');
+      assert.strictEqual(pre.status, 204, 'la demande de permission ne lit ni n\'écrit rien');
+      assert.strictEqual(pre.headers.get('Access-Control-Allow-Origin'), SITE);
+      assert.ok(/POST/.test(pre.headers.get('Access-Control-Allow-Methods') || ''));
+
+      const permis = await appel('/v1/verif/licence', SITE);
+      assert.strictEqual(permis.headers.get('Access-Control-Allow-Origin'), SITE,
+        'la page du site a le droit de LIRE la réponse');
+      assert.strictEqual(permis.headers.get('Vary'), 'Origin',
+        'sans Vary, un cache rendrait la réponse d\'une origine à une autre');
+
+      // L'autre sens, et c'est la moitié qui manque toujours (9.8.8) : une origine inconnue
+      // reçoit quand même sa réponse — refuser fabriquerait une panne là où il n'y en a pas, et
+      // la page servie par ce worker lui-même n'envoie AUCUNE origine — mais sans l'en-tête, donc
+      // son navigateur ne la lui donnera pas.
+      for (const tiers of ['https://ailleurs.example', '']) {
+        const r = await appel('/v1/verif/licence', tiers);
+        assert.strictEqual(r.status, 200, 'la réponse part quand même : CORS n\'est pas un refus');
+        assert.ok((await r.json()).etat, 'et elle porte bien un état');
+        assert.strictEqual(r.headers.get('Access-Control-Allow-Origin'), null,
+          'mais aucune page tierce n\'a le droit de la lire dans un navigateur');
+      }
+
+      // Et le droit s'arrête à l'espace PUBLIC. Sans cette moitié, le test laisserait passer une
+      // autorisation posée partout — c'est-à-dire la console et l'état des licences ouverts au
+      // navigateur de n'importe quel visiteur du site (règle des deux sens, 9.4.0).
+      for (const chemin of ['/v1/admin/stats', '/v1/licence/etat']) {
+        const r = await appel(chemin, SITE);
+        assert.strictEqual(r.headers.get('Access-Control-Allow-Origin'), null,
+          chemin + ' ne s\'ouvre à aucune page web');
+      }
+    } finally { db.fermer(); }
+  });
+
   await ta('10.5.0 : régler un prix depuis l\'écran, et le suivi qui fait taire une alerte', async () => {
     const { baseD1 } = require('../d1-sqlite');
     const P = await API();

@@ -11484,7 +11484,12 @@ t('audit A9 : un paquet dont le fichier a disparu se signale', () => {
       // première version de ce test effaçait `//api.resend.com/…` et ne trouvait plus rien.
       const code = src.slice(0, src.indexOf('const CONSOLE_HTML')).replace(/(^|[^:])\/\/[^\n]*/g, '$1');
       const urls = [...code.matchAll(/https?:\/\/[^\s'"`)]+/g)].map(m2 => m2[0]);
-      assert.deepStrictEqual([...new Set(urls)], [P.MAIL_API], 'une adresse sortante inattendue dans le worker : ' + urls.join(', '));
+      // Les trois origines du site (10.8.0) ne sont PAS des sorties : elles sont comparées à
+      // l'en-tête `Origin` d'une requête qui ARRIVE, et rien ne part jamais vers elles. On les
+      // nomme par RÉFÉRENCE plutôt que par motif — sinon `https://skanfact.tn/collecte`, une vraie
+      // sortie, passerait sous le même nez. Toute autre adresse fait encore tomber ce test.
+      assert.deepStrictEqual([...new Set(urls)].sort(), [P.MAIL_API, ...P.ORIGINES_SITE].sort(),
+        'une adresse sortante inattendue dans le worker : ' + urls.join(', '));
       // `await fetch(` : l'appel SORTANT — pas `async fetch(request, env)`, qui est le point d'entrée.
       // DEUX depuis la 10.4.0, et pas un de plus : le mail qui porte la clé, et le relais de mise à
       // jour dont l'adresse vient d'un RÉGLAGE (jamais d'une adresse écrite ici — c'est ce que

@@ -7,6 +7,34 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 10.8.0-beta.6 — 22/09/2026
+
+**Le site peut vérifier une licence sans envoyer le visiteur ailleurs.** La page
+`skanfact.tn/verifier` ne pouvait que renvoyer vers `api.skanfact.tn/verifier` : le visiteur
+quittait le site, atterrissait sur une autre adresse, une page nue, sans en-tête ni retour — au
+moment précis où il cherche à se rassurer sur une licence qu'on vient de lui vendre. La route
+publique `POST /v1/verif/licence` accepte désormais d'être interrogée depuis les trois adresses du
+site, donc la vérification se fait DANS la page du site.
+
+Ce que ça ne change pas, et il faut le dire : cette autorisation ne protège rien et n'en a pas la
+charge. La route est publique par construction — `curl` l'a toujours interrogée et l'interroge
+toujours. Ce qui protège la réponse, c'est la REQUÊTE : elle ne lit jamais la table des clients,
+donc elle ne peut rien dire de plus que l'état d'une empreinte que le demandeur connaît déjà. Ce
+qui change est seulement ceci : quelle PAGE a le droit de lire la réponse dans un navigateur.
+
+- La liste des trois adresses est la **même** que celle du relais (formulaire de contact), et un
+  test compare les deux : les deux workers servent le même site, et deux listes qui divergent
+  donneraient un site dont une moitié fonctionne.
+- Une origine inconnue reçoit quand même sa réponse, sans l'en-tête. Refuser fabriquerait une
+  panne là où il n'y en a pas : la page servie par le worker lui-même n'envoie aucune origine, et
+  c'est elle qui sert aujourd'hui.
+- L'autorisation s'arrête à l'espace public. Un test vérifie qu'aucune page web ne peut lire
+  `/v1/admin/…` ni `/v1/licence/etat` — sans cette moitié, il laisserait passer une autorisation
+  posée partout, c'est-à-dire la console ouverte au navigateur de n'importe quel visiteur.
+
+Correctif de plateforme : rien ici ne touche à un chiffre, à une clé, au moteur comptable ni au
+format d'un fichier. Les deux applications ne changent pas d'une ligne.
+
 ## 10.8.0-beta.5 — 22/09/2026
 
 **Le relais de mise à jour se déploie aussi depuis le dépôt.** C'était le dernier worker qu'il
