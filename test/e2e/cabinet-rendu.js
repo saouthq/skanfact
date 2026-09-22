@@ -20,7 +20,7 @@
 //
 //   xvfb-run -a node test/e2e/cabinet-rendu.js
 const { playwright, RACINE, ELECTRON, journal, surveiller, dossierCaptures, capturePleine,
-  SONDE_BOUTONS, SONDE_COLONNES, SONDE_ENTETES, SONDE_ESPACEMENT } = require('./harnais');
+  SONDE_CONTRASTE, SONDE_COLONNES, SONDE_ENTETES, SONDE_ESPACEMENT } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 
@@ -55,15 +55,15 @@ const PAGES = ['#/dossiers', '#/relances', '#/echeances', '#/ecritures', '#/prod
   const attendre = (ms = 280) => win.waitForTimeout(ms);
   const aller = async hash => { await win.evaluate(x => { location.hash = x; }, hash); await attendre(350); };
 
-  let boutons = 0, colonnes = 0, controles = 0, ecarts = 0;
+  let boutons = 0, champs = 0, colonnes = 0, controles = 0, ecarts = 0;
 
   // Les trois sondes sur l'écran courant. `ou` nomme l'endroit ET le contexte (largeur, thème) :
   // une faute qui n'existe qu'en sombre à 1280 doit se lire comme telle, sinon on la cherche à
   // l'endroit où elle ne se produit pas.
   const mesurer = async ou => {
-    const bs = await win.evaluate(SONDE_BOUTONS);
-    boutons += bs.length;
-    bs.filter(b => b.ratio < SEUIL).forEach(b =>
+    const { boutons: bs, champs: chs } = await win.evaluate(SONDE_CONTRASTE);
+    boutons += bs.length; champs += chs.length;
+    [...bs, ...chs].filter(b => b.ratio < SEUIL).forEach(b =>
       fautes.push(`${ou} → « ${b.texte} » (${b.id || b.cls}) : contraste ${b.ratio} — ${b.color} sur ${b.bg}`));
     bs.filter(b => b.hors > 2).forEach(b =>
       fautes.push(`${ou} → « ${b.texte} » (${b.id || b.cls}) dépasse de ${b.hors} px hors de la fenêtre`));
@@ -187,7 +187,7 @@ const PAGES = ['#/dossiers', '#/relances', '#/echeances', '#/ecritures', '#/prod
   // ------------------------------------------------------------------ les quatre passes
   j.etape('Toutes les pages et tous leurs onglets, en clair, à 1440');
   await parcourir('clair 1440');
-  j.ok(`${boutons} boutons, ${colonnes} colonnes, ${controles} contrôles`);
+  j.ok(`${boutons} boutons, ${champs} champs, ${colonnes} colonnes, ${controles} contrôles`);
 
   j.etape('Les mêmes, en thème SOMBRE');
   // Le thème se pose par le vrai réglage, pas par une classe injectée : c'est le chemin qu'un
@@ -233,13 +233,13 @@ const PAGES = ['#/dossiers', '#/relances', '#/echeances', '#/ecritures', '#/prod
 
   if (bac.length) { console.error('\nErreurs du renderer :\n' + bac.join('\n')); process.exit(2); }
   // Un instrument qui ne mesure rien annonce « tout va bien » : il doit échouer, pas se taire.
-  if (!boutons || !colonnes || !ecarts) { console.error('\nRien n\'a été mesuré : le parcours ne prouve rien.'); process.exit(2); }
+  if (!boutons || !champs || !colonnes || !ecarts) { console.error('\nRien n\'a été mesuré : le parcours ne prouve rien.'); process.exit(2); }
   if (fautes.length) {
     const u = [...new Set(fautes)];
     console.error(`\n${u.length} défaut(s) de rendu dans l'app Cabinet :\n  ` + u.join('\n  '));
     process.exit(1);
   }
-  console.log(`\n${j.total()} étapes — ${boutons} boutons, ${colonnes} colonnes, ${controles} contrôles,`
+  console.log(`\n${j.total()} étapes — ${boutons} boutons, ${champs} champs, ${colonnes} colonnes, ${controles} contrôles,`
     + ` ${ecarts} écarts mesurés en clair et en sombre, à 1440 et à 1280 : rien d'illisible, rien de`
     + ' désaligné, rien d\'étiré, rien de collé.');
 })().catch(e => { console.error(e); process.exit(1); });

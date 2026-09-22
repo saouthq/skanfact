@@ -5570,6 +5570,39 @@ Prouvé : cinq défauts réintroduits un par un font tomber leur test — l'en-t
 posé pour tout le monde, l'en-tête qui déborde sur `admin`, les deux listes qui divergent, et la
 demande de permission du navigateur laissée sans réponse.
 
+### 10.8.0-beta.7 — un instrument qui a perdu la moitié de ce qu'il mesurait
+
+La session qui développe le site a demandé si `e2e:contraste` mesure les champs de saisie ou
+seulement les boutons. Vérifié dans le code plutôt que répondu de mémoire : **seulement les
+boutons** — alors que ce fichier l'affirme depuis la 7.30.0. La moitié « champs » existait, écrite
+pour le défaut du thème sombre (contraste 1,18, du blanc sur du blanc) ; elle a été **perdue dans la
+refonte de la 9.4.3**, quand la sonde a déménagé dans `harnais.js` pour être partagée — seuls les
+boutons ont fait le voyage.
+
+- **Une règle écrite dans CLAUDE.md que plus rien ne tient est un bug**, exactement comme une phrase
+  affichée à l'écran (7.3.0) — en pire, puisque c'est moi qui la relis à chaque session et que je
+  m'en sers pour conclure qu'un sujet est couvert. Ici elle a couvert TROIS surfaces pendant onze
+  versions.
+- **Une refonte qui PARTAGE un instrument doit emporter tout ce qu'il mesurait.** C'est le miroir de
+  la règle 9.4.3 : là-bas, une sonde qui ne couvrait qu'une application n'en protégeait qu'une ;
+  ici, une sonde partagée a couvert trois surfaces en perdant la moitié de son objet. Le gain de la
+  mutualisation ne se constate qu'en vérifiant ce qui a survécu au déménagement.
+- **Une sonde, DEUX listes nommées** (`{ boutons, champs }`) : une seule sonde parce que ses
+  fonctions de mesure seraient sinon recopiées (7.29.0), deux listes parce qu'un compte mélangé
+  cesse d'être comparable d'une version à l'autre — et un instrument doit dire combien il a mesuré
+  de quoi.
+- **Un instrument qui ne mesure rien annonce « tout va bien »** (9.7.0, re-trouvée) : les trois
+  parcours tombent désormais si le compte de champs est nul. Sans ce garde-fou, la disparition de la
+  9.4.3 se reproduirait à l'identique et sans un mot — c'est très exactement ce qui est arrivé.
+- **Un défaut « à moitié » est celui qui se voit le moins.** La preuve par réintroduction ne fait
+  tomber que TROIS champs, parce que `input[type=text]` couvrait encore le reste : `select` et
+  `textarea` échappaient à la règle sombre (dans une liste de sélecteurs, chacun porte sa propre
+  spécificité), donc l'écran paraissait à demi correct.
+
+Verdict du jour, qu'on ne pouvait pas connaître : **722 champs** (146 app entreprise, 319 Cabinet,
+257 console), aucun illisible. Prouvé en remettant le défaut d'origine dans la feuille de style — la
+sonde le nomme à 1,18 exactement.
+
 ## Pistes pour la suite (non demandées)
 
 - Séparation des installateurs arm64 / x64 pour diviser par deux les 222 Mo du dmg universel.

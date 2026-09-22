@@ -16,13 +16,13 @@
 // l'esthétique, il attrape ce qu'on ne peut pas lire du tout.
 //
 //   xvfb-run -a node test/e2e/contraste.js
-const { playwright, RACINE, ELECTRON, journal, surveiller, SONDE_BOUTONS, SONDE_ESPACEMENT } = require('./harnais');
+const { playwright, RACINE, ELECTRON, journal, surveiller, SONDE_CONTRASTE, SONDE_ESPACEMENT } = require('./harnais');
 const { _electron: electron } = playwright();
 const path = require('path'); const fs = require('fs'); const os = require('os');
 
 // La sonde vit dans `harnais.js` depuis la 9.4.3 : elle est partagée avec le parcours de rendu du
 // Cabinet, qui mesure exactement la même chose. Recopiée, elle aurait divergé (7.29.0).
-const SONDE = SONDE_BOUTONS;
+const SONDE = SONDE_CONTRASTE;
 // Le seuil est très bas exprès : il ne juge pas l'esthétique, il attrape ce qu'on ne peut pas lire
 // du tout — du blanc sur du blanc, comme le « Corriger par un avoir… » de la 7.12.0.
 const SEUIL = 2.0;
@@ -34,14 +34,14 @@ const ECART_MIN = 4;   // voir la justification dans cabinet-rendu.js
 const SEGMENTS = ['.tabs', '.row-menu', '.pager'];
 
 (async () => {
-  const j = journal(); const bac = []; const fautes = []; let ecarts = 0;
+  const j = journal(); const bac = []; const fautes = []; let ecarts = 0; let mesuresChamps = 0;
   const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'skanfact-contraste-'));
   const app = await electron.launch({ args: ['--no-sandbox', `--user-data-dir=${userData}`, RACINE], executablePath: ELECTRON });
   const win = await app.firstWindow(); surveiller(win, '', bac);
 
   const sonder = async (ou) => {
-    const boutons = await win.evaluate(SONDE);
-    boutons.filter(b => b.ratio < SEUIL).forEach(b => fautes.push(`${ou} → « ${b.texte} » (${b.id || b.cls}) : contraste ${b.ratio} — ${b.color} sur ${b.bg}`));
+    const { boutons, champs } = await win.evaluate(SONDE);
+    [...boutons, ...champs].filter(b => b.ratio < SEUIL).forEach(b => fautes.push(`${ou} → « ${b.texte} » (${b.id || b.cls}) : contraste ${b.ratio} — ${b.color} sur ${b.bg}`));
     // Même famille : un bouton parfaitement lisible peut être COUPÉ par le bord de la fenêtre. À
     // 1280 px, la barre d'actions de l'éditeur poussait « Émettre la facture » 105 px hors champ
     // (corrigé en 7.13.0). Le document, lui, ne débordait pas — un ancêtre le rognait — donc
@@ -53,6 +53,7 @@ const SEGMENTS = ['.tabs', '.row-menu', '.pager'];
     ecarts += e.mesures;
     e.colles.forEach(x => fautes.push(`${ou} — « ${x.bouton} » touche « ${x.voisin} » (${x.cote},`
       + ` ${x.sens}) : ${x.ecart} px, minimum ${ECART_MIN}`));
+    mesuresChamps += champs.length;
     return boutons.length;
   };
 
@@ -155,10 +156,15 @@ const SEGMENTS = ['.tabs', '.row-menu', '.pager'];
   if (bac.length) { console.error('\nErreurs du renderer :\n' + bac.join('\n')); process.exit(2); }
   // Un instrument qui ne mesure rien annonce « tout va bien » : il doit échouer, pas se taire.
   if (!ecarts) { console.error('\nAucun écart mesuré : le parcours ne prouve plus rien de l\'espacement.'); process.exit(2); }
+  // Et la même exigence sur les CHAMPS, parce que c'est très exactement ce qui est arrivé : la
+  // moitié « champs » de la sonde a disparu en 9.4.3 et le parcours a continué d'annoncer « aucun
+  // bouton illisible » pendant onze versions, sans qu'aucun compte ne manque à l'appel (9.7.0).
+  if (!mesuresChamps) { console.error('\nAucun champ mesuré : le parcours ne prouve plus rien de leur lisibilité.'); process.exit(2); }
   if (fautes.length) {
     const u = [...new Set(fautes)];
-    console.error(`\n${u.length} défaut(s) — bouton illisible, coupé, ou collé à son voisin :\n` + u.join('\n'));
+    console.error(`\n${u.length} défaut(s) — bouton ou champ illisible, coupé, ou collé à son voisin :\n` + u.join('\n'));
     process.exit(1);
   }
-  console.log(`\n${j.total()} étapes — aucun bouton illisible, aucun collé (${ecarts} écarts mesurés).`);
+  console.log(`\n${j.total()} étapes — aucun bouton ni champ illisible, aucun collé `
+    + `(${mesuresChamps} champs, ${ecarts} écarts mesurés).`);
 })().catch(e => { console.error(e); process.exit(1); });

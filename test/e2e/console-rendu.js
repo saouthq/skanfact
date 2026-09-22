@@ -31,7 +31,7 @@
 //   npm run e2e:console-rendu
 
 const { playwright, ouvrirChromium, journal, dossierCaptures, capturePleine, RELACHE_CONSOLE,
-  SONDE_BOUTONS, SONDE_COLONNES, SONDE_ENTETES, SONDE_ESPACEMENT, SONDE_LARGEUR } = require('./harnais');
+  SONDE_CONTRASTE, SONDE_COLONNES, SONDE_ENTETES, SONDE_ESPACEMENT, SONDE_LARGEUR } = require('./harnais');
 const { servir, SECRET } = require('./console-serveur');
 const path = require('path');
 const fs = require('fs');
@@ -103,7 +103,7 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
     body: JSON.stringify({ deviceId: poste, deviceNom: nom, plateforme: 'darwin', version, app })
   });
 
-  let boutons = 0, colonnes = 0, controles = 0, ecarts = 0, largeurs = 0;
+  let boutons = 0, champs = 0, colonnes = 0, controles = 0, ecarts = 0, largeurs = 0;
   // L'empreinte d'une licence RÉELLE, écrite par la route d'émission et relue par la page
   // publique. Une empreinte inventée ferait afficher « inconnue » : on mesurerait alors l'écran
   // du refus, jamais celui de la réponse — et c'est la réponse que des inconnus viennent lire.
@@ -126,9 +126,9 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
   // une faute qui n'existe qu'en sombre à 1280 doit se lire comme telle, sinon on la cherche à
   // l'endroit où elle ne se produit pas.
   const mesurer = async ou => {
-    const bs = await page.evaluate(SONDE_BOUTONS);
-    boutons += bs.length;
-    bs.filter(b => b.ratio < SEUIL).forEach(b =>
+    const { boutons: bs, champs: chs } = await page.evaluate(SONDE_CONTRASTE);
+    boutons += bs.length; champs += chs.length;
+    [...bs, ...chs].filter(b => b.ratio < SEUIL).forEach(b =>
       fautes.push(`${ou} → « ${b.texte} » (${b.id || b.cls}) : contraste ${b.ratio} — ${b.color} sur ${b.bg}`));
     // Un bouton qui dépasse DANS un conteneur qui défile n'est pas hors de l'écran, il est à une
     // molette : le projet l'a tranché en 7.13.0 et re-tranché en 9.4.4, et l'accuser reviendrait à
@@ -543,7 +543,7 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
     // ---------------------------------------------------------------- les quatre passes
     j.etape('Les dix écrans, leurs formulaires et les huit surfaces sans adresse, en clair, à 1440');
     await parcourir('clair 1440');
-    j.ok(`${boutons} boutons, ${colonnes} colonnes, ${controles} contrôles, ${ecarts} écarts`);
+    j.ok(`${boutons} boutons, ${champs} champs, ${colonnes} colonnes, ${controles} contrôles, ${ecarts} écarts`);
 
     j.etape('Les mêmes, en thème SOMBRE');
     // Le thème de la console suit le système (`prefers-color-scheme`) : elle n'a pas de réglage, et
@@ -582,7 +582,7 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
 
   if (bac.length) { console.error('\nErreurs de la page :\n' + bac.join('\n')); process.exit(2); }
   // Un instrument qui ne mesure rien annonce « tout va bien » : il doit échouer, pas se taire.
-  if (!boutons || !colonnes || !ecarts || !largeurs) { console.error('\nRien n\'a été mesuré : le parcours ne prouve rien.'); process.exit(2); }
+  if (!boutons || !champs || !colonnes || !ecarts || !largeurs) { console.error('\nRien n\'a été mesuré : le parcours ne prouve rien.'); process.exit(2); }
   const f1280 = flottaison.filter(x => / 1280 /.test(x.ou));
   if (f1280.length) {
     const pire = f1280.reduce((a, b) => (b.y > a.y ? b : a));
@@ -612,7 +612,7 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
   // laisser un zéro passer pour une mesure.
   console.log(`\n${fiches.length} écrans photographiés dans ${OUT} (+ mesures.json) :`
     + ' chaque écran mesuré est un écran qu\'on peut regarder.');
-  console.log(`\n${j.total()} étapes — ${boutons} boutons, ${colonnes} colonnes, ${ecarts} écarts, ${largeurs} largeurs`
+  console.log(`\n${j.total()} étapes — ${boutons} boutons, ${champs} champs, ${colonnes} colonnes, ${ecarts} écarts, ${largeurs} largeurs`
     + ` mesurés sur les dix écrans du rail, leurs formulaires et les huit surfaces qu'aucune adresse ne mène,`
     + ' en clair et en sombre,'
     + ' à 1440 et à 1280 : rien d\'illisible, rien de désaligné, rien de collé.'

@@ -71,7 +71,7 @@ function dossierCaptures(nom) {
   return d;
 }
 
-// ---------------------------------------------------------------------------- les trois sondes de rendu
+// ---------------------------------------------------------------------------- les sondes de rendu
 //
 // Elles vivaient chacune DANS son parcours — `contraste.js`, `colonnes.js`, `entetes.js` — et les
 // trois ne regardaient que l'application entreprise. L'app Cabinet a hérité de ses fonctionnalités
@@ -83,9 +83,24 @@ function dossierCaptures(nom) {
 // Chacune est une fonction PURE du document, passée telle quelle à `win.evaluate` : elle ne connaît
 // ni Playwright, ni Electron, ni laquelle des deux applications elle mesure.
 
-// 1. Les boutons : lisibles, et dans la fenêtre. On remonte les ancêtres jusqu'à un fond opaque,
-//    parce qu'un bouton dont le fond est `transparent` est peint par ce qu'il y a derrière.
-const SONDE_BOUTONS = () => {
+// 1. Le contraste : les boutons ET les champs de saisie, lisibles, et dans la fenêtre. On remonte
+//    les ancêtres jusqu'à un fond opaque, parce qu'un élément dont le fond est `transparent` est
+//    peint par ce qu'il y a derrière.
+//
+//    Pourquoi les DEUX, et pourquoi dans la même sonde. La moitié « champs » existait, écrite en
+//    7.30.0 pour un défaut que la relecture du CSS ne pouvait pas voir : en thème sombre, chaque
+//    `<input>` gardait son fond CLAIR avec le texte clair du thème — contraste 1,18, c'est-à-dire
+//    du blanc sur du blanc, depuis que le thème existe. Elle a été PERDUE dans la refonte de la
+//    9.4.3, quand la sonde a déménagé ici pour être partagée : seuls les boutons ont fait le
+//    voyage, et CLAUDE.md a continué d'affirmer pendant onze versions que « e2e:contraste mesure
+//    désormais les champs autant que les boutons ». Une règle que plus rien ne tient est un bug
+//    (7.3.0), et celle-ci couvrait trois surfaces au lieu d'une.
+//
+//    Une seule sonde parce que les quatre fonctions de mesure (luminance, fond opaque, débordement)
+//    seraient sinon recopiées dans une seconde — et une copie diverge, toujours (7.29.0). Deux
+//    listes NOMMÉES parce que les comptes ne se mélangent pas : « 2 125 boutons » doit rester
+//    comparable d'une version à l'autre, et un instrument doit dire combien il a mesuré de quoi.
+const SONDE_CONTRASTE = () => {
   const lum = ([r, g, b]) => {
     const f = c => { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
     return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
@@ -112,25 +127,57 @@ const SONDE_BOUTONS = () => {
     }
     return false;
   };
-  const out = [];
+  const visible = (el, s, r) => r.width && r.height && s.visibility !== 'hidden' && s.display !== 'none';
+  const contraste = (t, f) => {
+    const a = lum(t), c = lum(f);
+    return +(((Math.max(a, c) + 0.05) / (Math.min(a, c) + 0.05))).toFixed(2);
+  };
+
+  const boutons = [];
   document.querySelectorAll('button, .btn').forEach(b => {
     const r = b.getBoundingClientRect();
     const s = getComputedStyle(b);
-    if (!r.width || !r.height || s.visibility === 'hidden' || s.display === 'none') return;
+    if (!visible(b, s, r)) return;
     if (!b.textContent.trim()) return;             // un pictogramme seul n'est pas jugé ici
     if (b.disabled || s.opacity < 0.3) return;     // un bouton désactivé a le droit d'être pâle
-    const t = rgb(s.color).slice(0, 3), f = fondDe(b);
-    const a = lum(t), c = lum(f);
-    out.push({
+    const f = fondDe(b);
+    boutons.push({
       texte: b.textContent.trim().replace(/\s+/g, ' ').slice(0, 40),
       id: b.id || '', cls: String(b.className || '').split(' ')[0],
       color: s.color, bg: `rgb(${f.join(',')})`,
-      ratio: +(((Math.max(a, c) + 0.05) / (Math.min(a, c) + 0.05))).toFixed(2),
+      ratio: contraste(rgb(s.color).slice(0, 3), f),
       hors: Math.round(Math.max(0, r.right - document.documentElement.clientWidth)),
       defilant: defile(b)
     });
   });
-  return out;
+
+  // Les CHAMPS DE SAISIE, par la même méthode et pour le même défaut. Une case à cocher, un bouton
+  // radio, un sélecteur de fichier, une réglette et un sélecteur de couleur n'affichent aucun texte
+  // qui leur soit propre : les juger reviendrait à mesurer la couleur d'un dessin du système.
+  // `select` et `textarea` comptent autant que `input` — c'est précisément parce qu'ils n'étaient
+  // PAS touchés par le défaut de la 7.30.0 (dans une liste de sélecteurs, chacun porte sa propre
+  // spécificité) que l'écran paraissait à moitié correct, ce qui est la pire façon d'être faux.
+  //
+  // Un champ DÉSACTIVÉ a le droit d'être pâle, comme un bouton. Un champ en lecture seule, non : il
+  // se lit, donc il doit être lisible.
+  const champs = [];
+  document.querySelectorAll('input:not([type=checkbox]):not([type=radio]):not([type=file])'
+    + ':not([type=range]):not([type=color]):not([type=hidden]), select, textarea').forEach(el => {
+    const r = el.getBoundingClientRect();
+    const s = getComputedStyle(el);
+    if (!visible(el, s, r)) return;
+    if (el.disabled || s.opacity < 0.3) return;
+    const t = rgb(s.color); if (t.length < 3) return;
+    const f = fondDe(el);
+    champs.push({
+      texte: 'champ ' + (el.name || el.id || el.getAttribute('aria-label') || el.tagName.toLowerCase()),
+      id: el.id || '', cls: String(el.className || '').split(' ')[0],
+      color: s.color, bg: `rgb(${f.join(',')})`,
+      ratio: contraste(t.slice(0, 3), f)
+    });
+  });
+
+  return { boutons, champs };
 };
 
 // 2. Les colonnes : l'en-tête aligné comme ses valeurs. `table.list th` (une classe, deux éléments)
@@ -435,5 +482,5 @@ const SONDE_LARGEUR = ({ cibles, perte }) => {
 
 module.exports = {
   playwright, RACINE, ELECTRON, VERSION, journal, surveiller, dossierCaptures, ouvrirChromium,
-  capturePleine, RELACHE_CONSOLE, SONDE_BOUTONS, SONDE_COLONNES, SONDE_ENTETES, SONDE_ESPACEMENT, SONDE_LARGEUR, montant
+  capturePleine, RELACHE_CONSOLE, SONDE_CONTRASTE, SONDE_COLONNES, SONDE_ENTETES, SONDE_ESPACEMENT, SONDE_LARGEUR, montant
 };

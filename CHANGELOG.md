@@ -7,6 +7,46 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 10.8.0-beta.7 — 22/09/2026
+
+**La sonde de contraste avait perdu les champs de saisie, et personne ne pouvait le savoir.** La
+session qui développe le site nous a posé une question simple — « est-ce que votre instrument mesure
+les champs, ou seulement les boutons ? ». Réponse du jour : **seulement les boutons**. Or CLAUDE.md
+affirmait depuis la 7.30.0 que « e2e:contraste mesure désormais les champs autant que les boutons ».
+C'était vrai : la moitié « champs » existait, écrite pour un défaut que la relecture du CSS ne peut
+pas voir — en thème sombre, chaque `<input>` gardait son fond CLAIR avec le texte clair du thème,
+contraste **1,18**, c'est-à-dire du blanc sur du blanc, depuis que le thème existait. Elle a été
+**perdue dans la refonte de la 9.4.3**, quand la sonde a déménagé dans `harnais.js` pour être
+partagée : seuls les boutons ont fait le voyage. Onze versions pendant lesquelles le garde-fou écrit
+pour attraper ce défaut-là ne pouvait plus l'attraper, sur **aucune** des trois surfaces.
+
+- **Une sonde, deux listes nommées.** `SONDE_CONTRASTE` rend `{ boutons, champs }` : une seule
+  sonde parce que ses quatre fonctions de mesure (luminance, fond opaque, débordement) seraient
+  sinon recopiées dans une seconde — et une copie diverge, toujours (7.29.0). Deux listes séparées
+  parce que les comptes ne se mélangent pas : « 2 125 boutons » doit rester comparable d'une version
+  à l'autre, et un instrument doit dire combien il a mesuré de quoi.
+- **Les trois surfaces, pas une.** L'app entreprise, le Cabinet et la console la partagent — c'est
+  la règle 9.4.3, dont l'oubli est très exactement ce qui a laissé l'app du comptable dériver.
+- **Un instrument qui ne mesure rien annonce « tout va bien ».** Les trois parcours TOMBENT
+  désormais si le compte de champs est nul, comme ils le font déjà pour les écarts d'espacement.
+  Sans ce garde-fou, la disparition de 9.4.3 se reproduirait à l'identique et sans un mot.
+- **`select` et `textarea` comptent autant qu'`input`** : c'est précisément parce qu'ils n'étaient
+  PAS touchés par le défaut d'origine (dans une liste de sélecteurs, chacun porte sa propre
+  spécificité) que l'écran paraissait à moitié correct. Un champ désactivé a le droit d'être pâle,
+  comme un bouton ; un champ en lecture seule, non — il se lit, donc il doit être lisible.
+
+Verdict des trois surfaces, aujourd'hui : **722 champs mesurés** (146 dans l'app entreprise, 319
+dans le Cabinet, 257 dans la console), en clair, en sombre, à 1440 et à 1280 — **aucun illisible**.
+Le défaut n'est donc pas revenu pendant les onze versions où plus personne ne regardait, et c'est
+une chose qu'on ne pouvait pas savoir.
+
+Prouvé en réintroduisant le défaut d'origine dans la feuille de style : la sonde le nomme sur trois
+champs, à 1,18 exactement. Trois seulement, parce que `input[type=text]` couvrait encore le reste —
+la démonstration qu'un défaut « à moitié » est celui qui se voit le moins.
+
+Correctif d'outillage : il ne touche ni un chiffre, ni une clé, ni le moteur comptable, ni le format
+d'un fichier. Aucune des deux applications ne change d'une ligne.
+
 ## 10.8.0-beta.6 — 22/09/2026
 
 **Le site peut vérifier une licence sans envoyer le visiteur ailleurs.** La page
