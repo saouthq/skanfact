@@ -18,12 +18,26 @@ on:
   # confirmé ; le pousser au service qui signe les licences de vrais clients serait publier sans le
   # dire. Pour déployer une bêta délibérément, on passe par « Run workflow » en choisissant sa
   # branche — même porte que le workflow Release.
+  #
+  # Le filtre ne surveille QUE ce qui est déployé — le code du worker et sa configuration. Ce
+  # fichier-ci, la RECETTE, n'y figure pas : changer la phrase d'un message ou la version de
+  # wrangler ne change pas ce que le service rend à ses clients, et une production qui se
+  # redéploie parce qu'on a corrigé un commentaire est une production qu'on finit par ne plus
+  # regarder. Une recette modifiée s'applique au déploiement suivant, ou tout de suite par
+  # « Run workflow ».
+  #
+  # Cette distinction a un effet immédiat qu'il faut dire : `workflow_dispatch` n'existe, chez
+  # GitHub, que pour un fichier présent sur la branche par défaut — ce workflow doit donc être
+  # posé sur `main` avant de pouvoir être lancé sur quoi que ce soit. Or `main` porte aujourd'hui
+  # un worker de huit versions en retard : l'y poser en le faisant surveiller lui-même aurait
+  # déclenché, à la seconde, le déploiement de ce vieux code. Le filtre ci-dessus rend ce dépôt
+  # inerte, et le premier déploiement par poussée aura lieu quand `plateforme/` arrivera sur
+  # `main` — c'est-à-dire quand il y aura vraiment quelque chose à déployer.
   push:
     branches: [main]
     paths:
       - 'plateforme/skanfact-api.mjs'
       - 'plateforme/wrangler.toml'
-      - '.github/workflows/worker.yml'
   workflow_dispatch:
 
 # Deux déploiements simultanés sur le même script, c'est le dernier arrivé qui gagne — et on ne

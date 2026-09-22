@@ -1372,6 +1372,17 @@ module.exports = async ({ t, ta, assert, lireSource }) => {
       'le workflow se déclenche sur `beta` : la branche de travail ne déploie pas la production');
     assert.ok(/workflow_dispatch/.test(code),
       'sans workflow_dispatch, aucun moyen de déployer une bêta délibérément');
+    // Un déploiement se déclenche sur ce qui est DÉPLOYÉ, jamais sur la recette qui déploie. Les
+    // deux sens comptent : le filtre doit nommer le code et sa configuration (vidé, le
+    // déclenchement cesse en silence) et ne PAS se nommer lui-même (s'y ajouter redéploie la
+    // production pour un commentaire corrigé — et, tant qu'une branche porte un worker périmé,
+    // déploie ce worker-là à la seconde où le fichier y arrive).
+    const filtre = /paths:\s*\n((?:\s*-\s*'[^']*'\s*\n)+)/.exec(code);
+    assert.ok(filtre, 'le déclenchement par poussée n\'a plus de filtre de chemins');
+    assert.ok(filtre[1].includes('plateforme/skanfact-api.mjs') && filtre[1].includes('plateforme/wrangler.toml'),
+      'le filtre ne nomme plus le code du worker et sa configuration : une poussée ne déploierait plus rien');
+    assert.ok(!filtre[1].includes('workflows/worker.yml'),
+      'le workflow se surveille lui-même : il redéploierait la production pour une recette modifiée');
   });
 
 };
