@@ -7,6 +7,50 @@ Format : `MAJEUR.MINEUR.CORRECTIF`
 
 Le numéro affiché en bas de la barre latérale de l'app est celui de `package.json`.
 
+## 10.8.0 — 22/09/2026
+
+**La stable qui rattrape neuf versions.** La dernière stable en ligne était la **10.0.0** du
+21/09/2026 ; tout ce qui a été écrit depuis — 10.0.1, 10.1.0, 10.2.0, 10.3.0, 10.4.0, 10.5.0,
+10.6.0, 10.7.0 et 10.8.0 — n'était sorti que sur le canal d'essai, et les quatre dernières nulle
+part. Publiée en stable directe **à la demande de Skander** : la règle du projet veut la bêta pour
+ce qui touche à un chiffre, à une clé, au moteur comptable ou au format d'un fichier, et plusieurs
+de ces versions le font. C'est sa décision, elle est notée ici, et elle se prend sur un parc où
+aucun client payant n'est encore installé.
+
+Ce que cette stable apporte, dans l'ordre de ce qui casserait le plus cher :
+
+- **La devise d'un achat** (10.1.0). Une facture fournisseur en euros comptait 1 000 **dinars** dans
+  la TVA déductible, les charges, le résultat, le seuil de rentabilité, le stock, la trésorerie, les
+  écritures et le paquet du comptable. Treize agrégateurs corrigés, et un garde-fou qui MESURE :
+  pour chacun, un achat de 1 000 € à 3,4 doit rendre 3 400.
+- **L'avoir fournisseur, l'acompte versé et le relevé de compte client** (10.2.0). Le SENS d'une
+  pièce se porte désormais dans ses totaux convertis, au lieu d'être recopié de mémoire dans chaque
+  agrégateur — la faute que les ventes traînent depuis la 1.4.0.
+- **Achats sort des réserves de l'Indépendant** (10.7.0), et ce n'est pas une décision commerciale :
+  mesuré sur un exercice entier, un client qui ne peut pas saisir ses achats envoie à son comptable
+  un paquet qui déclare **7 441 DT de TVA au lieu de 3 250** — 4 191 DT payés en trop sur un
+  logiciel vendu 390. Une offre peut fermer un confort, jamais une case de déclaration, et un
+  garde-fou le mesure désormais module par module.
+- **La paie des clients dans le Cabinet** (10.3.0) : le comptable établit les bulletins de ses
+  cinquante-huit clients hors SkanFact au lieu de les retaper. Le même salarié et la même saisie
+  donnent le même bulletin des deux côtés, au millime, et un test le prouve.
+- **L'espace de gestion des deux plateformes** (10.4.0, 10.5.0, 10.6.0) : la console voit enfin le
+  parc des DEUX applications, se souvient de ce qu'on fait d'un prospect, garde ses prix et ses
+  seuils en base au lieu d'un déploiement, exporte sa propre base toutes les nuits, et a passé un
+  audit de design de vingt-neuf constats.
+- **Les licences sans limite de dossiers** (10.8.0) pour les premiers cabinets : « sans limite » est
+  un ÉTAT, jamais un très grand nombre — une clé à 99 999 dossiers aurait affiché une barre de
+  progression vers une limite imaginaire.
+- **Le site vérifie une licence chez lui** (10.8.0-beta.6) : le visiteur ne quitte plus
+  `skanfact.tn` au moment précis où il se rassure sur une clé qu'on vient de lui vendre.
+- **Les pannes se disent en français** (10.0.1) : disque plein, dossier absent, support débranché,
+  droits refusés. Et zéro avertissement de lint, pour que le prochain soit lisible.
+- **La sonde de contraste mesure de nouveau les champs de saisie** (10.8.0-beta.7), perdue pendant
+  onze versions dans une refonte d'instrument. Verdict des trois surfaces : 722 champs, aucun
+  illisible.
+
+Le détail de chaque version est dans les entrées qui suivent.
+
 ## 10.8.0-beta.7 — 22/09/2026
 
 **La sonde de contraste avait perdu les champs de saisie, et personne ne pouvait le savoir.** La
