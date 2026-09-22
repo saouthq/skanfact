@@ -88,7 +88,11 @@ module.exports = async ({ t, ta, assert, lireSource }) => {
     // et le test ne pourrait pas tomber.
     const l = P.alertesPlateforme({
       licences: [{ id: 'l1', client: 'A', envoyee_le: '2026-01-01', fin: '2026-09-25' }],
-      ventes: [{ id: 'v1', client: 'B' }],
+      // 10.6.0 — la vente porte un MONTANT. Une vente à zéro n'a rien à encaisser et sort des
+      // alertes (une licence de cabinet part à zéro tant que les tarifs du Cabinet ne sont pas
+      // fixés) : sans prix, cette ligne ne produirait plus d'alerte et le test compterait deux
+      // au lieu de trois. Les DONNÉES d'un test comptent autant que sa forme (9.6.1, 10.0.0).
+      ventes: [{ id: 'v1', client: 'B', montant_ht: 390 }],
       dernierExport: ''
     }, '2026-09-21');
     assert.strictEqual(l.length, 3);
@@ -147,7 +151,7 @@ module.exports = async ({ t, ta, assert, lireSource }) => {
     assert.ok(onglets.length >= 8, 'huit écrans au moins : lus ' + onglets.length);
     const l = P.alertesPlateforme({
       licences: [{ id: 'l1', client: 'A', envoyee_le: '', fin: '2026-09-25' }],
-      ventes: [{ id: 'v1', client: 'B' }], dernierExport: ''
+      ventes: [{ id: 'v1', client: 'B', montant_ht: 390 }], dernierExport: ''
     }, '2026-09-21');
     assert.ok(l.length >= 3);
     l.forEach(x => assert.ok(onglets.includes(x.onglet), 'onglet inconnu de la console : ' + x.onglet));
@@ -483,7 +487,11 @@ module.exports = async ({ t, ta, assert, lireSource }) => {
       const i = src.indexOf('    activations: [');
       assert.ok(i > 0, 'les colonnes de l\'écran Activations sont introuvables');
       const cols = src.slice(i, src.indexOf('\n    ],', i));
-      assert.ok(cols.length < 1500, 'tranche trop large : ' + cols.length);
+      // La borne dit ce que la tranche NE contient PAS, pas combien elle pèse : un nombre se
+      // « répare » en le changeant, donc il ne prouve rien (7.13.0). Ce qu'on garde, c'est
+      // qu'elle s'arrête avant l'écran suivant — sinon elle jugerait les colonnes d'un autre
+      // tableau et resterait verte sur celui-ci (7.21.0).
+      assert.ok(!/^\s{4}[a-z]+: \[/m.test(cols.slice(20)), 'la tranche déborde sur l\'écran suivant');
       assert.ok(/\{ k: 'appNom', t: 'Application' \}/.test(cols),
         'sans colonne Application, l\'écran du diagnostic ne dit pas laquelle des deux applications');
       // Et elle lit le NOM rendu par le serveur : `APPS` et `appDe` vivent dans le module, pas

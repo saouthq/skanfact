@@ -341,9 +341,16 @@ const APP_SECRET = 'secret-de-test-' + 'x'.repeat(20);
     await page.waitForSelector('#f-msg.recap:not([hidden])', { timeout: 5000 });
     await mesurer(`${etiquette} · le récapitulatif avant signature`);
     await page.click('#f-ok');
-    await page.waitForSelector('#resultat:not([hidden]) #cle', { timeout: 15000 });
+    // Le panneau montre la clé RÉSUMÉE depuis la 10.6.0 : c'est « #cle-court » qui s'affiche, et
+    // le texte entier vit derrière « Voir la clé entière ». On mesure les DEUX états, parce que
+    // le second est celui qu'on ouvre quand on recopie une clé à la main.
+    await page.waitForSelector('#resultat:not([hidden]) #cle-court', { timeout: 15000 });
     await page.waitForTimeout(260);
     await mesurer(`${etiquette} · la clé émise`);
+    await page.click('#cle-voir');
+    await page.waitForSelector('#resultat #cle:not([hidden])');
+    await page.waitForTimeout(160);
+    await mesurer(`${etiquette} · la clé entière`);
     await page.click('#cle-fermer');
     await page.waitForTimeout(200);
 

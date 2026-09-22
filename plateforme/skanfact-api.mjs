@@ -966,7 +966,11 @@ export function resumeArgent(ventes, aujourdhui) {
     const montant = Number(v.montant_ht) || 0;
     const paye = String(v.payee_le || '').slice(0, 10);
     if (paye) { if (paye.slice(0, 4) === annee) { g.encaisse += montant; g.nbEncaisse++; } }
-    else { g.attente += montant; g.nbAttente++; }
+    // Une vente à montant NUL ne gonfle pas « en attente » de rien : elle y comptait une ligne
+    // pour zéro dinar, et le chiffre annonçait donc « 3 ventes livrées, rien d'encaissé » là où
+    // il n'y en avait que deux à encaisser. Un compteur et le montant qu'il accompagne portent
+    // sur le même ensemble (6.8.1).
+    else if (montant > 0) { g.attente += montant; g.nbAttente++; }
   });
   const r3 = x => Math.round(x * 1000) / 1000;
   return {
@@ -1110,6 +1114,10 @@ export function alertesPlateforme(d, aujourdhui, seuils) {
 
   (o.ventes || []).forEach(v => {
     if (v.payee_le) return;
+    // Une vente à MONTANT NUL n'a rien à encaisser : une licence de cabinet part à zéro tant que
+    // les tarifs ne sont pas fixés (9.4.1), et la réclamer chaque matin apprend à ignorer la
+    // colonne. Ce n'est pas un impayé, c'est une vente sans prix.
+    if (!(Number(v.montant_ht) > 0)) return;
     add('attention', 'Vente à encaisser', v.client || v.id, 'Licence livrée, rien d\'encaissé.', 'ventes',
       'pay:' + v.id, v.client_id ? 'client:' + v.client_id : '');
   });
@@ -2097,7 +2105,7 @@ async function repondreAdmin(r, request, env) {
         await executer('INSERT INTO ventes (id, client_id, licence_id, montant_ht, tva, devise, payee_le, moyen, facture_skanfact, importee_le) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
           'v_' + idCourt(), client.id, n.l.id, n.l.facture.montant, null, n.l.devise, n.l.facture.payeeLe || null, null, n.l.facture.numero || null, maintenant);
       }
-      await journaliser(env, 'licence.importee', { client_id: client.id, licence_id: n.l.id, detail: libelleLicence(n.l) + ' — émise dans SkanFact le ' + n.l.emisLe });
+      await journaliser(env, 'licence.importee', { client_id: client.id, licence_id: n.l.id, detail: libelleLicence(n.l) + ' — émise dans SkanFact le ' + fmtJour(n.l.emisLe) });
       bilan.importees++;
     }
     // Second passage : qui remplace qui. L'ordre d'arrivée ne garantit rien.
@@ -2163,7 +2171,7 @@ async function repondreAdmin(r, request, env) {
       venteId, o.client.id, id, o.e.montant, null, o.e.devise, o.e.payeeLe || null, o.e.payeeLe ? o.e.moyen : null);
     await journaliser(envx, o.motif ? 'licence.' + o.motif : 'licence.emise', {
       client_id: o.client.id, licence_id: id,
-      detail: libelleLicence(o.e) + (o.e.exp ? ' jusqu\'au ' + o.e.exp : ' à vie') + ' — ' + o.e.montant + ' ' + o.e.devise + ' HT'
+      detail: libelleLicence(o.e) + (o.e.exp ? ' jusqu\'au ' + fmtJour(o.e.exp) : ' à vie') + ' — ' + o.e.montant + ' ' + o.e.devise + ' HT'
         + (o.remplace ? ' (remplace ' + o.remplace.id + ')' : '')
     });
     const mail = o.e.payeeLe ? await envoyerSiPossible(envx, id, o.maintenant) : { envoye: false, raison: 'la vente n\'est pas encore payée' };
@@ -2527,7 +2535,14 @@ const CONSOLE_HTML = `<!doctype html>
   .card b{display:block;font-size:24px;font-weight:700;letter-spacing:-.02em;
           font-variant-numeric:tabular-nums;line-height:1.1}
   .card span{display:block;font-size:12.5px;color:var(--ink2);margin-top:4px}
-  .card.ess b{color:var(--srv)} .card.rev b{color:var(--alr)} .card.act b{color:var(--acc)}
+  /* LA COULEUR PORTE UN SENS, ou elle disparaît. Les six cartes en portaient cinq sans légende :
+     bleu pour « essai », vert pour « licences actives », rouge pour « révoquée », noir pour
+     « clients » — et vert pour un taux de conversion de 0 %, c'est-à-dire la mauvaise nouvelle
+     dans la couleur de la bonne, juste à côté du chiffre d'affaires encaissé.
+     Trois rôles, et rien d'autre : l'accent pour ce qui est acquis, le rouge pour ce qui est
+     perdu, le neutre pour un COMPTE qui ne porte aucun jugement. Un essai en cours n'est ni bon
+     ni mauvais — c'est une question ouverte — et un taux sans objectif ne se colore pas. */
+  .card.rev b{color:var(--alr)} .card.act b{color:var(--acc)}
   /* Un compteur à zéro n'a rien à annoncer : il reste lisible — on ne cache jamais un chiffre —
      mais il cesse de crier aussi fort que celui qui porte une décision. « 0 expirée » et
      « 0 ordinateur vu » occupaient deux des six places de tête au même poids que le reste. */
@@ -2596,6 +2611,14 @@ const CONSOLE_HTML = `<!doctype html>
   .cle-court code{font-family:ui-monospace,"SFMono-Regular",Menlo,monospace;font-size:13px;
                   background:var(--surface2);border:1px solid var(--line);border-radius:8px;padding:7px 11px}
   .note.bon{color:var(--acc)}
+  /* Le corps d'un mail composé : la police de LECTURE, pas la chasse fixe. C'est le texte qu'un
+     client va recevoir, pas un fichier de configuration. */
+  .mail-txt{white-space:pre-wrap;background:var(--surface2);border:1px solid var(--line);
+            border-radius:10px;padding:14px 16px;margin:12px 0;font-size:13.5px;line-height:1.55;
+            max-height:46vh;overflow-y:auto}
+  /* Un bouton principal n'est pas souligné, même quand c'est un lien : le seul de la console à
+     l'être ne ressemblait ni à un bouton ni à un lien. */
+  .lien-btn{text-decoration:none;display:inline-block}
   .oblig{margin:10px 0 0;color:var(--ink2);font-size:12px}
   .wrap{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:12px}
   table{border-collapse:collapse;width:100%;font-size:13.5px}
@@ -2733,15 +2756,43 @@ const CONSOLE_HTML = `<!doctype html>
   .reg .quoi b{display:block;font-size:14px;font-weight:600}
   .reg .quoi span{display:block;color:var(--ink2);font-size:12.5px;margin-block-start:3px}
   .reg .src{grid-column:1;font-size:11.5px;color:var(--ink2)}
-  .reg .src.defaut{color:var(--warn)}
-  @media (max-width:640px){.reg{grid-template-columns:1fr}.reg .src{grid-column:auto}}
+  /* Un DÉFAUT n'est pas une alerte : sur une console neuve, aucun réglage n'a été décidé, et
+     quinze lignes orange sur le premier écran apprennent à ignorer le orange (8.0.1). La phrase
+     complète vit dans la bulle du libellé ; ici, un mot ou rien. */
+  .reg .src.defaut{display:none}
+  .reg .src.base{color:var(--acc)}
+  /* La LARGEUR dit ce qu'on attend : un nombre à trois chiffres, une devise, une URL et une
+     signature ne se saisissent pas dans la même case. Le type de la valeur choisit le gabarit. */
+  .reg.court{grid-template-columns:minmax(220px,1fr) 130px}
+  .reg.moyen{grid-template-columns:minmax(220px,1fr) 220px}
+  .reg.long{grid-template-columns:minmax(200px,1fr) minmax(300px,1.1fr)}
+  @media (max-width:640px){.reg,.reg.court,.reg.moyen,.reg.long{grid-template-columns:1fr}.reg .src{grid-column:auto}}
+  /* Le SOMMAIRE d'une page de trois écrans : ce qu'elle contient, avant de l'avoir parcourue. */
+  .sommaire{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px}
+  /* Un titre de section qu'on replie porte ses trois signes AU REPOS : le chevron, le curseur, et
+     son état — un en-tête qui ne se distingue d'un titre qu'au survol n'est pas un bouton
+     (Cabinet 1.0.0, 9.4.4). */
+  .collapse-h{display:flex;align-items:center;gap:9px;width:100%;background:transparent;border:0;
+              padding:0 0 10px;cursor:pointer;color:inherit;font:inherit;text-align:start}
+  .collapse-h h2{margin:0}
+  .collapse-h .chev{color:var(--ink2);transition:transform .15s;font-size:13px}
+  .collapse-h[aria-expanded="false"] .chev{transform:rotate(-90deg)}
+  .collapse-h:hover h2{color:var(--acc)}
+  /* La barre d'enregistrement FLOTTE : sur trois écrans, un bouton posé en pied oblige à
+     redescendre après chaque changement. Les Paramètres de l'app entreprise l'ont depuis la
+     1.8.0 ; la console avait le bouton tout en bas. */
+  .barre-enr{position:sticky;bottom:0;display:flex;gap:10px;align-items:center;
+             padding:12px 0;margin-top:8px;background:var(--bg);border-top:1px solid var(--line)}
+  .barre-enr .sp{flex:1}
 
   .msg{padding:14px 18px;border-radius:10px;border:1px solid var(--alr);
        background:var(--surface);color:var(--ink);margin-bottom:20px}
   .msg.ok{border-color:var(--acc)}
   .msg.w{border-color:var(--warn)}
-  .lock{max-width:420px;margin:12vh auto;background:var(--surface);border:1px solid var(--line);
-        border-radius:16px;padding:28px}
+  /* La carte flottait à 12 % du haut avec cinq cents pixels de vide dessous : un écran d'entrée
+     posé ni en haut ni au centre se lit comme une page inachevée. */
+  .lock{position:fixed;inset:0;margin:auto;width:min(420px,calc(100% - 32px));height:fit-content;
+        background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:28px}
   .lock h2{margin:0 0 6px;font-size:19px}
   .lock p{margin:0 0 18px;color:var(--ink2);font-size:14px}
   .lock .row{display:flex;gap:10px;margin-top:14px}
@@ -2752,8 +2803,8 @@ const CONSOLE_HTML = `<!doctype html>
 
 <div id="lock" class="lock">
   <h2>Console SkanFact</h2>
-  <p>Colle le secret d'administration. Il reste dans cet onglet et disparaît quand tu fermes le navigateur.</p>
-  <label for="sec" style="display:block;font-size:12.5px;color:var(--ink2);margin-bottom:6px">Secret d'administration</label>
+  <p>Colle le secret d’administration. Il reste dans cet onglet et disparaît quand tu fermes le navigateur.</p>
+  <label for="sec" style="display:block;font-size:12.5px;color:var(--ink2);margin-bottom:6px">Secret d’administration</label>
   <input id="sec" type="password" autocomplete="current-password" spellcheck="false">
   <div class="row"><button id="go" class="btn p" type="button">Ouvrir la console</button></div>
   <p id="lockmsg" style="margin-top:14px;color:var(--alr)" hidden></p>
@@ -2777,8 +2828,11 @@ const CONSOLE_HTML = `<!doctype html>
   </div>
   <main>
     <div class="dedans">
-      <div id="err" class="msg" hidden></div>
-      <div id="info" class="msg ok" hidden></div>
+      <!-- Une région VIVANTE : sans elle, rien n'annonce le résultat d'une action — ni à un
+           lecteur d'écran, ni à qui vient de cliquer en bas d'une page longue. « assertive » pour
+           un refus (il interrompt), « polite » pour une réussite (elle attend son tour). -->
+      <div id="err" class="msg" role="alert" aria-live="assertive" hidden></div>
+      <div id="info" class="msg ok" role="status" aria-live="polite" hidden></div>
       <div class="page-head">
         <div>
           <h1 id="page-titre">…</h1>
@@ -2802,7 +2856,10 @@ const CONSOLE_HTML = `<!doctype html>
       </div>
       <div id="fiche" hidden></div>
       <div id="table"></div>
-      <footer id="foot">Une clé livrée ne se reprend pas : une révocation s'applique chez le client à sa prochaine connexion, et seulement si sa version embarque la clé de réponse.</footer>
+      <!-- Le pied portait « Une clé livrée ne se reprend pas… » sous quatre écrans. Lue une
+           fois, la phrase est utile ; lue quatre fois, elle devient du mobilier — et on cesse de
+           lire les pieds de page, y compris le jour où l'un d'eux dit autre chose (9.4.6). Elle
+           vit maintenant là où la limite compte : dans la fenêtre qui révoque. -->
     </div>
   </main>
 </div>
@@ -3171,7 +3228,12 @@ const CONSOLE_HTML = `<!doctype html>
   // Un champ du formulaire se montre ou se cache par son STYLE : la règle label.f{display:block} de
   // cette page bat l'attribut hidden de la feuille du navigateur, et un champ caché ainsi resterait
   // visible.
-  var montrerChamp = function (id, oui) { var e = document.getElementById(id); if (e) e.style.display = oui ? '' : 'none'; };
+  var montrerChamp = function (id, oui) {
+    var e = document.getElementById(id); if (!e) return;
+    // Un ENVELOPPEUR de champs conditionnels se rend en « contents » : en « inline », les champs
+    // qu'il porte cessent d'être des cellules de la grille et se collent les uns aux autres.
+    e.style.display = oui ? (e.classList.contains('cond') ? 'contents' : '') : 'none';
+  };
 
   // Émettre (lic = null), renouveler (mode 'renouveler') ou changer d'offre / de quota (mode 'offre').
   //
@@ -3190,9 +3252,18 @@ const CONSOLE_HTML = `<!doctype html>
     var choixClient = clients.length
       ? '<select name="clientId">' + clients.map(function (c) { return '<option value="' + h(c.id) + '">' + h(c.nom) + (c.matricule ? ' — ' + h(c.matricule) : '') + (c.email ? '' : ' (sans e-mail)') + '</option>'; }).join('') + '</select>'
       : '<span style="color:var(--alr)">Aucun client : crée-le d\\u2019abord (« Nouveau client… »).</span>';
+    // Les CHAMPS CONDITIONNELS n'apparaissent qu'avec leur condition. « Payée le » et « Moyen de
+    // paiement » restaient visibles et actifs, la date préremplie à aujourd'hui, pendant que la
+    // case « Déjà payée » était décochée : deux champs qu'on remplit pour rien. Idem pour la date
+    // de fin libre, dont la condition tenait dans son propre libellé (« si jusqu'à une date
+    // précise »). Le mécanisme existait déjà — « montrerChamp » sert l'offre et le quota — il
+    // n'avait simplement pas été porté aux trois autres.
+    var champDateCond = function (nom, label) {
+      return '<span id="f-' + nom + '" class="cond" style="display:none">' + champDate(nom, label, '') + '</span>';
+    };
     var paiement = '<label class="c w"><input type="checkbox" name="payee"> Déjà payée</label>' +
-      champDate('payeeLe', 'Payée le', aujourdhui()) +
-      champ('moyen', 'Moyen de paiement', 'placeholder="virement, espèces, chèque…" maxlength="40"');
+      '<span id="f-paiement" class="cond" style="display:none">' + champDate('payeeLe', 'Payée le', aujourdhui()) +
+      champ('moyen', 'Moyen de paiement', 'placeholder="virement, espèces, chèque…" maxlength="40"') + '</span>';
     // Le quota d'un cabinet, en plus des trois gratuits. Le prix d'un dossier n'est proposé que
     // s'il est réglé (PRIX_CABINET_DOSSIER) : les tarifs du Cabinet ne sont pas fixés, et un chiffre
     // inventé ici deviendrait un tarif par simple préremplissage.
@@ -3236,20 +3307,20 @@ const CONSOLE_HTML = `<!doctype html>
           '<option value="cabinet">Cabinet comptable — s\\u2019installe dans SkanFact Cabinet (un quota de dossiers)</option></select></label>' +
         '<label class="f" id="f-offre"><span>Offre</span><select name="offre">' + offres + '</select></label>' +
         '<label class="f"><span>Durée</span><select name="duree">' + durees + '</select></label>' +
-        champDate('dateLibre', 'Date de fin (si « jusqu\\u2019à une date précise »)', '') +
+        champDateCond('dateLibre', 'Date de fin') +
         champQuota('', true) +
         champPrix(prixPropose('entreprise', offreInitiale, 0), 'proposé d\\u2019après l\\u2019offre') +
         '<label class="c w" id="f-parrain"><input type="checkbox" name="parrain"> Client parrainé par un cabinet comptable (remise de ' + t.remiseParrainage + ' % la première année)</label>' +
         champ('cabinet', 'Empreinte du cabinet (facultatif)', 'placeholder="xxxx-xxxx-xxxx-xxxx-xxxx" maxlength="30"', true) +
         paiement;
-      ok = 'Émettre la clé';
+      ok = 'Émettre la licence';
     } else if (mode === 'renouveler') {
       var depart = lic.fin && lic.fin > aujourdhui() ? lic.fin : aujourdhui();
       titre = 'Renouveler la licence de ' + lic.client;
       why = (cab ? h(libOffre(lic)) : 'Offre ' + h(libOffre(lic))) + (lic.fin ? ', fin actuelle le ' + jour(lic.fin) : '') + '. La nouvelle période part du <strong>' + jour(depart) + '</strong> : les jours déjà payés ne sont pas perdus. Une nouvelle clé est signée, l\\u2019ancienne reste valable jusqu\\u2019à sa date.' +
         (cab ? ' Le quota se garde tel quel — modifie-le ici si le cabinet a pris des clients.' : ' La remise de parrainage ne s\\u2019applique qu\\u2019à la première année.');
       champs = '<label class="f"><span>Durée</span><select name="duree">' + durees + '</select></label>' +
-        champDate('dateLibre', 'Date de fin (si « jusqu\\u2019à une date précise »)', '') +
+        champDateCond('dateLibre', 'Date de fin') +
         (cab ? champQuota(lic.dossiers_hors, false) : '') +
         champPrix(prixPropose(cab ? 'cabinet' : 'entreprise', lic.offre, lic.dossiers_hors), 'proposé d\\u2019après l\\u2019offre en cours') +
         paiement;
@@ -3339,6 +3410,17 @@ const CONSOLE_HTML = `<!doctype html>
       var s = document.getElementById('f-prix-src');
       if (s) { s.textContent = 'saisi à la main'; s.className = 'pr main'; }
     };
+    // Les deux conditions, posées à l'ouverture ET à chaque changement : un champ conditionnel
+    // qui naît visible est un champ qu'on remplit pour rien.
+    var cp = document.querySelector('#form [name="payee"]');
+    var sd = document.querySelector('#form [name="duree"]');
+    var majConditions = function () {
+      montrerChamp('f-paiement', !!(cp && cp.checked));
+      montrerChamp('f-dateLibre', !!(sd && sd.value === 'date'));   // l'identifiant de « Jusqu'à une date précise »
+    };
+    if (cp) cp.onchange = majConditions;
+    if (sd) sd.onchange = majConditions;
+    majConditions();
     var so = document.querySelector('#form [name="offre"]');
     if (so) so.onchange = !lic
       ? function () { poserPrix(prixPropose('entreprise', so.value, 0), 'proposé d\\u2019après l\\u2019offre'); }
@@ -3488,9 +3570,12 @@ const CONSOLE_HTML = `<!doctype html>
         + (j.a
           ? '<p class="why">À <strong>' + h(j.a) + '</strong>. Le texte s\\u2019ouvre dans ta messagerie : tu le relis, tu le modifies si tu veux, et c\\u2019est toi qui envoies.</p>'
           : '<p class="why" style="color:var(--warn)">Ce client n\\u2019a pas d\\u2019adresse e-mail : ajoute-la sur l\\u2019écran Clients, et le bouton s\\u2019allumera. Le texte reste copiable ci-dessous.</p>')
-        + '<div class="cle" id="relance-txt" style="white-space:pre-wrap">' + h(j.sujet + '\\n\\n' + j.corps) + '</div>'
+        // Le corps d'un mail se lit dans la police de LECTURE. En chasse fixe, il ressemble à un
+        // fichier de configuration — et donne l'impression d'un envoi automatique, alors que tout
+        // ce panneau est bâti pour dire l'inverse (« c'est toi qui envoies »).
+        + '<div class="mail-txt" id="relance-txt">' + h(j.sujet + '\\n\\n' + j.corps) + '</div>'
         + '<div class="row">'
-        + (j.a ? '<a class="btn p" id="relance-ouvrir" href="' + h(lien) + '">Ouvrir dans ma messagerie</a>' : '')
+        + (j.a ? '<a class="btn p lien-btn" id="relance-ouvrir" href="' + h(lien) + '">Ouvrir dans ma messagerie</a>' : '')
         + '<button id="relance-copier" class="btn" type="button">Copier le texte</button>'
         + '<button id="relance-fermer" class="btn" type="button">Fermer</button></div>';
       el.hidden = false;
@@ -3550,6 +3635,35 @@ const CONSOLE_HTML = `<!doctype html>
     { k: 'licencesRevoquees', s: 'révoquée', p: 'révoquées', c: 'rev', t: 'licences' },
     { k: 'clients', s: 'client', p: 'clients', c: '', t: 'clients' }
   ];
+
+  // ---------------------------------------------------------------- ce qui se LIT, et ce qui se range
+  //
+  // Un identifiant interne n'est pas un mot. Le Journal affichait « licence.emise », « client.cree »
+  // et « mail.envoye » en chasse fixe — sans accents, donc lus comme des fautes de frappe — et la
+  // colonne Système rendait « darwin ». La console est l'écran d'un dirigeant, pas d'un
+  // développeur : « darwin » ne répond pas à « mon prospect est sur Mac ou sur PC ? », et un
+  // journal lisible est exactement ce qui permet « de répondre à un client six mois plus tard »,
+  // ce que la page promet elle-même en sous-titre.
+  //
+  // L'identifiant reste atteignable au survol : on le donne quand on écrit à un développeur.
+  var NOM_EVT = {
+    'client.cree': 'Client créé',
+    'licence.emise': 'Licence émise',
+    'licence.renouvellement': 'Licence renouvelée',
+    'licence.offre': 'Offre changée',
+    'licence.matricule': 'Matricule corrigé',
+    'licence.revoquee': 'Licence révoquée',
+    'licence.importee': 'Licence importée depuis SkanFact',
+    'mail.envoye': 'Clé envoyée par mail',
+    'mail.echec': 'Envoi du mail en échec',
+    'vente.payee': 'Vente encaissée',
+    'vente.facturee': 'Numéro de facture posé',
+    'base.exportee': 'Base exportée',
+    'base.export.echec': 'Export de la base en échec',
+    'reglages.changes': 'Réglages modifiés',
+    'suivi.note': 'Contact noté'
+  };
+  var NOM_OS = { darwin: 'macOS', win32: 'Windows', linux: 'Linux' };
 
   var etatLic = function (r) {
     // Un ÉTAT est un vocabulaire fermé ; le motif d'une révocation est un texte libre. Collé dans
@@ -3701,12 +3815,22 @@ const CONSOLE_HTML = `<!doctype html>
       // et la colonne qu'on vient d'ajouter n'a jamais été dessinée une seule fois (7.22.0). Une
       // seconde table ici aurait de toute façon divergé de celle du Parc au premier renommage.
       { k: 'appNom', t: 'Application' },
-      { k: 'client', t: 'Client', f: function (v, r) { return v || (r.empreinte === 'ESSAI' ? '— en essai —' : '— licence inconnue —'); } },
+      // Un ÉTAT n'occupe pas la colonne où va un nom : « — en essai — » y remplaçait le client
+      // par une valeur qui n'en est pas un. Le nom reste vide, et l'état porte sa pastille.
+      { k: 'client', t: 'Client', tr: true },
+      { k: 'empreinte', t: 'Licence', brut: true, f: function (v, r) {
+          if (r.client) return '<span class="pill a">sous licence</span>';
+          return v === 'ESSAI' ? '<span class="pill e">essai</span>' : '<span class="pill w">licence inconnue</span>';
+        } },
       { k: 'device_nom', t: 'Ordinateur', tr: true },
-      { k: 'plateforme', t: 'Système' },
+      { k: 'plateforme', t: 'Système', f: function (v) { return NOM_OS[v] || v || '\\u2014'; } },
       { k: 'version', t: 'Version', m: true },
-      { k: 'derniere_fois', t: 'Vu', f: function (v) { return quandVu(v); }, brut: true },
-      { k: 'premiere_fois', t: 'Depuis', f: function (v) { return quandVu(v); }, brut: true }
+      // « Vu » et « Depuis » rendaient la même valeur au même format sur un poste neuf : deux
+      // colonnes identiques dont rien ne disait qu'elles portent deux faits différents. Les
+      // libellés le disent maintenant, et seule la DERNIÈRE fois porte l'heure — c'est elle qui
+      // répond à « il a testé quand dans la journée ? ».
+      { k: 'derniere_fois', t: 'Dernière fois', f: function (v) { return quandVu(v); }, brut: true },
+      { k: 'premiere_fois', t: 'Première fois', f: function (v) { return v ? jour(v) : '\\u2014'; } }
     ],
     clients: [
       { k: 'nom', t: 'Nom', tr: true }, { k: 'matricule', t: 'Matricule', m: true },
@@ -3731,7 +3855,14 @@ const CONSOLE_HTML = `<!doctype html>
     ventes: [
       { k: 'client', t: 'Client', tr: true },
       { k: 'montant_ht', t: 'Montant HT', n: true, f: function (v, r) { return montant(v, r.devise); } },
-      { k: 'payee_le', t: 'État', f: function (v) { return v ? '<span class="pill a">payée le ' + jour(v) + '</span>' : '<span class="pill w">à encaisser</span>'; }, brut: true },
+      // Un montant NUL n'a rien à encaisser : le dire « à encaisser » le fait entrer dans les
+      // relances et gonfler le total « En attente » de rien du tout. Une licence de cabinet part
+      // à zéro tant que les tarifs ne sont pas fixés — c'est le cas normal, pas un impayé.
+      { k: 'payee_le', t: 'État', brut: true, f: function (v, r) {
+          if (v) return '<span class="pill a">payée le ' + jour(v) + '</span>';
+          if (!(Number(r.montant_ht) > 0)) return '<span class="pill e">sans montant</span>';
+          return '<span class="pill w">à encaisser</span>';
+        } },
       { k: 'moyen', t: 'Moyen' },
       { k: 'facture_skanfact', t: 'Facture', f: function (v) { return v || 'à établir'; } },
       // Encaisser est le geste de cet écran : « Marquer payée » reste visible, et c'est lui qui
@@ -3751,7 +3882,9 @@ const CONSOLE_HTML = `<!doctype html>
       // Le journal portait l'heure UTC à côté d'une date UTC : une vente encaissée à 00 h 30 à Tunis
       // s'y lisait la veille à 23 h 30. Tout ce qui s'affiche passe par la même horloge, la locale.
       { k: 'quand', t: 'Quand', f: function (v) { return horodate(v); } },
-      { k: 'quoi', t: 'Quoi', m: true },
+      { k: 'quoi', t: 'Quoi', brut: true, f: function (v) {
+          return NOM_EVT[v] ? '<span title="' + h(v) + '">' + h(NOM_EVT[v]) + '</span>' : h(v);
+        } },
       { k: 'client', t: 'Client', tr: true },
       { k: 'detail', t: 'Détail', tr: true }
     ],
@@ -3795,7 +3928,7 @@ const CONSOLE_HTML = `<!doctype html>
     essais: [
       { k: 'appNom', t: 'Application' },
       { k: 'device_nom', t: 'Ordinateur', tr: true },
-      { k: 'plateforme', t: 'Système' },
+      { k: 'plateforme', t: 'Système', f: function (v) { return NOM_OS[v] || v || '\\u2014'; } },
       { k: 'version', t: 'Version', m: true },
       { k: 'premiere_fois', t: 'Vu depuis', f: function (v) { return v ? jour(v) : '—'; } },
       { k: 'reste', t: 'Reste', n: true, brut: true,
@@ -3803,7 +3936,13 @@ const CONSOLE_HTML = `<!doctype html>
         f: function (v, r) {
           if (v == null) return '—';
           if (v < 0) return '<span class="pill e">fini vers le ' + h(jour(r.fin)) + '</span>';
-          return '<span class="pill ' + (v <= 7 ? 'r' : 'w') + '">' + v + ' j</span>';
+          // Le SEUIL vient des réglages, jamais d'un chiffre écrit ici. Trente jours restants est
+          // la meilleure nouvelle possible de cet écran, et la pastille était orange dès le
+          // premier jour : du orange sur une situation normale apprend à ignorer le orange
+          // (8.0.1). Trois tons, et le dernier est celui qu'on a réglé.
+          var seuil = Number((etat && etat.seuils && etat.seuils.alerte_essai) || 7);
+          var ton = v <= Math.ceil(seuil / 2) ? 'r' : (v <= seuil ? 'w' : 'e');
+          return '<span class="pill ' + ton + '">' + v + ' j</span>';
         } },
       { k: 'suivi_le', t: 'Suivi', brut: true,
         i: 'Ce que tu as fait de ce prospect. Tant qu\\u2019un rappel est posé dans le futur, ce poste ne redemande rien dans « À décider ».',
@@ -3979,7 +4118,11 @@ const CONSOLE_HTML = `<!doctype html>
     $('page-but').textContent = e.but;
     var act = (ACTIONS[onglet] || []).map(function (a) { return BOUTONS[a]; }).join('');
     if (CHERCHABLES.indexOf(onglet) >= 0) {
-      act += '<input id="q" type="search" placeholder="Chercher dans ' + h(TITRES[onglet].toLowerCase()) + '…"'
+      // L'invite est COURTE et constante : « Chercher dans activations… » était coupé en plein
+      // mot sur trois écrans, parce que le champ est borné à 280 px. Le nom de l'écran est déjà
+      // dans le titre, à trente centimètres à gauche. L'étiquette pour lecteur d'écran, elle,
+      // reste complète — c'est elle qui doit dire de quoi il s'agit.
+      act += '<input id="q" type="search" placeholder="Chercher\\u2026"'
         + ' aria-label="Chercher dans ' + h(TITRES[onglet].toLowerCase()) + '" value="' + h(recherche) + '">';
     }
     $('page-actions').innerHTML = act;
@@ -4004,7 +4147,7 @@ const CONSOLE_HTML = `<!doctype html>
     // La limite d'une révocation ne concerne que les écrans qui vendent ou qui révoquent. Affichée
     // sous « Le parc installé », c'est une phrase qui ne parle pas de ce qu'on regarde — et une
     // phrase qu'on lit partout finit par ne se lire nulle part.
-    $('foot').hidden = ['licences', 'ventes', 'cabinets', 'alertes'].indexOf(onglet) < 0;
+
   }
 
   function dessiner() {
@@ -4033,7 +4176,9 @@ const CONSOLE_HTML = `<!doctype html>
       // et annoncer un échec là où rien n'a été tenté apprend à ignorer le chiffre (9.6.0).
       var conv = s.tauxConversion == null
         ? '<div class="card zero"><b>—</b><span>aucun essai vu pour l\\u2019instant</span></div>'
-        : '<div class="card act" role="button" tabindex="0" data-t="parc" style="cursor:pointer"><b>'
+        // Un taux ne se colore pas par NATURE : il se colore par rapport à un objectif, et il n'y
+        // en a pas. En vert, « 0 % » se lisait comme une bonne nouvelle.
+        : '<div class="card" role="button" tabindex="0" data-t="parc" style="cursor:pointer"><b>'
           + s.tauxConversion + ' %</b><span>' + h(pl(s.essaisConvertis, 'essai') + ' devenu'
           + (s.essaisConvertis > 1 ? 's' : '') + ' client sur ' + s.essaisVus) + '</span></div>';
       $('cards').innerHTML = CARTES.map(function (c) {
@@ -4083,7 +4228,12 @@ const CONSOLE_HTML = `<!doctype html>
     api(onglet).then(function (d) {
       if (mien !== generation) return;
       lignesEcran = d.lignes || [];
-      if (onglet === 'alertes') { aDecider = lignesEcran.reduce(function (s, x) { return s + (Number(x.n) || 1); }, 0); dessinerRail(); }
+      // Le compteur du rail compte ce que le tableau MONTRE. Il comptait les OCCURRENCES
+      // (« 5 ») pendant que le pied annonçait les lignes groupées (« 3 décisions ») : les deux
+      // étaient justes et rien ne l'expliquait, donc on cessait de croire les deux. Un compteur et
+      // la liste qu'il annonce se calculent avec la même règle (6.8.1) — et chaque ligne porte
+      // déjà son propre « ×2 ».
+      if (onglet === 'alertes') { aDecider = lignesEcran.length; dessinerRail(); }
       dessinerTable();
     }, function (e) { if (mien === generation) montrerErreur(e); });
   }
@@ -4096,57 +4246,117 @@ const CONSOLE_HTML = `<!doctype html>
   function dessinerReglages() {
     $('table').innerHTML = '';
     $('bord').hidden = true;
-    $('foot').hidden = true;
     var el = $('fiche');
     el.hidden = false;
     el.innerHTML = '<div class="chargement">Chargement…</div>';
     api('reglages').then(function (d) {
       reg = d;
-      var SOURCES = { base: 'réglé ici', worker: 'vient des réglages du worker', defaut: 'valeur par défaut, jamais décidée' };
+      // L'ORIGINE d'une valeur : un repère, pas un avertissement.
+      //
+      // « valeur par défaut, jamais décidée » s'imprimait sous CHACUN des quinze champs, en
+      // orange. Or sur une console neuve, aucun réglage n'a été décidé : c'est l'état NORMAL, pas
+      // une alerte. Quinze lignes orange sur le premier écran apprennent à ignorer le orange, et
+      // emmènent avec elles celui qui comptera un jour (8.0.1) ; et une explication se lit une
+      // fois, pas quinze (9.4.6). La phrase complète vit dans la bulle « i » déjà présente à côté
+      // de chaque libellé ; l'écran ne garde qu'un mot, et rien du tout pour un défaut.
+      var SOURCES = { base: 'réglé ici', worker: 'réglage du worker', defaut: '' };
+      var SRC_AIDE = {
+        base: 'Cette valeur a été posée depuis cet écran : elle prime sur tout le reste.',
+        worker: 'Cette valeur vient des réglages du worker sur Cloudflare. La poser ici la remplace, sans toucher à Cloudflare.',
+        defaut: 'Valeur jamais décidée : c\\u2019est le défaut du code, que personne n\\u2019a encore regardé. La poser ici la fige.'
+      };
       var groupes = [];
       (d.definitions || []).forEach(function (def) { if (groupes.indexOf(def.groupe) < 0) groupes.push(def.groupe); });
       var html = '';
-      groupes.forEach(function (g) {
-        html += '<div class="bloc"><h2>' + h(g) + '</h2><div class="panel">';
+      // LE SOMMAIRE. La page fait près de trois écrans : sans lui, on ne sait pas ce qu'elle
+      // contient avant de l'avoir parcourue en entier. Il se DÉDUIT des groupes, jamais d'une
+      // liste écrite à la main qui nommerait un jour une section disparue (7.30.0).
+      var sections = groupes.concat(['Ce qui ne se règle pas ici', 'La copie de la base', 'Le secret d\\u2019administration']);
+      html += '<nav class="sommaire" aria-label="Les sections des réglages">'
+        + sections.map(function (t, i) { return '<button type="button" class="btn s" data-vers="sec-' + i + '">' + h(t) + '</button>'; }).join('')
+        + '</nav>';
+      var iSec = 0;
+      var section = function (titre, corps, ouvert) {
+        // Repliée, une section ne se devine pas : le titre porte un chevron, un curseur et son
+        // état (9.4.4). La première est ouverte — on arrive ici pour les prix.
+        var id = 'sec-' + (iSec++);
+        return '<div class="bloc" id="' + id + '">'
+          + '<button type="button" class="collapse-h" aria-expanded="' + (ouvert ? 'true' : 'false') + '" data-plier="' + id + '">'
+          + '<span class="chev" aria-hidden="true">\\u25be</span><h2>' + h(titre) + '</h2></button>'
+          + '<div class="corps"' + (ouvert ? '' : ' hidden') + '>' + corps + '</div></div>';
+      };
+      groupes.forEach(function (g, gi) {
+        var corps = '<div class="panel">';
         (d.definitions || []).filter(function (def) { return def.groupe === g; }).forEach(function (def) {
           var v = d.valeurs[def.id];
           var src = d.sources[def.id];
           var type = def.type === 'montant' || def.type === 'pourcent' || def.type === 'jours' ? 'number' : 'text';
           var pas = def.type === 'montant' ? ' step="0.001" min="0"' : (def.type === 'jours' ? ' step="1" min="0"' : (def.type === 'pourcent' ? ' step="0.5" min="0" max="100"' : ''));
-          html += '<div class="reg"><div class="quoi"><b>' + h(def.label) + bulle(def.aide) + '</b><span>' + h(def.aide) + '</span></div>'
+          // La LARGEUR d'un champ dit ce qu'on attend dedans. Les quinze partageaient la même
+          // case de 150 px : la signature des mails s'y affichait tronquée, et un lien de
+          // paiement y aurait eu le même bocal qu'un nombre à trois chiffres. Trois gabarits, et
+          // c'est le TYPE de la valeur qui les choisit.
+          var taille = type === 'number' ? 'court' : (def.type === 'long' || /lien|signature/.test(def.id) ? 'long' : 'moyen');
+          html += '';
+          corps += '<div class="reg ' + taille + '"><div class="quoi"><b>' + h(def.label) + bulle(def.aide + ' — ' + SRC_AIDE[src]) + '</b><span>' + h(def.aide) + '</span></div>'
             + '<input data-reg="' + h(def.id) + '" type="' + type + '"' + pas + ' value="' + h(v == null ? '' : v) + '"'
             + ' aria-label="' + h(def.label) + '">'
-            + '<span class="src ' + h(src) + '">' + h(SOURCES[src] || src) + '</span></div>';
+            + (SOURCES[src] ? '<span class="src ' + h(src) + '">' + h(SOURCES[src]) + '</span>' : '<span class="src ' + h(src) + '"></span>') + '</div>';
         });
-        html += '</div></div>';
+        corps += '</div>';
+        html += section(g, corps, gi === 0);
       });
       // Ce que la console NE règle pas, et pourquoi. Le taire donnerait l'impression d'un oubli.
-      html += '<div class="bloc"><h2>Ce qui ne se règle pas ici</h2><div class="panel">' +
+      html += section('Ce qui ne se règle pas ici', '<div class="panel">' +
         (d.fixes || []).map(function (f) {
           return '<div class="reg"><div class="quoi"><b>' + h(f.label) + ' : ' + h(f.valeur) + '</b><span>' + h(f.pourquoi) + '</span></div></div>';
-        }).join('') + '</div></div>';
+        }).join('') + '</div>', false);
 
       // La copie de la base et la rotation du secret : deux choses que cet écran COMMANDE, et qui
       // disent chacune ce qui leur manque plutôt que d'afficher un vert rassurant.
       var s = d.sauvegarde || {}, sec = d.secret || {};
-      html += '<div class="bloc"><h2>La copie de la base</h2><div class="panel">' +
+      html += section('La copie de la base', '<div class="panel">' +
         '<p class="why">' + (s.auto ? '' : '<strong>') + h(s.raison || s.quoi) + (s.auto ? '' : '</strong>') + '</p>' +
         (s.auto ? '' : '<p class="why">' + h(s.quoi) + '</p>') +
         '<p class="note">' + (s.dernier ? 'Dernière copie le ' + h(jour(s.dernier)) + '.' : 'Aucune copie n\\u2019a jamais été prise.') + '</p>' +
         '<div class="row"><button id="reg-exporter" class="btn" type="button">Exporter la base maintenant…</button>' +
         '<button id="reg-pli" class="btn" type="button">Préparer le pli scellé…</button></div>' +
-        '</div></div>';
-      html += '<div class="bloc"><h2>Le secret d\\u2019administration</h2><div class="panel">' +
-        '<p class="why">' + h(sec.phrase || '') + '</p><p class="why">' + h(sec.quoi || '') + '</p></div></div>';
+        '</div>', !s.auto);
+      html += section('Le secret d\\u2019administration', '<div class="panel">' +
+        '<p class="why">' + h(sec.phrase || '') + '</p><p class="why">' + h(sec.quoi || '') + '</p></div>', false);
 
-      html += '<div class="row"><button id="reg-ok" class="btn p" type="button">Enregistrer les réglages</button>' +
-        '<button id="reg-annuler" class="btn" type="button">Annuler</button></div>' +
-        '<p id="reg-msg" class="note" hidden></p>';
+      html += '<p id="reg-msg" class="note" hidden></p>';
       el.innerHTML = html;
+      // La barre d'enregistrement FLOTTE : sur une page de trois écrans, le bouton posé tout en
+      // bas oblige à redescendre le chercher après chaque changement, et à remonter ensuite. Les
+      // Paramètres de l'app entreprise l'ont depuis la 1.8.0 ; la console avait le bouton en pied.
+      var barre = document.createElement('div');
+      barre.className = 'barre-enr';
+      barre.innerHTML = '<span class="sp"></span><button id="reg-ok" class="btn p" type="button">Enregistrer les réglages</button>'
+        + '<button id="reg-annuler" class="btn" type="button">Annuler</button>';
+      el.appendChild(barre);
       $('reg-ok').onclick = enregistrerReglages;
       $('reg-annuler').onclick = function () { dessinerReglages(); };
       $('reg-exporter').onclick = function () { exporterBase($('reg-exporter')); };
       $('reg-pli').onclick = montrerPli;
+      // Replier / déplier, et le sommaire qui OUVRE la section avant d'y descendre : arriver sur
+      // un titre replié, c'est arriver nulle part (7.32.0).
+      Array.prototype.forEach.call(el.querySelectorAll('[data-plier]'), function (b) {
+        b.onclick = function () {
+          var bloc = document.getElementById(b.dataset.plier), corps = bloc.querySelector('.corps');
+          corps.hidden = !corps.hidden;
+          b.setAttribute('aria-expanded', corps.hidden ? 'false' : 'true');
+        };
+      });
+      Array.prototype.forEach.call(el.querySelectorAll('[data-vers]'), function (b) {
+        b.onclick = function () {
+          var bloc = document.getElementById(b.dataset.vers);
+          if (!bloc) return;
+          var corps = bloc.querySelector('.corps'), tete = bloc.querySelector('[data-plier]');
+          if (corps && corps.hidden) { corps.hidden = false; tete.setAttribute('aria-expanded', 'true'); }
+          bloc.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        };
+      });
     }, montrerErreur);
   }
 
@@ -4199,7 +4409,6 @@ const CONSOLE_HTML = `<!doctype html>
   function dessinerFiche() {
     $('table').innerHTML = '';
     $('bord').hidden = true;
-    $('foot').hidden = true;
     var el = $('fiche');
     el.hidden = false;
     el.innerHTML = '<div class="chargement">Chargement…</div>';

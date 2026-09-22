@@ -309,8 +309,20 @@ const { servir, SECRET } = require('./console-serveur');
     await onglet('evenements');
     await page.waitForSelector('#table tbody tr');
     const j = (await lignes()).join('\n');
-    ['client.cree', 'licence.emise', 'vente.payee', 'mail.envoye', 'licence.renouvellement', 'licence.revoquee'].forEach(q =>
-      doit(j.includes(q), 'le journal porte « ' + q + ' »'));
+    // 10.6.0 — RETOURNÉE (vingt et unième occurrence). L'assertion exigeait les identifiants
+    // INTERNES — « client.cree », « licence.emise », sans accents — c'est-à-dire exactement le
+    // défaut : la console est l'écran d'un dirigeant, pas d'un développeur, et un journal lisible
+    // est ce qui permet « de répondre à un client six mois plus tard », comme la page le promet
+    // elle-même. La RÈGLE est que chaque événement se lit en français ; l'identifiant reste
+    // atteignable au survol, pour le jour où l'on écrit à un développeur.
+    [['client.cree', 'Client créé'], ['licence.emise', 'Licence émise'], ['vente.payee', 'Vente encaissée'],
+     ['mail.envoye', 'Clé envoyée par mail'], ['licence.renouvellement', 'Licence renouvelée'],
+     ['licence.revoquee', 'Licence révoquée']].forEach(([id, mot]) => {
+      doit(j.includes(mot), 'le journal dit « ' + mot +' », pas un identifiant');
+      doit(!j.includes(id), 'et l\'identifiant « ' + id + ' » ne s\'affiche pas');
+    });
+    doit(await page.$('xpath=//tbody//span[@title="client.cree"]') !== null,
+      'l\'identifiant reste au survol : on le donne quand on écrit à un développeur');
     // 9.4.2 — l'heure, et celle de l'horloge de la page : le journal affichait l'heure UTC à côté
     // d'une date UTC, donc une vente encaissée à 00 h 30 à Tunis s'y lisait la veille à 23 h 30.
     doit(/\d{2}\/\d{2}\/\d{4} à \d{2}:\d{2}/.test(j), 'chaque ligne du journal porte le jour ET l\'heure');
@@ -492,13 +504,35 @@ const { servir, SECRET } = require('./console-serveur');
     doit(await page.inputValue('[data-reg="prix_entreprise"]') === '690', 'le prix en vigueur est affiché');
     // D'OÙ vient chaque valeur : sans ça, un écran de nombres laisse croire qu'ils ont tous été
     // décidés, alors que la plupart sont des défauts que personne n'a jamais regardés.
+    //
+    // 10.6.0 — RETOURNÉE (vingt-deuxième occurrence). L'assertion exigeait la phrase « valeur par
+    // défaut, jamais décidée » SUR L'ÉCRAN : elle gravait l'état du jour, où cette mention
+    // s'imprimait sous chacun des quinze champs, en orange. Or sur une console neuve aucun réglage
+    // n'a été décidé — c'est l'état NORMAL — et quinze lignes orange apprennent à ignorer le orange
+    // (8.0.1). La RÈGLE tient en deux moitiés : l'origine reste ATTEIGNABLE (dans la bulle du
+    // libellé), et un défaut ne crie PAS.
     doit(await page.evaluate(() => {
       const l = document.querySelector('[data-reg="prix_entreprise"]').closest('.reg');
-      return /jamais décidée/.test(l.querySelector('.src').textContent);
-    }), 'et il DIT qu\'il n\'a jamais été décidé : c\'est un défaut, pas un choix');
+      return (l.querySelector('.src').textContent || '').trim() === '';
+    }), 'un DÉFAUT ne crie pas : rien ne s\'imprime à côté du champ');
+    doit(await page.evaluate(() => {
+      const l = document.querySelector('[data-reg="prix_entreprise"]').closest('.reg');
+      const b = l.querySelector('button.i');
+      return !!b && /jamais décidé/.test(b.dataset.bulle || '');
+    }), 'mais l\'origine reste atteignable : la bulle dit que personne ne l\'a décidée');
     // Ce que la console ne règle PAS, et pourquoi : le taire donnerait l'impression d'un oubli.
+    //
+    // 10.6.0 — la page fait près de trois écrans, donc ses sections se replient et un SOMMAIRE dit
+    // ce qu'elle contient. Le parcours y va comme une personne : par le sommaire. Ce qui compte
+    // n'est pas que la phrase soit affichée d'emblée — c'est qu'elle soit NOMMÉE et atteignable
+    // en un geste (7.30.0). Arriver sur un titre replié serait arriver nulle part : le sommaire
+    // OUVRE avant de descendre, et c'est ce qu'on vérifie.
+    const titres = await page.$$eval('.sommaire button', bs => bs.map(b => b.textContent.trim()));
+    doit(titres.some(t => /ne se règle pas/i.test(t)), 'le sommaire nomme la section : ' + titres.join(' · '));
+    await page.click('xpath=//nav[@class="sommaire"]//button[contains(., "ne se règle pas")]');
+    await page.waitForFunction(() => /durée de l\u2019essai|durée de l'essai/i.test(document.getElementById('fiche').innerText));
     doit(/durée de l’essai|durée de l'essai/i.test(await page.innerText('#fiche')),
-      'l\'écran nomme ce qu\'il ne règle pas, et la raison');
+      'et le sommaire OUVRE la section : l\'écran nomme ce qu\'il ne règle pas, et la raison');
     // Un refus NOMME le champ : « valeur invalide » oblige à relire quinze champs.
     await page.fill('[data-reg="remise_parrainage"]', '250');
     await page.click('#reg-ok');
